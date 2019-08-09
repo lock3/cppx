@@ -35,6 +35,8 @@ enum class Language : uint8_t {
   CUDA,
   RenderScript,
   HIP,
+  Blue,
+  Green,
   ///@}
 };
 
@@ -53,7 +55,9 @@ enum LangFeatures {
   GNUMode = (1 << 11),
   HexFloat = (1 << 12),
   ImplicitInt = (1 << 13),
-  OpenCL = (1 << 14)
+  OpenCL = (1 << 14),
+  Green = (1 << 15),
+  Blue = (1 << 16)
 };
 
 /// LangStandard - Information about the properties of a particular language
@@ -125,6 +129,12 @@ public:
 
   /// isOpenCL - Language is a OpenCL variant.
   bool isOpenCL() const { return Flags & OpenCL; }
+
+  /// isGreen - Language is Green.
+  bool isGreen() const { return Flags & Green; }
+
+  /// isBlue - Language is Blue.
+  bool isBlue() const { return Flags & Blue; }
 
   static Kind getLangKind(StringRef Name);
   static const LangStandard &getLangStandardForKind(Kind K);

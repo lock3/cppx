@@ -31,5 +31,7 @@ InputKind FrontendOptions::getInputKindForExtension(StringRef Extension) {
       .Case("cl", Language::OpenCL)
       .Case("cu", Language::CUDA)
       .Cases("ll", "bc", Language::LLVM_IR)
+      .Case("usyntax", Language::Green)
+      // TODO: what is the extension for Blue?
       .Default(Language::Unknown);
 }

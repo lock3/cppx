@@ -184,6 +184,14 @@ LANGSTANDARD(cuda, "cuda", CUDA, "NVIDIA CUDA(tm)",
 LANGSTANDARD(hip, "hip", HIP, "HIP",
              LineComment | CPlusPlus | Digraphs)
 
+// Green
+LANGSTANDARD(green, "green", Green, "Green",
+             LineComment | CPlusPlus | Digraphs)
+
+// Blue
+LANGSTANDARD(blue, "blue", Blue, "Blue",
+             LineComment | CPlusPlus | Digraphs)
+
 #undef LANGSTANDARD
 #undef LANGSTANDARD_ALIAS
 #undef LANGSTANDARD_ALIAS_DEPR

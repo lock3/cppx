@@ -2677,6 +2677,10 @@ InputKind ASTUnit::getInputKind() const {
     Lang = Language::RenderScript;
   else if (LangOpts.CPlusPlus)
     Lang = LangOpts.ObjC ? Language::ObjCXX : Language::CXX;
+  else if (LangOpts.Green)
+    Lang = Language::Green;
+  else if (LangOpts.Blue)
+    Lang = Language::Blue;
   else
     Lang = LangOpts.ObjC ? Language::ObjC : Language::C;
 

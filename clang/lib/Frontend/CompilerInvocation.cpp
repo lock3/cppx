@@ -1924,6 +1924,8 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
                 .Case("objective-c", Language::ObjC)
                 .Case("objective-c++", Language::ObjCXX)
                 .Case("renderscript", Language::RenderScript)
+                .Case("green", Language::Green)
+                .Case("blue", Language::Blue)
                 .Default(Language::Unknown);
 
     // "objc[++]-cpp-output" is an acceptable synonym for
@@ -2178,6 +2180,9 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
 #endif
       break;
     case Language::CXX:
+    // FIXME: this needs to be its own thing
+    case Language::Green:
+    case Language::Blue:
     case Language::ObjCXX:
 #if defined(CLANG_DEFAULT_STD_CXX)
       LangStd = CLANG_DEFAULT_STD_CXX;
@@ -2210,6 +2215,8 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   Opts.GNUInline = !Opts.C99 && !Opts.CPlusPlus;
   Opts.HexFloats = Std.hasHexFloats();
   Opts.ImplicitInt = Std.hasImplicitInt();
+  Opts.Green = Std.isGreen();
+  Opts.Blue = Std.isBlue();
 
   // Set OpenCL Version.
   Opts.OpenCL = Std.isOpenCL();
@@ -2323,6 +2330,13 @@ static bool IsInputCompatibleWithStandard(InputKind IK,
   case Language::HIP:
     return S.getLanguage() == Language::CXX || S.getLanguage() == Language::HIP;
 
+  case Language::Green:
+    return S.getLanguage() == Language::CXX
+      || S.getLanguage() == Language::Green;
+  case Language::Blue:
+    return S.getLanguage() == Language::CXX
+      || S.getLanguage() == Language::Blue;
+    
   case Language::Asm:
     // Accept (and ignore) all -std= values.
     // FIXME: The -std= value is not ignored; it affects the tokenization
@@ -2357,6 +2371,11 @@ static const StringRef GetInputKindName(InputKind IK) {
     return "Asm";
   case Language::LLVM_IR:
     return "LLVM IR";
+
+  case Language::Green:
+    return "Green";
+  case Language::Blue:
+    return "Blue";
 
   case Language::Unknown:
     break;
@@ -2443,6 +2462,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
 
   llvm::Triple T(TargetOpts.Triple);
   CompilerInvocation::setLangDefaults(Opts, IK, T, PPOpts, LangStd);
+  llvm::outs() << "GREEN LANGUAGE INITIALIZED: " << Opts.Green << '\n';
 
   // -cl-strict-aliasing needs to emit diagnostic in the case where CL > 1.0.
   // This option should be deprecated for CL > 1.0 because

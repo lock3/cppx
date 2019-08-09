@@ -840,6 +840,8 @@ void PrintPreambleAction::ExecuteAction() {
   case Language::OpenCL:
   case Language::CUDA:
   case Language::HIP:
+  case Language::Green:
+  case Language::Blue:
     break;
 
   case Language::Unknown:
