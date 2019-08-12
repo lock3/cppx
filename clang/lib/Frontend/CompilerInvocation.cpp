@@ -2181,7 +2181,6 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
       break;
     case Language::CXX:
     // FIXME: this needs to be its own thing
-    case Language::Green:
     case Language::Blue:
     case Language::ObjCXX:
 #if defined(CLANG_DEFAULT_STD_CXX)
@@ -2189,6 +2188,9 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
 #else
       LangStd = LangStandard::lang_gnucxx14;
 #endif
+      break;
+    case Language::Green:
+      LangStd = LangStandard::lang_green;
       break;
     case Language::RenderScript:
       LangStd = LangStandard::lang_c99;
@@ -2462,7 +2464,6 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
 
   llvm::Triple T(TargetOpts.Triple);
   CompilerInvocation::setLangDefaults(Opts, IK, T, PPOpts, LangStd);
-  llvm::outs() << "GREEN LANGUAGE INITIALIZED: " << Opts.Green << '\n';
 
   // -cl-strict-aliasing needs to emit diagnostic in the case where CL > 1.0.
   // This option should be deprecated for CL > 1.0 because

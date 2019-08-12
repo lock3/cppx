@@ -186,7 +186,7 @@ LANGSTANDARD(hip, "hip", HIP, "HIP",
 
 // Green
 LANGSTANDARD(green, "green", Green, "Green",
-             LineComment | CPlusPlus | Digraphs)
+             LineComment | CPlusPlus | CPlusPlus2a | Digraphs | Green)
 
 // Blue
 LANGSTANDARD(blue, "blue", Blue, "Blue",
