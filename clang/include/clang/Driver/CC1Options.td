@@ -876,6 +876,12 @@ def fopenmp_host_ir_file_path : Separate<["-"], "fopenmp-host-ir-file-path">,
   HelpText<"Path to the IR file produced by the frontend for the host.">;
 
 //===----------------------------------------------------------------------===//
+// Green Options
+//===----------------------------------------------------------------------===//
+def fmultiple_languages : Flag<["-"], "fmultiple_languages">,
+  HelpText <"Allow the cc1 driver to use several different languages.">;
+
+//===----------------------------------------------------------------------===//
 // SYCL Options
 //===----------------------------------------------------------------------===//
 

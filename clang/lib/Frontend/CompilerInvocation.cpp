@@ -2131,6 +2131,59 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args,
     Opts.AddVFSOverlayFile(A->getValue());
 }
 
+LangStandard::Kind
+CompilerInvocation::getLangDefaultStd(const llvm::Triple &T, const Language L) {
+  switch (L) {
+  case Language::Unknown:
+  case Language::LLVM_IR:
+    llvm_unreachable("Invalid input kind!");
+  case Language::OpenCL:
+    return LangStandard::lang_opencl10;
+    break;
+  case Language::CUDA:
+    return LangStandard::lang_cuda;
+    break;
+  case Language::Asm:
+  case Language::C:
+#if defined(CLANG_DEFAULT_STD_C)
+    return CLANG_DEFAULT_STD_C;
+#else
+    // The PS4 uses C99 as the default C standard.
+    if (T.isPS4())
+      return LangStandard::lang_gnu99;
+    else
+      return LangStandard::lang_gnu11;
+#endif
+    break;
+  case Language::ObjC:
+#if defined(CLANG_DEFAULT_STD_C)
+    return CLANG_DEFAULT_STD_C;
+#else
+    return LangStandard::lang_gnu11;
+#endif
+    break;
+  case Language::CXX:
+    // FIXME: this needs to be its own thing
+  case Language::Blue:
+  case Language::ObjCXX:
+#if defined(CLANG_DEFAULT_STD_CXX)
+    return CLANG_DEFAULT_STD_CXX;
+#else
+    return LangStandard::lang_gnucxx14;
+#endif
+    break;
+  case Language::Green:
+    return LangStandard::lang_green;
+    break;
+  case Language::RenderScript:
+    return LangStandard::lang_c99;
+    break;
+  case Language::HIP:
+    return LangStandard::lang_hip;
+    break;
+  }
+}
+
 void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
                                          const llvm::Triple &T,
                                          PreprocessorOptions &PPOpts,
@@ -2148,58 +2201,9 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
     Opts.ObjC = 1;
   }
 
-  if (LangStd == LangStandard::lang_unspecified) {
+  if (LangStd == LangStandard::lang_unspecified)
     // Based on the base language, pick one.
-    switch (IK.getLanguage()) {
-    case Language::Unknown:
-    case Language::LLVM_IR:
-      llvm_unreachable("Invalid input kind!");
-    case Language::OpenCL:
-      LangStd = LangStandard::lang_opencl10;
-      break;
-    case Language::CUDA:
-      LangStd = LangStandard::lang_cuda;
-      break;
-    case Language::Asm:
-    case Language::C:
-#if defined(CLANG_DEFAULT_STD_C)
-      LangStd = CLANG_DEFAULT_STD_C;
-#else
-      // The PS4 uses C99 as the default C standard.
-      if (T.isPS4())
-        LangStd = LangStandard::lang_gnu99;
-      else
-        LangStd = LangStandard::lang_gnu11;
-#endif
-      break;
-    case Language::ObjC:
-#if defined(CLANG_DEFAULT_STD_C)
-      LangStd = CLANG_DEFAULT_STD_C;
-#else
-      LangStd = LangStandard::lang_gnu11;
-#endif
-      break;
-    case Language::CXX:
-    // FIXME: this needs to be its own thing
-    case Language::Blue:
-    case Language::ObjCXX:
-#if defined(CLANG_DEFAULT_STD_CXX)
-      LangStd = CLANG_DEFAULT_STD_CXX;
-#else
-      LangStd = LangStandard::lang_gnucxx14;
-#endif
-      break;
-    case Language::Green:
-      LangStd = LangStandard::lang_green;
-      break;
-    case Language::RenderScript:
-      LangStd = LangStandard::lang_c99;
-      break;
-    case Language::HIP:
-      LangStd = LangStandard::lang_hip;
-      break;
-    }
-  }
+    LangStd = getLangDefaultStd(T, IK.getLanguage());
 
   const LangStandard &Std = LangStandard::getLangStandardForKind(LangStd);
   Opts.LineComment = Std.hasLineComments();
@@ -2800,6 +2804,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.HexagonQdsp6Compat = Args.hasArg(OPT_mqdsp6_compat);
   Opts.FakeAddressSpaceMap = Args.hasArg(OPT_ffake_address_space_map);
   Opts.ParseUnknownAnytype = Args.hasArg(OPT_funknown_anytype);
+  Opts.MultipleLanguages = Args.hasArg(OPT_fmultiple_languages);
   Opts.DebuggerSupport = Args.hasArg(OPT_fdebugger_support);
   Opts.DebuggerCastResultToId = Args.hasArg(OPT_fdebugger_cast_result_to_id);
   Opts.DebuggerObjCLiteral = Args.hasArg(OPT_fdebugger_objc_literal);

@@ -331,6 +331,7 @@ LANGOPT(PaddingOnUnsignedFixedPoint, 1, 0,
         "unsigned fixed point types having one extra padding bit")
 
 LANGOPT(RegisterStaticDestructors, 1, 1, "Register C++ static destructors")
+LANGOPT(MultipleLanguages, 1, 0, "Allow multiple languages in CC1")
 
 #undef LANGOPT
 #undef COMPATIBLE_LANGOPT

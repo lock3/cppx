@@ -166,6 +166,13 @@ public:
   /// executable), for finding the builtin compiler path.
   static std::string GetResourcesPath(const char *Argv0, void *MainAddr);
 
+  /// Get the default standard for a specified language.
+  ///
+  /// \param T - The target triple.
+  /// \param L - The language to retrieve a standard for.
+  static LangStandard::Kind
+  getLangDefaultStd(const llvm::Triple &T, const Language L);
+
   /// Set language defaults for the given input language and
   /// language standard in the given LangOptions object.
   ///
