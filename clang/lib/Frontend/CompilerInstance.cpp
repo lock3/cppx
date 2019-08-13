@@ -936,7 +936,43 @@ bool CompilerInstance::ExecuteAction(FrontendAction &Act) {
   if (getFrontendOpts().ShowStats || !getFrontendOpts().StatsFile.empty())
     llvm::EnableStatistics(false);
 
+  // We need to keep track of the language of the previous input.
+  InputKind PreviousInputKind = getFrontendOpts().Inputs.front().getKind();
+
   for (const FrontendInputFile &FIF : getFrontendOpts().Inputs) {
+    // If we're in cc1, there won't be a CompilerInstance for each file, meaning
+    // we're stuck with the same language for each file.
+    if (getFrontendOpts().ProgramAction == frontend::ParseSyntaxOnly) {
+      // Determine the language for this file.
+      InputKind IK = FrontendOptions::getInputKindForExtension(
+        FIF.getFile().rsplit('.').second);
+      if (IK.isUnknown())
+        IK = Language::C;
+
+      // If the language hasn't changed, don't do anything.
+      if (IK.getLanguage() != PreviousInputKind.getLanguage()) {
+        llvm::Triple T(getTargetOpts().Triple);
+        LangStandard::Kind StdKind;
+        // We don't know the standard because we've lost the program arguments
+        // at this point, just use the most recent ones.
+        switch (IK.getLanguage()) {
+        case Language::CXX:
+          StdKind = LangStandard::lang_cxx2a;
+          break;
+        case Language::Green:
+          StdKind = LangStandard::lang_green;
+          break;
+        default:
+          StdKind = LangStandard::lang_c17;
+          break;
+        }
+        // Finally update defaults with our new language.
+        CompilerInvocation::setLangDefaults(getLangOpts(), IK, T,
+                                            getPreprocessorOpts(), StdKind);
+        PreviousInputKind = IK;
+      }
+    }
+
     // Reset the ID tables if we are reusing the SourceManager and parsing
     // regular files.
     if (hasSourceManager() && !Act.isModelParsingAction())

@@ -2333,12 +2333,10 @@ static bool IsInputCompatibleWithStandard(InputKind IK,
     return S.getLanguage() == Language::CXX || S.getLanguage() == Language::HIP;
 
   case Language::Green:
-    return S.getLanguage() == Language::CXX
-      || S.getLanguage() == Language::Green;
+    return S.getLanguage() == Language::Green;
   case Language::Blue:
-    return S.getLanguage() == Language::CXX
-      || S.getLanguage() == Language::Blue;
-    
+    return S.getLanguage() == Language::Blue;
+
   case Language::Asm:
     // Accept (and ignore) all -std= values.
     // FIXME: The -std= value is not ignored; it affects the tokenization
