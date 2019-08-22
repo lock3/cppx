@@ -609,8 +609,6 @@ def emit_codegen_only : Flag<["-"], "emit-codegen-only">,
   HelpText<"Generate machine code, but discard output">;
 def emit_obj : Flag<["-"], "emit-obj">,
   HelpText<"Emit native object files">;
-def emit_green : Flag<["-"], "emit-green">,
-  HelpText<"Emit native object files from the green language.">;
 def rewrite_test : Flag<["-"], "rewrite-test">,
   HelpText<"Rewriter playground">;
 def rewrite_macros : Flag<["-"], "rewrite-macros">,
@@ -880,8 +878,8 @@ def fopenmp_host_ir_file_path : Separate<["-"], "fopenmp-host-ir-file-path">,
 //===----------------------------------------------------------------------===//
 // Green Options
 //===----------------------------------------------------------------------===//
-def fmultiple_languages : Flag<["-"], "fmultiple_languages">,
-  HelpText <"Allow the cc1 driver to use several different languages.">;
+def emit_green : Flag<["-"], "emit-green">,
+  HelpText<"Emit native object files from the green language.">;
 
 //===----------------------------------------------------------------------===//
 // SYCL Options

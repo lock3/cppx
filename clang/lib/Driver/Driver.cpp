@@ -3530,7 +3530,6 @@ Action *Driver::ConstructPhaseAction(
     return C.MakeAction<BackendJobAction>(Input, types::TY_PP_Asm);
   }
   case phases::Assemble:
-    llvm::outs() << "Creating AssembleJobAction\n";
     return C.MakeAction<AssembleJobAction>(std::move(Input), types::TY_Object);
   }
 

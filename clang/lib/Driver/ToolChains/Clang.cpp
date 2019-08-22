@@ -3593,7 +3593,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   } else if (isa<AssembleJobAction>(JA)) {
     if (C.getDriver().IsGreenMode()) {
       CmdArgs.push_back("-emit-green");
-      llvm::outs() << "Adding emit-green\n";
     } else
       CmdArgs.push_back("-emit-obj");
 

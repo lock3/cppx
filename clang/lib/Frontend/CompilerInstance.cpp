@@ -879,12 +879,6 @@ bool CompilerInstance::InitializeSourceManager(
   return true;
 }
 
-/// Get the standard for a language as it was parsed. If there wasn't one,
-/// get the default standard for that respective language.
-static LangStandard::Kind getParsedStandard(const LangOptions &Opts,
-                                            const llvm::Triple &T,
-                                            const Language &L);
-
 // High-Level Operations
 
 bool CompilerInstance::ExecuteAction(FrontendAction &Act) {
@@ -942,31 +936,7 @@ bool CompilerInstance::ExecuteAction(FrontendAction &Act) {
   if (getFrontendOpts().ShowStats || !getFrontendOpts().StatsFile.empty())
     llvm::EnableStatistics(false);
 
-  // We need to keep track of the language of the previous input.
-  InputKind PreviousInputKind = getFrontendOpts().Inputs.front().getKind();
-
   for (const FrontendInputFile &FIF : getFrontendOpts().Inputs) {
-    // If we're in cc1, there won't be a CompilerInstance for each file, meaning
-    // we're stuck with the same language for each file.
-    // if (getLangOpts().MultipleLanguages) {
-    if (getFrontendOpts().ProgramAction == frontend::ParseSyntaxOnly) {
-      // Determine the language for this file.
-      InputKind IK = FrontendOptions::getInputKindForExtension(
-        FIF.getFile().rsplit('.').second);
-      if (!IK.isUnknown()) {
-        // If the language hasn't changed, don't do anything.
-        if (IK.getLanguage() != PreviousInputKind.getLanguage()) {
-          llvm::Triple T(getTargetOpts().Triple);
-          LangStandard::Kind StdKind =
-            getParsedStandard(getLangOpts(), T, IK.getLanguage());;
-          // Update defaults with our new language.
-          CompilerInvocation::setLangDefaults(getLangOpts(), IK, T,
-                                              getPreprocessorOpts(), StdKind);
-          PreviousInputKind = IK;
-        }
-      }
-    }
-
     // Reset the ID tables if we are reusing the SourceManager and parsing
     // regular files.
     if (hasSourceManager() && !Act.isModelParsingAction())
@@ -2160,42 +2130,4 @@ void CompilerInstance::resetAndLeakSema() { llvm::BuryPointer(takeSema()); }
 void CompilerInstance::setExternalSemaSource(
     IntrusiveRefCntPtr<ExternalSemaSource> ESS) {
   ExternalSemaSrc = std::move(ESS);
-}
-
-LangStandard::Kind
-getParsedStandard(const LangOptions &Opts,
-                  const llvm::Triple &T, const Language &L) {
-  switch (L) {
-  case Language::C:
-    if (Opts.C99) return LangStandard::lang_c99;
-    if (Opts.C11) return LangStandard::lang_c11;
-    if (Opts.C17) return LangStandard::lang_c17;
-    if (Opts.C2x) return LangStandard::lang_c2x;
-    break;
-  case Language::CXX:
-    if (Opts.CPlusPlus11) return LangStandard::lang_cxx11;
-    else if (Opts.CPlusPlus14) return LangStandard::lang_cxx14;
-    else if (Opts.CPlusPlus17) return LangStandard::lang_cxx17;
-    else if (Opts.CPlusPlus2a) return LangStandard::lang_cxx2a;
-    break;
-  case Language::OpenCL:
-    if (Opts.OpenCLVersion == 100) return LangStandard::lang_opencl10;
-    else if (Opts.OpenCLVersion == 110) return LangStandard::lang_opencl11;
-    else if (Opts.OpenCLVersion == 120) return LangStandard::lang_opencl12;
-    else if (Opts.OpenCLVersion == 200) return LangStandard::lang_opencl20;
-    else if (Opts.OpenCLCPlusPlusVersion == 100)
-      return LangStandard::lang_openclcpp;
-    break;
-  case Language::HIP:
-    return LangStandard::lang_hip;
-  case Language::CUDA:
-    return LangStandard::lang_cuda;
-  case Language::Green:
-    return LangStandard::lang_green;
-  case Language::Blue:
-    return LangStandard::lang_blue;
-  default: break;
-  }
-
-  return CompilerInvocation::getLangDefaultStd(T, L);
 }
