@@ -136,6 +136,7 @@ bool types::isAcceptedByClang(ID Id) {
   case TY_CXXModule: case TY_PP_CXXModule:
   case TY_AST: case TY_ModuleFile:
   case TY_LLVM_IR: case TY_LLVM_BC:
+  case TY_Green:
     return true;
   }
 }
@@ -206,6 +207,10 @@ bool types::isHIP(ID Id) {
   case TY_HIP_DEVICE:
     return true;
   }
+}
+
+bool types::isGreen(ID Id) {
+  return Id == TY_Green;
 }
 
 bool types::isSrcFile(ID Id) {

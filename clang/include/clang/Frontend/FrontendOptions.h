@@ -74,6 +74,9 @@ enum ActionKind {
   /// Emit a .o file.
   EmitObj,
 
+  /// Emit a .o file for green.
+  EmitGreen,
+
   /// Parse and apply any fixits to the source.
   FixIt,
 
@@ -101,6 +104,9 @@ enum ActionKind {
 
   /// Load and verify that a PCH file is usable.
   VerifyPCH,
+
+  /// Parse syntax for the Green language
+  ParseGreenSyntax,
 
   /// Parse and perform semantic analysis.
   ParseSyntaxOnly,

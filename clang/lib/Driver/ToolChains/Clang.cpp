@@ -3591,7 +3591,11 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
         CmdArgs.push_back("-P");
     }
   } else if (isa<AssembleJobAction>(JA)) {
-    CmdArgs.push_back("-emit-obj");
+    if (C.getDriver().IsGreenMode()) {
+      CmdArgs.push_back("-emit-green");
+      llvm::outs() << "Adding emit-green\n";
+    } else
+      CmdArgs.push_back("-emit-obj");
 
     CollectArgsForIntegratedAssembler(C, Args, CmdArgs, D);
 

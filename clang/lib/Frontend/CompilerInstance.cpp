@@ -948,22 +948,22 @@ bool CompilerInstance::ExecuteAction(FrontendAction &Act) {
   for (const FrontendInputFile &FIF : getFrontendOpts().Inputs) {
     // If we're in cc1, there won't be a CompilerInstance for each file, meaning
     // we're stuck with the same language for each file.
-    if (getLangOpts().MultipleLanguages) {
+    // if (getLangOpts().MultipleLanguages) {
+    if (getFrontendOpts().ProgramAction == frontend::ParseSyntaxOnly) {
       // Determine the language for this file.
       InputKind IK = FrontendOptions::getInputKindForExtension(
         FIF.getFile().rsplit('.').second);
-      if (IK.isUnknown())
-        IK = Language::C;
-
-      // If the language hasn't changed, don't do anything.
-      if (IK.getLanguage() != PreviousInputKind.getLanguage()) {
-        llvm::Triple T(getTargetOpts().Triple);
-        LangStandard::Kind StdKind =
-          getParsedStandard(getLangOpts(), T, IK.getLanguage());;
-        // Update defaults with our new language.
-        CompilerInvocation::setLangDefaults(getLangOpts(), IK, T,
-                                            getPreprocessorOpts(), StdKind);
-        PreviousInputKind = IK;
+      if (!IK.isUnknown()) {
+        // If the language hasn't changed, don't do anything.
+        if (IK.getLanguage() != PreviousInputKind.getLanguage()) {
+          llvm::Triple T(getTargetOpts().Triple);
+          LangStandard::Kind StdKind =
+            getParsedStandard(getLangOpts(), T, IK.getLanguage());;
+          // Update defaults with our new language.
+          CompilerInvocation::setLangDefaults(getLangOpts(), IK, T,
+                                              getPreprocessorOpts(), StdKind);
+          PreviousInputKind = IK;
+        }
       }
     }
 

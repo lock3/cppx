@@ -116,6 +116,14 @@ public:
   EmitObjAction(llvm::LLVMContext *_VMContext = nullptr);
 };
 
+class EmitGreenAction : public CodeGenAction {
+  virtual void anchor();
+public:
+  EmitGreenAction(llvm::LLVMContext *_VMContext = nullptr);
+
+  void ExecuteAction() override;
+};
+
 }
 
 #endif

@@ -23,6 +23,7 @@
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
+#include "clang/GreenParse/ParseGreenAST.h"
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/CodeGen/MachineOptimizationRemarkEmitter.h"
@@ -1085,3 +1086,15 @@ EmitCodeGenOnlyAction::EmitCodeGenOnlyAction(llvm::LLVMContext *_VMContext)
 void EmitObjAction::anchor() { }
 EmitObjAction::EmitObjAction(llvm::LLVMContext *_VMContext)
   : CodeGenAction(Backend_EmitObj, _VMContext) {}
+
+void EmitGreenAction::anchor() { }
+EmitGreenAction::EmitGreenAction(llvm::LLVMContext *_VMContext)
+  : CodeGenAction(Backend_EmitObj, _VMContext) {}
+
+void EmitGreenAction::ExecuteAction() {
+  CompilerInstance &CI = getCompilerInstance();
+  if (!CI.hasPreprocessor())
+    return;
+
+  lock3::ParseGreenAST(CI.getPreprocessor());
+}

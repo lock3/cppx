@@ -177,6 +177,7 @@ void Driver::setDriverModeFromOption(StringRef Opt) {
                    .Case("g++", GXXMode)
                    .Case("cpp", CPPMode)
                    .Case("cl", CLMode)
+                   .Case("green", GreenMode)
                    .Default(None))
     Mode = *M;
   else
@@ -1115,6 +1116,14 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
 
   // Populate the tool chains for the offloading devices, if any.
   CreateOffloadingDeviceToolChains(*C, Inputs);
+
+  // If there are any Greeen inputs, change to Green mode.
+  bool IsGreen =
+      llvm::any_of(Inputs, [](std::pair<types::ID, const llvm::opt::Arg *> &I) {
+        return types::isGreen(I.first);
+      });
+  if (IsGreen)
+    Mode = GreenMode;
 
   // Construct the list of abstract actions to perform for this compilation. On
   // MachO targets this uses the driver-driver and universal actions.
@@ -2105,6 +2114,8 @@ void Driver::BuildInputs(const ToolChain &TC, DerivedArgList &Args,
               Ty = types::TY_C;
             else if (IsCLMode() && Args.hasArgNoClaim(options::OPT_E))
               Ty = types::TY_CXX;
+            else if (IsGreenMode())
+              Ty = types::TY_Green;
             else
               Ty = types::TY_Object;
           }
@@ -3519,6 +3530,7 @@ Action *Driver::ConstructPhaseAction(
     return C.MakeAction<BackendJobAction>(Input, types::TY_PP_Asm);
   }
   case phases::Assemble:
+    llvm::outs() << "Creating AssembleJobAction\n";
     return C.MakeAction<AssembleJobAction>(std::move(Input), types::TY_Object);
   }
 

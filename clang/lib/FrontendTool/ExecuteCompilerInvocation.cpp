@@ -22,6 +22,7 @@
 #include "clang/Frontend/FrontendPluginRegistry.h"
 #include "clang/Frontend/Utils.h"
 #include "clang/FrontendTool/Utils.h"
+#include "clang/GreenFront/GreenFrontend.h"
 #include "clang/Rewrite/Frontend/FrontendActions.h"
 #include "clang/StaticAnalyzer/Frontend/FrontendActions.h"
 #include "llvm/Option/OptTable.h"
@@ -56,6 +57,7 @@ CreateFrontendBaseAction(CompilerInstance &CI) {
   case EmitLLVMOnly:           return llvm::make_unique<EmitLLVMOnlyAction>();
   case EmitCodeGenOnly:        return llvm::make_unique<EmitCodeGenOnlyAction>();
   case EmitObj:                return llvm::make_unique<EmitObjAction>();
+  case EmitGreen:              return llvm::make_unique<EmitGreenAction>();
   case FixIt:                  return llvm::make_unique<FixItAction>();
   case GenerateModule:
     return llvm::make_unique<GenerateModuleFromModuleMapAction>();
@@ -69,6 +71,8 @@ CreateFrontendBaseAction(CompilerInstance &CI) {
   case GenerateInterfaceTBEExpV1:
     return llvm::make_unique<GenerateInterfaceTBEExpV1Action>();
   case InitOnly:               return llvm::make_unique<InitOnlyAction>();
+  case ParseGreenSyntax:
+    return llvm::make_unique<lock3::GreenSyntaxAction>();
   case ParseSyntaxOnly:        return llvm::make_unique<SyntaxOnlyAction>();
   case ModuleFileInfo:         return llvm::make_unique<DumpModuleInfoAction>();
   case VerifyPCH:              return llvm::make_unique<VerifyPCHAction>();

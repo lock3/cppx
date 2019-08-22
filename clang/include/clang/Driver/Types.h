@@ -82,6 +82,9 @@ namespace types {
   /// isObjC - Is this an "ObjC" input (Obj-C and Obj-C++ sources and headers).
   bool isObjC(ID Id);
 
+  /// isGreen - Is this a Green input.
+  bool isGreen(ID Id);
+
   /// isSrcFile - Is this a source file, i.e. something that still has to be
   /// preprocessed. The logic behind this is the same that decides if the first
   /// compilation phase is a preprocessing one.
