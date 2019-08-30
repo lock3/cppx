@@ -177,6 +177,14 @@ static cl::opt<unsigned> TinyTripCountVectorThreshold(
              "value are vectorized only if no scalar iteration overheads "
              "are incurred."));
 
+// Indicates that an epilogue is undesired, predication is preferred.
+// This means that the vectorizer will try to fold the loop-tail (epilogue)
+// into the loop and predicate the loop body accordingly.
+static cl::opt<bool> PreferPredicateOverEpilog(
+    "prefer-predicate-over-epilog", cl::init(false), cl::Hidden,
+    cl::desc("Indicate that an epilogue is undesired, predication should be "
+             "used instead."));
+
 static cl::opt<bool> MaximizeBandwidth(
     "vectorizer-maximize-bandwidth", cl::init(false), cl::Hidden,
     cl::desc("Maximize bandwidth when selecting vectorization factor which "
@@ -906,7 +914,7 @@ enum ScalarEpilogueLowering {
   CM_ScalarEpilogueNotAllowedLowTripLoop,
 
   // Loop hint predicate indicating an epilogue is undesired.
-  CM_ScalarEpilogueNotNeededPredicatePragma
+  CM_ScalarEpilogueNotNeededUsePredicate
 };
 
 /// LoopVectorizationCostModel - estimates the expected speedups due to
@@ -2738,7 +2746,7 @@ void InnerLoopVectorizer::emitMemRuntimeChecks(Loop *L, BasicBlock *Bypass) {
 
   // We currently don't use LoopVersioning for the actual loop cloning but we
   // still use it to add the noalias metadata.
-  LVer = llvm::make_unique<LoopVersioning>(*Legal->getLAI(), OrigLoop, LI, DT,
+  LVer = std::make_unique<LoopVersioning>(*Legal->getLAI(), OrigLoop, LI, DT,
                                            PSE.getSE());
   LVer->prepareNoAliasMetadata();
 }
@@ -3669,6 +3677,26 @@ void InnerLoopVectorizer::fixReduction(PHINode *Phi) {
   Builder.SetInsertPoint(&*LoopMiddleBlock->getFirstInsertionPt());
 
   setDebugLocFromInst(Builder, LoopExitInst);
+
+  // If tail is folded by masking, the vector value to leave the loop should be
+  // a Select choosing between the vectorized LoopExitInst and vectorized Phi,
+  // instead of the former.
+  if (Cost->foldTailByMasking()) {
+    for (unsigned Part = 0; Part < UF; ++Part) {
+      Value *VecLoopExitInst =
+          VectorLoopValueMap.getVectorValue(LoopExitInst, Part);
+      Value *Sel = nullptr;
+      for (User *U : VecLoopExitInst->users()) {
+        if (isa<SelectInst>(U)) {
+          assert(!Sel && "Reduction exit feeding two selects");
+          Sel = U;
+        } else
+          assert(isa<PHINode>(U) && "Reduction exit must feed Phi's or select");
+      }
+      assert(Sel && "Reduction exit feeds no select");
+      VectorLoopValueMap.resetVectorValue(LoopExitInst, Part, Sel);
+    }
+  }
 
   // If the vector reduction can be performed in a smaller type, we truncate
   // then extend the loop exit value to enable InstCombine to evaluate the
@@ -4804,9 +4832,9 @@ Optional<unsigned> LoopVectorizationCostModel::computeMaxVF() {
   switch (ScalarEpilogueStatus) {
   case CM_ScalarEpilogueAllowed:
     return computeFeasibleMaxVF(TC);
-  case CM_ScalarEpilogueNotNeededPredicatePragma:
+  case CM_ScalarEpilogueNotNeededUsePredicate:
     LLVM_DEBUG(
-        dbgs() << "LV: vector predicate hint found.\n"
+        dbgs() << "LV: vector predicate hint/switch found.\n"
                << "LV: Not allowing scalar epilogue, creating predicated "
                << "vector loop.\n");
     break;
@@ -4845,7 +4873,7 @@ Optional<unsigned> LoopVectorizationCostModel::computeMaxVF() {
   // found modulo the vectorization factor is not zero, try to fold the tail
   // by masking.
   // FIXME: look for a smaller MaxVF that does divide TC rather than masking.
-  if (Legal->canFoldTailByMasking()) {
+  if (Legal->prepareToFoldTailByMasking()) {
     FoldTailByMasking = true;
     return MaxVF;
   }
@@ -6931,8 +6959,15 @@ void LoopVectorizationPlanner::buildVPlansWithVPRecipes(unsigned MinVF,
 
   // If the tail is to be folded by masking, the primary induction variable
   // needs to be represented in VPlan for it to model early-exit masking.
-  if (CM.foldTailByMasking())
+  // Also, both the Phi and the live-out instruction of each reduction are
+  // required in order to introduce a select between them in VPlan.
+  if (CM.foldTailByMasking()) {
     NeedDef.insert(Legal->getPrimaryInduction());
+    for (auto &Reduction : *Legal->getReductionVars()) {
+      NeedDef.insert(Reduction.first);
+      NeedDef.insert(Reduction.second.getLoopExitInstr());
+    }
+  }
 
   // Collect instructions from the original loop that will become trivially dead
   // in the vectorized loop. We don't need to vectorize these instructions. For
@@ -6964,7 +6999,7 @@ VPlanPtr LoopVectorizationPlanner::buildVPlanWithVPRecipes(
 
   // Create a dummy pre-entry VPBasicBlock to start building the VPlan.
   VPBasicBlock *VPBB = new VPBasicBlock("Pre-Entry");
-  auto Plan = llvm::make_unique<VPlan>(VPBB);
+  auto Plan = std::make_unique<VPlan>(VPBB);
 
   VPRecipeBuilder RecipeBuilder(OrigLoop, TLI, Legal, CM, Builder);
   // Represent values that will have defs inside VPlan.
@@ -7059,6 +7094,18 @@ VPlanPtr LoopVectorizationPlanner::buildVPlanWithVPRecipes(
   VPBlockUtils::disconnectBlocks(PreEntry, Entry);
   delete PreEntry;
 
+  // Finally, if tail is folded by masking, introduce selects between the phi
+  // and the live-out instruction of each reduction, at the end of the latch.
+  if (CM.foldTailByMasking()) {
+    Builder.setInsertPoint(VPBB);
+    auto *Cond = RecipeBuilder.createBlockInMask(OrigLoop->getHeader(), Plan);
+    for (auto &Reduction : *Legal->getReductionVars()) {
+      VPValue *Phi = Plan->getVPValue(Reduction.first);
+      VPValue *Red = Plan->getVPValue(Reduction.second.getLoopExitInstr());
+      Builder.createNaryOp(Instruction::Select, {Cond, Red, Phi});
+    }
+  }
+
   std::string PlanName;
   raw_string_ostream RSO(PlanName);
   unsigned VF = Range.Start;
@@ -7084,7 +7131,7 @@ VPlanPtr LoopVectorizationPlanner::buildVPlan(VFRange &Range) {
   assert(EnableVPlanNativePath && "VPlan-native path is not enabled.");
 
   // Create new empty VPlan
-  auto Plan = llvm::make_unique<VPlan>();
+  auto Plan = std::make_unique<VPlan>();
 
   // Build hierarchical CFG
   VPlanHCFGBuilder HCFGBuilder(OrigLoop, LI, *Plan);
@@ -7298,8 +7345,8 @@ getScalarEpilogueLowering(Function *F, Loop *L, LoopVectorizeHints &Hints,
       (F->hasOptSize() ||
        llvm::shouldOptimizeForSize(L->getHeader(), PSI, BFI)))
     SEL = CM_ScalarEpilogueNotAllowedOptSize;
-  else if (Hints.getPredicate())
-    SEL = CM_ScalarEpilogueNotNeededPredicatePragma;
+  else if (PreferPredicateOverEpilog || Hints.getPredicate()) 
+    SEL = CM_ScalarEpilogueNotNeededUsePredicate;
 
   return SEL;
 }

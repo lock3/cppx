@@ -678,6 +678,7 @@ def ImmSExti64i8AsmOperand : ImmSExtAsmOperandClass {
 def ImmUnsignedi4AsmOperand : AsmOperandClass {
   let Name = "ImmUnsignedi4";
   let RenderMethod = "addImmOperands";
+  let DiagnosticType = "InvalidImmUnsignedi4";
 }
 
 // Unsigned immediate used by SSE/AVX instructions
@@ -939,7 +940,6 @@ def HasMOVDIR64B : Predicate<"Subtarget->hasMOVDIR64B()">;
 def HasPTWRITE   : Predicate<"Subtarget->hasPTWRITE()">;
 def FPStackf32   : Predicate<"!Subtarget->hasSSE1()">;
 def FPStackf64   : Predicate<"!Subtarget->hasSSE2()">;
-def HasMPX       : Predicate<"Subtarget->hasMPX()">;
 def HasSHSTK     : Predicate<"Subtarget->hasSHSTK()">;
 def HasCLFLUSHOPT : Predicate<"Subtarget->hasCLFLUSHOPT()">;
 def HasCLWB      : Predicate<"Subtarget->hasCLWB()">;

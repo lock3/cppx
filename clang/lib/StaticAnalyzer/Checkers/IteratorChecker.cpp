@@ -71,7 +71,7 @@
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/DynamicTypeMap.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/DynamicType.h"
 
 #include <utility>
 
@@ -356,14 +356,12 @@ bool isZero(ProgramStateRef State, const NonLoc &Val);
 
 IteratorChecker::IteratorChecker() {
   OutOfRangeBugType.reset(
-      new BugType(this, "Iterator out of range", "Misuse of STL APIs",
-                  /*SuppressOnSink=*/true));
+      new BugType(this, "Iterator out of range", "Misuse of STL APIs"));
   MismatchedBugType.reset(
       new BugType(this, "Iterator(s) mismatched", "Misuse of STL APIs",
                   /*SuppressOnSink=*/true));
   InvalidatedBugType.reset(
-      new BugType(this, "Iterator invalidated", "Misuse of STL APIs",
-                  /*SuppressOnSink=*/true));
+      new BugType(this, "Iterator invalidated", "Misuse of STL APIs"));
 }
 
 void IteratorChecker::checkPreCall(const CallEvent &Call,
@@ -567,7 +565,8 @@ void IteratorChecker::checkPostCall(const CallEvent &Call,
   if (Func->isOverloadedOperator()) {
     const auto Op = Func->getOverloadedOperator();
     if (isAssignmentOperator(Op)) {
-      const auto *InstCall = dyn_cast<CXXInstanceCall>(&Call);
+      // Overloaded 'operator=' must be a non-static member function.
+      const auto *InstCall = cast<CXXInstanceCall>(&Call);
       if (cast<CXXMethodDecl>(Func)->isMoveAssignmentOperator()) {
         handleAssign(C, InstCall->getCXXThisVal(), Call.getOriginExpr(),
                      Call.getArgSVal(0));
@@ -927,7 +926,7 @@ void IteratorChecker::verifyDereference(CheckerContext &C,
   auto State = C.getState();
   const auto *Pos = getIteratorPosition(State, Val);
   if (Pos && isPastTheEnd(State, *Pos)) {
-    auto *N = C.generateNonFatalErrorNode(State);
+    auto *N = C.generateErrorNode(State);
     if (!N)
       return;
     reportOutOfRangeBug("Past-the-end iterator dereferenced.", Val, C, N);
@@ -939,7 +938,7 @@ void IteratorChecker::verifyAccess(CheckerContext &C, const SVal &Val) const {
   auto State = C.getState();
   const auto *Pos = getIteratorPosition(State, Val);
   if (Pos && !Pos->isValid()) {
-    auto *N = C.generateNonFatalErrorNode(State);
+    auto *N = C.generateErrorNode(State);
     if (!N) {
       return;
     }
@@ -1047,14 +1046,14 @@ void IteratorChecker::verifyRandomIncrOrDecr(CheckerContext &C,
   // The result may be the past-end iterator of the container, but any other
   // out of range position is undefined behaviour
   if (isAheadOfRange(State, advancePosition(C, Op, *Pos, Value))) {
-    auto *N = C.generateNonFatalErrorNode(State);
+    auto *N = C.generateErrorNode(State);
     if (!N)
       return;
     reportOutOfRangeBug("Iterator decremented ahead of its valid range.", LHS,
                         C, N);
   }
   if (isBehindPastTheEnd(State, advancePosition(C, Op, *Pos, Value))) {
-    auto *N = C.generateNonFatalErrorNode(State);
+    auto *N = C.generateErrorNode(State);
     if (!N)
       return;
     reportOutOfRangeBug("Iterator incremented behind the past-the-end "
@@ -1591,7 +1590,7 @@ IteratorPosition IteratorChecker::advancePosition(CheckerContext &C,
 void IteratorChecker::reportOutOfRangeBug(const StringRef &Message,
                                           const SVal &Val, CheckerContext &C,
                                           ExplodedNode *ErrNode) const {
-  auto R = llvm::make_unique<BugReport>(*OutOfRangeBugType, Message, ErrNode);
+  auto R = std::make_unique<BugReport>(*OutOfRangeBugType, Message, ErrNode);
   R->markInteresting(Val);
   C.emitReport(std::move(R));
 }
@@ -1600,7 +1599,7 @@ void IteratorChecker::reportMismatchedBug(const StringRef &Message,
                                           const SVal &Val1, const SVal &Val2,
                                           CheckerContext &C,
                                           ExplodedNode *ErrNode) const {
-  auto R = llvm::make_unique<BugReport>(*MismatchedBugType, Message, ErrNode);
+  auto R = std::make_unique<BugReport>(*MismatchedBugType, Message, ErrNode);
   R->markInteresting(Val1);
   R->markInteresting(Val2);
   C.emitReport(std::move(R));
@@ -1610,7 +1609,7 @@ void IteratorChecker::reportMismatchedBug(const StringRef &Message,
                                           const SVal &Val, const MemRegion *Reg,
                                           CheckerContext &C,
                                           ExplodedNode *ErrNode) const {
-  auto R = llvm::make_unique<BugReport>(*MismatchedBugType, Message, ErrNode);
+  auto R = std::make_unique<BugReport>(*MismatchedBugType, Message, ErrNode);
   R->markInteresting(Val);
   R->markInteresting(Reg);
   C.emitReport(std::move(R));
@@ -1619,7 +1618,7 @@ void IteratorChecker::reportMismatchedBug(const StringRef &Message,
 void IteratorChecker::reportInvalidatedBug(const StringRef &Message,
                                            const SVal &Val, CheckerContext &C,
                                            ExplodedNode *ErrNode) const {
-  auto R = llvm::make_unique<BugReport>(*InvalidatedBugType, Message, ErrNode);
+  auto R = std::make_unique<BugReport>(*InvalidatedBugType, Message, ErrNode);
   R->markInteresting(Val);
   C.emitReport(std::move(R));
 }

@@ -313,9 +313,8 @@ static void readConfigs(opt::InputArgList &args) {
   config->emitRelocs = args.hasArg(OPT_emit_relocs);
   config->entry = getEntry(args);
   config->exportAll = args.hasArg(OPT_export_all);
-  config->exportDynamic = args.hasFlag(OPT_export_dynamic,
-      OPT_no_export_dynamic, false);
   config->exportTable = args.hasArg(OPT_export_table);
+  config->growableTable = args.hasArg(OPT_growable_table);
   errorHandler().fatalWarnings =
       args.hasFlag(OPT_fatal_warnings, OPT_no_fatal_warnings, false);
   config->importMemory = args.hasArg(OPT_import_memory);
@@ -358,6 +357,10 @@ static void readConfigs(opt::InputArgList &args) {
   config->zStackSize =
       args::getZOptionValue(args, OPT_z, "stack-size", WasmPageSize);
 
+  // Default value of exportDynamic depends on `-shared`
+  config->exportDynamic =
+      args.hasFlag(OPT_export_dynamic, OPT_no_export_dynamic, config->shared);
+
   if (auto *arg = args.getLastArg(OPT_features)) {
     config->features =
         llvm::Optional<std::vector<std::string>>(std::vector<std::string>());
@@ -381,7 +384,6 @@ static void setConfigs() {
 
   if (config->shared) {
     config->importMemory = true;
-    config->exportDynamic = true;
     config->allowUndefined = true;
   }
 }
@@ -536,6 +538,8 @@ static void createOptionalSymbols() {
   if (!config->isPic) {
     WasmSym::globalBase = symtab->addOptionalDataSymbol("__global_base");
     WasmSym::heapBase = symtab->addOptionalDataSymbol("__heap_base");
+    WasmSym::definedMemoryBase = symtab->addOptionalDataSymbol("__memory_base");
+    WasmSym::definedTableBase = symtab->addOptionalDataSymbol("__table_base");
   }
 }
 
@@ -718,8 +722,6 @@ void LinkerDriver::link(ArrayRef<const char *> argsArr) {
   if (errorCount())
     return;
 
-  createOptionalSymbols();
-
   // Handle the `--undefined <sym>` options.
   for (auto *arg : args.filtered(OPT_undefined))
     handleUndefined(arg->getValue());
@@ -738,6 +740,8 @@ void LinkerDriver::link(ArrayRef<const char *> argsArr) {
       error("entry symbol not defined (pass --no-entry to supress): " +
             config->entry);
   }
+
+  createOptionalSymbols();
 
   if (errorCount())
     return;

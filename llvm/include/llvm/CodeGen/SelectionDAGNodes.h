@@ -709,6 +709,8 @@ public:
       case ISD::STRICT_FFLOOR:
       case ISD::STRICT_FROUND:
       case ISD::STRICT_FTRUNC:
+      case ISD::STRICT_FP_TO_SINT:
+      case ISD::STRICT_FP_TO_UINT:
       case ISD::STRICT_FP_ROUND:
       case ISD::STRICT_FP_EXTEND:
         return true;
@@ -1350,6 +1352,14 @@ public:
   /// cmpxchg atomic operations, return the atomic ordering requirements when
   /// store occurs.
   AtomicOrdering getOrdering() const { return MMO->getOrdering(); }
+
+  /// Return true if the memory operation ordering is Unordered or higher.
+  bool isAtomic() const { return MMO->isAtomic(); }
+
+  /// Returns true if the memory operation doesn't imply any ordering
+  /// constraints on surrounding memory operations beyond the normal memory
+  /// aliasing rules.
+  bool isUnordered() const { return MMO->isUnordered(); }
 
   /// Return the type of the in-memory value.
   EVT getMemoryVT() const { return MemoryVT; }

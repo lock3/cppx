@@ -107,6 +107,10 @@ public:
   WasmSymbolType getWasmType() const;
   bool isExported() const;
 
+  // Indicates that the symbol is used in an __attribute__((used)) directive
+  // or similar.
+  bool isNoStrip() const;
+
   const WasmSignature* getSignature() const;
 
   bool isInGOT() const { return gotIndex != INVALID_INDEX; }
@@ -472,10 +476,12 @@ struct WasmSym {
   // __table_base
   // Used in PIC code for offset of indirect function table
   static UndefinedGlobal *tableBase;
+  static DefinedData *definedTableBase;
 
   // __memory_base
   // Used in PIC code for offset of global data
   static UndefinedGlobal *memoryBase;
+  static DefinedData *definedMemoryBase;
 };
 
 // A buffer class that is large enough to hold any Symbol-derived

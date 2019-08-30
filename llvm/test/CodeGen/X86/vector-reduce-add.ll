@@ -979,6 +979,53 @@ define i8 @test_v2i8(<2 x i8> %a0) {
   ret i8 %1
 }
 
+define i8 @test_v2i8_load(<2 x i8>* %p) {
+; SSE2-LABEL: test_v2i8_load:
+; SSE2:       # %bb.0:
+; SSE2-NEXT:    movzwl (%rdi), %eax
+; SSE2-NEXT:    movd %eax, %xmm0
+; SSE2-NEXT:    movdqa %xmm0, %xmm1
+; SSE2-NEXT:    psrlw $8, %xmm1
+; SSE2-NEXT:    paddb %xmm0, %xmm1
+; SSE2-NEXT:    movd %xmm1, %eax
+; SSE2-NEXT:    # kill: def $al killed $al killed $eax
+; SSE2-NEXT:    retq
+;
+; SSE41-LABEL: test_v2i8_load:
+; SSE41:       # %bb.0:
+; SSE41-NEXT:    movzwl (%rdi), %eax
+; SSE41-NEXT:    movd %eax, %xmm0
+; SSE41-NEXT:    movdqa %xmm0, %xmm1
+; SSE41-NEXT:    psrlw $8, %xmm1
+; SSE41-NEXT:    paddb %xmm0, %xmm1
+; SSE41-NEXT:    pextrb $0, %xmm1, %eax
+; SSE41-NEXT:    # kill: def $al killed $al killed $eax
+; SSE41-NEXT:    retq
+;
+; AVX-LABEL: test_v2i8_load:
+; AVX:       # %bb.0:
+; AVX-NEXT:    movzwl (%rdi), %eax
+; AVX-NEXT:    vmovd %eax, %xmm0
+; AVX-NEXT:    vpsrlw $8, %xmm0, %xmm1
+; AVX-NEXT:    vpaddb %xmm1, %xmm0, %xmm0
+; AVX-NEXT:    vpextrb $0, %xmm0, %eax
+; AVX-NEXT:    # kill: def $al killed $al killed $eax
+; AVX-NEXT:    retq
+;
+; AVX512-LABEL: test_v2i8_load:
+; AVX512:       # %bb.0:
+; AVX512-NEXT:    movzwl (%rdi), %eax
+; AVX512-NEXT:    vmovd %eax, %xmm0
+; AVX512-NEXT:    vpsrlw $8, %xmm0, %xmm1
+; AVX512-NEXT:    vpaddb %xmm1, %xmm0, %xmm0
+; AVX512-NEXT:    vpextrb $0, %xmm0, %eax
+; AVX512-NEXT:    # kill: def $al killed $al killed $eax
+; AVX512-NEXT:    retq
+  %a0 = load <2 x i8>, <2 x i8>* %p
+  %1 = call i8 @llvm.experimental.vector.reduce.add.v2i8(<2 x i8> %a0)
+  ret i8 %1
+}
+
 define i8 @test_v4i8(<4 x i8> %a0) {
 ; SSE2-LABEL: test_v4i8:
 ; SSE2:       # %bb.0:
@@ -1027,39 +1074,36 @@ define i8 @test_v4i8(<4 x i8> %a0) {
   ret i8 %1
 }
 
-define i8 @test_v8i8(<8 x i8> %a0) {
-; SSE2-LABEL: test_v8i8:
+define i8 @test_v4i8_load(<4 x i8>* %p) {
+; SSE2-LABEL: test_v4i8_load:
 ; SSE2:       # %bb.0:
-; SSE2-NEXT:    pshufd {{.*#+}} xmm1 = xmm0[1,1,2,3]
+; SSE2-NEXT:    movd {{.*#+}} xmm0 = mem[0],zero,zero,zero
+; SSE2-NEXT:    movdqa %xmm0, %xmm1
+; SSE2-NEXT:    psrld $16, %xmm1
 ; SSE2-NEXT:    paddb %xmm0, %xmm1
 ; SSE2-NEXT:    movdqa %xmm1, %xmm0
-; SSE2-NEXT:    psrld $16, %xmm0
+; SSE2-NEXT:    psrlw $8, %xmm0
 ; SSE2-NEXT:    paddb %xmm1, %xmm0
-; SSE2-NEXT:    movdqa %xmm0, %xmm1
-; SSE2-NEXT:    psrlw $8, %xmm1
-; SSE2-NEXT:    paddb %xmm0, %xmm1
-; SSE2-NEXT:    movd %xmm1, %eax
+; SSE2-NEXT:    movd %xmm0, %eax
 ; SSE2-NEXT:    # kill: def $al killed $al killed $eax
 ; SSE2-NEXT:    retq
 ;
-; SSE41-LABEL: test_v8i8:
+; SSE41-LABEL: test_v4i8_load:
 ; SSE41:       # %bb.0:
-; SSE41-NEXT:    pshufd {{.*#+}} xmm1 = xmm0[1,1,2,3]
+; SSE41-NEXT:    movd {{.*#+}} xmm0 = mem[0],zero,zero,zero
+; SSE41-NEXT:    movdqa %xmm0, %xmm1
+; SSE41-NEXT:    psrld $16, %xmm1
 ; SSE41-NEXT:    paddb %xmm0, %xmm1
 ; SSE41-NEXT:    movdqa %xmm1, %xmm0
-; SSE41-NEXT:    psrld $16, %xmm0
+; SSE41-NEXT:    psrlw $8, %xmm0
 ; SSE41-NEXT:    paddb %xmm1, %xmm0
-; SSE41-NEXT:    movdqa %xmm0, %xmm1
-; SSE41-NEXT:    psrlw $8, %xmm1
-; SSE41-NEXT:    paddb %xmm0, %xmm1
-; SSE41-NEXT:    pextrb $0, %xmm1, %eax
+; SSE41-NEXT:    pextrb $0, %xmm0, %eax
 ; SSE41-NEXT:    # kill: def $al killed $al killed $eax
 ; SSE41-NEXT:    retq
 ;
-; AVX-LABEL: test_v8i8:
+; AVX-LABEL: test_v4i8_load:
 ; AVX:       # %bb.0:
-; AVX-NEXT:    vpshufd {{.*#+}} xmm1 = xmm0[1,1,2,3]
-; AVX-NEXT:    vpaddb %xmm1, %xmm0, %xmm0
+; AVX-NEXT:    vmovd {{.*#+}} xmm0 = mem[0],zero,zero,zero
 ; AVX-NEXT:    vpsrld $16, %xmm0, %xmm1
 ; AVX-NEXT:    vpaddb %xmm1, %xmm0, %xmm0
 ; AVX-NEXT:    vpsrlw $8, %xmm0, %xmm1
@@ -1068,10 +1112,9 @@ define i8 @test_v8i8(<8 x i8> %a0) {
 ; AVX-NEXT:    # kill: def $al killed $al killed $eax
 ; AVX-NEXT:    retq
 ;
-; AVX512-LABEL: test_v8i8:
+; AVX512-LABEL: test_v4i8_load:
 ; AVX512:       # %bb.0:
-; AVX512-NEXT:    vpshufd {{.*#+}} xmm1 = xmm0[1,1,2,3]
-; AVX512-NEXT:    vpaddb %xmm1, %xmm0, %xmm0
+; AVX512-NEXT:    vmovd {{.*#+}} xmm0 = mem[0],zero,zero,zero
 ; AVX512-NEXT:    vpsrld $16, %xmm0, %xmm1
 ; AVX512-NEXT:    vpaddb %xmm1, %xmm0, %xmm0
 ; AVX512-NEXT:    vpsrlw $8, %xmm0, %xmm1
@@ -1079,6 +1122,84 @@ define i8 @test_v8i8(<8 x i8> %a0) {
 ; AVX512-NEXT:    vpextrb $0, %xmm0, %eax
 ; AVX512-NEXT:    # kill: def $al killed $al killed $eax
 ; AVX512-NEXT:    retq
+  %a0 = load <4 x i8>, <4 x i8>* %p
+  %1 = call i8 @llvm.experimental.vector.reduce.add.v4i8(<4 x i8> %a0)
+  ret i8 %1
+}
+
+define i8 @test_v8i8(<8 x i8> %a0) {
+; SSE2-LABEL: test_v8i8:
+; SSE2:       # %bb.0:
+; SSE2-NEXT:    pxor %xmm1, %xmm1
+; SSE2-NEXT:    psadbw %xmm0, %xmm1
+; SSE2-NEXT:    movd %xmm1, %eax
+; SSE2-NEXT:    # kill: def $al killed $al killed $eax
+; SSE2-NEXT:    retq
+;
+; SSE41-LABEL: test_v8i8:
+; SSE41:       # %bb.0:
+; SSE41-NEXT:    pxor %xmm1, %xmm1
+; SSE41-NEXT:    psadbw %xmm0, %xmm1
+; SSE41-NEXT:    pextrb $0, %xmm1, %eax
+; SSE41-NEXT:    # kill: def $al killed $al killed $eax
+; SSE41-NEXT:    retq
+;
+; AVX-LABEL: test_v8i8:
+; AVX:       # %bb.0:
+; AVX-NEXT:    vpxor %xmm1, %xmm1, %xmm1
+; AVX-NEXT:    vpsadbw %xmm1, %xmm0, %xmm0
+; AVX-NEXT:    vpextrb $0, %xmm0, %eax
+; AVX-NEXT:    # kill: def $al killed $al killed $eax
+; AVX-NEXT:    retq
+;
+; AVX512-LABEL: test_v8i8:
+; AVX512:       # %bb.0:
+; AVX512-NEXT:    vpxor %xmm1, %xmm1, %xmm1
+; AVX512-NEXT:    vpsadbw %xmm1, %xmm0, %xmm0
+; AVX512-NEXT:    vpextrb $0, %xmm0, %eax
+; AVX512-NEXT:    # kill: def $al killed $al killed $eax
+; AVX512-NEXT:    retq
+  %1 = call i8 @llvm.experimental.vector.reduce.add.v8i8(<8 x i8> %a0)
+  ret i8 %1
+}
+
+define i8 @test_v8i8_load(<8 x i8>* %p) {
+; SSE2-LABEL: test_v8i8_load:
+; SSE2:       # %bb.0:
+; SSE2-NEXT:    movq {{.*#+}} xmm0 = mem[0],zero
+; SSE2-NEXT:    pxor %xmm1, %xmm1
+; SSE2-NEXT:    psadbw %xmm0, %xmm1
+; SSE2-NEXT:    movd %xmm1, %eax
+; SSE2-NEXT:    # kill: def $al killed $al killed $eax
+; SSE2-NEXT:    retq
+;
+; SSE41-LABEL: test_v8i8_load:
+; SSE41:       # %bb.0:
+; SSE41-NEXT:    movq {{.*#+}} xmm0 = mem[0],zero
+; SSE41-NEXT:    pxor %xmm1, %xmm1
+; SSE41-NEXT:    psadbw %xmm0, %xmm1
+; SSE41-NEXT:    pextrb $0, %xmm1, %eax
+; SSE41-NEXT:    # kill: def $al killed $al killed $eax
+; SSE41-NEXT:    retq
+;
+; AVX-LABEL: test_v8i8_load:
+; AVX:       # %bb.0:
+; AVX-NEXT:    vmovq {{.*#+}} xmm0 = mem[0],zero
+; AVX-NEXT:    vpxor %xmm1, %xmm1, %xmm1
+; AVX-NEXT:    vpsadbw %xmm1, %xmm0, %xmm0
+; AVX-NEXT:    vpextrb $0, %xmm0, %eax
+; AVX-NEXT:    # kill: def $al killed $al killed $eax
+; AVX-NEXT:    retq
+;
+; AVX512-LABEL: test_v8i8_load:
+; AVX512:       # %bb.0:
+; AVX512-NEXT:    vmovq {{.*#+}} xmm0 = mem[0],zero
+; AVX512-NEXT:    vpxor %xmm1, %xmm1, %xmm1
+; AVX512-NEXT:    vpsadbw %xmm1, %xmm0, %xmm0
+; AVX512-NEXT:    vpextrb $0, %xmm0, %eax
+; AVX512-NEXT:    # kill: def $al killed $al killed $eax
+; AVX512-NEXT:    retq
+  %a0 = load <8 x i8>, <8 x i8>* %p
   %1 = call i8 @llvm.experimental.vector.reduce.add.v8i8(<8 x i8> %a0)
   ret i8 %1
 }

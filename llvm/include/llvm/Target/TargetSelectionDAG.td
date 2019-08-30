@@ -239,6 +239,9 @@ def SDTVecExtract : SDTypeProfile<1, 2, [   // vector extract
 def SDTVecInsert : SDTypeProfile<1, 3, [    // vector insert
   SDTCisEltOfVec<2, 1>, SDTCisSameAs<0, 1>, SDTCisPtrTy<3>
 ]>;
+def SDTVecReduce : SDTypeProfile<1, 1, [    // vector reduction
+  SDTCisInt<0>, SDTCisVec<1>
+]>;
 
 def SDTSubVecExtract : SDTypeProfile<1, 2, [// subvector extract
   SDTCisSubVecOfVec<0,1>, SDTCisInt<2>
@@ -414,6 +417,8 @@ def bitconvert : SDNode<"ISD::BITCAST"    , SDTUnaryOp>;
 def addrspacecast : SDNode<"ISD::ADDRSPACECAST", SDTUnaryOp>;
 def extractelt : SDNode<"ISD::EXTRACT_VECTOR_ELT", SDTVecExtract>;
 def insertelt  : SDNode<"ISD::INSERT_VECTOR_ELT", SDTVecInsert>;
+
+def vecreduce_add  : SDNode<"ISD::VECREDUCE_ADD", SDTVecReduce>;
 
 def fadd       : SDNode<"ISD::FADD"       , SDTFPBinOp, [SDNPCommutative]>;
 def fsub       : SDNode<"ISD::FSUB"       , SDTFPBinOp>;
@@ -638,16 +643,32 @@ def assertzext : SDNode<"ISD::AssertZext", SDT_assertext>;
 //===----------------------------------------------------------------------===//
 // Selection DAG Condition Codes
 
-class CondCode; // ISD::CondCode enums
-def SETOEQ : CondCode; def SETOGT : CondCode;
-def SETOGE : CondCode; def SETOLT : CondCode; def SETOLE : CondCode;
-def SETONE : CondCode; def SETO   : CondCode; def SETUO  : CondCode;
-def SETUEQ : CondCode; def SETUGT : CondCode; def SETUGE : CondCode;
-def SETULT : CondCode; def SETULE : CondCode; def SETUNE : CondCode;
+class CondCode<string fcmpName = "", string icmpName = ""> {
+  string ICmpPredicate = icmpName;
+  string FCmpPredicate = fcmpName;
+}
 
-def SETEQ : CondCode; def SETGT : CondCode; def SETGE : CondCode;
-def SETLT : CondCode; def SETLE : CondCode; def SETNE : CondCode;
-
+// ISD::CondCode enums, and mapping to CmpInst::Predicate names
+def SETOEQ : CondCode<"FCMP_OEQ">;
+def SETOGT : CondCode<"FCMP_OGT">;
+def SETOGE : CondCode<"FCMP_OGE">;
+def SETOLT : CondCode<"FCMP_OLT">;
+def SETOLE : CondCode<"FCMP_OLE">;
+def SETONE : CondCode<"FCMP_ONE">;
+def SETO   : CondCode<"FCMP_ORD">;
+def SETUO  : CondCode<"FCMP_UNO">;
+def SETUEQ : CondCode<"FCMP_UEQ">;
+def SETUGT : CondCode<"FCMP_UGT", "ICMP_UGT">;
+def SETUGE : CondCode<"FCMP_UGE", "ICMP_UGE">;
+def SETULT : CondCode<"FCMP_ULT", "ICMP_ULT">;
+def SETULE : CondCode<"FCMP_ULE", "ICMP_ULE">;
+def SETUNE : CondCode<"FCMP_UNE">;
+def SETEQ : CondCode<"", "ICMP_EQ">;
+def SETGT : CondCode<"", "ICMP_SGT">;
+def SETGE : CondCode<"", "ICMP_SGE">;
+def SETLT : CondCode<"", "ICMP_SLT">;
+def SETLE : CondCode<"", "ICMP_SLE">;
+def SETNE : CondCode<"", "ICMP_NE">;
 
 //===----------------------------------------------------------------------===//
 // Selection DAG Node Transformation Functions.

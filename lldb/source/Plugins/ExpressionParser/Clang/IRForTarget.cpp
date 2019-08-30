@@ -156,9 +156,12 @@ clang::NamedDecl *IRForTarget::DeclForGlobal(GlobalValue *global_val) {
 }
 
 /// Returns true iff the mangled symbol is for a static guard variable.
-static bool isGuardVariableSymbol(llvm::StringRef mangled_symbol) {
-  return mangled_symbol.startswith("_ZGV") || // Itanium ABI guard variable
-         mangled_symbol.startswith("@4IA");   // Microsoft ABI guard variable
+static bool isGuardVariableSymbol(llvm::StringRef mangled_symbol,
+                                  bool check_ms_abi = true) {
+  bool result = mangled_symbol.startswith("_ZGV"); // Itanium ABI guard variable
+  if (check_ms_abi)
+    result |= mangled_symbol.endswith("@4IA"); // Microsoft ABI
+  return result;
 }
 
 bool IRForTarget::CreateResultVariable(llvm::Function &llvm_function) {
@@ -178,15 +181,17 @@ bool IRForTarget::CreateResultVariable(llvm::Function &llvm_function) {
   for (StringMapEntry<llvm::Value *> &value_symbol : value_symbol_table) {
     result_name = value_symbol.first();
 
-    if (result_name.contains("$__lldb_expr_result_ptr") &&
-        !isGuardVariableSymbol(result_name)) {
+    // Check if this is a guard variable. It seems this causes some hiccups
+    // on Windows, so let's only check for Itanium guard variables.
+    bool is_guard_var = isGuardVariableSymbol(result_name, /*MS ABI*/ false);
+
+    if (result_name.contains("$__lldb_expr_result_ptr") && !is_guard_var) {
       found_result = true;
       m_result_is_pointer = true;
       break;
     }
 
-    if (result_name.contains("$__lldb_expr_result") &&
-        !isGuardVariableSymbol(result_name)) {
+    if (result_name.contains("$__lldb_expr_result") && !is_guard_var) {
       found_result = true;
       m_result_is_pointer = false;
       break;
@@ -1175,71 +1180,6 @@ bool IRForTarget::RewritePersistentAllocs(llvm::BasicBlock &basic_block) {
   return true;
 }
 
-bool IRForTarget::MaterializeInitializer(uint8_t *data, Constant *initializer) {
-  if (!initializer)
-    return true;
-
-  lldb_private::Log *log(
-      lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
-
-  LLDB_LOGV(log, "  MaterializeInitializer({0}, {1})", (void *)data,
-            PrintValue(initializer));
-
-  Type *initializer_type = initializer->getType();
-
-  if (ConstantInt *int_initializer = dyn_cast<ConstantInt>(initializer)) {
-    size_t constant_size = m_target_data->getTypeStoreSize(initializer_type);
-    lldb_private::Scalar scalar = int_initializer->getValue().zextOrTrunc(
-        llvm::NextPowerOf2(constant_size) * 8);
-
-    lldb_private::Status get_data_error;
-    return scalar.GetAsMemoryData(data, constant_size,
-                                  lldb_private::endian::InlHostByteOrder(),
-                                  get_data_error) != 0;
-  } else if (ConstantDataArray *array_initializer =
-                 dyn_cast<ConstantDataArray>(initializer)) {
-    if (array_initializer->isString()) {
-      std::string array_initializer_string = array_initializer->getAsString();
-      memcpy(data, array_initializer_string.c_str(),
-             m_target_data->getTypeStoreSize(initializer_type));
-    } else {
-      ArrayType *array_initializer_type = array_initializer->getType();
-      Type *array_element_type = array_initializer_type->getElementType();
-
-      size_t element_size = m_target_data->getTypeAllocSize(array_element_type);
-
-      for (unsigned i = 0; i < array_initializer->getNumOperands(); ++i) {
-        Value *operand_value = array_initializer->getOperand(i);
-        Constant *operand_constant = dyn_cast<Constant>(operand_value);
-
-        if (!operand_constant)
-          return false;
-
-        if (!MaterializeInitializer(data + (i * element_size),
-                                    operand_constant))
-          return false;
-      }
-    }
-    return true;
-  } else if (ConstantStruct *struct_initializer =
-                 dyn_cast<ConstantStruct>(initializer)) {
-    StructType *struct_initializer_type = struct_initializer->getType();
-    const StructLayout *struct_layout =
-        m_target_data->getStructLayout(struct_initializer_type);
-
-    for (unsigned i = 0; i < struct_initializer->getNumOperands(); ++i) {
-      if (!MaterializeInitializer(data + struct_layout->getElementOffset(i),
-                                  struct_initializer->getOperand(i)))
-        return false;
-    }
-    return true;
-  } else if (isa<ConstantAggregateZero>(initializer)) {
-    memset(data, 0, m_target_data->getTypeStoreSize(initializer_type));
-    return true;
-  }
-  return false;
-}
-
 // This function does not report errors; its callers are responsible.
 bool IRForTarget::MaybeHandleVariable(Value *llvm_value_ptr) {
   lldb_private::Log *log(
@@ -1283,8 +1223,10 @@ bool IRForTarget::MaybeHandleVariable(Value *llvm_value_ptr) {
     if (value_decl == nullptr)
       return false;
 
-    lldb_private::CompilerType compiler_type(&value_decl->getASTContext(),
-                                             value_decl->getType());
+    lldb_private::CompilerType compiler_type(
+        lldb_private::ClangASTContext::GetASTContext(
+            &value_decl->getASTContext()),
+        value_decl->getType().getAsOpaquePtr());
 
     const Type *value_type = nullptr;
 
@@ -1308,8 +1250,10 @@ bool IRForTarget::MaybeHandleVariable(Value *llvm_value_ptr) {
     llvm::Optional<uint64_t> value_size = compiler_type.GetByteSize(nullptr);
     if (!value_size)
       return false;
-    lldb::offset_t value_alignment =
-        (compiler_type.GetTypeBitAlign() + 7ull) / 8ull;
+    llvm::Optional<size_t> opt_alignment = compiler_type.GetTypeBitAlign(nullptr);
+    if (!opt_alignment)
+      return false;
+    lldb::offset_t value_alignment = (*opt_alignment + 7ull) / 8ull;
 
     LLDB_LOG(log,
              "Type of \"{0}\" is [clang \"{1}\", llvm \"{2}\"] [size {3}, "

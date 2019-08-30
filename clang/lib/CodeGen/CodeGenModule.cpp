@@ -535,6 +535,12 @@ void CodeGenModule::Release() {
     getModule().addModuleFlag(llvm::Module::Override, "Cross-DSO CFI", 1);
   }
 
+  if (LangOpts.Sanitize.has(SanitizerKind::CFIICall)) {
+    getModule().addModuleFlag(llvm::Module::Override,
+                              "CFI Canonical Jump Tables",
+                              CodeGenOpts.SanitizeCfiCanonicalJumpTables);
+  }
+
   if (CodeGenOpts.CFProtectionReturn &&
       Target.checkCFProtectionReturnSupported(getDiags())) {
     // Indicate that we want to instrument return control flow protection.
@@ -1605,10 +1611,17 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
       F->setAlignment(2);
   }
 
-  // In the cross-dso CFI mode, we want !type attributes on definitions only.
-  if (CodeGenOpts.SanitizeCfiCrossDso)
-    if (auto *FD = dyn_cast<FunctionDecl>(D))
-      CreateFunctionTypeMetadataForIcall(FD, F);
+  // In the cross-dso CFI mode with canonical jump tables, we want !type
+  // attributes on definitions only.
+  if (CodeGenOpts.SanitizeCfiCrossDso &&
+      CodeGenOpts.SanitizeCfiCanonicalJumpTables) {
+    if (auto *FD = dyn_cast<FunctionDecl>(D)) {
+      // Skip available_externally functions. They won't be codegen'ed in the
+      // current module anyway.
+      if (getContext().GetGVALinkageForFunction(FD) != GVA_AvailableExternally)
+        CreateFunctionTypeMetadataForIcall(FD, F);
+    }
+  }
 
   // Emit type metadata on member functions for member function pointer checks.
   // These are only ever necessary on definitions; we're guaranteed that the
@@ -1765,14 +1778,6 @@ void CodeGenModule::CreateFunctionTypeMetadataForIcall(const FunctionDecl *FD,
   if (isa<CXXMethodDecl>(FD) && !cast<CXXMethodDecl>(FD)->isStatic())
     return;
 
-  // Additionally, if building with cross-DSO support...
-  if (CodeGenOpts.SanitizeCfiCrossDso) {
-    // Skip available_externally functions. They won't be codegen'ed in the
-    // current module anyway.
-    if (getContext().GetGVALinkageForFunction(FD) == GVA_AvailableExternally)
-      return;
-  }
-
   llvm::Metadata *MD = CreateMetadataIdentifierForType(FD->getType());
   F->addTypeMetadata(0, MD);
   F->addTypeMetadata(0, CreateMetadataIdentifierGeneralized(FD->getType()));
@@ -1849,8 +1854,11 @@ void CodeGenModule::SetFunctionAttributes(GlobalDecl GD, llvm::Function *F,
       F->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
 
   // Don't emit entries for function declarations in the cross-DSO mode. This
-  // is handled with better precision by the receiving DSO.
-  if (!CodeGenOpts.SanitizeCfiCrossDso)
+  // is handled with better precision by the receiving DSO. But if jump tables
+  // are non-canonical then we need type metadata in order to produce the local
+  // jump table.
+  if (!CodeGenOpts.SanitizeCfiCrossDso ||
+      !CodeGenOpts.SanitizeCfiCanonicalJumpTables)
     CreateFunctionTypeMetadataForIcall(FD, F);
 
   if (getLangOpts().OpenMP && FD->hasAttr<OMPDeclareSimdDeclAttr>())
@@ -2114,6 +2122,10 @@ void CodeGenModule::EmitDeferred() {
     if (!GV->isDeclaration())
       continue;
 
+    // If this is OpenMP, check if it is legal to emit this global normally.
+    if (LangOpts.OpenMP && OpenMPRuntime && OpenMPRuntime->emitTargetGlobal(D))
+      continue;
+
     // Otherwise, emit the definition and move on to the next one.
     EmitGlobalDefinition(D, GV);
 
@@ -2310,11 +2322,20 @@ bool CodeGenModule::MustBeEmitted(const ValueDecl *Global) {
 }
 
 bool CodeGenModule::MayBeEmittedEagerly(const ValueDecl *Global) {
-  if (const auto *FD = dyn_cast<FunctionDecl>(Global))
+  if (const auto *FD = dyn_cast<FunctionDecl>(Global)) {
     if (FD->getTemplateSpecializationKind() == TSK_ImplicitInstantiation)
       // Implicit template instantiations may change linkage if they are later
       // explicitly instantiated, so they should not be emitted eagerly.
       return false;
+    // In OpenMP 5.0 function may be marked as device_type(nohost) and we should
+    // not emit them eagerly unless we sure that the function must be emitted on
+    // the host.
+    if (LangOpts.OpenMP >= 50 && !LangOpts.OpenMPSimd &&
+        !LangOpts.OpenMPIsDevice &&
+        !OMPDeclareTargetDeclAttr::getDeviceType(FD) &&
+        !FD->isUsed(/*CheckUsedAttr=*/false) && !FD->isReferenced())
+      return false;
+  }
   if (const auto *VD = dyn_cast<VarDecl>(Global))
     if (Context.getInlineVariableDefinitionKind(VD) ==
         ASTContext::InlineVariableDefinitionKind::WeakUnknown)
@@ -2437,8 +2458,7 @@ void CodeGenModule::EmitGlobal(GlobalDecl GD) {
   }
 
   if (LangOpts.OpenMP) {
-    // If this is OpenMP device, check if it is legal to emit this global
-    // normally.
+    // If this is OpenMP, check if it is legal to emit this global normally.
     if (OpenMPRuntime && OpenMPRuntime->emitTargetGlobal(GD))
       return;
     if (auto *DRD = dyn_cast<OMPDeclareReductionDecl>(Global)) {
@@ -4355,17 +4375,22 @@ void CodeGenModule::EmitAliasDefinition(GlobalDecl GD) {
   // Create a reference to the named value.  This ensures that it is emitted
   // if a deferred decl.
   llvm::Constant *Aliasee;
-  if (isa<llvm::FunctionType>(DeclTy))
+  llvm::GlobalValue::LinkageTypes LT;
+  if (isa<llvm::FunctionType>(DeclTy)) {
     Aliasee = GetOrCreateLLVMFunction(AA->getAliasee(), DeclTy, GD,
                                       /*ForVTable=*/false);
-  else
+    LT = getFunctionLinkage(GD);
+  } else {
     Aliasee = GetOrCreateLLVMGlobal(AA->getAliasee(),
                                     llvm::PointerType::getUnqual(DeclTy),
                                     /*D=*/nullptr);
+    LT = getLLVMLinkageVarDefinition(cast<VarDecl>(GD.getDecl()),
+                                     D->getType().isConstQualified());
+  }
 
   // Create the new alias itself, but don't set a name yet.
-  auto *GA = llvm::GlobalAlias::create(
-      DeclTy, 0, llvm::Function::ExternalLinkage, "", Aliasee, &getModule());
+  auto *GA =
+      llvm::GlobalAlias::create(DeclTy, 0, LT, "", Aliasee, &getModule());
 
   if (Entry) {
     if (GA->getAliasee() == Entry) {
@@ -4669,7 +4694,10 @@ CodeGenModule::GetAddrOfConstantCFString(const StringLiteral *Literal) {
   }
   Fields.addInt(LengthTy, StringLength);
 
-  CharUnits Alignment = getPointerAlign();
+  // Swift ABI requires 8-byte alignment to ensure that the _Atomic(uint64_t) is
+  // properly aligned on 32-bit platforms.
+  CharUnits Alignment =
+      IsSwiftABI ? Context.toCharUnitsFromBits(64) : getPointerAlign();
 
   // The struct.
   GV = Fields.finishAndCreateGlobal("_unnamed_cfstring_", Alignment,
@@ -5804,7 +5832,7 @@ void CodeGenModule::getFunctionFeatureMap(llvm::StringMap<bool> &FeatureMap,
 
 llvm::SanitizerStatReport &CodeGenModule::getSanStats() {
   if (!SanStats)
-    SanStats = llvm::make_unique<llvm::SanitizerStatReport>(&getModule());
+    SanStats = std::make_unique<llvm::SanitizerStatReport>(&getModule());
 
   return *SanStats;
 }

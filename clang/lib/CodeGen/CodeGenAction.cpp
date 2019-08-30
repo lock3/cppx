@@ -39,6 +39,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/YAMLTraits.h"
@@ -230,6 +231,7 @@ namespace clang {
 
     void HandleTranslationUnit(ASTContext &C) override {
       {
+        llvm::TimeTraceScope TimeScope("Frontend", StringRef(""));
         PrettyStackTraceString CrashInfo("Per-file LLVM IR generation");
         if (FrontendTimesIsEnabled) {
           LLVMIRGenerationRefCount += 1;
@@ -262,7 +264,7 @@ namespace clang {
 
       std::unique_ptr<DiagnosticHandler> OldDiagnosticHandler =
           Ctx.getDiagnosticHandler();
-      Ctx.setDiagnosticHandler(llvm::make_unique<ClangDiagnosticHandler>(
+      Ctx.setDiagnosticHandler(std::make_unique<ClangDiagnosticHandler>(
         CodeGenOpts, this));
 
       Expected<std::unique_ptr<llvm::ToolOutputFile>> OptRecordFileOrErr =
@@ -916,7 +918,7 @@ CodeGenAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
   if (CI.getCodeGenOpts().getDebugInfo() != codegenoptions::NoDebugInfo &&
       CI.getCodeGenOpts().MacroDebugInfo) {
     std::unique_ptr<PPCallbacks> Callbacks =
-        llvm::make_unique<MacroPPCallbacks>(BEConsumer->getCodeGenerator(),
+        std::make_unique<MacroPPCallbacks>(BEConsumer->getCodeGenerator(),
                                             CI.getPreprocessor());
     CI.getPreprocessor().addPPCallbacks(std::move(Callbacks));
   }
@@ -977,7 +979,7 @@ CodeGenAction::loadModule(MemoryBufferRef MBRef) {
     // the file was already processed by indexing and will be passed to the
     // linker using merged object file.
     if (!Bm) {
-      auto M = llvm::make_unique<llvm::Module>("empty", *VMContext);
+      auto M = std::make_unique<llvm::Module>("empty", *VMContext);
       M->setTargetTriple(CI.getTargetOpts().Triple);
       return M;
     }

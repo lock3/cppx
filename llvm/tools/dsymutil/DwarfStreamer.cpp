@@ -31,7 +31,11 @@ static Optional<object::SectionRef>
 getSectionByName(const object::ObjectFile &Obj, StringRef SecName) {
   for (const object::SectionRef &Section : Obj.sections()) {
     StringRef SectionName;
-    Section.getName(SectionName);
+    if (Expected<StringRef> NameOrErr = Section.getName())
+      SectionName = *NameOrErr;
+    else
+      consumeError(NameOrErr.takeError());
+
     SectionName = SectionName.substr(SectionName.find_first_not_of("._"));
     if (SectionName != SecName)
       continue;
@@ -87,7 +91,7 @@ bool DwarfStreamer::init(Triple TheTriple) {
     MIP = TheTarget->createMCInstPrinter(TheTriple, MAI->getAssemblerDialect(),
                                          *MAI, *MII, *MRI);
     MS = TheTarget->createAsmStreamer(
-        *MC, llvm::make_unique<formatted_raw_ostream>(OutFile), true, true, MIP,
+        *MC, std::make_unique<formatted_raw_ostream>(OutFile), true, true, MIP,
         std::unique_ptr<MCCodeEmitter>(MCE), std::unique_ptr<MCAsmBackend>(MAB),
         true);
     break;

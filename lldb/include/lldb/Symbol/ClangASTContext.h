@@ -68,9 +68,8 @@ public:
   static lldb::TypeSystemSP CreateInstance(lldb::LanguageType language,
                                            Module *module, Target *target);
 
-  static void EnumerateSupportedLanguages(
-      std::set<lldb::LanguageType> &languages_for_types,
-      std::set<lldb::LanguageType> &languages_for_expressions);
+  static LanguageSet GetSupportedLanguagesForTypes();
+  static LanguageSet GetSupportedLanguagesForExpressions();
 
   static void Initialize();
 
@@ -229,7 +228,8 @@ public:
           if (const RecordDeclType *record_decl =
                   llvm::dyn_cast<RecordDeclType>(named_decl))
             compiler_type.SetCompilerType(
-                ast, clang::QualType(record_decl->getTypeForDecl(), 0));
+                this, clang::QualType(record_decl->getTypeForDecl(), 0)
+                          .getAsOpaquePtr());
         }
       }
     }
@@ -249,7 +249,7 @@ public:
           &type_fields,
       bool packed = false);
 
-  static bool IsOperator(const char *name,
+  static bool IsOperator(llvm::StringRef name,
                          clang::OverloadedOperatorKind &op_kind);
 
   // Structure, Unions, Classes
@@ -464,6 +464,8 @@ public:
 
   CompilerType DeclGetFunctionArgumentType(void *opaque_decl,
                                            size_t arg_idx) override;
+
+  CompilerType GetTypeForDecl(void *opaque_decl) override;
 
   // CompilerDeclContext override functions
 
@@ -708,7 +710,9 @@ public:
 
   lldb::Format GetFormat(lldb::opaque_compiler_type_t type) override;
 
-  size_t GetTypeBitAlign(lldb::opaque_compiler_type_t type) override;
+  llvm::Optional<size_t>
+  GetTypeBitAlign(lldb::opaque_compiler_type_t type,
+                  ExecutionContextScope *exe_scope) override;
 
   uint32_t GetNumChildren(lldb::opaque_compiler_type_t type,
                           bool omit_empty_base_classes,

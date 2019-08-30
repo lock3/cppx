@@ -215,7 +215,7 @@ static void SetUpDiagnosticLog(DiagnosticOptions *DiagOpts,
   raw_ostream *OS = &llvm::errs();
   if (DiagOpts->DiagnosticLogFile != "-") {
     // Create the output stream.
-    auto FileOS = llvm::make_unique<llvm::raw_fd_ostream>(
+    auto FileOS = std::make_unique<llvm::raw_fd_ostream>(
         DiagOpts->DiagnosticLogFile, EC,
         llvm::sys::fs::OF_Append | llvm::sys::fs::OF_Text);
     if (EC) {
@@ -229,7 +229,7 @@ static void SetUpDiagnosticLog(DiagnosticOptions *DiagOpts,
   }
 
   // Chain in the diagnostic client which will log the diagnostics.
-  auto Logger = llvm::make_unique<LogDiagnosticPrinter>(*OS, DiagOpts,
+  auto Logger = std::make_unique<LogDiagnosticPrinter>(*OS, DiagOpts,
                                                         std::move(StreamOwner));
   if (CodeGenOpts)
     Logger->setDwarfDebugFlags(CodeGenOpts->DwarfDebugFlags);
@@ -667,7 +667,7 @@ CompilerInstance::createDefaultOutputFile(bool Binary, StringRef InFile,
 }
 
 std::unique_ptr<raw_pwrite_stream> CompilerInstance::createNullOutputFile() {
-  return llvm::make_unique<llvm::raw_null_ostream>();
+  return std::make_unique<llvm::raw_null_ostream>();
 }
 
 std::unique_ptr<raw_pwrite_stream>
@@ -793,7 +793,7 @@ std::unique_ptr<llvm::raw_pwrite_stream> CompilerInstance::createOutputFile(
   if (!Binary || OS->supportsSeeking())
     return std::move(OS);
 
-  auto B = llvm::make_unique<llvm::buffer_ostream>(*OS);
+  auto B = std::make_unique<llvm::buffer_ostream>(*OS);
   assert(!NonSeekStream);
   NonSeekStream = std::move(OS);
   return std::move(B);
@@ -831,33 +831,39 @@ bool CompilerInstance::InitializeSourceManager(
 
   // Figure out where to get and map in the main file.
   if (InputFile != "-") {
-    auto FileOrErr = FileMgr.getFile(InputFile, /*OpenFile=*/true);
+    auto FileOrErr = FileMgr.getFileRef(InputFile, /*OpenFile=*/true);
     if (!FileOrErr) {
+      // FIXME: include the error in the diagnostic.
+      consumeError(FileOrErr.takeError());
       Diags.Report(diag::err_fe_error_reading) << InputFile;
       return false;
     }
-    auto File = *FileOrErr;
+    FileEntryRef File = *FileOrErr;
 
     // The natural SourceManager infrastructure can't currently handle named
     // pipes, but we would at least like to accept them for the main
     // file. Detect them here, read them with the volatile flag so FileMgr will
     // pick up the correct size, and simply override their contents as we do for
     // STDIN.
-    if (File->isNamedPipe()) {
-      auto MB = FileMgr.getBufferForFile(File, /*isVolatile=*/true);
+    if (File.getFileEntry().isNamedPipe()) {
+      auto MB =
+          FileMgr.getBufferForFile(&File.getFileEntry(), /*isVolatile=*/true);
       if (MB) {
         // Create a new virtual file that will have the correct size.
-        File = FileMgr.getVirtualFile(InputFile, (*MB)->getBufferSize(), 0);
-        SourceMgr.overrideFileContents(File, std::move(*MB));
+        const FileEntry *FE =
+            FileMgr.getVirtualFile(InputFile, (*MB)->getBufferSize(), 0);
+        SourceMgr.overrideFileContents(FE, std::move(*MB));
+        SourceMgr.setMainFileID(
+            SourceMgr.createFileID(FE, SourceLocation(), Kind));
       } else {
         Diags.Report(diag::err_cannot_open_file) << InputFile
                                                  << MB.getError().message();
         return false;
       }
+    } else {
+      SourceMgr.setMainFileID(
+          SourceMgr.createFileID(File, SourceLocation(), Kind));
     }
-
-    SourceMgr.setMainFileID(
-        SourceMgr.createFileID(File, SourceLocation(), Kind));
   } else {
     llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> SBOrErr =
         llvm::MemoryBuffer::getSTDIN();
@@ -885,6 +891,11 @@ bool CompilerInstance::ExecuteAction(FrontendAction &Act) {
   assert(hasDiagnostics() && "Diagnostics engine is not initialized!");
   assert(!getFrontendOpts().ShowHelp && "Client must handle '-help'!");
   assert(!getFrontendOpts().ShowVersion && "Client must handle '-version'!");
+
+  // Mark this point as the bottom of the stack if we don't have somewhere
+  // better. We generally expect frontend actions to be invoked with (nearly)
+  // DesiredStackSpace available.
+  noteBottomOfStack();
 
   // FIXME: Take this as an argument, once all the APIs we used have moved to
   // taking it as an input instead of hard-coding llvm::errs.
@@ -988,7 +999,7 @@ bool CompilerInstance::ExecuteAction(FrontendAction &Act) {
   StringRef StatsFile = getFrontendOpts().StatsFile;
   if (!StatsFile.empty()) {
     std::error_code EC;
-    auto StatS = llvm::make_unique<llvm::raw_fd_ostream>(
+    auto StatS = std::make_unique<llvm::raw_fd_ostream>(
         StatsFile, EC, llvm::sys::fs::OF_Text);
     if (EC) {
       getDiagnostics().Report(diag::warn_fe_unable_to_open_stats_file)
@@ -1471,7 +1482,7 @@ void CompilerInstance::createModuleManager() {
     const PreprocessorOptions &PPOpts = getPreprocessorOpts();
     std::unique_ptr<llvm::Timer> ReadTimer;
     if (FrontendTimerGroup)
-      ReadTimer = llvm::make_unique<llvm::Timer>("reading_modules",
+      ReadTimer = std::make_unique<llvm::Timer>("reading_modules",
                                                  "Reading modules",
                                                  *FrontendTimerGroup);
     ModuleManager = new ASTReader(
@@ -1566,7 +1577,7 @@ bool CompilerInstance::loadModuleFile(StringRef FileName) {
                                           SourceLocation())
         <= DiagnosticsEngine::Warning;
 
-  auto Listener = llvm::make_unique<ReadModuleNames>(*this);
+  auto Listener = std::make_unique<ReadModuleNames>(*this);
   auto &ListenerRef = *Listener;
   ASTReader::ListenerScope ReadModuleNamesListener(*ModuleManager,
                                                    std::move(Listener));

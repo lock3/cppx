@@ -163,11 +163,10 @@ unsigned AMDGPURegisterBankInfo::getBreakDownCost(
 
 const RegisterBank &AMDGPURegisterBankInfo::getRegBankFromRegClass(
     const TargetRegisterClass &RC) const {
+  if (&RC == &AMDGPU::SReg_1RegClass)
+    return AMDGPU::VCCRegBank;
 
-  if (TRI->isSGPRClass(&RC))
-    return getRegBank(AMDGPU::SGPRRegBankID);
-
-  return getRegBank(AMDGPU::VGPRRegBankID);
+  return TRI->isSGPRClass(&RC) ? AMDGPU::SGPRRegBank : AMDGPU::VGPRRegBank;
 }
 
 template <unsigned NumOps>
@@ -797,7 +796,7 @@ void AMDGPURegisterBankInfo::executeInWaterfallLoop(
 
         unsigned NumPieces = Unmerge->getNumOperands() - 1;
         for (unsigned PieceIdx = 0; PieceIdx != NumPieces; ++PieceIdx) {
-          unsigned UnmergePiece = Unmerge.getReg(PieceIdx);
+          Register UnmergePiece = Unmerge.getReg(PieceIdx);
 
           Register CurrentLaneOpReg;
           if (Is64) {
@@ -1548,7 +1547,7 @@ AMDGPURegisterBankInfo::getInstrMapping(const MachineInstr &MI) const {
     int ResultBank = -1;
 
     for (unsigned I = 1, E = MI.getNumOperands(); I != E; I += 2) {
-      unsigned Reg = MI.getOperand(I).getReg();
+      Register Reg = MI.getOperand(I).getReg();
       const RegisterBank *Bank = getRegBank(Reg, MRI, *TRI);
 
       // FIXME: Assuming VGPR for any undetermined inputs.
@@ -2053,7 +2052,7 @@ AMDGPURegisterBankInfo::getInstrMapping(const MachineInstr &MI) const {
     }
     case Intrinsic::amdgcn_readlane: {
       // This must be an SGPR, but accept a VGPR.
-      unsigned IdxReg = MI.getOperand(3).getReg();
+      Register IdxReg = MI.getOperand(3).getReg();
       unsigned IdxSize = MRI.getType(IdxReg).getSizeInBits();
       unsigned IdxBank = getRegBankID(IdxReg, MRI, *TRI, AMDGPU::SGPRRegBankID);
       OpdsMapping[3] = AMDGPU::getValueMapping(IdxBank, IdxSize);
@@ -2068,10 +2067,10 @@ AMDGPURegisterBankInfo::getInstrMapping(const MachineInstr &MI) const {
     }
     case Intrinsic::amdgcn_writelane: {
       unsigned DstSize = MRI.getType(MI.getOperand(0).getReg()).getSizeInBits();
-      unsigned SrcReg = MI.getOperand(2).getReg();
+      Register SrcReg = MI.getOperand(2).getReg();
       unsigned SrcSize = MRI.getType(SrcReg).getSizeInBits();
       unsigned SrcBank = getRegBankID(SrcReg, MRI, *TRI, AMDGPU::SGPRRegBankID);
-      unsigned IdxReg = MI.getOperand(3).getReg();
+      Register IdxReg = MI.getOperand(3).getReg();
       unsigned IdxSize = MRI.getType(IdxReg).getSizeInBits();
       unsigned IdxBank = getRegBankID(IdxReg, MRI, *TRI, AMDGPU::SGPRRegBankID);
       OpdsMapping[0] = AMDGPU::getValueMapping(AMDGPU::VGPRRegBankID, DstSize);

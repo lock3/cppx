@@ -1732,12 +1732,12 @@ std::pair<Type, std::string> Intrinsic::DagEmitter::emitDagShuffle(DagInit *DI){
 
   SetTheory ST;
   SetTheory::RecSet Elts;
-  ST.addOperator("lowhalf", llvm::make_unique<LowHalf>());
-  ST.addOperator("highhalf", llvm::make_unique<HighHalf>());
+  ST.addOperator("lowhalf", std::make_unique<LowHalf>());
+  ST.addOperator("highhalf", std::make_unique<HighHalf>());
   ST.addOperator("rev",
-                 llvm::make_unique<Rev>(Arg1.first.getElementSizeInBits()));
+                 std::make_unique<Rev>(Arg1.first.getElementSizeInBits()));
   ST.addExpander("MaskExpand",
-                 llvm::make_unique<MaskExpander>(Arg1.first.getNumElements()));
+                 std::make_unique<MaskExpander>(Arg1.first.getNumElements()));
   ST.evaluate(DI->getArg(2), Elts, None);
 
   std::string S = "__builtin_shufflevector(" + Arg1.second + ", " + Arg2.second;
@@ -2456,7 +2456,7 @@ void NeonEmitter::run(raw_ostream &OS) {
   for (auto *I : Defs)
     I->indexBody();
 
-  llvm::stable_sort(Defs, llvm::less_ptr<Intrinsic>());
+  llvm::stable_sort(Defs, llvm::deref<std::less<>>());
 
   // Only emit a def when its requirements have been met.
   // FIXME: This loop could be made faster, but it's fast enough for now.
@@ -2563,7 +2563,7 @@ void NeonEmitter::runFP16(raw_ostream &OS) {
   for (auto *I : Defs)
     I->indexBody();
 
-  llvm::stable_sort(Defs, llvm::less_ptr<Intrinsic>());
+  llvm::stable_sort(Defs, llvm::deref<std::less<>>());
 
   // Only emit a def when its requirements have been met.
   // FIXME: This loop could be made faster, but it's fast enough for now.

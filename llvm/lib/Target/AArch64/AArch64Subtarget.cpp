@@ -196,7 +196,7 @@ const CallLowering *AArch64Subtarget::getCallLowering() const {
   return CallLoweringInfo.get();
 }
 
-const InstructionSelector *AArch64Subtarget::getInstructionSelector() const {
+InstructionSelector *AArch64Subtarget::getInstructionSelector() const {
   return InstSelector.get();
 }
 
@@ -291,7 +291,7 @@ bool AArch64Subtarget::supportsAddressTopByteIgnored() const {
 
 std::unique_ptr<PBQPRAConstraint>
 AArch64Subtarget::getCustomPBQPConstraints() const {
-  return balanceFPOps() ? llvm::make_unique<A57ChainingConstraint>() : nullptr;
+  return balanceFPOps() ? std::make_unique<A57ChainingConstraint>() : nullptr;
 }
 
 void AArch64Subtarget::mirFileLoaded(MachineFunction &MF) const {

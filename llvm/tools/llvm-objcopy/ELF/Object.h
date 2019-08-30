@@ -884,16 +884,18 @@ protected:
 
 public:
   BasicELFBuilder(uint16_t EM)
-      : EMachine(EM), Obj(llvm::make_unique<Object>()) {}
+      : EMachine(EM), Obj(std::make_unique<Object>()) {}
 };
 
 class BinaryELFBuilder : public BasicELFBuilder {
   MemoryBuffer *MemBuf;
+  uint8_t NewSymbolVisibility;
   void addData(SymbolTableSection *SymTab);
 
 public:
-  BinaryELFBuilder(uint16_t EM, MemoryBuffer *MB)
-      : BasicELFBuilder(EM), MemBuf(MB) {}
+  BinaryELFBuilder(uint16_t EM, MemoryBuffer *MB, uint8_t NewSymbolVisibility)
+      : BasicELFBuilder(EM), MemBuf(MB),
+        NewSymbolVisibility(NewSymbolVisibility) {}
 
   std::unique_ptr<Object> build();
 };
@@ -942,10 +944,12 @@ public:
 class BinaryReader : public Reader {
   const MachineInfo &MInfo;
   MemoryBuffer *MemBuf;
+  uint8_t NewSymbolVisibility;
 
 public:
-  BinaryReader(const MachineInfo &MI, MemoryBuffer *MB)
-      : MInfo(MI), MemBuf(MB) {}
+  BinaryReader(const MachineInfo &MI, MemoryBuffer *MB,
+               const uint8_t NewSymbolVisibility)
+      : MInfo(MI), MemBuf(MB), NewSymbolVisibility(NewSymbolVisibility) {}
   std::unique_ptr<Object> create() const override;
 };
 
@@ -1042,7 +1046,7 @@ public:
                        std::function<bool(const SectionBase &)> ToRemove);
   Error removeSymbols(function_ref<bool(const Symbol &)> ToRemove);
   template <class T, class... Ts> T &addSection(Ts &&... Args) {
-    auto Sec = llvm::make_unique<T>(std::forward<Ts>(Args)...);
+    auto Sec = std::make_unique<T>(std::forward<Ts>(Args)...);
     auto Ptr = Sec.get();
     MustBeRelocatable |= isa<RelocationSection>(*Ptr);
     Sections.emplace_back(std::move(Sec));
@@ -1050,7 +1054,7 @@ public:
     return *Ptr;
   }
   Segment &addSegment(ArrayRef<uint8_t> Data) {
-    Segments.emplace_back(llvm::make_unique<Segment>(Data));
+    Segments.emplace_back(std::make_unique<Segment>(Data));
     return *Segments.back();
   }
   bool isRelocatable() const {

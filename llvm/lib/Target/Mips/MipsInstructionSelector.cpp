@@ -34,7 +34,7 @@ public:
   MipsInstructionSelector(const MipsTargetMachine &TM, const MipsSubtarget &STI,
                           const MipsRegisterBankInfo &RBI);
 
-  bool select(MachineInstr &I, CodeGenCoverage &CoverageInfo) const override;
+  bool select(MachineInstr &I) override;
   static const char *getName() { return DEBUG_TYPE; }
 
 private:
@@ -204,8 +204,7 @@ static unsigned selectLoadStoreOpCode(unsigned Opc, unsigned MemSizeInBytes,
   return Opc;
 }
 
-bool MipsInstructionSelector::select(MachineInstr &I,
-                                     CodeGenCoverage &CoverageInfo) const {
+bool MipsInstructionSelector::select(MachineInstr &I) {
 
   MachineBasicBlock &MBB = *I.getParent();
   MachineFunction &MF = *MBB.getParent();
@@ -232,7 +231,7 @@ bool MipsInstructionSelector::select(MachineInstr &I,
     return true;
   }
 
-  if (selectImpl(I, CoverageInfo))
+  if (selectImpl(I, *CoverageInfo))
     return true;
 
   MachineInstr *MI = nullptr;
@@ -504,7 +503,7 @@ bool MipsInstructionSelector::select(MachineInstr &I,
       Opcode = Mips::TRUNC_W_S;
     else
       Opcode = STI.isFP64bit() ? Mips::TRUNC_W_D64 : Mips::TRUNC_W_D32;
-    unsigned ResultInFPR = MRI.createVirtualRegister(&Mips::FGR32RegClass);
+    Register ResultInFPR = MRI.createVirtualRegister(&Mips::FGR32RegClass);
     MachineInstr *Trunc = BuildMI(MBB, I, I.getDebugLoc(), TII.get(Opcode))
                 .addDef(ResultInFPR)
                 .addUse(I.getOperand(1).getReg());
@@ -725,7 +724,7 @@ bool MipsInstructionSelector::select(MachineInstr &I,
     // MipsFCMPCondCode, result is inverted i.e. MOVT_I is used.
     unsigned MoveOpcode = isLogicallyNegated ? Mips::MOVT_I : Mips::MOVF_I;
 
-    unsigned TrueInReg = MRI.createVirtualRegister(&Mips::GPR32RegClass);
+    Register TrueInReg = MRI.createVirtualRegister(&Mips::GPR32RegClass);
     BuildMI(MBB, I, I.getDebugLoc(), TII.get(Mips::ADDiu))
         .addDef(TrueInReg)
         .addUse(Mips::ZERO)

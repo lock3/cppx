@@ -889,7 +889,7 @@ public:
                                       int64_t Val, SMLoc Loc,
                                       ImmTy Type = ImmTyNone,
                                       bool IsFPImm = false) {
-    auto Op = llvm::make_unique<AMDGPUOperand>(Immediate, AsmParser);
+    auto Op = std::make_unique<AMDGPUOperand>(Immediate, AsmParser);
     Op->Imm.Val = Val;
     Op->Imm.IsFPImm = IsFPImm;
     Op->Imm.Type = Type;
@@ -902,7 +902,7 @@ public:
   static AMDGPUOperand::Ptr CreateToken(const AMDGPUAsmParser *AsmParser,
                                         StringRef Str, SMLoc Loc,
                                         bool HasExplicitEncodingSize = true) {
-    auto Res = llvm::make_unique<AMDGPUOperand>(Token, AsmParser);
+    auto Res = std::make_unique<AMDGPUOperand>(Token, AsmParser);
     Res->Tok.Data = Str.data();
     Res->Tok.Length = Str.size();
     Res->StartLoc = Loc;
@@ -913,7 +913,7 @@ public:
   static AMDGPUOperand::Ptr CreateReg(const AMDGPUAsmParser *AsmParser,
                                       unsigned RegNo, SMLoc S,
                                       SMLoc E) {
-    auto Op = llvm::make_unique<AMDGPUOperand>(Register, AsmParser);
+    auto Op = std::make_unique<AMDGPUOperand>(Register, AsmParser);
     Op->Reg.RegNo = RegNo;
     Op->Reg.Mods = Modifiers();
     Op->StartLoc = S;
@@ -923,7 +923,7 @@ public:
 
   static AMDGPUOperand::Ptr CreateExpr(const AMDGPUAsmParser *AsmParser,
                                        const class MCExpr *Expr, SMLoc S) {
-    auto Op = llvm::make_unique<AMDGPUOperand>(Expression, AsmParser);
+    auto Op = std::make_unique<AMDGPUOperand>(Expression, AsmParser);
     Op->Expr = Expr;
     Op->StartLoc = S;
     Op->EndLoc = S;
@@ -3283,6 +3283,10 @@ bool AMDGPUAsmParser::validateVOP3Literal(const MCInst &Inst) const {
     if (!MO.isImm() || !AMDGPU::isSISrcOperand(Desc, OpIdx))
       continue;
 
+    if (OpIdx == Src2Idx && (Desc.TSFlags & SIInstrFlags::IsMAI) &&
+        getFeatureBits()[AMDGPU::FeatureMFMAInlineLiteralBug])
+      return false;
+
     if (!isInlineConstant(Inst, OpIdx)) {
       uint32_t Value = static_cast<uint32_t>(MO.getImm());
       if (NumLiterals == 0 || LiteralValue != Value) {
@@ -3613,37 +3617,44 @@ bool AMDGPUAsmParser::ParseDirectiveAMDHSAKernel() {
       PARSE_BITS_ENTRY(KD.kernel_code_properties,
                        KERNEL_CODE_PROPERTY_ENABLE_SGPR_PRIVATE_SEGMENT_BUFFER,
                        Val, ValRange);
-      UserSGPRCount += 4;
+      if (Val)
+        UserSGPRCount += 4;
     } else if (ID == ".amdhsa_user_sgpr_dispatch_ptr") {
       PARSE_BITS_ENTRY(KD.kernel_code_properties,
                        KERNEL_CODE_PROPERTY_ENABLE_SGPR_DISPATCH_PTR, Val,
                        ValRange);
-      UserSGPRCount += 2;
+      if (Val)
+        UserSGPRCount += 2;
     } else if (ID == ".amdhsa_user_sgpr_queue_ptr") {
       PARSE_BITS_ENTRY(KD.kernel_code_properties,
                        KERNEL_CODE_PROPERTY_ENABLE_SGPR_QUEUE_PTR, Val,
                        ValRange);
-      UserSGPRCount += 2;
+      if (Val)
+        UserSGPRCount += 2;
     } else if (ID == ".amdhsa_user_sgpr_kernarg_segment_ptr") {
       PARSE_BITS_ENTRY(KD.kernel_code_properties,
                        KERNEL_CODE_PROPERTY_ENABLE_SGPR_KERNARG_SEGMENT_PTR,
                        Val, ValRange);
-      UserSGPRCount += 2;
+      if (Val)
+        UserSGPRCount += 2;
     } else if (ID == ".amdhsa_user_sgpr_dispatch_id") {
       PARSE_BITS_ENTRY(KD.kernel_code_properties,
                        KERNEL_CODE_PROPERTY_ENABLE_SGPR_DISPATCH_ID, Val,
                        ValRange);
-      UserSGPRCount += 2;
+      if (Val)
+        UserSGPRCount += 2;
     } else if (ID == ".amdhsa_user_sgpr_flat_scratch_init") {
       PARSE_BITS_ENTRY(KD.kernel_code_properties,
                        KERNEL_CODE_PROPERTY_ENABLE_SGPR_FLAT_SCRATCH_INIT, Val,
                        ValRange);
-      UserSGPRCount += 2;
+      if (Val)
+        UserSGPRCount += 2;
     } else if (ID == ".amdhsa_user_sgpr_private_segment_size") {
       PARSE_BITS_ENTRY(KD.kernel_code_properties,
                        KERNEL_CODE_PROPERTY_ENABLE_SGPR_PRIVATE_SEGMENT_SIZE,
                        Val, ValRange);
-      UserSGPRCount += 1;
+      if (Val)
+        UserSGPRCount += 1;
     } else if (ID == ".amdhsa_wavefront_size32") {
       if (IVersion.Major < 10)
         return getParser().Error(IDRange.Start, "directive requires gfx10+",

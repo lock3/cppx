@@ -660,7 +660,7 @@ const DWARFUnitIndex &DWARFContext::getCUIndex() {
 
   DataExtractor CUIndexData(DObj->getCUIndexSection(), isLittleEndian(), 0);
 
-  CUIndex = llvm::make_unique<DWARFUnitIndex>(DW_SECT_INFO);
+  CUIndex = std::make_unique<DWARFUnitIndex>(DW_SECT_INFO);
   CUIndex->parse(CUIndexData);
   return *CUIndex;
 }
@@ -671,7 +671,7 @@ const DWARFUnitIndex &DWARFContext::getTUIndex() {
 
   DataExtractor TUIndexData(DObj->getTUIndexSection(), isLittleEndian(), 0);
 
-  TUIndex = llvm::make_unique<DWARFUnitIndex>(DW_SECT_TYPES);
+  TUIndex = std::make_unique<DWARFUnitIndex>(DW_SECT_TYPES);
   TUIndex->parse(TUIndexData);
   return *TUIndex;
 }
@@ -681,7 +681,7 @@ DWARFGdbIndex &DWARFContext::getGdbIndex() {
     return *GdbIndex;
 
   DataExtractor GdbIndexData(DObj->getGdbIndexSection(), true /*LE*/, 0);
-  GdbIndex = llvm::make_unique<DWARFGdbIndex>();
+  GdbIndex = std::make_unique<DWARFGdbIndex>();
   GdbIndex->parse(GdbIndexData);
   return *GdbIndex;
 }
@@ -1111,8 +1111,8 @@ DILineInfoTable DWARFContext::getLineInfoForAddressRange(
   if (!CU)
     return Lines;
 
-  std::string FunctionName = "<invalid>";
   uint32_t StartLine = 0;
+  std::string FunctionName(DILineInfo::BadString);
   getFunctionNameAndStartLineForAddress(CU, Address.Address, Spec.FNKind,
                                         FunctionName, StartLine);
 
@@ -1506,7 +1506,11 @@ public:
     StringMap<unsigned> SectionAmountMap;
     for (const SectionRef &Section : Obj.sections()) {
       StringRef Name;
-      Section.getName(Name);
+      if (auto NameOrErr = Section.getName())
+        Name = *NameOrErr;
+      else
+        consumeError(NameOrErr.takeError());
+
       ++SectionAmountMap[Name];
       SectionNames.push_back({ Name, true });
 
@@ -1571,12 +1575,15 @@ public:
         continue;
 
       StringRef RelSecName;
-      StringRef RelSecData;
-      RelocatedSection->getName(RelSecName);
+      if (auto NameOrErr = RelocatedSection->getName())
+        RelSecName = *NameOrErr;
+      else
+        consumeError(NameOrErr.takeError());
 
       // If the section we're relocating was relocated already by the JIT,
       // then we used the relocated version above, so we do not need to process
       // relocations for it now.
+      StringRef RelSecData;
       if (L && L->getLoadedSectionContents(*RelocatedSection, RelSecData))
         continue;
 
@@ -1796,16 +1803,16 @@ std::unique_ptr<DWARFContext>
 DWARFContext::create(const object::ObjectFile &Obj, const LoadedObjectInfo *L,
                      function_ref<ErrorPolicy(Error)> HandleError,
                      std::string DWPName) {
-  auto DObj = llvm::make_unique<DWARFObjInMemory>(Obj, L, HandleError);
-  return llvm::make_unique<DWARFContext>(std::move(DObj), std::move(DWPName));
+  auto DObj = std::make_unique<DWARFObjInMemory>(Obj, L, HandleError);
+  return std::make_unique<DWARFContext>(std::move(DObj), std::move(DWPName));
 }
 
 std::unique_ptr<DWARFContext>
 DWARFContext::create(const StringMap<std::unique_ptr<MemoryBuffer>> &Sections,
                      uint8_t AddrSize, bool isLittleEndian) {
   auto DObj =
-      llvm::make_unique<DWARFObjInMemory>(Sections, AddrSize, isLittleEndian);
-  return llvm::make_unique<DWARFContext>(std::move(DObj), "");
+      std::make_unique<DWARFObjInMemory>(Sections, AddrSize, isLittleEndian);
+  return std::make_unique<DWARFContext>(std::move(DObj), "");
 }
 
 Error DWARFContext::loadRegisterInfo(const object::ObjectFile &Obj) {

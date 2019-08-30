@@ -87,7 +87,6 @@ private:
   void writeSections();
 
   uint64_t fileSize = 0;
-  uint32_t tableBase = 0;
 
   std::vector<WasmInitEntry> initFunctions;
   llvm::StringMap<std::vector<InputSection *>> customSectionMapping;
@@ -226,7 +225,9 @@ void Writer::layoutMemory() {
   }
 
   if (WasmSym::globalBase)
-    WasmSym::globalBase->setVirtualAddress(config->globalBase);
+    WasmSym::globalBase->setVirtualAddress(memoryPtr);
+  if (WasmSym::definedMemoryBase)
+    WasmSym::definedMemoryBase->setVirtualAddress(memoryPtr);
 
   uint32_t dataStart = memoryPtr;
 
@@ -617,6 +618,8 @@ void Writer::assignIndexes() {
     for (InputEvent *event : file->events)
       out.eventSec->addEvent(event);
   }
+
+  out.globalSec->assignIndexes();
 }
 
 static StringRef getOutputDataSegmentName(StringRef name) {
@@ -848,7 +851,7 @@ void Writer::createSyntheticSections() {
   out.globalSec = make<GlobalSection>();
   out.eventSec = make<EventSection>();
   out.exportSec = make<ExportSection>();
-  out.elemSec = make<ElemSection>(tableBase);
+  out.elemSec = make<ElemSection>();
   out.dataCountSec = make<DataCountSection>(segments.size());
   out.linkingSec = make<LinkingSection>(initFunctions, segments);
   out.nameSec = make<NameSection>();
@@ -862,8 +865,11 @@ void Writer::run() {
 
   // For PIC code the table base is assigned dynamically by the loader.
   // For non-PIC, we start at 1 so that accessing table index 0 always traps.
-  if (!config->isPic)
-    tableBase = 1;
+  if (!config->isPic) {
+    config->tableBase = 1;
+    if (WasmSym::definedTableBase)
+      WasmSym::definedTableBase->setVirtualAddress(config->tableBase);
+  }
 
   log("-- createOutputSegments");
   createOutputSegments();

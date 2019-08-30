@@ -52,6 +52,8 @@ public:
 
   virtual void writeBody() {}
 
+  virtual void assignIndexes() {}
+
   void finalizeContents() override {
     writeBody();
     bodyOutputStream.flush();
@@ -173,14 +175,17 @@ class GlobalSection : public SyntheticSection {
 public:
   GlobalSection() : SyntheticSection(llvm::wasm::WASM_SEC_GLOBAL) {}
   uint32_t numGlobals() const {
-    return inputGlobals.size() + definedFakeGlobals.size();
+    return inputGlobals.size() + definedFakeGlobals.size() + gotSymbols.size();
   }
   bool isNeeded() const override { return numGlobals() > 0; }
+  void assignIndexes() override;
   void writeBody() override;
   void addGlobal(InputGlobal *global);
+  void addDummyGOTEntry(Symbol *sym);
 
   std::vector<const DefinedData *> definedFakeGlobals;
   std::vector<InputGlobal *> inputGlobals;
+  std::vector<Symbol *> gotSymbols;
 };
 
 // The event section contains a list of declared wasm events associated with the
@@ -214,13 +219,12 @@ public:
 
 class ElemSection : public SyntheticSection {
 public:
-  ElemSection(uint32_t offset)
-      : SyntheticSection(llvm::wasm::WASM_SEC_ELEM), elemOffset(offset) {}
+  ElemSection()
+      : SyntheticSection(llvm::wasm::WASM_SEC_ELEM) {}
   bool isNeeded() const override { return indirectFunctions.size() > 0; };
   void writeBody() override;
   void addEntry(FunctionSymbol *sym);
   uint32_t numEntries() const { return indirectFunctions.size(); }
-  uint32_t elemOffset;
 
 protected:
   std::vector<const FunctionSymbol *> indirectFunctions;

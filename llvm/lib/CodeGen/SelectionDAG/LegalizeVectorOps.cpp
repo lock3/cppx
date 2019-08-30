@@ -333,6 +333,8 @@ SDValue VectorLegalizer::LegalizeOp(SDValue Op) {
   case ISD::STRICT_FFLOOR:
   case ISD::STRICT_FROUND:
   case ISD::STRICT_FTRUNC:
+  case ISD::STRICT_FP_TO_SINT:
+  case ISD::STRICT_FP_TO_UINT:
   case ISD::STRICT_FP_ROUND:
   case ISD::STRICT_FP_EXTEND:
     Action = TLI.getOperationAction(Node->getOpcode(), Node->getValueType(0));
@@ -831,6 +833,13 @@ SDValue VectorLegalizer::Expand(SDValue Op) {
   case ISD::SMULFIX:
   case ISD::UMULFIX:
     return ExpandFixedPointMul(Op);
+  case ISD::SMULFIXSAT:
+    // FIXME: We do not expand SMULFIXSAT here yet, not sure why. Maybe it
+    // results in worse codegen compared to the default unroll? This should
+    // probably be investigated. And if we still prefer to unroll an explanation
+    // could be helpful, otherwise it just looks like something that hasn't been
+    // "implemented" yet.
+    return DAG.UnrollVectorOp(Op.getNode());
   case ISD::STRICT_FADD:
   case ISD::STRICT_FSUB:
   case ISD::STRICT_FMUL:
@@ -855,6 +864,8 @@ SDValue VectorLegalizer::Expand(SDValue Op) {
   case ISD::STRICT_FFLOOR:
   case ISD::STRICT_FROUND:
   case ISD::STRICT_FTRUNC:
+  case ISD::STRICT_FP_TO_SINT:
+  case ISD::STRICT_FP_TO_UINT:
     return ExpandStrictFPOp(Op);
   case ISD::VECREDUCE_ADD:
   case ISD::VECREDUCE_MUL:
@@ -1179,9 +1190,13 @@ SDValue VectorLegalizer::ExpandABS(SDValue Op) {
 
 SDValue VectorLegalizer::ExpandFP_TO_UINT(SDValue Op) {
   // Attempt to expand using TargetLowering.
-  SDValue Result;
-  if (TLI.expandFP_TO_UINT(Op.getNode(), Result, DAG))
+  SDValue Result, Chain;
+  if (TLI.expandFP_TO_UINT(Op.getNode(), Result, Chain, DAG)) {
+    if (Op.getNode()->isStrictFPOpcode())
+      // Relink the chain
+      DAG.ReplaceAllUsesOfValueWith(Op.getValue(1), Chain);
     return Result;
+  }
 
   // Otherwise go ahead and unroll.
   return DAG.UnrollVectorOp(Op.getNode());

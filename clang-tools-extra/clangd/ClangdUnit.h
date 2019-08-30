@@ -25,6 +25,7 @@
 #include "clang/Tooling/CompilationDatabase.h"
 #include "clang/Tooling/Core/Replacement.h"
 #include "clang/Tooling/Syntax/Tokens.h"
+#include "llvm/ADT/ArrayRef.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -76,10 +77,11 @@ public:
   /// it is reused during parsing.
   static llvm::Optional<ParsedAST>
   build(std::unique_ptr<clang::CompilerInvocation> CI,
+        llvm::ArrayRef<Diag> CompilerInvocationDiags,
         std::shared_ptr<const PreambleData> Preamble,
         std::unique_ptr<llvm::MemoryBuffer> Buffer,
-        IntrusiveRefCntPtr<llvm::vfs::FileSystem> VFS, const SymbolIndex *Index,
-        const ParseOptions &Opts);
+        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> VFS,
+        const SymbolIndex *Index, const ParseOptions &Opts);
 
   ParsedAST(ParsedAST &&Other);
   ParsedAST &operator=(ParsedAST &&Other);
@@ -116,6 +118,9 @@ public:
   const IncludeStructure &getIncludeStructure() const;
   const CanonicalIncludes &getCanonicalIncludes() const;
 
+  /// The start locations of all macro expansions spelled inside the main file.
+  /// Does not include expansions from inside other macro expansions.
+  llvm::ArrayRef<SourceLocation> getMainFileExpansions() const;
   /// Tokens recorded while parsing the main file.
   /// (!) does not have tokens from the preamble.
   const syntax::TokenBuffer &getTokens() const { return Tokens; }
@@ -124,6 +129,7 @@ private:
   ParsedAST(std::shared_ptr<const PreambleData> Preamble,
             std::unique_ptr<CompilerInstance> Clang,
             std::unique_ptr<FrontendAction> Action, syntax::TokenBuffer Tokens,
+            std::vector<SourceLocation> MainFileMacroExpLocs,
             std::vector<Decl *> LocalTopLevelDecls, std::vector<Diag> Diags,
             IncludeStructure Includes, CanonicalIncludes CanonIncludes);
 
@@ -143,6 +149,9 @@ private:
   ///   - Does not have spelled or expanded tokens for files from preamble.
   syntax::TokenBuffer Tokens;
 
+  /// The start locations of all macro expansions spelled inside the main file.
+  /// Does not include expansions from inside other macro expansions.
+  std::vector<SourceLocation> MainFileMacroExpLocs;
   // Data, stored after parsing.
   std::vector<Diag> Diags;
   // Top-level decls inside the current file. Not that this does not include
@@ -174,6 +183,7 @@ buildPreamble(PathRef FileName, CompilerInvocation &CI,
 /// result of calling buildPreamble.
 llvm::Optional<ParsedAST>
 buildAST(PathRef FileName, std::unique_ptr<CompilerInvocation> Invocation,
+         llvm::ArrayRef<Diag> CompilerInvocationDiags,
          const ParseInputs &Inputs,
          std::shared_ptr<const PreambleData> Preamble);
 

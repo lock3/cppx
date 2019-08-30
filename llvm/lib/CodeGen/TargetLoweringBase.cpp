@@ -578,8 +578,6 @@ TargetLoweringBase::TargetLoweringBase(const TargetMachine &tm) : TM(tm) {
   BooleanFloatContents = UndefinedBooleanContent;
   BooleanVectorContents = UndefinedBooleanContent;
   SchedPreferenceInfo = Sched::ILP;
-  JumpBufSize = 0;
-  JumpBufAlignment = 0;
   MinFunctionAlignment = 0;
   PrefFunctionAlignment = 0;
   PrefLoopAlignment = 0;
@@ -718,6 +716,8 @@ void TargetLoweringBase::initActions() {
     setOperationAction(ISD::STRICT_FMINNUM, VT, Expand);
     setOperationAction(ISD::STRICT_FP_ROUND, VT, Expand);
     setOperationAction(ISD::STRICT_FP_EXTEND, VT, Expand);
+    setOperationAction(ISD::STRICT_FP_TO_SINT, VT, Expand);
+    setOperationAction(ISD::STRICT_FP_TO_UINT, VT, Expand);
 
     // For most targets @llvm.get.dynamic.area.offset just returns 0.
     setOperationAction(ISD::GET_DYNAMIC_AREA_OFFSET, VT, Expand);
@@ -824,7 +824,8 @@ TargetLoweringBase::getTypeConversion(LLVMContext &Context, EVT VT) const {
     LegalizeTypeAction LA = ValueTypeActions.getTypeAction(SVT);
 
     assert((LA == TypeLegal || LA == TypeSoftenFloat ||
-            ValueTypeActions.getTypeAction(NVT) != TypePromoteInteger) &&
+            (NVT.isVector() ||
+             ValueTypeActions.getTypeAction(NVT) != TypePromoteInteger)) &&
            "Promote may not follow Expand or Promote");
 
     if (LA == TypeSplitVector)
@@ -1281,21 +1282,33 @@ void TargetLoweringBase::computeRegisterProperties(
       LLVM_FALLTHROUGH;
 
     case TypeWidenVector:
-      // Try to widen the vector.
-      for (unsigned nVT = i + 1; nVT <= MVT::LAST_VECTOR_VALUETYPE; ++nVT) {
-        MVT SVT = (MVT::SimpleValueType) nVT;
-        if (SVT.getVectorElementType() == EltVT
-            && SVT.getVectorNumElements() > NElts && isTypeLegal(SVT)) {
-          TransformToType[i] = SVT;
-          RegisterTypeForVT[i] = SVT;
-          NumRegistersForVT[i] = 1;
+      if (isPowerOf2_32(NElts)) {
+        // Try to widen the vector.
+        for (unsigned nVT = i + 1; nVT <= MVT::LAST_VECTOR_VALUETYPE; ++nVT) {
+          MVT SVT = (MVT::SimpleValueType) nVT;
+          if (SVT.getVectorElementType() == EltVT
+              && SVT.getVectorNumElements() > NElts && isTypeLegal(SVT)) {
+            TransformToType[i] = SVT;
+            RegisterTypeForVT[i] = SVT;
+            NumRegistersForVT[i] = 1;
+            ValueTypeActions.setTypeAction(VT, TypeWidenVector);
+            IsLegalWiderType = true;
+            break;
+          }
+        }
+        if (IsLegalWiderType)
+          break;
+      } else {
+        // Only widen to the next power of 2 to keep consistency with EVT.
+        MVT NVT = VT.getPow2VectorType();
+        if (isTypeLegal(NVT)) {
+          TransformToType[i] = NVT;
           ValueTypeActions.setTypeAction(VT, TypeWidenVector);
-          IsLegalWiderType = true;
+          RegisterTypeForVT[i] = NVT;
+          NumRegistersForVT[i] = 1;
           break;
         }
       }
-      if (IsLegalWiderType)
-        break;
       LLVM_FALLTHROUGH;
 
     case TypeSplitVector:

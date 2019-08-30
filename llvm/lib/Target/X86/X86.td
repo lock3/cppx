@@ -241,8 +241,11 @@ def FeatureCLDEMOTE  : SubtargetFeature<"cldemote", "HasCLDEMOTE", "true",
                                       "Enable Cache Demote">;
 def FeaturePTWRITE  : SubtargetFeature<"ptwrite", "HasPTWRITE", "true",
                                       "Support ptwrite instruction">;
-def FeatureMPX     : SubtargetFeature<"mpx", "HasMPX", "true",
-                                      "Support MPX instructions">;
+// FIXME: This feature is deprecated in 10.0 and should not be used for
+// anything, but removing it would break IR files that may contain it in a
+// target-feature attribute.
+def FeatureDeprecatedMPX : SubtargetFeature<"mpx", "DeprecatedHasMPX", "false",
+                                      "Deprecated. Support MPX instructions">;
 def FeatureLEAForSP : SubtargetFeature<"lea-sp", "UseLeaForSP", "true",
                                      "Use LEA for adjusting the stack pointer">;
 def FeatureSlowDivide32 : SubtargetFeature<"idivl-to-divb",
@@ -580,7 +583,6 @@ def ProcessorFeatures {
 
   // Skylake
   list<SubtargetFeature> SKLAdditionalFeatures = [FeatureAES,
-                                                  FeatureMPX,
                                                   FeatureXSAVEC,
                                                   FeatureXSAVES,
                                                   FeatureCLFLUSHOPT,
@@ -666,6 +668,17 @@ def ProcessorFeatures {
   list<SubtargetFeature> ICXFeatures =
     !listconcat(ICLInheritableFeatures, ICXSpecificFeatures);
 
+  //Tigerlake
+  list<SubtargetFeature> TGLAdditionalFeatures = [FeatureVP2INTERSECT,
+                                                  FeatureMOVDIRI,
+                                                  FeatureMOVDIR64B,
+                                                  FeatureSHSTK];
+  list<SubtargetFeature> TGLSpecificFeatures = [FeatureHasFastGather];
+  list<SubtargetFeature> TGLInheritableFeatures =
+    !listconcat(TGLAdditionalFeatures ,TGLSpecificFeatures);
+  list<SubtargetFeature> TGLFeatures =
+    !listconcat(ICLFeatures, TGLInheritableFeatures );
+
   // Atom
   list<SubtargetFeature> AtomInheritableFeatures = [FeatureX87,
                                                     FeatureCMPXCHG8B,
@@ -708,7 +721,6 @@ def ProcessorFeatures {
 
   // Goldmont
   list<SubtargetFeature> GLMAdditionalFeatures = [FeatureAES,
-                                                  FeatureMPX,
                                                   FeatureSHA,
                                                   FeatureRDSEED,
                                                   FeatureXSAVE,
@@ -1110,6 +1122,8 @@ def : ProcessorModel<"icelake-client", SkylakeServerModel,
                      ProcessorFeatures.ICLFeatures>;
 def : ProcessorModel<"icelake-server", SkylakeServerModel,
                      ProcessorFeatures.ICXFeatures>;
+def : ProcessorModel<"tigerlake", SkylakeServerModel,
+                     ProcessorFeatures.TGLFeatures>;
 
 // AMD CPUs.
 

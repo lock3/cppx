@@ -61,6 +61,7 @@ MCContext::MCContext(const MCAsmInfo *mai, const MCRegisterInfo *mri,
                      MCTargetOptions const *TargetOpts, bool DoAutoReset)
     : SrcMgr(mgr), InlineSrcMgr(nullptr), MAI(mai), MRI(mri), MOFI(mofi),
       Symbols(Allocator), UsedNames(Allocator),
+      InlineAsmUsedLabelNames(Allocator),
       CurrentDwarfLoc(0, 0, 0, DWARF2_FLAG_IS_STMT, 0, 0),
       AutoReset(DoAutoReset), TargetOptions(TargetOpts) {
   SecureLogFile = AsSecureLogFileName;
@@ -90,6 +91,7 @@ void MCContext::reset() {
   XCOFFAllocator.DestroyAll();
 
   MCSubtargetAllocator.DestroyAll();
+  InlineAsmUsedLabelNames.clear();
   UsedNames.clear();
   Symbols.clear();
   Allocator.Reset();
@@ -270,6 +272,10 @@ void MCContext::setSymbolValue(MCStreamer &Streamer,
                               uint64_t Val) {
   auto Symbol = getOrCreateSymbol(Sym);
   Streamer.EmitAssignment(Symbol, MCConstantExpr::create(Val, *this));
+}
+
+void MCContext::registerInlineAsmLabel(MCSymbol *Sym) {
+  InlineAsmUsedLabelNames[Sym->getName()] = Sym;
 }
 
 //===----------------------------------------------------------------------===//
@@ -532,6 +538,7 @@ MCSectionWasm *MCContext::getWasmSection(const Twine &Section, SectionKind Kind,
 MCSectionXCOFF *MCContext::getXCOFFSection(StringRef Section,
                                            XCOFF::StorageMappingClass SMC,
                                            XCOFF::SymbolType Type,
+                                           XCOFF::StorageClass SC,
                                            SectionKind Kind,
                                            const char *BeginSymName) {
   // Do the lookup. If we have a hit, return it.
@@ -549,7 +556,7 @@ MCSectionXCOFF *MCContext::getXCOFFSection(StringRef Section,
     Begin = createTempSymbol(BeginSymName, false);
 
   MCSectionXCOFF *Result = new (XCOFFAllocator.Allocate())
-      MCSectionXCOFF(CachedName, SMC, Type, Kind, Begin);
+      MCSectionXCOFF(CachedName, SMC, Type, SC, Kind, Begin);
   Entry.second = Result;
 
   auto *F = new MCDataFragment();

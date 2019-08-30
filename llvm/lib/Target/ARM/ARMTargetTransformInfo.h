@@ -101,10 +101,24 @@ public:
 
   /// Floating-point computation using ARMv8 AArch32 Advanced
   /// SIMD instructions remains unchanged from ARMv7. Only AArch64 SIMD
-  /// is IEEE-754 compliant, but it's not covered in this target.
+  /// and Arm MVE are IEEE-754 compliant.
   bool isFPVectorizationPotentiallyUnsafe() {
-    return !ST->isTargetDarwin();
+    return !ST->isTargetDarwin() && !ST->hasMVEFloatOps();
   }
+
+  bool isLegalMaskedLoad(Type *DataTy) {
+    if (!ST->hasMVEIntegerOps())
+      return false;
+
+    unsigned VecWidth = DataTy->getPrimitiveSizeInBits();
+    if (VecWidth != 128)
+      return false;
+
+    unsigned EltWidth = DataTy->getScalarSizeInBits();
+    return EltWidth == 32 || EltWidth == 16 || EltWidth == 8;
+  }
+
+  bool isLegalMaskedStore(Type *DataTy) { return isLegalMaskedLoad(DataTy); }
 
   /// \name Scalar TTI Implementations
   /// @{
@@ -126,6 +140,8 @@ public:
     if (Vector) {
       if (ST->hasNEON())
         return 16;
+      if (ST->hasMVEIntegerOps())
+        return 8;
       return 0;
     }
 
@@ -137,6 +153,8 @@ public:
   unsigned getRegisterBitWidth(bool Vector) const {
     if (Vector) {
       if (ST->hasNEON())
+        return 128;
+      if (ST->hasMVEIntegerOps())
         return 128;
       return 0;
     }
@@ -151,6 +169,13 @@ public:
   int getMemcpyCost(const Instruction *I);
 
   int getShuffleCost(TTI::ShuffleKind Kind, Type *Tp, int Index, Type *SubTp);
+
+  bool useReductionIntrinsic(unsigned Opcode, Type *Ty,
+                             TTI::ReductionFlags Flags) const;
+
+  bool shouldExpandReduction(const IntrinsicInst *II) const {
+    return false;
+  }
 
   int getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src,
                        const Instruction *I = nullptr);

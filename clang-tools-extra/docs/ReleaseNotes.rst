@@ -67,6 +67,12 @@ The improvements are...
 Improvements to clang-tidy
 --------------------------
 
+- New :doc:`bugprone-dynamic-static-initializers
+  <clang-tidy/checks/bugprone-dynamic-static-initializers>` check.
+
+  Finds instances where variables with static storage are initialized
+  dynamically in header files.
+
 - New :doc:`linuxkernel-must-use-errs
   <clang-tidy/checks/linuxkernel-must-use-errs>` check.
 
@@ -78,7 +84,6 @@ Improvements to clang-tidy
 
   Finds uses of deprecated Googletest APIs with names containing ``case`` and
   replaces them with equivalent APIs with ``suite``.
-
 
 Improvements to include-fixer
 -----------------------------
@@ -99,3 +104,11 @@ Improvements to pp-trace
 ------------------------
 
 The improvements are...
+
+Clang-tidy visual studio plugin
+-------------------------------
+
+The clang-tidy-vs plugin has been removed from clang, as
+it's no longer maintained. Users should migrate to
+`Clang Power Tools <https://marketplace.visualstudio.com/items?itemName=caphyon.ClangPowerTools>`_
+instead.

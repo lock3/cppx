@@ -93,6 +93,9 @@ public:
   const char *getTargetNodeName(unsigned Opcode) const override;
 
   ConstraintType getConstraintType(StringRef Constraint) const override;
+
+  unsigned getInlineAsmMemConstraint(StringRef ConstraintCode) const override;
+
   std::pair<unsigned, const TargetRegisterClass *>
   getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
                                StringRef Constraint, MVT VT) const override;
@@ -141,6 +144,8 @@ public:
   /// exception typeid on entry to a landing pad.
   unsigned
   getExceptionSelectorRegister(const Constant *PersonalityFn) const override;
+
+  bool shouldExtendTypeInLibCall(EVT Type) const override;
 
 private:
   void analyzeInputArgs(MachineFunction &MF, CCState &CCInfo,

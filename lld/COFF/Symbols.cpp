@@ -61,7 +61,9 @@ StringRef Symbol::getName() {
 InputFile *Symbol::getFile() {
   if (auto *sym = dyn_cast<DefinedCOFF>(this))
     return sym->file;
-  if (auto *sym = dyn_cast<Lazy>(this))
+  if (auto *sym = dyn_cast<LazyArchive>(this))
+    return sym->file;
+  if (auto *sym = dyn_cast<LazyObject>(this))
     return sym->file;
   return nullptr;
 }
@@ -117,6 +119,15 @@ Defined *Undefined::getWeakAlias() {
     if (auto *d = dyn_cast<Defined>(a))
       return d;
   return nullptr;
+}
+
+MemoryBufferRef LazyArchive::getMemberBuffer() {
+  Archive::Child c =
+    CHECK(sym.getMember(),
+          "could not get the member for symbol " + toCOFFString(sym));
+  return CHECK(c.getMemoryBufferRef(),
+      "could not get the buffer for the member defining symbol " +
+      toCOFFString(sym));
 }
 } // namespace coff
 } // namespace lld

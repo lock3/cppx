@@ -95,6 +95,16 @@ template <> struct ScalarEnumerationTraits<FormatStyle::JavaScriptQuoteStyle> {
   }
 };
 
+template <> struct ScalarEnumerationTraits<FormatStyle::ShortBlockStyle> {
+  static void enumeration(IO &IO, FormatStyle::ShortBlockStyle &Value) {
+    IO.enumCase(Value, "Never", FormatStyle::SBS_Never);
+    IO.enumCase(Value, "false", FormatStyle::SBS_Never);
+    IO.enumCase(Value, "Always", FormatStyle::SBS_Always);
+    IO.enumCase(Value, "true", FormatStyle::SBS_Always);
+    IO.enumCase(Value, "Empty", FormatStyle::SBS_Empty);
+  }
+};
+
 template <> struct ScalarEnumerationTraits<FormatStyle::ShortFunctionStyle> {
   static void enumeration(IO &IO, FormatStyle::ShortFunctionStyle &Value) {
     IO.enumCase(Value, "None", FormatStyle::SFS_None);
@@ -494,6 +504,7 @@ template <> struct MappingTraits<FormatStyle> {
     IO.mapOptional("SpaceBeforeParens", Style.SpaceBeforeParens);
     IO.mapOptional("SpaceBeforeRangeBasedForLoopColon",
                    Style.SpaceBeforeRangeBasedForLoopColon);
+    IO.mapOptional("SpaceInEmptyBlock", Style.SpaceInEmptyBlock);
     IO.mapOptional("SpaceInEmptyParentheses", Style.SpaceInEmptyParentheses);
     IO.mapOptional("SpacesBeforeTrailingComments",
                    Style.SpacesBeforeTrailingComments);
@@ -673,7 +684,7 @@ FormatStyle getLLVMStyle(FormatStyle::LanguageKind Language) {
   LLVMStyle.AllowAllConstructorInitializersOnNextLine = true;
   LLVMStyle.AllowAllParametersOfDeclarationOnNextLine = true;
   LLVMStyle.AllowShortFunctionsOnASingleLine = FormatStyle::SFS_All;
-  LLVMStyle.AllowShortBlocksOnASingleLine = false;
+  LLVMStyle.AllowShortBlocksOnASingleLine = FormatStyle::SBS_Never;
   LLVMStyle.AllowShortCaseLabelsOnASingleLine = false;
   LLVMStyle.AllowShortIfStatementsOnASingleLine = FormatStyle::SIS_Never;
   LLVMStyle.AllowShortLambdasOnASingleLine = FormatStyle::SLS_All;
@@ -734,6 +745,7 @@ FormatStyle getLLVMStyle(FormatStyle::LanguageKind Language) {
   LLVMStyle.ReflowComments = true;
   LLVMStyle.SpacesInParentheses = false;
   LLVMStyle.SpacesInSquareBrackets = false;
+  LLVMStyle.SpaceInEmptyBlock = false;
   LLVMStyle.SpaceInEmptyParentheses = false;
   LLVMStyle.SpacesInContainerLiterals = true;
   LLVMStyle.SpacesInCStyleCastParentheses = false;
@@ -898,6 +910,27 @@ FormatStyle getGoogleStyle(FormatStyle::LanguageKind Language) {
 
 FormatStyle getChromiumStyle(FormatStyle::LanguageKind Language) {
   FormatStyle ChromiumStyle = getGoogleStyle(Language);
+
+  // Disable include reordering across blocks in Chromium code.
+  // - clang-format tries to detect that foo.h is the "main" header for
+  //   foo.cc and foo_unittest.cc via IncludeIsMainRegex. However, Chromium
+  //   uses many other suffices (_win.cc, _mac.mm, _posix.cc, _browsertest.cc,
+  //   _private.cc, _impl.cc etc) in different permutations
+  //   (_win_browsertest.cc) so disable this until IncludeIsMainRegex has a
+  //   better default for Chromium code.
+  // - The default for .cc and .mm files is different (r357695) for Google style
+  //   for the same reason. The plan is to unify this again once the main
+  //   header detection works for Google's ObjC code, but this hasn't happened
+  //   yet. Since Chromium has some ObjC code, switching Chromium is blocked
+  //   on that.
+  // - Finally, "If include reordering is harmful, put things in different
+  //   blocks to prevent it" has been a recommendation for a long time that
+  //   people are used to. We'll need a dev education push to change this to
+  //   "If include reordering is harmful, put things in a different block and
+  //   _prepend that with a comment_ to prevent it" before changing behavior.
+  ChromiumStyle.IncludeStyle.IncludeBlocks =
+      tooling::IncludeStyle::IBS_Preserve;
+
   if (Language == FormatStyle::LK_Java) {
     ChromiumStyle.AllowShortIfStatementsOnASingleLine =
         FormatStyle::SIS_WithoutElse;
@@ -967,6 +1000,7 @@ FormatStyle getWebKitStyle() {
   Style.AlignAfterOpenBracket = FormatStyle::BAS_DontAlign;
   Style.AlignOperands = false;
   Style.AlignTrailingComments = false;
+  Style.AllowShortBlocksOnASingleLine = FormatStyle::SBS_Empty;
   Style.BreakBeforeBinaryOperators = FormatStyle::BOS_All;
   Style.BreakBeforeBraces = FormatStyle::BS_WebKit;
   Style.BreakConstructorInitializers = FormatStyle::BCIS_BeforeComma;
@@ -979,6 +1013,7 @@ FormatStyle getWebKitStyle() {
   Style.ObjCSpaceAfterProperty = true;
   Style.PointerAlignment = FormatStyle::PAS_Left;
   Style.SpaceBeforeCpp11BracedList = true;
+  Style.SpaceInEmptyBlock = true;
   return Style;
 }
 
@@ -1016,7 +1051,6 @@ FormatStyle getMicrosoftStyle(FormatStyle::LanguageKind Language) {
   Style.BraceWrapping.BeforeElse = true;
   Style.PenaltyReturnTypeOnItsOwnLine = 1000;
   Style.AllowShortFunctionsOnASingleLine = FormatStyle::SFS_None;
-  Style.AllowShortBlocksOnASingleLine = false;
   Style.AllowShortCaseLabelsOnASingleLine = false;
   Style.AllowShortIfStatementsOnASingleLine = FormatStyle::SIS_Never;
   Style.AllowShortLoopsOnASingleLine = false;
@@ -2290,7 +2324,7 @@ reformat(const FormatStyle &Style, StringRef Code,
   });
 
   auto Env =
-      llvm::make_unique<Environment>(Code, FileName, Ranges, FirstStartColumn,
+      std::make_unique<Environment>(Code, FileName, Ranges, FirstStartColumn,
                                      NextStartColumn, LastStartColumn);
   llvm::Optional<std::string> CurrentCode = None;
   tooling::Replacements Fixes;
@@ -2304,7 +2338,7 @@ reformat(const FormatStyle &Style, StringRef Code,
       Penalty += PassFixes.second;
       if (I + 1 < E) {
         CurrentCode = std::move(*NewCode);
-        Env = llvm::make_unique<Environment>(
+        Env = std::make_unique<Environment>(
             *CurrentCode, FileName,
             tooling::calculateRangesAfterReplacements(Fixes, Ranges),
             FirstStartColumn, NextStartColumn, LastStartColumn);
@@ -2398,8 +2432,9 @@ const char *StyleOptionHelpDescription =
 static FormatStyle::LanguageKind getLanguageByFileName(StringRef FileName) {
   if (FileName.endswith(".java"))
     return FormatStyle::LK_Java;
-  if (FileName.endswith_lower(".js") || FileName.endswith_lower(".ts"))
-    return FormatStyle::LK_JavaScript; // JavaScript or TypeScript.
+  if (FileName.endswith_lower(".js") || FileName.endswith_lower(".mjs") ||
+      FileName.endswith_lower(".ts"))
+    return FormatStyle::LK_JavaScript; // (module) JavaScript or TypeScript.
   if (FileName.endswith(".m") || FileName.endswith(".mm"))
     return FormatStyle::LK_ObjC;
   if (FileName.endswith_lower(".proto") ||

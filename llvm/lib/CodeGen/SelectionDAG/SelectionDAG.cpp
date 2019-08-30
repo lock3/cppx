@@ -3715,6 +3715,18 @@ unsigned SelectionDAG::ComputeNumSignBits(SDValue Op, const APInt &DemandedElts,
     Tmp = ComputeNumSignBits(Op.getOperand(0), Depth+1);
     if (Tmp == 1) return 1;  // Early out.
     return std::min(Tmp, Tmp2)-1;
+  case ISD::MUL: {
+    // The output of the Mul can be at most twice the valid bits in the inputs.
+    unsigned SignBitsOp0 = ComputeNumSignBits(Op.getOperand(0), Depth + 1);
+    if (SignBitsOp0 == 1)
+      break;
+    unsigned SignBitsOp1 = ComputeNumSignBits(Op.getOperand(1), Depth + 1);
+    if (SignBitsOp1 == 1)
+      break;
+    unsigned OutValidBits =
+        (VTBits - SignBitsOp0 + 1) + (VTBits - SignBitsOp1 + 1);
+    return OutValidBits > VTBits ? 1 : VTBits - OutValidBits + 1;
+  }
   case ISD::TRUNCATE: {
     // Check if the sign bits of source go down as far as the truncated value.
     unsigned NumSrcBits = Op.getOperand(0).getScalarValueSizeInBits();
@@ -7766,6 +7778,8 @@ SDNode* SelectionDAG::mutateStrictFPToFP(SDNode *Node) {
   case ISD::STRICT_FTRUNC:     NewOpc = ISD::FTRUNC;     break;
   case ISD::STRICT_FP_ROUND:   NewOpc = ISD::FP_ROUND;   break;
   case ISD::STRICT_FP_EXTEND:  NewOpc = ISD::FP_EXTEND;  break;
+  case ISD::STRICT_FP_TO_SINT: NewOpc = ISD::FP_TO_SINT; break;
+  case ISD::STRICT_FP_TO_UINT: NewOpc = ISD::FP_TO_UINT; break;
   }
 
   assert(Node->getNumValues() == 2 && "Unexpected number of results!");
@@ -7915,6 +7929,7 @@ MachineSDNode *SelectionDAG::getMachineNode(unsigned Opcode, const SDLoc &DL,
     CSEMap.InsertNode(N, IP);
 
   InsertNode(N);
+  NewSDValueDbgMsg(SDValue(N, 0), "Creating new machine node: ", this);
   return N;
 }
 
@@ -9002,15 +9017,27 @@ SelectionDAG::matchBinOpReduction(SDNode *Extract, ISD::NodeType &BinOp,
       !isNullConstant(Extract->getOperand(1)))
     return SDValue();
 
-  SDValue Op = Extract->getOperand(0);
-  unsigned Stages = Log2_32(Op.getValueType().getVectorNumElements());
-
   // Match against one of the candidate binary ops.
+  SDValue Op = Extract->getOperand(0);
   if (llvm::none_of(CandidateBinOps, [Op](ISD::NodeType BinOp) {
         return Op.getOpcode() == unsigned(BinOp);
       }))
     return SDValue();
+
+  // Floating-point reductions may require relaxed constraints on the final step
+  // of the reduction because they may reorder intermediate operations.
   unsigned CandidateBinOp = Op.getOpcode();
+  if (Op.getValueType().isFloatingPoint()) {
+    SDNodeFlags Flags = Op->getFlags();
+    switch (CandidateBinOp) {
+    case ISD::FADD:
+      if (!Flags.hasNoSignedZeros() || !Flags.hasAllowReassociation())
+        return SDValue();
+      break;
+    default:
+      llvm_unreachable("Unhandled FP opcode for binop reduction");
+    }
+  }
 
   // Matching failed - attempt to see if we did enough stages that a partial
   // reduction from a subvector is possible.
@@ -9041,6 +9068,7 @@ SelectionDAG::matchBinOpReduction(SDNode *Extract, ISD::NodeType &BinOp,
   // While a partial reduction match would be:
   // <2,3,u,u,u,u,u,u>
   // <1,u,u,u,u,u,u,u>
+  unsigned Stages = Log2_32(Op.getValueType().getVectorNumElements());
   SDValue PrevOp;
   for (unsigned i = 0; i < Stages; ++i) {
     unsigned MaskEnd = (1 << i);

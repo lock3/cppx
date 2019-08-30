@@ -62,7 +62,6 @@ private:
   void setReservedSymbolSections();
 
   std::vector<PhdrEntry *> createPhdrs(Partition &part);
-  void removeEmptyPTLoad(std::vector<PhdrEntry *> &phdrEntry);
   void addPhdrForSection(Partition &part, unsigned shType, unsigned pType,
                          unsigned pFlags);
   void assignFileOffsets();
@@ -142,8 +141,7 @@ static bool needsInterpSection() {
 
 template <class ELFT> void elf::writeResult() { Writer<ELFT>().run(); }
 
-template <class ELFT>
-void Writer<ELFT>::removeEmptyPTLoad(std::vector<PhdrEntry *> &phdrs) {
+static void removeEmptyPTLoad(std::vector<PhdrEntry *> &phdrs) {
   llvm::erase_if(phdrs, [&](const PhdrEntry *p) {
     if (p->p_type != PT_LOAD)
       return false;
@@ -176,7 +174,7 @@ static void copySectionsIntoPartitions() {
                        newSections.end());
 }
 
-template <class ELFT> static void combineEhSections() {
+void elf::combineEhSections() {
   for (InputSectionBase *&s : inputSections) {
     // Ignore dead sections and the partition end marker (.part.end),
     // whose partition number is out of bounds.
@@ -185,7 +183,7 @@ template <class ELFT> static void combineEhSections() {
 
     Partition &part = s->getPartition();
     if (auto *es = dyn_cast<EhInputSection>(s)) {
-      part.ehFrame->addSection<ELFT>(es);
+      part.ehFrame->addSection(es);
       s = nullptr;
     } else if (s->kind() == SectionBase::Regular && part.armExidx &&
                part.armExidx->addSection(cast<InputSection>(s))) {
@@ -476,11 +474,6 @@ template <class ELFT> static void createSyntheticSections() {
     add(in.ppc64LongBranchTarget);
   }
 
-  if (config->emachine == EM_RISCV) {
-    in.riscvSdata = make<RISCVSdataSection>();
-    add(in.riscvSdata);
-  }
-
   in.gotPlt = make<GotPltSection>();
   add(in.gotPlt);
   in.igotPlt = make<IgotPltSection>();
@@ -554,7 +547,7 @@ template <class ELFT> void Writer<ELFT>::run() {
   // into synthetic sections. Do that now so that they aren't assigned to
   // output sections in the usual way.
   if (!config->relocatable)
-    combineEhSections<ELFT>();
+    combineEhSections();
 
   // We want to process linker script commands. When SECTIONS command
   // is given we let it create sections.
@@ -579,8 +572,6 @@ template <class ELFT> void Writer<ELFT>::run() {
   checkExecuteOnly();
   if (errorCount())
     return;
-
-  script->assignAddresses();
 
   // If -compressed-debug-sections is specified, we need to compress
   // .debug_* sections. Do it right now because it changes the size of
@@ -1296,10 +1287,7 @@ sortISDBySectionOrder(InputSectionDescription *isd,
     }
     orderedSections.push_back({isec, i->second});
   }
-  llvm::sort(orderedSections, [&](std::pair<InputSection *, int> a,
-                                  std::pair<InputSection *, int> b) {
-    return a.second < b.second;
-  });
+  llvm::sort(orderedSections, llvm::less_second());
 
   // Find an insertion point for the ordered section list in the unordered
   // section list. On targets with limited-range branches, this is the mid-point
@@ -1567,15 +1555,18 @@ template <class ELFT> void Writer<ELFT>::resolveShfLinkOrder() {
 template <class ELFT> void Writer<ELFT>::finalizeAddressDependentContent() {
   ThunkCreator tc;
   AArch64Err843419Patcher a64p;
+  script->assignAddresses();
 
-  // For some targets, like x86, this loop iterates only once.
+  int assignPasses = 0;
   for (;;) {
-    bool changed = false;
+    bool changed = target->needsThunks && tc.createThunks(outputSections);
 
-    script->assignAddresses();
-
-    if (target->needsThunks)
-      changed |= tc.createThunks(outputSections);
+    // With Thunk Size much smaller than branch range we expect to
+    // converge quickly; if we get to 10 something has gone wrong.
+    if (changed && tc.pass >= 10) {
+      error("thunk creation not converged");
+      break;
+    }
 
     if (config->fixCortexA53Errata843419) {
       if (changed)
@@ -1592,8 +1583,19 @@ template <class ELFT> void Writer<ELFT>::finalizeAddressDependentContent() {
         changed |= part.relrDyn->updateAllocSize();
     }
 
-    if (!changed)
-      return;
+    const Defined *changedSym = script->assignAddresses();
+    if (!changed) {
+      // Some symbols may be dependent on section addresses. When we break the
+      // loop, the symbol values are finalized because a previous
+      // assignAddresses() finalized section addresses.
+      if (!changedSym)
+        break;
+      if (++assignPasses == 5) {
+        errorOrWarn("assignment to symbol " + toString(*changedSym) +
+                    " does not converge");
+        break;
+      }
+    }
   }
 }
 
@@ -1653,12 +1655,12 @@ static bool computeIsPreemptible(const Symbol &b) {
   if (!b.isDefined())
     return true;
 
-  // If we have a dynamic list it specifies which local symbols are preemptible.
-  if (config->hasDynamicList)
-    return false;
-
   if (!config->shared)
     return false;
+
+  // If the dynamic list is present, it specifies preemptable symbols in a DSO.
+  if (config->hasDynamicList)
+    return b.inDynamicList;
 
   // -Bsymbolic means that definitions are not preempted.
   if (config->bsymbolic || (config->bsymbolicFunctions && b.isFunc()))
@@ -1694,12 +1696,16 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   // Define __rel[a]_iplt_{start,end} symbols if needed.
   addRelIpltSymbols();
 
-  // RISC-V's gp can address +/- 2 KiB, set it to .sdata + 0x800 if not defined.
-  // This symbol should only be defined in an executable.
-  if (config->emachine == EM_RISCV && !config->shared)
+  // RISC-V's gp can address +/- 2 KiB, set it to .sdata + 0x800. This symbol
+  // should only be defined in an executable. If .sdata does not exist, its
+  // value/section does not matter but it has to be relative, so set its
+  // st_shndx arbitrarily to 1 (Out::elfHeader).
+  if (config->emachine == EM_RISCV && !config->shared) {
+    OutputSection *sec = findSection(".sdata");
     ElfSym::riscvGlobalPointer =
-        addOptionalRegular("__global_pointer$", findSection(".sdata"), 0x800,
-                           STV_DEFAULT, STB_GLOBAL);
+        addOptionalRegular("__global_pointer$", sec ? sec : Out::elfHeader,
+                           0x800, STV_DEFAULT, STB_GLOBAL);
+  }
 
   if (config->emachine == EM_X86_64) {
     // On targets that support TLSDESC, _TLS_MODULE_BASE_ is defined in such a
@@ -1728,10 +1734,8 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   for (Partition &part : partitions)
     finalizeSynthetic(part.ehFrame);
 
-  symtab->forEachSymbol([](Symbol *s) {
-    if (!s->isPreemptible)
-      s->isPreemptible = computeIsPreemptible(*s);
-  });
+  symtab->forEachSymbol(
+      [](Symbol *s) { s->isPreemptible = computeIsPreemptible(*s); });
 
   // Scan relocations. This must be done after every symbol is declared so that
   // we can correctly decide if a dynamic relocation is needed.
@@ -1739,8 +1743,6 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
     forEachRelSec(scanRelocations<ELFT>);
     reportUndefinedSymbols<ELFT>();
   }
-
-  addIRelativeRelocs();
 
   if (in.plt && in.plt->isNeeded())
     in.plt->addSymbols();
@@ -1878,7 +1880,6 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   finalizeSynthetic(in.plt);
   finalizeSynthetic(in.iplt);
   finalizeSynthetic(in.ppc32Got2);
-  finalizeSynthetic(in.riscvSdata);
   finalizeSynthetic(in.partIndex);
 
   // Dynamic section must be the last one in this list and dynamic
@@ -2206,21 +2207,66 @@ void Writer<ELFT>::addPhdrForSection(Partition &part, unsigned shType,
   part.phdrs.push_back(entry);
 }
 
-// The first section of each PT_LOAD, the first section in PT_GNU_RELRO and the
-// first section after PT_GNU_RELRO have to be page aligned so that the dynamic
-// linker can set the permissions.
+// Place the first section of each PT_LOAD to a different page (of maxPageSize).
+// This is achieved by assigning an alignment expression to addrExpr of each
+// such section.
 template <class ELFT> void Writer<ELFT>::fixSectionAlignments() {
-  auto pageAlign = [](OutputSection *cmd) {
-    if (cmd && !cmd->addrExpr)
-      cmd->addrExpr = [=] {
-        return alignTo(script->getDot(), config->maxPageSize);
-      };
+  const PhdrEntry *prev;
+  auto pageAlign = [&](const PhdrEntry *p) {
+    OutputSection *cmd = p->firstSec;
+    if (cmd && !cmd->addrExpr) {
+      // Prefer advancing to align(dot, maxPageSize) + dot%maxPageSize to avoid
+      // padding in the file contents.
+      //
+      // When -z separate-code is used we must not have any overlap in pages
+      // between an executable segment and a non-executable segment. We align to
+      // the next maximum page size boundary on transitions between executable
+      // and non-executable segments.
+      //
+      // TODO Enable this technique on all targets.
+      bool enable = config->emachine != EM_HEXAGON &&
+                    config->emachine != EM_MIPS &&
+                    config->emachine != EM_X86_64;
+
+      if (!enable || (config->zSeparateCode && prev &&
+                      (prev->p_flags & PF_X) != (p->p_flags & PF_X)))
+        cmd->addrExpr = [] {
+          return alignTo(script->getDot(), config->maxPageSize);
+        };
+      // PT_TLS is at the start of the first RW PT_LOAD. If `p` includes PT_TLS,
+      // it must be the RW. Align to p_align(PT_TLS) to make sure
+      // p_vaddr(PT_LOAD)%p_align(PT_LOAD) = 0. Otherwise, if
+      // sh_addralign(.tdata) < sh_addralign(.tbss), we will set p_align(PT_TLS)
+      // to sh_addralign(.tbss), while p_vaddr(PT_TLS)=p_vaddr(PT_LOAD) may not
+      // be congruent to 0 modulo p_align(PT_TLS).
+      //
+      // Technically this is not required, but as of 2019, some dynamic loaders
+      // don't handle p_vaddr%p_align != 0 correctly, e.g. glibc (i386 and
+      // x86-64) doesn't make runtime address congruent to p_vaddr modulo
+      // p_align for dynamic TLS blocks (PR/24606), FreeBSD rtld has the same
+      // bug, musl (TLS Variant 1 architectures) before 1.1.23 handled TLS
+      // blocks correctly. We need to keep the workaround for a while.
+      else if (Out::tlsPhdr && Out::tlsPhdr->firstSec == p->firstSec)
+        cmd->addrExpr = [] {
+          return alignTo(script->getDot(), config->maxPageSize) +
+                 alignTo(script->getDot() % config->maxPageSize,
+                         Out::tlsPhdr->p_align);
+        };
+      else
+        cmd->addrExpr = [] {
+          return alignTo(script->getDot(), config->maxPageSize) +
+                 script->getDot() % config->maxPageSize;
+        };
+    }
   };
 
   for (Partition &part : partitions) {
+    prev = nullptr;
     for (const PhdrEntry *p : part.phdrs)
-      if (p->p_type == PT_LOAD && p->firstSec)
-        pageAlign(p->firstSec);
+      if (p->p_type == PT_LOAD && p->firstSec) {
+        pageAlign(p);
+        prev = p;
+      }
   }
 }
 
@@ -2228,25 +2274,26 @@ template <class ELFT> void Writer<ELFT>::fixSectionAlignments() {
 // same with its virtual address modulo the page size, so that the loader can
 // load executables without any address adjustment.
 static uint64_t computeFileOffset(OutputSection *os, uint64_t off) {
-  // File offsets are not significant for .bss sections. By convention, we keep
-  // section offsets monotonically increasing rather than setting to zero.
-  if (os->type == SHT_NOBITS)
-    return off;
+  // The first section in a PT_LOAD has to have congruent offset and address
+  // module the page size.
+  if (os->ptLoad && os->ptLoad->firstSec == os) {
+    uint64_t alignment = std::max<uint64_t>(os->alignment, config->maxPageSize);
+    return alignTo(off, alignment, os->addr);
+  }
+
+  // File offsets are not significant for .bss sections other than the first one
+  // in a PT_LOAD. By convention, we keep section offsets monotonically
+  // increasing rather than setting to zero.
+   if (os->type == SHT_NOBITS)
+     return off;
 
   // If the section is not in a PT_LOAD, we just have to align it.
   if (!os->ptLoad)
     return alignTo(off, os->alignment);
 
-  // The first section in a PT_LOAD has to have congruent offset and address
-  // module the page size.
-  OutputSection *first = os->ptLoad->firstSec;
-  if (os == first) {
-    uint64_t alignment = std::max<uint64_t>(os->alignment, config->maxPageSize);
-    return alignTo(off, alignment, os->addr);
-  }
-
   // If two sections share the same PT_LOAD the file offset is calculated
   // using this formula: Off2 = Off1 + (VA2 - VA1).
+  OutputSection *first = os->ptLoad->firstSec;
   return first->offset + os->addr - first->addr;
 }
 
@@ -2346,10 +2393,11 @@ template <class ELFT> void Writer<ELFT>::setPhdrs(Partition &part) {
       p->p_align = std::max<uint64_t>(p->p_align, config->maxPageSize);
     } else if (p->p_type == PT_GNU_RELRO) {
       p->p_align = 1;
-      // The glibc dynamic loader rounds the size down, so we need to round up
+      // musl/glibc ld.so rounds the size down, so we need to round up
       // to protect the last page. This is a no-op on FreeBSD which always
       // rounds up.
-      p->p_memsz = alignTo(p->p_memsz, config->commonPageSize);
+      p->p_memsz = alignTo(p->p_offset + p->p_memsz, config->commonPageSize) -
+                   p->p_offset;
     }
   }
 }

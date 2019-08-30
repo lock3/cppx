@@ -119,26 +119,75 @@ void initLocalGslPtrWithTempOwner() {
   global2 = MyLongOwnerWithConversion{}; // TODO ?
 }
 
-namespace std {
+namespace __gnu_cxx {
 template <typename T>
-struct basic_iterator {};
+struct basic_iterator {
+  basic_iterator operator++();
+  T& operator*() const;
+};
+
+template<typename T>
+bool operator!=(basic_iterator<T>, basic_iterator<T>);
+}
+
+namespace std {
+template<typename T> struct remove_reference       { typedef T type; };
+template<typename T> struct remove_reference<T &>  { typedef T type; };
+template<typename T> struct remove_reference<T &&> { typedef T type; };
+
+template<typename T>
+typename remove_reference<T>::type &&move(T &&t) noexcept;
+
+template <typename C>
+auto data(const C &c) -> decltype(c.data());
 
 template <typename T>
 struct vector {
-  typedef basic_iterator<T> iterator;
+  typedef __gnu_cxx::basic_iterator<T> iterator;
   iterator begin();
-  T *data();
+  iterator end();
+  const T *data() const;
+  T &at(int n);
+};
+
+template<typename T>
+struct basic_string_view {
+  basic_string_view(const T *);
+  const T *begin() const;
 };
 
 template<typename T>
 struct basic_string {
   const T *c_str() const;
+  operator basic_string_view<T> () const;
 };
+
 
 template<typename T>
 struct unique_ptr {
+  T &operator*();
   T *get() const;
 };
+
+template<typename T>
+struct optional {
+  optional();
+  optional(const T&);
+  T &operator*() &;
+  T &&operator*() &&;
+  T &value() &;
+  T &&value() &&;
+};
+
+template<typename T>
+struct stack {
+  T &top();
+};
+
+struct any {};
+
+template<typename T>
+T any_cast(const any& operand);
 }
 
 void modelIterators() {
@@ -150,9 +199,35 @@ std::vector<int>::iterator modelIteratorReturn() {
   return std::vector<int>().begin(); // expected-warning {{returning address of local temporary object}}
 }
 
+const int *modelFreeFunctions() {
+  return std::data(std::vector<int>()); // expected-warning {{returning address of local temporary object}}
+}
+
+int &modelAnyCast() {
+  return std::any_cast<int&>(std::any{}); // expected-warning {{returning reference to local temporary object}}
+}
+
+int modelAnyCast2() {
+  return std::any_cast<int>(std::any{}); // ok
+}
+
+int modelAnyCast3() {
+  return std::any_cast<int&>(std::any{}); // ok
+}
+
 const char *danglingRawPtrFromLocal() {
   std::basic_string<char> s;
   return s.c_str(); // expected-warning {{address of stack memory associated with local variable 's' returned}}
+}
+
+int &danglingRawPtrFromLocal2() {
+  std::optional<int> o;
+  return o.value(); // expected-warning {{reference to stack memory associated with local variable 'o' returned}}
+}
+
+int &danglingRawPtrFromLocal3() {
+  std::optional<int> o;
+  return *o; // expected-warning {{reference to stack memory associated with local variable 'o' returned}}
 }
 
 const char *danglingRawPtrFromTemp() {
@@ -167,4 +242,59 @@ int *danglingUniquePtrFromTemp() {
 
 int *danglingUniquePtrFromTemp2() {
   return std::unique_ptr<int>().get(); // expected-warning {{returning address of local temporary object}}
+}
+
+void danglingReferenceFromTempOwner() {
+  int &&r = *std::optional<int>();          // expected-warning {{object backing the pointer will be destroyed at the end of the full-expression}}
+  int &&r2 = *std::optional<int>(5);        // expected-warning {{object backing the pointer will be destroyed at the end of the full-expression}}
+  int &&r3 = std::optional<int>(5).value(); // expected-warning {{object backing the pointer will be destroyed at the end of the full-expression}}
+  int &r4 = std::vector<int>().at(3);       // expected-warning {{object backing the pointer will be destroyed at the end of the full-expression}}
+}
+
+std::vector<int> getTempVec();
+std::optional<std::vector<int>> getTempOptVec();
+
+void testLoops() {
+  for (auto i : getTempVec()) // ok
+    ;
+  for (auto i : *getTempOptVec()) // expected-warning {{object backing the pointer will be destroyed at the end of the full-expression}}
+    ;
+}
+
+int &usedToBeFalsePositive(std::vector<int> &v) {
+  std::vector<int>::iterator it = v.begin();
+  int& value = *it;
+  return value; // ok
+}
+
+int &doNotFollowReferencesForLocalOwner() {
+  std::unique_ptr<int> localOwner;
+  int &p = *localOwner.get();
+  // In real world code localOwner is usually moved here.
+  return p; // ok
+}
+
+const char *trackThroughMultiplePointer() {
+  return std::basic_string_view<char>(std::basic_string<char>()).begin(); // expected-warning {{returning address of local temporary object}}
+}
+
+struct X {
+  X(std::unique_ptr<int> up) :
+    pointee(*up), pointee2(up.get()), pointer(std::move(up)) {}
+  int &pointee;
+  int *pointee2;
+  std::unique_ptr<int> pointer;
+};
+
+std::vector<int>::iterator getIt();
+std::vector<int> getVec();
+
+const int &handleGslPtrInitsThroughReference() {
+  const auto &it = getIt(); // Ok, it is lifetime extended.
+  return *it;
+}
+
+void handleGslPtrInitsThroughReference2() {
+  const std::vector<int> &v = getVec();
+  const int *val = v.data(); // Ok, it is lifetime extended.
 }

@@ -172,12 +172,12 @@ bool elf::tryRelaxPPC64TocIndirection(RelType type, const Relocation &rel,
                    : getRelaTocSymAndAddend<ELF64BE>(tocISB, rel.addend);
 
   // Only non-preemptable defined symbols can be relaxed.
-  //
-  // The toc entry of a non-preemptable ifunc is relocated by R_PPC64_IRELATIVE,
-  // which will run at load time to determine the relocated value. It is not
-  // known until load time, so the access cannot be relaxed.
-  if (!d || d->isPreemptible || d->isGnuIFunc())
+  if (!d || d->isPreemptible)
     return false;
+
+  // R_PPC64_ADDR64 should have created a canonical PLT for the non-preemptable
+  // ifunc and changed its type to STT_FUNC.
+  assert(!d->isGnuIFunc());
 
   // Two instructions can materialize a 32-bit signed offset from the toc base.
   uint64_t tocRelative = d->getVA(addend) - getPPC64TocBase();
@@ -536,6 +536,21 @@ void PPC64::relaxTlsIeToLe(uint8_t *loc, RelType type, uint64_t val) const {
 RelExpr PPC64::getRelExpr(RelType type, const Symbol &s,
                           const uint8_t *loc) const {
   switch (type) {
+  case R_PPC64_NONE:
+    return R_NONE;
+  case R_PPC64_ADDR16:
+  case R_PPC64_ADDR16_DS:
+  case R_PPC64_ADDR16_HA:
+  case R_PPC64_ADDR16_HI:
+  case R_PPC64_ADDR16_HIGHER:
+  case R_PPC64_ADDR16_HIGHERA:
+  case R_PPC64_ADDR16_HIGHEST:
+  case R_PPC64_ADDR16_HIGHESTA:
+  case R_PPC64_ADDR16_LO:
+  case R_PPC64_ADDR16_LO_DS:
+  case R_PPC64_ADDR32:
+  case R_PPC64_ADDR64:
+    return R_ABS;
   case R_PPC64_GOT16:
   case R_PPC64_GOT16_DS:
   case R_PPC64_GOT16_HA:
@@ -558,6 +573,7 @@ RelExpr PPC64::getRelExpr(RelType type, const Symbol &s,
     return R_PPC64_CALL_PLT;
   case R_PPC64_REL16_LO:
   case R_PPC64_REL16_HA:
+  case R_PPC64_REL16_HI:
   case R_PPC64_REL32:
   case R_PPC64_REL64:
     return R_PC;
@@ -611,7 +627,9 @@ RelExpr PPC64::getRelExpr(RelType type, const Symbol &s,
   case R_PPC64_TLS:
     return R_TLSIE_HINT;
   default:
-    return R_ABS;
+    error(getErrorLocation(loc) + "unknown relocation (" + Twine(type) +
+          ") against symbol " + toString(s));
+    return R_NONE;
   }
 }
 
@@ -874,7 +892,7 @@ void PPC64::relocateOne(uint8_t *loc, RelType type, uint64_t val) const {
     write64(loc, val - dynamicThreadPointerOffset);
     break;
   default:
-    error(getErrorLocation(loc) + "unrecognized relocation " + toString(type));
+    llvm_unreachable("unknown relocation");
   }
 }
 

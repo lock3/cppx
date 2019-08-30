@@ -37,6 +37,7 @@
 #include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
+#include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/BuryPointer.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -118,7 +119,7 @@ class EmitAssemblyHelper {
 
   std::unique_ptr<llvm::ToolOutputFile> openOutputFile(StringRef Path) {
     std::error_code EC;
-    auto F = llvm::make_unique<llvm::ToolOutputFile>(Path, EC,
+    auto F = std::make_unique<llvm::ToolOutputFile>(Path, EC,
                                                      llvm::sys::fs::OF_None);
     if (EC) {
       Diags.Report(diag::err_fe_unable_to_open_output) << Path << EC.message();
@@ -1063,7 +1064,10 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
   PTO.LoopVectorization = CodeGenOpts.VectorizeLoop;
   PTO.SLPVectorization = CodeGenOpts.VectorizeSLP;
 
-  PassBuilder PB(TM.get(), PTO, PGOOpt);
+  PassInstrumentationCallbacks PIC;
+  StandardInstrumentations SI;
+  SI.registerCallbacks(PIC);
+  PassBuilder PB(TM.get(), PTO, PGOOpt, &PIC);
 
   // Attempt to load pass plugins and register their callbacks with PB.
   for (auto &PluginFN : CodeGenOpts.PassPlugins) {
@@ -1287,7 +1291,7 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
         if (!TheModule->getModuleFlag("ThinLTO"))
           TheModule->addModuleFlag(Module::Error, "ThinLTO", uint32_t(0));
         TheModule->addModuleFlag(Module::Error, "EnableSplitLTOUnit",
-                                 CodeGenOpts.EnableSplitLTOUnit);
+                                 uint32_t(1));
       }
       MPM.addPass(
           BitcodeWriterPass(*OS, CodeGenOpts.EmitLLVMUseLists, EmitLTOSummary));
@@ -1420,7 +1424,7 @@ static void runThinLTOBackend(ModuleSummaryIndex *CombinedIndex, Module *M,
     OwnedImports.push_back(std::move(*MBOrErr));
   }
   auto AddStream = [&](size_t Task) {
-    return llvm::make_unique<lto::NativeObjectStream>(std::move(OS));
+    return std::make_unique<lto::NativeObjectStream>(std::move(OS));
   };
   lto::Config Conf;
   if (CGOpts.SaveTempsFilePrefix != "") {
@@ -1532,7 +1536,7 @@ void clang::EmitBackendOutput(DiagnosticsEngine &Diags,
       // trying to read it. Also for some features, like CFI, we must skip
       // the compilation as CombinedIndex does not contain all required
       // information.
-      EmptyModule = llvm::make_unique<llvm::Module>("empty", M->getContext());
+      EmptyModule = std::make_unique<llvm::Module>("empty", M->getContext());
       EmptyModule->setTargetTriple(M->getTargetTriple());
       M = EmptyModule.get();
     }

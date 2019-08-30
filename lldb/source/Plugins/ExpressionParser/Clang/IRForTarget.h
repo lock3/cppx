@@ -10,6 +10,7 @@
 #ifndef liblldb_IRForTarget_h_
 #define liblldb_IRForTarget_h_
 
+#include "lldb/Core/ClangForward.h"
 #include "lldb/Symbol/TaggedASTType.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/Status.h"
@@ -330,27 +331,6 @@ private:
   /// and each external function is resolved in place, its call replaced with
   /// a call to a function pointer whose value is the address of the function
   /// in the target process.
-
-  /// Write an initializer to a memory array of assumed sufficient size.
-  ///
-  /// \param[in] data
-  ///     A pointer to the data to write to.
-  ///
-  /// \param[in] initializer
-  ///     The initializer itself.
-  ///
-  /// \return
-  ///     True on success; false otherwise
-  bool MaterializeInitializer(uint8_t *data, llvm::Constant *initializer);
-
-  /// Move an internal variable into the static allocation section.
-  ///
-  /// \param[in] global_variable
-  ///     The variable.
-  ///
-  /// \return
-  ///     True on success; false otherwise
-  bool MaterializeInternalVariable(llvm::GlobalVariable *global_variable);
 
   /// Handle a single externally-defined variable
   ///

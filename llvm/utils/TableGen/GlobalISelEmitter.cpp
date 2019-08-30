@@ -1064,6 +1064,7 @@ public:
     OPM_SameOperand,
     OPM_ComplexPattern,
     OPM_IntrinsicID,
+    OPM_CmpPredicate,
     OPM_Instruction,
     OPM_Int,
     OPM_LiteralInt,
@@ -1389,6 +1390,36 @@ public:
   }
 };
 
+/// Generates code to check that an operand is an CmpInst predicate
+class CmpPredicateOperandMatcher : public OperandPredicateMatcher {
+protected:
+  std::string PredName;
+
+public:
+  CmpPredicateOperandMatcher(unsigned InsnVarID, unsigned OpIdx,
+                             std::string P)
+    : OperandPredicateMatcher(OPM_CmpPredicate, InsnVarID, OpIdx), PredName(P) {}
+
+  bool isIdentical(const PredicateMatcher &B) const override {
+    return OperandPredicateMatcher::isIdentical(B) &&
+           PredName == cast<CmpPredicateOperandMatcher>(&B)->PredName;
+  }
+
+  static bool classof(const PredicateMatcher *P) {
+    return P->getKind() == OPM_CmpPredicate;
+  }
+
+  void emitPredicateOpcodes(MatchTable &Table,
+                            RuleMatcher &Rule) const override {
+    Table << MatchTable::Opcode("GIM_CheckCmpPredicate")
+          << MatchTable::Comment("MI") << MatchTable::IntValue(InsnVarID)
+          << MatchTable::Comment("Op") << MatchTable::IntValue(OpIdx)
+          << MatchTable::Comment("Predicate")
+          << MatchTable::NamedValue("CmpInst", PredName)
+          << MatchTable::LineBreak;
+  }
+};
+
 /// Generates code to check that an operand is an intrinsic ID.
 class IntrinsicIDOperandMatcher : public OperandPredicateMatcher {
 protected:
@@ -1450,7 +1481,7 @@ public:
   Optional<Kind *> addPredicate(Args &&... args) {
     if (isSameAsAnotherOperand())
       return None;
-    Predicates.emplace_back(llvm::make_unique<Kind>(
+    Predicates.emplace_back(std::make_unique<Kind>(
         getInsnVarID(), getOpIdx(), std::forward<Args>(args)...));
     return static_cast<Kind *>(Predicates.back().get());
   }
@@ -1999,7 +2030,7 @@ public:
   template <class Kind, class... Args>
   Optional<Kind *> addPredicate(Args &&... args) {
     Predicates.emplace_back(
-        llvm::make_unique<Kind>(getInsnVarID(), std::forward<Args>(args)...));
+        std::make_unique<Kind>(getInsnVarID(), std::forward<Args>(args)...));
     return static_cast<Kind *>(Predicates.back().get());
   }
 
@@ -2662,7 +2693,7 @@ public:
   template <class Kind, class... Args>
   Kind &addRenderer(Args&&... args) {
     OperandRenderers.emplace_back(
-        llvm::make_unique<Kind>(InsnID, std::forward<Args>(args)...));
+        std::make_unique<Kind>(InsnID, std::forward<Args>(args)...));
     return *static_cast<Kind *>(OperandRenderers.back().get());
   }
 
@@ -2823,7 +2854,7 @@ const std::vector<Record *> &RuleMatcher::getRequiredFeatures() const {
 // iterator.
 template <class Kind, class... Args>
 Kind &RuleMatcher::addAction(Args &&... args) {
-  Actions.emplace_back(llvm::make_unique<Kind>(std::forward<Args>(args)...));
+  Actions.emplace_back(std::make_unique<Kind>(std::forward<Args>(args)...));
   return *static_cast<Kind *>(Actions.back().get());
 }
 
@@ -2838,7 +2869,7 @@ template <class Kind, class... Args>
 action_iterator RuleMatcher::insertAction(action_iterator InsertPt,
                                           Args &&... args) {
   return Actions.emplace(InsertPt,
-                         llvm::make_unique<Kind>(std::forward<Args>(args)...));
+                         std::make_unique<Kind>(std::forward<Args>(args)...));
 }
 
 unsigned RuleMatcher::implicitlyDefineInsnVar(InstructionMatcher &Matcher) {
@@ -3164,6 +3195,30 @@ private:
   MatchTable buildMatchTable(MutableArrayRef<RuleMatcher> Rules, bool Optimize,
                              bool WithCoverage);
 
+  /// Infer a CodeGenRegisterClass for the type of \p SuperRegNode. The returned
+  /// CodeGenRegisterClass will support the CodeGenRegisterClass of
+  /// \p SubRegNode, and the subregister index defined by \p SubRegIdxNode.
+  /// If no register class is found, return None.
+  Optional<const CodeGenRegisterClass *>
+  inferSuperRegisterClassForNode(const TypeSetByHwMode &Ty,
+                                 TreePatternNode *SuperRegNode,
+                                 TreePatternNode *SubRegIdxNode);
+
+  /// Infer a CodeGenRegisterClass which suppoorts \p Ty and \p SubRegIdxNode.
+  /// Return None if no such class exists.
+  Optional<const CodeGenRegisterClass *>
+  inferSuperRegisterClass(const TypeSetByHwMode &Ty,
+                          TreePatternNode *SubRegIdxNode);
+
+  /// Return the CodeGenRegisterClass associated with \p Leaf if it has one.
+  Optional<const CodeGenRegisterClass *>
+  getRegClassFromLeaf(TreePatternNode *Leaf);
+
+  /// Return a CodeGenRegisterClass for \p N if one can be found. Return None
+  /// otherwise.
+  Optional<const CodeGenRegisterClass *>
+  inferRegClassFromPattern(TreePatternNode *N);
+
 public:
   /// Takes a sequence of \p Rules and group them based on the predicates
   /// they share. \p MatcherStorage is used as a memory container
@@ -3232,6 +3287,13 @@ Record *GlobalISelEmitter::findNodeEquiv(Record *N) const {
 
 const CodeGenInstruction *
 GlobalISelEmitter::getEquivNode(Record &Equiv, const TreePatternNode *N) const {
+  if (N->getNumChildren() >= 1) {
+    // setcc operation maps to two different G_* instructions based on the type.
+    if (!Equiv.isValueUnset("IfFloatingPoint") &&
+        MVT(N->getChild(0)->getSimpleType(0)).isFloatingPoint())
+      return &Target.getInstruction(Equiv.getValueAsDef("IfFloatingPoint"));
+  }
+
   for (const TreePredicateCall &Call : N->getPredicateCalls()) {
     const TreePredicateFn &Predicate = Call.Fn;
     if (!Equiv.isValueUnset("IfSignExtend") && Predicate.isLoad() &&
@@ -3241,6 +3303,7 @@ GlobalISelEmitter::getEquivNode(Record &Equiv, const TreePatternNode *N) const {
         Predicate.isZeroExtLoad())
       return &Target.getInstruction(Equiv.getValueAsDef("IfZeroExtend"));
   }
+
   return &Target.getInstruction(Equiv.getValueAsDef("I"));
 }
 
@@ -3481,8 +3544,43 @@ Expected<InstructionMatcher &> GlobalISelEmitter::createAndImportSelDAGMatcher(
       return InsnMatcher;
     }
 
+    // Special case because the operand order is changed from setcc. The
+    // predicate operand needs to be swapped from the last operand to the first
+    // source.
+
+    unsigned NumChildren = Src->getNumChildren();
+    bool IsFCmp = SrcGIOrNull->TheDef->getName() == "G_FCMP";
+
+    if (IsFCmp || SrcGIOrNull->TheDef->getName() == "G_ICMP") {
+      TreePatternNode *SrcChild = Src->getChild(NumChildren - 1);
+      if (SrcChild->isLeaf()) {
+        DefInit *DI = dyn_cast<DefInit>(SrcChild->getLeafValue());
+        Record *CCDef = DI ? DI->getDef() : nullptr;
+        if (!CCDef || !CCDef->isSubClassOf("CondCode"))
+          return failedImport("Unable to handle CondCode");
+
+        OperandMatcher &OM =
+          InsnMatcher.addOperand(OpIdx++, SrcChild->getName(), TempOpIdx);
+        StringRef PredType = IsFCmp ? CCDef->getValueAsString("FCmpPredicate") :
+                                      CCDef->getValueAsString("ICmpPredicate");
+
+        if (!PredType.empty()) {
+          OM.addPredicate<CmpPredicateOperandMatcher>(PredType);
+          // Process the other 2 operands normally.
+          --NumChildren;
+        }
+      }
+    }
+
     // Match the used operands (i.e. the children of the operator).
-    for (unsigned i = 0, e = Src->getNumChildren(); i != e; ++i) {
+    bool IsIntrinsic =
+        SrcGIOrNull->TheDef->getName() == "G_INTRINSIC" ||
+        SrcGIOrNull->TheDef->getName() == "G_INTRINSIC_W_SIDE_EFFECTS";
+    const CodeGenIntrinsic *II = Src->getIntrinsicInfo(CGP);
+    if (IsIntrinsic && !II)
+      return failedImport("Expected IntInit containing intrinsic ID)");
+
+    for (unsigned i = 0; i != NumChildren; ++i) {
       TreePatternNode *SrcChild = Src->getChild(i);
 
       // SelectionDAG allows pointers to be represented with iN since it doesn't
@@ -3490,19 +3588,21 @@ Expected<InstructionMatcher &> GlobalISelEmitter::createAndImportSelDAGMatcher(
       // Coerce integers to pointers to address space 0 if the context indicates a pointer.
       bool OperandIsAPointer = SrcGIOrNull->isOperandAPointer(i);
 
-      // For G_INTRINSIC/G_INTRINSIC_W_SIDE_EFFECTS, the operand immediately
-      // following the defs is an intrinsic ID.
-      if ((SrcGIOrNull->TheDef->getName() == "G_INTRINSIC" ||
-           SrcGIOrNull->TheDef->getName() == "G_INTRINSIC_W_SIDE_EFFECTS") &&
-          i == 0) {
-        if (const CodeGenIntrinsic *II = Src->getIntrinsicInfo(CGP)) {
+      if (IsIntrinsic) {
+        // For G_INTRINSIC/G_INTRINSIC_W_SIDE_EFFECTS, the operand immediately
+        // following the defs is an intrinsic ID.
+        if (i == 0) {
           OperandMatcher &OM =
               InsnMatcher.addOperand(OpIdx++, SrcChild->getName(), TempOpIdx);
           OM.addPredicate<IntrinsicIDOperandMatcher>(II);
           continue;
         }
 
-        return failedImport("Expected IntInit containing instrinsic ID)");
+        // We have to check intrinsics for llvm_anyptr_ty parameters.
+        //
+        // Note that we have to look at the i-1th parameter, because we don't
+        // have the intrinsic ID in the intrinsic's parameter list.
+        OperandIsAPointer |= II->isParamAPointer(i - 1);
       }
 
       if (auto Error =
@@ -3762,6 +3862,12 @@ Expected<action_iterator> GlobalISelEmitter::importExplicitUseRenderer(
       return InsertPt;
     }
 
+    if (ChildRec->isSubClassOf("SubRegIndex")) {
+      CodeGenSubRegIndex *SubIdx = CGRegs.getSubRegIdx(ChildRec);
+      DstMIBuilder.addRenderer<ImmRenderer>(SubIdx->EnumValue);
+      return InsertPt;
+    }
+
     if (ChildRec->isSubClassOf("ComplexPattern")) {
       const auto &ComplexPattern = ComplexPatternEquivs.find(ChildRec);
       if (ComplexPattern == ComplexPatternEquivs.end())
@@ -3821,6 +3927,52 @@ GlobalISelEmitter::createAndImportSubInstructionRenderer(
       importExplicitUseRenderers(InsertPtOrError.get(), M, DstMIBuilder, Dst);
   if (auto Error = InsertPtOrError.takeError())
     return std::move(Error);
+
+  // We need to make sure that when we import an INSERT_SUBREG as a
+  // subinstruction that it ends up being constrained to the correct super
+  // register and subregister classes.
+  if (Target.getInstruction(Dst->getOperator()).TheDef->getName() ==
+      "INSERT_SUBREG") {
+    auto SubClass = inferRegClassFromPattern(Dst->getChild(1));
+    if (!SubClass)
+      return failedImport(
+          "Cannot infer register class from INSERT_SUBREG operand #1");
+    Optional<const CodeGenRegisterClass *> SuperClass =
+        inferSuperRegisterClassForNode(Dst->getExtType(0), Dst->getChild(0),
+                                       Dst->getChild(2));
+    if (!SuperClass)
+      return failedImport(
+          "Cannot infer register class for INSERT_SUBREG operand #0");
+    // The destination and the super register source of an INSERT_SUBREG must
+    // be the same register class.
+    M.insertAction<ConstrainOperandToRegClassAction>(
+        InsertPt, DstMIBuilder.getInsnID(), 0, **SuperClass);
+    M.insertAction<ConstrainOperandToRegClassAction>(
+        InsertPt, DstMIBuilder.getInsnID(), 1, **SuperClass);
+    M.insertAction<ConstrainOperandToRegClassAction>(
+        InsertPt, DstMIBuilder.getInsnID(), 2, **SubClass);
+    return InsertPtOrError.get();
+  }
+
+  // Similar to INSERT_SUBREG, we also have to handle SUBREG_TO_REG as a
+  // subinstruction.
+  if (Target.getInstruction(Dst->getOperator()).TheDef->getName() ==
+    "SUBREG_TO_REG") {
+  auto SubClass = inferRegClassFromPattern(Dst->getChild(1));
+  if (!SubClass)
+    return failedImport(
+        "Cannot infer register class from SUBREG_TO_REG child #1");
+  auto SuperClass = inferSuperRegisterClass(Dst->getExtType(0),
+                                            Dst->getChild(2));
+  if (!SuperClass)
+    return failedImport(
+        "Cannot infer register class for SUBREG_TO_REG operand #0");
+  M.insertAction<ConstrainOperandToRegClassAction>(
+      InsertPt, DstMIBuilder.getInsnID(), 0, **SuperClass);
+  M.insertAction<ConstrainOperandToRegClassAction>(
+      InsertPt, DstMIBuilder.getInsnID(), 2, **SubClass);
+  return InsertPtOrError.get();
+}
 
   M.insertAction<ConstrainOperandsToDefinitionAction>(InsertPt,
                                                       DstMIBuilder.getInsnID());
@@ -3999,6 +4151,114 @@ Error GlobalISelEmitter::importImplicitDefRenderers(
   return Error::success();
 }
 
+Optional<const CodeGenRegisterClass *>
+GlobalISelEmitter::getRegClassFromLeaf(TreePatternNode *Leaf) {
+  assert(Leaf && "Expected node?");
+  assert(Leaf->isLeaf() && "Expected leaf?");
+  Record *RCRec = getInitValueAsRegClass(Leaf->getLeafValue());
+  if (!RCRec)
+    return None;
+  CodeGenRegisterClass *RC = CGRegs.getRegClass(RCRec);
+  if (!RC)
+    return None;
+  return RC;
+}
+
+Optional<const CodeGenRegisterClass *>
+GlobalISelEmitter::inferRegClassFromPattern(TreePatternNode *N) {
+  if (!N)
+    return None;
+
+  if (N->isLeaf())
+    return getRegClassFromLeaf(N);
+
+  // We don't have a leaf node, so we have to try and infer something. Check
+  // that we have an instruction that we an infer something from.
+
+  // Only handle things that produce a single type.
+  if (N->getNumTypes() != 1)
+    return None;
+  Record *OpRec = N->getOperator();
+
+  // We only want instructions.
+  if (!OpRec->isSubClassOf("Instruction"))
+    return None;
+
+  // Don't want to try and infer things when there could potentially be more
+  // than one candidate register class.
+  auto &Inst = Target.getInstruction(OpRec);
+  if (Inst.Operands.NumDefs > 1)
+    return None;
+
+  // Handle any special-case instructions which we can safely infer register
+  // classes from.
+  StringRef InstName = Inst.TheDef->getName();
+  if (InstName == "COPY_TO_REGCLASS") {
+    // If we have a COPY_TO_REGCLASS, then we need to handle it specially. It
+    // has the desired register class as the first child.
+    TreePatternNode *RCChild = N->getChild(1);
+    if (!RCChild->isLeaf())
+      return None;
+    return getRegClassFromLeaf(RCChild);
+  }
+
+  // Handle destination record types that we can safely infer a register class
+  // from.
+  const auto &DstIOperand = Inst.Operands[0];
+  Record *DstIOpRec = DstIOperand.Rec;
+  if (DstIOpRec->isSubClassOf("RegisterOperand")) {
+    DstIOpRec = DstIOpRec->getValueAsDef("RegClass");
+    const CodeGenRegisterClass &RC = Target.getRegisterClass(DstIOpRec);
+    return &RC;
+  }
+
+  if (DstIOpRec->isSubClassOf("RegisterClass")) {
+    const CodeGenRegisterClass &RC = Target.getRegisterClass(DstIOpRec);
+    return &RC;
+  }
+
+  return None;
+}
+
+Optional<const CodeGenRegisterClass *>
+GlobalISelEmitter::inferSuperRegisterClass(const TypeSetByHwMode &Ty,
+                                           TreePatternNode *SubRegIdxNode) {
+  assert(SubRegIdxNode && "Expected subregister index node!");
+  // We need a ValueTypeByHwMode for getSuperRegForSubReg.
+  if (!Ty.isValueTypeByHwMode(false))
+    return None;
+  if (!SubRegIdxNode->isLeaf())
+    return None;
+  DefInit *SubRegInit = dyn_cast<DefInit>(SubRegIdxNode->getLeafValue());
+  if (!SubRegInit)
+    return None;
+  CodeGenSubRegIndex *SubIdx = CGRegs.getSubRegIdx(SubRegInit->getDef());
+
+  // Use the information we found above to find a minimal register class which
+  // supports the subregister and type we want.
+  auto RC =
+      Target.getSuperRegForSubReg(Ty.getValueTypeByHwMode(), CGRegs, SubIdx);
+  if (!RC)
+    return None;
+  return *RC;
+}
+
+Optional<const CodeGenRegisterClass *>
+GlobalISelEmitter::inferSuperRegisterClassForNode(
+    const TypeSetByHwMode &Ty, TreePatternNode *SuperRegNode,
+    TreePatternNode *SubRegIdxNode) {
+  assert(SuperRegNode && "Expected super register node!");
+  // Check if we already have a defined register class for the super register
+  // node. If we do, then we should preserve that rather than inferring anything
+  // from the subregister index node. We can assume that whoever wrote the
+  // pattern in the first place made sure that the super register and
+  // subregister are compatible.
+  if (Optional<const CodeGenRegisterClass *> SuperRegisterClass =
+          inferRegClassFromPattern(SuperRegNode))
+    return *SuperRegisterClass;
+  return inferSuperRegisterClass(Ty, SubRegIdxNode);
+}
+
 Expected<RuleMatcher> GlobalISelEmitter::runOnPattern(const PatternToMatch &P) {
   // Keep track of the matchers and actions to emit.
   int Score = P.getPatternComplexity(CGP);
@@ -4117,8 +4377,33 @@ Expected<RuleMatcher> GlobalISelEmitter::runOnPattern(const PatternToMatch &P) {
       DstIOpRec = getInitValueAsRegClass(Dst->getChild(0)->getLeafValue());
 
       if (DstIOpRec == nullptr)
+        return failedImport("EXTRACT_SUBREG operand #0 isn't a register class");
+    } else if (DstI.TheDef->getName() == "INSERT_SUBREG") {
+      auto MaybeSuperClass = inferSuperRegisterClassForNode(
+          VTy, Dst->getChild(0), Dst->getChild(2));
+      if (!MaybeSuperClass)
         return failedImport(
-            "EXTRACT_SUBREG operand #0 isn't a register class");
+            "Cannot infer register class for INSERT_SUBREG operand #0");
+      // Move to the next pattern here, because the register class we found
+      // doesn't necessarily have a record associated with it. So, we can't
+      // set DstIOpRec using this.
+      OperandMatcher &OM = InsnMatcher.getOperand(OpIdx);
+      OM.setSymbolicName(DstIOperand.Name);
+      M.defineOperand(OM.getSymbolicName(), OM);
+      OM.addPredicate<RegisterBankOperandMatcher>(**MaybeSuperClass);
+      ++OpIdx;
+      continue;
+    } else if (DstI.TheDef->getName() == "SUBREG_TO_REG") {
+      auto MaybeRegClass = inferSuperRegisterClass(VTy, Dst->getChild(2));
+      if (!MaybeRegClass)
+        return failedImport(
+            "Cannot infer register class for SUBREG_TO_REG operand #0");
+      OperandMatcher &OM = InsnMatcher.getOperand(OpIdx);
+      OM.setSymbolicName(DstIOperand.Name);
+      M.defineOperand(OM.getSymbolicName(), OM);
+      OM.addPredicate<RegisterBankOperandMatcher>(**MaybeRegClass);
+      ++OpIdx;
+      continue;
     } else if (DstIOpRec->isSubClassOf("RegisterOperand"))
       DstIOpRec = DstIOpRec->getValueAsDef("RegClass");
     else if (!DstIOpRec->isSubClassOf("RegisterClass"))
@@ -4208,6 +4493,51 @@ Expected<RuleMatcher> GlobalISelEmitter::runOnPattern(const PatternToMatch &P) {
     return std::move(M);
   }
 
+  if (DstI.TheDef->getName() == "INSERT_SUBREG") {
+    assert(Src->getExtTypes().size() == 1 &&
+           "Expected Src of INSERT_SUBREG to have one result type");
+    // We need to constrain the destination, a super regsister source, and a
+    // subregister source.
+    auto SubClass = inferRegClassFromPattern(Dst->getChild(1));
+    if (!SubClass)
+      return failedImport(
+          "Cannot infer register class from INSERT_SUBREG operand #1");
+    auto SuperClass = inferSuperRegisterClassForNode(
+        Src->getExtType(0), Dst->getChild(0), Dst->getChild(2));
+    if (!SuperClass)
+      return failedImport(
+          "Cannot infer register class for INSERT_SUBREG operand #0");
+    M.addAction<ConstrainOperandToRegClassAction>(0, 0, **SuperClass);
+    M.addAction<ConstrainOperandToRegClassAction>(0, 1, **SuperClass);
+    M.addAction<ConstrainOperandToRegClassAction>(0, 2, **SubClass);
+    ++NumPatternImported;
+    return std::move(M);
+  }
+
+  if (DstI.TheDef->getName() == "SUBREG_TO_REG") {
+    // We need to constrain the destination and subregister source.
+    assert(Src->getExtTypes().size() == 1 &&
+           "Expected Src of SUBREG_TO_REG to have one result type");
+
+    // Attempt to infer the subregister source from the first child. If it has
+    // an explicitly given register class, we'll use that. Otherwise, we will
+    // fail.
+    auto SubClass = inferRegClassFromPattern(Dst->getChild(1));
+    if (!SubClass)
+      return failedImport(
+          "Cannot infer register class from SUBREG_TO_REG child #1");
+    // We don't have a child to look at that might have a super register node.
+    auto SuperClass =
+        inferSuperRegisterClass(Src->getExtType(0), Dst->getChild(2));
+    if (!SuperClass)
+      return failedImport(
+          "Cannot infer register class for SUBREG_TO_REG operand #0");
+    M.addAction<ConstrainOperandToRegClassAction>(0, 0, **SuperClass);
+    M.addAction<ConstrainOperandToRegClassAction>(0, 2, **SubClass);
+    ++NumPatternImported;
+    return std::move(M);
+  }
+
   M.addAction<ConstrainOperandsToDefinitionAction>(0);
 
   // We're done with this pattern!  It's eligible for GISel emission; return it.
@@ -4289,7 +4619,7 @@ std::vector<Matcher *> GlobalISelEmitter::optimizeRules(
     std::vector<std::unique_ptr<Matcher>> &MatcherStorage) {
 
   std::vector<Matcher *> OptRules;
-  std::unique_ptr<GroupT> CurrentGroup = make_unique<GroupT>();
+  std::unique_ptr<GroupT> CurrentGroup = std::make_unique<GroupT>();
   assert(CurrentGroup->empty() && "Newly created group isn't empty!");
   unsigned NumGroups = 0;
 
@@ -4310,7 +4640,7 @@ std::vector<Matcher *> GlobalISelEmitter::optimizeRules(
       MatcherStorage.emplace_back(std::move(CurrentGroup));
       ++NumGroups;
     }
-    CurrentGroup = make_unique<GroupT>();
+    CurrentGroup = std::make_unique<GroupT>();
   };
   for (Matcher *Rule : Rules) {
     // Greedily add as many matchers as possible to the current group:

@@ -341,7 +341,7 @@ AArch64LegalizerInfo::AArch64LegalizerInfo(const AArch64Subtarget &ST) {
     unsigned DstSize = Query.Types[0].getSizeInBits();
 
     if (DstSize == 128 && !Query.Types[0].isVector())
-      return false; // Extending to a scalar s128 is not legal.
+      return false; // Extending to a scalar s128 needs narrowing.
     
     // Make sure that we have something that will fit in a register, and
     // make sure it's a power of 2.
@@ -363,12 +363,13 @@ AArch64LegalizerInfo::AArch64LegalizerInfo(const AArch64Subtarget &ST) {
 
     return true;
   };
-  getActionDefinitionsBuilder({G_ZEXT, G_ANYEXT}).legalIf(ExtLegalFunc);
-  getActionDefinitionsBuilder(G_SEXT)
+  getActionDefinitionsBuilder({G_ZEXT, G_SEXT, G_ANYEXT})
       .legalIf(ExtLegalFunc)
       .clampScalar(0, s64, s64); // Just for s128, others are handled above.
 
   getActionDefinitionsBuilder(G_TRUNC).alwaysLegal();
+
+  getActionDefinitionsBuilder(G_SEXT_INREG).lower();
 
   // FP conversions
   getActionDefinitionsBuilder(G_FPTRUNC).legalFor(
@@ -604,6 +605,8 @@ AArch64LegalizerInfo::AArch64LegalizerInfo(const AArch64Subtarget &ST) {
     return Query.Types[0] == p0 && Query.Types[1] == s64;
   });
 
+  getActionDefinitionsBuilder(G_DYN_STACKALLOC).lower();
+
   computeTables();
   verify(*ST.getInstrInfo());
 }
@@ -703,7 +706,7 @@ bool AArch64LegalizerInfo::legalizeLoadStore(
     auto Bitcast = MIRBuilder.buildBitcast({NewTy}, {ValReg});
     MIRBuilder.buildStore(Bitcast.getReg(0), MI.getOperand(1).getReg(), MMO);
   } else {
-    unsigned NewReg = MRI.createGenericVirtualRegister(NewTy);
+    Register NewReg = MRI.createGenericVirtualRegister(NewTy);
     auto NewLoad = MIRBuilder.buildLoad(NewReg, MI.getOperand(1).getReg(), MMO);
     MIRBuilder.buildBitcast({ValReg}, {NewLoad});
   }

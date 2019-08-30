@@ -1368,7 +1368,94 @@ void MachineVerifier::verifyPreISelGenericInstruction(const MachineInstr *MI) {
         break;
       }
     }
+    break;
+  }
+  case TargetOpcode::G_SEXT_INREG: {
+    if (!MI->getOperand(2).isImm()) {
+      report("G_SEXT_INREG expects an immediate operand #2", MI);
+      break;
+    }
 
+    LLT DstTy = MRI->getType(MI->getOperand(0).getReg());
+    LLT SrcTy = MRI->getType(MI->getOperand(1).getReg());
+    verifyVectorElementMatch(DstTy, SrcTy, MI);
+
+    int64_t Imm = MI->getOperand(2).getImm();
+    if (Imm <= 0)
+      report("G_SEXT_INREG size must be >= 1", MI);
+    if (Imm >= SrcTy.getScalarSizeInBits())
+      report("G_SEXT_INREG size must be less than source bit width", MI);
+    break;
+  }
+  case TargetOpcode::G_SHUFFLE_VECTOR: {
+    const MachineOperand &MaskOp = MI->getOperand(3);
+    if (!MaskOp.isShuffleMask()) {
+      report("Incorrect mask operand type for G_SHUFFLE_VECTOR", MI);
+      break;
+    }
+
+    const Constant *Mask = MaskOp.getShuffleMask();
+    auto *MaskVT = dyn_cast<VectorType>(Mask->getType());
+    if (!MaskVT || !MaskVT->getElementType()->isIntegerTy(32)) {
+      report("Invalid shufflemask constant type", MI);
+      break;
+    }
+
+    if (!Mask->getAggregateElement(0u)) {
+      report("Invalid shufflemask constant type", MI);
+      break;
+    }
+
+    LLT DstTy = MRI->getType(MI->getOperand(0).getReg());
+    LLT Src0Ty = MRI->getType(MI->getOperand(1).getReg());
+    LLT Src1Ty = MRI->getType(MI->getOperand(2).getReg());
+
+    if (Src0Ty != Src1Ty)
+      report("Source operands must be the same type", MI);
+
+    if (Src0Ty.getScalarType() != DstTy.getScalarType())
+      report("G_SHUFFLE_VECTOR cannot change element type", MI);
+
+    // Don't check that all operands are vector because scalars are used in
+    // place of 1 element vectors.
+    int SrcNumElts = Src0Ty.isVector() ? Src0Ty.getNumElements() : 1;
+    int DstNumElts = DstTy.isVector() ? DstTy.getNumElements() : 1;
+
+    SmallVector<int, 32> MaskIdxes;
+    ShuffleVectorInst::getShuffleMask(Mask, MaskIdxes);
+
+    if (static_cast<int>(MaskIdxes.size()) != DstNumElts)
+      report("Wrong result type for shufflemask", MI);
+
+    for (int Idx : MaskIdxes) {
+      if (Idx < 0)
+        continue;
+
+      if (Idx >= 2 * SrcNumElts)
+        report("Out of bounds shuffle index", MI);
+    }
+
+    break;
+  }
+  case TargetOpcode::G_DYN_STACKALLOC: {
+    const MachineOperand &DstOp = MI->getOperand(0);
+    const MachineOperand &AllocOp = MI->getOperand(1);
+    const MachineOperand &AlignOp = MI->getOperand(2);
+
+    if (!DstOp.isReg() || !MRI->getType(DstOp.getReg()).isPointer()) {
+      report("dst operand 0 must be a pointer type", MI);
+      break;
+    }
+
+    if (!AllocOp.isReg() || !MRI->getType(AllocOp.getReg()).isScalar()) {
+      report("src operand 1 must be a scalar reg type", MI);
+      break;
+    }
+
+    if (!AlignOp.isImm()) {
+      report("src operand 2 must be an immediate type", MI);
+      break;
+    }
     break;
   }
   default:
@@ -1543,7 +1630,7 @@ MachineVerifier::visitMachineOperand(const MachineOperand *MO, unsigned MONum) {
 
   switch (MO->getType()) {
   case MachineOperand::MO_Register: {
-    const unsigned Reg = MO->getReg();
+    const Register Reg = MO->getReg();
     if (!Reg)
       return;
     if (MRI->tracksLiveness() && !MI->isDebugValue())
@@ -2118,7 +2205,7 @@ void MachineVerifier::checkPHIOps(const MachineBasicBlock &MBB) {
     if (MODef.isTied() || MODef.isImplicit() || MODef.isInternalRead() ||
         MODef.isEarlyClobber() || MODef.isDebug())
       report("Unexpected flag on PHI operand", &MODef, 0);
-    unsigned DefReg = MODef.getReg();
+    Register DefReg = MODef.getReg();
     if (!Register::isVirtualRegister(DefReg))
       report("Expected first PHI operand to be a virtual register", &MODef, 0);
 

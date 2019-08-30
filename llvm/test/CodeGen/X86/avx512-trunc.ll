@@ -514,6 +514,26 @@ define void @trunc_wb_256_mem(<16 x i16> %i, <16 x i8>* %res) #0 {
     ret void
 }
 
+define <16 x i8> @trunc_wb_256_mem_and_ret(<16 x i16> %i, <16 x i8>* %res) #0 {
+; KNL-LABEL: trunc_wb_256_mem_and_ret:
+; KNL:       ## %bb.0:
+; KNL-NEXT:    vpmovzxwd {{.*#+}} zmm0 = ymm0[0],zero,ymm0[1],zero,ymm0[2],zero,ymm0[3],zero,ymm0[4],zero,ymm0[5],zero,ymm0[6],zero,ymm0[7],zero,ymm0[8],zero,ymm0[9],zero,ymm0[10],zero,ymm0[11],zero,ymm0[12],zero,ymm0[13],zero,ymm0[14],zero,ymm0[15],zero
+; KNL-NEXT:    vpmovdb %zmm0, %xmm0
+; KNL-NEXT:    vmovdqa %xmm0, (%rdi)
+; KNL-NEXT:    vzeroupper
+; KNL-NEXT:    retq
+;
+; SKX-LABEL: trunc_wb_256_mem_and_ret:
+; SKX:       ## %bb.0:
+; SKX-NEXT:    vpmovwb %ymm0, %xmm0
+; SKX-NEXT:    vmovdqa %xmm0, (%rdi)
+; SKX-NEXT:    vzeroupper
+; SKX-NEXT:    retq
+    %x = trunc <16 x i16> %i to <16 x i8>
+    store <16 x i8> %x, <16 x i8>* %res
+    ret <16 x i8> %x
+}
+
 define <8 x i8> @trunc_wb_128(<8 x i16> %i) #0 {
 ; ALL-LABEL: trunc_wb_128:
 ; ALL:       ## %bb.0:
@@ -753,11 +773,9 @@ define <16 x i8> @usat_trunc_db_256(<8 x i32> %x) {
 define void @smax_usat_trunc_wb_256_mem1(<16 x i16> %i, <16 x i8>* %res) {
 ; KNL-LABEL: smax_usat_trunc_wb_256_mem1:
 ; KNL:       ## %bb.0:
-; KNL-NEXT:    vpxor %xmm1, %xmm1, %xmm1
-; KNL-NEXT:    vpmaxsw %ymm1, %ymm0, %ymm0
-; KNL-NEXT:    vpminsw {{.*}}(%rip), %ymm0, %ymm0
-; KNL-NEXT:    vpmovzxwd {{.*#+}} zmm0 = ymm0[0],zero,ymm0[1],zero,ymm0[2],zero,ymm0[3],zero,ymm0[4],zero,ymm0[5],zero,ymm0[6],zero,ymm0[7],zero,ymm0[8],zero,ymm0[9],zero,ymm0[10],zero,ymm0[11],zero,ymm0[12],zero,ymm0[13],zero,ymm0[14],zero,ymm0[15],zero
-; KNL-NEXT:    vpmovdb %zmm0, (%rdi)
+; KNL-NEXT:    vextracti128 $1, %ymm0, %xmm1
+; KNL-NEXT:    vpackuswb %xmm1, %xmm0, %xmm0
+; KNL-NEXT:    vmovdqu %xmm0, (%rdi)
 ; KNL-NEXT:    vzeroupper
 ; KNL-NEXT:    retq
 ;
@@ -781,11 +799,9 @@ define void @smax_usat_trunc_wb_256_mem1(<16 x i16> %i, <16 x i8>* %res) {
 define void @smax_usat_trunc_wb_256_mem2(<16 x i16> %i, <16 x i8>* %res) {
 ; KNL-LABEL: smax_usat_trunc_wb_256_mem2:
 ; KNL:       ## %bb.0:
-; KNL-NEXT:    vpminsw {{.*}}(%rip), %ymm0, %ymm0
-; KNL-NEXT:    vpxor %xmm1, %xmm1, %xmm1
-; KNL-NEXT:    vpmaxsw %ymm1, %ymm0, %ymm0
-; KNL-NEXT:    vpmovzxwd {{.*#+}} zmm0 = ymm0[0],zero,ymm0[1],zero,ymm0[2],zero,ymm0[3],zero,ymm0[4],zero,ymm0[5],zero,ymm0[6],zero,ymm0[7],zero,ymm0[8],zero,ymm0[9],zero,ymm0[10],zero,ymm0[11],zero,ymm0[12],zero,ymm0[13],zero,ymm0[14],zero,ymm0[15],zero
-; KNL-NEXT:    vpmovdb %zmm0, (%rdi)
+; KNL-NEXT:    vextracti128 $1, %ymm0, %xmm1
+; KNL-NEXT:    vpackuswb %xmm1, %xmm0, %xmm0
+; KNL-NEXT:    vmovdqu %xmm0, (%rdi)
 ; KNL-NEXT:    vzeroupper
 ; KNL-NEXT:    retq
 ;
@@ -808,11 +824,8 @@ define void @smax_usat_trunc_wb_256_mem2(<16 x i16> %i, <16 x i8>* %res) {
 define <16 x i8> @smax_usat_trunc_wb_256(<16 x i16> %i) {
 ; KNL-LABEL: smax_usat_trunc_wb_256:
 ; KNL:       ## %bb.0:
-; KNL-NEXT:    vpxor %xmm1, %xmm1, %xmm1
-; KNL-NEXT:    vpmaxsw %ymm1, %ymm0, %ymm0
-; KNL-NEXT:    vpminsw {{.*}}(%rip), %ymm0, %ymm0
-; KNL-NEXT:    vpmovzxwd {{.*#+}} zmm0 = ymm0[0],zero,ymm0[1],zero,ymm0[2],zero,ymm0[3],zero,ymm0[4],zero,ymm0[5],zero,ymm0[6],zero,ymm0[7],zero,ymm0[8],zero,ymm0[9],zero,ymm0[10],zero,ymm0[11],zero,ymm0[12],zero,ymm0[13],zero,ymm0[14],zero,ymm0[15],zero
-; KNL-NEXT:    vpmovdb %zmm0, %xmm0
+; KNL-NEXT:    vextracti128 $1, %ymm0, %xmm1
+; KNL-NEXT:    vpackuswb %xmm1, %xmm0, %xmm0
 ; KNL-NEXT:    vzeroupper
 ; KNL-NEXT:    retq
 ;
@@ -834,9 +847,6 @@ define <16 x i8> @smax_usat_trunc_wb_256(<16 x i16> %i) {
 define void @smax_usat_trunc_wb_128_mem(<8 x i16> %i, <8 x i8>* %res) {
 ; KNL-LABEL: smax_usat_trunc_wb_128_mem:
 ; KNL:       ## %bb.0:
-; KNL-NEXT:    vpxor %xmm1, %xmm1, %xmm1
-; KNL-NEXT:    vpmaxsw %xmm1, %xmm0, %xmm0
-; KNL-NEXT:    vpminsw {{.*}}(%rip), %xmm0, %xmm0
 ; KNL-NEXT:    vpackuswb %xmm0, %xmm0, %xmm0
 ; KNL-NEXT:    vmovq %xmm0, (%rdi)
 ; KNL-NEXT:    retq

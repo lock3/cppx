@@ -362,6 +362,11 @@ namespace {
         if (User->getNumOperands() != 2)
           continue;
 
+        // If this can match to INC/DEC, don't count it as a use.
+        if (User->getOpcode() == ISD::ADD &&
+            (isOneConstant(SDValue(N, 0)) || isAllOnesConstant(SDValue(N, 0))))
+          continue;
+
         // Immediates that are used for offsets as part of stack
         // manipulation should be left alone. These are typically
         // used to indicate SP offsets for argument passing and
@@ -502,6 +507,7 @@ namespace {
     bool shrinkAndImmediate(SDNode *N);
     bool isMaskZeroExtended(SDNode *N) const;
     bool tryShiftAmountMod(SDNode *N);
+    bool combineIncDecVector(SDNode *Node);
     bool tryShrinkShlLogicImm(SDNode *N);
     bool tryVPTESTM(SDNode *Root, SDValue Setcc, SDValue Mask);
 
@@ -3333,8 +3339,12 @@ bool X86DAGToDAGISel::matchBitExtract(SDNode *Node) {
   SDValue ImplDef = SDValue(
       CurDAG->getMachineNode(TargetOpcode::IMPLICIT_DEF, DL, MVT::i32), 0);
   insertDAGNode(*CurDAG, SDValue(Node, 0), ImplDef);
-  NBits = CurDAG->getTargetInsertSubreg(X86::sub_8bit, DL, MVT::i32, ImplDef,
-                                        NBits);
+
+  SDValue SRIdxVal = CurDAG->getTargetConstant(X86::sub_8bit, DL, MVT::i32);
+  insertDAGNode(*CurDAG, SDValue(Node, 0), SRIdxVal);
+  NBits = SDValue(
+      CurDAG->getMachineNode(TargetOpcode::INSERT_SUBREG, DL, MVT::i32, ImplDef,
+                             NBits, SRIdxVal), 0);
   insertDAGNode(*CurDAG, SDValue(Node, 0), NBits);
 
   if (Subtarget->hasBMI2()) {
@@ -3763,6 +3773,49 @@ bool X86DAGToDAGISel::tryShrinkShlLogicImm(SDNode *N) {
                                    Shift.getOperand(1));
   ReplaceNode(N, NewSHL.getNode());
   SelectCode(NewSHL.getNode());
+  return true;
+}
+
+/// Convert vector increment or decrement to sub/add with an all-ones constant:
+/// add X, <1, 1...> --> sub X, <-1, -1...>
+/// sub X, <1, 1...> --> add X, <-1, -1...>
+/// The all-ones vector constant can be materialized using a pcmpeq instruction
+/// that is commonly recognized as an idiom (has no register dependency), so
+/// that's better/smaller than loading a splat 1 constant.
+bool X86DAGToDAGISel::combineIncDecVector(SDNode *Node) {
+  assert((Node->getOpcode() == ISD::ADD || Node->getOpcode() == ISD::SUB) &&
+         "Unexpected opcode for increment/decrement transform");
+
+  EVT VT = Node->getValueType(0);
+  assert(VT.isVector() && "Should only be called for vectors.");
+
+  SDValue X = Node->getOperand(0);
+  SDValue OneVec = Node->getOperand(1);
+
+  APInt SplatVal;
+  if (!X86::isConstantSplat(OneVec, SplatVal) || !SplatVal.isOneValue())
+    return false;
+
+  SDLoc DL(Node);
+  SDValue AllOnesVec;
+
+  APInt Ones = APInt::getAllOnesValue(32);
+  assert(VT.getSizeInBits() % 32 == 0 &&
+         "Expected bit count to be a multiple of 32");
+  unsigned NumElts = VT.getSizeInBits() / 32;
+  assert(NumElts > 0 && "Expected to get non-empty vector.");
+  AllOnesVec =
+      CurDAG->getConstant(Ones, DL, MVT::getVectorVT(MVT::i32, NumElts));
+  insertDAGNode(*CurDAG, X, AllOnesVec);
+
+  AllOnesVec = CurDAG->getBitcast(VT, AllOnesVec);
+  insertDAGNode(*CurDAG, X, AllOnesVec);
+
+  unsigned NewOpcode = Node->getOpcode() == ISD::ADD ? ISD::SUB : ISD::ADD;
+  SDValue NewNode = CurDAG->getNode(NewOpcode, DL, VT, X, AllOnesVec);
+
+  ReplaceNode(Node, NewNode.getNode());
+  SelectCode(NewNode.getNode());
   return true;
 }
 
@@ -4201,6 +4254,7 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
 
       unsigned Opc = 0;
       switch (IntNo) {
+      default: llvm_unreachable("Unexpected intrinsic!");
       case Intrinsic::x86_sse3_monitor:
         if (!Subtarget->hasSSE3())
           break;
@@ -4337,6 +4391,10 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
     LLVM_FALLTHROUGH;
   case ISD::ADD:
   case ISD::SUB: {
+    if ((Opcode == ISD::ADD || Opcode == ISD::SUB) && NVT.isVector() &&
+        combineIncDecVector(Node))
+      return;
+
     // Try to avoid folding immediates with multiple uses for optsize.
     // This code tries to select to register form directly to avoid going
     // through the isel table which might fold the immediate. We can't change
@@ -4362,6 +4420,10 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
     // Make sure its an immediate that is considered foldable.
     // FIXME: Handle unsigned 32 bit immediates for 64-bit AND.
     if (!isInt<8>(Val) && !isInt<32>(Val))
+      break;
+
+    // If this can match to INC/DEC, let it go.
+    if (Opcode == ISD::ADD && (Val == 1 || Val == -1))
       break;
 
     // Check if we should avoid folding this immediate.

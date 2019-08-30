@@ -70,6 +70,10 @@ Deprecated Compiler Flags
 The following options are deprecated and ignored. They will be removed in
 future versions of Clang.
 
+- -mmpx used to enable the __MPX__ preprocessor define for the Intel MPX
+  instructions. There were no MPX intrinsics.
+- -mno-mpx used to disable -mmpx and is the default behavior.
+
 - ...
 
 Modified Compiler Flags
@@ -144,6 +148,12 @@ These are major API changes that have happened since the 9.0.0 release of
 Clang. If upgrading an external codebase that uses Clang as a library,
 this section should help get you past the largest hurdles of upgrading.
 
+- libTooling APIs that transfer ownership of `FrontendAction` objects now pass
+  them by `unique_ptr`, making the ownership transfer obvious in the type
+  system. `FrontendActionFactory::create()` now returns a
+  `unique_ptr<FrontendAction>`. `runToolOnCode`, `runToolOnCodeWithArgs`,
+  `ToolInvocation::ToolInvocation()` now take a `unique_ptr<FrontendAction>`.
+
 Build System Changes
 --------------------
 
@@ -157,7 +167,15 @@ release of Clang. Users of the build system should adjust accordingly.
   install-clang-headers target now installs clang's API headers (corresponding
   to its libraries), which is consistent with the install-llvm-headers target.
 
--  ...
+- In 9.0.0 and later Clang added a new target, clang-cpp, which generates a
+  shared library comprised of all the clang component libraries and exporting
+  the clang C++ APIs. Additionally the build system gained the new
+  "CLANG_LINK_CLANG_DYLIB" option, which defaults Off, and when set to On, will
+  force clang (and clang-based tools) to link the clang-cpp library instead of
+  statically linking clang's components. This option will reduce the size of
+  binary distributions at the expense of compiler performance.
+
+- ...
 
 AST Matchers
 ------------

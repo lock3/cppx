@@ -20,6 +20,7 @@
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/PartialDiagnostic.h"
+#include "clang/Basic/Stack.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/Lookup.h"
@@ -362,13 +363,27 @@ bool Sema::LookupTemplateName(LookupResult &Found,
     // x->B::f, and we are looking into the type of the object.
     assert(!SS.isSet() && "ObjectType and scope specifier cannot coexist");
     LookupCtx = computeDeclContext(ObjectType);
-    IsDependent = !LookupCtx;
+    IsDependent = !LookupCtx && ObjectType->isDependentType();
     assert((IsDependent || !ObjectType->isIncompleteType() ||
             ObjectType->castAs<TagType>()->isBeingDefined()) &&
            "Caller should have completed object type");
 
-    // Template names cannot appear inside an Objective-C class or object type.
-    if (ObjectType->isObjCObjectOrInterfaceType()) {
+    // Template names cannot appear inside an Objective-C class or object type
+    // or a vector type.
+    //
+    // FIXME: This is wrong. For example:
+    //
+    //   template<typename T> using Vec = T __attribute__((ext_vector_type(4)));
+    //   Vec<int> vi;
+    //   vi.Vec<int>::~Vec<int>();
+    //
+    // ... should be accepted but we will not treat 'Vec' as a template name
+    // here. The right thing to do would be to check if the name is a valid
+    // vector component name, and look up a template name if not. And similarly
+    // for lookups into Objective-C class and object types, where the same
+    // problem can arise.
+    if (ObjectType->isObjCObjectOrInterfaceType() ||
+        ObjectType->isVectorType()) {
       Found.clear();
       return false;
     }
@@ -630,7 +645,7 @@ void Sema::diagnoseExprIntendedAsTemplateName(Scope *S, ExprResult TemplateName,
     }
 
     std::unique_ptr<CorrectionCandidateCallback> clone() override {
-      return llvm::make_unique<TemplateCandidateFilter>(*this);
+      return std::make_unique<TemplateCandidateFilter>(*this);
     }
   };
 
@@ -998,6 +1013,10 @@ NamedDecl *Sema::ActOnTypeParameter(Scope *S, bool Typename,
                                    Typename, IsParameterPack);
   Param->setAccess(AS_public);
 
+  if (Param->isParameterPack())
+    if (auto *LSI = getEnclosingLambda())
+      LSI->LocalPacks.push_back(Param);
+
   if (ParamName) {
     maybeDiagnoseTemplateParameterShadow(*this, S, ParamNameLoc, ParamName);
 
@@ -1196,6 +1215,10 @@ NamedDecl *Sema::ActOnNonTypeTemplateParameter(Scope *S, Declarator &D,
   if (Invalid)
     Param->setInvalidDecl();
 
+  if (Param->isParameterPack())
+    if (auto *LSI = getEnclosingLambda())
+      LSI->LocalPacks.push_back(Param);
+
   if (ParamName) {
     maybeDiagnoseTemplateParameterShadow(*this, S, D.getIdentifierLoc(),
                                          ParamName);
@@ -1258,6 +1281,10 @@ NamedDecl *Sema::ActOnTemplateTemplateParameter(Scope* S,
                                      Depth, Position, IsParameterPack,
                                      Name, Params);
   Param->setAccess(AS_public);
+
+  if (Param->isParameterPack())
+    if (auto *LSI = getEnclosingLambda())
+      LSI->LocalPacks.push_back(Param);
 
   // If the template template parameter has a name, then link the identifier
   // into the scope and lookup mechanisms.
@@ -3441,7 +3468,7 @@ bool Sema::resolveAssumedTemplateNameAsType(Scope *S, TemplateName &Name,
              getAsTypeTemplateDecl(TC.getCorrectionDecl());
     }
     std::unique_ptr<CorrectionCandidateCallback> clone() override {
-      return llvm::make_unique<CandidateCallback>(*this);
+      return std::make_unique<CandidateCallback>(*this);
     }
   } FilterCCC;
 
@@ -4679,6 +4706,7 @@ SubstDefaultTemplateArgument(Sema &SemaRef,
   for (unsigned i = 0, e = Param->getDepth(); i != e; ++i)
     TemplateArgLists.addOuterTemplateArguments(None);
 
+  Sema::ContextRAII SavedContext(SemaRef, Template->getDeclContext());
   EnterExpressionEvaluationContext ConstantEvaluated(
       SemaRef, Sema::ExpressionEvaluationContext::ConstantEvaluated);
   return SemaRef.SubstExpr(Param->getDefaultArgument(), TemplateArgLists);
@@ -10283,7 +10311,7 @@ void Sema::MarkAsLateParsedTemplate(FunctionDecl *FD, Decl *FnD,
   if (!FD)
     return;
 
-  auto LPT = llvm::make_unique<LateParsedTemplate>();
+  auto LPT = std::make_unique<LateParsedTemplate>();
 
   // Take tokens to avoid allocations
   LPT->Toks.swap(Toks);

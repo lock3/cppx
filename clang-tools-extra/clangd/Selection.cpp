@@ -228,6 +228,16 @@ public:
   bool TraverseNestedNameSpecifier(NestedNameSpecifier *) { return true; }
   bool TraverseType(QualType) { return true; }
 
+  // The DeclStmt for the loop variable claims to cover the whole range
+  // inside the parens, this causes the range-init expression to not be hit.
+  // Traverse the loop VarDecl instead, which has the right source range.
+  bool TraverseCXXForRangeStmt(CXXForRangeStmt *S) {
+    return traverseNode(S, [&] {
+      return TraverseStmt(S->getInit()) && TraverseDecl(S->getLoopVariable()) &&
+             TraverseStmt(S->getRangeInit()) && TraverseStmt(S->getBody());
+    });
+  }
+
 private:
   using Base = RecursiveASTVisitor<SelectionVisitor>;
 
@@ -507,6 +517,12 @@ const SelectionTree::Node &SelectionTree::Node::ignoreImplicit() const {
   if (Children.size() == 1 &&
       Children.front()->ASTNode.getSourceRange() == ASTNode.getSourceRange())
     return Children.front()->ignoreImplicit();
+  return *this;
+}
+
+const SelectionTree::Node &SelectionTree::Node::outerImplicit() const {
+  if (Parent && Parent->ASTNode.getSourceRange() == ASTNode.getSourceRange())
+    return Parent->outerImplicit();
   return *this;
 }
 

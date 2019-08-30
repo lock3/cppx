@@ -270,12 +270,12 @@ Status Debugger::SetPropertyValue(const ExecutionContext *exe_ctx,
     // FIXME it would be nice to have "on-change" callbacks for properties
     if (property_path == g_debugger_properties[ePropertyPrompt].name) {
       llvm::StringRef new_prompt = GetPrompt();
-      std::string str = lldb_utility::ansi::FormatAnsiTerminalCodes(
+      std::string str = lldb_private::ansi::FormatAnsiTerminalCodes(
           new_prompt, GetUseColor());
       if (str.length())
         new_prompt = str;
       GetCommandInterpreter().UpdatePrompt(new_prompt);
-      auto bytes = llvm::make_unique<EventDataBytes>(new_prompt);
+      auto bytes = std::make_unique<EventDataBytes>(new_prompt);
       auto prompt_change_event_sp = std::make_shared<Event>(
           CommandInterpreter::eBroadcastBitResetPrompt, bytes.release());
       GetCommandInterpreter().BroadcastEvent(prompt_change_event_sp);
@@ -345,7 +345,7 @@ void Debugger::SetPrompt(llvm::StringRef p) {
   m_collection_sp->SetPropertyAtIndexAsString(nullptr, idx, p);
   llvm::StringRef new_prompt = GetPrompt();
   std::string str =
-      lldb_utility::ansi::FormatAnsiTerminalCodes(new_prompt, GetUseColor());
+      lldb_private::ansi::FormatAnsiTerminalCodes(new_prompt, GetUseColor());
   if (str.length())
     new_prompt = str;
   GetCommandInterpreter().UpdatePrompt(new_prompt);
@@ -704,7 +704,7 @@ Debugger::Debugger(lldb::LogOutputCallback log_callback, void *baton)
       m_listener_sp(Listener::MakeListener("lldb.Debugger")),
       m_source_manager_up(), m_source_file_cache(),
       m_command_interpreter_up(
-          llvm::make_unique<CommandInterpreter>(*this, false)),
+          std::make_unique<CommandInterpreter>(*this, false)),
       m_script_interpreter_sp(), m_input_reader_stack(), m_instance_name(),
       m_loaded_plugins(), m_event_handler_thread(), m_io_handler_thread(),
       m_sync_broadcaster(nullptr, "lldb.debugger.sync"),
@@ -720,6 +720,9 @@ Debugger::Debugger(lldb::LogOutputCallback log_callback, void *baton)
   PlatformSP default_platform_sp(Platform::GetHostPlatform());
   assert(default_platform_sp);
   m_platform_list.Append(default_platform_sp, true);
+
+  m_dummy_target_sp = m_target_list.GetDummyTarget(*this);
+  assert(m_dummy_target_sp.get() && "Couldn't construct dummy target?");
 
   m_collection_sp->Initialize(g_debugger_properties);
   m_collection_sp->AppendProperty(
@@ -1239,7 +1242,7 @@ ScriptInterpreter *Debugger::GetScriptInterpreter(bool can_create) {
 
 SourceManager &Debugger::GetSourceManager() {
   if (!m_source_manager_up)
-    m_source_manager_up = llvm::make_unique<SourceManager>(shared_from_this());
+    m_source_manager_up = std::make_unique<SourceManager>(shared_from_this());
   return *m_source_manager_up;
 }
 
@@ -1603,10 +1606,6 @@ void Debugger::JoinIOHandlerThread() {
   }
 }
 
-Target *Debugger::GetDummyTarget() {
-  return m_target_list.GetDummyTarget(*this).get();
-}
-
 Target *Debugger::GetSelectedOrDummyTarget(bool prefer_dummy) {
   Target *target = nullptr;
   if (!prefer_dummy) {
@@ -1623,13 +1622,11 @@ Status Debugger::RunREPL(LanguageType language, const char *repl_options) {
   FileSpec repl_executable;
 
   if (language == eLanguageTypeUnknown) {
-    std::set<LanguageType> repl_languages;
+    LanguageSet repl_languages = Language::GetLanguagesSupportingREPLs();
 
-    Language::GetLanguagesSupportingREPLs(repl_languages);
-
-    if (repl_languages.size() == 1) {
-      language = *repl_languages.begin();
-    } else if (repl_languages.empty()) {
+    if (auto single_lang = repl_languages.GetSingularLanguage()) {
+      language = *single_lang;
+    } else if (repl_languages.Empty()) {
       err.SetErrorStringWithFormat(
           "LLDB isn't configured with REPL support for any languages.");
       return err;

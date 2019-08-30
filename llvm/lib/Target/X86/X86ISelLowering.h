@@ -17,7 +17,6 @@
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/TargetLowering.h"
-#include "llvm/Target/TargetOptions.h"
 
 namespace llvm {
   class X86Subtarget;
@@ -143,6 +142,10 @@ namespace llvm {
       /// Special wrapper used under X86-64 PIC mode for RIP
       /// relative displacements.
       WrapperRIP,
+
+      /// Copies a 64-bit value from an MMX vector to the low word
+      /// of an XMM vector, with the high word zero filled.
+      MOVQ2DQ,
 
       /// Copies a 64-bit value from the low word of an XMM vector
       /// to an MMX vector.
@@ -680,6 +683,9 @@ namespace llvm {
     bool isCalleePop(CallingConv::ID CallingConv,
                      bool is64Bit, bool IsVarArg, bool GuaranteeTCO);
 
+    /// If Op is a constant whose elements are all the same constant or
+    /// undefined, return true and return the constant value in \p SplatVal.
+    bool isConstantSplat(SDValue Op, APInt &SplatVal);
   } // end namespace X86
 
   //===--------------------------------------------------------------------===//
@@ -870,11 +876,7 @@ namespace llvm {
       return VTIsOk(XVT) && VTIsOk(KeptBitsVT);
     }
 
-    bool shouldExpandShift(SelectionDAG &DAG, SDNode *N) const override {
-      if (DAG.getMachineFunction().getFunction().hasMinSize())
-        return false;
-      return true;
-    }
+    bool shouldExpandShift(SelectionDAG &DAG, SDNode *N) const override;
 
     bool shouldSplatInsEltVarIndex(EVT VT) const override;
 
@@ -1206,6 +1208,8 @@ namespace llvm {
     bool supportSwiftError() const override;
 
     StringRef getStackProbeSymbolName(MachineFunction &MF) const override;
+
+    unsigned getStackProbeSize(MachineFunction &MF) const;
 
     bool hasVectorBlend() const override { return true; }
 

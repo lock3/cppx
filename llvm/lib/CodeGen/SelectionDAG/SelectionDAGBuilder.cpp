@@ -1809,7 +1809,7 @@ void SelectionDAGBuilder::visitRet(const ReturnInst &I) {
       // offsets to its parts don't wrap either.
       SDValue Ptr = DAG.getObjectPtrOffset(getCurSDLoc(), RetPtr, Offsets[i]);
 
-      SDValue Val = RetOp.getValue(i);
+      SDValue Val = RetOp.getValue(RetOp.getResNo() + i);
       if (MemVTs[i] != ValueVTs[i])
         Val = DAG.getPtrExtOrTrunc(Val, getCurSDLoc(), MemVTs[i]);
       Chains[i] = DAG.getStore(Chain, getCurSDLoc(), Val,
@@ -2599,9 +2599,11 @@ void SelectionDAGBuilder::visitSPDescriptorParent(StackProtectorDescriptor &SPD,
 void
 SelectionDAGBuilder::visitSPDescriptorFailure(StackProtectorDescriptor &SPD) {
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
+  TargetLowering::MakeLibCallOptions CallOptions;
+  CallOptions.setDiscardResult(true);
   SDValue Chain =
       TLI.makeLibCall(DAG, RTLIB::STACKPROTECTOR_CHECK_FAIL, MVT::isVoid,
-                      None, false, getCurSDLoc(), false, false).second;
+                      None, CallOptions, getCurSDLoc()).second;
   // On PS4, the "return address" must still be within the calling function,
   // even if it's at the very end, so emit an explicit TRAP here.
   // Passing 'true' for doesNotReturn above won't generate the trap for us.
@@ -3824,7 +3826,7 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
   // Normalize Vector GEP - all scalar operands should be converted to the
   // splat vector.
   unsigned VectorWidth = I.getType()->isVectorTy() ?
-    cast<VectorType>(I.getType())->getVectorNumElements() : 0;
+    I.getType()->getVectorNumElements() : 0;
 
   if (VectorWidth && !N.getValueType().isVector()) {
     LLVMContext &Context = *DAG.getContext();
@@ -3857,12 +3859,11 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
 
       // If this is a scalar constant or a splat vector of constants,
       // handle it quickly.
-      const auto *CI = dyn_cast<ConstantInt>(Idx);
-      if (!CI && isa<ConstantDataVector>(Idx) &&
-          cast<ConstantDataVector>(Idx)->getSplatValue())
-        CI = cast<ConstantInt>(cast<ConstantDataVector>(Idx)->getSplatValue());
+      const auto *C = dyn_cast<Constant>(Idx);
+      if (C && isa<VectorType>(C->getType()))
+        C = C->getSplatValue();
 
-      if (CI) {
+      if (const auto *CI = dyn_cast_or_null<ConstantInt>(C)) {
         if (CI->isZero())
           continue;
         APInt Offs = ElementSize * CI->getValue().sextOrTrunc(IdxSize);
@@ -3871,7 +3872,7 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
           DAG.getConstant(Offs, dl, EVT::getVectorVT(Context, IdxTy, VectorWidth)) :
           DAG.getConstant(Offs, dl, IdxTy);
 
-        // In an inbouds GEP with an offset that is nonnegative even when
+        // In an inbounds GEP with an offset that is nonnegative even when
         // interpreted as signed, assume there is no unsigned overflow.
         SDNodeFlags Flags;
         if (Offs.isNonNegative() && cast<GEPOperator>(I).isInBounds())
@@ -4117,7 +4118,7 @@ void SelectionDAGBuilder::visitStoreToSwiftError(const StoreInst &I) {
 
   SDValue Src = getValue(SrcV);
   // Create a virtual register, then update the virtual register.
-  unsigned VReg =
+  Register VReg =
       SwiftError.getOrCreateVRegDefAt(&I, FuncInfo.MBB, I.getPointerOperand());
   // Chain, DL, Reg, N or Chain, DL, Reg, N, Glue
   // Chain can be getRoot or getControlRoot.
@@ -4330,8 +4331,13 @@ static bool getUniformBase(const Value *&Ptr, SDValue &Base, SDValue &Index,
 
   // Ensure all the other indices are 0.
   for (unsigned i = 1; i < FinalIndex; ++i) {
-    auto *C = dyn_cast<ConstantInt>(GEP->getOperand(i));
-    if (!C || !C->isZero())
+    auto *C = dyn_cast<Constant>(GEP->getOperand(i));
+    if (!C)
+      return false;
+    if (isa<VectorType>(C->getType()))
+      C = C->getSplatValue();
+    auto *CI = dyn_cast_or_null<ConstantInt>(C);
+    if (!CI || !CI->isZero())
       return false;
   }
 
@@ -5320,8 +5326,9 @@ static SDValue ExpandPowI(const SDLoc &DL, SDValue LHS, SDValue RHS,
 
 // getUnderlyingArgRegs - Find underlying registers used for a truncated,
 // bitcasted, or split argument. Returns a list of <Register, size in bits>
-void getUnderlyingArgRegs(SmallVectorImpl<std::pair<unsigned, unsigned>> &Regs,
-                          const SDValue &N) {
+static void
+getUnderlyingArgRegs(SmallVectorImpl<std::pair<unsigned, unsigned>> &Regs,
+                     const SDValue &N) {
   switch (N.getOpcode()) {
   case ISD::CopyFromReg: {
     SDValue Op = N.getOperand(1);
@@ -6099,6 +6106,8 @@ void SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I,
   case Intrinsic::experimental_constrained_fdiv:
   case Intrinsic::experimental_constrained_frem:
   case Intrinsic::experimental_constrained_fma:
+  case Intrinsic::experimental_constrained_fptosi:
+  case Intrinsic::experimental_constrained_fptoui:
   case Intrinsic::experimental_constrained_fptrunc:
   case Intrinsic::experimental_constrained_fpext:
   case Intrinsic::experimental_constrained_sqrt:
@@ -6854,6 +6863,17 @@ void SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I,
     setValue(&I, Val);
     return;
   }
+  case Intrinsic::ptrmask: {
+    SDValue Ptr = getValue(I.getOperand(0));
+    SDValue Const = getValue(I.getOperand(1));
+
+    EVT DestVT =
+        EVT(DAG.getTargetLoweringInfo().getPointerTy(DAG.getDataLayout()));
+
+    setValue(&I, DAG.getNode(ISD::AND, getCurSDLoc(), DestVT, Ptr,
+                             DAG.getZExtOrTrunc(Const, getCurSDLoc(), DestVT)));
+    return;
+  }
   }
 }
 
@@ -6880,6 +6900,12 @@ void SelectionDAGBuilder::visitConstrainedFPIntrinsic(
     break;
   case Intrinsic::experimental_constrained_fma:
     Opcode = ISD::STRICT_FMA;
+    break;
+  case Intrinsic::experimental_constrained_fptosi:
+    Opcode = ISD::STRICT_FP_TO_SINT;
+    break;
+  case Intrinsic::experimental_constrained_fptoui:
+    Opcode = ISD::STRICT_FP_TO_UINT;
     break;
   case Intrinsic::experimental_constrained_fptrunc:
     Opcode = ISD::STRICT_FP_ROUND;
@@ -7138,7 +7164,7 @@ void SelectionDAGBuilder::LowerCallTo(ImmutableCallSite CS, SDValue Callee,
   if (SwiftErrorVal && TLI.supportSwiftError()) {
     // Get the last element of InVals.
     SDValue Src = CLI.InVals.back();
-    unsigned VReg = SwiftError.getOrCreateVRegDefAt(
+    Register VReg = SwiftError.getOrCreateVRegDefAt(
         CS.getInstruction(), FuncInfo.MBB, SwiftErrorVal);
     SDValue CopyNode = CLI.DAG.getCopyToReg(Result.second, CLI.DL, VReg, Src);
     DAG.setRoot(CopyNode);
@@ -9709,7 +9735,8 @@ void SelectionDAGISel::LowerArguments(const Function &F) {
 
     MachineFunction& MF = SDB->DAG.getMachineFunction();
     MachineRegisterInfo& RegInfo = MF.getRegInfo();
-    unsigned SRetReg = RegInfo.createVirtualRegister(TLI->getRegClassFor(RegVT));
+    Register SRetReg =
+        RegInfo.createVirtualRegister(TLI->getRegClassFor(RegVT));
     FuncInfo->DemoteRegister = SRetReg;
     NewRoot =
         SDB->DAG.getCopyToReg(NewRoot, SDB->getCurSDLoc(), SRetReg, ArgValue);
