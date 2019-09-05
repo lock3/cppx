@@ -14,7 +14,7 @@ using SyntaxVector = std::vector<std::shared_ptr<Syntax>>;
 // Semantic actions for the Green language.
 class GreenSema {
   // A mapping of identifiers as strings to syntaxes.
-  llvm::StringMap<Syntax> Identifiers;
+  llvm::StringMap<Syntax *> Identifiers;
 
 public:
   // Look through a translation unit and create the Identifiers map.
