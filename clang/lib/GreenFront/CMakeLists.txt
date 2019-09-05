@@ -8,5 +8,5 @@ add_clang_library(greenFrontend
   LINK_LIBS
   clangBasic
   clangFrontend
-  greenParse
+  greenSema
   )

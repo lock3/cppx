@@ -57,7 +57,7 @@ CreateFrontendBaseAction(CompilerInstance &CI) {
   case EmitLLVMOnly:           return std::make_unique<EmitLLVMOnlyAction>();
   case EmitCodeGenOnly:        return std::make_unique<EmitCodeGenOnlyAction>();
   case EmitObj:                return std::make_unique<EmitObjAction>();
-  case EmitGreen:              return llvm::make_unique<EmitGreenAction>();
+  case EmitGreen:              return std::make_unique<EmitGreenAction>();
   case FixIt:                  return std::make_unique<FixItAction>();
   case GenerateModule:
     return std::make_unique<GenerateModuleFromModuleMapAction>();
@@ -69,7 +69,7 @@ CreateFrontendBaseAction(CompilerInstance &CI) {
   case GenerateInterfaceIfsExpV1:
     return std::make_unique<GenerateInterfaceIfsExpV1Action>();
   case ParseGreenSyntax:
-    return llvm::make_unique<lock3::GreenSyntaxAction>();
+    return std::make_unique<lock3::GreenSyntaxAction>();
   case InitOnly:               return std::make_unique<InitOnlyAction>();
   case ParseSyntaxOnly:        return std::make_unique<SyntaxOnlyAction>();
   case ModuleFileInfo:         return std::make_unique<DumpModuleInfoAction>();

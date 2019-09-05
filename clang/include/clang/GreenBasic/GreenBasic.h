@@ -1,8 +1,6 @@
 #ifndef CLANG_GREEN_GREENBASIC_H
 #define CLANG_GREEN_GREENBASIC_H
 
-#define usyn_noinline __declspec(noinline)
-
 namespace usyntax {
 
 // Numeric types.

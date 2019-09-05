@@ -3,6 +3,8 @@
 
 #include "clang/GreenBasic/GreenBasic.h"
 
+#include <cassert>
+
 namespace usyntax {
 
 // Precedence.
@@ -37,11 +39,11 @@ struct TokenInfo {
 
 constexpr TokenInfo tokens[] = {
     {0, prec_never, 0, prec_never, prec_never, 0, 0, 0, "", nullptr, nullptr},
-    {0, prec_never, 0, prec_expr, prec_never, 0, 0, 0, "\r \n", nullptr},
+    {0, prec_never, 0, prec_expr, prec_never, 0, 0, 0, "\r \n", nullptr, nullptr},
     {0, prec_base, 0, prec_expr, prec_never, 0, 0, 0,
      "A B C D E F G H I J K L M N O P Q R S T U V W X Y Z a b c d e f g h i j "
      "k l m n o p q r s t u v w x y z _",
-     nullptr},
+     nullptr, nullptr},
     {0, prec_base, 0, prec_never, prec_never, 0, 0, 0, "0 1 2 3 4 5 6 7 8 9",
      nullptr, nullptr},
     {0, prec_never, 0, prec_never, prec_never, 0, 0, 1, ",", nullptr, nullptr},
@@ -236,10 +238,10 @@ struct chars_t {
     for (intp i = 0; i < 256; ++i) {
       flags[i] =
         cf_idlead *
-        (i >= 'A' && i <= 'Z' || i >= 'a' && i <= 'z' || i == '_') +
+        ((i >= 'A' && i <= 'Z') || (i >= 'a' && i <= 'z') || i == '_') +
         cf_digit * (i >= '0' && i <= '9') +
-        cf_hex * (i >= '0' && i <= '9' || i >= 'A' && i <= 'F' ||
-                  i >= 'a' && i <= 'f') +
+        cf_hex * ((i >= '0' && i <= '9') || (i >= 'A' && i <= 'F') ||
+                  (i >= 'a' && i <= 'f')) +
         cf_string * (i >= 0x20 && i <= 0x7E && i != '{' && i != '}' &&
                      i != '"' && i != '\\' && i != '\r' && i != '\n') +
         cf_idquote * (i >= 0x20 && i <= 0x7E && i != '{' && i != '}' &&
@@ -297,16 +299,16 @@ struct chars_t {
       return cs[0] = char8((ch)), 1;
     else if (ch <= 0x07FF)
       return cs[0] = char8((ch >> 6) | 0xC0),
-             cs[1] = char8((ch)&0x3F | 0x80), 2;
+        cs[1] = char8(((ch)&0x3F) | 0x80), 2;
     else if (ch <= 0xFFFF)
       return cs[0] = char8((ch >> 12) | 0xE0),
-             cs[1] = char8((ch >> 6) & 0x3F | 0x80),
-             cs[2] = char8(ch & 0x3F | 0x80), 3;
+        cs[1] = char8(((ch >> 6) & 0x3F) | 0x80),
+        cs[2] = char8((ch & 0x3F) | 0x80), 3;
     else
       return cs[0] = char8((ch >> 18) | 0xF0),
-             cs[1] = char8((ch >> 12) & 0x3F | 0x80),
-             cs[2] = char8(ch >> 6 & 0x3F | 0x80),
-             cs[3] = char8(ch & 0x3F | 0x80), 4;
+        cs[1] = char8(((ch >> 12) & 0x3F) | 0x80),
+        cs[2] = char8(((ch >> 6) & 0x3F) | 0x80),
+        cs[3] = char8((ch & 0x3F) | 0x80), 4;
   }
 };
 

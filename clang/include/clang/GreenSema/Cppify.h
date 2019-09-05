@@ -1,22 +1,25 @@
 #ifndef CLANG_GREEN_CPPIFY_H
 #define CLANG_GREEN_CPPIFY_H
 
-#include "clang/GreenBasic/GreenBasic.h"
 #include "clang/GreenAST/Syntax.h"
+#include "clang/GreenBasic/GreenBasic.h"
+#include "clang/GreenParse/GreenParser.h"
 
 #include <iostream>
 #include <fstream>
 
 namespace usyntax {
 
+using namespace llvm;
+
 // Helper functions.
-[[noreturn]] void Error(const std::string &message) {
+[[noreturn]] inline void Error(const std::string &message) {
   std::cout << message << "\r\n";
   system("pause");
   exit(1);
 }
 
-[[noreturn]] void Error(const Locus &whence, const char *code,
+[[noreturn]] inline void Error(const Locus &whence, const char *code,
                         const std::string &message) {
   std::cout << *whence.filename << "(" << whence.startline << ","
             << whence.startpos << ") : error " << code << ": " << message
@@ -25,11 +28,14 @@ namespace usyntax {
   exit(1);
 }
 
+// Constants.
+static auto NativePathSyntax = std::make_shared<SyntaxConstPath>(Locus{}, "@P");
+
 // Syntax generation.
 struct GenerateSyntax {
   // Types.
   using string_t = std::string;
-  using syntax_t = std::shared_ptr<syntax>;
+  using syntax_t = std::shared_ptr<Syntax>;
   using array_t = std::vector<syntax_t>;
   using macro_t = std::vector<SyntaxMacro::clause>;
   using file_t = array_t;
@@ -38,7 +44,7 @@ struct GenerateSyntax {
   string_t StringNew() const noexcept { return std::string(); }
 
   void StringConcat(string_t &s, usyntax::Text t) const noexcept {
-    s.append((char *)t.start, t.stop - t.start);
+    s.append((const char *)t.start, t.stop - t.start);
   }
 
   array_t ArrayNew(int64_t reserve = 0) const noexcept {
@@ -55,8 +61,10 @@ struct GenerateSyntax {
     int64_t D = 0;
 
     for (auto d : digits) {
-      if (int64_t D0 = D, n = usyntax::chars.hexval[d];
-          D = D * 16 + n, (D - n) / 16 != D0)
+      int64_t D0 = D;
+      auto n = usyntax::chars.hexval[d];
+      D = D * 16 + n;
+      if ((D - n) / 16 != D0)
         Error("NumHex: integer overflow");
     }
 
@@ -68,9 +76,13 @@ struct GenerateSyntax {
       noexcept {
     int64_t D = 0;
 
-    for (auto d : digits)
-      if (int64_t D0 = D, n = d - '0'; D = D * 10 + n, (D - n) / 10 != D0)
+    for (auto d : digits) {
+      int64_t D0 = D;
+      auto n = d - '0';
+      D = D * 10 + n;
+      if ((D - n) / 10 != D0)
         Error("NumRational: integer overflow");
+    }
 
     return std::make_shared<SyntaxConstInt>(LocusOf(snip), D);
     // FIXME: why is this even here?
@@ -164,7 +176,7 @@ struct GenerateSyntax {
                         std::initializer_list<usyntax::Text> items) const {
     std::string msg;
     for (auto i : items)
-      msg.append((char *)i.start, i.stop - i.start);
+      msg.append((const char *)i.start, i.stop - i.start);
     Error(LocusOf(snip), code, msg);
   }
 
@@ -186,7 +198,7 @@ struct GenerateSyntax {
   // Internal.
   std::shared_ptr<std::string> filename;
   std::string StringOf(const usyntax::Text &Text) const noexcept {
-    return std::string((char *)Text.start, Text.stop - Text.start);
+    return std::string((const char *)Text.start, Text.stop - Text.start);
   }
 
   Locus LocusOf(const usyntax::snippet_t &snip) const noexcept {
@@ -198,14 +210,14 @@ struct GenerateSyntax {
 struct GenerateCpp {
   int64_t line;
   std::ofstream &dst_file;
-  void GenerateFile(const std::vector<std::shared_ptr<syntax>> &ys) {
+  void GenerateFile(const std::vector<std::shared_ptr<Syntax>> &ys) {
     for (auto y : ys) {
-      if (auto ym = std::dynamic_pointer_cast<SyntaxMacro>(y)) {
+      if (SyntaxMacro *ym = dyn_cast<SyntaxMacro>(y.get())) {
         // want IsNative(const char*) to simplify this
         // - support include{"filename"}
         // - support operator'=', generate_definition(bool in_code)
         // - support operator'!'
-        if (auto ym0 = std::dynamic_pointer_cast<SyntaxIdent>(ym->macro))
+        if (SyntaxIdent *ym0 = dyn_cast<SyntaxIdent>(ym->macro.get()))
           dst_file << ym0->name << "\n";
         else
           dst_file << "macro\n";

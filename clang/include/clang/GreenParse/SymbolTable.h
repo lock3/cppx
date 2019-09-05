@@ -2,6 +2,7 @@
 #define CLANG_GREEN_SYMBOLTABLE_H
 
 #include "clang/GreenBasic/GreenBasic.h"
+#include "clang/GreenParse/TokenInfo.h"
 
 namespace usyntax {
 
@@ -29,13 +30,15 @@ enum res_t : nat8 {
   res_at_special
 };
 
+static constexpr const char *scan_reserved[] =
+{
+  "",      "of", "not", "and",       "or",      "where", "if",    "else",
+  "catch", "do", "in",  "otherwise", "returns", "then",  "until", 0
+};
+
 struct reserved_t {
   static constexpr intp n = 16;
   static constexpr nat16 m0 = 1683, m1 = 1854;
-  inline static constexpr const char *scan_reserved[] = {
-      "",      "of", "not", "and",       "or",      "where", "if",    "else",
-      "catch", "do", "in",  "otherwise", "returns", "then",  "until", 0};
-
   static constexpr nat8 hash(char8 c0, char8 c1) noexcept {
     return ((m0 * c0 + m1 * c1) >> 8) & (n - 1);
   }

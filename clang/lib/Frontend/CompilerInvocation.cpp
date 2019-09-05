@@ -3213,11 +3213,9 @@ static bool isStrictlyPreprocessorAction(frontend::ActionKind Action) {
   case frontend::GenerateModuleInterface:
   case frontend::GenerateHeaderModule:
   case frontend::GeneratePCH:
-  case frontend::GenerateInterfaceYAMLExpV1:
-  case frontend::GenerateInterfaceTBEExpV1:
   case frontend::GenerateInterfaceIfsExpV1:
-  case frontend::ParseGreenSyntax:
   case frontend::ParseSyntaxOnly:
+  case frontend::ParseGreenSyntax:
   case frontend::ModuleFileInfo:
   case frontend::VerifyPCH:
   case frontend::PluginAction:

@@ -4,6 +4,7 @@
 #include "clang/GreenBasic/GreenBasic.h"
 #include "clang/GreenParse/TokenInfo.h"
 #include "clang/GreenParse/SymbolTable.h"
+#include "llvm/Support/Compiler.h"
 
 #include <cassert>
 
@@ -170,15 +171,15 @@ template <class gen_t> struct GreenParser : TextPos {
       (this->*errfunc)(value);
   }
 
-  usyn_noinline Text PosQuote() noexcept {
+  Text PosQuote() noexcept {
     static const Text quote[2] = {"", "\""};
     return quote[(pos[0] > 0x20) & (pos[0] != '"') & (pos[0] < 0x7F)];
   }
 
-  usyn_noinline Text PosText() noexcept {
+  Text PosText() noexcept {
 
     // Quoted.
-    if (pos[0] == '#' && pos[1] == '>' || pos[0] == '<' && pos[1] == '#')
+    if ((pos[0] == '#' && pos[1] == '>') || (pos[0] == '<' && pos[1] == '#'))
       return Text(pos, pos + 2);
     if (chars.flags[pos[0]] & cf_idlead) {
       intp n = 1;
@@ -210,51 +211,51 @@ template <class gen_t> struct GreenParser : TextPos {
   }
 
   // Comment and character set errors:
-  [[noreturn]] usyn_noinline void S01() {
+  [[noreturn]] void S01() {
     gen.Err(Snip(), "S01", {"Source must be ASCII or Unicode UTF-8 format"});
   }
 
-  [[noreturn]] usyn_noinline void S02() {
+  [[noreturn]] void S02() {
     gen.Err(
         Snip(), "S02",
         {"Unexpected ", PosQuote(), PosText(), PosQuote(), " in comment"});
   }
 
-  [[noreturn]] usyn_noinline void S04() {
+  [[noreturn]] void S04() {
     gen.Err(Snip(), "S04", {"Block comment beginning at \"<#\" never ends"});
   }
 
-  [[noreturn]] usyn_noinline void S05() {
+  [[noreturn]] void S05() {
     gen.Err(Snip(), "S05",
             {"Ending block comment \"#>\" is outside of comment"});
   }
 
 
   // Constant errors.
-  [[noreturn]] usyn_noinline void S15() {
+  [[noreturn]] void S15() {
     gen.Err(Snip(), "S15",
             {"Unexpected ", PosQuote(), PosText(), PosQuote(),
              " following hexidecimal digits"});
   }
 
-  [[noreturn]] usyn_noinline void S16() {
+  [[noreturn]] void S16() {
     gen.Err(Snip(), "S16",
             {"Unicode character constant must be in range 0u0 to 0u10FFFF"});
   }
 
-  [[noreturn]] usyn_noinline void S17() {
+  [[noreturn]] void S17() {
     gen.Err(Snip(), "S17",
             {"Exponent is only allowed in floating point numbers ending in "
              "\"h\", \"f\", \"d\", \"q\""});
   }
 
-  [[noreturn]] usyn_noinline void S18() {
+  [[noreturn]] void S18() {
     gen.Err(
         Snip(), "S18",
         {"Character code unit must be 1-2 digits in the range 0c0 to 0cFF"});
   }
 
-  [[noreturn]] usyn_noinline void S19() {
+  [[noreturn]] void S19() {
     gen.Err(
         Snip(), "S19",
         {"Unicode code point must be 1-6 digits in the range 0u0 to 0c10FFFF"});
@@ -262,132 +263,132 @@ template <class gen_t> struct GreenParser : TextPos {
 
 
   // Identifier errors:
-  [[noreturn]] usyn_noinline void S20(Text what) {
+  [[noreturn]] void S20(Text what) {
     gen.Err(Snip(), "S20",
             {"Unexpected ", PosQuote(), PosText(), PosQuote(),
              " or missing identifier following \"", what, "\""});
   }
 
-  [[noreturn]] usyn_noinline void S21(Text what) {
+  [[noreturn]] void S21(Text what) {
     gen.Err(Snip(), "S21",
             {"Reserved word \"", what, "\" is not allowed here"});
   }
 
-  [[noreturn]] usyn_noinline void S23(Text what) {
+  [[noreturn]] void S23(Text what) {
     gen.Err(Snip(), "S23",
             {"Unexpected ", PosQuote(), PosText(), PosQuote(),
              " or missing \"", what, "\" in qualifier"});
   }
 
-  [[noreturn]] usyn_noinline void S24(Text what) {
+  [[noreturn]] void S24(Text what) {
     gen.Err(Snip(), "S24",
             {"Unexpected ", PosQuote(), PosText(), PosQuote(),
              " or missing \"", what, "\" in quoted identifier"});
   }
 
-  [[noreturn]] usyn_noinline void S25(Text what) {
+  [[noreturn]] void S25(Text what) {
     gen.Err(Snip(), "S25",
             {"Unexpected ", PosQuote(), PosText(), PosQuote(),
              " or missing \"", what, "\" in path literal"});
   }
 
-  [[noreturn]] usyn_noinline void S26(Text what) {
+  [[noreturn]] void S26(Text what) {
     gen.Err(Snip(), "S26", {"Missing label in path following \"", what, "\""});
   }
 
   // Text errors.
-  [[noreturn]] usyn_noinline void S31(Text what) {
+  [[noreturn]] void S31(Text what) {
     gen.Err(Snip(), "S31",
             {"Unexpected ", PosQuote(), PosText(), PosQuote(),
              " or missing \"", what, "\" in character literal"});
   }
 
-  [[noreturn]] usyn_noinline void S32(Text) {
+  [[noreturn]] void S32(Text) {
     gen.Err(Snip(), "S32",
             {"Unexpected ", PosQuote(), PosText(), PosQuote(),
              " or missing end quote in string literal"});
   }
 
-  [[noreturn]] usyn_noinline void S34() {
+  [[noreturn]] void S34() {
     gen.Err(Snip(), "S34",
             {"Bad character escape \"\\\" followed by ", PosQuote(),
              PosText(), PosQuote()});
   }
 
-  [[noreturn]] usyn_noinline void S36() {
+  [[noreturn]] void S36() {
     gen.Err(Snip(), "S36",
             {"Constant string interpolations must be blank or unspaced "
              "character constants"});
   }
 
   // Markup and documentation attribute delimiting errors.
-  [[noreturn]] usyn_noinline void S41() {
+  [[noreturn]] void S41() {
     gen.Err(Snip(), "S41",
             {"Bad markup expression or missing markup tag preceding ",
              PosQuote(), PosText(), PosQuote()});
   }
 
-  [[noreturn]] usyn_noinline void S42() {
+  [[noreturn]] void S42() {
     gen.Err(Snip(), "S42",
             {"Unexpected ", PosQuote(), PosText(), PosQuote(),
              " following markup tag expression"});
   }
 
-  [[noreturn]] usyn_noinline void S43(Text tag, Text id) {
+  [[noreturn]] void S43(Text tag, Text id) {
     gen.Err(Snip(), "S43",
             {"Markup started with \"<", tag,
              ">\" tag but ended in mismatched \"</", id, ">\" tag"});
   }
 
-  [[noreturn]] usyn_noinline void S44(Text what) {
+  [[noreturn]] void S44(Text what) {
     gen.Err(Snip(), "S44",
             {"Unexpected ", PosQuote(), PosText(), PosQuote(),
              " or missing \"", what, "\" in markup end tag"});
   }
 
-  [[noreturn]] usyn_noinline void S45() {
+  [[noreturn]] void S45() {
     gen.Err(Snip(), "S45", {"Documentation attribute must not be empty"});
   }
 
-  [[noreturn]] usyn_noinline void S46() {
+  [[noreturn]] void S46() {
     gen.Err(Snip(), "S46",
             {"Expected indented markup following \":>\" but got ", PosQuote(),
              PosText(), PosQuote()});
   }
 
   // Markup content errors.
-  [[noreturn]] usyn_noinline void S51(Text what) {
+  [[noreturn]] void S51(Text what) {
     gen.Err(Snip(), "S51",
             {"Unexpected ", PosQuote(), PosText(), PosQuote(),
              " or missing \"", what, "\" in markup"});
   }
 
-  [[noreturn]] usyn_noinline void S52(Text what) {
+  [[noreturn]] void S52(Text what) {
     gen.Err(Snip(), "S52",
             {"Unexpected ", PosQuote(), PosText(), PosQuote(),
              " or missing \"", what, "\" in markup"});
   }
 
-  [[noreturn]] usyn_noinline void S53(Text what) {
+  [[noreturn]] void S53(Text what) {
     gen.Err(Snip(), "S53",
             {"Unexpected ", PosQuote(), PosText(), PosQuote(),
              " or missing \"", what, "\" in documentation attribute"});
   }
 
-  [[noreturn]] usyn_noinline void S54(Text) {
+  [[noreturn]] void S54(Text) {
     gen.Err(Snip(), "S54",
             {"Unexpected ", PosQuote(), PosText(), PosQuote(),
              " in indented markup"});
   }
 
-  [[noreturn]] usyn_noinline void S57() {
+  [[noreturn]] void S57() {
     gen.Err(Snip(), "S57",
             {"Unexpected ", PosQuote(), PosText(), PosQuote(),
              " or missing ending \";\" or newline following \"&\" markup "
              "escape expression"});
   }
 
-  [[noreturn]] usyn_noinline void S58() {
+  [[noreturn]] void S58() {
     gen.Err(Snip(), "S58",
             {"Markup list separator \"~\" is only allowed in markup beginning "
              "with \"~\"; elsewhere escape it using \"\\~\""});
@@ -395,29 +396,29 @@ template <class gen_t> struct GreenParser : TextPos {
 
 
   // Precedence errors.
-  [[noreturn]] usyn_noinline void S60(Text op, Text what) {
+  [[noreturn]] void S60(Text op, Text what) {
     gen.Err(Snip(), "S60",
             {"Precedence doesn't allow \"", op, "\" following \"", what, "\""});
   }
 
-  [[noreturn]] usyn_noinline void S62(Text op, Text) {
+  [[noreturn]] void S62(Text op, Text) {
     gen.Err(
         Snip(), "S62",
         {"Precedence doesn't allow \"", op, "\" following prefix attribute"});
   }
 
-  [[noreturn]] usyn_noinline void S63(Text op, Text) {
+  [[noreturn]] void S63(Text op, Text) {
     gen.Err(Snip(), "S63",
             {"Precedence doesn't allow \"", op,
              "\" following documentation attribute"});
   }
 
-  [[noreturn]] usyn_noinline void S64(Text op, Text) {
+  [[noreturn]] void S64(Text op, Text) {
     gen.Err(Snip(), "S64",
             {"Precedence doesn't allow \"", op, "\" in markup tag expression"});
   }
 
-  [[noreturn]] usyn_noinline void S65(Text what) {
+  [[noreturn]] void S65(Text what) {
     gen.Err(
         Snip(), "S65",
         {"Precedence doesn't allow prefix attribute following \"", what, "\""});
@@ -425,98 +426,98 @@ template <class gen_t> struct GreenParser : TextPos {
 
 
   // Bad or missing expression, block, keyword errors.
-  [[noreturn]] usyn_noinline void S70(Text) {
+  [[noreturn]] void S70(Text) {
     gen.Err(Snip(), "S70",
             {"Expected expression, got ", PosQuote(), PosText(), PosQuote(),
              " at top level of program"});
   }
 
-  [[noreturn]] usyn_noinline void S71(Text what) {
+  [[noreturn]] void S71(Text what) {
     gen.Err(Snip(), "S71",
             {"Expected expression, got ", PosQuote(), PosText(), PosQuote(),
              " following \"", what, "\""});
   }
 
-  [[noreturn]] usyn_noinline void S72(Text) {
+  [[noreturn]] void S72(Text) {
     gen.Err(Snip(), "S72",
             {"Expected expression, got ", PosQuote(), PosText(), PosQuote(),
              " following prefix attribute"});
   }
 
-  [[noreturn]] usyn_noinline void S73(Text) {
+  [[noreturn]] void S73(Text) {
     gen.Err(Snip(), "S73",
             {"Expected expression, got ", PosQuote(), PosText(), PosQuote(),
              " following documentation attribute"});
   }
 
-  [[noreturn]] usyn_noinline void S74(Text) {
+  [[noreturn]] void S74(Text) {
     gen.Err(Snip(), "S74",
             {"Expected markup tag expression, got ", PosQuote(), PosText(),
              PosQuote()});
   }
 
-  [[noreturn]] usyn_noinline void S76(Text what) {
+  [[noreturn]] void S76(Text what) {
     gen.Err(Snip(), "S76",
             {"Expected block or keyword, got ", PosQuote(), PosText(),
              PosQuote(), " following \"", what, "\""});
   }
 
-  [[noreturn]] usyn_noinline void S77(Text what) {
+  [[noreturn]] void S77(Text what) {
     gen.Err(
         Snip(), "S77",
         {"Reserved word \"", what, "\" is not allowed following expression"});
   }
 
-  [[noreturn]] usyn_noinline void S78() {
+  [[noreturn]] void S78() {
     gen.Err(Snip(), "S78",
             {"Unexpected ", PosQuote(), PosText(), PosQuote(),
              " following expression"});
   }
 
   // Expression grouping errors:
-  [[noreturn]] usyn_noinline void S81(Text what) {
+  [[noreturn]] void S81(Text what) {
     gen.Err(Snip(), "S81",
             {"Expected expression or \"", what, "\", got ", PosQuote(),
              PosText(), PosQuote(), " in Parentheses"});
   }
 
-  [[noreturn]] usyn_noinline void S82(Text what) {
+  [[noreturn]] void S82(Text what) {
     gen.Err(Snip(), "S82",
             {"Expected expression or \"", what, "\", got ", PosQuote(),
              PosText(), PosQuote(), " in parenthesized parameter list"});
   }
 
-  [[noreturn]] usyn_noinline void S83(Text what) {
+  [[noreturn]] void S83(Text what) {
     gen.Err(Snip(), "S83",
             {"Expected expression or \"", what, "\", got ", PosQuote(),
              PosText(), PosQuote(), " in bracketed block"});
   }
 
-  [[noreturn]] usyn_noinline void S84(Text what) {
+  [[noreturn]] void S84(Text what) {
     gen.Err(Snip(), "S84",
             {"Expected expression or \"", what, "\", got ", PosQuote(),
              PosText(), PosQuote(), " in braced block"});
   }
 
-  [[noreturn]] usyn_noinline void S85(Text what) {
+  [[noreturn]] void S85(Text what) {
     gen.Err(Snip(), "S85",
             {"Expected \"", what, "\", got ", PosQuote(), PosText(),
              PosQuote(), " in prefix brackets"});
   }
 
-  [[noreturn]] usyn_noinline void S86(Text what) {
+  [[noreturn]] void S86(Text what) {
     gen.Err(Snip(), "S86",
             {"Expected expression or \"", what, "\", got ", PosQuote(),
              PosText(), PosQuote(), " in string interpolation"});
   }
 
-  [[noreturn]] usyn_noinline void S88(Text) {
+  [[noreturn]] void S88(Text) {
     gen.Err(Snip(), "S88",
             {"Expected expression, got ", PosQuote(), PosText(), PosQuote(),
              " in indented block"});
   }
 
-  [[noreturn]] usyn_noinline void S89() {
+  [[noreturn]] void S89() {
     gen.Err(Snip(), "S89",
             {"Indentation mismatch: expected ",
              context.blockstart[pos - LineStart] == ' ' ? "space" : "tab",
@@ -524,7 +525,7 @@ template <class gen_t> struct GreenParser : TextPos {
   }
 
   // Should never happen.
-  [[noreturn]] usyn_noinline void S99(Text) {
+  [[noreturn]] void S99(Text) {
     gen.Err(Snip(), "S99", {"Unexpected error"});
   }
 
@@ -554,7 +555,7 @@ template <class gen_t> struct GreenParser : TextPos {
     }
   }
 
-  usyn_noinline void HandleBadCmt() { Eat("#>") ? S05() : S02(); }
+  void HandleBadCmt() { Eat("#>") ? S05() : S02(); }
   void HandleBlockCmt() {
     // blockcmt = '<#' !'>' {printable|newline} '#>
     assert(pos[0] == '<' && pos[1] == '#' && pos[2] != '>');
@@ -612,6 +613,7 @@ template <class gen_t> struct GreenParser : TextPos {
             case '\n':
               if (Line())
                 continue;
+            LLVM_FALLTHROUGH;
             case 0:
               return 0;
             default:
@@ -669,6 +671,7 @@ template <class gen_t> struct GreenParser : TextPos {
           } else
             HandleIndCmt();
         }
+      LLVM_FALLTHROUGH;
       default:
         tok = Token(pos);
         return;
@@ -700,7 +703,7 @@ template <class gen_t> struct GreenParser : TextPos {
   }
 
   bool IsSpace(char c) noexcept { return (c == ' ') | (c == '\t'); }
-  usyn_noinline bool Line() {
+  bool Line() {
     // Parse a new line that is more indented than blockstart.
     // line = newline i={0x09|0x20} space (ending | (top | i>blockind) lineind=i
     // | !(i<=blockind) error)
@@ -716,7 +719,7 @@ template <class gen_t> struct GreenParser : TextPos {
       TextPos saved_stop(*this);
       Space();
       if (Ending() |
-          line_continues & !block_continues) // Blank or more indented.
+          (line_continues & !block_continues)) // Blank or more indented.
         return 1;
       if (!line_continues) // Not more indented than block start, so don't
                            // consume anything.
@@ -726,14 +729,14 @@ template <class gen_t> struct GreenParser : TextPos {
     return Space(), 1; // At top, nothing can go wrong.
   }
 
-  usyn_noinline void Scan() {
+  void Scan() {
     // scan = space {line}
     Space();
     while (Line())
       ;
   }
 
-  usyn_noinline void Rescan() {
+  void Rescan() {
     // if(pos!=saved_scan_start)
     Scan();
     // else
@@ -745,7 +748,7 @@ template <class gen_t> struct GreenParser : TextPos {
     return (1LL << tok) & accept;
   }
 
-  usyn_noinline bool ScanBrace() {
+  bool ScanBrace() {
     Space();
     TextPos saved(*this);
     while (Line())
@@ -757,7 +760,7 @@ template <class gen_t> struct GreenParser : TextPos {
     // or nullptr.
   }
 
-  usyn_noinline res_t Scankey() noexcept {
+  res_t Scankey() noexcept {
     // With backtracking to latest trailing line ending.
     // scankey = space [line {line} lineprefix space]
     Space();
@@ -765,10 +768,12 @@ template <class gen_t> struct GreenParser : TextPos {
     bool same_line = 1;
     while (Line())
       same_line = 0;
-    if ((same_line | !context.lineprefix) || Eat("&") && (Space(), 1))
-      if (auto ri = Reserved[pos])
-        if (Word(); KeywordAccept())
+    if ((same_line | !context.lineprefix) || (Eat("&") && (Space(), 1)))
+      if (auto ri = Reserved[pos]) {
+        Word();
+        if (KeywordAccept())
           return ri;
+      }
     return Restore(saved), res_none;
   }
 
@@ -806,8 +811,9 @@ template <class gen_t> struct GreenParser : TextPos {
              pos[0] == '.' && pos[1] >= '0' && pos[1] <= '9');
     if (pos[0] == '0') {
       Next(1);
-      if (char c0 = pos[0]; ((c0 == 'u') | (c0 == 'c') | (c0 == 'x')) &&
-                            (chars.flags[pos[1]] & cf_hex)) {
+      char c0 = pos[0];
+      if (((c0 == 'u') | (c0 == 'c') | (c0 == 'x')) &&
+          (chars.flags[pos[1]] & cf_hex)) {
         Next(1);
         if (c0 == 'u') {
           auto n = Parse0u();
@@ -857,9 +863,10 @@ template <class gen_t> struct GreenParser : TextPos {
       }
     }
 
-    if (auto format = pos[0]; ((format == 'h') | (format == 'f') |
-                               (format == 'd') | (format == 'q')) &&
-                              !(chars.flags[pos[1]] & cf_idtail)) {
+    auto format = pos[0];
+    if (((format == 'h') | (format == 'f') |
+         (format == 'd') | (format == 'q')) &&
+        !(chars.flags[pos[1]] & cf_idtail)) {
       Next(1);
       auto locus = Snip(num_start);
       return Space(), gen.NumFloat(locus, digits, frac, exp_neg, exp, format);
@@ -881,7 +888,7 @@ template <class gen_t> struct GreenParser : TextPos {
     return Space(), gen.NumRational(snippet, digits, frac, units);
   }
 
-  usyn_noinline syntax_t RequirePath() {
+  syntax_t RequirePath() {
     // path = ['/' label] '@' label {'/' ['(' path ')'] ident } !('/'|'&'')
     TextPos start(*this);
     if (Eat("/"))
@@ -909,10 +916,11 @@ template <class gen_t> struct GreenParser : TextPos {
     S25("/");
   }
 
-  usyn_noinline Text RequireLabel(Text what) {
+  Text RequireLabel(Text what) {
     // label = (alpha|digit|'_') {alpha|digit|'_'|'-'|'.'}
     // !(alpha|digit|'_'|'-'|'.')
-    if (auto pos0 = pos; chars.flags[pos[0]] & cf_idtail) {
+    auto pos0 = pos;
+    if (chars.flags[pos[0]] & cf_idtail) {
       Next(1);
       while ((chars.flags[pos[0]] & cf_idtail) | (pos[0] == '-') |
              (pos[0] == '.'))
@@ -923,7 +931,7 @@ template <class gen_t> struct GreenParser : TextPos {
     S26(what);
   }
 
-  usyn_noinline Text Ident() {
+  Text Ident() {
     // ident = (alpha|'_') {alpha|digit|'_'} !(alpha|digit|'_') ["'"
     // {!('\'|'{'|'}'|'''|'"'|'<#'|'#>') 0x20-0x7E} "'"]
     assert(chars.flags[pos[0]] & cf_idlead);
@@ -941,7 +949,7 @@ template <class gen_t> struct GreenParser : TextPos {
     return Text(pos0, pos);
   }
 
-  usyn_noinline Text IdentNonreserved() {
+  Text IdentNonreserved() {
     bool ri = Reserved[pos];
     if (!ri) {
       auto id = Ident();
@@ -957,7 +965,7 @@ template <class gen_t> struct GreenParser : TextPos {
     return id;
   }
 
-  usyn_noinline syntax_t RequireQualident(Text what) {
+  syntax_t RequireQualident(Text what) {
     // qualident = ['(' list ')' space] !reserved ident
     TextPos start(*this);
     if (chars.flags[pos[0]] & cf_idlead) {
@@ -1002,7 +1010,7 @@ template <class gen_t> struct GreenParser : TextPos {
       switch (pos[0]) {
       case '\r':
       case '\n':
-        if constexpr (filter == filter_element)
+        if (filter == filter_element)
           if (Line())
             continue;
         return s;
@@ -1012,7 +1020,8 @@ template <class gen_t> struct GreenParser : TextPos {
         TextPos saved(*this);
         Next(1);
         if ((chars.flags[pos[0]] & cf_backslash) ||
-            pos[0] == '<' && pos[1] != '#' || pos[0] == '#' && pos[1] != '>') {
+            (pos[0] == '<' && pos[1] != '#') ||
+            (pos[0] == '#' && pos[1] != '>')) {
           char8 ch = char8(
               pos[0] * ((pos[0] != 'n') & (pos[0] != 'r') & (pos[0] != 't')) +
               '\r' * (pos[0] == 'r') + '\n' * (pos[0] == 'n') +
@@ -1029,7 +1038,8 @@ template <class gen_t> struct GreenParser : TextPos {
         if (Eat("0u")) {
           if (chars.flags[pos[0]] & cf_hex) {
             auto n = Parse0u();
-            if (Scan(); Eat("}")) {
+            Scan();
+            if (Eat("}")) {
               char8 buf[4];
               auto c = chars.MakeUtf8(buf, n);
               gen.StringConcat(s, Text(buf, buf + c));
@@ -1039,7 +1049,8 @@ template <class gen_t> struct GreenParser : TextPos {
         } else if (Eat("0c")) {
           if (chars.flags[pos[0]] & cf_hex) {
             char8 ch = Parse0c();
-            if (Scan(); Eat("}")) {
+            Scan();
+            if (Eat("}")) {
               gen.StringConcat(s, Text(&ch, &ch + 1));
               continue;
             }
@@ -1062,18 +1073,20 @@ template <class gen_t> struct GreenParser : TextPos {
     return s;
   }
 
-  template <nat8 filter> usyn_noinline syntax_t TextSplice() {
+  template <nat8 filter> syntax_t TextSplice() {
     // char      = ''' {charconst | !('\'|'{'|'}'|''') printable} ''' | ..
     // string    = '"' {special   | !('\'|'{'|'}'|'"') printable} '"'
     // element   = special | markup | escape | comment | line |
     // !('\'|'{'|'}'|'#'|'<'|'>'|'&'|'~') printable special   = charconst |
     // !charconst ('{' list '}' | '\' (alpha|'_'))
-    TextPos whole_start(*this);
+
+    // TextPos whole_start(*this);
     auto splices = gen.ArrayNew();
     intp splicec = 0;
     for (;;) {
       TextPos start(*this);
-      if (auto s = LiteralChars<filter, 1>(); pos != start.pos)
+      auto s = LiteralChars<filter, 1>();
+      if (pos != start.pos)
         splicec++, gen.ArrayAppend(splices, gen.ConstString(Snip(start), s));
       switch (pos[0]) {
       case '{': {
@@ -1104,7 +1117,8 @@ template <class gen_t> struct GreenParser : TextPos {
         continue;
       }
       case '\\':
-        if (Next(1); chars.flags[pos[0]] & cf_idlead) {
+        Next(1);
+        if (chars.flags[pos[0]] & cf_idlead) {
           char8 ident[12];
           for (intp i = 0; i < 12; i++)
             ident[i] = "backslash' '"[i];
@@ -1131,6 +1145,7 @@ template <class gen_t> struct GreenParser : TextPos {
           gen.ArrayAppend(splices, RequireMarkup());
           continue;
         }
+      LLVM_FALLTHROUGH;
       default:
         return splicec == 0
                    ? gen.ConstString(snippet_t{}, "")
@@ -1141,7 +1156,7 @@ template <class gen_t> struct GreenParser : TextPos {
     }
   }
 
-  usyn_noinline syntax_t Content() {
+  syntax_t Content() {
     // content = space {line} ('~' {element} {'~' {element}} | {element})
     Space();
     while (Line())
@@ -1164,13 +1179,13 @@ template <class gen_t> struct GreenParser : TextPos {
     }
   }
 
-  usyn_noinline string_t RequireChar() {
+  string_t RequireChar() {
     // char = ''' {charconst | !('\'|'{'|'}'|''') printable} ''' | ..
     string_t s = LiteralChars<filter_char, 0>();
     return Require("'", &GreenParser::S31), Space(), s;
   }
 
-  usyn_noinline syntax_t MakeMarkup(const snippet_t &snip, const syntax_t &left,
+  syntax_t MakeMarkup(const snippet_t &snip, const syntax_t &left,
                                   array_t *contentsp,
                                   const syntax_t &elements) {
     auto content = SimpleMacro_2(snippet_t{}, gen.Native("operator'='"),
@@ -1185,7 +1200,7 @@ template <class gen_t> struct GreenParser : TextPos {
     }
   }
 
-  usyn_noinline void CheckMarkup(const TextPos &start, syntax_t &left,
+  void CheckMarkup(const TextPos &start, syntax_t &left,
                                link_t<Text> *marks, Text tag, bool brace,
                                array_t *contentsp) {
     // markup = '<' space tags (':>' ind content ded | ':' content '>' | '>'
@@ -1206,8 +1221,9 @@ template <class gen_t> struct GreenParser : TextPos {
       auto r = Content();
       Require(">", &GreenParser::S51);
       marks->value = tag;
-      throw markup_ex{MakeMarkup(snippet_t{}, left, contentsp, r)};
+      // throw markup_ex{MakeMarkup(snippet_t{}, left, contentsp, r)};
     }
+    LLVM_FALLTHROUGH;
     case Token(">"): {
       Next(1);
       auto r = Content();
@@ -1217,7 +1233,8 @@ template <class gen_t> struct GreenParser : TextPos {
       for (auto *expect_mark = marks; expect_mark;
            expect_mark = expect_mark->next)
         if (chars.flags[pos[0]] & cf_idlead) {
-          if (auto endtag = Ident(); !(endtag == expect_mark->value))
+          auto endtag = Ident();
+          if (!(endtag == expect_mark->value))
             S43(expect_mark->value, endtag);
           Space();
           if (expect_mark->next)
@@ -1225,38 +1242,43 @@ template <class gen_t> struct GreenParser : TextPos {
         } else
           GreenParser::S44(expect_mark->value);
       Require(">", &GreenParser::S44);
-      throw markup_ex{MakeMarkup(snippet_t{}, left, contentsp, r)};
+      // throw markup_ex{MakeMarkup(snippet_t{}, left, contentsp, r)};
     }
+    LLVM_FALLTHROUGH;
     case Token(":>"): {
       marks->value = tag;
-      if (Next(2), Space(); Ending())
-        throw markup_ex{
-            MakeMarkup(snippet_t{}, left, contentsp,
-                        ind([&] { return Content(); }, &GreenParser::S54))};
+      Next(2);
+      Space();
+      if (Ending()) {
+        // throw markup_ex{
+        //     MakeMarkup(snippet_t{}, left, contentsp,
+        //                 ind([&] { return Content(); }, &GreenParser::S54))};
+      }
       S46();
     }
     case Token(","): {
       Next(1), Scan();
       marks->value = tag;
       auto right = MoreMarkupTags(TextPos{}, marks);
-      throw markup_ex{MakeMarkup(snippet_t{}, left, contentsp, right)};
+      // throw markup_ex{MakeMarkup(snippet_t{}, left, contentsp, right)};
     }
+    LLVM_FALLTHROUGH;
     default:
       return;
     }
   }
 
-  usyn_noinline syntax_t MoreMarkupTags(TextPos start,
+  syntax_t MoreMarkupTags(TextPos start,
                                        link_t<Text> *outer_marks) {
     // tags = [base {postfix | {calls} brace} '.' scan] qualident space [brace]
     // [',' scan tags]
-    try {
+    // try {
       link_t<Text> marks{"", outer_marks};
       Expr(prec_attr, "", &GreenParser::S74, &GreenParser::S64, &marks);
       S41();
-    } catch (markup_ex m) {
-      return m.value;
-    }
+    // } catch (markup_ex m) {
+    //   return m.value;
+    // }
   }
 
   syntax_t RequireMarkup() {
@@ -1275,6 +1297,8 @@ template <class gen_t> struct GreenParser : TextPos {
     return gen.Macro(snip, mac, m);
   }
 
+  // FIXME: what do these do? Perhaps SimpleMacro_1 is unary whereas 2
+  // is binary?
   syntax_t SimpleMacro_1(const snippet_t &snip, const syntax_t &mac,
                           const syntax_t &invoke_body_0) noexcept {
     auto body = gen.ArrayNew(1);
@@ -1291,7 +1315,7 @@ template <class gen_t> struct GreenParser : TextPos {
     return SimpleMacro(snip, mac, array_t{invoke_body_0, invoke_body_1});
   }
 
-  usyn_noinline void ParseMacro(const TextPos &start, syntax_t &left, prec p,
+  void ParseMacro(const TextPos &start, syntax_t &left, prec p,
                               bool allow_else, link_t<Text> *marks, Text tag,
                               Text require_macro) {
     // brace = scan '{' list '}' space
@@ -1318,7 +1342,8 @@ template <class gen_t> struct GreenParser : TextPos {
         for (auto p = startlink; p; p = p->next) {
           // Translate sequence of calls and attributes into macro clauses,
           // possibly leaving leftover attrs.
-          if (auto &call = p->value; call.ext == 2)
+          auto &call = p->value; 
+          if (call.ext == 2)
             gen.ArrayAppend(attrs,
                              gen.Parentheses(snippet_t{}, call.parms.Content));
           else
@@ -1352,8 +1377,11 @@ template <class gen_t> struct GreenParser : TextPos {
       }
       case Token("<"): {
         TextPos saved(*this);
-        if (Next(1), Space(); tokens[tok].pre_left >= prec_attr) {
-          if (auto e = Expr(prec_attr, "<"); Eat(">")) {
+        Next(1);
+        Space();
+        if (tokens[tok].pre_left >= prec_attr) {
+          auto e = Expr(prec_attr, "<");
+          if (Eat(">")) {
             auto as = gen.ArrayNew(1);
             gen.ArrayAppend(as, e);
             return add_call(2, list_t(as));
@@ -1379,7 +1407,9 @@ template <class gen_t> struct GreenParser : TextPos {
       case Token(":"): {
         if (p <= prec_call) {
           TextPos saved(*this);
-          if (Next(1), Space(); Ending()) {
+          Next(1);
+          Space();
+          if (Ending()) {
             add_clause(res_none, IndList().Content);
             goto tail;
           }
@@ -1390,6 +1420,7 @@ template <class gen_t> struct GreenParser : TextPos {
       case Token("\n"):
         if (ScanBrace())
           goto got_brace;
+      LLVM_FALLTHROUGH;
       default:
       tail:
         // macro = {calls} (key imm | [key] block {key block} [key imm]) [catch
@@ -1435,7 +1466,8 @@ template <class gen_t> struct GreenParser : TextPos {
                 TextPos if_start(*this);
                 Next(2);
                 auto snippet = Snip(if_start);
-                if (Space(); KeywordAccept()) {
+                Space();
+                if (KeywordAccept()) {
                   syntax_t key2_left = gen.Ident(snippet, "if");
                   ParseMacro(keyword_start, key2_left, p, allow_else, nullptr,
                               "", Reserved[ri]);
@@ -1451,6 +1483,7 @@ template <class gen_t> struct GreenParser : TextPos {
               add_clause(ri, body);
               goto finished;
             }
+          LLVM_FALLTHROUGH;
           default:
             Restore(keyword_start); // Don't consume other reserved words.
             goto finished;
@@ -1506,11 +1539,14 @@ template <class gen_t> struct GreenParser : TextPos {
       // block = .. | ':' ind list ded
       if (ind) {
         TextPos start(*this);
-        if (Next(1), Space(); Ending())
+        Next(1);
+        Space();
+        if (Ending())
           return IndList(), true;
         Restore(start);
       }
     }
+    LLVM_FALLTHROUGH;
     default:
     got_imm : {
       // imm = def lookahead(ending|')'|']'|'}'|','|';'|'where'|'=>'|'<|')
@@ -1521,7 +1557,7 @@ template <class gen_t> struct GreenParser : TextPos {
     }
   }
 
-  usyn_noinline syntax_t ParsePrefix(const TextPos &start, const syntax_t &func,
+  syntax_t ParsePrefix(const TextPos &start, const syntax_t &func,
                                    const syntax_t *domo, const char *what) {
     // .. (braces | char | !''' open)
     TextPos local_start(*this);
@@ -1574,7 +1610,7 @@ template <class gen_t> struct GreenParser : TextPos {
     S60(ti1.cs, ti0.cs);
   }
 
-  usyn_noinline syntax_t ExprBase(prec p, Text what, void (GreenParser::*badtok)(Text),
+  syntax_t ExprBase(prec p, Text what, void (GreenParser::*badtok)(Text),
                                 void (GreenParser::*badprec)(Text, Text),
                                 link_t<Text> *marks) {
     // prefix = ('[' space expr ']' | '?' | '^' | '+' | '-' | '*') space
@@ -1602,6 +1638,7 @@ template <class gen_t> struct GreenParser : TextPos {
         switch (ri) {
         not_reserved:
           Restore(start);
+        LLVM_FALLTHROUGH;
         case 0: {
           // base = (.. | qualident) space
           auto id = Ident();
@@ -1615,7 +1652,8 @@ template <class gen_t> struct GreenParser : TextPos {
         case res_if: {
           // if = 'if' word macro (scankey 'else' word (block | if | !('if'
           // word) imm) | !(scankey 'else'))
-          if (Word(); KeywordAccept()) {
+          Word();
+          if (KeywordAccept()) {
             if (p <= prec_call) {
               syntax_t left = gen.Ident(snippet_t{}, "if");
               ParseMacro(start, left, p, true, nullptr, "", "if");
@@ -1628,7 +1666,8 @@ template <class gen_t> struct GreenParser : TextPos {
         // case Reserved["not"_u8]: {
         case res_not: {
           // cmp = .. | 'not' word space cmp
-          if (Word(); KeywordAccept()) {
+          Word();
+          if (KeywordAccept()) {
             if (p <= prec_cmp) {
               auto ye = Expr(prec_cmp, "not");
               return SimpleMacro_1(
@@ -1639,7 +1678,8 @@ template <class gen_t> struct GreenParser : TextPos {
           goto not_reserved;
         }
         default:
-          if (Word(); KeywordAccept())
+          Word();
+          if (KeywordAccept())
             S21(Reserved[ri]);
           goto not_reserved;
         }
@@ -1647,6 +1687,7 @@ template <class gen_t> struct GreenParser : TextPos {
       case Token("0"):
       case Token(".0"):
         return Num();
+
       case Token("\""): {
         Next(1);
         auto sc = TextSplice<filter_string>();
@@ -1719,6 +1760,7 @@ template <class gen_t> struct GreenParser : TextPos {
         // call   = .. | prefix (brace | char | !char call)
         return Next(ti.length), Space(),
                ParsePrefix(start, gen.Native(ti.pres), nullptr, ti.cs);
+
       case Token("["): {
         Next(1), Space();
         if (Eat(Token("]")))
@@ -1726,7 +1768,8 @@ template <class gen_t> struct GreenParser : TextPos {
                  ParsePrefix(start, gen.Native(ti.pres), nullptr, "[]");
         auto e = Expr(prec_expr, "[");
         Require("]", &GreenParser::S85);
-        if (Space(); !Ending()) {
+        Space();
+        if (!Ending()) {
           // prefix = ('[' space expr ']' | | ..) space
           // call   = .. | prefix (brace | char | !char call)
           return ParsePrefix(start, gen.Native(ti.posts), &e, "[]");
@@ -1938,7 +1981,8 @@ template <class gen_t> struct GreenParser : TextPos {
       case Token("("):
       got_macro : {
         ParseMacro(start, left, p, false, nullptr, "", "");
-        if (Space(); (tok != Token(":")) & (tok != Token("<")))
+        Space();
+        if ((tok != Token(":")) & (tok != Token("<")))
           continue;
         // Hypothesis: Could move all of this logic to macro based on precedence
         // p, and eliminate backtracking there.
@@ -2015,11 +2059,13 @@ template <class gen_t> struct GreenParser : TextPos {
       }
 
       intp n = 0;
-      if constexpr (initial) {
+      if (initial) {
         gen.ArrayAppend(es, e);
         for (;;) {
-          if (n++, Scan(), gen.ArrayAppend(es, Expr(prec_expr, what, badtok));
-              Eat(Token(",")))
+          ++n;
+          Scan();
+          gen.ArrayAppend(es, Expr(prec_expr, what, badtok));
+          if (Eat(Token(",")))
             continue;
           return n;
         }
@@ -2027,8 +2073,10 @@ template <class gen_t> struct GreenParser : TextPos {
         auto gs = gen.ArrayNew(1);
         gen.ArrayAppend(gs, e);
         for (;;) {
-          if (n++, Scan(), gen.ArrayAppend(gs, Expr(prec_expr, what, badtok));
-              Eat(Token(",")))
+          ++n;
+          Scan();
+          gen.ArrayAppend(gs, Expr(prec_expr, what, badtok));
+          if (Eat(Token(",")))
             continue;
           return gen.ArrayAppend(es, gen.SyntaxArray(Snip(start), gs)), n;
         }
@@ -2040,7 +2088,7 @@ template <class gen_t> struct GreenParser : TextPos {
     return -1;
   }
 
-  usyn_noinline list_t List(Text what, void (GreenParser::*badtok)(Text)) {
+  list_t List(Text what, void (GreenParser::*badtok)(Text)) {
     // list = push lineprefix='' scan [Commas {(';'|ending) scan Commas}] pop
     constexpr intp stop = (1LL << Token("]")) | (1LL << Token(")")) |
                           (1LL << Token("}")) | (1LL << Token("\r"));
@@ -2050,7 +2098,8 @@ template <class gen_t> struct GreenParser : TextPos {
     TextPos start0(*this);
     Rescan();
     auto es0 = gen.ArrayNew();
-    if (intp n0 = Commas<1>(start0, es0, what, badtok); n0 >= 0) {
+    intp n0 = Commas<1>(start0, es0, what, badtok);
+    if (n0 >= 0) {
       if ((any_semi |= Eat(Token(";"))) || tok == Token("\n")) {
         Scan();
         if (any_semi | !(((1LL << tok) & stop) | (pos == end))) {
@@ -2062,7 +2111,8 @@ template <class gen_t> struct GreenParser : TextPos {
 
           for (;;) {
             TextPos start1(*this);
-            if (intp n1 = Commas<0>(start1, es0, what, badtok); n1 >= 0) {
+            intp n1 = Commas<0>(start1, es0, what, badtok);
+            if (n1 >= 0) {
               if ((any_semi |= Eat(Token(";"))) || tok == Token("\n")) {
                 Scan();
                 if (!(((1LL << tok) & stop) | (pos == end)))
@@ -2106,4 +2156,4 @@ template <class gen_t> struct GreenParser : TextPos {
 
 } // namespace usyntax
 
-endif
+#endif
