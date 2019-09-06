@@ -23,6 +23,10 @@
 #include "clang/AST/TemplateArgumentVisitor.h"
 #include "clang/AST/TypeVisitor.h"
 
+namespace usyntax {
+  struct Syntax;
+};
+
 namespace clang {
 
 /**
@@ -202,6 +206,12 @@ public:
                                              E = C->child_end();
            I != E; ++I)
         Visit(*I, FC);
+    });
+  }
+
+  void Visit(const usyntax::Syntax *S) {
+    getNodeDelegate().AddChild([=] {
+      getNodeDelegate().Visit(S);
     });
   }
 

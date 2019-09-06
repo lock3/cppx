@@ -18,6 +18,7 @@
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/Module.h"
 #include "clang/Basic/SourceManager.h"
+#include "clang/GreenAST/Syntax.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 using namespace clang::comments;
@@ -278,4 +279,13 @@ LLVM_DUMP_METHOD void Comment::dumpColor() const {
     return;
   ASTDumper D(llvm::errs(), nullptr, nullptr, /*ShowColors*/true);
   D.Visit(FC, FC);
+}
+
+//===----------------------------------------------------------------------===//
+// Green/usyntax method implementations
+//===----------------------------------------------------------------------===//
+
+LLVM_DUMP_METHOD void usyntax::Syntax::dump() const {
+  ASTDumper D(llvm::errs(), nullptr, nullptr);
+  D.Visit(this);
 }

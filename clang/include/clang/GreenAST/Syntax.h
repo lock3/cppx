@@ -38,6 +38,29 @@ public:
 
   SyntaxKind getKind() const { return Kind; }
 
+  const char *getSyntaxKindName() const {
+    switch (Kind) {
+    case SK_ConstInt:
+      return "Const Int";
+    case SK_ConstString:
+      return "Const String";
+    case SK_ConstPath:
+      return "Const Path";
+    case SK_Ident:
+      return "Ident";
+    case SK_Call:
+      return "Call";
+    case SK_Attr:
+      return "Attr";
+    case SK_Macro:
+      return "Macro";
+    case SK_Escape:
+      return "Escape";
+    }
+  }
+
+  void dump() const;
+
 private:
   const SyntaxKind Kind;
 };

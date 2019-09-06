@@ -20,7 +20,7 @@ inline void ParseGreenAST(Preprocessor &PP) {
   using namespace std;
   using namespace usyntax;
 
-  string src_filename{"test.usyntax"};
+  string src_filename{"../usyntax/test.usyntax"};
   ifstream src_file{src_filename};
   string src_text{istreambuf_iterator<char>(src_file),
                   istreambuf_iterator<char>()};
@@ -31,8 +31,12 @@ inline void ParseGreenAST(Preprocessor &PP) {
       (char8 *)&src_text[0], (char8 *)&src_text[src_text.size()])
     .File();
 
-  GreenSema Actions;
-  Actions.FindIdentifiers(src_syntaxs);
+  for (auto Syn : src_syntaxs) {
+    Syn->dump();
+  }
+
+  // GreenSema Actions;
+  // Actions.FindIdentifiers(src_syntaxs);g
 }
 
 } // namespace lock3

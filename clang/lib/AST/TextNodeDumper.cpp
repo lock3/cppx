@@ -15,6 +15,7 @@
 #include "clang/AST/DeclOpenMP.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/LocInfoType.h"
+#include "clang/GreenAST/Syntax.h"
 
 using namespace clang;
 
@@ -1940,4 +1941,101 @@ void TextNodeDumper::VisitBlockDecl(const BlockDecl *D) {
 
 void TextNodeDumper::VisitConceptDecl(const ConceptDecl *D) {
   dumpName(D);
+}
+
+void TextNodeDumper::Visit(const usyntax::Syntax *S) {
+  using namespace usyntax;
+
+  if (!S) {
+    ColorScope Color(OS, ShowColors, NullColor);
+    OS << "<<<NULL>>>" << '\n';
+    return;
+  }
+  {
+    ColorScope Color(OS, ShowColors, StmtColor);
+    OS << S->getSyntaxKindName();
+  }
+  dumpPointer(S);
+  OS << '\n';
+
+  // FIXME: Make this a SyntaxVisitor.
+  switch(S->getKind()) {
+  case Syntax::SK_ConstInt:
+    return VisitGreenSyntaxConstInt(cast<SyntaxConstInt>(S));
+  case Syntax::SK_ConstString:
+    return VisitGreenSyntaxConstString(cast<SyntaxConstString>(S));
+  case Syntax::SK_ConstPath:
+    return VisitGreenSyntaxConstPath(cast<SyntaxConstPath>(S));
+  case Syntax::SK_Ident:
+    return VisitGreenSyntaxIdent(cast<SyntaxIdent>(S));
+  case Syntax::SK_Call:
+    return VisitGreenSyntaxCall(cast<SyntaxCall>(S));
+  case Syntax::SK_Attr:
+    return VisitGreenSyntaxAttr(cast<SyntaxAttr>(S));
+  case Syntax::SK_Macro:
+    return VisitGreenSyntaxMacro(cast<SyntaxMacro>(S));
+  case Syntax::SK_Escape:
+    return VisitGreenSyntaxEscape(cast<SyntaxEscape>(S));
+  }
+}
+
+void
+TextNodeDumper::VisitGreenSyntaxConstInt(const usyntax::SyntaxConstInt *S) {
+  OS << "Value: " << S->value << '\n';
+}
+
+void
+TextNodeDumper::VisitGreenSyntaxConstString(const usyntax::SyntaxConstString *S) {
+  OS << "Value: " << S->value << '\n';
+}
+
+void
+TextNodeDumper::VisitGreenSyntaxConstPath(const usyntax::SyntaxConstPath *S) {
+  OS << "Value: " << S->value << '\n';
+}
+
+void TextNodeDumper::VisitGreenSyntaxIdent(const usyntax::SyntaxIdent *S) {
+  OS << "Qualifier:\n";
+  Visit(S->qualifier.get());
+  OS << "Name: " << S->name << '\n';
+}
+
+void TextNodeDumper::VisitGreenSyntaxCall(const usyntax::SyntaxCall *S) {
+  OS << "Function:\n";
+  Visit(S->call_function.get());
+
+  OS << "Parameters:\n";
+  for (const auto &Parm : S->call_parameters)
+    Visit(Parm.get());
+  if (S->call_parameters.empty())
+    OS << "(empty)\n";
+
+  OS << "May fail?: " << S->may_fail << '\n';
+}
+
+void TextNodeDumper::VisitGreenSyntaxAttr(const usyntax::SyntaxAttr *S) {
+  llvm::outs() << "Base:\n";
+  Visit(S->base.get());
+
+  llvm::outs() << "Attr:\n";
+  Visit(S->attr.get());
+}
+
+void TextNodeDumper::VisitGreenSyntaxMacro(const usyntax::SyntaxMacro *S) {
+  llvm::outs() << "Macro:\n";
+  Visit(S->macro.get());
+
+  llvm::outs() << "Clauses:\n";
+  for (auto &Clause : S->clauses) {
+    llvm::outs() << "Attributes:\n";
+    for (auto &Attr : Clause.attrs)
+      Visit(Attr.get());
+    llvm::outs() << "Body:\n";
+    for (auto &Syn : Clause.body)
+      Visit(Syn.get());
+  }
+}
+
+void TextNodeDumper::VisitGreenSyntaxEscape(const usyntax::SyntaxEscape *S) {
+  Visit(S->escaped.get());
 }

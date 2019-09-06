@@ -23,6 +23,7 @@
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/TemplateArgumentVisitor.h"
 #include "clang/AST/TypeVisitor.h"
+#include "clang/GreenAST/Syntax.h"
 
 namespace clang {
 
@@ -177,6 +178,8 @@ public:
   void Visit(const BlockDecl::Capture &C);
 
   void Visit(const GenericSelectionExpr::ConstAssociation &A);
+
+  void Visit(const usyntax::Syntax *S);
 
   void dumpPointer(const void *Ptr);
   void dumpLocation(SourceLocation Loc);
@@ -348,6 +351,15 @@ public:
   void VisitObjCPropertyImplDecl(const ObjCPropertyImplDecl *D);
   void VisitBlockDecl(const BlockDecl *D);
   void VisitConceptDecl(const ConceptDecl *D);
+
+  void VisitGreenSyntaxConstInt(const usyntax::SyntaxConstInt *S);
+  void VisitGreenSyntaxConstString(const usyntax::SyntaxConstString *S);
+  void VisitGreenSyntaxConstPath(const usyntax::SyntaxConstPath *S);
+  void VisitGreenSyntaxIdent(const usyntax::SyntaxIdent *S);
+  void VisitGreenSyntaxCall(const usyntax::SyntaxCall *S);
+  void VisitGreenSyntaxAttr(const usyntax::SyntaxAttr *S);
+  void VisitGreenSyntaxMacro(const usyntax::SyntaxMacro *S);
+  void VisitGreenSyntaxEscape(const usyntax::SyntaxEscape *S);
 };
 
 } // namespace clang
