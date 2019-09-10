@@ -37,7 +37,7 @@ struct GenerateSyntax {
   using string_t = std::string;
   using syntax_t = std::shared_ptr<Syntax>;
   using array_t = std::vector<syntax_t>;
-  using macro_t = std::vector<SyntaxMacro::clause>;
+  using macro_t = std::vector<Clause>;
   using file_t = array_t;
 
   // Collection management.
@@ -124,7 +124,7 @@ struct GenerateSyntax {
                         const array_t &elements) const noexcept {
     return Macro(
         snip, Native("array"),
-        macro_t{SyntaxMacro::clause{usyntax::res_none, {}, elements}});
+        macro_t{Clause{usyntax::res_none, {}, elements}});
   }
 
   syntax_t Ident(const usyntax::snippet_t &snip,
@@ -187,7 +187,7 @@ struct GenerateSyntax {
 
   void MacroClause(macro_t &mac, usyntax::res_t res, const array_t &attrs,
                     const array_t &body) const noexcept {
-    mac.push_back(SyntaxMacro::clause{res, attrs, body});
+    mac.push_back(Clause{res, attrs, body});
   }
 
   syntax_t Macro(const usyntax::snippet_t &snip, const syntax_t &macro,

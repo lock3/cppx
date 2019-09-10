@@ -31,12 +31,8 @@ inline void ParseGreenAST(Preprocessor &PP) {
       (char8 *)&src_text[0], (char8 *)&src_text[src_text.size()])
     .File();
 
-  for (auto Syn : src_syntaxs) {
-    Syn->dump();
-  }
-
-  // GreenSema Actions;
-  // Actions.FindIdentifiers(src_syntaxs);g
+  GreenSema Actions;
+  Actions.FindIdentifiers(src_syntaxs);
 }
 
 } // namespace lock3

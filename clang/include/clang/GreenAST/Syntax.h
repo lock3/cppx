@@ -1,7 +1,10 @@
 #ifndef CLANG_GREEN_SYNTAX_H
 #define CLANG_GREEN_SYNTAX_H
 
+#include "clang/GreenAST/SyntaxIterator.h"
 #include "clang/GreenParse/SymbolTable.h"
+#include "llvm/ADT/iterator.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 
 #include <memory>
@@ -32,34 +35,26 @@ struct Syntax {
   };
 
 public:
+  Syntax() = delete;
   Syntax(SyntaxKind SK, const Locus &_whence) noexcept :
     whence(_whence), Kind(SK) {}
   virtual ~Syntax() {}
 
   SyntaxKind getKind() const { return Kind; }
-
-  const char *getSyntaxKindName() const {
-    switch (Kind) {
-    case SK_ConstInt:
-      return "Const Int";
-    case SK_ConstString:
-      return "Const String";
-    case SK_ConstPath:
-      return "Const Path";
-    case SK_Ident:
-      return "Ident";
-    case SK_Call:
-      return "Call";
-    case SK_Attr:
-      return "Attr";
-    case SK_Macro:
-      return "Macro";
-    case SK_Escape:
-      return "Escape";
-    }
-  }
+  const char *getSyntaxKindName() const;
 
   void dump() const;
+
+  using child_iterator = SyntaxIterator;
+  using const_child_iterator = ConstSyntaxIterator;
+  using child_range = llvm::iterator_range<child_iterator>;
+  using const_child_range = llvm::iterator_range<const_child_iterator>;
+
+  child_range children();
+  const_child_range children() const {
+    auto Children = const_cast<Syntax *>(this)->children();
+    return const_child_range(Children.begin(), Children.end());
+  }
 
 private:
   const SyntaxKind Kind;
@@ -74,6 +69,14 @@ struct SyntaxConstInt : Syntax {
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_ConstInt;
   }
+
+  child_range children() {
+    return child_range(child_iterator(), child_iterator());
+  }
+  const_child_range children() const {
+    return const_child_range(const_child_iterator(), const_child_iterator());
+  }
+
 };
 
 struct SyntaxConstString : Syntax {
@@ -85,6 +88,13 @@ struct SyntaxConstString : Syntax {
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_ConstString;
   }
+
+  child_range children() {
+    return child_range(child_iterator(), child_iterator());
+  }
+  const_child_range children() const {
+    return const_child_range(const_child_iterator(), const_child_iterator());
+  }
 };
 
 struct SyntaxConstPath : Syntax {
@@ -95,6 +105,13 @@ struct SyntaxConstPath : Syntax {
 
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_ConstPath;
+  }
+
+  child_range children() {
+    return child_range(child_iterator(), child_iterator());
+  }
+  const_child_range children() const {
+    return const_child_range(const_child_iterator(), const_child_iterator());
   }
 };
 
@@ -109,11 +126,21 @@ struct SyntaxIdent : Syntax {
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Ident;
   }
+
+  child_range children() {
+    Syntax *QualPtr = qualifier.get();
+    return child_range(&QualPtr, &QualPtr + 1);
+  }
+  const_child_range children() const {
+    auto Children = const_cast<SyntaxIdent *>(this)->children();
+    return const_child_range(Children);
+  }
 };
 
 struct SyntaxCall : Syntax {
   bool may_fail;
 
+  // TODO: Make this a trailing object?
   std::shared_ptr<Syntax> call_function;
   std::vector<std::shared_ptr<Syntax>> call_parameters;
 
@@ -129,35 +156,77 @@ struct SyntaxCall : Syntax {
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Call;
   }
+
+  child_range children() {
+    Syntax *CallFnPtr =  call_function.get();
+    return child_range(&CallFnPtr, &CallFnPtr + 1);
+  }
+  const_child_range children() const {
+    auto Children = const_cast<SyntaxCall *>(this)->children();
+    return const_child_range(Children);
+  }
 };
 
 struct SyntaxAttr : Syntax {
-  std::shared_ptr<Syntax> base, attr;
+private:
+  enum {BASE, ATTR, END};
 
+  std::shared_ptr<Syntax> SubSyntaxes[END];
+public:
   SyntaxAttr(const Locus &_whence, const std::shared_ptr<Syntax> &_base,
               const std::shared_ptr<Syntax> &_attr) noexcept
-    : Syntax(SK_Attr, _whence), base(_base), attr(_attr) {}
+    : Syntax(SK_Attr, _whence) {
+    SubSyntaxes[BASE] = _base;
+    SubSyntaxes[ATTR] = _attr;
+  }
 
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Attr;
   }
+
+  child_range children() {
+    Syntax *BeginPtr = SubSyntaxes[0].get();
+    Syntax *EndPtr = SubSyntaxes[END].get();
+    return child_range(&BeginPtr, &EndPtr);
+  }
+  const_child_range children() const {
+    auto Children = const_cast<SyntaxAttr *>(this)->children();
+    return const_child_range(Children);
+  }
+
+  std::shared_ptr<Syntax> getBase() const {
+    return SubSyntaxes[BASE];
+  }
+
+  std::shared_ptr<Syntax> getAttr() const {
+    return SubSyntaxes[ATTR];
+  }
+};
+
+struct Clause {
+  usyntax::res_t keyword;
+  std::vector<std::shared_ptr<Syntax>> attrs, body;
 };
 
 struct SyntaxMacro : Syntax {
-  struct clause {
-    usyntax::res_t keyword;
-    std::vector<std::shared_ptr<Syntax>> attrs, body;
-  };
-
   std::shared_ptr<Syntax> macro;
-  std::vector<clause> clauses;
+  std::vector<Clause> clauses;
 
   SyntaxMacro(const Locus &_whence, const std::shared_ptr<Syntax> &_macro,
-               const std::vector<clause> &_clauses)
+               const std::vector<Clause> &_clauses)
     : Syntax(SK_Macro, _whence), macro(_macro), clauses(_clauses) {}
 
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Macro;
+  }
+
+  child_range children() {
+    Syntax *MacroPtr = macro.get();
+    return child_range(&MacroPtr, &MacroPtr + 1);
+  }
+  const_child_range children() const {
+    auto Children = const_cast<SyntaxMacro *>(this)->children();
+    return const_child_range(Children);
   }
 };
 
@@ -170,6 +239,15 @@ struct SyntaxEscape : Syntax {
 
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Escape;
+  }
+
+  child_range children() {
+    Syntax *EscapedPtr = escaped.get();
+    return child_range(&EscapedPtr, &EscapedPtr + 1);
+  }
+  const_child_range children() const {
+    auto Children = const_cast<SyntaxEscape *>(this)->children();
+    return const_child_range(Children);
   }
 };
 

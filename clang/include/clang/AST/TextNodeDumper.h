@@ -23,7 +23,7 @@
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/TemplateArgumentVisitor.h"
 #include "clang/AST/TypeVisitor.h"
-#include "clang/GreenAST/Syntax.h"
+#include "clang/GreenAST/SyntaxVisitor.h"
 
 namespace clang {
 
@@ -131,7 +131,8 @@ class TextNodeDumper
       public ConstTemplateArgumentVisitor<TextNodeDumper>,
       public ConstStmtVisitor<TextNodeDumper>,
       public TypeVisitor<TextNodeDumper>,
-      public ConstDeclVisitor<TextNodeDumper> {
+      public ConstDeclVisitor<TextNodeDumper>,
+      public usyntax::ConstSyntaxVisitor<TextNodeDumper> {
   raw_ostream &OS;
   const bool ShowColors;
 
@@ -352,14 +353,14 @@ public:
   void VisitBlockDecl(const BlockDecl *D);
   void VisitConceptDecl(const ConceptDecl *D);
 
-  void VisitGreenSyntaxConstInt(const usyntax::SyntaxConstInt *S);
-  void VisitGreenSyntaxConstString(const usyntax::SyntaxConstString *S);
-  void VisitGreenSyntaxConstPath(const usyntax::SyntaxConstPath *S);
-  void VisitGreenSyntaxIdent(const usyntax::SyntaxIdent *S);
-  void VisitGreenSyntaxCall(const usyntax::SyntaxCall *S);
-  void VisitGreenSyntaxAttr(const usyntax::SyntaxAttr *S);
-  void VisitGreenSyntaxMacro(const usyntax::SyntaxMacro *S);
-  void VisitGreenSyntaxEscape(const usyntax::SyntaxEscape *S);
+  void VisitSyntaxConstInt(const usyntax::SyntaxConstInt *S);
+  void VisitSyntaxConstString(const usyntax::SyntaxConstString *S);
+  void VisitSyntaxConstPath(const usyntax::SyntaxConstPath *S);
+  void VisitSyntaxIdent(const usyntax::SyntaxIdent *S);
+  void VisitSyntaxCall(const usyntax::SyntaxCall *S);
+  void VisitSyntaxAttr(const usyntax::SyntaxAttr *S);
+  void VisitSyntaxMacro(const usyntax::SyntaxMacro *S);
+  void VisitSyntaxEscape(const usyntax::SyntaxEscape *S);
 };
 
 } // namespace clang

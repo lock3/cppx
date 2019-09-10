@@ -15,7 +15,6 @@
 #include "clang/AST/DeclOpenMP.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/LocInfoType.h"
-#include "clang/GreenAST/Syntax.h"
 
 using namespace clang;
 
@@ -1958,49 +1957,32 @@ void TextNodeDumper::Visit(const usyntax::Syntax *S) {
   dumpPointer(S);
   OS << '\n';
 
-  // FIXME: Make this a SyntaxVisitor.
-  switch(S->getKind()) {
-  case Syntax::SK_ConstInt:
-    return VisitGreenSyntaxConstInt(cast<SyntaxConstInt>(S));
-  case Syntax::SK_ConstString:
-    return VisitGreenSyntaxConstString(cast<SyntaxConstString>(S));
-  case Syntax::SK_ConstPath:
-    return VisitGreenSyntaxConstPath(cast<SyntaxConstPath>(S));
-  case Syntax::SK_Ident:
-    return VisitGreenSyntaxIdent(cast<SyntaxIdent>(S));
-  case Syntax::SK_Call:
-    return VisitGreenSyntaxCall(cast<SyntaxCall>(S));
-  case Syntax::SK_Attr:
-    return VisitGreenSyntaxAttr(cast<SyntaxAttr>(S));
-  case Syntax::SK_Macro:
-    return VisitGreenSyntaxMacro(cast<SyntaxMacro>(S));
-  case Syntax::SK_Escape:
-    return VisitGreenSyntaxEscape(cast<SyntaxEscape>(S));
-  }
+
+  ConstSyntaxVisitor<TextNodeDumper>::Visit(S);
 }
 
 void
-TextNodeDumper::VisitGreenSyntaxConstInt(const usyntax::SyntaxConstInt *S) {
+TextNodeDumper::VisitSyntaxConstInt(const usyntax::SyntaxConstInt *S) {
   OS << "Value: " << S->value << '\n';
 }
 
 void
-TextNodeDumper::VisitGreenSyntaxConstString(const usyntax::SyntaxConstString *S) {
+TextNodeDumper::VisitSyntaxConstString(const usyntax::SyntaxConstString *S) {
   OS << "Value: " << S->value << '\n';
 }
 
 void
-TextNodeDumper::VisitGreenSyntaxConstPath(const usyntax::SyntaxConstPath *S) {
+TextNodeDumper::VisitSyntaxConstPath(const usyntax::SyntaxConstPath *S) {
   OS << "Value: " << S->value << '\n';
 }
 
-void TextNodeDumper::VisitGreenSyntaxIdent(const usyntax::SyntaxIdent *S) {
+void TextNodeDumper::VisitSyntaxIdent(const usyntax::SyntaxIdent *S) {
   OS << "Qualifier:\n";
   Visit(S->qualifier.get());
   OS << "Name: " << S->name << '\n';
 }
 
-void TextNodeDumper::VisitGreenSyntaxCall(const usyntax::SyntaxCall *S) {
+void TextNodeDumper::VisitSyntaxCall(const usyntax::SyntaxCall *S) {
   OS << "Function:\n";
   Visit(S->call_function.get());
 
@@ -2013,15 +1995,15 @@ void TextNodeDumper::VisitGreenSyntaxCall(const usyntax::SyntaxCall *S) {
   OS << "May fail?: " << S->may_fail << '\n';
 }
 
-void TextNodeDumper::VisitGreenSyntaxAttr(const usyntax::SyntaxAttr *S) {
+void TextNodeDumper::VisitSyntaxAttr(const usyntax::SyntaxAttr *S) {
   llvm::outs() << "Base:\n";
-  Visit(S->base.get());
+  Visit(S->getBase().get());
 
   llvm::outs() << "Attr:\n";
-  Visit(S->attr.get());
+  Visit(S->getAttr().get());
 }
 
-void TextNodeDumper::VisitGreenSyntaxMacro(const usyntax::SyntaxMacro *S) {
+void TextNodeDumper::VisitSyntaxMacro(const usyntax::SyntaxMacro *S) {
   llvm::outs() << "Macro:\n";
   Visit(S->macro.get());
 
@@ -2036,6 +2018,6 @@ void TextNodeDumper::VisitGreenSyntaxMacro(const usyntax::SyntaxMacro *S) {
   }
 }
 
-void TextNodeDumper::VisitGreenSyntaxEscape(const usyntax::SyntaxEscape *S) {
+void TextNodeDumper::VisitSyntaxEscape(const usyntax::SyntaxEscape *S) {
   Visit(S->escaped.get());
 }
