@@ -1,5 +1,5 @@
-#ifndef LLVM_GREEN_GREENAST_SYNTAXCONTEXT_H
-#define LLVM_GREEN_GREENAST_SYNTAXCONTEXT_H
+#ifndef CLANG_GREEN_GREENAST_SYNTAXCONTEXT_H
+#define CLANG_GREEN_GREENAST_SYNTAXCONTEXT_H
 
 #include "clang/GreenAST/SyntaxContextAllocate.h"
 #include "llvm/Support/Allocator.h"
@@ -36,27 +36,30 @@ public:
   }
 };
 
+} // namespace usyntax
+
 
 /// The following allow for allocation of memory in the SyntaxContext just
 /// like in clang::ASTContext.
-inline void *operator new(size_t Bytes, const SyntaxContext &C,
+inline void *operator new(size_t Bytes, const usyntax::SyntaxContext &C,
                           size_t Alignment /* = 8 */) {
   return C.Allocate(Bytes, Alignment);
 }
 
-inline void operator delete(void *Ptr, const SyntaxContext &C, size_t) {
+inline void operator delete(void *Ptr, const usyntax::SyntaxContext &C, size_t) {
   C.Deallocate(Ptr);
 }
 
-inline void *operator new[](size_t Bytes, const SyntaxContext& C,
+inline void *operator new[](size_t Bytes, const usyntax::SyntaxContext& C,
                             size_t Alignment /* = 8 */) {
   return C.Allocate(Bytes, Alignment);
 }
 
-inline void operator delete[](void *Ptr, const SyntaxContext &C, size_t) {
+inline void
+operator delete[](void *Ptr, const usyntax::SyntaxContext &C, size_t) {
   C.Deallocate(Ptr);
 }
 
-};
+
 
 #endif

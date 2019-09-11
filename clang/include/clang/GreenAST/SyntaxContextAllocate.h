@@ -12,20 +12,16 @@
 #include <cstddef>
 
 namespace usyntax {
-
 class SyntaxContext;
+}
 
-// We'll leave these in the usyntax namespace since we absolutely do not want
-// them used globally.
-void *operator new(size_t Bytes, const SyntaxContext &S,
+void *operator new(size_t Bytes, const usyntax::SyntaxContext &S,
                    size_t Alignment = 8);
-void *operator new[](size_t Bytes, const SyntaxContext &C,
+void *operator new[](size_t Bytes, const usyntax::SyntaxContext &C,
                      size_t Alignment = 8);
 
-void operator delete(void *Ptr, const SyntaxContext &C, size_t);
-void operator delete[](void *Ptr, const SyntaxContext &C, size_t);
-
-} // namespace usyntax
+void operator delete(void *Ptr, const usyntax::SyntaxContext &C, size_t);
+void operator delete[](void *Ptr, const usyntax::SyntaxContext &C, size_t);
 
 #endif // LLVM_GREEN_GREENAST_SYNTAXCONTEXTALLOCATE_H
 

@@ -3,6 +3,7 @@
 
 #include "clang/Lex/Preprocessor.h"
 
+#include "clang/GreenAST/SyntaxContext.h"
 #include "clang/GreenParse/ParseGreenAST.h"
 #include "clang/GreenParse/GreenParser.h"
 #include "clang/GreenSema/Cppify.h"
@@ -25,10 +26,13 @@ inline void ParseGreenAST(Preprocessor &PP) {
   string src_text{istreambuf_iterator<char>(src_file),
                   istreambuf_iterator<char>()};
 
+  SyntaxContext Context;
+  GenerateSyntax Generator(make_shared<string>(src_filename),
+                           Context);
+
   auto src_syntaxs =
     GreenParser<GenerateSyntax>(
-      GenerateSyntax{make_shared<string>(src_filename)},
-      (char8 *)&src_text[0], (char8 *)&src_text[src_text.size()])
+      Generator, (char8 *)&src_text[0], (char8 *)&src_text[src_text.size()])
     .File();
 
   GreenSema Actions;

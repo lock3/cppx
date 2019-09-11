@@ -2,6 +2,7 @@
 #define CLANG_GREEN_CPPIFY_H
 
 #include "clang/GreenAST/Syntax.h"
+#include "clang/GreenAST/SyntaxContext.h"
 #include "clang/GreenBasic/GreenBasic.h"
 #include "clang/GreenParse/GreenParser.h"
 
@@ -40,6 +41,11 @@ struct GenerateSyntax {
   using macro_t = std::vector<Clause>;
   using file_t = array_t;
 
+  GenerateSyntax(std::shared_ptr<std::string> filename,
+                 SyntaxContext &Context)
+    : filename(filename), Context(Context)
+    {}
+
   // Collection management.
   string_t StringNew() const noexcept { return std::string(); }
 
@@ -68,7 +74,7 @@ struct GenerateSyntax {
         Error("NumHex: integer overflow");
     }
 
-    return new SyntaxConstInt(LocusOf(snip), D);
+    return new (Context) SyntaxConstInt(LocusOf(snip), D);
   }
 
   syntax_t NumRational(const usyntax::snippet_t &snip, usyntax::Text digits,
@@ -84,13 +90,13 @@ struct GenerateSyntax {
         Error("NumRational: integer overflow");
     }
 
-    return new SyntaxConstInt(LocusOf(snip), D);
+    return new (Context) SyntaxConstInt(LocusOf(snip), D);
     // FIXME: why is this even here?
     if (!frac && !units)
-      return new SyntaxConstInt(LocusOf(snip), D);
+      return new (Context) SyntaxConstInt(LocusOf(snip), D);
     Error("NumRational: unsupported");
   }
-  
+
   syntax_t NumFloat(const usyntax::snippet_t &snip, usyntax::Text digits,
                      usyntax::Text frac, bool exp_neg, usyntax::Text exp,
                      char8 format) const noexcept {
@@ -112,12 +118,12 @@ struct GenerateSyntax {
 
   syntax_t ConstString(const usyntax::snippet_t &snip, const string_t &s) const
       noexcept {
-    return new SyntaxConstString(LocusOf(snip), s);
+    return new (Context) SyntaxConstString(LocusOf(snip), s);
   }
 
   syntax_t Native(const usyntax::Text &s) const noexcept {
-    return new SyntaxIdent(Locus{}, NativePathSyntax,
-                           StringOf(s));
+    return new (Context) SyntaxIdent(Locus{}, NativePathSyntax,
+                                     StringOf(s));
   }
 
   syntax_t SyntaxArray(const usyntax::snippet_t &snip,
@@ -129,37 +135,37 @@ struct GenerateSyntax {
 
   syntax_t Ident(const usyntax::snippet_t &snip,
                  const usyntax::Text &name) const noexcept {
-    return new SyntaxIdent(LocusOf(snip), nullptr,
-                           StringOf(name));
+    return new (Context) SyntaxIdent(LocusOf(snip), nullptr,
+                                     StringOf(name));
   }
 
   syntax_t Qualident(const usyntax::snippet_t &snip, const syntax_t qualifier,
                      const usyntax::Text &name) const noexcept {
-    return new SyntaxIdent(LocusOf(snip), qualifier,
-                       StringOf(name));
+    return new (Context) SyntaxIdent(LocusOf(snip), qualifier,
+                                     StringOf(name));
   }
 
   syntax_t Call(const usyntax::snippet_t &snip, int64_t ext,
                 const syntax_t call_function,
                 const array_t &call_parameters) const noexcept {
-    return new SyntaxCall(LocusOf(snip), ext, call_function,
-                          call_parameters);
+    return new (Context) SyntaxCall(LocusOf(snip), ext, call_function,
+                                    call_parameters);
   }
 
   syntax_t Attr(const usyntax::snippet_t &snip, const syntax_t base,
                 const syntax_t at) const noexcept {
-    return new SyntaxAttr(LocusOf(snip), base, at);
+    return new (Context) SyntaxAttr(LocusOf(snip), base, at);
   }
 
   syntax_t Path(const usyntax::snippet_t &snip, usyntax::Text value) const
       noexcept {
-    return new SyntaxConstPath(LocusOf(snip),
-                                             StringOf(value));
+    return new (Context) SyntaxConstPath(LocusOf(snip),
+                                         StringOf(value));
   }
 
   syntax_t Escape(const usyntax::snippet_t &snip, const syntax_t escaped) const
       noexcept {
-    return new SyntaxEscape(LocusOf(snip), escaped);
+    return new (Context) SyntaxEscape(LocusOf(snip), escaped);
   }
 
   syntax_t Parentheses(const usyntax::snippet_t &snip, const array_t &ys) const
@@ -192,11 +198,13 @@ struct GenerateSyntax {
 
   Syntax *Macro(const usyntax::snippet_t &snip, syntax_t macro,
                  const macro_t &clauses) const noexcept {
-    return new SyntaxMacro(LocusOf(snip), macro, clauses);
+    return new (Context) SyntaxMacro(LocusOf(snip), macro, clauses);
   }
 
   // Internal.
   std::shared_ptr<std::string> filename;
+  SyntaxContext &Context;
+
   std::string StringOf(const usyntax::Text &Text) const noexcept {
     return std::string((const char *)Text.start, Text.stop - Text.start);
   }
