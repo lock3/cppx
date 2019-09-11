@@ -1947,7 +1947,7 @@ void TextNodeDumper::Visit(const usyntax::Syntax *S) {
 
   if (!S) {
     ColorScope Color(OS, ShowColors, NullColor);
-    OS << "<<<NULL>>>" << '\n';
+    OS << "<<<NULL>>>";
     return;
   }
   {
@@ -1955,7 +1955,6 @@ void TextNodeDumper::Visit(const usyntax::Syntax *S) {
     OS << S->getSyntaxKindName();
   }
   dumpPointer(S);
-  OS << '\n';
 
 
   ConstSyntaxVisitor<TextNodeDumper>::Visit(S);
@@ -1963,61 +1962,35 @@ void TextNodeDumper::Visit(const usyntax::Syntax *S) {
 
 void
 TextNodeDumper::VisitSyntaxConstInt(const usyntax::SyntaxConstInt *S) {
-  OS << "Value: " << S->value << '\n';
+  OS << " value: " << S->value;
 }
 
 void
 TextNodeDumper::VisitSyntaxConstString(const usyntax::SyntaxConstString *S) {
-  OS << "Value: " << S->value << '\n';
+  OS << " value: " << S->value;
 }
 
 void
 TextNodeDumper::VisitSyntaxConstPath(const usyntax::SyntaxConstPath *S) {
-  OS << "Value: " << S->value << '\n';
+  OS << " value: " << S->value;
 }
 
 void TextNodeDumper::VisitSyntaxIdent(const usyntax::SyntaxIdent *S) {
-  OS << "Qualifier:\n";
-  Visit(S->qualifier);
-  OS << "Name: " << S->name << '\n';
+  OS << " name: " << S->name;
 }
 
 void TextNodeDumper::VisitSyntaxCall(const usyntax::SyntaxCall *S) {
-  OS << "Function:\n";
-  Visit(S->call_function);
-
-  OS << "Parameters:\n";
-  for (const auto &Parm : S->call_parameters)
-    Visit(Parm);
-  if (S->call_parameters.empty())
-    OS << "(empty)\n";
-
-  OS << "May fail?: " << S->may_fail << '\n';
-}
-
-void TextNodeDumper::VisitSyntaxAttr(const usyntax::SyntaxAttr *S) {
-  llvm::outs() << "Base:\n";
-  Visit(S->getBase());
-
-  llvm::outs() << "Attr:\n";
-  Visit(S->getAttr());
+  OS << " may fail?: " << S->may_fail;
 }
 
 void TextNodeDumper::VisitSyntaxMacro(const usyntax::SyntaxMacro *S) {
-  llvm::outs() << "Macro:\n";
-  Visit(S->macro);
-
-  llvm::outs() << "Clauses:\n";
+  // FIXME: make the clauses of the macro part of the child range
+  // so that this formats as a tree.
   for (auto &Clause : S->clauses) {
-    llvm::outs() << "Attributes:\n";
+    llvm::outs() << '\n';
     for (auto &Attr : Clause.attrs)
       Visit(Attr);
-    llvm::outs() << "Body:\n";
     for (auto &Syn : Clause.body)
       Visit(Syn);
   }
-}
-
-void TextNodeDumper::VisitSyntaxEscape(const usyntax::SyntaxEscape *S) {
-  Visit(S->escaped);
 }

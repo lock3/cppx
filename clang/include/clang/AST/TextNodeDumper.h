@@ -358,9 +358,7 @@ public:
   void VisitSyntaxConstPath(const usyntax::SyntaxConstPath *S);
   void VisitSyntaxIdent(const usyntax::SyntaxIdent *S);
   void VisitSyntaxCall(const usyntax::SyntaxCall *S);
-  void VisitSyntaxAttr(const usyntax::SyntaxAttr *S);
   void VisitSyntaxMacro(const usyntax::SyntaxMacro *S);
-  void VisitSyntaxEscape(const usyntax::SyntaxEscape *S);
 };
 
 } // namespace clang

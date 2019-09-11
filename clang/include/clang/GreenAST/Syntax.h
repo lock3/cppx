@@ -128,8 +128,7 @@ struct SyntaxIdent : Syntax {
   }
 
   child_range children() {
-    Syntax *QualPtr = qualifier;
-    return child_range(&QualPtr, &QualPtr + 1);
+    return child_range(&qualifier, &qualifier + 1);
   }
   const_child_range children() const {
     auto Children = const_cast<SyntaxIdent *>(this)->children();
@@ -158,8 +157,7 @@ struct SyntaxCall : Syntax {
   }
 
   child_range children() {
-    Syntax *CallFnPtr =  call_function;
-    return child_range(&CallFnPtr, &CallFnPtr + 1);
+    return child_range(&call_function, &call_function + 1);
   }
   const_child_range children() const {
     auto Children = const_cast<SyntaxCall *>(this)->children();
@@ -185,9 +183,7 @@ public:
   }
 
   child_range children() {
-    Syntax *BeginPtr = SubSyntaxes[0];
-    Syntax *EndPtr = SubSyntaxes[0] + END;
-    return child_range(&BeginPtr, &EndPtr);
+    return child_range(&SubSyntaxes[0], &SubSyntaxes[0] + END);
   }
   const_child_range children() const {
     auto Children = const_cast<SyntaxAttr *>(this)->children();
@@ -221,8 +217,7 @@ struct SyntaxMacro : Syntax {
   }
 
   child_range children() {
-    Syntax *MacroPtr = macro;
-    return child_range(&MacroPtr, &MacroPtr + 1);
+    return child_range(&macro, &macro + 1);
   }
   const_child_range children() const {
     auto Children = const_cast<SyntaxMacro *>(this)->children();
@@ -242,8 +237,7 @@ struct SyntaxEscape : Syntax {
   }
 
   child_range children() {
-    Syntax *EscapedPtr = escaped;
-    return child_range(&EscapedPtr, &EscapedPtr + 1);
+    return child_range(&escaped, &escaped + 1);
   }
   const_child_range children() const {
     auto Children = const_cast<SyntaxEscape *>(this)->children();
