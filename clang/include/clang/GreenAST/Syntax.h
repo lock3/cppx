@@ -116,10 +116,10 @@ struct SyntaxConstPath : Syntax {
 };
 
 struct SyntaxIdent : Syntax {
-  std::shared_ptr<Syntax> qualifier;
+  Syntax *qualifier;
   std::string name;
 
-  SyntaxIdent(const Locus &_whence, const std::shared_ptr<Syntax> &_qualifier,
+  SyntaxIdent(const Locus &_whence, Syntax *_qualifier,
                const std::string &_name) noexcept
     : Syntax(SK_Ident, _whence), qualifier(_qualifier), name(_name) {}
 
@@ -128,7 +128,7 @@ struct SyntaxIdent : Syntax {
   }
 
   child_range children() {
-    Syntax *QualPtr = qualifier.get();
+    Syntax *QualPtr = qualifier;
     return child_range(&QualPtr, &QualPtr + 1);
   }
   const_child_range children() const {
@@ -141,13 +141,13 @@ struct SyntaxCall : Syntax {
   bool may_fail;
 
   // TODO: Make this a trailing object?
-  std::shared_ptr<Syntax> call_function;
-  std::vector<std::shared_ptr<Syntax>> call_parameters;
+  Syntax *call_function;
+  std::vector<Syntax *> call_parameters;
 
   SyntaxCall(
       const Locus &_whence, bool _may_fail,
-      const std::shared_ptr<Syntax> &_call_function,
-      const std::vector<std::shared_ptr<Syntax>> &_call_parameters) noexcept
+      Syntax *_call_function,
+      const std::vector<Syntax *> &_call_parameters) noexcept
     : Syntax(SK_Call, _whence), may_fail(_may_fail),
       call_function(_call_function),
       call_parameters(_call_parameters)
@@ -158,7 +158,7 @@ struct SyntaxCall : Syntax {
   }
 
   child_range children() {
-    Syntax *CallFnPtr =  call_function.get();
+    Syntax *CallFnPtr =  call_function;
     return child_range(&CallFnPtr, &CallFnPtr + 1);
   }
   const_child_range children() const {
@@ -171,10 +171,10 @@ struct SyntaxAttr : Syntax {
 private:
   enum {BASE, ATTR, END};
 
-  std::shared_ptr<Syntax> SubSyntaxes[END];
+  Syntax *SubSyntaxes[END];
 public:
-  SyntaxAttr(const Locus &_whence, const std::shared_ptr<Syntax> &_base,
-              const std::shared_ptr<Syntax> &_attr) noexcept
+  SyntaxAttr(const Locus &_whence, Syntax *_base,
+             Syntax *_attr) noexcept
     : Syntax(SK_Attr, _whence) {
     SubSyntaxes[BASE] = _base;
     SubSyntaxes[ATTR] = _attr;
@@ -185,8 +185,8 @@ public:
   }
 
   child_range children() {
-    Syntax *BeginPtr = SubSyntaxes[0].get();
-    Syntax *EndPtr = SubSyntaxes[END].get();
+    Syntax *BeginPtr = SubSyntaxes[0];
+    Syntax *EndPtr = SubSyntaxes[0] + END;
     return child_range(&BeginPtr, &EndPtr);
   }
   const_child_range children() const {
@@ -194,25 +194,25 @@ public:
     return const_child_range(Children);
   }
 
-  std::shared_ptr<Syntax> getBase() const {
+  const Syntax *getBase() const {
     return SubSyntaxes[BASE];
   }
 
-  std::shared_ptr<Syntax> getAttr() const {
+  const Syntax *getAttr() const {
     return SubSyntaxes[ATTR];
   }
 };
 
 struct Clause {
   usyntax::res_t keyword;
-  std::vector<std::shared_ptr<Syntax>> attrs, body;
+  std::vector<Syntax *> attrs, body;
 };
 
 struct SyntaxMacro : Syntax {
-  std::shared_ptr<Syntax> macro;
+  Syntax *macro;
   std::vector<Clause> clauses;
 
-  SyntaxMacro(const Locus &_whence, const std::shared_ptr<Syntax> &_macro,
+  SyntaxMacro(const Locus &_whence, Syntax *_macro,
                const std::vector<Clause> &_clauses)
     : Syntax(SK_Macro, _whence), macro(_macro), clauses(_clauses) {}
 
@@ -221,7 +221,7 @@ struct SyntaxMacro : Syntax {
   }
 
   child_range children() {
-    Syntax *MacroPtr = macro.get();
+    Syntax *MacroPtr = macro;
     return child_range(&MacroPtr, &MacroPtr + 1);
   }
   const_child_range children() const {
@@ -231,10 +231,10 @@ struct SyntaxMacro : Syntax {
 };
 
 struct SyntaxEscape : Syntax {
-  std::shared_ptr<Syntax> escaped;
+  Syntax *escaped;
 
   SyntaxEscape(const Locus &_whence,
-                const std::shared_ptr<Syntax> &_escaped) noexcept
+                Syntax *_escaped) noexcept
     : Syntax(SK_Escape, _whence), escaped(_escaped) {}
 
   static bool classof(const Syntax *S) {
@@ -242,7 +242,7 @@ struct SyntaxEscape : Syntax {
   }
 
   child_range children() {
-    Syntax *EscapedPtr = escaped.get();
+    Syntax *EscapedPtr = escaped;
     return child_range(&EscapedPtr, &EscapedPtr + 1);
   }
   const_child_range children() const {

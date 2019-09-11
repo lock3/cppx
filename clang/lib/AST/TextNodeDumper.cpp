@@ -1978,17 +1978,17 @@ TextNodeDumper::VisitSyntaxConstPath(const usyntax::SyntaxConstPath *S) {
 
 void TextNodeDumper::VisitSyntaxIdent(const usyntax::SyntaxIdent *S) {
   OS << "Qualifier:\n";
-  Visit(S->qualifier.get());
+  Visit(S->qualifier);
   OS << "Name: " << S->name << '\n';
 }
 
 void TextNodeDumper::VisitSyntaxCall(const usyntax::SyntaxCall *S) {
   OS << "Function:\n";
-  Visit(S->call_function.get());
+  Visit(S->call_function);
 
   OS << "Parameters:\n";
   for (const auto &Parm : S->call_parameters)
-    Visit(Parm.get());
+    Visit(Parm);
   if (S->call_parameters.empty())
     OS << "(empty)\n";
 
@@ -1997,27 +1997,27 @@ void TextNodeDumper::VisitSyntaxCall(const usyntax::SyntaxCall *S) {
 
 void TextNodeDumper::VisitSyntaxAttr(const usyntax::SyntaxAttr *S) {
   llvm::outs() << "Base:\n";
-  Visit(S->getBase().get());
+  Visit(S->getBase());
 
   llvm::outs() << "Attr:\n";
-  Visit(S->getAttr().get());
+  Visit(S->getAttr());
 }
 
 void TextNodeDumper::VisitSyntaxMacro(const usyntax::SyntaxMacro *S) {
   llvm::outs() << "Macro:\n";
-  Visit(S->macro.get());
+  Visit(S->macro);
 
   llvm::outs() << "Clauses:\n";
   for (auto &Clause : S->clauses) {
     llvm::outs() << "Attributes:\n";
     for (auto &Attr : Clause.attrs)
-      Visit(Attr.get());
+      Visit(Attr);
     llvm::outs() << "Body:\n";
     for (auto &Syn : Clause.body)
-      Visit(Syn.get());
+      Visit(Syn);
   }
 }
 
 void TextNodeDumper::VisitSyntaxEscape(const usyntax::SyntaxEscape *S) {
-  Visit(S->escaped.get());
+  Visit(S->escaped);
 }

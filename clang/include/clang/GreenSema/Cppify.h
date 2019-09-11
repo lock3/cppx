@@ -29,13 +29,13 @@ using namespace llvm;
 }
 
 // Constants.
-static auto NativePathSyntax = std::make_shared<SyntaxConstPath>(Locus{}, "@P");
+static auto NativePathSyntax = new SyntaxConstPath(Locus{}, "@P");
 
 // Syntax generation.
 struct GenerateSyntax {
   // Types.
   using string_t = std::string;
-  using syntax_t = std::shared_ptr<Syntax>;
+  using syntax_t = Syntax *;
   using array_t = std::vector<syntax_t>;
   using macro_t = std::vector<Clause>;
   using file_t = array_t;
@@ -68,7 +68,7 @@ struct GenerateSyntax {
         Error("NumHex: integer overflow");
     }
 
-    return std::make_shared<SyntaxConstInt>(LocusOf(snip), D);
+    return new SyntaxConstInt(LocusOf(snip), D);
   }
 
   syntax_t NumRational(const usyntax::snippet_t &snip, usyntax::Text digits,
@@ -84,10 +84,10 @@ struct GenerateSyntax {
         Error("NumRational: integer overflow");
     }
 
-    return std::make_shared<SyntaxConstInt>(LocusOf(snip), D);
+    return new SyntaxConstInt(LocusOf(snip), D);
     // FIXME: why is this even here?
     if (!frac && !units)
-      return std::make_shared<SyntaxConstInt>(LocusOf(snip), D);
+      return new SyntaxConstInt(LocusOf(snip), D);
     Error("NumRational: unsupported");
   }
   
@@ -112,12 +112,12 @@ struct GenerateSyntax {
 
   syntax_t ConstString(const usyntax::snippet_t &snip, const string_t &s) const
       noexcept {
-    return std::make_shared<SyntaxConstString>(LocusOf(snip), s);
+    return new SyntaxConstString(LocusOf(snip), s);
   }
 
   syntax_t Native(const usyntax::Text &s) const noexcept {
-    return std::make_shared<SyntaxIdent>(Locus{}, NativePathSyntax,
-                                         StringOf(s));
+    return new SyntaxIdent(Locus{}, NativePathSyntax,
+                           StringOf(s));
   }
 
   syntax_t SyntaxArray(const usyntax::snippet_t &snip,
@@ -129,37 +129,37 @@ struct GenerateSyntax {
 
   syntax_t Ident(const usyntax::snippet_t &snip,
                  const usyntax::Text &name) const noexcept {
-    return std::make_shared<SyntaxIdent>(LocusOf(snip), nullptr,
-                                          StringOf(name));
+    return new SyntaxIdent(LocusOf(snip), nullptr,
+                           StringOf(name));
   }
 
-  syntax_t Qualident(const usyntax::snippet_t &snip, const syntax_t &qualifier,
+  syntax_t Qualident(const usyntax::snippet_t &snip, const syntax_t qualifier,
                      const usyntax::Text &name) const noexcept {
-    return std::make_shared<SyntaxIdent>(LocusOf(snip), qualifier,
-                                          StringOf(name));
+    return new SyntaxIdent(LocusOf(snip), qualifier,
+                       StringOf(name));
   }
 
   syntax_t Call(const usyntax::snippet_t &snip, int64_t ext,
-                const syntax_t &call_function,
+                const syntax_t call_function,
                 const array_t &call_parameters) const noexcept {
-    return std::make_shared<SyntaxCall>(LocusOf(snip), ext, call_function,
-                                        call_parameters);
+    return new SyntaxCall(LocusOf(snip), ext, call_function,
+                          call_parameters);
   }
 
-  syntax_t Attr(const usyntax::snippet_t &snip, const syntax_t &base,
-                const syntax_t &at) const noexcept {
-    return std::make_shared<SyntaxAttr>(LocusOf(snip), base, at);
+  syntax_t Attr(const usyntax::snippet_t &snip, const syntax_t base,
+                const syntax_t at) const noexcept {
+    return new SyntaxAttr(LocusOf(snip), base, at);
   }
 
   syntax_t Path(const usyntax::snippet_t &snip, usyntax::Text value) const
       noexcept {
-    return std::make_shared<SyntaxConstPath>(LocusOf(snip),
+    return new SyntaxConstPath(LocusOf(snip),
                                              StringOf(value));
   }
 
-  syntax_t Escape(const usyntax::snippet_t &snip, const syntax_t &escaped) const
+  syntax_t Escape(const usyntax::snippet_t &snip, const syntax_t escaped) const
       noexcept {
-    return std::make_shared<SyntaxEscape>(LocusOf(snip), escaped);
+    return new SyntaxEscape(LocusOf(snip), escaped);
   }
 
   syntax_t Parentheses(const usyntax::snippet_t &snip, const array_t &ys) const
@@ -180,7 +180,7 @@ struct GenerateSyntax {
     Error(LocusOf(snip), code, msg);
   }
 
-  macro_t MacroStart(const syntax_t &macro, int64_t reserve = 0) const
+  macro_t MacroStart(const syntax_t macro, int64_t reserve = 0) const
       noexcept {
     return macro_t();
   }
@@ -190,9 +190,9 @@ struct GenerateSyntax {
     mac.push_back(Clause{res, attrs, body});
   }
 
-  syntax_t Macro(const usyntax::snippet_t &snip, const syntax_t &macro,
+  Syntax *Macro(const usyntax::snippet_t &snip, syntax_t macro,
                  const macro_t &clauses) const noexcept {
-    return std::make_shared<SyntaxMacro>(LocusOf(snip), macro, clauses);
+    return new SyntaxMacro(LocusOf(snip), macro, clauses);
   }
 
   // Internal.
@@ -217,7 +217,7 @@ struct GenerateCpp {
         // - support include{"filename"}
         // - support operator'=', generate_definition(bool in_code)
         // - support operator'!'
-        if (SyntaxIdent *ym0 = dyn_cast<SyntaxIdent>(ym->macro.get()))
+        if (SyntaxIdent *ym0 = dyn_cast<SyntaxIdent>(ym->macro))
           dst_file << ym0->name << "\n";
         else
           dst_file << "macro\n";

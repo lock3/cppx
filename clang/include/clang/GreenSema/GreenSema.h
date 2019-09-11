@@ -9,7 +9,7 @@
 
 namespace usyntax {
 
-using SyntaxVector = std::vector<std::shared_ptr<Syntax>>;
+using SyntaxVector = std::vector<Syntax *>;
 
 // Semantic actions for the Green language.
 class GreenSema {

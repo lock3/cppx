@@ -7,11 +7,11 @@ using namespace llvm;
 void
 GreenSema::FindIdentifiers(SyntaxVector &Syn) {
   for (const auto &S : Syn)
-    if (const SyntaxMacro *Macro = dyn_cast<SyntaxMacro>(S.get())) {
+    if (const SyntaxMacro *Macro = dyn_cast<SyntaxMacro>(S)) {
       llvm::outs() << "ANALYZING MACRO...\n";
       Macro->dump();
-      if (const SyntaxIdent *Ident = dyn_cast<SyntaxIdent>(Macro->macro.get()))
-        Identifiers.insert({Ident->name, S.get()});
+      if (const SyntaxIdent *Ident = dyn_cast<SyntaxIdent>(Macro))
+        Identifiers.insert({Ident->name, S});
     }
 }
 
