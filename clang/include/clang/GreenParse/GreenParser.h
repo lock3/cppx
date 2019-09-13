@@ -1218,7 +1218,7 @@ template <class gen_t> struct GreenParser : TextPos {
       return;
     case Token(":"): {
       Next(1);
-      auto r = Content();
+      /*auto r = */Content();
       Require(">", &GreenParser::S51);
       marks->value = tag;
       // throw markup_ex{MakeMarkup(snippet_t{}, left, contentsp, r)};
@@ -1226,7 +1226,7 @@ template <class gen_t> struct GreenParser : TextPos {
     LLVM_FALLTHROUGH;
     case Token(">"): {
       Next(1);
-      auto r = Content();
+      /*auto r = */Content();
       Require("</", &GreenParser::S52);
       Space();
       marks->value = tag;
@@ -1259,7 +1259,7 @@ template <class gen_t> struct GreenParser : TextPos {
     case Token(","): {
       Next(1), Scan();
       marks->value = tag;
-      auto right = MoreMarkupTags(TextPos{}, marks);
+      /*auto right = */MoreMarkupTags(TextPos{}, marks);
       // throw markup_ex{MakeMarkup(snippet_t{}, left, contentsp, right)};
     }
     LLVM_FALLTHROUGH;

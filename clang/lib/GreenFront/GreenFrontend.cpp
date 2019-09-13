@@ -9,7 +9,10 @@ void GreenSyntaxAction::ExecuteAction() {
   if (!CI.hasPreprocessor())
     return;
 
-  ParseGreenAST(CI.getPreprocessor());
+  if (!CI.hasASTContext())
+    return;
+
+  ParseGreenAST(CI.getASTContext(), CI.getPreprocessor());
 }
 
 

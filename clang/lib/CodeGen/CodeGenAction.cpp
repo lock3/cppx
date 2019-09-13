@@ -1097,6 +1097,8 @@ void EmitGreenAction::ExecuteAction() {
   CompilerInstance &CI = getCompilerInstance();
   if (!CI.hasPreprocessor())
     return;
+  if (!CI.hasASTContext())
+    return;
 
-  lock3::ParseGreenAST(CI.getPreprocessor());
+  lock3::ParseGreenAST(CI.getASTContext(), CI.getPreprocessor());
 }

@@ -1,6 +1,7 @@
 #ifndef LLVM_GREEN_GREENPARSE_PARSEGREENAST
 #define LLVM_GREEN_GREENPARSE_PARSEGREENAST
 
+#include "clang/AST/ASTContext.h"
 #include "clang/Lex/Preprocessor.h"
 
 #include "clang/GreenAST/SyntaxContext.h"
@@ -17,7 +18,7 @@ using namespace clang;
 
 namespace lock3 {
 
-inline void ParseGreenAST(Preprocessor &PP) {
+inline void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP) {
   using namespace std;
   using namespace usyntax;
 
@@ -26,7 +27,7 @@ inline void ParseGreenAST(Preprocessor &PP) {
   string src_text{istreambuf_iterator<char>(src_file),
                   istreambuf_iterator<char>()};
 
-  SyntaxContext Context;
+  SyntaxContext Context(ClangContext);
   GenerateSyntax Generator(make_shared<string>(src_filename),
                            Context);
 
@@ -35,7 +36,7 @@ inline void ParseGreenAST(Preprocessor &PP) {
       Generator, (char8 *)&src_text[0], (char8 *)&src_text[src_text.size()])
     .File();
 
-  GreenSema Actions;
+  GreenSema Actions(Context, PP);
   Actions.FindIdentifiers(src_syntaxs);
 }
 

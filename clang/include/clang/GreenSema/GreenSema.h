@@ -7,6 +7,10 @@
 #include <memory>
 #include <vector>
 
+namespace clang {
+class Preprocessor;
+} // namespace clang
+
 namespace usyntax {
 
 using SyntaxVector = std::vector<Syntax *>;
@@ -16,7 +20,17 @@ class GreenSema {
   // A mapping of identifiers as strings to syntaxes.
   llvm::StringMap<Syntax *> Identifiers;
 
+  // The context
+  SyntaxContext &Context;
+
+  // The clang preprocessor, for access to IdentifierInfos.
+  clang::Preprocessor &PP;
+
 public:
+  GreenSema(SyntaxContext &Context, clang::Preprocessor &PP)
+    : Context(Context), PP(PP)
+    {}
+
   // Look through a translation unit and create the Identifiers map.
   void FindIdentifiers(SyntaxVector &Syn);
 };

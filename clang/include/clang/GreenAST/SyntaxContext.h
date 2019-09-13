@@ -1,8 +1,13 @@
 #ifndef CLANG_GREEN_GREENAST_SYNTAXCONTEXT_H
 #define CLANG_GREEN_GREENAST_SYNTAXCONTEXT_H
 
+#include "clang/AST/DeclContextInternals.h"
 #include "clang/GreenAST/SyntaxContextAllocate.h"
 #include "llvm/Support/Allocator.h"
+
+namespace clang {
+class ASTContext;
+} // namespace clang
 
 namespace usyntax {
 
@@ -17,6 +22,14 @@ class SyntaxContext {
   mutable llvm::BumpPtrAllocator BumpAlloc;
 
 public:
+  /// The context for the Clang AST.
+  clang::ASTContext &ClangContext;
+
+public:
+  SyntaxContext(clang::ASTContext &ClangContext)
+    : ClangContext(ClangContext)
+  {}
+
   llvm::BumpPtrAllocator &getAllocator() const {
     return BumpAlloc;
   }

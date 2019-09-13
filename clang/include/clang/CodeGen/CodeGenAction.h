@@ -10,6 +10,9 @@
 #define LLVM_CLANG_CODEGEN_CODEGENACTION_H
 
 #include "clang/Frontend/FrontendAction.h"
+
+#include "clang/GreenFront/GreenFrontend.h"
+
 #include <memory>
 
 namespace llvm {

@@ -212,6 +212,10 @@ public:
   }
 
   void Visit(const usyntax::Syntax *S) {
+    // Due to the design of the parser, we have this problem a lot.
+    if (!S)
+      return;
+
     getNodeDelegate().AddChild([=] {
       getNodeDelegate().Visit(S);
 
