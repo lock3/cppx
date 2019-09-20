@@ -3,7 +3,6 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_clang_library(greenAst
-  IdentifierTree.cpp
   Syntax.cpp
 
   LINK_LIBS

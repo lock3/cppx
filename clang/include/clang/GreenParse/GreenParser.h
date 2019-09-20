@@ -1300,15 +1300,15 @@ template <class gen_t> struct GreenParser : TextPos {
   // FIXME: what do these do? Perhaps SimpleMacro_1 is unary whereas 2
   // is binary?
   syntax_t SimpleMacro_1(const snippet_t &snip, const syntax_t &mac,
-                          const syntax_t &invoke_body_0) noexcept {
+                         const syntax_t &invoke_body_0) noexcept {
     auto body = gen.ArrayNew(1);
     gen.ArrayAppend(body, invoke_body_0);
     return SimpleMacro(snip, mac, body);
   }
 
   syntax_t SimpleMacro_2(const snippet_t &snip, const syntax_t &mac,
-                          const syntax_t &invoke_body_0,
-                          const syntax_t &invoke_body_1) noexcept {
+                         const syntax_t &invoke_body_0,
+                         const syntax_t &invoke_body_1) noexcept {
     auto body = gen.ArrayNew(2);
     gen.ArrayAppend(body, invoke_body_0);
     gen.ArrayAppend(body, invoke_body_1);
@@ -1316,8 +1316,8 @@ template <class gen_t> struct GreenParser : TextPos {
   }
 
   void ParseMacro(const TextPos &start, syntax_t &left, prec p,
-                              bool allow_else, link_t<Text> *marks, Text tag,
-                              Text require_macro) {
+                  bool allow_else, link_t<Text> *marks, Text tag,
+                  Text require_macro) {
     // brace = scan '{' list '}' space
     // block = brace | ':' ind list ded
     // imm   = def lookahead(ending|')'|']'|'}'|','|';'|'where'|'=>'|'<|')
@@ -1990,9 +1990,9 @@ template <class gen_t> struct GreenParser : TextPos {
           if (p <= prec_cmp) { // Handle "x:t" form.
             Next(1), Space();
             left = SimpleMacro_2(Snip(start), gen.Native("operator'='"), left,
-                                  SimpleMacro_1(Snip(start),
-                                                 gen.Native("prefix':'"),
-                                                 Expr(prec_to, ":")));
+                                 SimpleMacro_1(Snip(start),
+                                               gen.Native("prefix':'"),
+                                               Expr(prec_to, ":")));
             continue;
           }
           return left;

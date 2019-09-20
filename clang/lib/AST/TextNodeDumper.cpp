@@ -1986,11 +1986,11 @@ void TextNodeDumper::VisitSyntaxCall(const usyntax::SyntaxCall *S) {
 void TextNodeDumper::VisitSyntaxMacro(const usyntax::SyntaxMacro *S) {
   // FIXME: make the clauses of the macro part of the child range
   // so that this formats as a tree.
-  for (auto &Clause : S->clauses) {
-    llvm::outs() << '\n';
-    for (auto &Attr : Clause.attrs)
-      Visit(Attr);
-    for (auto &Syn : Clause.body)
-      Visit(Syn);
-  }
+  // for (auto &Clause : S->clauses) {
+  //   llvm::outs() << '\n';
+  //   for (auto &Attr : Clause.attrs)
+  //     Visit(Attr);
+  //   for (auto &Syn : Clause.body)
+  //     Visit(Syn);
+  // }
 }

@@ -3,6 +3,7 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/Lex/Preprocessor.h"
+#include "clang/Sema/Sema.h"
 
 #include "clang/GreenAST/SyntaxContext.h"
 #include "clang/GreenParse/ParseGreenAST.h"
@@ -18,7 +19,8 @@ using namespace clang;
 
 namespace lock3 {
 
-inline void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP) {
+inline void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
+                          Sema &ClangSema) {
   using namespace std;
   using namespace usyntax;
 
@@ -36,7 +38,7 @@ inline void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP) {
       Generator, (char8 *)&src_text[0], (char8 *)&src_text[src_text.size()])
     .File();
 
-  GreenSema Actions(Context, PP);
+  GreenSema Actions(Context, PP, ClangSema);
   Actions.FindIdentifiers(src_syntaxs);
 }
 

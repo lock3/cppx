@@ -1099,6 +1099,8 @@ void EmitGreenAction::ExecuteAction() {
     return;
   if (!CI.hasASTContext())
     return;
+  if (!CI.hasSema())
+    CI.createSema(getTranslationUnitKind(), nullptr);
 
-  lock3::ParseGreenAST(CI.getASTContext(), CI.getPreprocessor());
+  lock3::ParseGreenAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
 }

@@ -12,7 +12,10 @@ void GreenSyntaxAction::ExecuteAction() {
   if (!CI.hasASTContext())
     return;
 
-  ParseGreenAST(CI.getASTContext(), CI.getPreprocessor());
+  if (!CI.hasSema())
+    CI.createSema(getTranslationUnitKind(), nullptr);
+
+  ParseGreenAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
 }
 
 
