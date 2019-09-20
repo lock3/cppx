@@ -1,5 +1,19 @@
-#ifndef LLVM_CLANG_GREENFRONT_GREENFRONTEND_H
-#define LLVM_CLANG_GREENFRONT_GREENFRONTEND_H
+//===- GreenFrontend.h - Green Frontend Action Interface ------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Copyright (c) Lock3 Software 2019, all rights reserved.
+//
+//===----------------------------------------------------------------------===//
+//
+//  This file defines the GreenSyntaxAction interface, a frontend action for
+//  parsing Green Syntax only.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef CLANG_GREEN_GREENFRONT_GREENFRONTEND_H
+#define CLANG_GREEN_GREENFRONT_GREENFRONTEND_H
 
 #include "clang/Frontend/FrontendAction.h"
 #include "llvm/ADT/STLExtras.h"

@@ -1,3 +1,17 @@
+//===- Cppify.h - Functions for Interfacing Usyntax and C++ ---------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Copyright (c) Lock3 Software 2019, all rights reserved.
+//
+//===----------------------------------------------------------------------===//
+//
+//  This file defines the interface for interfacing Usyntax and C++ abstract
+//  syntax trees.
+//
+//===----------------------------------------------------------------------===//
+
 #ifndef CLANG_GREEN_CPPIFY_H
 #define CLANG_GREEN_CPPIFY_H
 

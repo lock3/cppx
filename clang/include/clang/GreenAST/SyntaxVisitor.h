@@ -1,5 +1,18 @@
-#ifndef LLVM_GREEN_SYNTAXVISITOR_H
-#define LLVM_GREEN_SYNTAXVISITOR_H
+//===- SyntaxVisitor.h - A tree traverser for Syntax nodes ----------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Copyright (c) Lock3 Software 2019, all rights reserved.
+//
+//===----------------------------------------------------------------------===//
+//
+//  This file defines a tree traverser for Syntax nodes.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef CLANG_GREEN_SYNTAXVISITOR_H
+#define CLANG_GREEN_SYNTAXVISITOR_H
 
 #include "clang/GreenAST/Syntax.h"
 #include "llvm/ADT/STLExtras.h"

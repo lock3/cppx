@@ -1,13 +1,20 @@
+//===- SyntaxContextAllocate.h - SyntaxContext allocate functions ---------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Copyright (c) Lock3 Software 2019, all rights reserved.
+//
 //===----------------------------------------------------------------------===//
 //
-//  This file declares SyntaxContext  allocation functions separate from the
+//  This file declares the SyntaxContext allocation functions separate from the
 //  main code in SyntaxContext.h
 //
 //===----------------------------------------------------------------------===//
 
 
-#ifndef LLVM_GREEN_GREENAST_SYNTAXCONTEXTALLOCATE_H
-#define LLVM_GREEN_GREENAST_SYNTAXCONTEXTALLOCATE_H
+#ifndef CLANG_GREEN_GREENAST_SYNTAXCONTEXTALLOCATE_H
+#define CLANG_GREEN_GREENAST_SYNTAXCONTEXTALLOCATE_H
 
 #include <cstddef>
 
