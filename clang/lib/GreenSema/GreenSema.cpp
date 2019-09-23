@@ -18,7 +18,8 @@
 
 #include "clang/GreenAST/Syntax.h"
 #include "clang/GreenSema/GreenSema.h"
-#include "clang/GreenSema/IdentifierTree.h"
+// #include "clang/GreenSema/IdentifierTree.h"
+#include "clang/GreenSema/IdentifierMapper.h"
 
 
 namespace usyntax {
@@ -59,13 +60,11 @@ void DumpFunction(const SyntaxCall *S) {
     Parm->dump();
   }
 }
-
+ 
 void
-GreenSema::FindIdentifiers(SyntaxVector &Syn) {
-  for (const auto &S : Syn) {
-    IdentifierTreeTraverser Traverser(Context, PP, *this, ClangSema);
-    Traverser.Visit(S);
-  }
+GreenSema::MapIdentifiers(SyntaxVector &Syn) {
+  IdentifierMapper M(Context, PP, *this, ClangSema);
+  M.MapSyntaxes(Syn);
 }
 
 } // namespace usyntax

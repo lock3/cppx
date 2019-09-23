@@ -52,7 +52,7 @@ inline void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
     .File();
 
   GreenSema Actions(Context, PP, ClangSema);
-  Actions.FindIdentifiers(src_syntaxs);
+  Actions.MapIdentifiers(src_syntaxs);
 }
 
 } // namespace lock3

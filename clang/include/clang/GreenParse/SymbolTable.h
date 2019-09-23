@@ -15,8 +15,12 @@
 #ifndef CLANG_GREEN_SYMBOLTABLE_H
 #define CLANG_GREEN_SYMBOLTABLE_H
 
+#include "llvm/ADT/StringSwitch.h"
+
 #include "clang/GreenBasic/GreenBasic.h"
 #include "clang/GreenParse/TokenInfo.h"
+
+#include <string>
 
 namespace usyntax {
 
@@ -91,6 +95,27 @@ struct reserved_t {
           }
   }*/
 };
+
+
+inline bool IsCPlusPlusBuiltinTypeKeyword(const std::string &Identifier) {
+  return llvm::StringSwitch<bool>(Identifier)
+    .Cases("void", "bool", "char", "int", "short", true)
+    .Cases("long", "unsigned", "float", "double", true)
+    .Default(false);
+}
+
+inline bool IsUsyntaxReservedWord(const std::string &Identifier) {
+  return llvm::StringSwitch<bool>(Identifier)
+    .Cases("", "of", "not", "and", "or", true)
+    .Cases("where", "if", "else", "catch", "do", true)
+    .Cases("in",  "otherwise", "returns", "then", "until", true)
+    .Default(false);
+}
+
+inline bool IsAnyKeyword(const std::string &Identifier) {
+  return IsUsyntaxReservedWord(Identifier) ||
+    IsCPlusPlusBuiltinTypeKeyword(Identifier);
+}
 
 constexpr auto Reserved = reserved_t{};
 

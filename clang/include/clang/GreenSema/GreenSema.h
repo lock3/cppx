@@ -55,8 +55,9 @@ public:
 public:
   GreenSema(SyntaxContext &Context, clang::Preprocessor &PP, clang::Sema &S);
 
-  // Look through a translation unit and create the Identifiers map.
-  void FindIdentifiers(SyntaxVector &Syn);
+  // Look through a translation unit and map the identifiers to Clang
+  // constructs.
+  void MapIdentifiers(SyntaxVector &Syn);
 };
 
 } // namespace usyntax
