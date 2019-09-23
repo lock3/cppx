@@ -37,6 +37,7 @@ inline void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
   using namespace std;
   using namespace usyntax;
 
+  // Use the Green Parser to create a syntax vector.
   string src_filename{"../usyntax/test.usyntax"};
   ifstream src_file{src_filename};
   string src_text{istreambuf_iterator<char>(src_file),
@@ -52,6 +53,8 @@ inline void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
     .File();
 
   GreenSema Actions(Context, PP, ClangSema);
+
+  // Map the identifiers to clang constructs.
   Actions.MapIdentifiers(src_syntaxs);
 }
 
