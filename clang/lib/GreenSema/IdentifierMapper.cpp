@@ -243,7 +243,7 @@ IdentifierMapper::MapCall(const SyntaxCall *S) {
   // prototypes?
   FunctionDecl *Fn =
     FunctionDecl::Create(ClangContext, ClangSemaRef.CurContext,
-                         SourceLocation(), SourceLocation(), DeclName,
+                         S->Loc, FnName->Loc, DeclName,
                          TSI->getType(), TSI, SC_Static);
   ClangSemaRef.CurContext->addDecl(Fn);
   ClangSemaRef.CurContext = Fn;
@@ -286,15 +286,15 @@ IdentifierMapper::MapIdentifier(const SyntaxIdent *S, QualType Ty) {
     if (VarContext == Normal) {
       // This is a variable created in a normal context.
       VarDecl *Var =
-        VarDecl::Create(ClangContext, ClangSemaRef.CurContext, SourceLocation(),
-                        SourceLocation(), II, TSI->getType(), TSI, SC);
+        VarDecl::Create(ClangContext, ClangSemaRef.CurContext, S->Loc,
+                        S->Loc, II, TSI->getType(), TSI, SC);
       ClangSemaRef.CurContext->addDecl(Var);
       return Var;
     } else if (VarContext == FunctionProto) {
       // This is a variable created in a function signature.
       ParmVarDecl *Parm =
-        ParmVarDecl::Create(ClangContext, ClangSemaRef.CurContext, SourceLocation(),
-                            SourceLocation(), II, TSI->getType(), TSI, SC,
+        ParmVarDecl::Create(ClangContext, ClangSemaRef.CurContext, S->Loc,
+                            S->Loc, II, TSI->getType(), TSI, SC,
                             nullptr);
       // This will get added to its function context later.
       return Parm;
