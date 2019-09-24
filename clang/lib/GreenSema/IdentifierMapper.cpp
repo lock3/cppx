@@ -16,10 +16,22 @@
 using namespace clang;
 using namespace usyntax;
 
+IdentifierMapper::IdentifierMapper(SyntaxContext &Context,
+                                   clang::Preprocessor &PP,
+                                   clang::Sema &ClangSemaRef)
+  : VarContext(Normal), Context(Context), PP(PP), ClangSemaRef(ClangSemaRef)
+{
+  ClangSemaRef.CurContext = Context.ClangContext.getTranslationUnitDecl();
+  ClangSemaRef.CurContext->buildLookup();
+}
+
 void
 IdentifierMapper::MapSyntaxes(const SyntaxVector &Inputs) {
-  for (const Syntax *S : Inputs)
-    MapSyntax(S)->dump();
+  for (const Syntax *S : Inputs) {
+    Decl *D = MapSyntax(S);
+    if (D)
+      D->dump();
+  }
 }
 
 Decl *
@@ -228,10 +240,11 @@ IdentifierMapper::MapCall(const SyntaxCall *S) {
   // TODO: can functions in Green be inline, constexpr, or have written
   // prototypes?
   FunctionDecl *Fn =
-    FunctionDecl::Create(ClangContext, GSemaRef.CurContext,
+    FunctionDecl::Create(ClangContext, ClangSemaRef.CurContext,
                          SourceLocation(), SourceLocation(), DeclName,
                          TSI->getType(), TSI, SC_Static);
-  GSemaRef.CurContext = Fn;
+  ClangSemaRef.CurContext->addDecl(Fn);
+  ClangSemaRef.CurContext = Fn;
 
   // Actually create the parameters inside of the Fn DeclContext.
   CreateFunctionParameters(*this, Fn, S->call_parameters, ParamTypes);
@@ -245,7 +258,7 @@ IdentifierMapper::MapCall(const SyntaxCall *S) {
 
 Decl *
 IdentifierMapper::MapIdentifier(const SyntaxIdent *S, QualType Ty) {
-  // This is an identifier with children, so it might be a
+  // This is an identifier with no children, so it might be a
   // declaration.
   if (!(*S->children().begin())) {
     IdentifierInfo *II = &PP.getIdentifierTable().get(S->name);
@@ -256,9 +269,8 @@ IdentifierMapper::MapIdentifier(const SyntaxIdent *S, QualType Ty) {
       return nullptr;
 
     // We already declared this, don't declare it again.
-    // auto It = CurrentSDM.getPointer()->find(Name);
-    // if (It != CurrentSDM.getPointer()->end())
-    //   return nullptr;
+    if (!ClangSemaRef.CurContext->lookup(Name).empty())
+      return nullptr;
 
     ASTContext &ClangContext = Context.ClangContext;
     TypeSourceInfo *TSI =
@@ -266,21 +278,23 @@ IdentifierMapper::MapIdentifier(const SyntaxIdent *S, QualType Ty) {
 
     // If we're in global scope, make the variable have static storage.
     StorageClass SC =
-      (GSemaRef.CurContext == ClangContext.getTranslationUnitDecl())
+      (ClangSemaRef.CurContext == ClangContext.getTranslationUnitDecl())
       ? SC_Static : SC_Auto;
 
     if (VarContext == Normal) {
       // This is a variable created in a normal context.
       VarDecl *Var =
-        VarDecl::Create(ClangContext, GSemaRef.CurContext, SourceLocation(),
+        VarDecl::Create(ClangContext, ClangSemaRef.CurContext, SourceLocation(),
                         SourceLocation(), II, TSI->getType(), TSI, SC);
+      ClangSemaRef.CurContext->addDecl(Var);
       return Var;
     } else if (VarContext == FunctionProto) {
       // This is a variable created in a function signature.
       ParmVarDecl *Parm =
-        ParmVarDecl::Create(ClangContext, GSemaRef.CurContext, SourceLocation(),
+        ParmVarDecl::Create(ClangContext, ClangSemaRef.CurContext, SourceLocation(),
                             SourceLocation(), II, TSI->getType(), TSI, SC,
                             nullptr);
+      // This will get added to its function context later.
       return Parm;
     }
   }

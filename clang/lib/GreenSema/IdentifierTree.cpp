@@ -149,10 +149,10 @@ IdentifierTreeAnalyzer::VisitSyntaxCall(const SyntaxCall *S) {
 
   // TODO: can these be inline, constexpr, or have written prototypes?
   FunctionDecl *Fn =
-    FunctionDecl::Create(ClangContext, GSema.CurContext,
+    FunctionDecl::Create(ClangContext, ClangSema.CurContext,
                          SourceLocation(), SourceLocation(), DeclName,
                          TSI->getType(), TSI, SC_Static);
-  GSema.CurContext = Fn;
+  ClangSema.CurContext = Fn;
 
   // Actually create the parameters inside of the Fn DeclContext.
   unsigned Index = 0;
@@ -186,18 +186,18 @@ IdentifierTreeAnalyzer::VisitSyntaxIdent(const SyntaxIdent *S) {
 
       // If we're in global scope, make the variable have static storage.
       StorageClass SC =
-        (GSema.CurContext == ClangContext.getTranslationUnitDecl())
+        (ClangSema.CurContext == ClangContext.getTranslationUnitDecl())
         ? SC_Static : SC_Auto;
 
       if (VarContext == Normal) {
         // This is a variable created in a normal context.
         VarDecl *Var =
-          VarDecl::Create(ClangContext, GSema.CurContext, SourceLocation(),
+          VarDecl::Create(ClangContext, ClangSema.CurContext, SourceLocation(),
                           SourceLocation(), II, TSI->getType(), TSI, SC);
       } else if (VarContext == FunctionProto) {
         // This is a variable created in a function signature.
         ParmVarDecl *Parm =
-          ParmVarDecl::Create(ClangContext, GSema.CurContext, SourceLocation(),
+          ParmVarDecl::Create(ClangContext, ClangSema.CurContext, SourceLocation(),
                               SourceLocation(), II, TSI->getType(), TSI, SC,
                               nullptr);
         CreatedParameters.push_back(Parm);

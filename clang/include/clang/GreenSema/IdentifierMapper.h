@@ -16,6 +16,7 @@
 #ifndef CLANG_GREEN_IDENTIFIER_MAPPER_H
 #define CLANG_GREEN_IDENTIFIER_MAPPER_H
 
+#include "clang/AST/DeclBase.h"
 #include "clang/AST/Type.h"
 #include "llvm/ADT/PointerIntPair.h"
 
@@ -40,21 +41,7 @@ using SyntaxVector = std::vector<Syntax *>;
 class IdentifierMapper {
 public:
   IdentifierMapper(SyntaxContext &Context, clang::Preprocessor &PP,
-                      GreenSema &GSemaRef, clang::Sema &ClangSemaRef)
-    : Context(Context), PP(PP), GSemaRef(GSemaRef), ClangSemaRef(ClangSemaRef)
-  {
-    VarContext = Normal;
-
-    // if (!GSemaRef.CurContext->getLookupPtr())
-    //   ;
-      // GSemaRef.CurContext->CreateStoredDeclsMap(Context.ClangContext);
-      // GSemaRef.CurContext->makeDeclVisibleInContextImpl(nullptr, false);
-    // CurrentSDM =
-    //   llvm::PointerIntPair<StoredDeclsMap *, 1>(
-    //     GSemaRef.CurContext->getLookupPtr(),
-    //     GSemaRef.CurContext->isDependentContext());
-    // llvm::outs() << "Is SDM null? " << GSemaRef.CurContext->getLookupPtr() << '\n';
-  }
+                   clang::Sema &ClangSemaRef);
 
   /// Map the given list of syntaxes.
   void MapSyntaxes(const SyntaxVector &Inputs);
@@ -94,9 +81,6 @@ private:
 
   /// Clang preprocessor. Gives access to Clang's identifier table.
   clang::Preprocessor &PP;
-
-  /// A reference to the GreenSema object.
-  GreenSema &GSemaRef;
 
   /// A reference to Clang's Sema object.
   clang::Sema &ClangSemaRef;

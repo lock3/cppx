@@ -28,9 +28,8 @@ using namespace llvm;
 
 GreenSema::GreenSema(SyntaxContext &Context, clang::Preprocessor &PP, 
                      clang::Sema &ClangSema)
-  : Context(Context), PP(PP), ClangSema(ClangSema) {
-  CurContext = Context.ClangContext.getTranslationUnitDecl();
-}
+  : Context(Context), PP(PP), ClangSema(ClangSema)
+{}
 
 
 // DumpClause and DumpFunction are temporary debugging tools.
@@ -63,7 +62,7 @@ void DumpFunction(const SyntaxCall *S) {
  
 void
 GreenSema::MapIdentifiers(SyntaxVector &Syn) {
-  IdentifierMapper M(Context, PP, *this, ClangSema);
+  IdentifierMapper M(Context, PP, ClangSema);
   M.MapSyntaxes(Syn);
 }
 

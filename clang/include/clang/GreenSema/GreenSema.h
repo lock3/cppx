@@ -48,9 +48,6 @@ class GreenSema {
   // The clang semantic object, allows to create various syntax nodes
   // as well as perform important transformations on them.
   clang::Sema &ClangSema;
-public:
-  // The current DeclContext in which we are allocating declarations.
-  clang::DeclContext *CurContext;
 
 public:
   GreenSema(SyntaxContext &Context, clang::Preprocessor &PP, clang::Sema &S);
