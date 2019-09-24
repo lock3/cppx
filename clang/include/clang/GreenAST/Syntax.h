@@ -14,11 +14,13 @@
 #ifndef CLANG_GREEN_SYNTAX_H
 #define CLANG_GREEN_SYNTAX_H
 
-#include "clang/GreenAST/SyntaxIterator.h"
-#include "clang/GreenParse/SymbolTable.h"
+#include "clang/Basic/SourceManager.h"
 #include "llvm/ADT/iterator.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
+
+#include "clang/GreenAST/SyntaxIterator.h"
+#include "clang/GreenParse/SymbolTable.h"
 
 #include <memory>
 #include <string>
@@ -26,15 +28,9 @@
 
 namespace usyntax {
 
-// Location identification.
-struct Locus {
-  std::shared_ptr<std::string> filename;
-  int64_t startline, startpos, endline, endpos;
-};
-
 // Syntax types.
 struct Syntax {
-  Locus whence;
+  clang::SourceLocation Loc;
 
   enum SyntaxKind {
     SK_ConstInt,
@@ -49,8 +45,8 @@ struct Syntax {
 
 public:
   Syntax() = delete;
-  Syntax(SyntaxKind SK, const Locus &_whence) noexcept :
-    whence(_whence), Kind(SK) {}
+  Syntax(SyntaxKind SK, clang::SourceLocation Loc) noexcept :
+    Loc(Loc), Kind(SK) {}
   virtual ~Syntax() {}
 
   SyntaxKind getKind() const { return Kind; }
@@ -76,8 +72,8 @@ private:
 struct SyntaxConstInt : Syntax {
   int64_t value;
 
-  SyntaxConstInt(const Locus &_whence, int64_t _value) noexcept
-    : Syntax(SK_ConstInt, _whence), value(_value) {}
+  SyntaxConstInt(clang::SourceLocation Loc, int64_t _value) noexcept
+    : Syntax(SK_ConstInt, Loc), value(_value) {}
 
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_ConstInt;
@@ -95,8 +91,8 @@ struct SyntaxConstInt : Syntax {
 struct SyntaxConstString : Syntax {
   std::string value;
 
-  SyntaxConstString(const Locus &_whence, const std::string &_value) noexcept
-    : Syntax(SK_ConstString, _whence), value(_value) {}
+  SyntaxConstString(clang::SourceLocation Loc, const std::string &_value) noexcept
+    : Syntax(SK_ConstString, Loc), value(_value) {}
 
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_ConstString;
@@ -113,8 +109,8 @@ struct SyntaxConstString : Syntax {
 struct SyntaxConstPath : Syntax {
   std::string value;
 
-  SyntaxConstPath(const Locus &_whence, const std::string &_value) noexcept
-    : Syntax(SK_ConstPath, _whence), value(_value) {}
+  SyntaxConstPath(clang::SourceLocation Loc, const std::string &_value) noexcept
+    : Syntax(SK_ConstPath, Loc), value(_value) {}
 
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_ConstPath;
@@ -132,9 +128,9 @@ struct SyntaxIdent : Syntax {
   Syntax *qualifier;
   std::string name;
 
-  SyntaxIdent(const Locus &_whence, Syntax *_qualifier,
+  SyntaxIdent(clang::SourceLocation Loc, Syntax *_qualifier,
                const std::string &_name) noexcept
-    : Syntax(SK_Ident, _whence), qualifier(_qualifier), name(_name) {}
+    : Syntax(SK_Ident, Loc), qualifier(_qualifier), name(_name) {}
 
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Ident;
@@ -157,10 +153,10 @@ struct SyntaxCall : Syntax {
   std::vector<Syntax *> call_parameters;
 
   SyntaxCall(
-      const Locus &_whence, bool _may_fail,
-      Syntax *_call_function,
-      const std::vector<Syntax *> &_call_parameters) noexcept
-    : Syntax(SK_Call, _whence), may_fail(_may_fail),
+    clang::SourceLocation Loc, bool _may_fail,
+    Syntax *_call_function,
+    const std::vector<Syntax *> &_call_parameters) noexcept
+    : Syntax(SK_Call, Loc), may_fail(_may_fail),
       call_function(_call_function),
       call_parameters(_call_parameters)
     {}
@@ -184,9 +180,9 @@ private:
 
   Syntax *SubSyntaxes[END];
 public:
-  SyntaxAttr(const Locus &_whence, Syntax *_base,
+  SyntaxAttr(clang::SourceLocation Loc, Syntax *_base,
              Syntax *_attr) noexcept
-    : Syntax(SK_Attr, _whence) {
+    : Syntax(SK_Attr, Loc) {
     SubSyntaxes[BASE] = _base;
     SubSyntaxes[ATTR] = _attr;
   }
@@ -221,9 +217,9 @@ struct SyntaxMacro : Syntax {
   Syntax *macro;
   std::vector<Clause> clauses;
 
-  SyntaxMacro(const Locus &_whence, Syntax *_macro,
+  SyntaxMacro(clang::SourceLocation Loc, Syntax *_macro,
                const std::vector<Clause> &_clauses)
-    : Syntax(SK_Macro, _whence), macro(_macro), clauses(_clauses) {}
+    : Syntax(SK_Macro, Loc), macro(_macro), clauses(_clauses) {}
 
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Macro;
@@ -241,9 +237,9 @@ struct SyntaxMacro : Syntax {
 struct SyntaxEscape : Syntax {
   Syntax *escaped;
 
-  SyntaxEscape(const Locus &_whence,
+  SyntaxEscape(clang::SourceLocation Loc,
                 Syntax *_escaped) noexcept
-    : Syntax(SK_Escape, _whence), escaped(_escaped) {}
+    : Syntax(SK_Escape, Loc), escaped(_escaped) {}
 
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Escape;

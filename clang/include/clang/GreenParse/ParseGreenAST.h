@@ -35,10 +35,9 @@ inline void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
   using namespace usyntax;
 
   FileID MainFID = PP.getSourceManager().getMainFileID();
-  const FileEntry *File = PP.getSourceManager().getFileEntryForID(MainFID);
   SyntaxContext Context(ClangContext);
-  GenerateSyntax Generator(make_shared<string>(File->getName()),
-                           Context);
+  GenerateSyntax Generator(Context, PP.getSourceManager(),
+                           MainFID);
 
   // Use the Green Parser to create a syntax vector.
   GreenParser<GenerateSyntax> TheParser(Generator, PP.getSourceManager(),

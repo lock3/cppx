@@ -15,36 +15,37 @@
 #ifndef CLANG_GREEN_CPPIFY_H
 #define CLANG_GREEN_CPPIFY_H
 
+#include "llvm/Support/raw_ostream.h"
+
 #include "clang/GreenAST/Syntax.h"
 #include "clang/GreenAST/SyntaxContext.h"
 #include "clang/GreenBasic/GreenBasic.h"
 #include "clang/GreenParse/GreenParser.h"
 
-#include <iostream>
 #include <fstream>
 
 namespace usyntax {
 
 using namespace llvm;
+using namespace clang;
 
 // Helper functions.
 [[noreturn]] inline void Error(const std::string &message) {
-  std::cout << message << "\r\n";
+  llvm::outs() << message << "\r\n";
   system("pause");
   exit(1);
 }
 
-[[noreturn]] inline void Error(const Locus &whence, const char *code,
-                        const std::string &message) {
-  std::cout << *whence.filename << "(" << whence.startline << ","
-            << whence.startpos << ") : error " << code << ": " << message
-            << "\r\n";
+[[noreturn]] inline void Error(SourceLocation Loc, SourceManager &SrcMgr,
+                               const char *code, const std::string &message) {
+  std::string LocString = Loc.printToString(SrcMgr);
+  llvm::outs() << LocString << " error: " << code << ": " << message << "\r\n";
   system("pause");
   exit(1);
 }
 
 // Constants.
-static auto NativePathSyntax = new SyntaxConstPath(Locus{}, "@P");
+static auto NativePathSyntax = new SyntaxConstPath(SourceLocation(), "@P");
 
 // Syntax generation.
 struct GenerateSyntax {
@@ -55,9 +56,10 @@ struct GenerateSyntax {
   using macro_t = std::vector<Clause>;
   using file_t = array_t;
 
-  GenerateSyntax(std::shared_ptr<std::string> filename,
-                 SyntaxContext &Context)
-    : filename(filename), Context(Context)
+  GenerateSyntax(SyntaxContext &Context,
+                 SourceManager &SrcMgr,
+                 FileID FID)
+    : Context(Context), SrcMgr(SrcMgr), FID(FID)
     {}
 
   // Collection management.
@@ -88,7 +90,7 @@ struct GenerateSyntax {
         Error("NumHex: integer overflow");
     }
 
-    return new (Context) SyntaxConstInt(LocusOf(snip), D);
+    return new (Context) SyntaxConstInt(LocOf(snip), D);
   }
 
   syntax_t NumRational(const usyntax::snippet_t &snip, usyntax::Text digits,
@@ -104,10 +106,10 @@ struct GenerateSyntax {
         Error("NumRational: integer overflow");
     }
 
-    return new (Context) SyntaxConstInt(LocusOf(snip), D);
+    return new (Context) SyntaxConstInt(LocOf(snip), D);
     // FIXME: why is this even here?
     if (!frac && !units)
-      return new (Context) SyntaxConstInt(LocusOf(snip), D);
+      return new (Context) SyntaxConstInt(LocOf(snip), D);
     Error("NumRational: unsupported");
   }
 
@@ -132,11 +134,11 @@ struct GenerateSyntax {
 
   syntax_t ConstString(const usyntax::snippet_t &snip, const string_t &s) const
       noexcept {
-    return new (Context) SyntaxConstString(LocusOf(snip), s);
+    return new (Context) SyntaxConstString(LocOf(snip), s);
   }
 
   syntax_t Native(const usyntax::Text &s) const noexcept {
-    return new (Context) SyntaxIdent(Locus{}, NativePathSyntax,
+    return new (Context) SyntaxIdent(SourceLocation(), NativePathSyntax,
                                      StringOf(s));
   }
 
@@ -149,37 +151,37 @@ struct GenerateSyntax {
 
   syntax_t Ident(const usyntax::snippet_t &snip,
                  const usyntax::Text &name) const noexcept {
-    return new (Context) SyntaxIdent(LocusOf(snip), nullptr,
+    return new (Context) SyntaxIdent(LocOf(snip), nullptr,
                                      StringOf(name));
   }
 
   syntax_t Qualident(const usyntax::snippet_t &snip, const syntax_t qualifier,
                      const usyntax::Text &name) const noexcept {
-    return new (Context) SyntaxIdent(LocusOf(snip), qualifier,
+    return new (Context) SyntaxIdent(LocOf(snip), qualifier,
                                      StringOf(name));
   }
 
   syntax_t Call(const usyntax::snippet_t &snip, int64_t ext,
                 const syntax_t call_function,
                 const array_t &call_parameters) const noexcept {
-    return new (Context) SyntaxCall(LocusOf(snip), ext, call_function,
+    return new (Context) SyntaxCall(LocOf(snip), ext, call_function,
                                     call_parameters);
   }
 
   syntax_t Attr(const usyntax::snippet_t &snip, const syntax_t base,
                 const syntax_t at) const noexcept {
-    return new (Context) SyntaxAttr(LocusOf(snip), base, at);
+    return new (Context) SyntaxAttr(LocOf(snip), base, at);
   }
 
   syntax_t Path(const usyntax::snippet_t &snip, usyntax::Text value) const
       noexcept {
-    return new (Context) SyntaxConstPath(LocusOf(snip),
+    return new (Context) SyntaxConstPath(LocOf(snip),
                                          StringOf(value));
   }
 
   syntax_t Escape(const usyntax::snippet_t &snip, const syntax_t escaped) const
       noexcept {
-    return new (Context) SyntaxEscape(LocusOf(snip), escaped);
+    return new (Context) SyntaxEscape(LocOf(snip), escaped);
   }
 
   syntax_t Parentheses(const usyntax::snippet_t &snip, const array_t &ys) const
@@ -197,7 +199,7 @@ struct GenerateSyntax {
     std::string msg;
     for (auto i : items)
       msg.append((const char *)i.start, i.stop - i.start);
-    Error(LocusOf(snip), code, msg);
+    Error(LocOf(snip), SrcMgr, code, msg);
   }
 
   macro_t MacroStart(const syntax_t macro, int64_t reserve = 0) const
@@ -212,20 +214,28 @@ struct GenerateSyntax {
 
   Syntax *Macro(const usyntax::snippet_t &snip, syntax_t macro,
                  const macro_t &clauses) const noexcept {
-    return new (Context) SyntaxMacro(LocusOf(snip), macro, clauses);
+    return new (Context) SyntaxMacro(LocOf(snip), macro, clauses);
   }
 
   // Internal.
-  std::shared_ptr<std::string> filename;
   SyntaxContext &Context;
+  SourceManager &SrcMgr;
+  FileID FID;
 
   std::string StringOf(const usyntax::Text &Text) const noexcept {
     return std::string((const char *)Text.start, Text.stop - Text.start);
   }
 
-  Locus LocusOf(const usyntax::snippet_t &snip) const noexcept {
-    return Locus{filename, snip.start_line, snip.start_ofs, snip.end_line,
-                 snip.end_ofs};
+  SourceLocation LocOf(const usyntax::snippet_t &snip) const {
+    const FileEntry *File = SrcMgr.getFileEntryForID(FID);
+    return SrcMgr.translateFileLineCol(File, snip.start_line, snip.start_ofs);
+  }
+
+  SourceRange RangeOf(const snippet_t &snip) const {
+    const FileEntry *File = SrcMgr.getFileEntryForID(FID);
+    SourceLocation EndLoc =
+      SrcMgr.translateFileLineCol(File, snip.end_line, snip.end_ofs);
+    return SourceRange(LocOf(snip), EndLoc);
   }
 };
 
