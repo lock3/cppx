@@ -14,10 +14,14 @@
 #ifndef CLANG_GREEN_GREENPARSER_H
 #define CLANG_GREEN_GREENPARSER_H
 
+#include "clang/Basic/SourceManager.h"
+#include "clang/Basic/SourceLocation.h"
+#include "llvm/Support/Compiler.h"
+#include "llvm/Support/MemoryBuffer.h"
+
 #include "clang/GreenBasic/GreenBasic.h"
 #include "clang/GreenParse/TokenInfo.h"
 #include "clang/GreenParse/SymbolTable.h"
-#include "llvm/Support/Compiler.h"
 
 #include <cassert>
 
@@ -92,8 +96,8 @@ template <class gen_t> struct GreenParser : TextPos {
   using array_t = typename gen_t::array_t;
 
   GreenParser(const gen_t &_gen, const char8 *_base,
-         const char8 *_end) noexcept
-      : TextPos{}, gen(_gen), context() {
+              const char8 *_end, clang::SourceManager &SrcMgr) noexcept
+    : TextPos{}, gen(_gen), context(), SrcMgr(SrcMgr), FID() {
     intp len = _end - _base;
     base = pos = LineStart = new char8[len + 4];
     end = base + len;
@@ -101,12 +105,53 @@ template <class gen_t> struct GreenParser : TextPos {
       base[i] = _base[i];
     base[len] = base[len + 1] = base[len + 2] = base[len + 3] = 0;
   }
+
+  GreenParser(const gen_t &Gen, clang::SourceManager &SrcMgr,
+              clang::FileID FID)
+    : TextPos {}, gen(Gen), SrcMgr(SrcMgr), FID(FID)
+    {
+      EnterSourceFile(FID);
+    }
+
   ~GreenParser() { delete base; }
 
   const gen_t &gen;
-  char8 *base, *end;
+  char8 *base;
+  const char8 *end;
   nat8 tok;
   GreenParserContext context;
+  clang::SourceManager &SrcMgr;
+  const clang::FileID FID;
+  unsigned NumEnteredSourceFiles = 0;
+
+  const clang::FileEntry *getFileEntry() {
+    return SrcMgr.getFileEntryForID(FID);
+  }
+
+  // TODO: Add a DirectoryLookup
+  bool EnterSourceFile(clang::FileID FID) {
+    ++NumEnteredSourceFiles;
+
+    bool Invalid = false;
+    const llvm::MemoryBuffer *InputFile =
+      SrcMgr.getBuffer(FID, clang::SourceLocation(), &Invalid);
+    if (Invalid) {
+      llvm::errs() << "COULD NOT OPEN FILE.\n";
+      return true;
+    }
+
+    intp len = InputFile->getBufferSize();
+    base = pos = LineStart = new char8[len + 4];
+    end = base + len;
+
+    // TODO: replace char8 *s with const char *s so we don't have to rely on
+    // this shoddy casting.
+    for (intp I = 0; I < len; ++I)
+      base[I] = *reinterpret_cast<const char8 *>(&InputFile->getBufferStart()[I]);
+
+    base[len] = base[len + 1] = base[len + 2] = base[len + 3] = 0;
+    return false;
+  }
 
   void Next(intp n) noexcept {
     assert(pos[0] != 0 || n == 0);
@@ -561,7 +606,7 @@ template <class gen_t> struct GreenParser : TextPos {
     for (;;) {
       if (intp n =
               chars.EncodedLength<filter>(pos[0], pos[1], pos[2], pos[3])) {
-        pos += n;
+        Next(n);
         continue;
       }
       return;

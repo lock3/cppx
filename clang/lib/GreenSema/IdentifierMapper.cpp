@@ -21,6 +21,8 @@ IdentifierMapper::IdentifierMapper(SyntaxContext &Context,
                                    clang::Sema &ClangSemaRef)
   : VarContext(Normal), Context(Context), PP(PP), ClangSemaRef(ClangSemaRef)
 {
+  // FIXME: Should we use Sema::PushDeclContext, which raises the question,
+  // do we have scopes in a traditional sense?
   ClangSemaRef.CurContext = Context.ClangContext.getTranslationUnitDecl();
   ClangSemaRef.CurContext->buildLookup();
 }

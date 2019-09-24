@@ -15,6 +15,7 @@
 #define CLANG_GREEN_GREENPARSE_PARSEGREENAST
 
 #include "clang/AST/ASTContext.h"
+#include "clang/Basic/SourceManager.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/Sema.h"
 
@@ -23,10 +24,6 @@
 #include "clang/GreenParse/GreenParser.h"
 #include "clang/GreenSema/Cppify.h"
 #include "clang/GreenSema/GreenSema.h"
-
-#include <string>
-#include <cstdlib>
-#include <fstream>
 
 using namespace clang;
 
@@ -37,25 +34,21 @@ inline void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
   using namespace std;
   using namespace usyntax;
 
-  // Use the Green Parser to create a syntax vector.
-  string src_filename{"../usyntax/test.usyntax"};
-  ifstream src_file{src_filename};
-  string src_text{istreambuf_iterator<char>(src_file),
-                  istreambuf_iterator<char>()};
-
+  FileID MainFID = PP.getSourceManager().getMainFileID();
+  const FileEntry *File = PP.getSourceManager().getFileEntryForID(MainFID);
   SyntaxContext Context(ClangContext);
-  GenerateSyntax Generator(make_shared<string>(src_filename),
+  GenerateSyntax Generator(make_shared<string>(File->getName()),
                            Context);
 
-  auto src_syntaxs =
-    GreenParser<GenerateSyntax>(
-      Generator, (char8 *)&src_text[0], (char8 *)&src_text[src_text.size()])
-    .File();
+  // Use the Green Parser to create a syntax vector.
+  GreenParser<GenerateSyntax> TheParser(Generator, PP.getSourceManager(),
+                                        MainFID);
+  auto SourceSyntaxes = TheParser.File();
 
   GreenSema Actions(Context, PP, ClangSema);
 
   // Map the identifiers to clang constructs.
-  Actions.MapIdentifiers(src_syntaxs);
+  Actions.MapIdentifiers(SourceSyntaxes);
 }
 
 } // namespace lock3
