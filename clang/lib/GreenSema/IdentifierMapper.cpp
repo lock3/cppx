@@ -88,6 +88,8 @@ GetFunctionParameterTypes(IdentifierMapper &Mapper,
   ASTContext &ClangContext = Mapper.Context.ClangContext;
 
   for (const Syntax *Parm : Call->call_parameters) {
+    if (!Parm)
+      continue;
     // This is just an untyped identifier, so we are going to have
     // to create a TemplateTypeParmDecl for its type.
     if (isa<SyntaxIdent>(Parm)) {

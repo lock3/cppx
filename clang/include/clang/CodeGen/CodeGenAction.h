@@ -66,6 +66,7 @@ protected:
   std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
                                                  StringRef InFile) override;
 
+  void HandleIRFile();
   void ExecuteAction() override;
 
   void EndSourceFileAction() override;

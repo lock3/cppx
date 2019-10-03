@@ -14,6 +14,7 @@
 #ifndef CLANG_GREEN_GREENPARSE_PARSEGREENAST
 #define CLANG_GREEN_GREENPARSE_PARSEGREENAST
 
+#include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Lex/Preprocessor.h"

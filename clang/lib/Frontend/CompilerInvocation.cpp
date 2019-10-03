@@ -2002,7 +2002,8 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
     Inputs.push_back("-");
   for (unsigned i = 0, e = Inputs.size(); i != e; ++i) {
     InputKind IK = DashX;
-    if (IK.isUnknown()) {
+    // Green can take C++ inputs, so we need to check each extension.
+    if (IK.isUnknown() || IK.isGreen()) {
       IK = FrontendOptions::getInputKindForExtension(
         StringRef(Inputs[i]).rsplit('.').second);
       // FIXME: Warn on this?
@@ -3459,7 +3460,8 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
     ParseLangArgs(LangOpts, Args, DashX, Res.getTargetOpts(),
                   Res.getPreprocessorOpts(), Diags);
     if (LangOpts.Green)
-      Res.getFrontendOpts().ProgramAction = frontend::ParseGreenSyntax;
+      Res.getFrontendOpts().ProgramAction = frontend::EmitGreen;
+      // Res.getFrontendOpts().ProgramAction = frontend::ParseGreenSyntax;
     if (Res.getFrontendOpts().ProgramAction == frontend::RewriteObjC)
       LangOpts.ObjCExceptions = 1;
     if (T.isOSDarwin() && DashX.isPreprocessed()) {

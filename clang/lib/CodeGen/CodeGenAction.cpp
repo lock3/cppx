@@ -45,6 +45,9 @@
 #include "llvm/Support/YAMLTraits.h"
 #include "llvm/Transforms/IPO/Internalize.h"
 
+// remove these once EmitGreenAction and ParseGreenSyntaxAction merge.
+#include "clang/Parse/ParseAST.h"
+
 #include <memory>
 using namespace clang;
 using namespace llvm;
@@ -1016,54 +1019,55 @@ CodeGenAction::loadModule(MemoryBufferRef MBRef) {
   return {};
 }
 
+void CodeGenAction::HandleIRFile() {
+  BackendAction BA = static_cast<BackendAction>(Act);
+  CompilerInstance &CI = getCompilerInstance();
+  std::unique_ptr<raw_pwrite_stream> OS =
+    GetOutputStream(CI, getCurrentFile(), BA);
+  if (BA != Backend_EmitNothing && !OS)
+    return;
+
+  bool Invalid;
+  SourceManager &SM = CI.getSourceManager();
+  FileID FID = SM.getMainFileID();
+  const llvm::MemoryBuffer *MainFile = SM.getBuffer(FID, &Invalid);
+  if (Invalid)
+    return;
+
+  TheModule = loadModule(*MainFile);
+  if (!TheModule)
+    return;
+
+  const TargetOptions &TargetOpts = CI.getTargetOpts();
+  if (TheModule->getTargetTriple() != TargetOpts.Triple) {
+    CI.getDiagnostics().Report(SourceLocation(),
+                               diag::warn_fe_override_module)
+      << TargetOpts.Triple;
+    TheModule->setTargetTriple(TargetOpts.Triple);
+  }
+
+  EmbedBitcode(TheModule.get(), CI.getCodeGenOpts(),
+               MainFile->getMemBufferRef());
+
+  LLVMContext &Ctx = TheModule->getContext();
+  Ctx.setInlineAsmDiagnosticHandler(BitcodeInlineAsmDiagHandler,
+                                    &CI.getDiagnostics());
+
+  EmitBackendOutput(CI.getDiagnostics(), CI.getHeaderSearchOpts(),
+                    CI.getCodeGenOpts(), TargetOpts, CI.getLangOpts(),
+                    CI.getTarget().getDataLayout(), TheModule.get(), BA,
+                    std::move(OS));
+  return;
+}
+
 void CodeGenAction::ExecuteAction() {
   // If this is an IR file, we have to treat it specially.
-  if (getCurrentFileKind().getLanguage() == Language::LLVM_IR) {
-    BackendAction BA = static_cast<BackendAction>(Act);
-    CompilerInstance &CI = getCompilerInstance();
-    std::unique_ptr<raw_pwrite_stream> OS =
-        GetOutputStream(CI, getCurrentFile(), BA);
-    if (BA != Backend_EmitNothing && !OS)
-      return;
-
-    bool Invalid;
-    SourceManager &SM = CI.getSourceManager();
-    FileID FID = SM.getMainFileID();
-    const llvm::MemoryBuffer *MainFile = SM.getBuffer(FID, &Invalid);
-    if (Invalid)
-      return;
-
-    TheModule = loadModule(*MainFile);
-    if (!TheModule)
-      return;
-
-    const TargetOptions &TargetOpts = CI.getTargetOpts();
-    if (TheModule->getTargetTriple() != TargetOpts.Triple) {
-      CI.getDiagnostics().Report(SourceLocation(),
-                                 diag::warn_fe_override_module)
-          << TargetOpts.Triple;
-      TheModule->setTargetTriple(TargetOpts.Triple);
-    }
-
-    EmbedBitcode(TheModule.get(), CI.getCodeGenOpts(),
-                 MainFile->getMemBufferRef());
-
-    LLVMContext &Ctx = TheModule->getContext();
-    Ctx.setInlineAsmDiagnosticHandler(BitcodeInlineAsmDiagHandler,
-                                      &CI.getDiagnostics());
-
-    EmitBackendOutput(CI.getDiagnostics(), CI.getHeaderSearchOpts(),
-                      CI.getCodeGenOpts(), TargetOpts, CI.getLangOpts(),
-                      CI.getTarget().getDataLayout(), TheModule.get(), BA,
-                      std::move(OS));
-    return;
-  }
+  if (getCurrentFileKind().getLanguage() == Language::LLVM_IR)
+    HandleIRFile();
 
   // Otherwise follow the normal AST path.
   this->ASTFrontendAction::ExecuteAction();
 }
-
-//
 
 void EmitAssemblyAction::anchor() { }
 EmitAssemblyAction::EmitAssemblyAction(llvm::LLVMContext *_VMContext)
@@ -1094,6 +1098,11 @@ EmitGreenAction::EmitGreenAction(llvm::LLVMContext *_VMContext)
   : CodeGenAction(Backend_EmitObj, _VMContext) {}
 
 void EmitGreenAction::ExecuteAction() {
+  // If this is an IR file, we have to treat it specially.
+  if (getCurrentFileKind().getLanguage() == Language::LLVM_IR)
+    HandleIRFile();
+
+  // Otherwise follow the normal GreenAST path.
   CompilerInstance &CI = getCompilerInstance();
   if (!CI.hasPreprocessor())
     return;
@@ -1102,5 +1111,13 @@ void EmitGreenAction::ExecuteAction() {
   if (!CI.hasSema())
     CI.createSema(getTranslationUnitKind(), nullptr);
 
-  lock3::ParseGreenAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
+  switch (getCurrentFileKind().getLanguage()) {
+  case clang::Language::Green:
+    lock3::ParseGreenAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
+    break;
+  default:
+    clang::ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
+                    CI.getFrontendOpts().SkipFunctionBodies);
+    break;
+  }
 }

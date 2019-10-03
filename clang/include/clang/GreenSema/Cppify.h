@@ -74,7 +74,8 @@ struct GenerateSyntax {
   }
 
   void ArrayAppend(array_t &as, const syntax_t &a) const noexcept {
-    as.push_back(a);
+    if (a)
+      as.push_back(a);
   }
 
   // Generation operations.

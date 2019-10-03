@@ -621,6 +621,9 @@ def compiler_options_dump : Flag<["-"], "compiler-options-dump">,
 def print_dependency_directives_minimized_source : Flag<["-"],
   "print-dependency-directives-minimized-source">,
   HelpText<"Print the output of the dependency directives source minimizer">;
+
+def emit_green : Flag<["-"], "emit-green">,
+  HelpText<"Emit native object files from the green language.">;
 }
 
 def emit_llvm_uselists : Flag<["-"], "emit-llvm-uselists">,
@@ -876,11 +879,6 @@ def fopenmp_is_device : Flag<["-"], "fopenmp-is-device">,
 def fopenmp_host_ir_file_path : Separate<["-"], "fopenmp-host-ir-file-path">,
   HelpText<"Path to the IR file produced by the frontend for the host.">;
 
-//===----------------------------------------------------------------------===//
-// Green Options
-//===----------------------------------------------------------------------===//
-def emit_green : Flag<["-"], "emit-green">,
-  HelpText<"Emit native object files from the green language.">;
 
 //===----------------------------------------------------------------------===//
 // SYCL Options

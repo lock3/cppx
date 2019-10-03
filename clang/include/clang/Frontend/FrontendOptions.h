@@ -177,6 +177,11 @@ public:
     return Lang == Language::ObjC || Lang == Language::ObjCXX;
   }
 
+  /// Is the language of the input Green?
+  bool isGreen() const {
+    return Lang == Language::Green;
+  }
+
   InputKind getPreprocessed() const {
     return InputKind(getLanguage(), getFormat(), true);
   }

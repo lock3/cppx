@@ -1,4 +1,4 @@
-//===- GreenFrontend.cpp - Green Frontend Action Interface ---------------===//
+//===- GreenFrontend.cpp - Green Frontend Action Interface ----------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Frontend/CompilerInstance.h"
+#include "clang/Parse/ParseAST.h"
 
 #include "clang/GreenFront/GreenFrontend.h"
 #include "clang/GreenParse/ParseGreenAST.h"
@@ -20,6 +21,9 @@
 namespace lock3 {
 
 void GreenSyntaxAction::ExecuteAction() {
+  llvm::outs() << "egsecuding agjion :-DDDD\n";
+  llvm::outs() << getCurrentFile() << '\n';
+
   CompilerInstance &CI = getCompilerInstance();
   if (!CI.hasPreprocessor())
     return;
@@ -30,7 +34,16 @@ void GreenSyntaxAction::ExecuteAction() {
   if (!CI.hasSema())
     CI.createSema(getTranslationUnitKind(), nullptr);
 
-  ParseGreenAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
+  switch (getCurrentFileKind().getLanguage()) {
+  case clang::Language::Green:
+    ParseGreenAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
+    break;
+  default:
+    llvm::outs () << "Barsing C Blus Blus :-DDDDDD\n";
+    clang::ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
+                    CI.getFrontendOpts().SkipFunctionBodies);
+    break;
+  }
 }
 
 
