@@ -74,9 +74,8 @@ static void DumpVector(const SyntaxVector const &Syn) {
 
 void
 GreenSema::MapIdentifiers(SyntaxVector &Syn) {
-  DumpVector(Syn);
-  // IdentifierMapper M(Context, PP, ClangSema);
-  // M.MapSyntaxes(Syn);
+  IdentifierMapper M(Context, PP, ClangSema);
+  M.MapSyntaxes(Syn);
 }
 
 } // namespace usyntax
