@@ -14,42 +14,16 @@
 #ifndef CLANG_GREEN_GREENPARSE_PARSEGREENAST
 #define CLANG_GREEN_GREENPARSE_PARSEGREENAST
 
-#include "clang/AST/ASTConsumer.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Lex/Preprocessor.h"
-#include "clang/Sema/Sema.h"
-
-#include "clang/GreenAST/SyntaxContext.h"
-#include "clang/GreenParse/ParseGreenAST.h"
-#include "clang/GreenParse/GreenParser.h"
-#include "clang/GreenSema/Cppify.h"
-#include "clang/GreenSema/GreenSema.h"
-
-using namespace clang;
+namespace clang {
+class ASTContext;
+class Preprocessor;
+class Sema;
+}
 
 namespace lock3 {
 
-inline void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
-                          Sema &ClangSema) {
-  using namespace std;
-  using namespace usyntax;
-
-  FileID MainFID = PP.getSourceManager().getMainFileID();
-  SyntaxContext Context(ClangContext);
-  GenerateSyntax Generator(Context, PP.getSourceManager(),
-                           MainFID);
-
-  // Use the Green Parser to create a syntax vector.
-  GreenParser<GenerateSyntax> TheParser(Generator, PP.getSourceManager(),
-                                        MainFID);
-  auto SourceSyntaxes = TheParser.File();
-
-  GreenSema Actions(Context, PP, ClangSema);
-
-  // Map the identifiers to clang constructs.
-  Actions.MapIdentifiers(SourceSyntaxes);
-}
+void ParseGreenAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
+                   clang::Sema &ClangSema);
 
 } // namespace lock3
 

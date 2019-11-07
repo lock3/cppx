@@ -4,4 +4,9 @@ set(LLVM_LINK_COMPONENTS
 
 add_clang_library(greenBasic
   GreenBasic.cpp
+  File.cpp
+  Symbol.cpp
+
+  LINK_LIBS
+  clangBasic
 )

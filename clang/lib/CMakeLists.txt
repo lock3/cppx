@@ -29,4 +29,5 @@ add_subdirectory(GreenSema)
 add_subdirectory(GreenParse)
 add_subdirectory(GreenAST)
 add_subdirectory(GreenBasic)
+add_subdirectory(GreenLexer)
 

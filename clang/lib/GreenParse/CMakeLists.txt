@@ -12,5 +12,7 @@ add_clang_library(greenParse
   LINK_LIBS
   clangAST
   clangLex
+  greenBasic
+  greenLexer
   greenSema
   )
