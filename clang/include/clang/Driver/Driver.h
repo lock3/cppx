@@ -68,6 +68,7 @@ class Driver {
     CLMode,
     FlangMode,
     GreenMode,
+    BlueMode,
   } Mode;
 
   enum SaveTempsMode {
@@ -184,6 +185,9 @@ public:
 
   /// Whether the driver should compile green.
   bool IsGreenMode() const { return Mode == GreenMode; }
+
+  /// Whether the driver should compile blue.
+  bool IsBlueMode() const { return Mode == BlueMode; }
 
   /// Whether the driver should invoke flang for fortran inputs.
   /// Other modes fall back to calling gcc which in turn calls gfortran.

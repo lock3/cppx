@@ -77,6 +77,9 @@ enum ActionKind {
   /// Emit a .o file for green.
   EmitGreen,
 
+  /// Emit a .o file for blue.
+  EmitBlue,
+
   /// Parse and apply any fixits to the source.
   FixIt,
 
@@ -180,6 +183,11 @@ public:
   /// Is the language of the input Green?
   bool isGreen() const {
     return Lang == Language::Green;
+  }
+
+  // Is the language of the input Blue?
+  bool isBlue() const {
+    return Lang == Language::Blue;
   }
 
   InputKind getPreprocessed() const {

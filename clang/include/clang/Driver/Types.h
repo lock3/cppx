@@ -87,6 +87,9 @@ namespace types {
   /// isGreen - Is this a Green input.
   bool isGreen(ID Id);
 
+  /// isBlue - Is this a Blue input.
+  bool isBlue(ID Id);
+
   /// isFortran - Is this a Fortran input.
   bool isFortran(ID Id);
 

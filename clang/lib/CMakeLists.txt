@@ -25,4 +25,4 @@ if(CLANG_ENABLE_STATIC_ANALYZER)
 endif()
 add_subdirectory(Format)
 add_subdirectory(Green)
-
+add_subdirectory(Blue)

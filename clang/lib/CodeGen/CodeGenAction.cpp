@@ -19,6 +19,7 @@
 #include "clang/Basic/LangStandard.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Blue/ParseBlueAST.h"
 #include "clang/CodeGen/BackendUtil.h"
 #include "clang/CodeGen/ModuleBuilder.h"
 #include "clang/Driver/DriverDiagnostic.h"
@@ -1140,6 +1141,35 @@ void EmitGreenAction::ExecuteAction() {
   switch (getCurrentFileKind().getLanguage()) {
   case clang::Language::Green:
     lock3::ParseGreenAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
+    break;
+  default:
+    clang::ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
+                    CI.getFrontendOpts().SkipFunctionBodies);
+    break;
+  }
+}
+
+void EmitBlueAction::anchor() { }
+EmitBlueAction::EmitBlueAction(llvm::LLVMContext *_VMContext)
+  : CodeGenAction(Backend_EmitObj, _VMContext) {}
+
+void EmitBlueAction::ExecuteAction() {
+  // If this is an IR file, we have to treat it specially.
+  if (getCurrentFileKind().getLanguage() == Language::LLVM_IR)
+    HandleIRFile();
+
+  // Otherwise follow the normal BlueAST path.
+  CompilerInstance &CI = getCompilerInstance();
+  if (!CI.hasPreprocessor())
+    return;
+  if (!CI.hasASTContext())
+    return;
+  if (!CI.hasSema())
+    CI.createSema(getTranslationUnitKind(), nullptr);
+
+  switch (getCurrentFileKind().getLanguage()) {
+  case clang::Language::Blue:
+    blue::ParseBlueAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
     break;
   default:
     clang::ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,

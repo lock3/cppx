@@ -128,6 +128,14 @@ public:
   void ExecuteAction() override;
 };
 
+class EmitBlueAction : public CodeGenAction {
+  virtual void anchor();
+public:
+  EmitBlueAction(llvm::LLVMContext *_VMContext = nullptr);
+
+  void ExecuteAction() override;
+};
+
 }
 
 #endif

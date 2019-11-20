@@ -107,4 +107,5 @@ add_clang_library(clangCodeGen
   clangLex
   clangSerialization
   green
+  blue
   )

@@ -626,6 +626,8 @@ def print_dependency_directives_minimized_source : Flag<["-"],
 
 def emit_green : Flag<["-"], "emit-green">,
   HelpText<"Emit native object files from the green language.">;
+def emit_blue : Flag<["-"], "emit-blue">,
+  HelpText<"Emit native object files from the blue language.">;
 }
 
 def emit_llvm_uselists : Flag<["-"], "emit-llvm-uselists">,

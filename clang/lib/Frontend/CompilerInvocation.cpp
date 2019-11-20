@@ -1745,6 +1745,8 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
       Opts.ProgramAction = frontend::EmitObj; break;
     case OPT_emit_green:
       Opts.ProgramAction = frontend::EmitGreen; break;
+    case OPT_emit_blue:
+      Opts.ProgramAction = frontend::EmitBlue; break;
     case OPT_fixit_EQ:
       Opts.FixItSuffix = A->getValue();
       LLVM_FALLTHROUGH;
@@ -2027,10 +2029,22 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
   Opts.Inputs.clear();
   if (Inputs.empty())
     Inputs.push_back("-");
+
+  // These will be true if we see an input file for their respective language.
+  bool GreenInput = false;
+  bool BlueInput = false;
   for (unsigned i = 0, e = Inputs.size(); i != e; ++i) {
     InputKind IK = DashX;
+
+    if (IK.isGreen())
+      GreenInput = true;
+    if (IK.isBlue())
+      BlueInput = true;
+    assert(!(GreenInput && BlueInput) &&
+           "Blue & Green languages are not inter-operable.");
+
     // Green can take C++ inputs, so we need to check each extension.
-    if (IK.isUnknown() || IK.isGreen()) {
+    if (IK.isUnknown() || IK.isGreen() || IK.isBlue()) {
       IK = FrontendOptions::getInputKindForExtension(
         StringRef(Inputs[i]).rsplit('.').second);
       // FIXME: Warn on this?
@@ -2249,8 +2263,6 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
 #endif
       break;
     case Language::CXX:
-    // FIXME: this needs to be its own thing
-    case Language::Blue:
     case Language::ObjCXX:
 #if defined(CLANG_DEFAULT_STD_CXX)
       LangStd = CLANG_DEFAULT_STD_CXX;
@@ -2260,6 +2272,9 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
       break;
     case Language::Green:
       LangStd = LangStandard::lang_green;
+      break;
+    case Language::Blue:
+      LangStd = LangStandard::lang_blue;
       break;
     case Language::RenderScript:
       LangStd = LangStandard::lang_c99;

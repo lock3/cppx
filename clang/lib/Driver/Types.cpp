@@ -217,6 +217,10 @@ bool types::isGreen(ID Id) {
   return Id == TY_Green;
 }
 
+bool types::isBlue(ID Id) {
+  return Id == TY_Blue;
+}
+
 bool types::isFortran(ID Id) {
   switch (Id) {
   default:

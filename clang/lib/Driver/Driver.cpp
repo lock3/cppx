@@ -179,6 +179,7 @@ void Driver::setDriverModeFromOption(StringRef Opt) {
                    .Case("cpp", CPPMode)
                    .Case("cl", CLMode)
                    .Case("green", GreenMode)
+                   .Case("blue", BlueMode)
                    .Case("flang", FlangMode)
                    .Default(None))
     Mode = *M;
@@ -1139,6 +1140,13 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
       });
   if (IsGreen)
     Mode = GreenMode;
+  bool IsBlue =
+      llvm::any_of(Inputs, [](std::pair<types::ID, const llvm::opt::Arg *> &I) {
+        return types::isBlue(I.first);
+      });
+  if (IsGreen)
+    Mode = BlueMode;
+  assert(!(IsBlue && IsGreen) && "Blue and green are not inter-operable.");
 
   // Construct the list of abstract actions to perform for this compilation. On
   // MachO targets this uses the driver-driver and universal actions.
@@ -2152,6 +2160,8 @@ void Driver::BuildInputs(const ToolChain &TC, DerivedArgList &Args,
               Ty = types::TY_CXX;
             else if (IsGreenMode())
               Ty = types::TY_Green;
+            else if (IsBlueMode())
+              Ty = types::TY_Blue;
             else
               Ty = types::TY_Object;
           }
