@@ -184,9 +184,6 @@ def warn_drv_unknown_argument_clang_cl_with_suggestion : Warning<
 def warn_drv_ycyu_different_arg_clang_cl : Warning<
   "support for '/Yc' and '/Yu' with different filenames not implemented yet; flags ignored">,
   InGroup<ClangClPch>;
-def warn_drv_ycyu_no_fi_arg_clang_cl : Warning<
-  "support for '%0' without a corresponding /FI flag not implemented yet; flag ignored">,
-  InGroup<ClangClPch>;
 def warn_drv_yc_multiple_inputs_clang_cl : Warning<
   "support for '/Yc' with more than one source file not implemented yet; flag ignored">,
   InGroup<ClangClPch>;
@@ -386,6 +383,9 @@ def warn_target_unsupported_abs2008 : Warning<
 def warn_target_unsupported_compact_branches : Warning<
   "ignoring '-mcompact-branches=' option because the '%0' architecture does not"
   " support it">, InGroup<UnsupportedCB>;
+def warn_target_unsupported_extension : Warning<
+  "ignoring extension '%0' because the '%1' architecture does not support it">,
+   InGroup<InvalidCommandLineArgument>;
 def warn_drv_unsupported_gpopt : Warning<
   "ignoring '-mgpopt' option as it cannot be used with %select{|the implicit"
   " usage of }0-mabicalls">,
@@ -463,6 +463,10 @@ def warn_drv_msp430_hwmult_no_device : Warning<"no MCU device specified, but "
   "'-mhwmult' is set to 'auto', assuming no hardware multiply. Use -mmcu to "
   "specify a MSP430 device, or -mhwmult to set hardware multiply type "
   "explicitly.">, InGroup<InvalidCommandLineArgument>;
+
+// Frame pointer reservation.
+def err_reserved_frame_pointer : Error<
+  "'%0' has been specified but '%1' is used as the frame pointer for this target">;
 
 def warn_drv_libstdcxx_not_found : Warning<
   "include path for libstdc++ headers not found; pass '-stdlib=libc++' on the "

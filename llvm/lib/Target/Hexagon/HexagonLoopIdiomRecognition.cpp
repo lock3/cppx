@@ -6,8 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "hexagon-lir"
-
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SetVector.h"
@@ -25,7 +23,6 @@
 #include "llvm/Analysis/ScalarEvolutionExpander.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
-#include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
@@ -47,6 +44,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/IR/User.h"
 #include "llvm/IR/Value.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -57,6 +55,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils.h"
+#include "llvm/Transforms/Utils/Local.h"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -69,6 +68,8 @@
 #include <set>
 #include <utility>
 #include <vector>
+
+#define DEBUG_TYPE "hexagon-lir"
 
 using namespace llvm;
 
@@ -632,9 +633,9 @@ Value *PolynomialMultiplyRecognize::getCountIV(BasicBlock *BB) {
     if (!isa<ConstantInt>(InitV) || !cast<ConstantInt>(InitV)->isZero())
       continue;
     Value *IterV = PN->getIncomingValueForBlock(BB);
-    if (!isa<BinaryOperator>(IterV))
-      continue;
     auto *BO = dyn_cast<BinaryOperator>(IterV);
+    if (!BO)
+      continue;
     if (BO->getOpcode() != Instruction::Add)
       continue;
     Value *IncV = nullptr;
@@ -2020,7 +2021,7 @@ bool HexagonLoopIdiomRecognize::processCopyingStore(Loop *CurLoop,
   // See if the pointer expression is an AddRec like {base,+,1} on the current
   // loop, which indicates a strided load.  If we have something else, it's a
   // random load we can't handle.
-  LoadInst *LI = dyn_cast<LoadInst>(SI->getValueOperand());
+  auto *LI = cast<LoadInst>(SI->getValueOperand());
   auto *LoadEv = cast<SCEVAddRecExpr>(SE->getSCEV(LI->getPointerOperand()));
 
   // The trip count of the loop and the base pointer of the addrec SCEV is
@@ -2426,7 +2427,8 @@ bool HexagonLoopIdiomRecognize::runOnLoop(Loop *L, LPPassManager &LPM) {
   DL = &L->getHeader()->getModule()->getDataLayout();
   DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
   LF = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
-  TLI = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+  TLI = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(
+      *L->getHeader()->getParent());
   SE = &getAnalysis<ScalarEvolutionWrapperPass>().getSE();
 
   HasMemcpy = TLI->has(LibFunc_memcpy);

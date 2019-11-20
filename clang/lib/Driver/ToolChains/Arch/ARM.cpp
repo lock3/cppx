@@ -13,6 +13,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Support/TargetParser.h"
+#include "llvm/Support/Host.h"
 
 using namespace clang::driver;
 using namespace clang::driver::tools;
@@ -460,11 +461,12 @@ fp16_fml_fallthrough:
     //        now just be explicit and disable all known dependent features
     //        as well.
     for (std::string Feature : {
-            "vfp2", "vfp2sp", "vfp2d16", "vfp2d16sp",
+            "vfp2", "vfp2sp",
             "vfp3", "vfp3sp", "vfp3d16", "vfp3d16sp",
             "vfp4", "vfp4sp", "vfp4d16", "vfp4d16sp",
             "fp-armv8", "fp-armv8sp", "fp-armv8d16", "fp-armv8d16sp",
             "fullfp16", "neon", "crypto", "dotprod", "fp16fml",
+            "mve", "mve.fp",
             "fp64", "d32", "fpregs"})
       Features.push_back(Args.MakeArgString("-" + Feature));
   }
@@ -477,23 +479,35 @@ fp16_fml_fallthrough:
       Features.push_back("-crc");
   }
 
-  // For Arch >= ARMv8.0:  crypto = sha2 + aes
+  // For Arch >= ARMv8.0 && A profile:  crypto = sha2 + aes
   // FIXME: this needs reimplementation after the TargetParser rewrite
-  if (ArchName.find_lower("armv8a") != StringRef::npos ||
-      ArchName.find_lower("armv8.1a") != StringRef::npos ||
-      ArchName.find_lower("armv8.2a") != StringRef::npos ||
-      ArchName.find_lower("armv8.3a") != StringRef::npos ||
-      ArchName.find_lower("armv8.4a") != StringRef::npos) {
-    if (ArchName.find_lower("+crypto") != StringRef::npos) {
-      if (ArchName.find_lower("+nosha2") == StringRef::npos)
-        Features.push_back("+sha2");
-      if (ArchName.find_lower("+noaes") == StringRef::npos)
-        Features.push_back("+aes");
-    } else if (ArchName.find_lower("-crypto") != StringRef::npos) {
-      if (ArchName.find_lower("+sha2") == StringRef::npos)
-        Features.push_back("-sha2");
-      if (ArchName.find_lower("+aes") == StringRef::npos)
-        Features.push_back("-aes");
+  auto CryptoIt = llvm::find_if(llvm::reverse(Features), [](const StringRef F) {
+    return F.contains("crypto");
+  });
+  if (CryptoIt != Features.rend()) {
+    if (CryptoIt->take_front() == "+") {
+      StringRef ArchSuffix = arm::getLLVMArchSuffixForARM(
+          arm::getARMTargetCPU(CPUName, ArchName, Triple), ArchName, Triple);
+      if (llvm::ARM::parseArchVersion(ArchSuffix) >= 8 &&
+          llvm::ARM::parseArchProfile(ArchSuffix) ==
+              llvm::ARM::ProfileKind::A) {
+        if (ArchName.find_lower("+nosha2") == StringRef::npos &&
+            CPUName.find_lower("+nosha2") == StringRef::npos)
+          Features.push_back("+sha2");
+        if (ArchName.find_lower("+noaes") == StringRef::npos &&
+            CPUName.find_lower("+noaes") == StringRef::npos)
+          Features.push_back("+aes");
+      } else {
+        D.Diag(clang::diag::warn_target_unsupported_extension)
+            << "crypto"
+            << llvm::ARM::getArchName(llvm::ARM::parseArch(ArchSuffix));
+        // With -fno-integrated-as -mfpu=crypto-neon-fp-armv8 some assemblers such as the GNU assembler
+        // will permit the use of crypto instructions as the fpu will override the architecture.
+        // We keep the crypto feature in this case to preserve compatibility.
+        // In all other cases we remove the crypto feature.
+        if (!Args.hasArg(options::OPT_fno_integrated_as))
+          Features.push_back("-crypto");
+      }
     }
   }
 
@@ -578,11 +592,39 @@ fp16_fml_fallthrough:
       Features.push_back("+strict-align");
   }
 
-  // llvm does not support reserving registers in general. There is support
-  // for reserving r9 on ARM though (defined as a platform-specific register
-  // in ARM EABI).
-  if (Args.hasArg(options::OPT_ffixed_r9))
-    Features.push_back("+reserve-r9");
+  // Do not allow r9 reservation with -frwpi.
+  if (Args.hasArg(options::OPT_ffixed_r9) && Args.hasArg(options::OPT_frwpi)) {
+    Arg *A = Args.getLastArg(options::OPT_ffixed_r9);
+    Arg *B = Args.getLastArg(options::OPT_frwpi);
+    D.Diag(diag::err_opt_not_valid_with_opt)
+        << A->getAsString(Args) << B->getAsString(Args);
+  }
+
+  // The compiler can still use a FP in certain circumstances,
+  // even when frame pointer elimination is enabled. Thus we should
+  // not allow to reserve a target's FP register.
+  const llvm::opt::OptSpecifier RestrictFPOpt =
+      (Triple.isOSDarwin() || (!Triple.isOSWindows() && Triple.isThumb()))
+          ? options::OPT_ffixed_r7
+          : options::OPT_ffixed_r11;
+  if (Args.hasArg(RestrictFPOpt)) {
+    const std::string OptStr =
+        Args.getLastArg(RestrictFPOpt)->getAsString(Args);
+    const unsigned int SubStrIndex = strlen("ffixed-r");
+    D.Diag(diag::err_reserved_frame_pointer)
+        << OptStr << OptStr.substr(SubStrIndex);
+  }
+
+// Reservation of general purpose registers.
+#define HANDLE_FFIXED_R(n) \
+  if (Args.hasArg(options::OPT_ffixed_r##n)) \
+    Features.push_back("+reserve-r" #n)
+  HANDLE_FFIXED_R(6);
+  HANDLE_FFIXED_R(7);
+  HANDLE_FFIXED_R(8);
+  HANDLE_FFIXED_R(9);
+  HANDLE_FFIXED_R(10);
+  HANDLE_FFIXED_R(11);
 
   // The kext linker doesn't know how to deal with movw/movt.
   if (KernelOrKext || Args.hasArg(options::OPT_mno_movt))
@@ -655,7 +697,7 @@ std::string arm::getARMTargetCPU(StringRef CPU, StringRef Arch,
 llvm::ARM::ArchKind arm::getLLVMArchKindForARM(StringRef CPU, StringRef Arch,
                                                const llvm::Triple &Triple) {
   llvm::ARM::ArchKind ArchKind;
-  if (CPU == "generic") {
+  if (CPU == "generic" || CPU.empty()) {
     std::string ARMArch = tools::arm::getARMArch(Arch, Triple);
     ArchKind = llvm::ARM::parseArch(ARMArch);
     if (ArchKind == llvm::ARM::ArchKind::INVALID)

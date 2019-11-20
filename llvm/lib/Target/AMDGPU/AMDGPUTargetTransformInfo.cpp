@@ -57,7 +57,7 @@ using namespace llvm;
 static cl::opt<unsigned> UnrollThresholdPrivate(
   "amdgpu-unroll-threshold-private",
   cl::desc("Unroll threshold for AMDGPU if private memory used in a loop"),
-  cl::init(2500), cl::Hidden);
+  cl::init(2700), cl::Hidden);
 
 static cl::opt<unsigned> UnrollThresholdLocal(
   "amdgpu-unroll-threshold-local",
@@ -412,7 +412,7 @@ int GCNTTIImpl::getArithmeticInstrCost(
 
     if (!Args.empty() && match(Args[0], PatternMatch::m_FPOne())) {
       // TODO: This is more complicated, unsafe flags etc.
-      if ((SLT == MVT::f32 && !ST->hasFP32Denormals()) ||
+      if ((SLT == MVT::f32 && !HasFP32Denormals) ||
           (SLT == MVT::f16 && ST->has16BitInsts())) {
         return LT.first * getQuarterRateInstrCost() * NElts;
       }
@@ -431,7 +431,7 @@ int GCNTTIImpl::getArithmeticInstrCost(
     if (SLT == MVT::f32 || SLT == MVT::f16) {
       int Cost = 7 * getFullRateInstrCost() + 1 * getQuarterRateInstrCost();
 
-      if (!ST->hasFP32Denormals()) {
+      if (!HasFP32Denormals) {
         // FP mode switches.
         Cost += 2 * getFullRateInstrCost();
       }
@@ -598,6 +598,8 @@ bool GCNTTIImpl::collectFlatAddressOperands(SmallVectorImpl<int> &OpIndexes,
   case Intrinsic::amdgcn_ds_fadd:
   case Intrinsic::amdgcn_ds_fmin:
   case Intrinsic::amdgcn_ds_fmax:
+  case Intrinsic::amdgcn_is_shared:
+  case Intrinsic::amdgcn_is_private:
     OpIndexes.push_back(0);
     return true;
   default:
@@ -607,7 +609,8 @@ bool GCNTTIImpl::collectFlatAddressOperands(SmallVectorImpl<int> &OpIndexes,
 
 bool GCNTTIImpl::rewriteIntrinsicWithAddressSpace(
   IntrinsicInst *II, Value *OldV, Value *NewV) const {
-  switch (II->getIntrinsicID()) {
+  auto IntrID = II->getIntrinsicID();
+  switch (IntrID) {
   case Intrinsic::amdgcn_atomic_inc:
   case Intrinsic::amdgcn_atomic_dec:
   case Intrinsic::amdgcn_ds_fadd:
@@ -623,6 +626,18 @@ bool GCNTTIImpl::rewriteIntrinsicWithAddressSpace(
         Intrinsic::getDeclaration(M, II->getIntrinsicID(), {DestTy, SrcTy});
     II->setArgOperand(0, NewV);
     II->setCalledFunction(NewDecl);
+    return true;
+  }
+  case Intrinsic::amdgcn_is_shared:
+  case Intrinsic::amdgcn_is_private: {
+    unsigned TrueAS = IntrID == Intrinsic::amdgcn_is_shared ?
+      AMDGPUAS::LOCAL_ADDRESS : AMDGPUAS::PRIVATE_ADDRESS;
+    unsigned NewAS = NewV->getType()->getPointerAddressSpace();
+    LLVMContext &Ctx = NewV->getType()->getContext();
+    ConstantInt *NewVal = (TrueAS == NewAS) ?
+      ConstantInt::getTrue(Ctx) : ConstantInt::getFalse(Ctx);
+    II->replaceAllUsesWith(NewVal);
+    II->eraseFromParent();
     return true;
   }
   default:
@@ -656,10 +671,13 @@ unsigned GCNTTIImpl::getShuffleCost(TTI::ShuffleKind Kind, Type *Tp, int Index,
 bool GCNTTIImpl::areInlineCompatible(const Function *Caller,
                                      const Function *Callee) const {
   const TargetMachine &TM = getTLI()->getTargetMachine();
-  const FeatureBitset &CallerBits =
-    TM.getSubtargetImpl(*Caller)->getFeatureBits();
-  const FeatureBitset &CalleeBits =
-    TM.getSubtargetImpl(*Callee)->getFeatureBits();
+  const GCNSubtarget *CallerST
+    = static_cast<const GCNSubtarget *>(TM.getSubtargetImpl(*Caller));
+  const GCNSubtarget *CalleeST
+    = static_cast<const GCNSubtarget *>(TM.getSubtargetImpl(*Callee));
+
+  const FeatureBitset &CallerBits = CallerST->getFeatureBits();
+  const FeatureBitset &CalleeBits = CalleeST->getFeatureBits();
 
   FeatureBitset RealCallerBits = CallerBits & ~InlineFeatureIgnoreList;
   FeatureBitset RealCalleeBits = CalleeBits & ~InlineFeatureIgnoreList;
@@ -668,14 +686,127 @@ bool GCNTTIImpl::areInlineCompatible(const Function *Caller,
 
   // FIXME: dx10_clamp can just take the caller setting, but there seems to be
   // no way to support merge for backend defined attributes.
-  AMDGPU::SIModeRegisterDefaults CallerMode(*Caller);
-  AMDGPU::SIModeRegisterDefaults CalleeMode(*Callee);
+  AMDGPU::SIModeRegisterDefaults CallerMode(*Caller, *CallerST);
+  AMDGPU::SIModeRegisterDefaults CalleeMode(*Callee, *CalleeST);
   return CallerMode.isInlineCompatible(CalleeMode);
 }
 
 void GCNTTIImpl::getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
                                          TTI::UnrollingPreferences &UP) {
   CommonTTI.getUnrollingPreferences(L, SE, UP);
+}
+
+unsigned GCNTTIImpl::getUserCost(const User *U,
+                                 ArrayRef<const Value *> Operands) {
+  const Instruction *I = dyn_cast<Instruction>(U);
+  if (!I)
+    return BaseT::getUserCost(U, Operands);
+
+  // Estimate different operations to be optimized out
+  switch (I->getOpcode()) {
+  case Instruction::ExtractElement: {
+    ConstantInt *CI = dyn_cast<ConstantInt>(I->getOperand(1));
+    unsigned Idx = -1;
+    if (CI)
+      Idx = CI->getZExtValue();
+    return getVectorInstrCost(I->getOpcode(), I->getOperand(0)->getType(), Idx);
+  }
+  case Instruction::InsertElement: {
+    ConstantInt *CI = dyn_cast<ConstantInt>(I->getOperand(2));
+    unsigned Idx = -1;
+    if (CI)
+      Idx = CI->getZExtValue();
+    return getVectorInstrCost(I->getOpcode(), I->getType(), Idx);
+  }
+  case Instruction::Call: {
+    if (const IntrinsicInst *II = dyn_cast<IntrinsicInst>(U)) {
+      SmallVector<Value *, 4> Args(II->arg_operands());
+      FastMathFlags FMF;
+      if (auto *FPMO = dyn_cast<FPMathOperator>(II))
+        FMF = FPMO->getFastMathFlags();
+      return getIntrinsicInstrCost(II->getIntrinsicID(), II->getType(), Args,
+                                   FMF);
+    } else {
+      return BaseT::getUserCost(U, Operands);
+    }
+  }
+  case Instruction::ShuffleVector: {
+    const ShuffleVectorInst *Shuffle = cast<ShuffleVectorInst>(I);
+    Type *Ty = Shuffle->getType();
+    Type *SrcTy = Shuffle->getOperand(0)->getType();
+
+    // TODO: Identify and add costs for insert subvector, etc.
+    int SubIndex;
+    if (Shuffle->isExtractSubvectorMask(SubIndex))
+      return getShuffleCost(TTI::SK_ExtractSubvector, SrcTy, SubIndex, Ty);
+
+    if (Shuffle->changesLength())
+      return BaseT::getUserCost(U, Operands);
+
+    if (Shuffle->isIdentity())
+      return 0;
+
+    if (Shuffle->isReverse())
+      return getShuffleCost(TTI::SK_Reverse, Ty, 0, nullptr);
+
+    if (Shuffle->isSelect())
+      return getShuffleCost(TTI::SK_Select, Ty, 0, nullptr);
+
+    if (Shuffle->isTranspose())
+      return getShuffleCost(TTI::SK_Transpose, Ty, 0, nullptr);
+
+    if (Shuffle->isZeroEltSplat())
+      return getShuffleCost(TTI::SK_Broadcast, Ty, 0, nullptr);
+
+    if (Shuffle->isSingleSource())
+      return getShuffleCost(TTI::SK_PermuteSingleSrc, Ty, 0, nullptr);
+
+    return getShuffleCost(TTI::SK_PermuteTwoSrc, Ty, 0, nullptr);
+  }
+  case Instruction::ZExt:
+  case Instruction::SExt:
+  case Instruction::FPToUI:
+  case Instruction::FPToSI:
+  case Instruction::FPExt:
+  case Instruction::PtrToInt:
+  case Instruction::IntToPtr:
+  case Instruction::SIToFP:
+  case Instruction::UIToFP:
+  case Instruction::Trunc:
+  case Instruction::FPTrunc:
+  case Instruction::BitCast:
+  case Instruction::AddrSpaceCast: {
+    return getCastInstrCost(I->getOpcode(), I->getType(),
+                            I->getOperand(0)->getType(), I);
+  }
+  case Instruction::Add:
+  case Instruction::FAdd:
+  case Instruction::Sub:
+  case Instruction::FSub:
+  case Instruction::Mul:
+  case Instruction::FMul:
+  case Instruction::UDiv:
+  case Instruction::SDiv:
+  case Instruction::FDiv:
+  case Instruction::URem:
+  case Instruction::SRem:
+  case Instruction::FRem:
+  case Instruction::Shl:
+  case Instruction::LShr:
+  case Instruction::AShr:
+  case Instruction::And:
+  case Instruction::Or:
+  case Instruction::Xor:
+  case Instruction::FNeg: {
+    return getArithmeticInstrCost(I->getOpcode(), I->getType(),
+                                  TTI::OK_AnyValue, TTI::OK_AnyValue,
+                                  TTI::OP_None, TTI::OP_None, Operands);
+  }
+  default:
+    break;
+  }
+
+  return BaseT::getUserCost(U, Operands);
 }
 
 unsigned R600TTIImpl::getHardwareNumberOfRegisters(bool Vec) const {

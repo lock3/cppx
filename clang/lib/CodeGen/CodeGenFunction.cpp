@@ -194,7 +194,7 @@ TypeEvaluationKind CodeGenFunction::getEvaluationKind(QualType type) {
 #define NON_CANONICAL_TYPE(name, parent) case Type::name:
 #define DEPENDENT_TYPE(name, parent) case Type::name:
 #define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(name, parent) case Type::name:
-#include "clang/AST/TypeNodes.def"
+#include "clang/AST/TypeNodes.inc"
       llvm_unreachable("non-canonical or dependent type in IR-generation");
 
     case Type::Auto:
@@ -431,13 +431,13 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
   // Scan function arguments for vector width.
   for (llvm::Argument &A : CurFn->args())
     if (auto *VT = dyn_cast<llvm::VectorType>(A.getType()))
-      LargestVectorWidth = std::max(LargestVectorWidth,
-                                    VT->getPrimitiveSizeInBits());
+      LargestVectorWidth = std::max((uint64_t)LargestVectorWidth,
+                                   VT->getPrimitiveSizeInBits().getFixedSize());
 
   // Update vector width based on return type.
   if (auto *VT = dyn_cast<llvm::VectorType>(CurFn->getReturnType()))
-    LargestVectorWidth = std::max(LargestVectorWidth,
-                                  VT->getPrimitiveSizeInBits());
+    LargestVectorWidth = std::max((uint64_t)LargestVectorWidth,
+                                  VT->getPrimitiveSizeInBits().getFixedSize());
 
   // Add the required-vector-width attribute. This contains the max width from:
   // 1. min-vector-width attribute used in the source program.
@@ -635,8 +635,7 @@ static llvm::Constant *getPrologueSignature(CodeGenModule &CGM,
   return CGM.getTargetCodeGenInfo().getUBSanFunctionSignature(CGM);
 }
 
-void CodeGenFunction::StartFunction(GlobalDecl GD,
-                                    QualType RetTy,
+void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
                                     llvm::Function *Fn,
                                     const CGFunctionInfo &FnInfo,
                                     const FunctionArgList &Args,
@@ -764,6 +763,10 @@ void CodeGenFunction::StartFunction(GlobalDecl GD,
   Fn->addFnAttr("no-jump-tables",
                 llvm::toStringRef(CGM.getCodeGenOpts().NoUseJumpTables));
 
+  // Add no-inline-line-tables value.
+  if (CGM.getCodeGenOpts().NoInlineLineTables)
+    Fn->addFnAttr("no-inline-line-tables");
+
   // Add profile-sample-accurate value.
   if (CGM.getCodeGenOpts().ProfileSampleAccurate)
     Fn->addFnAttr("profile-sample-accurate");
@@ -888,6 +891,16 @@ void CodeGenFunction::StartFunction(GlobalDecl GD,
       else {
         Fn->addFnAttr("instrument-function-entry-inlined",
                       getTarget().getMCountName());
+      }
+      if (CGM.getCodeGenOpts().MNopMCount) {
+        if (getContext().getTargetInfo().getTriple().getArch() !=
+            llvm::Triple::systemz)
+          CGM.getDiags().Report(diag::err_opt_not_valid_on_target)
+            << "-mnop-mcount";
+        if (!CGM.getCodeGenOpts().CallFEntry)
+          CGM.getDiags().Report(diag::err_opt_not_valid_without_opt)
+            << "-mnop-mcount" << "-mfentry";
+        Fn->addFnAttr("mnop-mcount", "true");
       }
     }
   }
@@ -1671,7 +1684,7 @@ CodeGenFunction::EmitNullInitialization(Address DestPtr, QualType Ty) {
                                llvm::GlobalVariable::PrivateLinkage,
                                NullConstant, Twine());
     CharUnits NullAlign = DestPtr.getAlignment();
-    NullVariable->setAlignment(NullAlign.getQuantity());
+    NullVariable->setAlignment(NullAlign.getAsAlign());
     Address SrcPtr(Builder.CreateBitCast(NullVariable, Builder.getInt8PtrTy()),
                    NullAlign);
 
@@ -1871,7 +1884,7 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
 #define NON_CANONICAL_TYPE(Class, Base)
 #define DEPENDENT_TYPE(Class, Base) case Type::Class:
 #define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Class, Base)
-#include "clang/AST/TypeNodes.def"
+#include "clang/AST/TypeNodes.inc"
       llvm_unreachable("unexpected dependent type!");
 
     // These types are never variably-modified.
@@ -2057,24 +2070,9 @@ void CodeGenFunction::EmitAlignmentAssumption(llvm::Value *PtrValue,
 }
 
 void CodeGenFunction::EmitAlignmentAssumption(llvm::Value *PtrValue,
-                                              QualType Ty, SourceLocation Loc,
-                                              SourceLocation AssumptionLoc,
-                                              unsigned Alignment,
-                                              llvm::Value *OffsetValue) {
-  llvm::Value *TheCheck;
-  llvm::Instruction *Assumption = Builder.CreateAlignmentAssumption(
-      CGM.getDataLayout(), PtrValue, Alignment, OffsetValue, &TheCheck);
-  if (SanOpts.has(SanitizerKind::Alignment)) {
-    llvm::Value *AlignmentVal = llvm::ConstantInt::get(IntPtrTy, Alignment);
-    EmitAlignmentAssumptionCheck(PtrValue, Ty, Loc, AssumptionLoc, AlignmentVal,
-                                 OffsetValue, TheCheck, Assumption);
-  }
-}
-
-void CodeGenFunction::EmitAlignmentAssumption(llvm::Value *PtrValue,
                                               const Expr *E,
                                               SourceLocation AssumptionLoc,
-                                              unsigned Alignment,
+                                              llvm::Value *Alignment,
                                               llvm::Value *OffsetValue) {
   if (auto *CE = dyn_cast<CastExpr>(E))
     E = CE->getSubExprAsWritten();
@@ -2225,8 +2223,8 @@ void CodeGenFunction::checkTargetFeatures(SourceLocation Loc,
           << TargetDecl->getDeclName()
           << CGM.getContext().BuiltinInfo.getRequiredFeatures(BuiltinID);
 
-  } else if (TargetDecl->hasAttr<TargetAttr>() ||
-             TargetDecl->hasAttr<CPUSpecificAttr>()) {
+  } else if (!TargetDecl->isMultiVersion() &&
+             TargetDecl->hasAttr<TargetAttr>()) {
     // Get the required features for the callee.
 
     const TargetAttr *TD = TargetDecl->getAttr<TargetAttr>();

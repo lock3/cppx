@@ -31,9 +31,11 @@
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/BranchProbability.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
@@ -60,6 +62,12 @@ INITIALIZE_PASS_DEPENDENCY(LoopInfoWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)
 INITIALIZE_PASS_END(BranchProbabilityInfoWrapperPass, "branch-prob",
                     "Branch Probability Analysis", false, true)
+
+BranchProbabilityInfoWrapperPass::BranchProbabilityInfoWrapperPass()
+    : FunctionPass(ID) {
+  initializeBranchProbabilityInfoWrapperPassPass(
+      *PassRegistry::getPassRegistry());
+}
 
 char BranchProbabilityInfoWrapperPass::ID = 0;
 
@@ -117,6 +125,13 @@ static const uint32_t ZH_NONTAKEN_WEIGHT = 12;
 
 static const uint32_t FPH_TAKEN_WEIGHT = 20;
 static const uint32_t FPH_NONTAKEN_WEIGHT = 12;
+
+/// This is the probability for an ordered floating point comparison.
+static const uint32_t FPH_ORD_WEIGHT = 1024 * 1024 - 1;
+/// This is the probability for an unordered floating point comparison, it means
+/// one or two of the operands are NaN. Usually it is used to test for an
+/// exceptional case, so the result is unlikely.
+static const uint32_t FPH_UNO_WEIGHT = 1;
 
 /// Invoke-terminating normal branch taken weight
 ///
@@ -778,6 +793,8 @@ bool BranchProbabilityInfo::calcFloatingPointHeuristics(const BasicBlock *BB) {
   if (!FCmp)
     return false;
 
+  uint32_t TakenWeight = FPH_TAKEN_WEIGHT;
+  uint32_t NontakenWeight = FPH_NONTAKEN_WEIGHT;
   bool isProb;
   if (FCmp->isEquality()) {
     // f1 == f2 -> Unlikely
@@ -786,9 +803,13 @@ bool BranchProbabilityInfo::calcFloatingPointHeuristics(const BasicBlock *BB) {
   } else if (FCmp->getPredicate() == FCmpInst::FCMP_ORD) {
     // !isnan -> Likely
     isProb = true;
+    TakenWeight = FPH_ORD_WEIGHT;
+    NontakenWeight = FPH_UNO_WEIGHT;
   } else if (FCmp->getPredicate() == FCmpInst::FCMP_UNO) {
     // isnan -> Unlikely
     isProb = false;
+    TakenWeight = FPH_ORD_WEIGHT;
+    NontakenWeight = FPH_UNO_WEIGHT;
   } else {
     return false;
   }
@@ -798,8 +819,7 @@ bool BranchProbabilityInfo::calcFloatingPointHeuristics(const BasicBlock *BB) {
   if (!isProb)
     std::swap(TakenIdx, NonTakenIdx);
 
-  BranchProbability TakenProb(FPH_TAKEN_WEIGHT,
-                              FPH_TAKEN_WEIGHT + FPH_NONTAKEN_WEIGHT);
+  BranchProbability TakenProb(TakenWeight, TakenWeight + NontakenWeight);
   setEdgeProbability(BB, TakenIdx, TakenProb);
   setEdgeProbability(BB, NonTakenIdx, TakenProb.getCompl());
   return true;
@@ -1014,7 +1034,8 @@ void BranchProbabilityInfoWrapperPass::getAnalysisUsage(
 
 bool BranchProbabilityInfoWrapperPass::runOnFunction(Function &F) {
   const LoopInfo &LI = getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
-  const TargetLibraryInfo &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+  const TargetLibraryInfo &TLI =
+      getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
   BPI.calculate(F, LI, &TLI);
   return false;
 }

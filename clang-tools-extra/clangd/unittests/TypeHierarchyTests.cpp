@@ -6,9 +6,9 @@
 //
 //===----------------------------------------------------------------------===//
 #include "Annotations.h"
-#include "ClangdUnit.h"
 #include "Compiler.h"
 #include "Matchers.h"
+#include "ParsedAST.h"
 #include "SyncAPI.h"
 #include "TestFS.h"
 #include "TestTU.h"
@@ -59,6 +59,8 @@ TEST(FindRecordTypeAt, TypeOrVariable) {
 struct Ch^ild2 {
   int c;
 };
+
+using A^lias = Child2;
 
 int main() {
   Ch^ild2 ch^ild2;
@@ -482,7 +484,7 @@ std::vector<SymbolID> collectSubtypes(SymbolID Subject, SymbolIndex *Index) {
   std::vector<SymbolID> Result;
   RelationsRequest Req;
   Req.Subjects.insert(Subject);
-  Req.Predicate = index::SymbolRole::RelationBaseOf;
+  Req.Predicate = RelationKind::BaseOf;
   Index->relations(Req,
                    [&Result](const SymbolID &Subject, const Symbol &Object) {
                      Result.push_back(Object.ID);

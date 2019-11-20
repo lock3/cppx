@@ -139,6 +139,12 @@ class FullComment;
 
 } // namespace comments
 
+namespace interp {
+
+class Context;
+
+} // namespace interp
+
 struct TypeInfo {
   uint64_t Width = 0;
   unsigned Align = 0;
@@ -179,7 +185,8 @@ private:
   mutable llvm::FoldingSet<LValueReferenceType> LValueReferenceTypes;
   mutable llvm::FoldingSet<RValueReferenceType> RValueReferenceTypes;
   mutable llvm::FoldingSet<MemberPointerType> MemberPointerTypes;
-  mutable llvm::FoldingSet<ConstantArrayType> ConstantArrayTypes;
+  mutable llvm::ContextualFoldingSet<ConstantArrayType, ASTContext &>
+      ConstantArrayTypes;
   mutable llvm::FoldingSet<IncompleteArrayType> IncompleteArrayTypes;
   mutable std::vector<VariableArrayType*> VariableArrayTypes;
   mutable llvm::FoldingSet<DependentSizedArrayType> DependentSizedArrayTypes;
@@ -264,12 +271,6 @@ private:
 
   /// Mapping from __block VarDecls to BlockVarCopyInit.
   llvm::DenseMap<const VarDecl *, BlockVarCopyInit> BlockVarCopyInits;
-
-  /// Mapping from materialized temporaries with static storage duration
-  /// that appear in constant initializers to their evaluated values.  These are
-  /// allocated in a std::map because their address must be stable.
-  llvm::DenseMap<const MaterializeTemporaryExpr *, APValue *>
-    MaterializedTemporaryValues;
 
   /// Used to cleanups APValues stored in the AST.
   mutable llvm::SmallVector<APValue *, 0> APValueCleanups;
@@ -507,6 +508,8 @@ private:
   /// need to be consistently numbered for the mangler).
   llvm::DenseMap<const DeclContext *, std::unique_ptr<MangleNumberingContext>>
       MangleNumberingContexts;
+  llvm::DenseMap<const Decl *, std::unique_ptr<MangleNumberingContext>>
+      ExtraMangleNumberingContexts;
 
   /// Side-table of mangling numbers for declarations which rarely
   /// need them (like static local vars).
@@ -564,6 +567,7 @@ private:
   const TargetInfo *Target = nullptr;
   const TargetInfo *AuxTarget = nullptr;
   clang::PrintingPolicy PrintingPolicy;
+  std::unique_ptr<interp::Context> InterpContext;
 
 public:
   IdentifierTable &Idents;
@@ -572,6 +576,9 @@ public:
   mutable DeclarationNameTable DeclarationNames;
   IntrusiveRefCntPtr<ExternalASTSource> ExternalSource;
   ASTMutationListener *Listener = nullptr;
+
+  /// Returns the clang bytecode interpreter context.
+  interp::Context &getInterpContext();
 
   /// Container for either a single DynTypedNode or for an ArrayRef to
   /// DynTypedNode. For use with ParentMap.
@@ -1320,6 +1327,7 @@ public:
   /// Return the unique reference to the type for a constant array of
   /// the specified element type.
   QualType getConstantArrayType(QualType EltTy, const llvm::APInt &ArySize,
+                                const Expr *SizeExpr,
                                 ArrayType::ArraySizeModifier ASM,
                                 unsigned IndexTypeQuals) const;
 
@@ -1489,8 +1497,7 @@ public:
                              bool isKindOf) const;
 
   QualType getObjCTypeParamType(const ObjCTypeParamDecl *Decl,
-                                ArrayRef<ObjCProtocolDecl *> protocols,
-                                QualType Canonical = QualType()) const;
+                                ArrayRef<ObjCProtocolDecl *> protocols) const;
 
   bool ObjCObjectAdoptsQTypeProtocols(QualType QT, ObjCInterfaceDecl *Decl);
 
@@ -2045,6 +2052,11 @@ public:
   /// types.
   bool areCompatibleVectorTypes(QualType FirstVec, QualType SecondVec);
 
+  /// Return true if the type has been explicitly qualified with ObjC ownership.
+  /// A type may be implicitly qualified with ownership under ObjC ARC, and in
+  /// some cases the compiler treats these differently.
+  bool hasDirectOwnershipQualifier(QualType Ty) const;
+
   /// Return true if this is an \c NSObject object with its \c NSObject
   /// attribute set.
   static bool isObjCNSObjectType(QualType Ty) {
@@ -2568,10 +2580,12 @@ public:
     return T == getObjCSelType();
   }
 
-  bool ObjCQualifiedIdTypesAreCompatible(QualType LHS, QualType RHS,
+  bool ObjCQualifiedIdTypesAreCompatible(const ObjCObjectPointerType *LHS,
+                                         const ObjCObjectPointerType *RHS,
                                          bool ForCompare);
 
-  bool ObjCQualifiedClassTypesAreCompatible(QualType LHS, QualType RHS);
+  bool ObjCQualifiedClassTypesAreCompatible(const ObjCObjectPointerType *LHS,
+                                            const ObjCObjectPointerType *RHS);
 
   // Check the safety of assignment from LHS to RHS
   bool canAssignObjCInterfaces(const ObjCObjectPointerType *LHSOPT,
@@ -2793,6 +2807,9 @@ public:
   /// Retrieve the context for computing mangling numbers in the given
   /// DeclContext.
   MangleNumberingContext &getManglingNumberContext(const DeclContext *DC);
+  enum NeedExtraManglingDecl_t { NeedExtraManglingDecl };
+  MangleNumberingContext &getManglingNumberContext(NeedExtraManglingDecl_t,
+                                                   const Decl *D);
 
   std::unique_ptr<MangleNumberingContext> createMangleNumberingContext() const;
 
@@ -2803,11 +2820,6 @@ public:
   /// Used by ParmVarDecl to retrieve on the side the
   /// index of the parameter when it exceeds the size of the normal bitfield.
   unsigned getParameterIndex(const ParmVarDecl *D) const;
-
-  /// Get the storage for the constant value of a materialized temporary
-  /// of static storage duration.
-  APValue *getMaterializedTemporaryValue(const MaterializeTemporaryExpr *E,
-                                         bool MayCreate);
 
   /// Return a string representing the human readable name for the specified
   /// function declaration or file name. Used by SourceLocExpr and

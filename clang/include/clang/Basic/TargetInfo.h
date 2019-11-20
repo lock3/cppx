@@ -16,17 +16,19 @@
 
 #include "clang/Basic/AddressSpaces.h"
 #include "clang/Basic/LLVM.h"
+#include "clang/Basic/CodeGenOptions.h"
 #include "clang/Basic/Specifiers.h"
 #include "clang/Basic/TargetCXXABI.h"
 #include "clang/Basic/TargetOptions.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"
-#include "llvm/IR/DataLayout.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/VersionTuple.h"
 #include <cassert>
@@ -35,6 +37,7 @@
 
 namespace llvm {
 struct fltSemantics;
+class DataLayout;
 }
 
 namespace clang {
@@ -198,9 +201,7 @@ protected:
   // TargetInfo Constructor.  Default initializes all fields.
   TargetInfo(const llvm::Triple &T);
 
-  void resetDataLayout(StringRef DL) {
-    DataLayout.reset(new llvm::DataLayout(DL));
-  }
+  void resetDataLayout(StringRef DL);
 
 public:
   /// Construct a target for the given options.
@@ -937,6 +938,12 @@ public:
     return true;
   }
 
+  /// Check if the register is reserved globally
+  ///
+  /// This function returns true if the register passed in RegName is reserved
+  /// using the corresponding -ffixed-RegName option.
+  virtual bool isRegisterReservedGlobally(StringRef) const { return true; }
+
   // validateOutputConstraint, validateInputConstraint - Checks that
   // a constraint is valid and provides information about it.
   // FIXME: These should return a real error instead of just true/false.
@@ -1101,6 +1108,23 @@ public:
   /// Determine whether this TargetInfo supports the given feature.
   virtual bool isValidFeatureName(StringRef Feature) const {
     return true;
+  }
+
+  struct BranchProtectionInfo {
+    CodeGenOptions::SignReturnAddressScope SignReturnAddr =
+        CodeGenOptions::SignReturnAddressScope::None;
+    CodeGenOptions::SignReturnAddressKeyValue SignKey =
+        CodeGenOptions::SignReturnAddressKeyValue::AKey;
+    bool BranchTargetEnforcement = false;
+  };
+
+  /// Determine if this TargetInfo supports the given branch protection
+  /// specification
+  virtual bool validateBranchProtection(StringRef Spec,
+                                        BranchProtectionInfo &BPI,
+                                        StringRef &Err) const {
+    Err = "";
+    return false;
   }
 
   /// Perform initialization based on the user configured

@@ -10,9 +10,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/GlobalISel/Localizer.h"
-#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Support/Debug.h"
 
 #define DEBUG_TYPE "localizer"
@@ -220,5 +221,6 @@ bool Localizer::runOnMachineFunction(MachineFunction &MF) {
   LocalizedSetVecT LocalizedInstrs;
 
   bool Changed = localizeInterBlock(MF, LocalizedInstrs);
-  return Changed |= localizeIntraBlock(LocalizedInstrs);
+  Changed |= localizeIntraBlock(LocalizedInstrs);
+  return Changed;
 }

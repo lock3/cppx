@@ -75,6 +75,8 @@ ARMBaseRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
     // GHC set of callee saved regs is empty as all those regs are
     // used for passing STG regs around
     return CSR_NoRegs_SaveList;
+  } else if (F.getCallingConv() == CallingConv::CFGuard_Check) {
+    return CSR_Win_AAPCS_CFGuard_Check_SaveList;
   } else if (F.hasFnAttribute("interrupt")) {
     if (STI.isMClass()) {
       // M-class CPUs have hardware which saves the registers needed to allow a
@@ -123,7 +125,8 @@ ARMBaseRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
   if (CC == CallingConv::GHC)
     // This is academic because all GHC calls are (supposed to be) tail calls
     return CSR_NoRegs_RegMask;
-
+  if (CC == CallingConv::CFGuard_Check)
+    return CSR_Win_AAPCS_CFGuard_Check_RegMask;
   if (STI.getTargetLowering()->supportSwiftError() &&
       MF.getFunction().getAttributes().hasAttrSomewhere(Attribute::SwiftError))
     return STI.isTargetDarwin() ? CSR_iOS_SwiftError_RegMask
@@ -191,13 +194,15 @@ getReservedRegs(const MachineFunction &MF) const {
   markSuperRegs(Reserved, ARM::PC);
   markSuperRegs(Reserved, ARM::FPSCR);
   markSuperRegs(Reserved, ARM::APSR_NZCV);
-  if (TFI->hasFP(MF))
+  if (TFI->hasFP(MF) || STI.isTargetDarwin())
     markSuperRegs(Reserved, getFramePointerReg(STI));
   if (hasBasePointer(MF))
     markSuperRegs(Reserved, BasePtr);
-  // Some targets reserve R9.
-  if (STI.isR9Reserved())
-    markSuperRegs(Reserved, ARM::R9);
+  for (size_t R = 0; R < ARM::GPRRegClass.getNumRegs(); ++R) {
+    if (STI.isGPRegisterReserved(R)) {
+      markSuperRegs(Reserved, ARM::R0 + R);
+    }
+  }
   // Reserve D16-D31 if the subtarget doesn't support them.
   if (!STI.hasD32()) {
     static_assert(ARM::D31 == ARM::D16 + 15, "Register list not consecutive!");
@@ -223,7 +228,7 @@ isAsmClobberable(const MachineFunction &MF, unsigned PhysReg) const {
 
 const TargetRegisterClass *
 ARMBaseRegisterInfo::getLargestLegalSuperClass(const TargetRegisterClass *RC,
-                                               const MachineFunction &) const {
+                                               const MachineFunction &MF) const {
   const TargetRegisterClass *Super = RC;
   TargetRegisterClass::sc_iterator I = RC->getSuperClasses();
   do {
@@ -231,11 +236,13 @@ ARMBaseRegisterInfo::getLargestLegalSuperClass(const TargetRegisterClass *RC,
     case ARM::GPRRegClassID:
     case ARM::SPRRegClassID:
     case ARM::DPRRegClassID:
+    case ARM::GPRPairRegClassID:
+      return Super;
     case ARM::QPRRegClassID:
     case ARM::QQPRRegClassID:
     case ARM::QQQQPRRegClassID:
-    case ARM::GPRPairRegClassID:
-      return Super;
+      if (MF.getSubtarget<ARMSubtarget>().hasNEON())
+        return Super;
     }
     Super = *I++;
   } while (Super);
@@ -275,7 +282,7 @@ ARMBaseRegisterInfo::getRegPressureLimit(const TargetRegisterClass *RC,
   case ARM::GPRRegClassID: {
     bool HasFP = MF.getFrameInfo().isMaxCallFrameSizeComputed()
                  ? TFI->hasFP(MF) : true;
-    return 10 - HasFP - (STI.isR9Reserved() ? 1 : 0);
+    return 10 - HasFP - STI.getNumGPRegistersReserved();
   }
   case ARM::SPRRegClassID:  // Currently not used as 'rep' register class.
   case ARM::DPRRegClassID:
@@ -375,6 +382,11 @@ bool ARMBaseRegisterInfo::hasBasePointer(const MachineFunction &MF) const {
   const MachineFrameInfo &MFI = MF.getFrameInfo();
   const ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
   const ARMFrameLowering *TFI = getFrameLowering(MF);
+  const ARMSubtarget &STI = MF.getSubtarget<ARMSubtarget>();
+
+  // Disable base pointer R6 if -ffixed-r6 is used.
+  if (STI.isGPRegisterReserved(BasePtr - ARM::R0))
+    return false;
 
   // If we have stack realignment and VLAs, we have no pointer to use to
   // access the stack. If we have stack realignment, and a large call frame,
@@ -383,7 +395,7 @@ bool ARMBaseRegisterInfo::hasBasePointer(const MachineFunction &MF) const {
     return true;
 
   // Thumb has trouble with negative offsets from the FP. Thumb2 has a limited
-  // negative range for ldr/str (255), and thumb1 is positive offsets only.
+  // negative range for ldr/str (255), and Thumb1 is positive offsets only.
   //
   // It's going to be better to use the SP or Base Pointer instead. When there
   // are variable sized objects, we can't reference off of the SP, so we
@@ -411,6 +423,7 @@ bool ARMBaseRegisterInfo::hasBasePointer(const MachineFunction &MF) const {
 bool ARMBaseRegisterInfo::canRealignStack(const MachineFunction &MF) const {
   const MachineRegisterInfo *MRI = &MF.getRegInfo();
   const ARMFrameLowering *TFI = getFrameLowering(MF);
+  const ARMSubtarget &STI = MF.getSubtarget<ARMSubtarget>();
   // We can't realign the stack if:
   // 1. Dynamic stack realignment is explicitly disabled,
   // 2. There are VLAs in the function and the base pointer is disabled.
@@ -419,6 +432,9 @@ bool ARMBaseRegisterInfo::canRealignStack(const MachineFunction &MF) const {
   // Stack realignment requires a frame pointer.  If we already started
   // register allocation with frame pointer elimination, it is too late now.
   if (!MRI->canReserveReg(getFramePointerReg(MF.getSubtarget<ARMSubtarget>())))
+    return false;
+  // Disable base pointer R6 if -ffixed-r6 is used.
+  if (STI.isGPRegisterReserved(BasePtr - ARM::R0))
     return false;
   // We may also need a base pointer if there are dynamic allocas or stack
   // pointer adjustments around calls.

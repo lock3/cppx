@@ -34,8 +34,8 @@ namespace {
 /// This parses a yaml stream that represents a COFF object file.
 /// See docs/yaml2obj for the yaml scheema.
 struct COFFParser {
-  COFFParser(COFFYAML::Object &Obj)
-      : Obj(Obj), SectionTableStart(0), SectionTableSize(0) {
+  COFFParser(COFFYAML::Object &Obj, yaml::ErrorHandler EH)
+      : Obj(Obj), SectionTableStart(0), SectionTableSize(0), ErrHandler(EH) {
     // A COFF string table always starts with a 4 byte size field. Offsets into
     // it include this size, so allocate it now.
     StringTable.append(4, char(0));
@@ -81,7 +81,7 @@ struct COFFParser {
         unsigned Index = getStringIndex(Name);
         std::string str = utostr(Index);
         if (str.size() > 7) {
-          errs() << "String table got too large\n";
+          ErrHandler("string table got too large");
           return false;
         }
         Sec.Header.Name[0] = '/';
@@ -90,11 +90,11 @@ struct COFFParser {
 
       if (Sec.Alignment) {
         if (Sec.Alignment > 8192) {
-          errs() << "Section alignment is too large\n";
+          ErrHandler("section alignment is too large");
           return false;
         }
         if (!isPowerOf2_32(Sec.Alignment)) {
-          errs() << "Section alignment is not a power of 2\n";
+          ErrHandler("section alignment is not a power of 2");
           return false;
         }
         Sec.Header.Characteristics |= (Log2_32(Sec.Alignment) + 1) << 20;
@@ -155,6 +155,8 @@ struct COFFParser {
   std::string StringTable;
   uint32_t SectionTableStart;
   uint32_t SectionTableSize;
+
+  yaml::ErrorHandler ErrHandler;
 };
 
 enum { DOSStubSize = 128 };
@@ -258,9 +260,12 @@ static bool layoutCOFF(COFFParser &CP) {
       CurrentSectionDataOffset += S.Header.SizeOfRawData;
       if (!S.Relocations.empty()) {
         S.Header.PointerToRelocations = CurrentSectionDataOffset;
-        S.Header.NumberOfRelocations = S.Relocations.size();
-        CurrentSectionDataOffset +=
-            S.Header.NumberOfRelocations * COFF::RelocationSize;
+        if (S.Header.Characteristics & COFF::IMAGE_SCN_LNK_NRELOC_OVFL) {
+          S.Header.NumberOfRelocations = 0xffff;
+          CurrentSectionDataOffset += COFF::RelocationSize;
+        } else
+          S.Header.NumberOfRelocations = S.Relocations.size();
+        CurrentSectionDataOffset += S.Relocations.size() * COFF::RelocationSize;
       }
     } else {
       // Leave SizeOfRawData unaltered. For .bss sections in object files, it
@@ -504,6 +509,10 @@ static bool writeCOFF(COFFParser &CP, raw_ostream &OS) {
     S.SectionData.writeAsBinary(OS);
     assert(S.Header.SizeOfRawData >= S.SectionData.binary_size());
     OS.write_zeros(S.Header.SizeOfRawData - S.SectionData.binary_size());
+    if (S.Header.Characteristics & COFF::IMAGE_SCN_LNK_NRELOC_OVFL)
+      OS << binary_le<uint32_t>(/*VirtualAddress=*/ S.Relocations.size() + 1)
+         << binary_le<uint32_t>(/*SymbolTableIndex=*/ 0)
+         << binary_le<uint16_t>(/*Type=*/ 0);
     for (const COFFYAML::Relocation &R : S.Relocations) {
       uint32_t SymbolTableIndex;
       if (R.SymbolTableIndex) {
@@ -592,27 +601,28 @@ static bool writeCOFF(COFFParser &CP, raw_ostream &OS) {
 namespace llvm {
 namespace yaml {
 
-int yaml2coff(llvm::COFFYAML::Object &Doc, raw_ostream &Out) {
-  COFFParser CP(Doc);
+bool yaml2coff(llvm::COFFYAML::Object &Doc, raw_ostream &Out,
+               ErrorHandler ErrHandler) {
+  COFFParser CP(Doc, ErrHandler);
   if (!CP.parse()) {
-    errs() << "yaml2obj: Failed to parse YAML file!\n";
-    return 1;
+    ErrHandler("failed to parse YAML file");
+    return false;
   }
 
   if (!layoutOptionalHeader(CP)) {
-    errs() << "yaml2obj: Failed to layout optional header for COFF file!\n";
-    return 1;
+    ErrHandler("failed to layout optional header for COFF file");
+    return false;
   }
 
   if (!layoutCOFF(CP)) {
-    errs() << "yaml2obj: Failed to layout COFF file!\n";
-    return 1;
+    ErrHandler("failed to layout COFF file");
+    return false;
   }
   if (!writeCOFF(CP, Out)) {
-    errs() << "yaml2obj: Failed to write COFF file!\n";
-    return 1;
+    ErrHandler("failed to write COFF file");
+    return false;
   }
-  return 0;
+  return true;
 }
 
 } // namespace yaml

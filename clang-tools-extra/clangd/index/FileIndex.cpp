@@ -7,8 +7,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "FileIndex.h"
-#include "ClangdUnit.h"
 #include "Logger.h"
+#include "ParsedAST.h"
 #include "SymbolCollector.h"
 #include "index/CanonicalIncludes.h"
 #include "index/Index.h"
@@ -16,7 +16,9 @@
 #include "index/Merge.h"
 #include "index/SymbolOrigin.h"
 #include "index/dex/Dex.h"
+#include "clang/AST/ASTContext.h"
 #include "clang/Index/IndexingAction.h"
+#include "clang/Index/IndexingOptions.h"
 #include "clang/Lex/MacroInfo.h"
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/ADT/DenseMap.h"

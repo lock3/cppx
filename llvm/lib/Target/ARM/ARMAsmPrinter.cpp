@@ -54,8 +54,8 @@ using namespace llvm;
 
 ARMAsmPrinter::ARMAsmPrinter(TargetMachine &TM,
                              std::unique_ptr<MCStreamer> Streamer)
-    : AsmPrinter(TM, std::move(Streamer)), AFI(nullptr), MCP(nullptr),
-      InConstantPool(false), OptimizationGoals(-1) {}
+    : AsmPrinter(TM, std::move(Streamer)), Subtarget(nullptr), AFI(nullptr),
+      MCP(nullptr), InConstantPool(false), OptimizationGoals(-1) {}
 
 void ARMAsmPrinter::EmitFunctionBodyEnd() {
   // Make sure to terminate any constant pools that were at the end
@@ -168,7 +168,7 @@ bool ARMAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   // relatively easy to exceed the thumb branch range within a TU.
   if (! ThumbIndirectPads.empty()) {
     OutStreamer->EmitAssemblerFlag(MCAF_Code16);
-    EmitAlignment(1);
+    EmitAlignment(Align(2));
     for (std::pair<unsigned, MCSymbol *> &TIP : ThumbIndirectPads) {
       OutStreamer->EmitLabel(TIP.second);
       EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::tBX)
@@ -526,7 +526,7 @@ void ARMAsmPrinter::EmitEndOfAsmFile(Module &M) {
     if (!Stubs.empty()) {
       // Switch with ".non_lazy_symbol_pointer" directive.
       OutStreamer->SwitchSection(TLOFMacho.getNonLazySymbolPointerSection());
-      EmitAlignment(2);
+      EmitAlignment(Align(4));
 
       for (auto &Stub : Stubs)
         emitNonLazySymbolPointer(*OutStreamer, Stub.first, Stub.second);
@@ -539,7 +539,7 @@ void ARMAsmPrinter::EmitEndOfAsmFile(Module &M) {
     if (!Stubs.empty()) {
       // Switch with ".non_lazy_symbol_pointer" directive.
       OutStreamer->SwitchSection(TLOFMacho.getThreadLocalPointerSection());
-      EmitAlignment(2);
+      EmitAlignment(Align(4));
 
       for (auto &Stub : Stubs)
         emitNonLazySymbolPointer(*OutStreamer, Stub.first, Stub.second);
@@ -752,7 +752,7 @@ void ARMAsmPrinter::emitAttributes() {
   if (STI.isRWPI())
     ATS.emitAttribute(ARMBuildAttrs::ABI_PCS_R9_use,
                       ARMBuildAttrs::R9IsSB);
-  else if (STI.isR9Reserved())
+  else if (STI.isGPRegisterReserved(9))
     ATS.emitAttribute(ARMBuildAttrs::ABI_PCS_R9_use,
                       ARMBuildAttrs::R9Reserved);
   else
@@ -940,7 +940,7 @@ void ARMAsmPrinter::EmitJumpTableAddrs(const MachineInstr *MI) {
 
   // Make sure the Thumb jump table is 4-byte aligned. This will be a nop for
   // ARM mode tables.
-  EmitAlignment(2);
+  EmitAlignment(Align(4));
 
   // Emit a label for the jump table.
   MCSymbol *JTISymbol = GetARMJTIPICJumpTableLabel(JTI);
@@ -986,7 +986,7 @@ void ARMAsmPrinter::EmitJumpTableInsts(const MachineInstr *MI) {
 
   // Make sure the Thumb jump table is 4-byte aligned. This will be a nop for
   // ARM mode tables.
-  EmitAlignment(2);
+  EmitAlignment(Align(4));
 
   // Emit a label for the jump table.
   MCSymbol *JTISymbol = GetARMJTIPICJumpTableLabel(JTI);
@@ -1015,7 +1015,7 @@ void ARMAsmPrinter::EmitJumpTableTBInst(const MachineInstr *MI,
   unsigned JTI = MO1.getIndex();
 
   if (Subtarget->isThumb1Only())
-    EmitAlignment(2);
+    EmitAlignment(Align(4));
 
   MCSymbol *JTISymbol = GetARMJTIPICJumpTableLabel(JTI);
   OutStreamer->EmitLabel(JTISymbol);
@@ -1058,7 +1058,7 @@ void ARMAsmPrinter::EmitJumpTableTBInst(const MachineInstr *MI,
   OutStreamer->EmitDataRegion(MCDR_DataRegionEnd);
 
   // Make sure the next instruction is 2-byte aligned.
-  EmitAlignment(1);
+  EmitAlignment(Align(2));
 }
 
 void ARMAsmPrinter::EmitUnwindingInstruction(const MachineInstr *MI) {

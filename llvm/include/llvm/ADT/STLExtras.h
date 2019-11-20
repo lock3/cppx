@@ -198,6 +198,15 @@ constexpr bool empty(const T &RangeOrContainer) {
   return adl_begin(RangeOrContainer) == adl_end(RangeOrContainer);
 }
 
+/// Return a range covering \p RangeOrContainer with the first N elements
+/// excluded.
+template <typename T>
+auto drop_begin(T &&RangeOrContainer, size_t N) ->
+    iterator_range<decltype(adl_begin(RangeOrContainer))> {
+  return make_range(std::next(adl_begin(RangeOrContainer), N),
+                    adl_end(RangeOrContainer));
+}
+
 // mapped_iterator - This is a simple iterator adapter that causes a function to
 // be applied whenever operator* is invoked on the iterator.
 
@@ -1044,6 +1053,23 @@ inline int (*get_array_pod_sort_comparator(const T &))
   return array_pod_sort_comparator<T>;
 }
 
+#ifdef EXPENSIVE_CHECKS
+namespace detail {
+
+inline unsigned presortShuffleEntropy() {
+  static unsigned Result(std::random_device{}());
+  return Result;
+}
+
+template <class IteratorTy>
+inline void presortShuffle(IteratorTy Start, IteratorTy End) {
+  std::mt19937 Generator(presortShuffleEntropy());
+  std::shuffle(Start, End, Generator);
+}
+
+} // end namespace detail
+#endif
+
 /// array_pod_sort - This sorts an array with the specified start and end
 /// extent.  This is just like std::sort, except that it calls qsort instead of
 /// using an inlined template.  qsort is slightly slower than std::sort, but
@@ -1065,8 +1091,7 @@ inline void array_pod_sort(IteratorTy Start, IteratorTy End) {
   auto NElts = End - Start;
   if (NElts <= 1) return;
 #ifdef EXPENSIVE_CHECKS
-  std::mt19937 Generator(std::random_device{}());
-  std::shuffle(Start, End, Generator);
+  detail::presortShuffle<IteratorTy>(Start, End);
 #endif
   qsort(&*Start, NElts, sizeof(*Start), get_array_pod_sort_comparator(*Start));
 }
@@ -1082,8 +1107,7 @@ inline void array_pod_sort(
   auto NElts = End - Start;
   if (NElts <= 1) return;
 #ifdef EXPENSIVE_CHECKS
-  std::mt19937 Generator(std::random_device{}());
-  std::shuffle(Start, End, Generator);
+  detail::presortShuffle<IteratorTy>(Start, End);
 #endif
   qsort(&*Start, NElts, sizeof(*Start),
         reinterpret_cast<int (*)(const void *, const void *)>(Compare));
@@ -1094,8 +1118,7 @@ inline void array_pod_sort(
 template <typename IteratorTy>
 inline void sort(IteratorTy Start, IteratorTy End) {
 #ifdef EXPENSIVE_CHECKS
-  std::mt19937 Generator(std::random_device{}());
-  std::shuffle(Start, End, Generator);
+  detail::presortShuffle<IteratorTy>(Start, End);
 #endif
   std::sort(Start, End);
 }
@@ -1107,8 +1130,7 @@ template <typename Container> inline void sort(Container &&C) {
 template <typename IteratorTy, typename Compare>
 inline void sort(IteratorTy Start, IteratorTy End, Compare Comp) {
 #ifdef EXPENSIVE_CHECKS
-  std::mt19937 Generator(std::random_device{}());
-  std::shuffle(Start, End, Generator);
+  detail::presortShuffle<IteratorTy>(Start, End);
 #endif
   std::sort(Start, End, Comp);
 }

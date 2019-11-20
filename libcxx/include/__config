@@ -242,6 +242,7 @@
 
 #ifdef __FreeBSD__
 #  include <sys/endian.h>
+#  include <osreldate.h>
 #  if _BYTE_ORDER == _LITTLE_ENDIAN
 #    define _LIBCPP_LITTLE_ENDIAN
 #  else  // _BYTE_ORDER == _LITTLE_ENDIAN
@@ -339,9 +340,22 @@
 
 #if __ISO_C_VISIBLE >= 2011 || __cplusplus >= 201103L
 #  if defined(__FreeBSD__)
+#    define _LIBCPP_HAS_ALIGNED_ALLOC
 #    define _LIBCPP_HAS_QUICK_EXIT
 #    define _LIBCPP_HAS_C11_FEATURES
+#  elif defined(__BIONIC__)
+#    define _LIBCPP_HAS_C11_FEATURES
+#    if __ANDROID_API__ >= 21
+#      define _LIBCPP_HAS_QUICK_EXIT
+#    endif
+#    if __ANDROID_API__ >= 28
+#      define _LIBCPP_HAS_ALIGNED_ALLOC
+#    endif
+#    if __ANDROID_API__ >= 29
+#      define _LIBCPP_HAS_TIMESPEC_GET
+#    endif
 #  elif defined(__Fuchsia__) || defined(__wasi__)
+#    define _LIBCPP_HAS_ALIGNED_ALLOC
 #    define _LIBCPP_HAS_QUICK_EXIT
 #    define _LIBCPP_HAS_TIMESPEC_GET
 #    define _LIBCPP_HAS_C11_FEATURES
@@ -351,10 +365,12 @@
 #        define _LIBCPP_HAS_QUICK_EXIT
 #      endif
 #      if _LIBCPP_GLIBC_PREREQ(2, 17)
+#        define _LIBCPP_HAS_ALIGNED_ALLOC
 #        define _LIBCPP_HAS_C11_FEATURES
 #        define _LIBCPP_HAS_TIMESPEC_GET
 #      endif
 #    else // defined(_LIBCPP_HAS_MUSL_LIBC)
+#      define _LIBCPP_HAS_ALIGNED_ALLOC
 #      define _LIBCPP_HAS_QUICK_EXIT
 #      define _LIBCPP_HAS_TIMESPEC_GET
 #      define _LIBCPP_HAS_C11_FEATURES
@@ -485,6 +501,8 @@ typedef __char32_t char32_t;
 #define _LIBCPP_HAS_NO_CXX20_CHRONO_LITERALS
 #endif
 
+#define _LIBCPP_DISABLE_EXTENSION_WARNING __extension__
+
 #elif defined(_LIBCPP_COMPILER_GCC)
 
 #define _ALIGNAS(x) __attribute__((__aligned__(x)))
@@ -520,6 +538,8 @@ typedef __char32_t char32_t;
 
 #define _LIBCPP_ALWAYS_INLINE __attribute__ ((__always_inline__))
 
+#define _LIBCPP_DISABLE_EXTENSION_WARNING __extension__
+
 #elif defined(_LIBCPP_COMPILER_MSVC)
 
 #define _LIBCPP_TOSTRING2(x) #x
@@ -545,6 +565,8 @@ typedef __char32_t char32_t;
 
 #define _LIBCPP_HAS_NO_VECTOR_EXTENSION
 
+#define _LIBCPP_DISABLE_EXTENSION_WARNING
+
 #elif defined(_LIBCPP_COMPILER_IBM)
 
 #define _ALIGNAS(x) __attribute__((__aligned__(x)))
@@ -564,6 +586,8 @@ typedef __char32_t char32_t;
 #define _LIBCPP_ALWAYS_INLINE __attribute__ ((__always_inline__))
 
 #define _LIBCPP_HAS_NO_VECTOR_EXTENSION
+
+#define _LIBCPP_DISABLE_EXTENSION_WARNING
 
 #endif // _LIBCPP_COMPILER_[CLANG|GCC|MSVC|IBM]
 
@@ -955,6 +979,20 @@ typedef unsigned int   char32_t;
 #  define _LIBCPP_DEPRECATED_IN_CXX17
 #endif
 
+// Macros to enter and leave a state where deprecation warnings are suppressed.
+#if !defined(_LIBCPP_SUPPRESS_DEPRECATED_PUSH) && \
+    (defined(_LIBCPP_COMPILER_CLANG) || defined(_LIBCPP_COMPILER_GCC))
+#  define _LIBCPP_SUPPRESS_DEPRECATED_PUSH \
+    _Pragma("GCC diagnostic push") \
+    _Pragma("GCC diagnostic ignored \"-Wdeprecated\"")
+#  define _LIBCPP_SUPPRESS_DEPRECATED_POP \
+    _Pragma("GCC diagnostic pop")
+#endif
+#if !defined(_LIBCPP_SUPPRESS_DEPRECATED_PUSH)
+#  define _LIBCPP_SUPPRESS_DEPRECATED_PUSH
+#  define _LIBCPP_SUPPRESS_DEPRECATED_POP
+#endif
+
 #if _LIBCPP_STD_VER <= 11
 #  define _LIBCPP_EXPLICIT_AFTER_CXX11
 #else
@@ -977,6 +1015,14 @@ typedef unsigned int   char32_t;
 #  define _LIBCPP_CONSTEXPR_AFTER_CXX17 constexpr
 #else
 #  define _LIBCPP_CONSTEXPR_AFTER_CXX17
+#endif
+
+#if _LIBCPP_STD_VER > 17 && \
+    !defined(_LIBCPP_HAS_NO_CXX14_CONSTEXPR) && \
+    !defined(_LIBCPP_HAS_NO_BUILTIN_IS_CONSTANT_EVALUATED)
+#  define _LIBCPP_CONSTEXPR_AFTER_CXX17_WITH_IS_CONSTANT_EVALUATED constexpr
+#else
+#  define _LIBCPP_CONSTEXPR_AFTER_CXX17_WITH_IS_CONSTANT_EVALUATED
 #endif
 
 // The _LIBCPP_NODISCARD_ATTRIBUTE should only be used to define other
@@ -1079,6 +1125,16 @@ _LIBCPP_FUNC_VIS extern "C" void __sanitizer_annotate_contiguous_container(
 #  endif // _LIBCPP_HAS_THREAD_API
 #endif // _LIBCPP_HAS_NO_THREADS
 
+#if defined(_LIBCPP_HAS_THREAD_API_PTHREAD)
+#if defined(__ANDROID__) && __ANDROID_API__ >= 30
+#define _LIBCPP_HAS_COND_CLOCKWAIT
+#elif defined(_LIBCPP_GLIBC_PREREQ)
+#if _LIBCPP_GLIBC_PREREQ(2, 30)
+#define _LIBCPP_HAS_COND_CLOCKWAIT
+#endif
+#endif
+#endif
+
 #if defined(_LIBCPP_HAS_NO_THREADS) && defined(_LIBCPP_HAS_THREAD_API_PTHREAD)
 #error _LIBCPP_HAS_THREAD_API_PTHREAD may only be defined when \
        _LIBCPP_HAS_NO_THREADS is not defined.
@@ -1142,6 +1198,14 @@ _LIBCPP_FUNC_VIS extern "C" void __sanitizer_annotate_contiguous_container(
 #ifdef __CloudABI__
 #define _LIBCPP_HAS_NO_STDIN
 #define _LIBCPP_HAS_NO_STDOUT
+#endif
+
+// Some systems do not provide gets() in their C library, for security reasons.
+#ifndef _LIBCPP_C_HAS_NO_GETS
+#  if defined(_LIBCPP_MSVCRT) || \
+      (defined(__FreeBSD_version) && __FreeBSD_version >= 1300043)
+#    define _LIBCPP_C_HAS_NO_GETS
+#  endif
 #endif
 
 #if defined(__BIONIC__) || defined(__CloudABI__) ||                            \
@@ -1425,6 +1489,17 @@ _LIBCPP_FUNC_VIS extern "C" void __sanitizer_annotate_contiguous_container(
 #endif // _LIBCPP_NO_AUTO_LINK
 
 #define _LIBCPP_UNUSED_VAR(x) ((void)(x))
+
+// Configures the fopen close-on-exec mode character, if any. This string will
+// be appended to any mode string used by fstream for fopen/fdopen.
+//
+// Not all platforms support this, but it helps avoid fd-leaks on platforms that
+// do.
+#if defined(__BIONIC__)
+#  define _LIBCPP_FOPEN_CLOEXEC_MODE "e"
+#else
+#  define _LIBCPP_FOPEN_CLOEXEC_MODE
+#endif
 
 #endif // __cplusplus
 

@@ -44,7 +44,7 @@ const (
 	FlagProtected
 	FlagFwdDecl
 	FlagAppleBlock
-	FlagBlockByrefStruct
+	FlagReserved
 	FlagVirtual
 	FlagArtificial
 	FlagExplicit
@@ -54,7 +54,6 @@ const (
 	FlagVector
 	FlagStaticMember
 	FlagIndirectVariable
-	FlagArgumentNotModified
 )
 
 type DwarfLang uint32

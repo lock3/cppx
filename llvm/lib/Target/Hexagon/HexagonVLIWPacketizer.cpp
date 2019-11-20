@@ -24,6 +24,7 @@
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineBranchProbabilityInfo.h"
@@ -39,6 +40,7 @@
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/DebugLoc.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/MC/MCInstrDesc.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
@@ -110,9 +112,9 @@ namespace {
     }
 
   private:
-    const HexagonInstrInfo *HII;
-    const HexagonRegisterInfo *HRI;
-    const bool Minimal;
+    const HexagonInstrInfo *HII = nullptr;
+    const HexagonRegisterInfo *HRI = nullptr;
+    const bool Minimal = false;
   };
 
 } // end anonymous namespace
@@ -129,7 +131,7 @@ INITIALIZE_PASS_END(HexagonPacketizer, "hexagon-packetizer",
                     "Hexagon Packetizer", false, false)
 
 HexagonPacketizerList::HexagonPacketizerList(MachineFunction &MF,
-      MachineLoopInfo &MLI, AliasAnalysis *AA,
+      MachineLoopInfo &MLI, AAResults *AA,
       const MachineBranchProbabilityInfo *MBPI, bool Minimal)
     : VLIWPacketizerList(MF, MLI, AA), MBPI(MBPI), MLI(&MLI),
       Minimal(Minimal) {
@@ -1763,6 +1765,16 @@ HexagonPacketizerList::addToPacket(MachineInstr &MI) {
 void HexagonPacketizerList::endPacket(MachineBasicBlock *MBB,
                                       MachineBasicBlock::iterator EndMI) {
   // Replace VLIWPacketizerList::endPacket(MBB, EndMI).
+  LLVM_DEBUG({
+    if (!CurrentPacketMIs.empty()) {
+      dbgs() << "Finalizing packet:\n";
+      unsigned Idx = 0;
+      for (MachineInstr *MI : CurrentPacketMIs) {
+        unsigned R = ResourceTracker->getUsedResources(Idx++);
+        dbgs() << " * [res:0x" << utohexstr(R) << "] " << *MI;
+      }
+    }
+  });
 
   bool memShufDisabled = getmemShufDisabled();
   if (memShufDisabled && !foundLSInPacket()) {

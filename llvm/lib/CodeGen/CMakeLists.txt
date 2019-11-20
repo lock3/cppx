@@ -10,6 +10,7 @@ add_llvm_library(LLVMCodeGen
   BuiltinGCs.cpp
   CalcSpillWeights.cpp
   CallingConvLower.cpp
+  CFGuardLongjmp.cpp
   CFIInstrInserter.cpp
   CodeGen.cpp
   CodeGenPrepare.cpp
@@ -80,6 +81,7 @@ add_llvm_library(LLVMCodeGen
   MachineInstr.cpp
   MachineLICM.cpp
   MachineLoopInfo.cpp
+  MachineLoopUtils.cpp
   MachineModuleInfo.cpp
   MachineModuleInfoImpls.cpp
   MachineOperand.cpp
@@ -91,9 +93,11 @@ add_llvm_library(LLVMCodeGen
   MachineRegisterInfo.cpp
   MachineScheduler.cpp
   MachineSink.cpp
+  MachineSizeOpts.cpp
   MachineSSAUpdater.cpp
   MachineTraceMetrics.cpp
   MachineVerifier.cpp
+  ModuloSchedule.cpp
   PatchableFunction.cpp
   MIRPrinter.cpp
   MIRPrintingPass.cpp
@@ -120,6 +124,8 @@ add_llvm_library(LLVMCodeGen
   RegisterPressure.cpp
   RegisterScavenging.cpp
   RenameIndependentSubregs.cpp
+  MIRVRegNamerUtils.cpp
+  MIRNamerPass.cpp
   MIRCanonicalizerPass.cpp
   RegisterUsageInfo.cpp
   RegUsageInfoCollector.cpp

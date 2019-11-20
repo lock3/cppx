@@ -35,7 +35,7 @@
 #ifdef _MSC_VER
 #include <intrin.h>
 #endif
-#if defined(__APPLE__) && (defined(__ppc__) || defined(__powerpc__))
+#if defined(__APPLE__) && (!defined(__x86_64__))
 #include <mach/host_info.h>
 #include <mach/mach.h>
 #include <mach/mach_host.h>
@@ -265,14 +265,12 @@ StringRef sys::detail::getHostCPUNameForARM(StringRef ProcCpuinfoContent) {
     unsigned Exynos = (Variant << 12) | Part;
     switch (Exynos) {
     default:
-      // Default by falling through to Exynos M1.
+      // Default by falling through to Exynos M3.
       LLVM_FALLTHROUGH;
-
-    case 0x1001:
-      return "exynos-m1";
-
-    case 0x4001:
-      return "exynos-m2";
+    case 0x1002:
+      return "exynos-m3";
+    case 0x1003:
+      return "exynos-m4";
     }
   }
 
@@ -316,7 +314,7 @@ StringRef sys::detail::getHostCPUNameForS390x(StringRef ProcCpuinfoContent) {
         unsigned int Id;
         if (!Lines[I].drop_front(Pos).getAsInteger(10, Id)) {
           if (Id >= 8561 && HaveVectorSupport)
-            return "arch13";
+            return "z15";
           if (Id >= 3906 && HaveVectorSupport)
             return "z14";
           if (Id >= 2964 && HaveVectorSupport)
@@ -680,7 +678,7 @@ getIntelProcessorTypeAndSubtype(unsigned Family, unsigned Model,
     // Skylake Xeon:
     case 0x55:
       *Type = X86::INTEL_COREI7;
-      if (Features3 & (1 << (X86::FEATURE_AVX512BF16 - 64)))
+      if (Features2 & (1 << (X86::FEATURE_AVX512BF16 - 32)))
         *Subtype = X86::INTEL_COREI7_COOPERLAKE; // "cooperlake"
       else if (Features2 & (1 << (X86::FEATURE_AVX512VNNI - 32)))
         *Subtype = X86::INTEL_COREI7_CASCADELAKE; // "cascadelake"
@@ -765,7 +763,7 @@ getIntelProcessorTypeAndSubtype(unsigned Family, unsigned Model,
         break;
       }
 
-      if (Features3 & (1 << (X86::FEATURE_AVX512BF16 - 64))) {
+      if (Features2 & (1 << (X86::FEATURE_AVX512BF16 - 32))) {
         *Type = X86::INTEL_COREI7;
         *Subtype = X86::INTEL_COREI7_COOPERLAKE;
         break;
@@ -961,9 +959,9 @@ static void getAMDProcessorTypeAndSubtype(unsigned Family, unsigned Model,
     break; // "btver2"
   case 23:
     *Type = X86::AMDFAM17H;
-    if (Model >= 0x30 && Model <= 0x3f) {
+    if ((Model >= 0x30 && Model <= 0x3f) || Model == 0x71) {
       *Subtype = X86::AMDFAM17H_ZNVER2;
-      break; // "znver2"; 30h-3fh: Zen2
+      break; // "znver2"; 30h-3fh, 71h: Zen2
     }
     if (Model <= 0x0f) {
       *Subtype = X86::AMDFAM17H_ZNVER1;
@@ -1087,6 +1085,11 @@ static void getAvailableFeatures(unsigned ECX, unsigned EDX, unsigned MaxLeaf,
     setFeature(X86::FEATURE_AVX5124FMAPS);
   if (HasLeaf7 && ((EDX >> 8) & 1) && HasAVX512Save)
     setFeature(X86::FEATURE_AVX512VP2INTERSECT);
+
+  bool HasLeaf7Subleaf1 =
+      MaxLeaf >= 7 && !getX86CpuIDAndInfoEx(0x7, 0x1, &EAX, &EBX, &ECX, &EDX);
+  if (HasLeaf7Subleaf1 && ((EAX >> 5) & 1) && HasAVX512Save)
+    setFeature(X86::FEATURE_AVX512BF16);
 
   unsigned MaxExtLevel;
   getX86CpuIDAndInfo(0x80000000, &MaxExtLevel, &EBX, &ECX, &EDX);
@@ -1216,6 +1219,33 @@ StringRef sys::getHostCPUName() {
   std::unique_ptr<llvm::MemoryBuffer> P = getProcCpuinfoContent();
   StringRef Content = P ? P->getBuffer() : "";
   return detail::getHostCPUNameForS390x(Content);
+}
+#elif defined(__APPLE__) && defined(__aarch64__)
+StringRef sys::getHostCPUName() {
+  return "cyclone";
+}
+#elif defined(__APPLE__) && defined(__arm__)
+StringRef sys::getHostCPUName() {
+  host_basic_info_data_t hostInfo;
+  mach_msg_type_number_t infoCount;
+
+  infoCount = HOST_BASIC_INFO_COUNT;
+  mach_port_t hostPort = mach_host_self();
+  host_info(hostPort, HOST_BASIC_INFO, (host_info_t)&hostInfo,
+            &infoCount);
+  mach_port_deallocate(mach_task_self(), hostPort);
+
+  if (hostInfo.cpu_type != CPU_TYPE_ARM) {
+    assert(false && "CPUType not equal to ARM should not be possible on ARM");
+    return "generic";
+  }
+  switch (hostInfo.cpu_subtype) {
+    case CPU_SUBTYPE_ARM_V7S:
+      return "swift";
+    default:;
+    }
+  
+  return "generic";
 }
 #else
 StringRef sys::getHostCPUName() { return "generic"; }
@@ -1504,6 +1534,17 @@ bool sys::getHostCPUFeatures(StringMap<bool> &Features) {
   if (crypto == (CAP_AES | CAP_PMULL | CAP_SHA1 | CAP_SHA2))
     Features["crypto"] = true;
 #endif
+
+  return true;
+}
+#elif defined(_WIN32) && (defined(__aarch64__) || defined(_M_ARM64))
+bool sys::getHostCPUFeatures(StringMap<bool> &Features) {
+  if (IsProcessorFeaturePresent(PF_ARM_NEON_INSTRUCTIONS_AVAILABLE))
+    Features["neon"] = true;
+  if (IsProcessorFeaturePresent(PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE))
+    Features["crc"] = true;
+  if (IsProcessorFeaturePresent(PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE))
+    Features["crypto"] = true;
 
   return true;
 }

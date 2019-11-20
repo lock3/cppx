@@ -949,7 +949,7 @@ unsigned char Editline::TabCommand(int ch) {
       std::string to_add = completion.GetCompletion();
       to_add = to_add.substr(request.GetCursorArgumentPrefix().size());
       if (request.GetParsedArg().IsQuoted())
-        to_add.push_back(request.GetParsedArg().quote);
+        to_add.push_back(request.GetParsedArg().GetQuoteChar());
       to_add.push_back(' ');
       el_insertstr(m_editline, to_add.c_str());
       break;
@@ -1104,6 +1104,15 @@ void Editline::ConfigureEditor(bool multiline) {
          NULL); // Delete previous word, behave like bash in emacs mode
   el_set(m_editline, EL_BIND, "\t", "lldb-complete",
          NULL); // Bind TAB to auto complete
+
+  // Allow ctrl-left-arrow and ctrl-right-arrow for navigation, behave like
+  // bash in emacs mode.
+  el_set(m_editline, EL_BIND, ESCAPE "[1;5C", "em-next-word", NULL);
+  el_set(m_editline, EL_BIND, ESCAPE "[1;5D", "ed-prev-word", NULL);
+  el_set(m_editline, EL_BIND, ESCAPE "[5C", "em-next-word", NULL);
+  el_set(m_editline, EL_BIND, ESCAPE "[5D", "ed-prev-word", NULL);
+  el_set(m_editline, EL_BIND, ESCAPE ESCAPE "[C", "em-next-word", NULL);
+  el_set(m_editline, EL_BIND, ESCAPE ESCAPE "[D", "ed-prev-word", NULL);
 
   // Allow user-specific customization prior to registering bindings we
   // absolutely require

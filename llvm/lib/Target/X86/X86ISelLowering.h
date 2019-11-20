@@ -425,7 +425,8 @@ namespace llvm {
       // Tests Types Of a FP Values for scalar types.
       VFPCLASSS,
 
-      // Broadcast scalar to vector.
+      // Broadcast (splat) scalar or element 0 of a vector. If the operand is
+      // a vector, this node may change the vector length as part of the splat.
       VBROADCAST,
       // Broadcast mask to vector.
       VBROADCASTM,
@@ -614,6 +615,9 @@ namespace llvm {
       // extract_vector_elt, store.
       VEXTRACT_STORE,
 
+      // scalar broadcast from memory
+      VBROADCAST_LOAD,
+
       // Store FP control world into i16 memory.
       FNSTCW16m,
 
@@ -797,6 +801,17 @@ namespace llvm {
     /// i16 is legal, but undesirable since i16 instruction encodings are longer
     /// and some i16 instructions are slow.
     bool IsDesirableToPromoteOp(SDValue Op, EVT &PVT) const override;
+
+    /// Return 1 if we can compute the negated form of the specified expression
+    /// for the same cost as the expression itself, or 2 if we can compute the
+    /// negated form more cheaply than the expression itself. Else return 0.
+    char isNegatibleForFree(SDValue Op, SelectionDAG &DAG, bool LegalOperations,
+                            bool ForCodeSize, unsigned Depth) const override;
+
+    /// If isNegatibleForFree returns true, return the newly negated expression.
+    SDValue getNegatedExpression(SDValue Op, SelectionDAG &DAG,
+                                 bool LegalOperations, bool ForCodeSize,
+                                 unsigned Depth) const override;
 
     MachineBasicBlock *
     EmitInstrWithCustomInserter(MachineInstr &MI,
@@ -1041,7 +1056,8 @@ namespace llvm {
     /// Return true if an FMA operation is faster than a pair of fmul and fadd
     /// instructions. fmuladd intrinsics will be expanded to FMAs when this
     /// method returns true, otherwise fmuladd is expanded to fmul + fadd.
-    bool isFMAFasterThanFMulAndFAdd(EVT VT) const override;
+    bool isFMAFasterThanFMulAndFAdd(const MachineFunction &MF,
+                                    EVT VT) const override;
 
     /// Return true if it's profitable to narrow
     /// operations of type VT1 to VT2. e.g. on x86, it's profitable to narrow
@@ -1103,7 +1119,7 @@ namespace llvm {
     bool shouldConvertConstantLoadToIntImm(const APInt &Imm,
                                            Type *Ty) const override;
 
-    bool reduceSelectOfFPConstantLoads(bool IsFPSetCC) const override;
+    bool reduceSelectOfFPConstantLoads(EVT CmpOpVT) const override;
 
     bool convertSelectOfConstantsToMath(EVT VT) const override;
 
@@ -1150,8 +1166,8 @@ namespace llvm {
       return nullptr; // nothing to do, move along.
     }
 
-    unsigned getRegisterByName(const char* RegName, EVT VT,
-                               SelectionDAG &DAG) const override;
+    Register getRegisterByName(const char* RegName, EVT VT,
+                               const MachineFunction &MF) const override;
 
     /// If a physical register, this returns the register that receives the
     /// exception address on entry to an EH pad.
@@ -1202,6 +1218,10 @@ namespace llvm {
     unsigned getNumRegistersForCallingConv(LLVMContext &Context,
                                            CallingConv::ID CC,
                                            EVT VT) const override;
+
+    unsigned getVectorTypeBreakdownForCallingConv(
+        LLVMContext &Context, CallingConv::ID CC, EVT VT, EVT &IntermediateVT,
+        unsigned &NumIntermediates, MVT &RegisterVT) const override;
 
     bool isIntDivCheap(EVT VT, AttributeList Attr) const override;
 
@@ -1296,7 +1316,8 @@ namespace llvm {
 
     unsigned getAddressSpace(void) const;
 
-    SDValue FP_TO_INTHelper(SDValue Op, SelectionDAG &DAG, bool isSigned) const;
+    SDValue FP_TO_INTHelper(SDValue Op, SelectionDAG &DAG, bool isSigned,
+                            SDValue &Chain) const;
 
     SDValue LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerVSELECT(SDValue Op, SelectionDAG &DAG) const;
@@ -1342,6 +1363,12 @@ namespace llvm {
     SDValue LowerGC_TRANSITION_START(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerGC_TRANSITION_END(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerINTRINSIC_WO_CHAIN(SDValue Op, SelectionDAG &DAG) const;
+    SDValue lowerFaddFsub(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerFP_EXTEND(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerFP_ROUND(SDValue Op, SelectionDAG &DAG) const;
+
+    SDValue LowerF128Call(SDValue Op, SelectionDAG &DAG,
+                          RTLIB::Libcall Call) const;
 
     SDValue
     LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
@@ -1387,6 +1414,9 @@ namespace llvm {
 
     LoadInst *
     lowerIdempotentRMWIntoFencedLoad(AtomicRMWInst *AI) const override;
+
+    bool lowerAtomicStoreAsStoreSDNode(const StoreInst &SI) const override;
+    bool lowerAtomicLoadAsLoadSDNode(const LoadInst &LI) const override;
 
     bool needsCmpXchgNb(Type *MemType) const;
 
@@ -1478,6 +1508,9 @@ namespace llvm {
 
     /// Reassociate floating point divisions into multiply by reciprocal.
     unsigned combineRepeatedFPDivisors() const override;
+
+    SDValue BuildSDIVPow2(SDNode *N, const APInt &Divisor, SelectionDAG &DAG,
+                          SmallVectorImpl<SDNode *> &Created) const override;
   };
 
   namespace X86 {
@@ -1641,24 +1674,24 @@ namespace llvm {
   /// mask. This is the reverse process to canWidenShuffleElements, but can
   /// always succeed.
   template <typename T>
-  void scaleShuffleMask(int Scale, ArrayRef<T> Mask,
+  void scaleShuffleMask(size_t Scale, ArrayRef<T> Mask,
                         SmallVectorImpl<T> &ScaledMask) {
     assert(0 < Scale && "Unexpected scaling factor");
     size_t NumElts = Mask.size();
     ScaledMask.assign(NumElts * Scale, -1);
 
-    for (int i = 0; i != (int)NumElts; ++i) {
+    for (size_t i = 0; i != NumElts; ++i) {
       int M = Mask[i];
 
       // Repeat sentinel values in every mask element.
       if (M < 0) {
-        for (int s = 0; s != Scale; ++s)
+        for (size_t s = 0; s != Scale; ++s)
           ScaledMask[(Scale * i) + s] = M;
         continue;
       }
 
       // Scale mask element and increment across each mask element.
-      for (int s = 0; s != Scale; ++s)
+      for (size_t s = 0; s != Scale; ++s)
         ScaledMask[(Scale * i) + s] = (Scale * M) + s;
     }
   }

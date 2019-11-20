@@ -7,8 +7,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "Annotations.h"
-#include "ClangdUnit.h"
 #include "Diagnostics.h"
+#include "ParsedAST.h"
 #include "Path.h"
 #include "Protocol.h"
 #include "SourceCode.h"
@@ -721,7 +721,10 @@ $insert[[]]namespace ns {
 }
 void g() {  ns::$[[scope]]::X_Y();  }
   )cpp");
-  auto TU = TestTU::withCode(Test.code());
+  TestTU TU;
+  TU.Code = Test.code();
+  // FIXME: Figure out why this is needed and remove it, PR43662.
+  TU.ExtraArgs.push_back("-fno-ms-compatibility");
   auto Index = buildIndexWithSymbol(
       SymbolWithHeader{"ns::scope::X_Y", "unittest:///x.h", "\"x.h\""});
   TU.ExternalIndex = Index.get();
@@ -744,7 +747,10 @@ void f() {
 }
 }
   )cpp");
-  auto TU = TestTU::withCode(Test.code());
+  TestTU TU;
+  TU.Code = Test.code();
+  // FIXME: Figure out why this is needed and remove it, PR43662.
+  TU.ExtraArgs.push_back("-fno-ms-compatibility");
   auto Index = buildIndexWithSymbol(
       {SymbolWithHeader{"clang::clangd::X", "unittest:///x.h", "\"x.h\""},
        SymbolWithHeader{"clang::clangd::ns::Y", "unittest:///y.h", "\"y.h\""}});

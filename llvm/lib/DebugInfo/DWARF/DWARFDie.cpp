@@ -21,6 +21,7 @@
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/DataExtractor.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/FormatAdapters.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/WithColor.h"
@@ -61,16 +62,10 @@ static void dumpRanges(const DWARFObject &Obj, raw_ostream &OS,
   if (!DumpOpts.ShowAddresses)
     return;
 
-  ArrayRef<SectionName> SectionNames;
-  if (DumpOpts.Verbose)
-    SectionNames = Obj.getSectionNames();
-
   for (const DWARFAddressRange &R : Ranges) {
     OS << '\n';
     OS.indent(Indent);
-    R.dump(OS, AddressSize);
-
-    DWARFFormValue::dumpAddressSection(Obj, OS, DumpOpts, R.SectionIndex);
+    R.dump(OS, AddressSize, DumpOpts, &Obj);
   }
 }
 
@@ -78,7 +73,6 @@ static void dumpLocation(raw_ostream &OS, DWARFFormValue &FormValue,
                          DWARFUnit *U, unsigned Indent,
                          DIDumpOptions DumpOpts) {
   DWARFContext &Ctx = U->getContext();
-  const DWARFObject &Obj = Ctx.getDWARFObj();
   const MCRegisterInfo *MRI = Ctx.getRegisterInfo();
   if (FormValue.isFormClass(DWARFFormValue::FC_Block) ||
       FormValue.isFormClass(DWARFFormValue::FC_Exprloc)) {
@@ -90,51 +84,22 @@ static void dumpLocation(raw_ostream &OS, DWARFFormValue &FormValue,
     return;
   }
 
-  FormValue.dump(OS, DumpOpts);
   if (FormValue.isFormClass(DWARFFormValue::FC_SectionOffset)) {
     uint64_t Offset = *FormValue.getAsSectionOffset();
-    if (!U->isDWOUnit() && !U->getLocSection()->Data.empty()) {
-      DWARFDebugLoc DebugLoc;
-      DWARFDataExtractor Data(Obj, *U->getLocSection(), Ctx.isLittleEndian(),
-                              Obj.getAddressSize());
-      auto LL = DebugLoc.parseOneLocationList(Data, &Offset);
-      if (LL) {
-        uint64_t BaseAddr = 0;
-        if (Optional<object::SectionedAddress> BA = U->getBaseAddress())
-          BaseAddr = BA->Address;
-        LL->dump(OS, Ctx.isLittleEndian(), Obj.getAddressSize(), MRI, U,
-                 BaseAddr, Indent);
-      } else
-        OS << "error extracting location list.";
-      return;
-    }
 
-    bool UseLocLists = !U->isDWOUnit();
-    StringRef LoclistsSectionData =
-        UseLocLists ? Obj.getLoclistsSection().Data : U->getLocSectionData();
-
-    if (!LoclistsSectionData.empty()) {
-      DataExtractor Data(LoclistsSectionData, Ctx.isLittleEndian(),
-                         Obj.getAddressSize());
-
-      // Old-style location list were used in DWARF v4 (.debug_loc.dwo section).
-      // Modern locations list (.debug_loclists) are used starting from v5.
-      // Ideally we should take the version from the .debug_loclists section
-      // header, but using CU's version for simplicity.
-      auto LL = DWARFDebugLoclists::parseOneLocationList(
-          Data, &Offset, UseLocLists ? U->getVersion() : 4);
-
-      uint64_t BaseAddr = 0;
-      if (Optional<object::SectionedAddress> BA = U->getBaseAddress())
-        BaseAddr = BA->Address;
-
-      if (LL)
-        LL->dump(OS, BaseAddr, Ctx.isLittleEndian(), Obj.getAddressSize(), MRI,
-                 U, Indent);
+    if (FormValue.getForm() == DW_FORM_loclistx) {
+      FormValue.dump(OS, DumpOpts);
+      if (auto LoclistOffset = U->getLoclistOffset(Offset))
+        Offset = *LoclistOffset + U->getLocSectionBase();
       else
-        OS << "error extracting location list.";
+        return;
     }
+    U->getLocationTable().dumpLocationList(&Offset, OS, U->getBaseAddress(),
+                                           MRI, U, DumpOpts, Indent);
+    return;
   }
+
+  FormValue.dump(OS, DumpOpts);
 }
 
 /// Dump the name encoded in the type tag.
@@ -440,6 +405,10 @@ DWARFDie::getAttributeValueAsReferencedDie(const DWARFFormValue &V) const {
 
 Optional<uint64_t> DWARFDie::getRangesBaseAttribute() const {
   return toSectionOffset(find({DW_AT_rnglists_base, DW_AT_GNU_ranges_base}));
+}
+
+Optional<uint64_t> DWARFDie::getLocBaseAttribute() const {
+  return toSectionOffset(find(DW_AT_loclists_base));
 }
 
 Optional<uint64_t> DWARFDie::getHighPC(uint64_t LowPC) const {

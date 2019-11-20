@@ -13,6 +13,7 @@
 
 #include "llvm-c/lto.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/CodeGen/CommandFlags.inc"
 #include "llvm/IR/DiagnosticInfo.h"
@@ -453,7 +454,17 @@ bool lto_codegen_compile_to_file(lto_code_gen_t cg, const char **name) {
 }
 
 void lto_codegen_debug_options(lto_code_gen_t cg, const char *opt) {
-  unwrap(cg)->setCodeGenDebugOptions(opt);
+  std::vector<const char *> Options;
+  for (std::pair<StringRef, StringRef> o = getToken(opt); !o.first.empty();
+       o = getToken(o.second))
+    Options.push_back(o.first.data());
+
+  unwrap(cg)->setCodeGenDebugOptions(Options);
+}
+
+void lto_codegen_debug_options_array(lto_code_gen_t cg,
+                                     const char *const *options, int number) {
+  unwrap(cg)->setCodeGenDebugOptions(makeArrayRef(options, number));
 }
 
 unsigned int lto_api_version() { return LTO_API_VERSION; }
@@ -651,4 +662,10 @@ extern const char *lto_input_get_dependent_library(lto_input_t input,
                                                    size_t index,
                                                    size_t *size) {
   return LTOModule::getDependentLibrary(unwrap(input), index, size);
+}
+
+extern const char *const *lto_runtime_lib_symbols_list(size_t *size) {
+  auto symbols = lto::LTO::getRuntimeLibcallSymbols();
+  *size = symbols.size();
+  return symbols.data();
 }

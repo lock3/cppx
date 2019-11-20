@@ -137,7 +137,8 @@ namespace HexagonISD {
     /// instructions. fmuladd intrinsics will be expanded to FMAs when this
     /// method returns true (and FMAs are legal), otherwise fmuladd is
     /// expanded to mul + add.
-    bool isFMAFasterThanFMulAndFAdd(EVT) const override;
+    bool isFMAFasterThanFMulAndFAdd(const MachineFunction &,
+                                    EVT) const override;
 
     // Should we expand the build vector with shuffles?
     bool shouldExpandBuildVectorWithShuffles(EVT VT,
@@ -229,8 +230,8 @@ namespace HexagonISD {
 
     bool mayBeEmittedAsTailCall(const CallInst *CI) const override;
 
-    unsigned getRegisterByName(const char* RegName, EVT VT,
-                               SelectionDAG &DAG) const override;
+    Register getRegisterByName(const char* RegName, EVT VT,
+                               const MachineFunction &MF) const override;
 
     /// If a physical register, this returns the register that receives the
     /// exception address on entry to an EH pad.

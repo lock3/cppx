@@ -86,8 +86,6 @@ Pass <arg> to the target offloading toolchain identified by <triple>.
 
 Run the static analyzer
 
-.. option:: --analyze-auto
-
 .. option:: --analyzer-no-default-checks
 
 .. option:: --analyzer-output<arg>
@@ -126,7 +124,11 @@ Output path for the plist report
 
 .. option:: -cfguard
 
-Emit tables required for Windows Control Flow Guard.
+Emit tables and checks for Windows Control Flow Guard.
+
+.. option:: -cfguard-no-checks
+
+Emit tables required for Windows Control Flow Guard without checks.
 
 .. option:: -client\_name<arg>
 
@@ -1944,7 +1946,8 @@ Perform ThinLTO importing using provided function summary index
 
 .. option:: -ftime-trace
 
-Turn on time profiler
+Turn on time profiler. Results can be analyzed with chrome://tracing or
+`Speedscope App <https://www.speedscope.app>`_ for flamegraph visualization
 
 .. option:: -ftime-trace-granularity=<arg>
 
@@ -2194,7 +2197,7 @@ Set EABI type, e.g. 4, 5 or gnu (default depends on triple)
 
 .. option:: -mfentry
 
-Insert calls to fentry at function entry (x86 only)
+Insert calls to fentry at function entry (x86/SystemZ only)
 
 .. option:: -mfloat-abi=<arg>
 
@@ -2427,9 +2430,30 @@ Enable XNACK (AMDGPU only)
 
 ARM
 ---
+
+.. option:: -ffixed-r6
+
+Reserve the r6 register (ARM only)
+
+.. option:: -ffixed-r7
+
+Reserve the r7 register (ARM only)
+
+.. option:: -ffixed-r8
+
+Reserve the r8 register (ARM only)
+
 .. option:: -ffixed-r9
 
 Reserve the r9 register (ARM only)
+
+.. option:: -ffixed-r10
+
+Reserve the r10 register (ARM only)
+
+.. option:: -ffixed-r11
+
+Reserve the r11 register (ARM only)
 
 .. option:: -mexecute-only, -mno-execute-only, -mpure-code
 

@@ -19,6 +19,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Demangle/ItaniumDemangle.h"
 
+#include "lldb/Core/Mangled.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/UniqueCStringMap.h"
 #include "lldb/DataFormatters/CXXFunctionPointer.h"
@@ -238,18 +239,16 @@ std::string CPlusPlusLanguage::MethodName::GetScopeQualifiedName() {
   return res;
 }
 
-bool CPlusPlusLanguage::IsCPPMangledName(const char *name) {
+bool CPlusPlusLanguage::IsCPPMangledName(llvm::StringRef name) {
   // FIXME!! we should really run through all the known C++ Language plugins
   // and ask each one if this is a C++ mangled name
 
-  if (name == nullptr)
+  Mangled::ManglingScheme scheme = Mangled::GetManglingScheme(name);
+
+  if (scheme == Mangled::eManglingSchemeNone)
     return false;
 
-  // MSVC style mangling
-  if (name[0] == '?')
-    return true;
-
-  return (name[0] != '\0' && name[0] == '_' && name[1] == 'Z');
+  return true;
 }
 
 bool CPlusPlusLanguage::ExtractContextAndIdentifier(
@@ -550,8 +549,8 @@ static void LoadLibCxxFormatters(lldb::TypeCategoryImplSP cpp_category_sp) {
       ConstString("^std::__[[:alnum:]]+::atomic<.+>$"), stl_synth_flags, true);
 
   cpp_category_sp->GetRegexTypeSyntheticsContainer()->Add(
-      RegularExpressionSP(new RegularExpression(
-          llvm::StringRef("^(std::__[[:alnum:]]+::)deque<.+>(( )?&)?$"))),
+      RegularExpression(
+          llvm::StringRef("^(std::__[[:alnum:]]+::)deque<.+>(( )?&)?$")),
       SyntheticChildrenSP(new ScriptedSyntheticChildren(
           stl_synth_flags,
           "lldb.formatters.cpp.libcxx.stddeque_SynthProvider")));
@@ -568,6 +567,11 @@ static void LoadLibCxxFormatters(lldb::TypeCategoryImplSP cpp_category_sp) {
       "weak_ptr synthetic children",
       ConstString("^(std::__[[:alnum:]]+::)weak_ptr<.+>(( )?&)?$"),
       stl_synth_flags, true);
+  AddCXXSummary(cpp_category_sp,
+                lldb_private::formatters::LibcxxFunctionSummaryProvider,
+                "libc++ std::function summary provider",
+                ConstString("^std::__[[:alnum:]]+::function<.+>$"),
+                stl_summary_flags, true);
 
   stl_summary_flags.SetDontShowChildren(false);
   stl_summary_flags.SetSkipPointers(false);
@@ -750,38 +754,32 @@ static void LoadLibStdcppFormatters(lldb::TypeCategoryImplSP cpp_category_sp) {
       false);
 
   cpp_category_sp->GetRegexTypeSyntheticsContainer()->Add(
-      RegularExpressionSP(
-          new RegularExpression(llvm::StringRef("^std::vector<.+>(( )?&)?$"))),
+      RegularExpression(llvm::StringRef("^std::vector<.+>(( )?&)?$")),
       SyntheticChildrenSP(new ScriptedSyntheticChildren(
           stl_synth_flags,
           "lldb.formatters.cpp.gnu_libstdcpp.StdVectorSynthProvider")));
   cpp_category_sp->GetRegexTypeSyntheticsContainer()->Add(
-      RegularExpressionSP(
-          new RegularExpression(llvm::StringRef("^std::map<.+> >(( )?&)?$"))),
+      RegularExpression(llvm::StringRef("^std::map<.+> >(( )?&)?$")),
       SyntheticChildrenSP(new ScriptedSyntheticChildren(
           stl_synth_flags,
           "lldb.formatters.cpp.gnu_libstdcpp.StdMapSynthProvider")));
   cpp_category_sp->GetRegexTypeSyntheticsContainer()->Add(
-      RegularExpressionSP(new RegularExpression(
-          llvm::StringRef("^std::(__cxx11::)?list<.+>(( )?&)?$"))),
+      RegularExpression(llvm::StringRef("^std::(__cxx11::)?list<.+>(( )?&)?$")),
       SyntheticChildrenSP(new ScriptedSyntheticChildren(
           stl_synth_flags,
           "lldb.formatters.cpp.gnu_libstdcpp.StdListSynthProvider")));
   stl_summary_flags.SetDontShowChildren(false);
   stl_summary_flags.SetSkipPointers(true);
   cpp_category_sp->GetRegexTypeSummariesContainer()->Add(
-      RegularExpressionSP(
-          new RegularExpression(llvm::StringRef("^std::vector<.+>(( )?&)?$"))),
+      RegularExpression(llvm::StringRef("^std::vector<.+>(( )?&)?$")),
       TypeSummaryImplSP(
           new StringSummaryFormat(stl_summary_flags, "size=${svar%#}")));
   cpp_category_sp->GetRegexTypeSummariesContainer()->Add(
-      RegularExpressionSP(
-          new RegularExpression(llvm::StringRef("^std::map<.+> >(( )?&)?$"))),
+      RegularExpression(llvm::StringRef("^std::map<.+> >(( )?&)?$")),
       TypeSummaryImplSP(
           new StringSummaryFormat(stl_summary_flags, "size=${svar%#}")));
   cpp_category_sp->GetRegexTypeSummariesContainer()->Add(
-      RegularExpressionSP(new RegularExpression(
-          llvm::StringRef("^std::(__cxx11::)?list<.+>(( )?&)?$"))),
+      RegularExpression(llvm::StringRef("^std::(__cxx11::)?list<.+>(( )?&)?$")),
       TypeSummaryImplSP(
           new StringSummaryFormat(stl_summary_flags, "size=${svar%#}")));
 

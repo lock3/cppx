@@ -14,6 +14,7 @@
 #include "clang/Basic/FileSystemOptions.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Index/IndexingAction.h"
+#include "clang/Index/IndexingOptions.h"
 #include "clang/Tooling/Tooling.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/STLExtras.h"
@@ -625,6 +626,23 @@ TEST_F(SymbolCollectorTest, Refs) {
   EXPECT_THAT(Refs, Not(Contains(Pair(findSymbol(MainSymbols, "c").ID, _))));
 }
 
+TEST_F(SymbolCollectorTest, NameReferences) {
+  CollectorOpts.RefFilter = RefKind::All;
+  CollectorOpts.RefsInHeaders = true;
+  Annotations Header(R"(
+    class [[Foo]] {
+    public:
+      [[Foo]]() {}
+      ~[[Foo]]() {}
+    };
+  )");
+  CollectorOpts.RefFilter = RefKind::All;
+  runSymbolCollector(Header.code(), "");
+  // When we find references for class Foo, we expect to see all
+  // constructor/destructor references.
+  EXPECT_THAT(Refs, Contains(Pair(findSymbol(Symbols, "Foo").ID,
+                                  HaveRanges(Header.ranges()))));
+}
 
 TEST_F(SymbolCollectorTest, HeaderAsMainFile) {
   CollectorOpts.RefFilter = RefKind::All;
@@ -645,6 +663,17 @@ TEST_F(SymbolCollectorTest, HeaderAsMainFile) {
   TestFileName = testPath("foo.h");
   runSymbolCollector("", Header.code(),
                      /*ExtraArgs=*/{"-xobjective-c++-header"});
+  EXPECT_THAT(Symbols, UnorderedElementsAre(QName("Foo"), QName("Func")));
+  EXPECT_THAT(Refs,
+              UnorderedElementsAre(Pair(findSymbol(Symbols, "Foo").ID,
+                                        HaveRanges(Header.ranges("Foo"))),
+                                   Pair(findSymbol(Symbols, "Func").ID,
+                                        HaveRanges(Header.ranges("Func")))));
+
+  // Run the .hh file as main file (without "-x c++-header"), we should collect
+  // the refs as well.
+  TestFileName = testPath("foo.hh");
+  runSymbolCollector("", Header.code());
   EXPECT_THAT(Symbols, UnorderedElementsAre(QName("Foo"), QName("Func")));
   EXPECT_THAT(Refs, UnorderedElementsAre(Pair(findSymbol(Symbols, "Foo").ID,
                                   HaveRanges(Header.ranges("Foo"))),
@@ -672,8 +701,7 @@ TEST_F(SymbolCollectorTest, Relations) {
   const Symbol &Base = findSymbol(Symbols, "Base");
   const Symbol &Derived = findSymbol(Symbols, "Derived");
   EXPECT_THAT(Relations,
-              Contains(Relation{Base.ID, index::SymbolRole::RelationBaseOf,
-                                Derived.ID}));
+              Contains(Relation{Base.ID, RelationKind::BaseOf, Derived.ID}));
 }
 
 TEST_F(SymbolCollectorTest, References) {
@@ -973,7 +1001,7 @@ TEST_F(SymbolCollectorTest, CanonicalSTLHeader) {
   CanonicalIncludes Includes;
   auto Language = LangOptions();
   Language.CPlusPlus = true;
-  addSystemHeadersMapping(&Includes, Language);
+  Includes.addSystemHeadersMapping(Language);
   CollectorOpts.Includes = &Includes;
   runSymbolCollector("namespace std { class string {}; }", /*Main=*/"");
   EXPECT_THAT(Symbols,

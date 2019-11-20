@@ -26,8 +26,8 @@
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/SmallVector.h"
 
-#include "Plugins/ExpressionParser/Clang/ClangPersistentVariables.h"
 #include "lldb/Core/ClangForward.h"
+#include "lldb/Expression/ExpressionVariable.h"
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeSystem.h"
 #include "lldb/Utility/ConstString.h"
@@ -52,7 +52,14 @@ public:
   }
 
   // Constructors and Destructors
-  ClangASTContext(const char *triple = nullptr);
+  explicit ClangASTContext(llvm::StringRef triple = "");
+  explicit ClangASTContext(ArchSpec arch);
+
+  /// Constructs a ClangASTContext that uses an existing ASTContext internally.
+  /// Useful when having an existing ASTContext created by Clang.
+  ///
+  /// \param existing_ctxt An existing ASTContext.
+  explicit ClangASTContext(clang::ASTContext &existing_ctxt);
 
   ~ClangASTContext() override;
 
@@ -79,8 +86,6 @@ public:
 
   clang::ASTContext *getASTContext();
 
-  void setASTContext(clang::ASTContext *ast_ctx);
-
   clang::Builtin::Context *getBuiltinContext();
 
   clang::IdentifierTable *getIdentifierTable();
@@ -106,20 +111,10 @@ public:
   void setSema(clang::Sema *s);
   clang::Sema *getSema() { return m_sema; }
 
-  void Clear();
-
   const char *GetTargetTriple();
-
-  void SetTargetTriple(const char *target_triple);
-
-  void SetArchitecture(const ArchSpec &arch);
-
-  bool HasExternalSource();
 
   void SetExternalSource(
       llvm::IntrusiveRefCntPtr<clang::ExternalASTSource> &ast_source_up);
-
-  void RemoveExternalSource();
 
   bool GetCompleteDecl(clang::Decl *decl) {
     return ClangASTContext::GetCompleteDecl(getASTContext(), decl);
@@ -158,11 +153,7 @@ public:
 
   CompilerType GetBasicType(lldb::BasicType type);
 
-  static CompilerType GetBasicType(clang::ASTContext *ast,
-                                   lldb::BasicType type);
-
-  static CompilerType GetBasicType(clang::ASTContext *ast,
-                                   ConstString name);
+  CompilerType GetBasicType(ConstString name);
 
   static lldb::BasicType GetBasicTypeEnumeration(ConstString name);
 
@@ -171,12 +162,6 @@ public:
                                                         uint32_t bit_size);
 
   CompilerType GetCStringType(bool is_const);
-
-  static CompilerType GetUnknownAnyType(clang::ASTContext *ast);
-
-  CompilerType GetUnknownAnyType() {
-    return ClangASTContext::GetUnknownAnyType(getASTContext());
-  }
 
   static clang::DeclContext *GetDeclContextForType(clang::QualType type);
 
@@ -266,7 +251,8 @@ public:
   CompilerType CreateRecordType(clang::DeclContext *decl_ctx,
                                 lldb::AccessType access_type, const char *name,
                                 int kind, lldb::LanguageType language,
-                                ClangASTMetadata *metadata = nullptr);
+                                ClangASTMetadata *metadata = nullptr,
+                                bool exports_symbols = false);
 
   class TemplateParameterInfos {
   public:
@@ -312,19 +298,13 @@ public:
                                             class_template_specialization_decl);
 
   static clang::DeclContext *
-  GetAsDeclContext(clang::CXXMethodDecl *cxx_method_decl);
-
-  static clang::DeclContext *
-  GetAsDeclContext(clang::ObjCMethodDecl *objc_method_decl);
+  GetAsDeclContext(clang::FunctionDecl *function_decl);
 
   static bool CheckOverloadedOperatorKindParameterCount(
       bool is_method, clang::OverloadedOperatorKind op_kind,
       uint32_t num_params);
 
   bool FieldIsBitfield(clang::FieldDecl *field, uint32_t &bitfield_bit_size);
-
-  static bool FieldIsBitfield(clang::ASTContext *ast, clang::FieldDecl *field,
-                              uint32_t &bitfield_bit_size);
 
   static bool RecordHasFields(const clang::RecordDecl *record_decl);
 
@@ -346,11 +326,6 @@ public:
 
   clang::NamespaceDecl *
   GetUniqueNamespaceDeclaration(const char *name, clang::DeclContext *decl_ctx,
-                                bool is_inline = false);
-
-  static clang::NamespaceDecl *
-  GetUniqueNamespaceDeclaration(clang::ASTContext *ast, const char *name,
-                                clang::DeclContext *decl_ctx,
                                 bool is_inline = false);
 
   // Function Types
@@ -605,11 +580,7 @@ public:
 
   bool SupportsLanguage(lldb::LanguageType language) override;
 
-  static bool GetCXXClassName(const CompilerType &type,
-                              std::string &class_name);
-
-  static bool GetObjCClassName(const CompilerType &type,
-                               std::string &class_name);
+  static llvm::Optional<std::string> GetCXXClassName(const CompilerType &type);
 
   // Type Completion
 
@@ -693,6 +664,8 @@ public:
   CompilerType GetBasicTypeFromAST(lldb::BasicType basic_type) override;
 
   // Exploring the type
+
+  const llvm::fltSemantics &GetFloatTypeSemantics(size_t byte_size) override;
 
   llvm::Optional<uint64_t> GetByteSize(lldb::opaque_compiler_type_t type,
                        ExecutionContextScope *exe_scope) {
@@ -860,7 +833,6 @@ public:
   static bool SetHasExternalStorage(lldb::opaque_compiler_type_t type,
                                     bool has_extern);
 
-  static bool GetHasExternalStorage(const CompilerType &type);
   // Tag Declarations
   static bool StartTagDeclarationDefinition(const CompilerType &type);
 
@@ -892,6 +864,14 @@ public:
 #endif
 
   void Dump(Stream &s);
+
+  /// Dump clang AST types from the symbol file.
+  ///
+  /// \param[in] s
+  ///       A stream to send the dumped AST node(s) to
+  /// \param[in] symbol_name
+  ///       The name of the symbol to dump, if it is empty dump all the symbols
+  void DumpFromSymbolFile(Stream &s, llvm::StringRef symbol_name);
 
   void DumpValue(lldb::opaque_compiler_type_t type, ExecutionContext *exe_ctx,
                  Stream *s, lldb::Format format, const DataExtractor &data,
@@ -976,43 +956,45 @@ protected:
   GetAsTemplateSpecialization(lldb::opaque_compiler_type_t type);
 
   // Classes that inherit from ClangASTContext can see and modify these
-  // clang-format off
-    std::string                                     m_target_triple;
-    std::unique_ptr<clang::ASTContext>              m_ast_up;
-    std::unique_ptr<clang::LangOptions>             m_language_options_up;
-    std::unique_ptr<clang::FileManager>             m_file_manager_up;
-    std::unique_ptr<clang::SourceManager>           m_source_manager_up;
-    std::unique_ptr<clang::DiagnosticsEngine>       m_diagnostics_engine_up;
-    std::unique_ptr<clang::DiagnosticConsumer>      m_diagnostic_consumer_up;
-    std::shared_ptr<clang::TargetOptions>           m_target_options_rp;
-    std::unique_ptr<clang::TargetInfo>              m_target_info_up;
-    std::unique_ptr<clang::IdentifierTable>         m_identifier_table_up;
-    std::unique_ptr<clang::SelectorTable>           m_selector_table_up;
-    std::unique_ptr<clang::Builtin::Context>        m_builtins_up;
-    std::unique_ptr<DWARFASTParserClang>            m_dwarf_ast_parser_up;
-    std::unique_ptr<PDBASTParser>                   m_pdb_ast_parser_up;
-    std::unique_ptr<ClangASTSource>                 m_scratch_ast_source_up;
-    std::unique_ptr<clang::MangleContext>           m_mangle_ctx_up;
-    CompleteTagDeclCallback                         m_callback_tag_decl;
-    CompleteObjCInterfaceDeclCallback               m_callback_objc_decl;
-    void *                                          m_callback_baton;
-    clang::ExternalASTMerger::OriginMap             m_origins;
-    uint32_t                                        m_pointer_byte_size;
-    bool                                            m_ast_owned;
-    /// The sema associated that is currently used to build this ASTContext.
-    /// May be null if we are already done parsing this ASTContext or the
-    /// ASTContext wasn't created by parsing source code.
-    clang::Sema *                                   m_sema = nullptr;
-  // clang-format on
+  std::string m_target_triple;
+  std::unique_ptr<clang::ASTContext> m_ast_up;
+  std::unique_ptr<clang::LangOptions> m_language_options_up;
+  std::unique_ptr<clang::FileManager> m_file_manager_up;
+  std::unique_ptr<clang::SourceManager> m_source_manager_up;
+  std::unique_ptr<clang::DiagnosticsEngine> m_diagnostics_engine_up;
+  std::unique_ptr<clang::DiagnosticConsumer> m_diagnostic_consumer_up;
+  std::shared_ptr<clang::TargetOptions> m_target_options_rp;
+  std::unique_ptr<clang::TargetInfo> m_target_info_up;
+  std::unique_ptr<clang::IdentifierTable> m_identifier_table_up;
+  std::unique_ptr<clang::SelectorTable> m_selector_table_up;
+  std::unique_ptr<clang::Builtin::Context> m_builtins_up;
+  std::unique_ptr<DWARFASTParserClang> m_dwarf_ast_parser_up;
+  std::unique_ptr<PDBASTParser> m_pdb_ast_parser_up;
+  std::unique_ptr<ClangASTSource> m_scratch_ast_source_up;
+  std::unique_ptr<clang::MangleContext> m_mangle_ctx_up;
+  CompleteTagDeclCallback m_callback_tag_decl = nullptr;
+  CompleteObjCInterfaceDeclCallback m_callback_objc_decl = nullptr;
+  void *m_callback_baton = nullptr;
+  clang::ExternalASTMerger::OriginMap m_origins;
+  uint32_t m_pointer_byte_size = 0;
+  bool m_ast_owned = false;
+  /// The sema associated that is currently used to build this ASTContext.
+  /// May be null if we are already done parsing this ASTContext or the
+  /// ASTContext wasn't created by parsing source code.
+  clang::Sema *m_sema = nullptr;
+
 private:
   // For ClangASTContext only
   ClangASTContext(const ClangASTContext &);
   const ClangASTContext &operator=(const ClangASTContext &);
+  /// Creates the internal ASTContext.
+  void CreateASTContext();
+  void SetTargetTriple(llvm::StringRef target_triple);
 };
 
 class ClangASTContextForExpressions : public ClangASTContext {
 public:
-  ClangASTContextForExpressions(Target &target);
+  ClangASTContextForExpressions(Target &target, ArchSpec arch);
 
   ~ClangASTContextForExpressions() override = default;
 
@@ -1040,13 +1022,9 @@ public:
   }
 private:
   lldb::TargetWP m_target_wp;
-  lldb::ClangPersistentVariablesUP m_persistent_variables; ///< These are the
-                                                           ///persistent
-                                                           ///variables
-                                                           ///associated with
-                                                           ///this process for
-                                                           ///the expression
-                                                           ///parser.
+  std::unique_ptr<PersistentExpressionState>
+      m_persistent_variables; // These are the persistent variables associated
+                              // with this process for the expression parser
 };
 
 } // namespace lldb_private

@@ -124,6 +124,7 @@ namespace clang {
     void VisitBlockDecl(BlockDecl *D);
     void VisitCapturedDecl(CapturedDecl *D);
     void VisitEmptyDecl(EmptyDecl *D);
+    void VisitLifetimeExtendedTemporaryDecl(LifetimeExtendedTemporaryDecl *D);
 
     void VisitDeclContext(DeclContext *DC);
     template <typename T> void VisitRedeclarable(Redeclarable<T> *D);
@@ -476,6 +477,9 @@ void ASTDeclWriter::VisitRecordDecl(RecordDecl *D) {
   Record.push_back(D->isNonTrivialToPrimitiveDefaultInitialize());
   Record.push_back(D->isNonTrivialToPrimitiveCopy());
   Record.push_back(D->isNonTrivialToPrimitiveDestroy());
+  Record.push_back(D->hasNonTrivialToPrimitiveDefaultInitializeCUnion());
+  Record.push_back(D->hasNonTrivialToPrimitiveDestructCUnion());
+  Record.push_back(D->hasNonTrivialToPrimitiveCopyCUnion());
   Record.push_back(D->isParamDestroyedInCallee());
   Record.push_back(D->getArgPassingRestrictions());
 
@@ -670,6 +674,7 @@ void ASTDeclWriter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
   Record.push_back(D->isInstanceMethod());
   Record.push_back(D->isVariadic());
   Record.push_back(D->isPropertyAccessor());
+  Record.push_back(D->isSynthesizedAccessorStub());
   Record.push_back(D->isDefined());
   Record.push_back(D->isOverriding());
   Record.push_back(D->hasSkippedBody());
@@ -881,6 +886,8 @@ void ASTDeclWriter::VisitObjCPropertyImplDecl(ObjCPropertyImplDecl *D) {
   Record.AddDeclRef(D->getPropertyDecl());
   Record.AddDeclRef(D->getPropertyIvarDecl());
   Record.AddSourceLocation(D->getPropertyIvarDeclLoc());
+  Record.AddDeclRef(D->getGetterMethodDecl());
+  Record.AddDeclRef(D->getSetterMethodDecl());
   Record.AddStmt(D->getGetterCXXConstructor());
   Record.AddStmt(D->getSetterCXXAssignment());
   Code = serialization::DECL_OBJC_PROPERTY_IMPL;
@@ -965,7 +972,14 @@ void ASTDeclWriter::VisitVarDecl(VarDecl *D) {
   Record.push_back(D->getLinkageInternal());
 
   if (D->getInit()) {
-    Record.push_back(!D->isInitKnownICE() ? 1 : (D->isInitICE() ? 3 : 2));
+    if (!D->isInitKnownICE())
+      Record.push_back(1);
+    else {
+      Record.push_back(
+          2 |
+          (D->isInitICE() ? 1 : 0) |
+          (D->ensureEvaluatedStmt()->HasConstantDestruction ? 4 : 0));
+    }
     Record.AddStmt(D->getInit());
   } else {
     Record.push_back(0);
@@ -1121,6 +1135,17 @@ void ASTDeclWriter::VisitEmptyDecl(EmptyDecl *D) {
   Code = serialization::DECL_EMPTY;
 }
 
+void ASTDeclWriter::VisitLifetimeExtendedTemporaryDecl(
+    LifetimeExtendedTemporaryDecl *D) {
+  VisitDecl(D);
+  Record.AddDeclRef(D->getExtendingDecl());
+  Record.AddStmt(D->getTemporaryExpr());
+  Record.push_back(static_cast<bool>(D->getValue()));
+  if (D->getValue())
+    Record.AddAPValue(*D->getValue());
+  Record.push_back(D->getManglingNumber());
+  Code = serialization::DECL_LIFETIME_EXTENDED_TEMPORARY;
+}
 void ASTDeclWriter::VisitBlockDecl(BlockDecl *D) {
   VisitDecl(D);
   Record.AddStmt(D->getBody());
@@ -1598,7 +1623,7 @@ void ASTDeclWriter::VisitTemplateTypeParmDecl(TemplateTypeParmDecl *D) {
   VisitTypeDecl(D);
 
   Record.push_back(D->wasDeclaredWithTypename());
-
+  // TODO: Concepts - constrained parameters.
   bool OwnsDefaultArg = D->hasDefaultArgument() &&
                         !D->defaultArgumentWasInherited();
   Record.push_back(OwnsDefaultArg);
@@ -1628,6 +1653,7 @@ void ASTDeclWriter::VisitNonTypeTemplateParmDecl(NonTypeTemplateParmDecl *D) {
 
     Code = serialization::DECL_EXPANDED_NON_TYPE_TEMPLATE_PARM_PACK;
   } else {
+    // TODO: Concepts - constrained parameters.
     // Rest of NonTypeTemplateParmDecl.
     Record.push_back(D->isParameterPack());
     bool OwnsDefaultArg = D->hasDefaultArgument() &&
@@ -1657,6 +1683,7 @@ void ASTDeclWriter::VisitTemplateTemplateParmDecl(TemplateTemplateParmDecl *D) {
       Record.AddTemplateParameterList(D->getExpansionTemplateParameters(I));
     Code = serialization::DECL_EXPANDED_TEMPLATE_TEMPLATE_PARM_PACK;
   } else {
+    // TODO: Concepts - constrained parameters.
     // Rest of TemplateTemplateParmDecl.
     Record.push_back(D->isParameterPack());
     bool OwnsDefaultArg = D->hasDefaultArgument() &&
@@ -1999,6 +2026,12 @@ void ASTWriter::WriteDeclAbbrevs() {
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));
   // isNonTrivialToPrimitiveDestroy
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));
+  // hasNonTrivialToPrimitiveDefaultInitializeCUnion
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));
+  // hasNonTrivialToPrimitiveDestructCUnion
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));
+  // hasNonTrivialToPrimitiveCopyCUnion
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));
   // isParamDestroyedInCallee
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));
   // getArgPassingRestrictions
@@ -2131,7 +2164,7 @@ void ASTWriter::WriteDeclAbbrevs() {
   Abv->Add(BitCodeAbbrevOp(0));                         // ImplicitParamKind
   Abv->Add(BitCodeAbbrevOp(0));                         // EscapingByref
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 3)); // Linkage
-  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 2)); // IsInitICE (local)
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 3)); // IsInitICE (local)
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 2)); // VarKind (local enum)
   // Type Source Info
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));

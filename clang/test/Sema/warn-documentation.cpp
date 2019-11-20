@@ -868,7 +868,7 @@ struct test_noattach12 *test_attach13;
 /// \brief\author Aaa
 typedef struct test_noattach14 *test_attach15;
 
-// expected-warning@+1 {{empty paragraph passed to '\brief' command}}
+// expected-warning@+1 + {{empty paragraph passed to '\brief' command}}
 /// \brief\author Aaa
 typedef struct test_attach16 { int a; } test_attach17;
 
@@ -886,7 +886,7 @@ typedef struct S *test_attach19;
 /// \brief\author Aaa
 struct test_attach20;
 
-// expected-warning@+1 {{empty paragraph passed to '\brief' command}}
+// expected-warning@+1 + {{empty paragraph passed to '\brief' command}}
 /// \brief\author Aaa
 typedef struct test_attach21 {
   // expected-warning@+1 {{empty paragraph passed to '\brief' command}}
@@ -1360,3 +1360,34 @@ using VariadicFnType2 = void (*)(int a, ...);
  */
 class EmptyNoteNoCrash {
 };
+
+namespace PR42844 { // Assertion failures when using typedefed function pointers
+typedef void (*AA)();
+typedef AA A();
+A *a; ///< \return none
+// expected-warning@-1 {{'\return' command used in a comment that is not attached to a function or method declaration}}
+
+typedef void B();
+B *b; ///< \return none
+// expected-warning@-1 {{'\return' command used in a comment that is not attached to a function or method declaration}}
+
+void CC();
+typedef void C();
+C &c = CC; ///< \return none
+// expected-warning@-1 {{'\return' command used in a comment that is not attached to a function or method declaration}}
+
+using DD = void(*)();
+using D = DD();
+D *d; ///< \return none
+// expected-warning@-1 {{'\return' command used in a comment that is not attached to a function or method declaration}}
+
+using E = void();
+E *e; ///< \return none
+// expected-warning@-1 {{'\return' command used in a comment that is not attached to a function or method declaration}}
+
+void FF();
+using F = void();
+F &f = FF; ///< \return none
+// expected-warning@-1 {{'\return' command used in a comment that is not attached to a function or method declaration}}
+
+} // namespace PR42844

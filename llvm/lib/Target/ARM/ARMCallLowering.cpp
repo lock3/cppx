@@ -90,6 +90,8 @@ struct OutgoingValueHandler : public CallLowering::ValueHandler {
                        MachineInstrBuilder &MIB, CCAssignFn *AssignFn)
       : ValueHandler(MIRBuilder, MRI, AssignFn), MIB(MIB) {}
 
+  bool isIncomingArgumentHandler() const override { return false; }
+
   Register getStackAddress(uint64_t Size, int64_t Offset,
                            MachinePointerInfo &MPO) override {
     assert((Size == 1 || Size == 2 || Size == 4 || Size == 8) &&
@@ -104,7 +106,7 @@ struct OutgoingValueHandler : public CallLowering::ValueHandler {
     MIRBuilder.buildConstant(OffsetReg, Offset);
 
     Register AddrReg = MRI.createGenericVirtualRegister(p0);
-    MIRBuilder.buildGEP(AddrReg, SPReg, OffsetReg);
+    MIRBuilder.buildPtrAdd(AddrReg, SPReg, OffsetReg);
 
     MPO = MachinePointerInfo::getStack(MIRBuilder.getMF(), Offset);
     return AddrReg;
@@ -169,8 +171,9 @@ struct OutgoingValueHandler : public CallLowering::ValueHandler {
 
   bool assignArg(unsigned ValNo, MVT ValVT, MVT LocVT,
                  CCValAssign::LocInfo LocInfo,
-                 const CallLowering::ArgInfo &Info, CCState &State) override {
-    if (AssignFn(ValNo, ValVT, LocVT, LocInfo, Info.Flags, State))
+                 const CallLowering::ArgInfo &Info, ISD::ArgFlagsTy Flags,
+                 CCState &State) override {
+    if (AssignFn(ValNo, ValVT, LocVT, LocInfo, Flags, State))
       return true;
 
     StackSize =
@@ -199,9 +202,8 @@ void ARMCallLowering::splitToValueTypes(const ArgInfo &OrigArg,
   if (SplitVTs.size() == 1) {
     // Even if there is no splitting to do, we still want to replace the
     // original type (e.g. pointer type -> integer).
-    auto Flags = OrigArg.Flags;
-    unsigned OriginalAlignment = DL.getABITypeAlignment(OrigArg.Ty);
-    Flags.setOrigAlign(OriginalAlignment);
+    auto Flags = OrigArg.Flags[0];
+    Flags.setOrigAlign(Align(DL.getABITypeAlignment(OrigArg.Ty)));
     SplitArgs.emplace_back(OrigArg.Regs[0], SplitVTs[0].getTypeForEVT(Ctx),
                            Flags, OrigArg.IsFixed);
     return;
@@ -211,10 +213,9 @@ void ARMCallLowering::splitToValueTypes(const ArgInfo &OrigArg,
   for (unsigned i = 0, e = SplitVTs.size(); i != e; ++i) {
     EVT SplitVT = SplitVTs[i];
     Type *SplitTy = SplitVT.getTypeForEVT(Ctx);
-    auto Flags = OrigArg.Flags;
+    auto Flags = OrigArg.Flags[0];
 
-    unsigned OriginalAlignment = DL.getABITypeAlignment(SplitTy);
-    Flags.setOrigAlign(OriginalAlignment);
+    Flags.setOrigAlign(Align(DL.getABITypeAlignment(SplitTy)));
 
     bool NeedsConsecutiveRegisters =
         TLI.functionArgumentNeedsConsecutiveRegisters(
@@ -547,7 +548,7 @@ bool ARMCallLowering::lowerCall(MachineIRBuilder &MIRBuilder, CallLoweringInfo &
     if (!Arg.IsFixed)
       IsVarArg = true;
 
-    if (Arg.Flags.isByVal())
+    if (Arg.Flags[0].isByVal())
       return false;
 
     splitToValueTypes(Arg, ArgInfos, MF);

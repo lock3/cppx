@@ -48,6 +48,7 @@
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/Function.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/BlockFrequency.h"
@@ -79,16 +80,17 @@ STATISTIC(CondBranchTakenFreq,
 STATISTIC(UncondBranchTakenFreq,
           "Potential frequency of taking unconditional branches");
 
-static cl::opt<unsigned> AlignAllBlock("align-all-blocks",
-                                       cl::desc("Force the alignment of all "
-                                                "blocks in the function."),
-                                       cl::init(0), cl::Hidden);
+static cl::opt<unsigned> AlignAllBlock(
+    "align-all-blocks",
+    cl::desc("Force the alignment of all blocks in the function in log2 format "
+             "(e.g 4 means align on 16B boundaries)."),
+    cl::init(0), cl::Hidden);
 
 static cl::opt<unsigned> AlignAllNonFallThruBlocks(
     "align-all-nofallthru-blocks",
-    cl::desc("Force the alignment of all "
-             "blocks that have no fall-through predecessors (i.e. don't add "
-             "nops that are executed)."),
+    cl::desc("Force the alignment of all blocks that have no fall-through "
+             "predecessors (i.e. don't add nops that are executed). In log2 "
+             "format (e.g 4 means align on 16B boundaries)."),
     cl::init(0), cl::Hidden);
 
 // FIXME: Find a good default for this flag and remove the flag.
@@ -2763,8 +2765,8 @@ void MachineBlockPlacement::alignBlocks() {
     if (!L)
       continue;
 
-    unsigned Align = TLI->getPrefLoopAlignment(L);
-    if (!Align)
+    const Align Align = TLI->getPrefLoopAlignment(L);
+    if (Align == 1)
       continue; // Don't care about loop alignment.
 
     // If the block is cold relative to the function entry don't waste space
@@ -3038,8 +3040,9 @@ bool MachineBlockPlacement::runOnMachineFunction(MachineFunction &MF) {
     BranchFolder BF(/*EnableTailMerge=*/true, /*CommonHoist=*/false, *MBFI,
                     *MBPI, TailMergeSize);
 
+    auto *MMIWP = getAnalysisIfAvailable<MachineModuleInfoWrapperPass>();
     if (BF.OptimizeFunction(MF, TII, MF.getSubtarget().getRegisterInfo(),
-                            getAnalysisIfAvailable<MachineModuleInfo>(), MLI,
+                            MMIWP ? &MMIWP->getMMI() : nullptr, MLI,
                             /*AfterPlacement=*/true)) {
       // Redo the layout if tail merging creates/removes/moves blocks.
       BlockToChain.clear();
@@ -3062,14 +3065,14 @@ bool MachineBlockPlacement::runOnMachineFunction(MachineFunction &MF) {
   if (AlignAllBlock)
     // Align all of the blocks in the function to a specific alignment.
     for (MachineBasicBlock &MBB : MF)
-      MBB.setAlignment(AlignAllBlock);
+      MBB.setAlignment(Align(1ULL << AlignAllBlock));
   else if (AlignAllNonFallThruBlocks) {
     // Align all of the blocks that have no fall-through predecessors to a
     // specific alignment.
     for (auto MBI = std::next(MF.begin()), MBE = MF.end(); MBI != MBE; ++MBI) {
       auto LayoutPred = std::prev(MBI);
       if (!LayoutPred->isSuccessor(&*MBI))
-        MBI->setAlignment(AlignAllNonFallThruBlocks);
+        MBI->setAlignment(Align(1ULL << AlignAllNonFallThruBlocks));
     }
   }
   if (ViewBlockLayoutWithBFI != GVDT_None &&

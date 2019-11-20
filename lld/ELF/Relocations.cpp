@@ -53,6 +53,7 @@
 #include "lld/Common/Memory.h"
 #include "lld/Common/Strings.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/Demangle/Demangle.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
@@ -62,9 +63,8 @@ using namespace llvm::ELF;
 using namespace llvm::object;
 using namespace llvm::support::endian;
 
-using namespace lld;
-using namespace lld::elf;
-
+namespace lld {
+namespace elf {
 static Optional<std::string> getLinkerScriptLocation(const Symbol &sym) {
   for (BaseCommand *base : script->sectionCommands)
     if (auto *cmd = dyn_cast<SymbolAssignment>(base))
@@ -539,7 +539,7 @@ static void replaceWithDefined(Symbol &sym, SectionBase *sec, uint64_t value,
 //
 // As you can see in this function, we create a copy relocation for the
 // dynamic linker, and the relocation contains not only symbol name but
-// various other informtion about the symbol. So, such attributes become a
+// various other information about the symbol. So, such attributes become a
 // part of the ABI.
 //
 // Note for application developers: I can give you a piece of advice if
@@ -554,7 +554,7 @@ static void replaceWithDefined(Symbol &sym, SectionBase *sec, uint64_t value,
 // reserved in .bss unless you recompile the main program. That means they
 // are likely to overlap with other data that happens to be laid out next
 // to the variable in .bss. This kind of issue is sometimes very hard to
-// debug. What's a solution? Instead of exporting a varaible V from a DSO,
+// debug. What's a solution? Instead of exporting a variable V from a DSO,
 // define an accessor getV().
 template <class ELFT> static void addCopyRelSymbol(SharedSymbol &ss) {
   // Copy relocation against zero-sized symbol doesn't make sense.
@@ -567,10 +567,16 @@ template <class ELFT> static void addCopyRelSymbol(SharedSymbol &ss) {
   bool isRO = isReadOnly<ELFT>(ss);
   BssSection *sec =
       make<BssSection>(isRO ? ".bss.rel.ro" : ".bss", symSize, ss.alignment);
-  if (isRO)
-    in.bssRelRo->getParent()->addSection(sec);
-  else
-    in.bss->getParent()->addSection(sec);
+  OutputSection *osec = (isRO ? in.bssRelRo : in.bss)->getParent();
+
+  // At this point, sectionBases has been migrated to sections. Append sec to
+  // sections.
+  if (osec->sectionCommands.empty() ||
+      !isa<InputSectionDescription>(osec->sectionCommands.back()))
+    osec->sectionCommands.push_back(make<InputSectionDescription>(""));
+  auto *isd = cast<InputSectionDescription>(osec->sectionCommands.back());
+  isd->sections.push_back(sec);
+  osec->commitSection(sec);
 
   // Look through the DSO's dynamic symbol table for aliases and create a
   // dynamic symbol for each one. This causes the copy relocation to correctly
@@ -691,8 +697,125 @@ struct UndefinedDiag {
 
 static std::vector<UndefinedDiag> undefs;
 
+// Check whether the definition name def is a mangled function name that matches
+// the reference name ref.
+static bool canSuggestExternCForCXX(StringRef ref, StringRef def) {
+  llvm::ItaniumPartialDemangler d;
+  std::string name = def.str();
+  if (d.partialDemangle(name.c_str()))
+    return false;
+  char *buf = d.getFunctionName(nullptr, nullptr);
+  if (!buf)
+    return false;
+  bool ret = ref == buf;
+  free(buf);
+  return ret;
+}
+
+// Suggest an alternative spelling of an "undefined symbol" diagnostic. Returns
+// the suggested symbol, which is either in the symbol table, or in the same
+// file of sym.
+static const Symbol *getAlternativeSpelling(const Undefined &sym,
+                                            std::string &pre_hint,
+                                            std::string &post_hint) {
+  // Build a map of local defined symbols.
+  DenseMap<StringRef, const Symbol *> map;
+  if (sym.file && !isa<SharedFile>(sym.file)) {
+    for (const Symbol *s : sym.file->getSymbols())
+      if (s->isLocal() && s->isDefined())
+        map.try_emplace(s->getName(), s);
+  }
+
+  auto suggest = [&](StringRef newName) -> const Symbol * {
+    // If defined locally.
+    if (const Symbol *s = map.lookup(newName))
+      return s;
+
+    // If in the symbol table and not undefined.
+    if (const Symbol *s = symtab->find(newName))
+      if (!s->isUndefined())
+        return s;
+
+    return nullptr;
+  };
+
+  // This loop enumerates all strings of Levenshtein distance 1 as typo
+  // correction candidates and suggests the one that exists as a non-undefined
+  // symbol.
+  StringRef name = sym.getName();
+  for (size_t i = 0, e = name.size(); i != e + 1; ++i) {
+    // Insert a character before name[i].
+    std::string newName = (name.substr(0, i) + "0" + name.substr(i)).str();
+    for (char c = '0'; c <= 'z'; ++c) {
+      newName[i] = c;
+      if (const Symbol *s = suggest(newName))
+        return s;
+    }
+    if (i == e)
+      break;
+
+    // Substitute name[i].
+    newName = name;
+    for (char c = '0'; c <= 'z'; ++c) {
+      newName[i] = c;
+      if (const Symbol *s = suggest(newName))
+        return s;
+    }
+
+    // Transpose name[i] and name[i+1]. This is of edit distance 2 but it is
+    // common.
+    if (i + 1 < e) {
+      newName[i] = name[i + 1];
+      newName[i + 1] = name[i];
+      if (const Symbol *s = suggest(newName))
+        return s;
+    }
+
+    // Delete name[i].
+    newName = (name.substr(0, i) + name.substr(i + 1)).str();
+    if (const Symbol *s = suggest(newName))
+      return s;
+  }
+
+  // The reference may be a mangled name while the definition is not. Suggest a
+  // missing extern "C".
+  if (name.startswith("_Z")) {
+    std::string buf = name.str();
+    llvm::ItaniumPartialDemangler d;
+    if (!d.partialDemangle(buf.c_str()))
+      if (char *buf = d.getFunctionName(nullptr, nullptr)) {
+        const Symbol *s = suggest(buf);
+        free(buf);
+        if (s) {
+          pre_hint = ": extern \"C\" ";
+          return s;
+        }
+      }
+  } else {
+    const Symbol *s = nullptr;
+    for (auto &it : map)
+      if (canSuggestExternCForCXX(name, it.first)) {
+        s = it.second;
+        break;
+      }
+    if (!s)
+      symtab->forEachSymbol([&](Symbol *sym) {
+        if (!s && canSuggestExternCForCXX(name, sym->getName()))
+          s = sym;
+      });
+    if (s) {
+      pre_hint = " to declare ";
+      post_hint = " as extern \"C\"?";
+      return s;
+    }
+  }
+
+  return nullptr;
+}
+
 template <class ELFT>
-static void reportUndefinedSymbol(const UndefinedDiag &undef) {
+static void reportUndefinedSymbol(const UndefinedDiag &undef,
+                                  bool correctSpelling) {
   Symbol &sym = *undef.sym;
 
   auto visibility = [&]() -> std::string {
@@ -732,6 +855,16 @@ static void reportUndefinedSymbol(const UndefinedDiag &undef) {
     msg += ("\n>>> referenced " + Twine(undef.locs.size() - i) + " more times")
                .str();
 
+  if (correctSpelling) {
+    std::string pre_hint = ": ", post_hint;
+    if (const Symbol *corrected =
+            getAlternativeSpelling(cast<Undefined>(sym), pre_hint, post_hint)) {
+      msg += "\n>>> did you mean" + pre_hint + toString(*corrected) + post_hint;
+      if (corrected->file)
+        msg += "\n>>> defined in: " + toString(corrected->file);
+    }
+  }
+
   if (sym.getName().startswith("_ZTV"))
     msg += "\nthe vtable symbol may be undefined because the class is missing "
            "its key function (see https://lld.llvm.org/missingkeyfunction)";
@@ -742,7 +875,7 @@ static void reportUndefinedSymbol(const UndefinedDiag &undef) {
     error(msg);
 }
 
-template <class ELFT> void elf::reportUndefinedSymbols() {
+template <class ELFT> void reportUndefinedSymbols() {
   // Find the first "undefined symbol" diagnostic for each diagnostic, and
   // collect all "referenced from" lines at the first diagnostic.
   DenseMap<Symbol *, UndefinedDiag *> firstRef;
@@ -755,10 +888,10 @@ template <class ELFT> void elf::reportUndefinedSymbols() {
       firstRef[undef.sym] = &undef;
   }
 
-  for (const UndefinedDiag &undef : undefs) {
-    if (!undef.locs.empty())
-      reportUndefinedSymbol<ELFT>(undef);
-  }
+  // Enable spell corrector for the first 2 diagnostics.
+  for (auto it : enumerate(undefs))
+    if (!it.value().locs.empty())
+      reportUndefinedSymbol<ELFT>(it.value(), it.index() < 2);
   undefs.clear();
 }
 
@@ -1142,9 +1275,9 @@ static void scanReloc(InputSectionBase &sec, OffsetGetter &getOffset, RelTy *&i,
   //
   // If we know that a PLT entry will be resolved within the same ELF module, we
   // can skip PLT access and directly jump to the destination function. For
-  // example, if we are linking a main exectuable, all dynamic symbols that can
+  // example, if we are linking a main executable, all dynamic symbols that can
   // be resolved within the executable will actually be resolved that way at
-  // runtime, because the main exectuable is always at the beginning of a search
+  // runtime, because the main executable is always at the beginning of a search
   // list. We can leverage that fact.
   if (!sym.isPreemptible && (!sym.isGnuIFunc() || config->zIfuncNoplt)) {
     if (expr == R_GOT_PC && !isAbsoluteValue(sym)) {
@@ -1324,7 +1457,7 @@ static void scanRelocs(InputSectionBase &sec, ArrayRef<RelTy> rels) {
                       });
 }
 
-template <class ELFT> void elf::scanRelocations(InputSectionBase &s) {
+template <class ELFT> void scanRelocations(InputSectionBase &s) {
   if (s.areRelocsRela)
     scanRelocs<ELFT>(s, s.relas<ELFT>());
   else
@@ -1751,11 +1884,14 @@ bool ThunkCreator::createThunks(ArrayRef<OutputSection *> outputSections) {
   return addressesChanged;
 }
 
-template void elf::scanRelocations<ELF32LE>(InputSectionBase &);
-template void elf::scanRelocations<ELF32BE>(InputSectionBase &);
-template void elf::scanRelocations<ELF64LE>(InputSectionBase &);
-template void elf::scanRelocations<ELF64BE>(InputSectionBase &);
-template void elf::reportUndefinedSymbols<ELF32LE>();
-template void elf::reportUndefinedSymbols<ELF32BE>();
-template void elf::reportUndefinedSymbols<ELF64LE>();
-template void elf::reportUndefinedSymbols<ELF64BE>();
+template void scanRelocations<ELF32LE>(InputSectionBase &);
+template void scanRelocations<ELF32BE>(InputSectionBase &);
+template void scanRelocations<ELF64LE>(InputSectionBase &);
+template void scanRelocations<ELF64BE>(InputSectionBase &);
+template void reportUndefinedSymbols<ELF32LE>();
+template void reportUndefinedSymbols<ELF32BE>();
+template void reportUndefinedSymbols<ELF64LE>();
+template void reportUndefinedSymbols<ELF64BE>();
+
+} // namespace elf
+} // namespace lld

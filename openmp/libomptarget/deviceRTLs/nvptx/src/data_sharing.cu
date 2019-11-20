@@ -13,14 +13,9 @@
 #include "target_impl.h"
 #include <stdio.h>
 
-// Warp ID in the CUDA block
-INLINE static unsigned getWarpId() { return threadIdx.x / WARPSIZE; }
-// Lane ID in the CUDA warp.
-INLINE static unsigned getLaneId() { return threadIdx.x % WARPSIZE; }
-
 // Return true if this is the first active thread in the warp.
 INLINE static bool IsWarpMasterActiveThread() {
-  unsigned long long Mask = __ACTIVEMASK();
+  unsigned long long Mask = __kmpc_impl_activemask();
   unsigned long long ShNum = WARPSIZE - (GetThreadIdInBlock() % WARPSIZE);
   unsigned long long Sh = Mask << ShNum;
   // Truncate Sh to the 32 lower bits
@@ -67,7 +62,7 @@ __kmpc_initialize_data_sharing_environment(__kmpc_data_sharing_slot *rootS,
   DSPRINT0(DSFLAG_INIT,
            "Entering __kmpc_initialize_data_sharing_environment\n");
 
-  unsigned WID = getWarpId();
+  unsigned WID = GetWarpId();
   DSPRINT(DSFLAG_INIT, "Warp ID: %u\n", WID);
 
   omptarget_nvptx_TeamDescr *teamDescr =
@@ -96,7 +91,7 @@ __kmpc_initialize_data_sharing_environment(__kmpc_data_sharing_slot *rootS,
 
 EXTERN void *__kmpc_data_sharing_environment_begin(
     __kmpc_data_sharing_slot **SavedSharedSlot, void **SavedSharedStack,
-    void **SavedSharedFrame, int32_t *SavedActiveThreads,
+    void **SavedSharedFrame, __kmpc_impl_lanemask_t *SavedActiveThreads,
     size_t SharingDataSize, size_t SharingDefaultDataSize,
     int16_t IsOMPRuntimeInitialized) {
 
@@ -111,13 +106,13 @@ EXTERN void *__kmpc_data_sharing_environment_begin(
   DSPRINT(DSFLAG, "Default Data Size %016llx\n",
           (unsigned long long)SharingDefaultDataSize);
 
-  unsigned WID = getWarpId();
-  unsigned CurActiveThreads = __ACTIVEMASK();
+  unsigned WID = GetWarpId();
+  __kmpc_impl_lanemask_t CurActiveThreads = __kmpc_impl_activemask();
 
   __kmpc_data_sharing_slot *&SlotP = DataSharingState.SlotPtr[WID];
   void *&StackP = DataSharingState.StackPtr[WID];
   void * volatile &FrameP = DataSharingState.FramePtr[WID];
-  int32_t &ActiveT = DataSharingState.ActiveThreads[WID];
+  __kmpc_impl_lanemask_t &ActiveT = DataSharingState.ActiveThreads[WID];
 
   DSPRINT0(DSFLAG, "Save current slot/stack values.\n");
   // Save the current values.
@@ -180,13 +175,14 @@ EXTERN void *__kmpc_data_sharing_environment_begin(
         } else {
           DSPRINT(DSFLAG, "Cleaning up -failed reuse - %016llx\n",
                   (unsigned long long)SlotP->Next);
-          free(ExistingSlot);
+          SafeFree(ExistingSlot, "Failed reuse");
         }
       }
 
       if (!NewSlot) {
-        NewSlot = (__kmpc_data_sharing_slot *)malloc(
-            sizeof(__kmpc_data_sharing_slot) + NewSize);
+        NewSlot = (__kmpc_data_sharing_slot *)SafeMalloc(
+            sizeof(__kmpc_data_sharing_slot) + NewSize,
+            "Warp master slot allocation");
         DSPRINT(DSFLAG, "New slot allocated %016llx (data size=%016llx)\n",
                 (unsigned long long)NewSlot, NewSize);
       }
@@ -205,7 +201,7 @@ EXTERN void *__kmpc_data_sharing_environment_begin(
       if (SlotP->Next) {
         DSPRINT(DSFLAG, "Cleaning up - old not required - %016llx\n",
                 (unsigned long long)SlotP->Next);
-        free(SlotP->Next);
+        SafeFree(SlotP->Next, "Old slot not required");
         SlotP->Next = 0;
       }
 
@@ -225,12 +221,12 @@ EXTERN void *__kmpc_data_sharing_environment_begin(
 
 EXTERN void __kmpc_data_sharing_environment_end(
     __kmpc_data_sharing_slot **SavedSharedSlot, void **SavedSharedStack,
-    void **SavedSharedFrame, int32_t *SavedActiveThreads,
+    void **SavedSharedFrame, __kmpc_impl_lanemask_t *SavedActiveThreads,
     int32_t IsEntryPoint) {
 
   DSPRINT0(DSFLAG, "Entering __kmpc_data_sharing_environment_end\n");
 
-  unsigned WID = getWarpId();
+  unsigned WID = GetWarpId();
 
   if (IsEntryPoint) {
     if (IsWarpMasterActiveThread()) {
@@ -243,7 +239,7 @@ EXTERN void __kmpc_data_sharing_environment_end(
                                         : DataSharingState.SlotPtr[WID];
 
       if (S->Next) {
-        free(S->Next);
+        SafeFree(S->Next, "Sharing environment end");
         S->Next = 0;
       }
     }
@@ -252,7 +248,7 @@ EXTERN void __kmpc_data_sharing_environment_end(
     return;
   }
 
-  int32_t CurActive = __ACTIVEMASK();
+  __kmpc_impl_lanemask_t CurActive = __kmpc_impl_activemask();
 
   // Only the warp master can restore the stack and frame information, and only
   // if there are no other threads left behind in this environment (i.e. the
@@ -260,7 +256,7 @@ EXTERN void __kmpc_data_sharing_environment_end(
   // assume that threads will converge right after the call site that started
   // the environment.
   if (IsWarpMasterActiveThread()) {
-    int32_t &ActiveT = DataSharingState.ActiveThreads[WID];
+    __kmpc_impl_lanemask_t &ActiveT = DataSharingState.ActiveThreads[WID];
 
     DSPRINT0(DSFLAG, "Before restoring the stack\n");
     // Zero the bits in the mask. If it is still different from zero, then we
@@ -358,7 +354,7 @@ EXTERN void __kmpc_data_sharing_init_stack_spmd() {
   // This function initializes the stack pointer with the pointer to the
   // statically allocated shared memory slots. The size of a shared memory
   // slot is pre-determined to be 256 bytes.
-  if (threadIdx.x == 0)
+  if (GetThreadIdInBlock() == 0)
     data_sharing_init_stack_common();
 
   __threadfence_block();
@@ -376,9 +372,9 @@ INLINE static void* data_sharing_push_stack_common(size_t PushSize) {
   PushSize = (PushSize + (Alignment - 1)) / Alignment * Alignment;
 
   // Frame pointer must be visible to all workers in the same warp.
-  const unsigned WID = getWarpId();
+  const unsigned WID = GetWarpId();
   void *FrameP = 0;
-  int32_t CurActive = __ACTIVEMASK();
+  __kmpc_impl_lanemask_t CurActive = __kmpc_impl_activemask();
 
   if (IsWarpMaster) {
     // SlotP will point to either the shared memory slot or an existing
@@ -466,7 +462,7 @@ EXTERN void *__kmpc_data_sharing_push_stack(size_t DataSize,
   // Compute the start address of the frame of each thread in the warp.
   uintptr_t FrameStartAddress =
       (uintptr_t) data_sharing_push_stack_common(PushSize);
-  FrameStartAddress += (uintptr_t) (getLaneId() * DataSize);
+  FrameStartAddress += (uintptr_t) (GetLaneId() * DataSize);
   return (void *)FrameStartAddress;
 }
 
@@ -481,7 +477,7 @@ EXTERN void __kmpc_data_sharing_pop_stack(void *FrameStart) {
   __threadfence_block();
 
   if (GetThreadIdInBlock() % WARPSIZE == 0) {
-    unsigned WID = getWarpId();
+    unsigned WID = GetWarpId();
 
     // Current slot
     __kmpc_data_sharing_slot *&SlotP = DataSharingState.SlotPtr[WID];

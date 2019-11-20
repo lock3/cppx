@@ -111,9 +111,14 @@ void JSONNodeDumper::Visit(const Decl *D) {
   if (const auto *ND = dyn_cast<NamedDecl>(D))
     attributeOnlyIfTrue("isHidden", ND->isHidden());
 
-  if (D->getLexicalDeclContext() != D->getDeclContext())
-    JOS.attribute("parentDeclContext",
-                  createPointerRepresentation(D->getDeclContext()));
+  if (D->getLexicalDeclContext() != D->getDeclContext()) {
+    // Because of multiple inheritance, a DeclContext pointer does not produce
+    // the same pointer representation as a Decl pointer that references the
+    // same AST Node.
+    const auto *ParentDeclContextDecl = dyn_cast<Decl>(D->getDeclContext());
+    JOS.attribute("parentDeclContextId",
+                  createPointerRepresentation(ParentDeclContextDecl));
+  }
 
   addPreviousDeclaration(D);
   InnerDeclVisitor::Visit(D);
@@ -175,12 +180,30 @@ void JSONNodeDumper::Visit(const GenericSelectionExpr::ConstAssociation &A) {
   attributeOnlyIfTrue("selected", A.isSelected());
 }
 
+void JSONNodeDumper::writeIncludeStack(PresumedLoc Loc, bool JustFirst) {
+  if (Loc.isInvalid())
+    return;
+
+  JOS.attributeBegin("includedFrom");
+  JOS.objectBegin();
+
+  if (!JustFirst) {
+    // Walk the stack recursively, then print out the presumed location.
+    writeIncludeStack(SM.getPresumedLoc(Loc.getIncludeLoc()));
+  }
+
+  JOS.attribute("file", Loc.getFilename());
+  JOS.objectEnd();
+  JOS.attributeEnd();
+}
+
 void JSONNodeDumper::writeBareSourceLocation(SourceLocation Loc,
                                              bool IsSpelling) {
   PresumedLoc Presumed = SM.getPresumedLoc(Loc);
   unsigned ActualLine = IsSpelling ? SM.getSpellingLineNumber(Loc)
                                    : SM.getExpansionLineNumber(Loc);
   if (Presumed.isValid()) {
+    JOS.attribute("offset", SM.getDecomposedLoc(Loc).second);
     if (LastLocFilename != Presumed.getFilename()) {
       JOS.attribute("file", Presumed.getFilename());
       JOS.attribute("line", ActualLine);
@@ -197,6 +220,12 @@ void JSONNodeDumper::writeBareSourceLocation(SourceLocation Loc,
     LastLocFilename = Presumed.getFilename();
     LastLocPresumedLine = PresumedLine;
     LastLocLine = ActualLine;
+
+    // Orthogonal to the file, line, and column de-duplication is whether the
+    // given location was a result of an include. If so, print where the
+    // include location came from.
+    writeIncludeStack(SM.getPresumedLoc(Presumed.getIncludeLoc()),
+                      /*JustFirst*/ true);
   }
 }
 
@@ -281,7 +310,7 @@ llvm::json::Array JSONNodeDumper::createCastPath(const CastExpr *C) {
   for (auto I = C->path_begin(), E = C->path_end(); I != E; ++I) {
     const CXXBaseSpecifier *Base = *I;
     const auto *RD =
-        cast<CXXRecordDecl>(Base->getType()->getAs<RecordType>()->getDecl());
+        cast<CXXRecordDecl>(Base->getType()->castAs<RecordType>()->getDecl());
 
     llvm::json::Object Val{{"name", RD->getName()}};
     if (Base->isVirtual())
@@ -659,8 +688,12 @@ void JSONNodeDumper::VisitMemberPointerType(const MemberPointerType *MPT) {
 }
 
 void JSONNodeDumper::VisitNamedDecl(const NamedDecl *ND) {
-  if (ND && ND->getDeclName())
+  if (ND && ND->getDeclName()) {
     JOS.attribute("name", ND->getNameAsString());
+    std::string MangledName = ASTNameGen.getName(ND);
+    if (!MangledName.empty())
+      JOS.attribute("mangledName", MangledName);
+  }
 }
 
 void JSONNodeDumper::VisitTypedefDecl(const TypedefDecl *TD) {
@@ -845,6 +878,12 @@ void JSONNodeDumper::VisitLinkageSpecDecl(const LinkageSpecDecl *LSD) {
   switch (LSD->getLanguage()) {
   case LinkageSpecDecl::lang_c: Lang = "C"; break;
   case LinkageSpecDecl::lang_cxx: Lang = "C++"; break;
+  case LinkageSpecDecl::lang_cxx_11:
+    Lang = "C++11";
+    break;
+  case LinkageSpecDecl::lang_cxx_14:
+    Lang = "C++14";
+    break;
   }
   JOS.attribute("language", Lang);
   attributeOnlyIfTrue("hasBraces", LSD->hasBraces());
@@ -978,6 +1017,7 @@ void JSONNodeDumper::VisitObjCPropertyDecl(const ObjCPropertyDecl *D) {
     attributeOnlyIfTrue("unsafe_unretained",
                         Attrs & ObjCPropertyDecl::OBJC_PR_unsafe_unretained);
     attributeOnlyIfTrue("class", Attrs & ObjCPropertyDecl::OBJC_PR_class);
+    attributeOnlyIfTrue("direct", Attrs & ObjCPropertyDecl::OBJC_PR_direct);
     attributeOnlyIfTrue("nullability",
                         Attrs & ObjCPropertyDecl::OBJC_PR_nullability);
     attributeOnlyIfTrue("null_resettable",

@@ -348,6 +348,10 @@ namespace llvm {
     ArrayRef<ValueTypeByHwMode> getValueTypes() const { return VTs; }
     unsigned getNumValueTypes() const { return VTs.size(); }
 
+    bool hasType(const ValueTypeByHwMode &VT) const {
+      return std::find(VTs.begin(), VTs.end(), VT) != VTs.end();
+    }
+
     const ValueTypeByHwMode &getValueTypeNum(unsigned VTNum) const {
       if (VTNum < VTs.size())
         return VTs[VTNum];
@@ -631,9 +635,11 @@ namespace llvm {
     CodeGenSubRegIndex *
       getConcatSubRegIndex(const SmallVector<CodeGenSubRegIndex *, 8>&);
 
-    const std::deque<CodeGenRegister> &getRegisters() { return Registers; }
+    const std::deque<CodeGenRegister> &getRegisters() const {
+      return Registers;
+    }
 
-    const StringMap<CodeGenRegister*> &getRegistersByName() {
+    const StringMap<CodeGenRegister *> &getRegistersByName() const {
       return RegistersByName;
     }
 
@@ -682,7 +688,7 @@ namespace llvm {
     // Native units are the singular unit of a leaf register. Register aliasing
     // is completely characterized by native units. Adopted units exist to give
     // register additional weight but don't affect aliasing.
-    bool isNativeUnit(unsigned RUID) {
+    bool isNativeUnit(unsigned RUID) const {
       return RUID < NumNativeRegUnits;
     }
 
@@ -708,6 +714,13 @@ namespace llvm {
     /// classes have a superset-subset relationship and the same set of types,
     /// return the superclass.  Otherwise return null.
     const CodeGenRegisterClass* getRegClassForRegister(Record *R);
+
+    // Analog of TargetRegisterInfo::getMinimalPhysRegClass. Unlike
+    // getRegClassForRegister, this tries to find the smallest class containing
+    // the physical register. If \p VT is specified, it will only find classes
+    // with a matching type
+    const CodeGenRegisterClass *
+    getMinimalPhysRegClass(Record *RegRecord, ValueTypeByHwMode *VT = nullptr);
 
     // Get the sum of unit weights.
     unsigned getRegUnitSetWeight(const std::vector<unsigned> &Units) const {

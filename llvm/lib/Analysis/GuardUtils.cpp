@@ -19,6 +19,13 @@ bool llvm::isGuard(const User *U) {
   return match(U, m_Intrinsic<Intrinsic::experimental_guard>());
 }
 
+bool llvm::isWidenableBranch(const User *U) {
+  Value *Condition, *WidenableCondition;
+  BasicBlock *GuardedBB, *DeoptBB;
+  return parseWidenableBranch(U, Condition, WidenableCondition, GuardedBB,
+                              DeoptBB);
+}
+
 bool llvm::isGuardAsWidenableBranch(const User *U) {
   Value *Condition, *WidenableCondition;
   BasicBlock *GuardedBB, *DeoptBB;
@@ -41,6 +48,11 @@ bool llvm::parseWidenableBranch(const User *U, Value *&Condition,
   using namespace llvm::PatternMatch;
   if (!match(U, m_Br(m_And(m_Value(Condition), m_Value(WidenableCondition)),
                      IfTrueBB, IfFalseBB)))
+    return false;
+  // For the branch to be (easily) widenable, it must not correlate with other
+  // branches.  Thus, the widenable condition must have a single use.
+  if (!WidenableCondition->hasOneUse() ||
+      !cast<BranchInst>(U)->getCondition()->hasOneUse())
     return false;
   // TODO: At the moment, we only recognize the branch if the WC call in this
   // specific position.  We should generalize!

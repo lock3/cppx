@@ -17,6 +17,7 @@
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/Dominators.h"
+#include "llvm/InitializePasses.h"
 
 using namespace llvm;
 
@@ -55,7 +56,8 @@ void LazyBranchProbabilityInfoPass::releaseMemory() { LBPI.reset(); }
 
 bool LazyBranchProbabilityInfoPass::runOnFunction(Function &F) {
   LoopInfo &LI = getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
-  TargetLibraryInfo &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+  TargetLibraryInfo &TLI =
+      getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
   LBPI = std::make_unique<LazyBranchProbabilityInfo>(&F, &LI, &TLI);
   return false;
 }

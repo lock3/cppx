@@ -44,7 +44,8 @@ class LLVM_LIBRARY_VISIBILITY PPCTargetInfo : public TargetInfo {
     ArchDefinePwr8 = 1 << 12,
     ArchDefinePwr9 = 1 << 13,
     ArchDefineA2 = 1 << 14,
-    ArchDefineA2q = 1 << 15
+    ArchDefineA2q = 1 << 15,
+    ArchDefineE500 = 1 << 16
   } ArchDefineTypes;
 
 
@@ -66,6 +67,7 @@ class LLVM_LIBRARY_VISIBILITY PPCTargetInfo : public TargetInfo {
   bool HasBPERMD = false;
   bool HasExtDiv = false;
   bool HasP9Vector = false;
+  bool HasSPE = false;
 
 protected:
   std::string ABI;
@@ -144,6 +146,7 @@ public:
                      ArchDefinePwr9 | ArchDefinePwr8 | ArchDefinePwr7 |
                          ArchDefinePwr6 | ArchDefinePwr5x | ArchDefinePwr5 |
                          ArchDefinePwr4 | ArchDefinePpcgr | ArchDefinePpcsq)
+              .Cases("8548", "e500", ArchDefineE500)
               .Default(ArchDefineNone);
     }
     return CPUKnown;

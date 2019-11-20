@@ -600,7 +600,10 @@ bool Parser::ParseUsingDeclarator(DeclaratorContext Context,
   if (ParseOptionalCXXScopeSpecifier(D.SS, nullptr, /*EnteringContext=*/false,
                                      /*MayBePseudoDtor=*/nullptr,
                                      /*IsTypename=*/false,
-                                     /*LastII=*/&LastII))
+                                     /*LastII=*/&LastII,
+                                     /*OnlyNamespace=*/false,
+                                     /*InUsingDeclaration=*/true))
+
     return true;
   if (D.SS.isInvalid())
     return true;
@@ -1313,6 +1316,8 @@ bool Parser::isValidAfterTypeSpecifier(bool CouldBeBitfield) {
   case tok::kw_mutable:         // struct foo {...} mutable   x;
   case tok::kw_thread_local:    // struct foo {...} thread_local x;
   case tok::kw_constexpr:       // struct foo {...} constexpr x;
+  case tok::kw_consteval:       // struct foo {...} consteval x;
+  case tok::kw_constinit:       // struct foo {...} constinit x;
     // As shown above, type qualifiers and storage class specifiers absolutely
     // can occur after class specifiers according to the grammar.  However,
     // almost no one actually writes code like this.  If we see one of these,
@@ -2976,7 +2981,8 @@ ExprResult Parser::ParseCXXMemberInitializer(Decl *D, bool IsFunction,
         Diag(Tok, diag::err_default_delete_in_multiple_declaration)
           << 0 /* default */;
       else
-        Diag(ConsumeToken(), diag::err_default_special_members);
+        Diag(ConsumeToken(), diag::err_default_special_members)
+            << getLangOpts().CPlusPlus2a;
       return ExprError();
     }
   }
@@ -3914,7 +3920,8 @@ IdentifierInfo *Parser::TryParseCXX11AttributeIdentifier(SourceLocation &Loc) {
 
 static bool IsBuiltInOrStandardCXX11Attribute(IdentifierInfo *AttrName,
                                               IdentifierInfo *ScopeName) {
-  switch (ParsedAttr::getKind(AttrName, ScopeName, ParsedAttr::AS_CXX11)) {
+  switch (
+      ParsedAttr::getParsedKind(AttrName, ScopeName, ParsedAttr::AS_CXX11)) {
   case ParsedAttr::AT_CarriesDependency:
   case ParsedAttr::AT_Deprecated:
   case ParsedAttr::AT_FallThrough:

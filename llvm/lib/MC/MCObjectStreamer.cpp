@@ -243,18 +243,32 @@ void MCObjectStreamer::EmitLabel(MCSymbol *Symbol, SMLoc Loc) {
     Symbol->setFragment(F);
     Symbol->setOffset(F->getContents().size());
   } else {
+    // Assign all pending labels to offset 0 within the dummy "pending"
+    // fragment. (They will all be reassigned to a real fragment in
+    // flushPendingLabels())
+    Symbol->setOffset(0);
     PendingLabels.push_back(Symbol);
   }
 }
 
-void MCObjectStreamer::EmitLabel(MCSymbol *Symbol, SMLoc Loc, MCFragment *F) {
+// Emit a label at a previously emitted fragment/offset position. This must be
+// within the currently-active section.
+void MCObjectStreamer::EmitLabelAtPos(MCSymbol *Symbol, SMLoc Loc,
+                                      MCFragment *F, uint64_t Offset) {
+  assert(F->getParent() == getCurrentSectionOnly());
+
   MCStreamer::EmitLabel(Symbol, Loc);
   getAssembler().registerSymbol(*Symbol);
   auto *DF = dyn_cast_or_null<MCDataFragment>(F);
-  if (DF)
+  Symbol->setOffset(Offset);
+  if (DF) {
     Symbol->setFragment(F);
-  else
+  } else {
+    assert(isa<MCDummyFragment>(F) &&
+           "F must either be an MCDataFragment or the pending MCDummyFragment");
+    assert(Offset == 0);
     PendingLabels.push_back(Symbol);
+  }
 }
 
 void MCObjectStreamer::EmitULEB128Value(const MCExpr *Value) {
@@ -539,7 +553,7 @@ void MCObjectStreamer::EmitValueToAlignment(unsigned ByteAlignment,
   // Update the maximum alignment on the current section if necessary.
   MCSection *CurSec = getCurrentSectionOnly();
   if (ByteAlignment > CurSec->getAlignment())
-    CurSec->setAlignment(ByteAlignment);
+    CurSec->setAlignment(Align(ByteAlignment));
 }
 
 void MCObjectStreamer::EmitCodeAlignment(unsigned ByteAlignment,

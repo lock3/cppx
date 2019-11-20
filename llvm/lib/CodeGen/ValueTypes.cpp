@@ -11,6 +11,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/TypeSize.h"
 using namespace llvm;
 
 EVT EVT::changeExtendedTypeToInteger() const {
@@ -101,12 +102,12 @@ unsigned EVT::getExtendedVectorNumElements() const {
   return cast<VectorType>(LLVMTy)->getNumElements();
 }
 
-unsigned EVT::getExtendedSizeInBits() const {
+TypeSize EVT::getExtendedSizeInBits() const {
   assert(isExtended() && "Type is not extended!");
   if (IntegerType *ITy = dyn_cast<IntegerType>(LLVMTy))
-    return ITy->getBitWidth();
+    return TypeSize::Fixed(ITy->getBitWidth());
   if (VectorType *VTy = dyn_cast<VectorType>(LLVMTy))
-    return VTy->getBitWidth();
+    return VTy->getPrimitiveSizeInBits();
   llvm_unreachable("Unrecognized extended type!");
 }
 
@@ -144,6 +145,7 @@ std::string EVT::getEVTString() const {
   case MVT::v32i1:   return "v32i1";
   case MVT::v64i1:   return "v64i1";
   case MVT::v128i1:  return "v128i1";
+  case MVT::v256i1:  return "v256i1";
   case MVT::v512i1:  return "v512i1";
   case MVT::v1024i1: return "v1024i1";
   case MVT::v1i8:    return "v1i8";
@@ -287,6 +289,7 @@ Type *EVT::getTypeForEVT(LLVMContext &Context) const {
   case MVT::v32i1:   return VectorType::get(Type::getInt1Ty(Context), 32);
   case MVT::v64i1:   return VectorType::get(Type::getInt1Ty(Context), 64);
   case MVT::v128i1:  return VectorType::get(Type::getInt1Ty(Context), 128);
+  case MVT::v256i1:  return VectorType::get(Type::getInt1Ty(Context), 256);
   case MVT::v512i1:  return VectorType::get(Type::getInt1Ty(Context), 512);
   case MVT::v1024i1: return VectorType::get(Type::getInt1Ty(Context), 1024);
   case MVT::v1i8:    return VectorType::get(Type::getInt8Ty(Context), 1);

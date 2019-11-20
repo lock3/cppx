@@ -35,6 +35,7 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/PassManager.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -166,7 +167,7 @@ static bool computeUnrollAndJamCount(
   bool UseUpperBound = false;
   bool ExplicitUnroll = computeUnrollCount(
       L, TTI, DT, LI, SE, EphValues, ORE, OuterTripCount, MaxTripCount,
-      OuterTripMultiple, OuterLoopSize, UP, UseUpperBound);
+      /*MaxOrZero*/ false, OuterTripMultiple, OuterLoopSize, UP, UseUpperBound);
   if (ExplicitUnroll || UseUpperBound) {
     // If the user explicitly set the loop as unrolled, dont UnJ it. Leave it
     // for the unroller instead.
@@ -295,7 +296,7 @@ tryToUnrollAndJamLoop(Loop *L, DominatorTree &DT, LoopInfo *LI,
 
   TargetTransformInfo::UnrollingPreferences UP =
       gatherUnrollingPreferences(L, SE, TTI, nullptr, nullptr, OptLevel, None,
-                                 None, None, None, None, None, None);
+                                 None, None, None, None, None, None, None);
   if (AllowUnrollAndJam.getNumOccurrences() > 0)
     UP.UnrollAndJam = AllowUnrollAndJam;
   if (UnrollAndJamThreshold.getNumOccurrences() > 0)

@@ -47,6 +47,7 @@
 #include "llvm/IR/Use.h"
 #include "llvm/IR/User.h"
 #include "llvm/IR/Value.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/AtomicOrdering.h"
 #include "llvm/Support/Casting.h"
@@ -356,7 +357,7 @@ MemDepResult
 MemoryDependenceResults::getInvariantGroupPointerDependency(LoadInst *LI,
                                                             BasicBlock *BB) {
 
-  if (!LI->getMetadata(LLVMContext::MD_invariant_group))
+  if (!LI->hasMetadata(LLVMContext::MD_invariant_group))
     return MemDepResult::getUnknown();
 
   // Take the ptr operand after all casts and geps 0. This way we can search
@@ -417,7 +418,7 @@ MemoryDependenceResults::getInvariantGroupPointerDependency(LoadInst *LI,
       // same pointer operand) we can assume that value pointed by pointer
       // operand didn't change.
       if ((isa<LoadInst>(U) || isa<StoreInst>(U)) &&
-          U->getMetadata(LLVMContext::MD_invariant_group) != nullptr)
+          U->hasMetadata(LLVMContext::MD_invariant_group))
         ClosestDependency = GetClosestDependency(ClosestDependency, U);
     }
   }
@@ -481,7 +482,7 @@ MemDepResult MemoryDependenceResults::getSimplePointerDependencyFrom(
   // Arguably, this logic should be pushed inside AliasAnalysis itself.
   if (isLoad && QueryInst) {
     LoadInst *LI = dyn_cast<LoadInst>(QueryInst);
-    if (LI && LI->getMetadata(LLVMContext::MD_invariant_load) != nullptr)
+    if (LI && LI->hasMetadata(LLVMContext::MD_invariant_load))
       isInvariantLoad = true;
   }
 
@@ -978,6 +979,11 @@ MemDepResult MemoryDependenceResults::GetNonLocalInfoForBlock(
     Instruction *QueryInst, const MemoryLocation &Loc, bool isLoad,
     BasicBlock *BB, NonLocalDepInfo *Cache, unsigned NumSortedEntries) {
 
+  bool isInvariantLoad = false;
+
+  if (LoadInst *LI = dyn_cast_or_null<LoadInst>(QueryInst))
+    isInvariantLoad = LI->getMetadata(LLVMContext::MD_invariant_load);
+
   // Do a binary search to see if we already have an entry for this block in
   // the cache set.  If so, find it.
   NonLocalDepInfo::iterator Entry = std::upper_bound(
@@ -988,6 +994,13 @@ MemDepResult MemoryDependenceResults::GetNonLocalInfoForBlock(
   NonLocalDepEntry *ExistingResult = nullptr;
   if (Entry != Cache->begin() + NumSortedEntries && Entry->getBB() == BB)
     ExistingResult = &*Entry;
+
+  // Use cached result for invariant load only if there is no dependency for non
+  // invariant load. In this case invariant load can not have any dependency as
+  // well.
+  if (ExistingResult && isInvariantLoad &&
+      !ExistingResult->getResult().isNonFuncLocal())
+    ExistingResult = nullptr;
 
   // If we have a cached entry, and it is non-dirty, use it as the value for
   // this dependency.
@@ -1016,6 +1029,10 @@ MemDepResult MemoryDependenceResults::GetNonLocalInfoForBlock(
   // Scan the block for the dependency.
   MemDepResult Dep =
       getPointerDependencyFrom(Loc, isLoad, ScanPos, BB, QueryInst);
+
+  // Don't cache results for invariant load.
+  if (isInvariantLoad)
+    return Dep;
 
   // If we had a dirty entry for the block, update it.  Otherwise, just add
   // a new entry.
@@ -1453,7 +1470,6 @@ bool MemoryDependenceResults::getNonLocalPointerDepFromBB(
     if (SkipFirstBlock)
       return false;
 
-    bool foundBlock = false;
     for (NonLocalDepEntry &I : llvm::reverse(*Cache)) {
       if (I.getBB() != BB)
         continue;
@@ -1461,14 +1477,12 @@ bool MemoryDependenceResults::getNonLocalPointerDepFromBB(
       assert((GotWorklistLimit || I.getResult().isNonLocal() ||
               !DT.isReachableFromEntry(BB)) &&
              "Should only be here with transparent block");
-      foundBlock = true;
       I.setResult(MemDepResult::getUnknown());
-      Result.push_back(
-          NonLocalDepResult(I.getBB(), I.getResult(), Pointer.getAddr()));
       break;
     }
-    (void)foundBlock; (void)GotWorklistLimit;
-    assert((foundBlock || GotWorklistLimit) && "Current block not in cache?");
+    // Go ahead and report unknown dependence.
+    Result.push_back(
+        NonLocalDepResult(BB, MemDepResult::getUnknown(), Pointer.getAddr()));
   }
 
   // Okay, we're done now.  If we added new values to the cache, re-sort it.
@@ -1816,7 +1830,7 @@ unsigned MemoryDependenceResults::getDefaultBlockScanLimit() const {
 bool MemoryDependenceWrapperPass::runOnFunction(Function &F) {
   auto &AA = getAnalysis<AAResultsWrapperPass>().getAAResults();
   auto &AC = getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
-  auto &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+  auto &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
   auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
   auto &PV = getAnalysis<PhiValuesWrapperPass>().getResult();
   MemDep.emplace(AA, AC, TLI, DT, PV, BlockScanLimit);

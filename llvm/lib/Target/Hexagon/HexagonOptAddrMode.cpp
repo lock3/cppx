@@ -28,6 +28,7 @@
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/MC/MCInstrDesc.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
@@ -543,7 +544,7 @@ bool HexagonOptAddrMode::changeLoad(MachineInstr *OldMI, MachineOperand ImmOp,
 bool HexagonOptAddrMode::changeStore(MachineInstr *OldMI, MachineOperand ImmOp,
                                      unsigned ImmOpNum) {
   bool Changed = false;
-  unsigned OpStart;
+  unsigned OpStart = 0;
   unsigned OpEnd = OldMI->getNumOperands();
   MachineBasicBlock *BB = OldMI->getParent();
   auto UsePos = MachineBasicBlock::iterator(OldMI);

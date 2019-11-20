@@ -122,6 +122,10 @@ class FlagHandlerKeepGoing : public FlagHandlerBase {
     *halt_on_error_ = !tmp;
     return true;
   }
+  bool Format(char *buffer, uptr size) final {
+    const char *keep_going_str = (*halt_on_error_) ? "false" : "true";
+    return FormatString(buffer, size, keep_going_str);
+  }
 };
 
 static void RegisterMsanFlags(FlagParser *parser, Flags *f) {
@@ -130,8 +134,8 @@ static void RegisterMsanFlags(FlagParser *parser, Flags *f) {
 #include "msan_flags.inc"
 #undef MSAN_FLAG
 
-  FlagHandlerKeepGoing *fh_keep_going = new (FlagParser::Alloc)  // NOLINT
-      FlagHandlerKeepGoing(&f->halt_on_error);
+  FlagHandlerKeepGoing *fh_keep_going =
+      new (FlagParser::Alloc) FlagHandlerKeepGoing(&f->halt_on_error);
   parser->RegisterHandler("keep_going", fh_keep_going,
                           "deprecated, use halt_on_error");
 }
@@ -378,7 +382,7 @@ void __msan_warning_noreturn() {
 
 static void OnStackUnwind(const SignalContext &sig, const void *,
                           BufferedStackTrace *stack) {
-  stack->Unwind(sig.pc, sig.bp, sig.context,
+  stack->Unwind(StackTrace::GetNextInstructionPc(sig.pc), sig.bp, sig.context,
                 common_flags()->fast_unwind_on_fatal);
 }
 

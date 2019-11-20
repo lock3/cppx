@@ -33,9 +33,12 @@ MIR_FUNC_NAME_RE = re.compile(r' *name: *(?P<func>[A-Za-z0-9_.-]+)')
 MIR_BODY_BEGIN_RE = re.compile(r' *body: *\|')
 MIR_BASIC_BLOCK_RE = re.compile(r' *bb\.[0-9]+.*:$')
 VREG_RE = re.compile(r'(%[0-9]+)(?::[a-z0-9_]+)?(?:\([<>a-z0-9 ]+\))?')
+MI_FLAGS_STR= (
+    r'(frame-setup |frame-destroy |nnan |ninf |nsz |arcp |contract |afn '
+    r'|reassoc |nuw |nsw |exact |fpexcept )*')
 VREG_DEF_RE = re.compile(
-    r'^ *(?P<vregs>{0}(?:, {0})*) '
-    r'= (?P<opcode>[A-Zt][A-Za-z0-9_]+)'.format(VREG_RE.pattern))
+    r'^ *(?P<vregs>{0}(?:, {0})*) = '
+    r'{1}(?P<opcode>[A-Zt][A-Za-z0-9_]+)'.format(VREG_RE.pattern, MI_FLAGS_STR))
 MIR_PREFIX_DATA_RE = re.compile(r'^ *(;|bb.[0-9].*: *$|[a-z]+:( |$)|$)')
 
 IR_FUNC_NAME_RE = re.compile(
@@ -427,17 +430,13 @@ def update_test_file(args, test):
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument('-v', '--verbose', action='store_true',
-                        help='Show verbose output')
     parser.add_argument('--llc-binary', dest='llc', default='llc', type=LLC,
                         help='The "llc" binary to generate the test case with')
     parser.add_argument('--remove-common-prefixes', action='store_true',
                         help='Remove existing check lines whose prefixes are '
                              'shared between multiple commands')
-    parser.add_argument('-u', '--update-only', action='store_true',
-                        help='Only update test if it was already autogened')
     parser.add_argument('tests', nargs='+')
-    args = parser.parse_args()
+    args = common.parse_commandline_args(parser)
 
     test_paths = [test for pattern in args.tests for test in glob.glob(pattern)]
     for test in test_paths:

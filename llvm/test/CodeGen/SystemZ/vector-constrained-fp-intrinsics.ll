@@ -2,7 +2,7 @@
 ; RUN: llc -O3 -mtriple=s390x-linux-gnu  < %s | FileCheck --check-prefix=S390X %s
 ; RUN: llc -O3 -mtriple=s390x-linux-gnu -mcpu=z13 < %s | FileCheck --check-prefix=SZ13 %s
 
-define <1 x float> @constrained_vector_fdiv_v1f32() {
+define <1 x float> @constrained_vector_fdiv_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_fdiv_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI0_0
@@ -23,11 +23,11 @@ entry:
            <1 x float> <float 1.000000e+00>,
            <1 x float> <float 1.000000e+01>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <1 x float> %div
 }
 
-define <2 x double> @constrained_vector_fdiv_v2f64() {
+define <2 x double> @constrained_vector_fdiv_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_fdiv_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI1_0
@@ -53,11 +53,11 @@ entry:
            <2 x double> <double 1.000000e+00, double 2.000000e+00>,
            <2 x double> <double 1.000000e+01, double 1.000000e+01>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <2 x double> %div
 }
 
-define <3 x float> @constrained_vector_fdiv_v3f32() {
+define <3 x float> @constrained_vector_fdiv_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_fdiv_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI2_0
@@ -93,11 +93,11 @@ entry:
            <3 x float> <float 1.000000e+00, float 2.000000e+00, float 3.000000e+00>,
            <3 x float> <float 1.000000e+01, float 1.000000e+01, float 1.000000e+01>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <3 x float> %div
 }
 
-define void @constrained_vector_fdiv_v3f64(<3 x double>* %a) {
+define void @constrained_vector_fdiv_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_fdiv_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    ld %f0, 16(%r2)
@@ -134,12 +134,12 @@ entry:
            <3 x double> <double 1.000000e+00, double 2.000000e+00, double 3.000000e+00>,
            <3 x double> %b,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   store <3 x double> %div, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_fdiv_v4f64() {
+define <4 x double> @constrained_vector_fdiv_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_fdiv_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI4_0
@@ -176,11 +176,11 @@ entry:
            <4 x double> <double 1.000000e+01, double 1.000000e+01,
                          double 1.000000e+01, double 1.000000e+01>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <4 x double> %div
 }
 
-define <1 x float> @constrained_vector_frem_v1f32() {
+define <1 x float> @constrained_vector_frem_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_frem_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -216,11 +216,11 @@ entry:
            <1 x float> <float 1.000000e+00>,
            <1 x float> <float 1.000000e+01>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <1 x float> %rem
 }
 
-define <2 x double> @constrained_vector_frem_v2f64() {
+define <2 x double> @constrained_vector_frem_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_frem_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -244,8 +244,7 @@ define <2 x double> @constrained_vector_frem_v2f64() {
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    brasl %r14, fmod@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f9
+; S390X-NEXT:    ldr %f2, %f9
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 288(%r15)
@@ -281,11 +280,11 @@ entry:
            <2 x double> <double 1.000000e+00, double 2.000000e+00>,
            <2 x double> <double 1.000000e+01, double 1.000000e+01>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <2 x double> %rem
 }
 
-define <3 x float> @constrained_vector_frem_v3f32() {
+define <3 x float> @constrained_vector_frem_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_frem_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -317,9 +316,8 @@ define <3 x float> @constrained_vector_frem_v3f32() {
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    ler %f2, %f8
 ; S390X-NEXT:    brasl %r14, fmodf@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f9
 ; S390X-NEXT:    ler %f2, %f10
+; S390X-NEXT:    ler %f4, %f9
 ; S390X-NEXT:    ld %f8, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 160(%r15) # 8-byte Folded Reload
@@ -365,11 +363,11 @@ entry:
            <3 x float> <float 1.000000e+00, float 2.000000e+00, float 3.000000e+00>,
            <3 x float> <float 1.000000e+01, float 1.000000e+01, float 1.000000e+01>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <3 x float> %rem
 }
 
-define void @constrained_vector_frem_v3f64(<3 x double>* %a) {
+define void @constrained_vector_frem_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_frem_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -456,12 +454,12 @@ entry:
            <3 x double> <double 1.000000e+00, double 2.000000e+00, double 3.000000e+00>,
            <3 x double> %b,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   store <3 x double> %rem, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_frem_v4f64() {
+define <4 x double> @constrained_vector_frem_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_frem_v4f64:
 ; S390X:       # %bb.0:
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -501,10 +499,9 @@ define <4 x double> @constrained_vector_frem_v4f64() {
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    brasl %r14, fmod@PLT
-; S390X-NEXT:    ldr %f6, %f0
-; S390X-NEXT:    ldr %f0, %f9
-; S390X-NEXT:    ldr %f2, %f10
-; S390X-NEXT:    ldr %f4, %f11
+; S390X-NEXT:    ldr %f2, %f11
+; S390X-NEXT:    ldr %f4, %f10
+; S390X-NEXT:    ldr %f6, %f9
 ; S390X-NEXT:    ld %f8, 184(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 168(%r15) # 8-byte Folded Reload
@@ -558,11 +555,11 @@ define <4 x double> @constrained_vector_frem_v4f64() {
            <4 x double> <double 1.000000e+01, double 1.000000e+01,
                          double 1.000000e+01, double 1.000000e+01>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <4 x double> %rem
 }
 
-define <1 x float> @constrained_vector_fmul_v1f32() {
+define <1 x float> @constrained_vector_fmul_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_fmul_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI10_0
@@ -583,11 +580,11 @@ entry:
            <1 x float> <float 0x7FF0000000000000>,
            <1 x float> <float 2.000000e+00>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <1 x float> %mul
 }
 
-define <2 x double> @constrained_vector_fmul_v2f64() {
+define <2 x double> @constrained_vector_fmul_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_fmul_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI11_0
@@ -613,11 +610,11 @@ entry:
            <2 x double> <double 0x7FEFFFFFFFFFFFFF, double 0x7FEFFFFFFFFFFFFF>,
            <2 x double> <double 2.000000e+00, double 3.000000e+00>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <2 x double> %mul
 }
 
-define <3 x float> @constrained_vector_fmul_v3f32() {
+define <3 x float> @constrained_vector_fmul_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_fmul_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI12_0
@@ -652,11 +649,11 @@ entry:
                         float 0x7FF0000000000000>,
            <3 x float> <float 1.000000e+00, float 1.000000e+01, float 1.000000e+02>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <3 x float> %mul
 }
 
-define void @constrained_vector_fmul_v3f64(<3 x double>* %a) {
+define void @constrained_vector_fmul_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_fmul_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    ld %f0, 8(%r2)
@@ -691,12 +688,12 @@ entry:
                         double 0x7FEFFFFFFFFFFFFF>,
            <3 x double> %b,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   store <3 x double> %mul, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_fmul_v4f64() {
+define <4 x double> @constrained_vector_fmul_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_fmul_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI14_0
@@ -733,11 +730,11 @@ entry:
            <4 x double> <double 2.000000e+00, double 3.000000e+00,
                          double 4.000000e+00, double 5.000000e+00>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <4 x double> %mul
 }
 
-define <1 x float> @constrained_vector_fadd_v1f32() {
+define <1 x float> @constrained_vector_fadd_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_fadd_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI15_0
@@ -758,11 +755,11 @@ entry:
            <1 x float> <float 0x7FF0000000000000>,
            <1 x float> <float 1.0>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <1 x float> %add
 }
 
-define <2 x double> @constrained_vector_fadd_v2f64() {
+define <2 x double> @constrained_vector_fadd_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_fadd_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI16_0
@@ -788,11 +785,11 @@ entry:
            <2 x double> <double 0x7FEFFFFFFFFFFFFF, double 0x7FEFFFFFFFFFFFFF>,
            <2 x double> <double 1.000000e+00, double 1.000000e-01>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <2 x double> %add
 }
 
-define <3 x float> @constrained_vector_fadd_v3f32() {
+define <3 x float> @constrained_vector_fadd_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_fadd_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI17_0
@@ -825,11 +822,11 @@ entry:
                         float 0xFFFFFFFFE0000000>,
            <3 x float> <float 2.0, float 1.0, float 0.0>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <3 x float> %add
 }
 
-define void @constrained_vector_fadd_v3f64(<3 x double>* %a) {
+define void @constrained_vector_fadd_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_fadd_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    ld %f0, 8(%r2)
@@ -864,12 +861,12 @@ entry:
                          double 0x7FEFFFFFFFFFFFFF>,
            <3 x double> %b,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   store <3 x double> %add, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_fadd_v4f64() {
+define <4 x double> @constrained_vector_fadd_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_fadd_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI19_0
@@ -906,11 +903,11 @@ entry:
            <4 x double> <double 1.000000e+00, double 1.000000e-01,
                          double 2.000000e+00, double 2.000000e-01>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <4 x double> %add
 }
 
-define <1 x float> @constrained_vector_fsub_v1f32() {
+define <1 x float> @constrained_vector_fsub_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_fsub_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI20_0
@@ -931,11 +928,11 @@ entry:
            <1 x float> <float 0x7FF0000000000000>,
            <1 x float> <float 1.000000e+00>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <1 x float> %sub
 }
 
-define <2 x double> @constrained_vector_fsub_v2f64() {
+define <2 x double> @constrained_vector_fsub_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_fsub_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI21_0
@@ -960,11 +957,11 @@ entry:
            <2 x double> <double 0xFFEFFFFFFFFFFFFF, double 0xFFEFFFFFFFFFFFFF>,
            <2 x double> <double 1.000000e+00, double 1.000000e-01>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <2 x double> %sub
 }
 
-define <3 x float> @constrained_vector_fsub_v3f32() {
+define <3 x float> @constrained_vector_fsub_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_fsub_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI22_0
@@ -1000,11 +997,11 @@ entry:
                         float 0xFFFFFFFFE0000000>,
            <3 x float> <float 2.0, float 1.0, float 0.0>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <3 x float> %sub
 }
 
-define void @constrained_vector_fsub_v3f64(<3 x double>* %a) {
+define void @constrained_vector_fsub_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_fsub_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI23_0
@@ -1038,12 +1035,12 @@ entry:
                          double 0xFFEFFFFFFFFFFFFF>,
            <3 x double> %b,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   store <3 x double> %sub, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_fsub_v4f64() {
+define <4 x double> @constrained_vector_fsub_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_fsub_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI24_0
@@ -1080,11 +1077,11 @@ entry:
            <4 x double> <double 1.000000e+00, double 1.000000e-01,
                          double 2.000000e+00, double 2.000000e-01>,
            metadata !"round.dynamic",
-           metadata !"fpexcept.strict")
+           metadata !"fpexcept.strict") #0
   ret <4 x double> %sub
 }
 
-define <1 x float> @constrained_vector_sqrt_v1f32() {
+define <1 x float> @constrained_vector_sqrt_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_sqrt_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI25_0
@@ -1101,11 +1098,11 @@ entry:
   %sqrt = call <1 x float> @llvm.experimental.constrained.sqrt.v1f32(
                               <1 x float> <float 42.0>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <1 x float> %sqrt
 }
 
-define <2 x double> @constrained_vector_sqrt_v2f64() {
+define <2 x double> @constrained_vector_sqrt_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_sqrt_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI26_0
@@ -1125,11 +1122,11 @@ entry:
   %sqrt = call <2 x double> @llvm.experimental.constrained.sqrt.v2f64(
                               <2 x double> <double 42.0, double 42.1>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <2 x double> %sqrt
 }
 
-define <3 x float> @constrained_vector_sqrt_v3f32() {
+define <3 x float> @constrained_vector_sqrt_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_sqrt_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI27_0
@@ -1156,11 +1153,11 @@ entry:
   %sqrt = call <3 x float> @llvm.experimental.constrained.sqrt.v3f32(
                               <3 x float> <float 42.0, float 43.0, float 44.0>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %sqrt
 }
 
-define void @constrained_vector_sqrt_v3f64(<3 x double>* %a) {
+define void @constrained_vector_sqrt_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_sqrt_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    ld %f0, 8(%r2)
@@ -1186,12 +1183,12 @@ entry:
   %sqrt = call <3 x double> @llvm.experimental.constrained.sqrt.v3f64(
                           <3 x double> %b,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %sqrt, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_sqrt_v4f64() {
+define <4 x double> @constrained_vector_sqrt_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_sqrt_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI29_0
@@ -1219,11 +1216,11 @@ define <4 x double> @constrained_vector_sqrt_v4f64() {
                               <4 x double> <double 42.0, double 42.1,
                                             double 42.2, double 42.3>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <4 x double> %sqrt
 }
 
-define <1 x float> @constrained_vector_pow_v1f32() {
+define <1 x float> @constrained_vector_pow_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_pow_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -1260,11 +1257,11 @@ entry:
                              <1 x float> <float 42.0>,
                              <1 x float> <float 3.0>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <1 x float> %pow
 }
 
-define <2 x double> @constrained_vector_pow_v2f64() {
+define <2 x double> @constrained_vector_pow_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_pow_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -1288,8 +1285,7 @@ define <2 x double> @constrained_vector_pow_v2f64() {
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    brasl %r14, pow@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f9
+; S390X-NEXT:    ldr %f2, %f9
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 288(%r15)
@@ -1327,11 +1323,11 @@ entry:
                              <2 x double> <double 42.1, double 42.2>,
                              <2 x double> <double 3.0, double 3.0>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <2 x double> %pow
 }
 
-define <3 x float> @constrained_vector_pow_v3f32() {
+define <3 x float> @constrained_vector_pow_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_pow_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -1363,9 +1359,8 @@ define <3 x float> @constrained_vector_pow_v3f32() {
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    ler %f2, %f8
 ; S390X-NEXT:    brasl %r14, powf@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f9
 ; S390X-NEXT:    ler %f2, %f10
+; S390X-NEXT:    ler %f4, %f9
 ; S390X-NEXT:    ld %f8, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 160(%r15) # 8-byte Folded Reload
@@ -1413,11 +1408,11 @@ entry:
                              <3 x float> <float 42.0, float 43.0, float 44.0>,
                              <3 x float> <float 3.0, float 3.0, float 3.0>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <3 x float> %pow
 }
 
-define void @constrained_vector_pow_v3f64(<3 x double>* %a) {
+define void @constrained_vector_pow_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_pow_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -1508,12 +1503,12 @@ entry:
                           <3 x double> %b,
                           <3 x double> <double 3.0, double 3.0, double 3.0>,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %pow, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_pow_v4f64() {
+define <4 x double> @constrained_vector_pow_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_pow_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -1553,10 +1548,9 @@ define <4 x double> @constrained_vector_pow_v4f64() {
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    brasl %r14, pow@PLT
-; S390X-NEXT:    ldr %f6, %f0
-; S390X-NEXT:    ldr %f0, %f9
-; S390X-NEXT:    ldr %f2, %f10
-; S390X-NEXT:    ldr %f4, %f11
+; S390X-NEXT:    ldr %f2, %f11
+; S390X-NEXT:    ldr %f4, %f10
+; S390X-NEXT:    ldr %f6, %f9
 ; S390X-NEXT:    ld %f8, 184(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 168(%r15) # 8-byte Folded Reload
@@ -1613,11 +1607,11 @@ entry:
                              <4 x double> <double 3.0, double 3.0,
                                            double 3.0, double 3.0>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <4 x double> %pow
 }
 
-define <1 x float> @constrained_vector_powi_v1f32() {
+define <1 x float> @constrained_vector_powi_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_powi_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -1652,11 +1646,11 @@ entry:
                               <1 x float> <float 42.0>,
                               i32 3,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <1 x float> %powi
 }
 
-define <2 x double> @constrained_vector_powi_v2f64() {
+define <2 x double> @constrained_vector_powi_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_powi_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -1676,8 +1670,7 @@ define <2 x double> @constrained_vector_powi_v2f64() {
 ; S390X-NEXT:    lghi %r2, 3
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, __powidf2@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f8
+; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    ld %f8, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 280(%r15)
 ; S390X-NEXT:    br %r14
@@ -1709,11 +1702,11 @@ entry:
                               <2 x double> <double 42.1, double 42.2>,
                               i32 3,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <2 x double> %powi
 }
 
-define <3 x float> @constrained_vector_powi_v3f32() {
+define <3 x float> @constrained_vector_powi_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_powi_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -1741,9 +1734,8 @@ define <3 x float> @constrained_vector_powi_v3f32() {
 ; S390X-NEXT:    lghi %r2, 3
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    brasl %r14, __powisf2@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f8
 ; S390X-NEXT:    ler %f2, %f9
+; S390X-NEXT:    ler %f4, %f8
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 288(%r15)
@@ -1785,11 +1777,11 @@ entry:
                               <3 x float> <float 42.0, float 43.0, float 44.0>,
                               i32 3,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %powi
 }
 
-define void @constrained_vector_powi_v3f64(<3 x double>* %a) {
+define void @constrained_vector_powi_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_powi_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -1803,12 +1795,12 @@ define void @constrained_vector_powi_v3f64(<3 x double>* %a) {
 ; S390X-NEXT:    .cfi_offset %f8, -168
 ; S390X-NEXT:    .cfi_offset %f9, -176
 ; S390X-NEXT:    larl %r1, .LCPI38_0
-; S390X-NEXT:    ld %f0, 0(%r1)
+; S390X-NEXT:    ldeb %f0, 0(%r1)
 ; S390X-NEXT:    lgr %r13, %r2
 ; S390X-NEXT:    lghi %r2, 3
 ; S390X-NEXT:    brasl %r14, __powidf2@PLT
 ; S390X-NEXT:    larl %r1, .LCPI38_1
-; S390X-NEXT:    ldeb %f1, 0(%r1)
+; S390X-NEXT:    ld %f1, 0(%r1)
 ; S390X-NEXT:    ldr %f8, %f0
 ; S390X-NEXT:    lghi %r2, 3
 ; S390X-NEXT:    ldr %f0, %f1
@@ -1819,9 +1811,9 @@ define void @constrained_vector_powi_v3f64(<3 x double>* %a) {
 ; S390X-NEXT:    lghi %r2, 3
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, __powidf2@PLT
-; S390X-NEXT:    std %f0, 8(%r13)
-; S390X-NEXT:    std %f9, 0(%r13)
-; S390X-NEXT:    std %f8, 16(%r13)
+; S390X-NEXT:    std %f0, 16(%r13)
+; S390X-NEXT:    std %f9, 8(%r13)
+; S390X-NEXT:    std %f8, 0(%r13)
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r13, %r15, 280(%r15)
@@ -1865,12 +1857,12 @@ entry:
                           <3 x double> <double 42.0, double 42.1, double 42.2>,
                           i32 3,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %powi, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_powi_v4f64() {
+define <4 x double> @constrained_vector_powi_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_powi_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -1906,10 +1898,9 @@ define <4 x double> @constrained_vector_powi_v4f64() {
 ; S390X-NEXT:    lghi %r2, 3
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, __powidf2@PLT
-; S390X-NEXT:    ldr %f6, %f0
-; S390X-NEXT:    ldr %f0, %f8
-; S390X-NEXT:    ldr %f2, %f9
-; S390X-NEXT:    ldr %f4, %f10
+; S390X-NEXT:    ldr %f2, %f10
+; S390X-NEXT:    ldr %f4, %f9
+; S390X-NEXT:    ldr %f6, %f8
 ; S390X-NEXT:    ld %f8, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 160(%r15) # 8-byte Folded Reload
@@ -1959,11 +1950,11 @@ entry:
                                             double 42.3, double 42.4>,
                               i32 3,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <4 x double> %powi
 }
 
-define <1 x float> @constrained_vector_sin_v1f32() {
+define <1 x float> @constrained_vector_sin_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_sin_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -1995,11 +1986,11 @@ entry:
   %sin = call <1 x float> @llvm.experimental.constrained.sin.v1f32(
                              <1 x float> <float 42.0>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <1 x float> %sin
 }
 
-define <2 x double> @constrained_vector_sin_v2f64() {
+define <2 x double> @constrained_vector_sin_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_sin_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -2010,15 +2001,14 @@ define <2 x double> @constrained_vector_sin_v2f64() {
 ; S390X-NEXT:    std %f8, 160(%r15) # 8-byte Folded Spill
 ; S390X-NEXT:    .cfi_offset %f8, -168
 ; S390X-NEXT:    larl %r1, .LCPI41_0
-; S390X-NEXT:    ldeb %f0, 0(%r1)
+; S390X-NEXT:    ld %f0, 0(%r1)
 ; S390X-NEXT:    brasl %r14, sin@PLT
 ; S390X-NEXT:    larl %r1, .LCPI41_1
-; S390X-NEXT:    ld %f1, 0(%r1)
+; S390X-NEXT:    ldeb %f1, 0(%r1)
 ; S390X-NEXT:    ldr %f8, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, sin@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f8
+; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    ld %f8, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 280(%r15)
 ; S390X-NEXT:    br %r14
@@ -2047,11 +2037,11 @@ entry:
   %sin = call <2 x double> @llvm.experimental.constrained.sin.v2f64(
                              <2 x double> <double 42.0, double 42.1>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <2 x double> %sin
 }
 
-define <3 x float> @constrained_vector_sin_v3f32() {
+define <3 x float> @constrained_vector_sin_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_sin_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -2076,9 +2066,8 @@ define <3 x float> @constrained_vector_sin_v3f32() {
 ; S390X-NEXT:    ler %f9, %f0
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    brasl %r14, sinf@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f8
 ; S390X-NEXT:    ler %f2, %f9
+; S390X-NEXT:    ler %f4, %f8
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 288(%r15)
@@ -2116,11 +2105,11 @@ entry:
   %sin = call <3 x float> @llvm.experimental.constrained.sin.v3f32(
                               <3 x float> <float 42.0, float 43.0, float 44.0>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %sin
 }
 
-define void @constrained_vector_sin_v3f64(<3 x double>* %a) {
+define void @constrained_vector_sin_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_sin_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -2194,12 +2183,12 @@ entry:
   %sin = call <3 x double> @llvm.experimental.constrained.sin.v3f64(
                           <3 x double> %b,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %sin, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_sin_v4f64() {
+define <4 x double> @constrained_vector_sin_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_sin_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -2214,7 +2203,7 @@ define <4 x double> @constrained_vector_sin_v4f64() {
 ; S390X-NEXT:    .cfi_offset %f9, -176
 ; S390X-NEXT:    .cfi_offset %f10, -184
 ; S390X-NEXT:    larl %r1, .LCPI44_0
-; S390X-NEXT:    ldeb %f0, 0(%r1)
+; S390X-NEXT:    ld %f0, 0(%r1)
 ; S390X-NEXT:    brasl %r14, sin@PLT
 ; S390X-NEXT:    larl %r1, .LCPI44_1
 ; S390X-NEXT:    ld %f1, 0(%r1)
@@ -2227,14 +2216,13 @@ define <4 x double> @constrained_vector_sin_v4f64() {
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, sin@PLT
 ; S390X-NEXT:    larl %r1, .LCPI44_3
-; S390X-NEXT:    ld %f1, 0(%r1)
+; S390X-NEXT:    ldeb %f1, 0(%r1)
 ; S390X-NEXT:    ldr %f10, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, sin@PLT
-; S390X-NEXT:    ldr %f6, %f0
-; S390X-NEXT:    ldr %f0, %f8
-; S390X-NEXT:    ldr %f2, %f9
-; S390X-NEXT:    ldr %f4, %f10
+; S390X-NEXT:    ldr %f2, %f10
+; S390X-NEXT:    ldr %f4, %f9
+; S390X-NEXT:    ldr %f6, %f8
 ; S390X-NEXT:    ld %f8, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 160(%r15) # 8-byte Folded Reload
@@ -2279,11 +2267,11 @@ entry:
                              <4 x double> <double 42.0, double 42.1,
                                            double 42.2, double 42.3>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <4 x double> %sin
 }
 
-define <1 x float> @constrained_vector_cos_v1f32() {
+define <1 x float> @constrained_vector_cos_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_cos_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -2315,11 +2303,11 @@ entry:
   %cos = call <1 x float> @llvm.experimental.constrained.cos.v1f32(
                              <1 x float> <float 42.0>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <1 x float> %cos
 }
 
-define <2 x double> @constrained_vector_cos_v2f64() {
+define <2 x double> @constrained_vector_cos_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_cos_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -2330,15 +2318,14 @@ define <2 x double> @constrained_vector_cos_v2f64() {
 ; S390X-NEXT:    std %f8, 160(%r15) # 8-byte Folded Spill
 ; S390X-NEXT:    .cfi_offset %f8, -168
 ; S390X-NEXT:    larl %r1, .LCPI46_0
-; S390X-NEXT:    ldeb %f0, 0(%r1)
+; S390X-NEXT:    ld %f0, 0(%r1)
 ; S390X-NEXT:    brasl %r14, cos@PLT
 ; S390X-NEXT:    larl %r1, .LCPI46_1
-; S390X-NEXT:    ld %f1, 0(%r1)
+; S390X-NEXT:    ldeb %f1, 0(%r1)
 ; S390X-NEXT:    ldr %f8, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, cos@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f8
+; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    ld %f8, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 280(%r15)
 ; S390X-NEXT:    br %r14
@@ -2367,11 +2354,11 @@ entry:
   %cos = call <2 x double> @llvm.experimental.constrained.cos.v2f64(
                              <2 x double> <double 42.0, double 42.1>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <2 x double> %cos
 }
 
-define <3 x float> @constrained_vector_cos_v3f32() {
+define <3 x float> @constrained_vector_cos_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_cos_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -2396,9 +2383,8 @@ define <3 x float> @constrained_vector_cos_v3f32() {
 ; S390X-NEXT:    ler %f9, %f0
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    brasl %r14, cosf@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f8
 ; S390X-NEXT:    ler %f2, %f9
+; S390X-NEXT:    ler %f4, %f8
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 288(%r15)
@@ -2436,11 +2422,11 @@ entry:
   %cos = call <3 x float> @llvm.experimental.constrained.cos.v3f32(
                               <3 x float> <float 42.0, float 43.0, float 44.0>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %cos
 }
 
-define void @constrained_vector_cos_v3f64(<3 x double>* %a) {
+define void @constrained_vector_cos_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_cos_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -2514,12 +2500,12 @@ entry:
   %cos = call <3 x double> @llvm.experimental.constrained.cos.v3f64(
                           <3 x double> %b,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %cos, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_cos_v4f64() {
+define <4 x double> @constrained_vector_cos_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_cos_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -2534,7 +2520,7 @@ define <4 x double> @constrained_vector_cos_v4f64() {
 ; S390X-NEXT:    .cfi_offset %f9, -176
 ; S390X-NEXT:    .cfi_offset %f10, -184
 ; S390X-NEXT:    larl %r1, .LCPI49_0
-; S390X-NEXT:    ldeb %f0, 0(%r1)
+; S390X-NEXT:    ld %f0, 0(%r1)
 ; S390X-NEXT:    brasl %r14, cos@PLT
 ; S390X-NEXT:    larl %r1, .LCPI49_1
 ; S390X-NEXT:    ld %f1, 0(%r1)
@@ -2547,14 +2533,13 @@ define <4 x double> @constrained_vector_cos_v4f64() {
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, cos@PLT
 ; S390X-NEXT:    larl %r1, .LCPI49_3
-; S390X-NEXT:    ld %f1, 0(%r1)
+; S390X-NEXT:    ldeb %f1, 0(%r1)
 ; S390X-NEXT:    ldr %f10, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, cos@PLT
-; S390X-NEXT:    ldr %f6, %f0
-; S390X-NEXT:    ldr %f0, %f8
-; S390X-NEXT:    ldr %f2, %f9
-; S390X-NEXT:    ldr %f4, %f10
+; S390X-NEXT:    ldr %f2, %f10
+; S390X-NEXT:    ldr %f4, %f9
+; S390X-NEXT:    ldr %f6, %f8
 ; S390X-NEXT:    ld %f8, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 160(%r15) # 8-byte Folded Reload
@@ -2599,11 +2584,11 @@ entry:
                              <4 x double> <double 42.0, double 42.1,
                                            double 42.2, double 42.3>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <4 x double> %cos
 }
 
-define <1 x float> @constrained_vector_exp_v1f32() {
+define <1 x float> @constrained_vector_exp_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_exp_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -2635,11 +2620,11 @@ entry:
   %exp = call <1 x float> @llvm.experimental.constrained.exp.v1f32(
                              <1 x float> <float 42.0>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <1 x float> %exp
 }
 
-define <2 x double> @constrained_vector_exp_v2f64() {
+define <2 x double> @constrained_vector_exp_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_exp_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -2650,15 +2635,14 @@ define <2 x double> @constrained_vector_exp_v2f64() {
 ; S390X-NEXT:    std %f8, 160(%r15) # 8-byte Folded Spill
 ; S390X-NEXT:    .cfi_offset %f8, -168
 ; S390X-NEXT:    larl %r1, .LCPI51_0
-; S390X-NEXT:    ldeb %f0, 0(%r1)
+; S390X-NEXT:    ld %f0, 0(%r1)
 ; S390X-NEXT:    brasl %r14, exp@PLT
 ; S390X-NEXT:    larl %r1, .LCPI51_1
-; S390X-NEXT:    ld %f1, 0(%r1)
+; S390X-NEXT:    ldeb %f1, 0(%r1)
 ; S390X-NEXT:    ldr %f8, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, exp@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f8
+; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    ld %f8, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 280(%r15)
 ; S390X-NEXT:    br %r14
@@ -2687,11 +2671,11 @@ entry:
   %exp = call <2 x double> @llvm.experimental.constrained.exp.v2f64(
                              <2 x double> <double 42.0, double 42.1>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <2 x double> %exp
 }
 
-define <3 x float> @constrained_vector_exp_v3f32() {
+define <3 x float> @constrained_vector_exp_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_exp_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -2716,9 +2700,8 @@ define <3 x float> @constrained_vector_exp_v3f32() {
 ; S390X-NEXT:    ler %f9, %f0
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    brasl %r14, expf@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f8
 ; S390X-NEXT:    ler %f2, %f9
+; S390X-NEXT:    ler %f4, %f8
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 288(%r15)
@@ -2756,11 +2739,11 @@ entry:
   %exp = call <3 x float> @llvm.experimental.constrained.exp.v3f32(
                               <3 x float> <float 42.0, float 43.0, float 44.0>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %exp
 }
 
-define void @constrained_vector_exp_v3f64(<3 x double>* %a) {
+define void @constrained_vector_exp_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_exp_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -2834,12 +2817,12 @@ entry:
   %exp = call <3 x double> @llvm.experimental.constrained.exp.v3f64(
                           <3 x double> %b,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %exp, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_exp_v4f64() {
+define <4 x double> @constrained_vector_exp_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_exp_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -2854,7 +2837,7 @@ define <4 x double> @constrained_vector_exp_v4f64() {
 ; S390X-NEXT:    .cfi_offset %f9, -176
 ; S390X-NEXT:    .cfi_offset %f10, -184
 ; S390X-NEXT:    larl %r1, .LCPI54_0
-; S390X-NEXT:    ldeb %f0, 0(%r1)
+; S390X-NEXT:    ld %f0, 0(%r1)
 ; S390X-NEXT:    brasl %r14, exp@PLT
 ; S390X-NEXT:    larl %r1, .LCPI54_1
 ; S390X-NEXT:    ld %f1, 0(%r1)
@@ -2867,14 +2850,13 @@ define <4 x double> @constrained_vector_exp_v4f64() {
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, exp@PLT
 ; S390X-NEXT:    larl %r1, .LCPI54_3
-; S390X-NEXT:    ld %f1, 0(%r1)
+; S390X-NEXT:    ldeb %f1, 0(%r1)
 ; S390X-NEXT:    ldr %f10, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, exp@PLT
-; S390X-NEXT:    ldr %f6, %f0
-; S390X-NEXT:    ldr %f0, %f8
-; S390X-NEXT:    ldr %f2, %f9
-; S390X-NEXT:    ldr %f4, %f10
+; S390X-NEXT:    ldr %f2, %f10
+; S390X-NEXT:    ldr %f4, %f9
+; S390X-NEXT:    ldr %f6, %f8
 ; S390X-NEXT:    ld %f8, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 160(%r15) # 8-byte Folded Reload
@@ -2919,11 +2901,11 @@ entry:
                              <4 x double> <double 42.0, double 42.1,
                                            double 42.2, double 42.3>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <4 x double> %exp
 }
 
-define <1 x float> @constrained_vector_exp2_v1f32() {
+define <1 x float> @constrained_vector_exp2_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_exp2_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -2955,11 +2937,11 @@ entry:
   %exp2 = call <1 x float> @llvm.experimental.constrained.exp2.v1f32(
                              <1 x float> <float 42.0>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <1 x float> %exp2
 }
 
-define <2 x double> @constrained_vector_exp2_v2f64() {
+define <2 x double> @constrained_vector_exp2_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_exp2_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -2970,15 +2952,14 @@ define <2 x double> @constrained_vector_exp2_v2f64() {
 ; S390X-NEXT:    std %f8, 160(%r15) # 8-byte Folded Spill
 ; S390X-NEXT:    .cfi_offset %f8, -168
 ; S390X-NEXT:    larl %r1, .LCPI56_0
-; S390X-NEXT:    ld %f0, 0(%r1)
+; S390X-NEXT:    ldeb %f0, 0(%r1)
 ; S390X-NEXT:    brasl %r14, exp2@PLT
 ; S390X-NEXT:    larl %r1, .LCPI56_1
-; S390X-NEXT:    ldeb %f1, 0(%r1)
+; S390X-NEXT:    ld %f1, 0(%r1)
 ; S390X-NEXT:    ldr %f8, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, exp2@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f8
+; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    ld %f8, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 280(%r15)
 ; S390X-NEXT:    br %r14
@@ -3007,11 +2988,11 @@ entry:
   %exp2 = call <2 x double> @llvm.experimental.constrained.exp2.v2f64(
                               <2 x double> <double 42.1, double 42.0>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <2 x double> %exp2
 }
 
-define <3 x float> @constrained_vector_exp2_v3f32() {
+define <3 x float> @constrained_vector_exp2_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_exp2_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -3036,9 +3017,8 @@ define <3 x float> @constrained_vector_exp2_v3f32() {
 ; S390X-NEXT:    ler %f9, %f0
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    brasl %r14, exp2f@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f8
 ; S390X-NEXT:    ler %f2, %f9
+; S390X-NEXT:    ler %f4, %f8
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 288(%r15)
@@ -3076,11 +3056,11 @@ entry:
   %exp2 = call <3 x float> @llvm.experimental.constrained.exp2.v3f32(
                               <3 x float> <float 42.0, float 43.0, float 44.0>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %exp2
 }
 
-define void @constrained_vector_exp2_v3f64(<3 x double>* %a) {
+define void @constrained_vector_exp2_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_exp2_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -3154,12 +3134,12 @@ entry:
   %exp2 = call <3 x double> @llvm.experimental.constrained.exp2.v3f64(
                           <3 x double> %b,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %exp2, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_exp2_v4f64() {
+define <4 x double> @constrained_vector_exp2_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_exp2_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -3191,10 +3171,9 @@ define <4 x double> @constrained_vector_exp2_v4f64() {
 ; S390X-NEXT:    ldr %f10, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, exp2@PLT
-; S390X-NEXT:    ldr %f6, %f0
-; S390X-NEXT:    ldr %f0, %f8
-; S390X-NEXT:    ldr %f2, %f9
-; S390X-NEXT:    ldr %f4, %f10
+; S390X-NEXT:    ldr %f2, %f10
+; S390X-NEXT:    ldr %f4, %f9
+; S390X-NEXT:    ldr %f6, %f8
 ; S390X-NEXT:    ld %f8, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 160(%r15) # 8-byte Folded Reload
@@ -3239,11 +3218,11 @@ entry:
                               <4 x double> <double 42.1, double 42.2,
                                             double 42.3, double 42.4>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <4 x double> %exp2
 }
 
-define <1 x float> @constrained_vector_log_v1f32() {
+define <1 x float> @constrained_vector_log_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_log_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -3275,11 +3254,11 @@ entry:
   %log = call <1 x float> @llvm.experimental.constrained.log.v1f32(
                              <1 x float> <float 42.0>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <1 x float> %log
 }
 
-define <2 x double> @constrained_vector_log_v2f64() {
+define <2 x double> @constrained_vector_log_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_log_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -3290,15 +3269,14 @@ define <2 x double> @constrained_vector_log_v2f64() {
 ; S390X-NEXT:    std %f8, 160(%r15) # 8-byte Folded Spill
 ; S390X-NEXT:    .cfi_offset %f8, -168
 ; S390X-NEXT:    larl %r1, .LCPI61_0
-; S390X-NEXT:    ldeb %f0, 0(%r1)
+; S390X-NEXT:    ld %f0, 0(%r1)
 ; S390X-NEXT:    brasl %r14, log@PLT
 ; S390X-NEXT:    larl %r1, .LCPI61_1
-; S390X-NEXT:    ld %f1, 0(%r1)
+; S390X-NEXT:    ldeb %f1, 0(%r1)
 ; S390X-NEXT:    ldr %f8, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, log@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f8
+; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    ld %f8, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 280(%r15)
 ; S390X-NEXT:    br %r14
@@ -3327,11 +3305,11 @@ entry:
   %log = call <2 x double> @llvm.experimental.constrained.log.v2f64(
                              <2 x double> <double 42.0, double 42.1>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <2 x double> %log
 }
 
-define <3 x float> @constrained_vector_log_v3f32() {
+define <3 x float> @constrained_vector_log_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_log_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -3356,9 +3334,8 @@ define <3 x float> @constrained_vector_log_v3f32() {
 ; S390X-NEXT:    ler %f9, %f0
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    brasl %r14, logf@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f8
 ; S390X-NEXT:    ler %f2, %f9
+; S390X-NEXT:    ler %f4, %f8
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 288(%r15)
@@ -3396,11 +3373,11 @@ entry:
   %log = call <3 x float> @llvm.experimental.constrained.log.v3f32(
                               <3 x float> <float 42.0, float 43.0, float 44.0>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %log
 }
 
-define void @constrained_vector_log_v3f64(<3 x double>* %a) {
+define void @constrained_vector_log_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_log_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -3474,12 +3451,12 @@ entry:
   %log = call <3 x double> @llvm.experimental.constrained.log.v3f64(
                           <3 x double> %b,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %log, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_log_v4f64() {
+define <4 x double> @constrained_vector_log_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_log_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -3494,7 +3471,7 @@ define <4 x double> @constrained_vector_log_v4f64() {
 ; S390X-NEXT:    .cfi_offset %f9, -176
 ; S390X-NEXT:    .cfi_offset %f10, -184
 ; S390X-NEXT:    larl %r1, .LCPI64_0
-; S390X-NEXT:    ldeb %f0, 0(%r1)
+; S390X-NEXT:    ld %f0, 0(%r1)
 ; S390X-NEXT:    brasl %r14, log@PLT
 ; S390X-NEXT:    larl %r1, .LCPI64_1
 ; S390X-NEXT:    ld %f1, 0(%r1)
@@ -3507,14 +3484,13 @@ define <4 x double> @constrained_vector_log_v4f64() {
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, log@PLT
 ; S390X-NEXT:    larl %r1, .LCPI64_3
-; S390X-NEXT:    ld %f1, 0(%r1)
+; S390X-NEXT:    ldeb %f1, 0(%r1)
 ; S390X-NEXT:    ldr %f10, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, log@PLT
-; S390X-NEXT:    ldr %f6, %f0
-; S390X-NEXT:    ldr %f0, %f8
-; S390X-NEXT:    ldr %f2, %f9
-; S390X-NEXT:    ldr %f4, %f10
+; S390X-NEXT:    ldr %f2, %f10
+; S390X-NEXT:    ldr %f4, %f9
+; S390X-NEXT:    ldr %f6, %f8
 ; S390X-NEXT:    ld %f8, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 160(%r15) # 8-byte Folded Reload
@@ -3559,11 +3535,11 @@ entry:
                              <4 x double> <double 42.0, double 42.1,
                                            double 42.2, double 42.3>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <4 x double> %log
 }
 
-define <1 x float> @constrained_vector_log10_v1f32() {
+define <1 x float> @constrained_vector_log10_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_log10_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -3595,11 +3571,11 @@ entry:
   %log10 = call <1 x float> @llvm.experimental.constrained.log10.v1f32(
                              <1 x float> <float 42.0>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <1 x float> %log10
 }
 
-define <2 x double> @constrained_vector_log10_v2f64() {
+define <2 x double> @constrained_vector_log10_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_log10_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -3610,15 +3586,14 @@ define <2 x double> @constrained_vector_log10_v2f64() {
 ; S390X-NEXT:    std %f8, 160(%r15) # 8-byte Folded Spill
 ; S390X-NEXT:    .cfi_offset %f8, -168
 ; S390X-NEXT:    larl %r1, .LCPI66_0
-; S390X-NEXT:    ldeb %f0, 0(%r1)
+; S390X-NEXT:    ld %f0, 0(%r1)
 ; S390X-NEXT:    brasl %r14, log10@PLT
 ; S390X-NEXT:    larl %r1, .LCPI66_1
-; S390X-NEXT:    ld %f1, 0(%r1)
+; S390X-NEXT:    ldeb %f1, 0(%r1)
 ; S390X-NEXT:    ldr %f8, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, log10@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f8
+; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    ld %f8, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 280(%r15)
 ; S390X-NEXT:    br %r14
@@ -3647,11 +3622,11 @@ entry:
   %log10 = call <2 x double> @llvm.experimental.constrained.log10.v2f64(
                                <2 x double> <double 42.0, double 42.1>,
                                metadata !"round.dynamic",
-                               metadata !"fpexcept.strict")
+                               metadata !"fpexcept.strict") #0
   ret <2 x double> %log10
 }
 
-define <3 x float> @constrained_vector_log10_v3f32() {
+define <3 x float> @constrained_vector_log10_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_log10_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -3676,9 +3651,8 @@ define <3 x float> @constrained_vector_log10_v3f32() {
 ; S390X-NEXT:    ler %f9, %f0
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    brasl %r14, log10f@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f8
 ; S390X-NEXT:    ler %f2, %f9
+; S390X-NEXT:    ler %f4, %f8
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 288(%r15)
@@ -3716,11 +3690,11 @@ entry:
   %log10 = call <3 x float> @llvm.experimental.constrained.log10.v3f32(
                               <3 x float> <float 42.0, float 43.0, float 44.0>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %log10
 }
 
-define void @constrained_vector_log10_v3f64(<3 x double>* %a) {
+define void @constrained_vector_log10_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_log10_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -3794,12 +3768,12 @@ entry:
   %log10 = call <3 x double> @llvm.experimental.constrained.log10.v3f64(
                           <3 x double> %b,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %log10, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_log10_v4f64() {
+define <4 x double> @constrained_vector_log10_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_log10_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -3814,7 +3788,7 @@ define <4 x double> @constrained_vector_log10_v4f64() {
 ; S390X-NEXT:    .cfi_offset %f9, -176
 ; S390X-NEXT:    .cfi_offset %f10, -184
 ; S390X-NEXT:    larl %r1, .LCPI69_0
-; S390X-NEXT:    ldeb %f0, 0(%r1)
+; S390X-NEXT:    ld %f0, 0(%r1)
 ; S390X-NEXT:    brasl %r14, log10@PLT
 ; S390X-NEXT:    larl %r1, .LCPI69_1
 ; S390X-NEXT:    ld %f1, 0(%r1)
@@ -3827,14 +3801,13 @@ define <4 x double> @constrained_vector_log10_v4f64() {
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, log10@PLT
 ; S390X-NEXT:    larl %r1, .LCPI69_3
-; S390X-NEXT:    ld %f1, 0(%r1)
+; S390X-NEXT:    ldeb %f1, 0(%r1)
 ; S390X-NEXT:    ldr %f10, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, log10@PLT
-; S390X-NEXT:    ldr %f6, %f0
-; S390X-NEXT:    ldr %f0, %f8
-; S390X-NEXT:    ldr %f2, %f9
-; S390X-NEXT:    ldr %f4, %f10
+; S390X-NEXT:    ldr %f2, %f10
+; S390X-NEXT:    ldr %f4, %f9
+; S390X-NEXT:    ldr %f6, %f8
 ; S390X-NEXT:    ld %f8, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 160(%r15) # 8-byte Folded Reload
@@ -3879,11 +3852,11 @@ entry:
                                <4 x double> <double 42.0, double 42.1,
                                              double 42.2, double 42.3>,
                                metadata !"round.dynamic",
-                               metadata !"fpexcept.strict")
+                               metadata !"fpexcept.strict") #0
   ret <4 x double> %log10
 }
 
-define <1 x float> @constrained_vector_log2_v1f32() {
+define <1 x float> @constrained_vector_log2_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_log2_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -3915,11 +3888,11 @@ entry:
   %log2 = call <1 x float> @llvm.experimental.constrained.log2.v1f32(
                              <1 x float> <float 42.0>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <1 x float> %log2
 }
 
-define <2 x double> @constrained_vector_log2_v2f64() {
+define <2 x double> @constrained_vector_log2_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_log2_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -3930,15 +3903,14 @@ define <2 x double> @constrained_vector_log2_v2f64() {
 ; S390X-NEXT:    std %f8, 160(%r15) # 8-byte Folded Spill
 ; S390X-NEXT:    .cfi_offset %f8, -168
 ; S390X-NEXT:    larl %r1, .LCPI71_0
-; S390X-NEXT:    ldeb %f0, 0(%r1)
+; S390X-NEXT:    ld %f0, 0(%r1)
 ; S390X-NEXT:    brasl %r14, log2@PLT
 ; S390X-NEXT:    larl %r1, .LCPI71_1
-; S390X-NEXT:    ld %f1, 0(%r1)
+; S390X-NEXT:    ldeb %f1, 0(%r1)
 ; S390X-NEXT:    ldr %f8, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, log2@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f8
+; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    ld %f8, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 280(%r15)
 ; S390X-NEXT:    br %r14
@@ -3967,11 +3939,11 @@ entry:
   %log2 = call <2 x double> @llvm.experimental.constrained.log2.v2f64(
                               <2 x double> <double 42.0, double 42.1>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <2 x double> %log2
 }
 
-define <3 x float> @constrained_vector_log2_v3f32() {
+define <3 x float> @constrained_vector_log2_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_log2_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -3996,9 +3968,8 @@ define <3 x float> @constrained_vector_log2_v3f32() {
 ; S390X-NEXT:    ler %f9, %f0
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    brasl %r14, log2f@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f8
 ; S390X-NEXT:    ler %f2, %f9
+; S390X-NEXT:    ler %f4, %f8
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 288(%r15)
@@ -4036,11 +4007,11 @@ entry:
   %log2 = call <3 x float> @llvm.experimental.constrained.log2.v3f32(
                               <3 x float> <float 42.0, float 43.0, float 44.0>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %log2
 }
 
-define void @constrained_vector_log2_v3f64(<3 x double>* %a) {
+define void @constrained_vector_log2_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_log2_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -4114,12 +4085,12 @@ entry:
   %log2 = call <3 x double> @llvm.experimental.constrained.log2.v3f64(
                           <3 x double> %b,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %log2, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_log2_v4f64() {
+define <4 x double> @constrained_vector_log2_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_log2_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -4134,7 +4105,7 @@ define <4 x double> @constrained_vector_log2_v4f64() {
 ; S390X-NEXT:    .cfi_offset %f9, -176
 ; S390X-NEXT:    .cfi_offset %f10, -184
 ; S390X-NEXT:    larl %r1, .LCPI74_0
-; S390X-NEXT:    ldeb %f0, 0(%r1)
+; S390X-NEXT:    ld %f0, 0(%r1)
 ; S390X-NEXT:    brasl %r14, log2@PLT
 ; S390X-NEXT:    larl %r1, .LCPI74_1
 ; S390X-NEXT:    ld %f1, 0(%r1)
@@ -4147,14 +4118,13 @@ define <4 x double> @constrained_vector_log2_v4f64() {
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, log2@PLT
 ; S390X-NEXT:    larl %r1, .LCPI74_3
-; S390X-NEXT:    ld %f1, 0(%r1)
+; S390X-NEXT:    ldeb %f1, 0(%r1)
 ; S390X-NEXT:    ldr %f10, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, log2@PLT
-; S390X-NEXT:    ldr %f6, %f0
-; S390X-NEXT:    ldr %f0, %f8
-; S390X-NEXT:    ldr %f2, %f9
-; S390X-NEXT:    ldr %f4, %f10
+; S390X-NEXT:    ldr %f2, %f10
+; S390X-NEXT:    ldr %f4, %f9
+; S390X-NEXT:    ldr %f6, %f8
 ; S390X-NEXT:    ld %f8, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 160(%r15) # 8-byte Folded Reload
@@ -4199,11 +4169,11 @@ entry:
                               <4 x double> <double 42.0, double 42.1,
                                             double 42.2, double 42.3>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <4 x double> %log2
 }
 
-define <1 x float> @constrained_vector_rint_v1f32() {
+define <1 x float> @constrained_vector_rint_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_rint_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI75_0
@@ -4222,11 +4192,11 @@ entry:
   %rint = call <1 x float> @llvm.experimental.constrained.rint.v1f32(
                              <1 x float> <float 42.0>,
                              metadata !"round.dynamic",
-                             metadata !"fpexcept.strict")
+                             metadata !"fpexcept.strict") #0
   ret <1 x float> %rint
 }
 
-define <2 x double> @constrained_vector_rint_v2f64() {
+define <2 x double> @constrained_vector_rint_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_rint_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI76_0
@@ -4247,11 +4217,11 @@ entry:
   %rint = call <2 x double> @llvm.experimental.constrained.rint.v2f64(
                         <2 x double> <double 42.1, double 42.0>,
                         metadata !"round.dynamic",
-                        metadata !"fpexcept.strict")
+                        metadata !"fpexcept.strict") #0
   ret <2 x double> %rint
 }
 
-define <3 x float> @constrained_vector_rint_v3f32() {
+define <3 x float> @constrained_vector_rint_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_rint_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI77_0
@@ -4284,11 +4254,11 @@ define <3 x float> @constrained_vector_rint_v3f32() {
   %rint = call <3 x float> @llvm.experimental.constrained.rint.v3f32(
                               <3 x float> <float 42.0, float 43.0, float 44.0>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %rint
 }
 
-define void @constrained_vector_rint_v3f64(<3 x double>* %a) {
+define void @constrained_vector_rint_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_rint_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    ld %f0, 0(%r2)
@@ -4316,12 +4286,12 @@ entry:
   %rint = call <3 x double> @llvm.experimental.constrained.rint.v3f64(
                           <3 x double> %b,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %rint, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_rint_v4f64() {
+define <4 x double> @constrained_vector_rint_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_rint_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI79_0
@@ -4352,11 +4322,11 @@ entry:
                         <4 x double> <double 42.1, double 42.2,
                                       double 42.3, double 42.4>,
                         metadata !"round.dynamic",
-                        metadata !"fpexcept.strict")
+                        metadata !"fpexcept.strict") #0
   ret <4 x double> %rint
 }
 
-define <1 x float> @constrained_vector_nearbyint_v1f32() {
+define <1 x float> @constrained_vector_nearbyint_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_nearbyint_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -4381,11 +4351,11 @@ entry:
   %nearby = call <1 x float> @llvm.experimental.constrained.nearbyint.v1f32(
                                <1 x float> <float 42.0>,
                                metadata !"round.dynamic",
-                               metadata !"fpexcept.strict")
+                               metadata !"fpexcept.strict") #0
   ret <1 x float> %nearby
 }
 
-define <2 x double> @constrained_vector_nearbyint_v2f64() {
+define <2 x double> @constrained_vector_nearbyint_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_nearbyint_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -4396,15 +4366,14 @@ define <2 x double> @constrained_vector_nearbyint_v2f64() {
 ; S390X-NEXT:    std %f8, 160(%r15) # 8-byte Folded Spill
 ; S390X-NEXT:    .cfi_offset %f8, -168
 ; S390X-NEXT:    larl %r1, .LCPI81_0
-; S390X-NEXT:    ld %f0, 0(%r1)
+; S390X-NEXT:    ldeb %f0, 0(%r1)
 ; S390X-NEXT:    brasl %r14, nearbyint@PLT
 ; S390X-NEXT:    larl %r1, .LCPI81_1
-; S390X-NEXT:    ldeb %f1, 0(%r1)
+; S390X-NEXT:    ld %f1, 0(%r1)
 ; S390X-NEXT:    ldr %f8, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, nearbyint@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f8
+; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    ld %f8, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 280(%r15)
 ; S390X-NEXT:    br %r14
@@ -4419,11 +4388,11 @@ entry:
   %nearby = call <2 x double> @llvm.experimental.constrained.nearbyint.v2f64(
                                 <2 x double> <double 42.1, double 42.0>,
                                 metadata !"round.dynamic",
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <2 x double> %nearby
 }
 
-define <3 x float> @constrained_vector_nearbyint_v3f32() {
+define <3 x float> @constrained_vector_nearbyint_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_nearbyint_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -4448,9 +4417,8 @@ define <3 x float> @constrained_vector_nearbyint_v3f32() {
 ; S390X-NEXT:    ler %f9, %f0
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    brasl %r14, nearbyintf@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f8
 ; S390X-NEXT:    ler %f2, %f9
+; S390X-NEXT:    ler %f4, %f8
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 288(%r15)
@@ -4475,11 +4443,11 @@ entry:
   %nearby = call <3 x float> @llvm.experimental.constrained.nearbyint.v3f32(
                               <3 x float> <float 42.0, float 43.0, float 44.0>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %nearby
 }
 
-define void @constrained_vector_nearbyint_v3f64(<3 x double>* %a) {
+define void @constrained_vector_nearbyint_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_nearbyint_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -4528,12 +4496,12 @@ entry:
   %nearby = call <3 x double> @llvm.experimental.constrained.nearbyint.v3f64(
                           <3 x double> %b,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %nearby, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_nearbyint_v4f64() {
+define <4 x double> @constrained_vector_nearbyint_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_nearbyint_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -4565,10 +4533,9 @@ define <4 x double> @constrained_vector_nearbyint_v4f64() {
 ; S390X-NEXT:    ldr %f10, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, nearbyint@PLT
-; S390X-NEXT:    ldr %f6, %f0
-; S390X-NEXT:    ldr %f0, %f8
-; S390X-NEXT:    ldr %f2, %f9
-; S390X-NEXT:    ldr %f4, %f10
+; S390X-NEXT:    ldr %f2, %f10
+; S390X-NEXT:    ldr %f4, %f9
+; S390X-NEXT:    ldr %f6, %f8
 ; S390X-NEXT:    ld %f8, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 160(%r15) # 8-byte Folded Reload
@@ -4589,11 +4556,11 @@ entry:
                                 <4 x double> <double 42.1, double 42.2,
                                               double 42.3, double 42.4>,
                                 metadata !"round.dynamic",
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <4 x double> %nearby
 }
 
-define <1 x float> @constrained_vector_maxnum_v1f32() {
+define <1 x float> @constrained_vector_maxnum_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_maxnum_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -4629,11 +4596,11 @@ entry:
   %max = call <1 x float> @llvm.experimental.constrained.maxnum.v1f32(
                                <1 x float> <float 42.0>, <1 x float> <float 41.0>,
                                metadata !"round.dynamic",
-                               metadata !"fpexcept.strict")
+                               metadata !"fpexcept.strict") #0
   ret <1 x float> %max
 }
 
-define <2 x double> @constrained_vector_maxnum_v2f64() {
+define <2 x double> @constrained_vector_maxnum_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_maxnum_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -4655,8 +4622,7 @@ define <2 x double> @constrained_vector_maxnum_v2f64() {
 ; S390X-NEXT:    ldr %f8, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, fmax@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f8
+; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    ld %f8, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 280(%r15)
 ; S390X-NEXT:    br %r14
@@ -4690,11 +4656,11 @@ entry:
                                 <2 x double> <double 43.0, double 42.0>,
                                 <2 x double> <double 41.0, double 40.0>,
                                 metadata !"round.dynamic",
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <2 x double> %max
 }
 
-define <3 x float> @constrained_vector_maxnum_v3f32() {
+define <3 x float> @constrained_vector_maxnum_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_maxnum_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -4709,10 +4675,10 @@ define <3 x float> @constrained_vector_maxnum_v3f32() {
 ; S390X-NEXT:    .cfi_offset %f9, -176
 ; S390X-NEXT:    .cfi_offset %f10, -184
 ; S390X-NEXT:    larl %r1, .LCPI87_0
-; S390X-NEXT:    le %f8, 0(%r1)
+; S390X-NEXT:    le %f0, 0(%r1)
 ; S390X-NEXT:    larl %r1, .LCPI87_1
-; S390X-NEXT:    le %f2, 0(%r1)
-; S390X-NEXT:    ler %f0, %f8
+; S390X-NEXT:    le %f8, 0(%r1)
+; S390X-NEXT:    ler %f2, %f8
 ; S390X-NEXT:    brasl %r14, fmaxf@PLT
 ; S390X-NEXT:    larl %r1, .LCPI87_2
 ; S390X-NEXT:    le %f1, 0(%r1)
@@ -4722,14 +4688,12 @@ define <3 x float> @constrained_vector_maxnum_v3f32() {
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    brasl %r14, fmaxf@PLT
 ; S390X-NEXT:    larl %r1, .LCPI87_4
-; S390X-NEXT:    le %f1, 0(%r1)
+; S390X-NEXT:    le %f2, 0(%r1)
 ; S390X-NEXT:    ler %f10, %f0
-; S390X-NEXT:    ler %f0, %f1
-; S390X-NEXT:    ler %f2, %f8
+; S390X-NEXT:    ler %f0, %f8
 ; S390X-NEXT:    brasl %r14, fmaxf@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f9
 ; S390X-NEXT:    ler %f2, %f10
+; S390X-NEXT:    ler %f4, %f9
 ; S390X-NEXT:    ld %f8, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 160(%r15) # 8-byte Folded Reload
@@ -4778,11 +4742,11 @@ entry:
                               <3 x float> <float 43.0, float 44.0, float 45.0>,
                               <3 x float> <float 41.0, float 42.0, float 43.0>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %max
 }
 
-define void @constrained_vector_log10_maxnum_v3f64(<3 x double>* %a) {
+define void @constrained_vector_log10_maxnum_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_log10_maxnum_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -4869,12 +4833,12 @@ entry:
                           <3 x double> %b,
                           <3 x double> <double 40.0, double 41.0, double 42.0>,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %max, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_maxnum_v4f64() {
+define <4 x double> @constrained_vector_maxnum_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_maxnum_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -4914,10 +4878,9 @@ define <4 x double> @constrained_vector_maxnum_v4f64() {
 ; S390X-NEXT:    ldr %f10, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, fmax@PLT
-; S390X-NEXT:    ldr %f6, %f0
-; S390X-NEXT:    ldr %f0, %f8
-; S390X-NEXT:    ldr %f2, %f9
-; S390X-NEXT:    ldr %f4, %f10
+; S390X-NEXT:    ldr %f2, %f10
+; S390X-NEXT:    ldr %f4, %f9
+; S390X-NEXT:    ldr %f6, %f8
 ; S390X-NEXT:    ld %f8, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 160(%r15) # 8-byte Folded Reload
@@ -4972,11 +4935,11 @@ entry:
                                 <4 x double> <double 40.0, double 41.0,
                                               double 42.0, double 43.0>,
                                 metadata !"round.dynamic",
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <4 x double> %max
 }
 
-define <1 x float> @constrained_vector_minnum_v1f32() {
+define <1 x float> @constrained_vector_minnum_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_minnum_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -5012,11 +4975,11 @@ define <1 x float> @constrained_vector_minnum_v1f32() {
   %min = call <1 x float> @llvm.experimental.constrained.minnum.v1f32(
                                <1 x float> <float 42.0>, <1 x float> <float 41.0>,
                                metadata !"round.dynamic",
-                               metadata !"fpexcept.strict")
+                               metadata !"fpexcept.strict") #0
   ret <1 x float> %min
 }
 
-define <2 x double> @constrained_vector_minnum_v2f64() {
+define <2 x double> @constrained_vector_minnum_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_minnum_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -5038,8 +5001,7 @@ define <2 x double> @constrained_vector_minnum_v2f64() {
 ; S390X-NEXT:    ldr %f8, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, fmin@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f8
+; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    ld %f8, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 280(%r15)
 ; S390X-NEXT:    br %r14
@@ -5073,11 +5035,11 @@ entry:
                                 <2 x double> <double 43.0, double 42.0>,
                                 <2 x double> <double 41.0, double 40.0>,
                                 metadata !"round.dynamic",
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <2 x double> %min
 }
 
-define <3 x float> @constrained_vector_minnum_v3f32() {
+define <3 x float> @constrained_vector_minnum_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_minnum_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -5092,10 +5054,10 @@ define <3 x float> @constrained_vector_minnum_v3f32() {
 ; S390X-NEXT:    .cfi_offset %f9, -176
 ; S390X-NEXT:    .cfi_offset %f10, -184
 ; S390X-NEXT:    larl %r1, .LCPI92_0
-; S390X-NEXT:    le %f8, 0(%r1)
+; S390X-NEXT:    le %f0, 0(%r1)
 ; S390X-NEXT:    larl %r1, .LCPI92_1
-; S390X-NEXT:    le %f2, 0(%r1)
-; S390X-NEXT:    ler %f0, %f8
+; S390X-NEXT:    le %f8, 0(%r1)
+; S390X-NEXT:    ler %f2, %f8
 ; S390X-NEXT:    brasl %r14, fminf@PLT
 ; S390X-NEXT:    larl %r1, .LCPI92_2
 ; S390X-NEXT:    le %f1, 0(%r1)
@@ -5105,14 +5067,12 @@ define <3 x float> @constrained_vector_minnum_v3f32() {
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    brasl %r14, fminf@PLT
 ; S390X-NEXT:    larl %r1, .LCPI92_4
-; S390X-NEXT:    le %f1, 0(%r1)
+; S390X-NEXT:    le %f2, 0(%r1)
 ; S390X-NEXT:    ler %f10, %f0
-; S390X-NEXT:    ler %f0, %f1
-; S390X-NEXT:    ler %f2, %f8
+; S390X-NEXT:    ler %f0, %f8
 ; S390X-NEXT:    brasl %r14, fminf@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f9
 ; S390X-NEXT:    ler %f2, %f10
+; S390X-NEXT:    ler %f4, %f9
 ; S390X-NEXT:    ld %f8, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 160(%r15) # 8-byte Folded Reload
@@ -5161,11 +5121,11 @@ entry:
                               <3 x float> <float 43.0, float 44.0, float 45.0>,
                               <3 x float> <float 41.0, float 42.0, float 43.0>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %min
 }
 
-define void @constrained_vector_minnum_v3f64(<3 x double>* %a) {
+define void @constrained_vector_minnum_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_minnum_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -5256,12 +5216,12 @@ entry:
                           <3 x double> %b,
                           <3 x double> <double 3.0, double 3.0, double 3.0>,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %min, <3 x double>* %a
   ret void
 }
 
-define <4 x double> @constrained_vector_minnum_v4f64() {
+define <4 x double> @constrained_vector_minnum_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_minnum_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -5301,10 +5261,9 @@ define <4 x double> @constrained_vector_minnum_v4f64() {
 ; S390X-NEXT:    ldr %f10, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, fmin@PLT
-; S390X-NEXT:    ldr %f6, %f0
-; S390X-NEXT:    ldr %f0, %f8
-; S390X-NEXT:    ldr %f2, %f9
-; S390X-NEXT:    ldr %f4, %f10
+; S390X-NEXT:    ldr %f2, %f10
+; S390X-NEXT:    ldr %f4, %f9
+; S390X-NEXT:    ldr %f6, %f8
 ; S390X-NEXT:    ld %f8, 176(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f10, 160(%r15) # 8-byte Folded Reload
@@ -5359,11 +5318,11 @@ entry:
                                 <4 x double> <double 40.0, double 41.0,
                                               double 42.0, double 43.0>,
                                 metadata !"round.dynamic",
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <4 x double> %min
 }
 
-define <1 x float> @constrained_vector_fptrunc_v1f64() {
+define <1 x float> @constrained_vector_fptrunc_v1f64() #0 {
 ; S390X-LABEL: constrained_vector_fptrunc_v1f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI95_0
@@ -5381,11 +5340,11 @@ entry:
   %result = call <1 x float> @llvm.experimental.constrained.fptrunc.v1f32.v1f64(
                                 <1 x double><double 42.1>,
                                 metadata !"round.dynamic",
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <1 x float> %result
 }
 
-define <2 x float> @constrained_vector_fptrunc_v2f64() {
+define <2 x float> @constrained_vector_fptrunc_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_fptrunc_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI96_0
@@ -5411,11 +5370,11 @@ entry:
   %result = call <2 x float> @llvm.experimental.constrained.fptrunc.v2f32.v2f64(
                                 <2 x double><double 42.1, double 42.2>,
                                 metadata !"round.dynamic",
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <2 x float> %result
 }
 
-define void @constrained_vector_fptrunc_v3f64(<3 x double>* %src, <3 x float>* %dest) {
+define void @constrained_vector_fptrunc_v3f64(<3 x double>* %src, <3 x float>* %dest) #0 {
 ; S390X-LABEL: constrained_vector_fptrunc_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    ld %f0, 0(%r2)
@@ -5451,12 +5410,12 @@ entry:
   %result = call <3 x float> @llvm.experimental.constrained.fptrunc.v3f32.v3f64(
                                 <3 x double> %b,
                                 metadata !"round.dynamic",
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   store <3 x float> %result, <3 x float>* %dest
   ret void
 }
 
-define <4 x float> @constrained_vector_fptrunc_v4f64() {
+define <4 x float> @constrained_vector_fptrunc_v4f64() #0 {
 ; S390X-LABEL: constrained_vector_fptrunc_v4f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI98_0
@@ -5496,11 +5455,11 @@ entry:
                                 <4 x double><double 42.1, double 42.2,
                                              double 42.3, double 42.4>,
                                 metadata !"round.dynamic",
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <4 x float> %result
 }
 
-define <1 x double> @constrained_vector_fpext_v1f32() {
+define <1 x double> @constrained_vector_fpext_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_fpext_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI99_0
@@ -5516,11 +5475,11 @@ define <1 x double> @constrained_vector_fpext_v1f32() {
 entry:
   %result = call <1 x double> @llvm.experimental.constrained.fpext.v1f64.v1f32(
                                 <1 x float><float 42.0>,
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <1 x double> %result
 }
 
-define <2 x double> @constrained_vector_fpext_v2f32() {
+define <2 x double> @constrained_vector_fpext_v2f32() #0 {
 ; S390X-LABEL: constrained_vector_fpext_v2f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI100_0
@@ -5540,11 +5499,11 @@ define <2 x double> @constrained_vector_fpext_v2f32() {
 entry:
   %result = call <2 x double> @llvm.experimental.constrained.fpext.v2f64.v2f32(
                                 <2 x float><float 42.0, float 43.0>,
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <2 x double> %result
 }
 
-define void @constrained_vector_fpext_v3f64(<3 x float>* %src, <3 x double>* %dest) {
+define void @constrained_vector_fpext_v3f64(<3 x float>* %src, <3 x double>* %dest) #0 {
 ; S390X-LABEL: constrained_vector_fpext_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    lg %r0, 0(%r2)
@@ -5576,12 +5535,12 @@ entry:
   %b = load <3 x float>, <3 x float>* %src
   %result = call <3 x double> @llvm.experimental.constrained.fpext.v3f64.v3f32(
                               <3 x float> %b,
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   store <3 x double> %result, <3 x double>* %dest
   ret void
 }
 
-define <4 x double> @constrained_vector_fpext_v4f32() {
+define <4 x double> @constrained_vector_fpext_v4f32() #0 {
 ; S390X-LABEL: constrained_vector_fpext_v4f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    larl %r1, .LCPI102_0
@@ -5611,11 +5570,11 @@ entry:
   %result = call <4 x double> @llvm.experimental.constrained.fpext.v4f64.v4f32(
                                 <4 x float><float 42.0, float 43.0,
                                             float 44.0, float 45.0>,
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <4 x double> %result
 }
 
-define <1 x float> @constrained_vector_ceil_v1f32() {
+define <1 x float> @constrained_vector_ceil_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_ceil_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -5639,11 +5598,11 @@ entry:
   %ceil = call <1 x float> @llvm.experimental.constrained.ceil.v1f32(
                                <1 x float> <float 1.5>,
                                metadata !"round.dynamic",
-                               metadata !"fpexcept.strict")
+                               metadata !"fpexcept.strict") #0
   ret <1 x float> %ceil
 }
 
-define <2 x double> @constrained_vector_ceil_v2f64() {
+define <2 x double> @constrained_vector_ceil_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_ceil_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -5661,8 +5620,7 @@ define <2 x double> @constrained_vector_ceil_v2f64() {
 ; S390X-NEXT:    ldr %f8, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, ceil@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f8
+; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    ld %f8, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 280(%r15)
 ; S390X-NEXT:    br %r14
@@ -5677,11 +5635,11 @@ entry:
   %ceil = call <2 x double> @llvm.experimental.constrained.ceil.v2f64(
                                 <2 x double> <double 1.1, double 1.9>,
                                 metadata !"round.dynamic",
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <2 x double> %ceil
 }
 
-define <3 x float> @constrained_vector_ceil_v3f32() {
+define <3 x float> @constrained_vector_ceil_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_ceil_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -5706,9 +5664,8 @@ define <3 x float> @constrained_vector_ceil_v3f32() {
 ; S390X-NEXT:    ler %f9, %f0
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    brasl %r14, ceilf@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f8
 ; S390X-NEXT:    ler %f2, %f9
+; S390X-NEXT:    ler %f4, %f8
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 288(%r15)
@@ -5732,11 +5689,11 @@ entry:
   %ceil = call <3 x float> @llvm.experimental.constrained.ceil.v3f32(
                               <3 x float> <float 1.5, float 2.5, float 3.5>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %ceil
 }
 
-define void @constrained_vector_ceil_v3f64(<3 x double>* %a) {
+define void @constrained_vector_ceil_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_ceil_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -5785,12 +5742,12 @@ entry:
   %ceil = call <3 x double> @llvm.experimental.constrained.ceil.v3f64(
                           <3 x double> %b,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %ceil, <3 x double>* %a
   ret void
 }
 
-define <1 x float> @constrained_vector_floor_v1f32() {
+define <1 x float> @constrained_vector_floor_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_floor_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -5814,12 +5771,12 @@ entry:
   %floor = call <1 x float> @llvm.experimental.constrained.floor.v1f32(
                                <1 x float> <float 1.5>,
                                metadata !"round.dynamic",
-                               metadata !"fpexcept.strict")
+                               metadata !"fpexcept.strict") #0
   ret <1 x float> %floor
 }
 
 
-define <2 x double> @constrained_vector_floor_v2f64() {
+define <2 x double> @constrained_vector_floor_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_floor_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -5837,8 +5794,7 @@ define <2 x double> @constrained_vector_floor_v2f64() {
 ; S390X-NEXT:    ldr %f8, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, floor@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f8
+; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    ld %f8, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 280(%r15)
 ; S390X-NEXT:    br %r14
@@ -5853,11 +5809,11 @@ entry:
   %floor = call <2 x double> @llvm.experimental.constrained.floor.v2f64(
                                 <2 x double> <double 1.1, double 1.9>,
                                 metadata !"round.dynamic",
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <2 x double> %floor
 }
 
-define <3 x float> @constrained_vector_floor_v3f32() {
+define <3 x float> @constrained_vector_floor_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_floor_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -5882,9 +5838,8 @@ define <3 x float> @constrained_vector_floor_v3f32() {
 ; S390X-NEXT:    ler %f9, %f0
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    brasl %r14, floorf@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f8
 ; S390X-NEXT:    ler %f2, %f9
+; S390X-NEXT:    ler %f4, %f8
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 288(%r15)
@@ -5908,11 +5863,11 @@ entry:
   %floor = call <3 x float> @llvm.experimental.constrained.floor.v3f32(
                               <3 x float> <float 1.5, float 2.5, float 3.5>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %floor
 }
 
-define void @constrained_vector_floor_v3f64(<3 x double>* %a) {
+define void @constrained_vector_floor_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_floor_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -5961,12 +5916,12 @@ entry:
   %floor = call <3 x double> @llvm.experimental.constrained.floor.v3f64(
                           <3 x double> %b,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %floor, <3 x double>* %a
   ret void
 }
 
-define <1 x float> @constrained_vector_round_v1f32() {
+define <1 x float> @constrained_vector_round_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_round_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -5990,11 +5945,11 @@ entry:
   %round = call <1 x float> @llvm.experimental.constrained.round.v1f32(
                                <1 x float> <float 1.5>,
                                metadata !"round.dynamic",
-                               metadata !"fpexcept.strict")
+                               metadata !"fpexcept.strict") #0
   ret <1 x float> %round
 }
 
-define <2 x double> @constrained_vector_round_v2f64() {
+define <2 x double> @constrained_vector_round_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_round_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -6012,8 +5967,7 @@ define <2 x double> @constrained_vector_round_v2f64() {
 ; S390X-NEXT:    ldr %f8, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, round@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f8
+; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    ld %f8, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 280(%r15)
 ; S390X-NEXT:    br %r14
@@ -6028,11 +5982,11 @@ entry:
   %round = call <2 x double> @llvm.experimental.constrained.round.v2f64(
                                 <2 x double> <double 1.1, double 1.9>,
                                 metadata !"round.dynamic",
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <2 x double> %round
 }
 
-define <3 x float> @constrained_vector_round_v3f32() {
+define <3 x float> @constrained_vector_round_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_round_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -6057,9 +6011,8 @@ define <3 x float> @constrained_vector_round_v3f32() {
 ; S390X-NEXT:    ler %f9, %f0
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    brasl %r14, roundf@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f8
 ; S390X-NEXT:    ler %f2, %f9
+; S390X-NEXT:    ler %f4, %f8
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 288(%r15)
@@ -6083,12 +6036,12 @@ entry:
   %round = call <3 x float> @llvm.experimental.constrained.round.v3f32(
                               <3 x float> <float 1.5, float 2.5, float 3.5>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %round
 }
 
 
-define void @constrained_vector_round_v3f64(<3 x double>* %a) {
+define void @constrained_vector_round_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_round_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -6137,12 +6090,12 @@ entry:
   %round = call <3 x double> @llvm.experimental.constrained.round.v3f64(
                           <3 x double> %b,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %round, <3 x double>* %a
   ret void
 }
 
-define <1 x float> @constrained_vector_trunc_v1f32() {
+define <1 x float> @constrained_vector_trunc_v1f32() #0 {
 ; S390X-LABEL: constrained_vector_trunc_v1f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -6166,11 +6119,11 @@ entry:
   %trunc = call <1 x float> @llvm.experimental.constrained.trunc.v1f32(
                                <1 x float> <float 1.5>,
                                metadata !"round.dynamic",
-                               metadata !"fpexcept.strict")
+                               metadata !"fpexcept.strict") #0
   ret <1 x float> %trunc
 }
 
-define <2 x double> @constrained_vector_trunc_v2f64() {
+define <2 x double> @constrained_vector_trunc_v2f64() #0 {
 ; S390X-LABEL: constrained_vector_trunc_v2f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -6188,8 +6141,7 @@ define <2 x double> @constrained_vector_trunc_v2f64() {
 ; S390X-NEXT:    ldr %f8, %f0
 ; S390X-NEXT:    ldr %f0, %f1
 ; S390X-NEXT:    brasl %r14, trunc@PLT
-; S390X-NEXT:    ldr %f2, %f0
-; S390X-NEXT:    ldr %f0, %f8
+; S390X-NEXT:    ldr %f2, %f8
 ; S390X-NEXT:    ld %f8, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 280(%r15)
 ; S390X-NEXT:    br %r14
@@ -6204,11 +6156,11 @@ entry:
   %trunc = call <2 x double> @llvm.experimental.constrained.trunc.v2f64(
                                 <2 x double> <double 1.1, double 1.9>,
                                 metadata !"round.dynamic",
-                                metadata !"fpexcept.strict")
+                                metadata !"fpexcept.strict") #0
   ret <2 x double> %trunc
 }
 
-define <3 x float> @constrained_vector_trunc_v3f32() {
+define <3 x float> @constrained_vector_trunc_v3f32() #0 {
 ; S390X-LABEL: constrained_vector_trunc_v3f32:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r14, %r15, 112(%r15)
@@ -6233,9 +6185,8 @@ define <3 x float> @constrained_vector_trunc_v3f32() {
 ; S390X-NEXT:    ler %f9, %f0
 ; S390X-NEXT:    ler %f0, %f1
 ; S390X-NEXT:    brasl %r14, truncf@PLT
-; S390X-NEXT:    ler %f4, %f0
-; S390X-NEXT:    ler %f0, %f8
 ; S390X-NEXT:    ler %f2, %f9
+; S390X-NEXT:    ler %f4, %f8
 ; S390X-NEXT:    ld %f8, 168(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    ld %f9, 160(%r15) # 8-byte Folded Reload
 ; S390X-NEXT:    lmg %r14, %r15, 288(%r15)
@@ -6259,11 +6210,11 @@ entry:
   %trunc = call <3 x float> @llvm.experimental.constrained.trunc.v3f32(
                               <3 x float> <float 1.5, float 2.5, float 3.5>,
                               metadata !"round.dynamic",
-                              metadata !"fpexcept.strict")
+                              metadata !"fpexcept.strict") #0
   ret <3 x float> %trunc
 }
 
-define void @constrained_vector_trunc_v3f64(<3 x double>* %a) {
+define void @constrained_vector_trunc_v3f64(<3 x double>* %a) #0 {
 ; S390X-LABEL: constrained_vector_trunc_v3f64:
 ; S390X:       # %bb.0: # %entry
 ; S390X-NEXT:    stmg %r13, %r15, 104(%r15)
@@ -6312,10 +6263,12 @@ entry:
   %trunc = call <3 x double> @llvm.experimental.constrained.trunc.v3f64(
                           <3 x double> %b,
                           metadata !"round.dynamic",
-                          metadata !"fpexcept.strict")
+                          metadata !"fpexcept.strict") #0
   store <3 x double> %trunc, <3 x double>* %a
   ret void
 }
+
+attributes #0 = { strictfp }
 
 declare <2 x double> @llvm.experimental.constrained.fadd.v2f64(<2 x double>, <2 x double>, metadata, metadata)
 declare <2 x double> @llvm.experimental.constrained.fsub.v2f64(<2 x double>, <2 x double>, metadata, metadata)

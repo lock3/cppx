@@ -7,13 +7,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "AST.h"
+
+#include "Annotations.h"
+#include "TestTU.h"
+#include "clang/Basic/SourceManager.h"
 #include "gtest/gtest.h"
 
 namespace clang {
 namespace clangd {
 namespace {
 
-TEST(ExpandAutoType, ShortenNamespace) {
+TEST(ShortenNamespace, All) {
   ASSERT_EQ("TestClass", shortenNamespace("TestClass", ""));
 
   ASSERT_EQ("TestClass", shortenNamespace(
@@ -36,6 +40,29 @@ TEST(ExpandAutoType, ShortenNamespace) {
                 "testns1::TestClass<testns1::OtherClass>", "testns1"));
 }
 
+TEST(GetDeducedType, KwAutoExpansion) {
+  struct Test {
+    StringRef AnnotatedCode;
+    const char *DeducedType;
+  } Tests[] = {
+      {"^auto i = 0;", "int"},
+      {"^auto f(){ return 1;};", "int"},
+  };
+  for (Test T : Tests) {
+    Annotations File(T.AnnotatedCode);
+    auto AST = TestTU::withCode(File.code()).build();
+    ASSERT_TRUE(AST.getDiagnostics().empty())
+        << AST.getDiagnostics().begin()->Message;
+    SourceManagerForFile SM("foo.cpp", File.code());
+
+    for (Position Pos : File.points()) {
+      auto Location = sourceLocationInMainFile(SM.get(), Pos);
+      ASSERT_TRUE(!!Location) << llvm::toString(Location.takeError());
+      auto DeducedType = getDeducedType(AST.getASTContext(), *Location);
+      EXPECT_EQ(DeducedType->getAsString(), T.DeducedType);
+    }
+  }
+}
 
 } // namespace
 } // namespace clangd

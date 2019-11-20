@@ -121,7 +121,8 @@ enum ProcessorFeatures {
   FEATURE_GFNI,
   FEATURE_VPCLMULQDQ,
   FEATURE_AVX512VNNI,
-  FEATURE_AVX512BITALG
+  FEATURE_AVX512BITALG,
+  FEATURE_AVX512BF16
 };
 
 // The check below for i386 was copied from clang's cpuid.h (__get_cpuid_max).
@@ -470,9 +471,9 @@ static void getAMDProcessorTypeAndSubtype(unsigned Family, unsigned Model,
     break; // "btver2"
   case 23:
     *Type = AMDFAM17H;
-    if (Model >= 0x30 && Model <= 0x3f) {
+    if ((Model >= 0x30 && Model <= 0x3f) || Model == 0x71) {
       *Subtype = AMDFAM17H_ZNVER2;
-      break; // "znver2"; 30h-3fh: Zen2
+      break; // "znver2"; 30h-3fh, 71h: Zen2
     }
     if (Model <= 0x0f) {
       *Subtype = AMDFAM17H_ZNVER1;
@@ -581,6 +582,11 @@ static void getAvailableFeatures(unsigned ECX, unsigned EDX, unsigned MaxLeaf,
     setFeature(FEATURE_AVX5124VNNIW);
   if (HasLeaf7 && ((EDX >> 3) & 1) && HasAVX512Save)
     setFeature(FEATURE_AVX5124FMAPS);
+
+  bool HasLeaf7Subleaf1 =
+      MaxLeaf >= 0x7 && !getX86CpuIDAndInfoEx(0x7, 0x1, &EAX, &EBX, &ECX, &EDX);
+  if (HasLeaf7Subleaf1 && ((EAX >> 5) & 1) && HasAVX512Save)
+    setFeature(FEATURE_AVX512BF16);
 
   unsigned MaxExtLevel;
   getX86CpuIDAndInfo(0x80000000, &MaxExtLevel, &EBX, &ECX, &EDX);

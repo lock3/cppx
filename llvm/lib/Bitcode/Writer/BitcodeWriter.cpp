@@ -520,7 +520,7 @@ static unsigned getEncodedCastOpcode(unsigned Opcode) {
 static unsigned getEncodedUnaryOpcode(unsigned Opcode) {
   switch (Opcode) {
   default: llvm_unreachable("Unknown binary instruction!");
-  case Instruction::FNeg: return bitc::UNOP_NEG;
+  case Instruction::FNeg: return bitc::UNOP_FNEG;
   }
 }
 
@@ -1005,6 +1005,7 @@ static uint64_t getEncodedFFlags(FunctionSummary::FFlags Flags) {
   RawFlags |= (Flags.NoRecurse << 2);
   RawFlags |= (Flags.ReturnDoesNotAlias << 3);
   RawFlags |= (Flags.NoInline << 4);
+  RawFlags |= (Flags.AlwaysInline << 5);
   return RawFlags;
 }
 
@@ -2880,6 +2881,11 @@ void ModuleBitcodeWriter::writeInstruction(const Instruction &I,
       pushValueSigned(PN.getIncomingValue(i), InstID, Vals64);
       Vals64.push_back(VE.getValueID(PN.getIncomingBlock(i)));
     }
+
+    uint64_t Flags = getOptimizationFlags(&I);
+    if (Flags != 0)
+      Vals64.push_back(Flags);
+
     // Emit a Vals64 vector and exit.
     Stream.EmitRecord(Code, Vals64, AbbrevToUse);
     Vals64.clear();
@@ -3027,6 +3033,10 @@ void ModuleBitcodeWriter::writeInstruction(const Instruction &I,
     Vals.push_back(VE.getTypeID(I.getOperand(0)->getType()));   // valistty
     pushValue(I.getOperand(0), InstID, Vals);                   // valist.
     Vals.push_back(VE.getTypeID(I.getType())); // restype.
+    break;
+  case Instruction::Freeze:
+    Code = bitc::FUNC_CODE_INST_FREEZE;
+    pushValueAndType(I.getOperand(0), InstID, Vals);
     break;
   }
 
@@ -3715,11 +3725,6 @@ void ModuleBitcodeWriterBase::writeModuleLevelReferences(
   NameVals.clear();
 }
 
-// Current version for the summary.
-// This is bumped whenever we introduce changes in the way some record are
-// interpreted, like flags for instance.
-static const uint64_t INDEX_VERSION = 7;
-
 /// Emit the per-module summary section alongside the rest of
 /// the module's bitcode.
 void ModuleBitcodeWriterBase::writePerModuleGlobalValueSummary() {
@@ -3733,7 +3738,9 @@ void ModuleBitcodeWriterBase::writePerModuleGlobalValueSummary() {
                                  : bitc::FULL_LTO_GLOBALVAL_SUMMARY_BLOCK_ID,
                        4);
 
-  Stream.EmitRecord(bitc::FS_VERSION, ArrayRef<uint64_t>{INDEX_VERSION});
+  Stream.EmitRecord(
+      bitc::FS_VERSION,
+      ArrayRef<uint64_t>{ModuleSummaryIndex::BitcodeSummaryVersion});
 
   // Write the index flags.
   uint64_t Flags = 0;
@@ -3880,7 +3887,9 @@ void ModuleBitcodeWriterBase::writePerModuleGlobalValueSummary() {
 /// Emit the combined summary section into the combined index file.
 void IndexBitcodeWriter::writeCombinedGlobalValueSummary() {
   Stream.EnterSubblock(bitc::GLOBALVAL_SUMMARY_BLOCK_ID, 3);
-  Stream.EmitRecord(bitc::FS_VERSION, ArrayRef<uint64_t>{INDEX_VERSION});
+  Stream.EmitRecord(
+      bitc::FS_VERSION,
+      ArrayRef<uint64_t>{ModuleSummaryIndex::BitcodeSummaryVersion});
 
   // Write the index flags.
   uint64_t Flags = 0;
@@ -3894,6 +3903,8 @@ void IndexBitcodeWriter::writeCombinedGlobalValueSummary() {
     Flags |= 0x8;
   if (Index.partiallySplitLTOUnits())
     Flags |= 0x10;
+  if (Index.withAttributePropagation())
+    Flags |= 0x20;
   Stream.EmitRecord(bitc::FS_FLAGS, ArrayRef<uint64_t>{Flags});
 
   for (const auto &GVI : valueIds()) {

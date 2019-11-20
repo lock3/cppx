@@ -76,7 +76,9 @@ class ARMTTIImpl : public BasicTTIImplBase<ARMTTIImpl> {
       ARM::FeatureDSP, ARM::FeatureMP, ARM::FeatureVirtualization,
       ARM::FeatureMClass, ARM::FeatureRClass, ARM::FeatureAClass,
       ARM::FeatureNaClTrap, ARM::FeatureStrictAlign, ARM::FeatureLongCalls,
-      ARM::FeatureExecuteOnly, ARM::FeatureReserveR9, ARM::FeatureNoMovt,
+      ARM::FeatureExecuteOnly, ARM::FeatureReserveR6, ARM::FeatureReserveR7,
+      ARM::FeatureReserveR8, ARM::FeatureReserveR9, ARM::FeatureReserveR10,
+      ARM::FeatureReserveR11, ARM::FeatureNoMovt,
       ARM::FeatureNoNegativeImmediates
   };
 
@@ -106,20 +108,6 @@ public:
     return !ST->isTargetDarwin() && !ST->hasMVEFloatOps();
   }
 
-  bool isLegalMaskedLoad(Type *DataTy) {
-    if (!ST->hasMVEIntegerOps())
-      return false;
-
-    unsigned VecWidth = DataTy->getPrimitiveSizeInBits();
-    if (VecWidth != 128)
-      return false;
-
-    unsigned EltWidth = DataTy->getScalarSizeInBits();
-    return EltWidth == 32 || EltWidth == 16 || EltWidth == 8;
-  }
-
-  bool isLegalMaskedStore(Type *DataTy) { return isLegalMaskedLoad(DataTy); }
-
   /// \name Scalar TTI Implementations
   /// @{
 
@@ -136,7 +124,8 @@ public:
   /// \name Vector TTI Implementations
   /// @{
 
-  unsigned getNumberOfRegisters(bool Vector) {
+  unsigned getNumberOfRegisters(unsigned ClassID) const {
+    bool Vector = (ClassID == 1);
     if (Vector) {
       if (ST->hasNEON())
         return 16;
@@ -164,6 +153,12 @@ public:
 
   unsigned getMaxInterleaveFactor(unsigned VF) {
     return ST->getMaxInterleaveFactor();
+  }
+
+  bool isLegalMaskedLoad(Type *DataTy, MaybeAlign Alignment);
+
+  bool isLegalMaskedStore(Type *DataTy, MaybeAlign Alignment) {
+    return isLegalMaskedLoad(DataTy, Alignment);
   }
 
   int getMemcpyCost(const Instruction *I);
@@ -196,7 +191,7 @@ public:
       TTI::OperandValueProperties Opd2PropInfo = TTI::OP_None,
       ArrayRef<const Value *> Args = ArrayRef<const Value *>());
 
-  int getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
+  int getMemoryOpCost(unsigned Opcode, Type *Src, MaybeAlign Alignment,
                       unsigned AddressSpace, const Instruction *I = nullptr);
 
   int getInterleavedMemoryOpCost(unsigned Opcode, Type *VecTy, unsigned Factor,
@@ -210,7 +205,12 @@ public:
                                 AssumptionCache &AC,
                                 TargetLibraryInfo *LibInfo,
                                 HardwareLoopInfo &HWLoopInfo);
-
+  bool preferPredicateOverEpilogue(Loop *L, LoopInfo *LI,
+                                   ScalarEvolution &SE,
+                                   AssumptionCache &AC,
+                                   TargetLibraryInfo *TLI,
+                                   DominatorTree *DT,
+                                   const LoopAccessInfo *LAI);
   void getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
                                TTI::UnrollingPreferences &UP);
 

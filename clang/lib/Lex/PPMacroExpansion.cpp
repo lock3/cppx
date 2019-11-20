@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Basic/Attributes.h"
+#include "clang/Basic/Builtins.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/LLVM.h"
@@ -35,9 +36,9 @@
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -820,18 +821,26 @@ MacroArgs *Preprocessor::ReadMacroCallArgumentList(Token &MacroName,
         }
       } else if (Tok.is(tok::l_paren)) {
         ++NumParens;
-      } else if (Tok.is(tok::comma) && NumParens == 0 &&
-                 !(Tok.getFlags() & Token::IgnoredComma)) {
+      } else if (Tok.is(tok::comma)) {
         // In Microsoft-compatibility mode, single commas from nested macro
         // expansions should not be considered as argument separators. We test
-        // for this with the IgnoredComma token flag above.
-
-        // Comma ends this argument if there are more fixed arguments expected.
-        // However, if this is a variadic macro, and this is part of the
-        // variadic part, then the comma is just an argument token.
-        if (!isVariadic) break;
-        if (NumFixedArgsLeft > 1)
-          break;
+        // for this with the IgnoredComma token flag.
+        if (Tok.getFlags() & Token::IgnoredComma) {
+          // However, in MSVC's preprocessor, subsequent expansions do treat
+          // these commas as argument separators. This leads to a common
+          // workaround used in macros that need to work in both MSVC and
+          // compliant preprocessors. Therefore, the IgnoredComma flag can only
+          // apply once to any given token.
+          Tok.clearFlag(Token::IgnoredComma);
+        } else if (NumParens == 0) {
+          // Comma ends this argument if there are more fixed arguments
+          // expected. However, if this is a variadic macro, and this is part of
+          // the variadic part, then the comma is just an argument token.
+          if (!isVariadic)
+            break;
+          if (NumFixedArgsLeft > 1)
+            break;
+        }
       } else if (Tok.is(tok::comment) && !KeepMacroComments) {
         // If this is a comment token in the argument list and we're just in
         // -C mode (not -CC mode), discard the comment.

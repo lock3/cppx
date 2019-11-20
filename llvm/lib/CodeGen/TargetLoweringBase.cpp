@@ -167,6 +167,7 @@ void TargetLoweringBase::InitLibcalls(const Triple &TT) {
         setLibcallName(RTLIB::BZERO, "__bzero");
       break;
     case Triple::aarch64:
+    case Triple::aarch64_32:
       setLibcallName(RTLIB::BZERO, "bzero");
       break;
     default:
@@ -195,6 +196,11 @@ void TargetLoweringBase::InitLibcalls(const Triple &TT) {
     setLibcallName(RTLIB::SINCOS_F80, "sincosl");
     setLibcallName(RTLIB::SINCOS_F128, "sincosl");
     setLibcallName(RTLIB::SINCOS_PPCF128, "sincosl");
+  }
+
+  if (TT.isPS4CPU()) {
+    setLibcallName(RTLIB::SINCOS_F32, "sincosf");
+    setLibcallName(RTLIB::SINCOS_F64, "sincos");
   }
 
   if (TT.isOSOpenBSD()) {
@@ -578,11 +584,7 @@ TargetLoweringBase::TargetLoweringBase(const TargetMachine &tm) : TM(tm) {
   BooleanFloatContents = UndefinedBooleanContent;
   BooleanVectorContents = UndefinedBooleanContent;
   SchedPreferenceInfo = Sched::ILP;
-  MinFunctionAlignment = 0;
-  PrefFunctionAlignment = 0;
-  PrefLoopAlignment = 0;
   GatherAllAliasesMaxDepth = 18;
-  MinStackArgumentAlignment = 1;
   // TODO: the default will be switched to 0 in the next commit, along
   // with the Target-specific changes necessary.
   MaxAtomicSizeInBitsSupported = 1024;
@@ -651,6 +653,7 @@ void TargetLoweringBase::initActions() {
     setOperationAction(ISD::SMULFIX, VT, Expand);
     setOperationAction(ISD::SMULFIXSAT, VT, Expand);
     setOperationAction(ISD::UMULFIX, VT, Expand);
+    setOperationAction(ISD::UMULFIXSAT, VT, Expand);
 
     // Overflow operations default to expand
     setOperationAction(ISD::SADDO, VT, Expand);
@@ -687,37 +690,13 @@ void TargetLoweringBase::initActions() {
       setOperationAction(ISD::ANY_EXTEND_VECTOR_INREG, VT, Expand);
       setOperationAction(ISD::SIGN_EXTEND_VECTOR_INREG, VT, Expand);
       setOperationAction(ISD::ZERO_EXTEND_VECTOR_INREG, VT, Expand);
+      setOperationAction(ISD::SPLAT_VECTOR, VT, Expand);
     }
 
     // Constrained floating-point operations default to expand.
-    setOperationAction(ISD::STRICT_FADD, VT, Expand);
-    setOperationAction(ISD::STRICT_FSUB, VT, Expand);
-    setOperationAction(ISD::STRICT_FMUL, VT, Expand);
-    setOperationAction(ISD::STRICT_FDIV, VT, Expand);
-    setOperationAction(ISD::STRICT_FREM, VT, Expand);
-    setOperationAction(ISD::STRICT_FMA, VT, Expand);
-    setOperationAction(ISD::STRICT_FSQRT, VT, Expand);
-    setOperationAction(ISD::STRICT_FPOW, VT, Expand);
-    setOperationAction(ISD::STRICT_FPOWI, VT, Expand);
-    setOperationAction(ISD::STRICT_FSIN, VT, Expand);
-    setOperationAction(ISD::STRICT_FCOS, VT, Expand);
-    setOperationAction(ISD::STRICT_FEXP, VT, Expand);
-    setOperationAction(ISD::STRICT_FEXP2, VT, Expand);
-    setOperationAction(ISD::STRICT_FLOG, VT, Expand);
-    setOperationAction(ISD::STRICT_FLOG10, VT, Expand);
-    setOperationAction(ISD::STRICT_FLOG2, VT, Expand);
-    setOperationAction(ISD::STRICT_FRINT, VT, Expand);
-    setOperationAction(ISD::STRICT_FNEARBYINT, VT, Expand);
-    setOperationAction(ISD::STRICT_FCEIL, VT, Expand);
-    setOperationAction(ISD::STRICT_FFLOOR, VT, Expand);
-    setOperationAction(ISD::STRICT_FROUND, VT, Expand);
-    setOperationAction(ISD::STRICT_FTRUNC, VT, Expand);
-    setOperationAction(ISD::STRICT_FMAXNUM, VT, Expand);
-    setOperationAction(ISD::STRICT_FMINNUM, VT, Expand);
-    setOperationAction(ISD::STRICT_FP_ROUND, VT, Expand);
-    setOperationAction(ISD::STRICT_FP_EXTEND, VT, Expand);
-    setOperationAction(ISD::STRICT_FP_TO_SINT, VT, Expand);
-    setOperationAction(ISD::STRICT_FP_TO_UINT, VT, Expand);
+#define INSTRUCTION(NAME, NARG, ROUND_MODE, INTRINSIC, DAGN)                   \
+    setOperationAction(ISD::STRICT_##DAGN, VT, Expand);
+#include "llvm/IR/ConstrainedOps.def"
 
     // For most targets @llvm.get.dynamic.area.offset just returns 0.
     setOperationAction(ISD::GET_DYNAMIC_AREA_OFFSET, VT, Expand);
@@ -1258,17 +1237,23 @@ void TargetLoweringBase::computeRegisterProperties(
     MVT EltVT = VT.getVectorElementType();
     unsigned NElts = VT.getVectorNumElements();
     bool IsLegalWiderType = false;
+    bool IsScalable = VT.isScalableVector();
     LegalizeTypeAction PreferredAction = getPreferredVectorAction(VT);
     switch (PreferredAction) {
-    case TypePromoteInteger:
+    case TypePromoteInteger: {
+      MVT::SimpleValueType EndVT = IsScalable ?
+                                   MVT::LAST_INTEGER_SCALABLE_VECTOR_VALUETYPE :
+                                   MVT::LAST_INTEGER_FIXEDLEN_VECTOR_VALUETYPE;
       // Try to promote the elements of integer vectors. If no legal
       // promotion was found, fall through to the widen-vector method.
-      for (unsigned nVT = i + 1; nVT <= MVT::LAST_INTEGER_VECTOR_VALUETYPE; ++nVT) {
+      for (unsigned nVT = i + 1;
+           (MVT::SimpleValueType)nVT <= EndVT; ++nVT) {
         MVT SVT = (MVT::SimpleValueType) nVT;
         // Promote vectors of integers to vectors with the same number
         // of elements, with a wider element type.
         if (SVT.getScalarSizeInBits() > EltVT.getSizeInBits() &&
-            SVT.getVectorNumElements() == NElts && isTypeLegal(SVT)) {
+            SVT.getVectorNumElements() == NElts &&
+            SVT.isScalableVector() == IsScalable && isTypeLegal(SVT)) {
           TransformToType[i] = SVT;
           RegisterTypeForVT[i] = SVT;
           NumRegistersForVT[i] = 1;
@@ -1280,6 +1265,7 @@ void TargetLoweringBase::computeRegisterProperties(
       if (IsLegalWiderType)
         break;
       LLVM_FALLTHROUGH;
+    }
 
     case TypeWidenVector:
       if (isPowerOf2_32(NElts)) {
@@ -1287,7 +1273,8 @@ void TargetLoweringBase::computeRegisterProperties(
         for (unsigned nVT = i + 1; nVT <= MVT::LAST_VECTOR_VALUETYPE; ++nVT) {
           MVT SVT = (MVT::SimpleValueType) nVT;
           if (SVT.getVectorElementType() == EltVT
-              && SVT.getVectorNumElements() > NElts && isTypeLegal(SVT)) {
+              && SVT.getVectorNumElements() > NElts
+              && SVT.isScalableVector() == IsScalable && isTypeLegal(SVT)) {
             TransformToType[i] = SVT;
             RegisterTypeForVT[i] = SVT;
             NumRegistersForVT[i] = 1;
@@ -1316,8 +1303,11 @@ void TargetLoweringBase::computeRegisterProperties(
       MVT IntermediateVT;
       MVT RegisterVT;
       unsigned NumIntermediates;
-      NumRegistersForVT[i] = getVectorTypeBreakdownMVT(VT, IntermediateVT,
+      unsigned NumRegisters = getVectorTypeBreakdownMVT(VT, IntermediateVT,
           NumIntermediates, RegisterVT, this);
+      NumRegistersForVT[i] = NumRegisters;
+      assert(NumRegistersForVT[i] == NumRegisters &&
+             "NumRegistersForVT size cannot represent NumRegisters!");
       RegisterTypeForVT[i] = RegisterVT;
 
       MVT NVT = VT.getPow2VectorType();
@@ -1440,6 +1430,28 @@ unsigned TargetLoweringBase::getVectorTypeBreakdown(LLVMContext &Context, EVT VT
   return NumVectorRegs;
 }
 
+bool TargetLoweringBase::isSuitableForJumpTable(const SwitchInst *SI,
+                                                uint64_t NumCases,
+                                                uint64_t Range,
+                                                ProfileSummaryInfo *PSI,
+                                                BlockFrequencyInfo *BFI) const {
+  // FIXME: This function check the maximum table size and density, but the
+  // minimum size is not checked. It would be nice if the minimum size is
+  // also combined within this function. Currently, the minimum size check is
+  // performed in findJumpTable() in SelectionDAGBuiler and
+  // getEstimatedNumberOfCaseClusters() in BasicTTIImpl.
+  const bool OptForSize =
+      SI->getParent()->getParent()->hasOptSize() ||
+      llvm::shouldOptimizeForSize(SI->getParent(), PSI, BFI);
+  const unsigned MinDensity = getMinimumJumpTableDensity(OptForSize);
+  const unsigned MaxJumpTableSize = getMaximumJumpTableSize();
+
+  // Check whether the number of cases is small enough and
+  // the range is dense enough for a jump table.
+  return (OptForSize || Range <= MaxJumpTableSize) &&
+         (NumCases * 100 >= Range * MinDensity);
+}
+
 /// Get the EVTs and ArgFlags collections that represent the legalized return
 /// type of the given function.  This does not require a DAG or a return value,
 /// and is suitable for use before any DAGs for the function are constructed.
@@ -1501,12 +1513,9 @@ unsigned TargetLoweringBase::getByValTypeAlignment(Type *Ty,
   return DL.getABITypeAlignment(Ty);
 }
 
-bool TargetLoweringBase::allowsMemoryAccess(LLVMContext &Context,
-                                            const DataLayout &DL, EVT VT,
-                                            unsigned AddrSpace,
-                                            unsigned Alignment,
-                                            MachineMemOperand::Flags Flags,
-                                            bool *Fast) const {
+bool TargetLoweringBase::allowsMemoryAccessForAlignment(
+    LLVMContext &Context, const DataLayout &DL, EVT VT, unsigned AddrSpace,
+    unsigned Alignment, MachineMemOperand::Flags Flags, bool *Fast) const {
   // Check if the specified alignment is sufficient based on the data layout.
   // TODO: While using the data layout works in practice, a better solution
   // would be to implement this check directly (make this a virtual function).
@@ -1522,6 +1531,21 @@ bool TargetLoweringBase::allowsMemoryAccess(LLVMContext &Context,
 
   // This is a misaligned access.
   return allowsMisalignedMemoryAccesses(VT, AddrSpace, Alignment, Flags, Fast);
+}
+
+bool TargetLoweringBase::allowsMemoryAccessForAlignment(
+    LLVMContext &Context, const DataLayout &DL, EVT VT,
+    const MachineMemOperand &MMO, bool *Fast) const {
+  return allowsMemoryAccessForAlignment(Context, DL, VT, MMO.getAddrSpace(),
+                                        MMO.getAlignment(), MMO.getFlags(),
+                                        Fast);
+}
+
+bool TargetLoweringBase::allowsMemoryAccess(
+    LLVMContext &Context, const DataLayout &DL, EVT VT, unsigned AddrSpace,
+    unsigned Alignment, MachineMemOperand::Flags Flags, bool *Fast) const {
+  return allowsMemoryAccessForAlignment(Context, DL, VT, AddrSpace, Alignment,
+                                        Flags, Fast);
 }
 
 bool TargetLoweringBase::allowsMemoryAccess(LLVMContext &Context,
@@ -1613,6 +1637,7 @@ int TargetLoweringBase::InstructionOpcodeToISD(unsigned Opcode) const {
   case ExtractValue:   return ISD::MERGE_VALUES;
   case InsertValue:    return ISD::MERGE_VALUES;
   case LandingPad:     return 0;
+  case Freeze:         return 0;
   }
 
   llvm_unreachable("Unknown instruction type encountered!");

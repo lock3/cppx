@@ -684,16 +684,31 @@ class Base(unittest2.TestCase):
         """Return absolute path to a file in the test's source directory."""
         return os.path.join(self.getSourceDir(), name)
 
-    @staticmethod
-    def setUpCommands():
-        return [
+    @classmethod
+    def setUpCommands(cls):
+        commands = [
             # Disable Spotlight lookup. The testsuite creates
             # different binaries with the same UUID, because they only
             # differ in the debug info, which is not being hashed.
             "settings set symbols.enable-external-lookup false",
 
             # Testsuite runs in parallel and the host can have also other load.
-            "settings set plugin.process.gdb-remote.packet-timeout 60"]
+            "settings set plugin.process.gdb-remote.packet-timeout 60",
+
+            'settings set symbols.clang-modules-cache-path "{}"'.format(
+                configuration.lldb_module_cache_dir),
+            "settings set use-color false",
+        ]
+        # Make sure that a sanitizer LLDB's environment doesn't get passed on.
+        if cls.platformContext and cls.platformContext.shlib_environment_var in os.environ:
+            commands.append('settings set target.env-vars {}='.format(
+                cls.platformContext.shlib_environment_var))
+
+        # Set environment variables for the inferior.
+        if lldbtest_config.inferior_env:
+            commands.append('settings set target.env-vars {}'.format(
+                lldbtest_config.inferior_env))
+        return commands
 
     def setUp(self):
         """Fixture for unittest test case setup.
@@ -1154,26 +1169,10 @@ class Base(unittest2.TestCase):
                 if test is self:
                     print(traceback, file=self.session)
 
-        # put footer (timestamp/rerun instructions) into session
-        testMethod = getattr(self, self._testMethodName)
-        if getattr(testMethod, "__benchmarks_test__", False):
-            benchmarks = True
-        else:
-            benchmarks = False
-
         import datetime
         print(
             "Session info generated @",
             datetime.datetime.now().ctime(),
-            file=self.session)
-        print(
-            "To rerun this test, issue the following command from the 'test' directory:\n",
-            file=self.session)
-        print(
-            "./dotest.py %s -v %s %s" %
-            (self.getRunOptions(),
-             ('+b' if benchmarks else '-t'),
-                self.getRerunArgs()),
             file=self.session)
         self.session.close()
         del self.session
@@ -1851,24 +1850,8 @@ class TestBase(Base):
         # decorators.
         Base.setUp(self)
 
-        # Set the clang modules cache path used by LLDB.
-        self.runCmd(
-            'settings set symbols.clang-modules-cache-path "{}"'.format(
-                configuration.module_cache_dir))
-
         for s in self.setUpCommands():
             self.runCmd(s)
-
-        # Disable color.
-        self.runCmd("settings set use-color false")
-
-        # Make sure that a sanitizer LLDB's environment doesn't get passed on.
-        if 'DYLD_LIBRARY_PATH' in os.environ:
-            self.runCmd('settings set target.env-vars DYLD_LIBRARY_PATH=')
-
-        # Set environment variables for the inferior.
-        if lldbtest_config.inferior_env:
-            self.runCmd('settings set target.env-vars {}'.format(lldbtest_config.inferior_env))
 
         if "LLDB_MAX_LAUNCH_COUNT" in os.environ:
             self.maxLaunchCount = int(os.environ["LLDB_MAX_LAUNCH_COUNT"])
@@ -1938,6 +1921,15 @@ class TestBase(Base):
                     lldb.SBFileSpec(remote_shlib_path, False))
 
         return environment
+
+    def registerSanitizerLibrariesWithTarget(self, target):
+        runtimes = []
+        for m in target.module_iter():
+            libspec = m.GetFileSpec()
+            if "clang_rt" in libspec.GetFilename():
+                runtimes.append(os.path.join(libspec.GetDirectory(),
+                                             libspec.GetFilename()))
+        return self.registerSharedLibrariesWithTarget(target, runtimes)
 
     # utility methods that tests can use to access the current objects
     def target(self):
@@ -2208,11 +2200,15 @@ class TestBase(Base):
             self,
             command,
             check_file,
-            filecheck_options = ''):
+            filecheck_options = '',
+            expect_cmd_failure = False):
         # Run the command.
         self.runCmd(
                 command,
+                check=(not expect_cmd_failure),
                 msg="FileCheck'ing result of `{0}`".format(command))
+
+        self.assertTrue((not expect_cmd_failure) == self.res.Succeeded())
 
         # Get the error text if there was an error, and the regular text if not.
         output = self.res.GetOutput() if self.res.Succeeded() \

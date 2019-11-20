@@ -33,6 +33,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/User.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Transforms/Scalar.h"
@@ -192,7 +193,8 @@ public:
         getAnalysis<AssumptionCacheTracker>().getAssumptionCache(
             *L->getHeader()->getParent());
     const TargetLibraryInfo &TLI =
-        getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+        getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(
+            *L->getHeader()->getParent());
     MemorySSA *MSSA = nullptr;
     Optional<MemorySSAUpdater> MSSAU;
     if (EnableMSSALoopDependency) {

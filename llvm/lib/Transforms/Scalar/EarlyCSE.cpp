@@ -27,7 +27,6 @@
 #include "llvm/Analysis/MemorySSAUpdater.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
-#include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
@@ -45,6 +44,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Use.h"
 #include "llvm/IR/Value.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/AtomicOrdering.h"
@@ -55,6 +55,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/GuardUtils.h"
+#include "llvm/Transforms/Utils/Local.h"
 #include <cassert>
 #include <deque>
 #include <memory>
@@ -652,7 +653,7 @@ private:
 
     bool isInvariantLoad() const {
       if (auto *LI = dyn_cast<LoadInst>(Inst))
-        return LI->getMetadata(LLVMContext::MD_invariant_load) != nullptr;
+        return LI->hasMetadata(LLVMContext::MD_invariant_load);
       return false;
     }
 
@@ -791,7 +792,7 @@ bool EarlyCSE::isOperatingOnInvariantMemAt(Instruction *I, unsigned GenAt) {
   // A location loaded from with an invariant_load is assumed to *never* change
   // within the visible scope of the compilation.
   if (auto *LI = dyn_cast<LoadInst>(I))
-    if (LI->getMetadata(LLVMContext::MD_invariant_load))
+    if (LI->hasMetadata(LLVMContext::MD_invariant_load))
       return true;
 
   auto MemLocOpt = MemoryLocation::getOrNone(I);
@@ -1360,7 +1361,7 @@ public:
     if (skipFunction(F))
       return false;
 
-    auto &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+    auto &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
     auto &TTI = getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
     auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
     auto &AC = getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
@@ -1382,6 +1383,7 @@ public:
       AU.addPreserved<MemorySSAWrapperPass>();
     }
     AU.addPreserved<GlobalsAAWrapperPass>();
+    AU.addPreserved<AAResultsWrapperPass>();
     AU.setPreservesCFG();
   }
 };

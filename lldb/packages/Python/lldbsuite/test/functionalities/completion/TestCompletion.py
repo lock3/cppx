@@ -102,6 +102,27 @@ class CommandLineCompletionTestCase(TestBase):
         self.complete_from_to('plugin load ', [])
 
     @skipIfFreeBSD  # timing out on the FreeBSD buildbot
+    def test_log_enable(self):
+        self.complete_from_to('log enable ll', ['lldb'])
+        self.complete_from_to('log enable dw', ['dwarf'])
+        self.complete_from_to('log enable lldb al', ['all'])
+        self.complete_from_to('log enable lldb sym', ['symbol'])
+
+    @skipIfFreeBSD  # timing out on the FreeBSD buildbot
+    def test_log_enable(self):
+        self.complete_from_to('log disable ll', ['lldb'])
+        self.complete_from_to('log disable dw', ['dwarf'])
+        self.complete_from_to('log disable lldb al', ['all'])
+        self.complete_from_to('log disable lldb sym', ['symbol'])
+
+    @skipIfFreeBSD  # timing out on the FreeBSD buildbot
+    def test_log_list(self):
+        self.complete_from_to('log list ll', ['lldb'])
+        self.complete_from_to('log list dw', ['dwarf'])
+        self.complete_from_to('log list ll', ['lldb'])
+        self.complete_from_to('log list lldb dwa', ['dwarf'])
+
+    @skipIfFreeBSD  # timing out on the FreeBSD buildbot
     def test_quoted_command(self):
         self.complete_from_to('"set',
                               ['"settings" '])
@@ -363,7 +384,7 @@ class CommandLineCompletionTestCase(TestBase):
         """Test descriptions of top-level command completions"""
         self.check_completion_with_desc("", [
             ["command", "Commands for managing custom LLDB commands."],
-            ["bugreport", "Commands for creating domain-specific bug reports."]
+            ["breakpoint", "Commands for operating on breakpoints (see 'help b' for shorthand.)"]
         ])
 
         self.check_completion_with_desc("pl", [
@@ -374,6 +395,30 @@ class CommandLineCompletionTestCase(TestBase):
         # Just check that this doesn't crash.
         self.check_completion_with_desc("comman", [])
         self.check_completion_with_desc("non-existent-command", [])
+
+    def test_completion_description_command_options(self):
+        """Test descriptions of command options"""
+        # Short options
+        self.check_completion_with_desc("breakpoint set -", [
+            ["-h", "Set the breakpoint on exception catcH."],
+            ["-w", "Set the breakpoint on exception throW."]
+        ])
+
+        # Long options.
+        self.check_completion_with_desc("breakpoint set --", [
+            ["--on-catch", "Set the breakpoint on exception catcH."],
+            ["--on-throw", "Set the breakpoint on exception throW."]
+        ])
+
+        # Ambiguous long options.
+        self.check_completion_with_desc("breakpoint set --on-", [
+            ["--on-catch", "Set the breakpoint on exception catcH."],
+            ["--on-throw", "Set the breakpoint on exception throW."]
+        ])
+
+        # Unknown long option.
+        self.check_completion_with_desc("breakpoint set --Z", [
+        ])
 
     @expectedFailureAll(oslist=["windows"], bugnumber="llvm.org/pr24489")
     def test_symbol_name(self):

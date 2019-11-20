@@ -95,6 +95,29 @@ void ContentCache::replaceBuffer(const llvm::MemoryBuffer *B, bool DoNotFree) {
   Buffer.setInt((B && DoNotFree) ? DoNotFreeFlag : 0);
 }
 
+const char *ContentCache::getInvalidBOM(StringRef BufStr) {
+  // If the buffer is valid, check to see if it has a UTF Byte Order Mark
+  // (BOM).  We only support UTF-8 with and without a BOM right now.  See
+  // http://en.wikipedia.org/wiki/Byte_order_mark for more information.
+  const char *InvalidBOM =
+      llvm::StringSwitch<const char *>(BufStr)
+          .StartsWith(llvm::StringLiteral::withInnerNUL("\x00\x00\xFE\xFF"),
+                      "UTF-32 (BE)")
+          .StartsWith(llvm::StringLiteral::withInnerNUL("\xFF\xFE\x00\x00"),
+                      "UTF-32 (LE)")
+          .StartsWith("\xFE\xFF", "UTF-16 (BE)")
+          .StartsWith("\xFF\xFE", "UTF-16 (LE)")
+          .StartsWith("\x2B\x2F\x76", "UTF-7")
+          .StartsWith("\xF7\x64\x4C", "UTF-1")
+          .StartsWith("\xDD\x73\x66\x73", "UTF-EBCDIC")
+          .StartsWith("\x0E\xFE\xFF", "SCSU")
+          .StartsWith("\xFB\xEE\x28", "BOCU-1")
+          .StartsWith("\x84\x31\x95\x33", "GB-18030")
+          .Default(nullptr);
+
+  return InvalidBOM;
+}
+
 const llvm::MemoryBuffer *ContentCache::getBuffer(DiagnosticsEngine &Diag,
                                                   FileManager &FM,
                                                   SourceLocation Loc,
@@ -190,20 +213,7 @@ const llvm::MemoryBuffer *ContentCache::getBuffer(DiagnosticsEngine &Diag,
   // (BOM).  We only support UTF-8 with and without a BOM right now.  See
   // http://en.wikipedia.org/wiki/Byte_order_mark for more information.
   StringRef BufStr = Buffer.getPointer()->getBuffer();
-  const char *InvalidBOM = llvm::StringSwitch<const char *>(BufStr)
-    .StartsWith(llvm::StringLiteral::withInnerNUL("\x00\x00\xFE\xFF"),
-                                                  "UTF-32 (BE)")
-    .StartsWith(llvm::StringLiteral::withInnerNUL("\xFF\xFE\x00\x00"),
-                                                  "UTF-32 (LE)")
-    .StartsWith("\xFE\xFF", "UTF-16 (BE)")
-    .StartsWith("\xFF\xFE", "UTF-16 (LE)")
-    .StartsWith("\x2B\x2F\x76", "UTF-7")
-    .StartsWith("\xF7\x64\x4C", "UTF-1")
-    .StartsWith("\xDD\x73\x66\x73", "UTF-EBCDIC")
-    .StartsWith("\x0E\xFE\xFF", "SCSU")
-    .StartsWith("\xFB\xEE\x28", "BOCU-1")
-    .StartsWith("\x84\x31\x95\x33", "GB-18030")
-    .Default(nullptr);
+  const char *InvalidBOM = getInvalidBOM(BufStr);
 
   if (InvalidBOM) {
     Diag.Report(Loc, diag::err_unsupported_bom)
@@ -669,17 +679,19 @@ void SourceManager::overrideFileContents(const FileEntry *SourceFile,
   getOverriddenFilesInfo().OverriddenFiles[SourceFile] = NewFile;
 }
 
-void SourceManager::disableFileContentsOverride(const FileEntry *File) {
-  if (!isFileOverridden(File))
-    return;
+const FileEntry *
+SourceManager::bypassFileContentsOverride(const FileEntry &File) {
+  assert(isFileOverridden(&File));
+  llvm::Optional<FileEntryRef> BypassFile =
+      FileMgr.getBypassFile(FileEntryRef(File.getName(), File));
 
-  const SrcMgr::ContentCache *IR = getOrCreateContentCache(File);
-  const_cast<SrcMgr::ContentCache *>(IR)->replaceBuffer(nullptr);
-  const_cast<SrcMgr::ContentCache *>(IR)->ContentsEntry = IR->OrigEntry;
+  // If the file can't be found in the FS, give up.
+  if (!BypassFile)
+    return nullptr;
 
-  assert(OverriddenFilesInfo);
-  OverriddenFilesInfo->OverriddenFiles.erase(File);
-  OverriddenFilesInfo->OverriddenFilesWithBuffer.erase(File);
+  const FileEntry *FE = &BypassFile->getFileEntry();
+  (void)getOrCreateContentCache(FE);
+  return FE;
 }
 
 void SourceManager::setFileIsTransient(const FileEntry *File) {

@@ -27,7 +27,7 @@ void ExprEngine::CreateCXXTemporaryObject(const MaterializeTemporaryExpr *ME,
                                           ExplodedNode *Pred,
                                           ExplodedNodeSet &Dst) {
   StmtNodeBuilder Bldr(Pred, Dst, *currBldrCtx);
-  const Expr *tempExpr = ME->GetTemporaryExpr()->IgnoreParens();
+  const Expr *tempExpr = ME->getSubExpr()->IgnoreParens();
   ProgramStateRef state = Pred->getState();
   const LocationContext *LCtx = Pred->getLocationContext();
 
@@ -775,7 +775,8 @@ void ExprEngine::VisitCXXNewExpr(const CXXNewExpr *CNE, ExplodedNode *Pred,
   if (!AMgr.getAnalyzerOptions().MayInlineCXXAllocator) {
     // Invalidate placement args.
     // FIXME: Once we figure out how we want allocators to work,
-    // we should be using the usual pre-/(default-)eval-/post-call checks here.
+    // we should be using the usual pre-/(default-)eval-/post-call checkers
+    // here.
     State = Call->invalidateRegions(blockCount);
     if (!State)
       return;

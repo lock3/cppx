@@ -44,9 +44,12 @@
 #include "TUScheduler.h"
 #include "Cancellation.h"
 #include "Compiler.h"
+#include "Context.h"
 #include "Diagnostics.h"
 #include "GlobalCompilationDatabase.h"
 #include "Logger.h"
+#include "ParsedAST.h"
+#include "Preamble.h"
 #include "Trace.h"
 #include "index/CanonicalIncludes.h"
 #include "clang/Frontend/CompilerInvocation.h"
@@ -917,7 +920,11 @@ void TUScheduler::run(llvm::StringRef Name,
                       llvm::unique_function<void()> Action) {
   if (!PreambleTasks)
     return Action();
-  PreambleTasks->runAsync(Name, std::move(Action));
+  PreambleTasks->runAsync(Name, [Ctx = Context::current().clone(),
+                                 Action = std::move(Action)]() mutable {
+    WithContext WC(std::move(Ctx));
+    Action();
+  });
 }
 
 void TUScheduler::runWithAST(

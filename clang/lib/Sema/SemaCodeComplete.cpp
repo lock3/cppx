@@ -692,18 +692,6 @@ getRequiredQualification(ASTContext &Context, const DeclContext *CurContext,
   return Result;
 }
 
-/// Determine whether \p Id is a name reserved for the implementation (C99
-/// 7.1.3, C++ [lib.global.names]).
-static bool isReservedName(const IdentifierInfo *Id,
-                           bool doubleUnderscoreOnly = false) {
-  if (Id->getLength() < 2)
-    return false;
-  const char *Name = Id->getNameStart();
-  return Name[0] == '_' &&
-         (Name[1] == '_' ||
-          (Name[1] >= 'A' && Name[1] <= 'Z' && !doubleUnderscoreOnly));
-}
-
 // Some declarations have reserved names that we don't want to ever show.
 // Filter out names reserved for the implementation if they come from a
 // system header.
@@ -713,13 +701,13 @@ static bool shouldIgnoreDueToReservedName(const NamedDecl *ND, Sema &SemaRef) {
     return false;
 
   // Ignore reserved names for compiler provided decls.
-  if (isReservedName(Id) && ND->getLocation().isInvalid())
+  if (Id->isReservedName() && ND->getLocation().isInvalid())
     return true;
 
   // For system headers ignore only double-underscore names.
   // This allows for system headers providing private symbols with a single
   // underscore.
-  if (isReservedName(Id, /*doubleUnderscoreOnly=*/true) &&
+  if (Id->isReservedName(/*doubleUnderscoreOnly=*/true) &&
       SemaRef.SourceMgr.isInSystemHeader(
           SemaRef.SourceMgr.getSpellingLoc(ND->getLocation())))
     return true;
@@ -1185,6 +1173,9 @@ static OverloadCompare compareOverloads(const CXXMethodDecl &Candidate,
                                         const CXXMethodDecl &Incumbent,
                                         const Qualifiers &ObjectQuals,
                                         ExprValueKind ObjectKind) {
+  // Base/derived shadowing is handled elsewhere.
+  if (Candidate.getDeclContext() != Incumbent.getDeclContext())
+    return OverloadCompare::BothViable;
   if (Candidate.isVariadic() != Incumbent.isVariadic() ||
       Candidate.getNumParams() != Incumbent.getNumParams() ||
       Candidate.getMinRequiredArguments() !=
@@ -3650,6 +3641,10 @@ CodeCompleteConsumer::OverloadCandidate::CreateSignatureString(
     unsigned CurrentArg, Sema &S, CodeCompletionAllocator &Allocator,
     CodeCompletionTUInfo &CCTUInfo, bool IncludeBriefComments) const {
   PrintingPolicy Policy = getCompletionPrintingPolicy(S);
+  // Show signatures of constructors as they are declared:
+  //   vector(int n) rather than vector<string>(int n)
+  // This is less noisy without being less clear, and avoids tricky cases.
+  Policy.SuppressTemplateArgsInCXXConstructors = true;
 
   // FIXME: Set priority, availability appropriately.
   CodeCompletionBuilder Result(Allocator, CCTUInfo, 1,
@@ -5327,18 +5322,21 @@ void Sema::CodeCompleteAfterIf(Scope *S) {
 }
 
 void Sema::CodeCompleteQualifiedId(Scope *S, CXXScopeSpec &SS,
-                                   bool EnteringContext, QualType BaseType,
+                                   bool EnteringContext,
+                                   bool IsUsingDeclaration, QualType BaseType,
                                    QualType PreferredType) {
   if (SS.isEmpty() || !CodeCompleter)
     return;
+
+  CodeCompletionContext CC(CodeCompletionContext::CCC_Symbol, PreferredType);
+  CC.setIsUsingDeclaration(IsUsingDeclaration);
+  CC.setCXXScopeSpecifier(SS);
 
   // We want to keep the scope specifier even if it's invalid (e.g. the scope
   // "a::b::" is not corresponding to any context/namespace in the AST), since
   // it can be useful for global code completion which have information about
   // contexts/symbols that are not in the AST.
   if (SS.isInvalid()) {
-    CodeCompletionContext CC(CodeCompletionContext::CCC_Symbol, PreferredType);
-    CC.setCXXScopeSpecifier(SS);
     // As SS is invalid, we try to collect accessible contexts from the current
     // scope with a dummy lookup so that the completion consumer can try to
     // guess what the specified scope is.
@@ -5368,10 +5366,8 @@ void Sema::CodeCompleteQualifiedId(Scope *S, CXXScopeSpec &SS,
   if (!isDependentScopeSpecifier(SS) && RequireCompleteDeclContext(SS, Ctx))
     return;
 
-  ResultBuilder Results(
-      *this, CodeCompleter->getAllocator(),
-      CodeCompleter->getCodeCompletionTUInfo(),
-      CodeCompletionContext(CodeCompletionContext::CCC_Symbol, PreferredType));
+  ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(), CC);
   if (!PreferredType.isNull())
     Results.setPreferredType(PreferredType);
   Results.EnterNewScope();
@@ -5400,23 +5396,21 @@ void Sema::CodeCompleteQualifiedId(Scope *S, CXXScopeSpec &SS,
                        CodeCompleter->loadExternal());
   }
 
-  auto CC = Results.getCompletionContext();
-  CC.setCXXScopeSpecifier(SS);
-
-  HandleCodeCompleteResults(this, CodeCompleter, CC, Results.data(),
-                            Results.size());
+  HandleCodeCompleteResults(this, CodeCompleter, Results.getCompletionContext(),
+                            Results.data(), Results.size());
 }
 
 void Sema::CodeCompleteUsing(Scope *S) {
   if (!CodeCompleter)
     return;
 
+  // This can be both a using alias or using declaration, in the former we
+  // expect a new name and a symbol in the latter case.
+  CodeCompletionContext Context(CodeCompletionContext::CCC_SymbolOrNewName);
+  Context.setIsUsingDeclaration(true);
+
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
-                        CodeCompleter->getCodeCompletionTUInfo(),
-                        // This can be both a using alias or using
-                        // declaration, in the former we expect a new name and a
-                        // symbol in the latter case.
-                        CodeCompletionContext::CCC_SymbolOrNewName,
+                        CodeCompleter->getCodeCompletionTUInfo(), Context,
                         &ResultBuilder::IsNestedNameSpecifier);
   Results.EnterNewScope();
 

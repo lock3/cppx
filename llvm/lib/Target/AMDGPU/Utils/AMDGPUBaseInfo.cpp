@@ -137,9 +137,50 @@ struct MUBUFInfo {
   bool has_soffset;
 };
 
+struct MTBUFInfo {
+  uint16_t Opcode;
+  uint16_t BaseOpcode;
+  uint8_t elements;
+  bool has_vaddr;
+  bool has_srsrc;
+  bool has_soffset;
+};
+
+#define GET_MTBUFInfoTable_DECL
+#define GET_MTBUFInfoTable_IMPL
 #define GET_MUBUFInfoTable_DECL
 #define GET_MUBUFInfoTable_IMPL
 #include "AMDGPUGenSearchableTables.inc"
+
+int getMTBUFBaseOpcode(unsigned Opc) {
+  const MTBUFInfo *Info = getMTBUFInfoFromOpcode(Opc);
+  return Info ? Info->BaseOpcode : -1;
+}
+
+int getMTBUFOpcode(unsigned BaseOpc, unsigned Elements) {
+  const MTBUFInfo *Info = getMTBUFInfoFromBaseOpcodeAndElements(BaseOpc, Elements);
+  return Info ? Info->Opcode : -1;
+}
+
+int getMTBUFElements(unsigned Opc) {
+  const MTBUFInfo *Info = getMTBUFOpcodeHelper(Opc);
+  return Info ? Info->elements : 0;
+}
+
+bool getMTBUFHasVAddr(unsigned Opc) {
+  const MTBUFInfo *Info = getMTBUFOpcodeHelper(Opc);
+  return Info ? Info->has_vaddr : false;
+}
+
+bool getMTBUFHasSrsrc(unsigned Opc) {
+  const MTBUFInfo *Info = getMTBUFOpcodeHelper(Opc);
+  return Info ? Info->has_srsrc : false;
+}
+
+bool getMTBUFHasSoffset(unsigned Opc) {
+  const MTBUFInfo *Info = getMTBUFOpcodeHelper(Opc);
+  return Info ? Info->has_soffset : false;
+}
 
 int getMUBUFBaseOpcode(unsigned Opc) {
   const MUBUFInfo *Info = getMUBUFInfoFromOpcode(Opc);
@@ -271,7 +312,8 @@ unsigned getMinFlatWorkGroupSize(const MCSubtargetInfo *STI) {
 }
 
 unsigned getMaxFlatWorkGroupSize(const MCSubtargetInfo *STI) {
-  return 2048;
+  // Some subtargets allow encoding 2048, but this isn't tested or supported.
+  return 1024;
 }
 
 unsigned getWavesPerWorkGroup(const MCSubtargetInfo *STI,
@@ -501,20 +543,21 @@ amdhsa::kernel_descriptor_t getDefaultAmdhsaKernelDescriptor(
 }
 
 bool isGroupSegment(const GlobalValue *GV) {
-  return GV->getType()->getAddressSpace() == AMDGPUAS::LOCAL_ADDRESS;
+  return GV->getAddressSpace() == AMDGPUAS::LOCAL_ADDRESS;
 }
 
 bool isGlobalSegment(const GlobalValue *GV) {
-  return GV->getType()->getAddressSpace() == AMDGPUAS::GLOBAL_ADDRESS;
+  return GV->getAddressSpace() == AMDGPUAS::GLOBAL_ADDRESS;
 }
 
 bool isReadOnlySegment(const GlobalValue *GV) {
-  return GV->getType()->getAddressSpace() == AMDGPUAS::CONSTANT_ADDRESS ||
-         GV->getType()->getAddressSpace() == AMDGPUAS::CONSTANT_ADDRESS_32BIT;
+  unsigned AS = GV->getAddressSpace();
+  return AS == AMDGPUAS::CONSTANT_ADDRESS ||
+         AS == AMDGPUAS::CONSTANT_ADDRESS_32BIT;
 }
 
 bool shouldEmitConstantsToTextSection(const Triple &TT) {
-  return TT.getOS() != Triple::AMDHSA;
+  return TT.getOS() == Triple::AMDPAL;
 }
 
 int getIntegerAttribute(const Function &F, StringRef Name, int Default) {
@@ -1260,7 +1303,8 @@ bool splitMUBUFOffset(uint32_t Imm, uint32_t &SOffset, uint32_t &ImmOffset,
   return true;
 }
 
-SIModeRegisterDefaults::SIModeRegisterDefaults(const Function &F) {
+SIModeRegisterDefaults::SIModeRegisterDefaults(const Function &F,
+                                               const GCNSubtarget &ST) {
   *this = getDefaultForCallingConv(F.getCallingConv());
 
   StringRef IEEEAttr = F.getFnAttribute("amdgpu-ieee").getValueAsString();
@@ -1271,6 +1315,9 @@ SIModeRegisterDefaults::SIModeRegisterDefaults(const Function &F) {
     = F.getFnAttribute("amdgpu-dx10-clamp").getValueAsString();
   if (!DX10ClampAttr.empty())
     DX10Clamp = DX10ClampAttr == "true";
+
+  FP32Denormals = ST.hasFP32Denormals(F);
+  FP64FP16Denormals = ST.hasFP64FP16Denormals(F);
 }
 
 namespace {

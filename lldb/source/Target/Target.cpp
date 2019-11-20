@@ -305,14 +305,14 @@ BreakpointSP Target::CreateSourceRegexBreakpoint(
     const FileSpecList *containingModules,
     const FileSpecList *source_file_spec_list,
     const std::unordered_set<std::string> &function_names,
-    RegularExpression &source_regex, bool internal, bool hardware,
+    RegularExpression source_regex, bool internal, bool hardware,
     LazyBool move_to_nearest_code) {
   SearchFilterSP filter_sp(GetSearchFilterForModuleAndCUList(
       containingModules, source_file_spec_list));
   if (move_to_nearest_code == eLazyBoolCalculate)
     move_to_nearest_code = GetMoveToNearestCode() ? eLazyBoolYes : eLazyBoolNo;
   BreakpointResolverSP resolver_sp(new BreakpointResolverFileRegex(
-      nullptr, source_regex, function_names,
+      nullptr, std::move(source_regex), function_names,
       !static_cast<bool>(move_to_nearest_code)));
 
   return CreateBreakpoint(filter_sp, resolver_sp, internal, hardware, true);
@@ -547,7 +547,7 @@ SearchFilterSP Target::GetSearchFilterForModuleAndCUList(
 
 BreakpointSP Target::CreateFuncRegexBreakpoint(
     const FileSpecList *containingModules,
-    const FileSpecList *containingSourceFiles, RegularExpression &func_regex,
+    const FileSpecList *containingSourceFiles, RegularExpression func_regex,
     lldb::LanguageType requested_language, LazyBool skip_prologue,
     bool internal, bool hardware) {
   SearchFilterSP filter_sp(GetSearchFilterForModuleAndCUList(
@@ -556,7 +556,7 @@ BreakpointSP Target::CreateFuncRegexBreakpoint(
                   ? GetSkipPrologue()
                   : static_cast<bool>(skip_prologue);
   BreakpointResolverSP resolver_sp(new BreakpointResolverName(
-      nullptr, func_regex, requested_language, 0, skip));
+      nullptr, std::move(func_regex), requested_language, 0, skip));
 
   return CreateBreakpoint(filter_sp, resolver_sp, internal, hardware, true);
 }
@@ -609,8 +609,7 @@ lldb::BreakpointSP Target::CreateScriptedBreakpoint(
     extra_args_impl->SetObjectSP(extra_args_sp);
 
   BreakpointResolverSP resolver_sp(new BreakpointResolverScripted(
-      nullptr, class_name, depth, extra_args_impl,
-      *GetDebugger().GetScriptInterpreter()));
+      nullptr, class_name, depth, extra_args_impl));
   return CreateBreakpoint(filter_sp, resolver_sp, internal, false, true);
 }
 
@@ -997,10 +996,9 @@ Status Target::SerializeBreakpointsToFile(const FileSpec &file,
   }
 
   StreamFile out_file(path.c_str(),
-                      File::OpenOptions::eOpenOptionTruncate |
-                          File::OpenOptions::eOpenOptionWrite |
-                          File::OpenOptions::eOpenOptionCanCreate |
-                          File::OpenOptions::eOpenOptionCloseOnExec,
+                      File::eOpenOptionTruncate | File::eOpenOptionWrite |
+                          File::eOpenOptionCanCreate |
+                          File::eOpenOptionCloseOnExec,
                       lldb::eFilePermissionsFileDefault);
   if (!out_file.GetFile().IsValid()) {
     error.SetErrorStringWithFormat("Unable to open output file: %s.",
@@ -1358,15 +1356,15 @@ static void LoadScriptingResourceForModule(const ModuleSP &module_sp,
   if (module_sp && !module_sp->LoadScriptingResourceInTarget(
                        target, error, &feedback_stream)) {
     if (error.AsCString())
-      target->GetDebugger().GetErrorFile()->Printf(
+      target->GetDebugger().GetErrorStream().Printf(
           "unable to load scripting data for module %s - error reported was "
           "%s\n",
           module_sp->GetFileSpec().GetFileNameStrippingExtension().GetCString(),
           error.AsCString());
   }
   if (feedback_stream.GetSize())
-    target->GetDebugger().GetErrorFile()->Printf("%s\n",
-                                                 feedback_stream.GetData());
+    target->GetDebugger().GetErrorStream().Printf("%s\n",
+                                                  feedback_stream.GetData());
 }
 
 void Target::ClearModules(bool delete_locations) {
@@ -1650,11 +1648,11 @@ bool Target::ModuleIsExcludedForUnconstrainedSearches(
   if (GetBreakpointsConsultPlatformAvoidList()) {
     ModuleList matchingModules;
     ModuleSpec module_spec(module_file_spec);
-    size_t num_modules = GetImages().FindModules(module_spec, matchingModules);
+    GetImages().FindModules(module_spec, matchingModules);
+    size_t num_modules = matchingModules.GetSize();
 
-    // If there is more than one module for this file spec, only return true if
-    // ALL the modules are on the
-    // black list.
+    // If there is more than one module for this file spec, only
+    // return true if ALL the modules are on the black list.
     if (num_modules > 0) {
       for (size_t i = 0; i < num_modules; i++) {
         if (!ModuleIsExcludedForUnconstrainedSearches(
@@ -2061,11 +2059,9 @@ ModuleSP Target::GetOrCreateModule(const ModuleSpec &module_spec, bool notify,
             module_spec_copy.GetUUID().Clear();
 
             ModuleList found_modules;
-            size_t num_found =
-                m_images.FindModules(module_spec_copy, found_modules);
-            if (num_found == 1) {
+            m_images.FindModules(module_spec_copy, found_modules);
+            if (found_modules.GetSize() == 1)
               old_module_sp = found_modules.GetModuleAtIndex(0);
-            }
           }
         }
 
@@ -3789,6 +3785,12 @@ bool TargetProperties::GetEnableSyntheticValue() const {
       nullptr, idx, g_target_properties[idx].default_uint_value != 0);
 }
 
+uint32_t TargetProperties::GetMaxZeroPaddingInFloatFormat() const {
+  const uint32_t idx = ePropertyMaxZeroPaddingInFloatFormat;
+  return m_collection_sp->GetPropertyAtIndexAsUInt64(
+      nullptr, idx, g_target_properties[idx].default_uint_value);
+}
+
 uint32_t TargetProperties::GetMaximumNumberOfChildrenToDisplay() const {
   const uint32_t idx = ePropertyMaxChildrenCount;
   return m_collection_sp->GetPropertyAtIndexAsSInt64(
@@ -4122,4 +4124,11 @@ Target::TargetEventData::GetModuleListFromEvent(const Event *event_ptr) {
   if (event_data)
     module_list = event_data->m_module_list;
   return module_list;
+}
+
+std::recursive_mutex &Target::GetAPIMutex() { 
+  if (GetProcessSP() && GetProcessSP()->CurrentThreadIsPrivateStateThread())
+    return m_private_mutex;
+  else
+    return m_mutex;
 }

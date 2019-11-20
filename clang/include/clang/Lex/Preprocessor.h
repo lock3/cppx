@@ -14,7 +14,6 @@
 #ifndef LLVM_CLANG_LEX_PREPROCESSOR_H
 #define LLVM_CLANG_LEX_PREPROCESSOR_H
 
-#include "clang/Basic/Builtins.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/LLVM.h"
@@ -28,6 +27,7 @@
 #include "clang/Lex/ModuleLoader.h"
 #include "clang/Lex/ModuleMap.h"
 #include "clang/Lex/PPCallbacks.h"
+#include "clang/Lex/PreprocessorExcludedConditionalDirectiveSkipMapping.h"
 #include "clang/Lex/Token.h"
 #include "clang/Lex/TokenLexer.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -79,6 +79,10 @@ class PreprocessorLexer;
 class PreprocessorOptions;
 class ScratchBuffer;
 class TargetInfo;
+
+namespace Builtin {
+class Context;
+}
 
 /// Stores token information for comparing actual tokens with
 /// predefined values.  Only handles simple tokens and identifiers.
@@ -238,7 +242,7 @@ class Preprocessor {
   SelectorTable Selectors;
 
   /// Information about builtins.
-  Builtin::Context BuiltinInfo;
+  std::unique_ptr<Builtin::Context> BuiltinInfo;
 
   /// Tracks all of the pragmas that the client registered
   /// with this preprocessor.
@@ -370,9 +374,9 @@ class Preprocessor {
   /// it expects a '.' or ';'.
   bool ModuleImportExpectsIdentifier = false;
 
-  /// The source location of the currently-active
+  /// The identifier and source location of the currently-active
   /// \#pragma clang arc_cf_code_audited begin.
-  SourceLocation PragmaARCCFCodeAuditedLoc;
+  std::pair<IdentifierInfo *, SourceLocation> PragmaARCCFCodeAuditedInfo;
 
   /// The source location of the currently-active
   /// \#pragma clang assume_nonnull begin.
@@ -910,7 +914,7 @@ public:
   IdentifierTable &getIdentifierTable() { return Identifiers; }
   const IdentifierTable &getIdentifierTable() const { return Identifiers; }
   SelectorTable &getSelectorTable() { return Selectors; }
-  Builtin::Context &getBuiltinInfo() { return BuiltinInfo; }
+  Builtin::Context &getBuiltinInfo() { return *BuiltinInfo; }
   llvm::BumpPtrAllocator &getPreprocessorAllocator() { return BP; }
 
   void setExternalSource(ExternalPreprocessorSource *Source) {
@@ -1601,14 +1605,16 @@ public:
   /// arc_cf_code_audited begin.
   ///
   /// Returns an invalid location if there is no such pragma active.
-  SourceLocation getPragmaARCCFCodeAuditedLoc() const {
-    return PragmaARCCFCodeAuditedLoc;
+  std::pair<IdentifierInfo *, SourceLocation>
+  getPragmaARCCFCodeAuditedInfo() const {
+    return PragmaARCCFCodeAuditedInfo;
   }
 
   /// Set the location of the currently-active \#pragma clang
   /// arc_cf_code_audited begin.  An invalid location ends the pragma.
-  void setPragmaARCCFCodeAuditedLoc(SourceLocation Loc) {
-    PragmaARCCFCodeAuditedLoc = Loc;
+  void setPragmaARCCFCodeAuditedInfo(IdentifierInfo *Ident,
+                                     SourceLocation Loc) {
+    PragmaARCCFCodeAuditedInfo = {Ident, Loc};
   }
 
   /// The location of the currently-active \#pragma clang
@@ -2205,7 +2211,7 @@ private:
       SourceLocation FilenameLoc, CharSourceRange FilenameRange,
       const Token &FilenameTok, bool &IsFrameworkFound, bool IsImportDecl,
       bool &IsMapped, const DirectoryLookup *LookupFrom,
-      const FileEntry *LookupFromFile, SmallString<128> &NormalizedPath,
+      const FileEntry *LookupFromFile, StringRef LookupFilename,
       SmallVectorImpl<char> &RelativePath, SmallVectorImpl<char> &SearchPath,
       ModuleMap::KnownHeader &SuggestedModule, bool isAngled);
 
@@ -2320,6 +2326,15 @@ public:
   /// A macro is used, update information about macros that need unused
   /// warnings.
   void markMacroAsUsed(MacroInfo *MI);
+
+private:
+  Optional<unsigned>
+  getSkippedRangeForExcludedConditionalBlock(SourceLocation HashLoc);
+
+  /// Contains the currently active skipped range mappings for skipping excluded
+  /// conditional directives.
+  ExcludedPreprocessorDirectiveSkipMapping
+      *ExcludedConditionalDirectiveSkipMappings;
 };
 
 /// Abstract base class that describes a handler that will receive

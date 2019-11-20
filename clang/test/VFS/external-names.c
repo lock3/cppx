@@ -1,6 +1,5 @@
-// RUN: sed -e "s:INPUT_DIR:%S/Inputs:g" -e "s:OUT_DIR:%t:g" -e "s:EXTERNAL_NAMES:true:" %S/Inputs/use-external-names.yaml > %t.external.yaml
-// RUN: sed -e "s:INPUT_DIR:%S/Inputs:g" -e "s:OUT_DIR:%t:g" -e "s:EXTERNAL_NAMES:false:" %S/Inputs/use-external-names.yaml > %t.yaml
-// REQUIRES: shell
+// RUN: sed -e "s@INPUT_DIR@%/S/Inputs@g" -e "s@OUT_DIR@%/t@g" -e "s@EXTERNAL_NAMES@true@" %S/Inputs/use-external-names.yaml > %t.external.yaml
+// RUN: sed -e "s@INPUT_DIR@%/S/Inputs@g" -e "s@OUT_DIR@%/t@g" -e "s@EXTERNAL_NAMES@false@" %S/Inputs/use-external-names.yaml > %t.yaml
 
 #include "external-names.h"
 #ifdef REINCLUDE

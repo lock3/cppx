@@ -11,12 +11,12 @@
 
 #include "../clang-tidy/ClangTidyOptions.h"
 #include "Cancellation.h"
-#include "ClangdUnit.h"
 #include "CodeComplete.h"
 #include "FSProvider.h"
 #include "FormattedString.h"
 #include "Function.h"
 #include "GlobalCompilationDatabase.h"
+#include "Hover.h"
 #include "Protocol.h"
 #include "SemanticHighlighting.h"
 #include "TUScheduler.h"
@@ -52,8 +52,6 @@ public:
   virtual void onFileUpdated(PathRef File, const TUStatus &Status){};
 
   /// Called by ClangdServer when some \p Highlightings for \p File are ready.
-  /// \p NumLines are the number of lines in the file where the highlightings
-  /// where generated from.
   virtual void
   onHighlightingsReady(PathRef File,
                        std::vector<HighlightingToken> Highlightings) {}
@@ -195,9 +193,10 @@ public:
   void locateSymbolAt(PathRef File, Position Pos,
                       Callback<std::vector<LocatedSymbol>> CB);
 
-  /// Helper function that returns a path to the corresponding source file when
-  /// given a header file and vice versa.
-  llvm::Optional<Path> switchSourceHeader(PathRef Path);
+  /// Switch to a corresponding source file when given a header file, and vice
+  /// versa.
+  void switchSourceHeader(PathRef Path,
+                          Callback<llvm::Optional<clangd::Path>> CB);
 
   /// Get document highlights for a given position.
   void findDocumentHighlights(PathRef File, Position Pos,
@@ -227,7 +226,7 @@ public:
 
   /// Retrieve locations for symbol references.
   void findReferences(PathRef File, Position Pos, uint32_t Limit,
-                      Callback<std::vector<Location>> CB);
+                      Callback<ReferencesResult> CB);
 
   /// Run formatting for \p Rng inside \p File with content \p Code.
   llvm::Expected<tooling::Replacements> formatRange(StringRef Code,
@@ -279,6 +278,10 @@ public:
   /// Clangd extension - not part of official LSP.
   void symbolInfo(PathRef File, Position Pos,
                   Callback<std::vector<SymbolDetails>> CB);
+
+  /// Get semantic ranges around a specified position in a file.
+  void semanticRanges(PathRef File, Position Pos,
+                      Callback<std::vector<Range>> CB);
 
   /// Returns estimated memory usage for each of the currently open files.
   /// The order of results is unspecified.

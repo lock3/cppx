@@ -31,6 +31,7 @@
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/Function.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCTargetOptions.h"
 #include "llvm/Pass.h"
@@ -39,6 +40,7 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/Transforms/CFGuard.h"
 #include "llvm/Transforms/Scalar.h"
 #include <memory>
 #include <string>
@@ -157,6 +159,8 @@ extern "C" void LLVMInitializeAArch64Target() {
   RegisterTargetMachine<AArch64leTargetMachine> X(getTheAArch64leTarget());
   RegisterTargetMachine<AArch64beTargetMachine> Y(getTheAArch64beTarget());
   RegisterTargetMachine<AArch64leTargetMachine> Z(getTheARM64Target());
+  RegisterTargetMachine<AArch64leTargetMachine> W(getTheARM64_32Target());
+  RegisterTargetMachine<AArch64leTargetMachine> V(getTheAArch64_32Target());
   auto PR = PassRegistry::getPassRegistry();
   initializeGlobalISel(*PR);
   initializeAArch64A53Fix835769Pass(*PR);
@@ -201,8 +205,11 @@ static std::string computeDataLayout(const Triple &TT,
                                      bool LittleEndian) {
   if (Options.getABIName() == "ilp32")
     return "e-m:e-p:32:32-i8:8-i16:16-i64:64-S128";
-  if (TT.isOSBinFormatMachO())
+  if (TT.isOSBinFormatMachO()) {
+    if (TT.getArch() == Triple::aarch64_32)
+      return "e-m:o-p:32:32-i64:64-i128:128-n32:64-S128";
     return "e-m:o-i64:64-i128:128-n32:64-S128";
+  }
   if (TT.isOSBinFormatCOFF())
     return "e-m:w-p:64:64-i32:32-i64:64-i128:128-n32:64-S128";
   if (LittleEndian)
@@ -242,7 +249,10 @@ getEffectiveAArch64CodeModel(const Triple &TT, Optional<CodeModel::Model> CM,
   // The default MCJIT memory managers make no guarantees about where they can
   // find an executable page; JITed code needs to be able to refer to globals
   // no matter how far away they are.
-  if (JIT)
+  // We should set the CodeModel::Small for Windows ARM64 in JIT mode,
+  // since with large code model LLVM generating 4 MOV instructions, and
+  // Windows doesn't support relocating these long branch (4 MOVs).
+  if (JIT && !TT.isOSWindows())
     return CodeModel::Large;
   return CodeModel::Small;
 }
@@ -278,8 +288,11 @@ AArch64TargetMachine::AArch64TargetMachine(const Target &T, const Triple &TT,
     this->Options.TrapUnreachable = true;
   }
 
-  // Enable GlobalISel at or below EnableGlobalISelAt0.
-  if (getOptLevel() <= EnableGlobalISelAtO) {
+  // Enable GlobalISel at or below EnableGlobalISelAt0, unless this is
+  // MachO/CodeModel::Large, which GlobalISel does not support.
+  if (getOptLevel() <= EnableGlobalISelAtO &&
+      TT.getArch() != Triple::aarch64_32 &&
+      !(getCodeModel() == CodeModel::Large && TT.isOSBinFormatMachO())) {
     setGlobalISel(true);
     setGlobalISelAbort(GlobalISelAbortMode::Disable);
   }
@@ -451,6 +464,10 @@ void AArch64PassConfig::addIRPasses() {
 
   addPass(createAArch64StackTaggingPass(/* MergeInit = */ TM->getOptLevel() !=
                                         CodeGenOpt::None));
+
+  // Add Control Flow Guard checks.
+  if (TM->getTargetTriple().isOSWindows())
+    addPass(createCFGuardCheckPass());
 }
 
 // Pass Pipeline Configuration
@@ -504,7 +521,8 @@ bool AArch64PassConfig::addIRTranslator() {
 }
 
 void AArch64PassConfig::addPreLegalizeMachineIR() {
-  addPass(createAArch64PreLegalizeCombiner());
+  bool IsOptNone = getOptLevel() == CodeGenOpt::None;
+  addPass(createAArch64PreLegalizeCombiner(IsOptNone));
 }
 
 bool AArch64PassConfig::addLegalizeMachineIR() {
@@ -518,9 +536,7 @@ bool AArch64PassConfig::addRegBankSelect() {
 }
 
 void AArch64PassConfig::addPreGlobalInstructionSelect() {
-  // Workaround the deficiency of the fast register allocator.
-  if (TM->getOptLevel() == CodeGenOpt::None)
-    addPass(new Localizer());
+  addPass(new Localizer());
 }
 
 bool AArch64PassConfig::addGlobalInstructionSelect() {
@@ -602,13 +618,18 @@ void AArch64PassConfig::addPreEmitPass() {
 
   if (EnableA53Fix835769)
     addPass(createAArch64A53Fix835769());
+
+  if (EnableBranchTargets)
+    addPass(createAArch64BranchTargetsPass());
+
   // Relax conditional branch instructions if they're otherwise out of
   // range of their destination.
   if (BranchRelaxation)
     addPass(&BranchRelaxationPassID);
 
-  if (EnableBranchTargets)
-    addPass(createAArch64BranchTargetsPass());
+  // Identify valid longjmp targets for Windows Control Flow Guard.
+  if (TM->getTargetTriple().isOSWindows())
+    addPass(createCFGuardLongjmpPass());
 
   if (TM->getOptLevel() != CodeGenOpt::None && EnableCompressJumpTables)
     addPass(createAArch64CompressJumpTablesPass());

@@ -18,9 +18,9 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/BlockFrequencyInfo.h"
+#include "llvm/Analysis/CFG.h"
 #include "llvm/Analysis/CodeMetrics.h"
 #include "llvm/Analysis/ConstantFolding.h"
-#include "llvm/Analysis/CFG.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/ProfileSummaryInfo.h"
@@ -36,6 +36,7 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/PatternMatch.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -436,7 +437,8 @@ bool CallAnalyzer::visitAlloca(AllocaInst &I) {
     if (auto *AllocSize = dyn_cast_or_null<ConstantInt>(Size)) {
       Type *Ty = I.getAllocatedType();
       AllocatedSize = SaturatingMultiplyAdd(
-          AllocSize->getLimitedValue(), DL.getTypeAllocSize(Ty), AllocatedSize);
+          AllocSize->getLimitedValue(), DL.getTypeAllocSize(Ty).getFixedSize(),
+          AllocatedSize);
       return Base::visitAlloca(I);
     }
   }
@@ -444,7 +446,8 @@ bool CallAnalyzer::visitAlloca(AllocaInst &I) {
   // Accumulate the allocated size.
   if (I.isStaticAlloca()) {
     Type *Ty = I.getAllocatedType();
-    AllocatedSize = SaturatingAdd(DL.getTypeAllocSize(Ty), AllocatedSize);
+    AllocatedSize = SaturatingAdd(DL.getTypeAllocSize(Ty).getFixedSize(),
+                                  AllocatedSize);
   }
 
   // We will happily inline static alloca instructions.
@@ -1453,22 +1456,10 @@ bool CallAnalyzer::visitSwitchInst(SwitchInst &SI) {
   // Maximum valid cost increased in this function.
   int CostUpperBound = INT_MAX - InlineConstants::InstrCost - 1;
 
-  // Exit early for a large switch, assuming one case needs at least one
-  // instruction.
-  // FIXME: This is not true for a bit test, but ignore such case for now to
-  // save compile-time.
-  int64_t CostLowerBound =
-      std::min((int64_t)CostUpperBound,
-               (int64_t)SI.getNumCases() * InlineConstants::InstrCost + Cost);
-
-  if (CostLowerBound > Threshold && !ComputeFullInlineCost) {
-    addCost((int64_t)SI.getNumCases() * InlineConstants::InstrCost);
-    return false;
-  }
-
   unsigned JumpTableSize = 0;
+  BlockFrequencyInfo *BFI = GetBFI ? &((*GetBFI)(F)) : nullptr;
   unsigned NumCaseCluster =
-      TTI.getEstimatedNumberOfCaseClusters(SI, JumpTableSize);
+      TTI.getEstimatedNumberOfCaseClusters(SI, JumpTableSize, PSI, BFI);
 
   // If suitable for a jump table, consider the cost for the table size and
   // branch to destination.

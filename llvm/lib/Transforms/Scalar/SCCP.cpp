@@ -29,7 +29,6 @@
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
-#include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Analysis/ValueLattice.h"
 #include "llvm/Analysis/ValueLatticeUtils.h"
 #include "llvm/IR/BasicBlock.h"
@@ -49,12 +48,14 @@
 #include "llvm/IR/Type.h"
 #include "llvm/IR/User.h"
 #include "llvm/IR/Value.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/PredicateInfo.h"
 #include <cassert>
 #include <utility>
@@ -191,7 +192,7 @@ public:
 ///
 class SCCPSolver : public InstVisitor<SCCPSolver> {
   const DataLayout &DL;
-  const TargetLibraryInfo *TLI;
+  std::function<const TargetLibraryInfo &(Function &)> GetTLI;
   SmallPtrSet<BasicBlock *, 8> BBExecutable; // The BBs that are executable.
   DenseMap<Value *, LatticeVal> ValueState;  // The state each value is in.
   // The state each parameter is in.
@@ -268,8 +269,9 @@ public:
     return {A->second.DT, A->second.PDT, DomTreeUpdater::UpdateStrategy::Lazy};
   }
 
-  SCCPSolver(const DataLayout &DL, const TargetLibraryInfo *tli)
-      : DL(DL), TLI(tli) {}
+  SCCPSolver(const DataLayout &DL,
+             std::function<const TargetLibraryInfo &(Function &)> GetTLI)
+      : DL(DL), GetTLI(std::move(GetTLI)) {}
 
   /// MarkBlockExecutable - This method can be used by clients to mark all of
   /// the blocks that are known to be intrinsically live in the processed unit.
@@ -1290,7 +1292,7 @@ CallOverdefined:
       // If we can constant fold this, mark the result of the call as a
       // constant.
       if (Constant *C = ConstantFoldCall(cast<CallBase>(CS.getInstruction()), F,
-                                         Operands, TLI)) {
+                                         Operands, &GetTLI(*F))) {
         // call -> undef.
         if (isa<UndefValue>(C))
           return;
@@ -1756,7 +1758,7 @@ static bool tryToReplaceWithConstant(SCCPSolver &Solver, Value *V) {
                      [](const LatticeVal &LV) { return LV.isOverdefined(); }))
       return false;
     std::vector<Constant *> ConstVals;
-    auto *ST = dyn_cast<StructType>(V->getType());
+    auto *ST = cast<StructType>(V->getType());
     for (unsigned i = 0, e = ST->getNumElements(); i != e; ++i) {
       LatticeVal V = IVs[i];
       ConstVals.push_back(V.isConstant()
@@ -1801,7 +1803,8 @@ static bool tryToReplaceWithConstant(SCCPSolver &Solver, Value *V) {
 static bool runSCCP(Function &F, const DataLayout &DL,
                     const TargetLibraryInfo *TLI) {
   LLVM_DEBUG(dbgs() << "SCCP on function '" << F.getName() << "'\n");
-  SCCPSolver Solver(DL, TLI);
+  SCCPSolver Solver(
+      DL, [TLI](Function &F) -> const TargetLibraryInfo & { return *TLI; });
 
   // Mark the first block of the function as being executable.
   Solver.MarkBlockExecutable(&F.front());
@@ -1896,7 +1899,7 @@ public:
       return false;
     const DataLayout &DL = F.getParent()->getDataLayout();
     const TargetLibraryInfo *TLI =
-        &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+        &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
     return runSCCP(F, DL, TLI);
   }
 };
@@ -2000,9 +2003,10 @@ static void forceIndeterminateEdge(Instruction* I, SCCPSolver &Solver) {
 }
 
 bool llvm::runIPSCCP(
-    Module &M, const DataLayout &DL, const TargetLibraryInfo *TLI,
+    Module &M, const DataLayout &DL,
+    std::function<const TargetLibraryInfo &(Function &)> GetTLI,
     function_ref<AnalysisResultsForFn(Function &)> getAnalysis) {
-  SCCPSolver Solver(DL, TLI);
+  SCCPSolver Solver(DL, GetTLI);
 
   // Loop over all functions, marking arguments to those with their addresses
   // taken or that are external as overdefined.

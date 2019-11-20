@@ -270,7 +270,11 @@ void freebsd::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   AddLinkerInputs(ToolChain, Inputs, Args, CmdArgs, JA);
 
   if (!Args.hasArg(options::OPT_nostdlib, options::OPT_nodefaultlibs)) {
-    addOpenMPRuntime(CmdArgs, ToolChain, Args);
+    // Use the static OpenMP runtime with -static-openmp
+    bool StaticOpenMP = Args.hasArg(options::OPT_static_openmp) &&
+                        !Args.hasArg(options::OPT_static);
+    addOpenMPRuntime(CmdArgs, ToolChain, Args, StaticOpenMP);
+
     if (D.CCCIsCXX()) {
       if (ToolChain.ShouldLinkCXXStdlib(Args))
         ToolChain.AddCXXStdlibLibArgs(Args, CmdArgs);
@@ -364,6 +368,12 @@ ToolChain::CXXStdlibType FreeBSD::GetDefaultCXXStdlibType() const {
   return ToolChain::CST_Libstdcxx;
 }
 
+unsigned FreeBSD::GetDefaultDwarfVersion() const {
+  if (getTriple().getOSMajorVersion() < 12)
+    return 2;
+  return 4;
+}
+
 void FreeBSD::addLibStdCxxIncludePaths(
     const llvm::opt::ArgList &DriverArgs,
     llvm::opt::ArgStringList &CC1Args) const {
@@ -385,6 +395,11 @@ void FreeBSD::AddCXXStdlibLibArgs(const ArgList &Args,
     CmdArgs.push_back(Profiling ? "-lstdc++_p" : "-lstdc++");
     break;
   }
+}
+
+void FreeBSD::AddCudaIncludeArgs(const ArgList &DriverArgs,
+                                 ArgStringList &CC1Args) const {
+  CudaInstallation.AddCudaIncludeArgs(DriverArgs, CC1Args);
 }
 
 Tool *FreeBSD::buildAssembler() const {
@@ -409,6 +424,8 @@ llvm::ExceptionHandling FreeBSD::GetExceptionModel(const ArgList &Args) const {
 }
 
 bool FreeBSD::HasNativeLLVMSupport() const { return true; }
+
+bool FreeBSD::IsUnwindTablesDefault(const ArgList &Args) const { return true; }
 
 bool FreeBSD::isPIEDefault() const { return getSanitizerArgs().requiresPIE(); }
 

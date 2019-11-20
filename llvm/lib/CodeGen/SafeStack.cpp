@@ -28,7 +28,6 @@
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
-#include "llvm/Transforms/Utils/Local.h"
 #include "llvm/CodeGen/TargetLowering.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
@@ -54,6 +53,7 @@
 #include "llvm/IR/Use.h"
 #include "llvm/IR/User.h"
 #include "llvm/IR/Value.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
@@ -63,6 +63,7 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/Transforms/Utils/Local.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -871,7 +872,7 @@ public:
       report_fatal_error("TargetLowering instance is required");
 
     auto *DL = &F.getParent()->getDataLayout();
-    auto &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+    auto &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
     auto &ACT = getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
 
     // Compute DT and LI only for functions that have the attribute.

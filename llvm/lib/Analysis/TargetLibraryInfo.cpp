@@ -13,6 +13,7 @@
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Support/CommandLine.h"
 using namespace llvm;
 
@@ -105,18 +106,8 @@ static void initialize(TargetLibraryInfoImpl &TLI, const Triple &T,
   TLI.setShouldSignExtI32Param(ShouldSignExtI32Param);
 
   if (T.getArch() == Triple::r600 ||
-      T.getArch() == Triple::amdgcn) {
-    TLI.setUnavailable(LibFunc_ldexp);
-    TLI.setUnavailable(LibFunc_ldexpf);
-    TLI.setUnavailable(LibFunc_ldexpl);
-    TLI.setUnavailable(LibFunc_exp10);
-    TLI.setUnavailable(LibFunc_exp10f);
-    TLI.setUnavailable(LibFunc_exp10l);
-    TLI.setUnavailable(LibFunc_log10);
-    TLI.setUnavailable(LibFunc_log10f);
-    TLI.setUnavailable(LibFunc_log10l);
-    TLI.setUnavailable(LibFunc_printf);
-  }
+      T.getArch() == Triple::amdgcn)
+    TLI.disableAllFunctions();
 
   // There are no library implementations of memcpy and memset for AMD gpus and
   // these can be difficult to lower in the backend.
@@ -1478,6 +1469,7 @@ bool TargetLibraryInfoImpl::isValidProtoForLibFunc(const FunctionType &FTy,
       return false;
   }
   case LibFunc::NumLibFuncs:
+  case LibFunc::NotLibFunc:
     break;
   }
 
@@ -1596,14 +1588,6 @@ StringRef TargetLibraryInfoImpl::getScalarizedFunction(StringRef F,
   return I->ScalarFnName;
 }
 
-TargetLibraryInfo TargetLibraryAnalysis::run(Module &M,
-                                             ModuleAnalysisManager &) {
-  if (PresetInfoImpl)
-    return TargetLibraryInfo(*PresetInfoImpl);
-
-  return TargetLibraryInfo(lookupInfoImpl(Triple(M.getTargetTriple())));
-}
-
 TargetLibraryInfo TargetLibraryAnalysis::run(Function &F,
                                              FunctionAnalysisManager &) {
   if (PresetInfoImpl)
@@ -1653,3 +1637,19 @@ INITIALIZE_PASS(TargetLibraryInfoWrapperPass, "targetlibinfo",
 char TargetLibraryInfoWrapperPass::ID = 0;
 
 void TargetLibraryInfoWrapperPass::anchor() {}
+
+unsigned TargetLibraryInfoImpl::getWidestVF(StringRef ScalarF) const {
+  ScalarF = sanitizeFunctionName(ScalarF);
+  if (ScalarF.empty())
+    return 1;
+
+  unsigned VF = 1;
+  std::vector<VecDesc>::const_iterator I =
+      llvm::lower_bound(VectorDescs, ScalarF, compareWithScalarFnName);
+  while (I != VectorDescs.end() && StringRef(I->ScalarFnName) == ScalarF) {
+    if (I->VectorizationFactor > VF)
+      VF = I->VectorizationFactor;
+    ++I;
+  }
+  return VF;
+}

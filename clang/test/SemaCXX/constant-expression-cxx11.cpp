@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple x86_64-linux -Wno-string-plus-int -Wno-pointer-arith -Wno-zero-length-array -fsyntax-only -fcxx-exceptions -verify -std=c++11 -pedantic %s -Wno-comment -Wno-tautological-pointer-compare -Wno-bool-conversion
+// RUN: %clang_cc1 -triple x86_64-linux -Wno-string-plus-int -Wno-pointer-arith -Wno-zero-length-array -Wno-c99-designator -fsyntax-only -fcxx-exceptions -verify -std=c++11 -pedantic %s -Wno-comment -Wno-tautological-pointer-compare -Wno-bool-conversion
 
 namespace StaticAssertFoldTest {
 
@@ -566,7 +566,7 @@ static_assert(fail(*(&(&(*(*&(&zs[2] - 1)[0] + 2 - 2))[2])[-1][2] - 2)) == 11, "
 expected-error {{static_assert expression is not an integral constant expression}} \
 expected-note {{in call to 'fail(zs[1][0][1][0])'}}
 
-constexpr int arr[40] = { 1, 2, 3, [8] = 4 }; // expected-warning {{C99 feature}}
+constexpr int arr[40] = { 1, 2, 3, [8] = 4 };
 constexpr int SumNonzero(const int *p) {
   return *p + (*p ? SumNonzero(p+1) : 0);
 }
@@ -979,7 +979,7 @@ union U {
   int b;
 };
 
-constexpr U u[4] = { { .a = 0 }, { .b = 1 }, { .a = 2 }, { .b = 3 } }; // expected-warning 4{{C99 feature}}
+constexpr U u[4] = { { .a = 0 }, { .b = 1 }, { .a = 2 }, { .b = 3 } };
 static_assert(u[0].a == 0, "");
 static_assert(u[0].b, ""); // expected-error {{constant expression}} expected-note {{read of member 'b' of union with active member 'a'}}
 static_assert(u[1].b == 1, "");
@@ -1108,6 +1108,11 @@ namespace MemberPointer {
   static_assert((int Derived::*)(int Mid<0>::*)&Mid<0>::n !=
                 (int Derived::*)(int Mid<1>::*)&Mid<1>::n, "");
   static_assert(&Mid<0>::n == (int Mid<0>::*)&Base::n, "");
+
+  constexpr int apply(const A &a, int (A::*f)() const) {
+    return (a.*f)();
+  }
+  static_assert(apply(A(2), &A::f) == 5, "");
 }
 
 namespace ArrayBaseDerived {
@@ -1322,21 +1327,21 @@ namespace ComplexConstexpr {
 // _Atomic(T) is exactly like T for the purposes of constant expression
 // evaluation..
 namespace Atomic {
-  constexpr _Atomic int n = 3;
+  constexpr _Atomic int n = 3; // expected-warning {{'_Atomic' is a C11 extension}}
 
-  struct S { _Atomic(double) d; };
+  struct S { _Atomic(double) d; }; // expected-warning {{'_Atomic' is a C11 extension}}
   constexpr S s = { 0.5 };
   constexpr double d1 = s.d;
   constexpr double d2 = n;
-  constexpr _Atomic double d3 = n;
+  constexpr _Atomic double d3 = n; // expected-warning {{'_Atomic' is a C11 extension}}
 
-  constexpr _Atomic(int) n2 = d3;
+  constexpr _Atomic(int) n2 = d3; // expected-warning {{'_Atomic' is a C11 extension}}
   static_assert(d1 == 0.5, "");
   static_assert(d3 == 3.0, "");
 
   namespace PR16056 {
     struct TestVar {
-      _Atomic(int) value;
+      _Atomic(int) value; // expected-warning {{'_Atomic' is a C11 extension}}
       constexpr TestVar(int value) : value(value) {}
     };
     constexpr TestVar testVar{-1};
@@ -1345,11 +1350,11 @@ namespace Atomic {
 
   namespace PR32034 {
     struct A {};
-    struct B { _Atomic(A) a; };
+    struct B { _Atomic(A) a; }; // expected-warning {{'_Atomic' is a C11 extension}}
     constexpr int n = (B(), B(), 0);
 
     struct C { constexpr C() {} void *self = this; };
-    constexpr _Atomic(C) c = C();
+    constexpr _Atomic(C) c = C(); // expected-warning {{'_Atomic' is a C11 extension}}
   }
 }
 
@@ -1889,9 +1894,10 @@ namespace ConstexprConstructorRecovery {
       };
       constexpr X() noexcept {};
   protected:
-      E val{0}; // expected-error {{cannot initialize a member subobject of type 'ConstexprConstructorRecovery::X::E' with an rvalue of type 'int'}}
+      E val{0}; // expected-error {{cannot initialize a member subobject of type 'ConstexprConstructorRecovery::X::E' with an rvalue of type 'int'}} expected-note {{here}}
   };
-  constexpr X x{};
+  // FIXME: We should avoid issuing this follow-on diagnostic.
+  constexpr X x{}; // expected-error {{constant expression}} expected-note {{not initialized}}
 }
 
 namespace Lifetime {
@@ -2036,7 +2042,7 @@ namespace BadDefaultInit {
   // here is bogus (we discard the k(k) initializer because the parameter 'k'
   // has been marked invalid).
   struct B { // expected-note 2{{candidate}}
-    constexpr B( // expected-error {{must initialize all members}} expected-note {{candidate}}
+    constexpr B( // expected-warning {{initialize all members}} expected-note {{candidate}}
         int k = X<B().k>::n) : // expected-error {{no matching constructor}}
       k(k) {}
     int k; // expected-note {{not initialized}}

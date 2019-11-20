@@ -99,12 +99,11 @@ protected:
   MachineInstr *commuteInstructionImpl(MachineInstr &MI, bool NewMI,
                                        unsigned OpIdx1,
                                        unsigned OpIdx2) const override;
-
-  /// If the specific machine instruction is a instruction that moves/copies
-  /// value from one register to another register return true along with
-  /// @Source machine operand and @Destination machine operand.
-  bool isCopyInstrImpl(const MachineInstr &MI, const MachineOperand *&Source,
-                       const MachineOperand *&Destination) const override;
+  /// If the specific machine instruction is an instruction that moves/copies
+  /// value from one register to another register return destination and source
+  /// registers as machine operands.
+  Optional<DestSourcePair>
+  isCopyInstrImpl(const MachineInstr &MI) const override;
 
 public:
   // Return whether the target has an explicit NOP encoding.
@@ -203,7 +202,7 @@ public:
                     const ARMSubtarget &Subtarget) const;
 
   void copyPhysReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
-                   const DebugLoc &DL, unsigned DestReg, unsigned SrcReg,
+                   const DebugLoc &DL, MCRegister DestReg, MCRegister SrcReg,
                    bool KillSrc) const override;
 
   void storeRegToStackSlot(MachineBasicBlock &MBB,
@@ -275,6 +274,10 @@ public:
                                  BranchProbability Probability) const override {
     return NumCycles == 1;
   }
+
+  unsigned extraSizeToPredicateInstructions(const MachineFunction &MF,
+                                            unsigned NumInsts) const override;
+  unsigned predictBranchSizeForIfCvt(MachineInstr &MI) const override;
 
   bool isProfitableToUnpredicate(MachineBasicBlock &TMBB,
                                  MachineBasicBlock &FMBB) const override;
@@ -451,6 +454,9 @@ public:
     // 3 - predicate reg
     return MI.getOperand(3).getReg();
   }
+
+  Optional<DestSourcePair> isAddImmediate(const MachineInstr &MI,
+                                          int64_t &Offset) const override;
 };
 
 /// Get the operands corresponding to the given \p Pred value. By default, the
@@ -620,6 +626,20 @@ void addUnpredicatedMveVpredROp(MachineInstrBuilder &MIB, unsigned DestReg);
 void addPredicatedMveVpredNOp(MachineInstrBuilder &MIB, unsigned Cond);
 void addPredicatedMveVpredROp(MachineInstrBuilder &MIB, unsigned Cond,
                               unsigned Inactive);
+
+/// Returns the number of instructions required to materialize the given
+/// constant in a register, or 3 if a literal pool load is needed.
+/// If ForCodesize is specified, an approximate cost in bytes is returned.
+unsigned ConstantMaterializationCost(unsigned Val,
+                                     const ARMSubtarget *Subtarget,
+                                     bool ForCodesize = false);
+
+/// Returns true if Val1 has a lower Constant Materialization Cost than Val2.
+/// Uses the cost from ConstantMaterializationCost, first with ForCodesize as
+/// specified. If the scores are equal, return the comparison for !ForCodesize.
+bool HasLowerConstantMaterializationCost(unsigned Val1, unsigned Val2,
+                                         const ARMSubtarget *Subtarget,
+                                         bool ForCodesize = false);
 
 } // end namespace llvm
 
