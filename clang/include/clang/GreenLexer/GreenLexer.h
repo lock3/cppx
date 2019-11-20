@@ -23,7 +23,10 @@
 #include <stack>
 
 namespace clang {
+
+class DiagnosticsEngine;
 class SourceManager;
+
 } // namespace clang
 
 // We want to think about this as a staged grammar, like C++. In general, we
@@ -35,7 +38,8 @@ namespace green
   // The character scanner transforms characters into tokens.
   struct character_scanner
   {
-    character_scanner(clang::SourceManager &SM, file const& f);
+    character_scanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
+                      file const& f);
 
     token operator()();
 
@@ -207,14 +211,16 @@ namespace green
     clang::SourceLocation getSourceLocation(char const* Loc);
 
     clang::SourceManager &SM;
+    clang::DiagnosticsEngine &Diags;
   };
 
 
   /// Removes empty lines and comments from a translation unit.
   struct line_scanner
   {
-    line_scanner(clang::SourceManager &SM, file const& f)
-      : SM(SM), scan(SM, f)
+    line_scanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
+                 file const& f)
+      : scan(SM, Diags, f), SM(SM), Diags(Diags)
     { }
 
     token operator()();
@@ -223,6 +229,7 @@ namespace green
     character_scanner scan;
 
     clang::SourceManager &SM;
+    clang::DiagnosticsEngine &Diags;
   };
 
 
@@ -231,8 +238,9 @@ namespace green
   /// returned from this scanner.
   struct block_scanner
   {
-    block_scanner(clang::SourceManager &SM, file const& f)
-      : SM(SM), scan(SM, f), prefix()
+    block_scanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
+                  file const& f)
+      : scan(SM, Diags, f), prefix(), SM(SM), Diags(Diags)
     { }
 
     token operator()();
@@ -274,6 +282,7 @@ namespace green
     std::stack<token> prefix;
 
     clang::SourceManager &SM;
+    clang::DiagnosticsEngine &Diags;
   };
 
 
@@ -282,8 +291,8 @@ namespace green
   /// The lexer owns the scanner stack.
   struct lexer
   {
-    lexer(clang::SourceManager &SM, file const& f)
-      : SM(SM), scan(SM, f)
+    lexer(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags, file const& f)
+      : scan(SM, Diags, f), SM(SM), Diags(Diags)
     { }
 
     token operator()()
@@ -294,6 +303,7 @@ namespace green
     block_scanner scan;
 
     clang::SourceManager &SM;
+    clang::DiagnosticsEngine &Diags;
   };
 
 } // namespace green

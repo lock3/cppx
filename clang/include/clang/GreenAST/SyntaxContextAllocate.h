@@ -18,17 +18,17 @@
 
 #include <cstddef>
 
-namespace usyntax {
+namespace green {
 class SyntaxContext;
 }
 
-void *operator new(size_t Bytes, const usyntax::SyntaxContext &S,
+void *operator new(size_t Bytes, const green::SyntaxContext &S,
                    size_t Alignment = 8);
-void *operator new[](size_t Bytes, const usyntax::SyntaxContext &C,
+void *operator new[](size_t Bytes, const green::SyntaxContext &C,
                      size_t Alignment = 8);
 
-void operator delete(void *Ptr, const usyntax::SyntaxContext &C, size_t);
-void operator delete[](void *Ptr, const usyntax::SyntaxContext &C, size_t);
+void operator delete(void *Ptr, const green::SyntaxContext &C, size_t);
+void operator delete[](void *Ptr, const green::SyntaxContext &C, size_t);
 
 #endif // LLVM_GREEN_GREENAST_SYNTAXCONTEXTALLOCATE_H
 

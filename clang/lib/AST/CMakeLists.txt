@@ -83,4 +83,5 @@ add_clang_library(clangAST
   clangBasic
   clangLex
   greenAst
+  greenBasic
   )

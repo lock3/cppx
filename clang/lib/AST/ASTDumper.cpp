@@ -285,7 +285,7 @@ LLVM_DUMP_METHOD void Comment::dumpColor() const {
 // Green/usyntax method implementations
 //===----------------------------------------------------------------------===//
 
-LLVM_DUMP_METHOD void usyntax::Syntax::dump() const {
+LLVM_DUMP_METHOD void green::Syntax::dump() const {
   ASTDumper D(llvm::errs(), nullptr, nullptr, /*ShowColors=*/true);
   D.Visit(this);
 }

@@ -24,10 +24,6 @@
 #include "clang/AST/TypeVisitor.h"
 #include "clang/GreenAST/SyntaxVisitor.h"
 
-namespace usyntax {
-  struct Syntax;
-};
-
 namespace clang {
 
 /**
@@ -65,7 +61,7 @@ class ASTNodeTraverser
       public TypeVisitor<Derived>,
       public ConstAttrVisitor<Derived>,
       public ConstTemplateArgumentVisitor<Derived>,
-      public usyntax::ConstSyntaxVisitor<Derived> {
+      public green::ConstGreenSyntaxVisitor<Derived> {
 
   /// Indicates whether we should trigger deserialization of nodes that had
   /// not already been loaded.
@@ -211,20 +207,12 @@ public:
     });
   }
 
-  void Visit(const usyntax::Syntax *S) {
-    // Due to the design of the parser, we have this problem a lot.
-    if (!S)
-      return;
-
+  void Visit(const green::Syntax *S) {
     getNodeDelegate().AddChild([=] {
       getNodeDelegate().Visit(S);
 
-      if (!S)
-        return;
-
-      using namespace usyntax;
-
-      ConstSyntaxVisitor<Derived>::Visit(S);
+      using namespace green;
+      ConstGreenSyntaxVisitor<Derived>::Visit(S);
       for (const Syntax *SubSyntax : S->children())
         Visit(SubSyntax);
     });

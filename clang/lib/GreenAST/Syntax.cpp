@@ -1,67 +1,28 @@
-//===- Syntax.cpp - Classes for representing syntaxes ---------------------===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Copyright (c) Lock3 Software 2019, all rights reserved.
-//
-//===----------------------------------------------------------------------===//
-//
-//  This file implements the Syntax class hierarchy.
-//
-//===----------------------------------------------------------------------===//
-
 #include "clang/GreenAST/Syntax.h"
-#include "llvm/Support/ErrorHandling.h"
 
-namespace usyntax {
+namespace green {
+
+Syntax *Syntax::error = new ErrorSyntax;
+
+const char *
+Syntax::getSyntaxKindName() const {
+
+  switch (getKind()) {
+#define def_syntax(K) \
+    case SK_ ## K: return # K;
+#include "clang/GreenAST/Syntax.def"
+  }
+}
 
 Syntax::child_range
 Syntax::children() {
   switch (getKind()) {
-  case SK_ConstInt:
-    return static_cast<SyntaxConstInt *>(this)->children();
-  case SK_ConstString:
-    return static_cast<SyntaxConstString *>(this)->children();
-  case SK_ConstPath:
-    return static_cast<SyntaxConstPath *>(this)->children();
-  case SK_Ident:
-    return static_cast<SyntaxIdent *>(this)->children();
-  case SK_Call:
-    return static_cast<SyntaxCall *>(this)->children();
-  case SK_Attr:
-    return static_cast<SyntaxAttr *>(this)->children();
-  case SK_Macro:
-    return static_cast<SyntaxMacro *>(this)->children();
-  case SK_Escape:
-    return static_cast<SyntaxEscape *>(this)->children();
+#define def_syntax(K) \
+    case SK_ ## K: return static_cast<K ## Syntax *>(this)->children();
+#include "clang/GreenAST/Syntax.def"
   }
-
-  llvm_unreachable("Unknown syntax kind!");
 }
 
-const char *
-Syntax::getSyntaxKindName() const {
-  switch (Kind) {
-  case SK_ConstInt:
-    return "Const Int";
-  case SK_ConstString:
-    return "Const String";
-  case SK_ConstPath:
-    return "Const Path";
-  case SK_Ident:
-    return "Ident";
-  case SK_Call:
-    return "Call";
-  case SK_Attr:
-    return "Attr";
-  case SK_Macro:
-    return "Macro";
-  case SK_Escape:
-    return "Escape";
-  }
+#undef def_syntax
 
-  llvm_unreachable("Unknown syntax kind!");
-}
-
-} // namespace usyntax
+} // namespace green

@@ -1,57 +1,42 @@
-//===- Syntax.h - Classes for representing syntaxes -----------------------===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Copyright (c) Lock3 Software 2019, all rights reserved.
-//
-//===----------------------------------------------------------------------===//
-//
-//  This file defines the Syntax class hierarchy.
-//
-//===----------------------------------------------------------------------===//
+#ifndef CLANG_GREEN_GREENSYNTAX_H
+#define CLANG_GREEN_GREENSYNTAX_H
 
-#ifndef CLANG_GREEN_SYNTAX_H
-#define CLANG_GREEN_SYNTAX_H
-
-#include "clang/Basic/SourceManager.h"
+#include "clang/Basic/SourceLocation.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/iterator.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include "clang/GreenAST/SyntaxIterator.h"
-#include "clang/GreenParse/SymbolTable.h"
+#include "clang/GreenBasic/Tokens.h"
 
-#include <memory>
-#include <string>
 #include <vector>
+#include <array>
 
-namespace usyntax {
+namespace green
+{
 
-// Syntax types.
 struct Syntax {
-  clang::SourceLocation Loc;
 
   enum SyntaxKind {
-    SK_ConstInt,
-    SK_ConstString,
-    SK_ConstPath,
-    SK_Ident,
-    SK_Call,
-    SK_Attr,
-    SK_Macro,
-    SK_Escape,
+#define def_syntax(K) \
+  SK_ ## K,
+#include "Syntax.def"
   };
 
-public:
   Syntax() = delete;
   Syntax(SyntaxKind SK, clang::SourceLocation Loc) noexcept :
     Loc(Loc), Kind(SK) {}
-  virtual ~Syntax() {}
+
+  static Syntax *error;
+
+  bool IsError() const {
+    return getKind() == SK_Error;
+  }
 
   SyntaxKind getKind() const { return Kind; }
   const char *getSyntaxKindName() const;
-
   void dump() const;
 
   using child_iterator = SyntaxIterator;
@@ -65,195 +50,239 @@ public:
     return const_child_range(Children.begin(), Children.end());
   }
 
+  clang::SourceLocation Loc;
+
 private:
-  const SyntaxKind Kind;
+  SyntaxKind Kind;
 };
 
-struct SyntaxConstInt : Syntax {
-  int64_t value;
-
-  SyntaxConstInt(clang::SourceLocation Loc, int64_t _value) noexcept
-    : Syntax(SK_ConstInt, Loc), value(_value) {}
+struct ErrorSyntax : Syntax {
+  ErrorSyntax()
+    : Syntax(SK_Error, clang::SourceLocation())
+  {}
 
   static bool classof(const Syntax *S) {
-    return S->getKind() == SK_ConstInt;
+    return S->getKind() == SK_Error;
   }
+};
+
+/// Any term represented by a single token (e.g., literals, identifiers).
+struct AtomSyntax : Syntax {
+  AtomSyntax(token Tok, clang::SourceLocation Loc)
+    : Syntax(SK_Atom, Loc), Tok(Tok)
+  {}
+
+  token Tok;
 
   child_range children() {
     return child_range(child_iterator(), child_iterator());
   }
-  const_child_range children() const {
+  const child_range children() const {
     return const_child_range(const_child_iterator(), const_child_iterator());
   }
 
-};
-
-struct SyntaxConstString : Syntax {
-  std::string value;
-
-  SyntaxConstString(clang::SourceLocation Loc, const std::string &_value) noexcept
-    : Syntax(SK_ConstString, Loc), value(_value) {}
-
   static bool classof(const Syntax *S) {
-    return S->getKind() == SK_ConstString;
-  }
-
-  child_range children() {
-    return child_range(child_iterator(), child_iterator());
-  }
-  const_child_range children() const {
-    return const_child_range(const_child_iterator(), const_child_iterator());
+    return S->getKind() == SK_Atom;
   }
 };
 
-struct SyntaxConstPath : Syntax {
-  std::string value;
+/// An arbitrary, but known, length sequence of terms (e.g., the arguments
+/// of a call expression).
+template<typename T>
+struct VectorNode
+{
+  using value_type = T;
 
-  SyntaxConstPath(clang::SourceLocation Loc, const std::string &_value) noexcept
-    : Syntax(SK_ConstPath, Loc), value(_value) {}
+  VectorNode(T **ts, unsigned NumElems)
+    : Elems(ts), NumElems(NumElems)
+  { }
 
-  static bool classof(const Syntax *S) {
-    return S->getKind() == SK_ConstPath;
+  auto begin()
+  {
+    return Elems[0];
   }
+
+  auto end()
+  {
+    return Elems[NumElems];
+  }
+
+  auto begin() const
+  {
+    return Elems[0];
+  }
+
+  auto end() const
+  {
+    return Elems[NumElems];
+  }
+
+  T **Elems;
+  unsigned NumElems;
+};
+
+/// A comma-separated list of terms.
+///
+/// \todo These are separated by either commas, semicolons, pr separators,
+/// and there's (possibly) a semantic difference.
+struct ListSyntax : Syntax, VectorNode<Syntax> {
+  ListSyntax(Syntax **Ts, unsigned NumElems, clang::SourceLocation Loc)
+    : Syntax(SK_List, Loc), VectorNode(Ts, NumElems)
+  {}
 
   child_range children() {
-    return child_range(child_iterator(), child_iterator());
+    return child_range(&Elems[0], &Elems[NumElems]);
+  } 
+  const child_range children() const {
+    return const_child_range(&Elems[0], &Elems[NumElems]);
   }
-  const_child_range children() const {
-    return const_child_range(const_child_iterator(), const_child_iterator());
+  static bool classof(const Syntax *S) {
+    return S->getKind() == SK_List;
   }
 };
 
-struct SyntaxIdent : Syntax {
-  Syntax *qualifier;
-  std::string name;
-
-  SyntaxIdent(clang::SourceLocation Loc, Syntax *_qualifier,
-               const std::string &_name) noexcept
-    : Syntax(SK_Ident, Loc), qualifier(_qualifier), name(_name) {}
-
-  static bool classof(const Syntax *S) {
-    return S->getKind() == SK_Ident;
-  }
+struct ArraySyntax : Syntax, VectorNode<Syntax> {
+  ArraySyntax(Syntax **Ts, unsigned NumElems, clang::SourceLocation Loc)
+    : Syntax(SK_Array, Loc), VectorNode(Ts, NumElems)
+  {}
 
   child_range children() {
-    return child_range(&qualifier, &qualifier + 1);
+    return child_range(&Elems[0], &Elems[NumElems]);
   }
-  const_child_range children() const {
-    auto Children = const_cast<SyntaxIdent *>(this)->children();
+  const child_range children() const {
+    return const_child_range(&Elems[0], &Elems[NumElems]);
+  }
+  static bool classof(const Syntax *S) {
+    return S->getKind() == SK_Array;
+  }
+};
+
+/// A call to a function.
+struct CallSyntax : Syntax {
+  CallSyntax(Syntax *Fn, Syntax *Args, clang::SourceLocation Loc)
+    : Syntax(SK_Call, Loc)
+  {
+    Elems[0] = Fn;
+    Elems[1] = Args;
+  }
+
+  const Syntax *Callee() const {
+    return Elems[0];
+  }
+
+  Syntax *Callee() {
+    return Elems[0];
+  }
+
+  const Syntax *Args() const {
+    return Elems[1];
+  }
+
+  Syntax *Args() {
+    return Elems[1];
+  }
+
+  std::array<Syntax *, 2> Elems;
+
+  child_range children() {
+    return child_range(&Elems[0], &Elems[2]);
+  }
+  const child_range children() const {
+    auto Children = const_cast<CallSyntax *>(this)->children();
     return const_child_range(Children);
   }
-};
-
-struct SyntaxCall : Syntax {
-  bool may_fail;
-
-  // TODO: Make this a trailing object?
-  Syntax *call_function;
-  std::vector<Syntax *> call_parameters;
-
-  SyntaxCall(
-    clang::SourceLocation Loc, bool _may_fail,
-    Syntax *_call_function,
-    const std::vector<Syntax *> &_call_parameters) noexcept
-    : Syntax(SK_Call, Loc), may_fail(_may_fail),
-      call_function(_call_function),
-      call_parameters(_call_parameters)
-    {}
-
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Call;
   }
-
-  child_range children() {
-    return child_range(&call_function, &call_function + 1);
-  }
-  const_child_range children() const {
-    auto Children = const_cast<SyntaxCall *>(this)->children();
-    return const_child_range(Children);
-  }
 };
 
-struct SyntaxAttr : Syntax {
-private:
-  enum {BASE, ATTR, END};
-
-  Syntax *SubSyntaxes[END];
-public:
-  SyntaxAttr(clang::SourceLocation Loc, Syntax *_base,
-             Syntax *_attr) noexcept
-    : Syntax(SK_Attr, Loc) {
-    SubSyntaxes[BASE] = _base;
-    SubSyntaxes[ATTR] = _attr;
+/// A lookup in a dictionary.
+struct ElemSyntax : Syntax {
+  ElemSyntax(Syntax *Map, Syntax *Sel, clang::SourceLocation Loc)
+    : Syntax(SK_Elem, Loc)
+  {
+    Elems[0] = Map;
+    Elems[1] = Sel;
   }
 
+  const Syntax *Map() const {
+    return Elems[0];
+  }
+
+  Syntax *Map() {
+    return Elems[0];
+  }
+
+  const Syntax *Args() const {
+    return Elems[1];
+  }
+
+  Syntax *Args() {
+    return Elems[1];
+  }
+
+
+  std::array<Syntax *, 2> Elems;
+
+  child_range children() {
+    return child_range(&Elems[0], &Elems[2]);
+  }
+  const child_range children() const {
+    auto Children = const_cast<ElemSyntax *>(this)->children();
+    return const_child_range(Children);
+  }
   static bool classof(const Syntax *S) {
-    return S->getKind() == SK_Attr;
+    return S->getKind() == SK_Elem;
   }
+};
+
+struct MacroSyntax : Syntax {
+MacroSyntax(Syntax *Call, Syntax *Block, Syntax *Next, clang::SourceLocation Loc)
+    : Syntax(SK_Macro, Loc)
+  {
+    Elems[0] = Call;
+    Elems[1] = Block;
+    Elems[2] = Next;
+  }
+
+  const Syntax *Call() const {
+    return Elems[0];
+  }
+
+  Syntax *Call() {
+    return Elems[0];
+  }
+
+  const Syntax *Block() const {
+    return Elems[1];
+  }
+
+  Syntax *Block() {
+    return Elems[1];
+  }
+
+  const Syntax *End() const {
+    return Elems[2];
+  }
+
+  Syntax *End() {
+    return Elems[2];
+  }
+
+  std::array<Syntax *, 3> Elems;
 
   child_range children() {
-    return child_range(&SubSyntaxes[0], &SubSyntaxes[0] + END);
+    return child_range(&Elems[0], &Elems[3]);
   }
-  const_child_range children() const {
-    auto Children = const_cast<SyntaxAttr *>(this)->children();
+  const child_range children() const {
+    auto Children = const_cast<MacroSyntax *>(this)->children();
     return const_child_range(Children);
   }
-
-  const Syntax *getBase() const {
-    return SubSyntaxes[BASE];
-  }
-
-  const Syntax *getAttr() const {
-    return SubSyntaxes[ATTR];
-  }
-};
-
-struct Clause {
-  usyntax::res_t keyword;
-  std::vector<Syntax *> attrs, body;
-};
-
-struct SyntaxMacro : Syntax {
-  Syntax *macro;
-  std::vector<Clause> clauses;
-
-  SyntaxMacro(clang::SourceLocation Loc, Syntax *_macro,
-               const std::vector<Clause> &_clauses)
-    : Syntax(SK_Macro, Loc), macro(_macro), clauses(_clauses) {}
-
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Macro;
   }
-
-  child_range children() {
-    return child_range(&macro, &macro + 1);
-  }
-  const_child_range children() const {
-    auto Children = const_cast<SyntaxMacro *>(this)->children();
-    return const_child_range(Children);
-  }
 };
 
-struct SyntaxEscape : Syntax {
-  Syntax *escaped;
-
-  SyntaxEscape(clang::SourceLocation Loc,
-                Syntax *_escaped) noexcept
-    : Syntax(SK_Escape, Loc), escaped(_escaped) {}
-
-  static bool classof(const Syntax *S) {
-    return S->getKind() == SK_Escape;
-  }
-
-  child_range children() {
-    return child_range(&escaped, &escaped + 1);
-  }
-  const_child_range children() const {
-    auto Children = const_cast<SyntaxEscape *>(this)->children();
-    return const_child_range(Children);
-  }
-};
-
-} // namespace usyntax
+} // namespace green
 
 #endif

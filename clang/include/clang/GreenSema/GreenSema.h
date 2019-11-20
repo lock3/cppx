@@ -17,7 +17,7 @@
 
 #include "llvm/ADT/StringMap.h"
 
-#include "clang/GreenAST/Syntax.h"
+#include "clang/GreenAST/SyntaxContext.h"
 
 #include <memory>
 #include <vector>
@@ -28,7 +28,7 @@ class Preprocessor;
 class Sema;
 } // namespace clang
 
-namespace usyntax {
+namespace green {
 
 using SyntaxVector = std::vector<Syntax *>;
 

@@ -11,6 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/Basic/Diagnostic.h"
+#include "clang/Basic/DiagnosticLex.h"
 #include "clang/Basic/SourceManager.h"
 
 #include "clang/GreenLexer/GreenLexer.h"
@@ -58,13 +60,16 @@ namespace green
 
   } // namespace
 
-  character_scanner::character_scanner(clang::SourceManager &SM, file const& f)
+  character_scanner::character_scanner(clang::SourceManager &SM,
+                                       clang::DiagnosticsEngine &Diags,
+                                       file const& f)
     : input(&f),
       first(f.data()),
       last(first + f.size()),
       line(1),
       column(1),
-      SM(SM)
+      SM(SM),
+      Diags(Diags)
   {
     // Bypass the byte order mark.
     if (std::equal(bom, bom + 3, first, last))
@@ -201,6 +206,7 @@ namespace green
         if (is_decimal_digit(lookahead()))
           return match_number();
 
+        Diags.Report(input_location(), clang::diag::err_bad_string_encoding);
         // error(input_location(), "invalid character {}", std::to_string(last - first));
         consume();
         continue;
@@ -285,6 +291,7 @@ namespace green
     }
     if (done())
     {
+        Diags.Report(input_location(), clang::diag::err_bad_string_encoding);
       // error(input_location(), "unterminated block comment");
       // note(make_location(input, begin_pos, 2), "beginning here");
       return match_eof();
@@ -395,6 +402,7 @@ namespace green
 
     if (!is_hexadecimal_digit(lookahead()))
     {
+      Diags.Report(input_location(), clang::diag::err_bad_string_encoding);
       // error(input_location(), "invalid hexadecimal number");
       return {};
     }
@@ -433,6 +441,7 @@ namespace green
     }
     if (done())
     {
+        Diags.Report(input_location(), clang::diag::err_bad_string_encoding);
       // error(input_location(), "unterminated character literal");
       // location loc = make_location(input, line, first - start);
       // note(loc, "beginning here");
@@ -472,6 +481,7 @@ namespace green
     }
     if (done())
     {
+      Diags.Report(input_location(), clang::diag::err_bad_string_encoding);
       // error(input_location(), "unterminated string literal");
       // note(make_location(input, line, first - start), "beginning here");
       return match_eof();
@@ -527,6 +537,7 @@ namespace green
 
     if (!match_if(is_decimal_digit))
     {
+      Diags.Report(input_location(), clang::diag::err_bad_string_encoding);
       // error(input_location(), "invalid number");s
       return;
     }
@@ -710,6 +721,7 @@ namespace green
       prev = pop();
       if (!equal_spelling(prev, ind))
       {
+        Diags.Report(ind.loc, clang::diag::err_bad_string_encoding);
         // error(ind.loc, "indentation does not match previous after dedent");
         if (prev)
           ;// note(prev.loc, "indentation here");
@@ -720,6 +732,7 @@ namespace green
       return dedent(nl);
     }
 
+    Diags.Report(ind.loc, clang::diag::err_bad_string_encoding);
     // error(ind.loc, "indentation does not match previous");
     if (prev)
       ;// note(prev.loc, "indentation here");

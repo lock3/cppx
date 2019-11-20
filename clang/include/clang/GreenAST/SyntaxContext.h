@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the usyntax::SyntaxContext interface.
+// This file defines the green::SyntaxContext interface.
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,7 +22,7 @@ namespace clang {
 class ASTContext;
 } // namespace clang
 
-namespace usyntax {
+namespace green {
 
 /// Analogous to clang::ASTContext, keeps track of some information associated
 /// with the syntax tree. For now it just manages memory.
@@ -62,27 +62,27 @@ public:
   }
 };
 
-} // namespace usyntax
+} // namespace green
 
 
 /// The following allow for allocation of memory in the SyntaxContext just
 /// like in clang::ASTContext.
-inline void *operator new(size_t Bytes, const usyntax::SyntaxContext &C,
+inline void *operator new(size_t Bytes, const green::SyntaxContext &C,
                           size_t Alignment /* = 8 */) {
   return C.Allocate(Bytes, Alignment);
 }
 
-inline void operator delete(void *Ptr, const usyntax::SyntaxContext &C, size_t) {
+inline void operator delete(void *Ptr, const green::SyntaxContext &C, size_t) {
   C.Deallocate(Ptr);
 }
 
-inline void *operator new[](size_t Bytes, const usyntax::SyntaxContext& C,
+inline void *operator new[](size_t Bytes, const green::SyntaxContext& C,
                             size_t Alignment /* = 8 */) {
   return C.Allocate(Bytes, Alignment);
 }
 
 inline void
-operator delete[](void *Ptr, const usyntax::SyntaxContext &C, size_t) {
+operator delete[](void *Ptr, const green::SyntaxContext &C, size_t) {
   C.Deallocate(Ptr);
 }
 

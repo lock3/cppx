@@ -1942,8 +1942,8 @@ void TextNodeDumper::VisitConceptDecl(const ConceptDecl *D) {
   dumpName(D);
 }
 
-void TextNodeDumper::Visit(const usyntax::Syntax *S) {
-  using namespace usyntax;
+void TextNodeDumper::Visit(const green::Syntax *S) {
+  using namespace green;
 
   if (!S) {
     ColorScope Color(OS, ShowColors, NullColor);
@@ -1956,41 +1956,30 @@ void TextNodeDumper::Visit(const usyntax::Syntax *S) {
   }
   dumpPointer(S);
 
-
-  ConstSyntaxVisitor<TextNodeDumper>::Visit(S);
+  ConstGreenSyntaxVisitor<TextNodeDumper>::Visit(S);
 }
 
-void
-TextNodeDumper::VisitSyntaxConstInt(const usyntax::SyntaxConstInt *S) {
-  OS << " value: " << S->value;
+void TextNodeDumper::VisitErrorSyntax(const green::ErrorSyntax *S) {
+  ColorScope Color(OS, ShowColors, CastColor);
+  OS << "<<<ERROR>>>";
 }
 
-void
-TextNodeDumper::VisitSyntaxConstString(const usyntax::SyntaxConstString *S) {
-  OS << " value: " << S->value;
+void TextNodeDumper::VisitAtomSyntax(const green::AtomSyntax *S) {
+  using namespace green;
+  OS << " Token: " << S->Tok.spelling();
 }
 
-void
-TextNodeDumper::VisitSyntaxConstPath(const usyntax::SyntaxConstPath *S) {
-  OS << " value: " << S->value;
+void TextNodeDumper::VisitListSyntax(const green::ListSyntax *S) {
 }
 
-void TextNodeDumper::VisitSyntaxIdent(const usyntax::SyntaxIdent *S) {
-  OS << " name: " << S->name;
+void TextNodeDumper::VisitArraySyntax(const green::ArraySyntax *S) {
 }
 
-void TextNodeDumper::VisitSyntaxCall(const usyntax::SyntaxCall *S) {
-  OS << " may fail?: " << S->may_fail;
+void TextNodeDumper::VisitCallSyntax(const green::CallSyntax *S) {
 }
 
-void TextNodeDumper::VisitSyntaxMacro(const usyntax::SyntaxMacro *S) {
-  // FIXME: make the clauses of the macro part of the child range
-  // so that this formats as a tree.
-  // for (auto &Clause : S->clauses) {
-  //   llvm::outs() << '\n';
-  //   for (auto &Attr : Clause.attrs)
-  //     Visit(Attr);
-  //   for (auto &Syn : Clause.body)
-  //     Visit(Syn);
-  // }
+void TextNodeDumper::VisitElemSyntax(const green::ElemSyntax *S) {
+}
+
+void TextNodeDumper::VisitMacroSyntax(const green::MacroSyntax *S) {
 }

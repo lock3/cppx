@@ -11,12 +11,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CLANG_GREEN_GREENAST_SYNTAXITERATOR_H
-#define CLANG_GREEN_GREENAST_SYNTAXITERATOR_H
+#ifndef CLANG_GREEN_GREENAST_GREENSYNTAXITERATOR_H
+#define CLANG_GREEN_GREENAST_GREENSYNTAXITERATOR_H
 
 #include <iterator>
 
-namespace usyntax {
+namespace green {
 
 struct Syntax;
 
@@ -70,13 +70,12 @@ public:
 class ConstSyntaxIterator;
 
 class SyntaxIterator : public SyntaxIteratorImpl<SyntaxIterator, Syntax *&> {
-  SyntaxIterator(const SyntaxIteratorBase &RHS)
-    : SyntaxIteratorImpl<SyntaxIterator, Syntax *&>(RHS) {}
-
   inline friend SyntaxIterator
   cast_away_const(const ConstSyntaxIterator &RHS);
 
 public:
+  SyntaxIterator(const SyntaxIteratorBase &RHS)
+    : SyntaxIteratorImpl<SyntaxIterator, Syntax *&>(RHS) {}
   explicit SyntaxIterator() = default;
   SyntaxIterator(Syntax **S) : SyntaxIteratorImpl<SyntaxIterator, Syntax *&>(S) {}
 };
@@ -98,5 +97,5 @@ inline SyntaxIterator cast_away_const(const ConstSyntaxIterator &RHS) {
   return RHS;
 }
 
-} // namespace usyntax
+} // namespace green
 #endif

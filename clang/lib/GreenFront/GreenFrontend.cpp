@@ -39,7 +39,6 @@ void GreenSyntaxAction::ExecuteAction() {
     ParseGreenAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
     break;
   default:
-    llvm::outs () << "Barsing C Blus Blus :-DDDDDD\n";
     clang::ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
                     CI.getFrontendOpts().SkipFunctionBodies);
     break;

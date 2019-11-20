@@ -5,8 +5,6 @@ set (LLVM_LINK_COMPONENTS
 
 add_clang_library(greenSema
   GreenSema.cpp
-  IdentifierMapper.cpp
-  IdentifierTree.cpp
 
   LINK_LIBS
   clangAST

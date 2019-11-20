@@ -11,15 +11,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CLANG_GREEN_SYNTAXVISITOR_H
-#define CLANG_GREEN_SYNTAXVISITOR_H
+#ifndef CLANG_GREEN_GSYNTAXVISITOR_H
+#define CLANG_GREEN_GSYNTAXVISITOR_H
 
 #include "clang/GreenAST/Syntax.h"
 #include "llvm/ADT/STLExtras.h"
 
 #include <utility>
 
-namespace usyntax {
+namespace green {
 namespace syntaxvisitor {
 
 template<template <typename> class Ptr, typename ImplClass, typename RetTy=void>
@@ -29,37 +29,18 @@ public:
 #define DISPATCH(NAME, CLASS) \
   return static_cast<ImplClass*>(this)->Visit##NAME(static_cast<PTR(CLASS)>(S))
 
-  // FIXME: Consider replacing this with a SyntaxNodes.inc file
   RetTy Visit(PTR(Syntax) S) {
     switch (S->getKind()) {
-    case Syntax::SK_ConstInt:
-      DISPATCH(SyntaxConstInt, SyntaxConstInt);
-    case Syntax::SK_ConstString:
-      DISPATCH(SyntaxConstString, SyntaxConstString);
-    case Syntax::SK_ConstPath:
-      DISPATCH(SyntaxConstPath, SyntaxConstPath);
-    case Syntax::SK_Ident:
-      DISPATCH(SyntaxIdent, SyntaxIdent);
-    case Syntax::SK_Call:
-      DISPATCH(SyntaxCall, SyntaxCall);
-    case Syntax::SK_Attr:
-      DISPATCH(SyntaxAttr, SyntaxAttr);
-    case Syntax::SK_Macro:
-      DISPATCH(SyntaxMacro, SyntaxMacro);
-    case Syntax::SK_Escape:
-      DISPATCH(SyntaxEscape, SyntaxEscape);
+#define def_syntax(K) \
+      case Syntax::SK_ ## K: DISPATCH(K ## Syntax, K ## Syntax);
+#include "clang/GreenAST/Syntax.def"
     }
   }
 
   // If a function is not implemented, fall back to the base.
-  RetTy VisitSyntaxConstInt(PTR(SyntaxConstInt) S) { DISPATCH(Syntax, Syntax); }
-  RetTy VisitSyntaxConstString(PTR(SyntaxConstString) S) { DISPATCH(Syntax, Syntax); }
-  RetTy VisitSyntaxConstPath(PTR(SyntaxConstPath) S) { DISPATCH(Syntax, Syntax); }
-  RetTy VisitSyntaxIdent(PTR(SyntaxIdent) S) { DISPATCH(Syntax, Syntax); }
-  RetTy VisitSyntaxCall(PTR(SyntaxCall) S) { DISPATCH(Syntax, Syntax); }
-  RetTy VisitSyntaxAttr(PTR(SyntaxAttr) S) { DISPATCH(Syntax, Syntax); }
-  RetTy VisitSyntaxMacro(PTR(SyntaxMacro) S) { DISPATCH(Syntax, Syntax); }
-  RetTy VisitSyntaxEscape(PTR(SyntaxEscape) S) { DISPATCH(Syntax, Syntax); }
+#define def_syntax(K) \
+  RetTy Visit ## K ## Syntax(PTR(K ## Syntax) S) { DISPATCH(Syntax, Syntax); }
+#include "clang/GreenAST/Syntax.def"
 
   RetTy VisitSyntax(PTR(Syntax) S) { return RetTy(); }
 
@@ -73,17 +54,17 @@ public:
 /// This class does not preserve constness of Syntax pointers (see also
 /// ConstSyntaxVisitor).
 template <typename ImplClass, typename RetTy = void>
-class SyntaxVisitor
+class GreenSyntaxVisitor
     : public syntaxvisitor::Base<std::add_pointer, ImplClass, RetTy> {};
 
 /// A simple visitor class that helps create syntax visitors.
 ///
 /// This class preserves constness of Syntax pointers (see also SyntaxVisitor).
 template <typename ImplClass, typename RetTy = void>
-class ConstSyntaxVisitor
+class ConstGreenSyntaxVisitor
     : public syntaxvisitor::Base<llvm::make_const_ptr, ImplClass, RetTy> {};
 
 
-} // namespace usyntax
+} // namespace green
 
 #endif
