@@ -11,7 +11,7 @@
 
 #include "clang/Frontend/FrontendAction.h"
 
-#include "clang/GreenFront/GreenFrontend.h"
+#include "clang/Green/GreenFrontend.h"
 
 #include <memory>
 

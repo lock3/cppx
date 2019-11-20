@@ -18,7 +18,7 @@
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/Module.h"
 #include "clang/Basic/SourceManager.h"
-#include "clang/GreenAST/Syntax.h"
+#include "clang/Green/Syntax.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 using namespace clang::comments;

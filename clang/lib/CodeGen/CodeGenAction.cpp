@@ -23,7 +23,7 @@
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
-#include "clang/GreenParse/ParseGreenAST.h"
+#include "clang/Green/ParseGreenAST.h"
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/CodeGen/MachineOptimizationRemarkEmitter.h"

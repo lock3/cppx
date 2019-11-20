@@ -22,7 +22,7 @@
 #include "clang/Frontend/FrontendPluginRegistry.h"
 #include "clang/Frontend/Utils.h"
 #include "clang/FrontendTool/Utils.h"
-#include "clang/GreenFront/GreenFrontend.h"
+#include "clang/Green/GreenFrontend.h"
 #include "clang/Rewrite/Frontend/FrontendActions.h"
 #include "clang/StaticAnalyzer/Frontend/FrontendActions.h"
 #include "llvm/Option/OptTable.h"

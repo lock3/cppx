@@ -23,8 +23,8 @@
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/TemplateArgumentVisitor.h"
 #include "clang/AST/TypeVisitor.h"
-#include "clang/GreenAST/Syntax.h"
-#include "clang/GreenAST/SyntaxVisitor.h"
+#include "clang/Green/Syntax.h"
+#include "clang/Green/SyntaxVisitor.h"
 
 namespace clang {
 
