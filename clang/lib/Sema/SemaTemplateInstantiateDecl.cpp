@@ -1808,7 +1808,11 @@ TemplateDeclInstantiator::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
   // will contain the instantiations of the template parameters and then get
   // merged with the local instantiation scope for the function template
   // itself.
-  LocalInstantiationScope Scope(SemaRef);
+  //
+  // Allow this to be merged with the outer scope so that while transforming
+  // a fragment with a templated function, we are able to find the new
+  // declarations, and use them inside of the function transform.
+  LocalInstantiationScope Scope(SemaRef, /*CombineWithOuterScope=*/true);
 
   TemplateParameterList *TempParams = D->getTemplateParameters();
   TemplateParameterList *InstParams = SubstTemplateParams(TempParams);
