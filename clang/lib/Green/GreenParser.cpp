@@ -262,7 +262,7 @@ namespace green
     if (next_token_is(tok_left_bracket))
     {
       // FIXME: Match the 'pre-attr expr' production.
-      // sorry(input_location(), "attributed expressions not supported");
+      llvm_unreachable("attributed expressions not supported");
     }
 
     Syntax *def = parse_def();
@@ -312,7 +312,7 @@ namespace green
       //
       // which may or may not be equivalent to the above? Also, what happens
       // if any of the conditions are false?
-      // sorry(input_location(), "where clauses not supported");
+      llvm_unreachable("where clauses not supported");
     }
 
     // FIXME: Support trailing docattrs.
@@ -624,10 +624,31 @@ namespace green
     Syntax *e1 = parse_pre();
 
     // TODO: Support a continued chain of macros.
-    if (next_token_is(tok_left_brace) || next_token_is(tok_colon))
+    if (next_token_is(tok_left_brace))
     {
       Syntax *e2 = parse_block();
       return on_macro(e1, e2);
+    } else if (next_token_is(tok_colon)) {
+      // We need to make sure that we have a sequence of newlines followed
+      // by a sequence of indents in order to parse a nested block.
+      unsigned la = 1;
+      while(lex.char_lookahead(la) == '\n')
+        ++la;
+
+      if (la > 1) {
+        // Record the lookahead where we see the first indent.
+        unsigned indent_la = la;
+        while (lex.char_lookahead(la) == '\t' || lex.char_lookahead(la) == ' ')
+          ++la;
+
+        // if we had both a newline and an indent, we're good to parse a block.
+        if (la > indent_la) {
+          Syntax *e2 = parse_block();
+          return on_macro(e1, e2);
+        }
+
+        assert(false && "Parsing block without indent.");
+      }
     }
 
     return e1;
@@ -741,7 +762,7 @@ namespace green
         break;
 
       case tok_less:
-        // sorry(input_location(), "attributes not implemented");
+        llvm_unreachable("attributes not implemented");
         break;
 
       case tok_dot:
@@ -751,7 +772,7 @@ namespace green
       case tok_question:
       case tok_caret:
       case tok_at:
-        // sorry(input_location(), "suffix operators not implemented");
+        llvm_unreachable("suffix operators not implemented");
         consume();
         break;
 
@@ -775,7 +796,12 @@ namespace green
 
     // TODO: If this is an Syntax::error, should we skip to the next paren or
     // to the the nearest comma? separator? What?
-    Syntax *args = parse_array();
+    Syntax *args = nullptr;
+    // Don't parse an array if the parens are empty.
+    if (lookahead() != tok_right_paren)
+      args = parse_array();
+    else
+      args = on_array({});
 
     if (!parens.expect_close())
       return Syntax::error;

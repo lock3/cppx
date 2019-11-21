@@ -210,6 +210,8 @@ public:
   void Visit(const green::Syntax *S) {
     getNodeDelegate().AddChild([=] {
       getNodeDelegate().Visit(S);
+      if (!S)
+        return;
 
       using namespace green;
       ConstGreenSyntaxVisitor<Derived>::Visit(S);

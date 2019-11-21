@@ -10,6 +10,7 @@ add_clang_library(green
   GreenParser.cpp
   GreenSema.cpp
   GreenTokens.cpp
+  IdentifierMapper.cpp
   ParseGreenAST.cpp
   Symbol.cpp
   Syntax.cpp

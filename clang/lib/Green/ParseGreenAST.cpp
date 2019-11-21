@@ -30,6 +30,7 @@
 #include "clang/Green/SyntaxVisitor.h"
 
 using namespace clang;
+using namespace green;
 
 namespace lock3 {
 
@@ -44,6 +45,16 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
   green::Syntax *AST = parser.parse_file();
   if (AST)
     AST->dump();
+
+  SyntaxContext Context(ClangContext);
+  GreenSema GSema(Context, PP, ClangSema);
+
+  // PHASE 1: Map names to the syntaxes that introduce them.
+  GSema.MapIdentifiers(llvm::cast<ArraySyntax>(AST));
+
+  // PHASE 2: Find the type of each name.
+
+  // PHASE 3: Create a clang declaration using the name and type of each entity.
 }
 
 } // namespace lock3

@@ -18,7 +18,7 @@
 
 #include "clang/Green/Syntax.h"
 #include "clang/Green/GreenSema.h"
-
+#include "clang/Green/IdentifierMapper.h"
 
 namespace green {
 
@@ -28,6 +28,18 @@ GreenSema::GreenSema(SyntaxContext &Context, clang::Preprocessor &PP,
                      clang::Sema &ClangSema)
   : Context(Context), PP(PP), ClangSema(ClangSema)
 {}
+
+void
+GreenSema::MapIdentifiers(const ArraySyntax *S)
+{
+  IdentifierMapper Mapper(Context, *this, PP);
+  Mapper.MapIdentifiers(S);
+
+  llvm::outs() << "Mappings:\n";
+  for (const auto KV : IdentifierMapping) {
+    llvm::outs() << KV.first->getName() << ": " << KV.second << '\n';
+  }
+}
 
 } // namespace usyntax
 

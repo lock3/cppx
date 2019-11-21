@@ -225,6 +225,12 @@ namespace green
 
     token operator()();
 
+    char char_lookahead(int n) {
+      if (n)
+        return scan.lookahead(n);
+      return scan.lookahead();
+    }
+
     /// The underlying scanner.
     character_scanner scan;
 
@@ -272,6 +278,10 @@ namespace green
       return indentation();
     }
 
+    char char_lookahead(int n) {
+      return scan.char_lookahead(n);
+    }
+
     /// The underlying scanner.
     line_scanner scan;
 
@@ -298,6 +308,10 @@ namespace green
     token operator()()
     {
       return scan();
+    }
+
+    char char_lookahead(int n = 0) {
+      return scan.char_lookahead(n);
     }
 
     block_scanner scan;

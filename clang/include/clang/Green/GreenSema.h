@@ -15,7 +15,8 @@
 #ifndef CLANG_GREEN_GREENSEMA_H
 #define CLANG_GREEN_GREENSEMA_H
 
-#include "llvm/ADT/StringMap.h"
+#include "clang/Basic/IdentifierTable.h"
+#include "llvm/ADT/DenseMap.h"
 
 #include "clang/Green/SyntaxContext.h"
 
@@ -30,14 +31,16 @@ class Sema;
 
 namespace green {
 
-using SyntaxVector = std::vector<Syntax *>;
-
 class SyntaxContext;
+struct Syntax;
+struct ArraySyntax;
 
 // Semantic actions for the Green language.
 class GreenSema {
+  friend class IdentifierMapper;
+
   // A mapping of identifiers as strings to syntaxes.
-  llvm::StringMap<Syntax *> Identifiers;
+  llvm::DenseMap<clang::IdentifierInfo *, const Syntax *> IdentifierMapping;
 
   // The context
   SyntaxContext &Context;
@@ -54,7 +57,7 @@ public:
 
   // Look through a translation unit and map the identifiers to Clang
   // constructs.
-  void MapIdentifiers(SyntaxVector &Syn);
+  void MapIdentifiers(const ArraySyntax *S);
 };
 
 } // namespace usyntax
