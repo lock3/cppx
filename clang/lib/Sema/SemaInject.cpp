@@ -160,6 +160,19 @@ public:
 
   ASTContext &getContext() { return getSema().Context; }
 
+  class RebuildOnlyContextRAII {
+    InjectionContext &IC;
+    DeclContext *OriginalRebuildOnlyContext;
+  public:
+    RebuildOnlyContextRAII(InjectionContext &IC)
+      : IC(IC), OriginalRebuildOnlyContext(IC.RebuildOnlyContext) {
+      IC.RebuildOnlyContext = IC.getSema().CurContext;
+    }
+    ~RebuildOnlyContextRAII() {
+      IC.RebuildOnlyContext = OriginalRebuildOnlyContext;
+    }
+  };
+
   template<typename IT, typename F>
   void InitInjection(IT Injection, F Op) {
     InjectionInfo *PreviousInjection = CurInjection;
@@ -261,10 +274,13 @@ public:
   }
 
   bool ShouldInjectInto(DeclContext *DC) const {
-    // We should only be creating children of the declaration
-    // being injected, if the target DC is the context we're
-    // mock injecting into, it should be blocked.
-    return DC != MockInjectionContext;
+    // When not doing a declaration rebuild, this should always be true.
+    //
+    // However, when we're rebuilding, we check to see if we're attempting
+    // to inject into the rebuild only context. If we are, we want
+    // to block this injection, as we don't want any declarations added
+    // to the rebuild only context, while it's set.
+    return DC != RebuildOnlyContext;
   }
 
   /// Returns a replacement for D if a substitution has been registered or
@@ -423,11 +439,11 @@ public:
                                    Decl *OriginalContent,
                                    Decl *&NewContent) {
     // Change the target of injection, by temporarily changing
-    // the current context. This is required for the MockInjectDecl
+    // the current context. This is required for the RebuildInjectDecl
     // call to properly determine what should and shouldn't be injected.
     Sema::ContextRAII Context(SemaRef, Decl::castToDeclContext(NewFrag));
 
-    NewContent = MockInjectDecl(OriginalContent);
+    NewContent = RebuildInjectDecl(OriginalContent);
 
     return !NewContent;
   }
@@ -451,7 +467,7 @@ public:
     // Case 2, we haven't found a replacement type, but
     // we're only trying to rebuild currently, perform default
     // transform.
-    if (MockInjectionContext) {
+    if (RebuildOnlyContext) {
       using Base = TreeTransform<InjectionContext>;
       return Base::RebuildCXXRequiredTypeType(D);
     }
@@ -549,10 +565,12 @@ public:
   Decl *InjectCXXRecordDecl(CXXRecordDecl *D);
   Decl *InjectStaticDataMemberDecl(FieldDecl *D);
   Decl *InjectFieldDecl(FieldDecl *D);
+  template<typename F>
+  Decl *InjectCXXMethodDecl(CXXMethodDecl *D, F FinishBody);
   Decl *InjectCXXMethodDecl(CXXMethodDecl *D);
   Decl *InjectDeclImpl(Decl *D);
   Decl *InjectDecl(Decl *D);
-  Decl *MockInjectDecl(Decl *D);
+  Decl *RebuildInjectDecl(Decl *D);
   Decl *InjectAccessSpecDecl(AccessSpecDecl *D);
   Decl *InjectFriendDecl(FriendDecl *D);
   Decl *InjectCXXMetaprogramDecl(CXXMetaprogramDecl *D);
@@ -561,6 +579,7 @@ public:
   TemplateParameterList *InjectTemplateParms(TemplateParameterList *Old);
   Decl *InjectClassTemplateDecl(ClassTemplateDecl *D);
   Decl *InjectClassTemplateSpecializationDecl(ClassTemplateSpecializationDecl *D);
+  Decl *CreatePartiallySubstPattern(FunctionTemplateDecl *D);
   Decl *InjectFunctionTemplateDecl(FunctionTemplateDecl *D);
   Decl *InjectTemplateTypeParmDecl(TemplateTypeParmDecl *D);
   Decl *InjectNonTypeTemplateParmDecl(NonTypeTemplateParmDecl *D);
@@ -601,8 +620,11 @@ public:
   /// an incomplete injection.
   bool ContainsClassData = false;
 
-  /// The DeclContext we're mock injecting for.
-  DeclContext *MockInjectionContext = nullptr;
+  /// Set by RebuildOnlyContextRAII to block injection.
+  /// This variable is used to create a DeclContext which
+  /// declarations should not be added to, allowing
+  /// the rebuilding of declarations via injection.
+  DeclContext *RebuildOnlyContext = nullptr;
 
   /// The context into which the fragment is injected
   Decl *Injectee;
@@ -1333,7 +1355,7 @@ static bool ShouldImmediatelyInjectPendingDefinitions(
   if (Decl::castFromDeclContext(ClassOwner) == Injectee)
     return true;
 
-  // Handle pending members, we've reached the root of the mock injection.
+  // Handle pending members, we've reached the root of the rebuild injection.
   if (!InjectedIntoOwner)
     return true;
 
@@ -1522,7 +1544,8 @@ static ExplicitSpecifier getExplicit(T *D, ReflectionModifiers &Mods) {
   return Spec;
 }
 
-Decl *InjectionContext::InjectCXXMethodDecl(CXXMethodDecl *D) {
+template<typename F>
+Decl *InjectionContext::InjectCXXMethodDecl(CXXMethodDecl *D, F FinishBody) {
   ASTContext &AST = getContext();
   DeclarationNameInfo DNI;
   TypeSourceInfo *TSI;
@@ -1632,14 +1655,20 @@ Decl *InjectionContext::InjectCXXMethodDecl(CXXMethodDecl *D) {
     Owner->addDecl(Method);
   }
 
-  // If the method is has a body, add it to the context so that we can
-  // process it later. Note that deleted/defaulted definitions are just
-  // flags processed above. Ignore the definition if we've marked this
-  // as pure virtual.
-  if (D->hasBody() && !Method->isPure())
-    AddPendingDefinition(InjectedDef(InjectedDef_Method, D, Method));
+  FinishBody(Method);
 
   return Method;
+}
+
+Decl *InjectionContext::InjectCXXMethodDecl(CXXMethodDecl *D) {
+  return InjectCXXMethodDecl(D, [&](CXXMethodDecl *Method) {
+    // If the method is has a body, add it to the context so that we can
+    // process it later. Note that deleted/defaulted definitions are just
+    // flags processed above. Ignore the definition if we've marked this
+    // as pure virtual.
+    if (D->hasBody() && !Method->isPure())
+      AddPendingDefinition(InjectedDef(InjectedDef_Method, D, Method));
+  });
 }
 
 Decl *InjectionContext::InjectDeclImpl(Decl *D) {
@@ -1722,21 +1751,17 @@ Decl *InjectionContext::InjectDecl(Decl *D) {
   // so that it can be processed for code generation.
   //
   // Avoid doing this if only rebuilding the declaration.
-  if (R->getDeclContext()->isFileContext() && !MockInjectionContext)
+  if (R->getDeclContext()->isFileContext() && !RebuildOnlyContext)
     getSema().Consumer.HandleTopLevelDecl(DeclGroupRef(R));
 
   return R;
 }
 
-Decl *InjectionContext::MockInjectDecl(Decl *D) {
-  DeclContext *OriginalMockInjectionContext = MockInjectionContext;
-  MockInjectionContext = getSema().CurContext;
+Decl *InjectionContext::RebuildInjectDecl(Decl *D) {
+  RebuildOnlyContextRAII RebuildCtx(*this);
 
   // Run normal injection logic.
-  Decl *NewDecl = InjectDecl(D);
-
-  MockInjectionContext = OriginalMockInjectionContext;
-  return NewDecl;
+  return InjectDecl(D);
 }
 
 Decl *InjectionContext::InjectAccessSpecDecl(AccessSpecDecl *D) {
@@ -1790,7 +1815,7 @@ Decl *InjectionContext::InjectFriendDecl(FriendDecl *D) {
     return FD;
   }
 
-  Decl *ND = MockInjectDecl(D->getFriendDecl());
+  Decl *ND = RebuildInjectDecl(D->getFriendDecl());
 
   DeclContext *NDDC = nullptr;
   if (GetFriendTargetDeclContext(SemaRef, D, Owner, ND, NDDC))
@@ -2008,7 +2033,7 @@ Decl *InjectionContext::InjectClassTemplateSpecializationDecl(
                                            ClassTemplateSpecializationDecl *D) {
   DeclContext *Owner = getSema().CurContext;
 
-  Decl *Template = MockInjectDecl(D->getSpecializedTemplate());
+  Decl *Template = RebuildInjectDecl(D->getSpecializedTemplate());
   if (!Template)
     return nullptr;
   ClassTemplateDecl *ClassTemplate = cast<ClassTemplateDecl>(Template);
@@ -2040,6 +2065,81 @@ Decl *InjectionContext::InjectClassTemplateSpecializationDecl(
   return Template;
 }
 
+// Create a partially substituted pattern based off the give multi level
+// function template. This route creates a new pattern for a template,
+// based of an existing template for instance:
+//
+// template<typename T>
+// struct outer {
+//   template<typename K>
+//   void foo() {
+//     T t;
+//   }
+// };
+//
+// This function would be used to create a new `outer<int>::foo`,
+// with T replaced such that the new version of foo is
+// equivalent to the following `outer::foo`:
+//
+// struct outer {
+//   template<typename K>
+//   void foo() {
+//     int t;
+//   }
+// };
+//
+Decl *InjectionContext::CreatePartiallySubstPattern(FunctionTemplateDecl *D) {
+  RebuildOnlyContextRAII RebuildCtx(*this);
+
+  Sema &S = getSema();
+
+  FunctionDecl *Function = D->getTemplatedDecl();
+  const FunctionDecl *PatternDecl = D->getInstantiatedFromMemberTemplate()->getTemplatedDecl();
+  const FunctionDecl *PatternDef = PatternDecl->getDefinition();
+
+  Stmt *Pattern = nullptr;
+  if (PatternDef) {
+    Pattern = PatternDef->getBody(PatternDef);
+    PatternDecl = PatternDef;
+    if (PatternDef->willHaveBody())
+      PatternDef = nullptr;
+  }
+
+  return InjectCXXMethodDecl(cast<CXXMethodDecl>(Function), [&](CXXMethodDecl *Method) {
+    S.ActOnStartOfFunctionDef(nullptr, Method);
+
+    Sema::SynthesizedFunctionScope Scope(S, Method);
+    Sema::ContextRAII MethodCtx(S, Method);
+
+    // We need to substitute out the template parameters we know.
+    // Then if substitution succeeds, we need to transform the body,
+    // which has yet to be touched by injection transform.
+    MultiLevelTemplateArgumentList TemplateArgs =
+      S.getTemplateInstantiationArgs(Function, nullptr, false, PatternDecl);
+    SmallVector<std::pair<Decl *, Decl *>, 8> ExistingMappings;
+
+    StmtResult NewBody = S.SubstStmt(Pattern, TemplateArgs, ExistingMappings);
+
+    if (NewBody.isInvalid()) {
+      Method->setInvalidDecl();
+    } else {
+      NewBody = TransformStmt(NewBody.get());
+      if (NewBody.isInvalid()) {
+        Method->setInvalidDecl();
+      }
+    }
+
+    if (!NewBody.isInvalid()) {
+      assert(NewBody.get() && "A defined method was injected without its body.");
+
+      Method->setBody(NewBody.get());
+    }
+
+    S.ActOnFinishFunctionBody(Method, NewBody.get(), /*IsInstantiation=*/true);
+  });
+}
+
+
 Decl *InjectionContext::InjectFunctionTemplateDecl(FunctionTemplateDecl *D) {
   DeclContext *Owner = getSema().CurContext;
 
@@ -2048,9 +2148,17 @@ Decl *InjectionContext::InjectFunctionTemplateDecl(FunctionTemplateDecl *D) {
     return nullptr;
 
   // Build the underlying pattern.
-  Decl *Pattern = MockInjectDecl(D->getTemplatedDecl());
+  Decl *Pattern;
+
+  if (D->getInstantiatedFromMemberTemplate()) {
+    Pattern = CreatePartiallySubstPattern(D);
+  } else {
+    Pattern = RebuildInjectDecl(D->getTemplatedDecl());
+  }
+
   if (!Pattern)
     return nullptr;
+
   FunctionDecl *Fn = cast<FunctionDecl>(Pattern);
 
   // Build the enclosing template.
@@ -2612,7 +2720,7 @@ SubstitueOrMaintainRequiredDecl(InjectionContext &Ctx, DeclContext *Owner,
   // injecting this, as that lookup would potentially occur in the wrong
   // context.
 
-  if (!Ctx.MockInjectionContext) {
+  if (!Ctx.RebuildOnlyContext) {
     if (CXXRequiredDeclSubstitute(Ctx, NewDecl)) {
        NewDecl->setInvalidDecl(true);
     }

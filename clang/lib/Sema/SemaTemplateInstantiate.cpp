@@ -1239,6 +1239,13 @@ TemplateInstantiator::TransformTemplateParmRefExpr(DeclRefExpr *E,
 
   TemplateArgument Arg = TemplateArgs(NTTP->getDepth(), NTTP->getPosition());
 
+  // Allow partial instantiation during injection, this is used
+  // for partial instantiation to create a new pattern for the template.
+  if (getSema().isInjectingCode() && Arg.isInstantiationDependent()) {
+    using Base = TreeTransform<TemplateInstantiator>;
+    return Base::TransformDeclRefExpr(E);
+  }
+
   if (TemplateArgs.getNumLevels() != TemplateArgs.getNumSubstitutedLevels()) {
     // We're performing a partial substitution, so the substituted argument
     // could be dependent. As a result we can't create a SubstNonType*Expr
@@ -1359,6 +1366,7 @@ ExprResult TemplateInstantiator::transformNonTypeTemplateParmRef(
   if (result.isInvalid()) return ExprError();
 
   Expr *resultExpr = result.get();
+
   return new (SemaRef.Context) SubstNonTypeTemplateParmExpr(
       type, resultExpr->getValueKind(), loc, parm, resultExpr);
 }
@@ -1522,6 +1530,13 @@ TemplateInstantiator::TransformTemplateTypeParmType(TypeLocBuilder &TLB,
     }
 
     TemplateArgument Arg = TemplateArgs(T->getDepth(), T->getIndex());
+
+    // Allow partial instantiation during injection, this is used
+    // for partial instantiation to create a new pattern for the template.
+    if (getSema().isInjectingCode() && Arg.isInstantiationDependent()) {
+      using Base = TreeTransform<TemplateInstantiator>;
+      return Base::TransformTemplateTypeParmType(TLB, TL);
+    }
 
     if (T->isParameterPack()) {
       assert(Arg.getKind() == TemplateArgument::Pack &&

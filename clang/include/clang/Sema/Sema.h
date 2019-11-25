@@ -723,20 +723,25 @@ public:
 
   llvm::SmallVector<PendingInjectionEffect, 4> PendingNamespaceInjections;
 
+private:
   /// True if we're currently injecting code.
-  bool IsInjectingCode = false;
+  bool InjectingCode = false;
+public:
+  bool isInjectingCode() {
+    return InjectingCode;
+  }
 
   class CodeInjectionTracker {
     Sema &S;
     bool PreviousValue;
   public:
     CodeInjectionTracker(Sema &S)
-      : S(S), PreviousValue(S.IsInjectingCode) {
-      S.IsInjectingCode = true;
+      : S(S), PreviousValue(S.InjectingCode) {
+      S.InjectingCode = true;
     }
 
     ~CodeInjectionTracker() {
-      S.IsInjectingCode = PreviousValue;
+      S.InjectingCode = PreviousValue;
     }
   };
 
