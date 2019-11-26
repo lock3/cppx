@@ -877,30 +877,30 @@ void InjectionContext::UpdateFunctionParms(FunctionDecl* Old,
   unsigned NewIndex = 0;
   auto OldParms = Old->parameters();
   auto NewParms = New->parameters();
-  if (OldParms.size() > 0) {
-    do {
-      ParmVarDecl *OldParm = OldParms[OldIndex++];
-      if (auto *Injected = FindInjectedParms(OldParm)) {
-        for (unsigned I = 0; I < Injected->size(); ++I) {
-          ParmVarDecl *NewParm = NewParms[NewIndex++];
-          UpdateFunctionParm(*this, New, OldParm, NewParm);
-        }
 
-        // This should not be replaced, as there's no 1-to-1 mapping.
-        assert(GetDeclReplacement(OldParm) == nullptr);
-      } else {
+  // Visit all old params
+  while (OldIndex < OldParms.size()) {
+    ParmVarDecl *OldParm = OldParms[OldIndex++];
+    if (auto *Injected = FindInjectedParms(OldParm)) {
+      for (unsigned I = 0; I < Injected->size(); ++I) {
         ParmVarDecl *NewParm = NewParms[NewIndex++];
         UpdateFunctionParm(*this, New, OldParm, NewParm);
-
-        // This should always be invalid,
-        // or match the replacement by TransformFunctionTypeParam.
-        assert(OldParm->InjectedParmsInfo ||
-               GetDeclReplacement(OldParm) == NewParm);
       }
-    } while (OldIndex < OldParms.size() && NewIndex < NewParms.size());
-  } else {
-    assert(NewParms.size() == 0);
+
+      // This should not be replaced, as there's no 1-to-1 mapping.
+      assert(GetDeclReplacement(OldParm) == nullptr);
+    } else {
+      ParmVarDecl *NewParm = NewParms[NewIndex++];
+      UpdateFunctionParm(*this, New, OldParm, NewParm);
+
+      // This should always be invalid,
+      // or match the replacement by TransformFunctionTypeParam.
+      assert(OldParm->InjectedParmsInfo ||
+             GetDeclReplacement(OldParm) == NewParm);
+    }
   }
+
+  // Verify all old and new params have been visited
   assert(OldIndex == OldParms.size() && NewIndex == NewParms.size());
 }
 
