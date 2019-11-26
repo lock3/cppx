@@ -63,7 +63,7 @@ endif()
 add_dependencies(clang clang-resource-headers)
 
 if(NOT CLANG_LINKS_TO_CREATE)
-  set(CLANG_LINKS_TO_CREATE clang++ clang-cl clang-cpp clang-green)
+  set(CLANG_LINKS_TO_CREATE clang++ clang-cl clang-cpp clang-green clang-blue)
 endif()
 
 foreach(link ${CLANG_LINKS_TO_CREATE})
