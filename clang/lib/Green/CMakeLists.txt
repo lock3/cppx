@@ -12,6 +12,7 @@ add_clang_library(green
   GreenTokens.cpp
   IdentifierMapper.cpp
   ParseGreenAST.cpp
+  RequireDecl.cpp
   RequireType.cpp
   Symbol.cpp
   Syntax.cpp
