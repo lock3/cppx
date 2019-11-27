@@ -3303,6 +3303,7 @@ static bool isStrictlyPreprocessorAction(frontend::ActionKind Action) {
   case frontend::EmitCodeGenOnly:
   case frontend::EmitObj:
   case frontend::EmitGreen:
+  case frontend::EmitBlue:
   case frontend::FixIt:
   case frontend::GenerateModule:
   case frontend::GenerateModuleInterface:
