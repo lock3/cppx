@@ -11058,6 +11058,9 @@ public:
                                   SmallVectorImpl<Expr *> &Captures);
   ExprResult BuildCXXFragmentExpr(SourceLocation Loc, Decl *Fragment,
                                   SmallVectorImpl<Expr *> &Captures);
+  Decl *RebuildCXXFragmentContent(CXXFragmentDecl *OldFragment,
+                                  CXXFragmentDecl *NewFragment,
+                            const MultiLevelTemplateArgumentList &TemplateArgs);
 
   bool ActOnCXXSpecifiedNamespaceInjectionContext(SourceLocation BeginLoc,
                                                   Decl *NamespaceDecl,

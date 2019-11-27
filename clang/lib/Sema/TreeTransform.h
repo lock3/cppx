@@ -1578,8 +1578,8 @@ public:
   }
 
   /// Transform the contents of the fragment.
-  bool TransformCXXFragmentContent(CXXFragmentDecl *NewFrag,
-                                   Decl *OriginalContent,
+  bool TransformCXXFragmentContent(CXXFragmentDecl *OldFrag,
+                                   CXXFragmentDecl *NewFrag,
                                    Decl *&NewContent);
 
   /// Build a new fragment expression.
@@ -8177,15 +8177,11 @@ TreeTransform<Derived>::MaybeTransformVariadicReifier
 
 template<typename Derived>
 bool
-TreeTransform<Derived>::TransformCXXFragmentContent(CXXFragmentDecl *NewFrag,
-                                                    Decl *OriginalContent,
+TreeTransform<Derived>::TransformCXXFragmentContent(CXXFragmentDecl *OldFrag,
+                                                    CXXFragmentDecl *NewFrag,
                                                     Decl *&NewContent) {
-  // Arguments used to instantiate the fragment are those used to
-  // instantiate the current context.
-  NamedDecl *Owner = dyn_cast<NamedDecl>(getSema().CurContext);
-  MultiLevelTemplateArgumentList Args =
-      getSema().getTemplateInstantiationArgs(Owner);
-  NewContent = getSema().SubstDecl(OriginalContent, NewFrag, Args);
+  MultiLevelTemplateArgumentList Args;
+  NewContent = getSema().RebuildCXXFragmentContent(OldFrag, NewFrag, Args);
   return !NewContent;
 }
 
@@ -8211,20 +8207,10 @@ TreeTransform<Derived>::TransformCXXFragmentExpr(CXXFragmentExpr *E) {
   CXXFragmentDecl *NewFragment = cast<CXXFragmentDecl>(F);
   CXXFragmentDecl *OldFragment = cast<CXXFragmentDecl>(E->getFragment());
 
-  // Register captured parameters as local instantiations. Merge with the
-  // parent scope so that names used in this context can refer to declarations
-  // outside.
-  LocalInstantiationScope Scope(getSema(), true);
-  auto OldIter = OldFragment->decls_begin();
-  auto NewIter = NewFragment->decls_begin();
-  while (NewIter != NewFragment->decls_end())
-    Scope.InstantiatedLocal(*OldIter++, *NewIter++);
-
   // Clone the underlying declaration.
   {
     Decl *NewContent;
-    if (getDerived().TransformCXXFragmentContent(NewFragment,
-                                                 OldFragment->getContent(),
+    if (getDerived().TransformCXXFragmentContent(OldFragment, NewFragment,
                                                  NewContent))
       return ExprError();
     F = getSema().ActOnFinishCXXFragment(nullptr, NewFragment, NewContent);

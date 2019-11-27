@@ -339,6 +339,33 @@ public:
     return false;
   }
 
+  /// Returns true if this context is injecting a fragment
+  /// into a fragment.
+  bool isRebuildingFragment() {
+    if (!isInjectingFragment())
+      return false;
+
+    if (DeclContext *DC = Injectee->getDeclContext())
+      return isa<CXXFragmentDecl>(DC);
+
+    return false;
+  }
+
+  bool isRebuildOnly() {
+    return RebuildOnlyContext || isRebuildingFragment();
+  }
+
+  /// Returns true if we're rebuilding a fragment, and the given
+  /// template param should have been provided by an external
+  /// instantiation. i.e. is related to TemplateArgs
+  bool shouldAttemptInstantiation(Decl *D) {
+    if (!isRebuildingFragment()) {
+      return false;
+    }
+
+    return FragmentLocalTemplateParams.count(D) == 0;
+  }
+
   /// Sets the declaration modifiers.
   void SetModifiers(const ReflectionModifiers &Modifiers) {
     this->CurInjection->Modifiers = Modifiers;
@@ -388,6 +415,11 @@ public:
     if (Decl *Repl = GetDeclReplacement(D))
       return Repl;
 
+    // If we're rebuilding a fragment, and we don't have a replacement,
+    // return the decl we have.
+    if (isRebuildingFragment())
+      return D;
+
     // If D is part of the injection, then we must have seen a previous
     // declaration. Otherwise, return nullptr and force a lookup or error.
     //
@@ -435,26 +467,46 @@ public:
     return InjectDecl(D);
   }
 
-  bool TransformCXXFragmentContent(CXXFragmentDecl *NewFrag,
-                                   Decl *OriginalContent,
-                                   Decl *&NewContent) {
-    // Change the target of injection, by temporarily changing
-    // the current context. This is required for the RebuildInjectDecl
-    // call to properly determine what should and shouldn't be injected.
-    Sema::ContextRAII Context(SemaRef, Decl::castToDeclContext(NewFrag));
-
-    NewContent = RebuildInjectDecl(OriginalContent);
-
-    return !NewContent;
-  }
-
   ExprResult TransformDeclRefExpr(DeclRefExpr *E) {
-    if (Expr *R = GetPlaceholderReplacement(E)) {
+    if (Expr *R = GetPlaceholderReplacement(E))
       return R;
+
+    if (isa<NonTypeTemplateParmDecl>(E->getDecl())) {
+      if (shouldAttemptInstantiation(E->getDecl())) {
+        return getSema().SubstExpr(E, *TemplateArgs);
+      }
     }
 
     return Base::TransformDeclRefExpr(E);
   }
+
+  QualType TransformTemplateTypeParmType(TypeLocBuilder &TLB,
+                                         TemplateTypeParmTypeLoc TL) {
+    if (shouldAttemptInstantiation(TL.getDecl())) {
+      // FIXME: Provide better source info
+      TypeSourceInfo *TSI = getSema().SubstType(
+          TL, *TemplateArgs, SourceLocation(), DeclarationName());
+
+      QualType ResType = TSI->getType();
+      TLB.pushTypeSpec(ResType).setNameLoc(TL.getNameLoc());
+      return ResType;
+    }
+
+    return Base::TransformTemplateTypeParmType(TLB, TL);
+  }
+
+  bool TransformCXXFragmentContent(CXXFragmentDecl *OldFragment,
+                                   CXXFragmentDecl *NewFragment,
+                                   Decl *&NewContent) {
+    // Change the target of injection, by temporarily changing
+    // the current context. This is required for the RebuildInjectDecl
+    // call to properly determine what should and shouldn't be injected.
+    Sema::ContextRAII Context(SemaRef, Decl::castToDeclContext(NewFragment));
+
+    NewContent = RebuildInjectDecl(OldFragment->getContent());
+
+    return !NewContent;
+ }
 
   QualType RebuildCXXRequiredTypeType(CXXRequiredTypeDecl *D) {
     QualType RequiredType = GetRequiredType(D);
@@ -467,7 +519,7 @@ public:
     // Case 2, we haven't found a replacement type, but
     // we're only trying to rebuild currently, perform default
     // transform.
-    if (RebuildOnlyContext) {
+    if (isRebuildOnly()) {
       using Base = TreeTransform<InjectionContext>;
       return Base::RebuildCXXRequiredTypeType(D);
     }
@@ -515,19 +567,21 @@ public:
     ParamInjectionCleanups.push_back(Params);
 
     for (ParmVarDecl *Parm : SourceParams) {
-      if (const CXXInjectedParmsInfo *Injected = Parm->InjectedParmsInfo) {
+      const CXXInjectedParmsInfo *InjectedInfo = Parm->InjectedParmsInfo;
+      if (InjectedInfo && !isRebuildOnly()) {
         SmallVector<ParmVarDecl *, 4> ExpandedParms;
-        if (ExpandInjectedParameter(*Injected, ExpandedParms))
+        if (ExpandInjectedParameter(*InjectedInfo, ExpandedParms))
           return true;
 
         // Add the new Params.
         Params->append(ExpandedParms.begin(), ExpandedParms.end());
 
-        // Add the substitition.
+        // Add the substitution.
         InjectedParms[Parm] = ExpandedParms;
-      } else {
-        Params->push_back(Parm);
+        continue;
       }
+
+      Params->push_back(Parm);
     }
 
     // Correct positional information of the injected parameters.
@@ -645,6 +699,13 @@ public:
 
   /// The declarations which have been injected.
   llvm::SmallVector<Decl *, 32> InjectedDecls;
+
+  /// Template parameters that should be substituted
+  const MultiLevelTemplateArgumentList *TemplateArgs = nullptr;
+
+  /// Template parameter decls that we should not be attempting to
+  /// substitute.
+  llvm::SetVector<Decl *> FragmentLocalTemplateParams;
 };
 
 bool InjectionContext::isInInjection(Decl *D) {
@@ -1751,7 +1812,7 @@ Decl *InjectionContext::InjectDecl(Decl *D) {
   // so that it can be processed for code generation.
   //
   // Avoid doing this if only rebuilding the declaration.
-  if (R->getDeclContext()->isFileContext() && !RebuildOnlyContext)
+  if (R->getDeclContext()->isFileContext() && !isRebuildOnly())
     getSema().Consumer.HandleTopLevelDecl(DeclGroupRef(R));
 
   return R;
@@ -1913,7 +1974,7 @@ Stmt *InjectionContext::InjectDeclStmt(DeclStmt *S) {
     return nullptr;
 
   DeclStmt *NewStmt = cast<DeclStmt>(Res.get());
-  if (!isRequiresDecl(NewStmt))
+  if (!isRequiresDecl(NewStmt) || isRebuildOnly())
     InjectedStmts.push_back(NewStmt);
   return NewStmt;
 }
@@ -1971,6 +2032,7 @@ InjectionContext::InjectTemplateParms(TemplateParameterList *OldParms) {
   SmallVector<NamedDecl *, 8> NewParms;
   NewParms.reserve(OldParms->size());
   for (auto &P : *OldParms) {
+    FragmentLocalTemplateParams.insert(P);
     NamedDecl *D = cast_or_null<NamedDecl>(InjectDecl(P));
     NewParms.push_back(D);
     if (!D || D->isInvalidDecl())
@@ -2720,7 +2782,7 @@ SubstitueOrMaintainRequiredDecl(InjectionContext &Ctx, DeclContext *Owner,
   // injecting this, as that lookup would potentially occur in the wrong
   // context.
 
-  if (!Ctx.RebuildOnlyContext) {
+  if (!Ctx.isRebuildOnly()) {
     if (CXXRequiredDeclSubstitute(Ctx, NewDecl)) {
        NewDecl->setInvalidDecl(true);
     }
@@ -2748,11 +2810,19 @@ Decl *
 InjectionContext::InjectCXXRequiredDeclaratorDecl(CXXRequiredDeclaratorDecl *D) {
   DeclContext *Owner = getSema().CurContext;
 
-  /// FIXME: does the declarator ever need transformed?
+  DeclaratorDecl *NewDD = D->getRequiredDeclarator();
+  if (isRebuildingFragment()) {
+    // FIXME: Do this eventually
+    // SubstQualifier(getSema(), D, NewD, TemplateArgs);
+    SemaRef.AnalyzingRequiredDeclarator = true;
+    NewDD = cast<DeclaratorDecl>(getSema().SubstDecl(NewDD, Owner,
+                                                     *TemplateArgs));
+    SemaRef.AnalyzingRequiredDeclarator = false;
+  }
+
   CXXRequiredDeclaratorDecl *RDD =
     CXXRequiredDeclaratorDecl::Create(SemaRef.Context, Owner,
-                                      D->getRequiredDeclarator(),
-                                      D->getRequiresLoc());
+                                      NewDD, D->getRequiresLoc());
   AddDeclSubstitution(D, RDD);
   SubstitueOrMaintainRequiredDecl(*this, Owner, RDD);
 
@@ -3201,7 +3271,6 @@ ExprResult Sema::BuildCXXFragmentExpr(SourceLocation Loc, Decl *Fragment,
       *this, Loc, FD, static_cast<CXXReflectExpr *>(Reflection.get()),
       Captures);
 }
-
 
 /// Returns true if invalid.
 bool
@@ -3777,6 +3846,218 @@ bool Sema::ApplyEffects(CXXInjectorDecl *MD,
   }
 
   return Ok;
+}
+
+template<typename F>
+static Decl *recreateContentDecl(Sema &S, NamespaceDecl *D,
+                                 DeclContext *NewDC, F Op) {
+  ASTContext &Ctx = S.getASTContext();
+
+  NamespaceDecl *Ns = NamespaceDecl::Create(
+      Ctx, NewDC, D->isInline(), D->getBeginLoc(),
+      D->getLocation(), D->getIdentifier(), /*PrevNS=*/nullptr);
+
+  SmallVector<Decl *, 0> InjectedDecls;
+
+  Op(Ns, InjectedDecls);
+
+  return Ns;
+}
+
+template<typename F>
+static Decl *recreateContentDecl(Sema &S, EnumDecl *D,
+                                 DeclContext *NewDC, F Op) {
+  ASTContext &Ctx = S.getASTContext();
+
+  EnumDecl *Enum = EnumDecl::Create(
+    Ctx, NewDC, D->getBeginLoc(), D->getLocation(),
+    D->getIdentifier(), /*PrevDecl=*/nullptr, D->isScoped(),
+    D->isScopedUsingClassTag(), D->isFixed());
+
+  // Sema::ContextRAII SavedContext(S, Enum);
+
+  Enum->startDefinition();
+
+  SmallVector<Decl *, 4> InjectedDecls;
+
+  EnumConstantDecl *OriginalLastEnumConst = S.LastEnumConstDecl;
+  S.LastEnumConstDecl = nullptr;
+
+  Op(Enum, InjectedDecls);
+
+  S.LastEnumConstDecl = OriginalLastEnumConst;
+
+  S.ActOnEnumBody(Enum->getLocation(), Enum->getBraceRange(), Enum,
+                  InjectedDecls, nullptr, ParsedAttributesView());
+
+  return Enum;
+}
+
+template<typename F>
+static Decl *recreateContentDecl(Sema &S, CXXRecordDecl *D,
+                                 DeclContext *NewDC, F Op) {
+  ASTContext &Ctx = S.getASTContext();
+
+  CXXRecordDecl *Class = CXXRecordDecl::Create(
+        Ctx, D->getTagKind(), NewDC, D->getBeginLoc(),
+        D->getLocation(), D->getIdentifier(),
+        /*PrevDecl=*/nullptr, /*DelayTypeCreation=*/false);
+
+  S.StartDefinition(Class);
+
+  SmallVector<Decl *, 0> InjectedDecls;
+
+  Op(Class, InjectedDecls);
+
+  S.CompleteDefinition(Class);
+  S.ActOnFinishCXXNonNestedClass(Class);
+
+  return Class;
+}
+
+template<typename F>
+static Decl *recreateContentDecl(Sema &S, Decl *D, DeclContext *NewDC, F Op) {
+  switch (D->getKind()) {
+  case Decl::Namespace:
+    return recreateContentDecl(S, cast<NamespaceDecl>(D), NewDC, Op);
+  case Decl::Enum:
+    return recreateContentDecl(S, cast<EnumDecl>(D), NewDC, Op);
+  default:
+    if (D->getKind() >= Decl::firstCXXRecord &&
+        D->getKind() <= Decl::lastCXXRecord)
+      return recreateContentDecl(S, cast<CXXRecordDecl>(D), NewDC, Op);
+    break;
+  }
+
+  llvm_unreachable("unsupported fragment kind");
+}
+
+static Decl *rebuildCXXDeclFragmentContent(Sema &S,
+                                           CXXFragmentDecl *OldFragment,
+                                           CXXFragmentDecl *NewFragment,
+                           const MultiLevelTemplateArgumentList &TemplateArgs) {
+  Decl *ExistingContent = OldFragment->getContent();
+  Decl *NewContent = recreateContentDecl(S, ExistingContent, NewFragment,
+      [&](Decl *NewContentDecl, SmallVectorImpl<Decl *> &InjectedDecls) {
+    // Switch to the new context.
+    DeclContext *NewContentAsDC = Decl::castToDeclContext(NewContentDecl);
+    Sema::ContextRAII NewContentCtx(S, NewContentAsDC);
+
+    BootstrapInjection(S, NewContentDecl, ExistingContent, [&](InjectionContext *Ctx) {
+      // Setup some basic information
+      Ctx->TemplateArgs = &TemplateArgs;
+      Ctx->MaybeAddDeclSubstitution(ExistingContent, NewContentDecl);
+
+      // Map captures
+      auto OldCapIter = OldFragment->decls_begin();
+      auto NewCapIter = NewFragment->decls_begin();
+      while (NewCapIter != NewFragment->decls_end())
+          Ctx->MaybeAddDeclSubstitution(*OldCapIter++, *NewCapIter++);
+
+      DeclContext *ContentAsDC = Decl::castToDeclContext(ExistingContent);
+      for (Decl *D : ContentAsDC->decls()) {
+        // Never inject injected class names.
+        if (CXXRecordDecl *Class = dyn_cast<CXXRecordDecl>(D)) {
+          if (Class->isInjectedClassName())
+            continue;
+        }
+
+        Decl *R = Ctx->InjectDecl(D);
+        if (!R || R->isInvalidDecl()) {
+          NewContentDecl->setInvalidDecl();
+          continue;
+        }
+      }
+
+      InjectedDecls.append(Ctx->InjectedDecls.begin(),
+                           Ctx->InjectedDecls.end());
+    });
+  });
+
+  // llvm::errs() << "From:\n";
+  // ExistingContent->dump();
+  // llvm::errs() << "To:\n";
+  // NewContent->dump();
+
+  return NewContent;
+}
+
+template<typename F>
+static Decl *recreateContentDecl(Sema &S, CXXStmtFragmentDecl *D,
+                                 DeclContext *NewDC, F Op) {
+  ASTContext &Ctx = S.getASTContext();
+
+  CXXStmtFragmentDecl *Body =
+    CXXStmtFragmentDecl::Create(Ctx, NewDC, D->getLocation());
+
+  SmallVector<Stmt *, 4> InjectedStmts;
+
+  Op(Body, InjectedStmts);
+
+  CompoundStmt *OldBlock = cast<CompoundStmt>(D->getBody());
+  CompoundStmt *Block = CompoundStmt::Create(
+      Ctx, InjectedStmts, OldBlock->getLBracLoc(),
+      OldBlock->getRBracLoc());
+
+  Body->setBody(Block);
+
+  return Body;
+}
+
+static Decl *rebuildCXXStmtFragmentContent(Sema &S,
+                                           CXXFragmentDecl *OldFragment,
+                                           CXXFragmentDecl *NewFragment,
+                           const MultiLevelTemplateArgumentList &TemplateArgs) {
+  CXXStmtFragmentDecl *ExistingContent = cast<CXXStmtFragmentDecl>(OldFragment->getContent());
+  Decl *NewContent = recreateContentDecl(S, ExistingContent, NewFragment,
+      [&](Decl *NewContentDecl, SmallVectorImpl<Stmt *> &InjectedStmts) {
+    // Switch to the new context.
+    DeclContext *NewContentAsDC = Decl::castToDeclContext(NewContentDecl);
+    Sema::ContextRAII NewContentCtx(S, NewContentAsDC);
+
+    BootstrapInjection(S, NewContentDecl, ExistingContent, [&](InjectionContext *Ctx) {
+      // Setup some basic information
+      Ctx->TemplateArgs = &TemplateArgs;
+      Ctx->MaybeAddDeclSubstitution(ExistingContent, NewContentDecl);
+
+      // Map captures
+      auto OldCapIter = OldFragment->decls_begin();
+      auto NewCapIter = NewFragment->decls_begin();
+      while (NewCapIter != NewFragment->decls_end())
+          Ctx->MaybeAddDeclSubstitution(*OldCapIter++, *NewCapIter++);
+
+      CXXStmtFragmentDecl *ContentAsSFD = cast<CXXStmtFragmentDecl>(ExistingContent);
+      CompoundStmt *FragmentBlock = cast<CompoundStmt>(ContentAsSFD->getBody());
+      for (Stmt *St : FragmentBlock->body()) {
+        Stmt *Inj = Ctx->InjectStmt(St);
+
+        if (!Inj) {
+          NewContent->setInvalidDecl(true);
+          continue;
+        }
+      }
+
+      InjectedStmts.append(Ctx->InjectedStmts.begin(),
+                           Ctx->InjectedStmts.end());
+    });
+  });
+
+  // llvm::errs() << "From:\n";
+  // ExistingContent->dump();
+  // llvm::errs() << "To:\n";
+  // NewContent->dump();
+
+  return NewContent;
+}
+
+Decl *Sema::RebuildCXXFragmentContent(CXXFragmentDecl *OldFragment,
+                                      CXXFragmentDecl *NewFragment,
+                           const MultiLevelTemplateArgumentList &TemplateArgs) {
+  if (isa<CXXStmtFragmentDecl>(OldFragment->getContent())) {
+    return rebuildCXXStmtFragmentContent(*this, OldFragment, NewFragment, TemplateArgs);
+  } else {
+    return rebuildCXXDeclFragmentContent(*this, OldFragment, NewFragment, TemplateArgs);
+  }
 }
 
 /// Check if there are any pending definitions of member functions for
@@ -4447,4 +4728,46 @@ Sema::DeclGroupPtrTy Sema::ActOnCXXTypeTransformerDecl(SourceLocation UsingLoc,
   PopDeclContext();
 
   return DeclGroupPtrTy::make(DeclGroupRef(Class));
+}
+
+Decl *Sema::ActOnCXXRequiredTypeDecl(AccessSpecifier AS,
+                                     SourceLocation RequiresLoc,
+                                     SourceLocation TypenameLoc,
+                                     IdentifierInfo *Id, bool Typename) {
+  CXXRequiredTypeDecl *RTD =
+    CXXRequiredTypeDecl::Create(Context, CurContext,
+                                RequiresLoc, TypenameLoc, Id, Typename);
+  RTD->setAccess(AS);
+
+  PushOnScopeChains(RTD, getCurScope());
+  return RTD;
+}
+
+Decl *Sema::ActOnCXXRequiredDeclaratorDecl(Scope *CurScope,
+                                           SourceLocation RequiresLoc,
+                                           Declarator &D) {
+  // We don't want to check for linkage, memoize that we're
+  // working on a required declarator for later checks.
+  AnalyzingRequiredDeclarator = true;
+  DeclaratorDecl *DDecl
+    = cast<DeclaratorDecl>(ActOnDeclarator(CurScope, D));
+  AnalyzingRequiredDeclarator = false;
+
+  if (!DDecl)
+    return nullptr;
+
+  // We'll deal with auto deduction later.
+  if (ParsingInitForAutoVars.count(DDecl)) {
+    ParsingInitForAutoVars.erase(DDecl);
+
+    // Since we haven't deduced the auto type, we will run
+    // into problems if the user actually tries to use this
+    // declarator. Make it a dependent deduced auto type.
+    QualType Sub = SubstAutoType(DDecl->getType(), Context.DependentTy);
+    DDecl->setType(Sub);
+  }
+
+  CXXRequiredDeclaratorDecl *RDD =
+    CXXRequiredDeclaratorDecl::Create(Context, CurContext, DDecl, RequiresLoc);
+  return RDD;
 }

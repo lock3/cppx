@@ -975,6 +975,10 @@ namespace {
     QualType TransformSubstTemplateTypeParmPackType(TypeLocBuilder &TLB,
                                            SubstTemplateTypeParmPackTypeLoc TL);
 
+    bool TransformCXXFragmentContent(CXXFragmentDecl *OldFrag,
+                                     CXXFragmentDecl *NewFrag,
+                                     Decl *&NewContent);
+
     ExprResult TransformLambdaExpr(LambdaExpr *E) {
       LocalInstantiationScope Scope(SemaRef, /*CombineWithOuterScope=*/true);
       return TreeTransform<TemplateInstantiator>::TransformLambdaExpr(E);
@@ -989,10 +993,6 @@ namespace {
                         /* DeclContext *Owner */ Owner, TemplateArgs);
       return DeclInstantiator.SubstTemplateParams(OrigTPL);
     }
-
-    bool TransformCXXFragmentContent(CXXFragmentDecl *NewFrag,
-                                     Decl *OriginalContent,
-                                     Decl *&NewContent);
   private:
     ExprResult transformNonTypeTemplateParmRef(NonTypeTemplateParmDecl *parm,
                                                SourceLocation loc,
@@ -1611,6 +1611,14 @@ TemplateInstantiator::TransformSubstTemplateTypeParmPackType(
     = TLB.push<SubstTemplateTypeParmTypeLoc>(Result);
   NewTL.setNameLoc(TL.getNameLoc());
   return Result;
+}
+
+bool TemplateInstantiator::TransformCXXFragmentContent(CXXFragmentDecl *OldFrag,
+                                                       CXXFragmentDecl *NewFrag,
+                                                       Decl *&NewContent) {
+  NewContent = getSema().RebuildCXXFragmentContent(OldFrag, NewFrag,
+                                                   TemplateArgs);
+  return !NewContent;
 }
 
 /// Perform substitution on the type T with a given set of template
@@ -3183,9 +3191,3 @@ NamedDecl *LocalInstantiationScope::getPartiallySubstitutedPack(
   return nullptr;
 }
 
-bool TemplateInstantiator::TransformCXXFragmentContent(CXXFragmentDecl *NewFrag,
-                                                    Decl *OriginalContent,
-                                                    Decl *&NewContent) {
-  NewContent = getSema().SubstDecl(OriginalContent, NewFrag, TemplateArgs);
-  return !NewContent;
-}
