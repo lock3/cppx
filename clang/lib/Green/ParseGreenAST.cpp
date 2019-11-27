@@ -53,6 +53,7 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
   GSema.MapIdentifiers(llvm::cast<ArraySyntax>(AST));
 
   // PHASE 2: Find the type of each name.
+  GSema.RequireTypes();
 
   // PHASE 3: Create a clang declaration using the name and type of each entity.
 }

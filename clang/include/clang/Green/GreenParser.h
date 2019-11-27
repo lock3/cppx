@@ -205,6 +205,9 @@ namespace green
     token la;
 
     clang::DiagnosticsEngine &Diags;
+
+    /// True if we are parsing a function parameter list.
+    bool ParsingParams = false;
   };
 
 } // namespace green

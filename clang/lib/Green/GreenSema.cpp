@@ -19,6 +19,7 @@
 #include "clang/Green/Syntax.h"
 #include "clang/Green/GreenSema.h"
 #include "clang/Green/IdentifierMapper.h"
+#include "clang/Green/RequireType.h"
 
 namespace green {
 
@@ -34,11 +35,13 @@ GreenSema::MapIdentifiers(const ArraySyntax *S)
 {
   IdentifierMapper Mapper(Context, *this, PP);
   Mapper.MapIdentifiers(S);
+}
 
-  llvm::outs() << "Mappings:\n";
-  for (const auto KV : IdentifierMapping) {
-    llvm::outs() << KV.first->getName() << ": " << KV.second << '\n';
-  }
+void
+GreenSema::RequireTypes() {
+  TypeRequirer R(Context, *this);
+  for (auto MapIter : IdentifierMapping)
+    R.RequireType(MapIter.first, MapIter.second);
 }
 
 } // namespace usyntax

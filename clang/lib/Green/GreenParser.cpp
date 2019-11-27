@@ -104,7 +104,7 @@ namespace green
   } // namespace
 
   parser::parser(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags, file const& f)
-    : Diags(Diags), lex(SM, Diags, f)
+    : lex(SM, Diags, f), Diags(Diags)
   {
     la = lex();
   }
@@ -797,11 +797,18 @@ namespace green
     // TODO: If this is an Syntax::error, should we skip to the next paren or
     // to the the nearest comma? separator? What?
     Syntax *args = nullptr;
+
+    // Begin parsing function parameters.
+    ParsingParams = true;
+
     // Don't parse an array if the parens are empty.
     if (lookahead() != tok_right_paren)
       args = parse_array();
     else
       args = on_array({});
+
+    // Finish parsing function parameters.
+    ParsingParams = false;
 
     if (!parens.expect_close())
       return Syntax::error;
@@ -987,7 +994,7 @@ namespace green
 
   Syntax *parser::on_atom(token const& tok)
   {
-    return new AtomSyntax(tok, clang::SourceLocation());
+    return new AtomSyntax(tok, clang::SourceLocation(), ParsingParams);
   }
 
   Syntax *parser::on_array(std::vector<Syntax *> const& vec)
@@ -1012,7 +1019,7 @@ namespace green
 
   Syntax *parser::on_call(token_pair const& tok, Syntax *e1, Syntax *e2)
   {
-    return new CallSyntax(e1, e2, clang::SourceLocation());
+    return new CallSyntax(e1, e2, clang::SourceLocation(), ParsingParams);
   }
 
   Syntax *parser::on_elem(token_pair const& tok, Syntax *e1, Syntax *e2)

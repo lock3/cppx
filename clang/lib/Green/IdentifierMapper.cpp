@@ -57,7 +57,8 @@ IdentifierMapper::MapList(const ListSyntax *S) {
 
       clang::IdentifierInfo *II =
         PP.getIdentifierInfo(Name->Tok.spelling());
-      GSemaRef.IdentifierMapping.insert({II, CurrentTopLevelSyntax});
+      if (isa<ArraySyntax>(CurrentTopLevelSyntax))
+        GSemaRef.IdentifierMapping.insert({II, Name});
     }
   }
 }
@@ -102,7 +103,7 @@ IdentifierMapper::HandleOperatorColon(const CallSyntax *S) {
       clang::IdentifierInfo *II =
         PP.getIdentifierInfo(Name->Tok.spelling());
 
-      GSemaRef.IdentifierMapping.insert({II, CurrentTopLevelSyntax});
+      GSemaRef.IdentifierMapping.insert({II, S});
 
     // Case 2: Handle a function with a return type.
     } else if (isa<CallSyntax>(ArgList->Elems[0])) {
