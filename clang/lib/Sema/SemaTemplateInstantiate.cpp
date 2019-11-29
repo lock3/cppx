@@ -1239,13 +1239,6 @@ TemplateInstantiator::TransformTemplateParmRefExpr(DeclRefExpr *E,
 
   TemplateArgument Arg = TemplateArgs(NTTP->getDepth(), NTTP->getPosition());
 
-  // Allow partial instantiation during injection, this is used
-  // for partial instantiation to create a new pattern for the template.
-  if (getSema().isInjectingCode() && Arg.isInstantiationDependent()) {
-    using Base = TreeTransform<TemplateInstantiator>;
-    return Base::TransformDeclRefExpr(E);
-  }
-
   if (TemplateArgs.getNumLevels() != TemplateArgs.getNumSubstitutedLevels()) {
     // We're performing a partial substitution, so the substituted argument
     // could be dependent. As a result we can't create a SubstNonType*Expr
@@ -1354,14 +1347,12 @@ ExprResult TemplateInstantiator::transformNonTypeTemplateParmRef(
     result = SemaRef.BuildExpressionFromDeclTemplateArgument(arg, type, loc);
 
     if (!result.isInvalid()) type = result.get()->getType();
-  } else if (arg.getKind() == TemplateArgument::Integral) {
+  } else {
     result = SemaRef.BuildExpressionFromIntegralTemplateArgument(arg, loc);
 
     // Note that this type can be different from the type of 'result',
     // e.g. if it's an enum type.
     type = arg.getIntegralType();
-  } else {
-    llvm_unreachable("unsupported nontype template parameter");
   }
   if (result.isInvalid()) return ExprError();
 
@@ -1530,13 +1521,6 @@ TemplateInstantiator::TransformTemplateTypeParmType(TypeLocBuilder &TLB,
     }
 
     TemplateArgument Arg = TemplateArgs(T->getDepth(), T->getIndex());
-
-    // Allow partial instantiation during injection, this is used
-    // for partial instantiation to create a new pattern for the template.
-    if (getSema().isInjectingCode() && Arg.isInstantiationDependent()) {
-      using Base = TreeTransform<TemplateInstantiator>;
-      return Base::TransformTemplateTypeParmType(TLB, TL);
-    }
 
     if (T->isParameterPack()) {
       assert(Arg.getKind() == TemplateArgument::Pack &&
@@ -2943,18 +2927,13 @@ Sema::InstantiateClassTemplateSpecializationMembers(
 using DeclMappingList = SmallVector<std::pair<Decl *, Decl *>, 8>;
 
 StmtResult
-Sema::SubstStmt(Stmt *S, const MultiLevelTemplateArgumentList &TemplateArgs,
-                const DeclMappingList &ExistingMappings) {
+Sema::SubstStmt(Stmt *S, const MultiLevelTemplateArgumentList &TemplateArgs) {
   if (!S)
     return S;
 
   TemplateInstantiator Instantiator(*this, TemplateArgs,
                                     SourceLocation(),
                                     DeclarationName());
-
-  for (const auto& Mapping : ExistingMappings)
-    Instantiator.transformedLocalDecl(Mapping.first, Mapping.second);
-
   return Instantiator.TransformStmt(S);
 }
 

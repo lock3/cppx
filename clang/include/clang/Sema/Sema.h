@@ -8348,8 +8348,7 @@ public:
   using DeclMappingList = SmallVector<std::pair<Decl *, Decl *>, 8>;
 
   StmtResult SubstStmt(Stmt *S,
-                       const MultiLevelTemplateArgumentList &TemplateArgs,
-                       const DeclMappingList &ExistingMappings);
+                       const MultiLevelTemplateArgumentList &TemplateArgs);
 
   TemplateParameterList *
   SubstTemplateParams(TemplateParameterList *Params, DeclContext *Owner,

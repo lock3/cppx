@@ -1584,19 +1584,6 @@ Decl *InjectionContext::InjectFieldDecl(FieldDecl *D) {
   return Field;
 }
 
-static bool
-ImplicitlyInstantiatedByFragment(TemplateSpecializationKind TemplateSK,
-                                 FunctionDecl *TemplateFD) {
-  if (TemplateSK != TSK_ImplicitInstantiation)
-    return false;
-  if (!TemplateFD->isInFragment())
-    return false;
-
-  DeclContext *DC = TemplateFD->getDeclContext();
-  CXXRecordDecl *D = dyn_cast_or_null<CXXRecordDecl>(DC);
-  return D && !D->isLocalClass();
-}
-
 template<typename T>
 static ExplicitSpecifier getExplicit(T *D, ReflectionModifiers &Mods) {
   ExplicitSpecifier Spec = D->getExplicitSpecifier();
@@ -1657,9 +1644,7 @@ Decl *InjectionContext::InjectCXXMethodDecl(CXXMethodDecl *D, F FinishBody) {
         MemberSpecInfo->getTemplateSpecializationKind();
     FunctionDecl *TemplateFD =
         static_cast<FunctionDecl *>(MemberSpecInfo->getInstantiatedFrom());
-    if (!ImplicitlyInstantiatedByFragment(TemplateSK, TemplateFD)) {
-      Method->setInstantiationOfMemberFunction(TemplateFD, TemplateSK);
-    }
+    Method->setInstantiationOfMemberFunction(TemplateFD, TemplateSK);
   }
 
   // Propagate semantic properties.
@@ -2180,7 +2165,7 @@ Decl *InjectionContext::CreatePartiallySubstPattern(FunctionTemplateDecl *D) {
       S.getTemplateInstantiationArgs(Function, nullptr, false, PatternDecl);
     SmallVector<std::pair<Decl *, Decl *>, 8> ExistingMappings;
 
-    StmtResult NewBody = S.SubstStmt(Pattern, TemplateArgs, ExistingMappings);
+    StmtResult NewBody = S.SubstStmt(Pattern, TemplateArgs);
 
     if (NewBody.isInvalid()) {
       Method->setInvalidDecl();
@@ -3873,8 +3858,6 @@ static Decl *recreateContentDecl(Sema &S, EnumDecl *D,
     Ctx, NewDC, D->getBeginLoc(), D->getLocation(),
     D->getIdentifier(), /*PrevDecl=*/nullptr, D->isScoped(),
     D->isScopedUsingClassTag(), D->isFixed());
-
-  // Sema::ContextRAII SavedContext(S, Enum);
 
   Enum->startDefinition();
 
