@@ -2416,7 +2416,17 @@ Decl *InjectionContext::InjectEnumDecl(EnumDecl *D) {
     }
   }
 
-  Enum->setInstantiationOfMemberEnum(D, TSK_ImplicitInstantiation);
+  // Propagate Template Attributes
+  MemberSpecializationInfo *MemberSpecInfo = D->getMemberSpecializationInfo();
+  if (MemberSpecInfo) {
+    TemplateSpecializationKind TemplateSK =
+        MemberSpecInfo->getTemplateSpecializationKind();
+    EnumDecl *TemplateED =
+        static_cast<EnumDecl *>(MemberSpecInfo->getInstantiatedFrom());
+    Enum->setInstantiationOfMemberEnum(TemplateED, TemplateSK);
+  }
+
+  // Propagate semantic properties.
   ApplyAccess(GetModifiers(), Enum, D);
   if (Invalid)
     Enum->setInvalidDecl(true);
@@ -3463,15 +3473,10 @@ static bool BootstrapInjection(Sema &S, Decl *Injectee, IT *Injection,
   return !Injectee->isInvalidDecl();
 }
 
-static bool InjectStmtFragment(Sema &S,
-                               CXXInjectorDecl *MD,
-                               Decl *Injection,
-                               const SmallVector<InjectionCapture, 8> &Captures,
-                               Decl *Injectee) {
-  return BootstrapInjection(S, Injectee, Injection, [&](InjectionContext *Ctx) {
-    Ctx->MaybeAddDeclSubstitution(Injection, Injectee);
-    Ctx->AddPlaceholderSubstitutions(Injection->getDeclContext(), Captures);
-
+static void PerformInjection(InjectionContext *Ctx, Decl *Injectee, Decl *Injection) {
+  // The logic for block fragments is different, since everything in the fragment
+  // is stored in a CompoundStmt.
+  if (isa<CXXStmtFragmentDecl>(Injection)) {
     CXXStmtFragmentDecl *InjectionSFD = cast<CXXStmtFragmentDecl>(Injection);
     CompoundStmt *FragmentBlock = cast<CompoundStmt>(InjectionSFD->getBody());
     for (Stmt *S : FragmentBlock->body()) {
@@ -3482,23 +3487,7 @@ static bool InjectStmtFragment(Sema &S,
         continue;
       }
     }
-
-    MD->getInjectedStmts().append(Ctx->InjectedStmts.begin(),
-                                  Ctx->InjectedStmts.end());
-  });
-}
-
-static bool InjectDeclFragment(Sema &S,
-                               CXXInjectorDecl *MD,
-                               Decl *Injection,
-                               const SmallVector<InjectionCapture, 8> &Captures,
-                               Decl *Injectee) {
-  return BootstrapInjection(S, Injectee, Injection, [&](InjectionContext *Ctx) {
-    // Setup substitutions
-    Ctx->MaybeAddDeclSubstitution(Injection, Injectee);
-    Ctx->AddPlaceholderSubstitutions(Injection->getDeclContext(), Captures);
-
-    // Inject each declaration in the fragment.
+  } else {
     DeclContext *InjectionAsDC = Decl::castToDeclContext(Injection);
     for (Decl *D : InjectionAsDC->decls()) {
       // Never inject injected class names.
@@ -3513,19 +3502,26 @@ static bool InjectDeclFragment(Sema &S,
         continue;
       }
     }
+  }
+}
 
-    MD->getInjectedDecls().append(Ctx->InjectedDecls.begin(),
+static void UpdateInjector(InjectionContext *Ctx, CXXInjectorDecl *ID, Decl *Injection) {
+  if (isa<CXXStmtFragmentDecl>(Injection)) {
+    ID->getInjectedStmts().append(Ctx->InjectedStmts.begin(),
+                                  Ctx->InjectedStmts.end());
+  } else {
+    ID->getInjectedDecls().append(Ctx->InjectedDecls.begin(),
                                   Ctx->InjectedDecls.end());
-  });
+  }
 }
 
 /// Inject a fragment into the current context.
 static bool InjectFragment(Sema &S,
-                           CXXInjectorDecl *MD,
+                           CXXInjectorDecl *ID,
                            Decl *Injection,
                            const SmallVector<InjectionCapture, 8> &Captures,
                            Decl *Injectee) {
-  SourceLocation POI = MD->getSourceRange().getEnd();
+  SourceLocation POI = ID->getSourceRange().getEnd();
 
   DeclContext *InjectionAsDC = Decl::castToDeclContext(Injection);
   DeclContext *InjecteeAsDC = Decl::castToDeclContext(Injectee);
@@ -3535,12 +3531,17 @@ static bool InjectFragment(Sema &S,
 
   Sema::ContextRAII Switch(S, InjecteeAsDC, isa<CXXRecordDecl>(Injectee));
 
-  // The logic for block fragments is different, since everything in the fragment
-  // is stored in a CompoundStmt.
-  if (isa<CXXStmtFragmentDecl>(Injection))
-    return InjectStmtFragment(S, MD, Injection, Captures, Injectee);
-  else
-    return InjectDeclFragment(S, MD, Injection, Captures, Injectee);
+  return BootstrapInjection(S, Injectee, Injection, [&](InjectionContext *Ctx) {
+    // Setup substitutions.
+    Ctx->MaybeAddDeclSubstitution(Injection, Injectee);
+    Ctx->AddPlaceholderSubstitutions(Injection->getDeclContext(), Captures);
+
+    // Perform the transfer from Injection to Injectee.
+    PerformInjection(Ctx, Injectee, Injection);
+
+    // Update the injector with any pending artifacts of this injection.
+    UpdateInjector(Ctx, ID, Injection);
+  });
 }
 
 // Inject a reflected base specifier into the current context.
@@ -3842,9 +3843,7 @@ static Decl *recreateContentDecl(Sema &S, NamespaceDecl *D,
       Ctx, NewDC, D->isInline(), D->getBeginLoc(),
       D->getLocation(), D->getIdentifier(), /*PrevNS=*/nullptr);
 
-  SmallVector<Decl *, 0> InjectedDecls;
-
-  Op(Ns, InjectedDecls);
+  Op(Ns, [&](InjectionContext *Ctx) { });
 
   return Ns;
 }
@@ -3866,7 +3865,10 @@ static Decl *recreateContentDecl(Sema &S, EnumDecl *D,
   EnumConstantDecl *OriginalLastEnumConst = S.LastEnumConstDecl;
   S.LastEnumConstDecl = nullptr;
 
-  Op(Enum, InjectedDecls);
+  Op(Enum, [&](InjectionContext *Ctx) {
+    InjectedDecls.append(Ctx->InjectedDecls.begin(),
+                         Ctx->InjectedDecls.end());
+  });
 
   S.LastEnumConstDecl = OriginalLastEnumConst;
 
@@ -3874,6 +3876,31 @@ static Decl *recreateContentDecl(Sema &S, EnumDecl *D,
                   InjectedDecls, nullptr, ParsedAttributesView());
 
   return Enum;
+}
+
+template<typename F>
+static Decl *recreateContentDecl(Sema &S, CXXStmtFragmentDecl *D,
+                                 DeclContext *NewDC, F Op) {
+  ASTContext &Ctx = S.getASTContext();
+
+  CXXStmtFragmentDecl *Body =
+    CXXStmtFragmentDecl::Create(Ctx, NewDC, D->getLocation());
+
+  SmallVector<Stmt *, 4> InjectedStmts;
+
+  Op(Body, [&](InjectionContext *Ctx) {
+    InjectedStmts.append(Ctx->InjectedStmts.begin(),
+                         Ctx->InjectedStmts.end());
+  });
+
+  CompoundStmt *OldBlock = cast<CompoundStmt>(D->getBody());
+  CompoundStmt *Block = CompoundStmt::Create(
+      Ctx, InjectedStmts, OldBlock->getLBracLoc(),
+      OldBlock->getRBracLoc());
+
+  Body->setBody(Block);
+
+  return Body;
 }
 
 template<typename F>
@@ -3887,10 +3914,7 @@ static Decl *recreateContentDecl(Sema &S, CXXRecordDecl *D,
         /*PrevDecl=*/nullptr, /*DelayTypeCreation=*/false);
 
   S.StartDefinition(Class);
-
-  SmallVector<Decl *, 0> InjectedDecls;
-
-  Op(Class, InjectedDecls);
+  Op(Class, [&](InjectionContext *Ctx) { });
 
   S.CompleteDefinition(Class);
   S.ActOnFinishCXXNonNestedClass(Class);
@@ -3905,6 +3929,8 @@ static Decl *recreateContentDecl(Sema &S, Decl *D, DeclContext *NewDC, F Op) {
     return recreateContentDecl(S, cast<NamespaceDecl>(D), NewDC, Op);
   case Decl::Enum:
     return recreateContentDecl(S, cast<EnumDecl>(D), NewDC, Op);
+  case Decl::CXXStmtFragment:
+    return recreateContentDecl(S, cast<CXXStmtFragmentDecl>(D), NewDC, Op);
   default:
     if (D->getKind() >= Decl::firstCXXRecord &&
         D->getKind() <= Decl::lastCXXRecord)
@@ -3915,132 +3941,43 @@ static Decl *recreateContentDecl(Sema &S, Decl *D, DeclContext *NewDC, F Op) {
   llvm_unreachable("unsupported fragment kind");
 }
 
-static Decl *rebuildCXXDeclFragmentContent(Sema &S,
-                                           CXXFragmentDecl *OldFragment,
-                                           CXXFragmentDecl *NewFragment,
-                           const MultiLevelTemplateArgumentList &TemplateArgs) {
-  Decl *ExistingContent = OldFragment->getContent();
-  Decl *NewContent = recreateContentDecl(S, ExistingContent, NewFragment,
-      [&](Decl *NewContentDecl, SmallVectorImpl<Decl *> &InjectedDecls) {
-    // Switch to the new context.
-    DeclContext *NewContentAsDC = Decl::castToDeclContext(NewContentDecl);
-    Sema::ContextRAII NewContentCtx(S, NewContentAsDC);
-
-    BootstrapInjection(S, NewContentDecl, ExistingContent, [&](InjectionContext *Ctx) {
-      // Setup some basic information
-      Ctx->TemplateArgs = &TemplateArgs;
-      Ctx->MaybeAddDeclSubstitution(ExistingContent, NewContentDecl);
-
-      // Map captures
-      auto OldCapIter = OldFragment->decls_begin();
-      auto NewCapIter = NewFragment->decls_begin();
-      while (NewCapIter != NewFragment->decls_end())
-          Ctx->MaybeAddDeclSubstitution(*OldCapIter++, *NewCapIter++);
-
-      DeclContext *ContentAsDC = Decl::castToDeclContext(ExistingContent);
-      for (Decl *D : ContentAsDC->decls()) {
-        // Never inject injected class names.
-        if (CXXRecordDecl *Class = dyn_cast<CXXRecordDecl>(D)) {
-          if (Class->isInjectedClassName())
-            continue;
-        }
-
-        Decl *R = Ctx->InjectDecl(D);
-        if (!R || R->isInvalidDecl()) {
-          NewContentDecl->setInvalidDecl();
-          continue;
-        }
-      }
-
-      InjectedDecls.append(Ctx->InjectedDecls.begin(),
-                           Ctx->InjectedDecls.end());
-    });
-  });
-
-  // llvm::errs() << "From:\n";
-  // ExistingContent->dump();
-  // llvm::errs() << "To:\n";
-  // NewContent->dump();
-
-  return NewContent;
-}
-
-template<typename F>
-static Decl *recreateContentDecl(Sema &S, CXXStmtFragmentDecl *D,
-                                 DeclContext *NewDC, F Op) {
-  ASTContext &Ctx = S.getASTContext();
-
-  CXXStmtFragmentDecl *Body =
-    CXXStmtFragmentDecl::Create(Ctx, NewDC, D->getLocation());
-
-  SmallVector<Stmt *, 4> InjectedStmts;
-
-  Op(Body, InjectedStmts);
-
-  CompoundStmt *OldBlock = cast<CompoundStmt>(D->getBody());
-  CompoundStmt *Block = CompoundStmt::Create(
-      Ctx, InjectedStmts, OldBlock->getLBracLoc(),
-      OldBlock->getRBracLoc());
-
-  Body->setBody(Block);
-
-  return Body;
-}
-
-static Decl *rebuildCXXStmtFragmentContent(Sema &S,
-                                           CXXFragmentDecl *OldFragment,
-                                           CXXFragmentDecl *NewFragment,
-                           const MultiLevelTemplateArgumentList &TemplateArgs) {
-  CXXStmtFragmentDecl *ExistingContent = cast<CXXStmtFragmentDecl>(OldFragment->getContent());
-  Decl *NewContent = recreateContentDecl(S, ExistingContent, NewFragment,
-      [&](Decl *NewContentDecl, SmallVectorImpl<Stmt *> &InjectedStmts) {
-    // Switch to the new context.
-    DeclContext *NewContentAsDC = Decl::castToDeclContext(NewContentDecl);
-    Sema::ContextRAII NewContentCtx(S, NewContentAsDC);
-
-    BootstrapInjection(S, NewContentDecl, ExistingContent, [&](InjectionContext *Ctx) {
-      // Setup some basic information
-      Ctx->TemplateArgs = &TemplateArgs;
-      Ctx->MaybeAddDeclSubstitution(ExistingContent, NewContentDecl);
-
-      // Map captures
-      auto OldCapIter = OldFragment->decls_begin();
-      auto NewCapIter = NewFragment->decls_begin();
-      while (NewCapIter != NewFragment->decls_end())
-          Ctx->MaybeAddDeclSubstitution(*OldCapIter++, *NewCapIter++);
-
-      CXXStmtFragmentDecl *ContentAsSFD = cast<CXXStmtFragmentDecl>(ExistingContent);
-      CompoundStmt *FragmentBlock = cast<CompoundStmt>(ContentAsSFD->getBody());
-      for (Stmt *St : FragmentBlock->body()) {
-        Stmt *Inj = Ctx->InjectStmt(St);
-
-        if (!Inj) {
-          NewContent->setInvalidDecl(true);
-          continue;
-        }
-      }
-
-      InjectedStmts.append(Ctx->InjectedStmts.begin(),
-                           Ctx->InjectedStmts.end());
-    });
-  });
-
-  // llvm::errs() << "From:\n";
-  // ExistingContent->dump();
-  // llvm::errs() << "To:\n";
-  // NewContent->dump();
-
-  return NewContent;
-}
-
 Decl *Sema::RebuildCXXFragmentContent(CXXFragmentDecl *OldFragment,
                                       CXXFragmentDecl *NewFragment,
                            const MultiLevelTemplateArgumentList &TemplateArgs) {
-  if (isa<CXXStmtFragmentDecl>(OldFragment->getContent())) {
-    return rebuildCXXStmtFragmentContent(*this, OldFragment, NewFragment, TemplateArgs);
-  } else {
-    return rebuildCXXDeclFragmentContent(*this, OldFragment, NewFragment, TemplateArgs);
-  }
+  Decl *ExistingContent = OldFragment->getContent();
+  Decl *NewContent = recreateContentDecl(*this, ExistingContent, NewFragment,
+      [&](Decl *NewContentDecl, auto InjectionCallback) {
+    // Switch to the new context.
+    DeclContext *NewContentAsDC = Decl::castToDeclContext(NewContentDecl);
+    Sema::ContextRAII NewContentCtx(*this, NewContentAsDC);
+
+    BootstrapInjection(*this, NewContentDecl, ExistingContent, [&](InjectionContext *Ctx) {
+      // Map any template arguments.
+      Ctx->TemplateArgs = &TemplateArgs;
+
+      // Map substitutions.
+      Ctx->MaybeAddDeclSubstitution(ExistingContent, NewContentDecl);
+
+      // Map captures for now as substitutions.
+      auto OldCapIter = OldFragment->decls_begin();
+      auto NewCapIter = NewFragment->decls_begin();
+      while (NewCapIter != NewFragment->decls_end())
+          Ctx->MaybeAddDeclSubstitution(*OldCapIter++, *NewCapIter++);
+
+      // Perform the transfer from Injection to Injectee.
+      PerformInjection(Ctx, NewContentDecl, ExistingContent);
+
+      // Pass back any pending artifacts of this injection.
+      InjectionCallback(Ctx);
+    });
+  });
+
+  // llvm::errs() << "From:\n";
+  // ExistingContent->dump();
+  // llvm::errs() << "To:\n";
+  // NewContent->dump();
+
+  return NewContent;
 }
 
 /// Check if there are any pending definitions of member functions for
