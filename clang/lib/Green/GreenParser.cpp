@@ -103,8 +103,9 @@ namespace green
     };
   } // namespace
 
-  parser::parser(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags, file const& f)
-    : lex(SM, Diags, f), Diags(Diags)
+  parser::parser(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
+                 File const& F)
+    : lex(SM, Diags, F), Diags(Diags)
   {
     la = lex();
   }

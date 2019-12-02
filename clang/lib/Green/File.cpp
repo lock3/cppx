@@ -16,9 +16,9 @@
 
 #include "clang/Green/File.h"
 
-file::file(clang::SourceManager &SM, clang::FileID FID)
+File::File(clang::SourceManager &SM, clang::FileID FID)
   : FileEntry(SM.getFileEntryForID(FID)),
-    text(SM.getMemoryBufferForFile(FileEntry)),
-    path(FileEntry->tryGetRealPathName())
+    Text(SM.getMemoryBufferForFile(FileEntry)),
+    Path(FileEntry->tryGetRealPathName())
 {
 }

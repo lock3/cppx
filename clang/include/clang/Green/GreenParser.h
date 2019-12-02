@@ -43,7 +43,7 @@ namespace green
   struct parser
   {
     parser(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
-           file const& f);
+           File const& F);
 
     bool eof()
     {

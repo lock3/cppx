@@ -26,28 +26,37 @@ class SourceManager;
 } // namespace clang
 
 /// A source file.
-struct file
+class File
 {
-  file(clang::SourceManager &SM, clang::FileID FID);
+public:
+  File(clang::SourceManager &SM, clang::FileID FID);
 
-  char const* name() const
+  char const* getName() const
   {
-    return path.empty() ? "<input>" : path.c_str();
+    return Path.empty() ? "<input>" : Path.c_str();
   }
 
   char const* data() const
   {
-    return text->getBufferStart();
+    return Text->getBufferStart();
   }
 
   std::size_t size() const
   {
-    return text->getBufferSize();
+    return Text->getBufferSize();
   }
 
+private:
+  /// The entry loaded by the source manager.
   const clang::FileEntry *FileEntry;
-  const llvm::MemoryBuffer *text;
-  std::string path;
+
+  /// The text of the file.
+  const llvm::MemoryBuffer *Text;
+
+  /// The path to the file.
+  ///
+  /// FIXME: We should be able to get this from the source manager.
+  std::string Path;
 };
 
 #endif

@@ -39,7 +39,7 @@ namespace green
   struct character_scanner
   {
     character_scanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
-                      file const& f);
+                      File const& F);
 
     token operator()();
 
@@ -166,7 +166,7 @@ namespace green
     void match_escape_sequence();
 
     /// The source file being lexed.
-    file const* input;
+    File const* input;
 
     /// The current character of the input text.
     char const* first;
@@ -219,8 +219,8 @@ namespace green
   struct line_scanner
   {
     line_scanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
-                 file const& f)
-      : scan(SM, Diags, f), SM(SM), Diags(Diags)
+                 File const& F)
+      : scan(SM, Diags, F), SM(SM), Diags(Diags)
     { }
 
     token operator()();
@@ -245,8 +245,8 @@ namespace green
   struct block_scanner
   {
     block_scanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
-                  file const& f)
-      : scan(SM, Diags, f), prefix(), SM(SM), Diags(Diags)
+                  File const& F)
+      : scan(SM, Diags, F), prefix(), SM(SM), Diags(Diags)
     { }
 
     token operator()();
@@ -301,8 +301,9 @@ namespace green
   /// The lexer owns the scanner stack.
   struct lexer
   {
-    lexer(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags, file const& f)
-      : scan(SM, Diags, f), SM(SM), Diags(Diags)
+    lexer(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
+          File const& F)
+      : scan(SM, Diags, F), SM(SM), Diags(Diags)
     { }
 
     token operator()()

@@ -62,10 +62,10 @@ namespace green
 
   character_scanner::character_scanner(clang::SourceManager &SM,
                                        clang::DiagnosticsEngine &Diags,
-                                       file const& f)
-    : input(&f),
-      first(f.data()),
-      last(first + f.size()),
+                                       File const& F)
+    : input(&F),
+      first(F.data()),
+      last(first + F.size()),
       line(1),
       column(1),
       SM(SM),
@@ -199,6 +199,7 @@ namespace green
           return match_hexadecimal_character();
         if (nth_character_is(1, 'u'))
           return match_unicode_character();
+        LLVM_FALLTHROUGH;
 
       default:
         if (is_identifier_start(lookahead()))
