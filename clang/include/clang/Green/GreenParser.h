@@ -199,7 +199,7 @@ namespace green
     Syntax* on_loop(token const& tok, Syntax* e1, Syntax* e2);
 
     /// The lexer.
-    lexer lex;
+    Lexer lex;
 
     /// The lookahead token.
     token la;

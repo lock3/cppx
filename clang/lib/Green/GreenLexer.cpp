@@ -25,411 +25,406 @@ namespace green
 {
   namespace
   {
-    bool is_space(char c)
+    bool isSpace(char C)
     {
-      return c == ' ' || c == '\t' || c == '\r' || c == '\v' || c == '\f';
+      return C == ' ' || C == '\t' || C == '\r' || C == '\v' || C == '\f';
     }
 
-    bool is_newline(char c)
+    bool isNewline(char C)
     {
-      return c == '\n';
+      return C == '\n';
     }
 
-    bool is_identifier_start(char c)
+    bool isIdentifierStart(char C)
     {
-      return std::isalpha(c) || c == '_';
+      return std::isalpha(C) || C == '_';
     }
 
-    bool is_identifier_rest(char c)
+    bool isIdentifierRest(char C)
     {
-      return std::isalpha(c) || std::isdigit(c) || c == '_';
+      return std::isalpha(C) || std::isdigit(C) || C == '_';
     }
 
-    auto is_decimal_digit = [](char c) -> bool
+    bool isDecimalDigit(char C)
     {
-      return std::isdigit(c);
+      return std::isdigit(C);
     };
 
-    auto is_hexadecimal_digit = [](char c) -> bool
+    bool isHexadecimalDigit(char C)
     {
-      return std::isxdigit(c);
+      return std::isxdigit(C);
+    };
+
+    bool isDecimalExponent(char C)
+    {
+      return C == 'e' || C == 'E';
+    };
+
+    bool isSign(char C)
+    {
+      return C == '+' || C == '-';
     };
 
     /// The byte order mark.
-    char bom[] = {'\xef', '\xbe', '\xbb'};
+    char BOM[] = {'\xef', '\xbe', '\xbb'};
 
   } // namespace
 
-  character_scanner::character_scanner(clang::SourceManager &SM,
-                                       clang::DiagnosticsEngine &Diags,
-                                       File const& F)
-    : input(&F),
-      first(F.data()),
-      last(first + F.size()),
-      line(1),
-      column(1),
+  CharacterScanner::CharacterScanner(clang::SourceManager &SM,
+                                     clang::DiagnosticsEngine &Diags,
+                                     File const& F)
+    : Input(&F),
+      First(F.data()),
+      Last(First + F.size()),
+      Line(1),
+      Column(1),
       SM(SM),
       Diags(Diags)
   {
     // Bypass the byte order mark.
-    if (std::equal(bom, bom + 3, first, last))
-      first += 3;
+    if (std::equal(BOM, BOM + 3, First, Last))
+      First += 3;
   }
 
-  token character_scanner::operator()()
+  token CharacterScanner::operator()()
   {
-    while (!done())
+    while (!isDone())
     {
       // Establish this point as the start of the current token.
-      starting_position pos(*this);
+      StartingPosition pos(*this);
 
-      switch (lookahead()) {
+      switch (getLookahead()) {
       case ' ':
       case '\t':
-        return match_space();
+        return matchSpace();
 
       case '\n':
         // FIXME: Handle the optional \r\n.
-        return match_newline();
+        return matchNewline();
 
       case '#':
-        return match_line_comment();
+        return matchLineComment();
 
       case '(':
-        return match_token(tok_left_paren);
+        return matchToken(tok_left_paren);
       case ')':
-        return match_token(tok_right_paren);
+        return matchToken(tok_right_paren);
       case '[':
-        return match_token(tok_left_bracket);
+        return matchToken(tok_left_bracket);
       case ']':
-        return match_token(tok_right_bracket);
+        return matchToken(tok_right_bracket);
       case '{':
-        return match_token(tok_left_brace);
+        return matchToken(tok_left_brace);
       case '}':
-        return match_token(tok_right_brace);
+        return matchToken(tok_right_brace);
       case ':':
-        return match_token(tok_colon);
+        return matchToken(tok_colon);
       case ';':
-        return match_token(tok_semicolon);
+        return matchToken(tok_semicolon);
       case ',':
-        return match_token(tok_comma);
+        return matchToken(tok_comma);
 
       case '.':
-        if (is_decimal_digit(lookahead(1)))
-          return match_decimal_number();
-        return match_token(tok_dot);
+        if (isDecimalDigit(getLookahead(1)))
+          return matchDecimalNumber();
+        return matchToken(tok_dot);
 
       case '?':
-        return match_token(tok_question);
+        return matchToken(tok_question);
       case '+':
-        if (lookahead(1) == '=')
-          return match_token(tok_plus_equal);
-        return match_token(tok_plus);
+        if (getLookahead(1) == '=')
+          return matchToken(tok_plus_equal);
+        return matchToken(tok_plus);
 
       case '-':
-        if (lookahead(1) == '=')
-          return match_token(tok_minus_equal);
-        if (lookahead(1) == '>')
-          return match_token(tok_minus_greater);
-        return match_token(tok_minus);
+        if (getLookahead(1) == '=')
+          return matchToken(tok_minus_equal);
+        if (getLookahead(1) == '>')
+          return matchToken(tok_minus_greater);
+        return matchToken(tok_minus);
 
       case '*':
-        if (lookahead(1) == '=')
-          return match_token(tok_star_equal);
-        return match_token(tok_star);
+        if (getLookahead(1) == '=')
+          return matchToken(tok_star_equal);
+        return matchToken(tok_star);
 
       case '/':
-        if (lookahead(1) == '=')
-          return match_token(tok_slash_equal);
-        return match_token(tok_slash);
+        if (getLookahead(1) == '=')
+          return matchToken(tok_slash_equal);
+        return matchToken(tok_slash);
 
       case '%':
-        if (lookahead(1) == '=')
-          return match_token(tok_percent_equal);
-        return match_token(tok_percent);
+        if (getLookahead(1) == '=')
+          return matchToken(tok_percent_equal);
+        return matchToken(tok_percent);
 
       case '&':
-        if (lookahead(1) == '&')
-          return match_token(tok_ampersand_ampersand);
-        return match_token(tok_ampersand);
+        if (getLookahead(1) == '&')
+          return matchToken(tok_ampersand_ampersand);
+        return matchToken(tok_ampersand);
 
       case '|':
-        if (lookahead(1) == '|')
-          return match_token(tok_bar_bar);
-        return match_token(tok_bar);
+        if (getLookahead(1) == '|')
+          return matchToken(tok_bar_bar);
+        return matchToken(tok_bar);
 
       case '<':
-        if (lookahead(1) == '#')
-          return match_block_comment();
-        else if (lookahead(1) == '=')
-          return match_token(tok_less_equal);
-        else if (lookahead(1) == '>')
-          return match_token(tok_less_greater);
-        return match_token(tok_less);
+        if (getLookahead(1) == '#')
+          return matchBlockComment();
+        else if (getLookahead(1) == '=')
+          return matchToken(tok_less_equal);
+        else if (getLookahead(1) == '>')
+          return matchToken(tok_less_greater);
+        return matchToken(tok_less);
 
       case '>':
-        if (lookahead(1) == '=')
-          return match_token(tok_greater_equal);
-        return match_token(tok_greater);
+        if (getLookahead(1) == '=')
+          return matchToken(tok_greater_equal);
+        return matchToken(tok_greater);
 
       case '~':
-        return match_token(tok_tilde);
+        return matchToken(tok_tilde);
 
       case '=':
-        if (lookahead(1) == '=')
-          return match_token(tok_equal_equal);
-        else if (lookahead(1) == '>')
-          return match_token(tok_equal_greater);
-        return match_token(tok_equal);
+        if (getLookahead(1) == '=')
+          return matchToken(tok_equal_equal);
+        else if (getLookahead(1) == '>')
+          return matchToken(tok_equal_greater);
+        return matchToken(tok_equal);
 
       case '!':
-        if (lookahead(1) == '=')
-          return match_token(tok_bang_equal);
-        return match_token(tok_bang);
+        if (getLookahead(1) == '=')
+          return matchToken(tok_bang_equal);
+        return matchToken(tok_bang);
 
       case '\'':
-        return match_character();
+        return matchCharacter();
       case '"':
-        return match_string();
+        return matchString();
 
       case '0':
-        if (nth_character_is(1, 'x') || nth_character_is(1, 'X'))
-          return match_hexadecimal_number();
-        if (nth_character_is(1, 'c'))
-          return match_hexadecimal_character();
-        if (nth_character_is(1, 'u'))
-          return match_unicode_character();
+        if (nthCharacterIs(1, 'x') || nthCharacterIs(1, 'X'))
+          return matchHexadecimalNumber();
+        if (nthCharacterIs(1, 'c'))
+          return matchHexadecimalCharacter();
+        if (nthCharacterIs(1, 'u'))
+          return matchUnicodeCharacter();
         LLVM_FALLTHROUGH;
 
       default:
-        if (is_identifier_start(lookahead()))
-          return match_word();
-        if (is_decimal_digit(lookahead()))
-          return match_number();
+        if (isIdentifierStart(getLookahead()))
+          return matchWord();
+        if (isDecimalDigit(getLookahead()))
+          return matchNumber();
 
-        Diags.Report(input_location(), clang::diag::err_bad_string_encoding);
-        // error(input_location(), "invalid character {}", std::to_string(last - first));
+        // FIXME: This is the wrong error!
+        Diags.Report(getInputLocation(), clang::diag::err_bad_string_encoding);
         consume();
         continue;
       }
     }
 
-    return match_eof();
+    return matchEof();
   }
 
-  token character_scanner::make_token(token_kind k, char const* first, char const* last)
+  token CharacterScanner::makeToken(token_kind K, char const* F, char const* L)
   {
-    return make_token(k, first, last - first);
+    return makeToken(K, F, L - F);
   }
 
-  token character_scanner::make_token(token_kind k, char const* str, std::size_t len)
+  token CharacterScanner::makeToken(token_kind K, char const* S, std::size_t N)
   {
-    std::size_t col = column - len;
-    // location loc = make_location(input, line, col, len);
-    clang::SourceLocation Loc = getSourceLocation(str);
-    symbol sym = get_symbol(str, len);
-    token tok(k, Loc, sym);
+    clang::SourceLocation Loc = getSourceLocation(S);
+    symbol Sym = get_symbol(S, N);
+    token Tok(K, Loc, Sym);
 
     // Update line flags.
-    if (col == 1)
-      tok.flags |= tf_starts_line;
+    if (Column - N == 1)
+      Tok.flags |= tf_starts_line;
 
-    return tok;
+    return Tok;
   }
 
-  token character_scanner::match_eof()
+  token CharacterScanner::matchEof()
   {
     // TODO: replace with getendoffile
-    return token(getSourceLocation(first));
+    return token(getSourceLocation(First));
   }
 
-  token character_scanner::match_space()
+  token CharacterScanner::matchSpace()
   {
     consume();
-    while (is_space(lookahead()))
+    while (isSpace(getLookahead()))
       consume();
-    return make_token(tok_space, start, first);
+    return makeToken(tok_space, Start, First);
   }
 
-  token character_scanner::match_newline()
+  token CharacterScanner::matchNewline()
   {
-    assert(is_newline(lookahead()));
+    assert(isNewline(getLookahead()));
 
     // FIXME: Handle the \r\n case.
     consume();
-    token tok = make_token(tok_newline, start, 1);
+    token tok = makeToken(tok_newline, Start, 1);
 
     // Update the line and reset the column.
-    ++line;
-    column = 1;
+    ++Line;
+    Column = 1;
 
     return tok;
   }
 
-  token character_scanner::match_line_comment()
+  token CharacterScanner::matchLineComment()
   {
-    assert(next_character_is('#'));
+    assert(nextCharacterIs('#'));
     consume();
-    while (!done() && !is_newline(lookahead()))
+    while (!isDone() && !isNewline(getLookahead()))
       consume();
-    return make_token(tok_line_comment, start, first);
+    return makeToken(tok_line_comment, Start, First);
   }
 
-  token character_scanner::match_block_comment()
+  token CharacterScanner::matchBlockComment()
   {
-    // source_position begin_pos(line, column);
-    auto BeginLoc = getSourceLocation(first);
+    auto BeginLoc = getSourceLocation(First);
     consume(2); // '<#'
-    while (!done() && next_character_is_not('#') && nth_character_is_not(1, '>'))
+    while (!isDone() && nextCharacterIsNot('#') && nthCharacterIsNot(1, '>'))
     {
-      char c = lookahead();
+      char c = getLookahead();
       consume();
-      if (is_newline(c))
+      if (isNewline(c))
       {
-        ++line;
-        column = 1;
+        ++Line;
+        Column = 1;
       }
     }
-    if (done())
+    if (isDone())
     {
-        Diags.Report(input_location(), clang::diag::err_bad_string_encoding);
-      // error(input_location(), "unterminated block comment");
+      // FIXME: Wrong error.
+      Diags.Report(getInputLocation(), clang::diag::err_bad_string_encoding);
+      // error(getInputLocation(), "unterminated block comment");
       // note(make_location(input, begin_pos, 2), "beginning here");
-      return match_eof();
+      return matchEof();
     }
     consume(2); // '#>'
-    // source_position end_pos(line, column);
-    auto EndLoc = getSourceLocation(first);
+    auto EndLoc = getSourceLocation(First);
 
-    // Build the block comment
-    // location loc = make_location(input, begin_pos, end_pos);
-    symbol sym = get_symbol(start, first);
-    return token(tok_block_comment, BeginLoc, EndLoc, sym);
+    // Build the block comment.
+    symbol Sym = get_symbol(Start, First);
+    return token(tok_block_comment, BeginLoc, EndLoc, Sym);
   }
 
-  token character_scanner::match_token(token_kind k)
+  token CharacterScanner::matchToken(token_kind K)
   {
-    std::size_t len = token_length(k);
-    consume(len);
-    return make_token(k, start, len);
+    std::size_t Len = token_length(K);
+    consume(Len);
+    return makeToken(K, Start, Len);
   }
 
-  token character_scanner::match_word()
+  token CharacterScanner::matchWord()
   {
-    assert(is_identifier_start(lookahead()));
+    assert(isIdentifierStart(getLookahead()));
     consume();
-    while (is_identifier_rest(lookahead()))
+    while (isIdentifierRest(getLookahead()))
       consume();
-
-    return make_token(tok_identifier, start, first);
+    return makeToken(tok_identifier, Start, First);
   }
 
-  token character_scanner::match_number()
+  token CharacterScanner::matchNumber()
   {
     // FIXME: The specification also allows for hex ASCII (ish?) and
     // Unicode hex literals.
-    if (lookahead(0) == '0')
+    if (getLookahead(0) == '0')
     {
-      if (lookahead(1) == 'x')
-        return match_hexadecimal_number();
+      if (getLookahead(1) == 'x')
+        return matchHexadecimalNumber();
     }
-    return match_decimal_number();
+    return matchDecimalNumber();
   }
 
-  auto is_decimal_exponent = [](char c) -> bool
+  token CharacterScanner::matchDecimalNumber()
   {
-    return c == 'e' || c == 'E';
-  };
-
-  auto is_sign = [](char c) -> bool 
-  {
-    return c == '+' || c == '-';
-  };
-
-  token character_scanner::match_decimal_number()
-  {
-    if (next_character_is('.'))
+    if (nextCharacterIs('.'))
     {
       // Matches '. decimal-digit-seq ...'
-      return match_decimal_fraction();
+      return matchDecimalFraction();
     }
     else
     {
       // Matches 'decimal-digit-seq [. decimal-digit-seq] ...]'
-      match_decimal_digit_seq();
-      if (next_character_is('.'))
+      matchDecimalDigitSeq();
+      if (nextCharacterIs('.'))
       {
-        if (is_decimal_digit(lookahead()))
-          return match_decimal_fraction();
+        if (isDecimalDigit(getLookahead()))
+          return matchDecimalFraction();
 
-        if (is_decimal_exponent(lookahead()))
-          return match_decimal_exponent();
+        if (isDecimalExponent(getLookahead()))
+          return matchDecimalExponent();
 
         consume();
-        return make_token(tok_decimal_float, start, first);
+        return makeToken(tok_decimal_float, Start, First);
       }
     }
 
     // Matches 'decimal-digit-seq (e|E) ...'
-    if (is_decimal_exponent(lookahead()))
-      return match_decimal_exponent();
+    if (isDecimalExponent(getLookahead()))
+      return matchDecimalExponent();
 
-    return make_token(tok_decimal_integer, start, first);
+    return makeToken(tok_decimal_integer, Start, First);
   }
 
-  token character_scanner::match_decimal_fraction()
+  token CharacterScanner::matchDecimalFraction()
   {
     require('.');
-    match_decimal_digit_seq();
-    if (is_decimal_exponent(lookahead()))
-      return match_decimal_exponent();
-    return make_token(tok_decimal_float, start, first);
+    matchDecimalDigitSeq();
+    if (isDecimalExponent(getLookahead()))
+      return matchDecimalExponent();
+    return makeToken(tok_decimal_float, Start, First);
   }
 
-  token character_scanner::match_decimal_exponent()
+  token CharacterScanner::matchDecimalExponent()
   {
-    require_if(is_decimal_exponent);
-    match_if(is_sign);
+    requireIf(isDecimalExponent);
+    matchIf(isSign);
     // FIXME: There could be an error here.
-    match_decimal_digit_seq();
-    return make_token(tok_decimal_float, start, first);
+    matchDecimalDigitSeq();
+    return makeToken(tok_decimal_float, Start, First);
   }
 
-  token character_scanner::match_hexadecimal_number()
+  token CharacterScanner::matchHexadecimalNumber()
   {
     consume(2); // Matches '0x'.
 
     // FIXME: Match hex floats?
 
-    if (!is_hexadecimal_digit(lookahead()))
+    if (!isHexadecimalDigit(getLookahead()))
     {
-      Diags.Report(input_location(), clang::diag::err_bad_string_encoding);
-      // error(input_location(), "invalid hexadecimal number");
+      Diags.Report(getInputLocation(), clang::diag::err_bad_string_encoding);
+      // error(getInputLocation(), "invalid hexadecimal number");
       return {};
     }
 
-    match_hexadecimal_digit_seq();
+    matchHexadecimalDigitSeq();
 
-    return make_token(tok_hexadecimal_integer, start, first);
+    return makeToken(tok_hexadecimal_integer, Start, First);
   }
 
-  token character_scanner::match_character()
+  token CharacterScanner::matchCharacter()
   {
-    assert(next_character_is('\''));
+    assert(nextCharacterIs('\''));
 
     consume(); // '\''
-    while (!done() && next_character_is_not('\''))
+    while (!isDone() && nextCharacterIsNot('\''))
     {
       // Diagnose newlines, but continue lexing the token.
-      if (is_newline(lookahead()))
+      if (isNewline(getLookahead()))
       {
-        // error (input_location(), "newline in character literal");
+        // error (getInputLocation(), "newline in character literal");
         consume();
       }
 
-      if (next_character_is('\\'))
+      if (nextCharacterIs('\\'))
       {
-        match_escape_sequence();
+        matchEscapeSequence();
         continue;
       }
 
@@ -440,36 +435,36 @@ namespace green
 
       consume();
     }
-    if (done())
+    if (isDone())
     {
-        Diags.Report(input_location(), clang::diag::err_bad_string_encoding);
-      // error(input_location(), "unterminated character literal");
+        Diags.Report(getInputLocation(), clang::diag::err_bad_string_encoding);
+      // error(getInputLocation(), "unterminated character literal");
       // location loc = make_location(input, line, first - start);
       // note(loc, "beginning here");
-      return match_eof();
+      return matchEof();
     }
     consume(); // '\''
 
-    return make_token(tok_character, start, first);
+    return makeToken(tok_character, Start, First);
   }
 
-  token character_scanner::match_string()
+  token CharacterScanner::matchString()
   {
-    assert(next_character_is('"'));
+    assert(nextCharacterIs('"'));
 
     consume(); // '"'
-    while (!done() && next_character_is_not('"'))
+    while (!isDone() && nextCharacterIsNot('"'))
     {
       // Diagnose newlines, but continue lexing the token.
-      if (is_newline(lookahead()))
+      if (isNewline(getLookahead()))
       {
-        // error (input_location(), "newline in string literal");
+        // error (getInputLocation(), "newline in string literal");
         consume();
       }
 
-      if (next_character_is('\\'))
+      if (nextCharacterIs('\\'))
       {
-        match_escape_sequence();
+        matchEscapeSequence();
         continue;
       }
 
@@ -480,22 +475,22 @@ namespace green
 
       consume();
     }
-    if (done())
+    if (isDone())
     {
-      Diags.Report(input_location(), clang::diag::err_bad_string_encoding);
-      // error(input_location(), "unterminated string literal");
+      Diags.Report(getInputLocation(), clang::diag::err_bad_string_encoding);
+      // error(getInputLocation(), "unterminated string literal");
       // note(make_location(input, line, first - start), "beginning here");
-      return match_eof();
+      return matchEof();
     }
     consume(); // '"'
 
-    return make_token(tok_string, start, first);
+    return makeToken(tok_string, Start, First);
   }
 
-  void character_scanner::match_escape_sequence()
+  void CharacterScanner::matchEscapeSequence()
   {
     consume(); // '\\'
-    switch (lookahead ())
+    switch (getLookahead())
     {
     case 'r':
     case 'n':
@@ -513,57 +508,58 @@ namespace green
       break;
 
     default:
-      // error (input_location(), "invalid escape character '{}'",
-      //        std::to_string(lookahead()));
+      // FIXME: Emit an error!
+      // error (getInputLocation(), "invalid escape character '{}'",
+      //        std::to_string(getLookahead()));
       consume();
       break;
     }
   }
 
-  token character_scanner::match_hexadecimal_character()
+  token CharacterScanner::matchHexadecimalCharacter()
   {
-    // sorry(input_location(), "hexadecimal characters not supported");
+    // sorry(getInputLocation(), "hexadecimal characters not supported");
     return {};
   }
 
-  token character_scanner::match_unicode_character()
+  token CharacterScanner::matchUnicodeCharacter()
   {
-    // sorry(input_location(), "unicode characters not supported");
+    // sorry(getInputLocation(), "unicode characters not supported");
     return {};
   }
 
-  void character_scanner::match_decimal_digit_seq()
+  void CharacterScanner::matchDecimalDigitSeq()
   {
     // FIXME: Allow digit separators?
 
-    if (!match_if(is_decimal_digit))
+    if (!matchIf(isDecimalDigit))
     {
-      Diags.Report(input_location(), clang::diag::err_bad_string_encoding);
-      // error(input_location(), "invalid number");s
+      Diags.Report(getInputLocation(), clang::diag::err_bad_string_encoding);
+      // error(getInputLocation(), "invalid number");s
       return;
     }
 
-    while (match_if(is_decimal_digit))
+    while (matchIf(isDecimalDigit))
       ;
   }
 
-  void character_scanner::match_decimal_digit_seq_opt()
+  void CharacterScanner::matchDecimalDigitSeqOpt()
   {
-    if (is_decimal_digit(lookahead()))
-      match_decimal_digit_seq();
+    if (isDecimalDigit(getLookahead()))
+      matchDecimalDigitSeq();
   }
 
-  void character_scanner::match_hexadecimal_digit_seq()
+  void CharacterScanner::matchHexadecimalDigitSeq()
   {
     // FIXME: Allow digit separators?
-    require_if(is_hexadecimal_digit);
-    while (match_if(is_hexadecimal_digit))
+    requireIf(isHexadecimalDigit);
+    while (matchIf(isHexadecimalDigit))
       consume();
   }
 
   // Line scanner
 
-  token line_scanner::operator()()
+  token LineScanner::operator()()
   {
     token tok;
     bool starts_line = false;
@@ -602,9 +598,8 @@ namespace green
   }
 
   clang::SourceLocation
-  character_scanner::getSourceLocation(char const* Loc) {
-    unsigned CharNo = Loc - input->data();
-
+  CharacterScanner::getSourceLocation(char const* Loc) {
+    unsigned CharNo = Loc - Input->data();
     if (FileLoc.isFileID())
       return FileLoc.getLocWithOffset(CharNo);
     assert(false && "Getting location from non-file");
@@ -612,7 +607,7 @@ namespace green
 
   // Block scanner
 
-  token block_scanner::operator()()
+  token BlockScanner::operator()()
   {
     // Get the next token, possibly one that we've buffered.
     token tok;
@@ -653,17 +648,17 @@ namespace green
     return tok;
   }
 
-  token block_scanner::separate(token const& nl)
+  token BlockScanner::separate(token const& nl)
   {
     return token(tok_separator, nl.loc, nl.sym);
   }
 
-  token block_scanner::indent(token const& nl)
+  token BlockScanner::indent(token const& nl)
   {
     return token(tok_indent, nl.loc, nl.sym);
   }
 
-  token block_scanner::dedent(token const& nl)
+  token BlockScanner::dedent(token const& nl)
   {
     return token(tok_dedent, nl.loc, nl.sym);
   }
@@ -692,7 +687,7 @@ namespace green
     return has_prefix(get_symbol(tok), get_symbol(pre));
   }
 
-  token block_scanner::combine(token const& nl, token const& ind)
+  token BlockScanner::combine(token const& nl, token const& ind)
   {
     token prev = indentation();
 

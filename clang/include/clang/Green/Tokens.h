@@ -122,6 +122,7 @@ struct token
   /// The location of the token.
   clang::SourceLocation loc;
 
+  // FIXME: Remove this.
   clang::SourceLocation EndLoc;
 
   /// Data associated with the token.

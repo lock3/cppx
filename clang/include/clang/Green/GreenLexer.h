@@ -36,179 +36,176 @@ class SourceManager;
 namespace green
 {
   // The character scanner transforms characters into tokens.
-  struct character_scanner
+  struct CharacterScanner
   {
-    character_scanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
-                      File const& F);
+    CharacterScanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
+                     File const& F);
 
     token operator()();
 
-    clang::SourceLocation input_location()
+    clang::SourceLocation getInputLocation()
     {
-      // return make_location(input, line, column);
-      return getSourceLocation(input->data());
+      return getSourceLocation(Input->data());
     }
 
-    bool done() const
+    bool isDone() const
     {
-      return first == last;
+      return First == Last;
     }
 
-    char lookahead() const
+    char getLookahead() const
     {
-      if (done())
+      if (isDone())
         return 0;
-      return *first;
+      return *First;
     }
 
-    char lookahead(int n) const
+    char getLookahead(int N) const
     {
-      if (n >= last - first)
+      if (N >= Last - First)
         return 0;
-      return first[n];
+      return First[N];
     }
 
-    bool next_character_is(char c) const
+    bool nextCharacterIs(char C) const
     {
-      return lookahead() == c;
+      return getLookahead() == C;
     }
 
-    bool next_character_is_not(char c) const
+    bool nextCharacterIsNot(char C) const
     {
-      return !next_character_is(c);
+      return !nextCharacterIs(C);
     }
 
-    bool nth_character_is(int n, char c) const
+    bool nthCharacterIs(int N, char C) const
     {
-      return lookahead(n) == c;
+      return getLookahead(N) == C;
     }
 
-    bool nth_character_is_not(int n, char c) const
+    bool nthCharacterIsNot(int N, char C) const
     {
-      return !nth_character_is(n, c);
+      return !nthCharacterIs(N, C);
     }
 
     char consume()
     {
-      char c = *first;
-      ++first;
-      ++column;
-      return c;
+      char C = *First;
+      ++First;
+      ++Column;
+      return C;
     }
 
-    void consume(int n)
+    void consume(int N)
     {
-      assert(n <= last - first);
-      first += n;
-      column += n;
+      assert(N <= Last - First);
+      First += N;
+      Column += N;
     }
 
-    char match(char c)
+    char match(char C)
     {
-      if (next_character_is(c))
+      if (nextCharacterIs(C))
         return consume();
       return 0;
     }
 
     template<typename F>
-    char match_if(F pred) {
-      if (pred(lookahead()))
+    char matchIf(F Pred) {
+      if (Pred(getLookahead()))
         return consume();
       return 0;
     }
 
-    char require(char c)
+    char require(char C)
     {
-      assert(next_character_is(c));
+      assert(nextCharacterIs(C));
       return consume();
     }
 
     template <typename F>
-    char require_if(F pred) {
-      assert(pred(lookahead()));
+    char requireIf(F Pred) {
+      assert(Pred(getLookahead()));
       return consume();
     }
 
-    void skip_until(char c);
+    void skipUntil(char C);
 
-    void consume_space();
-    void consume_block_comment();
-    void consume_line_comment();
+    void consumeSpace();
+    void consumeBlock_comment();
+    void consumeLine_comment();
 
-    token make_token(token_kind k, char const* first, char const* last);
-    token make_token(token_kind k, char const* str, std::size_t len);
+    token makeToken(token_kind K, char const* F, char const* L);
+    token makeToken(token_kind K, char const* S, std::size_t N);
 
-    token match_eof();
-    token match_space();
-    token match_newline();
+    token matchEof();
+    token matchSpace();
+    token matchNewline();
+    token matchLineComment();
+    token matchBlockComment();
+    token matchToken(token_kind K);
+    token matchWord();
+    token matchNumber();
+    token matchDecimalNumber();
+    token matchDecimalFraction();
+    token matchDecimalExponent();
+    token matchHexadecimalNumber();
 
-    token match_line_comment();
-    token match_block_comment();
+    void matchDecimalDigitSeq();
+    void matchDecimalDigitSeqOpt();
+    void matchHexadecimalDigitSeq();
 
-    token match_token(token_kind k);
+    token matchCharacter();
+    token matchHexadecimalCharacter();
+    token matchUnicodeCharacter();
+    token matchString();
 
-    token match_word();
+    void matchEscapeSequence();
 
-    token match_number();
-    token match_decimal_number();
-    token match_decimal_fraction();
-    token match_decimal_exponent();
-    token match_hexadecimal_number();
-
-    void match_decimal_digit_seq();
-    void match_decimal_digit_seq_opt();
-    void match_hexadecimal_digit_seq();
-
-    token match_character();
-    token match_hexadecimal_character();
-    token match_unicode_character();
-    token match_string();
-    void match_escape_sequence();
+    clang::SourceLocation getSourceLocation(char const* Loc);
 
     /// The source file being lexed.
-    File const* input;
+    File const* Input;
 
     /// The current character of the input text.
-    char const* first;
+    char const* First;
 
     /// Past the end of the last character of the input text.
-    char const* last;
+    char const* Last;
 
     /// The start of the current token.
-    char const* start;
+    char const* Start;
 
     /// The current line number (1-based).
-    int line;
+    int Line;
 
-    // The current column (1-based).
-    int column;
+    /// The current column (1-based).
+    int Column;
 
     /// Used to manage the starting position of a token. This class will
     /// also cache a previous position, allowing for nested token lexing.
-    struct starting_position
+    struct StartingPosition
     {
-      starting_position(character_scanner& s)
-        : scanner(s), prev(s.start)
+      StartingPosition(CharacterScanner& CS)
+        : Scanner(CS), Prev(CS.Start)
       {
-        scanner.start = scanner.first;
+        Scanner.Start = Scanner.First;
       }
 
-      ~starting_position()
+      ~StartingPosition()
       {
-        scanner.start = prev;
+        Scanner.Start = Prev;
       }
 
       /// The scanner.
-      character_scanner& scanner;
+      CharacterScanner& Scanner;
 
       /// The previous character.
-      char const* prev;
+      char const* Prev;
     };
 
+    /// The base location in the input file. Used to compute source locations
+    /// as tokens are matched.
     clang::SourceLocation FileLoc;
-
-    // Create a clang::SourceLocation for a token
-    clang::SourceLocation getSourceLocation(char const* Loc);
 
     clang::SourceManager &SM;
     clang::DiagnosticsEngine &Diags;
@@ -216,9 +213,9 @@ namespace green
 
 
   /// Removes empty lines and comments from a translation unit.
-  struct line_scanner
+  struct LineScanner
   {
-    line_scanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
+    LineScanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
                  File const& F)
       : scan(SM, Diags, F), SM(SM), Diags(Diags)
     { }
@@ -227,12 +224,12 @@ namespace green
 
     char char_lookahead(int n) {
       if (n)
-        return scan.lookahead(n);
-      return scan.lookahead();
+        return scan.getLookahead(n);
+      return scan.getLookahead();
     }
 
     /// The underlying scanner.
-    character_scanner scan;
+    CharacterScanner scan;
 
     clang::SourceManager &SM;
     clang::DiagnosticsEngine &Diags;
@@ -242,9 +239,9 @@ namespace green
   /// Combines newline and whitespace to create indents, dedents, and
   /// separators. Note that there are no newlines in the translation unit
   /// returned from this scanner.
-  struct block_scanner
+  struct BlockScanner
   {
-    block_scanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
+    BlockScanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
                   File const& F)
       : scan(SM, Diags, F), prefix(), SM(SM), Diags(Diags)
     { }
@@ -283,7 +280,7 @@ namespace green
     }
 
     /// The underlying scanner.
-    line_scanner scan;
+    LineScanner scan;
 
     /// A buffered lookahead token.
     token lookahead;
@@ -291,19 +288,24 @@ namespace green
     /// The indentation stack.
     std::stack<token> prefix;
 
+    /// The source manager.
     clang::SourceManager &SM;
+
+    /// Needed for diagnostics.
     clang::DiagnosticsEngine &Diags;
   };
 
 
   // Lexer
 
-  /// The lexer owns the scanner stack.
-  struct lexer
+  /// The lexer is ultimately responsible for producing tokens from
+  /// input source. This is defined by a stack of scanners, each of
+  /// which applies a phase of translation.
+  struct Lexer
   {
-    lexer(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
+    Lexer(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
           File const& F)
-      : scan(SM, Diags, F), SM(SM), Diags(Diags)
+      : scan(SM, Diags, F)
     { }
 
     token operator()()
@@ -315,10 +317,7 @@ namespace green
       return scan.char_lookahead(n);
     }
 
-    block_scanner scan;
-
-    clang::SourceManager &SM;
-    clang::DiagnosticsEngine &Diags;
+    BlockScanner scan;
   };
 
 } // namespace green
