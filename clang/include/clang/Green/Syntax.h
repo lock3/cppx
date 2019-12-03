@@ -58,6 +58,7 @@ struct Syntax {
   using const_child_range = llvm::iterator_range<const_child_iterator>;
 
   child_range children();
+
   const_child_range children() const {
     auto Children = const_cast<Syntax *>(this)->children();
     return const_child_range(Children.begin(), Children.end());
@@ -79,6 +80,14 @@ struct ErrorSyntax : Syntax {
     : Syntax(SK_Error, clang::SourceLocation())
   {}
 
+  child_range children() {
+    return child_range(child_iterator(), child_iterator());
+  }
+
+  const child_range children() const {
+    return const_child_range(const_child_iterator(), const_child_iterator());
+  }
+
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Error;
   }
@@ -95,6 +104,7 @@ struct AtomSyntax : Syntax {
   child_range children() {
     return child_range(child_iterator(), child_iterator());
   }
+
   const child_range children() const {
     return const_child_range(const_child_iterator(), const_child_iterator());
   }
@@ -150,10 +160,12 @@ struct ListSyntax : Syntax, VectorNode<Syntax> {
 
   child_range children() {
     return child_range(&Elems[0], &Elems[NumElems]);
-  } 
+  }
+
   const child_range children() const {
     return const_child_range(&Elems[0], &Elems[NumElems]);
   }
+
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_List;
   }
@@ -167,9 +179,11 @@ struct ArraySyntax : Syntax, VectorNode<Syntax> {
   child_range children() {
     return child_range(&Elems[0], &Elems[NumElems]);
   }
+
   const child_range children() const {
     return const_child_range(&Elems[0], &Elems[NumElems]);
   }
+
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Array;
   }
@@ -205,10 +219,12 @@ struct CallSyntax : Syntax {
   child_range children() {
     return child_range(&Elems[0], &Elems[2]);
   }
+
   const child_range children() const {
     auto Children = const_cast<CallSyntax *>(this)->children();
     return const_child_range(Children);
   }
+
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Call;
   }
@@ -217,8 +233,7 @@ struct CallSyntax : Syntax {
 /// A lookup in a dictionary.
 struct ElemSyntax : Syntax {
   ElemSyntax(Syntax *Map, Syntax *Sel, clang::SourceLocation Loc)
-    : Syntax(SK_Elem, Loc)
-  {
+    : Syntax(SK_Elem, Loc) {
     Elems[0] = Map;
     Elems[1] = Sel;
   }
@@ -245,10 +260,12 @@ struct ElemSyntax : Syntax {
   child_range children() {
     return child_range(&Elems[0], &Elems[2]);
   }
+
   const child_range children() const {
     auto Children = const_cast<ElemSyntax *>(this)->children();
     return const_child_range(Children);
   }
+
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Elem;
   }
@@ -292,10 +309,12 @@ MacroSyntax(Syntax *Call, Syntax *Block, Syntax *Next, clang::SourceLocation Loc
   child_range children() {
     return child_range(&Elems[0], &Elems[3]);
   }
+
   const child_range children() const {
     auto Children = const_cast<MacroSyntax *>(this)->children();
     return const_child_range(Children);
   }
+
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Macro;
   }

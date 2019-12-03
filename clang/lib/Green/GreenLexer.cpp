@@ -565,9 +565,9 @@ token BlockScanner::operator()() {
 
   // Check for a newline followed by indentation.
   if (Tok.is_newline()) {
-    token next = Scanner();
-    if (next.is_space()) {
-      Tok = combine(Tok, next);
+    token Next = Scanner();
+    if (Next.is_space()) {
+      Tok = combine(Tok, Next);
     } else {
       // At the top-level a newline followed by a token implies the
       // presence of a terminator. For example:
@@ -583,7 +583,7 @@ token BlockScanner::operator()() {
       Tok = combine(Tok, {});
 
       // Buffer the next token for the next read.
-      Lookahead = next;
+      Lookahead = Next;
     }
   }
 
