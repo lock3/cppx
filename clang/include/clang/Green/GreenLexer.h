@@ -163,6 +163,10 @@ namespace green
 
     clang::SourceLocation getSourceLocation(char const* Loc);
 
+    clang::DiagnosticsEngine& getDiagnostics() {
+      return Diags;
+    }
+
     /// The source file being lexed.
     File const* Input;
 
@@ -207,7 +211,10 @@ namespace green
     /// as tokens are matched.
     clang::SourceLocation FileLoc;
 
+    /// Used to generate source locations.
     clang::SourceManager &SM;
+
+    /// Used for diagnostics.
     clang::DiagnosticsEngine &Diags;
   };
 
@@ -217,22 +224,23 @@ namespace green
   {
     LineScanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
                  File const& F)
-      : scan(SM, Diags, F), SM(SM), Diags(Diags)
+      : Scanner(SM, Diags, F)
     { }
 
     token operator()();
 
+    clang::DiagnosticsEngine& getDiagnostics() {
+      return Scanner.getDiagnostics();
+    }
+
     char char_lookahead(int n) {
       if (n)
-        return scan.getLookahead(n);
-      return scan.getLookahead();
+        return Scanner.getLookahead(n);
+      return Scanner.getLookahead();
     }
 
     /// The underlying scanner.
-    CharacterScanner scan;
-
-    clang::SourceManager &SM;
-    clang::DiagnosticsEngine &Diags;
+    CharacterScanner Scanner;
   };
 
 
@@ -242,8 +250,8 @@ namespace green
   struct BlockScanner
   {
     BlockScanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
-                  File const& F)
-      : scan(SM, Diags, F), prefix(), SM(SM), Diags(Diags)
+                 File const& F)
+      : Scanner(SM, Diags, F), Prefix()
     { }
 
     token operator()();
@@ -255,44 +263,42 @@ namespace green
 
     /// The current level of indentation. If the indentation stack is empty,
     /// return an empty token.
-    token indentation() const
+    token currentIndentation() const
     {
-      if (prefix.empty())
+      if (Prefix.empty())
         return {};
-      return prefix.top();
+      return Prefix.top();
     }
 
     /// Push a new indentation level.
-    void push(token const& tok)
+    void pushIndentation(token const& Tok)
     {
-      prefix.push(tok);
+      Prefix.push(Tok);
     }
 
     /// Pops the indentation level, returning the new level.
-    token pop()
+    token popIndentation()
     {
-      prefix.pop();
-      return indentation();
+      Prefix.pop();
+      return currentIndentation();
+    }
+
+    clang::DiagnosticsEngine& getDiagnostics() {
+      return Scanner.getDiagnostics();
     }
 
     char char_lookahead(int n) {
-      return scan.char_lookahead(n);
+      return Scanner.char_lookahead(n);
     }
 
     /// The underlying scanner.
-    LineScanner scan;
+    LineScanner Scanner;
 
     /// A buffered lookahead token.
-    token lookahead;
+    token Lookahead;
 
     /// The indentation stack.
-    std::stack<token> prefix;
-
-    /// The source manager.
-    clang::SourceManager &SM;
-
-    /// Needed for diagnostics.
-    clang::DiagnosticsEngine &Diags;
+    std::stack<token> Prefix;
   };
 
 
@@ -305,19 +311,19 @@ namespace green
   {
     Lexer(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
           File const& F)
-      : scan(SM, Diags, F)
+      : Scanner(SM, Diags, F)
     { }
 
     token operator()()
     {
-      return scan();
+      return Scanner();
     }
 
     char char_lookahead(int n = 0) {
-      return scan.char_lookahead(n);
+      return Scanner.char_lookahead(n);
     }
 
-    BlockScanner scan;
+    BlockScanner Scanner;
   };
 
 } // namespace green
