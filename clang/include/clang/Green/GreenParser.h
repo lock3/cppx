@@ -42,8 +42,7 @@ namespace green
   /// \todo Lift common parsing functions into a parameterized base class?
   struct parser
   {
-    parser(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
-           File const& F);
+    parser(clang::SourceManager &SM, File const& F);
 
     bool eof()
     {

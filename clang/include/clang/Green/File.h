@@ -16,47 +16,41 @@
 #define CLANG_GREEN_FILE_HPP
 
 #include "clang/Basic/SourceLocation.h"
+#include "clang/Basic/SourceManager.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/MemoryBuffer.h"
 
 #include <string>
 
-namespace clang {
-class SourceManager;
-} // namespace clang
+namespace green {
 
 /// A source file.
 class File
 {
 public:
-  File(clang::SourceManager &SM, clang::FileID FID);
+  File(clang::SourceManager &SM, clang::FileID ID)
+    : SM(SM), ID(ID) {}
 
-  char const* getName() const
-  {
-    return Path.empty() ? "<input>" : Path.c_str();
+  clang::FileID getID() const {
+    return ID;
   }
 
-  char const* data() const
-  {
-    return Text->getBufferStart();
+  llvm::StringRef getName() const {
+    return SM.getFilename(SM.getLocForStartOfFile(ID));
   }
 
-  std::size_t size() const
-  {
-    return Text->getBufferSize();
+  llvm::StringRef getText() const {
+    return SM.getBuffer(ID)->getBufferStart();
   }
 
 private:
-  /// The entry loaded by the source manager.
-  const clang::FileEntry *FileEntry;
+  /// The manager of the file.
+  clang::SourceManager& SM;
 
-  /// The text of the file.
-  const llvm::MemoryBuffer *Text;
-
-  /// The path to the file.
-  ///
-  /// FIXME: We should be able to get this from the source manager.
-  std::string Path;
+  /// The file id.
+  clang::FileID ID;
 };
+
+} // namespace green
 
 #endif

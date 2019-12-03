@@ -12,13 +12,4 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/Basic/SourceManager.h"
-
 #include "clang/Green/File.h"
-
-File::File(clang::SourceManager &SM, clang::FileID FID)
-  : FileEntry(SM.getFileEntryForID(FID)),
-    Text(SM.getMemoryBufferForFile(FileEntry)),
-    Path(FileEntry->tryGetRealPathName())
-{
-}

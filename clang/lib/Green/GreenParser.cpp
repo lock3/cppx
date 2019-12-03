@@ -8,17 +8,8 @@
 
 namespace green
 {
-  // [[maybe_unused]] static
-  // void dump_parser_trace(parser& p, char const* fn)
-  // {
-  //   trace(p.input_location(), "in {}", fn);
-  // }
-
   namespace
   {
-    // TODO: This should be made a general feature since it appears in
-    // virtually every parser.
-
     enum enclosure_kind
     {
       enc_parens,
@@ -103,9 +94,8 @@ namespace green
     };
   } // namespace
 
-  parser::parser(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
-                 File const& F)
-    : lex(SM, Diags, F), Diags(Diags)
+  parser::parser(clang::SourceManager &SM, File const& F)
+    : lex(SM, F), Diags(SM.getDiagnostics())
   {
     la = lex();
   }

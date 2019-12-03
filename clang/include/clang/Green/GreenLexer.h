@@ -38,14 +38,13 @@ namespace green
   // The character scanner transforms characters into tokens.
   struct CharacterScanner
   {
-    CharacterScanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
-                     File const& F);
+    CharacterScanner(clang::SourceManager &SM, File const& F);
 
     token operator()();
 
     clang::SourceLocation getInputLocation()
     {
-      return getSourceLocation(Input->data());
+      return getSourceLocation(First);
     }
 
     bool isDone() const
@@ -164,7 +163,7 @@ namespace green
     clang::SourceLocation getSourceLocation(char const* Loc);
 
     clang::DiagnosticsEngine& getDiagnostics() {
-      return Diags;
+      return SM.getDiagnostics();
     }
 
     /// The source file being lexed.
@@ -211,20 +210,17 @@ namespace green
     /// as tokens are matched.
     clang::SourceLocation FileLoc;
 
-    /// Used to generate source locations.
+    /// Provides context for generating source locations and emitting
+    /// diagnostics.
     clang::SourceManager &SM;
-
-    /// Used for diagnostics.
-    clang::DiagnosticsEngine &Diags;
   };
 
 
   /// Removes empty lines and comments from a translation unit.
   struct LineScanner
   {
-    LineScanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
-                 File const& F)
-      : Scanner(SM, Diags, F)
+    LineScanner(clang::SourceManager &SM, File const& F)
+      : Scanner(SM, F)
     { }
 
     token operator()();
@@ -249,9 +245,8 @@ namespace green
   /// returned from this scanner.
   struct BlockScanner
   {
-    BlockScanner(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
-                 File const& F)
-      : Scanner(SM, Diags, F), Prefix()
+    BlockScanner(clang::SourceManager &SM, File const& F)
+      : Scanner(SM, F), Prefix()
     { }
 
     token operator()();
@@ -309,9 +304,8 @@ namespace green
   /// which applies a phase of translation.
   struct Lexer
   {
-    Lexer(clang::SourceManager &SM, clang::DiagnosticsEngine &Diags,
-          File const& F)
-      : Scanner(SM, Diags, F)
+    Lexer(clang::SourceManager &SM, File const& F)
+      : Scanner(SM, F)
     { }
 
     token operator()()

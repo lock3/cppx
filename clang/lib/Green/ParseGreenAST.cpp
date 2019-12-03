@@ -39,10 +39,9 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
   using namespace std;
 
   SourceManager &SM = PP.getSourceManager();
-  FileID MainFID = SM.getMainFileID();
-  DiagnosticsEngine &Diags = SM.getDiagnostics();
-  green::parser parser(SM, Diags, {SM, MainFID});
-  green::Syntax *AST = parser.parse_file();
+  File InputFile(SM, SM.getMainFileID());
+  green::parser Parser(SM, InputFile);
+  green::Syntax *AST = Parser.parse_file();
   if (AST)
     AST->dump();
 

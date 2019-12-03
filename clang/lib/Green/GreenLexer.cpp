@@ -62,16 +62,13 @@ char BOM[] = {'\xef', '\xbe', '\xbb'};
 
 } // namespace
 
-CharacterScanner::CharacterScanner(clang::SourceManager &SM,
-                                   clang::DiagnosticsEngine &Diags,
-                                   File const& F)
+CharacterScanner::CharacterScanner(clang::SourceManager &SM, File const& F)
   : Input(&F),
-    First(F.data()),
-    Last(First + F.size()),
+    First(F.getText().data()),
+    Last(First + F.getText().size()),
     Line(1),
     Column(1),
-    SM(SM),
-    Diags(Diags) {
+    SM(SM) {
   // Bypass the byte order mark.
   if (std::equal(BOM, BOM + 3, First, Last))
     First += 3;
@@ -208,7 +205,7 @@ token CharacterScanner::operator()() {
         return matchNumber();
 
       // FIXME: This is the wrong error!
-      Diags.Report(getInputLocation(), clang::diag::err_bad_string_encoding);
+      getDiagnostics().Report(getInputLocation(), clang::diag::err_bad_string_encoding);
       consume();
       continue;
     }
@@ -280,7 +277,7 @@ token CharacterScanner::matchBlockComment() {
   }
   if (isDone()) {
     // FIXME: Wrong error.
-    Diags.Report(getInputLocation(), clang::diag::err_bad_string_encoding);
+    getDiagnostics().Report(getInputLocation(), clang::diag::err_bad_string_encoding);
     // error(getInputLocation(), "unterminated block comment");
     // note(make_location(input, begin_pos, 2), "beginning here");
     return matchEof();
@@ -368,7 +365,7 @@ token CharacterScanner::matchHexadecimalNumber() {
   // FIXME: Match hex floats?
 
   if (!isHexadecimalDigit(getLookahead())) {
-    Diags.Report(getInputLocation(), clang::diag::err_bad_string_encoding);
+    getDiagnostics().Report(getInputLocation(), clang::diag::err_bad_string_encoding);
     // error(getInputLocation(), "invalid hexadecimal number");
     return {};
   }
@@ -404,7 +401,7 @@ token CharacterScanner::matchCharacter() {
   }
 
   if (isDone()) {
-      Diags.Report(getInputLocation(), clang::diag::err_bad_string_encoding);
+      getDiagnostics().Report(getInputLocation(), clang::diag::err_bad_string_encoding);
     // error(getInputLocation(), "unterminated character literal");
     // location loc = make_location(input, line, first - start);
     // note(loc, "beginning here");
@@ -439,7 +436,7 @@ token CharacterScanner::matchString() {
     consume();
   }
   if (isDone()) {
-    Diags.Report(getInputLocation(), clang::diag::err_bad_string_encoding);
+    getDiagnostics().Report(getInputLocation(), clang::diag::err_bad_string_encoding);
     // error(getInputLocation(), "unterminated string literal");
     // note(make_location(input, line, first - start), "beginning here");
     return matchEof();
@@ -491,7 +488,7 @@ void CharacterScanner::matchDecimalDigitSeq() {
   // FIXME: Allow digit separators?
 
   if (!matchIf(isDecimalDigit)) {
-    Diags.Report(getInputLocation(), clang::diag::err_bad_string_encoding);
+    getDiagnostics().Report(getInputLocation(), clang::diag::err_bad_string_encoding);
     // error(getInputLocation(), "invalid number");s
     return;
   }
@@ -552,10 +549,8 @@ token LineScanner::operator()() {
 
 clang::SourceLocation
 CharacterScanner::getSourceLocation(char const* Loc) {
-  unsigned CharNo = Loc - Input->data();
-  if (FileLoc.isFileID())
-    return FileLoc.getLocWithOffset(CharNo);
-  assert(false && "Getting location from non-file");
+  llvm::StringRef Buf = Input->getText();
+  return SM.getComposedLoc(Input->getID(), Loc - Buf.data());
 }
 
 // Block scanner
