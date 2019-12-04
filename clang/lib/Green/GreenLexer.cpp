@@ -204,10 +204,10 @@ token CharacterScanner::operator()() {
       if (isDecimalDigit(getLookahead()))
         return matchNumber();
 
-      // FIXME: This is the wrong error!
-      getDiagnostics().Report(getInputLocation(), clang::diag::err_bad_string_encoding);
-      consume();
-      continue;
+      // Return an unknown token.
+      //
+      // FIXME: This could be an ill-formed UTF-8 character.
+      return matchToken(tok_unknown);
     }
   }
 
@@ -276,10 +276,10 @@ token CharacterScanner::matchBlockComment() {
     }
   }
   if (isDone()) {
-    // FIXME: Wrong error.
-    getDiagnostics().Report(getInputLocation(), clang::diag::err_bad_string_encoding);
-    // error(getInputLocation(), "unterminated block comment");
-    // note(make_location(input, begin_pos, 2), "beginning here");
+    // FIXME: We need a better diagnostic because this explicitly
+    // refers to C-style block comments.
+    getDiagnostics().Report(getInputLocation(),
+                            clang::diag::err_unterminated_block_comment);
     return matchEof();
   }
   consume(2); // '#>'
@@ -401,10 +401,9 @@ token CharacterScanner::matchCharacter() {
   }
 
   if (isDone()) {
-      getDiagnostics().Report(getInputLocation(), clang::diag::err_bad_string_encoding);
-    // error(getInputLocation(), "unterminated character literal");
-    // location loc = make_location(input, line, first - start);
-    // note(loc, "beginning here");
+      // FIXME: Note the start of the character.
+      getDiagnostics().Report(
+        getInputLocation(), clang::diag::ext_unterminated_char_or_string);
     return matchEof();
   }
   consume(); // '\''
@@ -436,9 +435,9 @@ token CharacterScanner::matchString() {
     consume();
   }
   if (isDone()) {
-    getDiagnostics().Report(getInputLocation(), clang::diag::err_bad_string_encoding);
-    // error(getInputLocation(), "unterminated string literal");
-    // note(make_location(input, line, first - start), "beginning here");
+    // FIXME: Note the start of the character.
+    getDiagnostics().Report(
+      getInputLocation(), clang::diag::ext_unterminated_char_or_string);
     return matchEof();
   }
   consume(); // '"'
@@ -488,6 +487,7 @@ void CharacterScanner::matchDecimalDigitSeq() {
   // FIXME: Allow digit separators?
 
   if (!matchIf(isDecimalDigit)) {
+    // FIXME: Wrong error.
     getDiagnostics().Report(getInputLocation(), clang::diag::err_bad_string_encoding);
     // error(getInputLocation(), "invalid number");s
     return;
@@ -509,11 +509,17 @@ void CharacterScanner::matchHexadecimalDigitSeq() {
     consume();
 }
 
+clang::SourceLocation
+CharacterScanner::getSourceLocation(char const* Loc) {
+  llvm::StringRef Buf = Input->getText();
+  return SM.getComposedLoc(Input->getID(), Loc - Buf.data());
+}
+
 // Line scanner
 
 token LineScanner::operator()() {
   token tok;
-  bool starts_line = false;
+  bool startsLine = false;
   while (true) {
     tok = Scanner();
 
@@ -522,10 +528,9 @@ token LineScanner::operator()() {
       break;
 
     // Propagate a previous line-start flag to this next token.
-    if (starts_line)
-    {
+    if (startsLine) {
       tok.flags |= tf_starts_line;
-      starts_line = false;
+      startsLine = false;
     }
 
     // Empty lines are discarded.
@@ -534,9 +539,8 @@ token LineScanner::operator()() {
 
     // Errors, space, and comments are discardable. If a token starts a
     // line, the next token will become the new start of line.
-    if (tok.is_invalid() || tok.is_space() || tok.is_comment())
-    {
-      starts_line = tok.starts_line();
+    if (tok.is_invalid() || tok.is_space() || tok.is_comment()) {
+      startsLine = tok.starts_line();
       continue;
     }
 
@@ -545,12 +549,6 @@ token LineScanner::operator()() {
   };
 
   return tok;
-}
-
-clang::SourceLocation
-CharacterScanner::getSourceLocation(char const* Loc) {
-  llvm::StringRef Buf = Input->getText();
-  return SM.getComposedLoc(Input->getID(), Loc - Buf.data());
 }
 
 // Block scanner
@@ -567,20 +565,33 @@ token BlockScanner::operator()() {
   if (Tok.is_newline()) {
     token Next = Scanner();
     if (Next.is_space()) {
-      Tok = combine(Tok, Next);
+      // A newline followed by space is either an indent or a dedent.
+      // For example:
+      //
+      //    if (x < y): <newline>
+      //      stuff <newline>
+      //
+      // Combine the tokens to create the appropriate level of indentation.
+      Tok = combineSpace(Tok, Next);
     } else {
       // At the top-level a newline followed by a token implies the
-      // presence of a terminator. For example:
+      // presence of a separator or dedent. For example:
       //
       //    x = 1 <newline>
       //    y = 2 <newline>
+      //
+      // For dedents, we might have this:
+      //
+      //    if (x < y): <newline>
+      //      stuff <newline>
+      //    more_stuff
       //
       // We want to replace the first newline token with a separator.
       // However, we have to preserve the token we just found.
       //
       // Note that the second newline is followed by eof, so we'd
       // probably want to do the same.
-      Tok = combine(Tok, {});
+      Tok = combineSpace(Tok, {});
 
       // Buffer the next token for the next read.
       Lookahead = Next;
@@ -591,15 +602,15 @@ token BlockScanner::operator()() {
   return Tok;
 }
 
-token BlockScanner::separate(token const& nl) {
+token BlockScanner::matchSeparator(token const& nl) {
   return token(tok_separator, nl.loc, nl.sym);
 }
 
-token BlockScanner::indent(token const& nl) {
+token BlockScanner::matchIndent(token const& nl) {
   return token(tok_indent, nl.loc, nl.sym);
 }
 
-token BlockScanner::dedent(token const& nl) {
+token BlockScanner::matchDedent(token const& nl) {
   return token(tok_dedent, nl.loc, nl.sym);
 }
 
@@ -612,62 +623,60 @@ static bool equalSpelling(token const& A, token const& B) {
   return getSymbol(A) == getSymbol(B);
 }
 
-/// True if `sym` starts with `pre`.
-static bool hasPrefix(symbol Sym, symbol Pre) {
+/// True if `sym` starts with `pre` (i.e., is lexicographically greater).
+static bool startsWith(symbol Sym, symbol Pre) {
   return Sym.str->compare(*(Pre.str)) > 0;
 }
 
 /// True if the lexeme of `tok` has the lexeme of `pre` has a prefix.
-static bool hasPrefix(token const& Tok, token const& Pre) {
-  return hasPrefix(getSymbol(Tok), getSymbol(Pre));
+static bool startsWith(token const& Tok, token const& Pre) {
+  return startsWith(getSymbol(Tok), getSymbol(Pre));
 }
 
-token BlockScanner::combine(token const& Nl, token const& Ind) {
-  token Prev = currentIndentation();
+token BlockScanner::combineSpace(token const& Nl, token const& NewIndent) {
+  // Emit queued dedents.
+  if (!Dedents.empty())
+    return popDedent();
 
-  // If the indentations are the same, this is a line separator. Note
+  token PrevIndent = currentIndentation();
+
+  // If the indentations are the same, this is a separator. Note
   // that we replace the current prefix for diagnostics purposes.
-  if (equalSpelling(Ind, Prev)) {
+  if (equalSpelling(NewIndent, PrevIndent)) {
     if (!Prefix.empty())
-      Prefix.top() = Ind;
-    return separate(Nl);
+      Prefix.back() = NewIndent;
+    return matchSeparator(Nl);
   }
 
-  // If the new indentation has the previous as a prefix (i.e., new is
-  // longer), then indent by pushing the new indentation.
-  if (hasPrefix(Ind, Prev)) {
-    pushIndentation(Ind);
-    return indent(Nl);
+  // If the new indentation starts with the previous (i.e., new is longer),
+  // then indent.
+  if (startsWith(NewIndent, PrevIndent)) {
+    pushIndentation(NewIndent);
+    return matchIndent(Nl);
   }
 
-  // If the previous indentation has new as a prefix (i.e, the previous
-  // is longer), then dedent by popping the previous indentation and
-  // ensuring that the new matches the newly popped stack. Also, update
-  // the most recent indentation level for diagnostic purposes.
-  if (hasPrefix(Prev, Ind)) {
-    Prev = popIndentation();
-    if (!equalSpelling(Prev, Ind)) {
-      // FIXME: Wrong error.
-      getDiagnostics().Report(Ind.loc, clang::diag::err_bad_string_encoding);
-      // error(ind.loc, "indentation does not match previous after dedent");
-      // if (Prev)
-        // note(prev.loc, "indentation here");
-    }
-    else if (!Prefix.empty()) {
-      Prefix.top() = Ind;
-    }
+  // The previous indentation starts with the new (i.e., previous is longer),
+  // then dendent. Note that this can entail multiple dedents: one for each
+  // level that does not have the same spelling.
+  if (startsWith(PrevIndent, NewIndent)) {
+    do {
+      popIndentation();
+      PrevIndent = currentIndentation();
+      pushDedent(matchDedent(Nl));
+    } while (!Prefix.empty() && !equalSpelling(NewIndent, PrevIndent));
 
-    return dedent(Nl);
+    // Update the location of the last indent for diagnostic purposes.
+    if (!Prefix.empty())
+      Prefix.back() = NewIndent;
+
+    return popDedent();
   }
 
-  // FIXME: Wrong error.
-  getDiagnostics().Report(Ind.loc, clang::diag::err_bad_string_encoding);
-  // error(ind.loc, "indentation does not match previous");
-  // if (prev)
-    // note(prev.loc, "indentation here");
+  // FIXME: Note the previous indentation depth.
+  getDiagnostics().Report(NewIndent.loc, clang::diag::err_invalid_indentation);
 
   // Return a line separator just in case.
-  return separate(Nl);
+  return matchSeparator(Nl);
 }
 
 } // namespace green

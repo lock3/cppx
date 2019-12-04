@@ -33,76 +33,64 @@ class SourceManager;
 // need to retain various kinds of white space, line breaks, and comments
 // until later stages where we can discard them.
 
-namespace green
-{
-  // The character scanner transforms characters into tokens.
+namespace green {
+  /// Transforms characters into tokens.
   struct CharacterScanner
   {
     CharacterScanner(clang::SourceManager &SM, File const& F);
 
     token operator()();
 
-    clang::SourceLocation getInputLocation()
-    {
+    clang::SourceLocation getInputLocation() {
       return getSourceLocation(First);
     }
 
-    bool isDone() const
-    {
+    bool isDone() const {
       return First == Last;
     }
 
-    char getLookahead() const
-    {
+    char getLookahead() const {
       if (isDone())
         return 0;
       return *First;
     }
 
-    char getLookahead(int N) const
-    {
+    char getLookahead(int N) const {
       if (N >= Last - First)
         return 0;
       return First[N];
     }
 
-    bool nextCharacterIs(char C) const
-    {
+    bool nextCharacterIs(char C) const {
       return getLookahead() == C;
     }
 
-    bool nextCharacterIsNot(char C) const
-    {
+    bool nextCharacterIsNot(char C) const {
       return !nextCharacterIs(C);
     }
 
-    bool nthCharacterIs(int N, char C) const
-    {
+    bool nthCharacterIs(int N, char C) const {
       return getLookahead(N) == C;
     }
 
-    bool nthCharacterIsNot(int N, char C) const
-    {
+    bool nthCharacterIsNot(int N, char C) const {
       return !nthCharacterIs(N, C);
     }
 
-    char consume()
-    {
+    char consume() {
       char C = *First;
       ++First;
       ++Column;
       return C;
     }
 
-    void consume(int N)
-    {
+    void consume(int N) {
       assert(N <= Last - First);
       First += N;
       Column += N;
     }
 
-    char match(char C)
-    {
+    char match(char C) {
       if (nextCharacterIs(C))
         return consume();
       return 0;
@@ -115,8 +103,7 @@ namespace green
       return 0;
     }
 
-    char require(char C)
-    {
+    char require(char C) {
       assert(nextCharacterIs(C));
       return consume();
     }
@@ -189,13 +176,11 @@ namespace green
     struct StartingPosition
     {
       StartingPosition(CharacterScanner& CS)
-        : Scanner(CS), Prev(CS.Start)
-      {
+        : Scanner(CS), Prev(CS.Start) {
         Scanner.Start = Scanner.First;
       }
 
-      ~StartingPosition()
-      {
+      ~StartingPosition() {
         Scanner.Start = Prev;
       }
 
@@ -217,8 +202,7 @@ namespace green
 
 
   /// Removes empty lines and comments from a translation unit.
-  struct LineScanner
-  {
+  struct LineScanner {
     LineScanner(clang::SourceManager &SM, File const& F)
       : Scanner(SM, F)
     { }
@@ -243,39 +227,48 @@ namespace green
   /// Combines newline and whitespace to create indents, dedents, and
   /// separators. Note that there are no newlines in the translation unit
   /// returned from this scanner.
-  struct BlockScanner
-  {
+  struct BlockScanner {
     BlockScanner(clang::SourceManager &SM, File const& F)
-      : Scanner(SM, F), Prefix()
-    { }
+      : Scanner(SM, F), Prefix() { }
 
     token operator()();
 
-    token combine(token const& nl, token const& sp);
-    token separate(token const& nl);
-    token indent(token const& nl);
-    token dedent(token const& nl);
+    token combineSpace(token const& nl, token const& sp);
+    token matchSeparator(token const& nl);
+    token matchIndent(token const& nl);
+    token matchDedent(token const& nl);
 
     /// The current level of indentation. If the indentation stack is empty,
     /// return an empty token.
-    token currentIndentation() const
-    {
+    token currentIndentation() const {
       if (Prefix.empty())
         return {};
-      return Prefix.top();
+      return Prefix.back();
     }
 
     /// Push a new indentation level.
-    void pushIndentation(token const& Tok)
-    {
-      Prefix.push(Tok);
+    void pushIndentation(token const& Tok) {
+      assert(Tok.is_space());
+      Prefix.push_back(Tok);
     }
 
-    /// Pops the indentation level, returning the new level.
-    token popIndentation()
-    {
-      Prefix.pop();
-      return currentIndentation();
+    /// Pops the current indentation level.
+    token popIndentation() {
+      token Tok = Prefix.back();
+      Prefix.pop_back();
+      return Tok;
+    }
+
+    /// Save a dedent token.
+    void pushDedent(token Tok) {
+      Dedents.push_back(Tok);
+    }
+
+    /// Get the next saved dedent token.
+    token popDedent() {
+      token Tok = Dedents.back();
+      Dedents.pop_back();
+      return Tok;
     }
 
     clang::DiagnosticsEngine& getDiagnostics() {
@@ -293,7 +286,10 @@ namespace green
     token Lookahead;
 
     /// The indentation stack.
-    std::stack<token> Prefix;
+    std::vector<token> Prefix;
+
+    /// A single newline/space can match multiple dedents.
+    std::vector<token> Dedents;
   };
 
 
@@ -302,8 +298,7 @@ namespace green
   /// The lexer is ultimately responsible for producing tokens from
   /// input source. This is defined by a stack of scanners, each of
   /// which applies a phase of translation.
-  struct Lexer
-  {
+  struct Lexer {
     Lexer(clang::SourceManager &SM, File const& F)
       : Scanner(SM, F)
     { }

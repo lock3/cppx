@@ -55,6 +55,7 @@ namespace green
     switch (k)
     {
     case tok_eof: return "end-of-file";
+    case tok_unknown: return "unknown";
     case tok_indent: return "indent";
     case tok_dedent: return "dedent";
     case tok_separator: return "separator";
@@ -72,7 +73,6 @@ namespace green
     case tok_invalid: return "invalid";
     default: break;
     }
-    std::cerr << "WTF:" << display_name(k) << '\n';
     assert(false);
   }
 
@@ -86,6 +86,7 @@ namespace green
   {
     switch (k) {
     default: return 0;
+    case tok_unknown: return 1;
 #define def_puncop(K, S) \
     case tok_ ## K: return string_literal_length(S);
 #include "clang/Green/GreenTokens.def"

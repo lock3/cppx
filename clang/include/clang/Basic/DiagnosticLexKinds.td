@@ -827,4 +827,11 @@ def err_dep_source_minimizer_unexpected_tokens_at_import : Error<
 
 }
 
+let CategoryName = "Green Lexical Issue" in {
+
+def err_invalid_indentation : Error<
+  "invalid indentation">;
+
+}
+
 }

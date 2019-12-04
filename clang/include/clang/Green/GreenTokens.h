@@ -91,6 +91,10 @@ namespace green
       return flags & tf_starts_line;
     }
 
+    bool isUnknown() const {
+      return has_kind(tok_unknown);
+    }
+
     bool is_newline() const
     {
       return has_kind(tok_newline);
