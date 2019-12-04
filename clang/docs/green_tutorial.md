@@ -103,9 +103,67 @@ for (x : 0..99) {
 }
 
 ```
+
+```
 for:
       x : 0..99
       y = x * x
 do:
       do_something(y)
+```
+
+# Functions
+Here we can look at the different ways of declaring a function.
+
+The standard inline definition was mentioned above: it uses the exclamation
+operator:
+```
+f()!
+  # definiton
+```
+
+We can define one line functions as well by using the equals operator.
+```
+f(x:int, y:int) = (x * x) + (y * y)
+```
+
+In the above function, we can consolidate the types of the parameters:
+```
+f(x & y : int) = (x * x) + (y * y)
+```
+
+We can also declare a function abstract and define it later. This function
+takes two int parameters and returns an int:
+```
+f(x:int, y:int):int
+```
+
+When we declare abstracts, we can leave off names and just use types. The
+above abstract would look like this:
+```
+f(:int, :int):int
+```
+
+# Comments
+There are several forms of comments.
+
+The simple line comment is used with the octothorpe (\#) character.
+```
+x : int = 0;       # I am a comment!
+```
+
+The indented comment form "<\#>" enables commenting or
+uncommenting an entire indented block by precediing it with
+"<\#>".
+```
+<#>
+    This is a comment,
+    and so is this
+# but now we're back to normal
+```
+
+There are also block comments enclosed by <\# comment tags \#>
+```
+x : int = 0;      <\# I am a block
+                        comment \#>
 ```
