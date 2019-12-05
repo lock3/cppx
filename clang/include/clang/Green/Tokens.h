@@ -14,27 +14,52 @@
 #ifndef CLANG_GREEN_TOKENS_H
 #define CLANG_GREEN_TOKENS_H
 
+#include "clang/Green/Symbol.h"
 #include "clang/Basic/SourceLocation.h"
 
-#include "clang/Green/Symbol.h"
+#include <iosfwd>
 
-using token_flags = unsigned short;
+namespace green {
 
-/// No flags are set.
-constexpr token_flags  tf_none = 0x0;
+namespace tok {
+/// Kinds of tokens.
+enum TokenKind : unsigned short {
+#define def_token(K) \
+  K,
+#include "clang/Green/Tokens.def"
+};
+} // namespace tok
 
-/// The token is fused; it is comprised of other tokens).
-constexpr token_flags  tf_fused = 0x01;
+using TokenKind = tok::TokenKind;
 
-/// The last common token flag. Derived languages can use bits above
-/// this value by left-shifting `n` past `tf_last`.
-constexpr token_flags tf_last = tf_fused;
+/// Returns a printable version of the token name.
+char const* getDisplayName(TokenKind k);
 
-/// The valid of for end-of-file tokens.
-constexpr unsigned short eof_token_kind = 0;
+/// Returns true if the token name has a unique spelling.
+bool hasUniqueSpelling(TokenKind k);
 
-/// The valid of for invalid tokens.
-constexpr unsigned short invalid_token_kind = -1;
+/// Returns true if the token name has multiple spellings (e.g., identifier).
+bool hasMultipleSpellings(TokenKind k);
+
+/// Returns a spelling of the token name. If a token has multiple spellings,
+/// this returns its grammatical name.
+char const* getSpelling(TokenKind k);
+
+/// Returns the length of a token of kind `k` or 0 if there are multiple
+/// or zero spellings of the token.
+std::size_t getTokenLength(TokenKind k);
+
+/// Properties of tokens.
+enum TokenFlags : unsigned short {
+  /// No flags are set.
+  TF_None = 0x0,
+
+  /// The token is comprised of other tokens.
+  TF_Fused = 0x01,
+
+  /// Set if the token is the first token of a new line.
+  TF_StartsLine = 0x02,
+};
 
 /// A token represents a symbol in the language, the end of file, or an
 /// invalid construct. Tokens are discriminated by their kind.
@@ -54,86 +79,113 @@ constexpr unsigned short invalid_token_kind = -1;
 /// \todo Only tokens whose patterns generate a set of strings need to store
 /// the symbol. We could reuse that storage for other properties. On the other
 /// hand, it's convenient to store the spelling in general.
-struct token
+struct Token
 {
   /// Constructs an invalid token.
-  token()
-    : kind(-1), flags(), loc(), ptr()
+  Token()
+    : Kind(tok::Invalid), Flags(), Loc(), Ptr()
   { }
 
   /// Constructs a normal token.
-  token(unsigned k, clang::SourceLocation L, symbol s)
-    : kind(k), flags(), loc(L), EndLoc(L), sym(s)
+  Token(TokenKind K, clang::SourceLocation Loc, Symbol Sym)
+    : Kind(K), Flags(), Loc(Loc), Sym(Sym)
   { }
 
-  token(unsigned k, clang::SourceLocation L, clang::SourceLocation E, symbol s)
-    : kind(k), flags(), loc(L), EndLoc(E), sym(s)
-  { }
-
+  /// Constructs a fused token.
   template<typename T>
-  token(unsigned k, clang::SourceLocation L, T* data)
-    : kind(k), flags(tf_fused), loc(L), EndLoc(L), ptr(data)
-  { }
-
-  template<typename T>
-  token(unsigned k, clang::SourceLocation L, clang::SourceLocation E, T* data)
-    : kind(k), flags(tf_fused), loc(L), EndLoc(E), ptr(data)
+  Token(TokenKind K, clang::SourceLocation Loc, T* Data)
+    : Kind(K), Flags(TF_Fused), Loc(Loc), Ptr(Data)
   { }
 
   /// True if the token is neither invalid nor end-of-file.
-  explicit operator bool() const
-  {
-    return !is_invalid() && !is_eof();
+  explicit operator bool() const {
+    return !isInvalid() && !isEndOfFile();
   }
 
-  bool has_kind(unsigned k) const
-  {
-    return kind == k;
+  TokenKind getKind() const {
+    return static_cast<TokenKind>(Kind);
   }
 
-  bool is_eof() const
-  {
-    return has_kind(eof_token_kind);
+  bool hasKind(TokenKind K) const {
+    return getKind() == K;
   }
 
-  bool is_invalid() const
-  {
-    return has_kind(invalid_token_kind);
+  bool isEndOfFile() const {
+    return hasKind(tok::EndOfFile);
   }
 
-  bool has_spelling(char const* str) const
-  {
-    return sym == get_symbol(str);
+  bool isInvalid() const {
+    return hasKind(tok::Invalid);
   }
 
-  char const* spelling() const;
-
-  bool is_fused() const
-  {
-    return flags & tf_fused;
+  bool isUnknown() const {
+    return hasKind(tok::Unknown);
   }
+
+  bool isNewline() const {
+    return hasKind(tok::Newline);
+  }
+
+  bool isSpace() const {
+    return hasKind(tok::Space);
+  }
+
+  bool isComment() const {
+    return hasKind(tok::LineComment) || hasKind(tok::BlockComment);
+  }
+
+  bool isFused() const {
+    return Flags & TF_Fused;
+  }
+
+  bool isAtStartOfLine() const {
+    return Flags & TF_StartsLine;
+  }
+
+  clang::SourceLocation getLocation() const {
+    return Loc;
+  }
+
+  Symbol getSymbol() const {
+    assert(!isFused());
+    return Sym;
+  }
+
+  bool hasSpelling(char const* Str) const {
+    return getSymbol() == ::getSymbol(Str);
+  }
+
+  /// Returns the spelling of the token.
+  char const* getSpelling() const;
+
+  /// Returns a human-readable name for the token. For simple tokens,
+  /// this is simply its spelling. Otherwise, it is the grammatical name
+  /// of the token.
+  char const* getRedableName();
+
+  void dump() const;
+  void dump(std::ostream& os, bool Nl = true) const;
 
   /// The kind of token.
-  unsigned short kind;
+  unsigned short Kind;
 
   /// A small set of flags associated with a token.
-  unsigned short flags;
+  unsigned short Flags;
 
   /// The location of the token.
-  clang::SourceLocation loc;
-
-  // FIXME: Remove this.
-  clang::SourceLocation EndLoc;
+  clang::SourceLocation Loc;
 
   /// Data associated with the token.
   union
   {
     // For non-fused tokens, this is its underlying spelling (or lexeme).
-    symbol sym;
+    Symbol Sym;
 
     // For fused tokens, this is a pointer to its associated data.
-    void* ptr;
+    void* Ptr;
   };
 };
+
+} // namespace green
 
 #endif

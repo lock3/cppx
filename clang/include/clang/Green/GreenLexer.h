@@ -14,10 +14,9 @@
 #ifndef CLANG_GREEN_GREENLEXER_H
 #define CLANG_GREEN_GREENLEXER_H
 
-#include "clang/Basic/SourceLocation.h"
-
-#include "clang/Green/GreenTokens.h"
+#include "clang/Green/Tokens.h"
 #include "clang/Green/File.h"
+#include "clang/Basic/SourceLocation.h"
 
 #include <deque>
 #include <stack>
@@ -39,7 +38,7 @@ namespace green {
   {
     CharacterScanner(clang::SourceManager &SM, File const& F);
 
-    token operator()();
+    Token operator()();
 
     clang::SourceLocation getInputLocation() {
       return getSourceLocation(First);
@@ -120,30 +119,30 @@ namespace green {
     void consumeBlock_comment();
     void consumeLine_comment();
 
-    token makeToken(token_kind K, char const* F, char const* L);
-    token makeToken(token_kind K, char const* S, std::size_t N);
+    Token makeToken(TokenKind K, char const* F, char const* L);
+    Token makeToken(TokenKind K, char const* S, std::size_t N);
 
-    token matchEof();
-    token matchSpace();
-    token matchNewline();
-    token matchLineComment();
-    token matchBlockComment();
-    token matchToken(token_kind K);
-    token matchWord();
-    token matchNumber();
-    token matchDecimalNumber();
-    token matchDecimalFraction();
-    token matchDecimalExponent();
-    token matchHexadecimalNumber();
+    Token matchEof();
+    Token matchSpace();
+    Token matchNewline();
+    Token matchLineComment();
+    Token matchBlockComment();
+    Token matchToken(TokenKind K);
+    Token matchWord();
+    Token matchNumber();
+    Token matchDecimalNumber();
+    Token matchDecimalFraction();
+    Token matchDecimalExponent();
+    Token matchHexadecimalNumber();
 
     void matchDecimalDigitSeq();
     void matchDecimalDigitSeqOpt();
     void matchHexadecimalDigitSeq();
 
-    token matchCharacter();
-    token matchHexadecimalCharacter();
-    token matchUnicodeCharacter();
-    token matchString();
+    Token matchCharacter();
+    Token matchHexadecimalCharacter();
+    Token matchUnicodeCharacter();
+    Token matchString();
 
     void matchEscapeSequence();
 
@@ -207,7 +206,7 @@ namespace green {
       : Scanner(SM, F)
     { }
 
-    token operator()();
+    Token operator()();
 
     clang::DiagnosticsEngine& getDiagnostics() {
       return Scanner.getDiagnostics();
@@ -231,42 +230,42 @@ namespace green {
     BlockScanner(clang::SourceManager &SM, File const& F)
       : Scanner(SM, F), Prefix() { }
 
-    token operator()();
+    Token operator()();
 
-    token combineSpace(token const& nl, token const& sp);
-    token matchSeparator(token const& nl);
-    token matchIndent(token const& nl);
-    token matchDedent(token const& nl);
+    Token combineSpace(Token const& nl, Token const& sp);
+    Token matchSeparator(Token const& nl);
+    Token matchIndent(Token const& nl);
+    Token matchDedent(Token const& nl);
 
     /// The current level of indentation. If the indentation stack is empty,
     /// return an empty token.
-    token currentIndentation() const {
+    Token currentIndentation() const {
       if (Prefix.empty())
         return {};
       return Prefix.back();
     }
 
     /// Push a new indentation level.
-    void pushIndentation(token const& Tok) {
-      assert(Tok.is_space());
+    void pushIndentation(Token const& Tok) {
+      assert(Tok.isSpace());
       Prefix.push_back(Tok);
     }
 
     /// Pops the current indentation level.
-    token popIndentation() {
-      token Tok = Prefix.back();
+    Token popIndentation() {
+      Token Tok = Prefix.back();
       Prefix.pop_back();
       return Tok;
     }
 
     /// Save a dedent token.
-    void pushDedent(token Tok) {
+    void pushDedent(Token Tok) {
       Dedents.push_back(Tok);
     }
 
     /// Get the next saved dedent token.
-    token popDedent() {
-      token Tok = Dedents.back();
+    Token popDedent() {
+      Token Tok = Dedents.back();
       Dedents.pop_back();
       return Tok;
     }
@@ -283,13 +282,13 @@ namespace green {
     LineScanner Scanner;
 
     /// A buffered lookahead token.
-    token Lookahead;
+    Token Lookahead;
 
     /// The indentation stack.
-    std::vector<token> Prefix;
+    std::vector<Token> Prefix;
 
     /// A single newline/space can match multiple dedents.
-    std::vector<token> Dedents;
+    std::vector<Token> Dedents;
   };
 
 
@@ -303,7 +302,7 @@ namespace green {
       : Scanner(SM, F)
     { }
 
-    token operator()()
+    Token operator()()
     {
       return Scanner();
     }

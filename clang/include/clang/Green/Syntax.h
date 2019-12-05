@@ -95,11 +95,11 @@ struct ErrorSyntax : Syntax {
 
 /// Any term represented by a single token (e.g., literals, identifiers).
 struct AtomSyntax : Syntax {
-  AtomSyntax(token Tok, clang::SourceLocation Loc, bool IsParam = false)
+  AtomSyntax(Token Tok, clang::SourceLocation Loc, bool IsParam = false)
     : Syntax(SK_Atom, Loc, IsParam), Tok(Tok)
   {}
 
-  token Tok;
+  Token Tok;
 
   child_range children() {
     return child_range(child_iterator(), child_iterator());

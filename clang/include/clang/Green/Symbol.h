@@ -19,61 +19,57 @@
 #include <string>
 
 /// A unique string in the language, or an empty string.
-struct symbol
-{
-  static symbol empty;
+class Symbol {
+public:
+  static Symbol Empty;
 
-  explicit symbol()
-    : str(empty.str)
-  {
-    assert(str);
+  explicit Symbol() : Ptr(Empty.Ptr) {
+    assert(Ptr);
   }
 
-  explicit symbol(std::string const* s)
-    : str(s)
-  {
-    assert(s);
+  explicit Symbol(std::string const* S) : Ptr(S) {
+    assert(S);
   }
 
-  char const* data() const
-  {
-    return str->data();
+  char const* data() const {
+    return Ptr->data();
   }
 
-  std::size_t size() const
-  {
-    return str->size();
+  std::size_t size() const {
+    return Ptr->size();
   }
 
-  std::string const* str;
+  std::string const& str() const {
+    return *Ptr;
+  }
+
+  friend bool operator==(Symbol a, Symbol b) {
+    return a.Ptr == b.Ptr;
+  }
+
+  friend bool operator!=(Symbol a, Symbol b) {
+    return a.Ptr != b.Ptr;
+  }
+
+private:
+  /// A pointer to a unique string.
+  std::string const* Ptr;
 };
 
-inline
-bool operator==(symbol a, symbol b)
-{
-  return a.str == b.str;
-}
-
-inline
-bool operator!=(symbol a, symbol b)
-{
-  return a.str != b.str;
-}
-
 /// Returns a symbol for `str`.
-symbol get_symbol(char const* str);
+Symbol getSymbol(char const* str);
 
 /// Returns a symbol for the characters in `[first, last)`.
-symbol get_symbol(char const* first, char const* last);
+Symbol getSymbol(char const* first, char const* last);
 
 /// Returns a symbol for the characters in `[str, str + n)`.
-symbol get_symbol(char const* str, std::size_t n);
+Symbol getSymbol(char const* str, std::size_t n);
 
 /// Returns a symbol for `str`.
-symbol get_symbol(std::string const& str);
+Symbol getSymbol(std::string const& str);
 
 // Streaming
 
-std::ostream& operator<<(std::ostream& os, symbol sym);
+std::ostream& operator<<(std::ostream& os, Symbol sym);
 
 #endif

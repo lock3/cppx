@@ -15,7 +15,6 @@
 #define CLANG_GREEN_GREENPARSER_H
 
 #include "clang/Green/GreenLexer.h"
-
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
 
@@ -34,7 +33,7 @@ namespace green
   struct parser;
 
   /// A pair of tokens.
-  using token_pair = std::pair<token, token>;
+  using TokenPair = std::pair<Token, Token>;
 
   /// The parser transforms sequences of tokens into uninterpreted syntax
   /// trees.
@@ -44,38 +43,31 @@ namespace green
   {
     parser(clang::SourceManager &SM, File const& F);
 
-    bool eof()
-    {
+    bool eof() {
       return !la;
     }
 
-    token const& peek()
-    {
+    Token const& peek() {
       return la;
     }
 
-    token_kind lookahead() const
-    {
-      return la.kind();
+    TokenKind lookahead() const {
+      return la.getKind();
     }
 
-    clang::SourceLocation input_location() const
-    {
-      return la.loc;
+    clang::SourceLocation input_location() const {
+      return la.getLocation();
     }
 
-    bool next_token_is(token_kind k)
-    {
+    bool next_token_is(TokenKind k) {
       return lookahead() == k;
     }
 
-    bool next_token_is(char const* id)
-    {
-      return next_token_is(tok_identifier) && peek().has_spelling(id);
+    bool next_token_is(char const* id) {
+      return next_token_is(tok::Identifier) && peek().hasSpelling(id);
     }
 
-    bool next_token_is_not(token_kind k)
-    {
+    bool next_token_is_not(TokenKind k) {
       return !next_token_is(k);
     }
 
@@ -84,51 +76,51 @@ namespace green
       return !next_token_is(id);
     }
 
-    token consume()
+    Token consume()
     {
-      token tok = la;
+      Token Tok = la;
       la = lex();
-      return tok;
+      return Tok;
     }
 
-    token match(token_kind k)
+    Token match(TokenKind k)
     {
       if (next_token_is(k))
         return consume();
       return {};
     }
 
-    token match(char const* id)
+    Token match(char const* id)
     {
       if (next_token_is(id))
         return consume();
       return {};
     }
 
-    template<typename Fn>
-    token match_if(Fn pred) {
+    template<typename Predicate>
+    Token match_if(Predicate pred) {
       if (pred(lookahead()))
         return consume();
       return {};
     }
 
-    template<typename Fn>
-    token match_if(Fn pred, parser &p) {
+    template<typename Predicate>
+    Token match_if(Predicate pred, parser &p) {
       if (pred(p))
         return consume();
       return {};
     }
 
-    token expect(token_kind k);
+    Token expect(TokenKind k);
 
-    token expect(char const* id)
+    Token expect(char const* id)
     {
       if (next_token_is(id))
         return consume();
       return {};
     }
 
-    token require(token_kind k)
+    Token require(TokenKind k)
     {
       assert(next_token_is(k));
       return consume();
@@ -185,23 +177,23 @@ namespace green
 
     // Semantic actions
 
-    Syntax* on_atom(token const& tok);
+    Syntax* on_atom(Token const& tok);
     Syntax* on_array(std::vector<Syntax*> const& vec);
     Syntax* on_list(std::vector<Syntax*> const& vec);
-    Syntax* on_binary(token const& tok, Syntax* e1, Syntax* e2);
-    Syntax* on_unary(token const& tok, Syntax* e1);
-    Syntax* on_call(token_pair const& toks, Syntax* e1, Syntax* e2);
-    Syntax* on_elem(token_pair const& toks, Syntax* e1, Syntax* e2);
+    Syntax* on_binary(Token const& tok, Syntax* e1, Syntax* e2);
+    Syntax* on_unary(Token const& tok, Syntax* e1);
+    Syntax* on_call(TokenPair const& toks, Syntax* e1, Syntax* e2);
+    Syntax* on_elem(TokenPair const& toks, Syntax* e1, Syntax* e2);
     Syntax* on_macro(Syntax* e1, Syntax* e2);
-    Syntax* on_if(token const& tok, Syntax* e1, Syntax* e2, Syntax* e3);
-    Syntax* on_else(token const& tok, Syntax* e1);
-    Syntax* on_loop(token const& tok, Syntax* e1, Syntax* e2);
+    Syntax* on_if(Token const& tok, Syntax* e1, Syntax* e2, Syntax* e3);
+    Syntax* on_else(Token const& tok, Syntax* e1);
+    Syntax* on_loop(Token const& tok, Syntax* e1, Syntax* e2);
 
     /// The lexer.
     Lexer lex;
 
     /// The lookahead token.
-    token la;
+    Token la;
 
     clang::DiagnosticsEngine &Diags;
 
