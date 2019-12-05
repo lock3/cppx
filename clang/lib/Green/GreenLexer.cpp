@@ -220,7 +220,7 @@ Token CharacterScanner::makeToken(TokenKind K, char const* F, char const* L) {
 
 Token CharacterScanner::makeToken(TokenKind K, char const* S, std::size_t N) {
   clang::SourceLocation Loc = getSourceLocation(S);
-  symbol Sym = get_symbol(S, N);
+  Symbol Sym = getSymbol(S, N);
   Token Tok(K, Loc, Sym);
 
   // Update line flags.
@@ -232,7 +232,7 @@ Token CharacterScanner::makeToken(TokenKind K, char const* S, std::size_t N) {
 
 Token CharacterScanner::matchEof() {
   clang::SourceLocation Loc = SM.getLocForEndOfFile(Input->getID());
-  return Token(tok::EndOfFile, Loc, symbol());
+  return Token(tok::EndOfFile, Loc, Symbol());
 }
 
 Token CharacterScanner::matchSpace() {
@@ -286,7 +286,7 @@ Token CharacterScanner::matchBlockComment() {
   auto EndLoc = getSourceLocation(First);
 
   // Build the block comment.
-  symbol Sym = get_symbol(Start, First);
+  Symbol Sym = getSymbol(Start, First);
   return Token(tok::BlockComment, BeginLoc, Sym);
 }
 
@@ -615,8 +615,8 @@ Token BlockScanner::matchDedent(Token const& Tok) {
   return Token(tok::Dedent, Tok.getLocation(), Tok.getSymbol());
 }
 
-static symbol getSymbol(Token const& Tok) {
-  return Tok.isInvalid() ? symbol() : Tok.getSymbol();
+static Symbol getSymbol(Token const& Tok) {
+  return Tok.isInvalid() ? Symbol() : Tok.getSymbol();
 }
 
 /// True if `A` and `B` have the same spellings.
@@ -625,8 +625,8 @@ static bool equalSpelling(Token const& A, Token const& B) {
 }
 
 /// True if `sym` starts with `pre` (i.e., is lexicographically greater).
-static bool startsWith(symbol Sym, symbol Pre) {
-  return Sym.str->compare(*(Pre.str)) > 0;
+static bool startsWith(Symbol Sym, Symbol Pre) {
+  return Sym.str().compare(Pre.str()) > 0;
 }
 
 /// True if the lexeme of `tok` has the lexeme of `pre` has a prefix.

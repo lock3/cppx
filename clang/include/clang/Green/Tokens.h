@@ -87,7 +87,7 @@ struct Token
   { }
 
   /// Constructs a normal token.
-  Token(TokenKind K, clang::SourceLocation Loc, symbol Sym)
+  Token(TokenKind K, clang::SourceLocation Loc, Symbol Sym)
     : Kind(K), Flags(), Loc(Loc), Sym(Sym)
   { }
 
@@ -146,13 +146,13 @@ struct Token
     return Loc;
   }
 
-  symbol getSymbol() const {
+  Symbol getSymbol() const {
     assert(!isFused());
     return Sym;
   }
 
   bool hasSpelling(char const* Str) const {
-    return getSymbol() == get_symbol(Str);
+    return getSymbol() == ::getSymbol(Str);
   }
 
   /// Returns the spelling of the token.
@@ -179,7 +179,7 @@ struct Token
   union
   {
     // For non-fused tokens, this is its underlying spelling (or lexeme).
-    symbol Sym;
+    Symbol Sym;
 
     // For fused tokens, this is a pointer to its associated data.
     void* Ptr;

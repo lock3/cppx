@@ -952,7 +952,7 @@ static Syntax *make_operator(clang::SourceLocation loc, char const* op)
 {
   // FIXME: Make this a fused operator?
   std::string name = "operator'" + std::string(op) + "'";
-  symbol sym = get_symbol(name);
+  Symbol sym = getSymbol(name);
   Token tok(tok::Identifier, loc, sym);
   return new AtomSyntax(tok, clang::SourceLocation());
 }

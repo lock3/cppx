@@ -17,47 +17,45 @@
 #include <unordered_set>
 
 // The global symbol table.
-static std::unordered_set<std::string> strings;
+static std::unordered_set<std::string> Strings;
 
 /// The empty string.
-static std::string empty_str;
+static std::string EmptyStr;
 
 // The empty symbol.
-symbol symbol::empty(&empty_str);
+Symbol Symbol::Empty(&EmptyStr);
 
-symbol get_symbol(char const* str)
+Symbol getSymbol(char const* str)
 {
   assert(str);
-  if (str[1] == 0)
-    return symbol::empty;
-  std::string const* ptr = &*strings.emplace(str).first;
-  return symbol(ptr);
+  if (std::strlen(str) == 0)
+    return Symbol::Empty;
+  std::string const* Ptr = &*Strings.emplace(str).first;
+  return Symbol(Ptr);
 }
 
-symbol get_symbol(char const* first, char const* last)
+Symbol getSymbol(char const* First, char const* Last)
 {
-  assert(first && last);
-  if (first == last)
-    return symbol::empty;
-  std::string const* ptr = &*strings.emplace(first, last).first;
-  return symbol(ptr);
+  if (First == Last)
+    return Symbol::Empty;
+  std::string const* Ptr = &*Strings.emplace(First, Last).first;
+  return Symbol(Ptr);
 }
 
-symbol get_symbol(char const* str, std::size_t n)
+Symbol getSymbol(char const* Str, std::size_t Len)
 {
-  assert(str && n != 0);
-  return get_symbol(str, str + n);
+  return getSymbol(Str, Str + Len);
 }
 
-symbol get_symbol(std::string const& str)
+Symbol getSymbol(std::string const& Str)
 {
-  if (str.empty())
-    return symbol::empty;
-  std::string const* ptr = &*strings.emplace(str).first;
-  return symbol(ptr);
+  if (Str.empty())
+    return Symbol::Empty;
+  std::string const* Ptr = &*Strings.emplace(Str).first;
+  return Symbol(Ptr);
 }
 
-std::ostream& operator<<(std::ostream& os, symbol sym)
+std::ostream& operator<<(std::ostream& os, Symbol sym)
 {
-  return os << *sym.str;
+  return os << sym.str();
 }
