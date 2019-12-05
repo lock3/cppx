@@ -39,15 +39,15 @@ IdentifierMapper::identifyDecls(const ArraySyntax *S) {
   for (const Syntax *Child : S->children()) {
     CurrentTopLevelSyntax = S;
     if (isa<ListSyntax>(Child))
-      MapList(cast<ListSyntax>(Child));
+      mapList(cast<ListSyntax>(Child));
   }
 }
 
 void
-IdentifierMapper::MapList(const ListSyntax *S) {
+IdentifierMapper::mapList(const ListSyntax *S) {
   for (const Syntax *Child : S->children()) {
     if (isa<CallSyntax>(Child)) {
-      MapCall(cast<CallSyntax>(Child));
+      mapCall(cast<CallSyntax>(Child));
       continue;
     } else if (isa<AtomSyntax>(Child)) {
       const AtomSyntax *Name = cast<AtomSyntax>(Child);
@@ -65,17 +65,17 @@ IdentifierMapper::MapList(const ListSyntax *S) {
 }
 
 void
-IdentifierMapper::MapCall(const CallSyntax *S) {
+IdentifierMapper::mapCall(const CallSyntax *S) {
   // If the Callee of the function is an atom, it could be either an operator
   // or an untyped variable. If it is the latter, then just map it now.
   if (isa<AtomSyntax>(S->Callee())) {
     const AtomSyntax *CalleeAtom = cast<AtomSyntax>(S->Callee());
     std::string Spelling = CalleeAtom->Tok.getSpelling();
     if (PP.getIdentifierInfo(Spelling) == OperatorColonII) {
-      return HandleOperatorColon(S);
+      return handleOperatorColon(S);
     }
     else if (PP.getIdentifierInfo(Spelling) == OperatorExclaimII) {
-      return HandleOperatorExclaim(S);
+      return handleOperatorExclaim(S);
     } else if (PP.getIdentifierInfo(Spelling) == OperatorEqualsII) {
       return handleOperatorEquals(S);
     } else {
@@ -92,7 +92,7 @@ IdentifierMapper::MapCall(const CallSyntax *S) {
 // or
 // identifier(...) : T
 void
-IdentifierMapper::HandleOperatorColon(const CallSyntax *S) {
+IdentifierMapper::handleOperatorColon(const CallSyntax *S) {
   assert(isa<AtomSyntax>(S->Callee()) &&
          "Callee of operator syntax is not an atom.");
   if (isa<ListSyntax>(S->Args())) {
@@ -100,7 +100,7 @@ IdentifierMapper::HandleOperatorColon(const CallSyntax *S) {
       CurrentTopLevelSyntax = S;
     const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
 
-    // Case 1: Handle a typed variable.
+    // Case 1: handle a typed variable.
     if (isa<AtomSyntax>(ArgList->Elems[0])) {
       const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);
       clang::IdentifierInfo *II =
@@ -108,9 +108,9 @@ IdentifierMapper::HandleOperatorColon(const CallSyntax *S) {
 
       GSemaRef.IdentifierMapping.insert({II, CurrentTopLevelSyntax});
 
-    // Case 2: Handle a function with a return type.
+    // Case 2: handle a function with a return type.
     } else if (isa<CallSyntax>(ArgList->Elems[0])) {
-      MapCall(cast<CallSyntax>(ArgList->Elems[0]));
+      mapCall(cast<CallSyntax>(ArgList->Elems[0]));
     }
   }
 }
@@ -122,7 +122,7 @@ IdentifierMapper::HandleOperatorColon(const CallSyntax *S) {
 // \endcode
 // where `args` and `T` are optional.
 void
-IdentifierMapper::HandleOperatorExclaim(const CallSyntax *S) {
+IdentifierMapper::handleOperatorExclaim(const CallSyntax *S) {
   assert(isa<AtomSyntax>(S->Callee()) &&
          "Callee of operator syntax is not an atom.");
   if (isa<ListSyntax>(S->Args())) {
@@ -133,7 +133,7 @@ IdentifierMapper::HandleOperatorExclaim(const CallSyntax *S) {
 
     // Begin by mapping the call syntax that declares the function.
     assert(isa<CallSyntax>(ArgList->Elems[0]) && "operator! does not declare a call.");
-    MapCall(cast<CallSyntax>(ArgList->Elems[0]));
+    mapCall(cast<CallSyntax>(ArgList->Elems[0]));
 
     MappingOperatorExclaim = false;
 
@@ -158,14 +158,16 @@ IdentifierMapper::handleOperatorEquals(const CallSyntax *S) {
 
     MappingOperatorEquals = true;
 
+    const Syntax *Declarator = ArgList->Elems[0];
+
     // This might be a typed variable or single-line function definition.
-    if (isa<CallSyntax>(ArgList->Elems[0]))
-      return MapCall(cast<CallSyntax>(ArgList->Elems[0]));
-    else if (isa<AtomSyntax>(ArgList->Elems[0])) {
+    if (isa<CallSyntax>(Declarator))
+      return mapCall(cast<CallSyntax>(Declarator));
+    else if (isa<AtomSyntax>(Declarator)) {
       clang::IdentifierInfo *Spelling = PP.getIdentifierInfo(
-          cast<AtomSyntax>(ArgList->Elems[0])->Tok.getSpelling());
-        GSemaRef.IdentifierMapping.insert({Spelling, CurrentTopLevelSyntax});
-      }
+        cast<AtomSyntax>(Declarator)->Tok.getSpelling());
+      GSemaRef.IdentifierMapping.insert({Spelling, CurrentTopLevelSyntax});
+    }
 
     MappingOperatorEquals = false;
   }

@@ -43,14 +43,14 @@ public:
   void identifyDecls(const ArraySyntax *S);
 
 private:
-  void MapAtom(const AtomSyntax *S);
-  void MapList(const ListSyntax *S);
-  void MapCall(const CallSyntax *S);
-  void MapElem(const ElemSyntax *S);
-  void MapMacro(const MacroSyntax *S);
+  void mapAtom(const AtomSyntax *S);
+  void mapList(const ListSyntax *S);
+  void mapCall(const CallSyntax *S);
+  void mapElem(const ElemSyntax *S);
+  void mapMacro(const MacroSyntax *S);
 
-  void HandleOperatorColon(const CallSyntax *S);
-  void HandleOperatorExclaim(const CallSyntax *S);
+  void handleOperatorColon(const CallSyntax *S);
+  void handleOperatorExclaim(const CallSyntax *S);
   void handleOperatorEquals(const CallSyntax *S);
 
   // The current top level Syntax we are analyzing; names will map to this.
