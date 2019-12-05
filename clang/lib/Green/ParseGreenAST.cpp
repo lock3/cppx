@@ -40,8 +40,8 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
   SourceManager &SM = PP.getSourceManager();
   File InputFile(SM, SM.getMainFileID());
 
-  green::parser Parser(SM, InputFile);
-  green::Syntax *AST = Parser.parse_file();
+  green::Parser Parser(SM, InputFile);
+  green::Syntax *AST = Parser.parseFile();
   if (AST)
     AST->dump();
 

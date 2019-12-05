@@ -29,9 +29,6 @@ namespace green
 {
   struct Syntax;
 
-  // FIXME: CHANGE THIS BACK
-  struct parser;
-
   /// A pair of tokens.
   using TokenPair = std::pair<Token, Token>;
 
@@ -39,162 +36,156 @@ namespace green
   /// trees.
   ///
   /// \todo Lift common parsing functions into a parameterized base class?
-  struct parser
+  struct Parser
   {
-    parser(clang::SourceManager &SM, File const& F);
+    Parser(clang::SourceManager &SM, File const& F);
 
-    bool eof() {
-      return !la;
+    Token const& peekToken() {
+      return Lookahead;
     }
 
-    Token const& peek() {
-      return la;
+    TokenKind getLookahead() const {
+      return Lookahead.getKind();
     }
 
-    TokenKind lookahead() const {
-      return la.getKind();
+    clang::SourceLocation getInputLocation() const {
+      return Lookahead.getLocation();
     }
 
-    clang::SourceLocation input_location() const {
-      return la.getLocation();
+    bool atEndOfFile() {
+      return Lookahead.isEndOfFile();
     }
 
-    bool next_token_is(TokenKind k) {
-      return lookahead() == k;
+    bool nextTokenIs(TokenKind K) {
+      return getLookahead() == K;
     }
 
-    bool next_token_is(char const* id) {
-      return next_token_is(tok::Identifier) && peek().hasSpelling(id);
+    bool nextTokenIs(char const* Id) {
+      return nextTokenIs(tok::Identifier) && peekToken().hasSpelling(Id);
     }
 
-    bool next_token_is_not(TokenKind k) {
-      return !next_token_is(k);
+    bool nextTokenIsNot(TokenKind K) {
+      return !nextTokenIs(K);
     }
 
-    bool next_token_is_not(char const* id)
-    {
-      return !next_token_is(id);
+    bool nextTokenIsNot(char const* Id) {
+      return !nextTokenIs(Id);
     }
 
-    Token consume()
-    {
-      Token Tok = la;
-      la = lex();
+    Token consumeToken() {
+      Token Tok = Lookahead;
+      Lookahead = Lex();
       return Tok;
     }
 
-    Token match(TokenKind k)
+    Token matchToken(TokenKind K)
     {
-      if (next_token_is(k))
-        return consume();
+      if (nextTokenIs(K))
+        return consumeToken();
       return {};
     }
 
-    Token match(char const* id)
+    Token matchToken(char const* Id)
     {
-      if (next_token_is(id))
-        return consume();
+      if (nextTokenIs(Id))
+        return consumeToken();
       return {};
     }
 
     template<typename Predicate>
-    Token match_if(Predicate pred) {
-      if (pred(lookahead()))
-        return consume();
+    Token matchTokenIf(Predicate Pred) {
+      if (Pred(getLookahead()))
+        return consumeToken();
       return {};
     }
 
     template<typename Predicate>
-    Token match_if(Predicate pred, parser &p) {
-      if (pred(p))
-        return consume();
+    Token matchTokenIf(Predicate Pred, Parser &P) {
+      if (Pred(P))
+        return consumeToken();
       return {};
     }
 
-    Token expect(TokenKind k);
+    Token expectToken(TokenKind K);
 
-    Token expect(char const* id)
+    Token expectToken(char const* Id);
+
+    Token requireToken(TokenKind k)
     {
-      if (next_token_is(id))
-        return consume();
-      return {};
+      assert(nextTokenIs(k));
+      return consumeToken();
     }
 
-    Token require(TokenKind k)
-    {
-      assert(next_token_is(k));
-      return consume();
-    }
+    Syntax* parseFile();
 
-    Syntax* parse_file();
+    Syntax* parseArray();
+    Syntax* parseList();
 
-    Syntax* parse_array();
-    Syntax* parse_list();
+    Syntax* parseExpr();
+    Syntax* parseDef();
+    Syntax* parseOr();
+    Syntax* parseAnd();
+    Syntax* parseCmp();
+    Syntax* parseTo();
+    Syntax* parseAdd();
+    Syntax* parseMul();
 
-    Syntax* parse_expr();
-    Syntax* parse_def();
-    Syntax* parse_or();
-    Syntax* parse_and();
-    Syntax* parse_cmp();
-    Syntax* parse_to();
-    Syntax* parse_add();
-    Syntax* parse_mul();
+    Syntax* parseMacro();
+    Syntax* parseIf();
+    Syntax* parseWhile();
+    Syntax* parseFor();
 
-    Syntax* parse_macro();
-    Syntax* parse_if();
-    Syntax* parse_while();
-    Syntax* parse_for();
+    Syntax* parsePre();
+    Syntax* parsePost();
+    Syntax* parseCall(Syntax* fn);
+    Syntax* parseElem(Syntax* map);
+    Syntax* parseDot(Syntax* obj);
 
-    Syntax* parse_pre();
-    Syntax* parse_post();
-    Syntax* parse_call(Syntax* fn);
-    Syntax* parse_elem(Syntax* map);
-    Syntax* parse_dot(Syntax* obj);
+    Syntax* parsePrimary();
+    Syntax* parseId();
+    Syntax* parseParen();
 
-    Syntax* parse_primary();
-    Syntax* parse_id();
-    Syntax* parse_paren();
+    Syntax* parseOf();
+    Syntax* parseImm();
 
-    Syntax* parse_of();
-    Syntax* parse_imm();
+    Syntax* parseBlock();
+    Syntax* parseBracedArray();
+    Syntax* parseNestedArray();
 
-    Syntax* parse_block();
-    Syntax* parse_braced_array();
-    Syntax* parse_nested_array();
+    Syntax* parsePreAttr();
+    Syntax* parseDocAttr();
 
-    Syntax* parse_pre_attr();
-    Syntax* parse_doc_attr();
-
-    Syntax* parse_catch();
+    Syntax* parseCatch();
 
     // Primary expressions
-    Syntax* parse_reserved();
-    Syntax* parse_key();
-    Syntax* parse_word();
-    Syntax* parse_char();
-    Syntax* parse_string();
-    Syntax* parse_num();
+    Syntax* parseReserved();
+    Syntax* parseKey();
+    Syntax* parseWord();
+    Syntax* parseChar();
+    Syntax* parseString();
+    Syntax* parseNum();
 
     // Semantic actions
 
-    Syntax* on_atom(Token const& tok);
-    Syntax* on_array(std::vector<Syntax*> const& vec);
-    Syntax* on_list(std::vector<Syntax*> const& vec);
-    Syntax* on_binary(Token const& tok, Syntax* e1, Syntax* e2);
-    Syntax* on_unary(Token const& tok, Syntax* e1);
-    Syntax* on_call(TokenPair const& toks, Syntax* e1, Syntax* e2);
-    Syntax* on_elem(TokenPair const& toks, Syntax* e1, Syntax* e2);
-    Syntax* on_macro(Syntax* e1, Syntax* e2);
-    Syntax* on_if(Token const& tok, Syntax* e1, Syntax* e2, Syntax* e3);
-    Syntax* on_else(Token const& tok, Syntax* e1);
-    Syntax* on_loop(Token const& tok, Syntax* e1, Syntax* e2);
+    Syntax* onAtom(Token const& tok);
+    Syntax* onArray(std::vector<Syntax*> const& vec);
+    Syntax* onList(std::vector<Syntax*> const& vec);
+    Syntax* onBinary(Token const& tok, Syntax* e1, Syntax* e2);
+    Syntax* onUnary(Token const& tok, Syntax* e1);
+    Syntax* onCall(TokenPair const& toks, Syntax* e1, Syntax* e2);
+    Syntax* onElem(TokenPair const& toks, Syntax* e1, Syntax* e2);
+    Syntax* onMacro(Syntax* e1, Syntax* e2);
+    Syntax* onIf(Token const& tok, Syntax* e1, Syntax* e2, Syntax* e3);
+    Syntax* onElse(Token const& tok, Syntax* e1);
+    Syntax* onLoop(Token const& tok, Syntax* e1, Syntax* e2);
 
     /// The lexer.
-    Lexer lex;
+    Lexer Lex;
 
     /// The lookahead token.
-    Token la;
+    Token Lookahead;
 
+    /// Diagnostics.
     clang::DiagnosticsEngine &Diags;
 
     /// True if we are parsing a function parameter list.
