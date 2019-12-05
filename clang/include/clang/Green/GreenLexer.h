@@ -212,12 +212,6 @@ namespace green {
       return Scanner.getDiagnostics();
     }
 
-    char char_lookahead(int n) {
-      if (n)
-        return Scanner.getLookahead(n);
-      return Scanner.getLookahead();
-    }
-
     /// The underlying scanner.
     CharacterScanner Scanner;
   };
@@ -274,10 +268,6 @@ namespace green {
       return Scanner.getDiagnostics();
     }
 
-    char char_lookahead(int n) {
-      return Scanner.char_lookahead(n);
-    }
-
     /// The underlying scanner.
     LineScanner Scanner;
 
@@ -305,10 +295,6 @@ namespace green {
     Token operator()()
     {
       return Scanner();
-    }
-
-    char char_lookahead(int n = 0) {
-      return Scanner.char_lookahead(n);
     }
 
     BlockScanner Scanner;

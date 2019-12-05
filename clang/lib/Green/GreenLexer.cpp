@@ -283,7 +283,6 @@ Token CharacterScanner::matchBlockComment() {
     return matchEof();
   }
   consume(2); // '#>'
-  auto EndLoc = getSourceLocation(First);
 
   // Build the block comment.
   Symbol Sym = getSymbol(Start, First);

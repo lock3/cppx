@@ -40,28 +40,62 @@ namespace green
   {
     Parser(clang::SourceManager &SM, File const& F);
 
-    Token const& peekToken() {
-      return Lookahead;
+    void fetchToken()
+    {
+      Toks.push_back(Lex());
+    }
+
+    Token const& peekToken() const {
+      return Toks.front();
+    }
+
+    Token const& peekToken(std::size_t N)
+    {
+      // The token is in the lookahead buffer.
+      if (N < Toks.size())
+        return Toks[N];
+
+      // Load tokens until we reach the nth token.
+      N = N - Toks.size() + 1;
+      while (N != 0) {
+        fetchToken();
+        --N;
+      }
+
+      return Toks.back();
     }
 
     TokenKind getLookahead() const {
-      return Lookahead.getKind();
+      return peekToken().getKind();
+    }
+
+    TokenKind getLookahead(std::size_t N) {
+      return peekToken(N).getKind();
     }
 
     clang::SourceLocation getInputLocation() const {
-      return Lookahead.getLocation();
+      return peekToken().getLocation();
     }
 
     bool atEndOfFile() {
-      return Lookahead.isEndOfFile();
+      return peekToken().isEndOfFile();
     }
 
-    bool nextTokenIs(TokenKind K) {
+    bool nextTokenIs(TokenKind K) const {
       return getLookahead() == K;
     }
 
-    bool nextTokenIs(char const* Id) {
+    bool nextTokenIs(char const* Id) const {
       return nextTokenIs(tok::Identifier) && peekToken().hasSpelling(Id);
+    }
+
+    bool nthTokenIs(std::size_t N, TokenKind K) {
+      return getLookahead(N) == K;
+    }
+
+    bool nthTokenIs(std::size_t N, char const* Id) {
+      Token const& Tok = peekToken(N);
+      return Tok.hasKind(tok::Identifier) && Tok.hasSpelling(Id);
     }
 
     bool nextTokenIsNot(TokenKind K) {
@@ -72,9 +106,23 @@ namespace green
       return !nextTokenIs(Id);
     }
 
+    bool nthTokenIsNot(std::size_t N, TokenKind K) {
+      return !nthTokenIs(N, K);
+    }
+
+    bool nthTokenIsNot(std::size_t N, char const* Id) {
+      return !nthTokenIs(N, Id);
+    }
+
     Token consumeToken() {
-      Token Tok = Lookahead;
-      Lookahead = Lex();
+      // Take the front token.
+      Token Tok = Toks.front();
+      Toks.pop_front();
+
+      // Refresh the queue.
+      if (Toks.empty())
+        fetchToken();
+
       return Tok;
     }
 
@@ -92,6 +140,20 @@ namespace green
       return {};
     }
 
+    Token matchNthToken(std::size_t N, TokenKind K)
+    {
+      if (nthTokenIs(N, K))
+        return consumeToken();
+      return {};
+    }
+
+    Token matchNthToken(std::size_t N, char const* Id)
+    {
+      if (nthTokenIs(N, Id))
+        return consumeToken();
+      return {};
+    }
+
     template<typename Predicate>
     Token matchTokenIf(Predicate Pred) {
       if (Pred(getLookahead()))
@@ -100,7 +162,14 @@ namespace green
     }
 
     template<typename Predicate>
-    Token matchTokenIf(Predicate Pred, Parser &P) {
+    Token matchNthTokenIf(std::size_t N, Predicate Pred) {
+      if (Pred(getLookahead()))
+        return consumeToken();
+      return {};
+    }
+
+    template<typename Predicate>
+    Token matchTokens(Predicate Pred, Parser &P) {
       if (Pred(P))
         return consumeToken();
       return {};
@@ -182,8 +251,8 @@ namespace green
     /// The lexer.
     Lexer Lex;
 
-    /// The lookahead token.
-    Token Lookahead;
+    /// Lookahead tokens.
+    std::deque<Token> Toks;
 
     /// Diagnostics.
     clang::DiagnosticsEngine &Diags;

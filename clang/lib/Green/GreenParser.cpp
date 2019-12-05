@@ -103,7 +103,7 @@ struct EnclosingTabs : EnclosingTokens<enc::Tabs>
 Parser::Parser(clang::SourceManager &SM, File const& F)
   : Lex(SM, F), Diags(SM.getDiagnostics())
 {
-  Lookahead = Lex();
+  fetchToken();
 }
 
 Token Parser::expectToken(TokenKind K)
@@ -406,7 +406,7 @@ bool is_or_operator(Parser& p)
 Syntax *Parser::parseOr()
 {
   Syntax *e1 = parseAnd();
-  while (Token op = matchTokenIf(is_or_operator, *this))
+  while (Token op = matchTokens(is_or_operator, *this))
   {
     Syntax *e2 = parseAnd();
     e1 = onBinary(op, e1, e2);
@@ -430,7 +430,7 @@ auto is_and_operator = [](Parser& p) -> bool
 Syntax *Parser::parseAnd()
 {
   Syntax *e1 = parseCmp();
-  while (Token op = matchTokenIf(is_and_operator, *this))
+  while (Token op = matchTokens(is_and_operator, *this))
   {
     Syntax *e2 = parseCmp();
     e1 = onBinary(op, e1, e2);
@@ -439,18 +439,15 @@ Syntax *Parser::parseAnd()
   return e1;
 }
 
-auto is_logical_unary_operator = [](Parser& p) -> bool
-{
-  return p.nextTokenIs(tok::Ampersand)
-      || p.nextTokenIs(tok::DotDot)
-      || p.nextTokenIs(tok::Bang)
-      || p.nextTokenIs("not");
-};
+static bool is_logical_unary_operator(Parser& P) {
+  return P.nextTokenIs(tok::Ampersand)
+      || P.nextTokenIs(tok::DotDot)
+      || P.nextTokenIs(tok::Bang)
+      || P.nextTokenIs("not");
+}
 
-auto is_relational_operator = [](Parser& p) -> bool
-{
-  switch (p.getLookahead())
-  {
+static bool is_relational_operator(Parser& P) {
+  switch (P.getLookahead()) {
   default:
     return false;
   case tok::EqualEqual:
@@ -470,14 +467,14 @@ auto is_relational_operator = [](Parser& p) -> bool
 ///    unary-operator cmp
 Syntax *Parser::parseCmp()
 {
-  if (Token op = matchTokenIf(is_logical_unary_operator, *this))
+  if (Token op = matchTokens(is_logical_unary_operator, *this))
   {
     Syntax *e1 = parseCmp();
     return onUnary(op, e1);
   }
 
   Syntax *e1 = parseTo();
-  while (Token op = matchTokenIf(is_relational_operator, *this))
+  while (Token op = matchTokens(is_relational_operator, *this))
   {
     Syntax *e2 = parseTo();
     e1 = onBinary(op, e1, e2);
@@ -486,11 +483,11 @@ Syntax *Parser::parseCmp()
   return e1;
 }
 
-auto is_to_operator = [](Parser& p) -> bool
+bool is_to_operator(Parser& P)
 {
-  return p.nextTokenIs(tok::Colon)
-      || p.nextTokenIs(tok::DotDot)
-      || p.nextTokenIs(tok::MinusGreater);
+  return P.nextTokenIs(tok::Colon)
+      || P.nextTokenIs(tok::DotDot)
+      || P.nextTokenIs(tok::MinusGreater);
 };
 
 // to:
@@ -507,7 +504,7 @@ auto is_to_operator = [](Parser& p) -> bool
 Syntax *Parser::parseTo()
 {
   Syntax *e1 = parseAdd();
-  while (Token op = matchTokenIf(is_to_operator, *this))
+  while (Token op = matchTokens(is_to_operator, *this))
   {
     Syntax *e2 = parseAdd();
     e1 = onBinary(op, e1, e2);
@@ -516,9 +513,9 @@ Syntax *Parser::parseTo()
   return e1;
 }
 
-auto is_add_operator = [](Parser& p) -> bool
+bool is_add_operator(Parser& P)
 {
-  return p.nextTokenIs(tok::Plus) || p.nextTokenIs(tok::Minus);
+  return P.nextTokenIs(tok::Plus) || P.nextTokenIs(tok::Minus);
 };
 
 /// add:
@@ -531,7 +528,7 @@ auto is_add_operator = [](Parser& p) -> bool
 Syntax *Parser::parseAdd()
 {
   Syntax *e1 = parseMul();
-  while (Token op = matchTokenIf(is_add_operator, *this))
+  while (Token op = matchTokens(is_add_operator, *this))
   {
     Syntax *e2 = parseMul();
     e1 = onBinary(op, e1, e2);
@@ -540,9 +537,9 @@ Syntax *Parser::parseAdd()
   return e1;
 }
 
-auto is_mul_operator = [](Parser& p) -> bool
+static bool is_mul_operator(Parser& P)
 {
-  return p.nextTokenIs(tok::Star) || p.nextTokenIs(tok::Slash);
+  return P.nextTokenIs(tok::Star) || P.nextTokenIs(tok::Slash);
 };
 
 /// mul:
@@ -551,7 +548,7 @@ auto is_mul_operator = [](Parser& p) -> bool
 Syntax *Parser::parseMul()
 {
   Syntax *e1 = parseMacro();
-  while (Token op = matchTokenIf(is_mul_operator, *this))
+  while (Token op = matchTokens(is_mul_operator, *this))
   {
     Syntax *e2 = parseMacro();
     e1 = onBinary(op, e1, e2);
@@ -595,37 +592,21 @@ Syntax *Parser::parseMacro()
   if (nextTokenIs("for"))
     return parseFor();
 
+  // FIXME: What are we matching here?
   if (nextTokenIs(tok::LeftBrace) || nextTokenIs(tok::Colon))
     return parseBlock();
 
+  // FIXME: Should this be parsePost?
   Syntax *e1 = parsePre();
 
-  // TODO: Support a continued chain of macros.
   if (nextTokenIs(tok::LeftBrace))
   {
     Syntax *e2 = parseBlock();
     return onMacro(e1, e2);
-  } else if (nextTokenIs(tok::Colon)) {
-    // We need to make sure that we have a sequence of newlines followed
-    // by a sequence of indents in order to parse a nested block.
-    unsigned la = 1;
-    while (Lex.char_lookahead(la) == '\n')
-      ++la;
-
-    if (la > 1) {
-      // Record the lookahead where we see the first indent.
-      unsigned indent_la = la;
-      while (Lex.char_lookahead(la) == '\t' || Lex.char_lookahead(la) == ' ')
-        ++la;
-
-      // if we had both a newline and an indent, we're good to parse a block.
-      if (la > indent_la) {
-        Syntax *e2 = parseBlock();
-        return onMacro(e1, e2);
-      }
-
-      assert(false && "Parsing block without indent.");
-    }
+  }
+  if (nextTokenIs(tok::Colon) && nthTokenIs(1, tok::Indent)) {
+      Syntax *e2 = parseBlock();
+      return onMacro(e1, e2);
   }
 
   return e1;
