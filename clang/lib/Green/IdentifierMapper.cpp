@@ -12,14 +12,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/Lex/Preprocessor.h"
-#include "llvm/Support/raw_ostream.h"
-
 #include "clang/Green/GreenSema.h"
-#include "clang/Green/GreenTokens.h"
+#include "clang/Green/Tokens.h"
 #include "clang/Green/IdentifierMapper.h"
 #include "clang/Green/Syntax.h"
 #include "clang/Green/SyntaxContext.h"
+#include "clang/Lex/Preprocessor.h"
+
+#include "llvm/Support/raw_ostream.h"
 
 namespace green {
 
@@ -52,11 +52,11 @@ IdentifierMapper::MapList(const ListSyntax *S) {
       const AtomSyntax *Name = cast<AtomSyntax>(Child);
 
       // This might be a number or string literal.
-      if (!Name->Tok.has_kind(tok_identifier))
+      if (!Name->Tok.hasKind(tok::Identifier))
         continue;
 
       clang::IdentifierInfo *II =
-        PP.getIdentifierInfo(Name->Tok.spelling());
+        PP.getIdentifierInfo(Name->Tok.getSpelling());
       if (isa<ArraySyntax>(CurrentTopLevelSyntax))
         GSemaRef.IdentifierMapping.insert({II, Name});
     }
@@ -69,7 +69,7 @@ IdentifierMapper::MapCall(const CallSyntax *S) {
   // or an untyped variable. If it is the latter, then just map it now.
   if (isa<AtomSyntax>(S->Callee())) {
     const AtomSyntax *CalleeAtom = cast<AtomSyntax>(S->Callee());
-    std::string Spelling = CalleeAtom->Tok.spelling();
+    std::string Spelling = CalleeAtom->Tok.getSpelling();
     if (PP.getIdentifierInfo(Spelling) == OperatorColonII) {
       return HandleOperatorColon(S);
     }
@@ -77,7 +77,7 @@ IdentifierMapper::MapCall(const CallSyntax *S) {
       return HandleOperatorExclaim(S);
     else {
       clang::IdentifierInfo *II =
-        PP.getIdentifierInfo(CalleeAtom->Tok.spelling());
+        PP.getIdentifierInfo(CalleeAtom->Tok.getSpelling());
       GSemaRef.IdentifierMapping.insert({II, CurrentTopLevelSyntax});
       MapIdentifiers(cast<ArraySyntax>(S->Args()));
     }
@@ -101,7 +101,7 @@ IdentifierMapper::HandleOperatorColon(const CallSyntax *S) {
     if (isa<AtomSyntax>(ArgList->Elems[0])) {
       const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);
       clang::IdentifierInfo *II =
-        PP.getIdentifierInfo(Name->Tok.spelling());
+        PP.getIdentifierInfo(Name->Tok.getSpelling());
 
       GSemaRef.IdentifierMapping.insert({II, S});
 

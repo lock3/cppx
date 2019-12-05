@@ -1976,7 +1976,7 @@ void TextNodeDumper::VisitErrorSyntax(const green::ErrorSyntax *S) {
 
 void TextNodeDumper::VisitAtomSyntax(const green::AtomSyntax *S) {
   using namespace green;
-  OS << " Token: " << S->Tok.spelling();
+  OS << ' ' << S->Tok.getSpelling();
 }
 
 void TextNodeDumper::VisitListSyntax(const green::ListSyntax *S) {

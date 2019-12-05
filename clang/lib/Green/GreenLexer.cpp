@@ -43,19 +43,19 @@ bool isIdentifierRest(char C) {
 
 bool isDecimalDigit(char C) {
   return std::isdigit(C);
-};
+}
 
 bool isHexadecimalDigit(char C) {
   return std::isxdigit(C);
-};
+}
 
 bool isDecimalExponent(char C) {
   return C == 'e' || C == 'E';
-};
+}
 
 bool isSign(char C) {
   return C == '+' || C == '-';
-};
+}
 
 /// The byte order mark.
 char BOM[] = {'\xef', '\xbe', '\xbb'};
@@ -74,11 +74,11 @@ CharacterScanner::CharacterScanner(clang::SourceManager &SM, File const& F)
     First += 3;
 }
 
-token CharacterScanner::operator()() {
+Token CharacterScanner::operator()() {
   while (!isDone())
   {
     // Establish this point as the start of the current token.
-    StartingPosition pos(*this);
+    StartingPosition Pos(*this);
 
     switch (getLookahead()) {
     case ' ':
@@ -93,96 +93,96 @@ token CharacterScanner::operator()() {
       return matchLineComment();
 
     case '(':
-      return matchToken(tok_left_paren);
+      return matchToken(tok::LeftParen);
     case ')':
-      return matchToken(tok_right_paren);
+      return matchToken(tok::RightParen);
     case '[':
-      return matchToken(tok_left_bracket);
+      return matchToken(tok::LeftBracket);
     case ']':
-      return matchToken(tok_right_bracket);
+      return matchToken(tok::RightBracket);
     case '{':
-      return matchToken(tok_left_brace);
+      return matchToken(tok::LeftBrace);
     case '}':
-      return matchToken(tok_right_brace);
+      return matchToken(tok::RightBrace);
     case ':':
-      return matchToken(tok_colon);
+      return matchToken(tok::Colon);
     case ';':
-      return matchToken(tok_semicolon);
+      return matchToken(tok::Semicolon);
     case ',':
-      return matchToken(tok_comma);
+      return matchToken(tok::Comma);
 
     case '.':
       if (isDecimalDigit(getLookahead(1)))
         return matchDecimalNumber();
-      return matchToken(tok_dot);
+      return matchToken(tok::Dot);
 
     case '?':
-      return matchToken(tok_question);
+      return matchToken(tok::Question);
     case '+':
       if (getLookahead(1) == '=')
-        return matchToken(tok_plus_equal);
-      return matchToken(tok_plus);
+        return matchToken(tok::PlusEqual);
+      return matchToken(tok::Plus);
 
     case '-':
       if (getLookahead(1) == '=')
-        return matchToken(tok_minus_equal);
+        return matchToken(tok::MinusEqual);
       if (getLookahead(1) == '>')
-        return matchToken(tok_minus_greater);
-      return matchToken(tok_minus);
+        return matchToken(tok::MinusGreater);
+      return matchToken(tok::Minus);
 
     case '*':
       if (getLookahead(1) == '=')
-        return matchToken(tok_star_equal);
-      return matchToken(tok_star);
+        return matchToken(tok::StarEqual);
+      return matchToken(tok::Star);
 
     case '/':
       if (getLookahead(1) == '=')
-        return matchToken(tok_slash_equal);
-      return matchToken(tok_slash);
+        return matchToken(tok::SlashEqual);
+      return matchToken(tok::Slash);
 
     case '%':
       if (getLookahead(1) == '=')
-        return matchToken(tok_percent_equal);
-      return matchToken(tok_percent);
+        return matchToken(tok::PercentEqual);
+      return matchToken(tok::Percent);
 
     case '&':
       if (getLookahead(1) == '&')
-        return matchToken(tok_ampersand_ampersand);
-      return matchToken(tok_ampersand);
+        return matchToken(tok::AmpersandAmpersand);
+      return matchToken(tok::Ampersand);
 
     case '|':
       if (getLookahead(1) == '|')
-        return matchToken(tok_bar_bar);
-      return matchToken(tok_bar);
+        return matchToken(tok::BarBar);
+      return matchToken(tok::Bar);
 
     case '<':
       if (getLookahead(1) == '#')
         return matchBlockComment();
       else if (getLookahead(1) == '=')
-        return matchToken(tok_less_equal);
+        return matchToken(tok::LessEqual);
       else if (getLookahead(1) == '>')
-        return matchToken(tok_less_greater);
-      return matchToken(tok_less);
+        return matchToken(tok::LessGreater);
+      return matchToken(tok::Less);
 
     case '>':
       if (getLookahead(1) == '=')
-        return matchToken(tok_greater_equal);
-      return matchToken(tok_greater);
+        return matchToken(tok::GreaterEqual);
+      return matchToken(tok::Greater);
 
     case '~':
-      return matchToken(tok_tilde);
+      return matchToken(tok::Tilde);
 
     case '=':
       if (getLookahead(1) == '=')
-        return matchToken(tok_equal_equal);
+        return matchToken(tok::EqualEqual);
       else if (getLookahead(1) == '>')
-        return matchToken(tok_equal_greater);
-      return matchToken(tok_equal);
+        return matchToken(tok::EqualGreater);
+      return matchToken(tok::Equal);
 
     case '!':
       if (getLookahead(1) == '=')
-        return matchToken(tok_bang_equal);
-      return matchToken(tok_bang);
+        return matchToken(tok::BangEqual);
+      return matchToken(tok::Bang);
 
     case '\'':
       return matchCharacter();
@@ -207,47 +207,47 @@ token CharacterScanner::operator()() {
       // Return an unknown token.
       //
       // FIXME: This could be an ill-formed UTF-8 character.
-      return matchToken(tok_unknown);
+      return matchToken(tok::Unknown);
     }
   }
 
   return matchEof();
 }
 
-token CharacterScanner::makeToken(token_kind K, char const* F, char const* L) {
+Token CharacterScanner::makeToken(TokenKind K, char const* F, char const* L) {
   return makeToken(K, F, L - F);
 }
 
-token CharacterScanner::makeToken(token_kind K, char const* S, std::size_t N) {
+Token CharacterScanner::makeToken(TokenKind K, char const* S, std::size_t N) {
   clang::SourceLocation Loc = getSourceLocation(S);
   symbol Sym = get_symbol(S, N);
-  token Tok(K, Loc, Sym);
+  Token Tok(K, Loc, Sym);
 
   // Update line flags.
   if (Column - N == 1)
-    Tok.flags |= tf_starts_line;
+    Tok.Flags |= TF_StartsLine;
 
   return Tok;
 }
 
-token CharacterScanner::matchEof() {
-  // TODO: replace with getendoffile
-  return token(getSourceLocation(First));
+Token CharacterScanner::matchEof() {
+  clang::SourceLocation Loc = SM.getLocForEndOfFile(Input->getID());
+  return Token(tok::EndOfFile, Loc, symbol());
 }
 
-token CharacterScanner::matchSpace() {
+Token CharacterScanner::matchSpace() {
   consume();
   while (isSpace(getLookahead()))
     consume();
-  return makeToken(tok_space, Start, First);
+  return makeToken(tok::Space, Start, First);
 }
 
-token CharacterScanner::matchNewline() {
+Token CharacterScanner::matchNewline() {
   assert(isNewline(getLookahead()));
 
   // FIXME: Handle the \r\n case.
   consume();
-  token tok = makeToken(tok_newline, Start, 1);
+  Token tok = makeToken(tok::Newline, Start, 1);
 
   // Update the line and reset the column.
   ++Line;
@@ -256,15 +256,15 @@ token CharacterScanner::matchNewline() {
   return tok;
 }
 
-token CharacterScanner::matchLineComment() {
+Token CharacterScanner::matchLineComment() {
   assert(nextCharacterIs('#'));
   consume();
   while (!isDone() && !isNewline(getLookahead()))
     consume();
-  return makeToken(tok_line_comment, Start, First);
+  return makeToken(tok::LineComment, Start, First);
 }
 
-token CharacterScanner::matchBlockComment() {
+Token CharacterScanner::matchBlockComment() {
   auto BeginLoc = getSourceLocation(First);
   consume(2); // '<#'
   while (!isDone() && nextCharacterIsNot('#') && nthCharacterIsNot(1, '>')) {
@@ -287,24 +287,24 @@ token CharacterScanner::matchBlockComment() {
 
   // Build the block comment.
   symbol Sym = get_symbol(Start, First);
-  return token(tok_block_comment, BeginLoc, EndLoc, Sym);
+  return Token(tok::BlockComment, BeginLoc, Sym);
 }
 
-token CharacterScanner::matchToken(token_kind K) {
-  std::size_t Len = token_length(K);
+Token CharacterScanner::matchToken(TokenKind K) {
+  std::size_t Len = getTokenLength(K);
   consume(Len);
   return makeToken(K, Start, Len);
 }
 
-token CharacterScanner::matchWord() {
+Token CharacterScanner::matchWord() {
   assert(isIdentifierStart(getLookahead()));
   consume();
   while (isIdentifierRest(getLookahead()))
     consume();
-  return makeToken(tok_identifier, Start, First);
+  return makeToken(tok::Identifier, Start, First);
 }
 
-token CharacterScanner::matchNumber() {
+Token CharacterScanner::matchNumber() {
   // FIXME: The specification also allows for hex ASCII (ish?) and
   // Unicode hex literals.
   if (getLookahead(0) == '0')
@@ -315,7 +315,7 @@ token CharacterScanner::matchNumber() {
   return matchDecimalNumber();
 }
 
-token CharacterScanner::matchDecimalNumber() {
+Token CharacterScanner::matchDecimalNumber() {
   if (nextCharacterIs('.'))
   {
     // Matches '. decimal-digit-seq ...'
@@ -332,7 +332,7 @@ token CharacterScanner::matchDecimalNumber() {
         return matchDecimalExponent();
 
       consume();
-      return makeToken(tok_decimal_float, Start, First);
+      return makeToken(tok::DecimalFloat, Start, First);
     }
   }
 
@@ -340,42 +340,43 @@ token CharacterScanner::matchDecimalNumber() {
   if (isDecimalExponent(getLookahead()))
     return matchDecimalExponent();
 
-  return makeToken(tok_decimal_integer, Start, First);
+  return makeToken(tok::DecimalInteger, Start, First);
 }
 
-token CharacterScanner::matchDecimalFraction() {
+Token CharacterScanner::matchDecimalFraction() {
   require('.');
   matchDecimalDigitSeq();
   if (isDecimalExponent(getLookahead()))
     return matchDecimalExponent();
-  return makeToken(tok_decimal_float, Start, First);
+  return makeToken(tok::DecimalFloat, Start, First);
 }
 
-token CharacterScanner::matchDecimalExponent() {
+Token CharacterScanner::matchDecimalExponent() {
   requireIf(isDecimalExponent);
   matchIf(isSign);
   // FIXME: There could be an error here.
   matchDecimalDigitSeq();
-  return makeToken(tok_decimal_float, Start, First);
+  return makeToken(tok::DecimalFloat, Start, First);
 }
 
-token CharacterScanner::matchHexadecimalNumber() {
+Token CharacterScanner::matchHexadecimalNumber() {
   consume(2); // Matches '0x'.
 
   // FIXME: Match hex floats?
-
+  // FIXME: Wrong error.
   if (!isHexadecimalDigit(getLookahead())) {
-    getDiagnostics().Report(getInputLocation(), clang::diag::err_bad_string_encoding);
+    getDiagnostics().Report(getInputLocation(),
+                           clang::diag::err_bad_string_encoding);
     // error(getInputLocation(), "invalid hexadecimal number");
     return {};
   }
 
   matchHexadecimalDigitSeq();
 
-  return makeToken(tok_hexadecimal_integer, Start, First);
+  return makeToken(tok::HexadecimalInteger, Start, First);
 }
 
-token CharacterScanner::matchCharacter() {
+Token CharacterScanner::matchCharacter() {
   assert(nextCharacterIs('\''));
 
   consume(); // '\''
@@ -408,10 +409,10 @@ token CharacterScanner::matchCharacter() {
   }
   consume(); // '\''
 
-  return makeToken(tok_character, Start, First);
+  return makeToken(tok::Character, Start, First);
 }
 
-token CharacterScanner::matchString() {
+Token CharacterScanner::matchString() {
   assert(nextCharacterIs('"'));
 
   consume(); // '"'
@@ -442,7 +443,7 @@ token CharacterScanner::matchString() {
   }
   consume(); // '"'
 
-  return makeToken(tok_string, Start, First);
+  return makeToken(tok::String, Start, First);
 }
 
 void CharacterScanner::matchEscapeSequence() {
@@ -473,12 +474,12 @@ void CharacterScanner::matchEscapeSequence() {
   }
 }
 
-token CharacterScanner::matchHexadecimalCharacter() {
+Token CharacterScanner::matchHexadecimalCharacter() {
   // sorry(getInputLocation(), "hexadecimal characters not supported");
   return {};
 }
 
-token CharacterScanner::matchUnicodeCharacter() {
+Token CharacterScanner::matchUnicodeCharacter() {
   // sorry(getInputLocation(), "unicode characters not supported");
   return {};
 }
@@ -517,30 +518,30 @@ CharacterScanner::getSourceLocation(char const* Loc) {
 
 // Line scanner
 
-token LineScanner::operator()() {
-  token tok;
+Token LineScanner::operator()() {
+  Token Tok;
   bool startsLine = false;
   while (true) {
-    tok = Scanner();
+    Tok = Scanner();
 
     // Space at the beginning of a line cannot be discarded here.
-    if (tok.is_space() && tok.starts_line())
+    if (Tok.isSpace() && Tok.isAtStartOfLine())
       break;
 
     // Propagate a previous line-start flag to this next token.
     if (startsLine) {
-      tok.flags |= tf_starts_line;
+      Tok.Flags |= TF_StartsLine;
       startsLine = false;
     }
 
     // Empty lines are discarded.
-    if (tok.is_newline() && tok.starts_line())
+    if (Tok.isNewline() && Tok.isAtStartOfLine())
       continue;
 
     // Errors, space, and comments are discardable. If a token starts a
     // line, the next token will become the new start of line.
-    if (tok.is_invalid() || tok.is_space() || tok.is_comment()) {
-      startsLine = tok.starts_line();
+    if (Tok.isInvalid() || Tok.isSpace() || Tok.isComment()) {
+      startsLine = Tok.isAtStartOfLine();
       continue;
     }
 
@@ -548,23 +549,23 @@ token LineScanner::operator()() {
     break;
   };
 
-  return tok;
+  return Tok;
 }
 
 // Block scanner
 
-token BlockScanner::operator()() {
+Token BlockScanner::operator()() {
   // Get the next token, possibly one that we've buffered.
-  token Tok;
+  Token Tok;
   if (Lookahead)
     Tok = std::exchange(Lookahead, {});
   else
     Tok = Scanner();
 
   // Check for a newline followed by indentation.
-  if (Tok.is_newline()) {
-    token Next = Scanner();
-    if (Next.is_space()) {
+  if (Tok.isNewline()) {
+    Token Next = Scanner();
+    if (Next.isSpace()) {
       // A newline followed by space is either an indent or a dedent.
       // For example:
       //
@@ -598,28 +599,28 @@ token BlockScanner::operator()() {
     }
   }
 
-  assert(!Tok.is_newline());
+  assert(!Tok.isNewline());
   return Tok;
 }
 
-token BlockScanner::matchSeparator(token const& nl) {
-  return token(tok_separator, nl.loc, nl.sym);
+Token BlockScanner::matchSeparator(Token const& Tok) {
+  return Token(tok::Separator, Tok.getLocation(), Tok.getSymbol());
 }
 
-token BlockScanner::matchIndent(token const& nl) {
-  return token(tok_indent, nl.loc, nl.sym);
+Token BlockScanner::matchIndent(Token const& Tok) {
+  return Token(tok::Indent, Tok.getLocation(), Tok.getSymbol());
 }
 
-token BlockScanner::matchDedent(token const& nl) {
-  return token(tok_dedent, nl.loc, nl.sym);
+Token BlockScanner::matchDedent(Token const& Tok) {
+  return Token(tok::Dedent, Tok.getLocation(), Tok.getSymbol());
 }
 
-static symbol getSymbol(token const& Tok) {
-  return Tok.is_invalid() ? symbol() : Tok.sym;
+static symbol getSymbol(Token const& Tok) {
+  return Tok.isInvalid() ? symbol() : Tok.getSymbol();
 }
 
 /// True if `A` and `B` have the same spellings.
-static bool equalSpelling(token const& A, token const& B) {
+static bool equalSpelling(Token const& A, Token const& B) {
   return getSymbol(A) == getSymbol(B);
 }
 
@@ -629,16 +630,16 @@ static bool startsWith(symbol Sym, symbol Pre) {
 }
 
 /// True if the lexeme of `tok` has the lexeme of `pre` has a prefix.
-static bool startsWith(token const& Tok, token const& Pre) {
+static bool startsWith(Token const& Tok, Token const& Pre) {
   return startsWith(getSymbol(Tok), getSymbol(Pre));
 }
 
-token BlockScanner::combineSpace(token const& Nl, token const& NewIndent) {
+Token BlockScanner::combineSpace(Token const& Nl, Token const& NewIndent) {
   // Emit queued dedents.
   if (!Dedents.empty())
     return popDedent();
 
-  token PrevIndent = currentIndentation();
+  Token PrevIndent = currentIndentation();
 
   // If the indentations are the same, this is a separator. Note
   // that we replace the current prefix for diagnostics purposes.
@@ -652,7 +653,7 @@ token BlockScanner::combineSpace(token const& Nl, token const& NewIndent) {
   // then indent.
   if (startsWith(NewIndent, PrevIndent)) {
     pushIndentation(NewIndent);
-    return matchIndent(Nl);
+    return matchIndent(NewIndent);
   }
 
   // The previous indentation starts with the new (i.e., previous is longer),
@@ -662,7 +663,7 @@ token BlockScanner::combineSpace(token const& Nl, token const& NewIndent) {
     do {
       popIndentation();
       PrevIndent = currentIndentation();
-      pushDedent(matchDedent(Nl));
+      pushDedent(matchDedent(NewIndent));
     } while (!Prefix.empty() && !equalSpelling(NewIndent, PrevIndent));
 
     // Update the location of the last indent for diagnostic purposes.
@@ -672,8 +673,11 @@ token BlockScanner::combineSpace(token const& Nl, token const& NewIndent) {
     return popDedent();
   }
 
-  // FIXME: Note the previous indentation depth.
-  getDiagnostics().Report(NewIndent.loc, clang::diag::err_invalid_indentation);
+  // FIXME: Note the previous indentation depth. This is the reason we
+  // overwrite the last entry in the stack: to get the nearest indentation
+  // of the expected length.
+  getDiagnostics().Report(NewIndent.getLocation(),
+                          clang::diag::err_invalid_indentation);
 
   // Return a line separator just in case.
   return matchSeparator(Nl);

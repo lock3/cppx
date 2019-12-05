@@ -22,7 +22,6 @@
 #include "clang/Green/Syntax.h"
 #include "clang/Green/File.h"
 #include "clang/Green/GreenLexer.h"
-#include "clang/Green/GreenTokens.h"
 #include "clang/Green/ParseGreenAST.h"
 #include "clang/Green/GreenParser.h"
 #include "clang/Green/GreenSema.h"
