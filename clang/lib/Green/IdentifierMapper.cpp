@@ -31,10 +31,11 @@ IdentifierMapper::IdentifierMapper(SyntaxContext &Context, GreenSema &GSemaRef,
 {
   OperatorExclaimII = PP.getIdentifierInfo("operator'!'");
   OperatorColonII = PP.getIdentifierInfo("operator':'");
+  OperatorEqualsII = PP.getIdentifierInfo("operator'='");
 }
 
 void
-IdentifierMapper::MapIdentifiers(const ArraySyntax *S) {
+IdentifierMapper::identifyDecls(const ArraySyntax *S) {
   for (const Syntax *Child : S->children()) {
     CurrentTopLevelSyntax = S;
     if (isa<ListSyntax>(Child))
@@ -73,13 +74,15 @@ IdentifierMapper::MapCall(const CallSyntax *S) {
     if (PP.getIdentifierInfo(Spelling) == OperatorColonII) {
       return HandleOperatorColon(S);
     }
-    else if (PP.getIdentifierInfo(Spelling) == OperatorExclaimII)
+    else if (PP.getIdentifierInfo(Spelling) == OperatorExclaimII) {
       return HandleOperatorExclaim(S);
-    else {
+    } else if (PP.getIdentifierInfo(Spelling) == OperatorEqualsII) {
+      return handleOperatorEquals(S);
+    } else {
       clang::IdentifierInfo *II =
         PP.getIdentifierInfo(CalleeAtom->Tok.getSpelling());
       GSemaRef.IdentifierMapping.insert({II, CurrentTopLevelSyntax});
-      MapIdentifiers(cast<ArraySyntax>(S->Args()));
+      identifyDecls(cast<ArraySyntax>(S->Args()));
     }
   }
 }
@@ -93,7 +96,7 @@ IdentifierMapper::HandleOperatorColon(const CallSyntax *S) {
   assert(isa<AtomSyntax>(S->Callee()) &&
          "Callee of operator syntax is not an atom.");
   if (isa<ListSyntax>(S->Args())) {
-    if (!MappingOperatorExclaim)
+    if (!MappingOperatorExclaim && !MappingOperatorEquals)
       CurrentTopLevelSyntax = S;
     const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
 
@@ -103,7 +106,7 @@ IdentifierMapper::HandleOperatorColon(const CallSyntax *S) {
       clang::IdentifierInfo *II =
         PP.getIdentifierInfo(Name->Tok.getSpelling());
 
-      GSemaRef.IdentifierMapping.insert({II, S});
+      GSemaRef.IdentifierMapping.insert({II, CurrentTopLevelSyntax});
 
     // Case 2: Handle a function with a return type.
     } else if (isa<CallSyntax>(ArgList->Elems[0])) {
@@ -134,9 +137,37 @@ IdentifierMapper::HandleOperatorExclaim(const CallSyntax *S) {
 
     MappingOperatorExclaim = false;
 
+    // FIXME: For now we are going to try just identifying top level decls, so
+    // we'll move this to its own function later.
     // Map the body of the defined function.
-    assert(isa<ArraySyntax>(ArgList->Elems[1]) && "Function body not an array.");
-    MapIdentifiers(cast<ArraySyntax>(ArgList->Elems[1]));
+    // assert(isa<ArraySyntax>(ArgList->Elems[1]) && "Function body not an array.");
+    // identifyDecls(cast<ArraySyntax>(ArgList->Elems[1]));
+  }
+}
+
+// Identify a declaration of the form
+// \code
+// decl = expr
+// \endcode
+void
+IdentifierMapper::handleOperatorEquals(const CallSyntax *S) {
+  CurrentTopLevelSyntax = S;
+
+  if (isa<ListSyntax>(S->Args())) {
+    const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
+
+    MappingOperatorEquals = true;
+
+    // This might be a typed variable or single-line function definition.
+    if (isa<CallSyntax>(ArgList->Elems[0]))
+      return MapCall(cast<CallSyntax>(ArgList->Elems[0]));
+    else if (isa<AtomSyntax>(ArgList->Elems[0])) {
+      clang::IdentifierInfo *Spelling = PP.getIdentifierInfo(
+          cast<AtomSyntax>(ArgList->Elems[0])->Tok.getSpelling());
+        GSemaRef.IdentifierMapping.insert({Spelling, CurrentTopLevelSyntax});
+      }
+
+    MappingOperatorEquals = false;
   }
 }
 

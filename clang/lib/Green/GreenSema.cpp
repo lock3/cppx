@@ -31,10 +31,14 @@ GreenSema::GreenSema(SyntaxContext &Context, clang::Preprocessor &PP,
 {}
 
 void
-GreenSema::MapIdentifiers(const ArraySyntax *S)
+GreenSema::IdentifyDecls(const ArraySyntax *S)
 {
   IdentifierMapper Mapper(Context, *this, PP);
-  Mapper.MapIdentifiers(S);
+  Mapper.identifyDecls(S);
+
+  llvm::outs() << "Mappings:\n";
+  for (auto MapIter : IdentifierMapping)
+    llvm::outs() << MapIter.first->getName() << ": " << MapIter.second << '\n';
 }
 
 void

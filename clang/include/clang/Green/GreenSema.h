@@ -58,7 +58,7 @@ public:
 
   // Look through a translation unit and map the identifiers to Clang
   // constructs.
-  void MapIdentifiers(const ArraySyntax *S);
+  void IdentifyDecls(const ArraySyntax *S);
 
   // Iterate through the mapped identifiers and determine their type.
   void RequireTypes();
