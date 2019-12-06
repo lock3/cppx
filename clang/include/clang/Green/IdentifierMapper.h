@@ -65,11 +65,6 @@ private:
   // See: MappingOperatorExclaim
   bool MappingOperatorEquals = false;
 
-  // Tokenizations of strings we frequently compare.
-  clang::IdentifierInfo *OperatorExclaimII;
-  clang::IdentifierInfo *OperatorColonII;
-  clang::IdentifierInfo *OperatorEqualsII;
-
   SyntaxContext &Context;
   GreenSema &GSemaRef;
   clang::Preprocessor &PP;

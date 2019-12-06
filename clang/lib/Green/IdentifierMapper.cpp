@@ -29,9 +29,6 @@ IdentifierMapper::IdentifierMapper(SyntaxContext &Context, GreenSema &GSemaRef,
                                    clang::Preprocessor &PP)
   : Context(Context), GSemaRef(GSemaRef), PP(PP)
 {
-  OperatorExclaimII = PP.getIdentifierInfo("operator'!'");
-  OperatorColonII = PP.getIdentifierInfo("operator':'");
-  OperatorEqualsII = PP.getIdentifierInfo("operator'='");
 }
 
 void
@@ -71,12 +68,12 @@ IdentifierMapper::mapCall(const CallSyntax *S) {
   if (isa<AtomSyntax>(S->Callee())) {
     const AtomSyntax *CalleeAtom = cast<AtomSyntax>(S->Callee());
     std::string Spelling = CalleeAtom->Tok.getSpelling();
-    if (PP.getIdentifierInfo(Spelling) == OperatorColonII) {
+    if (PP.getIdentifierInfo(Spelling) == GSemaRef.OperatorColonII) {
       return handleOperatorColon(S);
     }
-    else if (PP.getIdentifierInfo(Spelling) == OperatorExclaimII) {
+    else if (PP.getIdentifierInfo(Spelling) == GSemaRef.OperatorExclaimII) {
       return handleOperatorExclaim(S);
-    } else if (PP.getIdentifierInfo(Spelling) == OperatorEqualsII) {
+    } else if (PP.getIdentifierInfo(Spelling) == GSemaRef.OperatorEqualsII) {
       return handleOperatorEquals(S);
     } else {
       clang::IdentifierInfo *II =
