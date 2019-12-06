@@ -19,7 +19,7 @@
 #include "clang/Green/Syntax.h"
 #include "clang/Green/GreenSema.h"
 #include "clang/Green/IdentifierMapper.h"
-#include "clang/Green/RequireType.h"
+#include "clang/Green/Elaborator.h"
 
 namespace green {
 
@@ -28,7 +28,11 @@ using namespace llvm;
 GreenSema::GreenSema(SyntaxContext &Context, clang::Preprocessor &PP, 
                      clang::Sema &ClangSema)
   : Context(Context), PP(PP), ClangSema(ClangSema)
-{}
+{
+  OperatorColonII = PP.getIdentifierInfo("operator':'");
+  OperatorExclaimII = PP.getIdentifierInfo("operator'!'");
+  OperatorEqualsII = PP.getIdentifierInfo("operator'='");
+}
 
 void
 GreenSema::IdentifyDecls(const ArraySyntax *S)
@@ -42,10 +46,10 @@ GreenSema::IdentifyDecls(const ArraySyntax *S)
 }
 
 void
-GreenSema::RequireTypes() {
-  TypeRequirer R(Context, *this);
+GreenSema::elaborateDecls() {
+  Elaborator E(Context, *this);
   for (auto MapIter : IdentifierMapping)
-    R.RequireType(MapIter.first, MapIter.second);
+    E.elaborateDecl(MapIter.second);
 }
 
 } // namespace usyntax

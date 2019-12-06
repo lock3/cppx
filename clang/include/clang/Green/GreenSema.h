@@ -61,9 +61,15 @@ public:
   void IdentifyDecls(const ArraySyntax *S);
 
   // Iterate through the mapped identifiers and determine their type.
-  void RequireTypes();
+  void elaborateDecls();
 
   clang::Preprocessor &getPP() { return PP; }
+
+public:
+  // Tokenizations of commonly compared-against strings.
+  const clang::IdentifierInfo *OperatorColonII;
+  const clang::IdentifierInfo *OperatorExclaimII;
+  const clang::IdentifierInfo *OperatorEqualsII;
 };
 
 } // namespace usyntax
