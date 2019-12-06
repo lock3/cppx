@@ -46,13 +46,13 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
     AST->dump();
 
   SyntaxContext Context(ClangContext);
-  GreenSema GSema(Context, PP, ClangSema);
+  GreenSema Sema(Context, PP, ClangSema);
 
   // PHASE 1: Map names to the syntaxes that introduce them.
-  GSema.MapIdentifiers(llvm::cast<ArraySyntax>(AST));
+  Sema.MapIdentifiers(llvm::cast<ArraySyntax>(AST));
 
   // PHASE 2: Find the type of each name.
-  GSema.RequireTypes();
+  Sema.RequireTypes();
 
   // PHASE 3: Create a clang declaration using the name and type of each entity.
 }
