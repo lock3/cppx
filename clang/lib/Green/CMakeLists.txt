@@ -9,6 +9,7 @@ add_clang_library(green
   GreenLexer.cpp
   GreenParser.cpp
   GreenSema.cpp
+  Elaborator.cpp
   IdentifierMapper.cpp
   ParseGreenAST.cpp
   RequireDecl.cpp

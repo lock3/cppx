@@ -40,9 +40,6 @@ struct ArraySyntax;
 class GreenSema {
   friend class IdentifierMapper;
 
-  // A mapping of identifiers as strings to syntaxes.
-  llvm::MapVector<clang::IdentifierInfo *, const Syntax *> IdentifierMapping;
-
   // The context
   SyntaxContext &Context;
 
@@ -58,12 +55,21 @@ public:
 
   // Look through a translation unit and map the identifiers to Clang
   // constructs.
-  void MapIdentifiers(const ArraySyntax *S);
+  void IdentifyDecls(const ArraySyntax *S);
 
   // Iterate through the mapped identifiers and determine their type.
-  void RequireTypes();
+  void elaborateDecls();
 
   clang::Preprocessor &getPP() { return PP; }
+
+public:
+  // Tokenizations of commonly compared-against strings.
+  const clang::IdentifierInfo *OperatorColonII;
+  const clang::IdentifierInfo *OperatorExclaimII;
+  const clang::IdentifierInfo *OperatorEqualsII;
+
+  // A mapping of identifiers as strings to syntaxes.
+  llvm::MapVector<clang::IdentifierInfo *, const Syntax *> IdentifierMapping;
 };
 
 } // namespace usyntax

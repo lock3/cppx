@@ -18,13 +18,15 @@
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/Sema.h"
 
-#include "clang/Green/SyntaxContext.h"
-#include "clang/Green/Syntax.h"
+#include "clang/Green/Elaborator.h"
 #include "clang/Green/File.h"
 #include "clang/Green/GreenLexer.h"
-#include "clang/Green/ParseGreenAST.h"
 #include "clang/Green/GreenParser.h"
 #include "clang/Green/GreenSema.h"
+#include "clang/Green/IdentifierMapper.h"
+#include "clang/Green/ParseGreenAST.h"
+#include "clang/Green/SyntaxContext.h"
+#include "clang/Green/Syntax.h"
 
 #include "clang/Green/SyntaxVisitor.h"
 
@@ -49,12 +51,17 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
   GreenSema Sema(Context, PP, ClangSema);
 
   // PHASE 1: Map names to the syntaxes that introduce them.
-  Sema.MapIdentifiers(llvm::cast<ArraySyntax>(AST));
+  IdentifierMapper Mapper(Context, GSema, PP);
+  Mapper.identifyDecls(cast<ArraySyntax>(AST));
 
-  // PHASE 2: Find the type of each name.
-  Sema.RequireTypes();
+  llvm::outs() << "Mappings:\n";
+  for (auto MapIter : GSema.IdentifierMapping)
+    llvm::outs() << MapIter.first->getName() << ": " << MapIter.second << '\n';
 
-  // PHASE 3: Create a clang declaration using the name and type of each entity.
+  // PHASE 2: Create a clang::Type and clang::Decl for each declaration.
+  Elaborator E(Context, GSema);
+  for (auto MapIter : GSema.IdentifierMapping)
+    E.elaborateDecl(MapIter.second);
 }
 
 } // namespace lock3

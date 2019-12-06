@@ -21,6 +21,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "clang/Green/GreenScope.h"
 #include "clang/Green/SyntaxIterator.h"
 #include "clang/Green/Tokens.h"
 
@@ -64,6 +65,7 @@ struct Syntax {
     return const_child_range(Children.begin(), Children.end());
   }
 
+  /// Whether or not this node is a function parameter.
   bool isParam() const { return IsParam; }
 
   clang::SourceLocation Loc;
@@ -71,7 +73,7 @@ struct Syntax {
 private:
   SyntaxKind Kind;
 
-  /// Whether or not this syntax is a function parameter.
+  /// Whether or not this node is a function parameter.
   bool IsParam;
 };
 
