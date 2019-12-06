@@ -18,6 +18,7 @@
 #include "clang/AST/Type.h"
 #include "clang/AST/Decl.h"
 #include "clang/Green/Syntax.h"
+#include "clang/Green/SyntaxContext.h"
 
 #include <unordered_map>
 
@@ -28,7 +29,6 @@ class Preprocessor;
 
 namespace green {
 
-class SyntaxContext;
 class GreenSema;
 
 class Elaborator {

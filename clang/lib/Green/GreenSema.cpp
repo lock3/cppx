@@ -34,23 +34,5 @@ GreenSema::GreenSema(SyntaxContext &Context, clang::Preprocessor &PP,
   OperatorEqualsII = PP.getIdentifierInfo("operator'='");
 }
 
-void
-GreenSema::IdentifyDecls(const ArraySyntax *S)
-{
-  IdentifierMapper Mapper(Context, *this, PP);
-  Mapper.identifyDecls(S);
-
-  llvm::outs() << "Mappings:\n";
-  for (auto MapIter : IdentifierMapping)
-    llvm::outs() << MapIter.first->getName() << ": " << MapIter.second << '\n';
-}
-
-void
-GreenSema::elaborateDecls() {
-  Elaborator E(Context, *this);
-  for (auto MapIter : IdentifierMapping)
-    E.elaborateDecl(MapIter.second);
-}
-
 } // namespace usyntax
 
