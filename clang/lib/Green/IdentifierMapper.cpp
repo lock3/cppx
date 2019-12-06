@@ -79,7 +79,7 @@ IdentifierMapper::mapCall(const CallSyntax *S) {
       clang::IdentifierInfo *II =
         PP.getIdentifierInfo(CalleeAtom->Tok.getSpelling());
       GSemaRef.IdentifierMapping.insert({II, CurrentTopLevelSyntax});
-      identifyDecls(cast<ArraySyntax>(S->Args()));
+      // identifyDecls(cast<ArraySyntax>(S->Args()));
     }
   }
 }
@@ -103,7 +103,7 @@ IdentifierMapper::handleOperatorColon(const CallSyntax *S) {
       clang::IdentifierInfo *II =
         PP.getIdentifierInfo(Name->Tok.getSpelling());
 
-      GSemaRef.IdentifierMapping.insert({II, CurrentTopLevelSyntax});
+       GSemaRef.IdentifierMapping.insert({II, CurrentTopLevelSyntax});
 
     // Case 2: handle a function with a return type.
     } else if (isa<CallSyntax>(ArgList->Elems[0])) {
