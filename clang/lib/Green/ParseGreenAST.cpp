@@ -51,16 +51,16 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
   GreenSema Sema(Context, PP, ClangSema);
 
   // PHASE 1: Map names to the syntaxes that introduce them.
-  IdentifierMapper Mapper(Context, GSema, PP);
+  IdentifierMapper Mapper(Context, Sema, PP);
   Mapper.identifyDecls(cast<ArraySyntax>(AST));
 
   llvm::outs() << "Mappings:\n";
-  for (auto MapIter : GSema.IdentifierMapping)
+  for (auto MapIter : Sema.IdentifierMapping)
     llvm::outs() << MapIter.first->getName() << ": " << MapIter.second << '\n';
 
   // PHASE 2: Create a clang::Type and clang::Decl for each declaration.
-  Elaborator E(Context, GSema);
-  for (auto MapIter : GSema.IdentifierMapping)
+  Elaborator E(Context, Sema);
+  for (auto MapIter : Sema.IdentifierMapping)
     E.elaborateDecl(MapIter.second);
 }
 
