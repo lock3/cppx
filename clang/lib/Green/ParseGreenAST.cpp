@@ -59,9 +59,9 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
     llvm::outs() << MapIter.first->getName() << ": " << MapIter.second << '\n';
 
   // PHASE 2: Create a clang::Type and clang::Decl for each declaration.
-  Elaborator E(Context, Sema);
+  Elaborator Elab(Context, Sema);
   for (auto MapIter : Sema.IdentifierMapping)
-    E.elaborateDecl(MapIter.second);
+    Elab.elaborateDecl(MapIter.second);
 }
 
 } // namespace lock3

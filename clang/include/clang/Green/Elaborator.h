@@ -41,11 +41,13 @@ class Elaborator {
 public:
   Elaborator(SyntaxContext &Context, GreenSema &GSemaRef);
 
-  clang::Decl * elaborateDecl(const Syntax *S);
-  clang::Decl * elaborateDeclForArray(const ArraySyntax *S);
-  clang::Decl * elaborateDeclForList(const ListSyntax *S);
-  clang::Decl * elaborateDeclForCall(const CallSyntax *S);
-  clang::Decl * elaborateDeclForAtom(const AtomSyntax *S);
+  clang::Decl *elaborateFile(const ArraySyntax *S);
+
+  clang::Decl *elaborateDecl(const Syntax *S);
+  clang::Decl *elaborateDeclForArray(const ArraySyntax *S);
+  clang::Decl *elaborateDeclForList(const ListSyntax *S);
+  clang::Decl *elaborateDeclForCall(const CallSyntax *S);
+  clang::Decl *elaborateDeclForAtom(const AtomSyntax *S);
 
 
     // Dictionary of built in types.

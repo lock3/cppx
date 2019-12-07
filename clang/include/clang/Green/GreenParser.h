@@ -188,7 +188,9 @@ namespace green
     Syntax* parseFile();
 
     Syntax* parseArray();
+    void parseArray(llvm::SmallVectorImpl<Syntax *> &Vec);
     Syntax* parseList();
+    void parseList(llvm::SmallVectorImpl<Syntax *> &Vec);
 
     Syntax* parseExpr();
     Syntax* parseDef();
@@ -236,17 +238,18 @@ namespace green
 
     // Semantic actions
 
-    Syntax* onAtom(Token const& tok);
-    Syntax* onArray(std::vector<Syntax*> const& vec);
-    Syntax* onList(std::vector<Syntax*> const& vec);
-    Syntax* onBinary(Token const& tok, Syntax* e1, Syntax* e2);
-    Syntax* onUnary(Token const& tok, Syntax* e1);
-    Syntax* onCall(TokenPair const& toks, Syntax* e1, Syntax* e2);
-    Syntax* onElem(TokenPair const& toks, Syntax* e1, Syntax* e2);
+    Syntax* onAtom(const Token& tok);
+    Syntax* onArray(const llvm::SmallVectorImpl<Syntax*>& Vec);
+    Syntax* onList(const llvm::SmallVectorImpl<Syntax*>& Vec);
+    Syntax* onBinary(const Token& tok, Syntax* e1, Syntax* e2);
+    Syntax* onUnary(const Token& tok, Syntax* e1);
+    Syntax* onCall(const TokenPair& toks, Syntax* e1, Syntax* e2);
+    Syntax* onElem(const TokenPair& toks, Syntax* e1, Syntax* e2);
     Syntax* onMacro(Syntax* e1, Syntax* e2);
-    Syntax* onIf(Token const& tok, Syntax* e1, Syntax* e2, Syntax* e3);
-    Syntax* onElse(Token const& tok, Syntax* e1);
-    Syntax* onLoop(Token const& tok, Syntax* e1, Syntax* e2);
+    Syntax* onIf(const Token& tok, Syntax* e1, Syntax* e2, Syntax* e3);
+    Syntax* onElse(const Token& tok, Syntax* e1);
+    Syntax* onLoop(const Token& tok, Syntax* e1, Syntax* e2);
+    Syntax* onFile(const llvm::SmallVectorImpl<Syntax*>& Vec);
 
     /// The lexer.
     Lexer Lex;

@@ -24,10 +24,13 @@
 #include <vector>
 
 namespace clang {
+
 class DeclContext;
 class Preprocessor;
 class Sema;
+class Decl;
 class Type;
+
 } // namespace clang
 
 namespace green {
@@ -36,7 +39,26 @@ class SyntaxContext;
 struct Syntax;
 struct ArraySyntax;
 
-// Semantic actions for the Green language.
+/// A declaration is stores information about the declaration of an
+/// identifier. It binds together the declaring operator, the declarator,
+/// the definition, and the corresponding C++ declaration.
+struct Declaration {
+  /// The (binary) operator that introduces the definition. This is null
+  /// for the top-level file declaration.
+  Syntax *Operator = nullptr;
+
+  /// The declarator (form of declaration).
+  Syntax *Declarator = nullptr;
+
+  /// The definition.
+  Syntax *Definition = nullptr;
+
+  /// The corresponding C++ declaration.
+  clang::Decl* Cpp = nullptr;
+};
+
+/// Maintains the state of translation for a translation unit in the Green
+/// Language.
 class GreenSema {
   friend class IdentifierMapper;
 

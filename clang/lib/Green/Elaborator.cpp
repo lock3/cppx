@@ -11,16 +11,18 @@ Elaborator::Elaborator(SyntaxContext &Context, GreenSema &GSemaRef)
   : Context(Context), GSemaRef(GSemaRef), PP(GSemaRef.getPP())
 {}
 
-Decl *
-Elaborator::elaborateDecl(const Syntax *S) {
+Decl *Elaborator::elaborateFile(const ArraySyntax *S) {
+  return nullptr;
+}
+
+Decl *Elaborator::elaborateDecl(const Syntax *S) {
   if (isa<CallSyntax>(S))
     return elaborateDeclForCall(cast<CallSyntax>(S));
   return nullptr;
 }
 
 // Get the clang::QualType described by an operator':' call.
-static QualType
-getOperatorColonType(Elaborator const &E, const CallSyntax *S) {
+static QualType getOperatorColonType(Elaborator const &E, const CallSyntax *S) {
   // Get the argument list of an operator':' call. This should have
   // two arguments, the entity (argument 1) and its type (argument 2).
   const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
@@ -29,7 +31,7 @@ getOperatorColonType(Elaborator const &E, const CallSyntax *S) {
   if (!isa<AtomSyntax>(ArgList->Elems[1]))
     assert(false && "Evaluated types not supported yet");
   const AtomSyntax *Typename = cast<AtomSyntax>(ArgList->Elems[1]);
- 
+
   auto BuiltinMapIter = E.BuiltinTypes.find(Typename->Tok.getSpelling());
   if (BuiltinMapIter == E.BuiltinTypes.end())
     assert(false && "Only builtin types are supported right now.");
@@ -39,11 +41,11 @@ getOperatorColonType(Elaborator const &E, const CallSyntax *S) {
 
 // Create a Clang Declaration for a call to operator':', in other words,
 // a variable with an explicit type. Note that this function does /not/
-// handle an operator':' on a function abstract. 
+// handle an operator':' on a function abstract.
+//
 // Called from Elaborator::elaborateDeclForCall()
-static Decl *
-handleOperatorColon(ASTContext &ClangContext, Preprocessor &PP,
-                    Elaborator const &E, const CallSyntax *S) {
+static Decl *handleOperatorColon(ASTContext &ClangContext, Preprocessor &PP,
+                                 Elaborator const &E, const CallSyntax *S) {
   QualType DeclType = getOperatorColonType(E, S);
   TypeSourceInfo *TInfo = ClangContext.CreateTypeSourceInfo(DeclType);
 

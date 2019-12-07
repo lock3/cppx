@@ -273,8 +273,9 @@ struct ElemSyntax : Syntax {
   }
 };
 
+/// A labeled block of code (e.g., a loop).
 struct MacroSyntax : Syntax {
-MacroSyntax(Syntax *Call, Syntax *Block, Syntax *Next, clang::SourceLocation Loc)
+  MacroSyntax(Syntax *Call, Syntax *Block, Syntax *Next, clang::SourceLocation Loc)
     : Syntax(SK_Macro, Loc)
   {
     Elems[0] = Call;
@@ -306,8 +307,6 @@ MacroSyntax(Syntax *Call, Syntax *Block, Syntax *Next, clang::SourceLocation Loc
     return Elems[2];
   }
 
-  std::array<Syntax *, 3> Elems;
-
   child_range children() {
     return child_range(&Elems[0], &Elems[3]);
   }
@@ -319,6 +318,26 @@ MacroSyntax(Syntax *Call, Syntax *Block, Syntax *Next, clang::SourceLocation Loc
 
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Macro;
+  }
+
+  std::array<Syntax *, 3> Elems;
+};
+
+struct FileSyntax : Syntax, VectorNode<Syntax> {
+  FileSyntax(Syntax **Ts, unsigned NumElems, clang::SourceLocation Loc)
+    : Syntax(SK_File, Loc), VectorNode(Ts, NumElems)
+  {}
+
+  child_range children() {
+    return child_range(&Elems[0], &Elems[NumElems]);
+  }
+
+  const child_range children() const {
+    return const_child_range(&Elems[0], &Elems[NumElems]);
+  }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == SK_File;
   }
 };
 
