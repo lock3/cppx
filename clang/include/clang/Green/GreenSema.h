@@ -17,6 +17,7 @@
 
 #include "clang/Basic/IdentifierTable.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/SmallVector.h"
 
 #include "clang/Green/SyntaxContext.h"
 
@@ -25,6 +26,7 @@
 
 namespace clang {
 class DeclContext;
+class LookupResult;
 class Preprocessor;
 class Sema;
 class Type;
@@ -33,6 +35,7 @@ class Type;
 namespace green {
 
 class SyntaxContext;
+class GreenScope;
 struct Syntax;
 struct ArraySyntax;
 
@@ -50,6 +53,9 @@ class GreenSema {
   // as well as perform important transformations on them.
   clang::Sema &ClangSema;
 
+  // Stack of active GreenScopes.
+  llvm::SmallVector<GreenScope *, 4> ScopeStack;
+
 public:
   GreenSema(SyntaxContext &Context, clang::Preprocessor &PP, clang::Sema &S);
 
@@ -57,10 +63,20 @@ public:
   // constructs.
   void IdentifyDecls(const ArraySyntax *S);
 
+  // Get the currently active GreenScope.
+  GreenScope *getCurScope();
+  void PushScope(GreenScope *S);
+  GreenScope *PopScope();
+
+  // Perform unqualified lookup of a name.
+  bool LookupName(clang::LookupResult &R, GreenScope *S);
+
   // Iterate through the mapped identifiers and determine their type.
   void elaborateDecls();
 
   clang::Preprocessor &getPP() { return PP; }
+
+  clang::Sema &getClangSema() { return ClangSema; }
 
 public:
   // Tokenizations of commonly compared-against strings.

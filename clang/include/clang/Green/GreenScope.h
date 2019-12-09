@@ -28,20 +28,17 @@ using AssociationUnion = llvm::PointerUnion3<clang::Decl *, clang::Expr *,
 
 class GreenScope {
   // The parent/enclosing scope of this scope.
-  const GreenScope *Parent;
-
-  // The clang entity that this scope is associated with.
-  AssociationUnion Association;
+  GreenScope *Parent;
 
   using DeclSetTy = llvm::SmallPtrSet<clang::Decl *, 32>;
   DeclSetTy DeclsInScope;
 
   unsigned Depth;
 public:
-  const GreenScope *getParent() const { return Parent; }
+  GreenScope *getParent() const { return Parent; }
   unsigned getDepth() const { return Depth; }
 
-  GreenScope(AssociationUnion Association, const GreenScope *Parent)
+  GreenScope(AssociationUnion Association, GreenScope *Parent)
     : Parent(Parent), Association(Association) {
     Depth = Parent ? Parent->getDepth() + 1 : 0;
   }
@@ -63,6 +60,9 @@ public:
            "Removing Decl from non-Decl-associated scope.");
     DeclsInScope.erase(D);
   }
+
+  // The clang entity that this scope is associated with.
+  AssociationUnion Association;
 };
 
 } // namespace green
