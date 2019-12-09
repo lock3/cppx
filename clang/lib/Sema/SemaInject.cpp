@@ -33,6 +33,10 @@ namespace clang {
   class FunctionProtoType;
 }
 
+template<typename FromDeclType, typename ToDeclType, InjectedDefType DefType>
+static void InjectPendingDefinitions(InjectionContext *Ctx,
+                                     InjectionInfo *Injection);
+
 template<typename DeclType, InjectedDefType DefType>
 static void InjectPendingDefinitions(InjectionContext *Ctx,
                                      InjectionInfo *Injection);
@@ -50,6 +54,7 @@ struct TypedValue {
 enum InjectedDefType : unsigned {
   InjectedDef_Field,
   InjectedDef_Method,
+  InjectedDef_TemplatedMethod,
   InjectedDef_FriendFunction
 };
 
@@ -415,10 +420,11 @@ public:
     if (Decl *Repl = GetDeclReplacement(D))
       return Repl;
 
-    // If we're rebuilding a fragment, and we don't have a replacement,
-    // return the decl we have.
-    if (isRebuildingFragment())
+    if (isRebuildingFragment()) {
+      // If we're rebuilding a fragment, and we don't have a replacement,
+      // return the decl we have.
       return D;
+    }
 
     // If D is part of the injection, then we must have seen a previous
     // declaration. Otherwise, return nullptr and force a lookup or error.
@@ -482,7 +488,8 @@ public:
 
   QualType TransformTemplateTypeParmType(TypeLocBuilder &TLB,
                                          TemplateTypeParmTypeLoc TL) {
-    if (shouldAttemptInstantiation(TL.getDecl())) {
+    TemplateTypeParmDecl *OldTTPDecl = TL.getDecl();
+    if (shouldAttemptInstantiation(OldTTPDecl)) {
       // FIXME: Provide better source info
       TypeSourceInfo *TSI = getSema().SubstType(
           TL, *TemplateArgs, SourceLocation(), DeclarationName());
@@ -492,7 +499,75 @@ public:
       return ResType;
     }
 
+    if (auto *NewTTPDecl
+        = cast_or_null<TemplateTypeParmDecl>(GetDeclReplacement(OldTTPDecl))) {
+      if (shouldAttemptInstantiation(NewTTPDecl)) {
+        const TemplateTypeParmType *T = TL.getTypePtr();
+
+        // This is a bit unusual. Normally clang represents template instantiations
+        // of member functions with effectively 3 "phases".
+        //
+        // 1) The original template declaration.
+        // 2) The instantiation without a definition.
+        // 3) The instantiation with its body.
+        //
+        // When we're in phase 1, moving to phase 2, clang reduces the depth
+        // by the number of substitution levels (NSL). This allows for template
+        // instantiation to properly update the type information.
+        //
+        // When we're in phase 2, moving to phase 3, we actually jump back
+        // and look at the original template declaration in phase 1.
+        // This is where we get the body from.
+        //
+        // So, to be compatible, without adding invasive (expensive)
+        // logic to try and determine origin of the declaration, or
+        // adding extra bits to the declaration created by phase 2
+        // for use by phase 3, we can adjust here.
+        //
+        // When we're injecting declarations, we pretend like we're in the
+        // phase 1 to 2 translation, and reduce the depth by NSL.
+        //
+        // When we're injecting definitions, we effectively reverse this
+        // and inject at original depth, so that phase 2 to 3 can succeed.
+
+
+        // FIXME: Is there avoidable duplicated effort between the transform
+        // we're doing, and the transform that will be done when the pending
+        // instantiations are finished?
+
+        int DepthAdjustment = InjectingPendingDefinitions ?
+                          0 : TemplateArgs->getNumSubstitutedLevels();
+
+        QualType Result = getSema().Context.getTemplateTypeParmType(
+            T->getDepth() - DepthAdjustment, T->getIndex(),
+            T->isParameterPack(), NewTTPDecl);
+        TemplateTypeParmTypeLoc NewTL = TLB.push<TemplateTypeParmTypeLoc>(Result);
+        NewTL.setNameLoc(TL.getNameLoc());
+        return Result;
+      }
+    }
+
     return Base::TransformTemplateTypeParmType(TLB, TL);
+  }
+
+  TemplateName TransformTemplateName(
+      CXXScopeSpec &SS, TemplateName Name, SourceLocation NameLoc,
+      QualType ObjectType = QualType(),
+      NamedDecl *FirstQualifierInScope = nullptr,
+      bool AllowInjectedClassName = false) {
+    if (auto *TTPDecl =
+        dyn_cast_or_null<TemplateTemplateParmDecl>(Name.getAsTemplateDecl())) {
+      if (shouldAttemptInstantiation(TTPDecl)) {
+        NestedNameSpecifierLoc &&SpecLoc = SS.getWithLocInContext(
+                                                     getSema().getASTContext());
+        return getSema().SubstTemplateName(SpecLoc, Name,
+                                           NameLoc, *TemplateArgs);
+      }
+    }
+
+    return Base::TransformTemplateName(
+        SS, Name, NameLoc, ObjectType,
+        FirstQualifierInScope, AllowInjectedClassName);
   }
 
   bool TransformCXXFragmentContent(CXXFragmentDecl *OldFragment,
@@ -688,6 +763,9 @@ public:
 
   /// The pending class member injections.
   llvm::SmallVector<InjectionInfo *, 8> PendingInjections;
+
+  /// Whether we're injecting pending definitions.
+  bool InjectingPendingDefinitions = false;
 
   /// If this is a local block fragment, we will inject it into
   /// a statement rather than a context.
@@ -1427,6 +1505,8 @@ static void InjectPendingDefinitionsWithCleanup(InjectionContext &Ctx) {
   InjectionInfo *Injection = Ctx.CurInjection;
 
   InjectPendingDefinitions<FieldDecl, InjectedDef_Field>(&Ctx, Injection);
+  InjectPendingDefinitions<FunctionTemplateDecl, CXXMethodDecl,
+                           InjectedDef_TemplatedMethod>(&Ctx, Injection);
   InjectPendingDefinitions<CXXMethodDecl, InjectedDef_Method>(&Ctx, Injection);
   InjectPendingDefinitions<FunctionDecl, InjectedDef_FriendFunction>(&Ctx, Injection);
 
@@ -1701,19 +1781,35 @@ Decl *InjectionContext::InjectCXXMethodDecl(CXXMethodDecl *D, F FinishBody) {
     Owner->addDecl(Method);
   }
 
-  FinishBody(Method);
+  // If the method is has a body, create an appropriate pending definition,
+  // so that we can process it later. Note that deleted/defaulted
+  // definitions are just flags processed above. Ignore the definition
+  // if we've marked this as pure virtual.
+  if (!Method->isPure()) {
+    FinishBody(Method);
+  }
 
   return Method;
 }
 
 Decl *InjectionContext::InjectCXXMethodDecl(CXXMethodDecl *D) {
   return InjectCXXMethodDecl(D, [&](CXXMethodDecl *Method) {
-    // If the method is has a body, add it to the context so that we can
-    // process it later. Note that deleted/defaulted definitions are just
-    // flags processed above. Ignore the definition if we've marked this
-    // as pure virtual.
-    if (D->hasBody() && !Method->isPure())
-      AddPendingDefinition(InjectedDef(InjectedDef_Method, D, Method));
+    // FIXME: This logic is nearly identical to that used for
+    // CreatePartiallySubstPattern.
+
+    // FIXME: We reuse willHaveBody, is that okay?
+
+    // If this function has a body add a pending definition that translates it into
+    // the new method. If this function has been previously seen i.e. will have a body
+    // then create a similar pending definition. This is required as during a template
+    // instantiation, there are two injections, one for the the template substitutions
+    // then one for the actual injection.
+    if (D->hasBody()) {
+       Method->setWillHaveBody();
+       AddPendingDefinition(InjectedDef(InjectedDef_Method, D, Method));
+    } else if (D->willHaveBody()) {
+       AddPendingDefinition(InjectedDef(InjectedDef_Method, D, Method));
+    }
   });
 }
 
@@ -2138,51 +2234,27 @@ Decl *InjectionContext::InjectClassTemplateSpecializationDecl(
 Decl *InjectionContext::CreatePartiallySubstPattern(FunctionTemplateDecl *D) {
   RebuildOnlyContextRAII RebuildCtx(*this);
 
-  Sema &S = getSema();
-
   FunctionDecl *Function = D->getTemplatedDecl();
-  const FunctionDecl *PatternDecl = D->getInstantiatedFromMemberTemplate()->getTemplatedDecl();
-  const FunctionDecl *PatternDef = PatternDecl->getDefinition();
-
-  Stmt *Pattern = nullptr;
-  if (PatternDef) {
-    Pattern = PatternDef->getBody(PatternDef);
-    PatternDecl = PatternDef;
-    if (PatternDef->willHaveBody())
-      PatternDef = nullptr;
-  }
-
   return InjectCXXMethodDecl(cast<CXXMethodDecl>(Function), [&](CXXMethodDecl *Method) {
-    S.ActOnStartOfFunctionDef(nullptr, Method);
+    // FIXME: This logic is nearly identical to that used for
+    // CreatePartiallySubstPattern.
 
-    Sema::SynthesizedFunctionScope Scope(S, Method);
-    Sema::ContextRAII MethodCtx(S, Method);
+    // FIXME: We reuse willHaveBody, is that okay?
 
-    // We need to substitute out the template parameters we know.
-    // Then if substitution succeeds, we need to transform the body,
-    // which has yet to be touched by injection transform.
-    MultiLevelTemplateArgumentList TemplateArgs =
-      S.getTemplateInstantiationArgs(Function, nullptr, false, PatternDecl);
-    SmallVector<std::pair<Decl *, Decl *>, 8> ExistingMappings;
+    // FIXME: We can probably better optimize this situation to reduce the amount
+    // of tree transforms.
 
-    StmtResult NewBody = S.SubstStmt(Pattern, TemplateArgs);
-
-    if (NewBody.isInvalid()) {
-      Method->setInvalidDecl();
-    } else {
-      NewBody = TransformStmt(NewBody.get());
-      if (NewBody.isInvalid()) {
-        Method->setInvalidDecl();
-      }
+    // If this function has a body add a pending definition that translates it into
+    // the new method. If this function has been previously seen i.e. will have a body
+    // then create a similar pending definition. This is required as during a template
+    // instantiation, there are two injections, one for the the template substitutions
+    // then one for the actual injection.
+    if (Function->hasBody()) {
+      Method->setWillHaveBody();
+      AddPendingDefinition(InjectedDef(InjectedDef_TemplatedMethod, D, Method));
+    } else if (Function->willHaveBody()) {
+      AddPendingDefinition(InjectedDef(InjectedDef_TemplatedMethod, D, Method));
     }
-
-    if (!NewBody.isInvalid()) {
-      assert(NewBody.get() && "A defined method was injected without its body.");
-
-      Method->setBody(NewBody.get());
-    }
-
-    S.ActOnFinishFunctionBody(Method, NewBody.get(), /*IsInstantiation=*/true);
   });
 }
 
@@ -2197,7 +2269,7 @@ Decl *InjectionContext::InjectFunctionTemplateDecl(FunctionTemplateDecl *D) {
   // Build the underlying pattern.
   Decl *Pattern;
 
-  if (D->getInstantiatedFromMemberTemplate()) {
+  if (isa<CXXMethodDecl>(D->getTemplatedDecl())) {
     Pattern = CreatePartiallySubstPattern(D);
   } else {
     Pattern = RebuildInjectDecl(D->getTemplatedDecl());
@@ -4017,6 +4089,9 @@ bool Sema::ShouldInjectPendingDefinitionsOf(CXXRecordDecl *D) {
   if (!HasPendingInjections(D))
     return false;
 
+  if (D->isInFragment())
+    return false;
+
   if (D->isCXXClassMember()) {
     auto *ParentClass = cast<CXXRecordDecl>(D->getDeclContext());
     if (!ParentClass->isCompleteDefinition())
@@ -4144,31 +4219,101 @@ static void InjectPendingDefinition(InjectionContext *Ctx,
 }
 
 static void InjectPendingDefinition(InjectionContext *Ctx,
+                                    FunctionTemplateDecl *D,
+                                    CXXMethodDecl *NewMethod) {
+  Sema &S = Ctx->getSema();
+
+  FunctionDecl *Function = D->getTemplatedDecl();
+  const FunctionDecl *PatternDecl = Function;
+  if (D->getInstantiatedFromMemberTemplate()) {
+    PatternDecl = D->getInstantiatedFromMemberTemplate()->getTemplatedDecl();
+  }
+  const FunctionDecl *PatternDef = PatternDecl->getDefinition();
+
+  Stmt *Pattern = nullptr;
+  if (PatternDef) {
+    Pattern = PatternDef->getBody(PatternDef);
+    PatternDecl = PatternDef;
+    if (PatternDef->willHaveBody())
+      PatternDef = nullptr;
+  }
+
+  S.ActOnStartOfFunctionDef(nullptr, NewMethod);
+
+  Sema::SynthesizedFunctionScope Scope(S, NewMethod);
+  Sema::ContextRAII MethodCtx(S, NewMethod);
+
+  StmtResult NewBody = Pattern;
+  if (D->getInstantiatedFromMemberTemplate()) {
+    // We need to substitute out the template parameters we know.
+    // Then if substitution succeeds, we need to transform the body,
+    // which has yet to be touched by injection transform.
+    MultiLevelTemplateArgumentList TemplateArgs =
+      S.getTemplateInstantiationArgs(Function, nullptr, false, PatternDecl);
+
+    NewBody = S.SubstStmt(Pattern, TemplateArgs);
+  }
+
+  if (NewBody.isInvalid()) {
+    NewMethod->setInvalidDecl();
+  } else {
+    NewBody = Ctx->TransformStmt(NewBody.get());
+    if (NewBody.isInvalid()) {
+      NewMethod->setInvalidDecl();
+    }
+  }
+
+  if (!NewBody.isInvalid()) {
+    assert(NewBody.get() && "A defined method was injected without its body.");
+
+    NewMethod->setBody(NewBody.get());
+  }
+
+  S.ActOnFinishFunctionBody(NewMethod, NewBody.get(), /*IsInstantiation=*/true);
+}
+
+static void InjectPendingDefinition(InjectionContext *Ctx,
                                     FunctionDecl *OldFunction,
                                     FunctionDecl *NewFunction) {
   InjectFunctionDefinition(Ctx, OldFunction, NewFunction);
 }
 
-template<typename DeclType, InjectedDefType DefType>
+template<typename FromDeclType, typename ToDeclType, InjectedDefType DefType>
 static void InjectPendingDefinitions(InjectionContext *Ctx,
                                      InjectionInfo *Injection) {
+  Ctx->InjectingPendingDefinitions = true;
+
   for (InjectedDef Def : Injection->InjectedDefinitions) {
     if (Def.Type != DefType)
       continue;
 
     InjectPendingDefinition(Ctx,
-                            static_cast<DeclType *>(Def.Fragment),
-                            static_cast<DeclType *>(Def.Injected));
+                            static_cast<FromDeclType *>(Def.Fragment),
+                            static_cast<ToDeclType *>(Def.Injected));
   }
+
+  Ctx->InjectingPendingDefinitions = false;
 }
 
 template<typename DeclType, InjectedDefType DefType>
+static void InjectPendingDefinitions(InjectionContext *Ctx,
+                                     InjectionInfo *Injection) {
+  InjectPendingDefinitions<DeclType, DeclType, DefType>(Ctx, Injection);
+}
+
+
+template<typename FromDeclType, typename ToDeclType, InjectedDefType DefType>
 static void InjectAllPendingDefinitions(InjectionContext *Ctx) {
   Sema::CodeInjectionTracker InjectingCode(Ctx->getSema());
 
   Ctx->ForEachPendingInjection([&Ctx] {
-    InjectPendingDefinitions<DeclType, DefType>(Ctx, Ctx->CurInjection);
+    InjectPendingDefinitions<FromDeclType, ToDeclType, DefType>(Ctx, Ctx->CurInjection);
   });
+}
+
+template<typename DeclType, InjectedDefType DefType>
+static void InjectAllPendingDefinitions(InjectionContext *Ctx) {
+  InjectAllPendingDefinitions<DeclType, DeclType, DefType>(Ctx);
 }
 
 void Sema::InjectPendingFieldDefinitions(InjectionContext *Ctx) {
@@ -4176,6 +4321,8 @@ void Sema::InjectPendingFieldDefinitions(InjectionContext *Ctx) {
 }
 
 void Sema::InjectPendingMethodDefinitions(InjectionContext *Ctx) {
+  InjectAllPendingDefinitions<FunctionTemplateDecl, CXXMethodDecl,
+                              InjectedDef_TemplatedMethod>(Ctx);
   InjectAllPendingDefinitions<CXXMethodDecl, InjectedDef_Method>(Ctx);
 }
 
