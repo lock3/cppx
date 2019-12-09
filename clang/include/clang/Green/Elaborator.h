@@ -35,11 +35,11 @@ class Elaborator {
 
   SyntaxContext &Context;
 
-  GreenSema &GSemaRef;
+  GreenSema &SemaRef;
 
   clang::Preprocessor &PP;
 public:
-  Elaborator(SyntaxContext &Context, GreenSema &GSemaRef);
+  Elaborator(SyntaxContext &Context, GreenSema &SemaRef);
 
   clang::Decl *elaborateFile(const ArraySyntax *S);
 
