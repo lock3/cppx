@@ -1,3 +1,5 @@
+#include "clang/AST/Stmt.h"
+
 #include "clang/Green/GreenSema.h"
 #include "clang/Green/Elaborator.h"
 #include "clang/Green/ExprElaborator.h"
@@ -20,6 +22,7 @@ Decl *
 Elaborator::elaborateDecl(const Syntax *S) {
   if (isa<CallSyntax>(S))
     return elaborateDeclForCall(cast<CallSyntax>(S));
+
   return nullptr;
 }
 
@@ -169,6 +172,9 @@ handleOperatorExclaim(SyntaxContext &Context, Preprocessor &PP,
     Param->getDeclContext()->addDecl(Param);
   }
 
+  // Now let's elaborate the function body.
+  // elaborateDecl(Args->Elems[1]);
+
   FD->dump();
   return FD;
 }
@@ -206,8 +212,9 @@ handleOperatorEquals(SyntaxContext &Context, GreenSema &SemaRef,
 
   // Now let's elaborate the initializer as a clang::Expr.
   ExprElaborator ExprElab(ClangContext, SemaRef);
-  const AtomSyntax *Init = cast<AtomSyntax>(Args->Elems[1]);
+  const Syntax *Init = Args->Elems[1];
 
+  // FIXME: make this non-atom-specific
   Expr *InitExpr = ExprElab.elaborateExpr(Init, EntityVD->getType());
   EntityVD->setInit(InitExpr);
   EntityVD->dump();

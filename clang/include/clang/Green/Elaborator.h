@@ -25,6 +25,7 @@
 namespace clang
 {
 class Preprocessor;
+class Stmt;
 } // namespace clang
 
 namespace green {
@@ -41,14 +42,11 @@ class Elaborator {
 public:
   Elaborator(SyntaxContext &Context, GreenSema &SemaRef);
 
-  clang::Decl *elaborateFile(const ArraySyntax *S);
-
   clang::Decl *elaborateDecl(const Syntax *S);
   clang::Decl *elaborateDeclForArray(const ArraySyntax *S);
   clang::Decl *elaborateDeclForList(const ListSyntax *S);
   clang::Decl *elaborateDeclForCall(const CallSyntax *S);
   clang::Decl *elaborateDeclForAtom(const AtomSyntax *S);
-
 
     // Dictionary of built in types.
   const std::unordered_map<std::string, clang::QualType> BuiltinTypes = {
