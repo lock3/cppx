@@ -9,6 +9,7 @@
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/StringMap.h"
 
+#include "clang/Green/Elaborator.h"
 #include "clang/Green/ExprElaborator.h"
 #include "clang/Green/GreenSema.h"
 #include "clang/Green/Tokens.h"
@@ -24,9 +25,9 @@ ExprElaborator::ExprElaborator(ASTContext &ClangContext, GreenSema &SemaRef)
 {}
 
 Expr *
-ExprElaborator::elaborateExpr(const Syntax *S, clang::QualType ExplicitType) {
+ExprElaborator::elaborateExpr(const Syntax *S) {
   if (isa<AtomSyntax>(S))
-    return elaborateAtom(cast<AtomSyntax>(S), ExplicitType);
+    return elaborateAtom(cast<AtomSyntax>(S), QualType());
   if (isa<CallSyntax>(S))
     return elaborateCall(cast<CallSyntax>(S));
 
@@ -39,15 +40,12 @@ createIntegerLiteral(ASTContext &ClangContext, Token T, QualType IntType,
   llvm::APInt Value;
   unsigned Width = 0;
 
-  if (IntType.isNull())
+  // If we don't have a specified type, just create a default int.
+  if (IntType.isNull() || IntType == ClangContext.AutoDeductTy)
     IntType = ClangContext.IntTy;
 
   // TODO: support all kinds of integer types.
-  if (IntType.isNull() || IntType == ClangContext.AutoDeductTy) {
-    long int Literal = atoi(T.getSymbol().data());
-    Value = llvm::APSInt::get(Literal);
-    IntType = ClangContext.getIntTypeForBitwidth(64, /*Signed=*/true);
-  } else if (IntType == ClangContext.IntTy) {
+  if (IntType == ClangContext.IntTy) {
     Width = ClangContext.getTargetInfo().getIntWidth();
 
     int Literal = atoi(T.getSymbol().data());
@@ -110,10 +108,19 @@ createDeclRefExpr(ASTContext &ClangContext, GreenSema &SemaRef, Preprocessor &PP
       return nullptr;
     }
 
+    ValueDecl *VD = R.getAsSingle<ValueDecl>();
+    QualType FoundTy = VD->getType();
+
+    // If the user annotated the DeclRefExpr with an incorrect type.
+    if (!Ty.isNull() && Ty != FoundTy) {
+      llvm::errs() << "Annotated type does not match expression type.\n";
+      return nullptr;
+    }
+
     DeclRefExpr *DRE =
       DeclRefExpr::Create(ClangContext, NestedNameSpecifierLoc(),
-                          SourceLocation(), R.getAsSingle<ValueDecl>(),
-                          /*Capture=*/false, Loc, Ty, VK_RValue);
+                          SourceLocation(), VD, /*Capture=*/false,
+                          Loc, FoundTy, VK_RValue);
     return DRE;
   }
 
@@ -187,6 +194,16 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
   const AtomSyntax *Callee = cast<AtomSyntax>(S->Callee());
   std::string Spelling = Callee->Tok.getSpelling();
 
+  Preprocessor &PP = SemaRef.getPP();
+  if (PP.getIdentifierInfo(Spelling) == SemaRef.OperatorColonII) {
+    const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
+
+    Elaborator Elab(SemaRef.getContext(), SemaRef);
+    QualType T = Elab.getOperatorColonType(S);
+
+    return elaborateAtom(cast<AtomSyntax>(ArgList->Elems[0]), T);
+  }
+
   // Check if this is a standard binary operator (one that doesn't assign).
   auto BinOpMapIter = BinaryOperators.find(Spelling);
   if (BinOpMapIter != BinaryOperators.end()) {
@@ -209,8 +226,8 @@ ExprElaborator::elaborateBinOp(const CallSyntax *S, BinaryOperatorKind Op) {
   const Syntax *LHSSyntax = ArgList->Elems[0];
   const Syntax *RHSSyntax = ArgList->Elems[1];
 
-  Expr *RHSExpr = elaborateExpr(LHSSyntax, QualType());
-  Expr *LHSExpr = elaborateExpr(RHSSyntax, QualType());
+  Expr *RHSExpr = elaborateExpr(LHSSyntax);
+  Expr *LHSExpr = elaborateExpr(RHSSyntax);
 
   clang::Sema &ClangSema = SemaRef.getClangSema();
 
@@ -229,8 +246,8 @@ ExprElaborator::elaborateCmpAssignOp(const CallSyntax *S,
   const Syntax *LHSSyntax = ArgList->Elems[0];
   const Syntax *RHSSyntax = ArgList->Elems[1];
 
-  Expr *RHSExpr = elaborateExpr(LHSSyntax, QualType());
-  Expr *LHSExpr = elaborateExpr(RHSSyntax, QualType());
+  Expr *RHSExpr = elaborateExpr(LHSSyntax);
+  Expr *LHSExpr = elaborateExpr(RHSSyntax);
 
   clang::Sema &ClangSema = SemaRef.getClangSema();
 

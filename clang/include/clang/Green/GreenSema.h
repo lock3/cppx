@@ -78,6 +78,8 @@ public:
 
   clang::Sema &getClangSema() { return ClangSema; }
 
+  SyntaxContext &getContext() { return Context; }
+
 public:
   // Tokenizations of commonly compared-against strings.
   const clang::IdentifierInfo *OperatorColonII;

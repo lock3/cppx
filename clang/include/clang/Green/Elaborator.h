@@ -48,6 +48,9 @@ public:
   clang::Decl *elaborateDeclForCall(const CallSyntax *S);
   clang::Decl *elaborateDeclForAtom(const AtomSyntax *S);
 
+  // Get the clang::QualType described by an operator':' call.
+  clang::QualType getOperatorColonType(const CallSyntax *S) const;
+
     // Dictionary of built in types.
   const std::unordered_map<std::string, clang::QualType> BuiltinTypes = {
     {"void", Context.ClangContext.VoidTy},

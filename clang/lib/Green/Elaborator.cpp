@@ -1,8 +1,10 @@
 #include "clang/AST/Stmt.h"
+#include "clang/Sema/Sema.h"
 
 #include "clang/Green/GreenSema.h"
 #include "clang/Green/Elaborator.h"
 #include "clang/Green/ExprElaborator.h"
+#include "clang/Green/StmtElaborator.h"
 #include "clang/Green/SyntaxContext.h"
 #include "clang/Lex/Preprocessor.h"
 
@@ -27,8 +29,8 @@ Elaborator::elaborateDecl(const Syntax *S) {
 }
 
 // Get the clang::QualType described by an operator':' call.
-static QualType
-getOperatorColonType(Elaborator const &E, const CallSyntax *S) {
+QualType
+Elaborator::getOperatorColonType(const CallSyntax *S) const {
   // Get the argument list of an operator':' call. This should have
   // two arguments, the entity (argument 1) and its type (argument 2).
   const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
@@ -38,8 +40,8 @@ getOperatorColonType(Elaborator const &E, const CallSyntax *S) {
     assert(false && "Evaluated types not supported yet");
   const AtomSyntax *Typename = cast<AtomSyntax>(ArgList->Elems[1]);
  
-  auto BuiltinMapIter = E.BuiltinTypes.find(Typename->Tok.getSpelling());
-  if (BuiltinMapIter == E.BuiltinTypes.end())
+  auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
+  if (BuiltinMapIter == BuiltinTypes.end())
     assert(false && "Only builtin types are supported right now.");
 
   return BuiltinMapIter->second;
@@ -55,7 +57,7 @@ handleOperatorColon(SyntaxContext &Context, GreenSema &SemaRef,
                     const CallSyntax *S) {
   ASTContext &ClangContext = Context.ClangContext;
 
-  QualType DeclType = getOperatorColonType(E, S);
+  QualType DeclType = E.getOperatorColonType(S);
   TypeSourceInfo *TInfo = ClangContext.CreateTypeSourceInfo(DeclType);
 
   DeclContext *TUDC =
@@ -71,7 +73,6 @@ handleOperatorColon(SyntaxContext &Context, GreenSema &SemaRef,
                           SourceLocation(), II, TInfo->getType(), TInfo,
                           SC_Extern, /*DefaultArg=*/nullptr);
     // We'll add these to the function scope later.
-    PVD->dump();
     return PVD;
   } else {
     VarDecl *VD =
@@ -80,7 +81,6 @@ handleOperatorColon(SyntaxContext &Context, GreenSema &SemaRef,
                       SC_Extern);
     SemaRef.getCurScope()->addDecl(VD);
     VD->getDeclContext()->addDecl(VD);
-    VD->dump();
     return VD;
   }
 }
@@ -114,7 +114,7 @@ handleOperatorExclaim(SyntaxContext &Context, Preprocessor &PP,
   if (DeclaratorSpelling == SemaRef.OperatorColonII) {
     const CallSyntax *OperatorColonCall = cast<CallSyntax>(Declarator);
 
-    ReturnType = getOperatorColonType(E, OperatorColonCall);
+    ReturnType = E.getOperatorColonType(OperatorColonCall);
 
     // Let's try to wrestle the parameters out of this operator':' call.
     const ListSyntax *OperatorColonArgList =
@@ -139,11 +139,15 @@ handleOperatorExclaim(SyntaxContext &Context, Preprocessor &PP,
   // Make some preparations to create an actual FunctionDecl.
   llvm::SmallVector<ParmVarDecl *, 4> ParameterDecls;
   llvm::SmallVector<QualType, 4> ParameterTypes;
-  const ListSyntax *ParameterList = cast<ListSyntax>(Parameters->Elems[0]);
-  for (const Syntax *Param : ParameterList->children()) {
-    ParmVarDecl *PVD = cast<ParmVarDecl>(E.elaborateDecl(Param));
-    ParameterDecls.push_back(PVD);
-    ParameterTypes.push_back(PVD->getType());
+
+  // If we have parameters, create clang ParmVarDecls. 
+  if (Parameters->NumElems) {
+    const ListSyntax *ParameterList = cast<ListSyntax>(Parameters->Elems[0]);
+    for (const Syntax *Param : ParameterList->children()) {
+      ParmVarDecl *PVD = cast<ParmVarDecl>(E.elaborateDecl(Param));
+      ParameterDecls.push_back(PVD);
+      ParameterTypes.push_back(PVD->getType());
+    }
   }
 
   // Create the FunctionDecl.
@@ -173,7 +177,10 @@ handleOperatorExclaim(SyntaxContext &Context, Preprocessor &PP,
   }
 
   // Now let's elaborate the function body.
+  StmtElaborator BodyElaborator(ClangContext, SemaRef);
+  Stmt *Body = BodyElaborator.elaborateBlock(Args->Elems[1]);
   // elaborateDecl(Args->Elems[1]);
+  FD->setBody(Body);
 
   FD->dump();
   return FD;
@@ -195,6 +202,9 @@ handleOperatorEquals(SyntaxContext &Context, GreenSema &SemaRef,
 
   VarDecl *EntityVD = nullptr;
 
+  // True if this variable is declared with auto type.
+  bool AutoType = false;
+
   // If the named declaration is a call, then it is an operator':' call;
   // we have some sort of explicitly typed  entity.
   if (isa<CallSyntax>(Args->Elems[0])) {
@@ -208,16 +218,50 @@ handleOperatorEquals(SyntaxContext &Context, GreenSema &SemaRef,
       assert(false && "Unsupported declaration.");
 
     EntityVD = cast<VarDecl>(EntityDecl);
+  } else if (isa<AtomSyntax>(Args->Elems[0])) {
+    AutoType = true;
+
+    // Perform a lookup on this name. If we didn't find anything, declare
+    // it as an auto type.
+
+    // Declare the variable.
+    const AtomSyntax *Declarator = cast<AtomSyntax>(Args->Elems[0]);
+    IdentifierInfo *II =
+      SemaRef.getPP().getIdentifierInfo(Declarator->Tok.getSpelling());
+    DeclContext *TUDC =
+      Decl::castToDeclContext(ClangContext.getTranslationUnitDecl());
+    TypeSourceInfo *TInfo =
+      ClangContext.CreateTypeSourceInfo(ClangContext.getAutoDeductType(), 0);
+
+    EntityVD =
+      VarDecl::Create(ClangContext, TUDC, SourceLocation(),
+                      SourceLocation(), II, TInfo->getType(), TInfo,
+                      SC_Extern);
+    SemaRef.getCurScope()->addDecl(EntityVD);
+    EntityVD->getDeclContext()->addDecl(EntityVD);
   }
 
   // Now let's elaborate the initializer as a clang::Expr.
   ExprElaborator ExprElab(ClangContext, SemaRef);
   const Syntax *Init = Args->Elems[1];
 
-  // FIXME: make this non-atom-specific
-  Expr *InitExpr = ExprElab.elaborateExpr(Init, EntityVD->getType());
+  Expr *InitExpr = ExprElab.elaborateExpr(Init);
+  if (!InitExpr)
+    return nullptr;
+
+  if (AutoType) {
+    clang::Sema &ClangSema = SemaRef.getClangSema();
+
+    QualType DeducedType;
+    if (ClangSema.DeduceAutoType(EntityVD->getTypeSourceInfo(),
+                                 InitExpr, DeducedType) == Sema::DAR_Failed) {
+      llvm::errs() << "Failed to deduce type of expression.\n";
+      return nullptr;
+    }
+    EntityVD->setType(DeducedType);
+  }
+
   EntityVD->setInit(InitExpr);
-  EntityVD->dump();
   return EntityVD;
 }
 

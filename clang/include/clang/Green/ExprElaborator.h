@@ -39,13 +39,14 @@ class ExprElaborator {
 public:
   ExprElaborator(clang::ASTContext &ClangContext, GreenSema &SemaRef);
 
-  clang::Expr *elaborateExpr(const Syntax *S, clang::QualType ExplicitType);
+  clang::Expr *elaborateExpr(const Syntax *S);
 
   clang::Expr *elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType);
   clang::Expr *elaborateCall(const CallSyntax *S);
 
   clang::Expr *elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
-  clang::Expr *elaborateCmpAssignOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
+  clang::Expr *elaborateCmpAssignOp(const CallSyntax *S,
+                                    clang::BinaryOperatorKind Op);
 };
 
 } // namespace green
