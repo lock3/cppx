@@ -1804,10 +1804,8 @@ Decl *InjectionContext::InjectCXXMethodDecl(CXXMethodDecl *D) {
     // then create a similar pending definition. This is required as during a template
     // instantiation, there are two injections, one for the the template substitutions
     // then one for the actual injection.
-    if (D->hasBody()) {
+    if (D->hasBody() || D->willHaveBody()) {
        Method->setWillHaveBody();
-       AddPendingDefinition(InjectedDef(InjectedDef_Method, D, Method));
-    } else if (D->willHaveBody()) {
        AddPendingDefinition(InjectedDef(InjectedDef_Method, D, Method));
     }
   });
@@ -2249,10 +2247,8 @@ Decl *InjectionContext::CreatePartiallySubstPattern(FunctionTemplateDecl *D) {
     // then create a similar pending definition. This is required as during a template
     // instantiation, there are two injections, one for the the template substitutions
     // then one for the actual injection.
-    if (Function->hasBody()) {
+    if (Function->hasBody() || Function->willHaveBody()) {
       Method->setWillHaveBody();
-      AddPendingDefinition(InjectedDef(InjectedDef_TemplatedMethod, D, Method));
-    } else if (Function->willHaveBody()) {
       AddPendingDefinition(InjectedDef(InjectedDef_TemplatedMethod, D, Method));
     }
   });
