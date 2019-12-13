@@ -13427,6 +13427,18 @@ Sema::CheckForFunctionRedefinition(FunctionDecl *FD,
   if (TypoCorrectedFunctionDefinitions.count(Definition))
     return;
 
+  // If the definition is in a fragment abort.
+  // Fragments must not be treated as instantiated body,
+  // their declarations are not meaningful with regards
+  // to redeclaration until injected.
+  //
+  // Fragments are not templates however, and as such,
+  // we do not want to do merging as templates do.
+  // Any necessary merging should be applied after the final
+  // injection.
+  if (Definition->isInFragment())
+    return;
+
   // If we don't have a visible definition of the function, and it's inline or
   // a template, skip the new definition.
   if (SkipBody && !hasVisibleDefinition(Definition) &&
