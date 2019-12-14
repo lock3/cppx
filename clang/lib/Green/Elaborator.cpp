@@ -15,7 +15,7 @@ using namespace clang;
 Elaborator::Elaborator(SyntaxContext &Context, GreenSema &SemaRef)
   : Context(Context), SemaRef(SemaRef), PP(SemaRef.getPP())
 {
-  Decl *TUDecl = Context.ClangContext.getTranslationUnitDecl();
+  Decl *TUDecl = Context.CxxAST.getTranslationUnitDecl();
   GreenScope *TUScope = new (Context) GreenScope(TUDecl, nullptr);
   SemaRef.PushScope(TUScope);
 }
@@ -39,7 +39,7 @@ Elaborator::getOperatorColonType(const CallSyntax *S) const {
   if (!isa<AtomSyntax>(ArgList->Elems[1]))
     assert(false && "Evaluated types not supported yet");
   const AtomSyntax *Typename = cast<AtomSyntax>(ArgList->Elems[1]);
- 
+
   auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
   if (BuiltinMapIter == BuiltinTypes.end())
     assert(false && "Only builtin types are supported right now.");
@@ -55,13 +55,13 @@ static Decl *
 handleOperatorColon(SyntaxContext &Context, GreenSema &SemaRef,
                     Preprocessor &PP, Elaborator const &E,
                     const CallSyntax *S) {
-  ASTContext &ClangContext = Context.ClangContext;
+  ASTContext &CxxAST = Context.CxxAST;
 
   QualType DeclType = E.getOperatorColonType(S);
-  TypeSourceInfo *TInfo = ClangContext.CreateTypeSourceInfo(DeclType);
+  TypeSourceInfo *TInfo = CxxAST.CreateTypeSourceInfo(DeclType);
 
   DeclContext *TUDC =
-    Decl::castToDeclContext(ClangContext.getTranslationUnitDecl());
+    Decl::castToDeclContext(CxxAST.getTranslationUnitDecl());
 
   // We have a type and a name, so create a declaration.
   const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
@@ -69,14 +69,14 @@ handleOperatorColon(SyntaxContext &Context, GreenSema &SemaRef,
   IdentifierInfo *II = PP.getIdentifierInfo(Declarator->Tok.getSpelling());
   if (Declarator->isParam()) {
     ParmVarDecl *PVD =
-      ParmVarDecl::Create(ClangContext, TUDC, SourceLocation(),
+      ParmVarDecl::Create(CxxAST, TUDC, SourceLocation(),
                           SourceLocation(), II, TInfo->getType(), TInfo,
                           SC_Extern, /*DefaultArg=*/nullptr);
     // We'll add these to the function scope later.
     return PVD;
   } else {
     VarDecl *VD =
-      VarDecl::Create(ClangContext, TUDC, SourceLocation(),
+      VarDecl::Create(CxxAST, TUDC, SourceLocation(),
                       SourceLocation(), II, TInfo->getType(), TInfo,
                       SC_Extern);
     SemaRef.getCurScope()->addDecl(VD);
@@ -91,7 +91,7 @@ handleOperatorColon(SyntaxContext &Context, GreenSema &SemaRef,
 static Decl *
 handleOperatorExclaim(SyntaxContext &Context, Preprocessor &PP,
                       GreenSema &SemaRef, Elaborator &E, const CallSyntax *S) {
-  ASTContext &ClangContext = Context.ClangContext;
+  ASTContext &CxxAST = Context.CxxAST;
 
   // Get the args for an operator'!' call. This should always have two
   // arguments: a (possibly typed) function declarator and a function
@@ -131,7 +131,7 @@ handleOperatorExclaim(SyntaxContext &Context, Preprocessor &PP,
   } else {
     // Otherwise, we have a bare function definition.
     // Just use an auto return type.
-    ReturnType = ClangContext.getAutoDeductType();
+    ReturnType = CxxAST.getAutoDeductType();
     Parameters = cast<ArraySyntax>(Declarator->Args());
     Name = DeclaratorSpelling;
   }
@@ -153,13 +153,13 @@ handleOperatorExclaim(SyntaxContext &Context, Preprocessor &PP,
   // Create the FunctionDecl.
   FunctionProtoType::ExtProtoInfo EPI;
   QualType FnTy =
-    ClangContext.getFunctionType(ReturnType, ParameterTypes, EPI);
-  TypeSourceInfo *FnTInfo = ClangContext.CreateTypeSourceInfo(FnTy);
+    CxxAST.getFunctionType(ReturnType, ParameterTypes, EPI);
+  TypeSourceInfo *FnTInfo = CxxAST.CreateTypeSourceInfo(FnTy);
   DeclContext *TUDC =
-    Decl::castToDeclContext(ClangContext.getTranslationUnitDecl());
+    Decl::castToDeclContext(CxxAST.getTranslationUnitDecl());
 
   FunctionDecl *FD =
-    FunctionDecl::Create(ClangContext, TUDC, SourceLocation(),
+    FunctionDecl::Create(CxxAST, TUDC, SourceLocation(),
                          SourceLocation(), DeclarationName(Name),
                          FnTInfo->getType(), FnTInfo, SC_Extern);
   FD->setParams(ParameterDecls);
@@ -177,7 +177,7 @@ handleOperatorExclaim(SyntaxContext &Context, Preprocessor &PP,
   }
 
   // Now let's elaborate the function body.
-  StmtElaborator BodyElaborator(ClangContext, SemaRef);
+  StmtElaborator BodyElaborator(CxxAST, SemaRef);
   Stmt *Body = BodyElaborator.elaborateBlock(Args->Elems[1]);
   // elaborateDecl(Args->Elems[1]);
   FD->setBody(Body);
@@ -194,7 +194,7 @@ static Decl *
 handleOperatorEquals(SyntaxContext &Context, GreenSema &SemaRef,
                      Preprocessor &PP, Elaborator &E,
                      const CallSyntax *S) {
-  ASTContext &ClangContext = Context.ClangContext;
+  ASTContext &CxxAST = Context.CxxAST;
 
   // Get the args for the operator'=' call. As usual, we expect binary
   // operands here: some sort of named entity and an expression.
@@ -229,12 +229,12 @@ handleOperatorEquals(SyntaxContext &Context, GreenSema &SemaRef,
     IdentifierInfo *II =
       SemaRef.getPP().getIdentifierInfo(Declarator->Tok.getSpelling());
     DeclContext *TUDC =
-      Decl::castToDeclContext(ClangContext.getTranslationUnitDecl());
+      Decl::castToDeclContext(CxxAST.getTranslationUnitDecl());
     TypeSourceInfo *TInfo =
-      ClangContext.CreateTypeSourceInfo(ClangContext.getAutoDeductType(), 0);
+      CxxAST.CreateTypeSourceInfo(CxxAST.getAutoDeductType(), 0);
 
     EntityVD =
-      VarDecl::Create(ClangContext, TUDC, SourceLocation(),
+      VarDecl::Create(CxxAST, TUDC, SourceLocation(),
                       SourceLocation(), II, TInfo->getType(), TInfo,
                       SC_Extern);
     SemaRef.getCurScope()->addDecl(EntityVD);
@@ -242,7 +242,7 @@ handleOperatorEquals(SyntaxContext &Context, GreenSema &SemaRef,
   }
 
   // Now let's elaborate the initializer as a clang::Expr.
-  ExprElaborator ExprElab(ClangContext, SemaRef);
+  ExprElaborator ExprElab(CxxAST, SemaRef);
   const Syntax *Init = Args->Elems[1];
 
   Expr *InitExpr = ExprElab.elaborateExpr(Init);
@@ -250,10 +250,10 @@ handleOperatorEquals(SyntaxContext &Context, GreenSema &SemaRef,
     return nullptr;
 
   if (AutoType) {
-    clang::Sema &ClangSema = SemaRef.getClangSema();
+    clang::Sema &CxxSema = SemaRef.getCxxSema();
 
     QualType DeducedType;
-    if (ClangSema.DeduceAutoType(EntityVD->getTypeSourceInfo(),
+    if (CxxSema.DeduceAutoType(EntityVD->getTypeSourceInfo(),
                                  InitExpr, DeducedType) == Sema::DAR_Failed) {
       llvm::errs() << "Failed to deduce type of expression.\n";
       return nullptr;

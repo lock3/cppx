@@ -28,9 +28,9 @@ namespace green {
 
 using namespace clang;
 
-StmtElaborator::StmtElaborator(ASTContext &ClangContext, GreenSema &SemaRef)
-  : ClangContext(ClangContext), SemaRef(SemaRef),
-    ExprElab(ClangContext, SemaRef)
+StmtElaborator::StmtElaborator(ASTContext &CxxContext, GreenSema &SemaRef)
+  : CxxContext(CxxContext), SemaRef(SemaRef),
+    ExprElab(CxxContext, SemaRef)
 {}
 
 Stmt *
@@ -51,7 +51,7 @@ StmtElaborator::elaborateAtom(const AtomSyntax *S) {
 }
 
 static Stmt *
-createDeclStmt(ASTContext &ClangContext, GreenSema &SemaRef,
+createDeclStmt(ASTContext &CxxContext, GreenSema &SemaRef,
                const CallSyntax *S) {
   const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
 
@@ -59,7 +59,7 @@ createDeclStmt(ASTContext &ClangContext, GreenSema &SemaRef,
   const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);
 
   Preprocessor &PP = SemaRef.getPP();
-  clang::Sema &ClangSema = SemaRef.getClangSema();
+  clang::Sema &ClangSema = SemaRef.getCxxSema();
   IdentifierInfo *II = PP.getIdentifierInfo(Name->Tok.getSpelling());
   DeclarationNameInfo DNI(II, S->Loc);
   LookupResult R(ClangSema, DNI, Sema::LookupAnyName);
@@ -97,7 +97,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
 
     // TODO: can this be something other than a name?
     const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);
-    clang::Sema &ClangSema = SemaRef.getClangSema();
+    clang::Sema &ClangSema = SemaRef.getCxxSema();
     IdentifierInfo *II = PP.getIdentifierInfo(Name->Tok.getSpelling());
     DeclarationNameInfo DNI(II, S->Loc);
     LookupResult R(ClangSema, DNI, Sema::LookupAnyName);
@@ -105,9 +105,9 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
 
 
     if (R.empty())
-      return createDeclStmt(ClangContext, SemaRef, S);
+      return createDeclStmt(CxxContext, SemaRef, S);
     else {
-      ExprElaborator ExprElab(ClangContext, SemaRef);
+      ExprElaborator ExprElab(CxxContext, SemaRef);
       return ExprElab.elaborateCall(S);
     }
   }
@@ -129,7 +129,7 @@ StmtElaborator::elaborateBlock(const Syntax *S) {
     elaborateBlockForList(cast<ListSyntax>(S), Results);
 
   CompoundStmt *Block =
-    CompoundStmt::Create(ClangContext, Results, S->Loc, S->Loc);
+    CompoundStmt::Create(CxxContext, Results, S->Loc, S->Loc);
 
   return Block;
 }

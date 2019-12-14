@@ -33,11 +33,15 @@ namespace green {
 class GreenSema;
 
 class Elaborator {
-
+  /// The AST context for the Green language.
   SyntaxContext &Context;
 
+  /// The state of translation for the Green language.
   GreenSema &SemaRef;
 
+  /// The preprocessor.
+  ///
+  /// FIXME: Remove this.
   clang::Preprocessor &PP;
 public:
   Elaborator(SyntaxContext &Context, GreenSema &SemaRef);
@@ -53,37 +57,37 @@ public:
 
     // Dictionary of built in types.
   const std::unordered_map<std::string, clang::QualType> BuiltinTypes = {
-    {"void", Context.ClangContext.VoidTy},
-    {"bool", Context.ClangContext.BoolTy},
-    {"char", Context.ClangContext.CharTy},
-    {"wchar_t", Context.ClangContext.WideCharTy},
-    {"wint_t", Context.ClangContext.WIntTy},
-    {"char8_t", Context.ClangContext.Char8Ty},
-    {"char16_t", Context.ClangContext.Char16Ty},
-    {"char32_t", Context.ClangContext.Char32Ty},
-    {"signed char", Context.ClangContext.SignedCharTy},
-    {"short", Context.ClangContext.ShortTy},
-    {"short int", Context.ClangContext.ShortTy},
-    {"int", Context.ClangContext.IntTy},
-    {"long", Context.ClangContext.LongTy},
-    {"long int", Context.ClangContext.LongTy},
-    {"long long", Context.ClangContext.LongLongTy},
-    {"long long int", Context.ClangContext.LongLongTy},
-    {"int128_t", Context.ClangContext.Int128Ty},
-    {"unsigned char", Context.ClangContext.UnsignedCharTy},
-    {"unsigned short", Context.ClangContext.UnsignedShortTy},
-    {"unsigned short int", Context.ClangContext.UnsignedShortTy},
-    {"unsigned", Context.ClangContext.UnsignedIntTy},
-    {"unsigned int", Context.ClangContext.UnsignedIntTy},
-    {"unsigned long", Context.ClangContext.UnsignedLongTy},
-    {"unsigned long int", Context.ClangContext.UnsignedLongTy},
-    {"unsigned long long", Context.ClangContext.UnsignedLongLongTy},
-    {"unsigned long long int", Context.ClangContext.UnsignedLongLongTy},
-    {"uint128_t", Context.ClangContext.UnsignedInt128Ty},
-    {"float", Context.ClangContext.FloatTy},
-    {"double", Context.ClangContext.DoubleTy},
-    {"long double", Context.ClangContext.LongDoubleTy},
-    {"float128_t", Context.ClangContext.Float128Ty},
+    {"void", Context.CxxAST.VoidTy},
+    {"bool", Context.CxxAST.BoolTy},
+    {"char", Context.CxxAST.CharTy},
+    {"wchar_t", Context.CxxAST.WideCharTy},
+    {"wint_t", Context.CxxAST.WIntTy},
+    {"char8_t", Context.CxxAST.Char8Ty},
+    {"char16_t", Context.CxxAST.Char16Ty},
+    {"char32_t", Context.CxxAST.Char32Ty},
+    {"signed char", Context.CxxAST.SignedCharTy},
+    {"short", Context.CxxAST.ShortTy},
+    {"short int", Context.CxxAST.ShortTy},
+    {"int", Context.CxxAST.IntTy},
+    {"long", Context.CxxAST.LongTy},
+    {"long int", Context.CxxAST.LongTy},
+    {"long long", Context.CxxAST.LongLongTy},
+    {"long long int", Context.CxxAST.LongLongTy},
+    {"int128_t", Context.CxxAST.Int128Ty},
+    {"unsigned char", Context.CxxAST.UnsignedCharTy},
+    {"unsigned short", Context.CxxAST.UnsignedShortTy},
+    {"unsigned short int", Context.CxxAST.UnsignedShortTy},
+    {"unsigned", Context.CxxAST.UnsignedIntTy},
+    {"unsigned int", Context.CxxAST.UnsignedIntTy},
+    {"unsigned long", Context.CxxAST.UnsignedLongTy},
+    {"unsigned long int", Context.CxxAST.UnsignedLongTy},
+    {"unsigned long long", Context.CxxAST.UnsignedLongLongTy},
+    {"unsigned long long int", Context.CxxAST.UnsignedLongLongTy},
+    {"uint128_t", Context.CxxAST.UnsignedInt128Ty},
+    {"float", Context.CxxAST.FloatTy},
+    {"double", Context.CxxAST.DoubleTy},
+    {"long double", Context.CxxAST.LongDoubleTy},
+    {"float128_t", Context.CxxAST.Float128Ty},
   };
 };
 

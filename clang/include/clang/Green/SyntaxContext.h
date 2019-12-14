@@ -37,11 +37,11 @@ class SyntaxContext {
 
 public:
   /// The context for the Clang AST.
-  clang::ASTContext &ClangContext;
+  clang::ASTContext &CxxAST;
 
 public:
-  SyntaxContext(clang::ASTContext &ClangContext)
-    : ClangContext(ClangContext)
+  SyntaxContext(clang::ASTContext &CxxAST)
+    : CxxAST(CxxAST)
   {}
 
   llvm::BumpPtrAllocator &getAllocator() const {

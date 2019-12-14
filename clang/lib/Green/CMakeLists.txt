@@ -13,8 +13,6 @@ add_clang_library(green
   ExprElaborator.cpp
   IdentifierMapper.cpp
   ParseGreenAST.cpp
-  RequireDecl.cpp
-  RequireType.cpp
   StmtElaborator.cpp
   Symbol.cpp
   Syntax.cpp

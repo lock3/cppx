@@ -20,8 +20,8 @@ namespace green {
 
 using namespace clang;
 
-ExprElaborator::ExprElaborator(ASTContext &ClangContext, GreenSema &SemaRef)
-  : ClangContext(ClangContext), SemaRef(SemaRef)
+ExprElaborator::ExprElaborator(ASTContext &CxxContext, GreenSema &SemaRef)
+  : CxxContext(CxxContext), SemaRef(SemaRef)
 {}
 
 Expr *
@@ -35,53 +35,53 @@ ExprElaborator::elaborateExpr(const Syntax *S) {
 }
 
 static IntegerLiteral *
-createIntegerLiteral(ASTContext &ClangContext, Token T, QualType IntType,
+createIntegerLiteral(ASTContext &CxxContext, Token T, QualType IntType,
                      SourceLocation Loc) {
   llvm::APInt Value;
   unsigned Width = 0;
 
   // If we don't have a specified type, just create a default int.
-  if (IntType.isNull() || IntType == ClangContext.AutoDeductTy)
-    IntType = ClangContext.IntTy;
+  if (IntType.isNull() || IntType == CxxContext.AutoDeductTy)
+    IntType = CxxContext.IntTy;
 
   // TODO: support all kinds of integer types.
-  if (IntType == ClangContext.IntTy) {
-    Width = ClangContext.getTargetInfo().getIntWidth();
+  if (IntType == CxxContext.IntTy) {
+    Width = CxxContext.getTargetInfo().getIntWidth();
 
     int Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::get(Literal);
-  } else if (IntType == ClangContext.LongTy) {
-    Width = ClangContext.getTargetInfo().getLongWidth();
+  } else if (IntType == CxxContext.LongTy) {
+    Width = CxxContext.getTargetInfo().getLongWidth();
 
     long int Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::get(Literal);
-  } else if (IntType == ClangContext.LongLongTy) {
-    Width = ClangContext.getTargetInfo().getLongLongWidth();
+  } else if (IntType == CxxContext.LongLongTy) {
+    Width = CxxContext.getTargetInfo().getLongLongWidth();
 
     long long int Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::get(Literal);
-  } else if (IntType == ClangContext.ShortTy) {
-    Width = ClangContext.getTargetInfo().getShortWidth();
+  } else if (IntType == CxxContext.ShortTy) {
+    Width = CxxContext.getTargetInfo().getShortWidth();
 
     short int Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::get(Literal);
-  } else if (IntType == ClangContext.UnsignedShortTy) {
-    Width = ClangContext.getTargetInfo().getShortWidth();
+  } else if (IntType == CxxContext.UnsignedShortTy) {
+    Width = CxxContext.getTargetInfo().getShortWidth();
 
     unsigned short int Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::getUnsigned(Literal);
-  } else if (IntType == ClangContext.UnsignedIntTy) {
-    Width = ClangContext.getTargetInfo().getIntWidth();
+  } else if (IntType == CxxContext.UnsignedIntTy) {
+    Width = CxxContext.getTargetInfo().getIntWidth();
 
     unsigned int Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::getUnsigned(Literal);
-  } else if (IntType == ClangContext.UnsignedLongTy) {
-    Width = ClangContext.getTargetInfo().getLongWidth();
+  } else if (IntType == CxxContext.UnsignedLongTy) {
+    Width = CxxContext.getTargetInfo().getLongWidth();
 
     unsigned long Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::getUnsigned(Literal);
-  } else if (IntType == ClangContext.UnsignedLongLongTy) {
-    Width = ClangContext.getTargetInfo().getLongLongWidth();
+  } else if (IntType == CxxContext.UnsignedLongLongTy) {
+    Width = CxxContext.getTargetInfo().getLongLongWidth();
 
     unsigned long Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::getUnsigned(Literal);
@@ -92,14 +92,14 @@ createIntegerLiteral(ASTContext &ClangContext, Token T, QualType IntType,
   if (Value.getBitWidth() != Width)
     Value = Value.trunc(Width);
 
-  return IntegerLiteral::Create(ClangContext, Value, IntType, Loc);
+  return IntegerLiteral::Create(CxxContext, Value, IntType, Loc);
 }
 
 static DeclRefExpr *
-createDeclRefExpr(ASTContext &ClangContext, GreenSema &SemaRef, Preprocessor &PP,
+createDeclRefExpr(ASTContext &CxxContext, GreenSema &SemaRef, Preprocessor &PP,
                   Token T, QualType Ty, SourceLocation Loc) {
   DeclarationNameInfo DNI({PP.getIdentifierInfo(T.getSpelling())}, Loc);
-  LookupResult R(SemaRef.getClangSema(), DNI, Sema::LookupAnyName);
+  LookupResult R(SemaRef.getCxxSema(), DNI, Sema::LookupAnyName);
 
   SemaRef.LookupName(R, SemaRef.getCurScope());
   if (!R.empty()) {
@@ -118,7 +118,7 @@ createDeclRefExpr(ASTContext &ClangContext, GreenSema &SemaRef, Preprocessor &PP
     }
 
     DeclRefExpr *DRE =
-      DeclRefExpr::Create(ClangContext, NestedNameSpecifierLoc(),
+      DeclRefExpr::Create(CxxContext, NestedNameSpecifierLoc(),
                           SourceLocation(), VD, /*Capture=*/false,
                           Loc, FoundTy, VK_RValue);
     return DRE;
@@ -134,7 +134,7 @@ ExprElaborator::elaborateAtom(const AtomSyntax *S, QualType ExplicitType) {
 
   switch (T.getKind()) {
   case tok::DecimalInteger:
-    return createIntegerLiteral(ClangContext, T, ExplicitType, S->Loc);
+    return createIntegerLiteral(CxxContext, T, ExplicitType, S->Loc);
   case tok::DecimalFloat:
     break;
   case tok::BinaryInteger:
@@ -144,7 +144,7 @@ ExprElaborator::elaborateAtom(const AtomSyntax *S, QualType ExplicitType) {
   case tok::HexadecimalFloat:
     break;
   case tok::Identifier:
-    return createDeclRefExpr(ClangContext, SemaRef, SemaRef.getPP(),
+    return createDeclRefExpr(CxxContext, SemaRef, SemaRef.getPP(),
                              T, ExplicitType, S->Loc);
     break;
   case tok::Character:
@@ -229,7 +229,7 @@ ExprElaborator::elaborateBinOp(const CallSyntax *S, BinaryOperatorKind Op) {
   Expr *RHSExpr = elaborateExpr(LHSSyntax);
   Expr *LHSExpr = elaborateExpr(RHSSyntax);
 
-  clang::Sema &ClangSema = SemaRef.getClangSema();
+  clang::Sema &ClangSema = SemaRef.getCxxSema();
 
   ExprResult Res = ClangSema.BuildBinOp(/*Scope=*/nullptr, SourceLocation(), Op,
                                         LHSExpr, RHSExpr);
@@ -249,7 +249,7 @@ ExprElaborator::elaborateCmpAssignOp(const CallSyntax *S,
   Expr *RHSExpr = elaborateExpr(LHSSyntax);
   Expr *LHSExpr = elaborateExpr(RHSSyntax);
 
-  clang::Sema &ClangSema = SemaRef.getClangSema();
+  clang::Sema &ClangSema = SemaRef.getCxxSema();
 
   ExprResult Res =
     ClangSema.CreateBuiltinBinOp(SourceLocation(), Op, LHSExpr, RHSExpr);

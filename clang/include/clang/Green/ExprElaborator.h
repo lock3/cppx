@@ -31,13 +31,13 @@ namespace green {
 
 class GreenSema;
 
-// Builds a clang::Expr node out of a green::Syntax node. 
+// Builds a clang::Expr node out of a green::Syntax node.
 class ExprElaborator {
-  clang::ASTContext &ClangContext;
+  clang::ASTContext &CxxContext;
 
   GreenSema &SemaRef;
 public:
-  ExprElaborator(clang::ASTContext &ClangContext, GreenSema &SemaRef);
+  ExprElaborator(clang::ASTContext &CxxContext, GreenSema &SemaRef);
 
   clang::Expr *elaborateExpr(const Syntax *S);
 

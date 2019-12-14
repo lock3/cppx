@@ -73,7 +73,7 @@ class GreenSema {
 
   // The clang semantic object, allows to create various syntax nodes
   // as well as perform important transformations on them.
-  clang::Sema &ClangSema;
+  clang::Sema &CxxSema;
 
   // Stack of active GreenScopes.
   llvm::SmallVector<GreenScope *, 4> ScopeStack;
@@ -98,7 +98,7 @@ public:
 
   clang::Preprocessor &getPP() { return PP; }
 
-  clang::Sema &getClangSema() { return ClangSema; }
+  clang::Sema &getCxxSema() { return CxxSema; }
 
   SyntaxContext &getContext() { return Context; }
 

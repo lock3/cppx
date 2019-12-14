@@ -28,9 +28,9 @@ namespace green {
 
 using namespace llvm;
 
-GreenSema::GreenSema(SyntaxContext &Context, clang::Preprocessor &PP, 
-                     clang::Sema &ClangSema)
-  : Context(Context), PP(PP), ClangSema(ClangSema)
+GreenSema::GreenSema(SyntaxContext &Context, clang::Preprocessor &PP,
+                     clang::Sema &CxxSema)
+  : Context(Context), PP(PP), CxxSema(CxxSema)
 {
   OperatorColonII = PP.getIdentifierInfo("operator':'");
   OperatorExclaimII = PP.getIdentifierInfo("operator'!'");
