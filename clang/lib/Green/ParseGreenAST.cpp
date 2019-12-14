@@ -41,18 +41,23 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
 
   SourceManager &SM = PP.getSourceManager();
   File InputFile(SM, SM.getMainFileID());
+  SyntaxContext Context(ClangContext);
+  GreenSema Sema(Context, PP, ClangSema);
 
   green::Parser Parser(SM, InputFile);
   green::Syntax *AST = Parser.parseFile();
   if (AST)
     AST->dump();
 
-  SyntaxContext Context(ClangContext);
-  GreenSema Sema(Context, PP, ClangSema);
+  // FIXME: We should handle -fsyntax-only here -- or maybe make a separate
+  // front-end action that stops after parsing. Unfortunately, the flag
+  // is in the FrontendOptions of the CompilerInstance, which doesn't seem
+  // to be reachable from the arguments to this function.
 
+#if 0
   // PHASE 1: Map names to the syntaxes that introduce them.
   IdentifierMapper Mapper(Context, Sema, PP);
-  Mapper.identifyDecls(cast<ArraySyntax>(AST));
+  Mapper.identifyDecls(cast<FileSyntax>(AST));
 
   llvm::outs() << "Mappings:\n";
   for (auto MapIter : Sema.IdentifierMapping)
@@ -62,6 +67,7 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
   Elaborator Elab(Context, Sema);
   for (auto MapIter : Sema.IdentifierMapping)
     Elab.elaborateDecl(MapIter.second);
+#endif
 }
 
 } // namespace lock3

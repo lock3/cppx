@@ -155,11 +155,9 @@ static Syntax **makeArray(std::initializer_list<Syntax *> List) {
   return Array;
 }
 
-/// True if k separates statements.
-static bool isSeparator(TokenKind k)
-{
-  return k == tok::Separator || k == tok::Semicolon;
-};
+static bool isSeparator(TokenKind K) {
+  return K == tok::Separator || K == tok::Semicolon;
+}
 
 // array:
 //    list
@@ -211,13 +209,29 @@ Syntax *Parser::parseArray() {
 
 // Parse the array and populate the vector.
 void Parser::parseArray(llvm::SmallVectorImpl<Syntax *> &Vec) {
-  Append(Vec, parseList());
-  while (matchTokenIf(isSeparator))
+  Syntax *List = parseList();
+  Append(Vec, List);
+
+  // while (matchTokenIf(isSeparator))
+  while (true)
   {
-    // Handle a newline before the end of file.
+    // Obviously stop at the end of the file.
     if (atEndOfFile())
       break;
-    Append(Vec, parseList());
+
+    // We're about to exist a nested block.
+    if (nextTokenIs(tok::Dedent))
+      break;
+
+    // This should be a list separator, but only if the last token
+    // consumed was not a dedent (which implicitly acts as a separator).
+    // For now, match this as optional.
+    //
+    // FIXME: Actually diagnose missing separators.
+    matchTokenIf(isSeparator);
+
+    List = parseList();
+    Append(Vec, List);
   }
 }
 
@@ -265,16 +279,14 @@ void Parser::parseList(llvm::SmallVectorImpl<Syntax *> &Vec)
 //    def-list , def
 Syntax *Parser::parseExpr()
 {
-  if (nextTokenIs(tok::LeftBracket))
-  {
+  if (nextTokenIs(tok::LeftBracket)) {
     // FIXME: Match the 'pre-attr expr' production.
     llvm_unreachable("attributed expressions not supported");
   }
 
-  Syntax *def = parseDef();
+  Syntax *Def = parseDef();
 
-  if (Token op = matchToken(tok::EqualGreater))
-  {
+  if (Token Op = matchToken(tok::EqualGreater)) {
     // Note that '=>' is the mapping operator (e.g., a => 5). I'm not at
     // all sure what this means semantically.
     //
@@ -282,19 +294,19 @@ Syntax *Parser::parseExpr()
     //
     // TODO: Why is this a sequence of "trailers" on definitions. We end
     // up allowing things like: 'x => e1 => e2 => { ... }'.
-    Syntax *val;
+    Syntax *Val;
     if (nextTokenIs(tok::LeftBrace))
-      val = parseBracedArray();
+      Val = parseBracedArray();
     else if (nextTokenIs(tok::Indent))
-      val = parseNestedArray();
+      Val = parseNestedArray();
     else
-      val = parseExpr();
+      Val = parseExpr();
 
     // FIXME: Skip to the end of the list or stmt/line.
-    if (val == Syntax::error)
+    if (Val == Syntax::error)
       return Syntax::error;
 
-    return onBinary(op, def, val);
+    return onBinary(Op, Def, Val);
   }
 
   if (matchToken("where"))
@@ -323,13 +335,11 @@ Syntax *Parser::parseExpr()
 
   // FIXME: Support trailing docattrs.
 
-  return def;
+  return Def;
 }
 
-auto is_assignment_operator = [](TokenKind k) -> bool
-{
-  switch (k)
-  {
+static bool isAssignmentOperator(TokenKind K) {
+  switch (K) {
   default:
     return false;
   case tok::Equal:
@@ -363,12 +373,10 @@ auto is_assignment_operator = [](TokenKind k) -> bool
 //
 // And the repetition never matches. Note that this is likely true for all
 // uses of right recursion in the grammar.
-Syntax *Parser::parseDef()
-{
+Syntax *Parser::parseDef() {
   Syntax *def = parseOr();
 
-  if (Token op = matchTokenIf(is_assignment_operator))
-  {
+  if (Token op = matchTokenIf(isAssignmentOperator)) {
     Syntax *val = parseDef();
     return onBinary(op, def, val);
   }
@@ -376,25 +384,18 @@ Syntax *Parser::parseDef()
   // FIXME: Is the only way to define a function to follow the declarator
   // with a '!'? It seems like that would work better as a suffix operator
   // on the declarator (it also leads naturally to factorials!).
-  if (Token op = matchToken(tok::Bang))
-  {
+  if (Token op = matchToken(tok::Bang)) {
     // FIXME: This should probably not be inside the loop. It allows
     // weirdness like this: 'f ! { ...} ! { ... } ! ...'. This would also
     // be interspersed with assignments: 'f ! { ... } = expr'
     Syntax *body;
-    if (nextTokenIs(tok::LeftBrace))
-    {
+    if (nextTokenIs(tok::LeftBrace)) {
       body = parseBracedArray();
-    }
-    else if (nextTokenIs(tok::Indent))
-    {
+    } else if (nextTokenIs(tok::Indent)) {
       body = parseNestedArray();
-    }
-    else
-    {
+    } else {
       // FIXME: Skip to the end of the list or stmt/line.
-      Diags.Report(getInputLocation(), clang::diag::err_empty_enum);
-      // error(getInputLocation(), "expected '{{' or indent");
+      Diags.Report(getInputLocation(), clang::diag::err_expected) << "expected '{{' or indent";
       return Syntax::error;
     }
 
@@ -404,9 +405,8 @@ Syntax *Parser::parseDef()
   return def;
 }
 
-bool is_or_operator(Parser& p)
-{
-  return p.nextTokenIs(tok::BarBar) || p.nextTokenIs("or");
+static bool isOrOperator(Parser& P) {
+  return P.nextTokenIs(tok::BarBar) || P.nextTokenIs("or");
 }
 
 // or:
@@ -416,21 +416,17 @@ bool is_or_operator(Parser& p)
 // or-operator:
 //    ||
 //    "or"
-Syntax *Parser::parseOr()
-{
-  Syntax *e1 = parseAnd();
-  while (Token op = matchTokens(is_or_operator, *this))
-  {
-    Syntax *e2 = parseAnd();
-    e1 = onBinary(op, e1, e2);
+Syntax *Parser::parseOr() {
+  Syntax *E1 = parseAnd();
+  while (Token Op = matchTokens(isOrOperator, *this)) {
+    Syntax *E2 = parseAnd();
+    E1 = onBinary(Op, E1, E2);
   }
-
-  return e1;
+  return E1;
 }
 
-auto is_and_operator = [](Parser& p) -> bool
-{
-  return p.nextTokenIs(tok::AmpersandAmpersand) || p.nextTokenIs("and");
+auto isAndOperator(Parser &P) {
+  return P.nextTokenIs(tok::AmpersandAmpersand) || P.nextTokenIs("and");
 };
 
 // and:
@@ -440,19 +436,16 @@ auto is_and_operator = [](Parser& p) -> bool
 // and-operator:
 //    &&
 //    "and"
-Syntax *Parser::parseAnd()
-{
-  Syntax *e1 = parseCmp();
-  while (Token op = matchTokens(is_and_operator, *this))
-  {
-    Syntax *e2 = parseCmp();
-    e1 = onBinary(op, e1, e2);
+Syntax *Parser::parseAnd() {
+  Syntax *E1 = parseCmp();
+  while (Token Op = matchTokens(isAndOperator, *this)) {
+    Syntax *E2 = parseCmp();
+    E1 = onBinary(Op, E1, E2);
   }
-
-  return e1;
+  return E1;
 }
 
-static bool is_logical_unary_operator(Parser& P) {
+static bool isLogicalUnaryOperator(Parser& P) {
   return P.nextTokenIs(tok::Ampersand)
       || P.nextTokenIs(tok::DotDot)
       || P.nextTokenIs(tok::Bang)
@@ -478,17 +471,16 @@ static bool is_relational_operator(Parser& P) {
 ///    to
 ///    cmp relational-operator to
 ///    unary-operator cmp
-Syntax *Parser::parseCmp()
-{
-  if (Token op = matchTokens(is_logical_unary_operator, *this))
-  {
+///
+/// FIXME: Is there any reason these don't have two levels of precedence?
+Syntax *Parser::parseCmp() {
+  if (Token op = matchTokens(isLogicalUnaryOperator, *this)) {
     Syntax *e1 = parseCmp();
     return onUnary(op, e1);
   }
 
   Syntax *e1 = parseTo();
-  while (Token op = matchTokens(is_relational_operator, *this))
-  {
+  while (Token op = matchTokens(is_relational_operator, *this)) {
     Syntax *e2 = parseTo();
     e1 = onBinary(op, e1, e2);
   }
@@ -496,8 +488,7 @@ Syntax *Parser::parseCmp()
   return e1;
 }
 
-bool is_to_operator(Parser& P)
-{
+bool isToOperator(Parser& P) {
   return P.nextTokenIs(tok::Colon)
       || P.nextTokenIs(tok::DotDot)
       || P.nextTokenIs(tok::MinusGreater);
@@ -514,20 +505,16 @@ bool is_to_operator(Parser& P)
 //
 // TODO: -> is at the wrong level of precedence and has the wrong
 // associativity. Also, what's the behavior.
-Syntax *Parser::parseTo()
-{
-  Syntax *e1 = parseAdd();
-  while (Token op = matchTokens(is_to_operator, *this))
-  {
-    Syntax *e2 = parseAdd();
-    e1 = onBinary(op, e1, e2);
+Syntax *Parser::parseTo() {
+  Syntax *E1 = parseAdd();
+  while (Token op = matchTokens(isToOperator, *this)) {
+    Syntax *E2 = parseAdd();
+    E1 = onBinary(op, E1, E2);
   }
-
-  return e1;
+  return E1;
 }
 
-bool is_add_operator(Parser& P)
-{
+bool isAddOperator(Parser& P) {
   return P.nextTokenIs(tok::Plus) || P.nextTokenIs(tok::Minus);
 };
 
@@ -538,36 +525,29 @@ bool is_add_operator(Parser& P)
 /// add-operator:
 ///   +
 ///   -
-Syntax *Parser::parseAdd()
-{
-  Syntax *e1 = parseMul();
-  while (Token op = matchTokens(is_add_operator, *this))
-  {
-    Syntax *e2 = parseMul();
-    e1 = onBinary(op, e1, e2);
+Syntax *Parser::parseAdd() {
+  Syntax *E1 = parseMul();
+  while (Token Op = matchTokens(isAddOperator, *this)) {
+    Syntax *E2 = parseMul();
+    E1 = onBinary(Op, E1, E2);
   }
-
-  return e1;
+  return E1;
 }
 
-static bool is_mul_operator(Parser& P)
-{
+static bool isMulOperator(Parser& P) {
   return P.nextTokenIs(tok::Star) || P.nextTokenIs(tok::Slash);
 };
 
 /// mul:
 ///   call
 ///   mul mul-operator call
-Syntax *Parser::parseMul()
-{
-  Syntax *e1 = parseMacro();
-  while (Token op = matchTokens(is_mul_operator, *this))
-  {
-    Syntax *e2 = parseMacro();
-    e1 = onBinary(op, e1, e2);
+Syntax *Parser::parseMul() {
+  Syntax *E1 = parseMacro();
+  while (Token Op = matchTokens(isMulOperator, *this)) {
+    Syntax *E2 = parseMacro();
+    E1 = onBinary(Op, E1, E2);
   }
-
-  return e1;
+  return E1;
 }
 
 /// macro:
@@ -697,8 +677,8 @@ Syntax *Parser::parsePre()
 
 /// postfix:
 ///   base
-///   postfix ( list )
-///   postfix [ list ]
+///   postfix ( array )
+///   postfix [ array ]
 ///   postfix < list >
 ///   postfix . identifier
 ///   postfix suffix-operator
@@ -753,14 +733,16 @@ Syntax *Parser::parseCall(Syntax *fn)
   if (!parens.expectOpen())
     return Syntax::error;
 
-  // TODO: If this is an Syntax::error, should we skip to the next paren or
-  // to the the nearest comma? separator? What?
-  Syntax *args = nullptr;
-
   // Begin parsing function parameters.
   ParsingParams = true;
 
   // Don't parse an array if the parens are empty.
+  //
+  // FIXME: Don't allow newlines in the parameter array?
+  //
+  // TODO: If this is an Syntax::error, should we skip to the next paren or
+  // to the the nearest comma? separator? What?
+  Syntax *args = nullptr;
   if (getLookahead() != tok::RightParen)
     args = parseArray();
   else
@@ -781,12 +763,12 @@ Syntax *Parser::parseElem(Syntax *map)
   if (!brackets.expectOpen())
     return Syntax::error;
 
-  Syntax *sel = parseArray();
+  Syntax *args = parseArray();
 
   if (!brackets.expectClose())
     return Syntax::error;
 
-  return onElem({brackets.open, brackets.close}, map, sel);
+  return onElem({brackets.open, brackets.close}, map, args);
 }
 
 Syntax *Parser::parseDot(Syntax *obj)
@@ -800,10 +782,8 @@ Syntax *Parser::parseDot(Syntax *obj)
   return onBinary(op, obj, sub);
 }
 
-Syntax *Parser::parsePrimary()
-{
-  switch (getLookahead())
-  {
+Syntax *Parser::parsePrimary() {
+  switch (getLookahead()) {
   case tok::Identifier:
     return parseId();
 
@@ -829,16 +809,14 @@ Syntax *Parser::parsePrimary()
 
 /// id:
 ///   identifier
-Syntax *Parser::parseId()
-{
+Syntax *Parser::parseId() {
   Token id = expectToken(tok::Identifier);
   if (!id)
     return Syntax::error;
   return onAtom(id);
 }
 
-Syntax *Parser::parseParen()
-{
+Syntax *Parser::parseParen() {
   EnclosingParens parens(*this);
   if (!parens.expectOpen())
     return Syntax::error;
@@ -855,8 +833,7 @@ Syntax *Parser::parseParen()
 
 // braced-array:
 //    { array }
-Syntax *Parser::parseBracedArray()
-{
+Syntax *Parser::parseBracedArray() {
   EnclosingBraces braces(*this);
   if (!braces.expectOpen())
     return Syntax::error;
@@ -872,15 +849,14 @@ Syntax *Parser::parseBracedArray()
 
 // nested-array:
 //    indent array dedent
-Syntax *Parser::parseNestedArray()
-{
-  EnclosingTabs tabs(*this);
-  if (!tabs.expectOpen())
+Syntax *Parser::parseNestedArray() {
+  EnclosingTabs Tabs(*this);
+  if (!Tabs.expectOpen())
     return Syntax::error;
 
   Syntax *ret = parseArray();
 
-  if (!tabs.expectClose())
+  if (!Tabs.expectClose())
     return Syntax::error;
 
   return ret;
@@ -889,8 +865,7 @@ Syntax *Parser::parseNestedArray()
 /// block:
 ///   braced-array
 ///   : nested-array
-Syntax *Parser::parseBlock()
-{
+Syntax *Parser::parseBlock() {
   if (nextTokenIs(tok::LeftBrace))
     return parseBracedArray();
 

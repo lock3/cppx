@@ -38,7 +38,9 @@ void GreenSyntaxAction::ExecuteAction() {
   case clang::Language::Green:
     ParseGreenAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
     break;
+
   default:
+    // FIXME: Why is the default to parse C++? This should be an error.
     clang::ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
                     CI.getFrontendOpts().SkipFunctionBodies);
     break;
