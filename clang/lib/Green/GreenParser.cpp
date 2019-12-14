@@ -212,15 +212,22 @@ void Parser::parseArray(llvm::SmallVectorImpl<Syntax *> &Vec) {
   Syntax *List = parseList();
   Append(Vec, List);
 
-  // while (matchTokenIf(isSeparator))
   while (true)
   {
     // Obviously stop at the end of the file.
     if (atEndOfFile())
       break;
 
-    // We're about to exist a nested block.
-    if (nextTokenIs(tok::Dedent))
+    // We're about to exist a nested block ...
+    if (nextTokenIs(tok::Dedent) || nextTokenIs(tok::RightBrace))
+      break;
+
+    // ... or a paren-enclosed array ...
+    if (nextTokenIs(tok::RightParen))
+      break;
+
+    // ... or a bracket-enclosed array.
+    if (nextTokenIs(tok::RightBracket))
       break;
 
     // This should be a list separator, but only if the last token
@@ -803,7 +810,10 @@ Syntax *Parser::parsePrimary() {
     break;
   }
 
+  // Diagnose the error, but consume the token so we don't see it again.
   Diags.Report(getInputLocation(), clang::diag::err_expected) << "primary-expression";
+  peekToken().dump();
+  consumeToken();
   return Syntax::error;
 }
 
