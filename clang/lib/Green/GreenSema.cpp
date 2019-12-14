@@ -37,21 +37,33 @@ GreenSema::GreenSema(SyntaxContext &Context, clang::Preprocessor &PP,
   OperatorEqualsII = PP.getIdentifierInfo("operator'='");
 }
 
-GreenScope *
-GreenSema::getCurScope() {
+GreenScope *GreenSema::getCurrentScope() {
+  if (ScopeStack.empty())
+    return nullptr;
   return ScopeStack.back();
 }
 
-void
-GreenSema::PushScope(GreenScope *S) {
+void GreenSema::pushScope(GreenScope *S) {
   ScopeStack.push_back(S);
 }
 
-GreenScope *
-GreenSema::PopScope() {
+void GreenSema::enterScope(const Syntax *S, clang::Decl *D) {
+  // FIXME: We're leaking scopes. We probably want to keep them bound
+  // to the syntax for which they're created -- especially for syntaxes
+  // that correspond to declarations, so that we can easily find their
+  // associated lookup tables.
+  pushScope(new (Context) GreenScope(S, D, getCurrentScope()));
+}
+
+GreenScope *GreenSema::popScope() {
   GreenScope *R = ScopeStack.back();
   ScopeStack.pop_back();
   return R;
+}
+
+void GreenSema::leaveScope(const Syntax *S) {
+  assert(getCurrentScope()->getConcreteTerm() == S);
+  popScope();
 }
 
 bool
@@ -62,8 +74,8 @@ GreenSema::LookupName(clang::LookupResult &R, GreenScope *S) {
 
   // If the scope is associated with a Declaration, we can just use the
   // declaration's lookup.
-  if (S->Association.is<Decl *>()) {
-    DeclContext *Ctx = cast<DeclContext>(S->Association.get<Decl *>());
+  if (S->isDeclarationScope()) {
+    DeclContext *Ctx = cast<DeclContext>(S->getDeclaration());
     DeclContextLookupResult CtxResult = Ctx->lookup(Name);
 
     // Add any results to the LookupResult.

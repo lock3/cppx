@@ -101,7 +101,7 @@ createDeclRefExpr(ASTContext &CxxContext, GreenSema &SemaRef, Preprocessor &PP,
   DeclarationNameInfo DNI({PP.getIdentifierInfo(T.getSpelling())}, Loc);
   LookupResult R(SemaRef.getCxxSema(), DNI, Sema::LookupAnyName);
 
-  SemaRef.LookupName(R, SemaRef.getCurScope());
+  SemaRef.LookupName(R, SemaRef.getCurrentScope());
   if (!R.empty()) {
     if (!R.isSingleResult()) {
       llvm::errs() << "Multiple declarations of \"" << T.getSpelling() << "\" found.\n";

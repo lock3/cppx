@@ -30,6 +30,10 @@
 
 namespace green
 {
+  // Bring isa/cast/dyn_cast into scope.
+  using clang::isa;
+  using clang::cast;
+  using clang::dyn_cast;
 
 struct Syntax {
 
@@ -127,26 +131,6 @@ struct VectorNode
     : Elems(ts), NumElems(NumElems)
   { }
 
-  auto begin()
-  {
-    return Elems[0];
-  }
-
-  auto end()
-  {
-    return Elems[NumElems];
-  }
-
-  auto begin() const
-  {
-    return Elems[0];
-  }
-
-  auto end() const
-  {
-    return Elems[NumElems];
-  }
-
   T **Elems;
   unsigned NumElems;
 };
@@ -161,11 +145,11 @@ struct ListSyntax : Syntax, VectorNode<Syntax> {
   {}
 
   child_range children() {
-    return child_range(&Elems[0], &Elems[NumElems]);
+    return child_range(Elems, Elems + NumElems);
   }
 
   const child_range children() const {
-    return const_child_range(&Elems[0], &Elems[NumElems]);
+    return const_child_range(Elems, Elems + NumElems);
   }
 
   static bool classof(const Syntax *S) {
@@ -179,11 +163,11 @@ struct ArraySyntax : Syntax, VectorNode<Syntax> {
   {}
 
   child_range children() {
-    return child_range(&Elems[0], &Elems[NumElems]);
+    return child_range(Elems, Elems + NumElems);
   }
 
   const child_range children() const {
-    return const_child_range(&Elems[0], &Elems[NumElems]);
+    return const_child_range(Elems, Elems + NumElems);
   }
 
   static bool classof(const Syntax *S) {
@@ -329,11 +313,11 @@ struct FileSyntax : Syntax, VectorNode<Syntax> {
   {}
 
   child_range children() {
-    return child_range(&Elems[0], &Elems[NumElems]);
+    return child_range(Elems, Elems + NumElems);
   }
 
   const child_range children() const {
-    return const_child_range(&Elems[0], &Elems[NumElems]);
+    return const_child_range(Elems, Elems + NumElems);
   }
 
   static bool classof(const Syntax *S) {

@@ -10,27 +10,52 @@
 
 namespace green {
 
-using namespace clang;
-
 Elaborator::Elaborator(SyntaxContext &Context, GreenSema &SemaRef)
   : Context(Context), SemaRef(SemaRef), PP(SemaRef.getPP())
 {
-  Decl *TUDecl = Context.CxxAST.getTranslationUnitDecl();
-  GreenScope *TUScope = new (Context) GreenScope(TUDecl, nullptr);
-  SemaRef.PushScope(TUScope);
 }
 
-Decl *
-Elaborator::elaborateDecl(const Syntax *S) {
-  if (isa<CallSyntax>(S))
-    return elaborateDeclForCall(cast<CallSyntax>(S));
+clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
+  assert(isa<FileSyntax>(S) && "S is not a file");
+  startFile(S);
+  const FileSyntax *File = cast<FileSyntax>(S);
 
-  return nullptr;
+  // Pass 1. identify declarations in scope.
+  // FIXME: Implement this.
+
+  // Pass 2: elaborate top-level declarations and their definitions.
+  for (const Syntax *SS : File->children())
+    elaborateTopLevelDecl(SS);
+
+  finishFile(S);
+
+  return Context.CxxAST.getTranslationUnitDecl();
+}
+
+void Elaborator::startFile(const Syntax *S) {
+  clang::Decl *TU = Context.CxxAST.getTranslationUnitDecl();
+  SemaRef.enterScope(S, TU);
+}
+
+void Elaborator::finishFile(const Syntax *S) {
+  SemaRef.leaveScope(S);
+  // TODO: Any pending semantic analysis to do here?
+}
+
+clang::Decl *Elaborator::elaborateTopLevelDecl(const Syntax *S) {
+  // TODO: Look for module-related declarations.
+  llvm::errs() << "TOP LEVEL\n";
+  S->dump();
+  return elaborateDecl(S);
+}
+
+clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
+  assert(isa<CallSyntax>(S));
+  return elaborateDeclForCall(cast<CallSyntax>(S));
 }
 
 // Get the clang::QualType described by an operator':' call.
-QualType
-Elaborator::getOperatorColonType(const CallSyntax *S) const {
+clang::QualType Elaborator::getOperatorColonType(const CallSyntax *S) const {
   // Get the argument list of an operator':' call. This should have
   // two arguments, the entity (argument 1) and its type (argument 2).
   const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
@@ -49,37 +74,39 @@ Elaborator::getOperatorColonType(const CallSyntax *S) const {
 
 // Create a Clang Declaration for a call to operator':', in other words,
 // a variable with an explicit type. Note that this function does /not/
-// handle an operator':' on a function abstract. 
+// handle an operator':' on a function abstract.
 // Called from Elaborator::elaborateDeclForCall()
-static Decl *
-handleOperatorColon(SyntaxContext &Context, GreenSema &SemaRef,
-                    Preprocessor &PP, Elaborator const &E,
-                    const CallSyntax *S) {
-  ASTContext &CxxAST = Context.CxxAST;
+static clang::Decl *handleOperatorColon(SyntaxContext &Context,
+                                        GreenSema &SemaRef,
+                                        clang::Preprocessor &PP,
+                                        Elaborator const &E,
+                                        const CallSyntax *S) {
+  clang::ASTContext &CxxAST = Context.CxxAST;
 
-  QualType DeclType = E.getOperatorColonType(S);
-  TypeSourceInfo *TInfo = CxxAST.CreateTypeSourceInfo(DeclType);
+  clang::QualType DeclType = E.getOperatorColonType(S);
+  clang::TypeSourceInfo *TInfo = CxxAST.CreateTypeSourceInfo(DeclType);
 
-  DeclContext *TUDC =
-    Decl::castToDeclContext(CxxAST.getTranslationUnitDecl());
+  clang::DeclContext *TUDC =
+    clang::Decl::castToDeclContext(CxxAST.getTranslationUnitDecl());
 
   // We have a type and a name, so create a declaration.
   const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
   const AtomSyntax *Declarator = cast<AtomSyntax>(ArgList->Elems[0]);
-  IdentifierInfo *II = PP.getIdentifierInfo(Declarator->Tok.getSpelling());
+  clang::IdentifierInfo *II = PP.getIdentifierInfo(Declarator->Tok.getSpelling());
   if (Declarator->isParam()) {
-    ParmVarDecl *PVD =
-      ParmVarDecl::Create(CxxAST, TUDC, SourceLocation(),
-                          SourceLocation(), II, TInfo->getType(), TInfo,
-                          SC_Extern, /*DefaultArg=*/nullptr);
+    clang::ParmVarDecl *PVD =
+      clang::ParmVarDecl::Create(CxxAST, TUDC, clang::SourceLocation(),
+                                 clang::SourceLocation(), II, TInfo->getType(),
+                                 TInfo, clang::SC_Extern,
+                                 /*DefaultArg=*/nullptr);
     // We'll add these to the function scope later.
     return PVD;
   } else {
-    VarDecl *VD =
-      VarDecl::Create(CxxAST, TUDC, SourceLocation(),
-                      SourceLocation(), II, TInfo->getType(), TInfo,
-                      SC_Extern);
-    SemaRef.getCurScope()->addDecl(VD);
+    clang::VarDecl *VD =
+      clang::VarDecl::Create(CxxAST, TUDC, clang::SourceLocation(),
+                             clang::SourceLocation(), II, TInfo->getType(),
+                             TInfo, clang::SC_Extern);
+    SemaRef.getCurrentScope()->addDecl(VD);
     VD->getDeclContext()->addDecl(VD);
     return VD;
   }
@@ -88,10 +115,12 @@ handleOperatorColon(SyntaxContext &Context, GreenSema &SemaRef,
 // Create a Clang Declaration for a call to operator'!', in other words,
 // a function with a definition.
 // Called from Elaborator::elaborateDeclForCall()
-static Decl *
-handleOperatorExclaim(SyntaxContext &Context, Preprocessor &PP,
-                      GreenSema &SemaRef, Elaborator &E, const CallSyntax *S) {
-  ASTContext &CxxAST = Context.CxxAST;
+static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
+                                          clang::Preprocessor &PP,
+                                          GreenSema &SemaRef,
+                                          Elaborator &E,
+                                          const CallSyntax *S) {
+  clang::ASTContext &CxxAST = Context.CxxAST;
 
   // Get the args for an operator'!' call. This should always have two
   // arguments: a (possibly typed) function declarator and a function
@@ -101,14 +130,14 @@ handleOperatorExclaim(SyntaxContext &Context, Preprocessor &PP,
   const CallSyntax *Declarator = cast<CallSyntax>(Args->Elems[0]);
   const AtomSyntax *DeclaratorCallee
     = cast<AtomSyntax>(Declarator->Callee());
-  IdentifierInfo *DeclaratorSpelling =
+  clang::IdentifierInfo *DeclaratorSpelling =
     PP.getIdentifierInfo(DeclaratorCallee->Tok.getSpelling());
-  IdentifierInfo *Name = nullptr;
+  clang::IdentifierInfo *Name = nullptr;
 
   // The parameters of the declared function.
   const ArraySyntax *Parameters;
 
-  QualType ReturnType;
+  clang::QualType ReturnType;
   // If the declarator is an operator':' call, we have an explicit return
   // type.
   if (DeclaratorSpelling == SemaRef.OperatorColonII) {
@@ -137,52 +166,59 @@ handleOperatorExclaim(SyntaxContext &Context, Preprocessor &PP,
   }
 
   // Make some preparations to create an actual FunctionDecl.
-  llvm::SmallVector<ParmVarDecl *, 4> ParameterDecls;
-  llvm::SmallVector<QualType, 4> ParameterTypes;
+  llvm::SmallVector<clang::ParmVarDecl *, 4> ParameterDecls;
+  llvm::SmallVector<clang::QualType, 4> ParameterTypes;
 
-  // If we have parameters, create clang ParmVarDecls. 
+  // If we have parameters, create clang ParmVarDecls.
   if (Parameters->NumElems) {
     const ListSyntax *ParameterList = cast<ListSyntax>(Parameters->Elems[0]);
     for (const Syntax *Param : ParameterList->children()) {
-      ParmVarDecl *PVD = cast<ParmVarDecl>(E.elaborateDecl(Param));
+      clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(E.elaborateDecl(Param));
       ParameterDecls.push_back(PVD);
       ParameterTypes.push_back(PVD->getType());
     }
   }
 
   // Create the FunctionDecl.
-  FunctionProtoType::ExtProtoInfo EPI;
-  QualType FnTy =
+  clang::FunctionProtoType::ExtProtoInfo EPI;
+  clang::QualType FnTy =
     CxxAST.getFunctionType(ReturnType, ParameterTypes, EPI);
-  TypeSourceInfo *FnTInfo = CxxAST.CreateTypeSourceInfo(FnTy);
-  DeclContext *TUDC =
-    Decl::castToDeclContext(CxxAST.getTranslationUnitDecl());
+  clang::TypeSourceInfo *FnTInfo = CxxAST.CreateTypeSourceInfo(FnTy);
+  clang::DeclContext *TUDC =
+    clang::Decl::castToDeclContext(CxxAST.getTranslationUnitDecl());
 
-  FunctionDecl *FD =
-    FunctionDecl::Create(CxxAST, TUDC, SourceLocation(),
-                         SourceLocation(), DeclarationName(Name),
-                         FnTInfo->getType(), FnTInfo, SC_Extern);
+  clang::FunctionDecl *FD =
+    clang::FunctionDecl::Create(CxxAST, TUDC, clang::SourceLocation(),
+                                clang::SourceLocation(),
+                                clang::DeclarationName(Name),
+                                FnTInfo->getType(),
+                                FnTInfo,
+                                clang::SC_Extern);
   FD->setParams(ParameterDecls);
   FD->getDeclContext()->addDecl(FD);
 
-  GreenScope *Scope = new (Context) GreenScope(FD, SemaRef.getCurScope());
-  SemaRef.PushScope(Scope);
+  // FIXME: Is this the right syntax for the scope?
+  SemaRef.enterScope(S, FD);
 
   // The parameters are currently owned by the translation unit, so let's
   // move them to the function itself.
   for (auto Param : FD->parameters()) {
     Param->setOwningFunction(FD);
-    SemaRef.getCurScope()->addDecl(Param);
+    SemaRef.getCurrentScope()->addDecl(Param);
     Param->getDeclContext()->addDecl(Param);
   }
 
+  // FIXME: Start a new scope for the function definition?
+
   // Now let's elaborate the function body.
   StmtElaborator BodyElaborator(CxxAST, SemaRef);
-  Stmt *Body = BodyElaborator.elaborateBlock(Args->Elems[1]);
-  // elaborateDecl(Args->Elems[1]);
+  clang::Stmt *Body = BodyElaborator.elaborateBlock(Args->Elems[1]);
   FD->setBody(Body);
 
-  FD->dump();
+  // Leave the scope of the function declaration.
+  SemaRef.leaveScope(S);
+
+  // FD->dump();
   return FD;
 }
 
@@ -190,17 +226,18 @@ handleOperatorExclaim(SyntaxContext &Context, Preprocessor &PP,
 // or single-line function.
 // We need to elaborate the initializer here as well.
 // Called from Elaborator::elaborateDeclForCall()
-static Decl *
-handleOperatorEquals(SyntaxContext &Context, GreenSema &SemaRef,
-                     Preprocessor &PP, Elaborator &E,
-                     const CallSyntax *S) {
-  ASTContext &CxxAST = Context.CxxAST;
+static clang::Decl *handleOperatorEquals(SyntaxContext &Context,
+                                         GreenSema &SemaRef,
+                                         clang::Preprocessor &PP,
+                                         Elaborator &E,
+                                         const CallSyntax *S) {
+  clang::ASTContext &CxxAST = Context.CxxAST;
 
   // Get the args for the operator'=' call. As usual, we expect binary
   // operands here: some sort of named entity and an expression.
   const ListSyntax *Args = cast<ListSyntax>(S->Args());
 
-  VarDecl *EntityVD = nullptr;
+  clang::VarDecl *EntityVD = nullptr;
 
   // True if this variable is declared with auto type.
   bool AutoType = false;
@@ -210,14 +247,14 @@ handleOperatorEquals(SyntaxContext &Context, GreenSema &SemaRef,
   if (isa<CallSyntax>(Args->Elems[0])) {
     const CallSyntax *Entity = cast<CallSyntax>(Args->Elems[0]);
 
-    Decl *EntityDecl = handleOperatorColon(Context, SemaRef, PP, E, Entity);
+    clang::Decl *EntityDecl = handleOperatorColon(Context, SemaRef, PP, E, Entity);
 
     // FIXME: Single-line functions are unimplemented. I don't think
     // default arguments are supported by the language.
-    if (isa<ParmVarDecl>(EntityDecl) || !isa<VarDecl>(EntityDecl))
+    if (isa<clang::ParmVarDecl>(EntityDecl) || !isa<clang::VarDecl>(EntityDecl))
       assert(false && "Unsupported declaration.");
 
-    EntityVD = cast<VarDecl>(EntityDecl);
+    EntityVD = cast<clang::VarDecl>(EntityDecl);
   } else if (isa<AtomSyntax>(Args->Elems[0])) {
     AutoType = true;
 
@@ -226,18 +263,18 @@ handleOperatorEquals(SyntaxContext &Context, GreenSema &SemaRef,
 
     // Declare the variable.
     const AtomSyntax *Declarator = cast<AtomSyntax>(Args->Elems[0]);
-    IdentifierInfo *II =
+    clang::IdentifierInfo *II =
       SemaRef.getPP().getIdentifierInfo(Declarator->Tok.getSpelling());
-    DeclContext *TUDC =
-      Decl::castToDeclContext(CxxAST.getTranslationUnitDecl());
-    TypeSourceInfo *TInfo =
+    clang::DeclContext *TUDC =
+      clang::Decl::castToDeclContext(CxxAST.getTranslationUnitDecl());
+    clang::TypeSourceInfo *TInfo =
       CxxAST.CreateTypeSourceInfo(CxxAST.getAutoDeductType(), 0);
 
     EntityVD =
-      VarDecl::Create(CxxAST, TUDC, SourceLocation(),
-                      SourceLocation(), II, TInfo->getType(), TInfo,
-                      SC_Extern);
-    SemaRef.getCurScope()->addDecl(EntityVD);
+      clang::VarDecl::Create(CxxAST, TUDC, clang::SourceLocation(),
+                             clang::SourceLocation(), II, TInfo->getType(),
+                             TInfo, clang::SC_Extern);
+    SemaRef.getCurrentScope()->addDecl(EntityVD);
     EntityVD->getDeclContext()->addDecl(EntityVD);
   }
 
@@ -245,16 +282,16 @@ handleOperatorEquals(SyntaxContext &Context, GreenSema &SemaRef,
   ExprElaborator ExprElab(CxxAST, SemaRef);
   const Syntax *Init = Args->Elems[1];
 
-  Expr *InitExpr = ExprElab.elaborateExpr(Init);
+  clang::Expr *InitExpr = ExprElab.elaborateExpr(Init);
   if (!InitExpr)
     return nullptr;
 
   if (AutoType) {
     clang::Sema &CxxSema = SemaRef.getCxxSema();
 
-    QualType DeducedType;
+    clang::QualType DeducedType;
     if (CxxSema.DeduceAutoType(EntityVD->getTypeSourceInfo(),
-                                 InitExpr, DeducedType) == Sema::DAR_Failed) {
+                               InitExpr, DeducedType) == clang::Sema::DAR_Failed) {
       llvm::errs() << "Failed to deduce type of expression.\n";
       return nullptr;
     }
@@ -265,12 +302,11 @@ handleOperatorEquals(SyntaxContext &Context, GreenSema &SemaRef,
   return EntityVD;
 }
 
-Decl *
-Elaborator::elaborateDeclForCall(const CallSyntax *S) {
+clang::Decl *Elaborator::elaborateDeclForCall(const CallSyntax *S) {
   assert(isa<AtomSyntax>(S->Callee()) && "Unknown call format.");
 
   const AtomSyntax *Callee = cast<AtomSyntax>(S->Callee());
-  const IdentifierInfo *Spelling =
+  const clang::IdentifierInfo *Spelling =
     PP.getIdentifierInfo(Callee->Tok.getSpelling());
 
   if (Spelling == SemaRef.OperatorColonII)

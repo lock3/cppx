@@ -46,6 +46,9 @@ class Elaborator {
 public:
   Elaborator(SyntaxContext &Context, GreenSema &SemaRef);
 
+  clang::Decl *elaborateFile(const Syntax *S);
+  clang::Decl *elaborateTopLevelDecl(const Syntax* S);
+
   clang::Decl *elaborateDecl(const Syntax *S);
   clang::Decl *elaborateDeclForArray(const ArraySyntax *S);
   clang::Decl *elaborateDeclForList(const ListSyntax *S);
@@ -55,7 +58,14 @@ public:
   // Get the clang::QualType described by an operator':' call.
   clang::QualType getOperatorColonType(const CallSyntax *S) const;
 
-    // Dictionary of built in types.
+  // Semantic actions.
+
+  void startFile(const Syntax *S);
+  void finishFile(const Syntax *S);
+
+  // Dictionary of built in types.
+  //
+  // FIXME: This should be initialized in the constructor.
   const std::unordered_map<std::string, clang::QualType> BuiltinTypes = {
     {"void", Context.CxxAST.VoidTy},
     {"bool", Context.CxxAST.BoolTy},

@@ -39,20 +39,26 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
                    Sema &ClangSema) {
   using namespace std;
 
+  // Parse the input file.
   SourceManager &SM = PP.getSourceManager();
   File InputFile(SM, SM.getMainFileID());
-  SyntaxContext Context(ClangContext);
-  GreenSema Sema(Context, PP, ClangSema);
-
   green::Parser Parser(SM, InputFile);
   green::Syntax *AST = Parser.parseFile();
-  if (AST)
-    AST->dump();
+
+  // FIXME: There's a -fdump-syntax flag that we should tie this too.
+  // if (AST)
+  //   AST->dump();
 
   // FIXME: We should handle -fsyntax-only here -- or maybe make a separate
   // front-end action that stops after parsing. Unfortunately, the flag
   // is in the FrontendOptions of the CompilerInstance, which doesn't seem
   // to be reachable from the arguments to this function.
+
+  // Elaborate the resulting abstract syntax tree.
+  SyntaxContext Context(ClangContext);
+  GreenSema Sema(Context, PP, ClangSema);
+  Elaborator Elab(Context, Sema);
+  Elab.elaborateFile(AST);
 
 #if 0
   // PHASE 1: Map names to the syntaxes that introduce them.

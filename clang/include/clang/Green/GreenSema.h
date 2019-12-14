@@ -85,10 +85,22 @@ public:
   // constructs.
   void IdentifyDecls(const ArraySyntax *S);
 
-  // Get the currently active GreenScope.
-  GreenScope *getCurScope();
-  void PushScope(GreenScope *S);
-  GreenScope *PopScope();
+  // Scope management.
+
+  /// Get the currently active GreenScope.
+  GreenScope *getCurrentScope();
+
+  /// Push a new scope.
+  void pushScope(GreenScope *S);
+
+  /// Enter a new scope corresponding to D.
+  void enterScope(const Syntax *S, clang::Decl *D);
+
+  /// Pop the current scope, returning it.
+  GreenScope *popScope();
+
+  /// Leave the current scope.
+  void leaveScope(const Syntax *S);
 
   // Perform unqualified lookup of a name.
   bool LookupName(clang::LookupResult &R, GreenScope *S);
