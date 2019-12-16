@@ -4,6 +4,7 @@
 #include "clang/AST/Type.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Sema/Lookup.h"
+#include "clang/Sema/Ownership.h"
 #include "clang/Sema/Sema.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/StringMap.h"
@@ -212,6 +213,56 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
   if (CmpAssnMapIter != CompoundAssignOperators.end()) {
     return elaborateCmpAssignOp(S, CmpAssnMapIter->second);
   }
+
+  // Try to construct a normal call expression.
+
+  // First lookup the name.
+  DeclarationNameInfo DNI({&CxxContext.Idents.get(Spelling)}, S->Loc);
+  LookupResult R(SemaRef.getCxxSema(), DNI, Sema::LookupAnyName);
+  SemaRef.LookupName(R, SemaRef.getCurrentScope());
+
+  // If we found something, see if it is viable.
+  if (!R.empty()) {
+    if (R.isOverloadedResult()) {
+      llvm::errs() << "Overloads not yet supported";
+      return nullptr;
+    } else if (R.isSingleResult()) {
+      ValueDecl *VD = R.getAsSingle<ValueDecl>();
+
+      // This had better be a reference to a function.
+      FunctionDecl *FD = dyn_cast<FunctionDecl>(VD);
+      if (!FD) return nullptr;
+
+      DeclRefExpr *VDRef =
+        DeclRefExpr::Create(CxxContext, NestedNameSpecifierLoc(),
+                            SourceLocation(), VD, /*Capture=*/false,
+                            S->Loc, VD->getType(), VK_RValue);
+      if (!VDRef)
+        return nullptr;
+
+      // Get the passed arguments.
+      llvm::SmallVector<Expr *, 8> Args;
+      const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
+      assert(ArgList && "Unexpected argument format.");
+      for (const Syntax *A : ArgList->children()) {
+        ExprElaborator Elab(CxxContext, SemaRef);
+        Expr *AExpr = Elab.elaborateExpr(A);
+
+        if (AExpr)
+          Args.push_back(AExpr);
+      }
+
+      // Create the call.
+      MultiExprArg MultiArgs(Args);
+      ExprResult Call =
+        SemaRef.getCxxSema().ActOnCallExpr(SemaRef.getCxxSema().getCurScope(),
+                                           VDRef, S->Loc, MultiArgs, S->Loc);
+      if (Call.isInvalid())
+        return nullptr;
+      return Call.get();
+    }
+  }
+
 
   llvm::errs() << "Unsupported call.\n";
   return nullptr;

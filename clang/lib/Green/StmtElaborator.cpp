@@ -30,7 +30,8 @@ using namespace clang;
 StmtElaborator::StmtElaborator(ASTContext &CxxContext, GreenSema &SemaRef)
   : CxxContext(CxxContext), SemaRef(SemaRef),
     ExprElab(CxxContext, SemaRef)
-{}
+{
+}
 
 Stmt *
 StmtElaborator::elaborateStmt(const Syntax *S) {
@@ -109,14 +110,14 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
     }
   }
 
-  return nullptr;
+  ExprElaborator ExprElab(CxxContext, SemaRef);
+  return ExprElab.elaborateCall(S);
 }
 
 Stmt *
 StmtElaborator::elaborateBlock(const Syntax *S) {
   assert((isa<ArraySyntax>(S) || isa<ListSyntax>(S)) &&
          "Cannot create block out of non-list syntax.");
-
 
   llvm::SmallVector<Stmt *, 16> Results;
 
@@ -138,6 +139,12 @@ StmtElaborator::elaborateBlockForArray(const ArraySyntax *S,
     if (isa<ListSyntax>(Child)) {
       elaborateBlockForList(cast<ListSyntax>(Child), Results);
       continue;
+    } else {
+      Stmt *NewStmt = elaborateStmt(Child);
+      if (!NewStmt) {
+        continue;
+      }
+      Results.push_back(NewStmt);
     }
 
     // TODO: implement other syntaxes.
