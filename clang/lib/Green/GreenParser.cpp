@@ -749,11 +749,11 @@ Syntax *Parser::parseCall(Syntax *fn)
   //
   // TODO: If this is an Syntax::error, should we skip to the next paren or
   // to the the nearest comma? separator? What?
-  Syntax *args = nullptr;
+  Syntax *Args = nullptr;
   if (getLookahead() != tok::RightParen)
-    args = parseArray();
+    Args = parseArray();
   else
-    args = onArray(llvm::SmallVector<Syntax *, 0>());
+    Args = onArray(llvm::SmallVector<Syntax *, 0>());
 
   // Finish parsing function parameters.
   ParsingParams = false;
@@ -761,7 +761,7 @@ Syntax *Parser::parseCall(Syntax *fn)
   if (!parens.expectClose())
     return Syntax::error;
 
-  return onCall({parens.open, parens.close}, fn, args);
+  return onCall({parens.open, parens.close}, fn, Args);
 }
 
 Syntax *Parser::parseElem(Syntax *map)
@@ -812,7 +812,6 @@ Syntax *Parser::parsePrimary() {
 
   // Diagnose the error, but consume the token so we don't see it again.
   Diags.Report(getInputLocation(), clang::diag::err_expected) << "primary-expression";
-  peekToken().dump();
   consumeToken();
   return Syntax::error;
 }
@@ -886,7 +885,7 @@ Syntax *Parser::parseBlock() {
 // Semantic actions
 
 // Returns the identifier 'operator\'<op>\''.
-static Syntax *makeOperator(clang::SourceLocation Loc, char const* Op)
+static Syntax *makeOperator(clang::SourceLocation Loc, llvm::StringRef Op)
 {
   // FIXME: Make this a fused operator?
   std::string Name = "operator'" + std::string(Op) + "'";

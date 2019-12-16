@@ -43,7 +43,7 @@ bool hasMultipleSpellings(TokenKind K) {
   return !hasUniqueSpelling(K);
 }
 
-char const* getSpelling(TokenKind K) {
+const char* getSpelling(TokenKind K) {
   switch (K) {
   case tok::EndOfFile: return "end-of-file";
   case tok::Unknown: return "unknown";
@@ -82,7 +82,7 @@ std::size_t getTokenLength(TokenKind K) {
   }
 }
 
-char const* Token::getSpelling() const {
+llvm::StringRef Token::getSpelling() const {
   // FIXME: Generate a spelling for fused tokens? This would probably
   // need to be a std::string instead of a character pointer.
   assert(!isFused());
@@ -97,7 +97,7 @@ void Token::dump(std::ostream& OS, bool Nl) const {
   OS << '<';
   OS << getDisplayName(getKind());
   if (*this && hasMultipleSpellings(getKind()))
-    OS << ':' << getSpelling();
+    OS << ':' << getSpelling().data();
   OS << '>';
   if (Nl)
     OS << '\n';

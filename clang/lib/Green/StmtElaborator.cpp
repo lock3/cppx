@@ -53,7 +53,7 @@ StmtElaborator::elaborateAtom(const AtomSyntax *S) {
 static Stmt *
 createDeclStmt(ASTContext &CxxContext, GreenSema &SemaRef,
                const CallSyntax *S) {
-  const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
+  const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
 
   // TODO: can this be something other than a name?
   const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);
@@ -86,14 +86,14 @@ createDeclStmt(ASTContext &CxxContext, GreenSema &SemaRef,
 
 Stmt *
 StmtElaborator::elaborateCall(const CallSyntax *S) {
-  const AtomSyntax *Callee = cast<AtomSyntax>(S->Callee());
+  const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   Preprocessor &PP = SemaRef.getPP();
   IdentifierInfo *Spelling = PP.getIdentifierInfo(Callee->Tok.getSpelling());
 
   // A typed declaration.
   // FIXME : what about 'x = 3:int'
   if (Spelling == SemaRef.OperatorColonII) {
-    const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
+    const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
 
     // TODO: can this be something other than a name?
     const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);

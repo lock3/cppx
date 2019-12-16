@@ -105,7 +105,13 @@ struct AtomSyntax : Syntax {
     : Syntax(SK_Atom, Loc, IsParam), Tok(Tok)
   {}
 
-  Token Tok;
+  const Token& getToken() const {
+    return Tok;
+  }
+
+  llvm::StringRef getSpelling() const {
+    return Tok.getSpelling();
+  }
 
   child_range children() {
     return child_range(child_iterator(), child_iterator());
@@ -118,6 +124,9 @@ struct AtomSyntax : Syntax {
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Atom;
   }
+
+  /// The token for the atom.
+  Token Tok;
 };
 
 /// An arbitrary, but known, length sequence of terms (e.g., the arguments
@@ -130,6 +139,24 @@ struct VectorNode
   VectorNode(T **ts, unsigned NumElems)
     : Elems(ts), NumElems(NumElems)
   { }
+
+  bool hasChildren() const {
+    return NumElems != 0;
+  }
+
+  std::size_t getNumChildren() const {
+    return NumElems;
+  }
+
+  Syntax* getChild(std::size_t N) {
+    assert(N < NumElems);
+    return Elems[N];
+  }
+
+  const Syntax* getChild(std::size_t N) const {
+    assert(N < NumElems);
+    return Elems[N];
+  }
 
   T **Elems;
   unsigned NumElems;
@@ -184,26 +211,24 @@ struct CallSyntax : Syntax {
     Elems[1] = Args;
   }
 
-  const Syntax *Callee() const {
+  const Syntax *getCallee() const {
     return Elems[0];
   }
 
-  Syntax *Callee() {
+  Syntax *getCallee() {
     return Elems[0];
   }
 
-  const Syntax *Args() const {
+  const Syntax *getArguments() const {
     return Elems[1];
   }
 
-  Syntax *Args() {
+  Syntax *getArguments() {
     return Elems[1];
   }
-
-  std::array<Syntax *, 2> Elems;
 
   child_range children() {
-    return child_range(&Elems[0], &Elems[2]);
+    return child_range(Elems.data(), Elems.data() + 2);
   }
 
   const child_range children() const {
@@ -214,6 +239,8 @@ struct CallSyntax : Syntax {
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Call;
   }
+
+  std::array<Syntax *, 2> Elems;
 };
 
 /// A lookup in a dictionary.
@@ -224,27 +251,24 @@ struct ElemSyntax : Syntax {
     Elems[1] = Sel;
   }
 
-  const Syntax *Map() const {
+  const Syntax *getObject() const {
     return Elems[0];
   }
 
-  Syntax *Map() {
+  Syntax *getObject() {
     return Elems[0];
   }
 
-  const Syntax *Args() const {
+  const Syntax *getArguments() const {
     return Elems[1];
   }
 
-  Syntax *Args() {
+  Syntax *getArguments() {
     return Elems[1];
   }
-
-
-  std::array<Syntax *, 2> Elems;
 
   child_range children() {
-    return child_range(&Elems[0], &Elems[2]);
+    return child_range(Elems.data(), Elems.data() + 2);
   }
 
   const child_range children() const {
@@ -255,6 +279,8 @@ struct ElemSyntax : Syntax {
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Elem;
   }
+
+  std::array<Syntax *, 2> Elems;
 };
 
 /// A labeled block of code (e.g., a loop).
@@ -267,32 +293,32 @@ struct MacroSyntax : Syntax {
     Elems[2] = Next;
   }
 
-  const Syntax *Call() const {
+  const Syntax *getCall() const {
     return Elems[0];
   }
 
-  Syntax *Call() {
+  Syntax *getCall() {
     return Elems[0];
   }
 
-  const Syntax *Block() const {
+  const Syntax *getBlock() const {
     return Elems[1];
   }
 
-  Syntax *Block() {
+  Syntax *getBlock() {
     return Elems[1];
   }
 
-  const Syntax *End() const {
+  const Syntax *getNext() const {
     return Elems[2];
   }
 
-  Syntax *End() {
+  Syntax *getNext() {
     return Elems[2];
   }
 
   child_range children() {
-    return child_range(&Elems[0], &Elems[3]);
+    return child_range(Elems.data(), Elems.data() + 3);
   }
 
   const child_range children() const {
