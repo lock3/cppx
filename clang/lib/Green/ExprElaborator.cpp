@@ -189,11 +189,11 @@ const llvm::StringMap<BinaryOperatorKind> CompoundAssignOperators = {
 
 Expr *
 ExprElaborator::elaborateCall(const CallSyntax *S) {
-  const AtomSyntax *Callee = cast<AtomSyntax>(S->Callee());
+  const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   std::string Spelling = Callee->Tok.getSpelling();
 
   if (&CxxContext.Idents.get(Spelling) == SemaRef.OperatorColonII) {
-    const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
+    const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
 
     Elaborator Elab(SemaRef.getContext(), SemaRef);
     QualType T = Elab.getOperatorColonType(S);
@@ -219,7 +219,7 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
 
 Expr *
 ExprElaborator::elaborateBinOp(const CallSyntax *S, BinaryOperatorKind Op) {
-  const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
+  const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
   const Syntax *LHSSyntax = ArgList->Elems[0];
   const Syntax *RHSSyntax = ArgList->Elems[1];
 
@@ -239,7 +239,7 @@ ExprElaborator::elaborateBinOp(const CallSyntax *S, BinaryOperatorKind Op) {
 Expr *
 ExprElaborator::elaborateCmpAssignOp(const CallSyntax *S,
                                      BinaryOperatorKind Op) {
-  const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
+  const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
   const Syntax *LHSSyntax = ArgList->Elems[0];
   const Syntax *RHSSyntax = ArgList->Elems[1];
 

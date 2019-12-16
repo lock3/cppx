@@ -21,12 +21,8 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   const FileSyntax *File = cast<FileSyntax>(S);
 
   // Pass 1. identify declarations in scope.
-  IdentifierMapper Mapper(Context, SemaRef);
-  Mapper.identifyDecls(File);
-
-  llvm::outs() << "Mappings:\n";
-  for (auto MapIter : SemaRef.IdentifierMapping)
-    llvm::outs() << MapIter.first->getName() << ": " << MapIter.second << '\n';
+  for (const Syntax *SS : File->children())
+    identifyDecl(SS);
 
   // Pass 2: elaborate top-level declarations and their definitions.
   for (const Syntax *SS : File->children())
@@ -63,7 +59,7 @@ clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
 clang::QualType Elaborator::getOperatorColonType(const CallSyntax *S) const {
   // Get the argument list of an operator':' call. This should have
   // two arguments, the entity (argument 1) and its type (argument 2).
-  const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
+  const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
 
   // Right now this has to be an explicitly named type.
   if (!isa<AtomSyntax>(ArgList->Elems[1]))
@@ -94,7 +90,7 @@ static clang::Decl *handleOperatorColon(SyntaxContext &Context,
     clang::Decl::castToDeclContext(CxxAST.getTranslationUnitDecl());
 
   // We have a type and a name, so create a declaration.
-  const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
+  const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
   const AtomSyntax *Declarator = cast<AtomSyntax>(ArgList->Elems[0]);
 
   clang::IdentifierInfo *II = &CxxAST.Idents.get(Declarator->Tok.getSpelling());
@@ -129,11 +125,11 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
   // Get the args for an operator'!' call. This should always have two
   // arguments: a (possibly typed) function declarator and a function
   // definition. We are not concerned with the defintion here.
-  const ListSyntax *Args = cast<ListSyntax>(S->Args());
+  const ListSyntax *Args = cast<ListSyntax>(S->getArguments());
 
   const CallSyntax *Declarator = cast<CallSyntax>(Args->Elems[0]);
   const AtomSyntax *DeclaratorCallee
-    = cast<AtomSyntax>(Declarator->Callee());
+    = cast<AtomSyntax>(Declarator->getCallee());
   clang::IdentifierInfo *DeclaratorSpelling =
     &CxxAST.Idents.get(DeclaratorCallee->Tok.getSpelling());
   clang::IdentifierInfo *Name = nullptr;
@@ -151,21 +147,21 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
 
     // Let's try to wrestle the parameters out of this operator':' call.
     const ListSyntax *OperatorColonArgList =
-      cast<ListSyntax>(OperatorColonCall->Args());
+      cast<ListSyntax>(OperatorColonCall->getArguments());
     // The first argument of the operator':' call is the function itself.
     const CallSyntax *TheCall =
       cast<CallSyntax>(OperatorColonArgList->Elems[0]);
     // Now let's get the array of parameters from the function.
-    Parameters = cast<ArraySyntax>(TheCall->Args());
+    Parameters = cast<ArraySyntax>(TheCall->getArguments());
 
     // Let's get the name of the function while we're here.
     Name = &CxxAST.Idents.get(
-      cast<AtomSyntax>(TheCall->Callee())->Tok.getSpelling());
+      cast<AtomSyntax>(TheCall->getCallee())->Tok.getSpelling());
   } else {
     // Otherwise, we have a bare function definition.
     // Just use an auto return type.
     ReturnType = CxxAST.getAutoDeductType();
-    Parameters = cast<ArraySyntax>(Declarator->Args());
+    Parameters = cast<ArraySyntax>(Declarator->getArguments());
     Name = DeclaratorSpelling;
   }
 
@@ -237,7 +233,7 @@ static clang::Decl *handleOperatorEquals(SyntaxContext &Context,
 
   // Get the args for the operator'=' call. As usual, we expect binary
   // operands here: some sort of named entity and an expression.
-  const ListSyntax *Args = cast<ListSyntax>(S->Args());
+  const ListSyntax *Args = cast<ListSyntax>(S->getArguments());
 
   clang::VarDecl *EntityVD = nullptr;
 
@@ -305,9 +301,9 @@ static clang::Decl *handleOperatorEquals(SyntaxContext &Context,
 }
 
 clang::Decl *Elaborator::elaborateDeclForCall(const CallSyntax *S) {
-  assert(isa<AtomSyntax>(S->Callee()) && "Unknown call format.");
+  assert(isa<AtomSyntax>(S->getCallee()) && "Unknown call format.");
 
-  const AtomSyntax *Callee = cast<AtomSyntax>(S->Callee());
+  const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   const clang::IdentifierInfo *Spelling =
     &Context.CxxAST.Idents.get(Callee->Tok.getSpelling());
 
@@ -318,6 +314,95 @@ clang::Decl *Elaborator::elaborateDeclForCall(const CallSyntax *S) {
   else if (Spelling == SemaRef.OperatorEqualsII)
     return handleOperatorEquals(Context, SemaRef, *this, S);
   return nullptr;
+}
+
+void Elaborator::identifyDecl(const Syntax *S) {
+  if (isa<CallSyntax>(S)) {
+    const CallSyntax *Call = cast<CallSyntax>(S);
+    if (isa<AtomSyntax>(Call->getCallee())) {
+      const AtomSyntax *getCallee = cast<AtomSyntax>(Call->getCallee());
+      llvm::StringRef Op = getCallee->getToken().getSpelling();
+      if (Op == "operator'='")
+        return identifyVariable(Call);
+      if (Op == "operator':'")
+        return identifyVariable(Call);
+      if (Op == "operator'!'")
+        return identifyFunction(Call);
+      // FIXME: What else?
+    };
+  }
+  // FIXME: What other kinds of things are declarations?
+  return;
+}
+
+static const Syntax *getIdentifierFromArgs(const CallSyntax *S) {
+  const Syntax *Args = S->getArguments();
+  if (const auto *Array = dyn_cast<ArraySyntax>(Args)) {
+    if (!Array->hasChildren())
+      return nullptr;
+    return Array->getChild(0);
+  }
+  if (const auto *List = dyn_cast<ListSyntax>(Args)) {
+    if (!List->hasChildren())
+      return nullptr;
+    return List->getChild(0);
+  }
+  llvm_unreachable("Unknown call argument");
+}
+
+/// Returns the identifier of the term being declared. This is a simple
+/// recursive walk through the left-most terms of a call tree until we
+/// reach an atom.
+///
+/// TODO: Can the identifier be something other than an atom (e.g., a
+/// template-id?).
+static const AtomSyntax *getIdentifier(const Syntax *S) {
+  while (true) {
+    // If we find an atom, then we're done.
+    if (const auto *Atom = dyn_cast<AtomSyntax>(S))
+      return Atom;
+
+    // The identifier...
+    if (const auto *Call = dyn_cast<CallSyntax>(S)) {
+      const Syntax *Callee = Call->getCallee();
+      if (const auto *Atom = dyn_cast<AtomSyntax>(Callee)) {
+        // Search through known "typing" operators for an argument list.
+        if (Atom->getSpelling() == "operator'!'") {
+          S = getIdentifierFromArgs(Call);
+          continue;
+        }
+        if (Atom->getSpelling() == "operator'='") {
+          S = getIdentifierFromArgs(Call);
+          continue;
+        }
+        if (Atom->getSpelling() == "operator':'") {
+          S = getIdentifierFromArgs(Call);
+          continue;
+        }
+
+        // The callee is the identifier.
+        return Atom;
+      } else {
+        // If the callee isn't a literal, then this can't be an identifier.
+        return nullptr;
+      }
+    }
+
+    // FIXME: Anything else that could be here?
+    llvm_unreachable("Unknown syntax node");
+  }
+}
+
+void Elaborator::identifyFunction(const CallSyntax *S) {
+  const AtomSyntax *Id = getIdentifier(S);
+  if (!Id)
+    return;
+}
+
+void Elaborator::identifyVariable(const CallSyntax *S) {
+  const AtomSyntax *Id = getIdentifier(S);
+  if (!Id)
+    return;
 }
 
 } // namespace green

@@ -25,6 +25,25 @@ namespace green {
 
 struct Syntax;
 
+/// A declaration is stores information about the declaration of an
+/// identifier. It binds together the declaring operator, the declarator,
+/// the definition, and the corresponding C++ declaration.
+struct Declaration {
+  /// The (binary) operator that introduces the definition. This is null
+  /// for the top-level file declaration.
+  Syntax *Operator = nullptr;
+
+  /// The declarator (form of declaration).
+  Syntax *Declarator = nullptr;
+
+  /// The definition.
+  Syntax *Definition = nullptr;
+
+  /// The corresponding C++ declaration.
+  clang::Decl* Cxx = nullptr;
+};
+
+
 class GreenScope {
   /// The parent/enclosing scope of this scope.
   GreenScope *Parent;

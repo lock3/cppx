@@ -156,7 +156,7 @@ struct Token
   }
 
   /// Returns the spelling of the token.
-  char const* getSpelling() const;
+  llvm::StringRef getSpelling() const;
 
   /// Returns a human-readable name for the token. For simple tokens,
   /// this is simply its spelling. Otherwise, it is the grammatical name

@@ -64,8 +64,8 @@ void IdentifierMapper::mapList(const ListSyntax *S) {
 void IdentifierMapper::mapCall(const CallSyntax *S) {
   // If the Callee of the function is an atom, it could be either an operator
   // or an untyped variable. If it is the latter, then just map it now.
-  if (isa<AtomSyntax>(S->Callee())) {
-    const AtomSyntax *CalleeAtom = cast<AtomSyntax>(S->Callee());
+  if (isa<AtomSyntax>(S->getCallee())) {
+    const AtomSyntax *CalleeAtom = cast<AtomSyntax>(S->getCallee());
     std::string Spelling = CalleeAtom->Tok.getSpelling();
     clang::ASTContext &CxxAST = Context.CxxAST;
 
@@ -79,7 +79,7 @@ void IdentifierMapper::mapCall(const CallSyntax *S) {
       clang::IdentifierInfo *II =
         &CxxAST.Idents.get(CalleeAtom->Tok.getSpelling());
       SemaRef.IdentifierMapping.insert({II, CurrentTopLevelSyntax});
-      // identifyDecls(cast<ArraySyntax>(S->Args()));
+      // identifyDecls(cast<ArraySyntax>(S->getArguments()));
     }
   }
 }
@@ -92,12 +92,12 @@ void IdentifierMapper::mapCall(const CallSyntax *S) {
 //    identifier(...) : T
 void
 IdentifierMapper::handleOperatorColon(const CallSyntax *S) {
-  assert(isa<AtomSyntax>(S->Callee()) &&
+  assert(isa<AtomSyntax>(S->getCallee()) &&
          "Callee of operator syntax is not an atom.");
-  if (isa<ListSyntax>(S->Args())) {
+  if (isa<ListSyntax>(S->getArguments())) {
     if (!MappingOperatorExclaim && !MappingOperatorEquals)
       CurrentTopLevelSyntax = S;
-    const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
+    const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
 
     // Case 1: handle a typed variable.
     if (isa<AtomSyntax>(ArgList->Elems[0])) {
@@ -124,13 +124,13 @@ IdentifierMapper::handleOperatorColon(const CallSyntax *S) {
 // where `args` and `T` are optional.
 void
 IdentifierMapper::handleOperatorExclaim(const CallSyntax *S) {
-  assert(isa<AtomSyntax>(S->Callee()) &&
+  assert(isa<AtomSyntax>(S->getCallee()) &&
          "Callee of operator syntax is not an atom.");
-  if (isa<ListSyntax>(S->Args())) {
+  if (isa<ListSyntax>(S->getArguments())) {
     MappingOperatorExclaim = true;
     CurrentTopLevelSyntax = S;
 
-    const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
+    const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
 
     // Begin by mapping the call syntax that declares the function.
     assert(isa<CallSyntax>(ArgList->Elems[0]) && "operator! does not declare a call.");
@@ -155,8 +155,8 @@ void
 IdentifierMapper::handleOperatorEquals(const CallSyntax *S) {
   CurrentTopLevelSyntax = S;
 
-  if (isa<ListSyntax>(S->Args())) {
-    const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
+  if (isa<ListSyntax>(S->getArguments())) {
+    const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
 
     MappingOperatorEquals = true;
 
