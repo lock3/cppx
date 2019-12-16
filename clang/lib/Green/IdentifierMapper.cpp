@@ -28,17 +28,13 @@ IdentifierMapper::IdentifierMapper(SyntaxContext &Context, GreenSema &SemaRef)
   : Context(Context), SemaRef(SemaRef)
 {}
 
-void IdentifierMapper::identifyDecls(const ArraySyntax *S) {
+void IdentifierMapper::identifyDecls(const FileSyntax *S) {
   for (const Syntax *Child : S->children()) {
     CurrentTopLevelSyntax = S;
-    if (isa<ListSyntax>(Child))
+    if (isa<ListSyntax>(Child)) {
       mapList(cast<ListSyntax>(Child));
-  }
-}
-
-void IdentifierMapper::mapList(const ListSyntax *S) {
-  for (const Syntax *Child : S->children()) {
-    if (isa<CallSyntax>(Child)) {
+      continue;
+    } else if (isa<CallSyntax>(Child)) {
       mapCall(cast<CallSyntax>(Child));
       continue;
     } else if (isa<AtomSyntax>(Child)) {
@@ -50,8 +46,17 @@ void IdentifierMapper::mapList(const ListSyntax *S) {
 
       clang::IdentifierInfo *II =
         &Context.CxxAST.Idents.get(Name->Tok.getSpelling());
-      if (isa<ArraySyntax>(CurrentTopLevelSyntax))
+      if (CurrentTopLevelSyntax == S)
         SemaRef.IdentifierMapping.insert({II, Name});
+    }
+  }
+}
+
+void IdentifierMapper::mapList(const ListSyntax *S) {
+  for (const Syntax *Child : S->children()) {
+    if (isa<CallSyntax>(Child)) {
+      mapCall(cast<CallSyntax>(Child));
+      continue;
     }
   }
 }

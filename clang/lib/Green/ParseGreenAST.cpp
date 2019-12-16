@@ -59,21 +59,6 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
   GreenSema Sema(Context, ClangSema);
   Elaborator Elab(Context, Sema);
   Elab.elaborateFile(AST);
-
-#if 0
-  // PHASE 1: Map names to the syntaxes that introduce them.
-  IdentifierMapper Mapper(Context, Sema, PP);
-  Mapper.identifyDecls(cast<FileSyntax>(AST));
-
-  llvm::outs() << "Mappings:\n";
-  for (auto MapIter : Sema.IdentifierMapping)
-    llvm::outs() << MapIter.first->getName() << ": " << MapIter.second << '\n';
-
-  // PHASE 2: Create a clang::Type and clang::Decl for each declaration.
-  Elaborator Elab(Context, Sema);
-  for (auto MapIter : Sema.IdentifierMapping)
-    Elab.elaborateDecl(MapIter.second);
-#endif
 }
 
 } // namespace lock3

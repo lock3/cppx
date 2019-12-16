@@ -42,7 +42,7 @@ class GreenScope;
 struct Syntax;
 struct ArraySyntax;
 
-/// A declaration is stores information about the declaration of an
+/// A declaration stores information about the declaration of an
 /// identifier. It binds together the declaring operator, the declarator,
 /// the definition, and the corresponding C++ declaration.
 struct Declaration {

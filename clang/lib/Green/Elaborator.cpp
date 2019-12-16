@@ -4,6 +4,7 @@
 #include "clang/Green/GreenSema.h"
 #include "clang/Green/Elaborator.h"
 #include "clang/Green/ExprElaborator.h"
+#include "clang/Green/IdentifierMapper.h"
 #include "clang/Green/StmtElaborator.h"
 #include "clang/Green/SyntaxContext.h"
 
@@ -20,7 +21,12 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   const FileSyntax *File = cast<FileSyntax>(S);
 
   // Pass 1. identify declarations in scope.
-  // FIXME: Implement this.
+  IdentifierMapper Mapper(Context, SemaRef);
+  Mapper.identifyDecls(File);
+
+  llvm::outs() << "Mappings:\n";
+  for (auto MapIter : SemaRef.IdentifierMapping)
+    llvm::outs() << MapIter.first->getName() << ": " << MapIter.second << '\n';
 
   // Pass 2: elaborate top-level declarations and their definitions.
   for (const Syntax *SS : File->children())
@@ -195,7 +201,6 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
   FD->setParams(ParameterDecls);
   FD->getDeclContext()->addDecl(FD);
 
-  // FIXME: Is this the right syntax for the scope?
   SemaRef.enterScope(S, FD);
 
   // The parameters are currently owned by the translation unit, so let's
