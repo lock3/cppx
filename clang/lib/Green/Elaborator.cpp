@@ -4,14 +4,14 @@
 #include "clang/Green/GreenSema.h"
 #include "clang/Green/Elaborator.h"
 #include "clang/Green/ExprElaborator.h"
+#include "clang/Green/IdentifierMapper.h"
 #include "clang/Green/StmtElaborator.h"
 #include "clang/Green/SyntaxContext.h"
-#include "clang/Lex/Preprocessor.h"
 
 namespace green {
 
 Elaborator::Elaborator(SyntaxContext &Context, GreenSema &SemaRef)
-  : Context(Context), SemaRef(SemaRef), PP(SemaRef.getPP())
+  : Context(Context), SemaRef(SemaRef)
 {
 }
 
@@ -79,7 +79,6 @@ clang::QualType Elaborator::getOperatorColonType(const CallSyntax *S) const {
 // Called from Elaborator::elaborateDeclForCall()
 static clang::Decl *handleOperatorColon(SyntaxContext &Context,
                                         GreenSema &SemaRef,
-                                        clang::Preprocessor &PP,
                                         Elaborator const &E,
                                         const CallSyntax *S) {
   clang::ASTContext &CxxAST = Context.CxxAST;
@@ -93,7 +92,8 @@ static clang::Decl *handleOperatorColon(SyntaxContext &Context,
   // We have a type and a name, so create a declaration.
   const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
   const AtomSyntax *Declarator = cast<AtomSyntax>(ArgList->Elems[0]);
-  clang::IdentifierInfo *II = PP.getIdentifierInfo(Declarator->Tok.getSpelling());
+
+  clang::IdentifierInfo *II = &CxxAST.Idents.get(Declarator->Tok.getSpelling());
   if (Declarator->isParam()) {
     clang::ParmVarDecl *PVD =
       clang::ParmVarDecl::Create(CxxAST, TUDC, clang::SourceLocation(),
@@ -117,7 +117,6 @@ static clang::Decl *handleOperatorColon(SyntaxContext &Context,
 // a function with a definition.
 // Called from Elaborator::elaborateDeclForCall()
 static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
-                                          clang::Preprocessor &PP,
                                           GreenSema &SemaRef,
                                           Elaborator &E,
                                           const CallSyntax *S) {
@@ -132,7 +131,7 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
   const AtomSyntax *DeclaratorCallee
     = cast<AtomSyntax>(Declarator->getCallee());
   clang::IdentifierInfo *DeclaratorSpelling =
-    PP.getIdentifierInfo(DeclaratorCallee->Tok.getSpelling());
+    &CxxAST.Idents.get(DeclaratorCallee->Tok.getSpelling());
   clang::IdentifierInfo *Name = nullptr;
 
   // The parameters of the declared function.
@@ -156,7 +155,7 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
     Parameters = cast<ArraySyntax>(TheCall->getArguments());
 
     // Let's get the name of the function while we're here.
-    Name =  PP.getIdentifierInfo(
+    Name = &CxxAST.Idents.get(
       cast<AtomSyntax>(TheCall->getCallee())->Tok.getSpelling());
   } else {
     // Otherwise, we have a bare function definition.
@@ -198,7 +197,6 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
   FD->setParams(ParameterDecls);
   FD->getDeclContext()->addDecl(FD);
 
-  // FIXME: Is this the right syntax for the scope?
   SemaRef.enterScope(S, FD);
 
   // The parameters are currently owned by the translation unit, so let's
@@ -229,7 +227,6 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
 // Called from Elaborator::elaborateDeclForCall()
 static clang::Decl *handleOperatorEquals(SyntaxContext &Context,
                                          GreenSema &SemaRef,
-                                         clang::Preprocessor &PP,
                                          Elaborator &E,
                                          const CallSyntax *S) {
   clang::ASTContext &CxxAST = Context.CxxAST;
@@ -248,7 +245,7 @@ static clang::Decl *handleOperatorEquals(SyntaxContext &Context,
   if (isa<CallSyntax>(Args->Elems[0])) {
     const CallSyntax *Entity = cast<CallSyntax>(Args->Elems[0]);
 
-    clang::Decl *EntityDecl = handleOperatorColon(Context, SemaRef, PP, E, Entity);
+    clang::Decl *EntityDecl = handleOperatorColon(Context, SemaRef, E, Entity);
 
     // FIXME: Single-line functions are unimplemented. I don't think
     // default arguments are supported by the language.
@@ -265,7 +262,7 @@ static clang::Decl *handleOperatorEquals(SyntaxContext &Context,
     // Declare the variable.
     const AtomSyntax *Declarator = cast<AtomSyntax>(Args->Elems[0]);
     clang::IdentifierInfo *II =
-      SemaRef.getPP().getIdentifierInfo(Declarator->Tok.getSpelling());
+      &CxxAST.Idents.get(Declarator->Tok.getSpelling());
     clang::DeclContext *TUDC =
       clang::Decl::castToDeclContext(CxxAST.getTranslationUnitDecl());
     clang::TypeSourceInfo *TInfo =
@@ -308,14 +305,14 @@ clang::Decl *Elaborator::elaborateDeclForCall(const CallSyntax *S) {
 
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   const clang::IdentifierInfo *Spelling =
-    PP.getIdentifierInfo(Callee->Tok.getSpelling());
+    &Context.CxxAST.Idents.get(Callee->Tok.getSpelling());
 
   if (Spelling == SemaRef.OperatorColonII)
-    return handleOperatorColon(Context, SemaRef, PP, *this, S);
+    return handleOperatorColon(Context, SemaRef, *this, S);
   else if (Spelling == SemaRef.OperatorExclaimII)
-    return handleOperatorExclaim(Context, PP, SemaRef, *this, S);
+    return handleOperatorExclaim(Context, SemaRef, *this, S);
   else if (Spelling == SemaRef.OperatorEqualsII)
-    return handleOperatorEquals(Context, SemaRef, PP, *this, S);
+    return handleOperatorEquals(Context, SemaRef, *this, S);
   return nullptr;
 }
 
