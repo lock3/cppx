@@ -3,7 +3,6 @@
 #include "clang/AST/OperationKinds.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/SourceLocation.h"
-#include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Sema.h"
 #include "llvm/ADT/APSInt.h"
@@ -96,9 +95,9 @@ createIntegerLiteral(ASTContext &CxxContext, Token T, QualType IntType,
 }
 
 static DeclRefExpr *
-createDeclRefExpr(ASTContext &CxxContext, GreenSema &SemaRef, Preprocessor &PP,
+createDeclRefExpr(ASTContext &CxxContext, GreenSema &SemaRef,
                   Token T, QualType Ty, SourceLocation Loc) {
-  DeclarationNameInfo DNI({PP.getIdentifierInfo(T.getSpelling())}, Loc);
+  DeclarationNameInfo DNI({&CxxContext.Idents.get(T.getSpelling())}, Loc);
   LookupResult R(SemaRef.getCxxSema(), DNI, Sema::LookupAnyName);
 
   SemaRef.LookupName(R, SemaRef.getCurrentScope());
@@ -144,8 +143,7 @@ ExprElaborator::elaborateAtom(const AtomSyntax *S, QualType ExplicitType) {
   case tok::HexadecimalFloat:
     break;
   case tok::Identifier:
-    return createDeclRefExpr(CxxContext, SemaRef, SemaRef.getPP(),
-                             T, ExplicitType, S->Loc);
+    return createDeclRefExpr(CxxContext, SemaRef, T, ExplicitType, S->Loc);
     break;
   case tok::Character:
     break;
@@ -194,8 +192,7 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
   const AtomSyntax *Callee = cast<AtomSyntax>(S->Callee());
   std::string Spelling = Callee->Tok.getSpelling();
 
-  Preprocessor &PP = SemaRef.getPP();
-  if (PP.getIdentifierInfo(Spelling) == SemaRef.OperatorColonII) {
+  if (&CxxContext.Idents.get(Spelling) == SemaRef.OperatorColonII) {
     const ListSyntax *ArgList = cast<ListSyntax>(S->Args());
 
     Elaborator Elab(SemaRef.getContext(), SemaRef);

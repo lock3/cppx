@@ -56,7 +56,7 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
 
   // Elaborate the resulting abstract syntax tree.
   SyntaxContext Context(ClangContext);
-  GreenSema Sema(Context, PP, ClangSema);
+  GreenSema Sema(Context, ClangSema);
   Elaborator Elab(Context, Sema);
   Elab.elaborateFile(AST);
 

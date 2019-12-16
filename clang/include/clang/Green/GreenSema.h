@@ -68,9 +68,6 @@ class GreenSema {
   // The context
   SyntaxContext &Context;
 
-  // The clang preprocessor, for access to IdentifierInfos.
-  clang::Preprocessor &PP;
-
   // The clang semantic object, allows to create various syntax nodes
   // as well as perform important transformations on them.
   clang::Sema &CxxSema;
@@ -79,7 +76,7 @@ class GreenSema {
   llvm::SmallVector<GreenScope *, 4> ScopeStack;
 
 public:
-  GreenSema(SyntaxContext &Context, clang::Preprocessor &PP, clang::Sema &S);
+  GreenSema(SyntaxContext &Context, clang::Sema &S);
 
   // Look through a translation unit and map the identifiers to Clang
   // constructs.
@@ -107,8 +104,6 @@ public:
 
   // Iterate through the mapped identifiers and determine their type.
   void elaborateDecls();
-
-  clang::Preprocessor &getPP() { return PP; }
 
   clang::Sema &getCxxSema() { return CxxSema; }
 

@@ -17,7 +17,6 @@
 #include "clang/Green/IdentifierMapper.h"
 #include "clang/Green/Syntax.h"
 #include "clang/Green/SyntaxContext.h"
-#include "clang/Lex/Preprocessor.h"
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -25,9 +24,8 @@ namespace green {
 
 using namespace llvm;
 
-IdentifierMapper::IdentifierMapper(SyntaxContext &Context, GreenSema &SemaRef,
-                                   clang::Preprocessor &PP)
-  : Context(Context), SemaRef(SemaRef), PP(PP)
+IdentifierMapper::IdentifierMapper(SyntaxContext &Context, GreenSema &SemaRef)
+  : Context(Context), SemaRef(SemaRef)
 {}
 
 void IdentifierMapper::identifyDecls(const ArraySyntax *S) {
@@ -51,7 +49,7 @@ void IdentifierMapper::mapList(const ListSyntax *S) {
         continue;
 
       clang::IdentifierInfo *II =
-        PP.getIdentifierInfo(Name->Tok.getSpelling());
+        &Context.CxxAST.Idents.get(Name->Tok.getSpelling());
       if (isa<ArraySyntax>(CurrentTopLevelSyntax))
         SemaRef.IdentifierMapping.insert({II, Name});
     }
@@ -64,16 +62,17 @@ void IdentifierMapper::mapCall(const CallSyntax *S) {
   if (isa<AtomSyntax>(S->Callee())) {
     const AtomSyntax *CalleeAtom = cast<AtomSyntax>(S->Callee());
     std::string Spelling = CalleeAtom->Tok.getSpelling();
-    if (PP.getIdentifierInfo(Spelling) == SemaRef.OperatorColonII) {
+    clang::ASTContext &CxxAST = Context.CxxAST;
+
+    if (&CxxAST.Idents.get(Spelling) == SemaRef.OperatorColonII) {
       return handleOperatorColon(S);
-    }
-    else if (PP.getIdentifierInfo(Spelling) == SemaRef.OperatorExclaimII) {
+    } else if (&CxxAST.Idents.get(Spelling) == SemaRef.OperatorExclaimII) {
       return handleOperatorExclaim(S);
-    } else if (PP.getIdentifierInfo(Spelling) == SemaRef.OperatorEqualsII) {
+    } else if (&CxxAST.Idents.get(Spelling) == SemaRef.OperatorEqualsII) {
       return handleOperatorEquals(S);
     } else {
       clang::IdentifierInfo *II =
-        PP.getIdentifierInfo(CalleeAtom->Tok.getSpelling());
+        &CxxAST.Idents.get(CalleeAtom->Tok.getSpelling());
       SemaRef.IdentifierMapping.insert({II, CurrentTopLevelSyntax});
       // identifyDecls(cast<ArraySyntax>(S->Args()));
     }
@@ -99,7 +98,7 @@ IdentifierMapper::handleOperatorColon(const CallSyntax *S) {
     if (isa<AtomSyntax>(ArgList->Elems[0])) {
       const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);
       clang::IdentifierInfo *II =
-        PP.getIdentifierInfo(Name->Tok.getSpelling());
+        &Context.CxxAST.Idents.get(Name->Tok.getSpelling());
 
        SemaRef.IdentifierMapping.insert({II, CurrentTopLevelSyntax});
 
@@ -162,7 +161,7 @@ IdentifierMapper::handleOperatorEquals(const CallSyntax *S) {
     if (isa<CallSyntax>(Declarator))
       return mapCall(cast<CallSyntax>(Declarator));
     else if (isa<AtomSyntax>(Declarator)) {
-      clang::IdentifierInfo *Spelling = PP.getIdentifierInfo(
+      clang::IdentifierInfo *Spelling = &Context.CxxAST.Idents.get(
         cast<AtomSyntax>(Declarator)->Tok.getSpelling());
       SemaRef.IdentifierMapping.insert({Spelling, CurrentTopLevelSyntax});
     }

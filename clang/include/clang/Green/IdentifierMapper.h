@@ -37,8 +37,7 @@ struct MacroSyntax;
 /// Create a mapping of identifiers to the syntax nodes that introduce them.
 class IdentifierMapper {
 public:
-  IdentifierMapper(SyntaxContext &Context, GreenSema &SemaRef,
-                   clang::Preprocessor &PP);
+  IdentifierMapper(SyntaxContext &Context, GreenSema &SemaRef);
 
   void identifyDecls(const ArraySyntax *S);
 
@@ -70,8 +69,6 @@ private:
 
   /// Maintains the current state of translation.
   GreenSema &SemaRef;
-
-  clang::Preprocessor &PP;
 };
 
 } // namespace green

@@ -39,10 +39,6 @@ class Elaborator {
   /// The state of translation for the Green language.
   GreenSema &SemaRef;
 
-  /// The preprocessor.
-  ///
-  /// FIXME: Remove this.
-  clang::Preprocessor &PP;
 public:
   Elaborator(SyntaxContext &Context, GreenSema &SemaRef);
 

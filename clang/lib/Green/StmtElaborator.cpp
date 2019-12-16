@@ -15,7 +15,6 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Stmt.h"
 #include "clang/Basic/IdentifierTable.h"
-#include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Sema.h"
 
@@ -58,9 +57,8 @@ createDeclStmt(ASTContext &CxxContext, GreenSema &SemaRef,
   // TODO: can this be something other than a name?
   const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);
 
-  Preprocessor &PP = SemaRef.getPP();
   clang::Sema &ClangSema = SemaRef.getCxxSema();
-  IdentifierInfo *II = PP.getIdentifierInfo(Name->Tok.getSpelling());
+  IdentifierInfo *II = &CxxContext.Idents.get(Name->Tok.getSpelling());
   DeclarationNameInfo DNI(II, S->Loc);
   LookupResult R(ClangSema, DNI, Sema::LookupAnyName);
   SemaRef.LookupName(R, SemaRef.getCurrentScope());
@@ -87,8 +85,7 @@ createDeclStmt(ASTContext &CxxContext, GreenSema &SemaRef,
 Stmt *
 StmtElaborator::elaborateCall(const CallSyntax *S) {
   const AtomSyntax *Callee = cast<AtomSyntax>(S->Callee());
-  Preprocessor &PP = SemaRef.getPP();
-  IdentifierInfo *Spelling = PP.getIdentifierInfo(Callee->Tok.getSpelling());
+  IdentifierInfo *Spelling = &CxxContext.Idents.get(Callee->Tok.getSpelling());
 
   // A typed declaration.
   // FIXME : what about 'x = 3:int'
@@ -98,7 +95,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
     // TODO: can this be something other than a name?
     const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);
     clang::Sema &ClangSema = SemaRef.getCxxSema();
-    IdentifierInfo *II = PP.getIdentifierInfo(Name->Tok.getSpelling());
+    IdentifierInfo *II = &CxxContext.Idents.get(Name->Tok.getSpelling());
     DeclarationNameInfo DNI(II, S->Loc);
     LookupResult R(ClangSema, DNI, Sema::LookupAnyName);
     SemaRef.LookupName(R, SemaRef.getCurrentScope());

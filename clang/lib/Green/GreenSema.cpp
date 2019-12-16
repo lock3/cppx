@@ -14,7 +14,6 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
-#include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/Lookup.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -28,13 +27,12 @@ namespace green {
 
 using namespace llvm;
 
-GreenSema::GreenSema(SyntaxContext &Context, clang::Preprocessor &PP,
-                     clang::Sema &CxxSema)
-  : Context(Context), PP(PP), CxxSema(CxxSema)
+GreenSema::GreenSema(SyntaxContext &Context, clang::Sema &CxxSema)
+  : Context(Context), CxxSema(CxxSema)
 {
-  OperatorColonII = PP.getIdentifierInfo("operator':'");
-  OperatorExclaimII = PP.getIdentifierInfo("operator'!'");
-  OperatorEqualsII = PP.getIdentifierInfo("operator'='");
+  OperatorColonII = &Context.CxxAST.Idents.get("operator':'");
+  OperatorExclaimII = &Context.CxxAST.Idents.get("operator'!'");
+  OperatorEqualsII = &Context.CxxAST.Idents.get("operator'='");
 }
 
 GreenScope *GreenSema::getCurrentScope() {
