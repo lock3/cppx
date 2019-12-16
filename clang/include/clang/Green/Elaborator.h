@@ -52,8 +52,7 @@ public:
   clang::Decl *elaborateDeclForAtom(const AtomSyntax *S);
 
   void identifyDecl(const Syntax *S);
-  void identifyFunction(const CallSyntax *S);
-  void identifyVariable(const CallSyntax *S);
+  void identifyDeclFromCall(const CallSyntax *S);
 
   // Get the clang::QualType described by an operator':' call.
   clang::QualType getOperatorColonType(const CallSyntax *S) const;

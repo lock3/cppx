@@ -4,7 +4,6 @@
 #include "clang/Green/GreenSema.h"
 #include "clang/Green/Elaborator.h"
 #include "clang/Green/ExprElaborator.h"
-#include "clang/Green/IdentifierMapper.h"
 #include "clang/Green/StmtElaborator.h"
 #include "clang/Green/SyntaxContext.h"
 
@@ -107,8 +106,8 @@ static clang::Decl *handleOperatorColon(SyntaxContext &Context,
       clang::VarDecl::Create(CxxAST, TUDC, clang::SourceLocation(),
                              clang::SourceLocation(), II, TInfo->getType(),
                              TInfo, clang::SC_Extern);
-    SemaRef.getCurrentScope()->addDecl(VD);
-    VD->getDeclContext()->addDecl(VD);
+    // SemaRef.getCurrentScope()->addDecl(VD);
+    // VD->getDeclContext()->addDecl(VD);
     return VD;
   }
 }
@@ -120,6 +119,8 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
                                           GreenSema &SemaRef,
                                           Elaborator &E,
                                           const CallSyntax *S) {
+#if 0
+
   clang::ASTContext &CxxAST = Context.CxxAST;
 
   // Get the args for an operator'!' call. This should always have two
@@ -220,6 +221,8 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
 
   // FD->dump();
   return FD;
+  #endif
+  return nullptr;
 }
 
 // Create a clang::Decl for a call to operator'=', i.e., an initialized variable
@@ -230,6 +233,7 @@ static clang::Decl *handleOperatorEquals(SyntaxContext &Context,
                                          GreenSema &SemaRef,
                                          Elaborator &E,
                                          const CallSyntax *S) {
+#if 0
   clang::ASTContext &CxxAST = Context.CxxAST;
 
   // Get the args for the operator'=' call. As usual, we expect binary
@@ -299,6 +303,8 @@ static clang::Decl *handleOperatorEquals(SyntaxContext &Context,
 
   EntityVD->setInit(InitExpr);
   return EntityVD;
+#endif
+  return nullptr;
 }
 
 clang::Decl *Elaborator::elaborateDeclForCall(const CallSyntax *S) {
@@ -317,37 +323,21 @@ clang::Decl *Elaborator::elaborateDeclForCall(const CallSyntax *S) {
   return nullptr;
 }
 
-void Elaborator::identifyDecl(const Syntax *S) {
-  if (isa<CallSyntax>(S)) {
-    const CallSyntax *Call = cast<CallSyntax>(S);
-    if (isa<AtomSyntax>(Call->getCallee())) {
-      const AtomSyntax *getCallee = cast<AtomSyntax>(Call->getCallee());
-      llvm::StringRef Op = getCallee->getToken().getSpelling();
-      if (Op == "operator'='")
-        return identifyVariable(Call);
-      if (Op == "operator':'")
-        return identifyVariable(Call);
-      if (Op == "operator'!'")
-        return identifyFunction(Call);
-      // FIXME: What else?
-    };
-  }
-  // FIXME: What other kinds of things are declarations?
-  return;
-}
-
-static const Syntax *getIdentifierFromArgs(const CallSyntax *S) {
+static const Syntax *findIdentifierInArgs(const CallSyntax *S) {
   const Syntax *Args = S->getArguments();
-  if (const auto *Array = dyn_cast<ArraySyntax>(Args)) {
-    if (!Array->hasChildren())
-      return nullptr;
-    return Array->getChild(0);
-  }
+
   if (const auto *List = dyn_cast<ListSyntax>(Args)) {
     if (!List->hasChildren())
       return nullptr;
     return List->getChild(0);
   }
+
+  if (const auto *Array = dyn_cast<ArraySyntax>(Args)) {
+    if (!Array->hasChildren())
+      return nullptr;
+    return Array->getChild(0);
+  }
+
   llvm_unreachable("Unknown call argument");
 }
 
@@ -357,7 +347,7 @@ static const Syntax *getIdentifierFromArgs(const CallSyntax *S) {
 ///
 /// TODO: Can the identifier be something other than an atom (e.g., a
 /// template-id?).
-static const AtomSyntax *getIdentifier(const Syntax *S) {
+static const AtomSyntax *findIdentifier(const Syntax *S) {
   while (true) {
     // If we find an atom, then we're done.
     if (const auto *Atom = dyn_cast<AtomSyntax>(S))
@@ -368,16 +358,8 @@ static const AtomSyntax *getIdentifier(const Syntax *S) {
       const Syntax *Callee = Call->getCallee();
       if (const auto *Atom = dyn_cast<AtomSyntax>(Callee)) {
         // Search through known "typing" operators for an argument list.
-        if (Atom->getSpelling() == "operator'!'") {
-          S = getIdentifierFromArgs(Call);
-          continue;
-        }
-        if (Atom->getSpelling() == "operator'='") {
-          S = getIdentifierFromArgs(Call);
-          continue;
-        }
         if (Atom->getSpelling() == "operator':'") {
-          S = getIdentifierFromArgs(Call);
+          S = findIdentifierInArgs(Call);
           continue;
         }
 
@@ -390,20 +372,54 @@ static const AtomSyntax *getIdentifier(const Syntax *S) {
     }
 
     // FIXME: Anything else that could be here?
-    llvm_unreachable("Unknown syntax node");
+    return nullptr;
   }
 }
 
-void Elaborator::identifyFunction(const CallSyntax *S) {
-  const AtomSyntax *Id = getIdentifier(S);
-  if (!Id)
-    return;
+void Elaborator::identifyDecl(const Syntax *S) {
+  if (const auto *Call = dyn_cast<CallSyntax>(S)) {
+    return identifyDeclFromCall(Call);
+  }
+
+  // FIXME: What other kinds of things are declarations?
+  return;
 }
 
-void Elaborator::identifyVariable(const CallSyntax *S) {
-  const AtomSyntax *Id = getIdentifier(S);
-  if (!Id)
-    return;
+void Elaborator::identifyDeclFromCall(const CallSyntax *S) {
+  if (const auto *Callee = dyn_cast<AtomSyntax>(S->getCallee())) {
+    llvm::StringRef Op = Callee->getToken().getSpelling();
+
+    // Unpack the declarator.
+    const Syntax *Decl;
+    const Syntax *Init;
+    if (Op == "operator'='") {
+      // FIXME: What if we have something like 'x, y : int'?
+      const auto *Args = cast<ListSyntax>(S->getArguments());
+      Decl = Args->getChild(0);
+      Init = Args->getChild(1);
+    } else if (Op == "operator'!'") {
+      const auto *Args = cast<ListSyntax>(S->getArguments());
+      Decl = Args->getChild(0);
+      Init = Args->getChild(1);
+    } else if (Op == "operator':'") {
+      Decl = S;
+      Init = nullptr;
+    } else {
+      // Syntactically, this is not a declaration.
+      return;
+    }
+
+    // True to find the declared identifier. If we can't then this
+    // is also not a declaration.
+    const AtomSyntax *Id = findIdentifier(Decl);
+    if (!Id)
+      return;
+    clang::IdentifierInfo *II = &Context.CxxAST.Idents.get(Id->getSpelling());
+
+    // Create a declaration for this node.
+    Declaration *D = new Declaration(II, S, Decl, Init);
+    SemaRef.getCurrentScope()->addDecl(D);
+  };
 }
 
 } // namespace green
