@@ -28,6 +28,7 @@ class DiagnosticsEngine;
 namespace green
 {
   struct Syntax;
+  class SyntaxContext;
 
   /// A pair of tokens.
   using TokenPair = std::pair<Token, Token>;
@@ -38,7 +39,7 @@ namespace green
   /// \todo Lift common parsing functions into a parameterized base class?
   struct Parser
   {
-    Parser(clang::SourceManager &SM, File const& F);
+    Parser(SyntaxContext &Context, clang::SourceManager &SM, File const& F);
 
     void fetchToken()
     {
@@ -259,6 +260,9 @@ namespace green
 
     /// Diagnostics.
     clang::DiagnosticsEngine &Diags;
+
+    // Keeps track of information and memory associated with our Green AST.
+    SyntaxContext &Context;
 
     /// True if we are parsing a function parameter list.
     bool ParsingParams = false;

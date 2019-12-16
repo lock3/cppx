@@ -42,7 +42,10 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
   // Parse the input file.
   SourceManager &SM = PP.getSourceManager();
   File InputFile(SM, SM.getMainFileID());
-  green::Parser Parser(SM, InputFile);
+
+  SyntaxContext Context(ClangContext);
+
+  green::Parser Parser(Context, SM, InputFile);
   green::Syntax *AST = Parser.parseFile();
 
   // FIXME: There's a -fdump-syntax flag that we should tie this too.
@@ -55,7 +58,6 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
   // to be reachable from the arguments to this function.
 
   // Elaborate the resulting abstract syntax tree.
-  SyntaxContext Context(ClangContext);
   GreenSema Sema(Context, ClangSema);
   Elaborator Elab(Context, Sema);
   Elab.elaborateFile(AST);
