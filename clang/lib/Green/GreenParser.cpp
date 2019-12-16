@@ -132,27 +132,27 @@ Syntax *Parser::parseFile()
 {
   if (!atEndOfFile()) {
     llvm::SmallVector<Syntax *, 16> Vec;
-    parseArray(Vec);
+    parseArray(BlockArray, Vec);
     return onFile(Vec);
   }
   return nullptr;
 }
 
-static void Append(llvm::SmallVectorImpl<Syntax *>& vec, Syntax *s)
+static void appendTerm(llvm::SmallVectorImpl<Syntax *>& vec, Syntax *s)
 {
   if (s && s != Syntax::error)
     vec.push_back(s);
 }
 
-static Syntax **makeArray(const SyntaxContext &Ctx,
-                          const llvm::SmallVectorImpl<Syntax *> &Vec) {
+static Syntax **createArray(const SyntaxContext &Ctx,
+                            const llvm::SmallVectorImpl<Syntax *> &Vec) {
   Syntax **Array = new (Ctx) Syntax *[Vec.size()];
   std::copy(Vec.begin(), Vec.end(), Array);
   return Array;
 }
 
-static Syntax **makeArray(const SyntaxContext &Ctx,
-                          std::initializer_list<Syntax *> List) {
+static Syntax **createArray(const SyntaxContext &Ctx,
+                            std::initializer_list<Syntax *> List) {
   Syntax **Array = new (Ctx) Syntax *[List.size()];
   std::copy(List.begin(), List.end(), Array);
   return Array;
@@ -204,20 +204,20 @@ static bool isSeparator(TokenKind K) {
 //    stmt = [expr] (';'|ending)
 //
 // Or something like that.
-Syntax *Parser::parseArray() {
+Syntax *Parser::parseArray(ArraySemantic S) {
   llvm::SmallVector<Syntax *, 8> Vec;
-  parseArray(Vec);
-  return onArray(Vec);
+  parseArray(S, Vec);
+  return onArray(S, Vec);
 }
 
 // Parse the array and populate the vector.
-void Parser::parseArray(llvm::SmallVectorImpl<Syntax *> &Vec) {
-  Syntax *List = parseList();
-  Append(Vec, List);
+void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
+  Syntax *List = parseList(S);
+  appendTerm(Vec, List);
 
   while (true)
   {
-    // Obviously stop at the end of the file.
+    // Obviously, stop at the end of the file.
     if (atEndOfFile())
       break;
 
@@ -240,8 +240,8 @@ void Parser::parseArray(llvm::SmallVectorImpl<Syntax *> &Vec) {
     // FIXME: Actually diagnose missing separators.
     matchTokenIf(isSeparator);
 
-    List = parseList();
-    Append(Vec, List);
+    List = parseList(S);
+    appendTerm(Vec, List);
   }
 }
 
@@ -251,27 +251,31 @@ void Parser::parseArray(llvm::SmallVectorImpl<Syntax *> &Vec) {
 //    list , expr
 //
 // Note that a ';' is interpreted as an empty list, so we return nullptr,
-// in that case. The nullptr will be ignored by Append, so empty lists are
+// in that case. The nullptr will be ignored by appendTerm, so empty lists are
 // not represented in the AST.
 //
 // TODO: Represent empty lists in the AST?
-Syntax *Parser::parseList()
+Syntax *Parser::parseList(ArraySemantic S)
 {
+  // FIXME: Is this semantically meaningful?
   if (matchToken(tok::Semicolon))
     return nullptr;
 
   llvm::SmallVector<Syntax *, 4> Vec;
   parseList(Vec);
 
-  return onList(Vec);
+  return onList(S, Vec);
 }
 
 // Parse the list and populate the vector.
 void Parser::parseList(llvm::SmallVectorImpl<Syntax *> &Vec)
 {
-  Append(Vec, parseExpr());
-  while (matchToken(tok::Comma))
-    Append(Vec, parseExpr());
+  Syntax *Expr = parseExpr();
+  appendTerm(Vec, Expr);
+  while (matchToken(tok::Comma)) {
+    Expr = parseExpr();
+    appendTerm(Vec, Expr);
+  }
 }
 
 // expr:
@@ -405,7 +409,7 @@ Syntax *Parser::parseDef() {
       body = parseNestedArray();
     } else {
       // FIXME: Skip to the end of the list or stmt/line.
-      Diags.Report(getInputLocation(), clang::diag::err_expected) << "expected '{{' or indent";
+      Diags.Report(getInputLocation(), clang::diag::err_expected) << "expected '{' or indent";
       return Syntax::error;
     }
 
@@ -754,9 +758,9 @@ Syntax *Parser::parseCall(Syntax *fn)
   // to the the nearest comma? separator? What?
   Syntax *Args = nullptr;
   if (getLookahead() != tok::RightParen)
-    Args = parseArray();
+    Args = parseArray(ArgArray);
   else
-    Args = onArray(llvm::SmallVector<Syntax *, 0>());
+    Args = onList(ArgArray, llvm::SmallVector<Syntax*, 0>());
 
   // Finish parsing function parameters.
   ParsingParams = false;
@@ -773,7 +777,8 @@ Syntax *Parser::parseElem(Syntax *map)
   if (!brackets.expectOpen())
     return Syntax::error;
 
-  Syntax *args = parseArray();
+  // FIXME: Can the argument list be optional?
+  Syntax *args = parseArray(ArgArray);
 
   if (!brackets.expectClose())
     return Syntax::error;
@@ -835,7 +840,7 @@ Syntax *Parser::parseParen() {
 
   // TODO: If this is an Syntax::error, should we skip to the next paren or
   // to the the nearest comma? separator? What?
-  Syntax *seq = parseArray();
+  Syntax *seq = parseArray(ArgArray);
 
   if (!parens.expectClose())
     return Syntax::error;
@@ -851,7 +856,7 @@ Syntax *Parser::parseBracedArray() {
     return Syntax::error;
 
   // FIXME: How do we recover from errors?
-  Syntax *ret = parseArray();
+  Syntax *ret = parseArray(BlockArray);
 
   if (!braces.expectClose())
     return Syntax::error;
@@ -866,7 +871,7 @@ Syntax *Parser::parseNestedArray() {
   if (!Tabs.expectOpen())
     return Syntax::error;
 
-  Syntax *ret = parseArray();
+  Syntax *ret = parseArray(BlockArray);
 
   if (!Tabs.expectClose())
     return Syntax::error;
@@ -906,7 +911,7 @@ static Syntax *makeList(const SyntaxContext &Ctx,
                         std::initializer_list<Syntax *> List) {
   assert(std::all_of(List.begin(), List.end(), [](Syntax *s) { return s; }));
   return new (Ctx)
-    ListSyntax(makeArray(Ctx, List), List.size(), clang::SourceLocation());
+    ListSyntax(createArray(Ctx, List), List.size(), clang::SourceLocation());
 }
 
 static Syntax *makeCall(const SyntaxContext &Ctx, const Token& Tok) {
@@ -925,20 +930,29 @@ Syntax *Parser::onAtom(const Token& Tok) {
   return new (Context) AtomSyntax(Tok, clang::SourceLocation(), ParsingParams);
 }
 
-Syntax *Parser::onArray(llvm::SmallVectorImpl<Syntax *> const& Vec) {
+Syntax *Parser::onArray(ArraySemantic S,
+                        llvm::SmallVectorImpl<Syntax *> const& Vec) {
+  if (S == ArgArray) {
+    // For arguments, a singleton array is replaced by its element.
+    if (Vec.size() == 1)
+      return Vec.front();
+  }
   return new (Context)
-    ArraySyntax(makeArray(Context, Vec), Vec.size(), clang::SourceLocation());
+    ArraySyntax(createArray(Context, Vec), Vec.size(), clang::SourceLocation());
 }
 
-Syntax *Parser::onList(llvm::SmallVectorImpl<Syntax *> const& Vec) {
-  // Flatten empty and singleton lists.
-  if (Vec.empty())
-    return nullptr;
-  if (Vec.size() == 1)
-    return Vec.front();
-
+Syntax *Parser::onList(ArraySemantic S,
+                       llvm::SmallVectorImpl<Syntax *> const& Vec) {
+  if (S == BlockArray) {
+    // Within a block, flatten empty and singleton lists. Note that empty
+    // lists will not be added to an array.
+    if (Vec.empty())
+      return nullptr;
+    if (Vec.size() == 1)
+      return Vec.front();
+  }
   return new (Context)
-    ListSyntax(makeArray(Context, Vec), Vec.size(), clang::SourceLocation());
+    ListSyntax(createArray(Context, Vec), Vec.size(), clang::SourceLocation());
 }
 
 Syntax *Parser::onBinary(Token const& Tok, Syntax *e1, Syntax *e2) {
@@ -987,7 +1001,7 @@ Syntax *Parser::onLoop(Token const& Tok, Syntax *e1, Syntax *e2) {
 
 Syntax *Parser::onFile(const llvm::SmallVectorImpl<Syntax*> &Vec) {
   return new (Context)
-    FileSyntax(makeArray(Context, Vec), Vec.size(), clang::SourceLocation());
+    FileSyntax(createArray(Context, Vec), Vec.size(), clang::SourceLocation());
 }
 
 } // namespace green

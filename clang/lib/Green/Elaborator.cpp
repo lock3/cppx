@@ -135,7 +135,9 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
   clang::IdentifierInfo *Name = nullptr;
 
   // The parameters of the declared function.
-  const ArraySyntax *Parameters;
+  //
+  // FIXME: This could actually be an array.
+  const ListSyntax *Parameters;
 
   clang::QualType ReturnType;
   // If the declarator is an operator':' call, we have an explicit return
@@ -152,7 +154,7 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
     const CallSyntax *TheCall =
       cast<CallSyntax>(OperatorColonArgList->Elems[0]);
     // Now let's get the array of parameters from the function.
-    Parameters = cast<ArraySyntax>(TheCall->getArguments());
+    Parameters = cast<ListSyntax>(TheCall->getArguments());
 
     // Let's get the name of the function while we're here.
     Name = &CxxAST.Idents.get(
@@ -161,7 +163,7 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
     // Otherwise, we have a bare function definition.
     // Just use an auto return type.
     ReturnType = CxxAST.getAutoDeductType();
-    Parameters = cast<ArraySyntax>(Declarator->getArguments());
+    Parameters = cast<ListSyntax>(Declarator->getArguments());
     Name = DeclaratorSpelling;
   }
 
@@ -171,8 +173,7 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
 
   // If we have parameters, create clang ParmVarDecls.
   if (Parameters->NumElems) {
-    const ListSyntax *ParameterList = cast<ListSyntax>(Parameters->Elems[0]);
-    for (const Syntax *Param : ParameterList->children()) {
+    for (const Syntax *Param : Parameters->children()) {
       clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(E.elaborateDecl(Param));
       ParameterDecls.push_back(PVD);
       ParameterTypes.push_back(PVD->getType());

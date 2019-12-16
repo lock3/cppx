@@ -188,9 +188,20 @@ namespace green
 
     Syntax* parseFile();
 
-    Syntax* parseArray();
-    void parseArray(llvm::SmallVectorImpl<Syntax *> &Vec);
-    Syntax* parseList();
+    /// Determines how arrays and lists are flattened during parsing.
+    /// By "flattened" we mean removing (i.e., not representing) empty
+    /// sequences, and replacing singletons with their elements.
+    enum ArraySemantic {
+      /// A block array does not contain empty or singleton lists.
+      BlockArray,
+
+      /// A singleton array is actually a list.
+      ArgArray,
+    };
+
+    Syntax* parseArray(ArraySemantic S);
+    void parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec);
+    Syntax* parseList(ArraySemantic S);
     void parseList(llvm::SmallVectorImpl<Syntax *> &Vec);
 
     Syntax* parseExpr();
@@ -240,8 +251,8 @@ namespace green
     // Semantic actions
 
     Syntax* onAtom(const Token& tok);
-    Syntax* onArray(const llvm::SmallVectorImpl<Syntax*>& Vec);
-    Syntax* onList(const llvm::SmallVectorImpl<Syntax*>& Vec);
+    Syntax* onArray(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
+    Syntax* onList(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
     Syntax* onBinary(const Token& tok, Syntax* e1, Syntax* e2);
     Syntax* onUnary(const Token& tok, Syntax* e1);
     Syntax* onCall(const TokenPair& toks, Syntax* e1, Syntax* e2);
