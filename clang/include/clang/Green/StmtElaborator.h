@@ -32,17 +32,18 @@ namespace green {
 // Builds a clang::Stmt out of a green::Syntax node.
 class StmtElaborator {
 
-  clang::ASTContext &CxxContext;
+  clang::ASTContext &CxxAST;
 
   GreenSema &SemaRef;
 
   ExprElaborator ExprElab;
 public:
-  StmtElaborator(clang::ASTContext &CxxContext, GreenSema &SemaRef);
+  StmtElaborator(clang::ASTContext &CxxAST, GreenSema &SemaRef);
 
   clang::Stmt *elaborateStmt(const Syntax *S);
   clang::Stmt *elaborateCall(const CallSyntax *S);
   clang::Stmt *elaborateAtom(const AtomSyntax *S);
+  clang::Stmt *elaborateMacro(const MacroSyntax *S);
 
   // Build a clang::CompoundStmt out of a block of green::Syntax nodes (e.g.,
   // an ArraySyntax or ListSyntax).

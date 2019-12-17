@@ -27,9 +27,9 @@ namespace green {
 
 using namespace clang;
 
-StmtElaborator::StmtElaborator(ASTContext &CxxContext, GreenSema &SemaRef)
-  : CxxContext(CxxContext), SemaRef(SemaRef),
-    ExprElab(CxxContext, SemaRef)
+StmtElaborator::StmtElaborator(ASTContext &CxxAST, GreenSema &SemaRef)
+  : CxxAST(CxxAST), SemaRef(SemaRef),
+    ExprElab(CxxAST, SemaRef)
 {
 }
 
@@ -39,6 +39,8 @@ StmtElaborator::elaborateStmt(const Syntax *S) {
     return elaborateAtom(cast<AtomSyntax>(S));
   if (isa<CallSyntax>(S))
     return elaborateCall(cast<CallSyntax>(S));
+  if (isa<MacroSyntax>(S))
+    return elaborateMacro(cast<MacroSyntax>(S));
 
   return nullptr;
 }
@@ -51,7 +53,7 @@ StmtElaborator::elaborateAtom(const AtomSyntax *S) {
 }
 
 static Stmt *
-createDeclStmt(ASTContext &CxxContext, GreenSema &SemaRef,
+createDeclStmt(ASTContext &CxxAST, GreenSema &SemaRef,
                const CallSyntax *S) {
   const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
 
@@ -59,7 +61,7 @@ createDeclStmt(ASTContext &CxxContext, GreenSema &SemaRef,
   const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);
 
   clang::Sema &ClangSema = SemaRef.getCxxSema();
-  IdentifierInfo *II = &CxxContext.Idents.get(Name->Tok.getSpelling());
+  IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
   DeclarationNameInfo DNI(II, S->Loc);
   LookupResult R(ClangSema, DNI, Sema::LookupAnyName);
   SemaRef.LookupName(R, SemaRef.getCurrentScope());
@@ -86,7 +88,7 @@ createDeclStmt(ASTContext &CxxContext, GreenSema &SemaRef,
 Stmt *
 StmtElaborator::elaborateCall(const CallSyntax *S) {
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
-  IdentifierInfo *Spelling = &CxxContext.Idents.get(Callee->Tok.getSpelling());
+  IdentifierInfo *Spelling = &CxxAST.Idents.get(Callee->Tok.getSpelling());
 
   // A typed declaration.
   // FIXME : what about 'x = 3:int'
@@ -96,26 +98,75 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
     // TODO: can this be something other than a name?
     const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);
     clang::Sema &ClangSema = SemaRef.getCxxSema();
-    IdentifierInfo *II = &CxxContext.Idents.get(Name->Tok.getSpelling());
+    IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
     DeclarationNameInfo DNI(II, S->Loc);
     LookupResult R(ClangSema, DNI, Sema::LookupAnyName);
     SemaRef.LookupName(R, SemaRef.getCurrentScope());
 
 
     if (R.empty())
-      return createDeclStmt(CxxContext, SemaRef, S);
+      return createDeclStmt(CxxAST, SemaRef, S);
     else {
-      ExprElaborator ExprElab(CxxContext, SemaRef);
+      ExprElaborator ExprElab(CxxAST, SemaRef);
       return ExprElab.elaborateCall(S);
     }
   }
 
-  ExprElaborator ExprElab(CxxContext, SemaRef);
+  ExprElaborator ExprElab(CxxAST, SemaRef);
   return ExprElab.elaborateCall(S);
 }
 
 Stmt *
+StmtElaborator::elaborateMacro(const MacroSyntax *S) {
+  const CallSyntax *Call = cast<CallSyntax>(S->getCall());
+
+  const AtomSyntax *MacroCallee = cast<AtomSyntax>(Call->getCallee());
+  IdentifierInfo *CallName = &CxxAST.Idents.get(MacroCallee->Tok.getSpelling());
+
+  const ListSyntax *Args = cast<ListSyntax>(Call->getArguments());
+
+  if (CallName == SemaRef.OperatorIfII) {
+    ExprElaborator ExEl(CxxAST, SemaRef);
+    Expr *ConditionExpr = ExEl.elaborateExpr(Args->getChild(0));
+    Sema::ConditionResult Condition =
+      SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr, S->Loc,
+                                          ConditionExpr,
+                                          Sema::ConditionKind::Boolean);
+
+    Stmt *Then = elaborateBlock(S->getBlock());
+
+    Stmt *Else = nullptr;
+    SourceLocation ElseLoc;
+    if (S->getNext()) {
+      Else = elaborateMacro(cast<MacroSyntax>(S->getNext()));
+      ElseLoc = S->getNext()->Loc;
+    }
+
+    StmtResult If = SemaRef.getCxxSema().ActOnIfStmt(
+      S->Loc, /*Constexpr=*/false, /*InitStmt=*/nullptr,
+      Condition, Then, ElseLoc, Else);
+
+    if (If.isInvalid())
+      return nullptr;
+
+    return If.get();
+  } else if (CallName == SemaRef.OperatorElseII) {
+    // The else block might be an if statement (i.e., else if)
+    if (isa<MacroSyntax>(S->getBlock()))
+      return elaborateMacro(cast<MacroSyntax>(S->getBlock()));
+
+    // Otherwise, it's just a normal else block.
+    return elaborateBlock(S->getBlock());
+  }
+
+  return nullptr;
+}
+
+Stmt *
 StmtElaborator::elaborateBlock(const Syntax *S) {
+  if (isa<ErrorSyntax>(S))
+    return nullptr;
+
   assert((isa<ArraySyntax>(S) || isa<ListSyntax>(S)) &&
          "Cannot create block out of non-list syntax.");
 
@@ -127,7 +178,7 @@ StmtElaborator::elaborateBlock(const Syntax *S) {
     elaborateBlockForList(cast<ListSyntax>(S), Results);
 
   CompoundStmt *Block =
-    CompoundStmt::Create(CxxContext, Results, S->Loc, S->Loc);
+    CompoundStmt::Create(CxxAST, Results, S->Loc, S->Loc);
 
   return Block;
 }

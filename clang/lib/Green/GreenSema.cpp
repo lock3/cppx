@@ -33,6 +33,8 @@ GreenSema::GreenSema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorColonII = &Context.CxxAST.Idents.get("operator':'");
   OperatorExclaimII = &Context.CxxAST.Idents.get("operator'!'");
   OperatorEqualsII = &Context.CxxAST.Idents.get("operator'='");
+  OperatorIfII = &Context.CxxAST.Idents.get("operator'if'");
+  OperatorElseII = &Context.CxxAST.Idents.get("operator'else'");
 }
 
 GreenScope *GreenSema::getCurrentScope() {

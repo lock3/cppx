@@ -630,7 +630,12 @@ Syntax *Parser::parseIf()
   Syntax *else_macro;
   if (Token else_tok = matchToken("else"))
   {
-    Syntax *else_block = parseBlock();
+    Syntax *else_block;
+    if (nextTokenIs("if"))
+      else_block = parseIf();
+    else
+      else_block = parseBlock();
+
     else_macro = onElse(else_tok, else_block);
   }
   else

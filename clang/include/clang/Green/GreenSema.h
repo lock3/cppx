@@ -96,6 +96,8 @@ public:
   const clang::IdentifierInfo *OperatorColonII;
   const clang::IdentifierInfo *OperatorExclaimII;
   const clang::IdentifierInfo *OperatorEqualsII;
+  const clang::IdentifierInfo *OperatorIfII;
+  const clang::IdentifierInfo *OperatorElseII;
 
   // A mapping of identifiers as strings to syntaxes.
   llvm::MapVector<clang::IdentifierInfo *, const Syntax *> IdentifierMapping;
