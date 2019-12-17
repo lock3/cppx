@@ -214,18 +214,25 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
     return elaborateCmpAssignOp(S, CmpAssnMapIter->second);
   }
 
-  // Try to construct a normal call expression.
+  // Try to construct a normal function-call expression.
 
-  // First lookup the name.
+  // First do unqualified lookup.
   DeclarationNameInfo DNI({&CxxContext.Idents.get(Spelling)}, S->Loc);
   LookupResult R(SemaRef.getCxxSema(), DNI, Sema::LookupAnyName);
   SemaRef.LookupName(R, SemaRef.getCurrentScope());
 
   // If we found something, see if it is viable.
   if (!R.empty()) {
+    Expr *Fn = nullptr;
+
+    R.resolveKind();
     if (R.isOverloadedResult()) {
-      llvm::errs() << "Overloads not yet supported";
-      return nullptr;
+      Fn =
+        UnresolvedLookupExpr::Create(CxxContext, R.getNamingClass(),
+                                     NestedNameSpecifierLoc(),
+                                     R.getLookupNameInfo(), /*ADL=*/true,
+                                     /*Overloaded=*/true, R.begin(),
+                                     R.end());
     } else if (R.isSingleResult()) {
       ValueDecl *VD = R.getAsSingle<ValueDecl>();
 
@@ -233,34 +240,35 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
       FunctionDecl *FD = dyn_cast<FunctionDecl>(VD);
       if (!FD) return nullptr;
 
-      DeclRefExpr *VDRef =
+      Fn =
         DeclRefExpr::Create(CxxContext, NestedNameSpecifierLoc(),
                             SourceLocation(), VD, /*Capture=*/false,
                             S->Loc, VD->getType(), VK_RValue);
-      if (!VDRef)
-        return nullptr;
-
-      // Get the passed arguments.
-      llvm::SmallVector<Expr *, 8> Args;
-      const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
-      assert(ArgList && "Unexpected argument format.");
-      for (const Syntax *A : ArgList->children()) {
-        ExprElaborator Elab(CxxContext, SemaRef);
-        Expr *AExpr = Elab.elaborateExpr(A);
-
-        if (AExpr)
-          Args.push_back(AExpr);
-      }
-
-      // Create the call.
-      MultiExprArg MultiArgs(Args);
-      ExprResult Call =
-        SemaRef.getCxxSema().ActOnCallExpr(SemaRef.getCxxSema().getCurScope(),
-                                           VDRef, S->Loc, MultiArgs, S->Loc);
-      if (Call.isInvalid())
-        return nullptr;
-      return Call.get();
     }
+
+    if (!Fn)
+      return nullptr;
+
+    // Get the passed arguments.
+    llvm::SmallVector<Expr *, 8> Args;
+    const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
+    assert(ArgList && "Unexpected argument format.");
+    for (const Syntax *A : ArgList->children()) {
+      ExprElaborator Elab(CxxContext, SemaRef);
+      Expr *AExpr = Elab.elaborateExpr(A);
+
+      if (AExpr)
+        Args.push_back(AExpr);
+    }
+
+    // Create the call.
+    MultiExprArg MultiArgs(Args);
+    ExprResult Call =
+      SemaRef.getCxxSema().ActOnCallExpr(SemaRef.getCxxSema().getCurScope(),
+                                         Fn, S->Loc, MultiArgs, S->Loc);
+    if (Call.isInvalid())
+      return nullptr;
+    return Call.get();
   }
 
 
