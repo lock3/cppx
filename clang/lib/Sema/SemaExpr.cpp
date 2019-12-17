@@ -17283,7 +17283,7 @@ ExprResult Sema::CheckBooleanCondition(SourceLocation Loc, Expr *E,
   E = result.get();
 
   if (!E->isTypeDependent()) {
-    if (getLangOpts().CPlusPlus)
+    if (getLangOpts().CPlusPlus || getLangOpts().Green)
       return CheckCXXBooleanCondition(E, IsConstexpr); // C++ 6.4p4
 
     ExprResult ERes = DefaultFunctionArrayLvalueConversion(E);
