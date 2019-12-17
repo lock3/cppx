@@ -19,6 +19,8 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   startFile(S);
   const FileSyntax *File = cast<FileSyntax>(S);
 
+  S->dump();
+
   SemaRef.getCxxSema().CurContext = Context.CxxAST.getTranslationUnitDecl();
 
   // Pass 1. identify declarations in scope.
@@ -45,14 +47,35 @@ void Elaborator::finishFile(const Syntax *S) {
 }
 
 clang::Decl *Elaborator::elaborateTopLevelDecl(const Syntax *S) {
+  // Don't elaborate non-declarations.
+  //
+  // TODO: Can we elaborate top-level statements? What would they do?
+  // Would these equivalent to directives?
+  Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
+  if (!D)
+    return nullptr;
+
   // TODO: Look for module-related declarations.
-  llvm::errs() << "TOP LEVEL\n";
-  S->dump();
+
   return elaborateDecl(S);
 }
 
+clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
+  // FIXME: Are there any declarations that don't have call syntax?
+  if (!isa<CallSyntax>(D->Op))
+    return nullptr;
+
+  return elaborateDeclForCall(cast<CallSyntax>(D->Op));
+}
+
 clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
-  assert(isa<CallSyntax>(S));
+  if (!isa<CallSyntax>(S))
+    return nullptr;
+
+  // FIXME: Should have a Declaration for this object or not? Note that
+  // this is called from the StmtElaborator and elsewhere, so we may not
+  // have gone through the identification pass. I think we should first
+  // identify this declaration, and then elaborate the result.
   return elaborateDeclForCall(cast<CallSyntax>(S));
 }
 
@@ -326,57 +349,63 @@ clang::Decl *Elaborator::elaborateDeclForCall(const CallSyntax *S) {
   return nullptr;
 }
 
-static const Syntax *findIdentifierInArgs(const CallSyntax *S) {
-  const Syntax *Args = S->getArguments();
-
-  if (const auto *List = dyn_cast<ListSyntax>(Args)) {
-    if (!List->hasChildren())
-      return nullptr;
-    return List->getChild(0);
-  }
-
-  if (const auto *Array = dyn_cast<ArraySyntax>(Args)) {
-    if (!Array->hasChildren())
-      return nullptr;
-    return Array->getChild(0);
-  }
-
-  llvm_unreachable("Unknown call argument");
+static Declarator *buildIdDeclarator(const AtomSyntax *S, Declarator *Next) {
+  Declarator *D = new Declarator(DK_Identifier, Next);
+  D->Data.Id = S;
+  return D;
 }
 
-/// Returns the identifier of the term being declared. This is a simple
-/// recursive walk through the left-most terms of a call tree until we
-/// reach an atom.
+static Declarator *buildTypeDeclarator(const CallSyntax *S, Declarator *Next) {
+  Declarator *D = new Declarator(DK_Type, Next);
+  D->Call = S;
+  D->Data.Type = S->getArgument(1);
+  return D;
+}
+
+static Declarator *buildFunctionDeclarator(const CallSyntax *S, Declarator *Next) {
+  // FIXME: Store the parameter list.
+  Declarator *D = new Declarator(DK_Function, Next);
+  D->Call = S;
+  D->Data.Params = S->getArguments();
+  return D;
+}
+
+/// Analyze and decompose the declarator.
 ///
-/// TODO: Can the identifier be something other than an atom (e.g., a
-/// template-id?).
-static const AtomSyntax *findIdentifier(const Syntax *S) {
+/// This is a recursive walk through a series of call nodes. In each step,
+/// we build a declarator fragment.
+static Declarator* makeDeclarator(const Syntax *S) {
+  Declarator* D = nullptr;
+
   while (true) {
     // If we find an atom, then we're done.
-    if (const auto *Atom = dyn_cast<AtomSyntax>(S))
-      return Atom;
+    if (const auto *Atom = dyn_cast<AtomSyntax>(S)) {
+      D = buildIdDeclarator(Atom, D);
+      break;
+    }
 
-    // The identifier...
     if (const auto *Call = dyn_cast<CallSyntax>(S)) {
       const Syntax *Callee = Call->getCallee();
       if (const auto *Atom = dyn_cast<AtomSyntax>(Callee)) {
-        // Search through known "typing" operators for an argument list.
+        // Check for "builtin" operators in the declarator.
         if (Atom->getSpelling() == "operator':'") {
-          S = findIdentifierInArgs(Call);
+          D = buildTypeDeclarator(Call, D);
+          S = Call->getArgument(0);
           continue;
         }
 
-        // The callee is the identifier.
-        return Atom;
-      } else {
-        // If the callee isn't a literal, then this can't be an identifier.
-        return nullptr;
+        // Otherwise, this appears to be a function declarator.
+        D = buildFunctionDeclarator(Call, D);
+        S = Callee;
+        continue;
       }
     }
 
-    // FIXME: Anything else that could be here?
+    // FIXME: Is there anything else we can get here?
     return nullptr;
   }
+
+  return D;
 }
 
 void Elaborator::identifyDecl(const Syntax *S) {
@@ -385,7 +414,23 @@ void Elaborator::identifyDecl(const Syntax *S) {
   }
 
   // FIXME: What other kinds of things are declarations?
+  //
+  // TODO: If S is a list, then we might be looking at one of these
+  //
+  //    x, y : int
+  //    x, y = foo()
+  //
+  // We need to elaborate each declarator in the list, and then propagate
+  // type information backwards.
+
   return;
+}
+
+static clang::IdentifierInfo *getIdentifier(Elaborator &Elab,
+                                            const Declarator *D) {
+  if (const auto *Atom = dyn_cast_or_null<AtomSyntax>(D->getId()))
+    return &Elab.Context.CxxAST.Idents.get(Atom->getSpelling());
+  return nullptr;
 }
 
 void Elaborator::identifyDeclFromCall(const CallSyntax *S) {
@@ -412,17 +457,36 @@ void Elaborator::identifyDeclFromCall(const CallSyntax *S) {
       return;
     }
 
-    // True to find the declared identifier. If we can't then this
-    // is also not a declaration.
-    const AtomSyntax *Id = findIdentifier(Decl);
-    if (!Id)
+    // FIXME: I think we can filter out some syntactic forms as
+    // non-declarations. For example, the following look like definitions
+    // but are actually assignments.
+    //
+    //    f(x) = 4
+    //    a[3] = 5
+    //
+    // The array case might be tricky to disambiguate, and requires
+    // a lookup. If it's the first initialization of the variable, then
+    // it must be a declaration. See below.
+
+    // Try to build a declarator for the declaration.
+    Declarator *Dcl = makeDeclarator(Decl);
+    if (!Dcl)
       return;
-    clang::IdentifierInfo *II = &Context.CxxAST.Idents.get(Id->getSpelling());
+
+    clang::IdentifierInfo* Id = getIdentifier(*this, Dcl);
+
+    // FIXME: We could mis-identify this as a declaration. For example:
+    //
+    //    x = 3
+    //    x = 4
+    //
+    // The first statement is a declaration. The second is an assignment.
 
     // Create a declaration for this node.
-    Declaration *D = new Declaration(II, S, Decl, Init);
-    SemaRef.getCurrentScope()->addDecl(D);
-  };
+    Declaration *TheDecl = new Declaration(S, Dcl, Init);
+    TheDecl->Id = Id;
+    SemaRef.getCurrentScope()->addDecl(TheDecl);
+  }
 }
 
 } // namespace green

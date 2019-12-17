@@ -33,6 +33,7 @@ namespace green {
 class GreenSema;
 
 class Elaborator {
+public:
   /// The AST context for the Green language.
   SyntaxContext &Context;
 
@@ -45,7 +46,8 @@ public:
   clang::Decl *elaborateFile(const Syntax *S);
   clang::Decl *elaborateTopLevelDecl(const Syntax* S);
 
-  clang::Decl *elaborateDecl(const Syntax *S);
+  clang::Decl *elaborateDecl(Declaration* D);
+  clang::Decl *elaborateDecl(const Syntax* S);
   clang::Decl *elaborateDeclForArray(const ArraySyntax *S);
   clang::Decl *elaborateDeclForList(const ListSyntax *S);
   clang::Decl *elaborateDeclForCall(const CallSyntax *S);
