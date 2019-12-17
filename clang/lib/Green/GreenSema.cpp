@@ -42,6 +42,13 @@ GreenScope *GreenSema::getCurrentScope() {
 }
 
 void GreenSema::pushScope(GreenScope *S) {
+  if (S->isDeclarationScope()) {
+    clang::Decl *D = S->getDeclaration();
+
+    if (isa<clang::FunctionDecl>(D))
+      CxxSema.PushFunctionScope();
+  }
+
   ScopeStack.push_back(S);
 }
 

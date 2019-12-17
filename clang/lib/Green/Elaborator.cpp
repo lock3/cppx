@@ -19,6 +19,8 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   startFile(S);
   const FileSyntax *File = cast<FileSyntax>(S);
 
+  SemaRef.getCxxSema().CurContext = Context.CxxAST.getTranslationUnitDecl();
+
   // Pass 1. identify declarations in scope.
   for (const Syntax *SS : File->children())
     identifyDecl(SS);
@@ -200,6 +202,7 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
   FD->getDeclContext()->addDecl(FD);
 
   SemaRef.enterScope(S, FD);
+  clang::Sema::ContextRAII(SemaRef.getCxxSema(), FD);
 
   // The parameters are currently owned by the translation unit, so let's
   // move them to the function itself.
