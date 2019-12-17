@@ -30,6 +30,8 @@ class Stmt;
 
 namespace green {
 
+class Declarator;
+class Declaration;
 class GreenSema;
 
 class Elaborator {
@@ -52,6 +54,12 @@ public:
   clang::Decl *elaborateDeclForList(const ListSyntax *S);
   clang::Decl *elaborateDeclForCall(const CallSyntax *S);
   clang::Decl *elaborateDeclForAtom(const AtomSyntax *S);
+
+  clang::QualType elaborateType(Declarator *D);
+  clang::QualType elaboratePointerType(Declarator *D, clang::QualType T);
+  clang::QualType elaborateArrayType(Declarator *D, clang::QualType T);
+  clang::QualType elaborateFunctionType(Declarator *D, clang::QualType T);
+  clang::QualType elaborateExplicitType(Declarator *D, clang::QualType T);
 
   void identifyDecl(const Syntax *S);
   void identifyDeclFromCall(const CallSyntax *S);

@@ -10,16 +10,12 @@
 namespace green {
 
 Elaborator::Elaborator(SyntaxContext &Context, GreenSema &SemaRef)
-  : Context(Context), SemaRef(SemaRef)
-{
-}
+  : Context(Context), SemaRef(SemaRef) {}
 
 clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   assert(isa<FileSyntax>(S) && "S is not a file");
   startFile(S);
   const FileSyntax *File = cast<FileSyntax>(S);
-
-  S->dump();
 
   SemaRef.getCxxSema().CurContext = Context.CxxAST.getTranslationUnitDecl();
 
@@ -51,32 +47,40 @@ clang::Decl *Elaborator::elaborateTopLevelDecl(const Syntax *S) {
   //
   // TODO: Can we elaborate top-level statements? What would they do?
   // Would these equivalent to directives?
+  //
+  // TODO: What should we find for a list of declarators?
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
   if (!D)
     return nullptr;
 
   // TODO: Look for module-related declarations.
 
-  return elaborateDecl(S);
+  return elaborateDecl(D);
 }
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
-  // FIXME: Are there any declarations that don't have call syntax?
-  if (!isa<CallSyntax>(D->Op))
-    return nullptr;
+  // FIXME: This almost certainly needs its own elaboration context
+  // because we can end up with recursive elaborations of declarations,
+  // possibly having cyclic dependencies.
 
-  return elaborateDeclForCall(cast<CallSyntax>(D->Op));
+  // Get the type of entity declared.
+  clang::QualType Ty = elaborateType(D->Decl);
+  Ty->dump();
+
+  // Create the corresponding declaration.
+  return nullptr;
 }
 
 clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
-  if (!isa<CallSyntax>(S))
-    return nullptr;
+  llvm::errs() << "HERE?\n";
+  // Identify this as a declaration first.
+  identifyDecl(S);
 
-  // FIXME: Should have a Declaration for this object or not? Note that
-  // this is called from the StmtElaborator and elsewhere, so we may not
-  // have gone through the identification pass. I think we should first
-  // identify this declaration, and then elaborate the result.
-  return elaborateDeclForCall(cast<CallSyntax>(S));
+  // Elaborate the declaration.
+  if (Declaration *D = SemaRef.getCurrentScope()->findDecl(S))
+    return elaborateDecl(D);
+
+  return nullptr;
 }
 
 // Get the clang::QualType described by an operator':' call.
@@ -347,6 +351,84 @@ clang::Decl *Elaborator::elaborateDeclForCall(const CallSyntax *S) {
   else if (Spelling == SemaRef.OperatorEqualsII)
     return handleOperatorEquals(Context, SemaRef, *this, S);
   return nullptr;
+}
+
+// Get a vector of declarators.
+static void getDeclarators(Declarator *D, llvm::SmallVectorImpl<Declarator *> &Decls) {
+  while (D) {
+    Decls.push_back(D);
+    D = D->Next;
+  }
+}
+
+clang::QualType Elaborator::elaborateType(Declarator *D) {
+  // The type of a declarator is constructed back-to-front.
+  llvm::SmallVector<Declarator *, 4> Decls;
+  getDeclarators(D, Decls);
+
+  // The type is computed from back to front. Start by assuming the type
+  // is auto. This will be replaced if an explicit type specifier is given.
+  clang::QualType Ty = Context.CxxAST.getAutoDeductType();
+  for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
+    D = *Iter;
+    switch (D->Kind) {
+    case DK_Identifier:
+      // The identifier is not part of the type.
+      break;
+
+    case DK_Pointer:
+      Ty = elaboratePointerType(D, Ty);
+      break;
+
+    case DK_Array:
+      Ty = elaborateArrayType(D, Ty);
+      break;
+
+    case DK_Function:
+      Ty = elaborateFunctionType(D, Ty);
+      break;
+
+    case DK_Type:
+      Ty = elaborateExplicitType(D, Ty);
+      break;
+
+    default:
+      llvm_unreachable("Invalid declarator");
+    }
+  }
+  return Ty;
+}
+
+clang::QualType Elaborator::elaboratePointerType(Declarator *D, clang::QualType T) {
+  llvm_unreachable("Pointers not supported");
+}
+
+clang::QualType Elaborator::elaborateArrayType(Declarator *D, clang::QualType T) {
+  llvm_unreachable("Arrays not supported");
+}
+
+clang::QualType Elaborator::elaborateFunctionType(Declarator *D, clang::QualType T) {
+  // FIXME: We need to elaborate the function parameters here...
+  return T;
+}
+
+clang::QualType Elaborator::elaborateExplicitType(Declarator *D, clang::QualType T) {
+  assert(isa<clang::AutoType>(T));
+  assert(D->Kind == DK_Type);
+
+  // FIXME: We should really elaborate the entire type expression. We're
+  // just cheating for now. It will be interesting to square that with the
+  // current expression elaborator.
+  if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
+    auto BuiltinMapIter = BuiltinTypes.find(Atom->getSpelling());
+    if (BuiltinMapIter == BuiltinTypes.end()) {
+      // FIXME: This requires a type lookup.
+      assert(false && "User-defined types not supported.");
+    }
+    return BuiltinMapIter->second;
+  }
+
+  llvm_unreachable("Unknown type specification");
 }
 
 static Declarator *buildIdDeclarator(const AtomSyntax *S, Declarator *Next) {

@@ -50,7 +50,8 @@ enum DeclaratorKind {
 ///
 /// TODO: Represent multiple declarators whose syntax would be
 /// something like: x, y : int -- maybe.
-struct Declarator {
+class Declarator {
+public:
   Declarator(DeclaratorKind K, Declarator *P)
     : Kind(K), Next(P) { }
 
@@ -85,7 +86,8 @@ struct Declarator {
 /// A declaration is stores information about the declaration of an
 /// identifier. It binds together the declaring operator, the declarator,
 /// the definition, and the some corresponding C++ declaration.
-struct Declaration {
+class Declaration {
+public:
   Declaration(const Syntax *Op, Declarator *Decl, const Syntax *Init)
     : Op(Op), Decl(Decl), Init(Init)
   { }
