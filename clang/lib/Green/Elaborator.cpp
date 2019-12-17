@@ -32,6 +32,7 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
 
   finishFile(S);
 
+  Context.CxxAST.getTranslationUnitDecl()->dump();
   return Context.CxxAST.getTranslationUnitDecl();
 }
 
@@ -110,7 +111,10 @@ static clang::Decl *handleOperatorColon(SyntaxContext &Context,
                              clang::SourceLocation(), II, TInfo->getType(),
                              TInfo, clang::SC_Extern);
     SemaRef.getCurrentScope()->addDecl(VD);
-    VD->getDeclContext()->addDecl(VD);
+
+    if (SemaRef.getCurrentScope()->isDeclarationScope())
+      VD->getDeclContext()->addDecl(VD);
+
     return VD;
   }
 }
@@ -276,9 +280,12 @@ static clang::Decl *handleOperatorEquals(SyntaxContext &Context,
       clang::VarDecl::Create(CxxAST, TUDC, clang::SourceLocation(),
                              clang::SourceLocation(), II, TInfo->getType(),
                              TInfo, clang::SC_Extern);
-    SemaRef.getCurrentScope()->addDecl(EntityVD);
-    EntityVD->getDeclContext()->addDecl(EntityVD);
   }
+
+  SemaRef.getCurrentScope()->addDecl(EntityVD);
+
+  if (SemaRef.getCurrentScope()->isDeclarationScope())
+    EntityVD->getDeclContext()->addDecl(EntityVD);
 
   // Now let's elaborate the initializer as a clang::Expr.
   ExprElaborator ExprElab(CxxAST, SemaRef);

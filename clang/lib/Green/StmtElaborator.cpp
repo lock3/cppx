@@ -116,6 +116,52 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   return ExprElab.elaborateCall(S);
 }
 
+Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
+  const CallSyntax *Call = cast<CallSyntax>(S->getCall());
+  const ListSyntax *Args = cast<ListSyntax>(Call->getArguments());
+
+  ExprElaborator ExEl(CxxAST, SemaRef);
+  Expr *ConditionExpr = ExEl.elaborateExpr(Args->getChild(0));
+  Sema::ConditionResult Condition =
+    SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr, S->Loc,
+                                        ConditionExpr,
+                                        Sema::ConditionKind::Boolean);
+
+  SemaRef.enterScope(S, (Stmt *)nullptr);
+  Stmt *Then = elaborateBlock(S->getBlock());
+  SemaRef.leaveScope(S);
+
+  Stmt *Else = nullptr;
+  SourceLocation ElseLoc;
+  if (S->getNext()) {
+    Else = elaborateMacro(cast<MacroSyntax>(S->getNext()));
+    ElseLoc = S->getNext()->Loc;
+  }
+
+  StmtResult If = SemaRef.getCxxSema().ActOnIfStmt(
+    S->Loc, /*Constexpr=*/false, /*InitStmt=*/nullptr,
+    Condition, Then, ElseLoc, Else);
+
+  if (If.isInvalid())
+    return nullptr;
+
+  return If.get();
+}
+
+Stmt *StmtElaborator::elaborateElseStmt(const MacroSyntax *S) {
+  // The else block might be an if statement (i.e., else if)
+  if (isa<MacroSyntax>(S->getBlock()))
+    return elaborateMacro(cast<MacroSyntax>(S->getBlock()));
+
+  SemaRef.enterScope(S, (Stmt *)nullptr);
+
+  // Otherwise, it's just a normal else block.
+  Stmt *Else = elaborateBlock(S->getBlock());
+
+  SemaRef.leaveScope(S);
+  return Else;
+}
+
 Stmt *
 StmtElaborator::elaborateMacro(const MacroSyntax *S) {
   const CallSyntax *Call = cast<CallSyntax>(S->getCall());
@@ -123,42 +169,12 @@ StmtElaborator::elaborateMacro(const MacroSyntax *S) {
   const AtomSyntax *MacroCallee = cast<AtomSyntax>(Call->getCallee());
   IdentifierInfo *CallName = &CxxAST.Idents.get(MacroCallee->Tok.getSpelling());
 
-  const ListSyntax *Args = cast<ListSyntax>(Call->getArguments());
+  if (CallName == SemaRef.OperatorIfII)
+    return elaborateIfStmt(S);
+  else if (CallName == SemaRef.OperatorElseII)
+    return elaborateElseStmt(S);
 
-  if (CallName == SemaRef.OperatorIfII) {
-    ExprElaborator ExEl(CxxAST, SemaRef);
-    Expr *ConditionExpr = ExEl.elaborateExpr(Args->getChild(0));
-    Sema::ConditionResult Condition =
-      SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr, S->Loc,
-                                          ConditionExpr,
-                                          Sema::ConditionKind::Boolean);
-
-    Stmt *Then = elaborateBlock(S->getBlock());
-
-    Stmt *Else = nullptr;
-    SourceLocation ElseLoc;
-    if (S->getNext()) {
-      Else = elaborateMacro(cast<MacroSyntax>(S->getNext()));
-      ElseLoc = S->getNext()->Loc;
-    }
-
-    StmtResult If = SemaRef.getCxxSema().ActOnIfStmt(
-      S->Loc, /*Constexpr=*/false, /*InitStmt=*/nullptr,
-      Condition, Then, ElseLoc, Else);
-
-    if (If.isInvalid())
-      return nullptr;
-
-    return If.get();
-  } else if (CallName == SemaRef.OperatorElseII) {
-    // The else block might be an if statement (i.e., else if)
-    if (isa<MacroSyntax>(S->getBlock()))
-      return elaborateMacro(cast<MacroSyntax>(S->getBlock()));
-
-    // Otherwise, it's just a normal else block.
-    return elaborateBlock(S->getBlock());
-  }
-
+  llvm::errs() << "Unsupported macro.\n";
   return nullptr;
 }
 

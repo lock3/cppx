@@ -26,11 +26,12 @@
 
 namespace clang {
 
+class Decl;
 class DeclContext;
 class LookupResult;
 class Preprocessor;
 class Sema;
-class Decl;
+class Stmt;
 class Type;
 
 } // namespace clang
@@ -74,6 +75,9 @@ public:
 
   /// Enter a new scope corresponding to D.
   void enterScope(const Syntax *S, clang::Decl *D);
+
+  /// Enter a new scope corresponding to S.
+  void enterScope(const Syntax *S, clang::Stmt *Term);
 
   /// Pop the current scope, returning it.
   GreenScope *popScope();

@@ -54,6 +54,10 @@ public:
                              llvm::SmallVectorImpl<clang::Stmt *> &Results);
 
 
+private:
+  clang::Stmt *elaborateIfStmt(const MacroSyntax *S);
+  clang::Stmt *elaborateElseStmt(const MacroSyntax *S);
+
 };
 
 } // namespace green

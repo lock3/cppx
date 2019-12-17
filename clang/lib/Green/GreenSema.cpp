@@ -14,6 +14,7 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
+#include "clang/AST/Stmt.h"
 #include "clang/Sema/Lookup.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -62,6 +63,10 @@ void GreenSema::enterScope(const Syntax *S, clang::Decl *D) {
   pushScope(new (Context) GreenScope(S, D, getCurrentScope()));
 }
 
+void GreenSema::enterScope(const Syntax *S, clang::Stmt *Term) {
+  pushScope(new (Context) GreenScope(S, Term, getCurrentScope()));
+}
+
 GreenScope *GreenSema::popScope() {
   GreenScope *R = ScopeStack.back();
   ScopeStack.pop_back();
@@ -73,8 +78,10 @@ void GreenSema::leaveScope(const Syntax *S) {
   popScope();
 }
 
-bool
-GreenSema::LookupName(clang::LookupResult &R, GreenScope *S) {
+// Lookup a name within scope S.
+// FIXME: this function currently has the expected behavior for
+// Sema::LookupAnyName only. Do we want to support other kinds of lookup?
+bool GreenSema::LookupName(clang::LookupResult &R, GreenScope *S) {
   using namespace clang;
 
   DeclarationName Name = R.getLookupName();
@@ -92,9 +99,18 @@ GreenSema::LookupName(clang::LookupResult &R, GreenScope *S) {
     if (CtxResult.empty() && S->getParent())
       return LookupName(R, S->getParent());
     else return CtxResult.empty();
+  } else if (S->isStatementScope()) {
+    for (Decl *D : S->decls()) {
+      NamedDecl *ND = R.getAcceptableDecl(cast<NamedDecl>(D));
+      if (ND)
+        R.addDecl(ND);
+    }
+
+    if (R.empty() && S->getParent())
+      return LookupName(R, S->getParent());
   }
 
-  return false;
+  return R.empty();
 }
 
 } // namespace usyntax

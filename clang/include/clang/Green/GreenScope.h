@@ -43,7 +43,8 @@ struct Declaration {
   clang::Decl* Cxx = nullptr;
 };
 
-
+/// Stores information about declarations and the scope they were stored in.
+/// Associated with a C++ AST term (declaration, expression, or statement).
 class GreenScope {
   /// The parent/enclosing scope of this scope.
   GreenScope *Parent;
@@ -112,14 +113,10 @@ public:
   bool decl_empty() const { return DeclsInScope.empty(); }
 
   void addDecl(clang::Decl *D) {
-    assert(AST.is<clang::Decl *>() &&
-           "Adding Decl into non-Decl-associated scope.");
     DeclsInScope.insert(D);
   }
 
   void removeDecl(clang::Decl *D) {
-    assert(AST.is<clang::Decl *>() &&
-           "Removing Decl from non-Decl-associated scope.");
     DeclsInScope.erase(D);
   }
 };
