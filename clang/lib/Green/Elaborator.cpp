@@ -32,7 +32,6 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
 
   finishFile(S);
 
-  Context.CxxAST.getTranslationUnitDecl()->dump();
   return Context.CxxAST.getTranslationUnitDecl();
 }
 
