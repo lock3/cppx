@@ -2669,17 +2669,32 @@ static Decl *GetRootDeclaration(Expr *E) {
   llvm_unreachable("failed to find declaration");
 }
 
+static bool isTypeCapturable(QualType Ty) {
+  if (Ty->isPointerType())
+    return false;
+
+  if (Ty->canDecayToPointerType())
+    return false;
+
+  if (Ty->isReferenceType())
+    return false;
+
+  if (Ty->isRecordType()) {
+    RecordDecl *RD = Ty.getTypePtr()->castAs<RecordType>()->getDecl();
+    for (FieldDecl *FD : RD->fields()) {
+      if (!isTypeCapturable(FD->getType()))
+        return false;
+    }
+  }
+
+  return true;
+}
+
 template<typename T, typename F>
 static void FilteredCaptureCB(T *Entity, F CaptureCB) {
   QualType EntityTy = Entity->getType();
 
-  if (EntityTy->isPointerType())
-    return;
-
-  if (EntityTy->canDecayToPointerType())
-    return;
-
-  if (EntityTy->isReferenceType())
+  if (!isTypeCapturable(EntityTy))
     return;
 
   CaptureCB(Entity);
