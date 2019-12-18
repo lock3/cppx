@@ -15617,7 +15617,7 @@ CreateNewDecl:
     CheckRedeclarationModuleOwnership(New, PrevDecl);
 
   if (TUK == TUK_Definition && (!SkipBody || !SkipBody->ShouldSkip))
-    New->startDefinition();
+    StartDefinition(New);
 
   if (Metafunction) {
     CXXRecordDecl *Proto = cast<CXXRecordDecl>(New);
@@ -15686,6 +15686,12 @@ CreateNewDecl:
 
 void Sema::StartDefinition(TagDecl *D) {
   D->startDefinition();
+
+  if (CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(D)) {
+    if (!D->isCXXClassMember()) {
+      PendingClassMemberInjectionsStack.emplace_back();
+    }
+  }
 }
 
 /// If there are any pending field definitions, we need to

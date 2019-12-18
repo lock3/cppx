@@ -3502,10 +3502,10 @@ static bool CheckInjectionContexts(Sema &SemaRef, SourceLocation POI,
 }
 
 static InjectionContext *GetLastInjectionContext(Sema &S) {
-  if (S.PendingClassMemberInjections.empty())
+  if (S.getPendingClassMemberInjections().empty())
     return nullptr;
 
-  return S.PendingClassMemberInjections.back();
+  return S.getPendingClassMemberInjections().back();
 }
 
 static InjectionContext *FindInjectionContext(Sema &S, Decl *Injectee) {
@@ -3531,7 +3531,7 @@ static bool BootstrapInjection(Sema &S, Decl *Injectee, IT *Injection,
   bool NewContext = GetLastInjectionContext(S) != Ctx;
   if (NewContext) {
     if (Ctx->hasPendingInjections()) {
-      S.PendingClassMemberInjections.push_back(Ctx);
+      S.getPendingClassMemberInjections().push_back(Ctx);
       return true;
     }
 
@@ -4060,11 +4060,11 @@ Decl *Sema::RebuildCXXFragmentContent(CXXFragmentDecl *OldFragment,
 /// injection contexts into the template instantiation context; they are
 /// somewhat similar.
 bool Sema::HasPendingInjections(DeclContext *D) {
-  bool IsEmpty = PendingClassMemberInjections.empty();
+  bool IsEmpty = getPendingClassMemberInjections().empty();
   if (IsEmpty)
     return false;
 
-  InjectionContext *Ctx = PendingClassMemberInjections.back();
+  InjectionContext *Ctx = getPendingClassMemberInjections().back();
 
   assert(Ctx->hasPendingInjections() && "bad injection queue");
   DeclContext *DC =  Decl::castToDeclContext(Ctx->Injectee);
@@ -4105,22 +4105,22 @@ static void CleanupUsedContexts(
 }
 
 void Sema::InjectPendingFieldDefinitions() {
-  for (auto &&Ctx : PendingClassMemberInjections) {
+  for (auto &&Ctx : getPendingClassMemberInjections()) {
     InjectPendingFieldDefinitions(Ctx);
   }
 }
 
 void Sema::InjectPendingMethodDefinitions() {
-  for (auto &&Ctx : PendingClassMemberInjections) {
+  for (auto &&Ctx : getPendingClassMemberInjections()) {
     InjectPendingMethodDefinitions(Ctx);
   }
 }
 
 void Sema::InjectPendingFriendFunctionDefinitions() {
-  for (auto &&Ctx : PendingClassMemberInjections) {
+  for (auto &&Ctx : getPendingClassMemberInjections()) {
     InjectPendingFriendFunctionDefinitions(Ctx);
   }
-  CleanupUsedContexts(PendingClassMemberInjections);
+  CleanupUsedContexts(getPendingClassMemberInjections());
 }
 
 static void InjectPendingDefinition(InjectionContext *Ctx,

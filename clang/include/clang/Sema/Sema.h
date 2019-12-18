@@ -714,14 +714,20 @@ public:
   /// not injected immediately. They are deferred, just as they are during
   /// parsing. These injections are processed when the outermost class is
   /// completed.
-  llvm::SmallVector<InjectionContext *, 4> PendingClassMemberInjections;
+  using PendingMemInjectionsTy = SmallVector<InjectionContext *, 4>;
+  SmallVector<PendingMemInjectionsTy, 4> PendingClassMemberInjectionsStack;
+
+  PendingMemInjectionsTy &getPendingClassMemberInjections() {
+    assert(!PendingClassMemberInjectionsStack.empty());
+    return PendingClassMemberInjectionsStack.back();
+  }
 
   struct PendingInjectionEffect {
     CXXInjectorDecl *MD;
     InjectionEffect Effect;
   };
 
-  llvm::SmallVector<PendingInjectionEffect, 4> PendingNamespaceInjections;
+  SmallVector<PendingInjectionEffect, 4> PendingNamespaceInjections;
 
 private:
   /// True if we're currently injecting code.

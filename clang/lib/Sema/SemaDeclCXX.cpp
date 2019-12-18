@@ -11804,6 +11804,8 @@ ProcessPendingDefinitionInjections(Sema &SemaRef, CXXRecordDecl *D) {
 
   SemaRef.InjectPendingMethodDefinitions();
   SemaRef.InjectPendingFriendFunctionDefinitions();
+
+  SemaRef.PendingClassMemberInjectionsStack.pop_back();
 }
 
 void Sema::ActOnFinishCXXNonNestedClass(Decl *D) {
