@@ -622,10 +622,14 @@ Syntax *Parser::parseMacro()
 Syntax *Parser::parseIf()
 {
   Token if_tok = expectToken("if");
-  Syntax *cond = parseParen();
+  Syntax *cond = nextTokenIs(tok::Colon) ? parseBlock() : parseParen();
 
   // FIXME: Allow an optional 'then' keyword?
-  Syntax *then_block = parseBlock();
+  Syntax *then_block;
+  if (matchToken("then"))
+    then_block = nextTokenIs(tok::Colon) ? parseBlock() : parseExpr();
+  else
+    then_block = parseBlock();
 
   Syntax *else_macro;
   if (Token else_tok = matchToken("else"))

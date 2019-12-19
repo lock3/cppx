@@ -106,9 +106,9 @@ static clang::Decl *handleOperatorColon(SyntaxContext &Context,
     return PVD;
   } else {
     clang::VarDecl *VD =
-      clang::VarDecl::Create(CxxAST, TUDC, clang::SourceLocation(),
-                             clang::SourceLocation(), II, TInfo->getType(),
-                             TInfo, clang::SC_Extern);
+      clang::VarDecl::Create(CxxAST, SemaRef.getCxxSema().CurContext,
+                             clang::SourceLocation(), clang::SourceLocation(),
+                             II, TInfo->getType(), TInfo, clang::SC_Extern);
     SemaRef.getCurrentScope()->addDecl(VD);
 
     if (SemaRef.getCurrentScope()->isDeclarationScope())
@@ -204,7 +204,12 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
   FD->getDeclContext()->addDecl(FD);
 
   SemaRef.enterScope(S, FD);
-  clang::Sema::ContextRAII(SemaRef.getCxxSema(), FD);
+
+  // FIXME: The ContextRAII object immediately destructs after creation here.
+  // Why is that happening?
+  // clang::Sema::ContextRAII(SemaRef.getCxxSema(), FD);
+  clang::DeclContext *OldContext = SemaRef.getCxxSema().CurContext;
+  SemaRef.getCxxSema().CurContext = FD;
 
   // The parameters are currently owned by the translation unit, so let's
   // move them to the function itself.
@@ -223,6 +228,7 @@ static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
 
   // Leave the scope of the function declaration.
   SemaRef.leaveScope(S);
+  SemaRef.getCxxSema().CurContext = OldContext;
 
   // FD->dump();
   return FD;

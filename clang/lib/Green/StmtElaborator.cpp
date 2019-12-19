@@ -47,9 +47,8 @@ StmtElaborator::elaborateStmt(const Syntax *S) {
 
 Stmt *
 StmtElaborator::elaborateAtom(const AtomSyntax *S) {
-  // Lookup the name of the identifier. If we find something, this is just a
-  // DeclRefExpr. If we didn't this is a DeclStmt.
-  return nullptr;
+  ExprElaborator ExEl(CxxAST, SemaRef);
+  return ExEl.elaborateExpr(S);
 }
 
 static Stmt *
@@ -118,17 +117,30 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
 
 Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
   const CallSyntax *Call = cast<CallSyntax>(S->getCall());
-  const ListSyntax *Args = cast<ListSyntax>(Call->getArguments());
 
+  Expr *ConditionExpr;
   ExprElaborator ExEl(CxxAST, SemaRef);
-  Expr *ConditionExpr = ExEl.elaborateExpr(Args->getChild(0));
+  if (const ArraySyntax *BlockCond = dyn_cast<ArraySyntax>(Call->getArguments()))
+    ConditionExpr = ExEl.elaborateBlockCondition(BlockCond);
+  else if (const ListSyntax *Args = dyn_cast<ListSyntax>(Call->getArguments()))
+    ConditionExpr = ExEl.elaborateExpr(Args->getChild(0));
+  else
+    return nullptr;
+
   Sema::ConditionResult Condition =
     SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr, S->Loc,
                                         ConditionExpr,
                                         Sema::ConditionKind::Boolean);
 
   SemaRef.enterScope(S, (Stmt *)nullptr);
-  Stmt *Then = elaborateBlock(S->getBlock());
+
+  Stmt *Then;
+  if (isa<ArraySyntax>(S->getBlock()) || isa<ListSyntax>(S->getBlock()))
+    Then = elaborateBlock(S->getBlock());
+  else
+    // This could be a single expression in the case of `if(cond) then expr`
+    Then = elaborateStmt(S->getBlock());
+
   SemaRef.leaveScope(S);
 
   Stmt *Else = nullptr;

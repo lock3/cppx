@@ -20,8 +20,8 @@ namespace green {
 
 using namespace clang;
 
-ExprElaborator::ExprElaborator(ASTContext &CxxContext, GreenSema &SemaRef)
-  : CxxContext(CxxContext), SemaRef(SemaRef)
+ExprElaborator::ExprElaborator(ASTContext &CxxAST, GreenSema &SemaRef)
+  : CxxAST(CxxAST), SemaRef(SemaRef)
 {}
 
 Expr *
@@ -35,53 +35,53 @@ ExprElaborator::elaborateExpr(const Syntax *S) {
 }
 
 static IntegerLiteral *
-createIntegerLiteral(ASTContext &CxxContext, Token T, QualType IntType,
+createIntegerLiteral(ASTContext &CxxAST, Token T, QualType IntType,
                      SourceLocation Loc) {
   llvm::APInt Value;
   unsigned Width = 0;
 
   // If we don't have a specified type, just create a default int.
-  if (IntType.isNull() || IntType == CxxContext.AutoDeductTy)
-    IntType = CxxContext.IntTy;
+  if (IntType.isNull() || IntType == CxxAST.AutoDeductTy)
+    IntType = CxxAST.IntTy;
 
   // TODO: support all kinds of integer types.
-  if (IntType == CxxContext.IntTy) {
-    Width = CxxContext.getTargetInfo().getIntWidth();
+  if (IntType == CxxAST.IntTy) {
+    Width = CxxAST.getTargetInfo().getIntWidth();
 
     int Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::get(Literal);
-  } else if (IntType == CxxContext.LongTy) {
-    Width = CxxContext.getTargetInfo().getLongWidth();
+  } else if (IntType == CxxAST.LongTy) {
+    Width = CxxAST.getTargetInfo().getLongWidth();
 
     long int Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::get(Literal);
-  } else if (IntType == CxxContext.LongLongTy) {
-    Width = CxxContext.getTargetInfo().getLongLongWidth();
+  } else if (IntType == CxxAST.LongLongTy) {
+    Width = CxxAST.getTargetInfo().getLongLongWidth();
 
     long long int Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::get(Literal);
-  } else if (IntType == CxxContext.ShortTy) {
-    Width = CxxContext.getTargetInfo().getShortWidth();
+  } else if (IntType == CxxAST.ShortTy) {
+    Width = CxxAST.getTargetInfo().getShortWidth();
 
     short int Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::get(Literal);
-  } else if (IntType == CxxContext.UnsignedShortTy) {
-    Width = CxxContext.getTargetInfo().getShortWidth();
+  } else if (IntType == CxxAST.UnsignedShortTy) {
+    Width = CxxAST.getTargetInfo().getShortWidth();
 
     unsigned short int Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::getUnsigned(Literal);
-  } else if (IntType == CxxContext.UnsignedIntTy) {
-    Width = CxxContext.getTargetInfo().getIntWidth();
+  } else if (IntType == CxxAST.UnsignedIntTy) {
+    Width = CxxAST.getTargetInfo().getIntWidth();
 
     unsigned int Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::getUnsigned(Literal);
-  } else if (IntType == CxxContext.UnsignedLongTy) {
-    Width = CxxContext.getTargetInfo().getLongWidth();
+  } else if (IntType == CxxAST.UnsignedLongTy) {
+    Width = CxxAST.getTargetInfo().getLongWidth();
 
     unsigned long Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::getUnsigned(Literal);
-  } else if (IntType == CxxContext.UnsignedLongLongTy) {
-    Width = CxxContext.getTargetInfo().getLongLongWidth();
+  } else if (IntType == CxxAST.UnsignedLongLongTy) {
+    Width = CxxAST.getTargetInfo().getLongLongWidth();
 
     unsigned long Literal = atoi(T.getSymbol().data());
     Value = llvm::APSInt::getUnsigned(Literal);
@@ -92,13 +92,13 @@ createIntegerLiteral(ASTContext &CxxContext, Token T, QualType IntType,
   if (Value.getBitWidth() != Width)
     Value = Value.trunc(Width);
 
-  return IntegerLiteral::Create(CxxContext, Value, IntType, Loc);
+  return IntegerLiteral::Create(CxxAST, Value, IntType, Loc);
 }
 
 static DeclRefExpr *
-createDeclRefExpr(ASTContext &CxxContext, GreenSema &SemaRef,
+createDeclRefExpr(ASTContext &CxxAST, GreenSema &SemaRef,
                   Token T, QualType Ty, SourceLocation Loc) {
-  DeclarationNameInfo DNI({&CxxContext.Idents.get(T.getSpelling())}, Loc);
+  DeclarationNameInfo DNI({&CxxAST.Idents.get(T.getSpelling())}, Loc);
   LookupResult R(SemaRef.getCxxSema(), DNI, Sema::LookupAnyName);
 
   SemaRef.LookupName(R, SemaRef.getCurrentScope());
@@ -118,7 +118,7 @@ createDeclRefExpr(ASTContext &CxxContext, GreenSema &SemaRef,
     }
 
     DeclRefExpr *DRE =
-      DeclRefExpr::Create(CxxContext, NestedNameSpecifierLoc(),
+      DeclRefExpr::Create(CxxAST, NestedNameSpecifierLoc(),
                           SourceLocation(), VD, /*Capture=*/false,
                           Loc, FoundTy, VK_RValue);
     return DRE;
@@ -134,7 +134,7 @@ ExprElaborator::elaborateAtom(const AtomSyntax *S, QualType ExplicitType) {
 
   switch (T.getKind()) {
   case tok::DecimalInteger:
-    return createIntegerLiteral(CxxContext, T, ExplicitType, S->Loc);
+    return createIntegerLiteral(CxxAST, T, ExplicitType, S->Loc);
   case tok::DecimalFloat:
     break;
   case tok::BinaryInteger:
@@ -144,7 +144,7 @@ ExprElaborator::elaborateAtom(const AtomSyntax *S, QualType ExplicitType) {
   case tok::HexadecimalFloat:
     break;
   case tok::Identifier:
-    return createDeclRefExpr(CxxContext, SemaRef, T, ExplicitType, S->Loc);
+    return createDeclRefExpr(CxxAST, SemaRef, T, ExplicitType, S->Loc);
     break;
   case tok::Character:
     break;
@@ -193,7 +193,7 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   std::string Spelling = Callee->Tok.getSpelling();
 
-  if (&CxxContext.Idents.get(Spelling) == SemaRef.OperatorColonII) {
+  if (&CxxAST.Idents.get(Spelling) == SemaRef.OperatorColonII) {
     const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
 
     Elaborator Elab(SemaRef.getContext(), SemaRef);
@@ -217,7 +217,7 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
   // Try to construct a normal function-call expression.
 
   // First do unqualified lookup.
-  DeclarationNameInfo DNI({&CxxContext.Idents.get(Spelling)}, S->Loc);
+  DeclarationNameInfo DNI({&CxxAST.Idents.get(Spelling)}, S->Loc);
   LookupResult R(SemaRef.getCxxSema(), DNI, Sema::LookupAnyName);
   SemaRef.LookupName(R, SemaRef.getCurrentScope());
 
@@ -228,7 +228,7 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
     R.resolveKind();
     if (R.isOverloadedResult()) {
       Fn =
-        UnresolvedLookupExpr::Create(CxxContext, R.getNamingClass(),
+        UnresolvedLookupExpr::Create(CxxAST, R.getNamingClass(),
                                      NestedNameSpecifierLoc(),
                                      R.getLookupNameInfo(), /*ADL=*/true,
                                      /*Overloaded=*/true, R.begin(),
@@ -241,7 +241,7 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
       if (!FD) return nullptr;
 
       Fn =
-        DeclRefExpr::Create(CxxContext, NestedNameSpecifierLoc(),
+        DeclRefExpr::Create(CxxAST, NestedNameSpecifierLoc(),
                             SourceLocation(), VD, /*Capture=*/false,
                             S->Loc, VD->getType(), VK_RValue);
     }
@@ -254,7 +254,7 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
     const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
     assert(ArgList && "Unexpected argument format.");
     for (const Syntax *A : ArgList->children()) {
-      ExprElaborator Elab(CxxContext, SemaRef);
+      ExprElaborator Elab(CxxAST, SemaRef);
       Expr *AExpr = Elab.elaborateExpr(A);
 
       if (AExpr)
@@ -314,5 +314,61 @@ ExprElaborator::elaborateCmpAssignOp(const CallSyntax *S,
 
   return Res.get();
 }
+
+/// Create an expression for a block condition. Ex:
+///
+/// \code
+/// if:
+///   expr_1
+///   expr_2
+///   ...
+///   expr_n
+/// \endcode
+/// We just create a logical and expression with n terms: one for each
+/// sub expression.
+Expr *ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
+  // If there's only one term, we don't need to do anything else.
+  if (Conditions->getNumChildren() == 1)
+    return elaborateExpr(Conditions->getChild(0));
+
+  Expr *LHS, *RHS;
+
+  {
+    ExprElaborator ExEl(CxxAST, SemaRef);
+    LHS = ExEl.elaborateExpr(Conditions->getChild(0));
+  }
+  {
+    ExprElaborator ExEl(CxxAST, SemaRef);
+    RHS = ExEl.elaborateExpr(Conditions->getChild(1));
+  }
+
+  ExprResult BinOp =
+    SemaRef.getCxxSema().ActOnBinOp(/*Scope=*/nullptr, SourceLocation(),
+                                    clang::tok::ampamp, LHS, RHS);
+  if (BinOp.isInvalid())
+    return nullptr;
+
+  // For all remaining terms, append them to the back of the && expression.
+  // Ex., if we had `1 && 2`, we would append `3` to get `1 && 2 && 3`.
+  for (unsigned I = 2; I < Conditions->getNumChildren(); ++I) {
+    ExprElaborator ExEl(CxxAST, SemaRef);
+    RHS = ExEl.elaborateExpr(Conditions->getChild(I));
+
+    BinOp =
+      SemaRef.getCxxSema().ActOnBinOp(/*Scope=*/nullptr, SourceLocation(),
+                                      clang::tok::ampamp, BinOp.get(), RHS);
+    if (BinOp.isInvalid())
+      return nullptr;
+  }
+
+  return BinOp.get();
+}
+
+  // 1, 2, 3
+
+  // 1 && 2 && 3
+
+  // 2 && 3
+  // 1 && 2 && 3
 
 } // namespace green

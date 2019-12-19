@@ -33,7 +33,7 @@ class GreenSema;
 
 // Builds a clang::Expr node out of a green::Syntax node.
 class ExprElaborator {
-  clang::ASTContext &CxxContext;
+  clang::ASTContext &CxxAST;
 
   GreenSema &SemaRef;
 public:
@@ -47,6 +47,8 @@ public:
   clang::Expr *elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
   clang::Expr *elaborateCmpAssignOp(const CallSyntax *S,
                                     clang::BinaryOperatorKind Op);
+
+  clang::Expr *elaborateBlockCondition(const ArraySyntax *Conditions);
 };
 
 } // namespace green
