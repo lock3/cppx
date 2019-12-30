@@ -32,6 +32,7 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
 
   finishFile(S);
 
+  Context.CxxAST.getTranslationUnitDecl()->dump();
   return Context.CxxAST.getTranslationUnitDecl();
 }
 
@@ -64,15 +65,42 @@ clang::QualType Elaborator::getOperatorColonType(const CallSyntax *S) const {
   const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
 
   // Right now this has to be an explicitly named type.
-  if (!isa<AtomSyntax>(ArgList->Elems[1]))
-    assert(false && "Evaluated types not supported yet");
-  const AtomSyntax *Typename = cast<AtomSyntax>(ArgList->Elems[1]);
+  if (const AtomSyntax *Typename = dyn_cast<AtomSyntax>(ArgList->Elems[1])) {
+    auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
+    if (BuiltinMapIter == BuiltinTypes.end())
+      assert(false && "Only builtin types are supported right now.");
 
-  auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
-  if (BuiltinMapIter == BuiltinTypes.end())
-    assert(false && "Only builtin types are supported right now.");
+    return BuiltinMapIter->second;
+  } else if (const ElemSyntax* ElemType = dyn_cast<ElemSyntax>(ArgList->Elems[1])) {
+    // The type can also be written in array form, like x[N] or [N]x.
+    const AtomSyntax *Typename = cast<AtomSyntax>(ElemType->getObject());
 
-  return BuiltinMapIter->second;
+    // Get the array type then elaborate the accessor expression.
+    auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
+    if (BuiltinMapIter == BuiltinTypes.end())
+      assert(false && "Only builtin types are supported right now.");
+
+    ExprElaborator ExEl(Context.CxxAST, SemaRef);
+    const ListSyntax *ArrayArgs = cast<ListSyntax>(ElemType->getArguments());
+    clang::Expr *SizeExpr = ExEl.elaborateExpr(ArrayArgs->getChild(0));
+
+
+    clang::Expr::EvalResult SizeResult;
+    if (!SizeExpr->EvaluateAsInt(SizeResult, Context.CxxAST,
+                                 clang::Expr::SE_NoSideEffects,
+                                 /*InConstantContext=*/true)) {
+      llvm::errs() << "Array index is not a C++ constant expression.";
+      return clang::QualType();
+    }
+
+    llvm::APSInt ArraySize = SizeResult.Val.getInt();
+    // FIXME: use the proper arraysizemodifier.
+    return Context.CxxAST.getConstantArrayType(BuiltinMapIter->second, ArraySize,
+                                               SizeExpr, clang::ArrayType::Normal,
+                                               /*TypeQuals=*/0);
+  }
+
+  assert(false && "User defined types are not supported yet.");
 }
 
 // Create a Clang Declaration for a call to operator':', in other words,

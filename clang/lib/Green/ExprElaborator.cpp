@@ -364,11 +364,4 @@ Expr *ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
   return BinOp.get();
 }
 
-  // 1, 2, 3
-
-  // 1 && 2 && 3
-
-  // 2 && 3
-  // 1 && 2 && 3
-
 } // namespace green

@@ -49,6 +49,9 @@ public:
                                     clang::BinaryOperatorKind Op);
 
   clang::Expr *elaborateBlockCondition(const ArraySyntax *Conditions);
+
+private:
+  clang::Expr *handleOperatorDotDot(const CallSyntax *Call);
 };
 
 } // namespace green
