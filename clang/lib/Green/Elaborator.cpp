@@ -317,8 +317,10 @@ static clang::Decl *handleOperatorEquals(SyntaxContext &Context,
 
   SemaRef.getCurrentScope()->addDecl(EntityVD);
 
+  // Add this to the decl context if it didn't get added before.
   if (SemaRef.getCurrentScope()->isDeclarationScope())
-    EntityVD->getDeclContext()->addDecl(EntityVD);
+    if (EntityVD->getDeclContext()->lookup(EntityVD->getDeclName()).empty())
+      EntityVD->getDeclContext()->addDecl(EntityVD);
 
   // Now let's elaborate the initializer as a clang::Expr.
   ExprElaborator ExprElab(CxxAST, SemaRef);
