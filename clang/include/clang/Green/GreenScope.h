@@ -85,8 +85,14 @@ public:
     /// For DK_Identifier, the id.
     const Syntax *Id;
 
-    /// For DK_Function, the parameter list.
-    const Syntax *Params;
+    /// For DK_Function, information about parameters.
+    struct ParamInfoType {
+      /// The initial parameter list.
+      const Syntax *Params;
+
+      /// The scope constructed during elaboration.
+      GreenScope *Scope;
+    } ParamInfo;
 
     /// For DK_Type, the type in the call.
     const Syntax *Type;
@@ -174,16 +180,16 @@ class GreenScope {
   /// The syntax associated with the scope.
   const Syntax *Term;
 
+  /// The mapping of original syntax to its construction.
+  using DeclMapType = llvm::DenseMap<const Syntax *, Declaration *>;
+  DeclMapType DeclMap;
+
   /// The mapping of declarations to its construction.
   ///
   /// FIXME: For overloading a single identifier can refer to a set of
   /// declarations. We'll need to adjust this in order to make it work.
   using IdMapType = llvm::DenseMap<clang::IdentifierInfo const*, Declaration *>;
   IdMapType IdMap;
-
-  /// The mapping of original syntax to its construction.
-  using DeclMapType = llvm::DenseMap<const Syntax *, Declaration *>;
-  DeclMapType DeclMap;
 
   // FIXME: Is there any purpose for this at all?
   unsigned Depth;

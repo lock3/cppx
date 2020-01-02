@@ -85,8 +85,14 @@ public:
   /// have no corresponding declaration at the point of elaboration.
   void enterScope(ScopeKind K, const Syntax *S);
 
-  /// Leave the current scope.
+  /// Leave the current scope. The syntax S must match the syntax for
+  /// which the scope was initially pushed.
   void leaveScope(const Syntax *S);
+
+  /// Leaves the current scope, but preserves the object for later use. This
+  /// is primarily used to save lists of parameter declarations. The syntax
+  /// S must match the syntax for which the scope was initially pushed.
+  GreenScope *saveScope(const Syntax *S);
 
   // Perform unqualified lookup of a name.
   bool LookupName(clang::LookupResult &R, GreenScope *S);

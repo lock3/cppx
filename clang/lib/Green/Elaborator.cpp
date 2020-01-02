@@ -86,6 +86,8 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
 }
 
 static clang::StorageClass getStorageClass(Elaborator &Elab) {
+  // FIXME: What is the storage class for a variable? Computed from scope
+  // and specifiers probably. We don't have specifiers yet.
   return Elab.SemaRef.getCurrentScope()->isBlockScope()
     ? clang::SC_Auto
     : clang::SC_Extern;
@@ -101,15 +103,13 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   clang::TypeSourceInfo *TSI = Context.CxxAST.CreateTypeSourceInfo(Ty);
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc;
-
-  // FIXME: What is the storage class for a variable? Computed from scope
-  // and specifiers probably. We don't have specifiers yet.
   clang::StorageClass SC = getStorageClass(*this);
 
   // Create the variable and add it to it's owning context.
   clang::VarDecl *VD = clang::VarDecl::Create(Context.CxxAST, Owner, Loc, Loc,
                                               Id, Ty, TSI, SC);
   Owner->addDecl(VD);
+  D->Cxx = VD;
   return VD;
 }
 
@@ -122,9 +122,12 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
   clang::SourceLocation Loc;
 
   // Just return the parameter. We add it to it's function later.
-  return clang::ParmVarDecl::Create(Context.CxxAST, Owner, Loc, Loc, Id, Ty,
-                                    TSI, clang::SC_None,
-                                    /*DefaultArg=*/nullptr);
+  clang::ParmVarDecl *P = clang::ParmVarDecl::Create(Context.CxxAST, Owner, Loc,
+                                                     Loc, Id, Ty, TSI,
+                                                     clang::SC_None,
+                                                     /*DefaultArg=*/nullptr);
+  D->Cxx = P;
+  return P;
 }
 
 
@@ -135,6 +138,8 @@ clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
   // Elaborate the declaration.
   if (Declaration *D = SemaRef.getCurrentScope()->findDecl(S))
     return elaborateDecl(D);
+
+  // TODO: Elaborate the definition or initializer?
 
   return nullptr;
 }
@@ -464,7 +469,7 @@ clang::QualType Elaborator::elaborateArrayType(Declarator *D, clang::QualType T)
 }
 
 // Elaborate the parameters and incorporate their types into  the one
-// we're building.
+// we're building. Note that T is the return type (if any).
 clang::QualType Elaborator::elaborateFunctionType(Declarator *D, clang::QualType T) {
   const auto Call = cast<CallSyntax>(D->Call);
 
@@ -472,13 +477,20 @@ clang::QualType Elaborator::elaborateFunctionType(Declarator *D, clang::QualType
   assert(isa<ListSyntax>(Call->getArguments()) && "Array parameters not supported");
   const Syntax *Args = Call->getArguments();
 
+  // Elaborate the parameter declarations in order to get their types, and save
+  // the resulting scope with the declarator.
+  llvm::SmallVector<clang::QualType, 4> Types;
   SemaRef.enterScope(SK_Parameter, Call);
   for (const Syntax *P : Args->children()) {
-    clang::Decl *Param = elaborateDecl(P);
+    clang::ValueDecl *VD = cast<clang::ValueDecl>(elaborateDecl(P));
+    Types.push_back(VD->getType());
   }
-  SemaRef.leaveScope(Call);
+  D->Data.ParamInfo.Scope = SemaRef.saveScope(Call);
 
-  return T;
+  // FIXME: We probably need to configure parts of the prototype (e.g.,
+  // make this noexcept by default).
+  clang::FunctionProtoType::ExtProtoInfo EPI;
+  return Context.CxxAST.getFunctionType(T, Types, EPI);
 }
 
 clang::QualType Elaborator::elaborateExplicitType(Declarator *D, clang::QualType T) {
@@ -517,7 +529,7 @@ static Declarator *buildFunctionDeclarator(const CallSyntax *S, Declarator *Next
   // FIXME: Store the parameter list.
   Declarator *D = new Declarator(DK_Function, Next);
   D->Call = S;
-  D->Data.Params = S->getArguments();
+  D->Data.ParamInfo.Params = S->getArguments();
   return D;
 }
 

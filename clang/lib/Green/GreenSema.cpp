@@ -57,10 +57,10 @@ GreenScope *GreenSema::popScope() {
 }
 
 void GreenSema::enterScope(ScopeKind K, const Syntax *S) {
-  // FIXME: We're leaking scopes. We probably want to keep them bound
-  // to the syntax for which they're created -- especially for syntaxes
-  // that correspond to declarations, so that we can easily find their
-  // associated lookup tables.
+  // FIXME: We're leaking scopes. We probably want to keep them bound to the
+  // syntax for which they're created, especially for syntaxes that correspond
+  // to declarations, so that we can easily find their associated lookup
+  // tables. See the comments in leaveScope and saveScope.
   //
   // NOTE: Do not allocate this through the Context. It might be deleted.
   pushScope(new GreenScope(K, S, getCurrentScope()));
@@ -68,9 +68,16 @@ void GreenSema::enterScope(ScopeKind K, const Syntax *S) {
 
 void GreenSema::leaveScope(const Syntax *S) {
   assert(getCurrentScope()->getConcreteTerm() == S);
-  // FIXME: If the current scope is attached to a declaration, then we
-  // want to retain it. Otherwise we can delete it.
+  // FIXME: Delete the scope. Note that we don't delete the scope in saveScope.
   popScope();
+}
+
+GreenScope *GreenSema::saveScope(const Syntax *S) {
+  assert(getCurrentScope()->getConcreteTerm() == S);
+  // FIXME: Queue the scope for subsequent deletion?
+  GreenScope *Scope = getCurrentScope();
+  popScope();
+  return Scope;
 }
 
 clang::DeclContext *GreenSema::getCurrentCxxDeclContext() {
