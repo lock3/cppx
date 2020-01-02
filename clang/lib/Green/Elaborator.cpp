@@ -33,12 +33,20 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
 }
 
 void Elaborator::startFile(const Syntax *S) {
-  clang::Decl *TU = Context.CxxAST.getTranslationUnitDecl();
-  SemaRef.enterScope(S, TU);
+  // Enter the global scope.
+  SemaRef.enterScope(SK_Namespace, S);
+
+  /// Build the declaration for the global namespace.
+  Declaration *D = new Declaration(S);
+  D->SavedScope = SemaRef.getCurrentScope();
+  D->Cxx = Context.CxxAST.getTranslationUnitDecl();
+  SemaRef.pushDecl(D);
 }
 
 void Elaborator::finishFile(const Syntax *S) {
+  SemaRef.popDecl();
   SemaRef.leaveScope(S);
+
   // TODO: Any pending semantic analysis to do here?
 }
 
@@ -63,16 +71,64 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
 
+  if (D->declaresFunction())
+    return elaborateFunctionDecl(D);
+  else
+    return elaborateVariableDecl(D);
+}
+
+clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Get the type of entity declared.
   clang::QualType Ty = elaborateType(D->Decl);
   Ty->dump();
 
-  // Create the corresponding declaration.
   return nullptr;
 }
 
+static clang::StorageClass getStorageClass(Elaborator &Elab) {
+  return Elab.SemaRef.getCurrentScope()->isBlockScope()
+    ? clang::SC_Auto
+    : clang::SC_Extern;
+}
+
+clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
+  if (SemaRef.getCurrentScope()->isParameterScope())
+    return elaborateParameterDecl(D);
+
+  // Get the type of entity.
+  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  clang::QualType Ty = elaborateType(D->Decl);
+  clang::TypeSourceInfo *TSI = Context.CxxAST.CreateTypeSourceInfo(Ty);
+  clang::IdentifierInfo *Id = D->getId();
+  clang::SourceLocation Loc;
+
+  // FIXME: What is the storage class for a variable? Computed from scope
+  // and specifiers probably. We don't have specifiers yet.
+  clang::StorageClass SC = getStorageClass(*this);
+
+  // Create the variable and add it to it's owning context.
+  clang::VarDecl *VD = clang::VarDecl::Create(Context.CxxAST, Owner, Loc, Loc,
+                                              Id, Ty, TSI, SC);
+  Owner->addDecl(VD);
+  return VD;
+}
+
+clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
+  // Get type information.
+  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  clang::QualType Ty = elaborateType(D->Decl);
+  clang::TypeSourceInfo *TSI = Context.CxxAST.CreateTypeSourceInfo(Ty);
+  clang::IdentifierInfo *Id = D->getId();
+  clang::SourceLocation Loc;
+
+  // Just return the parameter. We add it to it's function later.
+  return clang::ParmVarDecl::Create(Context.CxxAST, Owner, Loc, Loc, Id, Ty,
+                                    TSI, clang::SC_None,
+                                    /*DefaultArg=*/nullptr);
+}
+
+
 clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
-  llvm::errs() << "HERE?\n";
   // Identify this as a declaration first.
   identifyDecl(S);
 
@@ -407,8 +463,21 @@ clang::QualType Elaborator::elaborateArrayType(Declarator *D, clang::QualType T)
   llvm_unreachable("Arrays not supported");
 }
 
+// Elaborate the parameters and incorporate their types into  the one
+// we're building.
 clang::QualType Elaborator::elaborateFunctionType(Declarator *D, clang::QualType T) {
-  // FIXME: We need to elaborate the function parameters here...
+  const auto Call = cast<CallSyntax>(D->Call);
+
+  // FIXME: Handle array-based arguments.
+  assert(isa<ListSyntax>(Call->getArguments()) && "Array parameters not supported");
+  const Syntax *Args = Call->getArguments();
+
+  SemaRef.enterScope(SK_Parameter, Call);
+  for (const Syntax *P : Args->children()) {
+    clang::Decl *Param = elaborateDecl(P);
+  }
+  SemaRef.leaveScope(Call);
+
   return T;
 }
 
@@ -523,12 +592,18 @@ void Elaborator::identifyDeclFromCall(const CallSyntax *S) {
     const Syntax *Decl;
     const Syntax *Init;
     if (Op == "operator'='") {
-      // FIXME: What if we have something like 'x, y : int'?
       const auto *Args = cast<ListSyntax>(S->getArguments());
       Decl = Args->getChild(0);
       Init = Args->getChild(1);
     } else if (Op == "operator'!'") {
       const auto *Args = cast<ListSyntax>(S->getArguments());
+
+      // Disallow definitions here.
+      //
+      // FIXME: This should be an error, not an assertion.
+      if (SemaRef.getCurrentScope()->isParameterScope())
+        assert(false && "Function definition");
+
       Decl = Args->getChild(0);
       Init = Args->getChild(1);
     } else if (Op == "operator':'") {
@@ -555,6 +630,13 @@ void Elaborator::identifyDeclFromCall(const CallSyntax *S) {
     if (!Dcl)
       return;
 
+    // Parameters can only be declared as x, x:T, or :T. The full range
+    // of declarator syntax is not supported.
+    //
+    // FIXME: Emit an error instead of a diagnostic.
+    if (SemaRef.getCurrentScope()->isParameterScope() && !Dcl->isIdentifier())
+      assert(false && "Invalid parameter declaration");
+
     clang::IdentifierInfo* Id = getIdentifier(*this, Dcl);
 
     // FIXME: We could mis-identify this as a declaration. For example:
@@ -565,7 +647,10 @@ void Elaborator::identifyDeclFromCall(const CallSyntax *S) {
     // The first statement is a declaration. The second is an assignment.
 
     // Create a declaration for this node.
-    Declaration *TheDecl = new Declaration(S, Dcl, Init);
+    //
+    // FIXME: Do a better job managing memory.
+    Declaration *ParentDecl = SemaRef.getCurrentDecl();
+    Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, Init);
     TheDecl->Id = Id;
     SemaRef.getCurrentScope()->addDecl(TheDecl);
   }

@@ -34,5 +34,25 @@ const Syntax *Declarator::getType() const {
   return nullptr;
 }
 
+// A declarator declares a variable, if it does not declare a function.
+bool Declaration::declaresVariable() const {
+  return !declaresFunction();
+}
+
+// A declarator declares a function if it's first non-id declarator is
+// declares parameters.
+bool Declaration::declaresFunction() const {
+  assert(Decl);
+  const Declarator *D = Decl;
+  if (D->Kind == DK_Identifier)
+    D = D->Next;
+  if (D)
+    return D->Kind == DK_Function;
+  return false;
+}
+
+clang::DeclContext *Declaration::getCxxContext() const {
+  return clang::Decl::castToDeclContext(Cxx);
+}
 
 } // namespace green

@@ -24,6 +24,7 @@
 namespace green {
 
 struct Syntax;
+class GreenScope;
 
 /// Kinds of declarations.
 enum DeclaratorKind {
@@ -54,6 +55,15 @@ class Declarator {
 public:
   Declarator(DeclaratorKind K, Declarator *P)
     : Kind(K), Next(P) { }
+
+  /// The kind of declarator.
+  DeclaratorKind getKind() const {
+    return Kind;
+  }
+
+  bool isIdentifier() const {
+    return Kind == DK_Identifier;
+  }
 
   /// Returns the identifier for the declarator, if given.
   const Syntax *getId() const;
@@ -88,9 +98,37 @@ public:
 /// the definition, and the some corresponding C++ declaration.
 class Declaration {
 public:
-  Declaration(const Syntax *Op, Declarator *Decl, const Syntax *Init)
-    : Op(Op), Decl(Decl), Init(Init)
+  /// Use to create the initial file/global namespace.
+  Declaration(const Syntax *File)
+    : Cxt(), Op(), Decl(), Init(File)
   { }
+
+  /// Creates a declaration.
+  Declaration(Declaration *Cxt, const Syntax *Op, Declarator *Decl, const Syntax *Init)
+    : Cxt(Cxt), Op(Op), Decl(Decl), Init(Init)
+  { }
+
+  /// The enclosing declaration.
+  Declaration *getOwner() const {
+    return Cxt;
+  }
+
+  /// True if this declares a variable.
+  bool declaresVariable() const;
+
+  /// True if this declares a function.
+  bool declaresFunction() const;
+
+  /// The identifier of the declaration, if any.
+  clang::IdentifierInfo *getId() const {
+    return Id;
+  }
+
+  /// The corresponding C++ declaration as a context.
+  clang::DeclContext *getCxxContext() const;
+
+  /// The owning context.
+  Declaration *Cxt;
 
   /// The top-level operator that forms the declaration or definition.
   const Syntax *Op;
@@ -101,24 +139,40 @@ public:
   /// The initializer or definition.
   const Syntax *Init;
 
+  /// The list of members associated with this declaration.
+  GreenScope *SavedScope = nullptr;
+
   /// The identifier for the declaration.
-  const clang::IdentifierInfo *Id = nullptr;
+  clang::IdentifierInfo *Id = nullptr;
 
   /// The corresponding C++ declaration.
   clang::Decl* Cxx = nullptr;
 };
 
+/// Different kinds of scope.
+enum ScopeKind {
+  /// The scope associated with a namespace.
+  SK_Namespace,
+
+  /// The scope associated with a function parameter list.
+  SK_Parameter,
+
+  /// The scope associated with a function definition.
+  SK_Function,
+
+  /// The scope associated with a compound statement.
+  SK_Block,
+};
 
 class GreenScope {
+  /// The kind of scope.
+  ScopeKind Kind;
+
   /// The parent/enclosing scope of this scope.
   GreenScope *Parent;
 
-  /// The syntactic term associated with this scope.
-  const Syntax *CST;
-
-  /// The C++ AST tree associated with this term.
-  using TermType = llvm::PointerUnion3<clang::Decl *, clang::Expr *, clang::Stmt *>;
-  TermType AST;
+  /// The syntax associated with the scope.
+  const Syntax *Term;
 
   /// The mapping of declarations to its construction.
   ///
@@ -131,16 +185,35 @@ class GreenScope {
   using DeclMapType = llvm::DenseMap<const Syntax *, Declaration *>;
   DeclMapType DeclMap;
 
-  // /// Declarations declared in this scope.
-  // using DeclSetTy = llvm::SmallPtrSet<clang::Decl *, 32>;
-  // DeclSetTy DeclsInScope;
-
+  // FIXME: Is there any purpose for this at all?
   unsigned Depth;
 
 public:
-  GreenScope(const Syntax *S, TermType A, GreenScope *P)
-    : Parent(P), CST(S), AST(A) {
+  /// Creates a new scope.
+  GreenScope(ScopeKind K, const Syntax *S, GreenScope *P)
+    : Kind(K), Parent(P), Term(S) {
     Depth = Parent ? Parent->getDepth() + 1 : 0;
+  }
+
+  /// The kind of scope.
+  ScopeKind getKind() const {
+    return Kind;
+  }
+
+  bool isNamespaceScope() const {
+    return Kind == SK_Namespace;
+  }
+
+  bool isParameterScope() const {
+    return Kind == SK_Parameter;
+  }
+
+  bool isFunctionScope() const {
+    return Kind == SK_Function;
+  }
+
+  bool isBlockScope() const {
+    return Kind >= SK_Block;
   }
 
   /// The parent of this scope.
@@ -155,32 +228,11 @@ public:
 
   /// The original, concrete term associated with the scope.
   const Syntax *getConcreteTerm() const {
-    return CST;
+    return Term;
   }
 
-  /// True if the scope corresponds to a declaration.
-  bool isDeclarationScope() const {
-    return AST.is<clang::Decl *>();
-  }
-
-  /// True if the scope corresponds to a statement.
-  bool isStatementScope() const {
-    return AST.is<clang::Stmt *>();
-  }
-
-  /// Returns the associated declaration.
-  clang::Decl *getDeclaration() const {
-    assert(isDeclarationScope());
-    return AST.get<clang::Decl *>();
-  }
-
-  /// Returns the associated statement.
-  clang::Stmt *getStatement() const {
-    assert(isStatementScope());
-    return AST.get<clang::Stmt *>();
-  }
-
-  /// Adds a declaration to this scope.
+  /// Adds a declaration to this scope. Declarations are added when they
+  /// are first identified, not when their types are elaborated.
   void addDecl(Declaration *D) {
     // Store the declaration.
     assert(DeclMap.count(D->Op) == 0);

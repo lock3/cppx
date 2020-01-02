@@ -20,6 +20,7 @@
 #include "llvm/ADT/SmallVector.h"
 
 #include "clang/Green/SyntaxContext.h"
+#include "clang/Green/GreenScope.h"
 
 #include <memory>
 #include <vector>
@@ -37,10 +38,11 @@ class Type;
 
 namespace green {
 
-class SyntaxContext;
-class GreenScope;
+class Declarator;
+class Declaration;
 struct Syntax;
 struct ArraySyntax;
+class SyntaxContext;
 
 /// Maintains the state of translation for a translation unit in the Green
 /// Language.
@@ -57,6 +59,9 @@ class GreenSema {
   // Stack of active GreenScopes.
   llvm::SmallVector<GreenScope *, 4> ScopeStack;
 
+  // The declaration context.
+  Declaration *CurrentDecl;
+
 public:
   GreenSema(SyntaxContext &Context, clang::Sema &S);
 
@@ -72,17 +77,37 @@ public:
   /// Push a new scope.
   void pushScope(GreenScope *S);
 
-  /// Enter a new scope corresponding to D.
-  void enterScope(const Syntax *S, clang::Decl *D);
-
   /// Pop the current scope, returning it.
   GreenScope *popScope();
+
+  /// Enter a new scope corresponding to the syntax S. This is primarily
+  /// used for the elaboration of function and template parameters, which
+  /// have no corresponding declaration at the point of elaboration.
+  void enterScope(ScopeKind K, const Syntax *S);
 
   /// Leave the current scope.
   void leaveScope(const Syntax *S);
 
   // Perform unqualified lookup of a name.
   bool LookupName(clang::LookupResult &R, GreenScope *S);
+
+
+  // Declaration context
+
+  /// The current declaration.
+  Declaration *getCurrentDecl() {
+    return CurrentDecl;
+  }
+
+  /// The current C++ declaration.
+  clang::DeclContext *getCurrentCxxDeclContext();
+
+  /// Make D the current declaration.
+  void pushDecl(Declaration *D);
+
+  /// Make the owner of CurrentDecl current.
+  void popDecl();
+
 
   // Iterate through the mapped identifiers and determine their type.
   void elaborateDecls();

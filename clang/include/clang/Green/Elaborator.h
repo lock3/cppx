@@ -49,6 +49,9 @@ public:
   clang::Decl *elaborateTopLevelDecl(const Syntax* S);
 
   clang::Decl *elaborateDecl(Declaration* D);
+  clang::Decl *elaborateFunctionDecl(Declaration *D);
+  clang::Decl *elaborateVariableDecl(Declaration *D);
+  clang::Decl *elaborateParameterDecl(Declaration *D);
   clang::Decl *elaborateDecl(const Syntax* S);
   clang::Decl *elaborateDeclForArray(const ArraySyntax *S);
   clang::Decl *elaborateDeclForList(const ListSyntax *S);
