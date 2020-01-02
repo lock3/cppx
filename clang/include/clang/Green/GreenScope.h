@@ -65,6 +65,10 @@ public:
     return Kind == DK_Identifier;
   }
 
+  bool isFunction() const {
+    return Kind == DK_Function;
+  }
+
   /// Returns the identifier for the declarator, if given.
   const Syntax *getId() const;
 

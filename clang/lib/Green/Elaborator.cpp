@@ -77,12 +77,55 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
     return elaborateVariableDecl(D);
 }
 
-clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
-  // Get the type of entity declared.
-  clang::QualType Ty = elaborateType(D->Decl);
-  Ty->dump();
+// The parameter scope of a function declaration is always found in the
+// second declarator.
+static Declarator *getFunctionDeclarator(Declarator *D) {
+  assert(D->isIdentifier());
+  assert(D->Next->isFunction());
+  return D->Next;
+}
 
-  return nullptr;
+// Returns the function declarator part of D.
+static Declarator *getFunctionDeclarator(Declaration *D) {
+  assert(D->Decl);
+  return getFunctionDeclarator(D->Decl);
+}
+
+// Get the Clang parameter declarations for D
+static void getFunctionParameters(Declaration *D,
+                          llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
+  Declarator *FnDecl = getFunctionDeclarator(D);
+  const Syntax *ParamList = FnDecl->Data.ParamInfo.Params;
+  GreenScope *ParamScope = FnDecl->Data.ParamInfo.Scope;
+  for (const Syntax *P : ParamList->children()) {
+    Declaration *PD = ParamScope->findDecl(P);
+    assert(PD->Cxx && "No corresponding declaration");
+    Params.push_back(cast<clang::ParmVarDecl>(PD->Cxx));
+  }
+}
+
+clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
+  // Get the type of the entity.
+  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  clang::QualType Ty = elaborateType(D->Decl);
+  clang::TypeSourceInfo *TSI = Context.CxxAST.CreateTypeSourceInfo(Ty);
+  clang::DeclarationName Name = D->getId();
+  clang::SourceLocation Loc;
+
+  // FIXME: Make sure we have the right storage class.
+  clang::FunctionDecl *FD = clang::FunctionDecl::Create(Context.CxxAST, Owner,
+                                                        Loc, Loc, Name, Ty,
+                                                        TSI, clang::SC_Extern);
+
+  // Update the function parameters.
+  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
+  getFunctionParameters(D, Params);
+  FD->setParams(Params);
+
+  // Add the declaration and update bindings.
+  Owner->addDecl(FD);
+  D->Cxx = FD;
+  return FD;
 }
 
 static clang::StorageClass getStorageClass(Elaborator &Elab) {
@@ -97,7 +140,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   if (SemaRef.getCurrentScope()->isParameterScope())
     return elaborateParameterDecl(D);
 
-  // Get the type of entity.
+  // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
   clang::QualType Ty = elaborateType(D->Decl);
   clang::TypeSourceInfo *TSI = Context.CxxAST.CreateTypeSourceInfo(Ty);
@@ -474,8 +517,8 @@ clang::QualType Elaborator::elaborateFunctionType(Declarator *D, clang::QualType
   const auto Call = cast<CallSyntax>(D->Call);
 
   // FIXME: Handle array-based arguments.
-  assert(isa<ListSyntax>(Call->getArguments()) && "Array parameters not supported");
-  const Syntax *Args = Call->getArguments();
+  assert(isa<ListSyntax>(D->Data.ParamInfo.Params) && "Array parameters not supported");
+  const Syntax *Args = D->Data.ParamInfo.Params;
 
   // Elaborate the parameter declarations in order to get their types, and save
   // the resulting scope with the declarator.
