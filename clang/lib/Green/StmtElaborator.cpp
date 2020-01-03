@@ -66,7 +66,7 @@ createDeclStmt(ASTContext &CxxContext, GreenSema &SemaRef,
 
   if (R.empty()) {
     Elaborator DeclElab(SemaRef.getContext(), SemaRef);
-    Decl *Declaration = DeclElab.elaborateDecl(S);
+    Decl *Declaration = DeclElab.elaborateDeclSyntax(S);
 
     StmtResult Res =
       ClangSema.ActOnDeclStmt(ClangSema.ConvertDeclToDeclGroup(Declaration),

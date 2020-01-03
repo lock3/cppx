@@ -14,18 +14,25 @@ Elaborator::Elaborator(SyntaxContext &Context, GreenSema &SemaRef)
 
 clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   assert(isa<FileSyntax>(S) && "S is not a file");
+
   startFile(S);
+
   const FileSyntax *File = cast<FileSyntax>(S);
 
+  // FIXME: Shouldn't we be using PushDecl?
   SemaRef.getCxxSema().CurContext = Context.CxxAST.getTranslationUnitDecl();
 
   // Pass 1. identify declarations in scope.
   for (const Syntax *SS : File->children())
     identifyDecl(SS);
 
-  // Pass 2: elaborate top-level declarations and their definitions.
+  // Pass 2: elaborate the types.
   for (const Syntax *SS : File->children())
-    elaborateTopLevelDecl(SS);
+    elaborateDeclType(SS);
+
+  // Pass 3: elaborate definitions.
+  for (const Syntax *SS : File->children())
+    elaborateDeclInit(SS);
 
   finishFile(S);
 
@@ -50,18 +57,16 @@ void Elaborator::finishFile(const Syntax *S) {
   // TODO: Any pending semantic analysis to do here?
 }
 
-clang::Decl *Elaborator::elaborateTopLevelDecl(const Syntax *S) {
-  // Don't elaborate non-declarations.
-  //
+clang::Decl *Elaborator::elaborateDeclType(const Syntax *S) {
   // TODO: Can we elaborate top-level statements? What would they do?
   // Would these equivalent to directives?
+  //
+  // TODO: Look for module-related declarations.
   //
   // TODO: What should we find for a list of declarators?
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
   if (!D)
     return nullptr;
-
-  // TODO: Look for module-related declarations.
 
   return elaborateDecl(D);
 }
@@ -70,11 +75,14 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
-
   if (D->declaresFunction())
     return elaborateFunctionDecl(D);
   else
     return elaborateVariableDecl(D);
+
+  // TODO: We should be able to elaborate definitions at this point too.
+  // We've already loaded salient identifier tables, so it shouldn't any
+  // forward references should be resolvable.
 }
 
 // The parameter scope of a function declaration is always found in the
@@ -173,8 +181,7 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
   return P;
 }
 
-
-clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
+clang::Decl *Elaborator::elaborateDeclSyntax(const Syntax *S) {
   // Identify this as a declaration first.
   identifyDecl(S);
 
@@ -185,6 +192,79 @@ clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
   // TODO: Elaborate the definition or initializer?
 
   return nullptr;
+}
+
+void Elaborator::elaborateDeclInit(const Syntax *S) {
+  // TODO: See elaborateDeclType. We have the same kinds of concerns.
+  Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
+  if (!D)
+    return;
+  elaborateDef(D);
+}
+
+void Elaborator::elaborateDef(Declaration *D) {
+  if (D->declaresFunction())
+    elaborateFunctionDef(D);
+  else
+    elaborateVariableInit(D);
+}
+
+void Elaborator::elaborateFunctionDef(Declaration *D) {
+  clang::FunctionDecl *FD = cast<clang::FunctionDecl>(D->Cxx);
+
+  if (!D->Init)
+    return;
+
+  SemaRef.enterScope(SK_Function, D->Init);
+
+  // Elaborate the function body.
+  StmtElaborator BodyElaborator(Context.CxxAST, SemaRef);
+  clang::Stmt *Body = BodyElaborator.elaborateBlock(D->Init);
+  FD->setBody(Body);
+
+  SemaRef.leaveScope(D->Init);
+}
+
+void Elaborator::elaborateVariableInit(Declaration *D) {
+  clang::VarDecl *VD = cast<clang::VarDecl>(D->Cxx);
+
+  if (!D->Init) {
+    // FIXME: We probably want to synthesize some kind of initializer here.
+    // Not quite sure how we want to do this.
+    //
+    // FIXME: What if D has type auto? Surely this is an error. For example:
+    //
+    //    x : auto
+    //
+    // declares an undeduced-type variable with no initializer. Presumably
+    // this should be an error.
+    return;
+  }
+
+  // Elaborate the initializer.
+  ExprElaborator ExprElab(Context.CxxAST, SemaRef);
+  clang::Expr *Init = ExprElab.elaborateExpr(D->Init);
+  if (!Init)
+    return;
+
+  // Perform auto deduction.
+  if (VD->getType()->isUndeducedType()) {
+    clang::Sema &CxxSema = SemaRef.getCxxSema();
+    clang::QualType Ty;
+    auto Result = CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), Init, Ty);
+    if (Result == clang::Sema::DAR_Failed) {
+      // FIXME: Make this a real diagnostic.
+      llvm::errs() << "Failed to deduce type of expression.\n";
+      return;
+    }
+    VD->setType(Ty);
+  }
+
+  // FIXME: Are we actually checking the type of the initializer? There
+  // should be a single function to do all of this.
+
+  // Update the initializer.
+  VD->setInit(Init);
 }
 
 // Get the clang::QualType described by an operator':' call.
@@ -525,7 +605,7 @@ clang::QualType Elaborator::elaborateFunctionType(Declarator *D, clang::QualType
   llvm::SmallVector<clang::QualType, 4> Types;
   SemaRef.enterScope(SK_Parameter, Call);
   for (const Syntax *P : Args->children()) {
-    clang::ValueDecl *VD = cast<clang::ValueDecl>(elaborateDecl(P));
+    clang::ValueDecl *VD = cast<clang::ValueDecl>(elaborateDeclSyntax(P));
     Types.push_back(VD->getType());
   }
   D->Data.ParamInfo.Scope = SemaRef.saveScope(Call);
@@ -614,9 +694,86 @@ static Declarator* makeDeclarator(const Syntax *S) {
   return D;
 }
 
+static clang::IdentifierInfo *getIdentifier(Elaborator &Elab,
+                                            const Declarator *D) {
+  if (const auto *Atom = dyn_cast_or_null<AtomSyntax>(D->getId()))
+    return &Elab.Context.CxxAST.Idents.get(Atom->getSpelling());
+  return nullptr;
+}
+
 void Elaborator::identifyDecl(const Syntax *S) {
+  // Declarations only appear in calls.
   if (const auto *Call = dyn_cast<CallSyntax>(S)) {
-    return identifyDeclFromCall(Call);
+    if (const auto *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
+      llvm::StringRef Op = Callee->getToken().getSpelling();
+
+      // Unpack the declarator.
+      const Syntax *Decl;
+      const Syntax *Init;
+      if (Op == "operator'='") {
+        const auto *Args = cast<ListSyntax>(Call->getArguments());
+        Decl = Args->getChild(0);
+        Init = Args->getChild(1);
+      } else if (Op == "operator'!'") {
+        const auto *Args = cast<ListSyntax>(Call->getArguments());
+
+        // Disallow definitions here.
+        //
+        // FIXME: This should be an error, not an assertion.
+        if (SemaRef.getCurrentScope()->isParameterScope())
+          assert(false && "Function definition");
+
+        Decl = Args->getChild(0);
+        Init = Args->getChild(1);
+      } else if (Op == "operator':'") {
+        Decl = S;
+        Init = nullptr;
+      } else {
+        // Syntactically, this is not a declaration.
+        return;
+      }
+
+      // FIXME: I think we can filter out some syntactic forms as
+      // non-declarations. For example, the following look like definitions
+      // but are actually assignments.
+      //
+      //    f(x) = 4
+      //    a[3] = 5
+      //
+      // The array case might be tricky to disambiguate, and requires
+      // a lookup. If it's the first initialization of the variable, then
+      // it must be a declaration. See below.
+
+      // Try to build a declarator for the declaration.
+      Declarator *Dcl = makeDeclarator(Decl);
+      if (!Dcl)
+        return;
+
+      // Parameters can only be declared as x, x:T, or :T. The full range
+      // of declarator syntax is not supported.
+      //
+      // FIXME: Emit an error instead of a diagnostic.
+      if (SemaRef.getCurrentScope()->isParameterScope() && !Dcl->isIdentifier())
+        assert(false && "Invalid parameter declaration");
+
+      clang::IdentifierInfo* Id = getIdentifier(*this, Dcl);
+
+      // FIXME: We could mis-identify this as a declaration. For example:
+      //
+      //    x = 3
+      //    x = 4
+      //
+      // The first statement is a declaration. The second is an assignment.
+
+      // Create a declaration for this node.
+      //
+      // FIXME: Do a better job managing memory.
+      Declaration *ParentDecl = SemaRef.getCurrentDecl();
+      Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, Init);
+      TheDecl->Id = Id;
+      SemaRef.getCurrentScope()->addDecl(TheDecl);
+    }
+
   }
 
   // FIXME: What other kinds of things are declarations?
@@ -630,85 +787,6 @@ void Elaborator::identifyDecl(const Syntax *S) {
   // type information backwards.
 
   return;
-}
-
-static clang::IdentifierInfo *getIdentifier(Elaborator &Elab,
-                                            const Declarator *D) {
-  if (const auto *Atom = dyn_cast_or_null<AtomSyntax>(D->getId()))
-    return &Elab.Context.CxxAST.Idents.get(Atom->getSpelling());
-  return nullptr;
-}
-
-void Elaborator::identifyDeclFromCall(const CallSyntax *S) {
-  if (const auto *Callee = dyn_cast<AtomSyntax>(S->getCallee())) {
-    llvm::StringRef Op = Callee->getToken().getSpelling();
-
-    // Unpack the declarator.
-    const Syntax *Decl;
-    const Syntax *Init;
-    if (Op == "operator'='") {
-      const auto *Args = cast<ListSyntax>(S->getArguments());
-      Decl = Args->getChild(0);
-      Init = Args->getChild(1);
-    } else if (Op == "operator'!'") {
-      const auto *Args = cast<ListSyntax>(S->getArguments());
-
-      // Disallow definitions here.
-      //
-      // FIXME: This should be an error, not an assertion.
-      if (SemaRef.getCurrentScope()->isParameterScope())
-        assert(false && "Function definition");
-
-      Decl = Args->getChild(0);
-      Init = Args->getChild(1);
-    } else if (Op == "operator':'") {
-      Decl = S;
-      Init = nullptr;
-    } else {
-      // Syntactically, this is not a declaration.
-      return;
-    }
-
-    // FIXME: I think we can filter out some syntactic forms as
-    // non-declarations. For example, the following look like definitions
-    // but are actually assignments.
-    //
-    //    f(x) = 4
-    //    a[3] = 5
-    //
-    // The array case might be tricky to disambiguate, and requires
-    // a lookup. If it's the first initialization of the variable, then
-    // it must be a declaration. See below.
-
-    // Try to build a declarator for the declaration.
-    Declarator *Dcl = makeDeclarator(Decl);
-    if (!Dcl)
-      return;
-
-    // Parameters can only be declared as x, x:T, or :T. The full range
-    // of declarator syntax is not supported.
-    //
-    // FIXME: Emit an error instead of a diagnostic.
-    if (SemaRef.getCurrentScope()->isParameterScope() && !Dcl->isIdentifier())
-      assert(false && "Invalid parameter declaration");
-
-    clang::IdentifierInfo* Id = getIdentifier(*this, Dcl);
-
-    // FIXME: We could mis-identify this as a declaration. For example:
-    //
-    //    x = 3
-    //    x = 4
-    //
-    // The first statement is a declaration. The second is an assignment.
-
-    // Create a declaration for this node.
-    //
-    // FIXME: Do a better job managing memory.
-    Declaration *ParentDecl = SemaRef.getCurrentDecl();
-    Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, Init);
-    TheDecl->Id = Id;
-    SemaRef.getCurrentScope()->addDecl(TheDecl);
-  }
 }
 
 } // namespace green
