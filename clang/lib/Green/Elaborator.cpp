@@ -36,7 +36,6 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
 
   finishFile(S);
 
-  Context.CxxAST.getTranslationUnitDecl()->dump();
   return Context.CxxAST.getTranslationUnitDecl();
 }
 
@@ -313,269 +312,6 @@ clang::QualType Elaborator::getOperatorColonType(const CallSyntax *S) const {
   assert(false && "User defined types are not supported yet.");
 }
 
-// Create a Clang Declaration for a call to operator':', in other words,
-// a variable with an explicit type. Note that this function does /not/
-// handle an operator':' on a function abstract.
-// Called from Elaborator::elaborateDeclForCall()
-static clang::Decl *handleOperatorColon(SyntaxContext &Context,
-                                        GreenSema &SemaRef,
-                                        Elaborator const &E,
-                                        const CallSyntax *S) {
-  clang::ASTContext &CxxAST = Context.CxxAST;
-
-  clang::QualType DeclType = E.getOperatorColonType(S);
-  clang::TypeSourceInfo *TInfo = CxxAST.CreateTypeSourceInfo(DeclType);
-
-  clang::DeclContext *TUDC =
-    clang::Decl::castToDeclContext(CxxAST.getTranslationUnitDecl());
-
-  // We have a type and a name, so create a declaration.
-  const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
-  const AtomSyntax *Declarator = cast<AtomSyntax>(ArgList->Elems[0]);
-
-  clang::IdentifierInfo *II = &CxxAST.Idents.get(Declarator->Tok.getSpelling());
-  if (Declarator->isParam()) {
-    clang::ParmVarDecl *PVD =
-      clang::ParmVarDecl::Create(CxxAST, TUDC, clang::SourceLocation(),
-                                 clang::SourceLocation(), II, TInfo->getType(),
-                                 TInfo, clang::SC_Extern,
-                                 /*DefaultArg=*/nullptr);
-    // We'll add these to the function scope later.
-    return PVD;
-  } else {
-    clang::VarDecl *VD =
-      clang::VarDecl::Create(CxxAST, TUDC, clang::SourceLocation(),
-                             clang::SourceLocation(), II, TInfo->getType(),
-                             TInfo, clang::SC_Extern);
-    // SemaRef.getCurrentScope()->addDecl(VD);
-    // VD->getDeclContext()->addDecl(VD);
-    return VD;
-  }
-}
-
-// Create a Clang Declaration for a call to operator'!', in other words,
-// a function with a definition.
-// Called from Elaborator::elaborateDeclForCall()
-static clang::Decl *handleOperatorExclaim(SyntaxContext &Context,
-                                          GreenSema &SemaRef,
-                                          Elaborator &E,
-                                          const CallSyntax *S) {
-#if 0
-
-  clang::ASTContext &CxxAST = Context.CxxAST;
-
-  // Get the args for an operator'!' call. This should always have two
-  // arguments: a (possibly typed) function declarator and a function
-  // definition. We are not concerned with the defintion here.
-  const ListSyntax *Args = cast<ListSyntax>(S->getArguments());
-
-  const CallSyntax *Declarator = cast<CallSyntax>(Args->Elems[0]);
-  const AtomSyntax *DeclaratorCallee
-    = cast<AtomSyntax>(Declarator->getCallee());
-  clang::IdentifierInfo *DeclaratorSpelling =
-    &CxxAST.Idents.get(DeclaratorCallee->Tok.getSpelling());
-  clang::IdentifierInfo *Name = nullptr;
-
-  // The parameters of the declared function.
-  //
-  // FIXME: This could actually be an array.
-  const ListSyntax *Parameters;
-
-  clang::QualType ReturnType;
-  // If the declarator is an operator':' call, we have an explicit return
-  // type.
-  if (DeclaratorSpelling == SemaRef.OperatorColonII) {
-    const CallSyntax *OperatorColonCall = cast<CallSyntax>(Declarator);
-
-    ReturnType = E.getOperatorColonType(OperatorColonCall);
-
-    // Let's try to wrestle the parameters out of this operator':' call.
-    const ListSyntax *OperatorColonArgList =
-      cast<ListSyntax>(OperatorColonCall->getArguments());
-    // The first argument of the operator':' call is the function itself.
-    const CallSyntax *TheCall =
-      cast<CallSyntax>(OperatorColonArgList->Elems[0]);
-    // Now let's get the array of parameters from the function.
-    Parameters = cast<ListSyntax>(TheCall->getArguments());
-
-    // Let's get the name of the function while we're here.
-    Name = &CxxAST.Idents.get(
-      cast<AtomSyntax>(TheCall->getCallee())->Tok.getSpelling());
-  } else {
-    // Otherwise, we have a bare function definition.
-    // Just use an auto return type.
-    ReturnType = CxxAST.getAutoDeductType();
-    Parameters = cast<ListSyntax>(Declarator->getArguments());
-    Name = DeclaratorSpelling;
-  }
-
-  // Make some preparations to create an actual FunctionDecl.
-  llvm::SmallVector<clang::ParmVarDecl *, 4> ParameterDecls;
-  llvm::SmallVector<clang::QualType, 4> ParameterTypes;
-
-  // If we have parameters, create clang ParmVarDecls.
-  if (Parameters->NumElems) {
-    for (const Syntax *Param : Parameters->children()) {
-      clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(E.elaborateDecl(Param));
-      ParameterDecls.push_back(PVD);
-      ParameterTypes.push_back(PVD->getType());
-    }
-  }
-
-  // Create the FunctionDecl.
-  clang::FunctionProtoType::ExtProtoInfo EPI;
-  clang::QualType FnTy =
-    CxxAST.getFunctionType(ReturnType, ParameterTypes, EPI);
-  clang::TypeSourceInfo *FnTInfo = CxxAST.CreateTypeSourceInfo(FnTy);
-  clang::DeclContext *TUDC =
-    clang::Decl::castToDeclContext(CxxAST.getTranslationUnitDecl());
-
-  clang::FunctionDecl *FD =
-    clang::FunctionDecl::Create(CxxAST, TUDC, clang::SourceLocation(),
-                                clang::SourceLocation(),
-                                clang::DeclarationName(Name),
-                                FnTInfo->getType(),
-                                FnTInfo,
-                                clang::SC_Extern);
-  FD->setParams(ParameterDecls);
-  FD->getDeclContext()->addDecl(FD);
-
-  SemaRef.enterScope(S, FD);
-
-  // FIXME: The ContextRAII object immediately destructs after creation here.
-  // Why is that happening?
-  // clang::Sema::ContextRAII(SemaRef.getCxxSema(), FD);
-  clang::DeclContext *OldContext = SemaRef.getCxxSema().CurContext;
-  SemaRef.getCxxSema().CurContext = FD;
-
-  // The parameters are currently owned by the translation unit, so let's
-  // move them to the function itself.
-  for (auto Param : FD->parameters()) {
-    Param->setOwningFunction(FD);
-    SemaRef.getCurrentScope()->addDecl(Param);
-    Param->getDeclContext()->addDecl(Param);
-  }
-
-  // FIXME: Start a new scope for the function definition?
-
-  // Now let's elaborate the function body.
-  StmtElaborator BodyElaborator(CxxAST, SemaRef);
-  clang::Stmt *Body = BodyElaborator.elaborateBlock(Args->Elems[1]);
-  FD->setBody(Body);
-
-  // Leave the scope of the function declaration.
-  SemaRef.leaveScope(S);
-  SemaRef.getCxxSema().CurContext = OldContext;
-
-  // FD->dump();
-  return FD;
-  #endif
-  return nullptr;
-}
-
-// Create a clang::Decl for a call to operator'=', i.e., an initialized variable
-// or single-line function.
-// We need to elaborate the initializer here as well.
-// Called from Elaborator::elaborateDeclForCall()
-static clang::Decl *handleOperatorEquals(SyntaxContext &Context,
-                                         GreenSema &SemaRef,
-                                         Elaborator &E,
-                                         const CallSyntax *S) {
-#if 0
-  clang::ASTContext &CxxAST = Context.CxxAST;
-
-  // Get the args for the operator'=' call. As usual, we expect binary
-  // operands here: some sort of named entity and an expression.
-  const ListSyntax *Args = cast<ListSyntax>(S->getArguments());
-
-  clang::VarDecl *EntityVD = nullptr;
-
-  // True if this variable is declared with auto type.
-  bool AutoType = false;
-
-  // If the named declaration is a call, then it is an operator':' call;
-  // we have some sort of explicitly typed  entity.
-  if (isa<CallSyntax>(Args->Elems[0])) {
-    const CallSyntax *Entity = cast<CallSyntax>(Args->Elems[0]);
-
-    clang::Decl *EntityDecl = handleOperatorColon(Context, SemaRef, E, Entity);
-
-    // FIXME: Single-line functions are unimplemented. I don't think
-    // default arguments are supported by the language.
-    if (isa<clang::ParmVarDecl>(EntityDecl) || !isa<clang::VarDecl>(EntityDecl))
-      assert(false && "Unsupported declaration.");
-
-    EntityVD = cast<clang::VarDecl>(EntityDecl);
-  } else if (isa<AtomSyntax>(Args->Elems[0])) {
-    AutoType = true;
-
-    // Perform a lookup on this name. If we didn't find anything, declare
-    // it as an auto type.
-
-    // Declare the variable.
-    const AtomSyntax *Declarator = cast<AtomSyntax>(Args->Elems[0]);
-    clang::IdentifierInfo *II =
-      &CxxAST.Idents.get(Declarator->Tok.getSpelling());
-    clang::DeclContext *TUDC =
-      clang::Decl::castToDeclContext(CxxAST.getTranslationUnitDecl());
-    clang::TypeSourceInfo *TInfo =
-      CxxAST.CreateTypeSourceInfo(CxxAST.getAutoDeductType(), 0);
-
-    EntityVD =
-      clang::VarDecl::Create(CxxAST, TUDC, clang::SourceLocation(),
-                             clang::SourceLocation(), II, TInfo->getType(),
-                             TInfo, clang::SC_Extern);
-  }
-
-  SemaRef.getCurrentScope()->addDecl(EntityVD);
-
-  // Add this to the decl context if it didn't get added before.
-  if (SemaRef.getCurrentScope()->isDeclarationScope())
-    if (EntityVD->getDeclContext()->lookup(EntityVD->getDeclName()).empty())
-      EntityVD->getDeclContext()->addDecl(EntityVD);
-
-  // Now let's elaborate the initializer as a clang::Expr.
-  ExprElaborator ExprElab(CxxAST, SemaRef);
-  const Syntax *Init = Args->Elems[1];
-
-  clang::Expr *InitExpr = ExprElab.elaborateExpr(Init);
-  if (!InitExpr)
-    return nullptr;
-
-  if (AutoType) {
-    clang::Sema &CxxSema = SemaRef.getCxxSema();
-
-    clang::QualType DeducedType;
-    if (CxxSema.DeduceAutoType(EntityVD->getTypeSourceInfo(),
-                               InitExpr, DeducedType) == clang::Sema::DAR_Failed) {
-      llvm::errs() << "Failed to deduce type of expression.\n";
-      return nullptr;
-    }
-    EntityVD->setType(DeducedType);
-  }
-
-  EntityVD->setInit(InitExpr);
-  return EntityVD;
-#endif
-  return nullptr;
-}
-
-clang::Decl *Elaborator::elaborateDeclForCall(const CallSyntax *S) {
-  assert(isa<AtomSyntax>(S->getCallee()) && "Unknown call format.");
-
-  const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
-  const clang::IdentifierInfo *Spelling =
-    &Context.CxxAST.Idents.get(Callee->Tok.getSpelling());
-
-  if (Spelling == SemaRef.OperatorColonII)
-    return handleOperatorColon(Context, SemaRef, *this, S);
-  else if (Spelling == SemaRef.OperatorExclaimII)
-    return handleOperatorExclaim(Context, SemaRef, *this, S);
-  else if (Spelling == SemaRef.OperatorEqualsII)
-    return handleOperatorEquals(Context, SemaRef, *this, S);
-  return nullptr;
-}
-
 // Get a vector of declarators.
 static void getDeclarators(Declarator *D, llvm::SmallVectorImpl<Declarator *> &Decls) {
   while (D) {
@@ -627,7 +363,7 @@ clang::QualType Elaborator::elaboratePointerType(Declarator *D, clang::QualType 
 }
 
 clang::QualType Elaborator::elaborateArrayType(Declarator *D, clang::QualType T) {
-  llvm_unreachable("Arrays not supported");
+
 }
 
 // Elaborate the parameters and incorporate their types into  the one
@@ -669,6 +405,36 @@ clang::QualType Elaborator::elaborateExplicitType(Declarator *D, clang::QualType
       assert(false && "User-defined types not supported.");
     }
     return BuiltinMapIter->second;
+  } else if (const auto *Elem = dyn_cast<ElemSyntax>(D->Data.Type)) {
+    // The type can also be an array, such as x[N] or [N]x
+    // FIXME: This seems like it should be handled by elaborateArrayType
+    // but this isn't an array declarator, it's a type declarator with
+    // an array size.
+    const AtomSyntax *Typename = cast<AtomSyntax>(Elem->getObject());
+
+    // Get the array type then elaborate the accessor expression.
+    auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
+    if (BuiltinMapIter == BuiltinTypes.end())
+      assert(false && "User-defined types not supported.");
+
+    ExprElaborator ExEl(Context.CxxAST, SemaRef);
+    const ListSyntax *ArrayArgs = cast<ListSyntax>(Elem->getArguments());
+    clang::Expr *SizeExpr = ExEl.elaborateExpr(ArrayArgs->getChild(0));
+
+
+    clang::Expr::EvalResult SizeResult;
+    if (!SizeExpr->EvaluateAsInt(SizeResult, Context.CxxAST,
+                                 clang::Expr::SE_NoSideEffects,
+                                 /*InConstantContext=*/true)) {
+      llvm::errs() << "Array index is not a C++ constant expression.";
+      return clang::QualType();
+    }
+
+    llvm::APSInt ArraySize = SizeResult.Val.getInt();
+    // FIXME: use the proper arraysizemodifier.
+    return Context.CxxAST.getConstantArrayType(BuiltinMapIter->second, ArraySize,
+                                               SizeExpr, clang::ArrayType::Normal,
+                                               /*TypeQuals=*/0);
   }
 
   llvm_unreachable("Unknown type specification");
@@ -715,6 +481,7 @@ static Declarator* makeDeclarator(const Syntax *S) {
         // Check for "builtin" operators in the declarator.
         if (Atom->getSpelling() == "operator':'") {
           D = buildTypeDeclarator(Call, D);
+
           S = Call->getArgument(0);
           continue;
         }
