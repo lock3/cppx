@@ -23,6 +23,20 @@ Syntax::children() {
   }
 }
 
-#undef def_syntax
+std::size_t CallSyntax::getNumArguments() const {
+  if (auto *List = dyn_cast<ListSyntax>(getArguments()))
+    return List->getNumChildren();
+  if (auto *Array = dyn_cast<ArraySyntax>(getArguments()))
+    return Array->getNumChildren();
+  llvm_unreachable("Invalid argument list");
+}
+
+Syntax* CallSyntax::getArgument(std::size_t N) {
+  if (auto *List = dyn_cast<ListSyntax>(getArguments()))
+    return List->getChild(N);
+  if (auto *Array = dyn_cast<ArraySyntax>(getArguments()))
+    return Array->getChild(N);
+  llvm_unreachable("Invalid argument list");
+}
 
 } // namespace green

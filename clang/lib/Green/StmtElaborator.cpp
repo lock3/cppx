@@ -67,7 +67,7 @@ createDeclStmt(ASTContext &CxxAST, GreenSema &SemaRef,
 
   if (R.empty()) {
     Elaborator DeclElab(SemaRef.getContext(), SemaRef);
-    Decl *Declaration = DeclElab.elaborateDecl(S);
+    Decl *Declaration = DeclElab.elaborateDeclSyntax(S);
 
     StmtResult Res =
       ClangSema.ActOnDeclStmt(ClangSema.ConvertDeclToDeclGroup(Declaration),
@@ -132,7 +132,7 @@ Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
                                         ConditionExpr,
                                         Sema::ConditionKind::Boolean);
 
-  SemaRef.enterScope(S, (Stmt *)nullptr);
+  SemaRef.enterScope(SK_Block, S);
 
   Stmt *Then;
   if (isa<ArraySyntax>(S->getBlock()) || isa<ListSyntax>(S->getBlock()))
@@ -165,7 +165,7 @@ Stmt *StmtElaborator::elaborateElseStmt(const MacroSyntax *S) {
   if (isa<MacroSyntax>(S->getBlock()))
     return elaborateMacro(cast<MacroSyntax>(S->getBlock()));
 
-  SemaRef.enterScope(S, (Stmt *)nullptr);
+  SemaRef.enterScope(SK_Block, S);
 
   // Otherwise, it's just a normal else block.
   Stmt *Else = elaborateBlock(S->getBlock());

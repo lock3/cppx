@@ -240,6 +240,10 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
     // FIXME: Actually diagnose missing separators.
     matchTokenIf(isSeparator);
 
+    // The end-of-file is often after the last separator.
+    if (atEndOfFile())
+      break;
+
     List = parseList(S);
     appendTerm(Vec, List);
   }
@@ -827,7 +831,7 @@ Syntax *Parser::parsePrimary() {
     break;
   }
 
-  // Diagnose the error, but consume the token so we don't see it again.
+  // Diagnose the error and consume the token so we don't see it again.
   Diags.Report(getInputLocation(), clang::diag::err_expected) << "primary-expression";
   consumeToken();
   return Syntax::error;

@@ -34,6 +34,7 @@ namespace green
   using clang::isa;
   using clang::cast;
   using clang::dyn_cast;
+  using clang::dyn_cast_or_null;
 
 struct Syntax {
 
@@ -219,6 +220,8 @@ struct CallSyntax : Syntax {
     return Elems[0];
   }
 
+  std::size_t getNumArguments() const;
+
   const Syntax *getArguments() const {
     return Elems[1];
   }
@@ -226,6 +229,12 @@ struct CallSyntax : Syntax {
   Syntax *getArguments() {
     return Elems[1];
   }
+
+  const Syntax *getArgument(std::size_t N) const {
+    return const_cast<CallSyntax*>(this)->getArgument(N);
+  }
+
+  Syntax *getArgument(std::size_t N);
 
   child_range children() {
     return child_range(Elems.data(), Elems.data() + 2);

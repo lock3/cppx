@@ -29,7 +29,7 @@ namespace green {
 using namespace llvm;
 
 GreenSema::GreenSema(SyntaxContext &Context, clang::Sema &CxxSema)
-  : Context(Context), CxxSema(CxxSema)
+  : Context(Context), CxxSema(CxxSema), CurrentDecl()
 {
   OperatorColonII = &Context.CxxAST.Idents.get("operator':'");
   OperatorExclaimII = &Context.CxxAST.Idents.get("operator'!'");
@@ -45,26 +45,12 @@ GreenScope *GreenSema::getCurrentScope() {
 }
 
 void GreenSema::pushScope(GreenScope *S) {
-  if (S->isDeclarationScope()) {
-    clang::Decl *D = S->getDeclaration();
-
-    if (isa<clang::FunctionDecl>(D))
-      CxxSema.PushFunctionScope();
-  }
+  // FIXME: The scope should self-describe itself. We can't rely on
+  // the existence of Clang structures at the time we push a scope.
+  // if (S->isDeclarationScope())
+  //   CxxSema.PushFunctionScope();
 
   ScopeStack.push_back(S);
-}
-
-void GreenSema::enterScope(const Syntax *S, clang::Decl *D) {
-  // FIXME: We're leaking scopes. We probably want to keep them bound
-  // to the syntax for which they're created -- especially for syntaxes
-  // that correspond to declarations, so that we can easily find their
-  // associated lookup tables.
-  pushScope(new (Context) GreenScope(S, D, getCurrentScope()));
-}
-
-void GreenSema::enterScope(const Syntax *S, clang::Stmt *Term) {
-  pushScope(new (Context) GreenScope(S, Term, getCurrentScope()));
 }
 
 GreenScope *GreenSema::popScope() {
@@ -73,9 +59,41 @@ GreenScope *GreenSema::popScope() {
   return R;
 }
 
+void GreenSema::enterScope(ScopeKind K, const Syntax *S) {
+  // FIXME: We're leaking scopes. We probably want to keep them bound to the
+  // syntax for which they're created, especially for syntaxes that correspond
+  // to declarations, so that we can easily find their associated lookup
+  // tables. See the comments in leaveScope and saveScope.
+  //
+  // NOTE: Do not allocate this through the Context. It might be deleted.
+  pushScope(new GreenScope(K, S, getCurrentScope()));
+}
+
 void GreenSema::leaveScope(const Syntax *S) {
   assert(getCurrentScope()->getConcreteTerm() == S);
+  // FIXME: Delete the scope. Note that we don't delete the scope in saveScope.
   popScope();
+}
+
+GreenScope *GreenSema::saveScope(const Syntax *S) {
+  assert(getCurrentScope()->getConcreteTerm() == S);
+  // FIXME: Queue the scope for subsequent deletion?
+  GreenScope *Scope = getCurrentScope();
+  popScope();
+  return Scope;
+}
+
+clang::DeclContext *GreenSema::getCurrentCxxDeclContext() {
+  return CurrentDecl->getCxxContext();
+}
+
+void GreenSema::pushDecl(Declaration *D) {
+  assert(D->getOwner() == CurrentDecl);
+  CurrentDecl = D;
+}
+
+void GreenSema::popDecl() {
+  CurrentDecl = CurrentDecl->getOwner();
 }
 
 // Lookup a name within scope S.
@@ -86,6 +104,7 @@ bool GreenSema::LookupName(clang::LookupResult &R, GreenScope *S) {
 
   DeclarationName Name = R.getLookupName();
 
+  #if 0
   // If the scope is associated with a Declaration, we can just use the
   // declaration's lookup.
   if (S->isDeclarationScope()) {
@@ -109,6 +128,7 @@ bool GreenSema::LookupName(clang::LookupResult &R, GreenScope *S) {
     if (R.empty() && S->getParent())
       return LookupName(R, S->getParent());
   }
+  #endif
 
   return R.empty();
 }

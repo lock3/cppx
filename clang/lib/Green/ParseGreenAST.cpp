@@ -49,8 +49,6 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
   green::Syntax *AST = Parser.parseFile();
 
   // FIXME: There's a -fdump-syntax flag that we should tie this too.
-  // if (AST)
-  //   AST->dump();
 
   // FIXME: We should handle -fsyntax-only here -- or maybe make a separate
   // front-end action that stops after parsing. Unfortunately, the flag
@@ -60,7 +58,8 @@ void ParseGreenAST(ASTContext &ClangContext, Preprocessor &PP,
   // Elaborate the resulting abstract syntax tree.
   GreenSema Sema(Context, ClangSema);
   Elaborator Elab(Context, Sema);
-  Elab.elaborateFile(AST);
+  clang::Decl *TU = Elab.elaborateFile(AST);
+  TU->dump();
 }
 
 } // namespace lock3

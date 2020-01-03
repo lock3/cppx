@@ -8,6 +8,7 @@ add_clang_library(green
   GreenFrontend.cpp
   GreenLexer.cpp
   GreenParser.cpp
+  GreenScope.cpp
   GreenSema.cpp
   Elaborator.cpp
   ExprElaborator.cpp

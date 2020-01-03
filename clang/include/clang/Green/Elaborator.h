@@ -30,9 +30,12 @@ class Stmt;
 
 namespace green {
 
+class Declarator;
+class Declaration;
 class GreenSema;
 
 class Elaborator {
+public:
   /// The AST context for the Green language.
   SyntaxContext &Context;
 
@@ -43,17 +46,39 @@ public:
   Elaborator(SyntaxContext &Context, GreenSema &SemaRef);
 
   clang::Decl *elaborateFile(const Syntax *S);
-  clang::Decl *elaborateTopLevelDecl(const Syntax* S);
 
-  clang::Decl *elaborateDecl(const Syntax *S);
+  // Typing elaboration (2nd pass)
+  clang::Decl *elaborateDeclType(const Syntax* D);
+  clang::Decl *elaborateDecl(Declaration *D);
+  clang::Decl *elaborateFunctionDecl(Declaration *D);
+  clang::Decl *elaborateVariableDecl(Declaration *D);
+  clang::Decl *elaborateParameterDecl(Declaration *D);
+
+  // Definition elaboration (3rd pass)
+  void elaborateDeclInit(const Syntax *S);
+  void elaborateDef(Declaration *D);
+  void elaborateFunctionDef(Declaration *D);
+  void elaborateVariableInit(Declaration *D);
+
+  // Perform all three passes on a single declaration in one shot.
+  // This is used to elaborate parameters and block-scope variables.
+  clang::Decl *elaborateDeclSyntax(const Syntax* S);
+
   clang::Decl *elaborateDeclForArray(const ArraySyntax *S);
   clang::Decl *elaborateDeclForList(const ListSyntax *S);
   clang::Decl *elaborateDeclForCall(const CallSyntax *S);
   clang::Decl *elaborateDeclForAtom(const AtomSyntax *S);
 
+  // Type elaboration
+  clang::QualType elaborateType(Declarator *D);
+  clang::QualType elaboratePointerType(Declarator *D, clang::QualType T);
+  clang::QualType elaborateArrayType(Declarator *D, clang::QualType T);
+  clang::QualType elaborateFunctionType(Declarator *D, clang::QualType T);
+  clang::QualType elaborateExplicitType(Declarator *D, clang::QualType T);
+
+  // Identification (1st pass)
   void identifyDecl(const Syntax *S);
-  void identifyFunction(const CallSyntax *S);
-  void identifyVariable(const CallSyntax *S);
+  void identifyDeclFromCall(const CallSyntax *S);
 
   // Get the clang::QualType described by an operator':' call.
   clang::QualType getOperatorColonType(const CallSyntax *S) const;
