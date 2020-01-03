@@ -96,39 +96,31 @@ void GreenSema::popDecl() {
   CurrentDecl = CurrentDecl->getOwner();
 }
 
-// Lookup a name within scope S.
-// FIXME: this function currently has the expected behavior for
-// Sema::LookupAnyName only. Do we want to support other kinds of lookup?
-bool GreenSema::LookupName(clang::LookupResult &R, GreenScope *S) {
-  using namespace clang;
+bool GreenSema::lookupUnqualifiedName(clang::LookupResult &R) {
+  return lookupUnqualifiedName(R, getCurrentScope());
+}
 
-  DeclarationName Name = R.getLookupName();
+bool GreenSema::lookupUnqualifiedName(clang::LookupResult &R, GreenScope *S) {
+  assert(S);
 
-  #if 0
-  // If the scope is associated with a Declaration, we can just use the
-  // declaration's lookup.
-  if (S->isDeclarationScope()) {
-    DeclContext *Ctx = cast<DeclContext>(S->getDeclaration());
-    DeclContextLookupResult CtxResult = Ctx->lookup(Name);
+  clang::DeclarationName Name = R.getLookupName();
+  clang::IdentifierInfo *Id = Name.getAsIdentifierInfo();
+  assert(Id && "Invalid id");
 
-    // Add any results to the LookupResult.
-    for (auto *DeclIterator : CtxResult)
-      R.addDecl(DeclIterator);
-
-    if (CtxResult.empty() && S->getParent())
-      return LookupName(R, S->getParent());
-    else return CtxResult.empty();
-  } else if (S->isStatementScope()) {
-    for (Decl *D : S->decls()) {
-      NamedDecl *ND = R.getAcceptableDecl(cast<NamedDecl>(D));
-      if (ND)
-        R.addDecl(ND);
+  while (S) {
+    // FIXME: This could find a set of declarations. Note that we could find
+    // several declarations, some of which have not been elaborated.
+    Declaration *Found = S->findDecl(Id);
+    if (Found) {
+      // FIXME: This is wrong! If we find a name that hasn't been elaborated,
+      // then we actually need to elaborate it.
+      assert(Found->Cxx && "Declaration not elaborated");
+      clang::NamedDecl *ND = cast<clang::NamedDecl>(Found->Cxx);
+      R.addDecl(ND);
+      break;
     }
-
-    if (R.empty() && S->getParent())
-      return LookupName(R, S->getParent());
+    S = S->getParent();
   }
-  #endif
 
   return R.empty();
 }

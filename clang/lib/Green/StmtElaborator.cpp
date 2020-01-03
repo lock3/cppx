@@ -63,7 +63,7 @@ createDeclStmt(ASTContext &CxxAST, GreenSema &SemaRef,
   IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
   DeclarationNameInfo DNI(II, S->Loc);
   LookupResult R(ClangSema, DNI, Sema::LookupAnyName);
-  SemaRef.LookupName(R, SemaRef.getCurrentScope());
+  SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
 
   if (R.empty()) {
     Elaborator DeclElab(SemaRef.getContext(), SemaRef);
@@ -100,7 +100,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
     IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
     DeclarationNameInfo DNI(II, S->Loc);
     LookupResult R(ClangSema, DNI, Sema::LookupAnyName);
-    SemaRef.LookupName(R, SemaRef.getCurrentScope());
+    SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
 
 
     if (R.empty())

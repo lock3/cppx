@@ -95,8 +95,13 @@ public:
   /// S must match the syntax for which the scope was initially pushed.
   GreenScope *saveScope(const Syntax *S);
 
-  // Perform unqualified lookup of a name.
-  bool LookupName(clang::LookupResult &R, GreenScope *S);
+  // Name lookup
+
+  // Perform unqualified lookup of a name in the current scope.
+  bool lookupUnqualifiedName(clang::LookupResult &R);
+
+  // Perform unqualified lookup of a name starting in S.
+  bool lookupUnqualifiedName(clang::LookupResult &R, GreenScope *S);
 
   // Declaration context
 

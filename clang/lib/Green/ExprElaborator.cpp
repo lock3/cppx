@@ -96,12 +96,11 @@ createIntegerLiteral(ASTContext &CxxAST, Token T, QualType IntType,
 }
 
 static DeclRefExpr *
-createDeclRefExpr(ASTContext &CxxAST, GreenSema &SemaRef,
-                  Token T, QualType Ty, SourceLocation Loc) {
+createDeclRefExpr(ASTContext &CxxAST, GreenSema &SemaRef, Token T, QualType Ty,
+                  SourceLocation Loc) {
   DeclarationNameInfo DNI({&CxxAST.Idents.get(T.getSpelling())}, Loc);
   LookupResult R(SemaRef.getCxxSema(), DNI, Sema::LookupAnyName);
-
-  SemaRef.LookupName(R, SemaRef.getCurrentScope());
+  SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
   if (!R.empty()) {
     if (!R.isSingleResult()) {
       llvm::errs() << "Multiple declarations of \"" << T.getSpelling() << "\" found.\n";
@@ -219,7 +218,7 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
   // First do unqualified lookup.
   DeclarationNameInfo DNI({&CxxAST.Idents.get(Spelling)}, S->Loc);
   LookupResult R(SemaRef.getCxxSema(), DNI, Sema::LookupAnyName);
-  SemaRef.LookupName(R, SemaRef.getCurrentScope());
+  SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
 
   // If we found something, see if it is viable.
   if (!R.empty()) {
