@@ -4,6 +4,7 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_clang_library(blue
+  BlueTokens.cpp
   ParseBlueAST.cpp
 
   LINK_LIBS
