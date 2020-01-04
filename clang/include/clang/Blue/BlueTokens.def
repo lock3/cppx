@@ -10,10 +10,6 @@
 def_token(EndOfFile)
 def_token(Invalid)
 def_token(Unknown)
-def_token(Space)
-def_token(Newline)
-def_token(BlockComment)
-def_token(LineComment)
 
 def_puncop(LeftParen, "(")
 def_puncop(RightParen, ")")

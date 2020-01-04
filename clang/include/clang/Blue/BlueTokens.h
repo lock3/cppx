@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CLANG_BLUE_TOKENS_H
-#define CLANG_BLUE_TOKENS_H
+#ifndef CLANG_BLUE_BLUETOKENS_H
+#define CLANG_BLUE_BLUETOKENS_H
 
 #include "clang/Green/Symbol.h"
 #include "clang/Basic/SourceLocation.h"
