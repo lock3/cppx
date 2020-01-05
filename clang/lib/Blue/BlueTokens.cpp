@@ -21,17 +21,18 @@ char const* getDisplayName(TokenKind K) {
   switch (K) {
 #define def_token(TK) \
   case tok::TK: return # TK;
-#include "clang/Green/Tokens.def"
+#define def_keyword(TK) \
+  case tok::TK ## Keyword: return # TK;
+#include "clang/Blue/BlueTokens.def"
   }
   assert(false);
 }
 
 bool hasUniqueSpelling(TokenKind K) {
   switch (K) {
-  case tok::Newline: return true;
 #define def_puncop(TK, S) \
   case tok::TK: return true;
-#include "clang/Green/Tokens.def"
+#include "clang/Blue/BlueTokens.def"
   default: return false;
   }
 }
@@ -46,7 +47,7 @@ const char* getSpelling(TokenKind K) {
   case tok::Unknown: return "unknown";
 #define def_puncop(TK, S) \
   case tok::TK: return S;
-#include "clang/Green/Tokens.def"
+#include "clang/Blue/BlueTokens.def"
   case tok::Identifier: return "identifier";
   case tok::BinaryInteger: return "binary-integer";
   case tok::DecimalInteger: return "decimal-integer";
@@ -72,7 +73,7 @@ std::size_t getTokenLength(TokenKind K) {
   case tok::Unknown: return 1;
 #define def_puncop(TK, S) \
   case tok::TK: return getSize(S);
-#include "clang/Green/Tokens.def"
+#include "clang/Blue/BlueTokens.def"
   }
 }
 

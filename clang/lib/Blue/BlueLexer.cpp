@@ -1,4 +1,4 @@
-//===- BlueLexer.cpp - Green Language Lexer Implementation ----------------===//
+//===- BlueLexer.cpp - Blue Language Lexer Implementation -----------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file defines the GreenLexer interface.
+//  This file defines the Blue Lexer interface.
 //
 //===----------------------------------------------------------------------===//
 
@@ -175,13 +175,15 @@ Token Lexer::operator()() {
     case '<':
       if (nthCharacterIs(1, '='))
         return matchToken(tok::LessEqual);
-      else if (nthCharacterIs(1, '>'))
-        return matchToken(tok::LessGreater);
+      if (nthCharacterIs(1, '<'))
+        return matchToken(tok::LessLess);
       return matchToken(tok::Less);
 
     case '>':
       if (nthCharacterIs(1, '='))
         return matchToken(tok::GreaterEqual);
+      if (nthCharacterIs(1, '>'))
+        return matchToken(tok::GreaterGreater);
       return matchToken(tok::Greater);
 
     case '~':

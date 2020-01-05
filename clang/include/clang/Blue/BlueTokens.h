@@ -26,7 +26,9 @@ namespace tok {
 enum TokenKind : unsigned short {
 #define def_token(K) \
   K,
-#include "clang/Green/Tokens.def"
+#define def_keyword(K) \
+  K ## Keyword,
+#include "clang/Blue/BlueTokens.def"
 };
 } // namespace tok
 
@@ -101,18 +103,6 @@ struct Token
 
   bool isUnknown() const {
     return hasKind(tok::Unknown);
-  }
-
-  bool isNewline() const {
-    return hasKind(tok::Newline);
-  }
-
-  bool isSpace() const {
-    return hasKind(tok::Space);
-  }
-
-  bool isComment() const {
-    return hasKind(tok::LineComment) || hasKind(tok::BlockComment);
   }
 
   bool isFused() const {

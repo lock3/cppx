@@ -7,6 +7,10 @@
 #  define def_puncop(K, S) def_token(K)
 #endif
 
+#ifndef def_keyword
+#  define def_keyword(K) def_token(K)
+#endif
+
 def_token(EndOfFile)
 def_token(Invalid)
 def_token(Unknown)
@@ -41,7 +45,7 @@ def_puncop(LessLess, "<<")
 def_puncop(GreaterGreater, ">>")
 def_puncop(EqualEqual, "==")
 def_puncop(BangEqual, "!=")
-def_puncop(LessEqaul, "<=")
+def_puncop(LessEqual, "<=")
 def_puncop(GreaterEqual, ">=")
 def_puncop(AmpersandAmpersand, "&&")
 def_puncop(BarBar, "||")
@@ -49,7 +53,7 @@ def_puncop(PlusEqual, "+=")
 def_puncop(MinusEqual, "-=")
 def_puncop(StarEqual, "*=")
 def_puncop(SlashEqual, "/=")
-def_puncop(PercentEqaul, "%=")
+def_puncop(PercentEqual, "%=")
 def_puncop(MinusGreater, "->")
 def_puncop(EqualGreater, "=>")
 def_puncop(PlusPlus, "++")
@@ -64,6 +68,7 @@ def_keyword(Byte)
 def_keyword(Character)
 def_keyword(Class)
 def_keyword(Continue)
+def_keyword(Else)
 def_keyword(False)
 def_keyword(Float)
 def_keyword(For)
@@ -87,5 +92,6 @@ def_token(HexadecimalFloat)
 def_token(Character)
 def_token(String)
 
+#undef def_keyword
 #undef def_puncop
 #undef def_token

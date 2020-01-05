@@ -8,6 +8,8 @@ add_clang_library(blue
   BlueFile.cpp
   BlueTokens.cpp
   BlueLexer.cpp
+  BlueParser.cpp
+  BlueSyntax.cpp
   ParseBlueAST.cpp
 
   LINK_LIBS
