@@ -15,6 +15,7 @@
 #include "clang/Basic/DiagnosticParse.h"
 
 #include "clang/Blue/BlueParser.h"
+#include "clang/Blue/BlueSyntax.h"
 
 #include <iostream>
 
@@ -86,9 +87,9 @@ struct EnclosingBrackets : EnclosingTokens<enc::Brackets> {
   using EnclosingTokens<enc::Brackets>::EnclosingTokens;
 };
 
-// TODO: Handle errors more gracefully?
+// FIXME: Return error nodes on failed expectations.
 template<typename Enclosing, typename Parse>
-Syntax *parseEnclosed(Parser& P, Parse Fn) {
+Syntax *parseEnclosed(Parser &P, Parse Fn) {
   Enclosing Tokens(P);
   if (!Tokens.expectOpen())
     return nullptr;
@@ -99,18 +100,18 @@ Syntax *parseEnclosed(Parser& P, Parse Fn) {
 }
 
 template<typename Parse>
-Syntax *parseParenEnclosed(Parser& P, Parse Fn) {
+Syntax *parseParenEnclosed(Parser &P, Parse Fn) {
   return parseEnclosed<EnclosingParens>(P, Fn);
 }
 
 template<typename Parse>
-Syntax *parseBraceEnclosed(Parser& P, Parse Fn) {
-  return parseEnclosed<EnclosingBraces>(P, Fn);
+Syntax *parseBracketEnclosed(Parser &P, Parse Fn) {
+  return parseEnclosed<EnclosingBrackets>(P, Fn);
 }
 
 template<typename Parse>
-Syntax *parseBracketEnclosed(Parser& P, Parse Fn) {
-  return parseEnclosed<EnclosingBrackets>(P, Fn);
+Syntax *parseBraceEnclosed(Parser &P, Parse Fn) {
+  return parseEnclosed<EnclosingBraces>(P, Fn);
 }
 
 } // namespace
@@ -138,16 +139,27 @@ Token Parser::expectToken(char const* Id) {
 // Syntax productions
 
 Syntax *Parser::parseTranslationUnit() {
-  if (!atEndOfFile())
-    return parseStatementSeq();
+  if (!atEndOfFile()) {
+    llvm::SmallVector<Syntax *, 16> SS;
+    parseStatementSeq(SS);
+    return onTop(SS);
+  }
   return nullptr;
 }
 
-Syntax *Parser::parseStatementSeq() {
-  parseStatement();
+template<typename Parse, typename Sequence>
+static Syntax *parseIntoVector(Sequence &Seq, Parse Fn) {
+  Syntax *S = Fn();
+  if (!S || S->isError())
+    return S;
+  Seq.push_back(S);
+  return S;
+}
+
+void Parser::parseStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
+  parseIntoVector(SS, [this]() { return parseStatement(); });
   while (!atEndOfFile() && nextTokenIsNot(tok::RightBrace))
-    parseStatement();
-  return nullptr;
+    parseIntoVector(SS, [this]() { return parseStatement(); });
 }
 
 // True if the next tokens would start a declaration.
@@ -191,13 +203,19 @@ Syntax *Parser::parseStatement() {
     return parseExpressionStatement();
 }
 
+// FIXME: Return errors for missed expectations.
 Syntax *Parser::parseBlockStatement() {
-  return parseBraceEnclosed(*this, [this]() -> Syntax * {
-    if (nextTokenIsNot(tok::RightBrace))
-      return parseStatementSeq();
+  EnclosingBraces Braces(*this);
+  if (!Braces.expectOpen())
     return nullptr;
-  });
-  return nullptr;
+
+  llvm::SmallVector<Syntax *, 4> SS;
+  if (nextTokenIsNot(tok::RightBrace))
+    parseStatementSeq(SS);
+
+  if (!Braces.expectClose())
+    return nullptr;
+  return onBlock(SS);
 }
 
 Syntax *Parser::parseIfStatement() {
@@ -266,11 +284,10 @@ Syntax *Parser::parseExpression() {
   return parseAssignmentExpression();
 }
 
-Syntax *Parser::parseExpressionList() {
-  parseExpression();
+void Parser::parseExpressionList(llvm::SmallVectorImpl<Syntax *> &SS) {
+  parseIntoVector(SS, [this]() { return parseExpression(); });
   while (matchToken(tok::Comma))
-    parseExpression();
-  return nullptr;
+    parseIntoVector(SS, [this]() { return parseExpression(); });
 }
 
 Syntax *Parser::parseAssignmentExpression() {
@@ -278,7 +295,7 @@ Syntax *Parser::parseAssignmentExpression() {
   // FIXME: Support compound assignment operators.
   if (Token Op = matchToken(tok::Equal)) {
     Syntax *RHS = parseAssignmentExpression();
-    return onBinaryOperator(Op, LHS, RHS);
+    return onBinary(Op, LHS, RHS);
   }
   return LHS;
 }
@@ -287,7 +304,7 @@ Syntax *Parser::parseLogicalOrExpression() {
   Syntax *LHS = parseLogicalAndExpression();
   while (Token Op = matchToken(tok::BarBar)) {
     Syntax *RHS = parseLogicalAndExpression();
-    LHS = onBinaryOperator(Op, LHS, RHS);
+    LHS = onBinary(Op, LHS, RHS);
   }
   return LHS;
 }
@@ -296,7 +313,7 @@ Syntax *Parser::parseLogicalAndExpression() {
   Syntax *LHS = parseEqualityExpression();
   while (Token Op = matchToken(tok::AmpersandAmpersand)) {
     Syntax *RHS = parseEqualityExpression();
-    LHS = onBinaryOperator(Op, LHS, RHS);
+    LHS = onBinary(Op, LHS, RHS);
   }
   return LHS;
 }
@@ -309,7 +326,7 @@ Syntax *Parser::parseEqualityExpression() {
   Syntax *LHS = parseRelationalExpression();
   while (Token Op = matchTokenIf(isEqualityOperator)) {
     Syntax *RHS = parseRelationalExpression();
-    LHS = onBinaryOperator(Op, LHS, RHS);
+    LHS = onBinary(Op, LHS, RHS);
   }
   return LHS;
 }
@@ -325,7 +342,7 @@ Syntax *Parser::parseRelationalExpression() {
   Syntax *LHS = parseShiftExpression();
   while (Token Op = matchTokenIf(isRelationalOperator)) {
     Syntax *RHS = parseShiftExpression();
-    LHS = onBinaryOperator(Op, LHS, RHS);
+    LHS = onBinary(Op, LHS, RHS);
   }
   return LHS;
 }
@@ -338,7 +355,7 @@ Syntax *Parser::parseShiftExpression() {
   Syntax *LHS = parseAdditiveExpression();
   while (Token Op = matchTokenIf(isShiftOperator)) {
     Syntax *RHS = parseAdditiveExpression();
-    LHS = onBinaryOperator(Op, LHS, RHS);
+    LHS = onBinary(Op, LHS, RHS);
   }
   return LHS;
 }
@@ -351,7 +368,7 @@ Syntax *Parser::parseAdditiveExpression() {
   Syntax *LHS = parseMultiplicativeExpression();
   while (Token Op = matchTokenIf(isAdditiveOperator)) {
     Syntax *RHS = parseMultiplicativeExpression();
-    LHS = onBinaryOperator(Op, LHS, RHS);
+    LHS = onBinary(Op, LHS, RHS);
   }
   return LHS;
 }
@@ -362,9 +379,9 @@ static bool isMultiplicativeOperator(TokenKind K) {
 
 Syntax *Parser::parseMultiplicativeExpression() {
   Syntax *LHS = parseConversionExpression();
-  while (Token Op = matchTokenIf(isAdditiveOperator)) {
+  while (Token Op = matchTokenIf(isMultiplicativeOperator)) {
     Syntax *RHS = parseConversionExpression();
-    LHS = onBinaryOperator(Op, LHS, RHS);
+    LHS = onBinary(Op, LHS, RHS);
   }
   return LHS;
 }
@@ -374,7 +391,7 @@ Syntax *Parser::parseConversionExpression() {
   Syntax *LHS = parsePrefixExpression();
   while (Token Op = matchToken(tok::Colon)) {
     Syntax *RHS = parsePrefixExpression();
-    LHS = onBinaryOperator(Op, LHS, RHS);
+    LHS = onBinary(Op, LHS, RHS);
   }
   return LHS;
 }
@@ -393,7 +410,7 @@ static bool isPrefixOperator(TokenKind K) {
 Syntax *Parser::parsePrefixExpression() {
   if (Token Op = matchTokenIf(isPrefixOperator)) {
     Syntax *Arg = parsePrefixExpression();
-    return onUnaryOperator(Op, Arg);
+    return onUnary(Op, Arg);
   }
   return parsePostfixExpression();
 }
@@ -405,11 +422,11 @@ Syntax *Parser::parsePostfixExpression() {
     case tok::Comma:       // Ends an expression in a list.
     case tok::Semicolon:   // Ends an expression statement.
     case tok::LeftParen:   // Ends a condition or call.
-    case tok::LeftBracket: // Ends an index.
+    case tok::LeftBracket: // Ends an index or subscript.
       return E;
 
     case tok::Dot:
-      E = parseAccessExpression(E);
+      E = parseMemberExpression(E);
       break;
 
     default:
@@ -418,29 +435,7 @@ Syntax *Parser::parsePostfixExpression() {
   }
 }
 
-Syntax *Parser::parseCallExpression(Syntax *LHS) {
-  Syntax *Args = parseParenEnclosed(*this, [this]() {
-    if (nextTokenIsNot(tok::RightParen))
-      parseExpressionList();
-    return nullptr;
-  });
-
-  // FIXME: Build the call expression.
-  return nullptr;
-}
-
-Syntax *Parser::parseIndexExpression(Syntax *LHS) {
-  Syntax *Args = parseBracketEnclosed(*this, [this]() {
-    if (nextTokenIsNot(tok::RightBracket))
-      parseExpressionList();
-    return nullptr;
-  });
-
-  // FIXME: Build the index expression.
-  return nullptr;
-}
-
-Syntax *Parser::parseAccessExpression(Syntax *LHS) {
+Syntax *Parser::parseMemberExpression(Syntax *LHS) {
   requireToken(tok::Dot);
   parseIdExpression();
 
@@ -450,9 +445,7 @@ Syntax *Parser::parseAccessExpression(Syntax *LHS) {
 
 Syntax *Parser::parseApplicationExpression(Syntax *LHS) {
   Syntax *RHS = parsePrimaryExpression();
-
-  // FIXME: Build the application.
-  return nullptr;
+  return onBinary(Token(), LHS, RHS);
 }
 
 Syntax *Parser::parsePrimaryExpression() {
@@ -488,42 +481,74 @@ Syntax *Parser::parseIdExpression() {
   return onIdentifier(Id);
 }
 
+// FIXME: Return errors as needed.
 Syntax *Parser::parseParenExpression() {
-  Syntax *Args = parseParenEnclosed(*this, [this]() -> Syntax * {
-    if (nextTokenIsNot(tok::RightParen))
-      return parseExpressionList();
+  EnclosingParens Parens(*this);
+  if (!Parens.expectOpen())
     return nullptr;
-  });
 
-  // FIXME: Build a paren list.
-  return nullptr;
+  llvm::SmallVector<Syntax *, 4> SS;
+  if (nextTokenIsNot(tok::RightParen))
+    parseExpressionList(SS);
+
+  if (!Parens.expectClose())
+    return nullptr;
+  return onTuple(SS);
 }
 
 Syntax *Parser::parseBracketExpression() {
-  Syntax *Args = parseParenEnclosed(*this, [this]() -> Syntax * {
-    if (nextTokenIsNot(tok::RightParen))
-      return parseExpressionList();
+  EnclosingBrackets Brackets(*this);
+  if (!Brackets.expectOpen())
     return nullptr;
-  });
 
-  // FIXME: Build a bracket list.
-  return nullptr;
+  llvm::SmallVector<Syntax *, 4> SS;
+  if (nextTokenIsNot(tok::RightBracket))
+    parseExpressionList(SS);
+
+  if (!Brackets.expectClose())
+    return nullptr;
+  return onArray(SS);
 }
 
-Syntax *Parser::onUnaryOperator(const Token &Tok, Syntax *Arg) {
-  return nullptr;
-}
+// Semantic actions
 
-Syntax *Parser::onBinaryOperator(const Token &Tok, Syntax *LHS, Syntax *RHS) {
-  return nullptr;
+// FIXME: Allocate monotonically.
+static llvm::ArrayRef<Syntax *> makeArray(llvm::SmallVectorImpl<Syntax *> &SS) {
+  Syntax **Array = new Syntax *[SS.size()];
+  std::copy(SS.begin(), SS.end(), Array);
+  return llvm::ArrayRef<Syntax *>(Array, SS.size());
 }
 
 Syntax *Parser::onLiteral(const Token &Tok) {
-  return nullptr;
+  return new LiteralSyntax(Tok);
 }
 
 Syntax *Parser::onIdentifier(const Token &Tok) {
-  return nullptr;
+  return new IdentifierSyntax(Tok);
+}
+
+Syntax *Parser::onUnary(const Token &Op, Syntax *Arg) {
+  return new UnarySyntax(Op, Arg);
+}
+
+Syntax *Parser::onBinary(const Token &Op, Syntax *LHS, Syntax *RHS) {
+  return new BinarySyntax(Op, LHS, RHS);
+}
+
+Syntax *Parser::onTuple(llvm::SmallVectorImpl<Syntax *> &SS) {
+  return new TupleSyntax(makeArray(SS));
+}
+
+Syntax *Parser::onArray(llvm::SmallVectorImpl<Syntax *> &SS) {
+  return new ArraySyntax(makeArray(SS));
+}
+
+Syntax *Parser::onBlock(llvm::SmallVectorImpl<Syntax *> &SS) {
+  return new BlockSyntax(makeArray(SS));
+}
+
+Syntax *Parser::onTop(llvm::SmallVectorImpl<Syntax *> &SS) {
+  return new TopSyntax(makeArray(SS));
 }
 
 } // namespace blue

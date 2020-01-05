@@ -27,7 +27,7 @@ class DiagnosticsEngine;
 
 namespace blue
 {
-  struct Syntax;
+  class Syntax;
 
   /// The parser transforms sequences of tokens into uninterpreted syntax
   /// trees.
@@ -180,7 +180,6 @@ namespace blue
     Syntax *parseTranslationUnit();
 
     // Statements
-    Syntax *parseStatementSeq();
     Syntax *parseStatement();
     Syntax *parseBlockStatement();
     Syntax *parseIfStatement();
@@ -191,13 +190,13 @@ namespace blue
     Syntax *parseReturnStatement();
     Syntax *parseDeclarationStatement();
     Syntax *parseExpressionStatement();
+    void parseStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS);
 
     // Declarations
     Syntax *parseDeclaration();
 
     // Expressions
     Syntax *parseExpression();
-    Syntax *parseExpressionList();
     Syntax *parseAssignmentExpression();
     Syntax *parseLogicalOrExpression();
     Syntax *parseLogicalAndExpression();
@@ -209,20 +208,23 @@ namespace blue
     Syntax *parseConversionExpression();
     Syntax *parsePrefixExpression();
     Syntax *parsePostfixExpression();
-    Syntax *parseCallExpression(Syntax *e);
-    Syntax *parseIndexExpression(Syntax *e);
-    Syntax *parseAccessExpression(Syntax *e);
+    Syntax *parseMemberExpression(Syntax *e);
     Syntax *parseApplicationExpression(Syntax *e);
     Syntax *parsePrimaryExpression();
     Syntax *parseIdExpression();
     Syntax *parseParenExpression();
     Syntax *parseBracketExpression();
+    void parseExpressionList(llvm::SmallVectorImpl<Syntax *> &SS);
 
     // Semantic actions
     Syntax *onLiteral(const Token &Tok);
     Syntax *onIdentifier(const Token &Tok);
-    Syntax *onUnaryOperator(const Token &Op, Syntax *Arg);
-    Syntax *onBinaryOperator(const Token &Op, Syntax *LHS, Syntax *RHS);
+    Syntax *onUnary(const Token &Op, Syntax *Arg);
+    Syntax *onBinary(const Token &Op, Syntax *LHS, Syntax *RHS);
+    Syntax *onTuple(llvm::SmallVectorImpl<Syntax *> &SS);
+    Syntax *onArray(llvm::SmallVectorImpl<Syntax *> &SS);
+    Syntax *onBlock(llvm::SmallVectorImpl<Syntax *> &SS);
+    Syntax *onTop(llvm::SmallVectorImpl<Syntax *> &SS);
 
     /// The lexer.
     Lexer Lex;
