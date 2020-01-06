@@ -276,15 +276,95 @@ Syntax *Parser::parseExpressionStatement() {
   return nullptr;
 }
 
+/// Parse a declaration, which has one of the following forms:
+///
+/// declaration:
+///   identifier : signature ;
+///   identifier : signature definition
+///
+/// definition:
+///   = expression-statement
+///   block-statement
+///
+/// The first production is used for defining values (e.g., variables,
+/// and types), the second is used for defining complex mappings. Note
+/// that the first syntax can also be used to declare functions:
+///
+///   implies : (p:bool, q:bool) bool = !p or q;
+///
+/// TODO: Support a multi-declarator syntax.
 Syntax *Parser::parseDeclaration() {
+  requireToken(tok::Identifier);
+  expectToken(tok::Colon);
+  parseSignature();
+
+  if (matchToken(tok::Equal))
+    parseExpressionStatement();
+  else if (nextTokenIs(tok::LeftBrace))
+    parseBlockStatement();
+  else
+    assert(false && "Invalid definition");
+
   return nullptr;
+}
+
+Syntax *Parser::parseSignature() {
+  return parsePostfixExpression();
 }
 
 Syntax *Parser::parseExpression() {
   return parseAssignmentExpression();
 }
 
-void Parser::parseExpressionList(llvm::SmallVectorImpl<Syntax *> &SS) {
+/// Parse an argument list of the form:
+///
+///   argument-array:
+///     argument-list
+///     argument-array ; argument-list
+///
+///   argument-list:
+///     argument
+///     argument-list , argument
+///
+///   argument:
+///     parameter
+///     parameter-list
+///     expression
+///
+///   parameter:
+///     identifier ':' signature
+///     identifier ':' signature = expression
+///
+///   parameter-list:
+///     identifier-list ':' signature
+///
+///   identifier-list:
+///     identifier
+///     identifier-list ',' identifier
+///
+/// There is an ambiguity in arguments that can be resolved semantically. An
+/// argument-list comprised of only identifiers except that the last term is a
+/// parameter with no default argument, then that is a parameter-list.
+///
+/// FIXME: Parse argument arrays. I'm not sure how we want to represent these
+/// syntactically. We probably jut want a tuple whose individual elements may
+/// be parameter-lists. Note that we want the following to be semantically
+/// equivalent:
+///
+///   f(x:int, y:bool, z:char)
+///   f(x:int, y:bool; z:char)
+///
+/// There's no reason to have multiple representations for these declarations.
+/// We also probably want these to be equivalent:
+///
+///   f(x, y : int)
+///   f(x:int, y:int)
+///
+/// because their types are equivalent. Note that this makes us less compatible
+/// with C++, since equivalence is defined in terms of syntax, not semantics.
+///
+/// FIXME: Parse parameter lists. This may require a tentative parse.
+void Parser::parseArgumentList(llvm::SmallVectorImpl<Syntax *> &SS) {
   parseIntoVector(SS, [this]() { return parseExpression(); });
   while (matchToken(tok::Comma))
     parseIntoVector(SS, [this]() { return parseExpression(); });
@@ -489,7 +569,7 @@ Syntax *Parser::parseParenExpression() {
 
   llvm::SmallVector<Syntax *, 4> SS;
   if (nextTokenIsNot(tok::RightParen))
-    parseExpressionList(SS);
+    parseArgumentList(SS);
 
   if (!Parens.expectClose())
     return nullptr;
@@ -503,7 +583,7 @@ Syntax *Parser::parseBracketExpression() {
 
   llvm::SmallVector<Syntax *, 4> SS;
   if (nextTokenIsNot(tok::RightBracket))
-    parseExpressionList(SS);
+    parseArgumentList(SS);
 
   if (!Brackets.expectClose())
     return nullptr;

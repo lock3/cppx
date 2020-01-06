@@ -195,6 +195,9 @@ namespace blue
     // Declarations
     Syntax *parseDeclaration();
 
+    // Signatures
+    Syntax *parseSignature();
+
     // Expressions
     Syntax *parseExpression();
     Syntax *parseAssignmentExpression();
@@ -214,7 +217,7 @@ namespace blue
     Syntax *parseIdExpression();
     Syntax *parseParenExpression();
     Syntax *parseBracketExpression();
-    void parseExpressionList(llvm::SmallVectorImpl<Syntax *> &SS);
+    void parseArgumentList(llvm::SmallVectorImpl<Syntax *> &SS);
 
     // Semantic actions
     Syntax *onLiteral(const Token &Tok);
