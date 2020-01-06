@@ -3312,6 +3312,7 @@ static bool isStrictlyPreprocessorAction(frontend::ActionKind Action) {
   case frontend::GenerateInterfaceIfsExpV1:
   case frontend::ParseSyntaxOnly:
   case frontend::ParseGreenSyntax:
+  case frontend::ParseBlueSyntax:
   case frontend::ModuleFileInfo:
   case frontend::VerifyPCH:
   case frontend::PluginAction:
@@ -3563,6 +3564,9 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
                   Res.getPreprocessorOpts(), Diags);
     if (LangOpts.Green)
       Res.getFrontendOpts().ProgramAction = frontend::EmitGreen;
+    if (LangOpts.Blue)
+      Res.getFrontendOpts().ProgramAction = frontend::EmitBlue;
+
       // Res.getFrontendOpts().ProgramAction = frontend::ParseGreenSyntax;
     if (Res.getFrontendOpts().ProgramAction == frontend::RewriteObjC)
       LangOpts.ObjCExceptions = 1;
