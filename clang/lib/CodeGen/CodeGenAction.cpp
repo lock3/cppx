@@ -1125,6 +1125,7 @@ EmitGreenAction::EmitGreenAction(llvm::LLVMContext *_VMContext)
   : CodeGenAction(Backend_EmitObj, _VMContext) {}
 
 void EmitGreenAction::ExecuteAction() {
+  llvm::outs() << "Emitting green\n";
   // If this is an IR file, we have to treat it specially.
   if (getCurrentFileKind().getLanguage() == Language::LLVM_IR)
     HandleIRFile();
@@ -1154,6 +1155,7 @@ EmitBlueAction::EmitBlueAction(llvm::LLVMContext *_VMContext)
   : CodeGenAction(Backend_EmitObj, _VMContext) {}
 
 void EmitBlueAction::ExecuteAction() {
+
   // If this is an IR file, we have to treat it specially.
   if (getCurrentFileKind().getLanguage() == Language::LLVM_IR)
     HandleIRFile();

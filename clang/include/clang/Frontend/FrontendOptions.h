@@ -110,6 +110,9 @@ enum ActionKind {
   /// Parse syntax for the Green language
   ParseGreenSyntax,
 
+  /// Parse syntax for the Blue language
+  ParseBlueSyntax,
+
   /// Parse and perform semantic analysis.
   ParseSyntaxOnly,
 

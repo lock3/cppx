@@ -1131,7 +1131,7 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
   BuildInputs(C->getDefaultToolChain(), *TranslatedArgs, Inputs);
 
   // Populate the tool chains for the offloading devices, if any.
-  CreateOffloadingDeviceToolChains(*C, Inputs);
+  CreateOffloadingDeviceToolChains(*C, Inputs);;
 
   // If there are any Greeen inputs, change to Green mode.
   bool IsGreen =
@@ -1144,7 +1144,7 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
       llvm::any_of(Inputs, [](std::pair<types::ID, const llvm::opt::Arg *> &I) {
         return types::isBlue(I.first);
       });
-  if (IsGreen)
+  if (IsBlue)
     Mode = BlueMode;
   assert(!(IsBlue && IsGreen) && "Blue and green are not inter-operable.");
 
