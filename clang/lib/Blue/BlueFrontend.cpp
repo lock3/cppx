@@ -1,4 +1,4 @@
-//===- GreenFrontend.cpp - Green Frontend Action Interface ----------------===//
+//===- BlueFrontend.cpp - Blue Frontend Action Implementation -------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,20 +7,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file implements the GreenSyntaxAction interface, a frontend action for
-//  parsing Green Syntax only.
+//  This file implements the BlueSyntaxAction interface, a frontend action for
+//  parsing Blue Syntax only.
 //
 //===----------------------------------------------------------------------===//
 
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Parse/ParseAST.h"
 
-#include "clang/Green/GreenFrontend.h"
-#include "clang/Green/ParseGreenAST.h"
+#include "clang/Blue/BlueFrontend.h"
+#include "clang/Blue/ParseBlueAST.h"
 
-namespace lock3 {
+namespace blue {
 
-void GreenSyntaxAction::ExecuteAction() {
+void BlueSyntaxAction::ExecuteAction() {
   CompilerInstance &CI = getCompilerInstance();
   if (!CI.hasPreprocessor())
     return;
@@ -32,8 +32,8 @@ void GreenSyntaxAction::ExecuteAction() {
     CI.createSema(getTranslationUnitKind(), nullptr);
 
   switch (getCurrentFileKind().getLanguage()) {
-  case clang::Language::Green:
-    ParseGreenAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
+  case clang::Language::Blue:
+    ParseBlueAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
     break;
 
   default:
@@ -45,4 +45,4 @@ void GreenSyntaxAction::ExecuteAction() {
 }
 
 
-} // namespace lock3
+} // namespace blue

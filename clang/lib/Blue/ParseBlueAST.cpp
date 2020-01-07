@@ -27,7 +27,7 @@ namespace blue {
 
 void ParseBlueAST(ASTContext &ClangContext, Preprocessor &PP,
                   Sema &ClangSema) {
-  llvm::outs() << "Parsing blue AST...\n";
+  llvm::errs() << "Parsing blue AST...\n";
 }
 
 }

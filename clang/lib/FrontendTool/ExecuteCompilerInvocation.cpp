@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/ARCMigrate/ARCMTActions.h"
+#include "clang/Blue/BlueFrontend.h"
 #include "clang/CodeGen/CodeGenAction.h"
 #include "clang/Config/config.h"
 #include "clang/Driver/Options.h"
@@ -58,6 +59,7 @@ CreateFrontendBaseAction(CompilerInstance &CI) {
   case EmitCodeGenOnly:        return std::make_unique<EmitCodeGenOnlyAction>();
   case EmitObj:                return std::make_unique<EmitObjAction>();
   case EmitGreen:              return std::make_unique<EmitGreenAction>();
+  case EmitBlue:               return std::make_unique<EmitBlueAction>();
   case FixIt:                  return std::make_unique<FixItAction>();
   case GenerateModule:
     return std::make_unique<GenerateModuleFromModuleMapAction>();
@@ -70,6 +72,8 @@ CreateFrontendBaseAction(CompilerInstance &CI) {
     return std::make_unique<GenerateInterfaceIfsExpV1Action>();
   case ParseGreenSyntax:
     return std::make_unique<lock3::GreenSyntaxAction>();
+  case ParseBlueSyntax:
+    return std::make_unique<blue::BlueSyntaxAction>();
   case InitOnly:               return std::make_unique<InitOnlyAction>();
   case ParseSyntaxOnly:        return std::make_unique<SyntaxOnlyAction>();
   case ModuleFileInfo:         return std::make_unique<DumpModuleInfoAction>();
