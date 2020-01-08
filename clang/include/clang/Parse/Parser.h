@@ -56,6 +56,7 @@ namespace clang {
 ///
 class Parser : public CodeCompletionHandler {
   friend class ColonProtectionRAIIObject;
+  friend class ParsingOpenMPDirectiveRAII;
   friend class InMessageExpressionRAIIObject;
   friend class PoisonSEHIdentifiersRAIIObject;
   friend class ObjCDeclContextSwitch;
@@ -214,6 +215,9 @@ class Parser : public CodeCompletionHandler {
   /// safe in case statements and a few other things.  This is managed by the
   /// ColonProtectionRAIIObject RAII object.
   bool ColonIsSacred;
+
+  /// Parsing OpenMP directive mode.
+  bool OpenMPDirectiveParsing = false;
 
   /// When true, we are directly inside an Objective-C message
   /// send expression.
@@ -1121,6 +1125,11 @@ public:
   /// SkipMalformedDecl - Read tokens until we get to some likely good stopping
   /// point for skipping past a simple-declaration.
   void SkipMalformedDecl();
+
+  /// The location of the first statement inside an else that might
+  /// have a missleading indentation. If there is no
+  /// MisleadingIndentationChecker on an else active, this location is invalid.
+  SourceLocation MisleadingIndentationElseLoc;
 
 private:
   //===--------------------------------------------------------------------===//
@@ -2961,15 +2970,14 @@ public:
     SourceLocation RLoc;
     CXXScopeSpec ReductionOrMapperIdScopeSpec;
     DeclarationNameInfo ReductionOrMapperId;
-    OpenMPDependClauseKind DepKind = OMPC_DEPEND_unknown;
-    OpenMPLinearClauseKind LinKind = OMPC_LINEAR_val;
+    int ExtraModifier = -1; ///< Additional modifier for linear, map, depend or
+                            ///< lastprivate clause.
     SmallVector<OpenMPMapModifierKind, OMPMapClause::NumberOfModifiers>
     MapTypeModifiers;
     SmallVector<SourceLocation, OMPMapClause::NumberOfModifiers>
     MapTypeModifiersLoc;
-    OpenMPMapClauseKind MapType = OMPC_MAP_unknown;
     bool IsMapTypeImplicit = false;
-    SourceLocation DepLinMapLoc;
+    SourceLocation DepLinMapLastLoc;
   };
 
   /// Parses clauses with list.

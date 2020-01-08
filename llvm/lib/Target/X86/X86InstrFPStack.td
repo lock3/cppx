@@ -286,26 +286,26 @@ let Uses = [FPCW], mayRaiseFPException = 1 in {
 // FPBinary_rr just defines pseudo-instructions, no need to set a scheduling
 // resources.
 let hasNoSchedulingInfo = 1 in {
-defm ADD : FPBinary_rr<fadd>;
-defm SUB : FPBinary_rr<fsub>;
-defm MUL : FPBinary_rr<fmul>;
-defm DIV : FPBinary_rr<fdiv>;
+defm ADD : FPBinary_rr<any_fadd>;
+defm SUB : FPBinary_rr<any_fsub>;
+defm MUL : FPBinary_rr<any_fmul>;
+defm DIV : FPBinary_rr<any_fdiv>;
 }
 
 // Sets the scheduling resources for the actual NAME#_F<size>m defintions.
 let SchedRW = [WriteFAddLd] in {
-defm ADD : FPBinary<fadd, MRM0m, "add">;
-defm SUB : FPBinary<fsub, MRM4m, "sub">;
-defm SUBR: FPBinary<fsub ,MRM5m, "subr", 0>;
+defm ADD : FPBinary<any_fadd, MRM0m, "add">;
+defm SUB : FPBinary<any_fsub, MRM4m, "sub">;
+defm SUBR: FPBinary<any_fsub ,MRM5m, "subr", 0>;
 }
 
 let SchedRW = [WriteFMulLd] in {
-defm MUL : FPBinary<fmul, MRM1m, "mul">;
+defm MUL : FPBinary<any_fmul, MRM1m, "mul">;
 }
 
 let SchedRW = [WriteFDivLd] in {
-defm DIV : FPBinary<fdiv, MRM6m, "div">;
-defm DIVR: FPBinary<fdiv, MRM7m, "divr", 0>;
+defm DIV : FPBinary<any_fdiv, MRM6m, "div">;
+defm DIVR: FPBinary<any_fdiv, MRM7m, "divr", 0>;
 }
 } // Uses = [FPCW], mayRaiseFPException = 1
 
@@ -366,7 +366,7 @@ defm ABS : FPUnary<fabs, MRM_E1, "fabs">;
 
 let Uses = [FPCW], mayRaiseFPException = 1 in {
 let SchedRW = [WriteFSqrt80] in
-defm SQRT: FPUnary<fsqrt,MRM_FA, "fsqrt">;
+defm SQRT: FPUnary<any_fsqrt,MRM_FA, "fsqrt">;
 
 let SchedRW = [WriteFCom] in {
 let hasSideEffects = 0 in {
@@ -637,11 +637,17 @@ def FLDLN2 : I<0xD9, MRM_ED, (outs), (ins), "fldln2", []>;
 // Floating point compares.
 let SchedRW = [WriteFCom], Uses = [FPCW] in {
 def UCOM_Fpr32 : FpIf32<(outs), (ins RFP32:$lhs, RFP32:$rhs), CompareFP,
-                        [(set FPSW, (trunc (X86cmp RFP32:$lhs, RFP32:$rhs)))]>;
+                        [(set FPSW, (trunc (X86any_fcmp RFP32:$lhs, RFP32:$rhs)))]>;
 def UCOM_Fpr64 : FpIf64<(outs), (ins RFP64:$lhs, RFP64:$rhs), CompareFP,
-                        [(set FPSW, (trunc (X86cmp RFP64:$lhs, RFP64:$rhs)))]>;
+                        [(set FPSW, (trunc (X86any_fcmp RFP64:$lhs, RFP64:$rhs)))]>;
 def UCOM_Fpr80 : FpI_  <(outs), (ins RFP80:$lhs, RFP80:$rhs), CompareFP,
-                        [(set FPSW, (trunc (X86cmp RFP80:$lhs, RFP80:$rhs)))]>;
+                        [(set FPSW, (trunc (X86any_fcmp RFP80:$lhs, RFP80:$rhs)))]>;
+def COM_Fpr32  : FpIf32<(outs), (ins RFP32:$lhs, RFP32:$rhs), CompareFP,
+                        [(set FPSW, (trunc (X86strict_fcmps RFP32:$lhs, RFP32:$rhs)))]>;
+def COM_Fpr64  : FpIf64<(outs), (ins RFP64:$lhs, RFP64:$rhs), CompareFP,
+                        [(set FPSW, (trunc (X86strict_fcmps RFP64:$lhs, RFP64:$rhs)))]>;
+def COM_Fpr80  : FpI_  <(outs), (ins RFP80:$lhs, RFP80:$rhs), CompareFP,
+                        [(set FPSW, (trunc (X86strict_fcmps RFP80:$lhs, RFP80:$rhs)))]>;
 } // SchedRW
 } // mayRaiseFPException = 1
 
@@ -649,13 +655,22 @@ let SchedRW = [WriteFCom], mayRaiseFPException = 1 in {
 // CC = ST(0) cmp ST(i)
 let Defs = [EFLAGS, FPCW], Uses = [FPCW] in {
 def UCOM_FpIr32: FpI_<(outs), (ins RFP32:$lhs, RFP32:$rhs), CompareFP,
-                  [(set EFLAGS, (X86cmp RFP32:$lhs, RFP32:$rhs))]>,
+                  [(set EFLAGS, (X86any_fcmp RFP32:$lhs, RFP32:$rhs))]>,
                   Requires<[FPStackf32, HasCMov]>;
 def UCOM_FpIr64: FpI_<(outs), (ins RFP64:$lhs, RFP64:$rhs), CompareFP,
-                  [(set EFLAGS, (X86cmp RFP64:$lhs, RFP64:$rhs))]>,
+                  [(set EFLAGS, (X86any_fcmp RFP64:$lhs, RFP64:$rhs))]>,
                   Requires<[FPStackf64, HasCMov]>;
 def UCOM_FpIr80: FpI_<(outs), (ins RFP80:$lhs, RFP80:$rhs), CompareFP,
-                  [(set EFLAGS, (X86cmp RFP80:$lhs, RFP80:$rhs))]>,
+                  [(set EFLAGS, (X86any_fcmp RFP80:$lhs, RFP80:$rhs))]>,
+                  Requires<[HasCMov]>;
+def COM_FpIr32: FpI_<(outs), (ins RFP32:$lhs, RFP32:$rhs), CompareFP,
+                  [(set EFLAGS, (X86strict_fcmps RFP32:$lhs, RFP32:$rhs))]>,
+                  Requires<[FPStackf32, HasCMov]>;
+def COM_FpIr64: FpI_<(outs), (ins RFP64:$lhs, RFP64:$rhs), CompareFP,
+                  [(set EFLAGS, (X86strict_fcmps RFP64:$lhs, RFP64:$rhs))]>,
+                  Requires<[FPStackf64, HasCMov]>;
+def COM_FpIr80: FpI_<(outs), (ins RFP80:$lhs, RFP80:$rhs), CompareFP,
+                  [(set EFLAGS, (X86strict_fcmps RFP80:$lhs, RFP80:$rhs))]>,
                   Requires<[HasCMov]>;
 }
 
@@ -790,19 +805,19 @@ def : Pat<(X86fist64 RFP80:$src, addr:$op), (IST_Fp64m80 addr:$op, RFP80:$src)>;
 
 // FP extensions map onto simple pseudo-value conversions if they are to/from
 // the FP stack.
-def : Pat<(f64 (fpextend RFP32:$src)), (COPY_TO_REGCLASS RFP32:$src, RFP64)>,
+def : Pat<(f64 (any_fpextend RFP32:$src)), (COPY_TO_REGCLASS RFP32:$src, RFP64)>,
           Requires<[FPStackf32]>;
-def : Pat<(f80 (fpextend RFP32:$src)), (COPY_TO_REGCLASS RFP32:$src, RFP80)>,
+def : Pat<(f80 (any_fpextend RFP32:$src)), (COPY_TO_REGCLASS RFP32:$src, RFP80)>,
            Requires<[FPStackf32]>;
-def : Pat<(f80 (fpextend RFP64:$src)), (COPY_TO_REGCLASS RFP64:$src, RFP80)>,
+def : Pat<(f80 (any_fpextend RFP64:$src)), (COPY_TO_REGCLASS RFP64:$src, RFP80)>,
            Requires<[FPStackf64]>;
 
 // FP truncations map onto simple pseudo-value conversions if they are to/from
 // the FP stack.  We have validated that only value-preserving truncations make
 // it through isel.
-def : Pat<(f32 (fpround RFP64:$src)), (COPY_TO_REGCLASS RFP64:$src, RFP32)>,
+def : Pat<(f32 (any_fpround RFP64:$src)), (COPY_TO_REGCLASS RFP64:$src, RFP32)>,
           Requires<[FPStackf32]>;
-def : Pat<(f32 (fpround RFP80:$src)), (COPY_TO_REGCLASS RFP80:$src, RFP32)>,
+def : Pat<(f32 (any_fpround RFP80:$src)), (COPY_TO_REGCLASS RFP80:$src, RFP32)>,
            Requires<[FPStackf32]>;
-def : Pat<(f64 (fpround RFP80:$src)), (COPY_TO_REGCLASS RFP80:$src, RFP64)>,
+def : Pat<(f64 (any_fpround RFP80:$src)), (COPY_TO_REGCLASS RFP80:$src, RFP64)>,
            Requires<[FPStackf64]>;

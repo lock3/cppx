@@ -74,12 +74,35 @@ bool CombinerHelper::matchCombineCopy(MachineInstr &MI) {
     return false;
   Register DstReg = MI.getOperand(0).getReg();
   Register SrcReg = MI.getOperand(1).getReg();
+
+  // Give up if either DstReg or SrcReg  is a physical register.
+  if (Register::isPhysicalRegister(DstReg) ||
+      Register::isPhysicalRegister(SrcReg))
+    return false;
+
+  // Give up the types don't match.
   LLT DstTy = MRI.getType(DstReg);
   LLT SrcTy = MRI.getType(SrcReg);
-  // Simple Copy Propagation.
-  // a(sx) = COPY b(sx) -> Replace all uses of a with b.
-  if (DstTy.isValid() && SrcTy.isValid() && DstTy == SrcTy)
+  // Give up if one has a valid LLT, but the other doesn't.
+  if (DstTy.isValid() != SrcTy.isValid())
+    return false;
+  // Give up if the types don't match.
+  if (DstTy.isValid() && SrcTy.isValid() && DstTy != SrcTy)
+    return false;
+
+  // Get the register banks and classes.
+  const RegisterBank *DstBank = MRI.getRegBankOrNull(DstReg);
+  const RegisterBank *SrcBank = MRI.getRegBankOrNull(SrcReg);
+  const TargetRegisterClass *DstRC = MRI.getRegClassOrNull(DstReg);
+  const TargetRegisterClass *SrcRC = MRI.getRegClassOrNull(SrcReg);
+
+  // Replace if the register constraints match.
+  if ((SrcRC == DstRC) && (SrcBank == DstBank))
     return true;
+  // Replace if DstReg has no constraints.
+  if (!DstBank && !DstRC)
+    return true;
+
   return false;
 }
 void CombinerHelper::applyCombineCopy(MachineInstr &MI) {
@@ -688,18 +711,36 @@ bool CombinerHelper::findPreIndexCandidate(MachineInstr &MI, Register &Addr,
 }
 
 bool CombinerHelper::tryCombineIndexedLoadStore(MachineInstr &MI) {
+  IndexedLoadStoreMatchInfo MatchInfo;
+  if (matchCombineIndexedLoadStore(MI, MatchInfo)) {
+    applyCombineIndexedLoadStore(MI, MatchInfo);
+    return true;
+  }
+  return false;
+}
+
+bool CombinerHelper::matchCombineIndexedLoadStore(MachineInstr &MI, IndexedLoadStoreMatchInfo &MatchInfo) {
   unsigned Opcode = MI.getOpcode();
   if (Opcode != TargetOpcode::G_LOAD && Opcode != TargetOpcode::G_SEXTLOAD &&
       Opcode != TargetOpcode::G_ZEXTLOAD && Opcode != TargetOpcode::G_STORE)
     return false;
 
-  bool IsStore = Opcode == TargetOpcode::G_STORE;
-  Register Addr, Base, Offset;
-  bool IsPre = findPreIndexCandidate(MI, Addr, Base, Offset);
-  if (!IsPre && !findPostIndexCandidate(MI, Addr, Base, Offset))
+  MatchInfo.IsPre = findPreIndexCandidate(MI, MatchInfo.Addr, MatchInfo.Base,
+                                          MatchInfo.Offset);
+  if (!MatchInfo.IsPre &&
+      !findPostIndexCandidate(MI, MatchInfo.Addr, MatchInfo.Base,
+                              MatchInfo.Offset))
     return false;
 
+  return true;
+}
 
+void CombinerHelper::applyCombineIndexedLoadStore(
+    MachineInstr &MI, IndexedLoadStoreMatchInfo &MatchInfo) {
+  MachineInstr &AddrDef = *MRI.getUniqueVRegDef(MatchInfo.Addr);
+  MachineIRBuilder MIRBuilder(MI);
+  unsigned Opcode = MI.getOpcode();
+  bool IsStore = Opcode == TargetOpcode::G_STORE;
   unsigned NewOpcode;
   switch (Opcode) {
   case TargetOpcode::G_LOAD:
@@ -718,25 +759,22 @@ bool CombinerHelper::tryCombineIndexedLoadStore(MachineInstr &MI) {
     llvm_unreachable("Unknown load/store opcode");
   }
 
-  MachineInstr &AddrDef = *MRI.getUniqueVRegDef(Addr);
-  MachineIRBuilder MIRBuilder(MI);
   auto MIB = MIRBuilder.buildInstr(NewOpcode);
   if (IsStore) {
-    MIB.addDef(Addr);
+    MIB.addDef(MatchInfo.Addr);
     MIB.addUse(MI.getOperand(0).getReg());
   } else {
     MIB.addDef(MI.getOperand(0).getReg());
-    MIB.addDef(Addr);
+    MIB.addDef(MatchInfo.Addr);
   }
 
-  MIB.addUse(Base);
-  MIB.addUse(Offset);
-  MIB.addImm(IsPre);
+  MIB.addUse(MatchInfo.Base);
+  MIB.addUse(MatchInfo.Offset);
+  MIB.addImm(MatchInfo.IsPre);
   MI.eraseFromParent();
   AddrDef.eraseFromParent();
 
   LLVM_DEBUG(dbgs() << "    Combinined to indexed operation");
-  return true;
 }
 
 bool CombinerHelper::matchElideBrByInvertingCond(MachineInstr &MI) {

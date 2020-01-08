@@ -78,12 +78,20 @@ Non-comprehensive list of changes in this release
   been extended to detect these cases, so that code relying on them can be
   detected and fixed.
 
+* The Implicit Conversion Sanitizer (``-fsanitize=implicit-conversion``) has
+  learned to sanitize pre/post increment/decrement of types with bit width
+  smaller than ``int``.
+
 - For X86 target, -march=skylake-avx512, -march=icelake-client,
   -march=icelake-server, -march=cascadelake, -march=cooperlake will default to
   not using 512-bit zmm registers in vectorized code unless 512-bit intrinsics
   are used in the source code. 512-bit operations are known to cause the CPUs
   to run at a lower frequency which can impact performance. This behavior can be
   changed by passing -mprefer-vector-width=512 on the command line.
+
+* clang now defaults to ``.init_array`` on Linux. It used to use ``.ctors`` if
+  the found gcc installation is older than 4.7.0. Add ``-fno-use-init-array`` to
+  get the old behavior (``.ctors``).
 
 New Compiler Flags
 ------------------

@@ -7,6 +7,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
+#include "llvm/ExecutionEngine/JITLink/JITLinkMemoryManager.h"
+#include "llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/OrcError.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
@@ -22,6 +24,26 @@ Error LLJITBuilderState::prepareForConstruction() {
       JTMB = std::move(*JTMBOrErr);
     else
       return JTMBOrErr.takeError();
+  }
+
+  // If the client didn't configure any linker options then auto-configure the
+  // JIT linker.
+  if (!CreateObjectLinkingLayer && JTMB->getCodeModel() == None &&
+      JTMB->getRelocationModel() == None) {
+
+    auto &TT = JTMB->getTargetTriple();
+    if (TT.isOSBinFormatMachO() &&
+        (TT.getArch() == Triple::aarch64 || TT.getArch() == Triple::x86_64)) {
+
+      JTMB->setRelocationModel(Reloc::PIC_);
+      JTMB->setCodeModel(CodeModel::Small);
+      CreateObjectLinkingLayer =
+          [](ExecutionSession &ES,
+             const Triple &) -> std::unique_ptr<ObjectLayer> {
+        return std::make_unique<ObjectLinkingLayer>(
+            ES, std::make_unique<jitlink::InProcessMemoryManager>());
+      };
+    }
   }
 
   return Error::success();
@@ -56,7 +78,9 @@ Error LLJIT::addObjectFile(JITDylib &JD, std::unique_ptr<MemoryBuffer> Obj) {
 
 Expected<JITEvaluatedSymbol> LLJIT::lookupLinkerMangled(JITDylib &JD,
                                                         StringRef Name) {
-  return ES->lookup(JITDylibSearchList({{&JD, true}}), ES->intern(Name));
+  return ES->lookup(
+      makeJITDylibSearchOrder(&JD, JITDylibLookupFlags::MatchAllSymbols),
+      ES->intern(Name));
 }
 
 std::unique_ptr<ObjectLayer>
@@ -103,7 +127,7 @@ LLJIT::createCompileFunction(LLJITBuilderState &S,
 
 LLJIT::LLJIT(LLJITBuilderState &S, Error &Err)
     : ES(S.ES ? std::move(S.ES) : std::make_unique<ExecutionSession>()),
-      Main(this->ES->getMainJITDylib()), DL(""),
+      Main(this->ES->createJITDylib("<main>")), DL(""),
       ObjLinkingLayer(createObjectLinkingLayer(S, *ES)),
       ObjTransformLayer(*this->ES, *ObjLinkingLayer), CtorRunner(Main),
       DtorRunner(Main) {

@@ -3442,15 +3442,16 @@ LLVMValueRef LLVMBuildArrayMalloc(LLVMBuilderRef B, LLVMTypeRef Ty,
 LLVMValueRef LLVMBuildMemSet(LLVMBuilderRef B, LLVMValueRef Ptr, 
                              LLVMValueRef Val, LLVMValueRef Len,
                              unsigned Align) {
-  return wrap(unwrap(B)->CreateMemSet(unwrap(Ptr), unwrap(Val), unwrap(Len), Align));
+  return wrap(unwrap(B)->CreateMemSet(unwrap(Ptr), unwrap(Val), unwrap(Len),
+                                      MaybeAlign(Align)));
 }
 
 LLVMValueRef LLVMBuildMemCpy(LLVMBuilderRef B, 
                              LLVMValueRef Dst, unsigned DstAlign,
                              LLVMValueRef Src, unsigned SrcAlign,
                              LLVMValueRef Size) {
-  return wrap(unwrap(B)->CreateMemCpy(unwrap(Dst), DstAlign,
-                                      unwrap(Src), SrcAlign,
+  return wrap(unwrap(B)->CreateMemCpy(unwrap(Dst), MaybeAlign(DstAlign),
+                                      unwrap(Src), MaybeAlign(SrcAlign),
                                       unwrap(Size)));
 }
 
@@ -3458,8 +3459,8 @@ LLVMValueRef LLVMBuildMemMove(LLVMBuilderRef B,
                               LLVMValueRef Dst, unsigned DstAlign,
                               LLVMValueRef Src, unsigned SrcAlign,
                               LLVMValueRef Size) {
-  return wrap(unwrap(B)->CreateMemMove(unwrap(Dst), DstAlign,
-                                       unwrap(Src), SrcAlign,
+  return wrap(unwrap(B)->CreateMemMove(unwrap(Dst), MaybeAlign(DstAlign),
+                                       unwrap(Src), MaybeAlign(SrcAlign),
                                        unwrap(Size)));
 }
 

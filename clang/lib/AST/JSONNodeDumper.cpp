@@ -202,13 +202,19 @@ void JSONNodeDumper::writeBareSourceLocation(SourceLocation Loc,
   PresumedLoc Presumed = SM.getPresumedLoc(Loc);
   unsigned ActualLine = IsSpelling ? SM.getSpellingLineNumber(Loc)
                                    : SM.getExpansionLineNumber(Loc);
+  StringRef ActualFile = SM.getBufferName(Loc);
+
   if (Presumed.isValid()) {
     JOS.attribute("offset", SM.getDecomposedLoc(Loc).second);
-    if (LastLocFilename != Presumed.getFilename()) {
-      JOS.attribute("file", Presumed.getFilename());
+    if (LastLocFilename != ActualFile) {
+      JOS.attribute("file", ActualFile);
       JOS.attribute("line", ActualLine);
     } else if (LastLocLine != ActualLine)
       JOS.attribute("line", ActualLine);
+
+    StringRef PresumedFile = Presumed.getFilename();
+    if (PresumedFile != ActualFile && LastLocPresumedFilename != PresumedFile)
+      JOS.attribute("presumedFile", PresumedFile);
 
     unsigned PresumedLine = Presumed.getLine();
     if (ActualLine != PresumedLine && LastLocPresumedLine != PresumedLine)
@@ -217,7 +223,8 @@ void JSONNodeDumper::writeBareSourceLocation(SourceLocation Loc,
     JOS.attribute("col", Presumed.getColumn());
     JOS.attribute("tokLen",
                   Lexer::MeasureTokenLength(Loc, SM, Ctx.getLangOpts()));
-    LastLocFilename = Presumed.getFilename();
+    LastLocFilename = ActualFile;
+    LastLocPresumedFilename = PresumedFile;
     LastLocPresumedLine = PresumedLine;
     LastLocLine = ActualLine;
 
@@ -878,12 +885,6 @@ void JSONNodeDumper::VisitLinkageSpecDecl(const LinkageSpecDecl *LSD) {
   switch (LSD->getLanguage()) {
   case LinkageSpecDecl::lang_c: Lang = "C"; break;
   case LinkageSpecDecl::lang_cxx: Lang = "C++"; break;
-  case LinkageSpecDecl::lang_cxx_11:
-    Lang = "C++11";
-    break;
-  case LinkageSpecDecl::lang_cxx_14:
-    Lang = "C++14";
-    break;
   }
   JOS.attribute("language", Lang);
   attributeOnlyIfTrue("hasBraces", LSD->hasBraces());
@@ -1516,6 +1517,9 @@ void JSONNodeDumper::visitInlineCommandComment(
     break;
   case comments::InlineCommandComment::RenderMonospaced:
     JOS.attribute("renderKind", "monospaced");
+    break;
+  case comments::InlineCommandComment::RenderAnchor:
+    JOS.attribute("renderKind", "anchor");
     break;
   }
 

@@ -135,6 +135,28 @@ if(APPLE)
   set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,-flat_namespace -Wl,-undefined -Wl,suppress")
 endif()
 
+if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+  # RHEL7 has ar and ranlib being non-deterministic by default. The D flag forces determinism,
+  # however only GNU version of ar and ranlib (2.27) have this option. 
+  # RHEL DTS7 is also affected by this, which uses GNU binutils 2.28
+  execute_process(COMMAND ${CMAKE_AR} rD t.a
+                  WORKING_DIRECTORY ${CMAKE_BINARY_DIR} RESULT_VARIABLE AR_RESULT OUTPUT_VARIABLE RANLIB_OUTPUT)
+  if(${AR_RESULT} EQUAL 0)
+    execute_process(COMMAND ${CMAKE_RANLIB} -D t.a
+                    WORKING_DIRECTORY ${CMAKE_BINARY_DIR} RESULT_VARIABLE RANLIB_RESULT OUTPUT_VARIABLE RANLIB_OUTPUT)
+    if(${RANLIB_RESULT} EQUAL 0)
+      set(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> Dqc <TARGET> <LINK_FLAGS> <OBJECTS>")
+      set(CMAKE_C_ARCHIVE_APPEND "<CMAKE_AR> Dq  <TARGET> <LINK_FLAGS> <OBJECTS>")
+      set(CMAKE_C_ARCHIVE_FINISH "<CMAKE_RANLIB> -D <TARGET>")
+
+      set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> Dqc <TARGET> <LINK_FLAGS> <OBJECTS>")
+      set(CMAKE_CXX_ARCHIVE_APPEND "<CMAKE_AR> Dq  <TARGET> <LINK_FLAGS> <OBJECTS>")
+      set(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -D <TARGET>")
+    endif()
+    file(REMOVE ${CMAKE_BINARY_DIR}/t.a)
+  endif()
+endif()
+
 if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
   if(NOT LLVM_BUILD_32_BITS)
     if (CMAKE_CXX_COMPILER_ID MATCHES "XL")
@@ -587,6 +609,16 @@ if (LLVM_ENABLE_WARNINGS AND (LLVM_COMPILER_IS_GCC_COMPATIBLE OR CLANG_CL))
   # LLVM's ADT classes.
   check_cxx_compiler_flag("-Wclass-memaccess" CXX_SUPPORTS_CLASS_MEMACCESS_FLAG)
   append_if(CXX_SUPPORTS_CLASS_MEMACCESS_FLAG "-Wno-class-memaccess" CMAKE_CXX_FLAGS)
+
+  # Disable -Wredundant-move on GCC>=9. GCC wants to remove std::move in code
+  # like "A foo(ConvertibleToA a) { return std::move(a); }", but this code does
+  # not compile (or uses the copy constructor instead) on clang<=3.8. Clang also
+  # has a -Wredundant-move, but it only fires when the types match exactly, so
+  # we can keep it here.
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    check_cxx_compiler_flag("-Wredundant-move" CXX_SUPPORTS_REDUNDANT_MOVE_FLAG)
+    append_if(CXX_SUPPORTS_REDUNDANT_MOVE_FLAG "-Wno-redundant-move" CMAKE_CXX_FLAGS)
+  endif()
 
   # The LLVM libraries have no stable C++ API, so -Wnoexcept-type is not useful.
   check_cxx_compiler_flag("-Wnoexcept-type" CXX_SUPPORTS_NOEXCEPT_TYPE_FLAG)

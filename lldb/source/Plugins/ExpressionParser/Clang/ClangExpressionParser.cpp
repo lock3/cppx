@@ -974,7 +974,7 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
   m_compiler->setASTConsumer(std::move(Consumer));
 
   if (ast_context.getLangOpts().Modules) {
-    m_compiler->createModuleManager();
+    m_compiler->createASTReader();
     m_ast_context->setSema(&m_compiler->getSema());
   }
 
@@ -997,7 +997,7 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
     } else {
       ast_context.setExternalSource(ast_source);
     }
-    decl_map->InstallASTContext(ast_context, m_compiler->getFileManager());
+    decl_map->InstallASTContext(*m_ast_context);
   }
 
   // Check that the ASTReader is properly attached to ASTContext and Sema.

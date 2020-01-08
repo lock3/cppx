@@ -43,6 +43,9 @@ multiple file formats.
  starts with ".note". Otherwise, it will have type `SHT_PROGBITS`. Can be
  specified multiple times to add multiple sections.
 
+ For MachO objects, ``<section>`` must be formatted as
+ ``<segment name>,<section name>``.
+
 .. option:: --binary-architecture <arch>, -B
 
  Ignored for compatibility.
@@ -57,6 +60,18 @@ multiple file formats.
  Remove most local symbols from the output. Different file formats may limit
  this to a subset of the local symbols. For example, file and section symbols in
  ELF objects will not be discarded.
+
+.. option:: --dump-section <section>=<file>
+
+ Dump the contents of section ``<section>`` into the file ``<file>``. Can be
+ specified multiple times to dump multiple sections to different files.
+ ``<file>`` is unrelated to the input and output files provided to
+ :program:`llvm-objcopy` and as such the normal copying and editing
+ operations will still be performed. No operations are performed on the sections
+ prior to dumping them.
+
+ For MachO objects, ``<section>`` must be formatted as
+ ``<segment name>,<section name>``.
 
 .. option:: --enable-deterministic-archives, -D
 
@@ -273,15 +288,6 @@ them.
 .. option:: --discard-locals, -X
 
  Remove local symbols starting with ".L" from the output.
-
-.. option:: --dump-section <section>=<file>
-
- Dump the contents of section ``<section>`` into the file ``<file>``. Can be
- specified multiple times to dump multiple sections to different files.
- ``<file>`` is unrelated to the input and output files provided to
- :program:`llvm-objcopy` and as such the normal copying and editing
- operations will still be performed. No operations are performed on the sections
- prior to dumping them.
 
 .. option:: --extract-dwo
 

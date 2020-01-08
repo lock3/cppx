@@ -203,6 +203,10 @@ protected:
   /// whether the FP VML[AS] instructions are slow (if so, don't use them).
   bool SlowFPVMLx = false;
 
+  /// SlowFPVFMx - If the VFP4 / NEON instructions are available, indicates
+  /// whether the FP VFM[AS] instructions are slow (if so, don't use them).
+  bool SlowFPVFMx = false;
+
   /// HasVMLxForwarding - If true, NEON has special multiplier accumulator
   /// forwarding to allow mul + mla being issued back to back.
   bool HasVMLxForwarding = false;
@@ -229,8 +233,8 @@ protected:
   /// NoARM - True if subtarget does not support ARM mode execution.
   bool NoARM = false;
 
-  // ReservedGPRegisters[i] - R#i is not available as a general purpose register
-  BitVector ReservedGPRegisters;
+  /// ReserveR9 - True if R9 is not available as a general purpose register.
+  bool ReserveR9 = false;
 
   /// NoMovt - True if MOVT / MOVW pairs are not used for materialization of
   /// 32-bit imms (including global addresses).
@@ -632,6 +636,11 @@ public:
 
   bool useMulOps() const { return UseMulOps; }
   bool useFPVMLx() const { return !SlowFPVMLx; }
+  bool useFPVFMx() const {
+    return !isTargetDarwin() && hasVFP4Base() && !SlowFPVFMx;
+  }
+  bool useFPVFMx16() const { return useFPVFMx() && hasFullFP16(); }
+  bool useFPVFMx64() const { return useFPVFMx() && hasFP64(); }
   bool hasVMLxForwarding() const { return HasVMLxForwarding; }
   bool isFPBrccSlow() const { return SlowFPBrcc; }
   bool hasFP64() const { return HasFP64; }
@@ -763,9 +772,8 @@ public:
   bool isAClass() const { return ARMProcClass == AClass; }
   bool isReadTPHard() const { return ReadTPHard; }
 
-  bool isGPRegisterReserved(size_t i) const { return ReservedGPRegisters[i]; }
-  unsigned getNumGPRegistersReserved() const {
-    return ReservedGPRegisters.count();
+  bool isR9Reserved() const {
+    return isTargetMachO() ? (ReserveR9 || !HasV6Ops) : ReserveR9;
   }
 
   bool useR7AsFramePointer() const {

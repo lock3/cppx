@@ -15,6 +15,7 @@
 
 #include "clang/AST/APValue.h"
 #include "clang/AST/ASTContextAllocate.h"
+#include "clang/AST/DeclAccessPair.h"
 #include "clang/AST/DeclBase.h"
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/ExternalASTSource.h"
@@ -76,33 +77,6 @@ class TypeAliasTemplateDecl;
 class TypeLoc;
 class UnresolvedSetImpl;
 class VarTemplateDecl;
-
-/// A container of type source information.
-///
-/// A client can read the relevant info using TypeLoc wrappers, e.g:
-/// @code
-/// TypeLoc TL = TypeSourceInfo->getTypeLoc();
-/// TL.getBeginLoc().print(OS, SrcMgr);
-/// @endcode
-class alignas(8) TypeSourceInfo {
-  // Contains a memory block after the class, used for type source information,
-  // allocated by ASTContext.
-  friend class ASTContext;
-
-  QualType Ty;
-
-  TypeSourceInfo(QualType ty) : Ty(ty) {}
-
-public:
-  /// Return the type wrapped by this type source info.
-  QualType getType() const { return Ty; }
-
-  /// Return the TypeLoc wrapper for the type source info.
-  TypeLoc getTypeLoc() const; // implemented in TypeLoc.h
-
-  /// Override the type stored in this TypeSourceInfo. Use with caution!
-  void overrideType(QualType T) { Ty = T; }
-};
 
 /// The top declaration context.
 class TranslationUnitDecl : public Decl, public DeclContext {
@@ -778,6 +752,7 @@ public:
                                      ArrayRef<TemplateParameterList *> TPLists);
 
   SourceLocation getTypeSpecStartLoc() const;
+  SourceLocation getTypeSpecEndLoc() const;
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
@@ -899,6 +874,8 @@ protected:
     DAK_Normal
   };
 
+  enum { NumScopeDepthOrObjCQualsBits = 7 };
+
   class ParmVarDeclBitfields {
     friend class ASTDeclReader;
     friend class ParmVarDecl;
@@ -920,8 +897,6 @@ protected:
 
     /// Whether this parameter is an ObjC method parameter or not.
     unsigned IsObjCMethodParam : 1;
-
-    enum { NumScopeDepthOrObjCQualsBits = 7 };
 
     /// If IsObjCMethodParam, a Decl::ObjCDeclQualifier.
     /// Otherwise, the number of function parameter scopes enclosing
@@ -1653,7 +1628,7 @@ public:
   }
 
   static constexpr unsigned getMaxFunctionScopeDepth() {
-    return (1u << ParmVarDeclBitfields::NumScopeDepthOrObjCQualsBits) - 1;
+    return (1u << NumScopeDepthOrObjCQualsBits) - 1;
   }
 
   /// Returns the index of this parameter in its prototype or method scope.
@@ -1812,13 +1787,37 @@ public:
     TK_DependentFunctionTemplateSpecialization
   };
 
+  /// Stashed information about a defaulted function definition whose body has
+  /// not yet been lazily generated.
+  class DefaultedFunctionInfo final
+      : llvm::TrailingObjects<DefaultedFunctionInfo, DeclAccessPair> {
+    friend TrailingObjects;
+    unsigned NumLookups;
+
+  public:
+    static DefaultedFunctionInfo *Create(ASTContext &Context,
+                                         ArrayRef<DeclAccessPair> Lookups);
+    /// Get the unqualified lookup results that should be used in this
+    /// defaulted function definition.
+    ArrayRef<DeclAccessPair> getUnqualifiedLookups() const {
+      return {getTrailingObjects<DeclAccessPair>(), NumLookups};
+    }
+  };
+
 private:
   /// A new[]'d array of pointers to VarDecls for the formal
   /// parameters of this function.  This is null if a prototype or if there are
   /// no formals.
   ParmVarDecl **ParamInfo = nullptr;
 
-  LazyDeclStmtPtr Body;
+  /// The active member of this union is determined by
+  /// FunctionDeclBits.HasDefaultedFunctionInfo.
+  union {
+    /// The body of the function.
+    LazyDeclStmtPtr Body;
+    /// Information about a future defaulted function definition.
+    DefaultedFunctionInfo *DefaultedInfo;
+  };
 
   unsigned ODRHash;
 
@@ -1964,6 +1963,14 @@ public:
 
   void setRangeEnd(SourceLocation E) { EndRangeLoc = E; }
 
+  /// Returns the location of the ellipsis of a variadic function.
+  SourceLocation getEllipsisLoc() const {
+    const auto *FPT = getType()->getAs<FunctionProtoType>();
+    if (FPT && FPT->isVariadic())
+      return FPT->getEllipsisLoc();
+    return SourceLocation();
+  }
+
   SourceRange getSourceRange() const override LLVM_READONLY;
 
   // Function definitions.
@@ -2042,17 +2049,25 @@ public:
   /// parser reaches the definition, if called before, this function will return
   /// `false`.
   bool isThisDeclarationADefinition() const {
-    return isDeletedAsWritten() || isDefaulted() || Body || hasSkippedBody() ||
-           isLateTemplateParsed() || willHaveBody() || hasDefiningAttr();
+    return isDeletedAsWritten() || isDefaulted() ||
+           doesThisDeclarationHaveABody() || hasSkippedBody() ||
+           willHaveBody() || hasDefiningAttr();
   }
 
   /// Returns whether this specific declaration of the function has a body.
   bool doesThisDeclarationHaveABody() const {
-    return Body || isLateTemplateParsed();
+    return (!FunctionDeclBits.HasDefaultedFunctionInfo && Body) ||
+           isLateTemplateParsed();
   }
 
   void setBody(Stmt *B);
-  void setLazyBody(uint64_t Offset) { Body = Offset; }
+  void setLazyBody(uint64_t Offset) {
+    FunctionDeclBits.HasDefaultedFunctionInfo = false;
+    Body = LazyDeclStmtPtr(Offset);
+  }
+
+  void setDefaultedFunctionInfo(DefaultedFunctionInfo *Info);
+  DefaultedFunctionInfo *getDefaultedFunctionInfo() const;
 
   /// Whether this function is variadic.
   bool isVariadic() const;
@@ -2105,6 +2120,16 @@ public:
   /// for special member functions.
   void setExplicitlyDefaulted(bool ED = true) {
     FunctionDeclBits.IsExplicitlyDefaulted = ED;
+  }
+
+  /// True if this method is user-declared and was not
+  /// deleted or defaulted on its first declaration.
+  bool isUserProvided() const {
+    auto *DeclAsWritten = this;
+    if (FunctionDecl *Pattern = getTemplateInstantiationPattern())
+      DeclAsWritten = Pattern;
+    return !(DeclAsWritten->isDeleted() ||
+             DeclAsWritten->getCanonicalDecl()->isDefaulted());
   }
 
   /// Whether falling off this function implicitly returns null/zero.
@@ -2187,6 +2212,10 @@ public:
   /// Indicates the function uses __try.
   bool usesSEHTry() const { return FunctionDeclBits.UsesSEHTry; }
   void setUsesSEHTry(bool UST) { FunctionDeclBits.UsesSEHTry = UST; }
+
+  /// Indicates the function uses Floating Point constrained intrinsics
+  bool usesFPIntrin() const { return FunctionDeclBits.UsesFPIntrin; }
+  void setUsesFPIntrin(bool Val) { FunctionDeclBits.UsesFPIntrin = Val; }
 
   /// Whether this function has been deleted.
   ///
@@ -2387,6 +2416,12 @@ public:
   /// function return type. This may omit qualifiers and other information with
   /// limited representation in the AST.
   SourceRange getReturnTypeSourceRange() const;
+
+  /// Attempt to compute an informative source range covering the
+  /// function parameters, including the ellipsis of a variadic function.
+  /// The source range excludes the parentheses, and is invalid if there are
+  /// no parameters and no ellipsis.
+  SourceRange getParametersSourceRange() const;
 
   /// Get the declared return type, which may differ from the actual return
   /// type if the return type is deduced.

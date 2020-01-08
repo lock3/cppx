@@ -203,8 +203,6 @@ public:
 
   void SetInjectLocalVariables(ExecutionContext *exe_ctx, bool b);
 
-  bool GetUseModernTypeLookup() const;
-
   void SetRequireHardwareBreakpoints(bool b);
 
   bool GetRequireHardwareBreakpoints() const;
@@ -1066,8 +1064,6 @@ public:
                                                  lldb::LanguageType language,
                                                  const char *name,
                                                  Status &error);
-
-  ClangASTContext *GetScratchClangASTContext(bool create_on_demand = true);
 
   lldb::ClangASTImporterSP GetClangASTImporter();
 

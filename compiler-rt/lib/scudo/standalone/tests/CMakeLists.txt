@@ -16,6 +16,14 @@ set(SCUDO_UNITTEST_CFLAGS
   # TODO(kostyak): find a way to make -fsized-deallocation work
   -Wno-mismatched-new-delete)
 
+if(ANDROID)
+  list(APPEND SCUDO_UNITTEST_CFLAGS -fno-emulated-tls)
+endif()
+
+if (COMPILER_RT_HAS_GWP_ASAN)
+  list(APPEND SCUDO_UNITTEST_CFLAGS -DGWP_ASAN_HOOKS)
+endif()
+
 set(SCUDO_TEST_ARCH ${SCUDO_STANDALONE_SUPPORTED_ARCH})
 
 # gtests requires c++
@@ -34,6 +42,10 @@ endforeach()
 
 macro(add_scudo_unittest testname)
   cmake_parse_arguments(TEST "" "" "SOURCES;ADDITIONAL_RTOBJECTS" ${ARGN})
+  if (COMPILER_RT_HAS_GWP_ASAN)
+    list(APPEND TEST_ADDITIONAL_RTOBJECTS RTGwpAsan)
+  endif()
+
   if(COMPILER_RT_HAS_SCUDO_STANDALONE)
     foreach(arch ${SCUDO_TEST_ARCH})
       # Additional runtime objects get added along RTScudoStandalone

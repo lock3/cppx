@@ -54,12 +54,20 @@ public:
   /// therefore the worst-case time complexity is O(N^2). The average time
   /// complexity is O((N^2)/2).
   void populate() {
+    computeInstructionOrdinals();
     createFineGrainedNodes();
     createDefUseEdges();
     createMemoryDependencyEdges();
     createAndConnectRootNode();
     createPiBlocks();
+    sortNodesTopologically();
   }
+
+  /// Compute ordinal numbers for each instruction and store them in a map for
+  /// future look up. These ordinals are used to compute node ordinals which are
+  /// in turn used to order nodes that are part of a cycle.
+  /// Instruction ordinals are assigned based on lexical program order.
+  void computeInstructionOrdinals();
 
   /// Create fine grained nodes. These are typically atomic nodes that
   /// consist of a single instruction.
@@ -84,6 +92,9 @@ public:
   /// the dependence graph into an acyclic graph.
   void createPiBlocks();
 
+  /// Topologically sort the graph nodes.
+  void sortNodesTopologically();
+
 protected:
   /// Create the root node of the graph.
   virtual NodeType &createRootNode() = 0;
@@ -104,6 +115,10 @@ protected:
   /// Create a rooted edge going from \p Src to \p Tgt .
   virtual EdgeType &createRootedEdge(NodeType &Src, NodeType &Tgt) = 0;
 
+  /// Given a pi-block node, return a vector of all the nodes contained within
+  /// it.
+  virtual const NodeListType &getNodesInPiBlock(const NodeType &N) = 0;
+
   /// Deallocate memory of edge \p E.
   virtual void destroyEdge(EdgeType &E) { delete &E; }
 
@@ -114,8 +129,26 @@ protected:
   /// and false otherwise.
   virtual bool shouldCreatePiBlocks() const { return true; }
 
+  /// Given an instruction \p I return its associated ordinal number.
+  size_t getOrdinal(Instruction &I) {
+    assert(InstOrdinalMap.find(&I) != InstOrdinalMap.end() &&
+           "No ordinal computed for this instruction.");
+    return InstOrdinalMap[&I];
+  }
+
+  /// Given a node \p N return its associated ordinal number.
+  size_t getOrdinal(NodeType &N) {
+    assert(NodeOrdinalMap.find(&N) != NodeOrdinalMap.end() &&
+           "No ordinal computed for this node.");
+    return NodeOrdinalMap[&N];
+  }
+
   /// Map types to map instructions to nodes used when populating the graph.
   using InstToNodeMap = DenseMap<Instruction *, NodeType *>;
+
+  /// Map Types to map instruction/nodes to an ordinal number.
+  using InstToOrdinalMap = DenseMap<Instruction *, size_t>;
+  using NodeToOrdinalMap = DenseMap<NodeType *, size_t>;
 
   /// Reference to the graph that gets built by a concrete implementation of
   /// this builder.
@@ -130,6 +163,14 @@ protected:
 
   /// A mapping from instructions to the corresponding nodes in the graph.
   InstToNodeMap IMap;
+
+  /// A mapping from each instruction to an ordinal number. This map is used to
+  /// populate the \p NodeOrdinalMap.
+  InstToOrdinalMap InstOrdinalMap;
+
+  /// A mapping from nodes to an ordinal number. This map is used to sort nodes
+  /// in a pi-block based on program order.
+  NodeToOrdinalMap NodeOrdinalMap;
 };
 
 } // namespace llvm

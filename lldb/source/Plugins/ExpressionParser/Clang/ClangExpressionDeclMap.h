@@ -67,8 +67,11 @@ public:
   ///     If non-NULL, use this delegate to report result values.  This
   ///     allows the client ClangUserExpression to report a result.
   ///
-  /// \param[in] exe_ctx
-  ///     The execution context to use when parsing.
+  /// \param[in] target
+  ///     The target to use when parsing.
+  ///
+  /// \param[in] importer
+  ///     The ClangASTImporter to use when parsing.
   ///
   /// \param[in] ctx_obj
   ///     If not empty, then expression is evaluated in context of this object.
@@ -76,7 +79,7 @@ public:
   ClangExpressionDeclMap(
       bool keep_result_in_memory,
       Materializer::PersistentVariableDelegate *result_delegate,
-      ExecutionContext &exe_ctx,
+      const lldb::TargetSP &target, const lldb::ClangASTImporterSP &importer,
       ValueObject *ctx_obj);
 
   /// Destructor
@@ -280,6 +283,14 @@ public:
                                 CompilerDeclContext &namespace_decl,
                                 unsigned int current_id);
 
+protected:
+  /// Retrieves the declaration with the given name from the storage of
+  /// persistent declarations.
+  ///
+  /// \return
+  ///     A persistent decl with the given name or a nullptr.
+  virtual clang::NamedDecl *GetPersistentDecl(ConstString name);
+
 private:
   ExpressionVariableList
       m_found_entities; ///< All entities that were looked up for the parser.
@@ -400,6 +411,102 @@ private:
   ///     for logging purposes.
   void LookUpLldbClass(NameSearchContext &context, unsigned int current_id);
 
+  /// Handles looking up $__lldb_objc_class which requires special treatment.
+  ///
+  /// \param[in] context
+  ///     The NameSearchContext that can construct Decls for this name.
+  ///
+  /// \param[in] current_id
+  ///     The ID for the current FindExternalVisibleDecls invocation,
+  ///     for logging purposes.
+  void LookUpLldbObjCClass(NameSearchContext &context, unsigned int current_id);
+
+  /// Handles looking up the synthetic namespace that contains our local
+  /// variables for the current frame.
+  ///
+  /// \param[in] sym_ctx
+  ///     The current SymbolContext of this frame.
+  ///
+  /// \param[in] name_context
+  ///     The NameSearchContext that can construct Decls for this name.
+  void LookupLocalVarNamespace(SymbolContext &sym_ctx,
+                               NameSearchContext &name_context);
+
+  /// Lookup entities in the ClangModulesDeclVendor.
+  /// \param[in] context
+  ///     The NameSearchContext that can construct Decls for this name.
+  ///
+  /// \param[in] name
+  ///     The name of the entities that need to be found.
+  ///
+  /// \param[in] current_id
+  ///     The ID for the current FindExternalVisibleDecls invocation,
+  ///     for logging purposes.
+  void LookupInModulesDeclVendor(NameSearchContext &context, ConstString name,
+                                 unsigned current_id);
+
+  /// Looks up a local variable.
+  ///
+  /// \param[in] context
+  ///     The NameSearchContext that can construct Decls for this name.
+  ///
+  /// \param[in] name
+  ///     The name of the entities that need to be found.
+  ///
+  /// \param[in] current_id
+  ///     The ID for the current FindExternalVisibleDecls invocation,
+  ///     for logging purposes.
+  ///
+  /// \param[in] sym_ctx
+  ///     The current SymbolContext of this frame.
+  ///
+  /// \param[in] namespace_decl
+  ///     The parent namespace if there is one.
+  ///
+  /// \return
+  ///    True iff a local variable was found.
+  bool LookupLocalVariable(NameSearchContext &context, ConstString name,
+                           unsigned current_id, SymbolContext &sym_ctx,
+                           CompilerDeclContext &namespace_decl);
+
+  /// Searches for functions in the given SymbolContextList.
+  ///
+  /// \param[in] sc_list
+  ///     The SymbolContextList to search.
+  ///
+  /// \param[in] frame_decl_context
+  ///     The current DeclContext of the current frame.
+  ///
+  /// \return
+  ///     A SymbolContextList with any found functions in the front and
+  ///     any unknown SymbolContexts which are not functions in the back.
+  ///     The SymbolContexts for the functions are ordered by how close they are
+  ///     to the DeclContext for the given frame DeclContext.
+  SymbolContextList SearchFunctionsInSymbolContexts(
+      const SymbolContextList &sc_list,
+      const CompilerDeclContext &frame_decl_context);
+
+  /// Looks up a function.
+  ///
+  /// \param[in] context
+  ///     The NameSearchContext that can construct Decls for this name.
+  ///
+  /// \param[in] module_sp
+  ///     If non-NULL, the module to query.
+  ///
+  /// \param[in] name
+  ///     The name of the function that should be find.
+  ///
+  /// \param[in] namespace_decl
+  ///     If valid and module is non-NULL, the parent namespace.
+  ///
+  /// \param[in] current_id
+  ///     The ID for the current FindExternalVisibleDecls invocation,
+  ///     for logging purposes.
+  void LookupFunction(NameSearchContext &context, lldb::ModuleSP module_sp,
+                      ConstString name, CompilerDeclContext &namespace_decl,
+                      unsigned current_id);
+
   /// Given a target, find a variable that matches the given name and type.
   ///
   /// \param[in] target
@@ -414,17 +521,11 @@ private:
   /// \param[in] namespace_decl
   ///     If non-NULL and module is non-NULL, the parent namespace.
   ///
-  /// \param[in] type
-  ///     The required type for the variable.  This function may be called
-  ///     during parsing, in which case we don't know its type; hence the
-  ///     default.
-  ///
   /// \return
   ///     The LLDB Variable found, or NULL if none was found.
   lldb::VariableSP FindGlobalVariable(Target &target, lldb::ModuleSP &module,
                                       ConstString name,
-                                      CompilerDeclContext *namespace_decl,
-                                      TypeFromUser *type = nullptr);
+                                      CompilerDeclContext *namespace_decl);
 
   /// Get the value of a variable in a given execution context and return the
   /// associated Types if needed.

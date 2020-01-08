@@ -489,6 +489,9 @@ void TextNodeDumper::visitInlineCommandComment(
   case comments::InlineCommandComment::RenderEmphasized:
     OS << " RenderEmphasized";
     break;
+  case comments::InlineCommandComment::RenderAnchor:
+    OS << " RenderAnchor";
+    break;
   }
 
   for (unsigned i = 0, e = C->getNumArgs(); i != e; ++i)
@@ -1338,6 +1341,17 @@ void TextNodeDumper::VisitFunctionDecl(const FunctionDecl *D) {
     OS << " <<<NULL params x " << D->getNumParams() << ">>>";
 }
 
+void TextNodeDumper::VisitLifetimeExtendedTemporaryDecl(
+    const LifetimeExtendedTemporaryDecl *D) {
+  OS << " extended by ";
+  dumpBareDeclRef(D->getExtendingDecl());
+  OS << " mangling ";
+  {
+    ColorScope Color(OS, ShowColors, ValueColor);
+    OS << D->getManglingNumber();
+  }
+}
+
 void TextNodeDumper::VisitFieldDecl(const FieldDecl *D) {
   dumpName(D);
   dumpType(D->getType());
@@ -1768,12 +1782,6 @@ void TextNodeDumper::VisitLinkageSpecDecl(const LinkageSpecDecl *D) {
     break;
   case LinkageSpecDecl::lang_cxx:
     OS << " C++";
-    break;
-  case LinkageSpecDecl::lang_cxx_11:
-    OS << " C++11";
-    break;
-  case LinkageSpecDecl::lang_cxx_14:
-    OS << " C++14";
     break;
   }
 }

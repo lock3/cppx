@@ -109,7 +109,8 @@ def OP_OR       : Op<(op "|", $p0, $p1)>;
 def OP_XOR      : Op<(op "^", $p0, $p1)>;
 def OP_ANDN     : Op<(op "&", $p0, (op "~", $p1))>;
 def OP_ORN      : Op<(op "|", $p0, (op "~", $p1))>;
-def OP_CAST     : Op<(cast "R", $p0)>;
+def OP_CAST     : LOp<[(save_temp $promote, $p0),
+                       (cast "R", $promote)]>;
 def OP_HI       : Op<(shuffle $p0, $p0, (highhalf mask0))>;
 def OP_LO       : Op<(shuffle $p0, $p0, (lowhalf mask0))>;
 def OP_CONC     : Op<(shuffle $p0, $p1, (add mask0, mask1))>;
@@ -1671,4 +1672,22 @@ let ArchGuard = "defined(__ARM_FEATURE_FP16FML) && defined(__aarch64__)" in {
   def VFMLSL_LANEQ_LOW  : SOpInst<"vfmlsl_laneq_low",  "(F>)(F>)F(FQ)I", "hQh", OP_FMLSL_LN>;
   def VFMLAL_LANEQ_HIGH : SOpInst<"vfmlal_laneq_high", "(F>)(F>)F(FQ)I", "hQh", OP_FMLAL_LN_Hi>;
   def VFMLSL_LANEQ_HIGH : SOpInst<"vfmlsl_laneq_high", "(F>)(F>)F(FQ)I", "hQh", OP_FMLSL_LN_Hi>;
+}
+
+// v8.3-A Vector complex addition intrinsics
+let ArchGuard = "defined(__ARM_FEATURE_COMPLEX) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)" in {
+  def VCADD_ROT90_FP16   : SInst<"vcadd_rot90", "...", "h">;
+  def VCADD_ROT270_FP16  : SInst<"vcadd_rot270", "...", "h">;
+  def VCADDQ_ROT90_FP16  : SInst<"vcaddq_rot90", "QQQ", "h">;
+  def VCADDQ_ROT270_FP16 : SInst<"vcaddq_rot270", "QQQ", "h">;
+}
+let ArchGuard = "defined(__ARM_FEATURE_COMPLEX)" in {
+  def VCADD_ROT90   : SInst<"vcadd_rot90", "...", "f">;
+  def VCADD_ROT270  : SInst<"vcadd_rot270", "...", "f">;
+  def VCADDQ_ROT90  : SInst<"vcaddq_rot90", "QQQ", "f">;
+  def VCADDQ_ROT270 : SInst<"vcaddq_rot270", "QQQ", "f">;
+}
+let ArchGuard = "defined(__ARM_FEATURE_COMPLEX) && defined(__aarch64__)" in {
+  def VCADDQ_ROT90_FP64  : SInst<"vcaddq_rot90", "QQQ", "d">;
+  def VCADDQ_ROT270_FP64 : SInst<"vcaddq_rot270", "QQQ", "d">;
 }

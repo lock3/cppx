@@ -4,7 +4,7 @@ set(LLVM_LINK_COMPONENTS
   Support
   )
 
-add_llvm_library(ExampleIRTransforms
+add_llvm_example_library(ExampleIRTransforms
   InitializePasses.cpp
   SimplifyCFG.cpp
 

@@ -380,7 +380,7 @@ bool PPCRegisterInfo::requiresFrameIndexScavenging(const MachineFunction &MF) co
     // This is eiher:
     // 1) A fixed frame index object which we know are aligned so
     // as long as we have a valid DForm/DSForm/DQForm (non XForm) we don't
-    // need to consider the alignement here.
+    // need to consider the alignment here.
     // 2) A not fixed object but in that case we now know that the min required
     // alignment is no more than 1 based on the previous check.
     if (InstrInfo->isXFormMemOp(Opcode))
@@ -787,6 +787,21 @@ void PPCRegisterInfo::lowerCRBitSpilling(MachineBasicBlock::iterator II,
     SpillsKnownBit = true;
     break;
   default:
+    // On Power9, we can use SETB to extract the LT bit. This only works for
+    // the LT bit since SETB produces -1/1/0 for LT/GT/<neither>. So the value
+    // of the bit we care about (32-bit sign bit) will be set to the value of
+    // the LT bit (regardless of the other bits in the CR field).
+    if (Subtarget.isISA3_0()) {
+      if (SrcReg == PPC::CR0LT || SrcReg == PPC::CR1LT ||
+          SrcReg == PPC::CR2LT || SrcReg == PPC::CR3LT ||
+          SrcReg == PPC::CR4LT || SrcReg == PPC::CR5LT ||
+          SrcReg == PPC::CR6LT || SrcReg == PPC::CR7LT) {
+        BuildMI(MBB, II, dl, TII.get(LP64 ? PPC::SETB8 : PPC::SETB), Reg)
+          .addReg(getCRFromCRBit(SrcReg), RegState::Undef);
+        break;
+      }
+    }
+
     // We need to move the CR field that contains the CR bit we are spilling.
     // The super register may not be explicitly defined (i.e. it can be defined
     // by a CR-logical that only defines the subreg) so we state that the CR

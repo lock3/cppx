@@ -752,7 +752,7 @@ void ARMAsmPrinter::emitAttributes() {
   if (STI.isRWPI())
     ATS.emitAttribute(ARMBuildAttrs::ABI_PCS_R9_use,
                       ARMBuildAttrs::R9IsSB);
-  else if (STI.isGPRegisterReserved(9))
+  else if (STI.isR9Reserved())
     ATS.emitAttribute(ARMBuildAttrs::ABI_PCS_R9_use,
                       ARMBuildAttrs::R9Reserved);
   else
@@ -1170,10 +1170,12 @@ void ARMAsmPrinter::EmitUnwindingInstruction(const MachineInstr *MI) {
         break;
       case ARM::ADDri:
       case ARM::t2ADDri:
+      case ARM::t2ADDri12:
         Offset = -MI->getOperand(2).getImm();
         break;
       case ARM::SUBri:
       case ARM::t2SUBri:
+      case ARM::t2SUBri12:
         Offset = MI->getOperand(2).getImm();
         break;
       case ARM::tSUBspi:

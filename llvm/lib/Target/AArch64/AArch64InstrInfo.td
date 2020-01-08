@@ -214,6 +214,7 @@ def SDT_AArch64FCmp   : SDTypeProfile<0, 2,
                                     SDTCisSameAs<0, 1>]>;
 def SDT_AArch64Dup   : SDTypeProfile<1, 1, [SDTCisVec<0>]>;
 def SDT_AArch64DupLane   : SDTypeProfile<1, 2, [SDTCisVec<0>, SDTCisInt<2>]>;
+def SDT_AArch64Insr  : SDTypeProfile<1, 2, [SDTCisVec<0>]>;
 def SDT_AArch64Zip   : SDTypeProfile<1, 2, [SDTCisVec<0>,
                                           SDTCisSameAs<0, 1>,
                                           SDTCisSameAs<0, 2>]>;
@@ -242,6 +243,9 @@ def SDT_AArch64ITOF  : SDTypeProfile<1, 1, [SDTCisFP<0>, SDTCisSameAs<0,1>]>;
 def SDT_AArch64TLSDescCall : SDTypeProfile<0, -2, [SDTCisPtrTy<0>,
                                                  SDTCisPtrTy<1>]>;
 
+def SDT_AArch64ldp : SDTypeProfile<2, 1, [SDTCisVT<0, i64>, SDTCisSameAs<0, 1>, SDTCisPtrTy<2>]>;
+def SDT_AArch64stp : SDTypeProfile<0, 3, [SDTCisVT<0, i64>, SDTCisSameAs<0, 1>, SDTCisPtrTy<2>]>;
+
 // Generates the general dynamic sequences, i.e.
 //  adrp  x0, :tlsdesc:var
 //  ldr   x1, [x0, #:tlsdesc_lo12:var]
@@ -259,18 +263,25 @@ def SDT_AArch64WrapperLarge : SDTypeProfile<1, 4,
                                          SDTCisSameAs<1, 2>, SDTCisSameAs<1, 3>,
                                          SDTCisSameAs<1, 4>]>;
 
+def SDT_AArch64TBL : SDTypeProfile<1, 2, [
+  SDTCisVec<0>, SDTCisSameAs<0, 1>, SDTCisInt<2>
+]>;
+
 // non-extending masked load fragment.
 def nonext_masked_load :
   PatFrag<(ops node:$ptr, node:$pred, node:$def),
-          (masked_ld node:$ptr, node:$pred, node:$def), [{
-  return cast<MaskedLoadSDNode>(N)->getExtensionType() == ISD::NON_EXTLOAD;
+          (masked_ld node:$ptr, undef, node:$pred, node:$def), [{
+  return cast<MaskedLoadSDNode>(N)->getExtensionType() == ISD::NON_EXTLOAD &&
+         cast<MaskedLoadSDNode>(N)->isUnindexed() &&
+         !cast<MaskedLoadSDNode>(N)->isNonTemporal();
 }]>;
 // sign extending masked load fragments.
 def asext_masked_load :
   PatFrag<(ops node:$ptr, node:$pred, node:$def),
-          (masked_ld node:$ptr, node:$pred, node:$def),[{
-  return cast<MaskedLoadSDNode>(N)->getExtensionType() == ISD::EXTLOAD ||
-         cast<MaskedLoadSDNode>(N)->getExtensionType() == ISD::SEXTLOAD;
+          (masked_ld node:$ptr, undef, node:$pred, node:$def),[{
+  return (cast<MaskedLoadSDNode>(N)->getExtensionType() == ISD::EXTLOAD ||
+          cast<MaskedLoadSDNode>(N)->getExtensionType() == ISD::SEXTLOAD) &&
+         cast<MaskedLoadSDNode>(N)->isUnindexed();
 }]>;
 def asext_masked_load_i8 :
   PatFrag<(ops node:$ptr, node:$pred, node:$def),
@@ -290,8 +301,9 @@ def asext_masked_load_i32 :
 // zero extending masked load fragments.
 def zext_masked_load :
   PatFrag<(ops node:$ptr, node:$pred, node:$def),
-          (masked_ld node:$ptr, node:$pred, node:$def), [{
-  return cast<MaskedLoadSDNode>(N)->getExtensionType() == ISD::ZEXTLOAD;
+          (masked_ld node:$ptr, undef, node:$pred, node:$def), [{
+  return cast<MaskedLoadSDNode>(N)->getExtensionType() == ISD::ZEXTLOAD &&
+         cast<MaskedLoadSDNode>(N)->isUnindexed();
 }]>;
 def zext_masked_load_i8 :
   PatFrag<(ops node:$ptr, node:$pred, node:$def),
@@ -309,17 +321,28 @@ def zext_masked_load_i32 :
   return cast<MaskedLoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;
 }]>;
 
+def non_temporal_load :
+   PatFrag<(ops node:$ptr, node:$pred, node:$def),
+           (masked_ld node:$ptr, undef, node:$pred, node:$def), [{
+   return cast<MaskedLoadSDNode>(N)->getExtensionType() == ISD::NON_EXTLOAD &&
+          cast<MaskedLoadSDNode>(N)->isUnindexed() &&
+          cast<MaskedLoadSDNode>(N)->isNonTemporal();
+}]>;
+
 // non-truncating masked store fragment.
 def nontrunc_masked_store :
   PatFrag<(ops node:$val, node:$ptr, node:$pred),
-          (masked_st node:$val, node:$ptr, node:$pred), [{
-  return !cast<MaskedStoreSDNode>(N)->isTruncatingStore();
+          (masked_st node:$val, node:$ptr, undef, node:$pred), [{
+  return !cast<MaskedStoreSDNode>(N)->isTruncatingStore() &&
+         cast<MaskedStoreSDNode>(N)->isUnindexed() &&
+         !cast<MaskedStoreSDNode>(N)->isNonTemporal();
 }]>;
 // truncating masked store fragments.
 def trunc_masked_store :
   PatFrag<(ops node:$val, node:$ptr, node:$pred),
-          (masked_st node:$val, node:$ptr, node:$pred), [{
-  return cast<MaskedStoreSDNode>(N)->isTruncatingStore();
+          (masked_st node:$val, node:$ptr, undef, node:$pred), [{
+  return cast<MaskedStoreSDNode>(N)->isTruncatingStore() &&
+         cast<MaskedStoreSDNode>(N)->isUnindexed();
 }]>;
 def trunc_masked_store_i8 :
   PatFrag<(ops node:$val, node:$ptr, node:$pred),
@@ -335,6 +358,14 @@ def trunc_masked_store_i32 :
   PatFrag<(ops node:$val, node:$ptr, node:$pred),
           (trunc_masked_store node:$val, node:$ptr, node:$pred), [{
   return cast<MaskedStoreSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;
+}]>;
+
+def non_temporal_store :
+  PatFrag<(ops node:$val, node:$ptr, node:$pred),
+          (masked_st node:$val, node:$ptr, undef, node:$pred), [{
+  return !cast<MaskedStoreSDNode>(N)->isTruncatingStore() &&
+         cast<MaskedStoreSDNode>(N)->isUnindexed() &&
+         cast<MaskedStoreSDNode>(N)->isNonTemporal();
 }]>;
 
 // Node definitions.
@@ -395,6 +426,8 @@ def AArch64duplane8  : SDNode<"AArch64ISD::DUPLANE8", SDT_AArch64DupLane>;
 def AArch64duplane16 : SDNode<"AArch64ISD::DUPLANE16", SDT_AArch64DupLane>;
 def AArch64duplane32 : SDNode<"AArch64ISD::DUPLANE32", SDT_AArch64DupLane>;
 def AArch64duplane64 : SDNode<"AArch64ISD::DUPLANE64", SDT_AArch64DupLane>;
+
+def AArch64insr      : SDNode<"AArch64ISD::INSR", SDT_AArch64Insr>;
 
 def AArch64zip1      : SDNode<"AArch64ISD::ZIP1", SDT_AArch64Zip>;
 def AArch64zip2      : SDNode<"AArch64ISD::ZIP2", SDT_AArch64Zip>;
@@ -509,6 +542,11 @@ def AArch64sunpklo : SDNode<"AArch64ISD::SUNPKLO", SDT_AArch64unpk>;
 def AArch64uunpkhi : SDNode<"AArch64ISD::UUNPKHI", SDT_AArch64unpk>;
 def AArch64uunpklo : SDNode<"AArch64ISD::UUNPKLO", SDT_AArch64unpk>;
 
+def AArch64ldp : SDNode<"AArch64ISD::LDP", SDT_AArch64ldp, [SDNPHasChain, SDNPMayLoad, SDNPMemOperand]>;
+def AArch64stp : SDNode<"AArch64ISD::STP", SDT_AArch64stp, [SDNPHasChain, SDNPMayStore, SDNPMemOperand]>;
+
+def AArch64tbl : SDNode<"AArch64ISD::TBL", SDT_AArch64TBL>;
+
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
@@ -518,10 +556,10 @@ def AArch64uunpklo : SDNode<"AArch64ISD::UUNPKLO", SDT_AArch64unpk>;
 // the Function object through the <Target>Subtarget and objections were raised
 // to that (see post-commit review comments for r301750).
 let RecomputePerFunction = 1 in {
-  def ForCodeSize   : Predicate<"MF->getFunction().hasOptSize()">;
-  def NotForCodeSize   : Predicate<"!MF->getFunction().hasOptSize()">;
+  def ForCodeSize   : Predicate<"shouldOptForSize(MF)">;
+  def NotForCodeSize   : Predicate<"!shouldOptForSize(MF)">;
   // Avoid generating STRQro if it is slow, unless we're optimizing for code size.
-  def UseSTRQro : Predicate<"!Subtarget->isSTRQroSlow() || MF->getFunction().hasOptSize()">;
+  def UseSTRQro : Predicate<"!Subtarget->isSTRQroSlow() || shouldOptForSize(MF)">;
 
   def UseBTI : Predicate<[{ MF->getFunction().hasFnAttribute("branch-target-enforcement") }]>;
   def NotUseBTI : Predicate<[{ !MF->getFunction().hasFnAttribute("branch-target-enforcement") }]>;
@@ -751,6 +789,29 @@ defm FCADD : SIMDThreeSameVectorComplexHSD<1, 0b111, complexrotateopodd,
                                            "fcadd", null_frag>;
 defm FCMLA : SIMDIndexedTiedComplexHSD<1, 0, 1, complexrotateop, "fcmla",
                                        null_frag>;
+
+let Predicates = [HasComplxNum, HasNEON, HasFullFP16] in {
+  def : Pat<(v4f16 (int_aarch64_neon_vcadd_rot90 (v4f16 V64:$Rn), (v4f16 V64:$Rm))),
+            (FCADDv4f16 (v4f16 V64:$Rn), (v4f16 V64:$Rm), (i32 0))>;
+  def : Pat<(v4f16 (int_aarch64_neon_vcadd_rot270 (v4f16 V64:$Rn), (v4f16 V64:$Rm))),
+            (FCADDv4f16 (v4f16 V64:$Rn), (v4f16 V64:$Rm), (i32 1))>;
+  def : Pat<(v8f16 (int_aarch64_neon_vcadd_rot90 (v8f16 V128:$Rn), (v8f16 V128:$Rm))),
+            (FCADDv8f16 (v8f16 V128:$Rn), (v8f16 V128:$Rm), (i32 0))>;
+  def : Pat<(v8f16 (int_aarch64_neon_vcadd_rot270 (v8f16 V128:$Rn), (v8f16 V128:$Rm))),
+            (FCADDv8f16 (v8f16 V128:$Rn), (v8f16 V128:$Rm), (i32 1))>;
+}
+let Predicates = [HasComplxNum, HasNEON] in {
+  def : Pat<(v2f32 (int_aarch64_neon_vcadd_rot90 (v2f32 V64:$Rn), (v2f32 V64:$Rm))),
+            (FCADDv2f32 (v2f32 V64:$Rn), (v2f32 V64:$Rm), (i32 0))>;
+  def : Pat<(v2f32 (int_aarch64_neon_vcadd_rot270 (v2f32 V64:$Rn), (v2f32 V64:$Rm))),
+            (FCADDv2f32 (v2f32 V64:$Rn), (v2f32 V64:$Rm), (i32 1))>;
+  foreach Ty = [v4f32, v2f64] in {
+    def : Pat<(Ty (int_aarch64_neon_vcadd_rot90 (Ty V128:$Rn), (Ty V128:$Rm))),
+              (!cast<Instruction>("FCADD"#Ty) (Ty V128:$Rn), (Ty V128:$Rm), (i32 0))>;
+    def : Pat<(Ty (int_aarch64_neon_vcadd_rot270 (Ty V128:$Rn), (Ty V128:$Rm))),
+              (!cast<Instruction>("FCADD"#Ty) (Ty V128:$Rn), (Ty V128:$Rm), (i32 1))>;
+  }
+}
 
 // v8.3a Pointer Authentication
 // These instructions inhabit part of the hint space and so can be used for
@@ -1938,6 +1999,9 @@ defm LDNPS : LoadPairNoAlloc<0b00, 1, FPR32Op, simm7s4, "ldnp">;
 defm LDNPD : LoadPairNoAlloc<0b01, 1, FPR64Op, simm7s8, "ldnp">;
 defm LDNPQ : LoadPairNoAlloc<0b10, 1, FPR128Op, simm7s16, "ldnp">;
 
+def : Pat<(AArch64ldp (am_indexed7s64 GPR64sp:$Rn, simm7s8:$offset)),
+          (LDPXi GPR64sp:$Rn, simm7s8:$offset)>;
+
 //---
 // (register offset)
 //---
@@ -2630,6 +2694,9 @@ defm STNPX : StorePairNoAlloc<0b10, 0, GPR64z, simm7s8, "stnp">;
 defm STNPS : StorePairNoAlloc<0b00, 1, FPR32Op, simm7s4, "stnp">;
 defm STNPD : StorePairNoAlloc<0b01, 1, FPR64Op, simm7s8, "stnp">;
 defm STNPQ : StorePairNoAlloc<0b10, 1, FPR128Op, simm7s16, "stnp">;
+
+def : Pat<(AArch64stp GPR64z:$Rt, GPR64z:$Rt2, (am_indexed7s64 GPR64sp:$Rn, simm7s8:$offset)),
+          (STPXi GPR64z:$Rt, GPR64z:$Rt2, GPR64sp:$Rn, simm7s8:$offset)>;
 
 //---
 // (Register offset)
@@ -3585,14 +3652,8 @@ def : Pat<(v4f32 (int_aarch64_neon_vcvthf2fp (extract_subvector (v8i16 V128:$Rn)
                                                               (i64 4)))),
           (FCVTLv8i16 V128:$Rn)>;
 def : Pat<(v2f64 (fpextend (v2f32 V64:$Rn))), (FCVTLv2i32 V64:$Rn)>;
-def : Pat<(v2f64 (fpextend (v2f32 (extract_subvector (v4f32 V128:$Rn),
-                                                    (i64 2))))),
-          (FCVTLv4i32 V128:$Rn)>;
 
 def : Pat<(v4f32 (fpextend (v4f16 V64:$Rn))), (FCVTLv4i16 V64:$Rn)>;
-def : Pat<(v4f32 (fpextend (v4f16 (extract_subvector (v8f16 V128:$Rn),
-                                                    (i64 4))))),
-          (FCVTLv8i16 V128:$Rn)>;
 
 defm FCVTMS : SIMDTwoVectorFPToInt<0,0,0b11011, "fcvtms",int_aarch64_neon_fcvtms>;
 defm FCVTMU : SIMDTwoVectorFPToInt<1,0,0b11011, "fcvtmu",int_aarch64_neon_fcvtmu>;
@@ -3793,10 +3854,11 @@ defm FMUL     : SIMDThreeSameVectorFP<1,0,0b011,"fmul", fmul>;
 defm FRECPS   : SIMDThreeSameVectorFP<0,0,0b111,"frecps", int_aarch64_neon_frecps>;
 defm FRSQRTS  : SIMDThreeSameVectorFP<0,1,0b111,"frsqrts", int_aarch64_neon_frsqrts>;
 defm FSUB     : SIMDThreeSameVectorFP<0,1,0b010,"fsub", fsub>;
-defm MLA      : SIMDThreeSameVectorBHSTied<0, 0b10010, "mla",
-                      TriOpFrag<(add node:$LHS, (mul node:$MHS, node:$RHS))> >;
-defm MLS      : SIMDThreeSameVectorBHSTied<1, 0b10010, "mls",
-                      TriOpFrag<(sub node:$LHS, (mul node:$MHS, node:$RHS))> >;
+
+// MLA and MLS are generated in MachineCombine
+defm MLA      : SIMDThreeSameVectorBHSTied<0, 0b10010, "mla", null_frag>;
+defm MLS      : SIMDThreeSameVectorBHSTied<1, 0b10010, "mls", null_frag>;
+
 defm MUL      : SIMDThreeSameVectorBHS<0, 0b10011, "mul", mul>;
 defm PMUL     : SIMDThreeSameVectorB<1, 0b10011, "pmul", int_aarch64_neon_pmul>;
 defm SABA     : SIMDThreeSameVectorBHSTied<0, 0b01111, "saba",
@@ -5526,10 +5588,11 @@ def : Pat<(v2f64 (fmul V128:$Rn, (AArch64dup (f64 FPR64:$Rm)))),
 
 defm SQDMULH : SIMDIndexedHS<0, 0b1100, "sqdmulh", int_aarch64_neon_sqdmulh>;
 defm SQRDMULH : SIMDIndexedHS<0, 0b1101, "sqrdmulh", int_aarch64_neon_sqrdmulh>;
-defm MLA   : SIMDVectorIndexedHSTied<1, 0b0000, "mla",
-              TriOpFrag<(add node:$LHS, (mul node:$MHS, node:$RHS))>>;
-defm MLS   : SIMDVectorIndexedHSTied<1, 0b0100, "mls",
-              TriOpFrag<(sub node:$LHS, (mul node:$MHS, node:$RHS))>>;
+
+// Generated by MachineCombine
+defm MLA   : SIMDVectorIndexedHSTied<1, 0b0000, "mla", null_frag>;
+defm MLS   : SIMDVectorIndexedHSTied<1, 0b0100, "mls", null_frag>;
+
 defm MUL   : SIMDVectorIndexedHS<0, 0b1000, "mul", mul>;
 defm SMLAL : SIMDVectorIndexedLongSDTied<0, 0b0010, "smlal",
     TriOpFrag<(add node:$LHS, (int_aarch64_neon_smull node:$MHS, node:$RHS))>>;

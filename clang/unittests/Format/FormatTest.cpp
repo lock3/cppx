@@ -1565,6 +1565,41 @@ TEST_F(FormatTest, MultiLineControlStatements) {
             "  baz();\n"
             "}",
             format("try{foo();}catch(Exception&bar){baz();}", Style));
+  Style.ColumnLimit =
+      40; // to concentrate at brace wrapping, not line wrap due to column limit
+  EXPECT_EQ("try {\n"
+            "  foo();\n"
+            "} catch (Exception &bar) {\n"
+            "  baz();\n"
+            "}",
+            format("try{foo();}catch(Exception&bar){baz();}", Style));
+  Style.ColumnLimit =
+      20; // to concentrate at brace wrapping, not line wrap due to column limit
+
+  Style.BraceWrapping.BeforeElse = true;
+  EXPECT_EQ(
+      "if (foo) {\n"
+      "  bar();\n"
+      "}\n"
+      "else if (baz ||\n"
+      "         quux)\n"
+      "{\n"
+      "  foobar();\n"
+      "}\n"
+      "else {\n"
+      "  barbaz();\n"
+      "}",
+      format("if(foo){bar();}else if(baz||quux){foobar();}else{barbaz();}",
+             Style));
+
+  Style.BraceWrapping.BeforeCatch = true;
+  EXPECT_EQ("try {\n"
+            "  foo();\n"
+            "}\n"
+            "catch (...) {\n"
+            "  baz();\n"
+            "}",
+            format("try{foo();}catch(...){baz();}", Style));
 }
 
 //===----------------------------------------------------------------------===//
@@ -6990,6 +7025,9 @@ TEST_F(FormatTest, UnderstandsUnaryOperators) {
   verifyFormat("int a = /* confusing comment */ -1;");
   // FIXME: The space after 'i' is wrong, but hopefully, this is a rare case.
   verifyFormat("int a = i /* confusing comment */++;");
+
+  verifyFormat("co_yield -1;");
+  verifyFormat("co_return -1;");
 }
 
 TEST_F(FormatTest, DoesNotIndentRelativeToUnaryOperators) {
@@ -12552,6 +12590,7 @@ TEST_F(FormatTest, ParsesConfigurationBools) {
   CHECK_PARSE_BOOL(SpacesInParentheses);
   CHECK_PARSE_BOOL(SpacesInSquareBrackets);
   CHECK_PARSE_BOOL(SpacesInAngles);
+  CHECK_PARSE_BOOL(SpacesInConditionalStatement);
   CHECK_PARSE_BOOL(SpaceInEmptyBlock);
   CHECK_PARSE_BOOL(SpaceInEmptyParentheses);
   CHECK_PARSE_BOOL(SpacesInContainerLiterals);
@@ -14875,6 +14914,22 @@ TEST_F(FormatTest, AmbersandInLamda) {
   verifyFormat("auto lambda = [&a = a]() { a = 2; };", AlignStyle);
   AlignStyle.PointerAlignment = FormatStyle::PAS_Right;
   verifyFormat("auto lambda = [&a = a]() { a = 2; };", AlignStyle);
+}
+
+TEST_F(FormatTest, SpacesInConditionalStatement) {
+  FormatStyle Spaces = getLLVMStyle();
+  Spaces.SpacesInConditionalStatement = true;
+  verifyFormat("for ( int i = 0; i; i++ )\n  continue;", Spaces);
+  verifyFormat("if ( !a )\n  return;", Spaces);
+  verifyFormat("if ( a )\n  return;", Spaces);
+  verifyFormat("if constexpr ( a )\n  return;", Spaces);
+  verifyFormat("switch ( a )\ncase 1:\n  return;", Spaces);
+  verifyFormat("while ( a )\n  return;", Spaces);
+  verifyFormat("while ( (a && b) )\n  return;", Spaces);
+  verifyFormat("do {\n} while ( 1 != 0 );", Spaces);
+  // Check that space on the left of "::" is inserted as expected at beginning
+  // of condition.
+  verifyFormat("while ( ::func() )\n  return;", Spaces);
 }
 
 TEST_F(FormatTest, AlternativeOperators) {

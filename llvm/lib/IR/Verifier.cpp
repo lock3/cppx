@@ -86,6 +86,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/IntrinsicsWebAssembly.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
@@ -1842,6 +1843,13 @@ void Verifier::verifyFunctionAttrs(FunctionType *FT, AttributeList Attrs,
 
     if (Args.second && !CheckParam("number of elements", *Args.second))
       return;
+  }
+
+  if (Attrs.hasFnAttribute("frame-pointer")) {
+    StringRef FP = Attrs.getAttribute(AttributeList::FunctionIndex,
+                                      "frame-pointer").getValueAsString();
+    if (FP != "all" && FP != "non-leaf" && FP != "none")
+      CheckFailed("invalid value for 'frame-pointer' attribute: " + FP, V);
   }
 }
 
@@ -4740,6 +4748,9 @@ void Verifier::visitConstrainedFPIntrinsic(ConstrainedFPIntrinsic &FPI) {
     llvm_unreachable("Invalid constrained FP intrinsic!");
   }
   NumOperands += (1 + HasRoundingMD);
+  // Compare intrinsics carry an extra predicate metadata operand.
+  if (isa<ConstrainedFPCmpIntrinsic>(FPI))
+    NumOperands += 1;
   Assert((FPI.getNumArgOperands() == NumOperands),
          "invalid arguments for constrained FP intrinsic", &FPI);
 
@@ -4761,6 +4772,14 @@ void Verifier::visitConstrainedFPIntrinsic(ConstrainedFPIntrinsic &FPI) {
            "Intrinsic does not support vectors", &FPI);
     break;
   } 
+
+  case Intrinsic::experimental_constrained_fcmp:
+  case Intrinsic::experimental_constrained_fcmps: {
+    auto Pred = dyn_cast<ConstrainedFPCmpIntrinsic>(&FPI)->getPredicate();
+    Assert(CmpInst::isFPPredicate(Pred),
+           "invalid predicate for constrained FP comparison intrinsic", &FPI);
+    break;
+  }
 
   case Intrinsic::experimental_constrained_fptosi:
   case Intrinsic::experimental_constrained_fptoui: { 
@@ -4784,6 +4803,28 @@ void Verifier::visitConstrainedFPIntrinsic(ConstrainedFPIntrinsic &FPI) {
     }
   }
     break;
+
+  case Intrinsic::experimental_constrained_sitofp:
+  case Intrinsic::experimental_constrained_uitofp: {
+    Value *Operand = FPI.getArgOperand(0);
+    uint64_t NumSrcElem = 0;
+    Assert(Operand->getType()->isIntOrIntVectorTy(),
+           "Intrinsic first argument must be integer", &FPI);
+    if (auto *OperandT = dyn_cast<VectorType>(Operand->getType())) {
+      NumSrcElem = OperandT->getNumElements();
+    }
+
+    Operand = &FPI;
+    Assert((NumSrcElem > 0) == Operand->getType()->isVectorTy(),
+           "Intrinsic first argument and result disagree on vector use", &FPI);
+    Assert(Operand->getType()->isFPOrFPVectorTy(),
+           "Intrinsic result must be a floating point", &FPI);
+    if (auto *OperandT = dyn_cast<VectorType>(Operand->getType())) {
+      Assert(NumSrcElem == OperandT->getNumElements(),
+             "Intrinsic first argument and result vector lengths must be equal",
+             &FPI);
+    }
+  } break;
 
   case Intrinsic::experimental_constrained_fptrunc:
   case Intrinsic::experimental_constrained_fpext: {

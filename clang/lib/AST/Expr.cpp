@@ -127,11 +127,7 @@ const Expr *Expr::skipRValueSubobjectAdjustments(
   return E;
 }
 
-/// isKnownToHaveBooleanValue - Return true if this is an integer expression
-/// that is known to return 0 or 1.  This happens for _Bool/bool expressions
-/// but also int expressions which are produced by things like comparisons in
-/// C.
-bool Expr::isKnownToHaveBooleanValue() const {
+bool Expr::isKnownToHaveBooleanValue(bool Semantic) const {
   const Expr *E = IgnoreParens();
 
   // If this value has _Bool type, it is obvious 0/1.
@@ -142,7 +138,7 @@ bool Expr::isKnownToHaveBooleanValue() const {
   if (const UnaryOperator *UO = dyn_cast<UnaryOperator>(E)) {
     switch (UO->getOpcode()) {
     case UO_Plus:
-      return UO->getSubExpr()->isKnownToHaveBooleanValue();
+      return UO->getSubExpr()->isKnownToHaveBooleanValue(Semantic);
     case UO_LNot:
       return true;
     default:
@@ -152,8 +148,9 @@ bool Expr::isKnownToHaveBooleanValue() const {
 
   // Only look through implicit casts.  If the user writes
   // '(int) (a && b)' treat it as an arbitrary int.
+  // FIXME: Should we look through any cast expression in !Semantic mode?
   if (const ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(E))
-    return CE->getSubExpr()->isKnownToHaveBooleanValue();
+    return CE->getSubExpr()->isKnownToHaveBooleanValue(Semantic);
 
   if (const BinaryOperator *BO = dyn_cast<BinaryOperator>(E)) {
     switch (BO->getOpcode()) {
@@ -172,27 +169,27 @@ bool Expr::isKnownToHaveBooleanValue() const {
     case BO_Xor:  // Bitwise XOR operator.
     case BO_Or:   // Bitwise OR operator.
       // Handle things like (x==2)|(y==12).
-      return BO->getLHS()->isKnownToHaveBooleanValue() &&
-             BO->getRHS()->isKnownToHaveBooleanValue();
+      return BO->getLHS()->isKnownToHaveBooleanValue(Semantic) &&
+             BO->getRHS()->isKnownToHaveBooleanValue(Semantic);
 
     case BO_Comma:
     case BO_Assign:
-      return BO->getRHS()->isKnownToHaveBooleanValue();
+      return BO->getRHS()->isKnownToHaveBooleanValue(Semantic);
     }
   }
 
   if (const ConditionalOperator *CO = dyn_cast<ConditionalOperator>(E))
-    return CO->getTrueExpr()->isKnownToHaveBooleanValue() &&
-           CO->getFalseExpr()->isKnownToHaveBooleanValue();
+    return CO->getTrueExpr()->isKnownToHaveBooleanValue(Semantic) &&
+           CO->getFalseExpr()->isKnownToHaveBooleanValue(Semantic);
 
   if (isa<ObjCBoolLiteralExpr>(E))
     return true;
 
   if (const auto *OVE = dyn_cast<OpaqueValueExpr>(E))
-    return OVE->getSourceExpr()->isKnownToHaveBooleanValue();
+    return OVE->getSourceExpr()->isKnownToHaveBooleanValue(Semantic);
 
   if (const FieldDecl *FD = E->getSourceBitField())
-    if (FD->getType()->isUnsignedIntegerType() &&
+    if (!Semantic && FD->getType()->isUnsignedIntegerType() &&
         !FD->getBitWidth()->isValueDependent() &&
         FD->getBitWidthValue(FD->getASTContext()) == 1)
       return true;
@@ -1681,6 +1678,15 @@ MemberExpr *MemberExpr::Create(
   MemberExpr *E = new (Mem) MemberExpr(Base, IsArrow, OperatorLoc, MemberDecl,
                                        NameInfo, T, VK, OK, NOUR);
 
+  if (isa<FieldDecl>(MemberDecl)) {
+    DeclContext *DC = MemberDecl->getDeclContext();
+    // dyn_cast_or_null is used to handle objC variables which do not
+    // have a declaration context.
+    CXXRecordDecl *RD = dyn_cast_or_null<CXXRecordDecl>(DC);
+    if (RD && RD->isDependentContext() && RD->isCurrentInstantiation(DC))
+      E->setTypeDependent(T->isDependentType());
+  }
+
   if (HasQualOrFound) {
     // FIXME: Wrong. We should be looking at the member declaration we found.
     if (QualifierLoc && QualifierLoc.getNestedNameSpecifier()->isDependent()) {
@@ -1817,7 +1823,7 @@ bool CastExpr::CastConsistency() const {
     auto Ty = getType();
     auto SETy = getSubExpr()->getType();
     assert(getValueKindForType(Ty) == Expr::getValueKindForType(SETy));
-    if (/*isRValue()*/ !Ty->getPointeeType().isNull()) {
+    if (isRValue()) {
       Ty = Ty->getPointeeType();
       SETy = SETy->getPointeeType();
     }
@@ -2887,6 +2893,13 @@ static Expr *IgnoreImplicitSingleStep(Expr *E) {
   return E;
 }
 
+static Expr *IgnoreImplicitAsWrittenSingleStep(Expr *E) {
+  if (auto *ICE = dyn_cast<ImplicitCastExpr>(E))
+    return ICE->getSubExprAsWritten();
+
+  return IgnoreImplicitSingleStep(E);
+}
+
 static Expr *IgnoreParensSingleStep(Expr *E) {
   if (auto *PE = dyn_cast<ParenExpr>(E))
     return PE->getSubExpr();
@@ -2966,6 +2979,10 @@ Expr *Expr::IgnoreImplicit() {
   return IgnoreExprNodes(this, IgnoreImplicitSingleStep);
 }
 
+Expr *Expr::IgnoreImplicitAsWritten() {
+  return IgnoreExprNodes(this, IgnoreImplicitAsWrittenSingleStep);
+}
+
 Expr *Expr::IgnoreParens() {
   return IgnoreExprNodes(this, IgnoreParensSingleStep);
 }
@@ -3001,6 +3018,34 @@ Expr *Expr::IgnoreParenNoopCasts(const ASTContext &Ctx) {
   return IgnoreExprNodes(this, IgnoreParensSingleStep, [&Ctx](Expr *E) {
     return IgnoreNoopCastsSingleStep(Ctx, E);
   });
+}
+
+Expr *Expr::IgnoreUnlessSpelledInSource() {
+  Expr *E = this;
+
+  Expr *LastE = nullptr;
+  while (E != LastE) {
+    LastE = E;
+    E = E->IgnoreParenImpCasts();
+
+    auto SR = E->getSourceRange();
+
+    if (auto *C = dyn_cast<CXXConstructExpr>(E)) {
+      if (C->getNumArgs() == 1) {
+        Expr *A = C->getArg(0);
+        if (A->getSourceRange() == SR || !isa<CXXTemporaryObjectExpr>(C))
+          E = A;
+      }
+    }
+
+    if (auto *C = dyn_cast<CXXMemberCallExpr>(E)) {
+      Expr *ExprNode = C->getImplicitObjectArgument()->IgnoreParenImpCasts();
+      if (ExprNode->getSourceRange() == SR)
+        E = ExprNode;
+    }
+  }
+
+  return E;
 }
 
 bool Expr::isDefaultArgument() const {
@@ -4606,6 +4651,8 @@ unsigned AtomicExpr::getNumSubExprs(AtomicOp Op) {
   case AO__c11_atomic_fetch_and:
   case AO__c11_atomic_fetch_or:
   case AO__c11_atomic_fetch_xor:
+  case AO__c11_atomic_fetch_max:
+  case AO__c11_atomic_fetch_min:
   case AO__atomic_fetch_add:
   case AO__atomic_fetch_sub:
   case AO__atomic_fetch_and:
@@ -4618,6 +4665,8 @@ unsigned AtomicExpr::getNumSubExprs(AtomicOp Op) {
   case AO__atomic_or_fetch:
   case AO__atomic_xor_fetch:
   case AO__atomic_nand_fetch:
+  case AO__atomic_min_fetch:
+  case AO__atomic_max_fetch:
   case AO__atomic_fetch_min:
   case AO__atomic_fetch_max:
     return 3;

@@ -351,7 +351,6 @@ public:
   void VisitObjCPropertyImplDecl(const ObjCPropertyImplDecl *D);
   void VisitBlockDecl(const BlockDecl *D);
   void VisitConceptDecl(const ConceptDecl *D);
-
   void VisitErrorSyntax(const green::ErrorSyntax *S);
   void VisitAtomSyntax(const green::AtomSyntax *S);
   void VisitListSyntax(const green::ListSyntax *S);
@@ -359,6 +358,8 @@ public:
   void VisitCallSyntax(const green::CallSyntax *S);
   void VisitElemSyntax(const green::ElemSyntax *S);
   void VisitMacroSyntax(const green::MacroSyntax *S);
+  void
+  VisitLifetimeExtendedTemporaryDecl(const LifetimeExtendedTemporaryDecl *D);
 };
 
 } // namespace clang

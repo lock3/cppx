@@ -135,7 +135,7 @@ StringRef getOutputSectionName(const InputSectionBase *s) {
 }
 
 static bool needsInterpSection() {
-  return !sharedFiles.empty() && !config->dynamicLinker.empty() &&
+  return !config->shared && !config->dynamicLinker.empty() &&
          script->needsInterpSection();
 }
 
@@ -515,9 +515,9 @@ template <class ELFT> void createSyntheticSections() {
       /*sort=*/false);
   add(in.relaIplt);
 
-  in.plt = make<PltSection>(false);
+  in.plt = make<PltSection>();
   add(in.plt);
-  in.iplt = make<PltSection>(true);
+  in.iplt = make<IpltSection>();
   add(in.iplt);
 
   if (config->andFeatures)
@@ -1238,10 +1238,9 @@ static DenseMap<const InputSectionBase *, int> buildSectionOrder() {
 
   // We want both global and local symbols. We get the global ones from the
   // symbol table and iterate the object files for the local ones.
-  symtab->forEachSymbol([&](Symbol *sym) {
+  for (Symbol *sym : symtab->symbols())
     if (!sym->isLazy())
       addSym(*sym);
-  });
 
   for (InputFile *file : objectFiles)
     for (Symbol *sym : file->getSymbols())
@@ -1637,37 +1636,6 @@ static void removeUnusedSyntheticSections() {
   }
 }
 
-// Returns true if a symbol can be replaced at load-time by a symbol
-// with the same name defined in other ELF executable or DSO.
-static bool computeIsPreemptible(const Symbol &b) {
-  assert(!b.isLocal());
-
-  // Only symbols that appear in dynsym can be preempted.
-  if (!b.includeInDynsym())
-    return false;
-
-  // Only default visibility symbols can be preempted.
-  if (b.visibility != STV_DEFAULT)
-    return false;
-
-  // At this point copy relocations have not been created yet, so any
-  // symbol that is not defined locally is preemptible.
-  if (!b.isDefined())
-    return true;
-
-  if (!config->shared)
-    return false;
-
-  // If the dynamic list is present, it specifies preemptable symbols in a DSO.
-  if (config->hasDynamicList)
-    return b.inDynamicList;
-
-  // -Bsymbolic means that definitions are not preempted.
-  if (config->bsymbolic || (config->bsymbolicFunctions && b.isFunc()))
-    return false;
-  return true;
-}
-
 // Create output section objects and add them to OutputSections.
 template <class ELFT> void Writer<ELFT>::finalizeSections() {
   Out::preinitArray = findSection(".preinit_array");
@@ -1734,8 +1702,8 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   for (Partition &part : partitions)
     finalizeSynthetic(part.ehFrame);
 
-  symtab->forEachSymbol(
-      [](Symbol *s) { s->isPreemptible = computeIsPreemptible(*s); });
+  for (Symbol *sym : symtab->symbols())
+    sym->isPreemptible = computeIsPreemptible(*sym);
 
   // Change values of linker-script-defined symbols from placeholders (assigned
   // by declareSymbols) to actual definitions.
@@ -1769,19 +1737,18 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
             return symtab->soNames.count(needed);
           });
 
-    symtab->forEachSymbol([](Symbol *sym) {
+    for (Symbol *sym : symtab->symbols())
       if (sym->isUndefined() && !sym->isWeak())
         if (auto *f = dyn_cast_or_null<SharedFile>(sym->file))
           if (f->allNeededIsKnown)
             error(toString(f) + ": undefined reference to " + toString(*sym));
-    });
   }
 
   // Now that we have defined all possible global symbols including linker-
   // synthesized ones. Visit all symbols to give the finishing touches.
-  symtab->forEachSymbol([](Symbol *sym) {
+  for (Symbol *sym : symtab->symbols()) {
     if (!includeInSymtab(*sym))
-      return;
+      continue;
     if (in.symTab)
       in.symTab->addSymbol(sym);
 
@@ -1791,7 +1758,7 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
         if (file->isNeeded && !sym->isUndefined())
           addVerneed(sym);
     }
-  });
+  }
 
   // We also need to scan the dynamic relocation tables of the other partitions
   // and add any referenced symbols to the partition's dynsym.
@@ -2189,6 +2156,9 @@ std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs(Partition &part) {
   // OpenBSD.
   if (config->zWxneeded)
     addHdr(PT_OPENBSD_WXNEEDED, PF_X);
+
+  if (OutputSection *cmd = findSection(".note.gnu.property", partNo))
+    addHdr(PT_GNU_PROPERTY, PF_R)->add(cmd);
 
   // Create one PT_NOTE per a group of contiguous SHT_NOTE sections with the
   // same alignment.

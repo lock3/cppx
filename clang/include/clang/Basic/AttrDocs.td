@@ -253,6 +253,79 @@ any option of a multiversioned function is undefined.
   }];
 }
 
+def SYCLKernelDocs : Documentation {
+  let Category = DocCatFunction;
+  let Content = [{
+The ``sycl_kernel`` attribute specifies that a function template will be used
+to outline device code and to generate an OpenCL kernel.
+Here is a code example of the SYCL program, which demonstrates the compiler's
+outlining job:
+.. code-block:: c++
+
+  int foo(int x) { return ++x; }
+
+  using namespace cl::sycl;
+  queue Q;
+  buffer<int, 1> a(range<1>{1024});
+  Q.submit([&](handler& cgh) {
+    auto A = a.get_access<access::mode::write>(cgh);
+    cgh.parallel_for<init_a>(range<1>{1024}, [=](id<1> index) {
+      A[index] = index[0] + foo(42);
+    });
+  }
+
+A C++ function object passed to the ``parallel_for`` is called a "SYCL kernel".
+A SYCL kernel defines the entry point to the "device part" of the code. The
+compiler will emit all symbols accessible from a "kernel". In this code
+example, the compiler will emit "foo" function.  More details about the
+compilation of functions for the device part can be found in the SYCL 1.2.1
+specification Section 6.4.
+To show to the compiler entry point to the "device part" of the code, the SYCL
+runtime can use the ``sycl_kernel`` attribute in the following way:
+.. code-block:: c++
+namespace cl {
+namespace sycl {
+class handler {
+  template <typename KernelName, typename KernelType/*, ...*/>
+  __attribute__((sycl_kernel)) void sycl_kernel_function(KernelType KernelFuncObj) {
+    // ...
+    KernelFuncObj();
+  }
+
+  template <typename KernelName, typename KernelType, int Dims>
+  void parallel_for(range<Dims> NumWorkItems, KernelType KernelFunc) {
+#ifdef __SYCL_DEVICE_ONLY__
+    sycl_kernel_function<KernelName, KernelType, Dims>(KernelFunc);
+#else
+    // Host implementation
+#endif
+  }
+};
+} // namespace sycl
+} // namespace cl
+
+The compiler will also generate an OpenCL kernel using the function marked with
+the ``sycl_kernel`` attribute.
+Here is the list of SYCL device compiler expectations with regard to the
+function marked with the ``sycl_kernel`` attribute:
+
+- The function must be a template with at least two type template parameters.
+  The compiler generates an OpenCL kernel and uses the first template parameter
+  as a unique name for the generated OpenCL kernel. The host application uses
+  this unique name to invoke the OpenCL kernel generated for the SYCL kernel
+  specialized by this name and second template parameter ``KernelType`` (which
+  might be an unnamed function object type).
+- The function must have at least one parameter. The first parameter is
+  required to be a function object type (named or unnamed i.e. lambda). The
+  compiler uses function object type fields to generate OpenCL kernel
+  parameters.
+- The function must return void. The compiler reuses the body of marked functions to
+  generate the OpenCL kernel body, and the OpenCL kernel must return `void`.
+
+The SYCL kernel in the previous code sample meets these expectations.
+  }];
+}
+
 def C11NoReturnDocs : Documentation {
   let Category = DocCatFunction;
   let Content = [{
@@ -2993,6 +3066,7 @@ More details can be found in the OpenCL C language Spec v2.0, Section 6.5.
 
 def OpenCLAddressSpaceGenericDocs : Documentation {
   let Category = DocOpenCLAddressSpaces;
+  let Heading = "__generic, generic, [[clang::opencl_generic]]";
   let Content = [{
 The generic address space attribute is only available with OpenCL v2.0 and later.
 It can be used with pointer types. Variables in global and local scope and
@@ -3005,6 +3079,7 @@ spaces.
 
 def OpenCLAddressSpaceConstantDocs : Documentation {
   let Category = DocOpenCLAddressSpaces;
+  let Heading = "__constant, constant, [[clang::opencl_constant]]";
   let Content = [{
 The constant address space attribute signals that an object is located in
 a constant (non-modifiable) memory region. It is available to all work items.
@@ -3016,6 +3091,7 @@ have an initializer.
 
 def OpenCLAddressSpaceGlobalDocs : Documentation {
   let Category = DocOpenCLAddressSpaces;
+  let Heading = "__global, global, [[clang::opencl_global]]";
   let Content = [{
 The global address space attribute specifies that an object is allocated in
 global memory, which is accessible by all work items. The content stored in this
@@ -3028,6 +3104,7 @@ scope) variables and static local variable as well.
 
 def OpenCLAddressSpaceLocalDocs : Documentation {
   let Category = DocOpenCLAddressSpaces;
+  let Heading = "__local, local, [[clang::opencl_local]]";
   let Content = [{
 The local address space specifies that an object is allocated in the local (work
 group) memory area, which is accessible to all work items in the same work
@@ -3040,6 +3117,7 @@ space are allowed. Local address space variables cannot have an initializer.
 
 def OpenCLAddressSpacePrivateDocs : Documentation {
   let Category = DocOpenCLAddressSpaces;
+  let Heading = "__private, private, [[clang::opencl_private]]";
   let Content = [{
 The private address space specifies that an object is allocated in the private
 (work item) memory. Other work items cannot access the same memory area and its
@@ -3061,6 +3139,44 @@ Since it is not widely used and has been removed from OpenCL 2.1, it is ignored
 by Clang.
   }];
 }
+
+def Ptr32Docs : Documentation {
+  let Category = DocCatType;
+  let Content = [{
+The ``__ptr32`` qualifier represents a native pointer on a 32-bit system. On a
+64-bit system, a pointer with ``__ptr32`` is extended to a 64-bit pointer. The
+``__sptr`` and ``__uptr`` qualifiers can be used to specify whether the pointer
+is sign extended or zero extended. This qualifier is enabled under
+``-fms-extensions``.
+  }];
+}
+
+def Ptr64Docs : Documentation {
+  let Category = DocCatType;
+  let Content = [{
+The ``__ptr64`` qualifier represents a native pointer on a 64-bit system. On a
+32-bit system, a ``__ptr64`` pointer is truncated to a 32-bit pointer. This
+qualifier is enabled under ``-fms-extensions``.
+  }];
+}
+
+def SPtrDocs : Documentation {
+  let Category = DocCatType;
+  let Content = [{
+The ``__sptr`` qualifier specifies that a 32-bit pointer should be sign
+extended when converted to a 64-bit pointer.
+  }];
+}
+
+def UPtrDocs : Documentation {
+  let Category = DocCatType;
+  let Content = [{
+The ``__uptr`` qualifier specifies that a 32-bit pointer should be zero
+extended when converted to a 64-bit pointer.
+  }];
+}
+
+
 def NullabilityDocs : DocumentationCategory<"Nullability Attributes"> {
   let Content = [{
 Whether a particular pointer may be "null" is an important concern when working with pointers in the C family of languages. The various nullability attributes indicate whether a particular pointer can be null or not, which makes APIs more expressive and can help static analysis tools identify bugs involving null pointers. Clang supports several kinds of nullability attributes: the ``nonnull`` and ``returns_nonnull`` attributes indicate which function or method parameters and result types can never be null, while nullability type qualifiers indicate which pointer types can be null (``_Nullable``) or cannot be null (``_Nonnull``).
@@ -4023,10 +4139,25 @@ For more information see
 or `msvc documentation <https://docs.microsoft.com/pl-pl/cpp/cpp/selectany>`_.
 }]; }
 
+def WebAssemblyExportNameDocs : Documentation {
+  let Category = DocCatFunction;
+  let Content = [{
+Clang supports the ``__attribute__((export_name(<name>)))``
+attribute for the WebAssembly target. This attribute may be attached to a
+function declaration, where it modifies how the symbol is to be exported
+from the linked WebAssembly.
+
+WebAssembly functions are exported via string name. By default when a symbol
+is exported, the export name for C/C++ symbols are the same as their C/C++
+symbol names. This attribute can be used to override the default behavior, and
+request a specific string name be used instead.
+  }];
+}
+
 def WebAssemblyImportModuleDocs : Documentation {
   let Category = DocCatFunction;
   let Content = [{
-Clang supports the ``__attribute__((import_module(<module_name>)))`` 
+Clang supports the ``__attribute__((import_module(<module_name>)))``
 attribute for the WebAssembly target. This attribute may be attached to a
 function declaration, where it modifies how the symbol is to be imported
 within the WebAssembly linking environment.
@@ -4036,14 +4167,14 @@ name, which typically identifies a module from which to import, and a field
 name, which typically identifies a field from that module to import. By
 default, module names for C/C++ symbols are assigned automatically by the
 linker. This attribute can be used to override the default behavior, and
-reuqest a specific module name be used instead.
+request a specific module name be used instead.
   }];
 }
 
 def WebAssemblyImportNameDocs : Documentation {
   let Category = DocCatFunction;
   let Content = [{
-Clang supports the ``__attribute__((import_name(<name>)))`` 
+Clang supports the ``__attribute__((import_name(<name>)))``
 attribute for the WebAssembly target. This attribute may be attached to a
 function declaration, where it modifies how the symbol is to be imported
 within the WebAssembly linking environment.
@@ -4053,7 +4184,7 @@ name, which typically identifies a module from which to import, and a field
 name, which typically identifies a field from that module to import. By
 default, field names for C/C++ symbols are the same as their C/C++ symbol
 names. This attribute can be used to override the default behavior, and
-reuqest a specific field name be used instead.
+request a specific field name be used instead.
   }];
 }
 
@@ -4459,7 +4590,7 @@ object of type ``T``:
 
 The argument ``T`` is optional and is ignored.
 This attribute may be used by analysis tools and has no effect on code
-generation.
+generation. A ``void`` argument means that the class can own any type.
 
 See Pointer_ for an example.
 }];
@@ -4485,7 +4616,7 @@ like pointers to an object of type ``T``:
 
 The argument ``T`` is optional and is ignored.
 This attribute may be used by analysis tools and has no effect on code
-generation.
+generation. A ``void`` argument means that the pointer can point to any type.
 
 Example:
 When constructing an instance of a class annotated like this (a Pointer) from
@@ -4563,5 +4694,66 @@ once.
     for (size_t i = 0; i < count; ++i)
       data[i] = 0xFE;
   }
+  }];
+}
+
+def HandleDocs : DocumentationCategory<"Handle Attributes"> {
+  let Content = [{
+Handles are a way to identify resources like files, sockets, and processes.
+They are more opaque than pointers and widely used in system programming. They
+have similar risks such as never releasing a resource associated with a handle,
+attempting to use a handle that was already released, or trying to release a
+handle twice. Using the annotations below it is possible to make the ownership
+of the handles clear: whose responsibility is to release them. They can also
+aid static analysis tools to find bugs.
+  }];
+}
+
+def AcquireHandleDocs : Documentation {
+  let Category = HandleDocs;
+  let Content = [{
+If this annotation is on a function or a function type it is assumed to return
+a new handle. In case this annotation is on an output parameter,
+the function is assumed to fill the corresponding argument with a new
+handle.
+
+.. code-block:: c++
+
+  // Output arguments from Zircon.
+  zx_status_t zx_socket_create(uint32_t options,
+                               zx_handle_t __attribute__((acquire_handle)) * out0,
+                               zx_handle_t* out1 [[clang::acquire_handle]]);
+
+
+  // Returned handle.
+  [[clang::acquire_handle]] int open(const char *path, int oflag, ... );
+  int open(const char *path, int oflag, ... ) __attribute__((acquire_handle));
+  }];
+}
+
+def UseHandleDocs : Documentation {
+  let Category = HandleDocs;
+  let Content = [{
+A function taking a handle by value might close the handle. If a function
+parameter is annotated with `use_handle` it is assumed to not to change
+the state of the handle. It is also assumed to require an open handle to work with.
+
+.. code-block:: c++
+
+  zx_status_t zx_port_wait(zx_handle_t handle [[clang::use_handle]],
+                           zx_time_t deadline,
+                           zx_port_packet_t* packet);
+  }];
+}
+
+def ReleaseHandleDocs : Documentation {
+  let Category = HandleDocs;
+  let Content = [{
+If a function parameter is annotated with `release_handle` it is assumed to
+close the handle. It is also assumed to require an open handle to work with.
+
+.. code-block:: c++
+
+  zx_status_t zx_handle_close(zx_handle_t handle [[clang::release_handle]]);
   }];
 }

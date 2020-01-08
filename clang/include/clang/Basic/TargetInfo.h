@@ -938,12 +938,6 @@ public:
     return true;
   }
 
-  /// Check if the register is reserved globally
-  ///
-  /// This function returns true if the register passed in RegName is reserved
-  /// using the corresponding -ffixed-RegName option.
-  virtual bool isRegisterReservedGlobally(StringRef) const { return true; }
-
   // validateOutputConstraint, validateInputConstraint - Checks that
   // a constraint is valid and provides information about it.
   // FIXME: These should return a real error instead of just true/false.
@@ -951,12 +945,14 @@ public:
   bool validateInputConstraint(MutableArrayRef<ConstraintInfo> OutputConstraints,
                                ConstraintInfo &info) const;
 
-  virtual bool validateOutputSize(StringRef /*Constraint*/,
+  virtual bool validateOutputSize(const llvm::StringMap<bool> &FeatureMap,
+                                  StringRef /*Constraint*/,
                                   unsigned /*Size*/) const {
     return true;
   }
 
-  virtual bool validateInputSize(StringRef /*Constraint*/,
+  virtual bool validateInputSize(const llvm::StringMap<bool> &FeatureMap,
+                                 StringRef /*Constraint*/,
                                  unsigned /*Size*/) const {
     return true;
   }
@@ -1150,10 +1146,7 @@ public:
 
   /// Identify whether this target supports multiversioning of functions,
   /// which requires support for cpu_supports and cpu_is functionality.
-  bool supportsMultiVersioning() const {
-    return getTriple().getArch() == llvm::Triple::x86 ||
-           getTriple().getArch() == llvm::Triple::x86_64;
-  }
+  bool supportsMultiVersioning() const { return getTriple().isX86(); }
 
   /// Identify whether this target supports IFuncs.
   bool supportsIFunc() const { return getTriple().isOSBinFormatELF(); }
@@ -1218,8 +1211,7 @@ public:
   /// Whether the target supports SEH __try.
   bool isSEHTrySupported() const {
     return getTriple().isOSWindows() &&
-           (getTriple().getArch() == llvm::Triple::x86 ||
-            getTriple().getArch() == llvm::Triple::x86_64 ||
+           (getTriple().isX86() ||
             getTriple().getArch() == llvm::Triple::aarch64);
   }
 
@@ -1394,6 +1386,9 @@ public:
   }
 
   virtual void setAuxTarget(const TargetInfo *Aux) {}
+
+  /// Whether target allows debuginfo types for decl only variables.
+  virtual bool allowDebugInfoForExternalVar() const { return false; }
 
 protected:
   /// Copy type and layout related info.

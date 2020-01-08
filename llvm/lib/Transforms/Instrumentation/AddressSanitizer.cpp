@@ -2901,15 +2901,14 @@ void FunctionStackPoisoner::copyArgsPassedByValToAllocas() {
   for (Argument &Arg : F.args()) {
     if (Arg.hasByValAttr()) {
       Type *Ty = Arg.getType()->getPointerElementType();
-      unsigned Alignment = Arg.getParamAlignment();
-      if (Alignment == 0)
-        Alignment = DL.getABITypeAlignment(Ty);
+      const Align Alignment =
+          DL.getValueOrABITypeAlignment(Arg.getParamAlign(), Ty);
 
       AllocaInst *AI = IRB.CreateAlloca(
           Ty, nullptr,
           (Arg.hasName() ? Arg.getName() : "Arg" + Twine(Arg.getArgNo())) +
               ".byval");
-      AI->setAlignment(Align(Alignment));
+      AI->setAlignment(Alignment);
       Arg.replaceAllUsesWith(AI);
 
       uint64_t AllocSize = DL.getTypeAllocSize(Ty);
@@ -2996,7 +2995,6 @@ void FunctionStackPoisoner::processStaticAllocas() {
 
   Instruction *InsBefore = AllocaVec[0];
   IRBuilder<> IRB(InsBefore);
-  IRB.SetCurrentDebugLocation(EntryDebugLocation);
 
   // Make sure non-instrumented allocas stay in the entry block. Otherwise,
   // debug info is broken, because only entry-block allocas are treated as
@@ -3091,14 +3089,12 @@ void FunctionStackPoisoner::processStaticAllocas() {
     Instruction *Term =
         SplitBlockAndInsertIfThen(UseAfterReturnIsEnabled, InsBefore, false);
     IRBuilder<> IRBIf(Term);
-    IRBIf.SetCurrentDebugLocation(EntryDebugLocation);
     StackMallocIdx = StackMallocSizeClass(LocalStackSize);
     assert(StackMallocIdx <= kMaxAsanStackMallocSizeClass);
     Value *FakeStackValue =
         IRBIf.CreateCall(AsanStackMallocFunc[StackMallocIdx],
                          ConstantInt::get(IntptrTy, LocalStackSize));
     IRB.SetInsertPoint(InsBefore);
-    IRB.SetCurrentDebugLocation(EntryDebugLocation);
     FakeStack = createPHI(IRB, UseAfterReturnIsEnabled, FakeStackValue, Term,
                           ConstantInt::get(IntptrTy, 0));
 
@@ -3106,14 +3102,11 @@ void FunctionStackPoisoner::processStaticAllocas() {
         IRB.CreateICmpEQ(FakeStack, Constant::getNullValue(IntptrTy));
     Term = SplitBlockAndInsertIfThen(NoFakeStack, InsBefore, false);
     IRBIf.SetInsertPoint(Term);
-    IRBIf.SetCurrentDebugLocation(EntryDebugLocation);
     Value *AllocaValue =
         DoDynamicAlloca ? createAllocaForLayout(IRBIf, L, true) : StaticAlloca;
 
     IRB.SetInsertPoint(InsBefore);
-    IRB.SetCurrentDebugLocation(EntryDebugLocation);
     LocalStackBase = createPHI(IRB, NoFakeStack, AllocaValue, Term, FakeStack);
-    IRB.SetCurrentDebugLocation(EntryDebugLocation);
     IRB.CreateStore(LocalStackBase, LocalStackBaseAlloca);
     DIExprFlags |= DIExpression::DerefBefore;
   } else {

@@ -372,7 +372,7 @@ ImplicitNullChecks::isSuitableMemoryOp(const MachineInstr &MI,
 
   // We want the mem access to be issued at a sane offset from PointerReg,
   // so that if PointerReg is null then the access reliably page faults.
-  if (!((MI.mayLoad() || MI.mayStore()) && !MI.isPredicable() &&
+  if (!(MI.mayLoadOrStore() && !MI.isPredicable() &&
         -PageSize < Offset && Offset < PageSize))
     return SR_Unsuitable;
 
@@ -698,7 +698,7 @@ void ImplicitNullChecks::rewriteNullChecks(
 
     if (auto *DepMI = NC.getOnlyDependency()) {
       for (auto &MO : DepMI->operands()) {
-        if (!MO.isReg() || !MO.getReg() || !MO.isDef())
+        if (!MO.isReg() || !MO.getReg() || !MO.isDef() || MO.isDead())
           continue;
         if (!NC.getNotNullSucc()->isLiveIn(MO.getReg()))
           NC.getNotNullSucc()->addLiveIn(MO.getReg());

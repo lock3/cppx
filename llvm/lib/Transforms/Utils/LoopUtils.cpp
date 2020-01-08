@@ -24,7 +24,6 @@
 #include "llvm/Analysis/MustExecute.h"
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionAliasAnalysis.h"
-#include "llvm/Analysis/ScalarEvolutionExpander.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
@@ -673,7 +672,19 @@ void llvm::deleteDeadLoop(Loop *L, DominatorTree *DT = nullptr,
       LI->removeBlock(BB);
 
     // The last step is to update LoopInfo now that we've eliminated this loop.
-    LI->erase(L);
+    // Note: LoopInfo::erase remove the given loop and relink its subloops with
+    // its parent. While removeLoop/removeChildLoop remove the given loop but
+    // not relink its subloops, which is what we want.
+    if (Loop *ParentLoop = L->getParentLoop()) {
+      Loop::iterator I = find(ParentLoop->begin(), ParentLoop->end(), L);
+      assert(I != ParentLoop->end() && "Couldn't find loop");
+      ParentLoop->removeChildLoop(I);
+    } else {
+      Loop::iterator I = find(LI->begin(), LI->end(), L);
+      assert(I != LI->end() && "Couldn't find loop");
+      LI->removeLoop(I);
+    }
+    LI->destroy(L);
   }
 }
 

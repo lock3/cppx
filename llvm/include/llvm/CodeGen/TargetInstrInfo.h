@@ -72,6 +72,14 @@ struct DestSourcePair {
       : Destination(&Dest), Source(&Src) {}
 };
 
+/// Used to describe a register and immediate addition.
+struct RegImmPair {
+  Register Reg;
+  int64_t Imm;
+
+  RegImmPair(Register Reg, int64_t Imm) : Reg(Reg), Imm(Imm) {}
+};
+
 //---------------------------------------------------------------------------
 ///
 /// TargetInstrInfo - Interface to description of machine instruction set
@@ -950,11 +958,11 @@ public:
   }
 
   /// If the specific machine instruction is an instruction that adds an
-  /// immediate value to its source operand and stores it in destination,
-  /// return destination and source registers as machine operands along with
-  /// \c Offset which has been added.
-  virtual Optional<DestSourcePair> isAddImmediate(const MachineInstr &MI,
-                                                  int64_t &Offset) const {
+  /// immediate value and a physical register, and stores the result in
+  /// the given physical register \c Reg, return a pair of the source
+  /// register and the offset which has been added.
+  virtual Optional<RegImmPair> isAddImmediate(const MachineInstr &MI,
+                                              Register Reg) const {
     return None;
   }
 
@@ -1227,6 +1235,10 @@ public:
 
   /// Get the base operand and byte offset of an instruction that reads/writes
   /// memory.
+  /// It returns false if MI does not read/write memory.
+  /// It returns false if no base operand and offset was found.
+  /// It is not guaranteed to always recognize base operand and offsets in all
+  /// cases.
   virtual bool getMemOperandWithOffset(const MachineInstr &MI,
                                        const MachineOperand *&BaseOp,
                                        int64_t &Offset,
@@ -1635,9 +1647,9 @@ public:
   virtual bool
   areMemAccessesTriviallyDisjoint(const MachineInstr &MIa,
                                   const MachineInstr &MIb) const {
-    assert((MIa.mayLoad() || MIa.mayStore()) &&
+    assert(MIa.mayLoadOrStore() &&
            "MIa must load from or modify a memory location");
-    assert((MIb.mayLoad() || MIb.mayStore()) &&
+    assert(MIb.mayLoadOrStore() &&
            "MIb must load from or modify a memory location");
     return false;
   }
@@ -1727,7 +1739,7 @@ public:
   virtual MachineInstr *createPHISourceCopy(MachineBasicBlock &MBB,
                                             MachineBasicBlock::iterator InsPt,
                                             const DebugLoc &DL, Register Src,
-                                            Register SrcSubReg,
+                                            unsigned SrcSubReg,
                                             Register Dst) const {
     return BuildMI(MBB, InsPt, DL, get(TargetOpcode::COPY), Dst)
         .addReg(Src, 0, SrcSubReg);
@@ -1789,9 +1801,10 @@ public:
   }
 
   /// Produce the expression describing the \p MI loading a value into
-  /// the parameter's forwarding register.
-  virtual Optional<ParamLoadedValue>
-  describeLoadedValue(const MachineInstr &MI) const;
+  /// the physical register \p Reg. This hook should only be used with
+  /// \p MIs belonging to VReg-less functions.
+  virtual Optional<ParamLoadedValue> describeLoadedValue(const MachineInstr &MI,
+                                                         Register Reg) const;
 
 private:
   unsigned CallFrameSetupOpcode, CallFrameDestroyOpcode;

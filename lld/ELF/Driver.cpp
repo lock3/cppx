@@ -77,15 +77,15 @@ static void readConfigs(opt::InputArgList &args);
 
 bool link(ArrayRef<const char *> args, bool canExitEarly, raw_ostream &stdoutOS,
           raw_ostream &stderrOS) {
+  lld::stdoutOS = &stdoutOS;
+  lld::stderrOS = &stderrOS;
+
   errorHandler().logName = args::getFilenameWithoutExe(args[0]);
   errorHandler().errorLimitExceededMsg =
       "too many errors emitted, stopping now (use "
       "-error-limit=0 to see all errors)";
   errorHandler().exitEarly = canExitEarly;
-  enableColors(stderrOS.has_colors());
-
-  lld::stdoutOS = &stdoutOS;
-  lld::stderrOS = &stderrOS;
+  stderrOS.enable_colors(stderrOS.has_colors());
 
   inputSections.clear();
   outputSections.clear();
@@ -165,10 +165,7 @@ std::vector<std::pair<MemoryBufferRef, uint64_t>> static getArchiveMembers(
   std::vector<std::pair<MemoryBufferRef, uint64_t>> v;
   Error err = Error::success();
   bool addToTar = file->isThin() && tar;
-  for (const ErrorOr<Archive::Child> &cOrErr : file->children(err)) {
-    Archive::Child c =
-        CHECK(cOrErr, mb.getBufferIdentifier() +
-                          ": could not get the child of the archive");
+  for (const Archive::Child &c : file->children(err)) {
     MemoryBufferRef mbref =
         CHECK(c.getMemoryBufferRef(),
               mb.getBufferIdentifier() +
@@ -354,9 +351,9 @@ static void checkOptions() {
 
   if (config->emachine != EM_AARCH64) {
     if (config->pacPlt)
-      error("--pac-plt only supported on AArch64");
+      error("-z pac-plt only supported on AArch64");
     if (config->forceBTI)
-      error("--force-bti only supported on AArch64");
+      error("-z force-bti only supported on AArch64");
   }
 }
 
@@ -412,17 +409,18 @@ static GnuStackKind getZGnuStack(opt::InputArgList &args) {
 
 static bool isKnownZFlag(StringRef s) {
   return s == "combreloc" || s == "copyreloc" || s == "defs" ||
-         s == "execstack" || s == "global" || s == "hazardplt" ||
-         s == "ifunc-noplt" || s == "initfirst" || s == "interpose" ||
-         s == "keep-text-section-prefix" || s == "lazy" || s == "muldefs" ||
-         s == "separate-code" || s == "separate-loadable-segments" ||
-         s == "nocombreloc" || s == "nocopyreloc" || s == "nodefaultlib" ||
-         s == "nodelete" || s == "nodlopen" || s == "noexecstack" ||
-         s == "nognustack" ||
+         s == "execstack" || s == "force-bti" || s == "global" ||
+         s == "hazardplt" || s == "ifunc-noplt" || s == "initfirst" ||
+         s == "interpose" || s == "keep-text-section-prefix" || s == "lazy" ||
+         s == "muldefs" || s == "separate-code" ||
+         s == "separate-loadable-segments" || s == "nocombreloc" ||
+         s == "nocopyreloc" || s == "nodefaultlib" || s == "nodelete" ||
+         s == "nodlopen" || s == "noexecstack" || s == "nognustack" ||
          s == "nokeep-text-section-prefix" || s == "norelro" ||
          s == "noseparate-code" || s == "notext" || s == "now" ||
-         s == "origin" || s == "relro" || s == "retpolineplt" ||
-         s == "rodynamic" || s == "text" || s == "undefs" || s == "wxneeded" ||
+         s == "origin" || s == "pac-plt" || s == "relro" ||
+         s == "retpolineplt" || s == "rodynamic" || s == "text" ||
+         s == "undefs" || s == "wxneeded" ||
          s.startswith("common-page-size=") || s.startswith("max-page-size=") ||
          s.startswith("stack-size=");
 }
@@ -878,7 +876,7 @@ static void readConfigs(opt::InputArgList &args) {
   config->fini = args.getLastArgValue(OPT_fini, "_fini");
   config->fixCortexA53Errata843419 = args.hasArg(OPT_fix_cortex_a53_843419);
   config->fixCortexA8 = args.hasArg(OPT_fix_cortex_a8);
-  config->forceBTI = args.hasArg(OPT_force_bti);
+  config->forceBTI = hasZOption(args, "force-bti");
   config->requireCET = args.hasArg(OPT_require_cet);
   config->gcSections = args.hasFlag(OPT_gc_sections, OPT_no_gc_sections, false);
   config->gnuUnique = args.hasFlag(OPT_gnu_unique, OPT_no_gnu_unique, true);
@@ -917,7 +915,7 @@ static void readConfigs(opt::InputArgList &args) {
   config->optimize = args::getInteger(args, OPT_O, 1);
   config->orphanHandling = getOrphanHandling(args);
   config->outputFile = args.getLastArgValue(OPT_o);
-  config->pacPlt = args.hasArg(OPT_pac_plt);
+  config->pacPlt = hasZOption(args, "pac-plt");
   config->pie = args.hasFlag(OPT_pie, OPT_no_pie, false);
   config->printIcfSections =
       args.hasFlag(OPT_print_icf_sections, OPT_no_print_icf_sections, false);
@@ -968,7 +966,6 @@ static void readConfigs(opt::InputArgList &args) {
       args.hasFlag(OPT_warn_symbol_ordering, OPT_no_warn_symbol_ordering, true);
   config->zCombreloc = getZFlag(args, "combreloc", "nocombreloc", true);
   config->zCopyreloc = getZFlag(args, "copyreloc", "nocopyreloc", true);
-  config->zExecstack = getZFlag(args, "execstack", "noexecstack", false);
   config->zGlobal = hasZOption(args, "global");
   config->zGnustack = getZGnuStack(args);
   config->zHazardplt = hasZOption(args, "hazardplt");
@@ -1011,6 +1008,14 @@ static void readConfigs(opt::InputArgList &args) {
 
   if (config->splitStackAdjustSize < 0)
     error("--split-stack-adjust-size: size must be >= 0");
+
+  // The text segment is traditionally the first segment, whose address equals
+  // the base address. However, lld places the R PT_LOAD first. -Ttext-segment
+  // is an old-fashioned option that does not play well with lld's layout.
+  // Suggest --image-base as a likely alternative.
+  if (args.hasArg(OPT_Ttext_segment))
+    error("-Ttext-segment is not supported. Use --image-base if you "
+          "intend to set the base address");
 
   // Parse ELF{32,64}{LE,BE} and CPU type.
   if (auto *arg = args.getLastArg(OPT_m)) {
@@ -1401,13 +1406,13 @@ static void handleUndefinedGlob(StringRef arg) {
   }
 
   std::vector<Symbol *> syms;
-  symtab->forEachSymbol([&](Symbol *sym) {
+  for (Symbol *sym : symtab->symbols()) {
     // Calling Sym->fetch() from here is not safe because it may
     // add new symbols to the symbol table, invalidating the
     // current iterator. So we just keep a note.
     if (pat->match(sym->getName()))
       syms.push_back(sym);
-  });
+  }
 
   for (Symbol *sym : syms)
     handleUndefined(sym);
@@ -1433,10 +1438,10 @@ static void handleLibcall(StringRef name) {
 // result, the passes after the symbol resolution won't see any
 // symbols of type CommonSymbol.
 static void replaceCommonSymbols() {
-  symtab->forEachSymbol([](Symbol *sym) {
+  for (Symbol *sym : symtab->symbols()) {
     auto *s = dyn_cast<CommonSymbol>(sym);
     if (!s)
-      return;
+      continue;
 
     auto *bss = make<BssSection>("COMMON", s->size, s->alignment);
     bss->file = s->file;
@@ -1444,7 +1449,7 @@ static void replaceCommonSymbols() {
     inputSections.push_back(bss);
     s->replace(Defined{s->file, s->getName(), s->binding, s->stOther, s->type,
                        /*value=*/0, s->size, bss});
-  });
+  }
 }
 
 // If all references to a DSO happen to be weak, the DSO is not added
@@ -1452,15 +1457,15 @@ static void replaceCommonSymbols() {
 // created from the DSO. Otherwise, they become dangling references
 // that point to a non-existent DSO.
 static void demoteSharedSymbols() {
-  symtab->forEachSymbol([](Symbol *sym) {
+  for (Symbol *sym : symtab->symbols()) {
     auto *s = dyn_cast<SharedSymbol>(sym);
     if (!s || s->getFile().isNeeded)
-      return;
+      continue;
 
     bool used = s->used;
     s->replace(Undefined{nullptr, s->getName(), STB_WEAK, s->stOther, s->type});
     s->used = used;
-  });
+  }
 }
 
 // The section referred to by `s` is considered address-significant. Set the
@@ -1496,10 +1501,9 @@ static void findKeepUniqueSections(opt::InputArgList &args) {
 
   // Symbols in the dynsym could be address-significant in other executables
   // or DSOs, so we conservatively mark them as address-significant.
-  symtab->forEachSymbol([&](Symbol *sym) {
+  for (Symbol *sym : symtab->symbols())
     if (sym->includeInDynsym())
       markAddrsig(sym);
-  });
 
   // Visit the address-significance table in each object file and mark each
   // referenced symbol as address-significant.
@@ -1698,7 +1702,7 @@ template <class ELFT> static uint32_t getAndFeatures() {
   for (InputFile *f : objectFiles) {
     uint32_t features = cast<ObjFile<ELFT>>(f)->andFeatures;
     if (config->forceBTI && !(features & GNU_PROPERTY_AARCH64_FEATURE_1_BTI)) {
-      warn(toString(f) + ": --force-bti: file does not have BTI property");
+      warn(toString(f) + ": -z force-bti: file does not have BTI property");
       features |= GNU_PROPERTY_AARCH64_FEATURE_1_BTI;
     } else if (!features && config->requireCET)
       error(toString(f) + ": --require-cet: file is not compatible with CET");

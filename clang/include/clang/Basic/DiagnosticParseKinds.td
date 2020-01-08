@@ -61,6 +61,13 @@ def warn_null_statement : Warning<
   "remove unnecessary ';' to silence this warning">,
   InGroup<ExtraSemiStmt>, DefaultIgnore;
 
+def warn_misleading_indentation : Warning<
+  "misleading indentation; statement is not part of "
+  "the previous '%select{if|else|for|while}0'">,
+  InGroup<MisleadingIndentation>, DefaultIgnore;
+def note_previous_statement : Note<
+  "previous statement is here">;
+
 def ext_thread_before : Extension<"'__thread' before '%0'">;
 def ext_keyword_as_ident : ExtWarn<
   "keyword '%0' will be made available as an identifier "
@@ -1225,6 +1232,9 @@ def note_omp_declare_variant_ctx_used_here : Note<
 def warn_omp_more_one_device_type_clause : Warning<
   "more than one 'device_type' clause is specified">,
   InGroup<OpenMPClauses>;
+def err_omp_wrong_device_kind_trait : Error<
+  "unknown '%0' device kind trait in the 'device' context selector set, expected"
+  " one of 'host', 'nohost', 'cpu', 'gpu' or 'fpga'">;
 
 // Pragma loop support.
 def err_pragma_loop_missing_argument : Error<

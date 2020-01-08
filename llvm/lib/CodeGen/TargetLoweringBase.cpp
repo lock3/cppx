@@ -88,6 +88,14 @@ static cl::opt<unsigned> OptsizeJumpTableDensity(
     cl::desc("Minimum density for building a jump table in "
              "an optsize function"));
 
+// FIXME: This option is only to test if the strict fp operation processed
+// correctly by preventing mutating strict fp operation to normal fp operation
+// during development. When the backend supports strict float operation, this
+// option will be meaningless.
+static cl::opt<bool> DisableStrictNodeMutation("disable-strictnode-mutation",
+       cl::desc("Don't mutate strict-float node to a legalize node"),
+       cl::init(false), cl::Hidden);
+
 static bool darwinHasSinCos(const Triple &TT) {
   assert(TT.isOSDarwin() && "should be called with darwin triple");
   // Don't bother with 32 bit x86.
@@ -572,8 +580,6 @@ TargetLoweringBase::TargetLoweringBase(const TargetMachine &tm) : TM(tm) {
   MaxGluedStoresPerMemcpy = 0;
   MaxStoresPerMemsetOptSize = MaxStoresPerMemcpyOptSize =
       MaxStoresPerMemmoveOptSize = MaxLoadsPerMemcmpOptSize = 4;
-  UseUnderscoreSetJmp = false;
-  UseUnderscoreLongJmp = false;
   HasMultipleConditionRegisters = false;
   HasExtractBitsInsn = false;
   JumpIsExpensive = JumpIsExpensiveOverride;
@@ -585,6 +591,7 @@ TargetLoweringBase::TargetLoweringBase(const TargetMachine &tm) : TM(tm) {
   BooleanVectorContents = UndefinedBooleanContent;
   SchedPreferenceInfo = Sched::ILP;
   GatherAllAliasesMaxDepth = 18;
+  IsStrictFPEnabled = DisableStrictNodeMutation;
   // TODO: the default will be switched to 0 in the next commit, along
   // with the Target-specific changes necessary.
   MaxAtomicSizeInBitsSupported = 1024;
@@ -624,6 +631,8 @@ void TargetLoweringBase::initActions() {
          IM != (unsigned)ISD::LAST_INDEXED_MODE; ++IM) {
       setIndexedLoadAction(IM, VT, Expand);
       setIndexedStoreAction(IM, VT, Expand);
+      setIndexedMaskedLoadAction(IM, VT, Expand);
+      setIndexedMaskedStoreAction(IM, VT, Expand);
     }
 
     // Most backends expect to see the node which just returns the value loaded.
@@ -687,6 +696,7 @@ void TargetLoweringBase::initActions() {
     // These operations default to expand for vector types.
     if (VT.isVector()) {
       setOperationAction(ISD::FCOPYSIGN, VT, Expand);
+      setOperationAction(ISD::SIGN_EXTEND_INREG, VT, Expand);
       setOperationAction(ISD::ANY_EXTEND_VECTOR_INREG, VT, Expand);
       setOperationAction(ISD::SIGN_EXTEND_VECTOR_INREG, VT, Expand);
       setOperationAction(ISD::ZERO_EXTEND_VECTOR_INREG, VT, Expand);

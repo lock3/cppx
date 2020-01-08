@@ -438,6 +438,12 @@ let Command = "reproducer dump" in {
     "provided, that reproducer is dumped.">;
 }
 
+let Command = "reproducer xcrash" in {
+  def reproducer_signal : Option<"signal", "s">, Group<1>,
+    EnumArg<"None", "ReproducerSignalType()">,
+    Required, Desc<"The signal to crash the debugger.">;
+}
+
 let Command = "memory read" in {
   def memory_read_num_per_line : Option<"num-per-line", "l">, Group<1>,
     Arg<"NumberPerLine">, Desc<"The number of items per line to display.">;
@@ -1119,4 +1125,9 @@ let Command = "watchpoint command add" in {
     Group<2>, Arg<"PythonFunction">, Desc<"Give the name of a Python function "
     "to run as command for this watchpoint. Be sure to give a module name if "
     "appropriate.">;
+}
+
+let Command = "watchpoint delete" in {
+  def watchpoint_delete_force : Option<"force", "f">, Group<1>,
+    Desc<"Delete all watchpoints without querying for confirmation.">;
 }

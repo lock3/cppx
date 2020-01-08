@@ -19,8 +19,8 @@
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/SMLoc.h"
 #include <cassert>
-#include <map>
 #include <memory>
+#include <set>
 #include <string>
 
 namespace llvm {
@@ -51,7 +51,7 @@ namespace tgtok {
     // !keywords.
     XConcat, XADD, XMUL, XAND, XOR, XSRA, XSRL, XSHL, XListConcat, XListSplat,
     XStrConcat, XCast, XSubst, XForEach, XFoldl, XHead, XTail, XSize, XEmpty,
-    XIf, XCond, XEq, XIsA, XDag, XNe, XLe, XLt, XGe, XGt,
+    XIf, XCond, XEq, XIsA, XDag, XNe, XLe, XLt, XGe, XGt, XSetOp, XGetOp,
 
     // Integer value.
     IntVal,
@@ -87,10 +87,11 @@ class TGLexer {
   unsigned CurBuffer = 0;
 
 public:
-  typedef std::map<std::string, SMLoc> DependenciesMapTy;
+  typedef std::set<std::string> DependenciesSetTy;
+
 private:
   /// Dependencies - This is the list of all included files.
-  DependenciesMapTy Dependencies;
+  DependenciesSetTy Dependencies;
 
 public:
   TGLexer(SourceMgr &SrcMgr, ArrayRef<std::string> Macros);
@@ -99,7 +100,7 @@ public:
     return CurCode = LexToken(CurPtr == CurBuf.begin());
   }
 
-  const DependenciesMapTy &getDependencies() const {
+  const DependenciesSetTy &getDependencies() const {
     return Dependencies;
   }
 

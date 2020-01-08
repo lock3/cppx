@@ -465,14 +465,20 @@ void VPlan::execute(VPTransformState *State) {
 
   // We do not attempt to preserve DT for outer loop vectorization currently.
   if (!EnableVPlanNativePath)
-    updateDominatorTree(State->DT, VectorPreHeaderBB, VectorLatchBB);
+    updateDominatorTree(State->DT, VectorPreHeaderBB, VectorLatchBB,
+                        L->getExitBlock());
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+LLVM_DUMP_METHOD
+void VPlan::dump() const { dbgs() << *this << '\n'; }
+#endif
+
 void VPlan::updateDominatorTree(DominatorTree *DT, BasicBlock *LoopPreHeaderBB,
-                                BasicBlock *LoopLatchBB) {
+                                BasicBlock *LoopLatchBB,
+                                BasicBlock *LoopExitBB) {
   BasicBlock *LoopHeaderBB = LoopPreHeaderBB->getSingleSuccessor();
   assert(LoopHeaderBB && "Loop preheader does not have a single successor.");
-  DT->addNewBlock(LoopHeaderBB, LoopPreHeaderBB);
   // The vector body may be more than a single basic-block by this point.
   // Update the dominator tree information inside the vector body by propagating
   // it from header to latch, expecting only triangular control-flow, if any.
@@ -503,6 +509,9 @@ void VPlan::updateDominatorTree(DominatorTree *DT, BasicBlock *LoopPreHeaderBB,
     DT->addNewBlock(InterimSucc, BB);
     DT->addNewBlock(PostDomSucc, BB);
   }
+  // Latch block is a new dominator for the loop exit.
+  DT->changeImmediateDominator(LoopExitBB, LoopLatchBB);
+  assert(DT->verify(DominatorTree::VerificationLevel::Fast));
 }
 
 const Twine VPlanPrinter::getUID(const VPBlockBase *Block) {
@@ -527,8 +536,7 @@ void VPlanPrinter::dump() {
   if (!Plan.Value2VPValue.empty() || Plan.BackedgeTakenCount) {
     OS << ", where:";
     if (Plan.BackedgeTakenCount)
-      OS << "\\n"
-         << *Plan.getOrCreateBackedgeTakenCount() << " := BackedgeTakenCount";
+      OS << "\\n" << *Plan.BackedgeTakenCount << " := BackedgeTakenCount";
     for (auto Entry : Plan.Value2VPValue) {
       OS << "\\n" << *Entry.second;
       OS << DOT::EscapeString(" := ");
@@ -540,7 +548,7 @@ void VPlanPrinter::dump() {
   OS << "edge [fontname=Courier, fontsize=30]\n";
   OS << "compound=true\n";
 
-  for (VPBlockBase *Block : depth_first(Plan.getEntry()))
+  for (const VPBlockBase *Block : depth_first(Plan.getEntry()))
     dumpBlock(Block);
 
   OS << "}\n";
@@ -679,6 +687,16 @@ void VPWidenIntOrFpInductionRecipe::print(raw_ostream &O,
     O << " " << VPlanIngredient(IV) << "\\l\"";
 }
 
+void VPWidenGEPRecipe::print(raw_ostream &O, const Twine &Indent) const {
+  O << " +\n" << Indent << "\"WIDEN-GEP ";
+  O << (IsPtrLoopInvariant ? "Inv" : "Var");
+  size_t IndicesNumber = IsIndexLoopInvariant.size();
+  for (size_t I = 0; I < IndicesNumber; ++I)
+    O << "[" << (IsIndexLoopInvariant[I] ? "Inv" : "Var") << "]";
+  O << "\\l\"";
+  O << " +\n" << Indent << "\"  "  << VPlanIngredient(GEP) << "\\l\"";
+}
+
 void VPWidenPHIRecipe::print(raw_ostream &O, const Twine &Indent) const {
   O << " +\n" << Indent << "\"WIDEN-PHI " << VPlanIngredient(Phi) << "\\l\"";
 }
@@ -721,9 +739,10 @@ void VPPredInstPHIRecipe::print(raw_ostream &O, const Twine &Indent) const {
 void VPWidenMemoryInstructionRecipe::print(raw_ostream &O,
                                            const Twine &Indent) const {
   O << " +\n" << Indent << "\"WIDEN " << VPlanIngredient(&Instr);
-  if (User) {
+  VPValue *Mask = getMask();
+  if (Mask) {
     O << ", ";
-    User->getOperand(0)->printAsOperand(O);
+    Mask->printAsOperand(O);
   }
   O << "\\l\"";
 }
