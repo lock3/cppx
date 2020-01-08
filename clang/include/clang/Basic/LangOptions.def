@@ -93,7 +93,7 @@ LANGOPT(CPlusPlus14       , 1, 0, "C++14")
 LANGOPT(CPlusPlus17       , 1, 0, "C++17")
 LANGOPT(CPlusPlus2a       , 1, 0, "C++2a")
 LANGOPT(ObjC              , 1, 0, "Objective-C")
-LANGOPT(Green             , 1, 0, "Green")
+LANGOPT(Gold              , 1, 0, "Gold")
 LANGOPT(Blue              , 1, 0, "Blue")
 BENIGN_LANGOPT(ObjCDefaultSynthProperties , 1, 0,
                "Objective-C auto-synthesized properties")

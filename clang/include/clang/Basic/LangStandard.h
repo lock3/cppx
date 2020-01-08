@@ -36,7 +36,7 @@ enum class Language : uint8_t {
   RenderScript,
   HIP,
   Blue,
-  Green,
+  Gold,
   ///@}
 };
 
@@ -56,7 +56,7 @@ enum LangFeatures {
   HexFloat = (1 << 12),
   ImplicitInt = (1 << 13),
   OpenCL = (1 << 14),
-  Green = (1 << 15),
+  Gold = (1 << 15),
   Blue = (1 << 16)
 };
 
@@ -130,8 +130,8 @@ public:
   /// isOpenCL - Language is a OpenCL variant.
   bool isOpenCL() const { return Flags & OpenCL; }
 
-  /// isGreen - Language is Green.
-  bool isGreen() const { return Flags & Green; }
+  /// isGold - Language is Gold.
+  bool isGold() const { return Flags & Gold; }
 
   /// isBlue - Language is Blue.
   bool isBlue() const { return Flags & Blue; }

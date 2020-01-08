@@ -273,13 +273,13 @@ Token Lexer::makeToken(TokenKind K, char const* F, char const* L) {
 
 Token Lexer::makeToken(TokenKind K, char const* S, std::size_t N) {
   clang::SourceLocation Loc = getSourceLocation(S);
-  Symbol Sym = getSymbol(S, N);
+  gold::Symbol Sym = gold::getSymbol(S, N);
   return Token(K, Loc, Sym);
 }
 
 Token Lexer::matchEof() {
   clang::SourceLocation Loc = SM.getLocForEndOfFile(Input->getID());
-  return Token(tok::EndOfFile, Loc, Symbol());
+  return Token(tok::EndOfFile, Loc, gold::Symbol());
 }
 
 Token Lexer::matchToken(TokenKind K) {

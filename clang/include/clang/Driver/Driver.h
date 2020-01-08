@@ -67,7 +67,7 @@ class Driver {
     CPPMode,
     CLMode,
     FlangMode,
-    GreenMode,
+    GoldMode,
     BlueMode,
   } Mode;
 
@@ -183,8 +183,8 @@ public:
   /// Whether the driver should follow cl.exe like behavior.
   bool IsCLMode() const { return Mode == CLMode; }
 
-  /// Whether the driver should compile green.
-  bool IsGreenMode() const { return Mode == GreenMode; }
+  /// Whether the driver should compile gold.
+  bool IsGoldMode() const { return Mode == GoldMode; }
 
   /// Whether the driver should compile blue.
   bool IsBlueMode() const { return Mode == BlueMode; }

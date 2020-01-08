@@ -23,8 +23,8 @@
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/TemplateArgumentVisitor.h"
 #include "clang/AST/TypeVisitor.h"
-#include "clang/Green/Syntax.h"
-#include "clang/Green/SyntaxVisitor.h"
+#include "clang/Gold/GoldSyntax.h"
+#include "clang/Gold/GoldSyntaxVisitor.h"
 
 namespace clang {
 
@@ -133,7 +133,7 @@ class TextNodeDumper
       public ConstStmtVisitor<TextNodeDumper>,
       public TypeVisitor<TextNodeDumper>,
       public ConstDeclVisitor<TextNodeDumper>,
-      public green::ConstGreenSyntaxVisitor<TextNodeDumper> {
+      public gold::ConstSyntaxVisitor<TextNodeDumper> {
   raw_ostream &OS;
   const bool ShowColors;
 
@@ -179,7 +179,7 @@ public:
 
   void Visit(const GenericSelectionExpr::ConstAssociation &A);
 
-  void Visit(const green::Syntax *S);
+  void Visit(const gold::Syntax *S);
 
   void dumpPointer(const void *Ptr);
   void dumpLocation(SourceLocation Loc);
@@ -351,15 +351,16 @@ public:
   void VisitObjCPropertyImplDecl(const ObjCPropertyImplDecl *D);
   void VisitBlockDecl(const BlockDecl *D);
   void VisitConceptDecl(const ConceptDecl *D);
-  void VisitErrorSyntax(const green::ErrorSyntax *S);
-  void VisitAtomSyntax(const green::AtomSyntax *S);
-  void VisitListSyntax(const green::ListSyntax *S);
-  void VisitArraySyntax(const green::ArraySyntax *S);
-  void VisitCallSyntax(const green::CallSyntax *S);
-  void VisitElemSyntax(const green::ElemSyntax *S);
-  void VisitMacroSyntax(const green::MacroSyntax *S);
   void
   VisitLifetimeExtendedTemporaryDecl(const LifetimeExtendedTemporaryDecl *D);
+
+  void VisitErrorSyntax(const gold::ErrorSyntax *S);
+  void VisitAtomSyntax(const gold::AtomSyntax *S);
+  void VisitListSyntax(const gold::ListSyntax *S);
+  void VisitArraySyntax(const gold::ArraySyntax *S);
+  void VisitCallSyntax(const gold::CallSyntax *S);
+  void VisitElemSyntax(const gold::ElemSyntax *S);
+  void VisitMacroSyntax(const gold::MacroSyntax *S);
 };
 
 } // namespace clang

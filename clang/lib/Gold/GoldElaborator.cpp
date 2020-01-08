@@ -257,15 +257,20 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 
   // Elaborate the initializer.
   ExprElaborator ExprElab(Context.CxxAST, SemaRef);
-  clang::Expr *Init = ExprElab.elaborateExpr(D->Init);
-  if (!Init)
-    return;
+  ExprElaborator::Expression Init = ExprElab.elaborateExpr(D->Init);
 
+  // Make sure the initializer was not elaborated as a type.
+  if (Init.is<clang::TypeSourceInfo *>()) {
+    llvm::errs() << "Expected expression.\n";
+    return;
+  }
+
+  clang::Expr *InitExpr = Init.get<clang::Expr *>();
   // Perform auto deduction.
   if (VD->getType()->isUndeducedType()) {
     clang::Sema &CxxSema = SemaRef.getCxxSema();
     clang::QualType Ty;
-    auto Result = CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), Init, Ty);
+    auto Result = CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), InitExpr, Ty);
     if (Result == clang::Sema::DAR_Failed) {
       // FIXME: Make this a real diagnostic.
       llvm::errs() << "Failed to deduce type of expression.\n";
@@ -278,7 +283,7 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   // should be a single function to do all of this.
 
   // Update the initializer.
-  VD->setInit(Init);
+  VD->setInit(InitExpr);
 }
 
 // Get the clang::QualType described by an operator':' call.
@@ -392,36 +397,6 @@ clang::QualType Elaborator::elaborateExplicitType(Declarator *D, clang::QualType
       assert(false && "User-defined types not supported.");
     }
     return BuiltinMapIter->second;
-  } else if (const auto *Elem = dyn_cast<ElemSyntax>(D->Data.Type)) {
-    // The type can also be an array, such as x[N] or [N]x
-    // FIXME: This seems like it should be handled by elaborateArrayType
-    // but this isn't an array declarator, it's a type declarator with
-    // an array size.
-    const AtomSyntax *Typename = cast<AtomSyntax>(Elem->getObject());
-
-    // Get the array type then elaborate the accessor expression.
-    auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
-    if (BuiltinMapIter == BuiltinTypes.end())
-      assert(false && "User-defined types not supported.");
-
-    ExprElaborator ExEl(Context.CxxAST, SemaRef);
-    const ListSyntax *ArrayArgs = cast<ListSyntax>(Elem->getArguments());
-    clang::Expr *SizeExpr = ExEl.elaborateExpr(ArrayArgs->getChild(0));
-
-
-    clang::Expr::EvalResult SizeResult;
-    if (!SizeExpr->EvaluateAsInt(SizeResult, Context.CxxAST,
-                                 clang::Expr::SE_NoSideEffects,
-                                 /*InConstantContext=*/true)) {
-      llvm::errs() << "Array index is not a C++ constant expression.";
-      return clang::QualType();
-    }
-
-    llvm::APSInt ArraySize = SizeResult.Val.getInt();
-    // FIXME: use the proper arraysizemodifier.
-    return Context.CxxAST.getConstantArrayType(BuiltinMapIter->second, ArraySize,
-                                               SizeExpr, clang::ArrayType::Normal,
-                                               /*TypeQuals=*/0);
   }
 
   llvm_unreachable("Unknown type specification");

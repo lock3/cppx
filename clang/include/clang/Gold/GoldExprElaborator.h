@@ -16,6 +16,7 @@
 #define CLANG_GOLD_EXPRELABORATOR_H
 
 #include "clang/AST/OperationKinds.h"
+#include "llvm/ADT/PointerUnion.h"
 
 #include "clang/Gold/GoldSyntax.h"
 
@@ -24,6 +25,7 @@ namespace clang {
 class ASTContext;
 class Expr;
 class Sema;
+class TypeSourceInfo;
 
 } // namespace clang
 
@@ -31,7 +33,8 @@ namespace gold {
 
 class Sema;
 
-// Builds a clang::Expr node out of a gold::Syntax node.
+// Builds a C++ expression or C++ type expression, in the form of a clang::Expr*
+// or clang TypeSourceInfo* respectively, out of a gold::Syntax node.
 class ExprElaborator {
   clang::ASTContext &CxxAST;
 
@@ -39,16 +42,19 @@ class ExprElaborator {
 public:
   ExprElaborator(clang::ASTContext &CxxContext, Sema &SemaRef);
 
-  clang::Expr *elaborateExpr(const Syntax *S);
+  // Represents a C++ expression, which may be either an object expression
+  // or a type expression.
+  using Expression = llvm::PointerUnion<clang::Expr *, clang::TypeSourceInfo *>;
+  Expression elaborateExpr(const Syntax *S);
 
-  clang::Expr *elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType);
-  clang::Expr *elaborateCall(const CallSyntax *S);
+  Expression elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType);
+  Expression elaborateCall(const CallSyntax *S);
 
-  clang::Expr *elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
-  clang::Expr *elaborateCmpAssignOp(const CallSyntax *S,
+  Expression elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
+  Expression elaborateCmpAssignOp(const CallSyntax *S,
                                     clang::BinaryOperatorKind Op);
 
-  clang::Expr *elaborateBlockCondition(const ArraySyntax *Conditions);
+  Expression elaborateBlockCondition(const ArraySyntax *Conditions);
 
 private:
   clang::Expr *handleOperatorDotDot(const CallSyntax *Call);

@@ -113,7 +113,7 @@ add_clang_library(clangAST
   LINK_LIBS
   clangBasic
   clangLex
-  green
+  gold
 
   DEPENDS
   Opcodes

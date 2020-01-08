@@ -36,11 +36,13 @@ ExprElaborator::ExprElaborator(clang::ASTContext &CxxAST, Sema &SemaRef)
   : CxxAST(CxxAST), SemaRef(SemaRef)
 {}
 
-clang::Expr *
+ExprElaborator::Expression
 ExprElaborator::elaborateExpr(const Syntax *S) {
+  clang::Expr *Ret = nullptr;
   if (isa<AtomSyntax>(S))
     return elaborateAtom(cast<AtomSyntax>(S), clang::QualType());
   if (isa<CallSyntax>(S))
+    return Ret;
     return elaborateCall(cast<CallSyntax>(S));
 
   assert(false && "Unsupported expression.");
@@ -139,7 +141,7 @@ createDeclRefExpr(clang::ASTContext &CxxAST, Sema &SemaRef, Token T,
   return nullptr;
 }
 
-clang::Expr *
+ExprElaborator::Expression
 ExprElaborator::elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType) {
   Token T = S->Tok;
 
@@ -199,7 +201,7 @@ const llvm::StringMap<clang::BinaryOperatorKind> CompoundAssignOperators = {
   {"operator'^='" , clang::BO_XorAssign},
 };
 
-clang::Expr *
+ExprElaborator::Expression
 ExprElaborator::elaborateCall(const CallSyntax *S) {
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   std::string Spelling = Callee->Tok.getSpelling();
@@ -266,10 +268,15 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
     assert(ArgList && "Unexpected argument format.");
     for (const Syntax *A : ArgList->children()) {
       ExprElaborator Elab(CxxAST, SemaRef);
-      clang::Expr *AExpr = Elab.elaborateExpr(A);
+      Expression Argument = Elab.elaborateExpr(A);
 
-      if (AExpr)
-        Args.push_back(AExpr);
+      // FIXME: What kind of expression is the unary ':typename' expression?
+      if (Argument.is<clang::TypeSourceInfo *>()) {
+        llvm::errs() << "Expected expression.\n";
+        return nullptr;
+      }
+
+      Args.push_back(Argument.get<clang::Expr *>());
     }
 
     // Create the call.
@@ -282,46 +289,72 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
     return Call.get();
   }
 
-
   llvm::errs() << "Unsupported call.\n";
   return nullptr;
 }
 
-clang::Expr *
+ExprElaborator::Expression
 ExprElaborator::elaborateBinOp(const CallSyntax *S,
                                clang::BinaryOperatorKind Op) {
   const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
   const Syntax *LHSSyntax = ArgList->Elems[0];
   const Syntax *RHSSyntax = ArgList->Elems[1];
 
-  clang::Expr *RHSExpr = elaborateExpr(LHSSyntax);
-  clang::Expr *LHSExpr = elaborateExpr(RHSSyntax);
+  // FIXME: what?
+  // The LHS as written becomes the RHS in our implicit statement,
+  // due to recursion. 
+  Expression RHS = elaborateExpr(LHSSyntax);
+  if (RHS.is<clang::TypeSourceInfo *>()) {
+    llvm::errs() << "Expected expression.\n";
+    return nullptr;
+  }
+
+  Expression LHS = elaborateExpr(RHSSyntax);
+  if (LHS.is<clang::TypeSourceInfo *>()) {
+    llvm::errs() << "Expected expression.\n";
+    return nullptr;
+  }
 
   clang::Sema &ClangSema = SemaRef.getCxxSema();
 
+  // FIXME: replace with Sema::ActOnBinOp
   clang::ExprResult Res = ClangSema.BuildBinOp(/*Scope=*/nullptr,
                                                clang::SourceLocation(), Op,
-                                               LHSExpr, RHSExpr);
+                                               LHS.get<clang::Expr *>(),
+                                               RHS.get<clang::Expr *>());
   if (Res.isInvalid())
     return nullptr;
 
   return Res.get();
 }
 
-clang::Expr *
+// FIXME: how is this different from elaborateBinOp?
+ExprElaborator::Expression
 ExprElaborator::elaborateCmpAssignOp(const CallSyntax *S,
                                      clang::BinaryOperatorKind Op) {
   const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
   const Syntax *LHSSyntax = ArgList->Elems[0];
   const Syntax *RHSSyntax = ArgList->Elems[1];
 
-  clang::Expr *RHSExpr = elaborateExpr(LHSSyntax);
-  clang::Expr *LHSExpr = elaborateExpr(RHSSyntax);
+  // FIXME: error carry-forward? see: ElaborateBinOp FIXME
+  Expression RHS = elaborateExpr(LHSSyntax);
+  if (RHS.is<clang::TypeSourceInfo *>()) {
+    llvm::errs() << "Expected expression.\n";
+    return nullptr;
+  }
+
+  Expression LHS = elaborateExpr(RHSSyntax);
+  if (LHS.is<clang::TypeSourceInfo *>()) {
+    llvm::errs() << "Expected expression.\n";
+    return nullptr;
+  }
 
   clang::Sema &ClangSema = SemaRef.getCxxSema();
 
   clang::ExprResult Res =
-    ClangSema.CreateBuiltinBinOp(clang::SourceLocation(), Op, LHSExpr, RHSExpr);
+    ClangSema.CreateBuiltinBinOp(clang::SourceLocation(), Op,
+                                 LHS.get<clang::Expr *>(),
+                                 RHS.get<clang::Expr *>());
   if (Res.isInvalid())
     return nullptr;
 
@@ -339,25 +372,38 @@ ExprElaborator::elaborateCmpAssignOp(const CallSyntax *S,
 /// \endcode
 /// We just create a logical and expression with n terms: one for each
 /// sub expression.
-clang::Expr *ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
+ExprElaborator::Expression
+ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
   // If there's only one term, we don't need to do anything else.
   if (Conditions->getNumChildren() == 1)
     return elaborateExpr(Conditions->getChild(0));
 
-  clang::Expr *LHS, *RHS;
+  Expression LHS, RHS;
 
   {
     ExprElaborator ExEl(CxxAST, SemaRef);
     LHS = ExEl.elaborateExpr(Conditions->getChild(0));
+
+    if (LHS.is<clang::TypeSourceInfo *>()) {
+      llvm::errs() << "Expected expression\n";
+      return nullptr;
+    }
   }
   {
     ExprElaborator ExEl(CxxAST, SemaRef);
     RHS = ExEl.elaborateExpr(Conditions->getChild(1));
+
+    if (RHS.is<clang::TypeSourceInfo *>()) {
+      llvm::errs() << "Expected expression\n";
+      return nullptr;
+    }
   }
 
   clang::ExprResult BinOp =
     SemaRef.getCxxSema().ActOnBinOp(/*Scope=*/nullptr, clang::SourceLocation(),
-                                    clang::tok::ampamp, LHS, RHS);
+                                    clang::tok::ampamp,
+                                    LHS.get<clang::Expr *>(),
+                                    RHS.get<clang::Expr *>());
   if (BinOp.isInvalid())
     return nullptr;
 
@@ -369,7 +415,8 @@ clang::Expr *ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditio
 
     BinOp =
       SemaRef.getCxxSema().ActOnBinOp(/*Scope=*/nullptr, clang::SourceLocation(),
-                                      clang::tok::ampamp, BinOp.get(), RHS);
+                                      clang::tok::ampamp, BinOp.get(),
+                                      RHS.get<clang::Expr *>());
     if (BinOp.isInvalid())
       return nullptr;
   }

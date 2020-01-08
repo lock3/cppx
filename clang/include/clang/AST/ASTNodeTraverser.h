@@ -22,7 +22,7 @@
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/TemplateArgumentVisitor.h"
 #include "clang/AST/TypeVisitor.h"
-#include "clang/Green/SyntaxVisitor.h"
+#include "clang/Gold/GoldSyntaxVisitor.h"
 
 namespace clang {
 
@@ -61,7 +61,7 @@ class ASTNodeTraverser
       public TypeVisitor<Derived>,
       public ConstAttrVisitor<Derived>,
       public ConstTemplateArgumentVisitor<Derived>,
-      public green::ConstGreenSyntaxVisitor<Derived> {
+      public gold::ConstSyntaxVisitor<Derived> {
 
   /// Indicates whether we should trigger deserialization of nodes that had
   /// not already been loaded.
@@ -230,15 +230,14 @@ public:
     });
   }
 
-  void Visit(const green::Syntax *S) {
+  void Visit(const gold::Syntax *S) {
     getNodeDelegate().AddChild([=] {
       getNodeDelegate().Visit(S);
       if (!S)
         return;
 
-      using namespace green;
-      ConstGreenSyntaxVisitor<Derived>::Visit(S);
-      for (const Syntax *SubSyntax : S->children())
+      gold::ConstSyntaxVisitor<Derived>::Visit(S);
+      for (const gold::Syntax *SubSyntax : S->children())
         Visit(SubSyntax);
     });
   }

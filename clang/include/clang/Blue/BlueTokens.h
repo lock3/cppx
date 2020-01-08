@@ -14,7 +14,7 @@
 #ifndef CLANG_BLUE_BLUETOKENS_H
 #define CLANG_BLUE_BLUETOKENS_H
 
-#include "clang/Green/Symbol.h"
+#include "clang/Gold/GoldSymbol.h"
 #include "clang/Basic/SourceLocation.h"
 
 #include <iosfwd>
@@ -70,7 +70,7 @@ struct Token
   { }
 
   /// Constructs a normal token.
-  Token(TokenKind K, clang::SourceLocation Loc, Symbol Sym)
+  Token(TokenKind K, clang::SourceLocation Loc, gold::Symbol Sym)
     : Kind(K), Flags(), Loc(Loc), Sym(Sym)
   { }
 
@@ -113,13 +113,13 @@ struct Token
     return Loc;
   }
 
-  Symbol getSymbol() const {
+  gold::Symbol getSymbol() const {
     assert(!isFused());
     return Sym;
   }
 
   bool hasSpelling(char const* Str) const {
-    return getSymbol() == ::getSymbol(Str);
+    return getSymbol() == gold::getSymbol(Str);
   }
 
   /// Returns the spelling of the token.
@@ -146,7 +146,7 @@ struct Token
   union
   {
     // For non-fused tokens, this is its underlying spelling (or lexeme).
-    Symbol Sym;
+    gold::Symbol Sym;
 
     // For fused tokens, this is a pointer to its associated data.
     void* Ptr;

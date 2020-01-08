@@ -11,7 +11,7 @@
 
 #include "clang/Frontend/FrontendAction.h"
 
-#include "clang/Green/GreenFrontend.h"
+#include "clang/Gold/GoldFrontend.h"
 
 #include <memory>
 
@@ -120,10 +120,10 @@ public:
   EmitObjAction(llvm::LLVMContext *_VMContext = nullptr);
 };
 
-class EmitGreenAction : public CodeGenAction {
+class EmitGoldAction : public CodeGenAction {
   virtual void anchor();
 public:
-  EmitGreenAction(llvm::LLVMContext *_VMContext = nullptr);
+  EmitGoldAction(llvm::LLVMContext *_VMContext = nullptr);
 
   void ExecuteAction() override;
 };

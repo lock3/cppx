@@ -14,6 +14,7 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Stmt.h"
+#include "clang/AST/Type.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Sema.h"
@@ -46,7 +47,14 @@ StmtElaborator::elaborateStmt(const Syntax *S) {
 clang::Stmt *
 StmtElaborator::elaborateAtom(const AtomSyntax *S) {
   ExprElaborator ExEl(CxxAST, SemaRef);
-  return ExEl.elaborateExpr(S);
+  ExprElaborator::Expression Expression = ExEl.elaborateExpr(S);
+
+  if (Expression.is<clang::TypeSourceInfo *>()) {
+    llvm::errs() << "Expected expression.\n";
+    return nullptr;
+  }
+
+  return Expression.get<clang::Expr *>();
 }
 
 static clang::Stmt *
@@ -103,14 +111,17 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
 
     if (R.empty())
       return createDeclStmt(CxxAST, SemaRef, S);
-    else {
-      ExprElaborator ExprElab(CxxAST, SemaRef);
-      return ExprElab.elaborateCall(S);
-    }
   }
 
   ExprElaborator ExprElab(CxxAST, SemaRef);
-  return ExprElab.elaborateCall(S);
+  ExprElaborator::Expression Expression = ExprElab.elaborateCall(S);
+
+  if (Expression.is<clang::TypeSourceInfo *>()) {
+    llvm::errs() << "Expected expression.\n";
+    return nullptr;
+  }
+
+  return Expression.get<clang::Expr *>();
 }
 
 clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
@@ -118,12 +129,27 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
 
   clang::Expr *ConditionExpr;
   ExprElaborator ExEl(CxxAST, SemaRef);
-  if (const ArraySyntax *BlockCond = dyn_cast<ArraySyntax>(Call->getArguments()))
-    ConditionExpr = ExEl.elaborateBlockCondition(BlockCond);
-  else if (const ListSyntax *Args = dyn_cast<ListSyntax>(Call->getArguments()))
-    ConditionExpr = ExEl.elaborateExpr(Args->getChild(0));
-  else
+  if (const ArraySyntax *BlockCond = dyn_cast<ArraySyntax>(Call->getArguments())) {
+    ExprElaborator::Expression Expression = ExEl.elaborateBlockCondition(BlockCond);
+
+    if (Expression.is<clang::TypeSourceInfo *>()) {
+      llvm::errs() << "Expected expression.\n";
+      return nullptr;
+    }
+
+    ConditionExpr = Expression.get<clang::Expr *>();
+  } else if (const ListSyntax *Args = dyn_cast<ListSyntax>(Call->getArguments())) {
+    ExprElaborator::Expression Expression = ExEl.elaborateExpr(Args->getChild(0));
+
+    if (Expression.is<clang::TypeSourceInfo *>()) {
+      llvm::errs() << "Expected expression.\n";
+      return nullptr;
+    }
+
+    ConditionExpr = Expression.get<clang::Expr *>();
+  } else {
     return nullptr;
+  }
 
   clang::Sema::ConditionResult Condition =
     SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr, S->Loc,

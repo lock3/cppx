@@ -25,7 +25,7 @@
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
-#include "clang/Green/ParseGreenAST.h"
+#include "clang/Gold/ParseGoldAST.h"
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/CodeGen/MachineOptimizationRemarkEmitter.h"
@@ -47,7 +47,7 @@
 #include "llvm/Support/YAMLTraits.h"
 #include "llvm/Transforms/IPO/Internalize.h"
 
-// remove these once EmitGreenAction and ParseGreenSyntaxAction merge.
+// remove these once EmitGoldAction and ParseGoldSyntaxAction merge.
 #include "clang/Parse/ParseAST.h"
 
 #include <memory>
@@ -1065,7 +1065,6 @@ void CodeGenAction::HandleIRFile() {
   if (BA != Backend_EmitNothing && !OS)
     return;
 
-
   bool Invalid;
   SourceManager &SM = CI.getSourceManager();
   FileID FID = SM.getMainFileID();
@@ -1150,17 +1149,16 @@ void EmitObjAction::anchor() { }
 EmitObjAction::EmitObjAction(llvm::LLVMContext *_VMContext)
   : CodeGenAction(Backend_EmitObj, _VMContext) {}
 
-void EmitGreenAction::anchor() { }
-EmitGreenAction::EmitGreenAction(llvm::LLVMContext *_VMContext)
+void EmitGoldAction::anchor() { }
+EmitGoldAction::EmitGoldAction(llvm::LLVMContext *_VMContext)
   : CodeGenAction(Backend_EmitObj, _VMContext) {}
 
-void EmitGreenAction::ExecuteAction() {
-  llvm::outs() << "Emitting green\n";
+void EmitGoldAction::ExecuteAction() {
   // If this is an IR file, we have to treat it specially.
   if (getCurrentFileKind().getLanguage() == Language::LLVM_IR)
     HandleIRFile();
 
-  // Otherwise follow the normal GreenAST path.
+  // Otherwise follow the normal Gold AST path.
   CompilerInstance &CI = getCompilerInstance();
   if (!CI.hasPreprocessor())
     return;
@@ -1170,8 +1168,8 @@ void EmitGreenAction::ExecuteAction() {
     CI.createSema(getTranslationUnitKind(), nullptr);
 
   switch (getCurrentFileKind().getLanguage()) {
-  case clang::Language::Green:
-    lock3::ParseGreenAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
+  case clang::Language::Gold:
+    gold::ParseGoldAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
     break;
   default:
     clang::ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,

@@ -74,8 +74,8 @@ enum ActionKind {
   /// Emit a .o file.
   EmitObj,
 
-  /// Emit a .o file for green.
-  EmitGreen,
+  /// Emit a .o file for gold.
+  EmitGold,
 
   /// Emit a .o file for blue.
   EmitBlue,
@@ -107,8 +107,8 @@ enum ActionKind {
   /// Load and verify that a PCH file is usable.
   VerifyPCH,
 
-  /// Parse syntax for the Green language
-  ParseGreenSyntax,
+  /// Parse syntax for the Gold language
+  ParseGoldSyntax,
 
   /// Parse syntax for the Blue language
   ParseBlueSyntax,
@@ -183,9 +183,9 @@ public:
     return Lang == Language::ObjC || Lang == Language::ObjCXX;
   }
 
-  /// Is the language of the input Green?
-  bool isGreen() const {
-    return Lang == Language::Green;
+  /// Is the language of the input Gold?
+  bool isGold() const {
+    return Lang == Language::Gold;
   }
 
   // Is the language of the input Blue?

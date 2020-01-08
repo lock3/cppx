@@ -1960,8 +1960,8 @@ void TextNodeDumper::VisitConceptDecl(const ConceptDecl *D) {
   dumpName(D);
 }
 
-void TextNodeDumper::Visit(const green::Syntax *S) {
-  using namespace green;
+void TextNodeDumper::Visit(const gold::Syntax *S) {
+  using namespace gold;
 
   if (!S) {
     ColorScope Color(OS, ShowColors, NullColor);
@@ -1974,30 +1974,30 @@ void TextNodeDumper::Visit(const green::Syntax *S) {
   }
   dumpPointer(S);
 
-  ConstGreenSyntaxVisitor<TextNodeDumper>::Visit(S);
+  ConstSyntaxVisitor<TextNodeDumper>::Visit(S);
 }
 
-void TextNodeDumper::VisitErrorSyntax(const green::ErrorSyntax *S) {
+void TextNodeDumper::VisitErrorSyntax(const gold::ErrorSyntax *S) {
   ColorScope Color(OS, ShowColors, CastColor);
   OS << "<<<ERROR>>>";
 }
 
-void TextNodeDumper::VisitAtomSyntax(const green::AtomSyntax *S) {
-  using namespace green;
+void TextNodeDumper::VisitAtomSyntax(const gold::AtomSyntax *S) {
+  using namespace gold;
   OS << ' ' << S->Tok.getSpelling();
 }
 
-void TextNodeDumper::VisitListSyntax(const green::ListSyntax *S) {
+void TextNodeDumper::VisitListSyntax(const gold::ListSyntax *S) {
 }
 
-void TextNodeDumper::VisitArraySyntax(const green::ArraySyntax *S) {
+void TextNodeDumper::VisitArraySyntax(const gold::ArraySyntax *S) {
 }
 
-void TextNodeDumper::VisitCallSyntax(const green::CallSyntax *S) {
+void TextNodeDumper::VisitCallSyntax(const gold::CallSyntax *S) {
 }
 
-void TextNodeDumper::VisitElemSyntax(const green::ElemSyntax *S) {
+void TextNodeDumper::VisitElemSyntax(const gold::ElemSyntax *S) {
 }
 
-void TextNodeDumper::VisitMacroSyntax(const green::MacroSyntax *S) {
+void TextNodeDumper::VisitMacroSyntax(const gold::MacroSyntax *S) {
 }

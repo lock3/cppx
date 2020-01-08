@@ -23,7 +23,7 @@
 #include "clang/Frontend/FrontendPluginRegistry.h"
 #include "clang/Frontend/Utils.h"
 #include "clang/FrontendTool/Utils.h"
-#include "clang/Green/GreenFrontend.h"
+#include "clang/Gold/GoldFrontend.h"
 #include "clang/Rewrite/Frontend/FrontendActions.h"
 #include "clang/StaticAnalyzer/Frontend/FrontendActions.h"
 #include "llvm/Option/OptTable.h"
@@ -58,7 +58,7 @@ CreateFrontendBaseAction(CompilerInstance &CI) {
   case EmitLLVMOnly:           return std::make_unique<EmitLLVMOnlyAction>();
   case EmitCodeGenOnly:        return std::make_unique<EmitCodeGenOnlyAction>();
   case EmitObj:                return std::make_unique<EmitObjAction>();
-  case EmitGreen:              return std::make_unique<EmitGreenAction>();
+  case EmitGold:               return std::make_unique<EmitGoldAction>();
   case EmitBlue:               return std::make_unique<EmitBlueAction>();
   case FixIt:                  return std::make_unique<FixItAction>();
   case GenerateModule:
@@ -70,8 +70,8 @@ CreateFrontendBaseAction(CompilerInstance &CI) {
   case GeneratePCH:            return std::make_unique<GeneratePCHAction>();
   case GenerateInterfaceIfsExpV1:
     return std::make_unique<GenerateInterfaceIfsExpV1Action>();
-  case ParseGreenSyntax:
-    return std::make_unique<lock3::GreenSyntaxAction>();
+  case ParseGoldSyntax:
+    return std::make_unique<gold::GoldSyntaxAction>();
   case ParseBlueSyntax:
     return std::make_unique<blue::BlueSyntaxAction>();
   case InitOnly:               return std::make_unique<InitOnlyAction>();
