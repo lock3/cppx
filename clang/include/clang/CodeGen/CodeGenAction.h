@@ -10,6 +10,9 @@
 #define LLVM_CLANG_CODEGEN_CODEGENACTION_H
 
 #include "clang/Frontend/FrontendAction.h"
+
+#include "clang/Gold/GoldFrontend.h"
+
 #include <memory>
 
 namespace llvm {
@@ -63,6 +66,7 @@ protected:
   std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
                                                  StringRef InFile) override;
 
+  void HandleIRFile();
   void ExecuteAction() override;
 
   void EndSourceFileAction() override;
@@ -114,6 +118,22 @@ class EmitObjAction : public CodeGenAction {
   virtual void anchor();
 public:
   EmitObjAction(llvm::LLVMContext *_VMContext = nullptr);
+};
+
+class EmitGoldAction : public CodeGenAction {
+  virtual void anchor();
+public:
+  EmitGoldAction(llvm::LLVMContext *_VMContext = nullptr);
+
+  void ExecuteAction() override;
+};
+
+class EmitBlueAction : public CodeGenAction {
+  virtual void anchor();
+public:
+  EmitBlueAction(llvm::LLVMContext *_VMContext = nullptr);
+
+  void ExecuteAction() override;
 };
 
 }

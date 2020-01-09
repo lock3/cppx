@@ -74,6 +74,12 @@ enum ActionKind {
   /// Emit a .o file.
   EmitObj,
 
+  /// Emit a .o file for gold.
+  EmitGold,
+
+  /// Emit a .o file for blue.
+  EmitBlue,
+
   /// Parse and apply any fixits to the source.
   FixIt,
 
@@ -100,6 +106,12 @@ enum ActionKind {
 
   /// Load and verify that a PCH file is usable.
   VerifyPCH,
+
+  /// Parse syntax for the Gold language
+  ParseGoldSyntax,
+
+  /// Parse syntax for the Blue language
+  ParseBlueSyntax,
 
   /// Parse and perform semantic analysis.
   ParseSyntaxOnly,
@@ -169,6 +181,16 @@ public:
   /// Is the language of the input some dialect of Objective-C?
   bool isObjectiveC() const {
     return Lang == Language::ObjC || Lang == Language::ObjCXX;
+  }
+
+  /// Is the language of the input Gold?
+  bool isGold() const {
+    return Lang == Language::Gold;
+  }
+
+  // Is the language of the input Blue?
+  bool isBlue() const {
+    return Lang == Language::Blue;
   }
 
   InputKind getPreprocessed() const {

@@ -19,11 +19,13 @@
 #include "clang/Basic/LangStandard.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Blue/ParseBlueAST.h"
 #include "clang/CodeGen/BackendUtil.h"
 #include "clang/CodeGen/ModuleBuilder.h"
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
+#include "clang/Gold/ParseGoldAST.h"
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/CodeGen/MachineOptimizationRemarkEmitter.h"
@@ -44,6 +46,9 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/YAMLTraits.h"
 #include "llvm/Transforms/IPO/Internalize.h"
+
+// remove these once EmitGoldAction and ParseGoldSyntaxAction merge.
+#include "clang/Parse/ParseAST.h"
 
 #include <memory>
 using namespace clang;
@@ -1050,74 +1055,75 @@ CodeGenAction::loadModule(MemoryBufferRef MBRef) {
   return {};
 }
 
-void CodeGenAction::ExecuteAction() {
-  // If this is an IR file, we have to treat it specially.
-  if (getCurrentFileKind().getLanguage() == Language::LLVM_IR) {
-    BackendAction BA = static_cast<BackendAction>(Act);
-    CompilerInstance &CI = getCompilerInstance();
-    auto &CodeGenOpts = CI.getCodeGenOpts();
-    auto &Diagnostics = CI.getDiagnostics();
-    std::unique_ptr<raw_pwrite_stream> OS =
-        GetOutputStream(CI, getCurrentFile(), BA);
-    if (BA != Backend_EmitNothing && !OS)
-      return;
+void CodeGenAction::HandleIRFile() {
+  BackendAction BA = static_cast<BackendAction>(Act);
+  CompilerInstance &CI = getCompilerInstance();
+  auto &CodeGenOpts = CI.getCodeGenOpts();
+  auto &Diagnostics = CI.getDiagnostics();
+  std::unique_ptr<raw_pwrite_stream> OS =
+    GetOutputStream(CI, getCurrentFile(), BA);
+  if (BA != Backend_EmitNothing && !OS)
+    return;
 
-    bool Invalid;
-    SourceManager &SM = CI.getSourceManager();
-    FileID FID = SM.getMainFileID();
-    const llvm::MemoryBuffer *MainFile = SM.getBuffer(FID, &Invalid);
-    if (Invalid)
-      return;
+  bool Invalid;
+  SourceManager &SM = CI.getSourceManager();
+  FileID FID = SM.getMainFileID();
+  const llvm::MemoryBuffer *MainFile = SM.getBuffer(FID, &Invalid);
+  if (Invalid)
+    return;
 
-    TheModule = loadModule(*MainFile);
-    if (!TheModule)
-      return;
+  TheModule = loadModule(*MainFile);
+  if (!TheModule)
+    return;
 
-    const TargetOptions &TargetOpts = CI.getTargetOpts();
-    if (TheModule->getTargetTriple() != TargetOpts.Triple) {
-      Diagnostics.Report(SourceLocation(),
-                         diag::warn_fe_override_module)
-          << TargetOpts.Triple;
-      TheModule->setTargetTriple(TargetOpts.Triple);
-    }
+  const TargetOptions &TargetOpts = CI.getTargetOpts();
+  if (TheModule->getTargetTriple() != TargetOpts.Triple) {
+    Diagnostics.Report(SourceLocation(),
+                       diag::warn_fe_override_module)
+      << TargetOpts.Triple;
+    TheModule->setTargetTriple(TargetOpts.Triple);
+  }
 
-    EmbedBitcode(TheModule.get(), CodeGenOpts,
-                 MainFile->getMemBufferRef());
+  EmbedBitcode(TheModule.get(), CodeGenOpts,
+               MainFile->getMemBufferRef());
 
-    LLVMContext &Ctx = TheModule->getContext();
-    Ctx.setInlineAsmDiagnosticHandler(BitcodeInlineAsmDiagHandler,
-                                      &Diagnostics);
+  LLVMContext &Ctx = TheModule->getContext();
+  Ctx.setInlineAsmDiagnosticHandler(BitcodeInlineAsmDiagHandler,
+                                    &Diagnostics);
 
-    Expected<std::unique_ptr<llvm::ToolOutputFile>> OptRecordFileOrErr =
-        setupOptimizationRemarks(
-            Ctx, CodeGenOpts.OptRecordFile,
-            CodeGenOpts.OptRecordPasses,
-            CodeGenOpts.OptRecordFormat,
-            CodeGenOpts.DiagnosticsWithHotness,
-            CodeGenOpts.DiagnosticsHotnessThreshold);
+  Expected<std::unique_ptr<llvm::ToolOutputFile>> OptRecordFileOrErr =
+    setupOptimizationRemarks(
+      Ctx, CodeGenOpts.OptRecordFile,
+      CodeGenOpts.OptRecordPasses,
+      CodeGenOpts.OptRecordFormat,
+      CodeGenOpts.DiagnosticsWithHotness,
+      CodeGenOpts.DiagnosticsHotnessThreshold);
 
-    if (Error E = OptRecordFileOrErr.takeError()) {
-      reportOptRecordError(std::move(E), Diagnostics, CodeGenOpts);
-      return;
-    }
-    std::unique_ptr<llvm::ToolOutputFile> OptRecordFile =
-      std::move(*OptRecordFileOrErr);
-
-    EmitBackendOutput(Diagnostics, CI.getHeaderSearchOpts(),
-                      CodeGenOpts, TargetOpts, CI.getLangOpts(),
-                      CI.getTarget().getDataLayout(), TheModule.get(), BA,
-                      std::move(OS));
-
-    if (OptRecordFile)
-      OptRecordFile->keep();
+  if (Error E = OptRecordFileOrErr.takeError()) {
+    reportOptRecordError(std::move(E), Diagnostics, CodeGenOpts);
     return;
   }
+  std::unique_ptr<llvm::ToolOutputFile> OptRecordFile =
+    std::move(*OptRecordFileOrErr);
+
+  EmitBackendOutput(Diagnostics, CI.getHeaderSearchOpts(),
+                    CodeGenOpts, TargetOpts, CI.getLangOpts(),
+                    CI.getTarget().getDataLayout(), TheModule.get(), BA,
+                    std::move(OS));
+
+  if (OptRecordFile)
+    OptRecordFile->keep();
+  return;
+}
+
+void CodeGenAction::ExecuteAction() {
+  // If this is an IR file, we have to treat it specially.
+  if (getCurrentFileKind().getLanguage() == Language::LLVM_IR)
+    HandleIRFile();
 
   // Otherwise follow the normal AST path.
   this->ASTFrontendAction::ExecuteAction();
 }
-
-//
 
 void EmitAssemblyAction::anchor() { }
 EmitAssemblyAction::EmitAssemblyAction(llvm::LLVMContext *_VMContext)
@@ -1142,3 +1148,62 @@ EmitCodeGenOnlyAction::EmitCodeGenOnlyAction(llvm::LLVMContext *_VMContext)
 void EmitObjAction::anchor() { }
 EmitObjAction::EmitObjAction(llvm::LLVMContext *_VMContext)
   : CodeGenAction(Backend_EmitObj, _VMContext) {}
+
+void EmitGoldAction::anchor() { }
+EmitGoldAction::EmitGoldAction(llvm::LLVMContext *_VMContext)
+  : CodeGenAction(Backend_EmitObj, _VMContext) {}
+
+void EmitGoldAction::ExecuteAction() {
+  // If this is an IR file, we have to treat it specially.
+  if (getCurrentFileKind().getLanguage() == Language::LLVM_IR)
+    HandleIRFile();
+
+  // Otherwise follow the normal Gold AST path.
+  CompilerInstance &CI = getCompilerInstance();
+  if (!CI.hasPreprocessor())
+    return;
+  if (!CI.hasASTContext())
+    return;
+  if (!CI.hasSema())
+    CI.createSema(getTranslationUnitKind(), nullptr);
+
+  switch (getCurrentFileKind().getLanguage()) {
+  case clang::Language::Gold:
+    gold::ParseGoldAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
+    break;
+  default:
+    clang::ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
+                    CI.getFrontendOpts().SkipFunctionBodies);
+    break;
+  }
+}
+
+void EmitBlueAction::anchor() { }
+EmitBlueAction::EmitBlueAction(llvm::LLVMContext *_VMContext)
+  : CodeGenAction(Backend_EmitObj, _VMContext) {}
+
+void EmitBlueAction::ExecuteAction() {
+
+  // If this is an IR file, we have to treat it specially.
+  if (getCurrentFileKind().getLanguage() == Language::LLVM_IR)
+    HandleIRFile();
+
+  // Otherwise follow the normal BlueAST path.
+  CompilerInstance &CI = getCompilerInstance();
+  if (!CI.hasPreprocessor())
+    return;
+  if (!CI.hasASTContext())
+    return;
+  if (!CI.hasSema())
+    CI.createSema(getTranslationUnitKind(), nullptr);
+
+  switch (getCurrentFileKind().getLanguage()) {
+  case clang::Language::Blue:
+    blue::ParseBlueAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
+    break;
+  default:
+    clang::ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
+                    CI.getFrontendOpts().SkipFunctionBodies);
+    break;
+  }
+}

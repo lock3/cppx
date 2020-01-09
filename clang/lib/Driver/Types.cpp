@@ -140,6 +140,8 @@ bool types::isAcceptedByClang(ID Id) {
   case TY_CXXModule: case TY_PP_CXXModule:
   case TY_AST: case TY_ModuleFile:
   case TY_LLVM_IR: case TY_LLVM_BC:
+  case TY_Gold:
+  case TY_Blue:
     return true;
   }
 }
@@ -210,6 +212,14 @@ bool types::isHIP(ID Id) {
   case TY_HIP_DEVICE:
     return true;
   }
+}
+
+bool types::isGold(ID Id) {
+  return Id == TY_Gold;
+}
+
+bool types::isBlue(ID Id) {
+  return Id == TY_Blue;
 }
 
 bool types::isFortran(ID Id) {
@@ -285,6 +295,8 @@ types::ID types::lookupTypeForExtension(llvm::StringRef Ext) {
            .Case("c++m", TY_CXXModule)
            .Case("cppm", TY_CXXModule)
            .Case("cxxm", TY_CXXModule)
+           .Case("usyntax", TY_Gold)
+           .Case("blue", TY_Blue)
            .Default(TY_INVALID);
 }
 

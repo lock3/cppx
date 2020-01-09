@@ -12410,7 +12410,8 @@ bool Sema::buildOverloadedCallSet(Scope *S, Expr *Fn,
       llvm_unreachable("performing ADL for builtin");
 
     // We don't perform ADL in C.
-    assert(getLangOpts().CPlusPlus && "ADL enabled in C");
+    assert((getLangOpts().CPlusPlus || getLangOpts().Gold) &&
+           "ADL enabled in C");
   }
 #endif
 

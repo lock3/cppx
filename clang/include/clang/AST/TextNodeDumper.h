@@ -23,6 +23,8 @@
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/TemplateArgumentVisitor.h"
 #include "clang/AST/TypeVisitor.h"
+#include "clang/Gold/GoldSyntax.h"
+#include "clang/Gold/GoldSyntaxVisitor.h"
 
 namespace clang {
 
@@ -130,7 +132,8 @@ class TextNodeDumper
       public ConstTemplateArgumentVisitor<TextNodeDumper>,
       public ConstStmtVisitor<TextNodeDumper>,
       public TypeVisitor<TextNodeDumper>,
-      public ConstDeclVisitor<TextNodeDumper> {
+      public ConstDeclVisitor<TextNodeDumper>,
+      public gold::ConstSyntaxVisitor<TextNodeDumper> {
   raw_ostream &OS;
   const bool ShowColors;
 
@@ -175,6 +178,8 @@ public:
   void Visit(const BlockDecl::Capture &C);
 
   void Visit(const GenericSelectionExpr::ConstAssociation &A);
+
+  void Visit(const gold::Syntax *S);
 
   void dumpPointer(const void *Ptr);
   void dumpLocation(SourceLocation Loc);
@@ -351,6 +356,14 @@ public:
   void VisitConceptDecl(const ConceptDecl *D);
   void
   VisitLifetimeExtendedTemporaryDecl(const LifetimeExtendedTemporaryDecl *D);
+
+  void VisitErrorSyntax(const gold::ErrorSyntax *S);
+  void VisitAtomSyntax(const gold::AtomSyntax *S);
+  void VisitListSyntax(const gold::ListSyntax *S);
+  void VisitArraySyntax(const gold::ArraySyntax *S);
+  void VisitCallSyntax(const gold::CallSyntax *S);
+  void VisitElemSyntax(const gold::ElemSyntax *S);
+  void VisitMacroSyntax(const gold::MacroSyntax *S);
 };
 
 } // namespace clang

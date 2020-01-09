@@ -178,6 +178,8 @@ void Driver::setDriverModeFromOption(StringRef Opt) {
                    .Case("g++", GXXMode)
                    .Case("cpp", CPPMode)
                    .Case("cl", CLMode)
+                   .Case("gold", GoldMode)
+                   .Case("blue", BlueMode)
                    .Case("flang", FlangMode)
                    .Default(None))
     Mode = *M;
@@ -1125,7 +1127,22 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
   BuildInputs(C->getDefaultToolChain(), *TranslatedArgs, Inputs);
 
   // Populate the tool chains for the offloading devices, if any.
-  CreateOffloadingDeviceToolChains(*C, Inputs);
+  CreateOffloadingDeviceToolChains(*C, Inputs);;
+
+  // If there are any Gold inputs, change to Gold mode.
+  bool IsGold =
+      llvm::any_of(Inputs, [](std::pair<types::ID, const llvm::opt::Arg *> &I) {
+        return types::isGold(I.first);
+      });
+  if (IsGold)
+    Mode = GoldMode;
+  bool IsBlue =
+      llvm::any_of(Inputs, [](std::pair<types::ID, const llvm::opt::Arg *> &I) {
+        return types::isBlue(I.first);
+      });
+  if (IsBlue)
+    Mode = BlueMode;
+  assert(!(IsBlue && IsGold) && "Blue and gold are not inter-operable.");
 
   // Construct the list of abstract actions to perform for this compilation. On
   // MachO targets this uses the driver-driver and universal actions.
@@ -2138,6 +2155,10 @@ void Driver::BuildInputs(const ToolChain &TC, DerivedArgList &Args,
               Ty = types::TY_C;
             else if (IsCLMode() && Args.hasArgNoClaim(options::OPT_E))
               Ty = types::TY_CXX;
+            else if (IsGoldMode())
+              Ty = types::TY_Gold;
+            else if (IsBlueMode())
+              Ty = types::TY_Blue;
             else
               Ty = types::TY_Object;
           }

@@ -1,0 +1,14 @@
+#ifndef def_syntax
+#  define def_syntax(T)
+#endif
+
+def_syntax(Error)
+def_syntax(Atom)
+def_syntax(List)
+def_syntax(Array)
+def_syntax(Call)
+def_syntax(Elem)
+def_syntax(Macro)
+def_syntax(File)
+
+#undef def_syntax

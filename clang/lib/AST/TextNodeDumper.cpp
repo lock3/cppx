@@ -1974,3 +1974,45 @@ void TextNodeDumper::VisitBlockDecl(const BlockDecl *D) {
 void TextNodeDumper::VisitConceptDecl(const ConceptDecl *D) {
   dumpName(D);
 }
+
+void TextNodeDumper::Visit(const gold::Syntax *S) {
+  using namespace gold;
+
+  if (!S) {
+    ColorScope Color(OS, ShowColors, NullColor);
+    OS << "<<<NULL>>>";
+    return;
+  }
+  {
+    ColorScope Color(OS, ShowColors, StmtColor);
+    OS << S->getSyntaxKindName();
+  }
+  dumpPointer(S);
+
+  ConstSyntaxVisitor<TextNodeDumper>::Visit(S);
+}
+
+void TextNodeDumper::VisitErrorSyntax(const gold::ErrorSyntax *S) {
+  ColorScope Color(OS, ShowColors, CastColor);
+  OS << "<<<ERROR>>>";
+}
+
+void TextNodeDumper::VisitAtomSyntax(const gold::AtomSyntax *S) {
+  using namespace gold;
+  OS << ' ' << S->Tok.getSpelling();
+}
+
+void TextNodeDumper::VisitListSyntax(const gold::ListSyntax *S) {
+}
+
+void TextNodeDumper::VisitArraySyntax(const gold::ArraySyntax *S) {
+}
+
+void TextNodeDumper::VisitCallSyntax(const gold::CallSyntax *S) {
+}
+
+void TextNodeDumper::VisitElemSyntax(const gold::ElemSyntax *S) {
+}
+
+void TextNodeDumper::VisitMacroSyntax(const gold::MacroSyntax *S) {
+}

@@ -84,6 +84,12 @@ namespace types {
   /// isObjC - Is this an "ObjC" input (Obj-C and Obj-C++ sources and headers).
   bool isObjC(ID Id);
 
+  /// isGold - Is this a Gold input.
+  bool isGold(ID Id);
+
+  /// isBlue - Is this a Blue input.
+  bool isBlue(ID Id);
+
   /// isFortran - Is this a Fortran input.
   bool isFortran(ID Id);
 

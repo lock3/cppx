@@ -1745,6 +1745,10 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
       Opts.ProgramAction = frontend::EmitCodeGenOnly; break;
     case OPT_emit_obj:
       Opts.ProgramAction = frontend::EmitObj; break;
+    case OPT_emit_gold:
+      Opts.ProgramAction = frontend::EmitGold; break;
+    case OPT_emit_blue:
+      Opts.ProgramAction = frontend::EmitBlue; break;
     case OPT_fixit_EQ:
       Opts.FixItSuffix = A->getValue();
       LLVM_FALLTHROUGH;
@@ -1991,6 +1995,8 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
                 .Case("objective-c", Language::ObjC)
                 .Case("objective-c++", Language::ObjCXX)
                 .Case("renderscript", Language::RenderScript)
+                .Case("gold", Language::Gold)
+                .Case("blue", Language::Blue)
                 .Default(Language::Unknown);
 
     // "objc[++]-cpp-output" is an acceptable synonym for
@@ -2026,9 +2032,22 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
   Opts.Inputs.clear();
   if (Inputs.empty())
     Inputs.push_back("-");
+
+  // These will be true if we see an input file for their respective language.
+  bool GoldInput = false;
+  bool BlueInput = false;
   for (unsigned i = 0, e = Inputs.size(); i != e; ++i) {
     InputKind IK = DashX;
-    if (IK.isUnknown()) {
+
+    if (IK.isGold())
+      GoldInput = true;
+    if (IK.isBlue())
+      BlueInput = true;
+    assert(!(GoldInput && BlueInput) &&
+           "Blue & Gold languages are not inter-operable.");
+
+    // Gold can take C++ inputs, so we need to check each extension.
+    if (IK.isUnknown() || IK.isGold() || IK.isBlue()) {
       IK = FrontendOptions::getInputKindForExtension(
         StringRef(Inputs[i]).rsplit('.').second);
       // FIXME: Warn on this?
@@ -2217,7 +2236,6 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   }
 
   if (LangStd == LangStandard::lang_unspecified) {
-    // Based on the base language, pick one.
     switch (IK.getLanguage()) {
     case Language::Unknown:
     case Language::LLVM_IR:
@@ -2255,6 +2273,12 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
       LangStd = LangStandard::lang_gnucxx14;
 #endif
       break;
+    case Language::Gold:
+      LangStd = LangStandard::lang_gold;
+      break;
+    case Language::Blue:
+      LangStd = LangStandard::lang_blue;
+      break;
     case Language::RenderScript:
       LangStd = LangStandard::lang_c99;
       break;
@@ -2281,6 +2305,8 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   Opts.GNUCVersion = 0;
   Opts.HexFloats = Std.hasHexFloats();
   Opts.ImplicitInt = Std.hasImplicitInt();
+  Opts.Gold = Std.isGold();
+  Opts.Blue = Std.isBlue();
 
   // Set OpenCL Version.
   Opts.OpenCL = Std.isOpenCL();
@@ -2394,6 +2420,11 @@ static bool IsInputCompatibleWithStandard(InputKind IK,
   case Language::HIP:
     return S.getLanguage() == Language::CXX || S.getLanguage() == Language::HIP;
 
+  case Language::Gold:
+    return S.getLanguage() == Language::Gold;
+  case Language::Blue:
+    return S.getLanguage() == Language::Blue;
+
   case Language::Asm:
     // Accept (and ignore) all -std= values.
     // FIXME: The -std= value is not ignored; it affects the tokenization
@@ -2428,6 +2459,11 @@ static const StringRef GetInputKindName(InputKind IK) {
     return "Asm";
   case Language::LLVM_IR:
     return "LLVM IR";
+
+  case Language::Gold:
+    return "Gold";
+  case Language::Blue:
+    return "Blue";
 
   case Language::Unknown:
     break;
@@ -3318,6 +3354,8 @@ static bool isStrictlyPreprocessorAction(frontend::ActionKind Action) {
   case frontend::EmitLLVMOnly:
   case frontend::EmitCodeGenOnly:
   case frontend::EmitObj:
+  case frontend::EmitGold:
+  case frontend::EmitBlue:
   case frontend::FixIt:
   case frontend::GenerateModule:
   case frontend::GenerateModuleInterface:
@@ -3325,6 +3363,8 @@ static bool isStrictlyPreprocessorAction(frontend::ActionKind Action) {
   case frontend::GeneratePCH:
   case frontend::GenerateInterfaceIfsExpV1:
   case frontend::ParseSyntaxOnly:
+  case frontend::ParseGoldSyntax:
+  case frontend::ParseBlueSyntax:
   case frontend::ModuleFileInfo:
   case frontend::VerifyPCH:
   case frontend::PluginAction:
@@ -3577,6 +3617,12 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
     // FIXME: Should we really be calling this for an Language::Asm input?
     ParseLangArgs(LangOpts, Args, DashX, Res.getTargetOpts(),
                   Res.getPreprocessorOpts(), Diags);
+    if (LangOpts.Gold)
+      Res.getFrontendOpts().ProgramAction = frontend::EmitGold;
+    if (LangOpts.Blue)
+      Res.getFrontendOpts().ProgramAction = frontend::EmitBlue;
+
+      // Res.getFrontendOpts().ProgramAction = frontend::ParseGoldSyntax;
     if (Res.getFrontendOpts().ProgramAction == frontend::RewriteObjC)
       LangOpts.ObjCExceptions = 1;
     if (T.isOSDarwin() && DashX.isPreprocessed()) {

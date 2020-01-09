@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/ARCMigrate/ARCMTActions.h"
+#include "clang/Blue/BlueFrontend.h"
 #include "clang/CodeGen/CodeGenAction.h"
 #include "clang/Config/config.h"
 #include "clang/Driver/Options.h"
@@ -22,6 +23,7 @@
 #include "clang/Frontend/FrontendPluginRegistry.h"
 #include "clang/Frontend/Utils.h"
 #include "clang/FrontendTool/Utils.h"
+#include "clang/Gold/GoldFrontend.h"
 #include "clang/Rewrite/Frontend/FrontendActions.h"
 #include "clang/StaticAnalyzer/Frontend/FrontendActions.h"
 #include "llvm/Option/OptTable.h"
@@ -56,6 +58,8 @@ CreateFrontendBaseAction(CompilerInstance &CI) {
   case EmitLLVMOnly:           return std::make_unique<EmitLLVMOnlyAction>();
   case EmitCodeGenOnly:        return std::make_unique<EmitCodeGenOnlyAction>();
   case EmitObj:                return std::make_unique<EmitObjAction>();
+  case EmitGold:               return std::make_unique<EmitGoldAction>();
+  case EmitBlue:               return std::make_unique<EmitBlueAction>();
   case FixIt:                  return std::make_unique<FixItAction>();
   case GenerateModule:
     return std::make_unique<GenerateModuleFromModuleMapAction>();
@@ -66,6 +70,10 @@ CreateFrontendBaseAction(CompilerInstance &CI) {
   case GeneratePCH:            return std::make_unique<GeneratePCHAction>();
   case GenerateInterfaceIfsExpV1:
     return std::make_unique<GenerateInterfaceIfsExpV1Action>();
+  case ParseGoldSyntax:
+    return std::make_unique<gold::GoldSyntaxAction>();
+  case ParseBlueSyntax:
+    return std::make_unique<blue::BlueSyntaxAction>();
   case InitOnly:               return std::make_unique<InitOnlyAction>();
   case ParseSyntaxOnly:        return std::make_unique<SyntaxOnlyAction>();
   case ModuleFileInfo:         return std::make_unique<DumpModuleInfoAction>();

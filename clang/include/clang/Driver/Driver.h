@@ -66,7 +66,9 @@ class Driver {
     GXXMode,
     CPPMode,
     CLMode,
-    FlangMode
+    FlangMode,
+    GoldMode,
+    BlueMode,
   } Mode;
 
   enum SaveTempsMode {
@@ -180,6 +182,12 @@ public:
 
   /// Whether the driver should follow cl.exe like behavior.
   bool IsCLMode() const { return Mode == CLMode; }
+
+  /// Whether the driver should compile gold.
+  bool IsGoldMode() const { return Mode == GoldMode; }
+
+  /// Whether the driver should compile blue.
+  bool IsBlueMode() const { return Mode == BlueMode; }
 
   /// Whether the driver should invoke flang for fortran inputs.
   /// Other modes fall back to calling gcc which in turn calls gfortran.

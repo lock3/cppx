@@ -9,6 +9,7 @@ set(link_libs
   clangDriver
   clangFrontend
   clangRewriteFrontend
+  gold
   )
 
 if(CLANG_ENABLE_ARCMT)

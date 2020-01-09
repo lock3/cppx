@@ -114,6 +114,7 @@ add_clang_library(clangAST
   LINK_LIBS
   clangBasic
   clangLex
+  gold
 
   DEPENDS
   Opcodes

@@ -623,6 +623,11 @@ def compiler_options_dump : Flag<["-"], "compiler-options-dump">,
 def print_dependency_directives_minimized_source : Flag<["-"],
   "print-dependency-directives-minimized-source">,
   HelpText<"Print the output of the dependency directives source minimizer">;
+
+def emit_gold : Flag<["-"], "emit-gold">,
+  HelpText<"Emit native object files from the gold language.">;
+def emit_blue : Flag<["-"], "emit-blue">,
+  HelpText<"Emit native object files from the blue language.">;
 }
 
 def emit_llvm_uselists : Flag<["-"], "emit-llvm-uselists">,
@@ -882,6 +887,7 @@ def fopenmp_is_device : Flag<["-"], "fopenmp-is-device">,
   HelpText<"Generate code only for an OpenMP target device.">;
 def fopenmp_host_ir_file_path : Separate<["-"], "fopenmp-host-ir-file-path">,
   HelpText<"Path to the IR file produced by the frontend for the host.">;
+
 
 //===----------------------------------------------------------------------===//
 // SYCL Options

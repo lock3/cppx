@@ -3985,7 +3985,12 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
         CmdArgs.push_back("-P");
     }
   } else if (isa<AssembleJobAction>(JA)) {
-    CmdArgs.push_back("-emit-obj");
+    if (C.getDriver().IsGoldMode()) {
+      CmdArgs.push_back("-emit-gold");
+    } else if (C.getDriver().IsBlueMode())
+      CmdArgs.push_back("-emit-blue");
+    else
+      CmdArgs.push_back("-emit-obj");
 
     CollectArgsForIntegratedAssembler(C, Args, CmdArgs, D);
 

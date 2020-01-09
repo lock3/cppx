@@ -1,0 +1,97 @@
+
+#ifndef def_token
+#  define def_token(K)
+#endif
+
+#ifndef def_puncop
+#  define def_puncop(K, S) def_token(K)
+#endif
+
+#ifndef def_keyword
+#  define def_keyword(K) def_token(K)
+#endif
+
+def_token(EndOfFile)
+def_token(Invalid)
+def_token(Unknown)
+
+def_puncop(LeftParen, "(")
+def_puncop(RightParen, ")")
+def_puncop(LeftBracket, "[")
+def_puncop(RightBracket, "]")
+def_puncop(LeftBrace, "{")
+def_puncop(RightBrace, "}")
+def_puncop(Question, "?")
+def_puncop(Hash, "#")
+def_puncop(Plus, "+")
+def_puncop(Minus, "-")
+def_puncop(Star, "*")
+def_puncop(Slash, "/")
+def_puncop(Percent, "%")
+def_puncop(Ampersand, "&")
+def_puncop(Bar, "|")
+def_puncop(Caret, "^")
+def_puncop(Tilde, "~")
+def_puncop(Bang, "!")
+def_puncop(Less, "<")
+def_puncop(Greater, ">")
+def_puncop(Equal, "=")
+def_puncop(Dot, ".")
+def_puncop(Colon, ":")
+def_puncop(Semicolon, ";")
+def_puncop(Comma, ",")
+
+def_puncop(LessLess, "<<")
+def_puncop(GreaterGreater, ">>")
+def_puncop(EqualEqual, "==")
+def_puncop(BangEqual, "!=")
+def_puncop(LessEqual, "<=")
+def_puncop(GreaterEqual, ">=")
+def_puncop(AmpersandAmpersand, "&&")
+def_puncop(BarBar, "||")
+def_puncop(PlusEqual, "+=")
+def_puncop(MinusEqual, "-=")
+def_puncop(StarEqual, "*=")
+def_puncop(SlashEqual, "/=")
+def_puncop(PercentEqual, "%=")
+def_puncop(MinusGreater, "->")
+def_puncop(EqualGreater, "=>")
+def_puncop(PlusPlus, "++")
+def_puncop(MinusMinus, "--")
+
+def_puncop(Ellipsis, "...")
+
+def_keyword(As)
+def_keyword(Bool)
+def_keyword(Break)
+def_keyword(Byte)
+def_keyword(Character)
+def_keyword(Class)
+def_keyword(Continue)
+def_keyword(Else)
+def_keyword(False)
+def_keyword(Float)
+def_keyword(For)
+def_keyword(If)
+def_keyword(Integer)
+def_keyword(Is)
+def_keyword(Null)
+def_keyword(Return)
+def_keyword(Switch)
+def_keyword(True)
+def_keyword(Type)
+def_keyword(Void)
+def_keyword(While)
+
+def_token(Identifier)
+def_token(BinaryInteger)
+def_token(DecimalInteger)
+def_token(HexadecimalInteger)
+def_token(DecimalFloat)
+def_token(HexadecimalFloat)
+def_token(Character)
+def_token(String)
+
+#undef def_keyword
+#undef def_puncop
+#undef def_token
