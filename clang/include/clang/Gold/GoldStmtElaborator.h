@@ -65,15 +65,13 @@ struct Statement {
     : Kind(K)
     {}
 
-  StatementKind K;
+  StatementKind Kind;
 
   union {
     // if this is equivalent ot a C++ expression-statement,
     // the C++ expression that this represents.
     clang::Expr *SubExpr;
 
-    // For declaration-statements, the associated declaration.
-    Declaration Decl;
   } Data;
 };
 
