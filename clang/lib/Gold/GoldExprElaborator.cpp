@@ -224,7 +224,7 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
   // Check if this is a compound assignment operator like operator'+='.
   auto CmpAssnMapIter = CompoundAssignOperators.find(Spelling);
   if (CmpAssnMapIter != CompoundAssignOperators.end()) {
-    return elaborateCmpAssignOp(S, CmpAssnMapIter->second);
+    return elaborateBinOp(S, CmpAssnMapIter->second);
   }
 
   // Try to construct a normal function-call expression.

@@ -29,6 +29,54 @@ class Stmt;
 
 namespace gold {
 
+// Represents the kinds of C++ statements in the standard.
+// Each enumerator is annotated with its section in the standard.
+enum StatementKind {
+  // Does not match any standard C++ statement.
+  SK_Unknown,
+
+  // [8.3] A C++ expression-statement.
+  SK_Expression,
+
+  // [8.4] A C++ compound-statement.
+  SK_Compound,
+
+  // [8.5] A C++ selection-statement.
+  // if
+  SK_Selection,
+
+  // [8.6] A C++ iteration-statement.
+  // for
+  SK_Iteration,
+
+  // [8.7] A C++ jump-statement.
+  // break, continue, return
+  SK_Jump,
+
+  // [8.8] A C++ declaration-statement.
+  SK_Declaration,
+
+  // [8.9] A C++ try-block
+  SK_Try,
+};
+
+struct Statement {
+  Statement(StatementKind K)
+    : Kind(K)
+    {}
+
+  StatementKind K;
+
+  union {
+    // if this is equivalent ot a C++ expression-statement,
+    // the C++ expression that this represents.
+    clang::Expr *SubExpr;
+
+    // For declaration-statements, the associated declaration.
+    Declaration Decl;
+  } Data;
+};
+
 // Builds a clang::Stmt out of a gold::Syntax node.
 class StmtElaborator {
 
