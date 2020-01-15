@@ -10444,4 +10444,11 @@ def warn_sycl_kernel_return_type : Warning<
   "function template with 'sycl_kernel' attribute must have a 'void' return type">,
   InGroup<IgnoredAttributes>;
 
+let CategoryName = "Gold" in {
+def err_multiple_declarations : Error<
+  "multiple declarations of name %0">;
+def err_type_annotation_mismatch : Error<
+  "annotated type %0 does not match expression type%diff{: $ vs $|}1,2">;
+} // end of Gold category
+
 } // end of sema component.

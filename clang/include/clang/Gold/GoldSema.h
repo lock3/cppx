@@ -29,6 +29,7 @@ namespace clang {
 
 class Decl;
 class DeclContext;
+class DiagnosticsEngine;
 class LookupResult;
 class Preprocessor;
 class Sema;
@@ -62,7 +63,6 @@ class Sema {
 
   // The declaration context.
   Declaration *CurrentDecl;
-
 public:
   Sema(SyntaxContext &Context, clang::Sema &S);
 
@@ -128,6 +128,9 @@ public:
   SyntaxContext &getContext() { return Context; }
 
 public:
+  // The Clang diagnostics engine.
+  clang::DiagnosticsEngine &Diags;
+
   // Tokenizations of commonly compared-against strings.
   const clang::IdentifierInfo *OperatorColonII;
   const clang::IdentifierInfo *OperatorExclaimII;

@@ -16,6 +16,8 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/OperationKinds.h"
 #include "clang/AST/Type.h"
+#include "clang/Basic/DiagnosticParse.h"
+#include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Ownership.h"
@@ -117,7 +119,7 @@ createDeclRefExpr(clang::ASTContext &CxxAST, Sema &SemaRef, Token T,
   SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
   if (!R.empty()) {
     if (!R.isSingleResult()) {
-      llvm::errs() << "Multiple declarations of \"" << T.getSpelling() << "\" found.\n";
+      SemaRef.Diags.Report(T.getLocation(), clang::diag::err_multiple_declarations);
       return nullptr;
     }
 
@@ -126,18 +128,19 @@ createDeclRefExpr(clang::ASTContext &CxxAST, Sema &SemaRef, Token T,
 
     // If the user annotated the DeclRefExpr with an incorrect type.
     if (!Ty.isNull() && Ty != FoundTy) {
-      llvm::errs() << "Annotated type does not match expression type.\n";
+      SemaRef.Diags.Report(T.getLocation(), clang::diag::err_type_annotation_mismatch)
+        << FoundTy << Ty;
       return nullptr;
     }
 
+    // FIXME: discern whether this is an lvalue or rvalue properly
     clang::DeclRefExpr *DRE =
       clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
                                  clang::SourceLocation(), VD, /*Capture=*/false,
-                                 Loc, FoundTy, clang::VK_RValue);
+                                 Loc, FoundTy, clang::VK_LValue);
     return DRE;
   }
-
-  llvm::errs() << "Name not found.\n";
+ 
   return nullptr;
 }
 
@@ -272,7 +275,7 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
 
       // FIXME: What kind of expression is the unary ':typename' expression?
       if (Argument.is<clang::TypeSourceInfo *>()) {
-        llvm::errs() << "Expected expression.\n";
+        SemaRef.Diags.Report(A->Loc, clang::diag::err_expected_expression);
         return nullptr;
       }
 
@@ -305,13 +308,13 @@ ExprElaborator::elaborateBinOp(const CallSyntax *S,
   // due to recursion. 
   Expression RHS = elaborateExpr(LHSSyntax);
   if (RHS.is<clang::TypeSourceInfo *>()) {
-    llvm::errs() << "Expected expression.\n";
+    SemaRef.Diags.Report(LHSSyntax->Loc, clang::diag::err_expected_expression);
     return nullptr;
   }
 
   Expression LHS = elaborateExpr(RHSSyntax);
   if (LHS.is<clang::TypeSourceInfo *>()) {
-    llvm::errs() << "Expected expression.\n";
+    SemaRef.Diags.Report(RHSSyntax->Loc, clang::diag::err_expected_expression);
     return nullptr;
   }
 
@@ -339,13 +342,13 @@ ExprElaborator::elaborateCmpAssignOp(const CallSyntax *S,
   // FIXME: error carry-forward? see: ElaborateBinOp FIXME
   Expression RHS = elaborateExpr(LHSSyntax);
   if (RHS.is<clang::TypeSourceInfo *>()) {
-    llvm::errs() << "Expected expression.\n";
+    SemaRef.Diags.Report(LHSSyntax->Loc, clang::diag::err_expected_expression);
     return nullptr;
   }
 
   Expression LHS = elaborateExpr(RHSSyntax);
   if (LHS.is<clang::TypeSourceInfo *>()) {
-    llvm::errs() << "Expected expression.\n";
+    SemaRef.Diags.Report(RHSSyntax->Loc, clang::diag::err_expected_expression);
     return nullptr;
   }
 
@@ -385,7 +388,8 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
     LHS = ExEl.elaborateExpr(Conditions->getChild(0));
 
     if (LHS.is<clang::TypeSourceInfo *>()) {
-      llvm::errs() << "Expected expression\n";
+      SemaRef.Diags.Report(Conditions->getChild(0)->Loc,
+                           clang::diag::err_expected_expression);
       return nullptr;
     }
   }
@@ -394,7 +398,8 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
     RHS = ExEl.elaborateExpr(Conditions->getChild(1));
 
     if (RHS.is<clang::TypeSourceInfo *>()) {
-      llvm::errs() << "Expected expression\n";
+      SemaRef.Diags.Report(Conditions->getChild(1)->Loc,
+                           clang::diag::err_expected_expression);
       return nullptr;
     }
   }

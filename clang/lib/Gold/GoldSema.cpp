@@ -15,6 +15,7 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/Stmt.h"
+#include "clang/Basic/Diagnostic.h"
 #include "clang/Sema/Lookup.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -28,7 +29,8 @@ namespace gold {
 using namespace llvm;
 
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
-  : Context(Context), CxxSema(CxxSema), CurrentDecl()
+  : Context(Context), CxxSema(CxxSema), CurrentDecl(),
+    Diags(Context.CxxAST.getSourceManager().getDiagnostics())
 {
   OperatorColonII = &Context.CxxAST.Idents.get("operator':'");
   OperatorExclaimII = &Context.CxxAST.Idents.get("operator'!'");

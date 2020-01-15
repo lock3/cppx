@@ -23,6 +23,7 @@
 namespace clang {
 
 class ASTContext;
+class DiagnosticsEngine;
 class Stmt;
 
 } // namespace clang
@@ -83,6 +84,8 @@ class StmtElaborator {
   Sema &SemaRef;
 
   ExprElaborator ExprElab;
+
+  clang::DiagnosticsEngine &Diags;
 public:
   StmtElaborator(clang::ASTContext &CxxAST, Sema &SemaRef);
 
@@ -98,6 +101,9 @@ public:
                               llvm::SmallVectorImpl<clang::Stmt *> &Results);
   void elaborateBlockForList(const ListSyntax *S,
                              llvm::SmallVectorImpl<clang::Stmt *> &Results);
+
+  // Identify the C++ class of statement that this represents.
+  void identifyStmt(const Syntax *S);
 
 
 private:

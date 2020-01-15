@@ -15,6 +15,8 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/Type.h"
+#include "clang/Basic/DiagnosticParse.h"
+#include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Sema.h"
@@ -26,9 +28,12 @@
 
 namespace gold {
 
+using clang::cast_or_null;
+
 StmtElaborator::StmtElaborator(clang::ASTContext &CxxAST, Sema &SemaRef)
   : CxxAST(CxxAST), SemaRef(SemaRef),
-    ExprElab(CxxAST, SemaRef)
+    ExprElab(CxxAST, SemaRef),
+    Diags(CxxAST.getSourceManager().getDiagnostics())
 {
 }
 
@@ -50,7 +55,7 @@ StmtElaborator::elaborateAtom(const AtomSyntax *S) {
   ExprElaborator::Expression Expression = ExEl.elaborateExpr(S);
 
   if (Expression.is<clang::TypeSourceInfo *>()) {
-    llvm::errs() << "Expected expression.\n";
+    Diags.Report(S->Loc, clang::diag::err_expected_expression);
     return nullptr;
   }
 
@@ -64,6 +69,9 @@ createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
 
   // TODO: can this be something other than a name?
   const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);
+
+  ExprElaborator LHSElab(CxxAST, SemaRef);
+  ExprElaborator::Expression NameExpr = LHSElab.elaborateExpr(S->getArgument(0));
 
   clang::Sema &ClangSema = SemaRef.getCxxSema();
   clang::IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
@@ -111,13 +119,56 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
 
     if (R.empty())
       return createDeclStmt(CxxAST, SemaRef, S);
+  } else if (Spelling == SemaRef.OperatorEqualsII) {
+    ExprElaborator LHSElab(CxxAST, SemaRef);
+    ExprElaborator::Expression NameExpr =
+      LHSElab.elaborateExpr(S->getArgument(0));
+
+    if (NameExpr.is<clang::TypeSourceInfo *>()) {
+      Diags.Report(S->Loc, clang::diag::err_expected_expression);
+      return nullptr;
+    }
+
+    ExprElaborator RHSElab(CxxAST, SemaRef);
+    ExprElaborator::Expression InitExpr =
+      RHSElab.elaborateExpr(S->getArgument(1));
+
+    // We didn't create an expression for this, so build a decl.
+    if (NameExpr.isNull()) {
+      auto *DS = cast_or_null<clang::DeclStmt>(createDeclStmt(CxxAST, SemaRef, S));
+
+      if (!DS)
+        return nullptr;
+
+      // TODO: support type aliases.
+      assert(!InitExpr.is<clang::TypeSourceInfo *>() && "Aliases not supported yet.");
+
+      for (clang::Decl *D : DS->decls())
+        SemaRef.getCxxSema().AddInitializerToDecl(
+          D, InitExpr.get<clang::Expr *>(), /*DirectInit=*/true);
+
+      return DS;
+    }
+
+    clang::ExprResult Assignment =
+      SemaRef.getCxxSema().ActOnBinOp(SemaRef.getCxxSema().getCurScope(),
+                                      S->Loc, clang::tok::equal,
+                                      NameExpr.get<clang::Expr *>(),
+                                      InitExpr.get<clang::Expr *>());
+    if (Assignment.isInvalid()) {
+      llvm::errs() << "Unexpected assignment.\n";
+      return nullptr;
+    }
+
+    return Assignment.get();
   }
 
+  // If all else fails, just see if we can elaborate any expression.
   ExprElaborator ExprElab(CxxAST, SemaRef);
   ExprElaborator::Expression Expression = ExprElab.elaborateCall(S);
 
   if (Expression.is<clang::TypeSourceInfo *>()) {
-    llvm::errs() << "Expected expression.\n";
+    Diags.Report(S->Loc, clang::diag::err_expected_expression);
     return nullptr;
   }
 
@@ -133,7 +184,7 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
     ExprElaborator::Expression Expression = ExEl.elaborateBlockCondition(BlockCond);
 
     if (Expression.is<clang::TypeSourceInfo *>()) {
-      llvm::errs() << "Expected expression.\n";
+      Diags.Report(S->Loc, clang::diag::err_expected_expression);
       return nullptr;
     }
 
@@ -142,7 +193,7 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
     ExprElaborator::Expression Expression = ExEl.elaborateExpr(Args->getChild(0));
 
     if (Expression.is<clang::TypeSourceInfo *>()) {
-      llvm::errs() << "Expected expression.\n";
+      Diags.Report(S->Loc, clang::diag::err_expected_expression);
       return nullptr;
     }
 
@@ -222,8 +273,9 @@ StmtElaborator::elaborateBlock(const Syntax *S) {
   assert((isa<ArraySyntax>(S) || isa<ListSyntax>(S)) &&
          "Cannot create block out of non-list syntax.");
 
-  llvm::SmallVector<clang::Stmt *, 16> Results;
+  SemaRef.enterScope(SK_Block, S);
 
+  llvm::SmallVector<clang::Stmt *, 16> Results;
   if (isa<ArraySyntax>(S))
     elaborateBlockForArray(cast<ArraySyntax>(S), Results);
   if (isa<ListSyntax>(S))
@@ -232,6 +284,7 @@ StmtElaborator::elaborateBlock(const Syntax *S) {
   clang::CompoundStmt *Block =
     clang::CompoundStmt::Create(CxxAST, Results, S->Loc, S->Loc);
 
+  SemaRef.leaveScope(S);
   return Block;
 }
 
@@ -264,6 +317,11 @@ StmtElaborator::elaborateBlockForList(const ListSyntax *S,
       continue;
     Results.push_back(NewStmt);
   }
+}
+
+void StmtElaborator::identifyStmt(const Syntax *S) {
+
+
 }
 
 } // namespace gold

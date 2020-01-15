@@ -229,6 +229,7 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   if (!D->Init)
     return;
 
+  SemaRef.pushDecl(D);
   SemaRef.enterScope(SK_Function, D->Init);
 
   // Elaborate the function body.
@@ -279,21 +280,18 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     VD->setType(Ty);
   }
 
-  // FIXME: Are we actually checking the type of the initializer? There
-  // should be a single function to do all of this.
-
   // Update the initializer.
-  VD->setInit(InitExpr);
+  SemaRef.getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
+  // VD->setInit(InitExpr);
 }
 
 // Get the clang::QualType described by an operator':' call.
 clang::QualType Elaborator::getOperatorColonType(const CallSyntax *S) const {
   // Get the argument list of an operator':' call. This should have
   // two arguments, the entity (argument 1) and its type (argument 2).
-  const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
 
   // Right now this has to be an explicitly named type.
-  if (const AtomSyntax *Typename = dyn_cast<AtomSyntax>(ArgList->Elems[1])) {
+  if (const AtomSyntax *Typename = dyn_cast<AtomSyntax>(S->getArgument(1))) {
     auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
     if (BuiltinMapIter == BuiltinTypes.end())
       assert(false && "Only builtin types are supported right now.");

@@ -35,9 +35,8 @@ class Declarator;
 class Declaration;
 class Sema;
 
-// Elaborator takes a gold::Syntax tree as input and outputs a clang::Decl *
-// node that represents its equivalent C++ AST. It works closely with the
-// ExprElaborator and StmtElaborator.
+// Elaborator takes a gold::Syntax tree as input and outputs an equivalent
+// C++ AST. It works closely with the ExprElaborator and StmtElaborator.
 class Elaborator {
 public:
   /// The AST context for the Gold language.
