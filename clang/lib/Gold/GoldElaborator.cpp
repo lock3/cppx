@@ -155,7 +155,7 @@ static clang::StorageClass getStorageClass(Elaborator &Elab) {
   // and specifiers probably. We don't have specifiers yet.
   return Elab.SemaRef.getCurrentScope()->isBlockScope()
     ? clang::SC_Auto
-    : clang::SC_Extern;
+    : clang::SC_Static;
 }
 
 clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
