@@ -132,7 +132,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::QualType Ty = elaborateType(D->Decl);
   clang::TypeSourceInfo *TSI = Context.CxxAST.CreateTypeSourceInfo(Ty);
   clang::DeclarationName Name = D->getId();
-  clang::SourceLocation Loc;
+  clang::SourceLocation Loc = D->Op->getLoc();
 
   // FIXME: Make sure we have the right storage class.
   clang::FunctionDecl *FD = clang::FunctionDecl::Create(Context.CxxAST, Owner,
@@ -167,7 +167,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   clang::QualType Ty = elaborateType(D->Decl);
   clang::TypeSourceInfo *TSI = Context.CxxAST.CreateTypeSourceInfo(Ty);
   clang::IdentifierInfo *Id = D->getId();
-  clang::SourceLocation Loc;
+  clang::SourceLocation Loc = D->Op->getLoc();
   clang::StorageClass SC = getStorageClass(*this);
 
   // Create the variable and add it to it's owning context.
@@ -184,7 +184,7 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
   clang::QualType Ty = elaborateType(D->Decl);
   clang::TypeSourceInfo *TSI = Context.CxxAST.CreateTypeSourceInfo(Ty);
   clang::IdentifierInfo *Id = D->getId();
-  clang::SourceLocation Loc;
+  clang::SourceLocation Loc = D->Op->getLoc();
 
   // Just return the parameter. We add it to it's function later.
   clang::ParmVarDecl *P = clang::ParmVarDecl::Create(Context.CxxAST, Owner, Loc,

@@ -25,6 +25,7 @@
 #include "clang/Gold/GoldExprElaborator.h"
 #include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldStmtElaborator.h"
+#include "clang/Gold/GoldSyntax.h"
 
 namespace gold {
 
@@ -55,7 +56,7 @@ StmtElaborator::elaborateAtom(const AtomSyntax *S) {
   ExprElaborator::Expression Expression = ExEl.elaborateExpr(S);
 
   if (Expression.is<clang::TypeSourceInfo *>()) {
-    Diags.Report(S->Loc, clang::diag::err_expected_expression);
+    Diags.Report(S->getTokenLoc(), clang::diag::err_expected_expression);
     return nullptr;
   }
 
@@ -70,12 +71,13 @@ createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
   // TODO: can this be something other than a name?
   const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);
 
-  ExprElaborator LHSElab(CxxAST, SemaRef);
-  ExprElaborator::Expression NameExpr = LHSElab.elaborateExpr(S->getArgument(0));
+  // TODO: elaborate the name if we need to.
+  // ExprElaborator LHSElab(CxxAST, SemaRef);
+  // ExprElaborator::Expression NameExpr = LHSElab.elaborateExpr(S->getArgument(0));
 
   clang::Sema &ClangSema = SemaRef.getCxxSema();
   clang::IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
-  clang::DeclarationNameInfo DNI(II, S->Loc);
+  clang::DeclarationNameInfo DNI(II, Name->getLoc());
   clang::LookupResult R(ClangSema, DNI, clang::Sema::LookupAnyName);
   SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
 
@@ -85,7 +87,7 @@ createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
 
     clang::StmtResult Res =
       ClangSema.ActOnDeclStmt(ClangSema.ConvertDeclToDeclGroup(Declaration),
-                              S->Loc, S->Loc);
+                              Name->getLoc(), S->getLoc());
     if (!Res.isInvalid())
       return Res.get();
   } else {
@@ -112,7 +114,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
     const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);
     clang::Sema &ClangSema = SemaRef.getCxxSema();
     clang::IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
-    clang::DeclarationNameInfo DNI(II, S->Loc);
+    clang::DeclarationNameInfo DNI(II, S->getLoc());
     clang::LookupResult R(ClangSema, DNI, clang::Sema::LookupAnyName);
     SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
 
@@ -125,7 +127,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
       LHSElab.elaborateExpr(S->getArgument(0));
 
     if (NameExpr.is<clang::TypeSourceInfo *>()) {
-      Diags.Report(S->Loc, clang::diag::err_expected_expression);
+      Diags.Report(S->getArgument(0)->getLoc(), clang::diag::err_expected_expression);
       return nullptr;
     }
 
@@ -152,7 +154,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
 
     clang::ExprResult Assignment =
       SemaRef.getCxxSema().ActOnBinOp(SemaRef.getCxxSema().getCurScope(),
-                                      S->Loc, clang::tok::equal,
+                                      S->getLoc(), clang::tok::equal,
                                       NameExpr.get<clang::Expr *>(),
                                       InitExpr.get<clang::Expr *>());
     if (Assignment.isInvalid()) {
@@ -168,7 +170,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   ExprElaborator::Expression Expression = ExprElab.elaborateCall(S);
 
   if (Expression.is<clang::TypeSourceInfo *>()) {
-    Diags.Report(S->Loc, clang::diag::err_expected_expression);
+    Diags.Report(S->getLoc(), clang::diag::err_expected_expression);
     return nullptr;
   }
 
@@ -184,7 +186,7 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
     ExprElaborator::Expression Expression = ExEl.elaborateBlockCondition(BlockCond);
 
     if (Expression.is<clang::TypeSourceInfo *>()) {
-      Diags.Report(S->Loc, clang::diag::err_expected_expression);
+      Diags.Report(BlockCond->getLoc(), clang::diag::err_expected_expression);
       return nullptr;
     }
 
@@ -193,7 +195,7 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
     ExprElaborator::Expression Expression = ExEl.elaborateExpr(Args->getChild(0));
 
     if (Expression.is<clang::TypeSourceInfo *>()) {
-      Diags.Report(S->Loc, clang::diag::err_expected_expression);
+      Diags.Report(Args->getChild(0)->getLoc(), clang::diag::err_expected_expression);
       return nullptr;
     }
 
@@ -203,8 +205,8 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
   }
 
   clang::Sema::ConditionResult Condition =
-    SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr, S->Loc,
-                                        ConditionExpr,
+    SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr,
+                                        S->getLoc(), ConditionExpr,
                                         clang::Sema::ConditionKind::Boolean);
 
   SemaRef.enterScope(SK_Block, S);
@@ -222,11 +224,11 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
   clang::SourceLocation ElseLoc;
   if (S->getNext()) {
     Else = elaborateMacro(cast<MacroSyntax>(S->getNext()));
-    ElseLoc = S->getNext()->Loc;
+    ElseLoc = S->getNext()->getLoc();
   }
 
   clang::StmtResult If = SemaRef.getCxxSema().ActOnIfStmt(
-    S->Loc, /*Constexpr=*/false, /*InitStmt=*/nullptr,
+    S->getLoc(), /*Constexpr=*/false, /*InitStmt=*/nullptr,
     Condition, Then, ElseLoc, Else);
 
   if (If.isInvalid())
@@ -281,8 +283,20 @@ StmtElaborator::elaborateBlock(const Syntax *S) {
   if (isa<ListSyntax>(S))
     elaborateBlockForList(cast<ListSyntax>(S), Results);
 
+
+
+  clang::SourceLocation StartLoc;
+  clang::SourceLocation EndLoc;
+  if (auto *List = dyn_cast<ListSyntax>(S)) {
+    StartLoc = List->getChild(0)->getLoc();
+    EndLoc = List->getChild(List->getNumChildren() - 1)->getLoc();
+  } else if (auto *Array = dyn_cast<ArraySyntax>(S)) {
+    StartLoc = Array->getChild(0)->getLoc();
+    EndLoc = Array->getChild(Array->getNumChildren() - 1)->getLoc();
+  }
+
   clang::CompoundStmt *Block =
-    clang::CompoundStmt::Create(CxxAST, Results, S->Loc, S->Loc);
+    clang::CompoundStmt::Create(CxxAST, Results, StartLoc, EndLoc);
 
   SemaRef.leaveScope(S);
   return Block;

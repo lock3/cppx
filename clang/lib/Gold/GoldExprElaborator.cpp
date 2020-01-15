@@ -150,7 +150,7 @@ ExprElaborator::elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType)
 
   switch (T.getKind()) {
   case tok::DecimalInteger:
-    return createIntegerLiteral(CxxAST, T, ExplicitType, S->Loc);
+    return createIntegerLiteral(CxxAST, T, ExplicitType, S->getTokenLoc());
   case tok::DecimalFloat:
     break;
   case tok::BinaryInteger:
@@ -160,7 +160,7 @@ ExprElaborator::elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType)
   case tok::HexadecimalFloat:
     break;
   case tok::Identifier:
-    return createDeclRefExpr(CxxAST, SemaRef, T, ExplicitType, S->Loc);
+    return createDeclRefExpr(CxxAST, SemaRef, T, ExplicitType, S->getTokenLoc());
     break;
   case tok::Character:
     break;
@@ -233,7 +233,7 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
   // Try to construct a normal function-call expression.
 
   // First do unqualified lookup.
-  clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Spelling)}, S->Loc);
+  clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Spelling)}, S->getLoc());
   clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
   SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
 
@@ -259,7 +259,7 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
       Fn =
         clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
                                    clang::SourceLocation(), VD, /*Capture=*/false,
-                                   S->Loc, VD->getType(), clang::VK_RValue);
+                                   S->getLoc(), VD->getType(), clang::VK_RValue);
     }
 
     if (!Fn)
@@ -275,7 +275,7 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
 
       // FIXME: What kind of expression is the unary ':typename' expression?
       if (Argument.is<clang::TypeSourceInfo *>()) {
-        SemaRef.Diags.Report(A->Loc, clang::diag::err_expected_expression);
+        SemaRef.Diags.Report(A->getLoc(), clang::diag::err_expected_expression);
         return nullptr;
       }
 
@@ -286,7 +286,8 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
     clang::MultiExprArg MultiArgs(Args);
     clang::ExprResult Call =
       SemaRef.getCxxSema().ActOnCallExpr(SemaRef.getCxxSema().getCurScope(),
-                                         Fn, S->Loc, MultiArgs, S->Loc);
+                                         Fn, S->getCalleeLoc(),
+                                         MultiArgs, S->getCalleeLoc());
     if (Call.isInvalid())
       return nullptr;
     return Call.get();
@@ -308,13 +309,13 @@ ExprElaborator::elaborateBinOp(const CallSyntax *S,
   // due to recursion. 
   Expression RHS = elaborateExpr(LHSSyntax);
   if (RHS.is<clang::TypeSourceInfo *>()) {
-    SemaRef.Diags.Report(LHSSyntax->Loc, clang::diag::err_expected_expression);
+    SemaRef.Diags.Report(LHSSyntax->getLoc(), clang::diag::err_expected_expression);
     return nullptr;
   }
 
   Expression LHS = elaborateExpr(RHSSyntax);
   if (LHS.is<clang::TypeSourceInfo *>()) {
-    SemaRef.Diags.Report(RHSSyntax->Loc, clang::diag::err_expected_expression);
+    SemaRef.Diags.Report(RHSSyntax->getLoc(), clang::diag::err_expected_expression);
     return nullptr;
   }
 
@@ -342,13 +343,13 @@ ExprElaborator::elaborateCmpAssignOp(const CallSyntax *S,
   // FIXME: error carry-forward? see: ElaborateBinOp FIXME
   Expression RHS = elaborateExpr(LHSSyntax);
   if (RHS.is<clang::TypeSourceInfo *>()) {
-    SemaRef.Diags.Report(LHSSyntax->Loc, clang::diag::err_expected_expression);
+    SemaRef.Diags.Report(LHSSyntax->getLoc(), clang::diag::err_expected_expression);
     return nullptr;
   }
 
   Expression LHS = elaborateExpr(RHSSyntax);
   if (LHS.is<clang::TypeSourceInfo *>()) {
-    SemaRef.Diags.Report(RHSSyntax->Loc, clang::diag::err_expected_expression);
+    SemaRef.Diags.Report(RHSSyntax->getLoc(), clang::diag::err_expected_expression);
     return nullptr;
   }
 
@@ -388,7 +389,7 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
     LHS = ExEl.elaborateExpr(Conditions->getChild(0));
 
     if (LHS.is<clang::TypeSourceInfo *>()) {
-      SemaRef.Diags.Report(Conditions->getChild(0)->Loc,
+      SemaRef.Diags.Report(Conditions->getChild(0)->getLoc(),
                            clang::diag::err_expected_expression);
       return nullptr;
     }
@@ -398,7 +399,7 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
     RHS = ExEl.elaborateExpr(Conditions->getChild(1));
 
     if (RHS.is<clang::TypeSourceInfo *>()) {
-      SemaRef.Diags.Report(Conditions->getChild(1)->Loc,
+      SemaRef.Diags.Report(Conditions->getChild(1)->getLoc(),
                            clang::diag::err_expected_expression);
       return nullptr;
     }

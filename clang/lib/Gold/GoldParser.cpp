@@ -920,13 +920,14 @@ Syntax *Parser::parseBlock() {
 
 // Returns the identifier 'operator\'<op>\''.
 static Syntax *makeOperator(const SyntaxContext &Ctx,
-                            clang::SourceLocation Loc, llvm::StringRef Op)
+                            clang::SourceLocation Loc,
+                            llvm::StringRef Op)
 {
   // FIXME: Make this a fused operator?
   std::string Name = "operator'" + std::string(Op) + "'";
   Symbol Sym = getSymbol(Name);
   Token Tok(tok::Identifier, Loc, Sym);
-  return new (Ctx) AtomSyntax(Tok, clang::SourceLocation());
+  return new (Ctx) AtomSyntax(Tok);
 }
 
 static Syntax *makeOperator(const SyntaxContext &Ctx, Token const& Tok) {
@@ -936,24 +937,20 @@ static Syntax *makeOperator(const SyntaxContext &Ctx, Token const& Tok) {
 static Syntax *makeList(const SyntaxContext &Ctx,
                         std::initializer_list<Syntax *> List) {
   assert(std::all_of(List.begin(), List.end(), [](Syntax *s) { return s; }));
-  return new (Ctx)
-    ListSyntax(createArray(Ctx, List), List.size(), clang::SourceLocation());
+  return new (Ctx) ListSyntax(createArray(Ctx, List), List.size());
 }
 
 static Syntax *makeCall(const SyntaxContext &Ctx, const Token& Tok) {
-  return new (Ctx)
-    CallSyntax(makeOperator(Ctx, Tok), makeList(Ctx, {}),
-               clang::SourceLocation());
+  return new (Ctx) CallSyntax(makeOperator(Ctx, Tok), makeList(Ctx, {}));
 }
 
 static Syntax *makeCall(const SyntaxContext &Ctx, const Token& Tok,
                         Syntax *Args) {
-  return new (Ctx)
-    CallSyntax(makeOperator(Ctx, Tok), Args, clang::SourceLocation());
+  return new (Ctx) CallSyntax(makeOperator(Ctx, Tok), Args);
 }
 
 Syntax *Parser::onAtom(const Token& Tok) {
-  return new (Context) AtomSyntax(Tok, clang::SourceLocation(), ParsingParams);
+  return new (Context) AtomSyntax(Tok, ParsingParams);
 }
 
 Syntax *Parser::onArray(ArraySemantic S,
@@ -964,7 +961,7 @@ Syntax *Parser::onArray(ArraySemantic S,
       return Vec.front();
   }
   return new (Context)
-    ArraySyntax(createArray(Context, Vec), Vec.size(), clang::SourceLocation());
+    ArraySyntax(createArray(Context, Vec), Vec.size());
 }
 
 Syntax *Parser::onList(ArraySemantic S,
@@ -977,57 +974,46 @@ Syntax *Parser::onList(ArraySemantic S,
     if (Vec.size() == 1)
       return Vec.front();
   }
-  return new (Context)
-    ListSyntax(createArray(Context, Vec), Vec.size(), clang::SourceLocation());
+  return new (Context) ListSyntax(createArray(Context, Vec), Vec.size());
 }
 
 Syntax *Parser::onBinary(Token const& Tok, Syntax *e1, Syntax *e2) {
   return new (Context)
-    CallSyntax(makeOperator(Context, Tok), makeList(Context, {e1, e2}),
-               clang::SourceLocation());
+    CallSyntax(makeOperator(Context, Tok), makeList(Context, {e1, e2}));
 }
 
 Syntax *Parser::onUnary(Token const& Tok, Syntax *e1) {
   return new (Context)
-    CallSyntax(makeOperator(Context, Tok), makeList(Context, {e1}),
-               clang::SourceLocation());
+    CallSyntax(makeOperator(Context, Tok), makeList(Context, {e1}));
 }
 
 Syntax *Parser::onCall(TokenPair const& Toks, Syntax *e1, Syntax *e2) {
   // FIXME: Toks is unused.
-  return new (Context)
-    CallSyntax(e1, e2, clang::SourceLocation(), ParsingParams);
+  return new (Context) CallSyntax(e1, e2, ParsingParams);
 }
 
 Syntax *Parser::onElem(TokenPair const& tok, Syntax *e1, Syntax *e2) {
-  return new (Context)
-    ElemSyntax(e1, e2, clang::SourceLocation());
+  return new (Context) ElemSyntax(e1, e2);
 }
 
 Syntax *Parser::onMacro(Syntax *e1, Syntax *e2) {
-  return new (Context)
-    MacroSyntax(e1, e2, nullptr, clang::SourceLocation());
+  return new (Context) MacroSyntax(e1, e2, nullptr);
 }
 
 Syntax *Parser::onElse(Token const& Tok, Syntax *e1) {
-  return new (Context)
-    MacroSyntax(makeCall(Context, Tok), e1, nullptr, clang::SourceLocation());
+  return new (Context) MacroSyntax(makeCall(Context, Tok), e1, nullptr);
 }
 
 Syntax *Parser::onIf(Token const& Tok, Syntax *e1, Syntax *e2, Syntax *e3) {
-  return new (Context)
-    MacroSyntax(makeCall(Context, Tok, e1), e2, e3, clang::SourceLocation());
+  return new (Context) MacroSyntax(makeCall(Context, Tok, e1), e2, e3);
 }
 
 Syntax *Parser::onLoop(Token const& Tok, Syntax *e1, Syntax *e2) {
-  return new (Context)
-    MacroSyntax(makeCall(Context, Tok, e1), e2,
-                nullptr, clang::SourceLocation());
+  return new (Context) MacroSyntax(makeCall(Context, Tok, e1), e2, nullptr);
 }
 
 Syntax *Parser::onFile(const llvm::SmallVectorImpl<Syntax*> &Vec) {
-  return new (Context)
-    FileSyntax(createArray(Context, Vec), Vec.size(), clang::SourceLocation());
+  return new (Context) FileSyntax(createArray(Context, Vec), Vec.size());
 }
 
 } // namespace gold

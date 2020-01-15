@@ -45,8 +45,8 @@ struct Syntax {
   };
 
   Syntax() = delete;
-  Syntax(SyntaxKind SK, clang::SourceLocation Loc, bool IsParam = false) noexcept :
-    Loc(Loc), Kind(SK), IsParam(IsParam) {}
+  Syntax(SyntaxKind SK, bool IsParam = false) noexcept :
+    Kind(SK), IsParam(IsParam) {}
 
   static Syntax *error;
 
@@ -73,7 +73,7 @@ struct Syntax {
   /// Whether or not this node is a function parameter.
   bool isParam() const { return IsParam; }
 
-  clang::SourceLocation Loc;
+  clang::SourceLocation getLoc() const;
 
 private:
   SyntaxKind Kind;
@@ -84,7 +84,7 @@ private:
 
 struct ErrorSyntax : Syntax {
   ErrorSyntax()
-    : Syntax(SK_Error, clang::SourceLocation())
+    : Syntax(SK_Error)
   {}
 
   child_range children() {
@@ -102,8 +102,8 @@ struct ErrorSyntax : Syntax {
 
 /// Any term represented by a single token (e.g., literals, identifiers).
 struct AtomSyntax : Syntax {
-  AtomSyntax(Token Tok, clang::SourceLocation Loc, bool IsParam = false)
-    : Syntax(SK_Atom, Loc, IsParam), Tok(Tok)
+  AtomSyntax(Token Tok, bool IsParam = false)
+    : Syntax(SK_Atom, IsParam), Tok(Tok)
   {}
 
   const Token& getToken() const {
@@ -124,6 +124,10 @@ struct AtomSyntax : Syntax {
 
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Atom;
+  }
+
+  clang::SourceLocation getTokenLoc() const {
+    return Tok.Loc;
   }
 
   /// The token for the atom.
@@ -168,8 +172,8 @@ struct VectorNode
 /// \todo These are separated by either commas, semicolons, pr separators,
 /// and there's (possibly) a semantic difference.
 struct ListSyntax : Syntax, VectorNode<Syntax> {
-  ListSyntax(Syntax **Ts, unsigned NumElems, clang::SourceLocation Loc)
-    : Syntax(SK_List, Loc), VectorNode(Ts, NumElems)
+  ListSyntax(Syntax **Ts, unsigned NumElems)
+    : Syntax(SK_List), VectorNode(Ts, NumElems)
   {}
 
   child_range children() {
@@ -186,8 +190,8 @@ struct ListSyntax : Syntax, VectorNode<Syntax> {
 };
 
 struct ArraySyntax : Syntax, VectorNode<Syntax> {
-  ArraySyntax(Syntax **Ts, unsigned NumElems, clang::SourceLocation Loc)
-    : Syntax(SK_Array, Loc), VectorNode(Ts, NumElems)
+  ArraySyntax(Syntax **Ts, unsigned NumElems)
+    : Syntax(SK_Array), VectorNode(Ts, NumElems)
   {}
 
   child_range children() {
@@ -205,8 +209,8 @@ struct ArraySyntax : Syntax, VectorNode<Syntax> {
 
 /// A call to a function.
 struct CallSyntax : Syntax {
-  CallSyntax(Syntax *Fn, Syntax *Args, clang::SourceLocation Loc, bool IsParam = false)
-    : Syntax(SK_Call, Loc, IsParam)
+  CallSyntax(Syntax *Fn, Syntax *Args, bool IsParam = false)
+    : Syntax(SK_Call, IsParam)
   {
     Elems[0] = Fn;
     Elems[1] = Args;
@@ -249,13 +253,17 @@ struct CallSyntax : Syntax {
     return S->getKind() == SK_Call;
   }
 
+  clang::SourceLocation getCalleeLoc() const {
+    return getCallee()->getLoc();
+  }
+
   std::array<Syntax *, 2> Elems;
 };
 
 /// A lookup in a dictionary.
 struct ElemSyntax : Syntax {
-  ElemSyntax(Syntax *Map, Syntax *Sel, clang::SourceLocation Loc)
-    : Syntax(SK_Elem, Loc) {
+  ElemSyntax(Syntax *Map, Syntax *Sel)
+    : Syntax(SK_Elem) {
     Elems[0] = Map;
     Elems[1] = Sel;
   }
@@ -289,13 +297,17 @@ struct ElemSyntax : Syntax {
     return S->getKind() == SK_Elem;
   }
 
+  clang::SourceLocation getObjectLoc() const {
+    return getObject()->getLoc();
+  }
+
   std::array<Syntax *, 2> Elems;
 };
 
 /// A labeled block of code (e.g., a loop).
 struct MacroSyntax : Syntax {
-  MacroSyntax(Syntax *Call, Syntax *Block, Syntax *Next, clang::SourceLocation Loc)
-    : Syntax(SK_Macro, Loc)
+  MacroSyntax(Syntax *Call, Syntax *Block, Syntax *Next)
+    : Syntax(SK_Macro)
   {
     Elems[0] = Call;
     Elems[1] = Block;
@@ -339,12 +351,24 @@ struct MacroSyntax : Syntax {
     return S->getKind() == SK_Macro;
   }
 
+  clang::SourceLocation getCallLoc() const {
+    return getCall()->getLoc();
+  }
+
+  clang::SourceLocation getBlockLoc() const {
+    return getBlock()->getLoc();
+  }
+
+  clang::SourceLocation getNextLoc() const {
+    return getNext()->getLoc();
+  }
+
   std::array<Syntax *, 3> Elems;
 };
 
 struct FileSyntax : Syntax, VectorNode<Syntax> {
-  FileSyntax(Syntax **Ts, unsigned NumElems, clang::SourceLocation Loc)
-    : Syntax(SK_File, Loc), VectorNode(Ts, NumElems)
+  FileSyntax(Syntax **Ts, unsigned NumElems)
+    : Syntax(SK_File), VectorNode(Ts, NumElems)
   {}
 
   child_range children() {

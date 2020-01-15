@@ -36,6 +36,29 @@ Syntax::children() {
   }
 }
 
+clang::SourceLocation Syntax::getLoc() const {
+  using clang::SourceLocation;
+
+  switch(getKind()) {
+  case SK_Error:
+    return SourceLocation();
+  case SK_Atom:
+    return cast<AtomSyntax>(this)->getTokenLoc();
+  case SK_List:
+  case SK_Array:
+    // FIXME: What is the SourceLocation in this case?
+    return SourceLocation();
+  case SK_Call:
+    return cast<CallSyntax>(this)->getCalleeLoc();
+  case SK_Elem:
+    return cast<ElemSyntax>(this)->getObjectLoc();
+  case SK_Macro:
+    return cast<MacroSyntax>(this)->getCallLoc();
+  case SK_File:
+    return SourceLocation();
+  }
+}
+
 std::size_t CallSyntax::getNumArguments() const {
   if (auto *List = dyn_cast<ListSyntax>(getArguments()))
     return List->getNumChildren();
