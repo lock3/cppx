@@ -45,8 +45,8 @@ struct Syntax {
   };
 
   Syntax() = delete;
-  Syntax(SyntaxKind SK, bool IsParam = false) noexcept :
-    Kind(SK), IsParam(IsParam) {}
+  Syntax(SyntaxKind SK) noexcept :
+    Kind(SK) {}
 
   static Syntax *error;
 
@@ -70,16 +70,10 @@ struct Syntax {
     return const_child_range(Children.begin(), Children.end());
   }
 
-  /// Whether or not this node is a function parameter.
-  bool isParam() const { return IsParam; }
-
   clang::SourceLocation getLoc() const;
 
 private:
   SyntaxKind Kind;
-
-  /// Whether or not this node is a function parameter.
-  bool IsParam;
 };
 
 struct ErrorSyntax : Syntax {
@@ -102,8 +96,8 @@ struct ErrorSyntax : Syntax {
 
 /// Any term represented by a single token (e.g., literals, identifiers).
 struct AtomSyntax : Syntax {
-  AtomSyntax(Token Tok, bool IsParam = false)
-    : Syntax(SK_Atom, IsParam), Tok(Tok)
+  AtomSyntax(Token Tok)
+    : Syntax(SK_Atom), Tok(Tok)
   {}
 
   const Token& getToken() const {
@@ -209,8 +203,8 @@ struct ArraySyntax : Syntax, VectorNode<Syntax> {
 
 /// A call to a function.
 struct CallSyntax : Syntax {
-  CallSyntax(Syntax *Fn, Syntax *Args, bool IsParam = false)
-    : Syntax(SK_Call, IsParam)
+  CallSyntax(Syntax *Fn, Syntax *Args)
+    : Syntax(SK_Call)
   {
     Elems[0] = Fn;
     Elems[1] = Args;

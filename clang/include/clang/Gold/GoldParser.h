@@ -275,9 +275,6 @@ namespace gold
 
     // Keeps track of information and memory associated with our Gold AST.
     SyntaxContext &Context;
-
-    /// True if we are parsing a function parameter list.
-    bool ParsingParams = false;
   };
 
 } // namespace gold

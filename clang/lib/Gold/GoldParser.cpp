@@ -773,9 +773,6 @@ Syntax *Parser::parseCall(Syntax *fn)
   if (!parens.expectOpen())
     return Syntax::error;
 
-  // Begin parsing function parameters.
-  ParsingParams = true;
-
   // Don't parse an array if the parens are empty.
   //
   // FIXME: Don't allow newlines in the parameter array?
@@ -787,9 +784,6 @@ Syntax *Parser::parseCall(Syntax *fn)
     Args = parseArray(ArgArray);
   else
     Args = onList(ArgArray, llvm::SmallVector<Syntax*, 0>());
-
-  // Finish parsing function parameters.
-  ParsingParams = false;
 
   if (!parens.expectClose())
     return Syntax::error;
@@ -950,7 +944,7 @@ static Syntax *makeCall(const SyntaxContext &Ctx, const Token& Tok,
 }
 
 Syntax *Parser::onAtom(const Token& Tok) {
-  return new (Context) AtomSyntax(Tok, ParsingParams);
+  return new (Context) AtomSyntax(Tok);
 }
 
 Syntax *Parser::onArray(ArraySemantic S,
@@ -989,7 +983,7 @@ Syntax *Parser::onUnary(Token const& Tok, Syntax *e1) {
 
 Syntax *Parser::onCall(TokenPair const& Toks, Syntax *e1, Syntax *e2) {
   // FIXME: Toks is unused.
-  return new (Context) CallSyntax(e1, e2, ParsingParams);
+  return new (Context) CallSyntax(e1, e2);
 }
 
 Syntax *Parser::onElem(TokenPair const& tok, Syntax *e1, Syntax *e2) {
