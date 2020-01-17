@@ -453,8 +453,7 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
   // The type is computed from back to front. Start by assuming the type
   // is auto. This will be replaced if an explicit type specifier is given.
   clang::QualType AutoType = CxxAST.getAutoDeductType();
-  TypeInfo *TInfo =
-    BuildTypeLoc<clang::AutoTypeLoc>(CxxAST, AutoType, D->getId()->getLoc());
+  TypeInfo *TInfo = BuildAnyTypeLoc(CxxAST, AutoType, D->getId()->getLoc());
 
   for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
     D = *Iter;
@@ -570,8 +569,8 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
       assert(false && "User-defined types not supported.");
     }
 
-    return BuildTypeLoc<clang::BuiltinTypeLoc>(CxxAST, BuiltinMapIter->second,
-                                               D->getType()->getLoc());
+    return BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second,
+                           D->getType()->getLoc());
   }
 
   llvm_unreachable("Unknown type specification");
