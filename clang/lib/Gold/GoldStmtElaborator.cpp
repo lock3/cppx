@@ -66,10 +66,8 @@ StmtElaborator::elaborateAtom(const AtomSyntax *S) {
 static clang::Stmt *
 createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
                const CallSyntax *S) {
-  const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
-
   // TODO: can this be something other than a name?
-  const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);
+  const AtomSyntax *Name = cast<AtomSyntax>(S->getArgument(0));
 
   // TODO: elaborate the name if we need to.
   // ExprElaborator LHSElab(CxxAST, SemaRef);
@@ -108,10 +106,8 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   // A typed declaration.
   // FIXME : what about 'x = 3:int'
   if (Spelling == SemaRef.OperatorColonII) {
-    const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
-
     // TODO: can this be something other than a name?
-    const AtomSyntax *Name = cast<AtomSyntax>(ArgList->Elems[0]);
+    const AtomSyntax *Name = cast<AtomSyntax>(S->getArgument(0));
     clang::Sema &ClangSema = SemaRef.getCxxSema();
     clang::IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
     clang::DeclarationNameInfo DNI(II, S->getLoc());

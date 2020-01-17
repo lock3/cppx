@@ -210,12 +210,10 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   std::string Spelling = Callee->Tok.getSpelling();
 
   if (&CxxAST.Idents.get(Spelling) == SemaRef.OperatorColonII) {
-    const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
-
     Elaborator Elab(SemaRef.getContext(), SemaRef);
     clang::QualType T = Elab.getOperatorColonType(S);
 
-    return elaborateAtom(cast<AtomSyntax>(ArgList->Elems[0]), T);
+    return elaborateAtom(cast<AtomSyntax>(S->getArgument(0)), T);
   }
 
   // Check if this is a binary operator.
@@ -296,9 +294,8 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
 
 Expression ExprElaborator::elaborateBinOp(const CallSyntax *S,
                                           clang::BinaryOperatorKind Op) {
-  const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
-  const Syntax *LHSSyntax = ArgList->Elems[0];
-  const Syntax *RHSSyntax = ArgList->Elems[1];
+  const Syntax *LHSSyntax = S->getArgument(0);
+  const Syntax *RHSSyntax = S->getArgument(1);
 
   Expression LHS = elaborateExpr(LHSSyntax);
   if (LHS.is<clang::TypeSourceInfo *>()) {
