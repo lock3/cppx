@@ -10451,6 +10451,10 @@ def err_type_annotation_mismatch : Error<
   "annotated type %0 does not match expression type%diff{: $ vs $|}1,2">;
 def err_failed_to_translate_type : Error<
   "failed to translate type for decl">;
+def err_failed_to_translate_expr : Error<
+  "failed to translate expression">;
+def err_invalid_block_condition : Error<
+  "invalid block condition">;
 } // end of Gold category
 
 } // end of sema component.

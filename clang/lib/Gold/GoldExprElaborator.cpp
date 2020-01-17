@@ -292,8 +292,12 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
       SemaRef.getCxxSema().ActOnCallExpr(SemaRef.getCxxSema().getCurScope(),
                                          Fn, S->getCalleeLoc(),
                                          MultiArgs, S->getCalleeLoc());
-    if (Call.isInvalid())
+    if (Call.isInvalid()) {
+      SemaRef.Diags.Report(S->getLoc(),
+                           clang::diag::err_failed_to_translate_expr);
       return nullptr;
+    }
+
     return Call.get();
   }
 
@@ -329,8 +333,10 @@ Expression ExprElaborator::elaborateBinOp(const CallSyntax *S,
                                                clang::SourceLocation(), Op,
                                                LHS.get<clang::Expr *>(),
                                                RHS.get<clang::Expr *>());
-  if (Res.isInvalid())
+  if (Res.isInvalid()) {
+    SemaRef.Diags.Report(S->getLoc(), clang::diag::err_failed_to_translate_expr);
     return nullptr;
+  }
 
   return Res.get();
 }
@@ -361,8 +367,10 @@ Expression ExprElaborator::elaborateCmpAssignOp(const CallSyntax *S,
     ClangSema.CreateBuiltinBinOp(clang::SourceLocation(), Op,
                                  LHS.get<clang::Expr *>(),
                                  RHS.get<clang::Expr *>());
-  if (Res.isInvalid())
+  if (Res.isInvalid()) {
+    SemaRef.Diags.Report(S->getLoc(), clang::diag::err_failed_to_translate_expr);
     return nullptr;
+  }
 
   return Res.get();
 }
@@ -412,8 +420,11 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
                                     clang::tok::ampamp,
                                     LHS.get<clang::Expr *>(),
                                     RHS.get<clang::Expr *>());
-  if (BinOp.isInvalid())
+  if (BinOp.isInvalid()) {
+    SemaRef.Diags.Report(Conditions->getLoc(),
+                         clang::diag::err_invalid_block_condition);
     return nullptr;
+  }
 
   // For all remaining terms, append them to the back of the && expression.
   // Ex., if we had `1 && 2`, we would append `3` to get `1 && 2 && 3`.
@@ -425,8 +436,11 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
       SemaRef.getCxxSema().ActOnBinOp(/*Scope=*/nullptr, clang::SourceLocation(),
                                       clang::tok::ampamp, BinOp.get(),
                                       RHS.get<clang::Expr *>());
-    if (BinOp.isInvalid())
+    if (BinOp.isInvalid()) {
+      SemaRef.Diags.Report(Conditions->getLoc(),
+                           clang::diag::err_invalid_block_condition);
       return nullptr;
+    }
   }
 
   return BinOp.get();
