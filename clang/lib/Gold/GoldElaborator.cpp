@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/Stmt.h"
+#include "clang/Basic/DiagnosticSema.h"
 #include "clang/Sema/Sema.h"
 
 #include "clang/Gold/GoldSema.h"
@@ -129,15 +130,24 @@ static void getFunctionParameters(Declaration *D,
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
-  clang::QualType Ty = elaborateType(D->Decl);
-  clang::TypeSourceInfo *TSI = Context.CxxAST.CreateTypeSourceInfo(Ty);
+
+  ExprElaborator TypeElab(Context, SemaRef);
+  ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
+  if (TypeExpr.isNull()) {
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+  clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
+
   clang::DeclarationName Name = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
 
   // FIXME: Make sure we have the right storage class.
   clang::FunctionDecl *FD = clang::FunctionDecl::Create(Context.CxxAST, Owner,
-                                                        Loc, Loc, Name, Ty,
-                                                        TSI, clang::SC_Extern);
+                                                        Loc, Loc, Name,
+                                                        TInfo->getType(),
+                                                        TInfo, clang::SC_Extern);
 
   // Update the function parameters.
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
@@ -164,15 +174,23 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
 
   // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
-  clang::QualType Ty = elaborateType(D->Decl);
-  clang::TypeSourceInfo *TSI = Context.CxxAST.CreateTypeSourceInfo(Ty);
+
+  ExprElaborator TypeElab(Context, SemaRef);
+  ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
+  if (TypeExpr.isNull()) {
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+  clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
+
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::StorageClass SC = getStorageClass(*this);
 
   // Create the variable and add it to it's owning context.
   clang::VarDecl *VD = clang::VarDecl::Create(Context.CxxAST, Owner, Loc, Loc,
-                                              Id, Ty, TSI, SC);
+                                              Id, TInfo->getType(), TInfo, SC);
   Owner->addDecl(VD);
   D->Cxx = VD;
   return VD;
@@ -181,15 +199,23 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
 clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
   // Get type information.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
-  clang::QualType Ty = elaborateType(D->Decl);
-  clang::TypeSourceInfo *TSI = Context.CxxAST.CreateTypeSourceInfo(Ty);
+
+  ExprElaborator TypeElab(Context, SemaRef);
+  ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
+  if (TypeExpr.isNull()) {
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+  clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
+
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
 
   // Just return the parameter. We add it to it's function later.
   clang::ParmVarDecl *P = clang::ParmVarDecl::Create(Context.CxxAST, Owner, Loc,
-                                                     Loc, Id, Ty, TSI,
-                                                     clang::SC_None,
+                                                     Loc, Id, TInfo->getType(),
+                                                     TInfo, clang::SC_None,
                                                      /*DefaultArg=*/nullptr);
   D->Cxx = P;
   return P;
@@ -233,7 +259,7 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   SemaRef.enterScope(SK_Function, D->Init);
 
   // Elaborate the function body.
-  StmtElaborator BodyElaborator(Context.CxxAST, SemaRef);
+  StmtElaborator BodyElaborator(Context, SemaRef);
   clang::Stmt *Body = BodyElaborator.elaborateBlock(D->Init);
   FD->setBody(Body);
 
@@ -257,7 +283,7 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   }
 
   // Elaborate the initializer.
-  ExprElaborator ExprElab(Context.CxxAST, SemaRef);
+  ExprElaborator ExprElab(Context, SemaRef);
   ExprElaborator::Expression Init = ExprElab.elaborateExpr(D->Init);
 
   // Make sure the initializer was not elaborated as a type.
@@ -300,104 +326,6 @@ clang::QualType Elaborator::getOperatorColonType(const CallSyntax *S) const {
   }
 
   assert(false && "User defined types are not supported yet.");
-}
-
-// Get a vector of declarators.
-static void getDeclarators(Declarator *D, llvm::SmallVectorImpl<Declarator *> &Decls) {
-  while (D) {
-    Decls.push_back(D);
-    D = D->Next;
-  }
-}
-
-clang::QualType Elaborator::elaborateType(Declarator *D) {
-  // The type of a declarator is constructed back-to-front.
-  llvm::SmallVector<Declarator *, 4> Decls;
-  getDeclarators(D, Decls);
-
-  // The type is computed from back to front. Start by assuming the type
-  // is auto. This will be replaced if an explicit type specifier is given.
-  clang::QualType Ty = Context.CxxAST.getAutoDeductType();
-  for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
-    D = *Iter;
-    switch (D->Kind) {
-    case DK_Identifier:
-      // The identifier is not part of the type.
-      break;
-
-    case DK_Pointer:
-      Ty = elaboratePointerType(D, Ty);
-      break;
-
-    case DK_Array:
-      Ty = elaborateArrayType(D, Ty);
-      break;
-
-    case DK_Function:
-      Ty = elaborateFunctionType(D, Ty);
-      break;
-
-    case DK_Type:
-      Ty = elaborateExplicitType(D, Ty);
-      break;
-
-    default:
-      llvm_unreachable("Invalid declarator");
-    }
-  }
-  return Ty;
-}
-
-clang::QualType Elaborator::elaboratePointerType(Declarator *D, clang::QualType T) {
-  llvm_unreachable("Pointers not supported");
-}
-
-clang::QualType Elaborator::elaborateArrayType(Declarator *D, clang::QualType T) {
-  llvm_unreachable("Arrays not supported");
-}
-
-// Elaborate the parameters and incorporate their types into  the one
-// we're building. Note that T is the return type (if any).
-clang::QualType Elaborator::elaborateFunctionType(Declarator *D, clang::QualType T) {
-  const auto Call = cast<CallSyntax>(D->Call);
-
-  // FIXME: Handle array-based arguments.
-  assert(isa<ListSyntax>(D->Data.ParamInfo.Params) && "Array parameters not supported");
-  const Syntax *Args = D->Data.ParamInfo.Params;
-
-  // Elaborate the parameter declarations in order to get their types, and save
-  // the resulting scope with the declarator.
-  llvm::SmallVector<clang::QualType, 4> Types;
-  SemaRef.enterScope(SK_Parameter, Call);
-  for (const Syntax *P : Args->children()) {
-    clang::ValueDecl *VD = cast<clang::ValueDecl>(elaborateDeclSyntax(P));
-    Types.push_back(VD->getType());
-  }
-  D->Data.ParamInfo.Scope = SemaRef.saveScope(Call);
-
-  // FIXME: We probably need to configure parts of the prototype (e.g.,
-  // make this noexcept by default).
-  clang::FunctionProtoType::ExtProtoInfo EPI;
-  return Context.CxxAST.getFunctionType(T, Types, EPI);
-}
-
-clang::QualType Elaborator::elaborateExplicitType(Declarator *D, clang::QualType T) {
-  assert(isa<clang::AutoType>(T));
-  assert(D->Kind == DK_Type);
-
-  // FIXME: We should really elaborate the entire type expression. We're
-  // just cheating for now. It will be interesting to square that with the
-  // current expression elaborator.
-  if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
-    auto BuiltinMapIter = BuiltinTypes.find(Atom->getSpelling());
-    if (BuiltinMapIter == BuiltinTypes.end()) {
-      // FIXME: This requires a type lookup.
-      assert(false && "User-defined types not supported.");
-    }
-    return BuiltinMapIter->second;
-  }
-
-  llvm_unreachable("Unknown type specification");
 }
 
 static Declarator *buildIdDeclarator(const AtomSyntax *S, Declarator *Next) {

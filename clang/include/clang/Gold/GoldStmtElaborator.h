@@ -30,6 +30,8 @@ class Stmt;
 
 namespace gold {
 
+class SyntaxContext;
+
 // Represents the kinds of C++ statements in the standard.
 // Each enumerator is annotated with its section in the standard.
 enum StatementKind {
@@ -78,16 +80,15 @@ struct Statement {
 
 // Builds a clang::Stmt out of a gold::Syntax node.
 class StmtElaborator {
+  SyntaxContext &Context;
 
   clang::ASTContext &CxxAST;
 
   Sema &SemaRef;
 
-  ExprElaborator ExprElab;
-
   clang::DiagnosticsEngine &Diags;
 public:
-  StmtElaborator(clang::ASTContext &CxxAST, Sema &SemaRef);
+  StmtElaborator(SyntaxContext &Context, Sema &SemaRef);
 
   clang::Stmt *elaborateStmt(const Syntax *S);
   clang::Stmt *elaborateCall(const CallSyntax *S);

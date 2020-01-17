@@ -44,7 +44,6 @@ public:
 
   /// The state of translation for the Gold language.
   Sema &SemaRef;
-
 public:
   Elaborator(SyntaxContext &Context, Sema &SemaRef);
 

@@ -68,6 +68,7 @@ add_clang_library(clangSema
   SemaTemplateVariadic.cpp
   SemaType.cpp
   TypeLocBuilder.cpp
+  TypeLocUtil.cpp
 
   DEPENDS
   ClangOpenCLBuiltinsImpl

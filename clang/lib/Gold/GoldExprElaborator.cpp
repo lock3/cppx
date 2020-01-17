@@ -22,24 +22,29 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Ownership.h"
 #include "clang/Sema/Sema.h"
+#include "clang/Sema/TypeLocUtil.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/StringMap.h"
 
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
+#include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSema.h"
+#include "clang/Gold/GoldSyntaxContext.h"
 #include "clang/Gold/GoldTokens.h"
 
 #include <cstring>
 
 namespace gold {
 
-ExprElaborator::ExprElaborator(clang::ASTContext &CxxAST, Sema &SemaRef)
-  : CxxAST(CxxAST), SemaRef(SemaRef)
+using TypeInfo = ExprElaborator::TypeInfo;
+using Expression = ExprElaborator::Expression;
+
+ExprElaborator::ExprElaborator(SyntaxContext &Context, Sema &SemaRef)
+  : Context(Context), CxxAST(Context.CxxAST), SemaRef(SemaRef)
 {}
 
-ExprElaborator::Expression
-ExprElaborator::elaborateExpr(const Syntax *S) {
+Expression ExprElaborator::elaborateExpr(const Syntax *S) {
   clang::Expr *Ret = nullptr;
   if (isa<AtomSyntax>(S))
     return elaborateAtom(cast<AtomSyntax>(S), clang::QualType());
@@ -144,8 +149,8 @@ createDeclRefExpr(clang::ASTContext &CxxAST, Sema &SemaRef, Token T,
   return nullptr;
 }
 
-ExprElaborator::Expression
-ExprElaborator::elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType) {
+Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
+                                         clang::QualType ExplicitType) {
   Token T = S->Tok;
 
   switch (T.getKind()) {
@@ -204,8 +209,7 @@ const llvm::StringMap<clang::BinaryOperatorKind> CompoundAssignOperators = {
   {"operator'^='" , clang::BO_XorAssign},
 };
 
-ExprElaborator::Expression
-ExprElaborator::elaborateCall(const CallSyntax *S) {
+Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   std::string Spelling = Callee->Tok.getSpelling();
 
@@ -270,7 +274,7 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
     const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
     assert(ArgList && "Unexpected argument format.");
     for (const Syntax *A : ArgList->children()) {
-      ExprElaborator Elab(CxxAST, SemaRef);
+      ExprElaborator Elab(Context, SemaRef);
       Expression Argument = Elab.elaborateExpr(A);
 
       // FIXME: What kind of expression is the unary ':typename' expression?
@@ -297,9 +301,8 @@ ExprElaborator::elaborateCall(const CallSyntax *S) {
   return nullptr;
 }
 
-ExprElaborator::Expression
-ExprElaborator::elaborateBinOp(const CallSyntax *S,
-                               clang::BinaryOperatorKind Op) {
+Expression ExprElaborator::elaborateBinOp(const CallSyntax *S,
+                                          clang::BinaryOperatorKind Op) {
   const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
   const Syntax *LHSSyntax = ArgList->Elems[0];
   const Syntax *RHSSyntax = ArgList->Elems[1];
@@ -333,9 +336,8 @@ ExprElaborator::elaborateBinOp(const CallSyntax *S,
 }
 
 // FIXME: how is this different from elaborateBinOp?
-ExprElaborator::Expression
-ExprElaborator::elaborateCmpAssignOp(const CallSyntax *S,
-                                     clang::BinaryOperatorKind Op) {
+Expression ExprElaborator::elaborateCmpAssignOp(const CallSyntax *S,
+                                                clang::BinaryOperatorKind Op) {
   const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
   const Syntax *LHSSyntax = ArgList->Elems[0];
   const Syntax *RHSSyntax = ArgList->Elems[1];
@@ -376,7 +378,7 @@ ExprElaborator::elaborateCmpAssignOp(const CallSyntax *S,
 /// \endcode
 /// We just create a logical and expression with n terms: one for each
 /// sub expression.
-ExprElaborator::Expression
+Expression
 ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
   // If there's only one term, we don't need to do anything else.
   if (Conditions->getNumChildren() == 1)
@@ -385,7 +387,7 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
   Expression LHS, RHS;
 
   {
-    ExprElaborator ExEl(CxxAST, SemaRef);
+    ExprElaborator ExEl(Context, SemaRef);
     LHS = ExEl.elaborateExpr(Conditions->getChild(0));
 
     if (LHS.is<clang::TypeSourceInfo *>()) {
@@ -395,7 +397,7 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
     }
   }
   {
-    ExprElaborator ExEl(CxxAST, SemaRef);
+    ExprElaborator ExEl(Context, SemaRef);
     RHS = ExEl.elaborateExpr(Conditions->getChild(1));
 
     if (RHS.is<clang::TypeSourceInfo *>()) {
@@ -416,7 +418,7 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
   // For all remaining terms, append them to the back of the && expression.
   // Ex., if we had `1 && 2`, we would append `3` to get `1 && 2 && 3`.
   for (unsigned I = 2; I < Conditions->getNumChildren(); ++I) {
-    ExprElaborator ExEl(CxxAST, SemaRef);
+    ExprElaborator ExEl(Context, SemaRef);
     RHS = ExEl.elaborateExpr(Conditions->getChild(I));
 
     BinOp =
@@ -428,6 +430,151 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
   }
 
   return BinOp.get();
+}
+
+//===----------------------------------------------------------------------===//
+//                        Type Expression Elaboration                         //
+//===----------------------------------------------------------------------===//
+
+// Get a vector of declarators.
+static void getDeclarators(Declarator *D,
+                           llvm::SmallVectorImpl<Declarator *> &Decls) {
+  while (D) {
+    Decls.push_back(D);
+    D = D->Next;
+  }
+}
+
+Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
+  // The type of a declarator is constructed back-to-front.
+  llvm::SmallVector<Declarator *, 4> Decls;
+  getDeclarators(D, Decls);
+
+  // The type is computed from back to front. Start by assuming the type
+  // is auto. This will be replaced if an explicit type specifier is given.
+  clang::QualType AutoType = CxxAST.getAutoDeductType();
+  TypeInfo *TInfo =
+    BuildTypeLoc<clang::AutoTypeLoc>(CxxAST, AutoType, D->getId()->getLoc());
+
+  for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
+    D = *Iter;
+    switch (D->Kind) {
+    case DK_Identifier:
+      // The identifier is not part of the type.
+      break;
+
+    case DK_Pointer: {
+      Expression TypeExpr = elaboratePointerType(D, TInfo);
+
+      // We already know this is a TypeSourceInfo, but it might be null,
+      // so check anyway.
+      if (!TypeExpr.is<TypeInfo *>())
+        return nullptr;
+
+      TInfo = TypeExpr.get<TypeInfo *>();
+      break;
+    }
+
+    case DK_Array: {
+      Expression TypeExpr = elaborateArrayType(D, TInfo);
+      if (!TypeExpr.is<TypeInfo *>())
+        return nullptr;
+
+      TInfo = TypeExpr.get<TypeInfo *>();
+      break;
+    }
+
+    case DK_Function: {
+      Expression TypeExpr = elaborateFunctionType(D, TInfo);
+      if (!TypeExpr.is<TypeInfo *>())
+        return nullptr;
+
+      TInfo = TypeExpr.get<TypeInfo *>();
+      break;
+    }
+
+    case DK_Type: {
+      Expression TypeExpr = elaborateExplicitType(D, TInfo);
+      if (!TypeExpr.is<TypeInfo *>())
+        return nullptr;
+
+      TInfo = TypeExpr.get<TypeInfo *>();
+      break;
+    }
+
+    default:
+      llvm_unreachable("Invalid declarator");
+    }
+  }
+
+  return TInfo;
+}
+
+Expression ExprElaborator::elaboratePointerType(Declarator *D, TypeInfo *Ty) {
+  llvm_unreachable("Pointers not supported");
+}
+
+Expression ExprElaborator::elaborateArrayType(Declarator *D, TypeInfo *Ty) {
+  llvm_unreachable("Arrays not supported");
+}
+
+// Elaborate the parameters and incorporate their types into  the one
+// we're building. Note that T is the return type (if any).
+Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
+  const auto *Call = cast<CallSyntax>(D->Call);
+
+  // FIXME: Handle array-based arguments.
+  assert(isa<ListSyntax>(D->Data.ParamInfo.Params)
+         && "Array parameters not supported");
+  const Syntax *Args = D->Data.ParamInfo.Params;
+
+  // Elaborate the parameter declarations in order to get their types, and save
+  // the resulting scope with the declarator.
+  llvm::SmallVector<clang::QualType, 4> Types;
+  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
+  SemaRef.enterScope(SK_Parameter, Call);
+  for (const Syntax *P : Args->children()) {
+    Elaborator Elab(Context, SemaRef);
+    clang::ValueDecl *VD = cast<clang::ValueDecl>(Elab.elaborateDeclSyntax(P));
+
+    assert(isa<clang::ParmVarDecl>(VD) && "Parameter is not a ParmVarDecl");
+
+    Types.push_back(VD->getType());
+    Params.push_back(cast<clang::ParmVarDecl>(VD));
+  }
+  D->Data.ParamInfo.Scope = SemaRef.saveScope(Call);
+
+  // FIXME: We probably need to configure parts of the prototype (e.g.,
+  // make this noexcept by default).
+  clang::FunctionProtoType::ExtProtoInfo EPI;
+
+  using clang::SourceLocation;
+  using clang::SourceRange;
+
+  clang::QualType FnTy = CxxAST.getFunctionType(Ty->getType(), Types, EPI);
+  return BuildFunctionTypeLoc(CxxAST, FnTy,
+    SourceLocation(), SourceLocation(), SourceLocation(),
+    SourceRange(), SourceLocation(), Params);
+}
+
+Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
+  assert(isa<clang::AutoType>(Ty->getType()));
+  assert(D->Kind == DK_Type);
+
+  // FIXME: We should really elaborate the entire type expression. We're
+  // just cheating for now.
+  if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
+    auto BuiltinMapIter = BuiltinTypes.find(Atom->getSpelling());
+    if (BuiltinMapIter == BuiltinTypes.end()) {
+      // FIXME: This requires a type lookup.
+      assert(false && "User-defined types not supported.");
+    }
+
+    return BuildTypeLoc<clang::BuiltinTypeLoc>(CxxAST, BuiltinMapIter->second,
+                                               D->getType()->getLoc());
+  }
+
+  llvm_unreachable("Unknown type specification");
 }
 
 } // namespace gold

@@ -26,14 +26,14 @@
 #include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldStmtElaborator.h"
 #include "clang/Gold/GoldSyntax.h"
+#include "clang/Gold/GoldSyntaxContext.h"
 
 namespace gold {
 
 using clang::cast_or_null;
 
-StmtElaborator::StmtElaborator(clang::ASTContext &CxxAST, Sema &SemaRef)
-  : CxxAST(CxxAST), SemaRef(SemaRef),
-    ExprElab(CxxAST, SemaRef),
+StmtElaborator::StmtElaborator(SyntaxContext &Context, Sema &SemaRef)
+  : Context(Context), CxxAST(Context.CxxAST), SemaRef(SemaRef),
     Diags(CxxAST.getSourceManager().getDiagnostics())
 {
 }
@@ -52,7 +52,7 @@ StmtElaborator::elaborateStmt(const Syntax *S) {
 
 clang::Stmt *
 StmtElaborator::elaborateAtom(const AtomSyntax *S) {
-  ExprElaborator ExEl(CxxAST, SemaRef);
+  ExprElaborator ExEl(Context, SemaRef);
   ExprElaborator::Expression Expression = ExEl.elaborateExpr(S);
 
   if (Expression.is<clang::TypeSourceInfo *>()) {
@@ -122,7 +122,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
     if (R.empty())
       return createDeclStmt(CxxAST, SemaRef, S);
   } else if (Spelling == SemaRef.OperatorEqualsII) {
-    ExprElaborator LHSElab(CxxAST, SemaRef);
+    ExprElaborator LHSElab(Context, SemaRef);
     ExprElaborator::Expression NameExpr =
       LHSElab.elaborateExpr(S->getArgument(0));
 
@@ -131,7 +131,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
       return nullptr;
     }
 
-    ExprElaborator RHSElab(CxxAST, SemaRef);
+    ExprElaborator RHSElab(Context, SemaRef);
     ExprElaborator::Expression InitExpr =
       RHSElab.elaborateExpr(S->getArgument(1));
 
@@ -166,7 +166,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   }
 
   // If all else fails, just see if we can elaborate any expression.
-  ExprElaborator ExprElab(CxxAST, SemaRef);
+  ExprElaborator ExprElab(Context, SemaRef);
   ExprElaborator::Expression Expression = ExprElab.elaborateCall(S);
 
   if (Expression.is<clang::TypeSourceInfo *>()) {
@@ -181,7 +181,7 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
   const CallSyntax *Call = cast<CallSyntax>(S->getCall());
 
   clang::Expr *ConditionExpr;
-  ExprElaborator ExEl(CxxAST, SemaRef);
+  ExprElaborator ExEl(Context, SemaRef);
   if (const ArraySyntax *BlockCond = dyn_cast<ArraySyntax>(Call->getArguments())) {
     ExprElaborator::Expression Expression = ExEl.elaborateBlockCondition(BlockCond);
 
