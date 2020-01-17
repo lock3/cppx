@@ -178,8 +178,7 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
 }
 
 // Mapping of Gold's fused operator strings to clang Opcodes.
-// TODO: Assignment will probably be handled differently than other bin ops?
-const llvm::StringMap<clang::BinaryOperatorKind> BinaryOperators = {
+static const llvm::StringMap<clang::BinaryOperatorKind> BinaryOperators = {
   {"operator'+'" , clang::BO_Add},
   {"operator'-'" , clang::BO_Sub},
   {"operator'*'" , clang::BO_Mul},
@@ -196,9 +195,6 @@ const llvm::StringMap<clang::BinaryOperatorKind> BinaryOperators = {
   {"operator'>'", clang::BO_GT},
   {"operator'<='", clang::BO_LE},
   {"operator'>='", clang::BO_GE},
-};
-
-const llvm::StringMap<clang::BinaryOperatorKind> CompoundAssignOperators = {
   {"operator'+='" , clang::BO_AddAssign},
   {"operator'-='" , clang::BO_SubAssign},
   {"operator'*='" , clang::BO_MulAssign},
@@ -222,20 +218,13 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
     return elaborateAtom(cast<AtomSyntax>(ArgList->Elems[0]), T);
   }
 
-  // Check if this is a standard binary operator (one that doesn't assign).
+  // Check if this is a binary operator.
   auto BinOpMapIter = BinaryOperators.find(Spelling);
   if (BinOpMapIter != BinaryOperators.end()) {
     return elaborateBinOp(S, BinOpMapIter->second);
   }
 
-  // Check if this is a compound assignment operator like operator'+='.
-  auto CmpAssnMapIter = CompoundAssignOperators.find(Spelling);
-  if (CmpAssnMapIter != CompoundAssignOperators.end()) {
-    return elaborateBinOp(S, CmpAssnMapIter->second);
-  }
-
   // Try to construct a normal function-call expression.
-
   // First do unqualified lookup.
   clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Spelling)}, S->getLoc());
   clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
@@ -311,62 +300,25 @@ Expression ExprElaborator::elaborateBinOp(const CallSyntax *S,
   const Syntax *LHSSyntax = ArgList->Elems[0];
   const Syntax *RHSSyntax = ArgList->Elems[1];
 
-  // FIXME: what?
-  // The LHS as written becomes the RHS in our implicit statement,
-  // due to recursion. 
-  Expression RHS = elaborateExpr(LHSSyntax);
-  if (RHS.is<clang::TypeSourceInfo *>()) {
+  Expression LHS = elaborateExpr(LHSSyntax);
+  if (LHS.is<clang::TypeSourceInfo *>()) {
     SemaRef.Diags.Report(LHSSyntax->getLoc(), clang::diag::err_expected_expression);
     return nullptr;
   }
 
-  Expression LHS = elaborateExpr(RHSSyntax);
-  if (LHS.is<clang::TypeSourceInfo *>()) {
+  Expression RHS = elaborateExpr(RHSSyntax);
+  if (RHS.is<clang::TypeSourceInfo *>()) {
     SemaRef.Diags.Report(RHSSyntax->getLoc(), clang::diag::err_expected_expression);
     return nullptr;
   }
 
   clang::Sema &ClangSema = SemaRef.getCxxSema();
 
-  // FIXME: replace with Sema::ActOnBinOp
+  // FIXME: Replace with ActOnBinOp so precedence issues get warnings.
   clang::ExprResult Res = ClangSema.BuildBinOp(/*Scope=*/nullptr,
-                                               clang::SourceLocation(), Op,
+                                               S->getLoc(), Op,
                                                LHS.get<clang::Expr *>(),
                                                RHS.get<clang::Expr *>());
-  if (Res.isInvalid()) {
-    SemaRef.Diags.Report(S->getLoc(), clang::diag::err_failed_to_translate_expr);
-    return nullptr;
-  }
-
-  return Res.get();
-}
-
-// FIXME: how is this different from elaborateBinOp?
-Expression ExprElaborator::elaborateCmpAssignOp(const CallSyntax *S,
-                                                clang::BinaryOperatorKind Op) {
-  const ListSyntax *ArgList = cast<ListSyntax>(S->getArguments());
-  const Syntax *LHSSyntax = ArgList->Elems[0];
-  const Syntax *RHSSyntax = ArgList->Elems[1];
-
-  // FIXME: error carry-forward? see: ElaborateBinOp FIXME
-  Expression RHS = elaborateExpr(LHSSyntax);
-  if (RHS.is<clang::TypeSourceInfo *>()) {
-    SemaRef.Diags.Report(LHSSyntax->getLoc(), clang::diag::err_expected_expression);
-    return nullptr;
-  }
-
-  Expression LHS = elaborateExpr(RHSSyntax);
-  if (LHS.is<clang::TypeSourceInfo *>()) {
-    SemaRef.Diags.Report(RHSSyntax->getLoc(), clang::diag::err_expected_expression);
-    return nullptr;
-  }
-
-  clang::Sema &ClangSema = SemaRef.getCxxSema();
-
-  clang::ExprResult Res =
-    ClangSema.CreateBuiltinBinOp(clang::SourceLocation(), Op,
-                                 LHS.get<clang::Expr *>(),
-                                 RHS.get<clang::Expr *>());
   if (Res.isInvalid()) {
     SemaRef.Diags.Report(S->getLoc(), clang::diag::err_failed_to_translate_expr);
     return nullptr;
