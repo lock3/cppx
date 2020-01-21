@@ -66,7 +66,7 @@ StmtElaborator::elaborateAtom(const AtomSyntax *S) {
 static clang::Stmt *
 createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
                const CallSyntax *S) {
-  // TODO: can this be something other than a name?
+  // FIXME: elaborate this expression, it might not be a name.
   const AtomSyntax *Name = cast<AtomSyntax>(S->getArgument(0));
 
   // TODO: elaborate the name if we need to.

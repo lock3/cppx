@@ -145,7 +145,7 @@ createDeclRefExpr(clang::ASTContext &CxxAST, Sema &SemaRef, Token T,
                                  Loc, FoundTy, clang::VK_LValue);
     return DRE;
   }
- 
+
   return nullptr;
 }
 
@@ -211,6 +211,7 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
 
   if (&CxxAST.Idents.get(Spelling) == SemaRef.OperatorColonII) {
     Elaborator Elab(SemaRef.getContext(), SemaRef);
+    llvm::outs() << "GetOperatorColonType call\n";
     clang::QualType T = Elab.getOperatorColonType(S);
 
     return elaborateAtom(cast<AtomSyntax>(S->getArgument(0)), T);
@@ -298,13 +299,13 @@ Expression ExprElaborator::elaborateBinOp(const CallSyntax *S,
   const Syntax *RHSSyntax = S->getArgument(1);
 
   Expression LHS = elaborateExpr(LHSSyntax);
-  if (LHS.is<clang::TypeSourceInfo *>()) {
+  if (LHS.is<clang::TypeSourceInfo *>() || LHS.isNull()) {
     SemaRef.Diags.Report(LHSSyntax->getLoc(), clang::diag::err_expected_expression);
     return nullptr;
   }
 
   Expression RHS = elaborateExpr(RHSSyntax);
-  if (RHS.is<clang::TypeSourceInfo *>()) {
+  if (RHS.is<clang::TypeSourceInfo *>() || RHS.isNull()) {
     SemaRef.Diags.Report(RHSSyntax->getLoc(), clang::diag::err_expected_expression);
     return nullptr;
   }
