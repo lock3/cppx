@@ -278,32 +278,33 @@ Syntax *Parser::parseExpressionStatement() {
 ///
 /// declaration:
 ///   identifier : signature ;
-///   identifier : signature definition
+///   identifier : = definition
+///   identifier : signature = definition
 ///
 /// definition:
 ///   = expression-statement
 ///   block-statement
 ///
-/// The first production is used for defining values (e.g., variables,
-/// and types), the second is used for defining complex mappings. Note
-/// that the first syntax can also be used to declare functions:
-///
-///   implies : (p:bool, q:bool) bool = !p or q;
-///
 /// TODO: Support a multi-declarator syntax.
 Syntax *Parser::parseDeclaration() {
-  requireToken(tok::Identifier);
+  Token Id = requireToken(tok::Identifier);
   expectToken(tok::Colon);
-  parseSignature();
 
-  if (matchToken(tok::Equal))
-    parseExpressionStatement();
+  Syntax *Sig = nullptr;
+  if (nextTokenIsNot(tok::Equal))
+    Sig = parseSignature();
+
+  Syntax* Init;
+  if (matchToken(tok::Semicolon))
+    Init = nullptr;
+  else if (matchToken(tok::Equal))
+    Init = parseExpressionStatement();
   else if (nextTokenIs(tok::LeftBrace))
-    parseBlockStatement();
+    Init = parseBlockStatement();
   else
-    assert(false && "Invalid definition");
+    Init = onError("expected definition");
 
-  return nullptr;
+  return onDef(Id, Sig, Init);
 }
 
 Syntax *Parser::parseSignature() {
@@ -625,8 +626,20 @@ Syntax *Parser::onBlock(llvm::SmallVectorImpl<Syntax *> &SS) {
   return new BlockSyntax(makeArray(SS));
 }
 
+Syntax *Parser::onDef(const Token &Tok, Syntax *Sig, Syntax *Init) {
+  return new DefSyntax(Tok, Sig, Init);
+}
+
 Syntax *Parser::onTop(llvm::SmallVectorImpl<Syntax *> &SS) {
   return new TopSyntax(makeArray(SS));
+}
+
+Syntax *Parser::onError(char const* Msg) {
+  // FIXME: Use Clang diagnostics.
+  llvm::errs() << "error: " << Msg << '\n';
+
+  // FIXME: Maybe make this a singleton?
+  return new ErrorSyntax();
 }
 
 } // namespace blue

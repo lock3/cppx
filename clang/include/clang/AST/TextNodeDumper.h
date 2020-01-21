@@ -378,6 +378,7 @@ public:
   void VisitBlockSyntax(const blue::BlockSyntax *S);
   void VisitUnarySyntax(const blue::UnarySyntax *S);
   void VisitBinarySyntax(const blue::BinarySyntax *S);
+  void VisitDefSyntax(const blue::DefSyntax *S);
   void VisitTopSyntax(const blue::TopSyntax *S);
 };
 

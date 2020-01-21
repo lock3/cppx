@@ -121,14 +121,6 @@ public:
     return Tok.getSpelling();
   }
 
-  child_range children() {
-    return child_range(child_iterator(), child_iterator());
-  }
-
-  const child_range children() const {
-    return const_child_range(const_child_iterator(), const_child_iterator());
-  }
-
 private:
   Token Tok;
 };
@@ -256,6 +248,18 @@ public:
     return Arg;
   }
 
+  child_range children() {
+    return child_range(&Arg, &Arg + 1);
+  }
+
+  const child_range children() const {
+    return child_range(&Arg, &Arg + 1);
+  }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == Unary;
+  }
+
 private:
   Token Op;
   Syntax *Arg;
@@ -266,10 +270,10 @@ private:
 class BinarySyntax : public Syntax {
 public:
   BinarySyntax(Syntax *LHS, Syntax *RHS)
-    : Syntax(Binary), Op(), LHS(LHS), RHS(RHS) { }
+    : Syntax(Binary), Op(), Args{LHS, RHS} { }
 
   BinarySyntax(const Token &Op, Syntax *LHS, Syntax *RHS)
-    : Syntax(Binary), Op(Op), LHS(LHS), RHS(RHS) { }
+    : Syntax(Binary), Op(Op), Args{LHS, RHS} { }
 
   const Token &getOperator() const {
     return Op;
@@ -280,33 +284,100 @@ public:
   }
 
   Syntax *getLeftOperand() {
-    return LHS;
+    return Args[0];
   }
 
   const Syntax *getLeftOperand() const {
-    return LHS;
+    return Args[0];
   }
 
   Syntax *getRightOperand() {
-    return RHS;
+    return Args[1];
   }
 
   const Syntax *getRightOperand() const {
-    return RHS;
+    return Args[1];
+  }
+
+  child_range children() {
+    return child_range(Args, Args + 2);
+  }
+
+  const child_range children() const {
+    return child_range(Args, Args + 2);
+  }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == Binary;
   }
 
 private:
   Token Op;
-  Syntax *LHS;
-  Syntax *RHS;
+  Syntax *Args[2];
+};
+
+/// A declaration with a definition.
+class DefSyntax : public Syntax {
+public:
+  DefSyntax(Token Id, Syntax *Sig, Syntax *Init)
+    : Syntax(Def), Id(Id), Args{Sig, Init} {}
+
+  const Token& getIdentifier() const {
+    return Id;
+  }
+
+  llvm::StringRef getIdentifierSpelling() const {
+    return Id.getSpelling();
+  }
+
+  bool hasSignature() const
+  {
+    return getSignature();
+  }
+
+  const Syntax *getSignature() const {
+    return Args[0];
+  }
+
+  Syntax *getSignature() {
+    return Args[0];
+  }
+
+  bool hasInitializer() const
+  {
+    return getInitializer();
+  }
+
+  const Syntax *getInitializer() const {
+    return Args[1];
+  }
+
+  Syntax *getInitializer() {
+    return Args[1];
+  }
+
+  child_range children() {
+    return child_range(Args, Args + 2);
+  }
+
+  const child_range children() const {
+    return child_range(Args, Args + 2);
+  }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == Def;
+  }
+
+private:
+  Token Id;
+  Syntax *Args[2];
 };
 
 /// Represents the top-level sequence of statements.
 class TopSyntax : public VectorSyntax {
 public:
   TopSyntax(llvm::ArrayRef<Syntax *> A)
-    : VectorSyntax(Block, A)
-  { }
+    : VectorSyntax(Block, A) {}
 
   static bool classof(const Syntax *S) {
     return S->getKind() == Top;

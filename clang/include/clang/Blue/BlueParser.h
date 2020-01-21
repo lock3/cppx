@@ -227,7 +227,9 @@ namespace blue
     Syntax *onTuple(llvm::SmallVectorImpl<Syntax *> &SS);
     Syntax *onArray(llvm::SmallVectorImpl<Syntax *> &SS);
     Syntax *onBlock(llvm::SmallVectorImpl<Syntax *> &SS);
+    Syntax* onDef(const Token &Tok, Syntax *Sig, Syntax *Init);
     Syntax *onTop(llvm::SmallVectorImpl<Syntax *> &SS);
+    Syntax* onError(char const* Msg);
 
     /// The lexer.
     Lexer Lex;

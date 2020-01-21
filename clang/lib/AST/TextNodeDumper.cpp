@@ -2061,5 +2061,9 @@ void TextNodeDumper::VisitUnarySyntax(const blue::UnarySyntax *S) {
 void TextNodeDumper::VisitBinarySyntax(const blue::BinarySyntax *S) {
 }
 
+void TextNodeDumper::VisitDefSyntax(const blue::DefSyntax *S) {
+  OS << ' ' << S->getIdentifierSpelling();
+}
+
 void TextNodeDumper::VisitTopSyntax(const blue::TopSyntax *S) {
 }
