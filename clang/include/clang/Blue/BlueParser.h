@@ -177,7 +177,7 @@ namespace blue
     // Syntax productions
 
     // Top-level
-    Syntax *parseTranslationUnit();
+    Syntax *parseFile();
 
     // Statements
     Syntax *parseStatement();

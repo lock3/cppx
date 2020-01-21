@@ -11,6 +11,8 @@ add_clang_library(blue
   BlueLexer.cpp
   BlueParser.cpp
   BlueSyntax.cpp
+  BlueSyntaxVisitor.cpp
+  BlueElaborator.cpp
   ParseBlueAST.cpp
 
   LINK_LIBS

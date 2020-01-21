@@ -23,6 +23,7 @@
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/TemplateArgumentVisitor.h"
 #include "clang/AST/TypeVisitor.h"
+#include "clang/Blue/BlueSyntaxVisitor.h"
 #include "clang/Gold/GoldSyntax.h"
 #include "clang/Gold/GoldSyntaxVisitor.h"
 
@@ -133,7 +134,8 @@ class TextNodeDumper
       public ConstStmtVisitor<TextNodeDumper>,
       public TypeVisitor<TextNodeDumper>,
       public ConstDeclVisitor<TextNodeDumper>,
-      public gold::ConstSyntaxVisitor<TextNodeDumper> {
+      public gold::ConstSyntaxVisitor<TextNodeDumper>,
+      public blue::ConstSyntaxVisitor<TextNodeDumper> {
   raw_ostream &OS;
   const bool ShowColors;
 
@@ -180,6 +182,8 @@ public:
   void Visit(const GenericSelectionExpr::ConstAssociation &A);
 
   void Visit(const gold::Syntax *S);
+
+  void Visit(const blue::Syntax *S);
 
   void dumpPointer(const void *Ptr);
   void dumpLocation(SourceLocation Loc);
@@ -364,6 +368,16 @@ public:
   void VisitCallSyntax(const gold::CallSyntax *S);
   void VisitElemSyntax(const gold::ElemSyntax *S);
   void VisitMacroSyntax(const gold::MacroSyntax *S);
+
+  void VisitErrorSyntax(const blue::ErrorSyntax *S);
+  void VisitLiteralSyntax(const blue::LiteralSyntax *S);
+  void VisitIdentifierSyntax(const blue::IdentifierSyntax *S);
+  void VisitTupleSyntax(const blue::TupleSyntax *S);
+  void VisitArraySyntax(const blue::ArraySyntax *S);
+  void VisitBlockSyntax(const blue::BlockSyntax *S);
+  void VisitUnarySyntax(const blue::UnarySyntax *S);
+  void VisitBinarySyntax(const blue::BinarySyntax *S);
+  void VisitTopSyntax(const blue::TopSyntax *S);
 };
 
 } // namespace clang

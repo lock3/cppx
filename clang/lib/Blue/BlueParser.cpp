@@ -138,7 +138,7 @@ Token Parser::expectToken(char const* Id) {
 
 // Syntax productions
 
-Syntax *Parser::parseTranslationUnit() {
+Syntax *Parser::parseFile() {
   if (!atEndOfFile()) {
     llvm::SmallVector<Syntax *, 16> SS;
     parseStatementSeq(SS);

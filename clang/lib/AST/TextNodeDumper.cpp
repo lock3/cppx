@@ -1993,6 +1993,7 @@ void TextNodeDumper::Visit(const gold::Syntax *S) {
 }
 
 void TextNodeDumper::VisitErrorSyntax(const gold::ErrorSyntax *S) {
+
   ColorScope Color(OS, ShowColors, CastColor);
   OS << "<<<ERROR>>>";
 }
@@ -2015,4 +2016,50 @@ void TextNodeDumper::VisitElemSyntax(const gold::ElemSyntax *S) {
 }
 
 void TextNodeDumper::VisitMacroSyntax(const gold::MacroSyntax *S) {
+}
+
+void TextNodeDumper::Visit(const blue::Syntax *S) {
+  if (!S) {
+    ColorScope Color(OS, ShowColors, NullColor);
+    OS << "<<<NULL>>>";
+    return;
+  }
+  {
+    ColorScope Color(OS, ShowColors, StmtColor);
+    OS << S->getKindName();
+  }
+  dumpPointer(S);
+
+  ConstSyntaxVisitor<TextNodeDumper>::Visit(S);
+}
+
+void TextNodeDumper::VisitErrorSyntax(const blue::ErrorSyntax *S) {
+  ColorScope Color(OS, ShowColors, CastColor);
+  OS << "<<<ERROR>>>";
+}
+
+void TextNodeDumper::VisitLiteralSyntax(const blue::LiteralSyntax *S) {
+  OS << ' ' << S->getToken().getSpelling();
+}
+
+void TextNodeDumper::VisitIdentifierSyntax(const blue::IdentifierSyntax *S) {
+  OS << ' ' << S->getToken().getSpelling();
+}
+
+void TextNodeDumper::VisitTupleSyntax(const blue::TupleSyntax *S) {
+}
+
+void TextNodeDumper::VisitArraySyntax(const blue::ArraySyntax *S) {
+}
+
+void TextNodeDumper::VisitBlockSyntax(const blue::BlockSyntax *S) {
+}
+
+void TextNodeDumper::VisitUnarySyntax(const blue::UnarySyntax *S) {
+}
+
+void TextNodeDumper::VisitBinarySyntax(const blue::BinarySyntax *S) {
+}
+
+void TextNodeDumper::VisitTopSyntax(const blue::TopSyntax *S) {
 }

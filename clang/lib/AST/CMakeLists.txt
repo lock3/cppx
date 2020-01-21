@@ -116,6 +116,10 @@ add_clang_library(clangAST
   clangLex
   gold
 
+  # FIXME: This is a cyclic dependency. AST should not depend on blue,
+  # but we're re-using node visitor stuff to get AST dumping.
+  blue
+
   DEPENDS
   Opcodes
   )

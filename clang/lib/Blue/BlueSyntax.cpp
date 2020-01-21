@@ -13,6 +13,8 @@
 
 #include "clang/Blue/BlueSyntax.h"
 
+#include "clang/AST/ASTDumper.h"
+
 namespace blue {
 
 const char *Syntax::getKindName() const {
@@ -34,6 +36,11 @@ Syntax::child_range Syntax::children() {
 Syntax::const_child_range Syntax::children() const {
   auto Children = const_cast<Syntax *>(this)->children();
   return const_child_range(Children.begin(), Children.end());
+}
+
+LLVM_DUMP_METHOD void Syntax::dump() const {
+  clang::ASTDumper D(llvm::errs(), nullptr, nullptr, /*ShowColors=*/true);
+  D.Visit(this);
 }
 
 } // namespace blue

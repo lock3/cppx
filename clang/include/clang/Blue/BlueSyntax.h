@@ -14,14 +14,14 @@
 #ifndef CLANG_BLUE_BLUESYNTAX_H
 #define CLANG_BLUE_BLUESYNTAX_H
 
+#include "clang/Blue/BlueTokens.h"
+
 #include "clang/Basic/SourceLocation.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/iterator.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-
-#include "clang/Blue/BlueTokens.h"
 
 #include <vector>
 #include <array>
@@ -91,6 +91,7 @@ public:
   }
 };
 
+/// Represents an error.
 class ErrorSyntax : public LeafSyntax {
 public:
   ErrorSyntax()
