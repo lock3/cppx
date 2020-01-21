@@ -139,12 +139,10 @@ Token Parser::expectToken(char const* Id) {
 // Syntax productions
 
 Syntax *Parser::parseFile() {
-  if (!atEndOfFile()) {
-    llvm::SmallVector<Syntax *, 16> SS;
+  llvm::SmallVector<Syntax *, 16> SS;
+  if (!atEndOfFile())
     parseStatementSeq(SS);
-    return onTop(SS);
-  }
-  return nullptr;
+  return onTop(SS);
 }
 
 template<typename Parse, typename Sequence>
