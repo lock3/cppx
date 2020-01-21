@@ -21,14 +21,27 @@
 
 namespace blue {
 
-clang::Decl *Elaborator::elaborateTop(Syntax *S)
+clang::Decl *Elaborator::elaborateTop(const Syntax *S)
 {
-  // TopSyntax *T = cast<TopSyntax>(S);
+  const TopSyntax *Top = cast<TopSyntax>(S);
+  for (const Syntax *S : Top->children())
+    elaborateDecl(S);
+
   return getCxxContext().getTranslationUnitDecl();
 }
 
-clang::Decl* Elaborator::elaborateDecl(Syntax *S)
+clang::Decl* Elaborator::elaborateDecl(const Syntax *S)
 {
+  switch (S->getKind()) {
+  case Syntax::Def:
+    return elaborateDefDecl(static_cast<const DefSyntax *>(S));
+  default:
+    break;
+  }
+  llvm_unreachable("invalid declaration");
+}
+
+clang::Decl *Elaborator::elaborateDefDecl(const DefSyntax *S) {
   return nullptr;
 }
 

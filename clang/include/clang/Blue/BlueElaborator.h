@@ -11,6 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/Blue/BlueSyntax.h"
+
 #include "clang/Sema/Sema.h"
 
 namespace clang {
@@ -44,8 +46,10 @@ namespace blue
       return getCxxSema().Context;
     }
 
-    clang::Decl *elaborateTop(Syntax *S);
-    clang::Decl *elaborateDecl(Syntax *S);
+    clang::Decl *elaborateTop(const Syntax *S);
+
+    clang::Decl *elaborateDecl(const Syntax *S);
+    clang::Decl *elaborateDefDecl(const DefSyntax *S);
 
   private:
     clang::Sema &SemaRef;

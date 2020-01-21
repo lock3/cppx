@@ -377,7 +377,7 @@ private:
 class TopSyntax : public VectorSyntax {
 public:
   TopSyntax(llvm::ArrayRef<Syntax *> A)
-    : VectorSyntax(Block, A) {}
+    : VectorSyntax(Top, A) {}
 
   static bool classof(const Syntax *S) {
     return S->getKind() == Top;

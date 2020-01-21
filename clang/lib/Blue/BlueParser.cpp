@@ -269,9 +269,9 @@ Syntax *Parser::parseDeclarationStatement() {
 }
 
 Syntax *Parser::parseExpressionStatement() {
-  parseExpression();
+  Syntax* e = parseExpression();
   matchToken(tok::Semicolon);
-  return nullptr;
+  return e;
 }
 
 /// Parse a declaration, which has one of the following forms:
@@ -290,6 +290,8 @@ Syntax *Parser::parseDeclaration() {
   Token Id = requireToken(tok::Identifier);
   expectToken(tok::Colon);
 
+  // FIXME: Disallow 'identifier : ='. It doesn't make sense.
+
   Syntax *Sig = nullptr;
   if (nextTokenIsNot(tok::Equal))
     Sig = parseSignature();
@@ -301,14 +303,32 @@ Syntax *Parser::parseDeclaration() {
     Init = parseExpressionStatement();
   else if (nextTokenIs(tok::LeftBrace))
     Init = parseBlockStatement();
-  else
+  else {
+    // TODO: We probably want to discard some tokens.
     Init = onError("expected definition");
+  }
 
   return onDef(Id, Sig, Init);
 }
 
 Syntax *Parser::parseSignature() {
-  return parsePostfixExpression();
+  Syntax *E = parsePrimaryExpression();
+  while (true) {
+    switch (getLookahead()) {
+    case tok::Semicolon:   // Ends the declaration.
+    case tok::Equal:       // Ends the signature.
+    case tok::LeftParen:   // Ends a condition or call.
+    case tok::LeftBracket: // Ends an index or subscript.
+      return E;
+
+    case tok::Dot:
+      E = parseMemberExpression(E);
+      break;
+
+    default:
+      E = parseApplicationExpression(E);
+    }
+  }
 }
 
 Syntax *Parser::parseExpression() {
@@ -547,10 +567,13 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::LeftBracket:
     return parseBracketExpression();
 
-  default:
-    // FIXME: Obviously, this should be an error.
-    assert(false && "Not a primary expression");
+  default: {
+    peekToken().dump();
+    Syntax *Err = onError("expected primary-expression");
+    consumeToken();
+    return Err;
     break;
+  }
   }
   return nullptr;
 }
