@@ -276,61 +276,82 @@ Syntax *Parser::parseExpressionStatement() {
 
 /// Parse a declaration, which has one of the following forms:
 ///
-/// declaration:
-///   identifier : signature ;
-///   identifier : = definition
-///   identifier : signature = definition
+///   declaration:
+///     identifier : declarator ;
+///     identifier : equal-initializer
+///     identifier : declarator initializer
 ///
-/// definition:
-///   = expression-statement
-///   block-statement
 ///
 /// TODO: Support a multi-declarator syntax.
 Syntax *Parser::parseDeclaration() {
   Token Id = requireToken(tok::Identifier);
   expectToken(tok::Colon);
 
-  // FIXME: Disallow 'identifier : ='. It doesn't make sense.
+  // Match 'identifier := initializer'
+  if (nextTokenIs(tok::Equal))
+  {
+    Syntax *Init = parseEqualInitializer();
+    return onDef(Id, nullptr, Init);
+  }
 
-  Syntax *Sig = nullptr;
-  if (nextTokenIsNot(tok::Equal))
-    Sig = parseSignature();
+  // Match 'identifier : declarator ...'.
+  Syntax * Decl = parseDeclarator();
 
-  Syntax* Init;
+  // Match 'identifier : declarator ;'.
   if (matchToken(tok::Semicolon))
-    Init = nullptr;
-  else if (matchToken(tok::Equal))
-    Init = parseExpressionStatement();
-  else if (nextTokenIs(tok::LeftBrace))
-    Init = parseBlockStatement();
-  else {
-    // TODO: We probably want to discard some tokens.
-    Init = onError("expected definition");
-  }
+    return onDef(Id, Decl, nullptr);
 
-  return onDef(Id, Sig, Init);
+  // Match 'identifier : declarator initializer'.
+  Syntax *Init = parseInitializer();
+  return onDef(Id, Decl, Init);
 }
 
-Syntax *Parser::parseSignature() {
-  Syntax *E = parsePrimaryExpression();
-  while (true) {
-    switch (getLookahead()) {
-    case tok::Semicolon:   // Ends the declaration.
-    case tok::Equal:       // Ends the signature.
-    case tok::LeftParen:   // Ends a condition or call.
-    case tok::LeftBracket: // Ends an index or subscript.
-      return E;
-
-    case tok::Dot:
-      E = parseMemberExpression(E);
-      break;
-
-    default:
-      E = parseApplicationExpression(E);
-    }
-  }
+/// Parse a declarator.
+///
+///   declarator:
+///     postfix-expression
+Syntax *Parser::parseDeclarator() {
+  return parsePostfixExpression();
 }
 
+/// Parse an initializer.
+///
+///   initializer:
+///     equal-initializer
+///     brace-initializer
+Syntax *Parser::parseInitializer() {
+  if (nextTokenIs(tok::Equal))
+    return parseEqualInitializer();
+  if (nextTokenIs(tok::LeftBrace))
+    return parseBraceInitializer();
+
+  // TODO: Recover more gracefully.
+  Syntax *Err = onError("expected initializer");
+  consumeToken();
+  return Err;
+}
+
+/// Parse an equal-initializer.
+///
+///   equal-initializer:
+///     = expression-statement
+Syntax *Parser::parseEqualInitializer() {
+  requireToken(tok::Equal);
+  return parseExpressionStatement();
+}
+
+/// Parse an equal-initializer.
+///
+///   brace-initializer:
+///     block-statement
+Syntax *Parser::parseBraceInitializer() {
+  return parseBlockStatement();
+}
+
+/// Parse an expression.
+///
+///   expression:
+///     assignment-expression
 Syntax *Parser::parseExpression() {
   return parseAssignmentExpression();
 }
@@ -370,17 +391,16 @@ Syntax *Parser::parseExpression() {
 /// be parameter-lists. Note that we want the following to be semantically
 /// equivalent:
 ///
-///   f(x:int, y:bool, z:char)
-///   f(x:int, y:bool; z:char)
+///   f : (x:int, y:bool, z:char)
+///   f : (x:int, y:bool; z:char)
 ///
 /// There's no reason to have multiple representations for these declarations.
 /// We also probably want these to be equivalent:
 ///
-///   f(x, y : int)
-///   f(x:int, y:int)
+///   f : (x, y : int)
+///   f : (x:int, y:int)
 ///
-/// because their types are equivalent. Note that this makes us less compatible
-/// with C++, since equivalence is defined in terms of syntax, not semantics.
+/// because their types are equivalent. 
 ///
 /// FIXME: Parse parameter lists. This may require a tentative parse.
 void Parser::parseArgumentList(llvm::SmallVectorImpl<Syntax *> &SS) {
@@ -514,32 +534,54 @@ Syntax *Parser::parsePrefixExpression() {
   return parsePostfixExpression();
 }
 
+/// Parse a postfix expression.
+///
+///   postfix-expression:
+///     primary-expression
+///     postfix-expression . identifier
+///     postfix-expression paren-expression
+///     postfix-expression brace-expression
+///     postfix-expression identifier
 Syntax *Parser::parsePostfixExpression() {
   Syntax *E = parsePrimaryExpression();
   while (true) {
     switch (getLookahead()) {
-    case tok::Comma:       // Ends an expression in a list.
-    case tok::Semicolon:   // Ends an expression statement.
-    case tok::LeftParen:   // Ends a condition or call.
-    case tok::LeftBracket: // Ends an index or subscript.
-      return E;
-
     case tok::Dot:
       E = parseMemberExpression(E);
       break;
 
-    default:
+    case tok::LeftParen:
+      E = parseCallExpression(E);
+      break;
+
+    case tok::LeftBrace:
+      E = parseIndexExpression(E);
+      break;
+
+    case tok::Identifier:
       E = parseApplicationExpression(E);
+      break;
+
+    default:
+      return E;
     }
   }
 }
 
 Syntax *Parser::parseMemberExpression(Syntax *LHS) {
-  requireToken(tok::Dot);
-  parseIdExpression();
+  Token Op = requireToken(tok::Dot);
+  Syntax *RHS = parseIdExpression();
+  return  onBinary(Op, LHS, RHS);
+}
 
-  // FIXME: Build the member expression.
-  return nullptr;
+Syntax *Parser::parseCallExpression(Syntax *LHS) {
+  Syntax *RHS = parseParenExpression();
+  return onBinary(Token(), LHS, RHS);
+}
+
+Syntax *Parser::parseIndexExpression(Syntax *LHS) {
+  Syntax *RHS = parseBracketExpression();
+  return onBinary(Token(), LHS, RHS);
 }
 
 Syntax *Parser::parseApplicationExpression(Syntax *LHS) {
@@ -568,11 +610,10 @@ Syntax *Parser::parsePrimaryExpression() {
     return parseBracketExpression();
 
   default: {
-    peekToken().dump();
+    // TODO: Add "but got..." to the error.
     Syntax *Err = onError("expected primary-expression");
     consumeToken();
     return Err;
-    break;
   }
   }
   return nullptr;

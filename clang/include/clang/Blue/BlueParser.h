@@ -195,8 +195,11 @@ namespace blue
     // Declarations
     Syntax *parseDeclaration();
 
-    // Signatures
-    Syntax *parseSignature();
+    // Signatures and initializers
+    Syntax *parseDeclarator();
+    Syntax *parseInitializer();
+    Syntax *parseEqualInitializer();
+    Syntax *parseBraceInitializer();
 
     // Expressions
     Syntax *parseExpression();
@@ -212,6 +215,8 @@ namespace blue
     Syntax *parsePrefixExpression();
     Syntax *parsePostfixExpression();
     Syntax *parseMemberExpression(Syntax *e);
+    Syntax *parseCallExpression(Syntax *e);
+    Syntax *parseIndexExpression(Syntax *e);
     Syntax *parseApplicationExpression(Syntax *e);
     Syntax *parsePrimaryExpression();
     Syntax *parseIdExpression();
