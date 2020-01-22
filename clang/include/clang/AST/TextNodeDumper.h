@@ -373,9 +373,8 @@ public:
   void VisitErrorSyntax(const blue::ErrorSyntax *S);
   void VisitLiteralSyntax(const blue::LiteralSyntax *S);
   void VisitIdentifierSyntax(const blue::IdentifierSyntax *S);
-  void VisitTupleSyntax(const blue::TupleSyntax *S);
-  void VisitArraySyntax(const blue::ArraySyntax *S);
-  void VisitBlockSyntax(const blue::BlockSyntax *S);
+  void VisitTupleSyntax(const blue::ListSyntax *S);
+  void VisitTupleSyntax(const blue::SeqSyntax *S);
   void VisitUnarySyntax(const blue::UnarySyntax *S);
   void VisitBinarySyntax(const blue::BinarySyntax *S);
   void VisitDefSyntax(const blue::DefSyntax *S);

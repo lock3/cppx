@@ -57,17 +57,20 @@ struct EnclosingTokens
   { }
 
   bool expectOpen() {
-    Open = P.expectToken(OpenTokens[K]);
-    return (bool)Open;
+    Open = P.requireToken(OpenTokens[K]);
+    return true;
   }
 
   bool expectClose() {
     Close = P.expectToken(CloseTokens[K]);
     if (!Close) {
       // FIXME: Emit a diagnostic.
-      // note(Open.loc, "matching '{}'' here", spelling(Open.kind()));
     }
     return (bool)Close;
+  }
+
+  TokenPair getEnclosingTokens() const {
+    return {Open, Close};
   }
 
   Parser& P;
@@ -160,17 +163,13 @@ void Parser::parseStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
     parseIntoVector(SS, [this]() { return parseStatement(); });
 }
 
-// True if the next tokens would start a declaration.
+// True if the next tokens would start a declaration. That is, we would
+// match the tokens 'identifier :'. No other sequence of tokens matches
+// a declarations.
 static bool startsDeclaration(Parser& P) {
-  // The common case: 'x : ...' or 'x , ...'. Note that the comma currently
-  // implies that we'll see a ':' eventually.
   if (P.nextTokenIs(tok::Identifier))
-    if (P.nthTokenIs(1, tok::Colon) || P.nthTokenIs(1, tok::Comma))
+    if (P.nthTokenIs(1, tok::Colon))
       return true;
-
-  // The uncommon case: ': type ...'. This is an unnamed declaration.
-  if (P.nextTokenIs(tok::Colon))
-    return true;
 
   return false;
 }
@@ -213,7 +212,7 @@ Syntax *Parser::parseBlockStatement() {
 
   if (!Braces.expectClose())
     return nullptr;
-  return onBlock(SS);
+  return onSeq(Braces.getEnclosingTokens(), SS);
 }
 
 Syntax *Parser::parseIfStatement() {
@@ -264,10 +263,18 @@ Syntax *Parser::parseReturnStatement() {
   return nullptr;
 }
 
+/// Parse a declaration statement:
+///
+///   declaration-statement:
+///     declaration
 Syntax *Parser::parseDeclarationStatement() {
   return parseDeclaration();
 }
 
+/// Parse an expression-statement:
+///
+///   expression-statement:
+///     expression ;
 Syntax *Parser::parseExpressionStatement() {
   Syntax* e = parseExpression();
   matchToken(tok::Semicolon);
@@ -280,7 +287,6 @@ Syntax *Parser::parseExpressionStatement() {
 ///     identifier : declarator ;
 ///     identifier : equal-initializer
 ///     identifier : declarator initializer
-///
 ///
 /// TODO: Support a multi-declarator syntax.
 Syntax *Parser::parseDeclaration() {
@@ -356,57 +362,81 @@ Syntax *Parser::parseExpression() {
   return parseAssignmentExpression();
 }
 
-/// Parse an argument list of the form:
+/// Parse a parameter group.
 ///
-///   argument-array:
-///     argument-list
-///     argument-array ; argument-list
-///
-///   argument-list:
-///     argument
-///     argument-list , argument
-///
-///   argument:
-///     parameter
+///   parameter-group:
 ///     parameter-list
-///     expression
-///
-///   parameter:
-///     identifier ':' signature
-///     identifier ':' signature = expression
+///     parameter-group ; parameter-list
+void Parser::parseParameterGroup(llvm::SmallVectorImpl<Syntax *> &SS) {
+  auto Parse = [this]() { return parseParameterList(); };
+  parseIntoVector(SS, Parse);
+  while (matchToken(tok::Semicolon))
+    parseIntoVector(SS, Parse);
+}
+
+/// Parse an parameter list.
 ///
 ///   parameter-list:
-///     identifier-list ':' signature
-///
-///   identifier-list:
-///     identifier
-///     identifier-list ',' identifier
-///
-/// There is an ambiguity in arguments that can be resolved semantically. An
-/// argument-list comprised of only identifiers except that the last term is a
-/// parameter with no default argument, then that is a parameter-list.
-///
-/// FIXME: Parse argument arrays. I'm not sure how we want to represent these
-/// syntactically. We probably jut want a tuple whose individual elements may
-/// be parameter-lists. Note that we want the following to be semantically
-/// equivalent:
-///
-///   f : (x:int, y:bool, z:char)
-///   f : (x:int, y:bool; z:char)
-///
-/// There's no reason to have multiple representations for these declarations.
-/// We also probably want these to be equivalent:
-///
-///   f : (x, y : int)
-///   f : (x:int, y:int)
-///
-/// because their types are equivalent. 
-///
-/// FIXME: Parse parameter lists. This may require a tentative parse.
-void Parser::parseArgumentList(llvm::SmallVectorImpl<Syntax *> &SS) {
-  parseIntoVector(SS, [this]() { return parseExpression(); });
+///     parameter
+///     parameter-list , parameter
+Syntax *Parser::parseParameterList()
+{
+  llvm::SmallVector<Syntax *, 4> SS;
+  parseParameterList(SS);
+  return onList(tok::Comma, SS);
+}
+
+void Parser::parseParameterList(llvm::SmallVectorImpl<Syntax *> &SS) {
+  auto Parse = [this]() { return parseParameter(); };
+  parseIntoVector(SS, Parse);
   while (matchToken(tok::Comma))
-    parseIntoVector(SS, [this]() { return parseExpression(); });
+    parseIntoVector(SS, Parse);
+}
+
+/// Parse a formal or actual parameter.
+///
+///   parameter:
+///     formal-parameter
+///     actual-parameter
+Syntax *Parser::parseParameter() {
+  if (startsDeclaration(*this))
+    return parseFormalParameter();
+  return parseActualParameter();
+}
+
+/// Parse a formal parameter (i.e., parameter).
+///
+///   formal-parameter:
+///     identifier : declarator
+///     identifier : = expression
+///     identifier : declarator = expression
+Syntax *Parser::parseFormalParameter() {
+  Token Id = requireToken(tok::Identifier);
+  matchToken(tok::Colon);
+
+  // Match 'identifier : = expression'
+  if (matchToken(tok::Equal)) {
+    Syntax *Def = parseExpression();
+    return onDef(Id, nullptr, Def);
+  }
+
+  // Match 'identifier : declarator ...'.
+  Syntax *Decl = parseDeclarator();
+
+  // Match 'identifier : declarator = expression'.
+  Syntax *Def = nullptr;
+  if (matchToken(tok::Equal))
+    Def = parseExpression();
+
+  return onDef(Id, Decl, Def);
+}
+
+/// Parse an actual parameter (i.e., argument).
+///
+///   actual-parameter (i.e., argument):
+///     expression
+Syntax *Parser::parseActualParameter() {
+  return parseExpression();
 }
 
 Syntax *Parser::parseAssignmentExpression() {
@@ -632,11 +662,11 @@ Syntax *Parser::parseParenExpression() {
 
   llvm::SmallVector<Syntax *, 4> SS;
   if (nextTokenIsNot(tok::RightParen))
-    parseArgumentList(SS);
+    parseParameterGroup(SS);
 
   if (!Parens.expectClose())
     return nullptr;
-  return onTuple(SS);
+  return onTuple(Parens.getEnclosingTokens(), SS);
 }
 
 Syntax *Parser::parseBracketExpression() {
@@ -646,11 +676,11 @@ Syntax *Parser::parseBracketExpression() {
 
   llvm::SmallVector<Syntax *, 4> SS;
   if (nextTokenIsNot(tok::RightBracket))
-    parseArgumentList(SS);
+    parseParameterGroup(SS);
 
   if (!Brackets.expectClose())
     return nullptr;
-  return onArray(SS);
+  return onArray(Brackets.getEnclosingTokens(), SS);
 }
 
 // Semantic actions
@@ -678,16 +708,33 @@ Syntax *Parser::onBinary(const Token &Op, Syntax *LHS, Syntax *RHS) {
   return new BinarySyntax(Op, LHS, RHS);
 }
 
-Syntax *Parser::onTuple(llvm::SmallVectorImpl<Syntax *> &SS) {
-  return new TupleSyntax(makeArray(SS));
+Syntax *Parser::onList(TokenKind K, llvm::SmallVectorImpl<Syntax *> &SS) {
+  return new ListSyntax(K, makeArray(SS));
 }
 
-Syntax *Parser::onArray(llvm::SmallVectorImpl<Syntax *> &SS) {
-  return new ArraySyntax(makeArray(SS));
+static Syntax *FlattenGroup(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS) {
+  // Replace empty groups with empty lists.
+  if (SS.empty())
+    return new ListSyntax(Enc, tok::Comma, llvm::None);
+
+  // Replace singleton groups with their first list.
+  if (SS.size() == 1)
+    return SS.front();
+
+  // Return a new group.
+  return new ListSyntax(Enc, tok::Semicolon, makeArray(SS));
 }
 
-Syntax *Parser::onBlock(llvm::SmallVectorImpl<Syntax *> &SS) {
-  return new BlockSyntax(makeArray(SS));
+Syntax *Parser::onTuple(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS) {
+  return FlattenGroup(Enc, SS);
+}
+
+Syntax *Parser::onArray(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS) {
+  return FlattenGroup(Enc, SS);
+}
+
+Syntax *Parser::onSeq(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS) {
+  return new SeqSyntax(Enc, makeArray(SS));
 }
 
 Syntax *Parser::onDef(const Token &Tok, Syntax *Sig, Syntax *Init) {

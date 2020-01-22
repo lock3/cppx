@@ -187,46 +187,86 @@ private:
   llvm::ArrayRef<Syntax *> Elems;
 };
 
-/// Represents a paren-enclosed list of expressions.
-///
-/// TODO: Save enclosing tokens.
-class TupleSyntax : public VectorSyntax {
+/// Represents a possibly enclosed, token-separated list of terms. Note that
+/// the separator token is symbolic. 
+class ListSyntax : public VectorSyntax {
 public:
-  TupleSyntax(llvm::ArrayRef<Syntax *> A)
-    : VectorSyntax(Tuple, A)
+  /// Construct an unenclosed list of terms.
+  ListSyntax(TokenKind K, llvm::ArrayRef<Syntax *> A)
+    : VectorSyntax(List, A), Enc(), Sep(K)
   { }
 
-  static bool classof(const Syntax *S) {
-    return S->getKind() == Tuple;
+  /// Construct an enclosed list of terms.
+  ListSyntax(const TokenPair Enc, TokenKind K, llvm::ArrayRef<Syntax *> A)
+    : VectorSyntax(List, A), Enc(Enc), Sep(K)
+  { }
+
+  const TokenPair &getEnclosingTokens() const {
+    return Enc;
   }
+
+  bool isUnenclosedList() {
+    return Enc.first.isInvalid();
+  }
+
+  bool isParenList() const {
+    return Enc.first.hasKind(tok::LeftParen);
+  }
+
+  bool isBracketList() const {
+    return Enc.first.hasKind(tok::LeftBracket);
+  }
+
+  TokenKind getSeparatorKind() {
+    return Sep;
+  }
+
+  bool isCommaSeparated() const {
+    return Sep == tok::Comma;
+  }
+
+  bool isSemicolonSeparated() const {
+    return Sep == tok::Semicolon;
+  }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == List;
+  }
+
+private:
+  TokenPair Enc;
+  TokenKind Sep;
 };
 
-/// Represents a brace-enclosed list of expressions.
+/// Represents an enclosed sequence of terms.
 ///
-/// TODO: Save enclosing tokens.
-class ArraySyntax : public VectorSyntax {
+/// TODO: TopSyntax is an unclosed sequence. Maybe we should merge those
+/// nodes, or are there sufficiently distinct things in Top that would
+/// make it inadvisable. Probably.
+class SeqSyntax : public VectorSyntax {
 public:
-  ArraySyntax(llvm::ArrayRef<Syntax *> A)
-    : VectorSyntax(Array, A)
+  SeqSyntax(const TokenPair &Enc, llvm::ArrayRef<Syntax *> A)
+    : VectorSyntax(Seq, A), Enc(Enc)
   { }
 
-  static bool classof(const Syntax *S) {
-    return S->getKind() == Array;
+  const TokenPair &getEnclosingTokens() const {
+    return Enc;
   }
-};
 
-/// Represents a brace-enclosed list of statements.
-///
-/// TODO: Save enclosing tokens.
-class BlockSyntax : public VectorSyntax {
-public:
-  BlockSyntax(llvm::ArrayRef<Syntax *> A)
-    : VectorSyntax(Block, A)
-  { }
+  bool isUnenclosedList() {
+    return Enc.first.isInvalid();
+  }
+
+  bool isBraceList() const {
+    return Enc.first.hasKind(tok::LeftBrace);
+  }
 
   static bool classof(const Syntax *S) {
-    return S->getKind() == Block;
+    return S->getKind() == Seq;
   }
+
+private:
+  TokenPair Enc;
 };
 
 /// Represents unary operators.

@@ -222,16 +222,24 @@ namespace blue
     Syntax *parseIdExpression();
     Syntax *parseParenExpression();
     Syntax *parseBracketExpression();
-    void parseArgumentList(llvm::SmallVectorImpl<Syntax *> &SS);
+
+    // Parameters
+    Syntax *parseParameterList();
+    void parseParameterGroup(llvm::SmallVectorImpl<Syntax *> &SS);
+    void parseParameterList(llvm::SmallVectorImpl<Syntax *> &SS);
+    Syntax *parseParameter();
+    Syntax *parseFormalParameter();
+    Syntax *parseActualParameter();
 
     // Semantic actions
     Syntax *onLiteral(const Token &Tok);
     Syntax *onIdentifier(const Token &Tok);
     Syntax *onUnary(const Token &Op, Syntax *Arg);
     Syntax *onBinary(const Token &Op, Syntax *LHS, Syntax *RHS);
-    Syntax *onTuple(llvm::SmallVectorImpl<Syntax *> &SS);
-    Syntax *onArray(llvm::SmallVectorImpl<Syntax *> &SS);
-    Syntax *onBlock(llvm::SmallVectorImpl<Syntax *> &SS);
+    Syntax *onList(TokenKind K, llvm::SmallVectorImpl<Syntax *> &SS);
+    Syntax *onTuple(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS);
+    Syntax *onArray(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS);
+    Syntax *onSeq(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS);
     Syntax* onDef(const Token &Tok, Syntax *Sig, Syntax *Init);
     Syntax *onTop(llvm::SmallVectorImpl<Syntax *> &SS);
     Syntax* onError(char const* Msg);

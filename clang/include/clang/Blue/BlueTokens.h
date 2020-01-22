@@ -153,6 +153,10 @@ struct Token
   };
 };
 
+
+/// A pair of tokens.
+using TokenPair = std::pair<Token, Token>;
+
 } // namespace blue
 
 #endif
