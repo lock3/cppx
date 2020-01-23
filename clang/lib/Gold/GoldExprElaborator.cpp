@@ -209,12 +209,21 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   std::string Spelling = Callee->Tok.getSpelling();
 
+  // a fused operator':' call
   if (&CxxAST.Idents.get(Spelling) == SemaRef.OperatorColonII) {
     Elaborator Elab(SemaRef.getContext(), SemaRef);
-    llvm::outs() << "GetOperatorColonType call\n";
-    clang::QualType T = Elab.getOperatorColonType(S);
 
-    return elaborateAtom(cast<AtomSyntax>(S->getArgument(0)), T);
+    // If the LHS of the operator':' call is just a name, we can try to
+    // reference or create it.
+    if (isa<AtomSyntax>(S->getArgument(0))) {
+      // FIXME: replace this with a normal type elaboration
+      clang::QualType T = Elab.getOperatorColonType(S);
+      return elaborateAtom(cast<AtomSyntax>(S->getArgument(0)), T);
+    }
+
+    // Otherwise, we need to continue elaborating the LHS until it is an atom.
+    elaborateExpr(S->getArgument(0));
+    return nullptr;
   }
 
   // Check if this is a binary operator.
@@ -417,7 +426,7 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
   // The type is computed from back to front. Start by assuming the type
   // is auto. This will be replaced if an explicit type specifier is given.
   clang::QualType AutoType = CxxAST.getAutoDeductType();
-  TypeInfo *TInfo = BuildAnyTypeLoc(CxxAST, AutoType, D->getId()->getLoc());
+  TypeInfo *TInfo = BuildAnyTypeLoc(CxxAST, AutoType, D->getLoc());
 
   for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
     D = *Iter;
@@ -428,10 +437,7 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
 
     case DK_Pointer: {
       Expression TypeExpr = elaboratePointerType(D, TInfo);
-
-      // We already know this is a TypeSourceInfo, but it might be null,
-      // so check anyway.
-      if (!TypeExpr.is<TypeInfo *>())
+      if (TypeExpr.isNull())
         return nullptr;
 
       TInfo = TypeExpr.get<TypeInfo *>();
@@ -440,7 +446,7 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
 
     case DK_Array: {
       Expression TypeExpr = elaborateArrayType(D, TInfo);
-      if (!TypeExpr.is<TypeInfo *>())
+      if (TypeExpr.isNull())
         return nullptr;
 
       TInfo = TypeExpr.get<TypeInfo *>();
@@ -449,7 +455,7 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
 
     case DK_Function: {
       Expression TypeExpr = elaborateFunctionType(D, TInfo);
-      if (!TypeExpr.is<TypeInfo *>())
+      if (TypeExpr.isNull())
         return nullptr;
 
       TInfo = TypeExpr.get<TypeInfo *>();
@@ -458,7 +464,7 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
 
     case DK_Type: {
       Expression TypeExpr = elaborateExplicitType(D, TInfo);
-      if (!TypeExpr.is<TypeInfo *>())
+      if (TypeExpr.isNull())
         return nullptr;
 
       TInfo = TypeExpr.get<TypeInfo *>();
@@ -474,7 +480,18 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
 }
 
 Expression ExprElaborator::elaboratePointerType(Declarator *D, TypeInfo *Ty) {
-  llvm_unreachable("Pointers not supported");
+  Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
+
+  if (BaseTypeExpr.is<clang::Expr *>() || BaseTypeExpr.isNull()) {
+    SemaRef.Diags.Report(D->getType()->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+
+  clang::QualType BaseType = BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
+  clang::QualType PtrType = CxxAST.getPointerType(BaseType);
+
+  return BuildAnyTypeLoc(CxxAST, PtrType, D->getType()->getLoc());
 }
 
 Expression ExprElaborator::elaborateArrayType(Declarator *D, TypeInfo *Ty) {

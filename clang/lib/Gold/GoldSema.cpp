@@ -29,7 +29,7 @@ namespace gold {
 using namespace llvm;
 
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
-  : Context(Context), CxxSema(CxxSema), CurrentDecl(),
+  : CxxSema(CxxSema), CurrentDecl(), Context(Context),
     Diags(Context.CxxAST.getSourceManager().getDiagnostics())
 {
   OperatorColonII = &Context.CxxAST.Idents.get("operator':'");
@@ -108,6 +108,8 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   clang::IdentifierInfo *Id = Name.getAsIdentifierInfo();
   assert(Id && "Invalid id");
 
+  clang::Sema::LookupNameKind LookupKind = R.getLookupKind();
+
   while (S) {
     // FIXME: This could find a set of declarations. Note that we could find
     // several declarations, some of which have not been elaborated.
@@ -123,7 +125,15 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
     S = S->getParent();
   }
 
-  return R.empty();
+  if (R.empty() && LookupKind == clang::Sema::LookupTagName) {
+    auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
+    if (BuiltinMapIter != BuiltinTypes.end())
+      return true;
+    else
+      ; // FIXME: This requires a type lookup.
+  }
+
+  return !R.empty();
 }
 
 } // namespace gold

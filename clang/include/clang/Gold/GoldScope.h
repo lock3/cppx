@@ -21,6 +21,12 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/iterator_range.h"
 
+namespace llvm {
+
+class raw_ostream;
+
+}
+
 namespace gold {
 
 struct Syntax;
@@ -74,6 +80,15 @@ public:
 
   /// Returns the type for declarator, if given.
   const Syntax *getType() const;
+
+  /// Get a SourceLocation representative of this declarator. 
+  clang::SourceLocation getLoc() const;
+
+  /// Returns a readable string representing this declarator.
+  llvm::StringRef getString() const;
+
+  /// Prints the declarator sequence.
+  void printSequence(llvm::raw_ostream &os) const;
 
   /// The kind of declarator.
   DeclaratorKind Kind;

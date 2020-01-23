@@ -92,7 +92,12 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::ComplexTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::PointerTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  QualType InnerType = Ty->getAs<clang::PointerType>()->getPointeeType();
+  BuildAnyTypeLoc(Ctx, TLB, InnerType, Loc);
+
+  auto TypeLocInstance = TLB.push<clang::PointerTypeLoc>(Ty);
+  TypeLocInstance.setStarLoc(Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::PointerTypeLoc>

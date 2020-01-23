@@ -18,6 +18,7 @@
 #include "clang/Basic/IdentifierTable.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringMap.h"
 
 #include "clang/Gold/GoldSyntaxContext.h"
 #include "clang/Gold/GoldScope.h"
@@ -50,9 +51,6 @@ class SyntaxContext;
 /// translation unit in the Gold Language.
 class Sema {
   friend class IdentifierMapper;
-
-  // The context
-  SyntaxContext &Context;
 
   // The clang semantic object, allows to create various syntax nodes
   // as well as perform important transformations on them.
@@ -128,6 +126,9 @@ public:
   SyntaxContext &getContext() { return Context; }
 
 public:
+  // The context
+  SyntaxContext &Context;
+
   // The Clang diagnostics engine.
   clang::DiagnosticsEngine &Diags;
 
@@ -140,6 +141,43 @@ public:
 
   // A mapping of identifiers as strings to syntaxes.
   llvm::MapVector<clang::IdentifierInfo *, const Syntax *> IdentifierMapping;
+
+  // Dictionary of built in types.
+  //
+  // FIXME: This should be initialized in the constructor.
+  const llvm::StringMap<clang::QualType> BuiltinTypes = {
+    {"void", Context.CxxAST.VoidTy},
+    {"bool", Context.CxxAST.BoolTy},
+    {"char", Context.CxxAST.CharTy},
+    {"wchar_t", Context.CxxAST.WideCharTy},
+    {"wint_t", Context.CxxAST.WIntTy},
+    {"char8_t", Context.CxxAST.Char8Ty},
+    {"char16_t", Context.CxxAST.Char16Ty},
+    {"char32_t", Context.CxxAST.Char32Ty},
+    {"signed char", Context.CxxAST.SignedCharTy},
+    {"short", Context.CxxAST.ShortTy},
+    {"short int", Context.CxxAST.ShortTy},
+    {"int", Context.CxxAST.IntTy},
+    {"long", Context.CxxAST.LongTy},
+    {"long int", Context.CxxAST.LongTy},
+    {"long long", Context.CxxAST.LongLongTy},
+    {"long long int", Context.CxxAST.LongLongTy},
+    {"int128_t", Context.CxxAST.Int128Ty},
+    {"unsigned char", Context.CxxAST.UnsignedCharTy},
+    {"unsigned short", Context.CxxAST.UnsignedShortTy},
+    {"unsigned short int", Context.CxxAST.UnsignedShortTy},
+    {"unsigned", Context.CxxAST.UnsignedIntTy},
+    {"unsigned int", Context.CxxAST.UnsignedIntTy},
+    {"unsigned long", Context.CxxAST.UnsignedLongTy},
+    {"unsigned long int", Context.CxxAST.UnsignedLongTy},
+    {"unsigned long long", Context.CxxAST.UnsignedLongLongTy},
+    {"unsigned long long int", Context.CxxAST.UnsignedLongLongTy},
+    {"uint128_t", Context.CxxAST.UnsignedInt128Ty},
+    {"float", Context.CxxAST.FloatTy},
+    {"double", Context.CxxAST.DoubleTy},
+    {"long double", Context.CxxAST.LongDoubleTy},
+    {"float128_t", Context.CxxAST.Float128Ty},
+  };
 };
 
 } // namespace gold

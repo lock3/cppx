@@ -173,6 +173,8 @@ Token CharacterScanner::operator()() {
 
     case '~':
       return matchToken(tok::Tilde);
+    case '^':
+      return matchToken(tok::Caret);
 
     case '=':
       if (getLookahead(1) == '=')
