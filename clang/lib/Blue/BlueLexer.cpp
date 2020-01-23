@@ -172,6 +172,9 @@ Token Lexer::operator()() {
         return matchToken(tok::BarBar);
       return matchToken(tok::Bar);
 
+    case '^':
+      return matchToken(tok::Caret);
+
     case '<':
       if (nthCharacterIs(1, '='))
         return matchToken(tok::LessEqual);

@@ -200,19 +200,12 @@ Syntax *Parser::parseStatement() {
     return parseExpressionStatement();
 }
 
-// FIXME: Return errors for missed expectations.
+/// Parse a block-statement.
+///
+///   block-statement:
+///     block-expression
 Syntax *Parser::parseBlockStatement() {
-  EnclosingBraces Braces(*this);
-  if (!Braces.expectOpen())
-    return nullptr;
-
-  llvm::SmallVector<Syntax *, 4> SS;
-  if (nextTokenIsNot(tok::RightBrace))
-    parseStatementSeq(SS);
-
-  if (!Braces.expectClose())
-    return nullptr;
-  return onSeq(Braces.getEnclosingTokens(), SS);
+  return parseBlockExpression();
 }
 
 Syntax *Parser::parseIfStatement() {
@@ -284,11 +277,11 @@ Syntax *Parser::parseExpressionStatement() {
 /// Parse a declaration, which has one of the following forms:
 ///
 ///   declaration:
-///     identifier : declarator ;
+///     identifier : signature ;
 ///     identifier : equal-initializer
-///     identifier : declarator initializer
+///     identifier : signature initializer
 ///
-/// TODO: Support a multi-declarator syntax.
+/// TODO: Support a multi-signature syntax.
 Syntax *Parser::parseDeclaration() {
   Token Id = requireToken(tok::Identifier);
   expectToken(tok::Colon);
@@ -300,23 +293,23 @@ Syntax *Parser::parseDeclaration() {
     return onDef(Id, nullptr, Init);
   }
 
-  // Match 'identifier : declarator ...'.
-  Syntax * Decl = parseDeclarator();
+  // Match 'identifier : signature ...'.
+  Syntax * Sig = parseSignature();
 
-  // Match 'identifier : declarator ;'.
+  // Match 'identifier : signature ;'.
   if (matchToken(tok::Semicolon))
-    return onDef(Id, Decl, nullptr);
+    return onDef(Id, Sig, nullptr);
 
-  // Match 'identifier : declarator initializer'.
+  // Match 'identifier : signature initializer'.
   Syntax *Init = parseInitializer();
-  return onDef(Id, Decl, Init);
+  return onDef(Id, Sig, Init);
 }
 
-/// Parse a declarator.
+/// Parse a signature.
 ///
-///   declarator:
+///   signature:
 ///     postfix-expression
-Syntax *Parser::parseDeclarator() {
+Syntax *Parser::parseSignature() {
   return parsePostfixExpression();
 }
 
@@ -407,9 +400,9 @@ Syntax *Parser::parseParameter() {
 /// Parse a formal parameter (i.e., parameter).
 ///
 ///   formal-parameter:
-///     identifier : declarator
+///     identifier : signature
 ///     identifier : = expression
-///     identifier : declarator = expression
+///     identifier : signature = expression
 Syntax *Parser::parseFormalParameter() {
   Token Id = requireToken(tok::Identifier);
   matchToken(tok::Colon);
@@ -420,10 +413,10 @@ Syntax *Parser::parseFormalParameter() {
     return onDef(Id, nullptr, Def);
   }
 
-  // Match 'identifier : declarator ...'.
-  Syntax *Decl = parseDeclarator();
+  // Match 'identifier : signature ...'.
+  Syntax *Decl = parseSignature();
 
-  // Match 'identifier : declarator = expression'.
+  // Match 'identifier : signature = expression'.
   Syntax *Def = nullptr;
   if (matchToken(tok::Equal))
     Def = parseExpression();
@@ -567,13 +560,15 @@ Syntax *Parser::parsePrefixExpression() {
 /// Parse a postfix expression.
 ///
 ///   postfix-expression:
-///     primary-expression
+///     pointer-expression
 ///     postfix-expression . identifier
-///     postfix-expression paren-expression
-///     postfix-expression brace-expression
+///     postfix-expression ^ pointer-expression
+///     postfix-expression tuple-expression
+///     postfix-expression array-expression
+///     postfix-expression block-expression
 ///     postfix-expression identifier
 Syntax *Parser::parsePostfixExpression() {
-  Syntax *E = parsePrimaryExpression();
+  Syntax *E = parsePointerExpression();
   while (true) {
     switch (getLookahead()) {
     case tok::Dot:
@@ -584,12 +579,20 @@ Syntax *Parser::parsePostfixExpression() {
       E = parseCallExpression(E);
       break;
 
-    case tok::LeftBrace:
+    case tok::LeftBracket:
       E = parseIndexExpression(E);
+      break;
+
+    case tok::LeftBrace:
+      E = parseBraceExpression(E);
       break;
 
     case tok::Identifier:
       E = parseApplicationExpression(E);
+      break;
+
+    case tok::Caret:
+      E = parsePointerExpression(E);
       break;
 
     default:
@@ -605,20 +608,51 @@ Syntax *Parser::parseMemberExpression(Syntax *LHS) {
 }
 
 Syntax *Parser::parseCallExpression(Syntax *LHS) {
-  Syntax *RHS = parseParenExpression();
+  Syntax *RHS = parseTupleExpression();
   return onBinary(Token(), LHS, RHS);
 }
 
 Syntax *Parser::parseIndexExpression(Syntax *LHS) {
-  Syntax *RHS = parseBracketExpression();
+  Syntax *RHS = parseArrayExpression();
+  return onBinary(Token(), LHS, RHS);
+}
+
+Syntax *Parser::parseBraceExpression(Syntax *LHS) {
+  Syntax *RHS = parseBlockExpression();
   return onBinary(Token(), LHS, RHS);
 }
 
 Syntax *Parser::parseApplicationExpression(Syntax *LHS) {
-  Syntax *RHS = parsePrimaryExpression();
+  Syntax *RHS = parseIdExpression();
   return onBinary(Token(), LHS, RHS);
 }
 
+Syntax *Parser::parsePointerExpression(Syntax *LHS) {
+  Syntax *RHS = parsePointerExpression();
+  RHS->dump();
+  return onBinary(Token(), LHS, RHS);
+}
+
+/// Parse a pointer-expression:
+///
+///   pointer-expression:
+///     primary-expression
+///     ^ pointer-expression
+Syntax *Parser::parsePointerExpression() {
+  if (Token Op = matchToken(tok::Caret)) {
+    Syntax *Arg = parsePointerExpression();
+    return onUnary(Op, Arg);
+  }
+  return parsePrimaryExpression();
+}
+
+/// Parse a primary expression:
+///
+///   primary-expression:
+///     literal
+///     tuple-expression
+///     array-expression
+///     brace-expression
 Syntax *Parser::parsePrimaryExpression() {
   switch (getLookahead()) {
   case tok::BinaryInteger:
@@ -634,10 +668,10 @@ Syntax *Parser::parsePrimaryExpression() {
     return parseIdExpression();
 
   case tok::LeftParen:
-    return parseParenExpression();
+    return parseTupleExpression();
 
   case tok::LeftBracket:
-    return parseBracketExpression();
+    return parseArrayExpression();
 
   default: {
     // TODO: Add "but got..." to the error.
@@ -655,7 +689,7 @@ Syntax *Parser::parseIdExpression() {
 }
 
 // FIXME: Return errors as needed.
-Syntax *Parser::parseParenExpression() {
+Syntax *Parser::parseTupleExpression() {
   EnclosingParens Parens(*this);
   if (!Parens.expectOpen())
     return nullptr;
@@ -669,7 +703,7 @@ Syntax *Parser::parseParenExpression() {
   return onTuple(Parens.getEnclosingTokens(), SS);
 }
 
-Syntax *Parser::parseBracketExpression() {
+Syntax *Parser::parseArrayExpression() {
   EnclosingBrackets Brackets(*this);
   if (!Brackets.expectOpen())
     return nullptr;
@@ -681,6 +715,20 @@ Syntax *Parser::parseBracketExpression() {
   if (!Brackets.expectClose())
     return nullptr;
   return onArray(Brackets.getEnclosingTokens(), SS);
+}
+
+Syntax *Parser::parseBlockExpression() {
+  EnclosingBraces Braces(*this);
+  if (!Braces.expectOpen())
+    return nullptr;
+
+  llvm::SmallVector<Syntax *, 4> SS;
+  if (nextTokenIsNot(tok::RightBracket))
+    parseParameterGroup(SS);
+
+  if (!Braces.expectClose())
+    return nullptr;
+  return onBlock(Braces.getEnclosingTokens(), SS);
 }
 
 // Semantic actions
@@ -733,7 +781,7 @@ Syntax *Parser::onArray(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &S
   return FlattenGroup(Enc, SS);
 }
 
-Syntax *Parser::onSeq(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS) {
+Syntax *Parser::onBlock(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS) {
   return new SeqSyntax(Enc, makeArray(SS));
 }
 

@@ -2053,9 +2053,14 @@ void TextNodeDumper::VisitTupleSyntax(const blue::SeqSyntax *S) {
 }
 
 void TextNodeDumper::VisitUnarySyntax(const blue::UnarySyntax *S) {
+  OS << ' ' << S->getOperatorSpelling();
 }
 
 void TextNodeDumper::VisitBinarySyntax(const blue::BinarySyntax *S) {
+  if (!S->getOperator().isInvalid())
+    OS << ' ' << S->getOperatorSpelling();
+  else
+    OS << ' ' << "<apply>";
 }
 
 void TextNodeDumper::VisitDefSyntax(const blue::DefSyntax *S) {

@@ -11,6 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef CLANG_BLUE_BLUEELABORATOR_H
+#define CLANG_BLUE_BLUEELABORATOR_H
+
 #include "clang/Blue/BlueSyntax.h"
 
 #include "clang/Sema/Sema.h"
@@ -56,3 +59,5 @@ namespace blue
   };
 
 } // namespace blue
+
+#endif

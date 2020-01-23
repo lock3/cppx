@@ -12,6 +12,7 @@ add_clang_library(blue
   BlueParser.cpp
   BlueSyntax.cpp
   BlueSyntaxVisitor.cpp
+  BlueDeclarator.cpp
   BlueElaborator.cpp
   ParseBlueAST.cpp
 

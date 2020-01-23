@@ -42,7 +42,8 @@ clang::Decl* Elaborator::elaborateDecl(const Syntax *S)
 }
 
 clang::Decl *Elaborator::elaborateDefDecl(const DefSyntax *S) {
-  return nullptr;
+  const Token &Id = S->getIdentifier();
+  // Decl
 }
 
 } // namespace blue

@@ -196,7 +196,7 @@ namespace blue
     Syntax *parseDeclaration();
 
     // Signatures and initializers
-    Syntax *parseDeclarator();
+    Syntax *parseSignature();
     Syntax *parseInitializer();
     Syntax *parseEqualInitializer();
     Syntax *parseBraceInitializer();
@@ -214,14 +214,18 @@ namespace blue
     Syntax *parseConversionExpression();
     Syntax *parsePrefixExpression();
     Syntax *parsePostfixExpression();
-    Syntax *parseMemberExpression(Syntax *e);
-    Syntax *parseCallExpression(Syntax *e);
-    Syntax *parseIndexExpression(Syntax *e);
-    Syntax *parseApplicationExpression(Syntax *e);
+    Syntax *parseMemberExpression(Syntax *E);
+    Syntax *parseCallExpression(Syntax *E);
+    Syntax *parseIndexExpression(Syntax *E);
+    Syntax *parseBraceExpression(Syntax *E);
+    Syntax *parseApplicationExpression(Syntax *E);
+    Syntax *parsePointerExpression(Syntax *E);
+    Syntax *parsePointerExpression();
     Syntax *parsePrimaryExpression();
     Syntax *parseIdExpression();
-    Syntax *parseParenExpression();
-    Syntax *parseBracketExpression();
+    Syntax *parseTupleExpression();
+    Syntax *parseArrayExpression();
+    Syntax *parseBlockExpression();
 
     // Parameters
     Syntax *parseParameterList();
@@ -239,7 +243,7 @@ namespace blue
     Syntax *onList(TokenKind K, llvm::SmallVectorImpl<Syntax *> &SS);
     Syntax *onTuple(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS);
     Syntax *onArray(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS);
-    Syntax *onSeq(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS);
+    Syntax *onBlock(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS);
     Syntax* onDef(const Token &Tok, Syntax *Sig, Syntax *Init);
     Syntax *onTop(llvm::SmallVectorImpl<Syntax *> &SS);
     Syntax* onError(char const* Msg);

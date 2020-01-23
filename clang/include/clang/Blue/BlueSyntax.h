@@ -280,6 +280,10 @@ public:
     return Op;
   }
 
+  llvm::StringRef getOperatorSpelling() const {
+    return Op.getSpelling();
+  }
+
   Syntax *getOperand() {
     return Arg;
   }
@@ -317,6 +321,10 @@ public:
 
   const Token &getOperator() const {
     return Op;
+  }
+
+  llvm::StringRef getOperatorSpelling() const {
+    return Op.getSpelling();
   }
 
   bool isApplication() const {
