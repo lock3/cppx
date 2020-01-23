@@ -45,22 +45,6 @@ clang::TypeSourceInfo *BuildAnyTypeLoc(clang::ASTContext &Context,
 clang::TypeSourceInfo *BuildAnyTypeLoc(clang::ASTContext &Context,
                                        clang::QualType T, SourceLocation Loc);
 
-// Use the libsema TypeLocBuilder to create a TypeSourceInfo for a specific
-// kind of TypeLoc.
-// Needs to be explicitly instantiated for every TypeLocType.
-// \param TLB is a TypeLocBuilder we want to carry through.
-// \param Ty is the type we want to build a TypeSourceInfo out of.
-// \param Loc is the SourceLocation of the TypeSourceInfo.
-template <typename TypeLocType>
-clang::TypeSourceInfo *BuildTypeLoc(clang::ASTContext &Context,
-                                    clang::TypeLocBuilder &TLB,
-                                    clang::QualType Ty, SourceLocation Loc);
-
-// Same as above, but uses a single-instance TypeLocBuilder.
-template <typename TypeLocType>
-clang::TypeSourceInfo *BuildTypeLoc(clang::ASTContext &Context,
-                                    clang::QualType Ty, SourceLocation Loc);
-
 /// ======================================================================== ///
 /// The following functions are for special TypeLoc types that require more  ///
 /// information to be constructed, and thus need their own functions.        ///

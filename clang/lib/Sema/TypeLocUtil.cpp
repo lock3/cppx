@@ -24,9 +24,21 @@ using clang::QualType;
 using clang::TypeSourceInfo;
 using clang::TypeLocBuilder;
 
-// Build a generic TypeSourceInfo for the specified type.
+
 template <typename TypeLocType>
-TypeSourceInfo *BuildTypeLoc(clang::ASTContext &Context,
+static clang::TypeSourceInfo *BuildTypeLoc(clang::ASTContext &Context,
+                                           clang::QualType Ty,
+                                           SourceLocation Loc);
+
+// Build a generic TypeSourceInfo for the specified type.
+// Use the libsema TypeLocBuilder to create a TypeSourceInfo for a specific
+// kind of TypeLoc.
+// Needs to be explicitly instantiated for every TypeLocType.
+// \param TLB is a TypeLocBuilder we want to carry through.
+// \param Ty is the type we want to build a TypeSourceInfo out of.
+// \param Loc is the SourceLocation of the TypeSourceInfo.
+template <typename TypeLocType>
+static TypeSourceInfo *BuildTypeLoc(clang::ASTContext &Context,
                              TypeLocBuilder &TLB, QualType Ty,
                              SourceLocation Loc) {
   auto TypeLocInstance = TLB.push<TypeLocType>(Ty);
@@ -34,6 +46,7 @@ TypeSourceInfo *BuildTypeLoc(clang::ASTContext &Context,
   return TLB.getTypeSourceInfo(Context, Ty);
 }
 
+// Same as above, but uses a single-instance TypeLocBuilder.
 template <typename TypeLocType>
 TypeSourceInfo *BuildTypeLoc(clang::ASTContext &Context, QualType Ty,
                              SourceLocation Loc) {
@@ -43,11 +56,9 @@ TypeSourceInfo *BuildTypeLoc(clang::ASTContext &Context, QualType Ty,
 
 /// ======================================================================== ///
 /// The following are explicit instantiations for every class of Type in     ///
-/// libclang.                                                                ///
-/// TODO: Certain types like AutoType fit the generic case perfectly, but    ///
-///       need to be instantiated to avoid linker issues. Is there a way     ///
-///       around this?                                                       ///
-/// TODO: Remove instantiations we will never use (objective-C stuff)        ///
+/// libclang that don't fit into the generic case.                           ///
+/// TODO: Find a way to remove instantiations we will never use
+///       (objective-C stuff)                                                ///
 /// TODO: BuildAnyType selects the instantation through a macro, but         ///
 ///       some TypeLocs (FunctionTypeLocs) have a different function         ///
 ///       signature. Is there a way to get around this?                      ///
@@ -64,30 +75,6 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::BuiltinTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::BuiltinTypeLoc>(Context, TLB, Ty, Loc);
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::AutoTypeLoc>
-(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  auto TypeLocInstance = TLB.push<clang::AutoTypeLoc>(Ty);
-  TypeLocInstance.setNameLoc(Loc);
-  return TLB.getTypeSourceInfo(Ctx, Ty);
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::AutoTypeLoc>
-(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
-  TypeLocBuilder TLB;
-  return BuildTypeLoc<clang::AutoTypeLoc>(Context, TLB, Ty, Loc);
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::ComplexTypeLoc>
-(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::ComplexTypeLoc>
-(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
-  TypeLocBuilder TLB;
-  return BuildTypeLoc<clang::ComplexTypeLoc>(Context, TLB, Ty, Loc);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::PointerTypeLoc>
@@ -612,17 +599,6 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::CXXRequiredTypeTypeLoc>
   return BuildTypeLoc<clang::CXXRequiredTypeTypeLoc>(Context, TLB, Ty, Loc);
 }
 
-template<> TypeSourceInfo *BuildTypeLoc<clang::ObjCTypeParamTypeLoc>
-(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::ObjCTypeParamTypeLoc>
-(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
-  TypeLocBuilder TLB;
-  return BuildTypeLoc<clang::ObjCTypeParamTypeLoc>(Context, TLB, Ty, Loc);
-}
-
 template<> TypeSourceInfo *BuildTypeLoc<clang::ObjCObjectTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
@@ -632,17 +608,6 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::ObjCObjectTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::ObjCObjectTypeLoc>(Context, TLB, Ty, Loc);
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::ObjCInterfaceTypeLoc>
-(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::ObjCInterfaceTypeLoc>
-(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
-  TypeLocBuilder TLB;
-  return BuildTypeLoc<clang::ObjCInterfaceTypeLoc>(Context, TLB, Ty, Loc);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::ObjCObjectPointerTypeLoc>
