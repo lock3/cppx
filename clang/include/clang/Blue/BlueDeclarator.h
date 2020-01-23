@@ -31,15 +31,14 @@ public:
     Template,
   };
 
-  Declarator(Kind K, Syntax *S)
-    : Which(K), Info(S), Next(nullptr) {}
+  Declarator(Kind K, const Syntax *S)
+    : Which(K), Info(S), Next() {}
+
+  Declarator(Kind K, const Syntax *S, Declarator *D)
+    : Which(K), Info(S), Next(D) {}
 
   Kind getKind() const {
     return Which;
-  }
-
-  Syntax *getInfo() {
-    return Info;
   }
 
   const Syntax *getInfo() const {
@@ -56,7 +55,7 @@ public:
 
 private:
   Kind Which;
-  Syntax *Info;
+  const Syntax *Info;
   Declarator *Next;
 };
 

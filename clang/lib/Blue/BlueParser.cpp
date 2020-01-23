@@ -637,10 +637,10 @@ Syntax *Parser::parsePointerExpression(Syntax *LHS) {
 ///
 ///   pointer-expression:
 ///     primary-expression
-///     ^ pointer-expression
+///     ^ postfix-expression
 Syntax *Parser::parsePointerExpression() {
   if (Token Op = matchToken(tok::Caret)) {
-    Syntax *Arg = parsePointerExpression();
+    Syntax *Arg = parsePostfixExpression();
     return onUnary(Op, Arg);
   }
   return parsePrimaryExpression();

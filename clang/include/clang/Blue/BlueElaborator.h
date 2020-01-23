@@ -29,6 +29,7 @@ class Sema;
 
 namespace blue
 {
+  class Declarator;
   class Syntax;
 
   /// Transforms Blue syntax into C++ ASTs.
@@ -53,6 +54,11 @@ namespace blue
 
     clang::Decl *elaborateDecl(const Syntax *S);
     clang::Decl *elaborateDefDecl(const DefSyntax *S);
+
+    Declarator *getDeclarator(const Syntax *S);
+    Declarator *getUnaryDeclarator(const UnarySyntax *S);
+    Declarator *getBinaryDeclarator(const BinarySyntax *S);
+    Declarator *getLeafDeclarator(const Syntax *S);
 
   private:
     clang::Sema &SemaRef;
