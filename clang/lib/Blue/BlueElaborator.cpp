@@ -54,6 +54,61 @@ clang::Decl *Elaborator::elaborateDefDecl(const DefSyntax *S) {
   return nullptr;
 }
 
+void Elaborator::elaborateParameters(const ListSyntax *S) {
+  if (S->isSemicolonSeparated())
+    return elaborateParameterGroup(S);
+  else
+    return elaborateParameterList(S);
+}
+
+void Elaborator::elaborateParameterGroup(const ListSyntax *S) {
+  for (const Syntax *SS : S->children())
+    elaborateParameterList(cast<ListSyntax>(SS));
+}
+
+void Elaborator::elaborateParameterList(const ListSyntax *S) {
+  for (const Syntax *SS : S->children())
+    elaborateParameter(SS);
+
+  // FIXME: Examine the parameters we just created. We might be able
+  // to back-propagate types to some of them. For example, if we have;
+  //
+  //    a, b : int
+  //
+  // Then this should be equivalent to a : int, b: int.
+}
+
+clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
+  if (const auto *Def = dyn_cast<DefSyntax>(S))
+    return elaborateTypedParameter(Def);
+  if (const auto *Id = dyn_cast<IdentifierSyntax>(S))
+    return elaborateUntypedParameter(Id);
+  llvm_unreachable("Invalid parameter");
+}
+
+clang::Decl *Elaborator::elaborateTypedParameter(const DefSyntax *S) {
+  Declarator *Dcl = getDeclaratorFromDecl(S);
+
+  // FIXME: Get the type and build the parmvar.
+  return nullptr;
+}
+
+clang::Decl *Elaborator::elaborateUntypedParameter(const IdentifierSyntax *S) {
+  Declarator *Dcl = getDeclaratorFromId(S);
+
+  // FIXME: The type is null (for now) and build the parmvar.
+  return nullptr;
+}
+
+Declarator *Elaborator::getDeclaratorFromDecl(const DefSyntax *S) {
+  Declarator *Dcl = getDeclarator(S->getSignature());
+  return new Declarator(Declarator::Name, S, Dcl);
+}
+
+Declarator *Elaborator::getDeclaratorFromId(const IdentifierSyntax *S) {
+  return new Declarator(Declarator::Name, S);
+}
+
 // A signature is a sequence of unary (pointer) and binary (application)
 // operators that can be linearized to describe a declaration.
 //
@@ -100,8 +155,17 @@ Declarator *Elaborator::getBinaryDeclarator(const BinarySyntax *S) {
     //    x : (a) [t : type] int;
     //
     // It appears to be a function returning a variable template. I don't
-    // know if there's any way to write a metafunction that returns a template.
+    // know if there's any way to write a metafunction that returns a
+    // template.
+    //
+    // This should be disallowed.
     const auto *List = cast<ListSyntax>(S);
+
+    // Elaborate function parameters.
+    // enterScope(Scope::Parameter);
+    elaborateParameters(List);
+    // leaveScope();
+
     if (List->isParenList())
       return new Declarator(Declarator::Function, S, Dcl);
     if (List->isBracketList())
