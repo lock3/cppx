@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -std=c++1z -fsyntax-only -Wlifetime -Wlifetime-debug -verify %s
+// RUN: %clang_cc1 -std=c++1z -fsyntax-only -Wno-undefined-inline -Wno-undefined-internal -Wlifetime -Wlifetime-debug -verify %s
 
 // TODO: regression tests should not include the standard libary,
 //       but we should have a way to test against real implementations.
@@ -26,7 +26,15 @@ struct unique_ptr {
 };
 
 template <typename T>
-struct optional {};
+struct optional {
+  typedef int value_type;
+  const T *operator->() const;
+  T *operator->();
+  const T &operator*() const &;
+  T &operator*() &;
+  const T &&operator*() const &&;
+  T &&operator*() &&;
+};
 
 template <typename T>
 struct vector {
@@ -68,6 +76,9 @@ template <typename T>
 struct queue {};
 
 template <typename T>
+struct array {};
+
+template <typename T>
 struct priority_queue {};
 
 template <typename... T>
@@ -90,13 +101,25 @@ struct shared_ptr {
   T2 &operator*();
   ~shared_ptr();
 };
+
+template <typename T1, typename T2>
+struct pair {
+  T1 first;
+  T2 second;
+};
+
+template <typename Key, typename Value>
+struct map {
+  pair<Key, Value> *begin();
+  Value &operator[](const Key&);
+};
 } // namespace std
 
 template <typename T>
-void __lifetime_type_category() {}
+void __lifetime_type_category();
 
 template <typename T>
-void __lifetime_type_category_arg(T arg) {}
+void __lifetime_type_category_arg(T arg);
 
 class [[gsl::Owner]] my_owner {
   int &operator*();
@@ -109,13 +132,11 @@ class [[gsl::Pointer]] my_pointer {
 };
 
 class [[gsl::Owner]] owner_failed_deduce {
-  // TODOexpected-warning@-1 {{cannot deduce deref type, ignoring attribute}}
   int i;
 };
 
 template <int I, typename T>
 class [[gsl::Owner]] template_owner_failed_deduce {
-  // TODOexpected-warning@-1 {{cannot deduce deref type, ignoring attribute}}
   int i;
 };
 
@@ -129,20 +150,29 @@ struct my_implicit_owner {
 struct my_derived_owner : my_implicit_owner {
 };
 
+struct my_map : std::map<int, int> {};
+
 void owner() {
   // Use decltype to force template instantiation.
   __lifetime_type_category<my_owner>();                             // expected-warning {{Owner}}
   __lifetime_type_category<decltype(std::vector<int>())>();         // expected-warning {{Owner}}
   __lifetime_type_category<decltype(std::unique_ptr<int>())>();     // expected-warning {{Owner}}
-  __lifetime_type_category<decltype(std::shared_ptr<int>())>();     // expected-warning {{Owner}}
+  // TODO: This should be {{Owner with pointee int}}, but we cannot see the
+  //   int& operator*();
+  // because it's not used and thus not instantiated.
+  // Also, shared_ptr is not a "normal" Owner, because of the shared ownership.
+  // The data it owns can still be alive after one Owner is destroyed.
+  __lifetime_type_category<decltype(std::shared_ptr<int>())>();     // expected-warning {{Owner with pointee int}}
   __lifetime_type_category<decltype(std::stack<int>())>();          // expected-warning {{Owner}}
   __lifetime_type_category<decltype(std::queue<int>())>();          // expected-warning {{Owner}}
   __lifetime_type_category<decltype(std::priority_queue<int>())>(); // expected-warning {{Owner}}
-  __lifetime_type_category<decltype(std::optional<int>())>();       // expected-warning {{Owner}}
+  __lifetime_type_category<decltype(std::optional<int>())>();       // expected-warning {{Owner with pointee int}}
+  __lifetime_type_category<decltype(std::array<int>())>();       // expected-warning {{Owner}}
   using IntVector = std::vector<int>;
   __lifetime_type_category<decltype(IntVector())>();         // expected-warning {{Owner}}
   __lifetime_type_category<decltype(my_implicit_owner())>(); // expected-warning {{Owner}}
   __lifetime_type_category<decltype(my_derived_owner())>();  // expected-warning {{Owner}}
+  __lifetime_type_category<decltype(my_map())>();            // expected-warning {{Owner with pointee struct std::pair<int, int>}}
 }
 
 void pointer() {
@@ -155,7 +185,7 @@ void pointer() {
   int i;
   __lifetime_type_category<int *>();                                    // expected-warning {{Pointer}}
   __lifetime_type_category<int &>();                                    // expected-warning {{Pointer}}
-  __lifetime_type_category<decltype(std::regex())>();                   // expected-warning {{Pointer}}
+  __lifetime_type_category<decltype(std::regex())>();                   // expected-warning {{Owner}}
   __lifetime_type_category<decltype(std::reference_wrapper<int>(i))>(); // expected-warning {{Pointer}}
   __lifetime_type_category_arg(std::vector<bool>::reference());         // expected-warning {{Pointer}}
   __lifetime_type_category<decltype(std::vector<bool>::reference())>(); // expected-warning {{Pointer}}
@@ -178,8 +208,8 @@ void aggregate() {
 }
 
 void value() {
-  __lifetime_type_category<decltype(std::variant<int, char *>())>(); // expected-warning {{Value}}
-  __lifetime_type_category<decltype(std::any())>();                  // expected-warning {{Value}}
+  __lifetime_type_category<decltype(std::variant<int, char *>())>(); // expected-warning {{Owner with pointee void}}
+  __lifetime_type_category<decltype(std::any())>();                  // expected-warning {{Owner with pointee void}}
 
   // no public data members
   class C1 {
@@ -206,8 +236,8 @@ void value() {
   class C3;
   __lifetime_type_category<C3>(); // expected-warning {{Value}}
 
-  __lifetime_type_category<decltype(owner_failed_deduce())>();                   // expected-warning {{Value}}
-  __lifetime_type_category<decltype(template_owner_failed_deduce<3, void>())>(); // expected-warning {{Value}}
+  __lifetime_type_category<decltype(owner_failed_deduce())>();                   // expected-warning {{Owner}}
+  __lifetime_type_category<decltype(template_owner_failed_deduce<3, void>())>(); // expected-warning {{Owner}}
 }
 
 namespace classTemplateInstantiation {
@@ -226,12 +256,10 @@ struct vector {
 };
 
 void f() {
-  // Clang would create an ClassTemplateSpecializationDecl for
-  // iterator<0, int>, but create no definition, i.e. we could not see
-  // iterator<0, int>::operator*(), unless that operator is explicitly called
-  // by the program. The lifetime checker now forces and definition of
-  // iterator<0, int> to be able to deduce the DerefType(iterator<0, int>).
-  __lifetime_type_category<decltype(vector<0, int>())>(); // expected-warning {{Owner with pointee int}}
+  // Clang creates an ClassTemplateSpecializationDecl for
+  // iterator<0, int>, but creates no instantiation of begin() unless
+  // it is used. Thus we are unable to deduce the DerefType.
+  __lifetime_type_category<decltype(vector<0, int>())>(); // expected-warning {{Aggregate}}
 }
 } // namespace classTemplateInstantiation
 
@@ -245,11 +273,10 @@ struct pointer {
 };
 
 void f() {
-  // Clang creates a FunctionTemplateDecl for operator*()
-  // but not specialisation for the default case (D = T)
-  // unless begin() is used in the program. The lifetime checker now forces
-  // and specialisation of operator*() to be able to deduce the DerefType(pointer<0, int>).
-  __lifetime_type_category<decltype(pointer<0, int>())>(); // expected-warning {{Pointer with pointee int}}
+  // TODO: This should be {{Pointer with pointee int}}, but we cannot see the
+  //   int& operator*();
+  // because it's not used and thus not instantiated.
+  __lifetime_type_category<decltype(pointer<0, int>())>(); // expected-warning {{Aggregate}}
 }
 } // namespace functionTemplateInstantiation
 

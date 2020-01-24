@@ -3351,32 +3351,31 @@ Sema::ActOnCXXMemberDeclarator(Scope *S, AccessSpecifier AS, Declarator &D,
     CXXScopeSpec &SS = D.getCXXScopeSpec();
 
     // Data members must have identifiers for names.
-    if (!Name.isIdentifier()) {
-      Diag(Loc, diag::err_bad_variable_name)
-        << Name;
-      return nullptr;
-    }
+    if (Name.isIdentifier()) {
+      IdentifierInfo *II = Name.getAsIdentifierInfo();
 
-    IdentifierInfo *II = Name.getAsIdentifierInfo();
-
-    // Member field could not be with "template" keyword.
-    // So TemplateParameterLists should be empty in this case.
-    if (TemplateParameterLists.size()) {
-      TemplateParameterList* TemplateParams = TemplateParameterLists[0];
-      if (TemplateParams->size()) {
-        // There is no such thing as a member field template.
-        Diag(D.getIdentifierLoc(), diag::err_template_member)
+      // Member field could not be with "template" keyword.
+      // So TemplateParameterLists should be empty in this case.
+      if (TemplateParameterLists.size()) {
+        TemplateParameterList *TemplateParams = TemplateParameterLists[0];
+        if (TemplateParams->size()) {
+          // There is no such thing as a member field template.
+          Diag(D.getIdentifierLoc(), diag::err_template_member)
             << II
             << SourceRange(TemplateParams->getTemplateLoc(),
-                TemplateParams->getRAngleLoc());
-      } else {
-        // There is an extraneous 'template<>' for this member.
-        Diag(TemplateParams->getTemplateLoc(),
-            diag::err_template_member_noparams)
+                           TemplateParams->getRAngleLoc());
+        } else {
+          // There is an extraneous 'template<>' for this member.
+          Diag(TemplateParams->getTemplateLoc(),
+               diag::err_template_member_noparams)
             << II
             << SourceRange(TemplateParams->getTemplateLoc(),
-                TemplateParams->getRAngleLoc());
+                           TemplateParams->getRAngleLoc());
+        }
+        return nullptr;
       }
+    } else if (!Name.isReflectedIdentifier()) {
+      Diag(Loc, diag::err_bad_variable_name) << Name;
       return nullptr;
     }
 
@@ -3406,7 +3405,7 @@ Sema::ActOnCXXMemberDeclarator(Scope *S, AccessSpecifier AS, Declarator &D,
       isInstField = false;
     } else {
       Member = HandleField(S, cast<CXXRecordDecl>(CurContext), Loc, D,
-                                BitWidth, InitStyle, AS);
+                           BitWidth, InitStyle, AS);
       if (!Member)
         return nullptr;
     }
@@ -6660,6 +6659,9 @@ void Sema::CheckCompletedCXXClass(Scope *S, CXXRecordDecl *Record) {
     // is especially required for cases like vtable assumption loads.
     MarkVTableUsed(Record->getInnerLocStart(), Record);
   }
+
+  if (!Diags.isIgnored(diag::warn_lifetime_category, SourceLocation()))
+    suggestLifetimeAttribute(Record);
 }
 
 /// Look up the special member function that would be called by a special
@@ -12489,48 +12491,6 @@ Decl *Sema::ActOnNamespaceAliasDef(Scope *S, SourceLocation NamespaceLoc,
 
   PushOnScopeChains(AliasDecl, S);
   return AliasDecl;
-}
-
-Decl *Sema::ActOnCXXRequiredTypeDecl(AccessSpecifier AS,
-                                     SourceLocation RequiresLoc,
-                                     SourceLocation TypenameLoc,
-                                     IdentifierInfo *Id, bool Typename) {
-  CXXRequiredTypeDecl *RTD =
-    CXXRequiredTypeDecl::Create(Context, CurContext,
-                                RequiresLoc, TypenameLoc, Id, Typename);
-  RTD->setAccess(AS);
-
-  PushOnScopeChains(RTD, getCurScope());
-  return RTD;
-}
-
-Decl *Sema::ActOnCXXRequiredDeclaratorDecl(Scope *CurScope,
-                                           SourceLocation RequiresLoc,
-                                           Declarator &D) {
-  // We don't want to check for linkage, memoize that we're
-  // working on a required declarator for later checks.
-  AnalyzingRequiredDeclarator = true;
-  DeclaratorDecl *DDecl
-    = cast<DeclaratorDecl>(ActOnDeclarator(CurScope, D));
-  AnalyzingRequiredDeclarator = false;
-
-  if (!DDecl)
-    return nullptr;
-
-  // We'll deal with auto deduction later.
-  if (ParsingInitForAutoVars.count(DDecl)) {
-    ParsingInitForAutoVars.erase(DDecl);
-
-    // Since we haven't deduced the auto type, we will run
-    // into problems if the user actually tries to use this
-    // declarator. Make it a dependent deduced auto type.
-    QualType Sub = SubstAutoType(DDecl->getType(), Context.DependentTy);
-    DDecl->setType(Sub);
-  }
-
-  CXXRequiredDeclaratorDecl *RDD =
-    CXXRequiredDeclaratorDecl::Create(Context, CurContext, DDecl, RequiresLoc);
-  return RDD;
 }
 
 namespace {

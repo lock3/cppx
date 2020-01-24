@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fsyntax-only -verify -Wlifetime %s
+// RUN: %clang_cc1 -fcxx-exceptions -fsyntax-only -verify -Wlifetime -Wno-dangling %s
 namespace std {
 using size_t = decltype(sizeof(int));
 
@@ -30,6 +30,8 @@ struct string {
   ~string();
   iterator begin();
   iterator end();
+  size_t length() const noexcept;
+  const char *c_str() const noexcept;
 };
 
 template <typename T>
@@ -69,7 +71,7 @@ struct vector {
   vector(size_t);
   vector(std::initializer_list<T> init,
          const Allocator &alloc = Allocator());
-  T &operator[](size_t);
+  const T &operator[](size_t) const;
   iterator begin();
   iterator end();
   ~vector();
@@ -89,6 +91,15 @@ struct map {
 };
 } // namespace std
 
+namespace gsl {
+template <typename T>
+using nullable = T;
+
+
+template <typename T>
+using not_null = T;
+} // namespace gsl
+
 struct Owner {
   ~Owner();
   int m;
@@ -96,14 +107,16 @@ struct Owner {
 };
 
 struct [[gsl::Pointer]] my_pointer {
+  my_pointer &operator=(int *);
   int &operator*();
+  operator bool() const;
 };
 
 void deref_uninitialized() {
   int *p;        // expected-note {{it was never initialized here}}
   *p = 3;        // expected-warning {{dereferencing a dangling pointer}}
-  my_pointer p2; // expected-note {{default-constructed Pointers are assumed to be null}}
-  *p2;           // expected-warning {{passing a null pointer as argument to a non-null parameter}}
+  my_pointer p2; // expected-note {{default-constructed pointers are assumed to be null}}
+  *p2;           // expected-warning {{passing a null pointer as argument where a non-null pointer is expected}}
 }
 
 void deref_nullptr() {
@@ -140,6 +153,24 @@ void ignore_access_on_non_ref_ptr() {
   s.f();
 }
 
+int global;
+void optional_output_argument(my_pointer *out) {
+  if (out)
+    *out = &global;
+}
+
+void optional_output_argument2(my_pointer *out) {
+  if (!out)
+    return;
+  *out = &global;
+}
+
+void do_not_validate_output_on_exceptions(bool b, my_pointer &out) {
+  if (b)
+    throw 5;
+  out = &global;
+}
+
 // Note: the messages below are for the template instantiation in 'instantiate_ref_leaves_scope_template'.
 // The checker only checks instantiations.
 // TODO: some parts of the templated functions that are not dependent on the
@@ -167,6 +198,26 @@ int *global_null_p = nullptr;   // OK
 
 void uninitialized_static() {
   static int *p; // OK, statics initialize to null
+}
+
+void delete_pointee(int *p) {
+  int *q = p;
+  delete q; // expected-note {{deleted here}}
+  (void)*p; // expected-warning {{dereferencing a dangling pointer}}
+}
+
+void delete_pointee_userdefined(my_pointer p) {
+  if (!p)
+    return;
+  delete &(*p); // expected-note {{deleted here}}
+  (void)*p;     // expected-warning {{passing a dangling pointer as argument}}
+}
+
+void copy_null_ptr(int *p, my_pointer p2) {
+  gsl::not_null<int* > q = p;        // expected-warning {{assigning a possibly null pointer to a non-null object}}
+  q = p;                             // expected-warning {{assigning a possibly null pointer to a non-null object}}
+  gsl::not_null<my_pointer> q2 = p2; // expected-warning {{assigning a possibly null pointer to a non-null object}}
+  q2 = p2;                           // expected-warning {{assigning a possibly null pointer to a non-null object}}
 }
 
 void function_call() {
@@ -205,8 +256,17 @@ const int *return_wrong_ptr(const int *p) {
   int *q = &i;
   if (p)
     return p;
-  return q; // expected-warning {{returning a dangling Pointer}}
+  return q; // expected-warning {{returning a dangling pointer}}
   // expected-note@-1 {{pointee 'i' left the scope here}}
+}
+
+const int &return_wrong_ptr2(std::vector<int> &v,
+                             const std::vector<int> &v2) {
+  return v2[0]; // expected-warning {{returning a pointer with points-to set (**v2) where points-to set (**v) is expected}}
+}
+
+gsl::not_null<int *> return_null_ptr() {
+  return nullptr; // expected-warning {{returning a null pointer where a non-null pointer is expected}}
 }
 
 void null_notes(int *p) {
@@ -238,8 +298,17 @@ int *f(int *);
 void test() {
   int *p;        // expected-note {{it was never initialized here}}
   int *q = f(p); // expected-warning {{passing a dangling pointer as argument}}
-  (void)*q;      // further diagnostics are suppressed here
+  // suppressed further diagnostics here:
+  (void)*q;
 }
+
+void f(const char **values) {
+  // Array subscription into poiter 'values' is not allowed and disables
+  // the analysis. In particular, we should not see
+  //     warning: returning a dangling pointer as output value '*values'.
+  values[0] = "hello";
+}
+
 } // namespace supress_further_warnings
 
 namespace do_not_check_Owner_methods {
@@ -259,6 +328,19 @@ int &f(int &a) {
 int &hello() {
   int x = 0;
   return f(x); // expected-warning {{dangling}} expected-note {{pointee 'x' left}}
+}
+
+bool uninitialized_output_param(int **p) { // expected-note {{it was never initialized here}}
+  return true; // expected-warning {{returning a dangling pointer as output value '*p'}}
+}
+
+std::initializer_list<int> dangling_initializer_list() {
+  return {1, 2, 3}; // expected-warning {{returning a dangling pointer}}
+  // expected-note@-1 {{temporary was destroyed at the end of the full expression}}
+}
+
+int* static_or_null() {
+  return nullptr; // OK
 }
 
 // Examples from paper P0936 by Richard Smith and Nicolai Josuttis
@@ -309,7 +391,7 @@ std::string operator+(std::string_view sv1, std::string_view sv2) {
 template <typename T>
 T concat(const T &x, const T &y) {
   // TODO: Elide the deref for references?
-  return x + y; // expected-warning {{returning a dangling Pointer}}
+  return x + y; // expected-warning {{returning a dangling pointer}}
   // expected-note@-1 {{temporary was destroyed at the end of the full expression}}
 }
 
@@ -351,3 +433,48 @@ void sj5() {
 }
 
 } // namespace P0936
+
+// https://github.com/mgehre/llvm-project/issues/62
+namespace bug_report_63 {
+
+int printf(const char *format, ...);
+
+const char *longer(std::string const &s1, std::string const &s2) {
+  if (s1.length() > s2.length()) {
+    return s1.c_str();
+  }
+  return s2.c_str();
+}
+
+const char *f1();
+const char *f2();
+
+int main() {
+  const char *lg = longer(f1(), f2()); // expected-note {{temporary was destroyed at the end of the full expression}}
+  printf("longer arg is %s", lg);      // expected-warning {{passing a dangling pointer as argument}}
+  return 0;
+}
+} // namespace bug_report_63
+
+namespace bug_report_66 {
+
+class [[gsl::Owner]] basic_string {
+public:
+  void a();
+};
+void b(basic_string &c) {
+  c.a();
+  c; // expected-warning {{expression result unused}}
+}
+} // namespace bug_report_66
+
+namespace varargs {
+void f(int, ...);
+
+void g() {
+  int *p;
+  f(1, &p);
+  *p = 5; // no-warning
+}
+
+} // namespace varargs
