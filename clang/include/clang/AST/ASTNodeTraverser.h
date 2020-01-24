@@ -240,6 +240,7 @@ public:
       gold::ConstSyntaxVisitor<Derived>::Visit(S);
       for (const gold::Syntax *SubSyntax : S->children())
         Visit(SubSyntax);
+    });
   }
 
   void Visit(const blue::Syntax *S) {

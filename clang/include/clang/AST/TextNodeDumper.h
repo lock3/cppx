@@ -361,13 +361,14 @@ public:
   void
   VisitLifetimeExtendedTemporaryDecl(const LifetimeExtendedTemporaryDecl *D);
 
-  void VisitErrorSyntax(const gold::ErrorSyntax *S);
-  void VisitAtomSyntax(const gold::AtomSyntax *S);
-  void VisitListSyntax(const gold::ListSyntax *S);
-  void VisitArraySyntax(const gold::ArraySyntax *S);
-  void VisitCallSyntax(const gold::CallSyntax *S);
-  void VisitElemSyntax(const gold::ElemSyntax *S);
-  void VisitMacroSyntax(const gold::MacroSyntax *S);
+  void VisitGoldErrorSyntax(const gold::ErrorSyntax *S);
+  void VisitGoldAtomSyntax(const gold::AtomSyntax *S);
+  void VisitGoldListSyntax(const gold::ListSyntax *S);
+  void VisitGoldArraySyntax(const gold::ArraySyntax *S);
+  void VisitGoldCallSyntax(const gold::CallSyntax *S);
+  void VisitGoldElemSyntax(const gold::ElemSyntax *S);
+  void VisitGoldMacroSyntax(const gold::MacroSyntax *S);
+  void VisitGoldFileSyntax(const gold::FileSyntax *S);
 
   void VisitErrorSyntax(const blue::ErrorSyntax *S);
   void VisitLiteralSyntax(const blue::LiteralSyntax *S);

@@ -28,7 +28,7 @@ class Base {
 public:
 #define PTR(CLASS) typename Ptr<CLASS>::type
 #define DISPATCH(NAME, CLASS) \
-  return static_cast<ImplClass*>(this)->Visit##NAME(static_cast<PTR(CLASS)>(S))
+  return static_cast<ImplClass*>(this)->VisitGold##NAME(static_cast<PTR(CLASS)>(S))
 
   RetTy Visit(PTR(Syntax) S) {
     switch (S->getKind()) {
@@ -40,10 +40,10 @@ public:
 
   // If a function is not implemented, fall back to the base.
 #define def_syntax(K) \
-  RetTy Visit ## K ## Syntax(PTR(K ## Syntax) S) { DISPATCH(Syntax, Syntax); }
+  RetTy VisitGold ## K ## Syntax(PTR(K ## Syntax) S) { DISPATCH(Syntax, Syntax); }
 #include "clang/Gold/GoldSyntax.def"
 
-  RetTy VisitSyntax(PTR(Syntax) S) { return RetTy(); }
+  RetTy VisitGoldSyntax(PTR(Syntax) S) { return RetTy(); }
 
   #undef PTR
   #undef DISPATCH
