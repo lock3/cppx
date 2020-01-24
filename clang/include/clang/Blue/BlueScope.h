@@ -29,13 +29,13 @@ public:
   };
 
   Scope(Kind K, Scope *P)
-    : Which(k), Parent(P) {}
+    : Which(K), Parent(P) {}
 
   Kind getKind() const {
     return Which;
   }
 
-  const Scope *getParent() {
+  const Scope *getParent() const {
     return Parent;
   }
 

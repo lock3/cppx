@@ -10,6 +10,7 @@ add_clang_library(blue
   BlueTokens.cpp
   BlueLexer.cpp
   BlueParser.cpp
+  BlueScope.cpp
   BlueSyntax.cpp
   BlueSyntaxVisitor.cpp
   BlueDeclarator.cpp
