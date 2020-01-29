@@ -14,6 +14,7 @@
 
 #include "clang/AST/Stmt.h"
 #include "clang/Basic/DiagnosticSema.h"
+#include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Sema.h"
 
@@ -149,6 +150,12 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
                                                         Loc, Loc, Name,
                                                         TInfo->getType(),
                                                         TInfo, clang::SC_Extern);
+
+  if (FD->isMain()) {
+    clang::AttributeFactory Attrs;
+    clang::DeclSpec DS(Attrs);
+    SemaRef.getCxxSema().CheckMain(FD, DS);
+  }
 
   // Update the function parameters.
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;

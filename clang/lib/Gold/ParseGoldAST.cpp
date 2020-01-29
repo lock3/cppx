@@ -54,8 +54,17 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
   // Elaborate the resulting abstract syntax tree.
   Sema Sema(Context, ClangSema);
   Elaborator Elab(Context, Sema);
-  clang::Decl *TU = Elab.elaborateFile(AST);
+  clang::TranslationUnitDecl *TU =
+    cast<clang::TranslationUnitDecl>(Elab.elaborateFile(AST));
   TU->dump();
+
+  clang::ASTConsumer *Consumer = &ClangSema.getASTConsumer();
+  for (auto *D : TU->decls()) {
+    auto DPtr = ClangSema.ConvertDeclToDeclGroup(D);
+    if (D && !Consumer->HandleTopLevelDecl(DPtr.get()))
+      return;
+  }
+  Consumer->HandleTranslationUnit(ClangSema.getASTContext());
 }
 
 } // namespace gold

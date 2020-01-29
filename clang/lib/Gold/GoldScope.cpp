@@ -51,15 +51,16 @@ clang::SourceLocation Declarator::getLoc() const {
 static llvm::StringRef getCallName(const CallSyntax *S) {
   // Get the bottom-left most element, which should be an
   // atom syntax naming the function.
-  while (const Syntax *L = S->getArgument(0)) {
+  while (S->getNumArguments()) {
+    const Syntax *L = S->getArgument(0);
     if (const auto *Atom = dyn_cast<AtomSyntax>(L))
       return Atom->getSpelling();
 
     S = cast<CallSyntax>(L);
   }
 
-  // This should never happen for a proper function declarator.
-  return "";
+  // We got here because the parameter list was empty.
+  return "(void)";
 }
 
 llvm::StringRef Declarator::getString() const {
