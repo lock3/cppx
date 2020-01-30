@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/AST/DeclarationName.h"
 #include "clang/AST/Stmt.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Sema/DeclSpec.h"
@@ -185,6 +186,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
 
   ExprElaborator TypeElab(Context, SemaRef);
   ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
+
   if (TypeExpr.isNull()) {
     SemaRef.Diags.Report(D->Op->getLoc(),
                          clang::diag::err_failed_to_translate_type);
@@ -234,10 +236,12 @@ clang::Decl *Elaborator::elaborateDeclSyntax(const Syntax *S) {
   identifyDecl(S);
 
   // Elaborate the declaration.
-  if (Declaration *D = SemaRef.getCurrentScope()->findDecl(S))
-    return elaborateDecl(D);
-
-  // TODO: Elaborate the definition or initializer?
+  Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
+  if (D) {
+    elaborateDecl(D);
+    elaborateDef(D);
+    return D->Cxx;
+  }
 
   return nullptr;
 }
@@ -517,6 +521,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
         return;
       }
 
+
       // FIXME: I think we can filter out some syntactic forms as
       // non-declarations. For example, the following look like definitions
       // but are actually assignments.
@@ -541,6 +546,17 @@ void Elaborator::identifyDecl(const Syntax *S) {
         assert(false && "Invalid parameter declaration");
 
       clang::IdentifierInfo* Id = getIdentifier(*this, Dcl);
+
+      // If we're in global scope and this ID already exists, consider it
+      // a redeclaration.
+      Scope *CurScope = SemaRef.getCurrentScope();
+      if (CurScope->isNamespaceScope()) {
+        if (CurScope->findDecl(Id)) {
+          SemaRef.Diags.Report(S->getLoc(), clang::diag::err_redefinition) <<
+            clang::DeclarationName(Id);
+          return;
+        }
+      }
 
       // FIXME: We could mis-identify this as a declaration. For example:
       //

@@ -67,6 +67,7 @@ static clang::Stmt *
 createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
                const CallSyntax *S) {
   // FIXME: elaborate this expression, it might not be a name.
+  
   const AtomSyntax *Name = cast<AtomSyntax>(S->getArgument(0));
 
   // TODO: elaborate the name if we need to.
@@ -98,10 +99,31 @@ createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
   return nullptr;
 }
 
+static clang::Stmt *
+createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
+               clang::Decl *D, clang::SourceLocation StartLoc,
+               clang::SourceLocation EndLoc) {
+  clang::Sema &CxxSema = SemaRef.getCxxSema();
+   clang::StmtResult Res =
+      CxxSema.ActOnDeclStmt(CxxSema.ConvertDeclToDeclGroup(D), StartLoc, EndLoc);
+   return !Res.isInvalid() ? Res.get() : nullptr;
+}
+
 clang::Stmt *
 StmtElaborator::elaborateCall(const CallSyntax *S) {
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   clang::IdentifierInfo *Spelling = &CxxAST.Idents.get(Callee->Tok.getSpelling());
+
+  if (SemaRef.getCurrentScope()->isBlockScope()) {
+    if (Spelling == SemaRef.OperatorColonII
+        || Spelling == SemaRef.OperatorEqualsII) {
+      Elaborator E(Context, SemaRef);
+      clang::Decl *N = E.elaborateDeclSyntax(S);
+      if (N)
+        return createDeclStmt(CxxAST, SemaRef, N, S->getLoc(),
+                              S->getArgument(0)->getLoc());
+    }
+  }
 
   // A typed declaration.
   // FIXME : what about 'x = 3:int'

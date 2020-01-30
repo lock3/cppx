@@ -115,12 +115,16 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
     // several declarations, some of which have not been elaborated.
     Declaration *Found = S->findDecl(Id);
     if (Found) {
-      // FIXME: This is wrong! If we find a name that hasn't been elaborated,
-      // then we actually need to elaborate it.
-      assert(Found->Cxx && "Declaration not elaborated");
-      clang::NamedDecl *ND = cast<clang::NamedDecl>(Found->Cxx);
-      R.addDecl(ND);
-      break;
+      // FIXME: we need a better way to separate tag lookup and other
+      // name lookups.
+      if (LookupKind != clang::Sema::LookupTagName) {
+        // FIXME: This is wrong! If we find a name that hasn't been elaborated,
+        // then we actually need to elaborate it.
+        assert(Found->Cxx && "Declaration not elaborated");
+        clang::NamedDecl *ND = cast<clang::NamedDecl>(Found->Cxx);
+        R.addDecl(ND);
+        break;
+      }
     }
     S = S->getParent();
   }
