@@ -515,7 +515,9 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
   SemaRef.enterScope(SK_Parameter, Call);
   for (const Syntax *P : Args->children()) {
     Elaborator Elab(Context, SemaRef);
-    clang::ValueDecl *VD = cast<clang::ValueDecl>(Elab.elaborateDeclSyntax(P));
+    clang::ValueDecl *VD = cast_or_null<clang::ValueDecl>(Elab.elaborateDeclSyntax(P));
+    if (!VD)
+      return nullptr;
 
     assert(isa<clang::ParmVarDecl>(VD) && "Parameter is not a ParmVarDecl");
 

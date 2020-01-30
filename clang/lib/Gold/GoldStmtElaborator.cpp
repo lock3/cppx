@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/EvaluatedExprVisitor.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/DiagnosticParse.h"
@@ -109,6 +110,26 @@ createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
    return !Res.isInvalid() ? Res.get() : nullptr;
 }
 
+namespace {
+  /// Helper class that marks all of the declarations referenced by
+  /// potentially-evaluated subexpressions as "referenced".
+  /// Effectively a less complicated version of the EvaluatedExprMarker
+  /// found in Sema/SemaExpr.cpp
+  struct ExprMarker : public clang::EvaluatedExprVisitor<ExprMarker> {
+    clang::ASTContext &CxxAST;
+    typedef EvaluatedExprVisitor<ExprMarker> Inherited;
+
+    ExprMarker(clang::ASTContext &CxxAST)
+      : Inherited(CxxAST), CxxAST(CxxAST)
+      {}
+
+    void VisitDeclRefExpr(clang::DeclRefExpr *E) {
+      // FIXME: references to virtual methods may cause problems here.
+      E->getDecl()->markUsed(CxxAST);
+    }
+  };
+} // anonymous namespace
+
 clang::Stmt *
 StmtElaborator::elaborateCall(const CallSyntax *S) {
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
@@ -180,6 +201,9 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
       return nullptr;
     }
 
+    // We can readily assume anything here is getting used.
+    ExprMarker Marker(CxxAST).Visit(NameExpr.get<clang::Expr *>());
+    ExprMarker Marker(CxxAST).Visit(InitExpr.get<clang::Expr *>());
     return Assignment.get();
   }
 

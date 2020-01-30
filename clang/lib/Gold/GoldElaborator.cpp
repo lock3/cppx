@@ -490,6 +490,9 @@ static clang::IdentifierInfo *getIdentifier(Elaborator &Elab,
 }
 
 void Elaborator::identifyDecl(const Syntax *S) {
+  // Keep track of whether or not this is an operator'=' call.
+  bool OperatorEquals = false;
+
   // Declarations only appear in calls.
   if (const auto *Call = dyn_cast<CallSyntax>(S)) {
     if (const auto *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
@@ -502,6 +505,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
         const auto *Args = cast<ListSyntax>(Call->getArguments());
         Decl = Args->getChild(0);
         Init = Args->getChild(1);
+        OperatorEquals = true;
       } else if (Op == "operator'!'") {
         const auto *Args = cast<ListSyntax>(Call->getArguments());
 
@@ -547,23 +551,28 @@ void Elaborator::identifyDecl(const Syntax *S) {
 
       clang::IdentifierInfo* Id = getIdentifier(*this, Dcl);
 
-      // If we're in global scope and this ID already exists, consider it
-      // a redeclaration.
+      // If we're in namespace or parameter scope and this identifier already
+      // exists, consider it a redeclaration.
+      // TODO: distinguish between redefinition, redeclaration, and redeclaration
+      // with different type.
       Scope *CurScope = SemaRef.getCurrentScope();
-      if (CurScope->isNamespaceScope()) {
+      if (CurScope->isNamespaceScope() || CurScope->isParameterScope()) {
         if (CurScope->findDecl(Id)) {
           SemaRef.Diags.Report(S->getLoc(), clang::diag::err_redefinition) <<
             clang::DeclarationName(Id);
           return;
         }
+      } else if (CurScope->isBlockScope()) {
+        // If we're assigning to a name that already exist in the current block,
+        // then we're not declaring anything. For example:
+        // \code
+        //    x = 3
+        //    x = 4
+        // \endcode
+        // The first statement is a declaration. The second is an assignment.
+        if (CurScope->findDecl(Id) && OperatorEquals)
+          return;
       }
-
-      // FIXME: We could mis-identify this as a declaration. For example:
-      //
-      //    x = 3
-      //    x = 4
-      //
-      // The first statement is a declaration. The second is an assignment.
 
       // Create a declaration for this node.
       //

@@ -33,6 +33,7 @@ namespace gold
   // Bring isa/cast/dyn_cast into scope.
   using clang::isa;
   using clang::cast;
+  using clang::cast_or_null;
   using clang::dyn_cast;
   using clang::dyn_cast_or_null;
 
