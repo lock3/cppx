@@ -202,8 +202,8 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
     }
 
     // We can readily assume anything here is getting used.
-    ExprMarker Marker(CxxAST).Visit(NameExpr.get<clang::Expr *>());
-    ExprMarker Marker(CxxAST).Visit(InitExpr.get<clang::Expr *>());
+    ExprMarker(CxxAST).Visit(NameExpr.get<clang::Expr *>());
+    ExprMarker(CxxAST).Visit(InitExpr.get<clang::Expr *>());
     return Assignment.get();
   }
 
