@@ -205,6 +205,24 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
     ExprMarker(CxxAST).Visit(NameExpr.get<clang::Expr *>());
     ExprMarker(CxxAST).Visit(InitExpr.get<clang::Expr *>());
     return Assignment.get();
+  } else if (Spelling == SemaRef.OperatorReturnII) {
+    llvm::outs() << "ELABORATING RETURN\n";
+
+    ExprElaborator::Expression RetVal =
+      ExprElaborator(Context, SemaRef).elaborateExpr(S->getArgument(0));
+
+    if (RetVal.is<clang::TypeSourceInfo *>()) {
+      SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
+                           clang::diag::err_expected_lparen_after_type);
+      return nullptr;
+    }
+
+    clang::StmtResult ReturnResult = SemaRef.getCxxSema().
+      BuildReturnStmt(S->getCallee()->getLoc(), RetVal.get<clang::Expr *>());
+    if (ReturnResult.isInvalid())
+      llvm::outs() << "INVALID RETURN\n";
+
+    return ReturnResult.get();
   }
 
   // If all else fails, just see if we can elaborate any expression.

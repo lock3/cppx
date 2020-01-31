@@ -37,9 +37,6 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
 
   const FileSyntax *File = cast<FileSyntax>(S);
 
-  // FIXME: Shouldn't we be using PushDecl?
-  SemaRef.getCxxSema().CurContext = Context.CxxAST.getTranslationUnitDecl();
-
   // Pass 1. identify declarations in scope.
   for (const Syntax *SS : File->children())
     identifyDecl(SS);
@@ -166,6 +163,10 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Add the declaration and update bindings.
   Owner->addDecl(FD);
   D->Cxx = FD;
+
+  // FIXME: is this necessary for Gold? It enables some more semantic
+  // checking, but not all of it is necessarily meaningful to us.
+  SemaRef.getCxxSema().PushFunctionScope();
   return FD;
 }
 
@@ -276,6 +277,7 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   FD->setBody(Body);
 
   SemaRef.leaveScope(D->Init);
+  SemaRef.getCxxSema().PopFunctionScopeInfo();
 }
 
 void Elaborator::elaborateVariableInit(Declaration *D) {

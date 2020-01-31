@@ -712,6 +712,11 @@ Syntax *Parser::parsePre()
     return onUnary(op, e);
   }
 
+  if (Token op = matchToken("return")) {
+    Syntax *e = parsePre();
+    return onUnary(op, e);
+  }
+
   return parsePost();
 }
 
@@ -983,6 +988,10 @@ Syntax *Parser::onUnary(Token const& Tok, Syntax *e1) {
 
 Syntax *Parser::onCall(TokenPair const& Toks, Syntax *e1, Syntax *e2) {
   // FIXME: Toks is unused.
+  return new (Context) CallSyntax(e1, e2);
+}
+
+Syntax *Parser::onCall(Syntax *e1, Syntax *e2) {
   return new (Context) CallSyntax(e1, e2);
 }
 

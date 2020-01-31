@@ -37,6 +37,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorEqualsII = &Context.CxxAST.Idents.get("operator'='");
   OperatorIfII = &Context.CxxAST.Idents.get("operator'if'");
   OperatorElseII = &Context.CxxAST.Idents.get("operator'else'");
+  OperatorReturnII = &Context.CxxAST.Idents.get("operator'return'");
 }
 
 Scope *Sema::getCurrentScope() {
@@ -89,12 +90,23 @@ clang::DeclContext *Sema::getCurrentCxxDeclContext() {
 }
 
 void Sema::pushDecl(Declaration *D) {
-  assert(D->getOwner() == CurrentDecl);
+  assert(D->getOwner() == CurrentDecl);  
+
+  // FIXME: this might be an incorrect assertion.
+  assert(D->Cxx && isa<clang::DeclContext>(D->Cxx)
+         && "No Cxx declaration to push.");
+
   CurrentDecl = D;
+  getCxxSema().CurContext = clang::Decl::castToDeclContext(D->Cxx);
 }
 
 void Sema::popDecl() {
   CurrentDecl = CurrentDecl->getOwner();
+
+  // FIXME: this might be an incorrect assertion.
+  assert(CurrentDecl->Cxx && isa<clang::DeclContext>(CurrentDecl->Cxx)
+         && "No Cxx declaration to push.");
+  getCxxSema().CurContext = clang::Decl::castToDeclContext(CurrentDecl->Cxx);
 }
 
 bool Sema::lookupUnqualifiedName(clang::LookupResult &R) {
