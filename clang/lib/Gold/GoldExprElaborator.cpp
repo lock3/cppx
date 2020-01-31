@@ -207,10 +207,10 @@ static const llvm::StringMap<clang::BinaryOperatorKind> BinaryOperators = {
 
 Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
-  std::string Spelling = Callee->Tok.getSpelling();
+  FusedOpKind Op = getFusedOpKind(SemaRef, Callee->getSpelling());
 
   // a fused operator':' call
-  if (&CxxAST.Idents.get(Spelling) == SemaRef.OperatorColonII) {
+  if (Op == FOK_Colon) {
     Elaborator Elab(SemaRef.getContext(), SemaRef);
 
     // If the LHS of the operator':' call is just a name, we can try to
@@ -225,6 +225,9 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
     elaborateExpr(S->getArgument(0));
     return nullptr;
   }
+
+
+  llvm::StringRef Spelling = Callee->getSpelling();
 
   // Check if this is a binary operator.
   auto BinOpMapIter = BinaryOperators.find(Spelling);

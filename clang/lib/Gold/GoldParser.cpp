@@ -706,13 +706,13 @@ auto is_unary_operator = [](TokenKind k) -> bool
 
 Syntax *Parser::parsePre()
 {
-  if (Token op = matchTokenIf(is_unary_operator))
-  {
+  if (Token op = matchTokenIf(is_unary_operator)) {
     Syntax *e = parsePre();
     return onUnary(op, e);
   }
 
-  if (Token op = matchToken("return")) {
+  if (nextTokenIs("return") || nextTokenIs("returns")) {
+    Token op = consumeToken();
     Syntax *e = parsePre();
     return onUnary(op, e);
   }

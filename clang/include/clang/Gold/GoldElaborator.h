@@ -128,6 +128,21 @@ public:
   };
 };
 
+/// Represents different kinds of fused operator strings, for example,
+/// `operator'='` or `operator'return'`.
+enum FusedOpKind {
+  FOK_Unknown,
+  FOK_Colon,
+  FOK_Exclaim,
+  FOK_Equals,
+  FOK_If,
+  FOK_Else,
+  FOK_Return,
+};
+
+/// Convert a fused operator string like `operator'='` into an enum
+FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling);
+
 } // namespace gold
 
 #endif

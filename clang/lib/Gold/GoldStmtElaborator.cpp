@@ -133,11 +133,12 @@ namespace {
 clang::Stmt *
 StmtElaborator::elaborateCall(const CallSyntax *S) {
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
-  clang::IdentifierInfo *Spelling = &CxxAST.Idents.get(Callee->Tok.getSpelling());
+  FusedOpKind OpKind = getFusedOpKind(SemaRef, Callee->getSpelling());
 
+  // If we're seeing a declaration-like syntax for the first time in
+  // block scope, create a Declaration for it.
   if (SemaRef.getCurrentScope()->isBlockScope()) {
-    if (Spelling == SemaRef.OperatorColonII
-        || Spelling == SemaRef.OperatorEqualsII) {
+    if (OpKind == FOK_Colon || OpKind == FOK_Equals) {
       Elaborator E(Context, SemaRef);
       clang::Decl *N = E.elaborateDeclSyntax(S);
       if (N)
@@ -146,10 +147,11 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
     }
   }
 
-  // A typed declaration.
-  // FIXME : what about 'x = 3:int'
-  if (Spelling == SemaRef.OperatorColonII) {
-    // TODO: can this be something other than a name?
+  // Otherwise, this is just a regular statement-expression, so
+  // try and elaborate it as such.
+  switch (OpKind) {
+  case FOK_Colon: {
+    // FIXME: fully elaborate the name expression.
     const AtomSyntax *Name = cast<AtomSyntax>(S->getArgument(0));
     clang::Sema &ClangSema = SemaRef.getCxxSema();
     clang::IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
@@ -160,7 +162,10 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
 
     if (R.empty())
       return createDeclStmt(CxxAST, SemaRef, S);
-  } else if (Spelling == SemaRef.OperatorEqualsII) {
+    break;
+  }
+
+  case FOK_Equals: {
     ExprElaborator LHSElab(Context, SemaRef);
     ExprElaborator::Expression NameExpr =
       LHSElab.elaborateExpr(S->getArgument(0));
@@ -205,9 +210,9 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
     ExprMarker(CxxAST).Visit(NameExpr.get<clang::Expr *>());
     ExprMarker(CxxAST).Visit(InitExpr.get<clang::Expr *>());
     return Assignment.get();
-  } else if (Spelling == SemaRef.OperatorReturnII) {
-    llvm::outs() << "ELABORATING RETURN\n";
+  }
 
+  case FOK_Return: {
     ExprElaborator::Expression RetVal =
       ExprElaborator(Context, SemaRef).elaborateExpr(S->getArgument(0));
 
@@ -219,10 +224,11 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
 
     clang::StmtResult ReturnResult = SemaRef.getCxxSema().
       BuildReturnStmt(S->getCallee()->getLoc(), RetVal.get<clang::Expr *>());
-    if (ReturnResult.isInvalid())
-      llvm::outs() << "INVALID RETURN\n";
-
     return ReturnResult.get();
+  }
+
+  default:
+    break; // Silence warning.
   }
 
   // If all else fails, just see if we can elaborate any expression.
@@ -315,16 +321,18 @@ clang::Stmt *
 StmtElaborator::elaborateMacro(const MacroSyntax *S) {
   const CallSyntax *Call = cast<CallSyntax>(S->getCall());
 
-  const AtomSyntax *MacroCallee = cast<AtomSyntax>(Call->getCallee());
-  clang::IdentifierInfo *CallName = &CxxAST.Idents.get(MacroCallee->Tok.getSpelling());
+  const AtomSyntax *Callee = cast<AtomSyntax>(Call->getCallee());
+  FusedOpKind OpKind = getFusedOpKind(SemaRef, Callee->getSpelling());
 
-  if (CallName == SemaRef.OperatorIfII)
+  switch (OpKind) {
+  case FOK_If:
     return elaborateIfStmt(S);
-  else if (CallName == SemaRef.OperatorElseII)
+  case FOK_Else:
     return elaborateElseStmt(S);
-
-  llvm::errs() << "Unsupported macro.\n";
-  return nullptr;
+  default:
+    llvm::errs() << "Unsupported macro.\n";
+    return nullptr;
+  }
 }
 
 clang::Stmt *

@@ -139,6 +139,7 @@ public:
   const clang::IdentifierInfo *OperatorIfII;
   const clang::IdentifierInfo *OperatorElseII;
   const clang::IdentifierInfo *OperatorReturnII;
+  const clang::IdentifierInfo *OperatorReturnsII;
 
   // A mapping of identifiers as strings to syntaxes.
   llvm::MapVector<clang::IdentifierInfo *, const Syntax *> IdentifierMapping;

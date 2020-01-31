@@ -38,6 +38,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorIfII = &Context.CxxAST.Idents.get("operator'if'");
   OperatorElseII = &Context.CxxAST.Idents.get("operator'else'");
   OperatorReturnII = &Context.CxxAST.Idents.get("operator'return'");
+  OperatorReturnsII = &Context.CxxAST.Idents.get("operator'returns'");
 }
 
 Scope *Sema::getCurrentScope() {

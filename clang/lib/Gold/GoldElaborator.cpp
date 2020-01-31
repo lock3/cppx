@@ -600,4 +600,26 @@ void Elaborator::identifyDecl(const Syntax *S) {
   return;
 }
 
+  FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
+  const clang::IdentifierInfo *Tokenization =
+    &SemaRef.Context.CxxAST.Idents.get(Spelling);
+
+  if (Tokenization == SemaRef.OperatorColonII)
+    return FOK_Colon;
+  if (Tokenization == SemaRef.OperatorExclaimII)
+    return FOK_Exclaim;
+  if (Tokenization == SemaRef.OperatorEqualsII)
+    return FOK_Equals;
+  if (Tokenization == SemaRef.OperatorIfII)
+    return FOK_If;
+  if (Tokenization == SemaRef.OperatorElseII)
+    return FOK_Else;
+  if (Tokenization == SemaRef.OperatorReturnII)
+    return FOK_Return;
+  if (Tokenization == SemaRef.OperatorReturnsII)
+    return FOK_Return;
+
+  return FOK_Unknown;
+}
+
 } // namespace gold
