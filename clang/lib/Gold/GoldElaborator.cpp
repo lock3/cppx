@@ -286,6 +286,8 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   // Leave the parameter scope.
   SemaRef.popScope();
   SemaRef.getCxxSema().PopFunctionScopeInfo();
+
+  SemaRef.popDecl();
 }
 
 void Elaborator::elaborateVariableInit(Declaration *D) {
