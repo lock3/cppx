@@ -527,7 +527,7 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
     Types.push_back(VD->getType());
     Params.push_back(cast<clang::ParmVarDecl>(VD));
   }
-  D->Data.ParamInfo.Scope = SemaRef.saveScope(Call);
+  D->Data.ParamInfo.ConstructedScope = SemaRef.saveScope(Call);
 
   // FIXME: We probably need to configure parts of the prototype (e.g.,
   // make this noexcept by default).

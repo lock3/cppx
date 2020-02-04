@@ -119,7 +119,7 @@ static void getFunctionParameters(Declaration *D,
                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
   Declarator *FnDecl = getFunctionDeclarator(D);
   const Syntax *ParamList = FnDecl->Data.ParamInfo.Params;
-  Scope *ParamScope = FnDecl->Data.ParamInfo.Scope;
+  Scope *ParamScope = FnDecl->Data.ParamInfo.ConstructedScope;
   for (const Syntax *P : ParamList->children()) {
     Declaration *PD = ParamScope->findDecl(P);
     assert(PD->Cxx && "No corresponding declaration");
