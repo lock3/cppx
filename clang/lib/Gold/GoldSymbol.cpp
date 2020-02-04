@@ -13,6 +13,7 @@
 
 #include "clang/Gold/GoldSymbol.h"
 
+#include <cstring>
 #include <iostream>
 #include <unordered_set>
 
