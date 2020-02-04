@@ -269,6 +269,11 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
     return;
 
   SemaRef.pushDecl(D);
+
+  // We saved the parameter scope while elaborating this function's type,
+  // so push it on before we enter the function scope.
+  Declarator *FnDecl = getFunctionDeclarator(D);
+  SemaRef.pushScope(FnDecl->Data.ParamInfo.ConstructedScope);
   SemaRef.enterScope(SK_Function, D->Init);
 
   // Elaborate the function body.
@@ -276,7 +281,10 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   clang::Stmt *Body = BodyElaborator.elaborateBlock(D->Init);
   FD->setBody(Body);
 
+  // Leave the function scope.
   SemaRef.leaveScope(D->Init);
+  // Leave the parameter scope.
+  SemaRef.popScope();
   SemaRef.getCxxSema().PopFunctionScopeInfo();
 }
 
