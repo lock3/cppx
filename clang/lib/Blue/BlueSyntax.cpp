@@ -25,6 +25,30 @@ const char *Syntax::getKindName() const {
   }
 }
 
+clang::SourceLocation Syntax::getLocation() const {
+  switch (getKind()) {
+#define def_syntax(K) \
+    case K: return static_cast<const K ## Syntax *>(this)->getLocation();
+#include "clang/Blue/BlueSyntax.def"
+  }
+}
+
+clang::SourceLocation Syntax::getBeginLocation() const {
+  switch (getKind()) {
+#define def_syntax(K) \
+    case K: return static_cast<const K ## Syntax *>(this)->getBeginLocation();
+#include "clang/Blue/BlueSyntax.def"
+  }
+}
+
+clang::SourceLocation Syntax::getEndLocation() const {
+  switch (getKind()) {
+#define def_syntax(K) \
+    case K: return static_cast<const K ## Syntax *>(this)->getEndLocation();
+#include "clang/Blue/BlueSyntax.def"
+  }
+}
+
 Syntax::child_range Syntax::children() {
   switch (getKind()) {
 #define def_syntax(K) \

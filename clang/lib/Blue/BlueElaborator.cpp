@@ -12,7 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Basic/Diagnostic.h"
-#include "clang/Basic/DiagnosticParse.h"
+#include "clang/Basic/DiagnosticSema.h"
 
 #include "clang/Blue/BlueElaborator.h"
 #include "clang/Blue/BlueSyntax.h"
@@ -79,24 +79,15 @@ void Elaborator::elaborateParameterList(const ListSyntax *S) {
 }
 
 clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
-  if (const auto *Def = dyn_cast<DefSyntax>(S))
-    return elaborateTypedParameter(Def);
-  if (const auto *Id = dyn_cast<IdentifierSyntax>(S))
-    return elaborateUntypedParameter(Id);
-  llvm_unreachable("Invalid parameter");
-}
+  if (!isa<DefSyntax>(S)) {
+    Error(S->getLocation(), "invalid parameter syntax");
+    return nullptr;
+  }
 
-clang::Decl *Elaborator::elaborateTypedParameter(const DefSyntax *S) {
-  Declarator *Dcl = getDeclaratorFromDecl(S);
-
-  // FIXME: Get the type and build the parmvar.
-  return nullptr;
-}
-
-clang::Decl *Elaborator::elaborateUntypedParameter(const IdentifierSyntax *S) {
-  Declarator *Dcl = getDeclaratorFromId(S);
-
-  // FIXME: The type is null (for now) and build the parmvar.
+  // FIXME: Implement me.
+  const auto *Def = cast<DefSyntax>(S);
+  Declarator *Dcl = getDeclaratorFromDecl(Def);
+  (void)Dcl;
   return nullptr;
 }
 
@@ -125,9 +116,9 @@ Declarator *Elaborator::getDeclaratorFromId(const IdentifierSyntax *S) {
 // The first term in the list is always an identifier, which is established
 // by the function above.
 Declarator *Elaborator::getDeclarator(const Syntax *S) {
-  if (const auto *U = cast<UnarySyntax>(S))
+  if (const auto *U = dyn_cast<UnarySyntax>(S))
     return getUnaryDeclarator(U);
-  if (const auto* B = cast<BinarySyntax>(S))
+  if (const auto* B = dyn_cast<BinarySyntax>(S))
     return getBinaryDeclarator(B);
   return getLeafDeclarator(S);
 }
@@ -193,5 +184,12 @@ Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   }
   llvm_unreachable("Invalid type expression");
 }
+
+// Diagnostics
+
+void Elaborator::Error(clang::SourceLocation Loc, llvm::StringRef Msg) {
+    SemaRef.Diags.Report(Loc, clang::diag::err_blue_elaboration) << Msg;
+}
+
 
 } // namespace blue

@@ -10462,4 +10462,10 @@ def err_invalid_block_condition : Error<
   "invalid block condition">;
 } // end of Gold category
 
+let CategoryName = "Blue Elaboration Issues" in {
+def err_blue_elaboration : Error<"%0">;
+def note_blue_elaboration : Note<"%0">;
+} // end of Blue category
+
+
 } // end of sema component.

@@ -57,7 +57,26 @@ public:
     return getKind() == Error;
   }
 
+  /// The name of the syntax's node kind. Used for debugging.
   const char *getKindName() const;
+
+  // Source location
+
+  /// The location that best indicates the best position of the term.
+  clang::SourceLocation getLocation() const;
+
+  /// The location of the beginning of the term.
+  clang::SourceLocation getBeginLocation() const;
+
+  /// The location of the end of the term.
+  clang::SourceLocation getEndLocation() const;
+
+  /// The location spanning the entire term.
+  clang::SourceRange getRange() const {
+    return {getBeginLocation(), getEndLocation()};
+  }
+
+  // Children
 
   using child_iterator = llvm::ArrayRef<Syntax *>::iterator;
   using const_child_iterator = llvm::ArrayRef<Syntax *>::const_iterator;
@@ -82,6 +101,18 @@ protected:
   {}
 
 public:
+  clang::SourceLocation getLocation() const {
+    return {};
+  }
+
+  clang::SourceLocation getBeginLocation() const {
+    return {};
+  }
+
+  clang::SourceLocation getEndLocation() const {
+    return {};
+  }
+
   child_range children() {
     return child_range(child_iterator(), child_iterator());
   }
@@ -113,6 +144,18 @@ protected:
   {}
 
 public:
+  clang::SourceLocation getLocation() const {
+    return Tok.getLocation();
+  }
+
+  clang::SourceLocation getBeginLocation() const {
+    return Tok.getLocation();
+  }
+
+  clang::SourceLocation getEndLocation() const {
+    return Tok.getLocation();
+  }
+
   const Token& getToken() const {
     return Tok;
   }
@@ -183,12 +226,12 @@ public:
     return child_range(Elems.data(), Elems.data() + Elems.size());
   }
 
-private:
+protected:
   llvm::ArrayRef<Syntax *> Elems;
 };
 
 /// Represents a possibly enclosed, token-separated list of terms. Note that
-/// the separator token is symbolic. 
+/// the separator token is symbolic.
 class ListSyntax : public VectorSyntax {
 public:
   /// Construct an unenclosed list of terms.
@@ -227,6 +270,26 @@ public:
 
   bool isSemicolonSeparated() const {
     return Sep == tok::Semicolon;
+  }
+
+  clang::SourceLocation getLocation() const {
+    if (Enc.first.isValid())
+      return Enc.first.getLocation();
+    if (Elems.empty())
+      return {};
+    return Elems.front()->getLocation();
+  }
+
+  clang::SourceLocation getBeginLocation() const {
+    return getLocation();
+  }
+
+  clang::SourceLocation getEndLocation() const {
+    if (Enc.first.isValid())
+      return Enc.second.getLocation();
+    if (Elems.empty())
+      return {};
+    return Elems.back()->getLocation();
   }
 
   static bool classof(const Syntax *S) {
@@ -292,6 +355,18 @@ public:
     return Arg;
   }
 
+  clang::SourceLocation getLocation() const {
+    return Op.getLocation();
+  }
+
+  clang::SourceLocation getBeginLocation() const {
+    return getLocation();
+  }
+
+  clang::SourceLocation getEndLocation() const {
+    return Arg->getEndLocation();
+  }
+
   child_range children() {
     return child_range(&Arg, &Arg + 1);
   }
@@ -345,6 +420,18 @@ public:
 
   const Syntax *getRightOperand() const {
     return Args[1];
+  }
+
+  clang::SourceLocation getLocation() const {
+    return Op.getLocation();
+  }
+
+  clang::SourceLocation getBeginLocation() const {
+    return Args[0]->getBeginLocation();
+  }
+
+  clang::SourceLocation getEndLocation() const {
+    return Args[1]->getEndLocation();
   }
 
   child_range children() {
@@ -404,6 +491,19 @@ public:
     return Args[1];
   }
 
+  /// The location of a declaration is that of its identifier.
+  clang::SourceLocation getLocation() const {
+    return Id.getLocation();
+  }
+
+  clang::SourceLocation getBeginLocation() const {
+    return getLocation();
+  }
+
+  clang::SourceLocation getEndLocation() const {
+    return Args[1]->getEndLocation();
+  }
+
   child_range children() {
     return child_range(Args, Args + 2);
   }
@@ -426,6 +526,18 @@ class TopSyntax : public VectorSyntax {
 public:
   TopSyntax(llvm::ArrayRef<Syntax *> A)
     : VectorSyntax(Top, A) {}
+
+  clang::SourceLocation getLocation() const {
+    return {};
+  }
+
+  clang::SourceLocation getBeginLocation() const {
+    return {};
+  }
+
+  clang::SourceLocation getEndLocation() const {
+    return {};
+  }
 
   static bool classof(const Syntax *S) {
     return S->getKind() == Top;
