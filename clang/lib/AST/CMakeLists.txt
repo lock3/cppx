@@ -47,6 +47,7 @@ add_clang_library(clangAST
   Expr.cpp
   ExprClassification.cpp
   ExprConstant.cpp
+  ExprCppx.cpp
   ExprCXX.cpp
   ExprObjC.cpp
   ExternalASTMerger.cpp

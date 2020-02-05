@@ -446,6 +446,10 @@ void ASTStmtWriter::VisitCXXFragmentExpr(CXXFragmentExpr *E) {
   llvm_unreachable("not implemented");
 }
 
+void ASTStmtWriter::VisitCppxTypeLiteral(CppxTypeLiteral *E) {
+  llvm_unreachable("not implemented");
+}
+
 void ASTStmtWriter::VisitDependentCoawaitExpr(DependentCoawaitExpr *E) {
   VisitExpr(E);
   Record.AddSourceLocation(E->getKeywordLoc());

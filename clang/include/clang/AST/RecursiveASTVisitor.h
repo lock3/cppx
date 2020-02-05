@@ -23,6 +23,7 @@
 #include "clang/AST/DeclOpenMP.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
+#include "clang/AST/ExprCppx.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/ExprOpenMP.h"
@@ -1027,6 +1028,7 @@ DEF_TRAVERSE_TYPE(FunctionProtoType, {
 
 DEF_TRAVERSE_TYPE(UnresolvedUsingType, {})
 DEF_TRAVERSE_TYPE(CXXRequiredTypeType, {})
+DEF_TRAVERSE_TYPE(CppxKindType, {})
 DEF_TRAVERSE_TYPE(TypedefType, {})
 
 DEF_TRAVERSE_TYPE(TypeOfExprType,
@@ -1274,6 +1276,7 @@ DEF_TRAVERSE_TYPELOC(FunctionProtoType, {
 
 DEF_TRAVERSE_TYPELOC(UnresolvedUsingType, {})
 DEF_TRAVERSE_TYPELOC(CXXRequiredTypeType, {})
+DEF_TRAVERSE_TYPELOC(CppxKindType, {})
 DEF_TRAVERSE_TYPELOC(TypedefType, {})
 
 DEF_TRAVERSE_TYPELOC(TypeOfExprType,
@@ -2719,6 +2722,7 @@ DEF_TRAVERSE_STMT(CXXValueOfExpr, {})
 DEF_TRAVERSE_STMT(CXXConcatenateExpr, {})
 DEF_TRAVERSE_STMT(CXXDependentVariadicReifierExpr, {})
 DEF_TRAVERSE_STMT(CXXFragmentExpr, {})
+DEF_TRAVERSE_STMT(CppxTypeLiteral, {})
 
 DEF_TRAVERSE_STMT(MaterializeTemporaryExpr, {
   if (S->getLifetimeExtendedTemporaryDecl()) {

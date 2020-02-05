@@ -19,6 +19,7 @@
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
+#include "clang/AST/ExprCppx.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/ExprOpenMP.h"
@@ -6265,6 +6266,15 @@ QualType TreeTransform<Derived>::TransformInjectedClassNameType(
 }
 
 template<typename Derived>
+QualType TreeTransform<Derived>::TransformCppxKindType(
+                                         TypeLocBuilder &TLB,
+                                         CppxKindTypeLoc TL) {
+  QualType T = TL.getType();
+  TLB.pushTypeSpec(T).setNameLoc(TL.getNameLoc());
+  return T;
+}
+
+template<typename Derived>
 QualType TreeTransform<Derived>::TransformTemplateTypeParmType(
                                                 TypeLocBuilder &TLB,
                                                 TemplateTypeParmTypeLoc TL) {
@@ -8243,6 +8253,14 @@ TreeTransform<Derived>::TransformCXXFragmentExpr(CXXFragmentExpr *E) {
 
   // Rebuild the expression with the new FragmentDecl, and updated captures.
   return getDerived().RebuildCXXFragmentExpr(Loc, NewFragment, Captures);
+}
+
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCppxTypeLiteral(CppxTypeLiteral *E) {
+  QualType K = E->getType();
+  QualType T = TransformType(E->getValue());
+  return new (SemaRef.Context) CppxTypeLiteral(K, T, E->getLocation());
 }
 
 // Objective-C Statements.

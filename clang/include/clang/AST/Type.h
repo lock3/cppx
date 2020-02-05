@@ -6361,6 +6361,39 @@ public:
   QualType apply(const ASTContext &Context, const Type* T) const;
 };
 
+
+// Cppx types
+
+/// The type of types
+class CppxKindType : public Type {
+private:
+  friend class ASTContext; // ASTContext creates these.
+
+  CppxKindType()
+    : Type(CppxKind, QualType(),
+            /*Dependent=*/false, 
+            /*InstantiationDependent=*/false, 
+            /*MetaType=*/false, 
+            /*VariablyModified=*/false, 
+            /*Unexpanded parameter pack=*/false) {}
+
+public:
+
+  bool isSugared() const {
+    return false;
+  }
+
+  QualType desugar() const {
+    return QualType(this, 0);
+  }
+
+  static bool classof(const Type *T) { return T->getTypeClass() == Builtin; }
+};
+
+
+// Type source info
+
+
 /// A container of type source information.
 ///
 /// A client can read the relevant info using TypeLoc wrappers, e.g:

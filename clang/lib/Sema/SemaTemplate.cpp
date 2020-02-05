@@ -5714,6 +5714,10 @@ bool UnnamedLocalNoLinkageFinder::VisitInjectedClassNameType(
   return VisitTagDecl(T->getDecl());
 }
 
+bool UnnamedLocalNoLinkageFinder::VisitCppxKindType(const CppxKindType* T) {
+  return false;
+}
+
 bool UnnamedLocalNoLinkageFinder::VisitDependentNameType(
                                                    const DependentNameType* T) {
   return VisitNestedNameSpecifier(T->getQualifier());

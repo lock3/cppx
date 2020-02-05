@@ -2013,6 +2013,7 @@ bool CXXNameMangler::mangleUnresolvedTypeOrSimpleId(QualType Ty,
   case Type::Atomic:
   case Type::Pipe:
   case Type::MacroQualified:
+  case Type::CppxKind:
     llvm_unreachable("type is illegal as a nested name specifier");
 
   case Type::SubstTemplateTypeParmPack:
@@ -3327,6 +3328,10 @@ void CXXNameMangler::mangleType(const InjectedClassNameType *T) {
   mangleType(T->getInjectedSpecializationType());
 }
 
+void CXXNameMangler::mangleType(const CppxKindType *T) {
+  llvm_unreachable("unexpected type");
+}
+
 void CXXNameMangler::mangleType(const TemplateSpecializationType *T) {
   if (TemplateDecl *TD = T->getTemplateName().getAsTemplateDecl()) {
     mangleTemplateName(TD, T->getArgs(), T->getNumArgs());
@@ -3708,6 +3713,7 @@ recurse:
   case Expr::CXXConcatenateExprClass:
   case Expr::CXXDependentVariadicReifierExprClass:
   case Expr::CXXCompilerErrorExprClass:
+  case Expr::CppxTypeLiteralClass:
     llvm_unreachable("unexpected statement kind");
 
   case Expr::ConstantExprClass:

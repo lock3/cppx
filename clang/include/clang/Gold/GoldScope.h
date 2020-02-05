@@ -198,6 +198,7 @@ enum ScopeKind {
 
 /// Stores information about declarations and the scope they were declared in.
 class Scope {
+public:
   /// The kind of scope.
   ScopeKind Kind;
 
@@ -290,8 +291,10 @@ public:
   Declaration *findDecl(const clang::IdentifierInfo *Id) const {
     assert(Id);
     auto Iter = IdMap.find(Id);
-    if (Iter == IdMap.end())
+    if (Iter == IdMap.end()) {
       return nullptr;
+    }
+
     return Iter->second;
   }
 

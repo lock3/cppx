@@ -49,6 +49,8 @@ namespace blue
       return getCxxSema().Context;
     }
 
+    // Elaboration
+
     clang::Decl *elaborateTop(const Syntax *S);
 
     clang::Decl *elaborateDecl(const Syntax *S);
@@ -58,15 +60,21 @@ namespace blue
     void elaborateParameterGroup(const ListSyntax *S);
     void elaborateParameterList(const ListSyntax *S);
     clang::Decl *elaborateParameter(const Syntax *S);
-    clang::Decl *elaborateTypedParameter(const DefSyntax *S);
-    clang::Decl *elaborateUntypedParameter(const IdentifierSyntax *S);
 
-    Declarator *getDeclaratorFromDecl(const DefSyntax *S);
-    Declarator *getDeclaratorFromId(const IdentifierSyntax *S);
     Declarator *getDeclarator(const Syntax *S);
     Declarator *getUnaryDeclarator(const UnarySyntax *S);
     Declarator *getBinaryDeclarator(const BinarySyntax *S);
     Declarator *getLeafDeclarator(const Syntax *S);
+
+    clang::Decl *makeValue(const Syntax *S, Declarator *Dcl);
+    clang::Decl *makeObject(const Syntax *S, Declarator *Dcl);
+    clang::Decl *makeType(const Syntax *S, Declarator *Dcl);
+    clang::Decl *makeFunction(const Syntax *S, Declarator *Dcl);
+    clang::Decl *makeTemplate(const Syntax *S, Declarator *Dcl);
+
+    // Diagnostics
+
+    void Error(clang::SourceLocation Loc, llvm::StringRef Msg);
 
   private:
     clang::Sema &SemaRef;

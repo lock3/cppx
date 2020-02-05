@@ -2526,6 +2526,11 @@ void StmtPrinter::VisitCXXFragmentExpr(CXXFragmentExpr *Node) {
  Node->getFragment()->getContent()->print(OS, Policy);
 }
 
+void StmtPrinter::VisitCppxTypeLiteral(CppxTypeLiteral *E) {
+  QualType T = E->getValue();
+  T.print(OS, Policy);
+}
+
 // Obj-C
 
 void StmtPrinter::VisitObjCStringLiteral(ObjCStringLiteral *Node) {

@@ -23,7 +23,6 @@ class Syntax;
 class Declarator {
 public:
   enum Kind {
-    Name,
     Type,
     Pointer,
     Array,
@@ -41,6 +40,18 @@ public:
     return Which;
   }
 
+  bool declaresValue() const {
+    return getKind() == Type || getKind() == Pointer || getKind() == Array;
+  }
+
+  bool declaresFunction() const {
+    return getKind() == Function;
+  }
+
+  bool declaresTemplate() const {
+    return getKind() == Template;
+  }
+
   const Syntax *getInfo() const {
     return Info;
   }
@@ -52,6 +63,8 @@ public:
   const Declarator *getNext() const {
     return Next;
   }
+
+  void dump() const;
 
 private:
   Kind Which;

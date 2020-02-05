@@ -101,6 +101,10 @@ struct Token
     return hasKind(tok::Invalid);
   }
 
+  bool isValid() const {
+    return !isInvalid();
+  }
+
   bool isUnknown() const {
     return hasKind(tok::Unknown);
   }

@@ -289,3 +289,7 @@ def OMPTargetTeamsDistributeDirective : StmtNode<OMPLoopDirective>;
 def OMPTargetTeamsDistributeParallelForDirective : StmtNode<OMPLoopDirective>;
 def OMPTargetTeamsDistributeParallelForSimdDirective : StmtNode<OMPLoopDirective>;
 def OMPTargetTeamsDistributeSimdDirective : StmtNode<OMPLoopDirective>;
+
+// cppx Statements
+
+def CppxTypeLiteral : StmtNode<Expr>;

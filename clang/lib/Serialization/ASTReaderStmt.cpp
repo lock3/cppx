@@ -541,6 +541,10 @@ void ASTStmtReader::VisitCXXFragmentExpr(CXXFragmentExpr *E) {
   llvm_unreachable("not implemented");
 }
 
+void ASTStmtReader::VisitCppxTypeLiteral(CppxTypeLiteral *E) {
+  llvm_unreachable("not implemented");
+}
+
 void ASTStmtReader::VisitDependentCoawaitExpr(DependentCoawaitExpr *E) {
   VisitExpr(E);
   E->KeywordLoc = readSourceLocation();

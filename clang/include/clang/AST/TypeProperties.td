@@ -856,3 +856,9 @@ let Class = PipeType in {
     return ctx.getPipeType(elementType, isReadOnly);
   }]>;
 }
+
+let Class = CppxKindType in {
+  def : Creator<[{
+    return ctx.CppxKindTy;
+  }]>;
+}

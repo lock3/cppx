@@ -45,12 +45,10 @@ ExprElaborator::ExprElaborator(SyntaxContext &Context, Sema &SemaRef)
 {}
 
 Expression ExprElaborator::elaborateExpr(const Syntax *S) {
-  clang::Expr *Ret = nullptr;
   if (isa<AtomSyntax>(S))
     return elaborateAtom(cast<AtomSyntax>(S), clang::QualType());
   if (isa<CallSyntax>(S))
-    return Ret;
-  return elaborateCall(cast<CallSyntax>(S));
+    return elaborateCall(cast<CallSyntax>(S));
 
   assert(false && "Unsupported expression.");
 }
@@ -225,7 +223,6 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
     elaborateExpr(S->getArgument(0));
     return nullptr;
   }
-
 
   llvm::StringRef Spelling = Callee->getSpelling();
 
@@ -508,6 +505,8 @@ Expression ExprElaborator::elaborateArrayType(Declarator *D, TypeInfo *Ty) {
 // Elaborate the parameters and incorporate their types into  the one
 // we're building. Note that T is the return type (if any).
 Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
+  llvm::outs() << "ELABORATE FUNCTION TYPE\n";
+
   const auto *Call = cast<CallSyntax>(D->Call);
 
   // FIXME: Handle array-based arguments.
@@ -523,6 +522,8 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
   for (const Syntax *P : Args->children()) {
     Elaborator Elab(Context, SemaRef);
     clang::ValueDecl *VD = cast_or_null<clang::ValueDecl>(Elab.elaborateDeclSyntax(P));
+    Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
+    assert(D && "Didn't find associated declaration");
     if (!VD)
       return nullptr;
 
