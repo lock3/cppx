@@ -422,7 +422,7 @@ static void getDeclarators(Declarator *D,
 }
 
 Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
-  llvm::outs() << "Received Type expr: " << D->getString() << "\n";
+  // llvm::outs() << "Received Type expr: " << D->getString() << "\n";
   // The type of a declarator is constructed back-to-front.
   llvm::SmallVector<Declarator *, 4> Decls;
   getDeclarators(D, Decls);
@@ -431,12 +431,12 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
   // is auto. This will be replaced if an explicit type specifier is given.
   clang::QualType AutoType = CxxAST.getAutoDeductType();
   TypeInfo *TInfo = BuildAnyTypeLoc(CxxAST, AutoType, D->getLoc());
-  for (auto Iter = Decls.begin(); Iter != Decls.  end(); ++Iter) {
-    llvm::outs() << "Sub declaration: " << (*Iter)->getString() << "\n";
-  }
+  // for (auto Iter = Decls.begin(); Iter != Decls.  end(); ++Iter) {
+  //   llvm::outs() << "Sub declaration: " << (*Iter)->getString() << "\n";
+  // }
   for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
     D = *Iter;
-    llvm::outs() << "Processing declaration: " << D->getString() << "\n";
+    // llvm::outs() << "Processing declaration: " << D->getString() << "\n";
     switch (D->Kind) {
     case DK_Identifier:
       // The identifier is not part of the type.

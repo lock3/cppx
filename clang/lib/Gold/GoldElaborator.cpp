@@ -89,9 +89,9 @@ clang::Decl *Elaborator::elaborateDeclType(const Syntax *S) {
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
 
-  if(D->isType()) {
-    llvm::outs() << "Elaborator::elaborateDecl: Processing type?!";
-  }
+  // if(D->isType()) {
+  //   llvm::outs() << "Elaborator::elaborateDecl: Processing type?!";
+  // }
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
@@ -190,12 +190,12 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
 
-  llvm::outs() << "Called elaborateVariableDecl\n";
-  if(D->Init) {
-    llvm::outs() << "LLVM initialization: ";
-    D->Init->dump();
-    llvm::outs() << "\n";
-  }
+  // llvm::outs() << "Called elaborateVariableDecl\n";
+  // if(D->Init) {
+  //   llvm::outs() << "LLVM initialization: ";
+  //   D->Init->dump();
+  //   llvm::outs() << "\n";
+  // }
   ExprElaborator TypeElab(Context, SemaRef);
   ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
 
@@ -244,7 +244,7 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
 }
 
 clang::Decl *Elaborator::elaborateDeclSyntax(const Syntax *S) {
-  llvm::outs() << "Elaborate Decl Syntax\n";
+  // llvm::outs() << "Elaborate Decl Syntax\n";
   // Identify this as a declaration first.
   identifyDecl(S);
 
@@ -260,7 +260,7 @@ clang::Decl *Elaborator::elaborateDeclSyntax(const Syntax *S) {
 }
 
 void Elaborator::elaborateDeclInit(const Syntax *S) {
-  llvm::outs() << "Called Elaborator::elaborateDeclInit\n";
+  // llvm::outs() << "Called Elaborator::elaborateDeclInit\n";
   // TODO: See elaborateDeclType. We have the same kinds of concerns.
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
   if (!D)
@@ -593,9 +593,9 @@ void Elaborator::identifyDecl(const Syntax *S) {
       //
       // FIXME: Do a better job managing memory.
       Declaration *ParentDecl = SemaRef.getCurrentDecl();
-      llvm::outs() << "Constructing a new declaration?! ";
-      S->dump();
-      llvm::outs() << "\n";
+      // llvm::outs() << "Constructing a new declaration?! ";
+      // S->dump();
+      // llvm::outs() << "\n";
       Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, Init);
       TheDecl->Id = Id;
       SemaRef.getCurrentScope()->addDecl(TheDecl);
