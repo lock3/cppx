@@ -71,6 +71,10 @@ public:
     return Kind == DK_Identifier;
   }
 
+  bool isType() const { 
+    return Kind == DK_Type;
+  }
+  
   bool isFunction() const {
     return Kind == DK_Function;
   }
@@ -140,6 +144,9 @@ public:
 
   /// True if this declares a variable.
   bool declaresVariable() const;
+
+  /// True if this is a type declaration.
+  bool declaresType() const;
 
   /// True if this declares a function.
   bool declaresFunction() const;
