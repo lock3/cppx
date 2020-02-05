@@ -103,11 +103,8 @@ void Sema::pushDecl(Declaration *D) {
 
 void Sema::popDecl() {
   CurrentDecl = CurrentDecl->getOwner();
-
-  // FIXME: this might be an incorrect assertion.
-  assert(CurrentDecl->Cxx && isa<clang::DeclContext>(CurrentDecl->Cxx)
-         && "No Cxx declaration to push.");
-  getCxxSema().CurContext = clang::Decl::castToDeclContext(CurrentDecl->Cxx);
+  getCxxSema().CurContext = CurrentDecl ?
+    clang::Decl::castToDeclContext(CurrentDecl->Cxx) : nullptr;
 }
 
 bool Sema::lookupUnqualifiedName(clang::LookupResult &R) {

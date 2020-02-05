@@ -222,6 +222,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
       return nullptr;
     }
 
+    ExprMarker(CxxAST).Visit(RetVal.get<clang::Expr *>());
     clang::StmtResult ReturnResult = SemaRef.getCxxSema().
       BuildReturnStmt(S->getCallee()->getLoc(), RetVal.get<clang::Expr *>());
     return ReturnResult.get();
@@ -340,27 +341,41 @@ StmtElaborator::elaborateBlock(const Syntax *S) {
   if (isa<ErrorSyntax>(S))
     return nullptr;
 
-  assert((isa<ArraySyntax>(S) || isa<ListSyntax>(S)) &&
-         "Cannot create block out of non-list syntax.");
-
   SemaRef.enterScope(SK_Block, S);
 
   llvm::SmallVector<clang::Stmt *, 16> Results;
-  if (isa<ArraySyntax>(S))
+  clang::SourceLocation StartLoc, EndLoc;
+  if (auto *Array = dyn_cast<ArraySyntax>(S)) {
     elaborateBlockForArray(cast<ArraySyntax>(S), Results);
-  if (isa<ListSyntax>(S))
-    elaborateBlockForList(cast<ListSyntax>(S), Results);
 
-
-
-  clang::SourceLocation StartLoc;
-  clang::SourceLocation EndLoc;
-  if (auto *List = dyn_cast<ListSyntax>(S)) {
-    StartLoc = List->getChild(0)->getLoc();
-    EndLoc = List->getChild(List->getNumChildren() - 1)->getLoc();
-  } else if (auto *Array = dyn_cast<ArraySyntax>(S)) {
     StartLoc = Array->getChild(0)->getLoc();
     EndLoc = Array->getChild(Array->getNumChildren() - 1)->getLoc();
+  } else if (auto *List = dyn_cast<ListSyntax>(S)) {
+    elaborateBlockForList(cast<ListSyntax>(S), Results);
+
+    StartLoc = List->getChild(0)->getLoc();
+    EndLoc = List->getChild(List->getNumChildren() - 1)->getLoc();
+  } else {
+    // This is some sort of one-line block like `f(x : int) = x * x`
+    // FIXME: Make sure this only creates return stmts in a function context.
+    ExprElaborator::Expression ReturnVal =
+      ExprElaborator(Context, SemaRef).elaborateExpr(S);
+
+    if (ReturnVal.is<clang::TypeSourceInfo *>()) {
+      SemaRef.Diags.Report(S->getLoc(),
+                           clang::diag::err_expected_lparen_after_type);
+    }
+
+    if (ReturnVal.is<clang::Expr *>()) {
+      ExprMarker(CxxAST).Visit(ReturnVal.get<clang::Expr *>());
+
+      clang::StmtResult ReturnRes = SemaRef.getCxxSema().
+        BuildReturnStmt(S->getLoc(), ReturnVal.get<clang::Expr *>());
+      if (!ReturnRes.isInvalid()) 
+        Results.push_back(ReturnRes.get());
+    }
+
+    StartLoc = EndLoc = S->getLoc();
   }
 
   clang::CompoundStmt *Block =
@@ -399,11 +414,6 @@ StmtElaborator::elaborateBlockForList(const ListSyntax *S,
       continue;
     Results.push_back(NewStmt);
   }
-}
-
-void StmtElaborator::identifyStmt(const Syntax *S) {
-
-
 }
 
 } // namespace gold

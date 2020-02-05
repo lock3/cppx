@@ -713,7 +713,7 @@ Syntax *Parser::parsePre()
 
   if (nextTokenIs("return") || nextTokenIs("returns")) {
     Token op = consumeToken();
-    Syntax *e = parsePre();
+    Syntax *e = parseExpr();
     return onUnary(op, e);
   }
 
