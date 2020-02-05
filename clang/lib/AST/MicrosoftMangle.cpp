@@ -2846,6 +2846,14 @@ void MicrosoftCXXNameMangler::mangleType(const InjectedClassNameType *,
   llvm_unreachable("Cannot mangle injected class name type.");
 }
 
+void MicrosoftCXXNameMangler::mangleType(const CppxKindType *T,
+                                         Qualifiers, SourceRange Range) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+    "cannot mangle this type yet");
+  Diags.Report(Range.getBegin(), DiagID) << Range;
+}
+
 void MicrosoftCXXNameMangler::mangleType(const TemplateSpecializationType *T,
                                          Qualifiers, SourceRange Range) {
   DiagnosticsEngine &Diags = Context.getDiags();

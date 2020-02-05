@@ -1291,6 +1291,9 @@ public:
   /// Map an AST Type to an OpenCLTypeKind enum value.
   TargetInfo::OpenCLTypeKind getOpenCLTypeKind(const Type *T) const;
 
+  /// The type of types.
+  CanQualType CppxKindTy;
+
   /// Get address space for OpenCL type.
   LangAS getOpenCLTypeAddrSpace(const Type *T) const;
 

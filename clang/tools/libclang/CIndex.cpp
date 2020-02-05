@@ -1789,6 +1789,10 @@ bool CursorVisitor::VisitInjectedClassNameTypeLoc(InjectedClassNameTypeLoc TL) {
   return Visit(MakeCursorTypeRef(TL.getDecl(), TL.getNameLoc(), TU));
 }
 
+bool CursorVisitor::VisitCppxKindTypeLoc(CppxKindTypeLoc TL) {
+  return false;
+}
+
 bool CursorVisitor::VisitAtomicTypeLoc(AtomicTypeLoc TL) {
   return Visit(TL.getValueLoc());
 }

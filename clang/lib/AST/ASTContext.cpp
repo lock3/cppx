@@ -1418,6 +1418,12 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target,
 
   // Builtin type used to help define __builtin_va_list.
   VaListTagDecl = nullptr;
+
+  // Cppx types
+  {
+    auto *Ty = new (*this, TypeAlignment) CppxKindType();
+    CppxKindTy = CanQualType::CreateUnsafe(QualType(Ty, 0));
+  }
 }
 
 DiagnosticsEngine &ASTContext::getDiagnostics() const {
@@ -2241,6 +2247,11 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
     Width = Target->getPointerWidth(getTargetAddressSpace(LangAS::opencl_global));
     Align = Target->getPointerAlign(getTargetAddressSpace(LangAS::opencl_global));
     break;
+
+  case Type::CppxKind:
+    Width = 0; // Like void, you can't create objects.
+    Align = 1; // Not a real value
+    break;  
   }
 
   assert(llvm::isPowerOf2_32(Align) && "Alignment must be power of 2");
@@ -3349,6 +3360,7 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::PackExpansion:
   case Type::CXXDependentVariadicReifier:
   case Type::CXXRequiredType:
+  case Type::CppxKind:
     llvm_unreachable("type should never be variably-modified");
 
   // These types can be variably-modified but should never need to
@@ -7263,6 +7275,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string &S,
     return;
 
   case Type::Pipe:
+  case Type::CppxKind:
 #define ABSTRACT_TYPE(KIND, BASE)
 #define TYPE(KIND, BASE)
 #define DEPENDENT_TYPE(KIND, BASE) \
@@ -9267,6 +9280,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   case Type::Enum:
     return {};
   case Type::Builtin:
+  case Type::CppxKind:
     // Only exactly equal builtin types are compatible, which is tested above.
     return {};
   case Type::Complex:

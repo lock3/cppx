@@ -44,14 +44,18 @@ clang::Decl* Elaborator::elaborateDecl(const Syntax *S)
 
 clang::Decl *Elaborator::elaborateDefDecl(const DefSyntax *S) {
   // Build the declarator.
-  Declarator *Dcl = getDeclarator(S->getSignature());
-  Dcl = new Declarator(Declarator::Name, S, Dcl);
+  Declarator *Dcl = getDeclarator(S->getDeclarator());
 
-  // FIXME: Generate the declaration.
+  if (Dcl->declaresValue())
+    return makeValue(S, Dcl);
 
-  // FIXME: Generate the initializer.
+  if (Dcl->declaresFunction())
+    return makeFunction(S, Dcl);
 
-  return nullptr;
+  if (Dcl->declaresTemplate())
+    return makeTemplate(S, Dcl);
+
+  llvm_unreachable("Invalid declarator");
 }
 
 void Elaborator::elaborateParameters(const ListSyntax *S) {
@@ -86,18 +90,9 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
 
   // FIXME: Implement me.
   const auto *Def = cast<DefSyntax>(S);
-  Declarator *Dcl = getDeclaratorFromDecl(Def);
+  Declarator *Dcl = getDeclarator(Def->getDeclarator());
   (void)Dcl;
   return nullptr;
-}
-
-Declarator *Elaborator::getDeclaratorFromDecl(const DefSyntax *S) {
-  Declarator *Dcl = getDeclarator(S->getSignature());
-  return new Declarator(Declarator::Name, S, Dcl);
-}
-
-Declarator *Elaborator::getDeclaratorFromId(const IdentifierSyntax *S) {
-  return new Declarator(Declarator::Name, S);
 }
 
 // A signature is a sequence of unary (pointer) and binary (application)
@@ -129,7 +124,8 @@ Declarator *Elaborator::getUnaryDeclarator(const UnarySyntax *S) {
     return new Declarator(Declarator::Pointer, S, Dcl);
   }
 
-  llvm_unreachable("Invalid unary declarator");
+  Error(S->getLocation(), "invalid operator in declarator");
+  return nullptr;
 }
 
 Declarator *Elaborator::getBinaryDeclarator(const BinarySyntax *S) {
@@ -159,19 +155,24 @@ Declarator *Elaborator::getBinaryDeclarator(const BinarySyntax *S) {
 
     if (List->isParenList())
       return new Declarator(Declarator::Function, S, Dcl);
+
+    // FIXME: This is only a template declarator if there are template
+    // parameters in the list.
     if (List->isBracketList())
       return new Declarator(Declarator::Template, S, Dcl);
 
     // FIXME: Braces are possible, but invalid. This should be an error,
     // not an assertion.
-    llvm_unreachable("Invalid parameter list");
+    Error(List->getLocation(), "invalid list in declarator");
+    return nullptr;
   }
 
   // TODO: We could support binary type composition (e.g., T1 * T2) as
   // an alternative spelling of product types. However, this most likely
   // needs to be wrapped in parens, so it should end up as a leaf. Maybe
   // this is a non-issue.
-  llvm_unreachable("Invalid binary declarator");
+  Error(S->getLocation(), "invalid operator in declarator");
+  return nullptr;
 }
 
 Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
@@ -184,6 +185,22 @@ Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   }
   llvm_unreachable("Invalid type expression");
 }
+
+clang::Decl *Elaborator::makeValue(const Syntax *S, Declarator* Dcl)
+{
+  return nullptr;
+}
+
+clang::Decl *Elaborator::makeFunction(const Syntax *S, Declarator* Dcl)
+{
+  return nullptr;
+}
+
+clang::Decl *Elaborator::makeTemplate(const Syntax *S, Declarator* Dcl)
+{
+  return nullptr;
+}
+
 
 // Diagnostics
 

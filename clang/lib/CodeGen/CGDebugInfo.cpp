@@ -3103,6 +3103,7 @@ llvm::DIType *CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile *Unit) {
   case Type::Reflected:
   case Type::UnaryTransform:
   case Type::PackExpansion:
+  case Type::CppxKind:
     break;
   }
 

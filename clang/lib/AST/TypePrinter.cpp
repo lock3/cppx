@@ -263,6 +263,7 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::SubstTemplateTypeParm:
     case Type::MacroQualified:
     case Type::CXXDependentVariadicReifier:
+    case Type::CppxKind:
       CanPrefixQualifiers = false;
       break;
 
@@ -1696,6 +1697,12 @@ void TypePrinter::printObjCObjectPointerBefore(const ObjCObjectPointerType *T,
 
 void TypePrinter::printObjCObjectPointerAfter(const ObjCObjectPointerType *T,
                                               raw_ostream &OS) {}
+
+void TypePrinter::printCppxKindBefore(const CppxKindType *T, raw_ostream &OS) {
+  OS << "type";
+}
+
+void TypePrinter::printCppxKindAfter(const CppxKindType *T, raw_ostream &OS) {}
 
 static
 const TemplateArgument &getArgument(const TemplateArgument &A) { return A; }

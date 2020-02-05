@@ -12,8 +12,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Blue/BlueDeclarator.h"
+#include "clang/Blue/BlueSyntax.h"
 
 namespace blue {
 
+void Declarator::dump() const {
+  // FIXME: It would be nice to print something useful here.
+  Info->dump();
+}
 
 } // namespace blue

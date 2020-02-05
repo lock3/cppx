@@ -10523,6 +10523,9 @@ EvaluateBuiltinClassifyType(QualType T, const LangOptions &LangOpts) {
   case Type::DeducedTemplateSpecialization:
       llvm_unreachable("unexpected non-canonical or dependent type");
 
+  case Type::CppxKind:
+    llvm_unreachable("unexpected kind type");
+
   case Type::Builtin:
     switch (BT->getKind()) {
 #define BUILTIN_TYPE(ID, SINGLETON_ID)
@@ -14681,6 +14684,7 @@ static ICEDiag CheckICE(const Expr* E, const Expr::EvalContext &Ctx) {
   case Expr::CXXConcatenateExprClass:
   case Expr::CXXDependentVariadicReifierExprClass:
   case Expr::CXXFragmentExprClass:
+  case Expr::CppxTypeLiteralClass:
     return ICEDiag(IK_NotICE, E->getBeginLoc());
 
   case Expr::InitListExprClass: {

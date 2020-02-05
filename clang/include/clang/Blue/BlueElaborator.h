@@ -61,12 +61,16 @@ namespace blue
     void elaborateParameterList(const ListSyntax *S);
     clang::Decl *elaborateParameter(const Syntax *S);
 
-    Declarator *getDeclaratorFromDecl(const DefSyntax *S);
-    Declarator *getDeclaratorFromId(const IdentifierSyntax *S);
     Declarator *getDeclarator(const Syntax *S);
     Declarator *getUnaryDeclarator(const UnarySyntax *S);
     Declarator *getBinaryDeclarator(const BinarySyntax *S);
     Declarator *getLeafDeclarator(const Syntax *S);
+
+    clang::Decl *makeValue(const Syntax *S, Declarator *Dcl);
+    clang::Decl *makeObject(const Syntax *S, Declarator *Dcl);
+    clang::Decl *makeType(const Syntax *S, Declarator *Dcl);
+    clang::Decl *makeFunction(const Syntax *S, Declarator *Dcl);
+    clang::Decl *makeTemplate(const Syntax *S, Declarator *Dcl);
 
     // Diagnostics
 

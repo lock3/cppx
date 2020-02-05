@@ -209,6 +209,7 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
   case Expr::CXXConcatenateExprClass:
   case Expr::CXXDependentVariadicReifierExprClass:
   case Expr::CXXFragmentExprClass:
+  case Expr::CppxTypeLiteralClass:
     return Cl::CL_PRValue;
 
   case Expr::ConstantExprClass:

@@ -465,16 +465,16 @@ public:
     return Id.getSpelling();
   }
 
-  bool hasSignature() const
+  bool hasDeclarator() const
   {
-    return getSignature();
+    return getDeclarator();
   }
 
-  const Syntax *getSignature() const {
+  const Syntax *getDeclarator() const {
     return Args[0];
   }
 
-  Syntax *getSignature() {
+  Syntax *getDeclarator() {
     return Args[0];
   }
 

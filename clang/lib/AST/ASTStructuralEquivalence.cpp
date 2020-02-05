@@ -73,6 +73,7 @@
 #include "clang/AST/DeclFriend.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
+#include "clang/AST/ExprCppx.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/TemplateBase.h"
@@ -980,6 +981,9 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
     if (!IsStructurallyEquivalent(Context, cast<PipeType>(T1)->getElementType(),
                                   cast<PipeType>(T2)->getElementType()))
       return false;
+    break;
+
+  case Type::CppxKind:
     break;
   } // end switch
 
