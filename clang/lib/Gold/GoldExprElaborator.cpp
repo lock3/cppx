@@ -207,10 +207,10 @@ static const llvm::StringMap<clang::BinaryOperatorKind> BinaryOperators = {
 
 Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
-  std::string Spelling = Callee->Tok.getSpelling();
+  FusedOpKind Op = getFusedOpKind(SemaRef, Callee->getSpelling());
 
   // a fused operator':' call
-  if (&CxxAST.Idents.get(Spelling) == SemaRef.OperatorColonII) {
+  if (Op == FOK_Colon) {
     Elaborator Elab(SemaRef.getContext(), SemaRef);
 
     // If the LHS of the operator':' call is just a name, we can try to
@@ -225,6 +225,9 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
     elaborateExpr(S->getArgument(0));
     return nullptr;
   }
+
+
+  llvm::StringRef Spelling = Callee->getSpelling();
 
   // Check if this is a binary operator.
   auto BinOpMapIter = BinaryOperators.find(Spelling);
@@ -515,14 +518,16 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
   SemaRef.enterScope(SK_Parameter, Call);
   for (const Syntax *P : Args->children()) {
     Elaborator Elab(Context, SemaRef);
-    clang::ValueDecl *VD = cast<clang::ValueDecl>(Elab.elaborateDeclSyntax(P));
+    clang::ValueDecl *VD = cast_or_null<clang::ValueDecl>(Elab.elaborateDeclSyntax(P));
+    if (!VD)
+      return nullptr;
 
     assert(isa<clang::ParmVarDecl>(VD) && "Parameter is not a ParmVarDecl");
 
     Types.push_back(VD->getType());
     Params.push_back(cast<clang::ParmVarDecl>(VD));
   }
-  D->Data.ParamInfo.Scope = SemaRef.saveScope(Call);
+  D->Data.ParamInfo.ConstructedScope = SemaRef.saveScope(Call);
 
   // FIXME: We probably need to configure parts of the prototype (e.g.,
   // make this noexcept by default).

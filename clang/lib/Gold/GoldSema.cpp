@@ -37,6 +37,8 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorEqualsII = &Context.CxxAST.Idents.get("operator'='");
   OperatorIfII = &Context.CxxAST.Idents.get("operator'if'");
   OperatorElseII = &Context.CxxAST.Idents.get("operator'else'");
+  OperatorReturnII = &Context.CxxAST.Idents.get("operator'return'");
+  OperatorReturnsII = &Context.CxxAST.Idents.get("operator'returns'");
 }
 
 Scope *Sema::getCurrentScope() {
@@ -89,12 +91,23 @@ clang::DeclContext *Sema::getCurrentCxxDeclContext() {
 }
 
 void Sema::pushDecl(Declaration *D) {
-  assert(D->getOwner() == CurrentDecl);
+  assert(D->getOwner() == CurrentDecl);  
+
+  // FIXME: this might be an incorrect assertion.
+  assert(D->Cxx && isa<clang::DeclContext>(D->Cxx)
+         && "No Cxx declaration to push.");
+
   CurrentDecl = D;
+  getCxxSema().CurContext = clang::Decl::castToDeclContext(D->Cxx);
 }
 
 void Sema::popDecl() {
   CurrentDecl = CurrentDecl->getOwner();
+
+  // FIXME: this might be an incorrect assertion.
+  assert(CurrentDecl->Cxx && isa<clang::DeclContext>(CurrentDecl->Cxx)
+         && "No Cxx declaration to push.");
+  getCxxSema().CurContext = clang::Decl::castToDeclContext(CurrentDecl->Cxx);
 }
 
 bool Sema::lookupUnqualifiedName(clang::LookupResult &R) {
@@ -115,12 +128,16 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
     // several declarations, some of which have not been elaborated.
     Declaration *Found = S->findDecl(Id);
     if (Found) {
-      // FIXME: This is wrong! If we find a name that hasn't been elaborated,
-      // then we actually need to elaborate it.
-      assert(Found->Cxx && "Declaration not elaborated");
-      clang::NamedDecl *ND = cast<clang::NamedDecl>(Found->Cxx);
-      R.addDecl(ND);
-      break;
+      // FIXME: we need a better way to separate tag lookup and other
+      // name lookups.
+      if (LookupKind != clang::Sema::LookupTagName) {
+        // FIXME: This is wrong! If we find a name that hasn't been elaborated,
+        // then we actually need to elaborate it.
+        assert(Found->Cxx && "Declaration not elaborated");
+        clang::NamedDecl *ND = cast<clang::NamedDecl>(Found->Cxx);
+        R.addDecl(ND);
+        break;
+      }
     }
     S = S->getParent();
   }

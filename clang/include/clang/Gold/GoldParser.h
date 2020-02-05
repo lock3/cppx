@@ -257,6 +257,7 @@ namespace gold
     Syntax* onBinary(const Token& tok, Syntax* e1, Syntax* e2);
     Syntax* onUnary(const Token& tok, Syntax* e1);
     Syntax* onCall(const TokenPair& toks, Syntax* e1, Syntax* e2);
+    Syntax* onCall(Syntax* e1, Syntax* e2);
     Syntax* onElem(const TokenPair& toks, Syntax* e1, Syntax* e2);
     Syntax* onMacro(Syntax* e1, Syntax* e2);
     Syntax* onIf(const Token& tok, Syntax* e1, Syntax* e2, Syntax* e3);

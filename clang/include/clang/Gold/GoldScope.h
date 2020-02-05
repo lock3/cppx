@@ -110,7 +110,7 @@ public:
       const Syntax *Params;
 
       /// The scope constructed during elaboration.
-      Scope *Scope;
+      Scope *ConstructedScope;
     } ParamInfo;
 
     /// For DK_Type, the type in the call.

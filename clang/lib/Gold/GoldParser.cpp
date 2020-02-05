@@ -706,8 +706,13 @@ auto is_unary_operator = [](TokenKind k) -> bool
 
 Syntax *Parser::parsePre()
 {
-  if (Token op = matchTokenIf(is_unary_operator))
-  {
+  if (Token op = matchTokenIf(is_unary_operator)) {
+    Syntax *e = parsePre();
+    return onUnary(op, e);
+  }
+
+  if (nextTokenIs("return") || nextTokenIs("returns")) {
+    Token op = consumeToken();
     Syntax *e = parsePre();
     return onUnary(op, e);
   }
@@ -983,6 +988,10 @@ Syntax *Parser::onUnary(Token const& Tok, Syntax *e1) {
 
 Syntax *Parser::onCall(TokenPair const& Toks, Syntax *e1, Syntax *e2) {
   // FIXME: Toks is unused.
+  return new (Context) CallSyntax(e1, e2);
+}
+
+Syntax *Parser::onCall(Syntax *e1, Syntax *e2) {
   return new (Context) CallSyntax(e1, e2);
 }
 

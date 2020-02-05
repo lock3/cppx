@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/EvaluatedExprVisitor.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/DiagnosticParse.h"
@@ -67,6 +68,7 @@ static clang::Stmt *
 createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
                const CallSyntax *S) {
   // FIXME: elaborate this expression, it might not be a name.
+  
   const AtomSyntax *Name = cast<AtomSyntax>(S->getArgument(0));
 
   // TODO: elaborate the name if we need to.
@@ -98,15 +100,58 @@ createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
   return nullptr;
 }
 
+static clang::Stmt *
+createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
+               clang::Decl *D, clang::SourceLocation StartLoc,
+               clang::SourceLocation EndLoc) {
+  clang::Sema &CxxSema = SemaRef.getCxxSema();
+   clang::StmtResult Res =
+      CxxSema.ActOnDeclStmt(CxxSema.ConvertDeclToDeclGroup(D), StartLoc, EndLoc);
+   return !Res.isInvalid() ? Res.get() : nullptr;
+}
+
+namespace {
+  /// Helper class that marks all of the declarations referenced by
+  /// potentially-evaluated subexpressions as "referenced".
+  /// Effectively a less complicated version of the EvaluatedExprMarker
+  /// found in Sema/SemaExpr.cpp
+  struct ExprMarker : public clang::EvaluatedExprVisitor<ExprMarker> {
+    clang::ASTContext &CxxAST;
+    typedef EvaluatedExprVisitor<ExprMarker> Inherited;
+
+    ExprMarker(clang::ASTContext &CxxAST)
+      : Inherited(CxxAST), CxxAST(CxxAST)
+      {}
+
+    void VisitDeclRefExpr(clang::DeclRefExpr *E) {
+      // FIXME: references to virtual methods may cause problems here.
+      E->getDecl()->markUsed(CxxAST);
+    }
+  };
+} // anonymous namespace
+
 clang::Stmt *
 StmtElaborator::elaborateCall(const CallSyntax *S) {
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
-  clang::IdentifierInfo *Spelling = &CxxAST.Idents.get(Callee->Tok.getSpelling());
+  FusedOpKind OpKind = getFusedOpKind(SemaRef, Callee->getSpelling());
 
-  // A typed declaration.
-  // FIXME : what about 'x = 3:int'
-  if (Spelling == SemaRef.OperatorColonII) {
-    // TODO: can this be something other than a name?
+  // If we're seeing a declaration-like syntax for the first time in
+  // block scope, create a Declaration for it.
+  if (SemaRef.getCurrentScope()->isBlockScope()) {
+    if (OpKind == FOK_Colon || OpKind == FOK_Equals) {
+      Elaborator E(Context, SemaRef);
+      clang::Decl *N = E.elaborateDeclSyntax(S);
+      if (N)
+        return createDeclStmt(CxxAST, SemaRef, N, S->getLoc(),
+                              S->getArgument(0)->getLoc());
+    }
+  }
+
+  // Otherwise, this is just a regular statement-expression, so
+  // try and elaborate it as such.
+  switch (OpKind) {
+  case FOK_Colon: {
+    // FIXME: fully elaborate the name expression.
     const AtomSyntax *Name = cast<AtomSyntax>(S->getArgument(0));
     clang::Sema &ClangSema = SemaRef.getCxxSema();
     clang::IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
@@ -117,7 +162,10 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
 
     if (R.empty())
       return createDeclStmt(CxxAST, SemaRef, S);
-  } else if (Spelling == SemaRef.OperatorEqualsII) {
+    break;
+  }
+
+  case FOK_Equals: {
     ExprElaborator LHSElab(Context, SemaRef);
     ExprElaborator::Expression NameExpr =
       LHSElab.elaborateExpr(S->getArgument(0));
@@ -158,7 +206,29 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
       return nullptr;
     }
 
+    // We can readily assume anything here is getting used.
+    ExprMarker(CxxAST).Visit(NameExpr.get<clang::Expr *>());
+    ExprMarker(CxxAST).Visit(InitExpr.get<clang::Expr *>());
     return Assignment.get();
+  }
+
+  case FOK_Return: {
+    ExprElaborator::Expression RetVal =
+      ExprElaborator(Context, SemaRef).elaborateExpr(S->getArgument(0));
+
+    if (RetVal.is<clang::TypeSourceInfo *>()) {
+      SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
+                           clang::diag::err_expected_lparen_after_type);
+      return nullptr;
+    }
+
+    clang::StmtResult ReturnResult = SemaRef.getCxxSema().
+      BuildReturnStmt(S->getCallee()->getLoc(), RetVal.get<clang::Expr *>());
+    return ReturnResult.get();
+  }
+
+  default:
+    break; // Silence warning.
   }
 
   // If all else fails, just see if we can elaborate any expression.
@@ -251,16 +321,18 @@ clang::Stmt *
 StmtElaborator::elaborateMacro(const MacroSyntax *S) {
   const CallSyntax *Call = cast<CallSyntax>(S->getCall());
 
-  const AtomSyntax *MacroCallee = cast<AtomSyntax>(Call->getCallee());
-  clang::IdentifierInfo *CallName = &CxxAST.Idents.get(MacroCallee->Tok.getSpelling());
+  const AtomSyntax *Callee = cast<AtomSyntax>(Call->getCallee());
+  FusedOpKind OpKind = getFusedOpKind(SemaRef, Callee->getSpelling());
 
-  if (CallName == SemaRef.OperatorIfII)
+  switch (OpKind) {
+  case FOK_If:
     return elaborateIfStmt(S);
-  else if (CallName == SemaRef.OperatorElseII)
+  case FOK_Else:
     return elaborateElseStmt(S);
-
-  llvm::errs() << "Unsupported macro.\n";
-  return nullptr;
+  default:
+    llvm::errs() << "Unsupported macro.\n";
+    return nullptr;
+  }
 }
 
 clang::Stmt *

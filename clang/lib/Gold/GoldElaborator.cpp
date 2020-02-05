@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/AST/DeclarationName.h"
 #include "clang/AST/Stmt.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Sema/DeclSpec.h"
@@ -35,9 +36,6 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   startFile(S);
 
   const FileSyntax *File = cast<FileSyntax>(S);
-
-  // FIXME: Shouldn't we be using PushDecl?
-  SemaRef.getCxxSema().CurContext = Context.CxxAST.getTranslationUnitDecl();
 
   // Pass 1. identify declarations in scope.
   for (const Syntax *SS : File->children())
@@ -121,7 +119,7 @@ static void getFunctionParameters(Declaration *D,
                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
   Declarator *FnDecl = getFunctionDeclarator(D);
   const Syntax *ParamList = FnDecl->Data.ParamInfo.Params;
-  Scope *ParamScope = FnDecl->Data.ParamInfo.Scope;
+  Scope *ParamScope = FnDecl->Data.ParamInfo.ConstructedScope;
   for (const Syntax *P : ParamList->children()) {
     Declaration *PD = ParamScope->findDecl(P);
     assert(PD->Cxx && "No corresponding declaration");
@@ -165,6 +163,10 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Add the declaration and update bindings.
   Owner->addDecl(FD);
   D->Cxx = FD;
+
+  // FIXME: is this necessary for Gold? It enables some more semantic
+  // checking, but not all of it is necessarily meaningful to us.
+  SemaRef.getCxxSema().PushFunctionScope();
   return FD;
 }
 
@@ -185,6 +187,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
 
   ExprElaborator TypeElab(Context, SemaRef);
   ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
+
   if (TypeExpr.isNull()) {
     SemaRef.Diags.Report(D->Op->getLoc(),
                          clang::diag::err_failed_to_translate_type);
@@ -234,10 +237,12 @@ clang::Decl *Elaborator::elaborateDeclSyntax(const Syntax *S) {
   identifyDecl(S);
 
   // Elaborate the declaration.
-  if (Declaration *D = SemaRef.getCurrentScope()->findDecl(S))
-    return elaborateDecl(D);
-
-  // TODO: Elaborate the definition or initializer?
+  Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
+  if (D) {
+    elaborateDecl(D);
+    elaborateDef(D);
+    return D->Cxx;
+  }
 
   return nullptr;
 }
@@ -272,6 +277,7 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   FD->setBody(Body);
 
   SemaRef.leaveScope(D->Init);
+  SemaRef.getCxxSema().PopFunctionScopeInfo();
 }
 
 void Elaborator::elaborateVariableInit(Declaration *D) {
@@ -486,6 +492,9 @@ static clang::IdentifierInfo *getIdentifier(Elaborator &Elab,
 }
 
 void Elaborator::identifyDecl(const Syntax *S) {
+  // Keep track of whether or not this is an operator'=' call.
+  bool OperatorEquals = false;
+
   // Declarations only appear in calls.
   if (const auto *Call = dyn_cast<CallSyntax>(S)) {
     if (const auto *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
@@ -498,6 +507,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
         const auto *Args = cast<ListSyntax>(Call->getArguments());
         Decl = Args->getChild(0);
         Init = Args->getChild(1);
+        OperatorEquals = true;
       } else if (Op == "operator'!'") {
         const auto *Args = cast<ListSyntax>(Call->getArguments());
 
@@ -516,6 +526,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
         // Syntactically, this is not a declaration.
         return;
       }
+
 
       // FIXME: I think we can filter out some syntactic forms as
       // non-declarations. For example, the following look like definitions
@@ -542,12 +553,28 @@ void Elaborator::identifyDecl(const Syntax *S) {
 
       clang::IdentifierInfo* Id = getIdentifier(*this, Dcl);
 
-      // FIXME: We could mis-identify this as a declaration. For example:
-      //
-      //    x = 3
-      //    x = 4
-      //
-      // The first statement is a declaration. The second is an assignment.
+      // If we're in namespace or parameter scope and this identifier already
+      // exists, consider it a redeclaration.
+      // TODO: distinguish between redefinition, redeclaration, and redeclaration
+      // with different type.
+      Scope *CurScope = SemaRef.getCurrentScope();
+      if (CurScope->isNamespaceScope() || CurScope->isParameterScope()) {
+        if (CurScope->findDecl(Id)) {
+          SemaRef.Diags.Report(S->getLoc(), clang::diag::err_redefinition) <<
+            clang::DeclarationName(Id);
+          return;
+        }
+      } else if (CurScope->isBlockScope()) {
+        // If we're assigning to a name that already exist in the current block,
+        // then we're not declaring anything. For example:
+        // \code
+        //    x = 3
+        //    x = 4
+        // \endcode
+        // The first statement is a declaration. The second is an assignment.
+        if (CurScope->findDecl(Id) && OperatorEquals)
+          return;
+      }
 
       // Create a declaration for this node.
       //
@@ -571,6 +598,28 @@ void Elaborator::identifyDecl(const Syntax *S) {
   // type information backwards.
 
   return;
+}
+
+  FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
+  const clang::IdentifierInfo *Tokenization =
+    &SemaRef.Context.CxxAST.Idents.get(Spelling);
+
+  if (Tokenization == SemaRef.OperatorColonII)
+    return FOK_Colon;
+  if (Tokenization == SemaRef.OperatorExclaimII)
+    return FOK_Exclaim;
+  if (Tokenization == SemaRef.OperatorEqualsII)
+    return FOK_Equals;
+  if (Tokenization == SemaRef.OperatorIfII)
+    return FOK_If;
+  if (Tokenization == SemaRef.OperatorElseII)
+    return FOK_Else;
+  if (Tokenization == SemaRef.OperatorReturnII)
+    return FOK_Return;
+  if (Tokenization == SemaRef.OperatorReturnsII)
+    return FOK_Return;
+
+  return FOK_Unknown;
 }
 
 } // namespace gold

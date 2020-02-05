@@ -13,6 +13,7 @@
 
 #include "clang/Blue/BlueSymbol.h"
 
+#include <cstring>
 #include <iostream>
 #include <unordered_set>
 
