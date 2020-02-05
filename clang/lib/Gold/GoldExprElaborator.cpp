@@ -49,7 +49,6 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
     return elaborateAtom(cast<AtomSyntax>(S), clang::QualType());
   if (isa<CallSyntax>(S))
     return elaborateCall(cast<CallSyntax>(S));
-
   assert(false && "Unsupported expression.");
 }
 
@@ -419,6 +418,7 @@ static void getDeclarators(Declarator *D,
 }
 
 Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
+  llvm::outs() << "Received Type expr: " << D->getString() << "\n";
   // The type of a declarator is constructed back-to-front.
   llvm::SmallVector<Declarator *, 4> Decls;
   getDeclarators(D, Decls);
@@ -427,9 +427,12 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
   // is auto. This will be replaced if an explicit type specifier is given.
   clang::QualType AutoType = CxxAST.getAutoDeductType();
   TypeInfo *TInfo = BuildAnyTypeLoc(CxxAST, AutoType, D->getLoc());
-
+  for (auto Iter = Decls.begin(); Iter != Decls.  end(); ++Iter) {
+    llvm::outs() << "Sub declaration: " << (*Iter)->getString() << "\n";
+  }
   for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
     D = *Iter;
+    llvm::outs() << "Processing declaration: " << D->getString() << "\n";
     switch (D->Kind) {
     case DK_Identifier:
       // The identifier is not part of the type.
@@ -547,12 +550,17 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   assert(isa<clang::AutoType>(Ty->getType()));
   assert(D->Kind == DK_Type);
 
+
   // FIXME: We should really elaborate the entire type expression. We're
   // just cheating for now.
   if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
     auto BuiltinMapIter = BuiltinTypes.find(Atom->getSpelling());
     if (BuiltinMapIter == BuiltinTypes.end()) {
       // FIXME: This requires a type lookup.
+      // llvm::outs() << "Doing a thing here.\n";
+      // D->printSequence(llvm::outs());
+      // llvm::outs() << Ty->getType().getAsString() << "\n";
+      // llvm::outs() << "Initialization processing: " << D->Init
       assert(false && "User-defined types not supported.");
     }
 
