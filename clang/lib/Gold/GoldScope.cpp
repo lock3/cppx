@@ -105,7 +105,18 @@ void Declarator::printSequence(llvm::raw_ostream &os) const {
 
 // A declarator declares a variable, if it does not declare a function.
 bool Declaration::declaresVariable() const {
-  return !declaresFunction();
+  return !declaresFunction() && !declaresType();
+}
+
+bool Declaration::declaresType() const {
+  assert(Decl);
+  const Declarator *D = Decl;
+  if (D->Kind == DK_Type)
+    D = D->Next;
+  if (D) {
+    return D->Kind == DK_Function;
+  }
+  return false;
 }
 
 // A declarator declares a function if it's first non-id declarator is
