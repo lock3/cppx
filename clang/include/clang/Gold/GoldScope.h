@@ -147,7 +147,7 @@ public:
   bool declaresVariable() const;
 
   /// True if this is a type declaration.
-  bool declaresType() const;
+  // bool declaresType() const;
 
   /// True if this declares a function.
   bool declaresFunction() const;
