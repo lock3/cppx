@@ -588,10 +588,12 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
       // llvm::outs() << "Initialization processing: " << D->Init
       assert(false && "User-defined types not supported.");
     }
-    // if
-    auto TypeLoc = BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second,
-                                  D->getType()->getLoc());
-    return TypeLoc;
+
+    llvm::outs() << "Calling build BuildAnyTypeLoc\n";
+    auto t = BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second,
+                           D->getType()->getLoc());
+    llvm::outs() << "Completed call to BuildAnyTypeLoc\n";
+    return t;
   }
 
   llvm_unreachable("Unknown type specification");
