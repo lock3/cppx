@@ -200,6 +200,9 @@ namespace blue {
     /// Provides context for generating source locations and emitting
     /// diagnostics.
     clang::SourceManager &SM;
+
+    /// Maps identifiers to keyword tokens.
+    llvm::StringMap<TokenKind> Keywords;
   };
 
 } // namespace blue

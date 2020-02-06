@@ -21,7 +21,7 @@ char const* getDisplayName(TokenKind K) {
   switch (K) {
 #define def_token(TK) \
   case tok::TK: return # TK;
-#define def_keyword(TK) \
+#define def_keyword(TK, S) \
   case tok::TK ## Keyword: return # TK;
 #include "clang/Blue/BlueTokens.def"
   }
@@ -32,6 +32,8 @@ bool hasUniqueSpelling(TokenKind K) {
   switch (K) {
 #define def_puncop(TK, S) \
   case tok::TK: return true;
+#define def_keyword(TK, S) \
+  case tok::TK ## Keyword: return true;
 #include "clang/Blue/BlueTokens.def"
   default: return false;
   }
@@ -47,6 +49,8 @@ const char* getSpelling(TokenKind K) {
   case tok::Unknown: return "unknown";
 #define def_puncop(TK, S) \
   case tok::TK: return S;
+#define def_keyword(TK, S) \
+  case tok::TK ## Keyword: return S;
 #include "clang/Blue/BlueTokens.def"
   case tok::Identifier: return "identifier";
   case tok::BinaryInteger: return "binary-integer";
@@ -57,9 +61,8 @@ const char* getSpelling(TokenKind K) {
   case tok::Character: return "quoted-character";
   case tok::String: return "quoted-string";
   case tok::Invalid: return "invalid";
-  default: break;
   }
-  assert(false);
+  llvm_unreachable("Invalid token kind");
 }
 
 template<std::size_t N>
@@ -73,8 +76,11 @@ std::size_t getTokenLength(TokenKind K) {
   case tok::Unknown: return 1;
 #define def_puncop(TK, S) \
   case tok::TK: return getSize(S);
+#define def_keyword(TK, S) \
+  case tok::TK ## Keyword: return getSize(S);
 #include "clang/Blue/BlueTokens.def"
   }
+  llvm_unreachable("Invalid token kind");
 }
 
 llvm::StringRef Token::getSpelling() const {

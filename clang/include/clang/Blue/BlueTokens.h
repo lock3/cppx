@@ -26,7 +26,7 @@ namespace tok {
 enum TokenKind : unsigned short {
 #define def_token(K) \
   K,
-#define def_keyword(K) \
+#define def_keyword(K, S) \
   K ## Keyword,
 #include "clang/Blue/BlueTokens.def"
 };

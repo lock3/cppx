@@ -655,6 +655,7 @@ Syntax *Parser::parsePointerExpression() {
 ///     brace-expression
 Syntax *Parser::parsePrimaryExpression() {
   switch (getLookahead()) {
+  // Value literals
   case tok::BinaryInteger:
   case tok::DecimalInteger:
   case tok::HexadecimalInteger:
@@ -662,6 +663,17 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::HexadecimalFloat:
   case tok::Character:
   case tok::String:
+  // Type literals
+  case tok::VoidKeyword:
+  case tok::BoolKeyword:
+  case tok::ByteKeyword:
+  case tok::CharacterKeyword:
+    // FIXME: Parse out the character spec.
+  case tok::IntegerKeyword:
+    // FIXME: Parse out the integer spec.
+  case tok::FloatKeyword:
+    // FIXME: Parse out the fixed-point spec.
+  case tok::TypeKeyword:
     return onLiteral(consumeToken());
 
   case tok::Identifier:

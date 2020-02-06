@@ -65,6 +65,12 @@ char BOM[] = {'\xef', '\xbe', '\xbb'};
 Lexer::Lexer(clang::SourceManager &SM, File const& F)
   : Input(&F), First(F.getText().data()), Last(First + F.getText().size()),
     Line(1), Column(1), SM(SM) {
+
+  // Build the keyword table.
+#define def_keyword(K, S) \
+  Keywords.try_emplace(S, tok::K ## Keyword);
+#include "clang/Blue/BlueTokens.def"
+
   // Bypass the byte order mark if present.
   //
   // FIXME: Check for UTF-16 and UTF-32 byte order marks, and probably
@@ -297,7 +303,12 @@ Token Lexer::matchWord() {
   while (isIdentifierRest(getLookahead()))
     consumeCharacter();
 
-  // FIXME: This could be a keyword.
+  // This might be a keyword.
+  llvm::StringRef Str(Start, First - Start);
+  auto Iter = Keywords.find(Str);
+  if (Iter != Keywords.end())
+    return makeToken(Iter->second, Start, First);
+
   return makeToken(tok::Identifier, Start, First);
 }
 
