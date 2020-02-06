@@ -6387,7 +6387,7 @@ public:
     return QualType(this, 0);
   }
 
-  static bool classof(const Type *T) { return T->getTypeClass() == Builtin; }
+  static bool classof(const Type *T) { return T->getTypeClass() == CppxKind; }
 };
 
 

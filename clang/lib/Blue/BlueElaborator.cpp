@@ -182,6 +182,7 @@ Declarator *Elaborator::getBinaryDeclarator(const BinarySyntax *S) {
 
 Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   switch (S->getKind()) {
+  case Syntax::Literal:
   case Syntax::Identifier:
   case Syntax::List:
     return new Declarator(Declarator::Type, S);
@@ -243,8 +244,6 @@ clang::QualType Elaborator::elaborateTypeDeclarator(const Declarator *Dcl) {
   clang::ExprResult E = elaborateExpression(Dcl->getInfo());
   if (E.isInvalid())
     return {};
-  llvm::errs() << "GOT EXPR\n";
-  E.get()->dump();
   return E.get()->getType();
 }
 
@@ -299,9 +298,16 @@ static clang::ExprResult makeIntegerLiteral(Elaborator &Elab, const Token &Tok) 
   return {};
 }
 
+// The type of a type literal is always `type` even when declaring a type.
+static clang::ExprResult makeTypeLiteral(Elaborator &Elab, clang::QualType T, Token const& Tok) {
+  clang::ASTContext &Cxt = Elab.getCxxContext();
+  clang::QualType K = Cxt.CppxKindTy;
+  return new (Cxt) clang::CppxTypeLiteral(K, T, Tok.getLocation());
+}
+
 clang::ExprResult Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
-  const Token& T = S->getToken();
-  switch (T.getKind()) {
+  const Token& Tok = S->getToken();
+  switch (Tok.getKind()) {
   case tok::DecimalInteger:
     return makeIntegerLiteral(*this, S->getToken());
   case tok::DecimalFloat:
@@ -316,21 +322,7 @@ clang::ExprResult Elaborator::elaborateLiteralExpression(const LiteralSyntax *S)
     break;
   case tok::String:
     break;
-  default: break;
-  }
 
-  llvm_unreachable("Not implemented");
-}
-
-static clang::ExprResult makeTypeLiteral(Elaborator &Elab, clang::QualType T, Token const& Tok) {
-  clang::ASTContext &Cxt = Elab.getCxxContext();
-  clang::QualType K = Cxt.CppxKindTy;
-  return new (Cxt) clang::CppxTypeLiteral(K, T, Tok.getLocation());
-}
-
-clang::ExprResult Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S) {
-  const Token &Tok = S->getToken();
-  switch (Tok.getKind()) {
   case tok::VoidKeyword:
     return makeTypeLiteral(*this, getCxxContext().VoidTy, Tok);
   case tok::BoolKeyword:
@@ -345,11 +337,17 @@ clang::ExprResult Elaborator::elaborateIdentifierExpression(const IdentifierSynt
   case tok::FloatKeyword:
     // FIXME: Support arbitrary length floating point types vie the lexer.
     return makeTypeLiteral(*this, getCxxContext().FloatTy, Tok);
+  case tok::TypeKeyword:
+    return makeTypeLiteral(*this, getCxxContext().CppxKindTy, Tok);
+
   default:
     break;
   }
 
-  S->dump();
+  llvm_unreachable("Not implemented");
+}
+
+clang::ExprResult Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S) {
   llvm_unreachable("Not implemented");
 }
 

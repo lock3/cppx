@@ -1508,6 +1508,7 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
     case Type::ObjCObject:
     case Type::ObjCInterface:
     case Type::ObjCObjectPointer:
+    case Type::CppxKind:
       if (TDF & TDF_SkipNonDependent)
         return Sema::TDK_Success;
 
@@ -5807,6 +5808,7 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
   case Type::Pipe:
   case Type::CXXDependentVariadicReifier:
   case Type::CXXRequiredType:
+  case Type::CppxKind:
 #define TYPE(Class, Base)
 #define ABSTRACT_TYPE(Class, Base)
 #define DEPENDENT_TYPE(Class, Base)
