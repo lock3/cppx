@@ -52,6 +52,10 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
   if (isa<CallSyntax>(S))
     return elaborateCall(cast<CallSyntax>(S));
 
+  llvm::outs() << "Syntax not handled yet\n";
+  S->dump();
+  llvm::outs() << "\n";
+
   assert(false && "Unsupported expression.");
 }
 

@@ -105,10 +105,21 @@ void Declarator::printSequence(llvm::raw_ostream &os) const {
 
 // A declarator declares a variable, if it does not declare a function.
 bool Declaration::declaresVariable() const {
-  return !declaresFunction() && !declaresType();
+  return !declaresFunction() /*&& !declaresType()*/;
 }
-bool Declaration::declaresType() const {
-  return Decl->isType();
+bool Declaration::declaresType() const {  
+  const Declarator* D = Decl;
+  if (D->Kind == DK_Identifier){
+    D = D->Next;
+  }
+  if(D) {
+    if(D->Kind == DK_Type) {
+      if(const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
+        return Atom->getSpelling() == "type";
+      }
+    }
+  }
+  return false;
 }
 
 // A declarator declares a function if it's first non-id declarator is
