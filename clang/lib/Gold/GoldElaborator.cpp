@@ -32,22 +32,26 @@ Elaborator::Elaborator(SyntaxContext &Context, Sema &SemaRef)
 
 clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   assert(isa<FileSyntax>(S) && "S is not a file");
-
+  
   startFile(S);
 
   const FileSyntax *File = cast<FileSyntax>(S);
+  // File->dump();
 
   // Pass 1. identify declarations in scope.
-  for (const Syntax *SS : File->children())
+  for (const Syntax *SS : File->children()) {
     identifyDecl(SS);
+  }
 
   // Pass 2: elaborate the types.
-  for (const Syntax *SS : File->children())
+  for (const Syntax *SS : File->children()){
     elaborateDeclType(SS);
+  }
 
   // Pass 3: elaborate definitions.
-  for (const Syntax *SS : File->children())
+  for (const Syntax *SS : File->children()){
     elaborateDeclInit(SS);
+  }
 
   finishFile(S);
 
@@ -89,17 +93,14 @@ clang::Decl *Elaborator::elaborateDeclType(const Syntax *S) {
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
 
-  // if(D->isType()) {
-  //   llvm::outs() << "Elaborator::elaborateDecl: Processing type?!";
-  // }
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
-  if (D->declaresFunction())
+  if (D->declaresFunction()) {
     return elaborateFunctionDecl(D);
-  else
+  } else {
     return elaborateVariableDecl(D);
-
+  }
   // TODO: We should be able to elaborate definitions at this point too.
   // We've already loaded salient identifier tables, so it shouldn't any
   // forward references should be resolvable.

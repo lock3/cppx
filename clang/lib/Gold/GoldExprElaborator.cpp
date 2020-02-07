@@ -16,6 +16,7 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/OperationKinds.h"
 #include "clang/AST/Type.h"
+#include "clang/AST/ExprCppx.h"
 #include "clang/Basic/DiagnosticParse.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/SourceLocation.h"
@@ -32,6 +33,7 @@
 #include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldSyntaxContext.h"
 #include "clang/Gold/GoldTokens.h"
+
 
 #include <cstring>
 
@@ -505,7 +507,6 @@ Expression ExprElaborator::elaborateArrayType(Declarator *D, TypeInfo *Ty) {
 // Elaborate the parameters and incorporate their types into  the one
 // we're building. Note that T is the return type (if any).
 Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
-  llvm::outs() << "ELABORATE FUNCTION TYPE\n";
 
   const auto *Call = cast<CallSyntax>(D->Call);
 
@@ -550,7 +551,7 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
 Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   assert(isa<clang::AutoType>(Ty->getType()));
   assert(D->Kind == DK_Type);
-
+  // D->printSequence(llvm::outs());
 
   // FIXME: We should really elaborate the entire type expression. We're
   // just cheating for now.
@@ -558,17 +559,30 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
     auto BuiltinMapIter = BuiltinTypes.find(Atom->getSpelling());
     if (BuiltinMapIter == BuiltinTypes.end()) {
       // FIXME: This requires a type lookup.
-      // llvm::outs() << "Doing a thing here.\n";
-      // D->printSequence(llvm::outs());
-      // llvm::outs() << Ty->getType().getAsString() << "\n";
-      // llvm::outs() << "Initialization processing: " << D->Init
+      // Initializing type here?
+      // auto DeclIter = SemaRef.getCurrentScope()->DeclMap.find(D->Call);
+      // if(DeclIter == SemaRef.getCurrentScope()->DeclMap.end()) {
+      //   assert(false && "Failed ot locate declaration.");
+      // }
+      // llvm::outs() << "Declaration retrieved\n";
+      // // Declaration->Op->dump();
+      // DeclIter->second->Op->dump();
+      // llvm::outs() << "\n";
+
+
+      // if(Atom->getSpelling() == "type") {
+      //   llvm::outs() << "Yup we have a type:\n";
+      // }
+      // llvm::outs() << "Declarator syntax checking!";
+      // if(D->Call) {
+      //   llvm::outs() << "Dumping call!";
+      //   D->Call->dump();
+      // } 
       assert(false && "User-defined types not supported.");
     }
-    llvm::outs() << "Calling build BuildAnyTypeLoc\n";
-    auto t = BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second,
-                           D->getType()->getLoc());
-    llvm::outs() << "Completed call to BuildAnyTypeLoc\n";
-    return t;
+    auto TypeLoc = BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second,
+                                  D->getType()->getLoc());
+    return TypeLoc;
   }
 
   llvm_unreachable("Unknown type specification");

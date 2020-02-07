@@ -43,7 +43,9 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
 
   Parser Parser(Context, SM, InputFile);
   Syntax *AST = Parser.parseFile();
-
+  // llvm::outs() << "Dumping AST: ";
+  // AST->dump();
+  // llvm::outs() << "\n";
   // FIXME: There's a -fdump-syntax flag that we should tie this too.
 
   // FIXME: We should handle -fsyntax-only here -- or maybe make a separate
@@ -54,8 +56,10 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
   // Elaborate the resulting abstract syntax tree.
   Sema Sema(Context, ClangSema);
   Elaborator Elab(Context, Sema);
+  
   clang::TranslationUnitDecl *TU =
     cast<clang::TranslationUnitDecl>(Elab.elaborateFile(AST));
+  
   TU->dump();
 
   clang::ASTConsumer *Consumer = &ClangSema.getASTConsumer();
