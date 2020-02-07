@@ -48,6 +48,7 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
     elaborateDeclType(SS);
   }
 
+
   // Pass 3: elaborate definitions.
   for (const Syntax *SS : File->children()){
     elaborateDeclInit(SS);
@@ -92,11 +93,13 @@ clang::Decl *Elaborator::elaborateDeclType(const Syntax *S) {
 }
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
-
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
-  if (D->declaresFunction()) {
+  // if(D->declaresType()) {
+    // llvm::outs() << "Reched expected type!?\n";
+    // assert(false && "We have a type declation!");
+  /*} else*/ if (D->declaresFunction()) {
     return elaborateFunctionDecl(D);
   } else {
     return elaborateVariableDecl(D);
@@ -185,6 +188,7 @@ static clang::StorageClass getStorageClass(Elaborator &Elab) {
 }
 
 clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
+  // llvm::outs() << "Called Elaborate "
   if (SemaRef.getCurrentScope()->isParameterScope())
     return elaborateParameterDecl(D);
 

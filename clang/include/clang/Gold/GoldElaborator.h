@@ -55,6 +55,7 @@ public:
   clang::Decl *elaborateFunctionDecl(Declaration *D);
   clang::Decl *elaborateVariableDecl(Declaration *D);
   clang::Decl *elaborateParameterDecl(Declaration *D);
+  
 
   // Definition elaboration (3rd pass)
   void elaborateDeclInit(const Syntax *S);
@@ -125,6 +126,7 @@ public:
     {"double", Context.CxxAST.DoubleTy},
     {"long double", Context.CxxAST.LongDoubleTy},
     {"float128_t", Context.CxxAST.Float128Ty},
+    {"type", Context.CxxAST.CppxKindTy},
   };
 };
 
