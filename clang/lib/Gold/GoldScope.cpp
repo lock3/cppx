@@ -105,7 +105,7 @@ void Declarator::printSequence(llvm::raw_ostream &os) const {
 
 // A declarator declares a variable, if it does not declare a function.
 bool Declaration::declaresVariable() const {
-  return !declaresFunction() && !declaresType();
+  return !declaresFunction() /*&& !declaresType()*/;
 }
 
 bool Declaration::declaresType() const {  
@@ -119,6 +119,7 @@ bool Declaration::declaresType() const {
         return Atom->getSpelling() == "type";
       }
     }
+  }
   return false;
 }
 

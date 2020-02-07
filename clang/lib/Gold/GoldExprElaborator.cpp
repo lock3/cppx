@@ -55,6 +55,10 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
     return elaborateMacroExpression(cast<MacroSyntax>(S));
 
 
+  llvm::outs() << "Syntax not handled yet\n";
+  S->dump();
+  llvm::outs() << "\n";
+
   assert(false && "Unsupported expression.");
 }
 
