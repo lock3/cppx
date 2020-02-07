@@ -2327,6 +2327,7 @@ static bool HandleConversionToBool(const APValue &Val, bool &Result) {
   case APValue::Struct:
   case APValue::Union:
   case APValue::AddrLabelDiff:
+  case APValue::Type:
     return false;
   }
 
@@ -6367,7 +6368,8 @@ class APValueToBufferConverter {
     case APValue::Reflection:
     case APValue::Union:
     case APValue::MemberPointer:
-    case APValue::AddrLabelDiff: {
+    case APValue::AddrLabelDiff:
+    case APValue::Type: {
       Info.FFDiag(BCE->getBeginLoc(),
                   diag::note_constexpr_bit_cast_unsupported_type)
           << Ty;
@@ -14054,6 +14056,42 @@ static bool EvaluateReflection(const Expr *E, APValue &Result, EvalInfo &Info) {
   return ReflectionEvaluator(Info, Result).Visit(E);
 }
 
+namespace {
+class TypeEvaluator
+  : public ExprEvaluatorBase<TypeEvaluator> {
+
+  using BaseType = ExprEvaluatorBase<TypeEvaluator>;
+
+  APValue &Result;
+public:
+  TypeEvaluator(EvalInfo &Info, APValue &Result)
+    : ExprEvaluatorBaseTy(Info), Result(Result) {}
+
+  bool Success(const APValue &V, const Expr *e) {
+    return Success(V);
+  }
+
+  bool Success(const APValue &V) {
+    assert(V.isType());
+    Result = V;
+    return true;
+  }
+
+  bool Success(QualType T) {
+    return Success(APValue(T));
+  }
+
+  bool VisitCppxTypeLiteral(const CppxTypeLiteral *E) {
+    return Success(E->getValue());
+  }
+};
+} // end anonymous namespace
+
+static bool EvaluateType(const Expr *E, APValue &Result, EvalInfo &Info) {
+  assert(E->isRValue() && E->getType()->isKindType());
+  return TypeEvaluator(Info, Result).Visit(E);
+}
+
 //===----------------------------------------------------------------------===//
 // Top level Expr::EvaluateAsRValue method.
 //===----------------------------------------------------------------------===//
@@ -14129,6 +14167,9 @@ static bool Evaluate(APValue &Result, EvalInfo &Info, const Expr *E) {
       if (!EvaluateAtomic(E, nullptr, Result, Info))
         return false;
     }
+  } else if (T->isKindType()) {
+    if (!EvaluateType(E, Result, Info))
+      return false;
   } else if (Info.getLangOpts().CPlusPlus11) {
     Info.FFDiag(E, diag::note_constexpr_nonliteral) << E->getType();
     return false;

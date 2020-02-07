@@ -328,6 +328,10 @@ APValue::APValue(const APValue &RHS) : Kind(None) {
                    RHS.getReflectionOffset(), ParentRefl);
     break;
   }
+  case Type:
+    MakeType();
+    setType(RHS.getType());
+    break;
   }
 }
 
@@ -345,6 +349,11 @@ APValue::APValue(ReflectionKind ReflKind, const void *ReflEntity,
                  unsigned Offset, const APValue &Parent)
     : Kind(None) {
   MakeReflection(ReflKind, ReflEntity, ReflectionModifiers(), Offset, &Parent);
+}
+
+APValue::APValue(QualType T)
+    : Kind(None) {
+  MakeType(); setType(T);
 }
 
 void APValue::DestroyDataAndMakeUninit() {
@@ -381,6 +390,7 @@ bool APValue::needsCleanup() const {
   case Indeterminate:
   case AddrLabelDiff:
   case Reflection:
+  case Type:
     return false;
   case Struct:
   case Union:
@@ -420,6 +430,21 @@ void APValue::swap(APValue &RHS) {
   memcpy(TmpData, Data.buffer, DataSize);
   memcpy(Data.buffer, RHS.Data.buffer, DataSize);
   memcpy(RHS.Data.buffer, TmpData, DataSize);
+}
+
+QualType APValue::getType() const {
+  return *(const QualType *)(const char *)Data.buffer;
+}
+
+void APValue::setType(QualType T) {
+  assert(isType() && "Invalid accessor");
+  *(QualType *)(char *)Data.buffer = T;
+}
+
+void APValue::MakeType() {
+  assert(isAbsent() && "Bad state change");
+  new ((void*)Data.buffer) QualType();
+  Kind = Type;
 }
 
 LLVM_DUMP_METHOD void APValue::dump() const {
@@ -512,6 +537,9 @@ void APValue::dump(raw_ostream &OS) const {
     return;
   case Reflection:
     OS << "Reflection: <todo>";
+    return;
+  case Type:
+    OS << "Type: " << getType().getAsString();
     return;
   }
   llvm_unreachable("Unknown APValue kind!");
@@ -747,6 +775,9 @@ void APValue::printPretty(raw_ostream &Out, const ASTContext &Ctx,
     return;
   case APValue::Reflection:
     // FIXME: This needs implemented
+    return;
+  case Type:
+    getType().print(Out, Ctx.getPrintingPolicy());
     return;
   }
   llvm_unreachable("Unknown APValue kind!");

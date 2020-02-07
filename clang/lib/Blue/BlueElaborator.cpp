@@ -196,21 +196,52 @@ Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
 
 clang::Decl *Elaborator::makeValueDecl(const Syntax *S, Declarator* Dcl)
 {
-  clang::QualType T = elaborateDeclarator(Dcl);
+  // Elaborate the declarator.
+  //
+  // FIXME: An ill-typed declaration isn't the end of the world. Can we
+  // poison the declaration and move on?
+  clang::ExprResult E = elaborateDeclarator(Dcl);
+  if (E.isInvalid())
+    return nullptr;
 
-  llvm::errs() << "GOT TYPE\n";
-  T->dump();
+  // Evaluate the type expression.
+  //
+  // FIXME: See above for recovery question.
+  //
+  // FIXME: Add partial diagnostics to the result so we can diagnose
+  // evaluation errors.
+  //
+  // FIXME: Define EvaluateAsType for Expr classes.
+  clang::Expr::EvalContext Cxt(getCxxContext(), nullptr);
+  clang::Expr::EvalResult Result;
+  if (!E.get()->EvaluateAsRValue(Result, Cxt, true)) {
+    Error(E.get()->getExprLoc(), "invalid type");
+    return nullptr;
+  }
 
+  // Build the declaration.
+  clang::QualType T = Result.Val.getType();
+  if (T->isKindType())
+    return makeTypeDecl(S, Dcl, T);
+  else
+    return makeObjectDecl(S, Dcl, T);
+}
+
+clang::Decl *Elaborator::makeObjectDecl(const Syntax *S, Declarator *Dcl, clang::QualType T) {
+  llvm::outs() << "OBJECT!\n";
   return nullptr;
 }
 
-clang::Decl *Elaborator::makeFunctionDecl(const Syntax *S, Declarator* Dcl)
-{
+clang::Decl *Elaborator::makeTypeDecl(const Syntax *S, Declarator *Dcl, clang::QualType T) {
+  llvm::outs() << "TYPE!\n";
+  return nullptr;
+}
+
+clang::Decl *Elaborator::makeFunctionDecl(const Syntax *S, Declarator* Dcl) {
   llvm_unreachable("Not implemented");
 }
 
-clang::Decl *Elaborator::makeTemplateDecl(const Syntax *S, Declarator* Dcl)
-{
+clang::Decl *Elaborator::makeTemplateDecl(const Syntax *S, Declarator* Dcl) {
   llvm_unreachable("Not implemented");
 }
 
@@ -223,7 +254,7 @@ clang::Decl *Elaborator::makeTemplateDecl(const Syntax *S, Declarator* Dcl)
 
 /// Return the type of entity declared by Dcl and establish any semantic
 /// state needed to process the declaration and its initializer.
-clang::QualType Elaborator::elaborateDeclarator(const Declarator *Dcl) {
+clang::ExprResult Elaborator::elaborateDeclarator(const Declarator *Dcl) {
   switch (Dcl->getKind()) {
   case Declarator::Type:
     return elaborateTypeDeclarator(Dcl);
@@ -238,35 +269,47 @@ clang::QualType Elaborator::elaborateDeclarator(const Declarator *Dcl) {
   }
 }
 
-/// Elaborate declarations of the form 'T'. We elaborate these as expressions
-/// and return the type (or kind).
-clang::QualType Elaborator::elaborateTypeDeclarator(const Declarator *Dcl) {
+/// Elaborate declarations of the form 'T' as an expression.
+clang::ExprResult Elaborator::elaborateTypeDeclarator(const Declarator *Dcl) {
   clang::ExprResult E = elaborateExpression(Dcl->getInfo());
   if (E.isInvalid())
-    return {};
-  return E.get()->getType();
+    return clang::ExprError();
+  clang::QualType T = E.get()->getType();
+  if (!T->isKindType()) {
+    Error(Dcl->getLocation(), "invalid type");
+    return clang::ExprError();
+  }
+  return E;
 }
 
-/// Elaborate declarations of the form '^T'.
-clang::QualType Elaborator::elaboratePointerDeclarator(const Declarator *Dcl) {
-  clang::QualType T = elaborateDeclarator(Dcl->getNext());
-  if (T.isNull())
-    return {};
-  return getCxxContext().getPointerType(T);
+/// Elaborate declarations of the form '^E'.
+clang::ExprResult Elaborator::elaboratePointerDeclarator(const Declarator *Dcl) {
+  clang::ExprResult E = elaborateDeclarator(Dcl->getNext());
+  if (E.isInvalid())
+    return clang::ExprError();
+
+  // FIXME: Build an address-of expression for the type...
+  // clang::Expression *E = Dcl->getNext()->getExpression();
+
+  // if (T.isNull())
+  //   return {};
+  // return getCxxContext().getPointerType(T);
+
+  return E;
 }
 
 /// Elaborate declarations of the form '[E] T'.
-clang::QualType Elaborator::elaborateArrayDeclarator(const Declarator *Dcl) {
+clang::ExprResult Elaborator::elaborateArrayDeclarator(const Declarator *Dcl) {
   llvm_unreachable("Not implemented");
 }
 
 /// Elaborate declarations of the form '(parms) T'.
-clang::QualType Elaborator::elaborateFunctionDeclarator(const Declarator *Dcl) {
+clang::ExprResult Elaborator::elaborateFunctionDeclarator(const Declarator *Dcl) {
   llvm_unreachable("Not implemented");
 }
 
 /// Elaborate declarations of the form '[parms] T'.
-clang::QualType Elaborator::elaborateTemplateDeclarator(const Declarator *Dcl) {
+clang::ExprResult Elaborator::elaborateTemplateDeclarator(const Declarator *Dcl) {
   llvm_unreachable("Not implemented");
 }
 

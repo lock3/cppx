@@ -15,14 +15,15 @@
 #define CLANG_BLUE_BLUEELABORATOR_H
 
 #include "clang/Blue/BlueSyntax.h"
-
 #include "clang/Sema/Sema.h"
+
 
 namespace clang {
 
 class Decl;
 class DiagnosticsEngine;
 class Expr;
+class QualType;
 class Sema;
 
 } // namespace clang
@@ -66,16 +67,16 @@ public:
   Declarator *getBinaryDeclarator(const BinarySyntax *S);
   Declarator *getLeafDeclarator(const Syntax *S);
 
-  clang::QualType elaborateDeclarator(const Declarator *Dcl);
-  clang::QualType elaborateTypeDeclarator(const Declarator *Dcl);
-  clang::QualType elaboratePointerDeclarator(const Declarator *Dcl);
-  clang::QualType elaborateArrayDeclarator(const Declarator *Dcl);
-  clang::QualType elaborateFunctionDeclarator(const Declarator *Dcl);
-  clang::QualType elaborateTemplateDeclarator(const Declarator *Dcl);
+  clang::ExprResult elaborateDeclarator(const Declarator *Dcl);
+  clang::ExprResult elaborateTypeDeclarator(const Declarator *Dcl);
+  clang::ExprResult elaboratePointerDeclarator(const Declarator *Dcl);
+  clang::ExprResult elaborateArrayDeclarator(const Declarator *Dcl);
+  clang::ExprResult elaborateFunctionDeclarator(const Declarator *Dcl);
+  clang::ExprResult elaborateTemplateDeclarator(const Declarator *Dcl);
 
   clang::Decl *makeValueDecl(const Syntax *S, Declarator *Dcl);
-  clang::Decl *makeObjecteDcl(const Syntax *S, Declarator *Dcl);
-  clang::Decl *makeTypeDecl(const Syntax *S, Declarator *Dcl);
+  clang::Decl *makeObjectDecl(const Syntax *S, Declarator *Dcl, clang::QualType T);
+  clang::Decl *makeTypeDecl(const Syntax *S, Declarator *Dcl, clang::QualType T);
   clang::Decl *makeFunctionDecl(const Syntax *S, Declarator *Dcl);
   clang::Decl *makeTemplateDecl(const Syntax *S, Declarator *Dcl);
 

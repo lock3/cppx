@@ -161,7 +161,8 @@ public:
     Union,
     MemberPointer,
     AddrLabelDiff,
-    Reflection
+    Reflection,
+    Type,
   };
 
   class LValueBase {
@@ -379,6 +380,8 @@ public:
   APValue(ReflectionKind ReflKind, const void *ReflEntity,
           unsigned Offset, const APValue &Parent);
 
+  APValue(QualType T);
+
   static APValue IndeterminateValue() {
     APValue Result;
     Result.Kind = Indeterminate;
@@ -419,6 +422,7 @@ public:
   bool isMemberPointer() const { return Kind == MemberPointer; }
   bool isAddrLabelDiff() const { return Kind == AddrLabelDiff; }
   bool isReflection() const { return Kind == Reflection; }
+  bool isType() const { return Kind == Type; }
 
   void dump() const;
   void dump(raw_ostream &OS) const;
@@ -642,6 +646,9 @@ public:
     return *((const ReflectionData*)(const char*)Data.buffer)->Parent;
   }
 
+  /// Returns the value as a type.
+  QualType getType() const;
+
   void setInt(APSInt I) {
     assert(isInt() && "Invalid accessor");
     *(APSInt *)(char *)Data.buffer = std::move(I);
@@ -690,6 +697,7 @@ public:
     ((AddrLabelDiffData*)(char*)Data.buffer)->LHSExpr = LHSExpr;
     ((AddrLabelDiffData*)(char*)Data.buffer)->RHSExpr = RHSExpr;
   }
+  void setType(QualType T);
 
   /// Assign by swapping from a copy of the RHS.
   APValue &operator=(APValue RHS) {
@@ -765,6 +773,7 @@ private:
                                                    Offset, Parent);
     Kind = Reflection;
   }
+  void MakeType();
 };
 
 } // end namespace clang.

@@ -14,6 +14,12 @@
 #ifndef CLANG_BLUE_BLUEDECLARATOR_H
 #define CLANG_BLUE_BLUEDECLARATOR_H
 
+#include "clang/Basic/SourceLocation.h"
+
+namespace clang {
+class Expr;
+} // namespace clang
+
 namespace blue {
 
 class Syntax;
@@ -56,6 +62,17 @@ public:
     return Info;
   }
 
+  const clang::Expr *getExpression() const {
+    return Val;
+  }
+
+  void setExpression(const clang::Expr *E) {
+    assert(!Val);
+    Val = E;
+  }
+
+  clang::SourceLocation getLocation() const;
+
   Declarator *getNext() {
     return Next;
   }
@@ -70,10 +87,13 @@ private:
   Kind Which;
   const Syntax *Info;
   Declarator *Next;
+
+  /// The expression that computes the value/type of the declarator. This
+  /// is built up during elaboration and cached with the declarator fragment.
+  const clang::Expr* Val;
 };
 
 } // namespace blue
 
 
 #endif
-
