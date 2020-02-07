@@ -575,25 +575,37 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   assert(D->Kind == DK_Type);
   // D->printSequence(llvm::outs());
 
-
   // FIXME: We should really elaborate the entire type expression. We're
   // just cheating for now.
   if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
     auto BuiltinMapIter = BuiltinTypes.find(Atom->getSpelling());
     if (BuiltinMapIter == BuiltinTypes.end()) {
       // FIXME: This requires a type lookup.
-      // llvm::outs() << "Doing a thing here.\n";
-      // D->printSequence(llvm::outs());
-      // llvm::outs() << Ty->getType().getAsString() << "\n";
-      // llvm::outs() << "Initialization processing: " << D->Init
+      // Initializing type here?
+      // auto DeclIter = SemaRef.getCurrentScope()->DeclMap.find(D->Call);
+      // if(DeclIter == SemaRef.getCurrentScope()->DeclMap.end()) {
+      //   assert(false && "Failed ot locate declaration.");
+      // }
+      // llvm::outs() << "Declaration retrieved\n";
+      // // Declaration->Op->dump();
+      // DeclIter->second->Op->dump();
+      // llvm::outs() << "\n";
+
+
+      // if(Atom->getSpelling() == "type") {
+      //   llvm::outs() << "Yup we have a type:\n";
+      // }
+      // llvm::outs() << "Declarator syntax checking!";
+      // if(D->Call) {
+      //   llvm::outs() << "Dumping call!";
+      //   D->Call->dump();
+      // } 
       assert(false && "User-defined types not supported.");
     }
 
-    llvm::outs() << "Calling build BuildAnyTypeLoc\n";
-    auto t = BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second,
-                           D->getType()->getLoc());
-    llvm::outs() << "Completed call to BuildAnyTypeLoc\n";
-    return t;
+    auto TypeLoc = BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second,
+                                  D->getType()->getLoc());
+    return TypeLoc;
   }
 
   llvm_unreachable("Unknown type specification");

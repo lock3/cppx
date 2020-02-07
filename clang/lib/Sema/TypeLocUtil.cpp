@@ -41,14 +41,9 @@ template <typename TypeLocType>
 static TypeSourceInfo *BuildTypeLoc(clang::ASTContext &Context,
                              TypeLocBuilder &TLB, QualType Ty,
                              SourceLocation Loc) {
-  llvm::outs() << "Finally reached where we were going.\n";
   auto TypeLocInstance = TLB.push<TypeLocType>(Ty);
-  llvm::outs() << "Completed push\n";
   TypeLocInstance.setNameLoc(Loc);
-
-  llvm::outs() << "TypeLocInstance\n";
   auto x = TLB.getTypeSourceInfo(Context, Ty);
-  llvm::outs() << "Did we complete the function?\n";
   return x;
 }
 
@@ -443,9 +438,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::RecordTypeLoc>
 template<> TypeSourceInfo *BuildTypeLoc<clang::CppxKindTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
-  llvm::outs() << "BuildTypeLoc called\n";
   auto x = BuildTypeLoc<clang::CppxKindTypeLoc>(Context, TLB, Ty, Loc);
-  llvm::outs() << "BuildTypeLoc Finished templated call?!\n";
   return x;
 }
 
@@ -665,9 +658,7 @@ TypeSourceInfo *BuildAnyTypeLoc(clang::ASTContext &Context,
 #define ABSTRACT_TYPE(CLASS, PARENT)
 #define TYPE(CLASS, PARENT)                                   \
   case clang::Type::CLASS:{                                    \
-    llvm::outs() << "Processing: " << #CLASS << " Calling clang::" <<#CLASS << "TypeLoc" <<"\n";         \
     auto t = BuildTypeLoc<clang::CLASS##TypeLoc>(Context, TLB, T, Loc);\
-    llvm::outs() << "Finished processing: " << #CLASS << " Calling clang::" <<#CLASS << "TypeLoc" <<"\n";         \
     return t;\
   }
 #include "clang/AST/TypeNodes.inc"

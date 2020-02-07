@@ -118,8 +118,7 @@ public:
     {"float", CxxAST.FloatTy},
     {"double", CxxAST.DoubleTy},
     {"long double", CxxAST.LongDoubleTy},
-    {"float128_t", CxxAST.Float128Ty},
-    {"type", CxxAST.CppxKindTy}
+    {"float128_t", CxxAST.Float128Ty}
   };
 };
 

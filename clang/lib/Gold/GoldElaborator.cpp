@@ -37,6 +37,7 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   startFile(S);
 
   const FileSyntax *File = cast<FileSyntax>(S);
+  // File->dump();
 
   // Pass 1. identify declarations in scope.
   for (const Syntax *SS : File->children()) {
@@ -52,6 +53,7 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   for (const Syntax *SS : File->children()) {
     elaborateDeclInit(SS);
   }
+
   finishFile(S);
 
   return Context.CxxAST.getTranslationUnitDecl();
@@ -92,12 +94,10 @@ clang::Decl *Elaborator::elaborateDeclType(const Syntax *S) {
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
 
-  // if(D->isType()) {
-  //   llvm::outs() << "Elaborator::elaborateDecl: Processing type?!";
-  // }
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
+
   if(D->declaresType()) {
 
     clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
