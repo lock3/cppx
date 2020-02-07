@@ -2994,6 +2994,10 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
       Result.Namespaces.insert(Result.S.Context.getTranslationUnitDecl());
       break;
 
+    case Type::CppxKind:
+      // Like a builtin type. No associated types or namespaces.
+      break;
+
     // Atomic types are just wrappers; use the associations of the
     // contained type.
     case Type::Atomic:

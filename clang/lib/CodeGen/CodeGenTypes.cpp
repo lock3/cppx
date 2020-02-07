@@ -697,6 +697,9 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     ResultType = CGM.getOpenCLRuntime().getPipeType(cast<PipeType>(Ty));
     break;
   }
+
+  case Type::CppxKind:
+    llvm_unreachable("Unexpected kind");
   }
 
   assert(ResultType && "Didn't convert a type?");

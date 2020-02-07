@@ -42,7 +42,8 @@ void ParseBlueAST(clang::ASTContext &CxxContext,
   // Elaborate the resulting abstract syntax tree.
   Elaborator Elab(CxxSema);
   clang::Decl *TU = Elab.elaborateTop(AST);
-  TU->dump();
+  (void)TU;
+  // TU->dump();
 }
 
 } // namespace blue
