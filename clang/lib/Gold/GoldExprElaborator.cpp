@@ -51,6 +51,7 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
     return elaborateAtom(cast<AtomSyntax>(S), clang::QualType());
   if (isa<CallSyntax>(S))
     return elaborateCall(cast<CallSyntax>(S));
+
   assert(false && "Unsupported expression.");
 }
 
