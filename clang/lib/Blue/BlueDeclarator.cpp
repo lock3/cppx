@@ -16,6 +16,10 @@
 
 namespace blue {
 
+clang::SourceLocation Declarator::getLocation() const {
+  return Info->getLocation();
+}
+
 void Declarator::dump() const {
   // FIXME: It would be nice to print something useful here.
   Info->dump();

@@ -2481,6 +2481,10 @@ bool Type::isLiteralType(const ASTContext &Ctx) const {
   if (isa<AutoType>(BaseTy->getCanonicalTypeInternal()))
     return true;
 
+  // The kind of types is literal.
+  if (isKindType())
+    return true;
+
   return false;
 }
 

@@ -2132,6 +2132,8 @@ public:
   bool isPipeType() const;                      // OpenCL pipe type
   bool isOpenCLSpecificType() const;            // Any OpenCL specific type
 
+  bool isKindType() const;
+
   /// Determines if this type, which must satisfy
   /// isObjCLifetimeType(), is implicitly __unsafe_unretained rather
   /// than implicitly __strong.
@@ -6886,6 +6888,10 @@ inline bool Type::isImageType() const {
 
 inline bool Type::isPipeType() const {
   return isa<PipeType>(CanonicalType);
+}
+
+inline bool Type::isKindType() const {
+  return isa<CppxKindType>(CanonicalType);
 }
 
 #define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
