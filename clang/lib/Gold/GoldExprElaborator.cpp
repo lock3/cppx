@@ -54,7 +54,6 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
   if(isa<MacroSyntax>(S))
     return elaborateMacroExpression(cast<MacroSyntax>(S));
 
-
   llvm::outs() << "Syntax not handled yet\n";
   S->dump();
   llvm::outs() << "\n";

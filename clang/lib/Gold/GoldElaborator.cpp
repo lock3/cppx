@@ -37,7 +37,7 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   startFile(S);
 
   const FileSyntax *File = cast<FileSyntax>(S);
-  // File->dump();
+  File->dump();
 
   // Pass 1. identify declarations in scope.
   for (const Syntax *SS : File->children()) {
