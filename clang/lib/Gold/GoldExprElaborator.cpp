@@ -51,7 +51,8 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
     return elaborateAtom(cast<AtomSyntax>(S), clang::QualType());
   if (isa<CallSyntax>(S))
     return elaborateCall(cast<CallSyntax>(S));
-  // if(isa<MacroSyntax>(S)) 
+  if(isa<MacroSyntax>(S))
+    return elaborateMacroExpression(cast<MacroSyntax>(S));
 
 
   assert(false && "Unsupported expression.");
@@ -409,6 +410,28 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
   return BinOp.get();
 }
 
+
+Expression ExprElaborator::elaborateMacroExpression(const MacroSyntax *Macro) {
+  const Syntax* FirstChild = *Macro->children().begin();
+  if (const auto *Atom = dyn_cast<AtomSyntax>(FirstChild)) {
+    if (Atom->getSpelling() == "if") {
+      assert(false && "If expression processing not implemented yet."); 
+    } else if (Atom->getSpelling() == "while") {
+      assert(false && "while loop processing not implemented yet.");
+    } else if(Atom->getSpelling() == "for") {
+      assert(false && "For loop processing not implemented yet.");
+    } else {
+      // FIXME: Need to handle any other conditions here.
+      assert(false && "Unexpected syntax tree format.");
+    }
+  } else {
+    assert(false && "Unexpected atom within the syntax tree.");
+  }
+}
+
+
+
+
 //===----------------------------------------------------------------------===//
 //                        Type Expression Elaboration                         //
 //===----------------------------------------------------------------------===//
@@ -561,27 +584,9 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
     auto BuiltinMapIter = BuiltinTypes.find(Atom->getSpelling());
     if (BuiltinMapIter == BuiltinTypes.end()) {
       // FIXME: This requires a type lookup.
-      // Initializing type here?
-      // auto DeclIter = SemaRef.getCurrentScope()->DeclMap.find(D->Call);
-      // if(DeclIter == SemaRef.getCurrentScope()->DeclMap.end()) {
-      //   assert(false && "Failed ot locate declaration.");
-      // }
-      // llvm::outs() << "Declaration retrieved\n";
-      // // Declaration->Op->dump();
-      // DeclIter->second->Op->dump();
-      // llvm::outs() << "\n";
-
-
-      // if(Atom->getSpelling() == "type") {
-      //   llvm::outs() << "Yup we have a type:\n";
-      // }
-      // llvm::outs() << "Declarator syntax checking!";
-      // if(D->Call) {
-      //   llvm::outs() << "Dumping call!";
-      //   D->Call->dump();
-      // } 
       assert(false && "User-defined types not supported.");
     }
+    // if
     auto TypeLoc = BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second,
                                   D->getType()->getLoc());
     return TypeLoc;

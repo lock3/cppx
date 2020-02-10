@@ -67,6 +67,9 @@ public:
 
   Expression elaborateBlockCondition(const ArraySyntax *Conditions);
 
+  Expression elaborateMacroExpression(const MacroSyntax *Macro);
+  Expression elaborateClass(const MacroSyntax *Macro);
+
 private:
   clang::Expr *handleOperatorDotDot(const CallSyntax *Call);
 
