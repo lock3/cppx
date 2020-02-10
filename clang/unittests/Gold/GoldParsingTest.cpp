@@ -31,9 +31,6 @@
 #include "clang/Gold/GoldSyntax.h"
 
 #include "clang/Gold/GoldSyntaxVisitor.h"
-
-#include "clang/Gold/GoldParser.h"
-#include "clang/Gold/ParseGoldAST.h"
 #include "clang/Tooling/Tooling.h"
 
 
@@ -89,6 +86,7 @@ main() : int!
 }
 
 TEST(GoldParserTest, ClassInstance) {
+
   StringRef Code = R"(
 c : type = class:
   x : int
@@ -105,5 +103,6 @@ main() : int!
                             "temp.usyntax")){
     ASSERT_FALSE(true) << "Parsing error in \"" << Code.str() << "\"";
   }
+
 
 }

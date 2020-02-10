@@ -54,6 +54,7 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
   if(isa<MacroSyntax>(S))
     return elaborateMacroExpression(cast<MacroSyntax>(S));
 
+
   llvm::outs() << "Syntax not handled yet\n";
   S->dump();
   llvm::outs() << "\n";
@@ -584,25 +585,6 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
     auto BuiltinMapIter = BuiltinTypes.find(Atom->getSpelling());
     if (BuiltinMapIter == BuiltinTypes.end()) {
       // FIXME: This requires a type lookup.
-      // Initializing type here?
-      // auto DeclIter = SemaRef.getCurrentScope()->DeclMap.find(D->Call);
-      // if(DeclIter == SemaRef.getCurrentScope()->DeclMap.end()) {
-      //   assert(false && "Failed ot locate declaration.");
-      // }
-      // llvm::outs() << "Declaration retrieved\n";
-      // // Declaration->Op->dump();
-      // DeclIter->second->Op->dump();
-      // llvm::outs() << "\n";
-
-
-      // if(Atom->getSpelling() == "type") {
-      //   llvm::outs() << "Yup we have a type:\n";
-      // }
-      // llvm::outs() << "Declarator syntax checking!";
-      // if(D->Call) {
-      //   llvm::outs() << "Dumping call!";
-      //   D->Call->dump();
-      // } 
       assert(false && "User-defined types not supported.");
     }
 

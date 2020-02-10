@@ -44,11 +44,12 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
     identifyDecl(SS);
   }
 
+  llvm::outs() << "Processing type declarations\n";
   // Pass 2: elaborate the types.
   for (const Syntax *SS : File->children()){
     elaborateDeclType(SS);
   }
-
+  llvm::outs() << "Processing initializations\n";
 
   // Pass 3: elaborate definitions.
   for (const Syntax *SS : File->children()) {

@@ -237,6 +237,10 @@ public:
   using IdMapType = llvm::DenseMap<clang::IdentifierInfo const*, Declaration *>;
   IdMapType IdMap; 
 
+  using TypeDecls = llvm::DenseMap<llvm::StringRef, clang::QualType>;
+  TypeDecls Types;
+  
+
   // FIXME: Is there any purpose for this at all?
   unsigned Depth;
 
