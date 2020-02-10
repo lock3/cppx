@@ -51,6 +51,8 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
     return elaborateAtom(cast<AtomSyntax>(S), clang::QualType());
   if (isa<CallSyntax>(S))
     return elaborateCall(cast<CallSyntax>(S));
+  // if(isa<MacroSyntax>(S)) 
+
 
   llvm::outs() << "Syntax not handled yet\n";
   S->dump();
