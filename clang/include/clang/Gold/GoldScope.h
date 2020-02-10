@@ -17,6 +17,7 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/Stmt.h"
+#include "clang/AST/DeclCXX.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/iterator_range.h"
@@ -207,6 +208,10 @@ enum ScopeKind {
 
   /// The scope associated with a compound statement.
   SK_Block,
+
+  /// The scope associated with a class definition
+  SK_Class,
+
 };
 
 /// Stores information about declarations and the scope they were declared in.
@@ -232,15 +237,22 @@ public:
   using IdMapType = llvm::DenseMap<clang::IdentifierInfo const*, Declaration *>;
   IdMapType IdMap;
 
+  using TypeDecls = llvm::DenseMap<llvm::StringRef, clang::QualType>;
+  TypeDecls Types;
+  
+
   // FIXME: Is there any purpose for this at all?
   unsigned Depth;
 
+  clang::CXXRecordDecl* Record;
 public:
   /// Creates a new scope.
-  Scope(ScopeKind K, const Syntax *S, Scope *P)
-    : Kind(K), Parent(P), Term(S) {
+  Scope(ScopeKind K, const Syntax *S, Scope *P, clang::CXXRecordDecl* R = nullptr)
+    : Kind(K), Parent(P), Term(S), Record(R) {
     Depth = Parent ? Parent->getDepth() + 1 : 0;
   }
+
+  clang::CXXRecordDecl* getCurrentRecord() const;
 
   /// The kind of scope.
   ScopeKind getKind() const {
@@ -311,6 +323,8 @@ public:
     return Iter->second;
   }
 
+  // clang::QualType* findUDT(std::string const& name) 
+
   /// Finds the declaration corresponding to the given syntax or null if
   /// the syntax does not form a declaration.
   Declaration *findDecl(const Syntax *S) const {
@@ -319,6 +333,8 @@ public:
       return nullptr;
     return Iter->second;
   }
+
+  
 };
 
 } // namespace gold
