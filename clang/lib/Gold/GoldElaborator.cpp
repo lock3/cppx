@@ -24,6 +24,7 @@
 #include "clang/Gold/GoldExprElaborator.h"
 #include "clang/Gold/GoldStmtElaborator.h"
 #include "clang/Gold/GoldSyntaxContext.h"
+#include "clang/AST/DeclCXX.h"
 
 namespace gold {
 
@@ -43,11 +44,12 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
     identifyDecl(SS);
   }
 
+  llvm::outs() << "Processing type declarations\n";
   // Pass 2: elaborate the types.
   for (const Syntax *SS : File->children()){
     elaborateDeclType(SS);
   }
-
+  llvm::outs() << "Processing initializations\n";
 
   // Pass 3: elaborate definitions.
   for (const Syntax *SS : File->children()){
@@ -96,10 +98,31 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
-  // if(D->declaresType()) {
-    // llvm::outs() << "Reched expected type!?\n";
-    // assert(false && "We have a type declation!");
-  /*} else*/ if (D->declaresFunction()) {
+  if(D->declaresType()) {
+    llvm::outs() << "Current declaration?!";
+    SemaRef.getCurrentDecl()->Op->dump();
+    llvm::outs() << "\n";
+    llvm::outs() << "Builtin types\n";
+    for(auto const& tmp : BuiltinTypes) {
+      llvm::outs() << tmp.first << " " << tmp.second.getTypePtr()->getTypeClassName() << "\n";
+    }
+    clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+    clang::CXXRecordDecl* ClsDecl =
+        clang::CXXRecordDecl::Create(Context.CxxAST,
+        clang::TagDecl::TagKind::TTK_Class, Owner, D->Decl->getLoc(),
+        D->Init->getLoc(), D->getId());
+    D->Cxx = ClsDecl;
+    SemaRef.getCurrentScope()->Types.try_emplace(D->Id->getName(),
+                                       Context.CxxAST.getTypeDeclType(ClsDecl));
+    llvm::outs() << "Types declared within scope!\n";
+    for(auto const& tmp : SemaRef.getCurrentScope()->Types) {
+      llvm::outs() << tmp.first << " " << tmp.second.getTypePtr()->getTypeClassName() << "\n";
+      tmp.second.dump();
+      llvm::outs() << "\n";
+    }
+    llvm::outs() << "Reched expected type!?\n";
+    assert(false && "We have a type declation!");
+  } else if (D->declaresFunction()) {
     return elaborateFunctionDecl(D);
   } else {
     return elaborateVariableDecl(D);

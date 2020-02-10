@@ -72,6 +72,7 @@ public:
   clang::Decl *elaborateDeclForCall(const CallSyntax *S);
   clang::Decl *elaborateDeclForAtom(const AtomSyntax *S);
 
+  clang::Decl *elaborateTypeExpression(Declaration* Decl);
   // Type elaboration
   clang::QualType elaborateType(Declarator *D);
   clang::QualType elaboratePointerType(Declarator *D, clang::QualType T);
