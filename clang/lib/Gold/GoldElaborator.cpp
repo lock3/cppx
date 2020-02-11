@@ -268,6 +268,20 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   if (!D->Init)
     return;
 
+  // Check for redefinition.
+  Declaration *Iter = D->First;
+  do {
+    clang::FunctionDecl *IterFD = cast_or_null<clang::FunctionDecl>(Iter->Cxx);
+    if (IterFD && IterFD->isThisDeclarationADefinition()) {
+      SemaRef.Diags.Report(FD->getBeginLoc(), clang::diag::err_redefinition)
+        << FD->getName();
+      SemaRef.Diags.Report(IterFD->getBeginLoc(), clang::diag::note_previous_decl)
+        << IterFD->getName();
+      return;
+    }
+    Iter = Iter->Next;
+  } while (Iter != D->First);
+
   SemaRef.pushDecl(D);
 
   // We saved the parameter scope while elaborating this function's type,
@@ -563,18 +577,8 @@ void Elaborator::identifyDecl(const Syntax *S) {
 
       clang::IdentifierInfo* Id = getIdentifier(*this, Dcl);
 
-      // If we're in namespace or parameter scope and this identifier already
-      // exists, consider it a redeclaration.
-      // TODO: distinguish between redefinition, redeclaration, and redeclaration
-      // with different type.
       Scope *CurScope = SemaRef.getCurrentScope();
-      if (CurScope->isNamespaceScope() || CurScope->isParameterScope()) {
-        if (CurScope->findDecl(Id)) {
-          SemaRef.Diags.Report(S->getLoc(), clang::diag::err_redefinition) <<
-            clang::DeclarationName(Id);
-          return;
-        }
-      } else if (CurScope->isBlockScope()) {
+      if (CurScope->isBlockScope()) {
         // If we're assigning to a name that already exist in the current block,
         // then we're not declaring anything. For example:
         // \code
@@ -592,9 +596,22 @@ void Elaborator::identifyDecl(const Syntax *S) {
       Declaration *ParentDecl = SemaRef.getCurrentDecl();
       Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, Init);
       TheDecl->Id = Id;
+
+      // If we're in namespace or parameter scope and this identifier already
+      // exists, consider it a redeclaration.
+      // TODO: distinguish between redefinition, redeclaration, and redeclaration
+      // with different type.
+      if (CurScope->isNamespaceScope() || CurScope->isParameterScope()) {
+        if (Declaration *OldDecl = CurScope->findDecl(Id)) {
+          TheDecl->setPreviousDecl(OldDecl);
+          // SemaRef.Diags.Report(S->getLoc(), clang::diag::err_redefinition) <<
+          //   clang::DeclarationName(Id);
+          // return;
+        }
+      }
+
       SemaRef.getCurrentScope()->addDecl(TheDecl);
     }
-
   }
 
   // FIXME: What other kinds of things are declarations?
