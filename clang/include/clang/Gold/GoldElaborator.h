@@ -27,6 +27,7 @@ namespace clang
 {
 class Preprocessor;
 class Stmt;
+class CXXRecordDecl;
 } // namespace clang
 
 namespace gold {
@@ -80,6 +81,10 @@ public:
   clang::QualType elaborateFunctionType(Declarator *D, clang::QualType T);
   clang::QualType elaborateExplicitType(Declarator *D, clang::QualType T);
 
+  clang::Decl *elaborateTypeBody(Declaration *D, clang::CXXRecordDecl *R);
+  clang::Decl *elaborateField(Declaration *D);
+
+
   // Identification (1st pass)
   void identifyDecl(const Syntax *S);
   void identifyDeclFromCall(const CallSyntax *S);
@@ -129,6 +134,8 @@ public:
     {"float128_t", Context.CxxAST.Float128Ty},
     {"type", Context.CxxAST.CppxKindTy},
   };
+
+  
 };
 
 /// Represents different kinds of fused operator strings, for example,
