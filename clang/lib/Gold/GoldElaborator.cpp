@@ -268,19 +268,8 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   if (!D->Init)
     return;
 
-  // Check for redefinition.
-  Declaration *Iter = D->First;
-  do {
-    clang::FunctionDecl *IterFD = cast_or_null<clang::FunctionDecl>(Iter->Cxx);
-    if (IterFD && IterFD->isThisDeclarationADefinition()) {
-      SemaRef.Diags.Report(FD->getBeginLoc(), clang::diag::err_redefinition)
-        << FD->getName();
-      SemaRef.Diags.Report(IterFD->getBeginLoc(), clang::diag::note_previous_decl)
-        << IterFD->getName();
-      return;
-    }
-    Iter = Iter->Next;
-  } while (Iter != D->First);
+  if (SemaRef.checkForRedefinition<clang::FunctionDecl>(D))
+    return;
 
   SemaRef.pushDecl(D);
 
@@ -321,6 +310,10 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     // this should be an error.
     return;
   }
+
+  // FIXME: If we synthesize initializers, this might need to happen before that
+  if (SemaRef.checkForRedefinition<clang::VarDecl>(D))
+    return;
 
   // Elaborate the initializer.
   ExprElaborator ExprElab(Context, SemaRef);
