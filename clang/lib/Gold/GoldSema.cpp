@@ -72,6 +72,10 @@ void Sema::enterScope(ScopeKind K, const Syntax *S) {
   pushScope(new Scope(K, S, getCurrentScope()));
 }
 
+void Sema::enterScope(clang::CXXRecordDecl* R, const Syntax* S) {
+  pushScope(new Scope(SK_Class, S, getCurrentScope(), R));
+}
+
 void Sema::leaveScope(const Syntax *S) {
   assert(getCurrentScope()->getConcreteTerm() == S);
   // FIXME: Delete the scope. Note that we don't delete the scope in saveScope.

@@ -272,7 +272,11 @@ public:
   }
 
   bool isBlockScope() const {
-    return Kind >= SK_Block;
+    return Kind == SK_Block;
+  }
+
+  bool isClassScope() const {
+    return Kind == SK_Class;
   }
 
   /// The parent of this scope.
