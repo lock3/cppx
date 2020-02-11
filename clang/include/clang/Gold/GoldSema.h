@@ -84,6 +84,7 @@ public:
   /// used for the elaboration of function and template parameters, which
   /// have no corresponding declaration at the point of elaboration.
   void enterScope(ScopeKind K, const Syntax *S);
+  void enterScope(clang::CXXRecordDecl* R, const Syntax* S);
 
   /// Leave the current scope. The syntax S must match the syntax for
   /// which the scope was initially pushed.
