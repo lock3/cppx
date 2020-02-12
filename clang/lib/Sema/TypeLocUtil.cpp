@@ -426,7 +426,8 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::TagTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::RecordTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  TLB.pushTypeSpec(Ty);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::RecordTypeLoc>

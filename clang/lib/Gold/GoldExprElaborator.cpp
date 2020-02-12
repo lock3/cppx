@@ -574,31 +574,26 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
     SourceRange(), SourceLocation(), Params);
 }
 
+
+
 Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   assert(isa<clang::AutoType>(Ty->getType()));
   assert(D->Kind == DK_Type);
-  // D->printSequence(llvm::outs());
 
   // FIXME: We should really elaborate the entire type expression. We're
-  // just cheating for now.
+  // just cheating for now
+  // BMB: Or Something like that.
   if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
-    auto BuiltinMapIter = BuiltinTypes.find(Atom->getSpelling());
-    if (BuiltinMapIter == BuiltinTypes.end()) {
-      auto TypeIter = SemaRef.getCurrentScope()->Types.find(Atom->getSpelling());
-      if(TypeIter == SemaRef.getCurrentScope()->Types.end()) {
-        llvm::outs() << "Kist of types from ASTContext\n";
-        for(auto const* T : Context.CxxAST.getTypes()) {
-          llvm::outs() << "Type: ";
-          T->dump();
-          llvm::outs() << "\n";
-        }
-        assert(false && "Type not found.");
-      }
+    auto TypeName = Atom->getSpelling();
+    // llvm::outs() << "Given type name: " << TypeName << "\n";
+    clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(TypeName);
+    clang::QualType QT = SemaRef.lookUpType(IdInfo, SemaRef.getCurrentScope());
+    if(QT.isNull()) {
+      llvm::outs() << "Returned QualType: ";
+      QT.dump();
+      llvm::outs()<< "\n";
     }
-
-    auto TypeLoc = BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second,
-                                  D->getType()->getLoc());
-    return TypeLoc;
+    return BuildAnyTypeLoc(CxxAST, QT, D->getType()->getLoc());
   }
 
   llvm_unreachable("Unknown type specification");

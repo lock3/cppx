@@ -145,14 +145,32 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 
   if (R.empty() && LookupKind == clang::Sema::LookupTagName) {
     auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
-    if (BuiltinMapIter != BuiltinTypes.end())
+    if (BuiltinMapIter != BuiltinTypes.end()) {
       return true;
-    else
+    } else {
       ; // FIXME: This requires a type lookup.
+    }
   }
 
   return !R.empty();
 }
+
+clang::QualType Sema::lookUpType(clang::IdentifierInfo *Id, Scope *S) const {
+  auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
+  if (BuiltinMapIter != BuiltinTypes.end()) {
+    return BuiltinMapIter->second;
+  }
+  while (S) {
+    clang::QualType Ty = S->getUserDefinedType(Id);
+    if (!Ty.isNull()) 
+      return Ty; 
+    S = S->getParent();
+  }
+  llvm::outs() << "Failed to locate type: " << Id->getName() << "\n";
+  return clang::QualType();
+}
+
+
 
 } // namespace gold
 

@@ -145,4 +145,23 @@ void Declaration::setPreviousDecl(Declaration *Prev) {
   Next = First;
 }
 
+void Scope::addUserDefinedType(clang::IdentifierInfo* Id, clang::QualType QualTy) {
+  auto ItPair = TypeIdMap.try_emplace(Id, QualTy);
+  if(!ItPair.second) {
+    // TODO: Figure out how to print correct diagonstics here.
+    llvm::outs() << "Duplicate Identifer located. Name: " << Id->getName() << " QualType Given: ";
+    QualTy.dump();
+    llvm::outs() << "\n";
+    assert(false && "Invalid typename.");
+  }
+}
+
+clang::QualType Scope::getUserDefinedType(clang::IdentifierInfo* Id) const {
+  auto It = TypeIdMap.find(Id);
+  if(It == TypeIdMap.end()) {
+    return clang::QualType();
+  }
+  return It->second;
+}
+
 } // namespace gold

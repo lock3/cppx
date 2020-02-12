@@ -59,7 +59,6 @@ class Sema {
 
   // Stack of active Scopes.
   llvm::SmallVector<Scope *, 4> ScopeStack;
-
   // The declaration context.
   Declaration *CurrentDecl;
 public:
@@ -150,6 +149,8 @@ public:
 
   SyntaxContext &getContext() { return Context; }
 
+  clang::QualType lookUpType(clang::IdentifierInfo *Id, Scope *S) const;
+
 public:
   // The context
   SyntaxContext &Context;
@@ -204,6 +205,7 @@ public:
     {"double", Context.CxxAST.DoubleTy},
     {"long double", Context.CxxAST.LongDoubleTy},
     {"float128_t", Context.CxxAST.Float128Ty},
+    {"type", Context.CxxAST.CppxKindTy},
   };
 };
 

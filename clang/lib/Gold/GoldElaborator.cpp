@@ -54,6 +54,12 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   }
   finishFile(S);
 
+  // llvm::outs() << "Type: \n";
+  // for (clang::Type const *Ty : Context.CxxAST.getTypes()) {
+  //   Ty->dump();
+  //   llvm::outs() << "\n";
+  // }
+
   return Context.CxxAST.getTranslationUnitDecl();
 }
 
@@ -101,16 +107,23 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
         clang::TagDecl::TagKind::TTK_Struct, Owner, D->Decl->getLoc(),
         D->Init->getLoc(), D->getId());
     D->Cxx = ClsDecl;
-    SemaRef.getCurrentScope()->Types.try_emplace(D->Id->getName(),
+    SemaRef.getCurrentScope()->addUserDefinedType(D->Id,
                                        Context.CxxAST.getTypeDeclType(ClsDecl));
+
+
     SemaRef.enterScope(ClsDecl, D->Init);
     SemaRef.pushDecl(D);
-    // Creating implicitly declared record within class body.
-    clang::Decl* ret = elaborateTypeBody(D, ClsDecl);
+    clang::Decl* Ret = elaborateTypeBody(D, ClsDecl);
     SemaRef.popDecl();
     SemaRef.leaveScope(D->Init);
-    Context.CxxAST.getTranslationUnitDecl()->addDecl(ret);
-    return ret;
+    Context.CxxAST.getTranslationUnitDecl()->addDecl(Ret);
+    // clang::Decl* Tmp;
+    clang::Decl *Temp = ClsDecl;
+    clang::Scope* Scpe = SemaRef.getCxxSema().getCurScope();
+    llvm::outs() << Scpe << "\n";
+    SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCxxSema().getCurScope(), Temp,
+                                      {D->Decl->getLoc(), D->Init->getLoc() });
+    return Ret;
   } else if (D->declaresFunction()) {
 
     return elaborateFunctionDecl(D);
@@ -385,15 +398,15 @@ clang::Decl *Elaborator::elaborateTypeBody(Declaration* D, clang::CXXRecordDecl*
   R->startDefinition();  
   // TODO: Each one of these declarations needs to be added somewhere so that
   // we can process types.
-  for(auto const* ChildDecl : BodyArray->children()) {
+  for (auto const* ChildDecl : BodyArray->children()) {
     identifyDecl(ChildDecl);
   }
 
   // Processing all sub declarations?
-  for (const Syntax *SS : BodyArray->children()){
+  for (const Syntax *SS : BodyArray->children()) {
     elaborateDeclType(SS);
   }
-  // TODO:/FIXME: Need to create a means for building member functions.
+  // TODO:/FIXME: Need to create a means for building member functions/initializers
   // for (const Syntax *SS : BodyArray->children()) {
   //   elaborateDeclInit(SS);
   // }
@@ -438,15 +451,15 @@ clang::QualType Elaborator::getOperatorColonType(const CallSyntax *S) const {
   // two arguments, the entity (argument 1) and its type (argument 2).
 
   // Right now this has to be an explicitly named type.
-  if (const AtomSyntax *Typename = dyn_cast<AtomSyntax>(S->getArgument(1))) {
-    auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
-    if (BuiltinMapIter == BuiltinTypes.end())
-      assert(false && "Only builtin types are supported right now.");
+  // if (const AtomSyntax *Typename = dyn_cast<AtomSyntax>(S->getArgument(1))) {
+  //   auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
+  //   if (BuiltinMapIter == BuiltinTypes.end())
+  //     assert(false && "Only builtin types are supported right now.");
 
-    return BuiltinMapIter->second;
-  }
+  //   return BuiltinMapIter->second;
+  // }
 
-  assert(false && "User defined types are not supported yet.");
+  assert(false && "Working on fixing this.");
 }
 
 static Declarator *buildIdDeclarator(const AtomSyntax *S, Declarator *Next) {

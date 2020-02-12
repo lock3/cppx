@@ -96,46 +96,6 @@ public:
 
   void startFile(const Syntax *S);
   void finishFile(const Syntax *S);
-
-  // Dictionary of built in types.
-  //
-  // FIXME: This should be initialized in the constructor.
-  const std::unordered_map<std::string, clang::QualType> BuiltinTypes = {
-    {"void", Context.CxxAST.VoidTy},
-    {"bool", Context.CxxAST.BoolTy},
-    {"char", Context.CxxAST.CharTy},
-    {"wchar_t", Context.CxxAST.WideCharTy},
-    {"wint_t", Context.CxxAST.WIntTy},
-    {"char8_t", Context.CxxAST.Char8Ty},
-    {"char16_t", Context.CxxAST.Char16Ty},
-    {"char32_t", Context.CxxAST.Char32Ty},
-    {"signed char", Context.CxxAST.SignedCharTy},
-    {"short", Context.CxxAST.ShortTy},
-    {"short int", Context.CxxAST.ShortTy},
-    {"int", Context.CxxAST.IntTy},
-    {"long", Context.CxxAST.LongTy},
-    {"long int", Context.CxxAST.LongTy},
-    {"long long", Context.CxxAST.LongLongTy},
-    {"long long int", Context.CxxAST.LongLongTy},
-    {"int128_t", Context.CxxAST.Int128Ty},
-    {"unsigned char", Context.CxxAST.UnsignedCharTy},
-    {"unsigned short", Context.CxxAST.UnsignedShortTy},
-    {"unsigned short int", Context.CxxAST.UnsignedShortTy},
-    {"unsigned", Context.CxxAST.UnsignedIntTy},
-    {"unsigned int", Context.CxxAST.UnsignedIntTy},
-    {"unsigned long", Context.CxxAST.UnsignedLongTy},
-    {"unsigned long int", Context.CxxAST.UnsignedLongTy},
-    {"unsigned long long", Context.CxxAST.UnsignedLongLongTy},
-    {"unsigned long long int", Context.CxxAST.UnsignedLongLongTy},
-    {"uint128_t", Context.CxxAST.UnsignedInt128Ty},
-    {"float", Context.CxxAST.FloatTy},
-    {"double", Context.CxxAST.DoubleTy},
-    {"long double", Context.CxxAST.LongDoubleTy},
-    {"float128_t", Context.CxxAST.Float128Ty},
-    {"type", Context.CxxAST.CppxKindTy},
-  };
-
-  
 };
 
 /// Represents different kinds of fused operator strings, for example,
