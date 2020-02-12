@@ -587,8 +587,16 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
     auto BuiltinMapIter = BuiltinTypes.find(Atom->getSpelling());
     if (BuiltinMapIter == BuiltinTypes.end()) {
-      // FIXME: This requires a type lookup.
-      assert(false && "User-defined types not supported.");
+      auto TypeIter = SemaRef.getCurrentScope()->Types.find(Atom->getSpelling());
+      if(TypeIter == SemaRef.getCurrentScope()->Types.end()) {
+        llvm::outs() << "Kist of types from ASTContext\n";
+        for(auto const* T : Context.CxxAST.getTypes()) {
+          llvm::outs() << "Type: ";
+          T->dump();
+          llvm::outs() << "\n";
+        }
+        assert(false && "Type not found.");
+      }
     }
     // if
     auto TypeLoc = BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second,
