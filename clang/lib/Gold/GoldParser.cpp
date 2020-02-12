@@ -335,7 +335,7 @@ Syntax *Parser::parseExpr()
 
     // FIXME: Skip to the end of the list or stmt/line.
     if (Val == Syntax::error)
-      return Syntax::error;
+      return onError();
 
     return onBinary(Op, Def, Val);
   }
@@ -427,7 +427,7 @@ Syntax *Parser::parseDef() {
     } else {
       // FIXME: Skip to the end of the list or stmt/line.
       Diags.Report(getInputLocation(), clang::diag::err_expected) << "expected '{' or indent";
-      return Syntax::error;
+      return onError();
     }
 
     return onBinary(op, def, body);
@@ -776,7 +776,7 @@ Syntax *Parser::parseCall(Syntax *fn)
 {
   EnclosingParens parens(*this);
   if (!parens.expectOpen())
-    return Syntax::error;
+    return onError();
 
   // Don't parse an array if the parens are empty.
   //
@@ -791,7 +791,7 @@ Syntax *Parser::parseCall(Syntax *fn)
     Args = onList(ArgArray, llvm::SmallVector<Syntax*, 0>());
 
   if (!parens.expectClose())
-    return Syntax::error;
+    return onError();
 
   return onCall({parens.open, parens.close}, fn, Args);
 }
@@ -800,13 +800,13 @@ Syntax *Parser::parseElem(Syntax *map)
 {
   EnclosingBrackets brackets(*this);
   if (!brackets.expectOpen())
-    return Syntax::error;
+    return onError();
 
   // FIXME: Can the argument list be optional?
   Syntax *args = parseArray(ArgArray);
 
   if (!brackets.expectClose())
-    return Syntax::error;
+    return onError();
 
   return onElem({brackets.open, brackets.close}, map, args);
 }
@@ -839,6 +839,30 @@ Syntax *Parser::parsePrimary() {
   case tok::LeftParen:
     return parseParen();
 
+  case tok::VoidKeyword:
+  case tok::BoolKeyword:
+  case tok::CharKeyword:
+  case tok::Wchar_tKeyword:
+  case tok::Wint_tKeyword:
+  case tok::Char8_tKeyword:
+  case tok::Char16_tKeyword:
+  case tok::Char32_tKeyword:
+  case tok::SignedCharKeyword:
+  case tok::ShortKeyword:
+  case tok::IntKeyword:
+  case tok::LongKeyword:
+  case tok::LongLongKeyword:
+  case tok::Int128_tKeyword:
+  case tok::UnsignedCharKeyword:
+  case tok::UnsignedShortKeyword:
+  case tok::UnsignedKeyword:
+  case tok::UnsignedLongKeyword:
+  case tok::UnsignedLongLongKeyword:
+  case tok::Uint128_tKeyword:
+  case tok::FloatKeyword:
+  case tok::DoubleKeyword:
+  case tok::LongDoubleKeyword:
+  case tok::Float128_tKeyword:
   case tok::TypeKeyword:
     return onLiteral(consumeToken());
 
@@ -849,7 +873,7 @@ Syntax *Parser::parsePrimary() {
   // Diagnose the error and consume the token so we don't see it again.
   Diags.Report(getInputLocation(), clang::diag::err_expected) << "primary-expression";
   consumeToken();
-  return Syntax::error;
+  return onError();
 }
 
 /// id:
@@ -857,21 +881,21 @@ Syntax *Parser::parsePrimary() {
 Syntax *Parser::parseId() {
   Token id = expectToken(tok::Identifier);
   if (!id)
-    return Syntax::error;
+    return onError();
   return onAtom(id);
 }
 
 Syntax *Parser::parseParen() {
   EnclosingParens parens(*this);
   if (!parens.expectOpen())
-    return Syntax::error;
+    return onError();
 
   // TODO: If this is an Syntax::error, should we skip to the next paren or
   // to the the nearest comma? separator? What?
   Syntax *seq = parseArray(ArgArray);
 
   if (!parens.expectClose())
-    return Syntax::error;
+    return onError();
 
   return seq;
 }
@@ -881,13 +905,13 @@ Syntax *Parser::parseParen() {
 Syntax *Parser::parseBracedArray() {
   EnclosingBraces braces(*this);
   if (!braces.expectOpen())
-    return Syntax::error;
+    return onError();
 
   // FIXME: How do we recover from errors?
   Syntax *ret = parseArray(BlockArray);
 
   if (!braces.expectClose())
-    return Syntax::error;
+    return onError();
 
   return ret;
 }
@@ -897,12 +921,12 @@ Syntax *Parser::parseBracedArray() {
 Syntax *Parser::parseNestedArray() {
   EnclosingTabs Tabs(*this);
   if (!Tabs.expectOpen())
-    return Syntax::error;
+    return onError();
 
   Syntax *ret = parseArray(BlockArray);
 
   if (!Tabs.expectClose())
-    return Syntax::error;
+    return onError();
 
   return ret;
 }
@@ -1024,6 +1048,10 @@ Syntax *Parser::onLoop(Token const& Tok, Syntax *e1, Syntax *e2) {
 
 Syntax *Parser::onFile(const llvm::SmallVectorImpl<Syntax*> &Vec) {
   return new (Context) FileSyntax(createArray(Context, Vec), Vec.size());
+}
+
+Syntax *Parser::onError() const {
+  return Syntax::error;
 }
 
 } // namespace gold
