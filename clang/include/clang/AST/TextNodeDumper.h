@@ -363,6 +363,7 @@ public:
 
   void VisitGoldErrorSyntax(const gold::ErrorSyntax *S);
   void VisitGoldAtomSyntax(const gold::AtomSyntax *S);
+  void VisitGoldLiteralSyntax(const gold::LiteralSyntax *S);
   void VisitGoldListSyntax(const gold::ListSyntax *S);
   void VisitGoldArraySyntax(const gold::ArraySyntax *S);
   void VisitGoldCallSyntax(const gold::CallSyntax *S);

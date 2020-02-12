@@ -839,6 +839,9 @@ Syntax *Parser::parsePrimary() {
   case tok::LeftParen:
     return parseParen();
 
+  case tok::TypeKeyword:
+    return onLiteral(consumeToken());
+
   default:
     break;
   }
@@ -950,6 +953,10 @@ static Syntax *makeCall(const SyntaxContext &Ctx, const Token& Tok,
 
 Syntax *Parser::onAtom(const Token& Tok) {
   return new (Context) AtomSyntax(Tok);
+}
+
+Syntax *Parser::onLiteral(const Token& Tok) {
+  return new (Context) LiteralSyntax(Tok);
 }
 
 Syntax *Parser::onArray(ArraySemantic S,

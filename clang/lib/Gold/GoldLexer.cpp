@@ -72,6 +72,11 @@ CharacterScanner::CharacterScanner(clang::SourceManager &SM, File const& F)
   // Bypass the byte order mark.
   if (std::equal(BOM, BOM + 3, First, Last))
     First += 3;
+
+  // Build the keyword table.
+#define def_keyword(K, S)                       \
+  Keywords.try_emplace(S, tok::K ## Keyword);
+#include "clang/Gold/GoldTokens.def"
 }
 
 Token CharacterScanner::operator()() {
@@ -304,6 +309,13 @@ Token CharacterScanner::matchWord() {
   consume();
   while (isIdentifierRest(getLookahead()))
     consume();
+
+  // This might be a keyword.
+  llvm::StringRef Str(Start, First - Start);
+  auto Iter = Keywords.find(Str);
+  if (Iter != Keywords.end())
+    return makeToken(Iter->second, Start, First);
+
   return makeToken(tok::Identifier, Start, First);
 }
 

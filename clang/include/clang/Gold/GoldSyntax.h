@@ -101,6 +101,12 @@ struct AtomSyntax : Syntax {
     : Syntax(SK_Atom), Tok(Tok)
   {}
 
+protected:
+  AtomSyntax(SyntaxKind K, Token Tok)
+    : Syntax(K), Tok(Tok)
+  {}
+
+public:
   const Token& getToken() const {
     return Tok;
   }
@@ -127,6 +133,17 @@ struct AtomSyntax : Syntax {
 
   /// The token for the atom.
   Token Tok;
+};
+
+/// Represents literal values.
+struct LiteralSyntax : AtomSyntax {
+  LiteralSyntax(const Token &Tok)
+    : AtomSyntax(SK_Literal, Tok)
+  { }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == SK_Literal;
+  }
 };
 
 /// An arbitrary, but known, length sequence of terms (e.g., the arguments

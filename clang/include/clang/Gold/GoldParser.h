@@ -252,6 +252,7 @@ namespace gold
     // Semantic actions
 
     Syntax* onAtom(const Token& tok);
+    Syntax* onLiteral(const Token& tok);
     Syntax* onArray(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
     Syntax* onList(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
     Syntax* onBinary(const Token& tok, Syntax* e1, Syntax* e2);

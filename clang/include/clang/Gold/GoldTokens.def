@@ -7,6 +7,10 @@
 #  define def_puncop(K, S) def_token(K)
 #endif
 
+#ifndef def_keyword
+#  define def_keyword(K, S) def_token(K)
+#endif
+
 def_token(EndOfFile)
 def_token(Invalid)
 def_token(Unknown)
@@ -67,6 +71,39 @@ def_puncop(DotDot, "..")
 
 def_puncop(Ellipsis, "...")
 
+def_keyword(Void, "void")
+def_keyword(Bool, "bool")
+def_keyword(Char, "char")
+def_keyword(Wchar_t, "wchar_t")
+def_keyword(Wint_t, "wint_t")
+def_keyword(Char8_t, "char8_t")
+def_keyword(Char16_t, "char16_t")
+def_keyword(Char32_t, "char32_t")
+def_keyword(SignedChar, "signed char")
+def_keyword(Short, "short")
+// def_keyword(Short, "short int")
+def_keyword(Int, "int")
+def_keyword(Long, "long")
+// def_keyword(Long, "long int")
+def_keyword(LongLong, "long long")
+// def_keyword(LongLong, "long long int")
+def_keyword(Int128_t, "int128_t")
+def_keyword(UnsignedChar, "unsigned char")
+def_keyword(UnsignedShort, "unsigned short")
+// def_keyword(UnsignedShort, "unsigned short int")
+def_keyword(Unsigned, "unsigned")
+// def_keyword(Unsigned, "unsigned int")
+def_keyword(UnsignedLong, "unsigned long")
+// def_keyword(UnsignedLong, "unsigned long int")
+def_keyword(UnsignedLongLong, "unsigned long long")
+// def_keyword(UnsignedLongLong, "unsigned long long int")
+def_keyword(Uint128_t, "uint128_t")
+def_keyword(Float, "float")
+def_keyword(Double, "double")
+def_keyword(LongDouble, "long double")
+def_keyword(Float128_t, "float128_t")
+def_keyword(Type, "type")
+
 def_token(Identifier)
 def_token(BinaryInteger)
 def_token(DecimalInteger)
@@ -76,5 +113,6 @@ def_token(HexadecimalFloat)
 def_token(Character)
 def_token(String)
 
+#undef def_keyword
 #undef def_puncop
 #undef def_token

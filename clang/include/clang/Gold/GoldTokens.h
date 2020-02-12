@@ -26,6 +26,8 @@ namespace tok {
 enum TokenKind : unsigned short {
 #define def_token(K) \
   K,
+#define def_keyword(K, S) \
+  K ## Keyword,
 #include "clang/Gold/GoldTokens.def"
 };
 } // namespace tok
