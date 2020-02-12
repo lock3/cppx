@@ -15,6 +15,7 @@
 #ifndef CLANG_GOLD_GOLDSEMA_H
 #define CLANG_GOLD_GOLDSEMA_H
 
+#include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -117,9 +118,32 @@ public:
   /// Make the owner of CurrentDecl current.
   void popDecl();
 
-
   // Iterate through the mapped identifiers and determine their type.
   void elaborateDecls();
+
+  /// Iterate through a Declarations redecl chain and see if it has
+  /// already been defined.
+  /// \param Start - The decl we are beginning the search with.
+  template <typename DeclType>
+  bool checkForRedefinition(Declaration *Start) {
+    using clang::cast;
+    using clang::cast_or_null;
+
+    Declaration *Iter = Start->First;
+    do {
+      DeclType *IterD = cast_or_null<DeclType>(Iter->Cxx);
+      if (IterD && IterD->isThisDeclarationADefinition()) {
+        DeclType *StartCxx = cast<DeclType>(Start->Cxx);
+        Diags.Report(StartCxx->getBeginLoc(), clang::diag::err_redefinition)
+          << StartCxx->getName();
+        Diags.Report(IterD->getBeginLoc(), clang::diag::note_previous_decl)
+          << IterD->getName();
+        return true;
+      }
+    } while (Iter != Start->First);
+
+    return false;
+  }
 
   clang::Sema &getCxxSema() { return CxxSema; }
 

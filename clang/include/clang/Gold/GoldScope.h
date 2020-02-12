@@ -152,6 +152,9 @@ public:
   /// The corresponding C++ declaration as a context.
   clang::DeclContext *getCxxContext() const;
 
+  /// Set the previous declaration in the redeclaration chain.
+  void setPreviousDecl(Declaration *Prev);
+
   /// The owning context.
   Declaration *Cxt;
 
@@ -172,6 +175,16 @@ public:
 
   /// The corresponding C++ declaration.
   clang::Decl* Cxx = nullptr;
+
+  /// Below are declarations pertaining to the redeclaration chain, which
+  /// is a circularly linked list containing declarations with the same
+  /// signature.
+
+  /// The first declaration in the redeclaration chain.
+  Declaration *First = this;
+
+  /// The next decl in the redeclaration chain.
+  Declaration *Next = nullptr;
 };
 
 /// Different kinds of scope.

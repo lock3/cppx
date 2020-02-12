@@ -124,4 +124,10 @@ clang::DeclContext *Declaration::getCxxContext() const {
   return clang::Decl::castToDeclContext(Cxx);
 }
 
+void Declaration::setPreviousDecl(Declaration *Prev) {
+  Prev->Next = this;
+  First = Prev->First;
+  Next = First;
+}
+
 } // namespace gold
