@@ -50,7 +50,6 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-TEST(GoldParserTest, ClassTesting) {
 /*
 TranslationUnitDecl 0x7ffff3816088 <<invalid sloc>> <invalid sloc>
 
@@ -71,6 +70,7 @@ TranslationUnitDecl 0x7ffff3816088 <<invalid sloc>> <invalid sloc>
     `-ReturnStmt 0x7ffff3854a10 <line:7:3, col:10>
       `-IntegerLiteral 0x7ffff38549f0 <col:10> 'int' 0
 */
+TEST(GoldParserTest, ClassTesting) {
   StringRef Code = R"(
 c : type = class:
   x : int
@@ -86,12 +86,23 @@ main() : int!
                             "temp.usyntax")){
     ASSERT_FALSE(true) << "Parsing error in \"" << Code.str() << "\"";
   }
-  // auto AST =
-  //     tooling::buildASTFromCodeWithArgs(Code, {"-x", "gold"}, "temp.usyntax", "gold");
-  // ASTContext &Ctx = AST->getASTContext();
-  // assert(Ctx.getTargetInfo().getDataLayout().getGlobalPrefix() &&
-  //        "Expected target to have a global prefix");
-  // // ASSERT_FALSE(true) << "Working on it.";
-  // clang::ASTContext Context;
-  // Parse
+}
+
+TEST(GoldParserTest, ClassInstance) {
+  StringRef Code = R"(
+c : type = class:
+  x : int
+  y : bool
+
+main() : int!
+  q : c
+  return 0
+  )";
+  MatchFinder Finder;
+  std::unique_ptr<FrontendActionFactory> Factory(
+      newFrontendActionFactory<GoldSyntaxAction>());
+  if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "gold"},
+                            "temp.usyntax")){
+    ASSERT_FALSE(true) << "Parsing error in \"" << Code.str() << "\"";
+  }
 }
