@@ -235,11 +235,7 @@ public:
   /// FIXME: For overloading a single identifier can refer to a set of
   /// declarations. We'll need to adjust this in order to make it work.
   using IdMapType = llvm::DenseMap<clang::IdentifierInfo const*, Declaration *>;
-  IdMapType IdMap;
-
-  using TypeDecls = llvm::DenseMap<llvm::StringRef, clang::QualType>;
-  TypeDecls Types;
-  
+  IdMapType IdMap; 
 
   // FIXME: Is there any purpose for this at all?
   unsigned Depth;
