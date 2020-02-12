@@ -107,6 +107,25 @@ TranslationUnitDecl 0x7ffff3816088 <<invalid sloc>> <invalid sloc>
     `-ReturnStmt 0x7ffff3854a10 <line:7:3, col:10>
       `-IntegerLiteral 0x7ffff38549f0 <col:10> 'int' 0
 */
+TEST(GoldParserTest, ClassTesting) {
+  StringRef Code = R"(
+c : type = class:
+  x : int
+  y : bool
+
+main() : int!
+  return 0
+  )";
+  MatchFinder Finder;
+  std::unique_ptr<FrontendActionFactory> Factory(
+      newFrontendActionFactory<GoldSyntaxAction>());
+  if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "gold"},
+                            "temp.usyntax")){
+    ASSERT_FALSE(true) << "Parsing error in \"" << Code.str() << "\"";
+  }
+}
+
+TEST(GoldParserTest, ClassInstance) {
   StringRef Code = R"(
 c : type = class:
   x : int
@@ -123,6 +142,5 @@ main() : int!
                             "temp.usyntax")){
     ASSERT_FALSE(true) << "Parsing error in \"" << Code.str() << "\"";
   }
-
 
 }
