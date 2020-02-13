@@ -265,6 +265,7 @@ namespace gold
     Syntax* onElse(const Token& tok, Syntax* e1);
     Syntax* onLoop(const Token& tok, Syntax* e1, Syntax* e2);
     Syntax* onFile(const llvm::SmallVectorImpl<Syntax*>& Vec);
+    Syntax* onError() const;
 
     /// The lexer.
     Lexer Lex;
