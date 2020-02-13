@@ -124,7 +124,8 @@ public:
   }
 
   static bool classof(const Syntax *S) {
-    return S->getKind() == SK_Atom;
+    return S->getKind() == SK_Atom ||
+      S->getKind() == SK_Literal;
   }
 
   clang::SourceLocation getTokenLoc() const {
