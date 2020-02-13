@@ -29,6 +29,6 @@ x : int
 TEST(GlobalVariables, SimpleDeclWithInit) {
   StringRef Code = R"(
 x : int = 9
-  )";
+)";
   SimpleGoldParseTest(Code);
 }
