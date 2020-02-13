@@ -83,6 +83,7 @@ public:
   Expression elaborateArrayType(Declarator *D, TypeInfo *Ty);
   Expression elaborateFunctionType(Declarator *D, TypeInfo *Ty);
   Expression elaborateExplicitType(Declarator *D, TypeInfo *Ty);
+
 };
 
 } // namespace gold

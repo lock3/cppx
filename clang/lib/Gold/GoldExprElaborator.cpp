@@ -450,7 +450,6 @@ static void getDeclarators(Declarator *D,
 }
 
 Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
-
   // The type of a declarator is constructed back-to-front.
   llvm::SmallVector<Declarator *, 4> Decls;
   getDeclarators(D, Decls);
@@ -459,9 +458,12 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
   // is auto. This will be replaced if an explicit type specifier is given.
   clang::QualType AutoType = CxxAST.getAutoDeductType();
   TypeInfo *TInfo = BuildAnyTypeLoc(CxxAST, AutoType, D->getLoc());
-
+  // for (auto Iter = Decls.begin(); Iter != Decls.  end(); ++Iter) {
+  //   llvm::outs() << "Sub declaration: " << (*Iter)->getString() << "\n";
+  // }
   for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
     D = *Iter;
+    // llvm::outs() << "Processing declaration: " << D->getString() << "\n";
     switch (D->Kind) {
     case DK_Identifier:
       // The identifier is not part of the type.
@@ -579,10 +581,11 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
 Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   assert(isa<clang::AutoType>(Ty->getType()));
   assert(D->Kind == DK_Type);
+  // D->printSequence(llvm::outs());
 
   llvm::outs() << "Type received: \n";
   D->Data.Type->dump();
-  // FIXME: We should really elaborate the entire type expression. We're
+  // TODO: We need to make sure we do actual look up.
   // just cheating for now
   // BMB: Or Something like that.
   if (const auto *Literal = dyn_cast<LiteralSyntax>(D->Data.Type)) {

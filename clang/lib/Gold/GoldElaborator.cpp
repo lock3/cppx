@@ -34,7 +34,6 @@ Elaborator::Elaborator(SyntaxContext &Context, Sema &SemaRef)
 clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   assert(isa<FileSyntax>(S) && "S is not a file");
   
-  S->dump();
   startFile(S);
 
   const FileSyntax *File = cast<FileSyntax>(S);
@@ -46,6 +45,7 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
 
   // Pass 2: elaborate the types.
   for (const Syntax *SS : File->children()) {
+
     elaborateDeclType(SS);
   }
 
@@ -110,8 +110,6 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
     D->Cxx = ClsDecl;
     SemaRef.getCurrentScope()->addUserDefinedType(D->Id,
                                        Context.CxxAST.getTypeDeclType(ClsDecl));
-
-
     SemaRef.enterScope(ClsDecl, D->Init);
     SemaRef.pushDecl(D);
     clang::Decl* Ret = elaborateTypeBody(D, ClsDecl);
@@ -404,10 +402,11 @@ clang::Decl *Elaborator::elaborateTypeBody(Declaration* D, clang::CXXRecordDecl*
   }
 
   // Processing all sub declarations?
+  // TODO:/FIXME: Need to create a means for building member functions/initializers
   for (const Syntax *SS : BodyArray->children()) {
     elaborateDeclType(SS);
   }
-  // TODO:/FIXME: Need to create a means for building member functions/initializers
+
   // for (const Syntax *SS : BodyArray->children()) {
   //   elaborateDeclInit(SS);
   // }

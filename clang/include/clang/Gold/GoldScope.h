@@ -235,7 +235,7 @@ public:
   /// FIXME: For overloading a single identifier can refer to a set of
   /// declarations. We'll need to adjust this in order to make it work.
   using IdMapType = llvm::DenseMap<clang::IdentifierInfo const*, Declaration *>;
-  IdMapType IdMap;
+  IdMapType IdMap; 
 
   using TypeNameMap = llvm::DenseMap<clang::IdentifierInfo*, clang::QualType>;
   TypeNameMap TypeIdMap;
@@ -329,6 +329,8 @@ public:
     return Iter->second;
   }
 
+  // clang::QualType* findUDT(std::string const& name) 
+
   /// Finds the declaration corresponding to the given syntax or null if
   /// the syntax does not form a declaration.
   Declaration *findDecl(const Syntax *S) const {
@@ -337,12 +339,9 @@ public:
       return nullptr;
     return Iter->second;
   }
-
-
   void addUserDefinedType(clang::IdentifierInfo *Id, clang::QualType QualTy);
   clang::QualType getUserDefinedType(clang::IdentifierInfo *Id) const;
   
-
   
 };
 
