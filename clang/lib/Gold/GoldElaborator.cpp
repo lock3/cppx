@@ -118,11 +118,11 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
     SemaRef.leaveScope(D->Init);
     Context.CxxAST.getTranslationUnitDecl()->addDecl(Ret);
     // clang::Decl* Tmp;
-    clang::Decl *Temp = ClsDecl;
-    clang::Scope* Scpe = SemaRef.getCxxSema().getCurScope();
-    llvm::outs() << Scpe << "\n";
-    SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCxxSema().getCurScope(), Temp,
-                                      {D->Decl->getLoc(), D->Init->getLoc() });
+    // clang::Decl *Temp = ClsDecl;
+    // clang::Scope* Scpe = SemaRef.getCxxSema().getCurScope();
+    // llvm::outs() << Scpe << "\n";
+    // SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCxxSema().getCurScope(), Temp,
+    //                                   {D->Decl->getLoc(), D->Init->getLoc() });
     return Ret;
   } else if (D->declaresFunction()) {
 

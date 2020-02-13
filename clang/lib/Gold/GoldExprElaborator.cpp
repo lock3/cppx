@@ -587,13 +587,14 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
     auto TypeName = Atom->getSpelling();
     // llvm::outs() << "Given type name: " << TypeName << "\n";
     clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(TypeName);
-    clang::QualType QT = SemaRef.lookUpType(IdInfo, SemaRef.getCurrentScope());
-    if(QT.isNull()) {
+    clang::QualType Ty = SemaRef.lookUpType(IdInfo, SemaRef.getCurrentScope());
+    if(Ty.isNull()) {
       llvm::outs() << "Returned QualType: ";
-      QT.dump();
+      Ty.dump();
       llvm::outs()<< "\n";
     }
-    return BuildAnyTypeLoc(CxxAST, QT, D->getType()->getLoc());
+    return BuildAnyTypeLoc(CxxAST, Ty, D->getType()->getLoc());
+    // return TypeLoc;
   }
 
   llvm_unreachable("Unknown type specification");
