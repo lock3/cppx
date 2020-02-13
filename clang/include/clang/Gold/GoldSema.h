@@ -132,7 +132,8 @@ public:
     Declaration *Iter = Start->First;
     do {
       DeclType *IterD = cast_or_null<DeclType>(Iter->Cxx);
-      if (IterD && IterD->isThisDeclarationADefinition()) {
+      if (Iter != Start->First &&
+          IterD && IterD->isThisDeclarationADefinition()) {
         DeclType *StartCxx = cast<DeclType>(Start->Cxx);
         Diags.Report(StartCxx->getBeginLoc(), clang::diag::err_redefinition)
           << StartCxx->getName();
