@@ -105,7 +105,22 @@ void Declarator::printSequence(llvm::raw_ostream &os) const {
 
 // A declarator declares a variable, if it does not declare a function.
 bool Declaration::declaresVariable() const {
-  return !declaresFunction();
+  return !declaresFunction() /*&& !declaresType()*/;
+}
+
+bool Declaration::declaresType() const {  
+  const Declarator* D = Decl;
+  if (D->Kind == DK_Identifier){
+    D = D->Next;
+  }
+  if(D) {
+    if(D->Kind == DK_Type) {
+      if(const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
+        return Atom->getSpelling() == "type";
+      }
+    }
+  }
+  return false;
 }
 
 // A declarator declares a function if it's first non-id declarator is
@@ -128,6 +143,25 @@ void Declaration::setPreviousDecl(Declaration *Prev) {
   Prev->Next = this;
   First = Prev->First;
   Next = First;
+}
+
+void Scope::addUserDefinedType(clang::IdentifierInfo* Id, clang::QualType QualTy) {
+  auto ItPair = TypeIdMap.try_emplace(Id, QualTy);
+  if(!ItPair.second) {
+    // TODO: Figure out how to print correct diagonstics here.
+    llvm::outs() << "Duplicate Identifer located. Name: " << Id->getName() << " QualType Given: ";
+    QualTy.dump();
+    llvm::outs() << "\n";
+    assert(false && "Invalid typename.");
+  }
+}
+
+clang::QualType Scope::getUserDefinedType(clang::IdentifierInfo* Id) const {
+  auto It = TypeIdMap.find(Id);
+  if(It == TypeIdMap.end()) {
+    return clang::QualType();
+  }
+  return It->second;
 }
 
 } // namespace gold

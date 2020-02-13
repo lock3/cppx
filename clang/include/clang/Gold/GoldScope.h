@@ -17,6 +17,7 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/Stmt.h"
+#include "clang/AST/DeclCXX.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/iterator_range.h"
@@ -71,6 +72,10 @@ public:
     return Kind == DK_Identifier;
   }
 
+  bool isType() const { 
+    return Kind == DK_Type;
+  }
+  
   bool isFunction() const {
     return Kind == DK_Function;
   }
@@ -141,6 +146,9 @@ public:
   /// True if this declares a variable.
   bool declaresVariable() const;
 
+  /// True if this is a type declaration.
+  bool declaresType() const;
+
   /// True if this declares a function.
   bool declaresFunction() const;
 
@@ -200,6 +208,10 @@ enum ScopeKind {
 
   /// The scope associated with a compound statement.
   SK_Block,
+
+  /// The scope associated with a class definition
+  SK_Class,
+
 };
 
 /// Stores information about declarations and the scope they were declared in.
@@ -223,17 +235,26 @@ public:
   /// FIXME: For overloading a single identifier can refer to a set of
   /// declarations. We'll need to adjust this in order to make it work.
   using IdMapType = llvm::DenseMap<clang::IdentifierInfo const*, Declaration *>;
-  IdMapType IdMap;
+  IdMapType IdMap; 
+
+  using TypeNameMap = llvm::DenseMap<clang::IdentifierInfo*, clang::QualType>;
+  TypeNameMap TypeIdMap;
+
+  using TypeDecls = llvm::DenseMap<llvm::StringRef, clang::QualType>;
+  TypeDecls Types;
 
   // FIXME: Is there any purpose for this at all?
   unsigned Depth;
 
+  clang::CXXRecordDecl* Record;
 public:
   /// Creates a new scope.
-  Scope(ScopeKind K, const Syntax *S, Scope *P)
-    : Kind(K), Parent(P), Term(S) {
+  Scope(ScopeKind K, const Syntax *S, Scope *P, clang::CXXRecordDecl* R = nullptr)
+    : Kind(K), Parent(P), Term(S), Record(R) {
     Depth = Parent ? Parent->getDepth() + 1 : 0;
   }
+
+  clang::CXXRecordDecl* getCurrentRecord() const;
 
   /// The kind of scope.
   ScopeKind getKind() const {
@@ -253,7 +274,11 @@ public:
   }
 
   bool isBlockScope() const {
-    return Kind >= SK_Block;
+    return Kind == SK_Block;
+  }
+
+  bool isClassScope() const {
+    return Kind == SK_Class;
   }
 
   /// The parent of this scope.
@@ -304,6 +329,8 @@ public:
     return Iter->second;
   }
 
+  // clang::QualType* findUDT(std::string const& name) 
+
   /// Finds the declaration corresponding to the given syntax or null if
   /// the syntax does not form a declaration.
   Declaration *findDecl(const Syntax *S) const {
@@ -312,6 +339,10 @@ public:
       return nullptr;
     return Iter->second;
   }
+  void addUserDefinedType(clang::IdentifierInfo *Id, clang::QualType QualTy);
+  clang::QualType getUserDefinedType(clang::IdentifierInfo *Id) const;
+  
+  
 };
 
 } // namespace gold

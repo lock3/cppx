@@ -24,6 +24,7 @@
 #include "clang/Gold/GoldExprElaborator.h"
 #include "clang/Gold/GoldStmtElaborator.h"
 #include "clang/Gold/GoldSyntaxContext.h"
+#include "clang/AST/DeclCXX.h"
 
 namespace gold {
 
@@ -32,24 +33,32 @@ Elaborator::Elaborator(SyntaxContext &Context, Sema &SemaRef)
 
 clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   assert(isa<FileSyntax>(S) && "S is not a file");
-
+  
   startFile(S);
 
   const FileSyntax *File = cast<FileSyntax>(S);
 
   // Pass 1. identify declarations in scope.
-  for (const Syntax *SS : File->children())
+  for (const Syntax *SS : File->children()) {
     identifyDecl(SS);
+  }
 
   // Pass 2: elaborate the types.
-  for (const Syntax *SS : File->children())
+  for (const Syntax *SS : File->children()) {
     elaborateDeclType(SS);
+  }
 
   // Pass 3: elaborate definitions.
-  for (const Syntax *SS : File->children())
+  for (const Syntax *SS : File->children()) {
     elaborateDeclInit(SS);
-
+  }
   finishFile(S);
+
+  // llvm::outs() << "Type: \n";
+  // for (clang::Type const *Ty : Context.CxxAST.getTypes()) {
+  //   Ty->dump();
+  //   llvm::outs() << "\n";
+  // }
 
   return Context.CxxAST.getTranslationUnitDecl();
 }
@@ -80,9 +89,10 @@ clang::Decl *Elaborator::elaborateDeclType(const Syntax *S) {
   //
   // TODO: What should we find for a list of declarators?
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
-  if (!D)
+  if (!D) {
     return nullptr;
-
+  }
+  
   return elaborateDecl(D);
 }
 
@@ -90,11 +100,34 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
-  if (D->declaresFunction())
-    return elaborateFunctionDecl(D);
-  else
-    return elaborateVariableDecl(D);
+  if(D->declaresType()) {
 
+    clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+    clang::CXXRecordDecl* ClsDecl = clang::CXXRecordDecl::Create(Context.CxxAST,
+        clang::TagDecl::TagKind::TTK_Struct, Owner, D->Decl->getLoc(),
+        D->Init->getLoc(), D->getId());
+    D->Cxx = ClsDecl;
+    SemaRef.getCurrentScope()->addUserDefinedType(D->Id,
+                                       Context.CxxAST.getTypeDeclType(ClsDecl));
+    SemaRef.enterScope(ClsDecl, D->Init);
+    SemaRef.pushDecl(D);
+    clang::Decl* Ret = elaborateTypeBody(D, ClsDecl);
+    SemaRef.popDecl();
+    SemaRef.leaveScope(D->Init);
+    Context.CxxAST.getTranslationUnitDecl()->addDecl(Ret);
+    // clang::Decl* Tmp;
+    // clang::Decl *Temp = ClsDecl;
+    // clang::Scope* Scpe = SemaRef.getCxxSema().getCurScope();
+    // llvm::outs() << Scpe << "\n";
+    // SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCxxSema().getCurScope(), Temp,
+    //                                   {D->Decl->getLoc(), D->Init->getLoc() });
+    return Ret;
+  } else if (D->declaresFunction()) {
+
+    return elaborateFunctionDecl(D);
+  } else {
+    return elaborateVariableDecl(D);
+  }
   // TODO: We should be able to elaborate definitions at this point too.
   // We've already loaded salient identifier tables, so it shouldn't any
   // forward references should be resolvable.
@@ -179,12 +212,15 @@ static clang::StorageClass getStorageClass(Elaborator &Elab) {
 }
 
 clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
-  if (SemaRef.getCurrentScope()->isParameterScope())
+  if (SemaRef.getCurrentScope()->isParameterScope()) {
     return elaborateParameterDecl(D);
+  }
 
+  if (SemaRef.getCurrentScope()->isClassScope()) {
+    return elaborateField(D);
+  }
   // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
-
   ExprElaborator TypeElab(Context, SemaRef);
   ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
 
@@ -256,7 +292,9 @@ void Elaborator::elaborateDeclInit(const Syntax *S) {
 }
 
 void Elaborator::elaborateDef(Declaration *D) {
-  if (D->declaresFunction())
+  if (D->declaresType()) {
+    return;
+  } else if (D->declaresFunction())
     elaborateFunctionDef(D);
   else
     elaborateVariableInit(D);
@@ -344,21 +382,83 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   // VD->setInit(InitExpr);
 }
 
+clang::Decl *Elaborator::elaborateTypeBody(Declaration* D, clang::CXXRecordDecl* R) {
+  if(!D->Init) {
+    // TODO: Handle forward declarations here? I think.
+    assert(false && "No implementation for type body not implemented yet.");
+    return nullptr;
+  }
+  auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
+  assert(MacroRoot && "Invalid AST structure.");
+  auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
+  assert(BodyArray && "Invalid AST structure Expected array structure.");
+
+  R->startDefinition();  
+  // TODO: Each one of these declarations needs to be added somewhere so that
+  // we can process types.
+  for (auto const* ChildDecl : BodyArray->children()) {
+    identifyDecl(ChildDecl);
+  }
+
+  // Processing all sub declarations?
+  // TODO:/FIXME: Need to create a means for building member functions/initializers
+  for (const Syntax *SS : BodyArray->children()) {
+    elaborateDeclType(SS);
+  }
+
+  // for (const Syntax *SS : BodyArray->children()) {
+  //   elaborateDeclInit(SS);
+  // }
+
+  R->completeDefinition();
+  return D->Cxx;
+}
+
+
+clang::Decl *Elaborator::elaborateField(Declaration *D) {
+  // Get the type of the entity.
+  clang::CXXRecordDecl *Owner = SemaRef.getCurrentScope()->Record;
+  if(!Owner) {
+    assert(false && "Failed to get owner data from scope.");
+  }
+  ExprElaborator TypeElab(Context, SemaRef);
+  ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
+
+  if (TypeExpr.isNull()) {
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+  clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
+  clang::SourceLocation Loc = D->Op->getLoc();
+  clang::DeclarationName DN = D->getId();
+  clang::FieldDecl *FD = SemaRef.getCxxSema().CheckFieldDecl(DN, TInfo->getType(),
+                                          TInfo, /*RecordDecl=*/Owner,
+                                          Loc, /*Mutable=*/false,
+                                          /*BitWidth=*/nullptr,
+                                          clang::InClassInitStyle::ICIS_NoInit,
+                                          Loc, clang::AccessSpecifier::AS_public,
+                                          nullptr);
+  Owner->addDecl(FD);
+  D->Cxx = FD;
+  return nullptr;
+}
+
 // Get the clang::QualType described by an operator':' call.
 clang::QualType Elaborator::getOperatorColonType(const CallSyntax *S) const {
   // Get the argument list of an operator':' call. This should have
   // two arguments, the entity (argument 1) and its type (argument 2).
 
   // Right now this has to be an explicitly named type.
-  if (const AtomSyntax *Typename = dyn_cast<AtomSyntax>(S->getArgument(1))) {
-    auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
-    if (BuiltinMapIter == BuiltinTypes.end())
-      assert(false && "Only builtin types are supported right now.");
+  // if (const AtomSyntax *Typename = dyn_cast<AtomSyntax>(S->getArgument(1))) {
+  //   auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
+  //   if (BuiltinMapIter == BuiltinTypes.end())
+  //     assert(false && "Only builtin types are supported right now.");
 
-    return BuiltinMapIter->second;
-  }
+  //   return BuiltinMapIter->second;
+  // }
 
-  assert(false && "User defined types are not supported yet.");
+  assert(false && "Working on fixing this.");
 }
 
 static Declarator *buildIdDeclarator(const AtomSyntax *S, Declarator *Next) {
@@ -376,7 +476,7 @@ static Declarator *buildTypeDeclarator(const Syntax *S, Declarator *Next) {
   if (const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
     D->Call = Call;
     D->Data.Type = Next ? Next->getType() : Call->getArgument(1);
-  } else if (isa<AtomSyntax>(S)) {
+  } else if (isa<AtomSyntax>(S) || isa<LiteralSyntax>(S)) {
     D->Data.Type = S;
   }
 
@@ -581,6 +681,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
         // The first statement is a declaration. The second is an assignment.
         if (CurScope->findDecl(Id) && OperatorEquals)
           return;
+      } else if(CurScope->isClassScope()) {
       }
 
       // Create a declaration for this node.
@@ -620,7 +721,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
   return;
 }
 
-  FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
+FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
   const clang::IdentifierInfo *Tokenization =
     &SemaRef.Context.CxxAST.Idents.get(Spelling);
 

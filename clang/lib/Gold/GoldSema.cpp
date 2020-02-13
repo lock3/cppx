@@ -72,6 +72,10 @@ void Sema::enterScope(ScopeKind K, const Syntax *S) {
   pushScope(new Scope(K, S, getCurrentScope()));
 }
 
+void Sema::enterScope(clang::CXXRecordDecl* R, const Syntax* S) {
+  pushScope(new Scope(SK_Class, S, getCurrentScope(), R));
+}
+
 void Sema::leaveScope(const Syntax *S) {
   assert(getCurrentScope()->getConcreteTerm() == S);
   // FIXME: Delete the scope. Note that we don't delete the scope in saveScope.
@@ -141,14 +145,32 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 
   if (R.empty() && LookupKind == clang::Sema::LookupTagName) {
     auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
-    if (BuiltinMapIter != BuiltinTypes.end())
+    if (BuiltinMapIter != BuiltinTypes.end()) {
       return true;
-    else
+    } else {
       ; // FIXME: This requires a type lookup.
+    }
   }
 
   return !R.empty();
 }
+
+clang::QualType Sema::lookUpType(clang::IdentifierInfo *Id, Scope *S) const {
+  auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
+  if (BuiltinMapIter != BuiltinTypes.end()) {
+    return BuiltinMapIter->second;
+  }
+  while (S) {
+    clang::QualType Ty = S->getUserDefinedType(Id);
+    if (!Ty.isNull()) 
+      return Ty; 
+    S = S->getParent();
+  }
+  llvm::outs() << "Failed to locate type: " << Id->getName() << "\n";
+  return clang::QualType();
+}
+
+
 
 } // namespace gold
 

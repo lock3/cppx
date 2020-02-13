@@ -43,7 +43,8 @@ static TypeSourceInfo *BuildTypeLoc(clang::ASTContext &Context,
                              SourceLocation Loc) {
   auto TypeLocInstance = TLB.push<TypeLocType>(Ty);
   TypeLocInstance.setNameLoc(Loc);
-  return TLB.getTypeSourceInfo(Context, Ty);
+  auto x = TLB.getTypeSourceInfo(Context, Ty);
+  return x;
 }
 
 // Same as above, but uses a single-instance TypeLocBuilder.
@@ -425,13 +426,21 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::TagTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::RecordTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  TLB.pushTypeSpec(Ty);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::RecordTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::RecordTypeLoc>(Context, TLB, Ty, Loc);
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::CppxKindTypeLoc>
+(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
+  TypeLocBuilder TLB;
+  auto x = BuildTypeLoc<clang::CppxKindTypeLoc>(Context, TLB, Ty, Loc);
+  return x;
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::EnumTypeLoc>
@@ -649,8 +658,10 @@ TypeSourceInfo *BuildAnyTypeLoc(clang::ASTContext &Context,
   switch (T->getTypeClass()) {
 #define ABSTRACT_TYPE(CLASS, PARENT)
 #define TYPE(CLASS, PARENT)                                   \
-  case clang::Type::CLASS:                                    \
-    return BuildTypeLoc<clang::CLASS##TypeLoc>(Context, TLB, T, Loc);
+  case clang::Type::CLASS:{                                    \
+    auto t = BuildTypeLoc<clang::CLASS##TypeLoc>(Context, TLB, T, Loc);\
+    return t;\
+  }
 #include "clang/AST/TypeNodes.inc"
   }
 }

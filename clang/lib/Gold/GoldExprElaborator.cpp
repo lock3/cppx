@@ -16,6 +16,7 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/OperationKinds.h"
 #include "clang/AST/Type.h"
+#include "clang/AST/ExprCppx.h"
 #include "clang/Basic/DiagnosticParse.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/SourceLocation.h"
@@ -33,6 +34,7 @@
 #include "clang/Gold/GoldSyntaxContext.h"
 #include "clang/Gold/GoldTokens.h"
 
+
 #include <cstring>
 
 namespace gold {
@@ -49,6 +51,13 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
     return elaborateAtom(cast<AtomSyntax>(S), clang::QualType());
   if (isa<CallSyntax>(S))
     return elaborateCall(cast<CallSyntax>(S));
+  if(isa<MacroSyntax>(S))
+    return elaborateMacroExpression(cast<MacroSyntax>(S));
+
+
+  llvm::outs() << "Syntax not handled yet\n";
+  S->dump();
+  llvm::outs() << "\n";
 
   assert(false && "Unsupported expression.");
 }
@@ -405,6 +414,28 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
   return BinOp.get();
 }
 
+
+Expression ExprElaborator::elaborateMacroExpression(const MacroSyntax *Macro) {
+  const Syntax* FirstChild = *Macro->children().begin();
+  if (const auto *Atom = dyn_cast<AtomSyntax>(FirstChild)) {
+    if (Atom->getSpelling() == "if") {
+      assert(false && "If expression processing not implemented yet."); 
+    } else if (Atom->getSpelling() == "while") {
+      assert(false && "while loop processing not implemented yet.");
+    } else if(Atom->getSpelling() == "for") {
+      assert(false && "For loop processing not implemented yet.");
+    } else {
+      // FIXME: Need to handle any other conditions here.
+      assert(false && "Unexpected syntax tree format.");
+    }
+  } else {
+    assert(false && "Unexpected atom within the syntax tree.");
+  }
+}
+
+
+
+
 //===----------------------------------------------------------------------===//
 //                        Type Expression Elaboration                         //
 //===----------------------------------------------------------------------===//
@@ -427,9 +458,12 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
   // is auto. This will be replaced if an explicit type specifier is given.
   clang::QualType AutoType = CxxAST.getAutoDeductType();
   TypeInfo *TInfo = BuildAnyTypeLoc(CxxAST, AutoType, D->getLoc());
-
+  // for (auto Iter = Decls.begin(); Iter != Decls.  end(); ++Iter) {
+  //   llvm::outs() << "Sub declaration: " << (*Iter)->getString() << "\n";
+  // }
   for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
     D = *Iter;
+    // llvm::outs() << "Processing declaration: " << D->getString() << "\n";
     switch (D->Kind) {
     case DK_Identifier:
       // The identifier is not part of the type.
@@ -501,7 +535,6 @@ Expression ExprElaborator::elaborateArrayType(Declarator *D, TypeInfo *Ty) {
 // Elaborate the parameters and incorporate their types into  the one
 // we're building. Note that T is the return type (if any).
 Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
-  llvm::outs() << "ELABORATE FUNCTION TYPE\n";
 
   const auto *Call = cast<CallSyntax>(D->Call);
 
@@ -543,23 +576,40 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
     SourceRange(), SourceLocation(), Params);
 }
 
+
+
 Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   assert(isa<clang::AutoType>(Ty->getType()));
   assert(D->Kind == DK_Type);
+  // D->printSequence(llvm::outs());
 
-  // FIXME: We should really elaborate the entire type expression. We're
-  // just cheating for now.
-  if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
-    auto BuiltinMapIter = BuiltinTypes.find(Atom->getSpelling());
-    if (BuiltinMapIter == BuiltinTypes.end()) {
-      // FIXME: This requires a type lookup.
-      assert(false && "User-defined types not supported.");
+  llvm::outs() << "Type received: \n";
+  D->Data.Type->dump();
+  // TODO: We need to make sure we do actual look up.
+  // just cheating for now
+  // BMB: Or Something like that.
+  if (const auto *Literal = dyn_cast<LiteralSyntax>(D->Data.Type)) {
+    auto TypeName = Literal->getSpelling();
+    llvm::outs() << "Typename :" << TypeName << "\n";
+    clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(TypeName);
+    clang::QualType Qt = SemaRef.lookUpType(IdInfo, SemaRef.getCurrentScope());
+    if(Qt.isNull()) {
+      llvm::outs() << "Returned QualType: ";
+      Qt.dump();
+      llvm::outs()<< "\n";
     }
-
-    return BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second,
-                           D->getType()->getLoc());
+    return BuildAnyTypeLoc(CxxAST, Qt, D->getType()->getLoc());
+  } else if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
+    auto TypeName = Atom->getSpelling();
+    clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(TypeName);
+    clang::QualType Qt = SemaRef.lookUpType(IdInfo, SemaRef.getCurrentScope());
+    if(Qt.isNull()) {
+      llvm::outs() << "Returned QualType: ";
+      Qt.dump();
+      llvm::outs()<< "\n";
+    }
+    return BuildAnyTypeLoc(CxxAST, Qt, D->getType()->getLoc());
   }
-
   llvm_unreachable("Unknown type specification");
 }
 
