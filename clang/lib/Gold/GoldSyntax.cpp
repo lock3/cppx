@@ -44,6 +44,8 @@ clang::SourceLocation Syntax::getLoc() const {
     return SourceLocation();
   case SK_Atom:
     return cast<AtomSyntax>(this)->getTokenLoc();
+  case SK_Literal:
+    return cast<LiteralSyntax>(this)->getTokenLoc();
   case SK_List:
   case SK_Array:
     // FIXME: What is the SourceLocation in this case?

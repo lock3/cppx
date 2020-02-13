@@ -1997,8 +1997,11 @@ void TextNodeDumper::VisitGoldErrorSyntax(const gold::ErrorSyntax *S) {
 }
 
 void TextNodeDumper::VisitGoldAtomSyntax(const gold::AtomSyntax *S) {
-  using namespace gold;
-  OS << ' ' << S->Tok.getSpelling();
+  OS << ' ' << S->getSpelling();
+}
+
+void TextNodeDumper::VisitGoldLiteralSyntax(const gold::LiteralSyntax *S) {
+  OS << ' ' << S->getSpelling();
 }
 
 void TextNodeDumper::VisitGoldListSyntax(const gold::ListSyntax *S) {

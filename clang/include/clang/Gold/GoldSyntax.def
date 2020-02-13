@@ -4,6 +4,7 @@
 
 def_syntax(Error)
 def_syntax(Atom)
+def_syntax(Literal)
 def_syntax(List)
 def_syntax(Array)
 def_syntax(Call)

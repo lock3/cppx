@@ -21,6 +21,8 @@ char const* getDisplayName(TokenKind K) {
   switch (K) {
 #define def_token(TK) \
   case tok::TK: return # TK;
+#define def_keyword(TK, S) \
+  case tok::TK ## Keyword: return # TK;
 #include "clang/Gold/GoldTokens.def"
   }
   assert(false);
@@ -34,6 +36,8 @@ bool hasUniqueSpelling(TokenKind K) {
   case tok::Dedent: return true;
 #define def_puncop(TK, S) \
   case tok::TK: return true;
+#define def_keyword(TK, S) \
+  case tok::TK ## Keyword: return true;
 #include "clang/Gold/GoldTokens.def"
   default: return false;
   }
@@ -52,6 +56,8 @@ const char* getSpelling(TokenKind K) {
   case tok::Separator: return "separator";
 #define def_puncop(TK, S) \
   case tok::TK: return S;
+#define def_keyword(TK, S) \
+  case tok::TK ## Keyword: return S;
 #include "clang/Gold/GoldTokens.def"
   case tok::Identifier: return "identifier";
   case tok::BinaryInteger: return "binary-integer";
@@ -78,6 +84,8 @@ std::size_t getTokenLength(TokenKind K) {
   case tok::Unknown: return 1;
 #define def_puncop(TK, S) \
   case tok::TK: return getSize(S);
+#define def_keyword(TK, S) \
+  case tok::TK ## Keyword: return getSize(S);
 #include "clang/Gold/GoldTokens.def"
   }
 }
