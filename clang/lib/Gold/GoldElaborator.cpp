@@ -34,6 +34,7 @@ Elaborator::Elaborator(SyntaxContext &Context, Sema &SemaRef)
 clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   assert(isa<FileSyntax>(S) && "S is not a file");
   
+  S->dump();
   startFile(S);
 
   const FileSyntax *File = cast<FileSyntax>(S);
@@ -44,7 +45,7 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   }
 
   // Pass 2: elaborate the types.
-  for (const Syntax *SS : File->children()){
+  for (const Syntax *SS : File->children()) {
     elaborateDeclType(SS);
   }
 
@@ -477,7 +478,7 @@ static Declarator *buildTypeDeclarator(const Syntax *S, Declarator *Next) {
   if (const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
     D->Call = Call;
     D->Data.Type = Next ? Next->getType() : Call->getArgument(1);
-  } else if (isa<AtomSyntax>(S)) {
+  } else if (isa<AtomSyntax>(S) || isa<LiteralSyntax>(S)) {
     D->Data.Type = S;
   }
 

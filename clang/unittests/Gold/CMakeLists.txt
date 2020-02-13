@@ -4,6 +4,7 @@ set(LLVM_LINK_COMPONENTS
 
 add_clang_unittest(GoldTests
   GoldClassParsing.cpp
+  GlobalParsing.cpp
   )
 
 clang_target_link_libraries(GoldTests
