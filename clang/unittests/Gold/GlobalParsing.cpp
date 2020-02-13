@@ -22,7 +22,7 @@ using namespace gold;
 TEST(GlobalVariables, SimpleDecl) {
   StringRef Code = R"(
 x : int
-  )";
+)";
   SimpleGoldParseTest(Code);
 }
 

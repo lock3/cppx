@@ -38,8 +38,8 @@ inline void SimpleGoldParseTest(llvm::StringRef Code) {
   // MatchFinder Finder;
   std::unique_ptr<FrontendActionFactory> Factory(
       newFrontendActionFactory<GoldSyntaxAction>());
-  if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "gold"},
-                            "temp.usyntax")){
+  if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "gold", "-c"},
+                            "temp.usyntax")) {
     ASSERT_FALSE(true) << "Parsing error in \"" << Code.str() << "\"";
   }
 }

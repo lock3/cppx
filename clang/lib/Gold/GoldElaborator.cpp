@@ -45,7 +45,6 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
 
   // Pass 2: elaborate the types.
   for (const Syntax *SS : File->children()) {
-
     elaborateDeclType(SS);
   }
 

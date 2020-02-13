@@ -83,14 +83,14 @@ TranslationUnitDecl 0x7ffff5973088 <<invalid sloc>> <invalid sloc>
       `-IntegerLiteral 0x7ffff59b1f98 <col:10> 'int' 0
   
   */
-  StringRef Code = R"(
-c : type = class:
-  x : int
-  y : bool
+//   StringRef Code = R"(
+// c : type = class:
+//   x : int
+//   y : bool
 
-main() : int!
-  q : c
-  return 0
-  )";
-  SimpleGoldParseTest(Code);
+// main() : int!
+//   q : c
+//   return 0
+//   )";
+//   SimpleGoldParseTest(Code);
 }
