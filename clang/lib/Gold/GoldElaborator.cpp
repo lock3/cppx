@@ -34,10 +34,12 @@ Elaborator::Elaborator(SyntaxContext &Context, Sema &SemaRef)
 clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   assert(isa<FileSyntax>(S) && "S is not a file");
   
+  SemaRef.enterClangScope(clang::Scope::DeclScope);
+  SemaRef.getCxxSema().ActOnStartOfTranslationUnit();
   startFile(S);
 
   const FileSyntax *File = cast<FileSyntax>(S);
-
+  File->dump();
   // Pass 1. identify declarations in scope.
   for (const Syntax *SS : File->children()) {
     identifyDecl(SS);
@@ -53,7 +55,8 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
     elaborateDeclInit(SS);
   }
   finishFile(S);
-
+  SemaRef.getCxxSema().ActOnEndOfTranslationUnit();
+  SemaRef.leaveClangScope(S->getLoc());
   // llvm::outs() << "Type: \n";
   // for (clang::Type const *Ty : Context.CxxAST.getTypes()) {
   //   Ty->dump();
@@ -101,29 +104,24 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
   if(D->declaresType()) {
-
+    // SemaRef.PushScope()
+    // D->SavedScope = 
     clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+    clang::SourceLocation EndOfClassSrcLoc(D->Init->getLoc());
     clang::CXXRecordDecl* ClsDecl = clang::CXXRecordDecl::Create(Context.CxxAST,
-        clang::TagDecl::TagKind::TTK_Struct, Owner, D->Decl->getLoc(),
-        D->Init->getLoc(), D->getId());
+                  clang::TagDecl::TagKind::TTK_Struct, Owner, D->Decl->getLoc(),
+                  EndOfClassSrcLoc, D->getId());
     D->Cxx = ClsDecl;
     SemaRef.getCurrentScope()->addUserDefinedType(D->Id,
                                        Context.CxxAST.getTypeDeclType(ClsDecl));
+    Context.CxxAST.getTranslationUnitDecl()->addDecl(ClsDecl);
     SemaRef.enterScope(ClsDecl, D->Init);
     SemaRef.pushDecl(D);
-    clang::Decl* Ret = elaborateTypeBody(D, ClsDecl);
+    elaborateTypeBody(D, ClsDecl);
     SemaRef.popDecl();
-    SemaRef.leaveScope(D->Init);
-    Context.CxxAST.getTranslationUnitDecl()->addDecl(Ret);
-    // clang::Decl* Tmp;
-    // clang::Decl *Temp = ClsDecl;
-    // clang::Scope* Scpe = SemaRef.getCxxSema().getCurScope();
-    // llvm::outs() << Scpe << "\n";
-    // SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCxxSema().getCurScope(), Temp,
-    //                                   {D->Decl->getLoc(), D->Init->getLoc() });
-    return Ret;
+    D->SavedScope = SemaRef.saveScope(D->Init);
+    return ClsDecl;
   } else if (D->declaresFunction()) {
-
     return elaborateFunctionDecl(D);
   } else {
     return elaborateVariableDecl(D);
@@ -217,6 +215,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   }
 
   if (SemaRef.getCurrentScope()->isClassScope()) {
+    llvm::outs() << "We are in class scope?!\n";
     return elaborateField(D);
   }
   // Get the type of the entity.
@@ -293,7 +292,7 @@ void Elaborator::elaborateDeclInit(const Syntax *S) {
 
 void Elaborator::elaborateDef(Declaration *D) {
   if (D->declaresType()) {
-    return;
+    elaborateTypeDefinition(D);
   } else if (D->declaresFunction())
     elaborateFunctionDef(D);
   else
@@ -382,27 +381,37 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   // VD->setInit(InitExpr);
 }
 
-clang::Decl *Elaborator::elaborateTypeBody(Declaration* D, clang::CXXRecordDecl* R) {
-  if(!D->Init) {
-    // TODO: Handle forward declarations here? I think.
-    assert(false && "No implementation for type body not implemented yet.");
-    return nullptr;
-  }
+void Elaborator::elaborateTypeDefinition(Declaration *D) {
+  llvm::outs() << "Called elaborate type definition!\n";
+
   auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
   assert(MacroRoot && "Invalid AST structure.");
   auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
   assert(BodyArray && "Invalid AST structure Expected array structure.");
 
-  R->startDefinition();  
-  // TODO: Each one of these declarations needs to be added somewhere so that
-  // we can process types.
-  for (auto const* ChildDecl : BodyArray->children()) {
-    identifyDecl(ChildDecl);
-  }
+  SemaRef.pushScope(D->SavedScope);
+  SemaRef.pushDecl(D);
+  clang::Scope *ClsScope = SemaRef.enterClangScope(clang::Scope::ClassScope
+                                                    | clang::Scope::DeclScope);
+  clang::CXXRecordDecl *R = cast<clang::CXXRecordDecl>(D->Cxx);
+  SemaRef.getCxxSema().ActOnTagStartDefinition(ClsScope, R);
+  // Scope* previousScope = nullptr;
+  // D->SavedScope->
+  // SemaRef.getCxxSema().Actions.CurScope
+  R->startDefinition();
+  // D->SavedScope()
+  // // TODO: Each one of these declarations needs to be added somewhere so that
+  // // we can process types.
+  // for (auto const* ChildDecl : BodyArray->children()) {
+  //   identifyDecl(ChildDecl);
+  // }
 
   // Processing all sub declarations?
   // TODO:/FIXME: Need to create a means for building member functions/initializers
   for (const Syntax *SS : BodyArray->children()) {
+    llvm::outs() << "Elaborating type decls/variable definitions\n";
+    SS->dump();
+    llvm::outs() << "\n";
     elaborateDeclType(SS);
   }
 
@@ -411,6 +420,45 @@ clang::Decl *Elaborator::elaborateTypeBody(Declaration* D, clang::CXXRecordDecl*
   // }
 
   R->completeDefinition();
+  clang::Decl *ClangCXXDecl = R;
+  SemaRef.getCxxSema().ActOnTagFinishDefinition(ClsScope, ClangCXXDecl,
+                                                            R->getBraceRange());
+  SemaRef.leaveClangScope(D->Op->getLoc());
+  SemaRef.popDecl();
+  SemaRef.popScope();
+
+}
+
+
+clang::Decl *Elaborator::elaborateTypeBody(Declaration* D, clang::CXXRecordDecl* R) {
+  if(!D->Init) {
+    // FIXME: Handle forward declarations here? I think.
+    assert(false && "No implementation for type body not implemented yet.");
+    return nullptr;
+  }
+  auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
+  assert(MacroRoot && "Invalid AST structure.");
+  auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
+  assert(BodyArray && "Invalid AST structure Expected array structure.");
+
+  // R->startDefinition();
+  // TODO: Each one of these declarations needs to be added somewhere so that
+  // we can process types.
+  for (auto const* ChildDecl : BodyArray->children()) {
+    identifyDecl(ChildDecl);
+  }
+
+  // Processing all sub declarations?
+  // TODO:/FIXME: Need to create a means for building member functions/initializers
+  // for (const Syntax *SS : BodyArray->children()) {
+  //   elaborateDeclType(SS);
+  // }
+
+  // for (const Syntax *SS : BodyArray->children()) {
+  //   elaborateDeclInit(SS);
+  // }
+
+  // R->completeDefinition();
   return D->Cxx;
 }
 

@@ -32,6 +32,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : CxxSema(CxxSema), CurrentDecl(), Context(Context),
     Diags(Context.CxxAST.getSourceManager().getDiagnostics())
 {
+  CxxSema.CurScope = nullptr;
   OperatorColonII = &Context.CxxAST.Idents.get("operator':'");
   OperatorExclaimII = &Context.CxxAST.Idents.get("operator'!'");
   OperatorEqualsII = &Context.CxxAST.Idents.get("operator'='");
@@ -39,6 +40,11 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorElseII = &Context.CxxAST.Idents.get("operator'else'");
   OperatorReturnII = &Context.CxxAST.Idents.get("operator'return'");
   OperatorReturnsII = &Context.CxxAST.Idents.get("operator'returns'");
+}
+
+Sema::~Sema() {
+  delete getCurClangScope();
+  CxxSema.CurScope = nullptr;
 }
 
 Scope *Sema::getCurrentScope() {
@@ -170,6 +176,28 @@ clang::QualType Sema::lookUpType(clang::IdentifierInfo *Id, Scope *S) const {
   return clang::QualType();
 }
 
+
+clang::Scope *Sema::getCurClangScope() {
+  return CxxSema.CurScope;
+}
+
+clang::Scope *Sema::enterClangScope(unsigned int ScopeFlags) {
+  CxxSema.CurScope = new clang::Scope(getCurClangScope(), ScopeFlags, Diags);
+  return CxxSema.CurScope;
+}
+
+void Sema::leaveClangScope(clang::SourceLocation Loc) {
+  assert(getCurClangScope() && "Clang scope imbalance!");
+
+  // Inform the actions module that this scope is going away if there are any
+  // decls in it.
+  CxxSema.ActOnPopScope(Loc, getCurClangScope());
+
+  clang::Scope *OldScope = getCurClangScope();
+  CxxSema.CurScope = OldScope->getParent();
+
+  delete OldScope;
+}
 
 
 } // namespace gold

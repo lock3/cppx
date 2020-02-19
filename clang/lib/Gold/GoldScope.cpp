@@ -103,6 +103,11 @@ void Declarator::printSequence(llvm::raw_ostream &os) const {
 //   return nullptr;
 // }
 
+
+Declaration::~Declaration() {
+  delete SavedScope;
+}
+
 // A declarator declares a variable, if it does not declare a function.
 bool Declaration::declaresVariable() const {
   return !declaresFunction() /*&& !declaresType()*/;

@@ -63,7 +63,7 @@ class Sema {
   Declaration *CurrentDecl;
 public:
   Sema(SyntaxContext &Context, clang::Sema &S);
-
+  ~Sema();
   // Look through a translation unit and map the identifiers to Clang
   // constructs.
   void IdentifyDecls(const ArraySyntax *S);
@@ -151,6 +151,11 @@ public:
   SyntaxContext &getContext() { return Context; }
 
   clang::QualType lookUpType(clang::IdentifierInfo *Id, Scope *S) const;
+
+  /// This is the clang processing scope. This is mostly for code GenPieces.
+  clang::Scope *getCurClangScope();
+  clang::Scope *enterClangScope(unsigned int ScopeFlags);
+  void leaveClangScope(clang::SourceLocation Loc);
 
 public:
   // The context

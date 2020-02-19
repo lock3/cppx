@@ -581,33 +581,30 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
 Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   assert(isa<clang::AutoType>(Ty->getType()));
   assert(D->Kind == DK_Type);
-  // D->printSequence(llvm::outs());
 
-  llvm::outs() << "Type received: \n";
-  D->Data.Type->dump();
   // TODO: We need to make sure we do actual look up.
   // just cheating for now
   // BMB: Or Something like that.
   if (const auto *Literal = dyn_cast<LiteralSyntax>(D->Data.Type)) {
     auto TypeName = Literal->getSpelling();
-    llvm::outs() << "Typename :" << TypeName << "\n";
+    // llvm::outs() << "Typename :" << TypeName << "\n";
     clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(TypeName);
     clang::QualType Qt = SemaRef.lookUpType(IdInfo, SemaRef.getCurrentScope());
-    if(Qt.isNull()) {
-      llvm::outs() << "Returned QualType: ";
-      Qt.dump();
-      llvm::outs()<< "\n";
-    }
+    // if(Qt.isNull()) {
+    //   llvm::outs() << "Returned QualType: ";
+    //   Qt.dump();
+    //   llvm::outs()<< "\n";
+    // }
     return BuildAnyTypeLoc(CxxAST, Qt, D->getType()->getLoc());
   } else if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
     auto TypeName = Atom->getSpelling();
     clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(TypeName);
     clang::QualType Qt = SemaRef.lookUpType(IdInfo, SemaRef.getCurrentScope());
-    if(Qt.isNull()) {
-      llvm::outs() << "Returned QualType: ";
-      Qt.dump();
-      llvm::outs()<< "\n";
-    }
+    // if(Qt.isNull()) {
+    //   llvm::outs() << "Returned QualType: ";
+    //   Qt.dump();
+    //   llvm::outs()<< "\n";
+    // }
     return BuildAnyTypeLoc(CxxAST, Qt, D->getType()->getLoc());
   }
   llvm_unreachable("Unknown type specification");

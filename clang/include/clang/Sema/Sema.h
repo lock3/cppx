@@ -71,6 +71,10 @@ namespace llvm {
   struct InlineAsmIdentifierInfo;
 }
 
+namespace gold {
+  class Sema;
+}
+
 namespace clang {
   class ADLResult;
   class ASTConsumer;
@@ -12421,6 +12425,7 @@ protected:
   friend class ASTReader;
   friend class ASTDeclReader;
   friend class ASTWriter;
+  friend class gold::Sema;
 
 public:
   /// Retrieve the keyword associated

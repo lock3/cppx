@@ -81,16 +81,67 @@ TranslationUnitDecl 0x7ffff5973088 <<invalid sloc>> <invalid sloc>
     |   `-CXXConstructExpr 0x7ffff59b1f58 <col:5> 'c' 'void () noexcept'
     `-ReturnStmt 0x7ffff59b1fb8 <line:8:3, col:10>
       `-IntegerLiteral 0x7ffff59b1f98 <col:10> 'int' 0
-  
-  */
-//   StringRef Code = R"(
-// c : type = class:
-//   x : int
-//   y : bool
 
-// main() : int!
-//   q : c
-//   return 0
-//   )";
-//   SimpleGoldParseTest(Code);
+File 0x7fffe9eed218
+|-Call 0x7fffe9eecec8
+| |-Atom 0x7fffe9eece88 operator'='
+| `-List 0x7fffe9eeceb0
+|   |-Call 0x7fffe9eecd00
+|   | |-Atom 0x7fffe9eeccc0 operator':'
+|   | `-List 0x7fffe9eecce8
+|   |   |-Atom 0x7fffe9eecc90 c
+|   |   `-Literal 0x7fffe9eecca8 type
+|   `-Macro 0x7fffe9eece68
+|     |-Atom 0x7fffe9eecd18 class
+|     |-Array 0x7fffe9eece50
+|     | |-Call 0x7fffe9eecda0
+|     | | |-Atom 0x7fffe9eecd60 operator':'
+|     | | `-List 0x7fffe9eecd88
+|     | |   |-Atom 0x7fffe9eecd30 x
+|     | |   `-Literal 0x7fffe9eecd48 int
+|     | `-Call 0x7fffe9eece28
+|     |   |-Atom 0x7fffe9eecde8 operator':'
+|     |   `-List 0x7fffe9eece10
+|     |     |-Atom 0x7fffe9eecdb8 y
+|     |     `-Literal 0x7fffe9eecdd0 bool
+|     `-<<<NULL>>>
+`-Call 0x7fffe9eed1f0
+  |-Atom 0x7fffe9eed1b0 operator'!'
+  `-List 0x7fffe9eed1d8
+    |-Call 0x7fffe9eecf80
+    | |-Atom 0x7fffe9eecf40 operator':'
+    | `-List 0x7fffe9eecf68
+    |   |-Call 0x7fffe9eecf10
+    |   | |-Atom 0x7fffe9eecee0 main
+    |   | `-List 0x7fffe9eecef8
+    |   `-Literal 0x7fffe9eecf28 int
+    `-Array 0x7fffe9eed198
+      |-Call 0x7fffe9eed008
+      | |-Atom 0x7fffe9eecfc8 operator':'
+      | `-List 0x7fffe9eecff0
+      |   |-Atom 0x7fffe9eecf98 q
+      |   `-Atom 0x7fffe9eecfb0 c
+      |-Call 0x7fffe9eed100
+      | |-Atom 0x7fffe9eed0c0 operator'='
+      | `-List 0x7fffe9eed0e8
+      |   |-Call 0x7fffe9eed090
+      |   | |-Atom 0x7fffe9eed050 operator':'
+      |   | `-List 0x7fffe9eed078
+      |   |   |-Atom 0x7fffe9eed020 p
+      |   |   `-Literal 0x7fffe9eed038 int
+      |   `-Atom 0x7fffe9eed0a8 9
+      `-Call 0x7fffe9eed168
+        |-Atom 0x7fffe9eed130 operator'return'
+        `-List 0x7fffe9eed150
+          `-Atom 0x7fffe9eed118 p
+  */
+  StringRef Code = R"(
+c : type = class:
+  x : int
+  y : bool
+main() : int!
+  q : c
+  return 0
+  )";
+  SimpleGoldParseTest(Code);
 }

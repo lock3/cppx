@@ -138,6 +138,8 @@ public:
     : Cxt(Cxt), Op(Op), Decl(Decl), Init(Init)
   { }
 
+  ~Declaration();
+
   /// The enclosing declaration.
   Declaration *getOwner() const {
     return Cxt;
