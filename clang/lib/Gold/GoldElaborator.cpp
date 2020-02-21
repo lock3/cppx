@@ -34,7 +34,8 @@ Elaborator::Elaborator(SyntaxContext &Context, Sema &SemaRef)
 clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   assert(isa<FileSyntax>(S) && "S is not a file");
   
-  SemaRef.enterClangScope(clang::Scope::DeclScope);
+  clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::DeclScope);
+  SemaRef.getCxxSema().PushDeclContext(Scope, Context.CxxAST.getTranslationUnitDecl());
   SemaRef.getCxxSema().ActOnStartOfTranslationUnit();
   startFile(S);
 
@@ -391,8 +392,7 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
 
   SemaRef.pushScope(D->SavedScope);
   SemaRef.pushDecl(D);
-  clang::Scope *ClsScope = SemaRef.enterClangScope(clang::Scope::ClassScope
-                                                    | clang::Scope::DeclScope);
+  clang::Scope *ClsScope = SemaRef.enterClangScope(clang::Scope::ClassScope);
   clang::CXXRecordDecl *R = cast<clang::CXXRecordDecl>(D->Cxx);
   SemaRef.getCxxSema().ActOnTagStartDefinition(ClsScope, R);
   // Scope* previousScope = nullptr;
