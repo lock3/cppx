@@ -109,6 +109,9 @@ public:
       /// The initial parameter list.
       const Syntax *Params;
 
+      /// For DK_Function, the template parameter list.
+      const Syntax *TemplateParams;
+
       /// The scope constructed during elaboration.
       Scope *ConstructedScope;
     } ParamInfo;
@@ -143,6 +146,9 @@ public:
 
   /// True if this declares a function.
   bool declaresFunction() const;
+
+  /// True if this declares a template.
+  bool declaresTemplate() const;
 
   /// The identifier of the declaration, if any.
   clang::IdentifierInfo *getId() const {
@@ -195,6 +201,9 @@ enum ScopeKind {
   /// The scope associated with a function parameter list.
   SK_Parameter,
 
+  /// The scope associated with a template parameter list.
+  SK_Template,
+
   /// The scope associated with a function definition.
   SK_Function,
 
@@ -246,6 +255,10 @@ public:
 
   bool isParameterScope() const {
     return Kind == SK_Parameter;
+  }
+
+  bool isTemplateScope() const {
+    return Kind == SK_Template;
   }
 
   bool isFunctionScope() const {
@@ -312,6 +325,9 @@ public:
       return nullptr;
     return Iter->second;
   }
+
+  void dump(llvm::raw_ostream &os) const;
+  void dump() const;
 };
 
 } // namespace gold

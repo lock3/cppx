@@ -155,14 +155,58 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     SemaRef.getCxxSema().CheckMain(FD, DS);
   }
 
+  // Deal with function templates now that we have created the (possibly)
+  // templated declaration, FD.
+  bool Template = false;
+  if (const Syntax *TemplParams =
+      getFunctionDeclarator(D)->Data.ParamInfo.TemplateParams) {
+    Template = true;
+    // SemaRef.enterScope(SK_Template, TemplParams);
+    Sema::ScopeRAII ScopeRAII(SemaRef, SK_Template, TemplParams);
+    llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
+    std::size_t I = 0;
+    for (const Syntax *P : TemplParams->children()) {
+      Elaborator Elab(Context, SemaRef);
+      clang::NamedDecl *ND =
+        cast_or_null<clang::NamedDecl>(Elab.elaborateDeclSyntax(P));
+      if (!ND)
+        return nullptr;
+
+      // FIXME: set the depth too.
+      if (auto *TP = dyn_cast<clang::NonTypeTemplateParmDecl>(ND)) {
+        TP->setPosition(I);
+      }
+
+      Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
+      assert(D && "Didn't find associated declaration");
+      TemplateParamDecls.push_back(ND);
+
+      ++I;
+    }
+
+    clang::SourceLocation Loc = TemplParams->getLoc();
+    auto *TPL =
+      clang::TemplateParameterList::Create(Context.CxxAST, Loc, Loc,
+                                           TemplateParamDecls, Loc,
+                                           /*RequiresClause=*/nullptr);
+    auto *FTD = clang::FunctionTemplateDecl::Create(Context.CxxAST, Owner, Loc,
+                                                    FD->getDeclName(), TPL, FD);
+    FTD->setLexicalDeclContext(Owner);
+    FD->setDescribedFunctionTemplate(FTD);
+    Owner->addDecl(FTD);
+    D->Cxx = FTD;
+  }
+
   // Update the function parameters.
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
   getFunctionParameters(D, Params);
   FD->setParams(Params);
 
   // Add the declaration and update bindings.
-  Owner->addDecl(FD);
-  D->Cxx = FD;
+  if (!Template) {
+    Owner->addDecl(FD);
+    D->Cxx = FD;
+  }
 
   // FIXME: is this necessary for Gold? It enables some more semantic
   // checking, but not all of it is necessarily meaningful to us.
@@ -181,6 +225,8 @@ static clang::StorageClass getStorageClass(Elaborator &Elab) {
 clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   if (SemaRef.getCurrentScope()->isParameterScope())
     return elaborateParameterDecl(D);
+  else if (SemaRef.getCurrentScope()->isTemplateScope())
+    return elaborateTemplateParamDecl(D);
 
   // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
@@ -232,12 +278,41 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
   return P;
 }
 
+clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
+  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+
+  ExprElaborator TypeElab(Context, SemaRef);
+  ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
+  if (TypeExpr.isNull()) {
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+  clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
+
+  clang::IdentifierInfo *Id = D->getId();
+  clang::SourceLocation Loc = D->Op->getLoc();
+
+  // This is a template type parameter decl.
+  if (TInfo->getType()->getAs<clang::CppxKindType>()) {
+    return nullptr;
+  }
+
+  // The depth and position of the parameter will be set later.
+  auto *NTTP =
+    clang::NonTypeTemplateParmDecl::Create(Context.CxxAST, Owner, Loc, Loc,
+                                           0, 0, Id, TInfo->getType(),
+                                           /*Pack=*/false, TInfo);
+  D->Cxx = NTTP;
+  return NTTP;
+}
+
 clang::Decl *Elaborator::elaborateDeclSyntax(const Syntax *S) {
   // Identify this as a declaration first.
   identifyDecl(S);
 
   // Elaborate the declaration.
-  Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
+  Declaration *D = SemaRef.getCurrentScope()->findDecl(S); 
   if (D) {
     elaborateDecl(D);
     elaborateDef(D);
@@ -257,12 +332,22 @@ void Elaborator::elaborateDeclInit(const Syntax *S) {
 
 void Elaborator::elaborateDef(Declaration *D) {
   if (D->declaresFunction())
-    elaborateFunctionDef(D);
-  else
-    elaborateVariableInit(D);
+    return D->declaresTemplate() ?
+      elaborateFunctionTemplateDef(D) : elaborateFunctionDef(D);
+
+  if (SemaRef.getCurrentScope()->isTemplateScope())
+    return elaborateTemplateParamInit(D);
+  return elaborateVariableInit(D);
 }
 
 void Elaborator::elaborateFunctionDef(Declaration *D) {
+  // clang::FunctionDecl *FD = nullptr;
+  // if (isa<clang::FunctionDecl>(D->Cxx))
+  //   FD = cast<clang::FunctionDecl>(D->Cxx);
+  // else if (isa<clang::FunctionTemplateDecl>(D->Cxx))
+  //   FD = cast<clang::FunctionTemplateDecl>(D->Cxx)->getTemplatedDecl();
+  // assert(FD && "Invalid function declaration.");
+  assert(isa<clang::FunctionDecl>(D->Cxx) && "Bad function declaration.");
   clang::FunctionDecl *FD = cast<clang::FunctionDecl>(D->Cxx);
 
   if (!D->Init)
@@ -291,6 +376,13 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   SemaRef.getCxxSema().PopFunctionScopeInfo();
 
   SemaRef.popDecl();
+}
+
+void Elaborator::elaborateFunctionTemplateDef(Declaration *D) {
+  assert(isa<clang::FunctionTemplateDecl>(D->Cxx) && "Bad function template");
+
+  if (!D->Init)
+    return;
 }
 
 void Elaborator::elaborateVariableInit(Declaration *D) {
@@ -341,7 +433,31 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 
   // Update the initializer.
   SemaRef.getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
-  // VD->setInit(InitExpr);
+}
+
+void Elaborator::elaborateTemplateParamInit(Declaration *D) {
+  assert((isa<clang::NonTypeTemplateParmDecl>(D->Cxx) ||
+          isa<clang::TemplateTemplateParmDecl>(D->Cxx) ||
+          isa<clang::TemplateTypeParmDecl>(D->Cxx)) &&
+         "Initializing non-template parameter.");
+
+  // FIXME: isADeclarationOrDefinition isn't implemented
+  //        for template parameters.
+  // if (isa<clang::NonTypeTemplateParmDecl>(D->Cxx)) {
+  //   if (SemaRef.checkForRedefinition<clang::NonTypeTemplateParmDecl>(D))
+  //     return;
+  // } else if (isa<clang::TemplateTemplateParmDecl>(D->Cxx)) {
+  //   if (SemaRef.checkForRedefinition<clang::TemplateTemplateParmDecl>(D))
+  //     return;
+  // } else if (isa<clang::TemplateTypeParmDecl>(D->Cxx)) {
+  //   if (SemaRef.checkForRedefinition<clang::TemplateTypeParmDecl>(D))
+  //     return;
+  // }
+
+  if (!D->Init)
+    return;
+
+  // TODO: these might have default arguments.
 }
 
 // Get the clang::QualType described by an operator':' call.
@@ -391,6 +507,16 @@ static Declarator *buildFunctionDeclarator(const CallSyntax *S, Declarator *Next
   return D;
 }
 
+static Declarator *buildFunctionDeclarator(const CallSyntax *S,
+                                           const ElemSyntax *T,
+                                           Declarator *Next) {
+  Declarator *D = new Declarator(DK_Function, Next);
+  D->Call = S;
+  D->Data.ParamInfo.Params = S->getArguments();
+  D->Data.ParamInfo.TemplateParams = T->getArguments();
+  return D;
+}
+
 static Declarator *buildPointerDeclarator(const CallSyntax *S, 
                                           Declarator *Next) {
   Declarator *D = new Declarator(DK_Pointer, Next);
@@ -421,35 +547,41 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
   }
 
   else if(const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
-    const AtomSyntax *Callee = cast<AtomSyntax>(Call->getCallee());
-    // Check for "builtin" operators in the declarator.
-    if (Callee->getSpelling() == "operator':'") {
+    if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
+      // Check for "builtin" operators in the declarator.
+      if (Callee->getSpelling() == "operator':'") {
 
-      // If the rhs is something complicated, we need to
-      // elaborate it recursively.
-      if (isa<CallSyntax>(Call->getArgument(1))) {
-        // Elaborate rhs, and then elaborate lhs using the completed
-        // type-declarator from rhs as the type.
-        Next = makeDeclarator(SemaRef, Call->getArgument(1), Next);
-        return makeDeclarator(SemaRef, Call->getArgument(0), Next);
+        // If the rhs is something complicated, we need to
+        // elaborate it recursively.
+        if (isa<CallSyntax>(Call->getArgument(1))) {
+          // Elaborate rhs, and then elaborate lhs using the completed
+          // type-declarator from rhs as the type.
+          Next = makeDeclarator(SemaRef, Call->getArgument(1), Next);
+          return makeDeclarator(SemaRef, Call->getArgument(0), Next);
+        }
+
+        // Otherwise, rhs is just a literal type.
+        return makeDeclarator(SemaRef, Call->getArgument(0),
+                              buildTypeDeclarator(Call, Next));
+      } else if (Callee->getSpelling() == "operator'^'") {
+        // We have a pointer operator, so first create a declarator
+        // out of its inner type and use that as `Next`.
+        Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
+
+        // Now build a pointer-declarator that owns its inner type and
+        // we're done.
+        return buildPointerDeclarator(Call, Next);
       }
 
-      // Otherwise, rhs is just a literal type.
-      return makeDeclarator(SemaRef, Call->getArgument(0),
-                            buildTypeDeclarator(Call, Next));
-    } else if (Callee->getSpelling() == "operator'^'") {
-      // We have a pointer operator, so first create a declarator
-      // out of its inner type and use that as `Next`.
-      Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
-
-      // Now build a pointer-declarator that owns its inner type and
-      // we're done.
-      return buildPointerDeclarator(Call, Next);
+      // Otherwise, this appears to be a function declarator.
+      return makeDeclarator(SemaRef, Callee,
+                            buildFunctionDeclarator(Call, Next));
+    } else if (const ElemSyntax *Callee = dyn_cast<ElemSyntax>(Call->getCallee())) {
+      // We have a template parameter list here, so build the
+      // function declarator accordingly.
+      return makeDeclarator(SemaRef, Callee->getObject(),
+                            buildFunctionDeclarator(Call, Callee, Next));
     }
-
-    // Otherwise, this appears to be a function declarator.
-    return makeDeclarator(SemaRef, Callee,
-                          buildFunctionDeclarator(Call, Next));
   }
 
   return nullptr;

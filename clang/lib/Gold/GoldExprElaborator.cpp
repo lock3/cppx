@@ -501,14 +501,28 @@ Expression ExprElaborator::elaborateArrayType(Declarator *D, TypeInfo *Ty) {
 // Elaborate the parameters and incorporate their types into  the one
 // we're building. Note that T is the return type (if any).
 Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
-  llvm::outs() << "ELABORATE FUNCTION TYPE\n";
-
   const auto *Call = cast<CallSyntax>(D->Call);
 
   // FIXME: Handle array-based arguments.
   assert(isa<ListSyntax>(D->Data.ParamInfo.Params)
          && "Array parameters not supported");
   const Syntax *Args = D->Data.ParamInfo.Params;
+
+  // If template parameters exist, deal with them before parameters.
+  // if (const Syntax *TemplParams = D->Data.ParamInfo.TemplateParams) {
+  //   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
+  //   for (const Syntax *P : TemplParams->children()) {
+  //     Elaborator Elab(Context, SemaRef);
+  //     clang::NamedDecl *ND =
+  //       cast_or_null<clang::NamedDecl>(Elab.elaborateDeclSyntax(P));
+  //     if (!ND)
+  //       return nullptr;
+
+  //     Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
+  //     assert(D && "Didn't find associated declaration");
+  //     TemplateParamDecls.push_back(ND);
+  //   }
+  // }
 
   // Elaborate the parameter declarations in order to get their types, and save
   // the resulting scope with the declarator.
@@ -517,11 +531,13 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
   SemaRef.enterScope(SK_Parameter, Call);
   for (const Syntax *P : Args->children()) {
     Elaborator Elab(Context, SemaRef);
-    clang::ValueDecl *VD = cast_or_null<clang::ValueDecl>(Elab.elaborateDeclSyntax(P));
-    Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
-    assert(D && "Didn't find associated declaration");
+    clang::ValueDecl *VD =
+      cast_or_null<clang::ValueDecl>(Elab.elaborateDeclSyntax(P));
     if (!VD)
       return nullptr;
+
+    Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
+    assert(D && "Didn't find associated declaration");
 
     assert(isa<clang::ParmVarDecl>(VD) && "Parameter is not a ParmVarDecl");
 

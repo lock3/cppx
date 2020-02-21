@@ -169,6 +169,25 @@ public:
   // A mapping of identifiers as strings to syntaxes.
   llvm::MapVector<clang::IdentifierInfo *, const Syntax *> IdentifierMapping;
 
+  // An RAII type for constructing scopes.
+  struct ScopeRAII {
+    ScopeRAII(Sema &S, ScopeKind K, const Syntax *ConcreteTerm)
+      : S(S), SavedScope(S.getCurrentScope()), ConcreteTerm(ConcreteTerm) {
+      S.enterScope(K, ConcreteTerm);
+    }
+
+    ~ScopeRAII() {
+      S.leaveScope(ConcreteTerm);
+    }
+
+  private:
+    Sema &S;
+
+    const Scope *SavedScope;
+
+    const Syntax *ConcreteTerm;
+  };
+
   // Dictionary of built in types.
   //
   // FIXME: This should be initialized in the constructor.
