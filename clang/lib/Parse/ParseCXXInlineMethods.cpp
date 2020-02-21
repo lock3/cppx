@@ -16,6 +16,7 @@
 #include "clang/Parse/RAIIObjectsForParser.h"
 #include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/Scope.h"
+#include "clang/Sema/ActionTrace.h"
 using namespace clang;
 
 /// ParseCXXInlineMethodDef - We parsed and verified that the specified
@@ -25,6 +26,7 @@ NamedDecl *Parser::ParseCXXInlineMethodDef(
     AccessSpecifier AS, ParsedAttributes &AccessAttrs, ParsingDeclarator &D,
     const ParsedTemplateInfo &TemplateInfo, const VirtSpecifiers &VS,
     SourceLocation PureSpecLoc) {
+  PARSING_LOG();
   assert(D.isFunctionDeclarator() && "This isn't a function declarator!");
   assert(Tok.isOneOf(tok::l_brace, tok::colon, tok::kw_try, tok::equal) &&
          "Current token not a '{', ':', '=', or 'try'!");
@@ -190,6 +192,7 @@ NamedDecl *Parser::ParseCXXInlineMethodDef(
 /// declaration. Now lex its initializer and store its tokens for parsing
 /// after the class is complete.
 void Parser::ParseCXXNonStaticMemberInitializer(Decl *VarD) {
+  PARSING_LOG();
   assert(Tok.isOneOf(tok::l_brace, tok::equal) &&
          "Current token not a '{' or '='!");
 
@@ -267,6 +270,7 @@ void Parser::LateParsedMemberInitializer::ParseLexedMemberInitializers() {
 /// stack of method declarations with some parts for which parsing was
 /// delayed (such as default arguments) and parse them.
 void Parser::ParseLexedMethodDeclarations(ParsingClass &Class) {
+  PARSING_LOG();
   bool HasTemplateScope = !Class.TopLevelClass && Class.TemplateScope;
   ParseScope ClassTemplateScope(this, Scope::TemplateParamScope,
                                 HasTemplateScope);
@@ -295,6 +299,7 @@ void Parser::ParseLexedMethodDeclarations(ParsingClass &Class) {
 }
 
 void Parser::ParseLexedMethodDeclaration(LateParsedMethodDeclaration &LM) {
+  PARSING_LOG();
   // If this is a member template, introduce the template parameter scope.
   ParseScope TemplateScope(this, Scope::TemplateParamScope, LM.TemplateScope);
   TemplateParameterDepthRAII CurTemplateDepthTracker(TemplateParameterDepth);
@@ -472,6 +477,7 @@ void Parser::ParseLexedMethodDeclaration(LateParsedMethodDeclaration &LM) {
 /// (non-nested) C++ class. Now go over the stack of lexed methods that were
 /// collected during its parsing and parse them all.
 void Parser::ParseLexedMethodDefs(ParsingClass &Class) {
+  PARSING_LOG();
   bool HasTemplateScope = !Class.TopLevelClass && Class.TemplateScope;
   ParseScope ClassTemplateScope(this, Scope::TemplateParamScope, HasTemplateScope);
   TemplateParameterDepthRAII CurTemplateDepthTracker(TemplateParameterDepth);
@@ -489,6 +495,7 @@ void Parser::ParseLexedMethodDefs(ParsingClass &Class) {
 }
 
 void Parser::ParseLexedMethodDef(LexedMethod &LM) {
+  PARSING_LOG();
   // If this is a member template, introduce the template parameter scope.
   ParseScope TemplateScope(this, Scope::TemplateParamScope, LM.TemplateScope);
   TemplateParameterDepthRAII CurTemplateDepthTracker(TemplateParameterDepth);
@@ -576,6 +583,7 @@ void Parser::ParseLexedMethodDef(LexedMethod &LM) {
 /// of a top (non-nested) C++ class. Now go over the stack of lexed data member
 /// initializers that were collected during its parsing and parse them all.
 void Parser::ParseLexedMemberInitializers(ParsingClass &Class) {
+  PARSING_LOG();
   bool HasTemplateScope = !Class.TopLevelClass && Class.TemplateScope;
   ParseScope ClassTemplateScope(this, Scope::TemplateParamScope,
                                 HasTemplateScope);
@@ -616,6 +624,7 @@ void Parser::ParseLexedMemberInitializers(ParsingClass &Class) {
 }
 
 void Parser::ParseLexedMemberInitializer(LateParsedMemberInitializer &MI) {
+  PARSING_LOG();
   if (!MI.Field || MI.Field->isInvalidDecl())
     return;
 
@@ -667,6 +676,7 @@ void Parser::ParseLexedMemberInitializer(LateParsedMemberInitializer &MI) {
 bool Parser::ConsumeAndStoreUntil(tok::TokenKind T1, tok::TokenKind T2,
                                   CachedTokens &Toks,
                                   bool StopAtSemi, bool ConsumeFinalToken) {
+  PARSING_LOG();
   // We always want this function to consume at least one token if the first
   // token isn't T and if not at EOF.
   bool isFirstTokenConsumed = true;
@@ -752,6 +762,7 @@ bool Parser::ConsumeAndStoreUntil(tok::TokenKind T1, tok::TokenKind T2,
 ///
 /// \return True on error.
 bool Parser::ConsumeAndStoreFunctionPrologue(CachedTokens &Toks) {
+  PARSING_LOG();
   if (Tok.is(tok::kw_try)) {
     Toks.push_back(Tok);
     ConsumeToken();
@@ -973,6 +984,7 @@ bool Parser::ConsumeAndStoreFunctionPrologue(CachedTokens &Toks) {
 /// Consume and store tokens from the '?' to the ':' in a conditional
 /// expression.
 bool Parser::ConsumeAndStoreConditional(CachedTokens &Toks) {
+  PARSING_LOG();
   // Consume '?'.
   assert(Tok.is(tok::question));
   Toks.push_back(Tok);
@@ -1038,6 +1050,7 @@ private:
 /// \c false if we bailed out.
 bool Parser::ConsumeAndStoreInitializer(CachedTokens &Toks,
                                         CachedInitKind CIK) {
+  PARSING_LOG();
   // We always want this function to consume at least one token if not at EOF.
   bool IsFirstToken = true;
 

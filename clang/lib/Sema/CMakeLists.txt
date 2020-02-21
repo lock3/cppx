@@ -16,6 +16,7 @@ clang_tablegen(OpenCLBuiltins.inc -gen-clang-opencl-builtins
   )
 
 add_clang_library(clangSema
+  ActionTrace.cpp
   AnalysisBasedWarnings.cpp
   CodeCompleteConsumer.cpp
   DeclSpec.cpp
