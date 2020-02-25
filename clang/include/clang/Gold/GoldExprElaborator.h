@@ -62,6 +62,7 @@ public:
 
   Expression elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType);
   Expression elaborateCall(const CallSyntax *S);
+  Expression elaborateElemCall(const CallSyntax *S);
 
   Expression elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
 

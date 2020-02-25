@@ -690,6 +690,8 @@ void Elaborator::identifyDecl(const Syntax *S) {
 
       // Try to build a declarator for the declaration.
       Declarator *Dcl = makeDeclarator(SemaRef, Decl);
+      if (Dcl)
+        Dcl->printSequence(llvm::errs());
       if (!Dcl)
         return;
 

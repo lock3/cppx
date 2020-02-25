@@ -130,8 +130,24 @@ namespace {
   };
 } // anonymous namespace
 
+static clang::Stmt *
+elaborateDefaultCall(SyntaxContext &Context, Sema &SemaRef, const CallSyntax *S) {
+  ExprElaborator ExprElab(Context, SemaRef);
+  ExprElaborator::Expression Expression = ExprElab.elaborateCall(S);
+
+  if (Expression.is<clang::TypeSourceInfo *>()) {
+    SemaRef.Diags.Report(S->getLoc(), clang::diag::err_expected_expression);
+    return nullptr;
+  }
+
+  return Expression.get<clang::Expr *>();
+}
+
 clang::Stmt *
 StmtElaborator::elaborateCall(const CallSyntax *S) {
+  if (isa<ElemSyntax>(S->getCallee()))
+    return elaborateDefaultCall(Context, SemaRef, S);
+
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   FusedOpKind OpKind = getFusedOpKind(SemaRef, Callee->getSpelling());
 
@@ -233,15 +249,16 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   }
 
   // If all else fails, just see if we can elaborate any expression.
-  ExprElaborator ExprElab(Context, SemaRef);
-  ExprElaborator::Expression Expression = ExprElab.elaborateCall(S);
+  return elaborateDefaultCall(Context, SemaRef, S);
+  // ExprElaborator ExprElab(Context, SemaRef);
+  // ExprElaborator::Expression Expression = ExprElab.elaborateCall(S);
 
-  if (Expression.is<clang::TypeSourceInfo *>()) {
-    Diags.Report(S->getLoc(), clang::diag::err_expected_expression);
-    return nullptr;
-  }
+  // if (Expression.is<clang::TypeSourceInfo *>()) {
+  //   Diags.Report(S->getLoc(), clang::diag::err_expected_expression);
+  //   return nullptr;
+  // }
 
-  return Expression.get<clang::Expr *>();
+  // return Expression.get<clang::Expr *>();
 }
 
 clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {

@@ -204,6 +204,9 @@ static const llvm::StringMap<clang::BinaryOperatorKind> BinaryOperators = {
 };
 
 Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
+  if (isa<ElemSyntax>(S->getCallee()))
+    return elaborateElemCall(S);
+
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   FusedOpKind Op = getFusedOpKind(SemaRef, Callee->getSpelling());
 
@@ -300,6 +303,87 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
 
   llvm::errs() << "Unsupported call.\n";
   return nullptr;
+}
+
+Expression ExprElaborator::elaborateElemCall(const CallSyntax *S) {
+  const ElemSyntax *Callee = cast<ElemSyntax>(S->getCallee());
+
+  // FIXME: this can be anything
+  const AtomSyntax *Id = cast<AtomSyntax>(Callee->getObject());
+
+  // Try to construct a normal function-call expression.
+  // First do unqualified lookup.
+  clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Id->getSpelling())}, S->getLoc());
+  clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
+  SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
+
+  if (R.empty())
+    return nullptr;
+
+  clang::Expr *Fn = nullptr;
+  R.resolveKind();
+  if (R.isSingleResult()) {
+    clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>();
+
+    // This had better be a reference to a function.
+    clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(VD);
+    if (!FD) return nullptr;
+
+    llvm::SmallVector<clang::TemplateArgumentLoc, 4> TemplateArgs;
+    for (const Syntax *SS : Callee->getArguments()->children()) {
+      ExprElaborator ParamElaborator(Context, SemaRef);
+      Expression ParamExpression = ParamElaborator.elaborateExpr(SS);
+      if (ParamExpression.isNull())
+        return nullptr;
+
+      // TODO: support types too
+      clang::TemplateArgument Arg(ParamExpression.get<clang::Expr *>(),
+                                  clang::TemplateArgument::Expression);
+      // FIXME: what is the point of a TemplateArgLoc? what should the expression
+      // argument be?
+      TemplateArgs.emplace_back(Arg, ParamExpression.get<clang::Expr *>());
+    }
+
+    Fn =
+      clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
+                                 clang::SourceLocation(), VD, /*Capture=*/false,
+                                 S->getLoc(), VD->getType(), clang::VK_RValue);
+  } else {
+    llvm::outs() << "R kind " << R.getResultKind() << '\n';
+    llvm::errs() << "Overloads not supported.\n";
+    return nullptr;
+  }
+
+  // Get the passed arguments.
+  llvm::SmallVector<clang::Expr *, 8> Args;
+  const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
+  assert(ArgList && "Unexpected argument format.");
+  for (const Syntax *A : ArgList->children()) {
+    ExprElaborator Elab(Context, SemaRef);
+    Expression Argument = Elab.elaborateExpr(A);
+
+    // FIXME: What kind of expression is the unary ':typename' expression?
+    if (Argument.is<clang::TypeSourceInfo *>()) {
+      SemaRef.Diags.Report(A->getLoc(), clang::diag::err_expected_expression);
+      return nullptr;
+    }
+
+    Args.push_back(Argument.get<clang::Expr *>());
+  }
+
+  // Create the call.
+  clang::MultiExprArg MultiArgs(Args);
+  clang::ExprResult Call =
+    SemaRef.getCxxSema().ActOnCallExpr(SemaRef.getCxxSema().getCurScope(),
+                                       Fn, S->getCalleeLoc(),
+                                       MultiArgs, S->getCalleeLoc());
+  if (Call.isInvalid()) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_failed_to_translate_expr);
+    return nullptr;
+  }
+
+  return Call.get();
 }
 
 Expression ExprElaborator::elaborateBinOp(const CallSyntax *S,
