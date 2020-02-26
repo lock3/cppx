@@ -713,7 +713,8 @@ void Elaborator::identifyDecl(const Syntax *S) {
         //    x = 4
         // \endcode
         // The first statement is a declaration. The second is an assignment.
-        if (CurScope->findDecl(Id) && OperatorEquals)
+        // FIXME: is this the right way to handle the lookup set?
+        if (!CurScope->findDecl(Id).empty() && OperatorEquals)
           return;
       }
 
@@ -728,12 +729,14 @@ void Elaborator::identifyDecl(const Syntax *S) {
       // exists, consider it a redeclaration.
       // TODO: distinguish between redefinition, redeclaration, and redeclaration
       // with different type.
-      if (CurScope->isNamespaceScope() || CurScope->isParameterScope()) {
-        if (Declaration *OldDecl = CurScope->findDecl(Id)) {
-          TheDecl->setPreviousDecl(OldDecl);
-          // SemaRef.Diags.Report(S->getLoc(), clang::diag::err_redefinition) <<
-          //   clang::DeclarationName(Id);
-          // return;
+      if ((CurScope->isNamespaceScope() || CurScope->isParameterScope()) &&
+          !TheDecl->declaresFunction()) {
+        // FIXME: rewrite this!!
+        auto DeclSet = CurScope->findDecl(Id);
+
+        if (!DeclSet.empty()) {
+          assert((DeclSet.size() == 1) && "elaborated redefinition.");
+          TheDecl->setPreviousDecl(*DeclSet.begin());
         }
       }
 

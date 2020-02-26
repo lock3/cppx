@@ -51,8 +51,6 @@ class SyntaxContext;
 /// Maintains the state of Gold-to-C++ translation for a
 /// translation unit in the Gold Language.
 class Sema {
-  friend class IdentifierMapper;
-
   // The clang semantic object, allows to create various syntax nodes
   // as well as perform important transformations on them.
   clang::Sema &CxxSema;
@@ -141,6 +139,8 @@ public:
           << IterD->getName();
         return true;
       }
+
+      Iter = Iter->Next;
     } while (Iter != Start->First);
 
     return false;
@@ -165,9 +165,6 @@ public:
   const clang::IdentifierInfo *OperatorElseII;
   const clang::IdentifierInfo *OperatorReturnII;
   const clang::IdentifierInfo *OperatorReturnsII;
-
-  // A mapping of identifiers as strings to syntaxes.
-  llvm::MapVector<clang::IdentifierInfo *, const Syntax *> IdentifierMapping;
 
   // An RAII type for constructing scopes.
   struct ScopeRAII {
