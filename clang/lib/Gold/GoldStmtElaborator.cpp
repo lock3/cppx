@@ -232,6 +232,9 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
     ExprElaborator::Expression RetVal =
       ExprElaborator(Context, SemaRef).elaborateExpr(S->getArgument(0));
 
+    if (RetVal.isNull())
+      return nullptr;
+
     if (RetVal.is<clang::TypeSourceInfo *>()) {
       SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
                            clang::diag::err_expected_lparen_after_type);
