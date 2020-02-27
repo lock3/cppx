@@ -147,7 +147,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::FunctionDecl *FD = clang::FunctionDecl::Create(Context.CxxAST, Owner,
                                                         Loc, Loc, Name,
                                                         TInfo->getType(),
-                                                        TInfo, clang::SC_Extern);
+                                                        TInfo, clang::SC_None);
 
   if (FD->isMain()) {
     clang::AttributeFactory Attrs;
@@ -690,8 +690,6 @@ void Elaborator::identifyDecl(const Syntax *S) {
 
       // Try to build a declarator for the declaration.
       Declarator *Dcl = makeDeclarator(SemaRef, Decl);
-      if (Dcl)
-        Dcl->printSequence(llvm::errs());
       if (!Dcl)
         return;
 
