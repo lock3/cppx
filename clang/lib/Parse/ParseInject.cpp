@@ -16,11 +16,13 @@
 #include "clang/Parse/ParseDiagnostic.h"
 #include "clang/Parse/Parser.h"
 #include "clang/Parse/RAIIObjectsForParser.h"
+#include "clang/Sema/ActionTrace.h"
 
 using namespace clang;
 
 /// ParseCXXNamespaceFragment
 Decl *Parser::ParseCXXNamespaceFragment(Decl *Fragment) {
+  PARSING_LOG();
   assert(Tok.is(tok::kw_namespace) && "expected 'namespace'");
 
   SourceLocation NamespaceLoc = ConsumeToken();
@@ -64,6 +66,7 @@ Decl *Parser::ParseCXXNamespaceFragment(Decl *Fragment) {
 
 /// ParseCXXClassFragment
 Decl *Parser::ParseCXXClassFragment(Decl *Fragment) {
+  PARSING_LOG();
   assert(Tok.isOneOf(tok::kw_struct, tok::kw_class, tok::kw_union) &&
          "expected 'struct', 'class', or 'union'");
 
@@ -123,6 +126,7 @@ Decl *Parser::ParseCXXClassFragment(Decl *Fragment) {
 
 /// ParseCXXEnumFragment
 Decl *Parser::ParseCXXEnumFragment(Decl *Fragment) {
+  PARSING_LOG();
   assert(Tok.is(tok::kw_enum) && "expected 'enum'");
 
   SourceLocation EnumKWLoc = ConsumeToken();
@@ -171,6 +175,7 @@ Decl *Parser::ParseCXXEnumFragment(Decl *Fragment) {
 
 /// ParseCXXBlockFragment
 Decl *Parser::ParseCXXBlockFragment(Decl *Fragment) {
+  PARSING_LOG();
   assert(Tok.is(tok::l_brace) && "Expected '{'");
   using CompoundStmt = ::CompoundStmt;
   SourceLocation IntroLoc = Tok.getLocation();
@@ -204,6 +209,7 @@ Decl *Parser::ParseCXXBlockFragment(Decl *Fragment) {
 ///        compound-statement
 ///
 Decl *Parser::ParseCXXFragment(SmallVectorImpl<Expr *> &Captures) {
+  PARSING_LOG();
   // Implicitly capture automatic variables as captured constants.
   Actions.ActOnCXXFragmentCapture(Captures);
 
@@ -248,6 +254,7 @@ Decl *Parser::ParseCXXFragment(SmallVectorImpl<Expr *> &Captures) {
 ///         '<<' fragment
 ///
 ExprResult Parser::ParseCXXFragmentExpression() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw___fragment) && "expected '<<' token");
   SourceLocation Loc = ConsumeToken();
 
@@ -261,6 +268,7 @@ ExprResult Parser::ParseCXXFragmentExpression() {
 }
 
 Decl *Parser::ParseNamespaceDeclForInjectionContext() {
+  PARSING_LOG();
   // Check for the global namespace
   if (Tok.is(tok::coloncolon) && NextToken().is(tok::r_paren)) {
     ConsumeToken(); // Eat `::`
@@ -278,6 +286,7 @@ Decl *Parser::ParseNamespaceDeclForInjectionContext() {
 bool
 Parser::ParseOptionalCXXInjectionContextSpecifier(
                                       CXXInjectionContextSpecifier &Specifier) {
+  PARSING_LOG();
   if (Tok.is(tok::kw_namespace)) {
     SourceLocation KWLocation = ConsumeToken();
     if (Tok.is(tok::l_paren)) {
@@ -313,6 +322,7 @@ Parser::ParseOptionalCXXInjectionContextSpecifier(
 ///
 /// Note that the statement parser will collect the trailing semicolon.
 StmtResult Parser::ParseCXXInjectionStatement() {
+  PARSING_LOG();
   assert(Tok.is(tok::arrow) && "expected '->' token");
   SourceLocation Loc = ConsumeToken();
 
@@ -340,6 +350,7 @@ StmtResult Parser::ParseCXXInjectionStatement() {
 /// Returns the group of declarations parsed.
 
 StmtResult Parser::ParseCXXBaseInjectionStatement() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw___inject_base) && "expected '__inject_base' token");
   SourceLocation KWLoc = ConsumeToken();
 
@@ -382,6 +393,7 @@ namespace {
 ///    terminated-injection-declaration
 ///
 Decl *Parser::MaybeParseCXXInjectorDeclaration() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw_consteval));
 
   // [Meta] metaprogram-declaration
@@ -402,6 +414,7 @@ Decl *Parser::MaybeParseCXXInjectorDeclaration() {
 ///     'consteval' compound-statement
 /// \endverbatim
 Decl *Parser::ParseCXXMetaprogramDeclaration() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw_consteval));
   SourceLocation ConstevalLoc = ConsumeToken();
   assert(Tok.is(tok::l_brace));
@@ -429,6 +442,7 @@ Decl *Parser::ParseCXXMetaprogramDeclaration() {
 }
 
 Decl *Parser::ParseCXXInjectionDeclaration(bool IncludeTerminator) {
+  PARSING_LOG();
   assert(Tok.is(tok::kw_consteval));
   SourceLocation ConstevalLoc = ConsumeToken();
   assert(Tok.is(tok::arrow) && "expected '->' token");
@@ -468,6 +482,7 @@ Decl *Parser::ParseCXXInjectionDeclaration(bool IncludeTerminator) {
 ///
 /// Returns the injector declaration.
 Decl *Parser::ParseCXXInjectionDeclaration() {
+  PARSING_LOG();
   return ParseCXXInjectionDeclaration(false);
 }
 
@@ -478,6 +493,7 @@ Decl *Parser::ParseCXXInjectionDeclaration() {
 ///
 /// Returns the injector declaration.
 Decl *Parser::ParseCXXTerminatedInjectionDeclaration() {
+  PARSING_LOG();
   return ParseCXXInjectionDeclaration(true);
 }
 
@@ -488,6 +504,7 @@ Decl *Parser::ParseCXXTerminatedInjectionDeclaration() {
 ///
 bool Parser::ParseCXXInjectedParameter(
                        SmallVectorImpl<DeclaratorChunk::ParamInfo> &ParamInfo) {
+  PARSING_LOG();
   assert(Tok.is(tok::arrow) && "Expected '->' token");
   SourceLocation Loc = ConsumeToken();
 
@@ -513,6 +530,7 @@ bool Parser::ParseCXXInjectedParameter(
 /// FIXME: Support union as a class key? What about enum?
 Parser::DeclGroupPtrTy
 Parser::ParseCXXTypeTransformerDeclaration(SourceLocation UsingLoc) {
+  PARSING_LOG();
   assert(Tok.is(tok::kw_class) || Tok.is(tok::kw_struct));
 
   // Match the class key.

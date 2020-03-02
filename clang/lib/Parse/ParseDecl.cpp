@@ -6671,6 +6671,7 @@ bool Parser::isFunctionDeclaratorIdentifierList() {
 void Parser::ParseFunctionDeclaratorIdentifierList(
        Declarator &D,
        SmallVectorImpl<DeclaratorChunk::ParamInfo> &ParamInfo) {
+  PARSING_LOG();
   // If there was no identifier specified for the declarator, either we are in
   // an abstract-declarator, or we are in a parameter declarator which was found
   // to be abstract.  In abstract-declarators, identifier lists are not valid:
@@ -6749,7 +6750,7 @@ void Parser::ParseParameterDeclarationClause(
        ParsedAttributes &FirstArgAttrs,
        SmallVectorImpl<DeclaratorChunk::ParamInfo> &ParamInfo,
        SourceLocation &EllipsisLoc) {
-
+  PARSING_LOG();
   // Avoid exceeding the maximum function scope depth.
   // See https://bugs.llvm.org/show_bug.cgi?id=19607
   // Note Sema::ActOnParamDeclarator calls ParmVarDecl::setScopeInfo with
@@ -6935,6 +6936,7 @@ void Parser::ParseParameterDeclarationClause(
 /// [C++11] direct-declarator '[' constant-expression[opt] ']'
 ///                           attribute-specifier-seq[opt]
 void Parser::ParseBracketDeclarator(Declarator &D) {
+  PARSING_LOG();
   if (CheckProhibitedCXX11Attribute())
     return;
 
@@ -7050,6 +7052,7 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
 
 /// Diagnose brackets before an identifier.
 void Parser::ParseMisplacedBracketDeclarator(Declarator &D) {
+  PARSING_LOG();
   assert(Tok.is(tok::l_square) && "Missing opening bracket");
   assert(!D.mayOmitIdentifier() && "Declarator cannot omit identifier");
 
@@ -7142,6 +7145,7 @@ void Parser::ParseMisplacedBracketDeclarator(Declarator &D) {
 /// [GNU/C++] typeof unary-expression
 ///
 void Parser::ParseTypeofSpecifier(DeclSpec &DS) {
+  PARSING_LOG();
   assert(Tok.is(tok::kw_typeof) && "Not a typeof specifier");
   Token OpTok = Tok;
   SourceLocation StartLoc = ConsumeToken();
@@ -7208,6 +7212,7 @@ void Parser::ParseTypeofSpecifier(DeclSpec &DS) {
 ///           _Atomic ( type-name )
 ///
 void Parser::ParseAtomicSpecifier(DeclSpec &DS) {
+  PARSING_LOG();
   assert(Tok.is(tok::kw__Atomic) && NextToken().is(tok::l_paren) &&
          "Not an atomic specifier");
 
@@ -7242,6 +7247,7 @@ void Parser::ParseAtomicSpecifier(DeclSpec &DS) {
 /// TryAltiVecVectorTokenOutOfLine - Out of line body that should only be called
 /// from TryAltiVecVectorToken.
 bool Parser::TryAltiVecVectorTokenOutOfLine() {
+  PARSING_LOG();
   Token Next = NextToken();
   switch (Next.getKind()) {
   default: return false;
@@ -7275,6 +7281,7 @@ bool Parser::TryAltiVecVectorTokenOutOfLine() {
 bool Parser::TryAltiVecTokenOutOfLine(DeclSpec &DS, SourceLocation Loc,
                                       const char *&PrevSpec, unsigned &DiagID,
                                       bool &isInvalid) {
+  PARSING_LOG();
   const PrintingPolicy &Policy = Actions.getASTContext().getPrintingPolicy();
   if (Tok.getIdentifierInfo() == Ident_vector) {
     Token Next = NextToken();

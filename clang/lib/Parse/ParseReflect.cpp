@@ -16,6 +16,7 @@
 #include "clang/Parse/ParseDiagnostic.h"
 #include "clang/Parse/RAIIObjectsForParser.h"
 #include "clang/Sema/ParsedReflection.h"
+#include "clang/Sema/ActionTrace.h"
 
 using namespace clang;
 
@@ -23,6 +24,7 @@ using namespace clang;
 /// parsing a template argument, except that we also allow namespace-names
 /// in this context.
 ParsedReflectionOperand Parser::ParseCXXReflectOperand() {
+  PARSING_LOG();
   Sema::CXXReflectionScopeRAII ReflectionScope(Actions);
 
   // The operand is unevaluated.
@@ -91,6 +93,7 @@ ParsedReflectionOperand Parser::ParseCXXReflectOperand() {
 ///         'reflexpr' '(' id-expression ')'
 /// \endverbatim
 ExprResult Parser::ParseCXXReflectExpression() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw_reflexpr) && "expected 'reflexpr'");
   SourceLocation KWLoc = ConsumeToken();
 
@@ -119,6 +122,7 @@ ExprResult Parser::ParseCXXReflectExpression() {
 ///    __valid_reflection '(' error-message ')'
 /// \endverbatim
 ExprResult Parser::ParseCXXInvalidReflectionExpression() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw___invalid_reflection) && "Not '__invalid_reflection'");
 
   SourceLocation BuiltinLoc = ConsumeToken();
@@ -144,6 +148,7 @@ ExprResult Parser::ParseCXXInvalidReflectionExpression() {
 template<int BaseArgCount>
 static llvm::Optional<SmallVector<Expr *, BaseArgCount>>
 ParseConstexprFunctionArgs(Parser &P, BalancedDelimiterTracker &ParenTracker) {
+  PARSING_LOG();
   SmallVector<Expr *, BaseArgCount> Args;
 
   do {
@@ -165,6 +170,7 @@ ParseConstexprFunctionArgs(Parser &P, BalancedDelimiterTracker &ParenTracker) {
 ///     __reflect '(' expression-list ')'
 /// \endverbatim
 ExprResult Parser::ParseCXXReflectionReadQuery() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw___reflect) && "Not __reflect");
   SourceLocation Loc = ConsumeToken();
 
@@ -192,6 +198,7 @@ ExprResult Parser::ParseCXXReflectionReadQuery() {
 ///     __reflect_mod '(' expression-list ')'
 /// \endverbatim
 ExprResult Parser::ParseCXXReflectionWriteQuery() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw___reflect_mod) && "Not __reflect_mod");
   SourceLocation Loc = ConsumeToken();
 
@@ -219,6 +226,7 @@ ExprResult Parser::ParseCXXReflectionWriteQuery() {
 ///     __reflect_print '(' expression-list ')'
 /// \endverbatim
 ExprResult Parser::ParseCXXReflectPrintLiteralExpression() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw___reflect_print) && "Not __reflect_print");
   SourceLocation Loc = ConsumeToken();
 
@@ -246,6 +254,7 @@ ExprResult Parser::ParseCXXReflectPrintLiteralExpression() {
 ///     __reflect_pretty_print '(' reflection ')'
 /// \endverbatim
 ExprResult Parser::ParseCXXReflectPrintReflectionExpression() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw___reflect_pretty_print) && "Not __reflect_pretty_print");
   SourceLocation Loc = ConsumeToken();
 
@@ -276,6 +285,7 @@ ExprResult Parser::ParseCXXReflectPrintReflectionExpression() {
 ///     __reflect_dump '(' reflection ')'
 /// \endverbatim
 ExprResult Parser::ParseCXXReflectDumpReflectionExpression() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw___reflect_dump) && "Not __reflect_dump");
   SourceLocation Loc = ConsumeToken();
 
@@ -300,6 +310,7 @@ ExprResult Parser::ParseCXXReflectDumpReflectionExpression() {
 }
 
 ExprResult Parser::ParseCXXCompilerErrorExpression() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw___compiler_error) && "Not '__compiler_error'");
 
   SourceLocation BuiltinLoc = ConsumeToken();
@@ -329,6 +340,7 @@ ExprResult Parser::ParseCXXCompilerErrorExpression() {
 ///     idexpr '(' constant-expression ')'
 /// \endverbatim
 ExprResult Parser::ParseCXXIdExprExpression() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw_idexpr) && "Not idexpr");
   SourceLocation Loc = ConsumeToken();
 
@@ -358,6 +370,7 @@ ExprResult Parser::ParseCXXIdExprExpression() {
 ///     valueof '(' constant-expression ')'
 /// \endverbatim
 ExprResult Parser::ParseCXXValueOfExpression() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw_valueof) && "Not valueof");
   SourceLocation Loc = ConsumeToken();
 
@@ -391,6 +404,7 @@ ExprResult Parser::ParseCXXValueOfExpression() {
 bool Parser::ParseCXXReflectedId(CXXScopeSpec &SS,
                                  SourceLocation TemplateKWLoc,
                                  UnqualifiedId &Result) {
+  PARSING_LOG();
   assert(Tok.is(tok::kw_unqualid) && "expected 'unqualid'");
   SourceLocation KWLoc = ConsumeToken();
 
@@ -465,6 +479,7 @@ bool Parser::ParseCXXReflectedId(CXXScopeSpec &SS,
 /// The constant expression must be a reflection of a type.
 TypeResult Parser::ParseReflectedTypeSpecifier(SourceLocation TypenameLoc,
                                                SourceLocation &EndLoc) {
+  PARSING_LOG();
   BalancedDelimiterTracker T(*this, tok::l_paren);
   if (T.expectAndConsume(diag::err_expected_lparen_after, "reflexpr"))
     return TypeResult(true);
@@ -487,6 +502,7 @@ TypeResult Parser::ParseReflectedTypeSpecifier(SourceLocation TypenameLoc,
 /// The constant expression must be a reflection of a type.
 ParsedTemplateArgument
 Parser::ParseReflectedTemplateArgument() {
+  PARSING_LOG();  
   assert(Tok.is(tok::kw_templarg) && "expected 'templarg'");
   SourceLocation Loc = ConsumeToken();
 
@@ -511,6 +527,7 @@ Parser::ParseReflectedTemplateArgument() {
 ///
 /// Returns true if parsing or semantic analysis fail.
 ExprResult Parser::ParseCXXConcatenateExpression() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw___concatenate));
   SourceLocation KeyLoc = ConsumeToken();
 
@@ -539,6 +556,7 @@ ExprResult Parser::ParseCXXConcatenateExpression() {
 /// Returns true if reflection is enabled and the
 /// current expression appears to be a variadic reifier.
 bool Parser::isVariadicReifier() const {
+  PARSING_LOG();
   if (tok::isAnnotation(Tok.getKind()) || Tok.is(tok::raw_identifier))
      return false;
   IdentifierInfo *TokII = Tok.getIdentifierInfo();
@@ -552,6 +570,7 @@ bool Parser::isVariadicReifier() const {
 }
 
 bool Parser::ParseVariadicReifier(llvm::SmallVectorImpl<Expr *> &Exprs) {
+  PARSING_LOG();
   IdentifierInfo *KW = Tok.getIdentifierInfo();
   SourceLocation KWLoc = ConsumeToken();
   // Parse any number of arguments in parens.
@@ -589,6 +608,7 @@ bool Parser::ParseVariadicReifier(llvm::SmallVectorImpl<Expr *> &Exprs) {
 }
 
 bool Parser::ParseVariadicReifier(llvm::SmallVectorImpl<QualType> &Types) {
+  PARSING_LOG();
   SourceLocation KWLoc = ConsumeToken();
   // Parse any number of arguments in parens.
   BalancedDelimiterTracker Parens(*this, tok::l_paren);
@@ -617,6 +637,7 @@ bool Parser::ParseVariadicReifier(llvm::SmallVectorImpl<QualType> &Types) {
 /// Parse a non-type variadic reifier (valueof, unqualid, idexpr)
 /// Returns true on error.
 bool Parser::ParseNonTypeReifier(TemplateArgList &Args, SourceLocation KWLoc) {
+  PARSING_LOG();
   llvm::SmallVector<Expr *, 4> Exprs;
 
   if (ParseVariadicReifier(Exprs))
@@ -641,6 +662,7 @@ bool Parser::ParseNonTypeReifier(TemplateArgList &Args, SourceLocation KWLoc) {
 /// Parse a type variadic reifier (typename)
 /// Returns true on error.
 bool Parser::ParseTypeReifier(TemplateArgList &Args, SourceLocation KWLoc) {
+  PARSING_LOG();
   llvm::SmallVector<QualType, 4> Types;
 
   if (ParseVariadicReifier(Types))

@@ -1,7 +1,7 @@
 #include "clang/Sema/ActionTrace.h"
 
 
-namespace Sema {
+namespace sema {
 
 int ActionTrace::Depth = 0;
 const char* ActionTrace::Indent = "  ";

@@ -14,6 +14,7 @@
 #include "clang/Parse/Parser.h"
 #include "clang/Parse/ParseDiagnostic.h"
 #include "clang/Sema/ParsedTemplate.h"
+#include "clang/Sema/ActionTrace.h"
 using namespace clang;
 
 /// isCXXDeclarationStatement - C++-specialized function that disambiguates
@@ -47,6 +48,7 @@ using namespace clang;
 ///                 namespace-name ';'
 ///
 bool Parser::isCXXDeclarationStatement() {
+  PARSING_LOG();
   switch (Tok.getKind()) {
     // asm-definition
   case tok::kw_asm:
@@ -90,6 +92,7 @@ bool Parser::isCXXDeclarationStatement() {
 /// In any of the above cases there can be a preceding attribute-specifier-seq,
 /// but the caller is expected to handle that.
 bool Parser::isCXXSimpleDeclaration(bool AllowForRangeDecl) {
+  PARSING_LOG();
   // C++ 6.8p1:
   // There is an ambiguity in the grammar involving expression-statements and
   // declarations: An expression-statement with a function-style explicit type
@@ -156,6 +159,7 @@ bool Parser::isCXXSimpleDeclaration(bool AllowForRangeDecl) {
 /// Try to consume a token sequence that we've already identified as
 /// (potentially) starting a decl-specifier.
 Parser::TPResult Parser::TryConsumeDeclarationSpecifier() {
+  PARSING_LOG();
   switch (Tok.getKind()) {
   case tok::kw__Atomic:
     if (NextToken().isNot(tok::l_paren)) {
@@ -243,6 +247,7 @@ Parser::TPResult Parser::TryConsumeDeclarationSpecifier() {
 ///    attribute-specifier-seqopt type-specifier-seq declarator
 ///
 Parser::TPResult Parser::TryParseSimpleDeclaration(bool AllowForRangeDecl) {
+  PARSING_LOG();
   if (TryConsumeDeclarationSpecifier() == TPResult::Error)
     return TPResult::Error;
 
@@ -296,6 +301,7 @@ Parser::TPResult Parser::TryParseSimpleDeclaration(bool AllowForRangeDecl) {
 ///         '{' '}'
 ///
 Parser::TPResult Parser::TryParseInitDeclaratorList() {
+  PARSING_LOG();
   while (1) {
     // declarator
     TPResult TPR = TryParseDeclarator(false/*mayBeAbstract*/);
@@ -467,6 +473,7 @@ struct Parser::ConditionDeclarationOrInitStatementState {
 Parser::ConditionOrInitStatement
 Parser::isCXXConditionDeclarationOrInitStatement(bool CanBeInitStatement,
                                                  bool CanBeForRangeDecl) {
+  PARSING_LOG();
   ConditionDeclarationOrInitStatementState State(*this, CanBeInitStatement,
                                                  CanBeForRangeDecl);
 
@@ -546,7 +553,7 @@ Parser::isCXXConditionDeclarationOrInitStatement(bool CanBeInitStatement,
   ///   type-specifier-seq abstract-declarator[opt]
   ///
 bool Parser::isCXXTypeId(TentativeCXXTypeIdContext Context, bool &isAmbiguous) {
-
+  PARSING_LOG();
   isAmbiguous = false;
 
   // C++ 8.2p2:
@@ -647,6 +654,7 @@ bool Parser::isCXXTypeId(TentativeCXXTypeIdContext Context, bool &isAmbiguous) {
 Parser::CXX11AttributeKind
 Parser::isCXX11AttributeSpecifier(bool Disambiguate,
                                   bool OuterMightBeMessageSend) {
+  PARSING_LOG();
   if (Tok.is(tok::kw_alignas))
     return CAK_AttributeSpecifier;
 
@@ -788,6 +796,7 @@ Parser::isCXX11AttributeSpecifier(bool Disambiguate,
 }
 
 Parser::TPResult Parser::TryParsePtrOperatorSeq() {
+  PARSING_LOG();
   while (true) {
     if (Tok.isOneOf(tok::coloncolon, tok::identifier))
       if (TryAnnotateCXXScopeToken(true))
@@ -826,6 +835,7 @@ Parser::TPResult Parser::TryParsePtrOperatorSeq() {
 ///           'operator' string-literal identifier
 ///           'operator' user-defined-string-literal
 Parser::TPResult Parser::TryParseOperatorId() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw_operator));
   ConsumeToken();
 
@@ -957,6 +967,7 @@ Parser::TPResult Parser::TryParseOperatorId() {
 Parser::TPResult Parser::TryParseDeclarator(bool mayBeAbstract,
                                             bool mayHaveIdentifier,
                                             bool mayHaveDirectInit) {
+  PARSING_LOG();
   // declarator:
   //   direct-declarator
   //   ptr-operator declarator
@@ -1048,6 +1059,7 @@ Parser::TPResult Parser::TryParseDeclarator(bool mayBeAbstract,
 
 Parser::TPResult
 Parser::isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind) {
+  PARSING_LOG();
   switch (Kind) {
   // Obviously starts an expression.
   case tok::numeric_constant:
@@ -1172,6 +1184,7 @@ Parser::isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind) {
 }
 
 bool Parser::isTentativelyDeclared(IdentifierInfo *II) {
+  PARSING_LOG();
   return std::find(TentativelyDeclaredIdentifiers.begin(),
                    TentativelyDeclaredIdentifiers.end(), II)
       != TentativelyDeclaredIdentifiers.end();
@@ -1317,6 +1330,7 @@ public:
 Parser::TPResult
 Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
                                   bool *InvalidAsDeclSpec) {
+  PARSING_LOG();
   switch (Tok.getKind()) {
   case tok::identifier: {
     // Check for need to substitute AltiVec __vector keyword
@@ -1733,6 +1747,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
 }
 
 bool Parser::isCXXDeclarationSpecifierAType() {
+  PARSING_LOG();
   switch (Tok.getKind()) {
     // typename-specifier
   case tok::annot_decltype:
@@ -1793,6 +1808,7 @@ bool Parser::isCXXDeclarationSpecifierAType() {
 ///         'typeof' '(' type-name ')'
 ///
 Parser::TPResult Parser::TryParseTypeofSpecifier() {
+  PARSING_LOG();
   assert(Tok.is(tok::kw_typeof) && "Expected 'typeof'!");
   ConsumeToken();
 
@@ -1808,6 +1824,7 @@ Parser::TPResult Parser::TryParseTypeofSpecifier() {
 /// [ObjC] protocol-qualifiers:
 ////         '<' identifier-list '>'
 Parser::TPResult Parser::TryParseProtocolQualifiers() {
+  PARSING_LOG();
   assert(Tok.is(tok::less) && "Expected '<' for qualifier list");
   ConsumeToken();
   do {
@@ -1840,7 +1857,7 @@ Parser::TPResult Parser::TryParseProtocolQualifiers() {
 ///         exception-specification[opt]
 ///
 bool Parser::isCXXFunctionDeclarator(bool *IsAmbiguous) {
-
+    PARSING_LOG();
   // C++ 8.2p1:
   // The ambiguity arising from the similarity between a function-style cast and
   // a declaration mentioned in 6.8 can also occur in the context of a
@@ -1901,7 +1918,7 @@ bool Parser::isCXXFunctionDeclarator(bool *IsAmbiguous) {
 Parser::TPResult
 Parser::TryParseParameterDeclarationClause(bool *InvalidAsDeclaration,
                                            bool VersusTemplateArgument) {
-
+  PARSING_LOG();
   if (Tok.is(tok::r_paren))
     return TPResult::Ambiguous;
 
@@ -2021,7 +2038,7 @@ Parser::TryParseParameterDeclarationClause(bool *InvalidAsDeclaration,
 ///   'throw' '(' type-id-list[opt] ')'
 ///
 Parser::TPResult Parser::TryParseFunctionDeclarator() {
-
+  PARSING_LOG();
   // The '(' is already parsed.
 
   TPResult TPR = TryParseParameterDeclarationClause();
@@ -2072,6 +2089,7 @@ Parser::TPResult Parser::TryParseFunctionDeclarator() {
 /// '[' constant-expression[opt] ']'
 ///
 Parser::TPResult Parser::TryParseBracketDeclarator() {
+  PARSING_LOG();
   ConsumeBracket();
 
   // A constant-expression cannot begin with a '{', but the
@@ -2096,6 +2114,7 @@ Parser::TPResult Parser::TryParseBracketDeclarator() {
 /// This will often fail and produce an ambiguity, but should never be wrong
 /// if it returns True or False.
 Parser::TPResult Parser::isTemplateArgumentList(unsigned TokensToSkip) {
+  PARSING_LOG();
   if (!TokensToSkip) {
     if (Tok.isNot(tok::less))
       return TPResult::False;

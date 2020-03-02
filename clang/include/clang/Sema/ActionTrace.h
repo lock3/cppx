@@ -3,7 +3,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/StringRef.h"
 
-namespace Sema {
+namespace sema {
 
 class ActionTrace {
   static int Depth;
@@ -22,25 +22,25 @@ struct ActionLoggingGuard {
   llvm::StringRef FunctionName;
 };
 #define PARSER_ENTER_TRACE()\
-  ::Sema::ActionTrace::EnterParsingFn(__FUNCTION__);
+  ::sema::ActionTrace::EnterParsingFn(__FUNCTION__);
 
 #define PARSER_ENTER_TRACE_M(MSG)\
-  ::Sema::ActionTrace::EnterParsingFn(__FUNCTION__, MSG);
+  ::sema::ActionTrace::EnterParsingFn(__FUNCTION__, MSG);
 
 #define PARSER_LEAVE_TRACE()\
-  ::Sema::ActionTrace::LeavingParsingFn(__FUNCTION__);
+  ::sema::ActionTrace::LeavingParsingFn(__FUNCTION__);
 
 #define PARSER_LEAVE_TRACE_M(MSG)\
-  ::Sema::ActionTrace::LeavingParsingFn(__FUNCTION__, MSG);
+  ::sema::ActionTrace::LeavingParsingFn(__FUNCTION__, MSG);
 
 #define SEMA_TRACE()\
-  ::Sema::ActionTrace::WriteSemaCall(__FUNCTION__);
+  ::sema::ActionTrace::WriteSemaCall(__FUNCTION__);
 
 #define SEMA_TRACE_M(MSG)\
-  ::Sema::ActionTrace::WriteSemaCall(__FUNCTION__, MSG);
+  ::sema::ActionTrace::WriteSemaCall(__FUNCTION__, MSG);
 
 #define PARSING_LOG()\
-  ::Sema::ActionLoggingGuard GardTemp(__FUNCTION__)
+  ::sema::ActionLoggingGuard GardTemp(__FUNCTION__)
 }
 
 #endif

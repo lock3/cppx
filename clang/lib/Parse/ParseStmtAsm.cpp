@@ -31,6 +31,7 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
+#include "clang/Sema/ActionTrace.h"
 using namespace clang;
 
 namespace {
@@ -200,6 +201,7 @@ void ClangAsmParserCallback::handleDiagnostic(const llvm::SMDiagnostic &D) {
 ExprResult Parser::ParseMSAsmIdentifier(llvm::SmallVectorImpl<Token> &LineToks,
                                         unsigned &NumLineToksConsumed,
                                         bool IsUnevaluatedContext) {
+  PARSING_LOG();
   // Push a fake token on the end so that we don't overrun the token
   // stream.  We use ';' because it expression-parsing should never
   // overrun it.
@@ -392,6 +394,7 @@ static bool isGCCAsmStatement(const Token &TokAfterAsm) {
 ///         ms-asm-line '\n' ms-asm-instruction-block
 ///
 StmtResult Parser::ParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
+  PARSING_LOG();
   SourceManager &SrcMgr = PP.getSourceManager();
   SourceLocation EndLoc = AsmLoc;
   SmallVector<Token, 4> AsmToks;
@@ -704,6 +707,7 @@ StmtResult Parser::ParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
 ///         asm-clobbers ',' asm-string-literal
 ///
 StmtResult Parser::ParseAsmStatement(bool &msAsm) {
+  PARSING_LOG();
   assert(Tok.is(tok::kw_asm) && "Not an asm stmt");
   SourceLocation AsmLoc = ConsumeToken();
 
@@ -896,6 +900,7 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
 bool Parser::ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
                                  SmallVectorImpl<Expr *> &Constraints,
                                  SmallVectorImpl<Expr *> &Exprs) {
+  PARSING_LOG();
   // 'asm-operands' isn't present?
   if (!isTokenStringLiteral() && Tok.isNot(tok::l_square))
     return false;

@@ -16,6 +16,7 @@
 #include "clang/Sema/Designator.h"
 #include "clang/Sema/Scope.h"
 #include "llvm/ADT/SmallString.h"
+#include "clang/Sema/ActionTrace.h"
 using namespace clang;
 
 
@@ -23,6 +24,7 @@ using namespace clang;
 /// of a designator.  If we can tell it is impossible that it is a designator,
 /// return false.
 bool Parser::MayBeDesignationStart() {
+  PARSING_LOG();
   switch (Tok.getKind()) {
   default:
     return false;
@@ -155,7 +157,7 @@ static void CheckArrayDesignatorSyntax(Parser &P, SourceLocation Loc,
 /// when parsing array designators.
 ///
 ExprResult Parser::ParseInitializerWithPotentialDesignator() {
-
+  PARSING_LOG();
   // If this is the old-style GNU extension:
   //   designation ::= identifier ':'
   // Handle it as a field designator.  Otherwise, this must be the start of a
@@ -421,6 +423,7 @@ ExprResult Parser::ParseInitializerWithPotentialDesignator() {
 ///         initializer-list ',' designation[opt] initializer ...[opt]
 ///
 ExprResult Parser::ParseBraceInitializer() {
+  PARSING_LOG();
   InMessageExpressionRAIIObject InMessage(*this, false);
 
   BalancedDelimiterTracker T(*this, tok::l_brace);
@@ -526,6 +529,7 @@ ExprResult Parser::ParseBraceInitializer() {
 // __if_exists/if_not_exists statement.
 bool Parser::ParseMicrosoftIfExistsBraceInitializer(ExprVector &InitExprs,
                                                     bool &InitExprsOk) {
+  PARSING_LOG();
   bool trailingComma = false;
   IfExistsCondition Result;
   if (ParseMicrosoftIfExistsCondition(Result))
