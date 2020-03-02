@@ -151,6 +151,7 @@ namespace {
 void
 Sema::ImplicitExceptionSpecification::CalledDecl(SourceLocation CallLoc,
                                                  const CXXMethodDecl *Method) {
+  SEMA_LOG();
   // If we have an MSAny spec already, don't bother.
   if (!Method || ComputedEST == EST_MSAny)
     return;
@@ -218,6 +219,7 @@ Sema::ImplicitExceptionSpecification::CalledDecl(SourceLocation CallLoc,
 }
 
 void Sema::ImplicitExceptionSpecification::CalledStmt(Stmt *S) {
+  SEMA_LOG();
   if (!S || ComputedEST == EST_MSAny)
     return;
 
@@ -249,6 +251,7 @@ void Sema::ImplicitExceptionSpecification::CalledStmt(Stmt *S) {
 bool
 Sema::SetParamDefaultArgument(ParmVarDecl *Param, Expr *Arg,
                               SourceLocation EqualLoc) {
+  SEMA_LOG();
   if (RequireCompleteType(Param->getLocation(), Param->getType(),
                           diag::err_typecheck_decl_incomplete_type)) {
     Param->setInvalidDecl();
@@ -298,6 +301,7 @@ Sema::SetParamDefaultArgument(ParmVarDecl *Param, Expr *Arg,
 void
 Sema::ActOnParamDefaultArgument(Decl *param, SourceLocation EqualLoc,
                                 Expr *DefaultArg) {
+  SEMA_LOG();
   if (!param || !DefaultArg)
     return;
 
@@ -344,6 +348,7 @@ Sema::ActOnParamDefaultArgument(Decl *param, SourceLocation EqualLoc,
 void Sema::ActOnParamUnparsedDefaultArgument(Decl *param,
                                              SourceLocation EqualLoc,
                                              SourceLocation ArgLoc) {
+  SEMA_LOG();
   if (!param)
     return;
 
@@ -356,6 +361,7 @@ void Sema::ActOnParamUnparsedDefaultArgument(Decl *param,
 /// the default argument for the parameter param failed.
 void Sema::ActOnParamDefaultArgumentError(Decl *param,
                                           SourceLocation EqualLoc) {
+  SEMA_LOG();
   if (!param)
     return;
 
@@ -374,6 +380,7 @@ void Sema::ActOnParamDefaultArgumentError(Decl *param,
 /// arguments. This routine should be invoked for every declarator
 /// that is not a function declaration or definition.
 void Sema::CheckExtraCXXDefaultArguments(Declarator &D) {
+  SEMA_LOG();
   // C++ [dcl.fct.default]p3
   //   A default argument expression shall be specified only in the
   //   parameter-declaration-clause of a function declaration or in a
@@ -435,6 +442,7 @@ static bool functionDeclHasDefaultArgument(const FunctionDecl *FD) {
 /// error, false otherwise.
 bool Sema::MergeCXXFunctionDecl(FunctionDecl *New, FunctionDecl *Old,
                                 Scope *S) {
+  SEMA_LOG();
   bool Invalid = false;
 
   // The declaration context corresponding to the scope is the semantic
@@ -686,6 +694,7 @@ bool Sema::MergeCXXFunctionDecl(FunctionDecl *New, FunctionDecl *Old,
 NamedDecl *
 Sema::ActOnDecompositionDeclarator(Scope *S, Declarator &D,
                                    MultiTemplateParamsArg TemplateParamLists) {
+  SEMA_LOG();
   assert(D.isDecompositionDeclarator());
   const DecompositionDeclarator &Decomp = D.getDecompositionDeclarator();
 
@@ -1253,6 +1262,7 @@ DeclAccessPair
 Sema::FindDecomposableBaseClass(SourceLocation Loc,
                                 const CXXRecordDecl *RD,
                                 CXXCastPath &BasePath) {
+  SEMA_LOG();
   auto BaseHasFields = [](const CXXBaseSpecifier *Specifier,
                           CXXBasePath &Path) {
     return Specifier->getType()->getAsCXXRecordDecl()->hasDirectFields();
@@ -1411,6 +1421,7 @@ static bool checkMemberDecomposition(Sema &S, ArrayRef<BindingDecl*> Bindings,
 }
 
 void Sema::CheckCompleteDecompositionDeclaration(DecompositionDecl *DD) {
+  SEMA_LOG();
   QualType DecompType = DD->getType();
 
   // If the type of the decomposition is dependent, then so is the type of
@@ -1485,6 +1496,7 @@ void Sema::CheckCompleteDecompositionDeclaration(DecompositionDecl *DD) {
 /// checks if the redeclaration might have an exception specification and
 /// validates compatibility and merges the specs if necessary.
 void Sema::MergeVarDeclExceptionSpecs(VarDecl *New, VarDecl *Old) {
+  SEMA_LOG();
   // Shortcut if exceptions are disabled.
   if (!getLangOpts().CXXExceptions)
     return;
@@ -1525,6 +1537,7 @@ void Sema::MergeVarDeclExceptionSpecs(VarDecl *New, VarDecl *Old) {
 /// function declaration are well-formed according to C++
 /// [dcl.fct.default].
 void Sema::CheckCXXDefaultArguments(FunctionDecl *FD) {
+  SEMA_LOG();
   unsigned NumParams = FD->getNumParams();
   unsigned p;
 
@@ -1683,6 +1696,7 @@ static bool CheckConstexprFunctionBody(Sema &SemaRef, const FunctionDecl *Dcl,
 // This implements C++11 [dcl.constexpr]p3,4, as amended by DR1360.
 bool Sema::CheckConstexprFunctionDefinition(const FunctionDecl *NewFD,
                                             CheckConstexprKind Kind) {
+  SEMA_LOG();
   const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(NewFD);
   if (MD && MD->isInstance()) {
     // C++11 [dcl.constexpr]p4:
@@ -2376,6 +2390,7 @@ CXXRecordDecl *Sema::getCurrentClass(Scope *, const CXXScopeSpec *SS) {
 /// the innermost class.
 bool Sema::isCurrentClassName(const IdentifierInfo &II, Scope *S,
                               const CXXScopeSpec *SS) {
+  SEMA_LOG();
   CXXRecordDecl *CurDecl = getCurrentClass(S, SS);
   return CurDecl && &II == CurDecl->getIdentifier();
 }
@@ -2384,6 +2399,7 @@ bool Sema::isCurrentClassName(const IdentifierInfo &II, Scope *S,
 /// the class type currently being defined. If so, update it to the identifier
 /// that should have been used.
 bool Sema::isCurrentClassNameTypo(IdentifierInfo *&II, const CXXScopeSpec *SS) {
+  SEMA_LOG();
   assert(getLangOpts().CPlusPlus && "No class names in C!");
 
   if (!getLangOpts().SpellChecking)
@@ -2467,6 +2483,7 @@ Sema::CheckBaseSpecifier(CXXRecordDecl *Class,
                          TypeSourceInfo *TInfo,
                          SourceLocation EllipsisLoc,
                          bool VariadicReifier) {
+  SEMA_LOG();
   QualType BaseType = TInfo->getType();
 
   // C++ [class.union]p1:
@@ -2611,6 +2628,7 @@ Sema::ActOnBaseSpecifier(Decl *ClassDecl, SourceRange SpecifierRange,
                          ParsedType basetype, SourceLocation BaseLoc,
                          SourceLocation EllipsisLoc,
                          bool VariadicReifier) {
+  SEMA_LOG();
   CXXRecordDecl *Class;
   if (ClassDecl) {
     AdjustDeclIfTemplate(ClassDecl);
@@ -2683,6 +2701,7 @@ NoteIndirectBases(ASTContext &Context, IndirectBaseSet &Set,
 /// specifiers to a C++ class.
 bool Sema::AttachBaseSpecifiers(CXXRecordDecl *Class,
                                 MutableArrayRef<CXXBaseSpecifier *> Bases) {
+  SEMA_LOG();
  if (Bases.empty())
     return false;
 
@@ -2789,6 +2808,7 @@ bool Sema::AttachBaseSpecifiers(CXXRecordDecl *Class,
 /// classes.
 void Sema::ActOnBaseSpecifiers(Decl *ClassDecl,
                                MutableArrayRef<CXXBaseSpecifier *> Bases) {
+  SEMA_LOG();
   if (!ClassDecl || Bases.empty())
     return;
 
@@ -2799,6 +2819,7 @@ void Sema::ActOnBaseSpecifiers(Decl *ClassDecl,
 /// Determine whether the type \p Derived is a C++ class that is
 /// derived from the type \p Base.
 bool Sema::IsDerivedFrom(SourceLocation Loc, QualType Derived, QualType Base) {
+  SEMA_LOG();
   if (!getLangOpts().CPlusPlus)
     return false;
 
@@ -2827,6 +2848,7 @@ bool Sema::IsDerivedFrom(SourceLocation Loc, QualType Derived, QualType Base) {
 /// derived from the type \p Base.
 bool Sema::IsDerivedFrom(SourceLocation Loc, QualType Derived, QualType Base,
                          CXXBasePaths &Paths) {
+  SEMA_LOG();
   if (!getLangOpts().CPlusPlus)
     return false;
 
@@ -2865,6 +2887,7 @@ static void BuildBasePathArray(const CXXBasePath &Path,
 
 void Sema::BuildBasePathArray(const CXXBasePaths &Paths,
                               CXXCastPath &BasePathArray) {
+  SEMA_LOG();
   assert(BasePathArray.empty() && "Base path array must be empty!");
   assert(Paths.isRecordingPaths() && "Must record paths!");
   return ::BuildBasePathArray(Paths.front(), BasePathArray);
@@ -2889,6 +2912,7 @@ Sema::CheckDerivedToBaseConversion(QualType Derived, QualType Base,
                                    DeclarationName Name,
                                    CXXCastPath *BasePath,
                                    bool IgnoreAccess) {
+  SEMA_LOG();
   // First, determine whether the path from Derived to Base is
   // ambiguous. This is slightly more expensive than checking whether
   // the Derived to Base conversion exists, because here we need to
@@ -2968,6 +2992,7 @@ Sema::CheckDerivedToBaseConversion(QualType Derived, QualType Base,
                                    SourceLocation Loc, SourceRange Range,
                                    CXXCastPath *BasePath,
                                    bool IgnoreAccess) {
+  SEMA_LOG(); 
   return CheckDerivedToBaseConversion(
       Derived, Base, diag::err_upcast_to_inaccessible_base,
       diag::err_ambiguous_derived_to_base_conv, Loc, Range, DeclarationName(),
@@ -2988,6 +3013,7 @@ Sema::CheckDerivedToBaseConversion(QualType Derived, QualType Base,
 /// struct D -> struct C -> struct A
 /// @endcode
 std::string Sema::getAmbiguousPathsDisplayString(CXXBasePaths &Paths) {
+  SEMA_LOG();
   std::string PathDisplayStr;
   std::set<unsigned> DisplayedPaths;
   for (CXXBasePaths::paths_iterator Path = Paths.begin();
@@ -3014,6 +3040,7 @@ std::string Sema::getAmbiguousPathsDisplayString(CXXBasePaths &Paths) {
 bool Sema::ActOnAccessSpecifier(AccessSpecifier Access, SourceLocation ASLoc,
                                 SourceLocation ColonLoc,
                                 const ParsedAttributesView &Attrs) {
+  SEMA_LOG();
   assert(Access != AS_none && "Invalid kind for syntactic access specifier!");
   AccessSpecDecl *ASDecl = AccessSpecDecl::Create(Context, Access, CurContext,
                                                   ASLoc, ColonLoc);
@@ -3023,6 +3050,7 @@ bool Sema::ActOnAccessSpecifier(AccessSpecifier Access, SourceLocation ASLoc,
 
 /// CheckOverrideControl - Check C++11 override control semantics.
 void Sema::CheckOverrideControl(NamedDecl *D) {
+  SEMA_LOG();
   if (D->isInvalidDecl())
     return;
 
@@ -3095,6 +3123,7 @@ void Sema::CheckOverrideControl(NamedDecl *D) {
 }
 
 void Sema::DiagnoseAbsenceOfOverrideControl(NamedDecl *D) {
+  SEMA_LOG();
   if (D->isInvalidDecl() || D->hasAttr<OverrideAttr>())
     return;
   CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(D);
@@ -3124,6 +3153,7 @@ void Sema::DiagnoseAbsenceOfOverrideControl(NamedDecl *D) {
 /// C++11 [class.virtual]p4.
 bool Sema::CheckIfOverriddenFunctionIsMarkedFinal(const CXXMethodDecl *New,
                                                   const CXXMethodDecl *Old) {
+  SEMA_LOG();
   FinalAttr *FA = Old->getAttr<FinalAttr>();
   if (!FA)
     return false;
@@ -3160,6 +3190,7 @@ void Sema::CheckShadowInheritedFields(const SourceLocation &Loc,
                                       DeclarationName FieldName,
                                       const CXXRecordDecl *RD,
                                       bool DeclIsField) {
+  SEMA_LOG();
   if (Diags.isIgnored(diag::warn_shadow_field, Loc))
     return;
 
@@ -3216,6 +3247,7 @@ Sema::ActOnCXXMemberDeclarator(Scope *S, AccessSpecifier AS, Declarator &D,
                                MultiTemplateParamsArg TemplateParameterLists,
                                Expr *BW, const VirtSpecifiers &VS,
                                InClassInitStyle InitStyle) {
+  SEMA_LOG();
   const DeclSpec &DS = D.getDeclSpec();
   DeclarationNameInfo NameInfo = GetNameForDeclarator(D);
   DeclarationName Name = NameInfo.getName();
@@ -3923,6 +3955,7 @@ namespace {
 /// caller must call \ref ActOnFinishCXXInClassMemberInitializer, even if
 /// parsing or instantiating the initializer failed.
 void Sema::ActOnStartCXXInClassMemberInitializer() {
+  SEMA_LOG();
   // Create a synthetic function scope to represent the call to the constructor
   // that notionally surrounds a use of this initializer.
   PushFunctionScope();
@@ -3934,6 +3967,7 @@ void Sema::ActOnStartCXXInClassMemberInitializer() {
 void Sema::ActOnFinishCXXInClassMemberInitializer(Decl *D,
                                                   SourceLocation InitLoc,
                                                   Expr *InitExpr) {
+  SEMA_LOG();
   // Pop the notional constructor scope we created earlier.
   PopFunctionScopeInfo(nullptr, D);
 
@@ -4041,6 +4075,7 @@ Sema::ActOnMemInitializer(Decl *ConstructorD,
                           SourceLocation IdLoc,
                           Expr *InitList,
                           SourceLocation EllipsisLoc) {
+  SEMA_LOG();
   return BuildMemInitializer(ConstructorD, S, SS, MemberOrBase, QualType(),
                              TemplateTypeTy, DS, IdLoc, InitList,
                              EllipsisLoc);
@@ -4059,6 +4094,7 @@ Sema::ActOnMemInitializer(Decl *ConstructorD,
                           ArrayRef<Expr *> Args,
                           SourceLocation RParenLoc,
                           SourceLocation EllipsisLoc) {
+  SEMA_LOG();
   Expr *List = ParenListExpr::Create(Context, LParenLoc, Args, RParenLoc);
   return BuildMemInitializer(ConstructorD, S, SS, MemberOrBase, QualType(),
                              TemplateTypeTy, DS, IdLoc, List, EllipsisLoc);
@@ -4078,6 +4114,7 @@ Sema::ActOnMemInitializer(Decl *ConstructorD,
                           ArrayRef<Expr *> Args,
                           SourceLocation RParenLoc,
                           SourceLocation EllipsisLoc) {
+  SEMA_LOG();
   Expr *List = ParenListExpr::Create(Context, LParenLoc, Args, RParenLoc);
   return BuildMemInitializer(ConstructorD, S, SS, MemberOrBase,
                              ReifierType, TemplateTypeTy,
@@ -4116,6 +4153,7 @@ ValueDecl *Sema::tryLookupCtorInitMemberDecl(CXXRecordDecl *ClassDecl,
                                              CXXScopeSpec &SS,
                                              ParsedType TemplateTypeTy,
                                              IdentifierInfo *MemberOrBase) {
+  SEMA_LOG();
   if (SS.getScopeRep() || TemplateTypeTy)
     return nullptr;
   DeclContext::lookup_result Result = ClassDecl->lookup(MemberOrBase);
@@ -4140,6 +4178,7 @@ Sema::BuildMemInitializer(Decl *ConstructorD,
                           SourceLocation IdLoc,
                           Expr *Init,
                           SourceLocation EllipsisLoc) {
+  SEMA_LOG();
   ExprResult Res = CorrectDelayedTyposInExpr(Init);
   if (!Res.isUsable())
     return true;
@@ -4315,6 +4354,7 @@ Sema::BuildMemInitializer(Decl *ConstructorD,
 MemInitResult
 Sema::BuildMemberInitializer(ValueDecl *Member, Expr *Init,
                              SourceLocation IdLoc) {
+  SEMA_LOG();
   FieldDecl *DirectMember = dyn_cast<FieldDecl>(Member);
   IndirectFieldDecl *IndirectMember = dyn_cast<IndirectFieldDecl>(Member);
   assert((DirectMember || IndirectMember) &&
@@ -4391,6 +4431,7 @@ Sema::BuildMemberInitializer(ValueDecl *Member, Expr *Init,
 MemInitResult
 Sema::BuildDelegatingInitializer(TypeSourceInfo *TInfo, Expr *Init,
                                  CXXRecordDecl *ClassDecl) {
+  SEMA_LOG();
   SourceLocation NameLoc = TInfo->getTypeLoc().getLocalSourceRange().getBegin();
   if (!LangOpts.CPlusPlus11)
     return Diag(NameLoc, diag::err_delegating_ctor)
@@ -4449,6 +4490,7 @@ MemInitResult
 Sema::BuildBaseInitializer(QualType BaseType, TypeSourceInfo *BaseTInfo,
                            Expr *Init, CXXRecordDecl *ClassDecl,
                            SourceLocation EllipsisLoc) {
+  SEMA_LOG();
   SourceLocation BaseLoc
     = BaseTInfo->getTypeLoc().getLocalSourceRange().getBegin();
 
@@ -5020,6 +5062,7 @@ static bool CollectFieldInitializer(Sema &SemaRef, BaseAndFieldInfo &Info,
 bool
 Sema::SetDelegatingInitializer(CXXConstructorDecl *Constructor,
                                CXXCtorInitializer *Initializer) {
+  SEMA_LOG();
   assert(Initializer->isDelegatingInitializer());
   Constructor->setNumCtorInitializers(1);
   CXXCtorInitializer **initializer =
@@ -5041,6 +5084,7 @@ Sema::SetDelegatingInitializer(CXXConstructorDecl *Constructor,
 
 bool Sema::SetCtorInitializers(CXXConstructorDecl *Constructor, bool AnyErrors,
                                ArrayRef<CXXCtorInitializer *> Initializers) {
+  SEMA_LOG();
   if (Constructor->isDependentContext()) {
     // Just store the initializers as written, they will be checked during
     // instantiation.
@@ -5401,6 +5445,7 @@ void Sema::ActOnMemInitializers(Decl *ConstructorDecl,
                                 SourceLocation ColonLoc,
                                 ArrayRef<CXXCtorInitializer*> MemInits,
                                 bool AnyErrors) {
+  SEMA_LOG();
   if (!ConstructorDecl)
     return;
 
@@ -5466,6 +5511,7 @@ void Sema::ActOnMemInitializers(Decl *ConstructorDecl,
 void
 Sema::MarkBaseAndMemberDestructorsReferenced(SourceLocation Location,
                                              CXXRecordDecl *ClassDecl) {
+  SEMA_LOG();
   // Ignore dependent contexts. Also ignore unions, since their members never
   // have destructors implicitly called.
   if (ClassDecl->isDependentContext() || ClassDecl->isUnion())
@@ -5588,6 +5634,7 @@ Sema::MarkBaseAndMemberDestructorsReferenced(SourceLocation Location,
 }
 
 void Sema::ActOnDefaultCtorInitializers(Decl *CDtorDecl) {
+  SEMA_LOG();
   if (!CDtorDecl)
     return;
 
@@ -5599,6 +5646,7 @@ void Sema::ActOnDefaultCtorInitializers(Decl *CDtorDecl) {
 }
 
 bool Sema::isAbstractType(SourceLocation Loc, QualType T) {
+  SEMA_LOG();
   if (!getLangOpts().CPlusPlus)
     return false;
 
@@ -5621,6 +5669,7 @@ bool Sema::isAbstractType(SourceLocation Loc, QualType T) {
 
 bool Sema::RequireNonAbstractType(SourceLocation Loc, QualType T,
                                   TypeDiagnoser &Diagnoser) {
+  SEMA_LOG();
   if (!isAbstractType(Loc, T))
     return false;
 
@@ -5631,6 +5680,7 @@ bool Sema::RequireNonAbstractType(SourceLocation Loc, QualType T,
 }
 
 void Sema::DiagnoseAbstractType(const CXXRecordDecl *RD) {
+  SEMA_LOG();
   // Check if we've already emitted the list of pure virtual functions
   // for this class.
   if (PureVirtualClassDiagSet && PureVirtualClassDiagSet->count(RD))
@@ -5950,6 +6000,7 @@ static void checkForMultipleExportedDefaultConstructors(Sema &S,
 }
 
 void Sema::checkClassLevelCodeSegAttribute(CXXRecordDecl *Class) {
+  SEMA_LOG();
   // Mark any compiler-generated routines with the implicit code_seg attribute.
   for (auto *Method : Class->methods()) {
     if (Method->isUserProvided())
@@ -5961,6 +6012,7 @@ void Sema::checkClassLevelCodeSegAttribute(CXXRecordDecl *Class) {
 
 /// Check class-level dllimport/dllexport attribute.
 void Sema::checkClassLevelDLLAttribute(CXXRecordDecl *Class) {
+  SEMA_LOG();
   Attr *ClassAttr = getDLLAttr(Class);
 
   // MSVC inherits DLL attributes to partial class template specializations.
@@ -6128,6 +6180,7 @@ void Sema::checkClassLevelDLLAttribute(CXXRecordDecl *Class) {
 void Sema::propagateDLLAttrToBaseClassTemplate(
     CXXRecordDecl *Class, Attr *ClassAttr,
     ClassTemplateSpecializationDecl *BaseTemplateSpec, SourceLocation BaseLoc) {
+  SEMA_LOG();
   if (getDLLAttr(
           BaseTemplateSpec->getSpecializedTemplate()->getTemplatedDecl())) {
     // If the base class template has a DLL attribute, don't try to change it.
@@ -6192,6 +6245,7 @@ void Sema::propagateDLLAttrToBaseClassTemplate(
 /// FIXME: Check that case is properly handled by all callers.
 Sema::DefaultedFunctionKind
 Sema::getDefaultedFunctionKind(const FunctionDecl *FD) {
+  SEMA_LOG();
   if (auto *MD = dyn_cast<CXXMethodDecl>(FD)) {
     if (const CXXConstructorDecl *Ctor = dyn_cast<CXXConstructorDecl>(FD)) {
       if (Ctor->isDefaultConstructor())
@@ -6393,6 +6447,7 @@ static bool canPassInRegisters(Sema &S, CXXRecordDecl *D,
 ///        parse a class definition.
 /// \param Record The completed class.
 void Sema::CheckCompletedCXXClass(Scope *S, CXXRecordDecl *Record) {
+  SEMA_LOG();
   if (!Record)
     return;
 
@@ -6981,6 +7036,7 @@ static FunctionProtoType::ExtProtoInfo getImplicitMethodEPI(Sema &S,
 }
 
 void Sema::EvaluateImplicitExceptionSpec(SourceLocation Loc, FunctionDecl *FD) {
+  SEMA_LOG();
   const FunctionProtoType *FPT = FD->getType()->castAs<FunctionProtoType>();
   if (FPT->getExceptionSpecType() != EST_Unevaluated)
     return;
@@ -6994,6 +7050,7 @@ void Sema::EvaluateImplicitExceptionSpec(SourceLocation Loc, FunctionDecl *FD) {
 }
 
 void Sema::CheckExplicitlyDefaultedFunction(Scope *S, FunctionDecl *FD) {
+  SEMA_LOG();
   assert(FD->isExplicitlyDefaulted() && "not explicitly-defaulted");
 
   DefaultedFunctionKind DefKind = getDefaultedFunctionKind(FD);
@@ -7011,6 +7068,7 @@ void Sema::CheckExplicitlyDefaultedFunction(Scope *S, FunctionDecl *FD) {
 
 bool Sema::CheckExplicitlyDefaultedSpecialMember(CXXMethodDecl *MD,
                                                  CXXSpecialMember CSM) {
+  SEMA_LOG();
   CXXRecordDecl *RD = MD->getParent();
 
   assert(MD->isExplicitlyDefaulted() && CSM != CXXInvalid &&
@@ -8025,6 +8083,7 @@ static void lookupOperatorsForDefaultedComparison(Sema &Self, Scope *S,
 
 bool Sema::CheckExplicitlyDefaultedComparison(Scope *S, FunctionDecl *FD,
                                               DefaultedComparisonKind DCK) {
+  SEMA_LOG();
   assert(DCK != DefaultedComparisonKind::None && "not a defaulted comparison");
 
   CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(FD->getLexicalDeclContext());
@@ -8236,6 +8295,7 @@ bool Sema::CheckExplicitlyDefaultedComparison(Scope *S, FunctionDecl *FD,
 
 void Sema::DeclareImplicitEqualityComparison(CXXRecordDecl *RD,
                                              FunctionDecl *Spaceship) {
+  SEMA_LOG();
   Sema::CodeSynthesisContext Ctx;
   Ctx.Kind = Sema::CodeSynthesisContext::DeclaringImplicitEqualityComparison;
   Ctx.PointOfInstantiation = Spaceship->getEndLoc();
@@ -8250,6 +8310,7 @@ void Sema::DeclareImplicitEqualityComparison(CXXRecordDecl *RD,
 
 void Sema::DefineDefaultedComparison(SourceLocation UseLoc, FunctionDecl *FD,
                                      DefaultedComparisonKind DCK) {
+  SEMA_LOG();
   assert(FD->isDefaulted() && !FD->isDeleted() &&
          !FD->doesThisDeclarationHaveABody());
   if (FD->willHaveBody() || FD->isInvalidDecl())
@@ -8328,6 +8389,7 @@ ComputeDefaultedComparisonExceptionSpec(Sema &S, SourceLocation Loc,
 }
 
 void Sema::CheckDelayedMemberExceptionSpecs() {
+  SEMA_LOG();
   decltype(DelayedOverridingExceptionSpecChecks) Overriding;
   decltype(DelayedEquivalentExceptionSpecChecks) Equivalent;
 
@@ -8804,6 +8866,7 @@ bool SpecialMemberDeletionInfo::shouldDeleteForAllConstMembers() {
 bool Sema::ShouldDeleteSpecialMember(CXXMethodDecl *MD, CXXSpecialMember CSM,
                                      InheritedConstructorInfo *ICI,
                                      bool Diagnose) {
+  SEMA_LOG();
   if (MD->isInvalidDecl())
     return false;
   CXXRecordDecl *RD = MD->getParent();
@@ -8933,6 +8996,7 @@ bool Sema::ShouldDeleteSpecialMember(CXXMethodDecl *MD, CXXSpecialMember CSM,
 }
 
 void Sema::DiagnoseDeletedDefaultedFunction(FunctionDecl *FD) {
+  SEMA_LOG();
   DefaultedFunctionKind DFK = getDefaultedFunctionKind(FD);
   assert(DFK && "not a defaultable function");
   assert(FD->isDefaulted() && FD->isDeleted() && "not defaulted and deleted");
@@ -9217,6 +9281,7 @@ static bool checkTrivialClassMembers(Sema &S, CXXRecordDecl *RD,
 /// Diagnose why the specified class does not have a trivial special member of
 /// the given kind.
 void Sema::DiagnoseNontrivial(const CXXRecordDecl *RD, CXXSpecialMember CSM) {
+  SEMA_LOG();
   QualType Ty = Context.getRecordType(RD);
 
   bool ConstArg = (CSM == CXXCopyConstructor || CSM == CXXCopyAssignment);
@@ -9230,6 +9295,7 @@ void Sema::DiagnoseNontrivial(const CXXRecordDecl *RD, CXXSpecialMember CSM) {
 /// C++11 [class.copy]p25, and C++11 [class.dtor]p5.
 bool Sema::SpecialMemberIsTrivial(CXXMethodDecl *MD, CXXSpecialMember CSM,
                                   TrivialABIHandling TAH, bool Diagnose) {
+  SEMA_LOG();
   assert(!MD->isUserProvided() && CSM != CXXInvalid && "not special enough");
 
   CXXRecordDecl *RD = MD->getParent();
@@ -9447,6 +9513,7 @@ static void AddMostOverridenMethods(const CXXMethodDecl *MD,
 /// overriding any.
 void Sema::FindHiddenVirtualMethods(CXXMethodDecl *MD,
                           SmallVectorImpl<CXXMethodDecl*> &OverloadedMethods) {
+  SEMA_LOG();
   if (!MD->getDeclName().isIdentifier())
     return;
 
@@ -9475,6 +9542,7 @@ void Sema::FindHiddenVirtualMethods(CXXMethodDecl *MD,
 
 void Sema::NoteHiddenVirtualMethods(CXXMethodDecl *MD,
                           SmallVectorImpl<CXXMethodDecl*> &OverloadedMethods) {
+  SEMA_LOG();
   for (unsigned i = 0, e = OverloadedMethods.size(); i != e; ++i) {
     CXXMethodDecl *overloadedMD = OverloadedMethods[i];
     PartialDiagnostic PD = PDiag(
@@ -9487,6 +9555,7 @@ void Sema::NoteHiddenVirtualMethods(CXXMethodDecl *MD,
 /// Diagnose methods which overload virtual methods in a base class
 /// without overriding any.
 void Sema::DiagnoseHiddenVirtualMethods(CXXMethodDecl *MD) {
+  SEMA_LOG();
   if (MD->isInvalidDecl())
     return;
 
@@ -9504,6 +9573,7 @@ void Sema::DiagnoseHiddenVirtualMethods(CXXMethodDecl *MD) {
 }
 
 void Sema::checkIllFormedTrivialABIStruct(CXXRecordDecl &RD) {
+  SEMA_LOG();
   auto PrintDiagAndRemoveAttr = [&]() {
     // No diagnostics if this is a template instantiation.
     if (!isTemplateInstantiation(RD.getTemplateSpecializationKind()))
@@ -9550,6 +9620,7 @@ void Sema::checkIllFormedTrivialABIStruct(CXXRecordDecl &RD) {
 void Sema::ActOnFinishCXXMemberSpecification(
     Scope *S, SourceLocation RLoc, Decl *TagDecl, SourceLocation LBrac,
     SourceLocation RBrac, const ParsedAttributesView &AttrList) {
+  SEMA_LOG();
   if (!TagDecl)
     return;
 
@@ -9614,6 +9685,7 @@ static void findImplicitlyDeclaredEqualityComparisons(
 /// [special]p1).  This routine can only be executed just before the
 /// definition of the class is complete.
 void Sema::AddImplicitlyDeclaredMembersToClass(CXXRecordDecl *ClassDecl) {
+  SEMA_LOG();
   if (ClassDecl->needsImplicitDefaultConstructor()) {
     ++getASTContext().NumImplicitDefaultConstructors;
 
@@ -9702,6 +9774,7 @@ void Sema::AddImplicitlyDeclaredMembersToClass(CXXRecordDecl *ClassDecl) {
 }
 
 unsigned Sema::ActOnReenterTemplateScope(Scope *S, Decl *D) {
+  SEMA_LOG();
   if (!D)
     return 0;
 
@@ -9753,6 +9826,7 @@ unsigned Sema::ActOnReenterTemplateScope(Scope *S, Decl *D) {
 }
 
 void Sema::ActOnStartDelayedMemberDeclarations(Scope *S, Decl *RecordD) {
+  SEMA_LOG();
   if (!RecordD) return;
   AdjustDeclIfTemplate(RecordD);
   CXXRecordDecl *Record = cast<CXXRecordDecl>(RecordD);
@@ -9760,6 +9834,7 @@ void Sema::ActOnStartDelayedMemberDeclarations(Scope *S, Decl *RecordD) {
 }
 
 void Sema::ActOnFinishDelayedMemberDeclarations(Scope *S, Decl *RecordD) {
+  SEMA_LOG();
   if (!RecordD) return;
   PopDeclContext();
 }
@@ -9768,6 +9843,7 @@ void Sema::ActOnFinishDelayedMemberDeclarations(Scope *S, Decl *RecordD) {
 /// attribute enable_if extension. There is nothing in standard C++ which would
 /// require reentering parameters.
 void Sema::ActOnReenterCXXMethodParameter(Scope *S, ParmVarDecl *Param) {
+  SEMA_LOG();
   if (!Param)
     return;
 
@@ -9815,6 +9891,7 @@ void Sema::ActOnDelayedCXXMethodParameter(Scope *S, Decl *ParamD) {
 /// immediately!) for this method, if it was also defined inside the
 /// class body.
 void Sema::ActOnFinishDelayedCXXMethodDeclaration(Scope *S, Decl *MethodD) {
+  SEMA_LOG();
   if (!MethodD)
     return;
 
@@ -9863,6 +9940,7 @@ static void checkMethodTypeQualifiers(Sema &S, Declarator &D, unsigned DiagID) {
 /// returned.
 QualType Sema::CheckConstructorDeclarator(Declarator &D, QualType R,
                                           StorageClass &SC) {
+  SEMA_LOG();
   bool isVirtual = D.getDeclSpec().isVirtualSpecified();
 
   // C++ [class.ctor]p3:
@@ -9925,6 +10003,7 @@ QualType Sema::CheckConstructorDeclarator(Declarator &D, QualType R,
 /// well-formedness, issuing any diagnostics required. Returns true if
 /// the constructor declarator is invalid.
 void Sema::CheckConstructor(CXXConstructorDecl *Constructor) {
+  SEMA_LOG();
   CXXRecordDecl *ClassDecl
     = dyn_cast<CXXRecordDecl>(Constructor->getDeclContext());
   if (!ClassDecl)
@@ -9962,6 +10041,7 @@ void Sema::CheckConstructor(CXXConstructorDecl *Constructor) {
 /// well-formedness, issuing any diagnostics required.  Returns true
 /// on error.
 bool Sema::CheckDestructor(CXXDestructorDecl *Destructor) {
+  SEMA_LOG();
   CXXRecordDecl *RD = Destructor->getParent();
 
   if (!Destructor->getOperatorDelete() && Destructor->isVirtual()) {
@@ -10018,6 +10098,7 @@ bool Sema::CheckDestructor(CXXDestructorDecl *Destructor) {
 /// returned.
 QualType Sema::CheckDestructorDeclarator(Declarator &D, QualType R,
                                          StorageClass& SC) {
+  SEMA_LOG();
   // C++ [class.dtor]p1:
   //   [...] A typedef-name that names a class is a class-name
   //   (7.1.3); however, a typedef-name that names a class shall not
@@ -10140,6 +10221,7 @@ static void extendRight(SourceRange &R, SourceRange After) {
 /// well-formed type for the conversion operator.
 void Sema::CheckConversionDeclarator(Declarator &D, QualType &R,
                                      StorageClass& SC) {
+  SEMA_LOG();
   // C++ [class.conv.fct]p1:
   //   Neither parameter types nor return type can be specified. The
   //   type of a conversion function (8.3.5) is "function taking no
@@ -10305,6 +10387,7 @@ void Sema::CheckConversionDeclarator(Declarator &D, QualType &R,
 /// is responsible for recording the conversion function in the C++
 /// class, if possible.
 Decl *Sema::ActOnConversionDeclarator(CXXConversionDecl *Conversion) {
+  SEMA_LOG();
   assert(Conversion && "Expected to receive a conversion function declaration");
 
   CXXRecordDecl *ClassDecl = cast<CXXRecordDecl>(Conversion->getDeclContext());
@@ -10383,6 +10466,7 @@ struct BadSpecifierDiagnoser {
 /// grammar.
 void Sema::CheckDeductionGuideDeclarator(Declarator &D, QualType &R,
                                          StorageClass &SC) {
+  SEMA_LOG();
   TemplateName GuidedTemplate = D.getName().TemplateName.get().get();
   TemplateDecl *GuidedTemplateDecl = GuidedTemplate.getAsTemplateDecl();
   assert(GuidedTemplateDecl && "missing template decl for deduction guide");
@@ -10541,6 +10625,7 @@ void Sema::CheckNamespaceDeclaration(
     IdentifierInfo *II, SourceLocation StartLoc, SourceLocation Loc,
     bool &IsInline, bool &IsInvalid, bool &IsStd, bool &AddToKnown,
     NamespaceDecl *&PrevNS) {
+  SEMA_LOG();
   if (II) {
     // C++ [namespace.def]p2:
     //   The identifier in an original-namespace-definition shall not
@@ -10619,6 +10704,7 @@ Decl *Sema::ActOnStartNamespaceDef(
     Scope *NamespcScope, SourceLocation InlineLoc, SourceLocation NamespaceLoc,
     SourceLocation IdentLoc, IdentifierInfo *II, SourceLocation LBrace,
     const ParsedAttributesView &AttrList, UsingDirectiveDecl *&UD) {
+  SEMA_LOG();
   SourceLocation StartLoc = InlineLoc.isValid() ? InlineLoc : NamespaceLoc;
   // For anonymous namespace, take the location of the left brace.
   SourceLocation Loc = II ? IdentLoc : LBrace;
@@ -10715,6 +10801,7 @@ static inline NamespaceDecl *getNamespaceDecl(NamedDecl *D) {
 /// ActOnFinishNamespaceDef - This callback is called after a namespace is
 /// exited. Decl is the DeclTy returned by ActOnStartNamespaceDef.
 void Sema::ActOnFinishNamespaceDef(Decl *Dcl, SourceLocation RBrace) {
+  SEMA_LOG();
   NamespaceDecl *Namespc = dyn_cast_or_null<NamespaceDecl>(Dcl);
   assert(Namespc && "Invalid parameter, expected NamespaceDecl");
   Namespc->setRBraceLoc(RBrace);
@@ -10727,20 +10814,24 @@ void Sema::ActOnFinishNamespaceDef(Decl *Dcl, SourceLocation RBrace) {
 }
 
 CXXRecordDecl *Sema::getStdBadAlloc() const {
+  SEMA_LOG();
   return cast_or_null<CXXRecordDecl>(
                                   StdBadAlloc.get(Context.getExternalSource()));
 }
 
 EnumDecl *Sema::getStdAlignValT() const {
+  SEMA_LOG();
   return cast_or_null<EnumDecl>(StdAlignValT.get(Context.getExternalSource()));
 }
 
 NamespaceDecl *Sema::getStdNamespace() const {
+  SEMA_LOG();
   return cast_or_null<NamespaceDecl>(
                                  StdNamespace.get(Context.getExternalSource()));
 }
 
 NamespaceDecl *Sema::lookupStdExperimentalNamespace() {
+  SEMA_LOG();
   if (!StdExperimentalNamespaceCache) {
     if (auto Std = getStdNamespace()) {
       LookupResult Result(*this, &PP.getIdentifierTable().get("experimental"),
@@ -10790,6 +10881,7 @@ struct InvalidSTLDiagnoser {
 QualType Sema::CheckComparisonCategoryType(ComparisonCategoryType Kind,
                                            SourceLocation Loc,
                                            ComparisonCategoryUsage Usage) {
+  SEMA_LOG();
   assert(getLangOpts().CPlusPlus &&
          "Looking for comparison category type outside of C++.");
 
@@ -10894,6 +10986,7 @@ QualType Sema::CheckComparisonCategoryType(ComparisonCategoryType Kind,
 /// Retrieve the special "std" namespace, which may require us to
 /// implicitly define the namespace.
 NamespaceDecl *Sema::getOrCreateStdNamespace() {
+  SEMA_LOG();
   if (!StdNamespace) {
     // The "std" namespace has not yet been defined, so build one implicitly.
     StdNamespace = NamespaceDecl::Create(Context,
@@ -10909,6 +11002,7 @@ NamespaceDecl *Sema::getOrCreateStdNamespace() {
 }
 
 bool Sema::isStdInitializerList(QualType Ty, QualType *Element) {
+  SEMA_LOG();
   assert(getLangOpts().CPlusPlus &&
          "Looking for std::initializer_list outside of C++.");
 
@@ -11003,6 +11097,7 @@ static ClassTemplateDecl *LookupStdInitializerList(Sema &S, SourceLocation Loc){
 }
 
 QualType Sema::BuildStdInitializerList(QualType Element, SourceLocation Loc) {
+  SEMA_LOG();
   if (!StdInitializerList) {
     StdInitializerList = LookupStdInitializerList(*this, Loc);
     if (!StdInitializerList)
@@ -11018,6 +11113,7 @@ QualType Sema::BuildStdInitializerList(QualType Element, SourceLocation Loc) {
 }
 
 bool Sema::isInitListConstructor(const FunctionDecl *Ctor) {
+  SEMA_LOG();
   // C++ [dcl.init.list]p2:
   //   A constructor is an initializer-list constructor if its first parameter
   //   is of type std::initializer_list<E> or reference to possibly cv-qualified
@@ -11104,6 +11200,7 @@ Decl *Sema::ActOnUsingDirective(Scope *S, SourceLocation UsingLoc,
                                 SourceLocation IdentLoc,
                                 IdentifierInfo *NamespcName,
                                 const ParsedAttributesView &AttrList) {
+  SEMA_LOG();
   assert(!SS.isInvalid() && "Invalid CXXScopeSpec.");
   assert(NamespcName && "Invalid NamespcName.");
   assert(IdentLoc.isValid() && "Invalid NamespceName location.");
@@ -11183,6 +11280,7 @@ Decl *Sema::ActOnUsingDirective(Scope *S, SourceLocation UsingLoc,
 }
 
 void Sema::PushUsingDirective(Scope *S, UsingDirectiveDecl *UDir) {
+  SEMA_LOG();
   // If the scope has an associated entity and the using directive is at
   // namespace or translation unit scope, add the UsingDirectiveDecl into
   // its lookup structure so qualified name lookup can find it.
@@ -11197,6 +11295,7 @@ void Sema::PushUsingDirective(Scope *S, UsingDirectiveDecl *UDir) {
 
 Decl *Sema::ActOnNamespaceName(Scope *S, CXXScopeSpec &SS, IdentifierInfo *Id,
                                SourceLocation Loc) {
+  SEMA_LOG();
   // Lookup namespace name.
   LookupResult R(*this, Id, Loc, LookupNamespaceName);
   LookupParsedName(R, S, &SS);
@@ -11228,6 +11327,7 @@ Decl *Sema::ActOnUsingDeclaration(Scope *S, AccessSpecifier AS,
                                   UnqualifiedId &Name,
                                   SourceLocation EllipsisLoc,
                                   const ParsedAttributesView &AttrList) {
+  SEMA_LOG();
   assert(S->getFlags() & Scope::DeclScope && "Invalid Scope.");
 
   if (SS.isEmpty()) {
@@ -11331,6 +11431,7 @@ IsEquivalentForUsingDecl(ASTContext &Context, NamedDecl *D1, NamedDecl *D2) {
 bool Sema::CheckUsingShadowDecl(UsingDecl *Using, NamedDecl *Orig,
                                 const LookupResult &Previous,
                                 UsingShadowDecl *&PrevShadow) {
+  SEMA_LOG();
   // Diagnose finding a decl which is not from a base class of the
   // current class.  We do this now because there are cases where this
   // function will silently decide not to build a shadow decl, which
@@ -11500,6 +11601,7 @@ UsingShadowDecl *Sema::BuildUsingShadowDecl(Scope *S,
                                             UsingDecl *UD,
                                             NamedDecl *Orig,
                                             UsingShadowDecl *PrevDecl) {
+  SEMA_LOG();
   // If we resolved to another shadow declaration, just coalesce them.
   NamedDecl *Target = Orig;
   if (isa<UsingShadowDecl>(Target)) {
@@ -11567,6 +11669,7 @@ UsingShadowDecl *Sema::BuildUsingShadowDecl(Scope *S,
 /// decl structures are (very reasonably) not designed for removal.
 /// (2) avoids this but is very fiddly and phase-dependent.
 void Sema::HideUsingShadowDecl(Scope *S, UsingShadowDecl *Shadow) {
+  SEMA_LOG();
   if (Shadow->getDeclName().getNameKind() ==
         DeclarationName::CXXConversionFunctionName)
     cast<CXXRecordDecl>(Shadow->getDeclContext())->removeConversion(Shadow);
@@ -11697,6 +11800,7 @@ NamedDecl *Sema::BuildUsingDeclaration(
     bool HasTypenameKeyword, SourceLocation TypenameLoc, CXXScopeSpec &SS,
     DeclarationNameInfo NameInfo, SourceLocation EllipsisLoc,
     const ParsedAttributesView &AttrList, bool IsInstantiation) {
+  SEMA_LOG();
   assert(!SS.isInvalid() && "Invalid CXXScopeSpec.");
   SourceLocation IdentLoc = NameInfo.getLoc();
   assert(IdentLoc.isValid() && "Invalid TargetName location.");
@@ -11952,6 +12056,7 @@ NamedDecl *Sema::BuildUsingDeclaration(
 
 NamedDecl *Sema::BuildUsingPackDecl(NamedDecl *InstantiatedFrom,
                                     ArrayRef<NamedDecl *> Expansions) {
+  SEMA_LOG();
   assert(isa<UnresolvedUsingValueDecl>(InstantiatedFrom) ||
          isa<UnresolvedUsingTypenameDecl>(InstantiatedFrom) ||
          isa<UsingPackDecl>(InstantiatedFrom));
@@ -11965,6 +12070,7 @@ NamedDecl *Sema::BuildUsingPackDecl(NamedDecl *InstantiatedFrom,
 
 /// Additional checks for a using declaration referring to a constructor name.
 bool Sema::CheckInheritingConstructorUsingDecl(UsingDecl *UD) {
+  SEMA_LOG();
   assert(!UD->hasTypename() && "expecting a constructor name");
 
   const Type *SourceType = UD->getQualifier()->getAsType();
@@ -11999,6 +12105,7 @@ bool Sema::CheckUsingDeclRedeclaration(SourceLocation UsingLoc,
                                        const CXXScopeSpec &SS,
                                        SourceLocation NameLoc,
                                        const LookupResult &Prev) {
+  SEMA_LOG();
   NestedNameSpecifier *Qual = SS.getScopeRep();
 
   // C++03 [namespace.udecl]p8:
@@ -12077,6 +12184,7 @@ bool Sema::CheckUsingDeclQualifier(SourceLocation UsingLoc,
                                    const CXXScopeSpec &SS,
                                    const DeclarationNameInfo &NameInfo,
                                    SourceLocation NameLoc) {
+  SEMA_LOG();
   DeclContext *NamedContext = computeDeclContext(SS);
 
   if (!CurContext->isRecord()) {
@@ -12265,6 +12373,7 @@ Decl *Sema::ActOnAliasDeclaration(Scope *S, AccessSpecifier AS,
                                   SourceLocation UsingLoc, UnqualifiedId &Name,
                                   const ParsedAttributesView &AttrList,
                                   TypeResult Type, Decl *DeclFromDeclSpec) {
+  SEMA_LOG();
   // Skip up to the relevant declaration scope.
   while (S->isTemplateParamScope())
     S = S->getParent();
@@ -12421,7 +12530,7 @@ Decl *Sema::ActOnNamespaceAliasDef(Scope *S, SourceLocation NamespaceLoc,
                                    IdentifierInfo *Alias, CXXScopeSpec &SS,
                                    SourceLocation IdentLoc,
                                    IdentifierInfo *Ident) {
-
+  SEMA_LOG();
   // Lookup the namespace name.
   LookupResult R(*this, Ident, IdentLoc, LookupNamespaceName);
   LookupParsedName(R, S, &SS);
@@ -12569,6 +12678,7 @@ void SpecialMemberExceptionSpecInfo::visitSubobjectCall(
 }
 
 bool Sema::tryResolveExplicitSpecifier(ExplicitSpecifier &ExplicitSpec) {
+  SEMA_LOG();
   llvm::APSInt Result;
   ExprResult Converted = CheckConvertedConstantExpression(
       ExplicitSpec.getExpr(), Context.BoolTy, Result, CCEK_ExplicitBool);
@@ -12584,6 +12694,7 @@ bool Sema::tryResolveExplicitSpecifier(ExplicitSpecifier &ExplicitSpec) {
 }
 
 ExplicitSpecifier Sema::ActOnExplicitBoolSpecifier(Expr *ExplicitExpr) {
+  SEMA_LOG();
   ExplicitSpecifier ES(ExplicitExpr, ExplicitSpecKind::Unresolved);
   if (!ExplicitExpr->isTypeDependent())
     tryResolveExplicitSpecifier(ES);
@@ -12681,6 +12792,7 @@ struct DeclaringSpecialMember {
 }
 
 void Sema::CheckImplicitSpecialMemberDeclaration(Scope *S, FunctionDecl *FD) {
+  SEMA_LOG();
   // Look up any existing declarations, but don't trigger declaration of all
   // implicit special members with this name.
   DeclarationName Name = FD->getDeclName();
@@ -12698,6 +12810,7 @@ void Sema::CheckImplicitSpecialMemberDeclaration(Scope *S, FunctionDecl *FD) {
 void Sema::setupImplicitSpecialMemberType(CXXMethodDecl *SpecialMem,
                                           QualType ResultTy,
                                           ArrayRef<QualType> Args) {
+  SEMA_LOG();
   // Build an exception specification pointing back at this constructor.
   FunctionProtoType::ExtProtoInfo EPI = getImplicitMethodEPI(*this, SpecialMem);
 
@@ -12712,6 +12825,7 @@ void Sema::setupImplicitSpecialMemberType(CXXMethodDecl *SpecialMem,
 
 CXXConstructorDecl *Sema::DeclareImplicitDefaultConstructor(
                                                      CXXRecordDecl *ClassDecl) {
+  SEMA_LOG();
   // C++ [class.ctor]p5:
   //   A default constructor for a class X is a constructor of class X
   //   that can be called without an argument. If there is no
@@ -12775,6 +12889,7 @@ CXXConstructorDecl *Sema::DeclareImplicitDefaultConstructor(
 
 void Sema::DefineImplicitDefaultConstructor(SourceLocation CurrentLocation,
                                             CXXConstructorDecl *Constructor) {
+  SEMA_LOG();
   assert((Constructor->isDefaulted() && Constructor->isDefaultConstructor() &&
           !Constructor->doesThisDeclarationHaveABody() &&
           !Constructor->isDeleted()) &&
@@ -12815,6 +12930,7 @@ void Sema::DefineImplicitDefaultConstructor(SourceLocation CurrentLocation,
 }
 
 void Sema::ActOnFinishDelayedMemberInitializers(Decl *D) {
+  SEMA_LOG();
   // Perform any delayed checks on exception specifications.
   CheckDelayedMemberExceptionSpecs();
 }
@@ -12825,6 +12941,7 @@ CXXConstructorDecl *
 Sema::findInheritingConstructor(SourceLocation Loc,
                                 CXXConstructorDecl *BaseCtor,
                                 ConstructorUsingShadowDecl *Shadow) {
+  SEMA_LOG();
   CXXRecordDecl *Derived = Shadow->getParent();
   SourceLocation UsingLoc = Shadow->getLocation();
 
@@ -12905,6 +13022,7 @@ Sema::findInheritingConstructor(SourceLocation Loc,
 }
 
 void Sema::NoteDeletedInheritingConstructor(CXXConstructorDecl *Ctor) {
+  SEMA_LOG();
   InheritedConstructorInfo ICI(*this, Ctor->getLocation(),
                                Ctor->getInheritedConstructor().getShadowDecl());
   ShouldDeleteSpecialMember(Ctor, CXXDefaultConstructor, &ICI,
@@ -12913,6 +13031,7 @@ void Sema::NoteDeletedInheritingConstructor(CXXConstructorDecl *Ctor) {
 
 void Sema::DefineInheritingConstructor(SourceLocation CurrentLocation,
                                        CXXConstructorDecl *Constructor) {
+  SEMA_LOG();
   CXXRecordDecl *ClassDecl = Constructor->getParent();
   assert(Constructor->getInheritedConstructor() &&
          !Constructor->doesThisDeclarationHaveABody() &&
@@ -12993,6 +13112,7 @@ void Sema::DefineInheritingConstructor(SourceLocation CurrentLocation,
 }
 
 CXXDestructorDecl *Sema::DeclareImplicitDestructor(CXXRecordDecl *ClassDecl) {
+  SEMA_LOG();
   // C++ [class.dtor]p2:
   //   If a class has no user-declared destructor, a destructor is
   //   declared implicitly. An implicitly-declared destructor is an
@@ -13060,6 +13180,7 @@ CXXDestructorDecl *Sema::DeclareImplicitDestructor(CXXRecordDecl *ClassDecl) {
 
 void Sema::DefineImplicitDestructor(SourceLocation CurrentLocation,
                                     CXXDestructorDecl *Destructor) {
+  SEMA_LOG();
   assert((Destructor->isDefaulted() &&
           !Destructor->doesThisDeclarationHaveABody() &&
           !Destructor->isDeleted()) &&
@@ -13103,6 +13224,7 @@ void Sema::DefineImplicitDestructor(SourceLocation CurrentLocation,
 /// Perform any semantic analysis which needs to be delayed until all
 /// pending class member declarations have been parsed.
 void Sema::ActOnFinishCXXMemberDecls() {
+  SEMA_LOG();
   // If the context is an invalid C++ class, just suppress these checks.
   if (CXXRecordDecl *Record = dyn_cast<CXXRecordDecl>(CurContext)) {
     if (Record->isInvalidDecl()) {
@@ -13127,6 +13249,7 @@ ProcessPendingDefinitionInjections(Sema &SemaRef, CXXRecordDecl *D) {
 }
 
 void Sema::ActOnFinishCXXNonNestedClass(Decl *D) {
+  SEMA_LOG();
   if (CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(D)) {
     ProcessPendingDefinitionInjections(*this, RD);
     if (RD->isPrototypeClass())
@@ -13151,6 +13274,7 @@ void Sema::ActOnFinishCXXNonNestedClass(Decl *D) {
 }
 
 void Sema::referenceDLLExportedClassMethods() {
+  SEMA_LOG();
   if (!DelayedDllExportClasses.empty()) {
     // Calling ReferenceDllExportedMembers might cause the current function to
     // be called again, so use a local copy of DelayedDllExportClasses.
@@ -13162,6 +13286,7 @@ void Sema::referenceDLLExportedClassMethods() {
 }
 
 void Sema::AdjustDestructorExceptionSpec(CXXDestructorDecl *Destructor) {
+  SEMA_LOG();
   assert(getLangOpts().CPlusPlus11 &&
          "adjusting dtor exception specs was introduced in c++11");
 
@@ -13620,6 +13745,7 @@ buildSingleCopyAssign(Sema &S, SourceLocation Loc, QualType T,
 }
 
 CXXMethodDecl *Sema::DeclareImplicitCopyAssignment(CXXRecordDecl *ClassDecl) {
+  SEMA_LOG();
   // Note: The following rules are largely analoguous to the copy
   // constructor rules. Note that virtual bases are not taken into account
   // for determining the argument type of the operator. Note also that
@@ -13744,6 +13870,7 @@ static void diagnoseDeprecatedCopyOperation(Sema &S, CXXMethodDecl *CopyOp) {
 
 void Sema::DefineImplicitCopyAssignment(SourceLocation CurrentLocation,
                                         CXXMethodDecl *CopyAssignOperator) {
+  SEMA_LOG();
   assert((CopyAssignOperator->isDefaulted() &&
           CopyAssignOperator->isOverloadedOperator() &&
           CopyAssignOperator->getOverloadedOperator() == OO_Equal &&
@@ -13947,6 +14074,7 @@ void Sema::DefineImplicitCopyAssignment(SourceLocation CurrentLocation,
 }
 
 CXXMethodDecl *Sema::DeclareImplicitMoveAssignment(CXXRecordDecl *ClassDecl) {
+  SEMA_LOG();
   assert(ClassDecl->needsImplicitMoveAssignment());
 
   DeclaringSpecialMember DSM(*this, ClassDecl, CXXMoveAssignment);
@@ -14109,6 +14237,7 @@ static void checkMoveAssignmentForRepeatedMove(Sema &S, CXXRecordDecl *Class,
 
 void Sema::DefineImplicitMoveAssignment(SourceLocation CurrentLocation,
                                         CXXMethodDecl *MoveAssignOperator) {
+  SEMA_LOG();
   assert((MoveAssignOperator->isDefaulted() &&
           MoveAssignOperator->isOverloadedOperator() &&
           MoveAssignOperator->getOverloadedOperator() == OO_Equal &&
@@ -14320,6 +14449,7 @@ void Sema::DefineImplicitMoveAssignment(SourceLocation CurrentLocation,
 
 CXXConstructorDecl *Sema::DeclareImplicitCopyConstructor(
                                                     CXXRecordDecl *ClassDecl) {
+  SEMA_LOG();
   // C++ [class.copy]p4:
   //   If the class definition does not explicitly declare a copy
   //   constructor, one is declared implicitly.
@@ -14410,6 +14540,7 @@ CXXConstructorDecl *Sema::DeclareImplicitCopyConstructor(
 
 void Sema::DefineImplicitCopyConstructor(SourceLocation CurrentLocation,
                                          CXXConstructorDecl *CopyConstructor) {
+  SEMA_LOG();
   assert((CopyConstructor->isDefaulted() &&
           CopyConstructor->isCopyConstructor() &&
           !CopyConstructor->doesThisDeclarationHaveABody() &&
@@ -14458,6 +14589,7 @@ void Sema::DefineImplicitCopyConstructor(SourceLocation CurrentLocation,
 
 CXXConstructorDecl *Sema::DeclareImplicitMoveConstructor(
                                                     CXXRecordDecl *ClassDecl) {
+  SEMA_LOG();
   assert(ClassDecl->needsImplicitMoveConstructor());
 
   DeclaringSpecialMember DSM(*this, ClassDecl, CXXMoveConstructor);
@@ -14542,6 +14674,7 @@ CXXConstructorDecl *Sema::DeclareImplicitMoveConstructor(
 
 void Sema::DefineImplicitMoveConstructor(SourceLocation CurrentLocation,
                                          CXXConstructorDecl *MoveConstructor) {
+  SEMA_LOG();
   assert((MoveConstructor->isDefaulted() &&
           MoveConstructor->isMoveConstructor() &&
           !MoveConstructor->doesThisDeclarationHaveABody() &&
@@ -14582,12 +14715,14 @@ void Sema::DefineImplicitMoveConstructor(SourceLocation CurrentLocation,
 }
 
 bool Sema::isImplicitlyDeleted(FunctionDecl *FD) {
+  SEMA_LOG();
   return FD->isDeleted() && FD->isDefaulted() && isa<CXXMethodDecl>(FD);
 }
 
 void Sema::DefineImplicitLambdaToFunctionPointerConversion(
                             SourceLocation CurrentLocation,
                             CXXConversionDecl *Conv) {
+  SEMA_LOG();
   SynthesizedFunctionScope Scope(*this, Conv);
   assert(!Conv->getReturnType()->isUndeducedType());
 
@@ -14647,6 +14782,7 @@ void Sema::DefineImplicitLambdaToBlockPointerConversion(
        SourceLocation CurrentLocation,
        CXXConversionDecl *Conv)
 {
+  SEMA_LOG();
   assert(!Conv->getParent()->isGenericLambda());
 
   SynthesizedFunctionScope Scope(*this, Conv);
@@ -14725,6 +14861,7 @@ Sema::BuildCXXConstructExpr(SourceLocation ConstructLoc, QualType DeclInitType,
                             bool RequiresZeroInit,
                             unsigned ConstructKind,
                             SourceRange ParenRange) {
+  SEMA_LOG();
   bool Elidable = false;
 
   // C++0x [class.copy]p34:
@@ -14764,6 +14901,7 @@ Sema::BuildCXXConstructExpr(SourceLocation ConstructLoc, QualType DeclInitType,
                             bool RequiresZeroInit,
                             unsigned ConstructKind,
                             SourceRange ParenRange) {
+  SEMA_LOG();
   if (auto *Shadow = dyn_cast<ConstructorUsingShadowDecl>(FoundDecl)) {
     Constructor = findInheritingConstructor(ConstructLoc, Constructor, Shadow);
     if (DiagnoseUseOfDecl(Constructor, ConstructLoc))
@@ -14789,6 +14927,7 @@ Sema::BuildCXXConstructExpr(SourceLocation ConstructLoc, QualType DeclInitType,
                             bool RequiresZeroInit,
                             unsigned ConstructKind,
                             SourceRange ParenRange) {
+  SEMA_LOG();
   assert(declaresSameEntity(
              Constructor->getParent(),
              DeclInitType->getBaseElementTypeUnsafe()->getAsCXXRecordDecl()) &&
@@ -14815,6 +14954,7 @@ Sema::BuildCXXConstructExpr(SourceLocation ConstructLoc, QualType DeclInitType,
 }
 
 ExprResult Sema::BuildCXXDefaultInitExpr(SourceLocation Loc, FieldDecl *Field) {
+  SEMA_LOG();
   assert(Field->hasInClassInitializer());
 
   // If we already have the in-class initializer nothing needs to be done.
@@ -14888,6 +15028,7 @@ ExprResult Sema::BuildCXXDefaultInitExpr(SourceLocation Loc, FieldDecl *Field) {
 }
 
 void Sema::FinalizeVarWithDestructor(VarDecl *VD, const RecordType *Record) {
+  SEMA_LOG();
   if (VD->isInvalidDecl()) return;
 
   CXXRecordDecl *ClassDecl = cast<CXXRecordDecl>(Record->getDecl());
@@ -14949,6 +15090,7 @@ Sema::CompleteConstructorCall(CXXConstructorDecl *Constructor,
                               SmallVectorImpl<Expr*> &ConvertedArgs,
                               bool AllowExplicit,
                               bool IsListInitialization) {
+  SEMA_LOG();
   Sema::ImmediateInvocationRAII InvocationRAII(*this, Constructor);
 
   // FIXME: This duplicates a lot of code from Sema::ConvertArgumentsForCall.
@@ -15152,6 +15294,7 @@ CheckOperatorDeleteDeclaration(Sema &SemaRef, FunctionDecl *FnDecl) {
 /// of this overloaded operator is well-formed. If so, returns false;
 /// otherwise, emits appropriate diagnostics and returns true.
 bool Sema::CheckOverloadedOperatorDeclaration(FunctionDecl *FnDecl) {
+  SEMA_LOG();
   assert(FnDecl && FnDecl->isOverloadedOperator() &&
          "Expected an overloaded operator declaration");
 
@@ -15332,6 +15475,7 @@ checkLiteralOperatorTemplateParameterList(Sema &SemaRef,
 /// of this literal operator function is well-formed. If so, returns
 /// false; otherwise, emits appropriate diagnostics and returns true.
 bool Sema::CheckLiteralOperatorDeclaration(FunctionDecl *FnDecl) {
+  SEMA_LOG();
   if (isa<CXXMethodDecl>(FnDecl)) {
     Diag(FnDecl->getLocation(), diag::err_literal_operator_outside_namespace)
       << FnDecl->getDeclName();
@@ -15505,6 +15649,7 @@ bool Sema::CheckLiteralOperatorDeclaration(FunctionDecl *FnDecl) {
 Decl *Sema::ActOnStartLinkageSpecification(Scope *S, SourceLocation ExternLoc,
                                            Expr *LangStr,
                                            SourceLocation LBraceLoc) {
+  SEMA_LOG();
   StringLiteral *Lit = cast<StringLiteral>(LangStr);
   if (!Lit->isAscii()) {
     Diag(LangStr->getExprLoc(), diag::err_language_linkage_spec_not_ascii)
@@ -15541,6 +15686,7 @@ Decl *Sema::ActOnStartLinkageSpecification(Scope *S, SourceLocation ExternLoc,
 Decl *Sema::ActOnFinishLinkageSpecification(Scope *S,
                                             Decl *LinkageSpec,
                                             SourceLocation RBraceLoc) {
+  SEMA_LOG();
   if (RBraceLoc.isValid()) {
     LinkageSpecDecl* LSDecl = cast<LinkageSpecDecl>(LinkageSpec);
     LSDecl->setRBraceLoc(RBraceLoc);
@@ -15552,6 +15698,7 @@ Decl *Sema::ActOnFinishLinkageSpecification(Scope *S,
 Decl *Sema::ActOnEmptyDeclaration(Scope *S,
                                   const ParsedAttributesView &AttrList,
                                   SourceLocation SemiLoc) {
+  SEMA_LOG();
   Decl *ED = EmptyDecl::Create(Context, CurContext, SemiLoc);
   // Attribute declarations appertain to empty declaration so we handle
   // them here.
@@ -15569,6 +15716,7 @@ VarDecl *Sema::BuildExceptionDeclaration(Scope *S,
                                          SourceLocation StartLoc,
                                          SourceLocation Loc,
                                          IdentifierInfo *Name) {
+  SEMA_LOG();
   bool Invalid = false;
   QualType ExDeclType = TInfo->getType();
 
@@ -15692,6 +15840,7 @@ VarDecl *Sema::BuildExceptionDeclaration(Scope *S,
 /// ActOnExceptionDeclarator - Parsed the exception-declarator in a C++ catch
 /// handler.
 Decl *Sema::ActOnExceptionDeclarator(Scope *S, Declarator &D) {
+  SEMA_LOG();
   TypeSourceInfo *TInfo = GetTypeForDeclarator(D, S);
   bool Invalid = D.isInvalidType();
 
@@ -15746,6 +15895,7 @@ Decl *Sema::ActOnStaticAssertDeclaration(SourceLocation StaticAssertLoc,
                                          Expr *AssertExpr,
                                          Expr *AssertMessageExpr,
                                          SourceLocation RParenLoc) {
+  SEMA_LOG();
   StringLiteral *AssertMessage =
       AssertMessageExpr ? cast<StringLiteral>(AssertMessageExpr) : nullptr;
 
@@ -15761,6 +15911,7 @@ Decl *Sema::BuildStaticAssertDeclaration(SourceLocation StaticAssertLoc,
                                          StringLiteral *AssertMessage,
                                          SourceLocation RParenLoc,
                                          bool Failed) {
+  SEMA_LOG();
   assert(AssertExpr != nullptr && "Expected non-null condition");
   if (!AssertExpr->isTypeDependent() && !AssertExpr->isValueDependent() &&
       !Failed) {
@@ -15838,6 +15989,7 @@ Decl *Sema::BuildStaticAssertDeclaration(SourceLocation StaticAssertLoc,
 FriendDecl *Sema::CheckFriendTypeDecl(SourceLocation LocStart,
                                       SourceLocation FriendLoc,
                                       TypeSourceInfo *TSInfo) {
+  SEMA_LOG();
   assert(TSInfo && "NULL TypeSourceInfo for friend type declaration");
 
   QualType T = TSInfo->getType();
@@ -15913,6 +16065,7 @@ Decl *Sema::ActOnTemplatedFriendTag(Scope *S, SourceLocation FriendLoc,
                                     SourceLocation NameLoc,
                                     const ParsedAttributesView &Attr,
                                     MultiTemplateParamsArg TempParamLists) {
+  SEMA_LOG();
   TagTypeKind Kind = TypeWithKeyword::getTagTypeKindForTypeSpec(TagSpec);
 
   bool IsMemberSpecialization = false;
@@ -16044,6 +16197,7 @@ Decl *Sema::ActOnTemplatedFriendTag(Scope *S, SourceLocation FriendLoc,
 ///   template <> template \<class T> friend class A<int>::B;
 Decl *Sema::ActOnFriendTypeDecl(Scope *S, const DeclSpec &DS,
                                 MultiTemplateParamsArg TempParams) {
+  SEMA_LOG();
   SourceLocation Loc = DS.getBeginLoc();
 
   assert(DS.isFriendSpecified());
@@ -16141,6 +16295,7 @@ bool Sema::GetFriendFunctionDC(LookupResult &Previous, Scope *S,
                                bool IsFunctionDefinition,
                                bool IsTemplateId,
                                DeclContext* &DC, Scope *&DCScope) {
+  SEMA_LOG();
   // There are five cases here.
   //   - There's no scope specifier and we're in a local class. Only look
   //     for functions declared in the immediately-enclosing block scope.
@@ -16325,6 +16480,7 @@ bool Sema::GetFriendFunctionDC(LookupResult &Previous, Scope *S,
 
 NamedDecl *Sema::ActOnFriendFunctionDecl(Scope *S, Declarator &D,
                                         MultiTemplateParamsArg TemplateParams) {
+  SEMA_LOG();
   const DeclSpec &DS = D.getDeclSpec();
 
   assert(DS.isFriendSpecified());
@@ -16470,6 +16626,7 @@ NamedDecl *Sema::ActOnFriendFunctionDecl(Scope *S, Declarator &D,
 }
 
 void Sema::SetDeclDeleted(Decl *Dcl, SourceLocation DelLoc) {
+  SEMA_LOG();
   AdjustDeclIfTemplate(Dcl);
 
   FunctionDecl *Fn = dyn_cast_or_null<FunctionDecl>(Dcl);
@@ -16537,6 +16694,7 @@ void Sema::SetDeclDeleted(Decl *Dcl, SourceLocation DelLoc) {
 }
 
 void Sema::SetDeclDefaulted(Decl *Dcl, SourceLocation DefaultLoc) {
+  SEMA_LOG();
   if (!Dcl || Dcl->isInvalidDecl())
     return;
 
@@ -16634,6 +16792,7 @@ static void SearchForReturnInStmt(Sema &Self, Stmt *S) {
 }
 
 void Sema::DiagnoseReturnInConstructorExceptionHandler(CXXTryStmt *TryBlock) {
+  SEMA_LOG();
   for (unsigned I = 0, E = TryBlock->getNumHandlers(); I != E; ++I) {
     CXXCatchStmt *Handler = TryBlock->getHandler(I);
     SearchForReturnInStmt(*this, Handler);
@@ -16642,6 +16801,7 @@ void Sema::DiagnoseReturnInConstructorExceptionHandler(CXXTryStmt *TryBlock) {
 
 bool Sema::CheckOverridingFunctionAttributes(const CXXMethodDecl *New,
                                              const CXXMethodDecl *Old) {
+  SEMA_LOG();
   const auto *NewFT = New->getType()->getAs<FunctionProtoType>();
   const auto *OldFT = Old->getType()->getAs<FunctionProtoType>();
 
@@ -16690,6 +16850,7 @@ bool Sema::CheckOverridingFunctionAttributes(const CXXMethodDecl *New,
 
 bool Sema::CheckOverridingFunctionReturnType(const CXXMethodDecl *New,
                                              const CXXMethodDecl *Old) {
+  SEMA_LOG();
   QualType NewTy = New->getType()->getAs<FunctionType>()->getReturnType();
   QualType OldTy = Old->getType()->getAs<FunctionType>()->getReturnType();
 
@@ -16800,6 +16961,7 @@ bool Sema::CheckOverridingFunctionReturnType(const CXXMethodDecl *New,
 ///
 /// \param InitRange the source range that covers the "0" initializer.
 bool Sema::CheckPureMethod(CXXMethodDecl *Method, SourceRange InitRange) {
+  SEMA_LOG();
   SourceLocation EndLoc = InitRange.getEnd();
   if (EndLoc.isValid())
     Method->setRangeEnd(EndLoc);
@@ -16816,6 +16978,7 @@ bool Sema::CheckPureMethod(CXXMethodDecl *Method, SourceRange InitRange) {
 }
 
 void Sema::ActOnPureSpecifier(Decl *D, SourceLocation ZeroLoc) {
+  SEMA_LOG();
   if (D->getFriendObjectKind())
     Diag(D->getLocation(), diag::err_pure_friend);
   else if (auto *M = dyn_cast<CXXMethodDecl>(D))
@@ -16841,6 +17004,7 @@ static bool isNonlocalVariable(const Decl *D) {
 /// class X. If the declaration had a scope specifier, a scope will have
 /// been created and passed in for this purpose. Otherwise, S will be null.
 void Sema::ActOnCXXEnterDeclInitializer(Scope *S, Decl *D) {
+  SEMA_LOG();
   // If there is no declaration, there was an error parsing it.
   if (!D || D->isInvalidDecl())
     return;
@@ -16862,6 +17026,7 @@ void Sema::ActOnCXXEnterDeclInitializer(Scope *S, Decl *D) {
 
 /// Invoked after we are finished parsing an initializer for the declaration D.
 void Sema::ActOnCXXExitDeclInitializer(Scope *S, Decl *D) {
+  SEMA_LOG();
   // If there is no declaration, there was an error parsing it.
   if (!D || D->isInvalidDecl())
     return;
@@ -16877,6 +17042,7 @@ void Sema::ActOnCXXExitDeclInitializer(Scope *S, Decl *D) {
 /// C++ if/switch/while/for statement.
 /// e.g: "if (int x = f()) {...}"
 DeclResult Sema::ActOnCXXConditionDeclaration(Scope *S, Declarator &D) {
+  SEMA_LOG();
   // C++ 6.4p2:
   // The declarator shall not specify a function or an array.
   // The type-specifier-seq shall not contain typedef and shall not declare a
@@ -16898,6 +17064,7 @@ DeclResult Sema::ActOnCXXConditionDeclaration(Scope *S, Declarator &D) {
 }
 
 void Sema::LoadExternalVTableUses() {
+  SEMA_LOG();
   if (!ExternalSource)
     return;
 
@@ -16923,6 +17090,7 @@ void Sema::LoadExternalVTableUses() {
 
 void Sema::MarkVTableUsed(SourceLocation Loc, CXXRecordDecl *Class,
                           bool DefinitionRequired) {
+  SEMA_LOG();
   // Ignore any vtable uses in unevaluated operands or for classes that do
   // not have a vtable.
   if (!Class->isDynamicClass() || Class->isDependentContext() ||
@@ -16984,6 +17152,7 @@ void Sema::MarkVTableUsed(SourceLocation Loc, CXXRecordDecl *Class,
 }
 
 bool Sema::DefineUsedVTables() {
+  SEMA_LOG();
   LoadExternalVTableUses();
   if (VTableUses.empty())
     return false;
@@ -17079,6 +17248,7 @@ bool Sema::DefineUsedVTables() {
 
 void Sema::MarkVirtualMemberExceptionSpecsNeeded(SourceLocation Loc,
                                                  const CXXRecordDecl *RD) {
+  SEMA_LOG();
   for (const auto *I : RD->methods())
     if (I->isVirtual() && !I->isPure())
       ResolveExceptionSpec(Loc, I->getType()->castAs<FunctionProtoType>());
@@ -17087,6 +17257,7 @@ void Sema::MarkVirtualMemberExceptionSpecsNeeded(SourceLocation Loc,
 void Sema::MarkVirtualMembersReferenced(SourceLocation Loc,
                                         const CXXRecordDecl *RD,
                                         bool ConstexprOnly) {
+  SEMA_LOG();
   // Mark all functions which will appear in RD's vtable as used.
   CXXFinalOverriderMap FinalOverriders;
   RD->getFinalOverriders(FinalOverriders);
@@ -17122,6 +17293,7 @@ void Sema::MarkVirtualMembersReferenced(SourceLocation Loc,
 /// SetIvarInitializers - This routine builds initialization ASTs for the
 /// Objective-C implementation whose ivars need be initialized.
 void Sema::SetIvarInitializers(ObjCImplementationDecl *ObjCImplementation) {
+  SEMA_LOG();
   if (!getLangOpts().CPlusPlus)
     return;
   if (ObjCInterfaceDecl *OID = ObjCImplementation->getClassInterface()) {
@@ -17240,6 +17412,7 @@ void DelegatingCycleHelper(CXXConstructorDecl* Ctor,
 
 
 void Sema::CheckDelegatingCtorCycles() {
+  SEMA_LOG();
   llvm::SmallPtrSet<CXXConstructorDecl*, 4> Valid, Invalid, Current;
 
   for (DelegatingCtorDeclsType::iterator
@@ -17269,6 +17442,7 @@ namespace {
 }
 
 bool Sema::checkThisInStaticMemberFunctionType(CXXMethodDecl *Method) {
+  SEMA_LOG();
   TypeSourceInfo *TSInfo = Method->getTypeSourceInfo();
   if (!TSInfo)
     return false;
@@ -17301,6 +17475,7 @@ bool Sema::checkThisInStaticMemberFunctionType(CXXMethodDecl *Method) {
 }
 
 bool Sema::checkThisInStaticMemberFunctionExceptionSpec(CXXMethodDecl *Method) {
+  SEMA_LOG();
   TypeSourceInfo *TSInfo = Method->getTypeSourceInfo();
   if (!TSInfo)
     return false;
@@ -17343,6 +17518,7 @@ bool Sema::checkThisInStaticMemberFunctionExceptionSpec(CXXMethodDecl *Method) {
 }
 
 bool Sema::checkThisInStaticMemberFunctionAttributes(CXXMethodDecl *Method) {
+  SEMA_LOG();
   FindCXXThisExpr Finder(*this);
 
   // Check attributes.
@@ -17395,6 +17571,7 @@ void Sema::checkExceptionSpecification(
     ArrayRef<SourceRange> DynamicExceptionRanges, Expr *NoexceptExpr,
     SmallVectorImpl<QualType> &Exceptions,
     FunctionProtoType::ExceptionSpecInfo &ESI) {
+  SEMA_LOG();
   Exceptions.clear();
   ESI.Type = EST;
   if (EST == EST_Dynamic) {
@@ -17444,6 +17621,7 @@ void Sema::actOnDelayedExceptionSpecification(Decl *MethodD,
              ArrayRef<ParsedType> DynamicExceptions,
              ArrayRef<SourceRange> DynamicExceptionRanges,
              Expr *NoexceptExpr) {
+  SEMA_LOG();
   if (!MethodD)
     return;
 
@@ -17483,6 +17661,7 @@ MSPropertyDecl *Sema::HandleMSProperty(Scope *S, RecordDecl *Record,
                                        InClassInitStyle InitStyle,
                                        AccessSpecifier AS,
                                        const ParsedAttr &MSPropertyAttr) {
+  SEMA_LOG();
   IdentifierInfo *II = D.getIdentifier();
   if (!II) {
     Diag(DeclStart, diag::err_anonymous_property);

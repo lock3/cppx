@@ -479,6 +479,7 @@ static ExprResult buildPromiseCall(Sema &S, VarDecl *Promise,
 }
 
 VarDecl *Sema::buildCoroutinePromise(SourceLocation Loc) {
+  SEMA_LOG();
   assert(isa<FunctionDecl>(CurContext) && "not in a function scope");
   auto *FD = cast<FunctionDecl>(CurContext);
   bool IsThisDependentType = [&] {
@@ -599,6 +600,7 @@ static FunctionScopeInfo *checkCoroutineContext(Sema &S, SourceLocation Loc,
 
 bool Sema::ActOnCoroutineBodyStart(Scope *SC, SourceLocation KWLoc,
                                    StringRef Keyword) {
+  SEMA_LOG();
   if (!checkCoroutineContext(*this, KWLoc, Keyword))
     return false;
   auto *ScopeInfo = getCurFunction();
@@ -691,6 +693,7 @@ static void checkSuspensionContext(Sema &S, SourceLocation Loc,
 }
 
 ExprResult Sema::ActOnCoawaitExpr(Scope *S, SourceLocation Loc, Expr *E) {
+  SEMA_LOG();
   if (!ActOnCoroutineBodyStart(S, Loc, "co_await")) {
     CorrectDelayedTyposInExpr(E);
     return ExprError();
@@ -712,6 +715,7 @@ ExprResult Sema::ActOnCoawaitExpr(Scope *S, SourceLocation Loc, Expr *E) {
 
 ExprResult Sema::BuildUnresolvedCoawaitExpr(SourceLocation Loc, Expr *E,
                                             UnresolvedLookupExpr *Lookup) {
+  SEMA_LOG();
   auto *FSI = checkCoroutineContext(*this, Loc, "co_await");
   if (!FSI)
     return ExprError();
@@ -750,6 +754,7 @@ ExprResult Sema::BuildUnresolvedCoawaitExpr(SourceLocation Loc, Expr *E,
 
 ExprResult Sema::BuildResolvedCoawaitExpr(SourceLocation Loc, Expr *E,
                                   bool IsImplicit) {
+  SEMA_LOG();
   auto *Coroutine = checkCoroutineContext(*this, Loc, "co_await", IsImplicit);
   if (!Coroutine)
     return ExprError();
@@ -790,6 +795,7 @@ ExprResult Sema::BuildResolvedCoawaitExpr(SourceLocation Loc, Expr *E,
 }
 
 ExprResult Sema::ActOnCoyieldExpr(Scope *S, SourceLocation Loc, Expr *E) {
+  SEMA_LOG();
   if (!ActOnCoroutineBodyStart(S, Loc, "co_yield")) {
     CorrectDelayedTyposInExpr(E);
     return ExprError();
@@ -811,6 +817,7 @@ ExprResult Sema::ActOnCoyieldExpr(Scope *S, SourceLocation Loc, Expr *E) {
   return BuildCoyieldExpr(Loc, Awaitable.get());
 }
 ExprResult Sema::BuildCoyieldExpr(SourceLocation Loc, Expr *E) {
+  SEMA_LOG();
   auto *Coroutine = checkCoroutineContext(*this, Loc, "co_yield");
   if (!Coroutine)
     return ExprError();
@@ -845,6 +852,7 @@ ExprResult Sema::BuildCoyieldExpr(SourceLocation Loc, Expr *E) {
 }
 
 StmtResult Sema::ActOnCoreturnStmt(Scope *S, SourceLocation Loc, Expr *E) {
+  SEMA_LOG();
   if (!ActOnCoroutineBodyStart(S, Loc, "co_return")) {
     CorrectDelayedTyposInExpr(E);
     return StmtError();
@@ -854,6 +862,7 @@ StmtResult Sema::ActOnCoreturnStmt(Scope *S, SourceLocation Loc, Expr *E) {
 
 StmtResult Sema::BuildCoreturnStmt(SourceLocation Loc, Expr *E,
                                    bool IsImplicit) {
+  SEMA_LOG();
   auto *FSI = checkCoroutineContext(*this, Loc, "co_return", IsImplicit);
   if (!FSI)
     return StmtError();
@@ -956,6 +965,7 @@ static FunctionDecl *findDeleteForPromise(Sema &S, SourceLocation Loc,
 
 
 void Sema::CheckCompletedCoroutineBody(FunctionDecl *FD, Stmt *&Body) {
+  SEMA_LOG();
   FunctionScopeInfo *Fn = getCurFunction();
   assert(Fn && Fn->isCoroutine() && "not a coroutine");
   if (!Body) {
@@ -1523,6 +1533,7 @@ static VarDecl *buildVarDecl(Sema &S, SourceLocation Loc, QualType Type,
 // Build statements that move coroutine function parameters to the coroutine
 // frame, and store them on the function scope info.
 bool Sema::buildCoroutineParameterMoves(SourceLocation Loc) {
+  SEMA_LOG();
   assert(isa<FunctionDecl>(CurContext) && "not in a function scope");
   auto *FD = cast<FunctionDecl>(CurContext);
 
@@ -1561,6 +1572,7 @@ bool Sema::buildCoroutineParameterMoves(SourceLocation Loc) {
 }
 
 StmtResult Sema::BuildCoroutineBodyStmt(CoroutineBodyStmt::CtorArgs Args) {
+  SEMA_LOG();
   CoroutineBodyStmt *Res = CoroutineBodyStmt::Create(Context, Args);
   if (!Res)
     return StmtError();
@@ -1569,6 +1581,7 @@ StmtResult Sema::BuildCoroutineBodyStmt(CoroutineBodyStmt::CtorArgs Args) {
 
 ClassTemplateDecl *Sema::lookupCoroutineTraits(SourceLocation KwLoc,
                                                SourceLocation FuncLoc) {
+  SEMA_LOG();
   if (!StdCoroutineTraitsCache) {
     if (auto StdExp = lookupStdExperimentalNamespace()) {
       LookupResult Result(*this,

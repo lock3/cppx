@@ -245,6 +245,7 @@ StmtResult Sema::ActOnGCCAsmStmt(SourceLocation AsmLoc, bool IsSimple,
                                  Expr *asmString, MultiExprArg clobbers,
                                  unsigned NumLabels,
                                  SourceLocation RParenLoc) {
+  SEMA_LOG();
   unsigned NumClobbers = clobbers.size();
   StringLiteral **Constraints =
     reinterpret_cast<StringLiteral**>(constraints.data());
@@ -704,6 +705,7 @@ StmtResult Sema::ActOnGCCAsmStmt(SourceLocation AsmLoc, bool IsSimple,
 
 void Sema::FillInlineAsmIdentifierInfo(Expr *Res,
                                        llvm::InlineAsmIdentifierInfo &Info) {
+  SEMA_LOG();
   QualType T = Res->getType();
   if (T->isFunctionType() || T->isDependentType())
     return Info.setLabel(Res);
@@ -735,7 +737,7 @@ ExprResult Sema::LookupInlineAsmIdentifier(CXXScopeSpec &SS,
                                            SourceLocation TemplateKWLoc,
                                            UnqualifiedId &Id,
                                            bool IsUnevaluatedContext) {
-
+  SEMA_LOG();
   if (IsUnevaluatedContext)
     PushExpressionEvaluationContext(
         ExpressionEvaluationContext::UnevaluatedAbstract,
@@ -780,6 +782,7 @@ ExprResult Sema::LookupInlineAsmIdentifier(CXXScopeSpec &SS,
 
 bool Sema::LookupInlineAsmField(StringRef Base, StringRef Member,
                                 unsigned &Offset, SourceLocation AsmLoc) {
+  SEMA_LOG();
   Offset = 0;
   SmallVector<StringRef, 2> Members;
   Member.split(Members, ".");
@@ -849,7 +852,7 @@ bool Sema::LookupInlineAsmField(StringRef Base, StringRef Member,
 ExprResult
 Sema::LookupInlineAsmVarDeclField(Expr *E, StringRef Member,
                                   SourceLocation AsmLoc) {
-
+  SEMA_LOG();
   QualType T = E->getType();
   if (T->isDependentType()) {
     DeclarationNameInfo NameInfo;
@@ -895,6 +898,7 @@ StmtResult Sema::ActOnMSAsmStmt(SourceLocation AsmLoc, SourceLocation LBraceLoc,
                                 ArrayRef<StringRef> Clobbers,
                                 ArrayRef<Expr*> Exprs,
                                 SourceLocation EndLoc) {
+  SEMA_LOG();
   bool IsSimple = (NumOutputs != 0 || NumInputs != 0);
   setFunctionHasBranchProtectedScope();
   MSAsmStmt *NS =
@@ -908,6 +912,7 @@ StmtResult Sema::ActOnMSAsmStmt(SourceLocation AsmLoc, SourceLocation LBraceLoc,
 LabelDecl *Sema::GetOrCreateMSAsmLabel(StringRef ExternalLabelName,
                                        SourceLocation Location,
                                        bool AlwaysCreate) {
+  SEMA_LOG();
   LabelDecl* Label = LookupOrCreateLabel(PP.getIdentifierInfo(ExternalLabelName),
                                          Location);
 

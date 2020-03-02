@@ -1051,6 +1051,7 @@ Expr *ObjCSubscriptOpBuilder::rebuildAndCaptureObject(Expr *syntacticBase) {
 /// of indexing represented by "FromE" is being done.
 Sema::ObjCSubscriptKind
   Sema::CheckSubscriptingKind(Expr *FromE) {
+  SEMA_LOG();
   // If the expression already has integral or enumeration type, we're golden.
   QualType T = FromE->getType();
   if (T->isIntegralOrEnumerationType())
@@ -1533,6 +1534,7 @@ ExprResult MSPropertyOpBuilder::buildSet(Expr *op, SourceLocation sl,
 //===----------------------------------------------------------------------===//
 
 ExprResult Sema::checkPseudoObjectRValue(Expr *E) {
+  SEMA_LOG();
   Expr *opaqueRef = E->IgnoreParens();
   if (ObjCPropertyRefExpr *refExpr
         = dyn_cast<ObjCPropertyRefExpr>(opaqueRef)) {
@@ -1559,6 +1561,7 @@ ExprResult Sema::checkPseudoObjectRValue(Expr *E) {
 /// Check an increment or decrement of a pseudo-object expression.
 ExprResult Sema::checkPseudoObjectIncDec(Scope *Sc, SourceLocation opcLoc,
                                          UnaryOperatorKind opcode, Expr *op) {
+  SEMA_LOG();
   // Do nothing if the operand is dependent.
   if (op->isTypeDependent())
     return new (Context) UnaryOperator(op, opcode, Context.DependentTy,
@@ -1589,6 +1592,7 @@ ExprResult Sema::checkPseudoObjectIncDec(Scope *Sc, SourceLocation opcLoc,
 ExprResult Sema::checkPseudoObjectAssignment(Scope *S, SourceLocation opcLoc,
                                              BinaryOperatorKind opcode,
                                              Expr *LHS, Expr *RHS) {
+  SEMA_LOG();
   // Do nothing if either argument is dependent.
   if (LHS->isTypeDependent() || RHS->isTypeDependent())
     return new (Context) BinaryOperator(LHS, RHS, opcode, Context.DependentTy,
@@ -1643,6 +1647,7 @@ static Expr *stripOpaqueValuesFromPseudoObjectRef(Sema &S, Expr *E) {
 /// capable of rebuilding a tree without stripping implicit
 /// operations.
 Expr *Sema::recreateSyntacticForm(PseudoObjectExpr *E) {
+  SEMA_LOG();
   Expr *syntax = E->getSyntacticForm();
   if (UnaryOperator *uop = dyn_cast<UnaryOperator>(syntax)) {
     Expr *op = stripOpaqueValuesFromPseudoObjectRef(*this, uop->getSubExpr());

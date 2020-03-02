@@ -369,6 +369,7 @@ static bool checkFunctionOrMethodParameterIndex(
 bool Sema::checkStringLiteralArgumentAttr(const ParsedAttr &AL, unsigned ArgNum,
                                           StringRef &Str,
                                           SourceLocation *ArgLocation) {
+  SEMA_LOG();
   // Look for identifiers. If we have one emit a hint to fix it to a literal.
   if (AL.isArgIdent(ArgNum)) {
     IdentifierLoc *Loc = AL.getArgAsIdent(ArgNum);
@@ -1457,6 +1458,7 @@ static void handleIBOutletCollection(Sema &S, Decl *D, const ParsedAttr &AL) {
 }
 
 bool Sema::isValidPointerAttrType(QualType T, bool RefOkay) {
+  SEMA_LOG();
   if (RefOkay) {
     if (T->isReferenceType())
       return true;
@@ -1596,6 +1598,7 @@ static void handleAllocAlignAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 
 void Sema::AddAssumeAlignedAttr(Decl *D, const AttributeCommonInfo &CI, Expr *E,
                                 Expr *OE) {
+  SEMA_LOG();
   QualType ResultType = getFunctionOrMethodResultType(D);
   SourceRange SR = getFunctionOrMethodResultSourceRange(D);
 
@@ -1648,6 +1651,7 @@ void Sema::AddAssumeAlignedAttr(Decl *D, const AttributeCommonInfo &CI, Expr *E,
 
 void Sema::AddAllocAlignAttr(Decl *D, const AttributeCommonInfo &CI,
                              Expr *ParamExpr) {
+  SEMA_LOG();
   QualType ResultType = getFunctionOrMethodResultType(D);
 
   AllocAlignAttr TmpAttr(Context, CI, ParamIdx());
@@ -2031,6 +2035,7 @@ static void handleNoCfCheckAttr(Sema &S, Decl *D, const ParsedAttr &Attrs) {
 }
 
 bool Sema::CheckAttrNoArgs(const ParsedAttr &Attrs) {
+  SEMA_LOG();
   if (!checkAttributeNumArgs(*this, Attrs, 0)) {
     Attrs.setInvalid();
     return true;
@@ -2040,6 +2045,7 @@ bool Sema::CheckAttrNoArgs(const ParsedAttr &Attrs) {
 }
 
 bool Sema::CheckAttrTarget(const ParsedAttr &AL) {
+  SEMA_LOG();
   // Check whether the attribute is valid on the current target.
   if (!AL.existsInTarget(Context.getTargetInfo())) {
     Diag(AL.getLoc(), diag::warn_unknown_attribute_ignored) << AL;
@@ -2252,6 +2258,7 @@ AvailabilityAttr *Sema::mergeAvailabilityAttr(
     VersionTuple Obsoleted, bool IsUnavailable, StringRef Message,
     bool IsStrict, StringRef Replacement, AvailabilityMergeKind AMK,
     int Priority) {
+  SEMA_LOG();
   VersionTuple MergedIntroduced = Introduced;
   VersionTuple MergedDeprecated = Deprecated;
   VersionTuple MergedObsoleted = Obsoleted;
@@ -2545,12 +2552,14 @@ static T *mergeVisibilityAttr(Sema &S, Decl *D, const AttributeCommonInfo &CI,
 VisibilityAttr *Sema::mergeVisibilityAttr(Decl *D,
                                           const AttributeCommonInfo &CI,
                                           VisibilityAttr::VisibilityType Vis) {
+  SEMA_LOG();
   return ::mergeVisibilityAttr<VisibilityAttr>(*this, D, CI, Vis);
 }
 
 TypeVisibilityAttr *
 Sema::mergeTypeVisibilityAttr(Decl *D, const AttributeCommonInfo &CI,
                               TypeVisibilityAttr::VisibilityType Vis) {
+  SEMA_LOG();
   return ::mergeVisibilityAttr<TypeVisibilityAttr>(*this, D, CI, Vis);
 }
 
@@ -2935,6 +2944,7 @@ static void handleVecTypeHint(Sema &S, Decl *D, const ParsedAttr &AL) {
 
 SectionAttr *Sema::mergeSectionAttr(Decl *D, const AttributeCommonInfo &CI,
                                     StringRef Name) {
+  SEMA_LOG();
   // Explicit or partial specializations do not inherit
   // the section attribute from the primary template.
   if (const auto *FD = dyn_cast<FunctionDecl>(D)) {
@@ -2954,6 +2964,7 @@ SectionAttr *Sema::mergeSectionAttr(Decl *D, const AttributeCommonInfo &CI,
 }
 
 bool Sema::checkSectionName(SourceLocation LiteralLoc, StringRef SecName) {
+  SEMA_LOG();
   std::string Error = Context.getTargetInfo().isValidSectionSpecifier(SecName);
   if (!Error.empty()) {
     Diag(LiteralLoc, diag::err_attribute_section_invalid_for_target) << Error
@@ -3004,6 +3015,7 @@ static bool checkCodeSegName(Sema &S, SourceLocation LiteralLoc,
 
 CodeSegAttr *Sema::mergeCodeSegAttr(Decl *D, const AttributeCommonInfo &CI,
                                     StringRef Name) {
+  SEMA_LOG();
   // Explicit or partial specializations do not inherit
   // the code_seg attribute from the primary template.
   if (const auto *FD = dyn_cast<FunctionDecl>(D)) {
@@ -3045,6 +3057,7 @@ static void handleCodeSegAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 // Check for things we'd like to warn about. Multiversioning issues are
 // handled later in the process, once we know how many exist.
 bool Sema::checkTargetAttr(SourceLocation LiteralLoc, StringRef AttrStr) {
+  SEMA_LOG();
   enum FirstParam { Unsupported, Duplicate };
   enum SecondParam { None, Architecture };
   for (auto Str : {"tune=", "fpmath="})
@@ -3295,6 +3308,7 @@ static void handleInitPriorityAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 FormatAttr *Sema::mergeFormatAttr(Decl *D, const AttributeCommonInfo &CI,
                                   IdentifierInfo *Format, int FormatIdx,
                                   int FirstArg) {
+  SEMA_LOG();
   // Check whether we already have an equivalent format attribute.
   for (auto *F : D->specific_attrs<FormatAttr>()) {
     if (F->getType() == Format &&
@@ -3664,6 +3678,7 @@ static void handleAlignValueAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 }
 
 void Sema::AddAlignValueAttr(Decl *D, const AttributeCommonInfo &CI, Expr *E) {
+  SEMA_LOG();
   AlignValueAttr TmpAttr(Context, CI, E);
   SourceLocation AttrLoc = CI.getLoc();
 
@@ -3732,6 +3747,7 @@ static void handleAlignedAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 
 void Sema::AddAlignedAttr(Decl *D, const AttributeCommonInfo &CI, Expr *E,
                           bool IsPackExpansion) {
+  SEMA_LOG();
   AlignedAttr TmpAttr(Context, CI, true, E);
   SourceLocation AttrLoc = CI.getLoc();
 
@@ -3845,6 +3861,7 @@ void Sema::AddAlignedAttr(Decl *D, const AttributeCommonInfo &CI, Expr *E,
 
 void Sema::AddAlignedAttr(Decl *D, const AttributeCommonInfo &CI,
                           TypeSourceInfo *TS, bool IsPackExpansion) {
+  SEMA_LOG();
   // FIXME: Cache the number on the AL object if non-dependent?
   // FIXME: Perform checking of type validity
   AlignedAttr *AA = ::new (Context) AlignedAttr(Context, CI, false, TS);
@@ -3853,6 +3870,7 @@ void Sema::AddAlignedAttr(Decl *D, const AttributeCommonInfo &CI,
 }
 
 void Sema::CheckAlignasUnderalignment(Decl *D) {
+  SEMA_LOG();
   assert(D->hasAttrs() && "no attributes on decl");
 
   QualType UnderlyingTy, DiagTy;
@@ -3892,6 +3910,7 @@ void Sema::CheckAlignasUnderalignment(Decl *D) {
 bool Sema::checkMSInheritanceAttrOnDefinition(
     CXXRecordDecl *RD, SourceRange Range, bool BestCase,
     MSInheritanceModel ExplicitModel) {
+  SEMA_LOG();
   assert(RD->hasDefinition() && "RD has no definition!");
 
   // We may not have seen base specifiers or any virtual methods yet.  We will
@@ -3996,6 +4015,7 @@ static void handleModeAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 
 void Sema::AddModeAttr(Decl *D, const AttributeCommonInfo &CI,
                        IdentifierInfo *Name, bool InInstantiation) {
+  SEMA_LOG();
   StringRef Str = Name->getName();
   normalizeName(Str);
   SourceLocation AttrLoc = CI.getLoc();
@@ -4141,6 +4161,7 @@ static void handleNoDebugAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 AlwaysInlineAttr *Sema::mergeAlwaysInlineAttr(Decl *D,
                                               const AttributeCommonInfo &CI,
                                               const IdentifierInfo *Ident) {
+  SEMA_LOG();
   if (OptimizeNoneAttr *Optnone = D->getAttr<OptimizeNoneAttr>()) {
     Diag(CI.getLoc(), diag::warn_attribute_ignored) << Ident;
     Diag(Optnone->getLocation(), diag::note_conflicting_attribute);
@@ -4154,6 +4175,7 @@ AlwaysInlineAttr *Sema::mergeAlwaysInlineAttr(Decl *D,
 }
 
 CommonAttr *Sema::mergeCommonAttr(Decl *D, const ParsedAttr &AL) {
+  SEMA_LOG();
   if (checkAttrMutualExclusion<InternalLinkageAttr>(*this, D, AL))
     return nullptr;
 
@@ -4161,6 +4183,7 @@ CommonAttr *Sema::mergeCommonAttr(Decl *D, const ParsedAttr &AL) {
 }
 
 CommonAttr *Sema::mergeCommonAttr(Decl *D, const CommonAttr &AL) {
+  SEMA_LOG();
   if (checkAttrMutualExclusion<InternalLinkageAttr>(*this, D, AL))
     return nullptr;
 
@@ -4169,6 +4192,7 @@ CommonAttr *Sema::mergeCommonAttr(Decl *D, const CommonAttr &AL) {
 
 InternalLinkageAttr *Sema::mergeInternalLinkageAttr(Decl *D,
                                                     const ParsedAttr &AL) {
+  SEMA_LOG();
   if (const auto *VD = dyn_cast<VarDecl>(D)) {
     // Attribute applies to Var but not any subclass of it (like ParmVar,
     // ImplicitParm or VarTemplateSpecialization).
@@ -4192,6 +4216,7 @@ InternalLinkageAttr *Sema::mergeInternalLinkageAttr(Decl *D,
 }
 InternalLinkageAttr *
 Sema::mergeInternalLinkageAttr(Decl *D, const InternalLinkageAttr &AL) {
+  SEMA_LOG();
   if (const auto *VD = dyn_cast<VarDecl>(D)) {
     // Attribute applies to Var but not any subclass of it (like ParmVar,
     // ImplicitParm or VarTemplateSpecialization).
@@ -4215,6 +4240,7 @@ Sema::mergeInternalLinkageAttr(Decl *D, const InternalLinkageAttr &AL) {
 }
 
 MinSizeAttr *Sema::mergeMinSizeAttr(Decl *D, const AttributeCommonInfo &CI) {
+  SEMA_LOG();
   if (OptimizeNoneAttr *Optnone = D->getAttr<OptimizeNoneAttr>()) {
     Diag(CI.getLoc(), diag::warn_attribute_ignored) << "'minsize'";
     Diag(Optnone->getLocation(), diag::note_conflicting_attribute);
@@ -4229,6 +4255,7 @@ MinSizeAttr *Sema::mergeMinSizeAttr(Decl *D, const AttributeCommonInfo &CI) {
 
 NoSpeculativeLoadHardeningAttr *Sema::mergeNoSpeculativeLoadHardeningAttr(
     Decl *D, const NoSpeculativeLoadHardeningAttr &AL) {
+  SEMA_LOG();
   if (checkAttrMutualExclusion<SpeculativeLoadHardeningAttr>(*this, D, AL))
     return nullptr;
 
@@ -4237,6 +4264,7 @@ NoSpeculativeLoadHardeningAttr *Sema::mergeNoSpeculativeLoadHardeningAttr(
 
 OptimizeNoneAttr *Sema::mergeOptimizeNoneAttr(Decl *D,
                                               const AttributeCommonInfo &CI) {
+  SEMA_LOG();
   if (AlwaysInlineAttr *Inline = D->getAttr<AlwaysInlineAttr>()) {
     Diag(Inline->getLocation(), diag::warn_attribute_ignored) << Inline;
     Diag(CI.getLoc(), diag::note_conflicting_attribute);
@@ -4256,6 +4284,7 @@ OptimizeNoneAttr *Sema::mergeOptimizeNoneAttr(Decl *D,
 
 SpeculativeLoadHardeningAttr *Sema::mergeSpeculativeLoadHardeningAttr(
     Decl *D, const SpeculativeLoadHardeningAttr &AL) {
+  SEMA_LOG();
   if (checkAttrMutualExclusion<NoSpeculativeLoadHardeningAttr>(*this, D, AL))
     return nullptr;
 
@@ -4543,6 +4572,7 @@ static void handleLifetimeInOutAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 
 bool Sema::CheckCallingConvAttr(const ParsedAttr &Attrs, CallingConv &CC,
                                 const FunctionDecl *FD) {
+  SEMA_LOG();
   if (Attrs.isInvalid())
     return true;
 
@@ -4731,6 +4761,7 @@ static bool isValidSwiftErrorResultType(QualType Ty) {
 
 void Sema::AddParameterABIAttr(Decl *D, const AttributeCommonInfo &CI,
                                ParameterABI abi) {
+  SEMA_LOG();
 
   QualType type = cast<ParmVarDecl>(D)->getType();
 
@@ -4777,6 +4808,7 @@ void Sema::AddParameterABIAttr(Decl *D, const AttributeCommonInfo &CI,
 /// Checks a regparm attribute, returning true if it is ill-formed and
 /// otherwise setting numParams to the appropriate value.
 bool Sema::CheckRegparmAttr(const ParsedAttr &AL, unsigned &numParams) {
+  SEMA_LOG();
   if (AL.isInvalid())
     return true;
 
@@ -4854,6 +4886,7 @@ static Expr *makeLaunchBoundsArgExpr(Sema &S, Expr *E,
 
 void Sema::AddLaunchBoundsAttr(Decl *D, const AttributeCommonInfo &CI,
                                Expr *MaxThreads, Expr *MinBlocks) {
+  SEMA_LOG();
   CUDALaunchBoundsAttr TmpAttr(Context, CI, MaxThreads, MinBlocks);
   MaxThreads = makeLaunchBoundsArgExpr(*this, MaxThreads, TmpAttr, 0);
   if (MaxThreads == nullptr)
@@ -5006,6 +5039,7 @@ static bool isValidSubjectOfOSAttribute(QualType QT) {
 void Sema::AddXConsumedAttr(Decl *D, const AttributeCommonInfo &CI,
                             RetainOwnershipKind K,
                             bool IsTemplateInstantiation) {
+  SEMA_LOG();
   ValueDecl *VD = cast<ValueDecl>(D);
   switch (K) {
   case RetainOwnershipKind::OS:
@@ -5062,6 +5096,7 @@ parsedAttrToRetainOwnershipKind(const ParsedAttr &AL) {
 }
 
 bool Sema::checkNSReturnsRetainedReturnType(SourceLocation Loc, QualType QT) {
+  SEMA_LOG();
   if (isValidSubjectOfNSReturnsRetainedAttribute(QT))
     return false;
 
@@ -5424,6 +5459,7 @@ static void handleObjCPreciseLifetimeAttr(Sema &S, Decl *D,
 
 UuidAttr *Sema::mergeUuidAttr(Decl *D, const AttributeCommonInfo &CI,
                               StringRef Uuid) {
+  SEMA_LOG();
   if (const auto *UA = D->getAttr<UuidAttr>()) {
     if (UA->getGuid().equals_lower(Uuid))
       return nullptr;
@@ -5973,6 +6009,7 @@ checkAMDGPUFlatWorkGroupSizeArguments(Sema &S, Expr *MinExpr, Expr *MaxExpr,
 void Sema::addAMDGPUFlatWorkGroupSizeAttr(Decl *D,
                                           const AttributeCommonInfo &CI,
                                           Expr *MinExpr, Expr *MaxExpr) {
+  SEMA_LOG();
   AMDGPUFlatWorkGroupSizeAttr TmpAttr(Context, CI, MinExpr, MaxExpr);
 
   if (checkAMDGPUFlatWorkGroupSizeArguments(*this, MinExpr, MaxExpr, TmpAttr))
@@ -6026,6 +6063,7 @@ static bool checkAMDGPUWavesPerEUArguments(Sema &S, Expr *MinExpr,
 
 void Sema::addAMDGPUWavesPerEUAttr(Decl *D, const AttributeCommonInfo &CI,
                                    Expr *MinExpr, Expr *MaxExpr) {
+  SEMA_LOG();
   AMDGPUWavesPerEUAttr TmpAttr(Context, CI, MinExpr, MaxExpr);
 
   if (checkAMDGPUWavesPerEUArguments(*this, MinExpr, MaxExpr, TmpAttr))
@@ -6110,6 +6148,7 @@ static void handleLayoutVersion(Sema &S, Decl *D, const ParsedAttr &AL) {
 
 DLLImportAttr *Sema::mergeDLLImportAttr(Decl *D,
                                         const AttributeCommonInfo &CI) {
+  SEMA_LOG();
   if (D->hasAttr<DLLExportAttr>()) {
     Diag(CI.getLoc(), diag::warn_attribute_ignored) << "'dllimport'";
     return nullptr;
@@ -6123,6 +6162,7 @@ DLLImportAttr *Sema::mergeDLLImportAttr(Decl *D,
 
 DLLExportAttr *Sema::mergeDLLExportAttr(Decl *D,
                                         const AttributeCommonInfo &CI) {
+  SEMA_LOG();
   if (DLLImportAttr *Import = D->getAttr<DLLImportAttr>()) {
     Diag(Import->getLocation(), diag::warn_attribute_ignored) << Import;
     D->dropAttr<DLLImportAttr>();
@@ -6170,6 +6210,7 @@ MSInheritanceAttr *
 Sema::mergeMSInheritanceAttr(Decl *D, const AttributeCommonInfo &CI,
                              bool BestCase,
                              MSInheritanceModel Model) {
+  SEMA_LOG();
   if (MSInheritanceAttr *IA = D->getAttr<MSInheritanceAttr>()) {
     if (IA->getInheritanceModel() == Model)
       return nullptr;
@@ -7468,6 +7509,7 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
 void Sema::ProcessDeclAttributeList(Scope *S, Decl *D,
                                     const ParsedAttributesView &AttrList,
                                     bool IncludeCXX11Attributes) {
+  SEMA_LOG();
   if (AttrList.empty())
     return;
 
@@ -7542,6 +7584,7 @@ void Sema::ProcessDeclAttributeList(Scope *S, Decl *D,
 // attribute.
 void Sema::ProcessDeclAttributeDelayed(Decl *D,
                                        const ParsedAttributesView &AttrList) {
+  SEMA_LOG();
   for (const ParsedAttr &AL : AttrList)
     if (AL.getKind() == ParsedAttr::AT_TransparentUnion) {
       handleTransparentUnionAttr(*this, D, AL);
@@ -7558,6 +7601,7 @@ void Sema::ProcessDeclAttributeDelayed(Decl *D,
 // specifier.
 bool Sema::ProcessAccessDeclAttributeList(
     AccessSpecDecl *ASDecl, const ParsedAttributesView &AttrList) {
+  SEMA_LOG();
   for (const ParsedAttr &AL : AttrList) {
     if (AL.getKind() == ParsedAttr::AT_Annotate) {
       ProcessDeclAttribute(*this, nullptr, ASDecl, AL, AL.isCXX11Attribute());
@@ -7593,6 +7637,7 @@ static void checkUnusedDeclAttributes(Sema &S, const ParsedAttributesView &A) {
 /// used to build a declaration, complain about any decl attributes
 /// which might be lying around on it.
 void Sema::checkUnusedDeclAttributes(Declarator &D) {
+  SEMA_LOG();
   ::checkUnusedDeclAttributes(*this, D.getDeclSpec().getAttributes());
   ::checkUnusedDeclAttributes(*this, D.getAttributes());
   for (unsigned i = 0, e = D.getNumTypeObjects(); i != e; ++i)
@@ -7603,6 +7648,7 @@ void Sema::checkUnusedDeclAttributes(Declarator &D) {
 /// \#pragma weak needs a non-definition decl and source may not have one.
 NamedDecl * Sema::DeclClonePragmaWeak(NamedDecl *ND, IdentifierInfo *II,
                                       SourceLocation Loc) {
+  SEMA_LOG();
   assert(isa<FunctionDecl>(ND) || isa<VarDecl>(ND));
   NamedDecl *NewD = nullptr;
   if (auto *FD = dyn_cast<FunctionDecl>(ND)) {
@@ -7646,6 +7692,7 @@ NamedDecl * Sema::DeclClonePragmaWeak(NamedDecl *ND, IdentifierInfo *II,
 /// DeclApplyPragmaWeak - A declaration (maybe definition) needs \#pragma weak
 /// applied to it, possibly with an alias.
 void Sema::DeclApplyPragmaWeak(Scope *S, NamedDecl *ND, WeakInfo &W) {
+  SEMA_LOG();
   if (W.getUsed()) return; // only do this once
   W.setUsed(true);
   if (W.getAlias()) { // clone decl, impersonate __attribute(weak,alias(...))
@@ -7671,6 +7718,7 @@ void Sema::DeclApplyPragmaWeak(Scope *S, NamedDecl *ND, WeakInfo &W) {
 }
 
 void Sema::ProcessPragmaWeak(Scope *S, Decl *D) {
+  SEMA_LOG();
   // It's valid to "forward-declare" #pragma weak, in which case we
   // have to do this.
   LoadExternalWeakUndeclaredIdentifiers();
@@ -7699,6 +7747,7 @@ void Sema::ProcessPragmaWeak(Scope *S, Decl *D) {
 /// it, apply them to D.  This is a bit tricky because PD can have attributes
 /// specified in many different places, and we need to find and apply them all.
 void Sema::ProcessDeclAttributes(Scope *S, Decl *D, const Declarator &PD) {
+  SEMA_LOG();
   // Apply decl attributes from the DeclSpec if present.
   if (!PD.getDeclSpec().getAttributes().empty())
     ProcessDeclAttributeList(S, D, PD.getDeclSpec().getAttributes());
@@ -8311,6 +8360,7 @@ static void handleDelayedAvailabilityCheck(Sema &S, DelayedDiagnostic &DD,
 }
 
 void Sema::PopParsingDeclaration(ParsingDeclState state, Decl *decl) {
+  SEMA_LOG();
   assert(DelayedDiagnostics.getCurrentPool());
   DelayedDiagnosticPool &poppedPool = *DelayedDiagnostics.getCurrentPool();
   DelayedDiagnostics.popWithoutEmitting(state);
@@ -8368,6 +8418,7 @@ void Sema::PopParsingDeclaration(ParsingDeclState state, Decl *decl) {
 /// been delayed in the current context instead of in the given pool.
 /// Essentially, this just moves them to the current pool.
 void Sema::redelayDiagnostics(DelayedDiagnosticPool &pool) {
+  SEMA_LOG();
   DelayedDiagnosticPool *curPool = DelayedDiagnostics.getCurrentPool();
   assert(curPool && "re-emitting in undelayed context not supported");
   curPool->steal(pool);
@@ -8722,6 +8773,7 @@ bool DiagnoseUnguardedAvailability::TraverseIfStmt(IfStmt *If) {
 } // end anonymous namespace
 
 void Sema::DiagnoseUnguardedAvailabilityViolations(Decl *D) {
+  SEMA_LOG();
   Stmt *Body = nullptr;
 
   if (auto *FD = D->getAsFunction()) {
@@ -8747,6 +8799,7 @@ void Sema::DiagnoseAvailabilityOfDecl(NamedDecl *D,
                                       bool ObjCPropertyAccess,
                                       bool AvoidPartialAvailabilityChecks,
                                       ObjCInterfaceDecl *ClassReceiver) {
+  SEMA_LOG();
   std::string Message;
   AvailabilityResult Result;
   const NamedDecl* OffendingDecl;

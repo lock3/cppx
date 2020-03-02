@@ -46,6 +46,7 @@ using namespace clang;
 using namespace sema;
 
 StmtResult Sema::ActOnExprStmt(ExprResult FE, bool DiscardedValue) {
+  SEMA_LOG();
   if (FE.isInvalid())
     return StmtError();
 
@@ -63,17 +64,20 @@ StmtResult Sema::ActOnExprStmt(ExprResult FE, bool DiscardedValue) {
 
 
 StmtResult Sema::ActOnExprStmtError() {
+  SEMA_LOG();
   DiscardCleanupsInEvaluationContext();
   return StmtError();
 }
 
 StmtResult Sema::ActOnNullStmt(SourceLocation SemiLoc,
                                bool HasLeadingEmptyMacro) {
+  SEMA_LOG();
   return new (Context) NullStmt(SemiLoc, HasLeadingEmptyMacro);
 }
 
 StmtResult Sema::ActOnDeclStmt(DeclGroupPtrTy dg, SourceLocation StartLoc,
                                SourceLocation EndLoc) {
+  SEMA_LOG();
   DeclGroupRef DG = dg.get();
 
   // If we have an invalid decl, just return an error.
@@ -83,6 +87,7 @@ StmtResult Sema::ActOnDeclStmt(DeclGroupPtrTy dg, SourceLocation StartLoc,
 }
 
 void Sema::ActOnForEachDeclStmt(DeclGroupPtrTy dg) {
+  SEMA_LOG();
   DeclGroupRef DG = dg.get();
 
   // If we don't have a declaration, or we have an invalid declaration,
@@ -219,6 +224,7 @@ static bool DiagnoseNoDiscard(Sema &S, const WarnUnusedResultAttr *A,
 }
 
 void Sema::DiagnoseUnusedExprResult(const Stmt *S) {
+  SEMA_LOG();
   if (const LabelStmt *Label = dyn_cast_or_null<LabelStmt>(S))
     return DiagnoseUnusedExprResult(Label->getSubStmt());
 
@@ -377,19 +383,23 @@ void Sema::DiagnoseUnusedExprResult(const Stmt *S) {
 }
 
 void Sema::ActOnStartOfCompoundStmt(bool IsStmtExpr) {
+  SEMA_LOG();
   PushCompoundScope(IsStmtExpr);
 }
 
 void Sema::ActOnFinishOfCompoundStmt() {
+  SEMA_LOG();
   PopCompoundScope();
 }
 
 sema::CompoundScopeInfo &Sema::getCurCompoundScope() const {
+  SEMA_LOG();
   return getCurFunction()->CompoundScopes.back();
 }
 
 StmtResult Sema::ActOnCompoundStmt(SourceLocation L, SourceLocation R,
                                    ArrayRef<Stmt *> Elts, bool isStmtExpr) {
+  SEMA_LOG();
   const unsigned NumElts = Elts.size();
 
   // If we're in C89 mode, check that we don't have any decls after stmts.  If
@@ -425,6 +435,7 @@ StmtResult Sema::ActOnCompoundStmt(SourceLocation L, SourceLocation R,
 
 ExprResult
 Sema::ActOnCaseExpr(SourceLocation CaseLoc, ExprResult Val) {
+  SEMA_LOG();
   if (!Val.get())
     return Val;
 
@@ -477,6 +488,7 @@ StmtResult
 Sema::ActOnCaseStmt(SourceLocation CaseLoc, ExprResult LHSVal,
                     SourceLocation DotDotDotLoc, ExprResult RHSVal,
                     SourceLocation ColonLoc) {
+  SEMA_LOG();
   assert((LHSVal.isInvalid() || LHSVal.get()) && "missing LHS value");
   assert((DotDotDotLoc.isInvalid() ? RHSVal.isUnset()
                                    : RHSVal.isInvalid() || RHSVal.get()) &&
@@ -500,12 +512,14 @@ Sema::ActOnCaseStmt(SourceLocation CaseLoc, ExprResult LHSVal,
 
 /// ActOnCaseStmtBody - This installs a statement as the body of a case.
 void Sema::ActOnCaseStmtBody(Stmt *S, Stmt *SubStmt) {
+  SEMA_LOG();
   cast<CaseStmt>(S)->setSubStmt(SubStmt);
 }
 
 StmtResult
 Sema::ActOnDefaultStmt(SourceLocation DefaultLoc, SourceLocation ColonLoc,
                        Stmt *SubStmt, Scope *CurScope) {
+  SEMA_LOG();
   if (getCurFunction()->SwitchStack.empty()) {
     Diag(DefaultLoc, diag::err_default_not_in_switch);
     return SubStmt;
@@ -519,6 +533,7 @@ Sema::ActOnDefaultStmt(SourceLocation DefaultLoc, SourceLocation ColonLoc,
 StmtResult
 Sema::ActOnLabelStmt(SourceLocation IdentLoc, LabelDecl *TheDecl,
                      SourceLocation ColonLoc, Stmt *SubStmt) {
+  SEMA_LOG();
   // If the label was multiply defined, reject it now.
   if (TheDecl->getStmt()) {
     Diag(IdentLoc, diag::err_redefinition_of_label) << TheDecl->getDeclName();
@@ -543,6 +558,7 @@ Sema::ActOnLabelStmt(SourceLocation IdentLoc, LabelDecl *TheDecl,
 StmtResult Sema::ActOnAttributedStmt(SourceLocation AttrLoc,
                                      ArrayRef<const Attr*> Attrs,
                                      Stmt *SubStmt) {
+  SEMA_LOG();
   // Fill in the declaration and return it.
   AttributedStmt *LS = AttributedStmt::Create(Context, AttrLoc, Attrs, SubStmt);
   return LS;
@@ -567,6 +583,7 @@ Sema::ActOnIfStmt(SourceLocation IfLoc, bool IsConstexpr, Stmt *InitStmt,
                   ConditionResult Cond,
                   Stmt *thenStmt, SourceLocation ElseLoc,
                   Stmt *elseStmt) {
+  SEMA_LOG();
   if (Cond.isInvalid())
     Cond = ConditionResult(
         *this, nullptr,
@@ -593,6 +610,7 @@ StmtResult Sema::BuildIfStmt(SourceLocation IfLoc, bool IsConstexpr,
                              Stmt *InitStmt, ConditionResult Cond,
                              Stmt *thenStmt, SourceLocation ElseLoc,
                              Stmt *elseStmt) {
+  SEMA_LOG();
   if (Cond.isInvalid())
     return StmtError();
 
@@ -663,6 +681,7 @@ static QualType GetTypeBeforeIntegralPromotion(const Expr *&E) {
 }
 
 ExprResult Sema::CheckSwitchCondition(SourceLocation SwitchLoc, Expr *Cond) {
+  SEMA_LOG();
   class SwitchConvertDiagnoser : public ICEConvertDiagnoser {
     Expr *Cond;
 
@@ -728,6 +747,7 @@ ExprResult Sema::CheckSwitchCondition(SourceLocation SwitchLoc, Expr *Cond) {
 
 StmtResult Sema::ActOnStartOfSwitchStmt(SourceLocation SwitchLoc,
                                         Stmt *InitStmt, ConditionResult Cond) {
+  SEMA_LOG();
   Expr *CondExpr = Cond.get().second;
   assert((Cond.isInvalid() || CondExpr) && "switch with no condition");
 
@@ -849,6 +869,7 @@ static void checkEnumTypesInSwitchStmt(Sema &S, const Expr *Cond,
 StmtResult
 Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
                             Stmt *BodyStmt) {
+  SEMA_LOG();
   SwitchStmt *SS = cast<SwitchStmt>(Switch);
   bool CaseListIsIncomplete = getCurFunction()->SwitchStack.back().getInt();
   assert(SS == getCurFunction()->SwitchStack.back().getPointer() &&
@@ -1267,6 +1288,7 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
 void
 Sema::DiagnoseAssignmentEnum(QualType DstType, QualType SrcType,
                              Expr *SrcExpr) {
+  SEMA_LOG();
   if (Diags.isIgnored(diag::warn_not_in_enum_assignment, SrcExpr->getExprLoc()))
     return;
 
@@ -1324,6 +1346,7 @@ Sema::DiagnoseAssignmentEnum(QualType DstType, QualType SrcType,
 
 StmtResult Sema::ActOnWhileStmt(SourceLocation WhileLoc, ConditionResult Cond,
                                 Stmt *Body) {
+  SEMA_LOG();
   if (Cond.isInvalid())
     return StmtError();
 
@@ -1345,6 +1368,7 @@ StmtResult
 Sema::ActOnDoStmt(SourceLocation DoLoc, Stmt *Body,
                   SourceLocation WhileLoc, SourceLocation CondLParen,
                   Expr *Cond, SourceLocation CondRParen) {
+  SEMA_LOG();
   assert(Cond && "ActOnDoStmt(): missing expression");
 
   CheckBreakContinueBinding(Cond);
@@ -1752,6 +1776,7 @@ namespace {
 
 
 void Sema::CheckBreakContinueBinding(Expr *E) {
+  SEMA_LOG();
   if (!E || getLangOpts().CPlusPlus)
     return;
   BreakContinueFinder BCFinder(*this, E);
@@ -1773,6 +1798,7 @@ StmtResult Sema::ActOnForStmt(SourceLocation ForLoc, SourceLocation LParenLoc,
                               Stmt *First, ConditionResult Second,
                               FullExprArg third, SourceLocation RParenLoc,
                               Stmt *Body) {
+  SEMA_LOG();
   if (Second.isInvalid())
     return StmtError();
 
@@ -1820,6 +1846,7 @@ StmtResult Sema::ActOnForStmt(SourceLocation ForLoc, SourceLocation LParenLoc,
 /// x can be an arbitrary l-value expression.  Bind it up as a
 /// full-expression.
 StmtResult Sema::ActOnForEachLValueExpr(Expr *E) {
+  SEMA_LOG();
   // Reduce placeholder expressions here.  Note that this rejects the
   // use of pseudo-object l-values in this position.
   ExprResult result = CheckPlaceholderExpr(E);
@@ -1834,6 +1861,7 @@ StmtResult Sema::ActOnForEachLValueExpr(Expr *E) {
 
 ExprResult
 Sema::CheckObjCForCollectionOperand(SourceLocation forLoc, Expr *collection) {
+  SEMA_LOG();
   if (!collection)
     return ExprError();
 
@@ -1911,6 +1939,7 @@ StmtResult
 Sema::ActOnObjCForCollectionStmt(SourceLocation ForLoc,
                                  Stmt *First, Expr *collection,
                                  SourceLocation RParenLoc) {
+  SEMA_LOG();
   setFunctionHasBranchProtectedScope();
 
   ExprResult CollectionExprResult =
@@ -2103,6 +2132,7 @@ StmtResult Sema::ActOnCXXForRangeStmt(Scope *S, SourceLocation ForLoc,
                                       Stmt *First, SourceLocation ColonLoc,
                                       Expr *Range, SourceLocation RParenLoc,
                                       BuildForRangeKind Kind) {
+  SEMA_LOG();
   if (!First)
     return StmtError();
 
@@ -2449,6 +2479,7 @@ StmtResult Sema::BuildCXXForRangeStmt(SourceLocation ForLoc,
                                       Expr *Inc, Stmt *LoopVarDecl,
                                       SourceLocation RParenLoc,
                                       BuildForRangeKind Kind) {
+  SEMA_LOG();
   // FIXME: This should not be used during template instantiation. We should
   // pick up the set of unqualified lookup results for the != and + operators
   // in the initial parse.
@@ -3772,6 +3803,7 @@ StmtResult Sema::ActOnCXXExpansionStmt(Scope *S, SourceLocation ForLoc,
                                        SourceLocation RParenLoc,
                                        BuildForRangeKind Kind,
                                        bool IsConstexpr) {
+  SEMA_LOG();
   if (!Range || !LoopVar)
     return StmtError();
   ExpansionStatementBuilder Builder(*this, S, Kind, LoopVar, Range,
@@ -3799,6 +3831,7 @@ StmtResult Sema::BuildCXXExpansionStmt(SourceLocation ForLoc,
                                        SourceLocation RParenLoc,
                                        BuildForRangeKind Kind,
                                        bool IsConstexpr) {
+SEMA_LOG();
   ExpansionStatementBuilder Builder(*this, Kind, LoopVarDS, RangeVarDS,
                                     IsConstexpr);
   Builder.ForLoc = ForLoc;
@@ -3822,6 +3855,7 @@ Sema::BuildCXXExpansionStmt(SourceLocation ForLoc,
                             SourceLocation ColonLoc, Expr *RangeExpr,
                             SourceLocation RParenLoc, BuildForRangeKind Kind,
                             bool IsConstexpr) {
+  SEMA_LOG();
   ExpansionStatementBuilder Builder(*this, Kind, LoopVarDS, RangeExpr,
                                     IsConstexpr);
 
@@ -3850,6 +3884,7 @@ CheckLoopExpansionStack(Sema &SemaRef, Stmt *S) {
 
 /// Pop the current loop instantiation.
 StmtResult Sema::ActOnCXXExpansionStmtError(Stmt *S) {
+  SEMA_LOG();
   assert(CheckLoopExpansionStack(*this, S));
   PopLoopExpansion();
   return StmtError();
@@ -3858,6 +3893,7 @@ StmtResult Sema::ActOnCXXExpansionStmtError(Stmt *S) {
 /// FinishObjCForCollectionStmt - Attach the body to a objective-C foreach
 /// statement.
 StmtResult Sema::FinishObjCForCollectionStmt(Stmt *S, Stmt *B) {
+  SEMA_LOG();
   if (!S || !B)
     return StmtError();
   ObjCForCollectionStmt * ForStmt = cast<ObjCForCollectionStmt>(S);
@@ -4030,6 +4066,7 @@ static void DiagnoseForRangeVariableCopies(Sema &SemaRef,
 /// body cannot be performed until after the type of the range variable is
 /// determined.
 StmtResult Sema::FinishCXXForRangeStmt(Stmt *S, Stmt *B) {
+  SEMA_LOG();
   if (!S || !B)
     return StmtError();
 
@@ -4049,6 +4086,7 @@ StmtResult Sema::FinishCXXForRangeStmt(Stmt *S, Stmt *B) {
 
 /// Attach the body to the expansion statement, and expand as needed.
 StmtResult Sema::FinishCXXExpansionStmt(Stmt *S, Stmt *B) {
+  SEMA_LOG();
   if (!S || !B)
     return StmtError();
 
@@ -4123,6 +4161,7 @@ StmtResult Sema::FinishCXXExpansionStmt(Stmt *S, Stmt *B) {
 StmtResult Sema::ActOnGotoStmt(SourceLocation GotoLoc,
                                SourceLocation LabelLoc,
                                LabelDecl *TheDecl) {
+  SEMA_LOG();
   setFunctionHasBranchIntoScope();
   TheDecl->markUsed(Context);
   return new (Context) GotoStmt(TheDecl, GotoLoc, LabelLoc);
@@ -4131,6 +4170,7 @@ StmtResult Sema::ActOnGotoStmt(SourceLocation GotoLoc,
 StmtResult
 Sema::ActOnIndirectGotoStmt(SourceLocation GotoLoc, SourceLocation StarLoc,
                             Expr *E) {
+  SEMA_LOG();
   // Convert operand to void*
   if (!E->isTypeDependent()) {
     QualType ETy = E->getType();
@@ -4165,6 +4205,7 @@ static void CheckJumpOutOfSEHFinally(Sema &S, SourceLocation Loc,
 
 StmtResult
 Sema::ActOnContinueStmt(SourceLocation ContinueLoc, Scope *CurScope) {
+  SEMA_LOG();
   Scope *S = CurScope->getContinueParent();
   if (!S) {
     // C99 6.8.6.2p1: A break shall appear only in or as a loop body.
@@ -4177,6 +4218,7 @@ Sema::ActOnContinueStmt(SourceLocation ContinueLoc, Scope *CurScope) {
 
 StmtResult
 Sema::ActOnBreakStmt(SourceLocation BreakLoc, Scope *CurScope) {
+  SEMA_LOG();
   Scope *S = CurScope->getBreakParent();
   if (!S) {
     // C99 6.8.6.3p1: A break shall appear only in or as a switch/loop body.
@@ -4211,6 +4253,7 @@ Sema::ActOnBreakStmt(SourceLocation BreakLoc, Scope *CurScope) {
 /// NRVO, or NULL if there is no such candidate.
 VarDecl *Sema::getCopyElisionCandidate(QualType ReturnType, Expr *E,
                                        CopyElisionSemanticsKind CESK) {
+  SEMA_LOG();
   // - in a return statement in a function [where] ...
   // ... the expression is the name of a non-volatile automatic object ...
   DeclRefExpr *DR = dyn_cast<DeclRefExpr>(E->IgnoreParens());
@@ -4227,6 +4270,7 @@ VarDecl *Sema::getCopyElisionCandidate(QualType ReturnType, Expr *E,
 
 bool Sema::isCopyElisionCandidate(QualType ReturnType, const VarDecl *VD,
                                   CopyElisionSemanticsKind CESK) {
+  SEMA_LOG();
   QualType VDType = VD->getType();
   // - in a return statement in a function with ...
   // ... a class return type ...
@@ -4370,6 +4414,7 @@ Sema::PerformMoveOrCopyInitialization(const InitializedEntity &Entity,
                                       QualType ResultType,
                                       Expr *Value,
                                       bool AllowNRVO) {
+  SEMA_LOG();
   // C++14 [class.copy]p32:
   // When the criteria for elision of a copy/move operation are met, but not for
   // an exception-declaration, and the object to be copied is designated by an
@@ -4483,6 +4528,7 @@ static bool hasDeducedReturnType(FunctionDecl *FD) {
 ///
 StmtResult
 Sema::ActOnCapScopeReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
+  SEMA_LOG();
   // If this is the first return we've seen, infer the return type.
   // [expr.prim.lambda]p4 in C++11; block literals follow the same rules.
   CapturingScopeInfo *CurCap = cast<CapturingScopeInfo>(getCurFunction());
@@ -4679,6 +4725,7 @@ bool LocalTypedefNameReferencer::VisitRecordType(const RecordType *RT) {
 }
 
 TypeLoc Sema::getReturnTypeLoc(FunctionDecl *FD) const {
+  SEMA_LOG();
   return FD->getTypeSourceInfo()
       ->getTypeLoc()
       .getAsAdjusted<FunctionProtoTypeLoc>()
@@ -4691,6 +4738,7 @@ bool Sema::DeduceFunctionTypeFromReturnExpr(FunctionDecl *FD,
                                             SourceLocation ReturnLoc,
                                             Expr *&RetExpr,
                                             AutoType *AT) {
+  SEMA_LOG();
   // If this is the conversion function for a lambda, we choose to deduce it
   // type from the corresponding call operator, not from the synthesized return
   // statement within it. See Sema::DeduceReturnType.
@@ -4800,6 +4848,7 @@ bool Sema::DeduceFunctionTypeFromReturnExpr(FunctionDecl *FD,
 StmtResult
 Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp,
                       Scope *CurScope) {
+  SEMA_LOG();
   // Correct typos, in case the containing function returns 'auto' and
   // RetValExp should determine the deduced type.
   ExprResult RetVal = CorrectDelayedTyposInExpr(RetValExp);
@@ -4823,6 +4872,7 @@ Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp,
 }
 
 StmtResult Sema::BuildReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
+  SEMA_LOG();
   // Check for unexpanded parameter packs.
   if (RetValExp && DiagnoseUnexpandedParameterPack(RetValExp))
     return StmtError();
@@ -5072,6 +5122,7 @@ StmtResult
 Sema::ActOnObjCAtCatchStmt(SourceLocation AtLoc,
                            SourceLocation RParen, Decl *Parm,
                            Stmt *Body) {
+  SEMA_LOG();
   VarDecl *Var = cast_or_null<VarDecl>(Parm);
   if (Var && Var->isInvalidDecl())
     return StmtError();
@@ -5081,12 +5132,14 @@ Sema::ActOnObjCAtCatchStmt(SourceLocation AtLoc,
 
 StmtResult
 Sema::ActOnObjCAtFinallyStmt(SourceLocation AtLoc, Stmt *Body) {
+  SEMA_LOG();
   return new (Context) ObjCAtFinallyStmt(AtLoc, Body);
 }
 
 StmtResult
 Sema::ActOnObjCAtTryStmt(SourceLocation AtLoc, Stmt *Try,
                          MultiStmtArg CatchStmts, Stmt *Finally) {
+  SEMA_LOG();
   if (!getLangOpts().ObjCExceptions)
     Diag(AtLoc, diag::err_objc_exceptions_disabled) << "@try";
 
@@ -5097,6 +5150,7 @@ Sema::ActOnObjCAtTryStmt(SourceLocation AtLoc, Stmt *Try,
 }
 
 StmtResult Sema::BuildObjCAtThrowStmt(SourceLocation AtLoc, Expr *Throw) {
+  SEMA_LOG();
   if (Throw) {
     ExprResult Result = DefaultLvalueConversion(Throw);
     if (Result.isInvalid())
@@ -5124,6 +5178,7 @@ StmtResult Sema::BuildObjCAtThrowStmt(SourceLocation AtLoc, Expr *Throw) {
 StmtResult
 Sema::ActOnObjCAtThrowStmt(SourceLocation AtLoc, Expr *Throw,
                            Scope *CurScope) {
+  SEMA_LOG();
   if (!getLangOpts().ObjCExceptions)
     Diag(AtLoc, diag::err_objc_exceptions_disabled) << "@throw";
 
@@ -5141,6 +5196,7 @@ Sema::ActOnObjCAtThrowStmt(SourceLocation AtLoc, Expr *Throw,
 
 ExprResult
 Sema::ActOnObjCAtSynchronizedOperand(SourceLocation atLoc, Expr *operand) {
+  SEMA_LOG();
   ExprResult result = DefaultLvalueConversion(operand);
   if (result.isInvalid())
     return ExprError();
@@ -5180,6 +5236,7 @@ Sema::ActOnObjCAtSynchronizedOperand(SourceLocation atLoc, Expr *operand) {
 StmtResult
 Sema::ActOnObjCAtSynchronizedStmt(SourceLocation AtLoc, Expr *SyncExpr,
                                   Stmt *SyncBody) {
+  SEMA_LOG();
   // We can't jump into or indirect-jump out of a @synchronized block.
   setFunctionHasBranchProtectedScope();
   return new (Context) ObjCAtSynchronizedStmt(AtLoc, SyncExpr, SyncBody);
@@ -5190,6 +5247,7 @@ Sema::ActOnObjCAtSynchronizedStmt(SourceLocation AtLoc, Expr *SyncExpr,
 StmtResult
 Sema::ActOnCXXCatchBlock(SourceLocation CatchLoc, Decl *ExDecl,
                          Stmt *HandlerBlock) {
+  SEMA_LOG();
   // There's nothing to test that ActOnExceptionDecl didn't already test.
   return new (Context)
       CXXCatchStmt(CatchLoc, cast_or_null<VarDecl>(ExDecl), HandlerBlock);
@@ -5197,6 +5255,7 @@ Sema::ActOnCXXCatchBlock(SourceLocation CatchLoc, Decl *ExDecl,
 
 StmtResult
 Sema::ActOnObjCAutoreleasePoolStmt(SourceLocation AtLoc, Stmt *Body) {
+  SEMA_LOG();
   setFunctionHasBranchProtectedScope();
   return new (Context) ObjCAutoreleasePoolStmt(AtLoc, Body);
 }
@@ -5307,6 +5366,7 @@ public:
 /// handlers and creates a try statement from them.
 StmtResult Sema::ActOnCXXTryBlock(SourceLocation TryLoc, Stmt *TryBlock,
                                   ArrayRef<Stmt *> Handlers) {
+  SEMA_LOG();
   // Don't report an error if 'try' is used in system headers.
   if (!getLangOpts().CXXExceptions &&
       !getSourceManager().isInSystemHeader(TryLoc) && !getLangOpts().CUDA) {
@@ -5403,6 +5463,7 @@ StmtResult Sema::ActOnCXXTryBlock(SourceLocation TryLoc, Stmt *TryBlock,
 
 StmtResult Sema::ActOnSEHTryBlock(bool IsCXXTry, SourceLocation TryLoc,
                                   Stmt *TryBlock, Stmt *Handler) {
+  SEMA_LOG();
   assert(TryBlock && Handler);
 
   sema::FunctionScopeInfo *FSI = getCurFunction();
@@ -5438,6 +5499,7 @@ StmtResult Sema::ActOnSEHTryBlock(bool IsCXXTry, SourceLocation TryLoc,
 
 StmtResult Sema::ActOnSEHExceptBlock(SourceLocation Loc, Expr *FilterExpr,
                                      Stmt *Block) {
+  SEMA_LOG();
   assert(FilterExpr && Block);
   QualType FTy = FilterExpr->getType();
   if (!FTy->isIntegerType() && !FTy->isDependentType()) {
@@ -5449,14 +5511,17 @@ StmtResult Sema::ActOnSEHExceptBlock(SourceLocation Loc, Expr *FilterExpr,
 }
 
 void Sema::ActOnStartSEHFinallyBlock() {
+  SEMA_LOG();
   CurrentSEHFinally.push_back(CurScope);
 }
 
 void Sema::ActOnAbortSEHFinallyBlock() {
+  SEMA_LOG();
   CurrentSEHFinally.pop_back();
 }
 
 StmtResult Sema::ActOnFinishSEHFinallyBlock(SourceLocation Loc, Stmt *Block) {
+  SEMA_LOG();
   assert(Block);
   CurrentSEHFinally.pop_back();
   return SEHFinallyStmt::Create(Context, Loc, Block);
@@ -5464,6 +5529,7 @@ StmtResult Sema::ActOnFinishSEHFinallyBlock(SourceLocation Loc, Stmt *Block) {
 
 StmtResult
 Sema::ActOnSEHLeaveStmt(SourceLocation Loc, Scope *CurScope) {
+  SEMA_LOG();
   Scope *SEHTryParent = CurScope;
   while (SEHTryParent && !SEHTryParent->isSEHTryScope())
     SEHTryParent = SEHTryParent->getParent();
@@ -5480,6 +5546,7 @@ StmtResult Sema::BuildMSDependentExistsStmt(SourceLocation KeywordLoc,
                                             DeclarationNameInfo NameInfo,
                                             Stmt *Nested)
 {
+  SEMA_LOG();
   return new (Context) MSDependentExistsStmt(KeywordLoc, IsIfExists,
                                              QualifierLoc, NameInfo,
                                              cast<CompoundStmt>(Nested));
@@ -5491,6 +5558,7 @@ StmtResult Sema::ActOnMSDependentExistsStmt(SourceLocation KeywordLoc,
                                             CXXScopeSpec &SS,
                                             UnqualifiedId &Name,
                                             Stmt *Nested) {
+  SEMA_LOG();
   return BuildMSDependentExistsStmt(KeywordLoc, IsIfExists,
                                     SS.getWithLocInContext(Context),
                                     GetNameFromUnqualifiedId(Name),
@@ -5500,6 +5568,7 @@ StmtResult Sema::ActOnMSDependentExistsStmt(SourceLocation KeywordLoc,
 RecordDecl*
 Sema::CreateCapturedStmtRecordDecl(CapturedDecl *&CD, SourceLocation Loc,
                                    unsigned NumParams) {
+  SEMA_LOG();
   DeclContext *DC = CurContext;
   while (!(DC->isFunctionOrMethod() || DC->isRecord() || DC->isFileContext()))
     DC = DC->getParent();
@@ -5567,6 +5636,7 @@ buildCapturedStmtCaptureList(Sema &S, CapturedRegionScopeInfo *RSI,
 void Sema::ActOnCapturedRegionStart(SourceLocation Loc, Scope *CurScope,
                                     CapturedRegionKind Kind,
                                     unsigned NumParams) {
+  SEMA_LOG();
   CapturedDecl *CD = nullptr;
   RecordDecl *RD = CreateCapturedStmtRecordDecl(CD, Loc, NumParams);
 
@@ -5597,6 +5667,7 @@ void Sema::ActOnCapturedRegionStart(SourceLocation Loc, Scope *CurScope,
                                     CapturedRegionKind Kind,
                                     ArrayRef<CapturedParamNameType> Params,
                                     unsigned OpenMPCaptureLevel) {
+  SEMA_LOG();
   CapturedDecl *CD = nullptr;
   RecordDecl *RD = CreateCapturedStmtRecordDecl(CD, Loc, Params.size());
 
@@ -5653,6 +5724,7 @@ void Sema::ActOnCapturedRegionStart(SourceLocation Loc, Scope *CurScope,
 }
 
 void Sema::ActOnCapturedRegionError() {
+  SEMA_LOG();
   DiscardCleanupsInEvaluationContext();
   PopExpressionEvaluationContext();
   PopDeclContext();
@@ -5668,6 +5740,7 @@ void Sema::ActOnCapturedRegionError() {
 }
 
 StmtResult Sema::ActOnCapturedRegionEnd(Stmt *S) {
+  SEMA_LOG();
   // Leave the captured scope before we start creating captures in the
   // enclosing scope.
   DiscardCleanupsInEvaluationContext();
@@ -5697,6 +5770,7 @@ StmtResult Sema::ActOnCapturedRegionEnd(Stmt *S) {
 void
 Sema::PushLoopExpansion(Stmt *S)
 {
+  SEMA_LOG();
   assert(isa<FunctionDecl>(CurContext));
   FunctionDecl *F = cast<FunctionDecl>(CurContext);
   if (LoopExpansionStack.empty())
@@ -5708,6 +5782,7 @@ Sema::PushLoopExpansion(Stmt *S)
 void
 Sema::PopLoopExpansion()
 {
+  SEMA_LOG();
   assert(!LoopExpansionStack.empty());
   LoopExpansionContext& Ctx = LoopExpansionStack.back();
   Ctx.Loops.pop_back();

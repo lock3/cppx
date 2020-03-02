@@ -198,6 +198,7 @@ static std::string getScalarZeroExpressionForType(
 
 std::string
 Sema::getFixItZeroInitializerForType(QualType T, SourceLocation Loc) const {
+  SEMA_LOG();
   if (T->isScalarType()) {
     std::string s = getScalarZeroExpressionForType(*T, Loc, *this);
     if (!s.empty())
@@ -217,5 +218,6 @@ Sema::getFixItZeroInitializerForType(QualType T, SourceLocation Loc) const {
 
 std::string
 Sema::getFixItZeroLiteralForType(QualType T, SourceLocation Loc) const {
+  SEMA_LOG();
   return getScalarZeroExpressionForType(*T, Loc, *this);
 }

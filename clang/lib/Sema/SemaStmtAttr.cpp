@@ -348,6 +348,7 @@ static Attr *ProcessStmtAttribute(Sema &S, Stmt *St, const ParsedAttr &A,
 StmtResult Sema::ProcessStmtAttributes(Stmt *S,
                                        const ParsedAttributesView &AttrList,
                                        SourceRange Range) {
+  SEMA_LOG();
   SmallVector<const Attr*, 8> Attrs;
   for (const ParsedAttr &AL : AttrList) {
     if (Attr *a = ProcessStmtAttribute(*this, S, AL, Range))

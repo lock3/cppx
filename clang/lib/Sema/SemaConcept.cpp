@@ -24,6 +24,7 @@ using namespace clang;
 using namespace sema;
 
 bool Sema::CheckConstraintExpression(Expr *ConstraintExpression) {
+  SEMA_LOG();
   // C++2a [temp.constr.atomic]p1
   // ..E shall be a constant expression of type bool.
 
@@ -236,6 +237,7 @@ bool Sema::CheckConstraintSatisfaction(TemplateDecl *Template,
                                        ArrayRef<TemplateArgument> TemplateArgs,
                                        SourceRange TemplateIDRange,
                                        ConstraintSatisfaction &Satisfaction) {
+  SEMA_LOG();
   return ::CheckConstraintSatisfaction(*this, Template, ConstraintExprs,
                                        TemplateArgs, TemplateIDRange,
                                        Satisfaction);
@@ -247,6 +249,7 @@ Sema::CheckConstraintSatisfaction(ClassTemplatePartialSpecializationDecl* Part,
                                   ArrayRef<TemplateArgument> TemplateArgs,
                                   SourceRange TemplateIDRange,
                                   ConstraintSatisfaction &Satisfaction) {
+  SEMA_LOG();
   return ::CheckConstraintSatisfaction(*this, Part, ConstraintExprs,
                                        TemplateArgs, TemplateIDRange,
                                        Satisfaction);
@@ -258,6 +261,7 @@ Sema::CheckConstraintSatisfaction(VarTemplatePartialSpecializationDecl* Partial,
                                   ArrayRef<TemplateArgument> TemplateArgs,
                                   SourceRange TemplateIDRange,
                                   ConstraintSatisfaction &Satisfaction) {
+  SEMA_LOG();
   return ::CheckConstraintSatisfaction(*this, Partial, ConstraintExprs,
                                        TemplateArgs, TemplateIDRange,
                                        Satisfaction);
@@ -265,6 +269,7 @@ Sema::CheckConstraintSatisfaction(VarTemplatePartialSpecializationDecl* Partial,
 
 bool Sema::CheckConstraintSatisfaction(const Expr *ConstraintExpr,
                                        ConstraintSatisfaction &Satisfaction) {
+  SEMA_LOG();
   return calculateConstraintSatisfaction(
       *this, ConstraintExpr, Satisfaction,
       [](const Expr *AtomicExpr) -> ExprResult {
@@ -402,6 +407,7 @@ static void diagnoseUnsatisfiedConstraintExpr(
 
 void Sema::DiagnoseUnsatisfiedConstraint(
     const ConstraintSatisfaction& Satisfaction) {
+  SEMA_LOG();
   assert(!Satisfaction.IsSatisfied &&
          "Attempted to diagnose a satisfied constraint");
   bool First = true;
@@ -413,6 +419,7 @@ void Sema::DiagnoseUnsatisfiedConstraint(
 
 void Sema::DiagnoseUnsatisfiedConstraint(
     const ASTConstraintSatisfaction &Satisfaction) {
+  SEMA_LOG();
   assert(!Satisfaction.IsSatisfied &&
          "Attempted to diagnose a satisfied constraint");
   bool First = true;
@@ -759,6 +766,7 @@ static bool subsumes(Sema &S, NamedDecl *DP, ArrayRef<const Expr *> P,
 bool Sema::IsAtLeastAsConstrained(NamedDecl *D1, ArrayRef<const Expr *> AC1,
                                   NamedDecl *D2, ArrayRef<const Expr *> AC2,
                                   bool &Result) {
+  SEMA_LOG();
   if (AC1.empty()) {
     Result = AC2.empty();
     return false;

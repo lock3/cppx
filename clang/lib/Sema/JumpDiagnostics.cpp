@@ -940,5 +940,6 @@ void JumpScopeChecker::CheckGotoStmt(GotoStmt *GS) {
 }
 
 void Sema::DiagnoseInvalidJumps(Stmt *Body) {
+  SEMA_LOG();
   (void)JumpScopeChecker(Body, *this);
 }

@@ -57,6 +57,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
+#include "clang/Sema/ActionTrace.h"
 #include <deque>
 #include <memory>
 #include <string>

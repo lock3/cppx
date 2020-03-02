@@ -4347,6 +4347,7 @@ static void AddLambdaCompletion(ResultBuilder &Results,
 /// type we're looking for.
 void Sema::CodeCompleteExpression(Scope *S,
                                   const CodeCompleteExpressionData &Data) {
+  SEMA_LOG();
   ResultBuilder Results(
       *this, CodeCompleter->getAllocator(),
       CodeCompleter->getCodeCompletionTUInfo(),
@@ -4418,12 +4419,14 @@ void Sema::CodeCompleteExpression(Scope *S,
 
 void Sema::CodeCompleteExpression(Scope *S, QualType PreferredType,
                                   bool IsParenthesized) {
+  SEMA_LOG();
   return CodeCompleteExpression(
       S, CodeCompleteExpressionData(PreferredType, IsParenthesized));
 }
 
 void Sema::CodeCompletePostfixExpression(Scope *S, ExprResult E,
                                          QualType PreferredType) {
+  SEMA_LOG();
   if (E.isInvalid())
     CodeCompleteExpression(S, PreferredType);
   else if (getLangOpts().ObjC)
@@ -4714,6 +4717,7 @@ void Sema::CodeCompleteMemberReferenceExpr(Scope *S, Expr *Base,
                                            SourceLocation OpLoc, bool IsArrow,
                                            bool IsBaseExprStatement,
                                            QualType PreferredType) {
+  SEMA_LOG();
   if (!Base || !CodeCompleter)
     return;
 
@@ -4854,6 +4858,7 @@ void Sema::CodeCompleteObjCClassPropertyRefExpr(Scope *S,
                                                 IdentifierInfo &ClassName,
                                                 SourceLocation ClassNameLoc,
                                                 bool IsBaseExprStatement) {
+  SEMA_LOG();
   IdentifierInfo *ClassNamePtr = &ClassName;
   ObjCInterfaceDecl *IFace = getObjCInterfaceDecl(ClassNamePtr, ClassNameLoc);
   if (!IFace)
@@ -4875,6 +4880,7 @@ void Sema::CodeCompleteObjCClassPropertyRefExpr(Scope *S,
 }
 
 void Sema::CodeCompleteTag(Scope *S, unsigned TagSpec) {
+  SEMA_LOG();
   if (!CodeCompleter)
     return;
 
@@ -4940,6 +4946,7 @@ static void AddTypeQualifierResults(DeclSpec &DS, ResultBuilder &Results,
 }
 
 void Sema::CodeCompleteTypeQualifiers(DeclSpec &DS) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_TypeQualifiers);
@@ -4952,6 +4959,7 @@ void Sema::CodeCompleteTypeQualifiers(DeclSpec &DS) {
 
 void Sema::CodeCompleteFunctionQualifiers(DeclSpec &DS, Declarator &D,
                                           const VirtSpecifiers *VS) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_TypeQualifiers);
@@ -4973,10 +4981,12 @@ void Sema::CodeCompleteFunctionQualifiers(DeclSpec &DS, Declarator &D,
 }
 
 void Sema::CodeCompleteBracketDeclarator(Scope *S) {
+  SEMA_LOG();
   CodeCompleteExpression(S, QualType(getASTContext().getSizeType()));
 }
 
 void Sema::CodeCompleteCase(Scope *S) {
+  SEMA_LOG();
   if (getCurFunction()->SwitchStack.empty() || !CodeCompleter)
     return;
 
@@ -5121,6 +5131,7 @@ ProduceSignatureHelp(Sema &SemaRef, Scope *S,
 QualType Sema::ProduceCallSignatureHelp(Scope *S, Expr *Fn,
                                         ArrayRef<Expr *> Args,
                                         SourceLocation OpenParLoc) {
+  SEMA_LOG();
   if (!CodeCompleter)
     return QualType();
 
@@ -5218,6 +5229,7 @@ QualType Sema::ProduceConstructorSignatureHelp(Scope *S, QualType Type,
                                                SourceLocation Loc,
                                                ArrayRef<Expr *> Args,
                                                SourceLocation OpenParLoc) {
+  SEMA_LOG();
   if (!CodeCompleter)
     return QualType();
 
@@ -5256,6 +5268,7 @@ QualType Sema::ProduceConstructorSignatureHelp(Scope *S, QualType Type,
 QualType Sema::ProduceCtorInitMemberSignatureHelp(
     Scope *S, Decl *ConstructorDecl, CXXScopeSpec SS, ParsedType TemplateTypeTy,
     ArrayRef<Expr *> ArgExprs, IdentifierInfo *II, SourceLocation OpenParLoc) {
+  SEMA_LOG();
   if (!CodeCompleter)
     return QualType();
 
@@ -5273,6 +5286,7 @@ QualType Sema::ProduceCtorInitMemberSignatureHelp(
 }
 
 void Sema::CodeCompleteInitializer(Scope *S, Decl *D) {
+  SEMA_LOG();
   ValueDecl *VD = dyn_cast_or_null<ValueDecl>(D);
   if (!VD) {
     CodeCompleteOrdinaryName(S, PCC_Expression);
@@ -5288,6 +5302,7 @@ void Sema::CodeCompleteInitializer(Scope *S, Decl *D) {
 }
 
 void Sema::CodeCompleteAfterIf(Scope *S) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         mapCodeCompletionContext(*this, PCC_Statement));
@@ -5350,6 +5365,7 @@ void Sema::CodeCompleteQualifiedId(Scope *S, CXXScopeSpec &SS,
                                    bool EnteringContext,
                                    bool IsUsingDeclaration, QualType BaseType,
                                    QualType PreferredType) {
+  SEMA_LOG();
   if (SS.isEmpty() || !CodeCompleter)
     return;
 
@@ -5426,6 +5442,7 @@ void Sema::CodeCompleteQualifiedId(Scope *S, CXXScopeSpec &SS,
 }
 
 void Sema::CodeCompleteUsing(Scope *S) {
+  SEMA_LOG();
   if (!CodeCompleter)
     return;
 
@@ -5456,6 +5473,7 @@ void Sema::CodeCompleteUsing(Scope *S) {
 }
 
 void Sema::CodeCompleteUsingDirective(Scope *S) {
+  SEMA_LOG();
   if (!CodeCompleter)
     return;
 
@@ -5476,6 +5494,7 @@ void Sema::CodeCompleteUsingDirective(Scope *S) {
 }
 
 void Sema::CodeCompleteNamespaceDecl(Scope *S) {
+  SEMA_LOG();
   if (!CodeCompleter)
     return;
 
@@ -5524,6 +5543,7 @@ void Sema::CodeCompleteNamespaceDecl(Scope *S) {
 }
 
 void Sema::CodeCompleteNamespaceAliasDecl(Scope *S) {
+  SEMA_LOG();
   if (!CodeCompleter)
     return;
 
@@ -5541,6 +5561,7 @@ void Sema::CodeCompleteNamespaceAliasDecl(Scope *S) {
 }
 
 void Sema::CodeCompleteOperatorName(Scope *S) {
+  SEMA_LOG();
   if (!CodeCompleter)
     return;
 
@@ -5575,6 +5596,7 @@ void Sema::CodeCompleteOperatorName(Scope *S) {
 
 void Sema::CodeCompleteConstructorInitializer(
     Decl *ConstructorD, ArrayRef<CXXCtorInitializer *> Initializers) {
+  SEMA_LOG();
   if (!ConstructorD)
     return;
 
@@ -5735,6 +5757,7 @@ static bool isNamespaceScope(Scope *S) {
 
 void Sema::CodeCompleteLambdaIntroducer(Scope *S, LambdaIntroducer &Intro,
                                         bool AfterAmpersand) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
@@ -5873,6 +5896,7 @@ static void AddObjCTopLevelResults(ResultBuilder &Results, bool NeedAt) {
 }
 
 void Sema::CodeCompleteObjCAtDirective(Scope *S) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
@@ -6010,6 +6034,7 @@ static void AddObjCVisibilityResults(const LangOptions &LangOpts,
 }
 
 void Sema::CodeCompleteObjCAtVisibility(Scope *S) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
@@ -6021,6 +6046,7 @@ void Sema::CodeCompleteObjCAtVisibility(Scope *S) {
 }
 
 void Sema::CodeCompleteObjCAtStatement(Scope *S) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
@@ -6033,6 +6059,7 @@ void Sema::CodeCompleteObjCAtStatement(Scope *S) {
 }
 
 void Sema::CodeCompleteObjCAtExpression(Scope *S) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
@@ -6075,6 +6102,7 @@ static bool ObjCPropertyFlagConflicts(unsigned Attributes, unsigned NewFlag) {
 }
 
 void Sema::CodeCompleteObjCPropertyFlags(Scope *S, ObjCDeclSpec &ODS) {
+  SEMA_LOG();
   if (!CodeCompleter)
     return;
 
@@ -6293,6 +6321,7 @@ static void AddObjCMethods(ObjCContainerDecl *Container,
 }
 
 void Sema::CodeCompleteObjCPropertyGetter(Scope *S) {
+  SEMA_LOG();
   // Try to find the interface where getters might live.
   ObjCInterfaceDecl *Class = dyn_cast_or_null<ObjCInterfaceDecl>(CurContext);
   if (!Class) {
@@ -6319,6 +6348,7 @@ void Sema::CodeCompleteObjCPropertyGetter(Scope *S) {
 }
 
 void Sema::CodeCompleteObjCPropertySetter(Scope *S) {
+  SEMA_LOG();
   // Try to find the interface where setters might live.
   ObjCInterfaceDecl *Class = dyn_cast_or_null<ObjCInterfaceDecl>(CurContext);
   if (!Class) {
@@ -6347,6 +6377,7 @@ void Sema::CodeCompleteObjCPropertySetter(Scope *S) {
 
 void Sema::CodeCompleteObjCPassingType(Scope *S, ObjCDeclSpec &DS,
                                        bool IsParameter) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Type);
@@ -6611,6 +6642,7 @@ AddSuperSendCompletion(Sema &S, bool NeedSuperKeyword,
 }
 
 void Sema::CodeCompleteObjCMessageReceiver(Scope *S) {
+  SEMA_LOG();
   typedef CodeCompletionResult Result;
   ResultBuilder Results(
       *this, CodeCompleter->getAllocator(),
@@ -6650,6 +6682,7 @@ void Sema::CodeCompleteObjCMessageReceiver(Scope *S) {
 void Sema::CodeCompleteObjCSuperMessage(Scope *S, SourceLocation SuperLoc,
                                         ArrayRef<IdentifierInfo *> SelIdents,
                                         bool AtArgumentExpression) {
+  SEMA_LOG();
   ObjCInterfaceDecl *CDecl = nullptr;
   if (ObjCMethodDecl *CurMethod = getCurMethodDecl()) {
     // Figure out which interface we're in.
@@ -6821,7 +6854,7 @@ void Sema::CodeCompleteObjCClassMessage(Scope *S, ParsedType Receiver,
                                         ArrayRef<IdentifierInfo *> SelIdents,
                                         bool AtArgumentExpression,
                                         bool IsSuper) {
-
+  SEMA_LOG();
   QualType T = this->GetTypeFromParser(Receiver);
 
   ResultBuilder Results(
@@ -6856,6 +6889,7 @@ void Sema::CodeCompleteObjCInstanceMessage(Scope *S, Expr *Receiver,
                                            ArrayRef<IdentifierInfo *> SelIdents,
                                            bool AtArgumentExpression,
                                            ObjCInterfaceDecl *Super) {
+  SEMA_LOG();
   typedef CodeCompletionResult Result;
 
   Expr *RecExpr = static_cast<Expr *>(Receiver);
@@ -7011,6 +7045,7 @@ void Sema::CodeCompleteObjCInstanceMessage(Scope *S, Expr *Receiver,
 
 void Sema::CodeCompleteObjCForCollection(Scope *S,
                                          DeclGroupPtrTy IterationVar) {
+  SEMA_LOG();
   CodeCompleteExpressionData Data;
   Data.ObjCCollection = true;
 
@@ -7027,6 +7062,7 @@ void Sema::CodeCompleteObjCForCollection(Scope *S,
 
 void Sema::CodeCompleteObjCSelector(Scope *S,
                                     ArrayRef<IdentifierInfo *> SelIdents) {
+  SEMA_LOG();
   // If we have an external source, load the entire class method
   // pool from the AST file.
   if (ExternalSource) {
@@ -7102,6 +7138,7 @@ static void AddProtocolResults(DeclContext *Ctx, DeclContext *CurContext,
 
 void Sema::CodeCompleteObjCProtocolReferences(
     ArrayRef<IdentifierLocPair> Protocols) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_ObjCProtocolName);
@@ -7128,6 +7165,7 @@ void Sema::CodeCompleteObjCProtocolReferences(
 }
 
 void Sema::CodeCompleteObjCProtocolDecl(Scope *) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_ObjCProtocolName);
@@ -7166,6 +7204,7 @@ static void AddInterfaceResults(DeclContext *Ctx, DeclContext *CurContext,
 }
 
 void Sema::CodeCompleteObjCInterfaceDecl(Scope *S) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_ObjCInterfaceName);
@@ -7185,6 +7224,7 @@ void Sema::CodeCompleteObjCInterfaceDecl(Scope *S) {
 
 void Sema::CodeCompleteObjCSuperclass(Scope *S, IdentifierInfo *ClassName,
                                       SourceLocation ClassNameLoc) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_ObjCInterfaceName);
@@ -7209,6 +7249,7 @@ void Sema::CodeCompleteObjCSuperclass(Scope *S, IdentifierInfo *ClassName,
 }
 
 void Sema::CodeCompleteObjCImplementationDecl(Scope *S) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_ObjCImplementation);
@@ -7229,6 +7270,7 @@ void Sema::CodeCompleteObjCImplementationDecl(Scope *S) {
 void Sema::CodeCompleteObjCInterfaceCategory(Scope *S,
                                              IdentifierInfo *ClassName,
                                              SourceLocation ClassNameLoc) {
+  SEMA_LOG();
   typedef CodeCompletionResult Result;
 
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
@@ -7264,6 +7306,7 @@ void Sema::CodeCompleteObjCInterfaceCategory(Scope *S,
 void Sema::CodeCompleteObjCImplementationCategory(Scope *S,
                                                   IdentifierInfo *ClassName,
                                                   SourceLocation ClassNameLoc) {
+  SEMA_LOG();
   typedef CodeCompletionResult Result;
 
   // Find the corresponding interface. If we couldn't find the interface, the
@@ -7303,6 +7346,7 @@ void Sema::CodeCompleteObjCImplementationCategory(Scope *S,
 }
 
 void Sema::CodeCompleteObjCPropertyDefinition(Scope *S) {
+  SEMA_LOG();
   CodeCompletionContext CCContext(CodeCompletionContext::CCC_Other);
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(), CCContext);
@@ -7341,6 +7385,7 @@ void Sema::CodeCompleteObjCPropertyDefinition(Scope *S) {
 
 void Sema::CodeCompleteObjCPropertySynthesizeIvar(
     Scope *S, IdentifierInfo *PropertyName) {
+  SEMA_LOG();
   typedef CodeCompletionResult Result;
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
@@ -8169,6 +8214,7 @@ static void AddObjCKeyValueCompletions(ObjCPropertyDecl *Property,
 
 void Sema::CodeCompleteObjCMethodDecl(Scope *S, Optional<bool> IsInstanceMethod,
                                       ParsedType ReturnTy) {
+  SEMA_LOG();
   // Determine the return type of the method we're declaring, if
   // provided.
   QualType ReturnType = GetTypeFromParser(ReturnTy);
@@ -8343,6 +8389,7 @@ void Sema::CodeCompleteObjCMethodDecl(Scope *S, Optional<bool> IsInstanceMethod,
 void Sema::CodeCompleteObjCMethodDeclSelector(
     Scope *S, bool IsInstanceMethod, bool AtParameterName, ParsedType ReturnTy,
     ArrayRef<IdentifierInfo *> SelIdents) {
+  SEMA_LOG();
   // If we have an external source, load the entire class method
   // pool from the AST file.
   if (ExternalSource) {
@@ -8426,6 +8473,7 @@ void Sema::CodeCompleteObjCMethodDeclSelector(
 }
 
 void Sema::CodeCompletePreprocessorDirective(bool InConditional) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_PreprocessorDirective);
@@ -8584,11 +8632,13 @@ void Sema::CodeCompletePreprocessorDirective(bool InConditional) {
 }
 
 void Sema::CodeCompleteInPreprocessorConditionalExclusion(Scope *S) {
+  SEMA_LOG();
   CodeCompleteOrdinaryName(S, S->getFnParent() ? Sema::PCC_RecoveryInFunction
                                                : Sema::PCC_Namespace);
 }
 
 void Sema::CodeCompletePreprocessorMacroName(bool IsDefinition) {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         IsDefinition ? CodeCompletionContext::CCC_MacroName
@@ -8616,6 +8666,7 @@ void Sema::CodeCompletePreprocessorMacroName(bool IsDefinition) {
 }
 
 void Sema::CodeCompletePreprocessorExpression() {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_PreprocessorExpression);
@@ -8644,6 +8695,7 @@ void Sema::CodeCompletePreprocessorMacroArgument(Scope *S,
                                                  IdentifierInfo *Macro,
                                                  MacroInfo *MacroInfo,
                                                  unsigned Argument) {
+  SEMA_LOG();
   // FIXME: In the future, we could provide "overload" results, much like we
   // do for function calls.
 
@@ -8783,12 +8835,14 @@ void Sema::CodeCompleteIncludedFile(llvm::StringRef Dir, bool Angled) {
 }
 
 void Sema::CodeCompleteNaturalLanguage() {
+  SEMA_LOG();
   HandleCodeCompleteResults(this, CodeCompleter,
                             CodeCompletionContext::CCC_NaturalLanguage, nullptr,
                             0);
 }
 
 void Sema::CodeCompleteAvailabilityPlatformName() {
+  SEMA_LOG();
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
                         CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
@@ -8807,6 +8861,7 @@ void Sema::CodeCompleteAvailabilityPlatformName() {
 void Sema::GatherGlobalCodeCompletions(
     CodeCompletionAllocator &Allocator, CodeCompletionTUInfo &CCTUInfo,
     SmallVectorImpl<CodeCompletionResult> &Results) {
+  SEMA_LOG();
   ResultBuilder Builder(*this, Allocator, CCTUInfo,
                         CodeCompletionContext::CCC_Recovery);
   if (!CodeCompleter || CodeCompleter->includeGlobals()) {

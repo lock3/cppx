@@ -265,6 +265,7 @@ struct PragmaAttributeHandler : public PragmaHandler {
 }  // end namespace
 
 void Parser::initializePragmaHandlers() {
+  PARSING_LOG();
   AlignHandler = std::make_unique<PragmaAlignHandler>();
   PP.AddPragmaHandler(AlignHandler.get());
 
@@ -385,6 +386,7 @@ void Parser::initializePragmaHandlers() {
 }
 
 void Parser::resetPragmaHandlers() {
+  PARSING_LOG();
   // Remove the pragma handlers we installed.
   PP.RemovePragmaHandler(AlignHandler.get());
   AlignHandler.reset();
@@ -495,6 +497,7 @@ void Parser::resetPragmaHandlers() {
 /// "#pragma unused(x,y)" becomes:
 /// annot_pragma_unused 'x' annot_pragma_unused 'y'
 void Parser::HandlePragmaUnused() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_unused));
   SourceLocation UnusedLoc = ConsumeAnnotationToken();
   Actions.ActOnPragmaUnused(Tok, getCurScope(), UnusedLoc);
@@ -502,6 +505,7 @@ void Parser::HandlePragmaUnused() {
 }
 
 void Parser::HandlePragmaVisibility() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_vis));
   const IdentifierInfo *VisType =
     static_cast<IdentifierInfo *>(Tok.getAnnotationValue());
@@ -518,6 +522,7 @@ struct PragmaPackInfo {
 } // end anonymous namespace
 
 void Parser::HandlePragmaPack() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_pack));
   PragmaPackInfo *Info =
     static_cast<PragmaPackInfo *>(Tok.getAnnotationValue());
@@ -538,6 +543,7 @@ void Parser::HandlePragmaPack() {
 }
 
 void Parser::HandlePragmaMSStruct() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_msstruct));
   PragmaMSStructKind Kind = static_cast<PragmaMSStructKind>(
       reinterpret_cast<uintptr_t>(Tok.getAnnotationValue()));
@@ -546,6 +552,7 @@ void Parser::HandlePragmaMSStruct() {
 }
 
 void Parser::HandlePragmaAlign() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_align));
   Sema::PragmaOptionsAlignKind Kind =
     static_cast<Sema::PragmaOptionsAlignKind>(
@@ -557,6 +564,7 @@ void Parser::HandlePragmaAlign() {
 }
 
 void Parser::HandlePragmaDump() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_dump));
   IdentifierInfo *II =
       reinterpret_cast<IdentifierInfo *>(Tok.getAnnotationValue());
@@ -565,6 +573,7 @@ void Parser::HandlePragmaDump() {
 }
 
 void Parser::HandlePragmaWeak() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_weak));
   SourceLocation PragmaLoc = ConsumeAnnotationToken();
   Actions.ActOnPragmaWeakID(Tok.getIdentifierInfo(), PragmaLoc,
@@ -573,6 +582,7 @@ void Parser::HandlePragmaWeak() {
 }
 
 void Parser::HandlePragmaWeakAlias() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_weakalias));
   SourceLocation PragmaLoc = ConsumeAnnotationToken();
   IdentifierInfo *WeakName = Tok.getIdentifierInfo();
@@ -587,6 +597,7 @@ void Parser::HandlePragmaWeakAlias() {
 }
 
 void Parser::HandlePragmaRedefineExtname() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_redefine_extname));
   SourceLocation RedefLoc = ConsumeAnnotationToken();
   IdentifierInfo *RedefName = Tok.getIdentifierInfo();
@@ -600,6 +611,7 @@ void Parser::HandlePragmaRedefineExtname() {
 }
 
 void Parser::HandlePragmaFPContract() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_fp_contract));
   tok::OnOffSwitch OOS =
     static_cast<tok::OnOffSwitch>(
@@ -623,6 +635,7 @@ void Parser::HandlePragmaFPContract() {
 }
 
 void Parser::HandlePragmaFEnvAccess() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_fenv_access));
   tok::OnOffSwitch OOS =
     static_cast<tok::OnOffSwitch>(
@@ -648,6 +661,7 @@ void Parser::HandlePragmaFEnvAccess() {
 
 StmtResult Parser::HandlePragmaCaptured()
 {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_captured));
   ConsumeAnnotationToken();
 
@@ -682,6 +696,7 @@ namespace {
 }
 
 void Parser::HandlePragmaOpenCLExtension() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_opencl_extension));
   OpenCLExtData *Data = static_cast<OpenCLExtData*>(Tok.getAnnotationValue());
   auto State = Data->second;
@@ -721,6 +736,7 @@ void Parser::HandlePragmaOpenCLExtension() {
 }
 
 void Parser::HandlePragmaMSPointersToMembers() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_ms_pointers_to_members));
   LangOptions::PragmaMSPointersToMembersKind RepresentationMethod =
       static_cast<LangOptions::PragmaMSPointersToMembersKind>(
@@ -730,6 +746,7 @@ void Parser::HandlePragmaMSPointersToMembers() {
 }
 
 void Parser::HandlePragmaMSVtorDisp() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_ms_vtordisp));
   uintptr_t Value = reinterpret_cast<uintptr_t>(Tok.getAnnotationValue());
   Sema::PragmaMsStackAction Action =
@@ -740,6 +757,7 @@ void Parser::HandlePragmaMSVtorDisp() {
 }
 
 void Parser::HandlePragmaMSPragma() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_ms_pragma));
   // Grab the tokens out of the annotation and enter them into the stream.
   auto TheTokens =
@@ -773,6 +791,7 @@ void Parser::HandlePragmaMSPragma() {
 
 bool Parser::HandlePragmaMSSection(StringRef PragmaName,
                                    SourceLocation PragmaLocation) {
+  PARSING_LOG();
   if (Tok.isNot(tok::l_paren)) {
     PP.Diag(PragmaLocation, diag::warn_pragma_expected_lparen) << PragmaName;
     return false;
@@ -854,6 +873,7 @@ bool Parser::HandlePragmaMSSection(StringRef PragmaName,
 
 bool Parser::HandlePragmaMSSegment(StringRef PragmaName,
                                    SourceLocation PragmaLocation) {
+  PARSING_LOG();
   if (Tok.isNot(tok::l_paren)) {
     PP.Diag(PragmaLocation, diag::warn_pragma_expected_lparen) << PragmaName;
     return false;
@@ -938,6 +958,7 @@ bool Parser::HandlePragmaMSSegment(StringRef PragmaName,
 // #pragma init_seg({ compiler | lib | user | "section-name" [, func-name]} )
 bool Parser::HandlePragmaMSInitSeg(StringRef PragmaName,
                                    SourceLocation PragmaLocation) {
+  PARSING_LOG();
   if (getTargetInfo().getTriple().getEnvironment() != llvm::Triple::MSVC) {
     PP.Diag(PragmaLocation, diag::warn_pragma_init_seg_unsupported_target);
     return false;
@@ -1016,6 +1037,7 @@ static std::string PragmaLoopHintString(Token PragmaName, Token Option) {
 }
 
 bool Parser::HandlePragmaLoopHint(LoopHint &Hint) {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_loop_hint));
   PragmaLoopHintInfo *Info =
       static_cast<PragmaLoopHintInfo *>(Tok.getAnnotationValue());
@@ -1208,6 +1230,7 @@ static void diagnoseUnknownAttributeSubjectSubRule(
 bool Parser::ParsePragmaAttributeSubjectMatchRuleSet(
     attr::ParsedSubjectMatchRuleSet &SubjectMatchRules, SourceLocation &AnyLoc,
     SourceLocation &LastMatchRuleEndLoc) {
+  PARSING_LOG();
   bool IsAny = false;
   BalancedDelimiterTracker AnyParens(*this, tok::l_paren);
   if (getIdentifier(Tok) == "any") {
@@ -1397,6 +1420,7 @@ DiagnosticBuilder createExpectedAttributeSubjectRulesTokenDiagnostic(
 } // end anonymous namespace
 
 void Parser::HandlePragmaAttribute() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_attribute) &&
          "Expected #pragma attribute annotation token");
   SourceLocation PragmaLoc = Tok.getLocation();
@@ -2749,6 +2773,7 @@ void PragmaFPHandler::HandlePragma(Preprocessor &PP,
 }
 
 void Parser::HandlePragmaFP() {
+  PARSING_LOG();
   assert(Tok.is(tok::annot_pragma_fp));
   auto *AnnotValue =
       reinterpret_cast<TokFPAnnotValue *>(Tok.getAnnotationValue());

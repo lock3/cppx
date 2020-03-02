@@ -25,11 +25,13 @@
 using namespace clang;
 
 void Sema::PushForceCUDAHostDevice() {
+  SEMA_LOG();
   assert(getLangOpts().CUDA && "Should only be called during CUDA compilation");
   ForceCUDAHostDeviceDepth++;
 }
 
 bool Sema::PopForceCUDAHostDevice() {
+  SEMA_LOG();
   assert(getLangOpts().CUDA && "Should only be called during CUDA compilation");
   if (ForceCUDAHostDeviceDepth == 0)
     return false;
@@ -40,6 +42,7 @@ bool Sema::PopForceCUDAHostDevice() {
 ExprResult Sema::ActOnCUDAExecConfigExpr(Scope *S, SourceLocation LLLLoc,
                                          MultiExprArg ExecConfig,
                                          SourceLocation GGGLoc) {
+  SEMA_LOG();
   FunctionDecl *ConfigDecl = Context.getcudaConfigureCallDecl();
   if (!ConfigDecl)
     return ExprError(Diag(LLLLoc, diag::err_undeclared_var_use)
@@ -56,6 +59,7 @@ ExprResult Sema::ActOnCUDAExecConfigExpr(Scope *S, SourceLocation LLLLoc,
 
 Sema::CUDAFunctionTarget
 Sema::IdentifyCUDATarget(const ParsedAttributesView &Attrs) {
+  SEMA_LOG();
   bool HasHostAttr = false;
   bool HasDeviceAttr = false;
   bool HasGlobalAttr = false;
@@ -105,6 +109,7 @@ static bool hasAttr(const FunctionDecl *D, bool IgnoreImplicitAttr) {
 /// IdentifyCUDATarget - Determine the CUDA compilation target for this function
 Sema::CUDAFunctionTarget Sema::IdentifyCUDATarget(const FunctionDecl *D,
                                                   bool IgnoreImplicitHDAttr) {
+  SEMA_LOG();
   // Code that lives outside a function is run on the host.
   if (D == nullptr)
     return CFT_Host;
@@ -161,6 +166,7 @@ Sema::CUDAFunctionTarget Sema::IdentifyCUDATarget(const FunctionDecl *D,
 Sema::CUDAFunctionPreference
 Sema::IdentifyCUDAPreference(const FunctionDecl *Caller,
                              const FunctionDecl *Callee) {
+  SEMA_LOG();
   assert(Callee && "Callee must be valid.");
   CUDAFunctionTarget CallerTarget = IdentifyCUDATarget(Caller);
   CUDAFunctionTarget CalleeTarget = IdentifyCUDATarget(Callee);
@@ -213,6 +219,7 @@ Sema::IdentifyCUDAPreference(const FunctionDecl *Caller,
 void Sema::EraseUnwantedCUDAMatches(
     const FunctionDecl *Caller,
     SmallVectorImpl<std::pair<DeclAccessPair, FunctionDecl *>> &Matches) {
+  SEMA_LOG();
   if (Matches.size() <= 1)
     return;
 
@@ -267,6 +274,7 @@ bool Sema::inferCUDATargetForImplicitSpecialMember(CXXRecordDecl *ClassDecl,
                                                    CXXMethodDecl *MemberDecl,
                                                    bool ConstRHS,
                                                    bool Diagnose) {
+  SEMA_LOG();
   // If the defaulted special member is defined lexically outside of its
   // owning class, or the special member already has explicit device or host
   // attributes, do not infer.
@@ -405,6 +413,7 @@ bool Sema::inferCUDATargetForImplicitSpecialMember(CXXRecordDecl *ClassDecl,
 }
 
 bool Sema::isEmptyCudaConstructor(SourceLocation Loc, CXXConstructorDecl *CD) {
+  SEMA_LOG();
   if (!CD->isDefined() && CD->isTemplateInstantiation())
     InstantiateFunctionDefinition(Loc, CD->getFirstDecl());
 
@@ -439,6 +448,7 @@ bool Sema::isEmptyCudaConstructor(SourceLocation Loc, CXXConstructorDecl *CD) {
 }
 
 bool Sema::isEmptyCudaDestructor(SourceLocation Loc, CXXDestructorDecl *DD) {
+  SEMA_LOG();
   // No destructor -> no problem.
   if (!DD)
     return true;
@@ -487,6 +497,7 @@ bool Sema::isEmptyCudaDestructor(SourceLocation Loc, CXXDestructorDecl *DD) {
 }
 
 void Sema::checkAllowedCUDAInitializer(VarDecl *VD) {
+  SEMA_LOG();
   if (VD->isInvalidDecl() || !VD->hasInit() || !VD->hasGlobalStorage())
     return;
   const Expr *Init = VD->getInit();
@@ -555,6 +566,7 @@ void Sema::checkAllowedCUDAInitializer(VarDecl *VD) {
 // pair).
 void Sema::maybeAddCUDAHostDeviceAttrs(FunctionDecl *NewD,
                                        const LookupResult &Previous) {
+  SEMA_LOG();
   assert(getLangOpts().CUDA && "Should only be called during CUDA compilation");
 
   if (ForceCUDAHostDeviceDepth > 0) {
@@ -604,6 +616,7 @@ void Sema::maybeAddCUDAHostDeviceAttrs(FunctionDecl *NewD,
 
 Sema::DeviceDiagBuilder Sema::CUDADiagIfDeviceCode(SourceLocation Loc,
                                                    unsigned DiagID) {
+  SEMA_LOG();
   assert(getLangOpts().CUDA && "Should only be called during CUDA compilation");
   DeviceDiagBuilder::Kind DiagKind = [this] {
     switch (CurrentCUDATarget()) {
@@ -632,6 +645,7 @@ Sema::DeviceDiagBuilder Sema::CUDADiagIfDeviceCode(SourceLocation Loc,
 
 Sema::DeviceDiagBuilder Sema::CUDADiagIfHostCode(SourceLocation Loc,
                                                  unsigned DiagID) {
+  SEMA_LOG();
   assert(getLangOpts().CUDA && "Should only be called during CUDA compilation");
   DeviceDiagBuilder::Kind DiagKind = [this] {
     switch (CurrentCUDATarget()) {
@@ -657,6 +671,7 @@ Sema::DeviceDiagBuilder Sema::CUDADiagIfHostCode(SourceLocation Loc,
 }
 
 bool Sema::CheckCUDACall(SourceLocation Loc, FunctionDecl *Callee) {
+  SEMA_LOG();
   assert(getLangOpts().CUDA && "Should only be called during CUDA compilation");
   assert(Callee && "Callee may not be null.");
 
@@ -730,6 +745,7 @@ bool Sema::CheckCUDACall(SourceLocation Loc, FunctionDecl *Callee) {
 }
 
 void Sema::CUDASetLambdaAttrs(CXXMethodDecl *Method) {
+  SEMA_LOG();
   assert(getLangOpts().CUDA && "Should only be called during CUDA compilation");
   if (Method->hasAttr<CUDAHostAttr>() || Method->hasAttr<CUDADeviceAttr>())
     return;
@@ -747,6 +763,7 @@ void Sema::CUDASetLambdaAttrs(CXXMethodDecl *Method) {
 
 void Sema::checkCUDATargetOverload(FunctionDecl *NewFD,
                                    const LookupResult &Previous) {
+  SEMA_LOG();
   assert(getLangOpts().CUDA && "Should only be called during CUDA compilation");
   CUDAFunctionTarget NewTarget = IdentifyCUDATarget(NewFD);
   for (NamedDecl *OldND : Previous) {
@@ -786,6 +803,7 @@ static void copyAttrIfPresent(Sema &S, FunctionDecl *FD,
 
 void Sema::inheritCUDATargetAttrs(FunctionDecl *FD,
                                   const FunctionTemplateDecl &TD) {
+  SEMA_LOG();
   const FunctionDecl &TemplateFD = *TD.getTemplatedDecl();
   copyAttrIfPresent<CUDAGlobalAttr>(*this, FD, TemplateFD);
   copyAttrIfPresent<CUDAHostAttr>(*this, FD, TemplateFD);
@@ -793,6 +811,7 @@ void Sema::inheritCUDATargetAttrs(FunctionDecl *FD,
 }
 
 std::string Sema::getCudaConfigureFuncName() const {
+  SEMA_LOG();
   if (getLangOpts().HIP)
     return getLangOpts().HIPUseNewLaunchAPI ? "__hipPushCallConfiguration"
                                             : "hipConfigureCall";

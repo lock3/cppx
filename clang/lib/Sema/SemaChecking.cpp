@@ -101,6 +101,7 @@ using namespace sema;
 
 SourceLocation Sema::getLocationOfStringLiteralByte(const StringLiteral *SL,
                                                     unsigned ByteNo) const {
+  SEMA_LOG();
   return SL->getLocationOfByte(ByteNo, getSourceManager(), LangOpts,
                                Context.getTargetInfo());
 }
@@ -314,6 +315,7 @@ static bool SemaBuiltinCallWithStaticChain(Sema &S, CallExpr *BuiltinCall) {
 /// source. Otherwise, infer the object size using __builtin_object_size.
 void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
                                                CallExpr *TheCall) {
+  SEMA_LOG();
   // FIXME: There are some more useful checks we could be doing here:
   //  - Analyze the format string of sprintf to see how much of buffer is used.
   //  - Evaluate strlen of strcpy arguments, use as object size.
@@ -1075,6 +1077,7 @@ CheckBuiltinTargetSupport(Sema &S, unsigned BuiltinID, CallExpr *TheCall,
 ExprResult
 Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
                                CallExpr *TheCall) {
+  SEMA_LOG();
   ExprResult TheCallResult(TheCall);
 
   // Find out if any arguments are required to be integer constant expressions.
@@ -1655,6 +1658,7 @@ static QualType getNeonEltType(NeonTypeFlags Flags, ASTContext &Context,
 }
 
 bool Sema::CheckNeonBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
+  SEMA_LOG();
   llvm::APSInt Result;
   uint64_t mask = 0;
   unsigned TV = 0;
@@ -1724,6 +1728,7 @@ bool Sema::CheckNeonBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
 }
 
 bool Sema::CheckMVEBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
+  SEMA_LOG();
   switch (BuiltinID) {
   default:
     return false;
@@ -1733,6 +1738,7 @@ bool Sema::CheckMVEBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
 
 bool Sema::CheckARMBuiltinExclusiveCall(unsigned BuiltinID, CallExpr *TheCall,
                                         unsigned MaxWidth) {
+  SEMA_LOG();
   assert((BuiltinID == ARM::BI__builtin_arm_ldrex ||
           BuiltinID == ARM::BI__builtin_arm_ldaex ||
           BuiltinID == ARM::BI__builtin_arm_strex ||
@@ -1847,6 +1853,7 @@ bool Sema::CheckARMBuiltinExclusiveCall(unsigned BuiltinID, CallExpr *TheCall,
 }
 
 bool Sema::CheckARMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
+  SEMA_LOG();
   if (BuiltinID == ARM::BI__builtin_arm_ldrex ||
       BuiltinID == ARM::BI__builtin_arm_ldaex ||
       BuiltinID == ARM::BI__builtin_arm_strex ||
@@ -1900,6 +1907,7 @@ bool Sema::CheckARMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
 
 bool Sema::CheckAArch64BuiltinFunctionCall(unsigned BuiltinID,
                                          CallExpr *TheCall) {
+  SEMA_LOG();
   if (BuiltinID == AArch64::BI__builtin_arm_ldrex ||
       BuiltinID == AArch64::BI__builtin_arm_ldaex ||
       BuiltinID == AArch64::BI__builtin_arm_strex ||
@@ -1963,6 +1971,7 @@ bool Sema::CheckAArch64BuiltinFunctionCall(unsigned BuiltinID,
 
 bool Sema::CheckBPFBuiltinFunctionCall(unsigned BuiltinID,
                                        CallExpr *TheCall) {
+  SEMA_LOG();
   assert(BuiltinID == BPF::BI__builtin_preserve_field_info &&
          "unexpected ARM builtin");
 
@@ -1997,6 +2006,7 @@ bool Sema::CheckBPFBuiltinFunctionCall(unsigned BuiltinID,
 }
 
 bool Sema::CheckHexagonBuiltinCpu(unsigned BuiltinID, CallExpr *TheCall) {
+  SEMA_LOG();
   struct BuiltinAndString {
     unsigned BuiltinID;
     const char *Str;
@@ -2816,6 +2826,7 @@ bool Sema::CheckHexagonBuiltinCpu(unsigned BuiltinID, CallExpr *TheCall) {
 }
 
 bool Sema::CheckHexagonBuiltinArgument(unsigned BuiltinID, CallExpr *TheCall) {
+  SEMA_LOG();
   struct ArgInfo {
     uint8_t OpNum;
     bool IsSigned;
@@ -3052,16 +3063,19 @@ bool Sema::CheckHexagonBuiltinArgument(unsigned BuiltinID, CallExpr *TheCall) {
 
 bool Sema::CheckHexagonBuiltinFunctionCall(unsigned BuiltinID,
                                            CallExpr *TheCall) {
+  SEMA_LOG();
   return CheckHexagonBuiltinCpu(BuiltinID, TheCall) ||
          CheckHexagonBuiltinArgument(BuiltinID, TheCall);
 }
 
 bool Sema::CheckMipsBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
+  SEMA_LOG();
   return CheckMipsBuiltinCpu(BuiltinID, TheCall) ||
          CheckMipsBuiltinArgument(BuiltinID, TheCall);
 }
 
 bool Sema::CheckMipsBuiltinCpu(unsigned BuiltinID, CallExpr *TheCall) {
+  SEMA_LOG();
   const TargetInfo &TI = Context.getTargetInfo();
 
   if (Mips::BI__builtin_mips_addu_qb <= BuiltinID &&
@@ -3096,6 +3110,7 @@ bool Sema::CheckMipsBuiltinCpu(unsigned BuiltinID, CallExpr *TheCall) {
 // FIXME: GCC is strict on signedness for some of these intrinsics, we should
 //        be too.
 bool Sema::CheckMipsBuiltinArgument(unsigned BuiltinID, CallExpr *TheCall) {
+  SEMA_LOG();
   unsigned i = 0, l = 0, u = 0, m = 0;
   switch (BuiltinID) {
   default: return false;
@@ -3269,6 +3284,7 @@ bool Sema::CheckMipsBuiltinArgument(unsigned BuiltinID, CallExpr *TheCall) {
 }
 
 bool Sema::CheckPPCBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
+  SEMA_LOG();
   unsigned i = 0, l = 0, u = 0;
   bool Is64BitBltin = BuiltinID == PPC::BI__builtin_divde ||
                       BuiltinID == PPC::BI__builtin_divdeu ||
@@ -3335,6 +3351,7 @@ bool Sema::CheckPPCBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
 
 bool Sema::CheckSystemZBuiltinFunctionCall(unsigned BuiltinID,
                                            CallExpr *TheCall) {
+  SEMA_LOG();
   if (BuiltinID == SystemZ::BI__builtin_tabort) {
     Expr *Arg = TheCall->getArg(0);
     llvm::APSInt AbortCode(32);
@@ -3441,6 +3458,7 @@ static bool SemaBuiltinCpuIs(Sema &S, CallExpr *TheCall) {
 
 // Check if the rounding mode is legal.
 bool Sema::CheckX86BuiltinRoundingOrSAE(unsigned BuiltinID, CallExpr *TheCall) {
+  SEMA_LOG();
   // Indicates if this instruction has rounding control or just SAE.
   bool HasRC = false;
 
@@ -3647,6 +3665,7 @@ bool Sema::CheckX86BuiltinRoundingOrSAE(unsigned BuiltinID, CallExpr *TheCall) {
 // Check if the gather/scatter scale is legal.
 bool Sema::CheckX86BuiltinGatherScatterScale(unsigned BuiltinID,
                                              CallExpr *TheCall) {
+  SEMA_LOG();
   unsigned ArgNum = 0;
   switch (BuiltinID) {
   default:
@@ -3759,6 +3778,7 @@ static bool isX86_32Builtin(unsigned BuiltinID) {
 }
 
 bool Sema::CheckX86BuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
+  SEMA_LOG();
   if (BuiltinID == X86::BI__builtin_cpu_supports)
     return SemaBuiltinCpuSupports(*this, TheCall);
 
@@ -4124,6 +4144,7 @@ bool Sema::CheckX86BuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
 /// been populated.
 bool Sema::getFormatStringInfo(const FormatAttr *Format, bool IsCXXMember,
                                FormatStringInfo *FSI) {
+  SEMA_LOG();
   FSI->HasVAListArg = Format->getFirstArg() == 0;
   FSI->FormatIdx = Format->getFormatIdx() - 1;
   FSI->FirstDataArg = FSI->HasVAListArg ? 0 : Format->getFirstArg() - 1;
@@ -4180,6 +4201,7 @@ static void CheckNonNullArgument(Sema &S,
 }
 
 bool Sema::GetFormatNSStringIdx(const FormatAttr *Format, unsigned &Idx) {
+  SEMA_LOG();
   FormatStringInfo FSI;
   if ((GetFormatStringType(Format) == FST_NSString) &&
       getFormatStringInfo(Format, false, &FSI)) {
@@ -4343,6 +4365,7 @@ void Sema::checkCall(NamedDecl *FDecl, const FunctionProtoType *Proto,
                      const Expr *ThisArg, ArrayRef<const Expr *> Args,
                      bool IsMemberFunction, SourceLocation Loc,
                      SourceRange Range, VariadicCallType CallType) {
+  SEMA_LOG();
   // FIXME: We should check as much as we can in the template definition.
   if (CurContext->isDependentContext())
     return;
@@ -4400,6 +4423,7 @@ void Sema::CheckConstructorCall(FunctionDecl *FDecl,
                                 ArrayRef<const Expr *> Args,
                                 const FunctionProtoType *Proto,
                                 SourceLocation Loc) {
+  SEMA_LOG();
   VariadicCallType CallType =
     Proto->isVariadic() ? VariadicConstructor : VariadicDoesNotApply;
   checkCall(FDecl, Proto, /*ThisArg=*/nullptr, Args, /*IsMemberFunction=*/true,
@@ -4410,6 +4434,7 @@ void Sema::CheckConstructorCall(FunctionDecl *FDecl,
 /// and safety properties not strictly enforced by the C type system.
 bool Sema::CheckFunctionCall(FunctionDecl *FDecl, CallExpr *TheCall,
                              const FunctionProtoType *Proto) {
+  SEMA_LOG();
   bool IsMemberOperatorCall = isa<CXXOperatorCallExpr>(TheCall) &&
                               isa<CXXMethodDecl>(FDecl);
   bool IsMemberFunction = isa<CXXMemberCallExpr>(TheCall) ||
@@ -4464,6 +4489,7 @@ bool Sema::CheckFunctionCall(FunctionDecl *FDecl, CallExpr *TheCall,
 
 bool Sema::CheckObjCMethodCall(ObjCMethodDecl *Method, SourceLocation lbrac,
                                ArrayRef<const Expr *> Args) {
+  SEMA_LOG();
   VariadicCallType CallType =
       Method->isVariadic() ? VariadicMethod : VariadicDoesNotApply;
 
@@ -4476,6 +4502,7 @@ bool Sema::CheckObjCMethodCall(ObjCMethodDecl *Method, SourceLocation lbrac,
 
 bool Sema::CheckPointerCall(NamedDecl *NDecl, CallExpr *TheCall,
                             const FunctionProtoType *Proto) {
+  SEMA_LOG();
   QualType Ty;
   if (const auto *V = dyn_cast<VarDecl>(NDecl))
     Ty = V->getType().getNonReferenceType();
@@ -4508,6 +4535,7 @@ bool Sema::CheckPointerCall(NamedDecl *NDecl, CallExpr *TheCall,
 /// Checks function calls when a FunctionDecl or a NamedDecl is not available,
 /// such as function pointers returned from functions.
 bool Sema::CheckOtherCall(CallExpr *TheCall, const FunctionProtoType *Proto) {
+  SEMA_LOG();
   VariadicCallType CallType = getVariadicCallType(/*FDecl=*/nullptr, Proto,
                                                   TheCall->getCallee());
   checkCall(/*FDecl=*/nullptr, Proto, /*ThisArg=*/nullptr,
@@ -4550,6 +4578,7 @@ static bool isValidOrderingForOp(int64_t Ordering, AtomicExpr::AtomicOp Op) {
 
 ExprResult Sema::SemaAtomicOpsOverloaded(ExprResult TheCallResult,
                                          AtomicExpr::AtomicOp Op) {
+  SEMA_LOG();
   CallExpr *TheCall = cast<CallExpr>(TheCallResult.get());
   DeclRefExpr *DRE =cast<DeclRefExpr>(TheCall->getCallee()->IgnoreParenCasts());
   MultiExprArg Args{TheCall->getArgs(), TheCall->getNumArgs()};
@@ -4562,6 +4591,7 @@ ExprResult Sema::BuildAtomicExpr(SourceRange CallRange, SourceRange ExprRange,
                                  SourceLocation RParenLoc, MultiExprArg Args,
                                  AtomicExpr::AtomicOp Op,
                                  AtomicArgumentOrder ArgOrder) {
+  SEMA_LOG();
   // All the non-OpenCL operations take one of the following forms.
   // The OpenCL operations take the __c11 forms with one extra argument for
   // synchronization scope.
@@ -5053,6 +5083,7 @@ static bool checkBuiltinArgument(Sema &S, CallExpr *E, unsigned ArgIndex) {
 /// builtins, as well as generating any warnings.
 ExprResult
 Sema::SemaBuiltinAtomicOverloaded(ExprResult TheCallResult) {
+  SEMA_LOG();
   CallExpr *TheCall = static_cast<CallExpr *>(TheCallResult.get());
   Expr *Callee = TheCall->getCallee();
   DeclRefExpr *DRE = cast<DeclRefExpr>(Callee->IgnoreParenCasts());
@@ -5420,6 +5451,7 @@ Sema::SemaBuiltinAtomicOverloaded(ExprResult TheCallResult) {
 /// This function goes through and does final semantic checking for these
 /// builtins.
 ExprResult Sema::SemaBuiltinNontemporalOverloaded(ExprResult TheCallResult) {
+  SEMA_LOG();
   CallExpr *TheCall = (CallExpr *)TheCallResult.get();
   DeclRefExpr *DRE =
       cast<DeclRefExpr>(TheCall->getCallee()->IgnoreParenCasts());
@@ -5490,6 +5522,7 @@ ExprResult Sema::SemaBuiltinNontemporalOverloaded(ExprResult TheCallResult) {
 /// Note: It might also make sense to do the UTF-16 conversion here (would
 /// simplify the backend).
 bool Sema::CheckObjCString(Expr *Arg) {
+  SEMA_LOG();
   Arg = Arg->IgnoreParenCasts();
   StringLiteral *Literal = dyn_cast<StringLiteral>(Arg);
 
@@ -5520,6 +5553,7 @@ bool Sema::CheckObjCString(Expr *Arg) {
 /// CheckObjCString - Checks that the format string argument to the os_log()
 /// and os_trace() functions is correct, and converts it to const char *.
 ExprResult Sema::CheckOSLogFormatStringArg(Expr *Arg) {
+  SEMA_LOG();
   Arg = Arg->IgnoreParenCasts();
   auto *Literal = dyn_cast<StringLiteral>(Arg);
   if (!Literal) {
@@ -5621,6 +5655,7 @@ static bool checkVAStartIsInVariadicFunction(Sema &S, Expr *Fn,
 /// for validity.  Emit an error and return true on failure; return false
 /// on success.
 bool Sema::SemaBuiltinVAStart(unsigned BuiltinID, CallExpr *TheCall) {
+  SEMA_LOG();
   Expr *Fn = TheCall->getCallee();
 
   if (checkVAStartABI(*this, BuiltinID, Fn))
@@ -5700,6 +5735,7 @@ bool Sema::SemaBuiltinVAStart(unsigned BuiltinID, CallExpr *TheCall) {
 }
 
 bool Sema::SemaBuiltinVAStartARMMicrosoft(CallExpr *Call) {
+  SEMA_LOG();
   // void __va_start(va_list *ap, const char *named_addr, size_t slot_size,
   //                 const char *named_addr);
 
@@ -5750,6 +5786,7 @@ bool Sema::SemaBuiltinVAStartARMMicrosoft(CallExpr *Call) {
 /// SemaBuiltinUnorderedCompare - Handle functions like __builtin_isgreater and
 /// friends.  This is declared to take (...), so we have to check everything.
 bool Sema::SemaBuiltinUnorderedCompare(CallExpr *TheCall) {
+  SEMA_LOG();
   if (TheCall->getNumArgs() < 2)
     return Diag(TheCall->getEndLoc(), diag::err_typecheck_call_too_few_args)
            << 0 << 2 << TheCall->getNumArgs() /*function call*/;
@@ -5796,6 +5833,7 @@ bool Sema::SemaBuiltinUnorderedCompare(CallExpr *TheCall) {
 /// to check everything. We expect the last argument to be a floating point
 /// value.
 bool Sema::SemaBuiltinFPClassification(CallExpr *TheCall, unsigned NumArgs) {
+  SEMA_LOG();
   if (TheCall->getNumArgs() < NumArgs)
     return Diag(TheCall->getEndLoc(), diag::err_typecheck_call_too_few_args)
            << 0 << NumArgs << TheCall->getNumArgs() /*function call*/;
@@ -5852,6 +5890,7 @@ bool Sema::SemaBuiltinFPClassification(CallExpr *TheCall, unsigned NumArgs) {
 // vector double vec_xxpermdi(vector double, vector double, int);
 // vector short vec_xxsldwi(vector short, vector short, int);
 bool Sema::SemaBuiltinVSX(CallExpr *TheCall) {
+  SEMA_LOG();
   unsigned ExpectedNumArgs = 3;
   if (TheCall->getNumArgs() < ExpectedNumArgs)
     return Diag(TheCall->getEndLoc(),
@@ -5907,6 +5946,7 @@ bool Sema::SemaBuiltinVSX(CallExpr *TheCall) {
 /// SemaBuiltinShuffleVector - Handle __builtin_shufflevector.
 // This is declared to take (...), so we have to check everything.
 ExprResult Sema::SemaBuiltinShuffleVector(CallExpr *TheCall) {
+  SEMA_LOG();
   if (TheCall->getNumArgs() < 2)
     return ExprError(Diag(TheCall->getEndLoc(),
                           diag::err_typecheck_call_too_few_args_at_least)
@@ -5996,6 +6036,7 @@ ExprResult Sema::SemaBuiltinShuffleVector(CallExpr *TheCall) {
 ExprResult Sema::SemaConvertVectorExpr(Expr *E, TypeSourceInfo *TInfo,
                                        SourceLocation BuiltinLoc,
                                        SourceLocation RParenLoc) {
+  SEMA_LOG();
   ExprValueKind VK = VK_RValue;
   ExprObjectKind OK = OK_Ordinary;
   QualType DstTy = TInfo->getType();
@@ -6026,6 +6067,7 @@ ExprResult Sema::SemaConvertVectorExpr(Expr *E, TypeSourceInfo *TInfo,
 // This is declared to take (const void*, ...) and can take two
 // optional constant int args.
 bool Sema::SemaBuiltinPrefetch(CallExpr *TheCall) {
+  SEMA_LOG();
   unsigned NumArgs = TheCall->getNumArgs();
 
   if (NumArgs > 3)
@@ -6046,6 +6088,7 @@ bool Sema::SemaBuiltinPrefetch(CallExpr *TheCall) {
 // __assume does not evaluate its arguments, and should warn if its argument
 // has side effects.
 bool Sema::SemaBuiltinAssume(CallExpr *TheCall) {
+  SEMA_LOG();
   Expr *Arg = TheCall->getArg(0);
   if (Arg->isInstantiationDependent()) return false;
 
@@ -6062,6 +6105,7 @@ bool Sema::SemaBuiltinAssume(CallExpr *TheCall) {
 /// as (size_t, size_t) where the second size_t must be a power of 2 greater
 /// than 8.
 bool Sema::SemaBuiltinAllocaWithAlign(CallExpr *TheCall) {
+  SEMA_LOG();
   // The alignment must be a constant integer.
   Expr *Arg = TheCall->getArg(1);
 
@@ -6096,6 +6140,7 @@ bool Sema::SemaBuiltinAllocaWithAlign(CallExpr *TheCall) {
 /// Handle __builtin_assume_aligned. This is declared
 /// as (const void*, size_t, ...) and can take one optional constant int arg.
 bool Sema::SemaBuiltinAssumeAligned(CallExpr *TheCall) {
+  SEMA_LOG();
   unsigned NumArgs = TheCall->getNumArgs();
 
   if (NumArgs > 3)
@@ -6136,6 +6181,7 @@ bool Sema::SemaBuiltinAssumeAligned(CallExpr *TheCall) {
 }
 
 bool Sema::SemaBuiltinOSLogFormat(CallExpr *TheCall) {
+  SEMA_LOG();
   unsigned BuiltinID =
       cast<FunctionDecl>(TheCall->getCalleeDecl())->getBuiltinID();
   bool IsSizeCall = BuiltinID == Builtin::BI__builtin_os_log_format_buffer_size;
@@ -6219,6 +6265,7 @@ bool Sema::SemaBuiltinOSLogFormat(CallExpr *TheCall) {
 /// TheCall is a constant expression.
 bool Sema::SemaBuiltinConstantArg(CallExpr *TheCall, int ArgNum,
                                   llvm::APSInt &Result) {
+  SEMA_LOG();
   Expr *Arg = TheCall->getArg(ArgNum);
   DeclRefExpr *DRE =cast<DeclRefExpr>(TheCall->getCallee()->IgnoreParenCasts());
   FunctionDecl *FDecl = cast<FunctionDecl>(DRE->getDecl());
@@ -6237,6 +6284,7 @@ bool Sema::SemaBuiltinConstantArg(CallExpr *TheCall, int ArgNum,
 /// TheCall is a constant expression in the range [Low, High].
 bool Sema::SemaBuiltinConstantArgRange(CallExpr *TheCall, int ArgNum,
                                        int Low, int High, bool RangeIsError) {
+  SEMA_LOG();
   if (isConstantEvaluated())
     return false;
   llvm::APSInt Result;
@@ -6270,6 +6318,7 @@ bool Sema::SemaBuiltinConstantArgRange(CallExpr *TheCall, int ArgNum,
 /// TheCall is a constant expression is a multiple of Num..
 bool Sema::SemaBuiltinConstantArgMultiple(CallExpr *TheCall, int ArgNum,
                                           unsigned Num) {
+  SEMA_LOG();
   llvm::APSInt Result;
 
   // We can't check the value of a dependent argument.
@@ -6291,6 +6340,7 @@ bool Sema::SemaBuiltinConstantArgMultiple(CallExpr *TheCall, int ArgNum,
 /// SemaBuiltinConstantArgPower2 - Check if argument ArgNum of TheCall is a
 /// constant expression representing a power of 2.
 bool Sema::SemaBuiltinConstantArgPower2(CallExpr *TheCall, int ArgNum) {
+  SEMA_LOG();
   llvm::APSInt Result;
 
   // We can't check the value of a dependent argument.
@@ -6337,6 +6387,7 @@ static bool IsShiftedByte(llvm::APSInt Value) {
 /// a constant expression representing an arbitrary byte value shifted left by
 /// a multiple of 8 bits.
 bool Sema::SemaBuiltinConstantArgShiftedByte(CallExpr *TheCall, int ArgNum) {
+  SEMA_LOG();
   llvm::APSInt Result;
 
   // We can't check the value of a dependent argument.
@@ -6362,6 +6413,7 @@ bool Sema::SemaBuiltinConstantArgShiftedByte(CallExpr *TheCall, int ArgNum) {
 /// Arm MVE intrinsics.
 bool Sema::SemaBuiltinConstantArgShiftedByteOrXXFF(CallExpr *TheCall,
                                                    int ArgNum) {
+  SEMA_LOG();
   llvm::APSInt Result;
 
   // We can't check the value of a dependent argument.
@@ -6385,6 +6437,7 @@ bool Sema::SemaBuiltinConstantArgShiftedByteOrXXFF(CallExpr *TheCall,
 
 /// SemaBuiltinARMMemoryTaggingCall - Handle calls of memory tagging extensions
 bool Sema::SemaBuiltinARMMemoryTaggingCall(unsigned BuiltinID, CallExpr *TheCall) {
+  SEMA_LOG();
   if (BuiltinID == AArch64::BI__builtin_arm_irg) {
     if (checkArgCount(*this, TheCall, 2))
       return true;
@@ -6542,6 +6595,7 @@ bool Sema::SemaBuiltinARMMemoryTaggingCall(unsigned BuiltinID, CallExpr *TheCall
 bool Sema::SemaBuiltinARMSpecialReg(unsigned BuiltinID, CallExpr *TheCall,
                                     int ArgNum, unsigned ExpectedFieldNum,
                                     bool AllowName) {
+  SEMA_LOG();
   bool IsARMBuiltin = BuiltinID == ARM::BI__builtin_arm_rsr64 ||
                       BuiltinID == ARM::BI__builtin_arm_wsr64 ||
                       BuiltinID == ARM::BI__builtin_arm_rsr ||
@@ -6641,6 +6695,7 @@ bool Sema::SemaBuiltinARMSpecialReg(unsigned BuiltinID, CallExpr *TheCall,
 /// This checks that the target supports __builtin_longjmp and
 /// that val is a constant 1.
 bool Sema::SemaBuiltinLongjmp(CallExpr *TheCall) {
+  SEMA_LOG();
   if (!Context.getTargetInfo().hasSjLjLowering())
     return Diag(TheCall->getBeginLoc(), diag::err_builtin_longjmp_unsupported)
            << SourceRange(TheCall->getBeginLoc(), TheCall->getEndLoc());
@@ -6662,6 +6717,7 @@ bool Sema::SemaBuiltinLongjmp(CallExpr *TheCall) {
 /// SemaBuiltinSetjmp - Handle __builtin_setjmp(void *env[5]).
 /// This checks that the target supports __builtin_setjmp.
 bool Sema::SemaBuiltinSetjmp(CallExpr *TheCall) {
+  SEMA_LOG();
   if (!Context.getTargetInfo().hasSjLjLowering())
     return Diag(TheCall->getBeginLoc(), diag::err_builtin_setjmp_unsupported)
            << SourceRange(TheCall->getBeginLoc(), TheCall->getEndLoc());
@@ -7145,6 +7201,7 @@ checkFormatStringExpr(Sema &S, const Expr *E, ArrayRef<const Expr *> Args,
 }
 
 Sema::FormatStringType Sema::GetFormatStringType(const FormatAttr *Format) {
+  SEMA_LOG();
   return llvm::StringSwitch<FormatStringType>(Format->getType()->getName())
       .Case("scanf", FST_Scanf)
       .Cases("printf", "printf0", FST_Printf)
@@ -7167,6 +7224,7 @@ bool Sema::CheckFormatArguments(const FormatAttr *Format,
                                 VariadicCallType CallType,
                                 SourceLocation Loc, SourceRange Range,
                                 llvm::SmallBitVector &CheckedVarArgs) {
+  SEMA_LOG();
   FormatStringInfo FSI;
   if (getFormatStringInfo(Format, IsCXXMember, &FSI))
     return CheckFormatArguments(Args, FSI.HasVAListArg, FSI.FormatIdx,
@@ -7181,6 +7239,7 @@ bool Sema::CheckFormatArguments(ArrayRef<const Expr *> Args,
                                 VariadicCallType CallType,
                                 SourceLocation Loc, SourceRange Range,
                                 llvm::SmallBitVector &CheckedVarArgs) {
+  SEMA_LOG();
   // CHECK: printf/scanf-like function is called with no format string.
   if (format_idx >= Args.size()) {
     Diag(Loc, diag::warn_missing_format_string) << Range;
@@ -7973,6 +8032,7 @@ CXXRecordMembersNamed(StringRef Name, Sema &S, QualType Ty) {
 /// FIXME: This returns the wrong results in some cases (if cv-qualifiers don't
 /// allow the call, or if it would be ambiguous).
 bool Sema::hasCStrMethod(const Expr *E) {
+  SEMA_LOG();
   using MethodSet = llvm::SmallPtrSet<CXXMethodDecl *, 1>;
 
   MethodSet Results =
@@ -8888,6 +8948,7 @@ static void CheckFormatString(Sema &S, const FormatStringLiteral *FExpr,
 }
 
 bool Sema::FormatStringHasSArg(const StringLiteral *FExpr) {
+  SEMA_LOG();
   // Str - The format string.  NOTE: this is NOT null-terminated!
   StringRef StrRef = FExpr->getString();
   const char *Str = StrRef.data();
@@ -9210,6 +9271,7 @@ static bool IsStdFunction(const FunctionDecl *FDecl,
 // Warn when using the wrong abs() function.
 void Sema::CheckAbsoluteValueFunction(const CallExpr *Call,
                                       const FunctionDecl *FDecl) {
+  SEMA_LOG();
   if (Call->getNumArgs() != 1)
     return;
 
@@ -9290,6 +9352,7 @@ void Sema::CheckAbsoluteValueFunction(const CallExpr *Call,
 //===--- CHECK: Warn on use of std::max and unsigned zero. r---------------===//
 void Sema::CheckMaxUnsignedZero(const CallExpr *Call,
                                 const FunctionDecl *FDecl) {
+  SEMA_LOG();
   if (!Call || !FDecl) return;
 
   // Ignore template specializations and macros.
@@ -9623,6 +9686,7 @@ static void CheckMemaccessSize(Sema &S, unsigned BId, const CallExpr *Call) {
 void Sema::CheckMemaccessArguments(const CallExpr *Call,
                                    unsigned BId,
                                    IdentifierInfo *FnName) {
+  SEMA_LOG();
   assert(BId != 0);
 
   // It is possible to have a non-standard definition of memset.  Validate
@@ -9850,7 +9914,7 @@ static bool isConstantSizeArrayWithMoreThanOneElement(QualType Ty,
 // be the size of the source, instead of the destination.
 void Sema::CheckStrlcpycatArguments(const CallExpr *Call,
                                     IdentifierInfo *FnName) {
-
+  SEMA_LOG();
   // Don't crash if the user has the wrong number of arguments
   unsigned NumArgs = Call->getNumArgs();
   if ((NumArgs != 3) && (NumArgs != 4))
@@ -9938,6 +10002,7 @@ static const Expr *getStrlenExprArg(const Expr *E) {
 //   strncat(dst, src, sizeof(dst) - strlen(dest) - 1);
 void Sema::CheckStrncatArguments(const CallExpr *CE,
                                  IdentifierInfo *FnName) {
+  SEMA_LOG();
   // Don't crash if the user has the wrong number of arguments.
   if (CE->getNumArgs() < 3)
     return;
@@ -10024,6 +10089,7 @@ Sema::CheckReturnValExpr(Expr *RetValExp, QualType lhsType,
                          bool isObjCMethod,
                          const AttrVec *Attrs,
                          const FunctionDecl *FD) {
+  SEMA_LOG();
   // Check if the return value is null but should not be.
   if (((Attrs && hasSpecificAttr<ReturnsNonNullAttr>(*Attrs)) ||
        (!isObjCMethod && isNonNullType(Context, lhsType))) &&
@@ -10055,6 +10121,7 @@ Sema::CheckReturnValExpr(Expr *RetValExp, QualType lhsType,
 /// Issue a warning if these are no self-comparisons, as they are not likely
 /// to do what the programmer intended.
 void Sema::CheckFloatComparison(SourceLocation Loc, Expr* LHS, Expr *RHS) {
+  SEMA_LOG();
   Expr* LeftExprSansParen = LHS->IgnoreParenImpCasts();
   Expr* RightExprSansParen = RHS->IgnoreParenImpCasts();
 
@@ -12257,6 +12324,7 @@ static bool IsInAnyMacroBody(const SourceManager &SM, SourceLocation Loc) {
 void Sema::DiagnoseAlwaysNonNullPointer(Expr *E,
                                         Expr::NullPointerConstantKind NullKind,
                                         bool IsEqual, SourceRange Range) {
+  SEMA_LOG();
   if (!E)
     return;
 
@@ -12447,6 +12515,7 @@ void Sema::DiagnoseAlwaysNonNullPointer(Expr *E,
 ///   the most location of the syntactic entity requiring the implicit
 ///   conversion
 void Sema::CheckImplicitConversions(Expr *E, SourceLocation CC) {
+  SEMA_LOG();
   // Don't diagnose in unevaluated contexts.
   if (isUnevaluatedContext())
     return;
@@ -12467,12 +12536,14 @@ void Sema::CheckImplicitConversions(Expr *E, SourceLocation CC) {
 /// CheckBoolLikeConversion - Check conversion of given expression to boolean.
 /// Input argument E is a logical expression.
 void Sema::CheckBoolLikeConversion(Expr *E, SourceLocation CC) {
+  SEMA_LOG();
   ::CheckBoolLikeConversion(*this, E, CC);
 }
 
 /// Diagnose when expression is an integer constant expression and its evaluation
 /// results in integer overflow
 void Sema::CheckForIntOverflow (Expr *E) {
+  SEMA_LOG();
   // Use a work list to deal with nested struct initializers.
   SmallVector<Expr *, 2> Exprs(1, E);
 
@@ -13193,6 +13264,7 @@ public:
 } // namespace
 
 void Sema::CheckUnsequencedOperations(const Expr *E) {
+  SEMA_LOG();
   SmallVector<const Expr *, 8> WorkList;
   WorkList.push_back(E);
   while (!WorkList.empty()) {
@@ -13203,6 +13275,7 @@ void Sema::CheckUnsequencedOperations(const Expr *E) {
 
 void Sema::CheckCompletedExpr(Expr *E, SourceLocation CheckLoc,
                               bool IsConstexpr) {
+  SEMA_LOG();
   llvm::SaveAndRestore<bool> ConstantContext(
       isConstantEvaluatedOverride, IsConstexpr || isa<ConstantExpr>(E));
   CheckImplicitConversions(E, CheckLoc);
@@ -13216,6 +13289,7 @@ void Sema::CheckCompletedExpr(Expr *E, SourceLocation CheckLoc,
 void Sema::CheckBitFieldInitialization(SourceLocation InitLoc,
                                        FieldDecl *BitField,
                                        Expr *Init) {
+  SEMA_LOG();
   (void) AnalyzeBitFieldAssignment(*this, BitField, Init, InitLoc);
 }
 
@@ -13255,6 +13329,7 @@ static void diagnoseArrayStarInParamType(Sema &S, QualType PType,
 /// parameters are complete.
 bool Sema::CheckParmsForFunctionDef(ArrayRef<ParmVarDecl *> Parameters,
                                     bool CheckParameterNames) {
+  SEMA_LOG();
   bool HasInvalidParm = false;
   for (ParmVarDecl *Param : Parameters) {
     // C99 6.7.5.3p4: the parameters in a parameter type list in a
@@ -13344,6 +13419,7 @@ static CharUnits getDeclAlign(Expr *E, CharUnits TypeAlign,
 /// CheckCastAlign - Implements -Wcast-align, which warns when a
 /// pointer cast increases the alignment requirements.
 void Sema::CheckCastAlign(Expr *Op, QualType T, SourceRange TRange) {
+  SEMA_LOG();
   // This is actually a lot of work to potentially be doing on every
   // cast; don't do it if we're ignoring -Wcast_align (as is the default).
   if (getDiagnostics().isIgnored(diag::warn_cast_align, TRange.getBegin()))
@@ -13443,6 +13519,7 @@ static bool IsTailPaddedMemberArray(Sema &S, const llvm::APInt &Size,
 void Sema::CheckArrayAccess(const Expr *BaseExpr, const Expr *IndexExpr,
                             const ArraySubscriptExpr *ASE,
                             bool AllowOnePastEnd, bool IndexNegated) {
+  SEMA_LOG();
   // Already diagnosed by the constant evaluator.
   if (isConstantEvaluated())
     return;
@@ -13580,6 +13657,7 @@ void Sema::CheckArrayAccess(const Expr *BaseExpr, const Expr *IndexExpr,
 }
 
 void Sema::CheckArrayAccess(const Expr *expr) {
+  SEMA_LOG();
   int AllowOnePastEnd = 0;
   while (expr) {
     expr = expr->IgnoreParenImpCasts();
@@ -13980,6 +14058,7 @@ static Optional<int> GetNSSetArgumentIndex(Sema &S, ObjCMessageExpr *Message) {
 }
 
 void Sema::CheckObjCCircularContainer(ObjCMessageExpr *Message) {
+  SEMA_LOG();
   if (!Message->isInstanceMessage()) {
     return;
   }
@@ -14046,6 +14125,7 @@ void Sema::CheckObjCCircularContainer(ObjCMessageExpr *Message) {
 
 /// Check a message send to see if it's likely to cause a retain cycle.
 void Sema::checkRetainCycles(ObjCMessageExpr *msg) {
+  SEMA_LOG();
   // Only check instance methods whose selector looks like a setter.
   if (!msg->isInstanceMessage() || !isSetterLikeSelector(msg->getSelector()))
     return;
@@ -14076,6 +14156,7 @@ void Sema::checkRetainCycles(ObjCMessageExpr *msg) {
 
 /// Check a property assign to see if it's likely to cause a retain cycle.
 void Sema::checkRetainCycles(Expr *receiver, Expr *argument) {
+  SEMA_LOG();
   RetainCycleOwner owner;
   if (!findRetainCycleOwner(*this, receiver, owner))
     return;
@@ -14085,6 +14166,7 @@ void Sema::checkRetainCycles(Expr *receiver, Expr *argument) {
 }
 
 void Sema::checkRetainCycles(VarDecl *Var, Expr *Init) {
+  SEMA_LOG();
   RetainCycleOwner Owner;
   if (!considerVariable(Var, /*DeclRefExpr=*/nullptr, Owner))
     return;
@@ -14143,6 +14225,7 @@ static bool checkUnsafeAssignObject(Sema &S, SourceLocation Loc,
 
 bool Sema::checkUnsafeAssigns(SourceLocation Loc,
                               QualType LHS, Expr *RHS) {
+  SEMA_LOG();
   Qualifiers::ObjCLifetime LT = LHS.getObjCLifetime();
 
   if (LT != Qualifiers::OCL_Weak && LT != Qualifiers::OCL_ExplicitNone)
@@ -14156,6 +14239,7 @@ bool Sema::checkUnsafeAssigns(SourceLocation Loc,
 
 void Sema::checkUnsafeExprAssigns(SourceLocation Loc,
                               Expr *LHS, Expr *RHS) {
+  SEMA_LOG();
   QualType LHSType;
   // PropertyRef on LHS type need be directly obtained from
   // its declaration as it has a PseudoType.
@@ -14253,6 +14337,7 @@ static bool ShouldDiagnoseEmptyStmtBody(const SourceManager &SourceMgr,
 void Sema::DiagnoseEmptyStmtBody(SourceLocation StmtLoc,
                                  const Stmt *Body,
                                  unsigned DiagID) {
+  SEMA_LOG();
   // Since this is a syntactic check, don't emit diagnostic for template
   // instantiations, this just adds noise.
   if (CurrentInstantiationScope)
@@ -14273,6 +14358,7 @@ void Sema::DiagnoseEmptyStmtBody(SourceLocation StmtLoc,
 
 void Sema::DiagnoseEmptyLoopBody(const Stmt *S,
                                  const Stmt *PossibleBody) {
+  SEMA_LOG();
   assert(!CurrentInstantiationScope); // Ensured by caller
 
   SourceLocation StmtLoc;
@@ -14342,6 +14428,7 @@ void Sema::DiagnoseEmptyLoopBody(const Stmt *S,
 /// DiagnoseSelfMove - Emits a warning if a value is moved to itself.
 void Sema::DiagnoseSelfMove(const Expr *LHSExpr, const Expr *RHSExpr,
                              SourceLocation OpLoc) {
+  SEMA_LOG();
   if (Diags.isIgnored(diag::warn_sizeof_pointer_expr_memaccess, OpLoc))
     return;
 
@@ -14719,6 +14806,7 @@ void Sema::RegisterTypeTagForDatatype(const IdentifierInfo *ArgumentKind,
                                       uint64_t MagicValue, QualType Type,
                                       bool LayoutCompatible,
                                       bool MustBeNull) {
+  SEMA_LOG();
   if (!TypeTagForDatatypeMagicValues)
     TypeTagForDatatypeMagicValues.reset(
         new llvm::DenseMap<TypeTagMagicValue, TypeTagData>);
@@ -14749,6 +14837,7 @@ static bool IsSameCharType(QualType T1, QualType T2) {
 void Sema::CheckArgumentWithTypeTag(const ArgumentWithTypeTagAttr *Attr,
                                     const ArrayRef<const Expr *> ExprArgs,
                                     SourceLocation CallSiteLoc) {
+  SEMA_LOG();
   const IdentifierInfo *ArgumentKind = Attr->getArgumentKind();
   bool IsPointerAttr = Attr->getIsPointer();
 
@@ -14843,10 +14932,12 @@ void Sema::CheckArgumentWithTypeTag(const ArgumentWithTypeTagAttr *Attr,
 
 void Sema::AddPotentialMisalignedMembers(Expr *E, RecordDecl *RD, ValueDecl *MD,
                                          CharUnits Alignment) {
+  SEMA_LOG();
   MisalignedMembers.emplace_back(E, RD, MD, Alignment);
 }
 
 void Sema::DiagnoseMisalignedMembers() {
+  SEMA_LOG();
   for (MisalignedMember &m : MisalignedMembers) {
     const NamedDecl *ND = m.RD;
     if (ND->getName().empty()) {
@@ -14860,6 +14951,7 @@ void Sema::DiagnoseMisalignedMembers() {
 }
 
 void Sema::DiscardMisalignedMemberAddress(const Type *T, Expr *E) {
+  SEMA_LOG();
   E = E->IgnoreParens();
   if (!T->isPointerType() && !T->isIntegerType())
     return;
@@ -14882,6 +14974,7 @@ void Sema::RefersToMemberWithReducedAlignment(
     Expr *E,
     llvm::function_ref<void(Expr *, RecordDecl *, FieldDecl *, CharUnits)>
         Action) {
+  SEMA_LOG();
   const auto *ME = dyn_cast<MemberExpr>(E);
   if (!ME)
     return;
@@ -14990,6 +15083,7 @@ void Sema::RefersToMemberWithReducedAlignment(
 }
 
 void Sema::CheckAddressOfPackedMember(Expr *rhs) {
+  SEMA_LOG();
   using namespace std::placeholders;
 
   RefersToMemberWithReducedAlignment(

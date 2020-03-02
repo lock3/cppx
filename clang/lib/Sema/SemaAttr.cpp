@@ -49,6 +49,7 @@ Sema::PragmaStackSentinelRAII::~PragmaStackSentinelRAII() {
 }
 
 void Sema::AddAlignmentAttributesForRecord(RecordDecl *RD) {
+  SEMA_LOG();
   // If there is no pack value, we don't need any attributes.
   if (!PackStack.CurrentValue)
     return;
@@ -75,6 +76,7 @@ void Sema::AddAlignmentAttributesForRecord(RecordDecl *RD) {
 }
 
 void Sema::AddMsStructLayoutForRecord(RecordDecl *RD) {
+  SEMA_LOG();
   if (MSStructPragmaOn)
     RD->addAttr(MSStructAttr::CreateImplicit(Context));
 
@@ -98,6 +100,7 @@ static void addGslOwnerPointerAttributeIfNotExisting(ASTContext &Context,
 
 void Sema::inferGslPointerAttribute(NamedDecl *ND,
                                     CXXRecordDecl *UnderlyingRecord) {
+  SEMA_LOG();
   if (!UnderlyingRecord)
     return;
 
@@ -136,7 +139,7 @@ void Sema::inferGslPointerAttribute(NamedDecl *ND,
 }
 
 void Sema::inferGslPointerAttribute(TypedefNameDecl *TD) {
-
+  SEMA_LOG();
   QualType Canonical = TD->getUnderlyingType().getCanonicalType();
 
   CXXRecordDecl *RD = Canonical->getAsCXXRecordDecl();
@@ -153,6 +156,7 @@ void Sema::inferGslPointerAttribute(TypedefNameDecl *TD) {
 }
 
 void Sema::suggestLifetimeAttribute(CXXRecordDecl *Record) {
+  SEMA_LOG();
   if (Record->getDescribedClassTemplate())
     return;
   if (Record->hasAttr<OwnerAttr>() || Record->hasAttr<PointerAttr>())
@@ -174,6 +178,7 @@ void Sema::suggestLifetimeAttribute(CXXRecordDecl *Record) {
 }
 
 void Sema::inferGslOwnerPointerAttribute(CXXRecordDecl *Record) {
+  SEMA_LOG();
   static llvm::StringSet<> StdOwners{
       "any",
       "array",
@@ -228,6 +233,7 @@ void Sema::inferGslOwnerPointerAttribute(CXXRecordDecl *Record) {
 
 void Sema::ActOnPragmaOptionsAlign(PragmaOptionsAlignKind Kind,
                                    SourceLocation PragmaLoc) {
+  SEMA_LOG();
   PragmaMsStackAction Action = Sema::PSK_Reset;
   unsigned Alignment = 0;
   switch (Kind) {
@@ -279,6 +285,7 @@ void Sema::ActOnPragmaOptionsAlign(PragmaOptionsAlignKind Kind,
 
 void Sema::ActOnPragmaClangSection(SourceLocation PragmaLoc, PragmaClangSectionAction Action,
                                    PragmaClangSectionKind SecKind, StringRef SecName) {
+  SEMA_LOG();
   PragmaClangSection *CSec;
   switch (SecKind) {
     case PragmaClangSectionKind::PCSK_BSS:
@@ -312,6 +319,7 @@ void Sema::ActOnPragmaClangSection(SourceLocation PragmaLoc, PragmaClangSectionA
 
 void Sema::ActOnPragmaPack(SourceLocation PragmaLoc, PragmaMsStackAction Action,
                            StringRef SlotLabel, Expr *alignment) {
+  SEMA_LOG();
   Expr *Alignment = static_cast<Expr *>(alignment);
 
   // If specified then alignment must be a "small" power of two.
@@ -359,6 +367,7 @@ void Sema::ActOnPragmaPack(SourceLocation PragmaLoc, PragmaMsStackAction Action,
 
 void Sema::DiagnoseNonDefaultPragmaPack(PragmaPackDiagnoseKind Kind,
                                         SourceLocation IncludeLoc) {
+  SEMA_LOG();
   if (Kind == PragmaPackDiagnoseKind::NonDefaultStateAtInclude) {
     SourceLocation PrevLocation = PackStack.CurrentPragmaLocation;
     // Warn about non-default alignment at #includes (without redundant
@@ -392,6 +401,7 @@ void Sema::DiagnoseNonDefaultPragmaPack(PragmaPackDiagnoseKind Kind,
 }
 
 void Sema::DiagnoseUnterminatedPragmaPack() {
+  SEMA_LOG();
   if (PackStack.Stack.empty())
     return;
   bool IsInnermost = true;
@@ -413,11 +423,13 @@ void Sema::DiagnoseUnterminatedPragmaPack() {
 }
 
 void Sema::ActOnPragmaMSStruct(PragmaMSStructKind Kind) {
+  SEMA_LOG();
   MSStructPragmaOn = (Kind == PMSST_ON);
 }
 
 void Sema::ActOnPragmaMSComment(SourceLocation CommentLoc,
                                 PragmaMSCommentKind Kind, StringRef Arg) {
+  SEMA_LOG();
   auto *PCD = PragmaCommentDecl::Create(
       Context, Context.getTranslationUnitDecl(), CommentLoc, Kind, Arg);
   Context.getTranslationUnitDecl()->addDecl(PCD);
@@ -426,6 +438,7 @@ void Sema::ActOnPragmaMSComment(SourceLocation CommentLoc,
 
 void Sema::ActOnPragmaDetectMismatch(SourceLocation Loc, StringRef Name,
                                      StringRef Value) {
+  SEMA_LOG();
   auto *PDMD = PragmaDetectMismatchDecl::Create(
       Context, Context.getTranslationUnitDecl(), Loc, Name, Value);
   Context.getTranslationUnitDecl()->addDecl(PDMD);
@@ -435,6 +448,7 @@ void Sema::ActOnPragmaDetectMismatch(SourceLocation Loc, StringRef Name,
 void Sema::ActOnPragmaMSPointersToMembers(
     LangOptions::PragmaMSPointersToMembersKind RepresentationMethod,
     SourceLocation PragmaLoc) {
+  SEMA_LOG();
   MSPointerToMemberRepresentationMethod = RepresentationMethod;
   ImplicitMSInheritanceAttrLoc = PragmaLoc;
 }
@@ -442,6 +456,7 @@ void Sema::ActOnPragmaMSPointersToMembers(
 void Sema::ActOnPragmaMSVtorDisp(PragmaMsStackAction Action,
                                  SourceLocation PragmaLoc,
                                  MSVtorDispMode Mode) {
+  SEMA_LOG();
   if (Action & PSK_Pop && VtorDispStack.Stack.empty())
     Diag(PragmaLoc, diag::warn_pragma_pop_failed) << "vtordisp"
                                                   << "stack empty";
@@ -453,6 +468,7 @@ void Sema::PragmaStack<ValueType>::Act(SourceLocation PragmaLocation,
                                        PragmaMsStackAction Action,
                                        llvm::StringRef StackSlotLabel,
                                        ValueType Value) {
+  SEMA_LOG();
   if (Action == PSK_Reset) {
     CurrentValue = DefaultValue;
     CurrentPragmaLocation = PragmaLocation;
@@ -489,6 +505,7 @@ void Sema::PragmaStack<ValueType>::Act(SourceLocation PragmaLocation,
 bool Sema::UnifySection(StringRef SectionName,
                         int SectionFlags,
                         DeclaratorDecl *Decl) {
+  SEMA_LOG();
   auto Section = Context.SectionInfos.find(SectionName);
   if (Section == Context.SectionInfos.end()) {
     Context.SectionInfos[SectionName] =
@@ -516,6 +533,7 @@ bool Sema::UnifySection(StringRef SectionName,
 bool Sema::UnifySection(StringRef SectionName,
                         int SectionFlags,
                         SourceLocation PragmaSectionLocation) {
+  SEMA_LOG();
   auto Section = Context.SectionInfos.find(SectionName);
   if (Section != Context.SectionInfos.end()) {
     if (Section->second.SectionFlags == SectionFlags)
@@ -539,6 +557,7 @@ void Sema::ActOnPragmaMSSeg(SourceLocation PragmaLocation,
                             llvm::StringRef StackSlotLabel,
                             StringLiteral *SegmentName,
                             llvm::StringRef PragmaName) {
+  SEMA_LOG();
   PragmaStack<StringLiteral *> *Stack =
     llvm::StringSwitch<PragmaStack<StringLiteral *> *>(PragmaName)
         .Case("data_seg", &DataSegStack)
@@ -563,11 +582,13 @@ void Sema::ActOnPragmaMSSeg(SourceLocation PragmaLocation,
 /// Called on well formed \#pragma bss_seg().
 void Sema::ActOnPragmaMSSection(SourceLocation PragmaLocation,
                                 int SectionFlags, StringLiteral *SegmentName) {
+  SEMA_LOG();
   UnifySection(SegmentName->getString(), SectionFlags, PragmaLocation);
 }
 
 void Sema::ActOnPragmaMSInitSeg(SourceLocation PragmaLocation,
                                 StringLiteral *SegmentName) {
+  SEMA_LOG();
   // There's no stack to maintain, so we just have a current section.  When we
   // see the default section, reset our current section back to null so we stop
   // tacking on unnecessary attributes.
@@ -577,7 +598,7 @@ void Sema::ActOnPragmaMSInitSeg(SourceLocation PragmaLocation,
 
 void Sema::ActOnPragmaUnused(const Token &IdTok, Scope *curScope,
                              SourceLocation PragmaLoc) {
-
+  SEMA_LOG();
   IdentifierInfo *Name = IdTok.getIdentifierInfo();
   LookupResult Lookup(*this, Name, IdTok.getLocation(), LookupOrdinaryName);
   LookupParsedName(Lookup, curScope, nullptr, true);
@@ -605,6 +626,7 @@ void Sema::ActOnPragmaUnused(const Token &IdTok, Scope *curScope,
 }
 
 void Sema::AddCFAuditedAttribute(Decl *D) {
+  SEMA_LOG();
   IdentifierInfo *Ident;
   SourceLocation Loc;
   std::tie(Ident, Loc) = PP.getPragmaARCCFCodeAuditedInfo();
@@ -678,6 +700,7 @@ attrMatcherRuleListToString(ArrayRef<attr::SubjectMatchRule> Rules) {
 void Sema::ActOnPragmaAttributeAttribute(
     ParsedAttr &Attribute, SourceLocation PragmaLoc,
     attr::ParsedSubjectMatchRuleSet Rules) {
+  SEMA_LOG();
   Attribute.setIsPragmaClangAttribute();
   SmallVector<attr::SubjectMatchRule, 4> SubjectMatchRules;
   // Gather the subject match rules that are supported by the attribute.
@@ -789,6 +812,7 @@ void Sema::ActOnPragmaAttributeAttribute(
 
 void Sema::ActOnPragmaAttributeEmptyPush(SourceLocation PragmaLoc,
                                          const IdentifierInfo *Namespace) {
+  SEMA_LOG();
   PragmaAttributeStack.emplace_back();
   PragmaAttributeStack.back().Loc = PragmaLoc;
   PragmaAttributeStack.back().Namespace = Namespace;
@@ -796,6 +820,7 @@ void Sema::ActOnPragmaAttributeEmptyPush(SourceLocation PragmaLoc,
 
 void Sema::ActOnPragmaAttributePop(SourceLocation PragmaLoc,
                                    const IdentifierInfo *Namespace) {
+  SEMA_LOG();
   if (PragmaAttributeStack.empty()) {
     Diag(PragmaLoc, diag::err_pragma_attribute_stack_mismatch) << 1;
     return;
@@ -830,6 +855,7 @@ void Sema::ActOnPragmaAttributePop(SourceLocation PragmaLoc,
 }
 
 void Sema::AddPragmaAttributes(Scope *S, Decl *D) {
+  SEMA_LOG();
   if (PragmaAttributeStack.empty())
     return;
   for (auto &Group : PragmaAttributeStack) {
@@ -860,18 +886,21 @@ void Sema::AddPragmaAttributes(Scope *S, Decl *D) {
 }
 
 void Sema::PrintPragmaAttributeInstantiationPoint() {
+  SEMA_LOG();
   assert(PragmaAttributeCurrentTargetDecl && "Expected an active declaration");
   Diags.Report(PragmaAttributeCurrentTargetDecl->getBeginLoc(),
                diag::note_pragma_attribute_applied_decl_here);
 }
 
 void Sema::DiagnoseUnterminatedPragmaAttribute() {
+  SEMA_LOG();
   if (PragmaAttributeStack.empty())
     return;
   Diag(PragmaAttributeStack.back().Loc, diag::err_pragma_attribute_no_pop_eof);
 }
 
 void Sema::ActOnPragmaOptimize(bool On, SourceLocation PragmaLoc) {
+  SEMA_LOG();
   if(On)
     OptimizeOffPragmaLocation = SourceLocation();
   else
@@ -879,6 +908,7 @@ void Sema::ActOnPragmaOptimize(bool On, SourceLocation PragmaLoc) {
 }
 
 void Sema::AddRangeBasedOptnone(FunctionDecl *FD) {
+  SEMA_LOG();
   // In the future, check other pragmas if they're implemented (e.g. pragma
   // optimize 0 will probably map to this functionality too).
   if(OptimizeOffPragmaLocation.isValid())
@@ -887,6 +917,7 @@ void Sema::AddRangeBasedOptnone(FunctionDecl *FD) {
 
 void Sema::AddOptnoneAttributeIfNoConflicts(FunctionDecl *FD,
                                             SourceLocation Loc) {
+  SEMA_LOG();
   // Don't add a conflicting attribute. No diagnostic is needed.
   if (FD->hasAttr<MinSizeAttr>() || FD->hasAttr<AlwaysInlineAttr>())
     return;
@@ -903,6 +934,7 @@ typedef std::vector<std::pair<unsigned, SourceLocation> > VisStack;
 enum : unsigned { NoVisibility = ~0U };
 
 void Sema::AddPushedVisibilityAttribute(Decl *D) {
+  SEMA_LOG();
   if (!VisContext)
     return;
 
@@ -923,11 +955,13 @@ void Sema::AddPushedVisibilityAttribute(Decl *D) {
 
 /// FreeVisContext - Deallocate and null out VisContext.
 void Sema::FreeVisContext() {
+  SEMA_LOG();
   delete static_cast<VisStack*>(VisContext);
   VisContext = nullptr;
 }
 
 static void PushPragmaVisibility(Sema &S, unsigned type, SourceLocation loc) {
+  SEMA_LOG();
   // Put visibility on stack.
   if (!S.VisContext)
     S.VisContext = new VisStack;
@@ -938,6 +972,7 @@ static void PushPragmaVisibility(Sema &S, unsigned type, SourceLocation loc) {
 
 void Sema::ActOnPragmaVisibility(const IdentifierInfo* VisType,
                                  SourceLocation PragmaLoc) {
+  SEMA_LOG();
   if (VisType) {
     // Compute visibility to use.
     VisibilityAttr::VisibilityType T;
@@ -952,6 +987,7 @@ void Sema::ActOnPragmaVisibility(const IdentifierInfo* VisType,
 }
 
 void Sema::ActOnPragmaFPContract(LangOptions::FPContractModeKind FPC) {
+  SEMA_LOG();
   switch (FPC) {
   case LangOptions::FPC_On:
     FPFeatures.setAllowFPContractWithinStatement();
@@ -966,6 +1002,7 @@ void Sema::ActOnPragmaFPContract(LangOptions::FPContractModeKind FPC) {
 }
 
 void Sema::ActOnPragmaFEnvAccess(LangOptions::FEnvAccessModeKind FPC) {
+  SEMA_LOG();
   switch (FPC) {
   case LangOptions::FEA_On:
     FPFeatures.setAllowFEnvAccess();
@@ -979,6 +1016,7 @@ void Sema::ActOnPragmaFEnvAccess(LangOptions::FEnvAccessModeKind FPC) {
 
 void Sema::PushNamespaceVisibilityAttr(const VisibilityAttr *Attr,
                                        SourceLocation Loc) {
+  SEMA_LOG();
   // Visibility calculations will consider the namespace's visibility.
   // Here we just want to note that we're in a visibility context
   // which overrides any enclosing #pragma context, but doesn't itself
@@ -987,6 +1025,7 @@ void Sema::PushNamespaceVisibilityAttr(const VisibilityAttr *Attr,
 }
 
 void Sema::PopPragmaVisibility(bool IsNamespaceEnd, SourceLocation EndLoc) {
+  SEMA_LOG();
   if (!VisContext) {
     Diag(EndLoc, diag::err_pragma_pop_visibility_mismatch);
     return;

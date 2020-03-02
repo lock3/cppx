@@ -237,7 +237,7 @@ Sema::ActOnCXXNamedCast(SourceLocation OpLoc, tok::TokenKind Kind,
                         SourceLocation RAngleBracketLoc,
                         SourceLocation LParenLoc, Expr *E,
                         SourceLocation RParenLoc) {
-
+  SEMA_LOG();
   assert(!D.isInvalidType());
 
   TypeSourceInfo *TInfo = GetTypeForDeclaratorCast(D, E->getType());
@@ -258,6 +258,7 @@ ExprResult
 Sema::BuildCXXNamedCast(SourceLocation OpLoc, tok::TokenKind Kind,
                         TypeSourceInfo *DestTInfo, Expr *E,
                         SourceRange AngleBrackets, SourceRange Parens) {
+  SEMA_LOG();
   ExprResult Ex = E;
   QualType DestType = DestTInfo->getType();
 
@@ -335,6 +336,7 @@ Sema::BuildCXXNamedCast(SourceLocation OpLoc, tok::TokenKind Kind,
 ExprResult Sema::ActOnBuiltinBitCastExpr(SourceLocation KWLoc, Declarator &D,
                                          ExprResult Operand,
                                          SourceLocation RParenLoc) {
+  SEMA_LOG();
   assert(!D.isInvalidType());
 
   TypeSourceInfo *TInfo = GetTypeForDeclaratorCast(D, Operand.get()->getType());
@@ -347,6 +349,7 @@ ExprResult Sema::ActOnBuiltinBitCastExpr(SourceLocation KWLoc, Declarator &D,
 ExprResult Sema::BuildBuiltinBitCastExpr(SourceLocation KWLoc,
                                          TypeSourceInfo *TSI, Expr *Operand,
                                          SourceLocation RParenLoc) {
+  SEMA_LOG();
   CastOperation Op(*this, TSI->getType(), Operand);
   Op.OpRange = SourceRange(KWLoc, RParenLoc);
   TypeLoc TL = TSI->getTypeLoc();
@@ -1807,6 +1810,7 @@ static TryCastResult TryConstCast(Sema &Self, ExprResult &SrcExpr,
 void Sema::CheckCompatibleReinterpretCast(QualType SrcType, QualType DestType,
                                           bool IsDereference,
                                           SourceRange Range) {
+  SEMA_LOG();
   unsigned DiagID = IsDereference ?
                         diag::warn_pointer_indirection_from_incompatible_type :
                         diag::warn_undefined_reinterpret_cast;
@@ -2884,6 +2888,7 @@ ExprResult Sema::BuildCStyleCastExpr(SourceLocation LPLoc,
                                      TypeSourceInfo *CastTypeInfo,
                                      SourceLocation RPLoc,
                                      Expr *CastExpr) {
+  SEMA_LOG();
   CastOperation Op(*this, CastTypeInfo->getType(), CastExpr);
   Op.DestRange = CastTypeInfo->getTypeLoc().getSourceRange();
   Op.OpRange = SourceRange(LPLoc, CastExpr->getEndLoc());
@@ -2911,6 +2916,7 @@ ExprResult Sema::BuildCXXFunctionalCastExpr(TypeSourceInfo *CastTypeInfo,
                                             SourceLocation LPLoc,
                                             Expr *CastExpr,
                                             SourceLocation RPLoc) {
+  SEMA_LOG();
   assert(LPLoc.isValid() && "List-initialization shouldn't get here.");
   CastOperation Op(*this, Type, CastExpr);
   Op.DestRange = CastTypeInfo->getTypeLoc().getSourceRange();

@@ -3,7 +3,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/StringRef.h"
 
-namespace sema {
+namespace sematrace {
 
 class ActionTrace {
   static int Depth;
@@ -11,7 +11,8 @@ class ActionTrace {
 public:
 
   static void WriteIndent();
-  static void WriteSemaCall(llvm::StringRef FunctionName, llvm::StringRef Msg = "");
+  static void EnterSemaCall(llvm::StringRef FunctionName, llvm::StringRef Msg = "");
+  static void LeavingSemaCall(llvm::StringRef FunctionName, llvm::StringRef Msg = "");
   static void EnterParsingFn(llvm::StringRef FunctionName, llvm::StringRef Msg = "");
   static void LeavingParsingFn(llvm::StringRef FunctionName, llvm::StringRef Msg = "");
 };
@@ -21,26 +22,28 @@ struct ActionLoggingGuard {
   ~ActionLoggingGuard();
   llvm::StringRef FunctionName;
 };
+struct SemaActionLoggingGuard {
+  SemaActionLoggingGuard(llvm::StringRef FnName);
+  ~SemaActionLoggingGuard();
+  llvm::StringRef FunctionName;
+};
 #define PARSER_ENTER_TRACE()\
-  ::sema::ActionTrace::EnterParsingFn(__FUNCTION__);
+  ::sematrace::ActionTrace::EnterParsingFn(__FUNCTION__);
 
 #define PARSER_ENTER_TRACE_M(MSG)\
-  ::sema::ActionTrace::EnterParsingFn(__FUNCTION__, MSG);
+  ::sematrace::ActionTrace::EnterParsingFn(__FUNCTION__, MSG);
 
 #define PARSER_LEAVE_TRACE()\
-  ::sema::ActionTrace::LeavingParsingFn(__FUNCTION__);
+  ::sematrace::ActionTrace::LeavingParsingFn(__FUNCTION__);
 
 #define PARSER_LEAVE_TRACE_M(MSG)\
-  ::sema::ActionTrace::LeavingParsingFn(__FUNCTION__, MSG);
-
-#define SEMA_TRACE()\
-  ::sema::ActionTrace::WriteSemaCall(__FUNCTION__);
-
-#define SEMA_TRACE_M(MSG)\
-  ::sema::ActionTrace::WriteSemaCall(__FUNCTION__, MSG);
+  ::sematrace::ActionTrace::LeavingParsingFn(__FUNCTION__, MSG);
 
 #define PARSING_LOG()\
-  ::sema::ActionLoggingGuard GardTemp(__FUNCTION__)
+  ::sematrace::ActionLoggingGuard GardTemp(__FUNCTION__)
+
+#define SEMA_LOG()\
+  ::sematrace::SemaActionLoggingGuard GardTemp(__FUNCTION__)
 }
 
 #endif

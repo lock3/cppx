@@ -639,7 +639,7 @@ static void CheckFallThroughForBody(Sema &S, const Decl *D, const Stmt *Body,
                                     QualType BlockType,
                                     const CheckFallThroughDiagnostics &CD,
                                     AnalysisDeclContext &AC,
-                                    sema::FunctionScopeInfo *FSI) {
+                                    ::sema::FunctionScopeInfo *FSI) {
 
   bool ReturnsVoid = false;
   bool HasNoReturn = false;

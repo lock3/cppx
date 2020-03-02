@@ -232,6 +232,7 @@ Sema::BuildPossibleImplicitMemberExpr(const CXXScopeSpec &SS,
                                       LookupResult &R,
                                 const TemplateArgumentListInfo *TemplateArgs,
                                       const Scope *S) {
+  SEMA_LOG();
   switch (ClassifyImplicitMemberAccess(*this, R)) {
   case IMA_Instance:
     return BuildImplicitMemberExpr(SS, TemplateKWLoc, R, TemplateArgs, true, S);
@@ -479,6 +480,7 @@ Sema::ActOnDependentMemberExpr(Expr *BaseExpr, QualType BaseType,
                                NamedDecl *FirstQualifierInScope,
                                const DeclarationNameInfo &NameInfo,
                                const TemplateArgumentListInfo *TemplateArgs) {
+  SEMA_LOG();
   // Even in dependent contexts, try to diagnose base expressions with
   // obviously wrong types, e.g.:
   //
@@ -545,6 +547,7 @@ bool Sema::CheckQualifiedMemberReference(Expr *BaseExpr,
                                          QualType BaseType,
                                          const CXXScopeSpec &SS,
                                          const LookupResult &R) {
+  SEMA_LOG();
   CXXRecordDecl *BaseRecord =
     cast_or_null<CXXRecordDecl>(computeDeclContext(BaseType));
   if (!BaseRecord) {
@@ -745,6 +748,7 @@ Sema::BuildMemberReferenceExpr(Expr *Base, QualType BaseType,
                                const TemplateArgumentListInfo *TemplateArgs,
                                const Scope *S,
                                ActOnMemberAccessExtraArgs *ExtraArgs) {
+  SEMA_LOG();
   if (BaseType->isDependentType() ||
       (SS.isSet() && isDependentScopeSpecifier(SS)))
     return ActOnDependentMemberExpr(Base, BaseType,
@@ -801,6 +805,7 @@ Sema::BuildAnonymousStructUnionMemberReference(const CXXScopeSpec &SS,
                                                DeclAccessPair foundDecl,
                                                Expr *baseObjectExpr,
                                                SourceLocation opLoc) {
+  SEMA_LOG();
   // First, build the expression that refers to the base object.
 
   // Case 1:  the base of the indirect field is not a field.
@@ -894,6 +899,7 @@ MemberExpr *Sema::BuildMemberExpr(
     bool HadMultipleCandidates, const DeclarationNameInfo &MemberNameInfo,
     QualType Ty, ExprValueKind VK, ExprObjectKind OK,
     const TemplateArgumentListInfo *TemplateArgs) {
+  SEMA_LOG();
   NestedNameSpecifierLoc NNS =
       SS ? SS->getWithLocInContext(Context) : NestedNameSpecifierLoc();
   return BuildMemberExpr(Base, IsArrow, OpLoc, NNS, TemplateKWLoc, Member,
@@ -907,6 +913,7 @@ MemberExpr *Sema::BuildMemberExpr(
     bool HadMultipleCandidates, const DeclarationNameInfo &MemberNameInfo,
     QualType Ty, ExprValueKind VK, ExprObjectKind OK,
     const TemplateArgumentListInfo *TemplateArgs) {
+  SEMA_LOG();
   assert((!IsArrow || Base->isRValue()) && "-> base must be a pointer rvalue");
   MemberExpr *E =
       MemberExpr::Create(Context, Base, IsArrow, OpLoc, NNS, TemplateKWLoc,
@@ -946,6 +953,7 @@ Sema::getVarTemplateSpecialization(VarTemplateDecl *VarTempl,
                       const TemplateArgumentListInfo *TemplateArgs,
                       const DeclarationNameInfo &MemberNameInfo,
                       SourceLocation TemplateKWLoc) {
+  SEMA_LOG();
   if (!TemplateArgs) {
     diagnoseMissingTemplateArguments(TemplateName(VarTempl),
                                      MemberNameInfo.getBeginLoc());
@@ -974,6 +982,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
                                const Scope *S,
                                bool SuppressQualifierCheck,
                                ActOnMemberAccessExtraArgs *ExtraArgs) {
+  SEMA_LOG();
   QualType BaseType = BaseExprType;
   if (IsArrow) {
     assert(BaseType->isPointerType());
@@ -1233,6 +1242,7 @@ static bool isPointerToRecordType(QualType T) {
 /// Perform conversions on the LHS of a member access expression.
 ExprResult
 Sema::PerformMemberExprBaseConversion(Expr *Base, bool IsArrow) {
+  SEMA_LOG();
   if (IsArrow && !Base->getType()->isFunctionType())
     return DefaultFunctionArrayLvalueConversion(Base);
 
@@ -1696,6 +1706,7 @@ ExprResult Sema::ActOnMemberAccessExpr(Scope *S, Expr *Base,
                                        SourceLocation TemplateKWLoc,
                                        UnqualifiedId &Id,
                                        Decl *ObjCImpDecl) {
+  SEMA_LOG();
   if (SS.isSet() && SS.isInvalid())
     return ExprError();
 
@@ -1743,6 +1754,7 @@ ExprResult Sema::ActOnMemberAccessExpr(Scope *S, Expr *Base,
 }
 
 void Sema::CheckMemberAccessOfNoDeref(const MemberExpr *E) {
+  SEMA_LOG();
   QualType ResultTy = E->getType();
 
   // Do not warn on member accesses to arrays since this returns an array
@@ -1764,6 +1776,7 @@ Sema::BuildFieldReferenceExpr(Expr *BaseExpr, bool IsArrow,
                               SourceLocation OpLoc, const CXXScopeSpec &SS,
                               FieldDecl *Field, DeclAccessPair FoundDecl,
                               const DeclarationNameInfo &MemberNameInfo) {
+  SEMA_LOG();
   // x.a is an l-value if 'a' has a reference type. Otherwise:
   // x.a is an l-value/x-value/pr-value if the base is (and note
   //   that *x is always an l-value), except that if the base isn't
@@ -1843,6 +1856,7 @@ Sema::BuildImplicitMemberExpr(const CXXScopeSpec &SS,
                               LookupResult &R,
                               const TemplateArgumentListInfo *TemplateArgs,
                               bool IsKnownInstance, const Scope *S) {
+  SEMA_LOG();
   assert(!R.empty() && !R.isAmbiguous());
 
   SourceLocation loc = R.getNameLoc();

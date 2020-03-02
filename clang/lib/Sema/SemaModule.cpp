@@ -56,6 +56,7 @@ static void checkModuleImportContext(Sema &S, Module *M,
 
 Sema::DeclGroupPtrTy
 Sema::ActOnGlobalModuleFragmentDecl(SourceLocation ModuleLoc) {
+  SEMA_LOG();
   if (!ModuleScopes.empty() &&
       ModuleScopes.back().Module->Kind == Module::GlobalModuleFragment) {
     // Under -std=c++2a -fmodules-ts, we can find an explicit 'module;' after
@@ -90,6 +91,7 @@ Sema::ActOnGlobalModuleFragmentDecl(SourceLocation ModuleLoc) {
 Sema::DeclGroupPtrTy
 Sema::ActOnModuleDecl(SourceLocation StartLoc, SourceLocation ModuleLoc,
                       ModuleDeclKind MDK, ModuleIdPath Path, bool IsFirstDecl) {
+  SEMA_LOG();
   assert((getLangOpts().ModulesTS || getLangOpts().CPlusPlusModules) &&
          "should only have module decl in Modules TS or C++20");
 
@@ -245,6 +247,7 @@ Sema::ActOnModuleDecl(SourceLocation StartLoc, SourceLocation ModuleLoc,
 Sema::DeclGroupPtrTy
 Sema::ActOnPrivateModuleFragmentDecl(SourceLocation ModuleLoc,
                                      SourceLocation PrivateLoc) {
+  SEMA_LOG();
   // C++20 [basic.link]/2:
   //   A private-module-fragment shall appear only in a primary module
   //   interface unit.
@@ -308,6 +311,7 @@ DeclResult Sema::ActOnModuleImport(SourceLocation StartLoc,
                                    SourceLocation ExportLoc,
                                    SourceLocation ImportLoc,
                                    ModuleIdPath Path) {
+  SEMA_LOG();
   // Flatten the module path for a Modules TS module name.
   std::pair<IdentifierInfo *, SourceLocation> ModuleNameLoc;
   if (getLangOpts().ModulesTS) {
@@ -342,6 +346,7 @@ DeclResult Sema::ActOnModuleImport(SourceLocation StartLoc,
                                    SourceLocation ExportLoc,
                                    SourceLocation ImportLoc,
                                    Module *Mod, ModuleIdPath Path) {
+  SEMA_LOG();
   VisibleModules.setVisible(Mod, ImportLoc);
 
   checkModuleImportContext(*this, Mod, ImportLoc, CurContext);
@@ -402,11 +407,13 @@ DeclResult Sema::ActOnModuleImport(SourceLocation StartLoc,
 }
 
 void Sema::ActOnModuleInclude(SourceLocation DirectiveLoc, Module *Mod) {
+  SEMA_LOG();
   checkModuleImportContext(*this, Mod, DirectiveLoc, CurContext, true);
   BuildModuleInclude(DirectiveLoc, Mod);
 }
 
 void Sema::BuildModuleInclude(SourceLocation DirectiveLoc, Module *Mod) {
+  SEMA_LOG();
   // Determine whether we're in the #include buffer for a module. The #includes
   // in that buffer do not qualify as module imports; they're just an
   // implementation detail of us building the module.
@@ -436,6 +443,7 @@ void Sema::BuildModuleInclude(SourceLocation DirectiveLoc, Module *Mod) {
 }
 
 void Sema::ActOnModuleBegin(SourceLocation DirectiveLoc, Module *Mod) {
+  SEMA_LOG();
   checkModuleImportContext(*this, Mod, DirectiveLoc, CurContext, true);
 
   ModuleScopes.push_back({});
@@ -460,6 +468,7 @@ void Sema::ActOnModuleBegin(SourceLocation DirectiveLoc, Module *Mod) {
 }
 
 void Sema::ActOnModuleEnd(SourceLocation EomLoc, Module *Mod) {
+  SEMA_LOG();
   if (getLangOpts().ModulesLocalVisibility) {
     VisibleModules = std::move(ModuleScopes.back().OuterVisibleModules);
     // Leaving a module hides namespace names, so our visible namespace cache
@@ -501,6 +510,7 @@ void Sema::ActOnModuleEnd(SourceLocation EomLoc, Module *Mod) {
 
 void Sema::createImplicitModuleImportForErrorRecovery(SourceLocation Loc,
                                                       Module *Mod) {
+  SEMA_LOG();
   // Bail if we're not allowed to implicitly import a module here.
   if (isSFINAEContext() || !getLangOpts().ModulesErrorRecovery ||
       VisibleModules.isVisible(Mod))
@@ -522,6 +532,7 @@ void Sema::createImplicitModuleImportForErrorRecovery(SourceLocation Loc,
 /// (if present).
 Decl *Sema::ActOnStartExportDecl(Scope *S, SourceLocation ExportLoc,
                                  SourceLocation LBraceLoc) {
+  SEMA_LOG();
   ExportDecl *D = ExportDecl::Create(Context, CurContext, ExportLoc);
 
   // Set this temporarily so we know the export-declaration was braced.
@@ -687,6 +698,7 @@ static bool checkExportedDeclContext(Sema &S, DeclContext *DC,
 
 /// Complete the definition of an export declaration.
 Decl *Sema::ActOnFinishExportDecl(Scope *S, Decl *D, SourceLocation RBraceLoc) {
+  SEMA_LOG();
   auto *ED = cast<ExportDecl>(D);
   if (RBraceLoc.isValid())
     ED->setRBraceLoc(RBraceLoc);

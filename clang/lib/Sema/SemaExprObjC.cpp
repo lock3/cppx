@@ -34,6 +34,7 @@ using llvm::makeArrayRef;
 
 ExprResult Sema::ParseObjCStringLiteral(SourceLocation *AtLocs,
                                         ArrayRef<Expr *> Strings) {
+  SEMA_LOG();
   // Most ObjC strings are formed out of a single piece.  However, we *can*
   // have strings formed out of multiple @ strings with multiple pptokens in
   // each one, e.g. @"foo" "bar" @"baz" "qux"   which need to be turned into one
@@ -79,6 +80,7 @@ ExprResult Sema::ParseObjCStringLiteral(SourceLocation *AtLocs,
 }
 
 ExprResult Sema::BuildObjCStringLiteral(SourceLocation AtLoc, StringLiteral *S){
+  SEMA_LOG();
   // Verify that this composite string is acceptable for ObjC strings.
   if (CheckObjCString(S))
     return true;
@@ -314,6 +316,7 @@ static ObjCMethodDecl *getNSNumberFactoryMethod(Sema &S, SourceLocation Loc,
 /// BuildObjCNumericLiteral - builds an ObjCBoxedExpr AST node for the
 /// numeric literal expression. Type of the expression will be "NSNumber *".
 ExprResult Sema::BuildObjCNumericLiteral(SourceLocation AtLoc, Expr *Number) {
+  SEMA_LOG();
   // Determine the type of the literal.
   QualType NumberType = Number->getType();
   if (CharacterLiteral *Char = dyn_cast<CharacterLiteral>(Number)) {
@@ -367,6 +370,7 @@ ExprResult Sema::BuildObjCNumericLiteral(SourceLocation AtLoc, Expr *Number) {
 ExprResult Sema::ActOnObjCBoolLiteral(SourceLocation AtLoc,
                                       SourceLocation ValueLoc,
                                       bool Value) {
+  SEMA_LOG();
   ExprResult Inner;
   if (getLangOpts().CPlusPlus) {
     Inner = ActOnCXXBoolLiteral(ValueLoc, Value? tok::kw_true : tok::kw_false);
@@ -498,6 +502,7 @@ static ExprResult CheckObjCCollectionLiteralElement(Sema &S, Expr *Element,
 }
 
 ExprResult Sema::BuildObjCBoxedExpr(SourceRange SR, Expr *ValueExpr) {
+  SEMA_LOG();
   if (ValueExpr->isTypeDependent()) {
     ObjCBoxedExpr *BoxedExpr =
       new (Context) ObjCBoxedExpr(ValueExpr, Context.DependentTy, nullptr, SR);
@@ -764,6 +769,7 @@ ExprResult Sema::BuildObjCSubscriptExpression(SourceLocation RB, Expr *BaseExpr,
                                         Expr *IndexExpr,
                                         ObjCMethodDecl *getterMethod,
                                         ObjCMethodDecl *setterMethod) {
+  SEMA_LOG();
   assert(!LangOpts.isSubscriptPointerArithmetic());
 
   // We can't get dependent types here; our callers should have
@@ -791,6 +797,7 @@ ExprResult Sema::BuildObjCSubscriptExpression(SourceLocation RB, Expr *BaseExpr,
 }
 
 ExprResult Sema::BuildObjCArrayLiteral(SourceRange SR, MultiExprArg Elements) {
+  SEMA_LOG();
   SourceLocation Loc = SR.getBegin();
 
   if (!NSArrayDecl) {
@@ -896,6 +903,7 @@ ExprResult Sema::BuildObjCArrayLiteral(SourceRange SR, MultiExprArg Elements) {
 
 ExprResult Sema::BuildObjCDictionaryLiteral(SourceRange SR,
                               MutableArrayRef<ObjCDictionaryElement> Elements) {
+  SEMA_LOG();
   SourceLocation Loc = SR.getBegin();
 
   if (!NSDictionaryDecl) {
@@ -1072,6 +1080,7 @@ ExprResult Sema::BuildObjCDictionaryLiteral(SourceRange SR,
 ExprResult Sema::BuildObjCEncodeExpression(SourceLocation AtLoc,
                                       TypeSourceInfo *EncodedTypeInfo,
                                       SourceLocation RParenLoc) {
+  SEMA_LOG();
   QualType EncodedType = EncodedTypeInfo->getType();
   QualType StrTy;
   if (EncodedType->isDependentType())
@@ -1104,6 +1113,7 @@ ExprResult Sema::ParseObjCEncodeExpression(SourceLocation AtLoc,
                                            SourceLocation LParenLoc,
                                            ParsedType ty,
                                            SourceLocation RParenLoc) {
+  SEMA_LOG();
   // FIXME: Preserve type source info ?
   TypeSourceInfo *TInfo;
   QualType EncodedType = GetTypeFromParser(ty, &TInfo);
@@ -1205,6 +1215,7 @@ ExprResult Sema::ParseObjCSelectorExpression(Selector Sel,
                                              SourceLocation LParenLoc,
                                              SourceLocation RParenLoc,
                                              bool WarnMultipleSelectors) {
+  SEMA_LOG();
   ObjCMethodDecl *Method = LookupInstanceMethodInGlobalPool(Sel,
                              SourceRange(LParenLoc, RParenLoc));
   if (!Method)
@@ -1275,6 +1286,7 @@ ExprResult Sema::ParseObjCProtocolExpression(IdentifierInfo *ProtocolId,
                                              SourceLocation LParenLoc,
                                              SourceLocation ProtoIdLoc,
                                              SourceLocation RParenLoc) {
+  SEMA_LOG();
   ObjCProtocolDecl* PDecl = LookupProtocol(ProtocolId, ProtoIdLoc);
   if (!PDecl) {
     Diag(ProtoLoc, diag::err_undeclared_protocol) << ProtocolId;
@@ -1296,6 +1308,7 @@ ExprResult Sema::ParseObjCProtocolExpression(IdentifierInfo *ProtocolId,
 
 /// Try to capture an implicit reference to 'self'.
 ObjCMethodDecl *Sema::tryCaptureObjCSelf(SourceLocation Loc) {
+  SEMA_LOG();
   DeclContext *DC = getFunctionLevelDeclContext();
 
   // If we're not in an ObjC method, error out.  Note that, unlike the
@@ -1404,6 +1417,7 @@ QualType Sema::getMessageSendResultType(const Expr *Receiver,
                                         ObjCMethodDecl *Method,
                                         bool isClassMessage,
                                         bool isSuperMessage) {
+  SEMA_LOG();
   // Produce the result type.
   QualType resultType = getBaseMessageSendResultType(*this, ReceiverType,
                                                      Method,
@@ -1530,6 +1544,7 @@ findExplicitInstancetypeDeclarer(const ObjCMethodDecl *MD,
 }
 
 void Sema::EmitRelatedResultTypeNoteForReturn(QualType destType) {
+  SEMA_LOG();
   // Only complain if we're in an ObjC method and the required return
   // type doesn't match the method's declared return type.
   ObjCMethodDecl *MD = dyn_cast<ObjCMethodDecl>(CurContext);
@@ -1559,6 +1574,7 @@ void Sema::EmitRelatedResultTypeNoteForReturn(QualType destType) {
 }
 
 void Sema::EmitRelatedResultTypeNote(const Expr *E) {
+  SEMA_LOG();
   E = E->IgnoreParenImpCasts();
   const ObjCMessageExpr *MsgSend = dyn_cast<ObjCMessageExpr>(E);
   if (!MsgSend)
@@ -1590,6 +1606,7 @@ bool Sema::CheckMessageArgumentTypes(
     bool isClassMessage, bool isSuperMessage, SourceLocation lbrac,
     SourceLocation rbrac, SourceRange RecRange, QualType &ReturnType,
     ExprValueKind &VK) {
+  SEMA_LOG();
   SourceLocation SelLoc;
   if (!SelectorLocs.empty() && SelectorLocs.front().isValid())
     SelLoc = SelectorLocs.front();
@@ -1791,6 +1808,7 @@ bool Sema::CheckMessageArgumentTypes(
 }
 
 bool Sema::isSelfExpr(Expr *RExpr) {
+  SEMA_LOG();
   // 'self' is objc 'self' in an objc method only.
   ObjCMethodDecl *Method =
       dyn_cast_or_null<ObjCMethodDecl>(CurContext->getNonClosureAncestor());
@@ -1798,6 +1816,7 @@ bool Sema::isSelfExpr(Expr *RExpr) {
 }
 
 bool Sema::isSelfExpr(Expr *receiver, const ObjCMethodDecl *method) {
+  SEMA_LOG();
   if (!method) return false;
 
   receiver = receiver->IgnoreParenLValueCasts();
@@ -1810,6 +1829,7 @@ bool Sema::isSelfExpr(Expr *receiver, const ObjCMethodDecl *method) {
 /// LookupMethodInType - Look up a method in an ObjCObjectType.
 ObjCMethodDecl *Sema::LookupMethodInObjectType(Selector sel, QualType type,
                                                bool isInstance) {
+  SEMA_LOG();
   const ObjCObjectType *objType = type->castAs<ObjCObjectType>();
   if (ObjCInterfaceDecl *iface = objType->getInterface()) {
     // Look it up in the main interface (and categories, etc.)
@@ -1836,6 +1856,7 @@ ObjCMethodDecl *Sema::LookupMethodInQualifiedType(Selector Sel,
                                               const ObjCObjectPointerType *OPT,
                                               bool Instance)
 {
+  SEMA_LOG();
   ObjCMethodDecl *MD = nullptr;
   for (const auto *PROTO : OPT->quals()) {
     if ((MD = PROTO->lookupMethod(Sel, Instance))) {
@@ -1854,6 +1875,7 @@ HandleExprPropertyRefExpr(const ObjCObjectPointerType *OPT,
                           SourceLocation MemberLoc,
                           SourceLocation SuperLoc, QualType SuperType,
                           bool Super) {
+  SEMA_LOG();
   const ObjCInterfaceType *IFaceT = OPT->getInterfaceType();
   ObjCInterfaceDecl *IFace = IFaceT->getDecl();
 
@@ -2034,7 +2056,7 @@ ActOnClassPropertyRefExpr(IdentifierInfo &receiverName,
                           IdentifierInfo &propertyName,
                           SourceLocation receiverNameLoc,
                           SourceLocation propertyNameLoc) {
-
+  SEMA_LOG();
   IdentifierInfo *receiverNamePtr = &receiverName;
   ObjCInterfaceDecl *IFace = getObjCInterfaceDecl(receiverNamePtr,
                                                   receiverNameLoc);
@@ -2161,6 +2183,7 @@ Sema::ObjCMessageKind Sema::getObjCMessageKind(Scope *S,
                                                bool IsSuper,
                                                bool HasTrailingDot,
                                                ParsedType &ReceiverType) {
+  SEMA_LOG();
   ReceiverType = nullptr;
 
   // If the identifier is "super" and there is no trailing dot, we're
@@ -2260,6 +2283,7 @@ ExprResult Sema::ActOnSuperMessage(Scope *S,
                                    ArrayRef<SourceLocation> SelectorLocs,
                                    SourceLocation RBracLoc,
                                    MultiExprArg Args) {
+  SEMA_LOG();
   // Determine whether we are inside a method or not.
   ObjCMethodDecl *Method = tryCaptureObjCSelf(SuperLoc);
   if (!Method) {
@@ -2310,6 +2334,7 @@ ExprResult Sema::BuildClassMessageImplicit(QualType ReceiverType,
                                            Selector Sel,
                                            ObjCMethodDecl *Method,
                                            MultiExprArg Args) {
+  SEMA_LOG();
   TypeSourceInfo *receiverTypeInfo = nullptr;
   if (!ReceiverType.isNull())
     receiverTypeInfo = Context.getTrivialTypeSourceInfo(ReceiverType);
@@ -2488,6 +2513,7 @@ ExprResult Sema::BuildClassMessage(TypeSourceInfo *ReceiverTypeInfo,
                                    SourceLocation RBracLoc,
                                    MultiExprArg ArgsIn,
                                    bool isImplicit) {
+  SEMA_LOG();
   SourceLocation Loc = SuperLoc.isValid()? SuperLoc
     : ReceiverTypeInfo->getTypeLoc().getSourceRange().getBegin();
   if (LBracLoc.isInvalid()) {
@@ -2629,6 +2655,7 @@ ExprResult Sema::ActOnClassMessage(Scope *S,
                                    ArrayRef<SourceLocation> SelectorLocs,
                                    SourceLocation RBracLoc,
                                    MultiExprArg Args) {
+  SEMA_LOG();
   TypeSourceInfo *ReceiverTypeInfo;
   QualType ReceiverType = GetTypeFromParser(Receiver, &ReceiverTypeInfo);
   if (ReceiverType.isNull())
@@ -2649,6 +2676,7 @@ ExprResult Sema::BuildInstanceMessageImplicit(Expr *Receiver,
                                               Selector Sel,
                                               ObjCMethodDecl *Method,
                                               MultiExprArg Args) {
+  SEMA_LOG();
   return BuildInstanceMessage(Receiver, ReceiverType,
                               /*SuperLoc=*/!Receiver ? Loc : SourceLocation(),
                               Sel, Method, Loc, Loc, Loc, Args,
@@ -2711,6 +2739,7 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
                                       SourceLocation RBracLoc,
                                       MultiExprArg ArgsIn,
                                       bool isImplicit) {
+  SEMA_LOG();
   assert((Receiver || SuperLoc.isValid()) && "If the Receiver is null, the "
                                              "SuperLoc must be valid so we can "
                                              "use it instead.");
@@ -3270,6 +3299,7 @@ ExprResult Sema::ActOnInstanceMessage(Scope *S,
                                       ArrayRef<SourceLocation> SelectorLocs,
                                       SourceLocation RBracLoc,
                                       MultiExprArg Args) {
+  SEMA_LOG();
   if (!Receiver)
     return ExprError();
 
@@ -3590,6 +3620,7 @@ namespace {
 } // end anonymous namespace
 
 bool Sema::isKnownName(StringRef name) {
+  SEMA_LOG();
   if (name.empty())
     return false;
   LookupResult R(*this, &Context.Idents.get(name), SourceLocation(),
@@ -3989,6 +4020,7 @@ static bool CheckObjCBridgeCFCast(Sema &S, QualType castType, Expr *castExpr,
 }
 
 void Sema::CheckTollFreeBridgeCast(QualType castType, Expr *castExpr) {
+  SEMA_LOG();
   if (!getLangOpts().ObjC)
     return;
   // warn in presence of __bridge casting to or from a toll free bridge cast.
@@ -4039,6 +4071,7 @@ void Sema::CheckTollFreeBridgeCast(QualType castType, Expr *castExpr) {
 }
 
 void Sema::CheckObjCBridgeRelatedCast(QualType castType, Expr *castExpr) {
+  SEMA_LOG();
   QualType SrcType = castExpr->getType();
   if (ObjCPropertyRefExpr *PRE = dyn_cast<ObjCPropertyRefExpr>(castExpr)) {
     if (PRE->isExplicitProperty()) {
@@ -4061,6 +4094,7 @@ void Sema::CheckObjCBridgeRelatedCast(QualType castType, Expr *castExpr) {
 
 bool Sema::CheckTollFreeBridgeStaticCast(QualType castType, Expr *castExpr,
                                          CastKind &Kind) {
+  SEMA_LOG();
   if (!getLangOpts().ObjC)
     return false;
   ARCConversionTypeClass exprACTC =
@@ -4153,6 +4187,7 @@ bool
 Sema::CheckObjCBridgeRelatedConversions(SourceLocation Loc,
                                         QualType DestType, QualType SrcType,
                                         Expr *&SrcExpr, bool Diagnose) {
+  SEMA_LOG();
   ARCConversionTypeClass rhsExprACTC = classifyTypeForARCConversion(SrcType);
   ARCConversionTypeClass lhsExprACTC = classifyTypeForARCConversion(DestType);
   bool CfToNs = (rhsExprACTC == ACTC_coreFoundation && lhsExprACTC == ACTC_retainable);
@@ -4249,6 +4284,7 @@ Sema::CheckObjCConversion(SourceRange castRange, QualType castType,
                           Expr *&castExpr, CheckedConversionKind CCK,
                           bool Diagnose, bool DiagnoseCFAudited,
                           BinaryOperatorKind Opc) {
+  SEMA_LOG();
   QualType castExprType = castExpr->getType();
 
   // For the purposes of the classification, we assume reference types
@@ -4361,6 +4397,7 @@ Sema::CheckObjCConversion(SourceRange castRange, QualType castType,
 /// Given that we saw an expression with the ARCUnbridgedCastTy
 /// placeholder type, complain bitterly.
 void Sema::diagnoseARCUnbridgedCast(Expr *e) {
+  SEMA_LOG();
   // We expect the spurious ImplicitCastExpr to already have been stripped.
   assert(!e->hasPlaceholderType(BuiltinType::ARCUnbridgedCast));
   CastExpr *realCast = cast<CastExpr>(e->IgnoreParens());
@@ -4394,6 +4431,7 @@ void Sema::diagnoseARCUnbridgedCast(Expr *e) {
 /// stripARCUnbridgedCast - Given an expression of ARCUnbridgedCast
 /// type, remove the placeholder cast.
 Expr *Sema::stripARCUnbridgedCast(Expr *e) {
+  SEMA_LOG();
   assert(e->hasPlaceholderType(BuiltinType::ARCUnbridgedCast));
 
   if (ParenExpr *pe = dyn_cast<ParenExpr>(e)) {
@@ -4433,6 +4471,7 @@ Expr *Sema::stripARCUnbridgedCast(Expr *e) {
 
 bool Sema::CheckObjCARCUnavailableWeakConversion(QualType castType,
                                                  QualType exprType) {
+  SEMA_LOG();
   QualType canCastType =
     Context.getCanonicalType(castType).getUnqualifiedType();
   QualType canExprType =
@@ -4490,6 +4529,7 @@ ExprResult Sema::BuildObjCBridgedCast(SourceLocation LParenLoc,
                                       SourceLocation BridgeKeywordLoc,
                                       TypeSourceInfo *TSInfo,
                                       Expr *SubExpr) {
+  SEMA_LOG();
   ExprResult SubResult = UsualUnaryConversions(SubExpr);
   if (SubResult.isInvalid()) return ExprError();
   SubExpr = SubResult.get();
@@ -4603,6 +4643,7 @@ ExprResult Sema::ActOnObjCBridgedCast(Scope *S,
                                       ParsedType Type,
                                       SourceLocation RParenLoc,
                                       Expr *SubExpr) {
+  SEMA_LOG();
   TypeSourceInfo *TSInfo = nullptr;
   QualType T = GetTypeFromParser(Type, &TSInfo);
   if (Kind == OBC_Bridge)

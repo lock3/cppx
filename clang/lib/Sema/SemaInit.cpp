@@ -3096,6 +3096,7 @@ void InitListChecker::UpdateStructuredListElement(InitListExpr *StructuredList,
 /// of overload resolution.
 bool Sema::CanPerformAggregateInitializationForOverloadResolution(
     const InitializedEntity &Entity, InitListExpr *From) {
+  SEMA_LOG();
   QualType Type = Entity.getType();
   InitListChecker Check(*this, Entity, From, Type, /*VerifyOnly=*/true,
                         /*TreatUnavailableAsInvalid=*/false,
@@ -3131,6 +3132,7 @@ ExprResult Sema::ActOnDesignatedInitializer(Designation &Desig,
                                             SourceLocation EqualOrColonLoc,
                                             bool GNUSyntax,
                                             ExprResult Init) {
+  SEMA_LOG();
   typedef DesignatedInitExpr::Designator ASTDesignator;
 
   bool Invalid = false;
@@ -7351,6 +7353,7 @@ static bool pathOnlyInitializesGslPointer(IndirectLocalPath &Path) {
 
 void Sema::checkInitializerLifetime(const InitializedEntity &Entity,
                                     Expr *Init) {
+  SEMA_LOG();
   LifetimeResult LR = getEntityLifetime(&Entity);
   LifetimeKind LK = LR.getInt();
   const InitializedEntity *ExtendingEntity = LR.getPointer();
@@ -7729,6 +7732,7 @@ static void CheckForNullPointerDereference(Sema &S, const Expr *E) {
 MaterializeTemporaryExpr *
 Sema::CreateMaterializeTemporaryExpr(QualType T, Expr *Temporary,
                                      bool BoundToLvalueReference) {
+  SEMA_LOG();
   auto MTE = new (Context)
       MaterializeTemporaryExpr(T, Temporary, BoundToLvalueReference);
 
@@ -7743,6 +7747,7 @@ Sema::CreateMaterializeTemporaryExpr(QualType T, Expr *Temporary,
 }
 
 ExprResult Sema::TemporaryMaterializationConversion(Expr *E) {
+  SEMA_LOG();
   // In C++98, we don't want to implicitly create an xvalue.
   // FIXME: This means that AST consumers need to deal with "prvalues" that
   // denote materialized temporaries. Maybe we should add another ValueKind
@@ -7763,7 +7768,7 @@ ExprResult Sema::TemporaryMaterializationConversion(Expr *E) {
 ExprResult Sema::PerformQualificationConversion(Expr *E, QualType Ty,
                                                 ExprValueKind VK,
                                                 CheckedConversionKind CCK) {
-
+  SEMA_LOG();
   CastKind CK = CK_NoOp;
 
   if (VK == VK_RValue) {
@@ -9620,6 +9625,7 @@ static void DiagnoseNarrowingInInitList(Sema &S,
 bool
 Sema::CanPerformCopyInitialization(const InitializedEntity &Entity,
                                    ExprResult Init) {
+  SEMA_LOG();
   if (Init.isInvalid())
     return false;
 
@@ -9638,6 +9644,7 @@ Sema::PerformCopyInitialization(const InitializedEntity &Entity,
                                 ExprResult Init,
                                 bool TopLevelOfInitList,
                                 bool AllowExplicit) {
+  SEMA_LOG();
   if (Init.isInvalid())
     return ExprError();
 
@@ -9707,6 +9714,7 @@ static bool isOrIsDerivedFromSpecializationOf(CXXRecordDecl *RD,
 QualType Sema::DeduceTemplateSpecializationFromInitializer(
     TypeSourceInfo *TSInfo, const InitializedEntity &Entity,
     const InitializationKind &Kind, MultiExprArg Inits) {
+  SEMA_LOG();
   auto *DeducedTST = dyn_cast<DeducedTemplateSpecializationType>(
       TSInfo->getType()->getContainedDeducedType());
   assert(DeducedTST && "not a deduced template specialization type");

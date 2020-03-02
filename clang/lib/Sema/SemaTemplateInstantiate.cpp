@@ -57,6 +57,7 @@ Sema::getTemplateInstantiationArgs(NamedDecl *D,
                                    const TemplateArgumentList *Innermost,
                                    bool RelativeToPrimary,
                                    const FunctionDecl *Pattern) {
+  SEMA_LOG();
   // Accumulate the set of template argument lists in this structure.
   MultiLevelTemplateArgumentList Result;
 
@@ -420,6 +421,7 @@ Sema::InstantiatingTemplate::InstantiatingTemplate(
 }
 
 void Sema::pushCodeSynthesisContext(CodeSynthesisContext Ctx) {
+  SEMA_LOG();
   Ctx.SavedInNonInstantiationSFINAEContext = InNonInstantiationSFINAEContext;
   InNonInstantiationSFINAEContext = false;
 
@@ -435,6 +437,7 @@ void Sema::pushCodeSynthesisContext(CodeSynthesisContext Ctx) {
 }
 
 void Sema::popCodeSynthesisContext() {
+  SEMA_LOG();
   auto &Active = CodeSynthesisContexts.back();
   if (!Active.isInstantiationRecord()) {
     assert(NonInstantiationEntries > 0);
@@ -464,6 +467,7 @@ void Sema::popCodeSynthesisContext() {
 }
 
 void Sema::InstantiatingTemplate::Clear() {
+  SEMA_LOG();
   if (!Invalid) {
     if (!AlreadyInstantiating) {
       auto &Active = SemaRef.CodeSynthesisContexts.back();
@@ -482,6 +486,7 @@ void Sema::InstantiatingTemplate::Clear() {
 bool Sema::InstantiatingTemplate::CheckInstantiationDepth(
                                         SourceLocation PointOfInstantiation,
                                            SourceRange InstantiationRange) {
+  SEMA_LOG();
   assert(SemaRef.NonInstantiationEntries <=
          SemaRef.CodeSynthesisContexts.size());
   if ((SemaRef.CodeSynthesisContexts.size() -
@@ -501,6 +506,7 @@ bool Sema::InstantiatingTemplate::CheckInstantiationDepth(
 /// Prints the current instantiation stack through a series of
 /// notes.
 void Sema::PrintInstantiationStack() {
+  SEMA_LOG();
   // Determine which template instantiations to skip, if any.
   unsigned SkipStart = CodeSynthesisContexts.size(), SkipEnd = SkipStart;
   unsigned Limit = Diags.getTemplateBacktraceLimit();
@@ -794,6 +800,7 @@ void Sema::PrintInstantiationStack() {
 }
 
 Optional<TemplateDeductionInfo *> Sema::isSFINAEContext() const {
+  SEMA_LOG();
   if (InNonInstantiationSFINAEContext)
     return Optional<TemplateDeductionInfo *>(nullptr);
 
@@ -1799,6 +1806,7 @@ TypeSourceInfo *Sema::SubstType(TypeSourceInfo *T,
                                 SourceLocation Loc,
                                 DeclarationName Entity,
                                 bool AllowDeducedTST) {
+  SEMA_LOG();
   assert(!CodeSynthesisContexts.empty() &&
          "Cannot perform an instantiation without some context on the "
          "instantiation stack");
@@ -1816,6 +1824,7 @@ TypeSourceInfo *Sema::SubstType(TypeLoc TL,
                                 const MultiLevelTemplateArgumentList &Args,
                                 SourceLocation Loc,
                                 DeclarationName Entity) {
+  SEMA_LOG();
   assert(!CodeSynthesisContexts.empty() &&
          "Cannot perform an instantiation without some context on the "
          "instantiation stack");
@@ -1846,6 +1855,7 @@ TypeSourceInfo *Sema::SubstType(TypeLoc TL,
 QualType Sema::SubstType(QualType T,
                          const MultiLevelTemplateArgumentList &TemplateArgs,
                          SourceLocation Loc, DeclarationName Entity) {
+  SEMA_LOG();
   assert(!CodeSynthesisContexts.empty() &&
          "Cannot perform an instantiation without some context on the "
          "instantiation stack");
@@ -1891,6 +1901,7 @@ TypeSourceInfo *Sema::SubstFunctionDeclType(TypeSourceInfo *T,
                                 DeclarationName Entity,
                                 CXXRecordDecl *ThisContext,
                                 Qualifiers ThisTypeQuals) {
+  SEMA_LOG();
   assert(!CodeSynthesisContexts.empty() &&
          "Cannot perform an instantiation without some context on the "
          "instantiation stack");
@@ -1931,6 +1942,7 @@ bool Sema::SubstExceptionSpec(SourceLocation Loc,
                               FunctionProtoType::ExceptionSpecInfo &ESI,
                               SmallVectorImpl<QualType> &ExceptionStorage,
                               const MultiLevelTemplateArgumentList &Args) {
+  SEMA_LOG();
   assert(ESI.Type != EST_Uninstantiated);
 
   bool Changed = false;
@@ -1941,6 +1953,7 @@ bool Sema::SubstExceptionSpec(SourceLocation Loc,
 
 void Sema::SubstExceptionSpec(FunctionDecl *New, const FunctionProtoType *Proto,
                               const MultiLevelTemplateArgumentList &Args) {
+  SEMA_LOG();
   FunctionProtoType::ExceptionSpecInfo ESI =
       Proto->getExtProtoInfo().ExceptionSpec;
 
@@ -1958,6 +1971,7 @@ ParmVarDecl *Sema::SubstParmVarDecl(ParmVarDecl *OldParm,
                                     int indexAdjustment,
                                     Optional<unsigned> NumExpansions,
                                     bool ExpectParameterPack) {
+  SEMA_LOG();
   DeclarationNameInfo DNI = SubstDeclarationNameInfo(
                                 OldParm->getNameInfo(), TemplateArgs);
 
@@ -2070,6 +2084,7 @@ bool Sema::SubstParmTypes(
     SmallVectorImpl<QualType> &ParamTypes,
     SmallVectorImpl<ParmVarDecl *> *OutParams,
     ExtParameterInfoBuilder &ParamInfos) {
+  SEMA_LOG();
   assert(!CodeSynthesisContexts.empty() &&
          "Cannot perform an instantiation without some context on the "
          "instantiation stack");
@@ -2090,6 +2105,7 @@ bool
 Sema::SubstBaseSpecifiers(CXXRecordDecl *Instantiation,
                           CXXRecordDecl *Pattern,
                           const MultiLevelTemplateArgumentList &TemplateArgs) {
+  SEMA_LOG();
   bool Invalid = false;
   SmallVector<CXXBaseSpecifier*, 4> InstantiatedBases;
   for (const auto &Base : Pattern->bases()) {
@@ -2259,6 +2275,7 @@ Sema::InstantiateClass(SourceLocation PointOfInstantiation,
                        const MultiLevelTemplateArgumentList &TemplateArgs,
                        TemplateSpecializationKind TSK,
                        bool Complain) {
+  SEMA_LOG();
   CXXRecordDecl *PatternDef
     = cast_or_null<CXXRecordDecl>(Pattern->getDefinition());
   if (DiagnoseUninstantiableTemplate(PointOfInstantiation, Instantiation,
@@ -2523,6 +2540,7 @@ bool Sema::InstantiateEnum(SourceLocation PointOfInstantiation,
                            EnumDecl *Instantiation, EnumDecl *Pattern,
                            const MultiLevelTemplateArgumentList &TemplateArgs,
                            TemplateSpecializationKind TSK) {
+  SEMA_LOG();
   EnumDecl *PatternDef = Pattern->getDefinition();
   if (DiagnoseUninstantiableTemplate(PointOfInstantiation, Instantiation,
                                  Instantiation->getInstantiatedFromMemberEnum(),
@@ -2587,6 +2605,7 @@ bool Sema::InstantiateEnum(SourceLocation PointOfInstantiation,
 bool Sema::InstantiateInClassInitializer(
     SourceLocation PointOfInstantiation, FieldDecl *Instantiation,
     FieldDecl *Pattern, const MultiLevelTemplateArgumentList &TemplateArgs) {
+  SEMA_LOG();
   // If there is no initializer, we don't need to do anything.
   if (!Pattern->hasInClassInitializer())
     return false;
@@ -2658,6 +2677,7 @@ namespace {
 
 bool Sema::usesPartialOrExplicitSpecialization(
     SourceLocation Loc, ClassTemplateSpecializationDecl *ClassTemplateSpec) {
+  SEMA_LOG();
   if (ClassTemplateSpec->getTemplateSpecializationKind() ==
       TSK_ExplicitSpecialization)
     return true;
@@ -2827,6 +2847,7 @@ bool Sema::InstantiateClassTemplateSpecialization(
     SourceLocation PointOfInstantiation,
     ClassTemplateSpecializationDecl *ClassTemplateSpec,
     TemplateSpecializationKind TSK, bool Complain) {
+  SEMA_LOG();
   // Perform the actual instantiation on the canonical declaration.
   ClassTemplateSpec = cast<ClassTemplateSpecializationDecl>(
       ClassTemplateSpec->getCanonicalDecl());
@@ -2851,6 +2872,7 @@ Sema::InstantiateClassMembers(SourceLocation PointOfInstantiation,
                               CXXRecordDecl *Instantiation,
                         const MultiLevelTemplateArgumentList &TemplateArgs,
                               TemplateSpecializationKind TSK) {
+  SEMA_LOG();
   // FIXME: We need to notify the ASTMutationListener that we did all of these
   // things, in case we have an explicit instantiation definition in a PCM, a
   // module, or preamble, and the declaration is in an imported AST.
@@ -3072,6 +3094,7 @@ Sema::InstantiateClassTemplateSpecializationMembers(
                                            SourceLocation PointOfInstantiation,
                             ClassTemplateSpecializationDecl *ClassTemplateSpec,
                                                TemplateSpecializationKind TSK) {
+  SEMA_LOG();
   // C++0x [temp.explicit]p7:
   //   An explicit instantiation that names a class template
   //   specialization is an explicit instantion of the same kind
@@ -3089,6 +3112,7 @@ using DeclMappingList = SmallVector<std::pair<Decl *, Decl *>, 8>;
 
 StmtResult
 Sema::SubstStmt(Stmt *S, const MultiLevelTemplateArgumentList &TemplateArgs) {
+  SEMA_LOG();
   if (!S)
     return S;
 
@@ -3102,6 +3126,7 @@ bool Sema::SubstTemplateArguments(
     ArrayRef<TemplateArgumentLoc> Args,
     const MultiLevelTemplateArgumentList &TemplateArgs,
     TemplateArgumentListInfo &Out) {
+  SEMA_LOG();
   TemplateInstantiator Instantiator(*this, TemplateArgs,
                                     SourceLocation(),
                                     DeclarationName());
@@ -3111,6 +3136,7 @@ bool Sema::SubstTemplateArguments(
 
 ExprResult
 Sema::SubstExpr(Expr *E, const MultiLevelTemplateArgumentList &TemplateArgs) {
+  SEMA_LOG();
   if (!E)
     return E;
 
@@ -3123,6 +3149,7 @@ Sema::SubstExpr(Expr *E, const MultiLevelTemplateArgumentList &TemplateArgs) {
 ExprResult Sema::SubstInitializer(Expr *Init,
                           const MultiLevelTemplateArgumentList &TemplateArgs,
                           bool CXXDirectInit) {
+  SEMA_LOG();
   TemplateInstantiator Instantiator(*this, TemplateArgs,
                                     SourceLocation(),
                                     DeclarationName());
@@ -3132,6 +3159,7 @@ ExprResult Sema::SubstInitializer(Expr *Init,
 bool Sema::SubstExprs(ArrayRef<Expr *> Exprs, bool IsCall,
                       const MultiLevelTemplateArgumentList &TemplateArgs,
                       SmallVectorImpl<Expr *> &Outputs) {
+  SEMA_LOG();
   if (Exprs.empty())
     return false;
 
@@ -3145,6 +3173,7 @@ bool Sema::SubstExprs(ArrayRef<Expr *> Exprs, bool IsCall,
 NestedNameSpecifierLoc
 Sema::SubstNestedNameSpecifierLoc(NestedNameSpecifierLoc NNS,
                         const MultiLevelTemplateArgumentList &TemplateArgs) {
+  SEMA_LOG();
   if (!NNS)
     return NestedNameSpecifierLoc();
 
@@ -3157,6 +3186,7 @@ Sema::SubstNestedNameSpecifierLoc(NestedNameSpecifierLoc NNS,
 DeclarationNameInfo
 Sema::SubstDeclarationNameInfo(const DeclarationNameInfo &NameInfo,
                          const MultiLevelTemplateArgumentList &TemplateArgs) {
+  SEMA_LOG();
   TemplateInstantiator Instantiator(*this, TemplateArgs, NameInfo.getLoc(),
                                     NameInfo.getName());
   return Instantiator.TransformDeclarationNameInfo(NameInfo);
@@ -3166,6 +3196,7 @@ TemplateName
 Sema::SubstTemplateName(NestedNameSpecifierLoc QualifierLoc,
                         TemplateName Name, SourceLocation Loc,
                         const MultiLevelTemplateArgumentList &TemplateArgs) {
+  SEMA_LOG();
   TemplateInstantiator Instantiator(*this, TemplateArgs, Loc,
                                     DeclarationName());
   CXXScopeSpec SS;
@@ -3176,6 +3207,7 @@ Sema::SubstTemplateName(NestedNameSpecifierLoc QualifierLoc,
 bool Sema::Subst(const TemplateArgumentLoc *Args, unsigned NumArgs,
                  TemplateArgumentListInfo &Result,
                  const MultiLevelTemplateArgumentList &TemplateArgs) {
+  SEMA_LOG();
   TemplateInstantiator Instantiator(*this, TemplateArgs, SourceLocation(),
                                     DeclarationName());
 

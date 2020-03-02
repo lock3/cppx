@@ -242,6 +242,7 @@ CXXRecordDecl *Sema::createLambdaClosureType(SourceRange IntroducerRange,
                                              TypeSourceInfo *Info,
                                              bool KnownDependent,
                                              LambdaCaptureDefault CaptureDefault) {
+  SEMA_LOG();
   DeclContext *DC = CurContext;
   while (!(DC->isFunctionOrMethod() || DC->isRecord() || DC->isFileContext()))
     DC = DC->getParent();
@@ -274,6 +275,7 @@ static bool isInInlineFunction(const DeclContext *DC) {
 
 std::tuple<MangleNumberingContext *, Decl *>
 Sema::getCurrentMangleNumberContext(const DeclContext *DC) {
+  SEMA_LOG();
   // Compute the context for allocating mangling numbers in the current
   // expression, if the ABI requires them.
   Decl *ManglingContextDecl = ExprEvalContexts.back().ManglingContextDecl;
@@ -362,6 +364,7 @@ CXXMethodDecl *Sema::startLambdaDefinition(CXXRecordDecl *Class,
                                            SourceLocation EndLoc,
                                            ArrayRef<ParmVarDecl *> Params,
                                            ConstexprSpecKind ConstexprKind) {
+  SEMA_LOG();
   QualType MethodType = MethodTypeInfo->getType();
   TemplateParameterList *TemplateParams =
       getGenericLambdaTemplateParameterList(getCurLambda(), *this);
@@ -432,6 +435,7 @@ CXXMethodDecl *Sema::startLambdaDefinition(CXXRecordDecl *Class,
 void Sema::handleLambdaNumbering(
     CXXRecordDecl *Class, CXXMethodDecl *Method,
     Optional<std::tuple<unsigned, bool, Decl *>> Mangling) {
+  SEMA_LOG();
   if (Mangling) {
     unsigned ManglingNumber;
     bool HasKnownInternalLinkage;
@@ -486,6 +490,7 @@ void Sema::buildLambdaScope(LambdaScopeInfo *LSI,
                                         bool ExplicitParams,
                                         bool ExplicitResultType,
                                         bool Mutable) {
+  SEMA_LOG();
   LSI->CallOperator = CallOperator;
   CXXRecordDecl *LambdaClass = CallOperator->getParent();
   LSI->Lambda = LambdaClass;
@@ -514,12 +519,14 @@ void Sema::buildLambdaScope(LambdaScopeInfo *LSI,
 }
 
 void Sema::finishLambdaExplicitCaptures(LambdaScopeInfo *LSI) {
+  SEMA_LOG();
   LSI->finishedExplicitCaptures();
 }
 
 void Sema::ActOnLambdaExplicitTemplateParameterList(SourceLocation LAngleLoc,
                                                     ArrayRef<NamedDecl *> TParams,
                                                     SourceLocation RAngleLoc) {
+  SEMA_LOG();
   LambdaScopeInfo *LSI = getCurLambda();
   assert(LSI && "Expected a lambda scope");
   assert(LSI->NumExplicitTemplateParams == 0 &&
@@ -537,6 +544,7 @@ void Sema::ActOnLambdaExplicitTemplateParameterList(SourceLocation LAngleLoc,
 void Sema::addLambdaParameters(
     ArrayRef<LambdaIntroducer::LambdaCapture> Captures,
     CXXMethodDecl *CallOperator, Scope *CurScope) {
+  SEMA_LOG();
   // Introduce our parameters into the function scope
   for (unsigned p = 0, NumParams = CallOperator->getNumParams();
        p < NumParams; ++p) {
@@ -690,6 +698,7 @@ static void adjustBlockReturnsToEnum(Sema &S, ArrayRef<ReturnStmt*> returns,
 }
 
 void Sema::deduceClosureReturnType(CapturingScopeInfo &CSI) {
+  SEMA_LOG();
   assert(CSI.HasImplicitReturnType);
   // If it was ever a placeholder, it had to been deduced to DependentTy.
   assert(CSI.ReturnType.isNull() || !CSI.ReturnType->isUndeducedType());
@@ -786,6 +795,7 @@ QualType Sema::buildLambdaInitCaptureInitialization(
     SourceLocation Loc, bool ByRef, SourceLocation EllipsisLoc,
     Optional<unsigned> NumExpansions, IdentifierInfo *Id, bool IsDirectInit,
     Expr *&Init) {
+  SEMA_LOG();
   // Create an 'auto' or 'auto&' TypeSourceInfo that we can use to
   // deduce against.
   QualType DeductType = Context.getAutoDeductType();
@@ -851,6 +861,7 @@ VarDecl *Sema::createLambdaInitCaptureVarDecl(SourceLocation Loc,
                                               SourceLocation EllipsisLoc,
                                               IdentifierInfo *Id,
                                               unsigned InitStyle, Expr *Init) {
+  SEMA_LOG();
   // FIXME: Retain the TypeSourceInfo from buildLambdaInitCaptureInitialization
   // rather than reconstructing it here.
   TypeSourceInfo *TSI = Context.getTrivialTypeSourceInfo(InitCaptureType, Loc);
@@ -875,6 +886,7 @@ VarDecl *Sema::createLambdaInitCaptureVarDecl(SourceLocation Loc,
 }
 
 void Sema::addInitCapture(LambdaScopeInfo *LSI, VarDecl *Var) {
+  SEMA_LOG();
   assert(Var->isInitCapture() && "init capture flag should be set");
   LSI->addCapture(Var, /*isBlock*/false, Var->getType()->isReferenceType(),
                   /*isNested*/false, Var->getLocation(), SourceLocation(),
@@ -884,6 +896,7 @@ void Sema::addInitCapture(LambdaScopeInfo *LSI, VarDecl *Var) {
 void Sema::ActOnStartOfLambdaDefinition(LambdaIntroducer &Intro,
                                         Declarator &ParamInfo,
                                         Scope *CurScope) {
+  SEMA_LOG();
   LambdaScopeInfo *const LSI = getCurLambda();
   assert(LSI && "LambdaScopeInfo should be on stack!");
 
@@ -1236,6 +1249,7 @@ void Sema::ActOnStartOfLambdaDefinition(LambdaIntroducer &Intro,
 
 void Sema::ActOnLambdaError(SourceLocation StartLoc, Scope *CurScope,
                             bool IsInstantiation) {
+  SEMA_LOG();
   LambdaScopeInfo *LSI = cast<LambdaScopeInfo>(FunctionScopes.back());
 
   // Leave the expression-evaluation context.
@@ -1259,6 +1273,7 @@ void Sema::ActOnLambdaError(SourceLocation StartLoc, Scope *CurScope,
 
 QualType Sema::getLambdaConversionFunctionResultType(
     const FunctionProtoType *CallOpProto) {
+  SEMA_LOG();
   // The function type inside the pointer type is the same as the call
   // operator with some tweaks. The calling convention is the default free
   // function convention, and the type qualifications are lost.
@@ -1471,6 +1486,7 @@ static void addBlockPointerConversion(Sema &S,
 ExprResult Sema::BuildCaptureInit(const Capture &Cap,
                                   SourceLocation ImplicitCaptureLoc,
                                   bool IsOpenMPMapping) {
+  SEMA_LOG();
   // VLA captures don't have a stored initialization expression.
   if (Cap.isVLATypeCapture())
     return ExprResult();
@@ -1534,6 +1550,7 @@ ExprResult Sema::BuildCaptureInit(const Capture &Cap,
 
 ExprResult Sema::ActOnLambdaExpr(SourceLocation StartLoc, Stmt *Body,
                                  Scope *CurScope) {
+  SEMA_LOG();
   LambdaScopeInfo LSI = *cast<LambdaScopeInfo>(FunctionScopes.back());
   ActOnFinishFunctionBody(LSI.CallOperator, Body);
   return BuildLambdaExpr(StartLoc, Body->getEndLoc(), &LSI);
@@ -1556,6 +1573,7 @@ mapImplicitCaptureStyle(CapturingScopeInfo::ImplicitCaptureStyle ICS) {
 }
 
 bool Sema::CaptureHasSideEffects(const Capture &From) {
+  SEMA_LOG();
   if (From.isInitCapture()) {
     Expr *Init = From.getVariable()->getInit();
     Expr::EvalContext EvalCtx(Context, GetReflectionCallbackObj());
@@ -1583,6 +1601,7 @@ bool Sema::CaptureHasSideEffects(const Capture &From) {
 
 bool Sema::DiagnoseUnusedLambdaCapture(SourceRange CaptureRange,
                                        const Capture &From) {
+  SEMA_LOG();
   if (CaptureHasSideEffects(From))
     return false;
 
@@ -1603,6 +1622,7 @@ bool Sema::DiagnoseUnusedLambdaCapture(SourceRange CaptureRange,
 /// given capture.
 FieldDecl *Sema::BuildCaptureField(RecordDecl *RD,
                                    const sema::Capture &Capture) {
+  SEMA_LOG();
   SourceLocation Loc = Capture.getLocation();
   QualType FieldType = Capture.getCaptureType();
 
@@ -1649,6 +1669,7 @@ FieldDecl *Sema::BuildCaptureField(RecordDecl *RD,
 
 ExprResult Sema::BuildLambdaExpr(SourceLocation StartLoc, SourceLocation EndLoc,
                                  LambdaScopeInfo *LSI) {
+  SEMA_LOG();
   // Collect information from the lambda scope.
   SmallVector<LambdaCapture, 4> Captures;
   SmallVector<Expr *, 4> CaptureInits;
@@ -1865,6 +1886,7 @@ ExprResult Sema::BuildBlockForLambdaConversion(SourceLocation CurrentLocation,
                                                SourceLocation ConvLocation,
                                                CXXConversionDecl *Conv,
                                                Expr *Src) {
+  SEMA_LOG();
   // Make sure that the lambda call operator is marked used.
   CXXRecordDecl *Lambda = Conv->getParent();
   CXXMethodDecl *CallOperator

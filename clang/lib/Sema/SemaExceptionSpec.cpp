@@ -40,6 +40,7 @@ static const FunctionProtoType *GetUnderlyingFunction(QualType T)
 /// specification of that function. This function detects whether we're in
 /// such a case and turns off delay-parsing of exception specifications.
 bool Sema::isLibstdcxxEagerExceptionSpecHack(const Declarator &D) {
+  SEMA_LOG();
   auto *RD = dyn_cast<CXXRecordDecl>(CurContext);
 
   // All the problem cases are member functions named "swap" within class
@@ -79,6 +80,7 @@ bool Sema::isLibstdcxxEagerExceptionSpecHack(const Declarator &D) {
 ExprResult Sema::ActOnNoexceptSpec(SourceLocation NoexceptLoc,
                                    Expr *NoexceptExpr,
                                    ExceptionSpecificationType &EST) {
+  SEMA_LOG();
   // FIXME: This is bogus, a noexcept expression is not a condition.
   ExprResult Converted = CheckBooleanCondition(NoexceptLoc, NoexceptExpr);
   if (Converted.isInvalid())
@@ -106,6 +108,7 @@ ExprResult Sema::ActOnNoexceptSpec(SourceLocation NoexceptLoc,
 /// \param[in,out] T  The exception type. This will be decayed to a pointer type
 ///                   when the input is an array or a function type.
 bool Sema::CheckSpecifiedExceptionType(QualType &T, SourceRange Range) {
+  SEMA_LOG();
   // C++11 [except.spec]p2:
   //   A type cv T, "array of T", or "function returning T" denoted
   //   in an exception-specification is adjusted to type T, "pointer to T", or
@@ -166,6 +169,7 @@ bool Sema::CheckSpecifiedExceptionType(QualType &T, SourceRange Range) {
 /// to member to a function with an exception specification. This means that
 /// it is invalid to add another level of indirection.
 bool Sema::CheckDistantExceptionSpec(QualType T) {
+  SEMA_LOG();
   // C++17 removes this rule in favor of putting exception specifications into
   // the type system.
   if (getLangOpts().CPlusPlus17)
@@ -187,6 +191,7 @@ bool Sema::CheckDistantExceptionSpec(QualType T) {
 
 const FunctionProtoType *
 Sema::ResolveExceptionSpec(SourceLocation Loc, const FunctionProtoType *FPT) {
+  SEMA_LOG();
   if (FPT->getExceptionSpecType() == EST_Unparsed) {
     Diag(Loc, diag::err_exception_spec_not_parsed);
     return nullptr;
@@ -221,6 +226,7 @@ Sema::ResolveExceptionSpec(SourceLocation Loc, const FunctionProtoType *FPT) {
 void
 Sema::UpdateExceptionSpec(FunctionDecl *FD,
                           const FunctionProtoType::ExceptionSpecInfo &ESI) {
+  SEMA_LOG();                            
   // If we've fully resolved the exception specification, notify listeners.
   if (!isUnresolvedExceptionSpec(ESI.Type))
     if (auto *Listener = getASTMutationListener())
@@ -269,6 +275,7 @@ static bool hasImplicitExceptionSpec(FunctionDecl *Decl) {
 }
 
 bool Sema::CheckEquivalentExceptionSpec(FunctionDecl *Old, FunctionDecl *New) {
+  SEMA_LOG();
   // Just completely ignore this under -fno-exceptions prior to C++17.
   // In C++17 onwards, the exception specification is part of the type and
   // we will diagnose mismatches anyway, so it's better to check for them here.
@@ -469,6 +476,7 @@ bool Sema::CheckEquivalentExceptionSpec(FunctionDecl *Old, FunctionDecl *New) {
 bool Sema::CheckEquivalentExceptionSpec(
     const FunctionProtoType *Old, SourceLocation OldLoc,
     const FunctionProtoType *New, SourceLocation NewLoc) {
+  SEMA_LOG();
   if (!getLangOpts().CXXExceptions)
     return false;
 
@@ -648,6 +656,7 @@ bool Sema::CheckEquivalentExceptionSpec(const PartialDiagnostic &DiagID,
                                         SourceLocation OldLoc,
                                         const FunctionProtoType *New,
                                         SourceLocation NewLoc) {
+  SEMA_LOG();
   if (!getLangOpts().CXXExceptions)
     return false;
   return CheckEquivalentExceptionSpecImpl(*this, DiagID, NoteID, Old, OldLoc,
@@ -655,6 +664,7 @@ bool Sema::CheckEquivalentExceptionSpec(const PartialDiagnostic &DiagID,
 }
 
 bool Sema::handlerCanCatch(QualType HandlerType, QualType ExceptionType) {
+  SEMA_LOG();
   // [except.handle]p3:
   //   A handler is a match for an exception object of type E if:
 
@@ -749,7 +759,7 @@ bool Sema::CheckExceptionSpecSubset(const PartialDiagnostic &DiagID,
                                     SourceLocation SuperLoc,
                                     const FunctionProtoType *Subset,
                                     SourceLocation SubLoc) {
-
+  SEMA_LOG();
   // Just auto-succeed under -fno-exceptions.
   if (!getLangOpts().CXXExceptions)
     return false;
@@ -872,6 +882,7 @@ bool Sema::CheckParamExceptionSpec(const PartialDiagnostic &DiagID,
                                    SourceLocation TargetLoc,
                                    const FunctionProtoType *Source,
                                    SourceLocation SourceLoc) {
+  SEMA_LOG();
   auto RetDiag = DiagID;
   RetDiag << 0;
   if (CheckSpecForTypesEquivalent(
@@ -897,6 +908,7 @@ bool Sema::CheckParamExceptionSpec(const PartialDiagnostic &DiagID,
 }
 
 bool Sema::CheckExceptionSpecCompatibility(Expr *From, QualType ToType) {
+  SEMA_LOG();
   // First we check for applicability.
   // Target type must be a function, function pointer or function reference.
   const FunctionProtoType *ToFunc = GetUnderlyingFunction(ToType);
@@ -938,6 +950,7 @@ bool Sema::CheckExceptionSpecCompatibility(Expr *From, QualType ToType) {
 
 bool Sema::CheckOverridingFunctionExceptionSpec(const CXXMethodDecl *New,
                                                 const CXXMethodDecl *Old) {
+  SEMA_LOG();
   // If the new exception specification hasn't been parsed yet, skip the check.
   // We'll get called again once it's been parsed.
   if (New->getType()->castAs<FunctionProtoType>()->getExceptionSpecType() ==
@@ -1102,6 +1115,7 @@ static CanThrowResult canTypeidThrow(Sema &S, const CXXTypeidExpr *DC) {
 }
 
 CanThrowResult Sema::canThrow(const Stmt *S) {
+  SEMA_LOG();
   // C++ [expr.unary.noexcept]p3:
   //   [Can throw] if in a potentially-evaluated context the expression would
   //   contain:

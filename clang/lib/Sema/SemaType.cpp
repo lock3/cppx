@@ -1041,6 +1041,7 @@ QualType Sema::BuildObjCTypeParamType(const ObjCTypeParamDecl *Decl,
                                       ArrayRef<SourceLocation> ProtocolLocs,
                                       SourceLocation ProtocolRAngleLoc,
                                       bool FailOnError) {
+  SEMA_LOG();
   QualType Result = QualType(Decl->getTypeForDecl(), 0);
   if (!Protocols.empty()) {
     bool HasError;
@@ -1068,6 +1069,7 @@ QualType Sema::BuildObjCObjectType(QualType BaseType,
                                    ArrayRef<SourceLocation> ProtocolLocs,
                                    SourceLocation ProtocolRAngleLoc,
                                    bool FailOnError) {
+  SEMA_LOG();
   QualType Result = BaseType;
   if (!TypeArgs.empty()) {
     Result = applyObjCTypeArgs(*this, Loc, Result, TypeArgs,
@@ -1099,6 +1101,7 @@ TypeResult Sema::actOnObjCProtocolQualifierType(
              ArrayRef<Decl *> protocols,
              ArrayRef<SourceLocation> protocolLocs,
              SourceLocation rAngleLoc) {
+  SEMA_LOG();
   // Form id<protocol-list>.
   QualType Result = Context.getObjCObjectType(
                       Context.ObjCBuiltinIdTy, { },
@@ -1144,6 +1147,7 @@ TypeResult Sema::actOnObjCTypeArgsAndProtocolQualifiers(
              ArrayRef<Decl *> Protocols,
              ArrayRef<SourceLocation> ProtocolLocs,
              SourceLocation ProtocolRAngleLoc) {
+  SEMA_LOG();
   TypeSourceInfo *BaseTypeInfo = nullptr;
   QualType T = GetTypeFromParser(BaseType, &BaseTypeInfo);
   if (T.isNull())
@@ -1766,6 +1770,7 @@ static std::string getPrintableNameForEntity(DeclarationName Entity) {
 
 QualType Sema::BuildQualifiedType(QualType T, SourceLocation Loc,
                                   Qualifiers Qs, const DeclSpec *DS) {
+  SEMA_LOG();
   if (T.isNull())
     return QualType();
 
@@ -1813,6 +1818,7 @@ QualType Sema::BuildQualifiedType(QualType T, SourceLocation Loc,
 
 QualType Sema::BuildQualifiedType(QualType T, SourceLocation Loc,
                                   unsigned CVRAU, const DeclSpec *DS) {
+  SEMA_LOG();
   if (T.isNull())
     return QualType();
 
@@ -1857,6 +1863,7 @@ QualType Sema::BuildQualifiedType(QualType T, SourceLocation Loc,
 
 /// Build a paren type including \p T.
 QualType Sema::BuildParenType(QualType T) {
+  SEMA_LOG();
   return Context.getParenType(T);
 }
 
@@ -1966,6 +1973,7 @@ static bool checkQualifiedFunction(Sema &S, QualType T, SourceLocation Loc,
 }
 
 bool Sema::CheckQualifiedFunctionForTypeId(QualType T, SourceLocation Loc) {
+  SEMA_LOG();
   const FunctionProtoType *FPT = T->getAs<FunctionProtoType>();
   if (!FPT ||
       (FPT->getMethodQuals().empty() && FPT->getRefQualifier() == RQ_None))
@@ -2004,6 +2012,7 @@ static QualType deduceOpenCLPointeeAddrSpace(Sema &S, QualType PointeeType) {
 /// errors. Otherwise, returns a NULL type.
 QualType Sema::BuildPointerType(QualType T,
                                 SourceLocation Loc, DeclarationName Entity) {
+  SEMA_LOG();
   if (T->isReferenceType()) {
     // C++ 8.3.2p4: There shall be no ... pointers to references ...
     Diag(Loc, diag::err_illegal_decl_pointer_to_reference)
@@ -2048,6 +2057,7 @@ QualType Sema::BuildPointerType(QualType T,
 QualType Sema::BuildReferenceType(QualType T, bool SpelledAsLValue,
                                   SourceLocation Loc,
                                   DeclarationName Entity) {
+  SEMA_LOG();
   assert(Context.getCanonicalType(T) != Context.OverloadTy &&
          "Unresolved overloaded function type");
 
@@ -2106,6 +2116,7 @@ QualType Sema::BuildReferenceType(QualType T, bool SpelledAsLValue,
 /// \returns A suitable pipe type, if there are no errors. Otherwise, returns a
 /// NULL type.
 QualType Sema::BuildReadPipeType(QualType T, SourceLocation Loc) {
+  SEMA_LOG();
   return Context.getReadPipeType(T);
 }
 
@@ -2118,6 +2129,7 @@ QualType Sema::BuildReadPipeType(QualType T, SourceLocation Loc) {
 /// \returns A suitable pipe type, if there are no errors. Otherwise, returns a
 /// NULL type.
 QualType Sema::BuildWritePipeType(QualType T, SourceLocation Loc) {
+  SEMA_LOG();
   return Context.getWritePipeType(T);
 }
 
@@ -2161,7 +2173,7 @@ static bool isArraySizeVLA(Sema &S, Expr *ArraySize, llvm::APSInt &SizeVal) {
 QualType Sema::BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
                               Expr *ArraySize, unsigned Quals,
                               SourceRange Brackets, DeclarationName Entity) {
-
+  SEMA_LOG();
   SourceLocation Loc = Brackets.getBegin();
   if (getLangOpts().CPlusPlus) {
     // C++ [dcl.array]p1:
@@ -2367,6 +2379,7 @@ QualType Sema::BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
 
 QualType Sema::BuildVectorType(QualType CurType, Expr *SizeExpr,
                                SourceLocation AttrLoc) {
+  SEMA_LOG();
   // The base type must be integer (not Boolean or enumeration) or float, and
   // can't already be a vector.
   if (!CurType->isDependentType() &&
@@ -2423,6 +2436,7 @@ QualType Sema::BuildVectorType(QualType CurType, Expr *SizeExpr,
 /// Run the required checks for the extended vector type.
 QualType Sema::BuildExtVectorType(QualType T, Expr *ArraySize,
                                   SourceLocation AttrLoc) {
+  SEMA_LOG();
   // Unlike gcc's vector_size attribute, we do not allow vectors to be defined
   // in conjunction with complex types (pointers, arrays, functions, etc.).
   //
@@ -2470,6 +2484,7 @@ QualType Sema::BuildExtVectorType(QualType T, Expr *ArraySize,
 }
 
 bool Sema::CheckFunctionReturnType(QualType T, SourceLocation Loc) {
+  SEMA_LOG();
   if (T->isArrayType() || T->isFunctionType()) {
     Diag(Loc, diag::err_func_returning_array_function)
       << T->isFunctionType() << T;
@@ -2564,6 +2579,7 @@ QualType Sema::BuildFunctionType(QualType T,
                                  MutableArrayRef<QualType> ParamTypes,
                                  SourceLocation Loc, DeclarationName Entity,
                                  const FunctionProtoType::ExtProtoInfo &EPI) {
+  SEMA_LOG();
   bool Invalid = false;
 
   Invalid |= CheckFunctionReturnType(T, Loc);
@@ -2617,6 +2633,7 @@ QualType Sema::BuildFunctionType(QualType T,
 QualType Sema::BuildMemberPointerType(QualType T, QualType Class,
                                       SourceLocation Loc,
                                       DeclarationName Entity) {
+  SEMA_LOG();
   // Verify that we're not building a pointer to pointer to function with
   // exception specification.
   if (CheckDistantExceptionSpec(T)) {
@@ -2668,6 +2685,7 @@ QualType Sema::BuildMemberPointerType(QualType T, QualType Class,
 QualType Sema::BuildBlockPointerType(QualType T,
                                      SourceLocation Loc,
                                      DeclarationName Entity) {
+  SEMA_LOG();
   if (!T->isFunctionType()) {
     Diag(Loc, diag::err_nonfunction_block_type);
     return QualType();
@@ -2683,6 +2701,7 @@ QualType Sema::BuildBlockPointerType(QualType T,
 }
 
 QualType Sema::GetTypeFromParser(ParsedType Ty, TypeSourceInfo **TInfo) {
+  SEMA_LOG();
   QualType QT = Ty.get();
   if (QT.isNull()) {
     if (TInfo) *TInfo = nullptr;
@@ -2809,6 +2828,7 @@ void Sema::diagnoseIgnoredQualifiers(unsigned DiagID, unsigned Quals,
                                      SourceLocation RestrictQualLoc,
                                      SourceLocation AtomicQualLoc,
                                      SourceLocation UnalignedQualLoc) {
+  SEMA_LOG();
   if (!Quals)
     return;
 
@@ -3557,6 +3577,7 @@ namespace {
 } // end anonymous namespace
 
 IdentifierInfo *Sema::getNullabilityKeyword(NullabilityKind nullability) {
+  SEMA_LOG();
   switch (nullability) {
   case NullabilityKind::NonNull:
     if (!Ident__Nonnull)
@@ -3578,6 +3599,7 @@ IdentifierInfo *Sema::getNullabilityKeyword(NullabilityKind nullability) {
 
 /// Retrieve the identifier "NSError".
 IdentifierInfo *Sema::getNSErrorIdent() {
+  SEMA_LOG();
   if (!Ident_NSError)
     Ident_NSError = PP.getIdentifierInfo("NSError");
 
@@ -5312,6 +5334,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
 /// The result of this call will never be null, but the associated
 /// type may be a null type if there's an unrecoverable error.
 TypeSourceInfo *Sema::GetTypeForDeclarator(Declarator &D, Scope *S) {
+  SEMA_LOG();
   // Determine the type of the declarator. Not all forms of declarator
   // have a type.
 
@@ -5425,6 +5448,7 @@ static void transferARCOwnership(TypeProcessingState &state,
 }
 
 TypeSourceInfo *Sema::GetTypeForDeclaratorCast(Declarator &D, QualType FromTy) {
+  SEMA_LOG();
   TypeProcessingState state(*this, D);
 
   TypeSourceInfo *ReturnTypeInfo = nullptr;
@@ -5858,6 +5882,7 @@ GetTypeSourceInfoForDeclarator(TypeProcessingState &State,
 
 /// Create a LocInfoType to hold the given QualType and TypeSourceInfo.
 ParsedType Sema::CreateParsedType(QualType T, TypeSourceInfo *TInfo) {
+  SEMA_LOG();
   // FIXME: LocInfoTypes are "transient", only needed for passing to/from Parser
   // and Sema during declaration parsing. Try deallocating/caching them when
   // it's appropriate, instead of allocating them and keeping them around.
@@ -5877,6 +5902,7 @@ void LocInfoType::getAsStringInternal(std::string &Str,
 }
 
 TypeResult Sema::ActOnTypeName(Scope *S, Declarator &D) {
+  SEMA_LOG();
   // C99 6.7.6: Type names have no identifier.  This is already validated by
   // the parser.
   assert(D.getIdentifier() == nullptr &&
@@ -5906,6 +5932,7 @@ TypeResult Sema::ActOnTypeName(Scope *S, Declarator &D) {
 }
 
 ParsedType Sema::ActOnObjCInstanceType(SourceLocation Loc) {
+  SEMA_LOG();
   QualType T = Context.getObjCInstanceType();
   TypeSourceInfo *TInfo = Context.getTrivialTypeSourceInfo(T, Loc);
   return CreateParsedType(T, TInfo);
@@ -5966,6 +5993,7 @@ static bool BuildAddressSpaceIndex(Sema &S, LangAS &ASIdx,
 /// used in conjunction with the address_space attribute
 QualType Sema::BuildAddressSpaceAttr(QualType &T, LangAS ASIdx, Expr *AddrSpace,
                                      SourceLocation AttrLoc) {
+  SEMA_LOG();
   if (!AddrSpace->isValueDependent()) {
     if (DiagnoseMultipleAddrSpaceAttributes(*this, T.getAddressSpace(), ASIdx,
                                             AttrLoc))
@@ -5989,6 +6017,7 @@ QualType Sema::BuildAddressSpaceAttr(QualType &T, LangAS ASIdx, Expr *AddrSpace,
 
 QualType Sema::BuildAddressSpaceAttr(QualType &T, Expr *AddrSpace,
                                      SourceLocation AttrLoc) {
+  SEMA_LOG();
   LangAS ASIdx;
   if (!BuildAddressSpaceIndex(*this, ASIdx, AddrSpace, AttrLoc))
     return QualType();
@@ -7127,6 +7156,7 @@ static bool handleFunctionTypeAttr(TypeProcessingState &state, ParsedAttr &attr,
 }
 
 bool Sema::hasExplicitCallingConv(QualType T) {
+  SEMA_LOG();
   const AttributedType *AT;
 
   // Stop if we'd be stripping off a typedef sugar node to reach the
@@ -7142,6 +7172,7 @@ bool Sema::hasExplicitCallingConv(QualType T) {
 
 void Sema::adjustMemberFunctionCC(QualType &T, bool IsStatic, bool IsCtorOrDtor,
                                   SourceLocation Loc) {
+  SEMA_LOG();
   FunctionTypeUnwrapper Unwrapped(*this, T);
   const FunctionType *FT = Unwrapped.get();
   bool IsVariadic = (isa<FunctionProtoType>(FT) &&
@@ -7681,6 +7712,7 @@ static void processTypeAttrs(TypeProcessingState &state, QualType &type,
 }
 
 void Sema::completeExprArrayBound(Expr *E) {
+  SEMA_LOG();
   if (DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E->IgnoreParens())) {
     if (VarDecl *Var = dyn_cast<VarDecl>(DRE->getDecl())) {
       if (isTemplateInstantiation(Var->getTemplateSpecializationKind())) {
@@ -7739,6 +7771,7 @@ void Sema::completeExprArrayBound(Expr *E) {
 /// \returns \c true if the type of \p E is incomplete and diagnosed, \c false
 /// otherwise.
 bool Sema::RequireCompleteExprType(Expr *E, TypeDiagnoser &Diagnoser) {
+  SEMA_LOG();
   QualType T = E->getType();
 
   // Incomplete array types may be completed by the initializer attached to
@@ -7757,6 +7790,7 @@ bool Sema::RequireCompleteExprType(Expr *E, TypeDiagnoser &Diagnoser) {
 }
 
 bool Sema::RequireCompleteExprType(Expr *E, unsigned DiagID) {
+  SEMA_LOG();
   BoundTypeDiagnoser<> Diagnoser(DiagID);
   return RequireCompleteExprType(E, Diagnoser);
 }
@@ -7780,6 +7814,7 @@ bool Sema::RequireCompleteExprType(Expr *E, unsigned DiagID) {
 /// @c false otherwise.
 bool Sema::RequireCompleteType(SourceLocation Loc, QualType T,
                                TypeDiagnoser &Diagnoser) {
+  SEMA_LOG();
   if (RequireCompleteTypeImpl(Loc, T, &Diagnoser))
     return true;
   if (const TagType *Tag = T->getAs<TagType>()) {
@@ -7792,6 +7827,7 @@ bool Sema::RequireCompleteType(SourceLocation Loc, QualType T,
 }
 
 bool Sema::hasStructuralCompatLayout(Decl *D, Decl *Suggested) {
+  SEMA_LOG();
   llvm::DenseSet<std::pair<Decl *, Decl *>> NonEquivalentDecls;
   if (!Suggested)
     return false;
@@ -7817,6 +7853,7 @@ bool Sema::hasStructuralCompatLayout(Decl *D, Decl *Suggested) {
 ///        is defined.
 bool Sema::hasVisibleDefinition(NamedDecl *D, NamedDecl **Suggested,
                                 bool OnlyNeedComplete) {
+  SEMA_LOG();
   // Easy case: if we don't have modules, all declarations are visible.
   if (!getLangOpts().Modules && !getLangOpts().ModulesLocalVisibility)
     return true;
@@ -7930,6 +7967,7 @@ static void assignInheritanceModel(Sema &S, CXXRecordDecl *RD) {
 /// The implementation of RequireCompleteType
 bool Sema::RequireCompleteTypeImpl(SourceLocation Loc, QualType T,
                                    TypeDiagnoser *Diagnoser) {
+  SEMA_LOG();
   // FIXME: Add this assertion to make sure we always get instantiation points.
   //  assert(!Loc.isInvalid() && "Invalid location in RequireCompleteType");
   // FIXME: Add this assertion to help us flush out problems with
@@ -8096,6 +8134,7 @@ bool Sema::RequireCompleteTypeImpl(SourceLocation Loc, QualType T,
 
 bool Sema::RequireCompleteType(SourceLocation Loc, QualType T,
                                unsigned DiagID) {
+  SEMA_LOG();
   BoundTypeDiagnoser<> Diagnoser(DiagID);
   return RequireCompleteType(Loc, T, Diagnoser);
 }
@@ -8134,6 +8173,7 @@ static unsigned getLiteralDiagFromTagKind(TagTypeKind Tag) {
 /// @c false otherwise.
 bool Sema::RequireLiteralType(SourceLocation Loc, QualType T,
                               TypeDiagnoser &Diagnoser) {
+  SEMA_LOG();
   assert(!T->isDependentType() && "type should not be dependent");
 
   QualType ElemType = Context.getBaseElementType(T);
@@ -8223,6 +8263,7 @@ bool Sema::RequireLiteralType(SourceLocation Loc, QualType T,
 }
 
 bool Sema::RequireLiteralType(SourceLocation Loc, QualType T, unsigned DiagID) {
+  SEMA_LOG();
   BoundTypeDiagnoser<> Diagnoser(DiagID);
   return RequireLiteralType(Loc, T, Diagnoser);
 }
@@ -8233,6 +8274,7 @@ bool Sema::RequireLiteralType(SourceLocation Loc, QualType T, unsigned DiagID) {
 QualType Sema::getElaboratedType(ElaboratedTypeKeyword Keyword,
                                  const CXXScopeSpec &SS, QualType T,
                                  TagDecl *OwnedTagDecl) {
+  SEMA_LOG();
   if (T.isNull())
     return T;
   NestedNameSpecifier *NNS;
@@ -8247,6 +8289,7 @@ QualType Sema::getElaboratedType(ElaboratedTypeKeyword Keyword,
 }
 
 QualType Sema::BuildTypeofExprType(Expr *E, SourceLocation Loc) {
+  SEMA_LOG();
   assert(!E->hasPlaceholderType() && "unexpected placeholder");
 
   if (!getLangOpts().CPlusPlus && E->refersToBitField())
@@ -8332,6 +8375,7 @@ static QualType getDecltypeForExpr(Sema &S, Expr *E) {
 
 QualType Sema::BuildDecltypeType(Expr *E, SourceLocation Loc,
                                  bool AsUnevaluated) {
+  SEMA_LOG();
   assert(!E->hasPlaceholderType() && "unexpected placeholder");
 
   Expr::EvalContext EvalCtx(Context, this->GetReflectionCallbackObj());
@@ -8348,6 +8392,7 @@ QualType Sema::BuildDecltypeType(Expr *E, SourceLocation Loc,
 QualType Sema::BuildUnaryTransformType(QualType BaseType,
                                        UnaryTransformType::UTTKind UKind,
                                        SourceLocation Loc) {
+  SEMA_LOG();
   switch (UKind) {
   case UnaryTransformType::EnumUnderlyingType:
     if (!BaseType->isDependentType() && !BaseType->isEnumeralType()) {
@@ -8381,6 +8426,7 @@ QualType Sema::BuildUnaryTransformType(QualType BaseType,
 }
 
 QualType Sema::BuildAtomicType(QualType T, SourceLocation Loc) {
+  SEMA_LOG();
   if (!T->isDependentType()) {
     // FIXME: It isn't entirely clear whether incomplete atomic types
     // are allowed or not; for simplicity, ban them for the moment.

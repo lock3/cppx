@@ -511,6 +511,7 @@ void Sema::InstantiateAttrsForDecl(
     const MultiLevelTemplateArgumentList &TemplateArgs, const Decl *Tmpl,
     Decl *New, LateInstantiatedAttrVec *LateAttrs,
     LocalInstantiationScope *OuterMostScope) {
+  SEMA_LOG();
   if (NamedDecl *ND = dyn_cast<NamedDecl>(New)) {
     for (const auto *TmplAttr : Tmpl->attrs()) {
       // FIXME: If any of the special case versions from InstantiateAttrs become
@@ -545,6 +546,7 @@ void Sema::InstantiateAttrs(const MultiLevelTemplateArgumentList &TemplateArgs,
                             const Decl *Tmpl, Decl *New,
                             LateInstantiatedAttrVec *LateAttrs,
                             LocalInstantiationScope *OuterMostScope) {
+  SEMA_LOG();
   for (const auto *TmplAttr : Tmpl->attrs()) {
     // FIXME: This should be generalized to more than just the AlignedAttr.
     const AlignedAttr *Aligned = dyn_cast<AlignedAttr>(TmplAttr);
@@ -3649,6 +3651,7 @@ Decl *TemplateDeclInstantiator::VisitDecl(Decl *D) {
 
 Decl *Sema::SubstDecl(Decl *D, DeclContext *Owner,
                       const MultiLevelTemplateArgumentList &TemplateArgs) {
+  SEMA_LOG();
   TemplateDeclInstantiator Instantiator(*this, Owner, TemplateArgs);
   if (D->isInvalidDecl())
     return nullptr;
@@ -3694,6 +3697,7 @@ void TemplateDeclInstantiator::adjustForRewrite(RewriteKind RK,
 
 FunctionDecl *Sema::SubstSpaceshipAsEqualEqual(CXXRecordDecl *RD,
                                                FunctionDecl *Spaceship) {
+  SEMA_LOG();
   if (Spaceship->isInvalidDecl())
     return nullptr;
 
@@ -3773,6 +3777,7 @@ TemplateDeclInstantiator::SubstTemplateParams(TemplateParameterList *L) {
 TemplateParameterList *
 Sema::SubstTemplateParams(TemplateParameterList *Params, DeclContext *Owner,
                           const MultiLevelTemplateArgumentList &TemplateArgs) {
+  SEMA_LOG();
   TemplateDeclInstantiator Instantiator(*this, Owner, TemplateArgs);
   return Instantiator.SubstTemplateParams(Params);
 }
@@ -4224,6 +4229,7 @@ static bool addInstantiatedParametersToScope(Sema &S, FunctionDecl *Function,
 
 void Sema::InstantiateExceptionSpec(SourceLocation PointOfInstantiation,
                                     FunctionDecl *Decl) {
+  SEMA_LOG();
   const FunctionProtoType *Proto = Decl->getType()->castAs<FunctionProtoType>();
   if (Proto->getExceptionSpecType() != EST_Uninstantiated)
     return;
@@ -4407,6 +4413,7 @@ FunctionDecl *
 Sema::InstantiateFunctionDeclaration(FunctionTemplateDecl *FTD,
                                      const TemplateArgumentList *Args,
                                      SourceLocation Loc) {
+  SEMA_LOG();
   FunctionDecl *FD = FTD->getTemplatedDecl();
 
   sema::TemplateDeductionInfo Info(Loc);
@@ -4465,6 +4472,7 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
                                          bool Recursive,
                                          bool DefinitionRequired,
                                          bool AtEndOfTU) {
+  SEMA_LOG();
   if (Function->isInvalidDecl() || Function->isDefined() ||
       isa<CXXDeductionGuideDecl>(Function))
     return;
@@ -4692,6 +4700,7 @@ VarTemplateSpecializationDecl *Sema::BuildVarTemplateInstantiation(
     SourceLocation PointOfInstantiation, void *InsertPos,
     LateInstantiatedAttrVec *LateAttrs,
     LocalInstantiationScope *StartingScope) {
+  SEMA_LOG();
   if (FromVar->isInvalidDecl())
     return nullptr;
 
@@ -4736,6 +4745,7 @@ VarTemplateSpecializationDecl *Sema::BuildVarTemplateInstantiation(
 VarTemplateSpecializationDecl *Sema::CompleteVarTemplateSpecializationDecl(
     VarTemplateSpecializationDecl *VarSpec, VarDecl *PatternDecl,
     const MultiLevelTemplateArgumentList &TemplateArgs) {
+  SEMA_LOG();
   assert(PatternDecl->isThisDeclarationADefinition() &&
          "don't have a definition to instantiate from");
 
@@ -4768,6 +4778,7 @@ void Sema::BuildVariableInstantiation(
     LocalInstantiationScope *StartingScope,
     bool InstantiatingVarTemplate,
     VarTemplateSpecializationDecl *PrevDeclForVarTemplateSpecialization) {
+  SEMA_LOG();
   // Instantiating a partial specialization to produce a partial
   // specialization.
   bool InstantiatingVarTemplatePartialSpec =
@@ -4895,6 +4906,7 @@ void Sema::BuildVariableInstantiation(
 void Sema::InstantiateVariableInitializer(
     VarDecl *Var, VarDecl *OldVar,
     const MultiLevelTemplateArgumentList &TemplateArgs) {
+  SEMA_LOG();
   if (ASTMutationListener *L = getASTContext().getASTMutationListener())
     L->VariableDefinitionInstantiated(Var);
 
@@ -4981,6 +4993,7 @@ void Sema::InstantiateVariableInitializer(
 void Sema::InstantiateVariableDefinition(SourceLocation PointOfInstantiation,
                                          VarDecl *Var, bool Recursive,
                                       bool DefinitionRequired, bool AtEndOfTU) {
+  SEMA_LOG();
   if (Var->isInvalidDecl())
     return;
 
@@ -5251,6 +5264,7 @@ void
 Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
                                  const CXXConstructorDecl *Tmpl,
                            const MultiLevelTemplateArgumentList &TemplateArgs) {
+  SEMA_LOG();
   SmallVector<CXXCtorInitializer*, 4> NewInits;
   bool AnyErrors = Tmpl->isInvalidDecl();
 
@@ -5616,6 +5630,7 @@ static NamedDecl *findInstantiationOf(ASTContext &Ctx,
 /// \returns NULL if there was an error
 DeclContext *Sema::FindInstantiatedContext(SourceLocation Loc, DeclContext* DC,
                           const MultiLevelTemplateArgumentList &TemplateArgs) {
+  SEMA_LOG();
   if (NamedDecl *D = dyn_cast<NamedDecl>(DC)) {
     Decl* ID = FindInstantiatedDecl(Loc, D, TemplateArgs, true);
     return cast_or_null<DeclContext>(ID);
@@ -5651,6 +5666,7 @@ DeclContext *Sema::FindInstantiatedContext(SourceLocation Loc, DeclContext* DC,
 NamedDecl *Sema::FindInstantiatedDecl(SourceLocation Loc, NamedDecl *D,
                           const MultiLevelTemplateArgumentList &TemplateArgs,
                           bool FindingInstantiatedContext) {
+  SEMA_LOG();
   DeclContext *ParentDC = D->getDeclContext();
   // FIXME: Parmeters of pointer to functions (y below) that are themselves
   // parameters (p below) can have their ParentDC set to the translation-unit
@@ -5964,6 +5980,7 @@ NamedDecl *Sema::FindInstantiatedDecl(SourceLocation Loc, NamedDecl *D,
 /// Performs template instantiation for all implicit template
 /// instantiations we have seen until this point.
 void Sema::PerformPendingInstantiations(bool LocalOnly) {
+  SEMA_LOG();
   while (!PendingLocalImplicitInstantiations.empty() ||
          (!LocalOnly && !PendingInstantiations.empty())) {
     PendingImplicitInstantiation Inst;

@@ -33,6 +33,7 @@ using namespace clang;
 using namespace sema;
 
 ParsedReflectionOperand Sema::ActOnReflectedType(TypeResult T) {
+  SEMA_LOG();
   // Cheat by funneling this back through template argument processing
   // because it's possible to end up with deduction guides.
   ParsedTemplateArgument Arg = ActOnTemplateTypeArgument(T);
@@ -44,6 +45,7 @@ ParsedReflectionOperand Sema::ActOnReflectedType(TypeResult T) {
 }
 
 ParsedReflectionOperand Sema::ActOnReflectedTemplate(ParsedTemplateArgument T) {
+  SEMA_LOG();
   assert(T.getKind() == ParsedTemplateArgument::Template);
   const CXXScopeSpec& SS = T.getScopeSpec();
   ParsedTemplateTy Temp = T.getAsTemplate();
@@ -54,10 +56,12 @@ ParsedReflectionOperand Sema::ActOnReflectedTemplate(ParsedTemplateArgument T) {
 ParsedReflectionOperand Sema::ActOnReflectedNamespace(CXXScopeSpec &SS,
                                                       SourceLocation &Loc,
                                                       Decl *D) {
+  SEMA_LOG();
   return ParsedReflectionOperand(SS, D, Loc);
 }
 
 ParsedReflectionOperand Sema::ActOnReflectedNamespace(SourceLocation Loc) {
+  SEMA_LOG();
   // Clang uses TUDecl in place of having a global namespace.
   return ParsedReflectionOperand(Context.getTranslationUnitDecl(), Loc);
 }
@@ -72,6 +76,7 @@ ExprResult Sema::ActOnCXXReflectExpr(SourceLocation Loc,
                                      ParsedReflectionOperand Ref,
                                      SourceLocation LP,
                                      SourceLocation RP) {
+  SEMA_LOG();
   // Translated the parsed reflection operand into an AST operand.
   switch (Ref.getKind()) {
   case ParsedReflectionOperand::Invalid:
@@ -109,46 +114,55 @@ ExprResult Sema::ActOnCXXReflectExpr(SourceLocation Loc,
 
 ExprResult Sema::BuildCXXReflectExpr(SourceLocation Loc, InvalidReflection *IR,
                                      SourceLocation LP, SourceLocation RP) {
+  SEMA_LOG();
   return CXXReflectExpr::Create(Context, Context.MetaInfoTy, Loc, IR, LP, RP);
 }
 
 ExprResult Sema::BuildCXXReflectExpr(SourceLocation Loc, QualType T,
                                      SourceLocation LP, SourceLocation RP) {
+  SEMA_LOG();
   return CXXReflectExpr::Create(Context, Context.MetaInfoTy, Loc, T, LP, RP);
 }
 
 ExprResult Sema::BuildCXXReflectExpr(SourceLocation Loc, TemplateName N,
                                      SourceLocation LP, SourceLocation RP) {
+  SEMA_LOG();
   return CXXReflectExpr::Create(Context, Context.MetaInfoTy, Loc, N, LP, RP);
 }
 
 ExprResult Sema::BuildCXXReflectExpr(SourceLocation Loc, NamespaceName N,
                                      SourceLocation LP, SourceLocation RP) {
+  SEMA_LOG();
   return CXXReflectExpr::Create(Context, Context.MetaInfoTy, Loc, N, LP, RP);
 }
 
 ExprResult Sema::BuildCXXReflectExpr(SourceLocation Loc, Expr *E,
                                      SourceLocation LP, SourceLocation RP) {
+  SEMA_LOG();
   return CXXReflectExpr::Create(Context, Context.MetaInfoTy, Loc, E, LP, RP);
 }
 
 ExprResult Sema::BuildCXXReflectExpr(SourceLocation Loc, Decl *D,
                                      SourceLocation LP, SourceLocation RP) {
+  SEMA_LOG();
   return CXXReflectExpr::Create(Context, Context.MetaInfoTy, Loc, D, LP, RP);
 }
 
 ExprResult Sema::BuildCXXReflectExpr(SourceLocation Loc, CXXBaseSpecifier *B,
                                      SourceLocation LP, SourceLocation RP) {
+  SEMA_LOG();
   return CXXReflectExpr::Create(Context, Context.MetaInfoTy, Loc, B, LP, RP);
 }
 
 ExprResult Sema::BuildInvalidCXXReflectExpr(SourceLocation Loc,
                                          SourceLocation LP, SourceLocation RP) {
+  SEMA_LOG();
   return CXXReflectExpr::CreateInvalid(Context, Context.MetaInfoTy, Loc,
                                        LP, RP);
 }
 
 ExprResult Sema::BuildCXXReflectExpr(APValue Reflection, SourceLocation Loc) {
+  SEMA_LOG();
   assert(Reflection.isReflection());
 
   switch (Reflection.getReflectionKind()) {
@@ -191,6 +205,7 @@ ExprResult Sema::BuildCXXReflectExpr(APValue Reflection, SourceLocation Loc) {
 ExprResult Sema::ActOnCXXInvalidReflectionExpr(Expr *MessageExpr,
                                                SourceLocation BuiltinLoc,
                                                SourceLocation RParenLoc) {
+  SEMA_LOG();
   if (DiagnoseUnexpandedParameterPack(MessageExpr))
     return ExprError();
 
@@ -211,6 +226,7 @@ static QualType DeduceCanonicalType(Sema &S, Expr *E) {
 ExprResult Sema::BuildCXXInvalidReflectionExpr(Expr *MessageExpr,
                                                SourceLocation BuiltinLoc,
                                                SourceLocation RParenLoc) {
+  SEMA_LOG();
   assert(MessageExpr != nullptr);
 
   ExprResult Converted = DefaultFunctionArrayLvalueConversion(MessageExpr);
@@ -366,6 +382,7 @@ ExprResult Sema::ActOnCXXReflectionReadQuery(SourceLocation KWLoc,
                                              SmallVectorImpl<Expr *> &Args,
                                              SourceLocation LParenLoc,
                                              SourceLocation RParenLoc) {
+  SEMA_LOG();
   if (CheckArgumentsPresent(*this, KWLoc, Args))
     return ExprError();
 
@@ -420,6 +437,7 @@ ExprResult Sema::ActOnCXXReflectionWriteQuery(SourceLocation KWLoc,
                                               SmallVectorImpl<Expr *> &Args,
                                               SourceLocation LParenLoc,
                                               SourceLocation RParenLoc) {
+  SEMA_LOG();
   if (CheckArgumentsPresent(*this, KWLoc, Args))
     return ExprError();
 
@@ -457,6 +475,7 @@ ExprResult Sema::ActOnCXXReflectPrintLiteral(SourceLocation KWLoc,
                                              SmallVectorImpl<Expr *> &Args,
                                              SourceLocation LParenLoc,
                                              SourceLocation RParenLoc) {
+  SEMA_LOG();
   if (HasDependentParts(Args))
     return new (Context) CXXReflectPrintLiteralExpr(
         Context, Context.DependentTy, Args, KWLoc, LParenLoc, RParenLoc);
@@ -495,6 +514,7 @@ ExprResult Sema::ActOnCXXReflectPrintReflection(SourceLocation KWLoc,
                                                 Expr *Reflection,
                                                 SourceLocation LParenLoc,
                                                 SourceLocation RParenLoc) {
+  SEMA_LOG();
   if (Reflection->isTypeDependent() || Reflection->isValueDependent())
     return new (Context) CXXReflectPrintReflectionExpr(
         Context, Context.DependentTy, Reflection, KWLoc, LParenLoc, RParenLoc);
@@ -514,6 +534,7 @@ ExprResult Sema::ActOnCXXReflectDumpReflection(SourceLocation KWLoc,
                                                Expr *Reflection,
                                                SourceLocation LParenLoc,
                                                SourceLocation RParenLoc) {
+  SEMA_LOG();
   if (Reflection->isTypeDependent() || Reflection->isValueDependent())
     return new (Context) CXXReflectDumpReflectionExpr(
         Context, Context.DependentTy, Reflection, KWLoc, LParenLoc, RParenLoc);
@@ -533,6 +554,7 @@ ExprResult Sema::ActOnCXXReflectDumpReflection(SourceLocation KWLoc,
 ExprResult Sema::ActOnCXXCompilerErrorExpr(Expr *MessageExpr,
                                            SourceLocation BuiltinLoc,
                                            SourceLocation RParenLoc) {
+  SEMA_LOG();
   if (DiagnoseUnexpandedParameterPack(MessageExpr))
     return ExprError();
 
@@ -543,6 +565,7 @@ ExprResult Sema::ActOnCXXCompilerErrorExpr(Expr *MessageExpr,
 ExprResult Sema::BuildCXXCompilerErrorExpr(Expr *MessageExpr,
                                            SourceLocation BuiltinLoc,
                                            SourceLocation RParenLoc) {
+  SEMA_LOG();
   assert(MessageExpr != nullptr);
 
   ExprResult Converted = DefaultFunctionArrayLvalueConversion(MessageExpr);
@@ -590,6 +613,7 @@ ExprResult Sema::ActOnCXXIdExprExpr(SourceLocation KWLoc,
                                     SourceLocation LParenLoc,
                                     SourceLocation RParenLoc,
                                     SourceLocation EllipsisLoc) {
+  SEMA_LOG();
   if (Refl->isTypeDependent() || Refl->isValueDependent())
     return new (Context) CXXIdExprExpr(Context.DependentTy, Refl, KWLoc,
                                        LParenLoc, LParenLoc);
@@ -999,6 +1023,7 @@ bool Sema::ActOnVariadicReifier(
     llvm::SmallVectorImpl<Expr *> &Expressions, SourceLocation KWLoc,
     IdentifierInfo *KW, Expr *Range, SourceLocation LParenLoc,
     SourceLocation EllipsisLoc, SourceLocation RParenLoc) {
+  SEMA_LOG();
   Sema::ExpansionContextBuilder CtxBldr(*this, getCurScope(), Range);
   if (CtxBldr.BuildCalls()) {
     // TODO: Diag << failed to build calls
@@ -1057,6 +1082,7 @@ bool Sema::ActOnVariadicReifier(
     llvm::SmallVectorImpl<QualType> &Types, SourceLocation KWLoc,
     Expr *Range, SourceLocation LParenLoc, SourceLocation EllipsisLoc,
     SourceLocation RParenLoc) {
+  SEMA_LOG();
   Sema::ExpansionContextBuilder CtxBldr(*this, getCurScope(), Range);
   if (CtxBldr.BuildCalls()) {
     // TODO: Diag << failed to build calls
@@ -1097,6 +1123,7 @@ ExprResult Sema::ActOnCXXValueOfExpr(SourceLocation KWLoc,
                                      SourceLocation RParenLoc,
                                      SourceLocation EllipsisLoc)
 {
+  SEMA_LOG();
   if (Refl->isTypeDependent() || Refl->isValueDependent())
     return new (Context) CXXValueOfExpr(Context.DependentTy, Refl, KWLoc,
                                         LParenLoc, LParenLoc, EllipsisLoc);
@@ -1141,6 +1168,7 @@ ExprResult Sema::ActOnCXXDependentVariadicReifierExpr(Expr *Range,
                                                       SourceLocation EllipsisLoc,
                                                       SourceLocation RParenLoc)
 {
+  SEMA_LOG();
   // If the dependent reifier isn't dependent, something has gone wrong.
   assert((Range->isTypeDependent() || Range->isValueDependent()) &&
          "Marked a non-dependent variadic reifier as dependent.");
@@ -1313,7 +1341,7 @@ bool Sema::BuildReflectedIdName(SourceLocation BeginLoc,
                                 SmallVectorImpl<Expr *> &Parts,
                                 SourceLocation EndLoc,
                                 DeclarationNameInfo &Result) {
-
+  SEMA_LOG();
   // If any components are dependent, we can't compute the name.
   if (HasDependentParts(Parts)) {
     DeclarationName Name
@@ -1381,6 +1409,7 @@ bool Sema::BuildInitialDeclnameId(SourceLocation BeginLoc, CXXScopeSpec SS,
                                   TemplateNameKind &TNK,
                                   TemplateTy &Template,
                                   UnqualifiedId &Result) {
+  SEMA_LOG();
   if (Name.getNameKind() == DeclarationName::CXXReflectedIdName)
     return false;
 
@@ -1408,6 +1437,7 @@ bool Sema::CompleteDeclnameId(SourceLocation BeginLoc, CXXScopeSpec SS,
                               SourceLocation RAngleLoc,
                            SmallVectorImpl<TemplateIdAnnotation *> &CleanupList,
                               UnqualifiedId &Result, SourceLocation EndLoc) {
+  SEMA_LOG();
   if (Name.getNameKind() == DeclarationName::CXXReflectedIdName) {
     auto *ReflectedId = new (Context) ReflectedIdentifierInfo();
     ReflectedId->setNameComponents(Name.getCXXReflectedIdArguments());
@@ -1436,6 +1466,7 @@ bool Sema::CompleteDeclnameId(SourceLocation BeginLoc, CXXScopeSpec SS,
 
 /// Evaluates the given expression and yields the computed type.
 QualType Sema::BuildReflectedType(SourceLocation TypenameLoc, Expr *E) {
+  SEMA_LOG();
   if (E->isTypeDependent() || E->isValueDependent())
     return Context.getReflectedType(E, Context.DependentTy);
 
@@ -1466,6 +1497,7 @@ QualType Sema::BuildReflectedType(SourceLocation TypenameLoc, Expr *E) {
 /// Evaluates the given expression and yields the computed type.
 TypeResult Sema::ActOnReflectedTypeSpecifier(SourceLocation TypenameLoc,
                                              Expr *E) {
+  SEMA_LOG();
   QualType T = BuildReflectedType(TypenameLoc, E);
   if (T.isNull())
     return TypeResult(true);
@@ -1522,6 +1554,7 @@ BuildReflectedExprTemplarg(Sema &S, SourceLocation KWLoc,
 
 ParsedTemplateArgument
 Sema::ActOnReflectedTemplateArgument(SourceLocation KWLoc, Expr *E) {
+  SEMA_LOG();
   if (E->isTypeDependent() || E->isValueDependent())
     return BuildDependentTemplarg(KWLoc, E);
 
@@ -1563,6 +1596,7 @@ ExprResult
 Sema::ActOnDependentMemberExpr(Expr *BaseExpr, QualType BaseType,
                                SourceLocation OpLoc, bool IsArrow,
                                Expr *IdExpr) {
+  SEMA_LOG();
   // TODO The non-reflection variant of this provides diagnostics
   // for some situations even in the dependent context. This is
   // something we should consider implementing for the reflection
@@ -1582,6 +1616,7 @@ ExprResult Sema::ActOnMemberAccessExpr(Expr *Base,
                                        SourceLocation OpLoc,
                                        tok::TokenKind OpKind,
                                        Expr *IdExpr) {
+  SEMA_LOG();
   bool IsArrow = (OpKind == tok::arrow);
 
   if (IdExpr->isTypeDependent() || IdExpr->isValueDependent()) {
@@ -1621,6 +1656,7 @@ ExprResult
 Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
                                SourceLocation OpLoc, bool IsArrow,
                                Expr *IdExpr) {
+  SEMA_LOG();
   assert(isa<DeclRefExpr>(IdExpr) && "must be a DeclRefExpr");
 
   // C++1z [expr.ref]p2:
@@ -1704,6 +1740,7 @@ ExprResult Sema::ActOnCXXConcatenateExpr(SmallVectorImpl<Expr *>& Parts,
                                          SourceLocation KWLoc,
                                          SourceLocation LParenLoc,
                                          SourceLocation RParenLoc) {
+  SEMA_LOG();
   return BuildCXXConcatenateExpr(Parts, KWLoc);
 }
 
@@ -1727,6 +1764,7 @@ static bool CheckConcatenateOperand(Sema &SemaRef, Expr *E) {
 
 ExprResult Sema::BuildCXXConcatenateExpr(SmallVectorImpl<Expr *>& Parts,
                                          SourceLocation KWLoc) {
+  SEMA_LOG();
   // The type of the expression is 'const char *'.
   QualType StrTy = Context.getPointerType(Context.getConstType(Context.CharTy));
 

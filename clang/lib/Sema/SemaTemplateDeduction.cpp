@@ -1150,6 +1150,7 @@ static bool hasInconsistentOrSupersetQualifiersOf(QualType ParamType,
 /// \param Arg the argument type.
 bool Sema::isSameOrCompatibleFunctionType(CanQualType Param,
                                           CanQualType Arg) {
+  SEMA_LOG();
   const FunctionType *ParamFunction = Param->getAs<FunctionType>(),
                      *ArgFunction   = Arg->getAs<FunctionType>();
 
@@ -2456,6 +2457,7 @@ static bool isSameTemplateArg(ASTContext &Context,
 TemplateArgumentLoc
 Sema::getTrivialTemplateArgumentLoc(const TemplateArgument &Arg,
                                     QualType NTTPType, SourceLocation Loc) {
+  SEMA_LOG();
   switch (Arg.getKind()) {
   case TemplateArgument::Null:
     llvm_unreachable("Can't get a NULL template argument here");
@@ -2521,6 +2523,7 @@ Sema::getTrivialTemplateArgumentLoc(const TemplateArgument &Arg,
 TemplateArgumentLoc
 Sema::getIdentityTemplateArgumentLoc(Decl *TemplateParm,
                                      SourceLocation Location) {
+  SEMA_LOG();
   if (auto *TTP = dyn_cast<TemplateTypeParmDecl>(TemplateParm))
     return getTrivialTemplateArgumentLoc(
         TemplateArgument(
@@ -2907,6 +2910,7 @@ Sema::TemplateDeductionResult
 Sema::DeduceTemplateArguments(ClassTemplatePartialSpecializationDecl *Partial,
                               const TemplateArgumentList &TemplateArgs,
                               TemplateDeductionInfo &Info) {
+  SEMA_LOG();
   if (Partial->isInvalidDecl())
     return TDK_Invalid;
 
@@ -2950,6 +2954,7 @@ Sema::TemplateDeductionResult
 Sema::DeduceTemplateArguments(VarTemplatePartialSpecializationDecl *Partial,
                               const TemplateArgumentList &TemplateArgs,
                               TemplateDeductionInfo &Info) {
+  SEMA_LOG();
   if (Partial->isInvalidDecl())
     return TDK_Invalid;
 
@@ -3036,6 +3041,7 @@ Sema::SubstituteExplicitTemplateArguments(
                                  SmallVectorImpl<QualType> &ParamTypes,
                                           QualType *FunctionType,
                                           TemplateDeductionInfo &Info) {
+  SEMA_LOG();
   FunctionDecl *Function = FunctionTemplate->getTemplatedDecl();
   TemplateParameterList *TemplateParams
     = FunctionTemplate->getTemplateParameters();
@@ -3382,6 +3388,7 @@ Sema::TemplateDeductionResult Sema::FinishTemplateArgumentDeduction(
     TemplateDeductionInfo &Info,
     SmallVectorImpl<OriginalCallArg> const *OriginalCallArgs,
     bool PartialOverloading, llvm::function_ref<bool()> CheckNonDependent) {
+  SEMA_LOG();
   // Unevaluated SFINAE context.
   EnterExpressionEvaluationContext Unevaluated(
       *this, Sema::ExpressionEvaluationContext::Unevaluated);
@@ -3884,6 +3891,7 @@ Sema::TemplateDeductionResult Sema::DeduceTemplateArguments(
     FunctionDecl *&Specialization, TemplateDeductionInfo &Info,
     bool PartialOverloading,
     llvm::function_ref<bool(ArrayRef<QualType>)> CheckNonDependent) {
+  SEMA_LOG();
   if (FunctionTemplate->isInvalidDecl())
     return TDK_Invalid;
 
@@ -4043,6 +4051,7 @@ Sema::TemplateDeductionResult Sema::DeduceTemplateArguments(
 QualType Sema::adjustCCAndNoReturn(QualType ArgFunctionType,
                                    QualType FunctionType,
                                    bool AdjustExceptionSpec) {
+  SEMA_LOG();
   if (ArgFunctionType.isNull())
     return ArgFunctionType;
 
@@ -4109,6 +4118,7 @@ Sema::TemplateDeductionResult Sema::DeduceTemplateArguments(
     TemplateArgumentListInfo *ExplicitTemplateArgs, QualType ArgFunctionType,
     FunctionDecl *&Specialization, TemplateDeductionInfo &Info,
     bool IsAddressOfFunction) {
+  SEMA_LOG();
   if (FunctionTemplate->isInvalidDecl())
     return TDK_Invalid;
 
@@ -4226,6 +4236,7 @@ Sema::DeduceTemplateArguments(FunctionTemplateDecl *ConversionTemplate,
                               QualType ToType,
                               CXXConversionDecl *&Specialization,
                               TemplateDeductionInfo &Info) {
+  SEMA_LOG();
   if (ConversionTemplate->isInvalidDecl())
     return TDK_Invalid;
 
@@ -4365,6 +4376,7 @@ Sema::TemplateDeductionResult Sema::DeduceTemplateArguments(
     TemplateArgumentListInfo *ExplicitTemplateArgs,
     FunctionDecl *&Specialization, TemplateDeductionInfo &Info,
     bool IsAddressOfFunction) {
+  SEMA_LOG();
   return DeduceTemplateArguments(FunctionTemplate, ExplicitTemplateArgs,
                                  QualType(), Specialization, Info,
                                  IsAddressOfFunction);
@@ -4454,6 +4466,7 @@ namespace {
 Sema::DeduceAutoResult
 Sema::DeduceAutoType(TypeSourceInfo *Type, Expr *&Init, QualType &Result,
                      Optional<unsigned> DependentDeductionDepth) {
+  SEMA_LOG();
   return DeduceAutoType(Type->getTypeLoc(), Init, Result,
                         DependentDeductionDepth);
 }
@@ -4500,6 +4513,7 @@ static bool diagnoseAutoDeductionFailure(Sema &S,
 Sema::DeduceAutoResult
 Sema::DeduceAutoType(TypeLoc Type, Expr *&Init, QualType &Result,
                      Optional<unsigned> DependentDeductionDepth) {
+  SEMA_LOG();
   if (Init->getType()->isNonOverloadPlaceholderType()) {
     ExprResult NonPlaceholder = CheckPlaceholderExpr(Init);
     if (NonPlaceholder.isInvalid())
@@ -4668,6 +4682,7 @@ Sema::DeduceAutoType(TypeLoc Type, Expr *&Init, QualType &Result,
 
 QualType Sema::SubstAutoType(QualType TypeWithAuto,
                              QualType TypeToReplaceAuto) {
+  SEMA_LOG();
   if (TypeToReplaceAuto->isDependentType())
     return SubstituteDeducedTypeTransform(
                *this, DependentAuto{
@@ -4679,6 +4694,7 @@ QualType Sema::SubstAutoType(QualType TypeWithAuto,
 
 TypeSourceInfo *Sema::SubstAutoTypeSourceInfo(TypeSourceInfo *TypeWithAuto,
                                               QualType TypeToReplaceAuto) {
+  SEMA_LOG();
   if (TypeToReplaceAuto->isDependentType())
     return SubstituteDeducedTypeTransform(
                *this,
@@ -4691,12 +4707,14 @@ TypeSourceInfo *Sema::SubstAutoTypeSourceInfo(TypeSourceInfo *TypeWithAuto,
 
 QualType Sema::ReplaceAutoType(QualType TypeWithAuto,
                                QualType TypeToReplaceAuto) {
+  SEMA_LOG();
   return SubstituteDeducedTypeTransform(*this, TypeToReplaceAuto,
                                         /*UseTypeSugar*/ false)
       .TransformType(TypeWithAuto);
 }
 
 void Sema::DiagnoseAutoDeductionFailure(VarDecl *VDecl, Expr *Init) {
+  SEMA_LOG();
   if (isa<InitListExpr>(Init))
     Diag(VDecl->getLocation(),
          VDecl->isInitCapture()
@@ -4713,6 +4731,7 @@ void Sema::DiagnoseAutoDeductionFailure(VarDecl *VDecl, Expr *Init) {
 
 bool Sema::DeduceReturnType(FunctionDecl *FD, SourceLocation Loc,
                             bool Diagnose) {
+  SEMA_LOG();
   assert(FD->getReturnType()->isUndeducedType());
 
   // For a lambda's conversion operator, deduce any 'auto' or 'decltype(auto)'
@@ -4988,7 +5007,7 @@ Sema::getMoreSpecializedTemplate(FunctionTemplateDecl *FT1,
                                  TemplatePartialOrderingContext TPOC,
                                  unsigned NumCallArguments1,
                                  unsigned NumCallArguments2) {
-
+  SEMA_LOG();
   auto JudgeByConstraints = [&] () -> FunctionTemplateDecl * {
     llvm::SmallVector<const Expr *, 3> AC1, AC2;
     FT1->getAssociatedConstraints(AC1);
@@ -5067,6 +5086,7 @@ UnresolvedSetIterator Sema::getMostSpecialized(
     SourceLocation Loc, const PartialDiagnostic &NoneDiag,
     const PartialDiagnostic &AmbigDiag, const PartialDiagnostic &CandidateDiag,
     bool Complain, QualType TargetType) {
+  SEMA_LOG();
   if (SpecBegin == SpecEnd) {
     if (Complain) {
       Diag(Loc, NoneDiag);
@@ -5210,6 +5230,7 @@ Sema::getMoreSpecializedPartialSpecialization(
                                   ClassTemplatePartialSpecializationDecl *PS1,
                                   ClassTemplatePartialSpecializationDecl *PS2,
                                               SourceLocation Loc) {
+  SEMA_LOG();
   QualType PT1 = PS1->getInjectedSpecializationType();
   QualType PT2 = PS2->getInjectedSpecializationType();
 
@@ -5238,6 +5259,7 @@ Sema::getMoreSpecializedPartialSpecialization(
 
 bool Sema::isMoreSpecializedThanPrimary(
     ClassTemplatePartialSpecializationDecl *Spec, TemplateDeductionInfo &Info) {
+  SEMA_LOG();
   ClassTemplateDecl *Primary = Spec->getSpecializedTemplate();
   QualType PrimaryT = Primary->getInjectedClassNameSpecialization();
   QualType PartialT = Spec->getInjectedSpecializationType();
@@ -5265,6 +5287,7 @@ VarTemplatePartialSpecializationDecl *
 Sema::getMoreSpecializedPartialSpecialization(
     VarTemplatePartialSpecializationDecl *PS1,
     VarTemplatePartialSpecializationDecl *PS2, SourceLocation Loc) {
+  SEMA_LOG();
   // Pretend the variable template specializations are class template
   // specializations and form a fake injected class name type for comparison.
   assert(PS1->getSpecializedTemplate() == PS2->getSpecializedTemplate() &&
@@ -5303,6 +5326,7 @@ Sema::getMoreSpecializedPartialSpecialization(
 
 bool Sema::isMoreSpecializedThanPrimary(
     VarTemplatePartialSpecializationDecl *Spec, TemplateDeductionInfo &Info) {
+  SEMA_LOG();
   TemplateDecl *Primary = Spec->getSpecializedTemplate();
   // FIXME: Cache the injected template arguments rather than recomputing
   // them for each partial specialization.
@@ -5339,6 +5363,7 @@ bool Sema::isMoreSpecializedThanPrimary(
 
 bool Sema::isTemplateTemplateParameterAtLeastAsSpecializedAs(
      TemplateParameterList *P, TemplateDecl *AArg, SourceLocation Loc) {
+  SEMA_LOG();
   // C++1z [temp.arg.template]p4: (DR 150)
   //   A template template-parameter P is at least as specialized as a
   //   template template-argument A if, given the following rewrite to two
@@ -5873,6 +5898,7 @@ void
 Sema::MarkUsedTemplateParameters(const Expr *E, bool OnlyDeduced,
                                  unsigned Depth,
                                  llvm::SmallBitVector &Used) {
+  SEMA_LOG();
   ::MarkUsedTemplateParameters(Context, E, OnlyDeduced, Depth, Used);
 }
 
@@ -5889,6 +5915,7 @@ void
 Sema::MarkUsedTemplateParameters(const TemplateArgumentList &TemplateArgs,
                                  bool OnlyDeduced, unsigned Depth,
                                  llvm::SmallBitVector &Used) {
+  SEMA_LOG();
   // C++0x [temp.deduct.type]p9:
   //   If the template argument list of P contains a pack expansion that is not
   //   the last template argument, the entire template argument list is a
@@ -5907,6 +5934,7 @@ Sema::MarkUsedTemplateParameters(const TemplateArgumentList &TemplateArgs,
 void Sema::MarkDeducedTemplateParameters(
     ASTContext &Ctx, const FunctionTemplateDecl *FunctionTemplate,
     llvm::SmallBitVector &Deduced) {
+  SEMA_LOG();
   TemplateParameterList *TemplateParams
     = FunctionTemplate->getTemplateParameters();
   Deduced.clear();
@@ -5936,6 +5964,7 @@ bool hasDeducibleTemplateParameters(Sema &S,
 bool
 Sema::TypeCheckRequiredAutoReturn(SourceLocation Loc,
                                   QualType TypeWithAuto, QualType Replacement) {
+  SEMA_LOG();
   TemplateDeductionInfo Info(Loc);
   unsigned TDF = 0;
   SmallVector<DeducedTemplateArgument, 1> Deduced;

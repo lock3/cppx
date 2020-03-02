@@ -51,6 +51,7 @@ static CXXRecordDecl *getCurrentInstantiationOf(QualType T,
 /// or NULL if the declaration context cannot be computed (e.g., because it is
 /// dependent and not the current instantiation).
 DeclContext *Sema::computeDeclContext(QualType T) {
+  SEMA_LOG();
   if (!T->isDependentType())
     if (const TagType *Tag = T->getAs<TagType>())
       return Tag->getDecl();
@@ -73,6 +74,7 @@ DeclContext *Sema::computeDeclContext(QualType T) {
 /// dependent and not the current instantiation).
 DeclContext *Sema::computeDeclContext(const CXXScopeSpec &SS,
                                       bool EnteringContext) {
+  SEMA_LOG();
   if (!SS.isSet() || SS.isInvalid())
     return nullptr;
 
@@ -165,6 +167,7 @@ DeclContext *Sema::computeDeclContext(const CXXScopeSpec &SS,
 }
 
 bool Sema::isDependentScopeSpecifier(const CXXScopeSpec &SS) {
+  SEMA_LOG();
   if (!SS.isSet() || SS.isInvalid())
     return false;
 
@@ -177,6 +180,7 @@ bool Sema::isDependentScopeSpecifier(const CXXScopeSpec &SS) {
 ///
 /// \param NNS a dependent nested name specifier.
 CXXRecordDecl *Sema::getCurrentInstantiationOf(NestedNameSpecifier *NNS) {
+  SEMA_LOG();
   assert(getLangOpts().CPlusPlus && "Only callable in C++");
   assert(NNS->isDependent() && "Only dependent nested-name-specifier allowed");
 
@@ -197,6 +201,7 @@ CXXRecordDecl *Sema::getCurrentInstantiationOf(NestedNameSpecifier *NNS) {
 /// a class template specialization that is not a complete type, we
 /// will attempt to instantiate that class template.
 bool Sema::RequireCompleteDeclContext(CXXScopeSpec &SS, DeclContext *DC) {
+  SEMA_LOG();
   assert(DC && "given null context");
 
   TagDecl *tag = dyn_cast<TagDecl>(DC);
@@ -270,6 +275,7 @@ bool Sema::RequireCompleteDeclContext(CXXScopeSpec &SS, DeclContext *DC) {
 
 bool Sema::ActOnCXXGlobalScopeSpecifier(SourceLocation CCLoc,
                                         CXXScopeSpec &SS) {
+  SEMA_LOG();
   SS.MakeGlobal(Context, CCLoc);
   return false;
 }
@@ -277,6 +283,7 @@ bool Sema::ActOnCXXGlobalScopeSpecifier(SourceLocation CCLoc,
 bool Sema::ActOnSuperScopeSpecifier(SourceLocation SuperLoc,
                                     SourceLocation ColonColonLoc,
                                     CXXScopeSpec &SS) {
+  SEMA_LOG();
   CXXRecordDecl *RD = nullptr;
   for (Scope *S = getCurScope(); S; S = S->getParent()) {
     if (S->isFunctionScope()) {
@@ -312,6 +319,7 @@ bool Sema::ActOnSuperScopeSpecifier(SourceLocation SuperLoc,
 /// extension, the pointed variable is assigned true.
 bool Sema::isAcceptableNestedNameSpecifier(const NamedDecl *SD,
                                            bool *IsExtension) {
+  SEMA_LOG();
   if (!SD)
     return false;
 
@@ -355,6 +363,7 @@ bool Sema::isAcceptableNestedNameSpecifier(const NamedDecl *SD,
 /// nested-name-specifier within the given scope, and return the result of that
 /// name lookup.
 NamedDecl *Sema::FindFirstQualifierInScope(Scope *S, NestedNameSpecifier *NNS) {
+  SEMA_LOG();
   if (!S || !NNS)
     return nullptr;
 
@@ -381,6 +390,7 @@ NamedDecl *Sema::FindFirstQualifierInScope(Scope *S, NestedNameSpecifier *NNS) {
 
 bool Sema::isNonTypeNestedNameSpecifier(Scope *S, CXXScopeSpec &SS,
                                         NestedNameSpecInfo &IdInfo) {
+  SEMA_LOG();
   QualType ObjectType = GetTypeFromParser(IdInfo.ObjectType);
   LookupResult Found(*this, IdInfo.Identifier, IdInfo.IdentifierLoc,
                      LookupNestedNameSpecifierName);
@@ -485,6 +495,7 @@ bool Sema::BuildCXXNestedNameSpecifier(Scope *S, NestedNameSpecInfo &IdInfo,
                                        bool ErrorRecoveryLookup,
                                        bool *IsCorrectedToColon,
                                        bool OnlyNamespace) {
+  SEMA_LOG();
   if (IdInfo.Identifier->isEditorPlaceholder())
     return true;
   LookupResult Found(*this, IdInfo.Identifier, IdInfo.IdentifierLoc,
@@ -834,6 +845,7 @@ bool Sema::ActOnCXXNestedNameSpecifier(Scope *S, NestedNameSpecInfo &IdInfo,
                                        bool ErrorRecoveryLookup,
                                        bool *IsCorrectedToColon,
                                        bool OnlyNamespace) {
+  SEMA_LOG();
   if (SS.isInvalid())
     return true;
 
@@ -845,6 +857,7 @@ bool Sema::ActOnCXXNestedNameSpecifier(Scope *S, NestedNameSpecInfo &IdInfo,
 bool Sema::ActOnCXXNestedNameSpecifierDecltype(CXXScopeSpec &SS,
                                                const DeclSpec &DS,
                                                SourceLocation ColonColonLoc) {
+  SEMA_LOG();
   if (SS.isInvalid() || DS.getTypeSpecType() == DeclSpec::TST_error)
     return true;
 
@@ -877,6 +890,7 @@ bool Sema::ActOnCXXNestedNameSpecifierDecltype(CXXScopeSpec &SS,
 bool Sema::IsInvalidUnlessNestedName(Scope *S, CXXScopeSpec &SS,
                                      NestedNameSpecInfo &IdInfo,
                                      bool EnteringContext) {
+  SEMA_LOG();
   if (SS.isInvalid())
     return false;
 
@@ -894,6 +908,7 @@ bool Sema::ActOnCXXNestedNameSpecifier(Scope *S,
                                        SourceLocation RAngleLoc,
                                        SourceLocation CCLoc,
                                        bool EnteringContext) {
+  SEMA_LOG();
   if (SS.isInvalid())
     return true;
 
@@ -990,6 +1005,7 @@ namespace {
 }
 
 void *Sema::SaveNestedNameSpecifierAnnotation(CXXScopeSpec &SS) {
+  SEMA_LOG();
   if (SS.isEmpty() || SS.isInvalid())
     return nullptr;
 
@@ -1006,6 +1022,7 @@ void *Sema::SaveNestedNameSpecifierAnnotation(CXXScopeSpec &SS) {
 void Sema::RestoreNestedNameSpecifierAnnotation(void *AnnotationPtr,
                                                 SourceRange AnnotationRange,
                                                 CXXScopeSpec &SS) {
+  SEMA_LOG();
   if (!AnnotationPtr) {
     SS.SetInvalid(AnnotationRange);
     return;
@@ -1017,6 +1034,7 @@ void Sema::RestoreNestedNameSpecifierAnnotation(void *AnnotationPtr,
 }
 
 bool Sema::ShouldEnterDeclaratorScope(Scope *S, const CXXScopeSpec &SS) {
+  SEMA_LOG();
   assert(SS.isSet() && "Parser passed invalid CXXScopeSpec.");
 
   // Don't enter a declarator context when the current context is an Objective-C
@@ -1066,6 +1084,7 @@ bool Sema::ShouldEnterDeclaratorScope(Scope *S, const CXXScopeSpec &SS) {
 /// ActOnCXXExitDeclaratorScope is called.
 /// The 'SS' should be a non-empty valid CXXScopeSpec.
 bool Sema::ActOnCXXEnterDeclaratorScope(Scope *S, CXXScopeSpec &SS) {
+  SEMA_LOG();
   assert(SS.isSet() && "Parser passed invalid CXXScopeSpec.");
 
   if (SS.isInvalid()) return true;
@@ -1093,6 +1112,7 @@ bool Sema::ActOnCXXEnterDeclaratorScope(Scope *S, CXXScopeSpec &SS) {
 /// Used to indicate that names should revert to being looked up in the
 /// defining scope.
 void Sema::ActOnCXXExitDeclaratorScope(Scope *S, const CXXScopeSpec &SS) {
+  SEMA_LOG();
   assert(SS.isSet() && "Parser passed invalid CXXScopeSpec.");
   if (SS.isInvalid())
     return;

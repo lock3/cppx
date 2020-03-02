@@ -3066,6 +3066,7 @@ static void CreatePlaceholders(Sema &SemaRef, CXXFragmentDecl *Frag,
 /// automatic variables captured. This is only called by the parser and searches
 /// the list of local variables in scope.
 void Sema::ActOnCXXFragmentCapture(SmallVectorImpl<Expr *> &Captures) {
+  SEMA_LOG();
   assert(Captures.empty() && "Captures already specified");
 
   // Only collect captures within a function.
@@ -3084,6 +3085,7 @@ void Sema::ActOnCXXFragmentCapture(SmallVectorImpl<Expr *> &Captures) {
 /// declaration and placeholders.
 CXXFragmentDecl *Sema::ActOnStartCXXFragment(Scope *S, SourceLocation Loc,
                                             SmallVectorImpl<Expr *> &Captures) {
+  SEMA_LOG();
   CXXFragmentDecl *Fragment = CXXFragmentDecl::Create(Context, CurContext, Loc);
   CreatePlaceholders(*this, Fragment, Captures);
 
@@ -3099,6 +3101,7 @@ CXXFragmentDecl *Sema::ActOnStartCXXFragment(Scope *S, SourceLocation Loc,
 /// we still need to pop the declaration context.
 CXXFragmentDecl *Sema::ActOnFinishCXXFragment(Scope *S, Decl *Fragment,
                                               Decl *Content) {
+  SEMA_LOG();
   CXXFragmentDecl *FD = nullptr;
   if (Fragment) {
     FD = cast<CXXFragmentDecl>(Fragment);
@@ -3114,6 +3117,7 @@ CXXFragmentDecl *Sema::ActOnFinishCXXFragment(Scope *S, Decl *Fragment,
 /// Builds a new fragment expression.
 ExprResult Sema::ActOnCXXFragmentExpr(SourceLocation Loc, Decl *Fragment,
                                       SmallVectorImpl<Expr *> &Captures) {
+  SEMA_LOG();
   return BuildCXXFragmentExpr(Loc, Fragment, Captures);
 }
 
@@ -3311,6 +3315,7 @@ CXXFragmentExpr *SynthesizeFragmentExpr(Sema &S,
 /// Builds a new fragment expression.
 ExprResult Sema::BuildCXXFragmentExpr(SourceLocation Loc, Decl *Fragment,
                                       SmallVectorImpl<Expr *> &Captures) {
+  SEMA_LOG();
   CXXFragmentDecl *FD = cast<CXXFragmentDecl>(Fragment);
 
   // If the fragment appears in a context that depends on template parameters,
@@ -3343,6 +3348,7 @@ Sema::ActOnCXXSpecifiedNamespaceInjectionContext(SourceLocation BeginLoc,
                                                  Decl *NamespaceDecl,
                                         CXXInjectionContextSpecifier &Specifier,
                                                  SourceLocation EndLoc) {
+  SEMA_LOG();
   Specifier = CXXInjectionContextSpecifier(BeginLoc, NamespaceDecl, EndLoc);
   return false;
 }
@@ -3351,6 +3357,7 @@ Sema::ActOnCXXSpecifiedNamespaceInjectionContext(SourceLocation BeginLoc,
 bool
 Sema::ActOnCXXParentNamespaceInjectionContext(SourceLocation KWLoc,
                                       CXXInjectionContextSpecifier &Specifier) {
+  SEMA_LOG();
   Specifier = CXXInjectionContextSpecifier(
                           KWLoc, CXXInjectionContextSpecifier::ParentNamespace);
   return false;
@@ -3360,6 +3367,7 @@ Sema::ActOnCXXParentNamespaceInjectionContext(SourceLocation KWLoc,
 StmtResult Sema::ActOnCXXInjectionStmt(SourceLocation Loc,
                            const CXXInjectionContextSpecifier &ContextSpecifier,
                                        Expr *Operand) {
+  SEMA_LOG();
   return BuildCXXInjectionStmt(Loc, ContextSpecifier, Operand);
 }
 
@@ -3387,6 +3395,7 @@ CheckInjectionOperand(Sema &S, Expr *Operand) {
 StmtResult Sema::BuildCXXInjectionStmt(SourceLocation Loc,
                            const CXXInjectionContextSpecifier &ContextSpecifier,
                                        Expr *Operand) {
+  SEMA_LOG();
   // An injection stmt can only appear in constexpr contexts
   if (!CurContext->isConstexprContext()) {
     Diag(Loc, diag::err_injection_stmt_constexpr);
@@ -3410,6 +3419,7 @@ StmtResult Sema::ActOnCXXBaseInjectionStmt(
     SourceLocation KWLoc, SourceLocation LParenLoc,
     SmallVectorImpl<CXXBaseSpecifier *> &BaseSpecifiers,
     SourceLocation RParenLoc) {
+  SEMA_LOG();
   return BuildCXXBaseInjectionStmt(KWLoc, LParenLoc, BaseSpecifiers, RParenLoc);
 }
 
@@ -3417,6 +3427,7 @@ StmtResult Sema::BuildCXXBaseInjectionStmt(
     SourceLocation KWLoc, SourceLocation LParenLoc,
     SmallVectorImpl<CXXBaseSpecifier *> &BaseSpecifiers,
     SourceLocation RParenLoc) {
+  SEMA_LOG();
   return CXXBaseInjectionStmt::Create(Context, KWLoc, LParenLoc,
                                       BaseSpecifiers, RParenLoc);
 }
@@ -3944,6 +3955,7 @@ static bool ApplyReflectionInjection(Sema &S, CXXInjectorDecl *MD,
 }
 
 bool Sema::ApplyInjection(CXXInjectorDecl *MD, InjectionEffect &IE) {
+  SEMA_LOG();
   CodeInjectionTracker InjectingCode(*this);
 
   Decl *Injectee = GetInjecteeDecl(*this, CurContext, IE.ContextSpecifier);
@@ -3984,6 +3996,7 @@ bool Sema::ApplyInjection(CXXInjectorDecl *MD, InjectionEffect &IE) {
 /// returns true if no errors are encountered, false otherwise.
 bool Sema::ApplyEffects(CXXInjectorDecl *MD,
                         SmallVectorImpl<InjectionEffect> &Effects) {
+  SEMA_LOG();
   bool Ok = true;
   for (InjectionEffect &Effect : Effects) {
     Ok &= ApplyInjection(MD, Effect);
@@ -4004,6 +4017,7 @@ bool Sema::ApplyEffects(CXXInjectorDecl *MD,
 /// injection contexts into the template instantiation context; they are
 /// somewhat similar.
 bool Sema::HasPendingInjections(DeclContext *D) {
+  SEMA_LOG();
   bool IsEmpty = PendingClassMemberInjections.empty();
   if (IsEmpty)
     return false;
@@ -4024,6 +4038,7 @@ bool Sema::HasPendingInjections(DeclContext *D) {
 /// Returns true if the DeclContext D both has pending injections
 /// and is in a state suiteable for injecting those injections.
 bool Sema::ShouldInjectPendingDefinitionsOf(CXXRecordDecl *D) {
+  SEMA_LOG();
   assert(D && "CXXRecordDecl must be specified");
 
   if (!HasPendingInjections(D))
@@ -4108,6 +4123,7 @@ public:
 };
 
 void Sema::InjectPendingFieldDefinitions() {
+  SEMA_LOG();
   PendingClassInjectionProcessor Processor;
   Processor.process(PendingClassMemberInjections, [this](InjectionContext *Ctx) {
     InjectPendingFieldDefinitions(Ctx);
@@ -4115,6 +4131,7 @@ void Sema::InjectPendingFieldDefinitions() {
 }
 
 void Sema::InjectPendingMethodDefinitions() {
+  SEMA_LOG();
   PendingClassInjectionProcessor Processor;
   Processor.process(PendingClassMemberInjections, [this](InjectionContext *Ctx) {
     InjectPendingMethodDefinitions(Ctx);
@@ -4122,6 +4139,7 @@ void Sema::InjectPendingMethodDefinitions() {
 }
 
 void Sema::InjectPendingFriendFunctionDefinitions() {
+  SEMA_LOG();
   PendingClassInjectionProcessor Processor;
   Processor.process(PendingClassMemberInjections, [this](InjectionContext *Ctx) {
     InjectPendingFriendFunctionDefinitions(Ctx);
@@ -4319,20 +4337,24 @@ static void InjectAllPendingDefinitions(InjectionContext *Ctx) {
 }
 
 void Sema::InjectPendingFieldDefinitions(InjectionContext *Ctx) {
+  SEMA_LOG();
   InjectAllPendingDefinitions<FieldDecl, InjectedDef_Field>(Ctx);
 }
 
 void Sema::InjectPendingMethodDefinitions(InjectionContext *Ctx) {
+  SEMA_LOG();
   InjectAllPendingDefinitions<FunctionTemplateDecl, CXXMethodDecl,
                               InjectedDef_TemplatedMethod>(Ctx);
   InjectAllPendingDefinitions<CXXMethodDecl, InjectedDef_Method>(Ctx);
 }
 
 void Sema::InjectPendingFriendFunctionDefinitions(InjectionContext *Ctx) {
+  SEMA_LOG();
   InjectAllPendingDefinitions<FunctionDecl, InjectedDef_FriendFunction>(Ctx);
 }
 
 bool Sema::InjectPendingNamespaceInjections() {
+  SEMA_LOG();
   bool Ok = true;
 
   while (!PendingNamespaceInjections.empty()) {
@@ -4390,12 +4412,14 @@ ActOnMetaDecl(Sema &Sema, SourceLocation ConstevalLoc) {
 /// Create a metaprogram-declaration that will hold the body of the
 /// metaprogram-declaration.
 Decl *Sema::ActOnCXXMetaprogramDecl(SourceLocation ConstevalLoc) {
+  SEMA_LOG();
   return ActOnMetaDecl<CXXMetaprogramDecl>(*this, ConstevalLoc);
 }
 
 /// Create a injection-declaration that will hold the body of the
 /// injection-declaration.
 Decl *Sema::ActOnCXXInjectionDecl(SourceLocation ConstevalLoc) {
+  SEMA_LOG();
   return ActOnMetaDecl<CXXInjectionDecl>(*this, ConstevalLoc);
 }
 
@@ -4412,6 +4436,7 @@ ActOnStartMetaDecl(Sema &Sema, Decl *D, DeclContext *&OriginalDC) {
 ///
 /// This ensures that the declaration context is changed correctly.
 void Sema::ActOnStartCXXMetaprogramDecl(Decl *D, DeclContext *&OriginalDC) {
+  SEMA_LOG();
   ActOnStartMetaDecl<CXXMetaprogramDecl>(*this, D, OriginalDC);
 }
 
@@ -4419,6 +4444,7 @@ void Sema::ActOnStartCXXMetaprogramDecl(Decl *D, DeclContext *&OriginalDC) {
 ///
 /// This ensures that the declaration context is changed correctly.
 void Sema::ActOnStartCXXInjectionDecl(Decl *D, DeclContext *&OriginalDC) {
+  SEMA_LOG();
   ActOnStartMetaDecl<CXXInjectionDecl>(*this, D, OriginalDC);
 }
 
@@ -4496,11 +4522,13 @@ EvaluateMetaDecl(Sema &Sema, MetaType *MD, FunctionDecl *D) {
 
 /// Hook to be called by template instantiation.
 void Sema::EvaluateCXXMetaDecl(CXXMetaprogramDecl *D, FunctionDecl *FD) {
+  SEMA_LOG();
   EvaluateMetaDecl(*this, D, FD);
 }
 
 /// Hook to be called by template instantiation.
 void Sema::EvaluateCXXMetaDecl(CXXInjectionDecl *D, FunctionDecl *FD) {
+  SEMA_LOG();
   EvaluateMetaDecl(*this, D, FD);
 }
 
@@ -4534,6 +4562,7 @@ ActOnFinishMetaDecl(Sema &Sema, Decl *D, Stmt *Body,
 void Sema::ActOnFinishCXXMetaprogramDecl(Decl *D, Stmt *Body,
                                          DeclContext *OriginalDC,
                                          bool FromParser) {
+  SEMA_LOG();
   ActOnFinishMetaDecl<CXXMetaprogramDecl>(*this, D, Body,
                                           OriginalDC, FromParser);
 }
@@ -4547,6 +4576,7 @@ void Sema::ActOnFinishCXXMetaprogramDecl(Decl *D, Stmt *Body,
 void Sema::ActOnFinishCXXInjectionDecl(Decl *D, Stmt *InjectionStmt,
                                        DeclContext *OriginalDC,
                                        bool FromParser) {
+  SEMA_LOG();
   CompoundStmt *Body = CompoundStmt::Create(Context,
                                             ArrayRef<Stmt *>(InjectionStmt),
                                             SourceLocation(), SourceLocation());
@@ -4572,6 +4602,7 @@ ActOnCXXMetaError(Sema &Sema, Decl *D, DeclContext *OriginalDC) {
 ///
 /// This ensures that the declaration context is restored correctly.
 void Sema::ActOnCXXMetaprogramDeclError(Decl *D, DeclContext *OriginalDC) {
+  SEMA_LOG();
   ActOnCXXMetaError<CXXMetaprogramDecl>(*this, D, OriginalDC);
 }
 
@@ -4579,11 +4610,13 @@ void Sema::ActOnCXXMetaprogramDeclError(Decl *D, DeclContext *OriginalDC) {
 ///
 /// This ensures that the declaration context is restored correctly.
 void Sema::ActOnCXXInjectionDeclError(Decl *D, DeclContext *OriginalDC) {
+  SEMA_LOG();
   ActOnCXXMetaError<CXXInjectionDecl>(*this, D, OriginalDC);
 }
 
 bool Sema::ActOnCXXInjectedParameter(SourceLocation ArrowLoc, Expr *Reflection,
                            SmallVectorImpl<DeclaratorChunk::ParamInfo> &Parms) {
+  SEMA_LOG();
   CXXInjectedParmsInfo ParmInjectionInfo(ArrowLoc, Reflection);
   ParmVarDecl *New = ParmVarDecl::Create(Context, ParmInjectionInfo);
 
@@ -4610,6 +4643,7 @@ bool Sema::ActOnCXXInjectedParameter(SourceLocation ArrowLoc, Expr *Reflection,
 /// add it to a declaration context.
 CXXRecordDecl *Sema::ActOnStartMetaclass(CXXRecordDecl *Class,
                                          Expr *Metafunction, TagUseKind TUK) {
+  SEMA_LOG();
   Class->setMetafunction(Metafunction);
 
   if (TUK == TUK_Definition) {
@@ -4631,6 +4665,7 @@ CXXRecordDecl *Sema::ActOnStartMetaclass(CXXRecordDecl *Class,
 }
 
 void Sema::ActOnStartMetaclassDefinition(CXXRecordDecl *Proto) {
+  SEMA_LOG();
   // The prototype must be a fragment in order to suppress
   // default generation of members.
   Proto->setImplicit(true);
@@ -4657,6 +4692,7 @@ void Sema::ActOnStartMetaclassDefinition(CXXRecordDecl *Proto) {
 /// generate the enclosing class.
 CXXRecordDecl *Sema::ActOnFinishMetaclass(CXXRecordDecl *Proto, Scope *S,
                                           SourceRange BraceRange) {
+  SEMA_LOG();
   CXXRecordDecl *Class = cast<CXXRecordDecl>(Proto->getDeclContext());
   Expr *Metafunction = Class->getMetafunction();
   assert(Metafunction && "expected metaclass");
@@ -4749,6 +4785,7 @@ Sema::DeclGroupPtrTy Sema::ActOnCXXTypeTransformerDecl(SourceLocation UsingLoc,
                                                        IdentifierInfo *Id,
                                                        Expr *Generator,
                                                        Expr *Reflection) {
+  SEMA_LOG();
   // Create the generated type.
   TagTypeKind TTK = IsClass ? TTK_Class : TTK_Struct;
   CXXRecordDecl *Class = CXXRecordDecl::Create(Context, TTK, CurContext,
@@ -4803,6 +4840,7 @@ Decl *Sema::ActOnCXXRequiredTypeDecl(AccessSpecifier AS,
                                      SourceLocation RequiresLoc,
                                      SourceLocation TypenameLoc,
                                      IdentifierInfo *Id, bool Typename) {
+  SEMA_LOG();
   CXXRequiredTypeDecl *RTD =
     CXXRequiredTypeDecl::Create(Context, CurContext,
                                 RequiresLoc, TypenameLoc, Id, Typename);
@@ -4815,6 +4853,7 @@ Decl *Sema::ActOnCXXRequiredTypeDecl(AccessSpecifier AS,
 Decl *Sema::ActOnCXXRequiredDeclaratorDecl(Scope *CurScope,
                                            SourceLocation RequiresLoc,
                                            Declarator &D) {
+  SEMA_LOG();
   // We don't want to check for linkage, memoize that we're
   // working on a required declarator for later checks.
   AnalyzingRequiredDeclarator = true;
