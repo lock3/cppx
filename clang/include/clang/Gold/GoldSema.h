@@ -161,6 +161,8 @@ public:
   // The context
   SyntaxContext &Context;
 
+  clang::AttributeFactory AttrFactory;
+  
   // The Clang diagnostics engine.
   clang::DiagnosticsEngine &Diags;
 
