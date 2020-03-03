@@ -352,10 +352,13 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     // this should be an error.
     // if(D->Cxx->)
     if(VD->getType().getTypePtr()->isRecordType()) {
-      llvm::outs() << "Attempting to handle complex default initialization?!\n";
-      clang::CXXRecordDecl* Record = VD->getType().getTypePtr()->getAsCXXRecordDecl();
-      Record->dump();
+      llvm::outs() << "Attempting to do a thing!\n";
+      // llvm::outs() << "Attempting to handle complex default initialization?!\n";
+      // clang::CXXRecordDecl* Record = VD->getType().getTypePtr()->getAsCXXRecordDecl();
+      // Record->dump();
       // Record->
+      SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
+      llvm::outs() << "Did the thing!\n";
 
     }
     // Handle special case of default construction of complex types?
@@ -439,10 +442,22 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
   SemaRef.getCxxSema().ActOnFields(Scope, R->getLocation(), R, Members,
                                    clang::SourceLocation(),
                                    clang::SourceLocation(), Attributes);
+  // clang::CXXConstructorDecl *ImplicitDefaultCtorDecl
+  //                   = SemaRef.getCxxSema().DeclareImplicitDefaultConstructor(R);
+  // // Attempting to add default constructor and destructor definitions.
+  // SemaRef.getCxxSema().DefineImplicitDefaultConstructor(clang::SourceLocation(),
+  //                                                       ImplicitDefaultCtorDecl);
+  // R->addDecl(ImplicitDefaultCtorDecl);
+  // clang::CXXConstructorDecl *ImplicitMoveCtorDecl
+  //                      = SemaRef.getCxxSema().DeclareImplicitMoveConstructor(R);
+  // R->addDecl(ImplicitMoveCtorDecl);
+  // SemaRef.getCxxSema().DefineImplicitMoveConstructor(clang::SourceLocation(),
+  //                                                    ImplicitMoveCtorDecl);
   // R->completeDefinition();
   SemaRef.leaveClangScope(D->Op->getLoc());
   SemaRef.popDecl();
   SemaRef.popScope();
+
 
 }
 
