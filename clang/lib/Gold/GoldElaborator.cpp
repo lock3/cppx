@@ -18,6 +18,8 @@
 #include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Sema.h"
+#include "clang/Sema/ParsedAttr.h"
+#include "clang/AST/CXXInheritance.h"
 
 #include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldElaborator.h"
@@ -35,7 +37,8 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   assert(isa<FileSyntax>(S) && "S is not a file");
   
   clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::DeclScope);
-  SemaRef.getCxxSema().PushDeclContext(Scope, Context.CxxAST.getTranslationUnitDecl());
+  SemaRef.getCxxSema().ActOnTranslationUnitScope(Scope);
+  SemaRef.getCxxSema().Initialize();
   SemaRef.getCxxSema().ActOnStartOfTranslationUnit();
   startFile(S);
 
@@ -332,8 +335,9 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
 }
 
 void Elaborator::elaborateVariableInit(Declaration *D) {
-  if (!D->Cxx)
+  if (!D->Cxx){
     return;
+  }
   clang::VarDecl *VD = cast<clang::VarDecl>(D->Cxx);
 
   if (!D->Init) {
@@ -346,6 +350,18 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     //
     // declares an undeduced-type variable with no initializer. Presumably
     // this should be an error.
+    // if(D->Cxx->)
+    if(VD->getType().getTypePtr()->isRecordType()) {
+      llvm::outs() << "Attempting to do a thing!\n";
+      // llvm::outs() << "Attempting to handle complex default initialization?!\n";
+      // clang::CXXRecordDecl* Record = VD->getType().getTypePtr()->getAsCXXRecordDecl();
+      // Record->dump();
+      // Record->
+      SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
+      llvm::outs() << "Did the thing!\n";
+
+    }
+    // Handle special case of default construction of complex types?
     return;
   }
 
@@ -392,9 +408,12 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
 
   SemaRef.pushScope(D->SavedScope);
   SemaRef.pushDecl(D);
-  clang::Scope *ClsScope = SemaRef.enterClangScope(clang::Scope::ClassScope);
+  clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::ClassScope);
   clang::CXXRecordDecl *R = cast<clang::CXXRecordDecl>(D->Cxx);
-  SemaRef.getCxxSema().ActOnTagStartDefinition(ClsScope, R);
+  clang::CXXFinalOverriderMap OverrideMap;
+  
+  // ActOnFinishCXXMemberSpecification
+  // SemaRef.getCxxSema().ActOnTagStartDefinition(ClsScope, R);
   // Scope* previousScope = nullptr;
   // D->SavedScope->
   // SemaRef.getCxxSema().Actions.CurScope
@@ -409,9 +428,6 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
   // Processing all sub declarations?
   // TODO:/FIXME: Need to create a means for building member functions/initializers
   for (const Syntax *SS : BodyArray->children()) {
-    llvm::outs() << "Elaborating type decls/variable definitions\n";
-    SS->dump();
-    llvm::outs() << "\n";
     elaborateDeclType(SS);
   }
 
@@ -419,13 +435,29 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
   //   elaborateDeclInit(SS);
   // }
 
-  R->completeDefinition();
-  clang::Decl *ClangCXXDecl = R;
-  SemaRef.getCxxSema().ActOnTagFinishDefinition(ClsScope, ClangCXXDecl,
-                                                            R->getBraceRange());
+  auto DeclRange = Scope->decls();
+  std::vector<clang::Decl*> Members(DeclRange.begin(), DeclRange.end());
+  // llvm::ArrayRef<clang::Decl*> Members(DeclRange.begin(), DeclRange.end());
+  clang::ParsedAttributes Attributes(SemaRef.AttrFactory);
+  SemaRef.getCxxSema().ActOnFields(Scope, R->getLocation(), R, Members,
+                                   clang::SourceLocation(),
+                                   clang::SourceLocation(), Attributes);
+  // clang::CXXConstructorDecl *ImplicitDefaultCtorDecl
+  //                   = SemaRef.getCxxSema().DeclareImplicitDefaultConstructor(R);
+  // // Attempting to add default constructor and destructor definitions.
+  // SemaRef.getCxxSema().DefineImplicitDefaultConstructor(clang::SourceLocation(),
+  //                                                       ImplicitDefaultCtorDecl);
+  // R->addDecl(ImplicitDefaultCtorDecl);
+  // clang::CXXConstructorDecl *ImplicitMoveCtorDecl
+  //                      = SemaRef.getCxxSema().DeclareImplicitMoveConstructor(R);
+  // R->addDecl(ImplicitMoveCtorDecl);
+  // SemaRef.getCxxSema().DefineImplicitMoveConstructor(clang::SourceLocation(),
+  //                                                    ImplicitMoveCtorDecl);
+  // R->completeDefinition();
   SemaRef.leaveClangScope(D->Op->getLoc());
   SemaRef.popDecl();
   SemaRef.popScope();
+
 
 }
 
