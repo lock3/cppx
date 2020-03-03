@@ -117,15 +117,19 @@ namespace {
   /// found in Sema/SemaExpr.cpp
   struct ExprMarker : public clang::EvaluatedExprVisitor<ExprMarker> {
     clang::ASTContext &CxxAST;
+    Sema &SemaRef;
     typedef EvaluatedExprVisitor<ExprMarker> Inherited;
 
-    ExprMarker(clang::ASTContext &CxxAST)
-      : Inherited(CxxAST), CxxAST(CxxAST)
+    ExprMarker(clang::ASTContext &CxxAST, Sema &SemaRef)
+      : Inherited(CxxAST), CxxAST(CxxAST), SemaRef(SemaRef)
       {}
 
     void VisitDeclRefExpr(clang::DeclRefExpr *E) {
       // FIXME: references to virtual methods may cause problems here.
-      E->getDecl()->markUsed(CxxAST);
+      SemaRef.getCxxSema().MarkAnyDeclReferenced(E->getBeginLoc(),
+                                                 E->getDecl(),
+                                                 /*OdrUsed=*/false);
+      // E->getDecl()->markUsed(CxxAST);
     }
   };
 } // anonymous namespace
@@ -223,8 +227,8 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
     }
 
     // We can readily assume anything here is getting used.
-    ExprMarker(CxxAST).Visit(NameExpr.get<clang::Expr *>());
-    ExprMarker(CxxAST).Visit(InitExpr.get<clang::Expr *>());
+    ExprMarker(CxxAST, SemaRef).Visit(NameExpr.get<clang::Expr *>());
+    ExprMarker(CxxAST, SemaRef).Visit(InitExpr.get<clang::Expr *>());
     return Assignment.get();
   }
 
@@ -241,7 +245,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
       return nullptr;
     }
 
-    ExprMarker(CxxAST).Visit(RetVal.get<clang::Expr *>());
+    ExprMarker(CxxAST, SemaRef).Visit(RetVal.get<clang::Expr *>());
     clang::StmtResult ReturnResult = SemaRef.getCxxSema().
       BuildReturnStmt(S->getCallee()->getLoc(), RetVal.get<clang::Expr *>());
     return ReturnResult.get();
@@ -387,7 +391,7 @@ StmtElaborator::elaborateBlock(const Syntax *S) {
     }
 
     if (ReturnVal.is<clang::Expr *>()) {
-      ExprMarker(CxxAST).Visit(ReturnVal.get<clang::Expr *>());
+      ExprMarker(CxxAST, SemaRef).Visit(ReturnVal.get<clang::Expr *>());
 
       clang::StmtResult ReturnRes = SemaRef.getCxxSema().
         BuildReturnStmt(S->getLoc(), ReturnVal.get<clang::Expr *>());

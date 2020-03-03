@@ -315,10 +315,24 @@ Expression ExprElaborator::elaborateElemCall(const CallSyntax *S) {
   // First do unqualified lookup.
   clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Id->getSpelling())}, S->getLoc());
   clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
+  R.setTemplateNameLookup(true);
   SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
 
   if (R.empty())
     return nullptr;
+
+  clang::TemplateArgumentListInfo TemplateArgs(Callee->getLoc(), Callee->getLoc());
+  for (const Syntax *SS : Callee->getArguments()->children()) {
+    ExprElaborator ParamElaborator(Context, SemaRef);
+    Expression ParamExpression = ParamElaborator.elaborateExpr(SS);
+    if (ParamExpression.isNull())
+      return nullptr;
+
+    // TODO: support types too
+    clang::TemplateArgument Arg(ParamExpression.get<clang::Expr *>(),
+                                clang::TemplateArgument::Expression);
+    TemplateArgs.addArgument({Arg, ParamExpression.get<clang::Expr *>()});
+  }
 
   clang::Expr *Fn = nullptr;
   R.resolveKind();
@@ -329,28 +343,17 @@ Expression ExprElaborator::elaborateElemCall(const CallSyntax *S) {
     clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(VD);
     if (!FD) return nullptr;
 
-    llvm::SmallVector<clang::TemplateArgumentLoc, 4> TemplateArgs;
-    for (const Syntax *SS : Callee->getArguments()->children()) {
-      ExprElaborator ParamElaborator(Context, SemaRef);
-      Expression ParamExpression = ParamElaborator.elaborateExpr(SS);
-      if (ParamExpression.isNull())
-        return nullptr;
-
-      // TODO: support types too
-      clang::TemplateArgument Arg(ParamExpression.get<clang::Expr *>(),
-                                  clang::TemplateArgument::Expression);
-      // FIXME: what is the point of a TemplateArgLoc? what should the expression
-      // argument be?
-      TemplateArgs.emplace_back(Arg, ParamExpression.get<clang::Expr *>());
-    }
-
     Fn =
       clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
                                  clang::SourceLocation(), VD, /*Capture=*/false,
                                  S->getLoc(), VD->getType(), clang::VK_RValue);
+  } else if (R.isOverloadedResult()) {
+    Fn =
+      clang::UnresolvedLookupExpr::Create(CxxAST, R.getNamingClass(),
+                                          clang::NestedNameSpecifierLoc(),
+                                        Callee->getLoc(), R.getLookupNameInfo(),
+                               /*ADL=*/true, &TemplateArgs, R.begin(), R.end());
   } else {
-    llvm::outs() << "R kind " << R.getResultKind() << '\n';
-    llvm::errs() << "Overloads not supported.\n";
     return nullptr;
   }
 

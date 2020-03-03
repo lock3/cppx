@@ -133,7 +133,17 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         for (auto *FoundDecl : Found) {
           assert(FoundDecl->Cxx && "Declaration not elaborated");
           clang::NamedDecl *ND = cast<clang::NamedDecl>(FoundDecl->Cxx);
-          R.addDecl(ND);
+
+          // If there is a described template, add that to the result instead
+          // of the bare declaration.
+          if (FoundDecl->declaresTemplate()) {
+            if (auto *FD = dyn_cast<clang::FunctionDecl>(ND))
+              R.addDecl(FD->getDescribedFunctionTemplate());
+            else if (auto *VD = dyn_cast<clang::VarDecl>(ND))
+              R.addDecl(VD->getDescribedVarTemplate());
+          } else {
+            R.addDecl(ND);
+          }
         }
 
         break;

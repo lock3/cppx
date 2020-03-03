@@ -117,6 +117,9 @@ public:
 
       /// The scope constructed during elaboration.
       Scope *ConstructedScope;
+
+      /// The scope containing the template parameters
+      Scope *TemplateScope;
     } ParamInfo;
 
     /// For DK_Type, the type in the call.
@@ -178,6 +181,10 @@ public:
 
   /// The list of members associated with this declaration.
   Scope *SavedScope = nullptr;
+
+  /// The list of template parameter declarations associated
+  /// with this declaration.
+  Scope *SavedTemplateScope = nullptr;
 
   /// The identifier for the declaration.
   clang::IdentifierInfo *Id = nullptr;
@@ -312,6 +319,11 @@ public:
   /// The parent of this scope.
   Scope *getParent() const {
     return Parent;
+  }
+
+  /// Set the parent of the scope; BE CAREFUL when using this.
+  void setParent(Scope *S) {
+    Parent = S;
   }
 
   /// The depth of the scope.

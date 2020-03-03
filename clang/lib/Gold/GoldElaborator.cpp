@@ -66,6 +66,8 @@ void Elaborator::startFile(const Syntax *S) {
 }
 
 void Elaborator::finishFile(const Syntax *S) {
+  SemaRef.getCxxSema().ActOnEndOfTranslationUnit();
+
   SemaRef.popDecl();
   SemaRef.leaveScope(S);
 
@@ -142,6 +144,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
 
   clang::DeclarationName Name = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
+  Declarator *FnDclrtr = getFunctionDeclarator(D);
 
   // FIXME: Make sure we have the right storage class.
   clang::FunctionDecl *FD = clang::FunctionDecl::Create(Context.CxxAST, Owner,
@@ -158,11 +161,11 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Deal with function templates now that we have created the (possibly)
   // templated declaration, FD.
   bool Template = false;
-  if (const Syntax *TemplParams =
-      getFunctionDeclarator(D)->Data.ParamInfo.TemplateParams) {
+  if (const Syntax *TemplParams = FnDclrtr->Data.ParamInfo.TemplateParams) {
     Template = true;
     // SemaRef.enterScope(SK_Template, TemplParams);
-    Sema::ScopeRAII ScopeRAII(SemaRef, SK_Template, TemplParams);
+    Sema::ScopeRAII ScopeRAII(SemaRef, SK_Template, TemplParams,
+                              &FnDclrtr->Data.ParamInfo.TemplateScope);
     llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
     std::size_t I = 0;
     for (const Syntax *P : TemplParams->children()) {
@@ -194,7 +197,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     FTD->setLexicalDeclContext(Owner);
     FD->setDescribedFunctionTemplate(FTD);
     Owner->addDecl(FTD);
-    D->Cxx = FTD;
   }
 
   // Update the function parameters.
@@ -203,10 +205,9 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   FD->setParams(Params);
 
   // Add the declaration and update bindings.
-  if (!Template) {
+  if (!Template)
     Owner->addDecl(FD);
-    D->Cxx = FD;
-  }
+  D->Cxx = FD;
 
   // FIXME: is this necessary for Gold? It enables some more semantic
   // checking, but not all of it is necessarily meaningful to us.
@@ -331,9 +332,11 @@ void Elaborator::elaborateDeclInit(const Syntax *S) {
 }
 
 void Elaborator::elaborateDef(Declaration *D) {
+  // if (D->declaresFunction())
+  //   return D->declaresTemplate() ?
+  //     elaborateFunctionTemplateDef(D) : elaborateFunctionDef(D);
   if (D->declaresFunction())
-    return D->declaresTemplate() ?
-      elaborateFunctionTemplateDef(D) : elaborateFunctionDef(D);
+    return elaborateFunctionDef(D);
 
   if (SemaRef.getCurrentScope()->isTemplateScope())
     return elaborateTemplateParamInit(D);
@@ -360,8 +363,21 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
 
   // We saved the parameter scope while elaborating this function's type,
   // so push it on before we enter the function scope.
-  Declarator *FnDecl = getFunctionDeclarator(D);
+  Declarator *FnDecl = getFunctionDeclarator(D);  
+  bool IsTemplate = D->declaresTemplate();
+
+  Scope *TemplateScope = nullptr;
+  if (IsTemplate) {
+    SemaRef.pushScope(FnDecl->Data.ParamInfo.TemplateScope);
+    TemplateScope = SemaRef.getCurrentScope();
+  }
   SemaRef.pushScope(FnDecl->Data.ParamInfo.ConstructedScope);
+  // The parameter scope is owned by the template scope, but they were
+  // constructed out of order.
+  if (TemplateScope) {
+    SemaRef.getCurrentScope()->setParent(TemplateScope);
+  }
+
   SemaRef.enterScope(SK_Function, D->Init);
 
   // Elaborate the function body.
@@ -375,6 +391,10 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   SemaRef.popScope();
   SemaRef.getCxxSema().PopFunctionScopeInfo();
 
+  // Leave the template scope
+  if (IsTemplate)
+    SemaRef.popScope();
+
   SemaRef.popDecl();
 }
 
@@ -383,6 +403,13 @@ void Elaborator::elaborateFunctionTemplateDef(Declaration *D) {
 
   if (!D->Init)
     return;
+
+  SemaRef.pushDecl(D);
+
+  // Declarator *FnDecl = getFunctionDeclarator(D);
+  // SemaRef.pushScope(FnDecl->Data.ParamInfo.ConstructedScope);
+
+  SemaRef.popDecl();
 }
 
 void Elaborator::elaborateVariableInit(Declaration *D) {

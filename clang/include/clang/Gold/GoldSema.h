@@ -168,19 +168,23 @@ public:
 
   // An RAII type for constructing scopes.
   struct ScopeRAII {
-    ScopeRAII(Sema &S, ScopeKind K, const Syntax *ConcreteTerm)
-      : S(S), SavedScope(S.getCurrentScope()), ConcreteTerm(ConcreteTerm) {
+    ScopeRAII(Sema &S, ScopeKind K, const Syntax *ConcreteTerm, Scope **SavedScope = nullptr)
+      : S(S), SavedScope(SavedScope), ConcreteTerm(ConcreteTerm) {
       S.enterScope(K, ConcreteTerm);
     }
 
     ~ScopeRAII() {
-      S.leaveScope(ConcreteTerm);
+      if (SavedScope)
+        *SavedScope = S.saveScope(ConcreteTerm);
+      else
+        S.leaveScope(ConcreteTerm);
     }
 
   private:
     Sema &S;
 
-    const Scope *SavedScope;
+    /// Optionally save this scope to be stored in the Declaration.
+    Scope **SavedScope;
 
     const Syntax *ConcreteTerm;
   };
