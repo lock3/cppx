@@ -91,7 +91,7 @@ clang::DeclContext *Sema::getCurrentCxxDeclContext() {
 }
 
 void Sema::pushDecl(Declaration *D) {
-  assert(D->getOwner() == CurrentDecl);  
+  assert(D->getOwner() == CurrentDecl);
 
   // FIXME: this might be an incorrect assertion.
   assert(D->Cxx && isa<clang::DeclContext>(D->Cxx)
@@ -121,8 +121,8 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   clang::Sema::LookupNameKind LookupKind = R.getLookupKind();
 
   while (S) {
-    // FIXME: This could find a set of declarations. Note that we could find
-    // several declarations, some of which have not been elaborated.
+    // FIXME: Note that we could find several declarations,
+    //        some of which have not been elaborated.
     std::set<Declaration *> Found = S->findDecl(Id);
     if (!Found.empty()) {
       // FIXME: we need a better way to separate tag lookup and other

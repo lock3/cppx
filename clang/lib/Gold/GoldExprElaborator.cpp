@@ -164,11 +164,64 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
     break;
   case tok::Identifier:
     return createDeclRefExpr(CxxAST, SemaRef, T, ExplicitType, S->getTokenLoc());
-    break;
   case tok::Character:
     break;
   case tok::String:
     break;
+
+  /// Keyword Literals
+
+  case tok::IntKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.IntTy, S->getLoc());
+  case tok::VoidKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.VoidTy, S->getLoc());
+  case tok::BoolKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.BoolTy, S->getLoc());
+  case tok::CharKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.CharTy, S->getLoc());
+  case tok::Wchar_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.WCharTy, S->getLoc());
+  case tok::Wint_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.WIntTy, S->getLoc());
+  case tok::Char8_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.Char8Ty, S->getLoc());
+  case tok::Char16_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.Char16Ty, S->getLoc());
+  case tok::Char32_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.Char32Ty, S->getLoc());
+  case tok::SignedCharKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.SignedCharTy, S->getLoc());
+  case tok::ShortKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.ShortTy, S->getLoc());
+  case tok::LongKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.LongTy, S->getLoc());
+  case tok::LongLongKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.LongLongTy, S->getLoc());
+  case tok::Int128_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.Int128Ty, S->getLoc());
+  case tok::UnsignedCharKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedCharTy, S->getLoc());
+  case tok::UnsignedShortKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedShortTy, S->getLoc());
+  case tok::UnsignedKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedIntTy, S->getLoc());
+  case tok::UnsignedLongKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedLongTy, S->getLoc());
+  case tok::UnsignedLongLongKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedLongLongTy, S->getLoc());
+  case tok::Uint128_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedInt128Ty, S->getLoc());
+  case tok::FloatKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.FloatTy, S->getLoc());
+  case tok::DoubleKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.DoubleTy, S->getLoc());
+  case tok::LongDoubleKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.LongDoubleTy, S->getLoc());
+  case tok::Float128_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.Float128Ty, S->getLoc());
+  case tok::TypeKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.CppxKindTy, S->getLoc());
+
   default: break;
   }
 
@@ -321,6 +374,7 @@ Expression ExprElaborator::elaborateElemCall(const CallSyntax *S) {
   if (R.empty())
     return nullptr;
 
+  // Build the template argument list.
   clang::TemplateArgumentListInfo TemplateArgs(Callee->getLoc(), Callee->getLoc());
   for (const Syntax *SS : Callee->getArguments()->children()) {
     ExprElaborator ParamElaborator(Context, SemaRef);
@@ -328,33 +382,28 @@ Expression ExprElaborator::elaborateElemCall(const CallSyntax *S) {
     if (ParamExpression.isNull())
       return nullptr;
 
-    // TODO: support types too
-    clang::TemplateArgument Arg(ParamExpression.get<clang::Expr *>(),
-                                clang::TemplateArgument::Expression);
-    TemplateArgs.addArgument({Arg, ParamExpression.get<clang::Expr *>()});
+    if (ParamExpression.is<clang::TypeSourceInfo *>()) {
+      auto *TypeParam = ParamExpression.get<clang::TypeSourceInfo *>();
+      clang::TemplateArgument Arg(TypeParam->getType());
+      TemplateArgs.addArgument({Arg, TypeParam});
+    } else {
+      clang::TemplateArgument Arg(ParamExpression.get<clang::Expr *>(),
+                                  clang::TemplateArgument::Expression);
+      TemplateArgs.addArgument({Arg, ParamExpression.get<clang::Expr *>()});
+    }
   }
 
+  // Build the ULE if we found something.
   clang::Expr *Fn = nullptr;
   R.resolveKind();
-  if (R.isSingleResult()) {
-    clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>();
-
-    // This had better be a reference to a function.
-    clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(VD);
-    if (!FD) return nullptr;
-
-    Fn =
-      clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
-                                 clang::SourceLocation(), VD, /*Capture=*/false,
-                                 S->getLoc(), VD->getType(), clang::VK_RValue);
-  } else if (R.isOverloadedResult()) {
+  if (R.isOverloadedResult()) {
     Fn =
       clang::UnresolvedLookupExpr::Create(CxxAST, R.getNamingClass(),
                                           clang::NestedNameSpecifierLoc(),
                                         Callee->getLoc(), R.getLookupNameInfo(),
                                /*ADL=*/true, &TemplateArgs, R.begin(), R.end());
   } else {
-    return nullptr;
+    llvm_unreachable("Non-overloaded template call?");
   }
 
   // Get the passed arguments.

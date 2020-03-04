@@ -61,7 +61,6 @@ public:
   void elaborateDeclInit(const Syntax *S);
   void elaborateDef(Declaration *D);
   void elaborateFunctionDef(Declaration *D);
-  void elaborateFunctionTemplateDef(Declaration *D);
   void elaborateVariableInit(Declaration *D);
   void elaborateTemplateParamInit(Declaration *D);
 
@@ -128,6 +127,7 @@ public:
     {"double", Context.CxxAST.DoubleTy},
     {"long double", Context.CxxAST.LongDoubleTy},
     {"float128_t", Context.CxxAST.Float128Ty},
+    {"type", Context.CxxAST.CppxKindTy},
   };
 };
 

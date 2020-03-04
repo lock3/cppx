@@ -296,7 +296,11 @@ clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
 
   // This is a template type parameter decl.
   if (TInfo->getType()->getAs<clang::CppxKindType>()) {
-    return nullptr;
+    auto *TTPD =
+      clang::TemplateTypeParmDecl::Create(Context.CxxAST, Owner, Loc, Loc, 0, 0,
+                              Id, /*TypenameKW=*/true, /*ParameterPack=*/false);
+    D->Cxx = TTPD;
+    return TTPD;
   }
 
   // The depth and position of the parameter will be set later.
@@ -332,9 +336,6 @@ void Elaborator::elaborateDeclInit(const Syntax *S) {
 }
 
 void Elaborator::elaborateDef(Declaration *D) {
-  // if (D->declaresFunction())
-  //   return D->declaresTemplate() ?
-  //     elaborateFunctionTemplateDef(D) : elaborateFunctionDef(D);
   if (D->declaresFunction())
     return elaborateFunctionDef(D);
 
@@ -344,12 +345,9 @@ void Elaborator::elaborateDef(Declaration *D) {
 }
 
 void Elaborator::elaborateFunctionDef(Declaration *D) {
-  // clang::FunctionDecl *FD = nullptr;
-  // if (isa<clang::FunctionDecl>(D->Cxx))
-  //   FD = cast<clang::FunctionDecl>(D->Cxx);
-  // else if (isa<clang::FunctionTemplateDecl>(D->Cxx))
-  //   FD = cast<clang::FunctionTemplateDecl>(D->Cxx)->getTemplatedDecl();
-  // assert(FD && "Invalid function declaration.");
+  if (!D->Cxx)
+    return;
+
   assert(isa<clang::FunctionDecl>(D->Cxx) && "Bad function declaration.");
   clang::FunctionDecl *FD = cast<clang::FunctionDecl>(D->Cxx);
 
@@ -363,7 +361,7 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
 
   // We saved the parameter scope while elaborating this function's type,
   // so push it on before we enter the function scope.
-  Declarator *FnDecl = getFunctionDeclarator(D);  
+  Declarator *FnDecl = getFunctionDeclarator(D);
   bool IsTemplate = D->declaresTemplate();
 
   Scope *TemplateScope = nullptr;
@@ -394,20 +392,6 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   // Leave the template scope
   if (IsTemplate)
     SemaRef.popScope();
-
-  SemaRef.popDecl();
-}
-
-void Elaborator::elaborateFunctionTemplateDef(Declaration *D) {
-  assert(isa<clang::FunctionTemplateDecl>(D->Cxx) && "Bad function template");
-
-  if (!D->Init)
-    return;
-
-  SemaRef.pushDecl(D);
-
-  // Declarator *FnDecl = getFunctionDeclarator(D);
-  // SemaRef.pushScope(FnDecl->Data.ParamInfo.ConstructedScope);
 
   SemaRef.popDecl();
 }
@@ -463,26 +447,17 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 }
 
 void Elaborator::elaborateTemplateParamInit(Declaration *D) {
+  if (!D->Init)
+    return;
+
   assert((isa<clang::NonTypeTemplateParmDecl>(D->Cxx) ||
           isa<clang::TemplateTemplateParmDecl>(D->Cxx) ||
           isa<clang::TemplateTypeParmDecl>(D->Cxx)) &&
          "Initializing non-template parameter.");
 
   // FIXME: isADeclarationOrDefinition isn't implemented
-  //        for template parameters.
-  // if (isa<clang::NonTypeTemplateParmDecl>(D->Cxx)) {
-  //   if (SemaRef.checkForRedefinition<clang::NonTypeTemplateParmDecl>(D))
-  //     return;
-  // } else if (isa<clang::TemplateTemplateParmDecl>(D->Cxx)) {
-  //   if (SemaRef.checkForRedefinition<clang::TemplateTemplateParmDecl>(D))
-  //     return;
-  // } else if (isa<clang::TemplateTypeParmDecl>(D->Cxx)) {
-  //   if (SemaRef.checkForRedefinition<clang::TemplateTypeParmDecl>(D))
-  //     return;
-  // }
-
-  if (!D->Init)
-    return;
+  //        for template parameters, so we can't check for
+  //        redefinition using the template.
 
   // TODO: these might have default arguments.
 }
