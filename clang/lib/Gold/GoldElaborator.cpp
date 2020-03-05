@@ -137,7 +137,7 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
         D->getId(),
         D->Decl->getId()->getLoc(),
         attrs,
-        clang::AccessSpecifier::AS_public ,
+        clang::AccessSpecifier::AS_public,
         /*DS*/clang::SourceLocation(),
         TParams,
         IsOwned,
@@ -154,6 +154,7 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
     llvm::outs() << "\n";
     clang::CXXRecordDecl *ClsDecl
                        = clang::dyn_cast<clang::CXXRecordDecl>(TagOrTempResult);
+    ClsDecl->setFreeStanding();
     SemaRef.getCurrentScope()->addUserDefinedType(D->Id,
                                        Context.CxxAST.getTypeDeclType(ClsDecl));
     // Context.CxxAST.getTranslationUnitDecl()->addDecl(ClsDecl);
