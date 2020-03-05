@@ -120,44 +120,49 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 
   clang::Sema::LookupNameKind LookupKind = R.getLookupKind();
 
+  if (LookupKind == clang::Sema::LookupTagName) {
+    auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
+    if (BuiltinMapIter != BuiltinTypes.end())
+      return true;
+  }
+
   while (S) {
     // FIXME: Note that we could find several declarations,
     //        some of which have not been elaborated.
     std::set<Declaration *> Found = S->findDecl(Id);
     if (!Found.empty()) {
-      // FIXME: we need a better way to separate tag lookup and other
-      // name lookups.
-      if (LookupKind != clang::Sema::LookupTagName) {
-        // FIXME: This is wrong! If we find a name that hasn't been elaborated,
-        // then we actually need to elaborate it.
-        for (auto *FoundDecl : Found) {
-          assert(FoundDecl->Cxx && "Declaration not elaborated");
-          clang::NamedDecl *ND = cast<clang::NamedDecl>(FoundDecl->Cxx);
+      for (auto *FoundDecl : Found) {
+        // FIXME: This is wrong! If we find a name that hasn't been
+        //        elaborated, then we actually need to elaborate it.
+        assert(FoundDecl->Cxx && "Declaration not elaborated");
 
-          // If there is a described template, add that to the result instead
-          // of the bare declaration.
-          if (FoundDecl->declaresTemplate()) {
-            if (auto *FD = dyn_cast<clang::FunctionDecl>(ND))
-              R.addDecl(FD->getDescribedFunctionTemplate());
-            else if (auto *VD = dyn_cast<clang::VarDecl>(ND))
-              R.addDecl(VD->getDescribedVarTemplate());
-          } else {
-            R.addDecl(ND);
-          }
+        clang::NamedDecl *ND = cast<clang::NamedDecl>(FoundDecl->Cxx);
+
+        if (LookupKind == clang::Sema::LookupTagName &&
+            !isa<clang::TypeDecl>(ND)) {
+          // FIXME: Give a proper diagnostic once we implement hiding.
+          unsigned DiagID = Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                                  "Tag is hidden.");
+          Diags.Report(clang::SourceLocation(), DiagID);
+          return false;
         }
 
-        break;
+        // If there is a described template, add that to the result instead
+        // of the bare declaration.
+        if (FoundDecl->declaresTemplate()) {
+          if (auto *FD = dyn_cast<clang::FunctionDecl>(ND))
+            R.addDecl(FD->getDescribedFunctionTemplate());
+          else if (auto *VD = dyn_cast<clang::VarDecl>(ND))
+            R.addDecl(VD->getDescribedVarTemplate());
+        } else {
+          R.addDecl(ND);
+        }
       }
-    }
-    S = S->getParent();
-  }
 
-  if (R.empty() && LookupKind == clang::Sema::LookupTagName) {
-    auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
-    if (BuiltinMapIter != BuiltinTypes.end())
-      return true;
-    else
-      ; // FIXME: This requires a type lookup.
+      break;
+    }
+
+    S = S->getParent();
   }
 
   return !R.empty();

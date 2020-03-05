@@ -702,14 +702,21 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   // FIXME: We should really elaborate the entire type expression. We're
   // just cheating for now.
   if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
-    auto BuiltinMapIter = BuiltinTypes.find(Atom->getSpelling());
-    if (BuiltinMapIter == BuiltinTypes.end()) {
-      // FIXME: This requires a type lookup.
-      assert(false && "User-defined types not supported.");
+    clang::SourceLocation Loc = Atom->getLoc();
+
+    clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Atom->getSpelling())}, Loc);
+    clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupTagName);
+    if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope()))
+      return nullptr;
+
+    if (R.empty()) {
+      auto BuiltinMapIter = BuiltinTypes.find(Atom->getSpelling());
+      return BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second, Loc);
     }
 
-    return BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second,
-                           D->getType()->getLoc());
+    clang::TypeDecl *TD = R.getAsSingle<clang::TypeDecl>();
+    clang::QualType TDType(TD->getTypeForDecl(), 0);
+    return BuildAnyTypeLoc(CxxAST, TDType, Loc);
   }
 
   llvm_unreachable("Unknown type specification");

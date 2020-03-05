@@ -133,6 +133,16 @@ bool Declaration::declaresTemplate() const {
   return false;
 }
 
+const Syntax *Declaration::getTemplateParams() const {
+  assert(Decl);
+  const Declarator *D = Decl;
+  if (D->Kind == DK_Identifier)
+    D = D->Next;
+  if (D)
+    return D->Data.ParamInfo.TemplateParams;
+  return nullptr;
+}
+
 clang::DeclContext *Declaration::getCxxContext() const {
   return clang::Decl::castToDeclContext(Cxx);
 }

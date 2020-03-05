@@ -156,6 +156,9 @@ public:
   /// True if this declares a template.
   bool declaresTemplate() const;
 
+  /// Get the template parameters for this declaration or null if none.
+  const Syntax *getTemplateParams() const;
+
   /// The identifier of the declaration, if any.
   clang::IdentifierInfo *getId() const {
     return Id;

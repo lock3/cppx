@@ -224,6 +224,7 @@ public:
     {"double", Context.CxxAST.DoubleTy},
     {"long double", Context.CxxAST.LongDoubleTy},
     {"float128_t", Context.CxxAST.Float128Ty},
+    {"type", Context.CxxAST.CppxKindTy}
   };
 };
 

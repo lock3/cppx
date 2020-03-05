@@ -129,10 +129,50 @@ static void getFunctionParameters(Declaration *D,
   }
 }
 
+static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
+                                const Syntax *Params,
+                                llvm::SmallVectorImpl<clang::NamedDecl *> &Res)
+{
+  std::size_t I = 0;
+  for (const Syntax *P : Params->children()) {
+    Elaborator Elab(Ctx, SemaRef);
+    clang::NamedDecl *ND =
+      cast_or_null<clang::NamedDecl>(Elab.elaborateDeclSyntax(P));
+    // Just skip this on error.
+    if (!ND)
+      continue;
+
+    // FIXME: set the depth too.
+    if (auto *TP = dyn_cast<clang::NonTypeTemplateParmDecl>(ND)) {
+      TP->setPosition(I);
+    } else if (auto *TP = dyn_cast<clang::TemplateTypeParmDecl>(ND)) {
+      // FIXME: Make this a friend of TTPD so we can set this :/
+      // TP->setPosition(I);
+    }
+
+    Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
+    assert(D && "Didn't find associated declaration");
+    Res.push_back(ND);
+
+    ++I;
+  }
+}
+
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  Declarator *FnDclrtr = getFunctionDeclarator(D);
 
+  // Create the template parameters if they exist.
+  const Syntax *TemplParams = D->getTemplateParams();
+  bool Template = TemplParams;
+  llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
+  if (Template) {
+    SemaRef.enterScope(SK_Template, TemplParams);
+    BuildTemplateParams(Context, SemaRef, TemplParams, TemplateParamDecls);
+  }
+
+  // Elaborate the return type.
   ExprElaborator TypeElab(Context, SemaRef);
   ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
   if (TypeExpr.isNull()) {
@@ -140,53 +180,22 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
-  clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
 
+  clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
   clang::DeclarationName Name = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
-  Declarator *FnDclrtr = getFunctionDeclarator(D);
-
-  // FIXME: Make sure we have the right storage class.
   clang::FunctionDecl *FD = clang::FunctionDecl::Create(Context.CxxAST, Owner,
                                                         Loc, Loc, Name,
                                                         TInfo->getType(),
                                                         TInfo, clang::SC_None);
-
   if (FD->isMain()) {
     clang::AttributeFactory Attrs;
     clang::DeclSpec DS(Attrs);
     SemaRef.getCxxSema().CheckMain(FD, DS);
   }
 
-  // Deal with function templates now that we have created the (possibly)
-  // templated declaration, FD.
-  bool Template = false;
-  if (const Syntax *TemplParams = FnDclrtr->Data.ParamInfo.TemplateParams) {
-    Template = true;
-    // SemaRef.enterScope(SK_Template, TemplParams);
-    Sema::ScopeRAII ScopeRAII(SemaRef, SK_Template, TemplParams,
-                              &FnDclrtr->Data.ParamInfo.TemplateScope);
-    llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
-    std::size_t I = 0;
-    for (const Syntax *P : TemplParams->children()) {
-      Elaborator Elab(Context, SemaRef);
-      clang::NamedDecl *ND =
-        cast_or_null<clang::NamedDecl>(Elab.elaborateDeclSyntax(P));
-      if (!ND)
-        return nullptr;
-
-      // FIXME: set the depth too.
-      if (auto *TP = dyn_cast<clang::NonTypeTemplateParmDecl>(ND)) {
-        TP->setPosition(I);
-      }
-
-      Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
-      assert(D && "Didn't find associated declaration");
-      TemplateParamDecls.push_back(ND);
-
-      ++I;
-    }
-
+  // Create a template out for FD, if we have to.
+  if (Template) {
     clang::SourceLocation Loc = TemplParams->getLoc();
     auto *TPL =
       clang::TemplateParameterList::Create(Context.CxxAST, Loc, Loc,
@@ -197,6 +206,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     FTD->setLexicalDeclContext(Owner);
     FD->setDescribedFunctionTemplate(FTD);
     Owner->addDecl(FTD);
+    FnDclrtr->Data.ParamInfo.TemplateScope = SemaRef.saveScope(TemplParams);
   }
 
   // Update the function parameters.
