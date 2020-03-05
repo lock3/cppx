@@ -458,12 +458,9 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
   // is auto. This will be replaced if an explicit type specifier is given.
   clang::QualType AutoType = CxxAST.getAutoDeductType();
   TypeInfo *TInfo = BuildAnyTypeLoc(CxxAST, AutoType, D->getLoc());
-  // for (auto Iter = Decls.begin(); Iter != Decls.  end(); ++Iter) {
-  //   llvm::outs() << "Sub declaration: " << (*Iter)->getString() << "\n";
-  // }
+
   for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
     D = *Iter;
-    // llvm::outs() << "Processing declaration: " << D->getString() << "\n";
     switch (D->Kind) {
     case DK_Identifier:
       // The identifier is not part of the type.
