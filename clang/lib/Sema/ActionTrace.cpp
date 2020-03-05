@@ -60,45 +60,82 @@ void ActionTrace::EnterScopeLog(clang::Scope* S) {
   WriteIndent();
   llvm::raw_ostream &Out
                    = llvm::WithColor(llvm::outs(), llvm::HighlightColor::Macro);
-  Out << "New Scope support flags";
+  Out << "New Scope support flags\n";
   #define WRITE_SUPPORTED_FLAG(FLAG_NAME)\
-    if(S->getFlags() & FLAG_NAME) {\
+    if(S->getFlags() & clang::Scope::FLAG_NAME) {\
       WriteIndent();\
       Out << "      " << #FLAG_NAME << "\n";\
     }
-  WRITE_SUPPORTED_FLAG(clang::Scope::FnScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::BreakScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::ContinueScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::DeclScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::ControlScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::ClassScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::BlockScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::TemplateParamScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::FunctionPrototypeScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::FunctionDeclarationScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::AtCatchScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::ObjCMethodScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::SwitchScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::TryScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::FnTryCatchScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::OpenMPDirectiveScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::OpenMPLoopDirectiveScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::OpenMPSimdDirectiveScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::EnumScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::SEHTryScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::SEHExceptScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::SEHFilterScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::CompoundStmtScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::ClassInheritanceScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::CatchScope);
-  WRITE_SUPPORTED_FLAG(clang::Scope::FragmentScope);
+  WRITE_SUPPORTED_FLAG(FnScope);
+  WRITE_SUPPORTED_FLAG(BreakScope);
+  WRITE_SUPPORTED_FLAG(ContinueScope);
+  WRITE_SUPPORTED_FLAG(DeclScope);
+  WRITE_SUPPORTED_FLAG(ControlScope);
+  WRITE_SUPPORTED_FLAG(ClassScope);
+  WRITE_SUPPORTED_FLAG(BlockScope);
+  WRITE_SUPPORTED_FLAG(TemplateParamScope);
+  WRITE_SUPPORTED_FLAG(FunctionPrototypeScope);
+  WRITE_SUPPORTED_FLAG(FunctionDeclarationScope);
+  WRITE_SUPPORTED_FLAG(AtCatchScope);
+  WRITE_SUPPORTED_FLAG(ObjCMethodScope);
+  WRITE_SUPPORTED_FLAG(SwitchScope);
+  WRITE_SUPPORTED_FLAG(TryScope);
+  WRITE_SUPPORTED_FLAG(FnTryCatchScope);
+  WRITE_SUPPORTED_FLAG(OpenMPDirectiveScope);
+  WRITE_SUPPORTED_FLAG(OpenMPLoopDirectiveScope);
+  WRITE_SUPPORTED_FLAG(OpenMPSimdDirectiveScope);
+  WRITE_SUPPORTED_FLAG(EnumScope);
+  WRITE_SUPPORTED_FLAG(SEHTryScope);
+  WRITE_SUPPORTED_FLAG(SEHExceptScope);
+  WRITE_SUPPORTED_FLAG(SEHFilterScope);
+  WRITE_SUPPORTED_FLAG(CompoundStmtScope);
+  WRITE_SUPPORTED_FLAG(ClassInheritanceScope);
+  WRITE_SUPPORTED_FLAG(CatchScope);
+  WRITE_SUPPORTED_FLAG(FragmentScope);
 
   llvm::outs() << "\n";
   ++Depth;
 }
 
 void ActionTrace::LeaveScopeLog(clang::Scope* S) {
+  --Depth;
+  WriteIndent();
+  llvm::raw_ostream &Out
+                   = llvm::WithColor(llvm::outs(), llvm::HighlightColor::Macro);
+  Out << "Leaving Scope support flags\n";
+  #define WRITE_SUPPORTED_FLAG(FLAG_NAME)\
+    if(S->getFlags() & clang::Scope::FLAG_NAME) {\
+      WriteIndent();\
+      Out << "      " << #FLAG_NAME << "\n";\
+    }
+  WRITE_SUPPORTED_FLAG(FnScope);
+  WRITE_SUPPORTED_FLAG(BreakScope);
+  WRITE_SUPPORTED_FLAG(ContinueScope);
+  WRITE_SUPPORTED_FLAG(DeclScope);
+  WRITE_SUPPORTED_FLAG(ControlScope);
+  WRITE_SUPPORTED_FLAG(ClassScope);
+  WRITE_SUPPORTED_FLAG(BlockScope);
+  WRITE_SUPPORTED_FLAG(TemplateParamScope);
+  WRITE_SUPPORTED_FLAG(FunctionPrototypeScope);
+  WRITE_SUPPORTED_FLAG(FunctionDeclarationScope);
+  WRITE_SUPPORTED_FLAG(AtCatchScope);
+  WRITE_SUPPORTED_FLAG(ObjCMethodScope);
+  WRITE_SUPPORTED_FLAG(SwitchScope);
+  WRITE_SUPPORTED_FLAG(TryScope);
+  WRITE_SUPPORTED_FLAG(FnTryCatchScope);
+  WRITE_SUPPORTED_FLAG(OpenMPDirectiveScope);
+  WRITE_SUPPORTED_FLAG(OpenMPLoopDirectiveScope);
+  WRITE_SUPPORTED_FLAG(OpenMPSimdDirectiveScope);
+  WRITE_SUPPORTED_FLAG(EnumScope);
+  WRITE_SUPPORTED_FLAG(SEHTryScope);
+  WRITE_SUPPORTED_FLAG(SEHExceptScope);
+  WRITE_SUPPORTED_FLAG(SEHFilterScope);
+  WRITE_SUPPORTED_FLAG(CompoundStmtScope);
+  WRITE_SUPPORTED_FLAG(ClassInheritanceScope);
+  WRITE_SUPPORTED_FLAG(CatchScope);
+  WRITE_SUPPORTED_FLAG(FragmentScope);
 
+  llvm::outs() << "\n";
 }
 
 ActionLoggingGuard::ActionLoggingGuard(llvm::StringRef FnName)

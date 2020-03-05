@@ -377,7 +377,7 @@ bool Parser::SkipUntil(ArrayRef<tok::TokenKind> Toks, SkipUntilFlags Flags) {
 
 /// EnterScope - Start a new scope.
 void Parser::EnterScope(unsigned ScopeFlags) {
-  PARSING_LOG();
+  // PARSING_LOG();
   if (NumCachedScopes) {
     Scope *N = ScopeCache[--NumCachedScopes];
     N->Init(getCurScope(), ScopeFlags);
@@ -385,12 +385,14 @@ void Parser::EnterScope(unsigned ScopeFlags) {
   } else {
     Actions.CurScope = new Scope(getCurScope(), ScopeFlags, Diags);
   }
+  ::sematrace::ActionTrace::EnterScopeLog(Actions.CurScope);
 }
 
 /// ExitScope - Pop a scope off the scope stack.
 void Parser::ExitScope() {
-  PARSING_LOG();
+  // PARSING_LOG();
   assert(getCurScope() && "Scope imbalance!");
+  ::sematrace::ActionTrace::LeaveScopeLog(getCurScope());
 
   // Inform the actions module that this scope is going away if there are any
   // decls in it.
