@@ -150,7 +150,7 @@ bool Sema::isSimpleTypeSpecifier(tok::TokenKind Kind) const {
   case tok::kw_typeof:
   case tok::annot_decltype:
   case tok::kw_decltype:
-    return getLangOpts().CPlusPlus || getLangOpts().Gold;
+    return getLangOpts().CPlusPlus;
 
   case tok::kw_char8_t:
     return getLangOpts().Char8;
@@ -391,7 +391,7 @@ ParsedType Sema::getTypeName(const IdentifierInfo &II, SourceLocation NameLoc,
           // Ignore a correction to a template type as the to-be-corrected
           // identifier is not a template (typo correction for template names
           // is handled elsewhere).
-          !((getLangOpts().CPlusPlus || getLangOpts().Gold) && NewSSPtr &&
+          !(getLangOpts().CPlusPlus && NewSSPtr &&
             isTemplateName(S, *NewSSPtr, false, TemplateName, nullptr, false,
                            Template, MemberOfUnknownSpecialization))) {
         ParsedType Ty = getTypeName(*NewII, NameLoc, S, NewSSPtr,
@@ -721,7 +721,7 @@ void Sema::DiagnoseUnknownTypeName(IdentifierInfo *&II,
     return;
   }
 
-  if ((getLangOpts().CPlusPlus || getLangOpts().Gold) && !IsTemplateName) {
+  if (getLangOpts().CPlusPlus && !IsTemplateName) {
     // See if II is a class template that the user forgot to pass arguments to.
     UnqualifiedId Name;
     Name.setIdentifier(II, IILoc);
@@ -767,8 +767,7 @@ void Sema::DiagnoseUnknownTypeName(IdentifierInfo *&II,
 /// Determine whether the given result set contains either a type name
 /// or
 static bool isResultTypeOrTemplate(LookupResult &R, const Token &NextToken) {
-  bool CheckTemplate = (R.getSema().getLangOpts().CPlusPlus
-                       || R.getSema().getLangOpts().Gold) &&
+  bool CheckTemplate = R.getSema().getLangOpts().CPlusPlus &&
                        NextToken.is(tok::less);
 
   for (LookupResult::iterator I = R.begin(), IEnd = R.end(); I != IEnd; ++I) {
@@ -856,7 +855,7 @@ Sema::NameClassification Sema::ClassifyName(Scope *S, CXXScopeSpec &SS,
 
   assert(NextToken.isNot(tok::coloncolon) &&
          "parse nested name specifiers before calling ClassifyName");
-  if ((getLangOpts().CPlusPlus || getLangOpts().Gold) && SS.isSet() &&
+  if (getLangOpts().CPlusPlus && SS.isSet() &&
       isCurrentClassName(*Name, S, &SS)) {
     // Per [class.qual]p2, this names the constructors of SS, not the
     // injected-class-name. We don't have a classification for that.
@@ -906,7 +905,7 @@ Corrected:
     if (SS.isEmpty() && NextToken.is(tok::l_paren)) {
       // In C++, this is an ADL-only call.
       // FIXME: Reference?
-      if (getLangOpts().CPlusPlus || getLangOpts().Gold)
+      if (getLangOpts().CPlusPlus)
         return NameClassification::UndeclaredNonType();
 
       // C90 6.3.2.2:
@@ -15001,7 +15000,7 @@ Decl *Sema::ActOnTag(Scope *S, unsigned TagSpec, Expr *Metafunction,
   /// implemented asks for structural equivalence checking, the returned decl
   /// here is passed back to the parser, allowing the tag body to be parsed.
   auto createTagFromNewDecl = [&]() -> TagDecl * {
-    assert(!getLangOpts().CPlusPlus && !getLangOpts().Gold && "not meant for C++ usage");
+    assert(!getLangOpts().CPlusPlus && "not meant for C++ usage");
     // If there is an identifier, use the location of the identifier as the
     // location of the decl, otherwise use the location of the struct/union
     // keyword.
@@ -15176,7 +15175,7 @@ Decl *Sema::ActOnTag(Scope *S, unsigned TagSpec, Expr *Metafunction,
     if (Previous.isAmbiguous())
       return nullptr;
 
-    if (!getLangOpts().CPlusPlus && !getLangOpts().Gold && TUK != TUK_Reference) {
+    if (!getLangOpts().CPlusPlus && TUK != TUK_Reference) {
       // FIXME: This makes sure that we ignore the contexts associated
       // with C structs, unions, and enums when looking for a matching
       // tag declaration or definition. See the similar lookup tweak
@@ -15194,7 +15193,7 @@ Decl *Sema::ActOnTag(Scope *S, unsigned TagSpec, Expr *Metafunction,
     Previous.clear();
   }
 
-  if ((getLangOpts().CPlusPlus || getLangOpts().Gold) && Name && DC && StdNamespace &&
+  if (getLangOpts().CPlusPlus && Name && DC && StdNamespace &&
       DC->Equals(getStdNamespace())) {
     if (Name->isStr("bad_alloc")) {
       // This is a declaration of or a reference to "std::bad_alloc".
@@ -15269,7 +15268,7 @@ Decl *Sema::ActOnTag(Scope *S, unsigned TagSpec, Expr *Metafunction,
     // hidden declaration so that we don't get ambiguity errors when using a
     // type declared by an elaborated-type-specifier.  In C that is not correct
     // and we should instead merge compatible types found by lookup.
-    if (getLangOpts().CPlusPlus || getLangOpts().Gold) {
+    if (getLangOpts().CPlusPlus) {
       Previous.setRedeclarationKind(forRedeclarationInCurContext());
       LookupQualifiedName(Previous, SearchDC);
     } else {
@@ -15295,7 +15294,7 @@ Decl *Sema::ActOnTag(Scope *S, unsigned TagSpec, Expr *Metafunction,
     // technically forbidden by the current standard but which is
     // okay according to the likely resolution of an open issue;
     // see http://www.open-std.org/jtc1/sc22/wg21/docs/cwg_active.html#407
-    if (getLangOpts().CPlusPlus || getLangOpts().Gold) {
+    if (getLangOpts().CPlusPlus) {
       if (TypedefNameDecl *TD = dyn_cast<TypedefNameDecl>(PrevDecl)) {
         if (const TagType *TT = TD->getUnderlyingType()->getAs<TagType>()) {
           TagDecl *Tag = TT->getDecl();
@@ -15462,7 +15461,7 @@ Decl *Sema::ActOnTag(Scope *S, unsigned TagSpec, Expr *Metafunction,
                 // assume that this definition is identical to the hidden one
                 // we already have. Make the existing definition visible and
                 // use it in place of this one.
-                if (!getLangOpts().CPlusPlus && !getLangOpts().Gold) {
+                if (!getLangOpts().CPlusPlus) {
                   // Postpone making the old definition visible until after we
                   // complete parsing the new one and do the structural
                   // comparison.
@@ -15480,8 +15479,7 @@ Decl *Sema::ActOnTag(Scope *S, unsigned TagSpec, Expr *Metafunction,
               } else if (!IsExplicitSpecializationAfterInstantiation) {
                 // A redeclaration in function prototype scope in C isn't
                 // visible elsewhere, so merely issue a warning.
-                if (!getLangOpts().CPlusPlus && !getLangOpts().Gold
-                    && S->containedInPrototypeScope())
+                if (!getLangOpts().CPlusPlus && S->containedInPrototypeScope())
                   Diag(NameLoc, diag::warn_redefinition_in_param_list) << Name;
                 else
                   Diag(NameLoc, diag::err_redefinition) << Name;
@@ -15628,7 +15626,7 @@ CreateNewDecl:
         unsigned DiagID = diag::ext_forward_ref_enum;
         if (getLangOpts().MSVCCompat)
           DiagID = diag::ext_ms_forward_ref_enum;
-        else if (getLangOpts().CPlusPlus || getLangOpts().Gold)
+        else if (getLangOpts().CPlusPlus)
           DiagID = diag::err_forward_ref_enum;
         Diag(Loc, DiagID);
       }
@@ -15648,7 +15646,7 @@ CreateNewDecl:
 
     // FIXME: Tag decls should be chained to any simultaneous vardecls, e.g.:
     // struct X { int A; } D;    D should chain to X.
-    if (getLangOpts().CPlusPlus || getLangOpts().Gold) {
+    if (getLangOpts().CPlusPlus) {
       // FIXME: Look for a way to use RecordDecl for simple structs.
       New = CXXRecordDecl::Create(Context, Kind, SearchDC, KWLoc, Loc, Name,
                                   cast_or_null<CXXRecordDecl>(PrevDecl));
@@ -15667,15 +15665,15 @@ CreateNewDecl:
 
   // C++11 [dcl.type]p3:
   //   A type-specifier-seq shall not define a class or enumeration [...].
-  if ((getLangOpts().CPlusPlus ||getLangOpts().Gold)
-        && (IsTypeSpecifier || IsTemplateParamOrArg) && TUK == TUK_Definition) {
+  if (getLangOpts().CPlusPlus && (IsTypeSpecifier || IsTemplateParamOrArg) &&
+      TUK == TUK_Definition) {
     Diag(New->getLocation(), diag::err_type_defined_in_type_specifier)
       << Context.getTagDeclType(New);
     Invalid = true;
   }
 
-  if (!Invalid && (getLangOpts().CPlusPlus || getLangOpts().Gold)
-        && TUK == TUK_Definition && DC->getDeclKind() == Decl::Enum) {
+  if (!Invalid && getLangOpts().CPlusPlus && TUK == TUK_Definition &&
+      DC->getDeclKind() == Decl::Enum) {
     Diag(New->getLocation(), diag::err_type_defined_in_enum)
       << Context.getTagDeclType(New);
     Invalid = true;
@@ -15738,7 +15736,7 @@ CreateNewDecl:
   // the list of decls to inject into the function definition scope.
   if ((Name || Kind == TTK_Enum) &&
       getNonFieldDeclScope(S)->isFunctionPrototypeScope()) {
-    if (getLangOpts().CPlusPlus || getLangOpts().Gold) {
+    if (getLangOpts().CPlusPlus) {
       // C++ [dcl.fct]p6:
       //   Types shall not be defined in return or parameter types.
       if (TUK == TUK_Definition && !IsTypeSpecifier) {
@@ -15828,7 +15826,7 @@ CreateNewDecl:
   OwnedDecl = true;
   // In C++, don't return an invalid declaration. We can't recover well from
   // the cases where we make the type anonymous.
-  if (Invalid && (getLangOpts().CPlusPlus || getLangOpts().Gold)) {
+  if (Invalid && getLangOpts().CPlusPlus) {
     if (New->isBeingDefined())
       if (auto RD = dyn_cast<RecordDecl>(New))
         CompleteDefinition(RD);
@@ -16076,7 +16074,7 @@ ExprResult Sema::VerifyBitField(SourceLocation FieldLoc,
     // Over-wide bitfields are an error in C or when using the MSVC bitfield
     // ABI.
     bool CStdConstraintViolation =
-        BitfieldIsOverwide && !getLangOpts().CPlusPlus && !getLangOpts().Gold;
+        BitfieldIsOverwide && !getLangOpts().CPlusPlus;
     bool MSBitfieldViolation =
         Value.ugt(TypeStorageSize) &&
         (IsMsStruct || Context.getTargetInfo().getCXXABI().isMicrosoft());
@@ -16142,7 +16140,7 @@ FieldDecl *Sema::HandleField(Scope *S, RecordDecl *Record,
 
   TypeSourceInfo *TInfo = GetTypeForDeclarator(D, S);
   QualType T = TInfo->getType();
-  if (getLangOpts().CPlusPlus || getLangOpts().Gold) {
+  if (getLangOpts().CPlusPlus) {
     CheckExtraCXXDefaultArguments(D);
 
     if (DiagnoseUnexpandedParameterPack(D.getIdentifierLoc(), TInfo,
@@ -16290,7 +16288,7 @@ FieldDecl *Sema::CheckFieldDecl(DeclarationName Name, QualType T,
   // Anonymous bit-fields cannot be cv-qualified (CWG 2229).
   IdentifierInfo *II = Name.getAsIdentifierInfo();
   bool NameIsNonIdentifying = (!II && !Name.isReflectedIdentifier());
-  if (!InvalidDecl && (getLangOpts().CPlusPlus || getLangOpts().Gold) && NameIsNonIdentifying &&
+  if (!InvalidDecl && getLangOpts().CPlusPlus && NameIsNonIdentifying &&
       BitWidth && T.hasQualifiers()) {
     InvalidDecl = true;
     Diag(Loc, diag::err_anon_bitfield_qualifiers);
@@ -16380,7 +16378,7 @@ FieldDecl *Sema::CheckFieldDecl(DeclarationName Name, QualType T,
     NewFD->setInvalidDecl();
   }
 
-  if (!InvalidDecl && (getLangOpts().CPlusPlus || getLangOpts().Gold)) {
+  if (!InvalidDecl && getLangOpts().CPlusPlus) {
     if (Record->isUnion()) {
       if (const RecordType *RT = EltTy->getAs<RecordType>()) {
         CXXRecordDecl* RDecl = cast<CXXRecordDecl>(RT->getDecl());
@@ -16443,7 +16441,7 @@ FieldDecl *Sema::CheckFieldDecl(DeclarationName Name, QualType T,
 
 bool Sema::CheckNontrivialField(FieldDecl *FD) {
   assert(FD);
-  assert((getLangOpts().CPlusPlus || getLangOpts().Gold) && "valid check only for C++");
+  assert(getLangOpts().CPlusPlus && "valid check only for C++");
 
   if (FD->isInvalidDecl() || FD->getType()->isDependentType())
     return false;
@@ -16759,13 +16757,13 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
         } else if (Record->isUnion())
           DiagID = getLangOpts().MicrosoftExt
                        ? diag::ext_flexible_array_union_ms
-                       : (getLangOpts().CPlusPlus || getLangOpts().Gold)
+                       : getLangOpts().CPlusPlus
                              ? diag::ext_flexible_array_union_gnu
                              : diag::err_flexible_array_union;
         else if (NumNamedMembers < 1)
           DiagID = getLangOpts().MicrosoftExt
                        ? diag::ext_flexible_array_empty_aggregate_ms
-                       : (getLangOpts().CPlusPlus || getLangOpts().Gold)
+                       : getLangOpts().CPlusPlus
                              ? diag::ext_flexible_array_empty_aggregate_gnu
                              : diag::err_flexible_array_empty_aggregate;
 
@@ -16851,7 +16849,7 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
     } else if (Record && Record->isUnion() &&
                FD->getType().hasNonTrivialObjCLifetime() &&
                getSourceManager().isInSystemHeader(FD->getLocation()) &&
-               !getLangOpts().CPlusPlus && !getLangOpts().Gold && !FD->hasAttr<UnavailableAttr>() &&
+               !getLangOpts().CPlusPlus && !FD->hasAttr<UnavailableAttr>() &&
                (FD->getType().getObjCLifetime() != Qualifiers::OCL_Strong ||
                 !Context.hasDirectOwnershipQualifier(FD->getType()))) {
       // For backward compatibility, fields of C unions declared in system
@@ -16880,7 +16878,7 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
       }
     }
 
-    if (Record && !getLangOpts().CPlusPlus && !getLangOpts().Gold &&
+    if (Record && !getLangOpts().CPlusPlus &&
         !shouldIgnoreForRecordTriviality(FD)) {
       QualType FT = FD->getType();
       if (FT.isNonTrivialToPrimitiveDefaultInitialize()) {
@@ -17011,7 +17009,7 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
     // size in C. For C this is a language extension, for C++ it may cause
     // compatibility problems.
     bool CheckForZeroSize;
-    if (!getLangOpts().CPlusPlus && !getLangOpts().Gold) {
+    if (!getLangOpts().CPlusPlus) {
       CheckForZeroSize = true;
     } else {
       // For C++ filter out types that cannot be referenced in C code.
@@ -17045,7 +17043,7 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
       // allowed in C++, but warn if its declaration is inside
       // extern "C" block.
       if (ZeroSize) {
-        Diag(RecLoc, (getLangOpts().CPlusPlus || getLangOpts().Gold) ?
+        Diag(RecLoc, getLangOpts().CPlusPlus ?
                          diag::warn_zero_size_struct_union_in_extern_c :
                          diag::warn_zero_size_struct_union_compat)
           << IsEmpty << Record->isUnion() << (NonBitFields > 1);
@@ -17053,7 +17051,7 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
 
       // Structs without named members are extension in C (C99 6.7.2.1p7),
       // but are accepted by GCC.
-      if (NonBitFields == 0 && !getLangOpts().CPlusPlus && !getLangOpts().Gold) {
+      if (NonBitFields == 0 && !getLangOpts().CPlusPlus) {
         Diag(RecLoc, IsEmpty ? diag::ext_empty_struct_union :
                                diag::ext_no_named_members_in_struct_union)
           << Record->isUnion();
@@ -17220,7 +17218,7 @@ EnumConstantDecl *Sema::CheckEnumConstant(EnumDecl *Enum,
                                   EltTy->isBooleanType() ? CK_IntegralToBoolean
                                                          : CK_IntegralCast)
                     .get();
-        } else if (getLangOpts().CPlusPlus || getLangOpts().Gold) {
+        } else if (getLangOpts().CPlusPlus) {
           // C++11 [dcl.enum]p5:
           //   If the underlying type is not fixed, the type of each enumerator
           //   is the type of its initializing value:
@@ -17316,9 +17314,9 @@ EnumConstantDecl *Sema::CheckEnumConstant(EnumDecl *Enum,
         // an int (C99 6.7.2.2p2). However, we support GCC's extension that
         // permits enumerator values that are representable in some larger
         // integral type.
-        if (!getLangOpts().CPlusPlus && !getLangOpts().Gold && !T.isNull())
+        if (!getLangOpts().CPlusPlus && !T.isNull())
           Diag(NameInfo.getLoc(), diag::warn_enum_value_overflow);
-      } else if (!getLangOpts().CPlusPlus && !getLangOpts().Gold &&
+      } else if (!getLangOpts().CPlusPlus &&
                  !isRepresentableIntegerValue(Context, EnumVal, EltTy)) {
         // Enforce C99 6.7.2.2p2 even when we compute the next value.
         Diag(NameInfo.getLoc(), diag::ext_enum_value_not_int)
@@ -17341,7 +17339,7 @@ EnumConstantDecl *Sema::CheckEnumConstant(EnumDecl *Enum,
 Sema::SkipBodyInfo Sema::shouldSkipAnonEnumBody(Scope *S, IdentifierInfo *II,
                                                 SourceLocation IILoc) {
   if (!(getLangOpts().Modules || getLangOpts().ModulesLocalVisibility) ||
-      !getLangOpts().CPlusPlus || !getLangOpts().Gold)
+      !getLangOpts().CPlusPlus)
     return SkipBodyInfo();
 
   // We have an anonymous enum definition. Look up the first enumerator to
@@ -17394,7 +17392,7 @@ Decl *Sema::ActOnEnumConstant(Scope *S, Decl *theEnumDecl, Decl *lastEnumConst,
   // different from T:
   // - every enumerator of every member of class T that is an unscoped
   // enumerated type
-  if ((getLangOpts().CPlusPlus || getLangOpts().Gold) && !TheEnumDecl->isScoped())
+  if (getLangOpts().CPlusPlus && !TheEnumDecl->isScoped())
     DiagnoseClassNameShadow(TheEnumDecl->getDeclContext(), NameInfo);
 
   EnumConstantDecl *New =
@@ -17410,8 +17408,8 @@ Decl *Sema::ActOnEnumConstant(Scope *S, Decl *theEnumDecl, Decl *lastEnumConst,
 
     // When in C++, we may get a TagDecl with the same name; in this case the
     // enum constant will 'hide' the tag.
-    assert((getLangOpts().CPlusPlus || getLangOpts().Gold
-          || !isa<TagDecl>(PrevDecl)) && "Received TagDecl when not in C++!");
+    assert((getLangOpts().CPlusPlus || !isa<TagDecl>(PrevDecl)) &&
+           "Received TagDecl when not in C++!");
     if (!isa<TagDecl>(PrevDecl) && isDeclInScope(PrevDecl, CurContext, S)) {
       if (isa<EnumConstantDecl>(PrevDecl))
         Diag(NameInfo.getLoc(), diag::err_redefinition_of_enumerator)
@@ -17752,15 +17750,13 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
       BestType = Context.UnsignedIntTy;
       BestWidth = IntWidth;
       BestPromotionType
-        = (NumPositiveBits == BestWidth ||
-                          (!getLangOpts().CPlusPlus && !getLangOpts().Gold))
+        = (NumPositiveBits == BestWidth || !getLangOpts().CPlusPlus)
                            ? Context.UnsignedIntTy : Context.IntTy;
     } else if (NumPositiveBits <=
                (BestWidth = Context.getTargetInfo().getLongWidth())) {
       BestType = Context.UnsignedLongTy;
       BestPromotionType
-        = (NumPositiveBits == BestWidth ||
-                              (!getLangOpts().CPlusPlus && !getLangOpts().Gold))
+        = (NumPositiveBits == BestWidth || !getLangOpts().CPlusPlus)
                            ? Context.UnsignedLongTy : Context.LongTy;
     } else {
       BestWidth = Context.getTargetInfo().getLongLongWidth();
@@ -17768,9 +17764,8 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
              "How could an initializer get larger than ULL?");
       BestType = Context.UnsignedLongLongTy;
       BestPromotionType
-        = (NumPositiveBits == BestWidth ||
-                              (!getLangOpts().CPlusPlus && !getLangOpts().Gold))
-                              ? Context.UnsignedLongLongTy : Context.LongLongTy;
+        = (NumPositiveBits == BestWidth || !getLangOpts().CPlusPlus)
+                           ? Context.UnsignedLongLongTy : Context.LongLongTy;
     }
   }
 
@@ -17797,7 +17792,7 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
     QualType NewTy;
     unsigned NewWidth;
     bool NewSign;
-    if (!getLangOpts().CPlusPlus && !getLangOpts().Gold &&
+    if (!getLangOpts().CPlusPlus &&
         !Enum->isFixed() &&
         isRepresentableIntegerValue(Context, InitVal, Context.IntTy)) {
       NewTy = Context.IntTy;
@@ -17805,7 +17800,7 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
       NewSign = true;
     } else if (ECD->getType() == BestType) {
       // Already the right type!
-      if (getLangOpts().CPlusPlus || getLangOpts().Gold)
+      if (getLangOpts().CPlusPlus)
         // C++ [dcl.enum]p4: Following the closing brace of an
         // enum-specifier, each enumerator has the type of its
         // enumeration.
@@ -17830,7 +17825,7 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
                                                 ECD->getInitExpr(),
                                                 /*base paths*/ nullptr,
                                                 VK_RValue));
-    if (getLangOpts().CPlusPlus || getLangOpts().Gold)
+    if (getLangOpts().CPlusPlus)
       // C++ [dcl.enum]p4: Following the closing brace of an
       // enum-specifier, each enumerator has the type of its
       // enumeration.
