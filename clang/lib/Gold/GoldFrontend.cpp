@@ -33,6 +33,7 @@ void GoldSyntaxAction::ExecuteAction() {
 
   switch (getCurrentFileKind().getLanguage()) {
   case clang::Language::Gold:
+    CI.getLangOpts().CPlusPlus = true;
     ParseGoldAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
     break;
 
