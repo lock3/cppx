@@ -3,6 +3,10 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/StringRef.h"
 
+namespace clang {
+  class Scope;
+}
+
 namespace sematrace {
 
 class ActionTrace {
@@ -15,6 +19,8 @@ public:
   static void LeavingSemaCall(llvm::StringRef FunctionName, llvm::StringRef Msg = "");
   static void EnterParsingFn(llvm::StringRef FunctionName, llvm::StringRef Msg = "");
   static void LeavingParsingFn(llvm::StringRef FunctionName, llvm::StringRef Msg = "");
+  static void EnterScopeLog(clang::Scope* S);
+  static void LeaveScopeLog(clang::Scope* S);
 };
 
 struct ActionLoggingGuard {
@@ -27,6 +33,7 @@ struct SemaActionLoggingGuard {
   ~SemaActionLoggingGuard();
   llvm::StringRef FunctionName;
 };
+
 #define PARSER_ENTER_TRACE()\
   ::sematrace::ActionTrace::EnterParsingFn(__FUNCTION__);
 
