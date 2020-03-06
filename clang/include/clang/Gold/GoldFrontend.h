@@ -23,7 +23,7 @@
 
 namespace gold {
 
-class GoldSyntaxAction : public clang::FrontendAction {
+class GoldSyntaxAction : public clang::ASTFrontendAction {
 protected:
   void ExecuteAction() override;
 
@@ -37,14 +37,44 @@ public:
   std::unique_ptr<clang::ASTConsumer>
   CreateASTConsumer(clang::CompilerInstance &CI,
                     llvm::StringRef InFile) override {
-    if(Matcher) 
+    if(Matcher) {
       return Matcher->newASTConsumer();
-    else
+    } else {
       return std::make_unique<clang::ASTConsumer>();
+    }
   }
   bool usesPreprocessorOnly() const override { return false; }
   bool hasCodeCompletionSupport() const override { return false; }
+  // class ConsumerFactoryAdaptor : public ASTFrontendAction {
+  //   public:
+  //     ConsumerFactoryAdaptor(FactoryT *ConsumerFactory,
+  //                            SourceFileCallbacks *Callbacks)
+  //         : ConsumerFactory(ConsumerFactory), Callbacks(Callbacks) {}
 
+  //     std::unique_ptr<ASTConsumer>
+  //     CreateASTConsumer(CompilerInstance &, StringRef) override {
+  //       return ConsumerFactory->newASTConsumer();
+  //     }
+
+  //   protected:
+  bool BeginSourceFileAction(clang::CompilerInstance &CI) override {
+    if (!clang::ASTFrontendAction::BeginSourceFileAction(CI))
+      return false;
+    // if (Callbacks)
+    //   return Callbacks->handleBeginSource(CI);
+    return true;
+  }
+
+  void EndSourceFileAction() override {
+    // if (Callbacks)
+    //   Callbacks->handleEndSource();
+    clang::ASTFrontendAction::EndSourceFileAction();
+  }
+
+  //   private:
+  //     FactoryT *ConsumerFactory;
+  //     SourceFileCallbacks *Callbacks;
+  //   };
 private:
   clang::ast_matchers::MatchFinder *Matcher = nullptr;
 };

@@ -50,9 +50,9 @@ c : type = class:
 main() : int!
   return 0
   )";
-  DeclarationMatcher ClassNamedC = recordDecl(hasName("c"));
+  DeclarationMatcher ClassC = recordDecl(recordDecl(hasName("c")));
   // SimpleGoldParseTest(Code);
-  ASSERT_TRUE(matches(Code, ClassNamedC));
+  ASSERT_TRUE(matches(Code, ClassC));
 }
 
 

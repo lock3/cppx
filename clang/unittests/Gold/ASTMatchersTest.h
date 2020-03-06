@@ -91,7 +91,7 @@ testing::AssertionResult matchesConditionally(
       :Finder(F)
     { }
     std::unique_ptr<FrontendAction> create() override {
-      return std::make_unique<gold::GoldSyntaxAction>();
+      return std::make_unique<gold::GoldSyntaxAction>(Finder);
     }
   };
 
@@ -107,9 +107,7 @@ testing::AssertionResult matchesConditionally(
   // FIXME: This is a hack to work around the fact that there's no way to do the
   // equivalent of runToolOnCodeWithArgs without instantiating a full Driver.
   // We should consider having a function, at least for tests, that invokes cc1.
-  std::vector<std::string> Args(CompileArgs.begin(), CompileArgs.end());
-//  {"-x", "gold", "-c"},
-  llvm::outs() << "File name being used! " << Filename << "\n";
+  std::vector<std::string> Args;
   if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "gold", "-c"}, Filename)) {
     return testing::AssertionFailure() << "Parsing error in \"" << Code << "\"";
   }
@@ -227,7 +225,7 @@ matchAndVerifyResultConditionally(const std::string &Code, const T &AMatcher,
       :Finder(F)
     { }
     std::unique_ptr<FrontendAction> create() override {
-      return std::make_unique<gold::GoldSyntaxAction>();
+      return std::make_unique<gold::GoldSyntaxAction>(Finder);
     }
   };
 
@@ -239,7 +237,6 @@ matchAndVerifyResultConditionally(const std::string &Code, const T &AMatcher,
   // unknown-unknown triple is good for a large speedup, because it lets us
   // avoid constructing a full system triple.
   std::vector<std::string> Args = {"gold"};
-  // llvm::outs() << "Called me!\n";
   if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "gold", "-c"}, "temp.usyntax")) {
     return testing::AssertionFailure() << "Parsing error in \"" << Code << "\"";
   }

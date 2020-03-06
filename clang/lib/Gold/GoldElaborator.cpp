@@ -44,7 +44,7 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   startFile(S);
 
   const FileSyntax *File = cast<FileSyntax>(S);
-  File->dump();
+  
   // Pass 1. identify declarations in scope.
   for (const Syntax *SS : File->children()) {
     identifyDecl(SS);
@@ -344,18 +344,11 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     //
     // declares an undeduced-type variable with no initializer. Presumably
     // this should be an error.
-    // if(D->Cxx->)
-    if(VD->getType().getTypePtr()->isRecordType()) {
-      llvm::outs() << "Attempting to do a thing!\n";
-      // llvm::outs() << "Attempting to handle complex default initialization?!\n";
-      // clang::CXXRecordDecl* Record = VD->getType().getTypePtr()->getAsCXXRecordDecl();
-      // Record->dump();
-      // Record->
-      SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
-      llvm::outs() << "Did the thing!\n";
 
-    }
     // Handle special case of default construction of complex types?
+    if(VD->getType().getTypePtr()->isRecordType()) {
+      SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
+    }
     return;
   }
 
@@ -405,6 +398,12 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
   clang::CXXRecordDecl *R = dyn_cast<clang::CXXRecordDecl>(D->Cxx);
   
   R->startDefinition();
+  // clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  clang::SourceLocation EndOfClassSrcLoc(D->Init->getLoc());
+  clang::CXXRecordDecl* ImplicitDecl = clang::CXXRecordDecl::Create(Context.CxxAST,
+                clang::TagDecl::TagKind::TTK_Struct, R, D->Decl->getLoc(),
+                EndOfClassSrcLoc, D->getId());
+  R->addDecl(ImplicitDecl);
   // // TODO: Each one of these declarations needs to be added somewhere so that
   // // we can process types.
   // for (auto const* ChildDecl : BodyArray->children()) {
