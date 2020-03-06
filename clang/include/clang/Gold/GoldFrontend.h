@@ -16,6 +16,7 @@
 #define CLANG_GOLD_GOLDFRONTEND_H
 
 #include "clang/Frontend/FrontendAction.h"
+#include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include <memory>
@@ -29,13 +30,23 @@ protected:
 public:
   GoldSyntaxAction() {}
 
+  GoldSyntaxAction(clang::ast_matchers::MatchFinder* Finder)
+    :Matcher(Finder)
+  { }
+
   std::unique_ptr<clang::ASTConsumer>
   CreateASTConsumer(clang::CompilerInstance &CI,
                     llvm::StringRef InFile) override {
-    return std::make_unique<clang::ASTConsumer>();
+    if(Matcher) 
+      return Matcher->newASTConsumer();
+    else
+      return std::make_unique<clang::ASTConsumer>();
   }
   bool usesPreprocessorOnly() const override { return false; }
   bool hasCodeCompletionSupport() const override { return false; }
+
+private:
+  clang::ast_matchers::MatchFinder *Matcher = nullptr;
 };
 
 } // namespace gold

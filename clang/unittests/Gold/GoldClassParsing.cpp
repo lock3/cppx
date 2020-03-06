@@ -13,6 +13,8 @@
 
 
 #include "ParseUtil.h"
+#include "ASTMatchersTest.h"
+// #include "clang/Frontend/ASTUnit.h"
 
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
@@ -48,7 +50,9 @@ c : type = class:
 main() : int!
   return 0
   )";
-  SimpleGoldParseTest(Code);
+  DeclarationMatcher ClassNamedC = recordDecl(hasName("c"));
+  // SimpleGoldParseTest(Code);
+  ASSERT_TRUE(matches(Code, ClassNamedC));
 }
 
 
@@ -61,7 +65,10 @@ main() : int!
   q : c
   return 0
   )";
-  SimpleGoldParseTest(Code);
+
+  DeclarationMatcher NamedX = namedDecl(hasName("c"));
+  // SimpleGoldParseTest(Code);
+  ASSERT_TRUE(matches(Code, NamedX));
 }
 
 // TEST(ClassParsing, MemberInitializationAndAccess) {
