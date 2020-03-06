@@ -152,9 +152,19 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
     llvm::outs() << "Dumping tag?!\n";
     TagOrTempResult->dump();
     llvm::outs() << "\n";
+
+    // Try adding a decl spec here then calling SetTypeSpecType on it with the
+    // new type?
+    clang::DeclSpec DS(SemaRef.AttrFactory);
     clang::CXXRecordDecl *ClsDecl
                        = clang::dyn_cast<clang::CXXRecordDecl>(TagOrTempResult);
     ClsDecl->setFreeStanding();
+    unsigned int DiagnosticId = 0;
+    const char* PrevPtr = "";
+    const clang::PrintingPolicy &PP = SemaRef.getCxxSema().getPrintingPolicy();
+    DS.SetTypeSpecType(clang::DeclSpec::TST_struct, clang::SourceLocation(),
+                       PrevPtr, DiagnosticId, TagOrTempResult, IsOwned, PP);
+    // DS.Se
     SemaRef.getCurrentScope()->addUserDefinedType(D->Id,
                                        Context.CxxAST.getTypeDeclType(ClsDecl));
     // Context.CxxAST.getTranslationUnitDecl()->addDecl(ClsDecl);
