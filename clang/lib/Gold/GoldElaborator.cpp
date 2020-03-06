@@ -62,11 +62,6 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   finishFile(S);
   SemaRef.getCxxSema().ActOnEndOfTranslationUnit();
   SemaRef.leaveClangScope(S->getLoc());
-  // llvm::outs() << "Type: \n";
-  // for (clang::Type const *Ty : Context.CxxAST.getTypes()) {
-  //   Ty->dump();
-  //   llvm::outs() << "\n";
-  // }
 
   return Context.CxxAST.getTranslationUnitDecl();
 }
@@ -109,62 +104,13 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
   if(D->declaresType()) {
-    // SemaRef.PushScope()
-    // D->SavedScope = 
-    // clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+    clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
     clang::SourceLocation EndOfClassSrcLoc(D->Init->getLoc());
-    // clang::CXXRecordDecl* ClsDecl = clang::CXXRecordDecl::Create(Context.CxxAST,
-    //               clang::TagDecl::TagKind::TTK_Struct, Owner, D->Decl->getLoc(),
-    //               EndOfClassSrcLoc, D->getId());
-    
-    // Simply getting the current scope.
-    clang::Scope *Scope = SemaRef.getCurClangScope();
-    clang::ExprResult Meta; // Not sure what this is supposed to be.
-    bool IsOwned = false;
-    bool IsDependent = false;
-    MacroSyntax const* ClsMacro = clang::dyn_cast<MacroSyntax>(D->Init);
-    clang::ParsedAttributes attrs(SemaRef.AttrFactory);
-    clang::CXXScopeSpec SS;
-    clang::MultiTemplateParamsArg TParams;
-    clang::Sema::SkipBodyInfo SkipBody;
-    clang::Decl *TagOrTempResult = SemaRef.getCxxSema().ActOnTag(
-        Scope,
-        /*TagSpec*/clang::DeclSpec::TST_struct,
-        Meta.get(),
-        clang::Sema::TUK_Declaration,
-        /*KWLoc*/ClsMacro->getCallLoc(),
-        SS,
-        D->getId(),
-        D->Decl->getId()->getLoc(),
-        attrs,
-        clang::AccessSpecifier::AS_public,
-        /*DS*/clang::SourceLocation(),
-        TParams,
-        IsOwned,
-        IsDependent,
-        clang::SourceLocation(),
-        /*ScopedEnumUsesClassTag*/false,
-        clang::TypeResult(),
-        /*IsTypeSpecifier*/true,
-        /*IsTemplateParamOrArg*/false,
-        &SkipBody);
-    D->Cxx = TagOrTempResult;
-    llvm::outs() << "Dumping tag?!\n";
-    TagOrTempResult->dump();
-    llvm::outs() << "\n";
-
-    // Try adding a decl spec here then calling SetTypeSpecType on it with the
-    // new type?
-    clang::DeclSpec DS(SemaRef.AttrFactory);
-    clang::CXXRecordDecl *ClsDecl
-                       = clang::dyn_cast<clang::CXXRecordDecl>(TagOrTempResult);
-    ClsDecl->setFreeStanding();
-    unsigned int DiagnosticId = 0;
-    const char* PrevPtr = "";
-    const clang::PrintingPolicy &PP = SemaRef.getCxxSema().getPrintingPolicy();
-    DS.SetTypeSpecType(clang::DeclSpec::TST_struct, clang::SourceLocation(),
-                       PrevPtr, DiagnosticId, TagOrTempResult, IsOwned, PP);
-    // DS.Se
+    clang::CXXRecordDecl* ClsDecl = clang::CXXRecordDecl::Create(Context.CxxAST,
+                  clang::TagDecl::TagKind::TTK_Struct, Owner, D->Decl->getLoc(),
+                  EndOfClassSrcLoc, D->getId());
+    Owner->addDecl(ClsDecl);
+    D->Cxx = ClsDecl;
     SemaRef.getCurrentScope()->addUserDefinedType(D->Id,
                                        Context.CxxAST.getTypeDeclType(ClsDecl));
     // Context.CxxAST.getTranslationUnitDecl()->addDecl(ClsDecl);
@@ -455,116 +401,35 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
   SemaRef.pushScope(D->SavedScope);
   SemaRef.pushDecl(D);
   // Simply getting the current scope.
-  // clang::Scope *Scope = SemaRef.enterClangScope(clang::);
-  clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::ClassScope);
-  clang::ExprResult Meta; // Not sure what this is supposed to be.
-  /*Decl *ActOnTag(
-    Scope *S,
-    unsigned TagSpec,
-    Expr *Metafunction,
-    TagUseKind TUK,
-    SourceLocation KWLoc,
-    CXXScopeSpec &SS,
-    IdentifierInfo *Name,
-    SourceLocation NameLoc,
-    const ParsedAttributesView &Attr,
-    AccessSpecifier AS,
-    SourceLocation ModulePrivateLoc,
-    MultiTemplateParamsArg TemplateParameterLists,
-    bool &OwnedDecl,
-    bool &IsDependent,
-    SourceLocation ScopedEnumKWLoc,
-    bool ScopedEnumUsesClassTag,
-    TypeResult UnderlyingType,
-    bool IsTypeSpecifier,
-    bool IsTemplateParamOrArg,
-    SkipBodyInfo *SkipBody = nullptr);*/
-  bool IsOwned = false;
-  bool IsDependent = false;
-  MacroSyntax const* ClsMacro = clang::dyn_cast<MacroSyntax>(D->Init);
+  clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::ClassScope
+                                                | clang::Scope::DeclScope);
+  clang::CXXRecordDecl *R = dyn_cast<clang::CXXRecordDecl>(D->Cxx);
   
-  clang::ParsedAttributes attrs(SemaRef.AttrFactory);
-  clang::CXXScopeSpec SS;
-  clang::MultiTemplateParamsArg TParams;
-  clang::Sema::SkipBodyInfo SkipBody;
-  clang::Decl *TagOrTempResult = SemaRef.getCxxSema().ActOnTag(
-      Scope,
-      /*TagSpec*/clang::DeclSpec::TST_struct,
-      Meta.get(),
-      clang::Sema::TUK_Definition,
-      /*KWLoc*/ClsMacro->getCallLoc(),
-      SS,
-      D->getId(),
-      D->Decl->getId()->getLoc(),
-      attrs,
-      clang::AccessSpecifier::AS_public,
-      /*DS*/clang::SourceLocation(),
-      TParams,
-      IsOwned,
-      IsDependent,
-      clang::SourceLocation(),
-      /*ScopedEnumUsesClassTag*/false,
-      clang::TypeResult(),
-      /*IsTypeSpecifier*/true,
-      /*IsTemplateParamOrArg*/false,
-      &SkipBody);
-  // clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::ClassScope);
-  assert(TagOrTempResult && "Didn't get a valid ptr?");
-  llvm::outs() << "Dumping TagOrTempResult\n";
-  TagOrTempResult->dump();
-  llvm::outs() << "\n";
-  clang::CXXRecordDecl *R = dyn_cast<clang::CXXRecordDecl>(TagOrTempResult);
-  
-  // ActOnFinishCXXMemberSpecification
-  // SemaRef.getCxxSema().ActOnTagStartDefinition(ClsScope, R);
-  // Scope* previousScope = nullptr;
-  // D->SavedScope->
-  // 
-  // R->startDefinition();
-  // // D->SavedScope()
-  // // // TODO: Each one of these declarations needs to be added somewhere so that
-  // // // we can process types.
-  // // for (auto const* ChildDecl : BodyArray->children()) {
-  // //   identifyDecl(ChildDecl);
-  // // }
-
-  // // Processing all sub declarations?
-  // // TODO:/FIXME: Need to create a means for building member functions/initializers
-  // for (const Syntax *SS : BodyArray->children()) {
-  //   elaborateDeclType(SS);
+  R->startDefinition();
+  // // TODO: Each one of these declarations needs to be added somewhere so that
+  // // we can process types.
+  // for (auto const* ChildDecl : BodyArray->children()) {
+  //   identifyDecl(ChildDecl);
   // }
 
-  // // for (const Syntax *SS : BodyArray->children()) {
-  // //   elaborateDeclInit(SS);
-  // // }
+  // Processing all sub declarations?
+  // TODO:/FIXME: Need to create a means for building member functions/initializers
+  for (const Syntax *SS : BodyArray->children()) {
+    elaborateDeclType(SS);
+  }
 
-  // auto DeclRange = Scope->decls();
-  // std::vector<clang::Decl*> Members(DeclRange.begin(), DeclRange.end());
-  // // llvm::ArrayRef<clang::Decl*> Members(DeclRange.begin(), DeclRange.end());
-  // clang::ParsedAttributes Attributes(SemaRef.AttrFactory);
-  // SemaRef.getCxxSema().ActOnFields(Scope, R->getLocation(), R, Members,
-  //                                  clang::SourceLocation(),
-  //                                  clang::SourceLocation(), Attributes);
+  // for (const Syntax *SS : BodyArray->children()) {
+  //   elaborateDeclInit(SS);
+  // }
+
+  auto DeclRange = Scope->decls();
+  std::vector<clang::Decl*> Members(DeclRange.begin(), DeclRange.end());
+  // llvm::ArrayRef<clang::Decl*> Members(DeclRange.begin(), DeclRange.end());
+  clang::ParsedAttributes Attributes(SemaRef.AttrFactory);
+  SemaRef.getCxxSema().ActOnFields(Scope, R->getLocation(), R, Members,
+                                   clang::SourceLocation(),
+                                   clang::SourceLocation(), Attributes);
   SemaRef.leaveClangScope(D->Op->getLoc());
-
-  // Adding implicit default constructor.
-  // clang::CXXConstructorDecl *DefaultCon
-  //                   = SemaRef.getCxxSema().DeclareImplicitDefaultConstructor(R);
-  // SemaRef.getCxxSema().DefineImplicitDefaultConstructor(R->getLocation(),
-  //                                                       DefaultCon);
-  
-  // Adding implicit copy constructor.
-  // clang::CXXConstructorDecl *CopyCon
-  //                      = SemaRef.getCxxSema().DeclareImplicitCopyConstructor(R);
-  // SemaRef.getCxxSema().DefineImplicitCopyConstructor(clang::SourceLocation(),
-  //                                                    CopyCon);
-  
-  // // Adding implicit move constructor.
-  // clang::CXXConstructorDecl *MoveCon
-  //                      = SemaRef.getCxxSema().DeclareImplicitMoveConstructor(R);
-  // SemaRef.getCxxSema().DefineImplicitMoveConstructor(R->getLocation(),
-  //                                                    MoveCon);
-
   SemaRef.popDecl();
   SemaRef.popScope();
 }
