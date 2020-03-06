@@ -214,7 +214,6 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   }
 
   if (SemaRef.getCurrentScope()->isClassScope()) {
-    llvm::outs() << "We are in class scope?!\n";
     return elaborateField(D);
   }
   // Get the type of the entity.
