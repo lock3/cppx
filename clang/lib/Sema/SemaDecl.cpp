@@ -1928,6 +1928,7 @@ static void CheckPoppedLabel(LabelDecl *L, Sema &S) {
 
 void Sema::ActOnPopScope(SourceLocation Loc, Scope *S) {
   SEMA_LOG();
+  S->dumpImpl(llvm::outs());
   S->mergeNRVOIntoParent();
 
   if (S->decl_empty()) return;

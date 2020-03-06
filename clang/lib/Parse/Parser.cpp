@@ -382,17 +382,18 @@ void Parser::EnterScope(unsigned ScopeFlags) {
     Scope *N = ScopeCache[--NumCachedScopes];
     N->Init(getCurScope(), ScopeFlags);
     Actions.CurScope = N;
+    // ::sematrace::ActionTrace::EnterScopeLog(Actions.CurScope);
   } else {
     Actions.CurScope = new Scope(getCurScope(), ScopeFlags, Diags);
   }
-  ::sematrace::ActionTrace::EnterScopeLog(Actions.CurScope);
+  
 }
 
 /// ExitScope - Pop a scope off the scope stack.
 void Parser::ExitScope() {
   // PARSING_LOG();
   assert(getCurScope() && "Scope imbalance!");
-  ::sematrace::ActionTrace::LeaveScopeLog(getCurScope());
+  
 
   // Inform the actions module that this scope is going away if there are any
   // decls in it.
@@ -403,8 +404,10 @@ void Parser::ExitScope() {
 
   if (NumCachedScopes == ScopeCacheSize)
     delete OldScope;
-  else
+  else {
     ScopeCache[NumCachedScopes++] = OldScope;
+    ::sematrace::ActionTrace::LeaveScopeLog(getCurScope());
+  }
 }
 
 /// Set the flags for the current scope to ScopeFlags. If ManageFlags is false,

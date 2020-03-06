@@ -102,6 +102,9 @@ void ActionTrace::LeaveScopeLog(clang::Scope* S) {
   WriteIndent();
   llvm::raw_ostream &Out
                    = llvm::WithColor(llvm::outs(), llvm::HighlightColor::Macro);
+  WriteIndent();
+  S->dumpImpl(Out);
+  llvm::outs() << "\n";
   Out << "Leaving Scope support flags\n";
   #define WRITE_SUPPORTED_FLAG(FLAG_NAME)\
     if(S->getFlags() & clang::Scope::FLAG_NAME) {\

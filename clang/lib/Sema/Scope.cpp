@@ -92,6 +92,7 @@ void Scope::Init(Scope *parent, unsigned flags) {
   Entity = nullptr;
   ErrorTrap.reset();
   NRVO.setPointerAndInt(nullptr, 0);
+  ::sematrace::ActionTrace::EnterScopeLog(this);
 }
 
 bool Scope::containedInPrototypeScope() const {

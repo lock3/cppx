@@ -19,6 +19,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
+#include "clang/Sema/ActionTrace.h"
 #include <cassert>
 
 namespace llvm {
@@ -218,7 +219,9 @@ public:
       : ErrorTrap(Diag) {
     Init(Parent, ScopeFlags);
   }
-
+  ~Scope() {
+    ::sematrace::ActionTrace::LeaveScopeLog(this);
+  }
   /// getFlags - Return the flags for this scope.
   unsigned getFlags() const { return Flags; }
 
