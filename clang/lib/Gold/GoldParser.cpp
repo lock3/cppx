@@ -799,9 +799,7 @@ Syntax *Parser::parseElem(Syntax *Map)
   if (!Brackets.expectOpen())
     return onError();
 
-  // Don't parse an array if the brackets are empty.
-  Syntax *Args = !nextTokenIs(tok::RightBracket) ? parseArray(ArgArray)
-    : onList(ArgArray, llvm::SmallVector<Syntax *, 0>());
+  Syntax *Args = parseArray(ArgArray);
 
   if (!Brackets.expectClose())
     return onError();
