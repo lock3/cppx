@@ -127,23 +127,23 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   }
 
   while (S) {
-    // FIXME: Note that we could find several declarations,
-    //        some of which have not been elaborated.
     std::set<Declaration *> Found = S->findDecl(Id);
     if (!Found.empty()) {
       for (auto *FoundDecl : Found) {
-        // FIXME: This is wrong! If we find a name that hasn't been
-        //        elaborated, then we actually need to elaborate it.
-        assert(FoundDecl->Cxx && "Declaration not elaborated");
+        // If we find a name that hasn't been elaborated,
+        // then we actually need to elaborate it.
+        if (!FoundDecl->Cxx)
+          Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
 
         clang::NamedDecl *ND = cast<clang::NamedDecl>(FoundDecl->Cxx);
 
+        // FIXME: check if this is a tag decl, not a type decl!
         if (LookupKind == clang::Sema::LookupTagName &&
             !isa<clang::TypeDecl>(ND)) {
           // FIXME: Give a proper diagnostic once we implement hiding.
-          unsigned DiagID = Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                                  "Tag is hidden.");
-          Diags.Report(clang::SourceLocation(), DiagID);
+          // unsigned DiagID = Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+          //                                         "Tag is hidden.");
+          // Diags.Report(clang::SourceLocation(), DiagID);
           return false;
         }
 

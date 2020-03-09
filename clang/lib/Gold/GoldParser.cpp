@@ -772,10 +772,10 @@ Syntax *Parser::parsePost()
   return nullptr;
 }
 
-Syntax *Parser::parseCall(Syntax *fn)
+Syntax *Parser::parseCall(Syntax *Fn)
 {
-  EnclosingParens parens(*this);
-  if (!parens.expectOpen())
+  EnclosingParens Parens(*this);
+  if (!Parens.expectOpen())
     return onError();
 
   // Don't parse an array if the parens are empty.
@@ -784,31 +784,29 @@ Syntax *Parser::parseCall(Syntax *fn)
   //
   // TODO: If this is an Syntax::error, should we skip to the next paren or
   // to the the nearest comma? separator? What?
-  Syntax *Args = nullptr;
-  if (getLookahead() != tok::RightParen)
-    Args = parseArray(ArgArray);
-  else
-    Args = onList(ArgArray, llvm::SmallVector<Syntax*, 0>());
+  Syntax *Args = !nextTokenIs(tok::RightParen) ? parseArray(ArgArray)
+    : onList(ArgArray, llvm::SmallVector<Syntax *, 0>());
 
-  if (!parens.expectClose())
+  if (!Parens.expectClose())
     return onError();
 
-  return onCall({parens.open, parens.close}, fn, Args);
+  return onCall({Parens.open, Parens.close}, Fn, Args);
 }
 
-Syntax *Parser::parseElem(Syntax *map)
+Syntax *Parser::parseElem(Syntax *Map)
 {
-  EnclosingBrackets brackets(*this);
-  if (!brackets.expectOpen())
+  EnclosingBrackets Brackets(*this);
+  if (!Brackets.expectOpen())
     return onError();
 
-  // FIXME: Can the argument list be optional?
-  Syntax *args = parseArray(ArgArray);
+  // Don't parse an array if the brackets are empty.
+  Syntax *Args = !nextTokenIs(tok::RightBracket) ? parseArray(ArgArray)
+    : onList(ArgArray, llvm::SmallVector<Syntax *, 0>());
 
-  if (!brackets.expectClose())
+  if (!Brackets.expectClose())
     return onError();
 
-  return onElem({brackets.open, brackets.close}, map, args);
+  return onElem({Brackets.open, Brackets.close}, Map, Args);
 }
 
 Syntax *Parser::parseDot(Syntax *obj)

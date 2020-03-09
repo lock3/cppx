@@ -13576,7 +13576,8 @@ ExprResult Sema::BuildBinOp(Scope *S, SourceLocation OpLoc,
       return checkPseudoObjectAssignment(S, OpLoc, Opc, LHSExpr, RHSExpr);
 
     // Don't resolve overloads if the other type is overloadable.
-    if (getLangOpts().CPlusPlus && pty->getKind() == BuiltinType::Overload) {
+    if ((getLangOpts().CPlusPlus || getLangOpts().Gold || getLangOpts().Blue)
+        && pty->getKind() == BuiltinType::Overload) {
       // We can't actually test that if we still have a placeholder,
       // though.  Fortunately, none of the exceptions we see in that
       // code below are valid when the LHS is an overload set.  Note
@@ -13641,7 +13642,7 @@ ExprResult Sema::BuildBinOp(Scope *S, SourceLocation OpLoc,
     RHSExpr = resolvedRHS.get();
   }
 
-  if (getLangOpts().CPlusPlus) {
+  if (getLangOpts().CPlusPlus || getLangOpts().Gold || getLangOpts().Blue) {
     // If either expression is type-dependent, always build an
     // overloaded op.
     if (LHSExpr->isTypeDependent() || RHSExpr->isTypeDependent())

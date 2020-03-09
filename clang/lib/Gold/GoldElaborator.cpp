@@ -337,6 +337,14 @@ clang::Decl *Elaborator::elaborateDeclSyntax(const Syntax *S) {
   return nullptr;
 }
 
+clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
+  assert(D && D->getId() && "Early elaboration of unidentified declaration");
+
+  elaborateDecl(D);
+  elaborateDef(D);
+  return D->Cxx;
+}
+
 void Elaborator::elaborateDeclInit(const Syntax *S) {
   // TODO: See elaborateDeclType. We have the same kinds of concerns.
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
@@ -516,6 +524,7 @@ static Declarator *buildFunctionDeclarator(const CallSyntax *S, Declarator *Next
   Declarator *D = new Declarator(DK_Function, Next);
   D->Call = S;
   D->Data.ParamInfo.Params = S->getArguments();
+  D->Data.ParamInfo.TemplateParams = nullptr;
   return D;
 }
 
@@ -526,6 +535,7 @@ static Declarator *buildFunctionDeclarator(const CallSyntax *S,
   D->Call = S;
   D->Data.ParamInfo.Params = S->getArguments();
   D->Data.ParamInfo.TemplateParams = T->getArguments();
+  llvm::outs() << "created syntax kind " << D->Data.ParamInfo.TemplateParams->getSyntaxKindName() << '\n';
   return D;
 }
 

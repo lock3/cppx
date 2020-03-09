@@ -68,6 +68,10 @@ public:
   // This is used to elaborate parameters and block-scope variables.
   clang::Decl *elaborateDeclSyntax(const Syntax* S);
 
+  // Perform the latter two passes on a Declaration that was previously
+  // identified. This is used when lookup finds an unelaborated declaration.
+  clang::Decl *elaborateDeclEarly(Declaration *D);
+
   clang::Decl *elaborateDeclForArray(const ArraySyntax *S);
   clang::Decl *elaborateDeclForList(const ListSyntax *S);
   clang::Decl *elaborateDeclForCall(const CallSyntax *S);
