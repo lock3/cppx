@@ -55,9 +55,9 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
     return elaborateMacroExpression(cast<MacroSyntax>(S));
 
 
-  llvm::outs() << "Syntax not handled yet\n";
-  S->dump();
-  llvm::outs() << "\n";
+  // llvm::outs() << "Syntax not handled yet\n";
+  // S->dump();
+  // llvm::outs() << "\n";
 
   assert(false && "Unsupported expression.");
 }
@@ -209,7 +209,7 @@ static const llvm::StringMap<clang::BinaryOperatorKind> BinaryOperators = {
   {"operator'%='" , clang::BO_RemAssign},
   {"operator'&='" , clang::BO_AndAssign},
   {"operator'|='" , clang::BO_OrAssign},
-  {"operator'^='" , clang::BO_XorAssign},
+  {"operator'^='" , clang::BO_XorAssign}
 };
 
 Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
@@ -230,6 +230,14 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
 
     // Otherwise, we need to continue elaborating the LHS until it is an atom.
     elaborateExpr(S->getArgument(0));
+    return nullptr;
+  }
+
+  if (Op == FOK_MemberAccess) {
+    // Need to locate do variable/type lookup.
+    // llvm::outs() << "member access not implemented yet?\n";
+    llvm::outs() << "Processing dot operator."
+
     return nullptr;
   }
 
@@ -584,24 +592,13 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   // BMB: Or Something like that.
   if (const auto *Literal = dyn_cast<LiteralSyntax>(D->Data.Type)) {
     auto TypeName = Literal->getSpelling();
-    // llvm::outs() << "Typename :" << TypeName << "\n";
     clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(TypeName);
     clang::QualType Qt = SemaRef.lookUpType(IdInfo, SemaRef.getCurrentScope());
-    // if(Qt.isNull()) {
-    //   llvm::outs() << "Returned QualType: ";
-    //   Qt.dump();
-    //   llvm::outs()<< "\n";
-    // }
     return BuildAnyTypeLoc(CxxAST, Qt, D->getType()->getLoc());
   } else if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
     auto TypeName = Atom->getSpelling();
     clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(TypeName);
     clang::QualType Qt = SemaRef.lookUpType(IdInfo, SemaRef.getCurrentScope());
-    // if(Qt.isNull()) {
-    //   llvm::outs() << "Returned QualType: ";
-    //   Qt.dump();
-    //   llvm::outs()<< "\n";
-    // }
     return BuildAnyTypeLoc(CxxAST, Qt, D->getType()->getLoc());
   }
   llvm_unreachable("Unknown type specification");

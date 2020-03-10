@@ -29,6 +29,7 @@ x : int
 TEST(GlobalVariables, SimpleDeclWithInit) {
   StringRef Code = R"(
 x : int = 9
+y = 5
 )";
   SimpleGoldParseTest(Code);
 }

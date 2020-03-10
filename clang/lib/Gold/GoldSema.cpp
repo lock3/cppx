@@ -40,6 +40,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorElseII = &Context.CxxAST.Idents.get("operator'else'");
   OperatorReturnII = &Context.CxxAST.Idents.get("operator'return'");
   OperatorReturnsII = &Context.CxxAST.Idents.get("operator'returns'");
+  OperatorDotII = &Context.CxxAST.Idents.get("operator'.'");
 }
 
 Sema::~Sema() {

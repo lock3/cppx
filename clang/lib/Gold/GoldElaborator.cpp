@@ -120,11 +120,10 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
     SemaRef.popDecl();
     D->SavedScope = SemaRef.saveScope(D->Init);
     return ClsDecl;
-  } else if (D->declaresFunction()) {
+  } else if (D->declaresFunction())
     return elaborateFunctionDecl(D);
-  } else {
+  else
     return elaborateVariableDecl(D);
-  }
   // TODO: We should be able to elaborate definitions at this point too.
   // We've already loaded salient identifier tables, so it shouldn't any
   // forward references should be resolvable.
@@ -289,9 +288,9 @@ void Elaborator::elaborateDeclInit(const Syntax *S) {
 }
 
 void Elaborator::elaborateDef(Declaration *D) {
-  if (D->declaresType()) {
+  if (D->declaresType())
     elaborateTypeDefinition(D);
-  } else if (D->declaresFunction())
+  else if (D->declaresFunction())
     elaborateFunctionDef(D);
   else
     elaborateVariableInit(D);
@@ -558,8 +557,10 @@ static Declarator *buildPointerDeclarator(const CallSyntax *S,
 /// we build a declarator fragment.
 static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
                                   Declarator *Next) {
+
   // If we find an atom, then we're done.
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(S)) {
+    
     // This might be a typename, in which case, build a type-declarator.
     clang::DeclarationNameInfo DNI(
       {&SemaRef.Context.CxxAST.Idents.get(Atom->getSpelling()), S->getLoc()});
@@ -569,9 +570,8 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
 
     // Otherwise just build an identifier-declarator.
     return buildIdDeclarator(Atom, Next);
-  }
 
-  else if(const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
+  } else if(const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
     const AtomSyntax *Callee = cast<AtomSyntax>(Call->getCallee());
     // Check for "builtin" operators in the declarator.
     if (Callee->getSpelling() == "operator':'") {
@@ -667,13 +667,24 @@ void Elaborator::identifyDecl(const Syntax *S) {
   if (const auto *Call = dyn_cast<CallSyntax>(S)) {
     if (const auto *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
       llvm::StringRef Op = Callee->getToken().getSpelling();
-
+      
+      // Need to figure out if this is a declaration or expression?
       // Unpack the declarator.
       const Syntax *Decl;
       const Syntax *Init;
       if (Op == "operator'='") {
+        // This is to reject t.x as a declaration. TODO: FIXME: This will need
+        // to be reevaluated as a later point because this isn't always going
+        // to be the case I think, for example PIMPL could be handled this way...
         const auto *Args = cast<ListSyntax>(Call->getArguments());
         Decl = Args->getChild(0);
+        if(isa<CallSyntax>(Decl))
+          if(const CallSyntax *InnerCallOp = cast<CallSyntax>(Decl))
+            if(isa<AtomSyntax>(InnerCallOp->getCallee()))
+              if(const AtomSyntax *AccessOp = cast<AtomSyntax>(
+                                                      InnerCallOp->getCallee()))
+                if(AccessOp->getSpelling() == "operator'.'")
+                  return;
         Init = Args->getChild(1);
         OperatorEquals = true;
       } else if (Op == "operator'!'") {
@@ -790,6 +801,8 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
     return FOK_Return;
   if (Tokenization == SemaRef.OperatorReturnsII)
     return FOK_Return;
+  if (Tokenization == SemaRef.OperatorDotII)
+    return FOK_MemberAccess;
 
   return FOK_Unknown;
 }

@@ -174,6 +174,7 @@ public:
   const clang::IdentifierInfo *OperatorElseII;
   const clang::IdentifierInfo *OperatorReturnII;
   const clang::IdentifierInfo *OperatorReturnsII;
+  const clang::IdentifierInfo *OperatorDotII;
 
   // A mapping of identifiers as strings to syntaxes.
   llvm::MapVector<clang::IdentifierInfo *, const Syntax *> IdentifierMapping;
