@@ -381,7 +381,7 @@ static bool isAssignmentOperator(TokenKind K) {
   case tok::SlashEqual:
     return true;
   }
-};
+}
 
 // def:
 //    or assignment-operator def
@@ -458,7 +458,7 @@ Syntax *Parser::parseOr() {
 
 auto isAndOperator(Parser &P) {
   return P.nextTokenIs(tok::AmpersandAmpersand) || P.nextTokenIs("and");
-};
+}
 
 // and:
 //    cmp
@@ -496,7 +496,7 @@ static bool is_relational_operator(Parser& P) {
   case tok::GreaterEqual:
     return true;
   }
-};
+}
 
 /// cmp:
 ///    to
@@ -523,7 +523,7 @@ bool isToOperator(Parser& P) {
   return P.nextTokenIs(tok::Colon)
       || P.nextTokenIs(tok::DotDot)
       || P.nextTokenIs(tok::MinusGreater);
-};
+}
 
 // to:
 //    add
@@ -547,7 +547,7 @@ Syntax *Parser::parseTo() {
 
 bool isAddOperator(Parser& P) {
   return P.nextTokenIs(tok::Plus) || P.nextTokenIs(tok::Minus);
-};
+}
 
 /// add:
 ///   mul
@@ -567,7 +567,7 @@ Syntax *Parser::parseAdd() {
 
 static bool isMulOperator(Parser& P) {
   return P.nextTokenIs(tok::Star) || P.nextTokenIs(tok::Slash);
-};
+}
 
 /// mul:
 ///   call

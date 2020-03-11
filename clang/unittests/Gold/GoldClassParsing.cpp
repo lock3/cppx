@@ -181,5 +181,34 @@ main() : int!
   q.x = 4
   return 0
   )";
-  SimpleGoldParseTest(Code);
+
+  StatementMatcher StmtMatcher(compoundStmt(hasDescendant(
+        binaryOperator(hasOperatorName("="),
+          hasLHS(memberExpr(hasDescendant(
+            declRefExpr(to(varDecl(hasType(recordDecl(hasName("c"))))))))),
+          hasRHS(integerLiteral(equals(4)))
+        )
+      )
+    )
+  );
+
+
+  ASSERT_TRUE(matches(Code, StmtMatcher));
 }
+// TODO: This is the next thing to implement. Maybe...
+// TEST(ClassParsing, MemberAccessFromFunctionResult) {
+//   StringRef Code = R"(
+// c : type = class:
+//   x : int
+//   y : bool
+// foo(z: int): c!
+//   q : c
+//   return q
+
+// main() : int!
+//   q : c
+//   foo(1).x = 4
+//   return 0
+//   )";
+//   SimpleGoldParseTest(Code);
+// }
