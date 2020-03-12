@@ -117,21 +117,41 @@ namespace {
   /// found in Sema/SemaExpr.cpp
   struct ExprMarker : public clang::EvaluatedExprVisitor<ExprMarker> {
     clang::ASTContext &CxxAST;
+    Sema &SemaRef;
     typedef EvaluatedExprVisitor<ExprMarker> Inherited;
 
-    ExprMarker(clang::ASTContext &CxxAST)
-      : Inherited(CxxAST), CxxAST(CxxAST)
+    ExprMarker(clang::ASTContext &CxxAST, Sema &SemaRef)
+      : Inherited(CxxAST), CxxAST(CxxAST), SemaRef(SemaRef)
       {}
 
     void VisitDeclRefExpr(clang::DeclRefExpr *E) {
       // FIXME: references to virtual methods may cause problems here.
-      E->getDecl()->markUsed(CxxAST);
+      SemaRef.getCxxSema().MarkAnyDeclReferenced(E->getBeginLoc(),
+                                                 E->getDecl(),
+                                                 /*OdrUsed=*/false);
+      // E->getDecl()->markUsed(CxxAST);
     }
   };
 } // anonymous namespace
 
+static clang::Stmt *
+elaborateDefaultCall(SyntaxContext &Context, Sema &SemaRef, const CallSyntax *S) {
+  ExprElaborator ExprElab(Context, SemaRef);
+  ExprElaborator::Expression Expression = ExprElab.elaborateCall(S);
+
+  if (Expression.is<clang::TypeSourceInfo *>()) {
+    SemaRef.Diags.Report(S->getLoc(), clang::diag::err_expected_expression);
+    return nullptr;
+  }
+
+  return Expression.get<clang::Expr *>();
+}
+
 clang::Stmt *
 StmtElaborator::elaborateCall(const CallSyntax *S) {
+  if (isa<ElemSyntax>(S->getCallee()))
+    return elaborateDefaultCall(Context, SemaRef, S);
+
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   FusedOpKind OpKind = getFusedOpKind(SemaRef, Callee->getSpelling());
 
@@ -207,8 +227,8 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
     }
 
     // We can readily assume anything here is getting used.
-    ExprMarker(CxxAST).Visit(NameExpr.get<clang::Expr *>());
-    ExprMarker(CxxAST).Visit(InitExpr.get<clang::Expr *>());
+    ExprMarker(CxxAST, SemaRef).Visit(NameExpr.get<clang::Expr *>());
+    ExprMarker(CxxAST, SemaRef).Visit(InitExpr.get<clang::Expr *>());
     return Assignment.get();
   }
 
@@ -216,13 +236,16 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
     ExprElaborator::Expression RetVal =
       ExprElaborator(Context, SemaRef).elaborateExpr(S->getArgument(0));
 
+    if (RetVal.isNull())
+      return nullptr;
+
     if (RetVal.is<clang::TypeSourceInfo *>()) {
       SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
                            clang::diag::err_expected_lparen_after_type);
       return nullptr;
     }
 
-    ExprMarker(CxxAST).Visit(RetVal.get<clang::Expr *>());
+    ExprMarker(CxxAST, SemaRef).Visit(RetVal.get<clang::Expr *>());
     clang::StmtResult ReturnResult = SemaRef.getCxxSema().
       BuildReturnStmt(S->getCallee()->getLoc(), RetVal.get<clang::Expr *>());
     return ReturnResult.get();
@@ -233,15 +256,16 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   }
 
   // If all else fails, just see if we can elaborate any expression.
-  ExprElaborator ExprElab(Context, SemaRef);
-  ExprElaborator::Expression Expression = ExprElab.elaborateCall(S);
+  return elaborateDefaultCall(Context, SemaRef, S);
+  // ExprElaborator ExprElab(Context, SemaRef);
+  // ExprElaborator::Expression Expression = ExprElab.elaborateCall(S);
 
-  if (Expression.is<clang::TypeSourceInfo *>()) {
-    Diags.Report(S->getLoc(), clang::diag::err_expected_expression);
-    return nullptr;
-  }
+  // if (Expression.is<clang::TypeSourceInfo *>()) {
+  //   Diags.Report(S->getLoc(), clang::diag::err_expected_expression);
+  //   return nullptr;
+  // }
 
-  return Expression.get<clang::Expr *>();
+  // return Expression.get<clang::Expr *>();
 }
 
 clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
@@ -367,7 +391,7 @@ StmtElaborator::elaborateBlock(const Syntax *S) {
     }
 
     if (ReturnVal.is<clang::Expr *>()) {
-      ExprMarker(CxxAST).Visit(ReturnVal.get<clang::Expr *>());
+      ExprMarker(CxxAST, SemaRef).Visit(ReturnVal.get<clang::Expr *>());
 
       clang::StmtResult ReturnRes = SemaRef.getCxxSema().
         BuildReturnStmt(S->getLoc(), ReturnVal.get<clang::Expr *>());

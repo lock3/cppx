@@ -39,6 +39,7 @@ TranslationUnitDecl 0x7ffff3816088 <<invalid sloc>> <invalid sloc>
     `-ReturnStmt 0x7ffff3854a10 <line:7:3, col:10>
       `-IntegerLiteral 0x7ffff38549f0 <col:10> 'int' 0
 */
+#if 0
 TEST(ClassParsing, ClassDeclaration) {
   StringRef Code = R"(
 c : type = class:
@@ -50,7 +51,7 @@ main() : int!
   )";
   SimpleGoldParseTest(Code);
 }
-
+#endif
 
 TEST(ClassParsing, ClassInstance) {
 

@@ -56,17 +56,22 @@ public:
   clang::Decl *elaborateFunctionDecl(Declaration *D);
   clang::Decl *elaborateVariableDecl(Declaration *D);
   clang::Decl *elaborateParameterDecl(Declaration *D);
-  
+  clang::Decl *elaborateTemplateParamDecl(Declaration *D);
 
   // Definition elaboration (3rd pass)
   void elaborateDeclInit(const Syntax *S);
   void elaborateDef(Declaration *D);
   void elaborateFunctionDef(Declaration *D);
   void elaborateVariableInit(Declaration *D);
+  void elaborateTemplateParamInit(Declaration *D);
 
   // Perform all three passes on a single declaration in one shot.
   // This is used to elaborate parameters and block-scope variables.
   clang::Decl *elaborateDeclSyntax(const Syntax* S);
+
+  // Perform the latter two passes on a Declaration that was previously
+  // identified. This is used when lookup finds an unelaborated declaration.
+  clang::Decl *elaborateDeclEarly(Declaration *D);
 
   clang::Decl *elaborateDeclForArray(const ArraySyntax *S);
   clang::Decl *elaborateDeclForList(const ListSyntax *S);

@@ -1,4 +1,4 @@
-//=== GoldParsingTest.cpp - Elaboration for Gold Nodes ----------------------==//
+//=== FunctionTemplate.cpp - Elaboration for Gold Function Templates -------==//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file implements tests for paring of global variables.
+//  This file implements tests for elaboration of function templates.
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,17 +18,10 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-
-TEST(GlobalVariables, SimpleDecl) {
+TEST(GoldFunctionTemplate, MixedTypeParameters) {
   StringRef Code = R"(
-x : int
-)";
-  SimpleGoldParseTest(Code);
-}
-
-TEST(GlobalVariables, SimpleDeclWithInit) {
-  StringRef Code = R"(
-x : int = 9
+f[T : type, z : int](x : T) : T!
+  return x + z
 )";
   SimpleGoldParseTest(Code);
 }

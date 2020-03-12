@@ -51,8 +51,6 @@ class SyntaxContext;
 /// Maintains the state of Gold-to-C++ translation for a
 /// translation unit in the Gold Language.
 class Sema {
-  friend class IdentifierMapper;
-
   // The clang semantic object, allows to create various syntax nodes
   // as well as perform important transformations on them.
   clang::Sema &CxxSema;
@@ -141,6 +139,8 @@ public:
           << IterD->getName();
         return true;
       }
+
+      Iter = Iter->Next;
     } while (Iter != Start->First);
 
     return false;
@@ -168,8 +168,28 @@ public:
   const clang::IdentifierInfo *OperatorReturnII;
   const clang::IdentifierInfo *OperatorReturnsII;
 
-  // A mapping of identifiers as strings to syntaxes.
-  llvm::MapVector<clang::IdentifierInfo *, const Syntax *> IdentifierMapping;
+  // An RAII type for constructing scopes.
+  struct ScopeRAII {
+    ScopeRAII(Sema &S, ScopeKind K, const Syntax *ConcreteTerm, Scope **SavedScope = nullptr)
+      : S(S), SavedScope(SavedScope), ConcreteTerm(ConcreteTerm) {
+      S.enterScope(K, ConcreteTerm);
+    }
+
+    ~ScopeRAII() {
+      if (SavedScope)
+        *SavedScope = S.saveScope(ConcreteTerm);
+      else
+        S.leaveScope(ConcreteTerm);
+    }
+
+  private:
+    Sema &S;
+
+    /// Optionally save this scope to be stored in the Declaration.
+    Scope **SavedScope;
+
+    const Syntax *ConcreteTerm;
+  };
 
   // Dictionary of built in types.
   //
@@ -206,7 +226,7 @@ public:
     {"double", Context.CxxAST.DoubleTy},
     {"long double", Context.CxxAST.LongDoubleTy},
     {"float128_t", Context.CxxAST.Float128Ty},
-    {"type", Context.CxxAST.CppxKindTy},
+    {"type", Context.CxxAST.CppxKindTy}
   };
 };
 
