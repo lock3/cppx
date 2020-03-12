@@ -13,7 +13,7 @@ c : type = class:
 main() : int!
   q : c
   q.x = 4
-  return 0
+  return q.x
 )";
   llvm::LLVMContext Context;
   std::unique_ptr<ExecutionEngine> EE;
@@ -22,5 +22,5 @@ main() : int!
   MainSig CB = (MainSig)EE->getPointerToNamedFunction("main");
   ASSERT_TRUE(CB);
   int result = CB();
-  ASSERT_EQ(result, 0);
+  ASSERT_EQ(result, 4);
 }
