@@ -84,6 +84,7 @@ public:
 
   clang::Decl *elaborateTypeBody(Declaration *D, clang::CXXRecordDecl *R);
   clang::Decl *elaborateField(Declaration *D);
+  void elaborateFieldInit(Declaration *D);
 
 
   // Identification (1st pass)

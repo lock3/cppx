@@ -140,6 +140,10 @@ bool Declaration::declaresFunction() const {
   return false;
 }
 
+bool Declaration::declaresMemberVariable() const {
+  return declaresVariable() && Cxx &&clang::isa<clang::FieldDecl>(Cxx);
+}
+
 clang::DeclContext *Declaration::getCxxContext() const {
   return clang::Decl::castToDeclContext(Cxx);
 }

@@ -154,6 +154,10 @@ public:
   /// True if this declares a function.
   bool declaresFunction() const;
 
+  /// Returns true if the CXX type is a FieldDecl.
+  /// This is true when declares variable is also true some times.
+  bool declaresMemberVariable() const;
+
   /// The identifier of the declaration, if any.
   clang::IdentifierInfo *getId() const {
     return Id;

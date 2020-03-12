@@ -292,6 +292,8 @@ void Elaborator::elaborateDef(Declaration *D) {
     elaborateTypeDefinition(D);
   else if (D->declaresFunction())
     elaborateFunctionDef(D);
+  else if(D->declaresMemberVariable())
+    elaborateFieldInit(D);
   else
     elaborateVariableInit(D);
 }
@@ -403,21 +405,20 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
                 clang::TagDecl::TagKind::TTK_Struct, R, D->Decl->getLoc(),
                 EndOfClassSrcLoc, D->getId());
   R->addDecl(ImplicitDecl);
-  // // TODO: Each one of these declarations needs to be added somewhere so that
-  // // we can process types.
-  // for (auto const* ChildDecl : BodyArray->children()) {
-  //   identifyDecl(ChildDecl);
-  // }
 
+  // Since all declarations have already been added, we don't need to do another
+  // Reordering scan.
+  
   // Processing all sub declarations?
   // TODO:/FIXME: Need to create a means for building member functions/initializers
   for (const Syntax *SS : BodyArray->children()) {
     elaborateDeclType(SS);
   }
 
-  // for (const Syntax *SS : BodyArray->children()) {
-  //   elaborateDeclInit(SS);
-  // }
+  // Attempting to elaborate declaration initialization
+  for (const Syntax *SS : BodyArray->children()) {
+    elaborateDeclInit(SS);
+  }
 
   auto DeclRange = Scope->decls();
   std::vector<clang::Decl*> Members(DeclRange.begin(), DeclRange.end());
@@ -444,23 +445,9 @@ clang::Decl *Elaborator::elaborateTypeBody(Declaration* D, clang::CXXRecordDecl*
   assert(BodyArray && "Invalid AST structure Expected array structure.");
 
   // R->startDefinition();
-  // TODO: Each one of these declarations needs to be added somewhere so that
-  // we can process types.
   for (auto const* ChildDecl : BodyArray->children()) {
     identifyDecl(ChildDecl);
   }
-
-  // Processing all sub declarations?
-  // TODO:/FIXME: Need to create a means for building member functions/initializers
-  // for (const Syntax *SS : BodyArray->children()) {
-  //   elaborateDeclType(SS);
-  // }
-
-  // for (const Syntax *SS : BodyArray->children()) {
-  //   elaborateDeclInit(SS);
-  // }
-
-  // R->completeDefinition();
   return D->Cxx;
 }
 
@@ -482,16 +469,38 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
   clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::DeclarationName DN = D->getId();
+  clang::InClassInitStyle InitStyle = clang::InClassInitStyle::ICIS_NoInit;
+  if (D->Init) {
+    InitStyle = clang::InClassInitStyle::ICIS_ListInit;
+  } 
   clang::FieldDecl *FD = SemaRef.getCxxSema().CheckFieldDecl(DN, TInfo->getType(),
                                           TInfo, /*RecordDecl=*/Owner,
                                           Loc, /*Mutable=*/false,
                                           /*BitWidth=*/nullptr,
-                                          clang::InClassInitStyle::ICIS_NoInit,
-                                          Loc, clang::AccessSpecifier::AS_public,
+                                          InitStyle, Loc,
+                                          clang::AccessSpecifier::AS_public,
                                           nullptr);
   Owner->addDecl(FD);
   D->Cxx = FD;
   return nullptr;
+}
+
+void Elaborator::elaborateFieldInit(Declaration *D) {
+  if (!D->Init)
+    return;
+  assert(D && "Missing Declaration.");
+  ExprElaborator ExprElab(Context, SemaRef);
+  ExprElaborator::Expression Init = ExprElab.elaborateExpr(D->Init);
+
+  // Make sure the initializer was not elaborated as a type.
+  if (Init.is<clang::TypeSourceInfo*>()) {
+    // TODO: Insert diagnostics here?
+    llvm::errs() << "Expected expression, not a type.\n";
+    return;
+  }
+  clang::FieldDecl *Field = cast<clang::FieldDecl>(D->Cxx);
+  Field->setInClassInitializer(Init.get<clang::Expr*>());
+  
 }
 
 // Get the clang::QualType described by an operator':' call.
