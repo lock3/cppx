@@ -1,4 +1,4 @@
-//===- unittest/Tooling/ASTMatchersTest.h - Matcher tests helpers ------===//
+//===- unittest/Gold/ASTMatchersTest.h - Matcher tests helpers ------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -189,7 +189,7 @@ matchesConditionally(const std::string &Code, const T &AMatcher,
     return Result;
   // }
 
-  // return testing::AssertionSuccess();
+  return testing::AssertionSuccess();
 }
 
 template <typename T>
