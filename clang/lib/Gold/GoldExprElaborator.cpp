@@ -131,6 +131,7 @@ createDeclRefExpr(clang::ASTContext &CxxAST, Sema &SemaRef, Token T,
 
     clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>();
     clang::QualType FoundTy = VD->getType();
+    VD->setIsUsed();
 
     // If the user annotated the DeclRefExpr with an incorrect type.
     if (!Ty.isNull() && Ty != FoundTy) {
@@ -384,6 +385,10 @@ Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     clang::ExprResult HandledLHS = SemaRef.getCxxSema().ActOnMemberAccessExpr(
       SemaRef.getCurClangScope(), ElaboratedLHS.get<clang::Expr*>(), Op->getLoc(),
       clang::tok::TokenKind::period, SS, Loc, Id, nullptr);
+    // HandledLHS.get()->dump();
+    clang::MemberExpr *MemberExpression
+      = cast<clang::MemberExpr>(HandledLHS.get());
+    MemberExpression->getMemberDecl()->setIsUsed();
     return HandledLHS.get();
 
     // NOTE: If we have to we can re-implement this using the create functions

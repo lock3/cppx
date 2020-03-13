@@ -107,8 +107,6 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
   if(D->declaresRecord()) {
-    llvm::outs() << "Elaborating declaration: for type \n";
-    llvm::outs() << "We have " << D->Decl->getKind() << " Declarator for a record\n";
     clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
     clang::SourceLocation EndOfClassSrcLoc(D->Init->getLoc());
     clang::CXXRecordDecl* ClsDecl = clang::CXXRecordDecl::Create(Context.CxxAST,
@@ -386,10 +384,8 @@ void Elaborator::elaborateDeclInit(const Syntax *S) {
 }
 
 void Elaborator::elaborateDef(Declaration *D) {
-  if (D->declaresRecord()){
-    llvm::outs() << "Elaborate Def\n";
+  if (D->declaresRecord())
     return elaborateTypeDefinition(D);
-  }
   if (D->declaresFunction())
     return elaborateFunctionDef(D);
   if (SemaRef.getCurrentScope()->isTemplateScope())
