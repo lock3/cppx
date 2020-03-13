@@ -160,6 +160,9 @@ public:
   /// True if this is a type declaration.
   bool declaresType() const;
 
+  /// Checks if the type declaration is declaring a record.
+  bool declaresRecord() const;
+
   /// True if this declares a function.
   bool declaresFunction() const;
 
@@ -399,7 +402,6 @@ public:
     if (Range.empty()) {
       return std::set<Declaration *>();
     }
-
     std::set<Declaration *> Ret;
     for (auto It = Range.first; It != Range.second; ++It)
       Ret.insert(It->second);

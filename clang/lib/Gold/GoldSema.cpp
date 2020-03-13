@@ -44,6 +44,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
 }
 
 Sema::~Sema() {
+  assert(ScopeStack.size() == 0 && "Scope stack is not empty.");
   delete getCurClangScope();
   CxxSema.CurScope = nullptr;
 }
@@ -146,6 +147,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         if (!FoundDecl->Cxx)
           Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
 
+        // FoundDecl->Cxx->dump();
         clang::NamedDecl *ND = cast<clang::NamedDecl>(FoundDecl->Cxx);
 
         // FIXME: check if this is a tag decl, not a type decl!
@@ -161,15 +163,27 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         // If there is a described template, add that to the result instead
         // of the bare declaration.
         if (FoundDecl->declaresTemplate()) {
-          if (auto *FD = dyn_cast<clang::FunctionDecl>(ND))
-            R.addDecl(FD->getDescribedFunctionTemplate());
-          else if (auto *VD = dyn_cast<clang::VarDecl>(ND))
-            R.addDecl(VD->getDescribedVarTemplate());
+          if (auto *FD = dyn_cast<clang::FunctionDecl>(ND)) {
+            clang::FunctionTemplateDecl *TempDecl
+              = FD->getDescribedFunctionTemplate();
+            if (TempDecl) 
+              R.addDecl(TempDecl);
+            else
+              llvm::outs() << "Massive issue encountered "
+                "getDescribedFunctionTemplate returned null\n";
+          } else if (auto *VD = dyn_cast<clang::VarDecl>(ND)){
+            clang::VarTemplateDecl *TempDecl = VD->getDescribedVarTemplate();
+            if(TempDecl)
+              R.addDecl(TempDecl);
+            else
+              llvm::outs() << "Massive issue encountered getDescribedVarTemplate "
+                "Returned null.\n";
+          } else 
+            llvm::outs() << "Unknown template type received\n";
         } else {
           R.addDecl(ND);
         }
       }
-
       break;
     }
 

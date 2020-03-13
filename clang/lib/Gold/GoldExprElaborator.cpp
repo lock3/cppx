@@ -366,78 +366,39 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   llvm::errs() << "Unsupported call.\n";
   return nullptr;
 }
-// TODO: Refactor algorithm stuff into this function.
-// static clang::MemberExpr *
-// createLookMemberExpr(clang::ASTContext &CxxAST, Sema &SemaRef, const AtomSyntax *S,
-//                   clang::QualType OwningTy, clang::SourceLocation Loc) {
-//   // if(!isa<SS->getS)
-//   clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(S->getSpelling())}, Loc);
-//   clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
-//   SemaRef.lookupUnqualifiedName(R, OwningTy);
-//   if (!R.empty()) {
-//     if (!R.isSingleResult()) {
-//       SemaRef.Diags.Report(T.getLocation(), clang::diag::err_multiple_declarations);
-//       return nullptr;
-//     }
-
-//     clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>();
-//     clang::QualType FoundTy = VD->getType();
-
-//     // If the user annotated the DeclRefExpr with an incorrect type.
-//     if (!Ty.isNull() && Ty != FoundTy) {
-//       SemaRef.Diags.Report(T.getLocation(), clang::diag::err_type_annotation_mismatch)
-//         << FoundTy << Ty;
-//       return nullptr;
-//     }
-
-//     // FIXME: discern whether this is an lvalue or rvalue properly
-//     clang::DeclRefExpr *DRE =
-//       clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
-//                                  clang::SourceLocation(), VD, /*Capture=*/false,
-//                                  Loc, FoundTy, clang::VK_LValue);
-//     return DRE;
-//   }
-
-//   return nullptr;
-// }
 
 Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     const CallSyntax *Op, const Syntax *RHS) {
   Expression ElaboratedLHS = elaborateExpr(LHS);
-  if(isa<AtomSyntax>(RHS)) {
+  if (isa<AtomSyntax>(RHS)) {
     const AtomSyntax *RHSAtom = cast<AtomSyntax>(RHS);
-    // Need to do the thing to create member lookup?!
-    // DeclAccessPair::make(ToDecl, E->getFoundDecl().getAccess());
     // TODO: figure out how to make the pointer work correctly?
-    bool MayBePseudoDestructor = false;
-    clang::ParsedType Ty;   
-    clang::ExprResult HandledLHS
-      = SemaRef.getCxxSema().ActOnStartCXXMemberReference(
-          SemaRef.getCurClangScope(), ElaboratedLHS.get<clang::Expr*>(),
-          clang::SourceLocation(), clang::tok::TokenKind::period, Ty,
-          MayBePseudoDestructor);
-          
-    clang::UnqualifiedId Id; 
+
+    clang::UnqualifiedId Id;
     clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(
       RHSAtom->getSpelling());
+    // TODO: Figure out how to get the desired scope.
     Id.setIdentifier(IdInfo, RHSAtom->getLoc());
     clang::CXXScopeSpec SS;
     clang::SourceLocation Loc;
-    HandledLHS = SemaRef.getCxxSema().ActOnMemberAccessExpr(
-      SemaRef.getCurClangScope(), HandledLHS.get(), Op->getLoc(),
+    clang::ExprResult HandledLHS = SemaRef.getCxxSema().ActOnMemberAccessExpr(
+      SemaRef.getCurClangScope(), ElaboratedLHS.get<clang::Expr*>(), Op->getLoc(),
       clang::tok::TokenKind::period, SS, Loc, Id, nullptr);
     return HandledLHS.get();
-    // NOTE: If we have to we can re-implement this in terms of something other
-    // then just member access.
+
+    // NOTE: If we have to we can re-implement this using the create functions
+    // that might be better because this handles C++ lookup of a member variable
+    // as well.
     // MemberExpr *MemberExpr::Create(
     //     const ASTContext &C, Expr *Base, bool IsArrow, SourceLocation OperatorLoc,
     //     NestedNameSpecifierLoc QualifierLoc, SourceLocation TemplateKWLoc,
     //     ValueDecl *MemberDecl, DeclAccessPair FoundDecl,
     //     DeclarationNameInfo NameInfo, const TemplateArgumentListInfo *TemplateArgs,
     //     QualType T, ExprValueKind VK, ExprObjectKind OK, NonOdrUseReason NOUR)
-  } else 
-    llvm_unreachable("Member access to anything other then a member variable "
-        "not implemented yet.");
+  }
+
+  llvm_unreachable("Member access to anything other then a member variable "
+      "not implemented yet.");
 }
 
 Expression ExprElaborator::elaborateElemCall(const CallSyntax *S) {
@@ -813,8 +774,9 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
 
     clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Atom->getSpelling())}, Loc);
     clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupTagName);
-    if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope()))
+    if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())){
       return nullptr;
+    }
 
     if (R.empty()) {
       auto BuiltinMapIter = SemaRef.BuiltinTypes.find(Atom->getSpelling());

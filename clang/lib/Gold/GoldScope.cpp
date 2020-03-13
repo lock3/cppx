@@ -118,13 +118,23 @@ bool Declaration::declaresType() const {
   if (D->Kind == DK_Identifier){
     D = D->Next;
   }
-  if(D) {
-    if(D->Kind == DK_Type) {
-      if(const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
+  if (D)
+    if (D->Kind == DK_Type)
+      if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type))
         return Atom->getSpelling() == "type";
-      }
-    }
-  }
+  return false;
+}
+
+bool Declaration::declaresRecord() const {
+  if (!declaresType()) 
+    return false;
+  if (Cxx)
+    return isa<clang::CXXRecordDecl>(Cxx);
+  if(Init)
+    if (const MacroSyntax *Macro = dyn_cast_or_null<MacroSyntax>(Init))
+      if(Macro->getCall())
+        if (const AtomSyntax *ClsKw = dyn_cast_or_null<AtomSyntax>(Macro->getCall()))
+          return ClsKw->getSpelling() == "class";
   return false;
 }
 
@@ -150,6 +160,11 @@ bool Declaration::declaresMemberVariable() const {
 bool Declaration::declaresTemplate() const {
   assert(Decl);
   const Declarator *D = Decl;
+  // TODO: In the future we would need to extend this definition to make sure
+  // that everything works as expected whe we do have an identifier that
+  // is infact also a template name.
+  if (D->Kind != DK_Function)
+    return false;
   if (D->Kind == DK_Identifier)
     D = D->Next;
   if (D)

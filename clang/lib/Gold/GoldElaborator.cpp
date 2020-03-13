@@ -36,7 +36,7 @@ Elaborator::Elaborator(SyntaxContext &Context, Sema &SemaRef)
 
 clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   assert(isa<FileSyntax>(S) && "S is not a file");
-  
+
   clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::DeclScope);
   SemaRef.getCxxSema().ActOnTranslationUnitScope(Scope);
   SemaRef.getCxxSema().Initialize();
@@ -44,7 +44,7 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   startFile(S);
 
   const FileSyntax *File = cast<FileSyntax>(S);
-  
+
   // Pass 1. identify declarations in scope.
   for (const Syntax *SS : File->children()) {
     identifyDecl(SS);
@@ -59,6 +59,7 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   for (const Syntax *SS : File->children()) {
     elaborateDeclInit(SS);
   }
+  
   finishFile(S);
   SemaRef.getCxxSema().ActOnEndOfTranslationUnit();
   SemaRef.leaveClangScope(S->getLoc());
@@ -105,7 +106,9 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
-  if(D->declaresType()) {
+  if(D->declaresRecord()) {
+    llvm::outs() << "Elaborating declaration: for type \n";
+    llvm::outs() << "We have " << D->Decl->getKind() << " Declarator for a record\n";
     clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
     clang::SourceLocation EndOfClassSrcLoc(D->Init->getLoc());
     clang::CXXRecordDecl* ClsDecl = clang::CXXRecordDecl::Create(Context.CxxAST,
@@ -275,7 +278,6 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
   ExprElaborator TypeElab(Context, SemaRef);
   ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
-
   if (TypeExpr.isNull()) {
     SemaRef.Diags.Report(D->Op->getLoc(),
                          clang::diag::err_failed_to_translate_type);
@@ -286,7 +288,6 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::StorageClass SC = getStorageClass(*this);
-
   // Create the variable and add it to it's owning context.
   clang::VarDecl *VD = clang::VarDecl::Create(Context.CxxAST, Owner, Loc, Loc,
                                               Id, TInfo->getType(), TInfo, SC);
@@ -385,8 +386,10 @@ void Elaborator::elaborateDeclInit(const Syntax *S) {
 }
 
 void Elaborator::elaborateDef(Declaration *D) {
-  if (D->declaresType())
+  if (D->declaresRecord()){
+    llvm::outs() << "Elaborate Def\n";
     return elaborateTypeDefinition(D);
+  }
   if (D->declaresFunction())
     return elaborateFunctionDef(D);
   if (SemaRef.getCurrentScope()->isTemplateScope())
@@ -663,7 +666,6 @@ static Declarator *buildIdDeclarator(const AtomSyntax *S, Declarator *Next) {
 static Declarator *buildTypeDeclarator(const Syntax *S, Declarator *Next) {
   assert((isa<AtomSyntax>(S) || isa<CallSyntax>(S)) &&
          "cannot build type-declarator out of given syntax");
-
   Declarator *D = new Declarator(DK_Type, Next);
 
   if (const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
@@ -682,6 +684,8 @@ static Declarator *buildFunctionDeclarator(const CallSyntax *S, Declarator *Next
   D->Call = S;
   D->Data.ParamInfo.Params = S->getArguments();
   D->Data.ParamInfo.TemplateParams = nullptr;
+  D->Data.ParamInfo.TemplateScope = nullptr;
+  D->Data.ParamInfo.ConstructedScope = nullptr;
   return D;
 }
 
@@ -692,6 +696,8 @@ static Declarator *buildFunctionDeclarator(const CallSyntax *S,
   D->Call = S;
   D->Data.ParamInfo.Params = S->getArguments();
   D->Data.ParamInfo.TemplateParams = T->getArguments();
+  D->Data.ParamInfo.TemplateScope = nullptr;
+  D->Data.ParamInfo.ConstructedScope = nullptr;
   return D;
 }
 

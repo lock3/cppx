@@ -252,6 +252,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   }
 
   default:
+    llvm::outs() << "Reached where we expected to be?\n";
     break; // Silence warning.
   }
 

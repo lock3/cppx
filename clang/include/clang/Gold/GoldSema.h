@@ -58,7 +58,7 @@ class Sema {
   // Stack of active Scopes.
   llvm::SmallVector<Scope *, 4> ScopeStack;
   // The declaration context.
-  Declaration *CurrentDecl;
+  Declaration *CurrentDecl = nullptr;
 public:
   Sema(SyntaxContext &Context, clang::Sema &S);
   ~Sema();
