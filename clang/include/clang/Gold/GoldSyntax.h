@@ -297,6 +297,12 @@ struct ElemSyntax : Syntax {
     return Elems[1];
   }
 
+  Syntax *getArgument(std::size_t N);
+
+  const Syntax *getArgument(std::size_t N) const {
+    return const_cast<ElemSyntax*>(this)->getArgument(N);
+  }
+
   child_range children() {
     return child_range(Elems.data(), Elems.data() + 2);
   }

@@ -21,6 +21,7 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
+
 TEST(ClassParsing, ClassDeclaration) {
   StringRef Code = R"(
 c : type = class:
@@ -29,7 +30,7 @@ c : type = class:
 
 main() : int!
   return 0
-  )";
+)";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
       isPublic())),
@@ -38,7 +39,6 @@ main() : int!
   );
   ASSERT_TRUE(matches(Code, ClassC));
 }
-
 
 TEST(ClassParsing, ClassInstance) {
   StringRef Code = R"(
@@ -198,3 +198,5 @@ main() : int!
 //   )";
 //   SimpleGoldParseTest(Code);
 // }
+// }
+

@@ -102,7 +102,7 @@ clang::DeclContext *Sema::getCurrentCxxDeclContext() {
 }
 
 void Sema::pushDecl(Declaration *D) {
-  assert(D->getOwner() == CurrentDecl);  
+  assert(D->getOwner() == CurrentDecl);
 
   // FIXME: this might be an incorrect assertion.
   assert(D->Cxx && isa<clang::DeclContext>(D->Cxx)
@@ -131,52 +131,52 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 
   clang::Sema::LookupNameKind LookupKind = R.getLookupKind();
 
+  if (LookupKind == clang::Sema::LookupTagName) {
+    auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
+    if (BuiltinMapIter != BuiltinTypes.end())
+      return true;
+  }
+
   while (S) {
-    // FIXME: This could find a set of declarations. Note that we could find
-    // several declarations, some of which have not been elaborated.
-    Declaration *Found = S->findDecl(Id);
-    if (Found) {
-      // FIXME: we need a better way to separate tag lookup and other
-      // name lookups.
-      if (LookupKind != clang::Sema::LookupTagName) {
-        // FIXME: This is wrong! If we find a name that hasn't been elaborated,
+    std::set<Declaration *> Found = S->findDecl(Id);
+    if (!Found.empty()) {
+      for (auto *FoundDecl : Found) {
+        // If we find a name that hasn't been elaborated,
         // then we actually need to elaborate it.
-        assert(Found->Cxx && "Declaration not elaborated");
-        clang::NamedDecl *ND = cast<clang::NamedDecl>(Found->Cxx);
-        R.addDecl(ND);
-        break;
+        if (!FoundDecl->Cxx)
+          Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
+
+        clang::NamedDecl *ND = cast<clang::NamedDecl>(FoundDecl->Cxx);
+
+        // FIXME: check if this is a tag decl, not a type decl!
+        if (LookupKind == clang::Sema::LookupTagName &&
+            !isa<clang::TypeDecl>(ND)) {
+          // FIXME: Give a proper diagnostic once we implement hiding.
+          // unsigned DiagID = Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+          //                                         "Tag is hidden.");
+          // Diags.Report(clang::SourceLocation(), DiagID);
+          return false;
+        }
+
+        // If there is a described template, add that to the result instead
+        // of the bare declaration.
+        if (FoundDecl->declaresTemplate()) {
+          if (auto *FD = dyn_cast<clang::FunctionDecl>(ND))
+            R.addDecl(FD->getDescribedFunctionTemplate());
+          else if (auto *VD = dyn_cast<clang::VarDecl>(ND))
+            R.addDecl(VD->getDescribedVarTemplate());
+        } else {
+          R.addDecl(ND);
+        }
       }
+
+      break;
     }
+
     S = S->getParent();
   }
-
-  if (R.empty() && LookupKind == clang::Sema::LookupTagName) {
-    auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
-    if (BuiltinMapIter != BuiltinTypes.end()) {
-      return true;
-    } else {
-      ; // FIXME: This requires a type lookup.
-    }
-  }
-
   return !R.empty();
 }
-
-clang::QualType Sema::lookUpType(clang::IdentifierInfo *Id, Scope *S) const {
-  auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
-  if (BuiltinMapIter != BuiltinTypes.end()) {
-    return BuiltinMapIter->second;
-  }
-  while (S) {
-    clang::QualType Ty = S->getUserDefinedType(Id);
-    if (!Ty.isNull()) 
-      return Ty; 
-    S = S->getParent();
-  }
-  llvm::outs() << "Failed to locate type: " << Id->getName() << "\n";
-  return clang::QualType();
-}
-
 
 clang::Scope *Sema::getCurClangScope() {
   return CxxSema.CurScope;

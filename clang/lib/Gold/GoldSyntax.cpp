@@ -77,4 +77,12 @@ Syntax* CallSyntax::getArgument(std::size_t N) {
   llvm_unreachable("Invalid argument list");
 }
 
+Syntax* ElemSyntax::getArgument(std::size_t N) {
+  if (auto *List = dyn_cast<ListSyntax>(getArguments()))
+    return List->getChild(N);
+  if (auto *Array = dyn_cast<ArraySyntax>(getArguments()))
+    return Array->getChild(N);
+  llvm_unreachable("Invalid argument list");
+}
+
 } // namespace gold

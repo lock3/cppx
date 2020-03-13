@@ -144,6 +144,29 @@ bool Declaration::declaresMemberVariable() const {
   return declaresVariable() && Cxx &&clang::isa<clang::FieldDecl>(Cxx);
 }
 
+// A declarator declares a template if it's first non-id declarator is
+// declares template parameters.
+// FIXME: this might not work for specializations.
+bool Declaration::declaresTemplate() const {
+  assert(Decl);
+  const Declarator *D = Decl;
+  if (D->Kind == DK_Identifier)
+    D = D->Next;
+  if (D)
+    return D->Data.ParamInfo.TemplateParams;
+  return false;
+}
+
+const Syntax *Declaration::getTemplateParams() const {
+  assert(Decl);
+  const Declarator *D = Decl;
+  if (D->Kind == DK_Identifier)
+    D = D->Next;
+  if (D)
+    return D->Data.ParamInfo.TemplateParams;
+  return nullptr;
+}
+
 clang::DeclContext *Declaration::getCxxContext() const {
   return clang::Decl::castToDeclContext(Cxx);
 }
@@ -171,6 +194,36 @@ clang::QualType Scope::getUserDefinedType(clang::IdentifierInfo* Id) const {
     return clang::QualType();
   }
   return It->second;
+}
+
+static llvm::StringRef getScopeKindName(ScopeKind K) {
+  switch (K) {
+  case SK_Namespace:
+    return "Namespace";
+
+  case SK_Parameter:
+    return "Parameter";
+
+  case SK_Template:
+    return "Template";
+
+  case SK_Function:
+    return "Function";
+
+  case SK_Block:
+    return "Block";
+
+  case SK_Class:
+    return "Class";
+  }
+}
+
+void Scope::dump(llvm::raw_ostream &os) const {
+  os << getScopeKindName(getKind()) << '\n';
+}
+
+void Scope::dump() const {
+  dump(llvm::errs());
 }
 
 } // namespace gold

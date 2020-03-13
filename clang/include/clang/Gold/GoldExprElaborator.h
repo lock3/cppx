@@ -62,8 +62,9 @@ public:
 
   Expression elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType);
   Expression elaborateCall(const CallSyntax *S);
-  
+
   Expression elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op, const Syntax *RHS);
+  Expression elaborateElemCall(const CallSyntax *S);
 
   Expression elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
 
@@ -84,7 +85,6 @@ public:
   Expression elaborateArrayType(Declarator *D, TypeInfo *Ty);
   Expression elaborateFunctionType(Declarator *D, TypeInfo *Ty);
   Expression elaborateExplicitType(Declarator *D, TypeInfo *Ty);
-
 };
 
 } // namespace gold

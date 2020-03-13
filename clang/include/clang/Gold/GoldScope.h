@@ -22,6 +22,9 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/iterator_range.h"
 
+#include <map>
+#include <set>
+
 namespace llvm {
 
 class raw_ostream;
@@ -114,8 +117,14 @@ public:
       /// The initial parameter list.
       const Syntax *Params;
 
+      /// For DK_Function, the template parameter list.
+      const Syntax *TemplateParams;
+
       /// The scope constructed during elaboration.
       Scope *ConstructedScope;
+
+      /// The scope containing the template parameters
+      Scope *TemplateScope;
     } ParamInfo;
 
     /// For DK_Type, the type in the call.
@@ -158,6 +167,12 @@ public:
   /// This is true when declares variable is also true some times.
   bool declaresMemberVariable() const;
 
+  /// True if this declares a template.
+  bool declaresTemplate() const;
+
+  /// Get the template parameters for this declaration or null if none.
+  const Syntax *getTemplateParams() const;
+
   /// The identifier of the declaration, if any.
   clang::IdentifierInfo *getId() const {
     return Id;
@@ -184,6 +199,10 @@ public:
   /// The list of members associated with this declaration.
   Scope *SavedScope = nullptr;
 
+  /// The list of template parameter declarations associated
+  /// with this declaration.
+  Scope *SavedTemplateScope = nullptr;
+
   /// The identifier for the declaration.
   clang::IdentifierInfo *Id = nullptr;
 
@@ -198,7 +217,7 @@ public:
   Declaration *First = this;
 
   /// The next decl in the redeclaration chain.
-  Declaration *Next = nullptr;
+  Declaration *Next = this;
 };
 
 /// Different kinds of scope.
@@ -209,6 +228,9 @@ enum ScopeKind {
   /// The scope associated with a function parameter list.
   SK_Parameter,
 
+  /// The scope associated with a template parameter list.
+  SK_Template,
+
   /// The scope associated with a function definition.
   SK_Function,
 
@@ -218,6 +240,42 @@ enum ScopeKind {
   /// The scope associated with a class definition
   SK_Class,
 
+};
+
+template<typename K, typename V>
+class IdMapRange : public std::pair<typename std::multimap<K, V>::iterator,
+                                    typename std::multimap<K, V>::iterator> {
+public:
+  IdMapRange(typename std::multimap<K, V>::iterator f,
+             typename std::multimap<K, V>::iterator s)
+    : std::pair<typename std::multimap<K, V>::iterator,
+                typename std::multimap<K, V>::iterator>(f, s)
+    {}
+
+  std::size_t size() const {
+    return std::distance(this->first, this->second);
+  }
+
+  bool empty() const {
+    return size() == 0;
+  }
+
+  bool single_result() const {
+    return size() == 1;
+  }
+
+  bool overload_set() const {
+    return size() > 1;
+  }
+};
+
+template <typename K, typename V>
+class IdMapType : public std::multimap<K, V> {
+public:
+  IdMapRange<K, V> find_range(K key) {
+    auto range = this->equal_range(key);
+    return IdMapRange<K, V>(range.first, range.second);
+  }
 };
 
 /// Stores information about declarations and the scope they were declared in.
@@ -240,14 +298,15 @@ public:
   ///
   /// FIXME: For overloading a single identifier can refer to a set of
   /// declarations. We'll need to adjust this in order to make it work.
-  using IdMapType = llvm::DenseMap<clang::IdentifierInfo const*, Declaration *>;
-  IdMapType IdMap; 
-
   using TypeNameMap = llvm::DenseMap<clang::IdentifierInfo*, clang::QualType>;
   TypeNameMap TypeIdMap;
 
   using TypeDecls = llvm::DenseMap<llvm::StringRef, clang::QualType>;
   TypeDecls Types;
+
+  // using IdMapType = std::multimap<clang::IdentifierInfo const*, Declaration *>;
+  // using IdMapType = llvm::DenseMap<clang::IdentifierInfo const*, Declaration *>;
+  IdMapType<clang::IdentifierInfo const*, Declaration *> IdMap;
 
   // FIXME: Is there any purpose for this at all?
   unsigned Depth;
@@ -275,6 +334,10 @@ public:
     return Kind == SK_Parameter;
   }
 
+  bool isTemplateScope() const {
+    return Kind == SK_Template;
+  }
+
   bool isFunctionScope() const {
     return Kind == SK_Function;
   }
@@ -290,6 +353,11 @@ public:
   /// The parent of this scope.
   Scope *getParent() const {
     return Parent;
+  }
+
+  /// Set the parent of the scope; BE CAREFUL when using this.
+  void setParent(Scope *S) {
+    Parent = S;
   }
 
   /// The depth of the scope.
@@ -319,23 +387,24 @@ public:
 
     // FIXME: If D is overloaded, then we need to add this to the declaration
     // set instead of just forcing it into place.
-    IdMap.try_emplace(D->Id, D);
+    IdMap.emplace(D->Id, D);
   }
 
   /// Finds a declaration with the given name in this scope.
   ///
   /// FIXME: This could return an overload set.
-  Declaration *findDecl(const clang::IdentifierInfo *Id) const {
+  std::set<Declaration *> findDecl(const clang::IdentifierInfo *Id) {
     assert(Id);
-    auto Iter = IdMap.find(Id);
-    if (Iter == IdMap.end()) {
-      return nullptr;
+    auto Range = IdMap.find_range(Id);
+    if (Range.empty()) {
+      return std::set<Declaration *>();
     }
 
-    return Iter->second;
+    std::set<Declaration *> Ret;
+    for (auto It = Range.first; It != Range.second; ++It)
+      Ret.insert(It->second);
+    return Ret;
   }
-
-  // clang::QualType* findUDT(std::string const& name) 
 
   /// Finds the declaration corresponding to the given syntax or null if
   /// the syntax does not form a declaration.
@@ -345,10 +414,12 @@ public:
       return nullptr;
     return Iter->second;
   }
+
   void addUserDefinedType(clang::IdentifierInfo *Id, clang::QualType QualTy);
   clang::QualType getUserDefinedType(clang::IdentifierInfo *Id) const;
-  
-  
+
+  void dump(llvm::raw_ostream &os) const;
+  void dump() const;
 };
 
 } // namespace gold
