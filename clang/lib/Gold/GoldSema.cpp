@@ -132,14 +132,11 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 
   clang::Sema::LookupNameKind LookupKind = R.getLookupKind();
 
-  if (LookupKind == clang::Sema::LookupTagName) {
+  if (LookupKind == clang::Sema::LookupTagName ||
+      LookupKind == clang::Sema::LookupAnyName) {
     auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
-    if (BuiltinMapIter != BuiltinTypes.end()){
-      // llvm::outs() << "Retrieved a built in type?\n";
-      // R.addDecl(BuiltinMapIter->second.)
-      // R.set
+    if (BuiltinMapIter != BuiltinTypes.end())
       return true;
-    }
   }
 
   while (S) {

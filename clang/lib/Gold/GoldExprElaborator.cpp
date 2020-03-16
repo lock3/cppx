@@ -26,6 +26,8 @@
 #include "clang/Sema/TypeLocUtil.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/StringMap.h"
+#include "clang/AST/OperationKinds.h"
+
 
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
@@ -302,7 +304,12 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   // First do unqualified lookup.
   clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Spelling)}, S->getLoc());
   clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
-  SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
+  if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) {
+    // FIXME: Figure out how to correctly output the diagnostic here.
+    llvm::errs() << "Failed to locate given name: \n";
+    S->dump();
+    return nullptr;
+  }
 
   // If we found something, see if it is viable.
   if (!R.empty()) {
@@ -363,9 +370,61 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
 
     return Call.get();
   } else {
-    llvm::outs() << "We didn't find the correct built in?!\n";
-  }
+    // This handles the special case of a built in type constructor
+    // call/implicit cast.
 
+    // Sema::ActOnCXXTypeConstructExpr(ParsedType TypeRep,
+    //                             SourceLocation LParenOrBraceLoc,
+    //                             MultiExprArg exprs,
+    //                             SourceLocation RParenOrBraceLoc,
+    //                             bool ListInitialization) {
+    auto BuiltInIter = SemaRef.BuiltinTypes.find(Spelling);
+    if (BuiltInIter == SemaRef.BuiltinTypes.end()) {
+      llvm::errs() << "Unknown type " << Spelling << "\n";
+      return nullptr;
+    }
+    // clang::QualType Ty = BuiltInIter->second;
+    llvm::SmallVector<clang::Expr *, 8> Args;
+    const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
+    for (const Syntax *A : ArgList->children()) {
+      ExprElaborator Elab(Context, SemaRef);
+      Expression Argument = Elab.elaborateExpr(A);
+
+      // FIXME: What kind of expression is the unary ':typename' expression?
+      if (Argument.is<clang::TypeSourceInfo *>()) {
+        SemaRef.Diags.Report(A->getLoc(), clang::diag::err_expected_expression);
+        return nullptr;
+      }
+
+      Args.push_back(Argument.get<clang::Expr *>());
+    }
+    // if(Args.size() == 1) {
+    //   clang::CXXCastPath BasePath;
+    //   clang::TypeSourceInfo *CastTypeInfo = BuildAnyTypeLoc(Context.CxxAST,
+    //                                   Ty, S->getLoc());
+    //   // TODO:: Figure out correct conversion types for function cast.
+    //   clang::CastExpr *CE = clang::CXXFunctionalCastExpr::Create(Context.CxxAST, Ty,
+    //                        clang::Expr::getValueKindForType(Ty), CastTypeInfo,
+    //                        clang::CK_BitCast, Args[0], &BasePath,
+    //                        clang::SourceLocation(), clang::SourceLocation());
+    //   for (; auto *ICE = dyn_cast<clang::ImplicitCastExpr>(CE->getSubExpr()); CE = ICE)
+    //     ICE->setIsPartOfExplicitCast(true);
+    //   return CE;
+    // }
+
+    // // There doesn't seem to be an explicit rule against this but sanity demands
+    // // we only construct objects with object types.
+    // // if (Ty->isFunctionType()) {
+    // //   SemaRef.getCxxSema().Diag(
+    // //     S->getLoc(), clang::diag::err_init_for_function_type) << Ty;
+    // //   return nullptr;
+    // // }
+    clang::ParsedType PT = clang::ParsedType::make(BuiltInIter->second);
+    clang::ExprResult ConstructorExpr =
+      SemaRef.getCxxSema().ActOnCXXTypeConstructExpr(PT, S->getLoc(), Args,
+                                                     S->getLoc(), false);
+    return ConstructorExpr.get();
+  }
   llvm::errs() << "Unsupported call.\n";
   return nullptr;
 }

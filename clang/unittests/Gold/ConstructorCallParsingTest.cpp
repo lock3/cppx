@@ -13,12 +13,6 @@ main() : int!
   x = int(5)
   return 0
 )";
-  // DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
-  //   hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
-  //     isPublic())),
-  //   hasDescendant(fieldDecl(hasName("y"), hasType(asString("_Bool")),
-  //     isPublic()))
-  // );
-  // ASSERT_TRUE(matches(Code, ClassC));
+  // TODO: Figure out if casting works for this.
   SimpleGoldParseTest(Code);
 }
