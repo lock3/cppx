@@ -632,8 +632,15 @@ void Elaborator::elaborateFieldInit(Declaration *D) {
     return;
   }
   clang::FieldDecl *Field = cast<clang::FieldDecl>(D->Cxx);
-  Field->setInClassInitializer(Init.get<clang::Expr*>());
-  
+  // Checking if the field declaration needs an implicit conversion or not.
+  clang::Expr *InitExpr = Init.get<clang::Expr*>();
+  if (Field->getType() == InitExpr->getType())
+    return Field->setInClassInitializer(InitExpr);
+  // Trying an implicit conversion.
+  clang::ExprResult ConvertedResult
+      = SemaRef.getCxxSema().PerformImplicitConversion(InitExpr,
+      Field->getType(), clang::Sema::AssignmentAction::AA_Initializing, false);
+  Field->setInClassInitializer(ConvertedResult.get());
 }
 
 // Get the clang::QualType described by an operator':' call.

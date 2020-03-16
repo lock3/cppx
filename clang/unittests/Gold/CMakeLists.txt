@@ -38,6 +38,7 @@ add_clang_unittest(GoldTests
   GlobalParsing.cpp
   GoldMemberExecuteTest.cpp
   CompileRun.cpp
+  BoolImplicitConversionInit.cpp
   )
 
 clang_target_link_libraries(GoldTests

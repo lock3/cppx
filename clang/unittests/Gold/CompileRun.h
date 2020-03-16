@@ -17,6 +17,8 @@
 #include "gtest/gtest.h"
 
 namespace gold {
+using MainSig = int(*)();
+
 testing::AssertionResult CompileGoldCode(llvm::LLVMContext& Context,
     llvm::StringRef code, std::unique_ptr<llvm::ExecutionEngine>& EE);
 }
