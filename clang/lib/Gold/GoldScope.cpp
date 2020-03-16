@@ -151,7 +151,21 @@ bool Declaration::declaresFunction() const {
 }
 
 bool Declaration::declaresMemberVariable() const {
-  return declaresVariable() && Cxx &&clang::isa<clang::FieldDecl>(Cxx);
+  return declaresVariable() && Cxx && clang::isa<clang::FieldDecl>(Cxx);
+}
+
+bool Declaration::declaresMemberFunction() const {
+  return declaresFunction() && Cxx && clang::isa<clang::CXXMethodDecl>(Cxx);
+}
+
+bool Declaration::declaresConstructor() const {
+  return declaresFunction() && Cxx
+    && clang::isa<clang::CXXConstructorDecl>(Cxx);
+}
+
+bool Declaration::declaresDestructor() const {
+  return declaresFunction() && Cxx
+    && clang::isa<clang::CXXConstructorDecl>(Cxx);
 }
 
 // A declarator declares a template if it's first non-id declarator is

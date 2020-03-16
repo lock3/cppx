@@ -102,28 +102,34 @@ clang::Decl *Elaborator::elaborateDeclType(const Syntax *S) {
   return elaborateDecl(D);
 }
 
+static clang::Decl*
+processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
+                    Declaration *D) {
+  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  clang::SourceLocation EndOfClassSrcLoc(D->Init->getLoc());
+  clang::CXXRecordDecl* ClsDecl = clang::CXXRecordDecl::Create(Context.CxxAST,
+                clang::TagDecl::TagKind::TTK_Struct, Owner, D->Decl->getLoc(),
+                EndOfClassSrcLoc, D->getId());
+  Owner->addDecl(ClsDecl);
+  D->Cxx = ClsDecl;
+  SemaRef.getCurrentScope()->addUserDefinedType(D->Id,
+                                      Context.CxxAST.getTypeDeclType(ClsDecl));
+  // Context.CxxAST.getTranslationUnitDecl()->addDecl(ClsDecl);
+  SemaRef.enterScope(ClsDecl, D->Init);
+  SemaRef.pushDecl(D);
+  Elab.elaborateTypeBody(D, ClsDecl);
+  SemaRef.popDecl();
+  D->SavedScope = SemaRef.saveScope(D->Init);
+  return ClsDecl;
+}
+
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
-  if(D->declaresRecord()) {
-    clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
-    clang::SourceLocation EndOfClassSrcLoc(D->Init->getLoc());
-    clang::CXXRecordDecl* ClsDecl = clang::CXXRecordDecl::Create(Context.CxxAST,
-                  clang::TagDecl::TagKind::TTK_Struct, Owner, D->Decl->getLoc(),
-                  EndOfClassSrcLoc, D->getId());
-    Owner->addDecl(ClsDecl);
-    D->Cxx = ClsDecl;
-    SemaRef.getCurrentScope()->addUserDefinedType(D->Id,
-                                       Context.CxxAST.getTypeDeclType(ClsDecl));
-    // Context.CxxAST.getTranslationUnitDecl()->addDecl(ClsDecl);
-    SemaRef.enterScope(ClsDecl, D->Init);
-    SemaRef.pushDecl(D);
-    elaborateTypeBody(D, ClsDecl);
-    SemaRef.popDecl();
-    D->SavedScope = SemaRef.saveScope(D->Init);
-    return ClsDecl;
-  } else if (D->declaresFunction())
+  if(D->declaresRecord()) 
+    return processCXXRecordDecl(*this, Context, SemaRef, D);
+  if (D->declaresFunction())
     return elaborateFunctionDecl(D);
   return elaborateVariableDecl(D);
 

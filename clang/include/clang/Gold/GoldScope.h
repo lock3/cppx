@@ -170,6 +170,18 @@ public:
   /// This is true when declares variable is also true some times.
   bool declaresMemberVariable() const;
 
+  /// Returns true if the declaration is inside of a class, and it's a member
+  /// function.
+  bool declaresMemberFunction() const;
+
+  /// Returns true if the declaration is inside of a class, and it's a
+  /// constructor
+  bool declaresConstructor() const;
+
+  /// Returns True if the given function is a destructor, and it's declared
+  /// within a class.
+  bool declaresDestructor() const;
+
   /// True if this declares a template.
   bool declaresTemplate() const;
 
