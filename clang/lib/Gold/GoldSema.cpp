@@ -134,8 +134,12 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 
   if (LookupKind == clang::Sema::LookupTagName) {
     auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
-    if (BuiltinMapIter != BuiltinTypes.end())
+    if (BuiltinMapIter != BuiltinTypes.end()){
+      // llvm::outs() << "Retrieved a built in type?\n";
+      // R.addDecl(BuiltinMapIter->second.)
+      // R.set
       return true;
+    }
   }
 
   while (S) {

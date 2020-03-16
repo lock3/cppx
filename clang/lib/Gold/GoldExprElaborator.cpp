@@ -362,6 +362,8 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
     }
 
     return Call.get();
+  } else {
+    llvm::outs() << "We didn't find the correct built in?!\n";
   }
 
   llvm::errs() << "Unsupported call.\n";
