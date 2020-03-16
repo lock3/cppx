@@ -14,33 +14,13 @@
 
 #include "ParseUtil.h"
 #include "ASTMatchersTest.h"
-// #include "clang/Frontend/ASTUnit.h"
 
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-/*
-TranslationUnitDecl 0x7ffff3816088 <<invalid sloc>> <invalid sloc>
 
-|-CXXRecordDecl 0x7ffff38545e0 <bin/cpp_test.cpp:1:1, line:4:1> line:1:8 struct c definition
-| |-DefinitionData pass_in_registers aggregate standard_layout trivially_copyable pod trivial literal
-| | |-DefaultConstructor exists trivial needs_implicit
-| | |-CopyConstructor simple trivial has_const_param needs_implicit implicit_has_const_param
-| | |-MoveConstructor exists simple trivial needs_implicit
-| | |-CopyAssignment trivial has_const_param needs_implicit implicit_has_const_param
-| | |-MoveAssignment exists simple trivial needs_implicit
-| | `-Destructor simple irrelevant trivial needs_implicit
-| |-CXXRecordDecl 0x7ffff3854708 <col:1, col:8> col:8 implicit struct c
-| |-FieldDecl 0x7ffff38547b8 <line:2:3, col:7> col:7 x 'int'
-| `-FieldDecl 0x7ffff3854818 <line:3:3, col:8> col:8 y 'bool'
-|
-`-FunctionDecl 0x7ffff38548d0 <line:6:1, line:8:1> line:6:5 main 'int ()'
-  `-CompoundStmt 0x7ffff3854a20 <col:12, line:8:1>
-    `-ReturnStmt 0x7ffff3854a10 <line:7:3, col:10>
-      `-IntegerLiteral 0x7ffff38549f0 <col:10> 'int' 0
-*/
 TEST(ClassParsing, ClassDeclaration) {
   StringRef Code = R"(
 c : type = class:
@@ -49,12 +29,15 @@ c : type = class:
 
 main() : int!
   return 0
-  )";
-  DeclarationMatcher ClassC = recordDecl(recordDecl(hasName("c")));
-  // SimpleGoldParseTest(Code);
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
+      isPublic())),
+    hasDescendant(fieldDecl(hasName("y"), hasType(asString("_Bool")),
+      isPublic()))
+  );
   ASSERT_TRUE(matches(Code, ClassC));
 }
-
 
 TEST(ClassParsing, ClassInstance) {
   StringRef Code = R"(
@@ -64,22 +47,117 @@ c : type = class:
 main() : int!
   q : c
   return 0
-  )";
+)";
+  DeclarationMatcher ClassCInfo = recordDecl(
+    recordDecl(hasName("c")),
+    hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
+      isPublic())),
+    hasDescendant(fieldDecl(hasName("y"), hasType(asString("_Bool")),
+      isPublic())),
+    hasDescendant(cxxConstructorDecl(isDefaultConstructor(), isImplicit(),
+      isDefaulted(), isNoThrow())),
+    hasDescendant(cxxConstructorDecl(isCopyConstructor(), isImplicit(),
+      isDefaulted(), isNoThrow()))
+    //, TODO: Make sure that we correctly output the move constructor? Maybe?
+    // hasDescendant(cxxConstructorDecl(isMoveConstructor(), isImplicit()))
+  );
+  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+    isDefinition(),
+    hasDescendant(
+      varDecl(
+        hasType(asString("struct c")),
+        hasName("q"),
+        hasInitializer(cxxConstructExpr(argumentCountIs(0)))
+      )
+    )
+  );
 
-  DeclarationMatcher NamedX = namedDecl(hasName("c"));
-  // SimpleGoldParseTest(Code);
-  ASSERT_TRUE(matches(Code, NamedX));
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo),
+    hasDescendant(MainFnMatcher)
+    );
+
+
+  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
 }
 
-// TEST(ClassParsing, MemberInitializationAndAccess) {
+TEST(ClassParsing, MemberInitializationAndAccess) {
+  StringRef Code = R"(
+c : type = class:
+  x : int
+  y : bool
+main() : int!
+  q : c
+  q.x = 4
+  return 0
+  )";
+
+  StatementMatcher StmtMatcher(compoundStmt(hasDescendant(
+        binaryOperator(hasOperatorName("="),
+          hasLHS(memberExpr(hasDescendant(
+            declRefExpr(to(varDecl(hasType(recordDecl(hasName("c"))))))))),
+          hasRHS(integerLiteral(equals(4)))
+        )
+      )
+    )
+  );
+
+
+  ASSERT_TRUE(matches(Code, StmtMatcher));
+}
+
+TEST(ClassParsing, MemberInitializers)  {
+  StringRef Code = R"(
+c : type = class:
+  x : int = 4
+  y : bool = 1
+
+main() : int!
+  q : c
+  q.x = 4
+  return 0
+  )";
+  //  
+  DeclarationMatcher ClassCInfo = recordDecl(
+    recordDecl(hasName("c")),
+    hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
+      isPublic())),
+    hasDescendant(fieldDecl(hasName("y"), hasType(asString("_Bool")),
+      isPublic())),
+    hasDescendant(cxxConstructorDecl(isDefaultConstructor(), isImplicit(),
+      isDefaulted(), isNoThrow(),
+      hasDescendant(cxxCtorInitializer(forField(hasName("x")),
+        isMemberInitializer() )),
+      hasDescendant(cxxCtorInitializer(forField(hasName("y")),
+        isMemberInitializer()))
+    )),
+    hasDescendant(cxxConstructorDecl(isCopyConstructor(), isImplicit(),
+      isDefaulted(), isNoThrow()))
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo));
+
+  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+}
+
+
+// TODO: This is the next thing to implement. Maybe...
+// TEST(ClassParsing, MemberAccessFromFunctionResult) {
 //   StringRef Code = R"(
 // c : type = class:
 //   x : int
 //   y : bool
+// foo(z: int): c!
+//   q : c
+//   return q
+
 // main() : int!
 //   q : c
-//   q.x = 4
+//   foo(1).x = 4
 //   return 0
 //   )";
 //   SimpleGoldParseTest(Code);
 // }
+// }
+

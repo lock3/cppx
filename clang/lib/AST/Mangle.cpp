@@ -103,8 +103,10 @@ bool MangleContext::shouldMangleDeclName(const NamedDecl *D) {
     return true;
 
   // In C, functions with no attributes never need to be mangled. Fastpath them.
-  if (!getASTContext().getLangOpts().CPlusPlus && !D->hasAttrs())
-    return false;
+  if (!getASTContext().getLangOpts().CPlusPlus &&
+      !getASTContext().getLangOpts().Gold &&
+      !getASTContext().getLangOpts().Blue && !D->hasAttrs())
+    return false; 
 
   // Any decl can be declared with __asm("foo") on it, and this takes precedence
   // over all other naming in the .o file.

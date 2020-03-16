@@ -476,17 +476,6 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::AttributedTypeLoc>
   return BuildTypeLoc<clang::AttributedTypeLoc>(Context, TLB, Ty, Loc);
 }
 
-template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateTypeParmTypeLoc>
-(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateTypeParmTypeLoc>
-(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
-  TypeLocBuilder TLB;
-  return BuildTypeLoc<clang::TemplateTypeParmTypeLoc>(Context, TLB, Ty, Loc);
-}
-
 template<> TypeSourceInfo *BuildTypeLoc<clang::SubstTemplateTypeParmTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");

@@ -51,14 +51,8 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
     return elaborateAtom(cast<AtomSyntax>(S), clang::QualType());
   if (isa<CallSyntax>(S))
     return elaborateCall(cast<CallSyntax>(S));
-  if(isa<MacroSyntax>(S))
+  if(isa<MacroSyntax>(S)) 
     return elaborateMacroExpression(cast<MacroSyntax>(S));
-
-
-  llvm::outs() << "Syntax not handled yet\n";
-  S->dump();
-  llvm::outs() << "\n";
-
   assert(false && "Unsupported expression.");
 }
 
@@ -137,6 +131,7 @@ createDeclRefExpr(clang::ASTContext &CxxAST, Sema &SemaRef, Token T,
 
     clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>();
     clang::QualType FoundTy = VD->getType();
+    VD->setIsUsed();
 
     // If the user annotated the DeclRefExpr with an incorrect type.
     if (!Ty.isNull() && Ty != FoundTy) {
@@ -173,11 +168,64 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
     break;
   case tok::Identifier:
     return createDeclRefExpr(CxxAST, SemaRef, T, ExplicitType, S->getTokenLoc());
-    break;
   case tok::Character:
     break;
   case tok::String:
     break;
+
+  /// Keyword Literals
+
+  case tok::IntKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.IntTy, S->getLoc());
+  case tok::VoidKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.VoidTy, S->getLoc());
+  case tok::BoolKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.BoolTy, S->getLoc());
+  case tok::CharKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.CharTy, S->getLoc());
+  case tok::Wchar_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.WCharTy, S->getLoc());
+  case tok::Wint_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.WIntTy, S->getLoc());
+  case tok::Char8_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.Char8Ty, S->getLoc());
+  case tok::Char16_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.Char16Ty, S->getLoc());
+  case tok::Char32_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.Char32Ty, S->getLoc());
+  case tok::SignedCharKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.SignedCharTy, S->getLoc());
+  case tok::ShortKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.ShortTy, S->getLoc());
+  case tok::LongKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.LongTy, S->getLoc());
+  case tok::LongLongKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.LongLongTy, S->getLoc());
+  case tok::Int128_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.Int128Ty, S->getLoc());
+  case tok::UnsignedCharKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedCharTy, S->getLoc());
+  case tok::UnsignedShortKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedShortTy, S->getLoc());
+  case tok::UnsignedKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedIntTy, S->getLoc());
+  case tok::UnsignedLongKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedLongTy, S->getLoc());
+  case tok::UnsignedLongLongKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedLongLongTy, S->getLoc());
+  case tok::Uint128_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedInt128Ty, S->getLoc());
+  case tok::FloatKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.FloatTy, S->getLoc());
+  case tok::DoubleKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.DoubleTy, S->getLoc());
+  case tok::LongDoubleKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.LongDoubleTy, S->getLoc());
+  case tok::Float128_tKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.Float128Ty, S->getLoc());
+  case tok::TypeKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.CppxKindTy, S->getLoc());
+
   default: break;
   }
 
@@ -209,10 +257,13 @@ static const llvm::StringMap<clang::BinaryOperatorKind> BinaryOperators = {
   {"operator'%='" , clang::BO_RemAssign},
   {"operator'&='" , clang::BO_AndAssign},
   {"operator'|='" , clang::BO_OrAssign},
-  {"operator'^='" , clang::BO_XorAssign},
+  {"operator'^='" , clang::BO_XorAssign}
 };
 
 Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
+  if (isa<ElemSyntax>(S->getCallee()))
+    return elaborateElemCall(S);
+
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   FusedOpKind Op = getFusedOpKind(SemaRef, Callee->getSpelling());
 
@@ -231,6 +282,12 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
     // Otherwise, we need to continue elaborating the LHS until it is an atom.
     elaborateExpr(S->getArgument(0));
     return nullptr;
+  }
+
+  if (Op == FOK_MemberAccess) {
+    // Need to locate do variable/type lookup.
+    const ListSyntax *Args =  cast<ListSyntax>(S->getArguments());
+    return elaborateMemberAccess(Args->getChild(0), S, Args->getChild(1));
   }
 
   llvm::StringRef Spelling = Callee->getSpelling();
@@ -305,10 +362,130 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
     }
 
     return Call.get();
+  } else {
+    llvm::outs() << "We didn't find the correct built in?!\n";
   }
 
   llvm::errs() << "Unsupported call.\n";
   return nullptr;
+}
+
+Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
+    const CallSyntax *Op, const Syntax *RHS) {
+  Expression ElaboratedLHS = elaborateExpr(LHS);
+  if (isa<AtomSyntax>(RHS)) {
+    const AtomSyntax *RHSAtom = cast<AtomSyntax>(RHS);
+    // TODO: figure out how to make the pointer work correctly?
+
+    clang::UnqualifiedId Id;
+    clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(
+      RHSAtom->getSpelling());
+    // TODO: Figure out how to get the desired scope.
+    Id.setIdentifier(IdInfo, RHSAtom->getLoc());
+    clang::CXXScopeSpec SS;
+    clang::SourceLocation Loc;
+    clang::ExprResult HandledLHS = SemaRef.getCxxSema().ActOnMemberAccessExpr(
+      SemaRef.getCurClangScope(), ElaboratedLHS.get<clang::Expr*>(), Op->getLoc(),
+      clang::tok::TokenKind::period, SS, Loc, Id, nullptr);
+    // HandledLHS.get()->dump();
+    clang::MemberExpr *MemberExpression
+      = cast<clang::MemberExpr>(HandledLHS.get());
+    MemberExpression->getMemberDecl()->setIsUsed();
+    return HandledLHS.get();
+
+    // NOTE: If we have to we can re-implement this using the create functions
+    // that might be better because this handles C++ lookup of a member variable
+    // as well.
+    // MemberExpr *MemberExpr::Create(
+    //     const ASTContext &C, Expr *Base, bool IsArrow, SourceLocation OperatorLoc,
+    //     NestedNameSpecifierLoc QualifierLoc, SourceLocation TemplateKWLoc,
+    //     ValueDecl *MemberDecl, DeclAccessPair FoundDecl,
+    //     DeclarationNameInfo NameInfo, const TemplateArgumentListInfo *TemplateArgs,
+    //     QualType T, ExprValueKind VK, ExprObjectKind OK, NonOdrUseReason NOUR)
+  }
+
+  llvm_unreachable("Member access to anything other then a member variable "
+      "not implemented yet.");
+}
+
+Expression ExprElaborator::elaborateElemCall(const CallSyntax *S) {
+  const ElemSyntax *Callee = cast<ElemSyntax>(S->getCallee());
+
+  // FIXME: this can be anything
+  const AtomSyntax *Id = cast<AtomSyntax>(Callee->getObject());
+
+  // Try to construct a normal function-call expression.
+  // First do unqualified lookup.
+  clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Id->getSpelling())}, S->getLoc());
+  clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
+  R.setTemplateNameLookup(true);
+  SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
+
+  if (R.empty())
+    return nullptr;
+
+  // Build the template argument list.
+  clang::TemplateArgumentListInfo TemplateArgs(Callee->getLoc(), Callee->getLoc());
+  for (const Syntax *SS : Callee->getArguments()->children()) {
+    ExprElaborator ParamElaborator(Context, SemaRef);
+    Expression ParamExpression = ParamElaborator.elaborateExpr(SS);
+    if (ParamExpression.isNull())
+      return nullptr;
+
+    if (ParamExpression.is<clang::TypeSourceInfo *>()) {
+      auto *TypeParam = ParamExpression.get<clang::TypeSourceInfo *>();
+      clang::TemplateArgument Arg(TypeParam->getType());
+      TemplateArgs.addArgument({Arg, TypeParam});
+    } else {
+      clang::TemplateArgument Arg(ParamExpression.get<clang::Expr *>(),
+                                  clang::TemplateArgument::Expression);
+      TemplateArgs.addArgument({Arg, ParamExpression.get<clang::Expr *>()});
+    }
+  }
+
+  // Build the ULE if we found something.
+  clang::Expr *Fn = nullptr;
+  R.resolveKind();
+  if (R.isOverloadedResult()) {
+    Fn =
+      clang::UnresolvedLookupExpr::Create(CxxAST, R.getNamingClass(),
+                                          clang::NestedNameSpecifierLoc(),
+                                        Callee->getLoc(), R.getLookupNameInfo(),
+                               /*ADL=*/true, &TemplateArgs, R.begin(), R.end());
+  } else {
+    llvm_unreachable("Non-overloaded template call?");
+  }
+
+  // Get the passed arguments.
+  llvm::SmallVector<clang::Expr *, 8> Args;
+  const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
+  assert(ArgList && "Unexpected argument format.");
+  for (const Syntax *A : ArgList->children()) {
+    ExprElaborator Elab(Context, SemaRef);
+    Expression Argument = Elab.elaborateExpr(A);
+
+    // FIXME: What kind of expression is the unary ':typename' expression?
+    if (Argument.is<clang::TypeSourceInfo *>()) {
+      SemaRef.Diags.Report(A->getLoc(), clang::diag::err_expected_expression);
+      return nullptr;
+    }
+
+    Args.push_back(Argument.get<clang::Expr *>());
+  }
+
+  // Create the call.
+  clang::MultiExprArg MultiArgs(Args);
+  clang::ExprResult Call =
+    SemaRef.getCxxSema().ActOnCallExpr(SemaRef.getCxxSema().getCurScope(),
+                                       Fn, S->getCalleeLoc(),
+                                       MultiArgs, S->getCalleeLoc());
+  if (Call.isInvalid()) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_failed_to_translate_expr);
+    return nullptr;
+  }
+
+  return Call.get();
 }
 
 Expression ExprElaborator::elaborateBinOp(const CallSyntax *S,
@@ -532,13 +709,28 @@ Expression ExprElaborator::elaborateArrayType(Declarator *D, TypeInfo *Ty) {
 // Elaborate the parameters and incorporate their types into  the one
 // we're building. Note that T is the return type (if any).
 Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
-
   const auto *Call = cast<CallSyntax>(D->Call);
 
   // FIXME: Handle array-based arguments.
   assert(isa<ListSyntax>(D->Data.ParamInfo.Params)
          && "Array parameters not supported");
   const Syntax *Args = D->Data.ParamInfo.Params;
+
+  // If template parameters exist, deal with them before parameters.
+  // if (const Syntax *TemplParams = D->Data.ParamInfo.TemplateParams) {
+  //   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
+  //   for (const Syntax *P : TemplParams->children()) {
+  //     Elaborator Elab(Context, SemaRef);
+  //     clang::NamedDecl *ND =
+  //       cast_or_null<clang::NamedDecl>(Elab.elaborateDeclSyntax(P));
+  //     if (!ND)
+  //       return nullptr;
+
+  //     Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
+  //     assert(D && "Didn't find associated declaration");
+  //     TemplateParamDecls.push_back(ND);
+  //   }
+  // }
 
   // Elaborate the parameter declarations in order to get their types, and save
   // the resulting scope with the declarator.
@@ -547,11 +739,13 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
   SemaRef.enterScope(SK_Parameter, Call);
   for (const Syntax *P : Args->children()) {
     Elaborator Elab(Context, SemaRef);
-    clang::ValueDecl *VD = cast_or_null<clang::ValueDecl>(Elab.elaborateDeclSyntax(P));
-    Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
-    assert(D && "Didn't find associated declaration");
+    clang::ValueDecl *VD =
+      cast_or_null<clang::ValueDecl>(Elab.elaborateDeclSyntax(P));
     if (!VD)
       return nullptr;
+
+    Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
+    assert(D && "Didn't find associated declaration");
 
     assert(isa<clang::ParmVarDecl>(VD) && "Parameter is not a ParmVarDecl");
 
@@ -579,30 +773,29 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   assert(isa<clang::AutoType>(Ty->getType()));
   assert(D->Kind == DK_Type);
 
-  // TODO: We need to make sure we do actual look up.
-  // just cheating for now
-  // BMB: Or Something like that.
-  if (const auto *Literal = dyn_cast<LiteralSyntax>(D->Data.Type)) {
-    auto TypeName = Literal->getSpelling();
-    // llvm::outs() << "Typename :" << TypeName << "\n";
-    clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(TypeName);
-    clang::QualType Qt = SemaRef.lookUpType(IdInfo, SemaRef.getCurrentScope());
-    // if(Qt.isNull()) {
-    //   llvm::outs() << "Returned QualType: ";
-    //   Qt.dump();
-    //   llvm::outs()<< "\n";
-    // }
-    return BuildAnyTypeLoc(CxxAST, Qt, D->getType()->getLoc());
-  } else if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
-    auto TypeName = Atom->getSpelling();
-    clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(TypeName);
-    clang::QualType Qt = SemaRef.lookUpType(IdInfo, SemaRef.getCurrentScope());
-    // if(Qt.isNull()) {
-    //   llvm::outs() << "Returned QualType: ";
-    //   Qt.dump();
-    //   llvm::outs()<< "\n";
-    // }
-    return BuildAnyTypeLoc(CxxAST, Qt, D->getType()->getLoc());
+
+  // FIXME: We should really elaborate the entire type expression. We're
+  // just cheating for now.
+  if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
+    clang::SourceLocation Loc = Atom->getLoc();
+
+    clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Atom->getSpelling())}, Loc);
+    clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupTagName);
+    if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())){
+      return nullptr;
+    }
+
+    if (R.empty()) {
+      auto BuiltinMapIter = SemaRef.BuiltinTypes.find(Atom->getSpelling());
+      if (BuiltinMapIter == SemaRef.BuiltinTypes.end())
+        return nullptr;
+
+      return BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second, Loc);
+    }
+
+    clang::TypeDecl *TD = R.getAsSingle<clang::TypeDecl>();
+    clang::QualType TDType(TD->getTypeForDecl(), 0);
+    return BuildAnyTypeLoc(CxxAST, TDType, Loc);
   }
   llvm_unreachable("Unknown type specification");
 }

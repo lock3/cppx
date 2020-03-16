@@ -56,12 +56,9 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
   // Elaborate the resulting abstract syntax tree.
   Sema Sema(Context, ClangSema);
   Elaborator Elab(Context, Sema);
-  
+
   clang::TranslationUnitDecl *TU =
     cast<clang::TranslationUnitDecl>(Elab.elaborateFile(AST));
-  
-  // TU->dump();
-
   clang::ASTConsumer *Consumer = &ClangSema.getASTConsumer();
   for (auto *D : TU->decls()) {
     auto DPtr = ClangSema.ConvertDeclToDeclGroup(D);
