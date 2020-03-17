@@ -34,7 +34,6 @@ namespace gold {
 void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
                   clang::Sema &ClangSema) {
   using namespace std;
-
   // Parse the input file.
   clang::SourceManager &SM = PP.getSourceManager();
   File InputFile(SM, SM.getMainFileID());

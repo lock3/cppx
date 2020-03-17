@@ -1169,6 +1169,7 @@ void EmitGoldAction::ExecuteAction() {
 
   switch (getCurrentFileKind().getLanguage()) {
   case clang::Language::Gold:
+    CI.getLangOpts().CPlusPlus = true;
     gold::ParseGoldAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
     break;
   default:
