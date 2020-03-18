@@ -11,7 +11,7 @@ c : type = class:
   y : bool = 3
 main() : int!
   q = c()
-  return x
+  return q.x
 )";
   LLVMContext Context;
   std::unique_ptr<ExecutionEngine> EE;

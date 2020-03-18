@@ -235,7 +235,6 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   case FOK_Return: {
     ExprElaborator::Expression RetVal =
       ExprElaborator(Context, SemaRef).elaborateExpr(S->getArgument(0));
-
     if (RetVal.isNull())
       return nullptr;
 
@@ -252,7 +251,6 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   }
 
   default:
-    llvm::outs() << "Reached where we expected to be?\n";
     break; // Silence warning.
   }
 

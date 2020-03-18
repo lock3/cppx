@@ -311,6 +311,21 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
     return nullptr;
   }
 
+  // Parsing all arguments because in most cases this needs to be done first.
+  llvm::SmallVector<clang::Expr *, 8> Args;
+  const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
+  for (const Syntax *A : ArgList->children()) {
+    ExprElaborator Elab(Context, SemaRef);
+    Expression Argument = Elab.elaborateExpr(A);
+
+    // FIXME: What kind of expression is the unary ':typename' expression?
+    if (Argument.is<clang::TypeSourceInfo *>()) {
+      SemaRef.Diags.Report(A->getLoc(), clang::diag::err_expected_expression);
+      return nullptr;
+    }
+    Args.push_back(Argument.get<clang::Expr *>());
+  }
+
   // If we found something, see if it is viable.
   if (!R.empty()) {
     clang::Expr *Fn = nullptr;
@@ -324,101 +339,61 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
                                             /*Overloaded=*/true, R.begin(),
                                             R.end());
     } else if (R.isSingleResult()) {
-      clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>();
+      
+      clang::Decl *Decl = R.getAsSingle<clang::Decl>();
 
-      // This had better be a reference to a function.
-      clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(VD);
-      if (!FD) return nullptr;
+      if (isa<clang::ValueDecl>(Decl)) {
+        clang::ValueDecl *VD = dyn_cast<clang::ValueDecl>(Decl);
+        // This had better be a reference to a function.
+        clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(VD);
+        if (!FD)
+          return nullptr;
 
-      Fn =
-        clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
-                                   clang::SourceLocation(), VD, /*Capture=*/false,
-                                   S->getLoc(), VD->getType(), clang::VK_RValue);
-    }
-
-    if (!Fn)
-      return nullptr;
-
-    // Get the passed arguments.
-    llvm::SmallVector<clang::Expr *, 8> Args;
-    const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
-    assert(ArgList && "Unexpected argument format.");
-    for (const Syntax *A : ArgList->children()) {
-      ExprElaborator Elab(Context, SemaRef);
-      Expression Argument = Elab.elaborateExpr(A);
-
-      // FIXME: What kind of expression is the unary ':typename' expression?
-      if (Argument.is<clang::TypeSourceInfo *>()) {
-        SemaRef.Diags.Report(A->getLoc(), clang::diag::err_expected_expression);
-        return nullptr;
+        Fn =
+          clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
+                                    clang::SourceLocation(), VD, /*Capture=*/false,
+                                    S->getLoc(), VD->getType(), clang::VK_RValue);
+      } else if (isa<clang::CXXRecordDecl>(Decl)) {
+        clang::CXXRecordDecl *Record = dyn_cast<clang::CXXRecordDecl>(Decl);
+        clang::QualType Ty = Context.CxxAST.getTypeDeclType(Record);
+        clang::ParsedType PT = clang::ParsedType::make(Ty);
+        clang::ExprResult ConstructorExpr =
+          SemaRef.getCxxSema().ActOnCXXTypeConstructExpr(PT, S->getLoc(), Args,
+                                                        S->getLoc(), false);
+        if (!ConstructorExpr.get()) {
+          SemaRef.Diags.Report(S->getLoc(),
+                               clang::diag::err_coroutine_invalid_func_context)
+                               << Ty << "a constructor";
+          return nullptr;
+        }
+        return ConstructorExpr.get();
       }
 
-      Args.push_back(Argument.get<clang::Expr *>());
+      if (!Fn)
+        return nullptr;
+
+      // Create the call.
+      clang::ExprResult Call =
+        SemaRef.getCxxSema().ActOnCallExpr(SemaRef.getCxxSema().getCurScope(),
+                                          Fn, S->getCalleeLoc(),
+                                          Args, S->getCalleeLoc());
+      if (Call.isInvalid()) {
+        SemaRef.Diags.Report(S->getLoc(),
+                             clang::diag::err_failed_to_translate_expr);
+        return nullptr;
+      }
+      return Call.get();
     }
 
-    // Create the call.
-    clang::MultiExprArg MultiArgs(Args);
-    clang::ExprResult Call =
-      SemaRef.getCxxSema().ActOnCallExpr(SemaRef.getCxxSema().getCurScope(),
-                                         Fn, S->getCalleeLoc(),
-                                         MultiArgs, S->getCalleeLoc());
-    if (Call.isInvalid()) {
-      SemaRef.Diags.Report(S->getLoc(),
-                           clang::diag::err_failed_to_translate_expr);
-      return nullptr;
-    }
-
-    return Call.get();
   } else {
     // This handles the special case of a built in type constructor
     // call/implicit cast.
-
-    // Sema::ActOnCXXTypeConstructExpr(ParsedType TypeRep,
-    //                             SourceLocation LParenOrBraceLoc,
-    //                             MultiExprArg exprs,
-    //                             SourceLocation RParenOrBraceLoc,
-    //                             bool ListInitialization) {
     auto BuiltInIter = SemaRef.BuiltinTypes.find(Spelling);
     if (BuiltInIter == SemaRef.BuiltinTypes.end()) {
-      llvm::errs() << "Unknown type " << Spelling << "\n";
+      SemaRef.Diags.Report(S->getLoc(),
+                           clang::diag::err_unknown_typename) << Spelling;
       return nullptr;
     }
-    // clang::QualType Ty = BuiltInIter->second;
-    llvm::SmallVector<clang::Expr *, 8> Args;
-    const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
-    for (const Syntax *A : ArgList->children()) {
-      ExprElaborator Elab(Context, SemaRef);
-      Expression Argument = Elab.elaborateExpr(A);
-
-      // FIXME: What kind of expression is the unary ':typename' expression?
-      if (Argument.is<clang::TypeSourceInfo *>()) {
-        SemaRef.Diags.Report(A->getLoc(), clang::diag::err_expected_expression);
-        return nullptr;
-      }
-
-      Args.push_back(Argument.get<clang::Expr *>());
-    }
-    // if(Args.size() == 1) {
-    //   clang::CXXCastPath BasePath;
-    //   clang::TypeSourceInfo *CastTypeInfo = BuildAnyTypeLoc(Context.CxxAST,
-    //                                   Ty, S->getLoc());
-    //   // TODO:: Figure out correct conversion types for function cast.
-    //   clang::CastExpr *CE = clang::CXXFunctionalCastExpr::Create(Context.CxxAST, Ty,
-    //                        clang::Expr::getValueKindForType(Ty), CastTypeInfo,
-    //                        clang::CK_BitCast, Args[0], &BasePath,
-    //                        clang::SourceLocation(), clang::SourceLocation());
-    //   for (; auto *ICE = dyn_cast<clang::ImplicitCastExpr>(CE->getSubExpr()); CE = ICE)
-    //     ICE->setIsPartOfExplicitCast(true);
-    //   return CE;
-    // }
-
-    // // There doesn't seem to be an explicit rule against this but sanity demands
-    // // we only construct objects with object types.
-    // // if (Ty->isFunctionType()) {
-    // //   SemaRef.getCxxSema().Diag(
-    // //     S->getLoc(), clang::diag::err_init_for_function_type) << Ty;
-    // //   return nullptr;
-    // // }
     clang::ParsedType PT = clang::ParsedType::make(BuiltInIter->second);
     clang::ExprResult ConstructorExpr =
       SemaRef.getCxxSema().ActOnCXXTypeConstructExpr(PT, S->getLoc(), Args,
