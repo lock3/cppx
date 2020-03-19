@@ -142,6 +142,82 @@ main() : int!
 }
 
 
+
+TEST(ClassParsing, MemberFunction_NoMemberUse) {
+  StringRef Code = R"(
+c : type = class:
+  x : int
+  y : bool
+  foo() : int!
+    return 0
+  
+main() : int!
+  return 0
+)";
+  DeclarationMatcher MemberFunctionMatch = recordDecl( 
+    hasDescendant(cxxMethodDecl(hasName("foo")))
+  );
+  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}
+
+TEST(ClassParsing, MemberFunction_MemberUse) {
+  StringRef Code = R"(
+c : type = class:
+  x : int
+  y : bool
+  foo() : int!
+    return x
+  
+main() : int!
+  return 0
+)";
+  DeclarationMatcher MemberFunctionMatch = recordDecl( 
+    hasDescendant(
+      cxxMethodDecl(
+        hasName("foo"),
+        hasDescendant(cxxThisExpr(hasType(asString("struct c *"))))
+      )
+    )
+  );
+  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}
+
+
+TEST(ClassParsing, MemberFunction_OutsideOfClassCall) {
+  /*
+`-ReturnStmt 0x7fffc8c3bd08 <line:10:3, col:16>
+  `-CXXMemberCallExpr 0x7fffc8c3bce8 <col:10, col:16> 'int'
+    `-MemberExpr 0x7fffc8c3bcb8 <col:10, col:12> '<bound member function type>' .foo 0x7fffc8c10a90
+      `-DeclRefExpr 0x7fffc8c3bc98 <col:10> 'C':'C' lvalue Var 0x7fffc8c10d70 'b' 'C':'C'
+  */
+  StringRef Code = R"(
+c : type = class:
+  x : int = 5
+  y : bool
+  foo() : int!
+    return x
+  
+main() : int!
+  q : c
+  return q.foo()
+)";
+  StatementMatcher StmtMatcher(compoundStmt(has(
+    returnStmt(
+      hasDescendant(
+        cxxMemberCallExpr(
+          hasDescendant(
+            memberExpr(
+              hasDescendant(
+                declRefExpr()
+              )
+            )
+          )
+        )
+      )
+    )
+  )));
+  ASSERT_TRUE(matches(Code, StmtMatcher));
+}
 // TODO: This is the next thing to implement. Maybe...
 // TEST(ClassParsing, MemberAccessFromFunctionResult) {
 //   StringRef Code = R"(

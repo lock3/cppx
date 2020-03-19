@@ -36,6 +36,7 @@ Elaborator::Elaborator(SyntaxContext &Context, Sema &SemaRef)
 
 clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   assert(isa<FileSyntax>(S) && "S is not a file");
+  S->dump();
   clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::DeclScope);
   SemaRef.getCxxSema().ActOnTranslationUnitScope(Scope);
   SemaRef.getCxxSema().Initialize();
@@ -219,14 +220,26 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
   clang::DeclarationName Name = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
-  clang::FunctionDecl *FD = clang::FunctionDecl::Create(Context.CxxAST, Owner,
-                                                        Loc, Loc, Name,
-                                                        TInfo->getType(),
-                                                        TInfo, clang::SC_None);
-  if (FD->isMain()) {
-    clang::AttributeFactory Attrs;
-    clang::DeclSpec DS(Attrs);
-    SemaRef.getCxxSema().CheckMain(FD, DS);
+  clang::FunctionDecl *FD = nullptr;
+  if(SemaRef.getCurrentScope()->getKind() == SK_Class) {
+    clang::CXXRecordDecl *RD = cast<clang::CXXRecordDecl>(
+                                            SemaRef.getCurrentCxxDeclContext());
+    clang::DeclarationNameInfo DNI(Name, D->Op->getLoc());
+    FD = clang::CXXMethodDecl::Create(Context.CxxAST, RD, Loc, DNI,
+                                      TInfo->getType(), TInfo,
+                                      clang::StorageClass::SC_None,
+                                      /*isInline*/true,
+                                      clang::ConstexprSpecKind::CSK_unspecified,
+                                      Loc);
+    FD->setAccess(clang::AccessSpecifier::AS_public);
+  } else {
+    FD = clang::FunctionDecl::Create(Context.CxxAST, Owner, Loc, Loc, Name,
+                                     TInfo->getType(), TInfo, clang::SC_None);
+    if (FD->isMain()) {
+      clang::AttributeFactory Attrs;
+      clang::DeclSpec DS(Attrs);
+      SemaRef.getCxxSema().CheckMain(FD, DS);
+    }
   }
 
   // Create a template out for FD, if we have to.
@@ -766,15 +779,29 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
         // we're done.
         return buildPointerDeclarator(Call, Next);
       }
+      // if(SemaRef.getCurrentScope()->getKind() == SK_Class) {
+      //   // Otherwise, this appears to be a function declarator.
+      //   // return makeDeclarator(SemaRef, Callee,
+      //   //                       buildFunctionDeclarator(Call, Next));
+      //   // assert(false && "Encountered member function!\n");
+      // } else {
+        // Otherwise, this appears to be a function declarator.
+        return makeDeclarator(SemaRef, Callee,
+                              buildFunctionDeclarator(Call, Next));
 
-      // Otherwise, this appears to be a function declarator.
-      return makeDeclarator(SemaRef, Callee,
-                            buildFunctionDeclarator(Call, Next));
+      // }
     } else if (const ElemSyntax *Callee = dyn_cast<ElemSyntax>(Call->getCallee())) {
-      // We have a template parameter list here, so build the
-      // function declarator accordingly.
-      return makeDeclarator(SemaRef, Callee->getObject(),
-                            buildFunctionDeclarator(Call, Callee, Next));
+      if(SemaRef.getCurrentScope()->getKind() == SK_Class) {
+        // Otherwise, this appears to be a function declarator.
+        // return makeDeclarator(SemaRef, Callee,
+        //                       buildFunctionDeclarator(Call, Next));
+        assert(false && "Encountered templated member function!\n");
+      } else {
+        // We have a template parameter list here, so build the
+        // function declarator accordingly.
+        return makeDeclarator(SemaRef, Callee->getObject(),
+                              buildFunctionDeclarator(Call, Callee, Next));
+      }
     }
   }
 

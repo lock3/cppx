@@ -76,3 +76,24 @@ main() : int!
   int result = CB();
   ASSERT_EQ(result, 1);
 }
+
+TEST(GoldClassExec, MemberFunctionCall) {
+  StringRef Code = R"(
+c : type = class:
+  x : int = 5
+  y : bool
+  foo() : int!
+    return x
+  
+main() : int!
+  q : c
+  return q.foo()
+)";
+  LLVMContext Context;
+  std::unique_ptr<ExecutionEngine> EE;
+  ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
+  MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
+  ASSERT_TRUE(CB);
+  int result = CB();
+  ASSERT_EQ(result, 5);
+}
