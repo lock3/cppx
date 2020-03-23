@@ -114,6 +114,12 @@ struct EnclosingTabs : EnclosingTokens<enc::Tabs>
 
 } // namespace
 
+static Syntax *makeOperator(const SyntaxContext &Ctx,
+                            clang::SourceLocation Loc,
+                            llvm::StringRef Op);
+static Syntax *makeList(const SyntaxContext &Ctx,
+                        std::initializer_list<Syntax *> List);
+
 Parser::Parser(SyntaxContext &Context, clang::SourceManager &SM, File const& F)
   : Lex(SM, F), Diags(SM.getDiagnostics()), Context(Context)
 {
@@ -717,6 +723,10 @@ Syntax *Parser::parsePre()
     return onUnary(op, e);
   }
 
+  if (nextTokenIs(tok::LeftBracket)) {
+    return parseArrayPrefix();
+  }
+
   return parsePost();
 }
 
@@ -816,6 +826,24 @@ Syntax *Parser::parseDot(Syntax *obj)
   Syntax *sub = parseId();
 
   return onBinary(op, obj, sub);
+}
+
+// Parse a call to operator'[]' of the form [a]b
+Syntax *Parser::parseArrayPrefix()
+{
+  EnclosingBrackets Brackets(*this);
+  if (!Brackets.expectOpen())
+    return onError();
+
+  Syntax *Arg = parseExpr();
+
+  if (!Brackets.expectClose())
+    return onError();
+
+  Syntax *Map = parsePrimary();
+  return new (Context)
+    CallSyntax(makeOperator(Context, Arg->getLoc(), "[]"),
+               makeList(Context, {Arg, Map}));
 }
 
 Syntax *Parser::parsePrimary() {

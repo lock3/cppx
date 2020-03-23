@@ -54,12 +54,6 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   }
   finishFile(S);
 
-  // llvm::outs() << "Type: \n";
-  // for (clang::Type const *Ty : Context.CxxAST.getTypes()) {
-  //   Ty->dump();
-  //   llvm::outs() << "\n";
-  // }
-
   return Context.CxxAST.getTranslationUnitDecl();
 }
 
@@ -585,7 +579,7 @@ static Declarator *buildTypeDeclarator(const Syntax *S, Declarator *Next) {
   if (const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
     D->Call = Call;
     D->Data.Type = Next ? Next->getType() : Call->getArgument(1);
-  } else if (isa<AtomSyntax>(S) || isa<LiteralSyntax>(S)) {
+  } else if (isa<AtomSyntax>(S)) {
     D->Data.Type = S;
   }
 
@@ -615,6 +609,14 @@ static Declarator *buildPointerDeclarator(const CallSyntax *S,
                                           Declarator *Next) {
   Declarator *D = new Declarator(DK_Pointer, Next);
   D->Call = S;
+  return D;
+}
+
+static Declarator *buildArrayDeclarator(const CallSyntax *S,
+                                        Declarator *Next) {
+  Declarator *D = new Declarator(DK_Array, Next);
+  D->Call = S;
+  D->Data.Index = S->getArgument(0);
   return D;
 }
 
@@ -665,6 +667,11 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
         // Now build a pointer-declarator that owns its inner type and
         // we're done.
         return buildPointerDeclarator(Call, Next);
+      } else if (Callee->getSpelling() == "operator'[]'") {
+        // This is a prefix operator'[]', meaning we are creating an array type.
+        Next = makeDeclarator(SemaRef, Call->getArgument(1), Next);
+        return makeDeclarator(SemaRef, Call->getArgument(0),
+                              buildArrayDeclarator(Call, Next));
       }
 
       // Otherwise, this appears to be a function declarator.

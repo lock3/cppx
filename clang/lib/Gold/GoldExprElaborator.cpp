@@ -665,7 +665,40 @@ Expression ExprElaborator::elaboratePointerType(Declarator *D, TypeInfo *Ty) {
 }
 
 Expression ExprElaborator::elaborateArrayType(Declarator *D, TypeInfo *Ty) {
-  llvm_unreachable("Arrays not supported");
+  Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
+
+  if (BaseTypeExpr.is<clang::Expr *>() || BaseTypeExpr.isNull()) {
+    SemaRef.Diags.Report(D->getType()->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+
+  Expression IndexExpr =
+    ExprElaborator(Context, SemaRef).elaborateExpr(D->Data.Index);
+
+  // FIXME: what do we do for an empty array index, such as []int = {...}
+  if (IndexExpr.is<clang::TypeSourceInfo *>() || IndexExpr.isNull()) {
+    SemaRef.Diags.Report(D->Data.Index->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+
+  clang::QualType BaseType =
+    BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
+  clang::Expr *Index = IndexExpr.get<clang::Expr *>();
+
+  clang::Expr::EvalResult IdxResult;
+  clang::Expr::EvalContext
+    EvalCtx(Context.CxxAST, SemaRef.getCxxSema().GetReflectionCallbackObj());
+
+  if (!Index->EvaluateAsConstantExpr(IdxResult, clang::Expr::EvaluateForCodeGen,
+                                     EvalCtx))
+    return nullptr;
+
+  clang::QualType ArrayType =
+    Context.CxxAST.getConstantArrayType(BaseType, IdxResult.Val.getInt(), Index,
+                                        clang::ArrayType::Normal, 0);
+  return BuildAnyTypeLoc(CxxAST, ArrayType, D->getType()->getLoc());
 }
 
 // Elaborate the parameters and incorporate their types into  the one
@@ -677,22 +710,6 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
   assert(isa<ListSyntax>(D->Data.ParamInfo.Params)
          && "Array parameters not supported");
   const Syntax *Args = D->Data.ParamInfo.Params;
-
-  // If template parameters exist, deal with them before parameters.
-  // if (const Syntax *TemplParams = D->Data.ParamInfo.TemplateParams) {
-  //   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
-  //   for (const Syntax *P : TemplParams->children()) {
-  //     Elaborator Elab(Context, SemaRef);
-  //     clang::NamedDecl *ND =
-  //       cast_or_null<clang::NamedDecl>(Elab.elaborateDeclSyntax(P));
-  //     if (!ND)
-  //       return nullptr;
-
-  //     Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
-  //     assert(D && "Didn't find associated declaration");
-  //     TemplateParamDecls.push_back(ND);
-  //   }
-  // }
 
   // Elaborate the parameter declarations in order to get their types, and save
   // the resulting scope with the declarator.
