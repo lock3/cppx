@@ -25,6 +25,10 @@
 #include <map>
 #include <set>
 
+namespace clang {
+class Scope;
+}
+
 namespace llvm {
 
 class raw_ostream;
@@ -106,6 +110,9 @@ public:
 
   /// For non-identifiers, the call representing the declarator component.
   const Syntax *Call = nullptr;
+
+  // The tag's body.
+  clang::Scope *TagScope = nullptr;
 
   /// TODO: What other information do we need here?
   union {

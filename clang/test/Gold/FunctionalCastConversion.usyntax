@@ -1,0 +1,5 @@
+# RUN: %clang_gold %s -o ConversionExec
+# RUN: %TestBuildRoot/./ConversionExec
+main() : int!
+  x = int(5)
+  return !x == 5

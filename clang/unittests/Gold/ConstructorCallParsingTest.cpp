@@ -13,12 +13,51 @@ main() : int!
   x = int(5)
   return 0
 )";
-  // DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
-  //   hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
-  //     isPublic())),
-  //   hasDescendant(fieldDecl(hasName("y"), hasType(asString("_Bool")),
-  //     isPublic()))
-  // );
-  // ASSERT_TRUE(matches(Code, ClassC));
-  SimpleGoldParseTest(Code);
+
+  StatementMatcher CastExprStmt(compoundStmt(hasDescendant(
+        varDecl(hasName("x"), hasType(asString("int")),
+          hasDescendant(
+            cxxFunctionalCastExpr(
+              hasCastKind(CK_NoOp),
+              has(integerLiteral(equals(5)))
+            )
+          )
+        )
+      )
+    )
+  );
+  ASSERT_TRUE(matches(Code, CastExprStmt));
+}
+
+TEST(GoldParseConstructorCall, UDT_CallToImplicitCtor) {
+  StringRef Code = R"(
+c : type = class:
+  x : int = 5
+  y : bool = 3
+main() : int!
+  q = c()
+  return q.x
+)";
+  // TODO: Figure out what's supposed to be happening here.
+  StatementMatcher HasConstructorCallSearch(
+    compoundStmt(
+      hasDescendant(
+        declStmt(
+          has(
+            varDecl(
+              hasName("q"),
+              hasType(
+                asString("struct c")
+              ),
+              has(
+                cxxTemporaryObjectExpr()
+              )
+            )
+          )
+        )
+      ),
+      hasDescendant(returnStmt())
+    )
+  );
+  ASSERT_TRUE(matches(Code, HasConstructorCallSearch));
 }

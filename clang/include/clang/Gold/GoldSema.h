@@ -59,6 +59,7 @@ class Sema {
   llvm::SmallVector<Scope *, 4> ScopeStack;
   // The declaration context.
   Declaration *CurrentDecl = nullptr;
+  
 public:
   Sema(SyntaxContext &Context, clang::Sema &S);
   ~Sema();
@@ -113,6 +114,9 @@ public:
   /// Make D the current declaration.
   void pushDecl(Declaration *D);
 
+  /// Sets the decl context without modifying the clang::Sema class
+  void setCurrentDecl(Declaration *D);
+
   /// Make the owner of CurrentDecl current.
   void popDecl();
 
@@ -165,6 +169,8 @@ public:
   
   // The Clang diagnostics engine.
   clang::DiagnosticsEngine &Diags;
+
+  clang::DeclarationNameTable DeclNameTable;
 
   // Tokenizations of commonly compared-against strings.
   const clang::IdentifierInfo *OperatorColonII;

@@ -30,7 +30,8 @@ using namespace llvm;
 
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : CxxSema(CxxSema), CurrentDecl(), Context(Context),
-    Diags(Context.CxxAST.getSourceManager().getDiagnostics())
+    Diags(Context.CxxAST.getSourceManager().getDiagnostics()),
+    DeclNameTable(Context.CxxAST)
 {
   CxxSema.CurScope = nullptr;
   OperatorColonII = &Context.CxxAST.Idents.get("operator':'");
@@ -113,6 +114,10 @@ void Sema::pushDecl(Declaration *D) {
   getCxxSema().CurContext = clang::Decl::castToDeclContext(D->Cxx);
 }
 
+void Sema::setCurrentDecl(Declaration *D) {
+  CurrentDecl = D;
+}
+
 void Sema::popDecl() {
   CurrentDecl = CurrentDecl->getOwner();
   getCxxSema().CurContext = CurrentDecl ?
@@ -132,14 +137,11 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 
   clang::Sema::LookupNameKind LookupKind = R.getLookupKind();
 
-  if (LookupKind == clang::Sema::LookupTagName) {
+  if (LookupKind == clang::Sema::LookupTagName ||
+      LookupKind == clang::Sema::LookupAnyName) {
     auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
-    if (BuiltinMapIter != BuiltinTypes.end()){
-      // llvm::outs() << "Retrieved a built in type?\n";
-      // R.addDecl(BuiltinMapIter->second.)
-      // R.set
+    if (BuiltinMapIter != BuiltinTypes.end())
       return true;
-    }
   }
 
   while (S) {

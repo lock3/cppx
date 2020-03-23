@@ -34,7 +34,6 @@ namespace gold {
 void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
                   clang::Sema &ClangSema) {
   using namespace std;
-
   // Parse the input file.
   clang::SourceManager &SM = PP.getSourceManager();
   File InputFile(SM, SM.getMainFileID());
@@ -43,9 +42,7 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
 
   Parser Parser(Context, SM, InputFile);
   Syntax *AST = Parser.parseFile();
-  // llvm::outs() << "Dumping AST: ";
   // AST->dump();
-  // llvm::outs() << "\n";
   // FIXME: There's a -fdump-syntax flag that we should tie this too.
 
   // FIXME: We should handle -fsyntax-only here -- or maybe make a separate

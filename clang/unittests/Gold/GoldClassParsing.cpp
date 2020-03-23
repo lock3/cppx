@@ -142,6 +142,82 @@ main() : int!
 }
 
 
+
+TEST(ClassParsing, MemberFunction_NoMemberUse) {
+  StringRef Code = R"(
+c : type = class:
+  x : int
+  y : bool
+  foo() : int!
+    return 0
+  
+main() : int!
+  return 0
+)";
+  DeclarationMatcher MemberFunctionMatch = recordDecl( 
+    hasDescendant(cxxMethodDecl(hasName("foo")))
+  );
+  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}
+
+TEST(ClassParsing, MemberFunction_MemberUse) {
+  StringRef Code = R"(
+c : type = class:
+  x : int
+  y : bool
+  foo() : int!
+    return x
+  
+main() : int!
+  return 0
+)";
+  DeclarationMatcher MemberFunctionMatch = recordDecl( 
+    hasDescendant(
+      cxxMethodDecl(
+        hasName("foo"),
+        hasDescendant(cxxThisExpr(hasType(asString("struct c *"))))
+      )
+    )
+  );
+  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}
+
+
+TEST(ClassParsing, MemberFunction_OutsideOfClassCall) {
+  /*
+`-ReturnStmt 0x7fffc8c3bd08 <line:10:3, col:16>
+  `-CXXMemberCallExpr 0x7fffc8c3bce8 <col:10, col:16> 'int'
+    `-MemberExpr 0x7fffc8c3bcb8 <col:10, col:12> '<bound member function type>' .foo 0x7fffc8c10a90
+      `-DeclRefExpr 0x7fffc8c3bc98 <col:10> 'C':'C' lvalue Var 0x7fffc8c10d70 'b' 'C':'C'
+  */
+  StringRef Code = R"(
+c : type = class:
+  x : int = 5
+  y : bool
+  foo() : int!
+    return x
+  
+main() : int!
+  q : c
+  return q.foo()
+)";
+  StatementMatcher StmtMatcher(compoundStmt(has(
+    returnStmt(
+      hasDescendant(
+        cxxMemberCallExpr(
+          hasDescendant(
+            memberExpr(
+              hasDescendant(
+                declRefExpr()
+              )
+            )
+          )
+        )
+      )
+    )
+  )));
+  ASSERT_TRUE(matches(Code, StmtMatcher));
+}
 // TODO: This is the next thing to implement. Maybe...
 // TEST(ClassParsing, MemberAccessFromFunctionResult) {
 //   StringRef Code = R"(
@@ -161,3 +237,64 @@ main() : int!
 // }
 // }
 
+
+TEST(ClassParsing, ConstructorDeclWithinClass_BeforeMembers) {
+/*
+Expected
+| |-CXXConstructorDecl 0x7fffcdf04a98 <line:3:3, line:5:3> line:3:3 used C 'void ()'
+| | |-CXXCtorInitializer Field 0x7fffcdf049b8 'x' 'int'
+| | | `-CXXDefaultInitExpr 0x7fffcdf04b88 <col:3> 'int'
+| | `-CompoundStmt 0x7fffcdf04c58 <col:7, line:5:3>
+| |   `-BinaryOperator 0x7fffcdf04c38 <line:4:5, col:9> 'int' lvalue '='
+| |     |-MemberExpr 0x7fffcdf04be8 <col:5> 'int' lvalue ->x 0x7fffcdf049b8
+| |     | `-CXXThisExpr 0x7fffcdf04bd8 <col:5> 'C *' implicit this
+| |     `-IntegerLiteral 0x7fffcdf04c18 <col:9> 'int' 5
+
+Actual
+|-CXXConstructorDecl 0x7fffedecece0 <line:3:23, line:4:7> line:3:23 c 'void (void)' inline
+| `-CompoundStmt 0x7fffedecf008 <line:4:7>
+|   `-DeclStmt 0x7fffedeceff0 <col:7, col:5>
+|     `-VarDecl 0x7fffedecee90 <col:7, col:9> col:7 x 'int':'int' auto listinit
+|       `-IntegerLiteral 0x7fffedeceef8 <col:9> 'int' 4
+*/
+  StringRef Code = R"(
+c : type = class:
+  x : int = 5
+  y : bool = 3
+  constructor() : void!
+    x = 4
+  
+main() : int!
+  q : c
+  return 0
+)";
+
+  // TODO: Figure out what's supposed to be happening here.
+  DeclarationMatcher ClassCInfo = recordDecl(
+    recordDecl(hasName("c")),
+    hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
+      isPublic())),
+    hasDescendant(fieldDecl(hasName("y"), hasType(asString("_Bool")),
+      isPublic())),
+    hasDescendant(cxxConstructorDecl(isDefaultConstructor(), unless(isImplicit()),
+      unless(isDefaulted()), isNoThrow()))
+  );
+  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+    isDefinition(),
+    hasDescendant(
+      varDecl(
+        hasType(asString("struct c")),
+        hasName("q"),
+        hasInitializer(cxxConstructExpr(argumentCountIs(0)))
+      )
+    )
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo),
+    hasDescendant(MainFnMatcher)
+    );
+
+
+  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+}

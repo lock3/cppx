@@ -426,7 +426,7 @@ Syntax *Parser::parseDef() {
       body = parseNestedArray();
     } else {
       // FIXME: Skip to the end of the list or stmt/line.
-      Diags.Report(getInputLocation(), clang::diag::err_expected) << "expected '{' or indent";
+      Diags.Report(getInputLocation(), clang::diag::err_expected) << "'{' or indent";
       return onError();
     }
 

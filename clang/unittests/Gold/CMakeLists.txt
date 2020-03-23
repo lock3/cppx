@@ -40,6 +40,8 @@ add_clang_unittest(GoldTests
   CompileRun.cpp
   BoolImplicitConversionInit.cpp
   ConstructorCallParsingTest.cpp
+  BuiltInTypeConstructorsExec.cpp
+  ImplicitCtorExplicitCallExec.cpp
   )
 
 clang_target_link_libraries(GoldTests

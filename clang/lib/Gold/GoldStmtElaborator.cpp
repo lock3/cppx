@@ -235,24 +235,21 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   case FOK_Return: {
     ExprElaborator::Expression RetVal =
       ExprElaborator(Context, SemaRef).elaborateExpr(S->getArgument(0));
-
     if (RetVal.isNull())
       return nullptr;
-
     if (RetVal.is<clang::TypeSourceInfo *>()) {
       SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
                            clang::diag::err_expected_lparen_after_type);
       return nullptr;
     }
-
     ExprMarker(CxxAST, SemaRef).Visit(RetVal.get<clang::Expr *>());
     clang::StmtResult ReturnResult = SemaRef.getCxxSema().
       BuildReturnStmt(S->getCallee()->getLoc(), RetVal.get<clang::Expr *>());
+    
     return ReturnResult.get();
   }
 
   default:
-    llvm::outs() << "Reached where we expected to be?\n";
     break; // Silence warning.
   }
 
