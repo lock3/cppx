@@ -86,7 +86,7 @@ c : type = class:
     return x
   
 main() : int!
-  q : c
+  q : c = c()
   return q.foo()
 )";
   LLVMContext Context;
