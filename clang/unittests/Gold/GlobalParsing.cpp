@@ -32,3 +32,10 @@ x : int = 9
 )";
   SimpleGoldParseTest(Code);
 }
+
+TEST(GlobalVariables, SimpleArray) {
+  StringRef Code = R"(
+x : [3]int
+)";
+  SimpleGoldParseTest(Code);
+}
