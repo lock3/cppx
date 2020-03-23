@@ -107,16 +107,11 @@ clang::Decl *Elaborator::elaborateDeclType(const Syntax *S) {
 static clang::Decl*
 processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
                     Declaration *D) {
-  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
-  clang::SourceLocation EndOfClassSrcLoc(D->Init->getLoc());
-  // clang::CXXRecordDecl* ClsDecl = clang::CXXRecordDecl::Create(Context.CxxAST,
-  //               clang::TagDecl::TagKind::TTK_Struct, Owner, D->Decl->getLoc(),
-  //               EndOfClassSrcLoc, D->getId());
-  // clang::Decl *Tag =    
+  clang::SourceLocation EndOfClassSrcLoc(D->Init->getLoc());   
   using namespace clang;
   MultiTemplateParamsArg MTP;
-  bool IsOwned;
-  bool IsDependent;
+  bool IsOwned = false;
+  bool IsDependent = false;
   CXXScopeSpec SS;
   TypeResult UnderlyingType;
   Decl *Declartion = SemaRef.getCxxSema().ActOnTag(SemaRef.getCurClangScope(),
@@ -127,11 +122,9 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
       /*ScopeEnumUsesClassTag=*/false, UnderlyingType, /*IsTypeSpecifier=*/false,
       /*IsTemplateParamOrArg=*/false, /*SkipBody=*/nullptr);
   CXXRecordDecl *ClsDecl = cast<CXXRecordDecl>(Declartion);
-  // Owner->addDecl(ClsDecl);
   D->Cxx = ClsDecl;
   SemaRef.getCurrentScope()->addUserDefinedType(D->Id,
                                       Context.CxxAST.getTypeDeclType(ClsDecl));
-  // Context.CxxAST.getTranslationUnitDecl()->addDecl(ClsDecl);
   SemaRef.enterScope(ClsDecl, D->Init);
   SemaRef.pushDecl(D);
   Elab.elaborateTypeBody(D, ClsDecl);
@@ -247,18 +240,16 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     clang::DeclarationNameInfo DNI(Name, D->Op->getLoc());
     if (D->getId()->isStr("constructor")
         && FT->getReturnType() == Context.CxxAST.VoidTy) {
-      // RD->dumpLookups();
       clang::QualType RecordTy = Context.CxxAST.getTypeDeclType(RD);
-      Name = SemaRef.DeclNameTable.getCXXConstructorName(
-          Context.CxxAST.getCanonicalType(RecordTy));
+      clang::CanQualType Ty = Context.CxxAST.getCanonicalType(RecordTy);
+      Name = SemaRef.DeclNameTable.getCXXConstructorName(Ty);
       clang::DeclarationNameInfo DNI2(Name, D->Op->getLoc());
       clang::CXXConstructorDecl* CtorDecl;
       clang::ExplicitSpecifier ES(nullptr, clang::ExplicitSpecKind::ResolvedFalse);
       FD = CtorDecl = clang::CXXConstructorDecl::Create(Context.CxxAST, RD, Loc, DNI2,
           clang::QualType(), nullptr, ES, false, false,
           clang::ConstexprSpecKind::CSK_unspecified);
-      
-
+      CtorDecl->setAccess(clang::AS_public);
       clang::FunctionProtoType::ExtProtoInfo EPI;
 
       // Build an exception specification pointing back at this member.
@@ -276,11 +267,10 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
 
       auto QT = Context.CxxAST.getFunctionType(Context.CxxAST.VoidTy, clang::None, EPI);
       CtorDecl->setType(QT);
-
-      SemaRef.getCxxSema().CheckImplicitSpecialMemberDeclaration(
-          SemaRef.getCurClangScope(), FD);
-      SemaRef.getCxxSema().PushOnScopeChains(FD, SemaRef.getCurClangScope(), true);
-      FD->dump();
+      llvm::outs() << "Is this a default constructor?! " << CtorDecl->isDefaultConstructor() << "\n";
+      SemaRef.getCxxSema().PushOnScopeChains(CtorDecl, SemaRef.getCurClangScope(), true);
+      SemaRef.getCxxSema().CheckConstructor(CtorDecl);
+      SemaRef.getCxxSema().CheckOverrideControl(CtorDecl);
     } else {
       FD = clang::CXXMethodDecl::Create(Context.CxxAST, RD, Loc, DNI,
                                         TInfo->getType(), TInfo,
@@ -475,12 +465,10 @@ void Elaborator::elaborateDef(Declaration *D) {
 void Elaborator::elaborateFunctionDef(Declaration *D) {
   clang::Scope *S = nullptr;
   if (D->declaresConstructor()) {
-    llvm::outs() << "Defining constructor?!\n";
     S = SemaRef.getCurClangScope();
     llvm::SmallVector<clang::CXXCtorInitializer*, 32> Initializers;
     SemaRef.getCxxSema().ActOnMemInitializers(D->Cxx, clang::SourceLocation(),
         Initializers, false);
-    D->Cxx->dump();
   }
   if (!D->Cxx)
     return;
@@ -557,13 +545,20 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     // Handle special case of default construction of complex types?
     if(VD->getType().getTypePtr()->isRecordType()) {
       clang::CXXRecordDecl *RD = VD->getType()->getAsCXXRecordDecl();
-      // RD->dump();
-      // llvm::outs() << "Declaration has default constructor?!\n" << RD->hasDefaultConstructor() << "\n";
       auto AllConstructors = SemaRef.getCxxSema().LookupConstructors(RD);
+      
+      llvm::outs() << "List of known constructors\n";
       for(auto const* ctor : AllConstructors) {
         llvm::outs() << "Located Constructor.\n";
         ctor->dump();
       }
+      llvm::outs() << "List of known Methods\n";
+      for(const clang::CXXMethodDecl *M : RD->methods()) {
+        llvm::outs() << "Method\n";
+        M->dump();
+      }
+
+
       clang::CXXConstructorDecl *DefaultCtorDecl
           = SemaRef.getCxxSema().LookupDefaultConstructor(RD);
       if (DefaultCtorDecl) {
@@ -662,6 +657,7 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
   clang::CXXRecordDecl* ImplicitDecl = clang::CXXRecordDecl::Create(
                         Context.CxxAST, clang::TagDecl::TagKind::TTK_Struct, R,
                         D->Decl->getLoc(), EndOfClassSrcLoc, D->getId());
+  ImplicitDecl->setAccess(clang::AS_public);
   R->addDecl(ImplicitDecl);
   // Since all declarations have already been added, we don't need to do another
   // Reordering scan. Maybe?
@@ -676,29 +672,18 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
   for (const Syntax *SS : BodyArray->children()) {
     elaborateDeclInit(SS);
   }
-
-  // auto DeclRange = Scope->decls();
-  // llvm::SmallVector<clang::Decl*, 32> Members;
-  // for(clang::Decl *PossibleField : DeclRange) 
-  //   if (isa<clang::FieldDecl>(PossibleField)) 
-  //     Members.push_back(PossibleField);
-  
-  // // llvm::ArrayRef<clang::Decl*> Members(DeclRange.begin(), DeclRange.end());
-  // clang::ParsedAttributes Attributes(SemaRef.AttrFactory);
-  // SemaRef.getCxxSema().ActOnFields(Scope, R->getLocation(), R, Members,
-  //                                  clang::SourceLocation(),
-  //                                  clang::SourceLocation(), Attributes);
   
   SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(Scope,
     clang::SourceLocation(), R, clang::SourceLocation(), clang::SourceLocation(),
     clang::ParsedAttributesView());
+  SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
   clang::Decl *TempDeclPtr = R;
   SemaRef.getCxxSema().ActOnTagFinishDefinition(Scope, TempDeclPtr, clang::SourceRange());
+  R->buildLookup();
   SemaRef.setCurrentDecl(D->getOwner());
   SemaRef.leaveClangScope(D->Op->getLoc());
   SemaRef.popScope();
-  SemaRef.getCxxSema().AddImplicitlyDeclaredMembersToClass(R);
-  SemaRef.getCxxSema().CheckCompletedCXXClass(Scope, R);
+
 }
 
 
