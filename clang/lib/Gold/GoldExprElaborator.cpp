@@ -52,12 +52,7 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
   if (isa<CallSyntax>(S))
     return elaborateCall(cast<CallSyntax>(S));
   if(isa<MacroSyntax>(S))
-    return elaborateMacroExpression(cast<MacroSyntax>(S));
-
-
-  llvm::outs() << "Syntax not handled yet\n";
-  S->dump();
-  llvm::outs() << "\n";
+    return elaborateMacro(cast<MacroSyntax>(S));
 
   assert(false && "Unsupported expression.");
 }
@@ -550,23 +545,46 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
   return BinOp.get();
 }
 
+static clang::Expr *handleArrayMacro(SyntaxContext &Context, Sema &SemaRef,
+                                     const MacroSyntax *S) {
+  const ArraySyntax *ArrayInit = cast<ArraySyntax>(S->getBlock());
+  const ListSyntax *Init = cast<ListSyntax>(ArrayInit->getChild(0));
 
-Expression ExprElaborator::elaborateMacroExpression(const MacroSyntax *Macro) {
-  const Syntax* FirstChild = *Macro->children().begin();
-  if (const auto *Atom = dyn_cast<AtomSyntax>(FirstChild)) {
-    if (Atom->getSpelling() == "if") {
-      assert(false && "If expression processing not implemented yet."); 
-    } else if (Atom->getSpelling() == "while") {
-      assert(false && "while loop processing not implemented yet.");
-    } else if(Atom->getSpelling() == "for") {
-      assert(false && "For loop processing not implemented yet.");
-    } else {
-      // FIXME: Need to handle any other conditions here.
-      assert(false && "Unexpected syntax tree format.");
-    }
-  } else {
-    assert(false && "Unexpected atom within the syntax tree.");
+  llvm::SmallVector<clang::Expr *, 8> Elements;
+  for (const Syntax *SI :  Init->children()) {
+    Expression Element = ExprElaborator(Context, SemaRef).elaborateExpr(SI);
+
+    if (Element.is<clang::TypeSourceInfo *>() || Element.isNull())
+      return nullptr;
+
+    Elements.push_back(Element.get<clang::Expr *>());
   }
+
+  clang::ExprResult InitList =
+    SemaRef.getCxxSema().ActOnInitList(S->getLoc(), Elements,
+                                       S->getLoc());
+  if (InitList.isInvalid())
+    return nullptr;
+
+  return InitList.get();
+}
+
+Expression ExprElaborator::elaborateMacro(const MacroSyntax *S) {
+  assert (isa<AtomSyntax>(S->getCall()) && "Unexpected macro call");
+
+  const AtomSyntax *Call = cast<AtomSyntax>(S->getCall());
+
+  if (Call->getSpelling() == "if")
+    assert(false && "If expression processing not implemented yet.");
+  else if (Call->getSpelling() == "while")
+    assert(false && "while loop processing not implemented yet.");
+  else if(Call->getSpelling() == "for")
+    assert(false && "For loop processing not implemented yet.");
+  else if (Call->getSpelling() == "array")
+    return handleArrayMacro(Context, SemaRef, S);
+  else
+    // FIXME: Need to handle any other conditions here.
+    assert(false && "Unsupported macro");
 }
 
 

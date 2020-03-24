@@ -32,6 +32,8 @@
 namespace gold {
 
 using clang::cast_or_null;
+using clang::dyn_cast;
+using clang::cast;
 
 StmtElaborator::StmtElaborator(SyntaxContext &Context, Sema &SemaRef)
   : Context(Context), CxxAST(Context.CxxAST), SemaRef(SemaRef),
@@ -342,11 +344,58 @@ clang::Stmt *StmtElaborator::elaborateElseStmt(const MacroSyntax *S) {
   return Else;
 }
 
+// Elaborates an array macro as a statement, just creates and discards the array
+// FIXME: this does not currently emit properly.
+clang::Stmt *StmtElaborator::elaborateArrayMacroStmt(const MacroSyntax *S) {
+  ExprElaborator InitListElab(Context, SemaRef);
+  ExprElaborator::Expression InitListExpr = InitListElab.elaborateExpr(S);
+
+  if (InitListExpr.is<clang::TypeSourceInfo *>() || InitListExpr.isNull()) {
+    Diags.Report(S->getLoc(), clang::diag::err_expected_expression);
+    return nullptr;
+  }
+
+  clang::Expr *Init = InitListExpr.get<clang::Expr *>();
+  clang::InitListExpr *InitList = dyn_cast<clang::InitListExpr>(Init);
+  if (!InitList)
+    return nullptr;
+
+  if (!InitList->inits().size())
+    return nullptr;
+
+  clang::QualType ElementType = InitList->getInit(0)->getType();
+  auto Size = llvm::APSInt::getUnsigned(InitList->getNumInits());
+  clang::QualType ArrayType =
+    Context.CxxAST.getConstantArrayType(ElementType, Size,
+                                        /*SizeExpr=*/nullptr,
+                                        clang::ArrayType::Normal, 0);
+  auto *TSI = Context.CxxAST.CreateTypeSourceInfo(ArrayType);
+
+  clang::DeclContext *DC =
+    clang::Decl::castToDeclContext(SemaRef.getCurrentDecl()->Cxx);
+
+
+
+  clang::DeclarationName Name(&Context.CxxAST.Idents.get("bep"));
+  clang::VarDecl *ArrayDecl =
+    clang::VarDecl::Create(Context.CxxAST, DC, S->getLoc(), S->getLoc(), Name,
+                           TSI->getType(), TSI, clang::SC_Auto);
+  ArrayDecl->setInit(InitList);
+
+  clang::DeclStmt *DS = new (Context.CxxAST) clang::DeclStmt(
+    SemaRef.getCxxSema().ConvertDeclToDeclGroup(ArrayDecl).get(),
+    S->getLoc(), S->getLoc());
+  return DS;
+}
+
 clang::Stmt *
 StmtElaborator::elaborateMacro(const MacroSyntax *S) {
-  const CallSyntax *Call = cast<CallSyntax>(S->getCall());
+  const AtomSyntax *Callee;
+  if (const CallSyntax *Call = dyn_cast<CallSyntax>(S->getCall()))
+    Callee = cast<AtomSyntax>(Call->getCallee());
+  else
+    Callee = cast<AtomSyntax>(S->getCall());
 
-  const AtomSyntax *Callee = cast<AtomSyntax>(Call->getCallee());
   FusedOpKind OpKind = getFusedOpKind(SemaRef, Callee->getSpelling());
 
   switch (OpKind) {
@@ -355,9 +404,13 @@ StmtElaborator::elaborateMacro(const MacroSyntax *S) {
   case FOK_Else:
     return elaborateElseStmt(S);
   default:
-    llvm::errs() << "Unsupported macro.\n";
-    return nullptr;
+    break;
   }
+
+  if (Callee->getSpelling() == "array")
+    return elaborateArrayMacroStmt(S);
+
+  return nullptr;
 }
 
 clang::Stmt *

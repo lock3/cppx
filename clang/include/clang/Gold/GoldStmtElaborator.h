@@ -110,6 +110,7 @@ public:
 private:
   clang::Stmt *elaborateIfStmt(const MacroSyntax *S);
   clang::Stmt *elaborateElseStmt(const MacroSyntax *S);
+  clang::Stmt *elaborateArrayMacroStmt(const MacroSyntax *S);
 
 };
 

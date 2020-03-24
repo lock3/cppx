@@ -68,7 +68,7 @@ public:
 
   Expression elaborateBlockCondition(const ArraySyntax *Conditions);
 
-  Expression elaborateMacroExpression(const MacroSyntax *Macro);
+  Expression elaborateMacro(const MacroSyntax *Macro);
   Expression elaborateClass(const MacroSyntax *Macro);
 
 private:
