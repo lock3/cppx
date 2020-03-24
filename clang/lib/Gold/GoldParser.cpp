@@ -528,7 +528,8 @@ Syntax *Parser::parseCmp() {
 bool isToOperator(Parser& P) {
   return P.nextTokenIs(tok::Colon)
       || P.nextTokenIs(tok::DotDot)
-      || P.nextTokenIs(tok::MinusGreater);
+      || P.nextTokenIs(tok::MinusGreater)
+      || P.nextTokenIs("in");
 };
 
 // to:
@@ -539,6 +540,7 @@ bool isToOperator(Parser& P) {
 //    :
 //    ..
 //    ->
+//    in
 //
 // TODO: -> is at the wrong level of precedence and has the wrong
 // associativity. Also, what's the behavior.

@@ -140,8 +140,6 @@ public:
     {"float128_t", Context.CxxAST.Float128Ty},
     {"type", Context.CxxAST.CppxKindTy},
   };
-
-  
 };
 
 /// Represents different kinds of fused operator strings, for example,
@@ -154,7 +152,8 @@ enum FusedOpKind {
   FOK_If,
   FOK_Else,
   FOK_Return,
-  FOK_Array,
+  FOK_For,
+  FOK_In,
 };
 
 /// Convert a fused operator string like `operator'='` into an enum

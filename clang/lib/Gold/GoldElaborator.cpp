@@ -875,6 +875,10 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
     return FOK_Return;
   if (Tokenization == SemaRef.OperatorReturnsII)
     return FOK_Return;
+  if (Tokenization == SemaRef.OperatorForII)
+    return FOK_For;
+  if (Tokenization == SemaRef.OperatorInII)
+    return FOK_In;
 
   return FOK_Unknown;
 }

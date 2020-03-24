@@ -29,6 +29,7 @@
 
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
+#include "clang/Gold/GoldExprMarker.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldSyntaxContext.h"
@@ -470,6 +471,9 @@ Expression ExprElaborator::elaborateBinOp(const CallSyntax *S,
     SemaRef.Diags.Report(S->getLoc(), clang::diag::err_failed_to_translate_expr);
     return nullptr;
   }
+
+  ExprMarker(Context.CxxAST, SemaRef).Visit(LHS.get<clang::Expr *>());
+  ExprMarker(Context.CxxAST, SemaRef).Visit(RHS.get<clang::Expr *>());
 
   return Res.get();
 }

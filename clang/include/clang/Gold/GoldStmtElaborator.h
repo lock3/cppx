@@ -112,6 +112,9 @@ private:
   clang::Stmt *elaborateElseStmt(const MacroSyntax *S);
   clang::Stmt *elaborateArrayMacroStmt(const MacroSyntax *S);
 
+  clang::Stmt *elaborateForStmt(const MacroSyntax *S);
+  clang::Stmt *handleRangeBasedFor(const ListSyntax *S,
+                                   clang::SourceLocation ForLoc);
 };
 
 } // namespace gold
