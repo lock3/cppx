@@ -1,4 +1,4 @@
-//=== GoldParsingTest.cpp - Elaboration for Gold Nodes ----------------------==//
+//=== GoldFor.cpp - Test Gold for loops ------------------------------------==//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file implements tests for paring of global variables.
+//  This file implements tests for parsing of for loops.
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,24 +18,14 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-
-TEST(GlobalVariables, SimpleDecl) {
+TEST(ForRange, SimpleForRange) {
   StringRef Code = R"(
-x : int
+main() : int!
+  xs : [3]int = array{0, 1, 2}
+  y : int = 0
+  for (x : int in xs):
+    y += x
 )";
-  SimpleGoldParseTest(Code);
-}
 
-TEST(GlobalVariables, SimpleDeclWithInit) {
-  StringRef Code = R"(
-x : int = 9
-)";
-  SimpleGoldParseTest(Code);
-}
-
-TEST(GlobalVariables, SimpleArray) {
-  StringRef Code = R"(
-x : [3]int
-)";
   SimpleGoldParseTest(Code);
 }

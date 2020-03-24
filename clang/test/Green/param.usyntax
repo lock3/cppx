@@ -1,2 +1,4 @@
+// RUN: %clang_cc1 %s
+
 f(x : int, y, z):double!
   n
