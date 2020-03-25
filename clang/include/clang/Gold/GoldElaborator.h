@@ -104,7 +104,6 @@ public:
 
   void startFile(const Syntax *S);
   void finishFile(const Syntax *S);
-  
 
 };
 
@@ -119,6 +118,8 @@ enum FusedOpKind {
   FOK_Else,
   FOK_Return,
   FOK_MemberAccess,
+  FOK_For,
+  FOK_In,
 };
 
 /// Convert a fused operator string like `operator'='` into an enum

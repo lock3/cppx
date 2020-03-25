@@ -63,7 +63,7 @@ static llvm::StringRef getCallName(const CallSyntax *S) {
   return "(void)";
 }
 
-llvm::StringRef Declarator::getString() const {
+std::string Declarator::getString() const {
   if (getKind() == DK_Type) {
     return cast<AtomSyntax>(Data.Type)->getSpelling();
   } else if (isFunction()) {
@@ -72,6 +72,10 @@ llvm::StringRef Declarator::getString() const {
     return cast<AtomSyntax>(Data.Id)->getSpelling();
   } else if (getKind() == DK_Pointer) {
     return "^";
+  } else if (getKind() == DK_Array) {
+    if (Data.Index)
+      return '[' + std::string(cast<AtomSyntax>(Data.Index)->getSpelling()) + ']';
+    return "[]";
   } else {
     return "[unimplemented]";
   }

@@ -31,6 +31,7 @@
 
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
+#include "clang/Gold/GoldExprMarker.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldSyntaxContext.h"
@@ -53,8 +54,8 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
     return elaborateAtom(cast<AtomSyntax>(S), clang::QualType());
   if (isa<CallSyntax>(S))
     return elaborateCall(cast<CallSyntax>(S));
-  if(isa<MacroSyntax>(S)) 
-    return elaborateMacroExpression(cast<MacroSyntax>(S));
+  if(isa<MacroSyntax>(S))
+    return elaborateMacro(cast<MacroSyntax>(S));
   assert(false && "Unsupported expression.");
 }
 
@@ -601,6 +602,9 @@ Expression ExprElaborator::elaborateBinOp(const CallSyntax *S,
     return nullptr;
   }
 
+  ExprMarker(Context.CxxAST, SemaRef).Visit(LHS.get<clang::Expr *>());
+  ExprMarker(Context.CxxAST, SemaRef).Visit(RHS.get<clang::Expr *>());
+
   return Res.get();
 }
 
@@ -675,23 +679,46 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
   return BinOp.get();
 }
 
+static clang::Expr *handleArrayMacro(SyntaxContext &Context, Sema &SemaRef,
+                                     const MacroSyntax *S) {
+  const ArraySyntax *ArrayInit = cast<ArraySyntax>(S->getBlock());
+  const ListSyntax *Init = cast<ListSyntax>(ArrayInit->getChild(0));
 
-Expression ExprElaborator::elaborateMacroExpression(const MacroSyntax *Macro) {
-  const Syntax* FirstChild = *Macro->children().begin();
-  if (const auto *Atom = dyn_cast<AtomSyntax>(FirstChild)) {
-    if (Atom->getSpelling() == "if") {
-      assert(false && "If expression processing not implemented yet."); 
-    } else if (Atom->getSpelling() == "while") {
-      assert(false && "while loop processing not implemented yet.");
-    } else if(Atom->getSpelling() == "for") {
-      assert(false && "For loop processing not implemented yet.");
-    } else {
-      // FIXME: Need to handle any other conditions here.
-      assert(false && "Unexpected syntax tree format.");
-    }
-  } else {
-    assert(false && "Unexpected atom within the syntax tree.");
+  llvm::SmallVector<clang::Expr *, 8> Elements;
+  for (const Syntax *SI :  Init->children()) {
+    Expression Element = ExprElaborator(Context, SemaRef).elaborateExpr(SI);
+
+    if (Element.is<clang::TypeSourceInfo *>() || Element.isNull())
+      return nullptr;
+
+    Elements.push_back(Element.get<clang::Expr *>());
   }
+
+  clang::ExprResult InitList =
+    SemaRef.getCxxSema().ActOnInitList(S->getLoc(), Elements,
+                                       S->getLoc());
+  if (InitList.isInvalid())
+    return nullptr;
+
+  return InitList.get();
+}
+
+Expression ExprElaborator::elaborateMacro(const MacroSyntax *S) {
+  assert (isa<AtomSyntax>(S->getCall()) && "Unexpected macro call");
+
+  const AtomSyntax *Call = cast<AtomSyntax>(S->getCall());
+
+  if (Call->getSpelling() == "if")
+    assert(false && "If expression processing not implemented yet.");
+  else if (Call->getSpelling() == "while")
+    assert(false && "while loop processing not implemented yet.");
+  else if(Call->getSpelling() == "for")
+    assert(false && "For loop processing not implemented yet.");
+  else if (Call->getSpelling() == "array")
+    return handleArrayMacro(Context, SemaRef, S);
+  else
+    // FIXME: Need to handle any other conditions here.
+    assert(false && "Unsupported macro");
 }
 
 
@@ -787,7 +814,40 @@ Expression ExprElaborator::elaboratePointerType(Declarator *D, TypeInfo *Ty) {
 }
 
 Expression ExprElaborator::elaborateArrayType(Declarator *D, TypeInfo *Ty) {
-  llvm_unreachable("Arrays not supported");
+  Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
+
+  if (BaseTypeExpr.is<clang::Expr *>() || BaseTypeExpr.isNull()) {
+    SemaRef.Diags.Report(D->getType()->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+
+  Expression IndexExpr =
+    ExprElaborator(Context, SemaRef).elaborateExpr(D->Data.Index);
+
+  // FIXME: what do we do for an empty array index, such as []int = {...}
+  if (IndexExpr.is<clang::TypeSourceInfo *>() || IndexExpr.isNull()) {
+    SemaRef.Diags.Report(D->Data.Index->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+
+  clang::QualType BaseType =
+    BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
+  clang::Expr *Index = IndexExpr.get<clang::Expr *>();
+
+  clang::Expr::EvalResult IdxResult;
+  clang::Expr::EvalContext
+    EvalCtx(Context.CxxAST, SemaRef.getCxxSema().GetReflectionCallbackObj());
+
+  if (!Index->EvaluateAsConstantExpr(IdxResult, clang::Expr::EvaluateForCodeGen,
+                                     EvalCtx))
+    return nullptr;
+
+  clang::QualType ArrayType =
+    Context.CxxAST.getConstantArrayType(BaseType, IdxResult.Val.getInt(), Index,
+                                        clang::ArrayType::Normal, 0);
+  return BuildAnyTypeLoc(CxxAST, ArrayType, D->getType()->getLoc());
 }
 
 // Elaborate the parameters and incorporate their types into  the one
@@ -799,22 +859,6 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
   assert(isa<ListSyntax>(D->Data.ParamInfo.Params)
          && "Array parameters not supported");
   const Syntax *Args = D->Data.ParamInfo.Params;
-
-  // If template parameters exist, deal with them before parameters.
-  // if (const Syntax *TemplParams = D->Data.ParamInfo.TemplateParams) {
-  //   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
-  //   for (const Syntax *P : TemplParams->children()) {
-  //     Elaborator Elab(Context, SemaRef);
-  //     clang::NamedDecl *ND =
-  //       cast_or_null<clang::NamedDecl>(Elab.elaborateDeclSyntax(P));
-  //     if (!ND)
-  //       return nullptr;
-
-  //     Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
-  //     assert(D && "Didn't find associated declaration");
-  //     TemplateParamDecls.push_back(ND);
-  //   }
-  // }
 
   // Elaborate the parameter declarations in order to get their types, and save
   // the resulting scope with the declarator.

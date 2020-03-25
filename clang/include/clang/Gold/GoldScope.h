@@ -97,7 +97,7 @@ public:
   clang::SourceLocation getLoc() const;
 
   /// Returns a readable string representing this declarator.
-  llvm::StringRef getString() const;
+  std::string getString() const;
 
   /// Prints the declarator sequence.
   void printSequence(llvm::raw_ostream &os) const;
@@ -136,6 +136,9 @@ public:
 
     /// For DK_Type, the type in the call.
     const Syntax *Type;
+
+    /// For DK_Array, the array index.
+    const Syntax *Index;
   } Data;
 };
 

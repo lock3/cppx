@@ -179,6 +179,8 @@ public:
   const clang::IdentifierInfo *OperatorReturnII;
   const clang::IdentifierInfo *OperatorReturnsII;
   const clang::IdentifierInfo *OperatorDotII;
+  const clang::IdentifierInfo *OperatorForII;
+  const clang::IdentifierInfo *OperatorInII;
 
   // An RAII type for constructing scopes.
   struct ScopeRAII {

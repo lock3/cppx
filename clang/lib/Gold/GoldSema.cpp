@@ -41,6 +41,8 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorReturnII = &Context.CxxAST.Idents.get("operator'return'");
   OperatorReturnsII = &Context.CxxAST.Idents.get("operator'returns'");
   OperatorDotII = &Context.CxxAST.Idents.get("operator'.'");
+  OperatorForII = &Context.CxxAST.Idents.get("operator'for'");
+  OperatorInII = &Context.CxxAST.Idents.get("operator'in'");
 }
 
 Sema::~Sema() {
