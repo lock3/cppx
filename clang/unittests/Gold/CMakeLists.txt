@@ -36,13 +36,13 @@ add_clang_unittest(GoldTests
   GoldClassParsing.cpp
   GoldFor.cpp
   GoldFunctionTemplate.cpp
-  GlobalParsing.cpp
   GoldMemberExecuteTest.cpp
   CompileRun.cpp
   BoolImplicitConversionInit.cpp
   ConstructorCallParsingTest.cpp
   BuiltInTypeConstructorsExec.cpp
   ImplicitCtorExplicitCallExec.cpp
+  GoldGlobalParsing.cpp
   )
 
 clang_target_link_libraries(GoldTests

@@ -31,7 +31,7 @@
 
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
-#include "clang/Gold/GoldExprMarker.h"
+// #include "clang/Gold/GoldExprMarker.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldSyntaxContext.h"
