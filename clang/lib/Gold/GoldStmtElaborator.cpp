@@ -160,6 +160,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   if (SemaRef.getCurrentScope()->isBlockScope()) {
     if (OpKind == FOK_Colon || OpKind == FOK_Equals) {
       Elaborator E(Context, SemaRef);
+
       clang::Decl *N = E.elaborateDeclSyntax(S);
       if (N)
         return createDeclStmt(CxxAST, SemaRef, N, S->getLoc(),

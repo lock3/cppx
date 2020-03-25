@@ -474,6 +474,7 @@ Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     clang::UnqualifiedId Id;
     clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(
       RHSAtom->getSpelling());
+
     // TODO: Figure out how to get the desired scope.
     Id.setIdentifier(IdInfo, RHSAtom->getLoc());
     clang::CXXScopeSpec SS;
@@ -485,16 +486,6 @@ Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
       = cast<clang::MemberExpr>(HandledLHS.get());
     MemberExpression->getMemberDecl()->setIsUsed();
     return HandledLHS.get();
-
-    // NOTE: If we have to we can re-implement this using the create functions
-    // that might be better because this handles C++ lookup of a member variable
-    // as well.
-    // MemberExpr *MemberExpr::Create(
-    //     const ASTContext &C, Expr *Base, bool IsArrow, SourceLocation OperatorLoc,
-    //     NestedNameSpecifierLoc QualifierLoc, SourceLocation TemplateKWLoc,
-    //     ValueDecl *MemberDecl, DeclAccessPair FoundDecl,
-    //     DeclarationNameInfo NameInfo, const TemplateArgumentListInfo *TemplateArgs,
-    //     QualType T, ExprValueKind VK, ExprObjectKind OK, NonOdrUseReason NOUR)
   }
 
   llvm_unreachable("Member access to anything other then a member variable "

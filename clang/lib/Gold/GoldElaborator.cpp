@@ -637,25 +637,48 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
   clang::SourceLocation EndOfClassSrcLoc(D->Init->getLoc());
   // Since all declarations have already been added, we don't need to do another
   // Reordering scan. Maybe?
-  
-  // Processing all sub declarations?
+
   // TODO:/FIXME: Need to create a means for building member functions/initializers
   for (const Syntax *SS : BodyArray->children()) {
     elaborateDeclType(SS);
   }
-
-  // Attempting to elaborate declaration initialization
-  for (const Syntax *SS : BodyArray->children()) {
-    elaborateDeclInit(SS);
-  }
   
+  // Elaborating types first.
+  for (const Syntax *SS : BodyArray->children()) {
+    Declaration *LocalDecl = SemaRef.getCurrentScope()->findDecl(SS);
+    if (!LocalDecl)
+      continue;
+    if(LocalDecl->declaresRecord() || LocalDecl->declaresType())
+      elaborateDef(LocalDecl);
+  }
+
+  // Elaborating members second. TODO: Once we have static methods we need
+  // to handle those before we handle the variables.
+  for (const Syntax *SS : BodyArray->children()) {
+    Declaration *LocalDecl = SemaRef.getCurrentScope()->findDecl(SS);
+    if (!LocalDecl)
+      continue;
+    if (LocalDecl->declaresMemberVariable()){
+      elaborateDef(LocalDecl);
+    }
+  }
+
+  // Elaborating everything else.
+  for (const Syntax *SS : BodyArray->children()) {
+    Declaration *LocalDecl = SemaRef.getCurrentScope()->findDecl(SS);
+    if (!LocalDecl)
+      continue;
+    if (LocalDecl->declaresMemberFunction() || LocalDecl->declaresConstructor()) 
+      elaborateDef(LocalDecl);
+    
+  }
   SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(Scope,
     clang::SourceLocation(), R, clang::SourceLocation(), clang::SourceLocation(),
     clang::ParsedAttributesView());
   SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
   clang::Decl *TempDeclPtr = R;
-  SemaRef.getCxxSema().ActOnTagFinishDefinition(Scope, TempDeclPtr, clang::SourceRange());
-  R->buildLookup();
+  SemaRef.getCxxSema().ActOnTagFinishDefinition(Scope, TempDeclPtr,
+                                                clang::SourceRange());
   SemaRef.setCurrentDecl(D->getOwner());
   SemaRef.leaveClangScope(D->Op->getLoc());
   SemaRef.popScope();
@@ -674,7 +697,6 @@ clang::Decl *Elaborator::elaborateTypeBody(Declaration* D, clang::CXXRecordDecl*
   auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
   assert(BodyArray && "Invalid AST structure Expected array structure.");
 
-  // R->startDefinition();
   for (auto const* ChildDecl : BodyArray->children()) {
     identifyDecl(ChildDecl);
   }
@@ -954,17 +976,31 @@ void Elaborator::identifyDecl(const Syntax *S) {
       const Syntax *Decl;
       const Syntax *Init;
       if (Op == "operator'='") {
-        // This is to reject t.x as a declaration. TODO: FIXME: This will need
-        // to be reevaluated as a later point because this isn't always going
-        // to be the case I think, for example PIMPL could be handled this way...
+
+        // This is to reject t.x as a declaration.
+        // Also also reject the delcaration
         const auto *Args = cast<ListSyntax>(Call->getArguments());
         Decl = Args->getChild(0);
-        if(isa<CallSyntax>(Decl))
-          if(const CallSyntax *InnerCallOp = cast<CallSyntax>(Decl))
-            if(isa<AtomSyntax>(InnerCallOp->getCallee()))
-              if(const AtomSyntax *AccessOp = cast<AtomSyntax>(
+
+        // This is for checking if a declaration already exists in a parent scope
+        // for example if this is in a member function and we are accessing a
+        // member variable.
+        if(const AtomSyntax *LHS = dyn_cast<AtomSyntax>(Decl)) {
+          clang::DeclarationNameInfo DNI({
+              &Context.CxxAST.Idents.get(LHS->getSpelling())
+            }, S->getLoc());
+          clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
+          if (SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) 
+            return;
+        }
+
+        // Making sure we are don't use a member accessor as a variable name.
+        if (isa<CallSyntax>(Decl))
+          if (const CallSyntax *InnerCallOp = cast<CallSyntax>(Decl))
+            if (isa<AtomSyntax>(InnerCallOp->getCallee()))
+              if (const AtomSyntax *Atom = cast<AtomSyntax>(
                                                       InnerCallOp->getCallee()))
-                if(AccessOp->getSpelling() == "operator'.'")
+                if (Atom->getSpelling() == "operator'.'")
                   return;
         Init = Args->getChild(1);
         OperatorEquals = true;

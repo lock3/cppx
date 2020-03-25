@@ -238,7 +238,7 @@ main() : int!
 // }
 
 
-TEST(ClassParsing, ConstructorDeclWithinClass_BeforeMembers) {
+TEST(ClassParsing, ConstructorDeclWithinClass_AfterMembers) {
 /*
 Expected
 | |-CXXConstructorDecl 0x7fffcdf04a98 <line:3:3, line:5:3> line:3:3 used C 'void ()'
@@ -269,6 +269,100 @@ main() : int!
   return 0
 )";
 
+  DeclarationMatcher ClassCInfo = recordDecl(
+    recordDecl(hasName("c")),
+    hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
+      isPublic())),
+    hasDescendant(fieldDecl(hasName("y"), hasType(asString("_Bool")),
+      isPublic())),
+    hasDescendant(cxxConstructorDecl(isDefaultConstructor(), unless(isImplicit()),
+      unless(isDefaulted()), isNoThrow(),
+      has(
+        cxxCtorInitializer(
+          forField(
+            hasName("x")
+          ),
+          isMemberInitializer()
+        )
+      ),
+      has(
+        cxxCtorInitializer(
+          forField(
+            hasName("y")
+          ),
+          isMemberInitializer()
+        )
+      ),
+      has(compoundStmt(
+        hasDescendant(
+          binaryOperator(
+            hasOperatorName("="),
+            hasLHS(
+              memberExpr(
+                hasObjectExpression(hasType(pointsTo(recordDecl(hasName("c"))))),
+                member(
+                  hasName("x")
+                )
+              )
+            ),
+            hasRHS(integerLiteral(equals(4)))
+          )
+        )
+      ))
+    )
+  )
+  );
+  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+    isDefinition(),
+    hasDescendant(
+      varDecl(
+        hasType(asString("struct c")),
+        hasName("q"),
+        hasInitializer(cxxConstructExpr(argumentCountIs(0)))
+      )
+    )
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo),
+    hasDescendant(MainFnMatcher)
+  );
+  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+}
+
+
+TEST(ClassParsing, ConstructorDeclWithinClass_BeforeMembers) {
+/*
+Expected
+| |-CXXConstructorDecl 0x7fffcdf04a98 <line:3:3, line:5:3> line:3:3 used C 'void ()'
+| | |-CXXCtorInitializer Field 0x7fffcdf049b8 'x' 'int'
+| | | `-CXXDefaultInitExpr 0x7fffcdf04b88 <col:3> 'int'
+| | `-CompoundStmt 0x7fffcdf04c58 <col:7, line:5:3>
+| |   `-BinaryOperator 0x7fffcdf04c38 <line:4:5, col:9> 'int' lvalue '='
+| |     |-MemberExpr 0x7fffcdf04be8 <col:5> 'int' lvalue ->x 0x7fffcdf049b8
+| |     | `-CXXThisExpr 0x7fffcdf04bd8 <col:5> 'C *' implicit this
+| |     `-IntegerLiteral 0x7fffcdf04c18 <col:9> 'int' 5
+
+Actual
+|-CXXConstructorDecl 0x7fffedecece0 <line:3:23, line:4:7> line:3:23 c 'void (void)' inline
+| `-CompoundStmt 0x7fffedecf008 <line:4:7>
+|   `-DeclStmt 0x7fffedeceff0 <col:7, col:5>
+|     `-VarDecl 0x7fffedecee90 <col:7, col:9> col:7 x 'int':'int' auto listinit
+|       `-IntegerLiteral 0x7fffedeceef8 <col:9> 'int' 4
+*/
+  StringRef Code = R"(
+c : type = class:
+  constructor() : void!
+    x = 4
+  x : int = 5
+  y : bool = 3
+
+
+main() : int!
+  q : c
+  return 0
+)";
+
   // TODO: Figure out what's supposed to be happening here.
   DeclarationMatcher ClassCInfo = recordDecl(
     recordDecl(hasName("c")),
@@ -293,8 +387,6 @@ main() : int!
   DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
     hasDescendant(ClassCInfo),
     hasDescendant(MainFnMatcher)
-    );
-
-
+  );
   ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
 }
