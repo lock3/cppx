@@ -170,8 +170,6 @@ public:
   // The Clang diagnostics engine.
   clang::DiagnosticsEngine &Diags;
 
-  clang::DeclarationNameTable DeclNameTable;
-
   // Tokenizations of commonly compared-against strings.
   const clang::IdentifierInfo *OperatorColonII;
   const clang::IdentifierInfo *OperatorExclaimII;

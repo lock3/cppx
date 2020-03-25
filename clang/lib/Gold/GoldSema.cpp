@@ -30,8 +30,7 @@ using namespace llvm;
 
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : CxxSema(CxxSema), CurrentDecl(), Context(Context),
-    Diags(Context.CxxAST.getSourceManager().getDiagnostics()),
-    DeclNameTable(Context.CxxAST)
+    Diags(Context.CxxAST.getSourceManager().getDiagnostics())
 {
   CxxSema.CurScope = nullptr;
   OperatorColonII = &Context.CxxAST.Idents.get("operator':'");

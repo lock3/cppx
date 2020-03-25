@@ -114,6 +114,7 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   bool IsDependent = false;
   CXXScopeSpec SS;
   TypeResult UnderlyingType;
+  // clang::Sema::SkipBodyInfo Skipper;
   Decl *Declartion = SemaRef.getCxxSema().ActOnTag(SemaRef.getCurClangScope(),
       clang::DeclSpec::TST_struct, /*Metafunction=*/nullptr, clang::Sema::TUK_Definition,
       D->Init->getLoc(), SS, D->getId(), D->Decl->getLoc(), clang::ParsedAttributesView(),
@@ -235,20 +236,21 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   if(SemaRef.getCurrentScope()->getKind() == SK_Class) {
 
     clang::CXXRecordDecl *RD = cast<clang::CXXRecordDecl>(
-                                            SemaRef.getCurrentCxxDeclContext());
+                                            SemaRef.getCurrentScope()->Record);
     const clang::FunctionType *FT = cast<clang::FunctionType>(TInfo->getType());
     clang::DeclarationNameInfo DNI(Name, D->Op->getLoc());
     if (D->getId()->isStr("constructor")
         && FT->getReturnType() == Context.CxxAST.VoidTy) {
       clang::QualType RecordTy = Context.CxxAST.getTypeDeclType(RD);
       clang::CanQualType Ty = Context.CxxAST.getCanonicalType(RecordTy);
-      Name = SemaRef.DeclNameTable.getCXXConstructorName(Ty);
-      clang::DeclarationNameInfo DNI2(Name, D->Op->getLoc());
-      clang::CXXConstructorDecl* CtorDecl;
+      Name = Context.CxxAST.DeclarationNames.getCXXConstructorName(Ty);
+      clang::DeclarationNameInfo DNI2(Name, D->Decl->getLoc());
+      clang::CXXConstructorDecl* CtorDecl = nullptr;
       clang::ExplicitSpecifier ES(nullptr, clang::ExplicitSpecKind::ResolvedFalse);
       FD = CtorDecl = clang::CXXConstructorDecl::Create(Context.CxxAST, RD, Loc, DNI2,
           clang::QualType(), nullptr, ES, false, false,
           clang::ConstexprSpecKind::CSK_unspecified);
+      CtorDecl->setBody(nullptr);
       CtorDecl->setAccess(clang::AS_public);
       clang::FunctionProtoType::ExtProtoInfo EPI;
 
@@ -264,13 +266,19 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       if (AS != clang::LangAS::Default) {
         EPI.TypeQuals.addAddressSpace(AS);
       }
-
       auto QT = Context.CxxAST.getFunctionType(Context.CxxAST.VoidTy, clang::None, EPI);
       CtorDecl->setType(QT);
-      llvm::outs() << "Is this a default constructor?! " << CtorDecl->isDefaultConstructor() << "\n";
-      SemaRef.getCxxSema().PushOnScopeChains(CtorDecl, SemaRef.getCurClangScope(), true);
+
+      llvm::SmallVector<clang::ParmVarDecl*, 0> Params;
+      CtorDecl->setParams(Params);
+      SemaRef.getCxxSema().PushOnScopeChains(CtorDecl, SemaRef.getCurClangScope());
       SemaRef.getCxxSema().CheckConstructor(CtorDecl);
       SemaRef.getCxxSema().CheckOverrideControl(CtorDecl);
+      // Need to add 
+      clang::LookupResult R(SemaRef.getCxxSema(), DNI2, clang::Sema::LookupOrdinaryName);
+      if(SemaRef.getCxxSema().CheckFunctionDeclaration(SemaRef.getCurClangScope(),
+          CtorDecl, R, true)) {
+      }
     } else {
       FD = clang::CXXMethodDecl::Create(Context.CxxAST, RD, Loc, DNI,
                                         TInfo->getType(), TInfo,
@@ -315,10 +323,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   if (!Template && !D->declaresConstructor()) {
     Owner->addDecl(FD);
   }
-
-  // FIXME: is this necessary for Gold? It enables some more semantic
-  // checking, but not all of it is necessarily meaningful to us.
-  SemaRef.getCxxSema().PushFunctionScope();
   return FD;
 }
 
@@ -463,9 +467,7 @@ void Elaborator::elaborateDef(Declaration *D) {
 }
 
 void Elaborator::elaborateFunctionDef(Declaration *D) {
-  clang::Scope *S = nullptr;
   if (D->declaresConstructor()) {
-    S = SemaRef.getCurClangScope();
     llvm::SmallVector<clang::CXXCtorInitializer*, 32> Initializers;
     SemaRef.getCxxSema().ActOnMemInitializers(D->Cxx, clang::SourceLocation(),
         Initializers, false);
@@ -500,9 +502,11 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   if (TemplateScope) {
     SemaRef.getCurrentScope()->setParent(TemplateScope);
   }
-
+  SemaRef.getCxxSema().PushFunctionScope();
   SemaRef.enterScope(SK_Function, D->Init);
-
+  // FIXME: is this necessary for Gold? It enables some more semantic
+  // checking, but not all of it is necessarily meaningful to us.
+  
   // Elaborate the function body.
   StmtElaborator BodyElaborator(Context, SemaRef);
   clang::Stmt *Body = BodyElaborator.elaborateBlock(D->Init);
@@ -519,10 +523,6 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
     SemaRef.popScope();
 
   SemaRef.popDecl();
-  if(D->declaresConstructor()) {
-    llvm::outs() << "We have a valid function?! " << (!FD->isInvalidDecl()) << "\n";
-    D->Cxx->dump();
-  }
 }
 
 void Elaborator::elaborateVariableInit(Declaration *D) {
@@ -545,24 +545,9 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     // Handle special case of default construction of complex types?
     if(VD->getType().getTypePtr()->isRecordType()) {
       clang::CXXRecordDecl *RD = VD->getType()->getAsCXXRecordDecl();
-      auto AllConstructors = SemaRef.getCxxSema().LookupConstructors(RD);
-      
-      llvm::outs() << "List of known constructors\n";
-      for(auto const* ctor : AllConstructors) {
-        llvm::outs() << "Located Constructor.\n";
-        ctor->dump();
-      }
-      llvm::outs() << "List of known Methods\n";
-      for(const clang::CXXMethodDecl *M : RD->methods()) {
-        llvm::outs() << "Method\n";
-        M->dump();
-      }
-
-
       clang::CXXConstructorDecl *DefaultCtorDecl
           = SemaRef.getCxxSema().LookupDefaultConstructor(RD);
       if (DefaultCtorDecl) {
-        // DefaultCtorDecl->dump();
         llvm::SmallVector<clang::Expr *, 1> Args;
         clang::QualType Ty = Context.CxxAST.getTypeDeclType(RD);
         clang::ParsedType PT = clang::ParsedType::make(Ty);
@@ -571,8 +556,6 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
                                                           Args, D->Op->getLoc(),
                                                           false);
         if (ConstructorExpr.get()) {
-          llvm::outs() << "Adding constructor to the decl!?\n";
-          // ConstructorExpr.get()->dump();
           SemaRef.getCxxSema().AddInitializerToDecl(VD, ConstructorExpr.get(),
               true);
           return;
@@ -580,8 +563,6 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
         SemaRef.Diags.Report(D->Op->getLoc(),
                             clang::diag::err_coroutine_invalid_func_context)
                             << Ty << "a constructor";
-      } else {
-        llvm::outs() << "Failed to find suitable default constructor!\n";
       }
     }
     SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
@@ -654,11 +635,6 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
     clang::SourceLocation(), true, clang::SourceLocation());
   SemaRef.setCurrentDecl(D);
   clang::SourceLocation EndOfClassSrcLoc(D->Init->getLoc());
-  clang::CXXRecordDecl* ImplicitDecl = clang::CXXRecordDecl::Create(
-                        Context.CxxAST, clang::TagDecl::TagKind::TTK_Struct, R,
-                        D->Decl->getLoc(), EndOfClassSrcLoc, D->getId());
-  ImplicitDecl->setAccess(clang::AS_public);
-  R->addDecl(ImplicitDecl);
   // Since all declarations have already been added, we don't need to do another
   // Reordering scan. Maybe?
   
