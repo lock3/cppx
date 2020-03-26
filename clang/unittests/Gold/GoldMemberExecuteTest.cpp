@@ -121,3 +121,31 @@ main() : int!
   int result = CB();
   ASSERT_EQ(result, 3);
 }
+
+TEST(GoldClassExec, DestructorCallCheck) {
+  StringRef Code = R"(
+globalX :int = 0
+c : type = class:
+  x : int = 5
+  y : bool
+  constructor() : void!
+    x = 3
+  destructor() : void!
+    globalX = 1
+  
+foo() :void !
+  q : c
+
+
+main() : int!
+  foo()
+  return globalX
+)";
+  LLVMContext Context;
+  std::unique_ptr<ExecutionEngine> EE;
+  ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
+  MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
+  ASSERT_TRUE(CB);
+  int result = CB();
+  ASSERT_EQ(result, 1);
+}

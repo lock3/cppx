@@ -411,3 +411,47 @@ main() : int!
   );
   ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
 }
+
+
+TEST(ClassParsing, UserDefinedDestructor) {
+  StringRef Code = R"(
+c : type = class:
+  constructor(q : int) : void!
+    x = 4 + q
+  destructor() : void!
+    x = 0
+  x : int = 5
+  y : bool = 3
+
+
+main() : int!
+  q : c = c(3)
+  return 0
+)";
+
+  DeclarationMatcher ClassCInfo = recordDecl(
+    recordDecl(hasName("c")),
+    hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
+      isPublic())),
+    hasDescendant(fieldDecl(hasName("y"), hasType(asString("_Bool")),
+      isPublic())),
+    hasDescendant(cxxConstructorDecl(parameterCountIs(1))),
+    has(cxxDestructorDecl(unless(isImplicit())))
+  );
+  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+    isDefinition(),
+    hasDescendant(
+      varDecl(
+        hasType(asString("struct c")),
+        hasName("q"),
+        hasInitializer(hasDescendant(cxxConstructExpr(argumentCountIs(1))))
+      )
+    )
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo),
+    hasDescendant(MainFnMatcher)
+  );
+  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+}

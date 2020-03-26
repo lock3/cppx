@@ -240,8 +240,11 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
                                             SemaRef.getCurrentScope()->Record);
     const clang::FunctionType *FT = cast<clang::FunctionType>(TInfo->getType());
     clang::DeclarationNameInfo DNI(Name, D->Op->getLoc());
-    if (D->getId()->isStr("constructor")
-        && FT->getReturnType() == Context.CxxAST.VoidTy) {
+    if (D->getId()->isStr("constructor")) {
+      if (FT->getReturnType() != Context.CxxAST.VoidTy) {
+        // TODO: Emit correct diagonstic message here.
+        assert(false && "Constructor has incorrect return type");
+      }
       clang::QualType RecordTy = Context.CxxAST.getTypeDeclType(RD);
       clang::CanQualType Ty = Context.CxxAST.getCanonicalType(RecordTy);
       Name = Context.CxxAST.DeclarationNames.getCXXConstructorName(Ty);
@@ -274,6 +277,48 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       auto QT = Context.CxxAST.getFunctionType(Context.CxxAST.VoidTy,
         FPT->getParamTypes(), EPI);
       CtorDecl->setType(QT);
+
+    } else if(D->getId()->isStr("destructor")) {
+      if (FT->getReturnType() != Context.CxxAST.VoidTy) {
+        // TODO: Emit correct diagonstic message here.
+        assert(false && "Constructor has incorrect return type");
+      }
+      clang::QualType RecordTy = Context.CxxAST.getTypeDeclType(RD);
+      clang::CanQualType Ty = Context.CxxAST.getCanonicalType(RecordTy);
+      Name = Context.CxxAST.DeclarationNames.getCXXDestructorName(Ty);
+      clang::DeclarationNameInfo DNI2(Name, D->Decl->getLoc());
+      clang::CXXDestructorDecl* DtorDecl = nullptr;
+      clang::ExplicitSpecifier ES(nullptr, clang::ExplicitSpecKind::ResolvedFalse);
+      FD = DtorDecl = clang::CXXDestructorDecl::Create(Context.CxxAST, RD, Loc,
+          DNI2, clang::QualType(), nullptr, false, false,
+          clang::ConstexprSpecKind::CSK_unspecified);
+      DtorDecl->setImplicit(false);
+      DtorDecl->setDefaulted(false);
+      DtorDecl->setBody(nullptr);
+      DtorDecl->setAccess(clang::AS_public);
+      clang::FunctionProtoType::ExtProtoInfo EPI;
+
+      // Build an exception specification pointing back at this member.
+      EPI.ExceptionSpec.Type = clang::EST_None;
+      EPI.ExceptionSpec.SourceDecl = DtorDecl;
+
+      // Set the calling convention to the default for C++ instance methods.
+      EPI.ExtInfo = EPI.ExtInfo.withCallingConv(
+          Context.CxxAST.getDefaultCallingConvention(/*IsVariadic=*/false,
+                                                /*IsCXXMethod=*/true));
+      clang::LangAS AS = SemaRef.getCxxSema().getDefaultCXXMethodAddrSpace();
+      if (AS != clang::LangAS::Default) {
+        EPI.TypeQuals.addAddressSpace(AS);
+      }
+      const clang::FunctionProtoType *FPT = cast<clang::FunctionProtoType>(
+        TInfo->getType().getTypePtr());
+      if (FPT->getNumParams() != 0) {
+        // TODO: Figure out how to correctly emit diagnostics here.
+        assert(false && "Destructors cannot have any parameters.");
+      }
+      auto QT = Context.CxxAST.getFunctionType(Context.CxxAST.VoidTy,
+        clang::None, EPI);
+      DtorDecl->setType(QT);
 
     } else {
       FD = clang::CXXMethodDecl::Create(Context.CxxAST, RD, Loc, DNI,
