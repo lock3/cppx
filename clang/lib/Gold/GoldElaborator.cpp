@@ -251,12 +251,14 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       FD = CtorDecl = clang::CXXConstructorDecl::Create(Context.CxxAST, RD, Loc, DNI2,
           clang::QualType(), nullptr, ES, false, false,
           clang::ConstexprSpecKind::CSK_unspecified);
+      CtorDecl->setImplicit(false);
+      CtorDecl->setDefaulted(false);
       CtorDecl->setBody(nullptr);
       CtorDecl->setAccess(clang::AS_public);
       clang::FunctionProtoType::ExtProtoInfo EPI;
 
       // Build an exception specification pointing back at this member.
-      EPI.ExceptionSpec.Type = clang::EST_Unevaluated;
+      EPI.ExceptionSpec.Type = clang::EST_None;
       EPI.ExceptionSpec.SourceDecl = CtorDecl;
 
       // Set the calling convention to the default for C++ instance methods.
@@ -267,19 +269,12 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       if (AS != clang::LangAS::Default) {
         EPI.TypeQuals.addAddressSpace(AS);
       }
-      auto QT = Context.CxxAST.getFunctionType(Context.CxxAST.VoidTy, clang::None, EPI);
+      const clang::FunctionProtoType *FPT = cast<clang::FunctionProtoType>(
+        TInfo->getType().getTypePtr());
+      auto QT = Context.CxxAST.getFunctionType(Context.CxxAST.VoidTy,
+        FPT->getParamTypes(), EPI);
       CtorDecl->setType(QT);
 
-      llvm::SmallVector<clang::ParmVarDecl*, 0> Params;
-      CtorDecl->setParams(Params);
-      SemaRef.getCxxSema().PushOnScopeChains(CtorDecl, SemaRef.getCurClangScope());
-      SemaRef.getCxxSema().CheckConstructor(CtorDecl);
-      SemaRef.getCxxSema().CheckOverrideControl(CtorDecl);
-      // Need to add 
-      clang::LookupResult R(SemaRef.getCxxSema(), DNI2, clang::Sema::LookupOrdinaryName);
-      if(SemaRef.getCxxSema().CheckFunctionDeclaration(SemaRef.getCurClangScope(),
-          CtorDecl, R, true)) {
-      }
     } else {
       FD = clang::CXXMethodDecl::Create(Context.CxxAST, RD, Loc, DNI,
                                         TInfo->getType(), TInfo,
@@ -323,6 +318,18 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Add the declaration and update bindings.
   if (!Template && !D->declaresConstructor()) {
     Owner->addDecl(FD);
+  }
+  if(D->declaresConstructor()) {
+    clang::CXXConstructorDecl* CtorDecl = cast<clang::CXXConstructorDecl>(D->Cxx);    
+    clang::DeclarationNameInfo DNI2(Name, D->Decl->getLoc());
+    SemaRef.getCxxSema().PushOnScopeChains(CtorDecl, SemaRef.getCurClangScope());
+    SemaRef.getCxxSema().CheckConstructor(CtorDecl);
+    SemaRef.getCxxSema().CheckOverrideControl(CtorDecl);
+    // Need to add 
+    clang::LookupResult R(SemaRef.getCxxSema(), DNI2, clang::Sema::LookupOrdinaryName);
+    if(SemaRef.getCxxSema().CheckFunctionDeclaration(SemaRef.getCurClangScope(),
+        CtorDecl, R, true)) {
+    }
   }
   return FD;
 }

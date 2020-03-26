@@ -98,24 +98,26 @@ main() : int!
   ASSERT_EQ(result, 5);
 }
 
-// TEST(GoldClassExec, ConstructorCall_Test) {
-//   StringRef Code = R"(
-// c : type = class:
-//   x : int = 5
-//   y : bool
-//   constructor() : void! { }
-    
-
+TEST(GoldClassExec, DefaultConstructorCall_WithSpecialInitializer) {
+  StringRef Code = R"(
+c : type = class:
+  x : int = 5
+  y : bool
+  constructor() : void!
+    x = 3
+  foo() : int!
+    return x
   
-// main() : int!
-//   q : c = c()
-//   return q.foo()
-// )";
-//   LLVMContext Context;
-//   std::unique_ptr<ExecutionEngine> EE;
-//   ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
-//   MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
-//   ASSERT_TRUE(CB);
-//   int result = CB();
-//   ASSERT_EQ(result, 5);
-// }
+
+main() : int!
+  q : c
+  return q.foo()
+)";
+  LLVMContext Context;
+  std::unique_ptr<ExecutionEngine> EE;
+  ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
+  MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
+  ASSERT_TRUE(CB);
+  int result = CB();
+  ASSERT_EQ(result, 3);
+}
