@@ -62,6 +62,8 @@ public:
 
   Expression elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType);
   Expression elaborateCall(const CallSyntax *S);
+
+  Expression elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op, const Syntax *RHS);
   Expression elaborateElemCall(const CallSyntax *S);
 
   Expression elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
@@ -70,6 +72,7 @@ public:
 
   Expression elaborateMacro(const MacroSyntax *Macro);
   Expression elaborateClass(const MacroSyntax *Macro);
+
 
 private:
   clang::Expr *handleOperatorDotDot(const CallSyntax *Call);

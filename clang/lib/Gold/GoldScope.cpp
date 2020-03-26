@@ -107,6 +107,11 @@ void Declarator::printSequence(llvm::raw_ostream &os) const {
 //   return nullptr;
 // }
 
+
+Declaration::~Declaration() {
+  delete SavedScope;
+}
+
 // A declarator declares a variable, if it does not declare a function.
 bool Declaration::declaresVariable() const {
   return !declaresFunction() /*&& !declaresType()*/;
@@ -117,13 +122,23 @@ bool Declaration::declaresType() const {
   if (D->Kind == DK_Identifier){
     D = D->Next;
   }
-  if(D) {
-    if(D->Kind == DK_Type) {
-      if(const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
+  if (D)
+    if (D->Kind == DK_Type)
+      if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type))
         return Atom->getSpelling() == "type";
-      }
-    }
-  }
+  return false;
+}
+
+bool Declaration::declaresRecord() const {
+  if (!declaresType()) 
+    return false;
+  if (Cxx)
+    return isa<clang::CXXRecordDecl>(Cxx);
+  if(Init)
+    if (const MacroSyntax *Macro = dyn_cast_or_null<MacroSyntax>(Init))
+      if(Macro->getCall())
+        if (const AtomSyntax *ClsKw = dyn_cast_or_null<AtomSyntax>(Macro->getCall()))
+          return ClsKw->getSpelling() == "class";
   return false;
 }
 
@@ -139,12 +154,35 @@ bool Declaration::declaresFunction() const {
   return false;
 }
 
+bool Declaration::declaresMemberVariable() const {
+  return declaresVariable() && Cxx && clang::isa<clang::FieldDecl>(Cxx);
+}
+
+bool Declaration::declaresMemberFunction() const {
+  return declaresFunction() && Cxx && clang::isa<clang::CXXMethodDecl>(Cxx);
+}
+
+bool Declaration::declaresConstructor() const {
+  return declaresFunction() && Cxx
+    && clang::isa<clang::CXXConstructorDecl>(Cxx);
+}
+
+bool Declaration::declaresDestructor() const {
+  return declaresFunction() && Cxx
+    && clang::isa<clang::CXXConstructorDecl>(Cxx);
+}
+
 // A declarator declares a template if it's first non-id declarator is
 // declares template parameters.
 // FIXME: this might not work for specializations.
 bool Declaration::declaresTemplate() const {
   assert(Decl);
   const Declarator *D = Decl;
+  // TODO: In the future we would need to extend this definition to make sure
+  // that everything works as expected whe we do have an identifier that
+  // is infact also a template name.
+  if (D->Kind != DK_Function)
+    return false;
   if (D->Kind == DK_Identifier)
     D = D->Next;
   if (D)

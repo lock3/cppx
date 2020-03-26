@@ -138,6 +138,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   if (SemaRef.getCurrentScope()->isBlockScope()) {
     if (OpKind == FOK_Colon || OpKind == FOK_Equals) {
       Elaborator E(Context, SemaRef);
+
       clang::Decl *N = E.elaborateDeclSyntax(S);
       if (N)
         return createDeclStmt(CxxAST, SemaRef, N, S->getLoc(),
@@ -213,19 +214,17 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   case FOK_Return: {
     ExprElaborator::Expression RetVal =
       ExprElaborator(Context, SemaRef).elaborateExpr(S->getArgument(0));
-
     if (RetVal.isNull())
       return nullptr;
-
     if (RetVal.is<clang::TypeSourceInfo *>()) {
       SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
                            clang::diag::err_expected_lparen_after_type);
       return nullptr;
     }
-
     ExprMarker(CxxAST, SemaRef).Visit(RetVal.get<clang::Expr *>());
     clang::StmtResult ReturnResult = SemaRef.getCxxSema().
       BuildReturnStmt(S->getCallee()->getLoc(), RetVal.get<clang::Expr *>());
+    
     return ReturnResult.get();
   }
 
