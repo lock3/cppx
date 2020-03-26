@@ -58,10 +58,11 @@ class Sema {
   // Stack of active Scopes.
   llvm::SmallVector<Scope *, 4> ScopeStack;
   // The declaration context.
-  Declaration *CurrentDecl;
+  Declaration *CurrentDecl = nullptr;
+  
 public:
   Sema(SyntaxContext &Context, clang::Sema &S);
-
+  ~Sema();
   // Look through a translation unit and map the identifiers to Clang
   // constructs.
   void IdentifyDecls(const ArraySyntax *S);
@@ -113,6 +114,9 @@ public:
   /// Make D the current declaration.
   void pushDecl(Declaration *D);
 
+  /// Sets the decl context without modifying the clang::Sema class
+  void setCurrentDecl(Declaration *D);
+
   /// Make the owner of CurrentDecl current.
   void popDecl();
 
@@ -152,10 +156,17 @@ public:
 
   clang::QualType lookUpType(clang::IdentifierInfo *Id, Scope *S) const;
 
+  /// This is the clang processing scope. This is mostly for code GenPieces.
+  clang::Scope *getCurClangScope();
+  clang::Scope *enterClangScope(unsigned int ScopeFlags);
+  void leaveClangScope(clang::SourceLocation Loc);
+
 public:
   // The context
   SyntaxContext &Context;
 
+  clang::AttributeFactory AttrFactory;
+  
   // The Clang diagnostics engine.
   clang::DiagnosticsEngine &Diags;
 
@@ -167,6 +178,7 @@ public:
   const clang::IdentifierInfo *OperatorElseII;
   const clang::IdentifierInfo *OperatorReturnII;
   const clang::IdentifierInfo *OperatorReturnsII;
+  const clang::IdentifierInfo *OperatorDotII;
   const clang::IdentifierInfo *OperatorForII;
   const clang::IdentifierInfo *OperatorInII;
 

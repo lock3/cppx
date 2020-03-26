@@ -1,17 +1,54 @@
 set(LLVM_LINK_COMPONENTS
+  Analysis
+  BitReader
+  BitWriter
+  Core
+  Coroutines
+  Coverage
+  ExecutionEngine
+  FrontendOpenMP
+  IPO
+  IRReader
+  AggressiveInstCombine
+  InstCombine
+  Instrumentation
+  LTO
+  Linker
+  MC
+  ObjCARCOpts
+  Object
+  Passes
+  ProfileData
+  Remarks
+  ScalarOpts
   Support
+  Target
+  TransformUtils
+  MCJIT
+  OrcJit
+  Option
+  RuntimeDyld
+  native
+  mcdisassembler
   )
 
 add_clang_unittest(GoldTests
   GoldClassParsing.cpp
   GoldFor.cpp
   GoldFunctionTemplate.cpp
+  GoldMemberExecuteTest.cpp
+  CompileRun.cpp
+  BoolImplicitConversionInit.cpp
+  ConstructorCallParsingTest.cpp
+  BuiltInTypeConstructorsExec.cpp
+  ImplicitCtorExplicitCallExec.cpp
   GoldGlobalParsing.cpp
   )
 
 clang_target_link_libraries(GoldTests
   PRIVATE
   clangAST
+  clangCodeGen
   clangASTMatchers
   clangBasic
   clangFrontend
@@ -19,5 +56,6 @@ clang_target_link_libraries(GoldTests
   clangSema
   clangSerialization
   clangTooling
+  clangDriver
   gold
   )
