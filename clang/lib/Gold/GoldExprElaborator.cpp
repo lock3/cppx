@@ -368,7 +368,6 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) {
     // FIXME: Figure out how to correctly output the diagnostic here.
     llvm::errs() << "Failed to locate given name: \n";
-    S->dump();
     return nullptr;
   }
 
@@ -746,7 +745,6 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
   // is auto. This will be replaced if an explicit type specifier is given.
   clang::QualType AutoType = CxxAST.getAutoDeductType();
   TypeInfo *TInfo = BuildAnyTypeLoc(CxxAST, AutoType, D->getLoc());
-
   for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
     D = *Iter;
     switch (D->Kind) {
@@ -790,11 +788,19 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
       break;
     }
 
+    case DK_NameQualifier:{
+      Expression TypeExpr = elaborateQName(D, TInfo);
+      if (TypeExpr.isNull())
+        return nullptr;
+
+      TInfo = TypeExpr.get<TypeInfo *>();
+      break;
+    }
+    
     default:
       llvm_unreachable("Invalid declarator");
     }
   }
-
   return TInfo;
 }
 
@@ -926,6 +932,151 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
     return BuildAnyTypeLoc(CxxAST, TDType, Loc);
   }
   llvm_unreachable("Unknown type specification");
+}
+
+Expression ExprElaborator::elaborateQName(Declarator *D, TypeInfo *Ty) {
+  if (const AtomSyntax *QualifyingName
+    = dyn_cast<AtomSyntax>(D->Data.QName.Qualifier)) {
+
+    // Attempting to do qualified name lookup
+    clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(
+      QualifyingName->getSpelling())}, QualifyingName->getLoc());
+    clang::LookupResult Results(SemaRef.getCxxSema(), DNI,
+      clang::Sema::LookupNestedNameSpecifierName);
+      
+    if(!SemaRef.lookupUnqualifiedName(Results, SemaRef.getCurrentScope())) {
+      llvm::errs() << "Failed to find qualifier "
+        << QualifyingName->getSpelling() << "\n";
+      return nullptr;
+    }
+    clang::NamedDecl *Decl = Results.getFoundDecl();
+    if (!Decl) {
+      llvm::errs() << "No declaration located.\n";
+      return nullptr;
+    }
+    if (!isa<clang::DeclContext>(Decl)) {
+      llvm::errs() << "Returned result is not a decl context\n";
+      return nullptr;
+    }
+    clang::DeclContext *DC = cast<clang::DeclContext>(Decl);
+
+
+    
+    // Need a qualified version of each of the type function so that we can properly
+    // lookup nested types.
+    // TODO: Do scope look up.
+    Declarator *NestedDecl = D->Data.QName.NestedName;
+
+    // The type of a declarator is constructed back-to-front.
+    llvm::SmallVector<Declarator *, 4> Decls;
+    getDeclarators(NestedDecl, Decls);
+
+    // The type is computed from back to front. Start by assuming the type
+    // is auto. This will be replaced if an explicit type specifier is given.
+    // clang::QualType AutoType = CxxAST.getAutoDeductType();
+    // TypeInfo *TInfo = BuildAnyTypeLoc(CxxAST, AutoType, D->getLoc());
+    for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
+      D = *Iter;
+      switch (D->Kind) {
+      case DK_Identifier:{
+        if(!isa<AtomSyntax>(D->Data.Id)) {
+          llvm::errs() << "Some how the identifier I Received wasn't valid\n";
+          return nullptr;
+        }
+        const AtomSyntax *NameInSyntax = dyn_cast<AtomSyntax>(D->Data.Id);
+
+        // Handling nested lookup.
+        clang::DeclarationNameInfo DNI2({
+            &CxxAST.Idents.get(NameInSyntax->getSpelling())
+          }, NameInSyntax->getLoc());
+        
+        auto LookUpResults = DC->lookup(DNI2.getName());
+        if (LookUpResults.empty()) {
+          // TODO: Figure out appropriate error here.
+          llvm::errs() << "Failed to locate valid nested memebr\n";
+          return nullptr;
+        }
+
+        if (LookUpResults.size() != 1) {
+          // TODO: Figure out appropriate error here.
+          llvm::errs() << "We have lookup ambiguity unable to figure out what "
+              "is meant by " << DNI2.getName().getAsString() << "\n";
+          return nullptr;
+        }
+
+        if (!isa<clang::TypeDecl>(LookUpResults.front())) {
+          // TODO: Figure out appropriate error here.
+          llvm::errs() << "Returned result is not a type.\n";
+          return nullptr;
+        }
+
+        clang::TypeDecl *TD = cast<clang::TypeDecl>(LookUpResults.front());
+        clang::QualType QT = Context.CxxAST.getTypeDeclType(TD);
+        return BuildAnyTypeLoc(CxxAST, QT, D->getLoc()); 
+        break;
+      }
+      case DK_Pointer:
+      case DK_Array:
+      case DK_Function:
+      case DK_Type:
+        llvm_unreachable("Qualified versions of type look up are not available yet "
+          "are not supported yet.");
+      // case DK_Pointer: {
+      //   Expression TypeExpr = elaboratePointerType(D, TInfo);
+      //   if (TypeExpr.isNull())
+      //     return nullptr;
+
+      //   TInfo = TypeExpr.get<TypeInfo *>();
+      //   break;
+      // }
+
+      // case DK_Array: {
+      //   Expression TypeExpr = elaborateArrayType(D, TInfo);
+      //   if (TypeExpr.isNull())
+      //     return nullptr;
+
+      //   TInfo = TypeExpr.get<TypeInfo *>();
+      //   break;
+      // }
+
+      // case DK_Function: {
+      //   Expression TypeExpr = elaborateFunctionType(D, TInfo);
+      //   if (TypeExpr.isNull())
+      //     return nullptr;
+
+      //   TInfo = TypeExpr.get<TypeInfo *>();
+      //   break;
+      // }
+
+      // case DK_Type: {
+      //   Expression TypeExpr = elaborateExplicitType(D, TInfo);
+      //   if (TypeExpr.isNull())
+      //     return nullptr;
+
+      //   TInfo = TypeExpr.get<TypeInfo *>();
+      //   break;
+      // }
+
+      case DK_NameQualifier:{
+        llvm_unreachable("Arbitrary nesting not implemented yet. Currently we "
+            "only support nesting of a single element.");
+        // Expression TypeExpr = elaborateQName(D, TInfo);
+        // if (TypeExpr.isNull())
+        //   return nullptr;
+
+        // TInfo = TypeExpr.get<TypeInfo *>();
+        break;
+      }
+      
+      default:
+        llvm_unreachable("Invalid declarator");
+      }
+    }
+  }else {
+    llvm_unreachable("Qualifiers that are not atoms are not implemented yet.");
+  }
+  // return TInfo;
+  llvm_unreachable("Incomplete function Still working on it.");
 }
 
 } // namespace gold

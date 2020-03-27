@@ -48,6 +48,10 @@ enum DeclaratorKind {
   /// The id of a declarator.
   DK_Identifier,
 
+  /// This is used to identify which part so the name are qualifiers and not
+  /// the actual type. For example, x.y x would be a DK_NameQualifier
+  DK_NameQualifier,
+
   /// Declares a pointer.
   DK_Pointer,
 
@@ -139,6 +143,21 @@ public:
 
     /// For DK_Array, the array index.
     const Syntax *Index;
+
+    /// This is to help aid in the evaluation of qualified names within
+    /// declarators This will allow for arbitrary nesting of declarators making
+    /// it easier to modify lookup and create necessary types.
+    /// TODO: In the future this is going to need to be further extended into
+    /// a type expression so that we can evaluate template instantiation
+    /// and things like meta functions which include member access.
+    struct QualifiedName {
+      /// In the expression x.y, this is x
+      const Syntax *Qualifier;
+      /// In the expression x.y this is the y. Y could be a template, but it
+      /// shouldn't have a ptr.
+      Declarator *NestedName;
+
+    } QName;
   } Data;
 };
 

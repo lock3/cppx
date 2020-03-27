@@ -831,8 +831,9 @@ clang::QualType Elaborator::getOperatorColonType(const CallSyntax *S) const {
 
   assert(false && "Working on fixing this.");
 }
+static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S);
 
-static Declarator *buildIdDeclarator(const AtomSyntax *S, Declarator *Next) {
+static Declarator *buildIdDeclarator(const Syntax *S, Declarator *Next) {
   Declarator *D = new Declarator(DK_Identifier, Next);
   D->Data.Id = S;
   return D;
@@ -890,6 +891,14 @@ static Declarator *buildArrayDeclarator(const CallSyntax *S,
   D->Data.Index = S->getArgument(0);
   return D;
 }
+static Declarator *buildQualifyingDeclarator(Sema &SemaRef,const Syntax *S,
+                                            const Syntax* ToNest, Declarator *Next) {
+  Declarator *D = new Declarator(DK_NameQualifier, Next);
+  D->Data.Id = S;
+  D->Data.QName.Qualifier = S;
+  D->Data.QName.NestedName = makeDeclarator(SemaRef, ToNest);
+  return D;
+}
 
 /// FIXME: Convert this back to an iterative function, if possible (see
 ///        disabled iterative version below).
@@ -900,7 +909,6 @@ static Declarator *buildArrayDeclarator(const CallSyntax *S,
 /// we build a declarator fragment.
 static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
                                   Declarator *Next) {
-
   // If we find an atom, then we're done.
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(S)) {
     
@@ -917,6 +925,7 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
   }
   else if(const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
     if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
+
       // Check for "builtin" operators in the declarator.
       if (Callee->getSpelling() == "operator':'") {
 
@@ -932,6 +941,7 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
         // Otherwise, rhs is just a literal type.
         return makeDeclarator(SemaRef, Call->getArgument(0),
                               buildTypeDeclarator(Call, Next));
+
       } else if (Callee->getSpelling() == "operator'^'") {
         // We have a pointer operator, so first create a declarator
         // out of its inner type and use that as `Next`.
@@ -940,28 +950,24 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
         // Now build a pointer-declarator that owns its inner type and
         // we're done.
         return buildPointerDeclarator(Call, Next);
+
       } else if (Callee->getSpelling() == "operator'[]'") {
         // This is a prefix operator'[]', meaning we are creating an array type.
         Next = makeDeclarator(SemaRef, Call->getArgument(1), Next);
         return makeDeclarator(SemaRef, Call->getArgument(0),
                               buildArrayDeclarator(Call, Next));
+      } else if (Callee->getSpelling() == "operator'.'") {
+        // const AtomSyntax *NameQualifier = cast<AtomSyntax>();
+        return buildQualifyingDeclarator(SemaRef, Call->getArgument(0),
+                                         Call->getArgument(1), Next);
       }
-      // if(SemaRef.getCurrentScope()->getKind() == SK_Class) {
-      //   // Otherwise, this appears to be a function declarator.
-      //   // return makeDeclarator(SemaRef, Callee,
-      //   //                       buildFunctionDeclarator(Call, Next));
-      //   // assert(false && "Encountered member function!\n");
-      // } else {
-        // Otherwise, this appears to be a function declarator.
-        return makeDeclarator(SemaRef, Callee,
-                              buildFunctionDeclarator(Call, Next));
+      // Otherwise, this appears to be a function declarator.
+      return makeDeclarator(SemaRef, Callee,
+                            buildFunctionDeclarator(Call, Next));
 
-      // }
     } else if (const ElemSyntax *Callee = dyn_cast<ElemSyntax>(Call->getCallee())) {
       if(SemaRef.getCurrentScope()->getKind() == SK_Class) {
         // Otherwise, this appears to be a function declarator.
-        // return makeDeclarator(SemaRef, Callee,
-        //                       buildFunctionDeclarator(Call, Next));
         assert(false && "Encountered templated member function!\n");
       } else {
         // We have a template parameter list here, so build the
@@ -979,47 +985,6 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S) {
   Declarator *D = nullptr;
   return makeDeclarator(SemaRef, S, D);
 }
-
-#if 0
-/// Analyze and decompose the declarator.
-///
-/// This is a recursive walk through a series of call nodes. In each step,
-/// we build a declarator fragment.
-static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S) {
-  Declarator* D = nullptr;
-
-  while (true) {
-    // If we find an atom, then we're done.
-    if (const auto *Atom = dyn_cast<AtomSyntax>(S)) {
-      D = buildIdDeclarator(Atom, D);
-      break;
-    }
-
-    else if (const auto *Call = dyn_cast<CallSyntax>(S)) {
-      const Syntax *Callee = Call->getCallee();
-      if (const auto *Atom = dyn_cast<AtomSyntax>(Callee)) {
-        // Check for "builtin" operators in the declarator.
-        if (Atom->getSpelling() == "operator':'") {
-
-          D = buildTypeDeclarator(Call, D);
-          S = Call->getArgument(0);
-          continue;
-        }
-
-        // Otherwise, this appears to be a function declarator.
-        D = buildFunctionDeclarator(Call, D);
-        S = Callee;
-        continue;
-      }
-    }
-
-    // FIXME: Is there anything else we can get here?
-    return nullptr;
-  }
-
-  return D;
-}
-#endif
 
 static clang::IdentifierInfo *getIdentifier(Elaborator &Elab,
                                             const Declarator *D) {

@@ -154,7 +154,6 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         if (!FoundDecl->Cxx)
           Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
 
-        // FoundDecl->Cxx->dump();
         clang::NamedDecl *ND = cast<clang::NamedDecl>(FoundDecl->Cxx);
 
         // FIXME: check if this is a tag decl, not a type decl!
