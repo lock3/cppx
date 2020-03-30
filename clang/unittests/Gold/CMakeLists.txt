@@ -3,6 +3,7 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_clang_unittest(GoldTests
+  GoldAuto.cpp
   GoldClassParsing.cpp
   GoldFor.cpp
   GoldFunctionTemplate.cpp
