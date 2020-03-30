@@ -32,6 +32,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : CxxSema(CxxSema), CurrentDecl(), Context(Context),
     Diags(Context.CxxAST.getSourceManager().getDiagnostics())
 {
+  CxxSema.CurScope = nullptr;
   OperatorColonII = &Context.CxxAST.Idents.get("operator':'");
   OperatorExclaimII = &Context.CxxAST.Idents.get("operator'!'");
   OperatorEqualsII = &Context.CxxAST.Idents.get("operator'='");
@@ -39,8 +40,15 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorElseII = &Context.CxxAST.Idents.get("operator'else'");
   OperatorReturnII = &Context.CxxAST.Idents.get("operator'return'");
   OperatorReturnsII = &Context.CxxAST.Idents.get("operator'returns'");
+  OperatorDotII = &Context.CxxAST.Idents.get("operator'.'");
   OperatorForII = &Context.CxxAST.Idents.get("operator'for'");
   OperatorInII = &Context.CxxAST.Idents.get("operator'in'");
+}
+
+Sema::~Sema() {
+  assert(ScopeStack.size() == 0 && "Scope stack is not empty.");
+  delete getCurClangScope();
+  CxxSema.CurScope = nullptr;
 }
 
 Scope *Sema::getCurrentScope() {
@@ -107,6 +115,10 @@ void Sema::pushDecl(Declaration *D) {
   getCxxSema().CurContext = clang::Decl::castToDeclContext(D->Cxx);
 }
 
+void Sema::setCurrentDecl(Declaration *D) {
+  CurrentDecl = D;
+}
+
 void Sema::popDecl() {
   CurrentDecl = CurrentDecl->getOwner();
   getCxxSema().CurContext = CurrentDecl ?
@@ -126,7 +138,8 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 
   clang::Sema::LookupNameKind LookupKind = R.getLookupKind();
 
-  if (LookupKind == clang::Sema::LookupTagName) {
+  if (LookupKind == clang::Sema::LookupTagName ||
+      LookupKind == clang::Sema::LookupAnyName) {
     auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
     if (BuiltinMapIter != BuiltinTypes.end())
       return true;
@@ -141,6 +154,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         if (!FoundDecl->Cxx)
           Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
 
+        // FoundDecl->Cxx->dump();
         clang::NamedDecl *ND = cast<clang::NamedDecl>(FoundDecl->Cxx);
 
         // FIXME: check if this is a tag decl, not a type decl!
@@ -156,23 +170,57 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         // If there is a described template, add that to the result instead
         // of the bare declaration.
         if (FoundDecl->declaresTemplate()) {
-          if (auto *FD = dyn_cast<clang::FunctionDecl>(ND))
-            R.addDecl(FD->getDescribedFunctionTemplate());
-          else if (auto *VD = dyn_cast<clang::VarDecl>(ND))
-            R.addDecl(VD->getDescribedVarTemplate());
+          if (auto *FD = dyn_cast<clang::FunctionDecl>(ND)) {
+            clang::FunctionTemplateDecl *TempDecl
+              = FD->getDescribedFunctionTemplate();
+            if (TempDecl) 
+              R.addDecl(TempDecl);
+            else
+              llvm::outs() << "Massive issue encountered "
+                "getDescribedFunctionTemplate returned null\n";
+          } else if (auto *VD = dyn_cast<clang::VarDecl>(ND)){
+            clang::VarTemplateDecl *TempDecl = VD->getDescribedVarTemplate();
+            if(TempDecl)
+              R.addDecl(TempDecl);
+            else
+              llvm::outs() << "Massive issue encountered getDescribedVarTemplate "
+                "Returned null.\n";
+          } else 
+            llvm::outs() << "Unknown template type received\n";
         } else {
           R.addDecl(ND);
         }
       }
-
       break;
     }
 
     S = S->getParent();
   }
-
   return !R.empty();
 }
+
+clang::Scope *Sema::getCurClangScope() {
+  return CxxSema.CurScope;
+}
+
+clang::Scope *Sema::enterClangScope(unsigned int ScopeFlags) {
+  CxxSema.CurScope = new clang::Scope(getCurClangScope(), ScopeFlags, Diags);
+  return CxxSema.CurScope;
+}
+
+void Sema::leaveClangScope(clang::SourceLocation Loc) {
+  assert(getCurClangScope() && "Clang scope imbalance!");
+
+  // Inform the actions module that this scope is going away if there are any
+  // decls in it.
+  CxxSema.ActOnPopScope(Loc, getCurClangScope());
+
+  clang::Scope *OldScope = getCurClangScope();
+  CxxSema.CurScope = OldScope->getParent();
+
+  delete OldScope;
+}
+
 
 } // namespace gold
 

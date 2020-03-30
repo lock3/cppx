@@ -25,6 +25,10 @@
 #include <map>
 #include <set>
 
+namespace clang {
+class Scope;
+}
+
 namespace llvm {
 
 class raw_ostream;
@@ -107,6 +111,9 @@ public:
   /// For non-identifiers, the call representing the declarator component.
   const Syntax *Call = nullptr;
 
+  // The tag's body.
+  clang::Scope *TagScope = nullptr;
+
   /// TODO: What other information do we need here?
   union {
     /// For DK_Identifier, the id.
@@ -150,6 +157,8 @@ public:
     : Cxt(Cxt), Op(Op), Decl(Decl), Init(Init)
   { }
 
+  ~Declaration();
+
   /// The enclosing declaration.
   Declaration *getOwner() const {
     return Cxt;
@@ -161,8 +170,27 @@ public:
   /// True if this is a type declaration.
   bool declaresType() const;
 
+  /// Checks if the type declaration is declaring a record.
+  bool declaresRecord() const;
+
   /// True if this declares a function.
   bool declaresFunction() const;
+
+  /// Returns true if the CXX type is a FieldDecl.
+  /// This is true when declares variable is also true some times.
+  bool declaresMemberVariable() const;
+
+  /// Returns true if the declaration is inside of a class, and it's a member
+  /// function.
+  bool declaresMemberFunction() const;
+
+  /// Returns true if the declaration is inside of a class, and it's a
+  /// constructor
+  bool declaresConstructor() const;
+
+  /// Returns True if the given function is a destructor, and it's declared
+  /// within a class.
+  bool declaresDestructor() const;
 
   /// True if this declares a template.
   bool declaresTemplate() const;
@@ -396,7 +424,6 @@ public:
     if (Range.empty()) {
       return std::set<Declaration *>();
     }
-
     std::set<Declaration *> Ret;
     for (auto It = Range.first; It != Range.second; ++It)
       Ret.insert(It->second);
