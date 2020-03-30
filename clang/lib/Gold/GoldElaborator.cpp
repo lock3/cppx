@@ -108,8 +108,8 @@ clang::Decl *Elaborator::elaborateDeclType(const Syntax *S) {
 static clang::Decl*
 processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
                     Declaration *D) {
-  clang::SourceLocation EndOfClassSrcLoc(D->Init->getLoc());   
   using namespace clang;
+
   MultiTemplateParamsArg MTP;
   bool IsOwned = false;
   bool IsDependent = false;
@@ -735,7 +735,6 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
   SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(Scope, R,
     clang::SourceLocation(), true, clang::SourceLocation());
   SemaRef.setCurrentDecl(D);
-  clang::SourceLocation EndOfClassSrcLoc(D->Init->getLoc());
   // Since all declarations have already been added, we don't need to do another
   // Reordering scan. Maybe?
 
