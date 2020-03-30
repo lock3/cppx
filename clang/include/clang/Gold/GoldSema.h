@@ -184,7 +184,8 @@ public:
 
   // An RAII type for constructing scopes.
   struct ScopeRAII {
-    ScopeRAII(Sema &S, ScopeKind K, const Syntax *ConcreteTerm, Scope **SavedScope = nullptr)
+    ScopeRAII(Sema &S, ScopeKind K, const Syntax *ConcreteTerm,
+              Scope **SavedScope = nullptr)
       : S(S), SavedScope(SavedScope), ConcreteTerm(ConcreteTerm) {
       S.enterScope(K, ConcreteTerm);
     }

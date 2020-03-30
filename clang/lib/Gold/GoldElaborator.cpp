@@ -646,6 +646,7 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
                             << Ty << "a constructor";
       }
     }
+
     SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
     return;
   }
@@ -945,12 +946,10 @@ static Declarator *buildArrayDeclarator(const CallSyntax *S,
 ///
 /// This is a recursive walk through a series of call nodes. In each step,
 /// we build a declarator fragment.
-static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
-                                  Declarator *Next) {
-
+Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
   // If we find an atom, then we're done.
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(S)) {
-    
+
     // This might be a typename, in which case, build a type-declarator.
     clang::DeclarationNameInfo DNI(
       {&SemaRef.Context.CxxAST.Idents.get(Atom->getSpelling()), S->getLoc()});
@@ -961,8 +960,7 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
     // Otherwise just build an identifier-declarator.
     return buildIdDeclarator(Atom, Next);
 
-  }
-  else if(const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
+  } else if(const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
     if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
       // Check for "builtin" operators in the declarator.
       if (Callee->getSpelling() == "operator':'") {
@@ -992,37 +990,27 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
         Next = makeDeclarator(SemaRef, Call->getArgument(1), Next);
         return makeDeclarator(SemaRef, Call->getArgument(0),
                               buildArrayDeclarator(Call, Next));
+      } else if (Callee->getSpelling() == "operator'in'") {
+        return makeDeclarator(SemaRef, Call->getArgument(0), Next);
       }
-      // if(SemaRef.getCurrentScope()->getKind() == SK_Class) {
-      //   // Otherwise, this appears to be a function declarator.
-      //   // return makeDeclarator(SemaRef, Callee,
-      //   //                       buildFunctionDeclarator(Call, Next));
-      //   // assert(false && "Encountered member function!\n");
-      // } else {
-        // Otherwise, this appears to be a function declarator.
-        return makeDeclarator(SemaRef, Callee,
-                              buildFunctionDeclarator(Call, Next));
 
-      // }
+      // Otherwise, this appears to be a function declarator.
+      return makeDeclarator(SemaRef, Callee, buildFunctionDeclarator(Call, Next));
     } else if (const ElemSyntax *Callee = dyn_cast<ElemSyntax>(Call->getCallee())) {
-      if(SemaRef.getCurrentScope()->getKind() == SK_Class) {
-        // Otherwise, this appears to be a function declarator.
-        // return makeDeclarator(SemaRef, Callee,
-        //                       buildFunctionDeclarator(Call, Next));
-        assert(false && "Encountered templated member function!\n");
-      } else {
-        // We have a template parameter list here, so build the
-        // function declarator accordingly.
-        return makeDeclarator(SemaRef, Callee->getObject(),
-                              buildFunctionDeclarator(Call, Callee, Next));
-      }
+      assert(SemaRef.getCurrentScope()->getKind() != SK_Class &&
+             "templated member functions not implemented");
+
+      // We have a template parameter list here, so build the
+      // function declarator accordingly.
+      return makeDeclarator(SemaRef, Callee->getObject(),
+                            buildFunctionDeclarator(Call, Callee, Next));
     }
   }
 
   return nullptr;
 }
 
-static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S) {
+Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S) {
   Declarator *D = nullptr;
   return makeDeclarator(SemaRef, S, D);
 }
@@ -1129,6 +1117,9 @@ void Elaborator::identifyDecl(const Syntax *S) {
         Decl = Args->getChild(0);
         Init = Args->getChild(1);
       } else if (Op == "operator':'") {
+        Decl = S;
+        Init = nullptr;
+      } else if (Op == "operator'in'") {
         Decl = S;
         Init = nullptr;
       } else {

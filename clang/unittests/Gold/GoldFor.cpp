@@ -18,12 +18,24 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-TEST(ForRange, SimpleForRange) {
+TEST(ForRange, SimpleForRangeArray) {
   StringRef Code = R"(
 main() : int!
   xs : [3]int = array{0, 1, 2}
   y : int = 0
   for (x : int in xs):
+    y += x
+)";
+
+  SimpleGoldParseTest(Code);
+}
+
+TEST(ForRange, AutoForRangeArray) {
+  StringRef Code = R"(
+main() : int!
+  xs = array{0, 1, 2}
+  y : int = 0
+  for (x in xs):
     y += x
 )";
 

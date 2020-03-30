@@ -363,6 +363,32 @@ clang::Stmt *StmtElaborator::elaborateArrayMacroStmt(const MacroSyntax *S) {
   return DS;
 }
 
+// An auto-deduced operator'in' call does not appear to be a declaration to our
+// elaborator, so we will have to fabricate something here.
+static clang::DeclStmt *
+createForRangeLoopVarDecl(SyntaxContext &Ctx, Sema &SemaRef,
+                          const CallSyntax *S) {
+  clang::ASTContext &CxxAST = Ctx.CxxAST;
+  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  clang::TypeSourceInfo *TInfo =
+    CxxAST.CreateTypeSourceInfo(CxxAST.getAutoDeductType());
+  clang::SourceLocation Loc = S->getArgument(0)->getLoc();
+
+  llvm::StringRef Name = cast<AtomSyntax>(S->getArgument(0))->getSpelling();
+  clang::IdentifierInfo *Id = &CxxAST.Idents.get(Name);
+  clang::VarDecl *VD =
+    clang::VarDecl::Create(CxxAST, Owner, Loc, Loc, Id, TInfo->getType(),
+                           TInfo, clang::SC_Auto);
+
+  Elaborator(Ctx, SemaRef).identifyDecl(S);
+  Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
+  D->Cxx = VD;
+
+  clang::DeclStmt *DS = new (CxxAST) clang::DeclStmt(
+    SemaRef.getCxxSema().ConvertDeclToDeclGroup(VD).get(), Loc, Loc);
+  return DS;
+}
+
 clang::Stmt *StmtElaborator::handleRangeBasedFor(const ListSyntax *S,
                                                  clang::SourceLocation ForLoc) {
   assert(isa<CallSyntax>(S->getChild(0)) && "Invalid argument in for range");
@@ -370,8 +396,10 @@ clang::Stmt *StmtElaborator::handleRangeBasedFor(const ListSyntax *S,
   assert(cast<AtomSyntax>(InCall->getCallee())->getSpelling() == "operator'in'"
          && "For range statement must have a top-level operator'in' call");
 
-  clang::Stmt *LoopVar =
+  clang::Stmt *LoopVar = isa<AtomSyntax>(InCall->getArgument(0)) ?
+    createForRangeLoopVarDecl(Context, SemaRef, InCall) :
     StmtElaborator(Context, SemaRef).elaborateStmt(InCall->getArgument(0));
+
   if (!LoopVar)
     return nullptr;
 
@@ -415,6 +443,7 @@ clang::Stmt *StmtElaborator::elaborateForStmt(const MacroSyntax *S) {
     clang::Scope::ContinueScope |
     clang::Scope::DeclScope     |
     clang::Scope::ControlScope);
+  Sema::ScopeRAII ForScope(SemaRef, SK_Control, S);
 
   // FIXME: for now, we are assuming this is range-based; it may not be.
   clang::Stmt *ForRange = handleRangeBasedFor(Arguments, ForLoc);

@@ -265,6 +265,8 @@ enum ScopeKind {
   /// The scope associated with a class definition
   SK_Class,
 
+  /// The scope associated with a control statement.
+  SK_Control,
 };
 
 template<typename K, typename V>
@@ -329,8 +331,6 @@ public:
   using TypeDecls = llvm::DenseMap<llvm::StringRef, clang::QualType>;
   TypeDecls Types;
 
-  // using IdMapType = std::multimap<clang::IdentifierInfo const*, Declaration *>;
-  // using IdMapType = llvm::DenseMap<clang::IdentifierInfo const*, Declaration *>;
   IdMapType<clang::IdentifierInfo const*, Declaration *> IdMap;
 
   // FIXME: Is there any purpose for this at all?
