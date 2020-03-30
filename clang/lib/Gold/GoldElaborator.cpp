@@ -419,6 +419,34 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   SemaRef.popDecl();
 }
 
+/// In the case of an automatically deduced array macro, <initalizer_list>
+/// needs to be included to perform deduction. In that case, just construct
+/// the necessary array type manually.
+/// ex:
+///
+/// \code
+///   xs = array{0, 1, 2};
+/// \endcode
+///
+/// Here, we construct array type [sizeof(list)]typeof(list[0])
+static clang::QualType buildImplicitArrayType(clang::ASTContext &Ctx,
+                                              clang::Sema &SemaRef,
+                                              clang::InitListExpr *List) {
+  if (!List->getNumInits()) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "Cannot create an empty array");
+    SemaRef.Diags.Report(List->getBeginLoc(), DiagID);
+    return clang::QualType();
+  }
+
+  clang::QualType EltTy = List->getInit(0)->getType();
+  llvm::APSInt Size = llvm::APSInt::get(List->getNumInits());
+
+  return Ctx.getConstantArrayType(EltTy, Size, /*SizeExpr=*/nullptr,
+                                  clang::ArrayType::Normal, 0);
+}
+
 void Elaborator::elaborateVariableInit(Declaration *D) {
   if (!D->Cxx)
     return;
@@ -454,14 +482,34 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   clang::Expr *InitExpr = Init.get<clang::Expr *>();
   // Perform auto deduction.
   if (VD->getType()->isUndeducedType()) {
-    clang::Sema &CxxSema = SemaRef.getCxxSema();
     clang::QualType Ty;
-    auto Result = CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), InitExpr, Ty);
-    if (Result == clang::Sema::DAR_Failed) {
-      // FIXME: Make this a real diagnostic.
-      llvm::errs() << "Failed to deduce type of expression.\n";
-      return;
+
+    // Certain macros must be deduced manually.
+    if (const MacroSyntax *InitM = dyn_cast<MacroSyntax>(D->Init)) {
+        assert (isa<AtomSyntax>(InitM->getCall()) && "Unexpected macro call");
+        assert (isa<clang::InitListExpr>(InitExpr) &&
+                "Invalid array macro init");
+
+        const AtomSyntax *Call = cast<AtomSyntax>(InitM->getCall());
+        if (Call->getSpelling() == "array") {
+          Ty = buildImplicitArrayType(Context.CxxAST, SemaRef.getCxxSema(),
+                                      cast<clang::InitListExpr>(InitExpr));
+
+          if (Ty.isNull()) {
+            VD->setInvalidDecl();
+            return;
+          }
+        }
+    } else {
+      clang::Sema &CxxSema = SemaRef.getCxxSema();
+      auto Result = CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), InitExpr, Ty);
+      if (Result == clang::Sema::DAR_Failed) {
+        // FIXME: Make this a real diagnostic.
+        llvm::errs() << "Failed to deduce type of expression.\n";
+        return;
+      }
     }
+
     VD->setType(Ty);
   }
 
