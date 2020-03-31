@@ -187,7 +187,7 @@ namespace gold
       return consumeToken();
     }
 
-    Syntax* parseFile();
+    Syntax *parseFile();
 
     /// Determines how arrays and lists are flattened during parsing.
     /// By "flattened" we mean removing (i.e., not representing) empty
@@ -200,73 +200,79 @@ namespace gold
       ArgArray,
     };
 
-    Syntax* parseArray(ArraySemantic S);
+    Syntax *parseArray(ArraySemantic S);
     void parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec);
-    Syntax* parseList(ArraySemantic S);
+    Syntax *parseList(ArraySemantic S);
     void parseList(llvm::SmallVectorImpl<Syntax *> &Vec);
 
-    Syntax* parseExpr();
-    Syntax* parseDef();
-    Syntax* parseOr();
-    Syntax* parseAnd();
-    Syntax* parseCmp();
-    Syntax* parseTo();
-    Syntax* parseAdd();
-    Syntax* parseMul();
+    Syntax *parseExpr();
+    Syntax *parseDef();
+    Syntax *parseOr();
+    Syntax *parseAnd();
+    Syntax *parseCmp();
+    Syntax *parseTo();
+    Syntax *parseAdd();
+    Syntax *parseMul();
 
-    Syntax* parseMacro();
-    Syntax* parseIf();
-    Syntax* parseWhile();
-    Syntax* parseFor();
+    Syntax *parseMacro();
+    Syntax *parseIf();
+    Syntax *parseWhile();
+    Syntax *parseFor();
 
-    Syntax* parsePre();
-    Syntax* parsePost();
-    Syntax* parseCall(Syntax* fn);
-    Syntax* parseElem(Syntax* map);
-    Syntax* parseDot(Syntax* obj);
-    Syntax* parseArrayPrefix();
+    Syntax *parsePre();
+    Syntax *parsePost();
+    Syntax *parseCall(Syntax *fn);
+    Syntax *parseElem(Syntax *map);
+    Syntax *parseDot(Syntax *obj);
+    Syntax *parseArrayPrefix();
+    Syntax *parsePostAttr(Syntax *Pre);
 
-    Syntax* parsePrimary();
-    Syntax* parseId();
-    Syntax* parseParen();
+    Syntax *parsePrimary();
+    Syntax *parseId();
+    Syntax *parseParen();
 
-    Syntax* parseOf();
-    Syntax* parseImm();
+    Syntax *parseOf();
+    Syntax *parseImm();
 
-    Syntax* parseBlock();
-    Syntax* parseBracedArray();
-    Syntax* parseNestedArray();
+    Syntax *parseBlock();
+    Syntax *parseBracedArray();
+    Syntax *parseNestedArray();
 
-    Syntax* parsePreAttr();
-    Syntax* parseDocAttr();
+    Syntax *parsePreAttr();
+    Syntax *parseDocAttr();
 
-    Syntax* parseCatch();
+    Syntax *parseCatch();
 
     // Primary expressions
-    Syntax* parseReserved();
-    Syntax* parseKey();
-    Syntax* parseWord();
-    Syntax* parseChar();
-    Syntax* parseString();
-    Syntax* parseNum();
+    Syntax *parseReserved();
+    Syntax *parseKey();
+    Syntax *parseWord();
+    Syntax *parseChar();
+    Syntax *parseString();
+    Syntax *parseNum();
 
     // Semantic actions
 
-    Syntax* onAtom(const Token& tok);
-    Syntax* onLiteral(const Token& tok);
-    Syntax* onArray(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
-    Syntax* onList(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
-    Syntax* onBinary(const Token& tok, Syntax* e1, Syntax* e2);
-    Syntax* onUnary(const Token& tok, Syntax* e1);
-    Syntax* onCall(const TokenPair& toks, Syntax* e1, Syntax* e2);
-    Syntax* onCall(Syntax* e1, Syntax* e2);
-    Syntax* onElem(const TokenPair& toks, Syntax* e1, Syntax* e2);
-    Syntax* onMacro(Syntax* e1, Syntax* e2);
-    Syntax* onIf(const Token& tok, Syntax* e1, Syntax* e2, Syntax* e3);
-    Syntax* onElse(const Token& tok, Syntax* e1);
-    Syntax* onLoop(const Token& tok, Syntax* e1, Syntax* e2);
-    Syntax* onFile(const llvm::SmallVectorImpl<Syntax*>& Vec);
-    Syntax* onError() const;
+    Syntax *onAtom(const Token& tok);
+    Syntax *onLiteral(const Token& tok);
+    Syntax *onArray(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
+    Syntax *onList(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
+    Syntax *onBinary(const Token& tok, Syntax *e1, Syntax *e2);
+    Syntax *onUnary(const Token& tok, Syntax *e1);
+    Syntax *onCall(const TokenPair& toks, Syntax *e1, Syntax *e2);
+    Syntax *onCall(Syntax *e1, Syntax *e2);
+    Syntax *onElem(const TokenPair& toks, Syntax *e1, Syntax *e2);
+    Syntax *onMacro(Syntax *e1, Syntax *e2);
+    Syntax *onIf(const Token& tok, Syntax *e1, Syntax *e2, Syntax *e3);
+    Syntax *onElse(const Token& tok, Syntax *e1);
+    Syntax *onLoop(const Token& tok, Syntax *e1, Syntax *e2);
+    Syntax *onFile(const llvm::SmallVectorImpl<Syntax*>& Vec);
+    Syntax *onError() const;
+
+    /// Whether the '>' token acts as an operator or not. This will be
+    /// true except when we are parsing an expression within a post-attribute,
+    /// where the '>' closes the attribute.
+    bool GreaterThanIsOperator = true;
 
     /// The lexer.
     Lexer Lex;
@@ -279,6 +285,23 @@ namespace gold
 
     // Keeps track of information and memory associated with our Gold AST.
     SyntaxContext &Context;
+  };
+
+  /// RAII object that makes '>' behave either as an operator
+  /// or as the closing angle bracket for a post-attribute.
+  class GreaterThanIsOperatorScope
+  {
+    bool &GreaterThanIsOperator;
+    bool OldGreaterThanIsOperator;
+  public:
+    GreaterThanIsOperatorScope(bool &GTIO, bool Val)
+      : GreaterThanIsOperator(GTIO), OldGreaterThanIsOperator(GTIO) {
+      GreaterThanIsOperator = Val;
+    }
+
+    ~GreaterThanIsOperatorScope() {
+      GreaterThanIsOperator = OldGreaterThanIsOperator;
+    }
   };
 
 } // namespace gold

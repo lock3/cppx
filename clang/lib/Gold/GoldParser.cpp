@@ -31,6 +31,7 @@ enum Kind
   Braces,
   Brackets,
   Tabs,
+  Angles,
 };
 } // namespace enc
 
@@ -42,6 +43,7 @@ TokenKind OpenTokens[]
   tok::LeftBrace,
   tok::LeftBracket,
   tok::Indent,
+  tok::Less,
 };
 
 TokenKind CloseTokens[]
@@ -50,6 +52,7 @@ TokenKind CloseTokens[]
   tok::RightBrace,
   tok::RightBracket,
   tok::Dedent,
+  tok::Greater,
 };
 
 /// A class to help match enclosing tokens.
@@ -112,6 +115,11 @@ struct EnclosingTabs : EnclosingTokens<enc::Tabs>
   using EnclosingTokens<enc::Tabs>::EnclosingTokens;
 };
 
+struct EnclosingAngles : EnclosingTokens<enc::Angles>
+{
+  using EnclosingTokens<enc::Angles>::EnclosingTokens;
+};
+
 } // namespace
 
 static Syntax *makeOperator(const SyntaxContext &Ctx,
@@ -119,6 +127,7 @@ static Syntax *makeOperator(const SyntaxContext &Ctx,
                             llvm::StringRef Op);
 static Syntax *makeList(const SyntaxContext &Ctx,
                         std::initializer_list<Syntax *> List);
+static Attribute *makeAttr(const SyntaxContext &Ctx, Syntax *Arg);
 
 Parser::Parser(SyntaxContext &Context, clang::SourceManager &SM, File const& F)
   : Lex(SM, F), Diags(SM.getDiagnostics()), Context(Context)
@@ -497,10 +506,11 @@ static bool is_relational_operator(Parser& P) {
   case tok::BangEqual:
   case tok::LessGreater:
   case tok::Less:
-  case tok::Greater:
   case tok::LessEqual:
-  case tok::GreaterEqual:
     return true;
+  case tok::Greater:
+  case tok::GreaterEqual:
+    return P.GreaterThanIsOperator;
   }
 }
 
@@ -760,7 +770,7 @@ Syntax *Parser::parsePost()
       break;
 
     case tok::Less:
-      llvm_unreachable("attributes not implemented");
+      e = parsePostAttr(e);
       break;
 
     case tok::Dot:
@@ -846,6 +856,36 @@ Syntax *Parser::parseArrayPrefix()
   return new (Context)
     CallSyntax(makeOperator(Context, Arg->getLoc(), "[]"),
                makeList(Context, {Arg, Map}));
+}
+
+Syntax *Parser::parsePostAttr(Syntax *Pre) {
+  EnclosingAngles Angles(*this);
+  if (!Angles.expectOpen())
+    return onError();
+
+  GreaterThanIsOperatorScope GTIOS(GreaterThanIsOperator, false);
+
+  // Don't parse an attribute if the angles are empty.
+  Syntax *Arg = !(nextTokenIs(tok::Greater) || nextTokenIs(tok::GreaterEqual))
+    ? parseExpr() : nullptr;
+
+  // In the case where the user ended the attribute list with `>=`, such as
+  // in `x<private>=0`, we use this dirthack to split >= back into
+  // separate tokens.
+  if (nextTokenIs(tok::GreaterEqual)) {
+    clang::SourceLocation Loc = Toks.front().getLocation();
+    Toks.pop_front();
+    Toks.emplace_front(tok::Equal, Loc, getSymbol("="));
+    Toks.emplace_front(tok::Greater, Loc, getSymbol(">"));
+  }
+
+  if (!Angles.expectClose())
+    return onError();
+
+  Attribute *Attr = makeAttr(Context, Arg);
+
+  Pre->addAttribute(Attr);
+  return Pre;
 }
 
 Syntax *Parser::parsePrimary() {
@@ -999,6 +1039,10 @@ static Syntax *makeCall(const SyntaxContext &Ctx, const Token& Tok) {
 static Syntax *makeCall(const SyntaxContext &Ctx, const Token& Tok,
                         Syntax *Args) {
   return new (Ctx) CallSyntax(makeOperator(Ctx, Tok), Args);
+}
+
+static Attribute *makeAttr(const SyntaxContext &Ctx, Syntax *Arg) {
+  return new (Ctx) Attribute(Arg);
 }
 
 Syntax *Parser::onAtom(const Token& Tok) {
