@@ -216,10 +216,9 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
 
     // Processing the case when the returned result is a type.
     if (const clang::TagDecl *TD = R.getAsSingle<clang::TagDecl>()) {
-      llvm::outs() << "We have a decl type as the result of an expression\n";
       return BuildAnyTypeLoc(CxxAST, CxxAST.getTypeDeclType(TD), Loc);
     }
-    llvm_unreachable("Unhandled expression type.");
+    // llvm_unreachable("Unhandled expression type.");
   }
   return nullptr;
 }
@@ -535,22 +534,9 @@ Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     }
     llvm_unreachable("Currently unable to handle member access from non-variables.");
   } 
-  if(ElaboratedLHS.is<clang::TypeSourceInfo*>()) {
-    TypeInfo *TInfo = ElaboratedLHS.get<clang::TypeSourceInfo*>();
-    clang::QualType QT = TInfo->getType();
-    // clang::DeclContext *DC = QT.getType
-    const clang::Type *T = QT.getTypePtrOrNull();
-    clang::TagDecl *TD = T->getAsTagDecl();
-    if (!TD) {
-      llvm::errs() << "Type " << TD->getNameAsString() << " doesn't have any members.";
-      return nullptr;
-    }
-    // if (isa<clang::TagDecl>(T)) {
-    //   llvm::outs() << "We have a tag decl type, and we can now convert into something meaningfull.";
-    // }
-    if (isa<AtomSyntax>(RHS)) {
-      // clang::LookupResult Result = 
-    }
+  if (ElaboratedLHS.is<clang::TypeSourceInfo*>()) {
+    return elaborateNestedLookUpAccess(ElaboratedLHS, Op, RHS);
+
     llvm_unreachable("Handling of member access to template types is not "
         "implemented yet.");
   }
@@ -558,6 +544,74 @@ Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
   llvm_unreachable("Member access to anything other then a member variable "
       "not implemented yet.");
 }
+
+
+static ExprElaborator::Expression handleLookUpInsideType(Sema &SemaRef,
+    clang::ASTContext &CxxAST, Expression Previous,
+    const CallSyntax *Op, const Syntax *RHS) {
+  clang::TypeSourceInfo *TInfo = Previous.get<clang::TypeSourceInfo*>();
+  clang::QualType QT = TInfo->getType();
+  const clang::Type *T = QT.getTypePtrOrNull();
+  clang::TagDecl *TD = T->getAsTagDecl();
+  if (!TD) {
+    // TODO: Figure out the appropriate diagnostic message to output here.
+    // SemaRef.Diags.Report(LHS->getLoc(), clang::diag::err_no_member)
+    //     << TD << Op.Loc;
+    llvm::errs() << "Type " << TD->getNameAsString()
+                 << " doesn't have any members.";
+    return nullptr;
+  }
+
+  // Processing if is a single name.
+  if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(RHS)) {
+    // clang::DeclarationName 
+    clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Atom->getSpelling())},
+      Atom->getLoc());
+    auto R = TD->lookup(DNI.getName());
+    if (R.size() != 1u) {
+      SemaRef.Diags.Report(RHS->getLoc(), clang::diag::err_no_member)
+        << Atom->getSpelling() << TD;
+      return nullptr;
+    }
+    // R.front();
+    clang::NamedDecl *ND = R.front();
+    if (clang::TypeDecl *TD = dyn_cast<clang::TypeDecl>(ND)) {
+      clang::QualType Ty = CxxAST.getTypeDeclType(TD);
+      return BuildAnyTypeLoc(CxxAST, Ty, RHS->getLoc());
+    }
+    if (clang::NamespaceDecl *NsDecl = dyn_cast<clang::NamespaceDecl>(ND)) {
+      return NsDecl;
+    }
+    // FIXME: This needs to support referencing base members.
+    llvm_unreachable("Direct referencing of member variables it not permitted yet.");
+  }
+
+  // if (const CallSyntax *Call = dyn_cast<CallSyntax>(RHS)) {    
+  // }
+
+  llvm_unreachable("Unknown syntax encountered during nested member lookup.");
+}
+
+Expression ExprElaborator::elaborateNestedLookUpAccess(Expression Previous,
+                                                       const CallSyntax *Op,
+                                                       const Syntax *RHS) {
+  assert(!Previous.isNull() && "Expression scoping.");
+  if (Previous.is<clang::TypeSourceInfo*>()) {
+    return handleLookUpInsideType(SemaRef, Context.CxxAST, Previous, Op, RHS);
+  }
+  
+  if (Previous.is<clang::NamespaceDecl*>()) {
+    assert(!"Nested namespace declarations not implemented yet.");
+  }
+
+  if (Previous.is<clang::Expr *>()) {
+    assert(!"Nested access to static variables it no implemented yet.");
+  }
+  llvm_unreachable("Unknown expression type encountered, It's not an "
+      "expression, type, or namespace encountered while looking up a member.");
+}
+
+
 
 Expression ExprElaborator::elaborateElemCall(const CallSyntax *S) {
   const ElemSyntax *Callee = cast<ElemSyntax>(S->getCallee());
@@ -988,22 +1042,8 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
     clang::QualType TDType(TD->getTypeForDecl(), 0);
     return BuildAnyTypeLoc(CxxAST, TDType, Loc);
   } else if(const CallSyntax *Call = dyn_cast<CallSyntax>(D->Data.Type)) {
-    llvm::outs() << "We have a type expression?!\n";
-    Expression Ret = elaborateExpr(D->Data.Type);
-    if (Ret.isNull()) {
-      llvm::outs() << "Failed to evaluate expression?!\n";
-      return Ret;
-    }
-    llvm::outs() << "We have found a return type.\n";
-    if (Ret.is<clang::Expr*>()) {
-      llvm::outs() << "We have a valid expression returned?!\n";
-      Ret.get<clang::Expr*>()->dump(); 
-    } else {
-      llvm::outs() << "We have a type expression! Woot!\n";
-      Ret.get<clang::TypeSourceInfo*>()->getType().dump(); 
-    }
+    return elaborateExpr(Call);
   }
-  llvm::outs() << "LOL wut?!\n";
   llvm_unreachable("Unknown type specification");
 }
 

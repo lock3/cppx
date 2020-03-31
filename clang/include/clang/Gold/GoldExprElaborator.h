@@ -50,9 +50,13 @@ class ExprElaborator {
 public:
   ExprElaborator(SyntaxContext &Context, Sema &SemaRef);
 
+  /// This is used partially during expression evaluation because there's always
+  /// a possibility that we could return a namespace rather than a type.
+
   // Represents a C++ expression, which may be either an object expression
   // or a type expression.
-  using Expression = llvm::PointerUnion<clang::Expr *, clang::TypeSourceInfo *>;
+  using Expression = llvm::PointerUnion<clang::Expr *, clang::TypeSourceInfo *,
+      clang::NamespaceDecl *>;
   using TypeInfo = clang::TypeSourceInfo;
 
   //===--------------------------------------------------------------------===//
@@ -63,7 +67,12 @@ public:
   Expression elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType);
   Expression elaborateCall(const CallSyntax *S);
 
-  Expression elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op, const Syntax *RHS);
+  Expression elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op,
+                                   const Syntax *RHS);
+  Expression elaborateNestedLookUpAccess(Expression Previous,
+                                         const CallSyntax *Op,
+                                         const Syntax *RHS);
+
   Expression elaborateElemCall(const CallSyntax *S);
 
   Expression elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
@@ -87,7 +96,6 @@ public:
   Expression elaborateArrayType(Declarator *D, TypeInfo *Ty);
   Expression elaborateFunctionType(Declarator *D, TypeInfo *Ty);
   Expression elaborateExplicitType(Declarator *D, TypeInfo *Ty);
-  // Expression elaborateQualifiedTypeName(Declarator* D, TypeInfo *Ty);
 };
 
 } // namespace gold
