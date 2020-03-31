@@ -48,10 +48,6 @@ enum DeclaratorKind {
   /// The id of a declarator.
   DK_Identifier,
 
-  /// This is used to identify which part so the name are qualifiers and not
-  /// the actual type. For example, x.y x would be a DK_NameQualifier
-  DK_NameQualifier,
-
   /// Declares a pointer.
   DK_Pointer,
 

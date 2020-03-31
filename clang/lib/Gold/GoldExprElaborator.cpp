@@ -120,7 +120,7 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Token T, clang::QualType IntType
   return clang::IntegerLiteral::Create(CxxAST, Value, IntType, Loc);
 }
 
-static clang::Expr *
+static ExprElaborator::Expression
 CreateIdentiferAccess(clang::ASTContext &CxxAST, Sema &SemaRef, Token T,
                   clang::QualType Ty, clang::SourceLocation Loc) {
   clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(T.getSpelling())}, Loc);
@@ -132,40 +132,41 @@ CreateIdentiferAccess(clang::ASTContext &CxxAST, Sema &SemaRef, Token T,
       return nullptr;
     }
 
-    clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>();
-    clang::QualType FoundTy = VD->getType();
-    VD->setIsUsed();
 
-    // If the user annotated the DeclRefExpr with an incorrect type.
-    if (!Ty.isNull() && Ty != FoundTy) {
-      SemaRef.Diags.Report(T.getLocation(), clang::diag::err_type_annotation_mismatch)
-        << FoundTy << Ty;
-      return nullptr;
-    }
+    if(clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>()) {
+      clang::QualType FoundTy = VD->getType();
+      VD->setIsUsed();
 
-    if (isa<clang::FieldDecl>(VD)) {
-      // Building this access.
-      clang::FieldDecl* Field = cast<clang::FieldDecl>(VD);
-      clang::RecordDecl* RD = Field->getParent();
-      // FIXME: Add CV qualifiers here if needed
-      clang::QualType ThisTy(RD->getTypeForDecl(), 0);
-      clang::QualType ThisPtrTy = SemaRef.getContext().CxxAST.getPointerType(ThisTy);
-      clang::Expr* This = SemaRef.getCxxSema().BuildCXXThisExpr(T.getLocation(),
-          ThisPtrTy, true);
-      clang::DeclAccessPair FoundDecl = clang::DeclAccessPair::make(Field,
-            clang::AccessSpecifier::AS_public);
-      clang::CXXScopeSpec SS;
-      clang::ExprResult MemberExpr
-          = SemaRef.getCxxSema().BuildFieldReferenceExpr(
-            This, true, clang::SourceLocation(), SS, Field, FoundDecl, DNI
-          );
-      clang::Expr *Ret = MemberExpr.get();
-      if (!Ret) {
-        SemaRef.Diags.Report(Loc, clang::diag::err_no_member)
-            << Field << ThisTy;
+      // If the user annotated the DeclRefExpr with an incorrect type.
+      if (!Ty.isNull() && Ty != FoundTy) {
+        SemaRef.Diags.Report(T.getLocation(), clang::diag::err_type_annotation_mismatch)
+          << FoundTy << Ty;
+        return nullptr;
       }
-      return Ret;
-    } else {
+
+      if (isa<clang::FieldDecl>(VD)) {
+        // Building this access.
+        clang::FieldDecl* Field = cast<clang::FieldDecl>(VD);
+        clang::RecordDecl* RD = Field->getParent();
+        // FIXME: Add CV qualifiers here if needed
+        clang::QualType ThisTy(RD->getTypeForDecl(), 0);
+        clang::QualType ThisPtrTy = SemaRef.getContext().CxxAST.getPointerType(ThisTy);
+        clang::Expr* This = SemaRef.getCxxSema().BuildCXXThisExpr(T.getLocation(),
+            ThisPtrTy, true);
+        clang::DeclAccessPair FoundDecl = clang::DeclAccessPair::make(Field,
+              clang::AccessSpecifier::AS_public);
+        clang::CXXScopeSpec SS;
+        clang::ExprResult MemberExpr
+            = SemaRef.getCxxSema().BuildFieldReferenceExpr(
+              This, true, clang::SourceLocation(), SS, Field, FoundDecl, DNI
+            );
+        clang::Expr *Ret = MemberExpr.get();
+        if (!Ret) {
+          SemaRef.Diags.Report(Loc, clang::diag::err_no_member)
+              << Field << ThisTy;
+        }
+        return Ret;
+      }
       // FIXME: discern whether this is an lvalue or rvalue properly
       clang::DeclRefExpr *DRE =
         clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
@@ -173,8 +174,14 @@ CreateIdentiferAccess(clang::ASTContext &CxxAST, Sema &SemaRef, Token T,
                                   Loc, FoundTy, clang::VK_LValue);
       return DRE;
     }
-  }
 
+    // Processing the case when the returned result is a type.
+    if (const clang::TagDecl *TD = R.getAsSingle<clang::TagDecl>()) {
+      llvm::outs() << "We have a decl type as the result of an expression\n";
+      return BuildAnyTypeLoc(CxxAST, CxxAST.getTypeDeclType(TD), Loc);
+    }
+    llvm_unreachable("Unhandled expression type.");
+  }
   return nullptr;
 }
 
@@ -467,25 +474,47 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
 Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     const CallSyntax *Op, const Syntax *RHS) {
   Expression ElaboratedLHS = elaborateExpr(LHS);
-  if (isa<AtomSyntax>(RHS)) {
-    const AtomSyntax *RHSAtom = cast<AtomSyntax>(RHS);
-    // TODO: figure out how to make the pointer work correctly?
+  if(ElaboratedLHS.is<clang::Expr*>()) {
+    if (isa<AtomSyntax>(RHS)) {
+      const AtomSyntax *RHSAtom = cast<AtomSyntax>(RHS);
+      // TODO: figure out how to make the pointer work correctly?
 
-    clang::UnqualifiedId Id;
-    clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(
-      RHSAtom->getSpelling());
+      clang::UnqualifiedId Id;
+      clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(
+        RHSAtom->getSpelling());
 
-    // TODO: Figure out how to get the desired scope.
-    Id.setIdentifier(IdInfo, RHSAtom->getLoc());
-    clang::CXXScopeSpec SS;
-    clang::SourceLocation Loc;
-    clang::ExprResult HandledLHS = SemaRef.getCxxSema().ActOnMemberAccessExpr(
-      SemaRef.getCurClangScope(), ElaboratedLHS.get<clang::Expr*>(), Op->getLoc(),
-      clang::tok::TokenKind::period, SS, Loc, Id, nullptr);
-    clang::MemberExpr *MemberExpression
-      = cast<clang::MemberExpr>(HandledLHS.get());
-    MemberExpression->getMemberDecl()->setIsUsed();
-    return HandledLHS.get();
+      // TODO: Figure out how to get the desired scope.
+      Id.setIdentifier(IdInfo, RHSAtom->getLoc());
+      clang::CXXScopeSpec SS;
+      clang::SourceLocation Loc;
+      clang::ExprResult HandledLHS = SemaRef.getCxxSema().ActOnMemberAccessExpr(
+        SemaRef.getCurClangScope(), ElaboratedLHS.get<clang::Expr*>(), Op->getLoc(),
+        clang::tok::TokenKind::period, SS, Loc, Id, nullptr);
+      clang::MemberExpr *MemberExpression
+        = cast<clang::MemberExpr>(HandledLHS.get());
+      MemberExpression->getMemberDecl()->setIsUsed();
+      return HandledLHS.get();
+    }
+    llvm_unreachable("Currently unable to handle member access from non-variables.");
+  } 
+  if(ElaboratedLHS.is<clang::TypeSourceInfo*>()) {
+    TypeInfo *TInfo = ElaboratedLHS.get<clang::TypeSourceInfo*>();
+    clang::QualType QT = TInfo->getType();
+    // clang::DeclContext *DC = QT.getType
+    const clang::Type *T = QT.getTypePtrOrNull();
+    clang::TagDecl *TD = T->getAsTagDecl();
+    if (!TD) {
+      llvm::errs() << "Type " << TD->getNameAsString() << " doesn't have any members.";
+      return nullptr;
+    }
+    // if (isa<clang::TagDecl>(T)) {
+    //   llvm::outs() << "We have a tag decl type, and we can now convert into something meaningfull.";
+    // }
+    if (isa<AtomSyntax>(RHS)) {
+      // clang::LookupResult Result = 
+    }
+    llvm_unreachable("Handling of member access to template types is not "
+        "implemented yet.");
   }
 
   llvm_unreachable("Member access to anything other then a member variable "
@@ -787,15 +816,6 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
       TInfo = TypeExpr.get<TypeInfo *>();
       break;
     }
-
-    case DK_NameQualifier:{
-      Expression TypeExpr = elaborateQName(D, TInfo);
-      if (TypeExpr.isNull())
-        return nullptr;
-
-      TInfo = TypeExpr.get<TypeInfo *>();
-      break;
-    }
     
     default:
       llvm_unreachable("Invalid declarator");
@@ -906,8 +926,7 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
 Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   assert(isa<clang::AutoType>(Ty->getType()));
   assert(D->Kind == DK_Type);
-
-
+  
   // FIXME: We should really elaborate the entire type expression. We're
   // just cheating for now.
   if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
@@ -923,160 +942,35 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
       auto BuiltinMapIter = SemaRef.BuiltinTypes.find(Atom->getSpelling());
       if (BuiltinMapIter == SemaRef.BuiltinTypes.end())
         return nullptr;
-
+      
       return BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second, Loc);
     }
 
     clang::TypeDecl *TD = R.getAsSingle<clang::TypeDecl>();
     clang::QualType TDType(TD->getTypeForDecl(), 0);
     return BuildAnyTypeLoc(CxxAST, TDType, Loc);
+  } else if(const CallSyntax *Call = dyn_cast<CallSyntax>(D->Data.Type)) {
+    llvm::outs() << "We have a type expression?!\n";
+    Expression Ret = elaborateExpr(D->Data.Type);
+    if (Ret.isNull()) {
+      llvm::outs() << "Failed to evaluate expression?!\n";
+      return Ret;
+    }
+    llvm::outs() << "We have found a return type.\n";
+    if (Ret.is<clang::Expr*>()) {
+      llvm::outs() << "We have a valid expression returned?!\n";
+      Ret.get<clang::Expr*>()->dump(); 
+    } else {
+      llvm::outs() << "We have a type expression! Woot!\n";
+      Ret.get<clang::TypeSourceInfo*>()->getType().dump(); 
+    }
   }
+  llvm::outs() << "LOL wut?!\n";
   llvm_unreachable("Unknown type specification");
 }
 
-Expression ExprElaborator::elaborateQName(Declarator *D, TypeInfo *Ty) {
-  if (const AtomSyntax *QualifyingName
-    = dyn_cast<AtomSyntax>(D->Data.QName.Qualifier)) {
-
-    // Attempting to do qualified name lookup
-    clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(
-      QualifyingName->getSpelling())}, QualifyingName->getLoc());
-    clang::LookupResult Results(SemaRef.getCxxSema(), DNI,
-      clang::Sema::LookupNestedNameSpecifierName);
-      
-    if(!SemaRef.lookupUnqualifiedName(Results, SemaRef.getCurrentScope())) {
-      llvm::errs() << "Failed to find qualifier "
-        << QualifyingName->getSpelling() << "\n";
-      return nullptr;
-    }
-    clang::NamedDecl *Decl = Results.getFoundDecl();
-    if (!Decl) {
-      llvm::errs() << "No declaration located.\n";
-      return nullptr;
-    }
-    if (!isa<clang::DeclContext>(Decl)) {
-      llvm::errs() << "Returned result is not a decl context\n";
-      return nullptr;
-    }
-    clang::DeclContext *DC = cast<clang::DeclContext>(Decl);
-
-
-    
-    // Need a qualified version of each of the type function so that we can properly
-    // lookup nested types.
-    // TODO: Do scope look up.
-    Declarator *NestedDecl = D->Data.QName.NestedName;
-
-    // The type of a declarator is constructed back-to-front.
-    llvm::SmallVector<Declarator *, 4> Decls;
-    getDeclarators(NestedDecl, Decls);
-
-    // The type is computed from back to front. Start by assuming the type
-    // is auto. This will be replaced if an explicit type specifier is given.
-    // clang::QualType AutoType = CxxAST.getAutoDeductType();
-    // TypeInfo *TInfo = BuildAnyTypeLoc(CxxAST, AutoType, D->getLoc());
-    for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
-      D = *Iter;
-      switch (D->Kind) {
-      case DK_Identifier:{
-        if(!isa<AtomSyntax>(D->Data.Id)) {
-          llvm::errs() << "Some how the identifier I Received wasn't valid\n";
-          return nullptr;
-        }
-        const AtomSyntax *NameInSyntax = dyn_cast<AtomSyntax>(D->Data.Id);
-
-        // Handling nested lookup.
-        clang::DeclarationNameInfo DNI2({
-            &CxxAST.Idents.get(NameInSyntax->getSpelling())
-          }, NameInSyntax->getLoc());
-        
-        auto LookUpResults = DC->lookup(DNI2.getName());
-        if (LookUpResults.empty()) {
-          // TODO: Figure out appropriate error here.
-          llvm::errs() << "Failed to locate valid nested memebr\n";
-          return nullptr;
-        }
-
-        if (LookUpResults.size() != 1) {
-          // TODO: Figure out appropriate error here.
-          llvm::errs() << "We have lookup ambiguity unable to figure out what "
-              "is meant by " << DNI2.getName().getAsString() << "\n";
-          return nullptr;
-        }
-
-        if (!isa<clang::TypeDecl>(LookUpResults.front())) {
-          // TODO: Figure out appropriate error here.
-          llvm::errs() << "Returned result is not a type.\n";
-          return nullptr;
-        }
-
-        clang::TypeDecl *TD = cast<clang::TypeDecl>(LookUpResults.front());
-        clang::QualType QT = Context.CxxAST.getTypeDeclType(TD);
-        return BuildAnyTypeLoc(CxxAST, QT, D->getLoc()); 
-        break;
-      }
-      case DK_Pointer:
-      case DK_Array:
-      case DK_Function:
-      case DK_Type:
-        llvm_unreachable("Qualified versions of type look up are not available yet "
-          "are not supported yet.");
-      // case DK_Pointer: {
-      //   Expression TypeExpr = elaboratePointerType(D, TInfo);
-      //   if (TypeExpr.isNull())
-      //     return nullptr;
-
-      //   TInfo = TypeExpr.get<TypeInfo *>();
-      //   break;
-      // }
-
-      // case DK_Array: {
-      //   Expression TypeExpr = elaborateArrayType(D, TInfo);
-      //   if (TypeExpr.isNull())
-      //     return nullptr;
-
-      //   TInfo = TypeExpr.get<TypeInfo *>();
-      //   break;
-      // }
-
-      // case DK_Function: {
-      //   Expression TypeExpr = elaborateFunctionType(D, TInfo);
-      //   if (TypeExpr.isNull())
-      //     return nullptr;
-
-      //   TInfo = TypeExpr.get<TypeInfo *>();
-      //   break;
-      // }
-
-      // case DK_Type: {
-      //   Expression TypeExpr = elaborateExplicitType(D, TInfo);
-      //   if (TypeExpr.isNull())
-      //     return nullptr;
-
-      //   TInfo = TypeExpr.get<TypeInfo *>();
-      //   break;
-      // }
-
-      case DK_NameQualifier:{
-        llvm_unreachable("Arbitrary nesting not implemented yet. Currently we "
-            "only support nesting of a single element.");
-        // Expression TypeExpr = elaborateQName(D, TInfo);
-        // if (TypeExpr.isNull())
-        //   return nullptr;
-
-        // TInfo = TypeExpr.get<TypeInfo *>();
-        break;
-      }
-      
-      default:
-        llvm_unreachable("Invalid declarator");
-      }
-    }
-  }else {
-    llvm_unreachable("Qualifiers that are not atoms are not implemented yet.");
-  }
-  // return TInfo;
-  llvm_unreachable("Incomplete function Still working on it.");
-}
+// Expression ExprElaborator::elaborateQualifiedTypeName(Declarator* D, TypeInfo *Ty) {
+//   return 
+// }
 
 } // namespace gold

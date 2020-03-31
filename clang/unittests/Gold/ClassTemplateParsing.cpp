@@ -32,5 +32,6 @@ main() : int!
 )";
   DeclarationMatcher ClassC = recordDecl();
   ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_FALSE(true) << "Figure out what clang should output for this.";
 }
 

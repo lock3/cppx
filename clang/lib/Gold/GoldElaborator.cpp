@@ -52,6 +52,20 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
     identifyDecl(SS);
   }
 
+  // llvm::outs() << "Doing a thing?!\n";
+  // // Printing declarator sequence.
+  // for (const Syntax *SS : File->children()) {
+  //   // identifyDecl(SS);
+  //   Declaration *CurDecl = SemaRef.getCurrentScope()->findDecl(SS);
+  //   if (!CurDecl) {
+  //     continue;
+  //   }
+  //   llvm::outs() << "Declarator sequence: ";
+  //   CurDecl->Decl->printSequence(llvm::outs());
+  //   llvm::outs() << "\n";
+  //   // return elaborateDecl(D);
+  // }
+
   // Pass 2: elaborate the types.
   for (const Syntax *SS : File->children()) {
     elaborateDeclType(SS);
@@ -101,7 +115,6 @@ clang::Decl *Elaborator::elaborateDeclType(const Syntax *S) {
   if (!D) {
     return nullptr;
   }
-  
   return elaborateDecl(D);
 }
 
@@ -854,6 +867,18 @@ static Declarator *buildTypeDeclarator(const Syntax *S, Declarator *Next) {
   return D;
 }
 
+static Declarator *buildTypeExpression(const Syntax *S, Declarator *Next) {
+  assert((isa<AtomSyntax>(S) || isa<CallSyntax>(S)) &&
+         "cannot build type-declarator out of given syntax");
+  Declarator *D = new Declarator(DK_Type, Next);
+
+  if (const CallSyntax *Call = dyn_cast<CallSyntax>(S))
+    D->Call = Call;
+  D->Data.Type = S;
+
+  return D;
+}
+
 static Declarator *buildFunctionDeclarator(const CallSyntax *S, Declarator *Next) {
   // FIXME: Store the parameter list.
   Declarator *D = new Declarator(DK_Function, Next);
@@ -891,14 +916,14 @@ static Declarator *buildArrayDeclarator(const CallSyntax *S,
   D->Data.Index = S->getArgument(0);
   return D;
 }
-static Declarator *buildQualifyingDeclarator(Sema &SemaRef,const Syntax *S,
-                                            const Syntax* ToNest, Declarator *Next) {
-  Declarator *D = new Declarator(DK_NameQualifier, Next);
-  D->Data.Id = S;
-  D->Data.QName.Qualifier = S;
-  D->Data.QName.NestedName = makeDeclarator(SemaRef, ToNest);
-  return D;
-}
+// static Declarator *buildQualifyingDeclarator(Sema &SemaRef,const Syntax *S,
+//                                             const Syntax* ToNest, Declarator *Next) {
+//   Declarator *D = new Declarator(DK_NameQualifier, Next);
+//   D->Data.Id = S;
+//   D->Data.QName.Qualifier = S;
+//   D->Data.QName.NestedName = makeDeclarator(SemaRef, ToNest);
+//   return D;
+// }
 
 /// FIXME: Convert this back to an iterative function, if possible (see
 ///        disabled iterative version below).
@@ -922,8 +947,7 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
     // Otherwise just build an identifier-declarator.
     return buildIdDeclarator(Atom, Next);
 
-  }
-  else if(const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
+  } else if(const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
     if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
 
       // Check for "builtin" operators in the declarator.
@@ -957,9 +981,9 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
         return makeDeclarator(SemaRef, Call->getArgument(0),
                               buildArrayDeclarator(Call, Next));
       } else if (Callee->getSpelling() == "operator'.'") {
-        // const AtomSyntax *NameQualifier = cast<AtomSyntax>();
-        return buildQualifyingDeclarator(SemaRef, Call->getArgument(0),
-                                         Call->getArgument(1), Next);
+        // This is also a possible type declaration because it's a nested type
+        // declaration.
+        return buildTypeExpression(Call, Next);
       }
       // Otherwise, this appears to be a function declarator.
       return makeDeclarator(SemaRef, Callee,
@@ -976,8 +1000,10 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
                               buildFunctionDeclarator(Call, Callee, Next));
       }
     }
+  } else if (const ElemSyntax *TemplatedTypeNameDecl = dyn_cast<ElemSyntax>(S)) {
+    llvm::outs() << "We are processing element syntax?\n";
+    assert(!"Working on implementing templated classes.");
   }
-
   return nullptr;
 }
 
@@ -1007,7 +1033,6 @@ void Elaborator::identifyDecl(const Syntax *S) {
       const Syntax *Decl;
       const Syntax *Init;
       if (Op == "operator'='") {
-
         // This is to reject t.x as a declaration.
         // Also also reject the delcaration
         const auto *Args = cast<ListSyntax>(Call->getArguments());
@@ -1025,7 +1050,6 @@ void Elaborator::identifyDecl(const Syntax *S) {
             return;
         }
 
-        // Making sure we are don't use a member accessor as a variable name.
         if (isa<CallSyntax>(Decl))
           if (const CallSyntax *InnerCallOp = cast<CallSyntax>(Decl))
             if (isa<AtomSyntax>(InnerCallOp->getCallee()))
@@ -1068,15 +1092,17 @@ void Elaborator::identifyDecl(const Syntax *S) {
 
       // Try to build a declarator for the declaration.
       Declarator *Dcl = makeDeclarator(SemaRef, Decl);
-      if (!Dcl)
+      if (!Dcl) {
         return;
+      }
 
       // Parameters can only be declared as x, x:T, or :T. The full range
       // of declarator syntax is not supported.
       //
       // FIXME: Emit an error instead of a diagnostic.
-      if (SemaRef.getCurrentScope()->isParameterScope() && !Dcl->isIdentifier())
+      if (SemaRef.getCurrentScope()->isParameterScope() && !Dcl->isIdentifier()){
         assert(false && "Invalid parameter declaration");
+      }
 
       clang::IdentifierInfo* Id = getIdentifier(*this, Dcl);
 
@@ -1090,9 +1116,8 @@ void Elaborator::identifyDecl(const Syntax *S) {
         // \endcode
         // The first statement is a declaration. The second is an assignment.
         // FIXME: is this the right way to handle the lookup set?
-        if (!CurScope->findDecl(Id).empty() && OperatorEquals)
+        if (!CurScope->findDecl(Id).empty() && OperatorEquals) 
           return;
-      } else if(CurScope->isClassScope()) {
       }
 
       // Create a declaration for this node.
