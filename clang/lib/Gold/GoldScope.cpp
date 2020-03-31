@@ -248,11 +248,16 @@ static llvm::StringRef getScopeKindName(ScopeKind K) {
 
   case SK_Class:
     return "Class";
+
+  case SK_Control:
+    return "Control";
   }
 }
 
 void Scope::dump(llvm::raw_ostream &os) const {
   os << getScopeKindName(getKind()) << '\n';
+  for (auto D : IdMap)
+    os << D.first->getName() << '\n';
 }
 
 void Scope::dump() const {

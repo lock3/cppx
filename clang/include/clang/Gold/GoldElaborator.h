@@ -95,7 +95,6 @@ public:
   // Identification (1st pass)
   void identifyDecl(const Syntax *S);
   void identifyDeclFromCall(const CallSyntax *S);
-  
 
   // Get the clang::QualType described by an operator':' call.
   clang::QualType getOperatorColonType(const CallSyntax *S) const;
@@ -104,7 +103,6 @@ public:
 
   void startFile(const Syntax *S);
   void finishFile(const Syntax *S);
-
 };
 
 /// Represents different kinds of fused operator strings, for example,

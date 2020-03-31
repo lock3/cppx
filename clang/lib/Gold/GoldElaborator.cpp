@@ -121,8 +121,8 @@ clang::Decl *Elaborator::elaborateDeclType(const Syntax *S) {
 static clang::Decl*
 processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
                     Declaration *D) {
-  clang::SourceLocation EndOfClassSrcLoc(D->Init->getLoc());   
   using namespace clang;
+
   MultiTemplateParamsArg MTP;
   bool IsOwned = false;
   bool IsDependent = false;
@@ -591,6 +591,34 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   SemaRef.popDecl();
 }
 
+/// In the case of an automatically deduced array macro, <initalizer_list>
+/// needs to be included to perform deduction. In that case, just construct
+/// the necessary array type manually.
+/// ex:
+///
+/// \code
+///   xs = array{0, 1, 2};
+/// \endcode
+///
+/// Here, we construct array type [sizeof(list)]typeof(list[0])
+static clang::QualType buildImplicitArrayType(clang::ASTContext &Ctx,
+                                              clang::Sema &SemaRef,
+                                              clang::InitListExpr *List) {
+  if (!List->getNumInits()) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "Cannot create an empty array");
+    SemaRef.Diags.Report(List->getBeginLoc(), DiagID);
+    return clang::QualType();
+  }
+
+  clang::QualType EltTy = List->getInit(0)->getType();
+  llvm::APSInt Size = llvm::APSInt::get(List->getNumInits());
+
+  return Ctx.getConstantArrayType(EltTy, Size, /*SizeExpr=*/nullptr,
+                                  clang::ArrayType::Normal, 0);
+}
+
 void Elaborator::elaborateVariableInit(Declaration *D) {
   if (!D->Cxx){
     return;
@@ -631,6 +659,7 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
                             << Ty << "a constructor";
       }
     }
+
     SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
     return;
   }
@@ -652,14 +681,34 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   clang::Expr *InitExpr = Init.get<clang::Expr *>();
   // Perform auto deduction.
   if (VD->getType()->isUndeducedType()) {
-    clang::Sema &CxxSema = SemaRef.getCxxSema();
     clang::QualType Ty;
-    auto Result = CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), InitExpr, Ty);
-    if (Result == clang::Sema::DAR_Failed) {
-      // FIXME: Make this a real diagnostic.
-      llvm::errs() << "Failed to deduce type of expression.\n";
-      return;
+
+    // Certain macros must be deduced manually.
+    if (const MacroSyntax *InitM = dyn_cast<MacroSyntax>(D->Init)) {
+        assert (isa<AtomSyntax>(InitM->getCall()) && "Unexpected macro call");
+        assert (isa<clang::InitListExpr>(InitExpr) &&
+                "Invalid array macro init");
+
+        const AtomSyntax *Call = cast<AtomSyntax>(InitM->getCall());
+        if (Call->getSpelling() == "array") {
+          Ty = buildImplicitArrayType(Context.CxxAST, SemaRef.getCxxSema(),
+                                      cast<clang::InitListExpr>(InitExpr));
+
+          if (Ty.isNull()) {
+            VD->setInvalidDecl();
+            return;
+          }
+        }
+    } else {
+      clang::Sema &CxxSema = SemaRef.getCxxSema();
+      auto Result = CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), InitExpr, Ty);
+      if (Result == clang::Sema::DAR_Failed) {
+        // FIXME: Make this a real diagnostic.
+        llvm::errs() << "Failed to deduce type of expression.\n";
+        return;
+      }
     }
+
     VD->setType(Ty);
   }
 
@@ -700,7 +749,6 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
   SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(Scope, R,
     clang::SourceLocation(), true, clang::SourceLocation());
   SemaRef.setCurrentDecl(D);
-  clang::SourceLocation EndOfClassSrcLoc(D->Init->getLoc());
   // Since all declarations have already been added, we don't need to do another
   // Reordering scan. Maybe?
 
@@ -932,11 +980,10 @@ static Declarator *buildArrayDeclarator(const CallSyntax *S,
 ///
 /// This is a recursive walk through a series of call nodes. In each step,
 /// we build a declarator fragment.
-static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
-                                  Declarator *Next) {
+Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
   // If we find an atom, then we're done.
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(S)) {
-    
+
     // This might be a typename, in which case, build a type-declarator.
     clang::DeclarationNameInfo DNI(
       {&SemaRef.Context.CxxAST.Idents.get(Atom->getSpelling()), S->getLoc()});
@@ -984,10 +1031,12 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
         // This is also a possible type declaration because it's a nested type
         // declaration.
         return buildTypeExpression(Call, Next);
+      } else if (Callee->getSpelling() == "operator'in'") {
+        return makeDeclarator(SemaRef, Call->getArgument(0), Next);
       }
       // Otherwise, this appears to be a function declarator.
-      return makeDeclarator(SemaRef, Callee,
-                            buildFunctionDeclarator(Call, Next));
+      return makeDeclarator(SemaRef, Callee, buildFunctionDeclarator(Call, Next));
+
 
     } else if (const ElemSyntax *Callee = dyn_cast<ElemSyntax>(Call->getCallee())) {
       if(SemaRef.getCurrentScope()->getKind() == SK_Class) {
@@ -999,6 +1048,17 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
         return makeDeclarator(SemaRef, Callee->getObject(),
                               buildFunctionDeclarator(Call, Callee, Next));
       }
+      // Otherwise, this appears to be a function declarator.
+      return makeDeclarator(SemaRef, Callee,
+                            buildFunctionDeclarator(Call, Next));
+    } else if (const ElemSyntax *Callee = dyn_cast<ElemSyntax>(Call->getCallee())) {
+      assert(SemaRef.getCurrentScope()->getKind() != SK_Class &&
+             "templated member functions not implemented");
+
+      // We have a template parameter list here, so build the
+      // function declarator accordingly.
+      return makeDeclarator(SemaRef, Callee->getObject(),
+                            buildFunctionDeclarator(Call, Callee, Next));
     }
   } else if (const ElemSyntax *TemplatedTypeNameDecl = dyn_cast<ElemSyntax>(S)) {
     llvm::outs() << "We are processing element syntax?\n";
@@ -1007,7 +1067,7 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S,
   return nullptr;
 }
 
-static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S) {
+Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S) {
   Declarator *D = nullptr;
   return makeDeclarator(SemaRef, S, D);
 }
@@ -1071,6 +1131,9 @@ void Elaborator::identifyDecl(const Syntax *S) {
         Decl = Args->getChild(0);
         Init = Args->getChild(1);
       } else if (Op == "operator':'") {
+        Decl = S;
+        Init = nullptr;
+      } else if (Op == "operator'in'") {
         Decl = S;
         Init = nullptr;
       } else {

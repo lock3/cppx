@@ -120,15 +120,54 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Token T, clang::QualType IntType
   return clang::IntegerLiteral::Create(CxxAST, Value, IntType, Loc);
 }
 
+// static clang::Expr *
+// createMemberExpr(SyntaxContext &Context, Sema &SemaRef, clang::ValueDecl *VD,
+//                  clang::DeclarationNameInfo &DNI, clang::SourceLocation Loc) {
+//   clang::FieldDecl* Field = cast<clang::FieldDecl>(VD);
+//   clang::RecordDecl* RD = Field->getParent();
+
+//   // FIXME: Add CV qualifiers here if needed
+//   clang::QualType ThisTy(RD->getTypeForDecl(), 0);
+//   clang::QualType ThisPtrTy =
+//     SemaRef.getContext().CxxAST.getPointerType(ThisTy);
+//   clang::Expr *This = SemaRef.getCxxSema().BuildCXXThisExpr(Loc, ThisPtrTy, true);
+
+//   clang::DeclAccessPair FoundDecl =
+//     clang::DeclAccessPair::make(Field, clang::AccessSpecifier::AS_public);
+//   clang::CXXScopeSpec SS;
+//   clang::ExprResult MemberExpr = SemaRef.getCxxSema().BuildFieldReferenceExpr(
+//     This, true, clang::SourceLocation(), SS, Field, FoundDecl, DNI);
+
+//   if (MemberExpr.isInvalid())
+//     SemaRef.Diags.Report(Loc, clang::diag::err_no_member) << Field << ThisTy;
+
+//   return MemberExpr.get();
+// }
+
+// static clang::DeclRefExpr *
+// createDeclRefExpr(SyntaxContext &Context, Sema &SemaRef, clang::ValueDecl *VD,
+//                   clang::QualType Ty, clang::SourceLocation Loc) {
+//   clang::ASTContext &CxxAST = Context.CxxAST;
+
+//   // FIXME: discern whether this is an lvalue or rvalue properly
+//   clang::DeclRefExpr *DRE =
+//     clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
+//                                clang::SourceLocation(), VD, /*Capture=*/false,
+//                                Loc, Ty, clang::VK_LValue);
+//   return DRE;
+// }
+
 static ExprElaborator::Expression
-CreateIdentiferAccess(clang::ASTContext &CxxAST, Sema &SemaRef, Token T,
+createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
                   clang::QualType Ty, clang::SourceLocation Loc) {
-  clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(T.getSpelling())}, Loc);
+  clang::ASTContext &CxxAST = Context.CxxAST;
+
+  clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(S->getSpelling())}, Loc);
   clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
   SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
   if (!R.empty()) {
     if (!R.isSingleResult()) {
-      SemaRef.Diags.Report(T.getLocation(), clang::diag::err_multiple_declarations);
+      SemaRef.Diags.Report(S->getLoc(), clang::diag::err_multiple_declarations);
       return nullptr;
     }
 
@@ -139,7 +178,7 @@ CreateIdentiferAccess(clang::ASTContext &CxxAST, Sema &SemaRef, Token T,
 
       // If the user annotated the DeclRefExpr with an incorrect type.
       if (!Ty.isNull() && Ty != FoundTy) {
-        SemaRef.Diags.Report(T.getLocation(), clang::diag::err_type_annotation_mismatch)
+        SemaRef.Diags.Report(Loc, clang::diag::err_type_annotation_mismatch)
           << FoundTy << Ty;
         return nullptr;
       }
@@ -151,7 +190,7 @@ CreateIdentiferAccess(clang::ASTContext &CxxAST, Sema &SemaRef, Token T,
         // FIXME: Add CV qualifiers here if needed
         clang::QualType ThisTy(RD->getTypeForDecl(), 0);
         clang::QualType ThisPtrTy = SemaRef.getContext().CxxAST.getPointerType(ThisTy);
-        clang::Expr* This = SemaRef.getCxxSema().BuildCXXThisExpr(T.getLocation(),
+        clang::Expr* This = SemaRef.getCxxSema().BuildCXXThisExpr(Loc,
             ThisPtrTy, true);
         clang::DeclAccessPair FoundDecl = clang::DeclAccessPair::make(Field,
               clang::AccessSpecifier::AS_public);
@@ -188,7 +227,7 @@ CreateIdentiferAccess(clang::ASTContext &CxxAST, Sema &SemaRef, Token T,
 Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
                                          clang::QualType ExplicitType) {
   Token T = S->Tok;
-  
+
   switch (T.getKind()) {
   case tok::DecimalInteger:
     return createIntegerLiteral(CxxAST, T, ExplicitType, S->getTokenLoc());
@@ -201,8 +240,7 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
   case tok::HexadecimalFloat:
     break;
   case tok::Identifier:
-    // TODO: Make this figure out if the declref is a member variable or not.
-    return CreateIdentiferAccess(CxxAST, SemaRef, T, ExplicitType, S->getTokenLoc());
+    return createIdentAccess(Context, SemaRef, S, ExplicitType, S->getLoc());
   case tok::Character:
     break;
   case tok::String:

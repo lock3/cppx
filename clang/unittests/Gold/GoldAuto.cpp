@@ -1,4 +1,4 @@
-//=== ClassTempalteParsing.cpp - Elaboration for Gold Nodes ----------------------==//
+//=== GoldAuto.cpp - Test Gold auto deduction ------------------------------==//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,31 +7,22 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file implements some of the tests for the gold language parser.
+//  This file implements tests for automatic type deduction in Gold.
 //
 //===----------------------------------------------------------------------===//
 
-
 #include "ParseUtil.h"
-#include "ASTMatchersTest.h"
 
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-// TEST(ClassTemplate, ClassTemplateDeclaration) {
-//   StringRef Code = R"(
-// c[x:type] : type = class:
-//   z : int
-//   y : bool
+TEST(ArrayMacro, SimpleArrayMacro) {
+  StringRef Code = R"(
+main() : int!
+  xs = array{0, 1, 2}
+)";
 
-// main() : int!
-//   temp : c[int]
-//   return 0
-// )";
-//   DeclarationMatcher ClassC = recordDecl();
-//   ASSERT_TRUE(matches(Code, ClassC));
-//   ASSERT_FALSE(true) << "Figure out what clang should output for this.";
-// }
-
+  SimpleGoldParseTest(Code);
+}
