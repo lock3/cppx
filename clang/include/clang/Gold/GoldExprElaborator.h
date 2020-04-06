@@ -82,6 +82,8 @@ public:
   Expression elaborateMacro(const MacroSyntax *Macro);
   Expression elaborateClass(const MacroSyntax *Macro);
 
+  Expression elaborateElementExpr(const ElemSyntax *Elem);
+
 
 private:
   clang::Expr *handleOperatorDotDot(const CallSyntax *Call);

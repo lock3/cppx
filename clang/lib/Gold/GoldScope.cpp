@@ -65,6 +65,7 @@ static llvm::StringRef getCallName(const CallSyntax *S) {
 
 std::string Declarator::getString() const {
   if (getKind() == DK_Type) {
+    // TODO: Figure out how to correctly print types. that are not simple identifiers.
     return cast<AtomSyntax>(Data.Type)->getSpelling();
   } else if (isFunction()) {
     return getCallName(cast<CallSyntax>(Call));
@@ -95,19 +96,6 @@ void Declarator::printSequence(llvm::raw_ostream &os) const {
   os << '\n';
 }
 
-// A pointer is essentially a type, but we keep them separate for convenience
-// in expression elaboration.
-// const Syntax *Declarator::getPtrType() const {
-//   const Declarator *D = this;
-//   while (D->Next) {
-//     D = D->Next;
-//   }
-//   if (D->Kind == DK_Pointer)
-//     return D->Data.Type;
-//   return nullptr;
-// }
-
-
 Declaration::~Declaration() {
   delete SavedScope;
 }
@@ -119,7 +107,7 @@ bool Declaration::declaresVariable() const {
 
 bool Declaration::declaresType() const {  
   const Declarator* D = Decl;
-  if (D->Kind == DK_Identifier){
+  while (D && D->Kind != DK_Type) {
     D = D->Next;
   }
   if (D)
@@ -134,12 +122,22 @@ bool Declaration::declaresRecord() const {
     return false;
   if (Cxx)
     return isa<clang::CXXRecordDecl>(Cxx);
-  if(Init)
+  if (Init)
     if (const MacroSyntax *Macro = dyn_cast_or_null<MacroSyntax>(Init))
       if(Macro->getCall())
         if (const AtomSyntax *ClsKw = dyn_cast_or_null<AtomSyntax>(Macro->getCall()))
           return ClsKw->getSpelling() == "class";
   return false;
+}
+
+bool Declaration::declaresTemplateType() const {
+  const Declarator *D = Decl;
+  while (D && D->Kind != DK_TemplateType) {
+    D = D->Next;
+  }
+  if (!D)
+    return false;
+  return D && D->Call && clang::isa<ElemSyntax>(D->Call);
 }
 
 // A declarator declares a function if it's first non-id declarator is
@@ -198,6 +196,22 @@ const Syntax *Declaration::getTemplateParams() const {
   if (D)
     return D->Data.ParamInfo.TemplateParams;
   return nullptr;
+}
+
+const Declarator *Declaration::getFirstTemplateDeclarator() const {
+  const Declarator *D = Decl;
+  while (D && D->Kind != DK_TemplateType) {
+    D = D->Next;
+  }
+  return D;
+}
+
+Declarator *Declaration::getFirstTemplateDeclarator() {
+  Declarator *D = Decl;
+  while (D && D->Kind != DK_TemplateType) {
+    D = D->Next;
+  }
+  return D;
 }
 
 clang::DeclContext *Declaration::getCxxContext() const {

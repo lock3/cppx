@@ -74,7 +74,7 @@ main() : int!
   DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
     hasDescendant(ClassCInfo),
     hasDescendant(MainFnMatcher)
-    );
+  );
 
 
   ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));

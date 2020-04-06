@@ -22,7 +22,9 @@
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Ownership.h"
+#include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/Sema.h"
+#include "clang/Sema/Template.h"
 #include "clang/Sema/TypeLocUtil.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/StringMap.h"
@@ -54,8 +56,10 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
     return elaborateAtom(cast<AtomSyntax>(S), clang::QualType());
   if (isa<CallSyntax>(S))
     return elaborateCall(cast<CallSyntax>(S));
-  if(isa<MacroSyntax>(S))
+  if (isa<MacroSyntax>(S))
     return elaborateMacro(cast<MacroSyntax>(S));
+  if (isa<ElemSyntax>(S))
+    return elaborateElementExpr(cast<ElemSyntax>(S));
   assert(false && "Unsupported expression.");
 }
 
@@ -120,42 +124,161 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Token T, clang::QualType IntType
   return clang::IntegerLiteral::Create(CxxAST, Value, IntType, Loc);
 }
 
-// static clang::Expr *
-// createMemberExpr(SyntaxContext &Context, Sema &SemaRef, clang::ValueDecl *VD,
-//                  clang::DeclarationNameInfo &DNI, clang::SourceLocation Loc) {
-//   clang::FieldDecl* Field = cast<clang::FieldDecl>(VD);
-//   clang::RecordDecl* RD = Field->getParent();
-
-//   // FIXME: Add CV qualifiers here if needed
-//   clang::QualType ThisTy(RD->getTypeForDecl(), 0);
-//   clang::QualType ThisPtrTy =
-//     SemaRef.getContext().CxxAST.getPointerType(ThisTy);
-//   clang::Expr *This = SemaRef.getCxxSema().BuildCXXThisExpr(Loc, ThisPtrTy, true);
-
-//   clang::DeclAccessPair FoundDecl =
-//     clang::DeclAccessPair::make(Field, clang::AccessSpecifier::AS_public);
-//   clang::CXXScopeSpec SS;
-//   clang::ExprResult MemberExpr = SemaRef.getCxxSema().BuildFieldReferenceExpr(
-//     This, true, clang::SourceLocation(), SS, Field, FoundDecl, DNI);
-
-//   if (MemberExpr.isInvalid())
-//     SemaRef.Diags.Report(Loc, clang::diag::err_no_member) << Field << ThisTy;
-
-//   return MemberExpr.get();
+// TODO: Refactor into this location.
+// static clang::TypeSourceInfo*
+// handleClassTemplateInstancation(Sema &SemaRef, ) {
+//   // assert(false && "Working on it.");
 // }
 
-// static clang::DeclRefExpr *
-// createDeclRefExpr(SyntaxContext &Context, Sema &SemaRef, clang::ValueDecl *VD,
-//                   clang::QualType Ty, clang::SourceLocation Loc) {
-//   clang::ASTContext &CxxAST = Context.CxxAST;
+Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
+  Expression IdExpr = elaborateExpr(Elem->getObject());
+  if (IdExpr.is<clang::NamespaceDecl *>()) {
+    llvm_unreachable("Nested namespace access to template syntax not implemented yet.");
+    return nullptr;
+  }
 
-//   // FIXME: discern whether this is an lvalue or rvalue properly
-//   clang::DeclRefExpr *DRE =
-//     clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
-//                                clang::SourceLocation(), VD, /*Capture=*/false,
-//                                Loc, Ty, clang::VK_LValue);
-//   return DRE;
-// }
+  if (IdExpr.is<clang::TypeSourceInfo *>()) {
+    // Elaborating a templated type, this is similar to array access.
+    clang::TemplateArgumentListInfo TemplateArgs(Elem->getObject()->getLoc(),
+        Elem->getObject()->getLoc());
+    // llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
+    // Doing the thing
+    const ListSyntax *ElemArgs = cast<ListSyntax>(Elem->getArguments());
+    for(const Syntax *SyntaxArg : ElemArgs->children()) {
+
+      // TODO: Attempt to process this initially as a template template
+      // parameter and see if it fails or not, if it fails then it's not a
+      // template template parameter.
+      Expression ArgExpr = elaborateExpr(SyntaxArg);
+      if (ArgExpr.isNull()) 
+        return nullptr;
+      
+      if (ArgExpr.is<clang::NamespaceDecl *>()) {
+        // FIXME: Figure out the correct error message to display here.
+        // Basically we need to say that a namespace is not a type.
+        llvm::errs() << "Unable to a namespace name for a template argument\n";
+        return nullptr;
+      }
+
+      if (ArgExpr.is<clang::TypeSourceInfo *>()) {
+        // TODO: Figure out how to handle template template parameters here?
+        auto *SrcInfo = ArgExpr.get<clang::TypeSourceInfo *>();
+        clang::TemplateArgument Arg(SrcInfo->getType());
+        TemplateArgs.addArgument({Arg, SrcInfo});
+        // ParsedArguments.emplace_back(clang::ParsedTemplateArgument::Type,
+        //     SrcInfo->getType().getAsOpaquePtr(), SyntaxArg->getLoc());
+      }
+      
+      if (ArgExpr.is<clang::Expr *>()) {
+        clang::TemplateArgument Arg(ArgExpr.get<clang::Expr *>(),
+                                    clang::TemplateArgument::Expression);
+        TemplateArgs.addArgument({Arg, ArgExpr.get<clang::Expr *>()});
+      }
+    }
+
+    
+    // llvm::outs() << "We have a type expression Woot.\n";
+    // clang::TypeSourceInfo *TInfo = IdExpr.get<clang::TypeSourceInfo *>();
+    clang::CXXScopeSpec SS;
+    clang::Sema::TemplateTy Template;
+    clang::UnqualifiedId TemplateName;
+    clang::ParsedType ObjectType;
+    // FIXME: Handling non-nested elements.
+    if (!isa<AtomSyntax>(Elem->getObject()))
+      llvm_unreachable("Nested/qualified name access to template syntax "
+          "not implemented yet.");
+    const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Elem->getObject());
+    clang::IdentifierInfo &II = CxxAST.Idents.get(Atom->getSpelling());
+    // clang::UnqualifiedId UId;
+    // UId.Name = &II
+    
+    TemplateName.setIdentifier(&II, Atom->getLoc());
+    bool MemberOfUnknownSpecialization = false;
+    if (clang::TemplateNameKind TNK = SemaRef.getCxxSema().isTemplateName(
+        SemaRef.getCurClangScope(), SS, /*hasTemplateKeyword=*/false,
+        TemplateName, ObjectType, /*EnteringContext*/false, Template,
+        MemberOfUnknownSpecialization)) {
+      if(ObjectType) {
+        llvm::outs() << "We have an object type?!\n";
+        ObjectType.get().dump();
+        llvm::outs() << "\n";
+      }
+      // llvm::outs() << "Object t"
+      // clang::TemplateIdAnnotation *AnnotationId
+      //     = clang::TemplateIdAnnotation::Create(SS, clang::SourceLocation(),
+      //         II, );
+      // static TemplateIdAnnotation *
+      // Create(CXXScopeSpec SS, SourceLocation TemplateKWLoc,
+      //        SourceLocation TemplateNameLoc, IdentifierInfo *Name,
+      //        OverloadedOperatorKind OperatorKind,
+      //        ParsedTemplateTy OpaqueTemplateName, TemplateNameKind TemplateKind,
+      //        SourceLocation LAngleLoc, SourceLocation RAngleLoc,
+      //        ArrayRef<ParsedTemplateArgument> TemplateArgs,
+      //        SmallVectorImpl<TemplateIdAnnotation *> &CleanupList)
+
+      switch(TNK) {
+      case clang::TemplateNameKind::TNK_Concept_template:{
+        llvm_unreachable("TNK_Concept_template has not been implemented yet.");
+        break;
+      }
+      case clang::TemplateNameKind::TNK_Dependent_template_name:{
+        llvm_unreachable("TNK_Dependent_template_name has not been implemented yet.");
+        break;
+      }
+      case clang::TemplateNameKind::TNK_Function_template:{
+        llvm_unreachable("TNK_Function_template has not been implemented yet.");
+        break;
+      }
+      case clang::TemplateNameKind::TNK_Non_template:{
+        // TODO: It might be best to emit something here indicating that we
+        // found something that wasn't a templat that is being used as a template
+        // But within the function that I got this from clang doesn't emit an error
+        // they simply return false instead.
+        //
+        // This was taken from the function Parser::ParseUnqualifiedIdTemplateId
+        // in ParseExprCXX.cpp line:2281
+        return nullptr;
+      }
+      case clang::TemplateNameKind::TNK_Type_template:{
+        
+        // (TemplateId.get()->getArguments(), TemplateId->NumArgs);
+        // TypeResult Sema::ActOnTemplateIdType(
+        //     Scope *S, CXXScopeSpec &SS, SourceLocation TemplateKWLoc,
+        //     TemplateTy TemplateD, IdentifierInfo *TemplateII,
+        //     SourceLocation TemplateIILoc, SourceLocation LAngleLoc,
+        //     ASTTemplateArgsPtr TemplateArgsIn, SourceLocation RAngleLoc,
+        //     bool IsCtorOrDtorName, bool IsClassName) {
+        // clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
+        // clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
+        //   SemaRef.getCurClangScope(), SS,
+        //   /*TemplateKWLoc*/ clang::SourceLocation(), Template, &II, Atom->getLoc(),
+        //   /*LAngleLoc*/ clang::SourceLocation(), /*ASTTemplateArgsPtr*/ InArgs,
+        //   /*RAngleLoc*/ clang::SourceLocation(), false, true);
+        // return BuildAnyTypeLoc(Context.CxxAST, Result.get().get(), Atom->getLoc());
+        // llvm_unreachable("Still messing with it.");
+        return Context.CxxAST.getTemplateSpecializationTypeInfo(Template.get(),
+            Elem->getObject()->getLoc(), TemplateArgs);
+      }
+      case clang::TemplateNameKind::TNK_Undeclared_template:{
+        llvm_unreachable("TNK_Undeclared_template has not been implemented yet.");
+        break;
+      }
+      case clang::TemplateNameKind::TNK_Var_template:{
+        llvm_unreachable("TNK_Var_template has not been implemented yet.");
+        break;
+      }
+      }
+    }
+    return nullptr;
+  }
+
+  if (IdExpr.is<clang::Expr *>()) {
+    llvm::errs() << "Elaboration of array indexing is not implemented yet\n";
+    return nullptr;
+  }
+
+  llvm_unreachable("Unable to handle indexing into given expression within the AST.");
+}
 
 static ExprElaborator::Expression
 createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
@@ -218,6 +341,7 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
     if (const clang::TagDecl *TD = R.getAsSingle<clang::TagDecl>()) {
       return BuildAnyTypeLoc(CxxAST, CxxAST.getTypeDeclType(TD), Loc);
     }
+    llvm::outs() << "This isn't implemented yet!?\n";
     // llvm_unreachable("Unhandled expression type.");
   }
   return nullptr;
@@ -527,18 +651,24 @@ Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
       clang::ExprResult HandledLHS = SemaRef.getCxxSema().ActOnMemberAccessExpr(
         SemaRef.getCurClangScope(), ElaboratedLHS.get<clang::Expr*>(), Op->getLoc(),
         clang::tok::TokenKind::period, SS, Loc, Id, nullptr);
-      clang::MemberExpr *MemberExpression
-        = cast<clang::MemberExpr>(HandledLHS.get());
-      MemberExpression->getMemberDecl()->setIsUsed();
+      if (HandledLHS.get()) {
+        
+        if (isa<clang::MemberExpr>(HandledLHS.get())) {
+          clang::MemberExpr *MemberExpression
+            = cast<clang::MemberExpr>(HandledLHS.get());
+          MemberExpression->getMemberDecl()->setIsUsed();
+        } else {
+          llvm::outs()<< "We have an expression that isn't a member access expression.\n";
+        }
+      } else {
+        llvm::outs() << "We were not able to elaborate the member access expression.\n";
+      }
       return HandledLHS.get();
     }
     llvm_unreachable("Currently unable to handle member access from non-variables.");
   } 
   if (ElaboratedLHS.is<clang::TypeSourceInfo*>()) {
     return elaborateNestedLookUpAccess(ElaboratedLHS, Op, RHS);
-
-    llvm_unreachable("Handling of member access to template types is not "
-        "implemented yet.");
   }
 
   llvm_unreachable("Member access to anything other then a member variable "
@@ -908,7 +1038,10 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
       TInfo = TypeExpr.get<TypeInfo *>();
       break;
     }
-    
+    case DK_TemplateType:{
+      llvm::outs() << "Working on it.\n";
+      assert(false && "Failed to get get template type!");
+    }
     default:
       llvm_unreachable("Invalid declarator");
     }
@@ -1041,14 +1174,14 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
     clang::TypeDecl *TD = R.getAsSingle<clang::TypeDecl>();
     clang::QualType TDType(TD->getTypeForDecl(), 0);
     return BuildAnyTypeLoc(CxxAST, TDType, Loc);
-  } else if(const CallSyntax *Call = dyn_cast<CallSyntax>(D->Data.Type)) {
-    return elaborateExpr(Call);
   }
-  llvm_unreachable("Unknown type specification");
+  
+  return elaborateExpr(D->Data.Type);
+  // Elaborating the member access syntax from a call.
+  // FIXME: In the future this may need to be expanded to include meta functions.
+  // if (const CallSyntax *Call = dyn_cast<CallSyntax>(D->Data.Type)) {
+  // }
 }
 
-// Expression ExprElaborator::elaborateQualifiedTypeName(Declarator* D, TypeInfo *Ty) {
-//   return 
-// }
 
 } // namespace gold

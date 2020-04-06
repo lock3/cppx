@@ -159,6 +159,8 @@ public:
   /// This is the clang processing scope. This is mostly for code GenPieces.
   clang::Scope *getCurClangScope();
   clang::Scope *enterClangScope(unsigned int ScopeFlags);
+  clang::Scope *moveToParentScopeNoPop();
+  void ReEnterScope(clang::Scope* Scope);
   void leaveClangScope(clang::SourceLocation Loc);
 
 public:
