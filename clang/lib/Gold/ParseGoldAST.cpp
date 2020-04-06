@@ -37,19 +37,18 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
   // Parse the input file.
   clang::SourceManager &SM = PP.getSourceManager();
   File InputFile(SM, SM.getMainFileID());
-
+  
   SyntaxContext Context(ClangContext);
 
   Parser Parser(Context, SM, InputFile);
   Syntax *AST = Parser.parseFile();
-  // AST->dump();
+
   // FIXME: There's a -fdump-syntax flag that we should tie this too.
 
   // FIXME: We should handle -fsyntax-only here -- or maybe make a separate
   // front-end action that stops after parsing. Unfortunately, the flag
   // is in the FrontendOptions of the CompilerInstance, which doesn't seem
   // to be reachable from the arguments to this function.
-
   // Elaborate the resulting abstract syntax tree.
   Sema Sema(Context, ClangSema);
   Elaborator Elab(Context, Sema);
@@ -62,6 +61,7 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
     if (D && !Consumer->HandleTopLevelDecl(DPtr.get()))
       return;
   }
+  TU->dump();
   Consumer->HandleTranslationUnit(ClangSema.getASTContext());
 }
 

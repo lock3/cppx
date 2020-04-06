@@ -63,8 +63,9 @@ static llvm::StringRef getCallName(const CallSyntax *S) {
   return "(void)";
 }
 
-llvm::StringRef Declarator::getString() const {
+std::string Declarator::getString() const {
   if (getKind() == DK_Type) {
+    // TODO: Figure out how to correctly print types. that are not simple identifiers.
     return cast<AtomSyntax>(Data.Type)->getSpelling();
   } else if (isFunction()) {
     return getCallName(cast<CallSyntax>(Call));
@@ -72,6 +73,10 @@ llvm::StringRef Declarator::getString() const {
     return cast<AtomSyntax>(Data.Id)->getSpelling();
   } else if (getKind() == DK_Pointer) {
     return "^";
+  } else if (getKind() == DK_Array) {
+    if (Data.Index)
+      return '[' + std::string(cast<AtomSyntax>(Data.Index)->getSpelling()) + ']';
+    return "[]";
   } else {
     return "[unimplemented]";
   }
@@ -91,19 +96,6 @@ void Declarator::printSequence(llvm::raw_ostream &os) const {
   os << '\n';
 }
 
-// A pointer is essentially a type, but we keep them separate for convenience
-// in expression elaboration.
-// const Syntax *Declarator::getPtrType() const {
-//   const Declarator *D = this;
-//   while (D->Next) {
-//     D = D->Next;
-//   }
-//   if (D->Kind == DK_Pointer)
-//     return D->Data.Type;
-//   return nullptr;
-// }
-
-
 Declaration::~Declaration() {
   delete SavedScope;
 }
@@ -115,7 +107,7 @@ bool Declaration::declaresVariable() const {
 
 bool Declaration::declaresType() const {  
   const Declarator* D = Decl;
-  if (D->Kind == DK_Identifier){
+  while (D && D->Kind != DK_Type) {
     D = D->Next;
   }
   if (D)
@@ -130,12 +122,22 @@ bool Declaration::declaresRecord() const {
     return false;
   if (Cxx)
     return isa<clang::CXXRecordDecl>(Cxx);
-  if(Init)
+  if (Init)
     if (const MacroSyntax *Macro = dyn_cast_or_null<MacroSyntax>(Init))
       if(Macro->getCall())
         if (const AtomSyntax *ClsKw = dyn_cast_or_null<AtomSyntax>(Macro->getCall()))
           return ClsKw->getSpelling() == "class";
   return false;
+}
+
+bool Declaration::declaresTemplateType() const {
+  const Declarator *D = Decl;
+  while (D && D->Kind != DK_TemplateType) {
+    D = D->Next;
+  }
+  if (!D)
+    return false;
+  return D && D->Call && clang::isa<ElemSyntax>(D->Call);
 }
 
 // A declarator declares a function if it's first non-id declarator is
@@ -196,6 +198,22 @@ const Syntax *Declaration::getTemplateParams() const {
   return nullptr;
 }
 
+const Declarator *Declaration::getFirstTemplateDeclarator() const {
+  const Declarator *D = Decl;
+  while (D && D->Kind != DK_TemplateType) {
+    D = D->Next;
+  }
+  return D;
+}
+
+Declarator *Declaration::getFirstTemplateDeclarator() {
+  Declarator *D = Decl;
+  while (D && D->Kind != DK_TemplateType) {
+    D = D->Next;
+  }
+  return D;
+}
+
 clang::DeclContext *Declaration::getCxxContext() const {
   return clang::Decl::castToDeclContext(Cxx);
 }
@@ -244,11 +262,16 @@ static llvm::StringRef getScopeKindName(ScopeKind K) {
 
   case SK_Class:
     return "Class";
+
+  case SK_Control:
+    return "Control";
   }
 }
 
 void Scope::dump(llvm::raw_ostream &os) const {
   os << getScopeKindName(getKind()) << '\n';
+  for (auto D : IdMap)
+    os << D.first->getName() << '\n';
 }
 
 void Scope::dump() const {

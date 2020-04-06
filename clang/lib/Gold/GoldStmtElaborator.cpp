@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/ASTContext.h"
-#include "clang/AST/EvaluatedExprVisitor.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/DiagnosticParse.h"
@@ -24,6 +23,7 @@
 
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
+#include "clang/Gold/GoldExprMarker.h"
 #include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldStmtElaborator.h"
 #include "clang/Gold/GoldSyntax.h"
@@ -32,6 +32,8 @@
 namespace gold {
 
 using clang::cast_or_null;
+using clang::dyn_cast;
+using clang::cast;
 
 StmtElaborator::StmtElaborator(SyntaxContext &Context, Sema &SemaRef)
   : Context(Context), CxxAST(Context.CxxAST), SemaRef(SemaRef),
@@ -110,30 +112,6 @@ createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
    return !Res.isInvalid() ? Res.get() : nullptr;
 }
 
-namespace {
-  /// Helper class that marks all of the declarations referenced by
-  /// potentially-evaluated subexpressions as "referenced".
-  /// Effectively a less complicated version of the EvaluatedExprMarker
-  /// found in Sema/SemaExpr.cpp
-  struct ExprMarker : public clang::EvaluatedExprVisitor<ExprMarker> {
-    clang::ASTContext &CxxAST;
-    Sema &SemaRef;
-    typedef EvaluatedExprVisitor<ExprMarker> Inherited;
-
-    ExprMarker(clang::ASTContext &CxxAST, Sema &SemaRef)
-      : Inherited(CxxAST), CxxAST(CxxAST), SemaRef(SemaRef)
-      {}
-
-    void VisitDeclRefExpr(clang::DeclRefExpr *E) {
-      // FIXME: references to virtual methods may cause problems here.
-      SemaRef.getCxxSema().MarkAnyDeclReferenced(E->getBeginLoc(),
-                                                 E->getDecl(),
-                                                 /*OdrUsed=*/false);
-      // E->getDecl()->markUsed(CxxAST);
-    }
-  };
-} // anonymous namespace
-
 static clang::Stmt *
 elaborateDefaultCall(SyntaxContext &Context, Sema &SemaRef, const CallSyntax *S) {
   ExprElaborator ExprElab(Context, SemaRef);
@@ -171,6 +149,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   // try and elaborate it as such.
   switch (OpKind) {
   case FOK_Colon: {
+
     // FIXME: fully elaborate the name expression.
     const AtomSyntax *Name = cast<AtomSyntax>(S->getArgument(0));
     clang::Sema &ClangSema = SemaRef.getCxxSema();
@@ -221,10 +200,8 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
                                       S->getLoc(), clang::tok::equal,
                                       NameExpr.get<clang::Expr *>(),
                                       InitExpr.get<clang::Expr *>());
-    if (Assignment.isInvalid()) {
-      llvm::errs() << "Unexpected assignment.\n";
+    if (Assignment.isInvalid())
       return nullptr;
-    }
 
     // We can readily assume anything here is getting used.
     ExprMarker(CxxAST, SemaRef).Visit(NameExpr.get<clang::Expr *>());
@@ -340,11 +317,156 @@ clang::Stmt *StmtElaborator::elaborateElseStmt(const MacroSyntax *S) {
   return Else;
 }
 
+// Elaborates an array macro as a statement, just creates and discards the array
+// FIXME: this does not currently emit properly.
+clang::Stmt *StmtElaborator::elaborateArrayMacroStmt(const MacroSyntax *S) {
+  ExprElaborator InitListElab(Context, SemaRef);
+  ExprElaborator::Expression InitListExpr = InitListElab.elaborateExpr(S);
+
+  if (InitListExpr.is<clang::TypeSourceInfo *>() || InitListExpr.isNull()) {
+    Diags.Report(S->getLoc(), clang::diag::err_expected_expression);
+    return nullptr;
+  }
+
+  clang::Expr *Init = InitListExpr.get<clang::Expr *>();
+  clang::InitListExpr *InitList = dyn_cast<clang::InitListExpr>(Init);
+  if (!InitList)
+    return nullptr;
+
+  if (!InitList->inits().size())
+    return nullptr;
+
+  clang::QualType ElementType = InitList->getInit(0)->getType();
+  auto Size = llvm::APSInt::getUnsigned(InitList->getNumInits());
+  clang::QualType ArrayType =
+    Context.CxxAST.getConstantArrayType(ElementType, Size,
+                                        /*SizeExpr=*/nullptr,
+                                        clang::ArrayType::Normal, 0);
+  auto *TSI = Context.CxxAST.CreateTypeSourceInfo(ArrayType);
+
+  clang::DeclContext *DC =
+    clang::Decl::castToDeclContext(SemaRef.getCurrentDecl()->Cxx);
+
+
+
+  clang::DeclarationName Name(&Context.CxxAST.Idents.get("bep"));
+  clang::VarDecl *ArrayDecl =
+    clang::VarDecl::Create(Context.CxxAST, DC, S->getLoc(), S->getLoc(), Name,
+                           TSI->getType(), TSI, clang::SC_Auto);
+  ArrayDecl->setInit(InitList);
+
+  clang::DeclStmt *DS = new (Context.CxxAST) clang::DeclStmt(
+    SemaRef.getCxxSema().ConvertDeclToDeclGroup(ArrayDecl).get(),
+    S->getLoc(), S->getLoc());
+  return DS;
+}
+
+// An auto-deduced operator'in' call does not appear to be a declaration to our
+// elaborator, so we will have to fabricate something here.
+static clang::DeclStmt *
+createForRangeLoopVarDecl(SyntaxContext &Ctx, Sema &SemaRef,
+                          const CallSyntax *S) {
+  clang::ASTContext &CxxAST = Ctx.CxxAST;
+  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  clang::TypeSourceInfo *TInfo =
+    CxxAST.CreateTypeSourceInfo(CxxAST.getAutoDeductType());
+  clang::SourceLocation Loc = S->getArgument(0)->getLoc();
+
+  llvm::StringRef Name = cast<AtomSyntax>(S->getArgument(0))->getSpelling();
+  clang::IdentifierInfo *Id = &CxxAST.Idents.get(Name);
+  clang::VarDecl *VD =
+    clang::VarDecl::Create(CxxAST, Owner, Loc, Loc, Id, TInfo->getType(),
+                           TInfo, clang::SC_Auto);
+
+  Elaborator(Ctx, SemaRef).identifyDecl(S);
+  Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
+  D->Cxx = VD;
+
+  clang::DeclStmt *DS = new (CxxAST) clang::DeclStmt(
+    SemaRef.getCxxSema().ConvertDeclToDeclGroup(VD).get(), Loc, Loc);
+  return DS;
+}
+
+clang::Stmt *StmtElaborator::handleRangeBasedFor(const ListSyntax *S,
+                                                 clang::SourceLocation ForLoc) {
+  assert(isa<CallSyntax>(S->getChild(0)) && "Invalid argument in for range");
+  const CallSyntax *InCall = cast<CallSyntax>(S->getChild(0));
+  assert(cast<AtomSyntax>(InCall->getCallee())->getSpelling() == "operator'in'"
+         && "For range statement must have a top-level operator'in' call");
+
+  clang::Stmt *LoopVar = isa<AtomSyntax>(InCall->getArgument(0)) ?
+    createForRangeLoopVarDecl(Context, SemaRef, InCall) :
+    StmtElaborator(Context, SemaRef).elaborateStmt(InCall->getArgument(0));
+
+  if (!LoopVar)
+    return nullptr;
+
+  ExprElaborator::Expression RangeExpr =
+    ExprElaborator(Context, SemaRef).elaborateExpr(InCall->getArgument(1));
+  if (RangeExpr.is<clang::TypeSourceInfo *>()) {
+    SemaRef.Diags.Report(InCall->getArgument(1)->getLoc(),
+                         clang::diag::err_unexpected_typedef);
+    return nullptr;
+  }
+  if (RangeExpr.isNull()) {
+    SemaRef.Diags.Report(InCall->getArgument(1)->getLoc(),
+                         clang::diag::err_failed_to_translate_expr);
+    return nullptr;
+  }
+
+  ExprMarker(Context.CxxAST, SemaRef).Visit(RangeExpr.get<clang::Expr *>());
+
+  clang::StmtResult Res = SemaRef.getCxxSema().ActOnCXXForRangeStmt(
+    SemaRef.getCxxSema().getCurScope(), ForLoc, clang::SourceLocation(),
+    /*InitStmt=*/nullptr, LoopVar, InCall->getCallee()->getLoc(),
+    RangeExpr.get<clang::Expr*>(), ForLoc, clang::Sema::BFRK_Build);
+
+  if (Res.isInvalid())
+    return nullptr;
+
+  return Res.get();
+}
+
+clang::Stmt *StmtElaborator::elaborateForStmt(const MacroSyntax *S) {
+  assert (isa<CallSyntax>(S->getCall()));
+  const CallSyntax *MacroCall = cast<CallSyntax>(S->getCall());
+  clang::SourceLocation ForLoc = S->getCall()->getLoc();
+
+  assert (isa<ListSyntax>(MacroCall->getArguments()) && "Invalid macro block");
+  const ListSyntax *Arguments = cast<ListSyntax>(MacroCall->getArguments());
+
+  clang::Sema::GoldElaborationScopeRAII CxxScope(
+    SemaRef.getCxxSema(),
+    clang::Scope::BreakScope    |
+    clang::Scope::ContinueScope |
+    clang::Scope::DeclScope     |
+    clang::Scope::ControlScope);
+  Sema::ScopeRAII ForScope(SemaRef, SK_Control, S);
+
+  // FIXME: for now, we are assuming this is range-based; it may not be.
+  clang::Stmt *ForRange = handleRangeBasedFor(Arguments, ForLoc);
+
+  clang::Stmt *Body =
+    StmtElaborator(Context, SemaRef).elaborateBlock(S->getBlock());
+  if (!Body)
+    return nullptr;
+
+  clang::StmtResult Res =
+    SemaRef.getCxxSema().FinishCXXForRangeStmt(ForRange, Body);
+
+  if (Res.isInvalid())
+    return nullptr;
+  return Res.get();
+}
+
 clang::Stmt *
 StmtElaborator::elaborateMacro(const MacroSyntax *S) {
-  const CallSyntax *Call = cast<CallSyntax>(S->getCall());
+  const AtomSyntax *Callee;
+  if (const CallSyntax *Call = dyn_cast<CallSyntax>(S->getCall()))
+    Callee = cast<AtomSyntax>(Call->getCallee());
+  else
+    Callee = cast<AtomSyntax>(S->getCall());
 
-  const AtomSyntax *Callee = cast<AtomSyntax>(Call->getCallee());
   FusedOpKind OpKind = getFusedOpKind(SemaRef, Callee->getSpelling());
 
   switch (OpKind) {
@@ -352,10 +474,20 @@ StmtElaborator::elaborateMacro(const MacroSyntax *S) {
     return elaborateIfStmt(S);
   case FOK_Else:
     return elaborateElseStmt(S);
+  case FOK_For:
+    return elaborateForStmt(S);
   default:
-    llvm::errs() << "Unsupported macro.\n";
-    return nullptr;
+    break;
   }
+
+  if (Callee->getSpelling() == "array")
+    return elaborateArrayMacroStmt(S);
+
+  unsigned DiagID = Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                          "use of undefined macro");
+  Diags.Report(Callee->getLoc(), DiagID);
+
+  return nullptr;
 }
 
 clang::Stmt *

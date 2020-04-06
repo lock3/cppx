@@ -1,4 +1,4 @@
-//=== GoldParsingTest.cpp - Elaboration for Gold Nodes ----------------------==//
+//=== GoldParsingTest.cpp - Parsing of global variables --------------------==//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file implements tests for paring of global variables.
+//  This file implements tests for parsing of global variables.
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,6 +30,13 @@ TEST(GlobalVariables, SimpleDeclWithInit) {
   StringRef Code = R"(
 x : int = 9
 y = 5
+)";
+  SimpleGoldParseTest(Code);
+}
+
+TEST(GlobalVariables, SimpleArray) {
+  StringRef Code = R"(
+x : [3]int
 )";
   SimpleGoldParseTest(Code);
 }

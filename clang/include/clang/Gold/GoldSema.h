@@ -159,6 +159,8 @@ public:
   /// This is the clang processing scope. This is mostly for code GenPieces.
   clang::Scope *getCurClangScope();
   clang::Scope *enterClangScope(unsigned int ScopeFlags);
+  clang::Scope *moveToParentScopeNoPop();
+  void ReEnterScope(clang::Scope* Scope);
   void leaveClangScope(clang::SourceLocation Loc);
 
 public:
@@ -170,8 +172,6 @@ public:
   // The Clang diagnostics engine.
   clang::DiagnosticsEngine &Diags;
 
-  clang::DeclarationNameTable DeclNameTable;
-
   // Tokenizations of commonly compared-against strings.
   const clang::IdentifierInfo *OperatorColonII;
   const clang::IdentifierInfo *OperatorExclaimII;
@@ -181,10 +181,13 @@ public:
   const clang::IdentifierInfo *OperatorReturnII;
   const clang::IdentifierInfo *OperatorReturnsII;
   const clang::IdentifierInfo *OperatorDotII;
+  const clang::IdentifierInfo *OperatorForII;
+  const clang::IdentifierInfo *OperatorInII;
 
   // An RAII type for constructing scopes.
   struct ScopeRAII {
-    ScopeRAII(Sema &S, ScopeKind K, const Syntax *ConcreteTerm, Scope **SavedScope = nullptr)
+    ScopeRAII(Sema &S, ScopeKind K, const Syntax *ConcreteTerm,
+              Scope **SavedScope = nullptr)
       : S(S), SavedScope(SavedScope), ConcreteTerm(ConcreteTerm) {
       S.enterScope(K, ConcreteTerm);
     }

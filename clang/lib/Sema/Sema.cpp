@@ -2389,3 +2389,13 @@ bool Sema::checkOpenCLDisabledDecl(const NamedDecl &D, const Expr &E) {
   return checkOpenCLDisabledTypeOrDecl(&D, E.getBeginLoc(), FnName,
                                        OpenCLDeclExtMap, 1, D.getSourceRange());
 }
+
+Scope *Sema::PushGoldElaborationScope(unsigned ScopeFlags) {
+  Scope *S = new (Context) Scope(getCurScope(), ScopeFlags, Diags);
+  CurScope = S;
+  return S;
+}
+
+void Sema::PopGoldElaborationScope(Scope *OldScope) {
+  CurScope = OldScope;
+}

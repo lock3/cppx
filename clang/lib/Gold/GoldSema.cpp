@@ -30,8 +30,7 @@ using namespace llvm;
 
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : CxxSema(CxxSema), CurrentDecl(), Context(Context),
-    Diags(Context.CxxAST.getSourceManager().getDiagnostics()),
-    DeclNameTable(Context.CxxAST)
+    Diags(Context.CxxAST.getSourceManager().getDiagnostics())
 {
   CxxSema.CurScope = nullptr;
   OperatorColonII = &Context.CxxAST.Idents.get("operator':'");
@@ -42,6 +41,8 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorReturnII = &Context.CxxAST.Idents.get("operator'return'");
   OperatorReturnsII = &Context.CxxAST.Idents.get("operator'returns'");
   OperatorDotII = &Context.CxxAST.Idents.get("operator'.'");
+  OperatorForII = &Context.CxxAST.Idents.get("operator'for'");
+  OperatorInII = &Context.CxxAST.Idents.get("operator'in'");
 }
 
 Sema::~Sema() {
@@ -105,7 +106,7 @@ clang::DeclContext *Sema::getCurrentCxxDeclContext() {
 
 void Sema::pushDecl(Declaration *D) {
   assert(D->getOwner() == CurrentDecl);
-
+  
   // FIXME: this might be an incorrect assertion.
   assert(D->Cxx && isa<clang::DeclContext>(D->Cxx)
          && "No Cxx declaration to push.");
@@ -150,10 +151,19 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
       for (auto *FoundDecl : Found) {
         // If we find a name that hasn't been elaborated,
         // then we actually need to elaborate it.
-        if (!FoundDecl->Cxx)
+        if (!FoundDecl->Cxx) {
+          llvm::outs() << "Attempting early elaboration\n";
           Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
-
-        // FoundDecl->Cxx->dump();
+        }
+        if (!FoundDecl->Cxx) {
+          // FIXME: This needs a more appropriate error message.
+          llvm_unreachable("Early elaboration of declaration failed. Unable to continue.");
+        }
+        if (!isa<clang::NamedDecl>(FoundDecl->Cxx)) {
+            llvm::outs() << "We simply didn't elaborate the Cxx type for the decl\n";
+            llvm_unreachable("Decl elaboration failure.");
+          FoundDecl->Cxx->dump();
+        }
         clang::NamedDecl *ND = cast<clang::NamedDecl>(FoundDecl->Cxx);
 
         // FIXME: check if this is a tag decl, not a type decl!
@@ -205,6 +215,20 @@ clang::Scope *Sema::getCurClangScope() {
 clang::Scope *Sema::enterClangScope(unsigned int ScopeFlags) {
   CxxSema.CurScope = new clang::Scope(getCurClangScope(), ScopeFlags, Diags);
   return CxxSema.CurScope;
+}
+
+clang::Scope *Sema::moveToParentScopeNoPop() {
+  clang::Scope* S = CxxSema.CurScope;
+  CxxSema.CurScope = CxxSema.CurScope->getParent();
+  return S;
+}
+
+void Sema::ReEnterScope(clang::Scope* Scope) {
+  assert(Scope && "Invalid scope.");
+  assert(Scope->getParent() == CxxSema.CurScope &&
+    "We are unable to re-enter this scope because we've already left the scope "
+    "in which it was declared.");
+  CxxSema.CurScope = Scope;
 }
 
 void Sema::leaveClangScope(clang::SourceLocation Loc) {

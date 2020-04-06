@@ -33,15 +33,18 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_clang_unittest(GoldTests
+  GoldAuto.cpp
   GoldClassParsing.cpp
+  GoldFor.cpp
   GoldFunctionTemplate.cpp
-  GlobalParsing.cpp
   GoldMemberExecuteTest.cpp
   CompileRun.cpp
   BoolImplicitConversionInit.cpp
   ConstructorCallParsingTest.cpp
   BuiltInTypeConstructorsExec.cpp
   ImplicitCtorExplicitCallExec.cpp
+  GoldGlobalParsing.cpp
+  ClassTemplateParsing.cpp
   )
 
 clang_target_link_libraries(GoldTests

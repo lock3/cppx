@@ -1554,6 +1554,9 @@ public:
 
   sema::CompoundScopeInfo &getCurCompoundScope() const;
 
+  Scope *PushGoldElaborationScope(unsigned ScopeFlags);
+  void PopGoldElaborationScope(Scope *OldScope);
+
   bool hasAnyUnrecoverableErrorsInThisFunction() const;
 
   /// Retrieve the current block, if any.
@@ -9979,6 +9982,23 @@ public:
 
     ~CXXReflectionScopeRAII() {
       S.ReflectionScope = PreviouslyInReflection;
+    }
+  };
+
+  class GoldElaborationScopeRAII {
+    Sema &S;
+    Scope *SavedScope;
+    Scope *CreatedScope = nullptr;
+
+  public:
+    GoldElaborationScopeRAII(Sema &S, unsigned ScopeFlags)
+      : S(S), SavedScope(S.getCurScope()),
+        CreatedScope(S.PushGoldElaborationScope(ScopeFlags))
+      {}
+
+    ~GoldElaborationScopeRAII() {
+      S.ActOnPopScope(SourceLocation(), CreatedScope);
+      S.PopGoldElaborationScope(SavedScope);
     }
   };
 

@@ -224,6 +224,7 @@ namespace gold
     Syntax* parseCall(Syntax* fn);
     Syntax* parseElem(Syntax* map);
     Syntax* parseDot(Syntax* obj);
+    Syntax* parseArrayPrefix();
 
     Syntax* parsePrimary();
     Syntax* parseId();

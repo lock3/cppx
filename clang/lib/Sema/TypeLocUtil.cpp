@@ -15,6 +15,7 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/TypeLoc.h"
+#include "clang/AST/TemplateBase.h"
 #include "clang/Sema/TypeLocUtil.h"
 #include "TypeLocBuilder.h"
 
@@ -162,7 +163,15 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::ArrayTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::ConstantArrayTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  const clang::ConstantArrayType *ArrayType =
+    clang::cast<clang::ConstantArrayType>(Ty->getAsArrayTypeUnsafe());
+  QualType InnerType = ArrayType->getElementType();
+  BuildAnyTypeLoc(Ctx, TLB, InnerType, Loc);
+
+  auto TypeLocInstance = TLB.push<clang::ConstantArrayTypeLoc>(Ty);
+  TypeLocInstance.initializeLocal(Ctx, Loc);
+  TypeLocInstance.setSizeExpr(const_cast<clang::Expr *>(ArrayType->getSizeExpr()));
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::ConstantArrayTypeLoc>
@@ -533,7 +542,8 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::DeducedTemplateSpecializationType
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::InjectedClassNameTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  TLB.pushTypeSpec(Ty);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::InjectedClassNameTypeLoc>
