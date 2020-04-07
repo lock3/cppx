@@ -455,8 +455,6 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   // Create the variable and add it to it's owning context.
   clang::VarDecl *VD = clang::VarDecl::Create(Context.CxxAST, Owner, Loc, Loc,
                                               Id, TInfo->getType(), TInfo, SC);
-  clang::QualType VDTy = TInfo->getType();
-
   Owner->addDecl(VD);
   D->Cxx = VD;
   return VD;
@@ -690,6 +688,9 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
                             << Ty << "a constructor";
       }
     }
+    if(!VD)
+      llvm::outs() << "We don't have a variable declaration.\n";
+    // VD->getType().dump();
     SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
     return;
   }
