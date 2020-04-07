@@ -141,7 +141,7 @@ Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
     clang::TemplateArgumentListInfo TemplateArgInfoList(
         Elem->getObject()->getLoc(), Elem->getObject()->getLoc());
     llvm::SmallVector<clang::TemplateArgument, 16> TemplateArgs;
-    // llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
+    llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
     // Doing the thing
     const ListSyntax *ElemArgs = cast<ListSyntax>(Elem->getArguments());
     for(const Syntax *SyntaxArg : ElemArgs->children()) {
@@ -166,6 +166,8 @@ Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
         clang::TemplateArgument Arg(SrcInfo->getType());
         TemplateArgInfoList.addArgument({Arg, SrcInfo});
         TemplateArgs.emplace_back(SrcInfo->getType());
+        ParsedArguments.emplace_back(clang::ParsedTemplateArgument::Type,
+          SrcInfo->getType().getAsOpaquePtr(), SyntaxArg->getLoc());
       }
       
       if (ArgExpr.is<clang::Expr *>()) {
@@ -227,32 +229,33 @@ Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
             TemplateArgs);
         clang::MultiLevelTemplateArgumentList ListOfArgLists(ArgList);
 
-        clang::TemplateDecl *TemplateD = Template.get().getAsTemplateDecl();
-        clang::Decl *InstantiatedTemplate = SemaRef.getCxxSema().SubstDecl(
-          TemplateD, TemplateD->getDeclContext(), ListOfArgLists);
-        InstantiatedTemplate->dump();
-        if (isa<clang::TypeDecl>(InstantiatedTemplate)) {
-          clang::QualType Ty = Context.CxxAST.getTypeDeclType(cast<clang::TypeDecl>(InstantiatedTemplate));
-          return BuildAnyTypeLoc(Context.CxxAST, Ty, Atom->getLoc());
-        }
-        llvm_unreachable("We were unable to do substituion using SubtDecl.");
-        // (TemplateId.get()->getArguments(), TemplateId->NumArgs);
+        // clang::TemplateDecl *TemplateD = Template.get().getAsTemplateDecl();
+        // clang::Decl *InstantiatedTemplate = SemaRef.getCxxSema().SubstDecl(
+        //   TemplateD, TemplateD->getDeclContext(), ListOfArgLists);
+        // InstantiatedTemplate->dump();
+        // if (isa<clang::TypeDecl>(InstantiatedTemplate)) {
+        //   clang::QualType Ty = Context.CxxAST.getTypeDeclType(cast<clang::TypeDecl>(InstantiatedTemplate));
+        //   return BuildAnyTypeLoc(Context.CxxAST, Ty, Atom->getLoc());
+        // }
+        // llvm_unreachable("We were unable to do substituion using SubtDecl.");
         // TypeResult Sema::ActOnTemplateIdType(
         //     Scope *S, CXXScopeSpec &SS, SourceLocation TemplateKWLoc,
         //     TemplateTy TemplateD, IdentifierInfo *TemplateII,
         //     SourceLocation TemplateIILoc, SourceLocation LAngleLoc,
         //     ASTTemplateArgInfosPtr TemplateArgsIn, SourceLocation RAngleLoc,
         //     bool IsCtorOrDtorName, bool IsClassName) {
-        // clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
-        // clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
-        //   SemaRef.getCurClangScope(), SS,
-        //   /*TemplateKWLoc*/ clang::SourceLocation(), Template, &II, Atom->getLoc(),
-        //   /*LAngleLoc*/ clang::SourceLocation(), /*ASTTemplateArgsPtr*/ InArgs,
-        //   /*RAngleLoc*/ clang::SourceLocation(), false, true);
-        // return BuildAnyTypeLoc(Context.CxxAST, Result.get().get(), Atom->getLoc());
-        // llvm_unreachable("Still messing with it.");
-        // return Context.CxxAST.getTemplateSpecializationTypeInfo(Template.get(),
-        //     Elem->getObject()->getLoc(), TemplateArgs);
+        clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
+        clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
+          SemaRef.getCurClangScope(), SS,
+          /*TemplateKWLoc*/ clang::SourceLocation(), Template, &II, Atom->getLoc(),
+          /*LAngleLoc*/ clang::SourceLocation(), InArgs,
+          /*RAngleLoc*/ clang::SourceLocation(), false, false);
+        if (Result.isInvalid()) {
+          llvm::outs() << "We hae an invalid result ?!\n";
+          llvm_unreachable("We have an invlaid result for ActOnTemplateIdType.");
+        }
+        return Context.CxxAST.getTemplateSpecializationTypeInfo(Template.get(),
+            Elem->getObject()->getLoc(), TemplateArgInfoList);
       }
       case clang::TemplateNameKind::TNK_Undeclared_template:{
         llvm_unreachable("TNK_Undeclared_template has not been implemented yet.");
