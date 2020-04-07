@@ -154,7 +154,7 @@ public:
 
   SyntaxContext &getContext() { return Context; }
 
-  clang::QualType lookUpType(clang::IdentifierInfo *Id, Scope *S) const;
+  // clang::QualType lookUpType(clang::IdentifierInfo *Id, Scope *S) const;
 
   /// This is the clang processing scope. This is mostly for code GenPieces.
   clang::Scope *getCurClangScope();

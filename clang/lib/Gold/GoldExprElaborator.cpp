@@ -136,12 +136,12 @@ Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
     llvm_unreachable("Nested namespace access to template syntax not implemented yet.");
     return nullptr;
   }
-
   if (IdExpr.is<clang::TypeSourceInfo *>()) {
     // Elaborating a templated type, this is similar to array access.
-    clang::TemplateArgumentListInfo TemplateArgs(Elem->getObject()->getLoc(),
-        Elem->getObject()->getLoc());
-    // llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
+    clang::TemplateArgumentListInfo TemplateArgInfoList(
+        Elem->getObject()->getLoc(), Elem->getObject()->getLoc());
+    llvm::SmallVector<clang::TemplateArgument, 16> TemplateArgs;
+    llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
     // Doing the thing
     const ListSyntax *ElemArgs = cast<ListSyntax>(Elem->getArguments());
     for(const Syntax *SyntaxArg : ElemArgs->children()) {
@@ -164,15 +164,18 @@ Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
         // TODO: Figure out how to handle template template parameters here?
         auto *SrcInfo = ArgExpr.get<clang::TypeSourceInfo *>();
         clang::TemplateArgument Arg(SrcInfo->getType());
-        TemplateArgs.addArgument({Arg, SrcInfo});
-        // ParsedArguments.emplace_back(clang::ParsedTemplateArgument::Type,
-        //     SrcInfo->getType().getAsOpaquePtr(), SyntaxArg->getLoc());
+        TemplateArgInfoList.addArgument({Arg, SrcInfo});
+        TemplateArgs.emplace_back(SrcInfo->getType());
+        ParsedArguments.emplace_back(clang::ParsedTemplateArgument::Type,
+          SrcInfo->getType().getAsOpaquePtr(), SyntaxArg->getLoc());
       }
       
       if (ArgExpr.is<clang::Expr *>()) {
-        clang::TemplateArgument Arg(ArgExpr.get<clang::Expr *>(),
-                                    clang::TemplateArgument::Expression);
-        TemplateArgs.addArgument({Arg, ArgExpr.get<clang::Expr *>()});
+        // clang::TemplateArgument Arg(ArgExpr.get<clang::Expr *>(),
+        //                             clang::TemplateArgument::Expression);
+        // TemplateArgInfoList.addArgument({Arg, ArgExpr.get<clang::Expr *>()});
+        llvm_unreachable("Evaluation of constant expressions in template "
+            "parameters is not yet supported.");
       }
     }
 
@@ -189,33 +192,13 @@ Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
           "not implemented yet.");
     const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Elem->getObject());
     clang::IdentifierInfo &II = CxxAST.Idents.get(Atom->getSpelling());
-    // clang::UnqualifiedId UId;
-    // UId.Name = &II
-    
     TemplateName.setIdentifier(&II, Atom->getLoc());
     bool MemberOfUnknownSpecialization = false;
+    
     if (clang::TemplateNameKind TNK = SemaRef.getCxxSema().isTemplateName(
         SemaRef.getCurClangScope(), SS, /*hasTemplateKeyword=*/false,
         TemplateName, ObjectType, /*EnteringContext*/false, Template,
         MemberOfUnknownSpecialization)) {
-      if(ObjectType) {
-        llvm::outs() << "We have an object type?!\n";
-        ObjectType.get().dump();
-        llvm::outs() << "\n";
-      }
-      // llvm::outs() << "Object t"
-      // clang::TemplateIdAnnotation *AnnotationId
-      //     = clang::TemplateIdAnnotation::Create(SS, clang::SourceLocation(),
-      //         II, );
-      // static TemplateIdAnnotation *
-      // Create(CXXScopeSpec SS, SourceLocation TemplateKWLoc,
-      //        SourceLocation TemplateNameLoc, IdentifierInfo *Name,
-      //        OverloadedOperatorKind OperatorKind,
-      //        ParsedTemplateTy OpaqueTemplateName, TemplateNameKind TemplateKind,
-      //        SourceLocation LAngleLoc, SourceLocation RAngleLoc,
-      //        ArrayRef<ParsedTemplateArgument> TemplateArgs,
-      //        SmallVectorImpl<TemplateIdAnnotation *> &CleanupList)
-
       switch(TNK) {
       case clang::TemplateNameKind::TNK_Concept_template:{
         llvm_unreachable("TNK_Concept_template has not been implemented yet.");
@@ -240,24 +223,39 @@ Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
         return nullptr;
       }
       case clang::TemplateNameKind::TNK_Type_template:{
+        llvm::outs() << "NUmber of arguments " << TemplateArgs.size() << " given\n";
         
-        // (TemplateId.get()->getArguments(), TemplateId->NumArgs);
+        clang::TemplateArgumentList ArgList(clang::TemplateArgumentList::OnStack,
+            TemplateArgs);
+        clang::MultiLevelTemplateArgumentList ListOfArgLists(ArgList);
+
+        // clang::TemplateDecl *TemplateD = Template.get().getAsTemplateDecl();
+        // clang::Decl *InstantiatedTemplate = SemaRef.getCxxSema().SubstDecl(
+        //   TemplateD, TemplateD->getDeclContext(), ListOfArgLists);
+        // InstantiatedTemplate->dump();
+        // if (isa<clang::TypeDecl>(InstantiatedTemplate)) {
+        //   clang::QualType Ty = Context.CxxAST.getTypeDeclType(cast<clang::TypeDecl>(InstantiatedTemplate));
+        //   return BuildAnyTypeLoc(Context.CxxAST, Ty, Atom->getLoc());
+        // }
+        // llvm_unreachable("We were unable to do substituion using SubtDecl.");
         // TypeResult Sema::ActOnTemplateIdType(
         //     Scope *S, CXXScopeSpec &SS, SourceLocation TemplateKWLoc,
         //     TemplateTy TemplateD, IdentifierInfo *TemplateII,
         //     SourceLocation TemplateIILoc, SourceLocation LAngleLoc,
-        //     ASTTemplateArgsPtr TemplateArgsIn, SourceLocation RAngleLoc,
+        //     ASTTemplateArgInfosPtr TemplateArgsIn, SourceLocation RAngleLoc,
         //     bool IsCtorOrDtorName, bool IsClassName) {
-        // clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
-        // clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
-        //   SemaRef.getCurClangScope(), SS,
-        //   /*TemplateKWLoc*/ clang::SourceLocation(), Template, &II, Atom->getLoc(),
-        //   /*LAngleLoc*/ clang::SourceLocation(), /*ASTTemplateArgsPtr*/ InArgs,
-        //   /*RAngleLoc*/ clang::SourceLocation(), false, true);
-        // return BuildAnyTypeLoc(Context.CxxAST, Result.get().get(), Atom->getLoc());
-        // llvm_unreachable("Still messing with it.");
+        clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
+        clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
+          SemaRef.getCurClangScope(), SS,
+          /*TemplateKWLoc*/ clang::SourceLocation(), Template, &II, Atom->getLoc(),
+          /*LAngleLoc*/ clang::SourceLocation(), InArgs,
+          /*RAngleLoc*/ clang::SourceLocation(), false, false);
+        if (Result.isInvalid()) {
+          llvm::outs() << "We hae an invalid result ?!\n";
+          llvm_unreachable("We have an invlaid result for ActOnTemplateIdType.");
+        }
         return Context.CxxAST.getTemplateSpecializationTypeInfo(Template.get(),
-            Elem->getObject()->getLoc(), TemplateArgs);
+            Elem->getObject()->getLoc(), TemplateArgInfoList);
       }
       case clang::TemplateNameKind::TNK_Undeclared_template:{
         llvm_unreachable("TNK_Undeclared_template has not been implemented yet.");
