@@ -49,12 +49,42 @@ void ActionTrace::EnterParsingFn(llvm::StringRef FunctionName, llvm::StringRef M
 void ActionTrace::LeavingParsingFn(llvm::StringRef FunctionName, llvm::StringRef Msg) {
   --Depth;
   WriteIndent();
-  llvm::WithColor(llvm::outs(), llvm::HighlightColor::Macro) << "Leaving Parser::" << FunctionName;
+  llvm::WithColor(llvm::outs(), llvm::HighlightColor::Macro) << "Leaving Parser::"
+      << FunctionName;
   if(Msg != "") {
-    llvm::WithColor(llvm::outs(), llvm::HighlightColor::Macro) << ". Message: " << Msg;
+    llvm::WithColor(llvm::outs(), llvm::HighlightColor::Macro) << ". Message: "
+        << Msg;
   }
   llvm::outs() << "\n";
 }
+
+void ActionTrace::EnteringASTFn(llvm::StringRef ClsName,
+    llvm::StringRef FunctionName, llvm::StringRef Msg) {
+  WriteIndent();
+  llvm::WithColor(llvm::outs(), llvm::HighlightColor::Attribute) << "Entering "
+      << ClsName << "::" << FunctionName;
+  if(Msg != "") {
+    llvm::WithColor(llvm::outs(), llvm::HighlightColor::Attribute) << ". Message: "
+        << Msg;
+  }
+  llvm::outs() << "\n";
+  ++Depth;
+}
+
+void ActionTrace::LeavingASTFn(llvm::StringRef ClsName,
+    llvm::StringRef FunctionName, llvm::StringRef Msg) {
+  --Depth;
+  WriteIndent();
+  llvm::WithColor(llvm::outs(), llvm::HighlightColor::Macro) << "Leaving "
+      << ClsName << "::" << FunctionName;
+  if(Msg != "") {
+    llvm::WithColor(llvm::outs(), llvm::HighlightColor::Macro) << ". Message: "\
+        << Msg;
+  }
+  llvm::outs() << "\n";
+}
+
+
 
 void ActionTrace::EnterScopeLog(clang::Scope* S) {
   WriteIndent();
@@ -159,5 +189,17 @@ SemaActionLoggingGuard::SemaActionLoggingGuard(llvm::StringRef FnName)
 SemaActionLoggingGuard::~SemaActionLoggingGuard() {
   ActionTrace::LeavingSemaCall(FunctionName);
 }
+
+ASTLoggingGuard::ASTLoggingGuard(llvm::StringRef ClsName, llvm::StringRef FnName)
+  :ClassName(ClsName),
+  FunctionName(FnName)
+{
+  ActionTrace::EnteringASTFn(ClassName, FunctionName);
+}
+
+ASTLoggingGuard::~ASTLoggingGuard() {
+  ActionTrace::LeavingASTFn(ClassName, FunctionName);
+}
+
 
 }

@@ -19,6 +19,12 @@ public:
   static void LeavingSemaCall(llvm::StringRef FunctionName, llvm::StringRef Msg = "");
   static void EnterParsingFn(llvm::StringRef FunctionName, llvm::StringRef Msg = "");
   static void LeavingParsingFn(llvm::StringRef FunctionName, llvm::StringRef Msg = "");
+
+  static void EnteringASTFn(llvm::StringRef ClsName,
+    llvm::StringRef FunctionName, llvm::StringRef Msg = "");
+  static void LeavingASTFn(llvm::StringRef ClsName,
+    llvm::StringRef FunctionName, llvm::StringRef Msg = "");
+
   static void EnterScopeLog(clang::Scope* S);
   static void LeaveScopeLog(clang::Scope* S);
 };
@@ -31,6 +37,13 @@ struct ActionLoggingGuard {
 struct SemaActionLoggingGuard {
   SemaActionLoggingGuard(llvm::StringRef FnName);
   ~SemaActionLoggingGuard();
+  llvm::StringRef FunctionName;
+};
+
+struct ASTLoggingGuard {
+  ASTLoggingGuard(llvm::StringRef ClsName, llvm::StringRef FnName);
+  ~ASTLoggingGuard();
+  llvm::StringRef ClassName;
   llvm::StringRef FunctionName;
 };
 
@@ -51,6 +64,9 @@ struct SemaActionLoggingGuard {
 
 #define SEMA_LOG()\
   ::sematrace::SemaActionLoggingGuard GardTemp(__FUNCTION__)
+
+#define AST_LOG(CLS)\
+  ::sematrace::ASTLoggingGuard GardTemp(CLS, __FUNCTION__)
 }
 
 #endif
