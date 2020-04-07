@@ -115,6 +115,9 @@ private:
   clang::Stmt *elaborateForStmt(const MacroSyntax *S);
   clang::Stmt *handleRangeBasedFor(const ListSyntax *S,
                                    clang::SourceLocation ForLoc);
+  clang::Stmt *handleCartesianFor(const ListSyntax *S,
+                                  const Syntax *BodyCST,
+                                  clang::SourceLocation ForLoc);
 };
 
 } // namespace gold

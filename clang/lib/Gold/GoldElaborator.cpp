@@ -1231,7 +1231,14 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
     return FOK_For;
   if (Tokenization == SemaRef.OperatorInII)
     return FOK_In;
+  if (Tokenization == SemaRef.OperatorDotDotII)
+    return FOK_DotDot;
   return FOK_Unknown;
+}
+
+FusedOpKind getFusedOpKind(Sema &SemaRef, const CallSyntax *S) {
+  assert(isa<AtomSyntax>(S->getCallee()));
+  return getFusedOpKind(SemaRef, cast<AtomSyntax>(S->getCallee())->getSpelling());
 }
 
 } // namespace gold

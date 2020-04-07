@@ -41,3 +41,17 @@ main() : int!
 
   SimpleGoldParseTest(Code);
 }
+
+TEST(ForRange, CartesianFor) {
+  StringRef Code = R"(
+main() : int!
+  for (x in 0 .. 99):
+    0
+  for (x in 0..99):
+    0
+  for (x : int in 0..99):
+    0
+)";
+
+  SimpleGoldParseTest(Code);
+}

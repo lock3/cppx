@@ -118,10 +118,12 @@ enum FusedOpKind {
   FOK_MemberAccess,
   FOK_For,
   FOK_In,
+  FOK_DotDot,
 };
 
 /// Convert a fused operator string like `operator'='` into an enum
 FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling);
+FusedOpKind getFusedOpKind(Sema &SemaRef, const CallSyntax *S);
 
 } // namespace gold
 

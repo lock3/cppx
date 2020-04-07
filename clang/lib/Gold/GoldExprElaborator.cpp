@@ -357,12 +357,12 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
     // Otherwise, we need to continue elaborating the LHS until it is an atom.
     elaborateExpr(S->getArgument(0));
     return nullptr;
-  }
-
-  if (Op == FOK_MemberAccess) {
+  } else if (Op == FOK_MemberAccess) {
     // Need to locate do variable/type lookup.
     const ListSyntax *Args =  cast<ListSyntax>(S->getArguments());
     return elaborateMemberAccess(Args->getChild(0), S, Args->getChild(1));
+  } else if (Op == FOK_DotDot) {
+    return handleOperatorDotDot(S);
   }
 
   llvm::StringRef Spelling = Callee->getSpelling();
@@ -938,6 +938,14 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
     return BuildAnyTypeLoc(CxxAST, TDType, Loc);
   }
   llvm_unreachable("Unknown type specification");
+}
+
+clang::Expr *ExprElaborator::handleOperatorDotDot(const CallSyntax *S) {
+  assert(isa<AtomSyntax>(S->getCallee()));
+  assert(cast<AtomSyntax>(S->getCallee())->getSpelling() == "operator'..'"
+         && "invalid .. call");
+
+  llvm_unreachable("unimplemented");
 }
 
 } // namespace gold

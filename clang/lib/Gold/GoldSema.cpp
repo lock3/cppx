@@ -43,6 +43,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorDotII = &Context.CxxAST.Idents.get("operator'.'");
   OperatorForII = &Context.CxxAST.Idents.get("operator'for'");
   OperatorInII = &Context.CxxAST.Idents.get("operator'in'");
+  OperatorDotDotII = &Context.CxxAST.Idents.get("operator'..'");
 }
 
 Sema::~Sema() {

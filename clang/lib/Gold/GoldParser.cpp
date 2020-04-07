@@ -537,7 +537,6 @@ Syntax *Parser::parseCmp() {
 
 bool isToOperator(Parser& P) {
   return P.nextTokenIs(tok::Colon)
-      || P.nextTokenIs(tok::DotDot)
       || P.nextTokenIs(tok::MinusGreater)
       || P.nextTokenIs("in");
 };
@@ -548,7 +547,6 @@ bool isToOperator(Parser& P) {
 //
 // to-operator:
 //    :
-//    ..
 //    ->
 //    in
 //
@@ -564,7 +562,8 @@ Syntax *Parser::parseTo() {
 }
 
 bool isAddOperator(Parser& P) {
-  return P.nextTokenIs(tok::Plus) || P.nextTokenIs(tok::Minus);
+  return P.nextTokenIs(tok::Plus) || P.nextTokenIs(tok::Minus)
+    || P.nextTokenIs(tok::DotDot);
 }
 
 /// add:
@@ -574,6 +573,7 @@ bool isAddOperator(Parser& P) {
 /// add-operator:
 ///   +
 ///   -
+///   ..
 Syntax *Parser::parseAdd() {
   Syntax *E1 = parseMul();
   while (Token Op = matchTokens(isAddOperator, *this)) {
