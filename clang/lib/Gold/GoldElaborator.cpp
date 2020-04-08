@@ -668,29 +668,19 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     // Handle special case of default construction of complex types?
     if(VD->getType().getTypePtr()->isRecordType()) {
       clang::CXXRecordDecl *RD = VD->getType()->getAsCXXRecordDecl();
-      clang::CXXConstructorDecl *DefaultCtorDecl
-          = SemaRef.getCxxSema().LookupDefaultConstructor(RD);
-      if (DefaultCtorDecl) {
-        llvm::SmallVector<clang::Expr *, 1> Args;
-        clang::QualType Ty = Context.CxxAST.getTypeDeclType(RD);
-        clang::ParsedType PT = clang::ParsedType::make(Ty);
-        clang::ExprResult ConstructorExpr =
-          SemaRef.getCxxSema().ActOnCXXTypeConstructExpr(PT, D->Op->getLoc(),
-                                                          Args, D->Op->getLoc(),
-                                                          false);
-        if (ConstructorExpr.get()) {
-          SemaRef.getCxxSema().AddInitializerToDecl(VD, ConstructorExpr.get(),
-              true);
-          return;
-        }
-        SemaRef.Diags.Report(D->Op->getLoc(),
-                            clang::diag::err_coroutine_invalid_func_context)
-                            << Ty << "a constructor";
+      llvm::SmallVector<clang::Expr *, 1> Args;
+      clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST,
+          VD->getType(), D->Decl->getLoc());
+      clang::ExprResult ConstructorExpr =
+        SemaRef.getCxxSema().BuildCXXTypeConstructExpr(TInfo, D->Op->getLoc(),
+                                                        Args, D->Op->getLoc(),
+                                                        false);
+      if (ConstructorExpr.get()) {
+        SemaRef.getCxxSema().AddInitializerToDecl(VD, ConstructorExpr.get(),
+            true);
+        return;
       }
     }
-    if(!VD)
-      llvm::outs() << "We don't have a variable declaration.\n";
-    // VD->getType().dump();
     SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
     return;
   }

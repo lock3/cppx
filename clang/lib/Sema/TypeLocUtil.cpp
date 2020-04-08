@@ -509,7 +509,9 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::SubstTemplateTypeParmPackTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateSpecializationTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  auto TypeLocInstance = TLB.push<clang::TemplateSpecializationTypeLoc>(Ty);
+  TypeLocInstance.initializeLocal(Ctx, Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateSpecializationTypeLoc>
