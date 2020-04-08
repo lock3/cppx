@@ -930,6 +930,7 @@ Syntax *Parser::parsePrimary() {
   case tok::LongDoubleKeyword:
   case tok::Float128_tKeyword:
   case tok::TypeKeyword:
+  case tok::ArgsKeyword:
     return onLiteral(consumeToken());
 
   default:

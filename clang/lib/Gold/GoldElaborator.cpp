@@ -168,9 +168,15 @@ static Declarator *getFunctionDeclarator(Declaration *D) {
 static void getFunctionParameters(Declaration *D,
                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
   Declarator *FnDecl = getFunctionDeclarator(D);
-  const Syntax *ParamList = FnDecl->Data.ParamInfo.Params;
+  const ListSyntax *ParamList = cast<ListSyntax>(FnDecl->Data.ParamInfo.Params);
   Scope *ParamScope = FnDecl->Data.ParamInfo.ConstructedScope;
-  for (const Syntax *P : ParamList->children()) {
+  bool Variadic = FnDecl->Data.ParamInfo.VariadicParam;
+
+  unsigned N = ParamList->getNumChildren();
+  for (unsigned I = 0; I < N; ++I) {
+    if (I == N - 1 && Variadic)
+      break;
+    const Syntax *P = ParamList->getChild(I);
     Declaration *PD = ParamScope->findDecl(P);
     assert(PD->Cxx && "No corresponding declaration");
     Params.push_back(cast<clang::ParmVarDecl>(PD->Cxx));
@@ -901,7 +907,32 @@ static Declarator *buildTypeDeclarator(const Syntax *S, Declarator *Next) {
   return D;
 }
 
-static Declarator *buildFunctionDeclarator(const CallSyntax *S, Declarator *Next) {
+// Check if the last parameter in a function is of type 'args'.
+  static bool lastParamIsVarArgs(Sema &SemaRef, const CallSyntax *S) {
+    if (!S->getNumArguments())
+      return false;
+  std::size_t N = S->getNumArguments() - 1;
+  const CallSyntax *LastParam = dyn_cast_or_null<CallSyntax>(S->getArgument(N));
+  if (!LastParam)
+    return false;
+
+  FusedOpKind Op = getFusedOpKind(SemaRef, LastParam);
+  if (Op != FOK_Colon)
+    return false;
+
+  // We might have something like `varargs : args` or just `:args`
+  N = LastParam->getNumArguments() - 1;
+  if (N > 1)
+    return false;
+
+  if (const AtomSyntax *Ty = dyn_cast<AtomSyntax>(LastParam->getArgument(N)))
+    return Ty->Tok.hasKind(tok::ArgsKeyword);
+
+  return false;
+}
+
+static Declarator *buildFunctionDeclarator(Sema &SemaRef, const CallSyntax *S,
+                                           Declarator *Next) {
   // FIXME: Store the parameter list.
   Declarator *D = new Declarator(DK_Function, Next);
   D->Call = S;
@@ -909,10 +940,12 @@ static Declarator *buildFunctionDeclarator(const CallSyntax *S, Declarator *Next
   D->Data.ParamInfo.TemplateParams = nullptr;
   D->Data.ParamInfo.TemplateScope = nullptr;
   D->Data.ParamInfo.ConstructedScope = nullptr;
+  D->Data.ParamInfo.VariadicParam = lastParamIsVarArgs(SemaRef, S);
   return D;
 }
 
-static Declarator *buildFunctionDeclarator(const CallSyntax *S,
+static Declarator *buildFunctionDeclarator(Sema &SemaRef,
+                                           const CallSyntax *S,
                                            const ElemSyntax *T,
                                            Declarator *Next) {
   Declarator *D = new Declarator(DK_Function, Next);
@@ -921,6 +954,7 @@ static Declarator *buildFunctionDeclarator(const CallSyntax *S,
   D->Data.ParamInfo.TemplateParams = T->getArguments();
   D->Data.ParamInfo.TemplateScope = nullptr;
   D->Data.ParamInfo.ConstructedScope = nullptr;
+  D->Data.ParamInfo.VariadicParam = lastParamIsVarArgs(SemaRef, S);
   return D;
 }
 
@@ -995,7 +1029,8 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
       }
 
       // Otherwise, this appears to be a function declarator.
-      return makeDeclarator(SemaRef, Callee, buildFunctionDeclarator(Call, Next));
+      return makeDeclarator(SemaRef, Callee,
+                            buildFunctionDeclarator(SemaRef, Call, Next));
     } else if (const ElemSyntax *Callee = dyn_cast<ElemSyntax>(Call->getCallee())) {
       assert(SemaRef.getCurrentScope()->getKind() != SK_Class &&
              "templated member functions not implemented");
@@ -1003,7 +1038,7 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
       // We have a template parameter list here, so build the
       // function declarator accordingly.
       return makeDeclarator(SemaRef, Callee->getObject(),
-                            buildFunctionDeclarator(Call, Callee, Next));
+                          buildFunctionDeclarator(SemaRef, Call, Callee, Next));
     }
   }
 
