@@ -1123,6 +1123,7 @@ bool Parser::AnnotateTemplateIdToken(TemplateTy Template, TemplateNameKind TNK,
                                      SourceLocation TemplateKWLoc,
                                      UnqualifiedId &TemplateName,
                                      bool AllowTypeAnnotation) {
+  llvm::outs() << "Called Parser::AnnotateTemplateIdToken\n";
   PARSING_LOG();
   assert(getLangOpts().CPlusPlus && "Can only annotate template-ids in C++");
   assert(Template && Tok.is(tok::less) &&
@@ -1137,7 +1138,7 @@ bool Parser::AnnotateTemplateIdToken(TemplateTy Template, TemplateNameKind TNK,
   bool Invalid = ParseTemplateIdAfterTemplateName(false, LAngleLoc,
                                                   TemplateArgs,
                                                   RAngleLoc);
-
+  llvm::outs() << "Invalid = " << Invalid << "\n";
   if (Invalid) {
     // If we failed to parse the template ID but skipped ahead to a >, we're not
     // going to be able to form a token annotation.  Eat the '>' if present.
@@ -1148,7 +1149,8 @@ bool Parser::AnnotateTemplateIdToken(TemplateTy Template, TemplateNameKind TNK,
   }
 
   ASTTemplateArgsPtr TemplateArgsPtr(TemplateArgs);
-
+  llvm::outs() << "TNK == TNK_Type_template && AllowTypeAnnotation = "
+      << (TNK == TNK_Type_template && AllowTypeAnnotation) << "\n";
   // Build the annotation token.
   if (TNK == TNK_Type_template && AllowTypeAnnotation) {
     TypeResult Type = Actions.ActOnTemplateIdType(
@@ -1163,7 +1165,9 @@ bool Parser::AnnotateTemplateIdToken(TemplateTy Template, TemplateNameKind TNK,
       // again if we're doing this annotation as part of a tentative parse.
       return true;
     }
-
+    llvm::outs() << "Reached Post ActONTemplateId\n";
+    Template.get().dump(llvm::outs());
+    llvm::outs() << "\n";
     Tok.setKind(tok::annot_typename);
     setTypeAnnotation(Tok, Type.get());
     if (SS.isNotEmpty())
@@ -1186,7 +1190,7 @@ bool Parser::AnnotateTemplateIdToken(TemplateTy Template, TemplateNameKind TNK,
         TemplateName.getKind() == UnqualifiedIdKind::IK_Identifier
             ? OO_None
             : TemplateName.OperatorFunctionId.Operator;
-
+    llvm::outs() << "Creating Called TemplateIdAnnotation::Create\n";
     TemplateIdAnnotation *TemplateId = TemplateIdAnnotation::Create(
       SS, TemplateKWLoc, TemplateNameLoc, TemplateII, OpKind, Template, TNK,
       LAngleLoc, RAngleLoc, TemplateArgs, TemplateIds);
@@ -1197,13 +1201,14 @@ bool Parser::AnnotateTemplateIdToken(TemplateTy Template, TemplateNameKind TNK,
     else
       Tok.setLocation(TemplateNameLoc);
   }
-
+  llvm::outs() << "We are almost done.\n";
   // Common fields for the annotation token
   Tok.setAnnotationEndLoc(RAngleLoc);
 
   // In case the tokens were cached, have Preprocessor replace them with the
   // annotation token.
   PP.AnnotateCachedTokens(Tok);
+  Template.get().dump(llvm::outs() << "Current state of template?!\n");
   return false;
 }
 
@@ -1230,7 +1235,46 @@ void Parser::AnnotateTemplateIdTokenAsType(bool IsClassName) {
 
   ASTTemplateArgsPtr TemplateArgsPtr(TemplateId->getTemplateArgs(),
                                      TemplateId->NumArgs);
+  llvm::outs() << "Calling Actions.ActOnTemplateIdType\n";
+  // Parameter Dump
+  // llvm::outs() << 
+  // TemplateId->SS
+  llvm::outs() << "Template KW location: " << TemplateId->TemplateKWLoc.printToString(Actions.getSourceManager())<< "\n";
+  llvm::outs() << "Parsed Template type: ";
+  TemplateId->Template.get().dump(llvm::outs());
+  llvm::outs() << "\n";
+  llvm::outs() << "Identifier Name: " << TemplateId->Name->getName() << "\n";
+  llvm::outs() << "TemplateId->TemplateNameLoc: " << TemplateId->TemplateNameLoc.printToString(Actions.getSourceManager()) << "\n";
+  llvm::outs() << "Template Arguments: \n";
+  for (ParsedTemplateArgument const& Arg : TemplateArgsPtr) {
+    llvm::outs() << "  Argument: ";
+    switch(Arg.getKind()) {
+    case ParsedTemplateArgument::Type:{
+      llvm::outs() << "Type Argument: ";
+      Arg.getAsType().get().dump(llvm::outs());
+      llvm::outs() << "\n";
+      break;
+    }
+    case ParsedTemplateArgument::NonType:{
+      llvm::outs() << "NonType: ";
+      Arg.getAsExpr()->dump(llvm::outs());
+      llvm::outs() << "\n";
+      break;
+    }
+    case ParsedTemplateArgument::Template:{
+      llvm::outs() << "Template template argument: ";
+      llvm::outs() << "\n";
+      break;
+    }
+    }
+  }
 
+  llvm::outs() << "IsClassName = " << IsClassName << "\n";
+  // TemplateArgsPtr,
+  // TemplateId->RAngleLoc,
+  // /*IsCtorOrDtorName*/false,
+  // IsClassName);
+  llvm::outs() << "TemplateId->SS.isSet() = " << TemplateId->SS.isSet() << "\n";
   TypeResult Type
     = Actions.ActOnTemplateIdType(getCurScope(),
                                   TemplateId->SS,
@@ -1243,6 +1287,7 @@ void Parser::AnnotateTemplateIdTokenAsType(bool IsClassName) {
                                   TemplateId->RAngleLoc,
                                   /*IsCtorOrDtorName*/false,
                                   IsClassName);
+  Type.get().get().dump(llvm::outs() << "Type Returned from acton templateIDType\n");
   // Create the new "type" annotation token.
   Tok.setKind(tok::annot_typename);
   setTypeAnnotation(Tok, Type.isInvalid() ? nullptr : Type.get());

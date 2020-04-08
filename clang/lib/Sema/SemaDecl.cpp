@@ -5614,6 +5614,7 @@ bool Sema::diagnoseQualifiedDeclaration(CXXScopeSpec &SS, DeclContext *DC,
 NamedDecl *Sema::HandleDeclarator(Scope *S, Declarator &D,
                                   MultiTemplateParamsArg TemplateParamLists) {
   SEMA_LOG();
+  llvm::outs() << "We called Handle Declarator\n";
   // TODO: consider using NameInfo for diagnostic.
   DeclarationNameInfo NameInfo = GetNameForDeclarator(D);
   DeclarationName Name = NameInfo.getName();
@@ -5690,9 +5691,11 @@ NamedDecl *Sema::HandleDeclarator(Scope *S, Declarator &D,
         D.setInvalidType();
     }
   }
-
+  llvm::outs() << "Checking for unexpanded parameter pack.\n";
   TypeSourceInfo *TInfo = GetTypeForDeclarator(D, S);
   QualType R = TInfo->getType();
+  R.dump(llvm::outs());
+  llvm::outs() << "\n";
 
   if (DiagnoseUnexpandedParameterPack(D.getIdentifierLoc(), TInfo,
                                       UPPC_DeclarationType))
@@ -5732,6 +5735,7 @@ NamedDecl *Sema::HandleDeclarator(Scope *S, Declarator &D,
 
     LookupName(Previous, S, CreateBuiltins);
   } else { // Something like "int foo::x;"
+    llvm::outs() << "Doing qualified name look up\n";
     LookupQualifiedName(Previous, DC);
 
     // C++ [dcl.meaning]p1:
@@ -5762,7 +5766,7 @@ NamedDecl *Sema::HandleDeclarator(Scope *S, Declarator &D,
     //   the nested-name-specifier of the declarator-id.
     RemoveUsingDecls(Previous);
   }
-
+  llvm::outs() << "Checking Variable look up results \n";;
   if (Previous.isSingleResult() &&
       Previous.getFoundDecl()->isTemplateParameter()) {
     // Maybe we will complain about the shadowed template parameter.
@@ -5822,6 +5826,8 @@ NamedDecl *Sema::HandleDeclarator(Scope *S, Declarator &D,
   if (isInOpenMPDeclareTargetContext())
     checkDeclIsAllowedInOpenMPTarget(nullptr, New);
 
+
+  llvm::outs() << "HandleDeclarator completed.\n";
   return New;
 }
 
@@ -6730,6 +6736,7 @@ NamedDecl *Sema::ActOnVariableDeclarator(
     LookupResult &Previous, MultiTemplateParamsArg TemplateParamLists,
     bool &AddToScope, ArrayRef<BindingDecl *> Bindings) {
   SEMA_LOG();
+  llvm::outs() << "We have reached ActOnVariableDeclarator\n";
   QualType R = TInfo->getType();
   DeclarationName Name = GetNameForDeclarator(D).getName();
 
@@ -6806,7 +6813,7 @@ NamedDecl *Sema::ActOnVariableDeclarator(
   if (!getLangOpts().CPlusPlus) {
     NewVD = VarDecl::Create(Context, DC, D.getBeginLoc(),
                             D.getIdentifierLoc(), Name, R, TInfo, SC);
-
+    
     if (R->getContainedDeducedType())
       ParsingInitForAutoVars.insert(NewVD);
 
@@ -6818,9 +6825,12 @@ NamedDecl *Sema::ActOnVariableDeclarator(
       checkNonTrivialCUnion(NewVD->getType(), NewVD->getLocation(),
                             NTCUC_AutoVar, NTCUK_Destruct);
   } else {
+    llvm::outs() << "We have reached the variable declaration phase of things.\n";
     bool Invalid = false;
 
     if (DC->isRecord() && !CurContext->isRecord()) {
+      llvm::outs() << "We are doing something like looking at a variable outside "
+          "of the body of a class \n";
       // This is an out-of-line definition of a static data member.
       switch (SC) {
       case SC_None:
@@ -6869,6 +6879,37 @@ NamedDecl *Sema::ActOnVariableDeclarator(
       }
     }
 
+    llvm::outs() << "About to call MatchTemplateParametersToScopeSpecifier\n";
+    auto DeclStart = D.getDeclSpec().getBeginLoc();
+    llvm::outs() << "DeclStart = \n";
+    DeclStart.dump(getSourceManager());
+    llvm::outs() << "\n";
+
+    llvm::outs() << "Identifier Loc = \n";
+    D.getIdentifierLoc().dump(getSourceManager());
+    llvm::outs() << "\n";
+    if (D.getName().getKind() == UnqualifiedIdKind::IK_TemplateId) {
+      llvm::outs() << "We have a template Id\n";
+      llvm::outs() << "Template Id Name: " << D.getName().TemplateId->Name->getName() << "\n";
+    }
+    llvm::outs() << "Template Parameter List nesting\n";
+    for(TemplateParameterList* List : TemplateParamLists) {
+      llvm::outs() << "  List Start\n";
+      for (NamedDecl * ND : *List) {
+        llvm::outs() << "  Param: ";
+        ND->dump(llvm::outs());
+        llvm::outs()<<"\n";
+
+      }
+      llvm::outs() << "  ListComplete\n";
+    }
+    llvm::outs() << "All lists complete\n";
+    
+    // llvm::outs() << "CXXScopeSpec = \n";
+    // D.getCXXScopeSpec().dump(getSourceManager());
+    // llvm::outs() << "\n";
+
+
     // Match up the template parameter lists with the scope specifier, then
     // determine whether we have a template or a template specialization.
     TemplateParams = MatchTemplateParametersToScopeSpecifier(
@@ -6879,8 +6920,8 @@ NamedDecl *Sema::ActOnVariableDeclarator(
             : nullptr,
         TemplateParamLists,
         /*never a friend*/ false, IsMemberSpecialization, Invalid);
-
     if (TemplateParams) {
+      llvm::outs() << "We have template parameters \n";
       if (!TemplateParams->size() &&
           D.getName().getKind() != UnqualifiedIdKind::IK_TemplateId) {
         // There is an extraneous 'template<>' for this variable. Complain
@@ -6919,6 +6960,7 @@ NamedDecl *Sema::ActOnVariableDeclarator(
     }
 
     if (IsVariableTemplateSpecialization) {
+      llvm::outs() << "IsVariableTemplateSpecialization == true\n";
       SourceLocation TemplateKWLoc =
           TemplateParamLists.size() > 0
               ? TemplateParamLists[0]->getTemplateLoc()
@@ -6931,18 +6973,22 @@ NamedDecl *Sema::ActOnVariableDeclarator(
       NewVD = cast<VarDecl>(Res.get());
       AddToScope = false;
     } else if (D.isDecompositionDeclarator()) {
+      llvm::outs() << "We are a decomposition Decl\n";
       NewVD = DecompositionDecl::Create(Context, DC, D.getBeginLoc(),
                                         D.getIdentifierLoc(), R, TInfo, SC,
                                         Bindings);
-    } else
+    } else{
+      llvm::outs() << "We are creating a VarDecl\n";
       NewVD = VarDecl::Create(Context, DC, D.getBeginLoc(),
                               D.getIdentifierLoc(), Name, R, TInfo, SC);
+    }
 
     // If this is supposed to be a variable template, create it as such.
     if (IsVariableTemplate) {
       NewTemplate =
           VarTemplateDecl::Create(Context, DC, D.getIdentifierLoc(), Name,
                                   TemplateParams, NewVD);
+      llvm::outs() << "IsVariableTemplate = True\n";
       NewVD->setDescribedVarTemplate(NewTemplate);
     }
 
@@ -6962,6 +7008,8 @@ NamedDecl *Sema::ActOnVariableDeclarator(
     // If we have any template parameter lists that don't directly belong to
     // the variable (matching the scope specifier), store them.
     unsigned VDTemplateParamLists = TemplateParams ? 1 : 0;
+    llvm::outs() << "TemplateParamLists.size() > VDTemplateParamLists = "
+        << TemplateParamLists.size() <<" > " <<VDTemplateParamLists <<"\n";
     if (TemplateParamLists.size() > VDTemplateParamLists)
       NewVD->setTemplateParameterListsInfo(
           Context, TemplateParamLists.drop_back(VDTemplateParamLists));
@@ -12266,11 +12314,15 @@ void Sema::ActOnInitializerError(Decl *D) {
 
 void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
   SEMA_LOG();
+  llvm::outs() << "Called Act on uninitialzied\n";
   // If there is no declaration, there was an error parsing it. Just ignore it.
-  if (!RealDecl)
+  if (!RealDecl){
+    llvm::outs() << "We are not a RealDecl.\n";
     return;
+  }
 
   if (VarDecl *Var = dyn_cast<VarDecl>(RealDecl)) {
+    llvm::outs() << "We are a VarDecl.\n";
     QualType Type = Var->getType();
 
     // C++1z [dcl.dcl]p1 grammar implies that an initializer is mandatory.
@@ -12281,9 +12333,10 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
     }
 
     if (Type->isUndeducedType() &&
-        DeduceVariableDeclarationType(Var, false, nullptr))
+        DeduceVariableDeclarationType(Var, false, nullptr)){
+      llvm::outs() << "Type->isUndeducedType() && DeduceVariableDeclarationType(Var, false, nullptr) == true\n";
       return;
-
+    }
     // C++11 [class.static.data]p3: A static data member can be declared with
     // the constexpr specifier; if so, its declaration shall specify
     // a brace-or-equal-initializer.
@@ -12292,7 +12345,9 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
     // member.
     if (Var->isConstexpr() && !Var->isThisDeclarationADefinition() &&
         !Var->isThisDeclarationADemotedDefinition()) {
+      llvm::outs() << "Var->isConstexpr() && !Var->isThisDeclarationADefinition() && !Var->isThisDeclarationADemotedDefinition() == true\n";
       if (Var->isStaticDataMember()) {
+        llvm::outs() << "Var->isStaticDataMember() == true\n";
         // C++1z removes the relevant rule; the in-class declaration is always
         // a definition there.
         if (!getLangOpts().CPlusPlus17 &&
@@ -12329,9 +12384,11 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
 
     switch (DefKind) {
     case VarDecl::Definition:
-      if (!Var->isStaticDataMember() || !Var->getAnyInitializer())
+      llvm::outs() << "case VarDecl::Definition\n";
+      if (!Var->isStaticDataMember() || !Var->getAnyInitializer()){
+        llvm::outs() << "!Var->isStaticDataMember() || !Var->getAnyInitializer()  == true.\n";
         break;
-
+      }
       // We have an out-of-line definition of a static data member
       // that has an in-class initializer, so we type-check this like
       // a declaration.
@@ -12339,6 +12396,7 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
       LLVM_FALLTHROUGH;
 
     case VarDecl::DeclarationOnly:
+      llvm::outs() << "case VarDecl::DeclarationOnly\n";
       // It's only a declaration.
 
       // Block scope. C99 6.7p7: If an identifier for an object is
@@ -12347,15 +12405,19 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
       if (!Type->isDependentType() && Var->isLocalVarDecl() &&
           !Var->hasLinkage() && !Var->isInvalidDecl() &&
           RequireCompleteType(Var->getLocation(), Type,
-                              diag::err_typecheck_decl_incomplete_type))
+                              diag::err_typecheck_decl_incomplete_type)){
+        llvm::outs() << "We have an invalid declaration. 0\n";
         Var->setInvalidDecl();
+      }
 
       // Make sure that the type is not abstract.
       if (!Type->isDependentType() && !Var->isInvalidDecl() &&
           RequireNonAbstractType(Var->getLocation(), Type,
                                  diag::err_abstract_type_in_decl,
-                                 AbstractVariableType))
+                                 AbstractVariableType)) {
+        llvm::outs() << "We have an invalid declaration. 1\n";
         Var->setInvalidDecl();
+      }
       if (!Type->isDependentType() && !Var->isInvalidDecl() &&
           Var->getStorageClass() == SC_PrivateExtern) {
         Diag(Var->getLocation(), diag::warn_private_extern);
@@ -12365,22 +12427,27 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
       if (Context.getTargetInfo().allowDebugInfoForExternalVar() &&
           !Var->isInvalidDecl() && !getLangOpts().CPlusPlus)
         ExternalDeclarations.push_back(Var);
-
+      llvm::outs() << "We are bailing inside of case VarDecl::DeclarationOnly\n";
       return;
 
     case VarDecl::TentativeDefinition:
+      llvm::outs() << "case VarDecl::TentativeDefinition:\n";
       // File scope. C99 6.9.2p2: A declaration of an identifier for an
       // object that has file scope without an initializer, and without a
       // storage-class specifier or with the storage-class specifier "static",
       // constitutes a tentative definition. Note: A tentative definition with
       // external linkage is valid (C99 6.2.2p5).
       if (!Var->isInvalidDecl()) {
+        llvm::outs() << "We have a valid decl\n";
         if (const IncompleteArrayType *ArrayT
                                     = Context.getAsIncompleteArrayType(Type)) {
+          llvm::outs() << "We have an array type\n";
           if (RequireCompleteType(Var->getLocation(),
                                   ArrayT->getElementType(),
-                                  diag::err_illegal_decl_array_incomplete_type))
+                                  diag::err_illegal_decl_array_incomplete_type)){
+            llvm::outs() << "We have an invalid declaration. 2\n";
             Var->setInvalidDecl();
+          }
         } else if (Var->getStorageClass() == SC_Static) {
           // C99 6.9.2p3: If the declaration of an identifier for an object is
           // a tentative definition and has internal linkage (C99 6.2.2p3), the
@@ -12402,6 +12469,7 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
         TentativeDefinitions.push_back(Var);
       return;
     }
+    llvm::outs() << "Reached outside of switch Stmt.\n";
 
     // Provide a specific diagnostic for uninitialized variable
     // definitions with incomplete array type.
@@ -12411,7 +12479,7 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
       Var->setInvalidDecl();
       return;
     }
-
+    llvm::outs() << "We are not an incomplete array type.\n";
     // Provide a specific diagnostic for uninitialized variable
     // definitions with reference type.
     if (Type->isReferenceType()) {
@@ -12421,23 +12489,31 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
       Var->setInvalidDecl();
       return;
     }
+    llvm::outs() << "We are not a reference type.\n";
 
     // Do not attempt to type-check the default initializer for a
     // variable with dependent type.
-    if (Type->isDependentType())
+    if (Type->isDependentType()){
+      llvm::outs() << "We are a dependent type\n";
       return;
-
-    if (Var->isInvalidDecl())
+    }
+    
+    llvm::outs() << "We are not a dependent type.\n";
+    if (Var->isInvalidDecl()){
       return;
+    }
 
+    llvm::outs() << "We are not an invalid decl.\n";
     if (!Var->hasAttr<AliasAttr>()) {
       if (RequireCompleteType(Var->getLocation(),
                               Context.getBaseElementType(Type),
                               diag::err_typecheck_decl_incomplete_type)) {
+        llvm::outs() << "We have an invalid declaration. 3\n";
         Var->setInvalidDecl();
         return;
       }
     } else {
+      llvm::outs() << "We ARE an alias attributed type?\n";
       return;
     }
 
@@ -12445,6 +12521,7 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
     if (RequireNonAbstractType(Var->getLocation(), Type,
                                diag::err_abstract_type_in_decl,
                                AbstractVariableType)) {
+      llvm::outs() << "We have an invalid declaration. 4\n";
       Var->setInvalidDecl();
       return;
     }
@@ -12502,9 +12579,10 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
       // This is important for template substitution.
       Var->setInitStyle(VarDecl::CallInit);
     }
-
+    
     CheckCompleteVariableDeclaration(Var);
   }
+  llvm::outs() << "Reached outside of the if we are VarDecl if stmt.\n";
 }
 
 void Sema::ActOnCXXForRangeDecl(Decl *D) {

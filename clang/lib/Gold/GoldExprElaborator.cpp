@@ -124,60 +124,18 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Token T, clang::QualType IntType
   return clang::IntegerLiteral::Create(CxxAST, Value, IntType, Loc);
 }
 
-// TODO: Refactor into this location.
-// static clang::TypeSourceInfo*
-// handleClassTemplateInstancation(Sema &SemaRef, ) {
-//   // assert(false && "Working on it.");
-// }
-
 Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
   Expression IdExpr = elaborateExpr(Elem->getObject());
   if (IdExpr.is<clang::NamespaceDecl *>()) {
     llvm_unreachable("Nested namespace access to template syntax not implemented yet.");
     return nullptr;
   }
+
+  
   if (IdExpr.is<clang::TypeSourceInfo *>()) {
+    // 
+// 
     // Elaborating a templated type, this is similar to array access.
-    clang::TemplateArgumentListInfo TemplateArgInfoList(
-        Elem->getObject()->getLoc(), Elem->getObject()->getLoc());
-    llvm::SmallVector<clang::TemplateArgument, 16> TemplateArgs;
-    llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
-    // Doing the thing
-    const ListSyntax *ElemArgs = cast<ListSyntax>(Elem->getArguments());
-    for(const Syntax *SyntaxArg : ElemArgs->children()) {
-
-      // TODO: Attempt to process this initially as a template template
-      // parameter and see if it fails or not, if it fails then it's not a
-      // template template parameter.
-      Expression ArgExpr = elaborateExpr(SyntaxArg);
-      if (ArgExpr.isNull()) 
-        return nullptr;
-      
-      if (ArgExpr.is<clang::NamespaceDecl *>()) {
-        // FIXME: Figure out the correct error message to display here.
-        // Basically we need to say that a namespace is not a type.
-        llvm::errs() << "Unable to a namespace name for a template argument\n";
-        return nullptr;
-      }
-
-      if (ArgExpr.is<clang::TypeSourceInfo *>()) {
-        // TODO: Figure out how to handle template template parameters here?
-        auto *SrcInfo = ArgExpr.get<clang::TypeSourceInfo *>();
-        clang::TemplateArgument Arg(SrcInfo->getType());
-        TemplateArgInfoList.addArgument({Arg, SrcInfo});
-        TemplateArgs.emplace_back(SrcInfo->getType());
-        ParsedArguments.emplace_back(clang::ParsedTemplateArgument::Type,
-          SrcInfo->getType().getAsOpaquePtr(), SyntaxArg->getLoc());
-      }
-      
-      if (ArgExpr.is<clang::Expr *>()) {
-        // clang::TemplateArgument Arg(ArgExpr.get<clang::Expr *>(),
-        //                             clang::TemplateArgument::Expression);
-        // TemplateArgInfoList.addArgument({Arg, ArgExpr.get<clang::Expr *>()});
-        llvm_unreachable("Evaluation of constant expressions in template "
-            "parameters is not yet supported.");
-      }
-    }
 
     
     // llvm::outs() << "We have a type expression Woot.\n";
@@ -199,6 +157,56 @@ Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
         SemaRef.getCurClangScope(), SS, /*hasTemplateKeyword=*/false,
         TemplateName, ObjectType, /*EnteringContext*/false, Template,
         MemberOfUnknownSpecialization)) {
+
+      clang::TemplateArgumentListInfo TemplateArgInfoList(
+          Elem->getObject()->getLoc(), Elem->getObject()->getLoc());
+      llvm::SmallVector<clang::TemplateArgument, 16> TemplateArgs;
+      llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
+      // Doing the thing
+      const ListSyntax *ElemArgs = cast<ListSyntax>(Elem->getArguments());
+      for(const Syntax *SyntaxArg : ElemArgs->children()) {
+        clang::EnterExpressionEvaluationContext EnterConstantEvaluated(
+          SemaRef.getCxxSema(),
+          clang::Sema::ExpressionEvaluationContext::ConstantEvaluated,
+          /*LambdaContextDecl=*/nullptr,
+          /*ExprContext=*/
+          clang::Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
+        // SemaRef.getCxxSema().PushExpressionEvaluationContext(clang::Sema::ExpressionEvaluationContext::);
+        // TODO: Attempt to process this initially as a template template
+        // parameter and see if it fails or not, if it fails then it's not a
+        // template template parameter.
+        Expression ArgExpr = elaborateExpr(SyntaxArg);
+        if (ArgExpr.isNull()) 
+          return nullptr;
+        
+        if (ArgExpr.is<clang::NamespaceDecl *>()) {
+          // FIXME: Figure out the correct error message to display here.
+          // Basically we need to say that a namespace is not a type.
+          llvm::errs() << "Unable to a namespace name for a template argument\n";
+          return nullptr;
+        }
+
+        if (ArgExpr.is<clang::TypeSourceInfo *>()) {
+          // TODO: Figure out how to handle template template parameters here?
+          auto *SrcInfo = ArgExpr.get<clang::TypeSourceInfo *>();
+          clang::TemplateArgument Arg(SrcInfo->getType());
+          TemplateArgInfoList.addArgument({Arg, SrcInfo});
+          TemplateArgs.emplace_back(SrcInfo->getType());
+          ParsedArguments.emplace_back(
+            SemaRef.getCxxSema().ActOnTemplateTypeArgument(
+              SemaRef.getCxxSema().CreateParsedType(SrcInfo->getType(), SrcInfo)));
+        }
+        
+        if (ArgExpr.is<clang::Expr *>()) {
+          // clang::TemplateArgument Arg(ArgExpr.get<clang::Expr *>(),
+          //                             clang::TemplateArgument::Expression);
+          // TemplateArgInfoList.addArgument({Arg, ArgExpr.get<clang::Expr *>()});
+          llvm_unreachable("Evaluation of constant expressions in template "
+              "parameters is not yet supported.");
+        }
+      }
+
+      
       switch(TNK) {
       case clang::TemplateNameKind::TNK_Concept_template:{
         llvm_unreachable("TNK_Concept_template has not been implemented yet.");
@@ -223,11 +231,10 @@ Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
         return nullptr;
       }
       case clang::TemplateNameKind::TNK_Type_template:{
-        llvm::outs() << "NUmber of arguments " << TemplateArgs.size() << " given\n";
-        
-        clang::TemplateArgumentList ArgList(clang::TemplateArgumentList::OnStack,
-            TemplateArgs);
-        clang::MultiLevelTemplateArgumentList ListOfArgLists(ArgList);
+        // llvm::outs() << "NUmber of arguments " << TemplateArgs.size() << " given\n";
+        // clang::TemplateArgumentList ArgList(clang::TemplateArgumentList::OnStack,
+        //     TemplateArgs);
+        // clang::MultiLevelTemplateArgumentList ListOfArgLists(ArgList);
 
         // clang::TemplateDecl *TemplateD = Template.get().getAsTemplateDecl();
         // clang::Decl *InstantiatedTemplate = SemaRef.getCxxSema().SubstDecl(
@@ -244,7 +251,15 @@ Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
         //     SourceLocation TemplateIILoc, SourceLocation LAngleLoc,
         //     ASTTemplateArgInfosPtr TemplateArgsIn, SourceLocation RAngleLoc,
         //     bool IsCtorOrDtorName, bool IsClassName) {
+
         clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
+        llvm::outs() << "What arguments do we actually have?!\n";
+        for (clang::ParsedTemplateArgument const& A : ParsedArguments) {
+          llvm::outs() << "  Argument: ";
+          A.getAsType().get().dump(llvm::outs());
+          llvm::outs() << "\n";
+        }
+        llvm::outs() << "SS.isSet() = " << SS.isSet() << "\n";
         clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
           SemaRef.getCurClangScope(), SS,
           /*TemplateKWLoc*/ clang::SourceLocation(), Template, &II, Atom->getLoc(),
@@ -254,8 +269,20 @@ Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
           llvm::outs() << "We hae an invalid result ?!\n";
           llvm_unreachable("We have an invlaid result for ActOnTemplateIdType.");
         }
-        return Context.CxxAST.getTemplateSpecializationTypeInfo(Template.get(),
-            Elem->getObject()->getLoc(), TemplateArgInfoList);
+        llvm_unreachable("Working on parsing of template instantaions.");
+        // ParsedType PTy = Result.get();
+        // return BuildAnyTypeLoc(Context.CxxAST, Result.get().get(), Atom->getLoc());
+        // llvm::outs() << "Result type from ActOnTemplateIdType \n";
+        // Result.get().get().dump(llvm::outs());
+
+        // TemplateSpecializationType 0x7fffc7015d70 'c<int>' dependent c
+        // `-TemplateArgument type 'int'
+        // Sema::MatchTemplateParametersToScopeSpecifier
+        // auto* Tmp = Context.CxxAST.getTemplateSpecializationTypeInfo(Template.get(),
+        //     Elem->getObject()->getLoc(), TemplateArgInfoList);
+        // Tmp->getType().dump();
+        // return Tmp;
+        
       }
       case clang::TemplateNameKind::TNK_Undeclared_template:{
         llvm_unreachable("TNK_Undeclared_template has not been implemented yet.");

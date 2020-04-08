@@ -235,7 +235,9 @@ bool Parser::ParseOptionalCXXScopeSpecifier(
   // Preferred type might change when parsing qualifiers, we need the original.
   auto SavedType = PreferredType;
   while (true) {
+    llvm::outs() << "Entered processing loop\n";
     if (HasScopeSpecifier) {
+      llvm::outs() << "HasScopeSpecifier\n";
       if (Tok.is(tok::code_completion)) {
         // Code completion for a nested-name-specifier, where the code
         // completion token follows the '::'.
@@ -270,6 +272,7 @@ bool Parser::ParseOptionalCXXScopeSpecifier(
     // Parse the optional 'template' keyword, then make sure we have
     // 'identifier <' after it.
     if (Tok.is(tok::kw_template)) {
+      llvm::outs() << "Tok.is(tok::kw_template)\n";
       // If we don't have a scope specifier or an object type, this isn't a
       // nested-name-specifier, since they aren't allowed to start with
       // 'template'.
@@ -332,6 +335,7 @@ bool Parser::ParseOptionalCXXScopeSpecifier(
     }
 
     if (Tok.is(tok::annot_template_id) && NextToken().is(tok::coloncolon)) {
+      llvm::outs() << "Tok.is(tok::annot_template_id) && NextToken().is(tok::coloncolon)\n";
       // We have
       //
       //   template-id '::'
@@ -380,8 +384,10 @@ bool Parser::ParseOptionalCXXScopeSpecifier(
 
     // The rest of the nested-name-specifier possibilities start with
     // tok::identifier.
-    if (Tok.isNot(tok::identifier))
+    if (Tok.isNot(tok::identifier)){
+      llvm::outs() << "Tok.isNot(tok::identifier)\n";
       break;
+    }
 
     IdentifierInfo &II = *Tok.getIdentifierInfo();
 
@@ -396,6 +402,7 @@ bool Parser::ParseOptionalCXXScopeSpecifier(
     // If we get foo:bar, this is almost certainly a typo for foo::bar.  Recover
     // and emit a fixit hint for it.
     if (Next.is(tok::colon) && !ColonIsSacred) {
+      llvm::outs() << "Next.is(tok::colon) && !ColonIsSacred\n";
       if (Actions.IsInvalidUnlessNestedName(getCurScope(), SS, IdInfo,
                                             EnteringContext) &&
           // If the token after the colon isn't an identifier, it's still an
@@ -410,6 +417,7 @@ bool Parser::ParseOptionalCXXScopeSpecifier(
     }
 
     if (Next.is(tok::coloncolon) && GetLookAheadToken(2).is(tok::l_brace)) {
+      llvm::outs() << "Next.is(tok::coloncolon) && GetLookAheadToken(2).is(tok::l_brace)\n";
       // It is invalid to have :: {, consume the scope qualifier and pretend
       // like we never saw it.
       Token Identifier = Tok; // Stash away the identifier.
@@ -421,6 +429,7 @@ bool Parser::ParseOptionalCXXScopeSpecifier(
     }
 
     if (Next.is(tok::coloncolon)) {
+      llvm::outs() << "Next.is(tok::coloncolon)\n";
       if (CheckForDestructor && GetLookAheadToken(2).is(tok::tilde) &&
           !Actions.isNonTypeNestedNameSpecifier(getCurScope(), SS, IdInfo)) {
         *MayBePseudoDestructor = true;
@@ -479,6 +488,7 @@ bool Parser::ParseOptionalCXXScopeSpecifier(
     // nested-name-specifier:
     //   type-name '<'
     if (Next.is(tok::less)) {
+      llvm::outs() << "Next.is(tok::less)\n";
       TemplateTy Template;
       UnqualifiedId TemplateName;
       TemplateName.setIdentifier(&II, Tok.getLocation());
@@ -497,7 +507,9 @@ bool Parser::ParseOptionalCXXScopeSpecifier(
         if (!IsTypename && TNK == TNK_Undeclared_template &&
             isTemplateArgumentList(1) == TPResult::False)
           break;
-
+        llvm::outs() << "What did isTemplateName get us\n";
+        Template.get().dump(llvm::outs());
+        llvm::outs() << "\n";
         // We have found a template name, so annotate this token
         // with a template-id annotation. We do not permit the
         // template-id to be translated into a type annotation,
@@ -506,8 +518,10 @@ bool Parser::ParseOptionalCXXScopeSpecifier(
         // token.
         ConsumeToken();
         if (AnnotateTemplateIdToken(Template, TNK, SS, SourceLocation(),
-                                    TemplateName, false))
+                                    TemplateName, false)) {
           return true;
+        }
+        llvm::outs() << "There's more?!\n";
         continue;
       }
 
@@ -545,7 +559,7 @@ bool Parser::ParseOptionalCXXScopeSpecifier(
     // nested-name-specifier, so we're done.
     break;
   }
-
+  llvm::outs() << "We have exited the loop.\n";
   // Even if we didn't see any pieces of a nested-name-specifier, we
   // still check whether there is a tilde in this position, which
   // indicates a potential pseudo-destructor.

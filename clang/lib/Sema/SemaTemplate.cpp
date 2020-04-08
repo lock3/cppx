@@ -953,6 +953,8 @@ ParsedTemplateArgument Sema::ActOnTemplateTypeArgument(TypeResult ParsedType) {
   QualType T = GetTypeFromParser(ParsedType.get(), &TInfo);
   if (T.isNull())
     return ParsedTemplateArgument();
+  T.dump(llvm::outs() << "Argument type: \n");
+
   assert(TInfo && "template argument with no location");
 
   // If we might have formed a deduced template specialization type, convert

@@ -1264,7 +1264,7 @@ getImageAccess(const ParsedAttributesView &Attrs) {
 static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
   // FIXME: Should move the logic from DeclSpec::Finish to here for validity
   // checking.
-
+  llvm::outs() << "We are converting a decl spec to a type\n";
   Sema &S = state.getSema();
   Declarator &declarator = state.getDeclarator();
   DeclSpec &DS = declarator.getMutableDeclSpec();
@@ -1273,7 +1273,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     DeclLoc = DS.getBeginLoc();
 
   ASTContext &Context = S.Context;
-
+  llvm::outs() << "DS.getTypeSpecType() = " << DS.getTypeSpecType() << "\n";
   QualType Result;
   switch (DS.getTypeSpecType()) {
   case DeclSpec::TST_void:
@@ -1323,6 +1323,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
       Result = Context.Char32Ty;
     break;
   case DeclSpec::TST_unspecified:
+    llvm::outs() << "We are case DeclSpec::TST_unspecified\n";
     // If this is a missing declspec in a block literal return context, then it
     // is inferred from the return statements inside the block.
     // The declspec is always missing in a lambda expr context; it is either
@@ -1518,6 +1519,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
   case DeclSpec::TST_union:
   case DeclSpec::TST_struct:
   case DeclSpec::TST_interface: {
+    llvm::outs() << "We are a record Decl\n";
     TagDecl *D = dyn_cast_or_null<TagDecl>(DS.getRepAsDecl());
     if (!D) {
       // This can happen in C++ with ambiguous lookups.
@@ -1543,6 +1545,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     break;
   }
   case DeclSpec::TST_typename: {
+    llvm::outs() << "We are a TST_Typename?!\n";
     assert(DS.getTypeSpecWidth() == 0 && DS.getTypeSpecComplex() == 0 &&
            DS.getTypeSpecSign() == 0 &&
            "Can't handle qualifiers on typedef names yet!");
@@ -1648,6 +1651,10 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     declarator.setInvalidType(true);
     break;
   }
+
+  llvm::outs() << "Type Constructed = \n";
+  Result.dump(llvm::outs());
+  llvm::outs() << "\n";
 
   if (S.getLangOpts().OpenCL &&
       S.checkOpenCLDisabledTypeDeclSpec(DS, Result))
@@ -2945,6 +2952,7 @@ static void diagnoseRedundantReturnTypeQualifiers(Sema &S, QualType RetTy,
 
 static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
                                              TypeSourceInfo *&ReturnTypeInfo) {
+  llvm::outs() << "Called GetDeclSpecTypeForDeclarator\n";
   Sema &SemaRef = state.getSema();
   Declarator &D = state.getDeclarator();
   QualType T;
@@ -2960,6 +2968,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
   case UnqualifiedIdKind::IK_LiteralOperatorId:
   case UnqualifiedIdKind::IK_TemplateId:
   case UnqualifiedIdKind::IK_ReflectedId:
+    llvm::outs() << "We have the main part of the switch stmt.\n";
     T = ConvertDeclSpecToType(state);
 
     if (!D.isInvalidType() && D.getDeclSpec().isTypeSpecOwned()) {
@@ -2972,6 +2981,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
   case UnqualifiedIdKind::IK_ConstructorName:
   case UnqualifiedIdKind::IK_ConstructorTemplateId:
   case UnqualifiedIdKind::IK_DestructorName:
+    llvm::outs() << "Attribute processing for? possible constructor destructor or ctor template id.\n";
     // Constructors and destructors don't have return types. Use
     // "void" instead.
     T = SemaRef.Context.VoidTy;
@@ -2980,18 +2990,23 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
     break;
 
   case UnqualifiedIdKind::IK_DeductionGuideName:
+    llvm::outs() << "We have UnqualifiedIdKind::IK_DeductionGuideName\n";
     // Deduction guides have a trailing return type and no type in their
     // decl-specifier sequence. Use a placeholder return type for now.
     T = SemaRef.Context.DependentTy;
     break;
 
   case UnqualifiedIdKind::IK_ConversionFunctionId:
+    llvm::outs() << "We are a conversion function?!\n";
     // The result type of a conversion function is the type that it
     // converts to.
     T = SemaRef.GetTypeFromParser(D.getName().ConversionFunctionId,
                                   &ReturnTypeInfo);
     break;
   }
+  llvm::outs() << "Made it past switch statement Type is =\n";
+  T.dump(llvm::outs());
+  llvm::outs() << "\n";
 
   if (!D.getAttributes().empty())
     distributeTypeAttrsFromDeclarator(state, T);
@@ -4059,6 +4074,10 @@ GetTypeSourceInfoForDeclarator(TypeProcessingState &State,
 static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
                                                 QualType declSpecType,
                                                 TypeSourceInfo *TInfo) {
+  llvm::outs() << "Called GetFullTypeForDeclarator \n";
+  llvm::outs() << "DeclSpecType = \n";
+  declSpecType.dump(llvm::outs());
+  llvm::outs() << "\n";
   // The TypeSourceInfo that this function returns will not be a null type.
   // If there is an error, this function will fill in a dummy type as fallback.
   QualType T = declSpecType;

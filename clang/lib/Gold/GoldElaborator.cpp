@@ -653,7 +653,14 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     return;
   }
   clang::VarDecl *VD = cast<clang::VarDecl>(D->Cxx);
-
+  clang::DeclarationNameInfo DNI(VD->getDeclName(), D->Op->getLoc());
+  // clang::LookupResult PrevResult;
+  clang::LookupResult Previous(SemaRef.getCxxSema(), DNI,
+                               clang::Sema::LookupOrdinaryName,
+                           SemaRef.getCxxSema().forRedeclarationInCurContext());
+  if (SemaRef.getCxxSema().CheckVariableDeclaration(VD, Previous)) {
+    llvm::outs() << "We have a variable redeclaration\n";
+  }
   if (!D->Init) {
     // FIXME: We probably want to synthesize some kind of initializer here.
     // Not quite sure how we want to do this.
@@ -688,8 +695,7 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
                             << Ty << "a constructor";
       }
     }
-    if(!VD)
-      llvm::outs() << "We don't have a variable declaration.\n";
+    llvm::outs() << "Called act on uninitialized?!\n";
     // VD->getType().dump();
     SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
     return;
