@@ -331,15 +331,13 @@ Token CharacterScanner::matchNumber() {
 }
 
 Token CharacterScanner::matchDecimalNumber() {
-  if (nextCharacterIs('.'))
-  {
+  if (nextCharacterIs('.')) {
     // Matches '. decimal-digit-seq ...'
     return matchDecimalFraction();
   } else {
     // Matches 'decimal-digit-seq [. decimal-digit-seq] ...]'
     matchDecimalDigitSeq();
-    if (nextCharacterIs('.'))
-    {
+    if (nextCharacterIs('.') && !nthCharacterIs(1, '.')) {
       if (isDecimalDigit(getLookahead()))
         return matchDecimalFraction();
 

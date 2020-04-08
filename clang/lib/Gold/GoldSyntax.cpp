@@ -61,6 +61,10 @@ clang::SourceLocation Syntax::getLoc() const {
   }
 }
 
+void Syntax::addAttribute(Attribute *Attr) {
+  Attributes.push_back(Attr);
+}
+
 std::size_t CallSyntax::getNumArguments() const {
   if (auto *List = dyn_cast<ListSyntax>(getArguments()))
     return List->getNumChildren();

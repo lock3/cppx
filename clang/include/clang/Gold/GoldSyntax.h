@@ -28,16 +28,19 @@
 #include <vector>
 #include <array>
 
-namespace gold
-{
-  // Bring isa/cast/dyn_cast into scope.
-  using clang::isa;
-  using clang::cast;
-  using clang::cast_or_null;
-  using clang::dyn_cast;
-  using clang::dyn_cast_or_null;
+namespace gold {
 
-struct Syntax {
+// Bring isa/cast/dyn_cast into scope.
+using clang::isa;
+using clang::cast;
+using clang::cast_or_null;
+using clang::dyn_cast;
+using clang::dyn_cast_or_null;
+
+struct Attribute;
+
+struct Syntax
+{
 
   enum SyntaxKind {
 #define def_syntax(K) \
@@ -73,11 +76,17 @@ struct Syntax {
 
   clang::SourceLocation getLoc() const;
 
+  using AttrVec = llvm::SmallVector<Attribute *, 4>;
+  AttrVec const &getAttributes() const { return Attributes; }
+  void addAttribute(Attribute *Attr);
+
 private:
   SyntaxKind Kind;
+  AttrVec Attributes;
 };
 
-struct ErrorSyntax : Syntax {
+struct ErrorSyntax : Syntax 
+{
   ErrorSyntax()
     : Syntax(SK_Error)
   {}
@@ -96,7 +105,8 @@ struct ErrorSyntax : Syntax {
 };
 
 /// Any term represented by a single token (e.g., literals, identifiers).
-struct AtomSyntax : Syntax {
+struct AtomSyntax : Syntax 
+{
   AtomSyntax(Token Tok)
     : Syntax(SK_Atom), Tok(Tok)
   {}
@@ -137,7 +147,8 @@ public:
 };
 
 /// Represents literal values.
-struct LiteralSyntax : AtomSyntax {
+struct LiteralSyntax : AtomSyntax 
+{
   LiteralSyntax(const Token &Tok)
     : AtomSyntax(SK_Literal, Tok)
   { }
@@ -184,7 +195,8 @@ struct VectorNode
 ///
 /// \todo These are separated by either commas, semicolons, pr separators,
 /// and there's (possibly) a semantic difference.
-struct ListSyntax : Syntax, VectorNode<Syntax> {
+struct ListSyntax : Syntax, VectorNode<Syntax> 
+{
   ListSyntax(Syntax **Ts, unsigned NumElems)
     : Syntax(SK_List), VectorNode(Ts, NumElems)
   {}
@@ -202,7 +214,8 @@ struct ListSyntax : Syntax, VectorNode<Syntax> {
   }
 };
 
-struct ArraySyntax : Syntax, VectorNode<Syntax> {
+struct ArraySyntax : Syntax, VectorNode<Syntax> 
+{
   ArraySyntax(Syntax **Ts, unsigned NumElems)
     : Syntax(SK_Array), VectorNode(Ts, NumElems)
   {}
@@ -221,7 +234,8 @@ struct ArraySyntax : Syntax, VectorNode<Syntax> {
 };
 
 /// A call to a function.
-struct CallSyntax : Syntax {
+struct CallSyntax : Syntax
+{
   CallSyntax(Syntax *Fn, Syntax *Args)
     : Syntax(SK_Call)
   {
@@ -274,7 +288,8 @@ struct CallSyntax : Syntax {
 };
 
 /// A lookup in a dictionary.
-struct ElemSyntax : Syntax {
+struct ElemSyntax : Syntax
+{
   ElemSyntax(Syntax *Map, Syntax *Sel)
     : Syntax(SK_Elem) {
     Elems[0] = Map;
@@ -324,7 +339,8 @@ struct ElemSyntax : Syntax {
 };
 
 /// A labeled block of code (e.g., a loop).
-struct MacroSyntax : Syntax {
+struct MacroSyntax : Syntax 
+{
   MacroSyntax(Syntax *Call, Syntax *Block, Syntax *Next)
     : Syntax(SK_Macro)
   {
@@ -385,7 +401,8 @@ struct MacroSyntax : Syntax {
   std::array<Syntax *, 3> Elems;
 };
 
-struct FileSyntax : Syntax, VectorNode<Syntax> {
+struct FileSyntax : Syntax, VectorNode<Syntax>
+{
   FileSyntax(Syntax **Ts, unsigned NumElems)
     : Syntax(SK_File), VectorNode(Ts, NumElems)
   {}
@@ -401,6 +418,20 @@ struct FileSyntax : Syntax, VectorNode<Syntax> {
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_File;
   }
+};
+
+struct Attribute
+{
+  Attribute(Syntax *Arg)
+    : Arg(Arg)
+  {}
+
+  const Syntax *getArg() const {
+    return Arg;
+  }
+
+private:
+  Syntax *Arg;
 };
 
 } // namespace gold
