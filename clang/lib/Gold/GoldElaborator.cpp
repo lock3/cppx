@@ -44,6 +44,8 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   SemaRef.getCxxSema().Initialize();
   SemaRef.getCxxSema().ActOnStartOfTranslationUnit();
   startFile(S);
+  llvm::outs() << "Current Tree input.\n";
+  S->dump();
 
   const FileSyntax *File = cast<FileSyntax>(S);
 
