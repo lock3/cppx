@@ -116,6 +116,52 @@ main() : int!
   ASSERT_TRUE(matches(Code, TemplateAndInstantiationMatch));
 }
 
+
+TEST(ClassTemplate, ClassTemplateDeclaration_NonTypeParameter) {
+  StringRef Code = R"(
+c[T:int] : type = class:
+  z : int = T
+  y : bool = 0
+
+main() : int!
+  q : c[3]
+  return 0
+)";
+  DeclarationMatcher ClassCTemplate = classTemplateDecl(
+    hasName("c"),
+    has(nonTypeTemplateParmDecl(
+      hasName("T")
+    )),
+    hasDescendant(cxxRecordDecl(
+      hasName("c"),
+      has(fieldDecl(
+        hasName("z"), hasType(asString("int"))
+      )),
+      has(fieldDecl(
+        hasName("y"), hasType(asString("_Bool"))
+      ))
+    ))
+  );
+  
+  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+    isDefinition(),
+    hasDescendant(
+      varDecl(
+        hasType(asString("c<3>")),
+        hasName("q"),
+        hasInitializer(cxxConstructExpr(argumentCountIs(0)))
+      )
+    )
+  );
+
+  DeclarationMatcher TemplateAndInstantiationMatch = translationUnitDecl(
+    hasDescendant(ClassCTemplate),
+    hasDescendant(MainFnMatcher)
+  );
+
+  ASSERT_TRUE(matches(Code, TemplateAndInstantiationMatch));
+}
+
 /*
 File 0x7fffdaed0e98
 `-Call 0x7fffdaed0e78

@@ -145,7 +145,7 @@ HandleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
       SemaRef.getCurClangScope(), SS, /*hasTemplateKeyword=*/false,
       TemplateName, ObjectType, /*EnteringContext*/false, Template,
       MemberOfUnknownSpecialization)) {
-    // Elaborating a templated type, this is similar to array access.
+
     llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
 
     const ListSyntax *ElemArgs = cast<ListSyntax>(Elem->getArguments());
@@ -173,22 +173,19 @@ HandleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
 
       if (ArgExpr.is<clang::TypeSourceInfo *>()) {
         // TODO: Figure out how to handle template template parameters here?
+        // Because currently that's impossible.
         auto *SrcInfo = ArgExpr.get<clang::TypeSourceInfo *>();
-        // clang::TemplateArgument Arg(SrcInfo->getType());
-        // TemplateArgInfoList.addArgument({Arg, SrcInfo});
-        // TemplateArgs.emplace_back(SrcInfo->getType());
         ParsedArguments.emplace_back(
           SemaRef.getCxxSema().ActOnTemplateTypeArgument(
             SemaRef.getCxxSema().CreateParsedType(SrcInfo->getType(), SrcInfo)));
-
       }
       
       if (ArgExpr.is<clang::Expr *>()) {
-        // clang::TemplateArgument Arg(ArgExpr.get<clang::Expr *>(),
-        //                             clang::TemplateArgument::Expression);
-        // TemplateArgInfoList.addArgument({Arg, ArgExpr.get<clang::Expr *>()});
-        llvm_unreachable("Evaluation of constant expressions in template "
-            "parameters is not yet supported.");
+        // Leveraging constant expression evaluation from clang's sema class.
+        clang::ExprResult ConstExpr(ArgExpr.get<clang::Expr*>());
+        ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(ConstExpr);
+        ParsedArguments.emplace_back(clang::ParsedTemplateArgument::NonType,
+            ConstExpr.get(), SyntaxArg->getLoc());
       }
     }
     switch(TNK) {
