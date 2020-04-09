@@ -56,7 +56,7 @@ public:
   // Represents a C++ expression, which may be either an object expression
   // or a type expression.
   using Expression = llvm::PointerUnion<clang::Expr *, clang::TypeSourceInfo *,
-      clang::NamespaceDecl *>;
+      clang::NamespaceDecl *, clang::TemplateName *>;
   using TypeInfo = clang::TypeSourceInfo;
 
   //===--------------------------------------------------------------------===//

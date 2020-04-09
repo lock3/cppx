@@ -667,7 +667,6 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 
     // Handle special case of default construction of complex types?
     if(VD->getType().getTypePtr()->isRecordType()) {
-      clang::CXXRecordDecl *RD = VD->getType()->getAsCXXRecordDecl();
       llvm::SmallVector<clang::Expr *, 1> Args;
       clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST,
           VD->getType(), D->Decl->getLoc());
@@ -693,7 +692,11 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   ExprElaborator ExprElab(Context, SemaRef);
   ExprElaborator::Expression Init = ExprElab.elaborateExpr(D->Init);
 
-  // Make sure the initializer was not elaborated as a type.
+  // Make sure the initializer was elaborated as a type. 
+  // FIXME: This will need to change in order to properly address how identifiers
+  // are being processed. Because we will need to change things so that we can
+  // properly identify member types, and member templates, template template
+  // parameters etc.
   if (Init.is<clang::TypeSourceInfo *>()) {
     llvm::errs() << "Expected expression.\n";
     return;

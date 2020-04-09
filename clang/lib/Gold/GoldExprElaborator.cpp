@@ -157,7 +157,6 @@ HandleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
         /*ExprContext=*/
         clang::Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
 
-
       // TODO: Attempt to process this initially as a template template
       // parameter and see if it fails or not, if it fails then it's not a
       // template template parameter.
@@ -268,6 +267,15 @@ Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
 static ExprElaborator::Expression
 createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
                   clang::QualType Ty, clang::SourceLocation Loc) {
+  // TODO: We need to refactor this to do multiple types of look up.
+  // For example, we need to refactor the way functions, and type names
+  // are handled. This is so that we can appropriately handle lookup of names
+  // in multiple contexts. This will also need to be refactored in order to
+  // correctly handle things like getting names for candidate sets.
+
+  // using TemplateNamePtr = clang::TemplateName*;
+  // clang::TemplateName *TN = TemplateNamePtr(Template.getAsOpaquePtr());
+
   clang::ASTContext &CxxAST = Context.CxxAST;
 
   clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(S->getSpelling())}, Loc);
@@ -567,12 +575,13 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
                                     clang::SourceLocation(), VD, /*Capture=*/false,
                                     S->getLoc(), VD->getType(), clang::VK_RValue);
       } else if (isa<clang::CXXRecordDecl>(Decl)) {
-        clang::CXXRecordDecl *Record = dyn_cast<clang::CXXRecordDecl>(Decl);
+        clang::CXXRecordDecl *Record = cast<clang::CXXRecordDecl>(Decl);
         clang::QualType Ty = Context.CxxAST.getTypeDeclType(Record);
-        clang::ParsedType PT = clang::ParsedType::make(Ty);
+        clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST, Ty,
+            Callee->getLoc());
         clang::ExprResult ConstructorExpr =
-          SemaRef.getCxxSema().ActOnCXXTypeConstructExpr(PT, S->getLoc(), Args,
-                                                        S->getLoc(), false);
+          SemaRef.getCxxSema().BuildCXXTypeConstructExpr(TInfo, S->getLoc(),
+                                                      Args, S->getLoc(), false);
         if (!ConstructorExpr.get()) {
           SemaRef.Diags.Report(S->getLoc(),
                                clang::diag::err_coroutine_invalid_func_context)
