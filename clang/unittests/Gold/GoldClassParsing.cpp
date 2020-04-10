@@ -74,7 +74,7 @@ main() : int!
   DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
     hasDescendant(ClassCInfo),
     hasDescendant(MainFnMatcher)
-    );
+  );
 
 
   ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
@@ -452,6 +452,92 @@ main() : int!
   DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
     hasDescendant(ClassCInfo),
     hasDescendant(MainFnMatcher)
+  );
+  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+}
+
+
+
+TEST(ClassParsing, NestedTypeDefinition) {
+  StringRef Code = R"(
+c : type = class:
+  nested : type = class:
+    a : int
+    b : float
+  
+main() : int!
+  u : c.nested
+  return 0
+)";
+
+  DeclarationMatcher ClassCInfo = recordDecl(
+    hasName("c"),
+    has(recordDecl(hasName("nested"),
+      hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
+        isPublic())),
+      hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
+        isPublic()))
+    ))
+  );
+  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+    isDefinition(),
+    hasDescendant(
+      varDecl(
+        hasType(asString("struct c::nested")),
+        hasName("u"),
+        hasInitializer(hasDescendant(cxxConstructExpr()))
+      )
+    )
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo)//,
+    // hasDescendant(MainFnMatcher)
+  );
+  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+}
+
+
+TEST(ClassParsing, MultipleNestedTypeDefinition) {
+  StringRef Code = R"(
+c : type = class:
+  nested : type = class:
+    nested2 : type = class:
+      a : int
+      b : float
+    
+  
+
+main() : int!
+  u : c.nested.nested2
+  return 0
+)";
+
+  DeclarationMatcher ClassCInfo = recordDecl(
+    hasName("c"),
+    has(recordDecl(hasName("nested"),
+      has(recordDecl(hasName("nested2"),
+        hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
+          isPublic())),
+        hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
+          isPublic()))
+      ))
+    ))
+  );
+  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+    isDefinition(),
+    hasDescendant(
+      varDecl(
+        hasType(asString("struct c::nested::nested2")),
+        hasName("u"),
+        hasInitializer(hasDescendant(cxxConstructExpr()))
+      )
+    )
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo)//,
+    // hasDescendant(MainFnMatcher)
   );
   ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
 }
