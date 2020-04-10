@@ -138,7 +138,6 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   if (SemaRef.getCurrentScope()->isBlockScope()) {
     if (OpKind == FOK_Colon || OpKind == FOK_Equals) {
       Elaborator E(Context, SemaRef);
-
       clang::Decl *N = E.elaborateDeclSyntax(S);
       if (N)
         return createDeclStmt(CxxAST, SemaRef, N, S->getLoc(),
@@ -150,6 +149,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   // try and elaborate it as such.
   switch (OpKind) {
   case FOK_Colon: {
+
     // FIXME: fully elaborate the name expression.
     const AtomSyntax *Name = cast<AtomSyntax>(S->getArgument(0));
     clang::Sema &ClangSema = SemaRef.getCxxSema();
@@ -200,10 +200,8 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
                                       S->getLoc(), clang::tok::equal,
                                       NameExpr.get<clang::Expr *>(),
                                       InitExpr.get<clang::Expr *>());
-    if (Assignment.isInvalid()) {
-      llvm::errs() << "Unexpected assignment.\n";
+    if (Assignment.isInvalid())
       return nullptr;
-    }
 
     // We can readily assume anything here is getting used.
     ExprMarker(CxxAST, SemaRef).Visit(NameExpr.get<clang::Expr *>());

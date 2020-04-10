@@ -1986,8 +1986,15 @@ void TextNodeDumper::Visit(const gold::Syntax *S) {
     OS << S->getSyntaxKindName();
   }
   dumpPointer(S);
-
   gold::ConstSyntaxVisitor<TextNodeDumper>::Visit(S);
+  if (!S->getAttributes().empty()) {
+    for (gold::Attribute *Attr : S->getAttributes()) {
+      AddChild([=] {
+        OS << "Attribute ";
+        Visit(Attr->getArg());
+      });
+    }
+  }
 }
 
 void TextNodeDumper::VisitGoldErrorSyntax(const gold::ErrorSyntax *S) {

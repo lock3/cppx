@@ -48,6 +48,10 @@ enum DeclaratorKind {
   /// The id of a declarator.
   DK_Identifier,
 
+  /// Template indication for classes. This part of the declarator is used to
+  /// track if a templated type declaration is being given.
+  DK_TemplateType,
+
   /// Declares a pointer.
   DK_Pointer,
 
@@ -139,6 +143,17 @@ public:
 
     /// For DK_Array, the array index.
     const Syntax *Index;
+    
+    /// For DK_TemplateType, for templated types.
+    struct TemplateInfoStruct {
+      /// A pointer to the template parameters within the declaration.
+      const Syntax* Params;
+
+      /// The scope for the template parameters.
+      Scope *DeclScope;
+      /// This is the clang scope that's used for declaring template parameters.
+      clang::Scope *ClangScope;
+    } TemplateInfo;
   } Data;
 };
 
@@ -173,6 +188,9 @@ public:
   /// Checks if the type declaration is declaring a record.
   bool declaresRecord() const;
 
+  /// Checks if the declarator declares a template type or not.
+  bool declaresTemplateType() const;
+
   /// True if this declares a function.
   bool declaresFunction() const;
 
@@ -202,6 +220,10 @@ public:
   clang::IdentifierInfo *getId() const {
     return Id;
   }
+
+  /// This looks for the first instance of DK_TemplateType and returns it.
+  const Declarator *getFirstTemplateDeclarator() const;
+  Declarator *getFirstTemplateDeclarator();
 
   /// The corresponding C++ declaration as a context.
   clang::DeclContext *getCxxContext() const;

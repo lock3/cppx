@@ -15,6 +15,7 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/TypeLoc.h"
+#include "clang/AST/TemplateBase.h"
 #include "clang/Sema/TypeLocUtil.h"
 #include "TypeLocBuilder.h"
 
@@ -508,7 +509,9 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::SubstTemplateTypeParmPackTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateSpecializationTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  auto TypeLocInstance = TLB.push<clang::TemplateSpecializationTypeLoc>(Ty);
+  TypeLocInstance.initializeLocal(Ctx, Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateSpecializationTypeLoc>
@@ -541,7 +544,8 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::DeducedTemplateSpecializationType
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::InjectedClassNameTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  TLB.pushTypeSpec(Ty);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::InjectedClassNameTypeLoc>
