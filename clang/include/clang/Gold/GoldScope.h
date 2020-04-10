@@ -39,6 +39,7 @@ namespace gold {
 
 struct Syntax;
 class Scope;
+struct Attribute;
 
 /// Kinds of declarations.
 enum DeclaratorKind {
@@ -155,6 +156,10 @@ public:
       clang::Scope *ClangScope;
     } TemplateInfo;
   } Data;
+
+  /// This contains a list of unprocessed attributes.
+  clang::SmallVector<Attribute const*, 4> UnprocessedAttributes;
+
 };
 
 /// A declaration is stores information about the declaration of an

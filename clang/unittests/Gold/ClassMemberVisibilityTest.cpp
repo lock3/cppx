@@ -33,6 +33,19 @@ c : type = class:
   ASSERT_TRUE(matches(Code, ClassC));
 }
 
+TEST(ClassParsing, Visibility_PrivateMember_NoType) {
+  StringRef Code = R"(
+c : type = class:
+  x <private> = 9
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(
+      fieldDecl(hasName("x"), hasType(asString("int")), isPrivate())
+    )
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
 
 TEST(ClassParsing, Visibility_PublicMember) {
   StringRef Code = R"(

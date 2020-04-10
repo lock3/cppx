@@ -101,6 +101,14 @@ clang::Decl *Elaborator::elaborateDeclType(const Syntax *S) {
   if (!D) {
     return nullptr;
   }
+  // D->Op->dump();
+  // llvm::outs() << "Attributes attached to decl: \n";
+  // for (auto const* Attr : D->UnprocessedAttributes) {
+  //   llvm::outs() << "  ";
+  //   Attr->getArg()->dump();
+  //   llvm::outs() << "\n";
+  // } 
+  // llvm::outs() << "End of attributes\n";
   return elaborateDecl(D);
 }
 
@@ -178,16 +186,31 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   return ClsDecl;
 }
 
+static void handleDeclAttributeApplication(clang::Decl *Dec, Declaration *D) {
+  // In this instance we are going to be handling access specifiers
+  // of declarations.
+  // for (Attribute const& Attr : D->getAttributes()) {
+  //   llvm::outs() << "Processing attributes?!\n";
+  // }
+
+}
+
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
+  clang::Decl *Ret = nullptr;
   if (D->declaresRecord()) 
-    return processCXXRecordDecl(*this, Context, SemaRef, D);
-  if (D->declaresFunction())
-    return elaborateFunctionDecl(D);
-  return elaborateVariableDecl(D);
-
+    Ret = processCXXRecordDecl(*this, Context, SemaRef, D);
+  else if (D->declaresFunction())
+    Ret = elaborateFunctionDecl(D);
+  else 
+    Ret = elaborateVariableDecl(D);
+  if (!Ret) {
+    return Ret;
+  }
+  handleDeclAttributeApplication(Ret, D);
+  return Ret;
   // TODO: We should be able to elaborate definitions at this point too.
   // We've already loaded salient identifier tables, so it shouldn't any
   // forward references should be resolvable.
@@ -428,6 +451,7 @@ static clang::StorageClass getStorageClass(Elaborator &Elab) {
     ? clang::SC_Auto
     : clang::SC_Static;
 }
+
 
 clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   if (SemaRef.getCurrentScope()->isParameterScope())
@@ -1139,15 +1163,14 @@ void Elaborator::identifyDecl(const Syntax *S) {
             return;
         }
 
-        if (isa<CallSyntax>(Decl))
-          if (const CallSyntax *InnerCallOp = cast<CallSyntax>(Decl))
-            if (isa<AtomSyntax>(InnerCallOp->getCallee()))
-              if (const AtomSyntax *Atom = cast<AtomSyntax>(
+        if (const CallSyntax *InnerCallOp = dyn_cast<CallSyntax>(Decl))
+          if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(
                                                       InnerCallOp->getCallee()))
-                if (Atom->getSpelling() == "operator'.'")
-                  return;
+            if (Atom->getSpelling() == "operator'.'")
+              return;
         Init = Args->getChild(1);
         OperatorEquals = true;
+
       } else if (Op == "operator'!'") {
         const auto *Args = cast<ListSyntax>(Call->getArguments());
 
