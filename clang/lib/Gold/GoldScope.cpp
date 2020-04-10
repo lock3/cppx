@@ -118,15 +118,12 @@ bool Declaration::declaresType() const {
 }
 
 bool Declaration::declaresRecord() const {
-  if (!declaresType()) 
+  if (!declaresType())
     return false;
   if (Cxx)
     return isa<clang::CXXRecordDecl>(Cxx);
-  if (Init)
-    if (const MacroSyntax *Macro = dyn_cast_or_null<MacroSyntax>(Init))
-      if(Macro->getCall())
-        if (const AtomSyntax *ClsKw = dyn_cast_or_null<AtomSyntax>(Macro->getCall()))
-          return ClsKw->getSpelling() == "class";
+  if (const MacroSyntax *Macro = dyn_cast_or_null<MacroSyntax>(Init))
+    return cast<AtomSyntax>(Macro->getCall())->hasToken(tok::ClassKeyword);
   return false;
 }
 
