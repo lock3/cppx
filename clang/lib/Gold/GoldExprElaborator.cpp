@@ -703,12 +703,10 @@ static ExprElaborator::Expression handleLookUpInsideType(Sema &SemaRef,
     if (clang::NamespaceDecl *NsDecl = dyn_cast<clang::NamespaceDecl>(ND)) {
       return NsDecl;
     }
-    // FIXME: This needs to support referencing base members.
+
+    // FIXME: This needs to support referencing base members by qualified name.
     llvm_unreachable("Direct referencing of member variables it not permitted yet.");
   }
-
-  // if (const CallSyntax *Call = dyn_cast<CallSyntax>(RHS)) {    
-  // }
 
   llvm_unreachable("Unknown syntax encountered during nested member lookup.");
 }

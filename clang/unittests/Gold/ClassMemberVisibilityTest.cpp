@@ -130,8 +130,7 @@ TEST(ClassParsing, Visibility_PrivateConstructor) {
   StringRef Code = R"(
 c : type = class:
   constructor() <private> : void!
-  
-
+    return
 )";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxConstructorDecl(isPrivate()))
@@ -143,7 +142,7 @@ TEST(ClassParsing, Visibility_ProtectedConstructor) {
   StringRef Code = R"(
 c : type = class:
   constructor() <protected> : void!
-
+    return
 )";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxConstructorDecl(isProtected()))
@@ -154,8 +153,8 @@ c : type = class:
 TEST(ClassParsing, Visibility_PublicConstructor) {
   StringRef Code = R"(
 c : type = class:
-  constructor() <public> : void!
-  
+  constructor() <public> : void! 
+    return 
 )";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxConstructorDecl(isPublic()))
@@ -166,8 +165,8 @@ c : type = class:
 TEST(ClassParsing, Visibility_ImplicitPublicConstructor) {
   StringRef Code = R"(
 c : type = class:
-  constructor() <protected>: void!
-
+  constructor() : void! 
+    return
 )";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxConstructorDecl(isPublic()))
@@ -179,8 +178,8 @@ c : type = class:
 TEST(ClassParsing, Visibility_PrivateDestructor) {
   StringRef Code = R"(
 c : type = class:
-  destructor() <private> : void!
-
+  destructor() <private> : void! 
+    return
 )";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxDestructorDecl(isPrivate()))
@@ -191,8 +190,8 @@ c : type = class:
 TEST(ClassParsing, Visibility_ProtectedDestructor) {
   StringRef Code = R"(
 c : type = class:
-  destructor() <protected> : void!
-
+  destructor() <protected> : void! 
+    return 
 )";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxDestructorDecl(isProtected()))
@@ -203,8 +202,8 @@ c : type = class:
 TEST(ClassParsing, Visibility_PublicDestructor) {
   StringRef Code = R"(
 c : type = class:
-  destructor() <public> : void!
-
+  destructor() <public> : void! 
+    return
 )";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxDestructorDecl(isPublic()))
@@ -215,8 +214,8 @@ c : type = class:
 TEST(ClassParsing, Visibility_ImplicitPublicDestructor) {
   StringRef Code = R"(
 c : type = class:
-  destructor(): void!
-  
+  destructor(): void! 
+    return 
 )";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxDestructorDecl(isPublic()))

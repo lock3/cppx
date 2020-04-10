@@ -252,13 +252,13 @@ namespace gold
     Syntax *parseNum();
 
     // Semantic actions
-
     Syntax *onAtom(const Token& tok);
     Syntax *onLiteral(const Token& tok);
     Syntax *onArray(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
     Syntax *onList(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
     Syntax *onBinary(const Token& tok, Syntax *e1, Syntax *e2);
     Syntax *onUnary(const Token& tok, Syntax *e1);
+    Syntax *onUnaryOrNull(const Token& tok, Syntax *e1);
     Syntax *onCall(const TokenPair& toks, Syntax *e1, Syntax *e2);
     Syntax *onCall(Syntax *e1, Syntax *e2);
     Syntax *onElem(const TokenPair& toks, Syntax *e1, Syntax *e2);
