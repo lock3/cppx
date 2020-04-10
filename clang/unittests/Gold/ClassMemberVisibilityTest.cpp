@@ -21,21 +21,20 @@ using namespace clang;
 using namespace gold;
 
 TEST(ClassParsing, Visibility_PrivateMember) {
-//   ASSERT_FALSE(true) << "Attributs currently not working.";
-//   StringRef Code = R"(
-// q<private1>  : int <private3> =4
-// c : type = class:
-//   x <private> <something>: int
-//   y : bool
+  StringRef Code = R"(
+q<private1>  : int <private3> =4
+c : type = class:
+  x <private> <something>: int
+  y : bool
 
-// main() : int!
-//   return 0
-// )";
-//   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
-//     hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
-//       isPublic())),
-//     hasDescendant(fieldDecl(hasName("y"), hasType(asString("_Bool")),
-//       isPublic()))
-//   );
-//   ASSERT_TRUE(matches(Code, ClassC));
+main() : int!
+  return 0
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
+      isPublic())),
+    hasDescendant(fieldDecl(hasName("y"), hasType(asString("_Bool")),
+      isPublic()))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
 }
