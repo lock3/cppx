@@ -718,16 +718,17 @@ Expression ExprElaborator::elaborateNestedLookUpAccess(Expression Previous,
   if (Previous.is<clang::TypeSourceInfo*>()) {
     return handleLookUpInsideType(SemaRef, Context.CxxAST, Previous, Op, RHS);
   }
-  
+
   if (Previous.is<clang::NamespaceDecl*>()) {
-    assert(!"Nested namespace declarations not implemented yet.");
+    llvm_unreachable("Nested namespace declarations not implemented");
   }
 
   if (Previous.is<clang::Expr *>()) {
-    assert(!"Nested access to static variables it no implemented yet.");
+    // assert(!"Nested access to static variables it no implemented yet.");
+    llvm_unreachable("Nested access to static variables not implemented");
   }
-  llvm_unreachable("Unknown expression type encountered, It's not an "
-      "expression, type, or namespace encountered while looking up a member.");
+
+  llvm_unreachable("Expression type not an expression, type, or namespace");
 }
 
 

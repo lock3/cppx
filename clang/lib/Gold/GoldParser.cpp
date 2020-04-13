@@ -903,6 +903,7 @@ Syntax *Parser::parsePrimary() {
   case tok::HexadecimalFloat:
   case tok::Character:
   case tok::String:
+  case tok::ClassKeyword:
     return onAtom(consumeToken());
 
   case tok::LeftParen:
