@@ -64,6 +64,10 @@ enum DeclaratorKind {
 
   /// Declares a type.
   DK_Type,
+
+  /// This refers to the node containing the attributes which augment the
+  /// current declaration. The entire thing not just a type, within the decl.
+  DK_DeclarationAttributes,
 };
 
 /// A declarator introduces the declaration of a value.
