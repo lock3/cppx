@@ -64,10 +64,6 @@ enum DeclaratorKind {
 
   /// Declares a type.
   DK_Type,
-
-  /// This refers to the node containing the attributes which augment the
-  /// current declaration. The entire thing not just a type, within the decl.
-  DK_DeclarationAttributes,
 };
 
 /// A declarator introduces the declaration of a value.
@@ -148,7 +144,7 @@ public:
 
     /// For DK_Array, the array index.
     const Syntax *Index;
-    
+
     /// For DK_TemplateType, for templated types.
     struct TemplateInfoStruct {
       /// A pointer to the template parameters within the declaration.
@@ -160,10 +156,9 @@ public:
       clang::Scope *ClangScope;
     } TemplateInfo;
   } Data;
-
-  /// This contains a list of unprocessed attributes.
-  clang::SmallVector<Attribute const*, 4> UnprocessedAttributes;
-
+  
+  /// This is optionally set for each piece of the declarator.
+  const Syntax* AttributeNode = nullptr;
 };
 
 /// A declaration is stores information about the declaration of an

@@ -1029,8 +1029,9 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
       break;
     }
     case DK_TemplateType:{
-      llvm::outs() << "Working on it.\n";
-      assert(false && "Failed to get get template type!");
+      llvm_unreachable("I'm not sure exactly how this works but I'll figure it "
+                       "out!");
+      break;
     }
     default:
       llvm_unreachable("Invalid declarator");

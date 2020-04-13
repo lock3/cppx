@@ -101,14 +101,6 @@ clang::Decl *Elaborator::elaborateDeclType(const Syntax *S) {
   if (!D) {
     return nullptr;
   }
-  // D->Op->dump();
-  // llvm::outs() << "Attributes attached to decl: \n";
-  // for (auto const* Attr : D->UnprocessedAttributes) {
-  //   llvm::outs() << "  ";
-  //   Attr->getArg()->dump();
-  //   llvm::outs() << "\n";
-  // } 
-  // llvm::outs() << "End of attributes\n";
   return elaborateDecl(D);
 }
 
@@ -186,13 +178,33 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   return ClsDecl;
 }
 
-static void handleDeclAttributeApplication(clang::Decl *Dec, Declaration *D) {
-  // In this instance we are going to be handling access specifiers
-  // of declarations.
-  // for (Attribute const& Attr : D->getAttributes()) {
-  //   llvm::outs() << "Processing attributes?!\n";
-  // }
+static void handleDeclAttributeApplication(Sema& SemaRef,SyntaxContext& Context,
+    clang::Decl *Dec, Declaration *D) {
+  if (D->Decl->AttributeNode) {
+    clang::AccessSpecifier AS = clang::AS_none;
+    for (auto const& attr : D->Decl->AttributeNode->getAttributes()) {
+      if (const AtomSyntax *AttrName = dyn_cast<AtomSyntax>(attr->getArg())) {
 
+        // TODO: We need to change in order to prevent multiple access specifiers
+        // from being given. Currently this only works for single access
+        // specifiers.
+        if (AttrName->getSpelling() == "private") {
+          AS = clang::AS_private;
+        } else if (AttrName->getSpelling() == "protected") {
+          AS = clang::AS_protected;
+        } else if (AttrName->getSpelling() == "public") {
+          AS = clang::AS_public;
+        } else {
+          llvm_unreachable("Unsupported attribute given.");
+        }
+      }
+    }
+
+    // Don't chainge default access in the event the access specifier was never
+    // given.
+    if (AS != clang::AS_none)
+      Dec->setAccess(AS);
+  }
 }
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
@@ -204,12 +216,11 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
     Ret = processCXXRecordDecl(*this, Context, SemaRef, D);
   else if (D->declaresFunction())
     Ret = elaborateFunctionDecl(D);
-  else 
+  else
     Ret = elaborateVariableDecl(D);
-  if (!Ret) {
+  if (!Ret) 
     return Ret;
-  }
-  handleDeclAttributeApplication(Ret, D);
+  handleDeclAttributeApplication(SemaRef, Context, Ret, D);
   return Ret;
   // TODO: We should be able to elaborate definitions at this point too.
   // We've already loaded salient identifier tables, so it shouldn't any
@@ -909,7 +920,7 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
                                           nullptr);
   Owner->addDecl(FD);
   D->Cxx = FD;
-  return nullptr;
+  return FD;
 }
 
 void Elaborator::elaborateFieldInit(Declaration *D) {
@@ -958,6 +969,9 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S);
 static Declarator *buildIdDeclarator(const Syntax *S, Declarator *Next) {
   Declarator *D = new Declarator(DK_Identifier, Next);
   D->Data.Id = S;
+  if (!S->getAttributes().empty()) {
+    D->AttributeNode = S;
+  }
   return D;
 }
 
@@ -1097,14 +1111,22 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
         return makeDeclarator(SemaRef, Call->getArgument(0), Next);
       }
       // Otherwise, this appears to be a function declarator.
-      return makeDeclarator(SemaRef, Callee, buildFunctionDeclarator(Call, Next));
+      Declarator *Temp = makeDeclarator(SemaRef, Callee,
+                                        buildFunctionDeclarator(Call, Next));
+      if (!Call->getAttributes().empty())
+        Temp->AttributeNode = Call;
+      return Temp;
 
 
     } else if (const ElemSyntax *Callee = dyn_cast<ElemSyntax>(Call->getCallee())) {
       // We have a template parameter list here, so build the
       // function declarator accordingly.
-      return makeDeclarator(SemaRef, Callee->getObject(),
-                            buildFunctionDeclarator(Call, Callee, Next));
+      Declarator *Temp = makeDeclarator(SemaRef, Callee->getObject(),
+                                        buildFunctionDeclarator(Call, Callee,
+                                                                Next));
+      if (!Call->getAttributes().empty())
+        Temp->AttributeNode = Call;
+      return Temp;
     }
   } else if (const ElemSyntax *TemplateType = dyn_cast<ElemSyntax>(S)) {
     // Building type parameters for each element within the list and chaining

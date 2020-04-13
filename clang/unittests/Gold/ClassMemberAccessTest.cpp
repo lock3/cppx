@@ -1,4 +1,4 @@
-//=== ClassMemberVisibilityTest.cpp - Testing member visibility attributes -==//
+//=== ClassMemberAccessTest.cpp - Testing member Access attributes -==//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -20,7 +20,7 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-TEST(ClassParsing, Visibility_PrivateMember) {
+TEST(ClassParsing, Access_PrivateMember) {
   StringRef Code = R"(
 c : type = class:
   x <private>: int
@@ -33,21 +33,21 @@ c : type = class:
   ASSERT_TRUE(matches(Code, ClassC));
 }
 
-TEST(ClassParsing, Visibility_PrivateMember_NoType) {
-  StringRef Code = R"(
-c : type = class:
-  x <private> = 9
-)";
-  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
-    hasDescendant(
-      fieldDecl(hasName("x"), hasType(asString("int")), isPrivate())
-    )
-  );
-  ASSERT_TRUE(matches(Code, ClassC));
-}
+// TEST(ClassParsing, Access_PrivateMember_NoType) {
+//   StringRef Code = R"(
+// c : type = class:
+//   x <private> = 9
+// )";
+//   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+//     hasDescendant(
+//       fieldDecl(hasName("x"), hasType(asString("int")), isPrivate())
+//     )
+//   );
+//   ASSERT_TRUE(matches(Code, ClassC));
+// }
 
 
-TEST(ClassParsing, Visibility_PublicMember) {
+TEST(ClassParsing, Access_PublicMember) {
   StringRef Code = R"(
 c : type = class:
   x <public>: int
@@ -60,7 +60,7 @@ c : type = class:
   ASSERT_TRUE(matches(Code, ClassC));
 }
 
-TEST(ClassParsing, Visibility_ImplicitPublicMember) {
+TEST(ClassParsing, Access_ImplicitPublicMember) {
   StringRef Code = R"(
 c : type = class:
   x : int
@@ -73,7 +73,7 @@ c : type = class:
   ASSERT_TRUE(matches(Code, ClassC));
 }
 
-TEST(ClassParsing, Visibility_ProtectedMember) {
+TEST(ClassParsing, Access_ProtectedMember) {
   StringRef Code = R"(
 c : type = class:
   x <protected>: int
@@ -87,8 +87,8 @@ c : type = class:
 }
 
 
-// Class Member function visibility testing.
-TEST(ClassParsing, Visibility_PrivateMemberFunctions) {
+// Class Member function Access testing.
+TEST(ClassParsing, Access_PrivateMemberFunctions) {
   StringRef Code = R"(
 c : type = class:
   foo()<private>: int!
@@ -100,7 +100,7 @@ c : type = class:
   ASSERT_TRUE(matches(Code, ClassC));
 }
 
-TEST(ClassParsing, Visibility_ProtectedMemberFunctions) {
+TEST(ClassParsing, Access_ProtectedMemberFunctions) {
   StringRef Code = R"(
 c : type = class:
   foo()<protected>: int!
@@ -112,7 +112,7 @@ c : type = class:
   ASSERT_TRUE(matches(Code, ClassC));
 }
 
-TEST(ClassParsing, Visibility_PublicMemberFunctions) {
+TEST(ClassParsing, Access_PublicMemberFunctions) {
   StringRef Code = R"(
 c : type = class:
   foo()<public>: int!
@@ -124,7 +124,7 @@ c : type = class:
   ASSERT_TRUE(matches(Code, ClassC));
 }
 
-TEST(ClassParsing, Visibility_ImplicitPublicMemberFunctions) {
+TEST(ClassParsing, Access_ImplicitPublicMemberFunctions) {
   StringRef Code = R"(
 c : type = class:
   foo(): int!
@@ -138,8 +138,8 @@ c : type = class:
 
 
 
-// Testing constructor visibility test.
-TEST(ClassParsing, Visibility_PrivateConstructor) {
+// Testing constructor Access test.
+TEST(ClassParsing, Access_PrivateConstructor) {
   StringRef Code = R"(
 c : type = class:
   constructor() <private> : void!
@@ -151,7 +151,7 @@ c : type = class:
   ASSERT_TRUE(matches(Code, ClassC));
 }
 
-TEST(ClassParsing, Visibility_ProtectedConstructor) {
+TEST(ClassParsing, Access_ProtectedConstructor) {
   StringRef Code = R"(
 c : type = class:
   constructor() <protected> : void!
@@ -163,7 +163,7 @@ c : type = class:
   ASSERT_TRUE(matches(Code, ClassC));
 }
 
-TEST(ClassParsing, Visibility_PublicConstructor) {
+TEST(ClassParsing, Access_PublicConstructor) {
   StringRef Code = R"(
 c : type = class:
   constructor() <public> : void! 
@@ -175,7 +175,7 @@ c : type = class:
   ASSERT_TRUE(matches(Code, ClassC));
 }
 
-TEST(ClassParsing, Visibility_ImplicitPublicConstructor) {
+TEST(ClassParsing, Access_ImplicitPublicConstructor) {
   StringRef Code = R"(
 c : type = class:
   constructor() : void! 
@@ -187,8 +187,8 @@ c : type = class:
   ASSERT_TRUE(matches(Code, ClassC));
 }
 
-// Testing destructor visibility.
-TEST(ClassParsing, Visibility_PrivateDestructor) {
+// Testing destructor Access.
+TEST(ClassParsing, Access_PrivateDestructor) {
   StringRef Code = R"(
 c : type = class:
   destructor() <private> : void! 
@@ -200,7 +200,7 @@ c : type = class:
   ASSERT_TRUE(matches(Code, ClassC));
 }
 
-TEST(ClassParsing, Visibility_ProtectedDestructor) {
+TEST(ClassParsing, Access_ProtectedDestructor) {
   StringRef Code = R"(
 c : type = class:
   destructor() <protected> : void! 
@@ -212,7 +212,7 @@ c : type = class:
   ASSERT_TRUE(matches(Code, ClassC));
 }
 
-TEST(ClassParsing, Visibility_PublicDestructor) {
+TEST(ClassParsing, Access_PublicDestructor) {
   StringRef Code = R"(
 c : type = class:
   destructor() <public> : void! 
@@ -224,7 +224,7 @@ c : type = class:
   ASSERT_TRUE(matches(Code, ClassC));
 }
 
-TEST(ClassParsing, Visibility_ImplicitPublicDestructor) {
+TEST(ClassParsing, Access_ImplicitPublicDestructor) {
   StringRef Code = R"(
 c : type = class:
   destructor(): void! 
