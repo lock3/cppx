@@ -78,7 +78,7 @@ std::string Declarator::getString() const {
       return '[' + std::string(cast<AtomSyntax>(Data.Index)->getSpelling()) + ']';
     return "[]";
   } else if (getKind() == DK_Attributes) {
-
+    llvm_unreachable("Attribute printing not implemented yet.");
   } else {
     return "[unimplemented]";
   }
