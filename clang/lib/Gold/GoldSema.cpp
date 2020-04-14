@@ -51,6 +51,10 @@ Sema::~Sema() {
   CxxSema.CurScope = nullptr;
 }
 
+bool Sema::accessSpecifierIsValidInScope() const {
+  return ScopeStack.back() && ScopeStack.back()->getKind() == SK_Class;
+}
+
 Scope *Sema::getCurrentScope() {
   if (ScopeStack.empty())
     return nullptr;

@@ -44,6 +44,8 @@ clang::SourceLocation Declarator::getLoc() const {
   case DK_Type:
     return getType()->getLoc();
   default:
+    llvm_unreachable("We are unable to actually get valid source location for "
+        "declarator.");
     return clang::SourceLocation();
   }
 }
@@ -95,6 +97,17 @@ void Declarator::printSequence(llvm::raw_ostream &os) const {
   }  while (D);
 
   os << '\n';
+}
+
+void Declarator::recordAttributes(const Syntax* AttrNode) {
+  if (AttrNode->getAttributes().empty())
+    return;
+  AttributeNode = AttrNode;
+  Attributes Attrs;
+  for (const Attribute * A : AttrNode->getAttributes()) {
+    Attrs.emplace_back(A->getArg());
+  }
+  UnprocessedAttributes = std::move(Attrs);
 }
 
 Declaration::~Declaration() {

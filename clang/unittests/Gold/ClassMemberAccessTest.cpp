@@ -235,3 +235,117 @@ c : type = class:
   );
   ASSERT_TRUE(matches(Code, ClassC));
 }
+
+
+// Testing nested type Access.
+TEST(ClassParsing, Access_PublicType) {
+  StringRef Code = R"(
+c : type = class:
+  c2<public> : type = class:
+    z : int
+    y : bool
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(recordDecl(hasName("c2"), isPublic()))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
+TEST(ClassParsing, Access_ImplicitPublicType) {
+  StringRef Code = R"(
+c : type = class:
+  c2 : type = class:
+    z : int
+    y : bool
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(recordDecl(hasName("c2"), isPublic()))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
+TEST(ClassParsing, Access_PrivateType) {
+  StringRef Code = R"(
+c : type = class:
+  c2 <private>: type = class:
+    z : int
+    y : bool
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(recordDecl(hasName("c2"), isPrivate()))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
+
+TEST(ClassParsing, Access_ProtectedType) {
+  StringRef Code = R"(
+c : type = class:
+  c2 <protected>: type = class:
+    z : int
+    y : bool
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(recordDecl(hasName("c2"), isProtected()))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
+
+// Testing nested templated types
+TEST(ClassParsing, Access_PublicTemplateType) {
+  StringRef Code = R"(
+c : type = class:
+  c2[T:type]<public> : type = class:
+    z : int
+    y : bool
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(classTemplateDecl(hasName("c2"), isPublic()))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
+TEST(ClassParsing, Access_ImplicitPublicTemplateType) {
+  StringRef Code = R"(
+c : type = class:
+  c2[T:type] : type = class:
+    z : int
+    y : bool
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(classTemplateDecl(hasName("c2"), isPublic()))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
+TEST(ClassParsing, Access_PrivateTemplateType) {
+  StringRef Code = R"(
+c : type = class:
+  c2 [T:type]<private>: type = class:
+    z : int
+    y : bool
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(classTemplateDecl(hasName("c2"), isPrivate()))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
+
+TEST(ClassParsing, Access_ProtectedTemplateType) {
+  StringRef Code = R"(
+c : type = class:
+  c2 [T:type]<protected>: type = class:
+    z : int
+    y : bool
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(classTemplateDecl(hasName("c2"), isProtected()))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
+
+// Testing templated member function access?
+

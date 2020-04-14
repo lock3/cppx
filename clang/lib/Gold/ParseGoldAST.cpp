@@ -42,7 +42,7 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
 
   Parser Parser(Context, SM, InputFile);
   Syntax *AST = Parser.parseFile();
-  
+  // AST->dump();
   // FIXME: There's a -fdump-syntax flag that we should tie this too.
 
   // FIXME: We should handle -fsyntax-only here -- or maybe make a separate
@@ -61,6 +61,7 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
     if (D && !Consumer->HandleTopLevelDecl(DPtr.get()))
       return;
   }
+  // TU->dump();
   Consumer->HandleTranslationUnit(ClangSema.getASTContext());
 }
 

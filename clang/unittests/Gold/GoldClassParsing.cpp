@@ -541,3 +541,46 @@ main() : int!
   );
   ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
 }
+
+
+TEST(ClassParsing, TemplatedMemberFunction) {
+/*
+TranslationUnitDecl 0x7fffedb670a8 <<invalid sloc>> <invalid sloc>
+|-CXXRecordDecl 0x7fffedba5590 <bin/cpp_test.cpp:1:1, line:7:1> line:1:8 referenced struct c definition
+| |-DefinitionData pass_in_registers empty aggregate standard_layout trivially_copyable pod trivial literal has_constexpr_non_copy_move_ctor can_const_default_init
+| | |-DefaultConstructor exists trivial constexpr defaulted_is_constexpr
+| | |-CopyConstructor simple trivial has_const_param implicit_has_const_param
+| | |-MoveConstructor exists simple trivial
+| | |-CopyAssignment trivial has_const_param needs_implicit implicit_has_const_param
+| | |-MoveAssignment exists simple trivial needs_implicit
+| | `-Destructor simple irrelevant trivial needs_implicit
+| |-CXXRecordDecl 0x7fffedba56b8 <col:1, col:8> col:8 implicit struct c
+| |-FunctionTemplateDecl 0x7fffedba5938 <line:2:3, line:5:3> line:3:8 foo
+| | |-TemplateTypeParmDecl 0x7fffedba5750 <line:2:12, col:21> col:21 typename depth 0 index 0 T
+| | `-CXXMethodDecl 0x7fffedba5888 <line:3:3, line:5:3> line:3:8 foo 'void ()'
+| |   `-CompoundStmt 0x7fffedba59b8 <col:14, line:5:3>
+| |     `-ReturnStmt 0x7fffedba59a8 <line:4:5>
+| |-CXXConstructorDecl 0x7fffedba5bd0 <line:1:8> col:8 implicit used constexpr c 'void () noexcept' inline default trivial
+| | `-CompoundStmt 0x7fffedba6068 <col:8>
+| |-CXXConstructorDecl 0x7fffedba5ce8 <col:8> col:8 implicit constexpr c 'void (const c &)' inline default trivial noexcept-unevaluated 0x7fffedba5ce8
+| | `-ParmVarDecl 0x7fffedba5e08 <col:8> col:8 'const c &'
+| `-CXXConstructorDecl 0x7fffedba5ea8 <col:8> col:8 implicit constexpr c 'void (c &&)' inline default trivial noexcept-unevaluated 0x7fffedba5ea8
+|   `-ParmVarDecl 0x7fffedba5fc8 <col:8> col:8 'c &&'
+`-FunctionDecl 0x7fffedba5a20 <line:9:1, line:12:1> line:9:5 main 'int ()'
+  `-CompoundStmt 0x7fffedba60e8 <col:12, line:12:1>
+    |-DeclStmt 0x7fffedba60a0 <line:10:3, col:6>
+    | `-VarDecl 0x7fffedba5b50 <col:3, col:5> col:5 t 'c' callinit
+    |   `-CXXConstructExpr 0x7fffedba6078 <col:5> 'c' 'void () noexcept'
+    `-ReturnStmt 0x7fffedba60d8 <line:11:3, col:10>
+      `-IntegerLiteral 0x7fffedba60b8 <col:10> 'int' 0
+*/
+  StringRef Code = R"(
+c : type = class:
+  foo[T : type](x : T) : T!
+    return x
+)";
+  DeclarationMatcher MemberFunctionMatch = recordDecl( hasName("c"),
+    hasDescendant(functionTemplateDecl(hasName("foo"), cxxMethodDecl()))
+  );
+  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}
