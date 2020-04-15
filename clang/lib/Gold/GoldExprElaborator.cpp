@@ -585,8 +585,6 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
                                << Ty << "a constructor";
           return nullptr;
         }
-        // llvm::outs() << "Constructor expression: = \n";
-        // ConstructorExpr.get()->dump();
         return ConstructorExpr.get();
       }
 
