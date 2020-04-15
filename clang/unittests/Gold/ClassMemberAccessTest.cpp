@@ -348,4 +348,15 @@ c : type = class:
 
 
 // Testing templated member function access?
-
+TEST(ClassParsing, Access_PrivateNestedClass) {
+  StringRef Code = R"(
+c : type = class:
+  c2 <private>: type = class:
+    z : int
+    y : bool
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(recordDecl(hasName("c2"), isPrivate()))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}

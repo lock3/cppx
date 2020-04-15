@@ -585,6 +585,8 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
                                << Ty << "a constructor";
           return nullptr;
         }
+        // llvm::outs() << "Constructor expression: = \n";
+        // ConstructorExpr.get()->dump();
         return ConstructorExpr.get();
       }
 
@@ -741,7 +743,8 @@ Expression ExprElaborator::elaborateElemCall(const CallSyntax *S) {
 
   // Try to construct a normal function-call expression.
   // First do unqualified lookup.
-  clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Id->getSpelling())}, S->getLoc());
+  clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Id->getSpelling())},
+    S->getLoc());
   clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
   R.setTemplateNameLookup(true);
   SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());

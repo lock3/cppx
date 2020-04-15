@@ -212,6 +212,352 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   return !R.empty();
 }
 
+// Sema::NameClassification Sema::ClassifyName(Scope *S, CXXScopeSpec &SS,
+//                                              IdentifierInfo *&Name,
+//                                              SourceLocation NameLoc,
+//                                              const Token &NextToken,
+//                                              CorrectionCandidateCallback *CCC) {
+//    DeclarationNameInfo NameInfo(Name, NameLoc);
+//    ObjCMethodDecl *CurMethod = getCurMethodDecl();
+ 
+//    assert(NextToken.isNot(tok::coloncolon) &&
+//           "parse nested name specifiers before calling ClassifyName");
+//    if (getLangOpts().CPlusPlus && SS.isSet() &&
+//        isCurrentClassName(*Name, S, &SS)) {
+//      // Per [class.qual]p2, this names the constructors of SS, not the
+//      // injected-class-name. We don't have a classification for that.
+//      // There's not much point caching this result, since the parser
+//      // will reject it later.
+//      return NameClassification::Unknown();
+//    }
+ 
+//    LookupResult Result(*this, Name, NameLoc, LookupOrdinaryName);
+//    LookupParsedName(Result, S, &SS, !CurMethod);
+ 
+//    // For unqualified lookup in a class template in MSVC mode, look into
+//    // dependent base classes where the primary class template is known.
+//    if (Result.empty() && SS.isEmpty() && getLangOpts().MSVCCompat) {
+//      if (ParsedType TypeInBase =
+//              recoverFromTypeInKnownDependentBase(*this, *Name, NameLoc))
+//        return TypeInBase;
+//    }
+ 
+//    // Perform lookup for Objective-C instance variables (including automatically
+//    // synthesized instance variables), if we're in an Objective-C method.
+//    // FIXME: This lookup really, really needs to be folded in to the normal
+//    // unqualified lookup mechanism.
+//    if (!SS.isSet() && CurMethod && !isResultTypeOrTemplate(Result, NextToken)) {
+//      DeclResult Ivar = LookupIvarInObjCMethod(Result, S, Name);
+//      if (Ivar.isInvalid())
+//        return NameClassification::Error();
+//      if (Ivar.isUsable())
+//        return NameClassification::NonType(cast<NamedDecl>(Ivar.get()));
+ 
+//      // We defer builtin creation until after ivar lookup inside ObjC methods.
+//      if (Result.empty())
+//        LookupBuiltin(Result);
+//    }
+ 
+//    bool SecondTry = false;
+//    bool IsFilteredTemplateName = false;
+ 
+//  Corrected:
+//    switch (Result.getResultKind()) {
+//    case LookupResult::NotFound:
+//      // If an unqualified-id is followed by a '(', then we have a function
+//      // call.
+//      if (!SS.isSet() && NextToken.is(tok::l_paren)) {
+//        // In C++, this is an ADL-only call.
+//        // FIXME: Reference?
+//        if (getLangOpts().CPlusPlus)
+//          return NameClassification::UndeclaredNonType();
+ 
+//        // C90 6.3.2.2:
+//        //   If the expression that precedes the parenthesized argument list in a
+//        //   function call consists solely of an identifier, and if no
+//        //   declaration is visible for this identifier, the identifier is
+//        //   implicitly declared exactly as if, in the innermost block containing
+//        //   the function call, the declaration
+//        //
+//        //     extern int identifier ();
+//        //
+//        //   appeared.
+//        //
+//        // We also allow this in C99 as an extension.
+//        if (NamedDecl *D = ImplicitlyDefineFunction(NameLoc, *Name, S))
+//          return NameClassification::NonType(D);
+//      }
+ 
+//      if (getLangOpts().CPlusPlus2a && !SS.isSet() && NextToken.is(tok::less)) {
+//        // In C++20 onwards, this could be an ADL-only call to a function
+//        // template, and we're required to assume that this is a template name.
+//        //
+//        // FIXME: Find a way to still do typo correction in this case.
+//        TemplateName Template =
+//            Context.getAssumedTemplateName(NameInfo.getName());
+//        return NameClassification::UndeclaredTemplate(Template);
+//      }
+ 
+//      // In C, we first see whether there is a tag type by the same name, in
+//      // which case it's likely that the user just forgot to write "enum",
+//      // "struct", or "union".
+//      if (!getLangOpts().CPlusPlus && !SecondTry &&
+//          isTagTypeWithMissingTag(*this, Result, S, SS, Name, NameLoc)) {
+//        break;
+//      }
+ 
+//      // Perform typo correction to determine if there is another name that is
+//      // close to this name.
+//      if (!SecondTry && CCC) {
+//        SecondTry = true;
+//        if (TypoCorrection Corrected =
+//                CorrectTypo(Result.getLookupNameInfo(), Result.getLookupKind(), S,
+//                            &SS, *CCC, CTK_ErrorRecovery)) {
+//          unsigned UnqualifiedDiag = diag::err_undeclared_var_use_suggest;
+//          unsigned QualifiedDiag = diag::err_no_member_suggest;
+ 
+//          NamedDecl *FirstDecl = Corrected.getFoundDecl();
+//          NamedDecl *UnderlyingFirstDecl = Corrected.getCorrectionDecl();
+//          if (getLangOpts().CPlusPlus && NextToken.is(tok::less) &&
+//              UnderlyingFirstDecl && isa<TemplateDecl>(UnderlyingFirstDecl)) {
+//            UnqualifiedDiag = diag::err_no_template_suggest;
+//            QualifiedDiag = diag::err_no_member_template_suggest;
+//          } else if (UnderlyingFirstDecl &&
+//                     (isa<TypeDecl>(UnderlyingFirstDecl) ||
+//                      isa<ObjCInterfaceDecl>(UnderlyingFirstDecl) ||
+//                      isa<ObjCCompatibleAliasDecl>(UnderlyingFirstDecl))) {
+//            UnqualifiedDiag = diag::err_unknown_typename_suggest;
+//            QualifiedDiag = diag::err_unknown_nested_typename_suggest;
+//          }
+ 
+//          if (SS.isEmpty()) {
+//            diagnoseTypo(Corrected, PDiag(UnqualifiedDiag) << Name);
+//          } else {// FIXME: is this even reachable? Test it.
+//            std::string CorrectedStr(Corrected.getAsString(getLangOpts()));
+//            bool DroppedSpecifier = Corrected.WillReplaceSpecifier() &&
+//                                    Name->getName().equals(CorrectedStr);
+//            diagnoseTypo(Corrected, PDiag(QualifiedDiag)
+//                                      << Name << computeDeclContext(SS, false)
+//                                      << DroppedSpecifier << SS.getRange());
+//          }
+ 
+//          // Update the name, so that the caller has the new name.
+//          Name = Corrected.getCorrectionAsIdentifierInfo();
+ 
+//          // Typo correction corrected to a keyword.
+//          if (Corrected.isKeyword())
+//            return Name;
+ 
+//          // Also update the LookupResult...
+//          // FIXME: This should probably go away at some point
+//          Result.clear();
+//          Result.setLookupName(Corrected.getCorrection());
+//          if (FirstDecl)
+//            Result.addDecl(FirstDecl);
+ 
+//          // If we found an Objective-C instance variable, let
+//          // LookupInObjCMethod build the appropriate expression to
+//          // reference the ivar.
+//          // FIXME: This is a gross hack.
+//          if (ObjCIvarDecl *Ivar = Result.getAsSingle<ObjCIvarDecl>()) {
+//            DeclResult R =
+//                LookupIvarInObjCMethod(Result, S, Ivar->getIdentifier());
+//            if (R.isInvalid())
+//              return NameClassification::Error();
+//            if (R.isUsable())
+//              return NameClassification::NonType(Ivar);
+//          }
+ 
+//          goto Corrected;
+//        }
+//      }
+ 
+//      // We failed to correct; just fall through and let the parser deal with it.
+//      Result.suppressDiagnostics();
+//      return NameClassification::Unknown();
+ 
+//    case LookupResult::NotFoundInCurrentInstantiation: {
+//      // We performed name lookup into the current instantiation, and there were
+//      // dependent bases, so we treat this result the same way as any other
+//      // dependent nested-name-specifier.
+ 
+//      // C++ [temp.res]p2:
+//      //   A name used in a template declaration or definition and that is
+//      //   dependent on a template-parameter is assumed not to name a type
+//      //   unless the applicable name lookup finds a type name or the name is
+//      //   qualified by the keyword typename.
+//      //
+//      // FIXME: If the next token is '<', we might want to ask the parser to
+//      // perform some heroics to see if we actually have a
+//      // template-argument-list, which would indicate a missing 'template'
+//      // keyword here.
+//      return NameClassification::DependentNonType();
+//    }
+ 
+//    case LookupResult::Found:
+//    case LookupResult::FoundOverloaded:
+//    case LookupResult::FoundUnresolvedValue:
+//      break;
+ 
+//    case LookupResult::Ambiguous:
+//      if (getLangOpts().CPlusPlus && NextToken.is(tok::less) &&
+//          hasAnyAcceptableTemplateNames(Result, /*AllowFunctionTemplates=*/true,
+//                                        /*AllowDependent=*/false)) {
+//        // C++ [temp.local]p3:
+//        //   A lookup that finds an injected-class-name (10.2) can result in an
+//        //   ambiguity in certain cases (for example, if it is found in more than
+//        //   one base class). If all of the injected-class-names that are found
+//        //   refer to specializations of the same class template, and if the name
+//        //   is followed by a template-argument-list, the reference refers to the
+//        //   class template itself and not a specialization thereof, and is not
+//        //   ambiguous.
+//        //
+//        // This filtering can make an ambiguous result into an unambiguous one,
+//        // so try again after filtering out template names.
+//        FilterAcceptableTemplateNames(Result);
+//        if (!Result.isAmbiguous()) {
+//          IsFilteredTemplateName = true;
+//          break;
+//        }
+//      }
+ 
+//      // Diagnose the ambiguity and return an error.
+//      return NameClassification::Error();
+//    }
+ 
+//    if (getLangOpts().CPlusPlus && NextToken.is(tok::less) &&
+//        (IsFilteredTemplateName ||
+//         hasAnyAcceptableTemplateNames(
+//             Result, /*AllowFunctionTemplates=*/true,
+//             /*AllowDependent=*/false,
+//             /*AllowNonTemplateFunctions*/ !SS.isSet() &&
+//                 getLangOpts().CPlusPlus2a))) {
+//      // C++ [temp.names]p3:
+//      //   After name lookup (3.4) finds that a name is a template-name or that
+//      //   an operator-function-id or a literal- operator-id refers to a set of
+//      //   overloaded functions any member of which is a function template if
+//      //   this is followed by a <, the < is always taken as the delimiter of a
+//      //   template-argument-list and never as the less-than operator.
+//      // C++2a [temp.names]p2:
+//      //   A name is also considered to refer to a template if it is an
+//      //   unqualified-id followed by a < and name lookup finds either one
+//      //   or more functions or finds nothing.
+//      if (!IsFilteredTemplateName)
+//        FilterAcceptableTemplateNames(Result);
+ 
+//      bool IsFunctionTemplate;
+//      bool IsVarTemplate;
+//      TemplateName Template;
+//      if (Result.end() - Result.begin() > 1) {
+//        IsFunctionTemplate = true;
+//        Template = Context.getOverloadedTemplateName(Result.begin(),
+//                                                     Result.end());
+//      } else if (!Result.empty()) {
+//        auto *TD = cast<TemplateDecl>(getAsTemplateNameDecl(
+//            *Result.begin(), /*AllowFunctionTemplates=*/true,
+//            /*AllowDependent=*/false));
+//        IsFunctionTemplate = isa<FunctionTemplateDecl>(TD);
+//        IsVarTemplate = isa<VarTemplateDecl>(TD);
+ 
+//        if (SS.isSet() && !SS.isInvalid())
+//          Template =
+//              Context.getQualifiedTemplateName(SS.getScopeRep(),
+//                                               /*TemplateKeyword=*/false, TD);
+//        else
+//          Template = TemplateName(TD);
+//      } else {
+//        // All results were non-template functions. This is a function template
+//        // name.
+//        IsFunctionTemplate = true;
+//        Template = Context.getAssumedTemplateName(NameInfo.getName());
+//      }
+ 
+//      if (IsFunctionTemplate) {
+//        // Function templates always go through overload resolution, at which
+//        // point we'll perform the various checks (e.g., accessibility) we need
+//        // to based on which function we selected.
+//        Result.suppressDiagnostics();
+ 
+//        return NameClassification::FunctionTemplate(Template);
+//      }
+ 
+//      return IsVarTemplate ? NameClassification::VarTemplate(Template)
+//                           : NameClassification::TypeTemplate(Template);
+//    }
+ 
+//    NamedDecl *FirstDecl = (*Result.begin())->getUnderlyingDecl();
+//    if (TypeDecl *Type = dyn_cast<TypeDecl>(FirstDecl)) {
+//      DiagnoseUseOfDecl(Type, NameLoc);
+//      MarkAnyDeclReferenced(Type->getLocation(), Type, /*OdrUse=*/false);
+//      QualType T = Context.getTypeDeclType(Type);
+//      if (SS.isNotEmpty())
+//        return buildNestedType(*this, SS, T, NameLoc);
+//      return ParsedType::make(T);
+//    }
+ 
+//    ObjCInterfaceDecl *Class = dyn_cast<ObjCInterfaceDecl>(FirstDecl);
+//    if (!Class) {
+//      // FIXME: It's unfortunate that we don't have a Type node for handling this.
+//      if (ObjCCompatibleAliasDecl *Alias =
+//              dyn_cast<ObjCCompatibleAliasDecl>(FirstDecl))
+//        Class = Alias->getClassInterface();
+//    }
+ 
+//    if (Class) {
+//      DiagnoseUseOfDecl(Class, NameLoc);
+ 
+//      if (NextToken.is(tok::period)) {
+//        // Interface. <something> is parsed as a property reference expression.
+//        // Just return "unknown" as a fall-through for now.
+//        Result.suppressDiagnostics();
+//        return NameClassification::Unknown();
+//      }
+ 
+//      QualType T = Context.getObjCInterfaceType(Class);
+//      return ParsedType::make(T);
+//    }
+ 
+//    // We can have a type template here if we're classifying a template argument.
+//    if (isa<TemplateDecl>(FirstDecl) && !isa<FunctionTemplateDecl>(FirstDecl) &&
+//        !isa<VarTemplateDecl>(FirstDecl))
+//      return NameClassification::TypeTemplate(
+//          TemplateName(cast<TemplateDecl>(FirstDecl)));
+ 
+//    // Check for a tag type hidden by a non-type decl in a few cases where it
+//    // seems likely a type is wanted instead of the non-type that was found.
+//    bool NextIsOp = NextToken.isOneOf(tok::amp, tok::star);
+//    if ((NextToken.is(tok::identifier) ||
+//         (NextIsOp &&
+//          FirstDecl->getUnderlyingDecl()->isFunctionOrFunctionTemplate())) &&
+//        isTagTypeWithMissingTag(*this, Result, S, SS, Name, NameLoc)) {
+//      TypeDecl *Type = Result.getAsSingle<TypeDecl>();
+//      DiagnoseUseOfDecl(Type, NameLoc);
+//      QualType T = Context.getTypeDeclType(Type);
+//      if (SS.isNotEmpty())
+//        return buildNestedType(*this, SS, T, NameLoc);
+//      return ParsedType::make(T);
+//    }
+ 
+//    // FIXME: This is context-dependent. We need to defer building the member
+//    // expression until the classification is consumed.
+//    if (FirstDecl->isCXXClassMember())
+//      return NameClassification::ContextIndependentExpr(
+//          BuildPossibleImplicitMemberExpr(SS, SourceLocation(), Result, nullptr,
+//                                          S));
+ 
+//    // If we already know which single declaration is referenced, just annotate
+//    // that declaration directly.
+//    bool ADL = UseArgumentDependentLookup(SS, Result, NextToken.is(tok::l_paren));
+//    if (Result.isSingleResult() && !ADL)
+//      return NameClassification::NonType(Result.getRepresentativeDecl());
+ 
+//    // Build an UnresolvedLookupExpr. Note that this doesn't depend on the
+//    // context in which we performed classification, so it's safe to do now.
+//    return NameClassification::ContextIndependentExpr(
+//        BuildDeclarationNameExpr(SS, Result, ADL));
+//  }
+ 
+
 clang::Scope *Sema::getCurClangScope() {
   return CxxSema.CurScope;
 }

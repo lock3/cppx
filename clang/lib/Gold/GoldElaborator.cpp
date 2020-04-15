@@ -55,29 +55,30 @@ static bool computeAccessSpecifier(Sema& SemaRef, Declaration *D,
       }
     }
   }
-  // const Syntax *AttribSpec = nullptr;
-  // if(Iter != End) {
-  //   AttribSpec = *Iter;
-  //   D->Decl->UnprocessedAttributes->erase(Iter);
-  //   Iter = D->Decl->UnprocessedAttributes->begin();
-  //   End = D->Decl->UnprocessedAttributes->end();
-  //   for (;Iter != End; ++Iter) {
-  //     if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(*Iter)){
-  //       if (Atom->getSpelling() == "private"
-  //           || Atom->getSpelling() == "protected"
-  //           || Atom->getSpelling() == "public") {
-  //         break;
-  //       }
-  //     }
-  //   }
-  //   if (Iter != End) {
-  //     // llvm::outs() << "Duplicate access specifier given";
-  //     // SemaRef.Diags.getSourceManager().
-  //     // SemaRef.get
-  //     return true;
-  //   }
-  //   return true;
-  // }
+  const Syntax *AttribSpec = nullptr;
+  if(Iter != End) {
+    AttribSpec = *Iter;
+    D->Decl->UnprocessedAttributes->erase(Iter);
+    Iter = D->Decl->UnprocessedAttributes->begin();
+    End = D->Decl->UnprocessedAttributes->end();
+    for (;Iter != End; ++Iter) {
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(*Iter)){
+        if (Atom->getSpelling() == "private"
+            || Atom->getSpelling() == "protected"
+            || Atom->getSpelling() == "public") {
+          break;
+        }
+      }
+    }
+    if (Iter != End) {
+      // TODO: Create valid error message
+      // llvm::outs() << "Duplicate access specifier given\n";
+      SemaRef.Diags.Report((*Iter)->getLoc(),
+            clang::diag::err_duplicate_access_specifier)
+              << AttribSpec->getLoc() << (*Iter)->getLoc(); 
+      return true;
+    }
+  }
   return false;
 }
 // static void handleInClassAttributeApplication(Sema& SemaRef,SyntaxContext& Context,
@@ -364,6 +365,13 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Create the template parameters if they exist.
   const Syntax *TemplParams = D->getTemplateParams();
   bool Template = TemplParams;
+  bool InClass = SemaRef.getCurrentScope()->getKind() == SK_Class;
+  clang::CXXRecordDecl *RD = nullptr;
+  // Before we enter the template scope we need a reference to the containing
+  // class.
+  if (InClass) 
+    RD = cast<clang::CXXRecordDecl>(SemaRef.getCurrentScope()->Record);
+
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
   if (Template) {
     SemaRef.enterScope(SK_Template, TemplParams);
@@ -383,10 +391,9 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::DeclarationName Name = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::FunctionDecl *FD = nullptr;
-  if(SemaRef.getCurrentScope()->getKind() == SK_Class) {
+  if(InClass) {
     
-    clang::CXXRecordDecl *RD = cast<clang::CXXRecordDecl>(
-                                            SemaRef.getCurrentScope()->Record);
+
     const clang::FunctionType *FT = cast<clang::FunctionType>(TInfo->getType());
     clang::DeclarationNameInfo DNI(Name, D->Op->getLoc());
     if (D->getId()->isStr("constructor")) {
@@ -477,7 +484,11 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
                                       clang::ConstexprSpecKind::CSK_unspecified,
                                         Loc);
     }
-    FD->setAccess(clang::AccessSpecifier::AS_public);
+    clang::AccessSpecifier AS;
+    if (computeAccessSpecifier(SemaRef, D, AS)) {
+      return nullptr;
+    }
+    FD->setAccess(AS);
   } else {
     FD = clang::FunctionDecl::Create(Context.CxxAST, Owner, Loc, Loc, Name,
                                      TInfo->getType(), TInfo, clang::SC_None);
@@ -773,25 +784,10 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     // declares an undeduced-type variable with no initializer. Presumably
     // this should be an error.
 
-    // Handle special case of default construction of complex types?
-    if(VD->getType().getTypePtr()->isRecordType()) {
-      llvm::SmallVector<clang::Expr *, 1> Args;
-      clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST,
-          VD->getType(), D->Decl->getLoc());
-      clang::ParsedType PT = SemaRef.getCxxSema().CreateParsedType(
-                                                       TInfo->getType(), TInfo);
-      clang::ExprResult ConstructorExpr =
-        SemaRef.getCxxSema().ActOnCXXTypeConstructExpr(PT, D->Op->getLoc(),
-                                                      Args, D->Op->getLoc(),
-                                                      false);
-      if (ConstructorExpr.get()) {
-        SemaRef.getCxxSema().AddInitializerToDecl(VD, ConstructorExpr.get(),
-            /*DirectInit=*/true);
-        VD->dump();
-        return;
-      }
-    }
-    SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
+    // This handles implcit initialization/constructor calls for variables
+    // that don't have a = sign on first use, but have a type.
+    // That includes complex types.
+    SemaRef.getCxxSema().ActOnUninitializedDecl(VD); 
     return;
   }
 
@@ -987,15 +983,15 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
   if (D->Init) {
     InitStyle = clang::InClassInitStyle::ICIS_ListInit;
   }
-  // if (D->initi)
-  
+  clang::AccessSpecifier AS;
+  if (computeAccessSpecifier(SemaRef, D, AS)) {
+    return nullptr;
+  }
   clang::FieldDecl *FD = SemaRef.getCxxSema().CheckFieldDecl(DN, TInfo->getType(),
                                           TInfo, /*RecordDecl=*/Owner,
                                           Loc, /*Mutable=*/false,
-                                          /*BitWidth=*/nullptr,
-                                          InitStyle, Loc,
-                                          clang::AccessSpecifier::AS_public,
-                                          nullptr);
+                                          /*BitWidth=*/nullptr, InitStyle, Loc,
+                                          AS, nullptr);
   Owner->addDecl(FD);
   D->Cxx = FD;
   // handleInClassAttributeApplication(SemaRef, Context, FD, D);

@@ -435,7 +435,8 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::TagTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::RecordTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  TLB.pushTypeSpec(Ty);
+  auto RTL = TLB.push<clang::RecordTypeLoc>(Ty);
+  RTL.initializeLocal(Ctx, Loc);
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 

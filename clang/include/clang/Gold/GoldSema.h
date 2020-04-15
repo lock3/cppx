@@ -103,8 +103,9 @@ public:
   // Perform unqualified lookup of a name starting in S.
   bool lookupUnqualifiedName(clang::LookupResult &R, Scope *S);
 
-  // Declaration context
+  // clang::Sema::NameClassification classifyName()
 
+  // Declaration context
   /// The current declaration.
   Declaration *getCurrentDecl() {
     return CurrentDecl;
