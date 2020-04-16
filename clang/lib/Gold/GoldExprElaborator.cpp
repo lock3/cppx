@@ -47,9 +47,11 @@ namespace gold {
 using TypeInfo = ExprElaborator::TypeInfo;
 using Expression = ExprElaborator::Expression;
 
-ExprElaborator::ExprElaborator(SyntaxContext &Context, Sema &SemaRef)
-  : Context(Context), CxxAST(Context.CxxAST), SemaRef(SemaRef)
-{}
+ExprElaborator::ExprElaborator(SyntaxContext &Context, Sema &SemaRef,
+      clang::DeclContext *DC, gold::Scope *GoldScope)
+  : Context(Context), CxxAST(Context.CxxAST), SemaRef(SemaRef),
+  CurrentLookUpContext(DC), OwningScope(GoldScope)
+{ }
 
 Expression ExprElaborator::elaborateExpr(const Syntax *S) {
   if (isa<AtomSyntax>(S))
@@ -264,22 +266,27 @@ Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
 static ExprElaborator::Expression
 createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
                   clang::QualType Ty, clang::SourceLocation Loc) {
+  // Attempting to classify identifiers?
+  // classifyName()
   // TODO: We need to refactor this to do multiple types of look up.
   // For example, we need to refactor the way functions, and type names
   // are handled. This is so that we can appropriately handle lookup of names
   // in multiple contexts. This will also need to be refactored in order to
   // correctly handle things like getting names for candidate sets.
 
-  // using TemplateNamePtr = clang::TemplateName*;
-  // clang::TemplateName *TN = TemplateNamePtr(Template.getAsOpaquePtr());
-
+  // Step one. Look up the name within the current context, to see if it exists.
   clang::ASTContext &CxxAST = Context.CxxAST;
-
+  
   clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(S->getSpelling())}, Loc);
   clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
   SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
   if (!R.empty()) {
     if (!R.isSingleResult()) {
+      // This needs to be changed because we are literally looking up a
+      // multitude of things, and this is only an error in some of the cases,
+      // for example if we a set of function overloads then this isn't going to
+      // work correctly and we may need to simply return access to a function
+      // address rather then something else?
       SemaRef.Diags.Report(S->getLoc(), clang::diag::err_multiple_declarations);
       return nullptr;
     }
@@ -319,6 +326,21 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
         }
         return Ret;
       }
+      // Need to check if the result is a CXXMethodDecl because that's a
+      // ValueDecl.
+      if(isa<clang::CXXMethodDecl>(VD)) {
+        llvm_unreachable("We haven't implemented processing of CXXMethodDecls "
+            "yet.");
+      }
+
+      if(isa<clang::FunctionDecl>(VD)) {
+        llvm_unreachable("We haven't implemented processing of function names yet "
+            "yet.");
+      }
+
+
+
+      // Checking if the current declaration is a variable.
       // FIXME: discern whether this is an lvalue or rvalue properly
       clang::DeclRefExpr *DRE =
         clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
@@ -326,12 +348,13 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
                                   Loc, FoundTy, clang::VK_LValue);
       return DRE;
     }
+    
 
     // Processing the case when the returned result is a type.
     if (const clang::TagDecl *TD = R.getAsSingle<clang::TagDecl>()) {
       return BuildAnyTypeLoc(CxxAST, CxxAST.getTypeDeclType(TD), Loc);
     }
-    llvm::outs() << "This isn't implemented yet!?\n";
+    // llvm::outs() << "This isn't implemented yet!?\n";
     // llvm_unreachable("Unhandled expression type.");
   }
   return nullptr;
@@ -560,7 +583,7 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
       
       clang::Decl *Decl = R.getAsSingle<clang::Decl>();
 
-      if (isa<clang::ValueDecl>(Decl)) {
+      if (isa<clang::ValueDecl>(Decl)) { 
         clang::ValueDecl *VD = dyn_cast<clang::ValueDecl>(Decl);
         // This had better be a reference to a function.
         clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(VD);
@@ -625,7 +648,7 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
 
 Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     const CallSyntax *Op, const Syntax *RHS) {
-  Expression ElaboratedLHS = elaborateExpr(LHS);
+Expression ElaboratedLHS = elaborateExpr(LHS);
   if(ElaboratedLHS.is<clang::Expr*>()) {
     if (isa<AtomSyntax>(RHS)) {
       const AtomSyntax *RHSAtom = cast<AtomSyntax>(RHS);
@@ -665,6 +688,7 @@ Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
   llvm_unreachable("Member access to anything other then a member variable "
       "not implemented yet.");
 }
+
 
 
 static ExprElaborator::Expression handleLookUpInsideType(Sema &SemaRef,
@@ -735,7 +759,6 @@ Expression ExprElaborator::elaborateNestedLookUpAccess(Expression Previous,
 
 Expression ExprElaborator::elaborateElemCall(const CallSyntax *S) {
   const ElemSyntax *Callee = cast<ElemSyntax>(S->getCallee());
-
   // FIXME: this can be anything
   const AtomSyntax *Id = cast<AtomSyntax>(Callee->getObject());
 
@@ -1175,5 +1198,39 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   // }
 }
 
+void dumpExpression(ExprElaborator::Expression Expr, llvm::raw_ostream& Out) {
+  if (Expr.isNull()) {
+    Out << "[Null Expr]\n";
+    return;
+  }
 
+  if (Expr.is<clang::Expr *>()) {
+    llvm::outs() << "Type = clang::Expr *\n";
+    Expr.get<clang::Expr *>()->dump(Out);
+    llvm::outs() << "\n";
+    return;
+  }
+
+  if (Expr.is<clang::TypeSourceInfo *>()) {
+    llvm::outs() << "Type = clang::TypeSourceInfo *\n";
+    Expr.get<clang::TypeSourceInfo *>()->getType().dump(Out);
+    llvm::outs() << "\n";
+    return;
+  }
+
+  if (Expr.is<clang::NamespaceDecl *>()) {
+    llvm::outs() << "Type = clang::NamespaceDecl *\n";
+    Expr.get<clang::NamespaceDecl *>()->dump(Out);
+    llvm::outs() << "\n";
+    return;
+  }
+
+  if (Expr.is<clang::TemplateName *>()) {
+    llvm::outs() << "Type = clang::TemplateName *\n";
+    Expr.get<clang::TemplateName *>()->dump(Out);
+    llvm::outs() << "\n";
+    return;
+  }
+  llvm::outs() << "[Unknown Expression type]\n";
+}
 } // namespace gold

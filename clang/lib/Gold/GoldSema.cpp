@@ -156,7 +156,6 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         // If we find a name that hasn't been elaborated,
         // then we actually need to elaborate it.
         if (!FoundDecl->Cxx) {
-          llvm::outs() << "Attempting early elaboration\n";
           Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
         }
         if (!FoundDecl->Cxx) {
@@ -164,7 +163,6 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
           llvm_unreachable("Early elaboration of declaration failed. Unable to continue.");
         }
         if (!isa<clang::NamedDecl>(FoundDecl->Cxx)) {
-            llvm::outs() << "We simply didn't elaborate the Cxx type for the decl\n";
             llvm_unreachable("Decl elaboration failure.");
           FoundDecl->Cxx->dump();
         }
@@ -188,18 +186,11 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
               = FD->getDescribedFunctionTemplate();
             if (TempDecl) 
               R.addDecl(TempDecl);
-            else
-              llvm::outs() << "Massive issue encountered "
-                "getDescribedFunctionTemplate returned null\n";
           } else if (auto *VD = dyn_cast<clang::VarDecl>(ND)){
             clang::VarTemplateDecl *TempDecl = VD->getDescribedVarTemplate();
             if(TempDecl)
               R.addDecl(TempDecl);
-            else
-              llvm::outs() << "Massive issue encountered getDescribedVarTemplate "
-                "Returned null.\n";
-          } else 
-            llvm::outs() << "Unknown template type received\n";
+          }
         } else {
           R.addDecl(ND);
         }
@@ -212,58 +203,41 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   return !R.empty();
 }
 
-// Sema::NameClassification Sema::ClassifyName(Scope *S, CXXScopeSpec &SS,
-//                                              IdentifierInfo *&Name,
-//                                              SourceLocation NameLoc,
-//                                              const Token &NextToken,
-//                                              CorrectionCandidateCallback *CCC) {
-//    DeclarationNameInfo NameInfo(Name, NameLoc);
-//    ObjCMethodDecl *CurMethod = getCurMethodDecl();
- 
-//    assert(NextToken.isNot(tok::coloncolon) &&
-//           "parse nested name specifiers before calling ClassifyName");
-//    if (getLangOpts().CPlusPlus && SS.isSet() &&
-//        isCurrentClassName(*Name, S, &SS)) {
-//      // Per [class.qual]p2, this names the constructors of SS, not the
-//      // injected-class-name. We don't have a classification for that.
-//      // There's not much point caching this result, since the parser
-//      // will reject it later.
-//      return NameClassification::Unknown();
-//    }
- 
-//    LookupResult Result(*this, Name, NameLoc, LookupOrdinaryName);
+clang::Sema::NameClassification Sema::classifyName(Scope* S,
+      clang::IdentifierInfo *&Name, clang::SourceLocation NameLoc,
+      clang::CorrectionCandidateCallback *CCC) {
+        
+  // Rewriting this so that it incorporates the early elaboration from
+  // lookupUnqualifiedName.
+
+  // Much of this code was take directly from clang::Sema::classifyName
+  // the main difference here we have already parsed everything and are
+  // elaborating an existing tree so knowing the next token's isn't really
+  // all that useful.
+  clang::DeclarationNameInfo NameInfo(Name, NameLoc);
+
+  // We need to watch for constructor's within the current class.
+  // TODO: Create a means to check if the current name is a class being elaborated?
+  // Check if the current name is within scope and names a type.
+  // if (SS.isSet() && CxxSema.isCurrentClassName(*Name, getCurClangScope(), &SS)) {
+  //   // Per [class.qual]p2, this names the constructors of SS, not the
+  //   // injected-class-name. We don't have a classification for that.
+  //   // There's not much point caching this result, since the parser
+  //   // will reject it later.
+  //   return clang::Sema::NameClassification::Unknown();
+  // }
+  // clang::LookupResult &R
+  clang::LookupResult Result(CxxSema, Name, NameLoc,
+                             clang::Sema::LookupOrdinaryName);
+  if(lookupUnqualifiedName(Result, S)) {
+    // This may need to be expanded in the future?
+    return clang::Sema::NameClassification::Error();
+  }
 //    LookupParsedName(Result, S, &SS, !CurMethod);
- 
-//    // For unqualified lookup in a class template in MSVC mode, look into
-//    // dependent base classes where the primary class template is known.
-//    if (Result.empty() && SS.isEmpty() && getLangOpts().MSVCCompat) {
-//      if (ParsedType TypeInBase =
-//              recoverFromTypeInKnownDependentBase(*this, *Name, NameLoc))
-//        return TypeInBase;
-//    }
- 
-//    // Perform lookup for Objective-C instance variables (including automatically
-//    // synthesized instance variables), if we're in an Objective-C method.
-//    // FIXME: This lookup really, really needs to be folded in to the normal
-//    // unqualified lookup mechanism.
-//    if (!SS.isSet() && CurMethod && !isResultTypeOrTemplate(Result, NextToken)) {
-//      DeclResult Ivar = LookupIvarInObjCMethod(Result, S, Name);
-//      if (Ivar.isInvalid())
-//        return NameClassification::Error();
-//      if (Ivar.isUsable())
-//        return NameClassification::NonType(cast<NamedDecl>(Ivar.get()));
- 
-//      // We defer builtin creation until after ivar lookup inside ObjC methods.
-//      if (Result.empty())
-//        LookupBuiltin(Result);
-//    }
- 
-//    bool SecondTry = false;
-//    bool IsFilteredTemplateName = false;
- 
-//  Corrected:
-//    switch (Result.getResultKind()) {
-//    case LookupResult::NotFound:
+  bool IsFilteredTemplateName = true;
+  switch (Result.getResultKind()) {
+  case clang::LookupResult::NotFound:
+
 //      // If an unqualified-id is followed by a '(', then we have a function
 //      // call.
 //      if (!SS.isSet() && NextToken.is(tok::l_paren)) {
@@ -296,14 +270,6 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 //        TemplateName Template =
 //            Context.getAssumedTemplateName(NameInfo.getName());
 //        return NameClassification::UndeclaredTemplate(Template);
-//      }
- 
-//      // In C, we first see whether there is a tag type by the same name, in
-//      // which case it's likely that the user just forgot to write "enum",
-//      // "struct", or "union".
-//      if (!getLangOpts().CPlusPlus && !SecondTry &&
-//          isTagTypeWithMissingTag(*this, Result, S, SS, Name, NameLoc)) {
-//        break;
 //      }
  
 //      // Perform typo correction to determine if there is another name that is
@@ -374,9 +340,10 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
  
 //      // We failed to correct; just fall through and let the parser deal with it.
 //      Result.suppressDiagnostics();
-//      return NameClassification::Unknown();
+    return clang::Sema::NameClassification::Unknown();
  
-//    case LookupResult::NotFoundInCurrentInstantiation: {
+   case clang::LookupResult::NotFoundInCurrentInstantiation: {
+     
 //      // We performed name lookup into the current instantiation, and there were
 //      // dependent bases, so we treat this result the same way as any other
 //      // dependent nested-name-specifier.
@@ -393,13 +360,16 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 //      // keyword here.
 //      return NameClassification::DependentNonType();
 //    }
+    llvm_unreachable("The dependent non type not implemented yet.");
+   }
  
-//    case LookupResult::Found:
-//    case LookupResult::FoundOverloaded:
-//    case LookupResult::FoundUnresolvedValue:
-//      break;
+  case clang::LookupResult::Found:
+  case clang::LookupResult::FoundOverloaded:
+  case clang::LookupResult::FoundUnresolvedValue:
+    // If we found something then we are good and we need to continue, below.
+    break;
  
-//    case LookupResult::Ambiguous:
+  case clang::LookupResult::Ambiguous:
 //      if (getLangOpts().CPlusPlus && NextToken.is(tok::less) &&
 //          hasAnyAcceptableTemplateNames(Result, /*AllowFunctionTemplates=*/true,
 //                                        /*AllowDependent=*/false)) {
@@ -415,16 +385,17 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 //        // This filtering can make an ambiguous result into an unambiguous one,
 //        // so try again after filtering out template names.
 //        FilterAcceptableTemplateNames(Result);
-//        if (!Result.isAmbiguous()) {
-//          IsFilteredTemplateName = true;
-//          break;
-//        }
+       if (!Result.isAmbiguous()) {
+         IsFilteredTemplateName = true;
+         break;
+       }
 //      }
  
-//      // Diagnose the ambiguity and return an error.
-//      return NameClassification::Error();
-//    }
- 
+    // Diagnose the ambiguity and return an error.
+    return clang::Sema::NameClassification::Error();
+  }
+  // TODO: Return valid templates from here when we have correctly identified
+  // a valid thing we are looking for.
 //    if (getLangOpts().CPlusPlus && NextToken.is(tok::less) &&
 //        (IsFilteredTemplateName ||
 //         hasAnyAcceptableTemplateNames(
@@ -445,55 +416,55 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 //      if (!IsFilteredTemplateName)
 //        FilterAcceptableTemplateNames(Result);
  
-//      bool IsFunctionTemplate;
-//      bool IsVarTemplate;
-//      TemplateName Template;
-//      if (Result.end() - Result.begin() > 1) {
-//        IsFunctionTemplate = true;
-//        Template = Context.getOverloadedTemplateName(Result.begin(),
-//                                                     Result.end());
-//      } else if (!Result.empty()) {
-//        auto *TD = cast<TemplateDecl>(getAsTemplateNameDecl(
-//            *Result.begin(), /*AllowFunctionTemplates=*/true,
-//            /*AllowDependent=*/false));
-//        IsFunctionTemplate = isa<FunctionTemplateDecl>(TD);
-//        IsVarTemplate = isa<VarTemplateDecl>(TD);
+  //   bool IsFunctionTemplate = false;
+  //   bool IsVarTemplate = false;
+  //   clang::TemplateName Template;
+  //   if (Result.end() - Result.begin() > 1) {
+  //     IsFunctionTemplate = true;
+  //     Template = Context.CxxAST.getOverloadedTemplateName(Result.begin(),
+  //                                                          Result.end());
+  //   } else if (!Result.empty()) {
+  //     auto *TD = cast<clang::TemplateDecl>(CxxSema.getAsTemplateNameDecl(
+  //         *Result.begin(), /*AllowFunctionTemplates=*/true,
+  //         /*AllowDependent=*/false));
+  //     IsFunctionTemplate = isa<clang::FunctionTemplateDecl>(TD);
+  //     IsVarTemplate = isa<clang::VarTemplateDecl>(TD);
  
-//        if (SS.isSet() && !SS.isInvalid())
-//          Template =
-//              Context.getQualifiedTemplateName(SS.getScopeRep(),
-//                                               /*TemplateKeyword=*/false, TD);
-//        else
-//          Template = TemplateName(TD);
-//      } else {
-//        // All results were non-template functions. This is a function template
-//        // name.
-//        IsFunctionTemplate = true;
-//        Template = Context.getAssumedTemplateName(NameInfo.getName());
-//      }
+  //     if (SS.isSet() && !SS.isInvalid())
+  //       Template =
+  //           Context.CxxAST.getQualifiedTemplateName(SS.getScopeRep(),
+  //                                            /*TemplateKeyword=*/false, TD);
+  //     else
+  //       Template = clang::TemplateName(TD);
+  //   } else {
+  //     // All results were non-template functions. This is a function template
+  //     // name.
+  //     IsFunctionTemplate = true;
+  //     Template = Context.CxxAST.getAssumedTemplateName(NameInfo.getName());
+  //   }
  
-//      if (IsFunctionTemplate) {
-//        // Function templates always go through overload resolution, at which
-//        // point we'll perform the various checks (e.g., accessibility) we need
-//        // to based on which function we selected.
-//        Result.suppressDiagnostics();
+  //   if (IsFunctionTemplate) {
+  //     // Function templates always go through overload resolution, at which
+  //     // point we'll perform the various checks (e.g., accessibility) we need
+  //     // to based on which function we selected.
+  //     Result.suppressDiagnostics();
+
+  //     return clang::Sema::NameClassification::FunctionTemplate(Template);
+  //   }
  
-//        return NameClassification::FunctionTemplate(Template);
-//      }
+  //    return IsVarTemplate ? clang::Sema::NameClassification::VarTemplate(Template)
+  //                         : clang::Sema::NameClassification::TypeTemplate(Template);
+  // }
  
-//      return IsVarTemplate ? NameClassification::VarTemplate(Template)
-//                           : NameClassification::TypeTemplate(Template);
-//    }
- 
-//    NamedDecl *FirstDecl = (*Result.begin())->getUnderlyingDecl();
-//    if (TypeDecl *Type = dyn_cast<TypeDecl>(FirstDecl)) {
-//      DiagnoseUseOfDecl(Type, NameLoc);
-//      MarkAnyDeclReferenced(Type->getLocation(), Type, /*OdrUse=*/false);
-//      QualType T = Context.getTypeDeclType(Type);
-//      if (SS.isNotEmpty())
-//        return buildNestedType(*this, SS, T, NameLoc);
-//      return ParsedType::make(T);
-//    }
+  // clang::NamedDecl *FirstDecl = (*Result.begin())->getUnderlyingDecl();
+  // if (clang::TypeDecl *Type = dyn_cast<clang::TypeDecl>(FirstDecl)) {
+  //   CxxSema.DiagnoseUseOfDecl(Type, NameLoc);
+  //   CxxSema.MarkAnyDeclReferenced(Type->getLocation(), Type, /*OdrUse=*/false);
+  //   clang::QualType T = Context.CxxAST.getTypeDeclType(Type);
+  //   if (SS.isNotEmpty())
+  //     return CxxSema.buildNestedType(*this, SS, T, NameLoc);
+  //   return clang::ParsedType::make(T);
+  // }
  
 //    ObjCInterfaceDecl *Class = dyn_cast<ObjCInterfaceDecl>(FirstDecl);
 //    if (!Class) {
@@ -555,6 +526,14 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 //    // context in which we performed classification, so it's safe to do now.
 //    return NameClassification::ContextIndependentExpr(
 //        BuildDeclarationNameExpr(SS, Result, ADL));
+  
+}
+// Sema::NameClassification Sema::ClassifyName(Scope *S, CXXScopeSpec &SS,
+//                                              IdentifierInfo *&Name,
+//                                              SourceLocation NameLoc,
+//                                              const Token &NextToken,
+//                                              CorrectionCandidateCallback *CCC) {
+
 //  }
  
 

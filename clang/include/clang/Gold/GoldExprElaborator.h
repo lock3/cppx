@@ -47,8 +47,14 @@ class ExprElaborator {
   clang::ASTContext &CxxAST;
 
   Sema &SemaRef;
+
+  /// This is only used when we have an explicitly specified name or explicit
+  /// member access namespace look up.
+  clang::DeclContext *CurrentLookUpContext = nullptr;
+  Scope *OwningScope = nullptr;
 public:
-  ExprElaborator(SyntaxContext &Context, Sema &SemaRef);
+  ExprElaborator(SyntaxContext &Context, Sema &SemaRef,
+      clang::DeclContext *DC = nullptr, Scope *GoldScope = nullptr);
 
   /// This is used partially during expression evaluation because there's always
   /// a possibility that we could return a namespace rather than a type.
@@ -99,6 +105,8 @@ public:
   Expression elaborateFunctionType(Declarator *D, TypeInfo *Ty);
   Expression elaborateExplicitType(Declarator *D, TypeInfo *Ty);
 };
+
+void dumpExpression(ExprElaborator::Expression Expr, llvm::raw_ostream& Out);
 
 } // namespace gold
 

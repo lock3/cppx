@@ -72,7 +72,6 @@ static bool computeAccessSpecifier(Sema& SemaRef, Declaration *D,
     }
     if (Iter != End) {
       // TODO: Create valid error message
-      // llvm::outs() << "Duplicate access specifier given\n";
       SemaRef.Diags.Report((*Iter)->getLoc(),
             clang::diag::err_duplicate_access_specifier)
               << AttribSpec->getLoc() << (*Iter)->getLoc(); 
@@ -288,7 +287,6 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
-  // clang::Decl *Ret = nullptr;
   if (D->declaresRecord()) 
     return processCXXRecordDecl(*this, Context, SemaRef, D);
   if (D->declaresFunction())
@@ -392,8 +390,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::FunctionDecl *FD = nullptr;
   if(InClass) {
-    
-
     const clang::FunctionType *FT = cast<clang::FunctionType>(TInfo->getType());
     clang::DeclarationNameInfo DNI(Name, D->Op->getLoc());
     if (D->getId()->isStr("constructor")) {
@@ -413,7 +409,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       CtorDecl->setImplicit(false);
       CtorDecl->setDefaulted(false);
       CtorDecl->setBody(nullptr);
-      CtorDecl->setAccess(clang::AS_public);
       clang::FunctionProtoType::ExtProtoInfo EPI;
 
       // Build an exception specification pointing back at this member.
@@ -451,7 +446,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       DtorDecl->setImplicit(false);
       DtorDecl->setDefaulted(false);
       DtorDecl->setBody(nullptr);
-      DtorDecl->setAccess(clang::AS_public);
       clang::FunctionProtoType::ExtProtoInfo EPI;
 
       // Build an exception specification pointing back at this member.
@@ -512,6 +506,14 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     FD->setDescribedFunctionTemplate(FTD);
     Owner->addDecl(FTD);
     FnDclrtr->Data.ParamInfo.TemplateScope = SemaRef.saveScope(TemplParams);
+    if (InClass){
+      // Attempting to mark template decl.
+      clang::AccessSpecifier AS;
+      if (computeAccessSpecifier(SemaRef, D, AS)) {
+        return nullptr;
+      }
+      FTD->setAccess(AS);
+    }
   }
 
   // Update the function parameters.
