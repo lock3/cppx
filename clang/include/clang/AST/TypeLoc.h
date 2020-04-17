@@ -17,6 +17,7 @@
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/Type.h"
+#include "clang/AST/TemplateType.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/Specifiers.h"
@@ -2345,6 +2346,29 @@ public:
   }
 
   QualType getInnerType() const { return this->getTypePtr()->getElementType(); }
+};
+
+
+struct TemplateTypeLocInfo {
+  SourceLocation Loc;
+};
+/// Wrapper for template type parameters.
+class TemplateTypeLoc : public ConcreteTypeLoc<UnqualTypeLoc,
+                                               TemplateTypeLoc,
+                                               TemplateType,
+                                               TemplateTypeLocInfo> {
+public:
+  SourceLocation getLoc() const {
+    return getLocalData()->Loc;
+  }
+
+  void setLoc(SourceLocation Loc) {
+    getLocalData()->Loc = Loc;
+  }
+
+  void initializeLocal(ASTContext &Context, SourceLocation Loc) {
+    setLoc(Loc);
+  }
 };
 
 struct CppxKindLocInfo {

@@ -1029,6 +1029,9 @@ DEF_TRAVERSE_TYPE(FunctionProtoType, {
 DEF_TRAVERSE_TYPE(UnresolvedUsingType, {})
 DEF_TRAVERSE_TYPE(CXXRequiredTypeType, {})
 DEF_TRAVERSE_TYPE(CppxKindType, {})
+DEF_TRAVERSE_TYPE(TemplateType, {
+    // TODO: Finish implementing this? I will need to visit all child types I think.
+                    })
 DEF_TRAVERSE_TYPE(TypedefType, {})
 
 DEF_TRAVERSE_TYPE(TypeOfExprType,
@@ -1277,6 +1280,8 @@ DEF_TRAVERSE_TYPELOC(FunctionProtoType, {
 DEF_TRAVERSE_TYPELOC(UnresolvedUsingType, {})
 DEF_TRAVERSE_TYPELOC(CXXRequiredTypeType, {})
 DEF_TRAVERSE_TYPELOC(CppxKindType, {})
+DEF_TRAVERSE_TYPELOC(TemplateType, {// TODO: Finish implementing this?
+                    })
 DEF_TRAVERSE_TYPELOC(TypedefType, {})
 
 DEF_TRAVERSE_TYPELOC(TypeOfExprType,

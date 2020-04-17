@@ -3832,6 +3832,9 @@ static CachedProperties computeCachedProperties(const Type *T) {
   case Type::CppxKind:
     // Just return something for now.
     return CachedProperties(ExternalLinkage, false);
+  case Type::Template:
+    // I don't know what's going on here but I'm mimicing cppxkind type.
+    return CachedProperties(ExternalLinkage, false);
   }
 
   llvm_unreachable("unhandled type class");
@@ -3919,6 +3922,10 @@ LinkageInfo LinkageComputer::computeTypeLinkageInfo(const Type *T) {
 
   case Type::CppxKind:
     return LinkageInfo::external();
+
+  // This type shouldn't have linkage, should it?
+  case Type::Template:
+      return LinkageInfo::external();
   }
 
   llvm_unreachable("unhandled type class");
@@ -4077,6 +4084,7 @@ bool Type::canHaveNullability(bool ResultIfUnknown) const {
   case Type::Atomic:
   case Type::Pipe:
   case Type::CppxKind:
+  case Type::Template:
     return false;
   }
   llvm_unreachable("bad type kind!");

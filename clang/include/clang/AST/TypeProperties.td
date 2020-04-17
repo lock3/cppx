@@ -857,6 +857,12 @@ let Class = PipeType in {
   }]>;
 }
 
+let Class = TemplateType in {
+  def : Creator<[{
+    return QualType();
+  }]>;
+}
+
 let Class = CppxKindType in {
   def : Creator<[{
     return ctx.CppxKindTy;

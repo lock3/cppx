@@ -3185,7 +3185,10 @@ void ItaniumRTTIBuilder::BuildVTablePointer(const Type *Ty) {
 #define DEPENDENT_TYPE(Class, Base) case Type::Class:
 #include "clang/AST/TypeNodes.inc"
     llvm_unreachable("Non-canonical and dependent types shouldn't get here");
-
+  case Type::Template:
+  case Type::CppxKind:
+    llvm_unreachable("These types only exist within the type system and "
+        "shouldn't reach here.");
   case Type::LValueReference:
   case Type::RValueReference:
     llvm_unreachable("References shouldn't get here");
@@ -3441,6 +3444,9 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(
     // Itanium C++ ABI 2.9.5p4:
     // abi::__fundamental_type_info adds no data members to std::type_info.
     break;
+  case Type::Template:
+  case Type::CppxKind:
+    llvm_unreachable("Types that are limited to the type system can't make it here.");
 
   case Type::LValueReference:
   case Type::RValueReference:

@@ -2248,6 +2248,7 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
     Align = Target->getPointerAlign(getTargetAddressSpace(LangAS::opencl_global));
     break;
 
+  case Type::Template:
   case Type::CppxKind:
     Width = 0; // Like void, you can't create objects.
     Align = 1; // Not a real value
@@ -3361,6 +3362,7 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::CXXDependentVariadicReifier:
   case Type::CXXRequiredType:
   case Type::CppxKind:
+  case Type::Template:
     llvm_unreachable("type should never be variably-modified");
 
   // These types can be variably-modified but should never need to
@@ -7276,6 +7278,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string &S,
 
   case Type::Pipe:
   case Type::CppxKind:
+  case Type::Template:
 #define ABSTRACT_TYPE(KIND, BASE)
 #define TYPE(KIND, BASE)
 #define DEPENDENT_TYPE(KIND, BASE) \
@@ -9281,6 +9284,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
     return {};
   case Type::Builtin:
   case Type::CppxKind:
+  case Type::Template:
     // Only exactly equal builtin types are compatible, which is tested above.
     return {};
   case Type::Complex:

@@ -10525,6 +10525,7 @@ EvaluateBuiltinClassifyType(QualType T, const LangOptions &LangOpts) {
   case Type::DeducedTemplateSpecialization:
       llvm_unreachable("unexpected non-canonical or dependent type");
 
+  case Type::Template:
   case Type::CppxKind:
     llvm_unreachable("unexpected kind type");
 
