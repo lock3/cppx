@@ -671,8 +671,6 @@ Expression ElaboratedLHS = elaborateExpr(LHS);
           clang::MemberExpr *MemberExpression
             = cast<clang::MemberExpr>(HandledLHS.get());
           MemberExpression->getMemberDecl()->setIsUsed();
-        } else {
-          llvm::outs()<< "We have an expression that isn't a member access expression.\n";
         }
       } else {
         llvm::outs() << "We were not able to elaborate the member access expression.\n";
@@ -759,22 +757,13 @@ Expression ExprElaborator::elaborateNestedLookUpAccess(Expression Previous,
 
 Expression ExprElaborator::elaborateElemCall(const CallSyntax *S) {
   const ElemSyntax *Callee = cast<ElemSyntax>(S->getCallee());
-  // FIXME: this can be anything
-  const AtomSyntax *Id = cast<AtomSyntax>(Callee->getObject());
 
-  // Try to construct a normal function-call expression.
-  // First do unqualified lookup.
-  clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Id->getSpelling())},
-    S->getLoc());
-  clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
-  R.setTemplateNameLookup(true);
-  SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
+  Expression IdResult = elaborateExpr(Callee->getObject());
 
-  if (R.empty())
-    return nullptr;
 
   // Build the template argument list.
   clang::TemplateArgumentListInfo TemplateArgs(Callee->getLoc(), Callee->getLoc());
+  llvm::SmallVector<clang::TemplateArgument, 16> ActualArgs;
   for (const Syntax *SS : Callee->getArguments()->children()) {
     ExprElaborator ParamElaborator(Context, SemaRef);
     Expression ParamExpression = ParamElaborator.elaborateExpr(SS);
@@ -785,26 +774,90 @@ Expression ExprElaborator::elaborateElemCall(const CallSyntax *S) {
       auto *TypeParam = ParamExpression.get<clang::TypeSourceInfo *>();
       clang::TemplateArgument Arg(TypeParam->getType());
       TemplateArgs.addArgument({Arg, TypeParam});
+      ActualArgs.emplace_back(Arg);
     } else {
       clang::TemplateArgument Arg(ParamExpression.get<clang::Expr *>(),
                                   clang::TemplateArgument::Expression);
       TemplateArgs.addArgument({Arg, ParamExpression.get<clang::Expr *>()});
+      ActualArgs.emplace_back(Arg);
     }
   }
+  clang::TemplateArgumentList TemplateArgList(
+      clang::TemplateArgumentList::OnStack, ActualArgs);
+  clang::Expr *Fn = nullptr;
+  // Attempting to correctly handle the result of an Id expression.
+  if (clang::Expr *IdExpr = IdResult.dyn_cast<clang::Expr *>()) {
+    if (clang::OverloadExpr *OverloadExpr
+                               = dyn_cast<clang::OverloadExpr>(IdExpr)) {
+      if (OverloadExpr->getNumDecls() == 1) {
+        clang::NamedDecl *ND = *OverloadExpr->decls_begin();
+        
+        // We will need to in the future figure out how to correctly handle this?
+        if (isa<clang::TemplateDecl>(ND)) {
+          
+          // We need to instantiate the template with parameters.
+          if (clang::UnresolvedMemberExpr *MemAccess
+                  = dyn_cast<clang::UnresolvedMemberExpr>(OverloadExpr)) {
+            clang::FunctionTemplateDecl *FTD
+                                    = dyn_cast<clang::FunctionTemplateDecl>(ND);
+            clang::FunctionDecl *FD
+                = SemaRef.getCxxSema().InstantiateFunctionDeclaration(FTD,
+                  &TemplateArgList, S->getLoc());
+            if (!FD) {
+              llvm_unreachable("Function template instantiation failure.");
+            }
+            Fn = clang::MemberExpr::Create(Context.CxxAST,
+                MemAccess->getBase(), MemAccess->isArrow(),
+                MemAccess->getOperatorLoc(), MemAccess->getQualifierLoc(),
+                clang::SourceLocation(), FD,
+                clang::DeclAccessPair::make(FD, ND->getAccess()),
+                MemAccess->getMemberNameInfo(), &TemplateArgs, IdExpr->getType(),
+                MemAccess->getValueKind(), MemAccess->getObjectKind(),
+                clang::NonOdrUseReason::NOUR_None);
+            if (Fn) {
+              // TODO: Create an error message to put here so I can indicate lookup
+              // failure maybe?
+              return nullptr;
+            }
+          } else {
+            llvm_unreachable("We don't have code for processing of non-member "
+                "lookup expressions.");
+          }
+        }
+      } else {
+        llvm_unreachable("Resolution of multiple declarations isn't "
+            "implemented yet.");
+      }
+    }
+  }
+  // FIXME: this can be anything
+  // const AtomSyntax *Id = cast<AtomSyntax>(Callee->getObject());
+
+  // // Try to construct a normal function-call expression.
+  // // First do unqualified lookup.
+  // clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Id->getSpelling())},
+  //   S->getLoc());
+  // clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
+  // R.setTemplateNameLookup(true);
+  // SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
+
+  // if (R.empty())
+  //   return nullptr;
+
 
   // Build the ULE if we found something.
-  clang::Expr *Fn = nullptr;
-  R.resolveKind();
-  if (R.isOverloadedResult()) {
-    Fn =
-      clang::UnresolvedLookupExpr::Create(CxxAST, R.getNamingClass(),
-                                          clang::NestedNameSpecifierLoc(),
-                                        Callee->getLoc(), R.getLookupNameInfo(),
-                               /*ADL=*/true, &TemplateArgs, R.begin(), R.end());
-  } else {
-    llvm_unreachable("Non-overloaded template call?");
-  }
-
+  
+  // R.resolveKind();
+  // if (R.isOverloadedResult()) {
+  //   Fn =
+  //     clang::UnresolvedLookupExpr::Create(CxxAST, R.getNamingClass(),
+  //                                         clang::NestedNameSpecifierLoc(),
+  //                                       Callee->getLoc(), R.getLookupNameInfo(),
+  //                              /*ADL=*/true, &TemplateArgs, R.begin(), R.end());
+  // } else {
+  //   llvm_unreachable("Non-overloaded template call?");
+  // }
+  // llvm_unreachable("What did we do here?!");
   // Get the passed arguments.
   llvm::SmallVector<clang::Expr *, 8> Args;
   const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
@@ -1225,12 +1278,12 @@ void dumpExpression(ExprElaborator::Expression Expr, llvm::raw_ostream& Out) {
     return;
   }
 
-  if (Expr.is<clang::TemplateName *>()) {
-    llvm::outs() << "Type = clang::TemplateName *\n";
-    Expr.get<clang::TemplateName *>()->dump(Out);
-    llvm::outs() << "\n";
-    return;
-  }
+  // if (Expr.is<clang::TemplateName *>()) {
+  //   llvm::outs() << "Type = clang::TemplateName *\n";
+  //   Expr.get<clang::TemplateName *>()->dump(Out);
+  //   llvm::outs() << "\n";
+  //   return;
+  // }
   llvm::outs() << "[Unknown Expression type]\n";
 }
 } // namespace gold

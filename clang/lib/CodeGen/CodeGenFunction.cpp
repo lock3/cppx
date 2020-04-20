@@ -265,6 +265,7 @@ TypeEvaluationKind CodeGenFunction::getEvaluationKind(QualType type) {
     case Type::ObjCObjectPointer:
     case Type::Pipe:
     case Type::CppxKind:
+    case Type::Template:
       return TEK_Scalar;
 
     // Complexes.

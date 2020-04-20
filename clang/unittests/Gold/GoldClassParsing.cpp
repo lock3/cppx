@@ -556,23 +556,23 @@ c : type = class:
 }
 
 // FIXME: WOrking on long term fix to this.
-// TEST(ClassParsing, TemplateMemberFunction_Call) {
-//   StringRef Code = R"(
-// c : type = class:
-//   foo[i:int]() : int!
-//     return i
+TEST(ClassParsing, TemplateMemberFunction_Call) {
+  StringRef Code = R"(
+c : type = class:
+  foo[i:int]() : int!
+    return i
   
 
-// main() :int! 
-//   a : c = c()
-//   return a.foo[3]()
+main() :int! 
+  a : c = c()
+  return a.foo[3]()
 
-// )";
-//   DeclarationMatcher MemberFunctionMatch = recordDecl( hasName("c"),
-//     hasDescendant(functionTemplateDecl(hasName("foo"), has(cxxMethodDecl())))
-//   );
-//   ASSERT_TRUE(matches(Code, MemberFunctionMatch));
-// }
+)";
+  DeclarationMatcher MemberFunctionMatch = recordDecl( hasName("c"),
+    hasDescendant(functionTemplateDecl(hasName("foo"), has(cxxMethodDecl())))
+  );
+  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}
 
 // TEST(ClassParsing, TemplateMemberFunction_Call2) {
 

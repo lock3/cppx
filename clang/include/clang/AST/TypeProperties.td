@@ -858,8 +858,12 @@ let Class = PipeType in {
 }
 
 let Class = TemplateType in {
+  def : Property<"TemplateDeclaration", TemplateDeclRef> {
+    let Read = [{ node->getTemplateDecl() }];
+  }
+
   def : Creator<[{
-    return QualType();
+    return ctx.getTemplateType(TemplateDeclaration);
   }]>;
 }
 

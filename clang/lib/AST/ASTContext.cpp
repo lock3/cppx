@@ -795,6 +795,88 @@ ASTContext::getCanonicalTemplateTemplateParmDecl(
   return CanonTTP;
 }
 
+
+static void TemplateTemplateParmProfile(llvm::FoldingSetNodeID &ID,
+                                               TemplateTemplateParmDecl *Parm,
+                                               int Depth = 0) {
+  ID.AddInteger(Depth);
+  ID.AddInteger(Parm->getDepth());
+  ID.AddInteger(Parm->getPosition());
+  ID.AddBoolean(Parm->isParameterPack());
+
+  TemplateParameterList *Params = Parm->getTemplateParameters();
+  ID.AddInteger(Params->size());
+  for (TemplateParameterList::const_iterator P = Params->begin(),
+                                          PEnd = Params->end();
+       P != PEnd; ++P) {
+    if (const auto *TTP = dyn_cast<TemplateTypeParmDecl>(*P)) {
+      ID.AddInteger(0);
+      ID.AddBoolean(TTP->isParameterPack());
+      continue;
+    }
+
+    if (const auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(*P)) {
+      ID.AddInteger(1);
+      ID.AddBoolean(NTTP->isParameterPack());
+      ID.AddPointer(NTTP->getType().getCanonicalType().getAsOpaquePtr());
+      if (NTTP->isExpandedParameterPack()) {
+        ID.AddBoolean(true);
+        ID.AddInteger(NTTP->getNumExpansionTypes());
+        for (unsigned I = 0, N = NTTP->getNumExpansionTypes(); I != N; ++I) {
+          QualType T = NTTP->getExpansionType(I);
+          ID.AddPointer(T.getCanonicalType().getAsOpaquePtr());
+        }
+      } else
+        ID.AddBoolean(false);
+      continue;
+    }
+
+    auto *TTP = cast<TemplateTemplateParmDecl>(*P);
+    ID.AddInteger(2);
+    TemplateTemplateParmProfile(ID, TTP, Depth + 1);
+  }
+}
+
+void TemplateType::Profile(llvm::FoldingSetNodeID &ID, TemplateDecl *D) { 
+  ID.AddInteger(D->getKind());
+  TemplateParameterList *TPL = D->getTemplateParameters();
+  ID.AddInteger(TPL->size());
+  std::size_t index = 0;
+  for (NamedDecl * Param : *TPL) {
+    // Adding an index for each parameter.
+    ID.AddInteger(index);
+    ++index;
+    if (TemplateTypeParmDecl *TTP = dyn_cast<TemplateTypeParmDecl>(Param)) {
+      ID.AddInteger(0);
+      ID.AddBoolean(TTP->isParameterPack());
+      continue;
+    }
+    if (NonTypeTemplateParmDecl *NTTP = dyn_cast<NonTypeTemplateParmDecl>(Param)) {
+      ID.AddInteger(1);
+      ID.AddBoolean(NTTP->isParameterPack());
+      ID.AddPointer(NTTP->getType().getCanonicalType().getAsOpaquePtr());
+      if (NTTP->isExpandedParameterPack()) {
+        ID.AddBoolean(true);
+        ID.AddInteger(NTTP->getNumExpansionTypes());
+        for (unsigned I = 0, N = NTTP->getNumExpansionTypes(); I != N; ++I) {
+          QualType T = NTTP->getExpansionType(I);
+          ID.AddPointer(T.getCanonicalType().getAsOpaquePtr());
+        }
+      } else
+        ID.AddBoolean(false);
+      continue;
+    }
+    
+    if (TemplateTemplateParmDecl *TTParam
+                                  = dyn_cast<TemplateTemplateParmDecl>(Param)) {
+      TemplateTemplateParmProfile(ID, TTParam);
+      continue;
+    }
+  }
+}
+
+
+
 CXXABI *ASTContext::createCXXABI(const TargetInfo &T) {
   if (!LangOpts.CPlusPlus && !LangOpts.Gold) return nullptr;
 
@@ -5901,6 +5983,23 @@ int ASTContext::getFloatingTypeSemanticOrder(QualType LHS, QualType RHS) const {
   if (&getFloatTypeSemantics(LHS) == &getFloatTypeSemantics(RHS))
     return 0;
   return getFloatingTypeOrder(LHS, RHS);
+}
+
+
+QualType ASTContext::getTemplateType(TemplateDecl *Decl) const {
+  llvm::FoldingSetNodeID ID;
+  TemplateType::Profile(ID, Decl);
+
+  void *InsertPos = nullptr;
+  TemplateType *TT =
+    TemplateTypes.FindNodeOrInsertPos(ID, InsertPos);
+  if (!TT) {
+    // void *memory = Allocate(sizeof(TemplateType));
+    TT = new (*this) TemplateType(Decl);
+    TemplateTypes.InsertNode(TT, InsertPos);
+  }
+
+  return QualType(TT, 0);
 }
 
 /// getIntegerRank - Return an integer conversion rank (C99 6.3.1.1p1). This
