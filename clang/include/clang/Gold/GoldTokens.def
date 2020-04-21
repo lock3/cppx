@@ -104,6 +104,7 @@ def_keyword(LongDouble, "long double")
 def_keyword(Float128_t, "float128_t")
 def_keyword(Type, "type")
 def_keyword(Class, "class")
+def_keyword(Args, "args")
 
 def_token(Identifier)
 def_token(BinaryInteger)

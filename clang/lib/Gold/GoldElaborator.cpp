@@ -211,9 +211,15 @@ static Declarator *getFunctionDeclarator(Declaration *D) {
 static void getFunctionParameters(Declaration *D,
                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
   Declarator *FnDecl = getFunctionDeclarator(D);
-  const Syntax *ParamList = FnDecl->Data.ParamInfo.Params;
+  const ListSyntax *ParamList = cast<ListSyntax>(FnDecl->Data.ParamInfo.Params);
   Scope *ParamScope = FnDecl->Data.ParamInfo.ConstructedScope;
-  for (const Syntax *P : ParamList->children()) {
+  bool Variadic = FnDecl->Data.ParamInfo.VariadicParam;
+
+  unsigned N = ParamList->getNumChildren();
+  for (unsigned I = 0; I < N; ++I) {
+    if (I == N - 1 && Variadic)
+      break;
+    const Syntax *P = ParamList->getChild(I);
     Declaration *PD = ParamScope->findDecl(P);
     assert(PD->Cxx && "No corresponding declaration");
     Params.push_back(cast<clang::ParmVarDecl>(PD->Cxx));
@@ -424,7 +430,8 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
 static clang::StorageClass getStorageClass(Elaborator &Elab) {
   // FIXME: What is the storage class for a variable? Computed from scope
   // and specifiers probably. We don't have specifiers yet.
-  return Elab.SemaRef.getCurrentScope()->isBlockScope()
+  return Elab.SemaRef.getCurrentScope()->isBlockScope() ||
+    Elab.SemaRef.getCurrentScope()->isControlScope()
     ? clang::SC_Auto
     : clang::SC_Static;
 }
@@ -964,7 +971,32 @@ static Declarator *buildTypeExpression(const Syntax *S, Declarator *Next) {
   return D;
 }
 
-static Declarator *buildFunctionDeclarator(const CallSyntax *S, Declarator *Next) {
+// Check if the last parameter in a function is of type 'args'.
+  static bool lastParamIsVarArgs(Sema &SemaRef, const CallSyntax *S) {
+    if (!S->getNumArguments())
+      return false;
+  std::size_t N = S->getNumArguments() - 1;
+  const CallSyntax *LastParam = dyn_cast_or_null<CallSyntax>(S->getArgument(N));
+  if (!LastParam)
+    return false;
+
+  FusedOpKind Op = getFusedOpKind(SemaRef, LastParam);
+  if (Op != FOK_Colon)
+    return false;
+
+  // We might have something like `varargs : args` or just `:args`
+  N = LastParam->getNumArguments() - 1;
+  if (N > 1)
+    return false;
+
+  if (const AtomSyntax *Ty = dyn_cast<AtomSyntax>(LastParam->getArgument(N)))
+    return Ty->Tok.hasKind(tok::ArgsKeyword);
+
+  return false;
+}
+
+static Declarator *buildFunctionDeclarator(Sema &SemaRef, const CallSyntax *S,
+                                           Declarator *Next) {
   // FIXME: Store the parameter list.
   Declarator *D = new Declarator(DK_Function, Next);
   D->Call = S;
@@ -972,10 +1004,12 @@ static Declarator *buildFunctionDeclarator(const CallSyntax *S, Declarator *Next
   D->Data.ParamInfo.TemplateParams = nullptr;
   D->Data.ParamInfo.TemplateScope = nullptr;
   D->Data.ParamInfo.ConstructedScope = nullptr;
+  D->Data.ParamInfo.VariadicParam = lastParamIsVarArgs(SemaRef, S);
   return D;
 }
 
-static Declarator *buildFunctionDeclarator(const CallSyntax *S,
+static Declarator *buildFunctionDeclarator(Sema &SemaRef,
+                                           const CallSyntax *S,
                                            const ElemSyntax *T,
                                            Declarator *Next) {
   Declarator *D = new Declarator(DK_Function, Next);
@@ -984,6 +1018,7 @@ static Declarator *buildFunctionDeclarator(const CallSyntax *S,
   D->Data.ParamInfo.TemplateParams = T->getArguments();
   D->Data.ParamInfo.TemplateScope = nullptr;
   D->Data.ParamInfo.ConstructedScope = nullptr;
+  D->Data.ParamInfo.VariadicParam = lastParamIsVarArgs(SemaRef, S);
   return D;
 }
 
@@ -1073,14 +1108,16 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
         return makeDeclarator(SemaRef, Call->getArgument(0), Next);
       }
       // Otherwise, this appears to be a function declarator.
-      return makeDeclarator(SemaRef, Callee, buildFunctionDeclarator(Call, Next));
 
-
+      return makeDeclarator(SemaRef, Callee,
+                            buildFunctionDeclarator(SemaRef, Call, Next));
     } else if (const ElemSyntax *Callee = dyn_cast<ElemSyntax>(Call->getCallee())) {
+      assert(SemaRef.getCurrentScope()->getKind() != SK_Class &&
+             "templated member functions not implemented");
       // We have a template parameter list here, so build the
       // function declarator accordingly.
       return makeDeclarator(SemaRef, Callee->getObject(),
-                            buildFunctionDeclarator(Call, Callee, Next));
+                          buildFunctionDeclarator(SemaRef, Call, Callee, Next));
     }
   } else if (const ElemSyntax *TemplateType = dyn_cast<ElemSyntax>(S)) {
     // Building type parameters for each element within the list and chaining
@@ -1108,7 +1145,7 @@ static clang::IdentifierInfo *getIdentifier(Elaborator &Elab,
   return nullptr;
 }
 
-void Elaborator::identifyDecl(const Syntax *S) {
+Declaration *Elaborator::identifyDecl(const Syntax *S) {
   // Keep track of whether or not this is an operator'=' call.
   bool OperatorEquals = false;
 
@@ -1116,7 +1153,6 @@ void Elaborator::identifyDecl(const Syntax *S) {
   if (const auto *Call = dyn_cast<CallSyntax>(S)) {
     if (const auto *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
       llvm::StringRef Op = Callee->getToken().getSpelling();
-      
       // Need to figure out if this is a declaration or expression?
       // Unpack the declarator.
       const Syntax *Decl;
@@ -1136,7 +1172,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
             }, S->getLoc());
           clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
           if (SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) 
-            return;
+            return nullptr;
         }
 
         if (isa<CallSyntax>(Decl))
@@ -1145,7 +1181,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
               if (const AtomSyntax *Atom = cast<AtomSyntax>(
                                                       InnerCallOp->getCallee()))
                 if (Atom->getSpelling() == "operator'.'")
-                  return;
+                  return nullptr;
         Init = Args->getChild(1);
         OperatorEquals = true;
       } else if (Op == "operator'!'") {
@@ -1167,7 +1203,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
         Init = nullptr;
       } else {
         // Syntactically, this is not a declaration.
-        return;
+        return nullptr;
       }
 
 
@@ -1184,9 +1220,8 @@ void Elaborator::identifyDecl(const Syntax *S) {
 
       // Try to build a declarator for the declaration.
       Declarator *Dcl = makeDeclarator(SemaRef, Decl);
-      if (!Dcl) {
-        return;
-      }
+      if (!Dcl)
+        return nullptr;
 
       // Parameters can only be declared as x, x:T, or :T. The full range
       // of declarator syntax is not supported.
@@ -1208,8 +1243,9 @@ void Elaborator::identifyDecl(const Syntax *S) {
         // \endcode
         // The first statement is a declaration. The second is an assignment.
         // FIXME: is this the right way to handle the lookup set?
-        if (!CurScope->findDecl(Id).empty() && OperatorEquals) 
-          return;
+
+        if (!CurScope->findDecl(Id).empty() && OperatorEquals)
+          return nullptr;
       }
 
       // Create a declaration for this node.
@@ -1235,6 +1271,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
       }
 
       SemaRef.getCurrentScope()->addDecl(TheDecl);
+      return TheDecl;
     }
   }
 
@@ -1248,7 +1285,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
   // We need to elaborate each declarator in the list, and then propagate
   // type information backwards.
 
-  return;
+  return nullptr;
 }
 
 FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
@@ -1275,7 +1312,14 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
     return FOK_For;
   if (Tokenization == SemaRef.OperatorInII)
     return FOK_In;
+  if (Tokenization == SemaRef.OperatorDotDotII)
+    return FOK_DotDot;
   return FOK_Unknown;
+}
+
+FusedOpKind getFusedOpKind(Sema &SemaRef, const CallSyntax *S) {
+  assert(isa<AtomSyntax>(S->getCallee()));
+  return getFusedOpKind(SemaRef, cast<AtomSyntax>(S->getCallee())->getSpelling());
 }
 
 } // namespace gold

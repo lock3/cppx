@@ -218,6 +218,7 @@ namespace gold
     Syntax *parseIf();
     Syntax *parseWhile();
     Syntax *parseFor();
+    Syntax *parseBlockFor(Token ForTok);
 
     Syntax *parsePre();
     Syntax *parsePost();
