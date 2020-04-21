@@ -55,3 +55,17 @@ main() : int!
 
   SimpleGoldParseTest(Code);
 }
+
+TEST(ForRange, BlockFor) {
+  StringRef Code = R"(
+main() : int!
+  z = 0
+  for:
+    x in 0..3
+    y = x * x
+  do:
+    z += y
+)";
+
+  SimpleGoldParseTest(Code);
+}
