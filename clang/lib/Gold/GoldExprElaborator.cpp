@@ -412,7 +412,6 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
                                             /*Overloaded=*/true, R.begin(),
                                             R.end());
     } else if (R.isSingleResult()) {
-      
       clang::Decl *Decl = R.getAsSingle<clang::Decl>();
 
       if (isa<clang::ValueDecl>(Decl)) {
@@ -441,22 +440,23 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
         }
         return ConstructorExpr.get();
       }
-
-      if (!Fn)
-        return nullptr;
-
-      // Create the call.
-      clang::ExprResult Call =
-        SemaRef.getCxxSema().ActOnCallExpr(SemaRef.getCxxSema().getCurScope(),
-                                          Fn, S->getCalleeLoc(),
-                                          Args, S->getCalleeLoc());
-      if (Call.isInvalid()) {
-        SemaRef.Diags.Report(S->getLoc(),
-                             clang::diag::err_failed_to_translate_expr);
-        return nullptr;
-      }
-      return Call.get();
     }
+
+    if (!Fn)
+      return nullptr;
+
+    // Create the call.
+    clang::ExprResult Call =
+      SemaRef.getCxxSema().ActOnCallExpr(SemaRef.getCxxSema().getCurScope(),
+                                         Fn, S->getCalleeLoc(),
+                                         Args, S->getCalleeLoc());
+    if (Call.isInvalid()) {
+      SemaRef.Diags.Report(S->getLoc(),
+                           clang::diag::err_failed_to_translate_expr);
+      return nullptr;
+    }
+
+    return Call.get();
 
   } else {
     // This handles the special case of a built in type constructor
@@ -473,7 +473,8 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
                                                      S->getLoc(), false);
     return ConstructorExpr.get();
   }
-  llvm::errs() << "Unsupported call.\n";
+
+  SemaRef.Diags.Report(S->getLoc(), clang::diag::err_failed_to_translate_expr);
   return nullptr;
 }
 

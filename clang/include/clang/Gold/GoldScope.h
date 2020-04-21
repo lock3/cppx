@@ -378,6 +378,10 @@ public:
     return Kind == SK_Class;
   }
 
+  bool isControlScope() const {
+    return Kind == SK_Control;
+  }
+
   /// The parent of this scope.
   Scope *getParent() const {
     return Parent;

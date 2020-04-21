@@ -388,7 +388,8 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
 static clang::StorageClass getStorageClass(Elaborator &Elab) {
   // FIXME: What is the storage class for a variable? Computed from scope
   // and specifiers probably. We don't have specifiers yet.
-  return Elab.SemaRef.getCurrentScope()->isBlockScope()
+  return Elab.SemaRef.getCurrentScope()->isBlockScope() ||
+    Elab.SemaRef.getCurrentScope()->isControlScope()
     ? clang::SC_Auto
     : clang::SC_Static;
 }
@@ -1098,7 +1099,7 @@ static clang::IdentifierInfo *getIdentifier(Elaborator &Elab,
   return nullptr;
 }
 
-void Elaborator::identifyDecl(const Syntax *S) {
+Declaration *Elaborator::identifyDecl(const Syntax *S) {
   // Keep track of whether or not this is an operator'=' call.
   bool OperatorEquals = false;
 
@@ -1106,7 +1107,6 @@ void Elaborator::identifyDecl(const Syntax *S) {
   if (const auto *Call = dyn_cast<CallSyntax>(S)) {
     if (const auto *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
       llvm::StringRef Op = Callee->getToken().getSpelling();
-      
       // Need to figure out if this is a declaration or expression?
       // Unpack the declarator.
       const Syntax *Decl;
@@ -1127,7 +1127,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
             }, S->getLoc());
           clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
           if (SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) 
-            return;
+            return nullptr;
         }
 
         // Making sure we are don't use a member accessor as a variable name.
@@ -1137,7 +1137,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
               if (const AtomSyntax *Atom = cast<AtomSyntax>(
                                                       InnerCallOp->getCallee()))
                 if (Atom->getSpelling() == "operator'.'")
-                  return;
+                  return nullptr;
         Init = Args->getChild(1);
         OperatorEquals = true;
       } else if (Op == "operator'!'") {
@@ -1159,7 +1159,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
         Init = nullptr;
       } else {
         // Syntactically, this is not a declaration.
-        return;
+        return nullptr;
       }
 
 
@@ -1177,7 +1177,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
       // Try to build a declarator for the declaration.
       Declarator *Dcl = makeDeclarator(SemaRef, Decl);
       if (!Dcl)
-        return;
+        return nullptr;
 
       // Parameters can only be declared as x, x:T, or :T. The full range
       // of declarator syntax is not supported.
@@ -1199,8 +1199,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
         // The first statement is a declaration. The second is an assignment.
         // FIXME: is this the right way to handle the lookup set?
         if (!CurScope->findDecl(Id).empty() && OperatorEquals)
-          return;
-      } else if(CurScope->isClassScope()) {
+          return nullptr;
       }
 
       // Create a declaration for this node.
@@ -1226,6 +1225,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
       }
 
       SemaRef.getCurrentScope()->addDecl(TheDecl);
+      return TheDecl;
     }
   }
 
@@ -1239,7 +1239,7 @@ void Elaborator::identifyDecl(const Syntax *S) {
   // We need to elaborate each declarator in the list, and then propagate
   // type information backwards.
 
-  return;
+  return nullptr;
 }
 
 FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {

@@ -93,8 +93,7 @@ public:
 
 
   // Identification (1st pass)
-  void identifyDecl(const Syntax *S);
-  void identifyDeclFromCall(const CallSyntax *S);
+  Declaration *identifyDecl(const Syntax *S);
 
   // Get the clang::QualType described by an operator':' call.
   clang::QualType getOperatorColonType(const CallSyntax *S) const;

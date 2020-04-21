@@ -473,7 +473,7 @@ clang::Stmt *StmtElaborator::handleCartesianFor(const ListSyntax *S,
   clang::VarDecl *LoopVarDecl = cast<clang::VarDecl>(LoopVarDS->getSingleDecl());
   ClangSema.AddInitializerToDecl(LoopVarDecl, Args[0], /*DI=*/false);
 
-  // Fabricate `__LoopVar < b`
+  // Fabricate `__LoopVar <= b`
   ExprElaborator::Expression Second =
     ExprElaborator(Context, SemaRef).elaborateExpr(ToCall->getArgument(1));
   if (Second.is<clang::TypeSourceInfo *>()) {
@@ -496,7 +496,7 @@ clang::Stmt *StmtElaborator::handleCartesianFor(const ListSyntax *S,
                                LoopVarDecl->getType(), clang::VK_LValue);
   clang::ExprResult LessThan =
     ClangSema.BuildBinOp(ClangSema.getCurScope(), ToCall->getLoc(),
-                         clang::BO_LT, LoopVarDRE, Args[1]);
+                         clang::BO_LE, LoopVarDRE, Args[1]);
   if (LessThan.isInvalid())
     return nullptr;
   clang::Sema::ConditionResult Condition =
@@ -549,9 +549,113 @@ clang::Stmt *StmtElaborator::handleCartesianFor(const ListSyntax *S,
   return ForStmt.get();
 }
 
+// Check a block-for MacroSyntax's arguments to ensure that only one or zero
+// ranges are being iterated over. Returns true on error.
+// \param SemaRef - reference to the Sema object
+// \param Args - the argument array of the for-block MacroSyntax
+// \param ResultRange - points to the operator'in' call in the block,
+//                      if there is one.
+static bool checkBlockForArgs(Sema &SemaRef, const ArraySyntax *Args,
+                              const Syntax *&ResultRange) {
+  ResultRange = nullptr;
+  for (const Syntax *Arg : Args->children()) {
+    if (const CallSyntax *Call = dyn_cast<CallSyntax>(Arg)) {
+      if (getFusedOpKind(SemaRef, Call) == FOK_In) {
+        if (!ResultRange) {
+          ResultRange = Arg;
+          return false;
+        } else {
+          unsigned ErrID =
+            SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                          "for macro may only have one range");
+          unsigned NoteID = 
+            SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Note,
+                                          "previous range is here");
+          SemaRef.Diags.Report(Arg->getLoc(), ErrID);
+          SemaRef.Diags.Report(ResultRange->getLoc(), NoteID);
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+clang::Stmt *StmtElaborator::elaborateBlockForStmt(const MacroSyntax *S) {
+  assert (isa<CallSyntax>(S->getCall()));
+  const CallSyntax *MacroCall = cast<CallSyntax>(S->getCall());
+  clang::SourceLocation ForLoc = S->getCall()->getLoc();
+
+  assert(isa<ArraySyntax>(MacroCall->getArguments()));
+  const ArraySyntax *Arguments = cast<ArraySyntax>(MacroCall->getArguments());
+
+  // First, ensure that there is only one range in the block condition.
+  const Syntax *Range = nullptr;
+  if (checkBlockForArgs(SemaRef, Arguments, Range))
+    return nullptr;
+
+  // TODO: support iterative block fors.
+  if (!Range) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "for-block macro does not have a range");
+    Diags.Report(ForLoc, DiagID);
+    return nullptr;
+  }
+
+  // Construct a new for macro with the non-range header syntaxes at the
+  // beginning of the loop body.
+  llvm::SmallVector<const Syntax *, 4> HeaderSyntaxes;
+  for (const Syntax *Arg : Arguments->children()) {
+    if (Arg == Range)
+      continue;
+    HeaderSyntaxes.push_back(Arg);
+  }
+
+  const Syntax **NewBody;
+  std::size_t BodySize = 0;
+  if (const ArraySyntax *Block = dyn_cast<ArraySyntax>(S->getBlock())) {
+    BodySize = Block->getNumChildren() + HeaderSyntaxes.size();
+    NewBody = new (Context) const Syntax *[BodySize];
+    std::copy(HeaderSyntaxes.begin(), HeaderSyntaxes.end(), NewBody);
+    std::copy(Block->Elems, Block->Elems + Block->getNumChildren(),
+              NewBody + HeaderSyntaxes.size());
+  } else if (const ListSyntax *List = dyn_cast<ListSyntax>(S->getBlock())) {
+    BodySize = List->getNumChildren() + HeaderSyntaxes.size();
+    NewBody = new (Context) const Syntax *[BodySize];
+    std::copy(HeaderSyntaxes.begin(), HeaderSyntaxes.end(), NewBody);
+    std::copy(List->Elems, List->Elems + List->getNumChildren(),
+              NewBody + HeaderSyntaxes.size());
+  } else {
+    BodySize = HeaderSyntaxes.size() + 1;
+    NewBody = new (Context) const Syntax *[BodySize];
+    std::copy(HeaderSyntaxes.begin(), HeaderSyntaxes.end(), NewBody);
+    NewBody[HeaderSyntaxes.size() - 1] = S->getBlock();
+  }
+
+  const Syntax **RangeArray = new const Syntax *[1];
+  RangeArray[0] = Range;
+  ListSyntax *NewArgs = new (Context) ListSyntax(
+    const_cast<Syntax **>(RangeArray), 1);
+  const CallSyntax *OldCall = cast<CallSyntax>(S->getCall());
+  CallSyntax *NewCall = new (Context) CallSyntax(
+    const_cast<Syntax *>(OldCall->getCallee()),
+    NewArgs);
+  MacroSyntax *NewMacro = new (Context) MacroSyntax(
+    NewCall,
+    new (Context) ArraySyntax(const_cast<Syntax **>(NewBody), BodySize),
+    const_cast<Syntax *>(S->getNext()));
+  return StmtElaborator(Context, SemaRef).elaborateForStmt(NewMacro);
+}
+
 clang::Stmt *StmtElaborator::elaborateForStmt(const MacroSyntax *S) {
   assert (isa<CallSyntax>(S->getCall()));
   const CallSyntax *MacroCall = cast<CallSyntax>(S->getCall());
+  // If the macro's arguments are an array, we're working with a block-for.
+  if (isa<ArraySyntax>(MacroCall->getArguments()))
+    return elaborateBlockForStmt(S);
+
   clang::SourceLocation ForLoc = S->getCall()->getLoc();
 
   assert (isa<ListSyntax>(MacroCall->getArguments()) && "Invalid macro block");
