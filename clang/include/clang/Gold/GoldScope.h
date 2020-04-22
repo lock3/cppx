@@ -142,6 +142,9 @@ public:
 
       /// The scope containing the template parameters
       Scope *TemplateScope;
+
+      /// Whether or not this function has a variadic parameter.
+      bool VariadicParam;
     } ParamInfo;
 
     /// For DK_Type, the type in the call.
@@ -406,6 +409,10 @@ public:
 
   bool isClassScope() const {
     return Kind == SK_Class;
+  }
+
+  bool isControlScope() const {
+    return Kind == SK_Control;
   }
 
   /// The parent of this scope.

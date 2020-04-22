@@ -43,6 +43,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorDotII = &Context.CxxAST.Idents.get("operator'.'");
   OperatorForII = &Context.CxxAST.Idents.get("operator'for'");
   OperatorInII = &Context.CxxAST.Idents.get("operator'in'");
+  OperatorDotDotII = &Context.CxxAST.Idents.get("operator'..'");
 }
 
 Sema::~Sema() {
@@ -155,17 +156,10 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
       for (auto *FoundDecl : Found) {
         // If we find a name that hasn't been elaborated,
         // then we actually need to elaborate it.
-        if (!FoundDecl->Cxx) {
+        if (!FoundDecl->Cxx)
           Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
-        }
-        if (!FoundDecl->Cxx) {
-          // FIXME: This needs a more appropriate error message.
-          llvm_unreachable("Early elaboration of declaration failed. Unable to continue.");
-        }
-        if (!isa<clang::NamedDecl>(FoundDecl->Cxx)) {
-            llvm_unreachable("Decl elaboration failure.");
-          FoundDecl->Cxx->dump();
-        }
+        if (!FoundDecl->Cxx)
+          return false;
         clang::NamedDecl *ND = cast<clang::NamedDecl>(FoundDecl->Cxx);
 
         // FIXME: check if this is a tag decl, not a type decl!
@@ -181,19 +175,16 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         // If there is a described template, add that to the result instead
         // of the bare declaration.
         if (FoundDecl->declaresTemplate()) {
-          if (auto *FD = dyn_cast<clang::FunctionDecl>(ND)) {
-            clang::FunctionTemplateDecl *TempDecl
-              = FD->getDescribedFunctionTemplate();
-            if (TempDecl) 
-              R.addDecl(TempDecl);
-          } else if (auto *VD = dyn_cast<clang::VarDecl>(ND)){
-            clang::VarTemplateDecl *TempDecl = VD->getDescribedVarTemplate();
-            if(TempDecl)
-              R.addDecl(TempDecl);
-          }
-        } else {
-          R.addDecl(ND);
+          if (auto *FD = dyn_cast<clang::FunctionDecl>(ND))
+            ND = FD->getDescribedFunctionTemplate();
+          else if (auto *VD = dyn_cast<clang::VarDecl>(ND))
+            ND = VD->getDescribedVarTemplate();
+          else
+            llvm_unreachable("Unknown template type");
+
         }
+
+        R.addDecl(ND);
       }
       break;
     }

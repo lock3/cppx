@@ -690,7 +690,8 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
       const ListSyntax *Args = cast<ListSyntax>(S->getArguments());
       return elaborateMemberAccess(Args->getChild(0), S, Args->getChild(1));
     }
-
+    case FOK_DotDot:
+      return handleOperatorDotDot(S);
     // TODO: Will these ever be valid at any point in the future?
     case FOK_Exclaim:
     case FOK_Equals:
@@ -706,7 +707,7 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
     }
     default:
       llvm_unreachable("Invalid and unknown fused operator kind within a "
-          "call expression.");
+          "current expression");
   }
 
   llvm::StringRef Spelling = Callee->getSpelling();
@@ -1125,23 +1126,31 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
   // FIXME: Handle array-based arguments.
   assert(isa<ListSyntax>(D->Data.ParamInfo.Params)
          && "Array parameters not supported");
-  const Syntax *Args = D->Data.ParamInfo.Params;
+  const ListSyntax *Args = cast<ListSyntax>(D->Data.ParamInfo.Params);
+
+  bool IsVariadic = D->Data.ParamInfo.VariadicParam;
 
   // Elaborate the parameter declarations in order to get their types, and save
   // the resulting scope with the declarator.
   llvm::SmallVector<clang::QualType, 4> Types;
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
   SemaRef.enterScope(SK_Parameter, Call);
-  for (const Syntax *P : Args->children()) {
+  for (unsigned I = 0; I < Args->getNumChildren(); ++I) {
+    // There isn't really anything to translate here.
+    if (IsVariadic && I == Args->getNumChildren() - 1)
+      break;
+    const Syntax *P = Args->getChild(I);
+
     Elaborator Elab(Context, SemaRef);
     clang::ValueDecl *VD =
       cast_or_null<clang::ValueDecl>(Elab.elaborateDeclSyntax(P));
-    if (!VD)
+    if (!VD) {
+      SemaRef.leaveScope(Call);
       return nullptr;
+    }
 
     Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
     assert(D && "Didn't find associated declaration");
-
     assert(isa<clang::ParmVarDecl>(VD) && "Parameter is not a ParmVarDecl");
 
     Types.push_back(VD->getType());
@@ -1149,9 +1158,14 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
   }
   D->Data.ParamInfo.ConstructedScope = SemaRef.saveScope(Call);
 
-  // FIXME: We probably need to configure parts of the prototype (e.g.,
-  // make this noexcept by default).
+
+  // FIXME: We need to configure parts of the prototype (e.g., noexcept).
   clang::FunctionProtoType::ExtProtoInfo EPI;
+  if (IsVariadic) {
+    EPI.ExtInfo = Context.CxxAST.getDefaultCallingConvention(true, false);
+    EPI.Variadic = true;
+  }
+
 
   using clang::SourceLocation;
   using clang::SourceRange;
@@ -1225,13 +1239,15 @@ void dumpExpression(ExprElaborator::Expression Expr, llvm::raw_ostream& Out) {
     llvm::outs() << "\n";
     return;
   }
-
-  // if (Expr.is<clang::TemplateName *>()) {
-  //   llvm::outs() << "Type = clang::TemplateName *\n";
-  //   Expr.get<clang::TemplateName *>()->dump(Out);
-  //   llvm::outs() << "\n";
-  //   return;
-  // }
   llvm::outs() << "[Unknown Expression type]\n";
 }
+
+clang::Expr *ExprElaborator::handleOperatorDotDot(const CallSyntax *S) {
+  assert(isa<AtomSyntax>(S->getCallee()));
+  assert(cast<AtomSyntax>(S->getCallee())->getSpelling() == "operator'..'"
+         && "invalid .. call");
+
+  llvm_unreachable("unimplemented");
+}
+
 } // namespace gold
