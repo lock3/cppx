@@ -103,9 +103,6 @@ public:
   // Perform unqualified lookup of a name starting in S.
   bool lookupUnqualifiedName(clang::LookupResult &R, Scope *S);
 
-  // clang::Expr *actOnMemberExpr(Expr *BaseExpr, clang::SourceLoction OpLoc,
-  //     clang::IdentifierInfo *MemberId, clang::SourceLocation MemberLoc);
-
   // Declaration context
   /// The current declaration.
   Declaration *getCurrentDecl() {

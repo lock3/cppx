@@ -203,15 +203,6 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   return !R.empty();
 } 
 
-// clang::Expr *Sema::actOnMemberExpr(Expr *BaseExpr, clang::SourceLoction OpLoc,
-//     clang::IdentifierInfo *MemberId, clang::SourceLocation MemberLoc) {
-//   clang::DeclarationNameInfo DNI({MemberId, MemberLoc});
-//   clang::LookupResult R(CxxSema, DNI, clang::Sema::LookupMemberName);
-
-//   // Attempting Attempting to fetch the correct type from 
-  
-// }
-
 clang::Scope *Sema::getCurClangScope() {
   return CxxSema.CurScope;
 }
