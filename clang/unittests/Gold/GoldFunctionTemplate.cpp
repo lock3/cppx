@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ParseUtil.h"
+#include "ASTMatchersTest.h"
 
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
@@ -24,4 +25,28 @@ f[T : type, z : int](x : T) : T!
   return x + z
 )";
   SimpleGoldParseTest(Code);
+}
+
+
+TEST(GoldFunctionTemplate, WithExplicitCall) {
+  StringRef Code = R"(
+f[z : int]() : int!
+  return z
+
+main() : int!
+  return f[4]()
+)";
+  StatementMatcher StmtMatcher(compoundStmt(hasDescendant(
+    returnStmt(
+      has(callExpr(
+        has(implicitCastExpr(
+          has(declRefExpr(
+            to(functionDecl())
+
+          ))
+        ))
+      ))
+    )
+  )));
+  ASSERT_TRUE(matches(Code, StmtMatcher));
 }

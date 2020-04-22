@@ -79,8 +79,6 @@ public:
                                          const CallSyntax *Op,
                                          const Syntax *RHS);
 
-  Expression elaborateElemCall(const CallSyntax *S);
-
   Expression elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
 
   Expression elaborateBlockCondition(const ArraySyntax *Conditions);

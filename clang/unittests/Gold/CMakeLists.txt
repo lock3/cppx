@@ -48,6 +48,7 @@ add_clang_unittest(GoldTests
   ClassTemplateMemberAccessExec.cpp
   ClassMemberAccessTest.cpp
   ClassTemplatedMemberExec.cpp
+  FunctionTemplateExec.cpp
   )
 
 clang_target_link_libraries(GoldTests
