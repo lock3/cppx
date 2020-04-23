@@ -44,6 +44,8 @@ clang::SourceLocation Declarator::getLoc() const {
   case DK_Type:
     return getType()->getLoc();
   default:
+    llvm_unreachable("We are unable to actually get valid source location for "
+        "declarator.");
     return clang::SourceLocation();
   }
 }
@@ -64,6 +66,7 @@ static llvm::StringRef getCallName(const CallSyntax *S) {
 }
 
 std::string Declarator::getString() const {
+  // FIXME: This needs to properly elaborate all parts of the declarator.
   if (getKind() == DK_Type) {
     // TODO: Figure out how to correctly print types. that are not simple identifiers.
     return cast<AtomSyntax>(Data.Type)->getSpelling();
@@ -94,6 +97,17 @@ void Declarator::printSequence(llvm::raw_ostream &os) const {
   }  while (D);
 
   os << '\n';
+}
+
+void Declarator::recordAttributes(const Syntax* AttrNode) {
+  if (AttrNode->getAttributes().empty())
+    return;
+  AttributeNode = AttrNode;
+  Attributes Attrs;
+  for (const Attribute * A : AttrNode->getAttributes()) {
+    Attrs.emplace_back(A->getArg());
+  }
+  UnprocessedAttributes = std::move(Attrs);
 }
 
 Declaration::~Declaration() {
@@ -188,7 +202,7 @@ bool Declaration::declaresTemplate() const {
 const Syntax *Declaration::getTemplateParams() const {
   assert(Decl);
   const Declarator *D = Decl;
-  if (D->Kind == DK_Identifier)
+  while (D && D->Kind == DK_Identifier)
     D = D->Next;
   if (D)
     return D->Data.ParamInfo.TemplateParams;
@@ -221,13 +235,14 @@ void Declaration::setPreviousDecl(Declaration *Prev) {
   Next = First;
 }
 
+
 void Scope::addUserDefinedType(clang::IdentifierInfo* Id, clang::QualType QualTy) {
   auto ItPair = TypeIdMap.try_emplace(Id, QualTy);
   if(!ItPair.second) {
-    // TODO: Figure out how to print correct diagonstics here.
-    llvm::outs() << "Duplicate Identifer located. Name: " << Id->getName() << " QualType Given: ";
-    QualTy.dump();
-    llvm::outs() << "\n";
+    // TODO: Figure out how to print correct diagnostics here.
+    // llvm::outs() << "Duplicate Identifer located. Name: " << Id->getName() << " QualType Given: ";
+    // QualTy.dump();
+    // llvm::outs() << "\n";
     assert(false && "Invalid typename.");
   }
 }

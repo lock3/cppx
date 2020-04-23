@@ -42,7 +42,6 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
 
   Parser Parser(Context, SM, InputFile);
   Syntax *AST = Parser.parseFile();
-  
   // FIXME: There's a -fdump-syntax flag that we should tie this too.
 
   // FIXME: We should handle -fsyntax-only here -- or maybe make a separate

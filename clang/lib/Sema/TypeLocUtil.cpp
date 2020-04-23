@@ -435,7 +435,8 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::TagTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::RecordTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  TLB.pushTypeSpec(Ty);
+  auto RTL = TLB.push<clang::RecordTypeLoc>(Ty);
+  RTL.initializeLocal(Ctx, Loc);
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
@@ -515,6 +516,19 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateSpecializationTypeLoc>
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateSpecializationTypeLoc>
+(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
+  TypeLocBuilder TLB;
+  return BuildTypeLoc<clang::TemplateSpecializationTypeLoc>(Context, TLB, Ty, Loc);
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateTypeLoc>
+(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
+  auto TypeLocInstance = TLB.push<clang::TemplateTypeLoc>(Ty);
+  TypeLocInstance.initializeLocal(Ctx, Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::TemplateSpecializationTypeLoc>(Context, TLB, Ty, Loc);

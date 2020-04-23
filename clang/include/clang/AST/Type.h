@@ -60,6 +60,7 @@ class ExtQuals;
 class QualType;
 class TagDecl;
 class Type;
+class TemplateDecl;
 
 enum {
   TypeAlignmentInBits = 4,
@@ -714,6 +715,7 @@ public:
 
   bool isCanonical() const;
   bool isCanonicalAsParam() const;
+  bool isTemplateType() const;
 
   /// Return true if this QualType doesn't point to a type yet.
   bool isNull() const {
@@ -1911,6 +1913,8 @@ public:
     return CanonicalType == QualType(this, 0);
   }
 
+  
+
   /// Pull a single level of sugar off of this locally-unqualified type.
   /// Users should generally prefer SplitQualType::getSingleStepDesugaredType()
   /// or QualType::getSingleStepDesugaredType(const ASTContext&).
@@ -2102,6 +2106,8 @@ public:
   bool isObjCARCBridgableType() const;
   bool isCARCBridgableType() const;
   bool isTemplateTypeParmType() const;          // C++ template type parameter
+  bool isTemplateType() const;                  // Check if this is an
+                                                // uninstantiated template type.
   bool isNullPtrType() const;                   // C++11 std::nullptr_t
   bool isNothrowT() const;                      // C++   std::nothrow_t
   bool isAlignValT() const;                     // C++17 std::align_val_t
@@ -6392,6 +6398,45 @@ public:
   static bool classof(const Type *T) { return T->getTypeClass() == CppxKind; }
 };
 
+class TemplateType : public Type, public llvm::FoldingSetNode {
+private:
+
+  friend class ASTContext;
+  TemplateDecl *TD  = nullptr;
+  TemplateType(TemplateDecl *TemplateD)
+    :Type(Template, QualType(),
+    /*Dependent=*/false, 
+    /*InstantiationDependent=*/false, 
+    /*MetaType=*/false, 
+    /*VariablyModified=*/false, 
+    /*Unexpanded parameter pack=*/false),
+    TD(TemplateD)
+  {}
+public:
+  TemplateDecl *getTemplateDecl() const { return TD; }
+
+  bool isSugared() const {
+    return false;
+  }
+
+  QualType desugar() const {
+    return QualType(this, 0);
+  }
+
+  void Profile(llvm::FoldingSetNodeID &ID) {
+    Profile(ID, TD);
+  }
+
+  // This is defined within the ASTContext.cpp because it needs additional
+  // access to types not visible within this file. That and, that's where
+  // many some of the other profile functions are defined.
+  static void Profile(llvm::FoldingSetNodeID &ID, TemplateDecl *D);
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == TemplateSpecialization;
+  }
+};
+
 
 // Type source info
 
@@ -6922,6 +6967,10 @@ inline bool Type::isOpenCLSpecificType() const {
 
 inline bool Type::isTemplateTypeParmType() const {
   return isa<TemplateTypeParmType>(CanonicalType);
+}
+
+inline bool Type::isTemplateType() const {
+  return isa<TemplateType>(CanonicalType);
 }
 
 inline bool Type::isSpecificBuiltinType(unsigned K) const {

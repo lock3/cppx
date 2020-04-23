@@ -39,6 +39,7 @@ namespace gold {
 
 struct Syntax;
 class Scope;
+struct Attribute;
 
 /// Kinds of declarations.
 enum DeclaratorKind {
@@ -65,6 +66,7 @@ enum DeclaratorKind {
   DK_Type,
 };
 
+using Attributes = llvm::SmallVector<const Syntax *, 16>;
 /// A declarator introduces the declaration of a value.
 ///
 /// TODO: Represent multiple declarators whose syntax would be
@@ -106,6 +108,10 @@ public:
   /// Prints the declarator sequence.
   void printSequence(llvm::raw_ostream &os) const;
 
+  /// This sets the attribute node and records all attributes into the
+  /// UnprocessedAttributes member.
+  void recordAttributes(const Syntax* AttributeNode);
+
   /// The kind of declarator.
   DeclaratorKind Kind;
 
@@ -146,7 +152,7 @@ public:
 
     /// For DK_Array, the array index.
     const Syntax *Index;
-    
+
     /// For DK_TemplateType, for templated types.
     struct TemplateInfoStruct {
       /// A pointer to the template parameters within the declaration.
@@ -158,6 +164,11 @@ public:
       clang::Scope *ClangScope;
     } TemplateInfo;
   } Data;
+
+  
+  /// This is optionally set for each piece of the declarator.
+  const Syntax* AttributeNode = nullptr;
+  llvm::Optional<Attributes> UnprocessedAttributes;
 };
 
 /// A declaration is stores information about the declaration of an

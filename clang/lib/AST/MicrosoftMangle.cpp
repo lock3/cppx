@@ -2854,6 +2854,14 @@ void MicrosoftCXXNameMangler::mangleType(const CppxKindType *T,
   Diags.Report(Range.getBegin(), DiagID) << Range;
 }
 
+void MicrosoftCXXNameMangler::mangleType(const TemplateType *T,
+                                         Qualifiers, SourceRange Range) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+    "TemplateType cannot be mangled. Template must be instantiated.");
+  Diags.Report(Range.getBegin(), DiagID) << Range;
+}
+
 void MicrosoftCXXNameMangler::mangleType(const TemplateSpecializationType *T,
                                          Qualifiers, SourceRange Range) {
   DiagnosticsEngine &Diags = Context.getDiags();

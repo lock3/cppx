@@ -699,6 +699,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
   }
 
   case Type::CppxKind:
+  case Type::Template:
     llvm_unreachable("Unexpected kind");
   }
 

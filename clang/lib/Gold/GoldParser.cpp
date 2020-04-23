@@ -539,7 +539,7 @@ bool isToOperator(Parser& P) {
   return P.nextTokenIs(tok::Colon)
       || P.nextTokenIs(tok::MinusGreater)
       || P.nextTokenIs("in");
-};
+}
 
 // to:
 //    add
@@ -742,8 +742,11 @@ Syntax *Parser::parsePre()
 
   if (nextTokenIs("return") || nextTokenIs("returns")) {
     Token op = consumeToken();
-    Syntax *e = parseExpr();
-    return onUnary(op, e);
+    Syntax *e = nullptr;
+    if (getLookahead() != tok::Dedent && getLookahead() != tok::Separator) {
+      e = parseExpr();
+    }
+    return onUnaryOrNull(op, e);
   }
 
   if (nextTokenIs(tok::LeftBracket)) {
@@ -1093,6 +1096,15 @@ Syntax *Parser::onList(ArraySemantic S,
 Syntax *Parser::onBinary(Token const& Tok, Syntax *e1, Syntax *e2) {
   return new (Context)
     CallSyntax(makeOperator(Context, Tok), makeList(Context, {e1, e2}));
+}
+
+Syntax *Parser::onUnaryOrNull(Token const& Tok, Syntax *e1) {
+  if (e1) {
+    return new (Context)
+      CallSyntax(makeOperator(Context, Tok), makeList(Context, {e1}));
+  }
+  return new (Context)
+    CallSyntax(makeOperator(Context, Tok), makeList(Context, { }));
 }
 
 Syntax *Parser::onUnary(Token const& Tok, Syntax *e1) {
