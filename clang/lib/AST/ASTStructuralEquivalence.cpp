@@ -985,6 +985,8 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
 
   case Type::CppxKind:
     break;
+  case Type::Template:
+    llvm_unreachable("This needs to be implemented!");
   } // end switch
 
   return true;

@@ -1663,6 +1663,12 @@ bool CursorVisitor::VisitAttributedTypeLoc(AttributedTypeLoc TL) {
   return Visit(TL.getModifiedLoc());
 }
 
+bool CursorVisitor::VisitTemplateTypeLoc(TemplateTypeLoc TL) {
+  // return Visit(TL.getLoc());
+  // TODO:/FIXME: I don't know what this does!
+  return false;
+}
+
 bool CursorVisitor::VisitFunctionTypeLoc(FunctionTypeLoc TL,
                                          bool SkipResultType) {
   if (!SkipResultType && Visit(TL.getReturnLoc()))

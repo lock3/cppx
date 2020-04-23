@@ -67,6 +67,8 @@ public:
   // constructs.
   void IdentifyDecls(const ArraySyntax *S);
 
+  /// Check if, within the current scope a access specifier is valid,
+  bool accessSpecifierIsValidInScope() const;
   // Scope management.
 
   /// Get the currently active Scope.
@@ -102,7 +104,6 @@ public:
   bool lookupUnqualifiedName(clang::LookupResult &R, Scope *S);
 
   // Declaration context
-
   /// The current declaration.
   Declaration *getCurrentDecl() {
     return CurrentDecl;

@@ -52,6 +52,10 @@ Sema::~Sema() {
   CxxSema.CurScope = nullptr;
 }
 
+bool Sema::accessSpecifierIsValidInScope() const {
+  return ScopeStack.back() && ScopeStack.back()->getKind() == SK_Class;
+}
+
 Scope *Sema::getCurrentScope() {
   if (ScopeStack.empty())
     return nullptr;
@@ -177,6 +181,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
             ND = VD->getDescribedVarTemplate();
           else
             llvm_unreachable("Unknown template type");
+
         }
 
         R.addDecl(ND);
@@ -187,7 +192,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
     S = S->getParent();
   }
   return !R.empty();
-}
+} 
 
 clang::Scope *Sema::getCurClangScope() {
   return CxxSema.CurScope;

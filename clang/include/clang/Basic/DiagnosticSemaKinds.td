@@ -10460,6 +10460,9 @@ def err_failed_to_translate_expr : Error<
   "failed to translate expression">;
 def err_invalid_block_condition : Error<
   "invalid block condition">;
+def err_duplicate_access_specifier : Error<
+  "multiple access specifiers given as attributes, given %0, and %1">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

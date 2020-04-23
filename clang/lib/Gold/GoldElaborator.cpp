@@ -32,13 +32,89 @@
 
 namespace gold {
 
+/// This extracts the access specifier if one was given, if not it's set to public.
+/// Returns false on success, and true if there's an error.
+static bool computeAccessSpecifier(Sema& SemaRef, Declaration *D,
+    clang::AccessSpecifier& AS) {
+  AS = clang::AS_public;
+  if (!D->Decl->UnprocessedAttributes)
+    return false;
+  auto Iter = D->Decl->UnprocessedAttributes->begin();
+  auto End = D->Decl->UnprocessedAttributes->end();
+  for (;Iter != End; ++Iter) {
+    if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(*Iter)){
+      if (Atom->getSpelling() == "private") {
+        AS = clang::AS_private;
+        break;
+      } else if (Atom->getSpelling() == "protected") {
+        AS = clang::AS_protected;
+        break;
+      } else if (Atom->getSpelling() == "public") {
+        AS = clang::AS_public;
+        break;
+      }
+    }
+  }
+  const Syntax *AttribSpec = nullptr;
+  if(Iter != End) {
+    AttribSpec = *Iter;
+    D->Decl->UnprocessedAttributes->erase(Iter);
+    Iter = D->Decl->UnprocessedAttributes->begin();
+    End = D->Decl->UnprocessedAttributes->end();
+    for (;Iter != End; ++Iter) {
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(*Iter)){
+        if (Atom->getSpelling() == "private"
+            || Atom->getSpelling() == "protected"
+            || Atom->getSpelling() == "public") {
+          break;
+        }
+      }
+    }
+    if (Iter != End) {
+      // TODO: Create valid error message
+      SemaRef.Diags.Report((*Iter)->getLoc(),
+            clang::diag::err_duplicate_access_specifier)
+              << AttribSpec->getLoc() << (*Iter)->getLoc(); 
+      return true;
+    }
+  }
+  return false;
+}
+// static void handleInClassAttributeApplication(Sema& SemaRef,SyntaxContext& Context,
+//     clang::Decl *Dec, Declaration *D) {
+//   if (D->Decl->AttributeNode) {
+//     
+//     for (auto const& attr : D->Decl->AttributeNode->getAttributes()) {
+//       if (const AtomSyntax *AttrName = dyn_cast<AtomSyntax>(attr->getArg())) {
+
+//         // TODO: We need to change in order to prevent multiple access specifiers
+//         // from being given. Currently this only works for single access
+//         // specifiers.
+
+//         } else {
+//           llvm_unreachable("Unsupported attribute given.");
+//         }
+//       }
+//     }
+
+//     // Don't chainge default access in the event the access specifier was never
+//     // given.
+//     if (AS != clang::AS_none)
+//       Dec->setAccess(AS);
+//   }
+// }
+// static bool CheckDeclA
+
+// static bool checkAccessSpecifier(Sema& SemaRef, Declaration *D) {
+//   return false;
+// } 
 Elaborator::Elaborator(SyntaxContext &Context, Sema &SemaRef)
   : Context(Context), SemaRef(SemaRef) {}
 
 clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
-
   SemaRef.getCxxSema().FieldCollector.reset(new clang::CXXFieldCollector());
   assert(isa<FileSyntax>(S) && "S is not a file");
+  // S->dump();
   clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::DeclScope);
   SemaRef.getCxxSema().ActOnTranslationUnitScope(Scope);
   SemaRef.getCxxSema().Initialize();
@@ -83,7 +159,6 @@ void Elaborator::startFile(const Syntax *S) {
 
 void Elaborator::finishFile(const Syntax *S) {
   SemaRef.getCxxSema().ActOnEndOfTranslationUnit();
-
   SemaRef.popDecl();
   SemaRef.leaveScope(S);
 
@@ -114,6 +189,10 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   using namespace clang;
   bool Template = D->declaresTemplateType();
   const Syntax *TemplParams;
+  
+  // Checking if we are a nested template decl/class.
+  bool WithinClass = SemaRef.getCurrentScope()->getKind() == SK_Class;
+  
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
   llvm::SmallVector<clang::TemplateParameterList *, 4> TPLStorage;
   MultiTemplateParamsArg MTP;
@@ -141,10 +220,33 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   bool IsDependent = false;
   CXXScopeSpec SS;
   TypeResult UnderlyingType;
+  AccessSpecifier AS = AS_none;
+  if (WithinClass) {
+    if (Template)
+      AS = AS_public;
+    // Attempting to check for access specifiers
+    if (D->Decl->AttributeNode) {
+      for (auto const& attr : D->Decl->AttributeNode->getAttributes()) {
+        if (const AtomSyntax *AttrName = dyn_cast<AtomSyntax>(attr->getArg())) {
+          if (AttrName->getSpelling() == "private") {
+            AS = clang::AS_private;
+          } else if (AttrName->getSpelling() == "protected") {
+            AS = clang::AS_protected;
+          } else if (AttrName->getSpelling() == "public") {
+            AS = clang::AS_public;
+          }
+        }
+      }
+    }
+  }
+  clang::SourceLocation IdLoc = D->Decl->getLoc();
+  // llvm::outs() << "IdLoc Location\n";
+  // IdLoc.dump(SemaRef.getCxxSema().getSourceManager());
+
   Decl *Declaration = SemaRef.getCxxSema().ActOnTag(SemaRef.getCurClangScope(),
       clang::DeclSpec::TST_struct, /*Metafunction=*/nullptr, clang::Sema::TUK_Definition,
-      D->Init->getLoc(), SS, D->getId(), D->Decl->getLoc(), clang::ParsedAttributesView(),
-      /*AccessSpecifier=*/AS_none, /*ModulePrivateLoc=*/SourceLocation(),
+      D->Init->getLoc(), SS, D->getId(), IdLoc, clang::ParsedAttributesView(),
+      /*AccessSpecifier=*/AS, /*ModulePrivateLoc=*/SourceLocation(),
       MTP, IsOwned, IsDependent, /*ScopedEnumKWLoc=*/SourceLocation(),
       /*ScopeEnumUsesClassTag=*/false, UnderlyingType, /*IsTypeSpecifier=*/false,
       /*IsTemplateParamOrArg=*/false, /*SkipBody=*/nullptr);
@@ -175,8 +277,11 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
     TemplateDeclarator->Data.TemplateInfo.ClangScope
       = SemaRef.moveToParentScopeNoPop();
   }
+    
   return ClsDecl;
 }
+
+
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   // FIXME: This almost certainly needs its own elaboration context
@@ -187,7 +292,8 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   if (D->declaresFunction())
     return elaborateFunctionDecl(D);
   return elaborateVariableDecl(D);
-
+  
+  // 
   // TODO: We should be able to elaborate definitions at this point too.
   // We've already loaded salient identifier tables, so it shouldn't any
   // forward references should be resolvable.
@@ -263,6 +369,13 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Create the template parameters if they exist.
   const Syntax *TemplParams = D->getTemplateParams();
   bool Template = TemplParams;
+  bool InClass = SemaRef.getCurrentScope()->getKind() == SK_Class;
+  clang::CXXRecordDecl *RD = nullptr;
+  // Before we enter the template scope we need a reference to the containing
+  // class.
+  if (InClass) 
+    RD = cast<clang::CXXRecordDecl>(SemaRef.getCurrentScope()->Record);
+
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
   if (Template) {
     SemaRef.enterScope(SK_Template, TemplParams);
@@ -282,10 +395,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::DeclarationName Name = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::FunctionDecl *FD = nullptr;
-  if(SemaRef.getCurrentScope()->getKind() == SK_Class) {
-    
-    clang::CXXRecordDecl *RD = cast<clang::CXXRecordDecl>(
-                                            SemaRef.getCurrentScope()->Record);
+  if(InClass) {
     const clang::FunctionType *FT = cast<clang::FunctionType>(TInfo->getType());
     clang::DeclarationNameInfo DNI(Name, D->Op->getLoc());
     if (D->getId()->isStr("constructor")) {
@@ -305,7 +415,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       CtorDecl->setImplicit(false);
       CtorDecl->setDefaulted(false);
       CtorDecl->setBody(nullptr);
-      CtorDecl->setAccess(clang::AS_public);
       clang::FunctionProtoType::ExtProtoInfo EPI;
 
       // Build an exception specification pointing back at this member.
@@ -343,7 +452,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       DtorDecl->setImplicit(false);
       DtorDecl->setDefaulted(false);
       DtorDecl->setBody(nullptr);
-      DtorDecl->setAccess(clang::AS_public);
       clang::FunctionProtoType::ExtProtoInfo EPI;
 
       // Build an exception specification pointing back at this member.
@@ -376,7 +484,11 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
                                       clang::ConstexprSpecKind::CSK_unspecified,
                                         Loc);
     }
-    FD->setAccess(clang::AccessSpecifier::AS_public);
+    clang::AccessSpecifier AS;
+    if (computeAccessSpecifier(SemaRef, D, AS)) {
+      return nullptr;
+    }
+    FD->setAccess(AS);
   } else {
     FD = clang::FunctionDecl::Create(Context.CxxAST, Owner, Loc, Loc, Name,
                                      TInfo->getType(), TInfo, clang::SC_None);
@@ -400,6 +512,14 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     FD->setDescribedFunctionTemplate(FTD);
     Owner->addDecl(FTD);
     FnDclrtr->Data.ParamInfo.TemplateScope = SemaRef.saveScope(TemplParams);
+    if (InClass){
+      // Attempting to mark template decl.
+      clang::AccessSpecifier AS;
+      if (computeAccessSpecifier(SemaRef, D, AS)) {
+        return nullptr;
+      }
+      FTD->setAccess(AS);
+    }
   }
 
   // Update the function parameters.
@@ -435,6 +555,7 @@ static clang::StorageClass getStorageClass(Elaborator &Elab) {
     ? clang::SC_Auto
     : clang::SC_Static;
 }
+
 
 clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   if (SemaRef.getCurrentScope()->isParameterScope())
@@ -672,22 +793,10 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     // declares an undeduced-type variable with no initializer. Presumably
     // this should be an error.
 
-    // Handle special case of default construction of complex types?
-    if(VD->getType().getTypePtr()->isRecordType()) {
-      llvm::SmallVector<clang::Expr *, 1> Args;
-      clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST,
-          VD->getType(), D->Decl->getLoc());
-      clang::ExprResult ConstructorExpr =
-        SemaRef.getCxxSema().BuildCXXTypeConstructExpr(TInfo, D->Op->getLoc(),
-                                                        Args, D->Op->getLoc(),
-                                                        false);
-      if (ConstructorExpr.get()) {
-        SemaRef.getCxxSema().AddInitializerToDecl(VD, ConstructorExpr.get(),
-            true);
-        return;
-      }
-    }
-    SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
+    // This handles implcit initialization/constructor calls for variables
+    // that don't have a = sign on first use, but have a type.
+    // That includes complex types.
+    SemaRef.getCxxSema().ActOnUninitializedDecl(VD); 
     return;
   }
 
@@ -882,17 +991,20 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
   clang::InClassInitStyle InitStyle = clang::InClassInitStyle::ICIS_NoInit;
   if (D->Init) {
     InitStyle = clang::InClassInitStyle::ICIS_ListInit;
-  } 
+  }
+  clang::AccessSpecifier AS;
+  if (computeAccessSpecifier(SemaRef, D, AS)) {
+    return nullptr;
+  }
   clang::FieldDecl *FD = SemaRef.getCxxSema().CheckFieldDecl(DN, TInfo->getType(),
                                           TInfo, /*RecordDecl=*/Owner,
                                           Loc, /*Mutable=*/false,
-                                          /*BitWidth=*/nullptr,
-                                          InitStyle, Loc,
-                                          clang::AccessSpecifier::AS_public,
-                                          nullptr);
+                                          /*BitWidth=*/nullptr, InitStyle, Loc,
+                                          AS, nullptr);
   Owner->addDecl(FD);
   D->Cxx = FD;
-  return nullptr;
+  // handleInClassAttributeApplication(SemaRef, Context, FD, D);
+  return FD;
 }
 
 void Elaborator::elaborateFieldInit(Declaration *D) {
@@ -941,6 +1053,7 @@ static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S);
 static Declarator *buildIdDeclarator(const Syntax *S, Declarator *Next) {
   Declarator *D = new Declarator(DK_Identifier, Next);
   D->Data.Id = S;
+  D->recordAttributes(S);
   return D;
 }
 
@@ -1108,27 +1221,31 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
         return makeDeclarator(SemaRef, Call->getArgument(0), Next);
       }
       // Otherwise, this appears to be a function declarator.
+      Declarator *Temp = makeDeclarator(SemaRef, Callee,
+                                        buildFunctionDeclarator(SemaRef, Call, Next));
+      Temp->recordAttributes(Call);
+      return Temp;
 
-      return makeDeclarator(SemaRef, Callee,
-                            buildFunctionDeclarator(SemaRef, Call, Next));
     } else if (const ElemSyntax *Callee = dyn_cast<ElemSyntax>(Call->getCallee())) {
-      assert(SemaRef.getCurrentScope()->getKind() != SK_Class &&
-             "templated member functions not implemented");
       // We have a template parameter list here, so build the
       // function declarator accordingly.
-      return makeDeclarator(SemaRef, Callee->getObject(),
-                          buildFunctionDeclarator(SemaRef, Call, Callee, Next));
+      Declarator *Temp = makeDeclarator(SemaRef, Callee->getObject(),
+                                        buildFunctionDeclarator(SemaRef, Call, Callee,
+                                                                Next));
+      Temp->recordAttributes(Call);
+      return Temp;
     }
   } else if (const ElemSyntax *TemplateType = dyn_cast<ElemSyntax>(S)) {
     // Building type parameters for each element within the list and chaining
     // them together.
     if (const AtomSyntax *TemplateName
         = dyn_cast<AtomSyntax>(TemplateType->getObject())) {
-      return buildIdDeclarator(TemplateName,
-          buildTemplatedName(TemplateType, Next));
+      Declarator *Temp = buildIdDeclarator(TemplateName,
+                                        buildTemplatedName(TemplateType, Next));
+      Temp->recordAttributes(TemplateType);
+      return Temp;
     }
     llvm_unreachable("Invalid templated declarator.");
-    // assert(!"Working on implementing templated classes.");
   }
   return nullptr;
 }
@@ -1175,15 +1292,14 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
             return nullptr;
         }
 
-        if (isa<CallSyntax>(Decl))
-          if (const CallSyntax *InnerCallOp = cast<CallSyntax>(Decl))
-            if (isa<AtomSyntax>(InnerCallOp->getCallee()))
-              if (const AtomSyntax *Atom = cast<AtomSyntax>(
+        if (const CallSyntax *InnerCallOp = dyn_cast<CallSyntax>(Decl))
+          if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(
                                                       InnerCallOp->getCallee()))
-                if (Atom->getSpelling() == "operator'.'")
-                  return nullptr;
+            if (Atom->getSpelling() == "operator'.'")
+              return nullptr;
         Init = Args->getChild(1);
         OperatorEquals = true;
+
       } else if (Op == "operator'!'") {
         const auto *Args = cast<ListSyntax>(Call->getArguments());
 

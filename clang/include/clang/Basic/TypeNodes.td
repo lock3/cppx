@@ -111,5 +111,5 @@ def PipeType : TypeNode<Type>;
 def AtomicType : TypeNode<Type>;
 
 // Cppx Types
-
 def CppxKindType : TypeNode<Type>, LeafType;
+def TemplateType : TypeNode<Type>;
