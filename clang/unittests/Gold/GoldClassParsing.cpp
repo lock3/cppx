@@ -626,19 +626,6 @@ main() : int!
   );
   ASSERT_TRUE(matches(Code, MemberFunctionMatch));
 }
-// TODO: Implemente me!
-// TEST(MemberFunctionTemplate, MemberFunctionAccess_TemplatedMemberCall) {
-//   StringRef Code = R"(
-
-// )";
-//   LLVMContext Context;
-//   std::unique_ptr<ExecutionEngine> EE;
-//   ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
-//   MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
-//   ASSERT_TRUE(CB);
-//   int result = CB();
-//   ASSERT_EQ(result, 3);
-// }
 
 
 TEST(ClassParsing, MemberToMemberToMember) {

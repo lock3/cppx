@@ -342,8 +342,25 @@ static Expression handleElementExpression(ExprElaborator &Elab,
     llvm_unreachable("Unknown unresolved lookup type located. Unable to "
         "continue.");
   } else {
-    llvm_unreachable("Resolution of multiple declarations isn't "
-        "implemented yet.");
+    clang::LookupResult ResultTemp(SemaRef.getCxxSema(),
+                                    OverloadExpr->getNameInfo(),
+                                    clang::Sema::LookupAnyName);
+    // for (clang::NamedDecl *ND : OverloadExpr->decls()) {
+    //   ResultTemp.addDecl(ND);
+    // }
+    // SemaRef.getCxxSema().hasAnyAcceptableTemplateNames()
+    // llvm_unreachable("Resolution of multiple declarations isn't "
+    //     "implemented yet.");
+    if (isa<clang::UnresolvedLookupExpr>(OverloadExpr))
+      return clang::UnresolvedLookupExpr::Create(Context.CxxAST, 
+                                                 OverloadExpr->getNamingClass(),
+                                                OverloadExpr->getQualifierLoc(),
+                                                 OverloadExpr->getNameLoc(),
+                                                 OverloadExpr->getNameInfo(),
+                                                 /*ADL=*/true, &TemplateArgs,
+                                                 OverloadExpr->decls_begin(),
+                                                 OverloadExpr->decls_end());
+    llvm_unreachable("Unhandled type of overload.");
   }
   llvm_unreachable("This should never occur all other paths lead to return "
       "or abort.");
@@ -388,7 +405,21 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
   R.setTemplateNameLookup(true);
   SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
   if (!R.empty()) {
+    R.resolveKind();
     if (!R.isSingleResult()) {
+      if (R.isAmbiguous()) {
+        SemaRef.Diags.Report(S->getLoc(), clang::diag::err_multiple_declarations);
+        return nullptr;
+      }
+      if (R.isOverloadedResult()) {
+        // Need to figure out if the potential overload is a member function
+        // or not.
+        return clang::UnresolvedLookupExpr::Create(Context.CxxAST,
+            R.getNamingClass(), clang::NestedNameSpecifierLoc(),
+            R.getLookupNameInfo(), /*ADL=*/true, true,
+            R.begin(), R.end());
+      }
+
       // TODO: FIXME: This needs to be changed so we can accept 
       llvm_unreachable("We are not currently handling multiple declarations "
           "returned. This needs to be fixed in order to correctly create proper "
@@ -398,7 +429,7 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
       // for example if we a set of function overloads then this isn't going to
       // work correctly and we may need to simply return access to a function
       // address rather then something else?
-      SemaRef.Diags.Report(S->getLoc(), clang::diag::err_multiple_declarations);
+
       return nullptr;
     }
 
