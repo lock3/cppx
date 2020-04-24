@@ -240,8 +240,6 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
     }
   }
   clang::SourceLocation IdLoc = D->Decl->getLoc();
-  // llvm::outs() << "IdLoc Location\n";
-  // IdLoc.dump(SemaRef.getCxxSema().getSourceManager());
 
   Decl *Declaration = SemaRef.getCxxSema().ActOnTag(SemaRef.getCurClangScope(),
       clang::DeclSpec::TST_struct, /*Metafunction=*/nullptr, clang::Sema::TUK_Definition,
@@ -1048,6 +1046,7 @@ clang::QualType Elaborator::getOperatorColonType(const CallSyntax *S) const {
 
   assert(false && "Working on fixing this.");
 }
+
 static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S);
 
 static Declarator *buildIdDeclarator(const Syntax *S, Declarator *Next) {

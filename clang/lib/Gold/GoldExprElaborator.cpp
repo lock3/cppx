@@ -251,7 +251,7 @@ static Expression handleElementExpression(ExprElaborator &Elab,
   // Attempting to correctly handle the result of an Id expression.
   clang::OverloadExpr *OverloadExpr = dyn_cast<clang::OverloadExpr>(E);
   if (!OverloadExpr) {
-    // TODO: When we do add array processing we need to add it here.
+    // TODO: When we do add array indexing, we need to add it here.
     llvm_unreachable("Processing of array indices isn't implemented yet.");
     return nullptr;
   }
@@ -278,7 +278,6 @@ static Expression handleElementExpression(ExprElaborator &Elab,
       ActualArgs.emplace_back(Arg);
     }
   }
-
   clang::TemplateArgumentList TemplateArgList(
       clang::TemplateArgumentList::OnStack, ActualArgs);
   if (OverloadExpr->getNumDecls() == 1) {
@@ -331,35 +330,91 @@ static Expression handleElementExpression(ExprElaborator &Elab,
                                       clang::Sema::LookupAnyName);
       ResultTemp.addDecl(InstantiatedFunc);
       return clang::UnresolvedLookupExpr::Create(Context.CxxAST, 
-                                              OverloadExpr->getNamingClass(),
-                                            OverloadExpr->getQualifierLoc(),
-                                                // OverloadExpr->getNameLoc(),
-                                                OverloadExpr->getNameInfo(),
-                                                /*ADL=*/true, false,
-                                                ResultTemp.begin(),
-                                                ResultTemp.end());
+                                                 OverloadExpr->getNamingClass(),
+                                                OverloadExpr->getQualifierLoc(),
+                                                 // OverloadExpr->getNameLoc(),
+                                                 OverloadExpr->getNameInfo(),
+                                                 /*ADL=*/true, false,
+                                                 ResultTemp.begin(),
+                                                 ResultTemp.end());
     }
     llvm_unreachable("Unknown unresolved lookup type located. Unable to "
         "continue.");
   } else {
-    clang::LookupResult ResultTemp(SemaRef.getCxxSema(),
-                                    OverloadExpr->getNameInfo(),
-                                    clang::Sema::LookupAnyName);
-    // for (clang::NamedDecl *ND : OverloadExpr->decls()) {
-    //   ResultTemp.addDecl(ND);
-    // }
-    // SemaRef.getCxxSema().hasAnyAcceptableTemplateNames()
-    // llvm_unreachable("Resolution of multiple declarations isn't "
-    //     "implemented yet.");
-    if (isa<clang::UnresolvedLookupExpr>(OverloadExpr))
+    
+
+
+    if (isa<clang::UnresolvedLookupExpr>(OverloadExpr)) {
+      clang::LookupResult ResultTemp(SemaRef.getCxxSema(),
+                                      OverloadExpr->getNameInfo(),
+                                      clang::Sema::LookupAnyName);
+      ResultTemp.setTemplateNameLookup(true);
+      for (clang::NamedDecl *ND : OverloadExpr->decls()) {
+        if(clang::FunctionDecl *FD = ND->getAsFunction())
+          if(clang::FunctionTemplateDecl *FTD = FD->getDescribedFunctionTemplate()) {
+            ResultTemp.addDecl(FTD);
+          }
+      }
+      ResultTemp.resolveKind();
+      if (ResultTemp.empty()) {
+        // TODO: Create an error message for here. This should indicate that we
+        // don't have a valid template to instantiate.
+        llvm_unreachable("None of the given names were a template.");
+      }
       return clang::UnresolvedLookupExpr::Create(Context.CxxAST, 
                                                  OverloadExpr->getNamingClass(),
                                                 OverloadExpr->getQualifierLoc(),
                                                  OverloadExpr->getNameLoc(),
                                                  OverloadExpr->getNameInfo(),
                                                  /*ADL=*/true, &TemplateArgs,
-                                                 OverloadExpr->decls_begin(),
-                                                 OverloadExpr->decls_end());
+                                                 ResultTemp.begin(),
+                                                 ResultTemp.end());
+    }
+    if(clang::UnresolvedMemberExpr *UME = 
+                          dyn_cast<clang::UnresolvedMemberExpr>(OverloadExpr)) {
+      clang::LookupResult ResultTemp(SemaRef.getCxxSema(),
+                                      OverloadExpr->getNameInfo(),
+                                      clang::Sema::LookupAnyName);
+      ResultTemp.setTemplateNameLookup(true);
+      for (clang::NamedDecl *ND : OverloadExpr->decls()) {
+        ND = SemaRef.getCxxSema().getAsTemplateNameDecl(ND, true, true);
+        if(ND)
+          if(clang::FunctionDecl *FD = ND->getAsFunction())
+            if(clang::FunctionTemplateDecl *FTD = FD->getDescribedFunctionTemplate()) {
+              // clang::FunctionDecl *InstantiatedFunc
+              //     = SemaRef.getCxxSema().InstantiateFunctionDeclaration(FTD,
+              //       &TemplateArgList, Elem->getLoc());
+              // if (InstantiatedFunc) {
+              //   SemaRef.getCxxSema().InstantiateFunctionDefinition(
+              //       Elem->getLoc(), InstantiatedFunc, true, true, false);
+              //   ResultTemp.addDecl(InstantiatedFunc);
+              // }
+              ResultTemp.addDecl(FTD);
+            }
+      }
+      ResultTemp.resolveKind();
+      if (ResultTemp.empty()) {
+        // TODO: Create an error message for here. This should indicate that we
+        // don't have a valid template to instantiate.
+        llvm_unreachable("None of the given names were a template.");
+      }
+      // clang::ExprResult HandledLHS = SemaRef.getCxxSema().ActOnMemberAccessExpr(
+      //     SemaRef.getCurClangScope(), ElaboratedLHS.get<clang::Expr*>(), Op->getLoc(),
+      //     clang::tok::TokenKind::period, SS, Loc, Id, nullptr);
+
+      return clang::UnresolvedMemberExpr::Create(Context.CxxAST,
+                                                 UME->hasUnresolvedUsing(),
+                                                 UME->getBase(),
+                                                 UME->getBaseType(),
+                                                 UME->isArrow(),
+                                                 UME->getOperatorLoc(),
+                                                 UME->getQualifierLoc(),
+                                                 UME->getTemplateKeywordLoc(),
+                                                 UME->getNameInfo(),
+                                                 &TemplateArgs,
+                                                 ResultTemp.begin(),
+                                                 ResultTemp.end());
+    }
     llvm_unreachable("Unhandled type of overload.");
   }
   llvm_unreachable("This should never occur all other paths lead to return "
@@ -408,6 +463,7 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
     R.resolveKind();
     if (!R.isSingleResult()) {
       if (R.isAmbiguous()) {
+        llvm::outs() << "We have an R.isAmbiguous is true()\n";
         SemaRef.Diags.Report(S->getLoc(), clang::diag::err_multiple_declarations);
         return nullptr;
       }
@@ -435,7 +491,8 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
 
     if(clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>()) {
       clang::QualType FoundTy = VD->getType();
-      VD->setIsUsed();
+      // VD->setIsRef
+      // VD->setIsUsed();
 
       // If the user annotated the DeclRefExpr with an incorrect type.
       if (!Ty.isNull() && Ty != FoundTy) {
@@ -485,14 +542,12 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
             R.begin(), R.end());
       }
 
-
-
       // Checking if the current declaration is a variable.
       // FIXME: discern whether this is an lvalue or rvalue properly
       clang::DeclRefExpr *DRE =
         clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
                                   clang::SourceLocation(), VD, /*Capture=*/false,
-                                  Loc, FoundTy, clang::VK_LValue);
+                                  Loc, FoundTy, clang::VK_LValue, VD);
       return DRE;
     }
     
@@ -780,12 +835,7 @@ Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
         SemaRef.getCurClangScope(), ElaboratedLHS.get<clang::Expr*>(), Op->getLoc(),
         clang::tok::TokenKind::period, SS, Loc, Id, nullptr);
       if (HandledLHS.get()) {
-        
-        if (isa<clang::MemberExpr>(HandledLHS.get())) {
-          clang::MemberExpr *MemberExpression
-            = cast<clang::MemberExpr>(HandledLHS.get());
-          MemberExpression->getMemberDecl()->setIsUsed();
-        }
+        ExprMarker(Context.CxxAST, SemaRef).Visit(HandledLHS.get());
       } else {
         // TODO: Need to create error message for here.
         llvm_unreachable("We were not able to elaborate the member access "

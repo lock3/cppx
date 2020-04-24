@@ -156,8 +156,12 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
       for (auto *FoundDecl : Found) {
         // If we find a name that hasn't been elaborated,
         // then we actually need to elaborate it.
-        if (!FoundDecl->Cxx)
-          Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
+        if (!FoundDecl->Cxx) {
+          // Prevent early elaboration of functions and function templates
+          if (!(FoundDecl->declaresTemplate() || FoundDecl->declaresFunction())) {
+            Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
+          }
+        }
         if (!FoundDecl->Cxx)
           return false;
         clang::NamedDecl *ND = cast<clang::NamedDecl>(FoundDecl->Cxx);
