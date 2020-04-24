@@ -116,6 +116,7 @@ enum FusedOpKind {
   FOK_Return,
   FOK_MemberAccess,
   FOK_For,
+  FOK_While,
   FOK_In,
   FOK_DotDot,
 };

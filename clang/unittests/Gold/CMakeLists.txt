@@ -44,6 +44,7 @@ add_clang_unittest(GoldTests
   BuiltInTypeConstructorsExec.cpp
   ImplicitCtorExplicitCallExec.cpp
   GoldGlobalParsing.cpp
+  GoldWhile.cpp
   )
 
 clang_target_link_libraries(GoldTests

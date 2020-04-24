@@ -119,6 +119,8 @@ private:
   clang::Stmt *handleCartesianFor(const ListSyntax *S,
                                   const Syntax *BodyCST,
                                   clang::SourceLocation ForLoc);
+  clang::Stmt *elaborateWhileStmt(const MacroSyntax *S);
+  clang::Stmt *elaborateBlockWhileStmt(const MacroSyntax *S);
 };
 
 } // namespace gold
