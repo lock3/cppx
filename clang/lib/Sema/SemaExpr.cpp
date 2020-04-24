@@ -4206,6 +4206,7 @@ static void captureVariablyModifiedType(ASTContext &Context, QualType T,
     case Type::ObjCTypeParam:
     case Type::Pipe:
     case Type::CppxKind:
+    case Type::Template:
 #define TYPE(Class, Base)
 #define META_TYPE(Class, Base) case Type::Class:
 #include "clang/AST/TypeNodes.inc"

@@ -67,6 +67,8 @@ public:
   // constructs.
   void IdentifyDecls(const ArraySyntax *S);
 
+  /// Check if, within the current scope a access specifier is valid,
+  bool accessSpecifierIsValidInScope() const;
   // Scope management.
 
   /// Get the currently active Scope.
@@ -102,7 +104,6 @@ public:
   bool lookupUnqualifiedName(clang::LookupResult &R, Scope *S);
 
   // Declaration context
-
   /// The current declaration.
   Declaration *getCurrentDecl() {
     return CurrentDecl;
@@ -154,11 +155,13 @@ public:
 
   SyntaxContext &getContext() { return Context; }
 
-  clang::QualType lookUpType(clang::IdentifierInfo *Id, Scope *S) const;
+  // clang::QualType lookUpType(clang::IdentifierInfo *Id, Scope *S) const;
 
   /// This is the clang processing scope. This is mostly for code GenPieces.
   clang::Scope *getCurClangScope();
   clang::Scope *enterClangScope(unsigned int ScopeFlags);
+  clang::Scope *moveToParentScopeNoPop();
+  void ReEnterScope(clang::Scope* Scope);
   void leaveClangScope(clang::SourceLocation Loc);
 
 public:

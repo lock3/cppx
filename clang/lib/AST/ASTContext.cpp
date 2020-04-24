@@ -795,6 +795,88 @@ ASTContext::getCanonicalTemplateTemplateParmDecl(
   return CanonTTP;
 }
 
+
+static void TemplateTemplateParmProfile(llvm::FoldingSetNodeID &ID,
+                                               TemplateTemplateParmDecl *Parm,
+                                               int Depth = 0) {
+  ID.AddInteger(Depth);
+  ID.AddInteger(Parm->getDepth());
+  ID.AddInteger(Parm->getPosition());
+  ID.AddBoolean(Parm->isParameterPack());
+
+  TemplateParameterList *Params = Parm->getTemplateParameters();
+  ID.AddInteger(Params->size());
+  for (TemplateParameterList::const_iterator P = Params->begin(),
+                                          PEnd = Params->end();
+       P != PEnd; ++P) {
+    if (const auto *TTP = dyn_cast<TemplateTypeParmDecl>(*P)) {
+      ID.AddInteger(0);
+      ID.AddBoolean(TTP->isParameterPack());
+      continue;
+    }
+
+    if (const auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(*P)) {
+      ID.AddInteger(1);
+      ID.AddBoolean(NTTP->isParameterPack());
+      ID.AddPointer(NTTP->getType().getCanonicalType().getAsOpaquePtr());
+      if (NTTP->isExpandedParameterPack()) {
+        ID.AddBoolean(true);
+        ID.AddInteger(NTTP->getNumExpansionTypes());
+        for (unsigned I = 0, N = NTTP->getNumExpansionTypes(); I != N; ++I) {
+          QualType T = NTTP->getExpansionType(I);
+          ID.AddPointer(T.getCanonicalType().getAsOpaquePtr());
+        }
+      } else
+        ID.AddBoolean(false);
+      continue;
+    }
+
+    auto *TTP = cast<TemplateTemplateParmDecl>(*P);
+    ID.AddInteger(2);
+    TemplateTemplateParmProfile(ID, TTP, Depth + 1);
+  }
+}
+
+void TemplateType::Profile(llvm::FoldingSetNodeID &ID, TemplateDecl *D) { 
+  ID.AddInteger(D->getKind());
+  TemplateParameterList *TPL = D->getTemplateParameters();
+  ID.AddInteger(TPL->size());
+  std::size_t index = 0;
+  for (NamedDecl * Param : *TPL) {
+    // Adding an index for each parameter.
+    ID.AddInteger(index);
+    ++index;
+    if (TemplateTypeParmDecl *TTP = dyn_cast<TemplateTypeParmDecl>(Param)) {
+      ID.AddInteger(0);
+      ID.AddBoolean(TTP->isParameterPack());
+      continue;
+    }
+    if (NonTypeTemplateParmDecl *NTTP = dyn_cast<NonTypeTemplateParmDecl>(Param)) {
+      ID.AddInteger(1);
+      ID.AddBoolean(NTTP->isParameterPack());
+      ID.AddPointer(NTTP->getType().getCanonicalType().getAsOpaquePtr());
+      if (NTTP->isExpandedParameterPack()) {
+        ID.AddBoolean(true);
+        ID.AddInteger(NTTP->getNumExpansionTypes());
+        for (unsigned I = 0, N = NTTP->getNumExpansionTypes(); I != N; ++I) {
+          QualType T = NTTP->getExpansionType(I);
+          ID.AddPointer(T.getCanonicalType().getAsOpaquePtr());
+        }
+      } else
+        ID.AddBoolean(false);
+      continue;
+    }
+    
+    if (TemplateTemplateParmDecl *TTParam
+                                  = dyn_cast<TemplateTemplateParmDecl>(Param)) {
+      TemplateTemplateParmProfile(ID, TTParam);
+      continue;
+    }
+  }
+}
+
+
+
 CXXABI *ASTContext::createCXXABI(const TargetInfo &T) {
   if (!LangOpts.CPlusPlus && !LangOpts.Gold) return nullptr;
 
@@ -2248,6 +2330,7 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
     Align = Target->getPointerAlign(getTargetAddressSpace(LangAS::opencl_global));
     break;
 
+  case Type::Template:
   case Type::CppxKind:
     Width = 0; // Like void, you can't create objects.
     Align = 1; // Not a real value
@@ -3361,6 +3444,7 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::CXXDependentVariadicReifier:
   case Type::CXXRequiredType:
   case Type::CppxKind:
+  case Type::Template:
     llvm_unreachable("type should never be variably-modified");
 
   // These types can be variably-modified but should never need to
@@ -5901,6 +5985,23 @@ int ASTContext::getFloatingTypeSemanticOrder(QualType LHS, QualType RHS) const {
   return getFloatingTypeOrder(LHS, RHS);
 }
 
+
+QualType ASTContext::getTemplateType(TemplateDecl *Decl) const {
+  llvm::FoldingSetNodeID ID;
+  TemplateType::Profile(ID, Decl);
+
+  void *InsertPos = nullptr;
+  TemplateType *TT =
+    TemplateTypes.FindNodeOrInsertPos(ID, InsertPos);
+  if (!TT) {
+    // void *memory = Allocate(sizeof(TemplateType));
+    TT = new (*this) TemplateType(Decl);
+    TemplateTypes.InsertNode(TT, InsertPos);
+  }
+
+  return QualType(TT, 0);
+}
+
 /// getIntegerRank - Return an integer conversion rank (C99 6.3.1.1p1). This
 /// routine will assert if passed a built-in type that isn't an integer or enum,
 /// or if it is not canonicalized.
@@ -7276,6 +7377,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string &S,
 
   case Type::Pipe:
   case Type::CppxKind:
+  case Type::Template:
 #define ABSTRACT_TYPE(KIND, BASE)
 #define TYPE(KIND, BASE)
 #define DEPENDENT_TYPE(KIND, BASE) \
@@ -9281,6 +9383,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
     return {};
   case Type::Builtin:
   case Type::CppxKind:
+  case Type::Template:
     // Only exactly equal builtin types are compatible, which is tested above.
     return {};
   case Type::Complex:

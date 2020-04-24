@@ -74,7 +74,7 @@ main() : int!
   DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
     hasDescendant(ClassCInfo),
     hasDescendant(MainFnMatcher)
-    );
+  );
 
 
   ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
@@ -180,6 +180,39 @@ main() : int!
   ASSERT_TRUE(matches(Code, MemberFunctionMatch));
 }
 
+
+TEST(ClassParsing, MemberFunction_ImplicitThisCall) {
+  StringRef Code = R"(
+c : type = class:
+  x : int = 5
+  y : bool
+  foo() : int!
+    return x
+  
+  bar() : int!
+    return foo()
+  
+
+main() : int!
+  q : c
+  return q.foo()
+)";
+  DeclarationMatcher ClassCInfo = recordDecl(
+    recordDecl(hasName("c")),
+    hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
+      isPublic())),
+    hasDescendant(fieldDecl(hasName("y"), hasType(asString("_Bool")),
+      isPublic())),
+    hasDescendant(cxxMethodDecl(hasName("foo"))),
+    hasDescendant(cxxMethodDecl(hasName("bar"),
+      hasDescendant(returnStmt(has(
+        cxxMemberCallExpr()
+      )))
+    ))
+  );
+
+  ASSERT_TRUE(matches(Code, ClassCInfo));
+}
 
 TEST(ClassParsing, MemberFunction_OutsideOfClassCall) {
   StringRef Code = R"(
@@ -455,3 +488,230 @@ main() : int!
   );
   ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
 }
+
+
+
+TEST(ClassParsing, NestedTypeDefinition) {
+  StringRef Code = R"(
+c : type = class:
+  nested : type = class:
+    a : int
+    b : float
+  
+main() : int!
+  u : c.nested
+  return 0
+)";
+
+  DeclarationMatcher ClassCInfo = recordDecl(
+    hasName("c"),
+    has(recordDecl(hasName("nested"),
+      hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
+        isPublic())),
+      hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
+        isPublic()))
+    ))
+  );
+  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+    isDefinition(),
+    hasDescendant(
+      varDecl(
+        hasType(asString("struct c::nested")),
+        hasName("u"),
+        hasInitializer(hasDescendant(cxxConstructExpr()))
+      )
+    )
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo)//,
+    // hasDescendant(MainFnMatcher)
+  );
+  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+}
+
+
+TEST(ClassParsing, MultipleNestedTypeDefinition) {
+  StringRef Code = R"(
+c : type = class:
+  nested : type = class:
+    nested2 : type = class:
+      a : int
+      b : float
+    
+  
+
+main() : int!
+  u : c.nested.nested2
+  return 0
+)";
+
+  DeclarationMatcher ClassCInfo = recordDecl(
+    hasName("c"),
+    has(recordDecl(hasName("nested"),
+      has(recordDecl(hasName("nested2"),
+        hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
+          isPublic())),
+        hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
+          isPublic()))
+      ))
+    ))
+  );
+  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+    isDefinition(),
+    hasDescendant(
+      varDecl(
+        hasType(asString("struct c::nested::nested2")),
+        hasName("u"),
+        hasInitializer(hasDescendant(cxxConstructExpr()))
+      )
+    )
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo)//,
+    // hasDescendant(MainFnMatcher)
+  );
+  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+}
+
+
+TEST(ClassParsing, TemplatedMemberFunction) {
+  StringRef Code = R"(
+c : type = class:
+  foo[T : type](x : T) : T!
+    return x
+)";
+  DeclarationMatcher MemberFunctionMatch = recordDecl( hasName("c"),
+    hasDescendant(functionTemplateDecl(hasName("foo"), has(cxxMethodDecl())))
+  );
+  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}
+
+// FIXME: WOrking on long term fix to this.
+TEST(ClassParsing, TemplateMemberFunction_Call) {
+  StringRef Code = R"(
+c : type = class:
+  foo[i:int]() : int!
+    return i
+  
+
+main() :int! 
+  a : c = c()
+  return a.foo[3]()
+
+)";
+  DeclarationMatcher MemberFunctionMatch = recordDecl( hasName("c"),
+    hasDescendant(functionTemplateDecl(hasName("foo"), has(cxxMethodDecl())))
+  );
+  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}
+
+TEST(ClassParsing, TemplateMemberFunction_Call2) {
+
+  StringRef Code = R"(
+c : type = class:
+  y : bool = 0
+  foo[i:int]() :int!
+    return i
+  
+
+main() : int!
+  q : c
+  return q.foo[3]()
+
+)";
+  DeclarationMatcher MemberFunctionMatch = recordDecl( hasName("c"),
+    hasDescendant(functionTemplateDecl(hasName("foo"), has(cxxMethodDecl())))
+  );
+  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}
+
+
+TEST(ClassParsing, MemberToMemberToMember) {
+  StringRef Code = R"(
+a : type = class:
+  z : int = 5
+
+b : type = class:
+  x : a
+
+c : type = class:
+  y : b  
+
+main() : int!
+  q : c
+  return q.y.x.z
+)";
+  StatementMatcher StmtMatcher(compoundStmt(has(
+    returnStmt(
+      hasDescendant(
+        memberExpr(
+          has(
+            memberExpr(
+              has(
+                memberExpr(
+                  has(
+                    declRefExpr(
+                      to(
+                        varDecl(
+                          hasName("q")
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )));
+  ASSERT_TRUE(matches(Code, StmtMatcher));
+}
+
+// TEST(ClassParsing, AccessingMemberThroughFunctionReturn) {
+//   StringRef Code = R"(
+// a : type = class:
+//   z : int = 5
+
+// b : type = class:
+//   x : a
+
+// c : type = class:
+//   y : b  
+
+// foo() : c!
+//   return c()
+
+// main() : int!
+//   return foo().y.x.z
+// )";
+//   StatementMatcher StmtMatcher(compoundStmt(has(
+//     returnStmt(
+//       hasDescendant(
+//         memberExpr(
+//           has(
+//             memberExpr(
+//               has(
+//                 memberExpr(
+//                   has(
+//                     declRefExpr(
+//                       to(
+//                         varDecl(
+//                           hasName("q")
+//                         )
+//                       )
+//                     )
+//                   )
+//                 )
+//               )
+//             )
+//           )
+//         )
+//       )
+//     )
+//   )));
+//   ASSERT_TRUE(matches(Code, StmtMatcher));
+// }

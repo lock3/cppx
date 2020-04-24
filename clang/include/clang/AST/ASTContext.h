@@ -219,6 +219,9 @@ class ASTContext : public RefCountedBase<ASTContext> {
   llvm::FoldingSet<AttributedType> AttributedTypes;
   mutable llvm::FoldingSet<PipeType> PipeTypes;
 
+  /// The set of template types used by the system.
+  mutable llvm::FoldingSet<TemplateType> TemplateTypes;
+
   mutable llvm::FoldingSet<QualifiedTemplateName> QualifiedTemplateNames;
   mutable llvm::FoldingSet<DependentTemplateName> DependentTemplateNames;
   mutable llvm::FoldingSet<SubstTemplateTemplateParmStorage>
@@ -2591,6 +2594,8 @@ public:
     return AddrSpaceMapMangling || isTargetAddressSpace(AS);
   }
 
+public:
+  QualType getTemplateType(TemplateDecl *Decl) const;
 private:
   // Helper for integer ordering
   unsigned getIntegerRank(const Type *T) const;

@@ -15,6 +15,7 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/TypeLoc.h"
+#include "clang/AST/TemplateBase.h"
 #include "clang/Sema/TypeLocUtil.h"
 #include "TypeLocBuilder.h"
 
@@ -434,7 +435,8 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::TagTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::RecordTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  TLB.pushTypeSpec(Ty);
+  auto RTL = TLB.push<clang::RecordTypeLoc>(Ty);
+  RTL.initializeLocal(Ctx, Loc);
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
@@ -508,10 +510,25 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::SubstTemplateTypeParmPackTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateSpecializationTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  auto TypeLocInstance = TLB.push<clang::TemplateSpecializationTypeLoc>(Ty);
+  TypeLocInstance.initializeLocal(Ctx, Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateSpecializationTypeLoc>
+(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
+  TypeLocBuilder TLB;
+  return BuildTypeLoc<clang::TemplateSpecializationTypeLoc>(Context, TLB, Ty, Loc);
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateTypeLoc>
+(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
+  auto TypeLocInstance = TLB.push<clang::TemplateTypeLoc>(Ty);
+  TypeLocInstance.initializeLocal(Ctx, Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::TemplateSpecializationTypeLoc>(Context, TLB, Ty, Loc);
@@ -541,7 +558,8 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::DeducedTemplateSpecializationType
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::InjectedClassNameTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  TLB.pushTypeSpec(Ty);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::InjectedClassNameTypeLoc>

@@ -138,7 +138,6 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   if (SemaRef.getCurrentScope()->isBlockScope()) {
     if (OpKind == FOK_Colon || OpKind == FOK_Equals) {
       Elaborator E(Context, SemaRef);
-
       clang::Decl *N = E.elaborateDeclSyntax(S);
       if (N)
         return createDeclStmt(CxxAST, SemaRef, N, S->getLoc(),
@@ -150,6 +149,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   // try and elaborate it as such.
   switch (OpKind) {
   case FOK_Colon: {
+
     // FIXME: fully elaborate the name expression.
     const AtomSyntax *Name = cast<AtomSyntax>(S->getArgument(0));
     clang::Sema &ClangSema = SemaRef.getCxxSema();
@@ -200,10 +200,8 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
                                       S->getLoc(), clang::tok::equal,
                                       NameExpr.get<clang::Expr *>(),
                                       InitExpr.get<clang::Expr *>());
-    if (Assignment.isInvalid()) {
-      llvm::errs() << "Unexpected assignment.\n";
+    if (Assignment.isInvalid())
       return nullptr;
-    }
 
     // We can readily assume anything here is getting used.
     ExprMarker(CxxAST, SemaRef).Visit(NameExpr.get<clang::Expr *>());
@@ -212,20 +210,31 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   }
 
   case FOK_Return: {
-    ExprElaborator::Expression RetVal =
-      ExprElaborator(Context, SemaRef).elaborateExpr(S->getArgument(0));
-    if (RetVal.isNull())
-      return nullptr;
-    if (RetVal.is<clang::TypeSourceInfo *>()) {
-      SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
-                           clang::diag::err_expected_lparen_after_type);
-      return nullptr;
+    clang::StmtResult ReturnResult;
+    if (S->getNumArguments()) {
+      ExprElaborator::Expression RetVal = 
+        ExprElaborator(Context, SemaRef).elaborateExpr(S->getArgument(0));
+      if (RetVal.isNull())
+        return nullptr;
+      if (RetVal.is<clang::TypeSourceInfo *>()) {
+        SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
+                            clang::diag::err_expected_lparen_after_type);
+        return nullptr;
+      }
+      ExprMarker(CxxAST, SemaRef).Visit(RetVal.get<clang::Expr *>());
+      ReturnResult = SemaRef.getCxxSema().
+        ActOnReturnStmt(S->getCallee()->getLoc(), RetVal.get<clang::Expr *>(), 
+          SemaRef.getCurClangScope());
+    } else {
+      ReturnResult = SemaRef.getCxxSema().
+        ActOnReturnStmt(S->getCallee()->getLoc(), nullptr, 
+          SemaRef.getCurClangScope());
     }
-    ExprMarker(CxxAST, SemaRef).Visit(RetVal.get<clang::Expr *>());
-    clang::StmtResult ReturnResult = SemaRef.getCxxSema().
-      BuildReturnStmt(S->getCallee()->getLoc(), RetVal.get<clang::Expr *>());
-    
     return ReturnResult.get();
+
+
+
+    
   }
 
   default:
@@ -234,15 +243,6 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
 
   // If all else fails, just see if we can elaborate any expression.
   return elaborateDefaultCall(Context, SemaRef, S);
-  // ExprElaborator ExprElab(Context, SemaRef);
-  // ExprElaborator::Expression Expression = ExprElab.elaborateCall(S);
-
-  // if (Expression.is<clang::TypeSourceInfo *>()) {
-  //   Diags.Report(S->getLoc(), clang::diag::err_expected_expression);
-  //   return nullptr;
-  // }
-
-  // return Expression.get<clang::Expr *>();
 }
 
 clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
@@ -809,14 +809,24 @@ StmtElaborator::elaborateBlock(const Syntax *S) {
   clang::SourceLocation StartLoc, EndLoc;
   if (auto *Array = dyn_cast<ArraySyntax>(S)) {
     elaborateBlockForArray(cast<ArraySyntax>(S), Results);
-
-    StartLoc = Array->getChild(0)->getLoc();
-    EndLoc = Array->getChild(Array->getNumChildren() - 1)->getLoc();
+    // We are going to need to check for an empty block in this instance,
+    // because that's also possible
+    if (Array->getNumChildren() == 0) {
+      StartLoc = Array->getLoc();
+      EndLoc = Array->getLoc();
+    } else {
+      StartLoc = Array->getChild(0)->getLoc();
+      EndLoc = Array->getChild(Array->getNumChildren() - 1)->getLoc();
+    }
   } else if (auto *List = dyn_cast<ListSyntax>(S)) {
     elaborateBlockForList(cast<ListSyntax>(S), Results);
-
-    StartLoc = List->getChild(0)->getLoc();
-    EndLoc = List->getChild(List->getNumChildren() - 1)->getLoc();
+    if (List->getNumChildren() == 0) {
+      StartLoc = List->getLoc();
+      EndLoc = List->getLoc();
+    } else {
+      StartLoc = List->getChild(0)->getLoc();
+      EndLoc = List->getChild(List->getNumChildren() - 1)->getLoc();
+    }
   } else {
     // This is some sort of one-line block like `f(x : int) = x * x`
     // FIXME: Make sure this only creates return stmts in a function context.

@@ -47,12 +47,22 @@ class ExprElaborator {
   clang::ASTContext &CxxAST;
 
   Sema &SemaRef;
+
+  /// This is only used when we have an explicitly specified name or explicit
+  /// member access namespace look up.
+  clang::DeclContext *CurrentLookUpContext = nullptr;
+  Scope *OwningScope = nullptr;
 public:
-  ExprElaborator(SyntaxContext &Context, Sema &SemaRef);
+  ExprElaborator(SyntaxContext &Context, Sema &SemaRef,
+      clang::DeclContext *DC = nullptr, Scope *GoldScope = nullptr);
+
+  /// This is used partially during expression evaluation because there's always
+  /// a possibility that we could return a namespace rather than a type.
 
   // Represents a C++ expression, which may be either an object expression
   // or a type expression.
-  using Expression = llvm::PointerUnion<clang::Expr *, clang::TypeSourceInfo *>;
+  using Expression = llvm::PointerUnion<clang::Expr *, clang::TypeSourceInfo *,
+      clang::NamespaceDecl *>;
   using TypeInfo = clang::TypeSourceInfo;
 
   //===--------------------------------------------------------------------===//
@@ -63,8 +73,11 @@ public:
   Expression elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType);
   Expression elaborateCall(const CallSyntax *S);
 
-  Expression elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op, const Syntax *RHS);
-  Expression elaborateElemCall(const CallSyntax *S);
+  Expression elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op,
+                                   const Syntax *RHS);
+  Expression elaborateNestedLookUpAccess(Expression Previous,
+                                         const CallSyntax *Op,
+                                         const Syntax *RHS);
 
   Expression elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
 
@@ -72,6 +85,8 @@ public:
 
   Expression elaborateMacro(const MacroSyntax *Macro);
   Expression elaborateClass(const MacroSyntax *Macro);
+
+  Expression elaborateElementExpr(const ElemSyntax *Elem);
 
 
 private:
@@ -88,6 +103,8 @@ public:
   Expression elaborateFunctionType(Declarator *D, TypeInfo *Ty);
   Expression elaborateExplicitType(Declarator *D, TypeInfo *Ty);
 };
+
+void dumpExpression(ExprElaborator::Expression Expr, llvm::raw_ostream& Out);
 
 } // namespace gold
 

@@ -2014,6 +2014,7 @@ bool CXXNameMangler::mangleUnresolvedTypeOrSimpleId(QualType Ty,
   case Type::Pipe:
   case Type::MacroQualified:
   case Type::CppxKind:
+  case Type::Template:
     llvm_unreachable("type is illegal as a nested name specifier");
 
   case Type::SubstTemplateTypeParmPack:
@@ -3331,6 +3332,11 @@ void CXXNameMangler::mangleType(const InjectedClassNameType *T) {
 void CXXNameMangler::mangleType(const CppxKindType *T) {
   llvm_unreachable("unexpected type");
 }
+
+void CXXNameMangler::mangleType(const TemplateType *T) {
+  llvm_unreachable("unexpected type");
+}
+
 
 void CXXNameMangler::mangleType(const TemplateSpecializationType *T) {
   if (TemplateDecl *TD = T->getTemplateName().getAsTemplateDecl()) {

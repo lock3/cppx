@@ -1497,6 +1497,8 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
     case Type::SubstTemplateTypeParmPack:
       llvm_unreachable("Type nodes handled above");
 
+    case Type::Template:
+      llvm_unreachable("Not sure what's supposed to happen here exactly.");
     // These types cannot be dependent, so simply check whether the types are
     // the same.
     case Type::Builtin:
@@ -1509,6 +1511,7 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
     case Type::ObjCInterface:
     case Type::ObjCObjectPointer:
     case Type::CppxKind:
+    
       if (TDF & TDF_SkipNonDependent)
         return Sema::TDK_Success;
 
@@ -5809,6 +5812,9 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
   case Type::CXXDependentVariadicReifier:
   case Type::CXXRequiredType:
   case Type::CppxKind:
+  case Type::Template:
+  // This type is a template I'm not sure what to do here. Because technically
+  // the template parameters haven't been used yet.
 #define TYPE(Class, Base)
 #define ABSTRACT_TYPE(Class, Base)
 #define DEPENDENT_TYPE(Class, Base)

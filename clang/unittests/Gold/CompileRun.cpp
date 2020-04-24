@@ -58,13 +58,9 @@ testing::AssertionResult CompileGoldCode(llvm::LLVMContext& Context,
   compiler.createASTContext();
   CodeGenerator* Generator;
   compiler.setASTConsumer(std::unique_ptr<ASTConsumer>(
-      Generator = CreateLLVMCodeGen(
-          compiler.getDiagnostics(),
-          "test.usyntax",
-          compiler.getHeaderSearchOpts(),
-          compiler.getPreprocessorOpts(),
-          compiler.getCodeGenOpts(),
-          Context)));
+      Generator = CreateLLVMCodeGen(compiler.getDiagnostics(),
+          "test.usyntax", compiler.getHeaderSearchOpts(),
+          compiler.getPreprocessorOpts(), compiler.getCodeGenOpts(), Context)));
 
   compiler.createSema(clang::TU_Prefix, nullptr);
 

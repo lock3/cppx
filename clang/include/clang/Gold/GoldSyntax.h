@@ -121,6 +121,10 @@ public:
     return Tok;
   }
 
+  bool hasToken(tok::TokenKind K) const {
+    return getToken().hasKind(K);
+  }
+
   llvm::StringRef getSpelling() const {
     return Tok.getSpelling();
   }
