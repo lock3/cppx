@@ -650,7 +650,7 @@ clang::Stmt *StmtElaborator::elaborateBlockForStmt(const MacroSyntax *S) {
 }
 
 clang::Stmt *StmtElaborator::elaborateForStmt(const MacroSyntax *S) {
-  assert (isa<CallSyntax>(S->getCall()));
+  assert(isa<CallSyntax>(S->getCall()));
   const CallSyntax *MacroCall = cast<CallSyntax>(S->getCall());
   // If the macro's arguments are an array, we're working with a block-for.
   if (isa<ArraySyntax>(MacroCall->getArguments()))
@@ -695,6 +695,77 @@ clang::Stmt *StmtElaborator::elaborateForStmt(const MacroSyntax *S) {
 }
 
 clang::Stmt *
+StmtElaborator::elaborateWhileStmt(const MacroSyntax *S) {
+  assert(isa<CallSyntax>(S->getCall()));
+  const CallSyntax *MacroCall = cast<CallSyntax>(S->getCall());
+  clang::SourceLocation WhileLoc = S->getCall()->getLoc();
+
+  clang::Sema::GoldElaborationScopeRAII CxxScope(
+    SemaRef.getCxxSema(),
+    clang::Scope::BreakScope    |
+    clang::Scope::ContinueScope |
+    clang::Scope::DeclScope     |
+    clang::Scope::ControlScope);
+  Sema::ScopeRAII WhileScope(SemaRef, SK_Control, S);
+
+
+  // If the macro's arguments are an array, we're working with a block-while.
+
+  ExprElaborator::Expression CondExpr = nullptr;
+  clang::SourceLocation CondLoc;
+  if (const auto *Block = dyn_cast<ArraySyntax>(MacroCall->getArguments())) {
+    CondLoc = Block->getChild(0)->getLoc();
+    CondExpr =
+      ExprElaborator(Context, SemaRef).elaborateBlockCondition(Block);
+  } else {
+    assert (isa<ListSyntax>(MacroCall->getArguments()) && "Invalid macro block");
+    const ListSyntax *Arguments = cast<ListSyntax>(MacroCall->getArguments());
+
+    if (!Arguments->getNumChildren())
+      return nullptr;
+    if (Arguments->getNumChildren() > 1) {
+      unsigned ErrID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "too many conditions in while loop");
+      unsigned NoteID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Note,
+                                      "did you mean to use `while:`?");
+      Diags.Report(WhileLoc, ErrID);
+      Diags.Report(WhileLoc, NoteID);
+      return nullptr;
+    }
+
+    CondLoc = Arguments->getChild(0)->getLoc();
+    CondExpr =
+      ExprElaborator(Context, SemaRef).elaborateExpr(Arguments->getChild(0));
+  }
+
+
+  if (CondExpr.is<clang::TypeSourceInfo *>()) {
+    Diags.Report(CondLoc, clang::diag::err_expected_expression);
+    return nullptr;
+  }
+  if (CondExpr.isNull())
+    return nullptr;
+
+  clang::Sema::ConditionResult Condition =
+    SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr, S->getLoc(),
+                                        CondExpr.get<clang::Expr *>(),
+                                        clang::Sema::ConditionKind::Boolean);
+  Sema::ScopeRAII(SemaRef, SK_Block, S->getBlock());
+  clang::Stmt *Body =
+    StmtElaborator(Context, SemaRef).elaborateBlock(S->getBlock());
+  if (!Body)
+    return nullptr;
+
+  clang::StmtResult While =
+    SemaRef.getCxxSema().ActOnWhileStmt(WhileLoc, Condition, Body);
+  if (While.isInvalid())
+    return nullptr;
+  return While.get();
+}
+
+clang::Stmt *
 StmtElaborator::elaborateMacro(const MacroSyntax *S) {
   const AtomSyntax *Callee;
   if (const CallSyntax *Call = dyn_cast<CallSyntax>(S->getCall()))
@@ -711,6 +782,8 @@ StmtElaborator::elaborateMacro(const MacroSyntax *S) {
     return elaborateElseStmt(S);
   case FOK_For:
     return elaborateForStmt(S);
+  case FOK_While:
+    return elaborateWhileStmt(S);
   default:
     break;
   }

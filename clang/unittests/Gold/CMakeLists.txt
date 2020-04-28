@@ -50,7 +50,8 @@ add_clang_unittest(GoldTests
   GoldGlobalParsing.cpp
   GoldImplicitCtorExplicitCallExec.cpp
   GoldMemberExecuteTest.cpp
-)
+  GoldWhile.cpp
+  )
 
 clang_target_link_libraries(GoldTests
   PRIVATE

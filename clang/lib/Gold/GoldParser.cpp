@@ -686,20 +686,21 @@ Syntax *Parser::parseIf()
 
 Syntax *Parser::parseWhile()
 {
-  Token tok = expectToken("while");
-  Syntax *cond = parseParen();
+  Token WhileTok = expectToken("while");
+  if (nextTokenIs(tok::Colon))
+    return parseBlockLoop(WhileTok);
+  Syntax *Cond = parseParen();
 
-  // FIXME: Allow an optional 'do' keyword?
-  Syntax *block = parseBlock();
+  Syntax *Block = matchToken("do") ? parseExpr() : parseBlock();
 
-  return onLoop(tok, cond, block);
+  return onLoop(WhileTok, Cond, Block);
 }
 
 Syntax *Parser::parseFor()
 {
   Token ForTok = expectToken("for");
   if (nextTokenIs(tok::Colon))
-    return parseBlockFor(ForTok);
+    return parseBlockLoop(ForTok);
 
   Syntax *Cond = parseParen();
 
@@ -708,14 +709,14 @@ Syntax *Parser::parseFor()
   return onLoop(ForTok, Cond, Block);
 }
 
-Syntax *Parser::parseBlockFor(Token ForTok)
+Syntax *Parser::parseBlockLoop(Token KWTok)
 {
   Syntax *CondBlock = parseBlock();
 
   expectToken("do");
   Syntax *Block = parseBlock();
 
-  return onLoop(ForTok, CondBlock, Block);
+  return onLoop(KWTok, CondBlock, Block);
 }
 
 auto is_unary_operator = [](TokenKind k) -> bool

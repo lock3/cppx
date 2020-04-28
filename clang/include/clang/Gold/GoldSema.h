@@ -183,6 +183,7 @@ public:
   const clang::IdentifierInfo *OperatorReturnsII;
   const clang::IdentifierInfo *OperatorDotII;
   const clang::IdentifierInfo *OperatorForII;
+  const clang::IdentifierInfo *OperatorWhileII;
   const clang::IdentifierInfo *OperatorInII;
   const clang::IdentifierInfo *OperatorDotDotII;
 
