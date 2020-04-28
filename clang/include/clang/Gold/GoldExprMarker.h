@@ -41,10 +41,7 @@ struct ExprMarker : public clang::EvaluatedExprVisitor<ExprMarker> {
     SemaRef.getCxxSema().MarkAnyDeclReferenced(E->getBeginLoc(),
                                                E->getDecl(),
                                                /*OdrUsed=*/false);
-    // TODO: I'm not sure this is 100% necessary, I need to make sure that it
-    // does what it's supposed to do without it and doesn't cause any code gen
-    // issues.
-    // E->getDecl()->markUsed(CxxAST);
+    E->getDecl()->markUsed(CxxAST);
   }
 };
 

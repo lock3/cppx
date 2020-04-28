@@ -369,6 +369,7 @@ static Expression handleElementExpression(ExprElaborator &Elab,
                                                  /*ADL=*/true, &TemplateArgs,
                                                  ResultTemp.begin(),
                                                  ResultTemp.end());
+      
     }
     if(clang::UnresolvedMemberExpr *UME = 
                           dyn_cast<clang::UnresolvedMemberExpr>(OverloadExpr)) {
@@ -398,10 +399,6 @@ static Expression handleElementExpression(ExprElaborator &Elab,
         // don't have a valid template to instantiate.
         llvm_unreachable("None of the given names were a template.");
       }
-      // clang::ExprResult HandledLHS = SemaRef.getCxxSema().ActOnMemberAccessExpr(
-      //     SemaRef.getCurClangScope(), ElaboratedLHS.get<clang::Expr*>(), Op->getLoc(),
-      //     clang::tok::TokenKind::period, SS, Loc, Id, nullptr);
-
       return clang::UnresolvedMemberExpr::Create(Context.CxxAST,
                                                  UME->hasUnresolvedUsing(),
                                                  UME->getBase(),
@@ -522,6 +519,7 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
           SemaRef.Diags.Report(Loc, clang::diag::err_no_member)
               << Field << ThisTy;
         }
+        ExprMarker(Context.CxxAST, SemaRef).Visit(Ret);
         return Ret;
       }
       // Need to check if the result is a CXXMethodDecl because that's a
@@ -831,17 +829,17 @@ Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
       Id.setIdentifier(IdInfo, RHSAtom->getLoc());
       clang::CXXScopeSpec SS;
       clang::SourceLocation Loc;
-      clang::ExprResult HandledLHS = SemaRef.getCxxSema().ActOnMemberAccessExpr(
+      clang::ExprResult RHSExpr = SemaRef.getCxxSema().ActOnMemberAccessExpr(
         SemaRef.getCurClangScope(), ElaboratedLHS.get<clang::Expr*>(), Op->getLoc(),
         clang::tok::TokenKind::period, SS, Loc, Id, nullptr);
-      if (HandledLHS.get()) {
-        ExprMarker(Context.CxxAST, SemaRef).Visit(HandledLHS.get());
+      if (RHSExpr.get()) {
+        ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr.get());
       } else {
         // TODO: Need to create error message for here.
         llvm_unreachable("We were not able to elaborate the member access "
             "expression.\n");
       }
-      return HandledLHS.get();
+      return RHSExpr.get();
     }
     llvm_unreachable("Currently unable to handle member access from "
         "non-variables within current context.");

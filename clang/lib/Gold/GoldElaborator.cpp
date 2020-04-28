@@ -112,13 +112,9 @@ Elaborator::Elaborator(SyntaxContext &Context, Sema &SemaRef)
   : Context(Context), SemaRef(SemaRef) {}
 
 clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
-  SemaRef.getCxxSema().FieldCollector.reset(new clang::CXXFieldCollector());
+  
   assert(isa<FileSyntax>(S) && "S is not a file");
-  // S->dump();
-  clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::DeclScope);
-  SemaRef.getCxxSema().ActOnTranslationUnitScope(Scope);
-  SemaRef.getCxxSema().Initialize();
-  SemaRef.getCxxSema().ActOnStartOfTranslationUnit();
+
   startFile(S);
 
   const FileSyntax *File = cast<FileSyntax>(S);
@@ -139,14 +135,18 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   }
   
   finishFile(S);
-  SemaRef.getCxxSema().ActOnEndOfTranslationUnit();
-  SemaRef.leaveClangScope(S->getLoc());
-
 
   return Context.CxxAST.getTranslationUnitDecl();
 }
 
 void Elaborator::startFile(const Syntax *S) {
+  // This is missed during initialziation because of the language setting.
+  SemaRef.getCxxSema().FieldCollector.reset(new clang::CXXFieldCollector());
+  // Setting up clang scopes.
+  clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::DeclScope);
+  SemaRef.getCxxSema().ActOnTranslationUnitScope(Scope);
+  SemaRef.getCxxSema().Initialize();
+  
   // Enter the global scope.
   SemaRef.enterScope(SK_Namespace, S);
 
@@ -696,16 +696,14 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   if (!D->Cxx)
     return;
 
-  assert(isa<clang::FunctionDecl>(D->Cxx) && "Bad function declaration.");
-  clang::FunctionDecl *FD = cast<clang::FunctionDecl>(D->Cxx);
+  // assert(isa<clang::FunctionDecl>(D->Cxx) && "Bad function declaration.");
+  // clang::FunctionDecl *FD = cast<clang::FunctionDecl>(D->Cxx);
 
   if (!D->Init)
     return;
 
   if (SemaRef.checkForRedefinition<clang::FunctionDecl>(D))
     return;
-
-  SemaRef.pushDecl(D);
 
   // We saved the parameter scope while elaborating this function's type,
   // so push it on before we enter the function scope.
@@ -723,27 +721,36 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   if (TemplateScope) {
     SemaRef.getCurrentScope()->setParent(TemplateScope);
   }
-  SemaRef.getCxxSema().PushFunctionScope();
+  // Entering clang scope. for function definition.
+  clang::Scope *FnClangScope = SemaRef.enterClangScope(clang::Scope::FnScope |
+                                                       clang::Scope::DeclScope |
+                                               clang::Scope::CompoundStmtScope);
+  clang::Decl *FuncDecl = SemaRef.getCxxSema().ActOnStartOfFunctionDef(
+                                                          FnClangScope, D->Cxx);
+  Declaration *CurrentDeclaration = SemaRef.getCurrentDecl();
+  SemaRef.setCurrentDecl(D);
+  
   SemaRef.enterScope(SK_Function, D->Init);
   // FIXME: is this necessary for Gold? It enables some more semantic
   // checking, but not all of it is necessarily meaningful to us.
-  
+  // clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::ClassScope
+  //                                               | clang::Scope::DeclScope);
   // Elaborate the function body.
   StmtElaborator BodyElaborator(Context, SemaRef);
   clang::Stmt *Body = BodyElaborator.elaborateBlock(D->Init);
-  FD->setBody(Body);
+  SemaRef.getCxxSema().ActOnFinishFunctionBody(FuncDecl, Body);
+  // FD->setBody(Body);
 
   // Leave the function scope.
   SemaRef.leaveScope(D->Init);
+
   // Leave the parameter scope.
   SemaRef.popScope();
-  SemaRef.getCxxSema().PopFunctionScopeInfo();
-
+  
   // Leave the template scope
   if (IsTemplate)
     SemaRef.popScope();
-
-  SemaRef.popDecl();
+  SemaRef.setCurrentDecl(CurrentDeclaration);
 }
 
 /// In the case of an automatically deduced array macro, <initalizer_list>

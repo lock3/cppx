@@ -729,7 +729,7 @@ clang::Stmt *
 StmtElaborator::elaborateBlock(const Syntax *S) {
   if (isa<ErrorSyntax>(S))
     return nullptr;
-
+  SemaRef.getCxxSema().ActOnStartOfCompoundStmt(false);
   SemaRef.enterScope(SK_Block, S);
 
   llvm::SmallVector<clang::Stmt *, 16> Results;
@@ -777,9 +777,11 @@ StmtElaborator::elaborateBlock(const Syntax *S) {
     StartLoc = EndLoc = S->getLoc();
   }
 
-  clang::CompoundStmt *Block =
-    clang::CompoundStmt::Create(CxxAST, Results, StartLoc, EndLoc);
-
+  // clang::CompoundStmt *Block =
+  //   clang::CompoundStmt::Create(CxxAST, Results, StartLoc, EndLoc);
+  clang::Stmt *Block = SemaRef.getCxxSema().ActOnCompoundStmt(StartLoc, EndLoc,
+                                                              Results,
+                                                    /*isStmtExpr=*/false).get();
   SemaRef.leaveScope(S);
   return Block;
 }
