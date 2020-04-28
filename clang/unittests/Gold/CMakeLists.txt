@@ -34,23 +34,23 @@ set(LLVM_LINK_COMPONENTS
 
 add_clang_unittest(GoldTests
   GoldAuto.cpp
+  GoldBoolImplicitConversionInit.cpp
+  GoldBuiltInTypeConstructorsExec.cpp
+  GoldClassMemberAccessTest.cpp
   GoldClassParsing.cpp
+  GoldClassTemplateMemberAccessExec.cpp
+  GoldClassTemplateParsing.cpp
+  GoldClassTemplatedMemberExec.cpp
+  GoldCompileRun.cpp
+  GoldConstructorCallParsingTest.cpp
   GoldFor.cpp
+  GoldFunctionOverloading.cpp
   GoldFunctionTemplate.cpp
-  GoldMemberExecuteTest.cpp
-  CompileRun.cpp
-  BoolImplicitConversionInit.cpp
-  ConstructorCallParsingTest.cpp
-  BuiltInTypeConstructorsExec.cpp
-  ImplicitCtorExplicitCallExec.cpp
+  GoldFunctionTemplateExec.cpp
   GoldGlobalParsing.cpp
-  ClassTemplateParsing.cpp
-  ClassTemplateMemberAccessExec.cpp
-  ClassMemberAccessTest.cpp
-  ClassTemplatedMemberExec.cpp
-  FunctionTemplateExec.cpp
-  FunctionOverloading.cpp
-  )
+  GoldImplicitCtorExplicitCallExec.cpp
+  GoldMemberExecuteTest.cpp
+)
 
 clang_target_link_libraries(GoldTests
   PRIVATE

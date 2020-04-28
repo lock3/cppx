@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ParseUtil.h"
+#include "GoldParseUtil.h"
 
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
