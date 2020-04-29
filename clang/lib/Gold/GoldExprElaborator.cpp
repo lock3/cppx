@@ -439,15 +439,8 @@ Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
 static ExprElaborator::Expression
 createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
                   clang::QualType Ty, clang::SourceLocation Loc) {
-  // Attempting to classify identifiers?
-  // classifyName()
-  // TODO: We need to refactor this to do multiple types of look up.
-  // For example, we need to refactor the way functions, and type names
-  // are handled. This is so that we can appropriately handle lookup of names
-  // in multiple contexts. This will also need to be refactored in order to
-  // correctly handle things like getting names for candidate sets.
 
-  // Step one. Look up the name within the current context, to see if it exists.
+
   clang::ASTContext &CxxAST = Context.CxxAST;
   clang::IdentifierInfo &Id = CxxAST.Idents.get(S->getSpelling());
   clang::UnqualifiedId UId;
@@ -507,6 +500,8 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
         clang::QualType ThisPtrTy = SemaRef.getContext().CxxAST.getPointerType(ThisTy);
         clang::Expr* This = SemaRef.getCxxSema().BuildCXXThisExpr(Loc,
             ThisPtrTy, true);
+        // FIXME: I may need to change the access specifier look up in this case.
+        // Because otherwise we are skirting access to the AccessSpecifier.
         clang::DeclAccessPair FoundDecl = clang::DeclAccessPair::make(Field,
               clang::AccessSpecifier::AS_public);
         clang::CXXScopeSpec SS;
@@ -818,14 +813,14 @@ Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
   Expression ElaboratedLHS = elaborateExpr(LHS);
   if(ElaboratedLHS.is<clang::Expr*>()) {
     if (isa<AtomSyntax>(RHS)) {
+      // TODO: I need an example where this isn't an atom but I'm not sure
+      // one exists yet.
       const AtomSyntax *RHSAtom = cast<AtomSyntax>(RHS);
       // TODO: figure out how to make the pointer work correctly?
 
       clang::UnqualifiedId Id;
       clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(
         RHSAtom->getSpelling());
-
-      // TODO: Figure out how to get the desired scope.
       Id.setIdentifier(IdInfo, RHSAtom->getLoc());
       clang::CXXScopeSpec SS;
       clang::SourceLocation Loc;
@@ -1281,6 +1276,12 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
     }
 
     clang::TypeDecl *TD = R.getAsSingle<clang::TypeDecl>();
+    TD->setIsUsed();
+    if (clang::TypeAliasDecl *TA = dyn_cast<clang::TypeAliasDecl>(TD)) {
+      llvm::outs() << "Are we a type alias declaration?\n";
+      TA->getUnderlyingType().dump();
+      return BuildAnyTypeLoc(CxxAST, TA->getUnderlyingType(), Loc);
+    }
     clang::QualType TDType(TD->getTypeForDecl(), 0);
     return BuildAnyTypeLoc(CxxAST, TDType, Loc);
   }

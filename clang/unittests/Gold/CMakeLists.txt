@@ -50,6 +50,7 @@ add_clang_unittest(GoldTests
   GoldGlobalParsing.cpp
   GoldImplicitCtorExplicitCallExec.cpp
   GoldMemberExecuteTest.cpp
+  GoldTypeExpressionsTest.cpp
   GoldWhile.cpp
   )
 

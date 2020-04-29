@@ -199,6 +199,10 @@ bool Declaration::declaresTemplate() const {
   return false;
 }
 
+bool Declaration::declaresTypeAlias() const {
+  return Cxx && isa<clang::TypeAliasDecl>(Cxx);
+}
+
 const Syntax *Declaration::getTemplateParams() const {
   assert(Decl);
   const Declarator *D = Decl;

@@ -227,6 +227,9 @@ public:
   /// True if this declares a template.
   bool declaresTemplate() const;
 
+  /// This is true iff isa<TypeAliasDecl>(Cxx)
+  bool declaresTypeAlias() const;
+
   /// Get the template parameters for this declaration or null if none.
   const Syntax *getTemplateParams() const;
 
@@ -279,6 +282,12 @@ public:
 
   /// The next decl in the redeclaration chain.
   Declaration *Next = this;
+
+  /// Decl phase completed. This is used to paint the declarations and
+  /// avoid re-visitation during lookup/elaboration. This has a value from 0-3.
+  /// 0 is unprocessed (the default value), 1 is identified, 2 is the declaration
+  /// is elaborated and 3 is the definition is complete.
+  unsigned ElabPhaseCompleted = 0;
 };
 
 /// Different kinds of scope.
