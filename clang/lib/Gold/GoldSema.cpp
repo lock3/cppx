@@ -160,16 +160,15 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         if (!FoundDecl->Cxx) {
           // Prevent early elaboration of functions and function templates
           // This prevents some recursive loops.
-          if (!(FoundDecl->declaresTemplate() || FoundDecl->declaresFunction())) {
-            Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
-          }
+          // if (!(FoundDecl->declaresTemplate() || FoundDecl->declaresFunction())) {
+          Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
+          // }
         }
         if (!FoundDecl->Cxx)
           return false;
 
         if (FoundDecl->declaresTypeAlias()) {
           if (FoundDecl->ElabPhaseCompleted == 1) {
-            llvm::outs() << "We are elaborating once?\n";
             Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
           }
         }

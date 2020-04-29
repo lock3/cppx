@@ -1278,8 +1278,6 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
     clang::TypeDecl *TD = R.getAsSingle<clang::TypeDecl>();
     TD->setIsUsed();
     if (clang::TypeAliasDecl *TA = dyn_cast<clang::TypeAliasDecl>(TD)) {
-      llvm::outs() << "Are we a type alias declaration?\n";
-      TA->getUnderlyingType().dump();
       return BuildAnyTypeLoc(CxxAST, TA->getUnderlyingType(), Loc);
     }
     clang::QualType TDType(TD->getTypeForDecl(), 0);

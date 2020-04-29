@@ -586,7 +586,6 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
                                = TypeExpr.dyn_cast<clang::TypeSourceInfo *>()) {
     clang::QualType QTy = TInfo->getType();
     if (QTy == Context.CxxAST.CppxKindTy) {
-      llvm::outs() << "We are processing a type alias.\n";
       return elaborateTypeAlias(D, TInfo);
     }
   }
@@ -779,14 +778,8 @@ void Elaborator::elaborateDeclInit(const Syntax *S) {
 }
 
 void Elaborator::elaborateDef(Declaration *D) {
-  llvm::outs() << "Processing Declaration: \n";
   if (D->ElabPhaseCompleted >= 3)
     return;
-  else{
-
-    D->Cxx->dump();
-    llvm::outs() << "Elaboration phase completed " << D->ElabPhaseCompleted << "\n";
-  }
   assert(D->ElabPhaseCompleted == 2 &&
       "Declaration not ready for full elaboration.");
   if (D->declaresRecord())
