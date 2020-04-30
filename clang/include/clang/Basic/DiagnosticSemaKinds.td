@@ -10463,6 +10463,11 @@ def err_invalid_block_condition : Error<
 def err_duplicate_access_specifier : Error<
   "multiple access specifiers given as attributes, given %0, and %1">;
 
+def err_auto_failed : Error<
+  "could not deduce type of variable">;
+def err_auto_no_init : Error<
+  "auto deduced variable has an initializer with unknowable type">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

@@ -20,7 +20,7 @@
 
 #include "clang/Gold/GoldLexer.h"
 
-#include <queue>
+#include <vector>
 
 namespace clang {
 
@@ -388,23 +388,29 @@ namespace gold
         Depth LocDepth;
       };
 
-      inline bool hasSameDepth(const Loc &LHS, const Loc &RHS) {
+      inline bool hasSameDepth(const Loc &LHS, const Loc &RHS) const {
         return LHS.LocDepth.ParenCount == RHS.LocDepth.ParenCount &&
           LHS.LocDepth.BracketCount == RHS.LocDepth.BracketCount &&
           LHS.LocDepth.IndentCount == RHS.LocDepth.IndentCount &&
           LHS.LocDepth.BraceCount == RHS.LocDepth.BraceCount;
       }
 
+      inline bool isOpen() const {
+        return !Angles.empty();
+      }
+
       void clear() {
+        Angles.clear();
+        Enclosures.clear();
         ParenCount = BracketCount = BraceCount = IndentCount = 0;
         LastClose = clang::SourceLocation();
       }
 
       // The amount of open angle tokens we have encountered.
-      std::queue<Loc> Angles;
+      std::vector<Loc> Angles;
 
       // The amount of other open enclosure tokens we have encountered.
-      std::queue<Loc> Enclosures;
+      std::vector<Loc> Enclosures;
 
       // The last (balanced) closing brace we found.
       clang::SourceLocation LastClose;

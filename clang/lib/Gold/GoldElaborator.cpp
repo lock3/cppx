@@ -840,11 +840,15 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
           }
         }
     } else {
+      if (!InitExpr) {
+        SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_no_init);
+        return;
+      }
+
       clang::Sema &CxxSema = SemaRef.getCxxSema();
       auto Result = CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), InitExpr, Ty);
       if (Result == clang::Sema::DAR_Failed) {
-        // FIXME: Make this a real diagnostic.
-        llvm::errs() << "Failed to deduce type of expression.\n";
+        SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_failed);
         return;
       }
     }

@@ -1987,14 +1987,14 @@ void TextNodeDumper::Visit(const gold::Syntax *S) {
   }
   dumpPointer(S);
   gold::ConstSyntaxVisitor<TextNodeDumper>::Visit(S);
-  if (!S->getAttributes().empty()) {
-    for (gold::Attribute *Attr : S->getAttributes()) {
-      AddChild([=] {
-        OS << "Attribute ";
-        Visit(Attr->getArg());
-      });
-    }
-  }
+
+  for (gold::Attribute *Attr : S->getAttributes())
+    AddChild([=] {
+      OS << "Attribute ";
+      dumpPointer(Attr);
+      OS << " ";
+      Visit(Attr->getArg());
+    });
 }
 
 void TextNodeDumper::VisitGoldErrorSyntax(const gold::ErrorSyntax *S) {
