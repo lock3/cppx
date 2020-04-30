@@ -16,8 +16,11 @@
 
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
+#include "llvm/ADT/BitmaskEnum.h"
 
 #include "clang/Gold/GoldLexer.h"
+
+#include <queue>
 
 namespace clang {
 
@@ -121,10 +124,14 @@ namespace gold
       Token Tok = Toks.front();
       Toks.pop_front();
 
+      if (!Tok.hasKind(tok::Space))
+        PreviousToken = Tok;
+
       // Refresh the queue.
       if (Toks.empty())
         fetchToken();
 
+      LastTokWasClose = false;
       return Tok;
     }
 
@@ -226,7 +233,7 @@ namespace gold
     Syntax *parseElem(Syntax *map);
     Syntax *parseDot(Syntax *obj);
     Syntax *parseArrayPrefix();
-    Syntax *parsePostAttr(Syntax *Pre);
+    Syntax *parsePostAttr(Syntax *Pre, clang::SourceLocation EndPoint);
 
     Syntax *parsePrimary();
     Syntax *parseId();
@@ -286,6 +293,131 @@ namespace gold
 
     // Keeps track of information and memory associated with our Gold AST.
     SyntaxContext &Context;
+
+    std::size_t ParenCount = 0, BracketCount = 0,
+      BraceCount = 0, IndentCount = 0;
+
+    // Keep track of whether or not the previous token was a enclosure closing,
+    // such as a right parenthesis, dedent, etc.
+    bool LastTokWasClose = false;
+
+    // The token before the current lookahead.
+    Token PreviousToken;
+
+    // The last identifier we parsed.
+    Syntax *LastIdentifier = nullptr;
+  private:
+    /// Tools for tentative parsing
+
+    /// Identifiers which have been declared within a tentative parse.
+    llvm::SmallVector<clang::IdentifierInfo *, 8> TentativelyDeclaredIdentifiers;
+
+    /// Tracker for '<' tokens that might have been intended to be treated as an
+    /// angle bracket instead of a less-than comparison.
+    ///
+    /// This happens when the user intends to form a attribute.
+    ///
+    /// We track these locations from the point where we see a '<' with a
+    /// name-like expression on its left until we see a '>' that might
+    /// match it.
+    struct AngleBracketTracker {
+      struct Loc {
+        clang::SourceLocation LessLoc;
+        std::size_t ParenCount, BracketCount, BraceCount, IndentCount;
+
+        bool isActive(Parser &P) const {
+          return P.ParenCount == ParenCount && P.BracketCount == BracketCount &&
+            P.BraceCount == BraceCount && P.IndentCount == IndentCount;
+        }
+
+        bool isActiveOrNested(Parser &P) const {
+          return isActive(P) || P.ParenCount > ParenCount
+            || P.BracketCount > BracketCount || P.BraceCount > BraceCount
+            || P.IndentCount > IndentCount;
+        }
+      };
+
+      llvm::SmallVector<Loc, 8> Locs;
+
+      /// Add an expression that might have been intended to be attributed.
+      /// In the case of ambiguity, we arbitrarily select the innermost such
+      /// expression, for example in 'foo < bar < baz', 'bar' is the current
+      /// candidate. No attempt is made to track that 'foo' is also a candidate
+      /// for the case where we see a second suspicious '>' token.
+      void add(Parser &P, clang::SourceLocation LessLoc) {
+        // if (!Locs.empty() && Locs.back().isActive(P)) {
+        //   Locs.back().LessLoc = LessLoc;
+        // } else { 
+        Locs.push_back({LessLoc, P.ParenCount, P.BracketCount,
+                        P.BraceCount, P.IndentCount});
+        // }
+      }
+
+      /// Mark the current potential missing template location as having been
+      /// handled (this happens if we pass a "corresponding" '>' or '>=' token
+      /// or leave a bracket scope).
+      void clear(Parser &P) {
+        // while (!Locs.empty() && Locs.back().isActiveOrNested(P))
+        //   Locs.pop_back();
+        Locs.clear();
+      }
+
+      /// Get the current enclosing expression that might have been intended to
+      /// be an attributed name.
+      Loc *getCurrent(Parser &P) {
+        if (!Locs.empty() && Locs.back().isActive(P))
+          return &Locs.back();
+        return nullptr;
+      }
+    };
+
+    // Tracks open angle brackets and maintains their nesting-depth.
+    struct AngleTracker2 {
+      // The nesting depth of the tracker.
+      std::size_t ParenCount = 0, BracketCount = 0,
+        BraceCount = 0, IndentCount = 0;
+
+      // Represents the nesting-depth of a token.
+      struct Depth {
+        std::size_t ParenCount, BracketCount, BraceCount, IndentCount;
+      };
+
+      // Represents an actual token.
+      struct Loc {
+        clang::SourceLocation SourceLoc;
+        Depth LocDepth;
+      };
+
+      inline bool hasSameDepth(const Loc &LHS, const Loc &RHS) {
+        return LHS.LocDepth.ParenCount == RHS.LocDepth.ParenCount &&
+          LHS.LocDepth.BracketCount == RHS.LocDepth.BracketCount &&
+          LHS.LocDepth.IndentCount == RHS.LocDepth.IndentCount &&
+          LHS.LocDepth.BraceCount == RHS.LocDepth.BraceCount;
+      }
+
+      void clear() {
+        ParenCount = BracketCount = BraceCount = IndentCount = 0;
+        LastClose = clang::SourceLocation();
+      }
+
+      // The amount of open angle tokens we have encountered.
+      std::queue<Loc> Angles;
+
+      // The amount of other open enclosure tokens we have encountered.
+      std::queue<Loc> Enclosures;
+
+      // The last (balanced) closing brace we found.
+      clang::SourceLocation LastClose;
+    };
+
+    AngleBracketTracker AngleBrackets;
+    AngleTracker2 Angles;
+
+  public:
+    void incrementEnclosureCount(unsigned Enclosure);
+    void decrementEnclosureCount(unsigned Enclosure);
+    void startPotentialAngleBracket(const Token &OpToken);
+    void finishPotentialAngleBracket(const Token &OpToken);
   };
 
   /// RAII object that makes '>' behave either as an operator
