@@ -1256,8 +1256,6 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   assert(isa<clang::AutoType>(Ty->getType()));
   assert(D->Kind == DK_Type);
   
-  // FIXME: We should really elaborate the entire type expression. We're
-  // just cheating for now.
   if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
     clang::SourceLocation Loc = Atom->getLoc();
 
@@ -1285,10 +1283,6 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   }
   
   return elaborateExpr(D->Data.Type);
-  // Elaborating the member access syntax from a call.
-  // FIXME: In the future this may need to be expanded to include meta functions.
-  // if (const CallSyntax *Call = dyn_cast<CallSyntax>(D->Data.Type)) {
-  // }
 }
 
 void dumpExpression(ExprElaborator::Expression Expr, llvm::raw_ostream& Out) {
