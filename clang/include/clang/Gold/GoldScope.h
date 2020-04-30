@@ -288,6 +288,9 @@ public:
   /// 0 is unprocessed (the default value), 1 is identified, 2 is the declaration
   /// is elaborated and 3 is the definition is complete.
   unsigned ElabPhaseCompleted = 0;
+
+  /// Previous clang scope for classes.
+  clang::Scope *ClsScope = nullptr;
 };
 
 /// Different kinds of scope.

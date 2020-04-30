@@ -188,6 +188,8 @@ static clang::Decl*
 processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
                     Declaration *D) {
   using namespace clang;
+  D->ElabPhaseCompleted = 2;
+
   bool Template = D->declaresTemplateType();
   const Syntax *TemplParams;
   
@@ -267,7 +269,7 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   if (Template) {
     TemplateDeclarator->Data.TemplateInfo.DeclScope = SemaRef.saveScope(
       TemplateDeclarator->Data.TemplateInfo.Params);
-    // This may not work ver well because the scope may need to be re-entered
+    // This may not work very well because the scope may need to be re-entered
     // at a later time and in order to do that correctly we may need to 
     // adjust the scope stack in order to correctly reproduce the
     // correct scope in order to elaborate this type fully. I'm currently
@@ -276,10 +278,64 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
     TemplateDeclarator->Data.TemplateInfo.ClangScope
       = SemaRef.moveToParentScopeNoPop();
   }
+
+  // Completing part of phase 2 for class decl, this creates the declarations
+  // within the class body, leaves the body open returns continues processing.
+  if (Template) {
+    // Pushing template scopes onto stack again.
+    Declarator *templateArgs = D->getFirstTemplateDeclarator();
+    assert(templateArgs && "Failed to get template arguments.\n");
+    SemaRef.reEnterClangScope(templateArgs->Data.TemplateInfo.ClangScope);
+    SemaRef.pushScope(templateArgs->Data.TemplateInfo.DeclScope);
+  }
+
+  auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
+  auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
+
+  SemaRef.pushScope(D->SavedScope); 
+  clang::CXXRecordDecl *R = dyn_cast<clang::CXXRecordDecl>(D->Cxx);
+  clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::ClassScope
+                                                | clang::Scope::DeclScope);
+  D->ClsScope = Scope;
+  SemaRef.getCxxSema().ActOnTagStartDefinition(Scope, R);
+  SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(Scope, R,
+    clang::SourceLocation(), true, clang::SourceLocation());
+  SemaRef.setCurrentDecl(D);
+  
+  // Since all declarations have already been added, we don't need to do another
+  // Reordering scan. Maybe?
+  for (const Syntax *SS : BodyArray->children()) {
+    Elab.elaborateDeclType(SS);
+  }
+
+  // We need to elaborate any/all of the member member initializes at here.
+  for (const Syntax *SS : BodyArray->children()) {
+    gold::Declaration *LocalDecl = SemaRef.getCurrentScope()->findDecl(SS);
+    if (!LocalDecl)
+      continue;
+    if (LocalDecl->declaresMemberVariable()){
+      Elab.elaborateDef(LocalDecl);
+    }
+  }
+  
+  SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(Scope,
+    clang::SourceLocation(), R, clang::SourceLocation(), clang::SourceLocation(),
+    clang::ParsedAttributesView());
+  SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
+  
+  // We pop here because the type isn't 100% completed, we have more to addd but
+  // we need to move back to the correct decl context. That decl context
+  // wasn't altered like it ususally is within ActOnFinishTagDefinition.
+  SemaRef.popDecl();
+  Scope = SemaRef.saveCurrentClangScope();
+  SemaRef.popScope();
+  if (Template) {
+    // Leaving template scopes again.
+    SemaRef.popScope();
+    SemaRef.saveCurrentClangScope();
+  }
   return ClsDecl;
 }
-
-
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   if (D->ElabPhaseCompleted > 1) {
@@ -989,37 +1045,54 @@ void Elaborator::elaborateTemplateParamInit(Declaration *D) {
 }
 
 void Elaborator::elaborateTypeDefinition(Declaration *D) {
+  D->ElabPhaseCompleted = 3;
   bool Template = D->declaresTemplateType();
   if (Template) {
     // Pushing template scopes onto stack again.
     Declarator *templateArgs = D->getFirstTemplateDeclarator();
     assert(templateArgs && "Failed to get template arguments.\n");
-    SemaRef.ReEnterScope(templateArgs->Data.TemplateInfo.ClangScope);
+    SemaRef.reEnterClangScope(templateArgs->Data.TemplateInfo.ClangScope);
     SemaRef.pushScope(templateArgs->Data.TemplateInfo.DeclScope);
   }
 
   auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
   auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
 
-  SemaRef.pushScope(D->SavedScope); 
   clang::CXXRecordDecl *R = dyn_cast<clang::CXXRecordDecl>(D->Cxx);
-  clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::ClassScope
-                                                | clang::Scope::DeclScope);
-  SemaRef.getCxxSema().ActOnTagStartDefinition(Scope, R);
-  SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(Scope, R,
-    clang::SourceLocation(), true, clang::SourceLocation());
-  SemaRef.setCurrentDecl(D);
+  // clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::ClassScope
+  //                                               | clang::Scope::DeclScope);
+  // SemaRef.reEnterClangScope();
+  // D->ClsScope = Scope;
+  // SemaRef.getCxxSema().ActOnTagStartDefinition(Scope, R);
+  // SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(Scope, R,
+  //   clang::SourceLocation(), true, clang::SourceLocation());
+  // SemaRef.setCurrentDecl(D);
+  // SemaRef.restoreDeclContext(D);
   // This is set first so we don't recurse anymore then we need to.
-  D->ElabPhaseCompleted = 3;
+  D->ElabPhaseCompleted = 3;  
+  // We pop here because the type isn't 100% completed, we have more to addd but
+  // we need to move back to the correct decl context. That decl context
+  // wasn't altered like it ususally is within ActOnFinishTagDefinition.
+  // SemaRef.popDecl();
+  // Scope = SemaRef.saveCurrentClangScope();
+  // SemaRef.popScope();
 
-  // Since all declarations have already been added, we don't need to do another
-  // Reordering scan. Maybe?
-
-  // TODO:/FIXME: Need to create a means for building member functions/initializers
-  for (const Syntax *SS : BodyArray->children()) {
-    elaborateDeclType(SS);
-  }
   
+  // Re-entering the class 
+  clang::Scope *PreviousScope = SemaRef.getCurClangScope();
+  Declaration *PreviousDecl = SemaRef.getCurrentDecl();
+
+  // We are reentering a previous decl context to elaborate.
+
+  // TODO: Add templates here so we can re-enter their scope properly also.
+  SemaRef.pushScope(D->SavedScope);
+  SemaRef.restoreDeclContext(D);
+  SemaRef.reEnterClangScope(D->ClsScope);
+
+  // Recreating class body scopes?
+  // Attempting to elaborate the remainder of the class, once we are outside of the
+  // class body?
+
   // Elaborating types first.
   for (const Syntax *SS : BodyArray->children()) {
     Declaration *LocalDecl = SemaRef.getCurrentScope()->findDecl(SS);
@@ -1027,17 +1100,6 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
       continue;
     if(LocalDecl->declaresRecord() || LocalDecl->declaresType())
       elaborateDef(LocalDecl);
-  }
-
-  // Elaborating members second. TODO: Once we have static methods we need
-  // to handle those before we handle the variables.
-  for (const Syntax *SS : BodyArray->children()) {
-    Declaration *LocalDecl = SemaRef.getCurrentScope()->findDecl(SS);
-    if (!LocalDecl)
-      continue;
-    if (LocalDecl->declaresMemberVariable()){
-      elaborateDef(LocalDecl);
-    }
   }
 
   // Elaborating everything else.
@@ -1049,22 +1111,25 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
       elaborateDef(LocalDecl);
     
   }
-  SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(Scope,
-    clang::SourceLocation(), R, clang::SourceLocation(), clang::SourceLocation(),
-    clang::ParsedAttributesView());
-  SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
   clang::Decl *TempDeclPtr = R;
-  SemaRef.getCxxSema().ActOnTagFinishDefinition(Scope, TempDeclPtr,
-                                                clang::SourceRange());
-  SemaRef.setCurrentDecl(D->getOwner());
-  SemaRef.leaveClangScope(D->Op->getLoc());
-  SemaRef.popScope();
+  SemaRef.getCxxSema().ActOnTagFinishDefinition(D->ClsScope, TempDeclPtr,
+                                              clang::SourceRange());
+
+
+  // Attempting to re-enter scope in order to complete definition of class.
   if (Template) {
     // Leaving template scopes again.
     SemaRef.popScope();
-    SemaRef.leaveClangScope(D->Op->getLoc());
+    SemaRef.leaveClangScope(BodyArray->getChild(
+      BodyArray->getNumChildren()-1)->getLoc());
   }
   
+  // Correctly exiting the clang scope because this time we are actually done
+  // with it.                                              
+  // Attempting to restore any previous processing that was going on.
+  SemaRef.popScope();
+  SemaRef.reEnterClangScope(PreviousScope);
+  SemaRef.restoreDeclContext(PreviousDecl);
 }
 
 clang::Decl *Elaborator::elaborateTypeBody(Declaration* D, clang::CXXRecordDecl* R) {

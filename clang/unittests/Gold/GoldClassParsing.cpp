@@ -715,3 +715,21 @@ main() : int!
 //   )));
 //   ASSERT_TRUE(matches(Code, StmtMatcher));
 // }
+
+
+TEST(ClassParsing, ClassTypeUsedAsFunctionParameter) {
+
+  StringRef Code = R"(
+c : type = class:
+  y : bool = 0
+
+foo(x : c) : bool!
+  return x.y
+
+)";
+  DeclarationMatcher MemberFunctionMatch = functionDecl( hasName("foo"),
+    hasAnyParameter(hasName("x")),
+    hasDescendant(varDecl(hasType(asString("struct c"))))
+  );
+  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}

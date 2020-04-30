@@ -251,7 +251,7 @@ static Expression handleElementExpression(ExprElaborator &Elab,
   // Attempting to correctly handle the result of an Id expression.
   clang::OverloadExpr *OverloadExpr = dyn_cast<clang::OverloadExpr>(E);
   if (!OverloadExpr) {
-    // TODO: When we do add array indexing, we need to add it here.
+    // TODO: When we to add array indexing, we need to add it here.
     llvm_unreachable("Processing of array indices isn't implemented yet.");
     return nullptr;
   }
@@ -453,7 +453,6 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
     R.resolveKind();
     if (!R.isSingleResult()) {
       if (R.isAmbiguous()) {
-        llvm::outs() << "We have an R.isAmbiguous is true()\n";
         SemaRef.Diags.Report(S->getLoc(), clang::diag::err_multiple_declarations);
         return nullptr;
       }
@@ -1255,16 +1254,13 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
 Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   assert(isa<clang::AutoType>(Ty->getType()));
   assert(D->Kind == DK_Type);
-  
   if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
     clang::SourceLocation Loc = Atom->getLoc();
-
     clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Atom->getSpelling())}, Loc);
     clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupTagName);
     if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())){
       return nullptr;
     }
-
     if (R.empty()) {
       auto BuiltinMapIter = SemaRef.BuiltinTypes.find(Atom->getSpelling());
       if (BuiltinMapIter == SemaRef.BuiltinTypes.end())
@@ -1276,7 +1272,7 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
     clang::TypeDecl *TD = R.getAsSingle<clang::TypeDecl>();
     TD->setIsUsed();
     if (clang::TypeAliasDecl *TA = dyn_cast<clang::TypeAliasDecl>(TD)) {
-      return BuildAnyTypeLoc(CxxAST, TA->getUnderlyingType(), Loc);
+      return TA->getTypeSourceInfo();
     }
     clang::QualType TDType(TD->getTypeForDecl(), 0);
     return BuildAnyTypeLoc(CxxAST, TDType, Loc);
@@ -1292,26 +1288,26 @@ void dumpExpression(ExprElaborator::Expression Expr, llvm::raw_ostream& Out) {
   }
 
   if (Expr.is<clang::Expr *>()) {
-    llvm::outs() << "Type = clang::Expr *\n";
+    Out << "Type = clang::Expr *\n";
     Expr.get<clang::Expr *>()->dump(Out);
-    llvm::outs() << "\n";
+    Out << "\n";
     return;
   }
 
   if (Expr.is<clang::TypeSourceInfo *>()) {
-    llvm::outs() << "Type = clang::TypeSourceInfo *\n";
+    Out << "Type = clang::TypeSourceInfo *\n";
     Expr.get<clang::TypeSourceInfo *>()->getType().dump(Out);
-    llvm::outs() << "\n";
+    Out << "\n";
     return;
   }
 
   if (Expr.is<clang::NamespaceDecl *>()) {
-    llvm::outs() << "Type = clang::NamespaceDecl *\n";
+    Out << "Type = clang::NamespaceDecl *\n";
     Expr.get<clang::NamespaceDecl *>()->dump(Out);
-    llvm::outs() << "\n";
+    Out << "\n";
     return;
   }
-  llvm::outs() << "[Unknown Expression type]\n";
+  Out << "[Unknown Expression type]\n";
 }
 
 clang::Expr *ExprElaborator::handleOperatorDotDot(const CallSyntax *S) {
