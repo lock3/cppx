@@ -912,15 +912,20 @@ Syntax *Parser::parsePost()
             (Current.hasKind(tok::Greater) ||
              Current.hasKind(tok::GreaterEqual))) {
           finishPotentialAngleBracket(Current);
-          Attribute = true;
-          break;
+
+          if (!Angles.isOpen()) {
+            Attribute = true;
+            break;
+          }
         }
       }
 
       if (Attribute)
         e = parsePostAttr(e, Angles.LastClose);
-      else
+      else {
+        Angles.clear();
         return e;
+      }
       break;
 
     }
