@@ -876,9 +876,7 @@ static ExprElaborator::Expression handleLookUpInsideType(Sema &SemaRef,
     // R.front();
     clang::NamedDecl *ND = R.front();
     if (clang::TypeDecl *TD = dyn_cast<clang::TypeDecl>(ND)) {
-      // if (clang::TypeAliasDecl *TA = dyn_cast<clang::TypeAliasDecl>(TD)) {
-      //   return TA->getTypeSourceInfo();
-      // }
+      TD->setIsUsed();
       clang::QualType Ty = CxxAST.getTypeDeclType(TD);
       return BuildAnyTypeLoc(CxxAST, Ty, RHS->getLoc());
     }
@@ -1274,11 +1272,7 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
 
     clang::TypeDecl *TD = R.getAsSingle<clang::TypeDecl>();
     TD->setIsUsed();
-    if (clang::TypeAliasDecl *TA = dyn_cast<clang::TypeAliasDecl>(TD)) {
-      return TA->getTypeSourceInfo();
-    }
-    clang::QualType TDType(TD->getTypeForDecl(), 0);
-    return BuildAnyTypeLoc(CxxAST, TDType, Loc);
+    return BuildAnyTypeLoc(CxxAST, Context.CxxAST.getTypeDeclType(TD), Loc);
   }
   
   return elaborateExpr(D->Data.Type);

@@ -39,7 +39,7 @@ y : x
 
   DeclarationMatcher TemplateAndInstantiationMatch = translationUnitDecl(
     hasDescendant(typeAliasDecl(hasName("x"), hasType(asString("int")))),
-    hasDescendant(varDecl(hasName("y"), hasType(asString("int"))))
+    hasDescendant(varDecl(hasName("y"), hasType(asString("x"))))
   );
 
   ASSERT_TRUE(matches(Code, TemplateAndInstantiationMatch));
@@ -75,7 +75,7 @@ main() : int!
   DeclarationMatcher TemplateAndInstantiationMatch = translationUnitDecl(
     hasDescendant(typeAliasDecl(hasName("x"), hasType(asString("struct c")))),
     hasDescendant(functionDecl(hasName("main"),
-      hasDescendant(varDecl(hasName("q"), hasType(asString("struct c"))))
+      hasDescendant(varDecl(hasName("q"), hasType(asString("x"))))
     ))
   );
 

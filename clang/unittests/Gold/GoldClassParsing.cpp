@@ -736,7 +736,7 @@ foo(x : c) : bool!
 
 
 
-TEST(ClassParsing, NestedTypeAlias) {
+TEST(ClassParsing, NestedTypeAliasOfAClass) {
 
   StringRef Code = R"(
 a : type = class:
@@ -748,6 +748,24 @@ c : type = class:
 
 foo(x : c.x) : bool!
   return x.i
+)";
+  DeclarationMatcher MemberFunctionMatch = functionDecl( hasName("foo"),
+    hasAnyParameter(hasName("x")),
+    hasDescendant(varDecl(hasType(asString("c::x"))))
+  );
+  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}
+
+
+TEST(ClassParsing, NestedTypeAliasOfABuiltInType) {
+
+  StringRef Code = R"(
+c : type = class:
+  x : type = int
+  y : bool = 0
+
+foo(x : c.x) : bool!
+  return x
 )";
   DeclarationMatcher MemberFunctionMatch = functionDecl( hasName("foo"),
     hasAnyParameter(hasName("x")),

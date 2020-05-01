@@ -675,29 +675,9 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
 
 clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D,
                                             clang::TypeSourceInfo *TInfo) {
-  clang::IdentifierInfo *IdInfo = D->getId();
-  clang::UnqualifiedId Id;
-  Id.setIdentifier(IdInfo, D->Decl->getLoc());
-  clang::SourceLocation Loc = D->Op->getLoc();
-  clang::AccessSpecifier AS = clang::AccessSpecifier::AS_public;
-  
-  clang::MultiTemplateParamsArg MTP;
-  auto PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
-  clang::TypeResult TR(PT);
-  clang::Decl *TypeAlias = SemaRef.getCxxSema().ActOnAliasDeclaration(
-      SemaRef.getCurClangScope(), AS, MTP, Loc, Id,
-      clang::ParsedAttributesView(), TR, nullptr);
-  // Attempting to add attribute support for this kind of declaration.
-  bool InClass = SemaRef.getCurrentScope()->getKind() == SK_Class;
-  if (InClass) {
-    // Attempting to mark access specifier of type.
-    clang::AccessSpecifier AS;
-    if (computeAccessSpecifier(SemaRef, D, AS)) {
-      return nullptr;
-    }
-    TypeAlias->setAccess(AS);
-  }
-  D->Cxx = TypeAlias;
+  // Elaborating RHS first.  
+  ExprElaborator Elab(Context, SemaRef);
+  ExprElaborator::Expression InitExpr = Elab.elaborateExpr(D->Init);
 
   if (!D->Init) {
     SemaRef.Diags.Report(D->Op->getLoc(), clang::diag::err_expected_type);
@@ -705,9 +685,8 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D,
   }
   // We are doing complete evaluation at this point because all types need to be made
   // available by phase 3.
-  clang::TypeAliasDecl *Alias = cast<clang::TypeAliasDecl>(D->Cxx);
-  ExprElaborator Elab(Context, SemaRef);
-  ExprElaborator::Expression InitExpr = Elab.elaborateExpr(D->Init);
+  // clang::TypeAliasDecl *Alias = cast<clang::TypeAliasDecl>(D->Cxx);
+  clang::ParsedType PT;
   if (InitExpr.is<clang::Expr *>()) {
     // TODO: Implement this so we can evaluate constant expressions that yield
     // meta function results. maybe? I'm not sure what this is supposed to support
@@ -719,17 +698,10 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D,
   // Working on type expression evaluation.
   if (clang::TypeSourceInfo *TInfo
                                = InitExpr.dyn_cast<clang::TypeSourceInfo *>()) {
-    // Need to evaluate type expression here, this could be difficult because
-    // this isn't set up as a declarator. So we will see how this goes and take
-    // it from there.
-    
-    // This is the simpliest case, that's because this is simply a complete type?
-    // Maybe.
-    // I may need to do something to correctly get the TSI + the qualifiers
-    // associated with them.
-    Alias->setTypeSourceInfo(TInfo);
+    // Using the correctly constructed result type, I hope this should fix any
+    // Further issues I was having with the internal getDeclTypeDecl() calls.
+    PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
     D->ElabPhaseCompleted = 3;
-    return Alias;
   }
 
   if (clang::NamespaceDecl *NsD = InitExpr.dyn_cast<clang::NamespaceDecl *>()) {
@@ -737,6 +709,39 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D,
           << NsD->getName();
     return nullptr;
   }
+
+  clang::IdentifierInfo *IdInfo = D->getId();
+  clang::UnqualifiedId Id;
+  Id.setIdentifier(IdInfo, D->Decl->getLoc());
+  clang::SourceLocation Loc = D->Op->getLoc();
+
+
+  // TODO: In future create a means for us to correctly construct any template
+  // parameters.
+  clang::MultiTemplateParamsArg MTP;
+
+  clang::AccessSpecifier AS = clang::AccessSpecifier::AS_public;
+
+
+  // Constructing the type alias on the way out because I need to correctly
+  // construct it's internal type, before continuing oward.
+  clang::TypeResult TR(PT);
+  clang::Decl *TypeAlias = SemaRef.getCxxSema().ActOnAliasDeclaration(
+      SemaRef.getCurClangScope(), AS, MTP, Loc, Id,
+      clang::ParsedAttributesView(), TR, nullptr);
+  // Attempting to add attribute support for this kind of declaration.
+  
+  bool InClass = SemaRef.getCurrentScope()->getKind() == SK_Class;
+  if (InClass) {
+    // Attempting to mark access specifier of type.
+    clang::AccessSpecifier AS;
+    if (computeAccessSpecifier(SemaRef, D, AS)) {
+      return nullptr;
+    }
+    TypeAlias->setAccess(AS);
+  }
+  D->Cxx = TypeAlias;
+
   return TypeAlias;
 }
 
@@ -1058,25 +1063,9 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
   auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
 
   clang::CXXRecordDecl *R = dyn_cast<clang::CXXRecordDecl>(D->Cxx);
-  // clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::ClassScope
-  //                                               | clang::Scope::DeclScope);
-  // SemaRef.reEnterClangScope();
-  // D->ClsScope = Scope;
-  // SemaRef.getCxxSema().ActOnTagStartDefinition(Scope, R);
-  // SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(Scope, R,
-  //   clang::SourceLocation(), true, clang::SourceLocation());
-  // SemaRef.setCurrentDecl(D);
-  // SemaRef.restoreDeclContext(D);
   // This is set first so we don't recurse anymore then we need to.
-  D->ElabPhaseCompleted = 3;  
-  // We pop here because the type isn't 100% completed, we have more to addd but
-  // we need to move back to the correct decl context. That decl context
-  // wasn't altered like it ususally is within ActOnFinishTagDefinition.
-  // SemaRef.popDecl();
-  // Scope = SemaRef.saveCurrentClangScope();
-  // SemaRef.popScope();
+  D->ElabPhaseCompleted = 3;
 
-  
   // Re-entering the class 
   clang::Scope *PreviousScope = SemaRef.getCurClangScope();
   Declaration *PreviousDecl = SemaRef.getCurrentDecl();
