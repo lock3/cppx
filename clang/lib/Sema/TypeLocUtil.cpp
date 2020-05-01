@@ -69,6 +69,8 @@ TypeSourceInfo *BuildTypeLoc(clang::ASTContext &Context, QualType Ty,
 template<> TypeSourceInfo *BuildTypeLoc<clang::BuiltinTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   auto TypeLocInstance = TLB.push<clang::BuiltinTypeLoc>(Ty);
+  // BuiltinTypeLoc NewT = TLB.push<BuiltinTypeLoc>(T.getType());
+  TypeLocInstance.initializeLocal(Ctx, Loc);
   TypeLocInstance.setBuiltinLoc(Loc);
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
@@ -325,7 +327,9 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::ParenTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::TypedefTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  auto Ret = TLB.push<clang::TypedefTypeLoc>(Ty);
+  Ret.initializeLocal(Ctx, Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::TypedefTypeLoc>
@@ -444,6 +448,13 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::RecordTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::RecordTypeLoc>(Context, TLB, Ty, Loc);
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::CppxKindTypeLoc>
+(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
+  auto TypeLocInstance = TLB.push<clang::CppxKindTypeLoc>(Ty);
+  TypeLocInstance.initializeLocal(Ctx, Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::CppxKindTypeLoc>

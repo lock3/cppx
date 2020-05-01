@@ -1,5 +1,5 @@
-#include "CompileRun.h"
-#include "ParseUtil.h"
+#include "GoldCompileRun.h"
+#include "GoldParseUtil.h"
 
 using namespace llvm;
 using namespace gold;

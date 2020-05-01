@@ -1,16 +1,20 @@
-#include "CompileRun.h"
-#include "ParseUtil.h"
+#include "GoldCompileRun.h"
+#include "GoldParseUtil.h"
 
 using namespace llvm;
 using namespace gold;
 
-TEST(GoldFunctionTemplate, Execution) {
+TEST(MemberFunctionTemplate, MemberFunctionAccess_TemplatedMemberCall) {
   StringRef Code = R"(
-f[z : int]() : int!
-  return z
+c : type = class:
+  y : bool = 0
+  foo[i:int]() :int!
+    return i
+  
 
 main() : int!
-  return f[4]()
+  q : c
+  return q.foo[3]()
 )";
   LLVMContext Context;
   std::unique_ptr<ExecutionEngine> EE;
@@ -18,5 +22,5 @@ main() : int!
   MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
   ASSERT_TRUE(CB);
   int result = CB();
-  ASSERT_EQ(result, 4);
+  ASSERT_EQ(result, 3);
 }

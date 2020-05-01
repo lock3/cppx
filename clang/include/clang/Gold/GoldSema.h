@@ -57,6 +57,7 @@ class Sema {
 
   // Stack of active Scopes.
   llvm::SmallVector<Scope *, 4> ScopeStack;
+  // gold::Scope *CurScope;
   // The declaration context.
   Declaration *CurrentDecl = nullptr;
   
@@ -77,6 +78,11 @@ public:
   /// Push a new scope.
   void pushScope(Scope *S);
 
+  /// This is used in order to properly restore a scope stack that was prevously
+  /// replace. This is done to allow for breaks in elaboration, and switching
+  /// between valid lookup contexts while additional elaboration is completed.
+  void setCurrentScope(Scope *S);
+  
   /// Pop the current scope, returning it.
   Scope *popScope();
 
@@ -111,6 +117,9 @@ public:
 
   /// The current C++ declaration.
   clang::DeclContext *getCurrentCxxDeclContext();
+
+  /// Restore previously exited DeclContext
+  void restoreDeclContext(Declaration *D);
 
   /// Make D the current declaration.
   void pushDecl(Declaration *D);
@@ -161,8 +170,9 @@ public:
   clang::Scope *getCurClangScope();
   clang::Scope *enterClangScope(unsigned int ScopeFlags);
   clang::Scope *moveToParentScopeNoPop();
-  void ReEnterScope(clang::Scope* Scope);
+  void reEnterClangScope(clang::Scope* Scope);
   void leaveClangScope(clang::SourceLocation Loc);
+  clang::Scope* saveCurrentClangScope();
 
 public:
   // The context
