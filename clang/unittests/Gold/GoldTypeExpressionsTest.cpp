@@ -44,3 +44,40 @@ y : x
 
   ASSERT_TRUE(matches(Code, TemplateAndInstantiationMatch));
 }
+
+TEST(GoldTypeExpr, TypeAliasOfAClass) {
+  StringRef Code = R"(
+c : type = class:
+  y : bool = 0
+
+x : type = c
+)";
+
+  DeclarationMatcher TemplateAndInstantiationMatch = translationUnitDecl(
+    hasDescendant(typeAliasDecl(hasName("x"), hasType(asString("struct c"))))
+  );
+
+  ASSERT_TRUE(matches(Code, TemplateAndInstantiationMatch));
+}
+
+
+TEST(GoldTypeExpr, TypeAliasOfAClass_ThenUsed) {
+  StringRef Code = R"(
+c : type = class:
+  y : bool = 0
+
+x : type = c
+main() : int!
+  q : x
+  return q.y
+)";
+
+  DeclarationMatcher TemplateAndInstantiationMatch = translationUnitDecl(
+    hasDescendant(typeAliasDecl(hasName("x"), hasType(asString("struct c")))),
+    hasDescendant(functionDecl(hasName("main"),
+      hasDescendant(varDecl(hasName("q"), hasType(asString("struct c"))))
+    ))
+  );
+
+  ASSERT_TRUE(matches(Code, TemplateAndInstantiationMatch));
+}

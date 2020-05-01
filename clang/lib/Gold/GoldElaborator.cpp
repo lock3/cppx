@@ -737,7 +737,6 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D,
           << NsD->getName();
     return nullptr;
   }
-  
   return TypeAlias;
 }
 

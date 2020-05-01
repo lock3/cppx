@@ -876,6 +876,9 @@ static ExprElaborator::Expression handleLookUpInsideType(Sema &SemaRef,
     // R.front();
     clang::NamedDecl *ND = R.front();
     if (clang::TypeDecl *TD = dyn_cast<clang::TypeDecl>(ND)) {
+      // if (clang::TypeAliasDecl *TA = dyn_cast<clang::TypeAliasDecl>(TD)) {
+      //   return TA->getTypeSourceInfo();
+      // }
       clang::QualType Ty = CxxAST.getTypeDeclType(TD);
       return BuildAnyTypeLoc(CxxAST, Ty, RHS->getLoc());
     }

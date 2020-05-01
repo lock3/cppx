@@ -327,7 +327,9 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::ParenTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::TypedefTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  auto Ret = TLB.push<clang::TypedefTypeLoc>(Ty);
+  Ret.initializeLocal(Ctx, Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::TypedefTypeLoc>

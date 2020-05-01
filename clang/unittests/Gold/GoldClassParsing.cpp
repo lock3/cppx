@@ -733,3 +733,25 @@ foo(x : c) : bool!
   );
   ASSERT_TRUE(matches(Code, MemberFunctionMatch));
 }
+
+
+
+TEST(ClassParsing, NestedTypeAlias) {
+
+  StringRef Code = R"(
+a : type = class:
+  i : int = 0
+
+c : type = class:
+  x : type = a
+  y : bool = 0
+
+foo(x : c.x) : bool!
+  return x.i
+)";
+  DeclarationMatcher MemberFunctionMatch = functionDecl( hasName("foo"),
+    hasAnyParameter(hasName("x")),
+    hasDescendant(varDecl(hasType(asString("c::x"))))
+  );
+  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}
