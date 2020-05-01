@@ -346,3 +346,59 @@ c : type = class:
   );
   ASSERT_TRUE(matches(Code, ClassC));
 }
+
+
+
+// Testing Nested using statements.
+TEST(ClassParsing, Access_PublicUsingUsingType) {
+  StringRef Code = R"(
+c : type = class:
+  c2<public> : type = int
+
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(typeAliasDecl(hasName("c2"), isPublic(),
+      hasType(asString("int"))))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
+TEST(ClassParsing, Access_ImplicitPublicUsingType) {
+  StringRef Code = R"(
+c : type = class:
+  c2: type = int
+
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(typeAliasDecl(hasName("c2"), isPublic(),
+        hasType(asString("int"))))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
+
+TEST(ClassParsing, Access_ProtectedUsingType) {
+  StringRef Code = R"(
+c : type = class:
+  c2 <protected >: type = int
+
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(typeAliasDecl(hasName("c2"), isProtected(),
+      hasType(asString("int"))))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
+TEST(ClassParsing, Access_PrivateUsingType) {
+  StringRef Code = R"(
+c : type = class:
+  c2 <private>: type = int
+
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(typeAliasDecl(hasName("c2"), isPrivate(),
+      hasType(asString("int"))))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
