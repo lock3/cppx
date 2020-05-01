@@ -68,8 +68,12 @@ static llvm::StringRef getCallName(const CallSyntax *S) {
 std::string Declarator::getString() const {
   // FIXME: This needs to properly elaborate all parts of the declarator.
   if (getKind() == DK_Type) {
-    // TODO: Figure out how to correctly print types. that are not simple identifiers.
-    return cast<AtomSyntax>(Data.Type)->getSpelling();
+    if (isa<AtomSyntax>(Data.Type)) {
+      // TODO: Figure out how to correctly print types. that are not simple identifiers.
+      return cast<AtomSyntax>(Data.Type)->getSpelling();
+    } else {
+      return "Some complex type expression\n";
+    }
   } else if (isFunction()) {
     return getCallName(cast<CallSyntax>(Call));
   } else if (isIdentifier()) {
@@ -85,11 +89,33 @@ std::string Declarator::getString() const {
   }
 }
 
+static const char* getDeclaratorKindStr(DeclaratorKind DK) {
+  switch(DK){
+  case DeclaratorKind::DK_Unknown:
+    return "DK_Unknown";
+  case DeclaratorKind::DK_Identifier:
+    return "DK_Identifier";
+  case DeclaratorKind::DK_TemplateType:
+    return "DK_TemplateType";
+  case DeclaratorKind::DK_Pointer:
+    return "DK_Pointer";
+  case DeclaratorKind::DK_Array:
+    return "DK_Array";
+  case DeclaratorKind::DK_Function:
+    return "DK_Function";
+  case DeclaratorKind::DK_Type:
+    return "DK_Type";
+  default:
+    llvm_unreachable("Invalid declarator Kind.");
+  }
+}
+
+
 void Declarator::printSequence(llvm::raw_ostream &os) const {
+
   const Declarator *D = this;
   do {
-    os << D->getString();
-
+    os << getDeclaratorKindStr(D->getKind()) << ": "<< D->getString();
     if (D->Next)
       os << " -> ";
 
@@ -199,6 +225,10 @@ bool Declaration::declaresTemplate() const {
   return false;
 }
 
+bool Declaration::declaresTypeAlias() const {
+  return Cxx && isa<clang::TypeAliasDecl>(Cxx);
+}
+
 const Syntax *Declaration::getTemplateParams() const {
   assert(Decl);
   const Declarator *D = Decl;
@@ -277,6 +307,8 @@ static llvm::StringRef getScopeKindName(ScopeKind K) {
 
   case SK_Control:
     return "Control";
+  default:
+    llvm_unreachable("Invalid scope kind");
   }
 }
 

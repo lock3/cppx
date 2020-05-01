@@ -1,4 +1,4 @@
-#include "CompileRun.h"
+#include "GoldCompileRun.h"
 #include "clang/Gold/ParseGoldAST.h"
 #include "llvm/ExecutionEngine/GenericValue.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"

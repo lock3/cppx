@@ -55,6 +55,7 @@ public:
   clang::Decl *elaborateDecl(Declaration *D);
   clang::Decl *elaborateFunctionDecl(Declaration *D);
   clang::Decl *elaborateVariableDecl(Declaration *D);
+  clang::Decl *elaborateTypeAlias(Declaration *D, clang::TypeSourceInfo *TInfo);
   clang::Decl *elaborateParameterDecl(Declaration *D);
   clang::Decl *elaborateTemplateParamDecl(Declaration *D);
 

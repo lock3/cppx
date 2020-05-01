@@ -12,8 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 
-#include "ParseUtil.h"
-#include "ASTMatchersTest.h"
+#include "GoldParseUtil.h"
+#include "GoldASTMatchersTest.h"
 
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
@@ -32,20 +32,6 @@ c : type = class:
   );
   ASSERT_TRUE(matches(Code, ClassC));
 }
-
-// TEST(ClassParsing, Access_PrivateMember_NoType) {
-//   StringRef Code = R"(
-// c : type = class:
-//   x <private> = 9
-// )";
-//   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
-//     hasDescendant(
-//       fieldDecl(hasName("x"), hasType(asString("int")), isPrivate())
-//     )
-//   );
-//   ASSERT_TRUE(matches(Code, ClassC));
-// }
-
 
 TEST(ClassParsing, Access_PublicMember) {
   StringRef Code = R"(
@@ -357,6 +343,62 @@ c : type = class:
 )";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(recordDecl(hasName("c2"), isPrivate()))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
+
+
+// Testing Nested using statements.
+TEST(ClassParsing, Access_PublicUsingUsingType) {
+  StringRef Code = R"(
+c : type = class:
+  c2<public> : type = int
+
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(typeAliasDecl(hasName("c2"), isPublic(),
+      hasType(asString("int"))))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
+TEST(ClassParsing, Access_ImplicitPublicUsingType) {
+  StringRef Code = R"(
+c : type = class:
+  c2: type = int
+
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(typeAliasDecl(hasName("c2"), isPublic(),
+        hasType(asString("int"))))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
+
+TEST(ClassParsing, Access_ProtectedUsingType) {
+  StringRef Code = R"(
+c : type = class:
+  c2 <protected >: type = int
+
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(typeAliasDecl(hasName("c2"), isProtected(),
+      hasType(asString("int"))))
+  );
+  ASSERT_TRUE(matches(Code, ClassC));
+}
+
+TEST(ClassParsing, Access_PrivateUsingType) {
+  StringRef Code = R"(
+c : type = class:
+  c2 <private>: type = int
+
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(typeAliasDecl(hasName("c2"), isPrivate(),
+      hasType(asString("int"))))
   );
   ASSERT_TRUE(matches(Code, ClassC));
 }

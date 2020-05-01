@@ -1,5 +1,5 @@
-#include "CompileRun.h"
-#include "ParseUtil.h"
+#include "GoldCompileRun.h"
+#include "GoldParseUtil.h"
 
 using namespace llvm;
 using namespace gold;
@@ -148,4 +148,43 @@ main() : int!
   ASSERT_TRUE(CB);
   int result = CB();
   ASSERT_EQ(result, 1);
+}
+
+TEST(GoldClassExec, TypeAliasGlobal) {
+  StringRef Code = R"(
+x : type = int
+y : x  = 4
+
+main() : int!
+  return y
+)";
+
+  LLVMContext Context;
+  std::unique_ptr<ExecutionEngine> EE;
+  ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
+  MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
+  ASSERT_TRUE(CB);
+  int result = CB();
+  ASSERT_EQ(result, 4);
+}
+
+TEST(GoldClassExec, TypeAliasedRecordGlobal) {
+  StringRef Code = R"(
+c : type = class:
+  q : int = 4
+
+x : type = c
+
+main() : int!
+  y : x
+  return y.q
+)";
+
+  LLVMContext Context;
+  std::unique_ptr<ExecutionEngine> EE;
+  ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
+  MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
+  ASSERT_TRUE(CB);
+  int result = CB();
+  ASSERT_EQ(result, 4);
 }

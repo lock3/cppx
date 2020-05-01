@@ -48,7 +48,8 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
 }
 
 Sema::~Sema() {
-  assert(ScopeStack.size() == 0 && "Scope stack is not empty.");
+
+  assert(ScopeStack.empty() && "Scope stack is not empty.");
   delete getCurClangScope();
   CxxSema.CurScope = nullptr;
 }
@@ -71,6 +72,8 @@ void Sema::pushScope(Scope *S) {
 
   ScopeStack.push_back(S);
 }
+
+// llvm::SmallVector<Scope *, 4> ScopeStack;
 
 Scope *Sema::popScope() {
   Scope *R = ScopeStack.back();
@@ -108,6 +111,11 @@ Scope *Sema::saveScope(const Syntax *S) {
 
 clang::DeclContext *Sema::getCurrentCxxDeclContext() {
   return CurrentDecl->getCxxContext();
+}
+
+void Sema::restoreDeclContext(Declaration *D) {
+  CurrentDecl = D;
+  getCxxSema().CurContext = clang::Decl::castToDeclContext(D->Cxx);  
 }
 
 void Sema::pushDecl(Declaration *D) {
@@ -157,10 +165,12 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
       for (auto *FoundDecl : Found) {
         // If we find a name that hasn't been elaborated,
         // then we actually need to elaborate it.
-        if (!FoundDecl->Cxx)
+        if (!FoundDecl->Cxx) {
           Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
+        }
         if (!FoundDecl->Cxx)
           return false;
+
         clang::NamedDecl *ND = cast<clang::NamedDecl>(FoundDecl->Cxx);
 
         // FIXME: check if this is a tag decl, not a type decl!
@@ -181,8 +191,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
           else if (auto *VD = dyn_cast<clang::VarDecl>(ND))
             ND = VD->getDescribedVarTemplate();
           else
-            llvm_unreachable("Unknown template type");
-
+            llvm_unreachable("Unknown template function type");
         }
 
         R.addDecl(ND);
@@ -210,11 +219,8 @@ clang::Scope *Sema::moveToParentScopeNoPop() {
   return S;
 }
 
-void Sema::ReEnterScope(clang::Scope* Scope) {
+void Sema::reEnterClangScope(clang::Scope* Scope) {
   assert(Scope && "Invalid scope.");
-  assert(Scope->getParent() == CxxSema.CurScope &&
-    "We are unable to re-enter this scope because we've already left the scope "
-    "in which it was declared.");
   CxxSema.CurScope = Scope;
 }
 
@@ -231,6 +237,12 @@ void Sema::leaveClangScope(clang::SourceLocation Loc) {
   delete OldScope;
 }
 
+clang::Scope* Sema::saveCurrentClangScope() {
+  assert(getCurClangScope() && "Clang scope imbalance!");
+  clang::Scope *OldScope = getCurClangScope();
+  CxxSema.CurScope = OldScope->getParent();
+  return OldScope;
+}
 
 } // namespace gold
 

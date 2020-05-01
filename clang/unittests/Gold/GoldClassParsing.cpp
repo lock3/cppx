@@ -12,8 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 
-#include "ParseUtil.h"
-#include "ASTMatchersTest.h"
+#include "GoldParseUtil.h"
+#include "GoldASTMatchersTest.h"
 
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
@@ -715,3 +715,61 @@ main() : int!
 //   )));
 //   ASSERT_TRUE(matches(Code, StmtMatcher));
 // }
+
+
+TEST(ClassParsing, ClassTypeUsedAsFunctionParameter) {
+
+  StringRef Code = R"(
+c : type = class:
+  y : bool = 0
+
+foo(x : c) : bool!
+  return x.y
+
+)";
+  DeclarationMatcher MemberFunctionMatch = functionDecl( hasName("foo"),
+    hasAnyParameter(hasName("x")),
+    hasDescendant(varDecl(hasType(asString("struct c"))))
+  );
+  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}
+
+
+
+TEST(ClassParsing, NestedTypeAliasOfAClass) {
+
+  StringRef Code = R"(
+a : type = class:
+  i : int = 0
+
+c : type = class:
+  x : type = a
+  y : bool = 0
+
+foo(x : c.x) : bool!
+  return x.i
+)";
+  DeclarationMatcher MemberFunctionMatch = functionDecl( hasName("foo"),
+    hasAnyParameter(hasName("x")),
+    hasDescendant(varDecl(hasType(asString("c::x"))))
+  );
+  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}
+
+
+TEST(ClassParsing, NestedTypeAliasOfABuiltInType) {
+
+  StringRef Code = R"(
+c : type = class:
+  x : type = int
+  y : bool = 0
+
+foo(x : c.x) : bool!
+  return x
+)";
+  DeclarationMatcher MemberFunctionMatch = functionDecl( hasName("foo"),
+    hasAnyParameter(hasName("x")),
+    hasDescendant(varDecl(hasType(asString("c::x"))))
+  );
+  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}
