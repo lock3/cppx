@@ -762,6 +762,145 @@ Syntax *Parser::parsePre()
   return parsePost();
 }
 
+static bool isNonAngleEnclosure(TokenKind K) {
+  switch (K) {
+  case tok::RightParen:
+  case tok::RightBracket:
+  case tok::RightBrace:
+  case tok::Dedent:
+  case tok::LeftParen:
+  case tok::LeftBracket:
+  case tok::LeftBrace:
+  case tok::Indent:
+    return true;
+  default:
+    return false;
+  }
+}
+
+/// Whether or not this is a closing enclosure token, not counting angles.
+static bool isNonAngleCloseEnclosure(TokenKind K) {
+  switch (K) {
+  case tok::RightParen:
+  case tok::RightBracket:
+  case tok::RightBrace:
+  case tok::Dedent:
+    return true;
+  default:
+    return false;
+  }
+}
+
+/// Keep track of the depth of enclosure tokens when scanning for
+/// attributes.
+void Parser::trackEnclosureDepth(Token Enclosure) {
+  std::size_t K = 0;
+  switch (Enclosure.getKind()) {
+  case tok::LeftParen:
+  case tok::RightParen:
+    break;
+  case tok::LeftBracket:
+  case tok::RightBracket:
+    K = 1;
+    break;
+  case tok::LeftBrace:
+  case tok::RightBrace:
+    K = 2;
+    break;
+  case tok::Indent:
+  case tok::Dedent:
+    K = 3;
+    break;
+  default:
+    llvm_unreachable("using non-enclosure as enclosure");
+  }
+
+  AngleBracketTracker::Loc EncLoc{Enclosure.getLocation(),
+    {Angles.EnclosureCounts[0], Angles.EnclosureCounts[1],
+        Angles.EnclosureCounts[2], Angles.EnclosureCounts[3]}};
+
+  if (isNonAngleCloseEnclosure(Enclosure.getKind())) {
+    if (Angles.isOpen() &&
+        Angles.hasSameDepth(Angles.Angles.back(), EncLoc))
+      Angles.Angles.pop_back();
+
+    if (Angles.EnclosureCounts[K])
+      --Angles.EnclosureCounts[K];
+    if (!Angles.Enclosures.empty())
+      Angles.Enclosures.pop_back();
+
+    return;
+  }
+
+  ++Angles.EnclosureCounts[K];
+  ++EncLoc.EnclosureCounts[K];
+  Angles.Enclosures.push_back(EncLoc);
+}
+
+/// Scan through tokens starting from a '<' and determine whether or not this
+/// is a comparison or attribute.
+bool Parser::scanAngles(Syntax *Base) {
+  std::size_t I = 0;
+
+  // This came after a token that does not appear in base names.
+  if (!PreviousToken.hasKind(tok::Identifier) &&
+      !PreviousToken.hasKind(tok::Greater) &&
+      !isNonAngleEnclosure(PreviousToken.getKind()))
+    return false;
+
+  AngleBracketTracker::Loc PotentialBaseLoc{Base->getLoc(),
+                                            {Angles.EnclosureCounts[0],
+                                             Angles.EnclosureCounts[1],
+                                             Angles.EnclosureCounts[2],
+                                             Angles.EnclosureCounts[3]}};
+
+  while (true) {
+    Token Current = peekToken(I++);
+
+    // Quit at the end of the line, or end of file in the case of the
+    // rare one-line program.
+    if (Current.isNewline() || Current.isEndOfFile())
+      return false;
+
+    // Newlines might be recognized as separators rather than newline tokens.
+    // FIXME: Move this to Token::isNewline()
+    if (Current.hasKind(tok::Separator))
+      if (*(Current.getSymbol().data()) == '\n')
+        return false;
+
+    // If the programmer has used semicolons instead of newlines, we need
+    // to be sure the semicolon is actually ending the line; in other words,
+    // at the same depth as the base name.
+    if (Current.hasKind(tok::Semicolon)) {
+      AngleBracketTracker::Loc SemiLoc{Current.getLocation(),
+                                       {Angles.EnclosureCounts[0],
+                                        Angles.EnclosureCounts[1],
+                                        Angles.EnclosureCounts[2],
+                                        Angles.EnclosureCounts[3]}};
+      if (Angles.hasSameDepth(SemiLoc, PotentialBaseLoc))
+        return false;
+      // We reached a semicolon in some sort of nested list (or typo). We
+      // already know we don't care about this token so just skip ahead.
+      continue;
+    }
+
+    if (isNonAngleEnclosure(Current.getKind()))
+      trackEnclosureDepth(Current);
+
+    if (Current.hasKind(tok::Less))
+      startPotentialAngleBracket(Current);
+
+    if (Angles.isOpen() &&
+        (Current.hasKind(tok::Greater) ||
+         Current.hasKind(tok::GreaterEqual))) {
+      finishPotentialAngleBracket(Current);
+
+      if (!Angles.isOpen())
+        return true;
+    }
+  }
+}
+
 /// postfix:
 ///   base
 ///   postfix ( array )
@@ -790,144 +929,14 @@ Syntax *Parser::parsePost()
       break;
 
     case tok::Less: {
-      std::size_t I = 0;
-      bool Attribute = false;
-      AngleTracker2::Loc PotentialNameLoc{e->getLoc(),
-                                        {Angles.ParenCount, Angles.BracketCount,
-                                        Angles.BraceCount, Angles.IndentCount}};
-
-      while (true) {
-        Token Current = peekToken(I++);
-
-        // Quit at the end of the line, or end of file in the case of the
-        // rare one-line program.
-        if (Current.isNewline() || Current.isEndOfFile())
-          break;
-
-        if (Current.hasKind(tok::Separator))
-          if (*(Current.getSymbol().data()) == '\n')
-            break;
-
-        // If the programmer has used semicolons instead of newlines, we need
-        // to be sure the semicolon is actually ending the line; in other words,
-        // at the same depth as the base name.
-        if (Current.hasKind(tok::Semicolon)) {
-          AngleTracker2::Loc SemiLoc{Current.getLocation(),
-                                     {Angles.ParenCount, Angles.BracketCount,
-                                      Angles.BraceCount, Angles.IndentCount}};
-          if (Angles.hasSameDepth(SemiLoc, PotentialNameLoc))
-            break;
-          // We reached a semicolon in some sort of nested list (or typo). We
-          // already know we don't care about this token so just skip ahead.
-          continue;
-        }
-
-        switch (Current.getKind()) {
-        case tok::LeftParen:
-          ++Angles.ParenCount;
-          Angles.Enclosures.push_back({Current.getLocation(),
-                                       {Angles.ParenCount, Angles.BracketCount,
-                                        Angles.BraceCount, Angles.IndentCount}});
-
-          break;
-        case tok::LeftBracket:
-          ++Angles.BracketCount;
-          Angles.Enclosures.push_back({Current.getLocation(),
-                                       {Angles.ParenCount, Angles.BracketCount,
-                                        Angles.BraceCount, Angles.IndentCount}});
-          break;
-        case tok::LeftBrace:
-          ++Angles.BraceCount;
-          Angles.Enclosures.push_back({Current.getLocation(),
-                                       {Angles.ParenCount, Angles.BracketCount,
-                                        Angles.BraceCount, Angles.IndentCount}});
-          break;
-        case tok::Indent:
-          ++Angles.IndentCount;
-          Angles.Enclosures.push_back({Current.getLocation(),
-                                       {Angles.ParenCount, Angles.BracketCount,
-                                        Angles.BraceCount, Angles.IndentCount}});
-          break;
-        case tok::RightParen: {
-          AngleTracker2::Loc CloseLoc{Current.getLocation(),
-                                      {Angles.ParenCount, Angles.BracketCount,
-                                       Angles.BraceCount, Angles.IndentCount}};
-          if (Angles.isOpen() &&
-              Angles.hasSameDepth(Angles.Angles.back(), CloseLoc))
-            Angles.Angles.pop_back();
-
-          // Make sure unbalanced parentheses don't set us on fire.
-          if (Angles.ParenCount)
-            --Angles.ParenCount;
-          if (!Angles.Enclosures.empty())
-            Angles.Enclosures.pop_back();
-          break;
-        } case tok::RightBracket: {
-          if (Angles.BracketCount)
-            --Angles.BracketCount;
-
-          AngleTracker2::Loc CloseLoc{Current.getLocation(),
-                                      {Angles.ParenCount, Angles.BracketCount,
-                                       Angles.BraceCount, Angles.IndentCount}};
-          if (Angles.isOpen() &&
-              Angles.hasSameDepth(Angles.Enclosures.back(), CloseLoc))
-            Angles.Angles.pop_back();
-
-          Angles.Enclosures.pop_back();
-          break;
-        } case tok::RightBrace: {
-          if (Angles.BraceCount)
-            --Angles.BraceCount;
-
-          AngleTracker2::Loc CloseLoc{Current.getLocation(),
-                                      {Angles.ParenCount, Angles.BracketCount,
-                                       Angles.BraceCount, Angles.IndentCount}};
-          if (Angles.isOpen() &&
-              Angles.hasSameDepth(Angles.Enclosures.back(), CloseLoc)) {
-            Angles.Angles.pop_back();
-          }
-
-          Angles.Enclosures.pop_back();
-          break;
-        } case tok::Dedent: {
-          if (Angles.IndentCount)
-            --Angles.IndentCount;
-
-          AngleTracker2::Loc CloseLoc{Current.getLocation(),
-                                      {Angles.ParenCount, Angles.BracketCount,
-                                       Angles.BraceCount, Angles.IndentCount}};
-          if (Angles.isOpen() &&
-              Angles.hasSameDepth(Angles.Enclosures.back(), CloseLoc))
-            Angles.Angles.pop_back();
-
-          Angles.Enclosures.pop_back();
-          break;
-        } default: break;
-        }
-
-        if (Current.hasKind(tok::Less))
-          startPotentialAngleBracket(Current);
-
-        if (Angles.isOpen() &&
-            (Current.hasKind(tok::Greater) ||
-             Current.hasKind(tok::GreaterEqual))) {
-          finishPotentialAngleBracket(Current);
-
-          if (!Angles.isOpen()) {
-            Attribute = true;
-            break;
-          }
-        }
-      }
-
-      if (Attribute)
-        e = parsePostAttr(e, Angles.LastClose);
+      if (scanAngles(e))
+        e = parsePostAttr(e);
       else {
         Angles.clear();
         return e;
       }
-      break;
 
+      break;
     }
     case tok::Dot:
       e = parseDot(e);
@@ -1014,10 +1023,7 @@ Syntax *Parser::parseArrayPrefix()
                makeList(Context, {Arg, Map}));
 }
 
-Syntax *Parser::parsePostAttr(Syntax *Pre,
-                              clang::SourceLocation EndPoint) {
-  assert(EndPoint.isValid() && "Invalid endpoint");
-
+Syntax *Parser::parsePostAttr(Syntax *Pre) {
   EnclosingAngles Angles(*this);
   if (!Angles.expectOpen())
     return onError();
@@ -1322,28 +1328,20 @@ void Parser::decrementEnclosureCount(unsigned Enclosure) {
 
   switch (Enclosure) {
   case enc::Parens:
-    if (ParenCount) {
-      AngleBrackets.clear(*this);
+    if (ParenCount)
       --ParenCount;
-    }
     break;
   case enc::Braces:
-    if (BraceCount) {
-      AngleBrackets.clear(*this);
+    if (BraceCount)
       --BraceCount;
-    }
     break;
   case enc::Brackets:
-    if (BracketCount) {
-      AngleBrackets.clear(*this);
+    if (BracketCount)
       --BracketCount;
-    }
     break;
   case enc::Tabs:
-    if (IndentCount) {
-      AngleBrackets.clear(*this);
+    if (IndentCount)
       --IndentCount;
-    }
     break;
   default:
     return;
@@ -1354,10 +1352,11 @@ void Parser::decrementEnclosureCount(unsigned Enclosure) {
 // '>' token later on.
 void Parser::startPotentialAngleBracket(const Token &OpToken) {
   assert(OpToken.hasKind(tok::Less) && "not at a potential angle bracket");
-  AngleBrackets.add(*this, OpToken.getLocation());
   Angles.Angles.push_back({OpToken.getLocation(),
-                           {Angles.ParenCount, Angles.BracketCount,
-                            Angles.BraceCount, Angles.IndentCount}});
+                           {Angles.EnclosureCounts[0],
+                            Angles.EnclosureCounts[1],
+                            Angles.EnclosureCounts[2],
+                            Angles.EnclosureCounts[3]}});
 }
 
 // After a '>' or '>=', we're no longer potentially in a construct that's
@@ -1365,15 +1364,13 @@ void Parser::startPotentialAngleBracket(const Token &OpToken) {
 void Parser::finishPotentialAngleBracket(const Token &OpToken) {
   assert (OpToken.hasKind(tok::Greater) || OpToken.hasKind(tok::GreaterEqual) &&
           "invalid angle bracket close.");
-  AngleBrackets.clear(*this);
-
-  AngleTracker2::Loc CloseLoc{OpToken.getLocation(),
-                              {Angles.ParenCount, Angles.BracketCount,
-                               Angles.BraceCount, Angles.IndentCount}};
-  if (Angles.hasSameDepth(Angles.Angles.front(), CloseLoc)) {
+  AngleBracketTracker::Loc CloseLoc{OpToken.getLocation(),
+                                    {Angles.EnclosureCounts[0],
+                                     Angles.EnclosureCounts[1],
+                                     Angles.EnclosureCounts[2],
+                                     Angles.EnclosureCounts[3]}};
+  if (Angles.hasSameDepth(Angles.Angles.front(), CloseLoc))
     Angles.Angles.pop_back();
-    Angles.LastClose = CloseLoc.SourceLoc;
-  }
 }
 
 } // namespace gold
