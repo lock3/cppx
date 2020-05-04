@@ -1,13 +1,6 @@
 #include "GoldParseUtil.h"
 #include "GoldASTMatchersTest.h"
 
-namespace clang { namespace ast_matchers {
-AST_POLYMORPHIC_MATCHER(isExternStorageClass,
-                        AST_POLYMORPHIC_SUPPORTED_TYPES(FunctionDecl,
-                                                        VarDecl)) {
-  return Node.getStorageClass() == SC_Extern;
-}
-}}
 
 using namespace clang::ast_matchers;
 using namespace clang::tooling;

@@ -129,6 +129,45 @@ static bool computeAccessSpecifier(Sema& SemaRef, Declaration *D,
     });
 }
 
+static bool compluteVariableStorageClassSpec(Sema& SemaRef, Declaration *D,
+    clang::StorageClass& SC) {
+  // llvm_unreachable("Working on it.");
+  return locateValidAttribute(D,
+    // OnAttr
+    [&](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "static") {
+          SC = clang::StorageClass::SC_Static;
+          return true;
+        }
+        if (Atom->getSpelling() == "extern") {
+          SC = clang::StorageClass::SC_Extern;
+          return true;
+        }
+      }
+      return false;
+    },
+    // CheckAttr
+    [](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "static" || Atom->getSpelling() == "extern") {
+          return true;
+        }
+      }
+      return false;
+    },
+    // OnDup
+    [&](const Syntax *FirstAttr, const Syntax *DuplicateAttr){
+      const AtomSyntax *Atom0 = dyn_cast<AtomSyntax>(FirstAttr);
+      const AtomSyntax *Atom1 = dyn_cast<AtomSyntax>(DuplicateAttr);
+
+      return SemaRef.Diags.Report(DuplicateAttr->getLoc(),
+        clang::diag::err_conflicting_attributes)
+        << FirstAttr->getLoc() << DuplicateAttr->getLoc()
+        << Atom0->getSpelling() << Atom1->getSpelling(); 
+    });
+}
+
 static bool compluteFunctionStorageClassSpec(Sema& SemaRef, Declaration *D,
     clang::StorageClass& SC) {
   // Setting special storage class default to None.
@@ -674,13 +713,11 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   return FD;
 }
 
-static clang::StorageClass getStorageClass(Elaborator &Elab) {
-  // FIXME: What is the storage class for a variable? Computed from scope
-  // and specifiers probably. We don't have specifiers yet.
+static clang::StorageClass getDefaultVariableStorageClass(Elaborator &Elab) {
   return Elab.SemaRef.getCurrentScope()->isBlockScope() ||
     Elab.SemaRef.getCurrentScope()->isControlScope()
     ? clang::SC_Auto
-    : clang::SC_Static;
+    : clang::SC_None;
 }
 
 
@@ -728,8 +765,11 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
-  clang::StorageClass SC = getStorageClass(*this);
-
+  clang::StorageClass SC = getDefaultVariableStorageClass(*this);
+  if (compluteVariableStorageClassSpec(SemaRef, D, SC)) {
+    return nullptr;
+  }
+  
 
   // Create the variable and add it to it's owning context.
   clang::VarDecl *VD = clang::VarDecl::Create(Context.CxxAST, Owner, Loc, Loc,
