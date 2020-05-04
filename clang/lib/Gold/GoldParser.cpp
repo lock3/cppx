@@ -1369,7 +1369,7 @@ void Parser::finishPotentialAngleBracket(const Token &OpToken) {
                                      Angles.EnclosureCounts[1],
                                      Angles.EnclosureCounts[2],
                                      Angles.EnclosureCounts[3]}};
-  if (Angles.hasSameDepth(Angles.Angles.front(), CloseLoc))
+  if (Angles.hasSameDepth(Angles.Angles.back(), CloseLoc))
     Angles.Angles.pop_back();
 }
 
