@@ -10462,6 +10462,8 @@ def err_invalid_block_condition : Error<
   "invalid block condition">;
 def err_duplicate_access_specifier : Error<
   "multiple access specifiers given as attributes, given %0, and %1">;
+def err_conflicting_attributes : Error<
+  "conflicting attributes given, given %0, and %1">;
 
 def err_auto_failed : Error<
   "could not deduce type of variable">;

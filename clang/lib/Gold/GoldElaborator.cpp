@@ -33,82 +33,144 @@
 
 namespace gold {
 
-/// This extracts the access specifier if one was given, if not it's set to public.
-/// Returns false on success, and true if there's an error.
-static bool computeAccessSpecifier(Sema& SemaRef, Declaration *D,
-    clang::AccessSpecifier& AS) {
-  AS = clang::AS_public;
+/// locateValidAttribute
+/// This is a privately used template function, basucally taking the place of me
+/// duplicating the same thing over and over again for each type of attribute
+/// I need to find.
+///
+/// OnAttr is a callable with signature
+///       bool (const Syntax *)
+///   Returing true means you've located one of the possible attributes.
+///   This should also be used to set the correct value of any possible return
+///   value.
+///     true = Matched an attribute.
+///     false = didn't match an attribute.
+///
+/// IsSameAttr is a callable used to detect duplicates of the same attribute class.
+///   This is the same as OnAttr with the exception that it doesn't set
+///   the current desired attribute when it's true.
+///   Signature:
+///       bool (const Syntax *)
+///     true = we hvae a failure (meaning that we have a duplicate attribute)
+///     false = we don't have an attribute of the same class.
+///
+/// OnDuplicate is a callable with signature
+///       void (const syntax *first, const Syntax *Duplicate)
+///   This is used to create error messages.
+template<typename OnAttr, typename IsSameAttr, typename OnDuplicate>
+static bool locateValidAttribute(Declaration *D, OnAttr OnAttribute,
+    IsSameAttr CheckAttr, OnDuplicate OnDup) {
+  assert(D && "Invalid declaration.");
+
   if (!D->Decl->UnprocessedAttributes)
     return false;
   auto Iter = D->Decl->UnprocessedAttributes->begin();
   auto End = D->Decl->UnprocessedAttributes->end();
   for (;Iter != End; ++Iter) {
-    if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(*Iter)){
-      if (Atom->getSpelling() == "private") {
-        AS = clang::AS_private;
-        break;
-      } else if (Atom->getSpelling() == "protected") {
-        AS = clang::AS_protected;
-        break;
-      } else if (Atom->getSpelling() == "public") {
-        AS = clang::AS_public;
-        break;
-      }
+    if (OnAttribute(*Iter)) {
+      break;
     }
   }
   const Syntax *AttribSpec = nullptr;
+  bool didFail = false;
   if(Iter != End) {
     AttribSpec = *Iter;
     D->Decl->UnprocessedAttributes->erase(Iter);
     Iter = D->Decl->UnprocessedAttributes->begin();
     End = D->Decl->UnprocessedAttributes->end();
     for (;Iter != End; ++Iter) {
-      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(*Iter)){
+      if (CheckAttr(*Iter)) {
+        OnDup(AttribSpec, *Iter);
+        didFail = true;
+      }
+    }
+  }
+  return didFail;
+}
+
+/// This extracts the access specifier if one was given, if not it's set to public.
+/// Returns false on success, and true if there's an error.
+static bool computeAccessSpecifier(Sema& SemaRef, Declaration *D,
+    clang::AccessSpecifier& AS) {
+  AS = clang::AS_public;
+  return locateValidAttribute(D,
+    // OnAttr
+    [&](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "private") {
+          AS = clang::AS_private;
+          return true;
+        } else if (Atom->getSpelling() == "protected") {
+          AS = clang::AS_protected;
+          return true;
+        } else if (Atom->getSpelling() == "public") {
+          AS = clang::AS_public;
+          return true;
+        }
+      }
+      return false;
+    },
+    // CheckAttr
+    [](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
         if (Atom->getSpelling() == "private"
             || Atom->getSpelling() == "protected"
             || Atom->getSpelling() == "public") {
-          break;
+          return true;
         }
       }
-    }
-    if (Iter != End) {
-      // TODO: Create valid error message
-      SemaRef.Diags.Report((*Iter)->getLoc(),
+      return false;
+    },
+    // OnDup
+    [&](const Syntax *FirstAttr, const Syntax *DuplicateAttr){
+      SemaRef.Diags.Report(DuplicateAttr->getLoc(),
             clang::diag::err_duplicate_access_specifier)
-              << AttribSpec->getLoc() << (*Iter)->getLoc(); 
-      return true;
-    }
-  }
-  return false;
+              << FirstAttr->getLoc() << DuplicateAttr->getLoc(); 
+    });
 }
-// static void handleInClassAttributeApplication(Sema& SemaRef,SyntaxContext& Context,
-//     clang::Decl *Dec, Declaration *D) {
-//   if (D->Decl->AttributeNode) {
-//     
-//     for (auto const& attr : D->Decl->AttributeNode->getAttributes()) {
-//       if (const AtomSyntax *AttrName = dyn_cast<AtomSyntax>(attr->getArg())) {
 
-//         // TODO: We need to change in order to prevent multiple access specifiers
-//         // from being given. Currently this only works for single access
-//         // specifiers.
+static bool compluteFunctionStorageClassSpec(Sema& SemaRef, Declaration *D,
+    clang::StorageClass& SC) {
+  // Setting special storage class default to None.
+  SC = clang::SC_None;
+  // llvm_unreachable("Working on it.");
+  return locateValidAttribute(D,
+    // OnAttr
+    [&](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "static") {
+          SC = clang::StorageClass::SC_Static;
+          return true;
+        }
+        if (Atom->getSpelling() == "extern") {
+          SC = clang::StorageClass::SC_Extern;
+          return true;
+        }
+      }
+      return false;
+    },
+    // CheckAttr
+    [](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "static" || Atom->getSpelling() == "extern") {
+          return true;
+        }
+      }
+      return false;
+    },
+    // OnDup
+    [&](const Syntax *FirstAttr, const Syntax *DuplicateAttr){
+      const AtomSyntax *Atom0 = dyn_cast<AtomSyntax>(FirstAttr);
+      const AtomSyntax *Atom1 = dyn_cast<AtomSyntax>(DuplicateAttr);
 
-//         } else {
-//           llvm_unreachable("Unsupported attribute given.");
-//         }
-//       }
-//     }
+      return SemaRef.Diags.Report(DuplicateAttr->getLoc(),
+        clang::diag::err_conflicting_attributes)
+        << FirstAttr->getLoc() << DuplicateAttr->getLoc()
+        << Atom0->getSpelling() << Atom1->getSpelling(); 
+    });
+}
 
-//     // Don't chainge default access in the event the access specifier was never
-//     // given.
-//     if (AS != clang::AS_none)
-//       Dec->setAccess(AS);
-//   }
-// }
-// static bool CheckDeclA
 
-// static bool checkAccessSpecifier(Sema& SemaRef, Declaration *D) {
-//   return false;
-// } 
 Elaborator::Elaborator(SyntaxContext &Context, Sema &SemaRef)
   : Context(Context), SemaRef(SemaRef) {}
 
@@ -551,6 +613,11 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   } else {
     FD = clang::FunctionDecl::Create(Context.CxxAST, Owner, Loc, Loc, Name,
                                      TInfo->getType(), TInfo, clang::SC_None);
+    clang::StorageClass SC;
+    if (compluteFunctionStorageClassSpec(SemaRef, D, SC)) {
+      return nullptr;
+    }
+    FD->setStorageClass(SC);
     if (FD->isMain()) {
       clang::AttributeFactory Attrs;
       clang::DeclSpec DS(Attrs);
