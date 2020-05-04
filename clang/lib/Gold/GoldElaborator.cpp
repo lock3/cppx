@@ -131,7 +131,6 @@ static bool computeAccessSpecifier(Sema& SemaRef, Declaration *D,
 
 static bool compluteVariableStorageClassSpec(Sema& SemaRef, Declaration *D,
     clang::StorageClass& SC) {
-  // llvm_unreachable("Working on it.");
   return locateValidAttribute(D,
     // OnAttr
     [&](const Syntax *Attr) -> bool{
@@ -209,6 +208,38 @@ static bool compluteFunctionStorageClassSpec(Sema& SemaRef, Declaration *D,
     });
 }
 
+/// This should ONLY be used with member variables
+bool isStaticMember(Sema& SemaRef, Declaration *D, bool &IsStatic) {
+  return locateValidAttribute(D,
+    // OnAttr
+    [&](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "static") {
+          IsStatic = true;
+          return true;
+        }
+      }
+      return false;
+    },
+    // CheckAttr
+    [](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "static") {
+          return true;
+        }
+      }
+      return false;
+    },
+    // OnDup
+    [&](const Syntax *FirstAttr, const Syntax *DuplicateAttr){
+      const AtomSyntax *Atom0 = dyn_cast<AtomSyntax>(FirstAttr);
+      const AtomSyntax *Atom1 = dyn_cast<AtomSyntax>(DuplicateAttr);
+      return SemaRef.Diags.Report(DuplicateAttr->getLoc(),
+        clang::diag::err_conflicting_attributes)
+        << FirstAttr->getLoc() << DuplicateAttr->getLoc()
+        << Atom0->getSpelling() << Atom1->getSpelling(); 
+    });
+}
 
 Elaborator::Elaborator(SyntaxContext &Context, Sema &SemaRef)
   : Context(Context), SemaRef(SemaRef) {}
@@ -637,10 +668,16 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       DtorDecl->setType(QT);
 
     } else {
+      clang::StorageClass SC = clang::SC_None;
+      bool IsStatic = false;
+      if (isStaticMember(SemaRef, D, IsStatic)) {
+        return nullptr;
+      }
+      if (IsStatic) 
+        SC = clang::SC_Static;
       FD = clang::CXXMethodDecl::Create(Context.CxxAST, RD, Loc, DNI,
                                         TInfo->getType(), TInfo,
-                                        clang::StorageClass::SC_None,
-                                        /*isInline*/true,
+                                        SC, /*isInline*/true,
                                       clang::ConstexprSpecKind::CSK_unspecified,
                                         Loc);
     }
@@ -1274,15 +1311,30 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
   if (computeAccessSpecifier(SemaRef, D, AS)) {
     return nullptr;
   }
-  clang::FieldDecl *FD = SemaRef.getCxxSema().CheckFieldDecl(DN, TInfo->getType(),
-                                          TInfo, /*RecordDecl=*/Owner,
-                                          Loc, /*Mutable=*/false,
-                                          /*BitWidth=*/nullptr, InitStyle, Loc,
-                                          AS, nullptr);
-  Owner->addDecl(FD);
-  D->Cxx = FD;
+  bool DeclIsStatic = false;
+  if (isStaticMember(SemaRef, D, DeclIsStatic)) {
+    return nullptr;
+  }
+  clang::Decl *Field = nullptr;
+  if (DeclIsStatic) {
+    // In this case we are creating a static member variable.
+    Field = clang::VarDecl::Create(Context.CxxAST, Owner, Loc, Loc,
+                                   D->getId(), TInfo->getType(), TInfo,
+                                   clang::SC_Static);
+    Field->setAccess(AS);
+  } else {
+    // We are create field within a class.
+    Field = SemaRef.getCxxSema().CheckFieldDecl(DN, TInfo->getType(),
+                                                TInfo, /*RecordDecl=*/Owner,
+                                                Loc, /*Mutable=*/false,
+                                                /*BitWidth=*/nullptr, InitStyle, Loc,
+                                                AS, nullptr);
+  }
+
+  Owner->addDecl(Field);
+  D->Cxx = Field;
   D->ElabPhaseCompleted = 2;
-  return FD;
+  return Field;
 }
 
 void Elaborator::elaborateFieldInit(Declaration *D) {
