@@ -1166,11 +1166,10 @@ Expression ExprElaborator::elaborateConstType(Declarator *D, TypeInfo *Ty) {
 
   clang::QualType BaseType =
     BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
+  BaseType.addConst();
   clang::TypeSourceInfo *TInfo =
     BuildAnyTypeLoc(CxxAST, BaseType, D->getType()->getLoc());
 
-  // BaseType.addConst();
-  // TInfo->overrideType(BaseType);
   return TInfo;
 }
 

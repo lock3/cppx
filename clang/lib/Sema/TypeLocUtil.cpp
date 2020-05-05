@@ -691,6 +691,7 @@ TypeSourceInfo *BuildAnyTypeLoc(clang::ASTContext &Context,
 #define TYPE(CLASS, PARENT)                                                    \
   case clang::Type::CLASS:{                                                    \
     TInfo = BuildTypeLoc<clang::CLASS##TypeLoc>(Context, TLB, Base, Loc);      \
+    break;                                                                     \
   }
 #include "clang/AST/TypeNodes.inc"
   }
