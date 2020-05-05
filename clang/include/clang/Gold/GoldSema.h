@@ -57,7 +57,7 @@ class Sema {
 
   // Stack of active Scopes.
   llvm::SmallVector<Scope *, 4> ScopeStack;
-  // gold::Scope *CurScope;
+
   // The declaration context.
   Declaration *CurrentDecl = nullptr;
   

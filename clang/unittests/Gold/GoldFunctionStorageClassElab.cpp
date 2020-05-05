@@ -52,3 +52,24 @@ foo()<extern>: int
     hasName("foo"), isExternStorageClass());
   ASSERT_TRUE(matches(Code, ExternFunction));
 }
+
+
+// TEST(GoldFunctionStorageClass, ExternC_FreeFunctionDecl) {
+//   StringRef Code = R"(
+// foo()<language"C">: int
+// )";
+//   DeclarationMatcher ExternFunction = functionDecl(
+//     hasName("foo"), isExternStorageClass());
+//   ASSERT_TRUE(matches(Code, ExternFunction));
+// }
+
+// TEST(GoldFunctionStorageClass, ExternC_FreeFunction) {
+//   StringRef Code = R"(
+// foo()<language"C">: int!
+//   return 4
+// )";
+//   DeclarationMatcher ExternFunction = functionDecl(
+//     hasName("foo"), isExternStorageClass());
+//   ASSERT_TRUE(matches(Code, ExternFunction));
+// }
+
