@@ -221,6 +221,19 @@ public:
     const Syntax *ConcreteTerm;
   };
 
+  struct ExprEvalRAII {
+    ExprEvalRAII(Sema& S, clang::Sema::ExpressionEvaluationContext NewContext)
+      :SemaRef(S)
+    {
+      SemaRef.getCxxSema().PushExpressionEvaluationContext(NewContext);
+    }
+    ~ExprEvalRAII() {
+      SemaRef.getCxxSema().PopExpressionEvaluationContext();
+    }
+  private:
+    Sema& SemaRef;
+  };
+
   // Dictionary of built in types.
   //
   // FIXME: This should be initialized in the constructor.

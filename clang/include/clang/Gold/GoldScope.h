@@ -193,6 +193,8 @@ public:
     return Cxt;
   }
 
+  clang::SourceLocation getEndOfDecl() const;
+
   /// True if this declares a variable.
   bool declaresVariable() const;
 
@@ -229,6 +231,13 @@ public:
 
   /// This is true iff isa<TypeAliasDecl>(Cxx)
   bool declaresTypeAlias() const;
+
+  template<typename T>
+  bool defines() const {
+    return Cxx && clang::isa<T>(Cxx);
+  }
+  /// Checks if the current Cxx decl is a static member variable of a class.
+  bool declaresInlineInitializedStaticVarDecl() const;
 
   /// Get the template parameters for this declaration or null if none.
   const Syntax *getTemplateParams() const;

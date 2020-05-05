@@ -445,7 +445,8 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
     gold::Declaration *LocalDecl = SemaRef.getCurrentScope()->findDecl(SS);
     if (!LocalDecl)
       continue;
-    if (LocalDecl->declaresMemberVariable()){
+    if (LocalDecl->declaresMemberVariable()
+        || LocalDecl->defines<clang::VarDecl>()) {
       Elab.elaborateDef(LocalDecl);
     }
   }
@@ -1099,8 +1100,12 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   if (!D->Cxx){
     return;
   }
-  clang::VarDecl *VD = cast<clang::VarDecl>(D->Cxx);
+  
+  // FIXME: If we synthesize initializers, this might need to happen before that
+  if (SemaRef.checkForRedefinition<clang::VarDecl>(D))
+    return;
 
+  clang::VarDecl *VD = cast<clang::VarDecl>(D->Cxx);
   if (!D->Init) {
     // FIXME: We probably want to synthesize some kind of initializer here.
     // Not quite sure how we want to do this.
@@ -1119,13 +1124,17 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     return;
   }
 
-  // FIXME: If we synthesize initializers, this might need to happen before that
-  if (SemaRef.checkForRedefinition<clang::VarDecl>(D))
-    return;
+  // Doing
+  ExprElaborator::Expression Init;
+    ExprElaborator ExprElab(Context, SemaRef);
+  if (D->declaresInlineInitializedStaticVarDecl()) {
+    Sema::ExprEvalRAII Ctxt(SemaRef,
+      clang::Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
+    Init = ExprElab.elaborateExpr(D->Init);
 
-  // Elaborate the initializer.
-  ExprElaborator ExprElab(Context, SemaRef);
-  ExprElaborator::Expression Init = ExprElab.elaborateExpr(D->Init);
+  } else {
+    Init = ExprElab.elaborateExpr(D->Init);
+  }
 
   // Make sure the initializer was elaborated as a type. 
   // FIXME: This will need to change in order to properly address how identifiers
@@ -1138,6 +1147,7 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   }
 
   clang::Expr *InitExpr = Init.get<clang::Expr *>();
+
   // Perform auto deduction.
   if (VD->getType()->isUndeducedType()) {
     clang::QualType Ty;
@@ -1300,8 +1310,11 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
+  
+  
   clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
-  clang::SourceLocation Loc = D->Op->getLoc();
+  clang::SourceLocation Loc = D->Decl->getLoc();
+  clang::SourceLocation LocEnd = D->getEndOfDecl();
   clang::DeclarationName DN = D->getId();
   clang::InClassInitStyle InitStyle = clang::InClassInitStyle::ICIS_NoInit;
   if (D->Init) {
@@ -1318,17 +1331,20 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
   clang::Decl *Field = nullptr;
   if (DeclIsStatic) {
     // In this case we are creating a static member variable.
-    Field = clang::VarDecl::Create(Context.CxxAST, Owner, Loc, Loc,
-                                   D->getId(), TInfo->getType(), TInfo,
-                                   clang::SC_Static);
-    Field->setAccess(AS);
+    clang::VarDecl *VDecl= clang::VarDecl::Create(Context.CxxAST, Owner, Loc,
+                                                  LocEnd, D->getId(),
+                                                  TInfo->getType(), TInfo,
+                                                  clang::SC_Static);
+    VDecl->setInlineSpecified();
+    VDecl->setAccess(AS);
+    Field = VDecl;
   } else {
     // We are create field within a class.
     Field = SemaRef.getCxxSema().CheckFieldDecl(DN, TInfo->getType(),
                                                 TInfo, /*RecordDecl=*/Owner,
                                                 Loc, /*Mutable=*/false,
-                                                /*BitWidth=*/nullptr, InitStyle, Loc,
-                                                AS, nullptr);
+                                                /*BitWidth=*/nullptr, InitStyle,
+                                                Loc, AS, nullptr);
   }
 
   Owner->addDecl(Field);

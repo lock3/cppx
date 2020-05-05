@@ -140,9 +140,23 @@ Declaration::~Declaration() {
   delete SavedScope;
 }
 
+clang::SourceLocation Declaration::getEndOfDecl() const {
+  const Declarator *D = Decl;
+  if (!D)
+    return clang::SourceLocation();
+
+  if (Init)
+    return Init->getLoc();
+
+  while(D->Next) {
+    D = D->Next;
+  }
+  return D->getLoc();
+}
+
 // A declarator declares a variable, if it does not declare a function.
 bool Declaration::declaresVariable() const {
-  return !declaresFunction() /*&& !declaresType()*/;
+  return !declaresFunction();
 }
 
 bool Declaration::declaresType() const {  
@@ -227,6 +241,15 @@ bool Declaration::declaresTemplate() const {
 
 bool Declaration::declaresTypeAlias() const {
   return Cxx && isa<clang::TypeAliasDecl>(Cxx);
+}
+
+bool Declaration::declaresInlineInitializedStaticVarDecl() const {
+  if (!Cxx)
+    return false;
+  clang::VarDecl *VD = dyn_cast<clang::VarDecl>(Cxx);
+  if (!VD) 
+    return false;
+  return VD->isInline() && VD->getStorageClass() == clang::SC_Static;
 }
 
 const Syntax *Declaration::getTemplateParams() const {
