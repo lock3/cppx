@@ -90,7 +90,7 @@ public:
 
 
 private:
-  clang::Expr *handleOperatorDotDot(const CallSyntax *Call);
+  clang::Expr *handleOperatorDotDot(const CallSyntax *S);
 
   //===--------------------------------------------------------------------===//
   //                        Type Expression Elaboration                       //
@@ -99,9 +99,13 @@ public:
   Expression elaborateTypeExpr(Declarator *D);
 
   Expression elaboratePointerType(Declarator *D, TypeInfo *Ty);
+  Expression elaborateConstType(Declarator *D, TypeInfo *Ty);
   Expression elaborateArrayType(Declarator *D, TypeInfo *Ty);
   Expression elaborateFunctionType(Declarator *D, TypeInfo *Ty);
   Expression elaborateExplicitType(Declarator *D, TypeInfo *Ty);
+
+private:
+  clang::TypeSourceInfo *handleOperatorConst(const CallSyntax *S);
 };
 
 void dumpExpression(ExprElaborator::Expression Expr, llvm::raw_ostream& Out);

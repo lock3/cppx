@@ -754,38 +754,28 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
     }
     return handleExpressionResultCall(SemaRef, S, CalleeExpr, Args);
   }
+
   // In the event that we do have an atom for the call name we need to do
   // something slightly different before we can fully elaborate the entire call.
-
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   FusedOpKind Op = getFusedOpKind(SemaRef, Callee->getSpelling());
   switch (Op){
-    
-    case FOK_Colon:
+  case FOK_Colon:
       return handleColonExprElaboration(*this, SemaRef, S);
 
-    case FOK_MemberAccess:{
+  case FOK_MemberAccess:{
       const ListSyntax *Args = cast<ListSyntax>(S->getArguments());
       return elaborateMemberAccess(Args->getChild(0), S, Args->getChild(1));
-    }
-    case FOK_DotDot:
-      return handleOperatorDotDot(S);
-    // TODO: Will these ever be valid at any point in the future?
-    case FOK_Exclaim:
-    case FOK_Equals:
-    case FOK_If:
-    case FOK_Else:
-    case FOK_Return:
-    case FOK_For:
-    case FOK_In:
-      llvm_unreachable("Invalid fused operator kind located within a call.");
-    case FOK_Unknown: {
-      // This is for every other kind of operator we handle.
-      break;
-    }
-    default:
-      llvm_unreachable("Invalid and unknown fused operator kind within a "
-          "current expression");
+  }
+
+  case FOK_DotDot:
+    return handleOperatorDotDot(S);
+
+  case FOK_Const:
+    return handleOperatorConst(S);
+
+  default:
+    llvm_unreachable("Invalid or unknown fused operator");
   }
 
   llvm::StringRef Spelling = Callee->getSpelling();
@@ -1102,6 +1092,15 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
       break;
     }
 
+    case DK_Const: {
+      Expression TypeExpr = elaborateConstType(D, TInfo);
+      if (TypeExpr.isNull())
+        return nullptr;
+
+      TInfo = TypeExpr.get<TypeInfo *>();
+      break;
+    }
+
     case DK_Array: {
       Expression TypeExpr = elaborateArrayType(D, TInfo);
       if (TypeExpr.isNull())
@@ -1149,16 +1148,36 @@ Expression ExprElaborator::elaboratePointerType(Declarator *D, TypeInfo *Ty) {
     return nullptr;
   }
 
-  clang::QualType BaseType = BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
+  clang::QualType BaseType =
+    BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
   clang::QualType PtrType = CxxAST.getPointerType(BaseType);
 
   return BuildAnyTypeLoc(CxxAST, PtrType, D->getType()->getLoc());
 }
 
+Expression ExprElaborator::elaborateConstType(Declarator *D, TypeInfo *Ty) {
+  Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
+
+  if (!BaseTypeExpr.is<clang::TypeSourceInfo *>() || BaseTypeExpr.isNull()) {
+    SemaRef.Diags.Report(D->getType()->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+
+  clang::QualType BaseType =
+    BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
+  clang::TypeSourceInfo *TInfo =
+    BuildAnyTypeLoc(CxxAST, BaseType, D->getType()->getLoc());
+
+  // BaseType.addConst();
+  // TInfo->overrideType(BaseType);
+  return TInfo;
+}
+
 Expression ExprElaborator::elaborateArrayType(Declarator *D, TypeInfo *Ty) {
   Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
 
-  if (BaseTypeExpr.is<clang::Expr *>() || BaseTypeExpr.isNull()) {
+  if (!BaseTypeExpr.is<clang::TypeSourceInfo *>() || BaseTypeExpr.isNull()) {
     SemaRef.Diags.Report(D->getType()->getLoc(),
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
@@ -1313,6 +1332,11 @@ clang::Expr *ExprElaborator::handleOperatorDotDot(const CallSyntax *S) {
          && "invalid .. call");
 
   llvm_unreachable("unimplemented");
+}
+
+clang::TypeSourceInfo *
+ExprElaborator::handleOperatorConst(const CallSyntax *S) {
+  llvm_unreachable("should not be here");
 }
 
 } // namespace gold

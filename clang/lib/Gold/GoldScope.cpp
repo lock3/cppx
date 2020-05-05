@@ -44,9 +44,7 @@ clang::SourceLocation Declarator::getLoc() const {
   case DK_Type:
     return getType()->getLoc();
   default:
-    llvm_unreachable("We are unable to actually get valid source location for "
-        "declarator.");
-    return clang::SourceLocation();
+    return Call->getLoc();
   }
 }
 
@@ -84,12 +82,15 @@ std::string Declarator::getString() const {
     if (Data.Index)
       return '[' + std::string(cast<AtomSyntax>(Data.Index)->getSpelling()) + ']';
     return "[]";
+  } else if (getKind() == DK_Const) {
+    return "const";
   } else {
     return "[unimplemented]";
   }
 }
 
-static const char* getDeclaratorKindStr(DeclaratorKind DK) {
+#if 0
+static const char* getDeclaratorKindName(DeclaratorKind DK) {
   switch(DK){
   case DeclaratorKind::DK_Unknown:
     return "DK_Unknown";
@@ -105,17 +106,19 @@ static const char* getDeclaratorKindStr(DeclaratorKind DK) {
     return "DK_Function";
   case DeclaratorKind::DK_Type:
     return "DK_Type";
+  case DeclaratorKind::DK_Const:
+    return "DK_Const";
   default:
     llvm_unreachable("Invalid declarator Kind.");
   }
 }
-
+#endif
 
 void Declarator::printSequence(llvm::raw_ostream &os) const {
 
   const Declarator *D = this;
   do {
-    os << getDeclaratorKindStr(D->getKind()) << ": "<< D->getString();
+    os << D->getString();
     if (D->Next)
       os << " -> ";
 

@@ -120,6 +120,7 @@ enum FusedOpKind {
   FOK_While,
   FOK_In,
   FOK_DotDot,
+  FOK_Const,
 };
 
 /// Convert a fused operator string like `operator'='` into an enum

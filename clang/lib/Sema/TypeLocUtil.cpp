@@ -68,7 +68,8 @@ TypeSourceInfo *BuildTypeLoc(clang::ASTContext &Context, QualType Ty,
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::BuiltinTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  auto TypeLocInstance = TLB.push<clang::BuiltinTypeLoc>(Ty);
+  QualType UnqualifiedTy = Ty.getUnqualifiedType();
+  auto TypeLocInstance = TLB.push<clang::BuiltinTypeLoc>(UnqualifiedTy);
   // BuiltinTypeLoc NewT = TLB.push<BuiltinTypeLoc>(T.getType());
   TypeLocInstance.initializeLocal(Ctx, Loc);
   TypeLocInstance.setBuiltinLoc(Loc);
@@ -681,15 +682,27 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::AtomicTypeLoc>
 TypeSourceInfo *BuildAnyTypeLoc(clang::ASTContext &Context,
                                 TypeLocBuilder &TLB, QualType T,
                                 SourceLocation Loc) {
+  bool IsQualified = T.hasQualifiers();
+  QualType Base = IsQualified ? T.getUnqualifiedType() : T;
+  TypeSourceInfo *TInfo = nullptr;
+
   switch (T->getTypeClass()) {
 #define ABSTRACT_TYPE(CLASS, PARENT)
-#define TYPE(CLASS, PARENT)                                   \
-  case clang::Type::CLASS:{                                    \
-    auto t = BuildTypeLoc<clang::CLASS##TypeLoc>(Context, TLB, T, Loc);\
-    return t;\
+#define TYPE(CLASS, PARENT)                                                    \
+  case clang::Type::CLASS:{                                                    \
+    TInfo = BuildTypeLoc<clang::CLASS##TypeLoc>(Context, TLB, Base, Loc);      \
   }
 #include "clang/AST/TypeNodes.inc"
   }
+
+  if (!IsQualified)
+    return TInfo;
+
+  clang::Qualifiers Quals = T.getQualifiers();
+  QualType NewT(Base.getTypePtr(), Quals.getAsOpaqueValue());
+  TLB.TypeWasModifiedSafely(NewT);
+  TInfo->overrideType(NewT);
+  return TInfo;
 }
 
 TypeSourceInfo *BuildAnyTypeLoc(clang::ASTContext &Context, QualType T,
