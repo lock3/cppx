@@ -741,18 +741,24 @@ auto is_unary_operator = [](TokenKind k) -> bool
 
 Syntax *Parser::parsePre()
 {
-  if (Token op = matchTokenIf(is_unary_operator)) {
-    Syntax *e = parsePre();
-    return onUnary(op, e);
+  if (Token Op = matchTokenIf(is_unary_operator)) {
+    Syntax *E = parsePre();
+    return onUnary(Op, E);
+  }
+
+  if (nextTokenIs("const")) {
+    Token Op = consumeToken();
+    Syntax *E = parsePre();
+    return onUnary(Op, E);
   }
 
   if (nextTokenIs("return") || nextTokenIs("returns")) {
-    Token op = consumeToken();
-    Syntax *e = nullptr;
+    Token Op = consumeToken();
+    Syntax *E = nullptr;
     if (getLookahead() != tok::Dedent && getLookahead() != tok::Separator) {
-      e = parseExpr();
+      E = parseExpr();
     }
-    return onUnaryOrNull(op, e);
+    return onUnaryOrNull(Op, E);
   }
 
   if (nextTokenIs(tok::LeftBracket)) {
@@ -1369,7 +1375,7 @@ void Parser::finishPotentialAngleBracket(const Token &OpToken) {
                                      Angles.EnclosureCounts[1],
                                      Angles.EnclosureCounts[2],
                                      Angles.EnclosureCounts[3]}};
-  if (Angles.hasSameDepth(Angles.Angles.front(), CloseLoc))
+  if (Angles.hasSameDepth(Angles.Angles.back(), CloseLoc))
     Angles.Angles.pop_back();
 }
 

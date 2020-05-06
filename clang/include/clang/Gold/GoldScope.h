@@ -64,6 +64,9 @@ enum DeclaratorKind {
 
   /// Declares a type.
   DK_Type,
+
+  /// Declares const
+  DK_Const,
 };
 
 using Attributes = llvm::SmallVector<const Syntax *, 16>;
@@ -88,9 +91,13 @@ public:
   bool isType() const { 
     return Kind == DK_Type;
   }
-  
+
   bool isFunction() const {
     return Kind == DK_Function;
+  }
+
+  bool isConst() const {
+    return Kind == DK_Const;
   }
 
   /// Returns the identifier for the declarator, if given.
@@ -165,7 +172,6 @@ public:
     } TemplateInfo;
   } Data;
 
-  
   /// This is optionally set for each piece of the declarator.
   const Syntax* AttributeNode = nullptr;
   llvm::Optional<Attributes> UnprocessedAttributes;

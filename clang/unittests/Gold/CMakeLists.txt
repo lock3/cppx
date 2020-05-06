@@ -43,6 +43,7 @@ add_clang_unittest(GoldTests
   GoldClassTemplateParsing.cpp
   GoldClassTemplatedMemberExec.cpp
   GoldCompileRun.cpp
+  GoldConst.cpp
   GoldConstructorCallParsingTest.cpp
   GoldFor.cpp
   GoldFunctionOverloading.cpp

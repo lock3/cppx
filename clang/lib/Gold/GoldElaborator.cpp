@@ -450,12 +450,12 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
       Elab.elaborateDef(LocalDecl);
     }
   }
-  
+
   SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(Scope,
     clang::SourceLocation(), R, clang::SourceLocation(), clang::SourceLocation(),
     clang::ParsedAttributesView());
   SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
-  
+
   // We pop here because the type isn't 100% completed, we have more to addd but
   // we need to move back to the correct decl context. That decl context
   // wasn't altered like it ususally is within ActOnFinishTagDefinition.
@@ -471,21 +471,20 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
 }
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
-  if (D->ElabPhaseCompleted > 1) {
+  if (D->ElabPhaseCompleted > 1)
     return D->Cxx;
-  }
+
   assert(D->ElabPhaseCompleted == 1 &&
       "Declaration occurred at Incorrect phase of elaboration.");
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
-  if (D->declaresRecord()) 
+  if (D->declaresRecord())
     return processCXXRecordDecl(*this, Context, SemaRef, D);
   if (D->declaresFunction())
     return elaborateFunctionDecl(D);
   return elaborateVariableDecl(D);
-  
-  // 
+
   // TODO: We should be able to elaborate definitions at this point too.
   // We've already loaded salient identifier tables, so it shouldn't any
   // forward references should be resolvable.
@@ -1507,6 +1506,13 @@ static Declarator *buildArrayDeclarator(const CallSyntax *S,
   return D;
 }
 
+static Declarator *buildConstDeclarator(const CallSyntax *S,
+                                        Declarator *Next) {
+  Declarator *D = new Declarator(DK_Const, Next);
+  D->Call = S;
+  return D;
+}
+
 /// FIXME: Convert this back to an iterative function, if possible (see
 ///        disabled iterative version below).
 ///
@@ -1567,7 +1573,11 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
         return buildTypeExpression(Call, Next);
       } else if (Callee->getSpelling() == "operator'in'") {
         return makeDeclarator(SemaRef, Call->getArgument(0), Next);
+      } else if (Callee->getSpelling() == "operator'const'") {
+        Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
+        return buildConstDeclarator(Call, Next);
       }
+
       // Otherwise, this appears to be a function declarator.
       Declarator *Temp = makeDeclarator(SemaRef, Callee,
                                         buildFunctionDeclarator(SemaRef, Call, Next));
@@ -1781,6 +1791,8 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
     return FOK_In;
   if (Tokenization == SemaRef.OperatorDotDotII)
     return FOK_DotDot;
+  if (Tokenization == SemaRef.OperatorConstII)
+    return FOK_Const;
   return FOK_Unknown;
 }
 
