@@ -310,6 +310,22 @@ Token CharacterScanner::matchWord() {
   while (isIdentifierRest(getLookahead()))
     consume();
 
+  // Building fused identifiers. 
+  if (getLookahead() == '"') {
+    consume();
+    while(getLookahead() != '"')
+      consume();
+    // Consume the remaining double quote.
+    consume();
+
+  } else if(getLookahead() == '\'') {
+    consume();
+    while(getLookahead() != '\'')
+      consume();
+    // Consume the remaining single quote.
+    consume();
+  }
+
   // This might be a keyword.
   llvm::StringRef Str(Start, First - Start);
   auto Iter = Keywords.find(Str);

@@ -127,7 +127,7 @@ elaborateDefaultCall(SyntaxContext &Context, Sema &SemaRef, const CallSyntax *S)
 
 clang::Stmt *
 StmtElaborator::elaborateCall(const CallSyntax *S) {
-  if (isa<ElemSyntax>(S->getCallee()))
+  if (!isa<AtomSyntax>(S->getCallee()))
     return elaborateDefaultCall(Context, SemaRef, S);
 
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());

@@ -33,82 +33,214 @@
 
 namespace gold {
 
-/// This extracts the access specifier if one was given, if not it's set to public.
-/// Returns false on success, and true if there's an error.
-static bool computeAccessSpecifier(Sema& SemaRef, Declaration *D,
-    clang::AccessSpecifier& AS) {
-  AS = clang::AS_public;
+/// locateValidAttribute
+/// This is a privately used template function, basucally taking the place of me
+/// duplicating the same thing over and over again for each type of attribute
+/// I need to find.
+///
+/// OnAttr is a callable with signature
+///       bool (const Syntax *)
+///   Returing true means you've located one of the possible attributes.
+///   This should also be used to set the correct value of any possible return
+///   value.
+///     true = Matched an attribute.
+///     false = didn't match an attribute.
+///
+/// IsSameAttr is a callable used to detect duplicates of the same attribute class.
+///   This is the same as OnAttr with the exception that it doesn't set
+///   the current desired attribute when it's true.
+///   Signature:
+///       bool (const Syntax *)
+///     true = we hvae a failure (meaning that we have a duplicate attribute)
+///     false = we don't have an attribute of the same class.
+///
+/// OnDuplicate is a callable with signature
+///       void (const syntax *first, const Syntax *Duplicate)
+///   This is used to create error messages.
+template<typename OnAttr, typename IsSameAttr, typename OnDuplicate>
+static bool locateValidAttribute(Declaration *D, OnAttr OnAttribute,
+    IsSameAttr CheckAttr, OnDuplicate OnDup) {
+  assert(D && "Invalid declaration.");
+
   if (!D->Decl->UnprocessedAttributes)
     return false;
   auto Iter = D->Decl->UnprocessedAttributes->begin();
   auto End = D->Decl->UnprocessedAttributes->end();
   for (;Iter != End; ++Iter) {
-    if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(*Iter)){
-      if (Atom->getSpelling() == "private") {
-        AS = clang::AS_private;
-        break;
-      } else if (Atom->getSpelling() == "protected") {
-        AS = clang::AS_protected;
-        break;
-      } else if (Atom->getSpelling() == "public") {
-        AS = clang::AS_public;
-        break;
-      }
+    if (OnAttribute(*Iter)) {
+      break;
     }
   }
   const Syntax *AttribSpec = nullptr;
+  bool didFail = false;
   if(Iter != End) {
     AttribSpec = *Iter;
     D->Decl->UnprocessedAttributes->erase(Iter);
     Iter = D->Decl->UnprocessedAttributes->begin();
     End = D->Decl->UnprocessedAttributes->end();
     for (;Iter != End; ++Iter) {
-      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(*Iter)){
+      if (CheckAttr(*Iter)) {
+        OnDup(AttribSpec, *Iter);
+        didFail = true;
+      }
+    }
+  }
+  return didFail;
+}
+
+/// This extracts the access specifier if one was given, if not it's set to public.
+/// Returns false on success, and true if there's an error.
+static bool computeAccessSpecifier(Sema& SemaRef, Declaration *D,
+    clang::AccessSpecifier& AS) {
+  AS = clang::AS_public;
+  return locateValidAttribute(D,
+    // OnAttr
+    [&](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "private") {
+          AS = clang::AS_private;
+          return true;
+        } else if (Atom->getSpelling() == "protected") {
+          AS = clang::AS_protected;
+          return true;
+        } else if (Atom->getSpelling() == "public") {
+          AS = clang::AS_public;
+          return true;
+        }
+      }
+      return false;
+    },
+    // CheckAttr
+    [](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
         if (Atom->getSpelling() == "private"
             || Atom->getSpelling() == "protected"
             || Atom->getSpelling() == "public") {
-          break;
+          return true;
         }
       }
-    }
-    if (Iter != End) {
-      // TODO: Create valid error message
-      SemaRef.Diags.Report((*Iter)->getLoc(),
+      return false;
+    },
+    // OnDup
+    [&](const Syntax *FirstAttr, const Syntax *DuplicateAttr){
+      SemaRef.Diags.Report(DuplicateAttr->getLoc(),
             clang::diag::err_duplicate_access_specifier)
-              << AttribSpec->getLoc() << (*Iter)->getLoc(); 
-      return true;
-    }
-  }
-  return false;
+              << FirstAttr->getLoc() << DuplicateAttr->getLoc(); 
+    });
 }
-// static void handleInClassAttributeApplication(Sema& SemaRef,SyntaxContext& Context,
-//     clang::Decl *Dec, Declaration *D) {
-//   if (D->Decl->AttributeNode) {
-//     
-//     for (auto const& attr : D->Decl->AttributeNode->getAttributes()) {
-//       if (const AtomSyntax *AttrName = dyn_cast<AtomSyntax>(attr->getArg())) {
 
-//         // TODO: We need to change in order to prevent multiple access specifiers
-//         // from being given. Currently this only works for single access
-//         // specifiers.
+static bool compluteVariableStorageClassSpec(Sema& SemaRef, Declaration *D,
+    clang::StorageClass& SC) {
+  return locateValidAttribute(D,
+    // OnAttr
+    [&](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "static") {
+          SC = clang::StorageClass::SC_Static;
+          return true;
+        }
+        if (Atom->getSpelling() == "extern") {
+          SC = clang::StorageClass::SC_Extern;
+          return true;
+        }
+      }
+      return false;
+    },
+    // CheckAttr
+    [](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "static" || Atom->getSpelling() == "extern") {
+          return true;
+        }
+      }
+      return false;
+    },
+    // OnDup
+    [&](const Syntax *FirstAttr, const Syntax *DuplicateAttr){
+      const AtomSyntax *Atom0 = dyn_cast<AtomSyntax>(FirstAttr);
+      const AtomSyntax *Atom1 = dyn_cast<AtomSyntax>(DuplicateAttr);
 
-//         } else {
-//           llvm_unreachable("Unsupported attribute given.");
-//         }
-//       }
-//     }
+      return SemaRef.Diags.Report(DuplicateAttr->getLoc(),
+        clang::diag::err_conflicting_attributes)
+        << FirstAttr->getLoc() << DuplicateAttr->getLoc()
+        << Atom0->getSpelling() << Atom1->getSpelling(); 
+    });
+}
 
-//     // Don't chainge default access in the event the access specifier was never
-//     // given.
-//     if (AS != clang::AS_none)
-//       Dec->setAccess(AS);
-//   }
-// }
-// static bool CheckDeclA
+static bool compluteFunctionStorageClassSpec(Sema& SemaRef, Declaration *D,
+    clang::StorageClass& SC) {
+  // Setting special storage class default to None.
+  SC = clang::SC_None;
+  // llvm_unreachable("Working on it.");
+  return locateValidAttribute(D,
+    // OnAttr
+    [&](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "static") {
+          SC = clang::StorageClass::SC_Static;
+          return true;
+        }
+        if (Atom->getSpelling() == "extern") {
+          SC = clang::StorageClass::SC_Extern;
+          return true;
+        }
+      }
+      return false;
+    },
+    // CheckAttr
+    [](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "static" || Atom->getSpelling() == "extern") {
+          return true;
+        }
+      }
+      return false;
+    },
+    // OnDup
+    [&](const Syntax *FirstAttr, const Syntax *DuplicateAttr){
+      const AtomSyntax *Atom0 = dyn_cast<AtomSyntax>(FirstAttr);
+      const AtomSyntax *Atom1 = dyn_cast<AtomSyntax>(DuplicateAttr);
 
-// static bool checkAccessSpecifier(Sema& SemaRef, Declaration *D) {
-//   return false;
-// } 
+      return SemaRef.Diags.Report(DuplicateAttr->getLoc(),
+        clang::diag::err_conflicting_attributes)
+        << FirstAttr->getLoc() << DuplicateAttr->getLoc()
+        << Atom0->getSpelling() << Atom1->getSpelling(); 
+    });
+}
+
+/// This should ONLY be used with member variables
+bool isStaticMember(Sema& SemaRef, Declaration *D, bool &IsStatic) {
+  return locateValidAttribute(D,
+    // OnAttr
+    [&](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "static") {
+          IsStatic = true;
+          return true;
+        }
+      }
+      return false;
+    },
+    // CheckAttr
+    [](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "static") {
+          return true;
+        }
+      }
+      return false;
+    },
+    // OnDup
+    [&](const Syntax *FirstAttr, const Syntax *DuplicateAttr){
+      const AtomSyntax *Atom0 = dyn_cast<AtomSyntax>(FirstAttr);
+      const AtomSyntax *Atom1 = dyn_cast<AtomSyntax>(DuplicateAttr);
+      return SemaRef.Diags.Report(DuplicateAttr->getLoc(),
+        clang::diag::err_conflicting_attributes)
+        << FirstAttr->getLoc() << DuplicateAttr->getLoc()
+        << Atom0->getSpelling() << Atom1->getSpelling(); 
+    });
+}
+
 Elaborator::Elaborator(SyntaxContext &Context, Sema &SemaRef)
   : Context(Context), SemaRef(SemaRef) {}
 
@@ -313,7 +445,8 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
     gold::Declaration *LocalDecl = SemaRef.getCurrentScope()->findDecl(SS);
     if (!LocalDecl)
       continue;
-    if (LocalDecl->declaresMemberVariable()){
+    if (LocalDecl->declaresMemberVariable()
+        || LocalDecl->defines<clang::VarDecl>()) {
       Elab.elaborateDef(LocalDecl);
     }
   }
@@ -535,10 +668,16 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       DtorDecl->setType(QT);
 
     } else {
+      clang::StorageClass SC = clang::SC_None;
+      bool IsStatic = false;
+      if (isStaticMember(SemaRef, D, IsStatic)) {
+        return nullptr;
+      }
+      if (IsStatic) 
+        SC = clang::SC_Static;
       FD = clang::CXXMethodDecl::Create(Context.CxxAST, RD, Loc, DNI,
                                         TInfo->getType(), TInfo,
-                                        clang::StorageClass::SC_None,
-                                        /*isInline*/true,
+                                        SC, /*isInline*/true,
                                       clang::ConstexprSpecKind::CSK_unspecified,
                                         Loc);
     }
@@ -550,6 +689,11 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   } else {
     FD = clang::FunctionDecl::Create(Context.CxxAST, Owner, Loc, Loc, Name,
                                      TInfo->getType(), TInfo, clang::SC_None);
+    clang::StorageClass SC;
+    if (compluteFunctionStorageClassSpec(SemaRef, D, SC)) {
+      return nullptr;
+    }
+    FD->setStorageClass(SC);
     if (FD->isMain()) {
       clang::AttributeFactory Attrs;
       clang::DeclSpec DS(Attrs);
@@ -606,13 +750,11 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   return FD;
 }
 
-static clang::StorageClass getStorageClass(Elaborator &Elab) {
-  // FIXME: What is the storage class for a variable? Computed from scope
-  // and specifiers probably. We don't have specifiers yet.
+static clang::StorageClass getDefaultVariableStorageClass(Elaborator &Elab) {
   return Elab.SemaRef.getCurrentScope()->isBlockScope() ||
     Elab.SemaRef.getCurrentScope()->isControlScope()
     ? clang::SC_Auto
-    : clang::SC_Static;
+    : clang::SC_None;
 }
 
 
@@ -660,8 +802,11 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
-  clang::StorageClass SC = getStorageClass(*this);
-
+  clang::StorageClass SC = getDefaultVariableStorageClass(*this);
+  if (compluteVariableStorageClassSpec(SemaRef, D, SC)) {
+    return nullptr;
+  }
+  
 
   // Create the variable and add it to it's owning context.
   clang::VarDecl *VD = clang::VarDecl::Create(Context.CxxAST, Owner, Loc, Loc,
@@ -954,8 +1099,12 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   if (!D->Cxx){
     return;
   }
-  clang::VarDecl *VD = cast<clang::VarDecl>(D->Cxx);
+  
+  // FIXME: If we synthesize initializers, this might need to happen before that
+  if (SemaRef.checkForRedefinition<clang::VarDecl>(D))
+    return;
 
+  clang::VarDecl *VD = cast<clang::VarDecl>(D->Cxx);
   if (!D->Init) {
     // FIXME: We probably want to synthesize some kind of initializer here.
     // Not quite sure how we want to do this.
@@ -974,13 +1123,17 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     return;
   }
 
-  // FIXME: If we synthesize initializers, this might need to happen before that
-  if (SemaRef.checkForRedefinition<clang::VarDecl>(D))
-    return;
+  // Doing
+  ExprElaborator::Expression Init;
+    ExprElaborator ExprElab(Context, SemaRef);
+  if (D->declaresInlineInitializedStaticVarDecl()) {
+    Sema::ExprEvalRAII Ctxt(SemaRef,
+      clang::Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
+    Init = ExprElab.elaborateExpr(D->Init);
 
-  // Elaborate the initializer.
-  ExprElaborator ExprElab(Context, SemaRef);
-  ExprElaborator::Expression Init = ExprElab.elaborateExpr(D->Init);
+  } else {
+    Init = ExprElab.elaborateExpr(D->Init);
+  }
 
   // Make sure the initializer was elaborated as a type. 
   // FIXME: This will need to change in order to properly address how identifiers
@@ -993,6 +1146,7 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   }
 
   clang::Expr *InitExpr = Init.get<clang::Expr *>();
+
   // Perform auto deduction.
   if (VD->getType()->isUndeducedType()) {
     clang::QualType Ty;
@@ -1155,8 +1309,11 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
+  
+  
   clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
-  clang::SourceLocation Loc = D->Op->getLoc();
+  clang::SourceLocation Loc = D->Decl->getLoc();
+  clang::SourceLocation LocEnd = D->getEndOfDecl();
   clang::DeclarationName DN = D->getId();
   clang::InClassInitStyle InitStyle = clang::InClassInitStyle::ICIS_NoInit;
   if (D->Init) {
@@ -1166,15 +1323,33 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
   if (computeAccessSpecifier(SemaRef, D, AS)) {
     return nullptr;
   }
-  clang::FieldDecl *FD = SemaRef.getCxxSema().CheckFieldDecl(DN, TInfo->getType(),
-                                          TInfo, /*RecordDecl=*/Owner,
-                                          Loc, /*Mutable=*/false,
-                                          /*BitWidth=*/nullptr, InitStyle, Loc,
-                                          AS, nullptr);
-  Owner->addDecl(FD);
-  D->Cxx = FD;
+  bool DeclIsStatic = false;
+  if (isStaticMember(SemaRef, D, DeclIsStatic)) {
+    return nullptr;
+  }
+  clang::Decl *Field = nullptr;
+  if (DeclIsStatic) {
+    // In this case we are creating a static member variable.
+    clang::VarDecl *VDecl= clang::VarDecl::Create(Context.CxxAST, Owner, Loc,
+                                                  LocEnd, D->getId(),
+                                                  TInfo->getType(), TInfo,
+                                                  clang::SC_Static);
+    VDecl->setInlineSpecified();
+    VDecl->setAccess(AS);
+    Field = VDecl;
+  } else {
+    // We are create field within a class.
+    Field = SemaRef.getCxxSema().CheckFieldDecl(DN, TInfo->getType(),
+                                                TInfo, /*RecordDecl=*/Owner,
+                                                Loc, /*Mutable=*/false,
+                                                /*BitWidth=*/nullptr, InitStyle,
+                                                Loc, AS, nullptr);
+  }
+
+  Owner->addDecl(Field);
+  D->Cxx = Field;
   D->ElabPhaseCompleted = 2;
-  return FD;
+  return Field;
 }
 
 void Elaborator::elaborateFieldInit(Declaration *D) {
@@ -1618,6 +1793,7 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
     return FOK_DotDot;
   if (Tokenization == SemaRef.OperatorConstII)
     return FOK_Const;
+
   return FOK_Unknown;
 }
 

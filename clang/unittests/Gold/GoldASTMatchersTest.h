@@ -17,6 +17,15 @@
 namespace clang {
 namespace ast_matchers {
 
+// I created this because it didn't exist before this and I acutally needed it
+// for a particular test.
+AST_POLYMORPHIC_MATCHER(isExternStorageClass,
+                        AST_POLYMORPHIC_SUPPORTED_TYPES(FunctionDecl,
+                                                        VarDecl)) {
+  return Node.getStorageClass() == SC_Extern;
+}
+
+
 using clang::tooling::buildASTFromCodeWithArgs;
 using clang::tooling::newFrontendActionFactory;
 using clang::tooling::runToolOnCodeWithArgs;

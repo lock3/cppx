@@ -47,12 +47,18 @@ add_clang_unittest(GoldTests
   GoldConstructorCallParsingTest.cpp
   GoldFor.cpp
   GoldFunctionOverloading.cpp
+  GoldFunctionStorageClassElab.cpp
   GoldFunctionTemplate.cpp
   GoldFunctionTemplateExec.cpp
+  GoldFusedIdentifierElab.cpp
+  GoldFusedIdentifierParse.cpp
   GoldGlobalParsing.cpp
   GoldImplicitCtorExplicitCallExec.cpp
   GoldMemberExecuteTest.cpp
+  GoldMemberStorageClassElab.cpp
+  GoldStorageClassExec.cpp
   GoldTypeExpressionsTest.cpp
+  GoldVarDeclStorageClass.cpp
   GoldWhile.cpp
   )
 

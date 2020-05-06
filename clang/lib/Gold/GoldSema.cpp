@@ -45,7 +45,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorWhileII = &Context.CxxAST.Idents.get("operator'while'");
   OperatorInII = &Context.CxxAST.Idents.get("operator'in'");
   OperatorDotDotII = &Context.CxxAST.Idents.get("operator'..'");
-  OperatorColonII =  &Context.CxxAST.Idents.get("operator'const'");
+  OperatorConstII =  &Context.CxxAST.Idents.get("operator'const'");
 }
 
 Sema::~Sema() {

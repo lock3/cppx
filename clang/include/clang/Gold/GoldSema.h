@@ -57,7 +57,7 @@ class Sema {
 
   // Stack of active Scopes.
   llvm::SmallVector<Scope *, 4> ScopeStack;
-  // gold::Scope *CurScope;
+
   // The declaration context.
   Declaration *CurrentDecl = nullptr;
   
@@ -220,6 +220,19 @@ public:
     Scope **SavedScope;
 
     const Syntax *ConcreteTerm;
+  };
+
+  struct ExprEvalRAII {
+    ExprEvalRAII(Sema& S, clang::Sema::ExpressionEvaluationContext NewContext)
+      :SemaRef(S)
+    {
+      SemaRef.getCxxSema().PushExpressionEvaluationContext(NewContext);
+    }
+    ~ExprEvalRAII() {
+      SemaRef.getCxxSema().PopExpressionEvaluationContext();
+    }
+  private:
+    Sema& SemaRef;
   };
 
   // Dictionary of built in types.

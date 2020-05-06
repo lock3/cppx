@@ -66,8 +66,8 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
 }
 
 static clang::IntegerLiteral *
-createIntegerLiteral(clang::ASTContext &CxxAST, Token T, clang::QualType IntType,
-                     clang::SourceLocation Loc) {
+createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
+                     clang::QualType IntType, clang::SourceLocation Loc) {
   llvm::APInt Value;
   unsigned Width = 0;
 
@@ -122,7 +122,6 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Token T, clang::QualType IntType
 
   if (Value.getBitWidth() != Width)
     Value = Value.trunc(Width);
-
   return clang::IntegerLiteral::Create(CxxAST, Value, IntType, Loc);
 }
 
@@ -558,7 +557,8 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
 
   switch (T.getKind()) {
   case tok::DecimalInteger:
-    return createIntegerLiteral(CxxAST, T, ExplicitType, S->getTokenLoc());
+    return createIntegerLiteral(CxxAST, T, ExplicitType,
+                                S->getLoc());
   case tok::DecimalFloat:
     break;
   case tok::BinaryInteger:
@@ -759,7 +759,8 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   // something slightly different before we can fully elaborate the entire call.
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   FusedOpKind Op = getFusedOpKind(SemaRef, Callee->getSpelling());
-  switch (Op){
+  
+  switch (Op) {
   case FOK_Colon:
       return handleColonExprElaboration(*this, SemaRef, S);
 
@@ -773,7 +774,16 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
 
   case FOK_Const:
     return handleOperatorConst(S);
-
+  case FOK_Unknown:
+  case FOK_Exclaim:
+  case FOK_Equals:
+  case FOK_If:
+  case FOK_Else:
+  case FOK_Return:
+  case FOK_For:
+  case FOK_While:
+  case FOK_In:
+    break;
   default:
     llvm_unreachable("Invalid or unknown fused operator");
   }
@@ -872,6 +882,13 @@ static ExprElaborator::Expression handleLookUpInsideType(Sema &SemaRef,
     }
     if (clang::NamespaceDecl *NsDecl = dyn_cast<clang::NamespaceDecl>(ND)) {
       return NsDecl;
+    }
+    if (clang::VarDecl *VDecl = dyn_cast<clang::VarDecl>(ND)) {
+      // This is how we access static member variables.
+      return clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
+                                        clang::SourceLocation(),VDecl,
+                                        /*Capture=*/false, RHS->getLoc(),
+                                        VDecl->getType(), clang::VK_LValue);
     }
 
     // FIXME: This needs to support referencing base members by qualified name.
