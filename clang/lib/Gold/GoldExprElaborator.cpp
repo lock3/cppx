@@ -774,18 +774,9 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
 
   case FOK_Const:
     return handleOperatorConst(S);
-  case FOK_Unknown:
-  case FOK_Exclaim:
-  case FOK_Equals:
-  case FOK_If:
-  case FOK_Else:
-  case FOK_Return:
-  case FOK_For:
-  case FOK_While:
-  case FOK_In:
-    break;
+
   default:
-    llvm_unreachable("Invalid or unknown fused operator");
+    break;
   }
 
   llvm::StringRef Spelling = Callee->getSpelling();
