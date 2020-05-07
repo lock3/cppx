@@ -775,7 +775,7 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
     return handleOperatorConst(S);
 
   default:
-    llvm_unreachable("Invalid or unknown fused operator");
+    break;
   }
 
   llvm::StringRef Spelling = Callee->getSpelling();
