@@ -84,6 +84,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/Object/ELF.h"
+#include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/xxhash.h"
 #include <algorithm>
 #include <atomic>
@@ -399,7 +400,7 @@ template <class ELFT>
 void ICF<ELFT>::forEachClass(llvm::function_ref<void(size_t, size_t)> fn) {
   // If threading is disabled or the number of sections are
   // too small to use threading, call Fn sequentially.
-  if (!threadsEnabled || sections.size() < 1024) {
+  if (parallel::strategy.ThreadsRequested == 1 || sections.size() < 1024) {
     forEachClassRange(0, sections.size(), fn);
     ++cnt;
     return;
@@ -525,7 +526,10 @@ template <class ELFT> void ICF<ELFT>::run() {
 }
 
 // ICF entry point function.
-template <class ELFT> void doIcf() { ICF<ELFT>().run(); }
+template <class ELFT> void doIcf() {
+  llvm::TimeTraceScope timeScope("ICF");
+  ICF<ELFT>().run();
+}
 
 template void doIcf<ELF32LE>();
 template void doIcf<ELF32BE>();

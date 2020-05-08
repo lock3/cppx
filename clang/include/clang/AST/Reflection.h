@@ -61,7 +61,7 @@ public:
 class NamespaceName {
   // This is either an a reflected namespace or a qualified namespace name.
   using StorageType =
-    llvm::PointerUnion3<
+    llvm::PointerUnion<
         NamespaceDecl *, TranslationUnitDecl *, QualifiedNamespaceName *>;
 
   StorageType Storage;
@@ -382,9 +382,7 @@ public:
     return NewName;
   }
 
-  std::string getNewNameAsString() const {
-    return cast<StringLiteral>(NewName)->getString();
-  }
+  std::string getNewNameAsString() const;
 };
 
 /// The reflection class provides context for evaluating queries.
@@ -414,7 +412,7 @@ public:
   /// reflected value.
   Reflection(ASTContext &C, const APValue &R)
     : Ctx(&C), Ref(R), Query(), Diag() {
-    assert(Ref.isReflection() && "not a reflection");
+    assert(Ref.isReflectionVariant() && "not a reflection");
   }
 
   /// Construct a reflection that will be used to evaluate a query.

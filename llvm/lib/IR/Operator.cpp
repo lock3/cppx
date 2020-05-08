@@ -45,6 +45,10 @@ bool GEPOperator::accumulateConstantOffset(const DataLayout &DL,
     if (OpC->isZero())
       continue;
 
+    // Scalable vectors have are multiplied by a runtime constant.
+    if (isa<ScalableVectorType>(GTI.getIndexedType()))
+      return false;
+
     // Handle a struct index, which adds its field offset to the pointer.
     if (StructType *STy = GTI.getStructTypeOrNull()) {
       unsigned ElementIdx = OpC->getZExtValue();

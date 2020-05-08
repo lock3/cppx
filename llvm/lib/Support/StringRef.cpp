@@ -19,7 +19,7 @@ using namespace llvm;
 
 // MSVC emits references to this into the translation units which reference it.
 #ifndef _MSC_VER
-const size_t StringRef::npos;
+constexpr size_t StringRef::npos;
 #endif
 
 // strncasecmp() is not available on non-POSIX systems, so define an
@@ -588,13 +588,11 @@ bool StringRef::getAsInteger(unsigned Radix, APInt &Result) const {
 
 bool StringRef::getAsDouble(double &Result, bool AllowInexact) const {
   APFloat F(0.0);
-  auto ErrOrStatus = F.convertFromString(*this, APFloat::rmNearestTiesToEven);
-  if (!ErrOrStatus) {
-    assert(false && "Invalid floating point representation");
+  auto StatusOrErr = F.convertFromString(*this, APFloat::rmNearestTiesToEven);
+  if (errorToBool(StatusOrErr.takeError()))
     return true;
-  }
 
-  APFloat::opStatus Status = *ErrOrStatus;
+  APFloat::opStatus Status = *StatusOrErr;
   if (Status != APFloat::opOK) {
     if (!AllowInexact || !(Status & APFloat::opInexact))
       return true;

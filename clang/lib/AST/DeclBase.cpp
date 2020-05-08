@@ -332,13 +332,16 @@ void Decl::setDeclContextsImpl(DeclContext *SemaDC, DeclContext *LexicalDC,
   }
 }
 
-bool Decl::isLexicallyWithinFunctionOrMethod() const {
+bool Decl::isInLocalScope() const {
   const DeclContext *LDC = getLexicalDeclContext();
   while (true) {
     if (LDC->isFunctionOrMethod())
       return true;
     if (!isa<TagDecl>(LDC))
       return false;
+    if (const auto *CRD = dyn_cast<CXXRecordDecl>(LDC))
+      if (CRD->isLambda())
+        return true;
     LDC = LDC->getLexicalParent();
   }
   return false;
@@ -382,6 +385,12 @@ ASTContext &Decl::getASTContext() const {
   return getTranslationUnitDecl()->getASTContext();
 }
 
+/// Helper to get the language options from the ASTContext.
+/// Defined out of line to avoid depending on ASTContext.h.
+const LangOptions &Decl::getLangOpts() const {
+  return getASTContext().getLangOpts();
+}
+
 ASTMutationListener *Decl::getASTMutationListener() const {
   return getASTContext().getASTMutationListener();
 }
@@ -394,8 +403,10 @@ unsigned Decl::getMaxAlignment() const {
   const AttrVec &V = getAttrs();
   ASTContext &Ctx = getASTContext();
   specific_attr_iterator<AlignedAttr> I(V.begin()), E(V.end());
-  for (; I != E; ++I)
-    Align = std::max(Align, I->getAlignment(Ctx));
+  for (; I != E; ++I) {
+    if (!I->isAlignmentErrorDependent())
+      Align = std::max(Align, I->getAlignment(Ctx));
+  }
   return Align;
 }
 
@@ -458,7 +469,8 @@ ExternalSourceSymbolAttr *Decl::getExternalSourceSymbolAttr() const {
 }
 
 bool Decl::hasDefiningAttr() const {
-  return hasAttr<AliasAttr>() || hasAttr<IFuncAttr>();
+  return hasAttr<AliasAttr>() || hasAttr<IFuncAttr>() ||
+         hasAttr<LoaderUninitializedAttr>();
 }
 
 const Attr *Decl::getDefiningAttr() const {
@@ -466,6 +478,8 @@ const Attr *Decl::getDefiningAttr() const {
     return AA;
   if (auto *IFA = getAttr<IFuncAttr>())
     return IFA;
+  if (auto *NZA = getAttr<LoaderUninitializedAttr>())
+    return NZA;
   return nullptr;
 }
 
@@ -591,7 +605,7 @@ AvailabilityResult Decl::getAvailability(std::string *Message,
         continue;
 
       if (Message)
-        ResultMessage = Deprecated->getMessage();
+        ResultMessage = std::string(Deprecated->getMessage());
 
       Result = AR_Deprecated;
       continue;
@@ -599,7 +613,7 @@ AvailabilityResult Decl::getAvailability(std::string *Message,
 
     if (const auto *Unavailable = dyn_cast<UnavailableAttr>(A)) {
       if (Message)
-        *Message = Unavailable->getMessage();
+        *Message = std::string(Unavailable->getMessage());
       return AR_Unavailable;
     }
 
@@ -792,6 +806,7 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case TranslationUnit:
     case ExternCContext:
     case Decomposition:
+    case MSGuid:
 
     case UsingDirective:
     case BuiltinTemplate:
@@ -810,6 +825,7 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case OMPCapturedExpr:
     case Empty:
     case LifetimeExtendedTemporary:
+    case RequiresExprBody:
     case CXXFragment:
     case CXXMetaprogram:
     case CXXInjection:
@@ -1076,6 +1092,18 @@ const BlockDecl *DeclContext::getInnermostBlockDecl() const {
   return nullptr;
 }
 
+bool DeclContext::isStatementFragment() const {
+  if (auto *FD = dyn_cast<CXXStmtFragmentDecl>(this))
+    return !FD->hasThisPtr();
+  return false;
+}
+
+bool DeclContext::isMemberStatementFragment() const {
+  if (auto *FD = dyn_cast<CXXStmtFragmentDecl>(this))
+    return FD->hasThisPtr();
+  return false;
+}
+
 bool DeclContext::isFragmentContext() const {
   const DeclContext *DC = this;
   do {
@@ -1151,16 +1179,6 @@ bool DeclContext::isDependentContext() const {
   return getParent() && getParent()->isDependentContext();
 }
 
-bool DeclContext::isConstexprContext() const {
-  const DeclContext *DC = this;
-  do {
-    if (auto *FD = dyn_cast<FunctionDecl>(DC))
-      return FD->isConstexpr();
-    DC = DC->getParent();
-  } while (DC);
-  return false;
-}
-
 bool DeclContext::isTransparentContext() const {
   if (getDeclKind() == Decl::Enum)
     return !cast<EnumDecl>(this)->isScoped();
@@ -1219,6 +1237,7 @@ DeclContext *DeclContext::getPrimaryContext() {
   case Decl::Captured:
   case Decl::OMPDeclareReduction:
   case Decl::OMPDeclareMapper:
+  case Decl::RequiresExprBody:
   case Decl::CXXFragment:
   case Decl::CXXStmtFragment:
     // There is only one DeclContext for these entities.

@@ -36,7 +36,7 @@ main() : int!
     hasDescendant(fieldDecl(hasName("y"), hasType(asString("_Bool")),
       isPublic()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, ClassInstance) {
@@ -77,7 +77,7 @@ main() : int!
   );
 
 
-  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
 
 TEST(ClassParsing, MemberInitializationAndAccess) {
@@ -102,7 +102,7 @@ main() : int!
   );
 
 
-  ASSERT_TRUE(matches(Code, StmtMatcher));
+  ASSERT_TRUE(matches(Code.str(), StmtMatcher));
 }
 
 TEST(ClassParsing, MemberInitializers)  {
@@ -136,7 +136,7 @@ main() : int!
   DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
     hasDescendant(ClassCInfo));
 
-  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
 
 
@@ -155,7 +155,7 @@ main() : int!
   DeclarationMatcher MemberFunctionMatch = recordDecl( 
     hasDescendant(cxxMethodDecl(hasName("foo")))
   );
-  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+  ASSERT_TRUE(matches(Code.str(), MemberFunctionMatch));
 }
 
 TEST(ClassParsing, MemberFunction_MemberUse) {
@@ -177,7 +177,7 @@ main() : int!
       )
     )
   );
-  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+  ASSERT_TRUE(matches(Code.str(), MemberFunctionMatch));
 }
 
 
@@ -211,7 +211,7 @@ main() : int!
     ))
   );
 
-  ASSERT_TRUE(matches(Code, ClassCInfo));
+  ASSERT_TRUE(matches(Code.str(), ClassCInfo));
 }
 
 TEST(ClassParsing, MemberFunction_OutsideOfClassCall) {
@@ -241,7 +241,7 @@ main() : int!
       )
     )
   )));
-  ASSERT_TRUE(matches(Code, StmtMatcher));
+  ASSERT_TRUE(matches(Code.str(), StmtMatcher));
 }
 
 
@@ -316,7 +316,7 @@ main() : int!
     hasDescendant(ClassCInfo),
     hasDescendant(MainFnMatcher)
   );
-  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
 
 
@@ -358,7 +358,7 @@ main() : int!
     hasDescendant(ClassCInfo),
     hasDescendant(MainFnMatcher)
   );
-  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
 
 
@@ -400,7 +400,7 @@ main() : int!
     hasDescendant(ClassCInfo),
     hasDescendant(MainFnMatcher)
   );
-  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
 
 
@@ -442,7 +442,7 @@ main() : int!
     hasDescendant(ClassCInfo),
     hasDescendant(MainFnMatcher)
   );
-  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
 
 
@@ -486,7 +486,7 @@ main() : int!
     hasDescendant(ClassCInfo),
     hasDescendant(MainFnMatcher)
   );
-  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
 
 
@@ -527,7 +527,7 @@ main() : int!
     hasDescendant(ClassCInfo)//,
     // hasDescendant(MainFnMatcher)
   );
-  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
 
 
@@ -572,7 +572,7 @@ main() : int!
     hasDescendant(ClassCInfo)//,
     // hasDescendant(MainFnMatcher)
   );
-  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
 
 
@@ -585,7 +585,7 @@ c : type = class:
   DeclarationMatcher MemberFunctionMatch = recordDecl( hasName("c"),
     hasDescendant(functionTemplateDecl(hasName("foo"), has(cxxMethodDecl())))
   );
-  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+  ASSERT_TRUE(matches(Code.str(), MemberFunctionMatch));
 }
 
 // FIXME: WOrking on long term fix to this.
@@ -604,7 +604,7 @@ main() :int!
   DeclarationMatcher MemberFunctionMatch = recordDecl( hasName("c"),
     hasDescendant(functionTemplateDecl(hasName("foo"), has(cxxMethodDecl())))
   );
-  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+  ASSERT_TRUE(matches(Code.str(), MemberFunctionMatch));
 }
 
 TEST(ClassParsing, TemplateMemberFunction_Call2) {
@@ -624,7 +624,7 @@ main() : int!
   DeclarationMatcher MemberFunctionMatch = recordDecl( hasName("c"),
     hasDescendant(functionTemplateDecl(hasName("foo"), has(cxxMethodDecl())))
   );
-  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+  ASSERT_TRUE(matches(Code.str(), MemberFunctionMatch));
 }
 
 
@@ -668,7 +668,7 @@ main() : int!
       )
     )
   )));
-  ASSERT_TRUE(matches(Code, StmtMatcher));
+  ASSERT_TRUE(matches(Code.str(), StmtMatcher));
 }
 
 // TEST(ClassParsing, AccessingMemberThroughFunctionReturn) {
@@ -713,7 +713,7 @@ main() : int!
 //       )
 //     )
 //   )));
-//   ASSERT_TRUE(matches(Code, StmtMatcher));
+//   ASSERT_TRUE(matches(Code.str(), StmtMatcher));
 // }
 
 
@@ -731,7 +731,7 @@ foo(x : c) : bool!
     hasAnyParameter(hasName("x")),
     hasDescendant(varDecl(hasType(asString("struct c"))))
   );
-  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+  ASSERT_TRUE(matches(Code.str(), MemberFunctionMatch));
 }
 
 
@@ -753,7 +753,7 @@ foo(x : c.x) : bool!
     hasAnyParameter(hasName("x")),
     hasDescendant(varDecl(hasType(asString("c::x"))))
   );
-  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+  ASSERT_TRUE(matches(Code.str(), MemberFunctionMatch));
 }
 
 
@@ -771,5 +771,5 @@ foo(x : c.x) : bool!
     hasAnyParameter(hasName("x")),
     hasDescendant(varDecl(hasType(asString("c::x"))))
   );
-  ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+  ASSERT_TRUE(matches(Code.str(), MemberFunctionMatch));
 }

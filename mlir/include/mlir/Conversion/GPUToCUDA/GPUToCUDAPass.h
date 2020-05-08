@@ -1,6 +1,6 @@
 //===- GPUToCUDAPass.h - MLIR CUDA runtime support --------------*- C++ -*-===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -19,11 +19,15 @@ namespace mlir {
 class Location;
 class ModuleOp;
 
+template <typename T> class OperationPass;
+
+namespace gpu {
+class GPUModuleOp;
+} // namespace gpu
+
 namespace LLVM {
 class LLVMDialect;
 } // namespace LLVM
-
-template <typename T> class OpPassBase;
 
 using OwnedCubin = std::unique_ptr<std::vector<char>>;
 using CubinGenerator =
@@ -38,7 +42,7 @@ using CubinGenerator =
 /// attached as a string attribute named 'nvvm.cubin' to the kernel function.
 /// After the transformation, the body of the kernel function is removed (i.e.,
 /// it is turned into a declaration).
-std::unique_ptr<OpPassBase<ModuleOp>>
+std::unique_ptr<OperationPass<gpu::GPUModuleOp>>
 createConvertGPUKernelToCubinPass(CubinGenerator cubinGenerator);
 
 /// Creates a pass to convert a gpu.launch_func operation into a sequence of
@@ -47,7 +51,7 @@ createConvertGPUKernelToCubinPass(CubinGenerator cubinGenerator);
 /// This pass does not generate code to call CUDA directly but instead uses a
 /// small wrapper library that exports a stable and conveniently typed ABI
 /// on top of CUDA.
-std::unique_ptr<OpPassBase<ModuleOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 createConvertGpuLaunchFuncToCudaCallsPass();
 
 } // namespace mlir

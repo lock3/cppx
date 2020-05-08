@@ -10,10 +10,10 @@ enum class type { a, b, c };
 template<template<type> class E>
 class foo {
   consteval {
-    lambda_consumer([](auto val) constexpr {
-      -> __fragment struct {
+    lambda_consumer([](auto val) consteval {
+      -> fragment struct {
         int get(E<type::a> arg) {
-          return val;
+          return %{val};
         }
       };
     });

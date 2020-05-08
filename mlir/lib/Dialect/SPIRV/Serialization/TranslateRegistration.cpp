@@ -1,6 +1,6 @@
 //===- TranslateRegistration.cpp - hooks to mlir-translate ----------------===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -33,8 +33,8 @@ using namespace mlir;
 
 // Deserializes the SPIR-V binary module stored in the file named as
 // `inputFilename` and returns a module containing the SPIR-V module.
-OwningModuleRef deserializeModule(const llvm::MemoryBuffer *input,
-                                  MLIRContext *context) {
+static OwningModuleRef deserializeModule(const llvm::MemoryBuffer *input,
+                                         MLIRContext *context) {
   Builder builder(context);
 
   // Make sure the input stream can be treated as a stream of SPIR-V words
@@ -60,18 +60,23 @@ OwningModuleRef deserializeModule(const llvm::MemoryBuffer *input,
   return module;
 }
 
-static TranslateToMLIRRegistration fromBinary(
-    "deserialize-spirv", [](llvm::SourceMgr &sourceMgr, MLIRContext *context) {
-      assert(sourceMgr.getNumBuffers() == 1 && "expected one buffer");
-      return deserializeModule(
-          sourceMgr.getMemoryBuffer(sourceMgr.getMainFileID()), context);
-    });
+namespace mlir {
+void registerFromSPIRVTranslation() {
+  TranslateToMLIRRegistration fromBinary(
+      "deserialize-spirv",
+      [](llvm::SourceMgr &sourceMgr, MLIRContext *context) {
+        assert(sourceMgr.getNumBuffers() == 1 && "expected one buffer");
+        return deserializeModule(
+            sourceMgr.getMemoryBuffer(sourceMgr.getMainFileID()), context);
+      });
+}
+} // namespace mlir
 
 //===----------------------------------------------------------------------===//
 // Serialization registration
 //===----------------------------------------------------------------------===//
 
-LogicalResult serializeModule(ModuleOp module, raw_ostream &output) {
+static LogicalResult serializeModule(ModuleOp module, raw_ostream &output) {
   if (!module)
     return failure();
 
@@ -86,7 +91,8 @@ LogicalResult serializeModule(ModuleOp module, raw_ostream &output) {
   if (spirvModules.size() != 1)
     return module.emitError("found more than one 'spv.module' op");
 
-  if (failed(spirv::serialize(spirvModules[0], binary)))
+  if (failed(
+          spirv::serialize(spirvModules[0], binary, /*emitDebuginfo=*/false)))
     return failure();
 
   output.write(reinterpret_cast<char *>(binary.data()),
@@ -95,17 +101,22 @@ LogicalResult serializeModule(ModuleOp module, raw_ostream &output) {
   return mlir::success();
 }
 
-static TranslateFromMLIRRegistration
-    toBinary("serialize-spirv", [](ModuleOp module, raw_ostream &output) {
-      return serializeModule(module, output);
-    });
+namespace mlir {
+void registerToSPIRVTranslation() {
+  TranslateFromMLIRRegistration toBinary(
+      "serialize-spirv", [](ModuleOp module, raw_ostream &output) {
+        return serializeModule(module, output);
+      });
+}
+} // namespace mlir
 
 //===----------------------------------------------------------------------===//
 // Round-trip registration
 //===----------------------------------------------------------------------===//
 
-LogicalResult roundTripModule(llvm::SourceMgr &sourceMgr, raw_ostream &output,
-                              MLIRContext *context) {
+static LogicalResult roundTripModule(llvm::SourceMgr &sourceMgr,
+                                     bool emitDebugInfo, raw_ostream &output,
+                                     MLIRContext *context) {
   // Parse an MLIR module from the source manager.
   auto srcModule = OwningModuleRef(parseSourceFile(sourceMgr, context));
   if (!srcModule)
@@ -121,7 +132,7 @@ LogicalResult roundTripModule(llvm::SourceMgr &sourceMgr, raw_ostream &output,
   if (std::next(spirvModules.begin()) != spirvModules.end())
     return srcModule->emitError("found more than one 'spv.module' op");
 
-  if (failed(spirv::serialize(*spirvModules.begin(), binary)))
+  if (failed(spirv::serialize(*spirvModules.begin(), binary, emitDebugInfo)))
     return failure();
 
   // Then deserialize to get back a SPIR-V module.
@@ -138,8 +149,23 @@ LogicalResult roundTripModule(llvm::SourceMgr &sourceMgr, raw_ostream &output,
   return mlir::success();
 }
 
-static TranslateRegistration roundtrip(
-    "test-spirv-roundtrip",
-    [](llvm::SourceMgr &sourceMgr, raw_ostream &output, MLIRContext *context) {
-      return roundTripModule(sourceMgr, output, context);
-    });
+namespace mlir {
+void registerTestRoundtripSPIRV() {
+  TranslateRegistration roundtrip(
+      "test-spirv-roundtrip", [](llvm::SourceMgr &sourceMgr,
+                                 raw_ostream &output, MLIRContext *context) {
+        return roundTripModule(sourceMgr, /*emitDebugInfo=*/false, output,
+                               context);
+      });
+}
+
+void registerTestRoundtripDebugSPIRV() {
+  TranslateRegistration roundtrip(
+      "test-spirv-roundtrip-debug",
+      [](llvm::SourceMgr &sourceMgr, raw_ostream &output,
+         MLIRContext *context) {
+        return roundTripModule(sourceMgr, /*emitDebugInfo=*/true, output,
+                               context);
+      });
+}
+} // namespace mlir

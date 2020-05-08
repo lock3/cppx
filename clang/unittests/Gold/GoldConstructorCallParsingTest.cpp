@@ -34,7 +34,7 @@ main() : int!
       )
     )
   );
-  ASSERT_TRUE(matches(Code, CastExprStmt));
+  ASSERT_TRUE(matches(Code.str(), CastExprStmt));
 }
 
 TEST(GoldParseConstructorCall, UDT_CallToImplicitCtor) {
@@ -67,5 +67,5 @@ main() : int!
       hasDescendant(returnStmt())
     )
   );
-  ASSERT_TRUE(matches(Code, HasConstructorCallSearch));
+  ASSERT_TRUE(matches(Code.str(), HasConstructorCallSearch));
 }

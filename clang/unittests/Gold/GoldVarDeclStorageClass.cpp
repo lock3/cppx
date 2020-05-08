@@ -21,7 +21,7 @@ foo<static> : int
 )";
   DeclarationMatcher StaticVar = varDecl(
     hasName("foo"), isStaticStorageClass());
-  ASSERT_TRUE(matches(Code, StaticVar));
+  ASSERT_TRUE(matches(Code.str(), StaticVar));
 }
 
 TEST(GoldVarDeclStorageClass, External) {
@@ -30,5 +30,5 @@ foo<extern>: int
 )";
   DeclarationMatcher ExternVar = varDecl(
     hasName("foo"), isExternStorageClass());
-  ASSERT_TRUE(matches(Code, ExternVar));
+  ASSERT_TRUE(matches(Code.str(), ExternVar));
 }

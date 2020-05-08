@@ -1,6 +1,6 @@
 //===- Utils.cpp ---- Misc utilities for analysis -------------------------===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -14,8 +14,10 @@
 #include "mlir/Analysis/Utils.h"
 
 #include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"
-#include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Affine/IR/AffineValueMap.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/IntegerSet.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -59,12 +61,11 @@ ComputationSliceState::getAsConstraints(FlatAffineConstraints *cst) {
   // Add loop bound constraints for values which are loop IVs and equality
   // constraints for symbols which are constants.
   for (const auto &value : values) {
-    assert(cst->containsId(*value) && "value expected to be present");
+    assert(cst->containsId(value) && "value expected to be present");
     if (isValidSymbol(value)) {
       // Check if the symbol is a constant.
-
-      if (auto cOp = dyn_cast_or_null<ConstantIndexOp>(value->getDefiningOp()))
-        cst->setIdToConstant(*value, cOp.getValue());
+      if (auto cOp = dyn_cast_or_null<ConstantIndexOp>(value.getDefiningOp()))
+        cst->setIdToConstant(value, cOp.getValue());
     } else if (auto loop = getForInductionVarOwner(value)) {
       if (failed(cst->addAffineForOpDomain(loop)))
         return failure();
@@ -88,18 +89,32 @@ void ComputationSliceState::clearBounds() {
 }
 
 unsigned MemRefRegion::getRank() const {
-  return memref->getType().cast<MemRefType>().getRank();
+  return memref.getType().cast<MemRefType>().getRank();
 }
 
 Optional<int64_t> MemRefRegion::getConstantBoundingSizeAndShape(
     SmallVectorImpl<int64_t> *shape, std::vector<SmallVector<int64_t, 4>> *lbs,
     SmallVectorImpl<int64_t> *lbDivisors) const {
-  auto memRefType = memref->getType().cast<MemRefType>();
+  auto memRefType = memref.getType().cast<MemRefType>();
   unsigned rank = memRefType.getRank();
   if (shape)
     shape->reserve(rank);
 
   assert(rank == cst.getNumDimIds() && "inconsistent memref region");
+
+  // Use a copy of the region constraints that has upper/lower bounds for each
+  // memref dimension with static size added to guard against potential
+  // over-approximation from projection or union bounding box. We may not add
+  // this on the region itself since they might just be redundant constraints
+  // that will need non-trivials means to eliminate.
+  FlatAffineConstraints cstWithShapeBounds(cst);
+  for (unsigned r = 0; r < rank; r++) {
+    cstWithShapeBounds.addConstantLowerBound(r, 0);
+    int64_t dimSize = memRefType.getDimSize(r);
+    if (ShapedType::isDynamic(dimSize))
+      continue;
+    cstWithShapeBounds.addConstantUpperBound(r, dimSize - 1);
+  }
 
   // Find a constant upper bound on the extent of this memref region along each
   // dimension.
@@ -108,7 +123,8 @@ Optional<int64_t> MemRefRegion::getConstantBoundingSizeAndShape(
   int64_t lbDivisor;
   for (unsigned d = 0; d < rank; d++) {
     SmallVector<int64_t, 4> lb;
-    Optional<int64_t> diff = cst.getConstantBoundOnDimSize(d, &lb, &lbDivisor);
+    Optional<int64_t> diff =
+        cstWithShapeBounds.getConstantBoundOnDimSize(d, &lb, &lbDivisor);
     if (diff.hasValue()) {
       diffConstant = diff.getValue();
       assert(lbDivisor > 0);
@@ -120,7 +136,7 @@ Optional<int64_t> MemRefRegion::getConstantBoundingSizeAndShape(
         return None;
       diffConstant = dimSize;
       // Lower bound becomes 0.
-      lb.resize(cst.getNumSymbolIds() + 1, 0);
+      lb.resize(cstWithShapeBounds.getNumSymbolIds() + 1, 0);
       lbDivisor = 1;
     }
     numElements *= diffConstant;
@@ -134,6 +150,25 @@ Optional<int64_t> MemRefRegion::getConstantBoundingSizeAndShape(
     }
   }
   return numElements;
+}
+
+void MemRefRegion::getLowerAndUpperBound(unsigned pos, AffineMap &lbMap,
+                                         AffineMap &ubMap) const {
+  assert(pos < cst.getNumDimIds() && "invalid position");
+  auto memRefType = memref.getType().cast<MemRefType>();
+  unsigned rank = memRefType.getRank();
+
+  assert(rank == cst.getNumDimIds() && "inconsistent memref region");
+
+  auto boundPairs = cst.getLowerAndUpperBound(
+      pos, /*offset=*/0, /*num=*/rank, cst.getNumDimAndSymbolIds(),
+      /*localExprs=*/{}, memRefType.getContext());
+  lbMap = boundPairs.first;
+  ubMap = boundPairs.second;
+  assert(lbMap && "lower bound for a region must exist");
+  assert(ubMap && "upper bound for a region must exist");
+  assert(lbMap.getNumInputs() == cst.getNumDimAndSymbolIds() - rank);
+  assert(ubMap.getNumInputs() == cst.getNumDimAndSymbolIds() - rank);
 }
 
 LogicalResult MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
@@ -228,9 +263,9 @@ LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
       auto symbol = operand;
       assert(isValidSymbol(symbol));
       // Check if the symbol is a constant.
-      if (auto *op = symbol->getDefiningOp()) {
+      if (auto *op = symbol.getDefiningOp()) {
         if (auto constOp = dyn_cast<ConstantIndexOp>(op)) {
-          cst.setIdToConstant(*symbol, constOp.getValue());
+          cst.setIdToConstant(symbol, constOp.getValue());
         }
       }
     }
@@ -293,22 +328,21 @@ LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
   // to guard against potential over-approximation from projection.
   // TODO(andydavis) Support dynamic memref dimensions.
   if (addMemRefDimBounds) {
-    auto memRefType = memref->getType().cast<MemRefType>();
+    auto memRefType = memref.getType().cast<MemRefType>();
     for (unsigned r = 0; r < rank; r++) {
-      cst.addConstantLowerBound(r, 0);
-      int64_t dimSize = memRefType.getDimSize(r);
-      if (ShapedType::isDynamic(dimSize))
+      cst.addConstantLowerBound(/*pos=*/r, /*lb=*/0);
+      if (memRefType.isDynamicDim(r))
         continue;
-      cst.addConstantUpperBound(r, dimSize - 1);
+      cst.addConstantUpperBound(/*pos=*/r, memRefType.getDimSize(r) - 1);
     }
   }
+  cst.removeTrivialRedundancy();
 
   LLVM_DEBUG(llvm::dbgs() << "Memory region:\n");
   LLVM_DEBUG(cst.dump());
   return success();
 }
 
-//  TODO(mlir-team): improve/complete this when we have target data.
 static unsigned getMemRefEltSizeInBytes(MemRefType memRefType) {
   auto elementType = memRefType.getElementType();
 
@@ -325,7 +359,7 @@ static unsigned getMemRefEltSizeInBytes(MemRefType memRefType) {
 
 // Returns the size of the region.
 Optional<int64_t> MemRefRegion::getRegionSize() {
-  auto memRefType = memref->getType().cast<MemRefType>();
+  auto memRefType = memref.getType().cast<MemRefType>();
 
   auto layoutMaps = memRefType.getAffineMaps();
   if (layoutMaps.size() > 1 ||
@@ -367,16 +401,16 @@ Optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
   return sizeInBytes;
 }
 
-template <typename LoadOrStoreOpPointer>
-LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
+template <typename LoadOrStoreOp>
+LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOp loadOrStoreOp,
                                             bool emitError) {
-  static_assert(std::is_same<LoadOrStoreOpPointer, AffineLoadOp>::value ||
-                    std::is_same<LoadOrStoreOpPointer, AffineStoreOp>::value,
-                "argument should be either a AffineLoadOp or a AffineStoreOp");
+  static_assert(
+      llvm::is_one_of<LoadOrStoreOp, AffineLoadOp, AffineStoreOp>::value,
+      "argument should be either a AffineLoadOp or a AffineStoreOp");
 
-  Operation *opInst = loadOrStoreOp.getOperation();
-  MemRefRegion region(opInst->getLoc());
-  if (failed(region.compute(opInst, /*loopDepth=*/0, /*sliceState=*/nullptr,
+  Operation *op = loadOrStoreOp.getOperation();
+  MemRefRegion region(op->getLoc());
+  if (failed(region.compute(op, /*loopDepth=*/0, /*sliceState=*/nullptr,
                             /*addMemRefDimBounds=*/false)))
     return success();
 
@@ -471,8 +505,8 @@ static Operation *getInstAtPosition(ArrayRef<unsigned> positions,
 }
 
 // Adds loop IV bounds to 'cst' for loop IVs not found in 'ivs'.
-LogicalResult addMissingLoopIVBounds(SmallPtrSet<Value, 8> &ivs,
-                                     FlatAffineConstraints *cst) {
+static LogicalResult addMissingLoopIVBounds(SmallPtrSet<Value, 8> &ivs,
+                                            FlatAffineConstraints *cst) {
   for (unsigned i = 0, e = cst->getNumDimIds(); i < e; ++i) {
     auto value = cst->getIdValue(i);
     if (ivs.count(value) == 0) {
@@ -535,8 +569,8 @@ LogicalResult mlir::computeSliceUnion(ArrayRef<Operation *> opsA,
       if (srcAccess.memref != dstAccess.memref)
         continue;
       // Check if 'loopDepth' exceeds nesting depth of src/dst ops.
-      if ((!isBackwardSlice && loopDepth > getNestingDepth(*opsA[i])) ||
-          (isBackwardSlice && loopDepth > getNestingDepth(*opsB[j]))) {
+      if ((!isBackwardSlice && loopDepth > getNestingDepth(opsA[i])) ||
+          (isBackwardSlice && loopDepth > getNestingDepth(opsB[j]))) {
         LLVM_DEBUG(llvm::dbgs() << "Invalid loop depth\n.");
         return failure();
       }
@@ -854,15 +888,15 @@ MemRefAccess::MemRefAccess(Operation *loadOrStoreOpInst) {
 }
 
 unsigned MemRefAccess::getRank() const {
-  return memref->getType().cast<MemRefType>().getRank();
+  return memref.getType().cast<MemRefType>().getRank();
 }
 
 bool MemRefAccess::isStore() const { return isa<AffineStoreOp>(opInst); }
 
 /// Returns the nesting depth of this statement, i.e., the number of loops
 /// surrounding this statement.
-unsigned mlir::getNestingDepth(Operation &op) {
-  Operation *currOp = &op;
+unsigned mlir::getNestingDepth(Operation *op) {
+  Operation *currOp = op;
   unsigned depth = 0;
   while ((currOp = currOp->getParentOp())) {
     if (isa<AffineForOp>(currOp))
@@ -923,7 +957,7 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
     auto region = std::make_unique<MemRefRegion>(opInst->getLoc());
     if (failed(
             region->compute(opInst,
-                            /*loopDepth=*/getNestingDepth(*block.begin())))) {
+                            /*loopDepth=*/getNestingDepth(&*block.begin())))) {
       return opInst->emitError("error obtaining memory region\n");
     }
 
@@ -973,11 +1007,12 @@ void mlir::getSequentialLoops(AffineForOp forOp,
 bool mlir::isLoopParallel(AffineForOp forOp) {
   // Collect all load and store ops in loop nest rooted at 'forOp'.
   SmallVector<Operation *, 8> loadAndStoreOpInsts;
-  auto walkResult = forOp.walk([&](Operation *opInst) {
+  auto walkResult = forOp.walk([&](Operation *opInst) -> WalkResult {
     if (isa<AffineLoadOp>(opInst) || isa<AffineStoreOp>(opInst))
       loadAndStoreOpInsts.push_back(opInst);
     else if (!isa<AffineForOp>(opInst) && !isa<AffineTerminatorOp>(opInst) &&
-             !isa<AffineIfOp>(opInst) && !opInst->hasNoSideEffect())
+             !isa<AffineIfOp>(opInst) &&
+             !MemoryEffectOpInterface::hasNoEffect(opInst))
       return WalkResult::interrupt();
 
     return WalkResult::advance();
@@ -988,7 +1023,7 @@ bool mlir::isLoopParallel(AffineForOp forOp) {
     return false;
 
   // Dep check depth would be number of enclosing loops + 1.
-  unsigned depth = getNestingDepth(*forOp.getOperation()) + 1;
+  unsigned depth = getNestingDepth(forOp) + 1;
 
   // Check dependences between all pairs of ops in 'loadAndStoreOpInsts'.
   for (auto *srcOpInst : loadAndStoreOpInsts) {
@@ -1004,4 +1039,16 @@ bool mlir::isLoopParallel(AffineForOp forOp) {
     }
   }
   return true;
+}
+
+IntegerSet mlir::simplifyIntegerSet(IntegerSet set) {
+  FlatAffineConstraints fac(set);
+  if (fac.isEmpty())
+    return IntegerSet::getEmptySet(set.getNumDims(), set.getNumSymbols(),
+                                   set.getContext());
+  fac.removeTrivialRedundancy();
+
+  auto simplifiedSet = fac.getAsIntegerSet(set.getContext());
+  assert(simplifiedSet && "guaranteed to succeed while roundtripping");
+  return simplifiedSet;
 }

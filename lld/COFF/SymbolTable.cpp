@@ -204,7 +204,7 @@ static void reportUndefinedSymbol(const UndefinedDiag &undefDiag) {
   llvm::raw_string_ostream os(out);
   os << "undefined symbol: " << toString(*undefDiag.sym);
 
-  const size_t maxUndefReferences = 10;
+  const size_t maxUndefReferences = 3;
   size_t i = 0, numRefs = 0;
   for (const UndefinedDiag::File &ref : undefDiag.files) {
     std::vector<std::string> symbolLocations =
@@ -592,7 +592,7 @@ Symbol *SymbolTable::addAbsolute(StringRef n, COFFSymbolRef sym) {
   if (wasInserted || isa<Undefined>(s) || s->isLazy())
     replaceSymbol<DefinedAbsolute>(s, n, sym);
   else if (auto *da = dyn_cast<DefinedAbsolute>(s)) {
-    if (!da->isEqual(sym))
+    if (da->getVA() != sym.getValue())
       reportDuplicate(s, nullptr);
   } else if (!isa<DefinedCOFF>(s))
     reportDuplicate(s, nullptr);
@@ -607,7 +607,7 @@ Symbol *SymbolTable::addAbsolute(StringRef n, uint64_t va) {
   if (wasInserted || isa<Undefined>(s) || s->isLazy())
     replaceSymbol<DefinedAbsolute>(s, n, va);
   else if (auto *da = dyn_cast<DefinedAbsolute>(s)) {
-    if (!da->isEqual(va))
+    if (da->getVA() != va)
       reportDuplicate(s, nullptr);
   } else if (!isa<DefinedCOFF>(s))
     reportDuplicate(s, nullptr);
@@ -789,20 +789,16 @@ Symbol *SymbolTable::addUndefined(StringRef name) {
   return addUndefined(name, nullptr, false);
 }
 
-std::vector<StringRef> SymbolTable::compileBitcodeFiles() {
-  lto.reset(new BitcodeCompiler);
-  for (BitcodeFile *f : BitcodeFile::instances)
-    lto->add(*f);
-  return lto->compile();
-}
-
 void SymbolTable::addCombinedLTOObjects() {
   if (BitcodeFile::instances.empty())
     return;
 
   ScopedTimer t(ltoTimer);
-  for (StringRef object : compileBitcodeFiles()) {
-    auto *obj = make<ObjFile>(MemoryBufferRef(object, "lto.tmp"));
+  lto.reset(new BitcodeCompiler);
+  for (BitcodeFile *f : BitcodeFile::instances)
+    lto->add(*f);
+  for (InputFile *newObj : lto->compile()) {
+    ObjFile *obj = cast<ObjFile>(newObj);
     obj->parse();
     ObjFile::instances.push_back(obj);
   }

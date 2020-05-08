@@ -36,7 +36,7 @@
 //   can never fail to assert instead, such as the creation of
 //   PythonString from a string literal.
 //
-// * Elimintate Reset(), and make all non-default constructors private.
+// * Eliminate Reset(), and make all non-default constructors private.
 //   Python objects should be created with Retain<> or Take<>, and they
 //   should be assigned with operator=
 //
@@ -595,7 +595,7 @@ public:
 
   // safe, returns invalid on error;
   static PythonModule ImportModule(llvm::StringRef name) {
-    std::string s = name;
+    std::string s = std::string(name);
     auto mod = Import(s.c_str());
     if (!mod) {
       llvm::consumeError(mod.takeError());

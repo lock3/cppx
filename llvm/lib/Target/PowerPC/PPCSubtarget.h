@@ -63,7 +63,6 @@ namespace PPC {
 }
 
 class GlobalValue;
-class TargetMachine;
 
 class PPCSubtarget : public PPCGenSubtargetInfo {
 public:
@@ -105,6 +104,8 @@ protected:
   bool HasP8Crypto;
   bool HasP9Vector;
   bool HasP9Altivec;
+  bool HasPrefixInstrs;
+  bool HasPCRelativeMemops;
   bool HasFCPSGN;
   bool HasFSQRT;
   bool HasFRE, HasFRES, HasFRSQRTE, HasFRSQRTES;
@@ -126,7 +127,6 @@ protected:
   bool FeatureMFTB;
   bool AllowsUnalignedFPAccess;
   bool DeprecatedDST;
-  bool HasLazyResolverStubs;
   bool IsLittleEndian;
   bool HasICBT;
   bool HasInvariantFunctionDescriptors;
@@ -134,6 +134,9 @@ protected:
   bool HasDirectMove;
   bool HasHTM;
   bool HasFloat128;
+  bool HasFusion;
+  bool HasAddiLoadFusion;
+  bool HasAddisLoadFusion;
   bool IsISA3_0;
   bool UseLongCalls;
   bool SecurePlt;
@@ -230,11 +233,6 @@ public:
   /// the individual condition register bits.
   bool useCRBits() const { return UseCRBits; }
 
-  /// hasLazyResolverStub - Return true if accesses to the specified global have
-  /// to go through a dyld lazy resolution stub.  This means that an extra load
-  /// is required to get the address of the global.
-  bool hasLazyResolverStub(const GlobalValue *GV) const;
-
   // isLittleEndian - True if generating little-endian code
   bool isLittleEndian() const { return IsLittleEndian; }
 
@@ -261,6 +259,8 @@ public:
   bool hasP8Crypto() const { return HasP8Crypto; }
   bool hasP9Vector() const { return HasP9Vector; }
   bool hasP9Altivec() const { return HasP9Altivec; }
+  bool hasPrefixInstrs() const { return HasPrefixInstrs; }
+  bool hasPCRelativeMemops() const { return HasPCRelativeMemops; }
   bool hasMFOCRF() const { return HasMFOCRF; }
   bool hasISEL() const { return HasISEL; }
   bool hasBPERMD() const { return HasBPERMD; }
@@ -294,16 +294,23 @@ public:
     return Align(16);
   }
 
-  // DarwinABI has a 224-byte red zone. PPC32 SVR4ABI(Non-DarwinABI) has no
-  // red zone and PPC64 SVR4ABI has a 288-byte red zone.
   unsigned  getRedZoneSize() const {
-    return isDarwinABI() ? 224 : (isPPC64() ? 288 : 0);
+    if (isPPC64())
+      // 288 bytes = 18*8 (FPRs) + 18*8 (GPRs, GPR13 reserved)
+      return 288;
+
+    // AIX PPC32: 220 bytes = 18*8 (FPRs) + 19*4 (GPRs);
+    // PPC32 SVR4ABI has no redzone.
+    return isAIXABI() ? 220 : 0;
   }
 
   bool hasHTM() const { return HasHTM; }
   bool hasFloat128() const { return HasFloat128; }
   bool isISA3_0() const { return IsISA3_0; }
   bool useLongCalls() const { return UseLongCalls; }
+  bool hasFusion() const { return HasFusion; }
+  bool hasAddiLoadFusion() const { return HasAddiLoadFusion; }
+  bool hasAddisLoadFusion() const { return HasAddisLoadFusion; }
   bool needsSwapsForVSXMemOps() const {
     return hasVSX() && isLittleEndian() && !hasP9Vector();
   }
@@ -312,8 +319,6 @@ public:
 
   const Triple &getTargetTriple() const { return TargetTriple; }
 
-  /// isDarwin - True if this is any darwin platform.
-  bool isDarwin() const { return TargetTriple.isMacOSX(); }
   /// isBGQ - True if this is a BG/Q platform.
   bool isBGQ() const { return TargetTriple.getVendor() == Triple::BGQ; }
 
@@ -321,13 +326,13 @@ public:
   bool isTargetMachO() const { return TargetTriple.isOSBinFormatMachO(); }
   bool isTargetLinux() const { return TargetTriple.isOSLinux(); }
 
-  bool isDarwinABI() const { return isTargetMachO() || isDarwin(); }
   bool isAIXABI() const { return TargetTriple.isOSAIX(); }
-  bool isSVR4ABI() const { return !isDarwinABI() && !isAIXABI(); }
+  bool isSVR4ABI() const { return !isAIXABI(); }
   bool isELFv2ABI() const;
 
   bool is64BitELFABI() const { return  isSVR4ABI() && isPPC64(); }
   bool is32BitELFABI() const { return  isSVR4ABI() && !isPPC64(); }
+  bool isUsingPCRelativeCalls() const;
 
   /// Originally, this function return hasISEL(). Now we always enable it,
   /// but may expand the ISEL instruction later.

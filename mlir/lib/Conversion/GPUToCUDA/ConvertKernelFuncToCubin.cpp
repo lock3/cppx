@@ -1,6 +1,6 @@
 //===- ConvertKernelFuncToCubin.cpp - MLIR GPU lowering passes ------------===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -15,6 +15,7 @@
 #include "mlir/Conversion/GPUToCUDA/GPUToCUDAPass.h"
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
@@ -30,6 +31,7 @@
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/Mutex.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
@@ -46,18 +48,21 @@ static constexpr const char *kCubinAnnotation = "nvvm.cubin";
 /// IR and further to PTX. A user provided CubinGenerator compiles the PTX to
 /// GPU binary code, which is then attached as an attribute to the function. The
 /// function body is erased.
-class GpuKernelToCubinPass : public ModulePass<GpuKernelToCubinPass> {
+class GpuKernelToCubinPass
+    : public PassWrapper<GpuKernelToCubinPass,
+                         OperationPass<gpu::GPUModuleOp>> {
 public:
-  GpuKernelToCubinPass(
-      CubinGenerator cubinGenerator = compilePtxToCubinForTesting)
+  GpuKernelToCubinPass(CubinGenerator cubinGenerator)
       : cubinGenerator(cubinGenerator) {}
 
-  void runOnModule() override {
-    ModuleOp module = getModule();
-    if (!module.getAttrOfType<UnitAttr>(
-            gpu::GPUDialect::getKernelModuleAttrName()) ||
-        !module.getName())
-      return;
+  void runOnOperation() override {
+    gpu::GPUModuleOp module = getOperation();
+
+    // Lock access to the llvm context.
+    llvm::sys::SmartScopedLock<true> scopedLock(
+        module.getContext()
+            ->getRegisteredDialect<LLVM::LLVMDialect>()
+            ->getLLVMContextMutex());
 
     // Make sure the NVPTX target is initialized.
     LLVMInitializeNVPTXTarget();
@@ -71,17 +76,14 @@ public:
 
     // Translate the module to CUBIN and attach the result as attribute to the
     // module.
-    if (auto cubinAttr = translateGpuModuleToCubinAnnotation(
-            *llvmModule, module.getLoc(), *module.getName()))
+    if (auto cubinAttr = translateGPUModuleToCubinAnnotation(
+            *llvmModule, module.getLoc(), module.getName()))
       module.setAttr(kCubinAnnotation, cubinAttr);
     else
       signalPassFailure();
   }
 
 private:
-  static OwnedCubin compilePtxToCubinForTesting(const std::string &ptx,
-                                                Location, StringRef);
-
   std::string translateModuleToPtx(llvm::Module &module,
                                    llvm::TargetMachine &target_machine);
 
@@ -92,7 +94,7 @@ private:
                                   StringRef name);
 
   /// Translates llvmModule to cubin and returns the result as attribute.
-  StringAttr translateGpuModuleToCubinAnnotation(llvm::Module &llvmModule,
+  StringAttr translateGPUModuleToCubinAnnotation(llvm::Module &llvmModule,
                                                  Location loc, StringRef name);
 
   CubinGenerator cubinGenerator;
@@ -104,22 +106,22 @@ std::string GpuKernelToCubinPass::translateModuleToPtx(
     llvm::Module &module, llvm::TargetMachine &target_machine) {
   std::string ptx;
   {
+    // Clone the llvm module into a new context to enable concurrent compilation
+    // with multiple threads.
+    // TODO(zinenko): Reevaluate model of ownership of LLVMContext in
+    //                LLVMDialect.
+    llvm::LLVMContext llvmContext;
+    auto clone = LLVM::cloneModuleIntoNewContext(&llvmContext, &module);
+
     llvm::raw_string_ostream stream(ptx);
     llvm::buffer_ostream pstream(stream);
     llvm::legacy::PassManager codegen_passes;
     target_machine.addPassesToEmitFile(codegen_passes, pstream, nullptr,
                                        llvm::CGFT_AssemblyFile);
-    codegen_passes.run(module);
+    codegen_passes.run(*clone);
   }
 
   return ptx;
-}
-
-OwnedCubin
-GpuKernelToCubinPass::compilePtxToCubinForTesting(const std::string &ptx,
-                                                  Location, StringRef) {
-  const char data[] = "CUBIN";
-  return std::make_unique<std::vector<char>>(data, data + sizeof(data) - 1);
 }
 
 OwnedCubin GpuKernelToCubinPass::convertModuleToCubin(llvm::Module &llvmModule,
@@ -149,7 +151,7 @@ OwnedCubin GpuKernelToCubinPass::convertModuleToCubin(llvm::Module &llvmModule,
   return cubinGenerator(ptx, loc, name);
 }
 
-StringAttr GpuKernelToCubinPass::translateGpuModuleToCubinAnnotation(
+StringAttr GpuKernelToCubinPass::translateGPUModuleToCubinAnnotation(
     llvm::Module &llvmModule, Location loc, StringRef name) {
   auto cubin = convertModuleToCubin(llvmModule, loc, name);
   if (!cubin)
@@ -157,11 +159,7 @@ StringAttr GpuKernelToCubinPass::translateGpuModuleToCubinAnnotation(
   return StringAttr::get({cubin->data(), cubin->size()}, loc->getContext());
 }
 
-std::unique_ptr<OpPassBase<ModuleOp>>
+std::unique_ptr<OperationPass<gpu::GPUModuleOp>>
 mlir::createConvertGPUKernelToCubinPass(CubinGenerator cubinGenerator) {
   return std::make_unique<GpuKernelToCubinPass>(cubinGenerator);
 }
-
-static PassRegistration<GpuKernelToCubinPass>
-    pass("test-kernel-to-cubin",
-         "Convert all kernel functions to CUDA cubin blobs");

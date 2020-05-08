@@ -28,7 +28,7 @@ x : type = int
     hasDescendant(typeAliasDecl(hasName("x"), hasType(asString("int"))))
   );
 
-  ASSERT_TRUE(matches(Code, TemplateAndInstantiationMatch));
+  ASSERT_TRUE(matches(Code.str(), TemplateAndInstantiationMatch));
 }
 
 TEST(GoldTypeExpr, TypeAlias_ThenUsed) {
@@ -42,7 +42,7 @@ y : x
     hasDescendant(varDecl(hasName("y"), hasType(asString("x"))))
   );
 
-  ASSERT_TRUE(matches(Code, TemplateAndInstantiationMatch));
+  ASSERT_TRUE(matches(Code.str(), TemplateAndInstantiationMatch));
 }
 
 TEST(GoldTypeExpr, TypeAliasOfAClass) {
@@ -57,7 +57,7 @@ x : type = c
     hasDescendant(typeAliasDecl(hasName("x"), hasType(asString("struct c"))))
   );
 
-  ASSERT_TRUE(matches(Code, TemplateAndInstantiationMatch));
+  ASSERT_TRUE(matches(Code.str(), TemplateAndInstantiationMatch));
 }
 
 
@@ -79,5 +79,5 @@ main() : int!
     ))
   );
 
-  ASSERT_TRUE(matches(Code, TemplateAndInstantiationMatch));
+  ASSERT_TRUE(matches(Code.str(), TemplateAndInstantiationMatch));
 }

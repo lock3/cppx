@@ -48,5 +48,5 @@ main() : int!
       ))
     )
   )));
-  ASSERT_TRUE(matches(Code, StmtMatcher));
+  ASSERT_TRUE(matches(Code.str(), StmtMatcher));
 }

@@ -1,6 +1,6 @@
 //===- ModuleTranslation.cpp - MLIR to LLVM conversion --------------------===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -13,12 +13,17 @@
 
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 
+#include "DebugTranslation.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Module.h"
+#include "mlir/IR/StandardTypes.h"
 #include "mlir/Support/LLVM.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 #include "llvm/ADT/SetVector.h"
+#include "llvm/Frontend/OpenMP/OMPIRBuilder.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -29,6 +34,61 @@
 
 using namespace mlir;
 using namespace mlir::LLVM;
+using namespace mlir::LLVM::detail;
+
+#include "mlir/Dialect/LLVMIR/LLVMConversionEnumsToLLVM.inc"
+
+/// Builds a constant of a sequential LLVM type `type`, potentially containing
+/// other sequential types recursively, from the individual constant values
+/// provided in `constants`. `shape` contains the number of elements in nested
+/// sequential types. Reports errors at `loc` and returns nullptr on error.
+static llvm::Constant *
+buildSequentialConstant(ArrayRef<llvm::Constant *> &constants,
+                        ArrayRef<int64_t> shape, llvm::Type *type,
+                        Location loc) {
+  if (shape.empty()) {
+    llvm::Constant *result = constants.front();
+    constants = constants.drop_front();
+    return result;
+  }
+
+  llvm::Type *elementType;
+  if (auto *arrayTy = dyn_cast<llvm::ArrayType>(type)) {
+    elementType = arrayTy->getElementType();
+  } else if (auto *vectorTy = dyn_cast<llvm::VectorType>(type)) {
+    elementType = vectorTy->getElementType();
+  } else {
+    emitError(loc) << "expected sequential LLVM types wrapping a scalar";
+    return nullptr;
+  }
+
+  SmallVector<llvm::Constant *, 8> nested;
+  nested.reserve(shape.front());
+  for (int64_t i = 0; i < shape.front(); ++i) {
+    nested.push_back(buildSequentialConstant(constants, shape.drop_front(),
+                                             elementType, loc));
+    if (!nested.back())
+      return nullptr;
+  }
+
+  if (shape.size() == 1 && type->isVectorTy())
+    return llvm::ConstantVector::get(nested);
+  return llvm::ConstantArray::get(
+      llvm::ArrayType::get(elementType, shape.front()), nested);
+}
+
+/// Returns the first non-sequential type nested in sequential types.
+static llvm::Type *getInnermostElementType(llvm::Type *type) {
+  do {
+    if (auto *arrayTy = dyn_cast<llvm::ArrayType>(type)) {
+      type = arrayTy->getElementType();
+    } else if (auto *vectorTy = dyn_cast<llvm::VectorType>(type)) {
+      type = vectorTy->getElementType();
+    } else {
+      return type;
+    }
+  } while (1);
+}
 
 /// Create an LLVM IR constant of `llvmType` from the MLIR attribute `attr`.
 /// This currently supports integer, floating point, splat and dense element
@@ -39,43 +99,76 @@ llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
                                                    Location loc) {
   if (!attr)
     return llvm::UndefValue::get(llvmType);
+  if (llvmType->isStructTy()) {
+    emitError(loc, "struct types are not supported in constants");
+    return nullptr;
+  }
+  // For integer types, we allow a mismatch in sizes as the index type in
+  // MLIR might have a different size than the index type in the LLVM module.
   if (auto intAttr = attr.dyn_cast<IntegerAttr>())
-    return llvm::ConstantInt::get(llvmType, intAttr.getValue());
+    return llvm::ConstantInt::get(
+        llvmType,
+        intAttr.getValue().sextOrTrunc(llvmType->getIntegerBitWidth()));
+  if (auto boolAttr = attr.dyn_cast<BoolAttr>())
+    return llvm::ConstantInt::get(llvmType, boolAttr.getValue());
   if (auto floatAttr = attr.dyn_cast<FloatAttr>())
     return llvm::ConstantFP::get(llvmType, floatAttr.getValue());
   if (auto funcAttr = attr.dyn_cast<FlatSymbolRefAttr>())
-    return functionMapping.lookup(funcAttr.getValue());
+    return llvm::ConstantExpr::getBitCast(
+        functionMapping.lookup(funcAttr.getValue()), llvmType);
   if (auto splatAttr = attr.dyn_cast<SplatElementsAttr>()) {
-    auto *sequentialType = cast<llvm::SequentialType>(llvmType);
-    auto elementType = sequentialType->getElementType();
-    uint64_t numElements = sequentialType->getNumElements();
-    auto *child = getLLVMConstant(elementType, splatAttr.getSplatValue(), loc);
+    llvm::Type *elementType;
+    uint64_t numElements;
+    if (auto *arrayTy = dyn_cast<llvm::ArrayType>(llvmType)) {
+      elementType = arrayTy->getElementType();
+      numElements = arrayTy->getNumElements();
+    } else {
+      auto *vectorTy = cast<llvm::VectorType>(llvmType);
+      elementType = vectorTy->getElementType();
+      numElements = vectorTy->getNumElements();
+    }
+    // Splat value is a scalar. Extract it only if the element type is not
+    // another sequence type. The recursion terminates because each step removes
+    // one outer sequential type.
+    bool elementTypeSequential =
+        isa<llvm::ArrayType>(elementType) || isa<llvm::VectorType>(elementType);
+    llvm::Constant *child = getLLVMConstant(
+        elementType,
+        elementTypeSequential ? splatAttr : splatAttr.getSplatValue(), loc);
+    if (!child)
+      return nullptr;
     if (llvmType->isVectorTy())
-      return llvm::ConstantVector::getSplat(numElements, child);
+      return llvm::ConstantVector::getSplat(
+          llvm::ElementCount(numElements, /*Scalable=*/false), child);
     if (llvmType->isArrayTy()) {
-      auto arrayType = llvm::ArrayType::get(elementType, numElements);
+      auto *arrayType = llvm::ArrayType::get(elementType, numElements);
       SmallVector<llvm::Constant *, 8> constants(numElements, child);
       return llvm::ConstantArray::get(arrayType, constants);
     }
   }
+
   if (auto elementsAttr = attr.dyn_cast<ElementsAttr>()) {
-    auto *sequentialType = cast<llvm::SequentialType>(llvmType);
-    auto elementType = sequentialType->getElementType();
-    uint64_t numElements = sequentialType->getNumElements();
+    assert(elementsAttr.getType().hasStaticShape());
+    assert(elementsAttr.getNumElements() != 0 &&
+           "unexpected empty elements attribute");
+    assert(!elementsAttr.getType().getShape().empty() &&
+           "unexpected empty elements attribute shape");
+
     SmallVector<llvm::Constant *, 8> constants;
-    constants.reserve(numElements);
+    constants.reserve(elementsAttr.getNumElements());
+    llvm::Type *innermostType = getInnermostElementType(llvmType);
     for (auto n : elementsAttr.getValues<Attribute>()) {
-      constants.push_back(getLLVMConstant(elementType, n, loc));
+      constants.push_back(getLLVMConstant(innermostType, n, loc));
       if (!constants.back())
         return nullptr;
     }
-    if (llvmType->isVectorTy())
-      return llvm::ConstantVector::get(constants);
-    if (llvmType->isArrayTy()) {
-      auto arrayType = llvm::ArrayType::get(elementType, numElements);
-      return llvm::ConstantArray::get(arrayType, constants);
-    }
+    ArrayRef<llvm::Constant *> constantsRef = constants;
+    llvm::Constant *result = buildSequentialConstant(
+        constantsRef, elementsAttr.getType().getShape(), llvmType, loc);
+    assert(constantsRef.empty() && "did not consume all elemental constants");
+    return result;
   }
+
   if (auto stringAttr = attr.dyn_cast<StringAttr>()) {
     return llvm::ConstantDataArray::get(
         llvmModule->getContext(), ArrayRef<char>{stringAttr.getValue().data(),
@@ -150,6 +243,99 @@ static llvm::CmpInst::Predicate getLLVMCmpPredicate(FCmpPredicate p) {
   llvm_unreachable("incorrect comparison predicate");
 }
 
+static llvm::AtomicRMWInst::BinOp getLLVMAtomicBinOp(AtomicBinOp op) {
+  switch (op) {
+  case LLVM::AtomicBinOp::xchg:
+    return llvm::AtomicRMWInst::BinOp::Xchg;
+  case LLVM::AtomicBinOp::add:
+    return llvm::AtomicRMWInst::BinOp::Add;
+  case LLVM::AtomicBinOp::sub:
+    return llvm::AtomicRMWInst::BinOp::Sub;
+  case LLVM::AtomicBinOp::_and:
+    return llvm::AtomicRMWInst::BinOp::And;
+  case LLVM::AtomicBinOp::nand:
+    return llvm::AtomicRMWInst::BinOp::Nand;
+  case LLVM::AtomicBinOp::_or:
+    return llvm::AtomicRMWInst::BinOp::Or;
+  case LLVM::AtomicBinOp::_xor:
+    return llvm::AtomicRMWInst::BinOp::Xor;
+  case LLVM::AtomicBinOp::max:
+    return llvm::AtomicRMWInst::BinOp::Max;
+  case LLVM::AtomicBinOp::min:
+    return llvm::AtomicRMWInst::BinOp::Min;
+  case LLVM::AtomicBinOp::umax:
+    return llvm::AtomicRMWInst::BinOp::UMax;
+  case LLVM::AtomicBinOp::umin:
+    return llvm::AtomicRMWInst::BinOp::UMin;
+  case LLVM::AtomicBinOp::fadd:
+    return llvm::AtomicRMWInst::BinOp::FAdd;
+  case LLVM::AtomicBinOp::fsub:
+    return llvm::AtomicRMWInst::BinOp::FSub;
+  }
+  llvm_unreachable("incorrect atomic binary operator");
+}
+
+static llvm::AtomicOrdering getLLVMAtomicOrdering(AtomicOrdering ordering) {
+  switch (ordering) {
+  case LLVM::AtomicOrdering::not_atomic:
+    return llvm::AtomicOrdering::NotAtomic;
+  case LLVM::AtomicOrdering::unordered:
+    return llvm::AtomicOrdering::Unordered;
+  case LLVM::AtomicOrdering::monotonic:
+    return llvm::AtomicOrdering::Monotonic;
+  case LLVM::AtomicOrdering::acquire:
+    return llvm::AtomicOrdering::Acquire;
+  case LLVM::AtomicOrdering::release:
+    return llvm::AtomicOrdering::Release;
+  case LLVM::AtomicOrdering::acq_rel:
+    return llvm::AtomicOrdering::AcquireRelease;
+  case LLVM::AtomicOrdering::seq_cst:
+    return llvm::AtomicOrdering::SequentiallyConsistent;
+  }
+  llvm_unreachable("incorrect atomic ordering");
+}
+
+ModuleTranslation::ModuleTranslation(Operation *module,
+                                     std::unique_ptr<llvm::Module> llvmModule)
+    : mlirModule(module), llvmModule(std::move(llvmModule)),
+      debugTranslation(
+          std::make_unique<DebugTranslation>(module, *this->llvmModule)),
+      ompDialect(
+          module->getContext()->getRegisteredDialect<omp::OpenMPDialect>()),
+      llvmDialect(module->getContext()->getRegisteredDialect<LLVMDialect>()) {
+  assert(satisfiesLLVMModule(mlirModule) &&
+         "mlirModule should honor LLVM's module semantics.");
+}
+ModuleTranslation::~ModuleTranslation() {}
+
+/// Given an OpenMP MLIR operation, create the corresponding LLVM IR
+/// (including OpenMP runtime calls).
+LogicalResult
+ModuleTranslation::convertOmpOperation(Operation &opInst,
+                                       llvm::IRBuilder<> &builder) {
+  if (!ompBuilder) {
+    ompBuilder = std::make_unique<llvm::OpenMPIRBuilder>(*llvmModule);
+    ompBuilder->initialize();
+  }
+  return llvm::TypeSwitch<Operation *, LogicalResult>(&opInst)
+      .Case([&](omp::BarrierOp) {
+        ompBuilder->CreateBarrier(builder.saveIP(), llvm::omp::OMPD_barrier);
+        return success();
+      })
+      .Case([&](omp::TaskwaitOp) {
+        ompBuilder->CreateTaskwait(builder.saveIP());
+        return success();
+      })
+      .Case([&](omp::TaskyieldOp) {
+        ompBuilder->CreateTaskyield(builder.saveIP());
+        return success();
+      })
+      .Default([&](Operation *inst) {
+        return inst->emitError("unsupported OpenMP operation: ")
+               << inst->getName();
+      });
+}
+
 /// Given a single MLIR operation, create the corresponding LLVM IR operation
 /// using the `builder`.  LLVM IR Builder does not have a generic interface so
 /// this has to be a long chain of `if`s calling different functions with a
@@ -178,7 +364,12 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
       return builder.CreateCall(functionMapping.lookup(attr.getValue()),
                                 operandsRef);
     } else {
-      return builder.CreateCall(operandsRef.front(), operandsRef.drop_front());
+      auto *calleePtrType =
+          cast<llvm::PointerType>(operandsRef.front()->getType());
+      auto *calleeType =
+          cast<llvm::FunctionType>(calleePtrType->getElementType());
+      return builder.CreateCall(calleeType, operandsRef.front(),
+                                operandsRef.drop_front());
     }
   };
 
@@ -194,10 +385,44 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
     return success(result->getType()->isVoidTy());
   }
 
+  if (auto invOp = dyn_cast<LLVM::InvokeOp>(opInst)) {
+    auto operands = lookupValues(opInst.getOperands());
+    ArrayRef<llvm::Value *> operandsRef(operands);
+    if (auto attr = opInst.getAttrOfType<FlatSymbolRefAttr>("callee")) {
+      builder.CreateInvoke(functionMapping.lookup(attr.getValue()),
+                           blockMapping[invOp.getSuccessor(0)],
+                           blockMapping[invOp.getSuccessor(1)], operandsRef);
+    } else {
+      auto *calleePtrType =
+          cast<llvm::PointerType>(operandsRef.front()->getType());
+      auto *calleeType =
+          cast<llvm::FunctionType>(calleePtrType->getElementType());
+      builder.CreateInvoke(
+          calleeType, operandsRef.front(), blockMapping[invOp.getSuccessor(0)],
+          blockMapping[invOp.getSuccessor(1)], operandsRef.drop_front());
+    }
+    return success();
+  }
+
+  if (auto lpOp = dyn_cast<LLVM::LandingpadOp>(opInst)) {
+    llvm::Type *ty = lpOp.getType().dyn_cast<LLVMType>().getUnderlyingType();
+    llvm::LandingPadInst *lpi =
+        builder.CreateLandingPad(ty, lpOp.getNumOperands());
+
+    // Add clauses
+    for (auto operand : lookupValues(lpOp.getOperands())) {
+      // All operands should be constant - checked by verifier
+      if (auto constOperand = dyn_cast<llvm::Constant>(operand))
+        lpi->addClause(constOperand);
+    }
+    valueMapping[lpOp.getResult()] = lpi;
+    return success();
+  }
+
   // Emit branches.  We need to look up the remapped blocks and ignore the block
   // arguments that were transformed into PHI nodes.
   if (auto brOp = dyn_cast<LLVM::BrOp>(opInst)) {
-    builder.CreateBr(blockMapping[brOp.getSuccessor(0)]);
+    builder.CreateBr(blockMapping[brOp.getSuccessor()]);
     return success();
   }
   if (auto condbrOp = dyn_cast<LLVM::CondBrOp>(opInst)) {
@@ -219,6 +444,10 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
     return success();
   }
 
+  if (opInst.getDialect() == ompDialect) {
+    return convertOmpOperation(opInst, builder);
+  }
+
   return opInst.emitError("unsupported or non-LLVM operation: ")
          << opInst.getName();
 }
@@ -228,6 +457,7 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
 /// are not connected to the source basic blocks, which may not exist yet.
 LogicalResult ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
   llvm::IRBuilder<> builder(blockMapping[&bb]);
+  auto *subprogram = builder.GetInsertBlock()->getParent()->getSubprogram();
 
   // Before traversing operations, make block arguments available through
   // value remapping and PHI nodes, but do not add incoming edges for the PHI
@@ -240,7 +470,7 @@ LogicalResult ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
     unsigned numPredecessors =
         std::distance(predecessors.begin(), predecessors.end());
     for (auto arg : bb.getArguments()) {
-      auto wrappedType = arg->getType().dyn_cast<LLVM::LLVMType>();
+      auto wrappedType = arg.getType().dyn_cast<LLVM::LLVMType>();
       if (!wrappedType)
         return emitError(bb.front().getLoc(),
                          "block argument does not have an LLVM type");
@@ -252,6 +482,10 @@ LogicalResult ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
 
   // Traverse operations.
   for (auto &op : bb) {
+    // Set the current debug location within the builder.
+    builder.SetCurrentDebugLocation(
+        debugTranslation->translateLoc(op.getLoc(), subprogram));
+
     if (failed(convertOperation(op, builder)))
       return failure();
   }
@@ -259,38 +493,12 @@ LogicalResult ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
   return success();
 }
 
-/// Convert the LLVM dialect linkage type to LLVM IR linkage type.
-llvm::GlobalVariable::LinkageTypes convertLinkageType(LLVM::Linkage linkage) {
-  switch (linkage) {
-  case LLVM::Linkage::Private:
-    return llvm::GlobalValue::PrivateLinkage;
-  case LLVM::Linkage::Internal:
-    return llvm::GlobalValue::InternalLinkage;
-  case LLVM::Linkage::AvailableExternally:
-    return llvm::GlobalValue::AvailableExternallyLinkage;
-  case LLVM::Linkage::Linkonce:
-    return llvm::GlobalValue::LinkOnceAnyLinkage;
-  case LLVM::Linkage::Weak:
-    return llvm::GlobalValue::WeakAnyLinkage;
-  case LLVM::Linkage::Common:
-    return llvm::GlobalValue::CommonLinkage;
-  case LLVM::Linkage::Appending:
-    return llvm::GlobalValue::AppendingLinkage;
-  case LLVM::Linkage::ExternWeak:
-    return llvm::GlobalValue::ExternalWeakLinkage;
-  case LLVM::Linkage::LinkonceODR:
-    return llvm::GlobalValue::LinkOnceODRLinkage;
-  case LLVM::Linkage::WeakODR:
-    return llvm::GlobalValue::WeakODRLinkage;
-  case LLVM::Linkage::External:
-    return llvm::GlobalValue::ExternalLinkage;
-  }
-  llvm_unreachable("unknown linkage type");
-}
-
 /// Create named global variables that correspond to llvm.mlir.global
 /// definitions.
-void ModuleTranslation::convertGlobals() {
+LogicalResult ModuleTranslation::convertGlobals() {
+  // Lock access to the llvm context.
+  llvm::sys::SmartScopedLock<true> scopedLock(
+      llvmDialect->getLLVMContextMutex());
   for (auto op : getModuleBody(mlirModule).getOps<LLVM::GlobalOp>()) {
     llvm::Type *type = op.getType().getUnderlyingType();
     llvm::Constant *cst = llvm::UndefValue::get(type);
@@ -301,25 +509,25 @@ void ModuleTranslation::convertGlobals() {
         cst = llvm::ConstantDataArray::getString(
             llvmModule->getContext(), strAttr.getValue(), /*AddNull=*/false);
         type = cst->getType();
-      } else {
-        cst = getLLVMConstant(type, op.getValueOrNull(), op.getLoc());
+      } else if (!(cst = getLLVMConstant(type, op.getValueOrNull(),
+                                         op.getLoc()))) {
+        return failure();
       }
     } else if (Block *initializer = op.getInitializerBlock()) {
       llvm::IRBuilder<> builder(llvmModule->getContext());
       for (auto &op : initializer->without_terminator()) {
         if (failed(convertOperation(op, builder)) ||
-            !isa<llvm::Constant>(valueMapping.lookup(op.getResult(0)))) {
-          emitError(op.getLoc(), "unemittable constant value");
-          return;
-        }
+            !isa<llvm::Constant>(valueMapping.lookup(op.getResult(0))))
+          return emitError(op.getLoc(), "unemittable constant value");
       }
       ReturnOp ret = cast<ReturnOp>(initializer->getTerminator());
       cst = cast<llvm::Constant>(valueMapping.lookup(ret.getOperand(0)));
     }
 
-    auto linkage = convertLinkageType(op.linkage());
+    auto linkage = convertLinkageToLLVM(op.linkage());
     bool anyExternalLinkage =
-        (linkage == llvm::GlobalVariable::ExternalLinkage ||
+        ((linkage == llvm::GlobalVariable::ExternalLinkage &&
+          isa<llvm::UndefValue>(cst)) ||
          linkage == llvm::GlobalVariable::ExternalWeakLinkage);
     auto addrSpace = op.addr_space().getLimitedValue();
     auto *var = new llvm::GlobalVariable(
@@ -329,6 +537,8 @@ void ModuleTranslation::convertGlobals() {
 
     globalsMapping.try_emplace(op, var);
   }
+
+  return success();
 }
 
 /// Get the SSA value passed to the current block from the terminator operation
@@ -351,8 +561,8 @@ static Value getPHISourceValue(Block *current, Block *pred,
          "different blocks");
 
   return condBranchOp.getSuccessor(0) == current
-             ? terminator.getSuccessorOperand(0, index)
-             : terminator.getSuccessorOperand(1, index);
+             ? condBranchOp.trueDestOperands()[index]
+             : condBranchOp.falseDestOperands()[index];
 }
 
 void ModuleTranslation::connectPHINodes(LLVMFuncOp func) {
@@ -400,12 +610,93 @@ static llvm::SetVector<Block *> topologicalSort(LLVMFuncOp f) {
   return blocks;
 }
 
+/// Attempts to add an attribute identified by `key`, optionally with the given
+/// `value` to LLVM function `llvmFunc`. Reports errors at `loc` if any. If the
+/// attribute has a kind known to LLVM IR, create the attribute of this kind,
+/// otherwise keep it as a string attribute. Performs additional checks for
+/// attributes known to have or not have a value in order to avoid assertions
+/// inside LLVM upon construction.
+static LogicalResult checkedAddLLVMFnAttribute(Location loc,
+                                               llvm::Function *llvmFunc,
+                                               StringRef key,
+                                               StringRef value = StringRef()) {
+  auto kind = llvm::Attribute::getAttrKindFromName(key);
+  if (kind == llvm::Attribute::None) {
+    llvmFunc->addFnAttr(key, value);
+    return success();
+  }
+
+  if (llvm::Attribute::doesAttrKindHaveArgument(kind)) {
+    if (value.empty())
+      return emitError(loc) << "LLVM attribute '" << key << "' expects a value";
+
+    int result;
+    if (!value.getAsInteger(/*Radix=*/0, result))
+      llvmFunc->addFnAttr(
+          llvm::Attribute::get(llvmFunc->getContext(), kind, result));
+    else
+      llvmFunc->addFnAttr(key, value);
+    return success();
+  }
+
+  if (!value.empty())
+    return emitError(loc) << "LLVM attribute '" << key
+                          << "' does not expect a value, found '" << value
+                          << "'";
+
+  llvmFunc->addFnAttr(kind);
+  return success();
+}
+
+/// Attaches the attributes listed in the given array attribute to `llvmFunc`.
+/// Reports error to `loc` if any and returns immediately. Expects `attributes`
+/// to be an array attribute containing either string attributes, treated as
+/// value-less LLVM attributes, or array attributes containing two string
+/// attributes, with the first string being the name of the corresponding LLVM
+/// attribute and the second string beings its value. Note that even integer
+/// attributes are expected to have their values expressed as strings.
+static LogicalResult
+forwardPassthroughAttributes(Location loc, Optional<ArrayAttr> attributes,
+                             llvm::Function *llvmFunc) {
+  if (!attributes)
+    return success();
+
+  for (Attribute attr : *attributes) {
+    if (auto stringAttr = attr.dyn_cast<StringAttr>()) {
+      if (failed(
+              checkedAddLLVMFnAttribute(loc, llvmFunc, stringAttr.getValue())))
+        return failure();
+      continue;
+    }
+
+    auto arrayAttr = attr.dyn_cast<ArrayAttr>();
+    if (!arrayAttr || arrayAttr.size() != 2)
+      return emitError(loc)
+             << "expected 'passthrough' to contain string or array attributes";
+
+    auto keyAttr = arrayAttr[0].dyn_cast<StringAttr>();
+    auto valueAttr = arrayAttr[1].dyn_cast<StringAttr>();
+    if (!keyAttr || !valueAttr)
+      return emitError(loc)
+             << "expected arrays within 'passthrough' to contain two strings";
+
+    if (failed(checkedAddLLVMFnAttribute(loc, llvmFunc, keyAttr.getValue(),
+                                         valueAttr.getValue())))
+      return failure();
+  }
+  return success();
+}
+
 LogicalResult ModuleTranslation::convertOneFunction(LLVMFuncOp func) {
   // Clear the block and value mappings, they are only relevant within one
   // function.
   blockMapping.clear();
   valueMapping.clear();
   llvm::Function *llvmFunc = functionMapping.lookup(func.getName());
+
+  // Translate the debug information for this function.
+  debugTranslation->translate(func, *llvmFunc);
+
   // Add function arguments to the value remapping table.
   // If there was noalias info then we decorate each argument accordingly.
   unsigned int argIdx = 0;
@@ -416,7 +707,7 @@ LogicalResult ModuleTranslation::convertOneFunction(LLVMFuncOp func) {
     if (auto attr = func.getArgAttrOfType<BoolAttr>(argIdx, "llvm.noalias")) {
       // NB: Attribute already verified to be boolean, so check if we can indeed
       // attach the attribute to this argument, based on its type.
-      auto argTy = mlirArg->getType().dyn_cast<LLVM::LLVMType>();
+      auto argTy = mlirArg.getType().dyn_cast<LLVM::LLVMType>();
       if (!argTy.getUnderlyingType()->isPointerTy())
         return func.emitError(
             "llvm.noalias attribute attached to LLVM non-pointer argument");
@@ -425,6 +716,14 @@ LogicalResult ModuleTranslation::convertOneFunction(LLVMFuncOp func) {
     }
     valueMapping[mlirArg] = &llvmArg;
     argIdx++;
+  }
+
+  // Check the personality and set it.
+  if (func.personality().hasValue()) {
+    llvm::Type *ty = llvm::Type::getInt8PtrTy(llvmFunc->getContext());
+    if (llvm::Constant *pfunc =
+            getLLVMConstant(ty, func.personalityAttr(), func.getLoc()))
+      llvmFunc->setPersonalityFn(pfunc);
   }
 
   // First, create all blocks so we can jump to them.
@@ -459,15 +758,22 @@ LogicalResult ModuleTranslation::checkSupportedModuleOps(Operation *m) {
 }
 
 LogicalResult ModuleTranslation::convertFunctions() {
+  // Lock access to the llvm context.
+  llvm::sys::SmartScopedLock<true> scopedLock(
+      llvmDialect->getLLVMContextMutex());
   // Declare all functions first because there may be function calls that form a
   // call graph with cycles.
   for (auto function : getModuleBody(mlirModule).getOps<LLVMFuncOp>()) {
     llvm::FunctionCallee llvmFuncCst = llvmModule->getOrInsertFunction(
         function.getName(),
         cast<llvm::FunctionType>(function.getType().getUnderlyingType()));
-    assert(isa<llvm::Function>(llvmFuncCst.getCallee()));
-    functionMapping[function.getName()] =
-        cast<llvm::Function>(llvmFuncCst.getCallee());
+    llvm::Function *llvmFunc = cast<llvm::Function>(llvmFuncCst.getCallee());
+    functionMapping[function.getName()] = llvmFunc;
+
+    // Forward the pass-through attributes to LLVM.
+    if (failed(forwardPassthroughAttributes(function.getLoc(),
+                                            function.passthrough(), llvmFunc)))
+      return failure();
   }
 
   // Convert functions.
@@ -488,8 +794,10 @@ SmallVector<llvm::Value *, 8>
 ModuleTranslation::lookupValues(ValueRange values) {
   SmallVector<llvm::Value *, 8> remapped;
   remapped.reserve(values.size());
-  for (Value v : values)
+  for (Value v : values) {
+    assert(valueMapping.count(v) && "referencing undefined value");
     remapped.push_back(valueMapping.lookup(v));
+  }
   return remapped;
 }
 
@@ -497,6 +805,8 @@ std::unique_ptr<llvm::Module>
 ModuleTranslation::prepareLLVMModule(Operation *m) {
   auto *dialect = m->getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
   assert(dialect && "LLVM dialect must be registered");
+  // Lock the LLVM context as we might create new types here.
+  llvm::sys::SmartScopedLock<true> scopedLock(dialect->getLLVMContextMutex());
 
   auto llvmModule = llvm::CloneModule(dialect->getLLVMModule());
   if (!llvmModule)

@@ -21,7 +21,7 @@ x"x " : int
   DeclarationMatcher FusedIdentifier = varDecl(
     hasName("x\"x \"")
   );
-  ASSERT_TRUE(matches(Code, FusedIdentifier));
+  ASSERT_TRUE(matches(Code.str(), FusedIdentifier));
 }
 
 TEST(GoldFusedIdentiferElab, SingleQuoteFusedIdentifier) {
@@ -31,5 +31,5 @@ x'x' : int
   DeclarationMatcher FusedIdentifier = varDecl(
     hasName("x'x'")
   );
-  ASSERT_TRUE(matches(Code, FusedIdentifier));
+  ASSERT_TRUE(matches(Code.str(), FusedIdentifier));
 }

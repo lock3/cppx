@@ -17,9 +17,7 @@
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCParser/MCParsedAsmOperand.h"
-#include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/SMLoc.h"
 #include <cassert>
 #include <memory>
@@ -283,9 +281,6 @@ struct X86Operand final : public MCParsedAsmOperand {
   bool isOffsetOfLocal() const override { return isImm() && Imm.LocalRef; }
 
   bool needAddressOf() const override { return AddressOf; }
-
-  bool isCallOperand() const override { return CallOperand; }
-  void setCallOperand(bool IsCallOperand) { CallOperand = IsCallOperand; }
 
   bool isMem() const override { return Kind == Memory; }
   bool isMemUnsized() const {

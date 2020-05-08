@@ -68,14 +68,14 @@ std::string Declarator::getString() const {
   if (getKind() == DK_Type) {
     if (isa<AtomSyntax>(Data.Type)) {
       // TODO: Figure out how to correctly print types. that are not simple identifiers.
-      return cast<AtomSyntax>(Data.Type)->getSpelling();
+      return cast<AtomSyntax>(Data.Type)->getSpelling().str();
     } else {
       return "Some complex type expression\n";
     }
   } else if (isFunction()) {
-    return getCallName(cast<CallSyntax>(Call));
+    return getCallName(cast<CallSyntax>(Call)).str();
   } else if (isIdentifier()) {
-    return cast<AtomSyntax>(Data.Id)->getSpelling();
+    return cast<AtomSyntax>(Data.Id)->getSpelling().str();
   } else if (getKind() == DK_Pointer) {
     return "^";
   } else if (getKind() == DK_Array) {
@@ -333,9 +333,9 @@ static llvm::StringRef getScopeKindName(ScopeKind K) {
 
   case SK_Control:
     return "Control";
-  default:
-    llvm_unreachable("Invalid scope kind");
   }
+
+  llvm_unreachable("invalid scope");
 }
 
 void Scope::dump(llvm::raw_ostream &os) const {

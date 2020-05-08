@@ -149,7 +149,7 @@ ExprResult Sema::BuildInvalidCXXReflectExpr(SourceLocation Loc,
 }
 
 ExprResult Sema::BuildCXXReflectExpr(APValue Reflection, SourceLocation Loc) {
-  assert(Reflection.isReflection());
+  assert(Reflection.isReflectionVariant());
 
   switch (Reflection.getReflectionKind()) {
   case RK_invalid: {
@@ -182,6 +182,8 @@ ExprResult Sema::BuildCXXReflectExpr(APValue Reflection, SourceLocation Loc) {
     return BuildCXXReflectExpr(/*Loc=*/Loc, ReflOp, /*LP=*/SourceLocation(),
                                /*RP=*/SourceLocation());
   }
+  case RK_fragment:
+    llvm_unreachable("unsupported operation");
   }
 
   llvm_unreachable("invalid reflection kind");
@@ -647,9 +649,9 @@ static Expr *DeclRefExprToValueExpr(Sema &S, DeclRefExpr *Ref) {
     QualType Ty = F->getType();
     const Type *Cls = S.Context.getTagDeclType(F->getParent()).getTypePtr();
     Ty = S.Context.getMemberPointerType(Ty, Cls);
-    return new (S.Context) UnaryOperator(Ref, UO_AddrOf, Ty, VK_RValue,
-                                         OK_Ordinary, Ref->getExprLoc(),
-                                         false);
+    return UnaryOperator::Create(
+        S.Context, Ref, UO_AddrOf, Ty, VK_RValue, OK_Ordinary,
+        Ref->getExprLoc(), /*CanOverflow=*/false, S.CurFPFeatures);
   }
 
   return Ref;
@@ -1131,7 +1133,7 @@ ExprResult Sema::ActOnCXXValueOfExpr(SourceLocation KWLoc,
     return ExprError();
   }
 
-  return new (Context) CXXConstantExpr(Eval, std::move(Result.Val));
+  return ConstantExpr::Create(Context, Eval, std::move(Result.Val));
 }
 
 ExprResult Sema::ActOnCXXDependentVariadicReifierExpr(Expr *Range,
@@ -1300,6 +1302,7 @@ AppendReflection(Sema& S, llvm::raw_ostream &OS, Expr *E) {
   }
 
   case RK_base_specifier:
+  case RK_fragment:
     break;
   }
 
@@ -1422,11 +1425,11 @@ bool Sema::CompleteDeclnameId(SourceLocation BeginLoc, CXXScopeSpec SS,
     Result.setReflectedId(BeginLoc, ReflectedId, EndLoc);
   } else if (TNK != TNK_Non_template && TNK != TNK_Undeclared_template) {
     TemplateIdAnnotation *TemplateIdAnnotation = TemplateIdAnnotation::Create(
-          SS, TemplateKWLoc, /*TemplateNameLoc=*/BeginLoc,
+          TemplateKWLoc, /*TemplateNameLoc=*/BeginLoc,
           Name.getAsIdentifierInfo(), /*OperatorKind=*/OO_None,
           /*OpaqueTemplateName=*/Template, /*TemplateKind=*/TNK,
-          /*LAngleLoc=*/LAngleLoc, /*RAngleLoc=*/RAngleLoc, TemplateArgsPtr,
-          CleanupList);
+          /*LAngleLoc=*/LAngleLoc, /*RAngleLoc=*/RAngleLoc,
+          /*TemplateArgs=*/TemplateArgsPtr, /*ArgsInvalid=*/false, CleanupList);
 
     Result.setTemplateId(TemplateIdAnnotation);
   }
@@ -1553,6 +1556,7 @@ Sema::ActOnReflectedTemplateArgument(SourceLocation KWLoc, Expr *E) {
   }
 
   case RK_base_specifier:
+  case RK_fragment:
     break;
   }
 

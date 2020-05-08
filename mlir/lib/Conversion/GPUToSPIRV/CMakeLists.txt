@@ -1,9 +1,16 @@
-add_llvm_library(MLIRGPUtoSPIRVTransforms
+set(LLVM_TARGET_DEFINITIONS GPUToSPIRV.td)
+mlir_tablegen(GPUToSPIRV.cpp.inc -gen-rewriters)
+add_public_tablegen_target(MLIRGPUToSPIRVIncGen)
+
+add_mlir_conversion_library(MLIRGPUtoSPIRVTransforms
   ConvertGPUToSPIRV.cpp
   ConvertGPUToSPIRVPass.cpp
-  )
 
-target_link_libraries(MLIRGPUtoSPIRVTransforms
+  DEPENDS
+  MLIRConversionPassIncGen
+  MLIRGPUToSPIRVIncGen
+
+  LINK_LIBS PUBLIC
   MLIRGPU
   MLIRIR
   MLIRPass

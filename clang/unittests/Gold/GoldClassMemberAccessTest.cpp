@@ -30,7 +30,7 @@ c : type = class:
       fieldDecl(hasName("x"), hasType(asString("int")), isPrivate())
     )
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_PublicMember) {
@@ -43,7 +43,7 @@ c : type = class:
       fieldDecl(hasName("x"), hasType(asString("int")), isPublic())
     )
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_ImplicitPublicMember) {
@@ -56,7 +56,7 @@ c : type = class:
       fieldDecl(hasName("x"), hasType(asString("int")), isPublic())
     )
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_ProtectedMember) {
@@ -69,7 +69,7 @@ c : type = class:
       fieldDecl(hasName("x"), hasType(asString("int")), isProtected())
     )
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 
@@ -83,7 +83,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxMethodDecl(hasName("foo"), isPrivate()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_ProtectedMemberFunctions) {
@@ -95,7 +95,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxMethodDecl(hasName("foo"), isProtected()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_PublicMemberFunctions) {
@@ -107,7 +107,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxMethodDecl(hasName("foo"), isPublic()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_ImplicitPublicMemberFunctions) {
@@ -119,7 +119,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxMethodDecl(hasName("foo"), isPublic()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 
@@ -134,7 +134,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxConstructorDecl(isPrivate()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_ProtectedConstructor) {
@@ -146,7 +146,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxConstructorDecl(isProtected()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_PublicConstructor) {
@@ -158,7 +158,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxConstructorDecl(isPublic()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_ImplicitPublicConstructor) {
@@ -170,7 +170,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxConstructorDecl(isPublic()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 // Testing destructor Access.
@@ -183,7 +183,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxDestructorDecl(isPrivate()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_ProtectedDestructor) {
@@ -195,7 +195,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxDestructorDecl(isProtected()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_PublicDestructor) {
@@ -207,7 +207,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxDestructorDecl(isPublic()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_ImplicitPublicDestructor) {
@@ -219,7 +219,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxDestructorDecl(isPublic()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 
@@ -234,7 +234,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(recordDecl(hasName("c2"), isPublic()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_ImplicitPublicType) {
@@ -247,7 +247,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(recordDecl(hasName("c2"), isPublic()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_PrivateType) {
@@ -260,7 +260,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(recordDecl(hasName("c2"), isPrivate()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 
@@ -274,7 +274,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(recordDecl(hasName("c2"), isProtected()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 
@@ -289,7 +289,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(classTemplateDecl(hasName("c2"), isPublic()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_ImplicitPublicTemplateType) {
@@ -302,7 +302,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(classTemplateDecl(hasName("c2"), isPublic()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_PrivateTemplateType) {
@@ -315,7 +315,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(classTemplateDecl(hasName("c2"), isPrivate()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 
@@ -329,7 +329,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(classTemplateDecl(hasName("c2"), isProtected()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 
@@ -344,7 +344,7 @@ c : type = class:
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(recordDecl(hasName("c2"), isPrivate()))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 
@@ -360,7 +360,7 @@ c : type = class:
     hasDescendant(typeAliasDecl(hasName("c2"), isPublic(),
       hasType(asString("int"))))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_ImplicitPublicUsingType) {
@@ -373,7 +373,7 @@ c : type = class:
     hasDescendant(typeAliasDecl(hasName("c2"), isPublic(),
         hasType(asString("int"))))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 
@@ -387,7 +387,7 @@ c : type = class:
     hasDescendant(typeAliasDecl(hasName("c2"), isProtected(),
       hasType(asString("int"))))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassParsing, Access_PrivateUsingType) {
@@ -400,5 +400,5 @@ c : type = class:
     hasDescendant(typeAliasDecl(hasName("c2"), isPrivate(),
       hasType(asString("int"))))
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }

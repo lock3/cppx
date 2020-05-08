@@ -110,6 +110,9 @@ def ObjCObjectPointerType : TypeNode<Type>;
 def PipeType : TypeNode<Type>;
 def AtomicType : TypeNode<Type>;
 
+def ExtIntType : TypeNode<Type>;
+def DependentExtIntType : TypeNode<Type>, AlwaysDependent;
+
 // Cppx Types
 def CppxKindType : TypeNode<Type>, LeafType;
 def TemplateType : TypeNode<Type>;

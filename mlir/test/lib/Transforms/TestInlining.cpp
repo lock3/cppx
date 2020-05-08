@@ -1,6 +1,6 @@
 //===- TestInlining.cpp - Pass to inline calls in the test dialect --------===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "TestDialect.h"
-#include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Function.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/InliningUtils.h"
@@ -23,7 +23,7 @@
 using namespace mlir;
 
 namespace {
-struct Inliner : public FunctionPass<Inliner> {
+struct Inliner : public PassWrapper<Inliner, FunctionPass> {
   void runOnFunction() override {
     auto function = getFunction();
 
@@ -37,17 +37,16 @@ struct Inliner : public FunctionPass<Inliner> {
     // Try to inline each of the call operations.
     for (auto caller : callers) {
       auto callee = dyn_cast_or_null<FunctionalRegionOp>(
-          caller.getCallee()->getDefiningOp());
+          caller.getCallee().getDefiningOp());
       if (!callee)
         continue;
 
       // Inline the functional region operation, but only clone the internal
       // region if there is more than one use.
       if (failed(inlineRegion(
-              interface, &callee.body(), caller,
-              llvm::to_vector<8>(caller.getArgOperands()),
-              SmallVector<Value, 8>(caller.getResults()), caller.getLoc(),
-              /*shouldCloneInlinedRegion=*/!callee.getResult()->hasOneUse())))
+              interface, &callee.body(), caller, caller.getArgOperands(),
+              caller.getResults(), caller.getLoc(),
+              /*shouldCloneInlinedRegion=*/!callee.getResult().hasOneUse())))
         continue;
 
       // If the inlining was successful then erase the call and callee if
@@ -60,5 +59,8 @@ struct Inliner : public FunctionPass<Inliner> {
 };
 } // end anonymous namespace
 
-static PassRegistration<Inliner> pass("test-inline",
-                                      "Test inlining region calls");
+namespace mlir {
+void registerInliner() {
+  PassRegistration<Inliner>("test-inline", "Test inlining region calls");
+}
+} // namespace mlir

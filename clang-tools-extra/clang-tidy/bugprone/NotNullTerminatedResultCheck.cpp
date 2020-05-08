@@ -499,7 +499,7 @@ static void insertNullTerminatorExpr(StringRef Name,
 NotNullTerminatedResultCheck::NotNullTerminatedResultCheck(
     StringRef Name, ClangTidyContext *Context)
     : ClangTidyCheck(Name, Context),
-      WantToUseSafeFunctions(Options.get("WantToUseSafeFunctions", 1)) {}
+      WantToUseSafeFunctions(Options.get("WantToUseSafeFunctions", true)) {}
 
 void NotNullTerminatedResultCheck::storeOptions(
     ClangTidyOptions::OptionMap &Opts) {
@@ -652,9 +652,10 @@ void NotNullTerminatedResultCheck::registerMatchers(MatchFinder *Finder) {
             anyOf(DestUnknownDecl, hasDescendant(DestUnknownDecl))));
 
   auto NullTerminatorExpr = binaryOperator(
-      hasLHS(anyOf(hasDescendant(declRefExpr(
-                       to(varDecl(equalsBoundNode(DestVarDeclName))))),
-                   hasDescendant(declRefExpr(equalsBoundNode(DestExprName))))),
+      hasLHS(anyOf(hasDescendant(declRefExpr(to(varDecl(
+                       equalsBoundNode(std::string(DestVarDeclName)))))),
+                   hasDescendant(declRefExpr(
+                       equalsBoundNode(std::string(DestExprName)))))),
       hasRHS(ignoringImpCasts(
           anyOf(characterLiteral(equals(0U)), integerLiteral(equals(0))))));
 

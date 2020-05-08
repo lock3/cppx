@@ -1,6 +1,6 @@
 //===- AffineMap.h - MLIR Affine Map Class ----------------------*- C++ -*-===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -14,6 +14,7 @@
 #ifndef MLIR_IR_AFFINE_MAP_H
 #define MLIR_IR_AFFINE_MAP_H
 
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMapInfo.h"
@@ -24,7 +25,6 @@ namespace detail {
 struct AffineMapStorage;
 } // end namespace detail
 
-class AffineExpr;
 class Attribute;
 struct LogicalResult;
 class MLIRContext;
@@ -38,16 +38,26 @@ class AffineMap {
 public:
   using ImplType = detail::AffineMapStorage;
 
-  AffineMap() : map(nullptr) {}
+  constexpr AffineMap() : map(nullptr) {}
   explicit AffineMap(ImplType *map) : map(map) {}
-  AffineMap(const AffineMap &other) : map(other.map) {}
-  AffineMap &operator=(const AffineMap &other) = default;
 
   /// Returns a zero result affine map with no dimensions or symbols: () -> ().
   static AffineMap get(MLIRContext *context);
 
+  /// Returns a zero result affine map with `dimCount` dimensions and
+  /// `symbolCount` symbols, e.g.: `(...) -> ()`.
   static AffineMap get(unsigned dimCount, unsigned symbolCount,
-                       ArrayRef<AffineExpr> results);
+                       MLIRContext *context);
+
+  /// Returns an affine map with `dimCount` dimensions and `symbolCount` mapping
+  /// to a single output dimension
+  static AffineMap get(unsigned dimCount, unsigned symbolCount,
+                       AffineExpr result);
+
+  /// Returns an affine map with `dimCount` dimensions and `symbolCount` mapping
+  /// to the given results.
+  static AffineMap get(unsigned dimCount, unsigned symbolCount,
+                       ArrayRef<AffineExpr> results, MLIRContext *context);
 
   /// Returns a single constant result affine map.
   static AffineMap getConstantMap(int64_t val, MLIRContext *context);
@@ -55,6 +65,11 @@ public:
   /// Returns an AffineMap with 'numDims' identity result dim exprs.
   static AffineMap getMultiDimIdentityMap(unsigned numDims,
                                           MLIRContext *context);
+
+  /// Returns an identity affine map (d0, ..., dn) -> (dp, ..., dn) on the most
+  /// minor dimensions.
+  static AffineMap getMinorIdentityMap(unsigned dims, unsigned results,
+                                       MLIRContext *context);
 
   /// Returns an AffineMap representing a permutation.
   /// The permutation is expressed as a non-empty vector of integers.
@@ -64,6 +79,14 @@ public:
   /// (i.e. `[1,1,2]` is an invalid permutation).
   static AffineMap getPermutationMap(ArrayRef<unsigned> permutation,
                                      MLIRContext *context);
+
+  /// Returns a vector of AffineMaps; each with as many results as
+  /// `exprs.size()`, as many dims as the largest dim in `exprs` and as many
+  /// symbols as the largest symbol in `exprs`.
+  static SmallVector<AffineMap, 4>
+  inferFromExprList(ArrayRef<ArrayRef<AffineExpr>> exprsList);
+  static SmallVector<AffineMap, 4>
+  inferFromExprList(ArrayRef<SmallVector<AffineExpr, 4>> exprsList);
 
   MLIRContext *getContext() const;
 
@@ -75,6 +98,10 @@ public:
   /// An identity affine map corresponds to an identity affine function on the
   /// dimensional identifiers.
   bool isIdentity() const;
+
+  /// Returns true if the map is a minor identity map, i.e. an identity affine
+  /// map (d0, ..., dn) -> (dp, ..., dn) on the most minor dimensions.
+  static bool isMinorIdentity(AffineMap map);
 
   /// Returns true if this affine map is an empty map, i.e., () -> ().
   bool isEmpty() const;
@@ -157,14 +184,58 @@ inline ::llvm::hash_code hash_value(AffineMap arg) {
   return ::llvm::hash_value(arg.map);
 }
 
-/// Simplify an affine map by simplifying its underlying AffineExpr results.
+/// A mutable affine map. Its affine expressions are however unique.
+struct MutableAffineMap {
+public:
+  MutableAffineMap() {}
+  MutableAffineMap(AffineMap map);
+
+  ArrayRef<AffineExpr> getResults() const { return results; }
+  AffineExpr getResult(unsigned idx) const { return results[idx]; }
+  void setResult(unsigned idx, AffineExpr result) { results[idx] = result; }
+  unsigned getNumResults() const { return results.size(); }
+  unsigned getNumDims() const { return numDims; }
+  void setNumDims(unsigned d) { numDims = d; }
+  unsigned getNumSymbols() const { return numSymbols; }
+  void setNumSymbols(unsigned d) { numSymbols = d; }
+  MLIRContext *getContext() const { return context; }
+
+  /// Returns true if the idx'th result expression is a multiple of factor.
+  bool isMultipleOf(unsigned idx, int64_t factor) const;
+
+  /// Resets this MutableAffineMap with 'map'.
+  void reset(AffineMap map);
+
+  /// Simplify the (result) expressions in this map using analysis (used by
+  //-simplify-affine-expr pass).
+  void simplify();
+  /// Get the AffineMap corresponding to this MutableAffineMap. Note that an
+  /// AffineMap will be uniqued and stored in context, while a mutable one
+  /// isn't.
+  AffineMap getAffineMap() const;
+
+private:
+  // Same meaning as AffineMap's fields.
+  SmallVector<AffineExpr, 8> results;
+  unsigned numDims;
+  unsigned numSymbols;
+  /// A pointer to the IR's context to store all newly created
+  /// AffineExprStorage's.
+  MLIRContext *context;
+};
+
+/// Simplifies an affine map by simplifying its underlying AffineExpr results.
 AffineMap simplifyAffineMap(AffineMap map);
+
+/// Returns a map with the same dimension and symbol count as `map`, but whose
+/// results are the unique affine expressions of `map`.
+AffineMap removeDuplicateExprs(AffineMap map);
 
 /// Returns a map of codomain to domain dimensions such that the first codomain
 /// dimension for a particular domain dimension is selected.
-/// Returns an empty map if the input map is empty or if `map` is not invertible
-/// (i.e. `map` does not contain a subset that is a permutation of full domain
-/// rank).
+/// Returns an empty map if the input map is empty.
+/// Returns null map (not empty map) if `map` is not invertible (i.e. `map` does
+/// not contain a subset that is a permutation of full domain rank).
 ///
 /// Prerequisites:
 ///   1. `map` has no symbols.

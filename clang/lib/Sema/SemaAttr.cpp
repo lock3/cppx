@@ -306,7 +306,7 @@ void Sema::ActOnPragmaClangSection(SourceLocation PragmaLoc, PragmaClangSectionA
   }
 
   CSec->Valid = true;
-  CSec->SectionName = SecName;
+  CSec->SectionName = std::string(SecName);
   CSec->PragmaLocation = PragmaLoc;
 }
 
@@ -430,6 +430,65 @@ void Sema::ActOnPragmaDetectMismatch(SourceLocation Loc, StringRef Name,
       Context, Context.getTranslationUnitDecl(), Loc, Name, Value);
   Context.getTranslationUnitDecl()->addDecl(PDMD);
   Consumer.HandleTopLevelDecl(DeclGroupRef(PDMD));
+}
+
+void Sema::ActOnPragmaFloatControl(SourceLocation Loc,
+                                   PragmaMsStackAction Action,
+                                   PragmaFloatControlKind Value) {
+  auto NewValue = FpPragmaStack.CurrentValue;
+  FPOptions NewFPFeatures(NewValue);
+  if ((Action == PSK_Push_Set || Action == PSK_Push || Action == PSK_Pop) &&
+      !CurContext->isTranslationUnit()) {
+    // Push and pop can only occur at file scope.
+    Diag(Loc, diag::err_pragma_fc_pp_scope);
+    return;
+  }
+  switch (Value) {
+  default:
+    llvm_unreachable("invalid pragma float_control kind");
+  case PFC_Precise:
+    CurFPFeatures.setFPPreciseEnabled(true);
+    NewValue = CurFPFeatures.getAsOpaqueInt();
+    FpPragmaStack.Act(Loc, Action, StringRef(), NewValue);
+    break;
+  case PFC_NoPrecise:
+    if (CurFPFeatures.getExceptionMode() == LangOptions::FPE_Strict)
+      Diag(Loc, diag::err_pragma_fc_noprecise_requires_noexcept);
+    else if (CurFPFeatures.allowFEnvAccess())
+      Diag(Loc, diag::err_pragma_fc_noprecise_requires_nofenv);
+    else
+      CurFPFeatures.setFPPreciseEnabled(false);
+    NewValue = CurFPFeatures.getAsOpaqueInt();
+    FpPragmaStack.Act(Loc, Action, StringRef(), NewValue);
+    break;
+  case PFC_Except:
+    if (!isPreciseFPEnabled())
+      Diag(Loc, diag::err_pragma_fc_except_requires_precise);
+    else
+      CurFPFeatures.setExceptionMode(LangOptions::FPE_Strict);
+    NewValue = CurFPFeatures.getAsOpaqueInt();
+    FpPragmaStack.Act(Loc, Action, StringRef(), NewValue);
+    break;
+  case PFC_NoExcept:
+    CurFPFeatures.setExceptionMode(LangOptions::FPE_Ignore);
+    NewValue = CurFPFeatures.getAsOpaqueInt();
+    FpPragmaStack.Act(Loc, Action, StringRef(), NewValue);
+    break;
+  case PFC_Push:
+    Action = Sema::PSK_Push_Set;
+    FpPragmaStack.Act(Loc, Action, StringRef(), NewFPFeatures.getAsOpaqueInt());
+    break;
+  case PFC_Pop:
+    if (FpPragmaStack.Stack.empty()) {
+      Diag(Loc, diag::warn_pragma_pop_failed) << "float_control"
+                                              << "stack empty";
+      return;
+    }
+    FpPragmaStack.Act(Loc, Action, StringRef(), NewFPFeatures.getAsOpaqueInt());
+    NewValue = FpPragmaStack.CurrentValue;
+    CurFPFeatures.getFromOpaqueInt(NewValue);
+    break;
+  }
 }
 
 void Sema::ActOnPragmaMSPointersToMembers(
@@ -954,28 +1013,42 @@ void Sema::ActOnPragmaVisibility(const IdentifierInfo* VisType,
 void Sema::ActOnPragmaFPContract(LangOptions::FPContractModeKind FPC) {
   switch (FPC) {
   case LangOptions::FPC_On:
-    FPFeatures.setAllowFPContractWithinStatement();
+    CurFPFeatures.setAllowFPContractWithinStatement();
     break;
   case LangOptions::FPC_Fast:
-    FPFeatures.setAllowFPContractAcrossStatement();
+    CurFPFeatures.setAllowFPContractAcrossStatement();
     break;
   case LangOptions::FPC_Off:
-    FPFeatures.setDisallowFPContract();
+    CurFPFeatures.setDisallowFPContract();
     break;
   }
 }
 
-void Sema::ActOnPragmaFEnvAccess(LangOptions::FEnvAccessModeKind FPC) {
+void Sema::setRoundingMode(llvm::RoundingMode FPR) {
+  CurFPFeatures.setRoundingMode(FPR);
+}
+
+void Sema::setExceptionMode(LangOptions::FPExceptionModeKind FPE) {
+  CurFPFeatures.setExceptionMode(FPE);
+}
+
+void Sema::ActOnPragmaFEnvAccess(SourceLocation Loc,
+                                 LangOptions::FEnvAccessModeKind FPC) {
   switch (FPC) {
   case LangOptions::FEA_On:
-    FPFeatures.setAllowFEnvAccess();
+    // Verify Microsoft restriction:
+    // You can't enable fenv_access unless precise semantics are enabled.
+    // Precise semantics can be enabled either by the float_control
+    // pragma, or by using the /fp:precise or /fp:strict compiler options
+    if (!isPreciseFPEnabled())
+      Diag(Loc, diag::err_pragma_fenv_requires_precise);
+    CurFPFeatures.setAllowFEnvAccess();
     break;
   case LangOptions::FEA_Off:
-    FPFeatures.setDisallowFEnvAccess();
+    CurFPFeatures.setDisallowFEnvAccess();
     break;
   }
 }
-
 
 void Sema::PushNamespaceVisibilityAttr(const VisibilityAttr *Attr,
                                        SourceLocation Loc) {

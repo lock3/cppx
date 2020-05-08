@@ -28,6 +28,11 @@ static bool allowUndefined(const Symbol* sym) {
   // compiling with -fPIC)
   if (isa<DataSymbol>(sym))
     return false;
+  // Undefined functions with explicit import name are allowed to be undefined
+  // at link time.
+  if (auto *F = dyn_cast<UndefinedFunction>(sym))
+    if (F->importName)
+      return true;
   return (config->allowUndefined ||
           config->allowUndefinedSymbols.count(sym->getName()) != 0);
 }
@@ -79,6 +84,7 @@ void scanRelocations(InputChunk *chunk) {
       out.elemSec->addEntry(cast<FunctionSymbol>(sym));
       break;
     case R_WASM_GLOBAL_INDEX_LEB:
+    case R_WASM_GLOBAL_INDEX_I32:
       if (!isa<GlobalSymbol>(sym))
         addGOTEntry(sym);
       break;

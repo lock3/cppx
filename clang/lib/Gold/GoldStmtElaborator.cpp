@@ -18,6 +18,7 @@
 #include "clang/Basic/DiagnosticParse.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/IdentifierTable.h"
+#include "clang/Basic/SourceManager.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Sema.h"
 

@@ -460,23 +460,18 @@ namespace clang {
     void skipToEnd();
   };
 
-  /// RAIIObject to destroy the contents of a SmallVector of
-  /// TemplateIdAnnotation pointers and clear the vector.
-  class DestroyTemplateIdAnnotationsRAIIObj {
-    SmallVectorImpl<TemplateIdAnnotation *> &Container;
-
+  class CXXFragmentParseRAII {
+    Parser &P;
+    Sema::CXXFragmentScopeRAII FragmentScope;
+    SmallVector<CachedTokens, 2> OriginalPendingUnquotes;
   public:
-    DestroyTemplateIdAnnotationsRAIIObj(
-        SmallVectorImpl<TemplateIdAnnotation *> &Container)
-        : Container(Container) {}
-
-    ~DestroyTemplateIdAnnotationsRAIIObj() {
-      for (SmallVectorImpl<TemplateIdAnnotation *>::iterator I =
-               Container.begin(),
-             E = Container.end();
-           I != E; ++I)
-        (*I)->Destroy();
-      Container.clear();
+    CXXFragmentParseRAII(Parser &P)
+        : P(P), FragmentScope(P.getActions()), OriginalPendingUnquotes() {
+      OriginalPendingUnquotes.swap(P.PendingUnquotes);
+    }
+    ~CXXFragmentParseRAII() {
+      assert(P.PendingUnquotes.empty() && "Unparsed unquotes");
+      OriginalPendingUnquotes.swap(P.PendingUnquotes);
     }
   };
 } // end namespace clang

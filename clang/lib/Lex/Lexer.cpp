@@ -29,6 +29,7 @@
 #include "clang/Basic/TokenKinds.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/StringRef.h"
@@ -253,7 +254,7 @@ template <typename T> static void StringifyImpl(T &Str, char Quote) {
 }
 
 std::string Lexer::Stringify(StringRef Str, bool Charify) {
-  std::string Result = Str;
+  std::string Result = std::string(Str);
   char Quote = Charify ? '\'' : '"';
   StringifyImpl(Result, Quote);
   return Result;
@@ -1431,6 +1432,8 @@ void Lexer::SetByteOffset(unsigned Offset, bool StartOfLine) {
 static bool isAllowedIDChar(uint32_t C, const LangOptions &LangOpts) {
   if (LangOpts.AsmPreprocessor) {
     return false;
+  } else if (LangOpts.DollarIdents && '$' == C) {
+    return true;
   } else if (LangOpts.CPlusPlus11 || LangOpts.C11) {
     static const llvm::sys::UnicodeCharSet C11AllowedIDChars(
         C11AllowedIDCharRanges);
@@ -2104,7 +2107,8 @@ void Lexer::codeCompleteIncludedFile(const char *PathStart,
                                      bool IsAngled) {
   // Completion only applies to the filename, after the last slash.
   StringRef PartialPath(PathStart, CompletionPoint - PathStart);
-  auto Slash = PartialPath.find_last_of(LangOpts.MSVCCompat ? "/\\" : "/");
+  llvm::StringRef SlashChars = LangOpts.MSVCCompat ? "/\\" : "/";
+  auto Slash = PartialPath.find_last_of(SlashChars);
   StringRef Dir =
       (Slash == StringRef::npos) ? "" : PartialPath.take_front(Slash);
   const char *StartOfFilename =
@@ -2112,7 +2116,8 @@ void Lexer::codeCompleteIncludedFile(const char *PathStart,
   // Code completion filter range is the filename only, up to completion point.
   PP->setCodeCompletionIdentifierInfo(&PP->getIdentifierTable().get(
       StringRef(StartOfFilename, CompletionPoint - StartOfFilename)));
-  // We should replace the characters up to the closing quote, if any.
+  // We should replace the characters up to the closing quote or closest slash,
+  // if any.
   while (CompletionPoint < BufferEnd) {
     char Next = *(CompletionPoint + 1);
     if (Next == 0 || Next == '\r' || Next == '\n')
@@ -2120,7 +2125,10 @@ void Lexer::codeCompleteIncludedFile(const char *PathStart,
     ++CompletionPoint;
     if (Next == (IsAngled ? '>' : '"'))
       break;
+    if (llvm::is_contained(SlashChars, Next))
+      break;
   }
+
   PP->setCodeCompletionTokenRange(
       FileLoc.getLocWithOffset(StartOfFilename - BufferStart),
       FileLoc.getLocWithOffset(CompletionPoint - BufferStart));
@@ -2564,8 +2572,8 @@ bool Lexer::SkipBlockComment(Token &Result, const char *CurPtr,
         '/', '/', '/', '/',  '/', '/', '/', '/',
         '/', '/', '/', '/',  '/', '/', '/', '/'
       };
-      while (CurPtr+16 <= BufferEnd &&
-             !vec_any_eq(*(const vector unsigned char*)CurPtr, Slashes))
+      while (CurPtr + 16 <= BufferEnd &&
+             !vec_any_eq(*(const __vector unsigned char *)CurPtr, Slashes))
         CurPtr += 16;
 #else
       // Scan for '/' quickly.  Many block comments are very large.
@@ -3648,6 +3656,9 @@ LexNextToken:
     if (Char == '=') {
       Kind = tok::percentequal;
       CurPtr = ConsumeChar(CurPtr, SizeTmp, Result);
+    } else if (LangOpts.Reflection && Char == '{') {
+      Kind = tok::percentl_brace;
+      CurPtr = ConsumeChar(CurPtr, SizeTmp, Result);
     } else if (LangOpts.Digraphs && Char == '>') {
       Kind = tok::r_brace;                             // '%>' -> '}'
       CurPtr = ConsumeChar(CurPtr, SizeTmp, Result);
@@ -3706,7 +3717,7 @@ LexNextToken:
     } else if (Char == '=') {
       char After = getCharAndSize(CurPtr+SizeTmp, SizeTmp2);
       if (After == '>') {
-        if (getLangOpts().CPlusPlus2a) {
+        if (getLangOpts().CPlusPlus20) {
           if (!isLexingRawMode())
             Diag(BufferPtr, diag::warn_cxx17_compat_spaceship);
           CurPtr = ConsumeChar(ConsumeChar(CurPtr, SizeTmp, Result),
@@ -3717,7 +3728,7 @@ LexNextToken:
         // Suggest adding a space between the '<=' and the '>' to avoid a
         // change in semantics if this turns up in C++ <=17 mode.
         if (getLangOpts().CPlusPlus && !isLexingRawMode()) {
-          Diag(BufferPtr, diag::warn_cxx2a_compat_spaceship)
+          Diag(BufferPtr, diag::warn_cxx20_compat_spaceship)
             << FixItHint::CreateInsertion(
                    getSourceLocation(CurPtr + SizeTmp, SizeTmp2), " ");
         }
@@ -3745,6 +3756,11 @@ LexNextToken:
       CurPtr = ConsumeChar(CurPtr, SizeTmp, Result);
       Kind = tok::l_square;
     } else if (LangOpts.Digraphs && Char == '%') {     // '<%' -> '{'
+      char After = getCharAndSize(CurPtr+SizeTmp, SizeTmp2);
+      if (LangOpts.Reflection && After == '{') {
+        Kind = tok::less;
+        break;
+      }
       CurPtr = ConsumeChar(CurPtr, SizeTmp, Result);
       Kind = tok::l_brace;
     } else if (Char == '#' && /*Not a trigraph*/ SizeTmp == 1 &&

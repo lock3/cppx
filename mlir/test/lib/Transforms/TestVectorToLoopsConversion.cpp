@@ -1,6 +1,6 @@
 //===- TestVectorToLoopsConversion.cpp - Test VectorTransfers lowering ----===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -18,17 +18,21 @@ using namespace mlir;
 namespace {
 
 struct TestVectorToLoopsPass
-    : public FunctionPass<TestVectorToLoopsPass> {
+    : public PassWrapper<TestVectorToLoopsPass, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto *context = &getContext();
-    populateVectorToAffineLoopsConversionPatterns(context, patterns);
-    applyPatternsGreedily(getFunction(), patterns);
+    populateVectorToLoopsConversionPatterns(patterns, context);
+    applyPatternsAndFoldGreedily(getFunction(), patterns);
   }
 };
 
 } // end anonymous namespace
 
-static PassRegistration<TestVectorToLoopsPass>
-    pass("test-convert-vector-to-loops",
-         "Converts vector transfer ops to loops over scalars and vector casts");
+namespace mlir {
+void registerTestVectorToLoopsPass() {
+  PassRegistration<TestVectorToLoopsPass> pass(
+      "test-convert-vector-to-loops",
+      "Converts vector transfer ops to loops over scalars and vector casts");
+}
+} // namespace mlir

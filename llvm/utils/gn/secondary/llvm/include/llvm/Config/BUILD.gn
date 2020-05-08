@@ -66,9 +66,7 @@ write_cmake_config("abi-breaking") {
 }
 
 write_cmake_config("config") {
-  public_deps = [
-    ":llvm-config",
-  ]
+  public_deps = [ ":llvm-config" ]
 
   input = "config.h.cmake"
   output = "$target_gen_dir/config.h"
@@ -143,8 +141,6 @@ write_cmake_config("config") {
       "HAVE_LSEEK64=1",
       "HAVE_MALLINFO=1",
       "HAVE_POSIX_FALLOCATE=1",
-      "HAVE_SCHED_GETAFFINITY=1",
-      "HAVE_CPU_COUNT=1",
       "HAVE_STRUCT_STAT_ST_MTIM_TV_NSEC=1",
     ]
   } else {
@@ -154,8 +150,6 @@ write_cmake_config("config") {
       "HAVE_LSEEK64=",
       "HAVE_MALLINFO=",
       "HAVE_POSIX_FALLOCATE=",
-      "HAVE_SCHED_GETAFFINITY=",
-      "HAVE_CPU_COUNT=",
       "HAVE_STRUCT_STAT_ST_MTIM_TV_NSEC=",
     ]
   }
@@ -208,6 +202,7 @@ write_cmake_config("config") {
       "HAVE_ISATTY=",
       "HAVE_LIBPTHREAD=",
       "HAVE_PTHREAD_SETNAME_NP=",
+      "HAVE_LIBZ=",
       "HAVE_PREAD=",
       "HAVE_PTHREAD_GETSPECIFIC=",
       "HAVE_PTHREAD_H=",
@@ -226,6 +221,7 @@ write_cmake_config("config") {
       "HAVE_SYS_TIME_H=",
       "HAVE_TERMIOS_H=",
       "HAVE_UNISTD_H=",
+      "HAVE_ZLIB_H=",
       "HAVE__CHSIZE_S=1",
       "HAVE__UNWIND_BACKTRACE=",
       "stricmp=_stricmp",
@@ -244,6 +240,7 @@ write_cmake_config("config") {
       "HAVE_ISATTY=1",
       "HAVE_LIBPTHREAD=1",
       "HAVE_PTHREAD_SETNAME_NP=1",
+      "HAVE_LIBZ=1",
       "HAVE_PREAD=1",
       "HAVE_PTHREAD_GETSPECIFIC=1",
       "HAVE_PTHREAD_H=1",
@@ -262,6 +259,7 @@ write_cmake_config("config") {
       "HAVE_SYS_TIME_H=1",
       "HAVE_TERMIOS_H=1",
       "HAVE_UNISTD_H=1",
+      "HAVE_ZLIB_H=1",
       "HAVE__CHSIZE_S=",
       "HAVE__UNWIND_BACKTRACE=1",
       "stricmp=",

@@ -1,5 +1,4 @@
-add_custom_target(libc_errno_unittests)
-add_dependencies(check_libc libc_errno_unittests)
+add_libc_testsuite(libc_errno_unittests)
 
 add_libc_unittest(
   errno_test
@@ -8,5 +7,5 @@ add_libc_unittest(
   SRCS
     errno_test.cpp
   DEPENDS
-    __errno_location
+    libc.src.errno.__errno_location
 )
