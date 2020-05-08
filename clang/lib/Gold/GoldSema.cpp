@@ -17,6 +17,8 @@
 #include "clang/AST/Stmt.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Sema/Lookup.h"
+#include "clang/AST/DeclCXX.h"
+#include "clang/AST/CXXInheritance.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "clang/Gold/GoldSyntax.h"
@@ -82,18 +84,14 @@ Scope *Sema::popScope() {
   return R;
 }
 
-void Sema::enterScope(ScopeKind K, const Syntax *S) {
+void Sema::enterScope(ScopeKind K, const Syntax *S, Declaration *D) {
   // FIXME: We're leaking scopes. We probably want to keep them bound to the
   // syntax for which they're created, especially for syntaxes that correspond
   // to declarations, so that we can easily find their associated lookup
   // tables. See the comments in leaveScope and saveScope.
   //
   // NOTE: Do not allocate this through the Context. It might be deleted.
-  pushScope(new Scope(K, S, getCurrentScope()));
-}
-
-void Sema::enterScope(clang::CXXRecordDecl* R, const Syntax* S) {
-  pushScope(new Scope(SK_Class, S, getCurrentScope(), R));
+  pushScope(new Scope(K, S, getCurrentScope(), D));
 }
 
 void Sema::leaveScope(const Syntax *S) {
@@ -144,6 +142,168 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R) {
   return lookupUnqualifiedName(R, getCurrentScope());
 }
 
+static bool findOrdinaryMember(clang::RecordDecl *BaseRecord, clang::CXXBasePath &Path,
+                               clang::DeclarationName Name) {
+  const unsigned IDNS = clang::Decl::IDNS_Ordinary | clang::Decl::IDNS_Tag |
+                        clang::Decl::IDNS_Member;
+  for (Path.Decls = BaseRecord->lookup(Name);
+       !Path.Decls.empty();
+       Path.Decls = Path.Decls.slice(1)) {
+    if (Path.Decls.front()->isInIdentifierNamespace(IDNS))
+      return true;
+  }
+
+  return false;
+}
+// Taken from SemaLookup.cpp:2184
+template<typename InputIterator>
+static bool HasOnlyStaticMembers(InputIterator First, InputIterator Last) {
+  using namespace clang;
+  Decl *D = (*First)->getUnderlyingDecl();
+  if (isa<VarDecl>(D) || isa<TypeDecl>(D) || isa<EnumConstantDecl>(D))
+    return true;
+
+  if (isa<CXXMethodDecl>(D)) {
+    // Determine whether all of the methods are static.
+    bool AllMethodsAreStatic = true;
+    for(; First != Last; ++First) {
+      D = (*First)->getUnderlyingDecl();
+
+      if (!isa<CXXMethodDecl>(D)) {
+        assert(isa<TagDecl>(D) && "Non-function must be a tag decl");
+        break;
+      }
+
+      if (!cast<CXXMethodDecl>(D)->isStatic()) {
+        AllMethodsAreStatic = false;
+        break;
+      }
+    }
+
+    if (AllMethodsAreStatic)
+      return true;
+  }
+
+  return false;
+}
+
+static bool lookupInSideOfRecordBases(Sema &SemaRef, clang::ASTContext &Context,
+    clang::LookupResult &R, clang::CXXRecordDecl *RD, clang::DeclarationName Name) {
+  using namespace clang;
+  CXXBasePaths Paths;
+  if(!RD->lookupInBases(
+      [=](const clang::CXXBaseSpecifier *Specifier, clang::CXXBasePath &P) ->bool {
+        clang::RecordDecl *BaseRecord =
+            Specifier->getType()->castAs<clang::RecordType>()->getDecl();
+        return findOrdinaryMember(BaseRecord, P, Name);
+      }, Paths, /*LookupInDependent=*/false)) {
+    return false;
+  }
+  
+  // This code taken almost directly from Sema::LookupQualifiedName in 
+  // SemaLookup.cpp:2236
+  
+  // Need to finish gathering all of the necessary decls?
+  R.setNamingClass(RD);
+  
+  // C++ [class.member.lookup]p2:
+  //   [...] If the resulting set of declarations are not all from
+  //   sub-objects of the same type, or the set has a nonstatic member
+  //   and includes members from distinct sub-objects, there is an
+  //   ambiguity and the program is ill-formed. Otherwise that set is
+  //   the result of the lookup.
+  QualType SubobjectType;
+  int SubobjectNumber = 0;
+  AccessSpecifier SubobjectAccess = AS_none;
+
+  for (CXXBasePaths::paths_iterator Path = Paths.begin(), PathEnd = Paths.end();
+       Path != PathEnd; ++Path) {
+    const CXXBasePathElement &PathElement = Path->back();
+
+    // Pick the best (i.e. most permissive i.e. numerically lowest) access
+    // across all paths.
+    SubobjectAccess = std::min(SubobjectAccess, Path->Access);
+
+    // Determine whether we're looking at a distinct sub-object or not.
+    if (SubobjectType.isNull()) {
+      // This is the first subobject we've looked at. Record its type.
+      SubobjectType = SemaRef.getContext().CxxAST.getCanonicalType(PathElement.Base->getType());
+      SubobjectNumber = PathElement.SubobjectNumber;
+      continue;
+    }
+
+    if (SubobjectType
+                 != Context.getCanonicalType(PathElement.Base->getType())) {
+      // We found members of the given name in two subobjects of
+      // different types. If the declaration sets aren't the same, this
+      // lookup is ambiguous.
+      if (HasOnlyStaticMembers(Path->Decls.begin(), Path->Decls.end())) {
+        CXXBasePaths::paths_iterator FirstPath = Paths.begin();
+        DeclContext::lookup_iterator FirstD = FirstPath->Decls.begin();
+        DeclContext::lookup_iterator CurrentD = Path->Decls.begin();
+
+        // Get the decl that we should use for deduplicating this lookup.
+        auto GetRepresentativeDecl = [&](NamedDecl *D) -> Decl * {
+          // C++ [temp.local]p3:
+          //   A lookup that finds an injected-class-name (10.2) can result in
+          //   an ambiguity in certain cases (for example, if it is found in
+          //   more than one base class). If all of the injected-class-names
+          //   that are found refer to specializations of the same class
+          //   template, and if the name is used as a template-name, the
+          //   reference refers to the class template itself and not a
+          //   specialization thereof, and is not ambiguous.
+          if (R.isTemplateNameLookup())
+            if (auto *TD = SemaRef.getCxxSema().getAsTemplateNameDecl(D))
+              D = TD;
+          return D->getUnderlyingDecl()->getCanonicalDecl();
+        };
+
+        while (FirstD != FirstPath->Decls.end() &&
+               CurrentD != Path->Decls.end()) {
+          if (GetRepresentativeDecl(*FirstD) !=
+              GetRepresentativeDecl(*CurrentD))
+            break;
+
+          ++FirstD;
+          ++CurrentD;
+        }
+
+        if (FirstD == FirstPath->Decls.end() &&
+            CurrentD == Path->Decls.end())
+          continue;
+      }
+
+      R.setAmbiguousBaseSubobjectTypes(Paths);
+      return true;
+    }
+
+    if (SubobjectNumber != PathElement.SubobjectNumber) {
+      // We have a different subobject of the same type.
+
+      // C++ [class.member.lookup]p5:
+      //   A static member, a nested type or an enumerator defined in
+      //   a base class T can unambiguously be found even if an object
+      //   has more than one base class subobject of type T.
+      if (HasOnlyStaticMembers(Path->Decls.begin(), Path->Decls.end()))
+        continue;
+
+      // We have found a nonstatic member name in multiple, distinct
+      // subobjects. Name lookup is ambiguous.
+      R.setAmbiguousBaseSubobjects(Paths);
+      return true;
+    }
+  }
+
+  // Lookup in a base class succeeded; return these results.
+  for (auto *D : Paths.front().Decls) {
+    AccessSpecifier AS = CXXRecordDecl::MergeAccess(SubobjectAccess,
+                                                    D->getAccess());
+    R.addDecl(D, AS);
+  }
+  R.resolveKind();
+  return true;
+}
+
 bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   assert(S);
 
@@ -160,7 +320,12 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
       return true;
   }
 
-  while (S) {
+  // This is done based on how CppLookUpName is handled, with a few exceptions,
+  // this will return uninstantiated template declarations, namespaces,
+  // and other kinds of declarations. This also handles some early elaboration
+  // of some types.
+  bool FoundFirstClassScope = false;
+  for(;S; S = S->getParent()) {
     std::set<Declaration *> Found = S->findDecl(Id);
     if (!Found.empty()) {
       for (auto *FoundDecl : Found) {
@@ -200,10 +365,63 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
       break;
     }
 
-    S = S->getParent();
+    // This only triggers one time because it's difficult to figure out what kind
+    // of scope we are actually processing when we run into these issues.
+    // There will be more problems like this. That's because scopes are confusing.
+    if (S->getKind() == SK_Class && !FoundFirstClassScope) {
+      FoundFirstClassScope = true;
+      // Checking that if we are in side of a record and within that record has base classes.
+      Declaration *DeclEntity = S->Entity;
+      if (DeclEntity) {
+        if (DeclEntity->declaresRecord()) {
+          if (DeclEntity->Cxx) {
+            clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(DeclEntity->Cxx);
+            // We do this because if for whatever reason if this hasn't been initially
+            // elaborated yet but if we are some how in side of it then there is a
+            // really big problem
+            if (!RD)
+              llvm_unreachable("Cyclic depdency detected unable to continue.");
+            // Basically, if this is true we found something then exit the loop.
+            if (lookupInSideOfRecordBases(*this, getCxxSema().getASTContext(),
+                R, RD, Name)) {
+              break;
+            }
+          }
+        }
+      }
+    }
   }
+
+  // This is necessary because we are 
   return !R.empty();
-} 
+}
+
+bool Sema::scopeIsWithinClass() {
+  return getCurrentScope()->getKind() & SK_Class;
+}
+
+bool Sema::scopeIsWithinClass(Scope *S) {
+  assert(S && "Invalid scope.");
+  return S->getKind() & SK_Class;
+}
+
+clang::Decl *Sema::getDeclForScope() {
+  return getDeclForScope(getCurrentScope());
+}
+
+clang::Decl *Sema::getDeclForScope(Scope *S) {
+  assert(S && "Invalid scope given.");
+  for(;S; S = S->getParent()) {
+    if (!S->Entity)
+      continue;
+    if (!S->Entity->Cxx) {
+      llvm_unreachable("Entity not elaborated correctly before getDeclForScope was called.");
+    }
+    return S->Entity->Cxx;
+  }
+  return nullptr;
+}
+
 
 clang::Scope *Sema::getCurClangScope() {
   return CxxSema.CurScope;

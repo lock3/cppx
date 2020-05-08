@@ -175,12 +175,19 @@ bool Declaration::declaresType() const {
 }
 
 bool Declaration::declaresRecord() const {
-  if (!declaresType())
-    return false;
+  // if (!declaresType())
+  //   return false;
   if (Cxx)
     return isa<clang::CXXRecordDecl>(Cxx);
-  if (const MacroSyntax *Macro = dyn_cast_or_null<MacroSyntax>(Init))
-    return cast<AtomSyntax>(Macro->getCall())->hasToken(tok::ClassKeyword);
+  if (Init)
+    if (const MacroSyntax *Macro = dyn_cast<MacroSyntax>(Init)) {
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Macro->getCall()))
+        return Atom->hasToken(tok::ClassKeyword);
+      if (const CallSyntax *ClsWithBases = dyn_cast<CallSyntax>(Macro->getCall()))
+        if (const AtomSyntax *Callee
+                  = dyn_cast<AtomSyntax>(ClsWithBases->getCallee()))
+            return Callee->hasToken(tok::ClassKeyword);
+    }
   return false;
 }
 

@@ -399,15 +399,14 @@ public:
   // FIXME: Is there any purpose for this at all?
   unsigned Depth;
 
-  clang::CXXRecordDecl* Record;
+  Declaration *Entity = nullptr;
 public:
   /// Creates a new scope.
-  Scope(ScopeKind K, const Syntax *S, Scope *P, clang::CXXRecordDecl* R = nullptr)
-    : Kind(K), Parent(P), Term(S), Record(R) {
+  Scope(ScopeKind K, const Syntax *S, Scope *P, Declaration *D = nullptr)
+    : Kind(K), Parent(P), Term(S), Entity(D) {
     Depth = Parent ? Parent->getDepth() + 1 : 0;
   }
 
-  clang::CXXRecordDecl* getCurrentRecord() const;
 
   /// The kind of scope.
   ScopeKind getKind() const {

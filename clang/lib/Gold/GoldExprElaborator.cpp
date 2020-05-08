@@ -464,7 +464,7 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
             R.begin(), R.end());
       }
 
-      // TODO: FIXME: This needs to be changed so we can accept 
+      // TODO: FIXME: Create error message for here.
       llvm_unreachable("We are not currently handling multiple declarations "
           "returned. This needs to be fixed in order to correctly create proper "
           "results that can be returned to the caller.");
@@ -479,9 +479,6 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
 
     if(clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>()) {
       clang::QualType FoundTy = VD->getType();
-      // VD->setIsRef
-      // VD->setIsUsed();
-
       // If the user annotated the DeclRefExpr with an incorrect type.
       if (!Ty.isNull() && Ty != FoundTy) {
         SemaRef.Diags.Report(Loc, clang::diag::err_type_annotation_mismatch)
@@ -548,6 +545,8 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
       return BuildAnyTypeLoc(CxxAST, CxxAST.getTypeDeclType(TD), Loc);
     }
   }
+
+  // TODO: FIXME: Create error reporting here for lookup failure.
   return nullptr;
 }
 

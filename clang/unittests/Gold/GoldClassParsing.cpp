@@ -671,50 +671,7 @@ main() : int!
   ASSERT_TRUE(matches(Code, StmtMatcher));
 }
 
-// TEST(ClassParsing, AccessingMemberThroughFunctionReturn) {
-//   StringRef Code = R"(
-// a : type = class:
-//   z : int = 5
 
-// b : type = class:
-//   x : a
-
-// c : type = class:
-//   y : b  
-
-// foo() : c!
-//   return c()
-
-// main() : int!
-//   return foo().y.x.z
-// )";
-//   StatementMatcher StmtMatcher(compoundStmt(has(
-//     returnStmt(
-//       hasDescendant(
-//         memberExpr(
-//           has(
-//             memberExpr(
-//               has(
-//                 memberExpr(
-//                   has(
-//                     declRefExpr(
-//                       to(
-//                         varDecl(
-//                           hasName("q")
-//                         )
-//                       )
-//                     )
-//                   )
-//                 )
-//               )
-//             )
-//           )
-//         )
-//       )
-//     )
-//   )));
-//   ASSERT_TRUE(matches(Code, StmtMatcher));
-// }
 
 
 TEST(ClassParsing, ClassTypeUsedAsFunctionParameter) {
@@ -772,4 +729,199 @@ foo(x : c.x) : bool!
     hasDescendant(varDecl(hasType(asString("c::x"))))
   );
   ASSERT_TRUE(matches(Code, MemberFunctionMatch));
+}
+
+
+
+TEST(ClassParsing, InheritedClass) {
+
+  StringRef Code = R"(
+a : type = class:
+  i : int = 0
+
+c : type = class (a):
+  y : bool = 0
+
+)";
+  DeclarationMatcher BaseClassMatch = cxxRecordDecl(hasName("c"),
+    isDirectlyDerivedFrom(hasName("a"))
+  );
+  ASSERT_TRUE(matches(Code, BaseClassMatch));
+}
+
+TEST(ClassParsing, InheritedClass_BaseMemberAccessOutsideOfClass) {
+
+  StringRef Code = R"(
+a : type = class:
+  i : int = 0
+
+c : type = class (a):
+  y : bool = 0
+
+main() : int!
+  q : c
+  return q.i
+)";
+  DeclarationMatcher BaseClassMatch = cxxRecordDecl(hasName("c"),
+    isDirectlyDerivedFrom(hasName("a"))
+  );
+  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+    isDefinition(),
+    hasDescendant(
+      varDecl(
+        hasType(asString("struct c")),
+        hasName("q")
+      )
+    ),
+    hasDescendant(
+      returnStmt(
+        has(implicitCastExpr(
+          has(memberExpr(
+            has(implicitCastExpr(
+              has(declRefExpr(
+                to(varDecl(hasName("q")))
+              ))
+            ))
+          ))
+        ))
+      )
+    )
+  );
+  DeclarationMatcher MemberBaseAccessOutsideOfClass = translationUnitDecl(
+    hasDescendant(BaseClassMatch),
+    hasDescendant(MainFnMatcher)
+  );
+  ASSERT_TRUE(matches(Code, MemberBaseAccessOutsideOfClass));
+}
+
+
+TEST(ClassParsing, InheritedClass_BaseMemberAccessInsideOfClass) {
+  StringRef Code = R"(
+a : type = class:
+  i : int = 0
+
+c : type = class (a):
+  y : bool = 0
+  foo() : int!
+    return i
+  
+
+main() : int!
+  q : c
+  return q.i
+)";
+  DeclarationMatcher BaseClassMatch = cxxRecordDecl(hasName("c"),
+    isDirectlyDerivedFrom(hasName("a")),
+    // Verifying that we are infact using the right constructor.
+    hasDescendant(cxxConstructorDecl(isDefaultConstructor(),
+      has(cxxCtorInitializer(
+        unless(isMemberInitializer())
+      )),
+      has(
+        cxxCtorInitializer(
+          forField(
+            hasName("y")
+          ),
+          isMemberInitializer()
+        )
+      )
+    )),
+    // Attempting to verify that we have an actual return statment at the
+    // very least.
+    hasDescendant(cxxMethodDecl(hasName("foo"), hasDescendant(returnStmt())))
+  );
+  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+    isDefinition(),
+    hasDescendant(
+      varDecl(
+        hasType(asString("struct c")),
+        hasName("q")
+      )
+    ),
+    hasDescendant(
+      returnStmt(
+        has(implicitCastExpr(
+          has(memberExpr(
+            has(implicitCastExpr(
+              has(declRefExpr(
+                to(varDecl(hasName("q")))
+              ))
+            ))
+          ))
+        ))
+      )
+    )
+  );
+  DeclarationMatcher MemberBaseAccessOutsideOfClass = translationUnitDecl(
+    hasDescendant(BaseClassMatch),
+    hasDescendant(MainFnMatcher)
+  );
+  ASSERT_TRUE(matches(Code, MemberBaseAccessOutsideOfClass));
+}
+
+
+TEST(ClassParsing, IncorrectMemberSelected) {
+  StringRef Code = R"(
+
+
+c : type = class:
+  i : int = 0
+  a : type = class:
+    d : int
+    foo() : int!
+      return 4
+    
+  
+
+main() : int!
+  q : c
+  return q.i
+)";
+  DeclarationMatcher BaseClassMatch = cxxRecordDecl(hasName("c"),
+    isDirectlyDerivedFrom(hasName("a")),
+    // Verifying that we are infact using the right constructor.
+    hasDescendant(cxxConstructorDecl(isDefaultConstructor(),
+      has(cxxCtorInitializer(
+        unless(isMemberInitializer())
+      )),
+      has(
+        cxxCtorInitializer(
+          forField(
+            hasName("y")
+          ),
+          isMemberInitializer()
+        )
+      )
+    )),
+    // Attempting to verify that we have an actual return statment at the
+    // very least.
+    hasDescendant(cxxMethodDecl(hasName("foo"), hasDescendant(returnStmt())))
+  );
+  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+    isDefinition(),
+    hasDescendant(
+      varDecl(
+        hasType(asString("struct c")),
+        hasName("q")
+      )
+    ),
+    hasDescendant(
+      returnStmt(
+        has(implicitCastExpr(
+          has(memberExpr(
+            has(implicitCastExpr(
+              has(declRefExpr(
+                to(varDecl(hasName("q")))
+              ))
+            ))
+          ))
+        ))
+      )
+    )
+  );
+  DeclarationMatcher MemberBaseAccessOutsideOfClass = translationUnitDecl(
+    hasDescendant(BaseClassMatch),
+    hasDescendant(MainFnMatcher)
+  );
+  ASSERT_TRUE(matches(Code, MemberBaseAccessOutsideOfClass));
 }

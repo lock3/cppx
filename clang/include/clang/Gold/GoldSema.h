@@ -34,6 +34,7 @@ class DeclContext;
 class DiagnosticsEngine;
 class LookupResult;
 class Preprocessor;
+class CXXRecordDecl;
 class Sema;
 class Stmt;
 class Type;
@@ -89,8 +90,7 @@ public:
   /// Enter a new scope corresponding to the syntax S. This is primarily
   /// used for the elaboration of function and template parameters, which
   /// have no corresponding declaration at the point of elaboration.
-  void enterScope(ScopeKind K, const Syntax *S);
-  void enterScope(clang::CXXRecordDecl* R, const Syntax* S);
+  void enterScope(ScopeKind K, const Syntax *S, Declaration *D = nullptr);
 
   /// Leave the current scope. The syntax S must match the syntax for
   /// which the scope was initially pushed.
@@ -108,6 +108,14 @@ public:
 
   // Perform unqualified lookup of a name starting in S.
   bool lookupUnqualifiedName(clang::LookupResult &R, Scope *S);
+
+  /// This checks to see if we are within a class body scope currently.
+  bool scopeIsWithinClass();
+  bool scopeIsWithinClass(Scope *S);
+
+  /// Gets a declaration for a scope, if available.
+  clang::Decl *getDeclForScope();
+  clang::Decl *getDeclForScope(Scope *S);
 
   // Declaration context
   /// The current declaration.
@@ -222,6 +230,23 @@ public:
     const Syntax *ConcreteTerm;
   };
 
+
+  struct ClangScopeRAII {
+    ClangScopeRAII(Sema &S, unsigned ScopeKind, clang::SourceLocation ExitLoc)
+      : S(S), ExitingLocation(ExitLoc)
+    {
+      S.enterClangScope(ScopeKind);
+    }
+
+    ~ClangScopeRAII() {
+      S.leaveClangScope(ExitingLocation);
+    }
+
+  private:
+    Sema &S;
+    clang::SourceLocation ExitingLocation;
+  };
+
   struct ExprEvalRAII {
     ExprEvalRAII(Sema& S, clang::Sema::ExpressionEvaluationContext NewContext)
       :SemaRef(S)
@@ -234,6 +259,7 @@ public:
   private:
     Sema& SemaRef;
   };
+  
 
   // Dictionary of built in types.
   //
