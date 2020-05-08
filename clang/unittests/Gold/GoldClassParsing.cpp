@@ -531,6 +531,51 @@ main() : int!
 }
 
 
+TEST(ClassParsing, NestedClassWithMemberFunction) {
+  StringRef Code = R"(
+c : type = class:
+  nested : type = class:
+    a : int
+    b : float
+    foo() : int!
+      return b
+    
+  
+
+main() : int!
+  u : c.nested
+  return 0
+)";
+
+  DeclarationMatcher ClassCInfo = recordDecl(
+    hasName("c"),
+    has(recordDecl(hasName("nested"),
+      hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
+        isPublic())),
+      hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
+        isPublic())),
+      hasDescendant(cxxMethodDecl(hasName("foo")))
+    ))
+  );
+  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+    isDefinition(),
+    hasDescendant(
+      varDecl(
+        hasType(asString("struct c::nested")),
+        hasName("u"),
+        hasInitializer(hasDescendant(cxxConstructExpr()))
+      )
+    )
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo)//,
+    // hasDescendant(MainFnMatcher)
+  );
+  ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
+}
+
+
 TEST(ClassParsing, MultipleNestedTypeDefinition) {
   StringRef Code = R"(
 c : type = class:
@@ -862,14 +907,12 @@ main() : int!
 
 TEST(ClassParsing, IncorrectMemberSelected) {
   StringRef Code = R"(
-
-
 c : type = class:
   i : int = 0
   a : type = class:
     d : int
     foo() : int!
-      return 4
+      return i
     
   
 

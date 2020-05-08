@@ -375,6 +375,160 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
 static clang::Decl*
 processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
                     Declaration *D) {
+  // using namespace clang;
+  // D->ElabPhaseCompleted = 2;
+
+  // bool Template = D->declaresTemplateType();
+  // const Syntax *TemplParams;
+  
+  // // Checking if we are a nested template decl/class.
+  // bool WithinClass = SemaRef.getCurrentScope()->getKind() == SK_Class;
+  
+  // llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
+  // llvm::SmallVector<clang::TemplateParameterList *, 4> TPLStorage;
+  // MultiTemplateParamsArg MTP;
+  // Declarator *TemplateDeclarator = nullptr;
+  // if (Template) {
+  //   // TODO: In the future change this so we can enter multiple template scopes
+  //   // and track their depth
+  //   TemplateDeclarator = D->getFirstTemplateDeclarator();
+  //   TemplParams = TemplateDeclarator->Data.TemplateInfo.Params;
+  //   SemaRef.enterScope(SK_Template, TemplParams, D);
+  //   BuildTemplateParams(Context, SemaRef, TemplParams, TemplateParamDecls);
+  //   clang::SourceLocation Loc = TemplParams->getLoc();
+  //   TemplateDeclarator->Data.TemplateInfo.ClangScope
+  //     = SemaRef.enterClangScope(clang::Scope::TemplateParamScope);
+  //   clang::TemplateParameterList *TPL
+  //     = SemaRef.getCxxSema().ActOnTemplateParameterList(
+  //     /*unsigned Depth*/0u, /*ExportLoc*/Loc, /*TemplateLoc*/Loc,
+  //     /*LAngleLoc*/Loc, TemplateParamDecls, /*RAngleLoc*/Loc,
+  //     /*RequiresClause*/nullptr);
+  //   TPLStorage.push_back(TPL);
+  //   MTP = TPLStorage;
+  // }
+
+  // bool IsOwned = false;
+  // bool IsDependent = false;
+  // CXXScopeSpec SS;
+  // TypeResult UnderlyingType;
+  // AccessSpecifier AS = AS_none;
+  // if (WithinClass) {
+  //   if (Template)
+  //     AS = AS_public;
+  //   // Attempting to check for access specifiers
+  //   if (D->Decl->AttributeNode) {
+  //     for (auto const& attr : D->Decl->AttributeNode->getAttributes()) {
+  //       if (const AtomSyntax *AttrName = dyn_cast<AtomSyntax>(attr->getArg())) {
+  //         if (AttrName->getSpelling() == "private") {
+  //           AS = clang::AS_private;
+  //         } else if (AttrName->getSpelling() == "protected") {
+  //           AS = clang::AS_protected;
+  //         } else if (AttrName->getSpelling() == "public") {
+  //           AS = clang::AS_public;
+  //         }
+  //       }
+  //     }
+  //   }
+  // }
+  // clang::SourceLocation IdLoc = D->Decl->getLoc();
+
+  // Decl *Declaration = SemaRef.getCxxSema().ActOnTag(SemaRef.getCurClangScope(),
+  //     clang::DeclSpec::TST_struct, /*Metafunction=*/nullptr, clang::Sema::TUK_Definition,
+  //     D->Init->getLoc(), SS, D->getId(), IdLoc, clang::ParsedAttributesView(),
+  //     /*AccessSpecifier=*/AS, /*ModulePrivateLoc=*/SourceLocation(),
+  //     MTP, IsOwned, IsDependent, /*ScopedEnumKWLoc=*/SourceLocation(),
+  //     /*ScopeEnumUsesClassTag=*/false, UnderlyingType, /*IsTypeSpecifier=*/false,
+  //     /*IsTemplateParamOrArg=*/false, /*SkipBody=*/nullptr);
+  // CXXRecordDecl *ClsDecl = nullptr;
+  // if(isa<CXXRecordDecl>(Declaration)) {
+  //   ClsDecl = cast<CXXRecordDecl>(Declaration);
+  // } else if (isa<ClassTemplateDecl>(Declaration)) {
+  //   ClassTemplateDecl *TempTemplateDecl = cast<ClassTemplateDecl>(Declaration);
+  //   ClsDecl = cast<CXXRecordDecl>(TempTemplateDecl->getTemplatedDecl());
+  // }
+  // D->Cxx = ClsDecl;
+  // SemaRef.getCurrentScope()->addUserDefinedType(D->Id,
+  //                                     Context.CxxAST.getTypeDeclType(ClsDecl));
+  // SemaRef.enterScope(SK_Class, D->Op, D);
+  // SemaRef.pushDecl(D);
+  // // SemaRef.setCurrentDecl(D);
+  // clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::ClassScope
+  //                                               | clang::Scope::DeclScope);
+  // Elab.elaborateTypeBody(D, ClsDecl);
+  // // SemaRef.popDecl();
+  // D->SavedScope = SemaRef.getCurrentScope();
+  // // if (Template) {
+  // //   TemplateDeclarator->Data.TemplateInfo.DeclScope = SemaRef.saveScope(
+  // //     TemplateDeclarator->Data.TemplateInfo.Params);
+  // //   // This may not work very well because the scope may need to be re-entered
+  // //   // at a later time and in order to do that correctly we may need to 
+  // //   // adjust the scope stack in order to correctly reproduce the
+  // //   // correct scope in order to elaborate this type fully. I'm currently
+  // //   // not sure how we are going to handle this properly. NOTE:
+  // //   // This issue may only occur when we are doing out of order elaborations.
+  // //   TemplateDeclarator->Data.TemplateInfo.ClangScope
+  // //     = SemaRef.moveToParentScopeNoPop();
+
+  // //   // We do this in order to save the previous scope.
+  // //   // Declarator *templateArgs = D->getFirstTemplateDeclarator();
+  // //   // assert(templateArgs && "Failed to get template arguments.\n");
+  // //   SemaRef.reEnterClangScope(TemplateDeclarator->Data.TemplateInfo.ClangScope);
+  // //   SemaRef.pushScope(TemplateDeclarator->Data.TemplateInfo.DeclScope);
+  // // }
+
+  // auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
+  // auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
+
+  // // SemaRef.pushScope(D->SavedScope); 
+  // clang::CXXRecordDecl *R = dyn_cast<clang::CXXRecordDecl>(D->Cxx);
+  // D->ClsScope = Scope;
+  // SemaRef.getCxxSema().ActOnTagStartDefinition(Scope, R);
+  
+  // // Need to check for base classes then open a new scope and do something with it
+  // // If we have any base classes that need parsed.
+  // if (const CallSyntax *ClsKwCall
+  //                       = dyn_cast<CallSyntax>(MacroRoot->getCall())) {
+  //   processBaseSpecifiers(Elab, SemaRef, Context, D, R, ClsKwCall);
+  // }
+
+  // SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(Scope, R,
+  //   clang::SourceLocation(), true, clang::SourceLocation());
+  
+  // // Since all declarations have already been added, we don't need to do another
+  // // Reordering scan. Maybe?
+  // for (const Syntax *SS : BodyArray->children()) {
+  //   Elab.elaborateDeclType(SS);
+  // }
+
+  // // We need to elaborate any/all of the member member initializes at here.
+  // for (const Syntax *SS : BodyArray->children()) {
+  //   gold::Declaration *LocalDecl = SemaRef.getCurrentScope()->findDecl(SS);
+  //   if (!LocalDecl)
+  //     continue;
+  //   if (LocalDecl->declaresMemberVariable()
+  //       || LocalDecl->defines<clang::VarDecl>()) {
+  //     Elab.elaborateDef(LocalDecl);
+  //   }
+  // }
+
+  // SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(Scope,
+  //   clang::SourceLocation(), R, clang::SourceLocation(), clang::SourceLocation(),
+  //   clang::ParsedAttributesView());
+  // SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
+
+  // // We pop here because the type isn't 100% completed, we have more to addd but
+  // // we need to move back to the correct decl context. That decl context
+  // // wasn't altered like it ususally is within ActOnFinishTagDefinition.
+  // SemaRef.popDecl();
+  // SemaRef.saveCurrentClangScope();
+  // SemaRef.popScope();
+  // if (Template) {
+  //   // Leaving template scopes again.
+  //   SemaRef.popScope();
+  //   SemaRef.saveCurrentClangScope();
+  // }
+  // return ClsDecl;
+
   using namespace clang;
   D->ElabPhaseCompleted = 2;
 
@@ -393,7 +547,7 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
     // and track their depth
     TemplateDeclarator = D->getFirstTemplateDeclarator();
     TemplParams = TemplateDeclarator->Data.TemplateInfo.Params;
-    SemaRef.enterScope(SK_Template, TemplParams, D);
+    SemaRef.enterScope(SK_Template, TemplParams);
     BuildTemplateParams(Context, SemaRef, TemplParams, TemplateParamDecls);
     clang::SourceLocation Loc = TemplParams->getLoc();
     TemplateDeclarator->Data.TemplateInfo.ClangScope
@@ -449,50 +603,49 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   D->Cxx = ClsDecl;
   SemaRef.getCurrentScope()->addUserDefinedType(D->Id,
                                       Context.CxxAST.getTypeDeclType(ClsDecl));
-  SemaRef.enterScope(SK_Class, D->Op, D);
-  // SemaRef.pushDecl(D);
-  SemaRef.setCurrentDecl(D);
-  clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::ClassScope
-                                                | clang::Scope::DeclScope);
+  SemaRef.enterScope(SK_Class, D->Op);
+  SemaRef.getCurrentScope()->Entity = D;
+  SemaRef.pushDecl(D);
   Elab.elaborateTypeBody(D, ClsDecl);
-  // SemaRef.popDecl();
-  D->SavedScope = SemaRef.getCurrentScope();
-  // if (Template) {
-  //   TemplateDeclarator->Data.TemplateInfo.DeclScope = SemaRef.saveScope(
-  //     TemplateDeclarator->Data.TemplateInfo.Params);
-  //   // This may not work very well because the scope may need to be re-entered
-  //   // at a later time and in order to do that correctly we may need to 
-  //   // adjust the scope stack in order to correctly reproduce the
-  //   // correct scope in order to elaborate this type fully. I'm currently
-  //   // not sure how we are going to handle this properly. NOTE:
-  //   // This issue may only occur when we are doing out of order elaborations.
-  //   TemplateDeclarator->Data.TemplateInfo.ClangScope
-  //     = SemaRef.moveToParentScopeNoPop();
-
-  //   // We do this in order to save the previous scope.
-  //   // Declarator *templateArgs = D->getFirstTemplateDeclarator();
-  //   // assert(templateArgs && "Failed to get template arguments.\n");
-  //   SemaRef.reEnterClangScope(TemplateDeclarator->Data.TemplateInfo.ClangScope);
-  //   SemaRef.pushScope(TemplateDeclarator->Data.TemplateInfo.DeclScope);
-  // }
+  SemaRef.popDecl();
+  D->SavedScope = SemaRef.saveScope(D->Op);
+  if (Template) {
+    TemplateDeclarator->Data.TemplateInfo.DeclScope = SemaRef.saveScope(
+      TemplateDeclarator->Data.TemplateInfo.Params);
+    // This may not work very well because the scope may need to be re-entered
+    // at a later time and in order to do that correctly we may need to 
+    // adjust the scope stack in order to correctly reproduce the
+    // correct scope in order to elaborate this type fully. I'm currently
+    // not sure how we are going to handle this properly. NOTE:
+    // This issue may only occur when we are doing out of order elaborations.
+    TemplateDeclarator->Data.TemplateInfo.ClangScope
+      = SemaRef.moveToParentScopeNoPop();
+      
+    // Pushing template scopes onto stack again.
+    Declarator *templateArgs = D->getFirstTemplateDeclarator();
+    assert(templateArgs && "Failed to get template arguments.\n");
+    SemaRef.reEnterClangScope(templateArgs->Data.TemplateInfo.ClangScope);
+    SemaRef.pushScope(templateArgs->Data.TemplateInfo.DeclScope);
+  }
 
   auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
   auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
 
-  // SemaRef.pushScope(D->SavedScope); 
+  SemaRef.pushScope(D->SavedScope); 
   clang::CXXRecordDecl *R = dyn_cast<clang::CXXRecordDecl>(D->Cxx);
+  clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::ClassScope
+                                                | clang::Scope::DeclScope);
   D->ClsScope = Scope;
   SemaRef.getCxxSema().ActOnTagStartDefinition(Scope, R);
-  
-  // Need to check for base classes then open a new scope and do something with it
-  // If we have any base classes that need parsed.
+
+  // Handling possible base classes.
   if (const CallSyntax *ClsKwCall
                         = dyn_cast<CallSyntax>(MacroRoot->getCall())) {
     processBaseSpecifiers(Elab, SemaRef, Context, D, R, ClsKwCall);
   }
-
   SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(Scope, R,
     clang::SourceLocation(), true, clang::SourceLocation());
+  SemaRef.setCurrentDecl(D);
   
   // Since all declarations have already been added, we don't need to do another
   // Reordering scan. Maybe?
@@ -528,6 +681,7 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
     SemaRef.saveCurrentClangScope();
   }
   return ClsDecl;
+
 }
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
