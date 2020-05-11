@@ -631,12 +631,18 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
   auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
 
-  SemaRef.pushScope(D->SavedScope); 
+  SemaRef.pushScope(D->SavedScope);
   clang::CXXRecordDecl *R = dyn_cast<clang::CXXRecordDecl>(D->Cxx);
+  llvm::outs() << "Adding to class \n";
+  R->dump();
+  llvm::outs()<<"\n";
   clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::ClassScope
                                                 | clang::Scope::DeclScope);
-  D->ClsScope = Scope;
   SemaRef.getCxxSema().ActOnTagStartDefinition(Scope, R);
+  llvm::outs() << "COntext after act on start tag definition\n";
+  SemaRef.getCxxSema().CurContext->dumpDeclContext();
+  D->ClsScope = Scope;
+  SemaRef.pushDecl(D);
 
   // Handling possible base classes.
   if (const CallSyntax *ClsKwCall
@@ -645,7 +651,6 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   }
   SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(Scope, R,
     clang::SourceLocation(), true, clang::SourceLocation());
-  SemaRef.setCurrentDecl(D);
   
   // Since all declarations have already been added, we don't need to do another
   // Reordering scan. Maybe?
@@ -664,16 +669,29 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
     }
   }
 
+  SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
+  // Not sure if this is being done correctlyor not here.
+  SemaRef.leaveClangScope(D->Init->getLoc()); 
+  // SemaRef.saveCurrentClangScope();
+  // FIXME: Add member initializer here?
+  // Need to call Sema::ActOnStartCXXInClassMemberInitializer
+  // Need to call Sema::PushExpressionEvaluationContext - Figure out what evaluation context to use here.
+  // Need to call Sema::PopExpressionEvaluationContext
+  // and Sema::ActOnFinishCXXInClassMemberInitializer once completed
   SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(Scope,
     clang::SourceLocation(), R, clang::SourceLocation(), clang::SourceLocation(),
     clang::ParsedAttributesView());
-  SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
+  
+  // I need to handle this for any nested classes possibly? 
+  // Enter scope first DeclScope | ClassScope
+  // Sema::ActOnStartDelayedMemberDeclarations
+  // Sema::ActOnFinishDelayedMemberDeclarations
+  // Then pop scope on completion.
 
-  // We pop here because the type isn't 100% completed, we have more to addd but
-  // we need to move back to the correct decl context. That decl context
-  // wasn't altered like it ususally is within ActOnFinishTagDefinition.
+  // Need to do something special to handle delayed member function, types,
+  // and any other nested structures here
   SemaRef.popDecl();
-  SemaRef.saveCurrentClangScope();
+  
   SemaRef.popScope();
   if (Template) {
     // Leaving template scopes again.
@@ -681,7 +699,6 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
     SemaRef.saveCurrentClangScope();
   }
   return ClsDecl;
-
 }
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
@@ -786,6 +803,11 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     if(!RD)
       llvm_unreachable("Improperly created scope. Class scope doesn't contain "
           "declaration.");
+    llvm::outs() << "Retrieved record decl for given scope?!\n";
+    RD->dump();
+    llvm::outs() << "Decl context being dumped\n";
+    RD->dumpDeclContext();
+    llvm::outs() << "\n";
   }
 
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
@@ -793,6 +815,33 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     SemaRef.enterScope(SK_Template, TemplParams, D);
     BuildTemplateParams(Context, SemaRef, TemplParams, TemplateParamDecls);
   }
+
+  llvm::outs() << "Current function decl elaboration\n";
+  clang::DeclContext *DC = SemaRef.getCxxSema().CurContext;
+  // if (DC) {
+    // llvm::outs() << "We have a declcontext for D->Cxx\n";
+    clang::DeclContext *ContainingContext = SemaRef.getCxxSema().getContainingDC(DC);
+    llvm::outs() << "Containing context\n";
+    ContainingContext->dumpDeclContext();
+    llvm::outs() << "Current Context dump\n";
+    DC->dumpDeclContext();
+
+    llvm::outs() << "Owner = \n";
+    Owner->dumpDeclContext();
+    // llvm::outs() << "DeclContext.CurContext = \n";
+    // if (clang::FunctionDecl *Fn = dyn_cast<clang::FunctionDecl>(SemaRef.getCxxSema().CurContext)) {
+    //   llvm::outs() << "We have a function Decl\n";
+    //   Fn->dump(llvm::outs());
+    // } else if (clang::RecordDecl *RD = dyn_cast<clang::RecordDecl>(SemaRef.getCxxSema().CurContext)) {
+    //   llvm::outs() << "We have a Record Decl\n";
+    //   RD->dump(llvm::outs());
+    // } else if (isa<clang::TranslationUnitDecl>(SemaRef.getCxxSema().CurContext)) {
+    //   llvm::outs() << "We are a translation unit decl.\n";
+    // } else 
+    //   llvm::outs() << "Unexpected DeclContext type\n";
+    // llvm::outs() << "=================================\n";
+  // }
+  llvm::outs() << "\n";
 
   // Elaborate the return type.
   ExprElaborator TypeElab(Context, SemaRef);
@@ -808,9 +857,9 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::FunctionDecl *FD = nullptr;
   if(InClass) {
-    SemaRef.enterClangScope(
-      clang::Scope::DeclScope | clang::Scope::FunctionPrototypeScope |
-      clang::Scope::FunctionDeclarationScope);
+    // SemaRef.enterClangScope(
+    //     clang::Scope::DeclScope | clang::Scope::FunctionPrototypeScope |
+    //     clang::Scope::FunctionDeclarationScope);
     const clang::FunctionType *FT = cast<clang::FunctionType>(TInfo->getType());
     clang::DeclarationNameInfo DNI(Name, D->Op->getLoc());
     if (D->getId()->isStr("constructor")) {
@@ -910,7 +959,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       return nullptr;
     }
     FD->setAccess(AS);
-    SemaRef.leaveClangScope(Loc);
+    // SemaRef.leaveClangScope(Loc);
   } else {
     FD = clang::FunctionDecl::Create(Context.CxxAST, Owner, Loc, Loc, Name,
                                      TInfo->getType(), TInfo, clang::SC_None);
@@ -958,6 +1007,9 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Add the declaration and update bindings.
   if (!Template && !D->declaresConstructor()) {
     Owner->addDecl(FD);
+    llvm::outs() << "Where did we add the function?!\n";
+    Owner->dumpDeclContext();
+    llvm::outs() << "Context the FD was added into.\n";
   }
   if(D->declaresConstructor()) {
     clang::CXXConstructorDecl* CtorDecl = cast<clang::CXXConstructorDecl>(D->Cxx);    
@@ -1259,14 +1311,32 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   if (TemplateScope) {
     SemaRef.getCurrentScope()->setParent(TemplateScope);
   }
+
+  Declaration *CurrentDeclaration = SemaRef.getCurrentDecl();
+  llvm::outs() << "ElaboratingFunctionDef within " << __FUNCTION__ << "\n";
+  D->Cxx->dump();
+  clang::DeclContext *DC = dyn_cast<clang::DeclContext>(D->Cxx);
+  if (DC) {
+    llvm::outs() << "We have a declcontext for D->Cxx\n";
+    clang::DeclContext *ContainingContext = SemaRef.getCxxSema().getContainingDC(DC);
+    llvm::outs() << "Containing context\n";
+    ContainingContext->dumpDeclContext();
+    llvm::outs() << "Actual Context\n";
+    SemaRef.getCxxSema().CurContext->dumpDeclContext();
+    llvm::outs() << "The contents of D->Cxx's as a decl context\n";
+    DC->dumpDeclContext();
+  }
+  llvm::outs() << "\n";
+  SemaRef.setCurrentDecl(D);
+  
+
   // Entering clang scope. for function definition.
   clang::Scope *FnClangScope = SemaRef.enterClangScope(clang::Scope::FnScope |
                                                        clang::Scope::DeclScope |
                                                clang::Scope::CompoundStmtScope);
   clang::Decl *FuncDecl = SemaRef.getCxxSema().ActOnStartOfFunctionDef(
                                                           FnClangScope, D->Cxx);
-  Declaration *CurrentDeclaration = SemaRef.getCurrentDecl();
-  SemaRef.setCurrentDecl(D);
+
   
   SemaRef.enterScope(SK_Function, D->Init, D);
   // FIXME: is this necessary for Gold? It enables some more semantic
@@ -1288,7 +1358,7 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   // Leave the template scope
   if (IsTemplate)
     SemaRef.popScope();
-  SemaRef.setCurrentDecl(CurrentDeclaration);
+  SemaRef.restoreDeclContext(CurrentDeclaration);
 }
 
 /// In the case of an automatically deduced array macro, <initalizer_list>
@@ -1445,8 +1515,6 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
   auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
 
   clang::CXXRecordDecl *R = dyn_cast<clang::CXXRecordDecl>(D->Cxx);
-  // This is set first so we don't recurse anymore then we need to.
-  D->ElabPhaseCompleted = 3;
 
   // Re-entering the class 
   clang::Scope *PreviousScope = SemaRef.getCurClangScope();
@@ -1457,7 +1525,39 @@ void Elaborator::elaborateTypeDefinition(Declaration *D) {
   // TODO: Add templates here so we can re-enter their scope properly also.
   SemaRef.pushScope(D->SavedScope);
   SemaRef.restoreDeclContext(D);
-  SemaRef.reEnterClangScope(D->ClsScope);
+  // Blah blah
+  // llvm::outs() << "Current decl\n";
+  // D->Cxx->dump();
+  // llvm::outs() << "ElaboratingFunctionDef within " << __FUNCTION__ << "\n";
+  // clang::DeclContext *DC = dyn_cast<clang::DeclContext>(D->Cxx);
+  // if (DC) {
+  //   llvm::outs() << "We have a declcontext for D->Cxx\n";
+  //   clang::DeclContext *ContainingContext = SemaRef.getCxxSema().getContainingDC(DC);
+  //   llvm::outs() << "Containing context\n";
+  //   ContainingContext->dumpDeclContext();
+  //   llvm::outs() << "Actual Context\n";
+  //   SemaRef.getCxxSema().CurContext->dumpDeclContext();
+  //   llvm::outs() << "The contents of D->Cxx as a decl context\n";
+  //   DC->dumpDeclContext();
+
+  //   // llvm::outs() << "DeclContext.CurContext = \n";
+  //   // if (clang::FunctionDecl *Fn = dyn_cast<clang::FunctionDecl>(SemaRef.getCxxSema().CurContext)) {
+  //   //   llvm::outs() << "We have a function Decl\n";
+  //   //   Fn->dump(llvm::outs());
+  //   // } else if (clang::RecordDecl *RD = dyn_cast<clang::RecordDecl>(SemaRef.getCxxSema().CurContext)) {
+  //   //   llvm::outs() << "We have a Record Decl\n";
+  //   //   RD->dump(llvm::outs());
+  //   // } else if (isa<clang::TranslationUnitDecl>(SemaRef.getCxxSema().CurContext)) {
+  //   //   llvm::outs() << "We are a translation unit decl.\n";
+  //   // } else 
+  //   //   llvm::outs() << "Unexpected DeclContext type\n";
+  //   // llvm::outs() << "=================================\n";
+  // }
+  // llvm::outs() << "\n";
+  // SemaRef.reEnterClangScope(D->ClsScope);
+  SemaRef.enterClangScope(clang::Scope::DeclScope | clang::Scope::ClassScope);
+  
+
 
   // Recreating class body scopes?
   // Attempting to elaborate the remainder of the class, once we are outside of the

@@ -493,18 +493,18 @@ main() : int!
 
 TEST(ClassParsing, NestedTypeDefinition) {
   StringRef Code = R"(
-c : type = class:
+outer : type = class:
   nested : type = class:
     a : int
     b : float
   
 main() : int!
-  u : c.nested
+  u : outer.nested
   return 0
 )";
 
   DeclarationMatcher ClassCInfo = recordDecl(
-    hasName("c"),
+    hasName("outer"),
     has(recordDecl(hasName("nested"),
       hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
         isPublic())),
@@ -516,7 +516,7 @@ main() : int!
     isDefinition(),
     hasDescendant(
       varDecl(
-        hasType(asString("struct c::nested")),
+        hasType(asString("outer::nested")),
         hasName("u"),
         hasInitializer(hasDescendant(cxxConstructExpr()))
       )
@@ -524,8 +524,8 @@ main() : int!
   );
 
   DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
-    hasDescendant(ClassCInfo)//,
-    // hasDescendant(MainFnMatcher)
+    hasDescendant(ClassCInfo),
+    hasDescendant(MainFnMatcher)
   );
   ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
 }
@@ -533,7 +533,9 @@ main() : int!
 
 TEST(ClassParsing, NestedClassWithMemberFunction) {
   StringRef Code = R"(
-c : type = class:
+outer : type = class:
+  bar() : int!
+    return 4
   nested : type = class:
     a : int
     b : float
@@ -542,13 +544,11 @@ c : type = class:
     
   
 
-main() : int!
-  u : c.nested
-  return 0
+
 )";
 
   DeclarationMatcher ClassCInfo = recordDecl(
-    hasName("c"),
+    hasName("outer"),
     has(recordDecl(hasName("nested"),
       hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
         isPublic())),
@@ -557,20 +557,9 @@ main() : int!
       hasDescendant(cxxMethodDecl(hasName("foo")))
     ))
   );
-  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
-    isDefinition(),
-    hasDescendant(
-      varDecl(
-        hasType(asString("struct c::nested")),
-        hasName("u"),
-        hasInitializer(hasDescendant(cxxConstructExpr()))
-      )
-    )
-  );
 
   DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
-    hasDescendant(ClassCInfo)//,
-    // hasDescendant(MainFnMatcher)
+    hasDescendant(ClassCInfo)
   );
   ASSERT_TRUE(matches(Code, ClassImplicitsAndCalls));
 }

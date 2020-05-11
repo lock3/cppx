@@ -114,7 +114,7 @@ clang::DeclContext *Sema::getCurrentCxxDeclContext() {
 
 void Sema::restoreDeclContext(Declaration *D) {
   CurrentDecl = D;
-  getCxxSema().CurContext = clang::Decl::castToDeclContext(D->Cxx);  
+  getCxxSema().CurContext = clang::Decl::castToDeclContext(D->Cxx);
 }
 
 void Sema::pushDecl(Declaration *D) {
@@ -461,6 +461,79 @@ clang::Scope* Sema::saveCurrentClangScope() {
   clang::Scope *OldScope = getCurClangScope();
   CxxSema.CurScope = OldScope->getParent();
   return OldScope;
+}
+
+static void VisitScope(Scope *S, llvm::raw_ostream &Out) {
+  Out << "Scope Status = \n";
+  S->dump(Out);
+  Out << "=================================\n";
+  if (S->getParent()) {
+    VisitScope(S->Parent, Out);
+  }
+}
+
+static void VisitClangScope(clang::Scope *S, llvm::raw_ostream &Out) {
+  Out << "Clang Scope:\n";
+  clang::DeclContext *DC = S->getEntity();
+  if (DC) {
+    if (clang::FunctionDecl *Fn = dyn_cast<clang::FunctionDecl>(DC)) {
+      Out << "We have a function Decl\n";
+      Fn->dump(Out);
+    } else if (clang::RecordDecl *RD = dyn_cast<clang::RecordDecl>(DC)) {
+      Out << "We have a Record Decl\n";
+      RD->dump(Out);
+    } else if (isa<clang::TranslationUnitDecl>(DC)) {
+      Out << "We are a translation unit decl.\n";
+    } else 
+      Out << "Unexpected DeclContext type\n";
+  } else
+    Out << "Current Scope has no entity.\n";
+  S->dumpImpl(Out);
+  Out << "==================================\n";
+  if (S->getParent()) {
+    VisitClangScope(S->getParent(), Out);
+  }
+}
+
+static void VisitDeclContext(clang::DeclContext *DC, llvm::raw_ostream &Out) {
+  Out << "DeclContext = \n";
+  if (clang::FunctionDecl *Fn = dyn_cast<clang::FunctionDecl>(DC)) {
+    Out << "We have a function Decl\n";
+    Fn->dump(Out);
+  } else if (clang::RecordDecl *RD = dyn_cast<clang::RecordDecl>(DC)) {
+    Out << "We have a Record Decl\n";
+    RD->dump(Out);
+  } else if (isa<clang::TranslationUnitDecl>(DC)) {
+    Out << "We are a translation unit decl.\n";
+  } else 
+    Out << "Unexpected DeclContext type\n";
+  DC->dumpDeclContext();
+  Out << "=================================\n";
+  // if (DC->getParent()) {
+  //   VisitDeclContext(DC->getParent(), Out);
+  // }
+}
+
+void Sema::dumpState(llvm::raw_ostream &Out) {
+  Out << "Current Sema State\n";
+
+  Out << "Current gold::Scope Status: \n";
+  Out << "=================================\n";
+  VisitScope(getCurrentScope(), Out);
+  Out << "\n";
+  Out << "clang scope and decl contexts\n";
+  Out << "=================================\n";
+  VisitClangScope(getCurClangScope(), Out);
+  Out << "\n";
+  Out << "=================================\n";
+  Out << "Current DeclContext = \n";
+  Out << "=================================\n";
+  if (CxxSema.CurContext) {
+    VisitDeclContext(CxxSema.CurContext, Out);
+  } else
+    Out << "Current Context invalid.\n";
+  
+  Out.flush();
 }
 
 } // namespace gold

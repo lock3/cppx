@@ -182,6 +182,8 @@ public:
   void leaveClangScope(clang::SourceLocation Loc);
   clang::Scope* saveCurrentClangScope();
 
+  void dumpState(llvm::raw_ostream &out = llvm::outs());
+
 public:
   // The context
   SyntaxContext &Context;
