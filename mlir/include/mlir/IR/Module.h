@@ -1,6 +1,6 @@
 //===- Module.h - MLIR Module Class -----------------------------*- C++ -*-===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -14,6 +14,7 @@
 #define MLIR_IR_MODULE_H
 
 #include "mlir/IR/SymbolTable.h"
+#include "llvm/Support/PointerLikeTypeTraits.h"
 
 namespace mlir {
 class ModuleTerminatorOp;
@@ -29,15 +30,17 @@ class ModuleTerminatorOp;
 class ModuleOp
     : public Op<
           ModuleOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
-          OpTrait::IsIsolatedFromAbove, OpTrait::SymbolTable,
-          OpTrait::SingleBlockImplicitTerminator<ModuleTerminatorOp>::Impl> {
+          OpTrait::IsIsolatedFromAbove, OpTrait::PolyhedralScope,
+          OpTrait::SymbolTable,
+          OpTrait::SingleBlockImplicitTerminator<ModuleTerminatorOp>::Impl,
+          SymbolOpInterface::Trait> {
 public:
   using Op::Op;
   using Op::print;
 
   static StringRef getOperationName() { return "module"; }
 
-  static void build(Builder *builder, OperationState &result,
+  static void build(OpBuilder &builder, OperationState &result,
                     Optional<StringRef> name = llvm::None);
 
   /// Construct a module from the given location with an optional name.
@@ -57,6 +60,8 @@ public:
 
   /// Print the this module in the custom top-level form.
   void print(raw_ostream &os, OpPrintingFlags flags = llvm::None);
+  void print(raw_ostream &os, AsmState &state,
+             OpPrintingFlags flags = llvm::None);
   void dump();
 
   //===--------------------------------------------------------------------===//
@@ -92,6 +97,13 @@ public:
       insertPt = Block::iterator(body->getTerminator());
     body->getOperations().insert(insertPt, op);
   }
+
+  //===--------------------------------------------------------------------===//
+  // SymbolOpInterface Methods
+  //===--------------------------------------------------------------------===//
+
+  /// A ModuleOp may optionally define a symbol.
+  bool isOptionalSymbol() { return true; }
 };
 
 /// The ModuleTerminatorOp is a special terminator operation for the body of a
@@ -106,7 +118,7 @@ class ModuleTerminatorOp
 public:
   using Op::Op;
   static StringRef getOperationName() { return "module_terminator"; }
-  static void build(Builder *, OperationState &) {}
+  static void build(OpBuilder &, OperationState &) {}
 };
 
 /// This class acts as an owning reference to a module, and will automatically
@@ -159,7 +171,7 @@ public:
   static inline mlir::ModuleOp getFromVoidPointer(void *P) {
     return mlir::ModuleOp::getFromOpaquePointer(P);
   }
-  enum { NumLowBitsAvailable = 3 };
+  static constexpr int NumLowBitsAvailable = 3;
 };
 
 } // end namespace llvm

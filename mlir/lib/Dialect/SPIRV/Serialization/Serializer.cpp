@@ -1,6 +1,6 @@
 //===- Serializer.cpp - MLIR SPIR-V Serialization -------------------------===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -12,7 +12,7 @@
 
 #include "mlir/Dialect/SPIRV/Serialization.h"
 
-#include "mlir/ADT/TypeSwitch.h"
+#include "mlir/Dialect/SPIRV/SPIRVAttributes.h"
 #include "mlir/Dialect/SPIRV/SPIRVBinaryUtils.h"
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
@@ -20,11 +20,12 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/RegionGraphTraits.h"
 #include "mlir/Support/LogicalResult.h"
-#include "mlir/Support/StringExtras.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -40,7 +41,7 @@ static LogicalResult encodeInstructionInto(SmallVectorImpl<uint32_t> &binary,
                                            ArrayRef<uint32_t> operands) {
   uint32_t wordCount = 1 + operands.size();
   binary.push_back(spirv::getPrefixedOpcode(wordCount, op));
-    binary.append(operands.begin(), operands.end());
+  binary.append(operands.begin(), operands.end());
   return success();
 }
 
@@ -74,16 +75,43 @@ static LogicalResult visitInPrettyBlockOrder(
   return success();
 }
 
-/// Returns the last structured control flow op's merge block if the given
-/// `block` contains any structured control flow op. Otherwise returns nullptr.
-static Block *getLastStructuredControlFlowOpMergeBlock(Block *block) {
-  for (Operation &op : llvm::reverse(block->getOperations())) {
-    if (auto selectionOp = dyn_cast<spirv::SelectionOp>(op))
-      return selectionOp.getMergeBlock();
-    if (auto loopOp = dyn_cast<spirv::LoopOp>(op))
-      return loopOp.getMergeBlock();
-  }
+/// Returns the merge block if the given `op` is a structured control flow op.
+/// Otherwise returns nullptr.
+static Block *getStructuredControlFlowOpMergeBlock(Operation *op) {
+  if (auto selectionOp = dyn_cast<spirv::SelectionOp>(op))
+    return selectionOp.getMergeBlock();
+  if (auto loopOp = dyn_cast<spirv::LoopOp>(op))
+    return loopOp.getMergeBlock();
   return nullptr;
+}
+
+/// Given a predecessor `block` for a block with arguments, returns the block
+/// that should be used as the parent block for SPIR-V OpPhi instructions
+/// corresponding to the block arguments.
+static Block *getPhiIncomingBlock(Block *block) {
+  // If the predecessor block in question is the entry block for a spv.loop,
+  // we jump to this spv.loop from its enclosing block.
+  if (block->isEntryBlock()) {
+    if (auto loopOp = dyn_cast<spirv::LoopOp>(block->getParentOp())) {
+      // Then the incoming parent block for OpPhi should be the merge block of
+      // the structured control flow op before this loop.
+      Operation *op = loopOp.getOperation();
+      while ((op = op->getPrevNode()) != nullptr)
+        if (Block *incomingBlock = getStructuredControlFlowOpMergeBlock(op))
+          return incomingBlock;
+      // Or the enclosing block itself if no structured control flow ops
+      // exists before this loop.
+      return loopOp.getOperation()->getBlock();
+    }
+  }
+
+  // Otherwise, we jump from the given predecessor block. Try to see if there is
+  // a structured control flow op inside it.
+  for (Operation &op : llvm::reverse(block->getOperations())) {
+    if (Block *incomingBlock = getStructuredControlFlowOpMergeBlock(&op))
+      return incomingBlock;
+  }
+  return block;
 }
 
 namespace {
@@ -104,7 +132,7 @@ namespace {
 class Serializer {
 public:
   /// Creates a serializer for the given SPIR-V `module`.
-  explicit Serializer(spirv::ModuleOp module);
+  explicit Serializer(spirv::ModuleOp module, bool emitDebugInfo = false);
 
   /// Serializes the remembered SPIR-V module.
   LogicalResult serialize();
@@ -112,8 +140,10 @@ public:
   /// Collects the final SPIR-V `binary`.
   void collect(SmallVectorImpl<uint32_t> &binary);
 
+#ifndef NDEBUG
   /// (For debugging) prints each value and its corresponding result <id>.
   void printValueIDMap(raw_ostream &os);
+#endif
 
 private:
   // Note that there are two main categories of methods in this class:
@@ -159,6 +189,8 @@ private:
 
   void processCapability();
 
+  void processDebugInfo();
+
   void processExtension();
 
   void processMemoryModel();
@@ -177,7 +209,7 @@ private:
   LogicalResult processName(uint32_t resultID, StringRef name);
 
   /// Processes a SPIR-V function op.
-  LogicalResult processFuncOp(FuncOp op);
+  LogicalResult processFuncOp(spirv::FuncOp op);
 
   LogicalResult processVariableOp(spirv::VariableOp op);
 
@@ -209,8 +241,8 @@ private:
 
   bool isVoidType(Type type) const { return type.isa<NoneType>(); }
 
-  /// Returns true if the given type is a pointer type to a struct in Uniform or
-  /// StorageBuffer storage class.
+  /// Returns true if the given type is a pointer type to a struct in some
+  /// interface storage class.
   bool isInterfaceStructPtrType(Type type) const;
 
   /// Main dispatch method for serializing a type. The result <id> of the
@@ -345,12 +377,23 @@ private:
   LogicalResult emitDecoration(uint32_t target, spirv::Decoration decoration,
                                ArrayRef<uint32_t> params = {});
 
+  /// Emits an OpLine instruction with the given `loc` location information into
+  /// the given `binary` vector.
+  LogicalResult emitDebugLine(SmallVectorImpl<uint32_t> &binary, Location loc);
+
 private:
   /// The SPIR-V module to be serialized.
   spirv::ModuleOp module;
 
   /// An MLIR builder for getting MLIR constructs.
   mlir::Builder mlirBuilder;
+
+  /// A flag which indicates if the debuginfo should be emitted.
+  bool emitDebugInfo = false;
+
+  /// The <id> of the OpString instruction, which specifies a file name, for
+  /// use by other debug instructions.
+  uint32_t fileID = 0;
 
   /// The next available result <id>.
   uint32_t nextID = 1;
@@ -364,7 +407,7 @@ private:
   SmallVector<uint32_t, 3> memoryModel;
   SmallVector<uint32_t, 0> entryPoints;
   SmallVector<uint32_t, 4> executionModes;
-  // TODO(antiagainst): debug instructions
+  SmallVector<uint32_t, 0> debug;
   SmallVector<uint32_t, 0> names;
   SmallVector<uint32_t, 0> decorations;
   SmallVector<uint32_t, 0> typesGlobalValues;
@@ -452,8 +495,9 @@ private:
 };
 } // namespace
 
-Serializer::Serializer(spirv::ModuleOp module)
-    : module(module), mlirBuilder(module.getContext()) {}
+Serializer::Serializer(spirv::ModuleOp module, bool emitDebugInfo)
+    : module(module), mlirBuilder(module.getContext()),
+      emitDebugInfo(emitDebugInfo) {}
 
 LogicalResult Serializer::serialize() {
   LLVM_DEBUG(llvm::dbgs() << "+++ starting serialization +++\n");
@@ -465,6 +509,7 @@ LogicalResult Serializer::serialize() {
   processCapability();
   processExtension();
   processMemoryModel();
+  processDebugInfo();
 
   // Iterate over the module body to serialize it. Assumptions are that there is
   // only one basic block in the moduleOp
@@ -488,35 +533,38 @@ void Serializer::collect(SmallVectorImpl<uint32_t> &binary) {
   binary.clear();
   binary.reserve(moduleSize);
 
-  spirv::appendModuleHeader(binary, nextID);
+  spirv::appendModuleHeader(binary, module.vce_triple()->getVersion(), nextID);
   binary.append(capabilities.begin(), capabilities.end());
   binary.append(extensions.begin(), extensions.end());
   binary.append(extendedSets.begin(), extendedSets.end());
   binary.append(memoryModel.begin(), memoryModel.end());
   binary.append(entryPoints.begin(), entryPoints.end());
   binary.append(executionModes.begin(), executionModes.end());
+  binary.append(debug.begin(), debug.end());
   binary.append(names.begin(), names.end());
   binary.append(decorations.begin(), decorations.end());
   binary.append(typesGlobalValues.begin(), typesGlobalValues.end());
   binary.append(functions.begin(), functions.end());
 }
 
+#ifndef NDEBUG
 void Serializer::printValueIDMap(raw_ostream &os) {
   os << "\n= Value <id> Map =\n\n";
   for (auto valueIDPair : valueIDMap) {
     Value val = valueIDPair.first;
     os << "  " << val << " "
        << "id = " << valueIDPair.second << ' ';
-    if (auto *op = val->getDefiningOp()) {
+    if (auto *op = val.getDefiningOp()) {
       os << "from op '" << op->getName() << "'";
     } else if (auto arg = val.dyn_cast<BlockArgument>()) {
-      Block *block = arg->getOwner();
+      Block *block = arg.getOwner();
       os << "from argument of block " << block << ' ';
       os << " in op '" << block->getParentOp()->getName() << "'";
     }
     os << '\n';
   }
 }
+#endif
 
 //===----------------------------------------------------------------------===//
 // Module structure
@@ -532,28 +580,29 @@ uint32_t Serializer::getOrCreateFunctionID(StringRef fnName) {
 }
 
 void Serializer::processCapability() {
-  auto caps = module.getAttrOfType<ArrayAttr>("capabilities");
-  if (!caps)
-    return;
-
-  for (auto cap : caps.getValue()) {
-    auto capStr = cap.cast<StringAttr>().getValue();
-    auto capVal = spirv::symbolizeCapability(capStr);
+  for (auto cap : module.vce_triple()->getCapabilities())
     encodeInstructionInto(capabilities, spirv::Opcode::OpCapability,
-                          {static_cast<uint32_t>(*capVal)});
-  }
+                          {static_cast<uint32_t>(cap)});
+}
+
+void Serializer::processDebugInfo() {
+  if (!emitDebugInfo)
+    return;
+  auto fileLoc = module.getLoc().dyn_cast<FileLineColLoc>();
+  auto fileName = fileLoc ? fileLoc.getFilename() : "<unknown>";
+  fileID = getNextID();
+  SmallVector<uint32_t, 16> operands;
+  operands.push_back(fileID);
+  spirv::encodeStringLiteralInto(operands, fileName);
+  encodeInstructionInto(debug, spirv::Opcode::OpString, operands);
+  // TODO: Encode more debug instructions.
 }
 
 void Serializer::processExtension() {
-  auto exts = module.getAttrOfType<ArrayAttr>("extensions");
-  if (!exts)
-    return;
-
-  SmallVector<uint32_t, 16> extName;
-  for (auto ext : exts.getValue()) {
-    auto extStr = ext.cast<StringAttr>().getValue();
+  llvm::SmallVector<uint32_t, 16> extName;
+  for (spirv::Extension ext : module.vce_triple()->getExtensions()) {
     extName.clear();
-    spirv::encodeStringLiteralInto(extName, extStr);
+    spirv::encodeStringLiteralInto(extName, spirv::stringifyExtension(ext));
     encodeInstructionInto(extensions, spirv::Opcode::OpExtension, extName);
   }
 }
@@ -607,7 +656,7 @@ LogicalResult Serializer::processUndefOp(spirv::UndefOp op) {
 LogicalResult Serializer::processDecoration(Location loc, uint32_t resultID,
                                             NamedAttribute attr) {
   auto attrName = attr.first.strref();
-  auto decorationName = mlir::convertToCamelCase(attrName, true);
+  auto decorationName = llvm::convertToCamelFromSnakeCase(attrName, true);
   auto decoration = spirv::symbolizeDecoration(decorationName);
   if (!decoration) {
     return emitError(
@@ -656,10 +705,19 @@ namespace {
 template <>
 LogicalResult Serializer::processTypeDecoration<spirv::ArrayType>(
     Location loc, spirv::ArrayType type, uint32_t resultID) {
-  if (type.hasLayout()) {
+  if (unsigned stride = type.getArrayStride()) {
     // OpDecorate %arrayTypeSSA ArrayStride strideLiteral
-    return emitDecoration(resultID, spirv::Decoration::ArrayStride,
-                          {static_cast<uint32_t>(type.getArrayStride())});
+    return emitDecoration(resultID, spirv::Decoration::ArrayStride, {stride});
+  }
+  return success();
+}
+
+template <>
+LogicalResult Serializer::processTypeDecoration<spirv::RuntimeArrayType>(
+    Location Loc, spirv::RuntimeArrayType type, uint32_t resultID) {
+  if (unsigned stride = type.getArrayStride()) {
+    // OpDecorate %arrayTypeSSA ArrayStride strideLiteral
+    return emitDecoration(resultID, spirv::Decoration::ArrayStride, {stride});
   }
   return success();
 }
@@ -678,7 +736,7 @@ Serializer::processMemberDecoration(uint32_t structID, uint32_t memberIndex,
 }
 } // namespace
 
-LogicalResult Serializer::processFuncOp(FuncOp op) {
+LogicalResult Serializer::processFuncOp(spirv::FuncOp op) {
   LLVM_DEBUG(llvm::dbgs() << "-- start function '" << op.getName() << "' --\n");
   assert(functionHeader.empty() && functionBody.empty());
 
@@ -714,7 +772,7 @@ LogicalResult Serializer::processFuncOp(FuncOp op) {
   // Declare the parameters.
   for (auto arg : op.getArguments()) {
     uint32_t argTypeID = 0;
-    if (failed(processType(op.getLoc(), arg->getType(), argTypeID))) {
+    if (failed(processType(op.getLoc(), arg.getType(), argTypeID))) {
       return failure();
     }
     auto argValueID = getNextID();
@@ -798,7 +856,7 @@ LogicalResult Serializer::processVariableOp(spirv::VariableOp op) {
                         operands);
   for (auto attr : op.getAttrs()) {
     if (llvm::any_of(elidedAttrs,
-                     [&](StringRef elided) { return attr.first.is(elided); })) {
+                     [&](StringRef elided) { return attr.first == elided; })) {
       continue;
     }
     if (failed(processDecoration(op.getLoc(), resultID, attr))) {
@@ -866,7 +924,7 @@ Serializer::processGlobalVariableOp(spirv::GlobalVariableOp varOp) {
   // Encode decorations.
   for (auto attr : varOp.getAttrs()) {
     if (llvm::any_of(elidedAttrs,
-                     [&](StringRef elided) { return attr.first.is(elided); })) {
+                     [&](StringRef elided) { return attr.first == elided; })) {
       continue;
     }
     if (failed(processDecoration(varOp.getLoc(), resultID, attr))) {
@@ -880,12 +938,19 @@ Serializer::processGlobalVariableOp(spirv::GlobalVariableOp varOp) {
 // Type
 //===----------------------------------------------------------------------===//
 
+// According to the SPIR-V spec "Validation Rules for Shader Capabilities":
+// "Composite objects in the StorageBuffer, PhysicalStorageBuffer, Uniform, and
+// PushConstant Storage Classes must be explicitly laid out."
 bool Serializer::isInterfaceStructPtrType(Type type) const {
   if (auto ptrType = type.dyn_cast<spirv::PointerType>()) {
-    auto storageClass = ptrType.getStorageClass();
-    if (storageClass == spirv::StorageClass::Uniform ||
-        storageClass == spirv::StorageClass::StorageBuffer) {
+    switch (ptrType.getStorageClass()) {
+    case spirv::StorageClass::PhysicalStorageBuffer:
+    case spirv::StorageClass::PushConstant:
+    case spirv::StorageClass::StorageBuffer:
+    case spirv::StorageClass::Uniform:
       return ptrType.getPointeeType().isa<spirv::StructType>();
+    default:
+      break;
     }
   }
   return false;
@@ -928,8 +993,11 @@ Serializer::prepareBasicType(Location loc, Type type, uint32_t resultID,
 
     typeEnum = spirv::Opcode::OpTypeInt;
     operands.push_back(intType.getWidth());
-    // TODO(antiagainst): support unsigned integers
-    operands.push_back(1);
+    // SPIR-V OpTypeInt "Signedness specifies whether there are signed semantics
+    // to preserve or validate.
+    // 0 indicates unsigned, or no signedness semantics
+    // 1 indicates signed semantics."
+    operands.push_back(intType.isSigned() ? 1 : 0);
     return success();
   }
 
@@ -981,9 +1049,9 @@ Serializer::prepareBasicType(Location loc, Type type, uint32_t resultID,
                            elementTypeID))) {
       return failure();
     }
-    operands.push_back(elementTypeID);
     typeEnum = spirv::Opcode::OpTypeRuntimeArray;
-    return success();
+    operands.push_back(elementTypeID);
+    return processTypeDecoration(loc, runtimeArrayType, resultID);
   }
 
   if (auto structType = type.dyn_cast<spirv::StructType>()) {
@@ -1378,12 +1446,14 @@ LogicalResult Serializer::emitPhiForBlockArguments(Block *block) {
   SmallVector<std::pair<Block *, Operation::operand_iterator>, 4> predecessors;
   for (Block *predecessor : block->getPredecessors()) {
     auto *terminator = predecessor->getTerminator();
-    // Check whether this predecessor block contains a structured control flow
-    // op. If so, the structured control flow op will be serialized to multiple
-    // SPIR-V blocks. The branch op jumping to the OpPhi's block then resides in
-    // the last structured control flow op's merge block.
-    if (auto *merge = getLastStructuredControlFlowOpMergeBlock(predecessor))
-      predecessor = merge;
+    // The predecessor here is the immediate one according to MLIR's IR
+    // structure. It does not directly map to the incoming parent block for the
+    // OpPhi instructions at SPIR-V binary level. This is because structured
+    // control flow ops are serialized to multiple SPIR-V blocks. If there is a
+    // spv.selection/spv.loop op in the MLIR predecessor block, the branch op
+    // jumping to the OpPhi's block then resides in the previous structured
+    // control flow op's merge block.
+    predecessor = getPhiIncomingBlock(predecessor);
     if (auto branchOp = dyn_cast<spirv::BranchOp>(terminator)) {
       predecessors.emplace_back(predecessor, branchOp.operand_begin());
     } else {
@@ -1397,13 +1467,14 @@ LogicalResult Serializer::emitPhiForBlockArguments(Block *block) {
 
     // Get the type <id> and result <id> for this OpPhi instruction.
     uint32_t phiTypeID = 0;
-    if (failed(processType(arg->getLoc(), arg->getType(), phiTypeID)))
+    if (failed(processType(arg.getLoc(), arg.getType(), phiTypeID)))
       return failure();
     uint32_t phiID = getNextID();
 
     LLVM_DEBUG(llvm::dbgs() << "[phi] for block argument #" << argIndex << ' '
                             << arg << " (id = " << phiID << ")\n");
 
+    // Prepare the (value <id>, parent block <id>) pairs.
     SmallVector<uint32_t, 8> phiArgs;
     phiArgs.push_back(phiTypeID);
     phiArgs.push_back(phiID);
@@ -1448,13 +1519,13 @@ LogicalResult Serializer::processSelectionOp(spirv::SelectionOp selectionOp) {
   auto mergeID = getBlockID(mergeBlock);
 
   // Emit the selection header block, which dominates all other blocks, first.
-  // We need to emit an OpSelectionMerge instruction before the loop header
+  // We need to emit an OpSelectionMerge instruction before the selection header
   // block's terminator.
   auto emitSelectionMerge = [&]() {
-    // TODO(antiagainst): properly support loop control here
+    // TODO(antiagainst): properly support selection control here
     encodeInstructionInto(
         functionBody, spirv::Opcode::OpSelectionMerge,
-        {mergeID, static_cast<uint32_t>(spirv::LoopControl::None)});
+        {mergeID, static_cast<uint32_t>(spirv::SelectionControl::None)});
   };
   // For structured selection, we cannot have blocks in the selection construct
   // branching to the selection header block. Entering the selection (and
@@ -1503,16 +1574,9 @@ LogicalResult Serializer::processLoopOp(spirv::LoopOp loopOp) {
   // afterwards.
   encodeInstructionInto(functionBody, spirv::Opcode::OpBranch, {headerID});
 
-  // We omit the LoopOp's entry block and start serialization from the loop
-  // header block. The entry block should not contain any additional ops other
-  // than a single spv.Branch that jumps to the loop header block. However,
-  // the spv.Branch can contain additional block arguments. Those block
-  // arguments must come from out of the loop using implicit capture. We will
-  // need to query the <id> for the value sent and the <id> for the incoming
-  // parent block. For the latter, we need to make sure this block is
-  // registered. The value sent should come from the block this loop resides in.
-  blockIDMap[loopOp.getEntryBlock()] =
-      getBlockID(loopOp.getOperation()->getBlock());
+  // LoopOp's entry block is just there for satisfying MLIR's structural
+  // requirements so we omit it and start serialization from the loop header
+  // block.
 
   // Emit the loop header block, which dominates all other blocks, first. We
   // need to emit an OpLoopMerge instruction before the loop header block's
@@ -1638,7 +1702,7 @@ LogicalResult Serializer::processOperation(Operation *opInst) {
         return processBranchConditionalOp(op);
       })
       .Case([&](spirv::ConstantOp op) { return processConstantOp(op); })
-      .Case([&](FuncOp op) { return processFuncOp(op); })
+      .Case([&](spirv::FuncOp op) { return processFuncOp(op); })
       .Case([&](spirv::GlobalVariableOp op) {
         return processGlobalVariableOp(op);
       })
@@ -1764,12 +1828,9 @@ Serializer::processOp<spirv::FunctionCallOp>(spirv::FunctionCallOp op) {
   auto funcName = op.callee();
   uint32_t resTypeID = 0;
 
-  SmallVector<Type, 1> resultTypes(op.getResultTypes());
-  if (failed(processType(op.getLoc(),
-                         (resultTypes.empty() ? getVoidType() : resultTypes[0]),
-                         resTypeID))) {
+  Type resultTy = op.getNumResults() ? *op.result_type_begin() : getVoidType();
+  if (failed(processType(op.getLoc(), resultTy, resTypeID)))
     return failure();
-  }
 
   auto funcID = getOrCreateFunctionID(funcName);
   auto funcCallID = getNextID();
@@ -1781,9 +1842,8 @@ Serializer::processOp<spirv::FunctionCallOp>(spirv::FunctionCallOp op) {
     operands.push_back(valueID);
   }
 
-  if (!resultTypes.empty()) {
+  if (!resultTy.isa<NoneType>())
     valueIDMap[op.getResult(0)] = funcCallID;
-  }
 
   return encodeInstructionInto(functionBody, spirv::Opcode::OpFunctionCall,
                                operands);
@@ -1807,9 +1867,26 @@ LogicalResult Serializer::emitDecoration(uint32_t target,
   return success();
 }
 
+LogicalResult Serializer::emitDebugLine(SmallVectorImpl<uint32_t> &binary,
+                                        Location loc) {
+  if (!emitDebugInfo)
+    return success();
+
+  auto fileLoc = loc.dyn_cast<FileLineColLoc>();
+  if (fileLoc)
+    encodeInstructionInto(binary, spirv::Opcode::OpLine,
+                          {fileID, fileLoc.getLine(), fileLoc.getColumn()});
+  return success();
+}
+
 LogicalResult spirv::serialize(spirv::ModuleOp module,
-                               SmallVectorImpl<uint32_t> &binary) {
-  Serializer serializer(module);
+                               SmallVectorImpl<uint32_t> &binary,
+                               bool emitDebugInfo) {
+  if (!module.vce_triple().hasValue())
+    return module.emitError(
+        "module must have 'vce_triple' attribute to be serializeable");
+
+  Serializer serializer(module, emitDebugInfo);
 
   if (failed(serializer.serialize()))
     return failure();

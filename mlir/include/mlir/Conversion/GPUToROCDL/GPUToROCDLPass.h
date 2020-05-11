@@ -1,6 +1,6 @@
 //===- GPUToROCDLPass.h - Convert GPU kernel to ROCDL dialect ---*- C++ -*-===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -11,12 +11,23 @@
 #include <memory>
 
 namespace mlir {
+class LLVMTypeConverter;
+class OwningRewritePatternList;
 
-class ModuleOp;
-template <typename OpT> class OpPassBase;
+template <typename OpT>
+class OperationPass;
+
+namespace gpu {
+class GPUModuleOp;
+} // namespace gpu
+
+/// Collect a set of patterns to convert from the GPU dialect to ROCDL.
+void populateGpuToROCDLConversionPatterns(LLVMTypeConverter &converter,
+                                          OwningRewritePatternList &patterns);
 
 /// Creates a pass that lowers GPU dialect operations to ROCDL counterparts.
-std::unique_ptr<OpPassBase<ModuleOp>> createLowerGpuOpsToROCDLOpsPass();
+std::unique_ptr<OperationPass<gpu::GPUModuleOp>>
+createLowerGpuOpsToROCDLOpsPass();
 
 } // namespace mlir
 

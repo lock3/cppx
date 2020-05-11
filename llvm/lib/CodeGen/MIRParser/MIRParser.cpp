@@ -375,17 +375,17 @@ bool MIRParserImpl::initializeCallSiteInfo(
                    " is not a call instruction");
     MachineFunction::CallSiteInfo CSInfo;
     for (auto ArgRegPair : YamlCSInfo.ArgForwardingRegs) {
-      unsigned Reg = 0;
+      Register Reg;
       if (parseNamedRegisterReference(PFS, Reg, ArgRegPair.Reg.Value, Error))
         return error(Error, ArgRegPair.Reg.SourceRange);
       CSInfo.emplace_back(Reg, ArgRegPair.ArgNo);
     }
 
-    if (TM.Options.EnableDebugEntryValues)
+    if (TM.Options.EmitCallSiteInfo)
       MF.addCallArgsForwardingRegs(&*CallI, std::move(CSInfo));
   }
 
-  if (YamlMF.CallSitesInfo.size() && !TM.Options.EnableDebugEntryValues)
+  if (YamlMF.CallSitesInfo.size() && !TM.Options.EmitCallSiteInfo)
     return error(Twine("Call site info provided but not used"));
   return false;
 }
@@ -401,8 +401,7 @@ MIRParserImpl::initializeMachineFunction(const yaml::MachineFunction &YamlMF,
     Target.reset(new PerTargetMIParsingState(MF.getSubtarget()));
   }
 
-  if (YamlMF.Alignment)
-    MF.setAlignment(Align(YamlMF.Alignment));
+  MF.setAlignment(YamlMF.Alignment.valueOrOne());
   MF.setExposesReturnsTwice(YamlMF.ExposesReturnsTwice);
   MF.setHasWinCFI(YamlMF.HasWinCFI);
 
@@ -437,6 +436,14 @@ MIRParserImpl::initializeMachineFunction(const yaml::MachineFunction &YamlMF,
     reportDiagnostic(
         diagFromBlockStringDiag(Error, YamlMF.Body.Value.SourceRange));
     return true;
+  }
+  // Check Basic Block Section Flags.
+  if (MF.getTarget().getBBSectionsType() == BasicBlockSection::Labels) {
+    MF.createBBLabels();
+    MF.setBBSectionsType(BasicBlockSection::Labels);
+  } else if (MF.hasBBSections()) {
+    MF.createBBLabels();
+    MF.assignBeginEndSections();
   }
   PFS.SM = &SM;
 
@@ -550,10 +557,10 @@ bool MIRParserImpl::parseRegisterInfo(PerFunctionMIParsingState &PFS,
 
   // Parse the liveins.
   for (const auto &LiveIn : YamlMF.LiveIns) {
-    unsigned Reg = 0;
+    Register Reg;
     if (parseNamedRegisterReference(PFS, Reg, LiveIn.Register.Value, Error))
       return error(Error, LiveIn.Register.SourceRange);
-    unsigned VReg = 0;
+    Register VReg;
     if (!LiveIn.VirtualRegister.Value.empty()) {
       VRegInfo *Info;
       if (parseVirtualRegisterReference(PFS, Info, LiveIn.VirtualRegister.Value,
@@ -569,7 +576,7 @@ bool MIRParserImpl::parseRegisterInfo(PerFunctionMIParsingState &PFS,
   if (YamlMF.CalleeSavedRegisters) {
     SmallVector<MCPhysReg, 16> CalleeSavedRegisters;
     for (const auto &RegSource : YamlMF.CalleeSavedRegisters.getValue()) {
-      unsigned Reg = 0;
+      Register Reg;
       if (parseNamedRegisterReference(PFS, Reg, RegSource.Value, Error))
         return error(Error, RegSource.SourceRange);
       CalleeSavedRegisters.push_back(Reg);
@@ -587,7 +594,7 @@ bool MIRParserImpl::setupRegisterInfo(const PerFunctionMIParsingState &PFS,
   bool Error = false;
   // Create VRegs
   auto populateVRegInfo = [&] (const VRegInfo &Info, Twine Name) {
-    unsigned Reg = Info.VReg;
+    Register Reg = Info.VReg;
     switch (Info.Kind) {
     case VRegInfo::UNKNOWN:
       error(Twine("Cannot determine class/bank of virtual register ") +
@@ -646,7 +653,7 @@ bool MIRParserImpl::initializeFrameInfo(PerFunctionMIParsingState &PFS,
   MFI.setStackSize(YamlMFI.StackSize);
   MFI.setOffsetAdjustment(YamlMFI.OffsetAdjustment);
   if (YamlMFI.MaxAlignment)
-    MFI.ensureMaxAlignment(YamlMFI.MaxAlignment);
+    MFI.ensureMaxAlignment(Align(YamlMFI.MaxAlignment));
   MFI.setAdjustsStack(YamlMFI.AdjustsStack);
   MFI.setHasCalls(YamlMFI.HasCalls);
   if (YamlMFI.MaxCallFrameSize != ~0u)
@@ -683,7 +690,7 @@ bool MIRParserImpl::initializeFrameInfo(PerFunctionMIParsingState &PFS,
       return error(Object.ID.SourceRange.Start,
                    Twine("StackID is not supported by target"));
     MFI.setStackID(ObjectIdx, Object.StackID);
-    MFI.setObjectAlignment(ObjectIdx, Object.Alignment);
+    MFI.setObjectAlignment(ObjectIdx, Object.Alignment.valueOrOne());
     if (!PFS.FixedStackObjectSlots.insert(std::make_pair(Object.ID.Value,
                                                          ObjectIdx))
              .second)
@@ -715,10 +722,11 @@ bool MIRParserImpl::initializeFrameInfo(PerFunctionMIParsingState &PFS,
       return error(Object.ID.SourceRange.Start,
                    Twine("StackID is not supported by target"));
     if (Object.Type == yaml::MachineStackObject::VariableSized)
-      ObjectIdx = MFI.CreateVariableSizedObject(Object.Alignment, Alloca);
+      ObjectIdx =
+          MFI.CreateVariableSizedObject(Object.Alignment.valueOrOne(), Alloca);
     else
       ObjectIdx = MFI.CreateStackObject(
-          Object.Size, Object.Alignment,
+          Object.Size, Object.Alignment.valueOrOne(),
           Object.Type == yaml::MachineStackObject::SpillSlot, Alloca,
           Object.StackID);
     MFI.setObjectOffset(ObjectIdx, Object.Offset);
@@ -757,7 +765,7 @@ bool MIRParserImpl::parseCalleeSavedRegister(PerFunctionMIParsingState &PFS,
     const yaml::StringValue &RegisterSource, bool IsRestored, int FrameIdx) {
   if (RegisterSource.Value.empty())
     return false;
-  unsigned Reg = 0;
+  Register Reg;
   SMDiagnostic Error;
   if (parseNamedRegisterReference(PFS, Reg, RegisterSource.Value, Error))
     return error(Error, RegisterSource.SourceRange);
@@ -830,11 +838,11 @@ bool MIRParserImpl::initializeConstantPool(PerFunctionMIParsingState &PFS,
         parseConstantValue(YamlConstant.Value.Value, Error, M));
     if (!Value)
       return error(Error, YamlConstant.Value.SourceRange);
-    unsigned Alignment =
-        YamlConstant.Alignment
-            ? YamlConstant.Alignment
-            : M.getDataLayout().getPrefTypeAlignment(Value->getType());
-    unsigned Index = ConstantPool.getConstantPoolIndex(Value, Alignment);
+    const Align PrefTypeAlign =
+        M.getDataLayout().getPrefTypeAlign(Value->getType());
+    const Align Alignment = YamlConstant.Alignment.getValueOr(PrefTypeAlign);
+    unsigned Index =
+        ConstantPool.getConstantPoolIndex(Value, Alignment.value());
     if (!ConstantPoolSlots.insert(std::make_pair(YamlConstant.ID.Value, Index))
              .second)
       return error(YamlConstant.ID.SourceRange.Start,

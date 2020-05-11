@@ -31,6 +31,7 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/MBFIWrapper.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetLowering.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
@@ -447,7 +448,7 @@ bool IfConverter::runOnMachineFunction(MachineFunction &MF) {
   TLI = ST.getTargetLowering();
   TII = ST.getInstrInfo();
   TRI = ST.getRegisterInfo();
-  BranchFolder::MBFIWrapper MBFI(getAnalysis<MachineBlockFrequencyInfo>());
+  MBFIWrapper MBFI(getAnalysis<MachineBlockFrequencyInfo>());
   MBPI = &getAnalysis<MachineBranchProbabilityInfo>();
   ProfileSummaryInfo *PSI =
       &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();
@@ -970,6 +971,11 @@ bool IfConverter::ValidDiamond(
   Dups1 = Dups2 = 0;
   if (TrueBBI.IsBeingAnalyzed || TrueBBI.IsDone ||
       FalseBBI.IsBeingAnalyzed || FalseBBI.IsDone)
+    return false;
+
+  // If the True and False BBs are equal we're dealing with a degenerate case
+  // that we don't treat as a diamond.
+  if (TrueBBI.BB == FalseBBI.BB)
     return false;
 
   MachineBasicBlock *TT = TrueBBI.TrueBB;
@@ -1851,7 +1857,7 @@ bool IfConverter::IfConvertDiamondCommon(
   while (NumDups1 != 0) {
     // Since this instruction is going to be deleted, update call
     // site info state if the instruction is call instruction.
-    if (DI2->isCall(MachineInstr::IgnoreBundle))
+    if (DI2->shouldUpdateCallSiteInfo())
       MBB2.getParent()->eraseCallSiteInfo(&*DI2);
 
     ++DI2;
@@ -1900,7 +1906,7 @@ bool IfConverter::IfConvertDiamondCommon(
 
     // Since this instruction is going to be deleted, update call
     // site info state if the instruction is call instruction.
-    if (DI1->isCall(MachineInstr::IgnoreBundle))
+    if (DI1->shouldUpdateCallSiteInfo())
       MBB1.getParent()->eraseCallSiteInfo(&*DI1);
 
     // skip dbg_value instructions
@@ -2188,8 +2194,8 @@ void IfConverter::CopyAndPredicateBlock(BBInfo &ToBBI, BBInfo &FromBBI,
 
     MachineInstr *MI = MF.CloneMachineInstr(&I);
     // Make a copy of the call site info.
-    if (MI->isCall(MachineInstr::IgnoreBundle))
-      MF.copyCallSiteInfo(&I,MI);
+    if (I.isCandidateForCallSiteEntry())
+      MF.copyCallSiteInfo(&I, MI);
 
     ToBBI.BB->insert(ToBBI.BB->end(), MI);
     ToBBI.NonPredSize++;

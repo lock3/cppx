@@ -1,6 +1,6 @@
 //===- AttributeSupport.h ---------------------------------------*- C++ -*-===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -92,13 +92,16 @@ public:
   template <typename T, typename... Args>
   static T get(MLIRContext *ctx, unsigned kind, Args &&... args) {
     return ctx->getAttributeUniquer().get<typename T::ImplType>(
-        getInitFn(ctx, T::getClassID()), kind, std::forward<Args>(args)...);
+        [ctx](AttributeStorage *storage) {
+          initializeAttributeStorage(storage, ctx, T::getTypeID());
+        },
+        kind, std::forward<Args>(args)...);
   }
 
 private:
-  /// Returns a functor used to initialize new attribute storage instances.
-  static std::function<void(AttributeStorage *)>
-  getInitFn(MLIRContext *ctx, const ClassID *const attrID);
+  /// Initialize the given attribute storage instance.
+  static void initializeAttributeStorage(AttributeStorage *storage,
+                                         MLIRContext *ctx, TypeID attrID);
 };
 } // namespace detail
 

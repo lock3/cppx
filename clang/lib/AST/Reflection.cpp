@@ -22,6 +22,10 @@
 #include "clang/Sema/SemaDiagnostic.h"
 
 namespace clang {
+  std::string ReflectionModifiers::getNewNameAsString() const {
+    return cast<StringLiteral>(NewName)->getString().str();
+  }
+
   enum ReflectionQuery : unsigned {
     query_unknown,
 
@@ -1531,7 +1535,7 @@ static OptionalString
 getArgAsString(const ArrayRef<APValue> &Args, std::size_t I) {
   if (OptionalExpr E = getArgAsExpr(Args, I))
     if (const StringLiteral *SL = dyn_cast<StringLiteral>(*E))
-      return { SL->getString() };
+      return { SL->getString().str() };
   return { };
 }
 
@@ -3372,7 +3376,7 @@ void DiagnoseInvalidReflection(Sema &SemaRef, Expr *E, const Reflection &R) {
   SmallString<256> Buf;
   llvm::raw_svector_ostream OS(Buf);
   Message->outputString(OS);
-  std::string NonQuote(Buf.str(), 1, Buf.size() - 2);
+  std::string NonQuote(Buf.c_str(), 1, Buf.size() - 2);
 
   SemaRef.Diag(E->getExprLoc(), diag::note_user_defined_note) << NonQuote;
 }

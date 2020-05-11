@@ -43,7 +43,7 @@ main() : int!
       )
     )
   );
-  ASSERT_TRUE(matches(Code, CallMatcher));
+  ASSERT_TRUE(matches(Code.str(), CallMatcher));
 }
 
 
@@ -76,7 +76,7 @@ main() : int!
       )
     )
   );
-  ASSERT_TRUE(matches(Code, CallMatcher));
+  ASSERT_TRUE(matches(Code.str(), CallMatcher));
 }
 
 TEST(FunctionOverloading, MemberFunction_Overloading) {
@@ -111,7 +111,7 @@ main() : int!
       )
     )
   );
-  ASSERT_TRUE(matches(Code, CallMatcher));
+  ASSERT_TRUE(matches(Code.str(), CallMatcher));
 }
 
 TEST(FunctionOverloading, MemberFunctionTemplate_Overloading) {
@@ -144,5 +144,5 @@ main() : int!
       )
     )
   );
-  ASSERT_TRUE(matches(Code, CallMatcher));
+  ASSERT_TRUE(matches(Code.str(), CallMatcher));
 }

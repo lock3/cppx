@@ -56,11 +56,10 @@ class CppxTypeLiteral : public Expr {
 
 public:
   CppxTypeLiteral(QualType K, QualType T, SourceLocation L)
-    : Expr(CppxTypeLiteralClass, K, VK_RValue, OK_Ordinary,
-           T->isDependentType(), false, T->isDependentType(),
-           T->containsUnexpandedParameterPack()),
-      Value(T),
-      Loc(L) {}
+    : Expr(CppxTypeLiteralClass, K, VK_RValue, OK_Ordinary),
+      Value(T), Loc(L) {
+    setDependence(computeDependence(this));
+  }
 
   QualType getValue() const LLVM_READONLY {
     return Value;

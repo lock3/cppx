@@ -25,7 +25,7 @@ c : type = class:
       varDecl(hasName("x"), hasType(asString("int")), isPublic(), isStaticStorageClass())
     )
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 // TEST(ClassParsing, Static_StringLiteralVariable) {
@@ -39,7 +39,7 @@ c : type = class:
 //               isStaticStorageClass())
 //     )
 //   );
-//   ASSERT_TRUE(matches(Code, ClassC));
+//   ASSERT_TRUE(matches(Code.str(), ClassC));
 // }
 
 TEST(ClassParsing, Static_MemberFunction) {
@@ -53,7 +53,7 @@ c : type = class:
                     isPublic(), isStaticStorageClass())
     )
   );
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 } 
 
 TEST(ClassParsing, Static_VariableUseTest) {
@@ -99,7 +99,7 @@ DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
     hasDescendant(ClassC),
     hasDescendant(MainFnMatcher)
   );
-  ASSERT_TRUE(matches(Code, CompleteMatch));
+  ASSERT_TRUE(matches(Code.str(), CompleteMatch));
 } 
 
 

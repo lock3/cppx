@@ -337,6 +337,11 @@ void Sema::DiagnoseUnusedExprResult(const Stmt *S) {
     }
   } else if (const PseudoObjectExpr *POE = dyn_cast<PseudoObjectExpr>(E)) {
     const Expr *Source = POE->getSyntacticForm();
+    // Handle the actually selected call of an OpenMP specialized call.
+    if (LangOpts.OpenMP && isa<CallExpr>(Source) &&
+        POE->getNumSemanticExprs() == 1 &&
+        isa<CallExpr>(POE->getSemanticExpr(0)))
+      return DiagnoseUnusedExprResult(POE->getSemanticExpr(0));
     if (isa<ObjCSubscriptRefExpr>(Source))
       DiagID = diag::warn_unused_container_subscript_expr;
     else
@@ -391,6 +396,11 @@ sema::CompoundScopeInfo &Sema::getCurCompoundScope() const {
 StmtResult Sema::ActOnCompoundStmt(SourceLocation L, SourceLocation R,
                                    ArrayRef<Stmt *> Elts, bool isStmtExpr) {
   const unsigned NumElts = Elts.size();
+
+  // Mark the current function as usng floating point constrained intrinsics
+  if (getCurFPFeatures().isFPConstrained())
+    if (FunctionDecl *F = dyn_cast<FunctionDecl>(CurContext))
+      F->setUsesFPIntrin(true);
 
   // If we're in C89 mode, check that we don't have any decls after stmts.  If
   // so, emit an extension diagnostic.
@@ -733,11 +743,11 @@ StmtResult Sema::ActOnStartOfSwitchStmt(SourceLocation SwitchLoc,
 
   if (CondExpr && !CondExpr->isTypeDependent()) {
     // We have already converted the expression to an integral or enumeration
-    // type, when we parsed the switch condition. If we don't have an
-    // appropriate type now, enter the switch scope but remember that it's
-    // invalid.
-    assert(CondExpr->getType()->isIntegralOrEnumerationType() &&
-           "invalid condition type");
+    // type, when we parsed the switch condition. There are cases where we don't
+    // have an appropriate type, e.g. a typo-expr Cond was corrected to an
+    // inappropriate-type expr, we just return an error.
+    if (!CondExpr->getType()->isIntegralOrEnumerationType())
+      return StmtError();
     if (CondExpr->isKnownToHaveBooleanValue()) {
       // switch(bool_expr) {...} is often a programmer error, e.g.
       //   switch(n && mask) { ... }  // Doh - should be "n & mask".
@@ -2405,10 +2415,6 @@ static bool GetTupleSize(Sema &SemaRef, SourceLocation Loc, QualType RangeType,
     return false;
   }
 
-  // Note the constant evaluation of the expression.
-  EnterExpressionEvaluationContext EvalContext(SemaRef,
-    Sema::ExpressionEvaluationContext::ConstantEvaluated);
-
   // Build an expression that accesses the member and evaluate it.
   ExprResult Ref =
       SemaRef.BuildDeclRefExpr(Value, Value->getType(), VK_LValue, Loc);
@@ -2752,7 +2758,8 @@ StmtResult Sema::BuildCXXForRangeStmt(SourceLocation ForLoc,
     // trying to determine whether this would be a valid range.
     if (!LoopVar->isInvalidDecl() && Kind != BFRK_Check) {
       AddInitializerToDecl(LoopVar, DerefExpr.get(), /*DirectInit=*/false);
-      if (LoopVar->isInvalidDecl())
+      if (LoopVar->isInvalidDecl() ||
+          (LoopVar->getInit() && LoopVar->getInit()->containsErrors()))
         NoteForRangeBeginEndFunction(*this, BeginExpr.get(), BEF_begin);
     }
   }
@@ -3092,6 +3099,14 @@ ExpansionStatementBuilder::Build()
   if (!RangeVar && !BuildRangeVar())
     return StmtError();
   FinishRangeVar();
+
+  // FIXME: Is this right?
+  // Expansion statements are kind of a hybrid between a
+  // constant evaluation, and normal code.
+  //
+  // This seems to just build the constant evaluated portions.
+  EnterExpressionEvaluationContext EvalContext(SemaRef,
+    Sema::ExpressionEvaluationContext::ConstantEvaluated);
 
   // The order in which we determine the expansion style must follow
   // the order in which structured bindings proceeds. That is:
@@ -3689,10 +3704,6 @@ ExpansionStatementBuilder::BuildExpansionOverRange()
     return StmtError();
   }
 
-  // Note the constant evaluation of the expression.
-  EnterExpressionEvaluationContext EvalContext(SemaRef,
-      Sema::ExpressionEvaluationContext::ConstantEvaluated);
-
   Expr::EvalResult Result;
   Expr::EvalContext EvalCtx(
       SemaRef.Context, SemaRef.GetReflectionCallbackObj());
@@ -3910,22 +3921,24 @@ static void DiagnoseForRangeReferenceVariableCopies(Sema &SemaRef,
     E = E->IgnoreImpCasts();
   }
 
-  bool ReturnsReference = false;
+  QualType ReferenceReturnType;
   if (isa<UnaryOperator>(E)) {
-    ReturnsReference = true;
+    ReferenceReturnType = SemaRef.Context.getLValueReferenceType(E->getType());
   } else {
     const CXXOperatorCallExpr *Call = cast<CXXOperatorCallExpr>(E);
     const FunctionDecl *FD = Call->getDirectCallee();
     QualType ReturnType = FD->getReturnType();
-    ReturnsReference = ReturnType->isReferenceType();
+    if (ReturnType->isReferenceType())
+      ReferenceReturnType = ReturnType;
   }
 
-  if (ReturnsReference) {
+  if (!ReferenceReturnType.isNull()) {
     // Loop variable creates a temporary.  Suggest either to go with
     // non-reference loop variable to indicate a copy is made, or
-    // the correct time to bind a const reference.
-    SemaRef.Diag(VD->getLocation(), diag::warn_for_range_const_reference_copy)
-        << VD << VariableType << E->getType();
+    // the correct type to bind a const reference.
+    SemaRef.Diag(VD->getLocation(),
+                 diag::warn_for_range_const_ref_binds_temp_built_from_ref)
+        << VD << VariableType << ReferenceReturnType;
     QualType NonReferenceType = VariableType.getNonReferenceType();
     NonReferenceType.removeLocalConst();
     QualType NewReferenceType =
@@ -3938,7 +3951,7 @@ static void DiagnoseForRangeReferenceVariableCopies(Sema &SemaRef,
     // Suggest removing the reference from the loop variable.
     // If the type is a rvalue reference do not warn since that changes the
     // semantic of the code.
-    SemaRef.Diag(VD->getLocation(), diag::warn_for_range_variable_always_copy)
+    SemaRef.Diag(VD->getLocation(), diag::warn_for_range_ref_binds_ret_temp)
         << VD << RangeInitType;
     QualType NonReferenceType = VariableType.getNonReferenceType();
     NonReferenceType.removeLocalConst();
@@ -3946,6 +3959,15 @@ static void DiagnoseForRangeReferenceVariableCopies(Sema &SemaRef,
         << NonReferenceType << VD->getSourceRange()
         << FixItHint::CreateRemoval(VD->getTypeSpecEndLoc());
   }
+}
+
+/// Determines whether the @p VariableType's declaration is a record with the
+/// clang::trivial_abi attribute.
+static bool hasTrivialABIAttr(QualType VariableType) {
+  if (CXXRecordDecl *RD = VariableType->getAsCXXRecordDecl())
+    return RD->hasAttr<TrivialABIAttr>();
+
+  return false;
 }
 
 // Warns when the loop variable can be changed to a reference type to
@@ -3969,16 +3991,19 @@ static void DiagnoseForRangeConstVariableCopies(Sema &SemaRef,
     return;
   }
 
-  // TODO: Determine a maximum size that a POD type can be before a diagnostic
-  // should be emitted.  Also, only ignore POD types with trivial copy
-  // constructors.
-  if (VariableType.isPODType(SemaRef.Context))
+  // Small trivially copyable types are cheap to copy. Do not emit the
+  // diagnostic for these instances. 64 bytes is a common size of a cache line.
+  // (The function `getTypeSize` returns the size in bits.)
+  ASTContext &Ctx = SemaRef.Context;
+  if (Ctx.getTypeSize(VariableType) <= 64 * 8 &&
+      (VariableType.isTriviallyCopyableType(Ctx) ||
+       hasTrivialABIAttr(VariableType)))
     return;
 
   // Suggest changing from a const variable to a const reference variable
   // if doing so will prevent a copy.
   SemaRef.Diag(VD->getLocation(), diag::warn_for_range_copy)
-      << VD << VariableType << InitExpr->getType();
+      << VD << VariableType;
   SemaRef.Diag(VD->getBeginLoc(), diag::note_use_reference_type)
       << SemaRef.Context.getLValueReferenceType(VariableType)
       << VD->getSourceRange()
@@ -3995,9 +4020,13 @@ static void DiagnoseForRangeConstVariableCopies(Sema &SemaRef,
 ///    Suggest "const foo &x" to prevent the copy.
 static void DiagnoseForRangeVariableCopies(Sema &SemaRef,
                                            const CXXForRangeStmt *ForStmt) {
-  if (SemaRef.Diags.isIgnored(diag::warn_for_range_const_reference_copy,
-                              ForStmt->getBeginLoc()) &&
-      SemaRef.Diags.isIgnored(diag::warn_for_range_variable_always_copy,
+  if (SemaRef.inTemplateInstantiation())
+    return;
+
+  if (SemaRef.Diags.isIgnored(
+          diag::warn_for_range_const_ref_binds_temp_built_from_ref,
+          ForStmt->getBeginLoc()) &&
+      SemaRef.Diags.isIgnored(diag::warn_for_range_ref_binds_ret_temp,
                               ForStmt->getBeginLoc()) &&
       SemaRef.Diags.isIgnored(diag::warn_for_range_copy,
                               ForStmt->getBeginLoc())) {
@@ -4015,6 +4044,9 @@ static void DiagnoseForRangeVariableCopies(Sema &SemaRef,
 
   const Expr *InitExpr = VD->getInit();
   if (!InitExpr)
+    return;
+
+  if (InitExpr->getExprLoc().isMacroID())
     return;
 
   if (VariableType->isReferenceType()) {
@@ -4846,6 +4878,12 @@ StmtResult Sema::BuildReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
       if (isa<CXXBoolLiteralExpr>(RetValExp))
         Diag(ReturnLoc, diag::warn_main_returns_bool_literal)
           << RetValExp->getSourceRange();
+    if (FD->hasAttr<CmseNSEntryAttr>() && RetValExp) {
+      if (const auto *RT = dyn_cast<RecordType>(FnRetType.getCanonicalType())) {
+        if (RT->getDecl()->isOrContainsUnion())
+          Diag(RetValExp->getBeginLoc(), diag::warn_cmse_nonsecure_union) << 1;
+      }
+    }
   } else if (ObjCMethodDecl *MD = getCurMethodDecl()) {
     FnRetType = MD->getReturnType();
     isObjCMethod = true;

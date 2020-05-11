@@ -66,6 +66,7 @@ public:
 class OverflowingBinaryOperator : public Operator {
 public:
   enum {
+    AnyWrap        = 0,
     NoUnsignedWrap = (1 << 0),
     NoSignedWrap   = (1 << 1)
   };
@@ -595,6 +596,25 @@ public:
 
   Type *getDestTy() const {
     return getType();
+  }
+};
+
+class AddrSpaceCastOperator
+    : public ConcreteOperator<Operator, Instruction::AddrSpaceCast> {
+  friend class AddrSpaceCastInst;
+  friend class ConstantExpr;
+
+public:
+  Value *getPointerOperand() { return getOperand(0); }
+
+  const Value *getPointerOperand() const { return getOperand(0); }
+
+  unsigned getSrcAddressSpace() const {
+    return getPointerOperand()->getType()->getPointerAddressSpace();
+  }
+
+  unsigned getDestAddressSpace() const {
+    return getType()->getPointerAddressSpace();
   }
 };
 

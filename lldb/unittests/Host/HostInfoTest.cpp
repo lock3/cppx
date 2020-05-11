@@ -1,4 +1,4 @@
-//===-- HostInfoTest.cpp ----------------------------------------*- C++ -*-===//
+//===-- HostInfoTest.cpp --------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -11,6 +11,7 @@
 #include "TestingSupport/TestUtilities.h"
 #include "lldb/Host/FileSystem.h"
 #include "lldb/lldb-defines.h"
+#include "llvm/Support/Host.h"
 #include "gtest/gtest.h"
 
 using namespace lldb_private;
@@ -49,3 +50,13 @@ TEST_F(HostInfoTest, GetHostname) {
   std::string s("abc");
   EXPECT_TRUE(HostInfo::GetHostname(s));
 }
+
+#if defined(__APPLE__)
+TEST_F(HostInfoTest, GetXcodeSDK) {
+  EXPECT_FALSE(HostInfo::GetXcodeSDK(XcodeSDK("MacOSX.sdk")).empty());
+  // These are expected to fall back to an available version.
+  EXPECT_FALSE(HostInfo::GetXcodeSDK(XcodeSDK("MacOSX9999.sdk")).empty());
+  // This is expected to fail.
+  EXPECT_TRUE(HostInfo::GetXcodeSDK(XcodeSDK("CeciNestPasUnOS.sdk")).empty());
+}
+#endif

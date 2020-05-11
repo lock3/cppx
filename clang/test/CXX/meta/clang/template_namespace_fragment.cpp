@@ -3,8 +3,8 @@
 #define assert(E) if (!(E)) __builtin_abort();
 
 template<int val>
-constexpr auto thing() {
-  return __fragment namespace {
+consteval auto thing() {
+  return fragment namespace {
     requires typename R;
 
     R build_r() {

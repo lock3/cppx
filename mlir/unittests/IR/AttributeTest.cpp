@@ -1,12 +1,13 @@
 //===- AttributeTest.cpp - Attribute unit tests ---------------------------===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Identifier.h"
 #include "mlir/IR/StandardTypes.h"
 #include "gtest/gtest.h"
 
@@ -15,7 +16,7 @@ using namespace mlir::detail;
 
 template <typename EltTy>
 static void testSplat(Type eltType, const EltTy &splatElt) {
-  VectorType shape = VectorType::get({2, 1}, eltType);
+  RankedTensorType shape = RankedTensorType::get({2, 1}, eltType);
 
   // Check that the generated splat is the same for 1 element and N elements.
   DenseElementsAttr splat = DenseElementsAttr::get(shape, splatElt);
@@ -30,7 +31,7 @@ namespace {
 TEST(DenseSplatTest, BoolSplat) {
   MLIRContext context;
   IntegerType boolTy = IntegerType::get(1, &context);
-  VectorType shape = VectorType::get({2, 2}, boolTy);
+  RankedTensorType shape = RankedTensorType::get({2, 2}, boolTy);
 
   // Check that splat is automatically detected for boolean values.
   /// True.
@@ -55,7 +56,7 @@ TEST(DenseSplatTest, LargeBoolSplat) {
 
   MLIRContext context;
   IntegerType boolTy = IntegerType::get(1, &context);
-  VectorType shape = VectorType::get({boolCount}, boolTy);
+  RankedTensorType shape = RankedTensorType::get({boolCount}, boolTy);
 
   // Check that splat is automatically detected for boolean values.
   /// True.
@@ -78,7 +79,7 @@ TEST(DenseSplatTest, LargeBoolSplat) {
 TEST(DenseSplatTest, BoolNonSplat) {
   MLIRContext context;
   IntegerType boolTy = IntegerType::get(1, &context);
-  VectorType shape = VectorType::get({6}, boolTy);
+  RankedTensorType shape = RankedTensorType::get({6}, boolTy);
 
   // Check that we properly handle non-splat values.
   DenseElementsAttr nonSplat =
@@ -135,4 +136,30 @@ TEST(DenseSplatTest, FloatAttrSplat) {
 
   testSplat(floatTy, value);
 }
+
+TEST(DenseSplatTest, BF16Splat) {
+  MLIRContext context;
+  FloatType floatTy = FloatType::getBF16(&context);
+  // Note: We currently use double to represent bfloat16.
+  double value = 10.0;
+
+  testSplat(floatTy, value);
+}
+
+TEST(DenseSplatTest, StringSplat) {
+  MLIRContext context;
+  Type stringType =
+      OpaqueType::get(Identifier::get("test", &context), "string", &context);
+  StringRef value = "test-string";
+  testSplat(stringType, value);
+}
+
+TEST(DenseSplatTest, StringAttrSplat) {
+  MLIRContext context;
+  Type stringType =
+      OpaqueType::get(Identifier::get("test", &context), "string", &context);
+  Attribute stringAttr = StringAttr::get("test-string", stringType);
+  testSplat(stringType, stringAttr);
+}
+
 } // end namespace

@@ -118,7 +118,7 @@ namespace llvm {
 
   template <class T>
   struct PointerLikeTypeTraits<clang::OpaquePtr<T>> {
-    enum { NumLowBitsAvailable = 0 };
+    static constexpr int NumLowBitsAvailable = 0;
 
     static inline void *getAsVoidPointer(clang::OpaquePtr<T> P) {
       // FIXME: Doesn't work? return P.getAs< void >();
@@ -280,6 +280,7 @@ namespace clang {
 
   inline ExprResult ExprError() { return ExprResult(true); }
   inline StmtResult StmtError() { return StmtResult(true); }
+  inline TypeResult TypeError() { return TypeResult(true); }
 
   inline ExprResult ExprError(const DiagnosticBuilder&) { return ExprError(); }
   inline StmtResult StmtError(const DiagnosticBuilder&) { return StmtError(); }

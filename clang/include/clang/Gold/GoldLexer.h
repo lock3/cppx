@@ -15,6 +15,7 @@
 #define CLANG_GOLD_GOLDLEXER_H
 
 #include "clang/Basic/SourceLocation.h"
+#include "llvm/ADT/StringMap.h"
 
 #include "clang/Gold/GoldFile.h"
 #include "clang/Gold/GoldTokens.h"

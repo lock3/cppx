@@ -1,6 +1,6 @@
 //===- OpTrait.cpp - OpTrait class ----------------------------------------===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -11,7 +11,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/TableGen/OpTrait.h"
-#include "mlir/Support/STLExtras.h"
 #include "mlir/TableGen/OpInterfaces.h"
 #include "mlir/TableGen/Predicate.h"
 #include "llvm/ADT/StringExtras.h"
@@ -63,4 +62,8 @@ llvm::StringRef InterfaceOpTrait::getTrait() const {
 
 bool InterfaceOpTrait::shouldDeclareMethods() const {
   return def->isSubClassOf("DeclareOpInterfaceMethods");
+}
+
+std::vector<StringRef> InterfaceOpTrait::getAlwaysDeclaredMethods() const {
+  return def->getValueAsListOfStrings("alwaysOverriddenMethods");
 }

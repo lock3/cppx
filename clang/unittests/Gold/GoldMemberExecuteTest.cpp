@@ -12,8 +12,6 @@
 using namespace llvm;
 using namespace gold;
 
-
-
 TEST(GoldClassExec, AssignTest) {
   StringRef Code = R"(
 c : type = class:

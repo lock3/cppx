@@ -98,6 +98,16 @@ class VarDecl;
       return TemplateArgumentLists.size();
     }
 
+    /// Determine how many of the \p OldDepth outermost template parameter
+    /// lists would be removed by substituting these arguments.
+    unsigned getNewDepth(unsigned OldDepth) const {
+      if (OldDepth < NumRetainedOuterLevels)
+        return OldDepth;
+      if (OldDepth < getNumLevels())
+        return NumRetainedOuterLevels;
+      return OldDepth - TemplateArgumentLists.size();
+    }
+
     /// Retrieve the template argument at a given depth and index.
     const TemplateArgument &operator()(unsigned Depth, unsigned Index) const {
       assert(NumRetainedOuterLevels <= Depth && Depth < getNumLevels());
@@ -156,6 +166,19 @@ class VarDecl;
     /// Retrieve the innermost template argument list.
     const ArgList &getInnermost() const {
       return TemplateArgumentLists.front();
+    }
+
+    /// Returns true if this template argument list should promote
+    /// constexpr to consteval.
+    bool isConstexprPromoting() const {
+      for (const ArgList &SubList : TemplateArgumentLists) {
+        for (const TemplateArgument &Arg :SubList) {
+          if (Arg.isConstexprPromoting())
+            return true;
+        }
+      }
+
+      return false;
     }
   };
 

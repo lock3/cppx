@@ -468,13 +468,16 @@ TypeResult Parser::ParseReflectedTypeSpecifier(SourceLocation TypenameLoc,
   BalancedDelimiterTracker T(*this, tok::l_paren);
   if (T.expectAndConsume(diag::err_expected_lparen_after, "reflexpr"))
     return TypeResult(true);
+
   ExprResult Result = ParseConstantExpression();
-  if (!T.consumeClose()) {
-    EndLoc = T.getCloseLocation();
-    if (!Result.isInvalid())
-      return Actions.ActOnReflectedTypeSpecifier(TypenameLoc, Result.get());
-  }
-  return TypeResult(true);
+  if (T.consumeClose())
+    return TypeResult(true);
+
+  EndLoc = T.getCloseLocation();
+  if (Result.isInvalid())
+    return TypeResult(true);
+
+  return Actions.ActOnReflectedTypeSpecifier(TypenameLoc, Result.get());
 }
 
 /// Parse a template argument reflection.
@@ -541,6 +544,7 @@ ExprResult Parser::ParseCXXConcatenateExpression() {
 bool Parser::isVariadicReifier() const {
   if (tok::isAnnotation(Tok.getKind()) || Tok.is(tok::raw_identifier))
      return false;
+
   IdentifierInfo *TokII = Tok.getIdentifierInfo();
   // If Reflection is enabled, the current token is a
   // a reifier keyword, followed by an open parentheses,
@@ -658,6 +662,31 @@ bool Parser::ParseTypeReifier(TemplateArgList &Args, SourceLocation KWLoc) {
     }
 
     Args.push_back(Arg);
+  }
+
+  return false;
+}
+
+bool Parser::ParseTemplateReifier(TemplateArgList &Args) {
+  assert(isVariadicReifier());
+
+  /// Let reflection_range = {r1, r2, ..., rN, where rI is a reflection}.
+  /// valueof(... reflection_range) expands to valueof(r1), ..., valueof(rN)
+  SourceLocation KWLoc = Tok.getLocation();
+
+  switch (Tok.getIdentifierInfo()->getTokenID()) {
+  case tok::kw_typename:
+    if (ParseTypeReifier(Args, KWLoc))
+      return true;
+    break;
+  case tok::kw_valueof:
+  case tok::kw_unqualid:
+  case tok::kw_idexpr:
+    if (ParseNonTypeReifier(Args, KWLoc))
+      return true;
+    break;
+  default:
+    return true;
   }
 
   return false;

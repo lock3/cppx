@@ -3,10 +3,10 @@
 
 #include "reflection_iterator.h"
 
-constexpr void interface(meta::info source) {
+consteval void interface(meta::info source) {
   int default_val = 1;
-  -> __fragment struct {
-    int val = default_val;
+  -> fragment struct {
+    int val = %{default_val};
 
     constexpr void set_foo(const int& val) {
       this->val = val;
@@ -17,11 +17,11 @@ constexpr void interface(meta::info source) {
     }
 
     constexpr void reset_foo() {
-      set_foo(default_val);
+      set_foo(%{default_val});
     }
   };
 
-  -> __fragment struct {
+  -> fragment struct {
     int dedicated_field = 0;
   };
 

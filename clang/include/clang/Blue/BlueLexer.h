@@ -16,6 +16,7 @@
 
 #include "clang/Blue/BlueTokens.h"
 #include "clang/Blue/BlueFile.h"
+#include "llvm/ADT/StringMap.h"
 
 #include <deque>
 #include <stack>

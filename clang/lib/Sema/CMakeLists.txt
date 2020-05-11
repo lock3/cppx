@@ -8,6 +8,8 @@ if (MSVC)
   set_source_files_properties(SemaExpr.cpp PROPERTIES COMPILE_FLAGS /bigobj)
   set_source_files_properties(SemaExprCXX.cpp PROPERTIES COMPILE_FLAGS /bigobj)
   set_source_files_properties(SemaTemplate.cpp PROPERTIES COMPILE_FLAGS /bigobj)
+  set_source_files_properties(SemaTemplateDeduction.cpp PROPERTIES COMPILE_FLAGS /bigobj)
+  set_source_files_properties(SemaOpenMP.cpp PROPERTIES COMPILE_FLAGS /bigobj)
 endif()
 
 clang_tablegen(OpenCLBuiltins.inc -gen-clang-opencl-builtins
@@ -30,6 +32,7 @@ add_clang_library(clangSema
   Sema.cpp
   SemaAccess.cpp
   SemaAttr.cpp
+  SemaAvailability.cpp
   SemaCXXScopeSpec.cpp
   SemaCast.cpp
   SemaChecking.cpp
@@ -51,6 +54,7 @@ add_clang_library(clangSema
   SemaInit.cpp
   SemaInject.cpp
   SemaLambda.cpp
+  SemaLegacyFragment.cpp
   SemaLookup.cpp
   SemaModule.cpp
   SemaObjCProperty.cpp

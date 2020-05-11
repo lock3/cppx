@@ -22,7 +22,7 @@ foo()<static> : int!
 )";
   DeclarationMatcher StaticFunction = functionDecl(
     hasName("foo"), isStaticStorageClass());
-  ASSERT_TRUE(matches(Code, StaticFunction));
+  ASSERT_TRUE(matches(Code.str(), StaticFunction));
 }
 
 TEST(GoldFunctionStorageClass, StaticFreeFunctionDecl) {
@@ -31,7 +31,7 @@ foo()<static> : int
 )";
   DeclarationMatcher StaticFunction = functionDecl(
     hasName("foo"), isStaticStorageClass());
-  ASSERT_TRUE(matches(Code, StaticFunction));
+  ASSERT_TRUE(matches(Code.str(), StaticFunction));
 }
 
 TEST(GoldFunctionStorageClass, ExternFreeFunction) {
@@ -41,7 +41,7 @@ foo()<extern> : int!
 )";
   DeclarationMatcher ExternFunction = functionDecl(
     hasName("foo"), isExternStorageClass());
-  ASSERT_TRUE(matches(Code, ExternFunction));
+  ASSERT_TRUE(matches(Code.str(), ExternFunction));
 }
 
 TEST(GoldFunctionStorageClass, ExternFreeFunctionDecl) {
@@ -50,7 +50,7 @@ foo()<extern>: int
 )";
   DeclarationMatcher ExternFunction = functionDecl(
     hasName("foo"), isExternStorageClass());
-  ASSERT_TRUE(matches(Code, ExternFunction));
+  ASSERT_TRUE(matches(Code.str(), ExternFunction));
 }
 
 
@@ -60,7 +60,7 @@ foo()<extern>: int
 // )";
 //   DeclarationMatcher ExternFunction = functionDecl(
 //     hasName("foo"), isExternStorageClass());
-//   ASSERT_TRUE(matches(Code, ExternFunction));
+//   ASSERT_TRUE(matches(Code.str(), ExternFunction));
 // }
 
 // TEST(GoldFunctionStorageClass, ExternC_FreeFunction) {
@@ -70,6 +70,6 @@ foo()<extern>: int
 // )";
 //   DeclarationMatcher ExternFunction = functionDecl(
 //     hasName("foo"), isExternStorageClass());
-//   ASSERT_TRUE(matches(Code, ExternFunction));
+//   ASSERT_TRUE(matches(Code.str(), ExternFunction));
 // }
 

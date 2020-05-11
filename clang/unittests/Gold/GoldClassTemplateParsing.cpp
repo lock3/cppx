@@ -42,7 +42,7 @@ c[T:type] : type = class:
     ))
   );
   
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 
@@ -68,7 +68,7 @@ c[T:type] : type = class:
     ))
   );
   
-  ASSERT_TRUE(matches(Code, ClassC));
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
 TEST(ClassTemplate, ClassTemplateDeclaration_Instantiation) {
@@ -113,7 +113,7 @@ main() : int!
     hasDescendant(MainFnMatcher)
   );
 
-  ASSERT_TRUE(matches(Code, TemplateAndInstantiationMatch));
+  ASSERT_TRUE(matches(Code.str(), TemplateAndInstantiationMatch));
 }
 
 
@@ -159,7 +159,7 @@ main() : int!
     hasDescendant(MainFnMatcher)
   );
 
-  ASSERT_TRUE(matches(Code, TemplateAndInstantiationMatch));
+  ASSERT_TRUE(matches(Code.str(), TemplateAndInstantiationMatch));
 }
 
 /*

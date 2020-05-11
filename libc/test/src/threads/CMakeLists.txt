@@ -1,0 +1,34 @@
+add_libc_testsuite(libc_threads_unittests)
+
+add_libc_unittest(
+  thrd_test
+  SUITE
+    libc_threads_unittests
+  SRCS
+    thrd_test.cpp
+  DEPENDS
+    libc.include.threads
+    libc.src.errno.__errno_location
+    libc.src.sys.mman.munmap
+    libc.src.sys.mman.mmap
+    libc.src.threads.thrd_create
+    libc.src.threads.thrd_join
+)
+
+add_libc_unittest(
+  mtx_test
+  SUITE
+    libc_threads_unittests
+  SRCS
+    mtx_test.cpp
+  DEPENDS
+    libc.include.threads
+    libc.src.errno.__errno_location
+    libc.src.sys.mman.mmap
+    libc.src.sys.mman.munmap
+    libc.src.threads.mtx_init
+    libc.src.threads.mtx_lock
+    libc.src.threads.mtx_unlock
+    libc.src.threads.thrd_create
+    libc.src.threads.thrd_join
+)

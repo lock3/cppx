@@ -14,6 +14,7 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/LifetimeAttrData.h"
 #include "clang/Analysis/Analyses/LifetimeTypeCategory.h"
+#include "llvm/ADT/StringExtras.h"
 #include <map>
 #include <set>
 
@@ -151,7 +152,7 @@ public:
         Ret = "(temporary)";
 
     } else if (auto *VD = asVarDecl())
-      Ret = VD->getName();
+      Ret = VD->getName().str();
     else if (isThisPointer())
       Ret = "this";
     else if (isReturnVal())
