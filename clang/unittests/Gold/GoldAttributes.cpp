@@ -30,3 +30,18 @@ x<z<10>><(i < 10)> < y<10>
 
   SimpleGoldParseTest(Code);
 }
+
+TEST(Attributes, LineAttributes) {
+  StringRef Code = R"(
+[20]
+[10]
+x : int = 0
+
+[520]
+[10]
+y() : int!
+  return 0
+)";
+
+  SimpleGoldParseTest(Code);
+}
