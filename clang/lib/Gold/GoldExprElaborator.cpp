@@ -63,7 +63,7 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
     return elaborateMacro(cast<MacroSyntax>(S));
   if (isa<ElemSyntax>(S))
     return elaborateElementExpr(cast<ElemSyntax>(S));
-  assert(false && "Unsupported expression.");
+  return nullptr;
 }
 
 static clang::IntegerLiteral *

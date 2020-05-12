@@ -14,6 +14,7 @@
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticLex.h"
 #include "clang/Basic/SourceManager.h"
+#include "llvm/ADT/StringMap.h"
 
 #include "clang/Gold/GoldLexer.h"
 
@@ -547,20 +548,70 @@ CharacterScanner::getSourceLocation(char const* Loc) {
 
 // Line scanner
 
+static llvm::StringMap<bool> InfixKeywords {
+  {"where", true},
+  {"otherwise", true},
+  {"returns", true},
+  {"until", true},
+  {"using", true},
+  {"catch", true}
+};
+
+static bool isInfix(Token Op) {
+  switch (Op.getKind()) {
+  case tok::Plus:
+  case tok::Minus:
+  case tok::Star:
+  case tok::Slash:
+  case tok::Percent:
+  case tok::Ampersand:
+  case tok::Bar:
+  case tok::Less:
+  case tok::Greater:
+  case tok::Equal:
+  case tok::EqualEqual:
+  case tok::LessEqual:
+  case tok::GreaterEqual:
+  case tok::AmpersandAmpersand:
+  case tok::BarBar:
+  case tok::ColonEqual:
+  case tok::PlusEqual:
+  case tok::MinusEqual:
+  case tok::StarEqual:
+  case tok::SlashEqual:
+  case tok::PercentEqual:
+  case tok::MinusGreater:
+  case tok::EqualGreater:
+    return true;
+  case tok::Identifier: {
+    auto It = InfixKeywords.find(Op.getSymbol().data());
+    if (It == InfixKeywords.end())
+      return false;
+    return true;
+  }
+
+  default:
+    return false;
+  }
+}
+
 Token LineScanner::operator()() {
   Token Tok;
-  bool startsLine = false;
+  bool StartsLine = false;
   while (true) {
     Tok = Scanner();
 
+    if (!Tok.isSpace() && !Tok.isNewline())
+      Current = Tok;
+
     // Space at the beginning of a line cannot be discarded here.
-    if (Tok.isSpace() && Tok.isAtStartOfLine())
+    if (Tok.isSpace() && Tok.isAtStartOfLine() && !isInfix(Current))
       break;
 
     // Propagate a previous line-start flag to this next token.
-    if (startsLine) {
+    if (StartsLine) {
       Tok.Flags |= TF_StartsLine;
-      startsLine = false;
+      StartsLine = false;
     }
 
     // Empty lines are discarded.
@@ -570,7 +621,17 @@ Token LineScanner::operator()() {
     // Errors, space, and comments are discardable. If a token starts a
     // line, the next token will become the new start of line.
     if (Tok.isInvalid() || Tok.isSpace() || Tok.isComment()) {
-      startsLine = Tok.isAtStartOfLine();
+      StartsLine = Tok.isAtStartOfLine();
+      continue;
+    }
+
+    // Discard space between a line-broken infix operator. e.g.)
+    //
+    // \code
+    //   x = 2 + 2 *
+    //       2 + 2
+    // \endcode
+    if ((Tok.isSpace() || Tok.isNewline()) && isInfix(Current)) {
       continue;
     }
 

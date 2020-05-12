@@ -40,3 +40,14 @@ x : [3]int
 )";
   SimpleGoldParseTest(Code);
 }
+
+TEST(GlobalVariables, LineBreak) {
+  StringRef Code = R"(
+x = 2 + 2 *
+    2 + 2
+y = 2 + 2 *
+2 + 2
+)";
+
+  SimpleGoldParseTest(Code);
+}

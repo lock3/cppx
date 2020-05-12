@@ -217,6 +217,11 @@ namespace gold {
       return Scanner.getDiagnostics();
     }
 
+    /// The last non-whitespace token that was lexed. Some lines might end
+    /// with an infix operator that continues onto the next line, so we want
+    /// to keep track of that.
+    Token Current;
+
     /// The underlying scanner.
     CharacterScanner Scanner;
   };
