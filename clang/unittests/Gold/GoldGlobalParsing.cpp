@@ -51,3 +51,14 @@ y = 2 + 2 *
 
   SimpleGoldParseTest(Code);
 }
+
+Test(GlobalVariables, FnLineBreak) {
+  StringRef Code = R"(
+f(
+x : int,
+y : int) : int!
+  return x + y
+)";
+
+  SimpleGoldParseTest(Code);
+}
