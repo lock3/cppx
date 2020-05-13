@@ -23,6 +23,7 @@
 
 #include "clang/Gold/GoldSyntaxContext.h"
 #include "clang/Gold/GoldScope.h"
+#include "clang/Gold/GoldLateElaboration.h"
 
 #include <memory>
 #include <vector>
@@ -184,6 +185,23 @@ public:
 
   void dumpState(llvm::raw_ostream &out = llvm::outs());
 
+
+  /// This is a stack of classes currently being elaborated.
+  llvm::SmallVector<ElaboratingClass *, 6> ClassStack;
+
+  /// Returns the top of the stack for a class currently being elaborated.
+  ElaboratingClass &getCurrentClass() {
+    assert(!ClassStack.empty() && "No classes on stack!");
+    return *ClassStack.back();
+  }
+  using ClassElaborationState = clang::Sema::DelayedDiagnosticsState;
+  bool isElaboratingClass() const;
+  ClassElaborationState pushElaboratingClass(Declaration *D,
+                                             bool TopLevelClass);
+  void deallocateElaboratingClass(ElaboratingClass *D);
+  void popElaboratingClass(ClassElaborationState State);
+
+
 public:
   // The context
   SyntaxContext &Context;
@@ -261,7 +279,56 @@ public:
   private:
     Sema& SemaRef;
   };
-  
+
+  /// This class is an RAII that tracks the classes scope and current status
+  /// during processing. This allows for us to more easily keep track of
+  /// the class currently being elaborated and how we hande that particular
+  /// classes elaboration.
+  /// This helps keep track of classes that are currently being elaborated.
+  class ElaboratingClassDefRAII {
+    gold::Sema &SemaRef;
+    bool WasPopped;
+    ClassElaborationState State;
+  public:
+    ElaboratingClassDefRAII(Sema &S, Declaration *D, bool IsTopLevelClass)
+      :SemaRef(S), WasPopped(false),
+      State(SemaRef.pushElaboratingClass(D, IsTopLevelClass)) { }
+
+    ~ElaboratingClassDefRAII() {
+      if (!WasPopped)
+        pop();
+    }
+
+    void pop() {
+      assert(!WasPopped && "Attempting to double exit class. "
+          "Class already popped");
+      WasPopped = true;
+      SemaRef.popElaboratingClass(State);
+    }
+  };
+
+  class DeclContextRAII {
+    Sema &SemaRef;
+    bool DoSetAndReset;
+    clang::DeclContext *OriginalDC;
+    Declaration *OriginalDecl;
+  public:
+    DeclContextRAII(Sema &S, Declaration *D,
+        bool SetAndResetDeclarationsOnly = false)
+      :SemaRef(S), OriginalDecl(SemaRef.CurrentDecl)
+    {
+      if (DoSetAndReset)
+        SemaRef.CurrentDecl = D;
+      else 
+        SemaRef.pushDecl(D);
+    }
+    ~DeclContextRAII() {
+      if (DoSetAndReset){
+        SemaRef.restoreDeclContext(OriginalDecl);
+      } else 
+        SemaRef.popDecl();
+    }
+  };
 
   // Dictionary of built in types.
   //

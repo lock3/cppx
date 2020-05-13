@@ -537,5 +537,62 @@ void Sema::dumpState(llvm::raw_ostream &Out) {
   Out.flush();
 }
 
+bool Sema::isElaboratingClass() const {
+  return !ClassStack.empty();
+}
+
+Sema::ClassElaborationState
+Sema::pushElaboratingClass(Declaration *D, bool TopLevelClass) {
+  llvm::outs() << "Called Sema::"<< __FUNCTION__<< "\n";
+  assert((TopLevelClass || !ClassStack.empty())
+      && "Nestd class without outer class.");
+  ClassStack.push_back(new ElaboratingClass(D, TopLevelClass));
+  return CxxSema.PushParsingClass();
+}
+
+void Sema::deallocateElaboratingClass(ElaboratingClass *D) {
+  llvm::outs() << "Called Sema::"<< __FUNCTION__<< "\n";
+  for (unsigned I = 0, N = D->LateElaborations.size(); I != N; ++I)
+    delete D->LateElaborations[I];
+  delete D;
+}
+
+void Sema::popElaboratingClass(ClassElaborationState State) {
+  llvm::outs() << "Called Sema::"<< __FUNCTION__<< "\n";
+  assert(!ClassStack.empty() && "Mismatched push/pop for class parsing");
+
+  CxxSema.PopParsingClass(State);
+
+  ElaboratingClass *Victim = ClassStack.back();
+  ClassStack.pop_back();
+  if (Victim->IsTopLevelClass) {
+    // Deallocate all of the nested classes of this class,
+    // recursively: we don't need to keep any of this information.
+    deallocateElaboratingClass(Victim);
+    return;
+  }
+  assert(!ClassStack.empty() && "Missing top-level class?");
+
+  if (Victim->LateElaborations.empty()) {
+    // The victim is a nested class, but we will not need to perform
+    // any processing after the definition of this class since it has
+    // no members whose handling was delayed. Therefore, we can just
+    // remove this nested class.
+    deallocateElaboratingClass(Victim);
+    return;
+  }
+
+  // This nested class has some members that will need to be processed
+  // after the top-level class is completely defined. Therefore, add
+  // it to the list of nested classes within its parent.
+  assert(CxxSema.getCurScope()->isClassScope()
+      && "Nested class outside of class scope?");
+  ClassStack.back()->LateElaborations.push_back(
+      new LateElaboratedClass(*this, Context, Victim));
+  Victim->TemplateScope
+                   = CxxSema.getCurScope()->getParent()->isTemplateParamScope();
+}
+
+
 } // namespace gold
 
