@@ -6,6 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ExecutionEngine/GenericValue.h"
+
 #include "GoldCompileRun.h"
 #include "GoldParseUtil.h"
 
@@ -19,12 +21,12 @@ main() : int!
   return b
 )";
   LLVMContext Context;
-  std::unique_ptr<ExecutionEngine> EE;
+  std::unique_ptr<llvm::ExecutionEngine> EE;
   ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
-  MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
-  ASSERT_TRUE(CB);
-  int result = CB();
-  ASSERT_EQ(result, 1);
+  MainSig Fn = MainSig(EE->getFunctionAddress("main"));
+  ASSERT_TRUE(Fn);
+  int Result = Fn();
+  ASSERT_EQ(Result, 1);
 }
 
 TEST(GoldBool, InitializationTest_AsFalse) {
@@ -36,8 +38,8 @@ main() : int!
   LLVMContext Context;
   std::unique_ptr<ExecutionEngine> EE;
   ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
-  MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
+  MainSig CB = MainSig(EE->getFunctionAddress("main"));
   ASSERT_TRUE(CB);
-  int result = CB();
-  ASSERT_EQ(result, 0);
+  int Result = CB();
+  ASSERT_EQ(Result, 0);
 }

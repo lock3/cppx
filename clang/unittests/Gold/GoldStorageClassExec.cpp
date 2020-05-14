@@ -23,7 +23,7 @@ main() : int!
   LLVMContext Context;
   std::unique_ptr<ExecutionEngine> EE;
   ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
-  MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
+  MainSig CB = MainSig(EE->getFunctionAddress("main"));
   ASSERT_TRUE(CB);
   int result = CB();
   ASSERT_EQ(result, 4);
@@ -42,7 +42,7 @@ main() : int!
   LLVMContext Context;
   std::unique_ptr<ExecutionEngine> EE;
   ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
-  MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
+  MainSig CB = MainSig(EE->getFunctionAddress("main"));
   ASSERT_TRUE(CB);
   int result = CB();
   ASSERT_EQ(result, 6);
@@ -66,7 +66,7 @@ main() : int!
   LLVMContext Context;
   std::unique_ptr<ExecutionEngine> EE;
   ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
-  MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
+  MainSig CB = MainSig(EE->getFunctionAddress("main"));
   ASSERT_TRUE(CB);
   int result = CB();
   ASSERT_EQ(result, 5);

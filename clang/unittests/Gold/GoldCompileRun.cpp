@@ -37,9 +37,14 @@
 
 namespace gold {
 
-testing::AssertionResult CompileGoldCode(llvm::LLVMContext& Context,
-    llvm::StringRef Code, std::unique_ptr<llvm::ExecutionEngine>& EE) {
-      
+static void ErrorAndExit(std::string message) {
+  llvm::errs()<< "ERROR: " << message << "\n";
+  std::exit(1);
+}
+
+testing::AssertionResult CompileGoldCode(llvm::LLVMContext &Context,
+   llvm::StringRef Code, std::unique_ptr<llvm::ExecutionEngine> &EE) {
+
   using namespace llvm;
   using namespace clang;
   InitializeNativeTarget();
@@ -49,7 +54,7 @@ testing::AssertionResult CompileGoldCode(llvm::LLVMContext& Context,
 
   compiler.createDiagnostics();
   compiler.getLangOpts().CPlusPlus = 1;
-  compiler.getLangOpts().CPlusPlus11 = 1;
+  compiler.getLangOpts().CPlusPlus17 = 1;
   compiler.getLangOpts().Gold = 1;
 
   compiler.getTargetOpts().Triple = llvm::Triple::normalize(
@@ -82,22 +87,36 @@ testing::AssertionResult CompileGoldCode(llvm::LLVMContext& Context,
     llvm::outs() << "We didn't retrieve the module from C++ land.\n";
     return testing::AssertionFailure();
   }
+
   EngineBuilder EB(std::move(Owner));
+  EB.setMArch("");
+  EB.setMCPU(sys::getHostCPUName());
   std::string Error;
+  EB.setErrorStr(&Error);
+  EB.setEngineKind(EngineKind::JIT);
   std::unique_ptr<RTDyldMemoryManager> MM(new SectionMemoryManager);
-  EE.reset(EB.setEngineKind(EngineKind::JIT)
-                .setMCJITMemoryManager(std::move(MM))
-                .setErrorStr(&Error)
-                .setOptLevel(CodeGenOpt::None)
-                .setMArch("")
-                .setMCPU(sys::getHostCPUName())
-                //.setMAttrs(MAttrs)
-                .create());
-  if(!EE) {
-    llvm::outs() <<"Failed to create Execution engine.\n";
-    llvm::outs() << "Reason: " << Error << "\n";
-    return testing::AssertionFailure();
-  }
+  EB.setMCJITMemoryManager(std::move(MM));
+  EB.setOptLevel(CodeGenOpt::None);
+  // EB.setTargetOptions(compiler.getTargetOpts());
+
+  EE.reset(EB.create());
+  if (!EE)
+    ErrorAndExit("Could not create execution engine");
+
+  // FIXME: Do we need to set the builder's MAttrs?
+  // EE.reset(EB.setEngineKind(EngineKind::JIT)
+  //               .setMCJITMemoryManager(std::move(MM))
+  //               .setErrorStr(&Error)
+  //               .setOptLevel(CodeGenOpt::None)
+  //               .setMArch("")
+  //               .setMCPU(sys::getHostCPUName())
+  //               //.setMAttrs(MAttrs)
+  //               .create());
+  // if(!EE) {
+  //   llvm::outs() <<"Failed to create Execution engine.\n";
+  //   llvm::outs() << "Reason: " << Error << "\n";
+  //   return testing::AssertionFailure();
+  // }
 
   EE->finalizeObject();
   EE->runStaticConstructorsDestructors(true);
