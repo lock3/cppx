@@ -65,7 +65,6 @@ public:
   void elaborateDef(Declaration *D);
   void elaborateFunctionDef(Declaration *D);
   void elaborateVariableInit(Declaration *D);
-  void elaborateTypeDefinition(Declaration *D);
   void elaborateTemplateParamInit(Declaration *D);
 
   // Perform all three passes on a single declaration in one shot.

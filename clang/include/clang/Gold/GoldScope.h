@@ -384,13 +384,6 @@ public:
   using DeclMapType = llvm::DenseMap<const Syntax *, Declaration *>;
   DeclMapType DeclMap;
 
-  /// The mapping of declarations to its construction.
-  ///
-  /// FIXME: For overloading a single identifier can refer to a set of
-  /// declarations. We'll need to adjust this in order to make it work.
-  using TypeNameMap = llvm::DenseMap<clang::IdentifierInfo*, clang::QualType>;
-  TypeNameMap TypeIdMap;
-
   using TypeDecls = llvm::DenseMap<llvm::StringRef, clang::QualType>;
   TypeDecls Types;
 
@@ -504,9 +497,6 @@ public:
       return nullptr;
     return Iter->second;
   }
-
-  void addUserDefinedType(clang::IdentifierInfo *Id, clang::QualType QualTy);
-  clang::QualType getUserDefinedType(clang::IdentifierInfo *Id) const;
 
   void dump(llvm::raw_ostream &os) const;
   void dump() const;

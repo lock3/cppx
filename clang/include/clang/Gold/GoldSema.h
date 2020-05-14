@@ -17,6 +17,7 @@
 
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/IdentifierTable.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -200,7 +201,10 @@ public:
                                              bool TopLevelClass);
   void deallocateElaboratingClass(ElaboratingClass *D);
   void popElaboratingClass(ClassElaborationState State);
-
+  
+  /// Based on the current elaboration state read fom class stack we compute
+  /// the current depth of a template.
+  unsigned computeTemplateDepth() const;
 
 public:
   // The context
@@ -324,11 +328,37 @@ public:
     }
     ~DeclContextRAII() {
       if (DoSetAndReset){
-        SemaRef.restoreDeclContext(OriginalDecl);
+        SemaRef.setCurrentDecl(OriginalDecl);
       } else 
         SemaRef.popDecl();
     }
   };
+
+  template<typename T>
+  class OptionalInitScope {
+    Sema &SemaRef;
+    llvm::Optional<T> Opt;
+  public:
+    OptionalInitScope(Sema &S) :SemaRef(S) { }
+    template<typename... Args>
+    OptionalInitScope(Sema &S, Args&&... Arguments)
+        :SemaRef(S), Opt()
+    {
+      Init(std::forward<Args>(Arguments)...);
+    }
+
+    template<typename... Args>
+    void Init(Args&&... Arguments) {
+      assert(!Opt && "Error attempting to enter scope twice.");
+      Opt.emplace(SemaRef, std::forward<Args>(Arguments)...);
+    }
+  };
+
+  /// This helps keep track of the scope associated with templated classes
+  /// by providing optionally initialized behavior for a scope. This is done
+  /// using llvm::optional.
+  using OptionalScopeRAII = OptionalInitScope<ScopeRAII>;
+  using OptioanlClangScopeRAII = OptionalInitScope<ClangScopeRAII>;
 
   // Dictionary of built in types.
   //

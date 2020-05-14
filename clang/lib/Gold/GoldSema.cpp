@@ -543,7 +543,6 @@ bool Sema::isElaboratingClass() const {
 
 Sema::ClassElaborationState
 Sema::pushElaboratingClass(Declaration *D, bool TopLevelClass) {
-  llvm::outs() << "Called Sema::"<< __FUNCTION__<< "\n";
   assert((TopLevelClass || !ClassStack.empty())
       && "Nestd class without outer class.");
   ClassStack.push_back(new ElaboratingClass(D, TopLevelClass));
@@ -551,14 +550,12 @@ Sema::pushElaboratingClass(Declaration *D, bool TopLevelClass) {
 }
 
 void Sema::deallocateElaboratingClass(ElaboratingClass *D) {
-  llvm::outs() << "Called Sema::"<< __FUNCTION__<< "\n";
   for (unsigned I = 0, N = D->LateElaborations.size(); I != N; ++I)
     delete D->LateElaborations[I];
   delete D;
 }
 
 void Sema::popElaboratingClass(ClassElaborationState State) {
-  llvm::outs() << "Called Sema::"<< __FUNCTION__<< "\n";
   assert(!ClassStack.empty() && "Mismatched push/pop for class parsing");
 
   CxxSema.PopParsingClass(State);
@@ -591,6 +588,14 @@ void Sema::popElaboratingClass(ClassElaborationState State) {
       new LateElaboratedClass(*this, Context, Victim));
   Victim->TemplateScope
                    = CxxSema.getCurScope()->getParent()->isTemplateParamScope();
+}
+
+unsigned Sema::computeTemplateDepth() const {
+  unsigned Count = 0;
+  for(auto Iter = ClassStack.rbegin(); Iter != ClassStack.rend(); ++Iter) {
+    Count += (*Iter)->TagOrTemplate->declaresTemplateType();
+  }
+  return Count;
 }
 
 
