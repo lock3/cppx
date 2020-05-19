@@ -4321,6 +4321,7 @@ static void captureVariablyModifiedType(ASTContext &Context, QualType T,
     case Type::Pipe:
     case Type::CppxKind:
     case Type::Template:
+    case Type::CppxNamespace:
     case Type::ExtInt:
 #define TYPE(Class, Base)
 #define META_TYPE(Class, Base) case Type::Class:

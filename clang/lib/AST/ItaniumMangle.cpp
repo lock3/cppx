@@ -2156,6 +2156,10 @@ bool CXXNameMangler::mangleUnresolvedTypeOrSimpleId(QualType Ty,
     mangleSourceNameWithAbiTags(cast<TagType>(Ty)->getDecl());
     break;
 
+  case Type::CppxNamespace:
+    mangleSourceNameWithAbiTags(cast<CppxNamespaceType>(Ty)->getDecl());
+    break;
+
   case Type::TemplateSpecialization: {
     const TemplateSpecializationType *TST =
         cast<TemplateSpecializationType>(Ty);
@@ -3431,6 +3435,9 @@ void CXXNameMangler::mangleType(const TemplateType *T) {
   llvm_unreachable("unexpected type");
 }
 
+void CXXNameMangler::mangleType(const CppxNamespaceType *T) {
+  mangleName(T->getDecl());
+}
 
 void CXXNameMangler::mangleType(const TemplateSpecializationType *T) {
   if (TemplateDecl *TD = T->getTemplateName().getAsTemplateDecl()) {

@@ -2391,6 +2391,7 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
 
   case Type::Template:
   case Type::CppxKind:
+  case Type::CppxNamespace:
     Width = 0; // Like void, you can't create objects.
     Align = 1; // Not a real value
     break;  
@@ -3505,6 +3506,7 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::CXXDependentVariadicReifier:
   case Type::CXXRequiredType:
   case Type::CppxKind:
+  case Type::CppxNamespace:
   case Type::Template:
     llvm_unreachable("type should never be variably-modified");
 
@@ -4336,6 +4338,19 @@ QualType ASTContext::getEnumType(const EnumDecl *Decl) const {
 
   auto *newType = new (*this, TypeAlignment) EnumType(Decl);
   Decl->TypeForDecl = newType;
+  Types.push_back(newType);
+  return QualType(newType, 0);
+}
+
+QualType ASTContext::getCppxNamespaceType(const NamespaceDecl *Decl) const {
+  const NamespaceDecl *UsedDecl;
+
+  if (const NamespaceDecl *PrevDecl = Decl->getPreviousDecl())
+    UsedDecl = PrevDecl;
+  else
+    UsedDecl = Decl;
+
+  auto *newType = new (*this, TypeAlignment) CppxNamespaceType(UsedDecl);
   Types.push_back(newType);
   return QualType(newType, 0);
 }
@@ -7539,6 +7554,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string &S,
   case Type::Pipe:
   case Type::CppxKind:
   case Type::Template:
+  case Type::CppxNamespace:
   case Type::ExtInt:
 #define ABSTRACT_TYPE(KIND, BASE)
 #define TYPE(KIND, BASE)
@@ -9596,6 +9612,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
     return mergeFunctionTypes(LHS, RHS, OfBlockPointer, Unqualified);
   case Type::Record:
   case Type::Enum:
+  case Type::CppxNamespace:
     return {};
   case Type::Builtin:
   case Type::CppxKind:

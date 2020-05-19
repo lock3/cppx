@@ -10740,6 +10740,7 @@ EvaluateBuiltinClassifyType(QualType T, const LangOptions &LangOpts) {
 
   case Type::Template:
   case Type::CppxKind:
+  case Type::CppxNamespace:
     llvm_unreachable("unexpected kind type");
 
   case Type::Builtin:

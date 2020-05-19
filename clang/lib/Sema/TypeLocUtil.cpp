@@ -465,6 +465,20 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::CppxKindTypeLoc>
   return x;
 }
 
+template<> TypeSourceInfo *BuildTypeLoc<clang::CppxNamespaceTypeLoc>
+(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
+  auto TypeLocInstance = TLB.push<clang::CppxNamespaceTypeLoc>(Ty);
+  TypeLocInstance.initializeLocal(Ctx, Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::CppxNamespaceTypeLoc>
+(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
+  TypeLocBuilder TLB;
+  auto TL = BuildTypeLoc<clang::CppxNamespaceTypeLoc>(Context, TLB, Ty, Loc);
+  return TL;
+}
+
 template<> TypeSourceInfo *BuildTypeLoc<clang::EnumTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");

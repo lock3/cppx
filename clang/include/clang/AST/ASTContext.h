@@ -1395,6 +1395,8 @@ public:
 
   QualType getEnumType(const EnumDecl *Decl) const;
 
+  QualType getCppxNamespaceType(const NamespaceDecl *Decl) const;
+
   QualType getInjectedClassNameType(CXXRecordDecl *Decl, QualType TST) const;
 
   QualType getAttributedType(attr::Kind attrKind,

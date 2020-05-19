@@ -3823,6 +3823,11 @@ static CachedProperties computeCachedProperties(const Type *T) {
     return CachedProperties(L, IsLocalOrUnnamed);
   }
 
+  case Type::CppxNamespace: {
+    const NamespaceDecl *NS = cast<CppxNamespaceType>(T)->getDecl();
+    return CachedProperties(NS->getLinkageInternal(), NS->hasLinkage());
+  }
+
     // C++ [basic.link]p8:
     //   - it is a compound type (3.9.2) other than a class or enumeration,
     //     compounded exclusively from types that have linkage; or
@@ -3967,6 +3972,9 @@ LinkageInfo LinkageComputer::computeTypeLinkageInfo(const Type *T) {
   // This type shouldn't have linkage, should it?
   case Type::Template:
       return LinkageInfo::external();
+
+  case Type::CppxNamespace:
+    return getDeclLinkageAndVisibility(cast<CppxNamespaceType>(T)->getDecl());
   }
 
   llvm_unreachable("unhandled type class");
@@ -4128,6 +4136,7 @@ bool Type::canHaveNullability(bool ResultIfUnknown) const {
   case Type::Pipe:
   case Type::CppxKind:
   case Type::Template:
+  case Type::CppxNamespace:
   case Type::ExtInt:
   case Type::DependentExtInt:
     return false;
@@ -4385,4 +4394,17 @@ void AutoType::Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
   ID.AddPointer(CD);
   for (const TemplateArgument &Arg : Arguments)
     Arg.Profile(ID, Context);
+}
+
+static NamespaceDecl *getInterestingNamespaceDecl(const NamespaceDecl *NS) {
+  for (auto I : NS->redecls()) {
+    if (I->isOriginalNamespace())
+      return I;
+  }
+  // If there's no definition (not even in progress), return what we have.
+  return const_cast<NamespaceDecl *>(NS);
+}
+
+NamespaceDecl *CppxNamespaceType::getDecl() const {
+  return getInterestingNamespaceDecl(NS);
 }

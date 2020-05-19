@@ -374,6 +374,7 @@ private:
 #undef TYPE
 
   void mangleType(const TagDecl *TD);
+  void mangleType(const NamespaceDecl *ND);
   void mangleDecayedArrayType(const ArrayType *T);
   void mangleArrayType(const ArrayType *T);
   void mangleFunctionClass(const FunctionDecl *FD);
@@ -2450,6 +2451,7 @@ void MicrosoftCXXNameMangler::mangleTagTypeKind(TagTypeKind TTK) {
       break;
   }
 }
+
 void MicrosoftCXXNameMangler::mangleType(const EnumType *T, Qualifiers,
                                          SourceRange) {
   mangleType(cast<TagType>(T)->getDecl());
@@ -2825,6 +2827,16 @@ void MicrosoftCXXNameMangler::mangleType(const CppxKindType *T,
   unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
     "cannot mangle this type yet");
   Diags.Report(Range.getBegin(), DiagID) << Range;
+}
+
+void MicrosoftCXXNameMangler::mangleType(const CppxNamespaceType *T,
+                                         Qualifiers, SourceRange Range) {
+  mangleType(T->getDecl());
+}
+
+void MicrosoftCXXNameMangler::mangleType(const NamespaceDecl *ND) {
+  Out << "NS";
+  mangleName(ND);
 }
 
 void MicrosoftCXXNameMangler::mangleType(const TemplateType *T,

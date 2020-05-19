@@ -6431,6 +6431,15 @@ QualType TreeTransform<Derived>::TransformCppxKindType(
 }
 
 template<typename Derived>
+QualType TreeTransform<Derived>::TransformCppxNamespaceType(
+                                         TypeLocBuilder &TLB,
+                                         CppxNamespaceTypeLoc TL) {
+  QualType T = TL.getType();
+  TLB.pushTypeSpec(T).setNameLoc(TL.getNameLoc());
+  return T;
+}
+
+template<typename Derived>
 QualType TreeTransform<Derived>::TransformTemplateType(
                                          TypeLocBuilder &TLB,
                                          TemplateTypeLoc TL) {

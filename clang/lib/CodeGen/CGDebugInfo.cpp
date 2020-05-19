@@ -3203,6 +3203,7 @@ llvm::DIType *CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile *Unit) {
   case Type::PackExpansion:
   case Type::CppxKind:
   case Type::Template:
+  case Type::CppxNamespace:
     break;
   }
 

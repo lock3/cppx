@@ -6692,6 +6692,10 @@ void TypeLocReader::VisitCppxKindTypeLoc(CppxKindTypeLoc TL) {
   TL.setNameLoc(readSourceLocation());
 }
 
+void TypeLocReader::VisitCppxNamespaceTypeLoc(CppxNamespaceTypeLoc TL) {
+  TL.setNameLoc(readSourceLocation());
+}
+
 void TypeLocReader::VisitTemplateTypeLoc(TemplateTypeLoc TL) {
   TL.setLoc(readSourceLocation());
 }

@@ -268,6 +268,7 @@ TypeEvaluationKind CodeGenFunction::getEvaluationKind(QualType type) {
     case Type::Record:
     case Type::ObjCObject:
     case Type::ObjCInterface:
+    case Type::CppxNamespace:
       return TEK_Aggregate;
 
     // We operate on atomic values according to their underlying type.
@@ -2013,6 +2014,7 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
     case Type::ObjCObjectPointer:
     case Type::CppxKind:
     case Type::Template:
+    case Type::CppxNamespace:
     case Type::ExtInt:
       llvm_unreachable("type class is never variably-modified!");
 

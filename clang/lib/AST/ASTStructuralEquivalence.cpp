@@ -1002,6 +1002,13 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   case Type::Template:
     llvm_unreachable("This needs to be implemented!");
 
+  case Type::CppxNamespace:
+    if (!IsStructurallyEquivalent(Context,
+                                  cast<CppxNamespaceType>(T1)->getDecl(),
+                                  cast<CppxNamespaceType>(T2)->getDecl()))
+      return false;
+    break;
+
   case Type::ExtInt: {
     const auto *Int1 = cast<ExtIntType>(T1);
     const auto *Int2 = cast<ExtIntType>(T2);

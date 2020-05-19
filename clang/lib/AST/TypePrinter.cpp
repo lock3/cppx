@@ -216,6 +216,7 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::UnaryTransform:
     case Type::Record:
     case Type::Enum:
+    case Type::CppxNamespace:
     case Type::Elaborated:
     case Type::TemplateTypeParm:
     case Type::SubstTemplateTypeParmPack:
@@ -1744,6 +1745,20 @@ void TypePrinter::printCppxKindBefore(const CppxKindType *T, raw_ostream &OS) {
 }
 
 void TypePrinter::printCppxKindAfter(const CppxKindType *T, raw_ostream &OS) {}
+
+void TypePrinter::printCppxNamespaceBefore(const CppxNamespaceType *T,
+                                           raw_ostream &OS) {
+  const NamespaceDecl *NS = T->getDecl();
+  if (NS->isAnonymousNamespace() || NS->isInline()) {
+    OS << "namespace";
+    return;
+  }
+
+  OS << NS->getName();
+}
+
+void TypePrinter::printCppxNamespaceAfter(const CppxNamespaceType *T,
+                                          raw_ostream &OS) {}
 
 
 void TypePrinter::printTemplateBefore(const TemplateType *T, raw_ostream &OS) {

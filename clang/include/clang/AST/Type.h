@@ -2125,6 +2125,7 @@ public:
   bool isOpenCLSpecificType() const;            // Any OpenCL specific type
 
   bool isKindType() const;
+  bool isCppxNamespaceType() const;
 
   /// Determines if this type, which must satisfy
   /// isObjCLifetimeType(), is implicitly __unsafe_unretained rather
@@ -6376,8 +6377,9 @@ public:
   QualType apply(const ASTContext &Context, const Type* T) const;
 };
 
-
-// Cppx types
+//===----------------------------------------------------------------------===//
+//                                   Cppx types                               //
+//===----------------------------------------------------------------------===//
 
 /// The type of types
 class CppxKindType : public Type {
@@ -6438,6 +6440,34 @@ public:
   }
 };
 
+
+class CppxNamespaceType : public Type {
+  /// ASTContext creates these.
+  friend class ASTContext;
+
+  /// Stores the NamespaceDecl associated with this type.
+  const NamespaceDecl *NS;
+
+public:
+  CppxNamespaceType(const NamespaceDecl *NS)
+    : Type(CppxNamespace, QualType(), TypeDependence(), /*MetaType=*/false),
+      NS(NS)
+    {}
+
+  NamespaceDecl *getDecl() const;
+
+  bool isSugared() const {
+    return false;
+  }
+
+  QualType desugar() const {
+    return QualType(this, 0);
+  }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == CppxNamespace;
+  }
+};
 
 // Type source info
 
@@ -6938,6 +6968,10 @@ inline bool Type::isPipeType() const {
 
 inline bool Type::isKindType() const {
   return isa<CppxKindType>(CanonicalType);
+}
+
+inline bool Type::isCppxNamespaceType() const {
+  return isa<CppxNamespaceType>(CanonicalType);
 }
 
 inline bool Type::isExtIntType() const {
