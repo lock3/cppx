@@ -191,7 +191,7 @@ public:
   llvm::SmallVector<ElaboratingClass *, 6> ClassStack;
 
   /// Returns the top of the stack for a class currently being elaborated.
-  ElaboratingClass &getCurrentClass() {
+  ElaboratingClass &getCurrentElaboratingClass() {
     assert(!ClassStack.empty() && "No classes on stack!");
     return *ClassStack.back();
   }
@@ -201,9 +201,17 @@ public:
                                              bool TopLevelClass);
   void deallocateElaboratingClass(ElaboratingClass *D);
   void popElaboratingClass(ClassElaborationState State);
+
+  /// This attempts to check if declaration needs to be delayed during class
+  /// elaboration.
+  bool declNeedsDelayed(Declaration *D);
   
-  /// Based on the current elaboration state read fom class stack we compute
+  /// Based on the current elaboration state read from class stack we compute
   /// the current depth of a template.
+  ///
+  /// \note This could be changed in the future in order to include ths current
+  /// scope stack for elaboration.
+  ///
   unsigned computeTemplateDepth() const;
 
 public:
@@ -254,20 +262,58 @@ public:
     const Syntax *ConcreteTerm;
   };
 
+  struct ResumeScopeRAII {
+    ResumeScopeRAII(Sema &S, gold::Scope *Sc, const Syntax *ConcreteTerm,
+        bool PopOnExit = true)
+      :SemaRef(S), Scope(Sc), ExitTerm(ConcreteTerm), PopOnExit(PopOnExit)
+    {
+      SemaRef.pushScope(Sc);
+    }
+
+    ~ResumeScopeRAII() {
+      if (PopOnExit) {
+        SemaRef.popScope();
+      } else {
+        SemaRef.leaveScope(ExitTerm);
+      }
+    }
+  private:
+    Sema &SemaRef;
+    gold::Scope *Scope;
+    const Syntax *ExitTerm;
+    bool PopOnExit;
+  };
+
 
   struct ClangScopeRAII {
-    ClangScopeRAII(Sema &S, unsigned ScopeKind, clang::SourceLocation ExitLoc)
-      : S(S), ExitingLocation(ExitLoc)
+    ClangScopeRAII(Sema &S, unsigned ScopeKind, clang::SourceLocation ExitLoc,
+        bool EnteringScope = true, bool BeforeCompoundStmt = false)
+      : SemaPtr(&S), ExitingLocation(ExitLoc)
     {
-      S.enterClangScope(ScopeKind);
+      if (EnteringScope && !BeforeCompoundStmt)
+        SemaPtr->enterClangScope(ScopeKind);
+      else {
+        if (BeforeCompoundStmt)
+          SemaPtr->getCxxSema().incrementMSManglingNumber();
+
+        SemaPtr = nullptr;
+      }
+      
     }
 
     ~ClangScopeRAII() {
-      S.leaveClangScope(ExitingLocation);
+      Exit();
+    }
+
+    void Exit() {
+      if (SemaPtr) {
+        SemaPtr->leaveClangScope(ExitingLocation);
+        SemaPtr = nullptr;
+      }
     }
 
   private:
-    Sema &S;
+    Sema *SemaPtr;
     clang::SourceLocation ExitingLocation;
   };
 

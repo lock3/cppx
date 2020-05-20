@@ -38,8 +38,7 @@ LateElaboratedDecl::~LateElaboratedDecl() { }
 void LateElaboratedDecl::ElaborateMethodDeclarations() { }
 void LateElaboratedDecl::ElaborateMemberInitializers() { }
 void LateElaboratedDecl::ElaborateMethodDefs() { }
-void LateElaboratedDecl::ElaborateFields() { }
-void LateElaboratedDecl::ElaboratePragmas() { }
+void LateElaboratedDecl::ElaborateAttributes() { }
 
 
 LateElaboratedClass::LateElaboratedClass(Sema &S, SyntaxContext &Ctxt,
@@ -47,46 +46,48 @@ LateElaboratedClass::LateElaboratedClass(Sema &S, SyntaxContext &Ctxt,
   : SemaRef(S), Context(Ctxt), Class(C) { }
 
 LateElaboratedClass::~LateElaboratedClass() {
-
+  SemaRef.deallocateElaboratingClass(Class);
 }
 
 void LateElaboratedClass::ElaborateMethodDeclarations() {
-  assert(false && "Not implemented yet");
+  Elaborator Elab(Context, SemaRef);
+  Elab.lateElaborateMethodDecls(*Class);
 }
 
 void LateElaboratedClass::ElaborateMemberInitializers() {
-  assert(false && "Not implemented yet");
+  Elaborator Elab(Context, SemaRef);
+  Elab.lateElaborateMemberInitializers(*Class);
 }
 
 void LateElaboratedClass::ElaborateMethodDefs() {
-  assert(false && "Not implemented yet");
+  Elaborator Elab(Context, SemaRef);
+  Elab.lateElaborateMethodDefs(*Class);
 }
 
-void LateElaboratedClass::ElaborateFields() {
-  assert(false && "Not implemented yet");
+void LateElaboratedClass::ElaborateAttributes() {
+  Elaborator Elab(Context, SemaRef);
+  Elab.lateElaborateAttributes(*Class);
 }
 
-void LateElaboratedClass::ElaboratePragmas() {
-  assert(false && "Not implemented yet");
-}
-
-void LateElaboratedFieldDecl::ElaborateFields() {
-  assert(false && "Not implemented yet");
+void LateElaboratedAttributeDecl::ElaborateAttributes() {
+  Elaborator Elab(Context, SemaRef);
+  Elab.lateElaborateAttribute(*this);
 }
 
 void LateElaboratedMethodDef::ElaborateMethodDefs() {
-  assert(false && "Not implemented yet");
+  Elaborator Elab(Context, SemaRef);
+  Elab.lateElaborateMethodDef(*this);
 }
 
 void LateElaboratedMethodDeclaration::ElaborateMethodDeclarations() {
-  assert(false && "Not implemented yet");
+  Elaborator Elab(Context, SemaRef);
+  Elab.lateElaborateMethodDecl(*this);
 }
 
 void LateElaborateMemberInitializer::ElaborateMemberInitializers() {
-    assert(false && "Not implemented yet");
+  Elaborator Elab(Context, SemaRef);
+  Elab.lateElaborateMemberInitializer(*this);
 }
-
-
 
 ElaboratingClass::ElaboratingClass(
     Declaration *TagOrTemplate, bool TopLevelClass)
@@ -94,11 +95,4 @@ ElaboratingClass::ElaboratingClass(
     TagOrTemplate(TagOrTemplate)
 { }
 
-
-
-// These are used in the following locations:
-// Parser::ParseLexedMemberInitializers
-// Parser::ParseLexedAttributes
-// Parser::ParseLexedMethodDeclarations
-
-}
+} // namespace gold

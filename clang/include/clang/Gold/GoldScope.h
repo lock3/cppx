@@ -165,10 +165,10 @@ public:
       /// A pointer to the template parameters within the declaration.
       const Syntax* Params;
 
-      /// The scope for the template parameters.
-      Scope *DeclScope;
-      /// This is the clang scope that's used for declaring template parameters.
-      clang::Scope *ClangScope;
+      // /// The scope for the template parameters.
+      // Scope *DeclScope;
+      // /// This is the clang scope that's used for declaring template parameters.
+      // clang::Scope *ClangScope;
     } TemplateInfo;
   } Data;
 
@@ -204,6 +204,12 @@ public:
   /// True if this declares a variable.
   bool declaresVariable() const;
 
+  /// Declares variable with in body initialization.
+  bool declaresInitializedVariable() const;
+
+  /// Any template has default parameters. Either class or function.
+  bool templateHasDefaultParameters() const;
+
   /// True if this is a type declaration.
   bool declaresType() const;
 
@@ -233,10 +239,19 @@ public:
   bool declaresDestructor() const;
 
   /// True if this declares a template.
-  bool declaresTemplate() const;
+  bool declaresFunctionTemplate() const;
 
   /// This is true iff isa<TypeAliasDecl>(Cxx)
   bool declaresTypeAlias() const;
+
+  /// Checks if a declaration is static.
+  bool declIsStatic() const;
+
+  /// Checks if a decl is a declaration and it doesn't have a body.
+  bool declaresFunctionDecl() const;
+
+  /// checks if a function has a body.
+  bool decalaresFunctionDef() const;
 
   template<typename T>
   bool defines() const {
@@ -256,6 +271,9 @@ public:
   /// This looks for the first instance of DK_TemplateType and returns it.
   const Declarator *getFirstTemplateDeclarator() const;
   Declarator *getFirstTemplateDeclarator();
+  
+  const Declarator *getIdDeclarator() const;
+  Declarator *getIdDeclarator();
 
   /// The corresponding C++ declaration as a context.
   clang::DeclContext *getCxxContext() const;
@@ -303,9 +321,6 @@ public:
   /// 0 is unprocessed (the default value), 1 is identified, 2 is the declaration
   /// is elaborated and 3 is the definition is complete.
   unsigned ElabPhaseCompleted = 0;
-
-  /// Previous clang scope for classes.
-  clang::Scope *ClsScope = nullptr;
 };
 
 /// Different kinds of scope.
@@ -500,6 +515,8 @@ public:
 
   void dump(llvm::raw_ostream &os) const;
   void dump() const;
+
+  void dumpScopeChain() const;
 };
 
 } // namespace gold

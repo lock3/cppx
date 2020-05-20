@@ -19,6 +19,7 @@
 #include "clang/AST/Decl.h"
 
 #include "clang/Gold/GoldSyntax.h"
+#include "clang/Gold/GoldLateElaboration.h"
 #include "clang/Gold/GoldSyntaxContext.h"
 
 #include <unordered_map>
@@ -100,9 +101,39 @@ public:
   clang::QualType getOperatorColonType(const CallSyntax *S) const;
 
   // Semantic actions.
-
   void startFile(const Syntax *S);
   void finishFile(const Syntax *S);
+  
+  /// This returns true if part of the declaration was delayed.
+  bool delayElaborateDeclType(const Syntax *S);
+  /// Functionality associated with late elaboration and are used to either
+  /// elaborate the full class or elaborate everything if they are able to.
+  void delayElaborateMemberInitializer(Declaration *D);
+  // void delayElaborateField(Declaration *D);
+  void delayElaborateMethodDecl(Declaration *D);
+  void delayElaborateMethodDef(Declaration *D);
+  void delayElaborationClassBody(Declaration *D);
+
+  // TODO: This is going to need an implementation at some point becasue
+  // currently I don't think we support default parameters.
+  void delayElaborateDefaultArgument(Declaration *ParamDecl);
+
+
+  /// Functions used for late elaboration processing.
+  void finishDelayedElaboration(ElaboratingClass &Class);
+  void lateElaborateAttributes(ElaboratingClass &Class);
+  void lateElaborateMethodDecls(ElaboratingClass &Class);
+  void lateElaborateMemberInitializers(ElaboratingClass &Class);
+  void lateElaborateMethodDefs(ElaboratingClass &Class);
+  
+  /// Special callbacks used in order to interact a lateElaborated class.
+  void lateElaborateAttribute(LateElaboratedAttributeDecl &Field);
+  void lateElaborateMethodDef(LateElaboratedMethodDef &Method);
+  void lateElaborateDefaultArgument(
+      LateElaboratedDefaultArgument &DefaultParam);
+  void lateElaborateMethodDecl(LateElaboratedMethodDeclaration &Method);
+  void lateElaborateMemberInitializer(
+      LateElaborateMemberInitializer &MemberInit);
 };
 
 /// Represents different kinds of fused operator strings, for example,

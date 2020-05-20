@@ -364,11 +364,92 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
       return;
     }
   }
-
-  // Then call Sema::ActOnBaseSpecifiers with the results from ActOnBaseSepcifier
   SemaRef.getCxxSema().ActOnBaseSpecifiers(R, GivenBaseClasses);
 }
 
+static void
+processCXXNonNestedRecordBody(Elaborator& Elab, SyntaxContext& Context,
+                              Sema& SemaRef, Declaration *D,
+                              clang::CXXRecordDecl *ClsDecl) {
+  using namespace clang;
+  Elab.elaborateTypeBody(D, ClsDecl);
+  // Attempt to figure out if any nested elaboration is actually required.
+  // If not then we can proceed as normal.  
+  auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
+  auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
+
+  // Handling possible base classes.
+  if (const CallSyntax *ClsKwCall
+                        = dyn_cast<CallSyntax>(MacroRoot->getCall())) {
+    processBaseSpecifiers(Elab, SemaRef, Context, D, ClsDecl, ClsKwCall);
+  }
+
+  SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(
+    SemaRef.getCurClangScope(), ClsDecl, SourceLocation(), true,
+    SourceLocation());
+  
+  // Since all declarations have already been added, we don't need to do another
+  // Reordering scan.
+  // Doing possible delaying of member declaration/initialziation.
+  for (const Syntax *SS : BodyArray->children()) {
+    Elab.delayElaborateDeclType(SS);
+  }
+  
+  SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
+    SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
+    SourceLocation(), ParsedAttributesView());
+  D->ElabPhaseCompleted = 3;
+
+  // TODO: Insert any late elaboration of members goes here!
+  // I may need to do something special if this is a template but I
+  // need to figure that out.
+  ElaboratingClass &LateElabClass = SemaRef.getCurrentElaboratingClass();
+  Elab.finishDelayedElaboration(LateElabClass);
+  SemaRef.getCxxSema().ActOnFinishCXXNonNestedClass(ClsDecl);
+
+  clang::Decl *TempDeclPtr = ClsDecl;
+  SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCurClangScope(),
+    TempDeclPtr, SourceRange());
+}
+
+
+static void
+processCXXNestedRecordBody(Elaborator& Elab, SyntaxContext& Context,
+                              Sema& SemaRef, Declaration *D,
+                              clang::CXXRecordDecl *ClsDecl) {
+  using namespace clang;
+  Elab.elaborateTypeBody(D, ClsDecl);
+  
+  auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
+  auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
+
+  // Handling possible base classes.
+  if (const CallSyntax *ClsKwCall
+                        = dyn_cast<CallSyntax>(MacroRoot->getCall())) {
+    processBaseSpecifiers(Elab, SemaRef, Context, D, ClsDecl, ClsKwCall);
+  }
+
+  SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(
+    SemaRef.getCurClangScope(), ClsDecl, SourceLocation(), true,
+    SourceLocation());
+  
+  // Handling all late declarations here.
+  for (const Syntax *SS : BodyArray->children()) {
+    Elab.delayElaborateDeclType(SS);
+  }
+
+  SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
+    SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
+    SourceLocation(), ParsedAttributesView());
+  SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
+
+  D->ElabPhaseCompleted = 3;
+
+  // TODO: Insert any late elaboration of members goes here!
+  clang::Decl *TempDeclPtr = ClsDecl;
+  SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCurClangScope(),
+    TempDeclPtr, SourceRange());
+}
 
 static clang::Decl*
 processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
@@ -413,24 +494,9 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   CXXScopeSpec SS;
   TypeResult UnderlyingType;
   AccessSpecifier AS = AS_none;
-  if (WithinClass) {
-    if (Template)
-      AS = AS_public;
-    // Attempting to check for access specifiers
-    if (D->Decl->AttributeNode) {
-      for (auto const& attr : D->Decl->AttributeNode->getAttributes()) {
-        if (const AtomSyntax *AttrName = dyn_cast<AtomSyntax>(attr->getArg())) {
-          if (AttrName->getSpelling() == "private") {
-            AS = clang::AS_private;
-          } else if (AttrName->getSpelling() == "protected") {
-            AS = clang::AS_protected;
-          } else if (AttrName->getSpelling() == "public") {
-            AS = clang::AS_public;
-          }
-        }
-      }
-    }
-  }
+  if (WithinClass)
+    if (computeAccessSpecifier(SemaRef, D, AS))
+      return nullptr;
   clang::SourceLocation IdLoc = D->Decl->getLoc();
 
   Decl *Declaration = SemaRef.getCxxSema().ActOnTag(SemaRef.getCurClangScope(),
@@ -448,88 +514,32 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
     ClsDecl = cast<CXXRecordDecl>(TempTemplateDecl->getTemplatedDecl());
   }
   D->Cxx = ClsDecl;
-  Sema::ScopeRAII ClassBodyScope(SemaRef, SK_Class, D->Op);
+  Sema::ScopeRAII ClassBodyScope(SemaRef, SK_Class, D->Op, &D->SavedScope);
   SemaRef.getCurrentScope()->Entity = D;
   
+
   Sema::ClangScopeRAII ClangClassScopeBody(SemaRef,
     clang::Scope::ClassScope | clang::Scope::DeclScope, D->Init->getLoc());
     
+
   // Need to do this before the next step because this is actually pushed on to
   // the stack a by the next function called.
   SemaRef.getCxxSema().ActOnTagStartDefinition(
     SemaRef.getCurClangScope(), D->Cxx);
 
   // This keeps the declContext working correctly.
-  Sema::DeclContextRAII DCTracking(SemaRef, D);
+  Sema::DeclContextRAII DCTracking(SemaRef, D, true);
 
   // This keeps track of class nesting.
   Sema::ElaboratingClassDefRAII ClsElabState(SemaRef, D,
     !SemaRef.isElaboratingClass());
-
-  Elab.elaborateTypeBody(D, ClsDecl);
-
- 
-  auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
-  auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
-
-
-  // Handling possible base classes.
-  if (const CallSyntax *ClsKwCall
-                        = dyn_cast<CallSyntax>(MacroRoot->getCall())) {
-    processBaseSpecifiers(Elab, SemaRef, Context, D, ClsDecl, ClsKwCall);
-  }
-
-  SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(
-    SemaRef.getCurClangScope(), ClsDecl, SourceLocation(), true,
-    SourceLocation());
-  
-  // Since all declarations have already been added, we don't need to do another
-  // Reordering scan. Maybe?
-  for (const Syntax *SS : BodyArray->children()) {
-    Elab.elaborateDeclType(SS);
-  }
-
-  // We need to elaborate any/all of the member member initializes at here.
-  for (const Syntax *SS : BodyArray->children()) {
-    gold::Declaration *LocalDecl = SemaRef.getCurrentScope()->findDecl(SS);
-    if (!LocalDecl)
-      continue;
-    if (LocalDecl->declaresMemberVariable()
-        || LocalDecl->defines<clang::VarDecl>()) {
-      Elab.elaborateDef(LocalDecl);
-    }
-  }
-
-  SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
-    SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
-    SourceLocation(), ParsedAttributesView());
-  SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
-
-  D->ElabPhaseCompleted = 3;
-
-  // Elaborating types first.
-  for (const Syntax *SS : BodyArray->children()) {
-    gold::Declaration *LocalDecl = SemaRef.getCurrentScope()->findDecl(SS);
-    if (!LocalDecl)
-      continue;
-    if(LocalDecl->declaresRecord() || LocalDecl->declaresType())
-      Elab.elaborateDef(LocalDecl);
-  }
-
-  // Elaborating everything else.
-  for (const Syntax *SS : BodyArray->children()) {
-    gold::Declaration *LocalDecl = SemaRef.getCurrentScope()->findDecl(SS);
-    if (!LocalDecl)
-      continue;
-    if (LocalDecl->declaresMemberFunction() || LocalDecl->declaresConstructor()) 
-      Elab.elaborateDef(LocalDecl);
-  }
-  clang::Decl *TempDeclPtr = ClsDecl;
-  SemaRef.getCxxSema().ActOnTagFinishDefinition(D->ClsScope, TempDeclPtr,
-    SourceRange());
-
+    
+  // This is for processing all of our declarations.
+  if (WithinClass)
+    processCXXNestedRecordBody(Elab, Context, SemaRef, D, ClsDecl);
+  else
+    processCXXNonNestedRecordBody(Elab, Context, SemaRef, D, ClsDecl);
   return ClsDecl;
-
 }
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
@@ -863,8 +873,9 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
     return nullptr;
   }
 
-  if (SemaRef.getCurrentScope()->isClassScope())
+  if (SemaRef.getCurrentScope()->isClassScope()){
     return elaborateField(D);
+  }
 
 
   // Get the type of the entity.
@@ -1062,7 +1073,7 @@ void Elaborator::elaborateDef(Declaration *D) {
   if (SemaRef.getCurrentScope()->isTemplateScope())
     return elaborateTemplateParamInit(D);
   if (D->declaresMemberVariable())
-    return elaborateFieldInit(D);  
+    return;
   if (D->declaresTypeAlias())
     return;
   return elaborateVariableInit(D);
@@ -1087,7 +1098,7 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   // We saved the parameter scope while elaborating this function's type,
   // so push it on before we enter the function scope.
   Declarator *FnDecl = getFunctionDeclarator(D);
-  bool IsTemplate = D->declaresTemplate();
+  bool IsTemplate = D->declaresFunctionTemplate();
 
   Scope *TemplateScope = nullptr;
   if (IsTemplate) {
@@ -1100,6 +1111,7 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   if (TemplateScope) {
     SemaRef.getCurrentScope()->setParent(TemplateScope);
   }
+
 
   Declaration *CurrentDeclaration = SemaRef.getCurrentDecl();
   // Entering clang scope. for function definition.
@@ -1350,29 +1362,33 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
 }
 
 void Elaborator::elaborateFieldInit(Declaration *D) {
+  assert(D && "Missing Declaration.");
   if (!D->Init)
     return;
-  assert(D && "Missing Declaration.");
+  D->ElabPhaseCompleted = 3;
+  SemaRef.getCxxSema().ActOnStartCXXInClassMemberInitializer();
+
+  using EEC = clang::Sema::ExpressionEvaluationContext;
+  clang::EnterExpressionEvaluationContext EEContext(SemaRef.getCxxSema(),
+      EEC::PotentiallyEvaluated, D->Cxx);
+
   ExprElaborator ExprElab(Context, SemaRef);
   ExprElaborator::Expression Init = ExprElab.elaborateExpr(D->Init);
 
   // Make sure the initializer was not elaborated as a type.
-  if (Init.is<clang::TypeSourceInfo*>()) {
+  if (Init.is<clang::TypeSourceInfo *>()) {
     // TODO: Insert diagnostics here?
     llvm::errs() << "Expected expression, not a type.\n";
     return;
   }
-  clang::FieldDecl *Field = cast<clang::FieldDecl>(D->Cxx);
-  // Checking if the field declaration needs an implicit conversion or not.
-  clang::Expr *InitExpr = Init.get<clang::Expr*>();
-  if (Field->getType() == InitExpr->getType())
-    return Field->setInClassInitializer(InitExpr);
-  // Trying an implicit conversion.
-  clang::ExprResult ConvertedResult
-      = SemaRef.getCxxSema().PerformImplicitConversion(InitExpr,
-      Field->getType(), clang::Sema::AssignmentAction::AA_Initializing, false);
-  Field->setInClassInitializer(ConvertedResult.get());
-  D->ElabPhaseCompleted = 3;
+  
+  if (Init.is<clang::NamespaceDecl *>()) {
+    // TODO: Create diagnostic expression here.
+    llvm::errs() << "Expected expression, who doesn't yield a namespace.\n";
+    return;
+  }
+  SemaRef.getCxxSema().ActOnFinishCXXInClassMemberInitializer(D->Cxx,
+    D->Op->getLoc(), Init.get<clang::Expr *>());
 }
 
 // Get the clang::QualType described by an operator':' call.
@@ -1484,7 +1500,6 @@ static Declarator *buildTemplatedName(const ElemSyntax *Call,
   Declarator *D = new Declarator(DK_TemplateType, Next);
   D->Call = Call;
   D->Data.TemplateInfo.Params = Call->getArguments();
-  D->Data.TemplateInfo.DeclScope = nullptr;
   return D;
 }
 
@@ -1759,6 +1774,254 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
 
   return nullptr;
 }
+
+bool Elaborator::delayElaborateDeclType(const Syntax *S) {
+  Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
+  if (!D) {
+    return false;
+  }
+  // Handling a check for possible late elaboration on each declaration.
+  if (D->ElabPhaseCompleted > 1)
+    return false;
+
+  assert(D->ElabPhaseCompleted == 1 &&
+      "Declaration occurred at Incorrect phase of elaboration.");
+  // FIXME: This almost certainly needs its own elaboration context
+  // because we can end up with recursive elaborations of declarations,
+  // possibly having cyclic dependencies.
+  if (D->declaresRecord()) {
+    delayElaborationClassBody(D);
+    return true;
+  }
+  bool WasDelayed = false;
+  if (D->declaresFunction()) {
+    if (D->declIsStatic()) {
+      // TODO: If this reaches across class then we may need to change how look up
+      // is handled in this set of circumstances. Because this could
+      // reach into the scope of another class and get data from there
+      // but the late elaboration from there might not exist yet.
+      // So we might need to do partial elaboration of a few things in order to
+      // correctly define them.
+      elaborateFunctionDecl(D);
+    } else {
+      // Attempting to delay method decl/def combos
+      delayElaborateMethodDecl(D);
+      WasDelayed = true;
+    }
+    if (D->decalaresFunctionDef()) {
+      delayElaborateMethodDef(D);
+      WasDelayed = true;
+    }
+    return WasDelayed;
+  }
+  // TODO: Nested nested types are going to be kind of confusing, but I just
+  // need to better understand how they are created, and what scope they are
+  // located within.
+
+  // The final portion of this handles field declaration processing.
+  // I will need to check for initializers and if the thing is static or not.
+  elaborateVariableDecl(D);
+  if (!D->declaresMemberVariable()) {
+    elaborateDeclEarly(D);
+    return false;
+  }
+
+  if (D->declaresInitializedVariable()) {
+    delayElaborateMemberInitializer(D);
+    return true;
+  }
+  return false;
+}
+
+
+void Elaborator::delayElaborateMemberInitializer(Declaration *D) {
+  SemaRef.getCurrentElaboratingClass().LateElaborations.push_back(
+    new LateElaborateMemberInitializer(SemaRef, Context, D)
+  );
+}
+
+void Elaborator::delayElaborateMethodDecl(Declaration *D) {
+  SemaRef.getCurrentElaboratingClass().LateElaborations.push_back(
+    new LateElaboratedMethodDeclaration(SemaRef, Context, D)
+  );
+}
+
+void Elaborator::delayElaborateMethodDef(Declaration *D) {
+  SemaRef.getCurrentElaboratingClass().LateElaborations.push_back(
+    new LateElaboratedMethodDef(SemaRef, Context, D)
+  );
+}
+
+void Elaborator::delayElaborationClassBody(Declaration *D) {
+  processCXXRecordDecl(*this, Context, SemaRef, D);
+}
+
+void Elaborator::delayElaborateDefaultArgument(Declaration *ParamDecl) {
+  // TODO: This will need fixed so that we can properly add to the most recently
+  // delayed function possibly.
+  llvm_unreachable("Evaluation of default arguemtns within a class body "
+    "not implemented yet.");
+}
+
+
+
+void Elaborator::finishDelayedElaboration(ElaboratingClass &Class) {
+  lateElaborateAttributes(Class);
+  lateElaborateMethodDecls(Class);
+
+  // We call this because no new declarations can be added after this point.
+  // This is only called for the top level class.
+  SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
+  
+  lateElaborateMemberInitializers(Class);
+  lateElaborateMethodDefs(Class);
+}
+
+void Elaborator::lateElaborateAttributes(ElaboratingClass &Class) {
+  bool CurrentlyNested = !Class.IsTopLevelClass;
+  Sema::ClangScopeRAII AttributeDelayedScope(SemaRef, clang::Scope::DeclScope |
+    clang::Scope::ClassScope, clang::SourceLocation(), CurrentlyNested);
+
+  Sema::OptionalInitScope<Sema::ResumeScopeRAII> OptResumeScope(SemaRef);
+
+  // This may need to be moved to somewhere else.
+  if (CurrentlyNested) {
+    OptResumeScope.Init(Class.TagOrTemplate->SavedScope, Class.TagOrTemplate->Op);
+    SemaRef.getCxxSema().ActOnStartDelayedMemberDeclarations(
+      SemaRef.getCurClangScope(), Class.TagOrTemplate->Cxx);
+  }
+  
+  for (size_t i = 0; i < Class.LateElaborations.size(); ++i) {
+    Class.LateElaborations[i]->ElaborateAttributes();
+  }
+  if (CurrentlyNested)
+    SemaRef.getCxxSema().ActOnFinishDelayedMemberDeclarations(
+      SemaRef.getCurClangScope(), Class.TagOrTemplate->Cxx);
+}
+
+void Elaborator::lateElaborateMethodDecls(ElaboratingClass &Class) {
+  bool CurrentlyNested = !Class.IsTopLevelClass;
+  Sema::ClangScopeRAII FunctionDeclScope(SemaRef, clang::Scope::DeclScope |
+    clang::Scope::ClassScope, clang::SourceLocation(), CurrentlyNested);
+    
+  Sema::OptionalInitScope<Sema::DeclContextRAII> DCTracking(SemaRef);
+  Sema::OptionalInitScope<Sema::ResumeScopeRAII> OptResumeScope(SemaRef);
+
+  // This may need to be moved to somewhere else.
+  if (CurrentlyNested) {
+    OptResumeScope.Init(Class.TagOrTemplate->SavedScope,
+      Class.TagOrTemplate->Op, false);
+    SemaRef.getCxxSema().ActOnStartDelayedMemberDeclarations(
+      SemaRef.getCurClangScope(), Class.TagOrTemplate->Cxx);
+    DCTracking.Init(Class.TagOrTemplate, true);
+  }
+
+  for (size_t i = 0; i < Class.LateElaborations.size(); ++i) {
+    Class.LateElaborations[i]->ElaborateMethodDeclarations();
+  }
+
+  if (CurrentlyNested)
+    SemaRef.getCxxSema().ActOnFinishDelayedMemberDeclarations(
+      SemaRef.getCurClangScope(), Class.TagOrTemplate->Cxx);
+}
+
+void Elaborator::lateElaborateMemberInitializers(ElaboratingClass &Class) {
+  bool CurrentlyNested = !Class.IsTopLevelClass;
+
+  Sema::ClangScopeRAII MemberInitScope(SemaRef, clang::Scope::DeclScope |
+    clang::Scope::ClassScope, clang::SourceLocation(), CurrentlyNested);
+
+  Sema::OptionalInitScope<Sema::ResumeScopeRAII> OptResumeScope(SemaRef);
+  Sema::OptionalInitScope<Sema::DeclContextRAII> DCTracking(SemaRef);
+
+  // This may need to be moved to somewhere else.
+  if (CurrentlyNested) {
+    OptResumeScope.Init(Class.TagOrTemplate->SavedScope,
+      Class.TagOrTemplate->Op, false);
+    SemaRef.getCxxSema().ActOnStartDelayedMemberDeclarations(
+      SemaRef.getCurClangScope(), Class.TagOrTemplate->Cxx);
+    DCTracking.Init(Class.TagOrTemplate, true);
+  }
+
+  clang::Sema::CXXThisScopeRAII PushThisIntoScope(SemaRef.getCxxSema(),
+      Class.TagOrTemplate->Cxx, clang::Qualifiers());
+
+  for (size_t i = 0; i < Class.LateElaborations.size(); ++i) {
+    Class.LateElaborations[i]->ElaborateMemberInitializers();
+  }
+
+  if (CurrentlyNested)
+    SemaRef.getCxxSema().ActOnFinishDelayedMemberDeclarations(
+      SemaRef.getCurClangScope(), Class.TagOrTemplate->Cxx);
+
+  SemaRef.getCxxSema().ActOnFinishDelayedMemberInitializers(
+    Class.TagOrTemplate->Cxx);
+}
+
+
+void Elaborator::lateElaborateMethodDefs(ElaboratingClass &Class) {
+  bool CurrentlyNested = !Class.IsTopLevelClass;
+  Sema::ClangScopeRAII MethodDefScope(SemaRef, clang::Scope::DeclScope |
+    clang::Scope::ClassScope, clang::SourceLocation(), CurrentlyNested);
+
+  Sema::OptionalInitScope<Sema::ResumeScopeRAII> OptResumeScope(SemaRef);
+
+  // This may need to be moved to somewhere else.
+  if (CurrentlyNested)
+    OptResumeScope.Init(Class.TagOrTemplate->SavedScope,
+      Class.TagOrTemplate->Op, false);
+
+  for (size_t i = 0; i < Class.LateElaborations.size(); ++i) {
+    Class.LateElaborations[i]->ElaborateMethodDefs();
+  }
+}
+
+
+
+void Elaborator::lateElaborateAttribute(LateElaboratedAttributeDecl &Field) {
+  // TODO: find a valid example of how this actually works/when this is used.
+  llvm_unreachable("We currently don't have late binding attributes? I don't "
+      "really know.");
+}
+
+
+
+void Elaborator::lateElaborateMemberInitializer(
+    LateElaborateMemberInitializer &MemberInit) {
+  assert(MemberInit.D && "Invalid declaration detected.");
+  assert(MemberInit.D->declaresMemberVariable()
+         && "Declaration doesn't declare a field.\n");
+
+  // Start delayed member This occurs for each member initializer within a
+  // given class.
+  elaborateFieldInit(MemberInit.D);
+}
+
+void Elaborator::lateElaborateMethodDecl(
+    LateElaboratedMethodDeclaration &Method) {
+  Sema::ClangScopeRAII InheritanceScope(SemaRef, clang::Scope::DeclScope |
+      clang::Scope::FunctionPrototypeScope |
+      clang::Scope::FunctionDeclarationScope,
+      clang::SourceLocation());
+  elaborateFunctionDecl(Method.D);
+  SemaRef.getCxxSema().ActOnFinishDelayedCXXMethodDeclaration(
+      SemaRef.getCurClangScope(), Method.D->Cxx);
+}
+
+void Elaborator::lateElaborateDefaultArgument(
+    LateElaboratedDefaultArgument &DefaultParam) {
+  llvm_unreachable("Default arguments for function declarations haven't "
+      "been processed yet.");
+}
+
+
+void Elaborator::lateElaborateMethodDef(LateElaboratedMethodDef &Method) {
+  elaborateFunctionDef(Method.D);
+  SemaRef.getCxxSema().ActOnFinishInlineFunctionDef(
+    cast<clang::FunctionDecl>(Method.D->Cxx));
+}
+
+
 
 FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
   const clang::IdentifierInfo *Tokenization =

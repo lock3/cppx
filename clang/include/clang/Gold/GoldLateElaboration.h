@@ -47,12 +47,7 @@ public:
   virtual void ElaborateMethodDeclarations();
   virtual void ElaborateMemberInitializers();
   virtual void ElaborateMethodDefs();
-  
-  // TODO: Not sure what this is used for in clang.
-  virtual void ElaborateFields(); 
-
-  // TODO: Need to figure out what this is used for within clang.
-  virtual void ElaboratePragmas();
+  virtual void ElaborateAttributes(); 
 };
 
 
@@ -63,11 +58,10 @@ public:
   LateElaboratedClass(Sema &S, SyntaxContext &Ctxt, ElaboratingClass *C);
   ~LateElaboratedClass() override;
 
-  void ElaborateMethodDeclarations() override;
   void ElaborateMemberInitializers() override;
+  void ElaborateMethodDeclarations() override;
   void ElaborateMethodDefs() override;
-  void ElaborateFields() override;
-  void ElaboratePragmas() override;
+  void ElaborateAttributes() override;
 
 private:
   Sema &SemaRef;
@@ -77,7 +71,7 @@ private:
 
 /// Contains the member variable that depend on other types within the class
 /// body that may have not been processed yet. 
-struct LateElaboratedFieldDecl : public LateElaboratedDecl {
+struct LateElaboratedAttributeDecl : public LateElaboratedDecl {
   Sema &SemaRef;
   SyntaxContext &Context;
   Declaration *Decl;
@@ -87,12 +81,12 @@ struct LateElaboratedFieldDecl : public LateElaboratedDecl {
   // IdentifierInfo *MacroII = nullptr; 
   llvm::SmallVector<Declaration *, 2> Decls;
 
-  explicit LateElaboratedFieldDecl(Sema &S, SyntaxContext &Ctxt,
+  explicit LateElaboratedAttributeDecl(Sema &S, SyntaxContext &Ctxt,
                                    clang::IdentifierInfo &Name,
                                    clang::SourceLocation Loc)
     : SemaRef(S), Context(Ctxt), Id(Name), NameLoc(Loc) { }
 
-  void ElaborateFields() override;
+  void ElaborateAttributes() override;
 
   /// This is because a single declarator could technically declare multiple
   /// variables. However this hasn't been added yet.

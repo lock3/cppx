@@ -529,41 +529,6 @@ main() : int!
   ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
 
-
-// TEST(ClassParsing, NestedClassWithMemberFunction) {
-//   StringRef Code = R"(
-// outer : type = class:
-//   bar() : int!
-//     return 4
-//   nested : type = class:
-//     a : int
-//     b : float
-//     foo() : int!
-//       return b
-    
-  
-
-
-// )";
-
-//   DeclarationMatcher ClassCInfo = recordDecl(
-//     hasName("outer"),
-//     has(recordDecl(hasName("nested"),
-//       hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
-//         isPublic())),
-//       hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
-//         isPublic())),
-//       hasDescendant(cxxMethodDecl(hasName("foo")))
-//     ))
-//   );
-
-//   DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
-//     hasDescendant(ClassCInfo)
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
-// }
-
-
 TEST(ClassParsing, MultipleNestedTypeDefinition) {
   StringRef Code = R"(
 c : type = class:
@@ -954,3 +919,37 @@ main() : int!
 //   );
 //   ASSERT_TRUE(matches(Code.str(), MemberBaseAccessOutsideOfClass));
 // }
+
+
+
+TEST(ClassParsing, NestedClassWithMemberFunction) {
+  StringRef Code = R"(
+outer : type = class:
+  bar() : int!
+    return 4
+  nested : type = class:
+    a : int
+    b : float
+    foo() : int!
+      return b
+    
+  
+)";
+
+  DeclarationMatcher ClassCInfo = recordDecl(
+    hasName("outer"),
+    has(recordDecl(hasName("nested"),
+      hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
+        isPublic())),
+      hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
+        isPublic())),
+      hasDescendant(cxxMethodDecl(hasName("foo")))
+    ))
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo)
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
+}
+

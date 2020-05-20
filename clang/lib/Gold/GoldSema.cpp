@@ -352,7 +352,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 
         // If there is a described template, add that to the result instead
         // of the bare declaration.
-        if (FoundDecl->declaresTemplate()) {
+        if (FoundDecl->declaresFunctionTemplate()) {
           if (auto *FD = dyn_cast<clang::FunctionDecl>(ND))
             ND = FD->getDescribedFunctionTemplate();
           else if (auto *VD = dyn_cast<clang::VarDecl>(ND))
@@ -588,6 +588,30 @@ void Sema::popElaboratingClass(ClassElaborationState State) {
       new LateElaboratedClass(*this, Context, Victim));
   Victim->TemplateScope
                    = CxxSema.getCurScope()->getParent()->isTemplateParamScope();
+}
+
+bool Sema::declNeedsDelayed(Declaration *D) {
+  // This may need some special processing to see if it interacts with
+  // itself at all.
+  if (D->declaresTypeAlias())
+    return false;
+
+  if (D->declaresTemplateType() || D->declaresRecord())
+    return true;
+
+  // I haven't found an reason that these would need to be delayed any more
+  // then normal so long as they are done in the approriate order
+  if (D->declaresFunctionTemplate() || D->declaresFunction())
+    // TODO:/FIXME: Once we have default parameters implemented we
+    // will need to change how this function works, because when we encounter
+    // a type that uses something not elaborated yet like the type associated
+    // with a class, then we need to make sure that we do late elaboration
+    // of that when it's required.
+    return false;
+
+  if (D->declaresInitializedVariable())
+    return true;
+  return false;
 }
 
 unsigned Sema::computeTemplateDepth() const {
