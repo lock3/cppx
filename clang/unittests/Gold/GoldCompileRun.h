@@ -19,7 +19,7 @@
 namespace gold {
 using MainSig = int(*)();
 
-testing::AssertionResult CompileGoldCode(llvm::LLVMContext& Context,
-    llvm::StringRef code, std::unique_ptr<llvm::ExecutionEngine>& EE);
+testing::AssertionResult CompileGoldCode(llvm::LLVMContext &Context,
+   llvm::StringRef Code, std::unique_ptr<llvm::ExecutionEngine> &EE);
 }
 #endif

@@ -29,6 +29,7 @@ class DiagnosticsEngine;
 
 namespace gold
 {
+  struct Attribute;
   struct Syntax;
   class SyntaxContext;
 
@@ -211,6 +212,7 @@ namespace gold
     void parseList(llvm::SmallVectorImpl<Syntax *> &Vec);
 
     Syntax *parseExpr();
+    bool parsePreattr();
     Syntax *parseDef();
     Syntax *parseOr();
     Syntax *parseAnd();
@@ -244,7 +246,7 @@ namespace gold
     Syntax *parseBracedArray();
     Syntax *parseNestedArray();
 
-    Syntax *parsePreAttr();
+    bool parsePreAttr();
     Syntax *parseDocAttr();
 
     Syntax *parseCatch();
@@ -367,6 +369,30 @@ namespace gold
   public:
     void incrementEnclosureCount(unsigned Enclosure);
     void decrementEnclosureCount(unsigned Enclosure);
+
+  private:
+    /// Holds onto each pre-attribute we parse until finishing the declaration.
+    llvm::SmallVector<Attribute *, 4> Preattributes;
+
+    /// Attach the current stack of preattrs to a Syntax.
+    void attachPreattrs(Syntax *S);
+
+    /// True when we are parsing an attribute
+    bool InAttribute = false;
+
+    struct AttributeScope {
+      AttributeScope(bool &InAttribute)
+        : InAttribute(InAttribute) {
+        InAttribute = !InAttribute;
+      }
+
+      ~AttributeScope() {
+        InAttribute = !InAttribute;
+      }
+
+    private:
+      bool &InAttribute;
+    };
   };
 
   /// RAII object that makes '>' behave either as an operator
@@ -385,7 +411,6 @@ namespace gold
       GreaterThanIsOperator = OldGreaterThanIsOperator;
     }
   };
-
 } // namespace gold
 
 #endif

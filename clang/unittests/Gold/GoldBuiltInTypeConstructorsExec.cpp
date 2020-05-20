@@ -13,10 +13,10 @@ main() : int!
   LLVMContext Context;
   std::unique_ptr<ExecutionEngine> EE;
   ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
-  MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
+  MainSig CB = MainSig(EE->getFunctionAddress("main"));
   ASSERT_TRUE(CB);
-  int result = CB();
-  ASSERT_EQ(result, 5);
+  int Result = CB();
+  ASSERT_EQ(Result, 5);
 }
 
 TEST(GoldBuiltinConstructors, BuiltinConstructorCall_float) {
@@ -28,7 +28,7 @@ main() : int!
   LLVMContext Context;
   std::unique_ptr<ExecutionEngine> EE;
   ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
-  MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
+  MainSig CB = MainSig(EE->getFunctionAddress("main"));
   ASSERT_TRUE(CB);
   int result = CB();
   ASSERT_EQ(result, 5);
@@ -44,7 +44,7 @@ main() : int!
   LLVMContext Context;
   std::unique_ptr<ExecutionEngine> EE;
   ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
-  MainSig CB = MainSig(EE->getPointerToNamedFunction("main"));
+  MainSig CB = MainSig(EE->getFunctionAddress("main"));
   ASSERT_TRUE(CB);
   int result = CB();
   ASSERT_EQ(result, 5);

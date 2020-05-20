@@ -329,10 +329,9 @@ void Parser::parseList(llvm::SmallVectorImpl<Syntax *> &Vec)
 //    def-list , def
 Syntax *Parser::parseExpr()
 {
-  if (nextTokenIs(tok::LeftBracket)) {
-    // FIXME: Match the 'pre-attr expr' production.
-    llvm_unreachable("attributed expressions not supported");
-  }
+  while (nextTokenIs(tok::LeftBracket))
+    if (parsePreattr())
+      return onError();
 
   Syntax *Def = parseDef();
 
@@ -386,6 +385,26 @@ Syntax *Parser::parseExpr()
   // FIXME: Support trailing docattrs.
 
   return Def;
+}
+
+bool Parser::parsePreattr() {
+  EnclosingBrackets Brackets(*this);
+  if (!Brackets.expectOpen())
+    return true;
+
+  AttributeScope AttrScope(InAttribute);
+
+  // Don't parse an attribute if the angles are empty.
+  Syntax *Arg = !(nextTokenIs(tok::Greater) || nextTokenIs(tok::GreaterEqual))
+    ? parseExpr() : nullptr;
+
+  if (!Brackets.expectClose())
+    return true;
+
+  Attribute *Attr = makeAttr(Context, Arg);
+  Preattributes.push_back(Attr);
+  expectToken(tok::Separator);
+  return false;
 }
 
 static bool isAssignmentOperator(TokenKind K) {
@@ -1223,7 +1242,10 @@ static Attribute *makeAttr(const SyntaxContext &Ctx, Syntax *Arg) {
 }
 
 Syntax *Parser::onAtom(const Token& Tok) {
-  return new (Context) AtomSyntax(Tok);
+  Syntax *Ret = new (Context) AtomSyntax(Tok);
+  if (!InAttribute)
+    attachPreattrs(Ret);
+  return Ret;
 }
 
 Syntax *Parser::onLiteral(const Token& Tok) {
@@ -1377,6 +1399,16 @@ void Parser::finishPotentialAngleBracket(const Token &OpToken) {
                                      Angles.EnclosureCounts[3]}};
   if (Angles.hasSameDepth(Angles.Angles.back(), CloseLoc))
     Angles.Angles.pop_back();
+}
+
+void Parser::attachPreattrs(Syntax *S) {
+  if (!Preattributes.size())
+    return;
+
+  for (auto *Attr : Preattributes)
+    S->addAttribute(Attr);
+
+  Preattributes.clear();
 }
 
 } // namespace gold
