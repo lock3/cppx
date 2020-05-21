@@ -91,7 +91,8 @@ void LateElaborateMemberInitializer::ElaborateMemberInitializers() {
 
 ElaboratingClass::ElaboratingClass(
     Declaration *TagOrTemplate, bool TopLevelClass)
-  : IsTopLevelClass(TopLevelClass), TemplateScope(false),
+  : IsTopLevelClass(TopLevelClass),
+    TemplateScope(TagOrTemplate->declaresTemplateType()),
     TagOrTemplate(TagOrTemplate)
 { }
 

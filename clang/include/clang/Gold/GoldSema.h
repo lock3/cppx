@@ -340,7 +340,8 @@ public:
     bool WasPopped;
     ClassElaborationState State;
   public:
-    ElaboratingClassDefRAII(Sema &S, Declaration *D, bool IsTopLevelClass)
+    ElaboratingClassDefRAII(Sema &S, Declaration *D, bool IsTopLevelClass,
+        bool IsTemplate = false)
       :SemaRef(S), WasPopped(false),
       State(SemaRef.pushElaboratingClass(D, IsTopLevelClass)) { }
 

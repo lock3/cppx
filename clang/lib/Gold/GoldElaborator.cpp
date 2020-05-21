@@ -367,90 +367,6 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
   SemaRef.getCxxSema().ActOnBaseSpecifiers(R, GivenBaseClasses);
 }
 
-static void
-processCXXNonNestedRecordBody(Elaborator& Elab, SyntaxContext& Context,
-                              Sema& SemaRef, Declaration *D,
-                              clang::CXXRecordDecl *ClsDecl) {
-  using namespace clang;
-  Elab.elaborateTypeBody(D, ClsDecl);
-  // Attempt to figure out if any nested elaboration is actually required.
-  // If not then we can proceed as normal.  
-  auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
-  auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
-
-  // Handling possible base classes.
-  if (const CallSyntax *ClsKwCall
-                        = dyn_cast<CallSyntax>(MacroRoot->getCall())) {
-    processBaseSpecifiers(Elab, SemaRef, Context, D, ClsDecl, ClsKwCall);
-  }
-
-  SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(
-    SemaRef.getCurClangScope(), ClsDecl, SourceLocation(), true,
-    SourceLocation());
-  
-  // Since all declarations have already been added, we don't need to do another
-  // Reordering scan.
-  // Doing possible delaying of member declaration/initialziation.
-  for (const Syntax *SS : BodyArray->children()) {
-    Elab.delayElaborateDeclType(SS);
-  }
-  
-  SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
-    SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
-    SourceLocation(), ParsedAttributesView());
-  D->ElabPhaseCompleted = 3;
-
-  // TODO: Insert any late elaboration of members goes here!
-  // I may need to do something special if this is a template but I
-  // need to figure that out.
-  ElaboratingClass &LateElabClass = SemaRef.getCurrentElaboratingClass();
-  Elab.finishDelayedElaboration(LateElabClass);
-  SemaRef.getCxxSema().ActOnFinishCXXNonNestedClass(ClsDecl);
-
-  clang::Decl *TempDeclPtr = ClsDecl;
-  SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCurClangScope(),
-    TempDeclPtr, SourceRange());
-}
-
-
-static void
-processCXXNestedRecordBody(Elaborator& Elab, SyntaxContext& Context,
-                              Sema& SemaRef, Declaration *D,
-                              clang::CXXRecordDecl *ClsDecl) {
-  using namespace clang;
-  Elab.elaborateTypeBody(D, ClsDecl);
-  
-  auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
-  auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
-
-  // Handling possible base classes.
-  if (const CallSyntax *ClsKwCall
-                        = dyn_cast<CallSyntax>(MacroRoot->getCall())) {
-    processBaseSpecifiers(Elab, SemaRef, Context, D, ClsDecl, ClsKwCall);
-  }
-
-  SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(
-    SemaRef.getCurClangScope(), ClsDecl, SourceLocation(), true,
-    SourceLocation());
-  
-  // Handling all late declarations here.
-  for (const Syntax *SS : BodyArray->children()) {
-    Elab.delayElaborateDeclType(SS);
-  }
-
-  SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
-    SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
-    SourceLocation(), ParsedAttributesView());
-  SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
-
-  D->ElabPhaseCompleted = 3;
-
-  // TODO: Insert any late elaboration of members goes here!
-  clang::Decl *TempDeclPtr = ClsDecl;
-  SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCurClangScope(),
-    TempDeclPtr, SourceRange());
-}
-
 static clang::Decl*
 processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
                      Declaration *D) {
@@ -533,12 +449,45 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   // This keeps track of class nesting.
   Sema::ElaboratingClassDefRAII ClsElabState(SemaRef, D,
     !SemaRef.isElaboratingClass());
-    
-  // This is for processing all of our declarations.
-  if (WithinClass)
-    processCXXNestedRecordBody(Elab, Context, SemaRef, D, ClsDecl);
-  else
-    processCXXNonNestedRecordBody(Elab, Context, SemaRef, D, ClsDecl);
+
+  Elab.elaborateTypeBody(D, ClsDecl);
+  // Attempt to figure out if any nested elaboration is actually required.
+  // If not then we can proceed as normal.  
+  auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
+  auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
+
+  // Handling possible base classes.
+  if (const CallSyntax *ClsKwCall
+                        = dyn_cast<CallSyntax>(MacroRoot->getCall())) {
+    processBaseSpecifiers(Elab, SemaRef, Context, D, ClsDecl, ClsKwCall);
+  }
+
+  SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(
+    SemaRef.getCurClangScope(), ClsDecl, SourceLocation(), true,
+    SourceLocation());
+  
+  // Since all declarations have already been added, we don't need to do another
+  // Reordering scan.
+  // Doing possible delaying of member declaration/initialziation.
+  for (const Syntax *SS : BodyArray->children()) {
+    Elab.delayElaborateDeclType(SS);
+  }
+  
+  SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
+    SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
+    SourceLocation(), ParsedAttributesView());
+  D->ElabPhaseCompleted = 3;
+  
+  if (!WithinClass) {
+    ElaboratingClass &LateElabClass = SemaRef.getCurrentElaboratingClass();
+    Elab.finishDelayedElaboration(LateElabClass);
+    SemaRef.getCxxSema().ActOnFinishCXXNonNestedClass(ClsDecl);
+  }
+
+  // TODO: Insert any late elaboration of members goes here!
+  clang::Decl *TempDeclPtr = ClsDecl;
+  SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCurClangScope(),
+    TempDeclPtr, SourceRange());
   return ClsDecl;
 }
 
@@ -856,6 +805,8 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   }
   
   if (TypeExpr.is<clang::Expr *>()) {
+    // TODO: Convert the result of an expr into something that can be used 
+    // as a type.
     llvm_unreachable("TypeExpr.is<clang::Expr *>(). Working on it.");
   }
 
@@ -1716,7 +1667,6 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       if (SemaRef.getCurrentScope()->isParameterScope() && !Dcl->isIdentifier()){
         assert(false && "Invalid parameter declaration");
       }
-
       clang::IdentifierInfo* Id = getIdentifier(*this, Dcl);
 
       Scope *CurScope = SemaRef.getCurrentScope();
@@ -1882,6 +1832,7 @@ void Elaborator::lateElaborateAttributes(ElaboratingClass &Class) {
   Sema::ClangScopeRAII AttributeDelayedScope(SemaRef, clang::Scope::DeclScope |
     clang::Scope::ClassScope, clang::SourceLocation(), CurrentlyNested);
 
+
   Sema::OptionalInitScope<Sema::ResumeScopeRAII> OptResumeScope(SemaRef);
 
   // This may need to be moved to somewhere else.
@@ -1900,6 +1851,15 @@ void Elaborator::lateElaborateAttributes(ElaboratingClass &Class) {
 }
 
 void Elaborator::lateElaborateMethodDecls(ElaboratingClass &Class) {
+  // If the current class is a template re-enter the template before we continue.
+  bool HasTemplateScope = !Class.IsTopLevelClass && Class.TemplateScope;
+  Sema::ClangScopeRAII ClassTemplateScope(SemaRef,
+    clang::Scope::TemplateParamScope, clang::SourceLocation(), HasTemplateScope);
+
+  if (HasTemplateScope)
+    SemaRef.getCxxSema().ActOnReenterTemplateScope(SemaRef.getCurClangScope(),
+        Class.TagOrTemplate->Cxx);
+
   bool CurrentlyNested = !Class.IsTopLevelClass;
   Sema::ClangScopeRAII FunctionDeclScope(SemaRef, clang::Scope::DeclScope |
     clang::Scope::ClassScope, clang::SourceLocation(), CurrentlyNested);

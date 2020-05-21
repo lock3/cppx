@@ -402,7 +402,7 @@ public:
   using TypeDecls = llvm::DenseMap<llvm::StringRef, clang::QualType>;
   TypeDecls Types;
 
-  IdMapType<clang::IdentifierInfo const*, Declaration *> IdMap;
+  IdMapType<const clang::IdentifierInfo *, Declaration *> IdMap;
 
   // FIXME: Is there any purpose for this at all?
   unsigned Depth;
@@ -495,9 +495,9 @@ public:
   std::set<Declaration *> findDecl(const clang::IdentifierInfo *Id) {
     assert(Id);
     auto Range = IdMap.find_range(Id);
-    if (Range.empty()) {
+    if (Range.empty()) 
       return std::set<Declaration *>();
-    }
+
     std::set<Declaration *> Ret;
     for (auto It = Range.first; It != Range.second; ++It)
       Ret.insert(It->second);

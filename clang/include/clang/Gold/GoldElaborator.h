@@ -106,10 +106,10 @@ public:
   
   /// This returns true if part of the declaration was delayed.
   bool delayElaborateDeclType(const Syntax *S);
+  
   /// Functionality associated with late elaboration and are used to either
   /// elaborate the full class or elaborate everything if they are able to.
   void delayElaborateMemberInitializer(Declaration *D);
-  // void delayElaborateField(Declaration *D);
   void delayElaborateMethodDecl(Declaration *D);
   void delayElaborateMethodDef(Declaration *D);
   void delayElaborationClassBody(Declaration *D);

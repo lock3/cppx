@@ -953,3 +953,33 @@ outer : type = class:
   ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
 
+TEST(ClassParsing, NestedClassTemplateWithDependentMember) {
+  StringRef Code = R"(
+outer[T : type] : type = class:
+  bar() : int!
+    return 4
+  nested[U : type] : type = class:
+    a : int
+    b : U
+    foo() : U!
+      return b
+    
+  
+)";
+
+  DeclarationMatcher ClassCInfo = recordDecl(
+    hasName("outer"),
+    has(classTemplateDecl(has(recordDecl(hasName("nested"),
+      hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
+        isPublic())),
+      hasDescendant(fieldDecl(hasName("b"), hasType(asString("U")),
+        isPublic())),
+      hasDescendant(cxxMethodDecl(hasName("foo")))
+    )) ))
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo)
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
+}

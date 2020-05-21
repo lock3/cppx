@@ -391,8 +391,17 @@ static llvm::StringRef getScopeKindName(ScopeKind K) {
 
 void Scope::dump(llvm::raw_ostream &os) const {
   os << getScopeKindName(getKind()) << '\n';
-  for (auto D : IdMap)
-    os << D.first->getName() << '\n';
+  if (getKind() == SK_Template) {
+    for(auto D : IdMap) {
+      os << D.first->getName();
+      if (D.second->Cxx)
+        D.second->Cxx->dump(os << " " << D.first << " ");
+      else
+        os << "\n";
+    }
+  } else 
+    for (auto D : IdMap)
+      os << D.first->getName() << '\n';
 }
 
 void Scope::dump() const {

@@ -126,7 +126,7 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
   return clang::IntegerLiteral::Create(CxxAST, Value, IntType, Loc);
 }
 
-// TODO: Refactor into this location.
+
 static clang::TypeSourceInfo*
 HandleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
     SyntaxContext& Context, clang::TypeSourceInfo* IdExpr, const ElemSyntax *Elem) {
@@ -1283,9 +1283,10 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
   assert(D->Kind == DK_Type);
   if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
     clang::SourceLocation Loc = Atom->getLoc();
-    clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Atom->getSpelling())}, Loc);
-    clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupTagName);
-    if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())){
+    clang::IdentifierInfo *II = &CxxAST.Idents.get(Atom->getSpelling());
+    clang::DeclarationNameInfo DNI(II, Loc);
+    clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
+    if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) {
       return nullptr;
     }
     if (R.empty()) {
