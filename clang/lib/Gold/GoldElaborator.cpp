@@ -58,14 +58,11 @@ namespace gold {
 ///       void (const syntax *first, const Syntax *Duplicate)
 ///   This is used to create error messages.
 template<typename OnAttr, typename IsSameAttr, typename OnDuplicate>
-static bool locateValidAttribute(Declaration *D, OnAttr OnAttribute,
-    IsSameAttr CheckAttr, OnDuplicate OnDup) {
-  assert(D && "Invalid declaration.");
+static bool locateValidAttribute(Attributes& UnprocessedAttributes,
+    OnAttr OnAttribute, IsSameAttr CheckAttr, OnDuplicate OnDup) {
 
-  if (!D->Decl->UnprocessedAttributes)
-    return false;
-  auto Iter = D->Decl->UnprocessedAttributes->begin();
-  auto End = D->Decl->UnprocessedAttributes->end();
+  auto Iter = UnprocessedAttributes.begin();
+  auto End = UnprocessedAttributes.end();
   for (;Iter != End; ++Iter) {
     if (OnAttribute(*Iter)) {
       break;
@@ -75,9 +72,9 @@ static bool locateValidAttribute(Declaration *D, OnAttr OnAttribute,
   bool didFail = false;
   if(Iter != End) {
     AttribSpec = *Iter;
-    D->Decl->UnprocessedAttributes->erase(Iter);
-    Iter = D->Decl->UnprocessedAttributes->begin();
-    End = D->Decl->UnprocessedAttributes->end();
+    UnprocessedAttributes.erase(Iter);
+    Iter = UnprocessedAttributes.begin();
+    End = UnprocessedAttributes.end();
     for (;Iter != End; ++Iter) {
       if (CheckAttr(*Iter)) {
         OnDup(AttribSpec, *Iter);
@@ -88,12 +85,23 @@ static bool locateValidAttribute(Declaration *D, OnAttr OnAttribute,
   return didFail;
 }
 
-/// This extracts the access specifier if one was given, if not it's set to public.
-/// Returns false on success, and true if there's an error.
-static bool computeAccessSpecifier(Sema& SemaRef, Declaration *D,
+/// Overload for declaration processing.
+template<typename OnAttr, typename IsSameAttr, typename OnDuplicate>
+static bool locateValidAttribute(Declaration *D, OnAttr OnAttribute,
+    IsSameAttr CheckAttr, OnDuplicate OnDup) {
+  assert(D && "Invalid declaration.");
+
+  if (!D->Decl->UnprocessedAttributes)
+    return false;
+  return locateValidAttribute(*D->Decl->UnprocessedAttributes, OnAttribute,
+      CheckAttr, OnDup);
+}
+
+
+static bool computeAccessSpecifier(Sema& SemaRef, Attributes& attrs,
     clang::AccessSpecifier& AS) {
   AS = clang::AS_public;
-  return locateValidAttribute(D,
+  return locateValidAttribute(attrs,
     // OnAttr
     [&](const Syntax *Attr) -> bool{
       if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
@@ -127,6 +135,49 @@ static bool computeAccessSpecifier(Sema& SemaRef, Declaration *D,
             clang::diag::err_duplicate_access_specifier)
               << FirstAttr->getLoc() << DuplicateAttr->getLoc(); 
     });
+}
+
+
+static bool isVirtualBase(Sema& SemaRef, Attributes& attrs,
+    bool &IsVirtual) {
+  IsVirtual = false;
+  return locateValidAttribute(attrs,
+    // OnAttr
+    [&](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "virtual") {
+          IsVirtual = true;
+          return true;
+        }
+      }
+      return false;
+    },
+    // CheckAttr
+    [](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "virtual") {
+          return true;
+        }
+      }
+      return false;
+    },
+    // OnDup
+    [&](const Syntax *FirstAttr, const Syntax *DuplicateAttr) {
+      SemaRef.Diags.Report(DuplicateAttr->getLoc(),
+            clang::diag::err_duplicate_access_specifier)
+              << FirstAttr->getLoc() << DuplicateAttr->getLoc(); 
+    });
+}
+
+
+/// This extracts the access specifier if one was given, if not it's set to public.
+/// Returns false on success, and true if there's an error.
+static bool computeAccessSpecifier(Sema& SemaRef, Declaration *D,
+    clang::AccessSpecifier& AS) {
+  AS = clang::AS_public;
+  if (!D->Decl->UnprocessedAttributes)
+    return false;
+  return computeAccessSpecifier(SemaRef, *D->Decl->UnprocessedAttributes, AS);
 }
 
 static bool compluteVariableStorageClassSpec(Sema& SemaRef, Declaration *D,
@@ -334,10 +385,38 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
       clang::Scope::ClassScope | clang::Scope::ClassInheritanceScope,
       clang::SourceLocation());
   
+  // locateValidAttribute
   llvm::SmallVector<clang::CXXBaseSpecifier *, 4> GivenBaseClasses;
   // FIXME: This currently doesn't account for dependent names.
+  Attributes Attrs;
+  bool IsVirtualBase = false;
   for (const Syntax *Base : Bases->children()) {
     ExprElaborator::Expression BaseExpr = TypeElab.elaborateExpr(Base);
+    Attrs.clear();
+    clang::AccessSpecifier AS = clang::AS_public;
+    IsVirtualBase = false;
+    if (!Base->getAttributes().empty()) {
+      // Gathering all of the attributes from the root node of the expression
+      // (Which is technically)
+      for (const Attribute *Attr : Base->getAttributes()) {
+        Attrs.emplace_back(Attr->getArg());
+      }
+    
+      if (computeAccessSpecifier(SemaRef, Attrs, AS)) {
+        return;
+      }
+
+      if (isVirtualBase(SemaRef, Attrs, IsVirtualBase)) {
+        return;
+      }
+      // TODO: Create an error message in the event that the attributes
+      // associated with the current type are wrong.
+      if (!Attrs.empty()) {
+        // TODO: Create an error message for here.
+        llvm::errs() << "Invalid base class attribute\n";
+        return;
+      }
+    }
     if (BaseExpr.is<clang::Expr *>()) {
       // FIXME: Technically if everything was an expression then this would be
       // cake but given that I have no clue how to make a declaration into
@@ -353,7 +432,7 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
       clang::ParsedAttributes Attributes(SemaRef.AttrFactory);
       auto BaseResult = SemaRef.getCxxSema().ActOnBaseSpecifier(
                           R, clang::SourceRange(Base->getLoc(), Base->getLoc()),
-                          Attributes, false, clang::AccessSpecifier::AS_public,
+                          Attributes, IsVirtualBase, AS,
                           PT, Base->getLoc(), clang::SourceLocation());
       GivenBaseClasses.emplace_back(BaseResult.get());
     }

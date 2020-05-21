@@ -298,7 +298,6 @@ public:
 
         SemaPtr = nullptr;
       }
-      
     }
 
     ~ClangScopeRAII() {

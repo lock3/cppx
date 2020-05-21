@@ -983,3 +983,20 @@ outer[T : type] : type = class:
   );
   ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
+
+TEST(ClassParsing, VirtuallyInheritedClass) {
+
+  StringRef Code = R"(
+a : type = class:
+  i : int = 0
+
+c : type = class (a<virtual>):
+  y : bool = 0
+
+)";
+  DeclarationMatcher BaseClassMatch = cxxRecordDecl(hasName("c"),
+    isDirectlyDerivedFrom(hasName("a")),
+    hasBaseSpecifier({true, AS_public, "struct a"})
+  );
+  ASSERT_TRUE(matches(Code.str(), BaseClassMatch));
+}
