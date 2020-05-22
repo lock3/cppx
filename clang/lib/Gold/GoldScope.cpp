@@ -162,6 +162,26 @@ bool Declaration::declaresVariable() const {
   return !declaresFunction();
 }
 
+bool Declaration::templateHasDefaultParameters() const {
+  // if (declaresFunctionTemplate()) {
+  //   assert(false);
+  // }
+  // if (declaresTemplateType()) {
+  //   const Declarator *TemplateInfo = getFirstTemplateDeclarator();
+  //   // for (TemplateInfo)
+  //   assert(false);
+  // }
+  // return false;
+  // TODO: This is necessary for figuring out if a template parameter has
+  // delayed evaluation or not.
+  llvm_unreachable("This isn't implemented yet, but it may need to be in the "
+      "near future.");
+}
+
+bool Declaration::declaresInitializedVariable() const {
+  return declaresVariable() && Init;
+}
+
 bool Declaration::declaresType() const {  
   const Declarator* D = Decl;
   while (D && D->Kind != DK_Type) {
@@ -175,12 +195,19 @@ bool Declaration::declaresType() const {
 }
 
 bool Declaration::declaresRecord() const {
-  if (!declaresType())
-    return false;
+  // if (!declaresType())
+  //   return false;
   if (Cxx)
     return isa<clang::CXXRecordDecl>(Cxx);
-  if (const MacroSyntax *Macro = dyn_cast_or_null<MacroSyntax>(Init))
-    return cast<AtomSyntax>(Macro->getCall())->hasToken(tok::ClassKeyword);
+  if (Init)
+    if (const MacroSyntax *Macro = dyn_cast<MacroSyntax>(Init)) {
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Macro->getCall()))
+        return Atom->hasToken(tok::ClassKeyword);
+      if (const CallSyntax *ClsWithBases = dyn_cast<CallSyntax>(Macro->getCall()))
+        if (const AtomSyntax *Callee
+                  = dyn_cast<AtomSyntax>(ClsWithBases->getCallee()))
+            return Callee->hasToken(tok::ClassKeyword);
+    }
   return false;
 }
 
@@ -235,7 +262,7 @@ bool Declaration::declaresDestructor() const {
 // A declarator declares a template if it's first non-id declarator is
 // declares template parameters.
 // FIXME: this might not work for specializations.
-bool Declaration::declaresTemplate() const {
+bool Declaration::declaresFunctionTemplate() const {
   assert(Decl);
   const Declarator *D = Decl;
   // TODO: In the future we would need to extend this definition to make sure
@@ -252,6 +279,34 @@ bool Declaration::declaresTemplate() const {
 
 bool Declaration::declaresTypeAlias() const {
   return Cxx && isa<clang::TypeAliasDecl>(Cxx);
+}
+
+bool Declaration::declIsStatic() const {
+  const Declarator *D = Decl;
+  if (!D) {
+    return false;
+  }
+  if (!D->UnprocessedAttributes)
+    return false;
+  
+  auto Iter = std::find_if(D->UnprocessedAttributes->begin(),
+      D->UnprocessedAttributes->end(), [](const Syntax *S) -> bool{
+        if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(S)) {
+          if (Atom->getSpelling() == "static") {
+            return true;
+          }
+        }
+        return false;
+      });
+  return Iter != D->UnprocessedAttributes->end();
+}
+
+bool Declaration::declaresFunctionDecl() const {
+  return declaresFunction() && !Init;
+}
+
+bool Declaration::decalaresFunctionDef() const {
+  return declaresFunction() && Init;
 }
 
 bool Declaration::declaresInlineInitializedStaticVarDecl() const {
@@ -289,6 +344,22 @@ Declarator *Declaration::getFirstTemplateDeclarator() {
   return D;
 }
 
+const Declarator *Declaration::getIdDeclarator() const {
+  const Declarator *D = Decl;
+  while (D && D->Kind != DK_Identifier) {
+    D = D->Next;
+  }
+  return D;
+}
+
+Declarator *Declaration::getIdDeclarator() {
+  Declarator *D = Decl;
+  while (D && D->Kind != DK_Identifier) {
+    D = D->Next;
+  }
+  return D;
+}
+
 clang::DeclContext *Declaration::getCxxContext() const {
   return clang::Decl::castToDeclContext(Cxx);
 }
@@ -297,26 +368,6 @@ void Declaration::setPreviousDecl(Declaration *Prev) {
   Prev->Next = this;
   First = Prev->First;
   Next = First;
-}
-
-
-void Scope::addUserDefinedType(clang::IdentifierInfo* Id, clang::QualType QualTy) {
-  auto ItPair = TypeIdMap.try_emplace(Id, QualTy);
-  if(!ItPair.second) {
-    // TODO: Figure out how to print correct diagnostics here.
-    // llvm::outs() << "Duplicate Identifer located. Name: " << Id->getName() << " QualType Given: ";
-    // QualTy.dump();
-    // llvm::outs() << "\n";
-    assert(false && "Invalid typename.");
-  }
-}
-
-clang::QualType Scope::getUserDefinedType(clang::IdentifierInfo* Id) const {
-  auto It = TypeIdMap.find(Id);
-  if(It == TypeIdMap.end()) {
-    return clang::QualType();
-  }
-  return It->second;
 }
 
 static llvm::StringRef getScopeKindName(ScopeKind K) {
@@ -348,12 +399,30 @@ static llvm::StringRef getScopeKindName(ScopeKind K) {
 
 void Scope::dump(llvm::raw_ostream &os) const {
   os << getScopeKindName(getKind()) << '\n';
-  for (auto D : IdMap)
-    os << D.first->getName() << '\n';
+  if (getKind() == SK_Template) {
+    for(auto D : IdMap) {
+      os << D.first->getName();
+      if (D.second->Cxx)
+        D.second->Cxx->dump(os << " " << D.first << " ");
+      else
+        os << "\n";
+    }
+  } else 
+    for (auto D : IdMap)
+      os << D.first->getName() << '\n';
 }
 
 void Scope::dump() const {
   dump(llvm::errs());
+}
+void Scope::dumpScopeChain() const {
+  const Scope *Cur = this;
+  while (Cur) {
+    llvm::outs() << "-----------------------\n";
+    Cur->dump();
+    Cur = Cur->getParent();
+  }
+  llvm::outs() << "-----------------------\n";
 }
 
 } // namespace gold

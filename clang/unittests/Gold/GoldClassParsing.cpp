@@ -493,18 +493,18 @@ main() : int!
 
 TEST(ClassParsing, NestedTypeDefinition) {
   StringRef Code = R"(
-c : type = class:
+outer : type = class:
   nested : type = class:
     a : int
     b : float
   
 main() : int!
-  u : c.nested
+  u : outer.nested
   return 0
 )";
 
   DeclarationMatcher ClassCInfo = recordDecl(
-    hasName("c"),
+    hasName("outer"),
     has(recordDecl(hasName("nested"),
       hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
         isPublic())),
@@ -516,20 +516,18 @@ main() : int!
     isDefinition(),
     hasDescendant(
       varDecl(
-        hasType(asString("struct c::nested")),
-        hasName("u"),
-        hasInitializer(hasDescendant(cxxConstructExpr()))
+        hasType(asString("struct outer::nested")),
+        hasName("u")
       )
     )
   );
 
   DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
-    hasDescendant(ClassCInfo)//,
-    // hasDescendant(MainFnMatcher)
+    hasDescendant(ClassCInfo),
+    hasDescendant(MainFnMatcher)
   );
   ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
-
 
 TEST(ClassParsing, MultipleNestedTypeDefinition) {
   StringRef Code = R"(
@@ -671,51 +669,6 @@ main() : int!
   ASSERT_TRUE(matches(Code.str(), StmtMatcher));
 }
 
-// TEST(ClassParsing, AccessingMemberThroughFunctionReturn) {
-//   StringRef Code = R"(
-// a : type = class:
-//   z : int = 5
-
-// b : type = class:
-//   x : a
-
-// c : type = class:
-//   y : b  
-
-// foo() : c!
-//   return c()
-
-// main() : int!
-//   return foo().y.x.z
-// )";
-//   StatementMatcher StmtMatcher(compoundStmt(has(
-//     returnStmt(
-//       hasDescendant(
-//         memberExpr(
-//           has(
-//             memberExpr(
-//               has(
-//                 memberExpr(
-//                   has(
-//                     declRefExpr(
-//                       to(
-//                         varDecl(
-//                           hasName("q")
-//                         )
-//                       )
-//                     )
-//                   )
-//                 )
-//               )
-//             )
-//           )
-//         )
-//       )
-//     )
-//   )));
-//   ASSERT_TRUE(matches(Code.str(), StmtMatcher));
-// }
-
 
 TEST(ClassParsing, ClassTypeUsedAsFunctionParameter) {
 
@@ -772,4 +725,334 @@ foo(x : c.x) : bool!
     hasDescendant(varDecl(hasType(asString("c::x"))))
   );
   ASSERT_TRUE(matches(Code.str(), MemberFunctionMatch));
+}
+
+
+
+TEST(ClassParsing, InheritedClass) {
+
+  StringRef Code = R"(
+a : type = class:
+  i : int = 0
+
+c : type = class (a):
+  y : bool = 0
+
+)";
+  DeclarationMatcher BaseClassMatch = cxxRecordDecl(hasName("c"),
+    isDirectlyDerivedFrom(hasName("a"))
+  );
+  ASSERT_TRUE(matches(Code.str(), BaseClassMatch));
+}
+
+TEST(ClassParsing, InheritedClass_BaseMemberAccessOutsideOfClass) {
+
+  StringRef Code = R"(
+a : type = class:
+  i : int = 0
+
+c : type = class (a):
+  y : bool = 0
+
+main() : int!
+  q : c
+  return q.i
+)";
+  DeclarationMatcher BaseClassMatch = cxxRecordDecl(hasName("c"),
+    isDirectlyDerivedFrom(hasName("a"))
+  );
+  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+    isDefinition(),
+    hasDescendant(
+      varDecl(
+        hasType(asString("struct c")),
+        hasName("q")
+      )
+    ),
+    hasDescendant(
+      returnStmt(
+        has(implicitCastExpr(
+          has(memberExpr(
+            has(implicitCastExpr(
+              has(declRefExpr(
+                to(varDecl(hasName("q")))
+              ))
+            ))
+          ))
+        ))
+      )
+    )
+  );
+  DeclarationMatcher MemberBaseAccessOutsideOfClass = translationUnitDecl(
+    hasDescendant(BaseClassMatch),
+    hasDescendant(MainFnMatcher)
+  );
+  ASSERT_TRUE(matches(Code.str(), MemberBaseAccessOutsideOfClass));
+}
+
+
+TEST(ClassParsing, InheritedClass_BaseMemberAccessInsideOfClass) {
+  StringRef Code = R"(
+a : type = class:
+  i : int = 0
+
+c : type = class (a):
+  y : bool = 0
+  foo() : int!
+    return i
+  
+
+main() : int!
+  q : c
+  return q.i
+)";
+  DeclarationMatcher BaseClassMatch = cxxRecordDecl(hasName("c"),
+    isDirectlyDerivedFrom(hasName("a")),
+    // Verifying that we are infact using the right constructor.
+    hasDescendant(cxxConstructorDecl(isDefaultConstructor(),
+      has(cxxCtorInitializer(
+        unless(isMemberInitializer())
+      )),
+      has(
+        cxxCtorInitializer(
+          forField(
+            hasName("y")
+          ),
+          isMemberInitializer()
+        )
+      )
+    )),
+    // Attempting to verify that we have an actual return statment at the
+    // very least.
+    hasDescendant(cxxMethodDecl(hasName("foo"), hasDescendant(returnStmt())))
+  );
+  DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+    isDefinition(),
+    hasDescendant(
+      varDecl(
+        hasType(asString("struct c")),
+        hasName("q")
+      )
+    ),
+    hasDescendant(
+      returnStmt(
+        has(implicitCastExpr(
+          has(memberExpr(
+            has(implicitCastExpr(
+              has(declRefExpr(
+                to(varDecl(hasName("q")))
+              ))
+            ))
+          ))
+        ))
+      )
+    )
+  );
+  DeclarationMatcher MemberBaseAccessOutsideOfClass = translationUnitDecl(
+    hasDescendant(BaseClassMatch),
+    hasDescendant(MainFnMatcher)
+  );
+  ASSERT_TRUE(matches(Code.str(), MemberBaseAccessOutsideOfClass));
+}
+
+
+// TEST(ClassParsing, IncorrectMemberSelected) {
+//   StringRef Code = R"(
+// c : type = class:
+//   i : int = 0
+//   a : type = class:
+//     d : int
+//     foo() : int!
+//       return i
+    
+  
+
+// main() : int!
+//   q : c
+//   return q.i
+// )";
+//   DeclarationMatcher BaseClassMatch = cxxRecordDecl(hasName("c"),
+//     isDirectlyDerivedFrom(hasName("a")),
+//     // Verifying that we are infact using the right constructor.
+//     hasDescendant(cxxConstructorDecl(isDefaultConstructor(),
+//       has(cxxCtorInitializer(
+//         unless(isMemberInitializer())
+//       )),
+//       has(
+//         cxxCtorInitializer(
+//           forField(
+//             hasName("y")
+//           ),
+//           isMemberInitializer()
+//         )
+//       )
+//     )),
+//     // Attempting to verify that we have an actual return statment at the
+//     // very least.
+//     hasDescendant(cxxMethodDecl(hasName("foo"), hasDescendant(returnStmt())))
+//   );
+//   DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
+//     isDefinition(),
+//     hasDescendant(
+//       varDecl(
+//         hasType(asString("struct c")),
+//         hasName("q")
+//       )
+//     ),
+//     hasDescendant(
+//       returnStmt(
+//         has(implicitCastExpr(
+//           has(memberExpr(
+//             has(implicitCastExpr(
+//               has(declRefExpr(
+//                 to(varDecl(hasName("q")))
+//               ))
+//             ))
+//           ))
+//         ))
+//       )
+//     )
+//   );
+//   DeclarationMatcher MemberBaseAccessOutsideOfClass = translationUnitDecl(
+//     hasDescendant(BaseClassMatch),
+//     hasDescendant(MainFnMatcher)
+//   );
+//   ASSERT_TRUE(matches(Code.str(), MemberBaseAccessOutsideOfClass));
+// }
+
+
+
+TEST(ClassParsing, NestedClassWithMemberFunction) {
+  StringRef Code = R"(
+outer : type = class:
+  bar() : int!
+    return 4
+  nested : type = class:
+    a : int
+    b : float
+    foo() : int!
+      return b
+    
+  
+)";
+
+  DeclarationMatcher ClassCInfo = recordDecl(
+    hasName("outer"),
+    has(recordDecl(hasName("nested"),
+      hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
+        isPublic())),
+      hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
+        isPublic())),
+      hasDescendant(cxxMethodDecl(hasName("foo")))
+    ))
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo)
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
+}
+
+TEST(ClassParsing, NestedClassTemplateWithDependentMember) {
+  StringRef Code = R"(
+outer[T : type] : type = class:
+  bar() : int!
+    return 4
+  nested[U : type] : type = class:
+    a : int
+    b : U
+    foo() : U!
+      return b
+    
+  
+)";
+
+  DeclarationMatcher ClassCInfo = recordDecl(
+    hasName("outer"),
+    has(classTemplateDecl(has(recordDecl(hasName("nested"),
+      hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
+        isPublic())),
+      hasDescendant(fieldDecl(hasName("b"), hasType(asString("U")),
+        isPublic())),
+      hasDescendant(cxxMethodDecl(hasName("foo")))
+    )) ))
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo)
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
+}
+
+TEST(ClassParsing, VirtuallyInheritedClass) {
+
+  StringRef Code = R"(
+a : type = class:
+  i : int = 0
+
+c : type = class (a<virtual>):
+  y : bool = 0
+
+)";
+  DeclarationMatcher BaseClassMatch = cxxRecordDecl(hasName("c"),
+    isDirectlyDerivedFrom(hasName("a")),
+    hasBaseSpecifier({true, AS_public, "struct a"})
+  );
+  ASSERT_TRUE(matches(Code.str(), BaseClassMatch));
+}
+
+
+TEST(ClassParsing, MemberElabOrder_UseBeforeDecl_Type) {
+  StringRef Code = R"(
+outer : type = class:
+  bar() : x!
+    return 4
+  y : x = 5
+  x : type = int
+)";
+
+  DeclarationMatcher ClassCInfo = recordDecl(
+    hasName("outer"),
+    hasDescendant(cxxMethodDecl(hasName("bar"))),
+    hasDescendant(typeAliasDecl(hasName("x"))),
+    hasDescendant(fieldDecl(hasName("y")))
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo)
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
+}
+
+
+TEST(ClassParsing, MemberElabOrder_UseBeforeDecl_ClassDef) {
+  StringRef Code = R"(
+outer : type = class:
+  y : x
+  x : type = class:
+    z : int
+    b : float
+    foo() : int!
+      return z
+    
+  
+
+)";
+
+  DeclarationMatcher ClassCInfo = recordDecl(
+    hasName("outer"),
+    has(recordDecl(hasName("x"),
+      hasDescendant(fieldDecl(hasName("z"), hasType(asString("int")),
+        isPublic())),
+      hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
+        isPublic())),
+      hasDescendant(cxxMethodDecl(hasName("foo")))
+    )),
+    hasDescendant(fieldDecl(hasName("y"), hasType(asString("struct outer::x"))))
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo)
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
