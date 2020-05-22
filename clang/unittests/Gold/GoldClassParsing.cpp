@@ -1000,3 +1000,59 @@ c : type = class (a<virtual>):
   );
   ASSERT_TRUE(matches(Code.str(), BaseClassMatch));
 }
+
+
+TEST(ClassParsing, MemberElabOrder_UseBeforeDecl_Type) {
+  StringRef Code = R"(
+outer : type = class:
+  bar() : x!
+    return 4
+  y : x = 5
+  x : type = int
+)";
+
+  DeclarationMatcher ClassCInfo = recordDecl(
+    hasName("outer"),
+    hasDescendant(cxxMethodDecl(hasName("bar"))),
+    hasDescendant(typeAliasDecl(hasName("x"))),
+    hasDescendant(fieldDecl(hasName("y")))
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo)
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
+}
+
+
+TEST(ClassParsing, MemberElabOrder_UseBeforeDecl_ClassDef) {
+  StringRef Code = R"(
+outer : type = class:
+  y : x
+  x : type = class:
+    z : int
+    b : float
+    foo() : int!
+      return z
+    
+  
+
+)";
+
+  DeclarationMatcher ClassCInfo = recordDecl(
+    hasName("outer"),
+    has(recordDecl(hasName("x"),
+      hasDescendant(fieldDecl(hasName("z"), hasType(asString("int")),
+        isPublic())),
+      hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
+        isPublic())),
+      hasDescendant(cxxMethodDecl(hasName("foo")))
+    )),
+    hasDescendant(fieldDecl(hasName("y"), hasType(asString("struct outer::x"))))
+  );
+
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo)
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
+}
