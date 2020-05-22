@@ -17,12 +17,14 @@
 
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/IdentifierTable.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 
 #include "clang/Gold/GoldSyntaxContext.h"
 #include "clang/Gold/GoldScope.h"
+#include "clang/Gold/GoldLateElaboration.h"
 
 #include <memory>
 #include <vector>
@@ -34,6 +36,7 @@ class DeclContext;
 class DiagnosticsEngine;
 class LookupResult;
 class Preprocessor;
+class CXXRecordDecl;
 class Sema;
 class Stmt;
 class Type;
@@ -89,8 +92,7 @@ public:
   /// Enter a new scope corresponding to the syntax S. This is primarily
   /// used for the elaboration of function and template parameters, which
   /// have no corresponding declaration at the point of elaboration.
-  void enterScope(ScopeKind K, const Syntax *S);
-  void enterScope(clang::CXXRecordDecl* R, const Syntax* S);
+  void enterScope(ScopeKind K, const Syntax *S, Declaration *D = nullptr);
 
   /// Leave the current scope. The syntax S must match the syntax for
   /// which the scope was initially pushed.
@@ -108,6 +110,14 @@ public:
 
   // Perform unqualified lookup of a name starting in S.
   bool lookupUnqualifiedName(clang::LookupResult &R, Scope *S);
+
+  /// This checks to see if we are within a class body scope currently.
+  bool scopeIsWithinClass();
+  bool scopeIsWithinClass(Scope *S);
+
+  /// Gets a declaration for a scope, if available.
+  clang::Decl *getDeclForScope();
+  clang::Decl *getDeclForScope(Scope *S);
 
   // Declaration context
   /// The current declaration.
@@ -174,6 +184,36 @@ public:
   void leaveClangScope(clang::SourceLocation Loc);
   clang::Scope* saveCurrentClangScope();
 
+  void dumpState(llvm::raw_ostream &out = llvm::outs());
+
+
+  /// This is a stack of classes currently being elaborated.
+  llvm::SmallVector<ElaboratingClass *, 6> ClassStack;
+
+  /// Returns the top of the stack for a class currently being elaborated.
+  ElaboratingClass &getCurrentElaboratingClass() {
+    assert(!ClassStack.empty() && "No classes on stack!");
+    return *ClassStack.back();
+  }
+  using ClassElaborationState = clang::Sema::DelayedDiagnosticsState;
+  bool isElaboratingClass() const;
+  ClassElaborationState pushElaboratingClass(Declaration *D,
+                                             bool TopLevelClass);
+  void deallocateElaboratingClass(ElaboratingClass *D);
+  void popElaboratingClass(ClassElaborationState State);
+
+  /// This attempts to check if declaration needs to be delayed during class
+  /// elaboration.
+  bool declNeedsDelayed(Declaration *D);
+  
+  /// Based on the current elaboration state read from class stack we compute
+  /// the current depth of a template.
+  ///
+  /// \note This could be changed in the future in order to include ths current
+  /// scope stack for elaboration.
+  ///
+  unsigned computeTemplateDepth() const;
+
 public:
   // The context
   SyntaxContext &Context;
@@ -222,6 +262,60 @@ public:
     const Syntax *ConcreteTerm;
   };
 
+  struct ResumeScopeRAII {
+    ResumeScopeRAII(Sema &S, gold::Scope *Sc, const Syntax *ConcreteTerm,
+        bool PopOnExit = true)
+      :SemaRef(S), Scope(Sc), ExitTerm(ConcreteTerm), PopOnExit(PopOnExit)
+    {
+      SemaRef.pushScope(Sc);
+    }
+
+    ~ResumeScopeRAII() {
+      if (PopOnExit) {
+        SemaRef.popScope();
+      } else {
+        SemaRef.leaveScope(ExitTerm);
+      }
+    }
+  private:
+    Sema &SemaRef;
+    gold::Scope *Scope;
+    const Syntax *ExitTerm;
+    bool PopOnExit;
+  };
+
+
+  struct ClangScopeRAII {
+    ClangScopeRAII(Sema &S, unsigned ScopeKind, clang::SourceLocation ExitLoc,
+        bool EnteringScope = true, bool BeforeCompoundStmt = false)
+      : SemaPtr(&S), ExitingLocation(ExitLoc)
+    {
+      if (EnteringScope && !BeforeCompoundStmt)
+        SemaPtr->enterClangScope(ScopeKind);
+      else {
+        if (BeforeCompoundStmt)
+          SemaPtr->getCxxSema().incrementMSManglingNumber();
+
+        SemaPtr = nullptr;
+      }
+    }
+
+    ~ClangScopeRAII() {
+      Exit();
+    }
+
+    void Exit() {
+      if (SemaPtr) {
+        SemaPtr->leaveClangScope(ExitingLocation);
+        SemaPtr = nullptr;
+      }
+    }
+
+  private:
+    Sema *SemaPtr;
+    clang::SourceLocation ExitingLocation;
+  };
+
   struct ExprEvalRAII {
     ExprEvalRAII(Sema& S, clang::Sema::ExpressionEvaluationContext NewContext)
       :SemaRef(S)
@@ -234,6 +328,83 @@ public:
   private:
     Sema& SemaRef;
   };
+
+  /// This class is an RAII that tracks the classes scope and current status
+  /// during processing. This allows for us to more easily keep track of
+  /// the class currently being elaborated and how we hande that particular
+  /// classes elaboration.
+  /// This helps keep track of classes that are currently being elaborated.
+  class ElaboratingClassDefRAII {
+    gold::Sema &SemaRef;
+    bool WasPopped;
+    ClassElaborationState State;
+  public:
+    ElaboratingClassDefRAII(Sema &S, Declaration *D, bool IsTopLevelClass,
+        bool IsTemplate = false)
+      :SemaRef(S), WasPopped(false),
+      State(SemaRef.pushElaboratingClass(D, IsTopLevelClass)) { }
+
+    ~ElaboratingClassDefRAII() {
+      if (!WasPopped)
+        pop();
+    }
+
+    void pop() {
+      assert(!WasPopped && "Attempting to double exit class. "
+          "Class already popped");
+      WasPopped = true;
+      SemaRef.popElaboratingClass(State);
+    }
+  };
+
+  class DeclContextRAII {
+    Sema &SemaRef;
+    bool DoSetAndReset;
+    clang::DeclContext *OriginalDC;
+    Declaration *OriginalDecl;
+  public:
+    DeclContextRAII(Sema &S, Declaration *D,
+        bool SetAndResetDeclarationsOnly = false)
+      :SemaRef(S), OriginalDecl(SemaRef.CurrentDecl)
+    {
+      if (DoSetAndReset)
+        SemaRef.CurrentDecl = D;
+      else 
+        SemaRef.pushDecl(D);
+    }
+    ~DeclContextRAII() {
+      if (DoSetAndReset){
+        SemaRef.setCurrentDecl(OriginalDecl);
+      } else 
+        SemaRef.popDecl();
+    }
+  };
+
+  template<typename T>
+  class OptionalInitScope {
+    Sema &SemaRef;
+    llvm::Optional<T> Opt;
+  public:
+    OptionalInitScope(Sema &S) :SemaRef(S) { }
+    template<typename... Args>
+    OptionalInitScope(Sema &S, Args&&... Arguments)
+        :SemaRef(S), Opt()
+    {
+      Init(std::forward<Args>(Arguments)...);
+    }
+
+    template<typename... Args>
+    void Init(Args&&... Arguments) {
+      assert(!Opt && "Error attempting to enter scope twice.");
+      Opt.emplace(SemaRef, std::forward<Args>(Arguments)...);
+    }
+  };
+
+  /// This helps keep track of the scope associated with templated classes
+  /// by providing optionally initialized behavior for a scope. This is done
+  /// using llvm::optional.
+  using OptionalScopeRAII = OptionalInitScope<ScopeRAII>;
+  using OptioanlClangScopeRAII = OptionalInitScope<ClangScopeRAII>;
 
   // Dictionary of built in types.
   //

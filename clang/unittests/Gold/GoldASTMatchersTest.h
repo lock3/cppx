@@ -26,6 +26,33 @@ AST_POLYMORPHIC_MATCHER(isExternStorageClass,
 }
 
 
+struct BaseMatcher {
+  bool IsVirtual = false;
+  AccessSpecifier AS = AS_none;
+  llvm::StringRef Name;
+};
+
+// AST_MATCHER_P2(CXXNewExpr, hasPlacementArg, unsigned, Index,
+//                internal::Matcher<Expr>, InnerMatcher) {
+AST_MATCHER_P(CXXRecordDecl, hasBaseSpecifier, BaseMatcher, BaseCheck) {
+  // Node.IgnoreParenCasts()
+  if (BaseCheck.AS == AS_none) {
+    for (const CXXBaseSpecifier &B : Node.bases())
+      if (B.isVirtual() == BaseCheck.IsVirtual
+        && B.getType().getAsString() == BaseCheck.Name) {
+        return true;
+      }
+  } else
+    for (const CXXBaseSpecifier &B : Node.bases())
+      if (B.isVirtual() == BaseCheck.IsVirtual
+          && B.getType().getAsString() == BaseCheck.Name
+          && B.getAccessSpecifier() == BaseCheck.AS) {
+        return true;
+      }
+  return false;
+}
+
+
 using clang::tooling::buildASTFromCodeWithArgs;
 using clang::tooling::newFrontendActionFactory;
 using clang::tooling::runToolOnCodeWithArgs;
