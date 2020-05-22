@@ -165,10 +165,10 @@ public:
       /// A pointer to the template parameters within the declaration.
       const Syntax* Params;
 
-      /// The scope for the template parameters.
-      Scope *DeclScope;
-      /// This is the clang scope that's used for declaring template parameters.
-      clang::Scope *ClangScope;
+      // /// The scope for the template parameters.
+      // Scope *DeclScope;
+      // /// This is the clang scope that's used for declaring template parameters.
+      // clang::Scope *ClangScope;
     } TemplateInfo;
   } Data;
 
@@ -204,6 +204,12 @@ public:
   /// True if this declares a variable.
   bool declaresVariable() const;
 
+  /// Declares variable with in body initialization.
+  bool declaresInitializedVariable() const;
+
+  /// Any template has default parameters. Either class or function.
+  bool templateHasDefaultParameters() const;
+
   /// True if this is a type declaration.
   bool declaresType() const;
 
@@ -233,10 +239,19 @@ public:
   bool declaresDestructor() const;
 
   /// True if this declares a template.
-  bool declaresTemplate() const;
+  bool declaresFunctionTemplate() const;
 
   /// This is true iff isa<TypeAliasDecl>(Cxx)
   bool declaresTypeAlias() const;
+
+  /// Checks if a declaration is static.
+  bool declIsStatic() const;
+
+  /// Checks if a decl is a declaration and it doesn't have a body.
+  bool declaresFunctionDecl() const;
+
+  /// checks if a function has a body.
+  bool decalaresFunctionDef() const;
 
   template<typename T>
   bool defines() const {
@@ -256,6 +271,9 @@ public:
   /// This looks for the first instance of DK_TemplateType and returns it.
   const Declarator *getFirstTemplateDeclarator() const;
   Declarator *getFirstTemplateDeclarator();
+  
+  const Declarator *getIdDeclarator() const;
+  Declarator *getIdDeclarator();
 
   /// The corresponding C++ declaration as a context.
   clang::DeclContext *getCxxContext() const;
@@ -303,9 +321,6 @@ public:
   /// 0 is unprocessed (the default value), 1 is identified, 2 is the declaration
   /// is elaborated and 3 is the definition is complete.
   unsigned ElabPhaseCompleted = 0;
-
-  /// Previous clang scope for classes.
-  clang::Scope *ClsScope = nullptr;
 };
 
 /// Different kinds of scope.
@@ -384,30 +399,22 @@ public:
   using DeclMapType = llvm::DenseMap<const Syntax *, Declaration *>;
   DeclMapType DeclMap;
 
-  /// The mapping of declarations to its construction.
-  ///
-  /// FIXME: For overloading a single identifier can refer to a set of
-  /// declarations. We'll need to adjust this in order to make it work.
-  using TypeNameMap = llvm::DenseMap<clang::IdentifierInfo*, clang::QualType>;
-  TypeNameMap TypeIdMap;
-
   using TypeDecls = llvm::DenseMap<llvm::StringRef, clang::QualType>;
   TypeDecls Types;
 
-  IdMapType<clang::IdentifierInfo const*, Declaration *> IdMap;
+  IdMapType<const clang::IdentifierInfo *, Declaration *> IdMap;
 
   // FIXME: Is there any purpose for this at all?
   unsigned Depth;
 
-  clang::CXXRecordDecl* Record;
+  Declaration *Entity = nullptr;
 public:
   /// Creates a new scope.
-  Scope(ScopeKind K, const Syntax *S, Scope *P, clang::CXXRecordDecl* R = nullptr)
-    : Kind(K), Parent(P), Term(S), Record(R) {
+  Scope(ScopeKind K, const Syntax *S, Scope *P, Declaration *D = nullptr)
+    : Kind(K), Parent(P), Term(S), Entity(D) {
     Depth = Parent ? Parent->getDepth() + 1 : 0;
   }
 
-  clang::CXXRecordDecl* getCurrentRecord() const;
 
   /// The kind of scope.
   ScopeKind getKind() const {
@@ -488,9 +495,9 @@ public:
   std::set<Declaration *> findDecl(const clang::IdentifierInfo *Id) {
     assert(Id);
     auto Range = IdMap.find_range(Id);
-    if (Range.empty()) {
+    if (Range.empty()) 
       return std::set<Declaration *>();
-    }
+
     std::set<Declaration *> Ret;
     for (auto It = Range.first; It != Range.second; ++It)
       Ret.insert(It->second);
@@ -506,11 +513,10 @@ public:
     return Iter->second;
   }
 
-  void addUserDefinedType(clang::IdentifierInfo *Id, clang::QualType QualTy);
-  clang::QualType getUserDefinedType(clang::IdentifierInfo *Id) const;
-
   void dump(llvm::raw_ostream &os) const;
   void dump() const;
+
+  void dumpScopeChain() const;
 };
 
 } // namespace gold

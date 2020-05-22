@@ -402,3 +402,69 @@ c : type = class:
   );
   ASSERT_TRUE(matches(Code.str(), ClassC));
 }
+
+
+// Testing Inheritance visiblity
+TEST(ClassParsing, Access_PrivateBaseClass) {
+  StringRef Code = R"(
+a : type = class:
+  i : int = 0
+
+c : type = class (a<private>):
+  y : bool = 0
+
+)";
+  DeclarationMatcher BaseClassMatch = cxxRecordDecl(hasName("c"),
+    isDirectlyDerivedFrom(hasName("a")),
+    hasBaseSpecifier({false, AS_private, "struct a"})
+  );
+  ASSERT_TRUE(matches(Code.str(), BaseClassMatch));
+}
+
+TEST(ClassParsing, Access_ProtectedBaseClass) {
+  StringRef Code = R"(
+a : type = class:
+  i : int = 0
+
+c : type = class (a<protected>):
+  y : bool = 0
+
+)";
+  DeclarationMatcher BaseClassMatch = cxxRecordDecl(hasName("c"),
+    isDirectlyDerivedFrom(hasName("a")),
+    hasBaseSpecifier({false, AS_protected, "struct a"})
+  );
+  ASSERT_TRUE(matches(Code.str(), BaseClassMatch));
+}
+
+TEST(ClassParsing, Access_PublicBaseClass) {
+  StringRef Code = R"(
+a : type = class:
+  i : int = 0
+
+c : type = class (a<public>):
+  y : bool = 0
+
+)";
+  DeclarationMatcher BaseClassMatch = cxxRecordDecl(hasName("c"),
+    isDirectlyDerivedFrom(hasName("a")),
+    hasBaseSpecifier({false, AS_public, "struct a"})
+  );
+  ASSERT_TRUE(matches(Code.str(), BaseClassMatch));
+}
+
+TEST(ClassParsing, Access_ImplicitPublicBaseClass) {
+  StringRef Code = R"(
+a : type = class:
+  i : int = 0
+
+c : type = class (a):
+  y : bool = 0
+
+)";
+  DeclarationMatcher BaseClassMatch = cxxRecordDecl(hasName("c"),
+    isDirectlyDerivedFrom(hasName("a")),
+    hasBaseSpecifier({false, AS_public, "struct a"})
+  );
+  ASSERT_TRUE(matches(Code.str(), BaseClassMatch));
+}
