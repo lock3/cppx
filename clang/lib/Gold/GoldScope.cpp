@@ -184,6 +184,14 @@ bool Declaration::declaresRecord() const {
   return false;
 }
 
+bool Declaration::declaresNamespace() const {
+  if (Cxx)
+    return isa<clang::NamespaceDecl>(Cxx);
+  if (const MacroSyntax *Macro = dyn_cast_or_null<MacroSyntax>(Init))
+    return cast<AtomSyntax>(Macro->getCall())->hasToken(tok::NamespaceKeyword);
+  return false;
+}
+
 bool Declaration::declaresTemplateType() const {
   const Declarator *D = Decl;
   while (D && D->Kind != DK_TemplateType) {

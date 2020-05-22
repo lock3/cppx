@@ -210,6 +210,9 @@ public:
   /// Checks if the type declaration is declaring a record.
   bool declaresRecord() const;
 
+  /// Checks if the type declaration is declaring a namespace.
+  bool declaresNamespace() const;
+
   /// Checks if the declarator declares a template type or not.
   bool declaresTemplateType() const;
 

@@ -1093,6 +1093,7 @@ Syntax *Parser::parsePrimary() {
   case tok::Character:
   case tok::String:
   case tok::ClassKeyword:
+  case tok::NamespaceKeyword:
     return onAtom(consumeToken());
 
   case tok::LeftParen:
