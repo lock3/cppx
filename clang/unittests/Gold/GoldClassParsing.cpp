@@ -1056,3 +1056,33 @@ outer : type = class:
   );
   ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
+
+TEST(ClassParsing, ClassesOutOfOder) {
+  StringRef Code = R"(
+c1 : type = class:
+  y : c2
+
+c2 : type = class:
+  y : int
+
+)";
+  DeclarationMatcher ClassC2 = recordDecl(
+    hasName("c2"),
+      hasDescendant(fieldDecl(hasName("y"), hasType(asString("int")),
+        isPublic()))
+  );
+
+  DeclarationMatcher ClassC1 = recordDecl(
+    hasName("c1"),
+    unless(ClassC2),
+    hasDescendant(fieldDecl(hasName("y"), hasType(asString("struct c2")),
+      isPublic()))
+  );
+
+
+  DeclarationMatcher Matches = translationUnitDecl(
+    hasDescendant(ClassC2),
+    hasDescendant(ClassC1)
+  );
+  ASSERT_TRUE(matches(Code.str(), Matches));
+}

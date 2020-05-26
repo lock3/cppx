@@ -362,6 +362,16 @@ void Declaration::setPreviousDecl(Declaration *Prev) {
   Next = First;
 }
 
+bool Declaration::isDeclaredWithinClass() const {
+  const Scope *Cur = ScopeForDecl;
+  while(Cur) {
+    if (Cur->getKind() == SK_Class)
+      return true;
+    Cur = Cur->getParent();
+  }
+  return false;
+}
+
 static llvm::StringRef getScopeKindName(ScopeKind K) {
   switch (K) {
   case SK_Namespace:

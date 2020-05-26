@@ -113,6 +113,14 @@ clang::DeclContext *Sema::getCurrentCxxDeclContext() {
   return CurrentDecl->getCxxContext();
 }
 
+clang::DeclContext *Sema::getCurClangDeclContext() const {
+  return CxxSema.CurContext;
+}
+
+void Sema::setClangDeclContext(clang::DeclContext *DC) {
+  CxxSema.CurContext = DC;
+}
+
 void Sema::restoreDeclContext(Declaration *D) {
   CurrentDecl = D;
   getCxxSema().CurContext = clang::Decl::castToDeclContext(D->Cxx);
