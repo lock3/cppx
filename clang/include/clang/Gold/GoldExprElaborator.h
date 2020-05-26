@@ -28,6 +28,7 @@ namespace clang {
 
 class ASTContext;
 class Expr;
+class NamespaceDecl;
 class Sema;
 class TypeSourceInfo;
 
@@ -78,6 +79,8 @@ public:
   Expression elaborateNestedLookUpAccess(Expression Previous,
                                          const CallSyntax *Op,
                                          const Syntax *RHS);
+  Expression elaborateNNS(clang::NamespaceDecl *NS,
+                          const CallSyntax *Op, const Syntax *RHS);
 
   Expression elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
 

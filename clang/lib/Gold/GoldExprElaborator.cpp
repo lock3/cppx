@@ -539,12 +539,13 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
                                   Loc, FoundTy, clang::VK_LValue, VD);
       return DRE;
     }
-    
 
     // Processing the case when the returned result is a type.
-    if (const clang::TagDecl *TD = R.getAsSingle<clang::TagDecl>()) {
+    if (const clang::TagDecl *TD = R.getAsSingle<clang::TagDecl>())
       return BuildAnyTypeLoc(CxxAST, CxxAST.getTypeDeclType(TD), Loc);
-    }
+
+    if (const clang::NamespaceDecl *NS = R.getAsSingle<clang::NamespaceDecl>())
+      return const_cast<clang::NamespaceDecl *>(NS);
   }
 
   // TODO: FIXME: Create error reporting here for lookup failure.
@@ -759,14 +760,14 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   // something slightly different before we can fully elaborate the entire call.
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   FusedOpKind Op = getFusedOpKind(SemaRef, Callee->getSpelling());
-  
+
   switch (Op) {
   case FOK_Colon:
-      return handleColonExprElaboration(*this, SemaRef, S);
+    return handleColonExprElaboration(*this, SemaRef, S);
 
-  case FOK_MemberAccess:{
-      const ListSyntax *Args = cast<ListSyntax>(S->getArguments());
-      return elaborateMemberAccess(Args->getChild(0), S, Args->getChild(1));
+  case FOK_MemberAccess: {
+    const ListSyntax *Args = cast<ListSyntax>(S->getArguments());
+    return elaborateMemberAccess(Args->getChild(0), S, Args->getChild(1));
   }
 
   case FOK_DotDot:
@@ -826,15 +827,49 @@ Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
       }
       return RHSExpr.get();
     }
-    llvm_unreachable("Currently unable to handle member access from "
-        "non-variables within current context.");
-  } 
-  if (ElaboratedLHS.is<clang::TypeSourceInfo*>()) {
+
+    llvm_unreachable("Member access from non-variables unimplemented.");
+  } else if (ElaboratedLHS.is<clang::TypeSourceInfo *>()) {
     return elaborateNestedLookUpAccess(ElaboratedLHS, Op, RHS);
+  } else if (ElaboratedLHS.is<clang::NamespaceDecl *>()) {
+    return elaborateNNS(ElaboratedLHS.get<clang::NamespaceDecl *>(), Op, RHS);
   }
 
-  llvm_unreachable("Member access to anything other then a member variable "
-      "not implemented yet.");
+  llvm_unreachable("Unimplemented access expression");
+}
+
+Expression ExprElaborator::elaborateNNS(clang::NamespaceDecl *NS,
+                                        const CallSyntax *Op, const Syntax *RHS) {
+  // FIXME: create the correct ObjectType (last param) that is used when this
+  // NNS appears as after an operator'.' of an object.
+  clang::Sema::NestedNameSpecInfo IdInfo(NS->getIdentifier(), NS->getBeginLoc(),
+                                         Op->getLoc(), clang::QualType());
+
+  // Look this up as an NNS.
+  CXXScopeSpec SS;
+  bool Failure = SemaRef.getCxxSema().
+    ActOnCxxNestedNameSpecifier(SemaRef.getCurClangScope(), IdInfo,
+                                /*EnteringContext=*/false, SS,
+                                /*RecoveryLookup=*/false,
+                                /*IsCorrected=*/nullptr,
+                                /*OnlyNamespace=*/false);
+  if (Failure) {
+    llvm::outs() << "failed to create nns\n";
+    return nullptr;
+  }
+
+  // FIXME: handle templated types
+
+  Expression RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
+
+  if (RHSExpr.isNull())
+    return nullptr;
+
+  if (RHSExpr.is<clang::Expr *>()) {
+    clang::Expr *ERHS = RHSExpr.get<clang::Expr *>();
+    if (const clang::DeclRefExpr *DRE = dyn_cast<clang::DeclRefExpr>(ERHS))
+      llvm_unreachable("ya we trying dawg");
+  }
 }
 
 static ExprElaborator::Expression handleLookUpInsideType(Sema &SemaRef,
