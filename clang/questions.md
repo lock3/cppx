@@ -25,6 +25,17 @@ Do we have a lambda representation?
 
 Which operator is address of?
 
+# Classes, Constructors, and destructor
+
+Is the following syntax acceptable for constructors and destructors?
+```
+c : type = class:
+  constructor() : void!
+    # something
+  destructor() : void!
+    #body
+```
+
 # Semantic Questions
 
 What do each of the following operators actually do?
@@ -43,3 +54,5 @@ Health:float
 ```
 What does the editable_slider attribute look like when it's not an attribute?
 Is it a class that's defined in the language somewhere? Is it defined in C++?
+
+
