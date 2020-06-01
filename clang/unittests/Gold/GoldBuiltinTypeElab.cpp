@@ -54,4 +54,4 @@ GOLD_BUILTIN_TYPE_TEST("signed", signed, "int")
 
 GOLD_BUILTIN_TYPE_SIMPLE_TEST("float", float)
 GOLD_BUILTIN_TYPE_SIMPLE_TEST("double", double)
-GOLD_BUILTIN_TYPE_SIMPLE_TEST("uint128_t", uint128_t)
+GOLD_BUILTIN_TYPE_TEST("uint128_t", uint128_t, "unsigned __int128")
