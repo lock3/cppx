@@ -38,6 +38,7 @@ add_clang_unittest(GoldTests
   GoldBoolImplicitConversionInit.cpp
   GoldBuiltInTypeConstructorsExec.cpp
   GoldBuiltinTypeElab.cpp
+  GoldCharLiteralElab.cpp
   GoldClassMemberAccessTest.cpp
   GoldClassParsing.cpp
   GoldClassTemplateMemberAccessExec.cpp
@@ -46,7 +47,7 @@ add_clang_unittest(GoldTests
   GoldCompileRun.cpp
   GoldConst.cpp
   GoldConstructorCallParsingTest.cpp
-  GoldFloatingPointLiteral.cpp
+  GoldFloatingPointLiteralElab.cpp
   GoldFor.cpp
   GoldFunctionOverloading.cpp
   GoldFunctionStorageClassElab.cpp

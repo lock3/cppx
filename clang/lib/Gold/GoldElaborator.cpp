@@ -1100,7 +1100,7 @@ void Elaborator::elaborateDeclInit(const Syntax *S) {
 void Elaborator::elaborateDef(Declaration *D) {
   if (D->ElabPhaseCompleted >= 3)
     return;
-  if (D->ElabPhaseCompleted == 2) {
+  if (D->ElabPhaseCompleted != 2) {
     // assert(D->ElabPhaseCompleted == 2 &&
     //     "Declaration not ready for full elaboration.");
     return;
@@ -1301,7 +1301,10 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 
     VD->setType(Ty);
   }
-
+  if (!InitExpr) {
+    llvm::errs() << "Invalid initialization expression\n";
+    return;
+  }
   // Update the initializer.
   SemaRef.getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
 }
