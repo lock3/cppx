@@ -281,6 +281,10 @@ public:
   /// Set the previous declaration in the redeclaration chain.
   void setPreviousDecl(Declaration *Prev);
 
+  /// This function checks to see if the current scope was declared within
+  // the scope of another class body.
+  bool isDeclaredWithinClass() const;
+
   /// The owning context.
   Declaration *Cxt;
 
@@ -321,6 +325,24 @@ public:
   /// 0 is unprocessed (the default value), 1 is identified, 2 is the declaration
   /// is elaborated and 3 is the definition is complete.
   unsigned ElabPhaseCompleted = 0;
+
+  /// This information is to aid with early elaboration. This allows the
+  /// elabrotor to restore the state in which something was declared.
+  ///{
+  /// This is the current clang scope that the clang declaration is part of.
+  clang::Scope *ClangDeclaringScope = nullptr;
+
+  /// This is the scope that this declaration is a member of.
+  /// This is also the parent scope to the SavedScope, if set.
+  gold::Scope *ScopeForDecl = nullptr;
+
+  /// This is the gold DeclContext for a declaration.
+  Declaration* ParentDecl = nullptr;
+
+  /// This is the current DeclContext when the declaration was encountered.
+  clang::DeclContext *DeclaringContext = nullptr;
+
+  ///}
 };
 
 /// Different kinds of scope.

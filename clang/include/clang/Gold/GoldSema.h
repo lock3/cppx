@@ -128,6 +128,11 @@ public:
   /// The current C++ declaration.
   clang::DeclContext *getCurrentCxxDeclContext();
 
+  /// Returns the current DeclContext that's set within the clang::Sema.
+  /// It's worth noting that getCurrentCxxDeclContext doesn't always equal
+  /// getCurClangDeclContext.
+  clang::DeclContext *getCurClangDeclContext() const;
+
   /// Restore previously exited DeclContext
   void restoreDeclContext(Declaration *D);
 
@@ -136,6 +141,9 @@ public:
 
   /// Sets the decl context without modifying the clang::Sema class
   void setCurrentDecl(Declaration *D);
+
+  /// Sets only the clang DeclContext.
+  void setClangDeclContext(clang::DeclContext *DC);
 
   /// Make the owner of CurrentDecl current.
   void popDecl();
@@ -316,6 +324,64 @@ public:
     clang::SourceLocation ExitingLocation;
   };
 
+  /// This class provides RAII for keeping track of DeclContexts, even if 
+  /// the DeclContext isn't set by us for clang::Sema.
+  class DeclContextRAII {
+    Sema &SemaRef;
+    bool DoSetAndReset;
+    clang::DeclContext *OriginalDC;
+    Declaration *OriginalDecl;
+  public:
+    DeclContextRAII(Sema &S, Declaration *D,
+        bool SetAndResetDeclarationsOnly = false)
+      :SemaRef(S), OriginalDecl(SemaRef.CurrentDecl)
+    {
+      if (DoSetAndReset)
+        SemaRef.CurrentDecl = D;
+      else 
+        SemaRef.pushDecl(D);
+    }
+    ~DeclContextRAII() {
+      if (DoSetAndReset){
+        SemaRef.setCurrentDecl(OriginalDecl);
+      } else 
+        SemaRef.popDecl();
+    }
+  };
+  
+  struct EnterNonNestedClassEarlyElaboration {
+    EnterNonNestedClassEarlyElaboration(Sema& S, Declaration* Decl)
+      :SemaRef(S),
+      PrevClassStack(std::move(SemaRef.ClassStack)),
+      D(Decl),
+      GoldScopeResumer(SemaRef, Decl->ScopeForDecl, D->Op),
+      PrevContext(SemaRef.getCurClangDeclContext()),
+      PrevDeclaration(SemaRef.getCurrentDecl()),
+      PrevClangScope(SemaRef.getCurClangScope())
+    {
+      SemaRef.reEnterClangScope(D->ClangDeclaringScope);
+      SemaRef.setClangDeclContext(D->DeclaringContext);
+      SemaRef.setCurrentDecl(D->ParentDecl);
+    }
+
+    ~EnterNonNestedClassEarlyElaboration() {
+      // Moving the previous information back onto the stack.
+      SemaRef.ClassStack = std::move(PrevClassStack);
+
+      SemaRef.setCurrentDecl(PrevDeclaration);
+      SemaRef.reEnterClangScope(PrevClangScope);
+      SemaRef.setClangDeclContext(PrevContext);
+    }
+  private:
+    Sema &SemaRef;
+    llvm::SmallVector<ElaboratingClass *, 6> PrevClassStack;
+    Declaration* D;
+    ResumeScopeRAII GoldScopeResumer;
+    clang::DeclContext* PrevContext = nullptr;
+    Declaration* PrevDeclaration = nullptr;
+    clang::Scope *PrevClangScope = nullptr;
+  };
+
   struct ExprEvalRAII {
     ExprEvalRAII(Sema& S, clang::Sema::ExpressionEvaluationContext NewContext)
       :SemaRef(S)
@@ -328,6 +394,8 @@ public:
   private:
     Sema& SemaRef;
   };
+
+
 
   /// This class is an RAII that tracks the classes scope and current status
   /// during processing. This allows for us to more easily keep track of
@@ -357,28 +425,6 @@ public:
     }
   };
 
-  class DeclContextRAII {
-    Sema &SemaRef;
-    bool DoSetAndReset;
-    clang::DeclContext *OriginalDC;
-    Declaration *OriginalDecl;
-  public:
-    DeclContextRAII(Sema &S, Declaration *D,
-        bool SetAndResetDeclarationsOnly = false)
-      :SemaRef(S), OriginalDecl(SemaRef.CurrentDecl)
-    {
-      if (DoSetAndReset)
-        SemaRef.CurrentDecl = D;
-      else 
-        SemaRef.pushDecl(D);
-    }
-    ~DeclContextRAII() {
-      if (DoSetAndReset){
-        SemaRef.setCurrentDecl(OriginalDecl);
-      } else 
-        SemaRef.popDecl();
-    }
-  };
 
   template<typename T>
   class OptionalInitScope {
@@ -409,40 +455,7 @@ public:
   // Dictionary of built in types.
   //
   // FIXME: This should be initialized in the constructor.
-  const llvm::StringMap<clang::QualType> BuiltinTypes = {
-    {"void", Context.CxxAST.VoidTy},
-    {"bool", Context.CxxAST.BoolTy},
-    {"char", Context.CxxAST.CharTy},
-    {"wchar_t", Context.CxxAST.WideCharTy},
-    {"wint_t", Context.CxxAST.WIntTy},
-    {"char8_t", Context.CxxAST.Char8Ty},
-    {"char16_t", Context.CxxAST.Char16Ty},
-    {"char32_t", Context.CxxAST.Char32Ty},
-    {"signed char", Context.CxxAST.SignedCharTy},
-    {"short", Context.CxxAST.ShortTy},
-    {"short int", Context.CxxAST.ShortTy},
-    {"int", Context.CxxAST.IntTy},
-    {"long", Context.CxxAST.LongTy},
-    {"long int", Context.CxxAST.LongTy},
-    {"long long", Context.CxxAST.LongLongTy},
-    {"long long int", Context.CxxAST.LongLongTy},
-    {"int128_t", Context.CxxAST.Int128Ty},
-    {"unsigned char", Context.CxxAST.UnsignedCharTy},
-    {"unsigned short", Context.CxxAST.UnsignedShortTy},
-    {"unsigned short int", Context.CxxAST.UnsignedShortTy},
-    {"unsigned", Context.CxxAST.UnsignedIntTy},
-    {"unsigned int", Context.CxxAST.UnsignedIntTy},
-    {"unsigned long", Context.CxxAST.UnsignedLongTy},
-    {"unsigned long int", Context.CxxAST.UnsignedLongTy},
-    {"unsigned long long", Context.CxxAST.UnsignedLongLongTy},
-    {"unsigned long long int", Context.CxxAST.UnsignedLongLongTy},
-    {"uint128_t", Context.CxxAST.UnsignedInt128Ty},
-    {"float", Context.CxxAST.FloatTy},
-    {"double", Context.CxxAST.DoubleTy},
-    {"long double", Context.CxxAST.LongDoubleTy},
-    {"float128_t", Context.CxxAST.Float128Ty},
-    {"type", Context.CxxAST.CppxKindTy}
-  };
+  const llvm::StringMap<clang::QualType> BuiltinTypes;
 };
 
 } // namespace gold
