@@ -31,9 +31,50 @@ namespace gold {
 
 using namespace llvm;
 
+static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
+    SyntaxContext &Context) {
+  return {
+    {"void", Context.CxxAST.VoidTy},
+    {"bool", Context.CxxAST.BoolTy},
+    {"char", Context.CxxAST.CharTy},
+    {"wchar_t", Context.CxxAST.WideCharTy},
+    {"wint_t", Context.CxxAST.WIntTy},
+    {"char8_t", Context.CxxAST.Char8Ty},
+    {"char16_t", Context.CxxAST.Char16Ty},
+    {"char32_t", Context.CxxAST.Char32Ty},
+    {"unsigned", Context.CxxAST.UnsignedIntTy},
+    {"signed", Context.CxxAST.IntTy},
+    {"signed char", Context.CxxAST.SignedCharTy},
+    {"short", Context.CxxAST.ShortTy},
+    {"short int", Context.CxxAST.ShortTy},
+    {"int", Context.CxxAST.IntTy},
+    {"signed int", Context.CxxAST.IntTy},
+    {"long", Context.CxxAST.LongTy},
+    {"long int", Context.CxxAST.LongTy},
+    {"long long", Context.CxxAST.LongLongTy},
+    {"long long int", Context.CxxAST.LongLongTy},
+    {"int128_t", Context.CxxAST.Int128Ty},
+    {"unsigned char", Context.CxxAST.UnsignedCharTy},
+    {"unsigned short", Context.CxxAST.UnsignedShortTy},
+    {"unsigned short int", Context.CxxAST.UnsignedShortTy},
+    {"unsigned int", Context.CxxAST.UnsignedIntTy},
+    {"unsigned long", Context.CxxAST.UnsignedLongTy},
+    {"unsigned long int", Context.CxxAST.UnsignedLongTy},
+    {"unsigned long long", Context.CxxAST.UnsignedLongLongTy},
+    {"unsigned long long int", Context.CxxAST.UnsignedLongLongTy},
+    {"uint128_t", Context.CxxAST.UnsignedInt128Ty},
+    {"float", Context.CxxAST.FloatTy},
+    {"double", Context.CxxAST.DoubleTy},
+    {"long double", Context.CxxAST.LongDoubleTy},
+    {"float128_t", Context.CxxAST.Float128Ty},
+    {"type", Context.CxxAST.CppxKindTy}
+  };
+}
+
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : CxxSema(CxxSema), CurrentDecl(), Context(Context),
-    Diags(Context.CxxAST.getSourceManager().getDiagnostics())
+    Diags(Context.CxxAST.getSourceManager().getDiagnostics()),
+    BuiltinTypes(createBuiltinTypeList(Context))
 {
   CxxSema.CurScope = nullptr;
   OperatorColonII = &Context.CxxAST.Idents.get("operator':'");
