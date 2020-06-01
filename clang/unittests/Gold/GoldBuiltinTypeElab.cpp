@@ -46,19 +46,12 @@ GOLD_BUILTIN_TYPE_ARITHMETIC_VARIABLE_TEST("long", long)
 GOLD_BUILTIN_TYPE_ARITHMETIC_VARIABLE_TEST("long int", long_int)
 GOLD_BUILTIN_TYPE_ARITHMETIC_VARIABLE_TEST("long long", long_long)
 GOLD_BUILTIN_TYPE_ARITHMETIC_VARIABLE_TEST("long long int", long_long_int)
+GOLD_BUILTIN_TYPE_TEST("bool", bool, "_Bool")
 
-TEST(BuiltinTypeElab, BuiltInType_unsigned) {
-    StringRef Code = "i:unsigned";
-  DeclarationMatcher VarIMatcher = varDecl(
-    hasName("i"), hasType(asString("unsigned int"))
-  );
-  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
-}
 
-TEST(BuiltinTypeElab, BuiltInType_signed) {
-  StringRef Code = "i:signed";
-  DeclarationMatcher VarIMatcher = varDecl(
-    hasName("i"), hasType(asString("int"))
-  );
-  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
-}
+GOLD_BUILTIN_TYPE_TEST("unsigned", unsigned, "unsigned int")
+GOLD_BUILTIN_TYPE_TEST("signed", signed, "int")
+
+GOLD_BUILTIN_TYPE_SIMPLE_TEST("float", float)
+GOLD_BUILTIN_TYPE_SIMPLE_TEST("double", double)
+GOLD_BUILTIN_TYPE_SIMPLE_TEST("uint128_t", uint128_t)

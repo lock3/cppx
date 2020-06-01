@@ -43,40 +43,52 @@ public:
       return std::make_unique<clang::ASTConsumer>();
     }
   }
+
   bool usesPreprocessorOnly() const override { return false; }
   bool hasCodeCompletionSupport() const override { return false; }
-  // class ConsumerFactoryAdaptor : public ASTFrontendAction {
-  //   public:
-  //     ConsumerFactoryAdaptor(FactoryT *ConsumerFactory,
-  //                            SourceFileCallbacks *Callbacks)
-  //         : ConsumerFactory(ConsumerFactory), Callbacks(Callbacks) {}
 
-  //     std::unique_ptr<ASTConsumer>
-  //     CreateASTConsumer(CompilerInstance &, StringRef) override {
-  //       return ConsumerFactory->newASTConsumer();
-  //     }
-
-  //   protected:
   bool BeginSourceFileAction(clang::CompilerInstance &CI) override {
     if (!clang::ASTFrontendAction::BeginSourceFileAction(CI))
       return false;
-    // if (Callbacks)
-    //   return Callbacks->handleBeginSource(CI);
     return true;
   }
 
   void EndSourceFileAction() override {
-    // if (Callbacks)
-    //   Callbacks->handleEndSource();
     clang::ASTFrontendAction::EndSourceFileAction();
   }
 
-  //   private:
-  //     FactoryT *ConsumerFactory;
-  //     SourceFileCallbacks *Callbacks;
-  //   };
 private:
   clang::ast_matchers::MatchFinder *Matcher = nullptr;
+};
+
+
+
+
+
+class GoldSyntaxActionDumper : public clang::ASTFrontendAction {
+protected:
+  void ExecuteAction() override;
+
+public:
+  GoldSyntaxActionDumper() {}
+
+  std::unique_ptr<clang::ASTConsumer>
+  CreateASTConsumer(clang::CompilerInstance &CI,
+                    llvm::StringRef InFile) override {
+    return std::make_unique<clang::ASTConsumer>();
+  }
+  bool usesPreprocessorOnly() const override { return false; }
+  bool hasCodeCompletionSupport() const override { return false; }
+
+  bool BeginSourceFileAction(clang::CompilerInstance &CI) override {
+    if (!clang::ASTFrontendAction::BeginSourceFileAction(CI))
+      return false;
+    return true;
+  }
+
+  void EndSourceFileAction() override {
+    clang::ASTFrontendAction::EndSourceFileAction();
+  }
 };
 
 } // namespace gold

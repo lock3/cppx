@@ -117,9 +117,7 @@ testing::AssertionResult matchesConditionally(
   VerifyMatch VerifyDynamicFound(nullptr, &DynamicFound);
   if (!Finder.addDynamicMatcher(AMatcher, &VerifyDynamicFound))
     return testing::AssertionFailure() << "Could not add dynamic matcher";
-  // std::unique_ptr<FrontendActionFactory> Factory(
-  //     newFrontendActionFactory(&Finder));
-  // 
+
   class SimpleFrontendActionFactoryWithFinder : public FrontendActionFactory {
   public:
     MatchFinder *Finder = nullptr;  
@@ -134,7 +132,6 @@ testing::AssertionResult matchesConditionally(
   std::unique_ptr<FrontendActionFactory> Factory(
       new SimpleFrontendActionFactoryWithFinder(&Finder));
   
-      // newFrontendActionFactory<gold::GoldSyntaxAction>(&Finder));
   // Some tests need rtti/exceptions on.  Use an unknown-unknown triple so we
   // don't instantiate the full system toolchain.  On Linux, instantiating the
   // toolchain involves stat'ing large portions of /usr/lib, and this slows down
@@ -144,7 +141,8 @@ testing::AssertionResult matchesConditionally(
   // equivalent of runToolOnCodeWithArgs without instantiating a full Driver.
   // We should consider having a function, at least for tests, that invokes cc1.
   std::vector<std::string> Args;
-  if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "gold", "-c"}, Filename)) {
+  if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "gold", "-c"},
+      Filename)) {
     return testing::AssertionFailure() << "Parsing error in \"" << Code << "\"";
   }
   if (Found != DynamicFound) {
@@ -154,6 +152,19 @@ testing::AssertionResult matchesConditionally(
                                        << Found << ")";
   }
   if (!Found && ExpectMatch) {
+    class DumpingFrontEndAction : public FrontendActionFactory {
+    public:
+      DumpingFrontEndAction() { }
+
+      std::unique_ptr<FrontendAction> create() override {
+        return std::make_unique<gold::GoldSyntaxActionDumper>();
+      }
+    };
+
+    std::unique_ptr<FrontendActionFactory> DumpingActionFactory(
+        new DumpingFrontEndAction());
+    runToolOnCodeWithArgs(DumpingActionFactory->create(), Code,
+        {"-x", "gold", "-c"}, Filename);
     return testing::AssertionFailure()
       << "Could not find match in \"" << Code << "\"";
   } else if (Found && !ExpectMatch) {
