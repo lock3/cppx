@@ -37,6 +37,7 @@ add_clang_unittest(GoldTests
   GoldAuto.cpp
   GoldBoolImplicitConversionInit.cpp
   GoldBuiltInTypeConstructorsExec.cpp
+  GoldBuiltinTypeElab.cpp
   GoldClassMemberAccessTest.cpp
   GoldClassParsing.cpp
   GoldClassTemplateMemberAccessExec.cpp

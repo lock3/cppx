@@ -1129,6 +1129,11 @@ clang::Decl *Elaborator::elaborateDeclSyntax(const Syntax *S) {
 
 clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
   assert(D && D->getId() && "Early elaboration of unidentified declaration");
+  Sema::OptionalInitScope<Sema::EnterNonNestedClassEarlyElaboration>
+    ENNCEE(SemaRef);
+  if (SemaRef.isElaboratingClass() && !D->isDeclaredWithinClass()) {
+    ENNCEE.Init(D);
+  }
 
   elaborateDecl(D);
   elaborateDef(D);
@@ -1146,8 +1151,11 @@ void Elaborator::elaborateDeclInit(const Syntax *S) {
 void Elaborator::elaborateDef(Declaration *D) {
   if (D->ElabPhaseCompleted >= 3)
     return;
-  assert(D->ElabPhaseCompleted == 2 &&
-      "Declaration not ready for full elaboration.");
+  if (D->ElabPhaseCompleted == 2) {
+    // assert(D->ElabPhaseCompleted == 2 &&
+    //     "Declaration not ready for full elaboration.");
+    return;
+  }
 
   if (D->declaresFunction())
     return elaborateFunctionDef(D);
@@ -1822,6 +1830,13 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       Declaration *ParentDecl = SemaRef.getCurrentDecl();
       Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, Init);
       TheDecl->Id = Id;
+
+      // Getting information that's necessary in order to correctly restore
+      // a declaration's context during early elaboration.
+      TheDecl->ClangDeclaringScope = SemaRef.getCurClangScope();
+      TheDecl->ParentDecl = SemaRef.getCurrentDecl();
+      TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
+      TheDecl->ScopeForDecl = SemaRef.getCurrentScope();
 
       // If we're in namespace or parameter scope and this identifier already
       // exists, consider it a redeclaration.
