@@ -38,6 +38,7 @@ add_clang_library(clangAST
   Decl.cpp
   DeclarationName.cpp
   DeclBase.cpp
+  DeclCppx.cpp
   DeclCXX.cpp
   DeclFriend.cpp
   DeclGroup.cpp

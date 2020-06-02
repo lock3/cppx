@@ -49,6 +49,12 @@
 #include <string>
 #include <utility>
 
+namespace gold {
+
+class Scope;
+
+} // namespace Gold
+
 namespace clang {
 
 class ASTContext;
@@ -4526,6 +4532,35 @@ public:
 
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classofKind(Kind K) { return K == Empty; }
+};
+
+/// A wrapper around a  NamespaceDecl that encapsulates CPPX-specific
+/// information about the namespace.
+class CppxNamespaceDecl : public TypeDecl {
+  gold::Scope *Rep;
+
+protected:
+  CppxNamespaceDecl(Kind DK, const ASTContext &C, DeclContext *DC,
+                    SourceLocation L, IdentifierInfo *II, gold::Scope *Rep)
+    : TypeDecl(DK, DC, L, II), Rep(Rep)
+  {}
+
+public:
+  static CppxNamespaceDecl *Create(const ASTContext &C, DeclContext *DC,
+                                   SourceLocation L, IdentifierInfo *II,
+                                   NamespaceDecl *NS, gold::Scope *Rep);
+
+  NamespaceDecl *getNamespace();
+
+  gold::Scope *getScopeRep();
+
+  void anchor() override {}
+
+  // Implement isa/cast/dyncast/etc.
+  static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+  static bool classofKind(Kind K) {
+    return K == CppxNamespace;
+  }
 };
 
 /// Insertion operator for diagnostics.  This allows sending NamedDecl's

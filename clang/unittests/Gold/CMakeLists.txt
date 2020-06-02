@@ -56,6 +56,7 @@ add_clang_unittest(GoldTests
   GoldImplicitCtorExplicitCallExec.cpp
   GoldMemberExecuteTest.cpp
   GoldMemberStorageClassElab.cpp
+  GoldNNS.cpp
   GoldStorageClassExec.cpp
   GoldTypeExpressionsTest.cpp
   GoldVarDeclStorageClass.cpp

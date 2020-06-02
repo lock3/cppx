@@ -578,6 +578,7 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
 
   // Create and enter a namespace scope.
   clang::Scope *NSScope = SemaRef.enterClangScope(clang::Scope::DeclScope);
+
   gold::Sema::ScopeRAII GoldScopeRAII(SemaRef, SK_Namespace, D->Init);
 
   // FIXME: keep track of nested namespaces?
@@ -597,14 +598,21 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
   // Keep track of the location of the last syntax, as a closing location.
   clang::SourceLocation LastLoc;
   for (const Syntax *S : NSBody->children()) {
-    clang::Decl *Inner = Elaborator(Context, SemaRef).elaborateDeclSyntax(S);
+    Elaborator(Context, SemaRef).elaborateDeclSyntax(S);
     LastLoc = S->getLoc();
   }
 
+  gold::Scope *NamespaceRep = SemaRef.getCurrentScope();
   SemaRef.getCxxSema().ActOnFinishNamespaceDef(NSDecl, LastLoc);
   SemaRef.leaveClangScope(LastLoc);
   SemaRef.popDecl();
-  NSDecl->dump();
+
+  DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  CppxNamespaceDecl *Wrapper =
+    CppxNamespaceDecl::Create(Context.CxxAST, Owner, D->Decl->getLoc(),
+                              D->getId(), cast<clang::NamespaceDecl>(NSDecl),
+                              NamespaceRep);
+  D->Cxx = Wrapper;
 
   // FIXME: We should be returning a DeclGroupPtr to the NSDecl grouped
   // with the implicit UsingDecl, UD.
@@ -1688,8 +1696,10 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
       Temp->recordAttributes(TemplateType);
       return Temp;
     }
+
     llvm_unreachable("Invalid templated declarator.");
   }
+
   return nullptr;
 }
 
@@ -1802,7 +1812,7 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
         // The first statement is a declaration. The second is an assignment.
         // FIXME: is this the right way to handle the lookup set?
 
-        if (!CurScope->findDecl(Id).empty() && OperatorEquals)
+        if (OperatorEquals && !CurScope->findDecl(Id).empty())
           return nullptr;
       }
 

@@ -17,6 +17,7 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/DeclBase.h"
+#include "clang/AST/DeclCppx.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclFriend.h"
 #include "clang/AST/DeclObjC.h"
@@ -1583,6 +1584,8 @@ DEF_TRAVERSE_DECL(
      // decls_begin()/decls_end().  Thus we don't need to recurse on
      // D->getAnonymousNamespace().
     })
+
+DEF_TRAVERSE_DECL(CppxNamespaceDecl, {})
 
 DEF_TRAVERSE_DECL(ObjCCompatibleAliasDecl, {// FIXME: implement
                                            })

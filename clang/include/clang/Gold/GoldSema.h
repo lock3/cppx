@@ -31,6 +31,7 @@
 
 namespace clang {
 
+class CppxNamespaceDecl;
 class Decl;
 class DeclContext;
 class DiagnosticsEngine;
@@ -54,6 +55,8 @@ class SyntaxContext;
 /// Maintains the state of Gold-to-C++ translation for a
 /// translation unit in the Gold Language.
 class Sema {
+  friend struct QualifiedLookupRAII;
+
   // The clang semantic object, allows to create various syntax nodes
   // as well as perform important transformations on them.
   clang::Sema &CxxSema;
@@ -63,7 +66,7 @@ class Sema {
 
   // The declaration context.
   Declaration *CurrentDecl = nullptr;
-  
+
 public:
   Sema(SyntaxContext &Context, clang::Sema &S);
   ~Sema();
@@ -110,6 +113,10 @@ public:
 
   // Perform unqualified lookup of a name starting in S.
   bool lookupUnqualifiedName(clang::LookupResult &R, Scope *S);
+
+  // Perform qualified lookup of a name starting in S.
+  bool lookupQualifiedName(clang::LookupResult &R, Scope *S);
+  bool lookupQualifiedName(clang::LookupResult &R);
 
   /// This checks to see if we are within a class body scope currently.
   bool scopeIsWithinClass();
@@ -214,6 +221,26 @@ public:
   ///
   unsigned computeTemplateDepth() const;
 
+private:
+  /// =============== Members related to qualified lookup. ================= ///
+
+  // The list of nested-name-specifiers to use for qualified lookup.
+  // FIXME: make this a list, instead of a single NNS.
+  clang::CppxNamespaceDecl *NNS;
+
+public:
+  bool isQualifiedLookupContext() const {
+    return QualifiedLookupContext;
+  }
+
+  // True when lookups should be performed with a qualifier.
+  bool QualifiedLookupContext = false;
+
+  /// ============= Members related to NNS typo correction. =============== ///
+
+  // A C++ scope specifier that gets set during NNS so we can leverage Clang's
+  // typo correction.
+  clang::CXXScopeSpec CurNNSContext;
 public:
   // The context
   SyntaxContext &Context;
@@ -265,7 +292,7 @@ public:
   struct ResumeScopeRAII {
     ResumeScopeRAII(Sema &S, gold::Scope *Sc, const Syntax *ConcreteTerm,
         bool PopOnExit = true)
-      :SemaRef(S), Scope(Sc), ExitTerm(ConcreteTerm), PopOnExit(PopOnExit)
+      :SemaRef(S), ExitTerm(ConcreteTerm), PopOnExit(PopOnExit)
     {
       SemaRef.pushScope(Sc);
     }
@@ -279,7 +306,6 @@ public:
     }
   private:
     Sema &SemaRef;
-    gold::Scope *Scope;
     const Syntax *ExitTerm;
     bool PopOnExit;
   };
@@ -360,7 +386,6 @@ public:
   class DeclContextRAII {
     Sema &SemaRef;
     bool DoSetAndReset;
-    clang::DeclContext *OriginalDC;
     Declaration *OriginalDecl;
   public:
     DeclContextRAII(Sema &S, Declaration *D,
@@ -398,6 +423,38 @@ public:
       assert(!Opt && "Error attempting to enter scope twice.");
       Opt.emplace(SemaRef, std::forward<Args>(Arguments)...);
     }
+  };
+
+  struct QualifiedLookupRAII {
+    QualifiedLookupRAII(Sema &SemaRef,
+                        bool &QualifiedLookupContext,
+                        clang::CppxNamespaceDecl **NNS)
+      : SemaRef(SemaRef),
+        QualifiedLookupContext(QualifiedLookupContext) {
+      SemaRef.NNS = *NNS;
+      QualifiedLookupContext = true;
+    }
+
+    ~QualifiedLookupRAII() {
+      QualifiedLookupContext = false;
+      SemaRef.NNS = nullptr;
+    }
+
+  private:
+    Sema &SemaRef;
+    bool &QualifiedLookupContext;
+  };
+
+  struct NNSRAII {
+    NNSRAII(clang::CXXScopeSpec &SS)
+      : SS(SS)
+      {}
+
+    ~NNSRAII() {
+      SS.clear();
+    }
+  private:
+    clang::CXXScopeSpec &SS;
   };
 
   /// This helps keep track of the scope associated with templated classes

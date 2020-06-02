@@ -830,6 +830,7 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case CXXMetaprogram:
     case CXXInjection:
     case CXXStmtFragment:
+    case CppxNamespace:
       // Never looked up by name.
       return 0;
   }

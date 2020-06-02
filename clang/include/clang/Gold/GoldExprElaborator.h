@@ -27,6 +27,7 @@
 namespace clang {
 
 class ASTContext;
+class CppxNamespaceDecl;
 class Expr;
 class NamespaceDecl;
 class Sema;
@@ -63,7 +64,8 @@ public:
   // Represents a C++ expression, which may be either an object expression
   // or a type expression.
   using Expression = llvm::PointerUnion<clang::Expr *, clang::TypeSourceInfo *,
-      clang::NamespaceDecl *>;
+                                        clang::NamespaceDecl *,
+                                        clang::CppxNamespaceDecl *>;
   using TypeInfo = clang::TypeSourceInfo;
 
   //===--------------------------------------------------------------------===//
@@ -79,7 +81,7 @@ public:
   Expression elaborateNestedLookUpAccess(Expression Previous,
                                          const CallSyntax *Op,
                                          const Syntax *RHS);
-  Expression elaborateNNS(clang::NamespaceDecl *NS,
+  Expression elaborateNNS(clang::CppxNamespaceDecl *NS,
                           const CallSyntax *Op, const Syntax *RHS);
 
   Expression elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);

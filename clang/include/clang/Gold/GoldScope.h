@@ -309,6 +309,7 @@ public:
   /// The corresponding C++ declaration.
   clang::Decl* Cxx = nullptr;
 
+  /// ====================================================================== ///
   /// Below are declarations pertaining to the redeclaration chain, which
   /// is a circularly linked list containing declarations with the same
   /// signature.
@@ -318,6 +319,8 @@ public:
 
   /// The next decl in the redeclaration chain.
   Declaration *Next = this;
+
+  /// ====================================================================== ///
 
   /// Decl phase completed. This is used to paint the declarations and
   /// avoid re-visitation during lookup/elaboration. This has a value from 0-3.
@@ -493,8 +496,6 @@ public:
   }
 
   /// Finds a declaration with the given name in this scope.
-  ///
-  /// FIXME: This could return an overload set.
   std::set<Declaration *> findDecl(const clang::IdentifierInfo *Id) {
     assert(Id);
     auto Range = IdMap.find_range(Id);
@@ -520,6 +521,20 @@ public:
   void dump() const;
 
   void dumpScopeChain() const;
+};
+
+/// Represents a nested-name-specifier for Gold, which are spelled
+/// similarly to class access.
+///
+/// \code
+///   foo.x
+/// \endcode
+///
+/// Here, `foo` is a namespace and `foo.` is a nested-name-specifier.
+///
+/// See also: clang::CXXScopeSpec
+class GoldScopeSpec
+{
 };
 
 } // namespace gold

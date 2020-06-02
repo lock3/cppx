@@ -34,6 +34,7 @@ def Named : DeclNode<Decl, "named declarations", 1>;
               : DeclNode<ClassTemplateSpecialization>;
     def TemplateTypeParm : DeclNode<Type>;
     def CXXRequiredType : DeclNode<Type>;
+    def CppxNamespace : DeclNode<Type>;
   def Value : DeclNode<Named, "value declarations", 1>;
     def EnumConstant : DeclNode<Value, "enumerators">;
     def UnresolvedUsingValue : DeclNode<Value>;
