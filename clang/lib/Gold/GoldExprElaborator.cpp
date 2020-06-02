@@ -772,6 +772,9 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
 
   case FOK_MemberAccess: {
     const ListSyntax *Args = cast<ListSyntax>(S->getArguments());
+
+    if (Args->getNumChildren() == 1)
+      return elaborateGlobalNNS(S, Args->getChild(0));
     return elaborateMemberAccess(Args->getChild(0), S, Args->getChild(1));
   }
 
@@ -883,6 +886,40 @@ Expression ExprElaborator::elaborateNNS(clang::CppxNamespaceDecl *NS,
 
   if (RHSExpr.isNull())
     return nullptr;
+
+  if (RHSExpr.is<clang::Expr *>()) {
+    SemaRef.CurNNSContext.clear();
+    clang::Expr *Ret = RHSExpr.get<clang::Expr *>();
+    ExprMarker(Context.CxxAST, SemaRef).Visit(Ret);
+    return Ret;
+  }
+
+  if (RHSExpr.is<clang::CppxNamespaceDecl *>())
+    return RHSExpr.get<clang::CppxNamespaceDecl *>(); 
+
+  SemaRef.Diags.Report(RHS->getLoc(), clang::diag::err_failed_to_translate_expr);
+  return nullptr;
+}
+
+Expression ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
+                                              const Syntax *RHS) {
+  bool Failure = SemaRef.getCxxSema().
+    ActOnCXXGlobalScopeSpecifier(Op->getLoc(), SemaRef.CurNNSContext);
+
+  if (Failure) {
+    llvm::outs() << "failed to create nns\n";
+    return nullptr;
+  }
+
+  gold::Scope *GlobalScope = SemaRef.getCurrentScope();
+  while (GlobalScope->getParent())
+    GlobalScope = GlobalScope->getParent();
+  auto *NS = clang::CppxNamespaceDecl::Create(
+    Context.CxxAST, Context.CxxAST.getTranslationUnitDecl(),
+    clang::SourceLocation(), nullptr, nullptr, GlobalScope);
+
+  Sema::QualifiedLookupRAII Qual(SemaRef, SemaRef.QualifiedLookupContext, &NS);
+  Expression RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
 
   if (RHSExpr.is<clang::Expr *>()) {
     SemaRef.CurNNSContext.clear();

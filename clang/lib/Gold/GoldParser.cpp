@@ -784,6 +784,12 @@ Syntax *Parser::parsePre()
     return parseArrayPrefix();
   }
 
+  if (nextTokenIs(tok::Dot)) {
+    Token Operator = consumeToken();
+    Syntax *Operand = parseExpr();
+    return onUnary(Operator, Operand);
+  }
+
   return parsePost();
 }
 

@@ -55,7 +55,6 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
   clang::TranslationUnitDecl *TU =
     cast<clang::TranslationUnitDecl>(Elab.elaborateFile(CST));
   clang::ASTConsumer *Consumer = &ClangSema.getASTConsumer();
-  TU->dump();
   for (auto *D : TU->decls()) {
     auto DPtr = ClangSema.ConvertDeclToDeclGroup(D);
     if (D && !Consumer->HandleTopLevelDecl(DPtr.get()))

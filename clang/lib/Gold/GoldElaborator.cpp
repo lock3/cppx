@@ -330,7 +330,7 @@ void Elaborator::startFile(const Syntax *S) {
   clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::DeclScope);
   SemaRef.getCxxSema().ActOnTranslationUnitScope(Scope);
   SemaRef.getCxxSema().Initialize();
-  
+
   // Enter the global scope.
   SemaRef.enterScope(SK_Namespace, S);
 

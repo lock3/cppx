@@ -83,6 +83,7 @@ public:
                                          const Syntax *RHS);
   Expression elaborateNNS(clang::CppxNamespaceDecl *NS,
                           const CallSyntax *Op, const Syntax *RHS);
+  Expression elaborateGlobalNNS(const CallSyntax *Op, const Syntax *RHS);
 
   Expression elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
 

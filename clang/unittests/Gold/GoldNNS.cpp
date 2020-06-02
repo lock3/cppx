@@ -31,3 +31,41 @@ main() : int!
 
   SimpleGoldParseTest(Code);
 }
+
+TEST(NNS, GlobalNNS) {
+  StringRef Code = R"(
+x : int = 9
+
+main() : int!
+  x : int = 10
+  return x + .x
+)";
+
+  SimpleGoldParseTest(Code);
+}
+
+TEST(NNS, GlobalNested) {
+  StringRef Code = R"(
+ns : namespace = namespace:
+  x : int = 0
+
+main() : int!
+  x : int = 10
+  return .ns.x
+)";
+
+  SimpleGoldParseTest(Code);
+}
+
+TEST(NNS, AutoNNS) {
+  StringRef Code = R"(
+ns = namespace:
+  x : int = 5
+
+main() : int!
+  x : int = 4
+  return .ns.x
+)";
+
+  SimpleGoldParseTest(Code);
+}
