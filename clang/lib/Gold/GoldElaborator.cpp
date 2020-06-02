@@ -1302,9 +1302,9 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     VD->setType(Ty);
   }
   if (!InitExpr) {
-    llvm::errs() << "Invalid initialization expression\n";
     return;
   }
+  
   // Update the initializer.
   SemaRef.getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
 }
