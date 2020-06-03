@@ -25,6 +25,19 @@ AST_POLYMORPHIC_MATCHER(isExternStorageClass,
   return Node.getStorageClass() == SC_Extern;
 }
 
+AST_POLYMORPHIC_MATCHER_P(stringHasValue,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(StringLiteral),
+                          std::string, ToCmpWith) {
+  return Node.getString() == ToCmpWith;
+
+}
+// AST_POLYMORPHIC_MATCHER(isExternStorageClass,
+//                         AST_POLYMORPHIC_SUPPORTED_TYPES(FunctionDecl,
+//                                                         VarDecl)) {
+//   return Node.getStorageClass() == SC_Extern;
+// }
+
+
 
 struct BaseMatcher {
   bool IsVirtual = false;
