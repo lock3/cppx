@@ -1,5 +1,5 @@
 #include "clang/AST/ASTContext.h"
-#include "clang/AST/DeclCppx.h"
+#include "clang/AST/Decl.h"
 #include "clang/AST/Type.h"
 
 #include "clang/Gold/GoldScope.h"
