@@ -3209,6 +3209,7 @@ void ItaniumRTTIBuilder::BuildVTablePointer(const Type *Ty) {
     llvm_unreachable("Non-canonical and dependent types shouldn't get here");
   case Type::Template:
   case Type::CppxKind:
+  case Type::CppxNamespace:
     llvm_unreachable("These types only exist within the type system and "
         "shouldn't reach here.");
   case Type::LValueReference:
@@ -3469,6 +3470,7 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(
     break;
   case Type::Template:
   case Type::CppxKind:
+  case Type::CppxNamespace:
     llvm_unreachable("Types that are limited to the type system can't make it here.");
 
   case Type::LValueReference:

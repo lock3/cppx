@@ -192,6 +192,10 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R) {
   return lookupUnqualifiedName(R, getCurrentScope());
 }
 
+bool Sema::lookupQualifiedName(clang::LookupResult &R) {
+  return lookupUnqualifiedName(R, NNS->getScopeRep());
+}
+
 static bool findOrdinaryMember(clang::RecordDecl *BaseRecord, clang::CXXBasePath &Path,
                                clang::DeclarationName Name) {
   const unsigned IDNS = clang::Decl::IDNS_Ordinary | clang::Decl::IDNS_Tag |
@@ -363,6 +367,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 
   clang::Sema::LookupNameKind LookupKind = R.getLookupKind();
 
+  // See if this is a builtin type, if we care about those.
   if (LookupKind == clang::Sema::LookupTagName ||
       LookupKind == clang::Sema::LookupAnyName) {
     auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
@@ -381,9 +386,9 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
       for (auto *FoundDecl : Found) {
         // If we find a name that hasn't been elaborated,
         // then we actually need to elaborate it.
-        if (!FoundDecl->Cxx) {
+        if (!FoundDecl->Cxx)
           Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
-        }
+
         if (!FoundDecl->Cxx)
           return false;
 

@@ -330,7 +330,7 @@ void Elaborator::startFile(const Syntax *S) {
   clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::DeclScope);
   SemaRef.getCxxSema().ActOnTranslationUnitScope(Scope);
   SemaRef.getCxxSema().Initialize();
-  
+
   // Enter the global scope.
   SemaRef.enterScope(SK_Namespace, S);
 
@@ -570,6 +570,55 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   return ClsDecl;
 }
 
+static clang::Decl *processNamespaceDecl(Elaborator& Elab,
+                                         SyntaxContext& Context,
+                                         Sema& SemaRef, Declaration *D) {
+  D->ElabPhaseCompleted = 3;
+  using namespace clang;
+
+  // Create and enter a namespace scope.
+  clang::Scope *NSScope = SemaRef.enterClangScope(clang::Scope::DeclScope);
+
+  gold::Sema::ScopeRAII GoldScopeRAII(SemaRef, SK_Namespace, D->Init);
+
+  // FIXME: keep track of nested namespaces?
+
+  clang::UsingDirectiveDecl *UD = nullptr;
+  clang::AttributeFactory Attrs;
+  clang::ParsedAttributes ParsedAttrs(Attrs);
+  clang::Decl *NSDecl = SemaRef.getCxxSema().ActOnStartNamespaceDef(
+    NSScope, SourceLocation(), D->Decl->getLoc(),
+    D->Decl->getLoc(), D->getId(), D->Decl->getLoc(), ParsedAttrs, UD);
+  D->Cxx = NSDecl;
+  SemaRef.pushDecl(D);
+
+  const MacroSyntax *NSMacro = cast<MacroSyntax>(D->Init);
+  const ArraySyntax *NSBody = cast<ArraySyntax>(NSMacro->getBlock());
+
+  // Keep track of the location of the last syntax, as a closing location.
+  clang::SourceLocation LastLoc;
+  for (const Syntax *S : NSBody->children()) {
+    Elaborator(Context, SemaRef).elaborateDeclSyntax(S);
+    LastLoc = S->getLoc();
+  }
+
+  gold::Scope *NamespaceRep = SemaRef.getCurrentScope();
+  SemaRef.getCxxSema().ActOnFinishNamespaceDef(NSDecl, LastLoc);
+  SemaRef.leaveClangScope(LastLoc);
+  SemaRef.popDecl();
+
+  DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  CppxNamespaceDecl *Wrapper =
+    CppxNamespaceDecl::Create(Context.CxxAST, Owner, D->Decl->getLoc(),
+                              D->getId(), cast<clang::NamespaceDecl>(NSDecl),
+                              NamespaceRep);
+  D->Cxx = Wrapper;
+
+  // FIXME: We should be returning a DeclGroupPtr to the NSDecl grouped
+  // with the implicit UsingDecl, UD.
+  return NSDecl;
+}
+
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   if (D->ElabPhaseCompleted > 1)
     return D->Cxx;
@@ -581,6 +630,8 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   // possibly having cyclic dependencies.
   if (D->declaresRecord())
     return processCXXRecordDecl(*this, Context, SemaRef, D);
+  if (D->declaresNamespace())
+    return processNamespaceDecl(*this, Context, SemaRef, D);
   if (D->declaresFunction())
     return elaborateFunctionDecl(D);
   return elaborateVariableDecl(D);
@@ -1656,8 +1707,10 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
       Temp->recordAttributes(TemplateType);
       return Temp;
     }
+
     llvm_unreachable("Invalid templated declarator.");
   }
+
   return nullptr;
 }
 
@@ -1770,7 +1823,7 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
         // The first statement is a declaration. The second is an assignment.
         // FIXME: is this the right way to handle the lookup set?
 
-        if (!CurScope->findDecl(Id).empty() && OperatorEquals)
+        if (OperatorEquals && !CurScope->findDecl(Id).empty())
           return nullptr;
       }
 

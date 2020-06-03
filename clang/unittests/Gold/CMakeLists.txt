@@ -60,6 +60,7 @@ add_clang_unittest(GoldTests
   GoldIntegerLiteralElab.cpp
   GoldMemberExecuteTest.cpp
   GoldMemberStorageClassElab.cpp
+  GoldNNS.cpp
   GoldStorageClassExec.cpp
   GoldStringLiteralElab.cpp
   GoldTypeExpressionsTest.cpp

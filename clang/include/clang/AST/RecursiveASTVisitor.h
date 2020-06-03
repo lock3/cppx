@@ -17,6 +17,7 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/DeclBase.h"
+#include "clang/AST/DeclCppx.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclFriend.h"
 #include "clang/AST/DeclObjC.h"
@@ -1035,6 +1036,7 @@ DEF_TRAVERSE_TYPE(FunctionProtoType, {
 DEF_TRAVERSE_TYPE(UnresolvedUsingType, {})
 DEF_TRAVERSE_TYPE(CXXRequiredTypeType, {})
 DEF_TRAVERSE_TYPE(CppxKindType, {})
+DEF_TRAVERSE_TYPE(CppxNamespaceType, {})
 DEF_TRAVERSE_TYPE(TemplateType, {
     // TODO: Finish implementing this? I will need to visit all child types I think.
                     })
@@ -1303,6 +1305,7 @@ DEF_TRAVERSE_TYPELOC(FunctionProtoType, {
 DEF_TRAVERSE_TYPELOC(UnresolvedUsingType, {})
 DEF_TRAVERSE_TYPELOC(CXXRequiredTypeType, {})
 DEF_TRAVERSE_TYPELOC(CppxKindType, {})
+DEF_TRAVERSE_TYPELOC(CppxNamespaceType, {})
 DEF_TRAVERSE_TYPELOC(TemplateType, {// TODO: Finish implementing this?
                     })
 DEF_TRAVERSE_TYPELOC(TypedefType, {})
@@ -1581,6 +1584,8 @@ DEF_TRAVERSE_DECL(
      // decls_begin()/decls_end().  Thus we don't need to recurse on
      // D->getAnonymousNamespace().
     })
+
+DEF_TRAVERSE_DECL(CppxNamespaceDecl, {})
 
 DEF_TRAVERSE_DECL(ObjCCompatibleAliasDecl, {// FIXME: implement
                                            })

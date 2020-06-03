@@ -1187,6 +1187,13 @@ Decl *TemplateDeclInstantiator::VisitCXXRequiredDeclaratorDecl(
   llvm_unreachable("should never get here");
 }
 
+Decl
+*TemplateDeclInstantiator::VisitCppxNamespaceDecl(CppxNamespaceDecl *D) {
+  // See VisitCXXFragmentDecl.
+  llvm_unreachable("should never get here");
+}
+
+
 Decl *TemplateDeclInstantiator::VisitIndirectFieldDecl(IndirectFieldDecl *D) {
   NamedDecl **NamedChain =
     new (SemaRef.Context)NamedDecl*[D->getChainingSize()];

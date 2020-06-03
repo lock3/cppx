@@ -784,6 +784,12 @@ Syntax *Parser::parsePre()
     return parseArrayPrefix();
   }
 
+  if (nextTokenIs(tok::Dot)) {
+    Token Operator = consumeToken();
+    Syntax *Operand = parseExpr();
+    return onUnary(Operator, Operand);
+  }
+
   return parsePost();
 }
 
@@ -1093,6 +1099,7 @@ Syntax *Parser::parsePrimary() {
   case tok::Character:
   case tok::String:
   case tok::ClassKeyword:
+  case tok::NamespaceKeyword:
     return onAtom(consumeToken());
 
   case tok::LeftParen:

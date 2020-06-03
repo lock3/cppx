@@ -2529,6 +2529,29 @@ public:
   }
 };
 
+struct CppxNamespaceLocInfo {
+  SourceLocation Loc;
+};
+
+/// Wrapper for source info for namespace types
+class CppxNamespaceTypeLoc : public ConcreteTypeLoc<UnqualTypeLoc,
+                                                    CppxNamespaceTypeLoc,
+                                                    CppxNamespaceType,
+                                                    CppxNamespaceLocInfo> {
+public:
+  SourceLocation getNameLoc() const {
+    return getLocalData()->Loc;
+  }
+
+  void setNameLoc(SourceLocation Loc) {
+    getLocalData()->Loc = Loc;
+  }
+
+  void initializeLocal(ASTContext &Context, SourceLocation Loc) {
+    setNameLoc(Loc);
+  }
+};
+
 template <typename T>
 inline T TypeLoc::getAsAdjusted() const {
   TypeLoc Cur = *this;

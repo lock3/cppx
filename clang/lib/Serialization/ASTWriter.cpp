@@ -435,6 +435,10 @@ void TypeLocWriter::VisitCppxKindTypeLoc(CppxKindTypeLoc TL) {
   Record.AddSourceLocation(TL.getNameLoc());
 }
 
+void TypeLocWriter::VisitCppxNamespaceTypeLoc(CppxNamespaceTypeLoc TL) {
+  Record.AddSourceLocation(TL.getNameLoc());
+}
+
 void TypeLocWriter::VisitTemplateTypeLoc(TemplateTypeLoc TL) {
   Record.AddSourceLocation(TL.getLoc());
 }

@@ -115,4 +115,5 @@ def DependentExtIntType : TypeNode<Type>, AlwaysDependent;
 
 // Cppx Types
 def CppxKindType : TypeNode<Type>, LeafType;
+def CppxNamespaceType : TypeNode<Type>, LeafType;
 def TemplateType : TypeNode<Type>;

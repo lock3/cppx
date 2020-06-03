@@ -190,7 +190,8 @@ using LateElaboratedDecls = llvm::SmallVector<LateElaboratedDecl*, 2>;
 ///
 /// This class mimics some of the behaviors associated with the ParsingClass
 /// located in file clang/include/clang/Parse/Parser.h:1375
-struct ElaboratingClass {
+class ElaboratingClass {
+public:
   ElaboratingClass(Declaration *TagOrTemplate, bool TopLevelClass);
 
   /// This indicates if this class is the top level class being elaborated
