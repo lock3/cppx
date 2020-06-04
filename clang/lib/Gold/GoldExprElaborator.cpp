@@ -126,6 +126,39 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
   return clang::IntegerLiteral::Create(CxxAST, Value, IntType, Loc);
 }
 
+static clang::IntegerLiteral *
+createCharLiteral(clang::ASTContext &CxxAST, Token T,
+                  clang::SourceLocation Loc) {
+  std::string Spelling = T.getSpelling().str();
+  assert(Spelling[0] == '\'' && "atom is not a character");
+
+  Spelling = Spelling.substr(1, Spelling.size());
+  Spelling = Spelling.substr(0, Spelling.find_last_of('\''));
+
+  const static llvm::StringMap<char> Escapes = {
+    {"\\n", '\n'},
+    {"\\t", '\t'},
+    {"\\r", '\r'},
+    {"\\'", '\''},
+    {"\\\"", '\"'},
+    {"\\?", '\?'},
+    {"\\a", '\a'},
+    {"\\b", '\b'},
+    {"\\f", '\f'},
+    {"\\v", '\v'},
+    {"\\\\", '\\'},
+    {"\\0", '\0'},
+  };
+
+  auto It = Escapes.find(Spelling);
+  char Character = (It == Escapes.end()) ? Spelling.c_str()[0] : It->second;
+
+  llvm::APInt Value = llvm::APSInt::get(Character);
+  if (Value.getBitWidth() != CxxAST.getCharWidth())
+    Value = Value.trunc(CxxAST.getCharWidth());
+
+  return clang::IntegerLiteral::Create(CxxAST, Value, CxxAST.CharTy, Loc);
+}
 
 static clang::TypeSourceInfo*
 HandleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
@@ -576,6 +609,7 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
   case tok::Identifier:
     return createIdentAccess(Context, SemaRef, S, ExplicitType, S->getLoc());
   case tok::Character:
+    return createCharLiteral(CxxAST, T, S->getLoc());
     break;
   case tok::String:
     break;
