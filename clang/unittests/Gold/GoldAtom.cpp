@@ -77,3 +77,22 @@ main() : int!
     ASSERT_TRUE(matches(Code.str(), EscapeMatcher));
   }
 }
+
+TEST(Atom, BoolLiteral) {
+  StringRef Code = R"(
+main() : int!
+  t = true
+  f = false
+)";
+
+  StatementMatcher
+    TrueMatcher(hasDescendant(
+                  varDecl(hasName("t"), hasType(asString("_Bool")),
+                          hasDescendant(integerLiteral(equals(true))))));
+  StatementMatcher
+    FalseMatcher(hasDescendant(
+                  varDecl(hasName("f"), hasType(asString("_Bool")),
+                          hasDescendant(integerLiteral(equals(false))))));
+  ASSERT_TRUE(matches(Code.str(), TrueMatcher)
+              && matches(Code.str(), FalseMatcher));
+}

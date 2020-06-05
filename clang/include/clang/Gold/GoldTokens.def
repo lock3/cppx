@@ -106,6 +106,8 @@ def_keyword(Type, "type")
 def_keyword(Class, "class")
 def_keyword(Args, "args")
 def_keyword(Namespace, "namespace")
+def_keyword(True, "true")
+def_keyword(False, "false")
 
 def_token(Identifier)
 def_token(BinaryInteger)

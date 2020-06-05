@@ -169,6 +169,18 @@ createCharLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
   return clang::IntegerLiteral::Create(CxxAST, Value, CxxAST.CharTy, Loc);
 }
 
+static clang::IntegerLiteral *
+createBoolLiteral(clang::ASTContext &CxxAST, Token T,
+                  clang::SourceLocation Loc) {
+  llvm::APInt Value = llvm::APSInt::get(T.hasKind(tok::TrueKeyword));
+
+  unsigned Width = CxxAST.getIntWidth(CxxAST.BoolTy);
+  if (Value.getBitWidth() != Width)
+    Value = Value.trunc(Width);
+
+  return clang::IntegerLiteral::Create(CxxAST, Value, CxxAST.BoolTy, Loc);
+}
+
 static clang::TypeSourceInfo*
 HandleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
     SyntaxContext& Context, clang::TypeSourceInfo* IdExpr, const ElemSyntax *Elem) {
@@ -624,6 +636,9 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
     break;
 
   /// Keyword Literals
+  case tok::TrueKeyword:
+  case tok::FalseKeyword:
+    return createBoolLiteral(CxxAST, T, S->getLoc());
 
   case tok::IntKeyword:
     return BuildAnyTypeLoc(CxxAST, CxxAST.IntTy, S->getLoc());

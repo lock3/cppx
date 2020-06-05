@@ -1100,6 +1100,8 @@ Syntax *Parser::parsePrimary() {
   case tok::String:
   case tok::ClassKeyword:
   case tok::NamespaceKeyword:
+  case tok::TrueKeyword:
+  case tok::FalseKeyword:
     return onAtom(consumeToken());
 
   case tok::LeftParen:
