@@ -52,7 +52,7 @@ main() : int!
   vert_tab           : char = '\v'
 )";
 
-  static const pair<StringRef, int> Escapes[] = {
+  static const pair<StringRef, char> Escapes[] = {
     {"single_quote", 0x27},
     {"double_quote", 0x22},
     {"question_mark", 0x3f},
@@ -71,7 +71,7 @@ main() : int!
       EscapeMatcher(hasDescendant(
                       varDecl(hasName(Seq.first.str()),
                           hasType(asString("char")),
-                          hasDescendant(integerLiteral(equals(Seq.second)))
+                          hasDescendant(characterLiteral(equals(Seq.second)))
                       )
                    ));
     ASSERT_TRUE(matches(Code.str(), EscapeMatcher));
@@ -95,4 +95,14 @@ main() : int!
                           hasDescendant(integerLiteral(equals(false))))));
   ASSERT_TRUE(matches(Code.str(), TrueMatcher)
               && matches(Code.str(), FalseMatcher));
+}
+
+TEST(Atom, FloatLiterals) {
+  StringRef Code = R"(
+main() : int!
+  d : double = 4.2
+  f = 4.2
+)";
+
+  SimpleGoldParseTest(Code.str());
 }

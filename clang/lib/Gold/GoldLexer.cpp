@@ -355,10 +355,10 @@ Token CharacterScanner::matchDecimalNumber() {
     // Matches 'decimal-digit-seq [. decimal-digit-seq] ...]'
     matchDecimalDigitSeq();
     if (nextCharacterIs('.') && !nthCharacterIs(1, '.')) {
-      if (isDecimalDigit(getLookahead()))
+      if (isDecimalDigit(getLookahead(1)))
         return matchDecimalFraction();
 
-      if (isDecimalExponent(getLookahead()))
+      if (isDecimalExponent(getLookahead(1)))
         return matchDecimalExponent();
 
       consume();

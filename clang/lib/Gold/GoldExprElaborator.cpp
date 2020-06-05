@@ -126,7 +126,29 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
   return clang::IntegerLiteral::Create(CxxAST, Value, IntType, Loc);
 }
 
-static clang::IntegerLiteral *
+static clang::FloatingLiteral *
+createFloatLiteral(clang::ASTContext &CxxAST, Token T,
+                   clang::QualType FloatType, clang::SourceLocation Loc) {
+  // If we don't have a specified type, just create a default float.
+  if (FloatType.isNull() || FloatType == CxxAST.AutoDeductTy)
+    FloatType = CxxAST.FloatTy;
+
+  if (FloatType == CxxAST.FloatTy) {
+    float Literal = (float)atof(T.getSymbol().data());
+    auto Value = llvm::APFloat(Literal);
+    return clang::FloatingLiteral::Create(CxxAST, Value, /*Exact=*/true,
+                                          FloatType, Loc);
+  } else if (FloatType == CxxAST.DoubleTy) {
+    double Literal = atof(T.getSymbol().data());
+    auto Value = llvm::APFloat(Literal);
+    return clang::FloatingLiteral::Create(CxxAST, Value, /*Exact=*/true,
+                                          FloatType, Loc);
+  }
+
+  llvm_unreachable("unsupported float type");
+}
+
+static clang::CharacterLiteral *
 createCharLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
                   Token T, clang::SourceLocation Loc) {
   std::string Spelling = T.getSpelling().str();
@@ -162,11 +184,9 @@ createCharLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
     SemaRef.Diags.Report(Loc, DiagID);
   }
 
-  llvm::APInt Value = llvm::APSInt::get(Character);
-  if (Value.getBitWidth() != CxxAST.getCharWidth())
-    Value = Value.trunc(CxxAST.getCharWidth());
-
-  return clang::IntegerLiteral::Create(CxxAST, Value, CxxAST.CharTy, Loc);
+  return new (CxxAST) clang::CharacterLiteral((unsigned)Character,
+                                              clang::CharacterLiteral::Ascii,
+                                              CxxAST.CharTy, Loc);
 }
 
 static clang::IntegerLiteral *
@@ -620,6 +640,8 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
     return createIntegerLiteral(CxxAST, T, ExplicitType,
                                 S->getLoc());
   case tok::DecimalFloat:
+    return createFloatLiteral(CxxAST, T, ExplicitType,
+                              S->getLoc());
     break;
   case tok::BinaryInteger:
     break;
