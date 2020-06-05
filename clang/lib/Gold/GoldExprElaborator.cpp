@@ -127,8 +127,8 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
 }
 
 static clang::IntegerLiteral *
-createCharLiteral(clang::ASTContext &CxxAST, Token T,
-                  clang::SourceLocation Loc) {
+createCharLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
+                  Token T, clang::SourceLocation Loc) {
   std::string Spelling = T.getSpelling().str();
   assert(Spelling[0] == '\'' && "atom is not a character");
 
@@ -152,6 +152,15 @@ createCharLiteral(clang::ASTContext &CxxAST, Token T,
 
   auto It = Escapes.find(Spelling);
   char Character = (It == Escapes.end()) ? Spelling.c_str()[0] : It->second;
+
+  // A multi-character character constant is actually valid, so we'll just
+  // warn and move on.
+  if (It == Escapes.end() && Spelling.size() > 1) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                    "multi-character character constant");
+    SemaRef.Diags.Report(Loc, DiagID);
+  }
 
   llvm::APInt Value = llvm::APSInt::get(Character);
   if (Value.getBitWidth() != CxxAST.getCharWidth())
@@ -609,7 +618,7 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
   case tok::Identifier:
     return createIdentAccess(Context, SemaRef, S, ExplicitType, S->getLoc());
   case tok::Character:
-    return createCharLiteral(CxxAST, T, S->getLoc());
+    return createCharLiteral(CxxAST, SemaRef, T, S->getLoc());
     break;
   case tok::String:
     break;

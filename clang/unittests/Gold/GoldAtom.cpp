@@ -16,9 +16,6 @@
 #include "GoldParseUtil.h"
 #include "GoldASTMatchersTest.h"
 
-#include <vector>
-#include <utility>
-
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
 using namespace clang;
@@ -32,6 +29,12 @@ main() : int!
 
   SimpleGoldParseTest(Code);
 }
+
+template <typename T, typename U>
+struct pair {
+  T first;
+  U second;
+};
 
 TEST(Atom, CharEscapes) {
   StringRef Code = R"(
@@ -49,7 +52,7 @@ main() : int!
   vert_tab           : char = '\v'
 )";
 
-  std::vector<std::pair<StringRef, int>> Escapes = {
+  static const pair<StringRef, int> Escapes[] = {
     {"single_quote", 0x27},
     {"double_quote", 0x22},
     {"question_mark", 0x3f},

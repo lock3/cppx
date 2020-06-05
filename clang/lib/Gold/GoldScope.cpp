@@ -435,4 +435,8 @@ void Scope::dumpScopeChain() const {
   llvm::outs() << "-----------------------\n";
 }
 
+Phase phaseOf(Declaration *D) {
+  return D->CurrentPhase;
+}
+
 } // namespace gold

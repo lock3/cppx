@@ -177,6 +177,14 @@ public:
   llvm::Optional<Attributes> UnprocessedAttributes;
 };
 
+enum class Phase : std::size_t
+{
+  Unprocessed,
+  Identification,
+  Typing,
+  Initialization
+};
+
 /// A declaration is stores information about the declaration of an
 /// identifier. It binds together the declaring operator, the declarator,
 /// the definition, and the some corresponding C++ declaration.
@@ -330,11 +338,11 @@ public:
   /// avoid re-visitation during lookup/elaboration. This has a value from 0-3.
   /// 0 is unprocessed (the default value), 1 is identified, 2 is the declaration
   /// is elaborated and 3 is the definition is complete.
-  unsigned ElabPhaseCompleted = 0;
+  Phase CurrentPhase = Phase::Unprocessed;
 
   /// This information is to aid with early elaboration. This allows the
   /// elabrotor to restore the state in which something was declared.
-  ///{
+  ///
   /// This is the current clang scope that the clang declaration is part of.
   clang::Scope *ClangDeclaringScope = nullptr;
 
@@ -350,6 +358,8 @@ public:
 
   ///}
 };
+
+Phase phaseOf(Declaration *D);
 
 /// Different kinds of scope.
 enum ScopeKind {
@@ -543,20 +553,6 @@ public:
   void dump() const;
 
   void dumpScopeChain() const;
-};
-
-/// Represents a nested-name-specifier for Gold, which are spelled
-/// similarly to class access.
-///
-/// \code
-///   foo.x
-/// \endcode
-///
-/// Here, `foo` is a namespace and `foo.` is a nested-name-specifier.
-///
-/// See also: clang::CXXScopeSpec
-class GoldScopeSpec
-{
 };
 
 } // namespace gold
