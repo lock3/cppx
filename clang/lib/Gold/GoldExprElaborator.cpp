@@ -644,8 +644,14 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
     return createFloatLiteral(CxxAST, T, ExplicitType,
                               S->getLoc());
     break;
-  case tok::BinaryInteger:
-    break;
+  case tok::BinaryInteger: {
+    std::string TData = std::string(T.getSymbol().data());
+    TData =  TData.substr(TData.find_first_not_of("0b"), TData.size());
+    Token RawBin = Token(tok::BinaryInteger, T.getLocation(), Symbol(&TData));
+    return createIntegerLiteral(CxxAST, RawBin, ExplicitType,
+                                S->getLoc(), /*Base=*/2);
+  }
+
   case tok::HexadecimalInteger:
     return createIntegerLiteral(CxxAST, T, ExplicitType,
                                 S->getLoc(), /*Base=*/16);

@@ -50,6 +50,10 @@ bool isHexadecimalDigit(char C) {
   return std::isxdigit(C);
 }
 
+bool isBinaryDigit(char C) {
+  return C == '0' || C == '1';
+}
+
 bool isDecimalExponent(char C) {
   return C == 'e' || C == 'E';
 }
@@ -204,12 +208,9 @@ Token CharacterScanner::operator()() {
         return matchHexadecimalCharacter();
       if (nthCharacterIs(1, 'u'))
         return matchUnicodeCharacter();
+      if (nthCharacterIs(1, 'b'))
+        return matchBinaryNumber();
       LLVM_FALLTHROUGH;
-
-    // be aware of end-of-transmission and null characters
-    // case '\0':
-    // case '\x04':
-    //   break;
 
     default:
       if (isIdentifierStart(getLookahead()))
@@ -409,6 +410,23 @@ Token CharacterScanner::matchHexadecimalNumber() {
   return makeToken(tok::HexadecimalInteger, Start, First);
 }
 
+Token CharacterScanner::matchBinaryNumber() {
+  consume(2); // Matches '0x'.
+
+  // FIXME: Match hex floats?
+  // FIXME: Wrong error.
+  if (!isBinaryDigit(getLookahead())) {
+    getDiagnostics().Report(getInputLocation(),
+                           clang::diag::err_bad_string_encoding);
+    // error(getInputLocation(), "invalid hexadecimal number");
+    return {};
+  }
+
+  matchBinaryDigitSeq();
+
+  return makeToken(tok::BinaryInteger, Start, First);
+}
+
 Token CharacterScanner::matchCharacter() {
   assert(nextCharacterIs('\''));
 
@@ -540,6 +558,13 @@ void CharacterScanner::matchHexadecimalDigitSeq() {
   // FIXME: Allow digit separators?
   requireIf(isHexadecimalDigit);
   while (matchIf(isHexadecimalDigit))
+    ;
+}
+
+void CharacterScanner::matchBinaryDigitSeq() {
+  // FIXME: Allow digit separators?
+  requireIf(isBinaryDigit);
+  while (matchIf(isBinaryDigit))
     ;
 }
 
