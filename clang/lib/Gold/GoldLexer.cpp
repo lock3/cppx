@@ -526,8 +526,18 @@ void CharacterScanner::matchEscapeSequence() {
 }
 
 Token CharacterScanner::matchHexadecimalCharacter() {
-  // sorry(getInputLocation(), "hexadecimal characters not supported");
-  return {};
+  consume(2); // Matches '0c'.
+
+  if (!isHexadecimalDigit(getLookahead())) {
+    getDiagnostics().Report(getInputLocation(),
+                           clang::diag::err_bad_string_encoding);
+    // error(getInputLocation(), "invalid hexadecimal number");
+    return {};
+  }
+
+  matchHexadecimalDigitSeq();
+
+  return makeToken(tok::HexadecimalCharacter, Start, First);
 }
 
 Token CharacterScanner::matchUnicodeCharacter() {
