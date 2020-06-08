@@ -117,6 +117,7 @@ def_token(DecimalFloat)
 def_token(HexadecimalFloat)
 def_token(Character)
 def_token(HexadecimalCharacter)
+def_token(UnicodeCharacter)
 def_token(String)
 
 #undef def_keyword

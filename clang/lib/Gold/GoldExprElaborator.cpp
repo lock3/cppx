@@ -199,10 +199,36 @@ createUTF8Literal(clang::ASTContext &CxxAST, Sema &SemaRef,
 
   // FIXME: warn on overflow?
 
-  // NOTE: utf 8 characters = CxxAST.Char8Ty
   return new (CxxAST)
     clang::CharacterLiteral(Value, clang::CharacterLiteral::UTF8,
                             CxxAST.Char8Ty, Loc);
+}
+
+static clang::CharacterLiteral *
+createUnicodeLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
+                     Token T, clang::SourceLocation Loc) {
+  std::string Spelling = T.getSpelling().str();
+  Spelling = Spelling.substr(Spelling.find_first_not_of("0u"), Spelling.size());
+  unsigned Value = (unsigned)std::stoi(Spelling, 0, 16);
+
+  // FIXME: warn on overflow?
+
+  clang::CharacterLiteral::CharacterKind CharKind;
+  clang::QualType CharType;
+  if (Value <= 0xFF) {
+    CharKind = clang::CharacterLiteral::UTF8;
+    CharType = CxxAST.Char8Ty;
+  } else if (Value <= 0xFFFF) {
+    CharKind = clang::CharacterLiteral::UTF16;
+    CharType = CxxAST.Char16Ty;
+  } else if (Value <= 0xFFFFFFFF) {
+    CharKind = clang::CharacterLiteral::UTF32;
+    CharType = CxxAST.Char32Ty;
+  } else {
+    return nullptr;
+  }
+
+  return new (CxxAST) clang::CharacterLiteral(Value, CharKind, CharType, Loc);
 }
 
 static clang::IntegerLiteral *
@@ -679,6 +705,8 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
     break;
   case tok::HexadecimalCharacter:
     return createUTF8Literal(CxxAST, SemaRef, T, S->getLoc());
+  case tok::UnicodeCharacter:
+    return createUnicodeLiteral(CxxAST, SemaRef, T, S->getLoc());
   case tok::String:
     break;
 

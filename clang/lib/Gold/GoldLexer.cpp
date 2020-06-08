@@ -541,8 +541,18 @@ Token CharacterScanner::matchHexadecimalCharacter() {
 }
 
 Token CharacterScanner::matchUnicodeCharacter() {
-  // sorry(getInputLocation(), "unicode characters not supported");
-  return {};
+  consume(2); // Matches '0u'.
+
+  if (!isHexadecimalDigit(getLookahead())) {
+    getDiagnostics().Report(getInputLocation(),
+                           clang::diag::err_bad_string_encoding);
+    // error(getInputLocation(), "invalid hexadecimal number");
+    return {};
+  }
+
+  matchHexadecimalDigitSeq();
+
+  return makeToken(tok::UnicodeCharacter, Start, First);
 }
 
 void CharacterScanner::matchDecimalDigitSeq() {

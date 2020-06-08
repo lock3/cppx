@@ -1098,6 +1098,7 @@ Syntax *Parser::parsePrimary() {
   case tok::HexadecimalFloat:
   case tok::Character:
   case tok::HexadecimalCharacter:
+  case tok::UnicodeCharacter:
   case tok::String:
   case tok::ClassKeyword:
   case tok::NamespaceKeyword:
