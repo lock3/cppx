@@ -190,8 +190,6 @@ Token CharacterScanner::operator()() {
       return matchToken(tok::Equal);
 
     case '!':
-      if (getLookahead(1) == '=')
-        return matchToken(tok::BangEqual);
       return matchToken(tok::Bang);
 
     case '\'':
@@ -207,6 +205,11 @@ Token CharacterScanner::operator()() {
       if (nthCharacterIs(1, 'u'))
         return matchUnicodeCharacter();
       LLVM_FALLTHROUGH;
+
+    // be aware of end-of-transmission and null characters
+    // case '\0':
+    // case '\x04':
+    //   break;
 
     default:
       if (isIdentifierStart(getLookahead()))
@@ -311,7 +314,7 @@ Token CharacterScanner::matchWord() {
   while (isIdentifierRest(getLookahead()))
     consume();
 
-  // Building fused identifiers. 
+  // Building fused identifiers.
   if (getLookahead() == '"') {
     consume();
     while(getLookahead() != '"')
@@ -537,7 +540,7 @@ void CharacterScanner::matchHexadecimalDigitSeq() {
   // FIXME: Allow digit separators?
   requireIf(isHexadecimalDigit);
   while (matchIf(isHexadecimalDigit))
-    consume();
+    ;
 }
 
 clang::SourceLocation

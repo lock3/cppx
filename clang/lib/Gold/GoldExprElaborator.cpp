@@ -68,7 +68,8 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
 
 static clang::IntegerLiteral *
 createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
-                     clang::QualType IntType, clang::SourceLocation Loc) {
+                     clang::QualType IntType, clang::SourceLocation Loc,
+                     std::size_t Base = 10) {
   llvm::APInt Value;
   unsigned Width = 0;
 
@@ -80,42 +81,42 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
   if (IntType == CxxAST.IntTy) {
     Width = CxxAST.getTargetInfo().getIntWidth();
 
-    int Literal = atoi(T.getSymbol().data());
+    int Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::get(Literal);
   } else if (IntType == CxxAST.LongTy) {
     Width = CxxAST.getTargetInfo().getLongWidth();
 
-    long int Literal = atoi(T.getSymbol().data());
+    long int Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::get(Literal);
   } else if (IntType == CxxAST.LongLongTy) {
     Width = CxxAST.getTargetInfo().getLongLongWidth();
 
-    long long int Literal = atoi(T.getSymbol().data());
+    long long int Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::get(Literal);
   } else if (IntType == CxxAST.ShortTy) {
     Width = CxxAST.getTargetInfo().getShortWidth();
 
-    short int Literal = atoi(T.getSymbol().data());
+    short int Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::get(Literal);
   } else if (IntType == CxxAST.UnsignedShortTy) {
     Width = CxxAST.getTargetInfo().getShortWidth();
 
-    unsigned short int Literal = atoi(T.getSymbol().data());
+    unsigned short int Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::getUnsigned(Literal);
   } else if (IntType == CxxAST.UnsignedIntTy) {
     Width = CxxAST.getTargetInfo().getIntWidth();
 
-    unsigned int Literal = atoi(T.getSymbol().data());
+    unsigned int Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::getUnsigned(Literal);
   } else if (IntType == CxxAST.UnsignedLongTy) {
     Width = CxxAST.getTargetInfo().getLongWidth();
 
-    unsigned long Literal = atoi(T.getSymbol().data());
+    unsigned long Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::getUnsigned(Literal);
   } else if (IntType == CxxAST.UnsignedLongLongTy) {
     Width = CxxAST.getTargetInfo().getLongLongWidth();
 
-    unsigned long Literal = atoi(T.getSymbol().data());
+    unsigned long Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::getUnsigned(Literal);
   } else {
     assert(false && "Unsupported integer type.");
@@ -646,7 +647,8 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
   case tok::BinaryInteger:
     break;
   case tok::HexadecimalInteger:
-    break;
+    return createIntegerLiteral(CxxAST, T, ExplicitType,
+                                S->getLoc(), /*Base=*/16);
   case tok::HexadecimalFloat:
     break;
   case tok::Identifier:

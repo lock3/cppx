@@ -1344,6 +1344,12 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     VD->setType(Ty);
   }
 
+  if (D->Init && !InitExpr) {
+    SemaRef.Diags.Report(VD->getLocation(),
+                         clang::diag::err_failed_to_translate_expr);
+    return;
+  }
+
   // Update the initializer.
   SemaRef.getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
 }
