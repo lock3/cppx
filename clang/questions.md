@@ -55,4 +55,13 @@ Health:float
 What does the editable_slider attribute look like when it's not an attribute?
 Is it a class that's defined in the language somewhere? Is it defined in C++?
 
+## Rationals
+The grammar states that `1.5` and `1.5f` are different productions: `rational` 
+and `float` respectively. We are considering representing `rational` literals as
+the builtin `_Accum` type, which contains a 16-bit integer and 15-bit fraction.
+
+There is also a `long _Accum` type, and we may have to support a 128-bit version
+as well.
+
+Does this seem reasonable?
 
