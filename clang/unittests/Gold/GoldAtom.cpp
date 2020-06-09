@@ -97,11 +97,76 @@ main() : int!
               && matches(Code.str(), FalseMatcher));
 }
 
+TEST(Atom, NullLiteral) {
+  StringRef Code = R"(
+main() : int!
+  ptr = null
+)";
+
+  SimpleGoldParseTest(Code.str());
+}
+
 TEST(Atom, FloatLiterals) {
   StringRef Code = R"(
 main() : int!
   d : double = 4.2
   f = 4.2
+)";
+
+  SimpleGoldParseTest(Code.str());
+}
+
+TEST(Atom, CodePointLiteral) {
+  StringRef Code = R"(
+main() : int!
+  N = 0u004e
+  HiraganaA = 0u3041
+)";
+
+  StatementMatcher
+    NMatcher(hasDescendant(
+               varDecl(hasName("N"), hasType(asString("char8_t")),
+                       hasDescendant(characterLiteral(equals((char)78))))));
+  StatementMatcher
+    AMatcher(hasDescendant(
+               varDecl(hasName("HiraganaA"), hasType(asString("unsigned short")),
+                       hasDescendant(characterLiteral(equals(12353))))));
+  ASSERT_TRUE(matches(Code.str(), NMatcher));
+  ASSERT_TRUE(matches(Code.str(), AMatcher));
+}
+
+TEST(Atom, UTF8Literal) {
+  StringRef Code = R"(
+main() : int!
+  N = 0c4e
+)";
+
+  StatementMatcher
+    NMatcher(hasDescendant(
+               varDecl(hasName("N"), hasType(asString("char8_t")),
+                       hasDescendant(characterLiteral(equals((char)78))))));
+  ASSERT_TRUE(matches(Code.str(), NMatcher));
+}
+
+TEST(Atom, HexLiteral) {
+  StringRef Code = R"(
+main() : int!
+  x = 0xbeef
+)";
+
+  StatementMatcher
+    BeefMatcher(hasDescendant(
+               varDecl(hasName("x"), hasType(asString("int")),
+                       hasDescendant(integerLiteral(equals(0xbeef))))));
+  ASSERT_TRUE(matches(Code.str(), BeefMatcher));
+}
+
+TEST(Atom, Exponent) {
+  StringRef Code = R"(
+main() : int!
+  d : double = 4.2e10
+  f = 4.2e-10
+  g = 4.2E-10
 )";
 
   SimpleGoldParseTest(Code.str());

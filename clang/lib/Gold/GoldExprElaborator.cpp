@@ -29,7 +29,7 @@
 #include "clang/Sema/TypeLocUtil.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/StringMap.h"
-#include "clang/AST/OperationKinds.h"
+#include "llvm/Support/Error.h"
 
 
 #include "clang/Gold/GoldElaborator.h"
@@ -149,6 +149,45 @@ createFloatLiteral(clang::ASTContext &CxxAST, Token T,
   llvm_unreachable("unsupported float type");
 }
 
+static clang::FloatingLiteral *
+createExponentLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
+                      Token T, clang::SourceLocation Loc) {
+  std::string Spelling = T.getSpelling().str();
+  assert((Spelling.find_first_of("E") != std::string::npos ||
+         Spelling.find_first_of("e") != std::string::npos) &&
+         "non-exponent");
+
+  const llvm::fltSemantics &Format =
+    CxxAST.getFloatTypeSemantics(CxxAST.DoubleTy);
+  llvm::APFloat Val(Format);
+  auto StatusOrErr =
+    Val.convertFromString(Spelling, llvm::APFloat::rmNearestTiesToEven);
+  assert(StatusOrErr && "invalid floating point representation");
+  if (llvm::errorToBool(StatusOrErr.takeError()))
+    return nullptr;
+
+  llvm::APFloat::opStatus Result = *StatusOrErr;
+  if ((Result & llvm::APFloat::opOverflow) ||
+      ((Result & llvm::APFloat::opUnderflow) && Val.isZero())) {
+    unsigned Diagnostic;
+    llvm::SmallString<20> Buffer;
+    if (Result & llvm::APFloat::opOverflow) {
+      Diagnostic = clang::diag::warn_float_overflow;
+      llvm::APFloat::getLargest(Format).toString(Buffer);
+    } else {
+      Diagnostic = clang::diag::warn_float_underflow;
+      llvm::APFloat::getSmallest(Format).toString(Buffer);
+    }
+
+    SemaRef.Diags.Report(Loc, Diagnostic)
+      << CxxAST.DoubleTy
+      << llvm::StringRef(Buffer.data(), Buffer.size());
+  }
+
+  bool isExact = (Result == llvm::APFloat::opOK);
+  return clang::FloatingLiteral::Create(CxxAST, Val, isExact, CxxAST.DoubleTy, Loc);
+}
+
 static clang::CharacterLiteral *
 createCharLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
                   Token T, clang::SourceLocation Loc) {
@@ -241,6 +280,11 @@ createBoolLiteral(clang::ASTContext &CxxAST, Token T,
     Value = Value.trunc(Width);
 
   return clang::IntegerLiteral::Create(CxxAST, Value, CxxAST.BoolTy, Loc);
+}
+
+static clang::CXXNullPtrLiteralExpr *
+createNullLiteral(clang::ASTContext &CxxAST, clang::SourceLocation Loc) {
+  return new (CxxAST) clang::CXXNullPtrLiteralExpr(CxxAST.NullPtrTy, Loc);
 }
 
 static clang::TypeSourceInfo*
@@ -709,11 +753,16 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
     return createUnicodeLiteral(CxxAST, SemaRef, T, S->getLoc());
   case tok::String:
     break;
+  case tok::DecimalExponent:
+    return createExponentLiteral(CxxAST, SemaRef, T, S->getLoc());
 
   /// Keyword Literals
   case tok::TrueKeyword:
   case tok::FalseKeyword:
     return createBoolLiteral(CxxAST, T, S->getLoc());
+
+  case tok::NullKeyword:
+    return createNullLiteral(CxxAST, S->getLoc());
 
   case tok::IntKeyword:
     return BuildAnyTypeLoc(CxxAST, CxxAST.IntTy, S->getLoc());

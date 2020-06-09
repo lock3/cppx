@@ -1096,6 +1096,7 @@ Syntax *Parser::parsePrimary() {
   case tok::HexadecimalInteger:
   case tok::DecimalFloat:
   case tok::HexadecimalFloat:
+  case tok::DecimalExponent:
   case tok::Character:
   case tok::HexadecimalCharacter:
   case tok::UnicodeCharacter:
@@ -1104,6 +1105,7 @@ Syntax *Parser::parsePrimary() {
   case tok::NamespaceKeyword:
   case tok::TrueKeyword:
   case tok::FalseKeyword:
+  case tok::NullKeyword:
     return onAtom(consumeToken());
 
   case tok::LeftParen:

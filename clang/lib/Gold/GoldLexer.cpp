@@ -390,7 +390,7 @@ Token CharacterScanner::matchDecimalExponent() {
   matchIf(isSign);
   // FIXME: There could be an error here.
   matchDecimalDigitSeq();
-  return makeToken(tok::DecimalFloat, Start, First);
+  return makeToken(tok::DecimalExponent, Start, First);
 }
 
 Token CharacterScanner::matchHexadecimalNumber() {
