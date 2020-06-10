@@ -1149,11 +1149,6 @@ void Elaborator::elaborateDeclInit(const Syntax *S) {
 void Elaborator::elaborateDef(Declaration *D) {
   if (phaseOf(D) != Phase::Typing)
     return;
-  if (D->ElabPhaseCompleted != 2) {
-    // assert(D->ElabPhaseCompleted == 2 &&
-    //     "Declaration not ready for full elaboration.");
-    return;
-  }
 
   if (D->declaresFunction())
     return elaborateFunctionDef(D);
