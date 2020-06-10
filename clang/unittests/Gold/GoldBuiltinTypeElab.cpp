@@ -56,7 +56,3 @@ GOLD_BUILTIN_TYPE_TEST("char32", char32, "int")
 GOLD_BUILTIN_TYPE_TEST("float32", float32, "float")
 GOLD_BUILTIN_TYPE_TEST("float64", float64, "double")
 GOLD_BUILTIN_TYPE_TEST("float128", float128, "__float128")
-
-// GOLD_BUILTIN_TYPE_SIMPLE_TEST("float", float)
-// GOLD_BUILTIN_TYPE_SIMPLE_TEST("double", double)
-// GOLD_BUILTIN_TYPE_TEST("uint128_t", uint128_t, "unsigned __int128")
