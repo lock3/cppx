@@ -1115,27 +1115,25 @@ Syntax *Parser::parsePrimary() {
   case tok::VoidKeyword:
   case tok::BoolKeyword:
   case tok::CharKeyword:
-  case tok::Wchar_tKeyword:
-  case tok::Wint_tKeyword:
-  case tok::Char8_tKeyword:
-  case tok::Char16_tKeyword:
-  case tok::Char32_tKeyword:
-  case tok::SignedCharKeyword:
-  case tok::ShortKeyword:
+  case tok::Char8Keyword:
+  case tok::Char16Keyword:
+  case tok::Char32Keyword:
   case tok::IntKeyword:
-  case tok::LongKeyword:
-  case tok::LongLongKeyword:
-  case tok::Int128_tKeyword:
-  case tok::UnsignedCharKeyword:
-  case tok::UnsignedShortKeyword:
-  case tok::UnsignedKeyword:
-  case tok::UnsignedLongKeyword:
-  case tok::UnsignedLongLongKeyword:
-  case tok::Uint128_tKeyword:
-  case tok::FloatKeyword:
-  case tok::DoubleKeyword:
-  case tok::LongDoubleKeyword:
-  case tok::Float128_tKeyword:
+  case tok::Int8Keyword:
+  case tok::Int16Keyword:
+  case tok::Int32Keyword:
+  case tok::Int64Keyword:
+  case tok::Int128Keyword:
+  case tok::UintKeyword:
+  case tok::Uint8Keyword:
+  case tok::Uint16Keyword:
+  case tok::Uint32Keyword:
+  case tok::Uint64Keyword:
+  case tok::Uint128Keyword:
+  case tok::Float16Keyword:
+  case tok::Float32Keyword:
+  case tok::Float64Keyword:
+  case tok::Float128Keyword:
   case tok::TypeKeyword:
   case tok::ArgsKeyword:
     return onLiteral(consumeToken());
