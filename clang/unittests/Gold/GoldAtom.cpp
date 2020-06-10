@@ -109,7 +109,7 @@ main() : int!
 TEST(Atom, FloatLiterals) {
   StringRef Code = R"(
 main() : int!
-  d : double = 4.2
+  d : float64 = 4.2
   f = 4.2
 )";
 
@@ -164,7 +164,7 @@ main() : int!
 TEST(Atom, Exponent) {
   StringRef Code = R"(
 main() : int!
-  d : double = 4.2e10
+  d : float64 = 4.2e10
   f = 4.2e-10
   g = 4.2E-10
 )";

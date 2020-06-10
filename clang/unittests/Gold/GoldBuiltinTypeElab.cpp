@@ -30,31 +30,32 @@ TEST(BuiltinTypeElab, BuiltInType_##TEST_SUFFIX) {\
   ASSERT_TRUE(matches(Code.str(), VarIMatcher));\
 }
 
-#define GOLD_BUILTIN_TYPE_SIMPLE_TEST(TYPE_STRING, TEST_SUFFIX)\
-  GOLD_BUILTIN_TYPE_TEST(TYPE_STRING, TEST_SUFFIX, TYPE_STRING)
 
-#define GOLD_BUILTIN_TYPE_ARITHMETIC_VARIABLE_TEST(TYPE_STRING, TEST_SUFFIX)\
-  GOLD_BUILTIN_TYPE_SIMPLE_TEST(TYPE_STRING, TEST_SUFFIX)\
-  GOLD_BUILTIN_TYPE_SIMPLE_TEST("unsigned " TYPE_STRING, unsigned_##TEST_SUFFIX)\
-  GOLD_BUILTIN_TYPE_TEST("signed " TYPE_STRING, signed_##TEST_SUFFIX, TYPE_STRING)
 
-// GOLD_BUILTIN_TYPE_ARITHMETIC_VARIABLE_TEST("char", char)
-// GOLD_BUILTIN_TYPE_ARITHMETIC_VARIABLE_TEST("short", short)
-// GOLD_BUILTIN_TYPE_ARITHMETIC_VARIABLE_TEST("short int", short_int)
-// GOLD_BUILTIN_TYPE_ARITHMETIC_VARIABLE_TEST("int", int)
-// GOLD_BUILTIN_TYPE_ARITHMETIC_VARIABLE_TEST("long", long)
-// GOLD_BUILTIN_TYPE_ARITHMETIC_VARIABLE_TEST("long int", long_int)
-// GOLD_BUILTIN_TYPE_ARITHMETIC_VARIABLE_TEST("long long", long_long)
-// GOLD_BUILTIN_TYPE_ARITHMETIC_VARIABLE_TEST("long long int", long_long_int)
+
+
 GOLD_BUILTIN_TYPE_TEST("bool", bool, "_Bool")
-GOLD_BUILTIN_TYPE_SIMPLE_TEST("int", int)
-GOLD_BUILTIN_TYPE_SIMPLE_TEST("long", long)
-GOLD_BUILTIN_TYPE_SIMPLE_TEST("short", short)
+GOLD_BUILTIN_TYPE_TEST("int8", int8, "signed char")
+// GOLD_BUILTIN_TYPE_SIMPLE_TEST("int8", int8_t)
+// GOLD_BUILTIN_TYPE_SIMPLE_TEST("int", int)
+// GOLD_BUILTIN_TYPE_SIMPLE_TEST("long", long)
+// GOLD_BUILTIN_TYPE_SIMPLE_TEST("short", short)
+
+// int
+// uint
 
 
-GOLD_BUILTIN_TYPE_TEST("unsigned", unsigned, "unsigned int")
-GOLD_BUILTIN_TYPE_TEST("signed", signed, "int")
 
-GOLD_BUILTIN_TYPE_SIMPLE_TEST("float", float)
-GOLD_BUILTIN_TYPE_SIMPLE_TEST("double", double)
-GOLD_BUILTIN_TYPE_TEST("uint128_t", uint128_t, "unsigned __int128")
+// uint8 
+// uint16 
+// uint32 
+// uint64 
+// uint64 
+// uint128 
+
+// GOLD_BUILTIN_TYPE_TEST("unsigned", unsigned, "unsigned int")
+// GOLD_BUILTIN_TYPE_TEST("signed", signed, "int")
+
+// GOLD_BUILTIN_TYPE_SIMPLE_TEST("float", float)
+// GOLD_BUILTIN_TYPE_SIMPLE_TEST("double", double)
+// GOLD_BUILTIN_TYPE_TEST("uint128_t", uint128_t, "unsigned __int128")
