@@ -32,30 +32,27 @@ TEST(BuiltinTypeElab, BuiltInType_##TEST_SUFFIX) {\
 
 
 
-
-
 GOLD_BUILTIN_TYPE_TEST("bool", bool, "_Bool")
+GOLD_BUILTIN_TYPE_TEST("int", int, "int")
 GOLD_BUILTIN_TYPE_TEST("int8", int8, "signed char")
-// GOLD_BUILTIN_TYPE_SIMPLE_TEST("int8", int8_t)
-// GOLD_BUILTIN_TYPE_SIMPLE_TEST("int", int)
-// GOLD_BUILTIN_TYPE_SIMPLE_TEST("long", long)
-// GOLD_BUILTIN_TYPE_SIMPLE_TEST("short", short)
+GOLD_BUILTIN_TYPE_TEST("int16", int16, "short")
+GOLD_BUILTIN_TYPE_TEST("int32", int32, "int")
+GOLD_BUILTIN_TYPE_TEST("int64", int64, "long")
+GOLD_BUILTIN_TYPE_TEST("int128", int128, "__int128")
 
-// int
-// uint
+GOLD_BUILTIN_TYPE_TEST("uint", uint, "unsigned int")
+GOLD_BUILTIN_TYPE_TEST("uint8", uint8, "unsigned char")
+GOLD_BUILTIN_TYPE_TEST("uint16", uint16, "unsigned short")
+GOLD_BUILTIN_TYPE_TEST("uint32", uint32, "unsigned int")
+GOLD_BUILTIN_TYPE_TEST("uint64", uint64, "unsigned long")
+GOLD_BUILTIN_TYPE_TEST("uint128", uint128, "unsigned __int128")
 
+GOLD_BUILTIN_TYPE_TEST("char", char, "char")
+GOLD_BUILTIN_TYPE_TEST("char8", char8, "signed char")
+GOLD_BUILTIN_TYPE_TEST("char16", char16, "short")
+GOLD_BUILTIN_TYPE_TEST("char32", char32, "int")
 
-
-// uint8 
-// uint16 
-// uint32 
-// uint64 
-// uint64 
-// uint128 
-
-// GOLD_BUILTIN_TYPE_TEST("unsigned", unsigned, "unsigned int")
-// GOLD_BUILTIN_TYPE_TEST("signed", signed, "int")
-
-// GOLD_BUILTIN_TYPE_SIMPLE_TEST("float", float)
-// GOLD_BUILTIN_TYPE_SIMPLE_TEST("double", double)
-// GOLD_BUILTIN_TYPE_TEST("uint128_t", uint128_t, "unsigned __int128")
+// GOLD_BUILTIN_TYPE_TEST("float16", float16, "float16_t")
+GOLD_BUILTIN_TYPE_TEST("float32", float32, "float")
+GOLD_BUILTIN_TYPE_TEST("float64", float64, "double")
+GOLD_BUILTIN_TYPE_TEST("float128", float128, "__float128")
