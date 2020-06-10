@@ -496,7 +496,7 @@ TEST(ClassParsing, NestedTypeDefinition) {
 outer : type = class:
   nested : type = class:
     a : int
-    b : float
+    b : float32
   
 main() : int!
   u : outer.nested
@@ -535,7 +535,7 @@ c : type = class:
   nested : type = class:
     nested2 : type = class:
       a : int
-      b : float
+      b : float32
     
   
 
@@ -929,7 +929,7 @@ outer : type = class:
     return 4
   nested : type = class:
     a : int
-    b : float
+    b : float32
     foo() : int!
       return b
     
@@ -1031,7 +1031,7 @@ outer : type = class:
   y : x
   x : type = class:
     z : int
-    b : float
+    b : float32
     foo() : int!
       return z
     

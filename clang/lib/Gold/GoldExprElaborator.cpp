@@ -988,54 +988,50 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
   case tok::NullKeyword:
     return createNullLiteral(CxxAST, S->getLoc());
 
-  case tok::IntKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.IntTy, S->getLoc());
   case tok::VoidKeyword:
     return BuildAnyTypeLoc(CxxAST, CxxAST.VoidTy, S->getLoc());
   case tok::BoolKeyword:
     return BuildAnyTypeLoc(CxxAST, CxxAST.BoolTy, S->getLoc());
   case tok::CharKeyword:
     return BuildAnyTypeLoc(CxxAST, CxxAST.CharTy, S->getLoc());
-  case tok::Wchar_tKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.WCharTy, S->getLoc());
-  case tok::Wint_tKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.WIntTy, S->getLoc());
-  case tok::Char8_tKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.Char8Ty, S->getLoc());
-  case tok::Char16_tKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.Char16Ty, S->getLoc());
-  case tok::Char32_tKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.Char32Ty, S->getLoc());
-  case tok::SignedCharKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.SignedCharTy, S->getLoc());
-  case tok::ShortKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.ShortTy, S->getLoc());
-  case tok::LongKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.LongTy, S->getLoc());
-  case tok::LongLongKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.LongLongTy, S->getLoc());
-  case tok::Int128_tKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.Int128Ty, S->getLoc());
-  case tok::UnsignedCharKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedCharTy, S->getLoc());
-  case tok::UnsignedShortKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedShortTy, S->getLoc());
-  case tok::UnsignedKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedIntTy, S->getLoc());
-  case tok::UnsignedLongKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedLongTy, S->getLoc());
-  case tok::UnsignedLongLongKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedLongLongTy, S->getLoc());
-  case tok::Uint128_tKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.UnsignedInt128Ty, S->getLoc());
-  case tok::FloatKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.FloatTy, S->getLoc());
-  case tok::DoubleKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.DoubleTy, S->getLoc());
-  case tok::LongDoubleKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.LongDoubleTy, S->getLoc());
-  case tok::Float128_tKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.Float128Ty, S->getLoc());
+  case tok::Char8Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.Char8Ty, S->getLoc());
+  case tok::Char16Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.Char16Ty, S->getLoc());
+  case tok::Char32Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.Char32Ty, S->getLoc());
+  case tok::IntKeyword:
+    return BuildAnyTypeLoc(CxxAST, CxxAST.IntTy, S->getLoc());
+  case tok::Int8Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.Int8Ty, S->getLoc());
+  case tok::Int16Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.Int16Ty, S->getLoc());
+  case tok::Int32Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.Int32Ty, S->getLoc());
+  case tok::Int64Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.Int64Ty, S->getLoc());
+  case tok::Int128Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.Int128Ty, S->getLoc());
+  case tok::UintKeyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.UIntTy, S->getLoc());
+  case tok::Uint8Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.UInt8Ty, S->getLoc());
+  case tok::Uint16Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.UInt16Ty, S->getLoc());
+  case tok::Uint32Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.UInt32Ty, S->getLoc());
+  case tok::Uint64Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.UInt64Ty, S->getLoc());
+  case tok::Uint128Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.UInt128Ty, S->getLoc());
+  case tok::Float16Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.Float16Ty, S->getLoc());
+  case tok::Float32Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.Float32Ty, S->getLoc());
+  case tok::Float64Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.Float64Ty, S->getLoc());
+  case tok::Float128Keyword:
+    return BuildAnyTypeLoc(CxxAST, SemaRef.Float128Ty, S->getLoc());
   case tok::TypeKeyword:
     return BuildAnyTypeLoc(CxxAST, CxxAST.CppxKindTy, S->getLoc());
 
@@ -1560,7 +1556,6 @@ Expression ExprElaborator::elaborateMacro(const MacroSyntax *S) {
     return handleArrayMacro(Context, SemaRef, S);
   else{
     // FIXME: Need to handle any other conditions here.
-    S->dump();
     assert(false && "Unsupported macro");
   }
 }

@@ -22,7 +22,7 @@ main() : int!
 TEST(GoldBuiltinConstructors, BuiltinConstructorCall_float) {
   StringRef Code = R"(
 main() : int!
-  x = float(5)
+  x = float32(5)
   return int(x)
 )";
   LLVMContext Context;
@@ -38,7 +38,7 @@ TEST(GoldBuiltinConstructors, BuiltinConstructorCall_FailedReturnConversion) {
   // TODO: Fix me when I have a chance.
   StringRef Code = R"(
 main() : int!
-  x = float(5)
+  x = float32(5)
   return x
 )";
   LLVMContext Context;

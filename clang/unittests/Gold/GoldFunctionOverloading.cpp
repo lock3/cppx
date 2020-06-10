@@ -20,7 +20,7 @@ TEST(FunctionOverloading, SimpleOverload) {
 foo(i:int) : int!
   return 4 + i
 
-foo(a:float) :int!
+foo(a:float32) :int!
   return 5
 
 main() : int!
@@ -53,7 +53,7 @@ TEST(FunctionOverloading, TemplateOverloading_SameTemplateParamTypes) {
 foo[T:type](i:int) : int!
   return 4 + i
 
-foo[T:type](a:float) :int!
+foo[T:type](a:float32) :int!
   return 5
 
 main() : int!
@@ -85,7 +85,7 @@ TEST(FunctionOverloading, MemberFunction_Overloading) {
 c : type = class:
   foo(i:int) : int!
     return 4 + i
-  foo(a:double) :int!
+  foo(a:float64) :int!
     return 5
   
 
@@ -120,7 +120,7 @@ c : type = class:
   foo[T:type](i:int) : int!
     return 4 + i
   
-  foo[T:type](a:float) :int!
+  foo[T:type](a:float32) :int!
     return 5
   
 main() : int!

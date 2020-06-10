@@ -36,37 +36,36 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
   return {
     {"void", Context.CxxAST.VoidTy},
     {"bool", Context.CxxAST.BoolTy},
+    
+    // character 
     {"char", Context.CxxAST.CharTy},
-    {"wchar_t", Context.CxxAST.WideCharTy},
-    {"wint_t", Context.CxxAST.WIntTy},
-    {"char8_t", Context.CxxAST.Char8Ty},
-    {"char16_t", Context.CxxAST.Char16Ty},
-    {"char32_t", Context.CxxAST.Char32Ty},
-    {"unsigned", Context.CxxAST.UnsignedIntTy},
-    {"signed", Context.CxxAST.IntTy},
-    {"signed char", Context.CxxAST.SignedCharTy},
-    {"short", Context.CxxAST.ShortTy},
-    {"short int", Context.CxxAST.ShortTy},
+    {"char8", Context.CxxAST.getIntTypeForBitwidth(8, true)},
+    {"char16", Context.CxxAST.getIntTypeForBitwidth(16, true)},
+    {"char32", Context.CxxAST.getIntTypeForBitwidth(32, true)},
+
+    // Signed integers
     {"int", Context.CxxAST.IntTy},
-    {"signed int", Context.CxxAST.IntTy},
-    {"long", Context.CxxAST.LongTy},
-    {"long int", Context.CxxAST.LongTy},
-    {"long long", Context.CxxAST.LongLongTy},
-    {"long long int", Context.CxxAST.LongLongTy},
-    {"int128_t", Context.CxxAST.Int128Ty},
-    {"unsigned char", Context.CxxAST.UnsignedCharTy},
-    {"unsigned short", Context.CxxAST.UnsignedShortTy},
-    {"unsigned short int", Context.CxxAST.UnsignedShortTy},
-    {"unsigned int", Context.CxxAST.UnsignedIntTy},
-    {"unsigned long", Context.CxxAST.UnsignedLongTy},
-    {"unsigned long int", Context.CxxAST.UnsignedLongTy},
-    {"unsigned long long", Context.CxxAST.UnsignedLongLongTy},
-    {"unsigned long long int", Context.CxxAST.UnsignedLongLongTy},
-    {"uint128_t", Context.CxxAST.UnsignedInt128Ty},
-    {"float", Context.CxxAST.FloatTy},
-    {"double", Context.CxxAST.DoubleTy},
-    {"long double", Context.CxxAST.LongDoubleTy},
-    {"float128_t", Context.CxxAST.Float128Ty},
+    {"int8", Context.CxxAST.getIntTypeForBitwidth(8, true)},
+    {"int16", Context.CxxAST.getIntTypeForBitwidth(16, true)},
+    {"int32", Context.CxxAST.getIntTypeForBitwidth(32, true)},
+    {"int64", Context.CxxAST.getIntTypeForBitwidth(64, true)},
+    {"int128", Context.CxxAST.getIntTypeForBitwidth(128, true)},
+
+    // unsigned integers.
+    {"uint", Context.CxxAST.UnsignedIntTy},
+    {"uint8", Context.CxxAST.getIntTypeForBitwidth(8, false)},
+    {"uint16", Context.CxxAST.getIntTypeForBitwidth(16, false)},
+    {"uint32", Context.CxxAST.getIntTypeForBitwidth(32, false)},
+    {"uint64", Context.CxxAST.getIntTypeForBitwidth(64, false)},
+    {"uint128", Context.CxxAST.getIntTypeForBitwidth(128, false)},
+
+    // Floating point numbers
+    {"float16", Context.CxxAST.getRealTypeForBitwidth(16)},
+    {"float32", Context.CxxAST.getRealTypeForBitwidth(32)},
+    {"float64", Context.CxxAST.getRealTypeForBitwidth(64)},
+    {"float128", Context.CxxAST.getRealTypeForBitwidth(128)},
+
+    // type of a type.
     {"type", Context.CxxAST.CppxKindTy}
   };
 }
@@ -76,6 +75,30 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     Diags(Context.CxxAST.getSourceManager().getDiagnostics()),
     BuiltinTypes(createBuiltinTypeList(Context))
 {
+  CharTy = Context.CxxAST.CharTy;
+  Char8Ty = Context.CxxAST.getIntTypeForBitwidth(8, true);
+  Char16Ty = Context.CxxAST.getIntTypeForBitwidth(16, true);
+  Char32Ty = Context.CxxAST.getIntTypeForBitwidth(32, true);
+
+  IntTy = Context.CxxAST.IntTy;
+  Int8Ty = Context.CxxAST.getIntTypeForBitwidth(8, true);
+  Int16Ty = Context.CxxAST.getIntTypeForBitwidth(16, true);
+  Int32Ty = Context.CxxAST.getIntTypeForBitwidth(32, true);
+  Int64Ty = Context.CxxAST.getIntTypeForBitwidth(64, true);
+  Int128Ty = Context.CxxAST.getIntTypeForBitwidth(128, true);
+
+  UIntTy = Context.CxxAST.UnsignedIntTy;
+  UInt8Ty = Context.CxxAST.getIntTypeForBitwidth(8, false);
+  UInt16Ty = Context.CxxAST.getIntTypeForBitwidth(16, false);
+  UInt32Ty = Context.CxxAST.getIntTypeForBitwidth(32, false);
+  UInt64Ty = Context.CxxAST.getIntTypeForBitwidth(64, false);
+  UInt128Ty = Context.CxxAST.getIntTypeForBitwidth(128, false);
+
+  Float16Ty = Context.CxxAST.getRealTypeForBitwidth(16);
+  Float32Ty = Context.CxxAST.getRealTypeForBitwidth(32);
+  Float64Ty = Context.CxxAST.getRealTypeForBitwidth(64);
+  Float128Ty = Context.CxxAST.getRealTypeForBitwidth(128);
+  
   CxxSema.CurScope = nullptr;
   OperatorColonII = &Context.CxxAST.Idents.get("operator':'");
   OperatorExclaimII = &Context.CxxAST.Idents.get("operator'!'");
