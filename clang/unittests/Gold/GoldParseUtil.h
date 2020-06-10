@@ -52,6 +52,19 @@ inline void SimpleGoldParseTest(llvm::StringRef Code) {
   }
 }
 
+/// Test that something doesn't compile and returns an error
+inline void SimpleGoldSimpleFailureTest(llvm::StringRef Code) {
+  using namespace clang::tooling;
+  using namespace clang;
+  std::unique_ptr<FrontendActionFactory> Factory(
+      newFrontendActionFactory<GoldSyntaxAction>());
+  if (runToolOnCodeWithArgs(Factory->create(), Code,
+                            {"-x", "gold", "-c", "-Wall", "-Werror"},
+                            "temp.usyntax")) {
+    ASSERT_FALSE(true) << "Unexpected success \"" << Code.str() << "\"";
+  }
+}
+
 }
 
 #endif

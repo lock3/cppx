@@ -92,11 +92,7 @@ TEST(CharLiteralElab, Character_Octal) {
 
 TEST(CharLiteralElab, InvalidCharacterLiteral) {
   StringRef Code = "i:char = ''";
-  DeclarationMatcher CharacterCmp = varDecl(
-    hasName("i"), hasType(asString("char")),
-    hasInitializer(characterLiteral(equals(unsigned('a'))))
-  );
-  ASSERT_FALSE(matches(Code.str(), CharacterCmp));
+  SimpleGoldSimpleFailureTest(Code);
 }
 
 
