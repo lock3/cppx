@@ -355,7 +355,6 @@ public:
   class DeclContextRAII {
     Sema &SemaRef;
     bool DoSetAndReset;
-    clang::DeclContext *OriginalDC;
     Declaration *OriginalDecl;
   public:
     DeclContextRAII(Sema &S, Declaration *D,
