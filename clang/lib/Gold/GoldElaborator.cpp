@@ -1385,6 +1385,8 @@ clang::Decl *Elaborator::elaborateTypeBody(Declaration* D, clang::CXXRecordDecl*
   }
   auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
   assert(MacroRoot && "Invalid AST structure.");
+  llvm::outs() << "Dumping block, this may not be what we were expecting\n";
+  MacroRoot->getBlock()->dump();
   auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
   assert(BodyArray && "Invalid AST structure Expected array structure.");
   D->ElabPhaseCompleted = 2;

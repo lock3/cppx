@@ -1382,9 +1382,11 @@ Expression ExprElaborator::elaborateMacro(const MacroSyntax *S) {
     assert(false && "For loop processing not implemented yet.");
   else if (Call->getSpelling() == "array")
     return handleArrayMacro(Context, SemaRef, S);
-  else
+  else{
     // FIXME: Need to handle any other conditions here.
+    S->dump();
     assert(false && "Unsupported macro");
+  }
 }
 
 

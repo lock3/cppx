@@ -36,6 +36,7 @@ add_clang_unittest(GoldTests
   GoldAttributes.cpp
   GoldAuto.cpp
   GoldBoolImplicitConversionInit.cpp
+  GoldBuiltInArithmeticOpsElab.cpp
   GoldBuiltInTypeConstructorsExec.cpp
   GoldBuiltinTypeElab.cpp
   GoldCharLiteralElab.cpp
@@ -61,6 +62,7 @@ add_clang_unittest(GoldTests
   GoldMemberExecuteTest.cpp
   GoldMemberStorageClassElab.cpp
   GoldNNS.cpp
+  GoldQualifiedMemberAccessElab.cpp
   GoldStorageClassExec.cpp
   GoldStringLiteralElab.cpp
   GoldTypeExpressionsTest.cpp

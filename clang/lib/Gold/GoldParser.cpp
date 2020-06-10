@@ -608,7 +608,8 @@ Syntax *Parser::parseAdd() {
 }
 
 static bool isMulOperator(Parser& P) {
-  return P.nextTokenIs(tok::Star) || P.nextTokenIs(tok::Slash);
+  return P.nextTokenIs(tok::Star) || P.nextTokenIs(tok::Slash)
+         || P.nextTokenIs(tok::Percent);
 }
 
 /// mul:
