@@ -450,7 +450,7 @@ static clang::Decl*
 processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
                      Declaration *D) {
   using namespace clang;
-  D->ElabPhaseCompleted = 2;
+  D->CurrentPhase = Phase::Typing;
 
   bool Template = D->declaresTemplateType();
   const Syntax *TemplParams;
@@ -555,7 +555,7 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
     SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
     SourceLocation(), ParsedAttributesView());
-  D->ElabPhaseCompleted = 3;
+  D->CurrentPhase = Phase::Initialization;
   
   if (!WithinClass) {
     ElaboratingClass &LateElabClass = SemaRef.getCurrentElaboratingClass();
@@ -573,7 +573,7 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
 static clang::Decl *processNamespaceDecl(Elaborator& Elab,
                                          SyntaxContext& Context,
                                          Sema& SemaRef, Declaration *D) {
-  D->ElabPhaseCompleted = 3;
+  D->CurrentPhase = Phase::Initialization;
   using namespace clang;
 
   // Create and enter a namespace scope.
@@ -620,11 +620,9 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
 }
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
-  if (D->ElabPhaseCompleted > 1)
+  if (phaseOf(D) > Phase::Identification)
     return D->Cxx;
 
-  assert(D->ElabPhaseCompleted == 1 &&
-      "Declaration occurred at Incorrect phase of elaboration.");
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
@@ -904,7 +902,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
         CtorDecl, R, true)) {
     }
   }
-  D->ElabPhaseCompleted = 2;
+  D->CurrentPhase = Phase::Typing;
   return FD;
 
 }
@@ -975,7 +973,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
                                               Id, TInfo->getType(), TInfo, SC);
   Owner->addDecl(VD);
   D->Cxx = VD;
-  D->ElabPhaseCompleted = 2;
+  D->CurrentPhase = Phase::Typing;
   return VD;
 }
 
@@ -1007,7 +1005,7 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D,
     // Using the correctly constructed result type, I hope this should fix any
     // Further issues I was having with the internal getDeclTypeDecl() calls.
     PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
-    D->ElabPhaseCompleted = 3;
+    D->CurrentPhase = Phase::Initialization;
   }
 
   if (clang::NamespaceDecl *NsD = InitExpr.dyn_cast<clang::NamespaceDecl *>()) {
@@ -1073,7 +1071,7 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
                                                      TInfo, clang::SC_None,
                                                      /*DefaultArg=*/nullptr);
   D->Cxx = P;
-  D->ElabPhaseCompleted = 2;
+  D->CurrentPhase = Phase::Typing;
   return P;
 }
 
@@ -1098,7 +1096,7 @@ clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
       clang::TemplateTypeParmDecl::Create(Context.CxxAST, Owner, Loc, Loc, 0, 0,
                               Id, /*TypenameKW=*/true, /*ParameterPack=*/false);
     D->Cxx = TTPD;
-    D->ElabPhaseCompleted = 2;
+    D->CurrentPhase = Phase::Typing;
     return TTPD;
   }
 
@@ -1108,7 +1106,7 @@ clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
                                            0, 0, Id, TInfo->getType(),
                                            /*Pack=*/false, TInfo);
   D->Cxx = NTTP;
-  D->ElabPhaseCompleted = 2;
+  D->CurrentPhase = Phase::Typing;
   return NTTP;
 }
 
@@ -1149,7 +1147,7 @@ void Elaborator::elaborateDeclInit(const Syntax *S) {
 }
 
 void Elaborator::elaborateDef(Declaration *D) {
-  if (D->ElabPhaseCompleted >= 3)
+  if (phaseOf(D) != Phase::Typing)
     return;
   if (D->ElabPhaseCompleted != 2) {
     // assert(D->ElabPhaseCompleted == 2 &&
@@ -1169,18 +1167,17 @@ void Elaborator::elaborateDef(Declaration *D) {
 }
 
 void Elaborator::elaborateFunctionDef(Declaration *D) {
-  D->ElabPhaseCompleted = 3;
+  D->CurrentPhase = Phase::Initialization;
   if (D->declaresConstructor()) {
     llvm::SmallVector<clang::CXXCtorInitializer*, 32> Initializers;
     SemaRef.getCxxSema().ActOnMemInitializers(D->Cxx, clang::SourceLocation(),
         Initializers, false);
   }
+
   if (!D->Cxx)
     return;
-
   if (!D->Init)
     return;
-
   if (SemaRef.checkForRedefinition<clang::FunctionDecl>(D))
     return;
 
@@ -1264,11 +1261,10 @@ static clang::QualType buildImplicitArrayType(clang::ASTContext &Ctx,
 }
 
 void Elaborator::elaborateVariableInit(Declaration *D) {
-  D->ElabPhaseCompleted = 3;
-  if (!D->Cxx){
+  D->CurrentPhase = Phase::Initialization;
+  if (!D->Cxx)
     return;
-  }
-  
+
   // FIXME: If we synthesize initializers, this might need to happen before that
   if (SemaRef.checkForRedefinition<clang::VarDecl>(D))
     return;
@@ -1352,10 +1348,13 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 
     VD->setType(Ty);
   }
-  if (!InitExpr) {
+
+  if (D->Init && !InitExpr) {
+    SemaRef.Diags.Report(VD->getLocation(),
+                         clang::diag::err_failed_to_translate_expr);
     return;
   }
-  
+
   // Update the initializer.
   SemaRef.getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
 }
@@ -1374,7 +1373,7 @@ void Elaborator::elaborateTemplateParamInit(Declaration *D) {
   //        redefinition using the template.
 
   // TODO: these might have default arguments.
-  D->ElabPhaseCompleted = 3;
+  D->CurrentPhase = Phase::Initialization;
 }
 
 clang::Decl *Elaborator::elaborateTypeBody(Declaration* D, clang::CXXRecordDecl* R) {
@@ -1389,7 +1388,7 @@ clang::Decl *Elaborator::elaborateTypeBody(Declaration* D, clang::CXXRecordDecl*
   MacroRoot->getBlock()->dump();
   auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
   assert(BodyArray && "Invalid AST structure Expected array structure.");
-  D->ElabPhaseCompleted = 2;
+  D->CurrentPhase = Phase::Typing;
 
   for (auto const* ChildDecl : BodyArray->children()) {
     identifyDecl(ChildDecl);
@@ -1451,7 +1450,7 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
 
   Owner->addDecl(Field);
   D->Cxx = Field;
-  D->ElabPhaseCompleted = 2;
+  D->CurrentPhase = Phase::Typing;
   return Field;
 }
 
@@ -1459,7 +1458,7 @@ void Elaborator::elaborateFieldInit(Declaration *D) {
   assert(D && "Missing Declaration.");
   if (!D->Init)
     return;
-  D->ElabPhaseCompleted = 3;
+  D->CurrentPhase = Phase::Initialization;
   SemaRef.getCxxSema().ActOnStartCXXInClassMemberInitializer();
 
   using EEC = clang::Sema::ExpressionEvaluationContext;
@@ -1859,7 +1858,7 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       }
 
       SemaRef.getCurrentScope()->addDecl(TheDecl);
-      TheDecl->ElabPhaseCompleted = 1;
+      TheDecl->CurrentPhase = Phase::Identification;
       return TheDecl;
     }
   }
@@ -1882,12 +1881,11 @@ bool Elaborator::delayElaborateDeclType(const Syntax *S) {
   if (!D) {
     return false;
   }
+
   // Handling a check for possible late elaboration on each declaration.
-  if (D->ElabPhaseCompleted > 1)
+  if (phaseOf(D) > Phase::Identification)
     return false;
 
-  assert(D->ElabPhaseCompleted == 1 &&
-      "Declaration occurred at Incorrect phase of elaboration.");
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.

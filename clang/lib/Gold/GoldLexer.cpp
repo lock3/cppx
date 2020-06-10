@@ -50,6 +50,10 @@ bool isHexadecimalDigit(char C) {
   return std::isxdigit(C);
 }
 
+bool isBinaryDigit(char C) {
+  return C == '0' || C == '1';
+}
+
 bool isDecimalExponent(char C) {
   return C == 'e' || C == 'E';
 }
@@ -190,8 +194,6 @@ Token CharacterScanner::operator()() {
       return matchToken(tok::Equal);
 
     case '!':
-      if (getLookahead(1) == '=')
-        return matchToken(tok::BangEqual);
       return matchToken(tok::Bang);
 
     case '\'':
@@ -206,6 +208,8 @@ Token CharacterScanner::operator()() {
         return matchHexadecimalCharacter();
       if (nthCharacterIs(1, 'u'))
         return matchUnicodeCharacter();
+      if (nthCharacterIs(1, 'b'))
+        return matchBinaryNumber();
       LLVM_FALLTHROUGH;
 
     default:
@@ -311,7 +315,7 @@ Token CharacterScanner::matchWord() {
   while (isIdentifierRest(getLookahead()))
     consume();
 
-  // Building fused identifiers. 
+  // Building fused identifiers.
   if (getLookahead() == '"') {
     consume();
     while(getLookahead() != '"')
@@ -355,10 +359,10 @@ Token CharacterScanner::matchDecimalNumber() {
     // Matches 'decimal-digit-seq [. decimal-digit-seq] ...]'
     matchDecimalDigitSeq();
     if (nextCharacterIs('.') && !nthCharacterIs(1, '.')) {
-      if (isDecimalDigit(getLookahead()))
+      if (isDecimalDigit(getLookahead(1)))
         return matchDecimalFraction();
 
-      if (isDecimalExponent(getLookahead()))
+      if (isDecimalExponent(getLookahead(1)))
         return matchDecimalExponent();
 
       consume();
@@ -386,7 +390,7 @@ Token CharacterScanner::matchDecimalExponent() {
   matchIf(isSign);
   // FIXME: There could be an error here.
   matchDecimalDigitSeq();
-  return makeToken(tok::DecimalFloat, Start, First);
+  return makeToken(tok::DecimalExponent, Start, First);
 }
 
 Token CharacterScanner::matchHexadecimalNumber() {
@@ -404,6 +408,23 @@ Token CharacterScanner::matchHexadecimalNumber() {
   matchHexadecimalDigitSeq();
 
   return makeToken(tok::HexadecimalInteger, Start, First);
+}
+
+Token CharacterScanner::matchBinaryNumber() {
+  consume(2); // Matches '0x'.
+
+  // FIXME: Match hex floats?
+  // FIXME: Wrong error.
+  if (!isBinaryDigit(getLookahead())) {
+    getDiagnostics().Report(getInputLocation(),
+                           clang::diag::err_bad_string_encoding);
+    // error(getInputLocation(), "invalid hexadecimal number");
+    return {};
+  }
+
+  matchBinaryDigitSeq();
+
+  return makeToken(tok::BinaryInteger, Start, First);
 }
 
 Token CharacterScanner::matchCharacter() {
@@ -505,13 +526,33 @@ void CharacterScanner::matchEscapeSequence() {
 }
 
 Token CharacterScanner::matchHexadecimalCharacter() {
-  // sorry(getInputLocation(), "hexadecimal characters not supported");
-  return {};
+  consume(2); // Matches '0c'.
+
+  if (!isHexadecimalDigit(getLookahead())) {
+    getDiagnostics().Report(getInputLocation(),
+                           clang::diag::err_bad_string_encoding);
+    // error(getInputLocation(), "invalid hexadecimal number");
+    return {};
+  }
+
+  matchHexadecimalDigitSeq();
+
+  return makeToken(tok::HexadecimalCharacter, Start, First);
 }
 
 Token CharacterScanner::matchUnicodeCharacter() {
-  // sorry(getInputLocation(), "unicode characters not supported");
-  return {};
+  consume(2); // Matches '0u'.
+
+  if (!isHexadecimalDigit(getLookahead())) {
+    getDiagnostics().Report(getInputLocation(),
+                           clang::diag::err_bad_string_encoding);
+    // error(getInputLocation(), "invalid hexadecimal number");
+    return {};
+  }
+
+  matchHexadecimalDigitSeq();
+
+  return makeToken(tok::UnicodeCharacter, Start, First);
 }
 
 void CharacterScanner::matchDecimalDigitSeq() {
@@ -537,7 +578,14 @@ void CharacterScanner::matchHexadecimalDigitSeq() {
   // FIXME: Allow digit separators?
   requireIf(isHexadecimalDigit);
   while (matchIf(isHexadecimalDigit))
-    consume();
+    ;
+}
+
+void CharacterScanner::matchBinaryDigitSeq() {
+  // FIXME: Allow digit separators?
+  requireIf(isBinaryDigit);
+  while (matchIf(isBinaryDigit))
+    ;
 }
 
 clang::SourceLocation

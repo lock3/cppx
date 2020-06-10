@@ -136,10 +136,12 @@ namespace gold {
     Token matchDecimalFraction();
     Token matchDecimalExponent();
     Token matchHexadecimalNumber();
+    Token matchBinaryNumber();
 
     void matchDecimalDigitSeq();
     void matchDecimalDigitSeqOpt();
     void matchHexadecimalDigitSeq();
+    void matchBinaryDigitSeq();
 
     Token matchCharacter();
     Token matchHexadecimalCharacter();

@@ -32,7 +32,7 @@
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
-#include "clang/AST/OperationKinds.h"
+#include "llvm/Support/Error.h"
 
 
 #include "clang/Gold/GoldElaborator.h"
@@ -71,7 +71,8 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
 
 static clang::IntegerLiteral *
 createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
-                     clang::QualType IntType, clang::SourceLocation Loc) {
+                     clang::QualType IntType, clang::SourceLocation Loc,
+                     std::size_t Base = 10) {
   llvm::APInt Value;
   unsigned Width = 0;
 
@@ -83,42 +84,42 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
   if (IntType == CxxAST.IntTy) {
     Width = CxxAST.getTargetInfo().getIntWidth();
 
-    int Literal = atoi(T.getSymbol().data());
+    int Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::get(Literal);
   } else if (IntType == CxxAST.LongTy) {
     Width = CxxAST.getTargetInfo().getLongWidth();
 
-    long int Literal = atoi(T.getSymbol().data());
+    long int Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::get(Literal);
   } else if (IntType == CxxAST.LongLongTy) {
     Width = CxxAST.getTargetInfo().getLongLongWidth();
 
-    long long int Literal = atoi(T.getSymbol().data());
+    long long int Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::get(Literal);
   } else if (IntType == CxxAST.ShortTy) {
     Width = CxxAST.getTargetInfo().getShortWidth();
 
-    short int Literal = atoi(T.getSymbol().data());
+    short int Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::get(Literal);
   } else if (IntType == CxxAST.UnsignedShortTy) {
     Width = CxxAST.getTargetInfo().getShortWidth();
 
-    unsigned short int Literal = atoi(T.getSymbol().data());
+    unsigned short int Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::getUnsigned(Literal);
   } else if (IntType == CxxAST.UnsignedIntTy) {
     Width = CxxAST.getTargetInfo().getIntWidth();
 
-    unsigned int Literal = atoi(T.getSymbol().data());
+    unsigned int Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::getUnsigned(Literal);
   } else if (IntType == CxxAST.UnsignedLongTy) {
     Width = CxxAST.getTargetInfo().getLongWidth();
 
-    unsigned long Literal = atoi(T.getSymbol().data());
+    unsigned long Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::getUnsigned(Literal);
   } else if (IntType == CxxAST.UnsignedLongLongTy) {
     Width = CxxAST.getTargetInfo().getLongLongWidth();
 
-    unsigned long Literal = atoi(T.getSymbol().data());
+    unsigned long Literal = std::stoi(T.getSymbol().data(), 0, Base);
     Value = llvm::APSInt::getUnsigned(Literal);
   } else {
     assert(false && "Unsupported integer type.");
@@ -129,6 +130,165 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
   return clang::IntegerLiteral::Create(CxxAST, Value, IntType, Loc);
 }
 
+static clang::FloatingLiteral *
+createFloatLiteral(clang::ASTContext &CxxAST, Token T,
+                   clang::QualType FloatType, clang::SourceLocation Loc) {
+  // If we don't have a specified type, just create a default float.
+  if (FloatType.isNull() || FloatType == CxxAST.AutoDeductTy)
+    FloatType = CxxAST.FloatTy;
+
+  if (FloatType == CxxAST.FloatTy) {
+    float Literal = (float)atof(T.getSymbol().data());
+    auto Value = llvm::APFloat(Literal);
+    return clang::FloatingLiteral::Create(CxxAST, Value, /*Exact=*/true,
+                                          FloatType, Loc);
+  } else if (FloatType == CxxAST.DoubleTy) {
+    double Literal = atof(T.getSymbol().data());
+    auto Value = llvm::APFloat(Literal);
+    return clang::FloatingLiteral::Create(CxxAST, Value, /*Exact=*/true,
+                                          FloatType, Loc);
+  }
+
+  llvm_unreachable("unsupported float type");
+}
+
+static clang::FloatingLiteral *
+createExponentLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
+                      Token T, clang::SourceLocation Loc) {
+  std::string Spelling = T.getSpelling().str();
+  assert((Spelling.find_first_of("E") != std::string::npos ||
+         Spelling.find_first_of("e") != std::string::npos) &&
+         "non-exponent");
+
+  const llvm::fltSemantics &Format =
+    CxxAST.getFloatTypeSemantics(CxxAST.DoubleTy);
+  llvm::APFloat Val(Format);
+  auto StatusOrErr =
+    Val.convertFromString(Spelling, llvm::APFloat::rmNearestTiesToEven);
+  assert(StatusOrErr && "invalid floating point representation");
+  if (llvm::errorToBool(StatusOrErr.takeError()))
+    return nullptr;
+
+  llvm::APFloat::opStatus Result = *StatusOrErr;
+  if ((Result & llvm::APFloat::opOverflow) ||
+      ((Result & llvm::APFloat::opUnderflow) && Val.isZero())) {
+    unsigned Diagnostic;
+    llvm::SmallString<20> Buffer;
+    if (Result & llvm::APFloat::opOverflow) {
+      Diagnostic = clang::diag::warn_float_overflow;
+      llvm::APFloat::getLargest(Format).toString(Buffer);
+    } else {
+      Diagnostic = clang::diag::warn_float_underflow;
+      llvm::APFloat::getSmallest(Format).toString(Buffer);
+    }
+
+    SemaRef.Diags.Report(Loc, Diagnostic)
+      << CxxAST.DoubleTy
+      << llvm::StringRef(Buffer.data(), Buffer.size());
+  }
+
+  bool isExact = (Result == llvm::APFloat::opOK);
+  return clang::FloatingLiteral::Create(CxxAST, Val, isExact, CxxAST.DoubleTy, Loc);
+}
+
+static clang::CharacterLiteral *
+createCharLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
+                  Token T, clang::SourceLocation Loc) {
+  std::string Spelling = T.getSpelling().str();
+  assert(Spelling[0] == '\'' && "atom is not a character");
+
+  Spelling = Spelling.substr(1, Spelling.size());
+  Spelling = Spelling.substr(0, Spelling.find_last_of('\''));
+
+  const static llvm::StringMap<char> Escapes = {
+    {"\\n", '\n'},
+    {"\\t", '\t'},
+    {"\\r", '\r'},
+    {"\\'", '\''},
+    {"\\\"", '\"'},
+    {"\\?", '\?'},
+    {"\\a", '\a'},
+    {"\\b", '\b'},
+    {"\\f", '\f'},
+    {"\\v", '\v'},
+    {"\\\\", '\\'},
+    {"\\0", '\0'},
+  };
+
+  auto It = Escapes.find(Spelling);
+  char Character = (It == Escapes.end()) ? Spelling.c_str()[0] : It->second;
+
+  // A multi-character character constant is actually valid, so we'll just
+  // warn and move on.
+  if (It == Escapes.end() && Spelling.size() > 1) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                    "multi-character character constant");
+    SemaRef.Diags.Report(Loc, DiagID);
+  }
+
+  return new (CxxAST) clang::CharacterLiteral((unsigned)Character,
+                                              clang::CharacterLiteral::Ascii,
+                                              CxxAST.CharTy, Loc);
+}
+
+static clang::CharacterLiteral *
+createUTF8Literal(clang::ASTContext &CxxAST, Sema &SemaRef,
+                  Token T, clang::SourceLocation Loc) {
+  std::string Spelling = T.getSpelling().str();
+  Spelling = Spelling.substr(Spelling.find_first_not_of("0c"), Spelling.size());
+  unsigned Value = (unsigned)std::stoi(Spelling, 0, 16);
+
+  // FIXME: warn on overflow?
+
+  return new (CxxAST)
+    clang::CharacterLiteral(Value, clang::CharacterLiteral::UTF8,
+                            CxxAST.Char8Ty, Loc);
+}
+
+static clang::CharacterLiteral *
+createUnicodeLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
+                     Token T, clang::SourceLocation Loc) {
+  std::string Spelling = T.getSpelling().str();
+  Spelling = Spelling.substr(Spelling.find_first_not_of("0u"), Spelling.size());
+  unsigned Value = (unsigned)std::stoi(Spelling, 0, 16);
+
+  // FIXME: warn on overflow?
+
+  clang::CharacterLiteral::CharacterKind CharKind;
+  clang::QualType CharType;
+  if (Value <= 0xFF) {
+    CharKind = clang::CharacterLiteral::UTF8;
+    CharType = CxxAST.Char8Ty;
+  } else if (Value <= 0xFFFF) {
+    CharKind = clang::CharacterLiteral::UTF16;
+    CharType = CxxAST.Char16Ty;
+  } else if (Value <= 0xFFFFFFFF) {
+    CharKind = clang::CharacterLiteral::UTF32;
+    CharType = CxxAST.Char32Ty;
+  } else {
+    return nullptr;
+  }
+
+  return new (CxxAST) clang::CharacterLiteral(Value, CharKind, CharType, Loc);
+}
+
+static clang::IntegerLiteral *
+createBoolLiteral(clang::ASTContext &CxxAST, Token T,
+                  clang::SourceLocation Loc) {
+  llvm::APInt Value = llvm::APSInt::get(T.hasKind(tok::TrueKeyword));
+
+  unsigned Width = CxxAST.getIntWidth(CxxAST.BoolTy);
+  if (Value.getBitWidth() != Width)
+    Value = Value.trunc(Width);
+
+  return clang::IntegerLiteral::Create(CxxAST, Value, CxxAST.BoolTy, Loc);
+}
+
+static clang::CXXNullPtrLiteralExpr *
+createNullLiteral(clang::ASTContext &CxxAST, clang::SourceLocation Loc) {
+  return new (CxxAST) clang::CXXNullPtrLiteralExpr(CxxAST.NullPtrTy, Loc);
+}
 
 static clang::TypeSourceInfo*
 HandleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
@@ -789,28 +949,44 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
     return createIntegerLiteral(CxxAST, T, ExplicitType,
                                 S->getLoc());
   case tok::DecimalFloat:
-    llvm::errs() << "elaborateAtom::DecimalFloat not implemented.\n";
+    return createFloatLiteral(CxxAST, T, ExplicitType,
+                              S->getLoc());
     break;
-  case tok::BinaryInteger:
-    llvm::errs() << "elaborateAtom::BinaryInteger not implemented.\n";
-    break;
+  case tok::BinaryInteger: {
+    std::string TData = std::string(T.getSymbol().data());
+    TData =  TData.substr(TData.find_first_not_of("0b"), TData.size());
+    Token RawBin = Token(tok::BinaryInteger, T.getLocation(), Symbol(&TData));
+    return createIntegerLiteral(CxxAST, RawBin, ExplicitType,
+                                S->getLoc(), /*Base=*/2);
+  }
+
   case tok::HexadecimalInteger:
-    llvm::errs() << "elaborateAtom::HexadecimalInteger not implemented.\n";
-    break;
+    return createIntegerLiteral(CxxAST, T, ExplicitType,
+                                S->getLoc(), /*Base=*/16);
   case tok::HexadecimalFloat:
     llvm::errs() << "elaborateAtom::HexadecimalFloat not implemented.\n";
     break;
   case tok::Identifier:
     return createIdentAccess(Context, SemaRef, S, ExplicitType, S->getLoc());
   case tok::Character:
-    // llvm::errs() << "elaborateAtom::Character not implemented.\n";
-    return createCharLiteral(Context, SemaRef, S, ExplicitType);
-    break;
+    return createCharLiteral(CxxAST, SemaRef, T, S->getLoc());
+  case tok::HexadecimalCharacter:
+    return createUTF8Literal(CxxAST, SemaRef, T, S->getLoc());
+  case tok::UnicodeCharacter:
+    return createUnicodeLiteral(CxxAST, SemaRef, T, S->getLoc());
   case tok::String:
     llvm::errs() << "elaborateAtom::String not implemented.\n";
     break;
+  case tok::DecimalExponent:
+    return createExponentLiteral(CxxAST, SemaRef, T, S->getLoc());
 
   /// Keyword Literals
+  case tok::TrueKeyword:
+  case tok::FalseKeyword:
+    return createBoolLiteral(CxxAST, T, S->getLoc());
+
+  case tok::NullKeyword:
+    return createNullLiteral(CxxAST, S->getLoc());
 
   case tok::IntKeyword:
     return BuildAnyTypeLoc(CxxAST, CxxAST.IntTy, S->getLoc());
