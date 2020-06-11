@@ -36,6 +36,7 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
   return {
     {"void", Context.CxxAST.VoidTy},
     {"bool", Context.CxxAST.BoolTy},
+    {"null_t", Context.CxxAST.NullPtrTy},
     
     // character 
     {"char", Context.CxxAST.CharTy},
@@ -87,6 +88,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     BuiltinTypes(createBuiltinTypeList(Context)),
     UnaryOpNames(createUnaryOpMap())
 {
+  NullTTy = Context.CxxAST.NullPtrTy;
   CharTy = Context.CxxAST.CharTy;
   Char8Ty = Context.CxxAST.getIntTypeForBitwidth(8, true);
   Char16Ty = Context.CxxAST.getIntTypeForBitwidth(16, true);

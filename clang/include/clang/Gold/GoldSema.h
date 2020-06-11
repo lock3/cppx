@@ -508,6 +508,8 @@ public:
   using OptionalScopeRAII = OptionalInitScope<ScopeRAII>;
   using OptioanlClangScopeRAII = OptionalInitScope<ClangScopeRAII>;
 
+  clang::QualType NullTTy;
+
   clang::QualType CharTy;
   clang::QualType Char8Ty;
   clang::QualType Char16Ty;

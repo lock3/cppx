@@ -33,6 +33,7 @@ TEST(BuiltinTypeElab, BuiltInType_##TEST_SUFFIX) {\
 
 
 GOLD_BUILTIN_TYPE_TEST("bool", bool, "_Bool")
+GOLD_BUILTIN_TYPE_TEST("null_t", null_t, "nullptr_t")
 GOLD_BUILTIN_TYPE_TEST("int", int, "int")
 GOLD_BUILTIN_TYPE_TEST("int8", int8, "signed char")
 GOLD_BUILTIN_TYPE_TEST("int16", int16, "short")
