@@ -534,10 +534,22 @@ public:
   clang::QualType Float128Ty;
 
   // Dictionary of built in types.
-  //
-  // FIXME: This should be initialized in the constructor.
   const llvm::StringMap<clang::QualType> BuiltinTypes;
+
+
+  /// IsUnaryOperator
+  /// Checks to see if a given unary operator is a know unary operator.
+  bool IsUnaryOperator(llvm::StringRef OpName) const;
   
+  /// GetUnaryOperatorKind
+  /// @returns false if the operator was found and true if it wasn't, indicating
+  /// that an error message should be displayed.
+  bool GetUnaryOperatorKind(llvm::StringRef OpName,
+                            clang::UnaryOperatorKind &Kind) const;
+
+  // Dictionay of unary operators, this shouldn't have a static constructor
+  // according to the LLVM documentation so it's stored here instead.
+  const llvm::StringMap<clang::UnaryOperatorKind> UnaryOpNames;
 };
 
 } // namespace gold

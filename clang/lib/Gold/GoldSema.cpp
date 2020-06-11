@@ -60,7 +60,7 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
     {"uint128", Context.CxxAST.getIntTypeForBitwidth(128, false)},
 
     // Floating point numbers
-    {"float16", Context.CxxAST.getRealTypeForBitwidth(16)},
+    {"float16", Context.CxxAST.HalfTy},
     {"float32", Context.CxxAST.getRealTypeForBitwidth(32)},
     {"float64", Context.CxxAST.getRealTypeForBitwidth(64)},
     {"float128", Context.CxxAST.getRealTypeForBitwidth(128)},
@@ -70,10 +70,22 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
   };
 }
 
+static llvm::StringMap<clang::UnaryOperatorKind> createUnaryOpMap() {
+  return {
+    // {"operator'&'", clang::AddrOf}, // FIXME: this needs to be designed
+    {"operator'^'", clang::UO_Deref},
+    {"operator'+'", clang::UO_Plus},
+    {"operator'-'", clang::UO_Minus},
+    // {"operator'~'", clang::UO_Not}, // FIXME: this needs to be designed
+    {"operator'!'", clang::UO_LNot},
+  };
+}
+
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : CxxSema(CxxSema), CurrentDecl(), Context(Context),
     Diags(Context.CxxAST.getSourceManager().getDiagnostics()),
-    BuiltinTypes(createBuiltinTypeList(Context))
+    BuiltinTypes(createBuiltinTypeList(Context)),
+    UnaryOpNames(createUnaryOpMap())
 {
   CharTy = Context.CxxAST.CharTy;
   Char8Ty = Context.CxxAST.getIntTypeForBitwidth(8, true);
@@ -94,7 +106,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   UInt64Ty = Context.CxxAST.getIntTypeForBitwidth(64, false);
   UInt128Ty = Context.CxxAST.getIntTypeForBitwidth(128, false);
 
-  Float16Ty = Context.CxxAST.getRealTypeForBitwidth(16);
+  Float16Ty = Context.CxxAST.HalfTy;
   Float32Ty = Context.CxxAST.getRealTypeForBitwidth(32);
   Float64Ty = Context.CxxAST.getRealTypeForBitwidth(64);
   Float128Ty = Context.CxxAST.getRealTypeForBitwidth(128);
@@ -699,6 +711,20 @@ unsigned Sema::computeTemplateDepth() const {
   return Count;
 }
 
+bool Sema::IsUnaryOperator(llvm::StringRef OpName) const {
+  auto It = UnaryOpNames.find(OpName);
+  return It != UnaryOpNames.end();
+}
+
+bool Sema::GetUnaryOperatorKind(llvm::StringRef OpName,
+                                clang::UnaryOperatorKind &Kind) const{
+  auto It = UnaryOpNames.find(OpName);
+  if (It == UnaryOpNames.end())
+    return true;
+
+  Kind = It->second;
+  return false;
+}
 
 } // namespace gold
 

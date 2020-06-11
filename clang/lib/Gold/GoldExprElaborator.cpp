@@ -1191,11 +1191,21 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   }
 
   llvm::StringRef Spelling = Callee->getSpelling();
+  if (Spelling.startswith("operator'")) {
+    if (S->getNumArguments() == 1) {
+      clang::UnaryOperatorKind UnaryOpKind;
+      if (!SemaRef.GetUnaryOperatorKind(Spelling, UnaryOpKind)) {
+        return elaborateUnaryOp(S, UnaryOpKind);
+      }
+    }
 
-  // Check if this is a binary operator.
-  auto BinOpMapIter = BinaryOperators.find(Spelling);
-  if (BinOpMapIter != BinaryOperators.end()) {
-    return elaborateBinOp(S, BinOpMapIter->second);
+    if (S->getNumArguments() == 2) {
+      // Check if this is a binary operator.
+      auto BinOpMapIter = BinaryOperators.find(Spelling);
+      if (BinOpMapIter != BinaryOperators.end()) {
+        return elaborateBinOp(S, BinOpMapIter->second);
+      }
+    }
   }
 
   // Elaborating callee name expression.
@@ -1410,6 +1420,25 @@ Expression ExprElaborator::elaborateNestedLookUpAccess(Expression Previous,
   llvm_unreachable("Expression type not an expression, type, or namespace");
 }
 
+Expression ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
+                                            clang::UnaryOperatorKind Op) {
+  const Syntax *Operand = S->getArgument(0);
+  Expression OperandResult = elaborateExpr(Operand);
+  if (OperandResult.is<clang::TypeSourceInfo *>() || OperandResult.isNull()
+     || OperandResult.is<clang::NamespaceDecl *>()) {
+    SemaRef.Diags.Report(Operand->getLoc(),
+      clang::diag::err_expected_expression);
+    return nullptr;
+  }
+  clang::ExprResult UnaryOpRes = SemaRef.getCxxSema().BuildUnaryOp(
+                                                              /*scope*/nullptr,
+                                                              S->getCalleeLoc(),
+                                                              Op,
+                                             OperandResult.get<clang::Expr*>());
+
+  ExprMarker(Context.CxxAST, SemaRef).Visit(OperandResult.get<clang::Expr *>());
+  return UnaryOpRes.get();
+}
 
 Expression ExprElaborator::elaborateBinOp(const CallSyntax *S,
                                           clang::BinaryOperatorKind Op) {
@@ -1418,13 +1447,15 @@ Expression ExprElaborator::elaborateBinOp(const CallSyntax *S,
 
   Expression LHS = elaborateExpr(LHSSyntax);
   if (LHS.is<clang::TypeSourceInfo *>() || LHS.isNull()) {
-    SemaRef.Diags.Report(LHSSyntax->getLoc(), clang::diag::err_expected_expression);
+    SemaRef.Diags.Report(LHSSyntax->getLoc(),
+        clang::diag::err_expected_expression);
     return nullptr;
   }
 
   Expression RHS = elaborateExpr(RHSSyntax);
   if (RHS.is<clang::TypeSourceInfo *>() || RHS.isNull()) {
-    SemaRef.Diags.Report(RHSSyntax->getLoc(), clang::diag::err_expected_expression);
+    SemaRef.Diags.Report(RHSSyntax->getLoc(),
+        clang::diag::err_expected_expression);
     return nullptr;
   }
 

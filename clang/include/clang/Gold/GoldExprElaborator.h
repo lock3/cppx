@@ -85,6 +85,9 @@ public:
                           const CallSyntax *Op, const Syntax *RHS);
   Expression elaborateGlobalNNS(const CallSyntax *Op, const Syntax *RHS);
 
+
+  // Expression elaborateOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
+  Expression elaborateUnaryOp(const CallSyntax *S, clang::UnaryOperatorKind Op);
   Expression elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
 
   Expression elaborateBlockCondition(const ArraySyntax *Conditions);

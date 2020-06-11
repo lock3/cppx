@@ -52,7 +52,7 @@ GOLD_BUILTIN_TYPE_TEST("char8", char8, "signed char")
 GOLD_BUILTIN_TYPE_TEST("char16", char16, "short")
 GOLD_BUILTIN_TYPE_TEST("char32", char32, "int")
 
-// GOLD_BUILTIN_TYPE_TEST("float16", float16, "float16_t")
+GOLD_BUILTIN_TYPE_TEST("float16", float16, "__fp16")
 GOLD_BUILTIN_TYPE_TEST("float32", float32, "float")
 GOLD_BUILTIN_TYPE_TEST("float64", float64, "double")
 GOLD_BUILTIN_TYPE_TEST("float128", float128, "__float128")
