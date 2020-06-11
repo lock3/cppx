@@ -191,6 +191,162 @@ createExponentLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
   return clang::FloatingLiteral::Create(CxxAST, Val, isExact, CxxAST.DoubleTy, Loc);
 }
 
+/// This was copied from clang/lib/lex/LiteralSupport.cpp:91, and modified.
+static unsigned processCharEscape(Sema &SemaRef, clang::SourceLocation Loc,
+    const char *&ThisTokBuf, const char *ThisTokEnd,
+    bool &HadError, unsigned CharWidth) {
+
+  // Skip the '\' char.
+  ++ThisTokBuf;
+
+  // We know that this character can't be off the end of the buffer, because
+  // that would have been \", which would not have been the end of string.
+  unsigned ResultChar = *ThisTokBuf++;
+
+  switch (ResultChar) {
+  // These map to themselves.
+  case '\\': case '\'': case '"': case '?': break;
+
+    // These have fixed mappings.
+  case 'a':
+    ResultChar = 7;
+    break;
+  case 'b':
+    ResultChar = 8;
+    break;
+  case 'e':
+    SemaRef.Diags.Report(Loc, clang::diag::ext_nonstandard_escape)
+        << "e";
+    ResultChar = 27;
+    break;
+  case 'E':
+    SemaRef.Diags.Report(Loc, clang::diag::ext_nonstandard_escape)
+        << "E";
+    ResultChar = 27;
+    break;
+  case 'f':
+    ResultChar = 12;
+    break;
+  case 'n':
+    ResultChar = 10;
+    break;
+  case 'r':
+    ResultChar = 13;
+    break;
+  case 't':
+    ResultChar = 9;
+    break;
+  case 'v':
+    ResultChar = 11;
+    break;
+  case 'x': { // Hex escape.
+    ResultChar = 0;
+    if (ThisTokBuf == ThisTokEnd || !clang::isHexDigit(*ThisTokBuf)) {
+      SemaRef.Diags.Report(Loc, clang::diag::err_hex_escape_no_digits)
+          << "x";
+      HadError = true;
+      break;
+    }
+
+    // Hex escapes are a maximal series of hex digits.
+    bool Overflow = false;
+    for (; ThisTokBuf != ThisTokEnd; ++ThisTokBuf) {
+      int CharVal = llvm::hexDigitValue(ThisTokBuf[0]);
+      if (CharVal == -1) break;
+      // About to shift out a digit?
+      if (ResultChar & 0xF0000000)
+        Overflow = true;
+      ResultChar <<= 4;
+      ResultChar |= CharVal;
+    }
+
+    // See if any bits will be truncated when evaluated as a character.
+    if (CharWidth != 32 && (ResultChar >> CharWidth) != 0) {
+      Overflow = true;
+      ResultChar &= ~0U >> (32-CharWidth);
+    }
+
+    // Check for overflow.
+    if (Overflow)   // Too many digits to fit in
+      SemaRef.Diags.Report(Loc, clang::diag::err_escape_too_large)
+          << 0;
+    break;
+  }
+  case '0': case '1': case '2': case '3':
+  case '4': case '5': case '6': case '7': {
+    // Octal escapes.
+    --ThisTokBuf;
+    ResultChar = 0;
+
+    // Octal escapes are a series of octal digits with maximum length 3.
+    // "\0123" is a two digit sequence equal to "\012" "3".
+    unsigned NumDigits = 0;
+    do {
+      ResultChar <<= 3;
+      ResultChar |= *ThisTokBuf++ - '0';
+      ++NumDigits;
+    } while (ThisTokBuf != ThisTokEnd && NumDigits < 3 &&
+             ThisTokBuf[0] >= '0' && ThisTokBuf[0] <= '7');
+
+    // Check for overflow.  Reject '\777', but not L'\777'.
+    if (CharWidth != 32 && (ResultChar >> CharWidth) != 0) {
+      SemaRef.Diags.Report(Loc, clang::diag::err_escape_too_large)
+          << 1;
+      ResultChar &= ~0U >> (32-CharWidth);
+    }
+    break;
+  }
+
+    // Otherwise, these are not valid escapes.
+  case '(': case '{': case '[': case '%':
+    // GCC accepts these as extensions.  We warn about them as such though.
+    // TODO: We need to determine if we need to suppor this or not.
+    SemaRef.Diags.Report(Loc, clang::diag::ext_nonstandard_escape)
+        << std::string(1, ResultChar);
+    break;
+  default:
+
+    if (clang::isPrintable(ResultChar))
+      SemaRef.Diags.Report(Loc, clang::diag::ext_unknown_escape)
+          << std::string(1, ResultChar);
+    else
+      SemaRef.Diags.Report(Loc, clang::diag::ext_unknown_escape)
+          <<  "x" + llvm::utohexstr(ResultChar);
+    break;
+  }
+
+  return ResultChar;
+}
+
+/// readCharacter attempts to read the next character in a literal value
+/// if there's an error true is returned, and otherwise the result is false.
+/// 
+/// The Iter will be advanced to the position of the next character in the
+/// string.
+///
+/// This function will indicate an error when Iter == End. It's important to
+/// set test that value before the next call to this function.
+static bool readCharacter(Sema &SemaRef, clang::SourceLocation Loc,
+                          const char *&Iter, const char *End, unsigned &Value,
+                          bool &Escape) {
+  assert (Iter <= End && "Invalid character");
+
+  // Process an escape sequence if we encounter one, otherwise do a simple
+  // character literal read.
+  if (*Iter == '\\') {
+    Escape = true;
+    bool DidError = false;
+    Value = processCharEscape(SemaRef, Loc, Iter, End, DidError, 8u);
+    return DidError;
+  } else {
+    Escape = false;
+    Value = *Iter;
+    ++Iter;
+  }
+
+  return false;
+}
+
 static clang::CharacterLiteral *
 createCharLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
                   Token T, clang::SourceLocation Loc) {
@@ -199,35 +355,33 @@ createCharLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
 
   Spelling = Spelling.substr(1, Spelling.size());
   Spelling = Spelling.substr(0, Spelling.find_last_of('\''));
+  if (Spelling.empty()) {
+    SemaRef.Diags.Report(Loc, clang::diag::ext_empty_character);
+    return nullptr;
+  }
 
-  const static llvm::StringMap<char> Escapes = {
-    {"\\n", '\n'},
-    {"\\t", '\t'},
-    {"\\r", '\r'},
-    {"\\'", '\''},
-    {"\\\"", '\"'},
-    {"\\?", '\?'},
-    {"\\a", '\a'},
-    {"\\b", '\b'},
-    {"\\f", '\f'},
-    {"\\v", '\v'},
-    {"\\\\", '\\'},
-    {"\\0", '\0'},
-  };
-
-  auto It = Escapes.find(Spelling);
-  char Character = (It == Escapes.end()) ? Spelling.c_str()[0] : It->second;
+  llvm::SmallString<16> CharBuffer;
+  CharBuffer.append(Spelling.begin(), Spelling.end());
+  unsigned Character = 0;
+  bool EscapeSeq;
+  const char *CharBegin = CharBuffer.data();
+  const char *CharEnd = CharBuffer.data() + CharBuffer.size();
+  if (readCharacter(SemaRef, Loc, CharBegin, CharEnd, Character, EscapeSeq)) {
+    SemaRef.Diags.Report(Loc, clang::diag::ext_unknown_escape)
+      << CharBuffer.data();
+    return nullptr;
+  }
 
   // A multi-character character constant is actually valid, so we'll just
   // warn and move on.
-  if (It == Escapes.end() && Spelling.size() > 1) {
+  if (!EscapeSeq && Spelling.size() > 1) {
     unsigned DiagID =
       SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Warning,
                                     "multi-character character constant");
     SemaRef.Diags.Report(Loc, DiagID);
   }
 
-  return new (CxxAST) clang::CharacterLiteral((unsigned)Character,
+  return new (CxxAST) clang::CharacterLiteral(Character,
                                               clang::CharacterLiteral::Ascii,
                                               CxxAST.CharTy, Loc);
 }
@@ -718,226 +872,6 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
 
   // TODO: FIXME: Create error reporting here for lookup failure.
   return nullptr;
-}
-
-/// This was copied from clang/lib/lex/LiteralSupport.cpp:91, and modified.
-static unsigned processCharEscape(Sema &SemaRef, const AtomSyntax *S,
-    const char *&ThisTokBuf, const char *ThisTokEnd,
-    bool &HadError, unsigned CharWidth) {
-
-  // Skip the '\' char.
-  ++ThisTokBuf;
-  
-  // We know that this character can't be off the end of the buffer, because
-  // that would have been \", which would not have been the end of string.
-  unsigned ResultChar = *ThisTokBuf++;
-
-  switch (ResultChar) {
-  // These map to themselves.
-  case '\\': case '\'': case '"': case '?': break;
-
-    // These have fixed mappings.
-  case 'a':
-    // TODO: K&R: the meaning of '\\a' is different in traditional C
-    ResultChar = 7;
-    break;
-  case 'b':
-    ResultChar = 8;
-    break;
-  case 'e':
-    SemaRef.Diags.Report(S->getLoc(), clang::diag::ext_nonstandard_escape)
-        << "e";
-    ResultChar = 27;
-    break;
-  case 'E':
-    SemaRef.Diags.Report(S->getLoc(), clang::diag::ext_nonstandard_escape)
-        << "E";
-    ResultChar = 27;
-    break;
-  case 'f':
-    ResultChar = 12;
-    break;
-  case 'n':
-    ResultChar = 10;
-    break;
-  case 'r':
-    ResultChar = 13;
-    break;
-  case 't':
-    ResultChar = 9;
-    break;
-  case 'v':
-    ResultChar = 11;
-    break;
-  case 'x': { // Hex escape.
-    ResultChar = 0;
-    if (ThisTokBuf == ThisTokEnd || !clang::isHexDigit(*ThisTokBuf)) {
-      SemaRef.Diags.Report(S->getLoc(), clang::diag::err_hex_escape_no_digits)
-          << "x";
-      HadError = true;
-      break;
-    }
-
-    // Hex escapes are a maximal series of hex digits.
-    bool Overflow = false;
-    for (; ThisTokBuf != ThisTokEnd; ++ThisTokBuf) {
-      int CharVal = llvm::hexDigitValue(ThisTokBuf[0]);
-      if (CharVal == -1) break;
-      // About to shift out a digit?
-      if (ResultChar & 0xF0000000)
-        Overflow = true;
-      ResultChar <<= 4;
-      ResultChar |= CharVal;
-    }
-
-    // See if any bits will be truncated when evaluated as a character.
-    if (CharWidth != 32 && (ResultChar >> CharWidth) != 0) {
-      Overflow = true;
-      ResultChar &= ~0U >> (32-CharWidth);
-    }
-
-    // Check for overflow.
-    if (Overflow)   // Too many digits to fit in
-      SemaRef.Diags.Report(S->getLoc(), clang::diag::err_escape_too_large)
-          << 0;
-    break;
-  }
-  case '0': case '1': case '2': case '3':
-  case '4': case '5': case '6': case '7': {
-    // Octal escapes.
-    --ThisTokBuf;
-    ResultChar = 0;
-
-    // Octal escapes are a series of octal digits with maximum length 3.
-    // "\0123" is a two digit sequence equal to "\012" "3".
-    unsigned NumDigits = 0;
-    do {
-      ResultChar <<= 3;
-      ResultChar |= *ThisTokBuf++ - '0';
-      ++NumDigits;
-    } while (ThisTokBuf != ThisTokEnd && NumDigits < 3 &&
-             ThisTokBuf[0] >= '0' && ThisTokBuf[0] <= '7');
-
-    // Check for overflow.  Reject '\777', but not L'\777'.
-    if (CharWidth != 32 && (ResultChar >> CharWidth) != 0) {
-      SemaRef.Diags.Report(S->getLoc(), clang::diag::err_escape_too_large)
-          << 1;
-      ResultChar &= ~0U >> (32-CharWidth);
-    }
-    break;
-  }
-
-    // Otherwise, these are not valid escapes.
-  case '(': case '{': case '[': case '%':
-    // GCC accepts these as extensions.  We warn about them as such though.
-    // TODO: We need to determine if we need to suppor this or not.
-    SemaRef.Diags.Report(S->getLoc(), clang::diag::ext_nonstandard_escape)
-        << std::string(1, ResultChar);
-    break;
-  default:
-
-    if (clang::isPrintable(ResultChar))
-      SemaRef.Diags.Report(S->getLoc(), clang::diag::ext_unknown_escape)
-          << std::string(1, ResultChar);
-    else
-      SemaRef.Diags.Report(S->getLoc(), clang::diag::ext_unknown_escape)
-          <<  "x" + llvm::utohexstr(ResultChar);
-    break;
-  }
-
-  return ResultChar;
-}
-
-/// readCharacter attempts to read the next character in a literal value
-/// if there's an error true is returned, and otherwise the result is false.
-/// 
-/// The Iter will be advanced to the position of the next character in the
-/// string.
-///
-/// This function will indicate an error when Iter == End. It's important to
-/// set test that value before the next call to this function.
-static bool readCharacter(Sema &SemaRef, const AtomSyntax *S,
-    const char *&Iter, const char *End, unsigned &Value) {
-  if (Iter == End) {
-    llvm::outs() << "Start equals end?!\n";
-    return true;
-  }
-
-  if (*Iter == '\\') {
-    bool DidError = false;
-    Value = processCharEscape(SemaRef, S, Iter, End, DidError, 8u);
-    return DidError;
-  } else {
-    // Simple read character.
-    Value = *Iter;
-    ++Iter;
-  }
-  return false;
-}
-
-static clang::CharacterLiteral *createCharLiteral(SyntaxContext &Context,
-    Sema &SemaRef, const AtomSyntax *S, clang::QualType ExplicitType) {
-  llvm::StringRef Value = S->getSpelling();
-  if (Value.size() <= 2) {
-    SemaRef.Diags.Report(S->getLoc(), clang::diag::ext_empty_character);
-    return nullptr;
-  }
-  llvm::SmallString<16> CharBuffer;
-  auto nonQuoteIter = std::find_if(Value.begin(), Value.end(),
-      [](char c) { return c != '\''; });
-  auto endOfCharLiteral = Value.end() - 1;
-
-  // Taking value from character and appending it to buffer, this is to help
-  // with special characters and other things.
-  CharBuffer.append(nonQuoteIter, endOfCharLiteral);
-  if (CharBuffer.size() == 0) {
-    SemaRef.Diags.Report(S->getLoc(), clang::diag::ext_empty_character);
-    return nullptr;
-  }
-
-  // TODO: We need to determine the correct character type here.
-  // Currently we don't have syntax for a multibyte character implemented.
-  const char *CharIter = nonQuoteIter;
-  const char *CharIterEnd = CharBuffer.data() + CharBuffer.size();
-  unsigned NumericValue = 0;
-  if (readCharacter(SemaRef, S, CharIter, CharIterEnd, NumericValue)) {
-    llvm::outs() << "Didn't receive a valid hex value..\n";
-    return nullptr;
-  }
-  // StringRef ThisTok = PP.getSpelling(Tok, CharBuffer, &Invalid);
-  // if (Invalid)
-  //   return ExprError();
-  //   CharLiteralParser Literal(ThisTok.begin(), ThisTok.end(), Tok.getLocation(),
-  //                            PP, Tok.getKind());
-  // if (Literal.hadError())
-  //   return ExprError();
- 
-  // QualType Ty;
-  // if (Literal.isWide())
-  //   Ty = Context.WideCharTy; // L'x' -> wchar_t in C and C++.
-  // else if (Literal.isUTF8() && getLangOpts().Char8)
-  //   Ty = Context.Char8Ty; // u8'x' -> char8_t when it exists.
-  // else if (Literal.isUTF16())
-  //   Ty = Context.Char16Ty; // u'x' -> char16_t in C11 and C++11.
-  // else if (Literal.isUTF32())
-  //   Ty = Context.Char32Ty; // U'x' -> char32_t in C11 and C++11.
-  // else if (!getLangOpts().CPlusPlus || Literal.isMultiChar())
-  //   Ty = Context.IntTy;   // 'x' -> int in C, 'wxyz' -> int in C++.
-  // else
-  ExplicitType = Context.CxxAST.CharTy;
- 
-  clang::CharacterLiteral::CharacterKind Kind = clang::CharacterLiteral::Ascii;
-  // if (Literal.isWide())
-  //   Kind = CharacterLiteral::Wide;
-  // else if (Literal.isUTF16())
-  //   Kind = CharacterLiteral::UTF16;
-  // else if (Literal.isUTF32())
-  //   Kind = CharacterLiteral::UTF32;
-  // else if (Literal.isUTF8())
-  //   Kind = CharacterLiteral::UTF8;
- 
-  return new (Context.CxxAST) clang::CharacterLiteral(NumericValue, Kind,
-      ExplicitType, S->getLoc());
 }
 
 Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
