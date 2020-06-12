@@ -623,6 +623,10 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   if (phaseOf(D) > Phase::Identification)
     return D->Cxx;
 
+  if (phaseOf(D) != Phase::Identification)
+    // Adding this here skips some errors.
+    return D->Cxx;
+
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
@@ -1478,21 +1482,21 @@ void Elaborator::elaborateFieldInit(Declaration *D) {
 }
 
 // Get the clang::QualType described by an operator':' call.
-clang::QualType Elaborator::getOperatorColonType(const CallSyntax *S) const {
-  // Get the argument list of an operator':' call. This should have
-  // two arguments, the entity (argument 1) and its type (argument 2).
+// clang::QualType Elaborator::getOperatorColonType(const CallSyntax *S) const {
+//   // Get the argument list of an operator':' call. This should have
+//   // two arguments, the entity (argument 1) and its type (argument 2).
 
-  // Right now this has to be an explicitly named type.
-  // if (const AtomSyntax *Typename = dyn_cast<AtomSyntax>(S->getArgument(1))) {
-  //   auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
-  //   if (BuiltinMapIter == BuiltinTypes.end())
-  //     assert(false && "Only builtin types are supported right now.");
+//   // Right now this has to be an explicitly named type.
+//   // if (const AtomSyntax *Typename = dyn_cast<AtomSyntax>(S->getArgument(1))) {
+//   //   auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
+//   //   if (BuiltinMapIter == BuiltinTypes.end())
+//   //     assert(false && "Only builtin types are supported right now.");
 
-  //   return BuiltinMapIter->second;
-  // }
+//   //   return BuiltinMapIter->second;
+//   // }
 
-  assert(false && "Working on fixing this.");
-}
+//   assert(false && "Working on fixing this.");
+// }
 
 static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S);
 
@@ -1878,6 +1882,7 @@ bool Elaborator::delayElaborateDeclType(const Syntax *S) {
   // Handling a check for possible late elaboration on each declaration.
   if (phaseOf(D) > Phase::Identification)
     return false;
+
 
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,

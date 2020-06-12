@@ -98,7 +98,7 @@ public:
   Declaration *identifyDecl(const Syntax *S);
 
   // Get the clang::QualType described by an operator':' call.
-  clang::QualType getOperatorColonType(const CallSyntax *S) const;
+  // clang::TypeSourceInfo *getOperatorColonType(const CallSyntax *S) const;
 
   // Semantic actions.
   void startFile(const Syntax *S);

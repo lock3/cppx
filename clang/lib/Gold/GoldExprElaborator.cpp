@@ -975,34 +975,6 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
   return nullptr;
 }
 
-// Mapping of Gold's fused operator strings to clang Opcodes.
-static const llvm::StringMap<clang::BinaryOperatorKind> BinaryOperators = {
-  {"operator'+'" , clang::BO_Add},
-  {"operator'-'" , clang::BO_Sub},
-  {"operator'*'" , clang::BO_Mul},
-  {"operator'/'" , clang::BO_Div},
-  {"operator'%'" , clang::BO_Rem},
-  {"operator'&'" , clang::BO_And},
-  {"operator'|'" , clang::BO_Or},
-  {"operator'^'" , clang::BO_Xor},
-  {"operator'&&'" , clang::BO_LAnd},
-  {"operator'||'" , clang::BO_LOr},
-  {"operator'=='" , clang::BO_EQ},
-  {"operator'<>'", clang::BO_NE},
-  {"operator'<'", clang::BO_LT},
-  {"operator'>'", clang::BO_GT},
-  {"operator'<='", clang::BO_LE},
-  {"operator'>='", clang::BO_GE},
-  {"operator'+='" , clang::BO_AddAssign},
-  {"operator'-='" , clang::BO_SubAssign},
-  {"operator'*='" , clang::BO_MulAssign},
-  {"operator'/='" , clang::BO_DivAssign},
-  {"operator'%='" , clang::BO_RemAssign},
-  {"operator'&='" , clang::BO_AndAssign},
-  {"operator'|='" , clang::BO_OrAssign},
-  {"operator'^='" , clang::BO_XorAssign}
-};
-
 static bool buildFunctionCallAruments(Sema &SemaRef, SyntaxContext &Context,
     const ListSyntax *ArgList, 
     llvm::SmallVector<clang::Expr *, 8> &Args) {
@@ -1063,22 +1035,26 @@ static Expression handleExpressionResultCall(Sema &SemaRef,
 
 static Expression handleColonExprElaboration(ExprElaborator &ExprElab,
     Sema& SemaRef, const CallSyntax *S) {
-  Elaborator Elab(SemaRef.getContext(), SemaRef);
+  // FIXME: I don't fully understand how or why this was created or called
+  // It currently doesn't seem to actually do anything usful with the
+  // exception of triggering an assertion.
+  return nullptr;
+  // Elaborator Elab(SemaRef.getContext(), SemaRef);
 
   // If the LHS of the operator':' call is just a name, we can try to
   // reference or create it.
-  if (isa<AtomSyntax>(S->getArgument(0))) {
+  // if (isa<AtomSyntax>(S->getArgument(0))) {
     // FIXME: replace this with a normal type elaboration
-    clang::QualType T = Elab.getOperatorColonType(S);
-    return ExprElab.elaborateAtom(cast<AtomSyntax>(S->getArgument(0)), T);
-  }
+    // clang::QualType T = Elab.getOperatorColonType(S);
+    // return ExprElab.elaborateAtom(cast<AtomSyntax>(S->getArgument(0)), T);
+  // }
 
   // Otherwise, we need to continue elaborating the LHS until it is an atom.
-  ExprElab.elaborateExpr(S->getArgument(0));
+  // ExprElab.elaborateExpr(S->getArgument(0));
 
   // FIXME: ? I don't understand what's going on here. Why don't we return
   // anything
-  return nullptr;
+  // return nullptr;
 }
 Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   // Determining the type of call associated with the given syntax.
@@ -1135,9 +1111,9 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
 
     if (S->getNumArguments() == 2) {
       // Check if this is a binary operator.
-      auto BinOpMapIter = BinaryOperators.find(Spelling);
-      if (BinOpMapIter != BinaryOperators.end()) {
-        return elaborateBinOp(S, BinOpMapIter->second);
+      clang::BinaryOperatorKind BinaryOpKind;
+      if (!SemaRef.GetBinaryOperatorKind(Spelling, BinaryOpKind)) {
+        return elaborateBinOp(S, BinaryOpKind);
       }
     }
   }
@@ -1756,8 +1732,9 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
     }
     if (R.empty()) {
       auto BuiltinMapIter = SemaRef.BuiltinTypes.find(Atom->getSpelling());
-      if (BuiltinMapIter == SemaRef.BuiltinTypes.end())
+      if (BuiltinMapIter == SemaRef.BuiltinTypes.end()) {
         return nullptr;
+      }
 
       return BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second, Loc);
     }

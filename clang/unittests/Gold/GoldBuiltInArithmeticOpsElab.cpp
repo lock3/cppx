@@ -163,7 +163,8 @@ TEST(BuiltinArithmeticOp, BuiltinType_uint64) {
 }
 
 TEST(BuiltinArithmeticOp, BuiltinType_uint128) {
-  doIntegerBinaryTest("uint128", "unsigned __int128", "unsigned __int128", "5", "6");
+  doIntegerBinaryTest("uint128", "unsigned __int128",
+                      "unsigned __int128", "5", "6");
 }
 
 // Character types

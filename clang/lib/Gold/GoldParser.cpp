@@ -1402,7 +1402,7 @@ void Parser::startPotentialAngleBracket(const Token &OpToken) {
 // After a '>' or '>=', we're no longer potentially in a construct that's
 // intended to be treated as an attribute.
 void Parser::finishPotentialAngleBracket(const Token &OpToken) {
-  assert (OpToken.hasKind(tok::Greater) || OpToken.hasKind(tok::GreaterEqual) &&
+  assert ((OpToken.hasKind(tok::Greater) || OpToken.hasKind(tok::GreaterEqual)) &&
           "invalid angle bracket close.");
   AngleBracketTracker::Loc CloseLoc{OpToken.getLocation(),
                                     {Angles.EnclosureCounts[0],

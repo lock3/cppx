@@ -79,6 +79,38 @@ static llvm::StringMap<clang::UnaryOperatorKind> createUnaryOpMap() {
     {"operator'-'", clang::UO_Minus},
     // {"operator'~'", clang::UO_Not}, // FIXME: this needs to be designed
     {"operator'!'", clang::UO_LNot},
+    {"operator'not'", clang::UO_LNot},
+  };
+}
+
+static llvm::StringMap<clang::BinaryOperatorKind> createBinaryOpMap() {
+  return {
+    {"operator'+'" , clang::BO_Add},
+    {"operator'-'" , clang::BO_Sub},
+    {"operator'*'" , clang::BO_Mul},
+    {"operator'/'" , clang::BO_Div},
+    {"operator'%'" , clang::BO_Rem},
+    {"operator'&'" , clang::BO_And},
+    {"operator'|'" , clang::BO_Or},
+    {"operator'^'" , clang::BO_Xor},
+    {"operator'&&'" , clang::BO_LAnd},
+    {"operator'and'", clang::BO_LAnd},
+    {"operator'||'" , clang::BO_LOr},
+    {"operator'or'" , clang::BO_LOr},
+    {"operator'=='" , clang::BO_EQ},
+    {"operator'<>'", clang::BO_NE},
+    {"operator'<'", clang::BO_LT},
+    {"operator'>'", clang::BO_GT},
+    {"operator'<='", clang::BO_LE},
+    {"operator'>='", clang::BO_GE},
+    {"operator'+='" , clang::BO_AddAssign},
+    {"operator'-='" , clang::BO_SubAssign},
+    {"operator'*='" , clang::BO_MulAssign},
+    {"operator'/='" , clang::BO_DivAssign},
+    {"operator'%='" , clang::BO_RemAssign},
+    {"operator'&='" , clang::BO_AndAssign},
+    {"operator'|='" , clang::BO_OrAssign},
+    {"operator'^='" , clang::BO_XorAssign}
   };
 }
 
@@ -86,7 +118,8 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : CxxSema(CxxSema), CurrentDecl(), Context(Context),
     Diags(Context.CxxAST.getSourceManager().getDiagnostics()),
     BuiltinTypes(createBuiltinTypeList(Context)),
-    UnaryOpNames(createUnaryOpMap())
+    UnaryOpNames(createUnaryOpMap()),
+    BinaryOpNames(createBinaryOpMap())
 {
   NullTTy = Context.CxxAST.NullPtrTy;
   CharTy = Context.CxxAST.CharTy;
@@ -724,6 +757,20 @@ bool Sema::GetUnaryOperatorKind(llvm::StringRef OpName,
   if (It == UnaryOpNames.end())
     return true;
 
+  Kind = It->second;
+  return false;
+}
+
+bool Sema::IsBinaryOperator(llvm::StringRef OpName) const {
+  auto It = BinaryOpNames.find(OpName);
+  return It != BinaryOpNames.end();
+}
+
+bool Sema::GetBinaryOperatorKind(llvm::StringRef OpName,
+    clang::BinaryOperatorKind &Kind) const {
+  auto It = BinaryOpNames.find(OpName);
+  if (It == BinaryOpNames.end())
+    return true;
   Kind = It->second;
   return false;
 }

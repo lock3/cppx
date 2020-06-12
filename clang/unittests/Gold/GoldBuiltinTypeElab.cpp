@@ -34,6 +34,7 @@ TEST(BuiltinTypeElab, BuiltInType_##TEST_SUFFIX) {\
 
 GOLD_BUILTIN_TYPE_TEST("bool", bool, "_Bool")
 GOLD_BUILTIN_TYPE_TEST("null_t", null_t, "nullptr_t")
+
 GOLD_BUILTIN_TYPE_TEST("int", int, "int")
 GOLD_BUILTIN_TYPE_TEST("int8", int8, "signed char")
 GOLD_BUILTIN_TYPE_TEST("int16", int16, "short")
@@ -57,3 +58,11 @@ GOLD_BUILTIN_TYPE_TEST("float16", float16, "__fp16")
 GOLD_BUILTIN_TYPE_TEST("float32", float32, "float")
 GOLD_BUILTIN_TYPE_TEST("float64", float64, "double")
 GOLD_BUILTIN_TYPE_TEST("float128", float128, "__float128")
+
+TEST(BuiltinTypeElab, BuiltInType_InvalidTypeName) {
+  llvm::StringRef Code = R"Gold(
+i:sponge
+)Gold";
+  GoldFailureTest(Code);
+}
+

@@ -543,14 +543,26 @@ public:
   bool IsUnaryOperator(llvm::StringRef OpName) const;
   
   /// GetUnaryOperatorKind
-  /// @returns false if the operator was found and true if it wasn't, indicating
-  /// that an error message should be displayed.
+  /// @returns false if the operator was found and true if it wasn't.
   bool GetUnaryOperatorKind(llvm::StringRef OpName,
                             clang::UnaryOperatorKind &Kind) const;
 
-  // Dictionay of unary operators, this shouldn't have a static constructor
+  // Map of unary operators, this shouldn't have a static constructor
   // according to the LLVM documentation so it's stored here instead.
   const llvm::StringMap<clang::UnaryOperatorKind> UnaryOpNames;
+
+  /// Checks to see if a given name is associated with a binary operator.
+  bool IsBinaryOperator(llvm::StringRef OpName) const;
+
+  /// GetBinaryOperatorKind
+  /// Attempts to search for and return the binary operator associated with
+  /// a given operator name.
+  /// @returns false if the operator was found and true if it wasn't.
+  bool GetBinaryOperatorKind(llvm::StringRef OpName,
+      clang::BinaryOperatorKind &Kind) const;
+
+  // Map of binary operator names to their clang operator kind.
+  const llvm::StringMap<clang::BinaryOperatorKind> BinaryOpNames;
 };
 
 } // namespace gold
