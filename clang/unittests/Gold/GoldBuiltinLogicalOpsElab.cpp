@@ -1,4 +1,4 @@
-//=== GoldBuiltinLogicalOpsElab.cpp =====-----------------------------------==//
+//=== GoldLogicalOpsElab.cpp =====-----------------------------------==//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -194,58 +194,58 @@ static void doLogicalOperatorTest(const std::string &TypeName,
 }
 
 // Signed integers
-TEST(BuiltinLogicalOp, BuiltinType_int) {
+TEST(LogicalOp, BuiltinType_int) {
   doLogicalOperatorTest("int", "int", "5", "6", CK_IntegralToBoolean);
 }
-TEST(BuiltinLogicalOp, BuiltinType_int8) {
+TEST(LogicalOp, BuiltinType_int8) {
   doLogicalOperatorTest("int8", "signed char", "5", "6", CK_IntegralToBoolean);
 }
-TEST(BuiltinLogicalOp, BuiltinType_int16) {
+TEST(LogicalOp, BuiltinType_int16) {
   doLogicalOperatorTest("int16", "short", "5", "6", CK_IntegralToBoolean);
 }
-TEST(BuiltinLogicalOp, BuiltinType_int32) {
+TEST(LogicalOp, BuiltinType_int32) {
   doLogicalOperatorTest("int32", "int", "5", "6", CK_IntegralToBoolean);
 }
-TEST(BuiltinLogicalOp, BuiltinType_int64) {
+TEST(LogicalOp, BuiltinType_int64) {
   doLogicalOperatorTest("int64", "long", "5", "6", CK_IntegralToBoolean);
 }
-TEST(BuiltinLogicalOp, BuiltinType_int128) {
+TEST(LogicalOp, BuiltinType_int128) {
   doLogicalOperatorTest("int128", "__int128", "5", "6", CK_IntegralToBoolean);
 }
 
-TEST(BuiltinLogicalOp, BuiltinType_uint) {
+TEST(LogicalOp, BuiltinType_uint) {
   doLogicalOperatorTest("uint", "unsigned int", "5", "6", CK_IntegralToBoolean);
 }
-TEST(BuiltinLogicalOp, BuiltinType_uint8) {
+TEST(LogicalOp, BuiltinType_uint8) {
   doLogicalOperatorTest("uint8", "unsigned char", "5", "6", CK_IntegralToBoolean);
 }
-TEST(BuiltinLogicalOp, BuiltinType_uint16) {
+TEST(LogicalOp, BuiltinType_uint16) {
   doLogicalOperatorTest("uint16", "unsigned short", "5", "6", CK_IntegralToBoolean);
 }
-TEST(BuiltinLogicalOp, BuiltinType_uint32) {
+TEST(LogicalOp, BuiltinType_uint32) {
   doLogicalOperatorTest("uint32", "unsigned int", "5", "6", CK_IntegralToBoolean);
 }
-TEST(BuiltinLogicalOp, BuiltinType_uint64) {
+TEST(LogicalOp, BuiltinType_uint64) {
   doLogicalOperatorTest("uint64", "unsigned long", "5", "6", CK_IntegralToBoolean);
 }
-TEST(BuiltinLogicalOp, BuiltinType_uint128) {
+TEST(LogicalOp, BuiltinType_uint128) {
   doLogicalOperatorTest("uint128", "unsigned __int128", "5", "6", CK_IntegralToBoolean);
 }
 
-TEST(BuiltinLogicalOp, BuiltinType_char) {
+TEST(LogicalOp, BuiltinType_char) {
   doLogicalOperatorTest("char", "char", "'5'", "'6'", CK_IntegralToBoolean);
 }
-TEST(BuiltinLogicalOp, BuiltinType_char8) {
+TEST(LogicalOp, BuiltinType_char8) {
   doLogicalOperatorTest("char8", "signed char", "'5'", "'6'", CK_IntegralToBoolean);
 }
-TEST(BuiltinLogicalOp, BuiltinType_char16) {
+TEST(LogicalOp, BuiltinType_char16) {
   doLogicalOperatorTest("char16", "short", "'5'", "'6'", CK_IntegralToBoolean);
 }
-TEST(BuiltinLogicalOp, BuiltinType_char32) {
+TEST(LogicalOp, BuiltinType_char32) {
   doLogicalOperatorTest("char32", "int", "'5'", "'6'", CK_IntegralToBoolean);
 }
 
-TEST(BuiltinLogicalOp, BuiltinType_float16) {
+TEST(LogicalOp, BuiltinType_float16) {
   // doLogicalOperatorTest("float16", "__fp16", "5", "6",  CK_FloatingToBoolean);
   using namespace std::string_literals;
   std::string Code = R"Gold(foo():void!
@@ -353,17 +353,17 @@ TEST(BuiltinLogicalOp, BuiltinType_float16) {
   ASSERT_TRUE(matches(Code, opMatches))
     << "Failed to locate an logical operators.";
 }
-TEST(BuiltinLogicalOp, BuiltinType_float32) {
+TEST(LogicalOp, BuiltinType_float32) {
   doLogicalOperatorTest("float32", "float", "5", "6",  CK_FloatingToBoolean);
 }
-TEST(BuiltinLogicalOp, BuiltinType_float64) {
+TEST(LogicalOp, BuiltinType_float64) {
   doLogicalOperatorTest("float64", "double", "5", "6",  CK_FloatingToBoolean);
 }
-TEST(BuiltinLogicalOp, BuiltinType_float128) {
+TEST(LogicalOp, BuiltinType_float128) {
   doLogicalOperatorTest("float128", "__float128", "5", "6",  CK_FloatingToBoolean);
 }
 
-TEST(BuiltinLogicalOp, BuiltinType_bool) {
+TEST(LogicalOp, BuiltinType_bool) {
   std::string Code = "foo():void!\n"
 "  x:bool = true\n"
 "  y:bool = true\n"
