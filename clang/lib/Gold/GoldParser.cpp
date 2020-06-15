@@ -1143,10 +1143,22 @@ Syntax *Parser::parsePrimary() {
   case tok::UnicodeCharacter:
   case tok::String:
   case tok::ClassKeyword:
+  case tok::EnumKeyword:
+  case tok::UnionKeyword:
   case tok::NamespaceKeyword:
   case tok::TrueKeyword:
   case tok::FalseKeyword:
   case tok::NullKeyword:
+  case tok::NullTKeyword:
+  case tok::StaticCastKeyword:
+  case tok::DynamicCastKeyword:
+  case tok::ReinterpretCastKeyword:
+  case tok::ConstCastKeyword:
+  case tok::ConstExprKeyword:
+  case tok::AlignOfKeyword:
+  case tok::SizeOfKeyword:
+  case tok::NoExceptKeyword:
+  case tok::DeclTypeKeyword:
     return onAtom(consumeToken());
 
   case tok::LeftParen:
@@ -1178,6 +1190,10 @@ Syntax *Parser::parsePrimary() {
   case tok::ArgsKeyword:
     return onLiteral(consumeToken());
 
+  case tok::NewKeyword:
+  case tok::DeleteKeyword:
+    // FIXME: We need syntax for both new and delete operators.
+    llvm_unreachable("new/delete Syntax in undefined.");
   default:
     break;
   }
