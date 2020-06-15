@@ -21,6 +21,7 @@ using namespace clang;
 using namespace gold;
 
 static void doBitwiseOpTest(const std::string &TypeName,
+    const std::string &ExpectedType,
     const std::string &Constant1, const std::string& Constant2) {
   using namespace std::string_literals;
 
@@ -32,44 +33,57 @@ static void doBitwiseOpTest(const std::string &TypeName,
   std::string Code = "foo():void!\n"s +
 "  x:" + TypeName + " = " + Constant1 + "\n"
 "  y:" + TypeName + " = " + Constant2 + "\n"
-"  bwAnd:bool = x & y\n"
-"  bwOr:bool = x | y\n"
-"  bwXOr:bool = x ^ y\n"
-"  lShift:bool = x << y\n"
-"  rShift:bool = x >> y\n"
-"  bwNot = ~x"
+"  bwAnd:" + TypeName + " = x & y\n"
+"  bwOr:" + TypeName + " = x | y\n"
+"  bwXOr:" + TypeName + " = x ^ y\n"
+"  x &= y\n"
+"  x |= y\n"
+"  x ^= y\n"
 "";
+// "  # lShift:bool = x << y\n"
+// "  # rShift:bool = x >> y\n"
+// "  # bwNot = ~x"
   DeclarationMatcher opMatches = translationUnitDecl(
     hasDescendant(varDecl(
       hasName("bwAnd"),
-      hasType(asString("_Bool")),
       hasInitializer(findAll(binaryOperator(
         hasOperatorName("&"),
-        hasType(asString("_Bool")),
+        hasType(asString(ExpectedType)),
         hasLHS(implicitCastExpr()),
         hasRHS(implicitCastExpr())
       )))
     )),
     hasDescendant(varDecl(
       hasName("bwOr"),
-      hasType(asString("_Bool")),
       hasInitializer(findAll(binaryOperator(
         hasOperatorName("|"),
-        hasType(asString("_Bool")),
+        hasType(asString(ExpectedType)),
         hasLHS(implicitCastExpr()),
         hasRHS(implicitCastExpr())
       )))
     )),
     hasDescendant(varDecl(
       hasName("bwXOr"),
-      hasType(asString("_Bool")),
       hasInitializer(findAll(binaryOperator(
         hasOperatorName("^"),
-        hasType(asString("_Bool")),
+        hasType(asString(ExpectedType)),
         hasLHS(implicitCastExpr()),
         hasRHS(implicitCastExpr())
       )))
     )),
+    hasDescendant(binaryOperator(
+        hasOperatorName("&="),
+        isAssignmentOperator()
+    )),
+    hasDescendant(binaryOperator(
+        hasOperatorName("|="),
+        isAssignmentOperator()
+    )),
+    hasDescendant(binaryOperator(
+        hasOperatorName("^="),
+        isAssignmentOperator()
+    ))
+    // ,
     // FIXME: The left and right shift operators need to be designed.
     // hasDescendant(varDecl(
     //   hasName("lShift:bool"),
@@ -91,87 +105,71 @@ static void doBitwiseOpTest(const std::string &TypeName,
     //     hasRHS(implicitCastExpr())
     //   )))
     // )),
-    hasDescendant(varDecl(
-      hasName("bwNot"),
-      hasType(asString("_Bool")),
-      hasInitializer(findAll(unaryOperator(
-        hasOperatorName("!"),
-        hasType(asString("_Bool")),
-        hasUnaryOperand(implicitCastExpr(
-          hasImplicitDestinationType(asString("_Bool")),
-          hasCastKind(CK_FloatingToBoolean)
-        ))
-      )))
-    ))
+    // FIXME: The syntax for this hasn't been decided yet.
+    // hasDescendant(varDecl(
+    //   hasName("bwNot"),
+    //   hasType(asString("_Bool")),
+    //   hasInitializer(findAll(unaryOperator(
+    //     hasOperatorName("~"),
+    //     hasType(asString("_Bool")),
+    //     hasUnaryOperand(implicitCastExpr(
+    //       hasImplicitDestinationType(asString("_Bool")),
+    //       hasCastKind(CK_FloatingToBoolean)
+    //     ))
+    //   )))
+    // ))
   );
   ASSERT_TRUE(matches(Code, opMatches))
     << "Failed to locate an logical operators.";
 }
 
 TEST(BitWiseOp, Builtin_int) {
-  doBitwiseOpTest("int", "5", "6");
+  doBitwiseOpTest("int", "int", "5", "6");
 }
 TEST(BitWiseOp, Builtin_int8) {
-  doBitwiseOpTest("int8", "5", "6");
+  doBitwiseOpTest("int8", "int", "5", "6");
 }
 TEST(BitWiseOp, Builtin_int16) {
-  doBitwiseOpTest("int16", "5", "6");
+  doBitwiseOpTest("int16", "int", "5", "6");
 }
 TEST(BitWiseOp, Builtin_int32) {
-  doBitwiseOpTest("int32", "5", "6");
+  doBitwiseOpTest("int32", "int", "5", "6");
 }
 TEST(BitWiseOp, Builtin_int64) {
-  doBitwiseOpTest("int64", "5", "6");
+  doBitwiseOpTest("int64", "long", "5", "6");
 }
 TEST(BitWiseOp, Builtin_int128) {
-  doBitwiseOpTest("int128", "5", "6");
+  doBitwiseOpTest("int128", "__int128", "5", "6");
 }
 
 TEST(BitWiseOp, Builtin_uint) {
-  doBitwiseOpTest("uint", "5", "6");
+  doBitwiseOpTest("uint", "unsigned int", "5", "6");
 }
 TEST(BitWiseOp, Builtin_uint8) {
-  doBitwiseOpTest("uint8", "5", "6");
+  doBitwiseOpTest("uint8", "int", "5", "6");
 }
 TEST(BitWiseOp, Builtin_uint16) {
-  doBitwiseOpTest("uint16", "5", "6");
+  doBitwiseOpTest("uint16", "int", "5", "6");
 }
 TEST(BitWiseOp, Builtin_uint32) {
-  doBitwiseOpTest("uint32", "5", "6");
+  doBitwiseOpTest("uint32", "unsigned int", "5", "6");
 }
 TEST(BitWiseOp, Builtin_uint64) {
-  doBitwiseOpTest("uint64", "5", "6");
+  doBitwiseOpTest("uint64", "unsigned long", "5", "6");
 }
 TEST(BitWiseOp, Builtin_uint128) {
-  doBitwiseOpTest("uint128", "5", "6");
+  doBitwiseOpTest("uint128", "unsigned __int128", "5", "6");
 }
 
 TEST(BitWiseOp, Builtin_char) {
-  doBitwiseOpTest("char", "5", "6");
+  doBitwiseOpTest("char", "int", "5", "6");
 }
 TEST(BitWiseOp, Builtin_char8) {
-  doBitwiseOpTest("char8", "5", "6");
+  doBitwiseOpTest("char8", "int", "5", "6");
 }
 TEST(BitWiseOp, Builtin_char16) {
-  doBitwiseOpTest("char16", "5", "6");
+  doBitwiseOpTest("char16", "int", "5", "6");
 }
 TEST(BitWiseOp, Builtin_char32) {
-  doBitwiseOpTest("char32", "5", "6");
+  doBitwiseOpTest("char32", "int", "5", "6");
 }
-
-// TEST(BitWiseOp, Builtin_float16) {
-//   doBitwiseOpTest("float16", "5", "6");
-// }
-// TEST(BitWiseOp, Builtin_float32) {
-//   doBitwiseOpTest("float32", "5", "6");
-// }
-// TEST(BitWiseOp, Builtin_float64) {
-//   doBitwiseOpTest("float64", "5", "6");
-// }
-// TEST(BitWiseOp, Builtin_float128) {
-//   doBitwiseOpTest("float128", "5", "6");
-// }
-
-// TEST(BitWiseOp, Builtin_bool) {
-//   doBitwiseOpTest("bool", "true", "false");
-// }

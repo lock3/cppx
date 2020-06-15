@@ -68,6 +68,9 @@ def_puncop(PercentEqual, "%=")
 def_puncop(MinusGreater, "->")
 def_puncop(EqualGreater, "=>")
 def_puncop(DotDot, "..")
+def_puncop(CaretEqual, "^=")
+def_puncop(BarEqual, "|=")
+def_puncop(AmpersandEqual, "&=")
 
 def_puncop(Ellipsis, "...")
 
