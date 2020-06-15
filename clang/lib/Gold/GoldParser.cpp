@@ -1159,6 +1159,8 @@ Syntax *Parser::parsePrimary() {
   case tok::SizeOfKeyword:
   case tok::NoExceptKeyword:
   case tok::DeclTypeKeyword:
+  case tok::ThisKeyword:
+  case tok::TypeIdKeyword:
     return onAtom(consumeToken());
 
   case tok::LeftParen:

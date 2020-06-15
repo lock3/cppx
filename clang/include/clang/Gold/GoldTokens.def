@@ -117,6 +117,8 @@ def_keyword(Null, "null")
 def_keyword(NullT, "null_t")
 def_keyword(New, "new")
 def_keyword(Delete, "delete")
+def_keyword(This, "this")
+def_keyword(TypeId, "typeid")
 
 def_token(Identifier)
 def_token(BinaryInteger)
