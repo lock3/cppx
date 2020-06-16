@@ -65,7 +65,6 @@ TranslationUnitDecl 0x7fffda2b8f08 <<invalid sloc>> <invalid sloc>
 */
 TEST(GoldCastElab, StaticCast) {
   ASSERT_FALSE(true) << "Implement me!";
-  using namespace std::string_literals;
   std::string Code = R"Gold(foo():void!
   y:float16 = 1.0
   x:int = static_cast[int](y)

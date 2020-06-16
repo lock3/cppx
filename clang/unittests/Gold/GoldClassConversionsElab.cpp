@@ -23,8 +23,20 @@ using namespace clang;
 using namespace gold;
 
 TEST(GoldClassConversions, ImplicitConversionToBase) {
-  // FIXME: Adding this so I don't forget to implement it.
-  ASSERT_FALSE(true)
-    << "Implement me!";
+  std::string Code = R"Gold(
+Base : type = class:
+  a:int
+
+Derived : type = class(Base):
+  b:int
+
+foo(D : ^ Derived):void!
+  B : ^Base = D
+)Gold";
+  DeclarationMatcher opMatches = hasDescendant(implicitCastExpr(
+          hasImplicitDestinationType(asString("struct Base *")),
+          hasCastKind(CK_DerivedToBase)));
+  ASSERT_TRUE(matches(Code, opMatches))
+    << "Reinterpert cast failed";
 
 }
