@@ -53,7 +53,7 @@ inline void SimpleGoldParseTest(llvm::StringRef Code) {
 }
 
 /// Test that something doesn't compile and returns an error
-inline void SimpleGoldSimpleFailureTest(llvm::StringRef Code) {
+inline void GoldFailureTest(llvm::StringRef Code) {
   using namespace clang::tooling;
   using namespace clang;
   std::unique_ptr<FrontendActionFactory> Factory(

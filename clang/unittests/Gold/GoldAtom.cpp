@@ -52,7 +52,7 @@ main() : int!
   vert_tab           : char = '\v'
 )";
 
-  static const pair<StringRef, char> Escapes[] = {
+  static const pair<StringRef, unsigned int> Escapes[] = {
     {"single_quote", 0x27},
     {"double_quote", 0x22},
     {"question_mark", 0x3f},
@@ -126,11 +126,11 @@ main() : int!
   StatementMatcher
     NMatcher(hasDescendant(
                varDecl(hasName("N"), hasType(asString("char8_t")),
-                       hasDescendant(characterLiteral(equals((char)78))))));
+                       hasDescendant(characterLiteral(equals(78u))))));
   StatementMatcher
     AMatcher(hasDescendant(
                varDecl(hasName("HiraganaA"), hasType(asString("unsigned short")),
-                       hasDescendant(characterLiteral(equals(12353))))));
+                       hasDescendant(characterLiteral(equals(12353u))))));
   ASSERT_TRUE(matches(Code.str(), NMatcher));
   ASSERT_TRUE(matches(Code.str(), AMatcher));
 }
@@ -144,7 +144,7 @@ main() : int!
   StatementMatcher
     NMatcher(hasDescendant(
                varDecl(hasName("N"), hasType(asString("char8_t")),
-                       hasDescendant(characterLiteral(equals((char)78))))));
+                       hasDescendant(characterLiteral(equals(78u))))));
   ASSERT_TRUE(matches(Code.str(), NMatcher));
 }
 
