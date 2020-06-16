@@ -57,7 +57,9 @@ GOLD_BUILTIN_TYPE_TEST("char32", char32, "int")
 GOLD_BUILTIN_TYPE_TEST("float16", float16, "__fp16")
 GOLD_BUILTIN_TYPE_TEST("float32", float32, "float")
 GOLD_BUILTIN_TYPE_TEST("float64", float64, "double")
+#if 0
 GOLD_BUILTIN_TYPE_TEST("float128", float128, "__float128")
+#endif
 
 TEST(BuiltinTypeElab, BuiltInType_InvalidTypeName) {
   llvm::StringRef Code = R"Gold(

@@ -1033,30 +1033,6 @@ static Expression handleExpressionResultCall(Sema &SemaRef,
   llvm_unreachable("Invalid expression result type.");
 }
 
-static Expression handleColonExprElaboration(ExprElaborator &ExprElab,
-    Sema& SemaRef, const CallSyntax *S) {
-  // FIXME: I don't fully understand how or why this was created or called
-  // It currently doesn't seem to actually do anything usful with the
-  // exception of triggering an assertion.
-  return nullptr;
-  // Elaborator Elab(SemaRef.getContext(), SemaRef);
-
-  // If the LHS of the operator':' call is just a name, we can try to
-  // reference or create it.
-  // if (isa<AtomSyntax>(S->getArgument(0))) {
-    // FIXME: replace this with a normal type elaboration
-    // clang::QualType T = Elab.getOperatorColonType(S);
-    // return ExprElab.elaborateAtom(cast<AtomSyntax>(S->getArgument(0)), T);
-  // }
-
-  // Otherwise, we need to continue elaborating the LHS until it is an atom.
-  // ExprElab.elaborateExpr(S->getArgument(0));
-
-  // FIXME: ? I don't understand what's going on here. Why don't we return
-  // anything
-  // return nullptr;
-}
-
 static bool callIsCastOperator(const CallSyntax *S) {
   if (const ElemSyntax *Elem = dyn_cast<ElemSyntax>(S->getCallee())) {
     if (const AtomSyntax *Callee
@@ -1095,9 +1071,6 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   FusedOpKind Op = getFusedOpKind(SemaRef, Callee->getSpelling());
 
   switch (Op) {
-  case FOK_Colon:
-    return handleColonExprElaboration(*this, SemaRef, S);
-
   case FOK_MemberAccess: {
     const ListSyntax *Args = cast<ListSyntax>(S->getArguments());
 

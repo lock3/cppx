@@ -358,9 +358,12 @@ TEST(LogicalOp, BuiltinType_float32) {
 TEST(LogicalOp, BuiltinType_float64) {
   doLogicalOperatorTest("float64", "double", "5", "6",  CK_FloatingToBoolean);
 }
+
+#if 0
 TEST(LogicalOp, BuiltinType_float128) {
   doLogicalOperatorTest("float128", "__float128", "5", "6",  CK_FloatingToBoolean);
 }
+#endif
 
 TEST(LogicalOp, BuiltinType_bool) {
   std::string Code = "foo():void!\n"

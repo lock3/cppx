@@ -1482,23 +1482,6 @@ void Elaborator::elaborateFieldInit(Declaration *D) {
     D->Op->getLoc(), Init.get<clang::Expr *>());
 }
 
-// Get the clang::QualType described by an operator':' call.
-// clang::QualType Elaborator::getOperatorColonType(const CallSyntax *S) const {
-//   // Get the argument list of an operator':' call. This should have
-//   // two arguments, the entity (argument 1) and its type (argument 2).
-
-//   // Right now this has to be an explicitly named type.
-//   // if (const AtomSyntax *Typename = dyn_cast<AtomSyntax>(S->getArgument(1))) {
-//   //   auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
-//   //   if (BuiltinMapIter == BuiltinTypes.end())
-//   //     assert(false && "Only builtin types are supported right now.");
-
-//   //   return BuiltinMapIter->second;
-//   // }
-
-//   assert(false && "Working on fixing this.");
-// }
-
 static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S);
 
 static Declarator *buildIdDeclarator(const Syntax *S, Declarator *Next) {

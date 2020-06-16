@@ -157,12 +157,15 @@ TEST(ComparisonOp, Builtin_float16) {
 TEST(ComparisonOp, Builtin_float32) {
   doCmpOpTest("float32", "5", "6");
 }
+
+#if 0
 TEST(ComparisonOp, Builtin_float64) {
   doCmpOpTest("float64", "5", "6");
 }
 TEST(ComparisonOp, Builtin_float128) {
   doCmpOpTest("float128", "5", "6");
 }
+#endif
 
 TEST(ComparisonOp, Builtin_bool) {
   doCmpOpTest("bool", "true", "false");

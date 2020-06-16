@@ -324,6 +324,8 @@ TEST(ArithmeticOp, BuiltinType_float64) {
   doFloatingPointBinaryTest("float64", "double", "double", "5.", ".6");
 }
 
+#if 0
 TEST(ArithmeticOp, BuiltinType_float128) {
   doFloatingPointBinaryTest("float128", "__float128", "__float128", "5.", ".6");
 }
+#endif
