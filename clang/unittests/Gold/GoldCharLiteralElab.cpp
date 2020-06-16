@@ -92,7 +92,7 @@ TEST(CharLiteralElab, Character_Octal) {
 
 TEST(CharLiteralElab, InvalidCharacterLiteral) {
   StringRef Code = "i:char = ''";
-  SimpleGoldSimpleFailureTest(Code);
+  GoldFailureTest(Code);
 }
 
 

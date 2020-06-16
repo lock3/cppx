@@ -85,6 +85,9 @@ public:
                           const CallSyntax *Op, const Syntax *RHS);
   Expression elaborateGlobalNNS(const CallSyntax *Op, const Syntax *RHS);
 
+
+  // Expression elaborateOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
+  Expression elaborateUnaryOp(const CallSyntax *S, clang::UnaryOperatorKind Op);
   Expression elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
 
   Expression elaborateBlockCondition(const ArraySyntax *Conditions);
@@ -93,7 +96,7 @@ public:
   Expression elaborateClass(const MacroSyntax *Macro);
 
   Expression elaborateElementExpr(const ElemSyntax *Elem);
-
+  Expression elaborateCastOp(const CallSyntax *CastOp);
 
 private:
   clang::Expr *handleOperatorDotDot(const CallSyntax *S);
@@ -106,12 +109,17 @@ public:
 
   Expression elaboratePointerType(Declarator *D, TypeInfo *Ty);
   Expression elaborateConstType(Declarator *D, TypeInfo *Ty);
+  Expression elaborateRefType(Declarator *D, TypeInfo *Ty);
+  Expression elaborateRRefType(Declarator *D, TypeInfo *Ty);
   Expression elaborateArrayType(Declarator *D, TypeInfo *Ty);
   Expression elaborateFunctionType(Declarator *D, TypeInfo *Ty);
   Expression elaborateExplicitType(Declarator *D, TypeInfo *Ty);
 
 private:
   clang::TypeSourceInfo *handleOperatorConst(const CallSyntax *S);
+  clang::TypeSourceInfo *handleRefType(const CallSyntax *S);
+  clang::TypeSourceInfo *handleRRefType(const CallSyntax *S);
+  
 };
 
 void dumpExpression(ExprElaborator::Expression Expr, llvm::raw_ostream& Out);

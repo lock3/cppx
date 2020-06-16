@@ -562,8 +562,8 @@ HandleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
 }
 
 static Expression handleElementExpression(ExprElaborator &Elab,
-    Sema &SemaRef, SyntaxContext &Context, const ElemSyntax * Elem, clang::Expr *E) {
-
+    Sema &SemaRef, SyntaxContext &Context, const ElemSyntax *Elem,
+    clang::Expr *E) {
 
   // Attempting to correctly handle the result of an Id expression.
   clang::OverloadExpr *OverloadExpr = dyn_cast<clang::OverloadExpr>(E);
@@ -975,34 +975,6 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
   return nullptr;
 }
 
-// Mapping of Gold's fused operator strings to clang Opcodes.
-static const llvm::StringMap<clang::BinaryOperatorKind> BinaryOperators = {
-  {"operator'+'" , clang::BO_Add},
-  {"operator'-'" , clang::BO_Sub},
-  {"operator'*'" , clang::BO_Mul},
-  {"operator'/'" , clang::BO_Div},
-  {"operator'%'" , clang::BO_Rem},
-  {"operator'&'" , clang::BO_And},
-  {"operator'|'" , clang::BO_Or},
-  {"operator'^'" , clang::BO_Xor},
-  {"operator'&&'" , clang::BO_LAnd},
-  {"operator'||'" , clang::BO_LOr},
-  {"operator'=='" , clang::BO_EQ},
-  {"operator'<>'", clang::BO_NE},
-  {"operator'<'", clang::BO_LT},
-  {"operator'>'", clang::BO_GT},
-  {"operator'<='", clang::BO_LE},
-  {"operator'>='", clang::BO_GE},
-  {"operator'+='" , clang::BO_AddAssign},
-  {"operator'-='" , clang::BO_SubAssign},
-  {"operator'*='" , clang::BO_MulAssign},
-  {"operator'/='" , clang::BO_DivAssign},
-  {"operator'%='" , clang::BO_RemAssign},
-  {"operator'&='" , clang::BO_AndAssign},
-  {"operator'|='" , clang::BO_OrAssign},
-  {"operator'^='" , clang::BO_XorAssign}
-};
-
 static bool buildFunctionCallAruments(Sema &SemaRef, SyntaxContext &Context,
     const ListSyntax *ArgList, 
     llvm::SmallVector<clang::Expr *, 8> &Args) {
@@ -1061,26 +1033,22 @@ static Expression handleExpressionResultCall(Sema &SemaRef,
   llvm_unreachable("Invalid expression result type.");
 }
 
-static Expression handleColonExprElaboration(ExprElaborator &ExprElab,
-    Sema& SemaRef, const CallSyntax *S) {
-  Elaborator Elab(SemaRef.getContext(), SemaRef);
-
-  // If the LHS of the operator':' call is just a name, we can try to
-  // reference or create it.
-  if (isa<AtomSyntax>(S->getArgument(0))) {
-    // FIXME: replace this with a normal type elaboration
-    clang::QualType T = Elab.getOperatorColonType(S);
-    return ExprElab.elaborateAtom(cast<AtomSyntax>(S->getArgument(0)), T);
+static bool callIsCastOperator(const CallSyntax *S) {
+  if (const ElemSyntax *Elem = dyn_cast<ElemSyntax>(S->getCallee())) {
+    if (const AtomSyntax *Callee
+        = clang::dyn_cast<AtomSyntax>(Elem->getObject())) {
+      clang::StringRef Name = Callee->getSpelling();
+      return Name == "static_cast" || Name == "dynamic_cast"
+          || Name == "const_cast" || Name == "reinterpret_cast";
+    }
   }
-
-  // Otherwise, we need to continue elaborating the LHS until it is an atom.
-  ExprElab.elaborateExpr(S->getArgument(0));
-
-  // FIXME: ? I don't understand what's going on here. Why don't we return
-  // anything
-  return nullptr;
+  return false;
 }
+
 Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
+  if (callIsCastOperator(S)) {
+    return elaborateCastOp(S);
+  }
   // Determining the type of call associated with the given syntax.
   // There are multiple kinds of atoms for multiple types of calls
   // but in the event that the callee object is not an Atom, it means
@@ -1103,9 +1071,6 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   FusedOpKind Op = getFusedOpKind(SemaRef, Callee->getSpelling());
 
   switch (Op) {
-  case FOK_Colon:
-    return handleColonExprElaboration(*this, SemaRef, S);
-
   case FOK_MemberAccess: {
     const ListSyntax *Args = cast<ListSyntax>(S->getArguments());
 
@@ -1119,17 +1084,28 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
 
   case FOK_Const:
     return handleOperatorConst(S);
-
+  case FOK_Ref:
+  case FOK_RRef:
   default:
     break;
   }
 
   llvm::StringRef Spelling = Callee->getSpelling();
+  if (Spelling.startswith("operator'")) {
+    if (S->getNumArguments() == 1) {
+      clang::UnaryOperatorKind UnaryOpKind;
+      if (!SemaRef.GetUnaryOperatorKind(Spelling, UnaryOpKind)) {
+        return elaborateUnaryOp(S, UnaryOpKind);
+      }
+    }
 
-  // Check if this is a binary operator.
-  auto BinOpMapIter = BinaryOperators.find(Spelling);
-  if (BinOpMapIter != BinaryOperators.end()) {
-    return elaborateBinOp(S, BinOpMapIter->second);
+    if (S->getNumArguments() == 2) {
+      // Check if this is a binary operator.
+      clang::BinaryOperatorKind BinaryOpKind;
+      if (!SemaRef.GetBinaryOperatorKind(Spelling, BinaryOpKind)) {
+        return elaborateBinOp(S, BinaryOpKind);
+      }
+    }
   }
 
   // Elaborating callee name expression.
@@ -1142,6 +1118,82 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   }
   return handleExpressionResultCall(SemaRef, S, CalleeExpr, Args);
 }
+
+
+Expression ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
+  if (CastOp->getNumArguments() != 1) {
+    SemaRef.Diags.Report(CastOp->getLoc(),
+        clang::diag::err_invalid_cast_arg_count);
+    return nullptr;
+  }
+  // Verify that the syntax is correct here, meaning that if we don't have 
+  // a single type argument and single call argument then we are not valid.
+  const ElemSyntax *Elem = dyn_cast<ElemSyntax>(CastOp->getCallee());
+  const AtomSyntax *Callee = clang::dyn_cast<AtomSyntax>(Elem->getObject());
+  llvm::SmallVector<const Syntax *, 1> TypeArgs;
+  const Syntax *Args = Elem->getArguments();
+  const VectorNode<Syntax> *TypeArgumentList = nullptr;
+  
+  if (const ListSyntax *LS = dyn_cast<ListSyntax>(Args)) {
+    TypeArgumentList = LS;
+  } else if (const ArraySyntax *AS = dyn_cast<ArraySyntax>(Args)) {
+      TypeArgumentList = AS;
+  } else {
+    CastOp->dump();
+    llvm_unreachable("Improperly formatted AST.");
+  }
+  if (TypeArgumentList->getNumChildren() != 1) {
+    SemaRef.Diags.Report(CastOp->getLoc(),
+        clang::diag::err_invalid_cast_type_arg_count);
+    return nullptr;
+  }
+
+  clang::StringRef Name = Callee->getSpelling();
+  clang::tok::TokenKind CastKind;
+  if (Name == "static_cast") {
+    CastKind = clang::tok::TokenKind::kw_static_cast;
+  } else if (Name == "dynamic_cast") {
+    CastKind = clang::tok::TokenKind::kw_dynamic_cast;
+  } else if (Name == "reinterpret_cast") {
+    CastKind = clang::tok::TokenKind::kw_reinterpret_cast;
+  } else if (Name == "const_cast") {
+    CastKind = clang::tok::TokenKind::kw_const_cast;
+  } else {
+    llvm_unreachable("Invalid cast name.");
+  }
+
+  Expression DestinationType = elaborateExpr(Elem->getArgument(0));
+  if (DestinationType.isNull()) {
+    SemaRef.Diags.Report(Elem->getArgument(0)->getLoc(),
+                         clang::diag::err_invalid_cast_destination_type);
+    return nullptr;
+  }
+  if (!DestinationType.is<clang::TypeSourceInfo *>()) {
+    SemaRef.Diags.Report(Elem->getArgument(0)->getLoc(),
+                         clang::diag::err_invalid_cast_destination_type);
+    return nullptr;
+  }
+
+  Expression Source = elaborateExpr(CastOp->getArgument(0));
+  if (Source.isNull()) {
+    SemaRef.Diags.Report(CastOp->getArgument(0)->getLoc(),
+                         clang::diag::err_expected_expression);
+    return nullptr;
+  }
+  if (!Source.is<clang::Expr *>()) {
+    SemaRef.Diags.Report(CastOp->getArgument(0)->getLoc(),
+                         clang::diag::err_invalid_cast_source);
+    return nullptr;
+  }
+  clang::TypeSourceInfo *TInfo = DestinationType.get<clang::TypeSourceInfo*>();
+  auto CastExpr = SemaRef.getCxxSema().BuildCXXNamedCast(
+    Callee->getLoc(), CastKind, TInfo, Source.get<clang::Expr*>(),
+    CastOp->getArgument(0)->getLoc(), CastOp->getArgument(0)->getLoc()
+  );
+  return CastExpr.get();
+}
+
+
 
 Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     const CallSyntax *Op, const Syntax *RHS) {
@@ -1344,6 +1396,38 @@ Expression ExprElaborator::elaborateNestedLookUpAccess(Expression Previous,
   llvm_unreachable("Expression type not an expression, type, or namespace");
 }
 
+Expression ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
+                                            clang::UnaryOperatorKind Op) {
+  const Syntax *Operand = S->getArgument(0);
+  Expression OperandResult = elaborateExpr(Operand);
+  if (OperandResult.isNull() || OperandResult.is<clang::NamespaceDecl *>()) {
+    SemaRef.Diags.Report(Operand->getLoc(),
+      clang::diag::err_expected_expression);
+    return nullptr;
+  }
+
+  // This is used to construct a pointer type because the carrot has two
+  // meanings. Dereference and pointer declaration.
+  if (Op == clang::UO_Deref) {
+    if (OperandResult.is<clang::TypeSourceInfo *>()) {
+      clang::QualType RetType = Context.CxxAST.getPointerType(
+                        OperandResult.get<clang::TypeSourceInfo*>()->getType());
+      return BuildAnyTypeLoc(Context.CxxAST, RetType, S->getLoc());
+    } 
+  } else if (OperandResult.is<clang::TypeSourceInfo *>()) {
+    SemaRef.Diags.Report(Operand->getLoc(),
+                         clang::diag::err_expected_expression);
+    return nullptr;
+  }
+  clang::ExprResult UnaryOpRes = SemaRef.getCxxSema().BuildUnaryOp(
+                                                              /*scope*/nullptr,
+                                                              S->getCalleeLoc(),
+                                                              Op,
+                                             OperandResult.get<clang::Expr*>());
+
+  ExprMarker(Context.CxxAST, SemaRef).Visit(OperandResult.get<clang::Expr *>());
+  return UnaryOpRes.get();
+}
 
 Expression ExprElaborator::elaborateBinOp(const CallSyntax *S,
                                           clang::BinaryOperatorKind Op) {
@@ -1352,13 +1436,15 @@ Expression ExprElaborator::elaborateBinOp(const CallSyntax *S,
 
   Expression LHS = elaborateExpr(LHSSyntax);
   if (LHS.is<clang::TypeSourceInfo *>() || LHS.isNull()) {
-    SemaRef.Diags.Report(LHSSyntax->getLoc(), clang::diag::err_expected_expression);
+    SemaRef.Diags.Report(LHSSyntax->getLoc(),
+        clang::diag::err_expected_expression);
     return nullptr;
   }
 
   Expression RHS = elaborateExpr(RHSSyntax);
   if (RHS.is<clang::TypeSourceInfo *>() || RHS.isNull()) {
-    SemaRef.Diags.Report(RHSSyntax->getLoc(), clang::diag::err_expected_expression);
+    SemaRef.Diags.Report(RHSSyntax->getLoc(),
+        clang::diag::err_expected_expression);
     return nullptr;
   }
 
@@ -1544,6 +1630,24 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
       break;
     }
 
+    case DK_Ref:{
+      Expression TypeExpr = elaborateRefType(D, TInfo);
+      if (TypeExpr.isNull())
+        return nullptr;
+
+      TInfo = TypeExpr.get<TypeInfo *>();
+      break;
+    }
+
+    case DK_RRef:{
+      Expression TypeExpr = elaborateRRefType(D, TInfo);
+      if (TypeExpr.isNull())
+        return nullptr;
+
+      TInfo = TypeExpr.get<TypeInfo *>();
+      break;
+    }
+
     case DK_Array: {
       Expression TypeExpr = elaborateArrayType(D, TInfo);
       if (TypeExpr.isNull())
@@ -1570,9 +1674,9 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
       TInfo = TypeExpr.get<TypeInfo *>();
       break;
     }
+    
     case DK_TemplateType:{
-      llvm_unreachable("I'm not sure exactly how this works but I'll figure it "
-                       "out!");
+      llvm_unreachable("Template types are not directly part of declarator.");
       break;
     }
     default:
@@ -1614,6 +1718,37 @@ Expression ExprElaborator::elaborateConstType(Declarator *D, TypeInfo *Ty) {
     BuildAnyTypeLoc(CxxAST, BaseType, D->getType()->getLoc());
 
   return TInfo;
+}
+
+Expression ExprElaborator::elaborateRefType(Declarator *D, TypeInfo *Ty) {
+  Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
+  if (!BaseTypeExpr.is<clang::TypeSourceInfo *>() || BaseTypeExpr.isNull()) {
+    SemaRef.Diags.Report(D->getType()->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+  clang::QualType BaseType =
+    BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
+  
+  return BuildAnyTypeLoc(CxxAST,
+    CxxAST.getLValueReferenceType(BaseType),
+    D->getType()->getLoc());
+}
+
+Expression ExprElaborator::elaborateRRefType(Declarator *D, TypeInfo *Ty) {
+  Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
+  if (!BaseTypeExpr.is<clang::TypeSourceInfo *>() || BaseTypeExpr.isNull()) {
+    SemaRef.Diags.Report(D->getType()->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+
+  clang::QualType BaseType =
+    BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
+  
+  return BuildAnyTypeLoc(CxxAST,
+      CxxAST.getRValueReferenceType(BaseType),
+      D->getType()->getLoc());
 }
 
 Expression ExprElaborator::elaborateArrayType(Declarator *D, TypeInfo *Ty) {
@@ -1664,7 +1799,6 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
   const ListSyntax *Args = cast<ListSyntax>(D->Data.ParamInfo.Params);
 
   bool IsVariadic = D->Data.ParamInfo.VariadicParam;
-
   // Elaborate the parameter declarations in order to get their types, and save
   // the resulting scope with the declarator.
   llvm::SmallVector<clang::QualType, 4> Types;
@@ -1725,8 +1859,9 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
     }
     if (R.empty()) {
       auto BuiltinMapIter = SemaRef.BuiltinTypes.find(Atom->getSpelling());
-      if (BuiltinMapIter == SemaRef.BuiltinTypes.end())
+      if (BuiltinMapIter == SemaRef.BuiltinTypes.end()) {
         return nullptr;
+      }
 
       return BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second, Loc);
     }
@@ -1780,5 +1915,16 @@ clang::TypeSourceInfo *
 ExprElaborator::handleOperatorConst(const CallSyntax *S) {
   llvm_unreachable("should not be here");
 }
+
+clang::TypeSourceInfo *ExprElaborator::handleRefType(const CallSyntax *S) {
+  llvm_unreachable("The declarator only version of ref type isn't "
+      "implemented yet.");
+}
+
+clang::TypeSourceInfo *ExprElaborator::handleRRefType(const CallSyntax *S) {
+  llvm_unreachable("The declarator only version of rref type isn't "
+      "implemented yet.");
+}
+
 
 } // namespace gold

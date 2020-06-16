@@ -38,9 +38,14 @@ add_clang_unittest(GoldTests
   GoldAuto.cpp
   GoldBoolImplicitConversionInit.cpp
   GoldBuiltInArithmeticOpsElab.cpp
+  GoldBuiltinBitwiseOpsElab.cpp
+  GoldBuiltinComparisonOpsElab.cpp
+  GoldBuiltinLogicalOpsElab.cpp
   GoldBuiltInTypeConstructorsExec.cpp
   GoldBuiltinTypeElab.cpp
+  GoldCastElab.cpp
   GoldCharLiteralElab.cpp
+  GoldClassConversionsElab.cpp
   GoldClassMemberAccessTest.cpp
   GoldClassParsing.cpp
   GoldClassTemplateMemberAccessExec.cpp
@@ -63,10 +68,13 @@ add_clang_unittest(GoldTests
   GoldMemberExecuteTest.cpp
   GoldMemberStorageClassElab.cpp
   GoldNNS.cpp
+  GoldPointerDerefElab.cpp
   GoldQualifiedMemberAccessElab.cpp
+  GoldRefAndRValueRefTypeElab.cpp
   GoldStorageClassExec.cpp
   GoldStringLiteralElab.cpp
   GoldTypeExpressionsTest.cpp
+  GoldUserDefinedOperatorOverloadElab.cpp
   GoldVarDeclStorageClass.cpp
   GoldWhile.cpp
   )

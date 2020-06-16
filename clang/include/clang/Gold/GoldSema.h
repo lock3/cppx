@@ -272,6 +272,9 @@ public:
   const clang::IdentifierInfo *OperatorInII;
   const clang::IdentifierInfo *OperatorDotDotII;
   const clang::IdentifierInfo *OperatorConstII;
+  const clang::IdentifierInfo *OperatorCaretII;
+  const clang::IdentifierInfo *OperatorRefII;
+  const clang::IdentifierInfo *OperatorRRefII;
 
   // An RAII type for constructing scopes.
   struct ScopeRAII {
@@ -508,6 +511,8 @@ public:
   using OptionalScopeRAII = OptionalInitScope<ScopeRAII>;
   using OptioanlClangScopeRAII = OptionalInitScope<ClangScopeRAII>;
 
+  clang::QualType NullTTy;
+
   clang::QualType CharTy;
   clang::QualType Char8Ty;
   clang::QualType Char16Ty;
@@ -533,10 +538,34 @@ public:
   clang::QualType Float128Ty;
 
   // Dictionary of built in types.
-  //
-  // FIXME: This should be initialized in the constructor.
   const llvm::StringMap<clang::QualType> BuiltinTypes;
+
+
+  /// IsUnaryOperator
+  /// Checks to see if a given unary operator is a know unary operator.
+  bool IsUnaryOperator(llvm::StringRef OpName) const;
   
+  /// GetUnaryOperatorKind
+  /// @returns false if the operator was found and true if it wasn't.
+  bool GetUnaryOperatorKind(llvm::StringRef OpName,
+                            clang::UnaryOperatorKind &Kind) const;
+
+  // Map of unary operators, this shouldn't have a static constructor
+  // according to the LLVM documentation so it's stored here instead.
+  const llvm::StringMap<clang::UnaryOperatorKind> UnaryOpNames;
+
+  /// Checks to see if a given name is associated with a binary operator.
+  bool IsBinaryOperator(llvm::StringRef OpName) const;
+
+  /// GetBinaryOperatorKind
+  /// Attempts to search for and return the binary operator associated with
+  /// a given operator name.
+  /// @returns false if the operator was found and true if it wasn't.
+  bool GetBinaryOperatorKind(llvm::StringRef OpName,
+      clang::BinaryOperatorKind &Kind) const;
+
+  // Map of binary operator names to their clang operator kind.
+  const llvm::StringMap<clang::BinaryOperatorKind> BinaryOpNames;
 };
 
 } // namespace gold

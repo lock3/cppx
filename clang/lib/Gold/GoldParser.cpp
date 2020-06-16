@@ -417,6 +417,10 @@ static bool isAssignmentOperator(TokenKind K) {
   case tok::MinusEqual:
   case tok::StarEqual:
   case tok::SlashEqual:
+  case tok::PercentEqual:
+  case tok::CaretEqual:
+  case tok::BarEqual:
+  case tok::AmpersandEqual:
     return true;
   }
 }
@@ -494,21 +498,59 @@ Syntax *Parser::parseOr() {
   return E1;
 }
 
-auto isAndOperator(Parser &P) {
-  return P.nextTokenIs(tok::AmpersandAmpersand) || P.nextTokenIs("and");
+
+static auto isXOrOp(Parser &P) {
+  return P.nextTokenIs(tok::Caret);
 }
 
+Syntax *Parser::parseBitWiseXOr() {
+  Syntax *E1 = parseCmp();
+  while (Token Op = matchTokens(isXOrOp, *this)) {
+    Syntax *E2 = parseCmp();
+    E1 = onBinary(Op, E1, E2);
+  }
+  return E1;
+}
+
+static auto isBWAnd(Parser &P) {
+  return P.nextTokenIs(tok::Ampersand);
+}
+
+Syntax *Parser::parseBitWiseAnd() {
+  Syntax *E1 = parseBitWiseXOr();
+  while (Token Op = matchTokens(isBWAnd, *this)) {
+    Syntax *E2 = parseBitWiseXOr();
+    E1 = onBinary(Op, E1, E2);
+  }
+  return E1;
+}
+static auto isBWOr(Parser &P) {
+  return P.nextTokenIs(tok::Bar);
+}
+
+Syntax *Parser::parseBitWiseOr() {
+  Syntax *E1 = parseBitWiseAnd();
+  while (Token Op = matchTokens(isBWOr, *this)) {
+    Syntax *E2 = parseBitWiseAnd();
+    E1 = onBinary(Op, E1, E2);
+  }
+  return E1;
+}
+
+static auto isAndOperator(Parser &P) {
+  return P.nextTokenIs(tok::AmpersandAmpersand) || P.nextTokenIs("and");
+}
 // and:
-//    cmp
-//    and and-operator cmp
+//    bit-wise-or
+//    and and-operator bit-wise-or
 //
 // and-operator:
 //    &&
 //    "and"
 Syntax *Parser::parseAnd() {
-  Syntax *E1 = parseCmp();
+  Syntax *E1 = parseBitWiseOr();
   while (Token Op = matchTokens(isAndOperator, *this)) {
-    Syntax *E2 = parseCmp();
+    Syntax *E2 = parseBitWiseOr();
     E1 = onBinary(Op, E1, E2);
   }
   return E1;
@@ -766,7 +808,8 @@ Syntax *Parser::parsePre()
     return onUnary(Op, E);
   }
 
-  if (nextTokenIs("const")) {
+  if (nextTokenIs("const") || nextTokenIs(tok::RefKeyword)
+      || nextTokenIs(tok::RValueRefKeyword)) {
     Token Op = consumeToken();
     Syntax *E = parsePre();
     return onUnary(Op, E);
@@ -943,8 +986,6 @@ bool Parser::scanAngles(Syntax *Base) {
 ///
 /// suffix-operator:
 ///   ?
-///   ^
-///   @
 Syntax *Parser::parsePost()
 {
   Syntax *e = parsePrimary();
@@ -975,8 +1016,8 @@ Syntax *Parser::parsePost()
       break;
 
     case tok::Question:
-    case tok::Caret:
-    case tok::At:
+    // case tok::Caret:
+    // case tok::At:
       llvm_unreachable("suffix operators not implemented");
       consumeToken();
       break;
@@ -1103,10 +1144,24 @@ Syntax *Parser::parsePrimary() {
   case tok::UnicodeCharacter:
   case tok::String:
   case tok::ClassKeyword:
+  case tok::EnumKeyword:
+  case tok::UnionKeyword:
   case tok::NamespaceKeyword:
   case tok::TrueKeyword:
   case tok::FalseKeyword:
   case tok::NullKeyword:
+  case tok::NullTKeyword:
+  case tok::StaticCastKeyword:
+  case tok::DynamicCastKeyword:
+  case tok::ReinterpretCastKeyword:
+  case tok::ConstCastKeyword:
+  case tok::ConstExprKeyword:
+  case tok::AlignOfKeyword:
+  case tok::SizeOfKeyword:
+  case tok::NoExceptKeyword:
+  case tok::DeclTypeKeyword:
+  case tok::ThisKeyword:
+  case tok::TypeIdKeyword:
     return onAtom(consumeToken());
 
   case tok::LeftParen:
@@ -1138,6 +1193,10 @@ Syntax *Parser::parsePrimary() {
   case tok::ArgsKeyword:
     return onLiteral(consumeToken());
 
+  case tok::NewKeyword:
+  case tok::DeleteKeyword:
+    // FIXME: We need syntax for both new and delete operators.
+    llvm_unreachable("new/delete Syntax in undefined.");
   default:
     break;
   }
@@ -1402,7 +1461,7 @@ void Parser::startPotentialAngleBracket(const Token &OpToken) {
 // After a '>' or '>=', we're no longer potentially in a construct that's
 // intended to be treated as an attribute.
 void Parser::finishPotentialAngleBracket(const Token &OpToken) {
-  assert (OpToken.hasKind(tok::Greater) || OpToken.hasKind(tok::GreaterEqual) &&
+  assert ((OpToken.hasKind(tok::Greater) || OpToken.hasKind(tok::GreaterEqual)) &&
           "invalid angle bracket close.");
   AngleBracketTracker::Loc CloseLoc{OpToken.getLocation(),
                                     {Angles.EnclosureCounts[0],

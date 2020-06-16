@@ -36,6 +36,7 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
   return {
     {"void", Context.CxxAST.VoidTy},
     {"bool", Context.CxxAST.BoolTy},
+    {"null_t", Context.CxxAST.NullPtrTy},
     
     // character 
     {"char", Context.CxxAST.CharTy},
@@ -60,7 +61,7 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
     {"uint128", Context.CxxAST.getIntTypeForBitwidth(128, false)},
 
     // Floating point numbers
-    {"float16", Context.CxxAST.getRealTypeForBitwidth(16)},
+    {"float16", Context.CxxAST.HalfTy},
     {"float32", Context.CxxAST.getRealTypeForBitwidth(32)},
     {"float64", Context.CxxAST.getRealTypeForBitwidth(64)},
     {"float128", Context.CxxAST.getRealTypeForBitwidth(128)},
@@ -70,11 +71,57 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
   };
 }
 
+static llvm::StringMap<clang::UnaryOperatorKind> createUnaryOpMap() {
+  return {
+    // {"operator'&'", clang::AddrOf}, // FIXME: this needs to be designed
+    {"operator'^'", clang::UO_Deref},
+    {"operator'+'", clang::UO_Plus},
+    {"operator'-'", clang::UO_Minus},
+    // {"operator'~'", clang::UO_Not}, // FIXME: this needs to be designed
+    {"operator'!'", clang::UO_LNot},
+    {"operator'not'", clang::UO_LNot},
+  };
+}
+
+static llvm::StringMap<clang::BinaryOperatorKind> createBinaryOpMap() {
+  return {
+    {"operator'+'" , clang::BO_Add},
+    {"operator'-'" , clang::BO_Sub},
+    {"operator'*'" , clang::BO_Mul},
+    {"operator'/'" , clang::BO_Div},
+    {"operator'%'" , clang::BO_Rem},
+    {"operator'&'" , clang::BO_And},
+    {"operator'|'" , clang::BO_Or},
+    {"operator'^'" , clang::BO_Xor},
+    {"operator'&&'" , clang::BO_LAnd},
+    {"operator'and'", clang::BO_LAnd},
+    {"operator'||'" , clang::BO_LOr},
+    {"operator'or'" , clang::BO_LOr},
+    {"operator'=='" , clang::BO_EQ},
+    {"operator'<>'", clang::BO_NE},
+    {"operator'<'", clang::BO_LT},
+    {"operator'>'", clang::BO_GT},
+    {"operator'<='", clang::BO_LE},
+    {"operator'>='", clang::BO_GE},
+    {"operator'+='" , clang::BO_AddAssign},
+    {"operator'-='" , clang::BO_SubAssign},
+    {"operator'*='" , clang::BO_MulAssign},
+    {"operator'/='" , clang::BO_DivAssign},
+    {"operator'%='" , clang::BO_RemAssign},
+    {"operator'&='" , clang::BO_AndAssign},
+    {"operator'|='" , clang::BO_OrAssign},
+    {"operator'^='" , clang::BO_XorAssign}
+  };
+}
+
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : CxxSema(CxxSema), CurrentDecl(), Context(Context),
     Diags(Context.CxxAST.getSourceManager().getDiagnostics()),
-    BuiltinTypes(createBuiltinTypeList(Context))
+    BuiltinTypes(createBuiltinTypeList(Context)),
+    UnaryOpNames(createUnaryOpMap()),
+    BinaryOpNames(createBinaryOpMap())
 {
+  NullTTy = Context.CxxAST.NullPtrTy;
   CharTy = Context.CxxAST.CharTy;
   Char8Ty = Context.CxxAST.getIntTypeForBitwidth(8, true);
   Char16Ty = Context.CxxAST.getIntTypeForBitwidth(16, true);
@@ -94,7 +141,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   UInt64Ty = Context.CxxAST.getIntTypeForBitwidth(64, false);
   UInt128Ty = Context.CxxAST.getIntTypeForBitwidth(128, false);
 
-  Float16Ty = Context.CxxAST.getRealTypeForBitwidth(16);
+  Float16Ty = Context.CxxAST.HalfTy;
   Float32Ty = Context.CxxAST.getRealTypeForBitwidth(32);
   Float64Ty = Context.CxxAST.getRealTypeForBitwidth(64);
   Float128Ty = Context.CxxAST.getRealTypeForBitwidth(128);
@@ -113,6 +160,8 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorInII = &Context.CxxAST.Idents.get("operator'in'");
   OperatorDotDotII = &Context.CxxAST.Idents.get("operator'..'");
   OperatorConstII =  &Context.CxxAST.Idents.get("operator'const'");
+  OperatorRefII = &Context.CxxAST.Idents.get("operator'ref'");
+  OperatorRRefII = &Context.CxxAST.Idents.get("operator'rref'");
 }
 
 Sema::~Sema() {
@@ -699,6 +748,34 @@ unsigned Sema::computeTemplateDepth() const {
   return Count;
 }
 
+bool Sema::IsUnaryOperator(llvm::StringRef OpName) const {
+  auto It = UnaryOpNames.find(OpName);
+  return It != UnaryOpNames.end();
+}
+
+bool Sema::GetUnaryOperatorKind(llvm::StringRef OpName,
+                                clang::UnaryOperatorKind &Kind) const{
+  auto It = UnaryOpNames.find(OpName);
+  if (It == UnaryOpNames.end())
+    return true;
+
+  Kind = It->second;
+  return false;
+}
+
+bool Sema::IsBinaryOperator(llvm::StringRef OpName) const {
+  auto It = BinaryOpNames.find(OpName);
+  return It != BinaryOpNames.end();
+}
+
+bool Sema::GetBinaryOperatorKind(llvm::StringRef OpName,
+    clang::BinaryOperatorKind &Kind) const {
+  auto It = BinaryOpNames.find(OpName);
+  if (It == BinaryOpNames.end())
+    return true;
+  Kind = It->second;
+  return false;
+}
 
 } // namespace gold
 

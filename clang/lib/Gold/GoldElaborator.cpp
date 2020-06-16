@@ -623,6 +623,10 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   if (phaseOf(D) > Phase::Identification)
     return D->Cxx;
 
+  if (phaseOf(D) != Phase::Identification)
+    // Adding this here skips some errors.
+    return D->Cxx;
+
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
@@ -705,7 +709,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
   Declarator *FnDclrtr = getFunctionDeclarator(D);
-
   // Create the template parameters if they exist.
   const Syntax *TemplParams = D->getTemplateParams();
   bool Template = TemplParams;
@@ -884,7 +887,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
   getFunctionParameters(D, Params);
   FD->setParams(Params);
-
   D->Cxx = FD;
   // Add the declaration and update bindings.
   if (!Template && !D->declaresConstructor()) {
@@ -1064,12 +1066,12 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
 
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
-
+  clang::DeclarationNameInfo DNI({Id, Loc});
   // Just return the parameter. We add it to it's function later.
-  clang::ParmVarDecl *P = clang::ParmVarDecl::Create(Context.CxxAST, Owner, Loc,
-                                                     Loc, Id, TInfo->getType(),
-                                                     TInfo, clang::SC_None,
-                                                     /*DefaultArg=*/nullptr);
+  clang::ParmVarDecl *P = SemaRef.getCxxSema().CheckParameter(Owner, Loc, DNI,
+                                                              TInfo->getType(),
+                                                              TInfo,
+                                                              clang::SC_None);
   D->Cxx = P;
   D->CurrentPhase = Phase::Typing;
   return P;
@@ -1265,7 +1267,10 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     return;
 
   clang::VarDecl *VD = cast<clang::VarDecl>(D->Cxx);
+  
   if (!D->Init) {
+    if (isa<clang::ParmVarDecl>(VD))
+      return;
     // FIXME: We probably want to synthesize some kind of initializer here.
     // Not quite sure how we want to do this.
     //
@@ -1477,23 +1482,6 @@ void Elaborator::elaborateFieldInit(Declaration *D) {
     D->Op->getLoc(), Init.get<clang::Expr *>());
 }
 
-// Get the clang::QualType described by an operator':' call.
-clang::QualType Elaborator::getOperatorColonType(const CallSyntax *S) const {
-  // Get the argument list of an operator':' call. This should have
-  // two arguments, the entity (argument 1) and its type (argument 2).
-
-  // Right now this has to be an explicitly named type.
-  // if (const AtomSyntax *Typename = dyn_cast<AtomSyntax>(S->getArgument(1))) {
-  //   auto BuiltinMapIter = BuiltinTypes.find(Typename->Tok.getSpelling());
-  //   if (BuiltinMapIter == BuiltinTypes.end())
-  //     assert(false && "Only builtin types are supported right now.");
-
-  //   return BuiltinMapIter->second;
-  // }
-
-  assert(false && "Working on fixing this.");
-}
-
 static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S);
 
 static Declarator *buildIdDeclarator(const Syntax *S, Declarator *Next) {
@@ -1611,6 +1599,20 @@ static Declarator *buildConstDeclarator(const CallSyntax *S,
   return D;
 }
 
+static Declarator *buildRefDeclarator(const CallSyntax *S,
+                                        Declarator *Next) {
+  Declarator *D = new Declarator(DK_Ref, Next);
+  D->Call = S;
+  return D;
+}
+
+static Declarator *buildRValueRefDeclarator(const CallSyntax *S,
+                                        Declarator *Next) {
+  Declarator *D = new Declarator(DK_RRef, Next);
+  D->Call = S;
+  return D;
+}
+
 /// FIXME: Convert this back to an iterative function, if possible (see
 ///        disabled iterative version below).
 ///
@@ -1674,6 +1676,12 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
       } else if (Callee->getSpelling() == "operator'const'") {
         Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
         return buildConstDeclarator(Call, Next);
+      } else if (Callee->getSpelling() == "operator'ref'") {
+        Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
+        return buildRefDeclarator(Call, Next);
+      } else if (Callee->getSpelling() == "operator'rref'") {
+        Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
+        return buildRValueRefDeclarator(Call, Next);
       }
 
       // Otherwise, this appears to be a function declarator.
@@ -1878,6 +1886,7 @@ bool Elaborator::delayElaborateDeclType(const Syntax *S) {
   // Handling a check for possible late elaboration on each declaration.
   if (phaseOf(D) > Phase::Identification)
     return false;
+
 
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
@@ -2156,7 +2165,10 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
     return FOK_DotDot;
   if (Tokenization == SemaRef.OperatorConstII)
     return FOK_Const;
-
+  if (Tokenization == SemaRef.OperatorRefII)
+    return FOK_Ref;
+  if (Tokenization == SemaRef.OperatorRRefII)
+    return FOK_RRef;
   return FOK_Unknown;
 }
 

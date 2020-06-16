@@ -160,11 +160,15 @@ Token CharacterScanner::operator()() {
     case '&':
       if (getLookahead(1) == '&')
         return matchToken(tok::AmpersandAmpersand);
+      if (getLookahead(1) =='=')
+        return matchToken(tok::AmpersandEqual);
       return matchToken(tok::Ampersand);
 
     case '|':
       if (getLookahead(1) == '|')
         return matchToken(tok::BarBar);
+      if (getLookahead(1) =='=')
+        return matchToken(tok::BarEqual);
       return matchToken(tok::Bar);
 
     case '<':
@@ -184,6 +188,8 @@ Token CharacterScanner::operator()() {
     case '~':
       return matchToken(tok::Tilde);
     case '^':
+      if (getLookahead(1) == '=')
+        return matchToken(tok::CaretEqual);
       return matchToken(tok::Caret);
 
     case '=':
