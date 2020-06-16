@@ -64,7 +64,6 @@ TranslationUnitDecl 0x7fffda2b8f08 <<invalid sloc>> <invalid sloc>
             `-DeclRefExpr 0x7fffda2f9490 <col:48> 'const float' lvalue Var 0x7fffda2f90b8 'ConstF4' 'const float'
 */
 TEST(GoldCastElab, StaticCast) {
-  ASSERT_FALSE(true) << "Implement me!";
   std::string Code = R"Gold(foo():void!
   y:float16 = 1.0
   x:int = static_cast[int](y)
@@ -74,11 +73,28 @@ TEST(GoldCastElab, StaticCast) {
     << "Static cast failed";
 }
 
-TEST(GoldCastElab, ReinterpretCast) {
-  ASSERT_FALSE(true) << "Implement me!";
+TEST(GoldCastElab, StaticCast_ToManyArgs) {
   std::string Code = R"Gold(foo():void!
   y:float16 = 1.0
-  x:int = reinterpret_cast[int](y)
+  z:int
+  x:int = static_cast[int](x, z)
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldCastElab, StaticCast_ToManyTypeArgs) {
+  std::string Code = R"Gold(foo():void!
+  y:float16 = 1.0
+  z:int
+  x:int = static_cast[int, float](x)
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldCastElab, ReinterpretCast) {
+  std::string Code = R"Gold(foo():void!
+  y:^float32
+  x:^int = reinterpret_cast[^int](y)
 )Gold";
   DeclarationMatcher opMatches = hasDescendant(cxxReinterpretCastExpr());
   ASSERT_TRUE(matches(Code, opMatches))
@@ -86,7 +102,6 @@ TEST(GoldCastElab, ReinterpretCast) {
 }
 
 TEST(GoldCastElab, ConstCast) {
-  ASSERT_FALSE(true) << "Implement me!";
   std::string Code = R"Gold(foo(i:^ const int):void!
   x:^int = const_cast[^int](i)
 )Gold";
@@ -96,14 +111,20 @@ TEST(GoldCastElab, ConstCast) {
 }
 
 TEST(GoldCastElab, DynamicCast) {
-  ASSERT_FALSE(true) << "Implement me!";
+  ASSERT_FALSE(true) << "double check this once we have virtual functions\n";
   std::string Code = R"Gold(
 Base : type = class:
+  destructor()<virtual>:void!{
+    # SOmthing
+  }
   i:int
 
-Derived1 : type = class { }
+Derived1 : type = class(Base):
+  x:int
 
-Derived2 : type = class { }
+Derived2 : type = class(Base):
+  y:int
+
 
 foo(y:^Base):void!
   x:^Derived2 = dynamic_cast[^Derived2](y)

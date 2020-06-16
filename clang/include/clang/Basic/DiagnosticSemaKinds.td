@@ -10968,6 +10968,15 @@ def err_auto_failed : Error<
 def err_auto_no_init : Error<
   "auto deduced variable has an initializer with unknowable type">;
 
+def err_invalid_cast_arg_count : Error<
+  "incorrect number of parameters given to cast">;
+def err_invalid_cast_type_arg_count : Error<
+  "incorrect number of type arguments given">;
+def err_invalid_cast_destination_type : Error<
+  "incorrect expression result type, expected type recieved value">;
+def err_invalid_cast_source : Error<
+  "expression didn't result in a value">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

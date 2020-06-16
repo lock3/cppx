@@ -117,6 +117,7 @@ public:
 
 private:
   clang::TypeSourceInfo *handleOperatorConst(const CallSyntax *S);
+  
 };
 
 void dumpExpression(ExprElaborator::Expression Expr, llvm::raw_ostream& Out);

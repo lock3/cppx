@@ -562,7 +562,7 @@ HandleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
 }
 
 static Expression handleElementExpression(ExprElaborator &Elab,
-    Sema &SemaRef, SyntaxContext &Context, const ElemSyntax * Elem,
+    Sema &SemaRef, SyntaxContext &Context, const ElemSyntax *Elem,
     clang::Expr *E) {
 
   // Attempting to correctly handle the result of an Id expression.
@@ -1147,11 +1147,76 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
 
 
 Expression ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
+  if (CastOp->getNumArguments() != 1) {
+    SemaRef.Diags.Report(CastOp->getLoc(),
+        clang::diag::err_invalid_cast_arg_count);
+    return nullptr;
+  }
   // Verify that the syntax is correct here, meaning that if we don't have 
   // a single type argument and single call argument then we are not valid.
-  llvm_unreachable("We don't have cast operations implemented yet:(");
+  const ElemSyntax *Elem = dyn_cast<ElemSyntax>(CastOp->getCallee());
+  const AtomSyntax *Callee = clang::dyn_cast<AtomSyntax>(Elem->getObject());
+  llvm::SmallVector<const Syntax *, 1> TypeArgs;
+  const Syntax *Args = Elem->getArguments();
+  const VectorNode<Syntax> *TypeArgumentList = nullptr;
+  
+  if (const ListSyntax *LS = dyn_cast<ListSyntax>(Args)) {
+    TypeArgumentList = LS;
+  } else if (const ArraySyntax *AS = dyn_cast<ArraySyntax>(Args)) {
+      TypeArgumentList = AS;
+  } else {
+    CastOp->dump();
+    llvm_unreachable("Improperly formatted AST.");
+  }
+  if (TypeArgumentList->getNumChildren() != 1) {
+    SemaRef.Diags.Report(CastOp->getLoc(),
+        clang::diag::err_invalid_cast_type_arg_count);
+    return nullptr;
+  }
 
-  // Doing a thing to attempt to figure out if a conversion is even possible
+  clang::StringRef Name = Callee->getSpelling();
+  clang::tok::TokenKind CastKind;
+  if (Name == "static_cast") {
+    CastKind = clang::tok::TokenKind::kw_static_cast;
+  } else if (Name == "dynamic_cast") {
+    CastKind = clang::tok::TokenKind::kw_dynamic_cast;
+  } else if (Name == "reinterpret_cast") {
+    CastKind = clang::tok::TokenKind::kw_reinterpret_cast;
+  } else if (Name == "const_cast") {
+    CastKind = clang::tok::TokenKind::kw_const_cast;
+  } else {
+    llvm_unreachable("Invalid cast name.");
+  }
+
+  Expression DestinationType = elaborateExpr(Elem->getArgument(0));
+  if (DestinationType.isNull()) {
+    SemaRef.Diags.Report(Elem->getArgument(0)->getLoc(),
+                         clang::diag::err_invalid_cast_destination_type);
+    return nullptr;
+  }
+  if (!DestinationType.is<clang::TypeSourceInfo *>()) {
+    SemaRef.Diags.Report(Elem->getArgument(0)->getLoc(),
+                         clang::diag::err_invalid_cast_destination_type);
+    return nullptr;
+  }
+
+  Expression Source = elaborateExpr(CastOp->getArgument(0));
+  if (Source.isNull()) {
+    SemaRef.Diags.Report(CastOp->getArgument(0)->getLoc(),
+                         clang::diag::err_expected_expression);
+    return nullptr;
+  }
+  if (!Source.is<clang::Expr *>()) {
+    SemaRef.Diags.Report(CastOp->getArgument(0)->getLoc(),
+                         clang::diag::err_invalid_cast_source);
+    return nullptr;
+  }
+  clang::TypeSourceInfo *TInfo = DestinationType.get<clang::TypeSourceInfo*>();
+  auto CastExpr = SemaRef.getCxxSema().BuildCXXNamedCast(
+    Callee->getLoc(), CastKind, TInfo, Source.get<clang::Expr*>(),
+    CastOp->getArgument(0)->getLoc(), CastOp->getArgument(0)->getLoc()
+  );
+  return CastExpr.get();
 }
 
 
@@ -1361,8 +1426,21 @@ Expression ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
                                             clang::UnaryOperatorKind Op) {
   const Syntax *Operand = S->getArgument(0);
   Expression OperandResult = elaborateExpr(Operand);
-  if (OperandResult.is<clang::TypeSourceInfo *>() || OperandResult.isNull()
-     || OperandResult.is<clang::NamespaceDecl *>()) {
+  if (OperandResult.isNull() || OperandResult.is<clang::NamespaceDecl *>()) {
+    SemaRef.Diags.Report(Operand->getLoc(),
+      clang::diag::err_expected_expression);
+    return nullptr;
+  }
+
+  // This is used to construct a pointer type because the carrot has two
+  // meanings. Dereference and pointer declaration.
+  if (Op == clang::UO_Deref){
+    if (OperandResult.is<clang::TypeSourceInfo *>()) {
+      clang::QualType RetType = Context.CxxAST.getPointerType(
+                        OperandResult.get<clang::TypeSourceInfo*>()->getType());
+      return BuildAnyTypeLoc(Context.CxxAST, RetType, S->getLoc());
+    }
+  } else {
     SemaRef.Diags.Report(Operand->getLoc(),
       clang::diag::err_expected_expression);
     return nullptr;

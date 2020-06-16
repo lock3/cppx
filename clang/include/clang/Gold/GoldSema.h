@@ -272,6 +272,7 @@ public:
   const clang::IdentifierInfo *OperatorInII;
   const clang::IdentifierInfo *OperatorDotDotII;
   const clang::IdentifierInfo *OperatorConstII;
+  const clang::IdentifierInfo *OperatorCaretII;
 
   // An RAII type for constructing scopes.
   struct ScopeRAII {
