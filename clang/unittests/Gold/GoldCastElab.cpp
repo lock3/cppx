@@ -111,7 +111,6 @@ TEST(GoldCastElab, ConstCast) {
 }
 
 TEST(GoldCastElab, DynamicCast) {
-  ASSERT_FALSE(true) << "double check this once we have virtual functions\n";
   std::string Code = R"Gold(
 Base : type = class:
   destructor()<virtual>:void!{

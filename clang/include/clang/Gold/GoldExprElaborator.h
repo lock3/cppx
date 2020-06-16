@@ -117,6 +117,8 @@ public:
 
 private:
   clang::TypeSourceInfo *handleOperatorConst(const CallSyntax *S);
+  clang::TypeSourceInfo *handleRefType(const CallSyntax *S);
+  clang::TypeSourceInfo *handleRRefType(const CallSyntax *S);
   
 };
 

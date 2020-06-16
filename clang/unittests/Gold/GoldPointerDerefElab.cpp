@@ -39,7 +39,7 @@ TEST(GoldPointerDeref, SimpleDereference) {
 foo(i:^int):void!
   x = ^i
 )Gold";
-  DeclarationMatcher opMatches = hasDescendant(cxxStaticCastExpr());
+  DeclarationMatcher opMatches = hasDescendant(unaryOperator());
   ASSERT_TRUE(matches(Code, opMatches))
     << "Pointer deref failed";
 }

@@ -1111,7 +1111,8 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
 
   case FOK_Const:
     return handleOperatorConst(S);
-
+  case FOK_Ref:
+  case FOK_RRef:
   default:
     break;
   }
@@ -1434,15 +1435,15 @@ Expression ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
 
   // This is used to construct a pointer type because the carrot has two
   // meanings. Dereference and pointer declaration.
-  if (Op == clang::UO_Deref){
+  if (Op == clang::UO_Deref) {
     if (OperandResult.is<clang::TypeSourceInfo *>()) {
       clang::QualType RetType = Context.CxxAST.getPointerType(
                         OperandResult.get<clang::TypeSourceInfo*>()->getType());
       return BuildAnyTypeLoc(Context.CxxAST, RetType, S->getLoc());
-    }
-  } else {
+    } 
+  } else if (OperandResult.is<clang::TypeSourceInfo *>()) {
     SemaRef.Diags.Report(Operand->getLoc(),
-      clang::diag::err_expected_expression);
+                         clang::diag::err_expected_expression);
     return nullptr;
   }
   clang::ExprResult UnaryOpRes = SemaRef.getCxxSema().BuildUnaryOp(
@@ -1941,5 +1942,16 @@ clang::TypeSourceInfo *
 ExprElaborator::handleOperatorConst(const CallSyntax *S) {
   llvm_unreachable("should not be here");
 }
+
+clang::TypeSourceInfo *ExprElaborator::handleRefType(const CallSyntax *S) {
+  llvm_unreachable("The declarator only version of ref type isn't "
+      "implemented yet.");
+}
+
+clang::TypeSourceInfo *ExprElaborator::handleRRefType(const CallSyntax *S) {
+  llvm_unreachable("The declarator only version of rref type isn't "
+      "implemented yet.");
+}
+
 
 } // namespace gold

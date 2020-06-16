@@ -160,6 +160,8 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorInII = &Context.CxxAST.Idents.get("operator'in'");
   OperatorDotDotII = &Context.CxxAST.Idents.get("operator'..'");
   OperatorConstII =  &Context.CxxAST.Idents.get("operator'const'");
+  OperatorRefII = &Context.CxxAST.Idents.get("operator'ref'");
+  OperatorRRefII = &Context.CxxAST.Idents.get("operator'rref'");
 }
 
 Sema::~Sema() {

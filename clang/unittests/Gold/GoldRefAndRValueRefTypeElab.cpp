@@ -23,7 +23,6 @@ using namespace clang;
 using namespace gold;
 
 TEST(GoldRef, LValueRef) {
-  using namespace std::string_literals;
   std::string Code = R"Gold(
 x:int = 0
 y:ref int = x
@@ -34,7 +33,6 @@ y:ref int = x
 }
 
 TEST(GoldRef, LValueRefParam) {
-  using namespace std::string_literals;
   std::string Code = R"Gold(
 x:int = 0
 foo(y:ref int): void
@@ -54,10 +52,6 @@ foo(y:ref int): void
         `-DeclRefExpr 0x7fffd54f40a0 <col:29> 'int' lvalue ParmVar 0x7fffd54f3ea0 'i' 'int &'
   */
 TEST(GoldRef, RValueRefParam) {
-
-  // FIXME: I need to finish the implementation of the rvalue refence so what
-  // we have will actually work correctly.
-  using namespace std::string_literals;
   std::string Code = R"Gold(
 move(var:rref int):rref int
 )Gold";
@@ -65,3 +59,29 @@ move(var:rref int):rref int
     hasName("var"), hasType(asString("int &&")));
   ASSERT_TRUE(matches(Code, opMatches));
 }
+
+// TEST(GoldRef, LValueRefAsDeclaratorOnly) {
+//   std::string Code = R"Gold(
+// Ty[T:type] :type = class:
+//   # 
+
+// foo() :void!
+//   x:Ty[const int]
+// )Gold";
+//   DeclarationMatcher opMatches = varDecl(
+//     hasName("y"), hasType(asString("Ty<int &>")));
+//   ASSERT_TRUE(matches(Code, opMatches));
+// }
+
+// TEST(GoldRef, RValueRefAsDeclaratorOnly) {
+//   std::string Code = R"Gold(
+// Ty[T:type] :type = class:
+//   # 
+
+// foo() :void!
+//   x:Ty[rref int]
+// )Gold";
+//   DeclarationMatcher opMatches = varDecl(
+//     hasName("y"), hasType(asString("Ty<int &&>")));
+//   ASSERT_TRUE(matches(Code, opMatches));
+// }
