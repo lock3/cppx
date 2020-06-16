@@ -67,6 +67,12 @@ enum DeclaratorKind {
 
   /// Declares const
   DK_Const,
+
+  /// Declares L-value reference
+  DK_Ref,
+
+  /// Declares R-value reference
+  DK_RRef,
 };
 
 using Attributes = llvm::SmallVector<const Syntax *, 16>;

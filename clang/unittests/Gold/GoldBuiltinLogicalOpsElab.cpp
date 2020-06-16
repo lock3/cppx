@@ -246,7 +246,6 @@ TEST(LogicalOp, BuiltinType_char32) {
 }
 
 TEST(LogicalOp, BuiltinType_float16) {
-  // doLogicalOperatorTest("float16", "__fp16", "5", "6",  CK_FloatingToBoolean);
   using namespace std::string_literals;
   std::string Code = R"Gold(foo():void!
   x:float16 = 2.0

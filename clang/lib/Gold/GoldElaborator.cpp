@@ -709,7 +709,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
   Declarator *FnDclrtr = getFunctionDeclarator(D);
-
   // Create the template parameters if they exist.
   const Syntax *TemplParams = D->getTemplateParams();
   bool Template = TemplParams;
@@ -888,7 +887,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
   getFunctionParameters(D, Params);
   FD->setParams(Params);
-
   D->Cxx = FD;
   // Add the declaration and update bindings.
   if (!Template && !D->declaresConstructor()) {
@@ -1068,12 +1066,12 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
 
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
-
+  clang::DeclarationNameInfo DNI({Id, Loc});
   // Just return the parameter. We add it to it's function later.
-  clang::ParmVarDecl *P = clang::ParmVarDecl::Create(Context.CxxAST, Owner, Loc,
-                                                     Loc, Id, TInfo->getType(),
-                                                     TInfo, clang::SC_None,
-                                                     /*DefaultArg=*/nullptr);
+  clang::ParmVarDecl *P = SemaRef.getCxxSema().CheckParameter(Owner, Loc, DNI,
+                                                              TInfo->getType(),
+                                                              TInfo,
+                                                              clang::SC_None);
   D->Cxx = P;
   D->CurrentPhase = Phase::Typing;
   return P;
@@ -1269,7 +1267,10 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     return;
 
   clang::VarDecl *VD = cast<clang::VarDecl>(D->Cxx);
+  
   if (!D->Init) {
+    if (isa<clang::ParmVarDecl>(VD))
+      return;
     // FIXME: We probably want to synthesize some kind of initializer here.
     // Not quite sure how we want to do this.
     //
@@ -1615,6 +1616,20 @@ static Declarator *buildConstDeclarator(const CallSyntax *S,
   return D;
 }
 
+static Declarator *buildRefDeclarator(const CallSyntax *S,
+                                        Declarator *Next) {
+  Declarator *D = new Declarator(DK_Ref, Next);
+  D->Call = S;
+  return D;
+}
+
+static Declarator *buildRValueRefDeclarator(const CallSyntax *S,
+                                        Declarator *Next) {
+  Declarator *D = new Declarator(DK_RRef, Next);
+  D->Call = S;
+  return D;
+}
+
 /// FIXME: Convert this back to an iterative function, if possible (see
 ///        disabled iterative version below).
 ///
@@ -1678,6 +1693,12 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
       } else if (Callee->getSpelling() == "operator'const'") {
         Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
         return buildConstDeclarator(Call, Next);
+      } else if (Callee->getSpelling() == "operator'ref'") {
+        Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
+        return buildRefDeclarator(Call, Next);
+      } else if (Callee->getSpelling() == "operator'rref'") {
+        Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
+        return buildRValueRefDeclarator(Call, Next);
       }
 
       // Otherwise, this appears to be a function declarator.

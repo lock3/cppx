@@ -808,7 +808,8 @@ Syntax *Parser::parsePre()
     return onUnary(Op, E);
   }
 
-  if (nextTokenIs("const")) {
+  if (nextTokenIs("const") || nextTokenIs(tok::RefKeyword)
+      || nextTokenIs(tok::RValueRefKeyword)) {
     Token Op = consumeToken();
     Syntax *E = parsePre();
     return onUnary(Op, E);

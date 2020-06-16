@@ -562,8 +562,8 @@ HandleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
 }
 
 static Expression handleElementExpression(ExprElaborator &Elab,
-    Sema &SemaRef, SyntaxContext &Context, const ElemSyntax * Elem, clang::Expr *E) {
-
+    Sema &SemaRef, SyntaxContext &Context, const ElemSyntax * Elem,
+    clang::Expr *E) {
 
   // Attempting to correctly handle the result of an Id expression.
   clang::OverloadExpr *OverloadExpr = dyn_cast<clang::OverloadExpr>(E);
@@ -1056,7 +1056,23 @@ static Expression handleColonExprElaboration(ExprElaborator &ExprElab,
   // anything
   // return nullptr;
 }
+
+static bool callIsCastOperator(const CallSyntax *S) {
+  if (const ElemSyntax *Elem = dyn_cast<ElemSyntax>(S->getCallee())) {
+    if (const AtomSyntax *Callee
+        = clang::dyn_cast<AtomSyntax>(Elem->getObject())) {
+      clang::StringRef Name = Callee->getSpelling();
+      return Name == "static_cast" || Name == "dynamic_cast"
+          || Name == "const_cast" || Name == "reinterpret_cast";
+    }
+  }
+  return false;
+}
+
 Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
+  if (callIsCastOperator(S)) {
+    return elaborateCastOp(S);
+  }
   // Determining the type of call associated with the given syntax.
   // There are multiple kinds of atoms for multiple types of calls
   // but in the event that the callee object is not an Atom, it means
@@ -1128,6 +1144,17 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   }
   return handleExpressionResultCall(SemaRef, S, CalleeExpr, Args);
 }
+
+
+Expression ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
+  // Verify that the syntax is correct here, meaning that if we don't have 
+  // a single type argument and single call argument then we are not valid.
+  llvm_unreachable("We don't have cast operations implemented yet:(");
+
+  // Doing a thing to attempt to figure out if a conversion is even possible
+}
+
+
 
 Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     const CallSyntax *Op, const Syntax *RHS) {
@@ -1551,6 +1578,24 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
       break;
     }
 
+    case DK_Ref:{
+      Expression TypeExpr = elaborateRefType(D, TInfo);
+      if (TypeExpr.isNull())
+        return nullptr;
+
+      TInfo = TypeExpr.get<TypeInfo *>();
+      break;
+    }
+
+    case DK_RRef:{
+      Expression TypeExpr = elaborateRRefType(D, TInfo);
+      if (TypeExpr.isNull())
+        return nullptr;
+
+      TInfo = TypeExpr.get<TypeInfo *>();
+      break;
+    }
+
     case DK_Array: {
       Expression TypeExpr = elaborateArrayType(D, TInfo);
       if (TypeExpr.isNull())
@@ -1577,9 +1622,9 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
       TInfo = TypeExpr.get<TypeInfo *>();
       break;
     }
+    
     case DK_TemplateType:{
-      llvm_unreachable("I'm not sure exactly how this works but I'll figure it "
-                       "out!");
+      llvm_unreachable("Template types are not directly part of declarator.");
       break;
     }
     default:
@@ -1621,6 +1666,37 @@ Expression ExprElaborator::elaborateConstType(Declarator *D, TypeInfo *Ty) {
     BuildAnyTypeLoc(CxxAST, BaseType, D->getType()->getLoc());
 
   return TInfo;
+}
+
+Expression ExprElaborator::elaborateRefType(Declarator *D, TypeInfo *Ty) {
+  Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
+  if (!BaseTypeExpr.is<clang::TypeSourceInfo *>() || BaseTypeExpr.isNull()) {
+    SemaRef.Diags.Report(D->getType()->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+  clang::QualType BaseType =
+    BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
+  
+  return BuildAnyTypeLoc(CxxAST,
+    CxxAST.getLValueReferenceType(BaseType),
+    D->getType()->getLoc());
+}
+
+Expression ExprElaborator::elaborateRRefType(Declarator *D, TypeInfo *Ty) {
+  Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
+  if (!BaseTypeExpr.is<clang::TypeSourceInfo *>() || BaseTypeExpr.isNull()) {
+    SemaRef.Diags.Report(D->getType()->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+
+  clang::QualType BaseType =
+    BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
+  
+  return BuildAnyTypeLoc(CxxAST,
+      CxxAST.getRValueReferenceType(BaseType),
+      D->getType()->getLoc());
 }
 
 Expression ExprElaborator::elaborateArrayType(Declarator *D, TypeInfo *Ty) {
@@ -1671,7 +1747,6 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
   const ListSyntax *Args = cast<ListSyntax>(D->Data.ParamInfo.Params);
 
   bool IsVariadic = D->Data.ParamInfo.VariadicParam;
-
   // Elaborate the parameter declarations in order to get their types, and save
   // the resulting scope with the declarator.
   llvm::SmallVector<clang::QualType, 4> Types;

@@ -96,7 +96,7 @@ public:
   Expression elaborateClass(const MacroSyntax *Macro);
 
   Expression elaborateElementExpr(const ElemSyntax *Elem);
-
+  Expression elaborateCastOp(const CallSyntax *CastOp);
 
 private:
   clang::Expr *handleOperatorDotDot(const CallSyntax *S);
@@ -109,6 +109,8 @@ public:
 
   Expression elaboratePointerType(Declarator *D, TypeInfo *Ty);
   Expression elaborateConstType(Declarator *D, TypeInfo *Ty);
+  Expression elaborateRefType(Declarator *D, TypeInfo *Ty);
+  Expression elaborateRRefType(Declarator *D, TypeInfo *Ty);
   Expression elaborateArrayType(Declarator *D, TypeInfo *Ty);
   Expression elaborateFunctionType(Declarator *D, TypeInfo *Ty);
   Expression elaborateExplicitType(Declarator *D, TypeInfo *Ty);
