@@ -1613,10 +1613,10 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
     case DK_Identifier:
       // The identifier is not part of the type.
       break;
+      
     case DK_Error:
       // If we find an error we exit because we can't continue.
       return nullptr;
-      break;
 
     case DK_Pointer: {
       Expression TypeExpr = elaboratePointerType(D, TInfo);
