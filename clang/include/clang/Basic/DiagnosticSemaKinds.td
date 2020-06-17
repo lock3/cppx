@@ -10977,6 +10977,12 @@ def err_invalid_cast_destination_type : Error<
 def err_invalid_cast_source : Error<
   "expression didn't result in a value">;
 
+def err_requires_a_type : Error<
+  "%0 requires a type name">;
+
+def err_conflicting_specifier : Error<
+  "conflicting specifier">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

@@ -42,15 +42,6 @@ foo(y:ref int): void
   ASSERT_TRUE(matches(Code, opMatches));
 }
 
-
-  /*
-`-FunctionDecl 0x7fffd54f3fa8 <cpp_test.cpp:12:1, line:14:1> line:12:7 move 'int &&(int &)'
-  |-ParmVarDecl 0x7fffd54f3ea0 <col:12, col:17> col:17 used i 'int &'
-  `-CompoundStmt 0x7fffd54f4118 <col:20, line:14:1>
-    `-ReturnStmt 0x7fffd54f4108 <line:13:3, col:30>
-      `-CXXStaticCastExpr 0x7fffd54f40d8 <col:10, col:30> 'int' xvalue static_cast<int &&> <NoOp>
-        `-DeclRefExpr 0x7fffd54f40a0 <col:29> 'int' lvalue ParmVar 0x7fffd54f3ea0 'i' 'int &'
-  */
 TEST(GoldRef, RValueRefParam) {
   std::string Code = R"Gold(
 move(var:rref int):rref int
@@ -60,28 +51,102 @@ move(var:rref int):rref int
   ASSERT_TRUE(matches(Code, opMatches));
 }
 
-// TEST(GoldRef, LValueRefAsDeclaratorOnly) {
-//   std::string Code = R"Gold(
-// Ty[T:type] :type = class:
-//   # 
+TEST(GoldRef, LValueRefAsDeclaratorOnly) {
+  std::string Code = R"Gold(
+Ty[T:type] :type = class:
+  i:int
 
-// foo() :void!
-//   x:Ty[const int]
-// )Gold";
-//   DeclarationMatcher opMatches = varDecl(
-//     hasName("y"), hasType(asString("Ty<int &>")));
-//   ASSERT_TRUE(matches(Code, opMatches));
-// }
+foo() :void!
+  x:Ty[ref int]
+)Gold";
+  DeclarationMatcher opMatches = varDecl(
+    hasName("x"), hasType(asString("Ty<int &>")));
+  ASSERT_TRUE(matches(Code, opMatches));
+}
 
-// TEST(GoldRef, RValueRefAsDeclaratorOnly) {
-//   std::string Code = R"Gold(
-// Ty[T:type] :type = class:
-//   # 
+TEST(GoldRef, RValueRefAsDeclaratorOnly) {
+  std::string Code = R"Gold(
+Ty[T:type] :type = class:
+  i:int
 
-// foo() :void!
-//   x:Ty[rref int]
-// )Gold";
-//   DeclarationMatcher opMatches = varDecl(
-//     hasName("y"), hasType(asString("Ty<int &&>")));
-//   ASSERT_TRUE(matches(Code, opMatches));
-// }
+foo() :void!
+  x:Ty[rref int]
+)Gold";
+  DeclarationMatcher opMatches = varDecl(
+    hasName("x"), hasType(asString("Ty<int &&>")));
+  ASSERT_TRUE(matches(Code, opMatches));
+}
+
+TEST(GoldRef, SubTypeExpr_DoubleRef) {
+  std::string Code = R"Gold(
+Ty[T:type] :type = class:
+  i:int
+
+foo() :void!
+  x:Ty[ref ref int]
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldRef, SubTypeExpr_Ref_NoType) {
+  std::string Code = R"Gold(
+Ty[T:type] :type = class:
+  i:int
+
+foo() :void!
+  x:Ty[ref]
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldRef, SubTypeExpr_RefRValueRef) {
+  std::string Code = R"Gold(
+Ty[T:type] :type = class:
+  i:int
+
+foo() :void!
+  x:Ty[ref rref int]
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldRef, SubTypeExpr_RValueRefRef) {
+  std::string Code = R"Gold(
+Ty[T:type] :type = class:
+  i:int
+
+foo() :void!
+  x:Ty[rref ref int]
+)Gold";
+  GoldFailureTest(Code);
+}
+
+
+
+TEST(GoldRef, PartOfDeclarator_DoubleRef) {
+  std::string Code = R"Gold(
+x:ref ref int
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldRef, PartOfDeclarator_Ref_NoType) {
+  std::string Code = R"Gold(
+x:ref
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldRef, PartOfDeclarator_RefRValueRef) {
+  std::string Code = R"Gold(
+x:ref rref int
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldRef, PartOfDeclarator_RValueRefRef) {
+  std::string Code = R"Gold(
+x:rref ref int
+)Gold";
+  GoldFailureTest(Code);
+}

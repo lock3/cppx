@@ -1200,9 +1200,10 @@ Syntax *Parser::parsePrimary() {
   default:
     break;
   }
-
+    
   // Diagnose the error and consume the token so we don't see it again.
-  Diags.Report(getInputLocation(), clang::diag::err_expected) << "primary-expression";
+  Diags.Report(getInputLocation(), clang::diag::err_expected)
+      << "primary-expression";
   consumeToken();
   return onError();
 }

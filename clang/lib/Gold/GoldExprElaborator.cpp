@@ -18,6 +18,7 @@
 #include "clang/AST/Type.h"
 #include "clang/AST/ExprCppx.h"
 #include "clang/Basic/CharInfo.h"
+
 #include "clang/Basic/DiagnosticParse.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/SourceLocation.h"
@@ -1085,7 +1086,9 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   case FOK_Const:
     return handleOperatorConst(S);
   case FOK_Ref:
+    return handleRefType(S);
   case FOK_RRef:
+    return handleRRefType(S);
   default:
     break;
   }
@@ -1586,7 +1589,6 @@ Expression ExprElaborator::elaborateMacro(const MacroSyntax *S) {
 //===----------------------------------------------------------------------===//
 //                        Type Expression Elaboration                         //
 //===----------------------------------------------------------------------===//
-
 // Get a vector of declarators.
 static void getDeclarators(Declarator *D,
                            llvm::SmallVectorImpl<Declarator *> &Decls) {
@@ -1611,6 +1613,10 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
     case DK_Identifier:
       // The identifier is not part of the type.
       break;
+      
+    case DK_Error:
+      // If we find an error we exit because we can't continue.
+      return nullptr;
 
     case DK_Pointer: {
       Expression TypeExpr = elaboratePointerType(D, TInfo);
@@ -1703,52 +1709,21 @@ Expression ExprElaborator::elaboratePointerType(Declarator *D, TypeInfo *Ty) {
 }
 
 Expression ExprElaborator::elaborateConstType(Declarator *D, TypeInfo *Ty) {
+  const CallSyntax *ConstCall = cast<CallSyntax>(D->Call);
   Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
-
-  if (!BaseTypeExpr.is<clang::TypeSourceInfo *>() || BaseTypeExpr.isNull()) {
-    SemaRef.Diags.Report(D->getType()->getLoc(),
-                         clang::diag::err_failed_to_translate_type);
-    return nullptr;
-  }
-
-  clang::QualType BaseType =
-    BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
-  BaseType.addConst();
-  clang::TypeSourceInfo *TInfo =
-    BuildAnyTypeLoc(CxxAST, BaseType, D->getType()->getLoc());
-
-  return TInfo;
+  return makeConstType(BaseTypeExpr, ConstCall);
 }
 
 Expression ExprElaborator::elaborateRefType(Declarator *D, TypeInfo *Ty) {
+  const CallSyntax *RefCall = cast<CallSyntax>(D->Call);
   Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
-  if (!BaseTypeExpr.is<clang::TypeSourceInfo *>() || BaseTypeExpr.isNull()) {
-    SemaRef.Diags.Report(D->getType()->getLoc(),
-                         clang::diag::err_failed_to_translate_type);
-    return nullptr;
-  }
-  clang::QualType BaseType =
-    BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
-  
-  return BuildAnyTypeLoc(CxxAST,
-    CxxAST.getLValueReferenceType(BaseType),
-    D->getType()->getLoc());
+  return makeRefType(BaseTypeExpr, RefCall);
 }
 
 Expression ExprElaborator::elaborateRRefType(Declarator *D, TypeInfo *Ty) {
+  const CallSyntax *RRefCall = cast<CallSyntax>(D->Call);
   Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
-  if (!BaseTypeExpr.is<clang::TypeSourceInfo *>() || BaseTypeExpr.isNull()) {
-    SemaRef.Diags.Report(D->getType()->getLoc(),
-                         clang::diag::err_failed_to_translate_type);
-    return nullptr;
-  }
-
-  clang::QualType BaseType =
-    BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
-  
-  return BuildAnyTypeLoc(CxxAST,
-      CxxAST.getRValueReferenceType(BaseType),
-      D->getType()->getLoc());
+  return makeRRefType(BaseTypeExpr, RRefCall);
 }
 
 Expression ExprElaborator::elaborateArrayType(Declarator *D, TypeInfo *Ty) {
@@ -1913,18 +1888,82 @@ clang::Expr *ExprElaborator::handleOperatorDotDot(const CallSyntax *S) {
 
 clang::TypeSourceInfo *
 ExprElaborator::handleOperatorConst(const CallSyntax *S) {
-  llvm_unreachable("should not be here");
+  assert(S->getNumArguments() == 1 && "Invalid number of arguments for "
+      "const operator");
+  Expression innerTypeExpr = elaborateExpr(S->getArgument(0));
+  return makeConstType(innerTypeExpr, S);
 }
 
 clang::TypeSourceInfo *ExprElaborator::handleRefType(const CallSyntax *S) {
-  llvm_unreachable("The declarator only version of ref type isn't "
-      "implemented yet.");
+  assert(S->getNumArguments() == 1 && "Invalid number of arguments for "
+      "ref operator");
+  Expression innerTypeExpr = elaborateExpr(S->getArgument(0));
+  return makeRefType(innerTypeExpr, S);
 }
 
 clang::TypeSourceInfo *ExprElaborator::handleRRefType(const CallSyntax *S) {
-  llvm_unreachable("The declarator only version of rref type isn't "
-      "implemented yet.");
+  assert(S->getNumArguments() == 1 && "Invalid number of arguments for "
+      "rref operator");
+  Expression innerTypeExpr = elaborateExpr(S->getArgument(0));
+  return makeRRefType(innerTypeExpr, S);
 }
 
 
+clang::TypeSourceInfo* ExprElaborator::makeConstType(Expression InnerType,
+    const CallSyntax* ConstOpNode) {
+  if (InnerType.isNull() || !InnerType.is<clang::TypeSourceInfo *>()) {
+    SemaRef.Diags.Report(ConstOpNode->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+  clang::QualType EvaluatedTy =
+    InnerType.get<clang::TypeSourceInfo *>()->getType();
+  if (EvaluatedTy.isConstQualified()) {
+    SemaRef.Diags.Report(ConstOpNode->getLoc(),
+                         clang::diag::err_conflicting_specifier)
+      << "const";
+    return nullptr;
+  }
+  EvaluatedTy.addConst();
+  return BuildAnyTypeLoc(CxxAST, EvaluatedTy, ConstOpNode->getLoc());
+}
+clang::TypeSourceInfo* ExprElaborator::makeRefType(Expression InnerTy,
+    const CallSyntax* RefOpNode) {
+  if (InnerTy.isNull() || !InnerTy.is<clang::TypeSourceInfo *>()) {
+    SemaRef.Diags.Report(RefOpNode->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+
+  clang::QualType Inner = InnerTy.get<clang::TypeSourceInfo *>()->getType();
+  if (Inner.getTypePtr()->isReferenceType()) {
+    SemaRef.Diags.Report(RefOpNode->getLoc(),
+                         clang::diag::err_conflicting_specifier)
+      << "ref";
+    return nullptr;
+  }
+  return BuildAnyTypeLoc(CxxAST,
+    CxxAST.getLValueReferenceType(Inner),
+    RefOpNode->getLoc());
+}
+
+clang::TypeSourceInfo* ExprElaborator::makeRRefType(Expression InnerTy,
+    const CallSyntax* RRefOpNode) {
+  if (InnerTy.isNull() || !InnerTy.is<clang::TypeSourceInfo *>()) {
+    SemaRef.Diags.Report(RRefOpNode->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+
+  clang::QualType Inner = InnerTy.get<clang::TypeSourceInfo *>()->getType();
+  if (Inner.getTypePtr()->isReferenceType()) {
+    SemaRef.Diags.Report(RRefOpNode->getLoc(),
+                         clang::diag::err_conflicting_specifier)
+      << "rref";
+    return nullptr;
+  }  
+  return BuildAnyTypeLoc(CxxAST,
+      CxxAST.getRValueReferenceType(Inner),
+      RRefOpNode->getLoc());
+}
 } // namespace gold
