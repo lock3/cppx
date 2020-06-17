@@ -73,6 +73,11 @@ enum DeclaratorKind {
 
   /// Declares R-value reference
   DK_RRef,
+
+  /// This declarator indicates that there was an error evaluating
+  /// the declarator. This usually means that there is an ErrorSyntax node
+  /// located within the tree.
+  DK_Error,
 };
 
 using Attributes = llvm::SmallVector<const Syntax *, 16>;
@@ -553,6 +558,10 @@ public:
     if (Iter == DeclMap.end())
       return nullptr;
     return Iter->second;
+  }
+
+  bool hasDeclaration(const Syntax *Op) const {
+    return DeclMap.count(Op) != 0;
   }
 
   void dump(llvm::raw_ostream &os) const;

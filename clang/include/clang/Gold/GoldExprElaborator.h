@@ -120,6 +120,20 @@ private:
   clang::TypeSourceInfo *handleRefType(const CallSyntax *S);
   clang::TypeSourceInfo *handleRRefType(const CallSyntax *S);
   
+private:
+  /// Utility functions that handle operations assocated with type elaboration,
+  /// but not the actual elaboration. These functions also handle error
+  /// reporting so the result of any elaboration should be passed directly
+  /// to them without need to check the result.
+  ///{
+  clang::TypeSourceInfo* makeConstType(Expression InnerType,
+    const CallSyntax* ConstOpNode);
+  clang::TypeSourceInfo* makeRefType(Expression Result,
+    const CallSyntax* RefOpNode);
+  clang::TypeSourceInfo* makeRRefType(Expression Result,
+    const CallSyntax* RRefOpNode);
+  ///}
+
 };
 
 void dumpExpression(ExprElaborator::Expression Expr, llvm::raw_ostream& Out);

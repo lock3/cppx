@@ -1520,8 +1520,8 @@ static Declarator *buildTypeExpression(const Syntax *S, Declarator *Next) {
 
 // Check if the last parameter in a function is of type 'args'.
 static bool lastParamIsVarArgs(Sema &SemaRef, const CallSyntax *S) {
-    if (!S->getNumArguments())
-      return false;
+  if (!S->getNumArguments())
+    return false;
   std::size_t N = S->getNumArguments() - 1;
   const CallSyntax *LastParam = dyn_cast_or_null<CallSyntax>(S->getArgument(N));
   if (!LastParam)
@@ -1613,6 +1613,12 @@ static Declarator *buildRValueRefDeclarator(const CallSyntax *S,
   return D;
 }
 
+static Declarator *buildErrorDeclarator(const ErrorSyntax *S, Declarator *Next) {
+  Declarator *D = new Declarator(DK_Error, Next);
+  D->Call = S;
+  return D;
+}
+
 /// FIXME: Convert this back to an iterative function, if possible (see
 ///        disabled iterative version below).
 ///
@@ -1622,6 +1628,7 @@ static Declarator *buildRValueRefDeclarator(const CallSyntax *S,
 /// we build a declarator fragment.
 Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
   // If we find an atom, then we're done.
+
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(S)) {
 
     // This might be a typename, in which case, build a type-declarator.
@@ -1673,28 +1680,40 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
         return buildTypeExpression(Call, Next);
       } else if (Callee->getSpelling() == "operator'in'") {
         return makeDeclarator(SemaRef, Call->getArgument(0), Next);
+
       } else if (Callee->getSpelling() == "operator'const'") {
         Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
         return buildConstDeclarator(Call, Next);
+        
       } else if (Callee->getSpelling() == "operator'ref'") {
         Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
         return buildRefDeclarator(Call, Next);
+        
       } else if (Callee->getSpelling() == "operator'rref'") {
+        if (Call->getNumArguments() != 1) {
+          SemaRef.Diags.Report(Callee->getLoc(),
+                               clang::diag::err_requires_a_type) << "rref"; 
+          return nullptr;
+        }
         Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
         return buildRValueRefDeclarator(Call, Next);
       }
 
       // Otherwise, this appears to be a function declarator.
       Declarator *Temp = makeDeclarator(SemaRef, Callee,
-                                        buildFunctionDeclarator(SemaRef, Call, Next));
+                                        buildFunctionDeclarator(SemaRef,
+                                                                Call, Next));
       Temp->recordAttributes(Call);
       return Temp;
 
-    } else if (const ElemSyntax *Callee = dyn_cast<ElemSyntax>(Call->getCallee())) {
+    } else if (const ElemSyntax *Callee
+               = dyn_cast<ElemSyntax>(Call->getCallee())) {
       // We have a template parameter list here, so build the
       // function declarator accordingly.
       Declarator *Temp = makeDeclarator(SemaRef, Callee->getObject(),
-                                        buildFunctionDeclarator(SemaRef, Call, Callee,
+                                        buildFunctionDeclarator(SemaRef,
+                                                                Call,
+                                                                Callee,
                                                                 Next));
       Temp->recordAttributes(Call);
       return Temp;
@@ -1711,6 +1730,8 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
     }
 
     llvm_unreachable("Invalid templated declarator.");
+  } else if(const ErrorSyntax *Err = dyn_cast<ErrorSyntax>(S)) {
+    return buildErrorDeclarator(Err, nullptr);
   }
 
   return nullptr;
@@ -1809,7 +1830,7 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       // of declarator syntax is not supported.
       //
       // FIXME: Emit an error instead of a diagnostic.
-      if (SemaRef.getCurrentScope()->isParameterScope() && !Dcl->isIdentifier()){
+      if (SemaRef.getCurrentScope()->isParameterScope() && !Dcl->isIdentifier()) {
         assert(false && "Invalid parameter declaration");
       }
       clang::IdentifierInfo* Id = getIdentifier(*this, Dcl);
@@ -1828,11 +1849,17 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
         if (OperatorEquals && !CurScope->findDecl(Id).empty())
           return nullptr;
       }
-
+        
       // Create a declaration for this node.
       //
       // FIXME: Do a better job managing memory.
       Declaration *ParentDecl = SemaRef.getCurrentDecl();
+      
+      // This was created to prevent duplicate elaboration failure which could
+      // previously result in an error.
+      if (SemaRef.getCurrentScope()->hasDeclaration(S)) {
+        return nullptr;
+      }
       Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, Init);
       TheDecl->Id = Id;
 
@@ -1857,7 +1884,6 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
           TheDecl->setPreviousDecl(*DeclSet.begin());
         }
       }
-
       SemaRef.getCurrentScope()->addDecl(TheDecl);
       TheDecl->CurrentPhase = Phase::Identification;
       return TheDecl;
