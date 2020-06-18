@@ -189,8 +189,6 @@ public:
 
   SyntaxContext &getContext() { return Context; }
 
-  // clang::QualType lookUpType(clang::IdentifierInfo *Id, Scope *S) const;
-
   /// This is the clang processing scope. This is mostly for code GenPieces.
   clang::Scope *getCurClangScope();
   clang::Scope *enterClangScope(unsigned int ScopeFlags);
@@ -220,7 +218,7 @@ public:
   /// This attempts to check if declaration needs to be delayed during class
   /// elaboration.
   bool declNeedsDelayed(Declaration *D);
-  
+
   /// Based on the current elaboration state read from class stack we compute
   /// the current depth of a template.
   ///
@@ -275,6 +273,47 @@ public:
   const clang::IdentifierInfo *OperatorCaretII;
   const clang::IdentifierInfo *OperatorRefII;
   const clang::IdentifierInfo *OperatorRRefII;
+  
+  /// These are the identifier names given to operators in C++.
+  ///{
+  const clang::IdentifierInfo *CPPOp_Plus;
+  const clang::IdentifierInfo *CPPOp_Minus;
+  const clang::IdentifierInfo *CPPOp_Mul;
+  const clang::IdentifierInfo *CPPOp_Div;
+  const clang::IdentifierInfo *CPPOp_Mod;
+  const clang::IdentifierInfo *CPPOp_BitWiseXOr;
+  const clang::IdentifierInfo *CPPOp_BitWiseOr;
+  const clang::IdentifierInfo *CPPOp_BitWiseAnd;
+  const clang::IdentifierInfo *CPPOp_BitWiseNot;
+  const clang::IdentifierInfo *CPPOp_BitWiseLeftShift;
+  const clang::IdentifierInfo *CPPOp_BitWiseRightShift;
+  const clang::IdentifierInfo *CPPOp_LOr;
+  const clang::IdentifierInfo *CPPOp_LAnd;
+  const clang::IdentifierInfo *CPPOp_LNot;
+  const clang::IdentifierInfo *CPPOp_Less;
+  const clang::IdentifierInfo *CPPOp_Greater;
+  const clang::IdentifierInfo *CPPOp_LessEqual;
+  const clang::IdentifierInfo *CPPOp_GreaterEqual;
+  const clang::IdentifierInfo *CPPOp_Equal;
+  const clang::IdentifierInfo *CPPOp_NotEqual;
+  const clang::IdentifierInfo *CPPOp_Assign;
+  const clang::IdentifierInfo *CPPOp_PlusAssign;
+  const clang::IdentifierInfo *CPPOp_MinusAssign;
+  const clang::IdentifierInfo *CPPOp_MulAssign;
+  const clang::IdentifierInfo *CPPOp_DivAssign;
+  const clang::IdentifierInfo *CPPOp_ModAssign;
+  const clang::IdentifierInfo *CPPOp_BitWiseXOrAssign;
+  const clang::IdentifierInfo *CPPOp_BitWiseOrAssign;
+  const clang::IdentifierInfo *CPPOp_BitWiseAndAssign;
+  const clang::IdentifierInfo *CPPOp_BitWiseLeftShiftAssign;
+  const clang::IdentifierInfo *CPPOp_BitWiseRightShiftAssign;
+  const clang::IdentifierInfo *CPPOp_ArrayAccess;
+  const clang::IdentifierInfo *CPPOp_FunctionCall;
+  ///}
+
+  // We don't expose this externally, we may need to provide a way to explicitly
+  // invoke this in order to fully support C++.
+  const clang::IdentifierInfo *CPPOp_Arrow;
 
   // An RAII type for constructing scopes.
   struct ScopeRAII {

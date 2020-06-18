@@ -852,12 +852,19 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
             R.begin(), R.end());
       }
 
-      // Checking if the current declaration is a variable.
+      clang::QualType ResultType = VD->getType();
+      if (ResultType.getTypePtr()->isReferenceType()) {
+        ResultType = ResultType.getTypePtr()->getPointeeType();
+      }
+      
       // FIXME: discern whether this is an lvalue or rvalue properly
+      // This was altered so that it would handle implicit conversions
+      // for references correctly.
       clang::DeclRefExpr *DRE =
-        clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
-                                  clang::SourceLocation(), VD, /*Capture=*/false,
-                                  Loc, FoundTy, clang::VK_LValue, VD);
+        SemaRef.getCxxSema().BuildDeclRefExpr(VD, ResultType, clang::VK_LValue,
+                                              DNI, clang::NestedNameSpecifierLoc(),
+                                              VD, clang::SourceLocation(),
+                                              nullptr);
       return DRE;
     }
 

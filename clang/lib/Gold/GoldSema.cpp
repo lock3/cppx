@@ -162,6 +162,42 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorConstII =  &Context.CxxAST.Idents.get("operator'const'");
   OperatorRefII = &Context.CxxAST.Idents.get("operator'ref'");
   OperatorRRefII = &Context.CxxAST.Idents.get("operator'rref'");
+
+  // All of the names of operators that we use.
+  CPPOp_Plus = &Context.CxxAST.Idents.get("operator+");
+  CPPOp_Minus = &Context.CxxAST.Idents.get("operator-");
+  CPPOp_Mul = &Context.CxxAST.Idents.get("operator*");
+  CPPOp_Div = &Context.CxxAST.Idents.get("operator/");
+  CPPOp_Mod = &Context.CxxAST.Idents.get("operator%");
+  CPPOp_BitWiseXOr = &Context.CxxAST.Idents.get("operator^");
+  CPPOp_BitWiseOr = &Context.CxxAST.Idents.get("operator|");
+  CPPOp_BitWiseAnd = &Context.CxxAST.Idents.get("operator&");
+  CPPOp_BitWiseNot = &Context.CxxAST.Idents.get("operator~");
+  CPPOp_BitWiseLeftShift = &Context.CxxAST.Idents.get("operator<<");
+  CPPOp_BitWiseRightShift = &Context.CxxAST.Idents.get("operator>>");
+  CPPOp_LOr = &Context.CxxAST.Idents.get("operator||");
+  CPPOp_LAnd = &Context.CxxAST.Idents.get("operator&&");
+  CPPOp_LNot = &Context.CxxAST.Idents.get("operator!");
+  CPPOp_Less = &Context.CxxAST.Idents.get("operator<");
+  CPPOp_Greater = &Context.CxxAST.Idents.get("operator>");
+  CPPOp_LessEqual = &Context.CxxAST.Idents.get("operator<=");
+  CPPOp_GreaterEqual = &Context.CxxAST.Idents.get("operator>=");
+  CPPOp_Equal = &Context.CxxAST.Idents.get("operator==");
+  CPPOp_NotEqual = &Context.CxxAST.Idents.get("operator!=");
+  CPPOp_Assign = &Context.CxxAST.Idents.get("operator=");
+  CPPOp_PlusAssign = &Context.CxxAST.Idents.get("operator+=");
+  CPPOp_MinusAssign = &Context.CxxAST.Idents.get("operator-=");
+  CPPOp_MulAssign = &Context.CxxAST.Idents.get("operator*=");
+  CPPOp_DivAssign = &Context.CxxAST.Idents.get("operator/=");
+  CPPOp_ModAssign = &Context.CxxAST.Idents.get("operator%=");
+  CPPOp_BitWiseXOrAssign = &Context.CxxAST.Idents.get("operator^=");
+  CPPOp_BitWiseOrAssign = &Context.CxxAST.Idents.get("operator|=");
+  CPPOp_BitWiseAndAssign = &Context.CxxAST.Idents.get("operator&=");
+  CPPOp_BitWiseLeftShiftAssign = &Context.CxxAST.Idents.get("operator<<=");
+  CPPOp_BitWiseRightShiftAssign = &Context.CxxAST.Idents.get("operator>>=");
+  CPPOp_ArrayAccess = &Context.CxxAST.Idents.get("operator[]");
+  CPPOp_FunctionCall = &Context.CxxAST.Idents.get("operator()");
+  CPPOp_Arrow = &Context.CxxAST.Idents.get("operator->");
 }
 
 Sema::~Sema() {
