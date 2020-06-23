@@ -922,7 +922,7 @@ static void TemplateTemplateParmProfile(llvm::FoldingSetNodeID &ID,
   }
 }
 
-void TemplateType::Profile(llvm::FoldingSetNodeID &ID, TemplateDecl *D) { 
+void CppxTemplateType::Profile(llvm::FoldingSetNodeID &ID, TemplateDecl *D) { 
   ID.AddInteger(D->getKind());
   TemplateParameterList *TPL = D->getTemplateParameters();
   ID.AddInteger(TPL->size());
@@ -2389,7 +2389,7 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
     Align = Target->getPointerAlign(getTargetAddressSpace(LangAS::opencl_global));
     break;
 
-  case Type::Template:
+  case Type::CppxTemplate:
   case Type::CppxKind:
   case Type::CppxNamespace:
     Width = 0; // Like void, you can't create objects.
@@ -3507,7 +3507,7 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::CXXRequiredType:
   case Type::CppxKind:
   case Type::CppxNamespace:
-  case Type::Template:
+  case Type::CppxTemplate:
     llvm_unreachable("type should never be variably-modified");
 
   // These types can be variably-modified but should never need to
@@ -6143,14 +6143,13 @@ int ASTContext::getFloatingTypeSemanticOrder(QualType LHS, QualType RHS) const {
 
 QualType ASTContext::getTemplateType(TemplateDecl *Decl) const {
   llvm::FoldingSetNodeID ID;
-  TemplateType::Profile(ID, Decl);
+  CppxTemplateType::Profile(ID, Decl);
 
   void *InsertPos = nullptr;
-  TemplateType *TT =
+  CppxTemplateType *TT =
     TemplateTypes.FindNodeOrInsertPos(ID, InsertPos);
   if (!TT) {
-    // void *memory = Allocate(sizeof(TemplateType));
-    TT = new (*this) TemplateType(Decl);
+    TT = new (*this) CppxTemplateType(Decl);
     TemplateTypes.InsertNode(TT, InsertPos);
   }
 
@@ -7553,7 +7552,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string &S,
 
   case Type::Pipe:
   case Type::CppxKind:
-  case Type::Template:
+  case Type::CppxTemplate:
   case Type::CppxNamespace:
   case Type::ExtInt:
 #define ABSTRACT_TYPE(KIND, BASE)
@@ -9616,7 +9615,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
     return {};
   case Type::Builtin:
   case Type::CppxKind:
-  case Type::Template:
+  case Type::CppxTemplate:
     // Only exactly equal builtin types are compatible, which is tested above.
     return {};
   case Type::Complex:

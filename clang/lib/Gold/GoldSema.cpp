@@ -11,21 +11,24 @@
 //  for the Gold language.
 //
 //===----------------------------------------------------------------------===//
+#include "clang/Gold/GoldSema.h"
 
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/CXXInheritance.h"
 #include "clang/AST/Decl.h"
+#include "clang/AST/DeclCXX.h"
+#include "clang/AST/ExprCppx.h"
 #include "clang/AST/Stmt.h"
 #include "clang/Basic/Diagnostic.h"
+#include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Sema/Lookup.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/CXXInheritance.h"
+#include "clang/Sema/TypeLocUtil.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "clang/Gold/GoldSyntax.h"
-#include "clang/Gold/GoldScope.h"
-#include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldElaborator.h"
+#include "clang/Gold/GoldScope.h"
+#include "clang/Gold/GoldSyntax.h"
 
 namespace gold {
 
@@ -521,8 +524,12 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
             ND = VD->getDescribedVarTemplate();
           else
             llvm_unreachable("Unknown template function type");
+        } else if (FoundDecl->declaresTemplateType()) {
+          // This is used to get the correct template name.
+          if (auto *RD = dyn_cast<clang::CXXRecordDecl>(FoundDecl->Cxx)) {
+            ND = RD->getDescribedClassTemplate();
+          }
         }
-
         R.addDecl(ND);
       }
       break;
@@ -783,6 +790,147 @@ unsigned Sema::computeTemplateDepth() const {
   }
   return Count;
 }
+
+clang::CppxTypeLiteral *Sema::buildTypeExpr(clang::QualType Ty, clang::SourceLocation Loc) {
+  return buildAnyTypeExpr(Context.CxxAST.CppxKindTy, Ty, Loc);
+}
+
+clang::CppxTypeLiteral *Sema::buildTypeExpr(clang::TypeSourceInfo *TInfo) {
+  assert(TInfo && "Invalid type information.");
+  return buildAnyTypeExpr(Context.CxxAST.CppxKindTy, TInfo);
+}
+
+clang::CppxTypeLiteral *Sema::buildAnyTypeExpr(clang::QualType KindTy,
+    clang::TypeSourceInfo *TInfo) {
+  assert(TInfo && "Invalid type information.");
+  return clang::CppxTypeLiteral::create(Context.CxxAST, KindTy, TInfo);
+}
+
+clang::CppxTypeLiteral *Sema::buildAnyTypeExpr(clang::QualType KindTy,
+    clang::QualType Ty, clang::SourceLocation Loc) {
+  return clang::CppxTypeLiteral::create(Context.CxxAST,
+      KindTy, BuildAnyTypeLoc(Context.CxxAST, Ty, Loc));
+}
+
+clang::CppxTypeLiteral *
+Sema::buildFunctionTypeExpr(clang::QualType FnTy, SourceLocation BeginLoc,
+                            clang::SourceLocation LParenLoc,
+                            clang::SourceLocation RParenLoc,
+                            clang::SourceRange ExceptionSpecRange,
+                            clang::SourceLocation EndLoc,
+                          llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
+  return buildTypeExpr(BuildFunctionTypeLoc(Context.CxxAST, FnTy,
+                                            BeginLoc, LParenLoc, RParenLoc,
+                                            ExceptionSpecRange, EndLoc,
+                                            Params));
+}
+
+clang::CppxTypeLiteral *
+Sema::buildTypeExprFromTypeDecl(const clang::TypeDecl *TyDecl,
+                                clang::SourceLocation Loc) {
+  // FIXME: May need to handle template types differently in the future.
+  return buildTypeExpr(Context.CxxAST.getTypeDeclType(TyDecl), Loc);
+}
+
+clang::CppxTypeLiteral *Sema::buildTemplateType(const clang::TemplateDecl *TD,
+                                                clang::SourceLocation Loc) {
+  return buildTypeExpr(Context.CxxAST.getTemplateType(
+                                    const_cast<clang::TemplateDecl*>(TD)),
+                    // Context.CxxAST.getTypeDeclType(Td),
+                       Loc);
+}
+
+clang::Expr *Sema::addConstToTypeExpr(const clang::Expr *TyExpr,
+                                      clang::SourceLocation Loc) {
+  llvm_unreachable("Working on it!");
+  // EvaluatedTy.addConst();
+}
+
+clang::Expr *Sema::addRefToTypeExpr(const clang::Expr *TyExpr,
+                                    clang::SourceLocation Loc) {
+  llvm_unreachable("Working on it!");
+  // CxxAST.getLValueReferenceType(Inner),
+  
+}
+
+clang::Expr *Sema::addRRefToTypeExpr(const clang::Expr *TyExpr,
+                                     clang::SourceLocation Loc) {
+  llvm_unreachable("Working on it!");
+  // CxxAST.getRValueReferenceType(Inner),
+}
+
+clang::QualType Sema::getQualTypeFromTypeExpr(const clang::Expr *TyExpr) {
+  if (!TyExpr) {
+    return clang::QualType();
+  }
+  if (!TyExpr->getType()->isTypeOfTypes()) {
+    Diags.Report(TyExpr->getExprLoc(), clang::diag::err_not_a_type);
+    return clang::QualType();
+  }
+  if (const clang::CppxTypeLiteral *Ty
+                                   = dyn_cast<clang::CppxTypeLiteral>(TyExpr)) {
+    
+    return Ty->getValue();
+  }
+  llvm_unreachable("Invaild type expression evaluates to type of types.");
+
+}
+
+clang::TypeSourceInfo *
+Sema::getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
+                                clang::SourceLocation Loc) {
+  if (!TyExpr) {
+    return nullptr;
+  }
+  if (!TyExpr->getType()->isTypeOfTypes()) {
+    Diags.Report(Loc, clang::diag::err_not_a_type);
+    return nullptr;
+  }
+  if (const clang::CppxTypeLiteral *Ty
+                                   = dyn_cast<clang::CppxTypeLiteral>(TyExpr)) {
+    
+    return Context.CxxAST.getTrivialTypeSourceInfo(Ty->getValue(), Loc);
+  }
+  llvm_unreachable("Invaild type expression evaluates to type of types.");
+}
+
+clang::TypeSourceInfo *
+Sema::getTypeSourceInfoForTemplateExpr(const clang::Expr *TemplateTy) {
+  llvm_unreachable("Working on getting template type information.");
+}
+
+clang::TypeSourceInfo *
+Sema::getTypeSourceInfoForTemplateExpr(const clang::Expr *TemplateTy,
+                                       clang::SourceLocation Loc) {
+  llvm_unreachable("Working on getting template type information.");
+}
+
+clang::CppxNamespaceDeclRefExpr *
+Sema::buildNSDeclRef(const clang::CppxNamespaceDecl *NSDec,
+                     clang::SourceLocation Loc) {
+  llvm_unreachable("Sema::buildNSDeclRef Not implemented yet");
+}
+
+clang::CppxNamespaceDecl *Sema::getNSDeclFromExpr(const clang::Expr *NSExpr) {
+  assert(NSExpr && "Invalid expression");
+  if (!NSExpr->getType()->isNamespaceType()) {
+    Diags.Report(NSExpr->getExprLoc(),
+                 clang::diag::err_expression_result_type_not_namespace)
+        << NSExpr;
+    return nullptr;
+  }
+  
+  if (const clang::CppxNamespaceDeclRefExpr *NSDeclRef
+                          = dyn_cast<clang::CppxNamespaceDeclRefExpr>(NSExpr)) {
+    return NSDeclRef->getValue();
+  }
+  Diags.Report(NSExpr->getExprLoc(),
+                clang::diag::err_expression_result_type_not_namespace)
+      << NSExpr;
+  return nullptr;
+}
+
+
 
 bool Sema::IsUnaryOperator(llvm::StringRef OpName) const {
   auto It = UnaryOpNames.find(OpName);

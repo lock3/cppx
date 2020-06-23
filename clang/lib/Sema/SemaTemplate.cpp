@@ -6022,7 +6022,7 @@ bool UnnamedLocalNoLinkageFinder::VisitCppxNamespaceType(
   return false;
 }
 
-bool UnnamedLocalNoLinkageFinder::VisitTemplateType(const TemplateType* T) {
+bool UnnamedLocalNoLinkageFinder::VisitCppxTemplateType(const CppxTemplateType* T) {
   return false;
 }
 

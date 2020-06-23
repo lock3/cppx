@@ -439,7 +439,7 @@ void TypeLocWriter::VisitCppxNamespaceTypeLoc(CppxNamespaceTypeLoc TL) {
   Record.AddSourceLocation(TL.getNameLoc());
 }
 
-void TypeLocWriter::VisitTemplateTypeLoc(TemplateTypeLoc TL) {
+void TypeLocWriter::VisitCppxTemplateTypeLoc(CppxTemplateTypeLoc TL) {
   Record.AddSourceLocation(TL.getLoc());
 }
 

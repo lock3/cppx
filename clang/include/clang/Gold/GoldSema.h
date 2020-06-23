@@ -21,6 +21,7 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
+#include "clang/Sema/Sema.h"
 
 #include "clang/Gold/GoldSyntaxContext.h"
 #include "clang/Gold/GoldScope.h"
@@ -41,7 +42,9 @@ class CXXRecordDecl;
 class Sema;
 class Stmt;
 class Type;
-
+class CppxTypeLiteral;
+class CppxNamespaceDeclRefExpr;
+class TypeSourceInfo;
 } // namespace clang
 
 namespace gold {
@@ -199,7 +202,6 @@ public:
 
   void dumpState(llvm::raw_ostream &out = llvm::outs());
 
-
   /// This is a stack of classes currently being elaborated.
   llvm::SmallVector<ElaboratingClass *, 6> ClassStack;
 
@@ -227,6 +229,67 @@ public:
   ///
   unsigned computeTemplateDepth() const;
 
+
+
+  /// Members that allow construction of the CppxLiteralType
+  ///{
+  clang::CppxTypeLiteral *buildTypeExpr(clang::QualType Ty,
+                                        clang::SourceLocation Loc);
+  clang::CppxTypeLiteral *buildTypeExpr(clang::TypeSourceInfo *TInfo);
+  clang::CppxTypeLiteral *buildAnyTypeExpr(clang::QualType KindTy,
+                                           clang::TypeSourceInfo *TInfo);
+
+  
+  clang::CppxTypeLiteral *buildAnyTypeExpr(clang::QualType KindTy,
+                                           clang::QualType Ty,
+                                           clang::SourceLocation Loc);
+
+  clang::CppxTypeLiteral *buildFunctionTypeExpr(clang::QualType FnTy,
+                                                clang::SourceLocation BeginLoc,
+                                                clang::SourceLocation LParenLoc,
+                                                clang::SourceLocation RParenLoc,
+                                                clang::SourceRange ExceptionSpecRange,
+                                                clang::SourceLocation EndLoc,
+                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
+  clang::CppxTypeLiteral *buildTypeExprFromTypeDecl(
+                      const clang::TypeDecl *TyDecl, clang::SourceLocation Loc);
+
+  clang::CppxTypeLiteral *buildTemplateType(const clang::TemplateDecl *TD,
+                                            clang::SourceLocation Loc);
+  
+  clang::Expr *addConstToTypeExpr(const clang::Expr *TyExpr,
+                                  clang::SourceLocation Loc);
+  clang::Expr *addRefToTypeExpr(const clang::Expr *TyExpr,
+                                clang::SourceLocation Loc);
+  clang::Expr *addRRefToTypeExpr(const clang::Expr *TyExpr,
+                                 clang::SourceLocation Loc);
+  ///}
+
+
+  /// This simply checks and extracts the QualType from a type expression.
+  /// This can return a QualType where .isNull() is true,
+  clang::QualType getQualTypeFromTypeExpr(const clang::Expr *TyExpr);
+
+  /// This functions will be responsible for converting an expression into
+  /// a TInfo and reporting if it fails, it shall return nullptr in the
+  /// event it fails.
+  clang::TypeSourceInfo *getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
+                             clang::SourceLocation Loc=clang::SourceLocation());
+
+  /// These are stub implementations for now so that I can implement them at a
+  /// later time with a later expression.
+  clang::TypeSourceInfo *getTypeSourceInfoForTemplateExpr(
+      const clang::Expr *TemplateTy);
+  clang::TypeSourceInfo *getTypeSourceInfoForTemplateExpr(
+      const clang::Expr *TemplateTy, clang::SourceLocation Loc);
+
+
+  clang::CppxNamespaceDeclRefExpr *buildNSDeclRef(
+                                          const clang::CppxNamespaceDecl *NSDec,
+                                          clang::SourceLocation Loc);
+  /// This function extracts a namespace from an expression and returns the
+  /// resulting namespace or nullptr if invalid
+  clang::CppxNamespaceDecl *getNSDeclFromExpr(const clang::Expr *NSExpr);
 private:
   /// =============== Members related to qualified lookup. ================= ///
 
@@ -244,8 +307,8 @@ public:
 
   /// ============= Members related to NNS typo correction. =============== ///
 
-  // A C++ scope specifier that gets set during NNS so we can leverage Clang's
-  // typo correction.
+  /// A C++ scope specifier that gets set during NNS so we can leverage Clang's
+  /// typo correction.
   clang::CXXScopeSpec CurNNSContext;
 public:
   // The context

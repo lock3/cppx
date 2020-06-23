@@ -2626,7 +2626,13 @@ void StmtPrinter::VisitCXXFragmentCaptureExpr(CXXFragmentCaptureExpr *Node) {
 
 void StmtPrinter::VisitCppxTypeLiteral(CppxTypeLiteral *E) {
   QualType T = E->getValue();
+  OS << "Derp!\n";
   T.print(OS, Policy);
+}
+
+void StmtPrinter::VisitCppxNamespaceDeclRefExpr(CppxNamespaceDeclRefExpr *E) {
+  CppxNamespaceDecl *D = E->getValue();
+  D->print(OS, Policy);
 }
 
 // Obj-C

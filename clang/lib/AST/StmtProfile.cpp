@@ -2293,3 +2293,6 @@ void Stmt::ProcessODRHash(llvm::FoldingSetNodeID &ID,
 void StmtProfiler::VisitCppxTypeLiteral(const CppxTypeLiteral *E) {
   VisitExpr(E);
 }
+void StmtProfiler::VisitCppxNamespaceDeclRefExpr(const CppxNamespaceDeclRefExpr *E) {
+  // VisitExpr(E);
+}

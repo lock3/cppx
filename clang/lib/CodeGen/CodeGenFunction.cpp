@@ -253,7 +253,7 @@ TypeEvaluationKind CodeGenFunction::getEvaluationKind(QualType type) {
     case Type::ObjCObjectPointer:
     case Type::Pipe:
     case Type::CppxKind:
-    case Type::Template:
+    case Type::CppxTemplate:
     case Type::ExtInt:
       return TEK_Scalar;
 
@@ -2013,7 +2013,7 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
     case Type::ObjCInterface:
     case Type::ObjCObjectPointer:
     case Type::CppxKind:
-    case Type::Template:
+    case Type::CppxTemplate:
     case Type::CppxNamespace:
     case Type::ExtInt:
       llvm_unreachable("type class is never variably-modified!");

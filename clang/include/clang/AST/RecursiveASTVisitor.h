@@ -1036,7 +1036,7 @@ DEF_TRAVERSE_TYPE(UnresolvedUsingType, {})
 DEF_TRAVERSE_TYPE(CXXRequiredTypeType, {})
 DEF_TRAVERSE_TYPE(CppxKindType, {})
 DEF_TRAVERSE_TYPE(CppxNamespaceType, {})
-DEF_TRAVERSE_TYPE(TemplateType, {
+DEF_TRAVERSE_TYPE(CppxTemplateType, {
     // TODO: Finish implementing this? I will need to visit all child types I think.
                     })
 DEF_TRAVERSE_TYPE(TypedefType, {})
@@ -1305,7 +1305,7 @@ DEF_TRAVERSE_TYPELOC(UnresolvedUsingType, {})
 DEF_TRAVERSE_TYPELOC(CXXRequiredTypeType, {})
 DEF_TRAVERSE_TYPELOC(CppxKindType, {})
 DEF_TRAVERSE_TYPELOC(CppxNamespaceType, {})
-DEF_TRAVERSE_TYPELOC(TemplateType, {// TODO: Finish implementing this?
+DEF_TRAVERSE_TYPELOC(CppxTemplateType, {// TODO: Finish implementing this?
                     })
 DEF_TRAVERSE_TYPELOC(TypedefType, {})
 
@@ -1585,6 +1585,7 @@ DEF_TRAVERSE_DECL(
     })
 
 DEF_TRAVERSE_DECL(CppxNamespaceDecl, {})
+DEF_TRAVERSE_DECL(CppxPartialDecl, {})
 
 DEF_TRAVERSE_DECL(ObjCCompatibleAliasDecl, {// FIXME: implement
                                            })
@@ -2790,6 +2791,7 @@ DEF_TRAVERSE_STMT(CXXDependentVariadicReifierExpr, {})
 DEF_TRAVERSE_STMT(CXXFragmentExpr, {})
 DEF_TRAVERSE_STMT(CXXFragmentCaptureExpr, {})
 DEF_TRAVERSE_STMT(CppxTypeLiteral, {})
+DEF_TRAVERSE_STMT(CppxNamespaceDeclRefExpr, {})
 
 DEF_TRAVERSE_STMT(MaterializeTemporaryExpr, {
   if (S->getLifetimeExtendedTemporaryDecl()) {

@@ -111,3 +111,4 @@ def CXXInjector : DeclNode<Decl, "injector declarations", 1>;
   def CXXInjection : DeclNode<CXXInjector>;
 def CXXFragment : DeclNode<Decl>, DeclContext;
 def CXXStmtFragment : DeclNode<Decl>, DeclContext;
+def CppxPartial : DeclNode<Decl>;

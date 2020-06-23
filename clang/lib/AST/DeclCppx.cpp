@@ -4,6 +4,7 @@
 
 #include "clang/Gold/GoldScope.h"
 
+
 namespace clang {
 
 CppxNamespaceDecl *CppxNamespaceDecl::Create(const ASTContext &C,

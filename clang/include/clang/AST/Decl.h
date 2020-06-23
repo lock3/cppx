@@ -4563,6 +4563,16 @@ public:
   }
 };
 
+class CppxPartialDecl : public Decl {
+public:
+  // Implement isa/cast/dyncast/etc.
+  static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+  static bool classofKind(Kind K) {
+    return K == CppxPartial;
+  }
+};
+
+
 /// Insertion operator for diagnostics.  This allows sending NamedDecl's
 /// into a diagnostic with <<.
 inline const DiagnosticBuilder &operator<<(const DiagnosticBuilder &DB,

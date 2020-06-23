@@ -3007,7 +3007,7 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
       break;
 
     case Type::CppxKind:
-    case Type::Template: // TODO: This is handled in the same way that CppxKind is?
+    case Type::CppxTemplate: // TODO: This is handled in the same way that CppxKind is?
       // Like a builtin type. No associated types or namespaces.
       break;
 

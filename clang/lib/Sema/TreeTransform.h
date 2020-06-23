@@ -6440,9 +6440,18 @@ QualType TreeTransform<Derived>::TransformCppxNamespaceType(
 }
 
 template<typename Derived>
-QualType TreeTransform<Derived>::TransformTemplateType(
+ExprResult TreeTransform<Derived>::TransformCppxNamespaceDeclRefExpr(
+    clang::CppxNamespaceDeclRefExpr* expr) {
+  // QualType T = TL.getType();
+  // TLB.pushTypeSpec(T).setNameLoc(TL.getNameLoc());
+  // return T;
+  llvm_unreachable("TransformCppxNamespaceDeclRefExpr Not implemented.");
+}
+
+template<typename Derived>
+QualType TreeTransform<Derived>::TransformCppxTemplateType(
                                          TypeLocBuilder &TLB,
-                                         TemplateTypeLoc TL) {
+                                         CppxTemplateTypeLoc TL) {
   QualType T = TL.getType();
   TLB.pushTypeSpec(T).setNameLoc(TL.getLoc());
   return T;
