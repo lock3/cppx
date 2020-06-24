@@ -3846,7 +3846,7 @@ recurse:
   case Expr::CXXDependentVariadicReifierExprClass:
   case Expr::CXXCompilerErrorExprClass:
   case Expr::CppxTypeLiteralClass:
-  case Expr::CppxNamespaceDeclRefExprClass:
+  case Expr::CppxDeclRefExprClass:
     llvm_unreachable("unexpected statement kind");
 
   case Expr::ConstantExprClass:

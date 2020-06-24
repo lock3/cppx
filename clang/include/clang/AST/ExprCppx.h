@@ -46,38 +46,27 @@ class ASTContext;
 /// This is any type expression.
 class CppxTypeLiteral : public Expr {
 public:
-  /// The actual type denoted by the literal.
-  // TODO: This may need to be switched over to a union type in order to correctly
-  // have a possible type or decl.
-  using ValueType = QualType;
+  using ValueType = clang::TypeSourceInfo *;
 private:
   ValueType Value;
-
-  /// The location of the type literal.
-  SourceLocation Loc;
 
   explicit CppxTypeLiteral(EmptyShell Empty)
     : Expr(CppxTypeLiteralClass, Empty) {}
 
 public:
-  CppxTypeLiteral(QualType K, QualType T, SourceLocation Loc)
+  CppxTypeLiteral(QualType K, ValueType T)
     : Expr(CppxTypeLiteralClass, K, VK_RValue, OK_Ordinary),
-      Value(T), Loc(Loc) {
+      Value(T) {
     setDependence(computeDependence(this));
   }
 
-  QualType getValue() const LLVM_READONLY {
+  ValueType getValue() const LLVM_READONLY {
     return Value;
   }
 
   SourceLocation getBeginLoc() const LLVM_READONLY;
 
   SourceLocation getEndLoc() const LLVM_READONLY;
-
-  /// Retrieve the location of the literal.
-  SourceLocation getLocation() const;
-
-  void setLocation(SourceLocation Location) { Loc = Location; }
 
   // Iterators
   child_range children() {
@@ -90,39 +79,34 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == CppxTypeLiteralClass;
   }
-  static CppxTypeLiteral* create(clang::ASTContext &Context, QualType KindTy,
-                                 QualType Ty, SourceLocation Loc);
+  static CppxTypeLiteral* create(ASTContext &Context, QualType KindTy,
+                                 ValueType Ty);
 
-  static CppxTypeLiteral* create(clang::ASTContext &Context, QualType KindTy,
-                                 TypeSourceInfo *TInfo);
 };
 
 /// This represents a reference to a namespace expression.
-class CppxNamespaceDeclRefExpr : public Expr {
+class CppxDeclRefExpr : public Expr {
 public:
   /// The actual type denoted by the literal.
-  using ValueType = CppxNamespaceDecl;
+  using ValueType = clang::Decl *;
 private:
-  // TODO: This may need to be switched over to a union type in order to correctly
-  // have a possible type or decl.
-  ValueType *NsRef;
+  ValueType DeclRef;
 
   /// The location of the namespace.
   SourceLocation Loc;
 
-  explicit CppxNamespaceDeclRefExpr(EmptyShell Empty)
-    : Expr(CppxNamespaceDeclRefExprClass, Empty) {}
+  explicit CppxDeclRefExpr(EmptyShell Empty)
+    : Expr(CppxDeclRefExprClass, Empty) {}
 
 public:
-  CppxNamespaceDeclRefExpr(QualType NsKindType, ValueType *NsDecl,
-                           SourceLocation L)
-    : Expr(CppxNamespaceDeclRefExprClass, NsKindType, VK_RValue, OK_Ordinary),
-      NsRef(NsDecl), Loc(L) {
+  CppxDeclRefExpr(QualType KindTy, ValueType D, SourceLocation L)
+    : Expr(CppxDeclRefExprClass, KindTy, VK_RValue, OK_Ordinary),
+      DeclRef(D), Loc(L) {
     setDependence(computeDependence(this));
   }
 
-  ValueType *getValue() const LLVM_READONLY {
-    return NsRef;
+  ValueType getValue() const LLVM_READONLY {
+    return DeclRef;
   }
 
   SourceLocation getBeginLoc() const LLVM_READONLY {
@@ -147,12 +131,11 @@ public:
   }
 
   static bool classof(const Stmt *T) {
-    return T->getStmtClass() == CppxNamespaceDeclRefExprClass;
+    return T->getStmtClass() == CppxDeclRefExprClass;
   }
 
-  static CppxNamespaceDeclRefExpr *create(clang::ASTContext &Context,
-                                          ValueType *NsDecl,
-                                          SourceLocation Loc);
+  static CppxDeclRefExpr *create(ASTContext &Context, QualType KindTy, 
+                                 ValueType NsDecl, SourceLocation Loc);
 };
 
 

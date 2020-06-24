@@ -28,35 +28,25 @@ namespace clang {
 
 
 SourceLocation CppxTypeLiteral::getBeginLoc() const {
-  return Loc;
+  return Value->getTypeLoc().getBeginLoc();
 }
 
 SourceLocation CppxTypeLiteral::getEndLoc() const {
-  return Loc;
+  return Value->getTypeLoc().getEndLoc();
 }
 
-SourceLocation CppxTypeLiteral::getLocation() const {
-  return Loc;
+// SourceLocation CppxTypeLiteral::getLocation() const {
+//   return Loc;
+// }
+
+CppxTypeLiteral*
+CppxTypeLiteral::create(ASTContext &Context, QualType KindTy, ValueType Ty) {
+  return new (Context) CppxTypeLiteral(KindTy, Ty);
 }
 
-CppxTypeLiteral* CppxTypeLiteral::create(clang::ASTContext &Context, 
-                                         QualType KindTy,
-                                         QualType Ty, SourceLocation Loc) {
-  return new (Context) CppxTypeLiteral(KindTy, Ty, Loc);
-}
-
-CppxTypeLiteral* CppxTypeLiteral::create(clang::ASTContext &Context, 
-                                         QualType KindTy,
-                                         TypeSourceInfo *TInfo) {
-  // TODO: This may not be the right way to get the location of/for a type. 
-  return new (Context) CppxTypeLiteral(KindTy, TInfo->getType(),
-                                       TInfo->getTypeLoc().getBeginLoc());
-}
-
-CppxNamespaceDeclRefExpr *
-CppxNamespaceDeclRefExpr::create(clang::ASTContext &Context,
-                                 ValueType *NsDecl, SourceLocation Loc) {
-  return new (Context) CppxNamespaceDeclRefExpr(
-      Context.getCppxNamespaceType(NsDecl->getNamespace()), NsDecl, Loc);
+CppxDeclRefExpr *
+CppxDeclRefExpr::create(ASTContext &Context, QualType KindTy, ValueType D,
+                        SourceLocation Loc) {
+  return new (Context) CppxDeclRefExpr(KindTy, D, Loc);
 }
 } // namespace clang

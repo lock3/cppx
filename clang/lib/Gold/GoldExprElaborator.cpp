@@ -445,10 +445,36 @@ createNullLiteral(clang::ASTContext &CxxAST, clang::SourceLocation Loc) {
   return new (CxxAST) clang::CXXNullPtrLiteralExpr(CxxAST.NullPtrTy, Loc);
 }
 
+static clang::ParsedTemplateArgument
+convertExprToTemplateArg(Sema &SemaRef, clang::Expr *E) {
+  // Type parameters start here.
+  if (E->getType()->isTypeOfTypes()) {
+    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                          E, E->getExprLoc());
+    if (!TInfo)
+      return clang::ParsedTemplateArgument();
+
+    return SemaRef.getCxxSema().ActOnTemplateTypeArgument(
+               SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo));
+  }
+
+  if (E->getType()->isTemplateType()) {
+    // This is a template template parameter?
+    llvm_unreachable("Template template params not implemented yet.");
+  }
+
+  // Anything else is a constant expression?
+  clang::ExprResult ConstExpr(E);
+  ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(ConstExpr);
+  return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::NonType,
+      ConstExpr.get(), E->getExprLoc());
+}
+
+
 static clang::Expr*
 handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
     SyntaxContext& Context, clang::Expr* IdExpr, const ElemSyntax *Elem) {
-  llvm_unreachable("I broke templated types.");
+  // llvm_unreachable("I broke templated types.");
   // clang::CXXScopeSpec SS;
   // clang::Sema::TemplateTy Template;
   // clang::UnqualifiedId TemplateName;
@@ -458,8 +484,7 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
   //   llvm_unreachable("Nested/qualified name access to template syntax "
   //       "not implemented yet.");
   // const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Elem->getObject());
-  // clang::IdentifierInfo &II = Context.CxxAST.Idents.get(Atom->getSpelling());
-  // TemplateName.setIdentifier(&II, Atom->getLoc());
+
   // bool MemberOfUnknownSpecialization = false;
   
   // if (clang::TemplateNameKind TNK = SemaRef.getCxxSema().isTemplateName(
@@ -467,100 +492,58 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
   //     TemplateName, ObjectType, /*EnteringContext*/false, Template,
   //     MemberOfUnknownSpecialization)) {
 
-  //   llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
+  llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
 
-  //   const ListSyntax *ElemArgs = cast<ListSyntax>(Elem->getArguments());
-  //   for(const Syntax *SyntaxArg : ElemArgs->children()) {
-  //     clang::EnterExpressionEvaluationContext EnterConstantEvaluated(
-  //       SemaRef.getCxxSema(),
-  //       clang::Sema::ExpressionEvaluationContext::ConstantEvaluated,
-  //       /*LambdaContextDecl=*/nullptr,
-  //       /*ExprContext=*/
-  //       clang::Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
+  const ListSyntax *ElemArgs = cast<ListSyntax>(Elem->getArguments());
+  for(const Syntax *SyntaxArg : ElemArgs->children()) {
+    clang::EnterExpressionEvaluationContext EnterConstantEvaluated(
+                                                          SemaRef.getCxxSema(),
+                  clang::Sema::ExpressionEvaluationContext::ConstantEvaluated,
+                                                /*LambdaContextDecl=*/nullptr,
+                                                              /*ExprContext=*/
+          clang::Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
+    clang::Expr *ArgExpr = Elab.elaborateExpr(SyntaxArg);
+    if (!ArgExpr)
+      return nullptr;
+    auto TemplateArg = convertExprToTemplateArg(SemaRef, ArgExpr);
+    if (TemplateArg.isInvalid())
+      // TODO: Figure out if this needs an error message or not.
+      // I assume that the errore message should be delivered prior to this.
+      return nullptr;
 
-  //     // TODO: Attempt to process this initially as a template template
-  //     // parameter and see if it fails or not, if it fails then it's not a
-  //     // template template parameter.
-  //     Expression ArgExpr = Elab.elaborateExpr(SyntaxArg);
-  //     if (ArgExpr.isNull()) 
-  //       return nullptr;
-      
-  //     if (ArgExpr.is<clang::NamespaceDecl *>()) {
-  //       // FIXME: Figure out the correct error message to display here.
-  //       // Basically we need to say that a namespace is not a type.
-  //       llvm::errs() << "Unable to a namespace name for a template argument\n";
-  //       return nullptr;
-  //     }
+    ParsedArguments.emplace_back(TemplateArg);
 
-  //     if (ArgExpr.is<clang::TypeSourceInfo *>()) {
-  //       // TODO: Figure out how to handle template template parameters here?
-  //       // Because currently that's impossible.
-  //       auto *SrcInfo = ArgExpr.get<clang::TypeSourceInfo *>();
-  //       ParsedArguments.emplace_back(
-  //         SemaRef.getCxxSema().ActOnTemplateTypeArgument(
-  //           SemaRef.getCxxSema().CreateParsedType(SrcInfo->getType(), SrcInfo)));
-  //     }
-      
-  //     if (ArgExpr.is<clang::Expr *>()) {
-  //       // Leveraging constant expression evaluation from clang's sema class.
-  //       clang::ExprResult ConstExpr(ArgExpr.get<clang::Expr*>());
-  //       ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(ConstExpr);
-  //       ParsedArguments.emplace_back(clang::ParsedTemplateArgument::NonType,
-  //           ConstExpr.get(), SyntaxArg->getLoc());
-  //     }
-  //   }
-  //   switch(TNK) {
-  //   case clang::TemplateNameKind::TNK_Concept_template:{
-  //     llvm_unreachable("TNK_Concept_template has not been implemented yet.");
-  //     break;
-  //   }
-  //   case clang::TemplateNameKind::TNK_Dependent_template_name:{
-  //     llvm_unreachable("TNK_Dependent_template_name has not been implemented yet.");
-  //     break;
-  //   }
-  //   case clang::TemplateNameKind::TNK_Function_template:{
-  //     llvm_unreachable("TNK_Function_template has not been implemented yet.");
-  //     break;
-  //   }
-  //   case clang::TemplateNameKind::TNK_Non_template:{
-  //     // TODO: It might be best to emit something here indicating that we
-  //     // found something that wasn't a templat that is being used as a template
-  //     // But within the function that I got this from clang doesn't emit an error
-  //     // they simply return false instead.
-  //     //
-  //     // This was taken from the function Parser::ParseUnqualifiedIdTemplateId
-  //     // in ParseExprCXX.cpp line:2281
-  //     return nullptr;
-  //   }
-  //   case clang::TemplateNameKind::TNK_Type_template:{
-  //     clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
-  //     clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
-  //       SemaRef.getCurClangScope(), SS,
-  //       /*TemplateKWLoc*/ clang::SourceLocation(), Template, &II, Atom->getLoc(),
-  //       /*LAngleLoc*/ clang::SourceLocation(), InArgs,
-  //       /*RAngleLoc*/ clang::SourceLocation(), false, false);
-  //     if (Result.isInvalid()) {
-  //       // TODO: Figure out correct error message this.
-  //       llvm::errs() << "We hae an invalid result ?!\n";
-  //       llvm_unreachable("We have an invlaid result for ActOnTemplateIdType.");
-  //     }
-  //     clang::QualType Ty(Result.get().get());
-  //     const clang::LocInfoType *TL = cast<clang::LocInfoType>(Ty.getTypePtr());
-  //     clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST,
-  //         TL->getType(), Atom->getLoc());
-  //     return TInfo;
-  //   }
-  //   case clang::TemplateNameKind::TNK_Undeclared_template:{
-  //     llvm_unreachable("TNK_Undeclared_template has not been implemented yet.");
-  //     break;
-  //   }
-  //   case clang::TemplateNameKind::TNK_Var_template:{
-  //     llvm_unreachable("TNK_Var_template has not been implemented yet.");
-  //     break;
-  //   }
-  //   }
-  // }
-  // return nullptr;
+  }
+
+  clang::Decl *Decl = SemaRef.getDeclFromExpr(IdExpr,
+                                              Elem->getObject()->getLoc());
+  if (!Decl)
+    return nullptr;
+
+  clang::ClassTemplateDecl *CTD = dyn_cast<clang::ClassTemplateDecl>(Decl);
+  if (!CTD) {
+    llvm_unreachable("Invlid CppxDeclRefExpr expression.");
+  }
+    
+  clang::CXXScopeSpec SS;
+  clang::TemplateName TName(CTD);
+  clang::Sema::TemplateTy TemplateTyName = clang::Sema::TemplateTy::make(TName);
+  // clang::UnqualifiedId TemplateName;
+  // clang::ParsedType ObjectType;
+  clang::IdentifierInfo *II = CTD->getIdentifier();
+  clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
+  clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
+    SemaRef.getCurClangScope(), SS, /*TemplateKWLoc*/ clang::SourceLocation(),
+    TemplateTyName, II, Elem->getObject()->getLoc(), /*LAngleLoc*/ clang::SourceLocation(),
+    InArgs, /*RAngleLoc*/ clang::SourceLocation(), false, false);
+  if (Result.isInvalid()) {
+    // TODO: Figure out correct error message this.
+    llvm::errs() << "We hae an invalid result ?!\n";
+    llvm_unreachable("We have an invlaid result for ActOnTemplateIdType.");
+  }
+  clang::QualType Ty(Result.get().get());
+  const clang::LocInfoType *TL = cast<clang::LocInfoType>(Ty.getTypePtr());
+  return SemaRef.buildTypeExpr(TL->getType(), Elem->getLoc());
 }
 
 static clang::Expr *
@@ -739,18 +722,17 @@ clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
   if (!IdExpr)
     return nullptr;
 
-  if (IdExpr->getType()->isTypeOfTypes()) {
-    llvm::outs() << "Id expr as evaluated!\n";
-    IdExpr->dump();
-    // TODO: This needs to be switched over to an error message and I need
-    // to create a valid return type for the template type.
-    return handleClassTemplateSelection(*this, SemaRef, Context, IdExpr, Elem);
-  } else if (IdExpr->getType()->isNamespaceType()) {
-    // FIXME: Create error message for here.
-    llvm_unreachable("Cannot index a namespace yet.");
-  }else {
-    return handleElementExpression(*this, SemaRef, Context, Elem, IdExpr);
+  if (IdExpr->getType()->isTypeOfTypes()
+      || IdExpr->getType()->isNamespaceType()) {
+    SemaRef.Diags.Report(Elem->getObject()->getLoc(),
+                         clang::diag::err_non_template_in_template_id);
+    return nullptr;
   }
+
+  if (IdExpr->getType()->isTemplateType())
+    return handleClassTemplateSelection(*this, SemaRef, Context, IdExpr, Elem);
+
+  return handleElementExpression(*this, SemaRef, Context, Elem, IdExpr);
 
   llvm_unreachable("Unable to handle indexing into given expression within "
       "the AST.");
@@ -878,19 +860,16 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
     }
 
     // Processing the case when the returned result is a type.
-    if (const clang::TagDecl *TD = R.getAsSingle<clang::TagDecl>())
+    if (const clang::TagDecl *TD = R.getAsSingle<clang::TagDecl>()) {
       return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
+    }
 
-    if (const clang::ClassTemplateDecl *CTD
+    if (clang::ClassTemplateDecl *CTD
                                   = R.getAsSingle<clang::ClassTemplateDecl>()) {
       return SemaRef.buildTemplateType(CTD, Loc);
     }
-    // if (const clang::NamespaceDecl *NS = R.getAsSingle<clang::NamespaceDecl>())
-    //   // FIXME: We need to correctly return what ever a namespace type looks like.
-    //   llvm_unreachable("Handling of clang::NamespaceDecl types isn't "
-    //       "implemented yet.");
 
-    if (const auto *NS = R.getAsSingle<clang::CppxNamespaceDecl>())
+    if (auto *NS = R.getAsSingle<clang::CppxNamespaceDecl>())
       return SemaRef.buildNSDeclRef(NS, Loc);
   }
 
@@ -1113,11 +1092,11 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   //   return handleOperatorDotDot(S);
 
   case FOK_Const:
-    // return handleOperatorConst(S);
+    return handleOperatorConst(S);
   case FOK_Ref:
-    // return handleRefType(S);
+    return handleRefType(S);
   case FOK_RRef:
-    // return handleRRefType(S);
+    return handleRRefType(S);
   default:
     break;
   }
@@ -1210,11 +1189,6 @@ clang::Expr *ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
                          clang::diag::err_expected_expression);
     return nullptr;
   }
-  // if (!Source) {
-  //   SemaRef.Diags.Report(CastOp->getArgument(0)->getLoc(),
-  //                        clang::diag::err_invalid_cast_source);
-  //   return nullptr;
-  // }
   auto CastExpr = SemaRef.getCxxSema().BuildCXXNamedCast(Callee->getLoc(),
                                                          CastKind, TInfo,
                                                          Source,
@@ -1239,8 +1213,12 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     return elaborateNestedLookUpAccess(ElaboratedLHS, Op, RHS);
   
   if (ElaboratedLHS->getType()->isNamespaceType()) {
-    clang::CppxNamespaceDecl *NSRef = SemaRef.getNSDeclFromExpr(ElaboratedLHS);
-    return elaborateNNS(NSRef, Op, RHS);
+    if (clang::CppxNamespaceDecl *NSRef = dyn_cast<clang::CppxNamespaceDecl>(
+                                        SemaRef.getDeclFromExpr(ElaboratedLHS,
+                                        LHS->getLoc()))) {
+      return elaborateNNS(NSRef, Op, RHS);
+    }
+    llvm_unreachable("Invalid namespace type returned.");
   }
 
   if (isa<AtomSyntax>(RHS)) {
@@ -1276,9 +1254,7 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
 clang::Expr *ExprElaborator::elaborateNNS(clang::CppxNamespaceDecl *NS,
                                           const CallSyntax *Op,
                                           const Syntax *RHS) {
-  const clang::CppxNamespaceType *NSTy =
-                        NS->getTypeForDecl()->getAs<clang::CppxNamespaceType>();
-  clang::NamespaceDecl *CxxNS = NSTy->getDecl();
+  clang::NamespaceDecl *CxxNS = NS->getNamespace();
 
   // FIXME: create the correct ObjectType (last param) that is used when this
   // NNS appears as after an operator'.' of an object.
@@ -1294,32 +1270,22 @@ clang::Expr *ExprElaborator::elaborateNNS(clang::CppxNamespaceDecl *NS,
                                 /*RecoveryLookup=*/false,
                                 /*IsCorrected=*/nullptr,
                                 /*OnlyNamespace=*/false);
-  if (Failure) {
-    // TODO: Create error message for here.
-    llvm::outs() << "failed to create nns\n";
+  if (Failure)
     return nullptr;
-  }
-
-  // FIXME: handle templated types?
 
   Sema::QualifiedLookupRAII Qual(SemaRef, SemaRef.QualifiedLookupContext, &NS);
   clang::Expr *RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
-  if (RHSExpr)
+  if (!RHSExpr)
     return nullptr;
 
-  if (RHSExpr->getType()->isNamespaceType()) {
+  if (RHSExpr->getType()->isNamespaceType())
     return RHSExpr;
-  }
 
   // This means that we've reached the end of a lookup and we can now clear the
-  // namespace specifier.
+  // namespace specifier context.
   SemaRef.CurNNSContext.clear();
   ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr);
-
-
-  // TODO: I need to figure out when this can occur.
-  // SemaRef.Diags.Report(RHS->getLoc(), clang::diag::err_failed_to_translate_expr);
-  return nullptr;
+  return RHSExpr;
 }
 
 clang::Expr *ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
@@ -1379,7 +1345,6 @@ static clang::Expr *handleLookUpInsideType(Sema &SemaRef,
 
   // Processing if is a single name.
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(RHS)) {
-    // clang::DeclarationName 
     clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Atom->getSpelling())},
       Atom->getLoc());
     auto R = TD->lookup(DNI.getName());
@@ -1388,17 +1353,13 @@ static clang::Expr *handleLookUpInsideType(Sema &SemaRef,
         << Atom->getSpelling() << TD;
       return nullptr;
     }
-    // R.front();
     clang::NamedDecl *ND = R.front();
     if (clang::TypeDecl *TD = dyn_cast<clang::TypeDecl>(ND)) {
       TD->setIsUsed();
       clang::QualType Ty = CxxAST.getTypeDeclType(TD);
       return SemaRef.buildTypeExpr(Ty, RHS->getLoc());
     }
-    // FIXME: I'm not sure if this is necessary, I guess we'll see.
-    // if (clang::NamespaceDecl *NsDecl = dyn_cast<clang::NamespaceDecl>(ND)) {
-    //   return NsDecl;
-    // }
+
     if (clang::VarDecl *VDecl = dyn_cast<clang::VarDecl>(ND)) {
       // This is how we access static member variables.
       return clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
@@ -1945,7 +1906,7 @@ clang::Expr *ExprElaborator::makeConstType(clang::Expr *InnerTy,
     return nullptr;
   }
   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InnerTy,
-                                                           ConstOpNode->getLoc());
+                                                        ConstOpNode->getLoc());
   if (!TInfo)
     return nullptr;
   clang::QualType EvaluatedTy = TInfo->getType();
@@ -1955,8 +1916,10 @@ clang::Expr *ExprElaborator::makeConstType(clang::Expr *InnerTy,
       << "const";
     return nullptr;
   }
-  EvaluatedTy.addConst();
-  return SemaRef.buildTypeExpr(EvaluatedTy, ConstOpNode->getLoc());
+  
+  auto * T = SemaRef.buildTypeExpr(Context.CxxAST.getConstType(EvaluatedTy),
+                               ConstOpNode->getLoc());
+  return T;
 }
 
 clang::Expr *ExprElaborator::makeRefType(clang::Expr *InnerTy,

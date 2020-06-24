@@ -6413,10 +6413,7 @@ private:
 
   friend class ASTContext;
   TemplateDecl *TD  = nullptr;
-  CppxTemplateType(TemplateDecl *TemplateD)
-    : Type(CppxTemplate, QualType(), TypeDependence(), /*MetaType=*/false),
-      TD(TemplateD)
-  {}
+  CppxTemplateType(TemplateDecl *TemplateD);
 public:
   TemplateDecl *getTemplateDecl() const { return TD; }
 

@@ -6149,7 +6149,7 @@ QualType ASTContext::getTemplateType(TemplateDecl *Decl) const {
   CppxTemplateType *TT =
     TemplateTypes.FindNodeOrInsertPos(ID, InsertPos);
   if (!TT) {
-    TT = new (*this) CppxTemplateType(Decl);
+    TT = new (*this, TypeAlignment) CppxTemplateType(Decl);
     TemplateTypes.InsertNode(TT, InsertPos);
   }
 

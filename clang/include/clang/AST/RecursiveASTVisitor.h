@@ -2791,7 +2791,7 @@ DEF_TRAVERSE_STMT(CXXDependentVariadicReifierExpr, {})
 DEF_TRAVERSE_STMT(CXXFragmentExpr, {})
 DEF_TRAVERSE_STMT(CXXFragmentCaptureExpr, {})
 DEF_TRAVERSE_STMT(CppxTypeLiteral, {})
-DEF_TRAVERSE_STMT(CppxNamespaceDeclRefExpr, {})
+DEF_TRAVERSE_STMT(CppxDeclRefExpr, {})
 
 DEF_TRAVERSE_STMT(MaterializeTemporaryExpr, {
   if (S->getLifetimeExtendedTemporaryDecl()) {

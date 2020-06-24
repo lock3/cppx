@@ -940,7 +940,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
     // TODO: Create a not an type error message for this location.
     llvm_unreachable("This should never happen but just case.");
   }
-  if (TyLitExpr->getValue()->isTypeOfTypes()) {
+  if (TyLitExpr->getValue()->getType()->isTypeOfTypes()) {
     // TODO: This will need to be handled using a CppxPartialDecl.
     return elaborateTypeAlias(D);
   }

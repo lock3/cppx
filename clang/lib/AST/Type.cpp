@@ -4408,3 +4408,9 @@ static NamespaceDecl *getInterestingNamespaceDecl(const NamespaceDecl *NS) {
 NamespaceDecl *CppxNamespaceType::getDecl() const {
   return getInterestingNamespaceDecl(NS);
 }
+
+
+CppxTemplateType::CppxTemplateType(TemplateDecl *TemplateD)
+  : Type(CppxTemplate, QualType{ }, TypeDependence(), /*MetaType=*/false),
+    TD(TemplateD)
+{ }

@@ -299,4 +299,4 @@ def OMPTargetTeamsDistributeSimdDirective : StmtNode<OMPLoopDirective>;
 // cppx Statements
 
 def CppxTypeLiteral : StmtNode<Expr>;
-def CppxNamespaceDeclRefExpr : StmtNode<Expr>;
+def CppxDeclRefExpr : StmtNode<Expr>;

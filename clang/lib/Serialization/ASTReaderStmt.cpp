@@ -544,7 +544,7 @@ void ASTStmtReader::VisitCppxTypeLiteral(CppxTypeLiteral *E) {
   llvm_unreachable("not implemented");
 }
 
-void ASTStmtReader::VisitCppxNamespaceDeclRefExpr(CppxNamespaceDeclRefExpr *E) {
+void ASTStmtReader::VisitCppxDeclRefExpr(CppxDeclRefExpr *E) {
   llvm_unreachable("not implemented");
 }
 

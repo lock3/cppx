@@ -2625,13 +2625,12 @@ void StmtPrinter::VisitCXXFragmentCaptureExpr(CXXFragmentCaptureExpr *Node) {
 }
 
 void StmtPrinter::VisitCppxTypeLiteral(CppxTypeLiteral *E) {
-  QualType T = E->getValue();
-  OS << "Derp!\n";
+  QualType T = E->getValue()->getType();
   T.print(OS, Policy);
 }
 
-void StmtPrinter::VisitCppxNamespaceDeclRefExpr(CppxNamespaceDeclRefExpr *E) {
-  CppxNamespaceDecl *D = E->getValue();
+void StmtPrinter::VisitCppxDeclRefExpr(CppxDeclRefExpr *E) {
+  Decl *D = E->getValue();
   D->print(OS, Policy);
 }
 

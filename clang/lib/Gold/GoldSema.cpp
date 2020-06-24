@@ -808,8 +808,7 @@ clang::CppxTypeLiteral *Sema::buildAnyTypeExpr(clang::QualType KindTy,
 
 clang::CppxTypeLiteral *Sema::buildAnyTypeExpr(clang::QualType KindTy,
     clang::QualType Ty, clang::SourceLocation Loc) {
-  return clang::CppxTypeLiteral::create(Context.CxxAST,
-      KindTy, BuildAnyTypeLoc(Context.CxxAST, Ty, Loc));
+  return buildAnyTypeExpr(KindTy, BuildAnyTypeLoc(Context.CxxAST, Ty, Loc));
 }
 
 clang::CppxTypeLiteral *
@@ -832,12 +831,10 @@ Sema::buildTypeExprFromTypeDecl(const clang::TypeDecl *TyDecl,
   return buildTypeExpr(Context.CxxAST.getTypeDeclType(TyDecl), Loc);
 }
 
-clang::CppxTypeLiteral *Sema::buildTemplateType(const clang::TemplateDecl *TD,
+clang::CppxDeclRefExpr *Sema::buildTemplateType(clang::TemplateDecl *TD,
                                                 clang::SourceLocation Loc) {
-  return buildTypeExpr(Context.CxxAST.getTemplateType(
-                                    const_cast<clang::TemplateDecl*>(TD)),
-                    // Context.CxxAST.getTypeDeclType(Td),
-                       Loc);
+  clang::QualType TT = Context.CxxAST.getTemplateType(TD);
+  return buildAnyDeclRef(TT, TD, Loc);
 }
 
 clang::Expr *Sema::addConstToTypeExpr(const clang::Expr *TyExpr,
@@ -870,7 +867,7 @@ clang::QualType Sema::getQualTypeFromTypeExpr(const clang::Expr *TyExpr) {
   if (const clang::CppxTypeLiteral *Ty
                                    = dyn_cast<clang::CppxTypeLiteral>(TyExpr)) {
     
-    return Ty->getValue();
+    return Ty->getValue()->getType();
   }
   llvm_unreachable("Invaild type expression evaluates to type of types.");
 
@@ -889,45 +886,50 @@ Sema::getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
   if (const clang::CppxTypeLiteral *Ty
                                    = dyn_cast<clang::CppxTypeLiteral>(TyExpr)) {
     
-    return Context.CxxAST.getTrivialTypeSourceInfo(Ty->getValue(), Loc);
+    return Ty->getValue();
   }
   llvm_unreachable("Invaild type expression evaluates to type of types.");
 }
 
-clang::TypeSourceInfo *
-Sema::getTypeSourceInfoForTemplateExpr(const clang::Expr *TemplateTy) {
-  llvm_unreachable("Working on getting template type information.");
+// clang::TypeSourceInfo *
+// Sema::getTypeSourceInfoForTemplateExpr(const clang::Expr *TemplateTy) {
+//   llvm_unreachable("Working on getting template type information.");
+// }
+
+// clang::TypeSourceInfo *
+// Sema::getTypeSourceInfoForTemplateExpr(const clang::Expr *TemplateTy,
+//                                        clang::SourceLocation Loc) {
+//   llvm_unreachable("Working on getting template type information.");
+// }
+
+clang::CppxDeclRefExpr *Sema::buildNSDeclRef(clang::CppxNamespaceDecl *D,
+                                             clang::SourceLocation Loc) {
+  return buildAnyDeclRef(Context.CxxAST.getCppxNamespaceType(D->getNamespace()),
+                         D, Loc);
 }
 
-clang::TypeSourceInfo *
-Sema::getTypeSourceInfoForTemplateExpr(const clang::Expr *TemplateTy,
-                                       clang::SourceLocation Loc) {
-  llvm_unreachable("Working on getting template type information.");
+clang::CppxDeclRefExpr *
+Sema::buildAnyDeclRef(clang::QualType KindTy, clang::Decl *D,
+                      clang::SourceLocation Loc) {
+  assert(D && "Invalid declaration to reference.");
+  return clang::CppxDeclRefExpr::create(Context.CxxAST, KindTy, D, Loc);
 }
 
-clang::CppxNamespaceDeclRefExpr *
-Sema::buildNSDeclRef(const clang::CppxNamespaceDecl *NSDec,
-                     clang::SourceLocation Loc) {
-  llvm_unreachable("Sema::buildNSDeclRef Not implemented yet");
-}
-
-clang::CppxNamespaceDecl *Sema::getNSDeclFromExpr(const clang::Expr *NSExpr) {
-  assert(NSExpr && "Invalid expression");
-  if (!NSExpr->getType()->isNamespaceType()) {
-    Diags.Report(NSExpr->getExprLoc(),
-                 clang::diag::err_expression_result_type_not_namespace)
-        << NSExpr;
-    return nullptr;
-  }
+clang::Decl *Sema::getDeclFromExpr(const clang::Expr *DeclExpr,
+                                   clang::SourceLocation Loc) {
+  assert(DeclExpr && "Invalid expression");
   
-  if (const clang::CppxNamespaceDeclRefExpr *NSDeclRef
-                          = dyn_cast<clang::CppxNamespaceDeclRefExpr>(NSExpr)) {
-    return NSDeclRef->getValue();
+  if (const clang::CppxDeclRefExpr *DecRef
+                          = dyn_cast<clang::CppxDeclRefExpr>(DeclExpr)) {
+    return DecRef->getValue();
   }
-  Diags.Report(NSExpr->getExprLoc(),
-                clang::diag::err_expression_result_type_not_namespace)
-      << NSExpr;
-  return nullptr;
+  llvm_unreachable("Unable to get declaration from expression.");
+  // TODO: Change this error message to say that the expression doesn't contain
+  // a declaration or something like that.
+  // Diags.Report(DeclExpr->getExprLoc(),
+  //                         clang::diag::err_expression_result_type_not_namespace)
+  //     << DeclExpr;
+  // return nullptr;
 }
 
 

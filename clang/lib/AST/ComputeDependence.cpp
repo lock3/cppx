@@ -456,7 +456,7 @@ ExprDependence clang::computeDependence(CppxTypeLiteral *E) {
   return ExprDependence::TypeValue;
 }
 
-ExprDependence clang::computeDependence(CppxNamespaceDeclRefExpr *E) {
+ExprDependence clang::computeDependence(CppxDeclRefExpr *E) {
   return ExprDependence::TypeValue;
 }
 

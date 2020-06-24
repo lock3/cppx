@@ -496,7 +496,7 @@ public:
       Visit(D->getBody());
   }
   void VisitCppxTypeLiteral(const CppxTypeLiteral *E) {
-    Visit(E->getValue());
+    Visit(E->getValue()->getType());
   }
 
   template <typename SpecializationDecl>

@@ -14349,7 +14349,7 @@ public:
   }
 
   bool VisitCppxTypeLiteral(const CppxTypeLiteral *E) {
-    return Success(E->getValue());
+    return Success(E->getValue()->getType());
   }
 };
 } // end anonymous namespace
@@ -14991,7 +14991,7 @@ static ICEDiag CheckICE(const Expr* E, const Expr::EvalContext &Ctx) {
   case Expr::CXXDependentVariadicReifierExprClass:
   case Expr::CXXFragmentExprClass:
   case Expr::CppxTypeLiteralClass:
-  case Expr::CppxNamespaceDeclRefExprClass:
+  case Expr::CppxDeclRefExprClass:
   case Expr::CXXFragmentCaptureExprClass:
     return ICEDiag(IK_NotICE, E->getBeginLoc());
 

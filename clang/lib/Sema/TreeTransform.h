@@ -6440,12 +6440,12 @@ QualType TreeTransform<Derived>::TransformCppxNamespaceType(
 }
 
 template<typename Derived>
-ExprResult TreeTransform<Derived>::TransformCppxNamespaceDeclRefExpr(
-    clang::CppxNamespaceDeclRefExpr* expr) {
+ExprResult TreeTransform<Derived>::TransformCppxDeclRefExpr(
+    clang::CppxDeclRefExpr* expr) {
   // QualType T = TL.getType();
   // TLB.pushTypeSpec(T).setNameLoc(TL.getNameLoc());
   // return T;
-  llvm_unreachable("TransformCppxNamespaceDeclRefExpr Not implemented.");
+  llvm_unreachable("TransformCppxDeclRefExpr Not implemented.");
 }
 
 template<typename Derived>
@@ -8550,8 +8550,8 @@ template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformCppxTypeLiteral(CppxTypeLiteral *E) {
   QualType K = E->getType();
-  QualType T = TransformType(E->getValue());
-  return new (SemaRef.Context) CppxTypeLiteral(K, T, E->getLocation());
+  TypeSourceInfo * T = TransformType(E->getValue());
+  return new (SemaRef.Context) CppxTypeLiteral(K, T);
 }
 
 // Objective-C Statements.

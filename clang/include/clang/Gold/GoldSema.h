@@ -43,7 +43,7 @@ class Sema;
 class Stmt;
 class Type;
 class CppxTypeLiteral;
-class CppxNamespaceDeclRefExpr;
+class CppxDeclRefExpr;
 class TypeSourceInfo;
 } // namespace clang
 
@@ -254,7 +254,7 @@ public:
   clang::CppxTypeLiteral *buildTypeExprFromTypeDecl(
                       const clang::TypeDecl *TyDecl, clang::SourceLocation Loc);
 
-  clang::CppxTypeLiteral *buildTemplateType(const clang::TemplateDecl *TD,
+  clang::CppxDeclRefExpr *buildTemplateType(clang::TemplateDecl *TD,
                                             clang::SourceLocation Loc);
   
   clang::Expr *addConstToTypeExpr(const clang::Expr *TyExpr,
@@ -278,18 +278,23 @@ public:
 
   /// These are stub implementations for now so that I can implement them at a
   /// later time with a later expression.
-  clang::TypeSourceInfo *getTypeSourceInfoForTemplateExpr(
-      const clang::Expr *TemplateTy);
-  clang::TypeSourceInfo *getTypeSourceInfoForTemplateExpr(
-      const clang::Expr *TemplateTy, clang::SourceLocation Loc);
+  // clang::TypeSourceInfo *getTypeSourceInfoForTemplateExpr(
+  //     const clang::Expr *TemplateTy);
+  // clang::TypeSourceInfo *getTypeSourceInfoForTemplateExpr(
+  //     const clang::Expr *TemplateTy, clang::SourceLocation Loc);
 
 
-  clang::CppxNamespaceDeclRefExpr *buildNSDeclRef(
-                                          const clang::CppxNamespaceDecl *NSDec,
+
+  clang::CppxDeclRefExpr *buildNSDeclRef(clang::CppxNamespaceDecl *D,
+                                         clang::SourceLocation Loc);
+
+  clang::CppxDeclRefExpr *buildAnyDeclRef(clang::QualType KindTy,
+                                          clang::Decl *D,
                                           clang::SourceLocation Loc);
   /// This function extracts a namespace from an expression and returns the
   /// resulting namespace or nullptr if invalid
-  clang::CppxNamespaceDecl *getNSDeclFromExpr(const clang::Expr *NSExpr);
+  clang::Decl *getDeclFromExpr(const clang::Expr *DeclExpr,
+                               clang::SourceLocation Loc);
 private:
   /// =============== Members related to qualified lookup. ================= ///
 
