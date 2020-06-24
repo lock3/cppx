@@ -224,7 +224,6 @@ static bool compluteFunctionStorageClassSpec(Sema& SemaRef, Declaration *D,
     clang::StorageClass& SC) {
   // Setting special storage class default to None.
   SC = clang::SC_None;
-  // llvm_unreachable("Working on it.");
   return locateValidAttribute(D,
     // OnAttr
     [&](const Syntax *Attr) -> bool{
@@ -387,7 +386,6 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
       clang::Scope::ClassScope | clang::Scope::ClassInheritanceScope,
       clang::SourceLocation());
   
-  // locateValidAttribute
   llvm::SmallVector<clang::CXXBaseSpecifier *, 4> GivenBaseClasses;
   // FIXME: This currently doesn't account for dependent names.
   Attributes Attrs;
@@ -932,20 +930,23 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
-  if (TypeExpr->getType() != Context.CxxAST.CppxKindTy) {
+  if (!TypeExpr->getType()->isTypeOfTypes()) {
     llvm_unreachable("Reuslt to this expression wasn't a type some how?");
   }
+  
   clang::CppxTypeLiteral *TyLitExpr = dyn_cast<clang::CppxTypeLiteral>(TypeExpr);
   if (!TyLitExpr) {
-    // TODO: Create a not an type error message for this location.
-    llvm_unreachable("This should never happen but just case.");
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_unsupported_unknown_any_decl)
+                        << D->getId();
+    return nullptr;
   }
   if (TyLitExpr->getValue()->getType()->isTypeOfTypes()) {
     // TODO: This will need to be handled using a CppxPartialDecl.
     return elaborateTypeAlias(D);
   }
 
-  if (SemaRef.getCurrentScope()->isClassScope()){
+  if (SemaRef.getCurrentScope()->isClassScope()) {
     return elaborateField(D);
   }
 

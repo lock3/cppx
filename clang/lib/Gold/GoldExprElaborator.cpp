@@ -474,24 +474,6 @@ convertExprToTemplateArg(Sema &SemaRef, clang::Expr *E) {
 static clang::Expr*
 handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
     SyntaxContext& Context, clang::Expr* IdExpr, const ElemSyntax *Elem) {
-  // llvm_unreachable("I broke templated types.");
-  // clang::CXXScopeSpec SS;
-  // clang::Sema::TemplateTy Template;
-  // clang::UnqualifiedId TemplateName;
-  // clang::ParsedType ObjectType;
-  // // FIXME: Handling non-nested elements.
-  // if (!isa<AtomSyntax>(Elem->getObject()))
-  //   llvm_unreachable("Nested/qualified name access to template syntax "
-  //       "not implemented yet.");
-  // const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Elem->getObject());
-
-  // bool MemberOfUnknownSpecialization = false;
-  
-  // if (clang::TemplateNameKind TNK = SemaRef.getCxxSema().isTemplateName(
-  //     SemaRef.getCurClangScope(), SS, /*hasTemplateKeyword=*/false,
-  //     TemplateName, ObjectType, /*EnteringContext*/false, Template,
-  //     MemberOfUnknownSpecialization)) {
-
   llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
 
   const ListSyntax *ElemArgs = cast<ListSyntax>(Elem->getArguments());
@@ -1066,10 +1048,10 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     CalleeExpr = elaborateExpr(S->getCallee());
     llvm::SmallVector<clang::Expr *, 8> Args;
     const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
-    if (buildFunctionCallAruments(SemaRef, Context, ArgList, Args)) {
-      // TODO: Determine the correct message to output here.
+
+    if (buildFunctionCallAruments(SemaRef, Context, ArgList, Args))
       return nullptr;
-    }
+
     return handleExpressionResultCall(SemaRef, S, CalleeExpr, Args);
   }
 
@@ -1088,8 +1070,7 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   }
 
   case FOK_DotDot:
-    llvm_unreachable("Working on it.");
-  //   return handleOperatorDotDot(S);
+    llvm_unreachable("FOK_DotDot is not supported in this context.");
 
   case FOK_Const:
     return handleOperatorConst(S);

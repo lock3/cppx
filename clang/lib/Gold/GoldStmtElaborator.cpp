@@ -61,23 +61,14 @@ StmtElaborator::elaborateAtom(const AtomSyntax *S) {
   // return type of the expression isn't a namespace or kind type?
   // but then again it should be fine to have an expression with no effect.
   return ExEl.elaborateExpr(S);
-
-  // if (Expression.is<clang::TypeSourceInfo *>()) {
-  //   Diags.Report(S->getTokenLoc(), clang::diag::err_expected_expression);
-  //   return nullptr;
-  // }
 }
 
 static clang::Stmt *
 createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
                const CallSyntax *S) {
+                 
   // FIXME: elaborate this expression, it might not be a name.
-  
   const AtomSyntax *Name = cast<AtomSyntax>(S->getArgument(0));
-
-  // TODO: elaborate the name if we need to.
-  // ExprElaborator LHSElab(CxxAST, SemaRef);
-  // ExprElaborator::Expression NameExpr = LHSElab.elaborateExpr(S->getArgument(0));
 
   clang::Sema &ClangSema = SemaRef.getCxxSema();
   clang::IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
@@ -117,13 +108,7 @@ createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
 static clang::Stmt *
 elaborateDefaultCall(SyntaxContext &Context, Sema &SemaRef, const CallSyntax *S) {
   ExprElaborator ExprElab(Context, SemaRef);
-  // TODO: Add error checking here.
   return ExprElab.elaborateCall(S);
-
-  // if (Expression.is<clang::TypeSourceInfo *>()) {
-  //   SemaRef.Diags.Report(S->getLoc(), clang::diag::err_expected_expression);
-  //   return nullptr;
-  // }
 }
 
 clang::Stmt *
@@ -169,8 +154,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
     ExprElaborator LHSElab(Context, SemaRef);
     clang::Expr *NameExpr = LHSElab.elaborateExpr(S->getArgument(0));
     ExprElaborator RHSElab(Context, SemaRef);
-    clang::Expr *InitExpr =
-      RHSElab.elaborateExpr(S->getArgument(1));
+    clang::Expr *InitExpr = RHSElab.elaborateExpr(S->getArgument(1));
 
     // We didn't create an expression for this, so build a decl.
     if (!NameExpr) {
@@ -178,9 +162,6 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
 
       if (!DS)
         return nullptr;
-
-      // TODO: support type aliases.
-      // assert(!InitExpr.is<clang::TypeSourceInfo *>() && "Aliases not supported yet.");
 
       for (clang::Decl *D : DS->decls())
         SemaRef.getCxxSema().AddInitializerToDecl(D, InitExpr, /*DirectInit=*/true);
@@ -695,11 +676,6 @@ StmtElaborator::elaborateWhileStmt(const MacroSyntax *S) {
       ExprElaborator(Context, SemaRef).elaborateExpr(Arguments->getChild(0));
   }
 
-
-  // if (CondExpr.is<clang::TypeSourceInfo *>()) {
-  //   Diags.Report(CondLoc, clang::diag::err_expected_expression);
-  //   return nullptr;
-  // }
   if (!CondExpr)
     return nullptr;
 
@@ -796,8 +772,6 @@ StmtElaborator::elaborateBlock(const Syntax *S) {
     StartLoc = EndLoc = S->getLoc();
   }
 
-  // clang::CompoundStmt *Block =
-  //   clang::CompoundStmt::Create(CxxAST, Results, StartLoc, EndLoc);
   clang::Stmt *Block = SemaRef.getCxxSema().ActOnCompoundStmt(StartLoc, EndLoc,
                                                               Results,
                                                     /*isStmtExpr=*/false).get();
