@@ -6847,6 +6847,10 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
 
     // Convert the APValue to a TemplateArgument.
     switch (Value.getKind()) {
+    case APValue::Type:{
+      llvm_unreachable("Sema::CheckTemplateArgument: APValue type can not "
+                       "be evaluated to a template argument yet. Not implemented.");
+    }
     case APValue::None:
       assert(ParamType->isNullPtrType());
       Converted = TemplateArgument(CanonParamType, /*isNullPtr*/true);

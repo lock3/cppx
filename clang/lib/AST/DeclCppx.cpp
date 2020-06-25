@@ -28,6 +28,12 @@ NamespaceDecl *CppxNamespaceDecl::getNamespace() {
   return Ty->getDecl();
 }
 
+NamespaceDecl *CppxNamespaceDecl::getNamespace() const {
+  assert(isa<CppxNamespaceType>(getTypeForDecl()));
+  auto *Ty = getTypeForDecl()->getAs<CppxNamespaceType>();
+  return Ty->getDecl();
+}
+
 gold::Scope *CppxNamespaceDecl::getScopeRep() {
   return Rep;
 }

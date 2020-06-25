@@ -5129,6 +5129,8 @@ void ASTRecordWriter::AddAPValue(const APValue &Value) {
   APValue::ValueKind Kind = Value.getKind();
   push_back(static_cast<uint64_t>(Kind));
   switch (Kind) {
+  case APValue::Type: // TODO: Figure out of this is the right thing to emit here.
+    llvm_unreachable("ASTRecordWriter::AddAPValue: Not implemented yet.");
   case APValue::None:
   case APValue::Indeterminate:
     return;

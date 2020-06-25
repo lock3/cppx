@@ -4551,7 +4551,7 @@ public:
                                    NamespaceDecl *NS, gold::Scope *Rep);
 
   NamespaceDecl *getNamespace();
-
+  NamespaceDecl *getNamespace() const;
   gold::Scope *getScopeRep();
 
   void anchor() override {}

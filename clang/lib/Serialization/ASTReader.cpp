@@ -8967,6 +8967,10 @@ readAPFloatSemantics(ASTRecordReader &reader) {
 APValue ASTRecordReader::readAPValue() {
   unsigned Kind = readInt();
   switch ((APValue::ValueKind) Kind) {
+  // TODO: Figure out if this is the right thing to do or not.
+  case APValue::Type:{
+    llvm_unreachable("ASTRecordReader::readAPValue: Not implemented yet!");
+  }
   case APValue::None:
     return APValue();
   case APValue::Indeterminate:
