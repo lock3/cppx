@@ -4,6 +4,7 @@
 
 #include "clang/Gold/GoldScope.h"
 
+
 namespace clang {
 
 CppxNamespaceDecl *CppxNamespaceDecl::Create(const ASTContext &C,
@@ -22,6 +23,12 @@ CppxNamespaceDecl *CppxNamespaceDecl::Create(const ASTContext &C,
 }
 
 NamespaceDecl *CppxNamespaceDecl::getNamespace() {
+  assert(isa<CppxNamespaceType>(getTypeForDecl()));
+  auto *Ty = getTypeForDecl()->getAs<CppxNamespaceType>();
+  return Ty->getDecl();
+}
+
+NamespaceDecl *CppxNamespaceDecl::getNamespace() const {
   assert(isa<CppxNamespaceType>(getTypeForDecl()));
   auto *Ty = getTypeForDecl()->getAs<CppxNamespaceType>();
   return Ty->getDecl();

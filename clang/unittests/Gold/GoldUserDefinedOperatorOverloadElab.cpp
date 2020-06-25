@@ -22,13 +22,38 @@ using namespace clang;
 using namespace gold;
 
 
-// TEST(GoldUserDefinedOperator, UnaryPlus) {
-//   ASSERT_FALSE(true) << "Implement me!";
-//   using namespace std::string_literals;
-//   std::string Code = R"Gold(foo():void!
+// TEST(GoldUserDefinedOperator, OperatorMemberDeclTest) {
+//   std::string Code = R"Gold(
+// X : type = class:
+//   i:int    
+//   operator'+'():X!
+//     return X()
 
 // )Gold";
-//   DeclarationMatcher opMatches = hasDescendant(cxxStaticCastExpr());
+//   DeclarationMatcher opMatches = hasDescendant(
+//     cxxMethodDecl(hasName("operator+")));
 //   ASSERT_TRUE(matches(Code, opMatches))
-//     << "Static cast failed";
+//     << "Failed to declare a valid operator overload";
+// }
+
+/*
+|-VarDecl 0x7fffdd3ab888 <cpp_test.cpp:9:1, col:5> col:5 used x 'int'
+|-VarDecl 0x7fffdd3ab980 <line:10:1, col:10> col:6 referenced y 'int &' cinit
+| `-DeclRefExpr 0x7fffdd3ab9e8 <col:10> 'int' lvalue Var 0x7fffdd3ab888 'x' 'int'
+`-VarDecl 0x7fffdd3aba78 <line:11:1, col:9> col:5 z 'int' cinit
+  `-ImplicitCastExpr 0x7fffdd3abb00 <col:9> 'int' <LValueToRValue>
+    `-DeclRefExpr 0x7fffdd3abae0 <col:9> 'int' lvalue Var 0x7fffdd3ab980 'y' 'int &' non_odr_use_constant
+*/
+// TEST(GoldUserDefinedOperator, FreeFunctionDeclTest) {
+//   std::string Code = R"Gold(
+// X : type = class:
+//   i:int    
+// operator'+'(y:ref const X):X!
+//   return y
+
+// )Gold";
+//   DeclarationMatcher opMatches = hasDescendant(
+//     functionDecl(hasName("operator+")));
+//   ASSERT_TRUE(matches(Code, opMatches))
+//     << "Failed to declare a valid operator overload";
 // }

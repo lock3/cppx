@@ -22,6 +22,7 @@
 #include "CursorVisitor.h"
 #include "clang-c/FatalErrorHandler.h"
 #include "clang/AST/Attr.h"
+#include "clang/AST/Decl.h"
 #include "clang/AST/DeclObjCCommon.h"
 #include "clang/AST/Mangle.h"
 #include "clang/AST/OpenMPClause.h"
@@ -1666,7 +1667,7 @@ bool CursorVisitor::VisitAttributedTypeLoc(AttributedTypeLoc TL) {
   return Visit(TL.getModifiedLoc());
 }
 
-bool CursorVisitor::VisitTemplateTypeLoc(TemplateTypeLoc TL) {
+bool CursorVisitor::VisitCppxTemplateTypeLoc(CppxTemplateTypeLoc TL) {
   // return Visit(TL.getLoc());
   // TODO:/FIXME: I don't know what this does!
   return false;
@@ -6419,7 +6420,11 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::CXXRequiredType:
   case Decl::CXXRequiredDeclarator:
     return C;
-
+  case Decl::CppxNamespace:
+    return MakeCXCursor(cast<CppxNamespaceDecl>(D)->getNamespace(), TU);
+  case Decl::CppxPartial:
+    llvm_unreachable("I'm not sure what to do for this yet because it's not implemented.");
+    
   // Declaration kinds that don't make any sense here, but are
   // nonetheless harmless.
   case Decl::Empty:

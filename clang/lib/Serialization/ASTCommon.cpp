@@ -364,6 +364,7 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   case Decl::ObjCProtocol:
   case Decl::ObjCInterface:
   case Decl::Empty:
+  case Decl::CppxNamespace:
     return true;
 
   // Never redeclarable.
@@ -421,6 +422,7 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   case Decl::CXXStmtFragment:
   case Decl::CXXRequiredType:
   case Decl::CXXRequiredDeclarator:
+  case Decl::CppxPartial:
     return false;
 
   // These indirectly derive from Redeclarable<T> but are not actually

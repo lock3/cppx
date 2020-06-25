@@ -76,6 +76,7 @@ add_clang_unittest(GoldTests
   GoldTypeExpressionsTest.cpp
   GoldUserDefinedOperatorOverloadElab.cpp
   GoldVarDeclStorageClass.cpp
+  GoldVariableDeclElab.cpp
   GoldWhile.cpp
   )
 

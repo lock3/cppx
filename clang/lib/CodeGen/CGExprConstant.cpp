@@ -2008,6 +2008,10 @@ ConstantLValueEmitter::VisitMaterializeTemporaryExpr(
 llvm::Constant *ConstantEmitter::tryEmitPrivate(const APValue &Value,
                                                 QualType DestType) {
   switch (Value.getKind()) {
+    
+  case APValue::Type: // TODO: Figure out if this should ever be emitted or not.
+    llvm_unreachable("APType doesn't have implementation for "
+                     "ConstantEmitter::tryEmitPrivate.");
   case APValue::None:
   case APValue::Indeterminate:
     // Out-of-lifetime and indeterminate values can be modeled as 'undef'.

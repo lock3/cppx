@@ -267,7 +267,7 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::MacroQualified:
     case Type::CXXDependentVariadicReifier:
     case Type::CppxKind:
-    case Type::Template:
+    case Type::CppxTemplate:
       CanPrefixQualifiers = false;
       break;
 
@@ -1761,11 +1761,11 @@ void TypePrinter::printCppxNamespaceAfter(const CppxNamespaceType *T,
                                           raw_ostream &OS) {}
 
 
-void TypePrinter::printTemplateBefore(const TemplateType *T, raw_ostream &OS) {
+void TypePrinter::printCppxTemplateBefore(const CppxTemplateType *T, raw_ostream &OS) {
   OS << "TEMPLATE TYPE BEING PRINTED!";
 }
 
-void TypePrinter::printTemplateAfter(const TemplateType *T, raw_ostream &OS) {}
+void TypePrinter::printCppxTemplateAfter(const CppxTemplateType *T, raw_ostream &OS) {}
 
 static
 const TemplateArgument &getArgument(const TemplateArgument &A) { return A; }

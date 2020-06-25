@@ -557,17 +557,17 @@ template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::TemplateSpeciali
   return BuildTypeLoc<clang::TemplateSpecializationTypeLoc>(Context, TLB, Ty, Loc);
 }
 
-template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::CppxTemplateTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  auto TypeLocInstance = TLB.push<clang::TemplateTypeLoc>(Ty);
+  auto TypeLocInstance = TLB.push<clang::CppxTemplateTypeLoc>(Ty);
   TypeLocInstance.initializeLocal(Ctx, Loc);
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::TemplateTypeLoc>
+template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::CppxTemplateTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
-  return BuildTypeLoc<clang::TemplateSpecializationTypeLoc>(Context, TLB, Ty, Loc);
+  return BuildTypeLoc<clang::CppxTemplateTypeLoc>(Context, TLB, Ty, Loc);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::DeducedTypeLoc>

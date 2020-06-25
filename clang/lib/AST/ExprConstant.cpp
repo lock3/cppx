@@ -10738,7 +10738,7 @@ EvaluateBuiltinClassifyType(QualType T, const LangOptions &LangOpts) {
   case Type::DeducedTemplateSpecialization:
       llvm_unreachable("unexpected non-canonical or dependent type");
 
-  case Type::Template:
+  case Type::CppxTemplate:
   case Type::CppxKind:
   case Type::CppxNamespace:
     llvm_unreachable("unexpected kind type");
@@ -14349,7 +14349,7 @@ public:
   }
 
   bool VisitCppxTypeLiteral(const CppxTypeLiteral *E) {
-    return Success(E->getValue());
+    return Success(E->getValue()->getType());
   }
 };
 } // end anonymous namespace
@@ -14991,6 +14991,7 @@ static ICEDiag CheckICE(const Expr* E, const Expr::EvalContext &Ctx) {
   case Expr::CXXDependentVariadicReifierExprClass:
   case Expr::CXXFragmentExprClass:
   case Expr::CppxTypeLiteralClass:
+  case Expr::CppxDeclRefExprClass:
   case Expr::CXXFragmentCaptureExprClass:
     return ICEDiag(IK_NotICE, E->getBeginLoc());
 

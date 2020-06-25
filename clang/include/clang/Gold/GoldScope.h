@@ -121,7 +121,7 @@ public:
   clang::SourceLocation getLoc() const;
 
   /// Returns a readable string representing this declarator.
-  std::string getString() const;
+  std::string getString(bool IncludeKind = false) const;
 
   /// Prints the declarator sequence.
   void printSequence(llvm::raw_ostream &os) const;
@@ -175,11 +175,6 @@ public:
     struct TemplateInfoStruct {
       /// A pointer to the template parameters within the declaration.
       const Syntax* Params;
-
-      // /// The scope for the template parameters.
-      // Scope *DeclScope;
-      // /// This is the clang scope that's used for declaring template parameters.
-      // clang::Scope *ClangScope;
     } TemplateInfo;
   } Data;
 
