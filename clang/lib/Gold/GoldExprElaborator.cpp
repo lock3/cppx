@@ -536,13 +536,33 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
   // Attempting to correctly handle the result of an Id expression.
   clang::OverloadExpr *OverloadExpr = dyn_cast<clang::OverloadExpr>(E);
   if (!OverloadExpr) {
-    // TODO: When we to add array indexing, we need to add it here.
-    llvm_unreachable("Processing of array indices isn't implemented yet.");
-    return nullptr;
+    llvm::SmallVector<clang::Expr *, 5> ArgExprs;
+    for (const Syntax *SS : Elem->getArguments()->children()) {
+      clang::Expr *Res = Elab.elaborateExpr(SS);
+      if (!Res)
+        return nullptr;
+      ArgExprs.push_back(Res);
+    }
+    
+    if (ArgExprs.size() == 0) {
+      SemaRef.Diags.Report(Elem->getArguments()->getLoc(),
+                           clang::diag::err_expected_expression);
+      return nullptr;
+    }
+    if (ArgExprs.size() != 1) {
+      // TODO: Implement multiple argument indexing here.
+      llvm_unreachable("Multi-index expressions not implemented yet.");
+    }
+    auto SubScriptExpr = SemaRef.getCxxSema().ActOnArraySubscriptExpr(
+                                                     SemaRef.getCurClangScope(),  
+                                                     E, clang::SourceLocation(),
+                                                     ArgExprs[0],
+                                                     clang::SourceLocation());
+    return SubScriptExpr.get();
   }
 
   // At this point we are an overload set which means we must be some kind of
-  // template or lookup failure.
+  // templated function, or overloaded function.
   clang::TemplateArgumentListInfo TemplateArgs(Elem->getLoc(), Elem->getLoc());
   llvm::SmallVector<clang::TemplateArgument, 16> ActualArgs;
   for (const Syntax *SS : Elem->getArguments()->children()) {
