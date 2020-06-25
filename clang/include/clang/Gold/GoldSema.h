@@ -260,6 +260,7 @@ public:
 
   // Tokenizations of commonly compared-against strings.
   const clang::IdentifierInfo *OperatorColonII;
+  const clang::IdentifierInfo *OperatorArrowII;
   const clang::IdentifierInfo *OperatorExclaimII;
   const clang::IdentifierInfo *OperatorEqualsII;
   const clang::IdentifierInfo *OperatorIfII;

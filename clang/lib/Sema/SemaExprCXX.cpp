@@ -14,7 +14,7 @@
 #include "clang/Sema/Template.h"
 #include "clang/Sema/SemaInternal.h"
 #include "TreeTransform.h"
-#include "TypeLocBuilder.h"
+#include "clang/Sema/TypeLocBuilder.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTLambda.h"
 #include "clang/AST/CXXInheritance.h"

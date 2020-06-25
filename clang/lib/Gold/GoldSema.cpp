@@ -148,6 +148,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   
   CxxSema.CurScope = nullptr;
   OperatorColonII = &Context.CxxAST.Idents.get("operator':'");
+  OperatorArrowII = &Context.CxxAST.Idents.get("operator'->'");
   OperatorExclaimII = &Context.CxxAST.Idents.get("operator'!'");
   OperatorEqualsII = &Context.CxxAST.Idents.get("operator'='");
   OperatorIfII = &Context.CxxAST.Idents.get("operator'if'");

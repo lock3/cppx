@@ -55,6 +55,20 @@ clang::TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context,
      SourceLocation RParenLoc, clang::SourceRange ExceptionSpecRange,
      SourceLocation EndLoc, llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
 
+clang::TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context,
+     clang::TypeLocBuilder &TLB, clang::QualType Ty, SourceLocation BeginLoc,
+     SourceLocation LParenLoc, SourceLocation RParenLoc,
+     clang::SourceRange ExceptionSpecRange, SourceLocation EndLoc,
+     llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
+
+clang::TypeSourceInfo *BuildFunctionPtrTypeLoc(clang::ASTContext &Context,
+                                               clang::TypeSourceInfo *FnTSI,
+                                               clang::SourceLocation Loc);
+clang::TypeSourceInfo *BuildFunctionPtrTypeLoc(clang::ASTContext &Context,
+                                               clang::TypeLocBuilder &TLB,
+                                               clang::TypeSourceInfo *FnTSI,
+                                               clang::SourceLocation Loc);
+
 } // namespace gold
 
 #endif

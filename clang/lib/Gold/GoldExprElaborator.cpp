@@ -18,7 +18,6 @@
 #include "clang/AST/Type.h"
 #include "clang/AST/ExprCppx.h"
 #include "clang/Basic/CharInfo.h"
-
 #include "clang/Basic/DiagnosticParse.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/SourceLocation.h"
@@ -29,12 +28,12 @@
 #include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/Template.h"
+#include "clang/Sema/TypeLocBuilder.h"
 #include "clang/Sema/TypeLocUtil.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Error.h"
-
 
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
@@ -67,6 +66,13 @@ Expression ExprElaborator::elaborateExpr(const Syntax *S) {
     return elaborateMacro(cast<MacroSyntax>(S));
   if (isa<ElemSyntax>(S))
     return elaborateElementExpr(cast<ElemSyntax>(S));
+  if (const ListSyntax *List = dyn_cast<ListSyntax>(S)) {
+    if (List->getNumChildren() == 1)
+      return elaborateExpr(List->getChild(0));
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_failed_to_translate_expr);
+  }
+
   return nullptr;
 }
 
@@ -1089,6 +1095,8 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
     return handleRefType(S);
   case FOK_RRef:
     return handleRRefType(S);
+  case FOK_Arrow:
+    return handleFunctionType(S);
   default:
     break;
   }
@@ -1097,17 +1105,15 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   if (Spelling.startswith("operator'")) {
     if (S->getNumArguments() == 1) {
       clang::UnaryOperatorKind UnaryOpKind;
-      if (!SemaRef.GetUnaryOperatorKind(Spelling, UnaryOpKind)) {
+      if (!SemaRef.GetUnaryOperatorKind(Spelling, UnaryOpKind))
         return elaborateUnaryOp(S, UnaryOpKind);
-      }
     }
 
     if (S->getNumArguments() == 2) {
       // Check if this is a binary operator.
       clang::BinaryOperatorKind BinaryOpKind;
-      if (!SemaRef.GetBinaryOperatorKind(Spelling, BinaryOpKind)) {
+      if (!SemaRef.GetBinaryOperatorKind(Spelling, BinaryOpKind))
         return elaborateBinOp(S, BinaryOpKind);
-      }
     }
   }
 
@@ -1908,6 +1914,96 @@ clang::TypeSourceInfo *ExprElaborator::handleRRefType(const CallSyntax *S) {
   return makeRRefType(innerTypeExpr, S);
 }
 
+static bool isVarArgs(Sema &SemaRef, const Syntax *S) {
+  const CallSyntax *ColonOp = dyn_cast<CallSyntax>(S);
+  if (!ColonOp)
+    return false;
+  FusedOpKind OpKind = getFusedOpKind(SemaRef, ColonOp);
+  if (OpKind != FOK_Colon)
+    return false;
+
+  // We might have something like `varargs : args` or just `:args`
+  std::size_t N = ColonOp->getNumArguments() - 1;
+  if (N > 1)
+    return false;
+
+  if (const AtomSyntax *Ty = dyn_cast<AtomSyntax>(ColonOp->getArgument(N)))
+    return Ty->Tok.hasKind(tok::ArgsKeyword);
+
+  return false;
+}
+
+// Handle a function type in the form of `() -> type`
+clang::TypeSourceInfo *ExprElaborator::handleFunctionType(const CallSyntax *S) {
+  assert(S->getNumArguments() == 2 && "invalid operator'->' call");
+
+  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
+  llvm::SmallVector<clang::QualType, 4> Types;
+  bool IsVariadic = false;
+
+  const Syntax *ParamBegin = S->getArgument(0);
+  clang::SourceLocation EndLoc;
+  if (const ListSyntax *ParamSyntaxes = dyn_cast<ListSyntax>(ParamBegin)) {
+    Sema::ScopeRAII ParamScopeRAII(SemaRef, SK_Parameter, ParamBegin);
+
+    for (unsigned I = 0; I < ParamSyntaxes->getNumChildren(); ++I) {
+      const Syntax *ParamSyntax = ParamSyntaxes->getChild(I);
+
+      if (I == ParamSyntaxes->getNumChildren() - 1) {
+        EndLoc = ParamSyntax->getLoc();
+
+        IsVariadic = isVarArgs(SemaRef, ParamSyntax);
+        if (IsVariadic)
+          break;
+      }
+
+      Elaborator ParamElaborator(Context, SemaRef);
+      clang::Decl *Param = ParamElaborator.elaborateDeclSyntax(ParamSyntax);
+
+      if (!Param || !isa<clang::ParmVarDecl>(Param))
+        continue;
+
+      Types.push_back(cast<clang::ParmVarDecl>(Param)->getType());
+    }
+  } else {
+    SemaRef.Diags.Report(ParamBegin->getLoc(),
+                         clang::diag::err_invalid_param_list);
+    return nullptr;
+  }
+
+  if (!EndLoc.isValid())
+    EndLoc = S->getLoc();
+
+  const Syntax *ReturnSyntax = S->getArgument(1);
+  ExprElaborator ReturnElaborator(Context, SemaRef);
+  Expression Return = ReturnElaborator.elaborateExpr(ReturnSyntax);
+
+  if (Return.isNull() || !Return.is<clang::TypeSourceInfo *>()) {
+    SemaRef.Diags.Report(ReturnSyntax->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+
+  clang::TypeSourceInfo *ReturnType = Return.get<clang::TypeSourceInfo *>();
+
+  // Create the clang type
+  clang::FunctionProtoType::ExtProtoInfo EPI;
+  if (IsVariadic) {
+    EPI.ExtInfo = Context.CxxAST.getDefaultCallingConvention(true, false);
+    EPI.Variadic = true;
+  }
+
+  clang::QualType FnTy =
+    CxxAST.getFunctionType(ReturnType->getType(), Types, EPI);
+  clang::QualType FnPtrTy = CxxAST.getPointerType(FnTy);
+  FnPtrTy.addConst();
+
+  clang::TypeLocBuilder TLB;
+  clang::TypeSourceInfo *FnTSI = BuildFunctionTypeLoc(Context.CxxAST, TLB, FnTy,
+    ParamBegin->getLoc(), ParamBegin->getLoc(), EndLoc,
+    clang::SourceRange(), ReturnSyntax->getLoc(), Params);
+  return BuildFunctionPtrTypeLoc(CxxAST, TLB, FnTSI, S->getLoc());
+}
 
 clang::TypeSourceInfo* ExprElaborator::makeConstType(Expression InnerType,
     const CallSyntax* ConstOpNode) {

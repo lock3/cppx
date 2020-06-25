@@ -119,6 +119,7 @@ private:
   clang::TypeSourceInfo *handleOperatorConst(const CallSyntax *S);
   clang::TypeSourceInfo *handleRefType(const CallSyntax *S);
   clang::TypeSourceInfo *handleRRefType(const CallSyntax *S);
+  clang::TypeSourceInfo *handleFunctionType(const CallSyntax *S);
   
 private:
   /// Utility functions that handle operations assocated with type elaboration,

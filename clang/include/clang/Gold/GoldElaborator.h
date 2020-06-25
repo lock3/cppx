@@ -138,6 +138,7 @@ public:
 enum FusedOpKind {
   FOK_Unknown,
   FOK_Colon,
+  FOK_Arrow,
   FOK_Exclaim,
   FOK_Equals,
   FOK_If,

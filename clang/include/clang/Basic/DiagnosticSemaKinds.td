@@ -10983,6 +10983,9 @@ def err_requires_a_type : Error<
 def err_conflicting_specifier : Error<
   "conflicting specifier">;
 
+def err_invalid_param_list : Error<
+  "invalid parameter list">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {
