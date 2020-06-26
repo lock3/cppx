@@ -66,7 +66,6 @@ StmtElaborator::elaborateAtom(const AtomSyntax *S) {
 static clang::Stmt *
 createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
                const CallSyntax *S) {
-                 
   // FIXME: elaborate this expression, it might not be a name.
   const AtomSyntax *Name = cast<AtomSyntax>(S->getArgument(0));
 
@@ -151,8 +150,10 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   }
 
   case FOK_Equals: {
+    llvm::outs() << "Attempting to elaborate LHS\n";
     ExprElaborator LHSElab(Context, SemaRef);
     clang::Expr *NameExpr = LHSElab.elaborateExpr(S->getArgument(0));
+    llvm::outs() << "Attempting elaborate RHS \n";
     ExprElaborator RHSElab(Context, SemaRef);
     clang::Expr *InitExpr = RHSElab.elaborateExpr(S->getArgument(1));
 

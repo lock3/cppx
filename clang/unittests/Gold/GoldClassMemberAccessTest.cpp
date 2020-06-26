@@ -20,6 +20,9 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
+// TODO: I need to create failure tests for public, private, and protected
+// method and member access.
+
 TEST(ClassParsing, Access_PrivateMember) {
   StringRef Code = R"(
 c : type = class:

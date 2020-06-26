@@ -165,6 +165,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   OperatorConstII =  &Context.CxxAST.Idents.get("operator'const'");
   OperatorRefII = &Context.CxxAST.Idents.get("operator'ref'");
   OperatorRRefII = &Context.CxxAST.Idents.get("operator'rref'");
+  OperatorArrayBracketsII = &Context.CxxAST.Idents.get("operator'[]'");
 
   // All of the names of operators that we use.
   CPPOp_Plus = &Context.CxxAST.Idents.get("operator+");
