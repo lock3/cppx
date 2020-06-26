@@ -81,6 +81,7 @@ class CXXConcatenateExpr;
 class CXXFragmentExpr;
 class CXXFragmentCaptureExpr;
 class CppxTypeLiteral;
+class CppxDeclRefExpr;
 class CXXNewExpr;
 class CXXPseudoDestructorExpr;
 class OverloadExpr;
@@ -178,6 +179,7 @@ ExprDependence computeDependence(CXXConcatenateExpr *E);
 ExprDependence computeDependence(CXXFragmentExpr *E);
 ExprDependence computeDependence(CXXFragmentCaptureExpr *E);
 ExprDependence computeDependence(CppxTypeLiteral *E);
+ExprDependence computeDependence(CppxDeclRefExpr *E);
 ExprDependence computeDependence(CXXNewExpr *E);
 ExprDependence computeDependence(CXXPseudoDestructorExpr *E);
 ExprDependence computeDependence(OverloadExpr *E, bool KnownDependent,

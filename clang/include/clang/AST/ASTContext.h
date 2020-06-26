@@ -229,7 +229,7 @@ class ASTContext : public RefCountedBase<ASTContext> {
   mutable llvm::FoldingSet<DependentExtIntType> DependentExtIntTypes;
 
   /// The set of template types used by the system.
-  mutable llvm::FoldingSet<TemplateType> TemplateTypes;
+  mutable llvm::FoldingSet<CppxTemplateType> TemplateTypes;
 
   mutable llvm::FoldingSet<QualifiedTemplateName> QualifiedTemplateNames;
   mutable llvm::FoldingSet<DependentTemplateName> DependentTemplateNames;

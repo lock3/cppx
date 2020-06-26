@@ -877,7 +877,7 @@ let Class = PipeType in {
   }]>;
 }
 
-let Class = TemplateType in {
+let Class = CppxTemplateType in {
   def : Property<"TemplateDeclaration", TemplateDeclRef> {
     let Read = [{ node->getTemplateDecl() }];
   }

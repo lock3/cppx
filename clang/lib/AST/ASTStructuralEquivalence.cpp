@@ -998,9 +998,12 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
     break;
 
   case Type::CppxKind:
+    //llvm_un
+    llvm_unreachable("IsStructurallyEquivalent. CppxKindType needs implemented!");
     break;
-  case Type::Template:
-    llvm_unreachable("This needs to be implemented!");
+  case Type::CppxTemplate:
+    // FIXME: This needs to work eventually?
+    llvm_unreachable("IsStructurallyEquivalent. TemplateType needs implemented!");
 
   case Type::CppxNamespace:
     if (!IsStructurallyEquivalent(Context,

@@ -63,11 +63,45 @@ static llvm::StringRef getCallName(const CallSyntax *S) {
   return "(void)";
 }
 
-std::string Declarator::getString() const {
+static const char* getDeclaratorKindName(DeclaratorKind DK) {
+  switch(DK) {
+  case DK_Unknown:
+    return "Unknown";
+  case DK_Identifier:
+    return "Identifier";
+  case DK_TemplateType:
+    return "TemplateType";
+  case DK_Pointer:
+    return "Pointer";
+  case DK_Array:
+    return "Array";
+  case DK_Function:
+    return "Function";
+  case DK_Type:
+    return "Type";
+  case DK_Const:
+    return "Const";
+  case DK_Ref:
+    return "Ref";
+  case DK_RRef:
+    return "RRef";
+  case DK_Error:
+    return "Error";
+  default:
+    llvm_unreachable("Invalid declarator Kind.");
+  }
+}
+std::string Declarator::getString(bool IncludeKind) const {
+  using namespace std::string_literals;
   // FIXME: This needs to properly elaborate all parts of the declarator.
   if (getKind() == DK_Type) {
     if (isa<AtomSyntax>(Data.Type)) {
-      // TODO: Figure out how to correctly print types. that are not simple identifiers.
+      // TODO: Figure out how to correctly print types. that are
+      // not simple identifiers.
+      if (IncludeKind) {
+        return "("s + getDeclaratorKindName(getKind()) + ") "
+            + cast<AtomSyntax>(Data.Type)->getSpelling().str();
+      }
       return cast<AtomSyntax>(Data.Type)->getSpelling().str();
     } else {
       return "Some complex type expression\n";
@@ -89,36 +123,11 @@ std::string Declarator::getString() const {
   }
 }
 
-#if 0
-static const char* getDeclaratorKindName(DeclaratorKind DK) {
-  switch(DK){
-  case DeclaratorKind::DK_Unknown:
-    return "DK_Unknown";
-  case DeclaratorKind::DK_Identifier:
-    return "DK_Identifier";
-  case DeclaratorKind::DK_TemplateType:
-    return "DK_TemplateType";
-  case DeclaratorKind::DK_Pointer:
-    return "DK_Pointer";
-  case DeclaratorKind::DK_Array:
-    return "DK_Array";
-  case DeclaratorKind::DK_Function:
-    return "DK_Function";
-  case DeclaratorKind::DK_Type:
-    return "DK_Type";
-  case DeclaratorKind::DK_Const:
-    return "DK_Const";
-  default:
-    llvm_unreachable("Invalid declarator Kind.");
-  }
-}
-#endif
-
 void Declarator::printSequence(llvm::raw_ostream &os) const {
 
   const Declarator *D = this;
   do {
-    os << D->getString();
+    os << D->getString(true);
     if (D->Next)
       os << " -> ";
 

@@ -2484,15 +2484,18 @@ public:
 };
 
 
-struct TemplateTypeLocInfo {
+struct CppxTemplateTypeLocInfo {
   SourceLocation Loc;
 };
 /// Wrapper for template type parameters.
-class TemplateTypeLoc : public ConcreteTypeLoc<UnqualTypeLoc,
-                                               TemplateTypeLoc,
-                                               TemplateType,
-                                               TemplateTypeLocInfo> {
+class CppxTemplateTypeLoc : public ConcreteTypeLoc<UnqualTypeLoc,
+                                               CppxTemplateTypeLoc,
+                                               CppxTemplateType,
+                                               CppxTemplateTypeLocInfo> {
 public:
+  SourceRange getLocalSourceRange() const {
+    return SourceRange(getLocalData()->Loc, getLocalData()->Loc);
+  }
   SourceLocation getLoc() const {
     return getLocalData()->Loc;
   }
@@ -2516,6 +2519,9 @@ class CppxKindTypeLoc : public ConcreteTypeLoc<UnqualTypeLoc,
                                                CppxKindType,
                                                CppxKindLocInfo> {
 public:
+  SourceRange getLocalSourceRange() const {
+    return SourceRange(getLocalData()->Loc, getLocalData()->Loc);
+  }
   SourceLocation getNameLoc() const {
     return getLocalData()->Loc;
   }

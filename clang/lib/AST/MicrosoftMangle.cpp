@@ -2839,7 +2839,7 @@ void MicrosoftCXXNameMangler::mangleType(const NamespaceDecl *ND) {
   mangleName(ND);
 }
 
-void MicrosoftCXXNameMangler::mangleType(const TemplateType *T,
+void MicrosoftCXXNameMangler::mangleType(const CppxTemplateType *T,
                                          Qualifiers, SourceRange Range) {
   DiagnosticsEngine &Diags = Context.getDiags();
   unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,

@@ -345,7 +345,9 @@ static clang::ExprResult makeIntegerLiteral(Elaborator &Elab, const Token &Tok) 
 static clang::ExprResult makeTypeLiteral(Elaborator &Elab, clang::QualType T, Token const& Tok) {
   clang::ASTContext &Cxt = Elab.getCxxContext();
   clang::QualType K = Cxt.CppxKindTy;
-  return new (Cxt) clang::CppxTypeLiteral(K, T, Tok.getLocation());
+  llvm_unreachable("Brian broke this during refactoring from QualType to "
+      "TypeSourceInfo.");
+  // return new (Cxt) clang::CppxTypeLiteral(K, T, Tok.getLocation());
 }
 
 clang::ExprResult Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {

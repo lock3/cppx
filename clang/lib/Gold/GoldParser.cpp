@@ -603,7 +603,6 @@ Syntax *Parser::parseCmp() {
 
 bool isToOperator(Parser& P) {
   return P.nextTokenIs(tok::Colon)
-      || P.nextTokenIs(tok::MinusGreater)
       || P.nextTokenIs("in");
 }
 
@@ -629,7 +628,7 @@ Syntax *Parser::parseTo() {
 
 bool isAddOperator(Parser& P) {
   return P.nextTokenIs(tok::Plus) || P.nextTokenIs(tok::Minus)
-    || P.nextTokenIs(tok::DotDot);
+    || P.nextTokenIs(tok::DotDot) || P.nextTokenIs(tok::MinusGreater);
 }
 
 /// add:

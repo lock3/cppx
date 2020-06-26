@@ -24,5 +24,29 @@
 #include <cstring>
 #include <memory>
 
-using namespace clang;
+namespace clang {
 
+
+SourceLocation CppxTypeLiteral::getBeginLoc() const {
+  return Value->getTypeLoc().getBeginLoc();
+}
+
+SourceLocation CppxTypeLiteral::getEndLoc() const {
+  return Value->getTypeLoc().getEndLoc();
+}
+
+// SourceLocation CppxTypeLiteral::getLocation() const {
+//   return Loc;
+// }
+
+CppxTypeLiteral*
+CppxTypeLiteral::create(ASTContext &Context, QualType KindTy, ValueType Ty) {
+  return new (Context) CppxTypeLiteral(KindTy, Ty);
+}
+
+CppxDeclRefExpr *
+CppxDeclRefExpr::create(ASTContext &Context, QualType KindTy, ValueType D,
+                        SourceLocation Loc) {
+  return new (Context) CppxDeclRefExpr(KindTy, D, Loc);
+}
+} // namespace clang

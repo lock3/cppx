@@ -495,6 +495,9 @@ public:
     if (D->hasBody())
       Visit(D->getBody());
   }
+  void VisitCppxTypeLiteral(const CppxTypeLiteral *E) {
+    Visit(E->getValue()->getType());
+  }
 
   template <typename SpecializationDecl>
   void dumpTemplateDeclSpecialization(const SpecializationDecl *D) {

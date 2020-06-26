@@ -1511,7 +1511,7 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
     case Type::SubstTemplateTypeParmPack:
       llvm_unreachable("Type nodes handled above");
 
-    case Type::Template:
+    case Type::CppxTemplate:
       llvm_unreachable("Not sure what's supposed to happen here exactly.");
     // These types cannot be dependent, so simply check whether the types are
     // the same.
@@ -5938,7 +5938,7 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
   case Type::CXXRequiredType:
   case Type::CppxKind:
   case Type::CppxNamespace:
-  case Type::Template:
+  case Type::CppxTemplate:
   // This type is a template I'm not sure what to do here. Because technically
   // the template parameters haven't been used yet.
 #define TYPE(Class, Base)

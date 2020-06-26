@@ -14,6 +14,7 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Expr.h"
+#include "clang/AST/ExprCppx.h"
 #include "clang/AST/OperationKinds.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/ExprCppx.h"
@@ -49,7 +50,6 @@
 namespace gold {
 
 using TypeInfo = ExprElaborator::TypeInfo;
-using Expression = ExprElaborator::Expression;
 
 ExprElaborator::ExprElaborator(SyntaxContext &Context, Sema &SemaRef,
       clang::DeclContext *DC, gold::Scope *GoldScope)
@@ -57,7 +57,7 @@ ExprElaborator::ExprElaborator(SyntaxContext &Context, Sema &SemaRef,
   CurrentLookUpContext(DC), OwningScope(GoldScope)
 { }
 
-Expression ExprElaborator::elaborateExpr(const Syntax *S) {
+clang::Expr *ExprElaborator::elaborateExpr(const Syntax *S) {
   if (isa<AtomSyntax>(S))
     return elaborateAtom(cast<AtomSyntax>(S), clang::QualType());
   if (isa<CallSyntax>(S))
@@ -451,126 +451,93 @@ createNullLiteral(clang::ASTContext &CxxAST, clang::SourceLocation Loc) {
   return new (CxxAST) clang::CXXNullPtrLiteralExpr(CxxAST.NullPtrTy, Loc);
 }
 
-static clang::TypeSourceInfo*
-HandleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
-    SyntaxContext& Context, clang::TypeSourceInfo* IdExpr, const ElemSyntax *Elem) {
-  clang::CXXScopeSpec SS;
-  clang::Sema::TemplateTy Template;
-  clang::UnqualifiedId TemplateName;
-  clang::ParsedType ObjectType;
-  // FIXME: Handling non-nested elements.
-  if (!isa<AtomSyntax>(Elem->getObject()))
-    llvm_unreachable("Nested/qualified name access to template syntax "
-        "not implemented yet.");
-  const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Elem->getObject());
-  clang::IdentifierInfo &II = Context.CxxAST.Idents.get(Atom->getSpelling());
-  TemplateName.setIdentifier(&II, Atom->getLoc());
-  bool MemberOfUnknownSpecialization = false;
-  
-  if (clang::TemplateNameKind TNK = SemaRef.getCxxSema().isTemplateName(
-      SemaRef.getCurClangScope(), SS, /*hasTemplateKeyword=*/false,
-      TemplateName, ObjectType, /*EnteringContext*/false, Template,
-      MemberOfUnknownSpecialization)) {
+static clang::ParsedTemplateArgument
+convertExprToTemplateArg(Sema &SemaRef, clang::Expr *E) {
+  // Type parameters start here.
+  if (E->getType()->isTypeOfTypes()) {
+    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                          E, E->getExprLoc());
+    if (!TInfo)
+      return clang::ParsedTemplateArgument();
 
-    llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
-
-    const ListSyntax *ElemArgs = cast<ListSyntax>(Elem->getArguments());
-    for(const Syntax *SyntaxArg : ElemArgs->children()) {
-      clang::EnterExpressionEvaluationContext EnterConstantEvaluated(
-        SemaRef.getCxxSema(),
-        clang::Sema::ExpressionEvaluationContext::ConstantEvaluated,
-        /*LambdaContextDecl=*/nullptr,
-        /*ExprContext=*/
-        clang::Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
-
-      // TODO: Attempt to process this initially as a template template
-      // parameter and see if it fails or not, if it fails then it's not a
-      // template template parameter.
-      Expression ArgExpr = Elab.elaborateExpr(SyntaxArg);
-      if (ArgExpr.isNull()) 
-        return nullptr;
-      
-      if (ArgExpr.is<clang::NamespaceDecl *>()) {
-        // FIXME: Figure out the correct error message to display here.
-        // Basically we need to say that a namespace is not a type.
-        llvm::errs() << "Unable to a namespace name for a template argument\n";
-        return nullptr;
-      }
-
-      if (ArgExpr.is<clang::TypeSourceInfo *>()) {
-        // TODO: Figure out how to handle template template parameters here?
-        // Because currently that's impossible.
-        auto *SrcInfo = ArgExpr.get<clang::TypeSourceInfo *>();
-        ParsedArguments.emplace_back(
-          SemaRef.getCxxSema().ActOnTemplateTypeArgument(
-            SemaRef.getCxxSema().CreateParsedType(SrcInfo->getType(), SrcInfo)));
-      }
-      
-      if (ArgExpr.is<clang::Expr *>()) {
-        // Leveraging constant expression evaluation from clang's sema class.
-        clang::ExprResult ConstExpr(ArgExpr.get<clang::Expr*>());
-        ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(ConstExpr);
-        ParsedArguments.emplace_back(clang::ParsedTemplateArgument::NonType,
-            ConstExpr.get(), SyntaxArg->getLoc());
-      }
-    }
-    switch(TNK) {
-    case clang::TemplateNameKind::TNK_Concept_template:{
-      llvm_unreachable("TNK_Concept_template has not been implemented yet.");
-      break;
-    }
-    case clang::TemplateNameKind::TNK_Dependent_template_name:{
-      llvm_unreachable("TNK_Dependent_template_name has not been implemented yet.");
-      break;
-    }
-    case clang::TemplateNameKind::TNK_Function_template:{
-      llvm_unreachable("TNK_Function_template has not been implemented yet.");
-      break;
-    }
-    case clang::TemplateNameKind::TNK_Non_template:{
-      // TODO: It might be best to emit something here indicating that we
-      // found something that wasn't a templat that is being used as a template
-      // But within the function that I got this from clang doesn't emit an error
-      // they simply return false instead.
-      //
-      // This was taken from the function Parser::ParseUnqualifiedIdTemplateId
-      // in ParseExprCXX.cpp line:2281
-      return nullptr;
-    }
-    case clang::TemplateNameKind::TNK_Type_template:{
-      clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
-      clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
-        SemaRef.getCurClangScope(), SS,
-        /*TemplateKWLoc*/ clang::SourceLocation(), Template, &II, Atom->getLoc(),
-        /*LAngleLoc*/ clang::SourceLocation(), InArgs,
-        /*RAngleLoc*/ clang::SourceLocation(), false, false);
-      if (Result.isInvalid()) {
-        // TODO: Figure out correct error message this.
-        llvm::errs() << "We hae an invalid result ?!\n";
-        llvm_unreachable("We have an invlaid result for ActOnTemplateIdType.");
-      }
-      clang::QualType Ty(Result.get().get());
-      const clang::LocInfoType *TL = cast<clang::LocInfoType>(Ty.getTypePtr());
-      clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST,
-          TL->getType(), Atom->getLoc());
-      return TInfo;
-    }
-    case clang::TemplateNameKind::TNK_Undeclared_template:{
-      llvm_unreachable("TNK_Undeclared_template has not been implemented yet.");
-      break;
-    }
-    case clang::TemplateNameKind::TNK_Var_template:{
-      llvm_unreachable("TNK_Var_template has not been implemented yet.");
-      break;
-    }
-    }
+    return SemaRef.getCxxSema().ActOnTemplateTypeArgument(
+               SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo));
   }
-  return nullptr;
+
+  if (E->getType()->isTemplateType()) {
+    // This is a template template parameter?
+    llvm_unreachable("Template template params not implemented yet.");
+  }
+
+  // Anything else is a constant expression?
+  clang::ExprResult ConstExpr(E);
+  ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(ConstExpr);
+  return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::NonType,
+      ConstExpr.get(), E->getExprLoc());
 }
 
-static Expression handleElementExpression(ExprElaborator &Elab,
-    Sema &SemaRef, SyntaxContext &Context, const ElemSyntax *Elem,
-    clang::Expr *E) {
+
+static clang::Expr*
+handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
+    SyntaxContext& Context, clang::Expr* IdExpr, const ElemSyntax *Elem) {
+  llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
+
+  const ListSyntax *ElemArgs = cast<ListSyntax>(Elem->getArguments());
+  for(const Syntax *SyntaxArg : ElemArgs->children()) {
+    clang::EnterExpressionEvaluationContext EnterConstantEvaluated(
+                                                          SemaRef.getCxxSema(),
+                  clang::Sema::ExpressionEvaluationContext::ConstantEvaluated,
+                                                /*LambdaContextDecl=*/nullptr,
+                                                              /*ExprContext=*/
+          clang::Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
+    clang::Expr *ArgExpr = Elab.elaborateExpr(SyntaxArg);
+    if (!ArgExpr)
+      return nullptr;
+    auto TemplateArg = convertExprToTemplateArg(SemaRef, ArgExpr);
+    if (TemplateArg.isInvalid())
+      // TODO: Figure out if this needs an error message or not.
+      // I assume that the errore message should be delivered prior to this.
+      return nullptr;
+
+    ParsedArguments.emplace_back(TemplateArg);
+
+  }
+
+  clang::Decl *Decl = SemaRef.getDeclFromExpr(IdExpr,
+                                              Elem->getObject()->getLoc());
+  if (!Decl)
+    return nullptr;
+
+  clang::ClassTemplateDecl *CTD = dyn_cast<clang::ClassTemplateDecl>(Decl);
+  if (!CTD) {
+    llvm_unreachable("Invlid CppxDeclRefExpr expression.");
+  }
+    
+  clang::CXXScopeSpec SS;
+  clang::TemplateName TName(CTD);
+  clang::Sema::TemplateTy TemplateTyName = clang::Sema::TemplateTy::make(TName);
+  // clang::UnqualifiedId TemplateName;
+  // clang::ParsedType ObjectType;
+  clang::IdentifierInfo *II = CTD->getIdentifier();
+  clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
+  clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
+    SemaRef.getCurClangScope(), SS, /*TemplateKWLoc*/ clang::SourceLocation(),
+    TemplateTyName, II, Elem->getObject()->getLoc(), /*LAngleLoc*/ clang::SourceLocation(),
+    InArgs, /*RAngleLoc*/ clang::SourceLocation(), false, false);
+  if (Result.isInvalid()) {
+    // TODO: Figure out correct error message this.
+    llvm::errs() << "We hae an invalid result ?!\n";
+    llvm_unreachable("We have an invlaid result for ActOnTemplateIdType.");
+  }
+  clang::QualType Ty(Result.get().get());
+  const clang::LocInfoType *TL = cast<clang::LocInfoType>(Ty.getTypePtr());
+  return SemaRef.buildTypeExpr(TL->getType(), Elem->getLoc());
+}
+
+static clang::Expr *
+handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
+                        SyntaxContext &Context, const ElemSyntax *Elem,
+                        clang::Expr *E) {
 
   // Attempting to correctly handle the result of an Id expression.
   clang::OverloadExpr *OverloadExpr = dyn_cast<clang::OverloadExpr>(E);
@@ -586,28 +553,30 @@ static Expression handleElementExpression(ExprElaborator &Elab,
   llvm::SmallVector<clang::TemplateArgument, 16> ActualArgs;
   for (const Syntax *SS : Elem->getArguments()->children()) {
     ExprElaborator ParamElaborator(Context, SemaRef);
-    Expression ParamExpression = ParamElaborator.elaborateExpr(SS);
-    if (ParamExpression.isNull())
+    clang::Expr *ParamExpression = ParamElaborator.elaborateExpr(SS);
+    if (!ParamExpression)
       return nullptr;
 
-    if (ParamExpression.is<clang::TypeSourceInfo *>()) {
-      auto *TypeParam = ParamExpression.get<clang::TypeSourceInfo *>();
-      clang::TemplateArgument Arg(TypeParam->getType());
-      TemplateArgs.addArgument({Arg, TypeParam});
+    if (ParamExpression->getType()->isTypeOfTypes()) {
+      clang::TypeSourceInfo *ParamTInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                            ParamExpression, Elem->getLoc());
+      if (!ParamTInfo)
+        return nullptr;
+      clang::TemplateArgument Arg(ParamTInfo->getType());
+      TemplateArgs.addArgument({Arg, ParamTInfo});
       ActualArgs.emplace_back(Arg);
     } else {
-      clang::TemplateArgument Arg(ParamExpression.get<clang::Expr *>(),
-                                  clang::TemplateArgument::Expression);
-      TemplateArgs.addArgument({Arg, ParamExpression.get<clang::Expr *>()});
+      clang::TemplateArgument Arg(ParamExpression,
+                                           clang::TemplateArgument::Expression);
+      TemplateArgs.addArgument({Arg, ParamExpression});
       ActualArgs.emplace_back(Arg);
     }
   }
   clang::TemplateArgumentList TemplateArgList(
-      clang::TemplateArgumentList::OnStack, ActualArgs);
+                              clang::TemplateArgumentList::OnStack, ActualArgs);
   if (OverloadExpr->getNumDecls() == 1) {
     clang::NamedDecl *ND = *OverloadExpr->decls_begin();
     if (isa<clang::TemplateDecl>(ND)) {
-      
       // We need to instantiate the template with parameters.
       if (clang::UnresolvedMemberExpr *MemAccess
               = dyn_cast<clang::UnresolvedMemberExpr>(OverloadExpr)) {
@@ -620,16 +589,19 @@ static Expression handleElementExpression(ExprElaborator &Elab,
           // TODO: Create error message for this.
           llvm_unreachable("Function template instantiation failure.");
         }
-        SemaRef.getCxxSema().InstantiateFunctionDefinition(
-            Elem->getLoc(), FD, true, true, false);
-        return clang::MemberExpr::Create(Context.CxxAST,
-            MemAccess->getBase(), MemAccess->isArrow(),
-            MemAccess->getOperatorLoc(), MemAccess->getQualifierLoc(),
-            clang::SourceLocation(), FD,
-            clang::DeclAccessPair::make(FD, ND->getAccess()),
-            MemAccess->getMemberNameInfo(), &TemplateArgs, E->getType(),
-            MemAccess->getValueKind(), MemAccess->getObjectKind(),
-            clang::NonOdrUseReason::NOUR_None);
+        SemaRef.getCxxSema().InstantiateFunctionDefinition(Elem->getLoc(), FD,
+                                                           true, true, false);
+        return clang::MemberExpr::Create(Context.CxxAST, MemAccess->getBase(),
+                                         MemAccess->isArrow(),
+                                         MemAccess->getOperatorLoc(),
+                                         MemAccess->getQualifierLoc(),
+                                         clang::SourceLocation(), FD,
+                               clang::DeclAccessPair::make(FD, ND->getAccess()),
+                                         MemAccess->getMemberNameInfo(),
+                                         &TemplateArgs, E->getType(),
+                                         MemAccess->getValueKind(),
+                                         MemAccess->getObjectKind(),
+                                         clang::NonOdrUseReason::NOUR_None);
       } else {
         llvm_unreachable("We don't have code for processing of non-member "
             "lookup expressions.");
@@ -646,17 +618,18 @@ static Expression handleElementExpression(ExprElaborator &Elab,
       }
       clang::FunctionDecl *InstantiatedFunc
           = SemaRef.getCxxSema().InstantiateFunctionDeclaration(FTD,
-            &TemplateArgList, Elem->getLoc());
-      SemaRef.getCxxSema().InstantiateFunctionDefinition(
-          Elem->getLoc(), InstantiatedFunc, true, true, false);
+                                                               &TemplateArgList,
+                                                                Elem->getLoc());
+      SemaRef.getCxxSema().InstantiateFunctionDefinition(Elem->getLoc(),
+                                                         InstantiatedFunc,
+                                                         true, true, false);
       clang::LookupResult ResultTemp(SemaRef.getCxxSema(),
-                                      OverloadExpr->getNameInfo(),
-                                      clang::Sema::LookupAnyName);
+                                     OverloadExpr->getNameInfo(),
+                                     clang::Sema::LookupAnyName);
       ResultTemp.addDecl(InstantiatedFunc);
       return clang::UnresolvedLookupExpr::Create(Context.CxxAST, 
                                                  OverloadExpr->getNamingClass(),
                                                 OverloadExpr->getQualifierLoc(),
-                                                 // OverloadExpr->getNameLoc(),
                                                  OverloadExpr->getNameInfo(),
                                                  /*ADL=*/true, false,
                                                  ResultTemp.begin(),
@@ -665,13 +638,10 @@ static Expression handleElementExpression(ExprElaborator &Elab,
     llvm_unreachable("Unknown unresolved lookup type located. Unable to "
         "continue.");
   } else {
-    
-
-
     if (isa<clang::UnresolvedLookupExpr>(OverloadExpr)) {
       clang::LookupResult ResultTemp(SemaRef.getCxxSema(),
-                                      OverloadExpr->getNameInfo(),
-                                      clang::Sema::LookupAnyName);
+                                     OverloadExpr->getNameInfo(),
+                                     clang::Sema::LookupAnyName);
       ResultTemp.setTemplateNameLookup(true);
       for (clang::NamedDecl *ND : OverloadExpr->decls()) {
         if(clang::FunctionDecl *FD = ND->getAsFunction())
@@ -698,22 +668,15 @@ static Expression handleElementExpression(ExprElaborator &Elab,
     if(clang::UnresolvedMemberExpr *UME = 
                           dyn_cast<clang::UnresolvedMemberExpr>(OverloadExpr)) {
       clang::LookupResult ResultTemp(SemaRef.getCxxSema(),
-                                      OverloadExpr->getNameInfo(),
-                                      clang::Sema::LookupAnyName);
+                                     OverloadExpr->getNameInfo(),
+                                     clang::Sema::LookupAnyName);
       ResultTemp.setTemplateNameLookup(true);
       for (clang::NamedDecl *ND : OverloadExpr->decls()) {
         ND = SemaRef.getCxxSema().getAsTemplateNameDecl(ND, true, true);
         if(ND)
           if(clang::FunctionDecl *FD = ND->getAsFunction())
-            if(clang::FunctionTemplateDecl *FTD = FD->getDescribedFunctionTemplate()) {
-              // clang::FunctionDecl *InstantiatedFunc
-              //     = SemaRef.getCxxSema().InstantiateFunctionDeclaration(FTD,
-              //       &TemplateArgList, Elem->getLoc());
-              // if (InstantiatedFunc) {
-              //   SemaRef.getCxxSema().InstantiateFunctionDefinition(
-              //       Elem->getLoc(), InstantiatedFunc, true, true, false);
-              //   ResultTemp.addDecl(InstantiatedFunc);
-              // }
+            if(clang::FunctionTemplateDecl *FTD
+                                         = FD->getDescribedFunctionTemplate()) {
               ResultTemp.addDecl(FTD);
             }
       }
@@ -742,29 +705,30 @@ static Expression handleElementExpression(ExprElaborator &Elab,
       "or abort.");
 }
 
-Expression ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
-  Expression IdExpr = elaborateExpr(Elem->getObject());
-  if (IdExpr.is<clang::NamespaceDecl *>()) {
-    llvm_unreachable("Nested Templated namespace don't exist.");
+clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
+  clang::Expr *IdExpr = elaborateExpr(Elem->getObject());
+  if (!IdExpr)
+    return nullptr;
+
+  if (IdExpr->getType()->isTypeOfTypes()
+      || IdExpr->getType()->isNamespaceType()) {
+    SemaRef.Diags.Report(Elem->getObject()->getLoc(),
+                         clang::diag::err_non_template_in_template_id);
     return nullptr;
   }
-  if (IdExpr.is<clang::TypeSourceInfo *>()) {
-    return HandleClassTemplateSelection(*this, SemaRef, Context,
-      IdExpr.get<clang::TypeSourceInfo*>(), Elem);
-  }
 
-  if (clang::Expr *E = IdExpr.dyn_cast<clang::Expr *>()) {
-    return handleElementExpression(*this, SemaRef, Context, Elem, E);
-  }
+  if (IdExpr->getType()->isTemplateType())
+    return handleClassTemplateSelection(*this, SemaRef, Context, IdExpr, Elem);
 
-  llvm_unreachable("Unable to handle indexing into given expression within the AST.");
+  return handleElementExpression(*this, SemaRef, Context, Elem, IdExpr);
+
+  llvm_unreachable("Unable to handle indexing into given expression within "
+      "the AST.");
 }
 
-static ExprElaborator::Expression
+static clang::Expr *
 createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
                   clang::QualType Ty, clang::SourceLocation Loc) {
-
-
   clang::ASTContext &CxxAST = Context.CxxAST;
   clang::IdentifierInfo &Id = CxxAST.Idents.get(S->getSpelling());
   clang::DeclarationNameInfo DNI({&Id}, Loc);
@@ -775,7 +739,7 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
     SemaRef.lookupQualifiedName(R);
   else
     SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
-
+  
   if (!R.empty()) {
     R.resolveKind();
     if (!R.isSingleResult()) {
@@ -787,9 +751,11 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
         // Need to figure out if the potential overload is a member function
         // or not.
         return clang::UnresolvedLookupExpr::Create(Context.CxxAST,
-            R.getNamingClass(), clang::NestedNameSpecifierLoc(),
-            R.getLookupNameInfo(), /*ADL=*/true, true,
-            R.begin(), R.end());
+                                                   R.getNamingClass(),
+                                                clang::NestedNameSpecifierLoc(),
+                                                   R.getLookupNameInfo(),
+                                                   /*ADL=*/true, true,
+                                                   R.begin(), R.end());
       }
 
       // TODO: FIXME: Create error message for here.
@@ -805,7 +771,7 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
       return nullptr;
     }
 
-    if(clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>()) {
+    if (clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>()) {
       clang::QualType FoundTy = VD->getType();
       // If the user annotated the DeclRefExpr with an incorrect type.
       if (!Ty.isNull() && Ty != FoundTy) {
@@ -820,18 +786,21 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
         clang::RecordDecl* RD = Field->getParent();
         // FIXME: Add CV qualifiers here if needed
         clang::QualType ThisTy(RD->getTypeForDecl(), 0);
-        clang::QualType ThisPtrTy = SemaRef.getContext().CxxAST.getPointerType(ThisTy);
+        clang::QualType ThisPtrTy = SemaRef.getContext().CxxAST.getPointerType(
+                                                                        ThisTy);
         clang::Expr* This = SemaRef.getCxxSema().BuildCXXThisExpr(Loc,
-            ThisPtrTy, true);
+                                                                  ThisPtrTy,
+                                                                  true);
         // FIXME: I may need to change the access specifier look up in this case.
         // Because otherwise we are skirting access to the AccessSpecifier.
         clang::DeclAccessPair FoundDecl = clang::DeclAccessPair::make(Field,
-              clang::AccessSpecifier::AS_public);
+                                             clang::AccessSpecifier::AS_public);
         clang::CXXScopeSpec SS;
         clang::ExprResult MemberExpr
-            = SemaRef.getCxxSema().BuildFieldReferenceExpr(
-              This, true, clang::SourceLocation(), SS, Field, FoundDecl, DNI
-            );
+            = SemaRef.getCxxSema().BuildFieldReferenceExpr(This, true,
+                                                        clang::SourceLocation(),
+                                                           SS, Field, FoundDecl,
+                                                           DNI);
         clang::Expr *Ret = MemberExpr.get();
         if (!Ret) {
           SemaRef.Diags.Report(Loc, clang::diag::err_no_member)
@@ -847,41 +816,56 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
         clang::SourceLocation Loc;
         // This may need to change into a different type of function call
         // base on given arguments, because this could be an issue.
-        return SemaRef.getCxxSema().BuildPossibleImplicitMemberExpr(
-            SS, Loc, R, nullptr, SemaRef.getCurClangScope()).get();
+        return SemaRef.getCxxSema().BuildPossibleImplicitMemberExpr(SS, Loc, R,
+                                                                    nullptr,
+                                              SemaRef.getCurClangScope()).get();
       }
 
       if(isa<clang::FunctionDecl>(VD)) {
         return clang::UnresolvedLookupExpr::Create(Context.CxxAST,
-            R.getNamingClass(), clang::NestedNameSpecifierLoc(),
-            R.getLookupNameInfo(), /*ADL=*/true, true,
-            R.begin(), R.end());
+                                                   R.getNamingClass(),
+                                                clang::NestedNameSpecifierLoc(),
+                                                   R.getLookupNameInfo(),
+                                                   /*ADL=*/true, true,
+                                                   R.begin(), R.end());
       }
 
-      // Checking if the current declaration is a variable.
+      clang::QualType ResultType = VD->getType();
+      if (ResultType.getTypePtr()->isReferenceType()) {
+        ResultType = ResultType.getTypePtr()->getPointeeType();
+      }
+      
       // FIXME: discern whether this is an lvalue or rvalue properly
+      // This was altered so that it would handle implicit conversions
+      // for references correctly.
       clang::DeclRefExpr *DRE =
-        clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
-                                  clang::SourceLocation(), VD, /*Capture=*/false,
-                                  Loc, FoundTy, clang::VK_LValue, VD);
+        SemaRef.getCxxSema().BuildDeclRefExpr(VD, ResultType, clang::VK_LValue,
+                                              DNI,
+                                              clang::NestedNameSpecifierLoc(),
+                                              VD, clang::SourceLocation(),
+                                              nullptr);
       return DRE;
     }
 
     // Processing the case when the returned result is a type.
-    if (const clang::TagDecl *TD = R.getAsSingle<clang::TagDecl>())
-      return BuildAnyTypeLoc(CxxAST, CxxAST.getTypeDeclType(TD), Loc);
+    if (const clang::TagDecl *TD = R.getAsSingle<clang::TagDecl>()) {
+      return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
+    }
 
-    if (const clang::NamespaceDecl *NS = R.getAsSingle<clang::NamespaceDecl>())
-      return const_cast<clang::NamespaceDecl *>(NS);
-    if (const auto *NS = R.getAsSingle<clang::CppxNamespaceDecl>())
-      return const_cast<clang::CppxNamespaceDecl *>(NS);
+    if (clang::ClassTemplateDecl *CTD
+                                  = R.getAsSingle<clang::ClassTemplateDecl>()) {
+      return SemaRef.buildTemplateType(CTD, Loc);
+    }
+
+    if (auto *NS = R.getAsSingle<clang::CppxNamespaceDecl>())
+      return SemaRef.buildNSDeclRef(NS, Loc);
   }
 
   // TODO: FIXME: Create error reporting here for lookup failure.
   return nullptr;
 }
 
-Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
+clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
                                          clang::QualType ExplicitType) {
   Token T = S->Tok;
 
@@ -930,51 +914,51 @@ Expression ExprElaborator::elaborateAtom(const AtomSyntax *S,
     return createNullLiteral(CxxAST, S->getLoc());
 
   case tok::VoidKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.VoidTy, S->getLoc());
+    return SemaRef.buildTypeExpr(CxxAST.VoidTy, S->getLoc());
   case tok::BoolKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.BoolTy, S->getLoc());
+    return SemaRef.buildTypeExpr(CxxAST.BoolTy, S->getLoc());
   case tok::CharKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.CharTy, S->getLoc());
+    return SemaRef.buildTypeExpr(CxxAST.CharTy, S->getLoc());
   case tok::Char8Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.Char8Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.Char8Ty, S->getLoc());
   case tok::Char16Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.Char16Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.Char16Ty, S->getLoc());
   case tok::Char32Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.Char32Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.Char32Ty, S->getLoc());
   case tok::IntKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.IntTy, S->getLoc());
+    return SemaRef.buildTypeExpr(CxxAST.IntTy, S->getLoc());
   case tok::Int8Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.Int8Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.Int8Ty, S->getLoc());
   case tok::Int16Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.Int16Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.Int16Ty, S->getLoc());
   case tok::Int32Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.Int32Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.Int32Ty, S->getLoc());
   case tok::Int64Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.Int64Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.Int64Ty, S->getLoc());
   case tok::Int128Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.Int128Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.Int128Ty, S->getLoc());
   case tok::UintKeyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.UIntTy, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.UIntTy, S->getLoc());
   case tok::Uint8Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.UInt8Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.UInt8Ty, S->getLoc());
   case tok::Uint16Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.UInt16Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.UInt16Ty, S->getLoc());
   case tok::Uint32Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.UInt32Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.UInt32Ty, S->getLoc());
   case tok::Uint64Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.UInt64Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.UInt64Ty, S->getLoc());
   case tok::Uint128Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.UInt128Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.UInt128Ty, S->getLoc());
   case tok::Float16Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.Float16Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.Float16Ty, S->getLoc());
   case tok::Float32Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.Float32Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.Float32Ty, S->getLoc());
   case tok::Float64Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.Float64Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.Float64Ty, S->getLoc());
   case tok::Float128Keyword:
-    return BuildAnyTypeLoc(CxxAST, SemaRef.Float128Ty, S->getLoc());
+    return SemaRef.buildTypeExpr(SemaRef.Float128Ty, S->getLoc());
   case tok::TypeKeyword:
-    return BuildAnyTypeLoc(CxxAST, CxxAST.CppxKindTy, S->getLoc());
+    return SemaRef.buildTypeExpr(CxxAST.CppxKindTy, S->getLoc());
 
   default: break;
   }
@@ -987,15 +971,15 @@ static bool buildFunctionCallAruments(Sema &SemaRef, SyntaxContext &Context,
     llvm::SmallVector<clang::Expr *, 8> &Args) {
   for (const Syntax *A : ArgList->children()) {
     ExprElaborator Elab(Context, SemaRef);
-    Expression Argument = Elab.elaborateExpr(A);
+    clang::Expr *Argument = Elab.elaborateExpr(A);
 
     // FIXME: What kind of expression is the unary ':typename' expression?
-    if (Argument.is<clang::TypeSourceInfo *>()) {
+    if (!Argument) {
       SemaRef.Diags.Report(A->getLoc(), clang::diag::err_expected_expression);
       return true;
     }
 
-    Args.push_back(Argument.get<clang::Expr *>());
+    Args.push_back(Argument);
   }
   return false;
 }
@@ -1003,27 +987,28 @@ static bool buildFunctionCallAruments(Sema &SemaRef, SyntaxContext &Context,
 /// This function's job is to create the correct call based upon the result
 /// type of the CalleeExpr, which could be any of the types within the
 /// Expression union type.
-static Expression handleExpressionResultCall(Sema &SemaRef,
-    const CallSyntax *S, Expression CalleeExpr,
-    llvm::SmallVector<clang::Expr *, 8> &Args) {
-  if (CalleeExpr.isNull()) {
+static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
+                                               const CallSyntax *S,
+                                               clang::Expr *CalleeExpr,
+                                    llvm::SmallVector<clang::Expr *, 8> &Args) {
+  if (!CalleeExpr)
     // TODO: Create error message for this.
     return nullptr;
-  }
-  if (clang::Expr *E = CalleeExpr.dyn_cast<clang::Expr *>()) {
-    clang::ExprResult Call =
-      SemaRef.getCxxSema().ActOnCallExpr(SemaRef.getCxxSema().getCurScope(),
-                                        E, S->getCalleeLoc(),
-                                        Args, S->getCalleeLoc());
-    return Call.get();
-  }
 
-  if (clang::TypeSourceInfo *TInfo
-                             = CalleeExpr.dyn_cast<clang::TypeSourceInfo *>()) {
-    // llvm_unreachable("Constructor calls have not been implemented yet.");
+  if (CalleeExpr->getType()->isTypeOfTypes()) {
+    // This means constructor call possibly, unless it's some how a function
+    // call returning a type.
+    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                                 CalleeExpr, S->getLoc());
+    if (!TInfo) {
+      // If this isn't a CppxTypeLiteral then we can't get the type yet and it
+      // might be a meta function.kind
+      llvm_unreachable("Meta function calls not implemented yet?");
+    }
     clang::ExprResult ConstructorExpr =
         SemaRef.getCxxSema().BuildCXXTypeConstructExpr(TInfo, S->getLoc(),
                                                       Args, S->getLoc(), false);
+
     if (!ConstructorExpr.get()) {
       SemaRef.Diags.Report(S->getLoc(),
                             clang::diag::err_coroutine_invalid_func_context)
@@ -1031,13 +1016,17 @@ static Expression handleExpressionResultCall(Sema &SemaRef,
       return nullptr;
     }
     return ConstructorExpr.get();
+
   }
-  if (CalleeExpr.is<clang::NamespaceDecl *>()) {
-    // TODO: Create a more appropriate error messaage for here.
-    llvm_unreachable("Cannot call a namespace.");
-    
-  }
-  llvm_unreachable("Invalid expression result type.");
+  // TODO: create a test for this were we call a namespace just to see what kind
+  // of error actually occurs.
+
+  // For any thing else we simply try and make the call and see what happens.
+  clang::ExprResult Call =SemaRef.getCxxSema().ActOnCallExpr(
+                                            SemaRef.getCxxSema().getCurScope(),
+                                            CalleeExpr, S->getCalleeLoc(), Args,
+                                            S->getCalleeLoc());
+  return Call.get();
 }
 
 static bool callIsCastOperator(const CallSyntax *S) {
@@ -1052,7 +1041,7 @@ static bool callIsCastOperator(const CallSyntax *S) {
   return false;
 }
 
-Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
+clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   if (callIsCastOperator(S)) {
     return elaborateCastOp(S);
   }
@@ -1060,15 +1049,15 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   // There are multiple kinds of atoms for multiple types of calls
   // but in the event that the callee object is not an Atom, it means
   // that we have to process the sub expression as normal.
-  Expression CalleeExpr;
+  clang::Expr *CalleeExpr;
   if (!isa<AtomSyntax>(S->getCallee())) {
     CalleeExpr = elaborateExpr(S->getCallee());
     llvm::SmallVector<clang::Expr *, 8> Args;
     const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
-    if (buildFunctionCallAruments(SemaRef, Context, ArgList, Args)) {
-      // TODO: Determine the correct message to output here.
+
+    if (buildFunctionCallAruments(SemaRef, Context, ArgList, Args))
       return nullptr;
-    }
+
     return handleExpressionResultCall(SemaRef, S, CalleeExpr, Args);
   }
 
@@ -1087,7 +1076,7 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
   }
 
   case FOK_DotDot:
-    return handleOperatorDotDot(S);
+    llvm_unreachable("FOK_DotDot is not supported in this context.");
 
   case FOK_Const:
     return handleOperatorConst(S);
@@ -1129,7 +1118,7 @@ Expression ExprElaborator::elaborateCall(const CallSyntax *S) {
 }
 
 
-Expression ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
+clang::Expr *ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
   if (CastOp->getNumArguments() != 1) {
     SemaRef.Diags.Report(CastOp->getLoc(),
         clang::diag::err_invalid_cast_arg_count);
@@ -1148,7 +1137,8 @@ Expression ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
   } else if (const ArraySyntax *AS = dyn_cast<ArraySyntax>(Args)) {
       TypeArgumentList = AS;
   } else {
-    CastOp->dump();
+    // TODO: Create error message for here?!
+    // CastOp->dump();
     llvm_unreachable("Improperly formatted AST.");
   }
   if (TypeArgumentList->getNumChildren() != 1) {
@@ -1171,91 +1161,87 @@ Expression ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
     llvm_unreachable("Invalid cast name.");
   }
 
-  Expression DestinationType = elaborateExpr(Elem->getArgument(0));
-  if (DestinationType.isNull()) {
+  clang::Expr *DestinationTy = elaborateExpr(Elem->getArgument(0));
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                 DestinationTy, Elem->getArgument(0)->getLoc());
+  if (!TInfo){
     SemaRef.Diags.Report(Elem->getArgument(0)->getLoc(),
-                         clang::diag::err_invalid_cast_destination_type);
+                      clang::diag::err_invalid_cast_destination_type);
     return nullptr;
   }
-  if (!DestinationType.is<clang::TypeSourceInfo *>()) {
-    SemaRef.Diags.Report(Elem->getArgument(0)->getLoc(),
-                         clang::diag::err_invalid_cast_destination_type);
-    return nullptr;
-  }
-
-  Expression Source = elaborateExpr(CastOp->getArgument(0));
-  if (Source.isNull()) {
+  
+  clang::Expr *Source = elaborateExpr(CastOp->getArgument(0));
+  if (!Source) {
     SemaRef.Diags.Report(CastOp->getArgument(0)->getLoc(),
                          clang::diag::err_expected_expression);
     return nullptr;
   }
-  if (!Source.is<clang::Expr *>()) {
-    SemaRef.Diags.Report(CastOp->getArgument(0)->getLoc(),
-                         clang::diag::err_invalid_cast_source);
-    return nullptr;
-  }
-  clang::TypeSourceInfo *TInfo = DestinationType.get<clang::TypeSourceInfo*>();
-  auto CastExpr = SemaRef.getCxxSema().BuildCXXNamedCast(
-    Callee->getLoc(), CastKind, TInfo, Source.get<clang::Expr*>(),
-    CastOp->getArgument(0)->getLoc(), CastOp->getArgument(0)->getLoc()
-  );
+  auto CastExpr = SemaRef.getCxxSema().BuildCXXNamedCast(Callee->getLoc(),
+                                                         CastKind, TInfo,
+                                                         Source,
+                                              CastOp->getArgument(0)->getLoc(),
+                                              CastOp->getArgument(0)->getLoc());
   return CastExpr.get();
 }
 
 
 
-Expression ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
-    const CallSyntax *Op, const Syntax *RHS) {
-  Expression ElaboratedLHS = elaborateExpr(LHS);
+clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
+                                                   const CallSyntax *Op,
+                                                   const Syntax *RHS) {
+  clang::Expr *ElaboratedLHS = elaborateExpr(LHS);
 
-  if (ElaboratedLHS.isNull()) {
+  if (!ElaboratedLHS) {
     SemaRef.Diags.Report(LHS->getLoc(), clang::diag::err_expected_expression);
     return nullptr;
   }
 
-  if (ElaboratedLHS.is<clang::Expr *>()) {
-    if (isa<AtomSyntax>(RHS)) {
-      // TODO: I need an example where this isn't an atom but I'm not sure
-      // one exists yet.
-      const AtomSyntax *RHSAtom = cast<AtomSyntax>(RHS);
-      // TODO: figure out how to make the pointer work correctly?
-
-      clang::UnqualifiedId Id;
-      clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(
-        RHSAtom->getSpelling());
-      Id.setIdentifier(IdInfo, RHSAtom->getLoc());
-      clang::CXXScopeSpec SS;
-      clang::SourceLocation Loc;
-      clang::ExprResult RHSExpr = SemaRef.getCxxSema().ActOnMemberAccessExpr(
-        SemaRef.getCurClangScope(), ElaboratedLHS.get<clang::Expr*>(), Op->getLoc(),
-        clang::tok::TokenKind::period, SS, Loc, Id, nullptr);
-      if (RHSExpr.get()) {
-        ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr.get());
-      } else {
-        // TODO: Need to create error message for here.
-        llvm_unreachable("We were not able to elaborate the member access "
-            "expression.\n");
-      }
-      return RHSExpr.get();
-    }
-
-    llvm_unreachable("Member access from non-variables unimplemented.");
-  } else if (ElaboratedLHS.is<clang::TypeSourceInfo *>()) {
+  if (ElaboratedLHS->getType()->isTypeOfTypes())
     return elaborateNestedLookUpAccess(ElaboratedLHS, Op, RHS);
-  } else if (ElaboratedLHS.is<clang::CppxNamespaceDecl *>()) {
-    auto *NS = ElaboratedLHS.get<clang::CppxNamespaceDecl *>();
-    return elaborateNNS(NS, Op, RHS);
+  
+  if (ElaboratedLHS->getType()->isNamespaceType()) {
+    if (clang::CppxNamespaceDecl *NSRef = dyn_cast<clang::CppxNamespaceDecl>(
+                                        SemaRef.getDeclFromExpr(ElaboratedLHS,
+                                        LHS->getLoc()))) {
+      return elaborateNNS(NSRef, Op, RHS);
+    }
+    llvm_unreachable("Invalid namespace type returned.");
   }
 
-  llvm_unreachable("Unimplemented access expression");
+  if (isa<AtomSyntax>(RHS)) {
+    // TODO: I need an example where this isn't an atom but I'm not sure
+    // one exists yet.
+    const AtomSyntax *RHSAtom = cast<AtomSyntax>(RHS);
+    // TODO: figure out how to make the pointer work correctly?
+
+    clang::UnqualifiedId Id;
+    clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(
+                                                      RHSAtom->getSpelling());
+    Id.setIdentifier(IdInfo, RHSAtom->getLoc());
+    clang::CXXScopeSpec SS;
+    clang::SourceLocation Loc;
+    clang::ExprResult RHSExpr =
+      SemaRef.getCxxSema().ActOnMemberAccessExpr(SemaRef.getCurClangScope(),
+                                                 ElaboratedLHS,
+                                                 Op->getLoc(),
+                                                 clang::tok::TokenKind::period,
+                                                 SS, Loc, Id, nullptr);
+    if (RHSExpr.get()) {
+      ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr.get());
+    } else {
+      // TODO: Need to create error message for here.
+      llvm_unreachable("We were not able to elaborate the member access "
+          "expression.\n");
+    }
+    return RHSExpr.get();
+  }
+  llvm_unreachable("Member access from non-variables unimplemented.");
 }
 
-Expression ExprElaborator::elaborateNNS(clang::CppxNamespaceDecl *NS,
-                                        const CallSyntax *Op,
-                                        const Syntax *RHS) {
-  const clang::CppxNamespaceType *NSTy =
-    NS->getTypeForDecl()->getAs<clang::CppxNamespaceType>();
-  clang::NamespaceDecl *CxxNS = NSTy->getDecl();
+clang::Expr *ExprElaborator::elaborateNNS(clang::CppxNamespaceDecl *NS,
+                                          const CallSyntax *Op,
+                                          const Syntax *RHS) {
+  clang::NamespaceDecl *CxxNS = NS->getNamespace();
 
   // FIXME: create the correct ObjectType (last param) that is used when this
   // NNS appears as after an operator'.' of an object.
@@ -1271,39 +1257,31 @@ Expression ExprElaborator::elaborateNNS(clang::CppxNamespaceDecl *NS,
                                 /*RecoveryLookup=*/false,
                                 /*IsCorrected=*/nullptr,
                                 /*OnlyNamespace=*/false);
-  if (Failure) {
-    llvm::outs() << "failed to create nns\n";
+  if (Failure)
     return nullptr;
-  }
-
-  // FIXME: handle templated types
 
   Sema::QualifiedLookupRAII Qual(SemaRef, SemaRef.QualifiedLookupContext, &NS);
-  Expression RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
-
-  if (RHSExpr.isNull())
+  clang::Expr *RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
+  if (!RHSExpr)
     return nullptr;
 
-  if (RHSExpr.is<clang::Expr *>()) {
-    SemaRef.CurNNSContext.clear();
-    clang::Expr *Ret = RHSExpr.get<clang::Expr *>();
-    ExprMarker(Context.CxxAST, SemaRef).Visit(Ret);
-    return Ret;
-  }
+  if (RHSExpr->getType()->isNamespaceType())
+    return RHSExpr;
 
-  if (RHSExpr.is<clang::CppxNamespaceDecl *>())
-    return RHSExpr.get<clang::CppxNamespaceDecl *>(); 
-
-  SemaRef.Diags.Report(RHS->getLoc(), clang::diag::err_failed_to_translate_expr);
-  return nullptr;
+  // This means that we've reached the end of a lookup and we can now clear the
+  // namespace specifier context.
+  SemaRef.CurNNSContext.clear();
+  ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr);
+  return RHSExpr;
 }
 
-Expression ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
-                                              const Syntax *RHS) {
-  bool Failure = SemaRef.getCxxSema().
-    ActOnCXXGlobalScopeSpecifier(Op->getLoc(), SemaRef.CurNNSContext);
+clang::Expr *ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
+                                                const Syntax *RHS) {
+  bool Failure = SemaRef.getCxxSema().ActOnCXXGlobalScopeSpecifier(Op->getLoc(),
+                                                         SemaRef.CurNNSContext);
 
   if (Failure) {
+    // FIXME: Create error message for this.
     llvm::outs() << "failed to create nns\n";
     return nullptr;
   }
@@ -1311,46 +1289,49 @@ Expression ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
   gold::Scope *GlobalScope = SemaRef.getCurrentScope();
   while (GlobalScope->getParent())
     GlobalScope = GlobalScope->getParent();
-  auto *NS = clang::CppxNamespaceDecl::Create(
-    Context.CxxAST, Context.CxxAST.getTranslationUnitDecl(),
-    clang::SourceLocation(), nullptr, nullptr, GlobalScope);
-
+    
+  auto *NS = clang::CppxNamespaceDecl::Create(Context.CxxAST,
+                                        Context.CxxAST.getTranslationUnitDecl(),
+                                              clang::SourceLocation(),
+                                              nullptr, nullptr, GlobalScope);
+  // TODO:: Create a reference to the newly created namespace?
   Sema::QualifiedLookupRAII Qual(SemaRef, SemaRef.QualifiedLookupContext, &NS);
-  Expression RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
+  clang::Expr *RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
 
-  if (RHSExpr.is<clang::Expr *>()) {
-    SemaRef.CurNNSContext.clear();
-    clang::Expr *Ret = RHSExpr.get<clang::Expr *>();
-    ExprMarker(Context.CxxAST, SemaRef).Visit(Ret);
-    return Ret;
-  }
-
-  if (RHSExpr.is<clang::CppxNamespaceDecl *>())
-    return RHSExpr.get<clang::CppxNamespaceDecl *>(); 
-
-  SemaRef.Diags.Report(RHS->getLoc(), clang::diag::err_failed_to_translate_expr);
-  return nullptr;
-}
-
-static ExprElaborator::Expression handleLookUpInsideType(Sema &SemaRef,
-    clang::ASTContext &CxxAST, Expression Previous,
-    const CallSyntax *Op, const Syntax *RHS) {
-  clang::TypeSourceInfo *TInfo = Previous.get<clang::TypeSourceInfo*>();
-  clang::QualType QT = TInfo->getType();
-  const clang::Type *T = QT.getTypePtrOrNull();
-  clang::TagDecl *TD = T->getAsTagDecl();
-  if (!TD) {
-    // TODO: Figure out the appropriate diagnostic message to output here.
-    // SemaRef.Diags.Report(LHS->getLoc(), clang::diag::err_no_member)
-    //     << TD << Op.Loc;
-    llvm::errs() << "Type " << TD->getNameAsString()
-                 << " doesn't have any members.";
+  if (!RHSExpr) {
     return nullptr;
   }
 
+
+  if (RHSExpr->getType()->isNamespaceType())
+    return RHSExpr;
+
+  // FIXME: I'm not sure why we need to clear this. Basically, we will need 
+  // to clear on the way out only? Also this doesn't account for a NNS
+  // that's somehow returned form a function (this is something that "SHOULD"
+  // be possible in) some scenarios?
+  SemaRef.CurNNSContext.clear();
+  ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr);
+  return RHSExpr;
+}
+
+static clang::Expr *handleLookUpInsideType(Sema &SemaRef,
+                                           clang::ASTContext &CxxAST,
+                                           const clang::Expr *Previous,
+                                           const CallSyntax *Op,
+                                           const Syntax *RHS) {
+
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                              Previous, Previous->getExprLoc());
+  if (!TInfo) 
+    return nullptr;
+
+  clang::QualType QT = TInfo->getType();
+  const clang::Type *T = QT.getTypePtrOrNull();
+  clang::TagDecl *TD = T->getAsTagDecl();
+
   // Processing if is a single name.
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(RHS)) {
-    // clang::DeclarationName 
     clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Atom->getSpelling())},
       Atom->getLoc());
     auto R = TD->lookup(DNI.getName());
@@ -1359,16 +1340,13 @@ static ExprElaborator::Expression handleLookUpInsideType(Sema &SemaRef,
         << Atom->getSpelling() << TD;
       return nullptr;
     }
-    // R.front();
     clang::NamedDecl *ND = R.front();
     if (clang::TypeDecl *TD = dyn_cast<clang::TypeDecl>(ND)) {
       TD->setIsUsed();
       clang::QualType Ty = CxxAST.getTypeDeclType(TD);
-      return BuildAnyTypeLoc(CxxAST, Ty, RHS->getLoc());
+      return SemaRef.buildTypeExpr(Ty, RHS->getLoc());
     }
-    if (clang::NamespaceDecl *NsDecl = dyn_cast<clang::NamespaceDecl>(ND)) {
-      return NsDecl;
-    }
+
     if (clang::VarDecl *VDecl = dyn_cast<clang::VarDecl>(ND)) {
       // This is how we access static member variables.
       return clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
@@ -1385,92 +1363,84 @@ static ExprElaborator::Expression handleLookUpInsideType(Sema &SemaRef,
   llvm_unreachable("Unknown syntax encountered during nested member lookup.");
 }
 
-Expression ExprElaborator::elaborateNestedLookUpAccess(Expression Previous,
-                                                       const CallSyntax *Op,
-                                                       const Syntax *RHS) {
-  assert(!Previous.isNull() && "Expression scoping.");
-  if (Previous.is<clang::TypeSourceInfo*>()) {
+clang::Expr *ExprElaborator::elaborateNestedLookUpAccess(const clang::Expr *Previous,
+                                                         const CallSyntax *Op,
+                                                         const Syntax *RHS) {
+  assert(Previous && "Expression scoping.");
+  if (Previous->getType()->isTypeOfTypes()) 
     return handleLookUpInsideType(SemaRef, Context.CxxAST, Previous, Op, RHS);
-  }
 
-  if (Previous.is<clang::NamespaceDecl*>()) {
-    llvm_unreachable("Nested namespace declarations not implemented");
-  }
+  if (Previous->getType()->isNamespaceType())
+    llvm_unreachable("Nested namepsace not implemented");
 
-  if (Previous.is<clang::Expr *>()) {
-    // assert(!"Nested access to static variables it no implemented yet.");
-    llvm_unreachable("Nested access to static variables not implemented");
-  }
 
-  llvm_unreachable("Expression type not an expression, type, or namespace");
+  llvm_unreachable("Nested access to static variables not implemented");
+
 }
 
-Expression ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
-                                            clang::UnaryOperatorKind Op) {
+clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
+                                              clang::UnaryOperatorKind Op) {
   const Syntax *Operand = S->getArgument(0);
-  Expression OperandResult = elaborateExpr(Operand);
-  if (OperandResult.isNull() || OperandResult.is<clang::NamespaceDecl *>()) {
+  clang::Expr *OperandResult = elaborateExpr(Operand);
+  
+  if (!OperandResult || OperandResult->getType()->isNamespaceType()) {
     SemaRef.Diags.Report(Operand->getLoc(),
-      clang::diag::err_expected_expression);
+                         clang::diag::err_expected_expression);
     return nullptr;
   }
 
   // This is used to construct a pointer type because the carrot has two
   // meanings. Dereference and pointer declaration.
   if (Op == clang::UO_Deref) {
-    if (OperandResult.is<clang::TypeSourceInfo *>()) {
-      clang::QualType RetType = Context.CxxAST.getPointerType(
-                        OperandResult.get<clang::TypeSourceInfo*>()->getType());
-      return BuildAnyTypeLoc(Context.CxxAST, RetType, S->getLoc());
+    if (OperandResult->getType()->isTypeOfTypes()) {
+      clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                                    OperandResult, S->getLoc());
+      if (!TInfo)
+        return nullptr;
+      clang::QualType RetType = Context.CxxAST.getPointerType(TInfo->getType());
+      return SemaRef.buildTypeExpr(RetType, S->getLoc());
     } 
-  } else if (OperandResult.is<clang::TypeSourceInfo *>()) {
-    SemaRef.Diags.Report(Operand->getLoc(),
-                         clang::diag::err_expected_expression);
-    return nullptr;
-  }
+  } 
   clang::ExprResult UnaryOpRes = SemaRef.getCxxSema().BuildUnaryOp(
                                                               /*scope*/nullptr,
                                                               S->getCalleeLoc(),
                                                               Op,
-                                             OperandResult.get<clang::Expr*>());
+                                                              OperandResult);
 
-  ExprMarker(Context.CxxAST, SemaRef).Visit(OperandResult.get<clang::Expr *>());
+  ExprMarker(Context.CxxAST, SemaRef).Visit(OperandResult);
   return UnaryOpRes.get();
 }
 
-Expression ExprElaborator::elaborateBinOp(const CallSyntax *S,
-                                          clang::BinaryOperatorKind Op) {
+clang::Expr *ExprElaborator::elaborateBinOp(const CallSyntax *S,
+                                            clang::BinaryOperatorKind Op) {
   const Syntax *LHSSyntax = S->getArgument(0);
   const Syntax *RHSSyntax = S->getArgument(1);
 
-  Expression LHS = elaborateExpr(LHSSyntax);
-  if (LHS.is<clang::TypeSourceInfo *>() || LHS.isNull()) {
+  clang::Expr *LHS = elaborateExpr(LHSSyntax);
+  if (!LHS) {
     SemaRef.Diags.Report(LHSSyntax->getLoc(),
-        clang::diag::err_expected_expression);
+                         clang::diag::err_expected_expression);
     return nullptr;
   }
 
-  Expression RHS = elaborateExpr(RHSSyntax);
-  if (RHS.is<clang::TypeSourceInfo *>() || RHS.isNull()) {
+  clang::Expr *RHS = elaborateExpr(RHSSyntax);
+  if (!RHS) {
     SemaRef.Diags.Report(RHSSyntax->getLoc(),
-        clang::diag::err_expected_expression);
+                         clang::diag::err_expected_expression);
     return nullptr;
   }
-
-  clang::Sema &ClangSema = SemaRef.getCxxSema();
 
   // FIXME: Replace with ActOnBinOp so precedence issues get warnings.
-  clang::ExprResult Res = ClangSema.BuildBinOp(/*Scope=*/nullptr,
-                                               S->getLoc(), Op,
-                                               LHS.get<clang::Expr *>(),
-                                               RHS.get<clang::Expr *>());
+  clang::ExprResult Res = SemaRef.getCxxSema().BuildBinOp(/*Scope=*/nullptr,
+                                                          S->getLoc(), Op, LHS,
+                                                          RHS);
   if (Res.isInvalid()) {
     SemaRef.Diags.Report(S->getLoc(), clang::diag::err_failed_to_translate_expr);
     return nullptr;
   }
 
-  ExprMarker(Context.CxxAST, SemaRef).Visit(LHS.get<clang::Expr *>());
-  ExprMarker(Context.CxxAST, SemaRef).Visit(RHS.get<clang::Expr *>());
+  ExprMarker(Context.CxxAST, SemaRef).Visit(LHS);
+  ExprMarker(Context.CxxAST, SemaRef).Visit(RHS);
 
   return Res.get();
 }
@@ -1486,19 +1456,20 @@ Expression ExprElaborator::elaborateBinOp(const CallSyntax *S,
 /// \endcode
 /// We just create a logical and expression with n terms: one for each
 /// sub expression.
-Expression
+clang::Expr *
 ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
   // If there's only one term, we don't need to do anything else.
   if (Conditions->getNumChildren() == 1)
     return elaborateExpr(Conditions->getChild(0));
 
-  Expression LHS, RHS;
+  clang::Expr *LHS = nullptr;
+  clang::Expr *RHS = nullptr;
 
   {
     ExprElaborator ExEl(Context, SemaRef);
     LHS = ExEl.elaborateExpr(Conditions->getChild(0));
 
-    if (LHS.is<clang::TypeSourceInfo *>()) {
+    if (!LHS) {
       SemaRef.Diags.Report(Conditions->getChild(0)->getLoc(),
                            clang::diag::err_expected_expression);
       return nullptr;
@@ -1508,7 +1479,7 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
     ExprElaborator ExEl(Context, SemaRef);
     RHS = ExEl.elaborateExpr(Conditions->getChild(1));
 
-    if (RHS.is<clang::TypeSourceInfo *>()) {
+    if (!RHS) {
       SemaRef.Diags.Report(Conditions->getChild(1)->getLoc(),
                            clang::diag::err_expected_expression);
       return nullptr;
@@ -1517,9 +1488,7 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
 
   clang::ExprResult BinOp =
     SemaRef.getCxxSema().ActOnBinOp(/*Scope=*/nullptr, clang::SourceLocation(),
-                                    clang::tok::ampamp,
-                                    LHS.get<clang::Expr *>(),
-                                    RHS.get<clang::Expr *>());
+                                    clang::tok::ampamp, LHS, RHS);
   if (BinOp.isInvalid()) {
     SemaRef.Diags.Report(Conditions->getLoc(),
                          clang::diag::err_invalid_block_condition);
@@ -1535,7 +1504,7 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
     BinOp =
       SemaRef.getCxxSema().ActOnBinOp(/*Scope=*/nullptr, clang::SourceLocation(),
                                       clang::tok::ampamp, BinOp.get(),
-                                      RHS.get<clang::Expr *>());
+                                      RHS);
     if (BinOp.isInvalid()) {
       SemaRef.Diags.Report(Conditions->getLoc(),
                            clang::diag::err_invalid_block_condition);
@@ -1553,24 +1522,23 @@ static clang::Expr *handleArrayMacro(SyntaxContext &Context, Sema &SemaRef,
 
   llvm::SmallVector<clang::Expr *, 8> Elements;
   for (const Syntax *SI :  Init->children()) {
-    Expression Element = ExprElaborator(Context, SemaRef).elaborateExpr(SI);
+    clang::Expr *Element = ExprElaborator(Context, SemaRef).elaborateExpr(SI);
 
-    if (Element.is<clang::TypeSourceInfo *>() || Element.isNull())
+    if (!Element)
       return nullptr;
 
-    Elements.push_back(Element.get<clang::Expr *>());
+    Elements.push_back(Element);
   }
 
   clang::ExprResult InitList =
-    SemaRef.getCxxSema().ActOnInitList(S->getLoc(), Elements,
-                                       S->getLoc());
+    SemaRef.getCxxSema().ActOnInitList(S->getLoc(), Elements, S->getLoc());
   if (InitList.isInvalid())
     return nullptr;
 
   return InitList.get();
 }
 
-Expression ExprElaborator::elaborateMacro(const MacroSyntax *S) {
+clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
   assert (isa<AtomSyntax>(S->getCall()) && "Unexpected macro call");
 
   const AtomSyntax *Call = cast<AtomSyntax>(S->getCall());
@@ -1604,7 +1572,7 @@ static void getDeclarators(Declarator *D,
   }
 }
 
-Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
+clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
   // The type of a declarator is constructed back-to-front.
   llvm::SmallVector<Declarator *, 4> Decls;
   getDeclarators(D, Decls);
@@ -1612,7 +1580,7 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
   // The type is computed from back to front. Start by assuming the type
   // is auto. This will be replaced if an explicit type specifier is given.
   clang::QualType AutoType = CxxAST.getAutoDeductType();
-  TypeInfo *TInfo = BuildAnyTypeLoc(CxxAST, AutoType, D->getLoc());
+  clang::Expr *TyExpr = SemaRef.buildTypeExpr(AutoType, D->getLoc());
   for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
     D = *Iter;
     switch (D->Kind) {
@@ -1625,153 +1593,160 @@ Expression ExprElaborator::elaborateTypeExpr(Declarator *D) {
       return nullptr;
 
     case DK_Pointer: {
-      Expression TypeExpr = elaboratePointerType(D, TInfo);
-      if (TypeExpr.isNull())
+      clang::Expr *TypeExpr = elaboratePointerType(D, TyExpr);
+      if (!TypeExpr)
         return nullptr;
 
-      TInfo = TypeExpr.get<TypeInfo *>();
+      TyExpr = TypeExpr;
       break;
     }
 
     case DK_Const: {
-      Expression TypeExpr = elaborateConstType(D, TInfo);
-      if (TypeExpr.isNull())
+      clang::Expr *TypeExpr = elaborateConstType(D, TyExpr);
+      if (!TypeExpr)
         return nullptr;
 
-      TInfo = TypeExpr.get<TypeInfo *>();
+      TyExpr = TypeExpr;
       break;
     }
 
     case DK_Ref:{
-      Expression TypeExpr = elaborateRefType(D, TInfo);
-      if (TypeExpr.isNull())
+      clang::Expr *TypeExpr = elaborateRefType(D, TyExpr);
+      if (!TypeExpr)
         return nullptr;
 
-      TInfo = TypeExpr.get<TypeInfo *>();
+      TyExpr = TypeExpr;
       break;
     }
 
     case DK_RRef:{
-      Expression TypeExpr = elaborateRRefType(D, TInfo);
-      if (TypeExpr.isNull())
+      clang::Expr *TypeExpr = elaborateRRefType(D, TyExpr);
+      if (!TypeExpr)
         return nullptr;
 
-      TInfo = TypeExpr.get<TypeInfo *>();
+      TyExpr = TypeExpr;
       break;
     }
 
     case DK_Array: {
-      Expression TypeExpr = elaborateArrayType(D, TInfo);
-      if (TypeExpr.isNull())
+      clang::Expr *TypeExpr = elaborateArrayType(D, TyExpr);
+      if (!TypeExpr)
         return nullptr;
 
-      TInfo = TypeExpr.get<TypeInfo *>();
+      TyExpr = TypeExpr;
       break;
     }
 
     case DK_Function: {
-      Expression TypeExpr = elaborateFunctionType(D, TInfo);
-      if (TypeExpr.isNull())
+      clang::Expr *TypeExpr = elaborateFunctionType(D, TyExpr);
+      if (!TypeExpr)
         return nullptr;
 
-      TInfo = TypeExpr.get<TypeInfo *>();
+      TyExpr = TypeExpr;
       break;
     }
 
     case DK_Type: {
-      Expression TypeExpr = elaborateExplicitType(D, TInfo);
-      if (TypeExpr.isNull())
+      clang::Expr *TypeExpr = elaborateExplicitType(D, TyExpr);
+      if (!TypeExpr)
         return nullptr;
 
-      TInfo = TypeExpr.get<TypeInfo *>();
+      TyExpr = TypeExpr;
       break;
     }
     
     case DK_TemplateType:{
-      llvm_unreachable("Template types are not directly part of declarator.");
+      // Expression 
+      llvm_unreachable("Template parameters within the declarator "
+          "not implemented yet.");
       break;
     }
     default:
       llvm_unreachable("Invalid declarator");
     }
   }
-  return TInfo;
+  return TyExpr;
 }
 
-Expression ExprElaborator::elaboratePointerType(Declarator *D, TypeInfo *Ty) {
-  Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
+clang::Expr *ExprElaborator::elaboratePointerType(Declarator *D, clang::Expr *Ty) {
+  clang::Expr *BaseTypeExpr = elaborateTypeExpr(D->Next);
 
-  if (BaseTypeExpr.is<clang::Expr *>() || BaseTypeExpr.isNull()) {
+  if (!BaseTypeExpr) {
     SemaRef.Diags.Report(D->getType()->getLoc(),
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
 
-  clang::QualType BaseType =
-    BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
-  clang::QualType PtrType = CxxAST.getPointerType(BaseType);
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(Ty,
+                                                                   D->getLoc());
+  if (!TInfo)
+    return nullptr;
 
-  return BuildAnyTypeLoc(CxxAST, PtrType, D->getType()->getLoc());
+  return SemaRef.buildTypeExpr(CxxAST.getPointerType(TInfo->getType()),
+                               D->getLoc());
 }
 
-Expression ExprElaborator::elaborateConstType(Declarator *D, TypeInfo *Ty) {
+clang::Expr *ExprElaborator::elaborateConstType(Declarator *D, clang::Expr *Ty) {
   const CallSyntax *ConstCall = cast<CallSyntax>(D->Call);
-  Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
+  clang::Expr *BaseTypeExpr = elaborateTypeExpr(D->Next);
   return makeConstType(BaseTypeExpr, ConstCall);
 }
 
-Expression ExprElaborator::elaborateRefType(Declarator *D, TypeInfo *Ty) {
+clang::Expr *ExprElaborator::elaborateRefType(Declarator *D, clang::Expr *Ty) {
   const CallSyntax *RefCall = cast<CallSyntax>(D->Call);
-  Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
+  clang::Expr *BaseTypeExpr = elaborateTypeExpr(D->Next);
   return makeRefType(BaseTypeExpr, RefCall);
 }
 
-Expression ExprElaborator::elaborateRRefType(Declarator *D, TypeInfo *Ty) {
+clang::Expr *ExprElaborator::elaborateRRefType(Declarator *D, clang::Expr *Ty) {
   const CallSyntax *RRefCall = cast<CallSyntax>(D->Call);
-  Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
+  clang::Expr *BaseTypeExpr = elaborateTypeExpr(D->Next);
   return makeRRefType(BaseTypeExpr, RRefCall);
 }
 
-Expression ExprElaborator::elaborateArrayType(Declarator *D, TypeInfo *Ty) {
-  Expression BaseTypeExpr = elaborateTypeExpr(D->Next);
+clang::Expr *ExprElaborator::elaborateArrayType(Declarator *D, clang::Expr *Ty) {
+  clang::Expr *BaseTypeExpr = elaborateTypeExpr(D->Next);
 
-  if (!BaseTypeExpr.is<clang::TypeSourceInfo *>() || BaseTypeExpr.isNull()) {
+  if (!BaseTypeExpr) {
     SemaRef.Diags.Report(D->getType()->getLoc(),
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
 
-  Expression IndexExpr =
+  clang::Expr *IndexExpr =
     ExprElaborator(Context, SemaRef).elaborateExpr(D->Data.Index);
 
   // FIXME: what do we do for an empty array index, such as []int = {...}
-  if (IndexExpr.is<clang::TypeSourceInfo *>() || IndexExpr.isNull()) {
+  if (!IndexExpr) {
     SemaRef.Diags.Report(D->Data.Index->getLoc(),
                          clang::diag::err_failed_to_translate_type);
-    return nullptr;
+    return nullptr;      
   }
 
-  clang::QualType BaseType =
-    BaseTypeExpr.get<clang::TypeSourceInfo *>()->getType();
-  clang::Expr *Index = IndexExpr.get<clang::Expr *>();
 
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(BaseTypeExpr,
+                                                             D->Call->getLoc());
+  if (!TInfo)
+    return nullptr;
+  clang::QualType BaseType = TInfo->getType();
   clang::Expr::EvalResult IdxResult;
   clang::Expr::EvalContext
     EvalCtx(Context.CxxAST, SemaRef.getCxxSema().GetReflectionCallbackObj());
 
-  if (!Index->EvaluateAsConstantExpr(IdxResult, clang::Expr::EvaluateForCodeGen,
+  if (!IndexExpr->EvaluateAsConstantExpr(IdxResult, clang::Expr::EvaluateForCodeGen,
                                      EvalCtx))
     return nullptr;
 
   clang::QualType ArrayType =
-    Context.CxxAST.getConstantArrayType(BaseType, IdxResult.Val.getInt(), Index,
-                                        clang::ArrayType::Normal, 0);
-  return BuildAnyTypeLoc(CxxAST, ArrayType, D->getType()->getLoc());
+    Context.CxxAST.getConstantArrayType(BaseType, IdxResult.Val.getInt(),
+                                        IndexExpr, clang::ArrayType::Normal, 0);
+  return SemaRef.buildTypeExpr(ArrayType, D->getType()->getLoc());
 }
 
 // Elaborate the parameters and incorporate their types into  the one
 // we're building. Note that T is the return type (if any).
-Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
+clang::Expr *
+ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
   const auto *Call = cast<CallSyntax>(D->Call);
 
   // FIXME: Handle array-based arguments.
@@ -1816,19 +1791,21 @@ Expression ExprElaborator::elaborateFunctionType(Declarator *D, TypeInfo *Ty) {
     EPI.Variadic = true;
   }
 
-
   using clang::SourceLocation;
   using clang::SourceRange;
 
-  clang::QualType FnTy = CxxAST.getFunctionType(Ty->getType(), Types, EPI);
-  return BuildFunctionTypeLoc(CxxAST, FnTy,
-    SourceLocation(), SourceLocation(), SourceLocation(),
-    SourceRange(), SourceLocation(), Params);
+  clang::QualType RetTy = SemaRef.getQualTypeFromTypeExpr(Ty);
+  if (RetTy.isNull())
+    return nullptr;
+  clang::QualType FnTy = CxxAST.getFunctionType(RetTy, Types, EPI);
+  return SemaRef.buildFunctionTypeExpr(FnTy, SourceLocation(), SourceLocation(),
+                                       SourceLocation(), SourceRange(),
+                                       SourceLocation(), Params);
 }
 
 
 
-Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
+clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *Ty) {
   assert(D->Kind == DK_Type);
   if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
     clang::SourceLocation Loc = Atom->getLoc();
@@ -1844,73 +1821,66 @@ Expression ExprElaborator::elaborateExplicitType(Declarator *D, TypeInfo *Ty) {
         return nullptr;
       }
 
-      return BuildAnyTypeLoc(CxxAST, BuiltinMapIter->second, Loc);
+      return SemaRef.buildTypeExpr(BuiltinMapIter->second, Loc);
     }
 
     clang::TypeDecl *TD = R.getAsSingle<clang::TypeDecl>();
     TD->setIsUsed();
-    return BuildAnyTypeLoc(CxxAST, Context.CxxAST.getTypeDeclType(TD), Loc);
+    return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
   }
 
   return elaborateExpr(D->Data.Type);
 }
 
-void dumpExpression(ExprElaborator::Expression Expr, llvm::raw_ostream& Out) {
-  if (Expr.isNull()) {
-    Out << "[Null Expr]\n";
-    return;
-  }
+// void dumpExpression(ExprElaborator::Expression Expr, llvm::raw_ostream& Out) {
+//   if (Expr.isNull()) {
+//     Out << "[Null Expr]\n";
+//     return;
+//   }
 
-  if (Expr.is<clang::Expr *>()) {
-    Out << "Type = clang::Expr *\n";
-    Expr.get<clang::Expr *>()->dump(Out);
-    Out << "\n";
-    return;
-  }
+//   if (Expr.is<clang::Expr *>()) {
+//     Out << "Type = clang::Expr *\n";
+//     Expr.get<clang::Expr *>()->dump(Out);
+//     Out << "\n";
+//     return;
+//   }
 
-  if (Expr.is<clang::TypeSourceInfo *>()) {
-    Out << "Type = clang::TypeSourceInfo *\n";
-    Expr.get<clang::TypeSourceInfo *>()->getType().dump(Out);
-    Out << "\n";
-    return;
-  }
+//   if (Expr.is<clang::TypeSourceInfo *>()) {
+//     Out << "Type = clang::TypeSourceInfo *\n";
+//     Expr.get<clang::TypeSourceInfo *>()->getType().dump(Out);
+//     Out << "\n";
+//     return;
+//   }
 
-  if (Expr.is<clang::NamespaceDecl *>()) {
-    Out << "Type = clang::NamespaceDecl *\n";
-    Expr.get<clang::NamespaceDecl *>()->dump(Out);
-    Out << "\n";
-    return;
-  }
-  Out << "[Unknown Expression type]\n";
-}
+//   if (Expr.is<clang::NamespaceDecl *>()) {
+//     Out << "Type = clang::NamespaceDecl *\n";
+//     Expr.get<clang::NamespaceDecl *>()->dump(Out);
+//     Out << "\n";
+//     return;
+//   }
+//   Out << "[Unknown Expression type]\n";
+// }
 
-clang::Expr *ExprElaborator::handleOperatorDotDot(const CallSyntax *S) {
-  assert(isa<AtomSyntax>(S->getCallee()));
-  assert(cast<AtomSyntax>(S->getCallee())->getSpelling() == "operator'..'"
-         && "invalid .. call");
 
-  llvm_unreachable("unimplemented");
-}
-
-clang::TypeSourceInfo *
+clang::Expr *
 ExprElaborator::handleOperatorConst(const CallSyntax *S) {
   assert(S->getNumArguments() == 1 && "Invalid number of arguments for "
       "const operator");
-  Expression innerTypeExpr = elaborateExpr(S->getArgument(0));
+  clang::Expr *innerTypeExpr = elaborateExpr(S->getArgument(0));
   return makeConstType(innerTypeExpr, S);
 }
 
-clang::TypeSourceInfo *ExprElaborator::handleRefType(const CallSyntax *S) {
+clang::Expr *ExprElaborator::handleRefType(const CallSyntax *S) {
   assert(S->getNumArguments() == 1 && "Invalid number of arguments for "
       "ref operator");
-  Expression innerTypeExpr = elaborateExpr(S->getArgument(0));
+  clang::Expr *innerTypeExpr = elaborateExpr(S->getArgument(0));
   return makeRefType(innerTypeExpr, S);
 }
 
-clang::TypeSourceInfo *ExprElaborator::handleRRefType(const CallSyntax *S) {
+clang::Expr *ExprElaborator::handleRRefType(const CallSyntax *S) {
   assert(S->getNumArguments() == 1 && "Invalid number of arguments for "
       "rref operator");
-  Expression innerTypeExpr = elaborateExpr(S->getArgument(0));
+  clang::Expr *innerTypeExpr = elaborateExpr(S->getArgument(0));
   return makeRRefType(innerTypeExpr, S);
 }
 
@@ -1934,7 +1904,7 @@ static bool isVarArgs(Sema &SemaRef, const Syntax *S) {
 }
 
 // Handle a function type in the form of `() -> type`
-clang::TypeSourceInfo *ExprElaborator::handleFunctionType(const CallSyntax *S) {
+clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
   assert(S->getNumArguments() == 2 && "invalid operator'->' call");
 
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
@@ -1976,15 +1946,16 @@ clang::TypeSourceInfo *ExprElaborator::handleFunctionType(const CallSyntax *S) {
 
   const Syntax *ReturnSyntax = S->getArgument(1);
   ExprElaborator ReturnElaborator(Context, SemaRef);
-  Expression Return = ReturnElaborator.elaborateExpr(ReturnSyntax);
+  clang::Expr *Return = ReturnElaborator.elaborateExpr(ReturnSyntax);
 
-  if (Return.isNull() || !Return.is<clang::TypeSourceInfo *>()) {
+  if (!Return->getType()->isTypeOfTypes()) {
     SemaRef.Diags.Report(ReturnSyntax->getLoc(),
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
 
-  clang::TypeSourceInfo *ReturnType = Return.get<clang::TypeSourceInfo *>();
+  clang::TypeSourceInfo *ReturnType =
+    SemaRef.getTypeSourceInfoFromExpr(Return, S->getLoc());
 
   // Create the clang type
   clang::FunctionProtoType::ExtProtoInfo EPI;
@@ -2002,64 +1973,81 @@ clang::TypeSourceInfo *ExprElaborator::handleFunctionType(const CallSyntax *S) {
   clang::TypeSourceInfo *FnTSI = BuildFunctionTypeLoc(Context.CxxAST, TLB, FnTy,
     ParamBegin->getLoc(), ParamBegin->getLoc(), EndLoc,
     clang::SourceRange(), ReturnSyntax->getLoc(), Params);
-  return BuildFunctionPtrTypeLoc(CxxAST, TLB, FnTSI, S->getLoc());
+  clang::TypeSourceInfo *FnPtrTSI =
+    BuildFunctionPtrTypeLoc(CxxAST, TLB, FnTSI, S->getLoc());
+
+  return SemaRef.buildTypeExpr(FnPtrTSI);
 }
 
-clang::TypeSourceInfo* ExprElaborator::makeConstType(Expression InnerType,
-    const CallSyntax* ConstOpNode) {
-  if (InnerType.isNull() || !InnerType.is<clang::TypeSourceInfo *>()) {
+clang::Expr *ExprElaborator::makeConstType(clang::Expr *InnerTy,
+                                           const CallSyntax* ConstOpNode) {
+  if (!InnerTy) {
     SemaRef.Diags.Report(ConstOpNode->getLoc(),
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
-  clang::QualType EvaluatedTy =
-    InnerType.get<clang::TypeSourceInfo *>()->getType();
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InnerTy,
+                                                        ConstOpNode->getLoc());
+  if (!TInfo)
+    return nullptr;
+  clang::QualType EvaluatedTy = TInfo->getType();
   if (EvaluatedTy.isConstQualified()) {
     SemaRef.Diags.Report(ConstOpNode->getLoc(),
                          clang::diag::err_conflicting_specifier)
       << "const";
     return nullptr;
   }
-  EvaluatedTy.addConst();
-  return BuildAnyTypeLoc(CxxAST, EvaluatedTy, ConstOpNode->getLoc());
+  
+  auto * T = SemaRef.buildTypeExpr(Context.CxxAST.getConstType(EvaluatedTy),
+                               ConstOpNode->getLoc());
+  return T;
 }
-clang::TypeSourceInfo* ExprElaborator::makeRefType(Expression InnerTy,
-    const CallSyntax* RefOpNode) {
-  if (InnerTy.isNull() || !InnerTy.is<clang::TypeSourceInfo *>()) {
+
+clang::Expr *ExprElaborator::makeRefType(clang::Expr *InnerTy,
+                                         const CallSyntax* RefOpNode) {
+  if (!InnerTy) {
     SemaRef.Diags.Report(RefOpNode->getLoc(),
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InnerTy,
+                                                           RefOpNode->getLoc());
+  if (!TInfo)
+    return nullptr;
 
-  clang::QualType Inner = InnerTy.get<clang::TypeSourceInfo *>()->getType();
+  clang::QualType Inner = TInfo->getType();
   if (Inner.getTypePtr()->isReferenceType()) {
     SemaRef.Diags.Report(RefOpNode->getLoc(),
                          clang::diag::err_conflicting_specifier)
       << "ref";
     return nullptr;
   }
-  return BuildAnyTypeLoc(CxxAST,
-    CxxAST.getLValueReferenceType(Inner),
-    RefOpNode->getLoc());
+  return SemaRef.buildTypeExpr(CxxAST.getLValueReferenceType(Inner),
+                               RefOpNode->getLoc());
 }
 
-clang::TypeSourceInfo* ExprElaborator::makeRRefType(Expression InnerTy,
-    const CallSyntax* RRefOpNode) {
-  if (InnerTy.isNull() || !InnerTy.is<clang::TypeSourceInfo *>()) {
+clang::Expr *ExprElaborator::makeRRefType(clang::Expr *InnerTy,
+                                          const CallSyntax* RRefOpNode) {
+  if (!InnerTy) {
     SemaRef.Diags.Report(RRefOpNode->getLoc(),
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InnerTy,
+                                                          RRefOpNode->getLoc());
+  if (!TInfo)
+    return nullptr;
 
-  clang::QualType Inner = InnerTy.get<clang::TypeSourceInfo *>()->getType();
+  clang::QualType Inner = TInfo->getType();
   if (Inner.getTypePtr()->isReferenceType()) {
     SemaRef.Diags.Report(RRefOpNode->getLoc(),
                          clang::diag::err_conflicting_specifier)
       << "rref";
     return nullptr;
   }  
-  return BuildAnyTypeLoc(CxxAST,
-      CxxAST.getRValueReferenceType(Inner),
-      RRefOpNode->getLoc());
+  return SemaRef.buildTypeExpr(CxxAST.getRValueReferenceType(Inner),
+                               RRefOpNode->getLoc());
 }
+
+
 } // namespace gold

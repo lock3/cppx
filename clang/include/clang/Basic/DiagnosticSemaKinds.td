@@ -10986,6 +10986,11 @@ def err_conflicting_specifier : Error<
 def err_invalid_param_list : Error<
   "invalid parameter list">;
 
+def err_not_a_type : Error<
+  "not a type">;
+def err_expression_result_type_not_namespace : Error<
+  "%0 doesn't result in a namespace">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {
