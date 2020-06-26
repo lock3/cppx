@@ -1587,42 +1587,6 @@ static Declarator *buildTemplatedName(const ElemSyntax *Call,
   return D;
 }
 
-// static Declarator *buildPointerDeclarator(const CallSyntax *S, 
-//                                           Declarator *Next) {
-//   Declarator *D = new Declarator(DK_Pointer, Next);
-//   D->Call = S;
-//   return D;
-// }
-
-// static Declarator *buildArrayDeclarator(const CallSyntax *S,
-//                                         Declarator *Next) {
-//   Declarator *D = new Declarator(DK_Array, Next);
-//   D->Call = S;
-//   D->Data.Index = S->getArgument(0);
-//   return D;
-// }
-
-// static Declarator *buildConstDeclarator(const CallSyntax *S,
-//                                         Declarator *Next) {
-//   Declarator *D = new Declarator(DK_Const, Next);
-//   D->Call = S;
-//   return D;
-// }
-
-// static Declarator *buildRefDeclarator(const CallSyntax *S,
-//                                         Declarator *Next) {
-//   Declarator *D = new Declarator(DK_Ref, Next);
-//   D->Call = S;
-//   return D;
-// }
-
-// static Declarator *buildRValueRefDeclarator(const CallSyntax *S,
-//                                         Declarator *Next) {
-//   Declarator *D = new Declarator(DK_RRef, Next);
-//   D->Call = S;
-//   return D;
-// }
-
 static Declarator *buildErrorDeclarator(const ErrorSyntax *S, Declarator *Next) {
   Declarator *D = new Declarator(DK_Error, Next);
   D->Call = S;

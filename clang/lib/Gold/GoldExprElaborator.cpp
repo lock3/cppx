@@ -878,6 +878,9 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
   // TODO: FIXME: Create error reporting here for lookup failure.
   return nullptr;
 }
+static clang::Expr *createThisExpr(Sema &SemaRef, const AtomSyntax *S) {
+  return SemaRef.getCxxSema().ActOnCXXThis(S->getLoc()).get();
+}
 
 clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
                                          clang::QualType ExplicitType) {
@@ -926,7 +929,8 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
 
   case tok::NullKeyword:
     return createNullLiteral(CxxAST, S->getLoc());
-
+  case tok::ThisKeyword:
+    return createThisExpr(SemaRef, S);
   case tok::VoidKeyword:
     return SemaRef.buildTypeExpr(CxxAST.VoidTy, S->getLoc());
   case tok::BoolKeyword:
