@@ -1511,6 +1511,13 @@ static Declarator *buildTypeDeclarator(const Syntax *S, Declarator *Next) {
   return D;
 }
 
+static Declarator *buildTypeRoot(const Syntax *S, Declarator *Next) {
+  Declarator *D = new Declarator(DK_Type, Next);
+  D->Call = S;
+  D->Data.Type = S;
+  return D;
+}
+
 static Declarator *buildTypeExpression(const Syntax *S, Declarator *Next) {
   assert((isa<AtomSyntax>(S) || isa<CallSyntax>(S)) &&
          "cannot build type-declarator out of given syntax");
@@ -1580,42 +1587,6 @@ static Declarator *buildTemplatedName(const ElemSyntax *Call,
   return D;
 }
 
-static Declarator *buildPointerDeclarator(const CallSyntax *S, 
-                                          Declarator *Next) {
-  Declarator *D = new Declarator(DK_Pointer, Next);
-  D->Call = S;
-  return D;
-}
-
-static Declarator *buildArrayDeclarator(const CallSyntax *S,
-                                        Declarator *Next) {
-  Declarator *D = new Declarator(DK_Array, Next);
-  D->Call = S;
-  D->Data.Index = S->getArgument(0);
-  return D;
-}
-
-static Declarator *buildConstDeclarator(const CallSyntax *S,
-                                        Declarator *Next) {
-  Declarator *D = new Declarator(DK_Const, Next);
-  D->Call = S;
-  return D;
-}
-
-static Declarator *buildRefDeclarator(const CallSyntax *S,
-                                        Declarator *Next) {
-  Declarator *D = new Declarator(DK_Ref, Next);
-  D->Call = S;
-  return D;
-}
-
-static Declarator *buildRValueRefDeclarator(const CallSyntax *S,
-                                        Declarator *Next) {
-  Declarator *D = new Declarator(DK_RRef, Next);
-  D->Call = S;
-  return D;
-}
-
 static Declarator *buildErrorDeclarator(const ErrorSyntax *S, Declarator *Next) {
   Declarator *D = new Declarator(DK_Error, Next);
   D->Call = S;
@@ -1632,7 +1603,6 @@ static Declarator *buildErrorDeclarator(const ErrorSyntax *S, Declarator *Next) 
 Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
   // If we find an atom, then we're done.
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(S)) {
-
     // This might be a typename, in which case, build a type-declarator.
     clang::DeclarationNameInfo DNI(
       {&SemaRef.Context.CxxAST.Idents.get(Atom->getSpelling()), S->getLoc()});
@@ -1654,7 +1624,7 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
         if (isa<CallSyntax>(Call->getArgument(1))) {
           // Elaborate rhs, and then elaborate lhs using the completed
           // type-declarator from rhs as the type.
-          Next = makeDeclarator(SemaRef, Call->getArgument(1), Next);
+          Next = buildTypeRoot(Call->getArgument(1), Next);
           return makeDeclarator(SemaRef, Call->getArgument(0), Next);
         }
 
@@ -1662,38 +1632,12 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
         return makeDeclarator(SemaRef, Call->getArgument(0),
                               buildTypeDeclarator(Call, Next));
 
-      } else if (Callee->getSpelling() == "operator'^'") {
-        // We have a pointer operator, so first create a declarator
-        // out of its inner type and use that as `Next`.
-        Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
-
-        // Now build a pointer-declarator that owns its inner type and
-        // we're done.
-        return buildPointerDeclarator(Call, Next);
-
-      } else if (Callee->getSpelling() == "operator'[]'") {
-        // This is a prefix operator'[]', meaning we are creating an array type.
-        Next = makeDeclarator(SemaRef, Call->getArgument(1), Next);
-        return makeDeclarator(SemaRef, Call->getArgument(0),
-                              buildArrayDeclarator(Call, Next));
       } else if (Callee->getSpelling() == "operator'.'") {
         // This is also a possible type declaration because it's a nested type
         // declaration.
         return buildTypeExpression(Call, Next);
       } else if (Callee->getSpelling() == "operator'in'") {
         return makeDeclarator(SemaRef, Call->getArgument(0), Next);
-
-      } else if (Callee->getSpelling() == "operator'const'") {
-        Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
-        return buildConstDeclarator(Call, Next);
-        
-      } else if (Callee->getSpelling() == "operator'ref'") {
-        Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
-        return buildRefDeclarator(Call, Next);
-        
-      } else if (Callee->getSpelling() == "operator'rref'") {
-        Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
-        return buildRValueRefDeclarator(Call, Next);
       }
 
       // Otherwise, this appears to be a function declarator.
@@ -2192,6 +2136,8 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
     return FOK_Ref;
   if (Tokenization == SemaRef.OperatorRRefII)
     return FOK_RRef;
+  if (Tokenization == SemaRef.OperatorArrayBracketsII) 
+    return FOK_Array;
   return FOK_Unknown;
 }
 

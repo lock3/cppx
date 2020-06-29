@@ -71,20 +71,10 @@ static const char* getDeclaratorKindName(DeclaratorKind DK) {
     return "Identifier";
   case DK_TemplateType:
     return "TemplateType";
-  case DK_Pointer:
-    return "Pointer";
-  case DK_Array:
-    return "Array";
   case DK_Function:
     return "Function";
   case DK_Type:
     return "Type";
-  case DK_Const:
-    return "Const";
-  case DK_Ref:
-    return "Ref";
-  case DK_RRef:
-    return "RRef";
   case DK_Error:
     return "Error";
   default:
@@ -110,14 +100,6 @@ std::string Declarator::getString(bool IncludeKind) const {
     return getCallName(cast<CallSyntax>(Call)).str();
   } else if (isIdentifier()) {
     return cast<AtomSyntax>(Data.Id)->getSpelling().str();
-  } else if (getKind() == DK_Pointer) {
-    return "^";
-  } else if (getKind() == DK_Array) {
-    if (Data.Index)
-      return '[' + std::string(cast<AtomSyntax>(Data.Index)->getSpelling()) + ']';
-    return "[]";
-  } else if (getKind() == DK_Const) {
-    return "const";
   } else {
     return "[unimplemented]";
   }
@@ -172,15 +154,6 @@ bool Declaration::declaresVariable() const {
 }
 
 bool Declaration::templateHasDefaultParameters() const {
-  // if (declaresFunctionTemplate()) {
-  //   assert(false);
-  // }
-  // if (declaresTemplateType()) {
-  //   const Declarator *TemplateInfo = getFirstTemplateDeclarator();
-  //   // for (TemplateInfo)
-  //   assert(false);
-  // }
-  // return false;
   // TODO: This is necessary for figuring out if a template parameter has
   // delayed evaluation or not.
   llvm_unreachable("This isn't implemented yet, but it may need to be in the "
@@ -204,8 +177,6 @@ bool Declaration::declaresType() const {
 }
 
 bool Declaration::declaresRecord() const {
-  // if (!declaresType())
-  //   return false;
   if (Cxx)
     return isa<clang::CXXRecordDecl>(Cxx);
   if (Init)
