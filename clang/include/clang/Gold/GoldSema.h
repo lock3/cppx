@@ -275,6 +275,8 @@ public:
   /// event it fails.
   clang::TypeSourceInfo *getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
                              clang::SourceLocation Loc=clang::SourceLocation());
+  clang::ParsedType getParsedTypeFromExpr(const clang::Expr *TyExpr,
+                             clang::SourceLocation Loc=clang::SourceLocation());
 
   /// These are stub implementations for now so that I can implement them at a
   /// later time with a later expression.

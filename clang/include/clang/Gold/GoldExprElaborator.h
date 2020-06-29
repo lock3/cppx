@@ -71,7 +71,16 @@ public:
   clang::Expr *elaborateExpr(const Syntax *S);
 
   clang::Expr *elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType);
+  
   clang::Expr *elaborateCall(const CallSyntax *S);
+  
+  /// This elaborates sizeof, alignof, noexcept used as an operator, constexpr
+  /// as an operator, and decltype.
+  /// This function also tests if the call is one of these operators, and returns
+  /// a nullptr in the event that it's not.
+  clang::Expr *elaborateBuiltinCall(const CallSyntax *S);
+  clang::Expr *elaborateTypeTraitsOp(const AtomSyntax *Name, const CallSyntax *S,
+                                     clang::UnaryExprOrTypeTrait Trait);
 
   clang::Expr *elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op,
                                      const Syntax *RHS);
@@ -127,7 +136,6 @@ private:
   clang::Expr* makeRRefType(clang::Expr *Result,
                             const CallSyntax* RRefOpNode);
   ///}
-
 };
 
 } // namespace gold

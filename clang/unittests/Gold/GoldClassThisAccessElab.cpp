@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This functionality implements the this pointer for objects.
+//  This tests how classes are elaborated.
 //
 //===----------------------------------------------------------------------===//
 

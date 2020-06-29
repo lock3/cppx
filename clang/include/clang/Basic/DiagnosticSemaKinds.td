@@ -10988,6 +10988,15 @@ def err_not_a_type : Error<
 def err_expression_result_type_not_namespace : Error<
   "%0 doesn't result in a namespace">;
 
+def err_incorrect_number_of_arguments : Error<
+  "incorrect number of arguments given to %0">;
+
+def err_cannot_take_sizeof_a_namespace : Error<
+  "Cannot take the %0 a namespace">;
+  
+def err_cannot_take_sizeof_an_incomplete_type : Error<
+  "Cannot take the %0 an incomplete">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

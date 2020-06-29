@@ -892,16 +892,15 @@ Sema::getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
   llvm_unreachable("Invaild type expression evaluates to type of types.");
 }
 
-// clang::TypeSourceInfo *
-// Sema::getTypeSourceInfoForTemplateExpr(const clang::Expr *TemplateTy) {
-//   llvm_unreachable("Working on getting template type information.");
-// }
 
-// clang::TypeSourceInfo *
-// Sema::getTypeSourceInfoForTemplateExpr(const clang::Expr *TemplateTy,
-//                                        clang::SourceLocation Loc) {
-//   llvm_unreachable("Working on getting template type information.");
-// }
+clang::ParsedType Sema::getParsedTypeFromExpr(const clang::Expr *TyExpr,
+                                              clang::SourceLocation Loc) {
+  clang::TypeSourceInfo *TInfo = getTypeSourceInfoFromExpr(TyExpr, Loc);
+  if(!TInfo)
+    return nullptr;
+
+  return CxxSema.CreateParsedType(TInfo->getType(), TInfo);
+}
 
 clang::CppxDeclRefExpr *Sema::buildNSDeclRef(clang::CppxNamespaceDecl *D,
                                              clang::SourceLocation Loc) {

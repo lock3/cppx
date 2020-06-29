@@ -41,6 +41,7 @@ add_clang_unittest(GoldTests
   GoldBuiltInArithmeticOpsElab.cpp
   GoldBuiltinBitwiseOpsElab.cpp
   GoldBuiltinComparisonOpsElab.cpp
+  GoldBuiltinFunctionsElab.cpp
   GoldBuiltinLogicalOpsElab.cpp
   GoldBuiltInTypeConstructorsExec.cpp
   GoldBuiltinTypeElab.cpp
