@@ -63,11 +63,35 @@ static llvm::StringRef getCallName(const CallSyntax *S) {
   return "(void)";
 }
 
-std::string Declarator::getString() const {
+static const char* getDeclaratorKindName(DeclaratorKind DK) {
+  switch(DK) {
+  case DK_Unknown:
+    return "Unknown";
+  case DK_Identifier:
+    return "Identifier";
+  case DK_TemplateType:
+    return "TemplateType";
+  case DK_Function:
+    return "Function";
+  case DK_Type:
+    return "Type";
+  case DK_Error:
+    return "Error";
+  default:
+    llvm_unreachable("Invalid declarator Kind.");
+  }
+}
+std::string Declarator::getString(bool IncludeKind) const {
+  using namespace std::string_literals;
   // FIXME: This needs to properly elaborate all parts of the declarator.
   if (getKind() == DK_Type) {
     if (isa<AtomSyntax>(Data.Type)) {
-      // TODO: Figure out how to correctly print types. that are not simple identifiers.
+      // TODO: Figure out how to correctly print types. that are
+      // not simple identifiers.
+      if (IncludeKind) {
+        return "("s + getDeclaratorKindName(getKind()) + ") "
+            + cast<AtomSyntax>(Data.Type)->getSpelling().str();
+      }
       return cast<AtomSyntax>(Data.Type)->getSpelling().str();
     } else {
       return "Some complex type expression\n";
@@ -76,49 +100,16 @@ std::string Declarator::getString() const {
     return getCallName(cast<CallSyntax>(Call)).str();
   } else if (isIdentifier()) {
     return cast<AtomSyntax>(Data.Id)->getSpelling().str();
-  } else if (getKind() == DK_Pointer) {
-    return "^";
-  } else if (getKind() == DK_Array) {
-    if (Data.Index)
-      return '[' + std::string(cast<AtomSyntax>(Data.Index)->getSpelling()) + ']';
-    return "[]";
-  } else if (getKind() == DK_Const) {
-    return "const";
   } else {
     return "[unimplemented]";
   }
 }
 
-#if 0
-static const char* getDeclaratorKindName(DeclaratorKind DK) {
-  switch(DK){
-  case DeclaratorKind::DK_Unknown:
-    return "DK_Unknown";
-  case DeclaratorKind::DK_Identifier:
-    return "DK_Identifier";
-  case DeclaratorKind::DK_TemplateType:
-    return "DK_TemplateType";
-  case DeclaratorKind::DK_Pointer:
-    return "DK_Pointer";
-  case DeclaratorKind::DK_Array:
-    return "DK_Array";
-  case DeclaratorKind::DK_Function:
-    return "DK_Function";
-  case DeclaratorKind::DK_Type:
-    return "DK_Type";
-  case DeclaratorKind::DK_Const:
-    return "DK_Const";
-  default:
-    llvm_unreachable("Invalid declarator Kind.");
-  }
-}
-#endif
-
 void Declarator::printSequence(llvm::raw_ostream &os) const {
 
   const Declarator *D = this;
   do {
-    os << D->getString();
+    os << D->getString(true);
     if (D->Next)
       os << " -> ";
 
@@ -163,15 +154,6 @@ bool Declaration::declaresVariable() const {
 }
 
 bool Declaration::templateHasDefaultParameters() const {
-  // if (declaresFunctionTemplate()) {
-  //   assert(false);
-  // }
-  // if (declaresTemplateType()) {
-  //   const Declarator *TemplateInfo = getFirstTemplateDeclarator();
-  //   // for (TemplateInfo)
-  //   assert(false);
-  // }
-  // return false;
   // TODO: This is necessary for figuring out if a template parameter has
   // delayed evaluation or not.
   llvm_unreachable("This isn't implemented yet, but it may need to be in the "
@@ -195,8 +177,6 @@ bool Declaration::declaresType() const {
 }
 
 bool Declaration::declaresRecord() const {
-  // if (!declaresType())
-  //   return false;
   if (Cxx)
     return isa<clang::CXXRecordDecl>(Cxx);
   if (Init)

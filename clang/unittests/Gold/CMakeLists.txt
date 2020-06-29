@@ -33,6 +33,7 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_clang_unittest(GoldTests
+  GoldArrayElab.cpp
   GoldAtom.cpp
   GoldAttributes.cpp
   GoldAuto.cpp
@@ -46,11 +47,13 @@ add_clang_unittest(GoldTests
   GoldCastElab.cpp
   GoldCharLiteralElab.cpp
   GoldClassConversionsElab.cpp
+  GoldClassIndirectAccessElab.cpp
   GoldClassMemberAccessTest.cpp
   GoldClassParsing.cpp
   GoldClassTemplateMemberAccessExec.cpp
-  GoldClassTemplateParsing.cpp
   GoldClassTemplatedMemberExec.cpp
+  GoldClassTemplateParsing.cpp
+  GoldClassThisAccessElab.cpp
   GoldCompileRun.cpp
   GoldConst.cpp
   GoldConstructorCallParsingTest.cpp
@@ -76,6 +79,7 @@ add_clang_unittest(GoldTests
   GoldTypeExpressionsTest.cpp
   GoldUserDefinedOperatorOverloadElab.cpp
   GoldVarDeclStorageClass.cpp
+  GoldVariableDeclElab.cpp
   GoldWhile.cpp
   )
 

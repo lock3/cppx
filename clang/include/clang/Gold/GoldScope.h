@@ -53,26 +53,11 @@ enum DeclaratorKind {
   /// track if a templated type declaration is being given.
   DK_TemplateType,
 
-  /// Declares a pointer.
-  DK_Pointer,
-
-  /// Declares an array bound.
-  DK_Array,
-
   /// Declares function parameters.
   DK_Function,
 
   /// Declares a type.
   DK_Type,
-
-  /// Declares const
-  DK_Const,
-
-  /// Declares L-value reference
-  DK_Ref,
-
-  /// Declares R-value reference
-  DK_RRef,
 
   /// This declarator indicates that there was an error evaluating
   /// the declarator. This usually means that there is an ErrorSyntax node
@@ -107,10 +92,6 @@ public:
     return Kind == DK_Function;
   }
 
-  bool isConst() const {
-    return Kind == DK_Const;
-  }
-
   /// Returns the identifier for the declarator, if given.
   const Syntax *getId() const;
 
@@ -121,7 +102,7 @@ public:
   clang::SourceLocation getLoc() const;
 
   /// Returns a readable string representing this declarator.
-  std::string getString() const;
+  std::string getString(bool IncludeKind = false) const;
 
   /// Prints the declarator sequence.
   void printSequence(llvm::raw_ostream &os) const;
@@ -168,18 +149,10 @@ public:
     /// For DK_Type, the type in the call.
     const Syntax *Type;
 
-    /// For DK_Array, the array index.
-    const Syntax *Index;
-
     /// For DK_TemplateType, for templated types.
     struct TemplateInfoStruct {
       /// A pointer to the template parameters within the declaration.
       const Syntax* Params;
-
-      // /// The scope for the template parameters.
-      // Scope *DeclScope;
-      // /// This is the clang scope that's used for declaring template parameters.
-      // clang::Scope *ClangScope;
     } TemplateInfo;
   } Data;
 

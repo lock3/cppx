@@ -63,62 +63,56 @@ public:
 
   // Represents a C++ expression, which may be either an object expression
   // or a type expression.
-  using Expression = llvm::PointerUnion<clang::Expr *, clang::TypeSourceInfo *,
-                                        clang::NamespaceDecl *,
-                                        clang::CppxNamespaceDecl *>;
   using TypeInfo = clang::TypeSourceInfo;
 
   //===--------------------------------------------------------------------===//
   //                        Value Expression Elaboration                      //
   //===--------------------------------------------------------------------===//
-  Expression elaborateExpr(const Syntax *S);
+  clang::Expr *elaborateExpr(const Syntax *S);
 
-  Expression elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType);
-  Expression elaborateCall(const CallSyntax *S);
+  clang::Expr *elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType);
+  clang::Expr *elaborateCall(const CallSyntax *S);
 
-  Expression elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op,
-                                   const Syntax *RHS);
-  Expression elaborateNestedLookUpAccess(Expression Previous,
-                                         const CallSyntax *Op,
-                                         const Syntax *RHS);
-  Expression elaborateNNS(clang::CppxNamespaceDecl *NS,
-                          const CallSyntax *Op, const Syntax *RHS);
-  Expression elaborateGlobalNNS(const CallSyntax *Op, const Syntax *RHS);
+  clang::Expr *elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op,
+                                     const Syntax *RHS);
+  clang::Expr *elaborateNestedLookUpAccess(const clang::Expr *Previous,
+                                           const CallSyntax *Op,
+                                           const Syntax *RHS);
+  clang::Expr *elaborateNNS(clang::CppxNamespaceDecl *NS,
+                            const CallSyntax *Op, const Syntax *RHS);
+  clang::Expr *elaborateGlobalNNS(const CallSyntax *Op, const Syntax *RHS);
+  clang::Expr *elaborateUnaryOp(const CallSyntax *S, clang::UnaryOperatorKind Op);
+  clang::Expr *elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
 
+  clang::Expr *elaborateBlockCondition(const ArraySyntax *Conditions);
 
-  // Expression elaborateOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
-  Expression elaborateUnaryOp(const CallSyntax *S, clang::UnaryOperatorKind Op);
-  Expression elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
+  clang::Expr *elaborateMacro(const MacroSyntax *Macro);
+  clang::Expr *elaborateClass(const MacroSyntax *Macro);
 
-  Expression elaborateBlockCondition(const ArraySyntax *Conditions);
+  clang::Expr *elaborateElementExpr(const ElemSyntax *Elem);
+  clang::Expr *elaborateCastOp(const CallSyntax *CastOp);
 
-  Expression elaborateMacro(const MacroSyntax *Macro);
-  Expression elaborateClass(const MacroSyntax *Macro);
-
-  Expression elaborateElementExpr(const ElemSyntax *Elem);
-  Expression elaborateCastOp(const CallSyntax *CastOp);
-
-private:
-  clang::Expr *handleOperatorDotDot(const CallSyntax *S);
-
+public:
   //===--------------------------------------------------------------------===//
   //                        Type Expression Elaboration                       //
   //===--------------------------------------------------------------------===//
-public:
-  Expression elaborateTypeExpr(Declarator *D);
 
-  Expression elaboratePointerType(Declarator *D, TypeInfo *Ty);
-  Expression elaborateConstType(Declarator *D, TypeInfo *Ty);
-  Expression elaborateRefType(Declarator *D, TypeInfo *Ty);
-  Expression elaborateRRefType(Declarator *D, TypeInfo *Ty);
-  Expression elaborateArrayType(Declarator *D, TypeInfo *Ty);
-  Expression elaborateFunctionType(Declarator *D, TypeInfo *Ty);
-  Expression elaborateExplicitType(Declarator *D, TypeInfo *Ty);
+  clang::Expr *elaborateTypeExpr(Declarator *D);
+
+  clang::Expr *elaboratePointerType(Declarator *D, clang::Expr *Ty);
+  clang::Expr *elaborateConstType(Declarator *D, clang::Expr *Ty);
+  clang::Expr *elaborateRefType(Declarator *D, clang::Expr *Ty);
+  clang::Expr *elaborateRRefType(Declarator *D, clang::Expr *Ty);
+  clang::Expr *elaborateArrayType(Declarator *D, clang::Expr *Ty);
+  clang::Expr *elaborateFunctionType(Declarator *D, clang::Expr *Ty);
+  clang::Expr *elaborateExplicitType(Declarator *D, clang::Expr *Ty);
 
 private:
-  clang::TypeSourceInfo *handleOperatorConst(const CallSyntax *S);
-  clang::TypeSourceInfo *handleRefType(const CallSyntax *S);
-  clang::TypeSourceInfo *handleRRefType(const CallSyntax *S);
+  clang::Expr *handleOperatorConst(const CallSyntax *S);
+  clang::Expr *handleRefType(const CallSyntax *S);
+  clang::Expr *handleRRefType(const CallSyntax *S);
+  clang::Expr *handleFunctionType(const CallSyntax *S);  
+  clang::Expr *handleArrayType(const CallSyntax *S);
   
 private:
   /// Utility functions that handle operations assocated with type elaboration,
@@ -126,17 +120,15 @@ private:
   /// reporting so the result of any elaboration should be passed directly
   /// to them without need to check the result.
   ///{
-  clang::TypeSourceInfo* makeConstType(Expression InnerType,
-    const CallSyntax* ConstOpNode);
-  clang::TypeSourceInfo* makeRefType(Expression Result,
-    const CallSyntax* RefOpNode);
-  clang::TypeSourceInfo* makeRRefType(Expression Result,
-    const CallSyntax* RRefOpNode);
+  clang::Expr* makeConstType(clang::Expr *InnerType,
+                             const CallSyntax* ConstOpNode);
+  clang::Expr* makeRefType(clang::Expr *Result,
+                           const CallSyntax* RefOpNode);
+  clang::Expr* makeRRefType(clang::Expr *Result,
+                            const CallSyntax* RRefOpNode);
   ///}
 
 };
-
-void dumpExpression(ExprElaborator::Expression Expr, llvm::raw_ostream& Out);
 
 } // namespace gold
 

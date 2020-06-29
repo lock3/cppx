@@ -57,26 +57,17 @@ StmtElaborator::elaborateStmt(const Syntax *S) {
 clang::Stmt *
 StmtElaborator::elaborateAtom(const AtomSyntax *S) {
   ExprElaborator ExEl(Context, SemaRef);
-  ExprElaborator::Expression Expression = ExEl.elaborateExpr(S);
-
-  if (Expression.is<clang::TypeSourceInfo *>()) {
-    Diags.Report(S->getTokenLoc(), clang::diag::err_expected_expression);
-    return nullptr;
-  }
-
-  return Expression.get<clang::Expr *>();
+  // TODO: We may need to insert some error checking here to make sure that the
+  // return type of the expression isn't a namespace or kind type?
+  // but then again it should be fine to have an expression with no effect.
+  return ExEl.elaborateExpr(S);
 }
 
 static clang::Stmt *
 createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
                const CallSyntax *S) {
   // FIXME: elaborate this expression, it might not be a name.
-  
   const AtomSyntax *Name = cast<AtomSyntax>(S->getArgument(0));
-
-  // TODO: elaborate the name if we need to.
-  // ExprElaborator LHSElab(CxxAST, SemaRef);
-  // ExprElaborator::Expression NameExpr = LHSElab.elaborateExpr(S->getArgument(0));
 
   clang::Sema &ClangSema = SemaRef.getCxxSema();
   clang::IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
@@ -116,14 +107,7 @@ createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
 static clang::Stmt *
 elaborateDefaultCall(SyntaxContext &Context, Sema &SemaRef, const CallSyntax *S) {
   ExprElaborator ExprElab(Context, SemaRef);
-  ExprElaborator::Expression Expression = ExprElab.elaborateCall(S);
-
-  if (Expression.is<clang::TypeSourceInfo *>()) {
-    SemaRef.Diags.Report(S->getLoc(), clang::diag::err_expected_expression);
-    return nullptr;
-  }
-
-  return Expression.get<clang::Expr *>();
+  return ExprElab.elaborateCall(S);
 }
 
 clang::Stmt *
@@ -167,75 +151,51 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
 
   case FOK_Equals: {
     ExprElaborator LHSElab(Context, SemaRef);
-    ExprElaborator::Expression NameExpr =
-      LHSElab.elaborateExpr(S->getArgument(0));
-
-    if (NameExpr.is<clang::TypeSourceInfo *>()) {
-      Diags.Report(S->getArgument(0)->getLoc(), clang::diag::err_expected_expression);
-      return nullptr;
-    }
-
+    clang::Expr *NameExpr = LHSElab.elaborateExpr(S->getArgument(0));
     ExprElaborator RHSElab(Context, SemaRef);
-    ExprElaborator::Expression InitExpr =
-      RHSElab.elaborateExpr(S->getArgument(1));
+    clang::Expr *InitExpr = RHSElab.elaborateExpr(S->getArgument(1));
 
     // We didn't create an expression for this, so build a decl.
-    if (NameExpr.isNull()) {
+    if (!NameExpr) {
       auto *DS = cast_or_null<clang::DeclStmt>(createDeclStmt(CxxAST, SemaRef, S));
 
       if (!DS)
         return nullptr;
 
-      // TODO: support type aliases.
-      assert(!InitExpr.is<clang::TypeSourceInfo *>() && "Aliases not supported yet.");
-
       for (clang::Decl *D : DS->decls())
-        SemaRef.getCxxSema().AddInitializerToDecl(
-          D, InitExpr.get<clang::Expr *>(), /*DirectInit=*/true);
+        SemaRef.getCxxSema().AddInitializerToDecl(D, InitExpr, /*DirectInit=*/true);
 
       return DS;
     }
 
-    clang::ExprResult Assignment =
+    clang::ExprResult BinOpResult =
       SemaRef.getCxxSema().ActOnBinOp(SemaRef.getCxxSema().getCurScope(),
                                       S->getLoc(), clang::tok::equal,
-                                      NameExpr.get<clang::Expr *>(),
-                                      InitExpr.get<clang::Expr *>());
-    if (Assignment.isInvalid())
+                                      NameExpr, InitExpr);
+    if (BinOpResult.isInvalid())
       return nullptr;
 
     // We can readily assume anything here is getting used.
-    ExprMarker(CxxAST, SemaRef).Visit(NameExpr.get<clang::Expr *>());
-    ExprMarker(CxxAST, SemaRef).Visit(InitExpr.get<clang::Expr *>());
-    return Assignment.get();
+    ExprMarker(CxxAST, SemaRef).Visit(NameExpr);
+    ExprMarker(CxxAST, SemaRef).Visit(InitExpr);
+    return BinOpResult.get();
   }
 
   case FOK_Return: {
     clang::StmtResult ReturnResult;
     if (S->getNumArguments()) {
-      ExprElaborator::Expression RetVal = 
+      clang::Expr *RetVal = 
         ExprElaborator(Context, SemaRef).elaborateExpr(S->getArgument(0));
-      if (RetVal.isNull())
+      if (!RetVal)
         return nullptr;
-      if (RetVal.is<clang::TypeSourceInfo *>()) {
-        SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
-                            clang::diag::err_expected_lparen_after_type);
-        return nullptr;
-      }
-      ExprMarker(CxxAST, SemaRef).Visit(RetVal.get<clang::Expr *>());
-      ReturnResult = SemaRef.getCxxSema().
-        ActOnReturnStmt(S->getCallee()->getLoc(), RetVal.get<clang::Expr *>(), 
-          SemaRef.getCurClangScope());
+      ExprMarker(CxxAST, SemaRef).Visit(RetVal);
+      ReturnResult = SemaRef.getCxxSema().ActOnReturnStmt(
+                  S->getCallee()->getLoc(), RetVal, SemaRef.getCurClangScope());
     } else {
-      ReturnResult = SemaRef.getCxxSema().
-        ActOnReturnStmt(S->getCallee()->getLoc(), nullptr, 
-          SemaRef.getCurClangScope());
+      ReturnResult = SemaRef.getCxxSema().ActOnReturnStmt(
+                 S->getCallee()->getLoc(), nullptr, SemaRef.getCurClangScope());
     }
     return ReturnResult.get();
-
-
-
-    
   }
 
   default:
@@ -251,24 +211,13 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
 
   clang::Expr *ConditionExpr;
   ExprElaborator ExEl(Context, SemaRef);
-  if (const ArraySyntax *BlockCond = dyn_cast<ArraySyntax>(Call->getArguments())) {
-    ExprElaborator::Expression Expression = ExEl.elaborateBlockCondition(BlockCond);
+  if (const ArraySyntax *BlockCond
+                                = dyn_cast<ArraySyntax>(Call->getArguments())) {
+    ConditionExpr = ExEl.elaborateBlockCondition(BlockCond);
 
-    if (Expression.is<clang::TypeSourceInfo *>()) {
-      Diags.Report(BlockCond->getLoc(), clang::diag::err_expected_expression);
-      return nullptr;
-    }
-
-    ConditionExpr = Expression.get<clang::Expr *>();
-  } else if (const ListSyntax *Args = dyn_cast<ListSyntax>(Call->getArguments())) {
-    ExprElaborator::Expression Expression = ExEl.elaborateExpr(Args->getChild(0));
-
-    if (Expression.is<clang::TypeSourceInfo *>()) {
-      Diags.Report(Args->getChild(0)->getLoc(), clang::diag::err_expected_expression);
-      return nullptr;
-    }
-
-    ConditionExpr = Expression.get<clang::Expr *>();
+  } else if (const ListSyntax *Args
+                                 = dyn_cast<ListSyntax>(Call->getArguments())) {
+    ConditionExpr = ExEl.elaborateExpr(Args->getChild(0));
   } else {
     return nullptr;
   }
@@ -324,15 +273,14 @@ clang::Stmt *StmtElaborator::elaborateElseStmt(const MacroSyntax *S) {
 // FIXME: this does not currently emit properly.
 clang::Stmt *StmtElaborator::elaborateArrayMacroStmt(const MacroSyntax *S) {
   ExprElaborator InitListElab(Context, SemaRef);
-  ExprElaborator::Expression InitListExpr = InitListElab.elaborateExpr(S);
+  clang::Expr *InitListExpr = InitListElab.elaborateExpr(S);
 
-  if (InitListExpr.is<clang::TypeSourceInfo *>() || InitListExpr.isNull()) {
+  if (!InitListExpr) {
     Diags.Report(S->getLoc(), clang::diag::err_expected_expression);
     return nullptr;
   }
 
-  clang::Expr *Init = InitListExpr.get<clang::Expr *>();
-  clang::InitListExpr *InitList = dyn_cast<clang::InitListExpr>(Init);
+  clang::InitListExpr *InitList = dyn_cast<clang::InitListExpr>(InitListExpr);
   if (!InitList)
     return nullptr;
 
@@ -404,26 +352,20 @@ clang::Stmt *StmtElaborator::handleRangeBasedFor(const ListSyntax *S,
   if (!LoopVar)
     return nullptr;
 
-  ExprElaborator::Expression RangeExpr =
+  clang::Expr *RangeExpr =
     ExprElaborator(Context, SemaRef).elaborateExpr(InCall->getArgument(1));
-  if (RangeExpr.is<clang::TypeSourceInfo *>()) {
-    SemaRef.Diags.Report(InCall->getArgument(1)->getLoc(),
-                         clang::diag::err_unexpected_typedef);
-    return nullptr;
-
-  }
-  if (RangeExpr.isNull()) {
+  if (!RangeExpr) {
     SemaRef.Diags.Report(InCall->getArgument(1)->getLoc(),
                          clang::diag::err_failed_to_translate_expr);
     return nullptr;
   }
 
-  ExprMarker(Context.CxxAST, SemaRef).Visit(RangeExpr.get<clang::Expr *>());
+  ExprMarker(Context.CxxAST, SemaRef).Visit(RangeExpr);
 
   clang::StmtResult Res = SemaRef.getCxxSema().ActOnCXXForRangeStmt(
     SemaRef.getCxxSema().getCurScope(), ForLoc, clang::SourceLocation(),
     /*InitStmt=*/nullptr, LoopVar, InCall->getCallee()->getLoc(),
-    RangeExpr.get<clang::Expr*>(), ForLoc, clang::Sema::BFRK_Build);
+    RangeExpr, ForLoc, clang::Sema::BFRK_Build);
 
   if (Res.isInvalid())
     return nullptr;
@@ -455,19 +397,15 @@ clang::Stmt *StmtElaborator::handleCartesianFor(const ListSyntax *S,
   clang::Expr *Args[2] = { nullptr, nullptr };
 
   // Fabricate `auto __LoopVar = a`
-  ExprElaborator::Expression First =
+  clang::Expr *First =
     ExprElaborator(Context, SemaRef).elaborateExpr(ToCall->getArgument(0));
-  if (First.is<clang::TypeSourceInfo *>()) {
-    SemaRef.Diags.Report(ToCall->getArgument(0)->getLoc(),
-                         clang::diag::err_unexpected_typedef);
-    return nullptr;
-  } else if (First.isNull()) {
+  if (!First) {
     SemaRef.Diags.Report(ToCall->getArgument(0)->getLoc(),
                          clang::diag::err_expected_expression);
     return nullptr;
   }
 
-  Args[0] = First.get<clang::Expr *>();
+  Args[0] = First;
   clang::Sema &ClangSema = SemaRef.getCxxSema();
 
   clang::DeclStmt *LoopVarDS = cast<clang::DeclStmt>(LoopVar);
@@ -475,19 +413,15 @@ clang::Stmt *StmtElaborator::handleCartesianFor(const ListSyntax *S,
   ClangSema.AddInitializerToDecl(LoopVarDecl, Args[0], /*DI=*/false);
 
   // Fabricate `__LoopVar <= b`
-  ExprElaborator::Expression Second =
+  clang::Expr *Second =
     ExprElaborator(Context, SemaRef).elaborateExpr(ToCall->getArgument(1));
-  if (Second.is<clang::TypeSourceInfo *>()) {
-    SemaRef.Diags.Report(ToCall->getArgument(0)->getLoc(),
-                         clang::diag::err_unexpected_typedef);
-    return nullptr;
-  } else if (Second.isNull()) {
+  if (!Second) {
     SemaRef.Diags.Report(ToCall->getArgument(0)->getLoc(),
                          clang::diag::err_expected_expression);
     return nullptr;
   }
 
-  Args[1] = Second.get<clang::Expr *>();
+  Args[1] = Second;
 
   clang::DeclRefExpr *LoopVarDRE =
     clang::DeclRefExpr::Create(Context.CxxAST,
@@ -712,7 +646,7 @@ StmtElaborator::elaborateWhileStmt(const MacroSyntax *S) {
 
   // If the macro's arguments are an array, we're working with a block-while.
 
-  ExprElaborator::Expression CondExpr = nullptr;
+  clang::Expr *CondExpr = nullptr;
   clang::SourceLocation CondLoc;
   if (const auto *Block = dyn_cast<ArraySyntax>(MacroCall->getArguments())) {
     CondLoc = Block->getChild(0)->getLoc();
@@ -741,17 +675,11 @@ StmtElaborator::elaborateWhileStmt(const MacroSyntax *S) {
       ExprElaborator(Context, SemaRef).elaborateExpr(Arguments->getChild(0));
   }
 
-
-  if (CondExpr.is<clang::TypeSourceInfo *>()) {
-    Diags.Report(CondLoc, clang::diag::err_expected_expression);
-    return nullptr;
-  }
-  if (CondExpr.isNull())
+  if (!CondExpr)
     return nullptr;
 
   clang::Sema::ConditionResult Condition =
-    SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr, S->getLoc(),
-                                        CondExpr.get<clang::Expr *>(),
+    SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr, S->getLoc(), CondExpr,
                                         clang::Sema::ConditionKind::Boolean);
   Sema::ScopeRAII(SemaRef, SK_Block, S->getBlock());
   clang::Stmt *Body =
@@ -831,28 +759,18 @@ StmtElaborator::elaborateBlock(const Syntax *S) {
   } else {
     // This is some sort of one-line block like `f(x : int) = x * x`
     // FIXME: Make sure this only creates return stmts in a function context.
-    ExprElaborator::Expression ReturnVal =
+    clang::Expr *ReturnVal =
       ExprElaborator(Context, SemaRef).elaborateExpr(S);
+    ExprMarker(CxxAST, SemaRef).Visit(ReturnVal);
 
-    if (ReturnVal.is<clang::TypeSourceInfo *>()) {
-      SemaRef.Diags.Report(S->getLoc(),
-                           clang::diag::err_expected_lparen_after_type);
-    }
-
-    if (ReturnVal.is<clang::Expr *>()) {
-      ExprMarker(CxxAST, SemaRef).Visit(ReturnVal.get<clang::Expr *>());
-
-      clang::StmtResult ReturnRes = SemaRef.getCxxSema().
-        BuildReturnStmt(S->getLoc(), ReturnVal.get<clang::Expr *>());
-      if (!ReturnRes.isInvalid()) 
-        Results.push_back(ReturnRes.get());
-    }
+    clang::StmtResult ReturnRes = SemaRef.getCxxSema().BuildReturnStmt(
+                                                        S->getLoc(), ReturnVal);
+    if (!ReturnRes.isInvalid()) 
+      Results.push_back(ReturnRes.get());
 
     StartLoc = EndLoc = S->getLoc();
   }
 
-  // clang::CompoundStmt *Block =
-  //   clang::CompoundStmt::Create(CxxAST, Results, StartLoc, EndLoc);
   clang::Stmt *Block = SemaRef.getCxxSema().ActOnCompoundStmt(StartLoc, EndLoc,
                                                               Results,
                                                     /*isStmtExpr=*/false).get();

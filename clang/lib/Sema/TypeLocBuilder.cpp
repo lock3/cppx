@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "TypeLocBuilder.h"
+#include "clang/Sema/TypeLocBuilder.h"
 
 using namespace clang;
 

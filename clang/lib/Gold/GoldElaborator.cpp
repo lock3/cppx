@@ -12,7 +12,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/Gold/GoldElaborator.h"
+
 #include "clang/AST/DeclarationName.h"
+#include "clang/AST/ExprCppx.h"
 #include "clang/AST/Stmt.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/DiagnosticParse.h"
@@ -25,7 +28,6 @@
 #include "clang/Sema/CXXFieldCollector.h"
 
 #include "clang/Gold/GoldSema.h"
-#include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
 #include "clang/Gold/GoldStmtElaborator.h"
 #include "clang/Gold/GoldSyntaxContext.h"
@@ -222,7 +224,6 @@ static bool compluteFunctionStorageClassSpec(Sema& SemaRef, Declaration *D,
     clang::StorageClass& SC) {
   // Setting special storage class default to None.
   SC = clang::SC_None;
-  // llvm_unreachable("Working on it.");
   return locateValidAttribute(D,
     // OnAttr
     [&](const Syntax *Attr) -> bool{
@@ -385,13 +386,12 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
       clang::Scope::ClassScope | clang::Scope::ClassInheritanceScope,
       clang::SourceLocation());
   
-  // locateValidAttribute
   llvm::SmallVector<clang::CXXBaseSpecifier *, 4> GivenBaseClasses;
   // FIXME: This currently doesn't account for dependent names.
   Attributes Attrs;
   bool IsVirtualBase = false;
   for (const Syntax *Base : Bases->children()) {
-    ExprElaborator::Expression BaseExpr = TypeElab.elaborateExpr(Base);
+    clang::Expr *BaseExpr = TypeElab.elaborateExpr(Base);
     Attrs.clear();
     clang::AccessSpecifier AS = clang::AS_public;
     IsVirtualBase = false;
@@ -417,31 +417,19 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
         return;
       }
     }
-    if (BaseExpr.is<clang::Expr *>()) {
-      // FIXME: Technically if everything was an expression then this would be
-      // cake but given that I have no clue how to make a declaration into
-      // an expression even using a DeclRefExpr I'm not sure how I could
-      // legitimatly reference a given type through the expression.
-      llvm_unreachable("Not sure how to handle type expression results yet.");
-    }
-
-    if (clang::TypeSourceInfo *TInfo
-                                = BaseExpr.dyn_cast<clang::TypeSourceInfo *>()) {
-      clang::ParsedType PT = SemaRef.getCxxSema().CreateParsedType(
-          TInfo->getType(), TInfo);
-      clang::ParsedAttributes Attributes(SemaRef.AttrFactory);
-      auto BaseResult = SemaRef.getCxxSema().ActOnBaseSpecifier(
-                          R, clang::SourceRange(Base->getLoc(), Base->getLoc()),
-                          Attributes, IsVirtualBase, AS,
-                          PT, Base->getLoc(), clang::SourceLocation());
-      GivenBaseClasses.emplace_back(BaseResult.get());
-    }
-
-    if (clang::NamespaceDecl *NsD = BaseExpr.dyn_cast<clang::NamespaceDecl *>()) {
-      SemaRef.Diags.Report(D->Decl->getLoc(), clang::diag::err_unknown_typename)
-            << NsD->getName();
+    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                                      BaseExpr, Base->getLoc());
+    if (!TInfo)
       return;
-    }
+      
+    clang::ParsedType PT = SemaRef.getCxxSema().CreateParsedType(
+                                                       TInfo->getType(), TInfo);
+    clang::ParsedAttributes Attributes(SemaRef.AttrFactory);
+    auto BaseResult = SemaRef.getCxxSema()
+      .ActOnBaseSpecifier(R, clang::SourceRange(Base->getLoc(), Base->getLoc()),
+                          Attributes, IsVirtualBase, AS, PT, Base->getLoc(),
+                          clang::SourceLocation());
+    GivenBaseClasses.emplace_back(BaseResult.get());
   }
   SemaRef.getCxxSema().ActOnBaseSpecifiers(R, GivenBaseClasses);
 }
@@ -734,14 +722,17 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
 
   // Elaborate the return type.
   ExprElaborator TypeElab(Context, SemaRef);
-  ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
-  if (TypeExpr.isNull()) {
+  clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
+  if (!TypeExpr) {
     SemaRef.Diags.Report(D->Op->getLoc(),
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
-
-  clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                                   TypeExpr, D->Decl->getLoc());
+  if (!TInfo)
+    return nullptr;
+    
   clang::DeclarationName Name = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::FunctionDecl *FD = nullptr;
@@ -920,56 +911,61 @@ static clang::StorageClass getDefaultVariableStorageClass(Elaborator &Elab) {
 clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   if (SemaRef.getCurrentScope()->isParameterScope())
     return elaborateParameterDecl(D);
+
   if (SemaRef.getCurrentScope()->isTemplateScope())
     return elaborateTemplateParamDecl(D);
+  
+  // This is specifically for processing a special kind of declarator.
+  if (Declarator *TemplateDeclarator = D->getFirstTemplateDeclarator()) {
+    return elaborateTemplateAliasOrVariable(D, TemplateDeclarator);
+  }
 
   // We need to make sure that the type we are elaborating isn't infact a
   // a CppxKindType expression. If it is we may have an issue emitting this
   // as a valid type alias.
   ExprElaborator TypeElab(Context, SemaRef);
-  ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
-  if (TypeExpr.isNull()) {
+  clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
+  if (!TypeExpr) {
     SemaRef.Diags.Report(D->Op->getLoc(),
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
+  if (!TypeExpr->getType()->isTypeOfTypes()) {
+    llvm_unreachable("Reuslt to this expression wasn't a type some how?");
+  }
   
-  if (TypeExpr.is<clang::Expr *>()) {
-    // TODO: Convert the result of an expr into something that can be used 
-    // as a type.
-    llvm_unreachable("TypeExpr.is<clang::Expr *>(). Working on it.");
-  }
-
-  if (clang::TypeSourceInfo *TInfo
-                               = TypeExpr.dyn_cast<clang::TypeSourceInfo *>()) {
-    clang::QualType QTy = TInfo->getType();
-    if (QTy == Context.CxxAST.CppxKindTy) {
-      return elaborateTypeAlias(D, TInfo);
-    }
-  }
-
-  if (clang::NamespaceDecl *NsD = TypeExpr.dyn_cast<clang::NamespaceDecl *>()) {
-    SemaRef.Diags.Report(D->Decl->getLoc(), clang::diag::err_unknown_typename)
-          << NsD->getName();
+  clang::CppxTypeLiteral *TyLitExpr = dyn_cast<clang::CppxTypeLiteral>(TypeExpr);
+  if (!TyLitExpr) {
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_unsupported_unknown_any_decl)
+                        << D->getId();
     return nullptr;
   }
+  if (TyLitExpr->getValue()->getType()->isTypeOfTypes()) {
+    // TODO: This will need to be handled using a CppxPartialDecl.
+    return elaborateTypeAlias(D);
+  }
 
-  if (SemaRef.getCurrentScope()->isClassScope()){
+  if (SemaRef.getCurrentScope()->isClassScope()) {
     return elaborateField(D);
   }
 
 
   // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
-  clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
+  // TODO: I need to fix this so that we use auto instead in the event that we
+  // don't have the type as part of the declaration.
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(TyLitExpr,
+                                                             D->Decl->getLoc());
+  if (!TInfo) {
+    return nullptr;
+  }
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::StorageClass SC = getDefaultVariableStorageClass(*this);
   if (compluteVariableStorageClassSpec(SemaRef, D, SC)) {
     return nullptr;
   }
-  
-
   // Create the variable and add it to it's owning context.
   clang::VarDecl *VD = clang::VarDecl::Create(Context.CxxAST, Owner, Loc, Loc,
                                               Id, TInfo->getType(), TInfo, SC);
@@ -979,42 +975,42 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   return VD;
 }
 
-clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D,
-                                            clang::TypeSourceInfo *TInfo) {
-  // Elaborating RHS first.  
-  ExprElaborator Elab(Context, SemaRef);
-  ExprElaborator::Expression InitExpr = Elab.elaborateExpr(D->Init);
-
+clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
   if (!D->Init) {
     SemaRef.Diags.Report(D->Op->getLoc(), clang::diag::err_expected_type);
     return nullptr;
   }
+
+  // Elaborating RHS
+  ExprElaborator Elab(Context, SemaRef);
+  clang::Expr *InitTyExpr = Elab.elaborateExpr(D->Init);
+  // TODO: Create an error message and verify that the result type of the expression
+  // is cppx kind type.
+  
   // We are doing complete evaluation at this point because all types need to be made
   // available by phase 3.
-  // clang::TypeAliasDecl *Alias = cast<clang::TypeAliasDecl>(D->Cxx);
+  // if (clang::NamespaceDecl *NsD = InitExpr.dyn_cast<clang::NamespaceDecl *>()) {
+  //   SemaRef.Diags.Report(D->Decl->getLoc(), clang::diag::err_unknown_typename)
+  //         << NsD->getName();
+  //   return nullptr;
+  // }
+  // if (!InitExpr.is<clang::Expr *>()) {
+  //   // FIXME: This needs an error message indicating that we have a nemespace
+  //   // instead of a type or a value instead of a type? something like that.
+  //   // However this could be easilly repaired in the event that the resulting
+  //   // expression had a derived namespace type of some kind.
+  //   llvm_unreachable("Received part of an expression that isn't an alias.");
+  // }
   clang::ParsedType PT;
-  if (InitExpr.is<clang::Expr *>()) {
-    // TODO: Implement this so we can evaluate constant expressions that yield
-    // meta function results. maybe? I'm not sure what this is supposed to support
-    // and how it's supposed to do that in side of clang's AST.
-    llvm_unreachable("Constant expression evaluation that yields a type not "
-        "yet implemented.");
-  }
-
-  // Working on type expression evaluation.
-  if (clang::TypeSourceInfo *TInfo
-                               = InitExpr.dyn_cast<clang::TypeSourceInfo *>()) {
-    // Using the correctly constructed result type, I hope this should fix any
-    // Further issues I was having with the internal getDeclTypeDecl() calls.
-    PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
-    D->CurrentPhase = Phase::Initialization;
-  }
-
-  if (clang::NamespaceDecl *NsD = InitExpr.dyn_cast<clang::NamespaceDecl *>()) {
-    SemaRef.Diags.Report(D->Decl->getLoc(), clang::diag::err_unknown_typename)
-          << NsD->getName();
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InitTyExpr,
+                                                             D->Init->getLoc());
+  if (!TInfo) {
     return nullptr;
   }
+  PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
+  D->CurrentPhase = Phase::Initialization;
+
+
 
   clang::IdentifierInfo *IdInfo = D->getId();
   clang::UnqualifiedId Id;
@@ -1051,18 +1047,27 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D,
   return TypeAlias;
 }
 
+clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D,
+    Declarator *TemplateParams) {
+  llvm_unreachable("This isn't implemented yet!");
+}
+
 clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
   // Get type information.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
 
   ExprElaborator TypeElab(Context, SemaRef);
-  ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
-  if (TypeExpr.isNull()) {
+  clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
+  if (!TypeExpr) {
     SemaRef.Diags.Report(D->Op->getLoc(),
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
-  clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(TypeExpr,
+                                                             D->Decl->getLoc());
+  if (!TInfo) {
+    return nullptr;
+  }
 
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
@@ -1081,13 +1086,18 @@ clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
 
   ExprElaborator TypeElab(Context, SemaRef);
-  ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
-  if (TypeExpr.isNull()) {
+  clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
+  if (!TypeExpr) {
     SemaRef.Diags.Report(D->Op->getLoc(),
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
-  clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
+  // clang::Expr *TemplateTy = TypeExpr.get<clang::Expr*>();
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(TypeExpr,
+                                                             D->Decl->getLoc());
+  if (!TInfo) {
+    return nullptr;
+  }
 
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
@@ -1289,15 +1299,15 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   }
 
   // Doing
-  ExprElaborator::Expression Init;
-    ExprElaborator ExprElab(Context, SemaRef);
+  // ExprElaborator::Expression Init;
+  clang::Expr *InitExpr = nullptr;
+  ExprElaborator ExprElab(Context, SemaRef);
   if (D->declaresInlineInitializedStaticVarDecl()) {
     Sema::ExprEvalRAII Ctxt(SemaRef,
       clang::Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
-    Init = ExprElab.elaborateExpr(D->Init);
-
+    InitExpr = ExprElab.elaborateExpr(D->Init);
   } else {
-    Init = ExprElab.elaborateExpr(D->Init);
+    InitExpr = ExprElab.elaborateExpr(D->Init);
   }
 
   // Make sure the initializer was elaborated as a type. 
@@ -1305,13 +1315,13 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   // are being processed. Because we will need to change things so that we can
   // properly identify member types, and member templates, template template
   // parameters etc.
-  if (Init.is<clang::TypeSourceInfo *>()) {
-    llvm::errs() << "Expected expression.\n";
-    return;
-  }
+  // if (Init.is<clang::TypeSourceInfo *>()) {
+  //   llvm::errs() << "Expected expression.\n";
+  //   return;
+  // }
 
-  clang::Expr *InitExpr = Init.get<clang::Expr *>();
 
+  
   // Perform auto deduction.
   if (VD->getType()->isUndeducedType()) {
     clang::QualType Ty;
@@ -1402,16 +1412,19 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
     llvm_unreachable("Invalid field declaration. Declaration is not within a class.");
   }
   ExprElaborator TypeElab(Context, SemaRef);
-  ExprElaborator::Expression TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
+  clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
 
-  if (TypeExpr.isNull()) {
+  if (!TypeExpr) {
     SemaRef.Diags.Report(D->Op->getLoc(),
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
-  
-  
-  clang::TypeSourceInfo *TInfo = TypeExpr.get<clang::TypeSourceInfo *>();
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(TypeExpr,
+                                                             D->Decl->getLoc());
+  if (!TInfo) {
+    return nullptr;
+  }
+
   clang::SourceLocation Loc = D->Decl->getLoc();
   clang::SourceLocation LocEnd = D->getEndOfDecl();
   clang::DeclarationName DN = D->getId();
@@ -1461,25 +1474,19 @@ void Elaborator::elaborateFieldInit(Declaration *D) {
 
   using EEC = clang::Sema::ExpressionEvaluationContext;
   clang::EnterExpressionEvaluationContext EEContext(SemaRef.getCxxSema(),
-      EEC::PotentiallyEvaluated, D->Cxx);
+                                             EEC::PotentiallyEvaluated, D->Cxx);
 
   ExprElaborator ExprElab(Context, SemaRef);
-  ExprElaborator::Expression Init = ExprElab.elaborateExpr(D->Init);
+  clang::Expr *Init = ExprElab.elaborateExpr(D->Init);
 
-  // Make sure the initializer was not elaborated as a type.
-  if (Init.is<clang::TypeSourceInfo *>()) {
-    // TODO: Insert diagnostics here?
-    llvm::errs() << "Expected expression, not a type.\n";
-    return;
+  if (!Init) {
+    // FIXME: This needs an error message.
+    llvm_unreachable("This needs a better error message cannot assign a "
+        "namespace to a variable right now.");
   }
-  
-  if (Init.is<clang::NamespaceDecl *>()) {
-    // TODO: Create diagnostic expression here.
-    llvm::errs() << "Expected expression, who doesn't yield a namespace.\n";
-    return;
-  }
+
   SemaRef.getCxxSema().ActOnFinishCXXInClassMemberInitializer(D->Cxx,
-    D->Op->getLoc(), Init.get<clang::Expr *>());
+                                                         D->Op->getLoc(), Init);
 }
 
 static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S);
@@ -1495,14 +1502,19 @@ static Declarator *buildTypeDeclarator(const Syntax *S, Declarator *Next) {
   assert((isa<AtomSyntax>(S) || isa<CallSyntax>(S)) &&
          "cannot build type-declarator out of given syntax");
   Declarator *D = new Declarator(DK_Type, Next);
-
   if (const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
     D->Call = Call;
     D->Data.Type = Next ? Next->getType() : Call->getArgument(1);
   } else if (isa<AtomSyntax>(S)) {
     D->Data.Type = S;
   }
+  return D;
+}
 
+static Declarator *buildTypeRoot(const Syntax *S, Declarator *Next) {
+  Declarator *D = new Declarator(DK_Type, Next);
+  D->Call = S;
+  D->Data.Type = S;
   return D;
 }
 
@@ -1510,11 +1522,9 @@ static Declarator *buildTypeExpression(const Syntax *S, Declarator *Next) {
   assert((isa<AtomSyntax>(S) || isa<CallSyntax>(S)) &&
          "cannot build type-declarator out of given syntax");
   Declarator *D = new Declarator(DK_Type, Next);
-
   if (const CallSyntax *Call = dyn_cast<CallSyntax>(S))
     D->Call = Call;
   D->Data.Type = S;
-
   return D;
 }
 
@@ -1577,42 +1587,6 @@ static Declarator *buildTemplatedName(const ElemSyntax *Call,
   return D;
 }
 
-static Declarator *buildPointerDeclarator(const CallSyntax *S, 
-                                          Declarator *Next) {
-  Declarator *D = new Declarator(DK_Pointer, Next);
-  D->Call = S;
-  return D;
-}
-
-static Declarator *buildArrayDeclarator(const CallSyntax *S,
-                                        Declarator *Next) {
-  Declarator *D = new Declarator(DK_Array, Next);
-  D->Call = S;
-  D->Data.Index = S->getArgument(0);
-  return D;
-}
-
-static Declarator *buildConstDeclarator(const CallSyntax *S,
-                                        Declarator *Next) {
-  Declarator *D = new Declarator(DK_Const, Next);
-  D->Call = S;
-  return D;
-}
-
-static Declarator *buildRefDeclarator(const CallSyntax *S,
-                                        Declarator *Next) {
-  Declarator *D = new Declarator(DK_Ref, Next);
-  D->Call = S;
-  return D;
-}
-
-static Declarator *buildRValueRefDeclarator(const CallSyntax *S,
-                                        Declarator *Next) {
-  Declarator *D = new Declarator(DK_RRef, Next);
-  D->Call = S;
-  return D;
-}
-
 static Declarator *buildErrorDeclarator(const ErrorSyntax *S, Declarator *Next) {
   Declarator *D = new Declarator(DK_Error, Next);
   D->Call = S;
@@ -1628,16 +1602,14 @@ static Declarator *buildErrorDeclarator(const ErrorSyntax *S, Declarator *Next) 
 /// we build a declarator fragment.
 Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
   // If we find an atom, then we're done.
-
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(S)) {
-
     // This might be a typename, in which case, build a type-declarator.
     clang::DeclarationNameInfo DNI(
       {&SemaRef.Context.CxxAST.Idents.get(Atom->getSpelling()), S->getLoc()});
     clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupTagName);
-    if (SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope()))
+    if (SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) {
       return buildTypeDeclarator(Atom, Next);
-
+    }
     // Otherwise just build an identifier-declarator.
     return buildIdDeclarator(Atom, Next);
 
@@ -1652,7 +1624,7 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
         if (isa<CallSyntax>(Call->getArgument(1))) {
           // Elaborate rhs, and then elaborate lhs using the completed
           // type-declarator from rhs as the type.
-          Next = makeDeclarator(SemaRef, Call->getArgument(1), Next);
+          Next = buildTypeRoot(Call->getArgument(1), Next);
           return makeDeclarator(SemaRef, Call->getArgument(0), Next);
         }
 
@@ -1660,43 +1632,12 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S, Declarator *Next) {
         return makeDeclarator(SemaRef, Call->getArgument(0),
                               buildTypeDeclarator(Call, Next));
 
-      } else if (Callee->getSpelling() == "operator'^'") {
-        // We have a pointer operator, so first create a declarator
-        // out of its inner type and use that as `Next`.
-        Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
-
-        // Now build a pointer-declarator that owns its inner type and
-        // we're done.
-        return buildPointerDeclarator(Call, Next);
-
-      } else if (Callee->getSpelling() == "operator'[]'") {
-        // This is a prefix operator'[]', meaning we are creating an array type.
-        Next = makeDeclarator(SemaRef, Call->getArgument(1), Next);
-        return makeDeclarator(SemaRef, Call->getArgument(0),
-                              buildArrayDeclarator(Call, Next));
       } else if (Callee->getSpelling() == "operator'.'") {
         // This is also a possible type declaration because it's a nested type
         // declaration.
         return buildTypeExpression(Call, Next);
       } else if (Callee->getSpelling() == "operator'in'") {
         return makeDeclarator(SemaRef, Call->getArgument(0), Next);
-
-      } else if (Callee->getSpelling() == "operator'const'") {
-        Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
-        return buildConstDeclarator(Call, Next);
-        
-      } else if (Callee->getSpelling() == "operator'ref'") {
-        Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
-        return buildRefDeclarator(Call, Next);
-        
-      } else if (Callee->getSpelling() == "operator'rref'") {
-        if (Call->getNumArguments() != 1) {
-          SemaRef.Diags.Report(Callee->getLoc(),
-                               clang::diag::err_requires_a_type) << "rref"; 
-          return nullptr;
-        }
-        Next = makeDeclarator(SemaRef, Call->getArgument(0), Next);
-        return buildRValueRefDeclarator(Call, Next);
       }
 
       // Otherwise, this appears to be a function declarator.
@@ -2167,6 +2108,8 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
 
   if (Tokenization == SemaRef.OperatorColonII)
     return FOK_Colon;
+  if (Tokenization == SemaRef.OperatorArrowII)
+    return FOK_Arrow;
   if (Tokenization == SemaRef.OperatorExclaimII)
     return FOK_Exclaim;
   if (Tokenization == SemaRef.OperatorEqualsII)
@@ -2195,6 +2138,8 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
     return FOK_Ref;
   if (Tokenization == SemaRef.OperatorRRefII)
     return FOK_RRef;
+  if (Tokenization == SemaRef.OperatorArrayBracketsII) 
+    return FOK_Array;
   return FOK_Unknown;
 }
 

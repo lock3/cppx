@@ -57,7 +57,9 @@ public:
   clang::Decl *elaborateDecl(Declaration *D);
   clang::Decl *elaborateFunctionDecl(Declaration *D);
   clang::Decl *elaborateVariableDecl(Declaration *D);
-  clang::Decl *elaborateTypeAlias(Declaration *D, clang::TypeSourceInfo *TInfo);
+  clang::Decl *elaborateTypeAlias(Declaration *D);
+  clang::Decl *elaborateTemplateAliasOrVariable(Declaration *D,
+      Declarator *TemplateParams);
   clang::Decl *elaborateParameterDecl(Declaration *D);
   clang::Decl *elaborateTemplateParamDecl(Declaration *D);
 
@@ -82,12 +84,13 @@ public:
   clang::Decl *elaborateDeclForAtom(const AtomSyntax *S);
 
   clang::Decl *elaborateTypeExpression(Declaration* Decl);
+
   // Type elaboration
-  clang::QualType elaborateType(Declarator *D);
-  clang::QualType elaboratePointerType(Declarator *D, clang::QualType T);
-  clang::QualType elaborateArrayType(Declarator *D, clang::QualType T);
-  clang::QualType elaborateFunctionType(Declarator *D, clang::QualType T);
-  clang::QualType elaborateExplicitType(Declarator *D, clang::QualType T);
+  clang::Expr *elaborateType(Declarator *D);
+  clang::Expr *elaboratePointerType(Declarator *D, clang::QualType T);
+  clang::Expr *elaborateArrayType(Declarator *D, clang::QualType T);
+  clang::Expr *elaborateFunctionType(Declarator *D, clang::QualType T);
+  clang::Expr *elaborateExplicitType(Declarator *D, clang::QualType T);
 
   clang::Decl *elaborateTypeBody(Declaration *D, clang::CXXRecordDecl *R);
   clang::Decl *elaborateField(Declaration *D);
@@ -138,6 +141,7 @@ public:
 enum FusedOpKind {
   FOK_Unknown,
   FOK_Colon,
+  FOK_Arrow,
   FOK_Exclaim,
   FOK_Equals,
   FOK_If,
@@ -151,6 +155,7 @@ enum FusedOpKind {
   FOK_Const,
   FOK_Ref,
   FOK_RRef,
+  FOK_Array
 };
 
 /// Convert a fused operator string like `operator'='` into an enum

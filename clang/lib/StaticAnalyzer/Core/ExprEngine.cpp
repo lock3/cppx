@@ -1315,13 +1315,14 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::CXXFragmentCaptureExprClass:
     case Stmt::CXXInjectionStmtClass:
     case Stmt::CXXBaseInjectionStmtClass:
-    case Stmt::CppxTypeLiteralClass:
     {
       const ExplodedNode *node = Bldr.generateSink(S, Pred, Pred->getState());
       Engine.addAbortedBlock(node, currBldrCtx->getBlock());
       break;
     }
-
+    case Stmt::CppxTypeLiteralClass:
+    case Stmt::CppxDeclRefExprClass:
+      llvm_unreachable("Shouldn't be part of final AST analysis.");
     case Stmt::ParenExprClass:
       llvm_unreachable("ParenExprs already handled.");
     case Stmt::GenericSelectionExprClass:

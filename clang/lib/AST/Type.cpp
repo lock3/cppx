@@ -3877,7 +3877,7 @@ static CachedProperties computeCachedProperties(const Type *T) {
   case Type::CppxKind:
     // Just return something for now.
     return CachedProperties(ExternalLinkage, false);
-  case Type::Template:
+  case Type::CppxTemplate:
     // I don't know what's going on here but I'm mimicing cppxkind type.
     return CachedProperties(ExternalLinkage, false);
   }
@@ -3970,7 +3970,7 @@ LinkageInfo LinkageComputer::computeTypeLinkageInfo(const Type *T) {
     return LinkageInfo::external();
 
   // This type shouldn't have linkage, should it?
-  case Type::Template:
+  case Type::CppxTemplate:
       return LinkageInfo::external();
 
   case Type::CppxNamespace:
@@ -4135,7 +4135,7 @@ bool Type::canHaveNullability(bool ResultIfUnknown) const {
   case Type::Atomic:
   case Type::Pipe:
   case Type::CppxKind:
-  case Type::Template:
+  case Type::CppxTemplate:
   case Type::CppxNamespace:
   case Type::ExtInt:
   case Type::DependentExtInt:
@@ -4408,3 +4408,9 @@ static NamespaceDecl *getInterestingNamespaceDecl(const NamespaceDecl *NS) {
 NamespaceDecl *CppxNamespaceType::getDecl() const {
   return getInterestingNamespaceDecl(NS);
 }
+
+
+CppxTemplateType::CppxTemplateType(TemplateDecl *TemplateD)
+  : Type(CppxTemplate, QualType{ }, TypeDependence(), /*MetaType=*/false),
+    TD(TemplateD)
+{ }

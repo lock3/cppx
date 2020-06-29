@@ -4551,7 +4551,7 @@ public:
                                    NamespaceDecl *NS, gold::Scope *Rep);
 
   NamespaceDecl *getNamespace();
-
+  NamespaceDecl *getNamespace() const;
   gold::Scope *getScopeRep();
 
   void anchor() override {}
@@ -4562,6 +4562,16 @@ public:
     return K == CppxNamespace;
   }
 };
+
+class CppxPartialDecl : public Decl {
+public:
+  // Implement isa/cast/dyncast/etc.
+  static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+  static bool classofKind(Kind K) {
+    return K == CppxPartial;
+  }
+};
+
 
 /// Insertion operator for diagnostics.  This allows sending NamedDecl's
 /// into a diagnostic with <<.

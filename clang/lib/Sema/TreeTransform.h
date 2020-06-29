@@ -14,7 +14,7 @@
 #define LLVM_CLANG_LIB_SEMA_TREETRANSFORM_H
 
 #include "CoroutineStmtBuilder.h"
-#include "TypeLocBuilder.h"
+#include "clang/Sema/TypeLocBuilder.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
@@ -6440,9 +6440,18 @@ QualType TreeTransform<Derived>::TransformCppxNamespaceType(
 }
 
 template<typename Derived>
-QualType TreeTransform<Derived>::TransformTemplateType(
+ExprResult TreeTransform<Derived>::TransformCppxDeclRefExpr(
+    clang::CppxDeclRefExpr* expr) {
+  // QualType T = TL.getType();
+  // TLB.pushTypeSpec(T).setNameLoc(TL.getNameLoc());
+  // return T;
+  llvm_unreachable("TransformCppxDeclRefExpr Not implemented.");
+}
+
+template<typename Derived>
+QualType TreeTransform<Derived>::TransformCppxTemplateType(
                                          TypeLocBuilder &TLB,
-                                         TemplateTypeLoc TL) {
+                                         CppxTemplateTypeLoc TL) {
   QualType T = TL.getType();
   TLB.pushTypeSpec(T).setNameLoc(TL.getLoc());
   return T;
@@ -8541,8 +8550,8 @@ template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformCppxTypeLiteral(CppxTypeLiteral *E) {
   QualType K = E->getType();
-  QualType T = TransformType(E->getValue());
-  return new (SemaRef.Context) CppxTypeLiteral(K, T, E->getLocation());
+  TypeSourceInfo * T = TransformType(E->getValue());
+  return new (SemaRef.Context) CppxTypeLiteral(K, T);
 }
 
 // Objective-C Statements.

@@ -1193,6 +1193,12 @@ Decl
   llvm_unreachable("should never get here");
 }
 
+Decl
+*TemplateDeclInstantiator::VisitCppxPartialDecl(CppxPartialDecl *D) {
+  // See VisitCXXFragmentDecl.
+  llvm_unreachable("should never get here");
+}
+
 
 Decl *TemplateDeclInstantiator::VisitIndirectFieldDecl(IndirectFieldDecl *D) {
   NamedDecl **NamedChain =

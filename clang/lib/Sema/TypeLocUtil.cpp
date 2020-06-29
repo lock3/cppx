@@ -17,7 +17,7 @@
 #include "clang/AST/TypeLoc.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/Sema/TypeLocUtil.h"
-#include "TypeLocBuilder.h"
+#include "clang/Sema/TypeLocBuilder.h"
 
 namespace gold {
 
@@ -557,17 +557,17 @@ template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::TemplateSpeciali
   return BuildTypeLoc<clang::TemplateSpecializationTypeLoc>(Context, TLB, Ty, Loc);
 }
 
-template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::CppxTemplateTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  auto TypeLocInstance = TLB.push<clang::TemplateTypeLoc>(Ty);
+  auto TypeLocInstance = TLB.push<clang::CppxTemplateTypeLoc>(Ty);
   TypeLocInstance.initializeLocal(Ctx, Loc);
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::TemplateTypeLoc>
+template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::CppxTemplateTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
-  return BuildTypeLoc<clang::TemplateSpecializationTypeLoc>(Context, TLB, Ty, Loc);
+  return BuildTypeLoc<clang::CppxTemplateTypeLoc>(Context, TLB, Ty, Loc);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::DeducedTypeLoc>
@@ -740,10 +740,19 @@ TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context, QualType Ty,
     SourceLocation BeginLoc, SourceLocation LParenLoc,
     SourceLocation RParenLoc, clang::SourceRange ExceptionSpecRange,
     SourceLocation EndLoc, llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
+  TypeLocBuilder TLB;
+
+  return BuildFunctionTypeLoc(Context, TLB, Ty, BeginLoc, LParenLoc, RParenLoc,
+                              ExceptionSpecRange, EndLoc, Params);
+}
+
+TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context,
+    clang::TypeLocBuilder &TLB, QualType Ty, SourceLocation BeginLoc,
+    SourceLocation LParenLoc, SourceLocation RParenLoc,
+    clang::SourceRange ExceptionSpecRange, SourceLocation EndLoc,
+    llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
   assert(Ty->isFunctionType() &&
          "Constructing FunctionTypeLoc out of non-function type");
-
-  TypeLocBuilder TLB;
 
   // Push the return type to the TypeLocBuilder.
   QualType ReturnType = Ty->getAs<clang::FunctionType>()->getReturnType();
@@ -760,6 +769,34 @@ TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context, QualType Ty,
     NewTL.setParam(I, Params[I]);
 
   return TLB.getTypeSourceInfo(Context, Ty);
+}
+
+TypeSourceInfo *BuildFunctionPtrTypeLoc(clang::ASTContext &Context,
+                                        TypeLocBuilder &TLB,
+                                        clang::TypeSourceInfo *FnTSI,
+                                        clang::SourceLocation Loc) {
+  assert(FnTSI->getType()->isFunctionType() &&
+         "Constructing FunctionTypeLoc out of non-function type");
+
+  QualType FnPtrTy = Context.getPointerType(FnTSI->getType());
+  auto FnPtrInstance = TLB.push<clang::PointerTypeLoc>(FnPtrTy);
+  FnPtrInstance.setStarLoc(Loc);
+
+  return TLB.getTypeSourceInfo(Context, FnPtrTy);
+}
+
+TypeSourceInfo *BuildFunctionPtrTypeLoc(clang::ASTContext &Context,
+                                        clang::TypeSourceInfo *FnTSI,
+                                        clang::SourceLocation Loc) {
+  assert(FnTSI->getType()->isFunctionType() &&
+         "Constructing FunctionTypeLoc out of non-function type");
+
+  TypeLocBuilder TLB;
+  QualType FnPtrTy = Context.getPointerType(FnTSI->getType());
+  auto FnPtrInstance = TLB.push<clang::PointerTypeLoc>(FnPtrTy);
+  FnPtrInstance.setStarLoc(Loc);
+
+  return TLB.getTypeSourceInfo(Context, FnPtrTy);
 }
 
 } // namespace gold

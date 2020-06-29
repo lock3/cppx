@@ -34,7 +34,6 @@ using namespace gold;
 */
 
 TEST(GoldPointerDeref, SimpleDereference) {
-  using namespace std::string_literals;
   std::string Code = R"Gold(
 foo(i:^int):void!
   x = ^i

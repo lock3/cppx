@@ -2093,6 +2093,10 @@ public:
   bool isTemplateTypeParmType() const;          // C++ template type parameter
   bool isTemplateType() const;                  // Check if this is an
                                                 // uninstantiated template type.
+  bool isNamespaceType() const;                 // Checks to see if this has a
+                                                // namespace type.
+  bool isTypeOfTypes() const;                   // Returns true if the current
+                                                // type is a CppxKindType
   bool isNullPtrType() const;                   // C++11 std::nullptr_t
   bool isNothrowT() const;                      // C++   std::nothrow_t
   bool isAlignValT() const;                     // C++17 std::align_val_t
@@ -6404,17 +6408,12 @@ public:
   static bool classof(const Type *T) { return T->getTypeClass() == CppxKind; }
 };
 
-class TemplateType : public Type, public llvm::FoldingSetNode {
+class CppxTemplateType : public Type, public llvm::FoldingSetNode {
 private:
 
   friend class ASTContext;
   TemplateDecl *TD  = nullptr;
-  TemplateType(TemplateDecl *TemplateD)
-    : Type(Template, QualType(),
-           TypeDependence(),
-           /*MetaType=*/false),
-      TD(TemplateD)
-  {}
+  CppxTemplateType(TemplateDecl *TemplateD);
 public:
   TemplateDecl *getTemplateDecl() const { return TD; }
 
@@ -6436,7 +6435,7 @@ public:
   static void Profile(llvm::FoldingSetNodeID &ID, TemplateDecl *D);
 
   static bool classof(const Type *T) {
-    return T->getTypeClass() == TemplateSpecialization;
+    return T->getTypeClass() == CppxTemplate;
   }
 };
 
@@ -7009,8 +7008,17 @@ inline bool Type::isTemplateTypeParmType() const {
 }
 
 inline bool Type::isTemplateType() const {
-  return isa<TemplateType>(CanonicalType);
+  return isa<CppxTemplateType>(CanonicalType);
 }
+
+inline bool Type::isNamespaceType() const {
+  return isa<CppxNamespaceType>(CanonicalType);
+}
+
+inline bool Type::isTypeOfTypes() const {
+  return isa<CppxKindType>(CanonicalType);
+}
+
 
 inline bool Type::isSpecificBuiltinType(unsigned K) const {
   if (const BuiltinType *BT = getAs<BuiltinType>()) {
