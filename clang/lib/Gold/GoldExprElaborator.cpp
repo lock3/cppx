@@ -1805,13 +1805,23 @@ clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
           break;
       }
 
-      Elaborator ParamElaborator(Context, SemaRef);
-      clang::Decl *Param = ParamElaborator.elaborateDeclSyntax(ParamSyntax);
+      ExprElaborator ParamElaborator(Context, SemaRef);
+      clang::Expr *Param = ParamElaborator.elaborateExpr(ParamSyntax);
 
-      if (!Param || !isa<clang::ParmVarDecl>(Param))
+      if (!Param || !Param->getType()->isTypeOfTypes())
         continue;
 
-      Types.push_back(cast<clang::ParmVarDecl>(Param)->getType());
+      clang::SourceLocation Loc = ParamSyntax->getLoc();
+      auto *ParmTInfo = SemaRef.getTypeSourceInfoFromExpr(Param, Loc);
+      Types.push_back(ParmTInfo->getType());
+
+      clang::IdentifierInfo *II = nullptr;
+      II = SemaRef.getCxxSema().InventAbbreviatedTemplateParameterTypeName(II, I);
+      clang::DeclarationName Name(II);
+      clang::DeclContext *DC = SemaRef.getCurrentCxxDeclContext();
+      clang::ParmVarDecl *PVD = clang::ParmVarDecl::Create(CxxAST, DC, Loc, Loc,
+        Name, ParmTInfo->getType(), ParmTInfo, clang::SC_Auto, /*def=*/nullptr);
+      Params.push_back(PVD);
     }
   } else {
     SemaRef.Diags.Report(ParamBegin->getLoc(),
