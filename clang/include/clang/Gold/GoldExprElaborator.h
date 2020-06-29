@@ -112,6 +112,7 @@ private:
   clang::Expr *handleRefType(const CallSyntax *S);
   clang::Expr *handleRRefType(const CallSyntax *S);
   clang::Expr *handleFunctionType(const CallSyntax *S);  
+  clang::Expr *handleArrayType(const CallSyntax *S);
   
 private:
   /// Utility functions that handle operations assocated with type elaboration,
@@ -128,8 +129,6 @@ private:
   ///}
 
 };
-
-// void dumpExpression(ExprElaborator::Expression Expr, llvm::raw_ostream& Out);
 
 } // namespace gold
 

@@ -155,6 +155,7 @@ enum FusedOpKind {
   FOK_Const,
   FOK_Ref,
   FOK_RRef,
+  FOK_Array
 };
 
 /// Convert a fused operator string like `operator'='` into an enum

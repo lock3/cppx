@@ -479,7 +479,8 @@ Syntax *Parser::parseDef() {
 }
 
 static bool isOrOperator(Parser& P) {
-  return P.nextTokenIs(tok::BarBar) || P.nextTokenIs("or");
+  return P.nextTokenIs(tok::BarBar) || P.nextTokenIs("or")
+    || P.nextTokenIs(tok::Bar) || P.nextTokenIs(tok::Caret);
 }
 
 // or:
@@ -487,6 +488,7 @@ static bool isOrOperator(Parser& P) {
 //    or or-operator and
 //
 // or-operator:
+//    |
 //    ||
 //    "or"
 Syntax *Parser::parseOr() {
@@ -498,59 +500,23 @@ Syntax *Parser::parseOr() {
   return E1;
 }
 
-
-static auto isXOrOp(Parser &P) {
-  return P.nextTokenIs(tok::Caret);
-}
-
-Syntax *Parser::parseBitWiseXOr() {
-  Syntax *E1 = parseCmp();
-  while (Token Op = matchTokens(isXOrOp, *this)) {
-    Syntax *E2 = parseCmp();
-    E1 = onBinary(Op, E1, E2);
-  }
-  return E1;
-}
-
-static auto isBWAnd(Parser &P) {
-  return P.nextTokenIs(tok::Ampersand);
-}
-
-Syntax *Parser::parseBitWiseAnd() {
-  Syntax *E1 = parseBitWiseXOr();
-  while (Token Op = matchTokens(isBWAnd, *this)) {
-    Syntax *E2 = parseBitWiseXOr();
-    E1 = onBinary(Op, E1, E2);
-  }
-  return E1;
-}
-static auto isBWOr(Parser &P) {
-  return P.nextTokenIs(tok::Bar);
-}
-
-Syntax *Parser::parseBitWiseOr() {
-  Syntax *E1 = parseBitWiseAnd();
-  while (Token Op = matchTokens(isBWOr, *this)) {
-    Syntax *E2 = parseBitWiseAnd();
-    E1 = onBinary(Op, E1, E2);
-  }
-  return E1;
-}
-
 static auto isAndOperator(Parser &P) {
-  return P.nextTokenIs(tok::AmpersandAmpersand) || P.nextTokenIs("and");
+  return P.nextTokenIs(tok::AmpersandAmpersand) || P.nextTokenIs("and")
+    || P.nextTokenIs(tok::Ampersand);
 }
 // and:
-//    bit-wise-or
-//    and and-operator bit-wise-or
+//    cmp
+//    and and-operator cmp
 //
 // and-operator:
+//    ^
+//    &
 //    &&
 //    "and"
 Syntax *Parser::parseAnd() {
-  Syntax *E1 = parseBitWiseOr();
+  Syntax *E1 = parseCmp();
   while (Token Op = matchTokens(isAndOperator, *this)) {
-    Syntax *E2 = parseBitWiseOr();
+    Syntax *E2 = parseCmp();
     E1 = onBinary(Op, E1, E2);
   }
   return E1;

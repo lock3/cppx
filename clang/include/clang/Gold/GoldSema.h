@@ -342,6 +342,7 @@ public:
   const clang::IdentifierInfo *OperatorCaretII;
   const clang::IdentifierInfo *OperatorRefII;
   const clang::IdentifierInfo *OperatorRRefII;
+  const clang::IdentifierInfo *OperatorArrayBracketsII;
   
   /// These are the identifier names given to operators in C++.
   ///{

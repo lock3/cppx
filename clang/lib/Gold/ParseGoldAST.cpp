@@ -62,6 +62,7 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
     if (D && !Consumer->HandleTopLevelDecl(DPtr.get()))
       return;
   }
+  // TU->dump();
   Consumer->HandleTranslationUnit(ClangSema.getASTContext());
 }
 
