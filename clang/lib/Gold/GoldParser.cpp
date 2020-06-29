@@ -11,14 +11,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/AST/ASTContext.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticParse.h"
+#include "clang/Basic/TargetInfo.h"
 
 #include "clang/Gold/GoldParser.h"
 #include "clang/Gold/GoldSyntax.h"
 #include "clang/Gold/GoldSyntaxContext.h"
 
 #include <iostream>
+#include <string>
 
 namespace gold {
 
@@ -270,6 +273,9 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
     // For now, match this as optional.
     //
     // FIXME: Actually diagnose missing separators.
+    matchTokenIf(isSeparator);
+    // If the previous token was a semicolon, there might be a newline after it.
+    // FIXME: these tokens should be combined by the lexer.
     matchTokenIf(isSeparator);
 
     // The end-of-file is often after the last separator.
@@ -1098,24 +1104,10 @@ Syntax *Parser::parsePrimary() {
   case tok::Identifier:
     return parseId();
 
-  case tok::BinaryInteger:
-  case tok::DecimalInteger:
-  case tok::HexadecimalInteger:
-  case tok::DecimalFloat:
-  case tok::HexadecimalFloat:
-  case tok::DecimalExponent:
-  case tok::Character:
-  case tok::HexadecimalCharacter:
-  case tok::UnicodeCharacter:
-  case tok::String:
   case tok::ClassKeyword:
   case tok::EnumKeyword:
   case tok::UnionKeyword:
   case tok::NamespaceKeyword:
-  case tok::TrueKeyword:
-  case tok::FalseKeyword:
-  case tok::NullKeyword:
-  case tok::NullTKeyword:
   case tok::StaticCastKeyword:
   case tok::DynamicCastKeyword:
   case tok::ReinterpretCastKeyword:
@@ -1127,11 +1119,6 @@ Syntax *Parser::parsePrimary() {
   case tok::DeclTypeKeyword:
   case tok::ThisKeyword:
   case tok::TypeIdKeyword:
-    return onAtom(consumeToken());
-
-  case tok::LeftParen:
-    return parseParen();
-
   case tok::VoidKeyword:
   case tok::BoolKeyword:
   case tok::CharKeyword:
@@ -1156,6 +1143,25 @@ Syntax *Parser::parsePrimary() {
   case tok::Float128Keyword:
   case tok::TypeKeyword:
   case tok::ArgsKeyword:
+    return onAtom(consumeToken());
+
+  case tok::LeftParen:
+    return parseParen();
+
+  case tok::TrueKeyword:
+  case tok::FalseKeyword:
+  case tok::NullKeyword:
+  case tok::NullTKeyword:
+  case tok::BinaryInteger:
+  case tok::DecimalInteger:
+  case tok::HexadecimalInteger:
+  case tok::DecimalFloat:
+  case tok::HexadecimalFloat:
+  case tok::DecimalExponent:
+  case tok::Character:
+  case tok::HexadecimalCharacter:
+  case tok::UnicodeCharacter:
+  case tok::String:
     return onLiteral(consumeToken());
 
   case tok::NewKeyword:
@@ -1286,8 +1292,106 @@ Syntax *Parser::onAtom(const Token& Tok) {
   return Ret;
 }
 
+static void parseSuffix(SyntaxContext &Context, clang::DiagnosticsEngine &Diags,
+                        LiteralSyntax *Literal, llvm::StringRef Suffix) {
+  const char *SuffixBegin = Suffix.begin();
+  const char *SuffixEnd = Suffix.end();
+  clang::SourceLocation Loc = Literal->getLoc();
+
+  switch (std::tolower(*SuffixBegin)) {
+  case 'u': {
+    if (Literal->Suffix.IsUnsigned) {
+      Diags.Report(Loc, clang::diag::err_incompatible_suffix) <<
+        "signed" << "unsigned";
+      return;
+    }
+
+    if (Literal->Suffix.IsUnsigned)
+      return;
+
+    ++SuffixBegin;
+
+    int BitWidth = Context.CxxAST.getTargetInfo().getIntWidth();
+    if (SuffixBegin != SuffixEnd) {
+      std::size_t BitWidthSize = SuffixEnd - SuffixBegin;
+      BitWidth = std::stoi({SuffixBegin, BitWidthSize});
+    }
+
+    if (BitWidth < 1 || BitWidth > 128) {
+      Diags.Report(Loc, clang::diag::err_invalid_bitwidth_suffix) <<
+        BitWidth << (BitWidth < 1);
+      return;
+    }
+
+    Literal->Suffix.IsUnsigned = true;
+    Literal->Suffix.BitWidth = BitWidth;
+    return;
+  }
+
+  case 's': {
+    if (Literal->Suffix.IsUnsigned) {
+      Diags.Report(Loc, clang::diag::err_incompatible_suffix) <<
+        "unsigned" << "signed";
+      return;
+    }
+
+    if (Literal->Suffix.IsSigned)
+      return;
+
+    ++SuffixBegin;
+
+    int BitWidth = Context.CxxAST.getTargetInfo().getIntWidth();
+    if (SuffixBegin != SuffixEnd) {
+      std::size_t BitWidthSize = SuffixEnd - SuffixBegin;
+      BitWidth = std::stoi({SuffixBegin, BitWidthSize});
+    }
+
+    if (BitWidth < 1 || BitWidth > 128) {
+      Diags.Report(Loc, clang::diag::err_invalid_bitwidth_suffix) <<
+        BitWidth << (BitWidth < 1);
+      return;
+    }
+
+    Literal->Suffix.IsSigned = true;
+    Literal->Suffix.BitWidth = BitWidth;
+    return;
+  }
+
+  case 'f':
+    if (Literal->Suffix.IsDouble) {
+      Diags.Report(Loc, clang::diag::err_incompatible_suffix) <<
+        "double" << "float";
+      return;
+    }
+
+    Literal->Suffix.IsFloat = true;
+    return;
+
+  case 'd':
+    if (Literal->Suffix.IsFloat) {
+      Diags.Report(Loc, clang::diag::err_incompatible_suffix) <<
+        "float" << "double";
+      return;
+    }
+
+    Literal->Suffix.IsDouble = true;
+    return;
+
+  default:
+    Diags.Report(Loc, clang::diag::err_unknown_suffix) <<
+      std::string(1, *SuffixBegin);
+    return;
+  }
+}
+
 Syntax *Parser::onLiteral(const Token& Tok) {
-  return new (Context) LiteralSyntax(Tok);
+  LiteralSyntax *Literal = new (Context) LiteralSyntax(Tok);
+
+  if (Tok.hasSuffix())
+    for (auto Suffix : Tok.getSuffixes())
+      parseSuffix(Context, Diags, Literal, Suffix);
+
+  return Literal;
 }
 
 Syntax *Parser::onArray(ArraySemantic S,

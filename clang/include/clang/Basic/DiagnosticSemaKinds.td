@@ -10991,6 +10991,9 @@ def err_not_a_type : Error<
 def err_expression_result_type_not_namespace : Error<
   "%0 doesn't result in a namespace">;
 
+def err_integer_bitwidth_mismatch : Error<
+  "integral type %0 given bitwidth '%1' which mismatches the system size '%2'">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

@@ -14,8 +14,10 @@
 #ifndef CLANG_GOLD_TOKENS_H
 #define CLANG_GOLD_TOKENS_H
 
-#include "clang/Gold/GoldSymbol.h"
 #include "clang/Basic/SourceLocation.h"
+#include "llvm/ADT/SmallVector.h"
+
+#include "clang/Gold/GoldSymbol.h"
 
 #include <iosfwd>
 
@@ -144,6 +146,10 @@ struct Token
     return Flags & TF_StartsLine;
   }
 
+  bool isNumericConstant() const {
+    return Kind >= tok::BinaryInteger && Kind <= tok::DecimalExponent;
+  }
+
   clang::SourceLocation getLocation() const {
     return Loc;
   }
@@ -164,6 +170,15 @@ struct Token
   /// this is simply its spelling. Otherwise, it is the grammatical name
   /// of the token.
   char const* getRedableName();
+
+  /// True if this is a numeric literal with a suffix.
+  bool hasSuffix() const;
+
+  /// Get the list of suffixes if it exists.
+  llvm::SmallVector<llvm::StringRef, 4> getSuffixes() const;
+
+  /// Set the suffixes
+  void setSuffixes(llvm::SmallVectorImpl<llvm::StringRef> &Suffixes);
 
   void dump() const;
   void dump(std::ostream& os, bool Nl = true) const;
@@ -186,6 +201,10 @@ struct Token
     // For fused tokens, this is a pointer to its associated data.
     void* Ptr;
   };
+
+private:
+  /// A list of literal suffixes.
+  llvm::SmallVector<llvm::StringRef, 4> Suffixes;
 };
 
 } // namespace gold

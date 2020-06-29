@@ -69,6 +69,7 @@ add_clang_unittest(GoldTests
   GoldGlobalParsing.cpp
   GoldImplicitCtorExplicitCallExec.cpp
   GoldIntegerLiteralElab.cpp
+  GoldLiteralSuffix.cpp
   GoldMemberExecuteTest.cpp
   GoldMemberStorageClassElab.cpp
   GoldNNS.cpp

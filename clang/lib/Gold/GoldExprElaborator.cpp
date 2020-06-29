@@ -137,32 +137,156 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
   return clang::IntegerLiteral::Create(CxxAST, Value, IntType, Loc);
 }
 
-static clang::FloatingLiteral *
-createFloatLiteral(clang::ASTContext &CxxAST, Token T,
-                   clang::QualType FloatType, clang::SourceLocation Loc) {
-  // If we don't have a specified type, just create a default float.
-  if (FloatType.isNull() || FloatType == CxxAST.AutoDeductTy)
-    FloatType = CxxAST.FloatTy;
+static bool alwaysFitsInto64Bits(unsigned Radix, unsigned NumDigits) {
+  switch (Radix) {
+  case 2:
+    return NumDigits <= 64;
+  case 8:
+    return NumDigits <= 64 / 3; // Digits are groups of 3 bits.
+  case 10:
+    return NumDigits <= 19; // floor(log10(2^64))
+  case 16:
+    return NumDigits <= 64 / 4; // Digits are groups of 4 bits.
+  default:
+    llvm_unreachable("impossible Radix");
+  }
+}
 
-  if (FloatType == CxxAST.FloatTy) {
-    float Literal = (float)atof(T.getSymbol().data());
-    auto Value = llvm::APFloat(Literal);
-    return clang::FloatingLiteral::Create(CxxAST, Value, /*Exact=*/true,
-                                          FloatType, Loc);
-  } else if (FloatType == CxxAST.DoubleTy) {
-    double Literal = atof(T.getSymbol().data());
-    auto Value = llvm::APFloat(Literal);
-    return clang::FloatingLiteral::Create(CxxAST, Value, /*Exact=*/true,
-                                          FloatType, Loc);
+static bool checkOverflow(unsigned Radix, llvm::StringRef Literal,
+                          llvm::APInt &Val) {
+  const unsigned NumDigits = Literal.size();
+
+  auto isDigitSeparator = [](char C) -> bool {
+    return C == '\'';
+  };
+
+  if (alwaysFitsInto64Bits(Radix, NumDigits)) {
+    uint64_t N = 0;
+    for (const char *Ptr = Literal.begin(); Ptr != Literal.end(); ++Ptr)
+      if (!isDigitSeparator(*Ptr))
+        N = N * Radix + llvm::hexDigitValue(*Ptr);
+
+    // This will truncate the value to Val's input width. Simply check
+    // for overflow by comparing.
+    Val = N;
+    return Val.getZExtValue() != N;
   }
 
-  llvm_unreachable("unsupported float type");
+  Val = 0;
+  const char *Ptr = Literal.begin();
+
+  llvm::APInt RadixVal(Val.getBitWidth(), Radix);
+  llvm::APInt CharVal(Val.getBitWidth(), 0);
+  llvm::APInt OldVal = Val;
+
+  bool OverflowOccurred = false;
+  while (Ptr < Literal.end()) {
+    if (isDigitSeparator(*Ptr)) {
+      ++Ptr;
+      continue;
+    }
+
+    unsigned C = llvm::hexDigitValue(*Ptr++);
+
+    // If this letter is out of bound for this radix, reject it.
+    assert(C < Radix && "checkOverflow called with wrong radix");
+
+    CharVal = C;
+
+    // Add the digit to the value in the appropriate radix.  If adding in digits
+    // made the value smaller, then this overflowed.
+    OldVal = Val;
+
+    // Multiply by radix, did overflow occur on the multiply?
+    Val *= RadixVal;
+    OverflowOccurred |= Val.udiv(RadixVal) != OldVal;
+
+    // Add value, did overflow occur on the value?
+    //   (a + b) ult b  <=> overflow
+    Val += CharVal;
+    OverflowOccurred |= Val.ult(CharVal);
+  }
+  return OverflowOccurred;
+}
+
+static clang::IntegerLiteral *
+createIntegerLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
+                     const LiteralSyntax *S, std::size_t Base = 10) {
+  unsigned Width = S->Suffix.BitWidth;
+  bool Signed = S->Suffix.IsSigned;
+
+  // In case we didn't set either flag, this is signed by default.
+  if (!Signed && !S->Suffix.IsUnsigned)
+    Signed = true;
+
+  unsigned TargetIntWidth = CxxAST.getTargetInfo().getIntWidth();
+  if (!Width)
+    Width = TargetIntWidth;
+
+  clang::QualType IntTy = CxxAST.getIntTypeForBitwidth(Width, Signed);
+  if (IntTy.isNull()) {
+    if (Width <= TargetIntWidth)
+      IntTy = Signed ? CxxAST.IntTy : CxxAST.UnsignedIntTy;
+    else if (Width <= CxxAST.getTargetInfo().getLongWidth())
+      IntTy = Signed ? CxxAST.LongTy : CxxAST.UnsignedLongTy;
+    else
+      IntTy = Signed ? CxxAST.LongLongTy : CxxAST.UnsignedLongLongTy;
+  }
+
+  if (Width != CxxAST.getIntWidth(IntTy)) {
+    clang::SourceLocation Loc = S->getLoc();
+    SemaRef.Diags.Report(Loc, clang::diag::err_integer_bitwidth_mismatch)
+      << IntTy << Width << CxxAST.getIntWidth(IntTy);
+    return nullptr;
+  }
+
+  // skip over any [0.] prefix
+  llvm::StringRef Spelling = Base == 10 ? S->getSpelling() :
+    std::string(S->getSpelling().begin() + 2, S->getSpelling().end());
+
+  llvm::APInt Value(Width, Spelling, Base);
+  Value = Value.zextOrTrunc(Width);
+
+  if (checkOverflow(Base, Spelling, Value)) {
+    SemaRef.Diags.Report(S->getLoc(), clang::diag::err_integer_literal_too_large)
+      << /* Unsigned */ 1;
+    return nullptr;
+  }
+
+  return clang::IntegerLiteral::Create(CxxAST, Value, IntTy, S->getLoc());
+}
+
+static clang::FloatingLiteral *
+createFloatLiteral(clang::ASTContext &CxxAST, const LiteralSyntax *S) {
+  // If we don't have a specified type, just create a default float.
+  clang::QualType FloatType = CxxAST.FloatTy;
+  if (S->Suffix.IsDouble)
+    FloatType = CxxAST.DoubleTy;
+
+  const llvm::fltSemantics &Format = CxxAST.getFloatTypeSemantics(FloatType);
+  using llvm::APFloat;
+  APFloat Val = llvm::APFloat(Format);
+
+  // if (FloatType == CxxAST.FloatTy) {
+  auto StatusOrErr =
+    Val.convertFromString(S->getSpelling(), APFloat::rmNearestTiesToEven);
+  assert(StatusOrErr && "Invalid floating point representation");
+  return clang::FloatingLiteral::Create(CxxAST, Val, /*Exact=*/true,
+                                        FloatType, S->getLoc());
+  // } else if (FloatType == CxxAST.DoubleTy) {
+    // double Literal = atof(T.getSymbol().data());
+    // auto Value = llvm::APFloat(Literal);
+    // return clang::FloatingLiteral::Create(CxxAST, Value, /*Exact=*/true,
+    //                                       FloatType, S->getLoc());
+  // }
+
+  // llvm_unreachable("unsupported float type");
 }
 
 static clang::FloatingLiteral *
 createExponentLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
-                      Token T, clang::SourceLocation Loc) {
-  std::string Spelling = T.getSpelling().str();
+                      const LiteralSyntax *S, clang::SourceLocation Loc) {
+  std::string Spelling = S->getSpelling().str();
   assert((Spelling.find_first_of("E") != std::string::npos ||
          Spelling.find_first_of("e") != std::string::npos) &&
          "non-exponent");
@@ -194,8 +318,12 @@ createExponentLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
       << llvm::StringRef(Buffer.data(), Buffer.size());
   }
 
+  clang::QualType FloatType = CxxAST.FloatTy;
+  if (S->Suffix.IsDouble)
+    FloatType = CxxAST.DoubleTy;
+
   bool isExact = (Result == llvm::APFloat::opOK);
-  return clang::FloatingLiteral::Create(CxxAST, Val, isExact, CxxAST.DoubleTy, Loc);
+  return clang::FloatingLiteral::Create(CxxAST, Val, isExact, FloatType, Loc);
 }
 
 /// This was copied from clang/lib/lex/LiteralSupport.cpp:91, and modified.
@@ -892,14 +1020,16 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
                                          clang::QualType ExplicitType) {
   Token T = S->Tok;
 
+  // Check if we have a floating literal that looks like an int.
+  if (const LiteralSyntax *L = dyn_cast<LiteralSyntax>(S))
+    if (L->Suffix.IsFloat || L->Suffix.IsDouble)
+      return createFloatLiteral(CxxAST, L);
+
   switch (T.getKind()) {
   case tok::DecimalInteger:
-    return createIntegerLiteral(CxxAST, T, ExplicitType,
-                                S->getLoc());
+    return createIntegerLiteral(CxxAST, SemaRef, cast<LiteralSyntax>(S));
   case tok::DecimalFloat:
-    return createFloatLiteral(CxxAST, T, ExplicitType,
-                              S->getLoc());
-    break;
+    return createFloatLiteral(CxxAST, cast<LiteralSyntax>(S));
   case tok::BinaryInteger: {
     std::string TData = std::string(T.getSymbol().data());
     TData =  TData.substr(TData.find_first_not_of("0b"), TData.size());
@@ -909,11 +1039,10 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
   }
 
   case tok::HexadecimalInteger:
-    return createIntegerLiteral(CxxAST, T, ExplicitType,
-                                S->getLoc(), /*Base=*/16);
+    return createIntegerLiteral(CxxAST, SemaRef,
+                                cast<LiteralSyntax>(S), /*Base=*/16);
   case tok::HexadecimalFloat:
-    llvm::errs() << "elaborateAtom::HexadecimalFloat not implemented.\n";
-    break;
+    llvm_unreachable("Hexadecimal float not implemented.");
   case tok::Identifier:
     return createIdentAccess(Context, SemaRef, S, ExplicitType, S->getLoc());
   case tok::Character:
@@ -923,10 +1052,10 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
   case tok::UnicodeCharacter:
     return createUnicodeLiteral(CxxAST, SemaRef, T, S->getLoc());
   case tok::String:
-    llvm::errs() << "elaborateAtom::String not implemented.\n";
-    break;
+    llvm_unreachable("String not implemented.");
   case tok::DecimalExponent:
-    return createExponentLiteral(CxxAST, SemaRef, T, S->getLoc());
+    return createExponentLiteral(CxxAST, SemaRef,
+                                 cast<LiteralSyntax>(S), S->getLoc());
 
   /// Keyword Literals
   case tok::TrueKeyword:

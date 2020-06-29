@@ -68,6 +68,7 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
     {"float32", Context.CxxAST.getRealTypeForBitwidth(32)},
     {"float64", Context.CxxAST.getRealTypeForBitwidth(64)},
     {"float128", Context.CxxAST.getRealTypeForBitwidth(128)},
+    {"double", Context.CxxAST.DoubleTy},
 
     // type of a type.
     {"type", Context.CxxAST.CppxKindTy}

@@ -97,6 +97,21 @@ llvm::StringRef Token::getSpelling() const {
   return Sym.data();
 }
 
+bool Token::hasSuffix() const {
+  return isNumericConstant() && !Suffixes.empty();
+}
+
+llvm::SmallVector<llvm::StringRef, 4> Token::getSuffixes() const {
+  assert(hasSuffix() && "Token does not have a suffix");
+  return Suffixes;
+}
+
+void Token::setSuffixes(llvm::SmallVectorImpl<llvm::StringRef> &Sufs) {
+  assert(isNumericConstant() && "Token cannot accept a suffix");
+  for (auto &Suffix : Sufs)
+    Suffixes.push_back(Suffix);
+}
+
 void Token::dump() const {
   dump(std::cerr);
 }

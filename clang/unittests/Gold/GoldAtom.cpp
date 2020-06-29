@@ -1,4 +1,4 @@
-//=== GoldFor.cpp - Test Gold for loops ------------------------------------==//
+//=== GoldAtom.cpp - Test Gold atom syntaxes -------------------------------==//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file implements tests for parsing of for loops.
+//  This file implements tests for parsing of atom syntaxes.
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,6 +15,7 @@
 
 #include "GoldParseUtil.h"
 #include "GoldASTMatchersTest.h"
+#include "GoldUtil.h"
 
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
@@ -29,12 +30,6 @@ main() : int!
 
   SimpleGoldParseTest(Code);
 }
-
-template <typename T, typename U>
-struct pair {
-  T first;
-  U second;
-};
 
 TEST(Atom, CharEscapes) {
   StringRef Code = R"(
@@ -171,3 +166,4 @@ main() : int!
 
   SimpleGoldParseTest(Code.str());
 }
+

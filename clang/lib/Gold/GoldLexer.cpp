@@ -46,6 +46,10 @@ bool isDecimalDigit(char C) {
   return std::isdigit(C);
 }
 
+bool isDigitSeparator(char C) {
+  return C == '\'';
+}
+
 bool isHexadecimalDigit(char C) {
   return std::isxdigit(C);
 }
@@ -238,6 +242,13 @@ Token CharacterScanner::makeToken(TokenKind K, char const* F, char const* L) {
   return makeToken(K, F, L - F);
 }
 
+Token CharacterScanner::makeToken(TokenKind K, char const* F, char const* L,
+                                  llvm::SmallVectorImpl<llvm::StringRef> &Suf) {
+  Token Tok = makeToken(K, F, L - F);
+  Tok.setSuffixes(Suf);
+  return Tok;
+}
+
 Token CharacterScanner::makeToken(TokenKind K, char const* S, std::size_t N) {
   clang::SourceLocation Loc = getSourceLocation(S);
   Symbol Sym = getSymbol(S, N);
@@ -380,6 +391,13 @@ Token CharacterScanner::matchDecimalNumber() {
   if (isDecimalExponent(getLookahead()))
     return matchDecimalExponent();
 
+  const char *const LiteralEnd = First;
+  llvm::SmallVector<llvm::StringRef, 4> Suffixes;
+  matchLiteralSuffixSeq(Suffixes);
+
+  if (!Suffixes.empty())
+    return makeToken(tok::DecimalInteger, Start, LiteralEnd, Suffixes);
+
   return makeToken(tok::DecimalInteger, Start, First);
 }
 
@@ -388,6 +406,14 @@ Token CharacterScanner::matchDecimalFraction() {
   matchDecimalDigitSeq();
   if (isDecimalExponent(getLookahead()))
     return matchDecimalExponent();
+
+  const char *const LiteralEnd = First;
+  llvm::SmallVector<llvm::StringRef, 4> Suffixes;
+  matchLiteralSuffixSeq(Suffixes);
+
+  if (!Suffixes.empty())
+    return makeToken(tok::DecimalInteger, Start, LiteralEnd, Suffixes);
+
   return makeToken(tok::DecimalFloat, Start, First);
 }
 
@@ -396,6 +422,14 @@ Token CharacterScanner::matchDecimalExponent() {
   matchIf(isSign);
   // FIXME: There could be an error here.
   matchDecimalDigitSeq();
+
+  const char *const LiteralEnd = First;
+  llvm::SmallVector<llvm::StringRef, 4> Suffixes;
+  matchLiteralSuffixSeq(Suffixes);
+
+  if (!Suffixes.empty())
+    return makeToken(tok::DecimalExponent, Start, LiteralEnd, Suffixes);
+
   return makeToken(tok::DecimalExponent, Start, First);
 }
 
@@ -413,6 +447,13 @@ Token CharacterScanner::matchHexadecimalNumber() {
 
   matchHexadecimalDigitSeq();
 
+  const char *const LiteralEnd = First;
+  llvm::SmallVector<llvm::StringRef, 4> Suffixes;
+  matchLiteralSuffixSeq(Suffixes);
+
+  if (!Suffixes.empty())
+    return makeToken(tok::HexadecimalInteger, Start, LiteralEnd, Suffixes);
+
   return makeToken(tok::HexadecimalInteger, Start, First);
 }
 
@@ -429,6 +470,13 @@ Token CharacterScanner::matchBinaryNumber() {
   }
 
   matchBinaryDigitSeq();
+
+  const char *const LiteralEnd = First;
+  llvm::SmallVector<llvm::StringRef, 4> Suffixes;
+  matchLiteralSuffixSeq(Suffixes);
+
+  if (!Suffixes.empty())
+    return makeToken(tok::BinaryInteger, Start, LiteralEnd, Suffixes);
 
   return makeToken(tok::BinaryInteger, Start, First);
 }
@@ -562,15 +610,10 @@ Token CharacterScanner::matchUnicodeCharacter() {
 }
 
 void CharacterScanner::matchDecimalDigitSeq() {
-  // FIXME: Allow digit separators?
+  assert(isDecimalDigit(getLookahead()) || isDigitSeparator(getLookahead())
+         && "invalid number");
 
-  if (!matchIf(isDecimalDigit)) {
-    // FIXME: Wrong error.
-    getDiagnostics().Report(getInputLocation(), clang::diag::err_bad_string_encoding);
-    // error(getInputLocation(), "invalid number");s
-    return;
-  }
-
+  // TODO: implement separators
   while (matchIf(isDecimalDigit))
     ;
 }
@@ -592,6 +635,41 @@ void CharacterScanner::matchBinaryDigitSeq() {
   requireIf(isBinaryDigit);
   while (matchIf(isBinaryDigit))
     ;
+}
+
+void CharacterScanner::matchLiteralSuffixSeq(
+  llvm::SmallVectorImpl<llvm::StringRef> &Suffixes) {
+  while (std::isalnum(getLookahead())) {
+    const char *SuffixFragBegin = First;
+    const char *SuffixFragEnd;
+
+    switch (getLookahead()) {
+    case 'u':
+    case 'U':
+    case 's':
+    case 'S':
+      consume();
+      matchDecimalDigitSeq();
+      SuffixFragEnd = First;
+      break;
+
+    case 'f':
+    case 'F':
+    case 'd':
+    case 'D':
+      consume();
+      SuffixFragEnd = First;
+      break;
+
+    default:
+      getDiagnostics()
+        .Report(getInputLocation(), clang::diag::err_invalid_suffix_constant)
+        << std::string(1, getLookahead()) << 0;
+      return;
+    }
+
+    Suffixes.emplace_back(SuffixFragBegin, SuffixFragEnd - SuffixFragBegin);
+  }
 }
 
 clang::SourceLocation
