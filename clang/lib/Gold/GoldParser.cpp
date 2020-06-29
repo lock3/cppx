@@ -1191,12 +1191,13 @@ Syntax *Parser::parseParen() {
 
   // TODO: If this is an Syntax::error, should we skip to the next paren or
   // to the the nearest comma? separator? What?
-  Syntax *seq = parseArray(ArgArray);
+  Syntax *Seq = (!nextTokenIs(tok::RightParen)) ? parseArray(ArgArray) :
+    onList(ArgArray, llvm::SmallVector<Syntax *, 1>());
 
   if (!parens.expectClose())
     return onError();
 
-  return seq;
+  return Seq;
 }
 
 // braced-array:
