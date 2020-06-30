@@ -975,13 +975,6 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
     return SemaRef.buildTypeExpr(SemaRef.Float128Ty, S->getLoc());
   case tok::TypeKeyword:
     return SemaRef.buildTypeExpr(CxxAST.CppxKindTy, S->getLoc());
-
-  // Special keywords that may not be handled here?
-  // case tok::ConstExpr:
-  // case tok::AlignOf:
-  // case tok::SizeOf:
-  // case tok::NoExcept:
-  // case tok::DeclType:
   default: break;
   }
 
@@ -1067,7 +1060,7 @@ static bool callIsCastOperator(const CallSyntax *S) {
 
 clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   
-  if (clang::Expr *elaboratedCall = elaborateBuiltinCall(S))
+  if (clang::Expr *elaboratedCall = elaborateBuiltinOperator(S))
     return elaboratedCall;
 
   if (callIsCastOperator(S)) 
@@ -1150,7 +1143,7 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
 }
 
 /// This returns false if the keyword is a builtin function.
-static bool isBuiltinCall(const CallSyntax *S) {
+static bool isBuitinOperator(const CallSyntax *S) {
   if (const auto *Atom = dyn_cast<AtomSyntax>(S->getCallee())) {
     switch (Atom->Tok.getKind()) {
       case tok::ConstExprKeyword:
@@ -1166,21 +1159,25 @@ static bool isBuiltinCall(const CallSyntax *S) {
   return true;
 }
 
-clang::Expr *ExprElaborator::elaborateBuiltinCall(const CallSyntax *S) {
-  if (isBuiltinCall(S)) {
+clang::Expr *ExprElaborator::elaborateBuiltinOperator(const CallSyntax *S) {
+  if (isBuitinOperator(S)) {
     return nullptr;
   }
   const AtomSyntax *Atom = cast<AtomSyntax>(S->getCallee());
   switch (Atom->Tok.getKind()) {
+    
   case tok::ConstExprKeyword:
     llvm_unreachable("constexpr operator not implemented yet.");
+
   case tok::NoExceptKeyword:
     llvm_unreachable("noexcept operator not implemented yet.");
+
   case tok::DeclTypeKeyword:
-    llvm_unreachable("decltype not implemented yet.");
+    return elaborateDeclTypeOp(Atom, S);
 
   case tok::AlignOfKeyword:
     return elaborateTypeTraitsOp(Atom, S, clang::UETT_AlignOf);
+
   case tok::SizeOfKeyword:
     return elaborateTypeTraitsOp(Atom, S, clang::UETT_SizeOf);
   default:
@@ -1238,6 +1235,58 @@ ExprElaborator::elaborateTypeTraitsOp(const AtomSyntax *Name, const CallSyntax *
                                         ExprOrTySourceInfo,
                           clang::SourceRange(S->getCallee()->getLoc(), ArgLoc));
   return Result.get();
+}
+
+clang::Expr *ExprElaborator::elaborateDeclTypeOp(const AtomSyntax *Name,
+                                                 const CallSyntax *S) {
+  assert(Name->Tok.getKind() == tok::DeclTypeKeyword
+         && "Invalid elaboration of decltype operator.");
+  if (S->getNumArguments() != 1) {
+    SemaRef.Diags.Report(Name->getLoc(),
+                      clang::diag::err_incorrect_number_of_arguments)
+                      << Name->getSpelling();
+    return nullptr;
+  }
+  // Entering decltype context for evaluation of subexpression.
+  clang::EnterExpressionEvaluationContext Unevaluated(SemaRef.getCxxSema(),
+                 clang::Sema::ExpressionEvaluationContext::Unevaluated, nullptr,
+                 clang::Sema::ExpressionEvaluationContextRecord::EK_Decltype);
+  clang::Expr *ArgEval = elaborateExpr(S->getArgument(0));
+  if (!ArgEval)
+    // TODO: Might an error message here. Although the error message 
+    /// SHOULD be coming from elaborateExpr.
+    return nullptr;
+  
+  // In order to do this correctly I need to check for a few things,
+  // I need to make sure that if the expression's result is actually a namespace
+  // or template that I handle things correctly because I can't pass them through
+  // the SemaRef.getCxxSema().ActOnDecltypeExpression because they wouldn't make
+  // any sense, it may be benifical to do the same for the kind type.
+  if (ArgEval->getType()->isTypeOfTypes()) {
+    // TODO: We may need to check for auto here. although decltype(auto) doesn't
+    // have syntax yet.
+    return SemaRef.buildTypeExpr(Context.CxxAST.CppxKindTy, S->getLoc());
+  }
+
+  if (ArgEval->getType()->isNamespaceType()) {
+    llvm::outs() << "We have a type expr\n";
+    llvm_unreachable("namespace expression decltype not implemented yet.");
+  }
+
+  if (ArgEval->getType()->isTemplateType()) {
+    llvm::outs() << "We have a template expression\n";
+    llvm_unreachable("Template expression decltype not implemented yet.");
+  }
+  
+  // This does some semantic checking on the given expression.
+  auto ExprResult = SemaRef.getCxxSema().ActOnDecltypeExpression(ArgEval);
+  if (ExprResult.isInvalid())
+    return nullptr;
+    
+  clang::QualType Ty = SemaRef.getCxxSema().BuildDecltypeType(ExprResult.get(), 
+                                                   S->getArgument(0)->getLoc());
+  
+  return SemaRef.buildTypeExpr(Ty, S->getArgument(0)->getLoc());
 }
 
 clang::Expr *ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {

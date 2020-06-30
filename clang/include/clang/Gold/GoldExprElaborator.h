@@ -78,9 +78,14 @@ public:
   /// as an operator, and decltype.
   /// This function also tests if the call is one of these operators, and returns
   /// a nullptr in the event that it's not.
-  clang::Expr *elaborateBuiltinCall(const CallSyntax *S);
+  clang::Expr *elaborateBuiltinOperator(const CallSyntax *S);
+
+  /// This function is responsible for the implementation of both sizeof and
+  /// alignof operator implementations.
   clang::Expr *elaborateTypeTraitsOp(const AtomSyntax *Name, const CallSyntax *S,
                                      clang::UnaryExprOrTypeTrait Trait);
+
+  clang::Expr *elaborateDeclTypeOp(const AtomSyntax *Name, const CallSyntax *S);
 
   clang::Expr *elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op,
                                      const Syntax *RHS);
