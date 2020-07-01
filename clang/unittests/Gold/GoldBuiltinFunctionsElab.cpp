@@ -23,7 +23,7 @@ using namespace clang;
 using namespace gold;
 
 TEST(GoldBuiltinFunctionElab, SizeOf_OnTypeName) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 S1 : const int = sizeof(int)
 )";
   DeclarationMatcher VarDeclWithSizeOf = varDecl(
@@ -40,7 +40,7 @@ S1 : const int = sizeof(int)
 }
 
 TEST(GoldBuiltinFunctionElab, SizeOf_OnClassName) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 Cls : type = class:
   i:int
 S1 : const int = sizeof(Cls)
@@ -59,7 +59,7 @@ S1 : const int = sizeof(Cls)
 }
 
 TEST(GoldBuiltinFunctionElab, SizeOf_OnExpr) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 Cls : type = class:
   i:int
 S1 : const int = sizeof(1 + 1)
@@ -78,7 +78,7 @@ S1 : const int = sizeof(1 + 1)
 }
 
 TEST(GoldBuiltinFunctionElab, SizeOf_OnIncompleteTemplate) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 Cls[T:type] : type = class:
   i:int
 S1 : const int = sizeof(Cls)
@@ -87,7 +87,7 @@ S1 : const int = sizeof(Cls)
 }
 
 TEST(GoldBuiltinFunctionElab, SizeOf_OnNamespace) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 Ns :namespace = namespace:
   foo():void
 
@@ -103,7 +103,7 @@ TEST(GoldBuiltinFunctionElab, Alignof_TypeOfTypes) {
 
 
 TEST(GoldBuiltinFunctionElab, decltype_TypeOfTypes) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 S1 : decltype(int) = int
 )";
   DeclarationMatcher DeclType = typeAliasDecl(
@@ -112,7 +112,7 @@ S1 : decltype(int) = int
 }
 
 TEST(GoldBuiltinFunctionElab, decltype_Expression) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 S1 : decltype(1) = 5
 )";
   DeclarationMatcher VarDeclWithDecltype = varDecl(
@@ -136,7 +136,7 @@ S1 : decltype(1) = 5
 // }
 
 TEST(GoldBuiltinFunctionElab, decltype_ClassName) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 Cls : type = class:
   i:int
 S1 : decltype(Cls) = Cls
@@ -161,7 +161,7 @@ S1 : decltype(Cls) = Cls
 
 
 TEST(GoldBuiltinFunctionElab, decltype_OverloadSet) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 x:int
 
 foo(i:int) : int
@@ -174,4 +174,78 @@ S1 : decltype(foo(x)) = 1
     hasType(isInteger())
   );
   ASSERT_TRUE(matches(Code.str(), VarDeclWithDecltype));
+}
+
+/*
+|-VarDecl 0x7fffe79c3930 <line:2:1, col:38> col:19 V1 'const bool' static cinit
+| `-CXXNoexceptExpr 0x7fffe79c3a60 <col:24, col:38> 'bool'
+|   `-CallExpr 0x7fffe79c3a40 <col:33, col:37> 'int'
+|     `-ImplicitCastExpr 0x7fffe79c3a28 <col:33> 'int (*)()' <FunctionToPointerDecay>
+|       `-DeclRefExpr 0x7fffe79c39e0 <col:33> 'int ()' lvalue Function 0x7fffe79c3830 'foo' 'int ()' non_odr_use_unevaluated
+`-VarDecl 0x7fffe79c3ae8 <line:3:1, col:34> col:19 V2 'const bool' static cinit
+  `-CXXNoexceptExpr 0x7fffe79c3b70 <col:24, col:34> 'bool'
+    `-IntegerLiteral 0x7fffe79c3b50 <col:33> 'int' 1
+*/
+TEST(GoldBuiltinFunctionElab, NoExceptOperator_FunctionCall) {
+  StringRef Code = R"(
+foo():int
+S1:const bool = noexcept(foo())
+)";
+  DeclarationMatcher VarDeclNoExcept = varDecl(
+    hasName("S1"),
+    hasInitializer(cxxNoexceptExpr(has(callExpr())))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarDeclNoExcept));
+}
+
+TEST(GoldBuiltinFunctionElab, NoExceptOperator_Namespace) {
+  StringRef Code = R"(
+x : namespace = namespace:
+  #
+
+S1:const bool = noexcept(x)
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldBuiltinFunctionElab, NoExceptOperator_Type) {
+  StringRef Code = R"(
+x : type = class:
+  i : int
+
+S1:const bool = noexcept(x)
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldBuiltinFunctionElab, NoExceptOperator_Template) {
+  StringRef Code = R"(
+x[T:type] : type = class:
+  i : int
+
+S1:const bool = noexcept(x)
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldBuiltinFunctionElab, NoExceptOperator_OverloadSet) {
+  StringRef Code = R"(
+foo(x:int) :int
+foo(x:float32) :float
+
+S1:const bool = noexcept(foo)
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldBuiltinFunctionElab, NoExceptOperator_Literal) {
+  StringRef Code = R"(
+foo():int
+S1:const bool = noexcept(1)
+)";
+  DeclarationMatcher VarDeclNoExcept = varDecl(
+    hasName("S1"),
+    hasInitializer(cxxNoexceptExpr(has(integerLiteral())))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarDeclNoExcept));
 }

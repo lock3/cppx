@@ -1170,7 +1170,7 @@ clang::Expr *ExprElaborator::elaborateBuiltinOperator(const CallSyntax *S) {
     llvm_unreachable("constexpr operator not implemented yet.");
 
   case tok::NoExceptKeyword:
-    llvm_unreachable("noexcept operator not implemented yet.");
+    return elaborateNoExceptOp(Atom, S);
 
   case tok::DeclTypeKeyword:
     return elaborateDeclTypeOp(Atom, S);
@@ -1207,15 +1207,15 @@ ExprElaborator::elaborateTypeTraitsOp(const AtomSyntax *Name, const CallSyntax *
 
   if (ResultExpr->getType()->isNamespaceType()) {
     SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
-                         clang::diag::err_cannot_take_sizeof_a_namespace)
+                         clang::diag::err_cannot_apply_operator_to_a_namespace)
                          << Name->getSpelling();
     return nullptr;
   }
 
   if (ResultExpr->getType()->isTemplateType()) {
     SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
-                        clang::diag::err_cannot_take_sizeof_an_incomplete_type)
-                        << Name->getSpelling();
+                         clang::diag::err_cannot_apply_operator_to_template)
+                         << Name->getSpelling();
     return nullptr;
   }
 
@@ -1269,12 +1269,10 @@ clang::Expr *ExprElaborator::elaborateDeclTypeOp(const AtomSyntax *Name,
   }
 
   if (ArgEval->getType()->isNamespaceType()) {
-    llvm::outs() << "We have a type expr\n";
-    llvm_unreachable("namespace expression decltype not implemented yet.");
+    llvm_unreachable("Decltype of a namespace not implemented yet\n");
   }
 
   if (ArgEval->getType()->isTemplateType()) {
-    llvm::outs() << "We have a template expression\n";
     llvm_unreachable("Template expression decltype not implemented yet.");
   }
   
@@ -1287,6 +1285,51 @@ clang::Expr *ExprElaborator::elaborateDeclTypeOp(const AtomSyntax *Name,
                                                    S->getArgument(0)->getLoc());
   
   return SemaRef.buildTypeExpr(Ty, S->getArgument(0)->getLoc());
+}
+
+clang::Expr *
+ExprElaborator::elaborateNoExceptOp(const AtomSyntax *Name,
+                                    const CallSyntax *S) {
+  assert(Name->Tok.getKind() == tok::NoExceptKeyword
+         && "Invalid elaboration of noexcept operator.");
+  clang::EnterExpressionEvaluationContext Unevaluated(SemaRef.getCxxSema(),
+    clang::Sema::ExpressionEvaluationContext::Unevaluated);
+  
+  clang::Expr *ArgEval = elaborateExpr(S->getArgument(0));
+  if (!ArgEval)
+    return nullptr;
+  
+
+  // TODO: We need to create error messages here.
+  if (ArgEval->getType()->isTypeOfTypes()) {
+    SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
+                         clang::diag::err_cannot_appy_operator_to_type)
+                         << Name->getSpelling();
+    return nullptr;
+  }
+
+  if (ArgEval->getType()->isNamespaceType()) {
+    SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
+                         clang::diag::err_cannot_apply_operator_to_a_namespace)
+                         << Name->getSpelling();
+    return nullptr;
+  }
+
+  if (ArgEval->getType()->isTemplateType()) {
+    SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
+                         clang::diag::err_cannot_apply_operator_to_template)
+                         << Name->getSpelling();
+    return nullptr;
+  }
+
+  auto Result = SemaRef.getCxxSema().ActOnNoexceptExpr(Name->getLoc(),
+                                                       clang::SourceLocation(),
+                                                       ArgEval,
+                                                       clang::SourceLocation());
+  if (Result.isInvalid())
+    return nullptr;
+
+  return Result.get();
 }
 
 clang::Expr *ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {

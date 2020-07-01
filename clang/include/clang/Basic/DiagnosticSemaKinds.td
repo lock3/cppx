@@ -10991,11 +10991,14 @@ def err_expression_result_type_not_namespace : Error<
 def err_incorrect_number_of_arguments : Error<
   "incorrect number of arguments given to %0">;
 
-def err_cannot_take_sizeof_a_namespace : Error<
-  "Cannot take the %0 a namespace">;
+def err_cannot_appy_operator_to_type : Error<
+  "Cannot evaluate %0 on a type">;
+
+def err_cannot_apply_operator_to_a_namespace : Error<
+  "Cannot evalute %0 on a namespace">;
   
-def err_cannot_take_sizeof_an_incomplete_type : Error<
-  "Cannot take the %0 an incomplete">;
+def err_cannot_apply_operator_to_template : Error<
+  "Cannot evaluate %0 on a template">;
 
 } // end of Gold category
 
