@@ -644,8 +644,6 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
   clang::CXXScopeSpec SS;
   clang::TemplateName TName(CTD);
   clang::Sema::TemplateTy TemplateTyName = clang::Sema::TemplateTy::make(TName);
-  // clang::UnqualifiedId TemplateName;
-  // clang::ParsedType ObjectType;
   clang::IdentifierInfo *II = CTD->getIdentifier();
   clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
   clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
@@ -1112,7 +1110,6 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
     return SemaRef.buildTypeExpr(SemaRef.Float128Ty, S->getLoc());
   case tok::TypeKeyword:
     return SemaRef.buildTypeExpr(CxxAST.CppxKindTy, S->getLoc());
-
   default: break;
   }
 
@@ -1194,10 +1191,16 @@ static bool callIsCastOperator(const CallSyntax *S) {
   return false;
 }
 
+
+
 clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
-  if (callIsCastOperator(S)) {
+  
+  if (clang::Expr *elaboratedCall = elaborateBuiltinOperator(S))
+    return elaboratedCall;
+
+  if (callIsCastOperator(S)) 
     return elaborateCastOp(S);
-  }
+  
   
   // Determining the type of call associated with the given syntax.
   // There are multiple kinds of atoms for multiple types of calls
@@ -1274,6 +1277,189 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   return handleExpressionResultCall(SemaRef, S, CalleeExpr, Args);
 }
 
+/// This returns false if the keyword is a builtin function.
+static bool isBuitinOperator(const CallSyntax *S) {
+  if (const auto *Atom = dyn_cast<AtomSyntax>(S->getCallee())) {
+    switch (Atom->Tok.getKind()) {
+      case tok::AlignOfKeyword:
+      case tok::SizeOfKeyword:
+      case tok::NoExceptKeyword:
+      case tok::DeclTypeKeyword:
+        return false;
+      default:
+        break;
+    }
+  }
+  return true;
+}
+
+clang::Expr *ExprElaborator::elaborateBuiltinOperator(const CallSyntax *S) {
+  if (isBuitinOperator(S)) {
+    return nullptr;
+  }
+  const AtomSyntax *Atom = cast<AtomSyntax>(S->getCallee());
+  switch (Atom->Tok.getKind()) {
+  case tok::NoExceptKeyword:
+    return elaborateNoExceptOp(Atom, S);
+
+  case tok::DeclTypeKeyword:
+    return elaborateDeclTypeOp(Atom, S);
+
+  case tok::AlignOfKeyword:
+    return elaborateTypeTraitsOp(Atom, S, clang::UETT_AlignOf);
+
+  case tok::SizeOfKeyword:
+    return elaborateTypeTraitsOp(Atom, S, clang::UETT_SizeOf);
+  default:
+    llvm_unreachable("Invalid buildin function elaboration.");
+  }
+  
+}
+
+clang::Expr *
+ExprElaborator::elaborateTypeTraitsOp(const AtomSyntax *Name, const CallSyntax *S,
+                                      clang::UnaryExprOrTypeTrait Trait) {
+  if (S->getNumArguments() != 1) {
+    SemaRef.Diags.Report(Name->getLoc(),
+                      clang::diag::err_incorrect_number_of_arguments)
+                      << Name->getSpelling();
+    return nullptr;
+  }
+  clang::EnterExpressionEvaluationContext Unevaluated(
+    SemaRef.getCxxSema(),
+    clang::Sema::ExpressionEvaluationContext::Unevaluated,
+    clang::Sema::ReuseLambdaContextDecl);
+
+  // Attempting to elaborate the given argument
+  clang::Expr *ResultExpr = elaborateExpr(S->getArgument(0));
+  if (!ResultExpr)
+    return nullptr;
+
+  if (ResultExpr->getType()->isNamespaceType()) {
+    SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
+                         clang::diag::err_cannot_apply_operator_to_a_namespace)
+                         << Name->getSpelling();
+    return nullptr;
+  }
+
+  if (ResultExpr->getType()->isTemplateType()) {
+    SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
+                         clang::diag::err_cannot_apply_operator_to_template)
+                         << Name->getSpelling();
+    return nullptr;
+  }
+
+  bool IsType = false;
+  void *ExprOrTySourceInfo = ResultExpr;
+  if (ResultExpr->getType()->isTypeOfTypes()) {
+    clang::ParsedType ParsedTy = SemaRef.getParsedTypeFromExpr(ResultExpr,
+                                                  S->getArgument(0)->getLoc());
+    if (!ParsedTy.getAsOpaquePtr())
+      return nullptr;
+    ExprOrTySourceInfo = ParsedTy.getAsOpaquePtr();
+    IsType = true;
+  }
+  clang::SourceLocation ArgLoc = S->getArgument(0)->getLoc();
+  auto Result = SemaRef.getCxxSema().ActOnUnaryExprOrTypeTraitExpr(
+                                        S->getCallee()->getLoc(), Trait, IsType,
+                                        ExprOrTySourceInfo,
+                          clang::SourceRange(S->getCallee()->getLoc(), ArgLoc));
+  return Result.get();
+}
+
+clang::Expr *
+ExprElaborator::elaborateDeclTypeOp(const AtomSyntax *Name,
+                                    const CallSyntax *S) {
+  assert(Name->Tok.getKind() == tok::DeclTypeKeyword
+         && "Invalid elaboration of decltype operator.");
+  if (S->getNumArguments() != 1) {
+    SemaRef.Diags.Report(Name->getLoc(),
+                      clang::diag::err_incorrect_number_of_arguments)
+                      << Name->getSpelling();
+    return nullptr;
+  }
+  // Entering decltype context for evaluation of subexpression.
+  clang::EnterExpressionEvaluationContext Unevaluated(SemaRef.getCxxSema(),
+                 clang::Sema::ExpressionEvaluationContext::Unevaluated, nullptr,
+                 clang::Sema::ExpressionEvaluationContextRecord::EK_Decltype);
+  clang::Expr *ArgEval = elaborateExpr(S->getArgument(0));
+  if (!ArgEval)
+    // TODO: Might an error message here. Although the error message 
+    /// SHOULD be coming from elaborateExpr.
+    return nullptr;
+  
+  // In order to do this correctly I need to check for a few things,
+  // I need to make sure that if the expression's result is actually a namespace
+  // or template that I handle things correctly because I can't pass them through
+  // the SemaRef.getCxxSema().ActOnDecltypeExpression because they wouldn't make
+  // any sense, it may be benifical to do the same for the kind type.
+  if (ArgEval->getType()->isTypeOfTypes()) {
+    // TODO: We may need to check for auto here. although decltype(auto) doesn't
+    // have syntax yet.
+    return SemaRef.buildTypeExpr(Context.CxxAST.CppxKindTy, S->getLoc());
+  }
+
+  if (ArgEval->getType()->isNamespaceType()) {
+    llvm_unreachable("Decltype of a namespace not implemented yet\n");
+  }
+
+  if (ArgEval->getType()->isTemplateType()) {
+    llvm_unreachable("Template expression decltype not implemented yet.");
+  }
+  
+  // This does some semantic checking on the given expression.
+  auto ExprResult = SemaRef.getCxxSema().ActOnDecltypeExpression(ArgEval);
+  if (ExprResult.isInvalid())
+    return nullptr;
+    
+  clang::QualType Ty = SemaRef.getCxxSema().BuildDecltypeType(ExprResult.get(), 
+                                                   S->getArgument(0)->getLoc());
+  
+  return SemaRef.buildTypeExpr(Ty, S->getArgument(0)->getLoc());
+}
+
+clang::Expr *
+ExprElaborator::elaborateNoExceptOp(const AtomSyntax *Name,
+                                    const CallSyntax *S) {
+  assert(Name->Tok.getKind() == tok::NoExceptKeyword
+         && "Invalid elaboration of noexcept operator.");
+  clang::EnterExpressionEvaluationContext Unevaluated(SemaRef.getCxxSema(),
+    clang::Sema::ExpressionEvaluationContext::Unevaluated);
+  
+  clang::Expr *ArgEval = elaborateExpr(S->getArgument(0));
+  if (!ArgEval)
+    return nullptr;
+  
+  if (ArgEval->getType()->isTypeOfTypes()) {
+    SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
+                         clang::diag::err_cannot_appy_operator_to_type)
+                         << Name->getSpelling();
+    return nullptr;
+  }
+
+  if (ArgEval->getType()->isNamespaceType()) {
+    SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
+                         clang::diag::err_cannot_apply_operator_to_a_namespace)
+                         << Name->getSpelling();
+    return nullptr;
+  }
+
+  if (ArgEval->getType()->isTemplateType()) {
+    SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
+                         clang::diag::err_cannot_apply_operator_to_template)
+                         << Name->getSpelling();
+    return nullptr;
+  }
+
+  auto Result = SemaRef.getCxxSema().ActOnNoexceptExpr(Name->getLoc(),
+                                                       clang::SourceLocation(),
+                                                       ArgEval,
+                                                       clang::SourceLocation());
+  if (Result.isInvalid())
+    return nullptr;
+
+  return Result.get();
+}
 
 clang::Expr *ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
   if (CastOp->getNumArguments() != 1) {

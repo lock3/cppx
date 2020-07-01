@@ -406,7 +406,9 @@ template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::TypeOfTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::DecltypeTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  clang::DecltypeTypeLoc DecltypeTL = TLB.push<clang::DecltypeTypeLoc>(Ty);
+  DecltypeTL.setNameLoc(Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> [[maybe_unused]]  TypeSourceInfo *BuildTypeLoc<clang::DecltypeTypeLoc>
