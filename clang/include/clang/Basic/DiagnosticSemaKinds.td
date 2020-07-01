@@ -10983,6 +10983,9 @@ def err_requires_a_type : Error<
 def err_conflicting_specifier : Error<
   "conflicting specifier">;
 
+def err_invalid_param_list : Error<
+  "invalid parameter list">;
+
 def err_not_a_type : Error<
   "not a type">;
 def err_expression_result_type_not_namespace : Error<
@@ -10999,6 +11002,9 @@ def err_cannot_apply_operator_to_a_namespace : Error<
   
 def err_cannot_apply_operator_to_template : Error<
   "Cannot evaluate %0 on a template">;
+
+def err_integer_bitwidth_mismatch : Error<
+  "integral type %0 given bitwidth '%1' which mismatches the system size '%2'">;
 
 } // end of Gold category
 

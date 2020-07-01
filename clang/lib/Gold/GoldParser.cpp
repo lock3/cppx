@@ -11,14 +11,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/AST/ASTContext.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticParse.h"
+#include "clang/Basic/TargetInfo.h"
 
 #include "clang/Gold/GoldParser.h"
 #include "clang/Gold/GoldSyntax.h"
 #include "clang/Gold/GoldSyntaxContext.h"
 
 #include <iostream>
+#include <string>
 
 namespace gold {
 
@@ -271,6 +274,9 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
     //
     // FIXME: Actually diagnose missing separators.
     matchTokenIf(isSeparator);
+    // If the previous token was a semicolon, there might be a newline after it.
+    // FIXME: these tokens should be combined by the lexer.
+    matchTokenIf(isSeparator);
 
     // The end-of-file is often after the last separator.
     if (atEndOfFile())
@@ -479,7 +485,8 @@ Syntax *Parser::parseDef() {
 }
 
 static bool isOrOperator(Parser& P) {
-  return P.nextTokenIs(tok::BarBar) || P.nextTokenIs("or");
+  return P.nextTokenIs(tok::BarBar) || P.nextTokenIs("or")
+    || P.nextTokenIs(tok::Bar) || P.nextTokenIs(tok::Caret);
 }
 
 // or:
@@ -487,6 +494,7 @@ static bool isOrOperator(Parser& P) {
 //    or or-operator and
 //
 // or-operator:
+//    |
 //    ||
 //    "or"
 Syntax *Parser::parseOr() {
@@ -498,59 +506,23 @@ Syntax *Parser::parseOr() {
   return E1;
 }
 
-
-static auto isXOrOp(Parser &P) {
-  return P.nextTokenIs(tok::Caret);
-}
-
-Syntax *Parser::parseBitWiseXOr() {
-  Syntax *E1 = parseCmp();
-  while (Token Op = matchTokens(isXOrOp, *this)) {
-    Syntax *E2 = parseCmp();
-    E1 = onBinary(Op, E1, E2);
-  }
-  return E1;
-}
-
-static auto isBWAnd(Parser &P) {
-  return P.nextTokenIs(tok::Ampersand);
-}
-
-Syntax *Parser::parseBitWiseAnd() {
-  Syntax *E1 = parseBitWiseXOr();
-  while (Token Op = matchTokens(isBWAnd, *this)) {
-    Syntax *E2 = parseBitWiseXOr();
-    E1 = onBinary(Op, E1, E2);
-  }
-  return E1;
-}
-static auto isBWOr(Parser &P) {
-  return P.nextTokenIs(tok::Bar);
-}
-
-Syntax *Parser::parseBitWiseOr() {
-  Syntax *E1 = parseBitWiseAnd();
-  while (Token Op = matchTokens(isBWOr, *this)) {
-    Syntax *E2 = parseBitWiseAnd();
-    E1 = onBinary(Op, E1, E2);
-  }
-  return E1;
-}
-
 static auto isAndOperator(Parser &P) {
-  return P.nextTokenIs(tok::AmpersandAmpersand) || P.nextTokenIs("and");
+  return P.nextTokenIs(tok::AmpersandAmpersand) || P.nextTokenIs("and")
+    || P.nextTokenIs(tok::Ampersand);
 }
 // and:
-//    bit-wise-or
-//    and and-operator bit-wise-or
+//    cmp
+//    and and-operator cmp
 //
 // and-operator:
+//    ^
+//    &
 //    &&
 //    "and"
 Syntax *Parser::parseAnd() {
-  Syntax *E1 = parseBitWiseOr();
+  Syntax *E1 = parseCmp();
   while (Token Op = matchTokens(isAndOperator, *this)) {
-    Syntax *E2 = parseBitWiseOr();
+    Syntax *E2 = parseCmp();
     E1 = onBinary(Op, E1, E2);
   }
   return E1;
@@ -603,7 +575,6 @@ Syntax *Parser::parseCmp() {
 
 bool isToOperator(Parser& P) {
   return P.nextTokenIs(tok::Colon)
-      || P.nextTokenIs(tok::MinusGreater)
       || P.nextTokenIs("in");
 }
 
@@ -629,7 +600,7 @@ Syntax *Parser::parseTo() {
 
 bool isAddOperator(Parser& P) {
   return P.nextTokenIs(tok::Plus) || P.nextTokenIs(tok::Minus)
-    || P.nextTokenIs(tok::DotDot);
+    || P.nextTokenIs(tok::DotDot) || P.nextTokenIs(tok::MinusGreater);
 }
 
 /// add:
@@ -1133,24 +1104,10 @@ Syntax *Parser::parsePrimary() {
   case tok::Identifier:
     return parseId();
 
-  case tok::BinaryInteger:
-  case tok::DecimalInteger:
-  case tok::HexadecimalInteger:
-  case tok::DecimalFloat:
-  case tok::HexadecimalFloat:
-  case tok::DecimalExponent:
-  case tok::Character:
-  case tok::HexadecimalCharacter:
-  case tok::UnicodeCharacter:
-  case tok::String:
   case tok::ClassKeyword:
   case tok::EnumKeyword:
   case tok::UnionKeyword:
   case tok::NamespaceKeyword:
-  case tok::TrueKeyword:
-  case tok::FalseKeyword:
-  case tok::NullKeyword:
-  case tok::NullTKeyword:
   case tok::StaticCastKeyword:
   case tok::DynamicCastKeyword:
   case tok::ReinterpretCastKeyword:
@@ -1162,11 +1119,6 @@ Syntax *Parser::parsePrimary() {
   case tok::DeclTypeKeyword:
   case tok::ThisKeyword:
   case tok::TypeIdKeyword:
-    return onAtom(consumeToken());
-
-  case tok::LeftParen:
-    return parseParen();
-
   case tok::VoidKeyword:
   case tok::BoolKeyword:
   case tok::CharKeyword:
@@ -1191,6 +1143,25 @@ Syntax *Parser::parsePrimary() {
   case tok::Float128Keyword:
   case tok::TypeKeyword:
   case tok::ArgsKeyword:
+    return onAtom(consumeToken());
+
+  case tok::LeftParen:
+    return parseParen();
+
+  case tok::TrueKeyword:
+  case tok::FalseKeyword:
+  case tok::NullKeyword:
+  case tok::NullTKeyword:
+  case tok::BinaryInteger:
+  case tok::DecimalInteger:
+  case tok::HexadecimalInteger:
+  case tok::DecimalFloat:
+  case tok::HexadecimalFloat:
+  case tok::DecimalExponent:
+  case tok::Character:
+  case tok::HexadecimalCharacter:
+  case tok::UnicodeCharacter:
+  case tok::String:
     return onLiteral(consumeToken());
 
   case tok::NewKeyword:
@@ -1226,12 +1197,13 @@ Syntax *Parser::parseParen() {
 
   // TODO: If this is an Syntax::error, should we skip to the next paren or
   // to the the nearest comma? separator? What?
-  Syntax *seq = parseArray(ArgArray);
+  Syntax *Seq = (!nextTokenIs(tok::RightParen)) ? parseArray(ArgArray) :
+    onList(ArgArray, llvm::SmallVector<Syntax *, 1>());
 
   if (!parens.expectClose())
     return onError();
 
-  return seq;
+  return Seq;
 }
 
 // braced-array:
@@ -1320,8 +1292,106 @@ Syntax *Parser::onAtom(const Token& Tok) {
   return Ret;
 }
 
+static void parseSuffix(SyntaxContext &Context, clang::DiagnosticsEngine &Diags,
+                        LiteralSyntax *Literal, llvm::StringRef Suffix) {
+  const char *SuffixBegin = Suffix.begin();
+  const char *SuffixEnd = Suffix.end();
+  clang::SourceLocation Loc = Literal->getLoc();
+
+  switch (std::tolower(*SuffixBegin)) {
+  case 'u': {
+    if (Literal->Suffix.IsUnsigned) {
+      Diags.Report(Loc, clang::diag::err_incompatible_suffix) <<
+        "signed" << "unsigned";
+      return;
+    }
+
+    if (Literal->Suffix.IsUnsigned)
+      return;
+
+    ++SuffixBegin;
+
+    int BitWidth = Context.CxxAST.getTargetInfo().getIntWidth();
+    if (SuffixBegin != SuffixEnd) {
+      std::size_t BitWidthSize = SuffixEnd - SuffixBegin;
+      BitWidth = std::stoi({SuffixBegin, BitWidthSize});
+    }
+
+    if (BitWidth < 1 || BitWidth > 128) {
+      Diags.Report(Loc, clang::diag::err_invalid_bitwidth_suffix) <<
+        BitWidth << (BitWidth < 1);
+      return;
+    }
+
+    Literal->Suffix.IsUnsigned = true;
+    Literal->Suffix.BitWidth = BitWidth;
+    return;
+  }
+
+  case 's': {
+    if (Literal->Suffix.IsUnsigned) {
+      Diags.Report(Loc, clang::diag::err_incompatible_suffix) <<
+        "unsigned" << "signed";
+      return;
+    }
+
+    if (Literal->Suffix.IsSigned)
+      return;
+
+    ++SuffixBegin;
+
+    int BitWidth = Context.CxxAST.getTargetInfo().getIntWidth();
+    if (SuffixBegin != SuffixEnd) {
+      std::size_t BitWidthSize = SuffixEnd - SuffixBegin;
+      BitWidth = std::stoi({SuffixBegin, BitWidthSize});
+    }
+
+    if (BitWidth < 1 || BitWidth > 128) {
+      Diags.Report(Loc, clang::diag::err_invalid_bitwidth_suffix) <<
+        BitWidth << (BitWidth < 1);
+      return;
+    }
+
+    Literal->Suffix.IsSigned = true;
+    Literal->Suffix.BitWidth = BitWidth;
+    return;
+  }
+
+  case 'f':
+    if (Literal->Suffix.IsDouble) {
+      Diags.Report(Loc, clang::diag::err_incompatible_suffix) <<
+        "double" << "float";
+      return;
+    }
+
+    Literal->Suffix.IsFloat = true;
+    return;
+
+  case 'd':
+    if (Literal->Suffix.IsFloat) {
+      Diags.Report(Loc, clang::diag::err_incompatible_suffix) <<
+        "float" << "double";
+      return;
+    }
+
+    Literal->Suffix.IsDouble = true;
+    return;
+
+  default:
+    Diags.Report(Loc, clang::diag::err_unknown_suffix) <<
+      std::string(1, *SuffixBegin);
+    return;
+  }
+}
+
 Syntax *Parser::onLiteral(const Token& Tok) {
-  return new (Context) LiteralSyntax(Tok);
+  LiteralSyntax *Literal = new (Context) LiteralSyntax(Tok);
+
+  if (Tok.hasSuffix())
+    for (auto Suffix : Tok.getSuffixes())
+      parseSuffix(Context, Diags, Literal, Suffix);
+
+  return Literal;
 }
 
 Syntax *Parser::onArray(ArraySemantic S,

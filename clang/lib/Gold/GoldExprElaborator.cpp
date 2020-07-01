@@ -19,7 +19,6 @@
 #include "clang/AST/Type.h"
 #include "clang/AST/ExprCppx.h"
 #include "clang/Basic/CharInfo.h"
-
 #include "clang/Basic/DiagnosticParse.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/SourceLocation.h"
@@ -30,12 +29,12 @@
 #include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/Template.h"
+#include "clang/Sema/TypeLocBuilder.h"
 #include "clang/Sema/TypeLocUtil.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Error.h"
-
 
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
@@ -67,6 +66,13 @@ clang::Expr *ExprElaborator::elaborateExpr(const Syntax *S) {
     return elaborateMacro(cast<MacroSyntax>(S));
   if (isa<ElemSyntax>(S))
     return elaborateElementExpr(cast<ElemSyntax>(S));
+  if (const ListSyntax *List = dyn_cast<ListSyntax>(S)) {
+    if (List->getNumChildren() == 1)
+      return elaborateExpr(List->getChild(0));
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_failed_to_translate_expr);
+  }
+
   return nullptr;
 }
 
@@ -131,32 +137,156 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
   return clang::IntegerLiteral::Create(CxxAST, Value, IntType, Loc);
 }
 
-static clang::FloatingLiteral *
-createFloatLiteral(clang::ASTContext &CxxAST, Token T,
-                   clang::QualType FloatType, clang::SourceLocation Loc) {
-  // If we don't have a specified type, just create a default float.
-  if (FloatType.isNull() || FloatType == CxxAST.AutoDeductTy)
-    FloatType = CxxAST.FloatTy;
+static bool alwaysFitsInto64Bits(unsigned Radix, unsigned NumDigits) {
+  switch (Radix) {
+  case 2:
+    return NumDigits <= 64;
+  case 8:
+    return NumDigits <= 64 / 3; // Digits are groups of 3 bits.
+  case 10:
+    return NumDigits <= 19; // floor(log10(2^64))
+  case 16:
+    return NumDigits <= 64 / 4; // Digits are groups of 4 bits.
+  default:
+    llvm_unreachable("impossible Radix");
+  }
+}
 
-  if (FloatType == CxxAST.FloatTy) {
-    float Literal = (float)atof(T.getSymbol().data());
-    auto Value = llvm::APFloat(Literal);
-    return clang::FloatingLiteral::Create(CxxAST, Value, /*Exact=*/true,
-                                          FloatType, Loc);
-  } else if (FloatType == CxxAST.DoubleTy) {
-    double Literal = atof(T.getSymbol().data());
-    auto Value = llvm::APFloat(Literal);
-    return clang::FloatingLiteral::Create(CxxAST, Value, /*Exact=*/true,
-                                          FloatType, Loc);
+static bool checkOverflow(unsigned Radix, llvm::StringRef Literal,
+                          llvm::APInt &Val) {
+  const unsigned NumDigits = Literal.size();
+
+  auto isDigitSeparator = [](char C) -> bool {
+    return C == '\'';
+  };
+
+  if (alwaysFitsInto64Bits(Radix, NumDigits)) {
+    uint64_t N = 0;
+    for (const char *Ptr = Literal.begin(); Ptr != Literal.end(); ++Ptr)
+      if (!isDigitSeparator(*Ptr))
+        N = N * Radix + llvm::hexDigitValue(*Ptr);
+
+    // This will truncate the value to Val's input width. Simply check
+    // for overflow by comparing.
+    Val = N;
+    return Val.getZExtValue() != N;
   }
 
-  llvm_unreachable("unsupported float type");
+  Val = 0;
+  const char *Ptr = Literal.begin();
+
+  llvm::APInt RadixVal(Val.getBitWidth(), Radix);
+  llvm::APInt CharVal(Val.getBitWidth(), 0);
+  llvm::APInt OldVal = Val;
+
+  bool OverflowOccurred = false;
+  while (Ptr < Literal.end()) {
+    if (isDigitSeparator(*Ptr)) {
+      ++Ptr;
+      continue;
+    }
+
+    unsigned C = llvm::hexDigitValue(*Ptr++);
+
+    // If this letter is out of bound for this radix, reject it.
+    assert(C < Radix && "checkOverflow called with wrong radix");
+
+    CharVal = C;
+
+    // Add the digit to the value in the appropriate radix.  If adding in digits
+    // made the value smaller, then this overflowed.
+    OldVal = Val;
+
+    // Multiply by radix, did overflow occur on the multiply?
+    Val *= RadixVal;
+    OverflowOccurred |= Val.udiv(RadixVal) != OldVal;
+
+    // Add value, did overflow occur on the value?
+    //   (a + b) ult b  <=> overflow
+    Val += CharVal;
+    OverflowOccurred |= Val.ult(CharVal);
+  }
+  return OverflowOccurred;
+}
+
+static clang::IntegerLiteral *
+createIntegerLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
+                     const LiteralSyntax *S, std::size_t Base = 10) {
+  unsigned Width = S->Suffix.BitWidth;
+  bool Signed = S->Suffix.IsSigned;
+
+  // In case we didn't set either flag, this is signed by default.
+  if (!Signed && !S->Suffix.IsUnsigned)
+    Signed = true;
+
+  unsigned TargetIntWidth = CxxAST.getTargetInfo().getIntWidth();
+  if (!Width)
+    Width = TargetIntWidth;
+
+  clang::QualType IntTy = CxxAST.getIntTypeForBitwidth(Width, Signed);
+  if (IntTy.isNull()) {
+    if (Width <= TargetIntWidth)
+      IntTy = Signed ? CxxAST.IntTy : CxxAST.UnsignedIntTy;
+    else if (Width <= CxxAST.getTargetInfo().getLongWidth())
+      IntTy = Signed ? CxxAST.LongTy : CxxAST.UnsignedLongTy;
+    else
+      IntTy = Signed ? CxxAST.LongLongTy : CxxAST.UnsignedLongLongTy;
+  }
+
+  if (Width != CxxAST.getIntWidth(IntTy)) {
+    clang::SourceLocation Loc = S->getLoc();
+    SemaRef.Diags.Report(Loc, clang::diag::err_integer_bitwidth_mismatch)
+      << IntTy << Width << CxxAST.getIntWidth(IntTy);
+    return nullptr;
+  }
+
+  // skip over any [0.] prefix
+  llvm::StringRef Spelling = Base == 10 ? S->getSpelling() :
+    std::string(S->getSpelling().begin() + 2, S->getSpelling().end());
+
+  llvm::APInt Value(Width, Spelling, Base);
+  Value = Value.zextOrTrunc(Width);
+
+  if (checkOverflow(Base, Spelling, Value)) {
+    SemaRef.Diags.Report(S->getLoc(), clang::diag::err_integer_literal_too_large)
+      << /* Unsigned */ 1;
+    return nullptr;
+  }
+
+  return clang::IntegerLiteral::Create(CxxAST, Value, IntTy, S->getLoc());
+}
+
+static clang::FloatingLiteral *
+createFloatLiteral(clang::ASTContext &CxxAST, const LiteralSyntax *S) {
+  // If we don't have a specified type, just create a default float.
+  clang::QualType FloatType = CxxAST.FloatTy;
+  if (S->Suffix.IsDouble)
+    FloatType = CxxAST.DoubleTy;
+
+  const llvm::fltSemantics &Format = CxxAST.getFloatTypeSemantics(FloatType);
+  using llvm::APFloat;
+  APFloat Val = llvm::APFloat(Format);
+
+  // if (FloatType == CxxAST.FloatTy) {
+  auto StatusOrErr =
+    Val.convertFromString(S->getSpelling(), APFloat::rmNearestTiesToEven);
+  assert(StatusOrErr && "Invalid floating point representation");
+  return clang::FloatingLiteral::Create(CxxAST, Val, /*Exact=*/true,
+                                        FloatType, S->getLoc());
+  // } else if (FloatType == CxxAST.DoubleTy) {
+    // double Literal = atof(T.getSymbol().data());
+    // auto Value = llvm::APFloat(Literal);
+    // return clang::FloatingLiteral::Create(CxxAST, Value, /*Exact=*/true,
+    //                                       FloatType, S->getLoc());
+  // }
+
+  // llvm_unreachable("unsupported float type");
 }
 
 static clang::FloatingLiteral *
 createExponentLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
-                      Token T, clang::SourceLocation Loc) {
-  std::string Spelling = T.getSpelling().str();
+                      const LiteralSyntax *S, clang::SourceLocation Loc) {
+  std::string Spelling = S->getSpelling().str();
   assert((Spelling.find_first_of("E") != std::string::npos ||
          Spelling.find_first_of("e") != std::string::npos) &&
          "non-exponent");
@@ -188,8 +318,12 @@ createExponentLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
       << llvm::StringRef(Buffer.data(), Buffer.size());
   }
 
+  clang::QualType FloatType = CxxAST.FloatTy;
+  if (S->Suffix.IsDouble)
+    FloatType = CxxAST.DoubleTy;
+
   bool isExact = (Result == llvm::APFloat::opOK);
-  return clang::FloatingLiteral::Create(CxxAST, Val, isExact, CxxAST.DoubleTy, Loc);
+  return clang::FloatingLiteral::Create(CxxAST, Val, isExact, FloatType, Loc);
 }
 
 /// This was copied from clang/lib/lex/LiteralSupport.cpp:91, and modified.
@@ -884,14 +1018,16 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
                                          clang::QualType ExplicitType) {
   Token T = S->Tok;
 
+  // Check if we have a floating literal that looks like an int.
+  if (const LiteralSyntax *L = dyn_cast<LiteralSyntax>(S))
+    if (L->Suffix.IsFloat || L->Suffix.IsDouble)
+      return createFloatLiteral(CxxAST, L);
+
   switch (T.getKind()) {
   case tok::DecimalInteger:
-    return createIntegerLiteral(CxxAST, T, ExplicitType,
-                                S->getLoc());
+    return createIntegerLiteral(CxxAST, SemaRef, cast<LiteralSyntax>(S));
   case tok::DecimalFloat:
-    return createFloatLiteral(CxxAST, T, ExplicitType,
-                              S->getLoc());
-    break;
+    return createFloatLiteral(CxxAST, cast<LiteralSyntax>(S));
   case tok::BinaryInteger: {
     std::string TData = std::string(T.getSymbol().data());
     TData =  TData.substr(TData.find_first_not_of("0b"), TData.size());
@@ -901,11 +1037,10 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
   }
 
   case tok::HexadecimalInteger:
-    return createIntegerLiteral(CxxAST, T, ExplicitType,
-                                S->getLoc(), /*Base=*/16);
+    return createIntegerLiteral(CxxAST, SemaRef,
+                                cast<LiteralSyntax>(S), /*Base=*/16);
   case tok::HexadecimalFloat:
-    llvm::errs() << "elaborateAtom::HexadecimalFloat not implemented.\n";
-    break;
+    llvm_unreachable("Hexadecimal float not implemented.");
   case tok::Identifier:
     return createIdentAccess(Context, SemaRef, S, ExplicitType, S->getLoc());
   case tok::Character:
@@ -915,10 +1050,10 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
   case tok::UnicodeCharacter:
     return createUnicodeLiteral(CxxAST, SemaRef, T, S->getLoc());
   case tok::String:
-    llvm::errs() << "elaborateAtom::String not implemented.\n";
-    break;
+    llvm_unreachable("String not implemented.");
   case tok::DecimalExponent:
-    return createExponentLiteral(CxxAST, SemaRef, T, S->getLoc());
+    return createExponentLiteral(CxxAST, SemaRef,
+                                 cast<LiteralSyntax>(S), S->getLoc());
 
   /// Keyword Literals
   case tok::TrueKeyword:
@@ -1107,6 +1242,8 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     return handleRefType(S);
   case FOK_RRef:
     return handleRRefType(S);
+  case FOK_Arrow:
+    return handleFunctionType(S);
   case FOK_Array:
     return handleArrayType(S);
   default:
@@ -1117,17 +1254,15 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   if (Spelling.startswith("operator'")) {
     if (S->getNumArguments() == 1) {
       clang::UnaryOperatorKind UnaryOpKind;
-      if (!SemaRef.GetUnaryOperatorKind(Spelling, UnaryOpKind)) {
+      if (!SemaRef.GetUnaryOperatorKind(Spelling, UnaryOpKind))
         return elaborateUnaryOp(S, UnaryOpKind);
-      }
     }
 
     if (S->getNumArguments() == 2) {
       // Check if this is a binary operator.
       clang::BinaryOperatorKind BinaryOpKind;
-      if (!SemaRef.GetBinaryOperatorKind(Spelling, BinaryOpKind)) {
+      if (!SemaRef.GetBinaryOperatorKind(Spelling, BinaryOpKind))
         return elaborateBinOp(S, BinaryOpKind);
-      }
     }
   }
 
@@ -1942,6 +2077,111 @@ clang::Expr *ExprElaborator::handleRRefType(const CallSyntax *S) {
   return makeRRefType(innerTypeExpr, S);
 }
 
+static bool isVarArgs(Sema &SemaRef, const Syntax *S) {
+  const CallSyntax *ColonOp = dyn_cast<CallSyntax>(S);
+  if (!ColonOp)
+    return false;
+  FusedOpKind OpKind = getFusedOpKind(SemaRef, ColonOp);
+  if (OpKind != FOK_Colon)
+    return false;
+
+  // We might have something like `varargs : args` or just `:args`
+  std::size_t N = ColonOp->getNumArguments() - 1;
+  if (N > 1)
+    return false;
+
+  if (const AtomSyntax *Ty = dyn_cast<AtomSyntax>(ColonOp->getArgument(N)))
+    return Ty->Tok.hasKind(tok::ArgsKeyword);
+
+  return false;
+}
+
+// Handle a function type in the form of `() -> type`
+clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
+  assert(S->getNumArguments() == 2 && "invalid operator'->' call");
+
+  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
+  llvm::SmallVector<clang::QualType, 4> Types;
+  bool IsVariadic = false;
+
+  const Syntax *ParamBegin = S->getArgument(0);
+  clang::SourceLocation EndLoc;
+  if (const ListSyntax *ParamSyntaxes = dyn_cast<ListSyntax>(ParamBegin)) {
+    Sema::ScopeRAII ParamScopeRAII(SemaRef, SK_Parameter, ParamBegin);
+
+    for (unsigned I = 0; I < ParamSyntaxes->getNumChildren(); ++I) {
+      const Syntax *ParamSyntax = ParamSyntaxes->getChild(I);
+
+      if (I == ParamSyntaxes->getNumChildren() - 1) {
+        EndLoc = ParamSyntax->getLoc();
+
+        IsVariadic = isVarArgs(SemaRef, ParamSyntax);
+        if (IsVariadic)
+          break;
+      }
+
+      ExprElaborator ParamElaborator(Context, SemaRef);
+      clang::Expr *Param = ParamElaborator.elaborateExpr(ParamSyntax);
+
+      if (!Param || !Param->getType()->isTypeOfTypes())
+        continue;
+
+      clang::SourceLocation Loc = ParamSyntax->getLoc();
+      auto *ParmTInfo = SemaRef.getTypeSourceInfoFromExpr(Param, Loc);
+      Types.push_back(ParmTInfo->getType());
+
+      clang::IdentifierInfo *II = nullptr;
+      II = SemaRef.getCxxSema().InventAbbreviatedTemplateParameterTypeName(II, I);
+      clang::DeclarationName Name(II);
+      clang::DeclContext *DC = SemaRef.getCurrentCxxDeclContext();
+      clang::ParmVarDecl *PVD = clang::ParmVarDecl::Create(CxxAST, DC, Loc, Loc,
+        Name, ParmTInfo->getType(), ParmTInfo, clang::SC_Auto, /*def=*/nullptr);
+      Params.push_back(PVD);
+    }
+  } else {
+    SemaRef.Diags.Report(ParamBegin->getLoc(),
+                         clang::diag::err_invalid_param_list);
+    return nullptr;
+  }
+
+  if (!EndLoc.isValid())
+    EndLoc = S->getLoc();
+
+  const Syntax *ReturnSyntax = S->getArgument(1);
+  ExprElaborator ReturnElaborator(Context, SemaRef);
+  clang::Expr *Return = ReturnElaborator.elaborateExpr(ReturnSyntax);
+
+  if (!Return->getType()->isTypeOfTypes()) {
+    SemaRef.Diags.Report(ReturnSyntax->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+
+  clang::TypeSourceInfo *ReturnType =
+    SemaRef.getTypeSourceInfoFromExpr(Return, S->getLoc());
+
+  // Create the clang type
+  clang::FunctionProtoType::ExtProtoInfo EPI;
+  if (IsVariadic) {
+    EPI.ExtInfo = Context.CxxAST.getDefaultCallingConvention(true, false);
+    EPI.Variadic = true;
+  }
+
+  clang::QualType FnTy =
+    CxxAST.getFunctionType(ReturnType->getType(), Types, EPI);
+  clang::QualType FnPtrTy = CxxAST.getPointerType(FnTy);
+  FnPtrTy.addConst();
+
+  clang::TypeLocBuilder TLB;
+  clang::TypeSourceInfo *FnTSI = BuildFunctionTypeLoc(Context.CxxAST, TLB, FnTy,
+    ParamBegin->getLoc(), ParamBegin->getLoc(), EndLoc,
+    clang::SourceRange(), ReturnSyntax->getLoc(), Params);
+  clang::TypeSourceInfo *FnPtrTSI =
+    BuildFunctionPtrTypeLoc(CxxAST, TLB, FnTSI, S->getLoc());
+
+  return SemaRef.buildTypeExpr(FnPtrTSI);
+}
+
 clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
   if (S->getNumArguments() == 0 
      || S->getNumArguments() == 1
@@ -1986,7 +2226,6 @@ clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
                                         IndexExpr, clang::ArrayType::Normal, 0);
   return SemaRef.buildTypeExpr(ArrayType, S->getLoc());
 }
-
 
 clang::Expr *ExprElaborator::makeConstType(clang::Expr *InnerTy,
                                            const CallSyntax* ConstOpNode) {

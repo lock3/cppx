@@ -17,7 +17,7 @@
 #include "clang/AST/TypeLoc.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/Sema/TypeLocUtil.h"
-#include "TypeLocBuilder.h"
+#include "clang/Sema/TypeLocBuilder.h"
 
 namespace gold {
 
@@ -742,10 +742,19 @@ TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context, QualType Ty,
     SourceLocation BeginLoc, SourceLocation LParenLoc,
     SourceLocation RParenLoc, clang::SourceRange ExceptionSpecRange,
     SourceLocation EndLoc, llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
+  TypeLocBuilder TLB;
+
+  return BuildFunctionTypeLoc(Context, TLB, Ty, BeginLoc, LParenLoc, RParenLoc,
+                              ExceptionSpecRange, EndLoc, Params);
+}
+
+TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context,
+    clang::TypeLocBuilder &TLB, QualType Ty, SourceLocation BeginLoc,
+    SourceLocation LParenLoc, SourceLocation RParenLoc,
+    clang::SourceRange ExceptionSpecRange, SourceLocation EndLoc,
+    llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
   assert(Ty->isFunctionType() &&
          "Constructing FunctionTypeLoc out of non-function type");
-
-  TypeLocBuilder TLB;
 
   // Push the return type to the TypeLocBuilder.
   QualType ReturnType = Ty->getAs<clang::FunctionType>()->getReturnType();
@@ -762,6 +771,34 @@ TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context, QualType Ty,
     NewTL.setParam(I, Params[I]);
 
   return TLB.getTypeSourceInfo(Context, Ty);
+}
+
+TypeSourceInfo *BuildFunctionPtrTypeLoc(clang::ASTContext &Context,
+                                        TypeLocBuilder &TLB,
+                                        clang::TypeSourceInfo *FnTSI,
+                                        clang::SourceLocation Loc) {
+  assert(FnTSI->getType()->isFunctionType() &&
+         "Constructing FunctionTypeLoc out of non-function type");
+
+  QualType FnPtrTy = Context.getPointerType(FnTSI->getType());
+  auto FnPtrInstance = TLB.push<clang::PointerTypeLoc>(FnPtrTy);
+  FnPtrInstance.setStarLoc(Loc);
+
+  return TLB.getTypeSourceInfo(Context, FnPtrTy);
+}
+
+TypeSourceInfo *BuildFunctionPtrTypeLoc(clang::ASTContext &Context,
+                                        clang::TypeSourceInfo *FnTSI,
+                                        clang::SourceLocation Loc) {
+  assert(FnTSI->getType()->isFunctionType() &&
+         "Constructing FunctionTypeLoc out of non-function type");
+
+  TypeLocBuilder TLB;
+  QualType FnPtrTy = Context.getPointerType(FnTSI->getType());
+  auto FnPtrInstance = TLB.push<clang::PointerTypeLoc>(FnPtrTy);
+  FnPtrInstance.setStarLoc(Loc);
+
+  return TLB.getTypeSourceInfo(Context, FnPtrTy);
 }
 
 } // namespace gold

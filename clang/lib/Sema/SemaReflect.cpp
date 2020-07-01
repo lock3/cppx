@@ -27,7 +27,7 @@
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/SemaInternal.h"
-#include "TypeLocBuilder.h"
+#include "clang/Sema/TypeLocBuilder.h"
 
 using namespace clang;
 using namespace sema;

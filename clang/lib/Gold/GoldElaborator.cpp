@@ -2108,6 +2108,8 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
 
   if (Tokenization == SemaRef.OperatorColonII)
     return FOK_Colon;
+  if (Tokenization == SemaRef.OperatorArrowII)
+    return FOK_Arrow;
   if (Tokenization == SemaRef.OperatorExclaimII)
     return FOK_Exclaim;
   if (Tokenization == SemaRef.OperatorEqualsII)

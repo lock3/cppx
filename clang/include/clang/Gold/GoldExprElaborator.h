@@ -108,12 +108,11 @@ public:
   clang::Expr *elaborateElementExpr(const ElemSyntax *Elem);
   clang::Expr *elaborateCastOp(const CallSyntax *CastOp);
 
-private:
-
+public:
   //===--------------------------------------------------------------------===//
   //                        Type Expression Elaboration                       //
   //===--------------------------------------------------------------------===//
-public:
+
   clang::Expr *elaborateTypeExpr(Declarator *D);
 
   clang::Expr *elaboratePointerType(Declarator *D, clang::Expr *Ty);
@@ -128,6 +127,7 @@ private:
   clang::Expr *handleOperatorConst(const CallSyntax *S);
   clang::Expr *handleRefType(const CallSyntax *S);
   clang::Expr *handleRRefType(const CallSyntax *S);
+  clang::Expr *handleFunctionType(const CallSyntax *S);  
   clang::Expr *handleArrayType(const CallSyntax *S);
   
 private:

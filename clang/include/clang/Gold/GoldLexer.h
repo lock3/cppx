@@ -15,6 +15,7 @@
 #define CLANG_GOLD_GOLDLEXER_H
 
 #include "clang/Basic/SourceLocation.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 
 #include "clang/Gold/GoldFile.h"
@@ -123,6 +124,8 @@ namespace gold {
 
     Token makeToken(TokenKind K, char const* F, char const* L);
     Token makeToken(TokenKind K, char const* S, std::size_t N);
+    Token makeToken(TokenKind K, char const* F, char const* L,
+                    llvm::SmallVectorImpl<llvm::StringRef> &Suffixes);
 
     Token matchEof();
     Token matchSpace();
@@ -142,6 +145,7 @@ namespace gold {
     void matchDecimalDigitSeqOpt();
     void matchHexadecimalDigitSeq();
     void matchBinaryDigitSeq();
+    void matchLiteralSuffixSeq(llvm::SmallVectorImpl<llvm::StringRef> &Sufs);
 
     Token matchCharacter();
     Token matchHexadecimalCharacter();

@@ -1430,6 +1430,16 @@ def err_reify_typename_preceded : Error<
   "the typename reifier cannot be preceded by a nested name specifier">;
 }
 
+let CategoryName = "Gold" in {
+def err_incompatible_suffix : Error<
+  "literal cannot be both '%0' and '%1'">;
+def err_unknown_suffix : Error<
+  "literal has unknown suffix '%0'">;
+def err_invalid_bitwidth_suffix : Error<
+  "literal has bitwidth of '%0' which is "
+  "%select{greater than the maximum of 128|less than the minimum of 1}1">;
+}
+
 def warn_max_tokens : Warning<
   "the number of preprocessor source tokens (%0) exceeds this token limit (%1)">,
   InGroup<MaxTokens>;

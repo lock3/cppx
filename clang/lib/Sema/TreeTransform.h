@@ -14,7 +14,7 @@
 #define LLVM_CLANG_LIB_SEMA_TREETRANSFORM_H
 
 #include "CoroutineStmtBuilder.h"
-#include "TypeLocBuilder.h"
+#include "clang/Sema/TypeLocBuilder.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"

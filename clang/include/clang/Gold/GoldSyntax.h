@@ -150,6 +150,16 @@ public:
   Token Tok;
 };
 
+// Represents a suffix on a literal value, such as `64u64`
+struct LiteralSuffix
+{
+  bool IsSigned = false;
+  bool IsUnsigned = false;
+  std::size_t BitWidth = 0;
+  bool IsFloat = false;
+  bool IsDouble = false;
+};
+
 /// Represents literal values.
 struct LiteralSyntax : AtomSyntax 
 {
@@ -160,6 +170,8 @@ struct LiteralSyntax : AtomSyntax
   static bool classof(const Syntax *S) {
     return S->getKind() == SK_Literal;
   }
+
+  LiteralSuffix Suffix;
 };
 
 /// An arbitrary, but known, length sequence of terms (e.g., the arguments

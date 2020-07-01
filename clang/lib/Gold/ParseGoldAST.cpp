@@ -37,7 +37,6 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
   // Parse the input file.
   clang::SourceManager &SM = PP.getSourceManager();
   File InputFile(SM, SM.getMainFileID());
-  
   SyntaxContext Context(ClangContext);
 
   Parser Parser(Context, SM, InputFile);
