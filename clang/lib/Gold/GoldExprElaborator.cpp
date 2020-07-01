@@ -1146,7 +1146,6 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
 static bool isBuitinOperator(const CallSyntax *S) {
   if (const auto *Atom = dyn_cast<AtomSyntax>(S->getCallee())) {
     switch (Atom->Tok.getKind()) {
-      case tok::ConstExprKeyword:
       case tok::AlignOfKeyword:
       case tok::SizeOfKeyword:
       case tok::NoExceptKeyword:
@@ -1165,10 +1164,6 @@ clang::Expr *ExprElaborator::elaborateBuiltinOperator(const CallSyntax *S) {
   }
   const AtomSyntax *Atom = cast<AtomSyntax>(S->getCallee());
   switch (Atom->Tok.getKind()) {
-    
-  case tok::ConstExprKeyword:
-    llvm_unreachable("constexpr operator not implemented yet.");
-
   case tok::NoExceptKeyword:
     return elaborateNoExceptOp(Atom, S);
 
@@ -1237,8 +1232,9 @@ ExprElaborator::elaborateTypeTraitsOp(const AtomSyntax *Name, const CallSyntax *
   return Result.get();
 }
 
-clang::Expr *ExprElaborator::elaborateDeclTypeOp(const AtomSyntax *Name,
-                                                 const CallSyntax *S) {
+clang::Expr *
+ExprElaborator::elaborateDeclTypeOp(const AtomSyntax *Name,
+                                    const CallSyntax *S) {
   assert(Name->Tok.getKind() == tok::DeclTypeKeyword
          && "Invalid elaboration of decltype operator.");
   if (S->getNumArguments() != 1) {
@@ -1299,8 +1295,6 @@ ExprElaborator::elaborateNoExceptOp(const AtomSyntax *Name,
   if (!ArgEval)
     return nullptr;
   
-
-  // TODO: We need to create error messages here.
   if (ArgEval->getType()->isTypeOfTypes()) {
     SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
                          clang::diag::err_cannot_appy_operator_to_type)
