@@ -11006,6 +11006,9 @@ def err_cannot_apply_operator_to_template : Error<
 def err_integer_bitwidth_mismatch : Error<
   "integral type %0 given bitwidth '%1' which mismatches the system size '%2'">;
 
+def err_invalid_type_for_name_spec : Error<
+  "invalid type, unable to get class, namespace, or enumeration from %0">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {
