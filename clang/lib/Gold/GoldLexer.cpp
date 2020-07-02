@@ -714,9 +714,6 @@ static bool isInfix(Token Op) {
   case tok::PercentEqual:
   case tok::MinusGreater:
   case tok::EqualGreater:
-  case tok::LeftParen:
-  case tok::LeftBracket:
-  case tok::Comma:
     return true;
   case tok::Identifier: {
     auto It = InfixKeywords.find(Op.getSymbol().data());

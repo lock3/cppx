@@ -626,70 +626,15 @@ static bool isMulOperator(Parser& P) {
 }
 
 /// mul:
-///   call
-///   mul mul-operator call
+///   pre
+///   pre mul-operator pre
 Syntax *Parser::parseMul() {
-  Syntax *E1 = parseMacro();
+  Syntax *E1 = parsePre();
   while (Token Op = matchTokens(isMulOperator, *this)) {
-    Syntax *E2 = parseMacro();
+    Syntax *E2 = parsePre();
     E1 = onBinary(Op, E1, E2);
   }
   return E1;
-}
-
-/// macro:
-///   post
-///   post block
-///   if ( list ) block
-///   if ( list ) block else block
-///   while ( list ) block
-///   for ( list ) block
-///   block
-///
-/// catch:
-///   catch ( list ) block
-///
-/// \todo We can parse a macro as a list of (post block) chains if we
-/// had an continuation token (e.g., 'else').
-///
-/// \todo Implement catch blocks. We should probably only allow these
-/// on the 'block' production, and possibly explicitly allow a 'try'
-/// statement. Note that catch-blocks are really a sequence of catches,
-/// possibly followed by a finally.
-///
-/// \note Macros are essentially right associative in structure, so
-/// that a naive post-order traversal will not produce the correct typing
-/// or evaluation. They must be traversed pre-order (i.e., analyze the
-/// outermost properties, followed by the innermost).
-Syntax *Parser::parseMacro()
-{
-  if (nextTokenIs("if"))
-    return parseIf();
-
-  if (nextTokenIs("while"))
-    return parseWhile();
-
-  if (nextTokenIs("for"))
-    return parseFor();
-
-  // FIXME: What are we matching here?
-  if (nextTokenIs(tok::LeftBrace) || nextTokenIs(tok::Colon))
-    return parseBlock();
-
-  // FIXME: Should this be parsePost?
-  Syntax *e1 = parsePre();
-
-  if (nextTokenIs(tok::LeftBrace))
-  {
-    Syntax *e2 = parseBlock();
-    return onMacro(e1, e2);
-  }
-  if (nextTokenIs(tok::Colon) && nthTokenIs(1, tok::Indent)) {
-      Syntax *e2 = parseBlock();
-      return onMacro(e1, e2);
-  }
-
-  return e1;
 }
 
 Syntax *Parser::parseIf()
@@ -772,6 +717,18 @@ auto is_unary_operator = [](TokenKind k) -> bool
   }
 };
 
+/// pre:
+///   macro
+///   ? pre
+///   ^ pre
+///   + pre
+///   - pre
+///   * pre
+///   . pre
+///   [ expr ] pre
+///   const pre
+///   return pre
+///   returns pre
 Syntax *Parser::parsePre()
 {
   if (Token Op = matchTokenIf(is_unary_operator)) {
@@ -805,7 +762,113 @@ Syntax *Parser::parsePre()
     return onUnary(Operator, Operand);
   }
 
-  return parsePost();
+  return parseMacro();
+}
+
+// There are two cases where we might run into the optional postfix
+// matching the `postfix postfix? block` pattern. That is the `then`
+// reserved word, or the `else` reserved word followed by the `if`
+// reserved word.
+// \param Cur is the current parser token.
+// \param Next is the lookahead after the current token.
+// \returns true if the above conditions are met.
+static bool nextTokenIsOptionalPostfix(const Token &Cur, const Token &Next) {
+  // FIXME: Dedents don't like when you call getSpelling()?
+  if (Cur.hasKind(tok::Dedent))
+    return false;
+
+  if (Cur.getSpelling() == "then")
+    return true;
+
+  if (Cur.getSpelling() == "else" && Next.getSpelling() == "if")
+    return true;
+
+  return false;
+}
+
+static bool isEnclosure(Token T) {
+  return (T.getKind() >= tok::Indent && T.getKind() <= tok::Greater);
+}
+
+/// \returns true if the next sequence of tokens after a macro looks like
+/// another macro. For example,
+/// \code
+///    x():
+///      # body1
+///    y():
+///      # body2
+/// \endcode
+/// In this case `y():\n\t` matches a `macro next`.
+bool Parser::scanMacroNext() {
+  if (!nextTokenIs(tok::Identifier))
+    return false;
+
+  unsigned I = 1;
+  // Scan for the next newline or :\n\t
+  // FIXME: this may be insufficient for semicolons, or if we allow infix
+  //        commas/parens. We might need to implement a tracker
+  //        similar to scanAngles().
+  while (true) {
+    Token Current = peekToken(I++);
+
+    if (Current.hasKind(tok::Colon)) {
+      Token Next = peekToken(I++);
+      if (Next.hasKind(tok::Indent))
+        return true;
+    }
+
+    if (Current.hasKind(tok::LeftBracket))
+      return true;
+
+    if (Current.isNewline()
+        || Current.hasKind(tok::Separator)
+        || Current.isEndOfFile())
+      return false;
+
+    if (Current.hasKind(tok::Separator))
+        return false;
+  }
+
+  return false;
+}
+
+/// macro:
+///   postfix
+///   postfix postfix? blocks
+/// blocks:
+///   block
+///   blocks postfix block
+///
+/// \todo Implement catch blocks. We should probably only allow these
+/// on the 'block' production, and possibly explicitly allow a 'try'
+/// statement. Note that catch-blocks are really a sequence of catches,
+/// possibly followed by a finally.
+///
+/// \note Macros are essentially right associative in structure, so
+/// that a naive post-order traversal will not produce the correct typing
+/// or evaluation. They must be traversed pre-order (i.e., analyze the
+/// outermost properties, followed by the innermost).
+Syntax *Parser::parseMacro()
+{
+  Syntax *e1 = parsePost();
+
+  // FIXME: add optional post for then/else
+  if (nextTokenIs(tok::LeftBrace) ||
+      (nextTokenIs(tok::Colon) && nthTokenIs(1, tok::Indent))) {
+    Syntax *e2 = parseBlock();
+
+    Syntax *Opt = nullptr;
+    if (nextTokenIsOptionalPostfix(peekToken(), peekToken(1)))
+      Opt = parsePost();
+
+    Syntax *e3 = nullptr;
+    if (scanMacroNext())
+      e3 = parseMacro();
+
+    return onMacro(e1, e2, e3);
+  }
+
+  return e1;
 }
 
 static bool isNonAngleEnclosure(TokenKind K) {
@@ -891,7 +954,7 @@ bool Parser::scanAngles(Syntax *Base) {
   // This came after a token that does not appear in base names.
   if (!PreviousToken.hasKind(tok::Identifier) &&
       !PreviousToken.hasKind(tok::Greater) &&
-      !isNonAngleEnclosure(PreviousToken.getKind()))
+      !isNonAngleCloseEnclosure(PreviousToken.getKind()))
     return false;
 
   AngleBracketTracker::Loc PotentialBaseLoc{Base->getLoc(),
@@ -1452,6 +1515,10 @@ Syntax *Parser::onElem(TokenPair const& tok, Syntax *e1, Syntax *e2) {
 
 Syntax *Parser::onMacro(Syntax *e1, Syntax *e2) {
   return new (Context) MacroSyntax(e1, e2, nullptr);
+}
+
+Syntax *Parser::onMacro(Syntax *e1, Syntax *e2, Syntax *e3) {
+  return new (Context) MacroSyntax(e1, e2, e3);
 }
 
 Syntax *Parser::onElse(Token const& Tok, Syntax *e1) {

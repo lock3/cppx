@@ -271,6 +271,7 @@ namespace gold
     Syntax *onCall(Syntax *e1, Syntax *e2);
     Syntax *onElem(const TokenPair& toks, Syntax *e1, Syntax *e2);
     Syntax *onMacro(Syntax *e1, Syntax *e2);
+    Syntax *onMacro(Syntax *e1, Syntax *e2, Syntax *e3);
     Syntax *onIf(const Token& tok, Syntax *e1, Syntax *e2, Syntax *e3);
     Syntax *onElse(const Token& tok, Syntax *e1);
     Syntax *onLoop(const Token& tok, Syntax *e1, Syntax *e2);
@@ -357,6 +358,15 @@ namespace gold
     };
 
   private:
+    /// \returns true if the next sequence of tokens after a macro looks like
+    /// another macro.
+    bool scanMacroNext();
+    bool trackEnclosure();
+
+  private:
+    /// ==================================================================== ///
+    ///                       attribute token tracking                       ///
+    /// ==================================================================== ///
     AngleBracketTracker Angles;
 
     /// Keep track of the depth of enclosure tokens when scanning for

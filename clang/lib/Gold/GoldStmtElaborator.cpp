@@ -694,6 +694,25 @@ StmtElaborator::elaborateWhileStmt(const MacroSyntax *S) {
   return While.get();
 }
 
+namespace {
+enum class BuiltinMacro {
+  Unknown,
+  If,
+  Else,
+  For,
+  While,
+  Array,
+};
+
+llvm::StringMap<BuiltinMacro> BuiltinMacros = {
+  {"if", BuiltinMacro::If},
+  {"else", BuiltinMacro::Else},
+  {"for", BuiltinMacro::For},
+  {"while", BuiltinMacro::While},
+  {"array", BuiltinMacro::Array},
+};
+} // end anonymous namespace
+
 clang::Stmt *
 StmtElaborator::elaborateMacro(const MacroSyntax *S) {
   const AtomSyntax *Callee;
@@ -702,27 +721,31 @@ StmtElaborator::elaborateMacro(const MacroSyntax *S) {
   else
     Callee = cast<AtomSyntax>(S->getCall());
 
-  FusedOpKind OpKind = getFusedOpKind(SemaRef, Callee->getSpelling());
+  auto Lookup = BuiltinMacros.find(Callee->getSpelling());
+  if (Lookup == BuiltinMacros.end() || Lookup->second == BuiltinMacro::Unknown) {
+    // FIXME: there will be probably be user-definable macros at some point,
+    // so this isn't necessarily a valid error.
+    unsigned DiagID = Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                            "use of undefined macro");
+    Diags.Report(Callee->getLoc(), DiagID);
+    return nullptr;
 
-  switch (OpKind) {
-  case FOK_If:
+  }
+
+  switch (Lookup->second) {
+  case BuiltinMacro::If:
     return elaborateIfStmt(S);
-  case FOK_Else:
+  case BuiltinMacro::Else:
     return elaborateElseStmt(S);
-  case FOK_For:
+  case BuiltinMacro::For:
     return elaborateForStmt(S);
-  case FOK_While:
+  case BuiltinMacro::While:
     return elaborateWhileStmt(S);
+  case BuiltinMacro::Array:
+    return elaborateArrayMacroStmt(S);
   default:
     break;
   }
-
-  if (Callee->getSpelling() == "array")
-    return elaborateArrayMacroStmt(S);
-
-  unsigned DiagID = Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                          "use of undefined macro");
-  Diags.Report(Callee->getLoc(), DiagID);
 
   return nullptr;
 }

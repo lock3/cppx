@@ -77,9 +77,9 @@ static const char* getDeclaratorKindName(DeclaratorKind DK) {
     return "Type";
   case DK_Error:
     return "Error";
-  default:
-    llvm_unreachable("Invalid declarator Kind.");
   }
+
+  llvm_unreachable("Invalid declarator Kind.");
 }
 std::string Declarator::getString(bool IncludeKind) const {
   using namespace std::string_literals;
