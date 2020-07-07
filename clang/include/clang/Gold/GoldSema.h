@@ -48,12 +48,52 @@ class TypeSourceInfo;
 } // namespace clang
 
 namespace gold {
-
 class Declarator;
 class Declaration;
 struct Syntax;
 struct ArraySyntax;
 class SyntaxContext;
+class Elaborator;
+
+/// This contains the status for the elaboration of method attributes.
+/// Each flag is set to true/false depending on if that field has been
+/// encountered yet or not.
+struct AttrStatus {
+  AttrStatus() {
+    HasConstExpr = false;
+    HasInLine = false;
+    HasExtern = false;
+    HasMemberAccessSpecifier = false;
+    HasExceptionSpec = false;
+    HasStatic = false;
+    HasExplicit = false;
+    HasVirtual = false;
+    HasOverride = false;
+    HasFinal = false;
+    HasConst = false;
+    HasCarriesDependency = false;
+    HasDeprecated = false;
+    HasMaybeUnused = false;
+    HasNoDiscard = false;
+    HasNoReturn = false;
+  }
+  bool HasConstExpr : 1;
+  bool HasInLine : 1;
+  bool HasExtern : 1;
+  bool HasMemberAccessSpecifier : 1;
+  bool HasExceptionSpec : 1;
+  bool HasStatic : 1;
+  bool HasExplicit : 1;
+  bool HasVirtual : 1;
+  bool HasOverride : 1;
+  bool HasFinal : 1;
+  bool HasConst : 1;
+  bool HasCarriesDependency : 1;
+  bool HasDeprecated : 1;
+  bool HasMaybeUnused : 1;
+  bool HasNoDiscard : 1;
+  bool HasNoReturn : 1;
+};
 
 /// Maintains the state of Gold-to-C++ translation for a
 /// translation unit in the Gold Language.
@@ -584,6 +624,26 @@ public:
     }
   };
 
+  template<typename T>
+  class OptionalInitClangRAII {
+    clang::Sema &SemaRef;
+    llvm::Optional<T> Opt;
+  public:
+    OptionalInitClangRAII(Sema &S) :SemaRef(S.getCxxSema()) { }
+    template<typename... Args>
+    OptionalInitClangRAII(Sema &S, Args&&... Arguments)
+        :SemaRef(S.getCxxSema()), Opt()
+    {
+      Init(std::forward<Args>(Arguments)...);
+    }
+
+    template<typename... Args>
+    void Init(Args&&... Arguments) {
+      assert(!Opt && "Error attempting to enter scope twice.");
+      Opt.emplace(SemaRef, std::forward<Args>(Arguments)...);
+    }
+  };
+
   struct QualifiedLookupRAII {
     QualifiedLookupRAII(Sema &SemaRef,
                         bool &QualifiedLookupContext,
@@ -677,6 +737,18 @@ public:
 
   // Map of binary operator names to their clang operator kind.
   const llvm::StringMap<clang::BinaryOperatorKind> BinaryOpNames;
+
+
+  using AttributeHandler = void(*)(Elaborator &, Declaration*,
+                                         const Syntax*, AttrStatus &);
+  using StringToAttrHandlerMap = llvm::StringMap<AttributeHandler>;
+
+  /// MethodAttrHelper Contains mapings back to member functions that handle
+  /// attributes processing of specific attributes. This is so we don't have to
+  /// do a N^2 search of attribute names.
+  /// The reason that this is here instead of inside the elaborator class
+  /// is that the elaborator class gets constructed multiple times.
+  const StringToAttrHandlerMap AttrHandlerMap;
 };
 
 } // namespace gold

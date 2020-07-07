@@ -1670,7 +1670,13 @@ static clang::Expr *handleLookUpInsideType(Sema &SemaRef,
     return nullptr;
 
   clang::QualType QT = TInfo->getType();
-  const clang::Type *T = QT.getTypePtrOrNull();
+  const clang::Type *T = QT.getTypePtr();
+  if (!T->isStructureOrClassType()) {
+      SemaRef.Diags.Report(Previous->getExprLoc(),
+                           clang::diag::err_invalid_type_for_name_spec)
+                           << QT;
+      return nullptr;
+  }
   clang::TagDecl *TD = T->getAsTagDecl();
 
   // Processing if is a single name.

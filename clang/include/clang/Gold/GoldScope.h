@@ -38,6 +38,8 @@ class raw_ostream;
 namespace gold {
 
 struct Syntax;
+struct CallSyntax;
+struct AtomSyntax;
 class Scope;
 struct Attribute;
 
@@ -339,6 +341,11 @@ public:
 
   /// This is the current DeclContext when the declaration was encountered.
   clang::DeclContext *DeclaringContext = nullptr;
+
+  /// This is used to handle late elaboration of exception specification for
+  /// member functions.
+  const CallSyntax *ES_Call = nullptr;
+  const AtomSyntax *ES_Name = nullptr;
 
   ///}
 };

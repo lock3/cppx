@@ -22,7 +22,6 @@ using namespace gold;
 
 // TODO: I need to create failure tests for public, private, and protected
 // method and member access.
-
 TEST(ClassParsing, Access_PrivateMember) {
   StringRef Code = R"(
 c : type = class:
@@ -121,6 +120,56 @@ c : type = class:
 )";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(cxxMethodDecl(hasName("foo"), isPublic()))
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+
+// Class template Member function 
+TEST(ClassParsing, Access_PrivateMemberFunctionTemplate) {
+  StringRef Code = R"(
+c : type = class:
+  foo[T:type](i:T)<private>: int!
+    return 4
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(functionTemplateDecl(hasName("foo"), isPrivate()))
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+TEST(ClassParsing, Access_ProtectedMemberFunctionTemplate) {
+  StringRef Code = R"(
+c : type = class:
+  foo[T:type](i:T)<protected>: int!
+    return 4
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(functionTemplateDecl(hasName("foo"), isProtected()))
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+TEST(ClassParsing, Access_PublicMemberFunctionTemplate) {
+  StringRef Code = R"(
+c : type = class:
+  foo[T:type](i:T)<public>: int!
+    return 4
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(functionTemplateDecl(hasName("foo"), isPublic()))
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+TEST(ClassParsing, Access_ImplicitPublicMemberFunctionTemplate) {
+  StringRef Code = R"(
+c : type = class:
+  foo[T:type](i:T): int!
+    return 4
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(functionTemplateDecl(hasName("foo"), isPublic()))
   );
   ASSERT_TRUE(matches(Code.str(), ClassC));
 }
@@ -470,4 +519,74 @@ c : type = class (a):
     hasBaseSpecifier({false, AS_public, "struct a"})
   );
   ASSERT_TRUE(matches(Code.str(), BaseClassMatch));
+}
+
+// Testing Line attributes here.
+TEST(ClassParsing, LineAttr_Access_PrivateMember) {
+  StringRef Code = R"(
+c : type = class:
+  [private]
+  x : int
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(
+      fieldDecl(hasName("x"), hasType(asString("int")), isPrivate())
+    )
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+TEST(ClassParsing, LineAttr_Access_ProtectedUsingType) {
+  StringRef Code = R"(
+c : type = class:
+  [protected]
+  c2: type = int
+
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(typeAliasDecl(hasName("c2"), isProtected(),
+      hasType(asString("int"))))
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+TEST(ClassParsing, LineAttr_Access_ProtectedMemberFunctions) {
+  StringRef Code = R"(
+c : type = class:
+  [protected]
+  foo(): int!
+    return 4
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(cxxMethodDecl(hasName("foo"), isProtected()))
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+
+TEST(ClassParsing, LineAttr_Access_PrivateMemberFunctionTemplate) {
+  StringRef Code = R"(
+c : type = class:
+  [private]
+  foo[T:type](i:T): int!
+    return 4
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(functionTemplateDecl(hasName("foo"), isPrivate()))
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+TEST(ClassParsing, LineAttr_Access_PrivateTemplateType) {
+  StringRef Code = R"(
+c : type = class:
+  [private]
+  c2 [T:type]: type = class:
+    z : int
+    y : bool
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(classTemplateDecl(hasName("c2"), isPrivate()))
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
 }
