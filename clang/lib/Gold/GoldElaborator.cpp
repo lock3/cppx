@@ -14,6 +14,7 @@
 
 #include "clang/Gold/GoldElaborator.h"
 
+
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/ExprCppx.h"
 #include "clang/AST/Stmt.h"
@@ -22,6 +23,7 @@
 #include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Sema.h"
+#include "clang/Sema/TypeLocBuilder.h"
 #include "clang/Sema/ParsedAttr.h"
 #include "clang/AST/CXXInheritance.h"
 #include "clang/Sema/TypeLocUtil.h"
@@ -692,7 +694,7 @@ void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
     ++I;
   }
 }
-
+                                              
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
@@ -831,11 +833,8 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
                                       clang::ConstexprSpecKind::CSK_unspecified,
                                         Loc);
     }
-    clang::AccessSpecifier AS;
-    if (computeAccessSpecifier(SemaRef, D, AS)) {
-      return nullptr;
-    }
-    FD->setAccess(AS);
+    FD->setAccess(clang::AS_public);
+
   } else {
     FD = clang::FunctionDecl::Create(Context.CxxAST, Owner, Loc, Loc, Name,
                                      TInfo->getType(), TInfo, clang::SC_None);
@@ -879,11 +878,21 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   getFunctionParameters(D, Params);
   FD->setParams(Params);
   D->Cxx = FD;
+  {
+    // We have previously exited this scope that was created during type
+    // elaboration.
+    Declarator *FnDecl = getFunctionDeclarator(D->Decl);
+    Sema::ResumeScopeRAII FuncScope(SemaRef,
+                                    FnDecl->Data.ParamInfo.ConstructedScope,
+                     FnDecl->Data.ParamInfo.ConstructedScope->getConcreteTerm(), 
+                                    /*PopOnExit=*/false);
+    elaborateAttributes(D);
+  }
   // Add the declaration and update bindings.
   if (!Template && !D->declaresConstructor()) {
     Owner->addDecl(FD);
   }
-  if(D->declaresConstructor()) {
+  if (D->declaresConstructor()) {
     clang::CXXConstructorDecl* CtorDecl = cast<clang::CXXConstructorDecl>(D->Cxx);    
     clang::DeclarationNameInfo DNI2(Name, D->Decl->getLoc());
     SemaRef.getCxxSema().PushOnScopeChains(CtorDecl, SemaRef.getCurClangScope());
@@ -931,7 +940,16 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
     return nullptr;
   }
   if (!TypeExpr->getType()->isTypeOfTypes()) {
-    llvm_unreachable("Reuslt to this expression wasn't a type some how?");
+    // TODO: template and namespace types need a variable implementation.
+    if (TypeExpr->getType()->isNamespaceType()) {
+      llvm_unreachable("Namespace variables not implemented yet");
+    }
+    if (TypeExpr->getType()->isTemplateType()) {
+      llvm_unreachable("Template variables not implemented yet");
+    }
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_declaration_type_not_a_type);
+    return nullptr;
   }
   
   clang::CppxTypeLiteral *TyLitExpr = dyn_cast<clang::CppxTypeLiteral>(TypeExpr);
@@ -2078,11 +2096,25 @@ void Elaborator::lateElaborateMemberInitializer(
 
 void Elaborator::lateElaborateMethodDecl(
     LateElaboratedMethodDeclaration &Method) {
-  Sema::ClangScopeRAII InheritanceScope(SemaRef, clang::Scope::DeclScope |
+  Sema::ClangScopeRAII FunctionDeclScope(SemaRef, clang::Scope::DeclScope |
       clang::Scope::FunctionPrototypeScope |
       clang::Scope::FunctionDeclarationScope,
       clang::SourceLocation());
   elaborateFunctionDecl(Method.D);
+  // This is to check if the method delcaration was a success and in the event
+  // that it is we need to finish the exception specifier after the end of the
+  // class.
+  if (Method.D->Cxx) {
+    if (clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(Method.D->Cxx)) {
+      if (FD->getExceptionSpecType() == clang::EST_Unparsed) {
+        if (!Method.D->Init) { 
+          SemaRef.getCurrentElaboratingClass().LateElaborations.push_back(
+            new LateElaboratedMethodDef(SemaRef, Context, Method.D)
+          );
+        }
+      }
+    }
+  }
   SemaRef.getCxxSema().ActOnFinishDelayedCXXMethodDeclaration(
       SemaRef.getCurClangScope(), Method.D->Cxx);
 }
@@ -2093,11 +2125,384 @@ void Elaborator::lateElaborateDefaultArgument(
       "been processed yet.");
 }
 
+static void applyESIToFunctionType(SyntaxContext &Context, Sema &SemaRef,
+                                   clang::FunctionDecl *FD,
+                       const clang::FunctionProtoType::ExceptionSpecInfo &ESI) {
+  clang::QualType ExceptionAdjustedTy
+      = Context.CxxAST.getFunctionTypeWithExceptionSpec(FD->getType(), ESI);
+  llvm::SmallVector<clang::ParmVarDecl *, 10> Parameters(
+                              FD->parameters().begin(), FD->parameters().end());
+  clang::TypeSourceInfo *TInfo = BuildFunctionTypeLoc(Context.CxxAST,
+                                                      ExceptionAdjustedTy,
+                                                      FD->getBeginLoc(),
+                                                      clang::SourceLocation(),
+                                                      clang::SourceLocation(),
+                                                      clang::SourceRange(),
+                                                      FD->getEndLoc(),
+                                                      Parameters);
+
+  FD->setType(ExceptionAdjustedTy);
+  FD->setTypeSourceInfo(TInfo);
+}
+
+static void applyCallExceptionSpecAttr(SyntaxContext &Context, Sema &SemaRef,
+                                       clang::FunctionDecl *FD,
+                                       const gold::CallSyntax *Call,
+                                       const gold::AtomSyntax *Name) {
+  clang::FunctionProtoType::ExceptionSpecInfo ESI;
+  ESI.SourceDecl = FD;
+  clang::ExprResult ESIResultExpr;
+  clang::ExceptionSpecificationType EST;
+  if (Name->getSpelling() == "noexcept") {
+    if (Call->getNumArguments() != 1) {
+      SemaRef.Diags.Report(Call->getLoc(),
+                           clang::diag::err_incorrect_number_of_arguments)
+                           << Name->getSpelling();
+      return;
+    }
+    clang::Expr *ExceptionSpecExpr = nullptr;
+    {
+      clang::EnterExpressionEvaluationContext ConstantEvaluated(
+          SemaRef.getCxxSema(),
+          clang::Sema::ExpressionEvaluationContext::Unevaluated);
+      ExprElaborator ExprElab(Context, SemaRef);
+      ExceptionSpecExpr = ExprElab.elaborateExpr(Call->getArgument(0));
+    }
+    if (!ExceptionSpecExpr) 
+      return;
+    
+    if (ExceptionSpecExpr->getType()->isTypeOfTypes()
+        || ExceptionSpecExpr->getType()->isTemplateType()
+        || ExceptionSpecExpr->getType()->isNamespaceType()) {
+      SemaRef.Diags.Report(Call->getArgument(0)->getLoc(),
+                           clang::diag::err_invalid_result_type);
+      return;
+    }
+    ESIResultExpr = SemaRef.getCxxSema().ActOnNoexceptSpec(Name->getLoc(),
+                                                           ExceptionSpecExpr,
+                                                           EST);
+    if (ESIResultExpr.isInvalid())
+      return;
+
+    ESI.NoexceptExpr = ESIResultExpr.get();
+    ESI.Type = EST;
+
+  } else if (Name->getSpelling() == "throw") {
+    // EST_DynamicNone case
+
+    clang::EnterExpressionEvaluationContext ConstantEvaluated(
+                                                           SemaRef.getCxxSema(),
+                         clang::Sema::ExpressionEvaluationContext::Unevaluated);
+    ExprElaborator ExprElab(Context, SemaRef);
+    llvm::SmallVector<clang::QualType, 8> ExceptionTypes;
+    const ListSyntax *ExceptionList
+                              = dyn_cast<ListSyntax>(Call->getArguments());
+    for (const Syntax *TySyntax : ExceptionList->children()) {
+      clang::Expr *ExceptionSpecExpr = ExprElab.elaborateExpr(TySyntax);
+      if (!ExceptionSpecExpr) 
+        continue;
+        
+      if (!ExceptionSpecExpr->getType()->isTypeOfTypes()) {
+        SemaRef.Diags.Report(TySyntax->getLoc(),
+                             clang::diag::err_invalid_dyn_exception_type);
+        continue;
+      }
+      clang::QualType ExceptionTy = SemaRef.getQualTypeFromTypeExpr(
+                                                             ExceptionSpecExpr);
+      if (!ExceptionTy.isNull())
+        continue;
+      ExceptionTypes.emplace_back(ExceptionTy);
+    }
+    // ESI.Exceptions.push_back/
+    // }
+    // ESI.Type = clang::EST_DynamicNone;
+    ESI.Exceptions = ExceptionTypes;
+    ESI.Type = ESI.Exceptions.size() ?
+               clang::EST_Dynamic : clang::EST_DynamicNone;
+    
+    //   //  	
+    //   // throw(T1, T2)
+    // llvm_unreachable("Throw specifier not implemented yet.");
+  } else {
+    llvm_unreachable("There are no other valid attributes for exception "
+                     "specficiaton.");
+  
+  }
+  // TODO: Consider just using this to apply the exception spec.
+  
+  // SourceRange SpecificationRange;
+  // SmallVector<ParsedType, 4> DynamicExceptions;
+  // SmallVector<SourceRange, 4> DynamicExceptionRanges;
+  // ExprResult NoexceptExpr;
+  // CachedTokens *ExceptionSpecTokens;
+
+  // // Attach the exception-specification to the method.
+  // Actions.actOnDelayedExceptionSpecification(LM.Method, EST,
+  //                                            SpecificationRange,
+  //                                            DynamicExceptions,
+  //                                            DynamicExceptionRanges,
+  //                                            NoexceptExpr.isUsable()?
+  //                                              NoexceptExpr.get() : nullptr);
+
+  // Updating the function type with exception specification info correctly.
+  applyESIToFunctionType(Context, SemaRef, FD, ESI);
+}
+
+// This does almost the same thing as the previous 
+static void finishExceptionSpecAttr(SyntaxContext &Context, Sema &SemaRef,
+                                    Declaration *D) {   
+  assert(D && "Invalid declaration.");
+  clang::FunctionDecl *FD = cast<clang::FunctionDecl>(D->Cxx);
+  if (FD->getExceptionSpecType() != clang::EST_Unparsed) 
+    return;
+  assert(D->ES_Name && "Didn't set exception spec name");
+  assert(D->ES_Call && "Didn't set exception spec call");
+  applyCallExceptionSpecAttr(Context, SemaRef, FD, D->ES_Call, D->ES_Name);
+}
 
 void Elaborator::lateElaborateMethodDef(LateElaboratedMethodDef &Method) {
+  if (!Method.D->Cxx)
+    return;
+  // Finish exception spec before method body?
+  {
+    Declarator *FnDecl = getFunctionDeclarator(Method.D);
+    if (!FnDecl)
+      return;
+    // Attempting to push the scope for the current function onto the stack
+    // This helps with lookup during evaluation exception specification.
+    Sema::ResumeScopeRAII TempScope(SemaRef,
+                                    FnDecl->Data.ParamInfo.ConstructedScope,
+                     FnDecl->Data.ParamInfo.ConstructedScope->getConcreteTerm(),
+                                    /*PopOnExit=*/false);
+    Sema::OptionalInitClangRAII<clang::Sema::CXXThisScopeRAII> ThisScope(
+                                                                       SemaRef);
+    if (clang::CXXMethodDecl *MD
+                              = dyn_cast<clang::CXXMethodDecl>(Method.D->Cxx)) {
+      ThisScope.Init(MD->getParent(), MD->getMethodQualifiers(), true);
+    }
+    finishExceptionSpecAttr(Context, SemaRef, Method.D);
+  }
   elaborateFunctionDef(Method.D);
+  if (!Method.D->Cxx)
+    return;
   SemaRef.getCxxSema().ActOnFinishInlineFunctionDef(
     cast<clang::FunctionDecl>(Method.D->Cxx));
+}
+
+void Elaborator::elaborateAttributes(Declaration *D) {
+  assert(D && "Missing declaration.");
+  llvm::SmallVector<Attributes::iterator, 16> ToRemoved;
+  AttrStatus Status;
+  Declarator *DeclaratorWithAttrs = D->getIdDeclarator();
+  if (!DeclaratorWithAttrs || !DeclaratorWithAttrs->UnprocessedAttributes)
+    return;
+  auto Iter = DeclaratorWithAttrs->UnprocessedAttributes->begin();
+  auto End = DeclaratorWithAttrs->UnprocessedAttributes->end();
+  for (; Iter != End; ++Iter) {
+    const AtomSyntax *Name;
+    if ((Name = dyn_cast<AtomSyntax>(*Iter))) {
+      auto Handler = SemaRef.AttrHandlerMap.find(Name->getSpelling());
+      if (Handler == SemaRef.AttrHandlerMap.end()) {
+        elaborateUnknownAttr(D, *Iter, Status);
+      } else {
+        Handler->second(*this, D, *Iter, Status);
+      }
+      continue;
+    }
+    if (const CallSyntax* Call = dyn_cast<CallSyntax>(*Iter)) {
+      if ((Name = dyn_cast<AtomSyntax>(Call->getCallee()))) {
+        auto Handler = SemaRef.AttrHandlerMap.find(Name->getSpelling());
+        if (Handler == SemaRef.AttrHandlerMap.end()) {
+          elaborateUnknownAttr(D, *Iter, Status);
+        } else {
+          Handler->second(*this, D, *Iter, Status);
+        }
+        continue;
+      }
+    }
+    elaborateUnknownAttr(D, *Iter, Status);
+  }
+}
+
+void Elaborator::elaborateConstExprAttr(Declaration *D, const Syntax *S,
+                                        AttrStatus &Status) {
+  llvm_unreachable(" not implemented");
+}
+
+void Elaborator::elaborateInlineAttr(Declaration *D, const Syntax *S,
+                                     AttrStatus &Status){
+  llvm_unreachable(" not implemented");
+}
+
+void Elaborator::elaborateExternAttr(Declaration *D, const Syntax *S,
+                                     AttrStatus &Status){
+  llvm_unreachable(" not implemented");
+}
+
+void Elaborator::elaborateAccessSpecifierAttr(Declaration *D, const Syntax *S,
+                                              AttrStatus &Status){
+  
+  if (!isa<clang::CXXRecordDecl>(D->Cxx->getDeclContext())) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_cannot_have_acces_specifier);
+    return;
+  }
+
+  if (const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
+    SemaRef.Diags.Report(S->getLoc(),
+                        clang::diag::err_attribute_not_valid_as_call)
+                        << cast<AtomSyntax>(Call->getCallee())->getSpelling(); 
+    return;
+  }
+  const AtomSyntax *ASName = dyn_cast<AtomSyntax>(S);
+  if (!ASName) {
+    llvm_unreachable("Unknown access specifier.");
+  }
+
+  clang::AccessSpecifier AS = clang::AccessSpecifier::AS_public;
+  if (ASName->getSpelling() == "private") {
+    AS = clang::AccessSpecifier::AS_private;
+  } else if (ASName->getSpelling() == "public") {
+    AS = clang::AccessSpecifier::AS_public;
+  } else if (ASName->getSpelling() == "protected") {
+    AS = clang::AccessSpecifier::AS_protected;
+  } else {
+    llvm_unreachable("Unknown access specifier.");
+  }
+  D->Cxx->setAccess(AS);
+}
+
+
+void Elaborator::elaborateExceptionSpecAttr(Declaration *D, const Syntax *S,
+                                            AttrStatus &Status) {
+  
+  if (!D->Cxx)
+    return;
+  bool isWithinClass = isa<clang::CXXRecordDecl>(D->Cxx->getDeclContext());
+
+  if (Status.HasExceptionSpec) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_duplicate_attribute);
+    return;
+  }
+  clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(D->Cxx);
+  if (!FD) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_invalid_attribute_for_decl)
+                         << "exception specifier" << "a function";
+    return;
+  }
+
+  clang::FunctionProtoType::ExceptionSpecInfo ESI;
+  if (const AtomSyntax* Name = dyn_cast<AtomSyntax>(S)) {
+    if (Name->getSpelling() != "noexcept") {
+      SemaRef.Diags.Report(S->getLoc(),
+                          clang::diag::err_attribute_requires_call_syntax)
+                          << Name->getSpelling();
+      return;
+    }
+    ESI.Type = clang::EST_BasicNoexcept;
+  }
+
+
+  // TODO: Figure out if we have to delay the evaluation of ESI because we are
+  // inside of a class. I'm not sure how to handle that exactly yet, but I'm
+  // working on it.
+  if (const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
+    if (const AtomSyntax* Name = dyn_cast<AtomSyntax>(Call->getCallee())) {
+      Status.HasExceptionSpec = true;
+      if (isWithinClass) {
+        ESI.Type = clang::EST_Unparsed;
+        D->ES_Call = Call;
+        D->ES_Name = Name;
+      } else {
+        applyCallExceptionSpecAttr(Context, SemaRef, FD, Call, Name);
+        return;
+      }
+    }
+  }
+  // Updating the function type with exception specification info.
+  applyESIToFunctionType(Context, SemaRef, FD, ESI);
+}
+
+void Elaborator::elaborateStorageClassAttr(Declaration *D, const Syntax *S,
+                                           AttrStatus &Status){
+  llvm_unreachable(" not implemented");
+}
+
+void Elaborator::elaborateExplicitAttr(Declaration *D, const Syntax *S,
+                                       AttrStatus &Status){
+  llvm_unreachable(" not implemented");
+}
+
+void Elaborator::elaborateVirtualAttr(Declaration *D, const Syntax *S,
+                                      AttrStatus &Status){
+  if (Status.HasVirtual) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_duplicate_attribute);
+    return;
+  }
+  if (isa<AtomSyntax>(S)) {
+    if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(D->Cxx)) {
+      MD->setVirtualAsWritten(true);
+      Status.HasVirtual = true;
+      return;
+    } else {
+      SemaRef.Diags.Report(S->getLoc(),
+                           clang::diag::err_invalid_attribute_for_decl)
+                          << "virtual" << "a member function"; 
+      return;
+    }
+  }
+  SemaRef.Diags.Report(S->getLoc(),
+                        clang::diag::err_attribute_not_valid_as_call)
+                        << "virtual"; 
+}
+
+void Elaborator::elaborateOverrideAttr(Declaration *D, const Syntax *S,
+                                       AttrStatus &Status){
+  llvm_unreachable(" not implemented");
+}
+
+void Elaborator::elaborateFinalAttr(Declaration *D, const Syntax *S,
+                                    AttrStatus &Status){
+  llvm_unreachable(" not implemented");
+}
+
+void Elaborator::elaborateConstAttr(Declaration *D, const Syntax *S,
+                                    AttrStatus &Status){
+  llvm_unreachable(" not implemented");
+}
+
+void Elaborator::elaborateCarriesDependencyAttr(Declaration *D, const Syntax *S,
+                                                AttrStatus &Status){
+  llvm_unreachable(" not implemented");
+}
+
+void Elaborator::elaborateDeprecatedAttr(Declaration *D, const Syntax *S,
+                                         AttrStatus &Status){
+  llvm_unreachable(" not implemented");
+}
+
+void Elaborator::elaborateMaybeUnusedAttr(Declaration *D, const Syntax *S,
+                                          AttrStatus &Status){
+  llvm_unreachable(" not implemented");
+}
+
+void Elaborator::elaborateNoDiscardAttr(Declaration *D, const Syntax *S,
+                                        AttrStatus &Status){
+  llvm_unreachable(" not implemented");
+}
+
+void Elaborator::elaborateNoReturnAttr(Declaration *D, const Syntax *S,
+                                       AttrStatus &Status){
+  llvm_unreachable(" not implemented");
+}
+
+void Elaborator::elaborateUnknownAttr(Declaration *D, const Syntax *S,
+                                      AttrStatus &Status){
+  // TODO: I may need to stick some kind of warning here possibly.
+  // llvm_unreachable("Processing of unknown attributes isn't implemented yet.");
 }
 
 

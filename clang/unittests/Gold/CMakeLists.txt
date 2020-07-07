@@ -58,6 +58,7 @@ add_clang_unittest(GoldTests
   GoldCompileRun.cpp
   GoldConst.cpp
   GoldConstructorCallParsingTest.cpp
+  GoldExceptionSpecifierElab.cpp
   GoldFloatingPointLiteralElab.cpp
   GoldFor.cpp
   GoldFunctionOverloading.cpp
