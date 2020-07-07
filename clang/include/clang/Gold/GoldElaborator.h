@@ -36,7 +36,7 @@ namespace gold {
 class Declarator;
 class Declaration;
 class Sema;
-class AttrStatus;
+struct AttrStatus;
 
 // Elaborator takes a gold::Syntax tree as input and outputs an equivalent
 // C++ AST. It works closely with the ExprElaborator and StmtElaborator.
