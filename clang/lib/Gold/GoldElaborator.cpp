@@ -174,16 +174,6 @@ static bool isVirtualBase(Sema& SemaRef, Attributes& attrs,
 }
 
 
-/// This extracts the access specifier if one was given, if not it's set to public.
-/// Returns false on success, and true if there's an error.
-static bool computeAccessSpecifier(Sema& SemaRef, Declaration *D,
-    clang::AccessSpecifier& AS) {
-  AS = clang::AS_public;
-  if (!D->Decl->UnprocessedAttributes)
-    return false;
-  return computeAccessSpecifier(SemaRef, *D->Decl->UnprocessedAttributes, AS);
-}
-
 static bool compluteVariableStorageClassSpec(Sema& SemaRef, Declaration *D,
     clang::StorageClass& SC) {
   return locateValidAttribute(D,
@@ -480,8 +470,7 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   TypeResult UnderlyingType;
   AccessSpecifier AS = AS_none;
   if (WithinClass)
-    if (computeAccessSpecifier(SemaRef, D, AS))
-      return nullptr;
+    AS = AS_public;
   clang::SourceLocation IdLoc = D->Decl->getLoc();
 
   Decl *Declaration = SemaRef.getCxxSema().ActOnTag(SemaRef.getCurClangScope(),
@@ -499,6 +488,7 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
     ClsDecl = cast<CXXRecordDecl>(TempTemplateDecl->getTemplatedDecl());
   }
   D->Cxx = ClsDecl;
+  Elab.elaborateAttributes(D);
   Sema::ScopeRAII ClassBodyScope(SemaRef, SK_Class, D->Op, &D->SavedScope);
   SemaRef.getCurrentScope()->Entity = D;
   
@@ -557,6 +547,7 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   clang::Decl *TempDeclPtr = ClsDecl;
   SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCurClangScope(),
     TempDeclPtr, SourceRange());
+  
   return ClsDecl;
 }
 
@@ -863,14 +854,8 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     FD->setDescribedFunctionTemplate(FTD);
     Owner->addDecl(FTD);
     FnDclrtr->Data.ParamInfo.TemplateScope = SemaRef.saveScope(TemplParams);
-    if (InClass) {
-      // Attempting to mark template decl.
-      clang::AccessSpecifier AS;
-      if (computeAccessSpecifier(SemaRef, D, AS)) {
-        return nullptr;
-      }
-      FTD->setAccess(AS);
-    }
+    if (InClass)
+      FTD->setAccess(clang::AS_public);  
   }
 
   // Update the function parameters.
@@ -1040,28 +1025,21 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
   // parameters.
   clang::MultiTemplateParamsArg MTP;
 
-  clang::AccessSpecifier AS = clang::AccessSpecifier::AS_public;
-
-
   // Constructing the type alias on the way out because I need to correctly
   // construct it's internal type, before continuing oward.
   clang::TypeResult TR(PT);
   clang::Decl *TypeAlias = SemaRef.getCxxSema().ActOnAliasDeclaration(
-      SemaRef.getCurClangScope(), AS, MTP, Loc, Id,
+      SemaRef.getCurClangScope(), clang::AS_public, MTP, Loc, Id,
       clang::ParsedAttributesView(), TR, nullptr);
   // Attempting to add attribute support for this kind of declaration.
   
   bool InClass = SemaRef.getCurrentScope()->getKind() == SK_Class;
   if (InClass) {
-    // Attempting to mark access specifier of type.
-    clang::AccessSpecifier AS;
-    if (computeAccessSpecifier(SemaRef, D, AS)) {
-      return nullptr;
-    }
-    TypeAlias->setAccess(AS);
+    TypeAlias->setAccess(clang::AS_public);
   }
-  D->Cxx = TypeAlias;
 
+  D->Cxx = TypeAlias;
+  elaborateAttributes(D);
   return TypeAlias;
 }
 
@@ -1097,6 +1075,7 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
                                                               clang::SC_None);
   D->Cxx = P;
   D->CurrentPhase = Phase::Typing;
+  elaborateAttributes(D);
   return P;
 }
 
@@ -1450,10 +1429,6 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
   if (D->Init)
     InitStyle = clang::InClassInitStyle::ICIS_ListInit;
 
-  clang::AccessSpecifier AS = clang::AS_public;
-  if (computeAccessSpecifier(SemaRef, D, AS)) {
-    return nullptr;
-  }
   bool DeclIsStatic = false;
   if (isStaticMember(SemaRef, D, DeclIsStatic)) {
     return nullptr;
@@ -1466,7 +1441,7 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
                                                   TInfo->getType(), TInfo,
                                                   clang::SC_Static);
     VDecl->setInlineSpecified();
-    VDecl->setAccess(AS);
+    VDecl->setAccess(clang::AS_public);
     Field = VDecl;
   } else {
     // We are create field within a class.
@@ -1474,12 +1449,12 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
                                                 TInfo, /*RecordDecl=*/Owner,
                                                 Loc, /*Mutable=*/false,
                                                 /*BitWidth=*/nullptr, InitStyle,
-                                                Loc, AS, nullptr);
+                                                Loc, clang::AS_public, nullptr);
   }
-
   Owner->addDecl(Field);
   D->Cxx = Field;
   D->CurrentPhase = Phase::Typing;
+  elaborateAttributes(D);
   return Field;
 }
 
@@ -2213,37 +2188,16 @@ static void applyCallExceptionSpecAttr(SyntaxContext &Context, Sema &SemaRef,
         continue;
       ExceptionTypes.emplace_back(ExceptionTy);
     }
-    // ESI.Exceptions.push_back/
-    // }
-    // ESI.Type = clang::EST_DynamicNone;
+    
     ESI.Exceptions = ExceptionTypes;
     ESI.Type = ESI.Exceptions.size() ?
                clang::EST_Dynamic : clang::EST_DynamicNone;
-    
-    //   //  	
-    //   // throw(T1, T2)
-    // llvm_unreachable("Throw specifier not implemented yet.");
   } else {
     llvm_unreachable("There are no other valid attributes for exception "
                      "specficiaton.");
   
   }
-  // TODO: Consider just using this to apply the exception spec.
   
-  // SourceRange SpecificationRange;
-  // SmallVector<ParsedType, 4> DynamicExceptions;
-  // SmallVector<SourceRange, 4> DynamicExceptionRanges;
-  // ExprResult NoexceptExpr;
-  // CachedTokens *ExceptionSpecTokens;
-
-  // // Attach the exception-specification to the method.
-  // Actions.actOnDelayedExceptionSpecification(LM.Method, EST,
-  //                                            SpecificationRange,
-  //                                            DynamicExceptions,
-  //                                            DynamicExceptionRanges,
-  //                                            NoexceptExpr.isUsable()?
-  //                                              NoexceptExpr.get() : nullptr);
-
   // Updating the function type with exception specification info correctly.
   applyESIToFunctionType(Context, SemaRef, FD, ESI);
 }
@@ -2358,7 +2312,6 @@ void Elaborator::elaborateAccessSpecifierAttr(Declaration *D, const Syntax *S,
   if (!ASName) {
     llvm_unreachable("Unknown access specifier.");
   }
-
   clang::AccessSpecifier AS = clang::AccessSpecifier::AS_public;
   if (ASName->getSpelling() == "private") {
     AS = clang::AccessSpecifier::AS_private;
@@ -2369,7 +2322,19 @@ void Elaborator::elaborateAccessSpecifierAttr(Declaration *D, const Syntax *S,
   } else {
     llvm_unreachable("Unknown access specifier.");
   }
-  D->Cxx->setAccess(AS);
+  if (clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(D->Cxx)) {
+    if(RD->isTemplated()) {
+      clang::ClassTemplateDecl *CTD= RD->getDescribedClassTemplate();
+      CTD->setAccess(AS);
+    } else {
+      D->Cxx->setAccess(AS);
+    }
+  } else if (D->Cxx->isTemplateDecl()) { // This only refers to function templates?
+    clang::TemplateDecl *TemplateD = D->Cxx->getDescribedTemplate();
+    TemplateD->setAccess(AS);
+  } else{
+    D->Cxx->setAccess(AS);
+  }
 }
 
 
@@ -2404,10 +2369,6 @@ void Elaborator::elaborateExceptionSpecAttr(Declaration *D, const Syntax *S,
     ESI.Type = clang::EST_BasicNoexcept;
   }
 
-
-  // TODO: Figure out if we have to delay the evaluation of ESI because we are
-  // inside of a class. I'm not sure how to handle that exactly yet, but I'm
-  // working on it.
   if (const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
     if (const AtomSyntax* Name = dyn_cast<AtomSyntax>(Call->getCallee())) {
       Status.HasExceptionSpec = true;
