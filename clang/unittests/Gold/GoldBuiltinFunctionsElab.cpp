@@ -148,6 +148,36 @@ S1 : decltype(Cls) = Cls
   ASSERT_TRUE(matches(Code.str(), VarDeclWithDecltype));
 }
 
+
+TEST(GoldBuiltinFunctionElab, decltype_AccessingNestedClassName_Fail) {
+  StringRef Code = R"(
+Cls : type = class:
+  Inner : type = class:
+    i:int
+  i:int
+
+foo() : ref Cls
+S1 : decltype(foo()).Inner
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldBuiltinFunctionElab, decltype_AccessingNestedClassName) {
+  StringRef Code = R"(
+Cls : type = class:
+  Inner : type = class:
+    i:int
+  i:int
+
+foo() : Cls
+S1 : decltype(foo()).Inner
+)";
+  DeclarationMatcher VarDeclWithDecltype = varDecl(
+    hasName("S1"),
+    hasType(asString("struct Cls::Inner"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarDeclWithDecltype));
+}
 // TEST(GoldBuiltinFunctionElab, decltype_IncompleteTemplate) {
 //     StringRef Code = R"(
 // Cls[T:type] : type = class:

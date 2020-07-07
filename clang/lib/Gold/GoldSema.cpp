@@ -118,12 +118,58 @@ static llvm::StringMap<clang::BinaryOperatorKind> createBinaryOpMap() {
   };
 }
 
+static Sema::StringToAttrHandlerMap buildAttributeMaping() {
+#define ATTR_HANDLER_LAMBDA(METHOD_NAME)\
+    [](Elaborator &E, Declaration *D, const Syntax *Attr,\
+       AttrStatus &Status) {\
+      E.METHOD_NAME(D, Attr, Status);\
+    }
+  return {
+    { "constexpr", ATTR_HANDLER_LAMBDA(elaborateConstExprAttr) },
+    
+    { "inline", ATTR_HANDLER_LAMBDA(elaborateInlineAttr) },
+    
+    { "extern", ATTR_HANDLER_LAMBDA(elaborateExternAttr) },
+
+    { "public", ATTR_HANDLER_LAMBDA(elaborateAccessSpecifierAttr) },
+    { "private", ATTR_HANDLER_LAMBDA(elaborateAccessSpecifierAttr) },
+    { "protected", ATTR_HANDLER_LAMBDA(elaborateAccessSpecifierAttr) },
+    
+    { "noexcept", ATTR_HANDLER_LAMBDA(elaborateExceptionSpecAttr) },
+    { "throw", ATTR_HANDLER_LAMBDA(elaborateExceptionSpecAttr) },
+
+    // Should auto be allowed here?
+    { "static", ATTR_HANDLER_LAMBDA(elaborateStorageClassAttr) },
+    { "thread_local", ATTR_HANDLER_LAMBDA(elaborateStorageClassAttr) },
+
+    { "explicit", ATTR_HANDLER_LAMBDA(elaborateExplicitAttr) },
+    
+    // Poylmorphic attributes.
+    { "virtual", ATTR_HANDLER_LAMBDA(elaborateVirtualAttr) },
+    { "override", ATTR_HANDLER_LAMBDA(elaborateOverrideAttr) },
+    { "final", ATTR_HANDLER_LAMBDA(elaborateFinalAttr) },
+
+    // This is only for methods
+    { "const", ATTR_HANDLER_LAMBDA(elaborateConstAttr) },
+
+    // Actual known C++ attributes.
+    { "carries_dependency", ATTR_HANDLER_LAMBDA(elaborateCarriesDependencyAttr) },
+    { "deprecated", ATTR_HANDLER_LAMBDA(elaborateDeprecatedAttr) },
+    { "maybe_unused", ATTR_HANDLER_LAMBDA(elaborateMaybeUnusedAttr) },
+    { "nodiscard", ATTR_HANDLER_LAMBDA(elaborateNoDiscardAttr) },
+    { "noreturn", ATTR_HANDLER_LAMBDA(elaborateNoReturnAttr) },
+  };
+#undef ATTR_HANDLER_LAMBDA
+
+}
+
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : CxxSema(CxxSema), CurrentDecl(), Context(Context),
     Diags(Context.CxxAST.getSourceManager().getDiagnostics()),
     BuiltinTypes(createBuiltinTypeList(Context)),
     UnaryOpNames(createUnaryOpMap()),
-    BinaryOpNames(createBinaryOpMap())
+    BinaryOpNames(createBinaryOpMap()),
+    AttrHandlerMap(buildAttributeMaping())
 {
   NullTTy = Context.CxxAST.NullPtrTy;
   CharTy = Context.CxxAST.CharTy;

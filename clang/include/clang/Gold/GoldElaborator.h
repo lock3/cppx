@@ -36,6 +36,7 @@ namespace gold {
 class Declarator;
 class Declaration;
 class Sema;
+class AttrStatus;
 
 // Elaborator takes a gold::Syntax tree as input and outputs an equivalent
 // C++ AST. It works closely with the ExprElaborator and StmtElaborator.
@@ -96,7 +97,6 @@ public:
   clang::Decl *elaborateField(Declaration *D);
   void elaborateFieldInit(Declaration *D);
 
-
   // Identification (1st pass)
   Declaration *identifyDecl(const Syntax *S);
 
@@ -104,6 +104,9 @@ public:
   void startFile(const Syntax *S);
   void finishFile(const Syntax *S);
   
+
+  /// Complete class parsing/elaboration
+  ///{
   /// This returns true if part of the declaration was delayed.
   bool delayElaborateDeclType(const Syntax *S);
   
@@ -114,12 +117,12 @@ public:
   void delayElaborateMethodDef(Declaration *D);
   void delayElaborationClassBody(Declaration *D);
 
-  // TODO: This is going to need an implementation at some point becasue
-  // currently I don't think we support default parameters.
+  // TODO: Need to implement default arguments for parameters
   void delayElaborateDefaultArgument(Declaration *ParamDecl);
 
 
   /// Functions used for late elaboration processing.
+  /// This only occur within a class.
   void finishDelayedElaboration(ElaboratingClass &Class);
   void lateElaborateAttributes(ElaboratingClass &Class);
   void lateElaborateMethodDecls(ElaboratingClass &Class);
@@ -134,6 +137,50 @@ public:
   void lateElaborateMethodDecl(LateElaboratedMethodDeclaration &Method);
   void lateElaborateMemberInitializer(
       LateElaborateMemberInitializer &MemberInit);
+  ///}
+  
+  /// This single function is responsible for applying attributes to things
+  /// any type of declaration we create.
+  void elaborateAttributes(Declaration *D);
+
+  /// Methods that direct the declaration to modify the declaration to have the
+  /// given attribute.
+  void elaborateConstExprAttr(Declaration *D, const Syntax *S,
+                              AttrStatus &Status);
+  void elaborateInlineAttr(Declaration *D, const Syntax *S,
+                           AttrStatus &Status);
+  void elaborateExternAttr(Declaration *D, const Syntax *S,
+                           AttrStatus &Status);
+  void elaborateAccessSpecifierAttr(Declaration *D, const Syntax *S,
+                                    AttrStatus &Status);
+  void elaborateExceptionSpecAttr(Declaration *D, const Syntax *S,
+                                  AttrStatus &Status);
+  void elaborateStorageClassAttr(Declaration *D, const Syntax *S,
+                                 AttrStatus &Status);
+  void elaborateExplicitAttr(Declaration *D, const Syntax *S,
+                             AttrStatus &Status);
+  void elaborateVirtualAttr(Declaration *D, const Syntax *S,
+                            AttrStatus &Status);
+  void elaborateOverrideAttr(Declaration *D, const Syntax *S,
+                             AttrStatus &Status);
+  void elaborateFinalAttr(Declaration *D, const Syntax *S,
+                          AttrStatus &Status);
+  void elaborateConstAttr(Declaration *D, const Syntax *S,
+                          AttrStatus &Status);
+  void elaborateCarriesDependencyAttr(Declaration *D, const Syntax *S,
+                                      AttrStatus &Status);
+  void elaborateDeprecatedAttr(Declaration *D, const Syntax *S,
+                               AttrStatus &Status);
+  void elaborateMaybeUnusedAttr(Declaration *D, const Syntax *S,
+                                AttrStatus &Status);
+  void elaborateNoDiscardAttr(Declaration *D, const Syntax *S,
+                              AttrStatus &Status);
+  void elaborateNoReturnAttr(Declaration *D, const Syntax *S,
+                           AttrStatus &Status);
+  void elaborateUnknownAttr(Declaration *D, const Syntax *S,
+                           AttrStatus &Status);
+
+
 };
 
 /// Represents different kinds of fused operator strings, for example,
