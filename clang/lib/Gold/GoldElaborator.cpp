@@ -816,8 +816,10 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       if (isStaticMember(SemaRef, D, IsStatic)) {
         return nullptr;
       }
-      if (IsStatic) 
+      if (IsStatic) {
+        llvm::outs() << "We have a static function!\n";
         SC = clang::SC_Static;
+      }
       FD = clang::CXXMethodDecl::Create(Context.CxxAST, RD, Loc, DNI,
                                         TInfo->getType(), TInfo,
                                         SC, /*isInline*/true,
@@ -1864,6 +1866,7 @@ bool Elaborator::delayElaborateDeclType(const Syntax *S) {
       // but the late elaboration from there might not exist yet.
       // So we might need to do partial elaboration of a few things in order to
       // correctly define them.
+      llvm::outs() << "We have a static declatation of a function!\n";
       elaborateFunctionDecl(D);
     } else {
       // Attempting to delay method decl/def combos
@@ -2326,21 +2329,17 @@ void Elaborator::elaborateAccessSpecifierAttr(Declaration *D, const Syntax *S,
     if(RD->isTemplated()) {
       clang::ClassTemplateDecl *CTD= RD->getDescribedClassTemplate();
       CTD->setAccess(AS);
-    } else {
-      D->Cxx->setAccess(AS);
     }
-  } else if (D->Cxx->isTemplateDecl()) { // This only refers to function templates?
-    clang::TemplateDecl *TemplateD = D->Cxx->getDescribedTemplate();
-    TemplateD->setAccess(AS);
-  } else{
-    D->Cxx->setAccess(AS);
+  } else if (clang::FunctionDecl *FD = D->Cxx->getAsFunction()) {
+    if (clang::FunctionTemplateDecl *FTD = FD->getDescribedFunctionTemplate())
+      FTD->setAccess(AS);
   }
+  D->Cxx->setAccess(AS);
 }
 
 
 void Elaborator::elaborateExceptionSpecAttr(Declaration *D, const Syntax *S,
                                             AttrStatus &Status) {
-  
   if (!D->Cxx)
     return;
   bool isWithinClass = isa<clang::CXXRecordDecl>(D->Cxx->getDeclContext());
@@ -2404,7 +2403,22 @@ void Elaborator::elaborateVirtualAttr(Declaration *D, const Syntax *S,
     return;
   }
   if (isa<AtomSyntax>(S)) {
+    if (isa<clang::CXXConstructorDecl>(D->Cxx)) {
+      SemaRef.Diags.Report(S->getLoc(),
+                           clang::diag::err_invalid_attribute_for_decl)
+                          << "virtual" << "a member function"; 
+      return;      
+    }
     if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(D->Cxx)) {
+      llvm::outs()<< "We are a method!\n";
+      llvm::outs() << "Storage class = " << MD->getStorageClass() << "\n";
+      if (MD->getStorageClass() != clang::SC_None) {
+        SemaRef.Diags.Report(S->getLoc(),
+                 clang::diag::err_cannot_applied_to_function_with_storage_class)
+                            << "virtual";
+        return;
+      }
+
       MD->setVirtualAsWritten(true);
       Status.HasVirtual = true;
       return;

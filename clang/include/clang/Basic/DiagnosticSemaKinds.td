@@ -11019,6 +11019,9 @@ def err_invalid_type_for_name_spec : Error<
 def err_invalid_attribute_for_decl : Error <
   "invalid attribute %0 attribute can only be applied to a %1">;
 
+def err_cannot_applied_to_function_with_storage_class : Error <
+  "%0 cannot be applied to a member function with storage class speicifiers">;
+
 def err_attribute_not_valid_as_call : Error <
   "attribute %0 is not valid in call form, try removing '()'">;
 

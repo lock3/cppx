@@ -122,12 +122,14 @@ void Declarator::printSequence(llvm::raw_ostream &os) const {
 void Declarator::recordAttributes(const Syntax* AttrNode) {
   if (AttrNode->getAttributes().empty())
     return;
-  AttributeNode = AttrNode;
-  Attributes Attrs;
-  for (const Attribute * A : AttrNode->getAttributes()) {
-    Attrs.emplace_back(A->getArg());
+  if (!UnprocessedAttributes) {
+    Attributes Attrs;
+    UnprocessedAttributes = std::move(Attrs);
   }
-  UnprocessedAttributes = std::move(Attrs);
+  AttributeNode = AttrNode;
+  for (const Attribute * A : AttrNode->getAttributes()) {
+    UnprocessedAttributes->emplace_back(A->getArg());
+  }
 }
 
 Declaration::~Declaration() {
@@ -263,6 +265,7 @@ bool Declaration::declaresTypeAlias() const {
 
 bool Declaration::declIsStatic() const {
   const Declarator *D = Decl;
+  D = D->Next;
   if (!D) {
     return false;
   }

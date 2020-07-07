@@ -1,4 +1,4 @@
-//===- unittest/Gold/GoldVarDeclStorageClass.h - Matcher tests helpers ----===//
+//===- unittest/Gold/GoldVarDeclStorageClass.cpp --------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -27,6 +27,27 @@ foo<static> : int
 TEST(GoldVarDeclStorageClass, External) {
   StringRef Code = R"(
 foo<extern>: int
+)";
+  DeclarationMatcher ExternVar = varDecl(
+    hasName("foo"), isExternStorageClass());
+  ASSERT_TRUE(matches(Code.str(), ExternVar));
+}
+
+
+TEST(GoldVarDeclStorageClass, LineAttr_Static) {
+  StringRef Code = R"(
+[static]
+foo : int
+)";
+  DeclarationMatcher StaticVar = varDecl(
+    hasName("foo"), isStaticStorageClass());
+  ASSERT_TRUE(matches(Code.str(), StaticVar));
+}
+
+TEST(GoldVarDeclStorageClass, LineAttr_External) {
+  StringRef Code = R"(
+[extern]
+foo: int
 )";
   DeclarationMatcher ExternVar = varDecl(
     hasName("foo"), isExternStorageClass());

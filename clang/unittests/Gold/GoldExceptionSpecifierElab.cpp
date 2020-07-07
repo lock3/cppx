@@ -50,6 +50,30 @@ foo(i:int)<noexcept(noexcept(i + 1))> : int !
   ASSERT_TRUE(matches(Code.str(), NoExceptAttr));
 }
 
+TEST(GoldExceptionSpec, LineAttr_noexcept_ImplicitNoArgs) {
+  StringRef Code = R"(
+[noexcept]
+foo() : int !
+  return 4
+)";
+  DeclarationMatcher NoExceptAttr = functionDecl(
+    hasName("foo"), isNoThrow()
+  );
+  ASSERT_TRUE(matches(Code.str(), NoExceptAttr));
+}
+
+TEST(GoldExceptionSpec, LineAttr_noexcept_ParameterDependentTrueConstantExpr) {
+  StringRef Code = R"(
+[noexcept(noexcept(i + 1))]
+foo(i:int) : int !
+  return 4
+)";
+  DeclarationMatcher NoExceptAttr = functionDecl(
+    hasName("foo"), isNoThrow()
+  );
+  ASSERT_TRUE(matches(Code.str(), NoExceptAttr));
+}
+
 TEST(GoldExceptionSpec, noexcept_ParameterDependentFalse) {
   StringRef Code = R"(
 Cls : type = class:
@@ -213,6 +237,21 @@ FakeException : type = class:
   i:int
 
 foo()<throw(FakeExceptions)> : int !
+  return 4
+)";
+  DeclarationMatcher NoExceptAttr = functionDecl(
+    hasName("foo"), hasDynamicExceptionSpec()
+  );
+  ASSERT_TRUE(matches(Code.str(), NoExceptAttr));
+}
+
+TEST(GoldExceptionSpec, LineAttr_throw_DynamicThrows) {
+  StringRef Code = R"(
+FakeException : type = class:
+  i:int
+
+[throw(FakeExceptions)]
+foo() : int !
   return 4
 )";
   DeclarationMatcher NoExceptAttr = functionDecl(

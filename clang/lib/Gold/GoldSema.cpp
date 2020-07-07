@@ -160,8 +160,7 @@ static Sema::StringToAttrHandlerMap buildAttributeMaping() {
     { "noreturn", ATTR_HANDLER_LAMBDA(elaborateNoReturnAttr) },
   };
 #undef ATTR_HANDLER_LAMBDA
-  // elaborateUnknownAttr
-// { "", ATTR_HANDLER_LAMBDA() },
+
 }
 
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
