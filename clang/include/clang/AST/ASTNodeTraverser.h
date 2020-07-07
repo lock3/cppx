@@ -239,6 +239,21 @@ public:
       gold::ConstSyntaxVisitor<Derived>::Visit(S);
       for (const gold::Syntax *SubSyntax : S->children())
         Visit(SubSyntax);
+      if (!S->getAttributes().empty()) {
+        for (const gold::Attribute *Attr :  S->getAttributes()) {
+          Visit(Attr);
+        }
+      }
+    });
+  }
+
+  void Visit(const gold::Attribute *Attr) {
+    getNodeDelegate().AddChild([=] {
+      getNodeDelegate().Visit(Attr);
+      if (!Attr) 
+        return;
+      // gold::ConstSyntaxVisitor<Derived>::Visit(Attr);
+      Visit(Attr->getArg());
     });
   }
 

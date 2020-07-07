@@ -10960,6 +10960,10 @@ def err_invalid_block_condition : Error<
   "invalid block condition">;
 def err_duplicate_access_specifier : Error<
   "multiple access specifiers given as attributes, given %0, and %1">;
+
+def err_duplicate_attribute : Error<
+  "duplicate or conflicting attributes specified">;
+  
 def err_conflicting_attributes : Error<
   "conflicting attributes given, given %0, and %1">;
 
@@ -10987,9 +10991,12 @@ def err_invalid_param_list : Error<
   "invalid parameter list">;
 
 def err_not_a_type : Error<
-  "not a type">;
+  "not a type" >;
 def err_expression_result_type_not_namespace : Error<
   "%0 doesn't result in a namespace">;
+
+def err_declaration_type_not_a_type : Error<
+  "type for a variable declaration doesn't result in a type" >;
 
 def err_incorrect_number_of_arguments : Error<
   "incorrect number of arguments given to %0">;
@@ -11005,6 +11012,32 @@ def err_cannot_apply_operator_to_template : Error<
 
 def err_integer_bitwidth_mismatch : Error<
   "integral type %0 given bitwidth '%1' which mismatches the system size '%2'">;
+
+def err_invalid_type_for_name_spec : Error<
+  "invalid type, unable to get class, namespace, or enumeration from %0">;
+
+def err_invalid_attribute_for_decl : Error <
+  "invalid attribute %0 attribute can only be applied to a %1">;
+
+def err_cannot_applied_to_function_with_storage_class : Error <
+  "%0 cannot be applied to a member function with storage class speicifiers">;
+
+def err_attribute_not_valid_as_call : Error <
+  "attribute %0 is not valid in call form, try removing '()'">;
+
+def err_attribute_requires_call_syntax : Error <
+  "attribute %0 is only valid in call form, try adding '()'">;
+
+def err_cannot_have_acces_specifier : Error <
+  "declaration cannot have an access specifier">;
+
+def err_invalid_result_type : Error <
+  "invalid expression result, the result of a given expression cannot be a "
+  "namespace, template, or type of types" >;
+
+def err_invalid_dyn_exception_type : Error <
+  "only expressions whose reuslts are types can be given to a dynamic excpetion "
+  "specification">;
 
 } // end of Gold category
 

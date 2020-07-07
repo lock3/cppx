@@ -113,9 +113,8 @@ TEST(GoldCastElab, ConstCast) {
 TEST(GoldCastElab, DynamicCast) {
   std::string Code = R"Gold(
 Base : type = class:
-  destructor()<virtual>:void!{
-    # SOmthing
-  }
+  destructor()<virtual>:void!
+    ;
   i:int
 
 Derived1 : type = class(Base):
@@ -131,7 +130,4 @@ foo(y:^Base):void!
   DeclarationMatcher opMatches = hasDescendant(cxxDynamicCastExpr());
   ASSERT_TRUE(matches(Code, opMatches))
     << "dynamic cast failed";
-  ASSERT_FALSE(true)
-    << "Need to implement virtual in order for this to work correctly "
-    << "during implementation.";
 }
