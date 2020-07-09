@@ -161,11 +161,20 @@ Token Parser::expectToken(char const* Id)
   return {};
 }
 
+static bool isSeparator(TokenKind K) {
+  return K == tok::Separator || K == tok::Semicolon;
+}
+
 // file:
 //    array?
 Syntax *Parser::parseFile()
 {
   if (!atEndOfFile()) {
+    // Some wise guy might put a bunch of empty lines at the top of the file.
+    while (matchTokenIf(isSeparator))
+      ;
+
+
     llvm::SmallVector<Syntax *, 16> Vec;
     parseArray(BlockArray, Vec);
     return onFile(Vec);
@@ -191,10 +200,6 @@ static Syntax **createArray(const SyntaxContext &Ctx,
   Syntax **Array = new (Ctx) Syntax *[List.size()];
   std::copy(List.begin(), List.end(), Array);
   return Array;
-}
-
-static bool isSeparator(TokenKind K) {
-  return K == tok::Separator || K == tok::Semicolon;
 }
 
 // array:
@@ -273,10 +278,9 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
     // For now, match this as optional.
     //
     // FIXME: Actually diagnose missing separators.
-    matchTokenIf(isSeparator);
-    // If the previous token was a semicolon, there might be a newline after it.
-    // FIXME: these tokens should be combined by the lexer.
-    matchTokenIf(isSeparator);
+    // FIXME: If the previous token was a semicolon, there might be a newline
+    //        after it. These tokens should be combined by the lexer.
+    while (matchTokenIf(isSeparator));
 
     // The end-of-file is often after the last separator.
     if (atEndOfFile())
@@ -804,6 +808,7 @@ bool Parser::scanMacroNext() {
     return false;
 
   unsigned I = 1;
+  unsigned ParenDepth = 0;
   // Scan for the next newline or :\n\t
   // FIXME: this may be insufficient for semicolons, or if we allow infix
   //        commas/parens. We might need to implement a tracker
@@ -811,13 +816,24 @@ bool Parser::scanMacroNext() {
   while (true) {
     Token Current = peekToken(I++);
 
+    // A fused operator can never appear here.
+    if (Current.isFused())
+      return false;
+
+    if (Current.hasKind(tok::LeftParen))
+      ++ParenDepth;
+
+    else if (Current.hasKind(tok::RightParen))
+      if (ParenDepth > 0)
+        --ParenDepth;
+
     if (Current.hasKind(tok::Colon)) {
       Token Next = peekToken(I++);
       if (Next.hasKind(tok::Indent))
         return true;
     }
 
-    if (Current.hasKind(tok::LeftBracket))
+    if (Current.hasKind(tok::LeftBracket) && !ParenDepth)
       return true;
 
     if (Current.isNewline()
@@ -1231,10 +1247,16 @@ Syntax *Parser::parsePrimary() {
   case tok::DeleteKeyword:
     // FIXME: We need syntax for both new and delete operators.
     llvm_unreachable("new/delete Syntax in undefined.");
+  case tok::Separator:
+    // Just do nothing if we hit an empty line.
+    if (peekToken().isAtStartOfLine())
+      return nullptr;
+    break;
+
   default:
     break;
   }
-    
+
   // Diagnose the error and consume the token so we don't see it again.
   Diags.Report(getInputLocation(), clang::diag::err_expected)
       << "primary-expression";

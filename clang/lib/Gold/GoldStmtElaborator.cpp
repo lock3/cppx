@@ -518,12 +518,10 @@ static bool checkBlockForArgs(Sema &SemaRef, const ArraySyntax *Args,
 }
 
 clang::Stmt *StmtElaborator::elaborateBlockForStmt(const MacroSyntax *S) {
-  assert (isa<CallSyntax>(S->getCall()));
-  const CallSyntax *MacroCall = cast<CallSyntax>(S->getCall());
   clang::SourceLocation ForLoc = S->getCall()->getLoc();
 
-  assert(isa<ArraySyntax>(MacroCall->getArguments()));
-  const ArraySyntax *Arguments = cast<ArraySyntax>(MacroCall->getArguments());
+  assert(isa<ArraySyntax>(S->getBlock()));
+  const ArraySyntax *Arguments = cast<ArraySyntax>(S->getBlock());
 
   // First, ensure that there is only one range in the block condition.
   const Syntax *Range = nullptr;
@@ -550,13 +548,14 @@ clang::Stmt *StmtElaborator::elaborateBlockForStmt(const MacroSyntax *S) {
 
   const Syntax **NewBody;
   std::size_t BodySize = 0;
-  if (const ArraySyntax *Block = dyn_cast<ArraySyntax>(S->getBlock())) {
+  const MacroSyntax *DoMacro = cast_or_null<MacroSyntax>(S->getNext());
+  if (const ArraySyntax *Block = dyn_cast<ArraySyntax>(DoMacro->getBlock())) {
     BodySize = Block->getNumChildren() + HeaderSyntaxes.size();
     NewBody = new (Context) const Syntax *[BodySize];
     std::copy(HeaderSyntaxes.begin(), HeaderSyntaxes.end(), NewBody);
     std::copy(Block->Elems, Block->Elems + Block->getNumChildren(),
               NewBody + HeaderSyntaxes.size());
-  } else if (const ListSyntax *List = dyn_cast<ListSyntax>(S->getBlock())) {
+  } else if (const ListSyntax *List = dyn_cast<ListSyntax>(DoMacro->getBlock())) {
     BodySize = List->getNumChildren() + HeaderSyntaxes.size();
     NewBody = new (Context) const Syntax *[BodySize];
     std::copy(HeaderSyntaxes.begin(), HeaderSyntaxes.end(), NewBody);
@@ -573,9 +572,9 @@ clang::Stmt *StmtElaborator::elaborateBlockForStmt(const MacroSyntax *S) {
   RangeArray[0] = Range;
   ListSyntax *NewArgs = new (Context) ListSyntax(
     const_cast<Syntax **>(RangeArray), 1);
-  const CallSyntax *OldCall = cast<CallSyntax>(S->getCall());
+  const AtomSyntax *OldCall = cast<AtomSyntax>(S->getCall());
   CallSyntax *NewCall = new (Context) CallSyntax(
-    const_cast<Syntax *>(OldCall->getCallee()),
+    const_cast<AtomSyntax *>(OldCall),
     NewArgs);
   MacroSyntax *NewMacro = new (Context) MacroSyntax(
     NewCall,
@@ -585,12 +584,12 @@ clang::Stmt *StmtElaborator::elaborateBlockForStmt(const MacroSyntax *S) {
 }
 
 clang::Stmt *StmtElaborator::elaborateForStmt(const MacroSyntax *S) {
-  assert(isa<CallSyntax>(S->getCall()));
-  const CallSyntax *MacroCall = cast<CallSyntax>(S->getCall());
-  // If the macro's arguments are an array, we're working with a block-for.
-  if (isa<ArraySyntax>(MacroCall->getArguments()))
+  // If the macro call is just an atom, we're working with a block-for.
+  if (isa<AtomSyntax>(S->getCall()))
     return elaborateBlockForStmt(S);
 
+  assert(isa<CallSyntax>(S->getCall()));
+  const CallSyntax *MacroCall = cast<CallSyntax>(S->getCall());
   clang::SourceLocation ForLoc = S->getCall()->getLoc();
 
   assert (isa<ListSyntax>(MacroCall->getArguments()) && "Invalid macro block");

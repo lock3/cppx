@@ -63,6 +63,9 @@ enum TokenFlags : unsigned short {
 
   /// Set if the token is the first token of a new line.
   TF_StartsLine = 0x02,
+
+  /// Set if the token is a line only containing "\n"
+  TF_EmptyLine = 0x04,
 };
 
 /// A token represents a symbol in the language, the end of file, or an
@@ -144,6 +147,10 @@ struct Token
 
   bool isAtStartOfLine() const {
     return Flags & TF_StartsLine;
+  }
+
+  bool isEmptyLine() const {
+    return Flags & TF_EmptyLine;
   }
 
   bool isNumericConstant() const {

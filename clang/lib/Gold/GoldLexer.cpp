@@ -255,8 +255,12 @@ Token CharacterScanner::makeToken(TokenKind K, char const* S, std::size_t N) {
   Token Tok(K, Loc, Sym);
 
   // Update line flags.
-  if (Column - N == 1)
+  if (Column - N == 1) {
     Tok.Flags |= TF_StartsLine;
+
+    if (Sym.str() == "\n")
+      Tok.Flags |= TF_EmptyLine;
+  }
 
   return Tok;
 }
@@ -746,9 +750,9 @@ Token LineScanner::operator()() {
       StartsLine = false;
     }
 
-    // Empty lines are discarded.
+    // Empty lines are retained as separators
     if (Tok.isNewline() && Tok.isAtStartOfLine())
-      continue;
+      break;
 
     // Errors, space, and comments are discardable. If a token starts a
     // line, the next token will become the new start of line.
