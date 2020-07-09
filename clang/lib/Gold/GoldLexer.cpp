@@ -818,10 +818,13 @@ Token BlockScanner::operator()() {
       //
       // Note that the second newline is followed by eof, so we'd
       // probably want to do the same.
-      Tok = combineSpace(Tok, {});
 
       // Buffer the next token for the next read.
       Lookahead = Next;
+      if (!Lookahead.isEmptyLine())
+        Tok = combineSpace(Tok, {});
+      else
+        Tok = combineSpace(Tok, Lookahead);
     }
   }
 
@@ -864,6 +867,10 @@ Token BlockScanner::combineSpace(Token const& Nl, Token const& NewIndent) {
   // Emit queued dedents.
   if (!Dedents.empty())
     return popDedent();
+
+  // Don't consider an empty line a dedent.
+  if (NewIndent.isEmptyLine())
+    return matchSeparator(NewIndent);
 
   Token PrevIndent = currentIndentation();
 
