@@ -31,13 +31,6 @@ AST_POLYMORPHIC_MATCHER_P(stringHasValue,
   return Node.getString() == ToCmpWith;
 
 }
-// AST_POLYMORPHIC_MATCHER(isExternStorageClass,
-//                         AST_POLYMORPHIC_SUPPORTED_TYPES(FunctionDecl,
-//                                                         VarDecl)) {
-//   return Node.getStorageClass() == SC_Extern;
-// }
-
-
 
 struct BaseMatcher {
   bool IsVirtual = false;
@@ -45,8 +38,6 @@ struct BaseMatcher {
   llvm::StringRef Name;
 };
 
-// AST_MATCHER_P2(CXXNewExpr, hasPlacementArg, unsigned, Index,
-//                internal::Matcher<Expr>, InnerMatcher) {
 AST_MATCHER_P(CXXRecordDecl, hasBaseSpecifier, BaseMatcher, BaseCheck) {
   // Node.IgnoreParenCasts()
   if (BaseCheck.AS == AS_none) {

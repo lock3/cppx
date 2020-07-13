@@ -23,9 +23,10 @@
 #include "llvm/ADT/StringMap.h"
 #include "clang/Sema/Sema.h"
 
-#include "clang/Gold/GoldSyntaxContext.h"
-#include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldLateElaboration.h"
+#include "clang/Gold/GoldOperatorInfo.h"
+#include "clang/Gold/GoldScope.h"
+#include "clang/Gold/GoldSyntaxContext.h"
 
 #include <memory>
 #include <vector>
@@ -160,6 +161,10 @@ public:
   // Perform qualified lookup of a name starting in S.
   bool lookupQualifiedName(clang::LookupResult &R, Scope *S);
   bool lookupQualifiedName(clang::LookupResult &R);
+
+  // Perform unqualified memberlooku
+  bool unqualifiedMemberAccessLookup(clang::LookupResult &R,
+                                     const clang::Expr *LHSResultExpr);
 
   /// This checks to see if we are within a class body scope currently.
   bool scopeIsWithinClass();
@@ -318,15 +323,6 @@ public:
   clang::ParsedType getParsedTypeFromExpr(const clang::Expr *TyExpr,
                              clang::SourceLocation Loc=clang::SourceLocation());
 
-  /// These are stub implementations for now so that I can implement them at a
-  /// later time with a later expression.
-  // clang::TypeSourceInfo *getTypeSourceInfoForTemplateExpr(
-  //     const clang::Expr *TemplateTy);
-  // clang::TypeSourceInfo *getTypeSourceInfoForTemplateExpr(
-  //     const clang::Expr *TemplateTy, clang::SourceLocation Loc);
-
-
-
   clang::CppxDeclRefExpr *buildNSDeclRef(clang::CppxNamespaceDecl *D,
                                          clang::SourceLocation Loc);
 
@@ -337,6 +333,7 @@ public:
   /// resulting namespace or nullptr if invalid
   clang::Decl *getDeclFromExpr(const clang::Expr *DeclExpr,
                                clang::SourceLocation Loc);
+
 private:
   /// =============== Members related to qualified lookup. ================= ///
 
@@ -367,65 +364,23 @@ public:
   clang::DiagnosticsEngine &Diags;
 
   // Tokenizations of commonly compared-against strings.
-  const clang::IdentifierInfo *OperatorColonII;
-  const clang::IdentifierInfo *OperatorArrowII;
-  const clang::IdentifierInfo *OperatorExclaimII;
-  const clang::IdentifierInfo *OperatorEqualsII;
-  const clang::IdentifierInfo *OperatorIfII;
-  const clang::IdentifierInfo *OperatorElseII;
-  const clang::IdentifierInfo *OperatorReturnII;
-  const clang::IdentifierInfo *OperatorReturnsII;
-  const clang::IdentifierInfo *OperatorDotII;
-  const clang::IdentifierInfo *OperatorForII;
-  const clang::IdentifierInfo *OperatorWhileII;
-  const clang::IdentifierInfo *OperatorInII;
-  const clang::IdentifierInfo *OperatorDotDotII;
-  const clang::IdentifierInfo *OperatorConstII;
-  const clang::IdentifierInfo *OperatorCaretII;
-  const clang::IdentifierInfo *OperatorRefII;
-  const clang::IdentifierInfo *OperatorRRefII;
-  const clang::IdentifierInfo *OperatorArrayBracketsII;
-  
-  /// These are the identifier names given to operators in C++.
-  ///{
-  const clang::IdentifierInfo *CPPOp_Plus;
-  const clang::IdentifierInfo *CPPOp_Minus;
-  const clang::IdentifierInfo *CPPOp_Mul;
-  const clang::IdentifierInfo *CPPOp_Div;
-  const clang::IdentifierInfo *CPPOp_Mod;
-  const clang::IdentifierInfo *CPPOp_BitWiseXOr;
-  const clang::IdentifierInfo *CPPOp_BitWiseOr;
-  const clang::IdentifierInfo *CPPOp_BitWiseAnd;
-  const clang::IdentifierInfo *CPPOp_BitWiseNot;
-  const clang::IdentifierInfo *CPPOp_BitWiseLeftShift;
-  const clang::IdentifierInfo *CPPOp_BitWiseRightShift;
-  const clang::IdentifierInfo *CPPOp_LOr;
-  const clang::IdentifierInfo *CPPOp_LAnd;
-  const clang::IdentifierInfo *CPPOp_LNot;
-  const clang::IdentifierInfo *CPPOp_Less;
-  const clang::IdentifierInfo *CPPOp_Greater;
-  const clang::IdentifierInfo *CPPOp_LessEqual;
-  const clang::IdentifierInfo *CPPOp_GreaterEqual;
-  const clang::IdentifierInfo *CPPOp_Equal;
-  const clang::IdentifierInfo *CPPOp_NotEqual;
-  const clang::IdentifierInfo *CPPOp_Assign;
-  const clang::IdentifierInfo *CPPOp_PlusAssign;
-  const clang::IdentifierInfo *CPPOp_MinusAssign;
-  const clang::IdentifierInfo *CPPOp_MulAssign;
-  const clang::IdentifierInfo *CPPOp_DivAssign;
-  const clang::IdentifierInfo *CPPOp_ModAssign;
-  const clang::IdentifierInfo *CPPOp_BitWiseXOrAssign;
-  const clang::IdentifierInfo *CPPOp_BitWiseOrAssign;
-  const clang::IdentifierInfo *CPPOp_BitWiseAndAssign;
-  const clang::IdentifierInfo *CPPOp_BitWiseLeftShiftAssign;
-  const clang::IdentifierInfo *CPPOp_BitWiseRightShiftAssign;
-  const clang::IdentifierInfo *CPPOp_ArrayAccess;
-  const clang::IdentifierInfo *CPPOp_FunctionCall;
-  ///}
-
-  // We don't expose this externally, we may need to provide a way to explicitly
-  // invoke this in order to fully support C++.
-  const clang::IdentifierInfo *CPPOp_Arrow;
+  clang::IdentifierInfo *const OperatorColonII;
+  clang::IdentifierInfo *const OperatorArrowII;
+  clang::IdentifierInfo *const OperatorExclaimII;
+  clang::IdentifierInfo *const OperatorEqualsII;
+  clang::IdentifierInfo *const OperatorIfII;
+  clang::IdentifierInfo *const OperatorElseII;
+  clang::IdentifierInfo *const OperatorReturnII;
+  clang::IdentifierInfo *const OperatorReturnsII;
+  clang::IdentifierInfo *const OperatorDotII;
+  clang::IdentifierInfo *const OperatorForII;
+  clang::IdentifierInfo *const OperatorWhileII;
+  clang::IdentifierInfo *const OperatorInII;
+  clang::IdentifierInfo *const OperatorDotDotII;
+  clang::IdentifierInfo *const OperatorConstII;
+  clang::IdentifierInfo *const OperatorRefII;
+  clang::IdentifierInfo *const OperatorRRefII;
+  clang::IdentifierInfo *const OperatorArrayBracketsII;
 
   // An RAII type for constructing scopes.
   struct ScopeRAII {
@@ -710,33 +665,10 @@ public:
 
   // Dictionary of built in types.
   const llvm::StringMap<clang::QualType> BuiltinTypes;
-
-
-  /// IsUnaryOperator
-  /// Checks to see if a given unary operator is a know unary operator.
-  bool IsUnaryOperator(llvm::StringRef OpName) const;
   
-  /// GetUnaryOperatorKind
-  /// @returns false if the operator was found and true if it wasn't.
-  bool GetUnaryOperatorKind(llvm::StringRef OpName,
-                            clang::UnaryOperatorKind &Kind) const;
-
-  // Map of unary operators, this shouldn't have a static constructor
-  // according to the LLVM documentation so it's stored here instead.
-  const llvm::StringMap<clang::UnaryOperatorKind> UnaryOpNames;
-
-  /// Checks to see if a given name is associated with a binary operator.
-  bool IsBinaryOperator(llvm::StringRef OpName) const;
-
-  /// GetBinaryOperatorKind
-  /// Attempts to search for and return the binary operator associated with
-  /// a given operator name.
-  /// @returns false if the operator was found and true if it wasn't.
-  bool GetBinaryOperatorKind(llvm::StringRef OpName,
-      clang::BinaryOperatorKind &Kind) const;
-
-  // Map of binary operator names to their clang operator kind.
-  const llvm::StringMap<clang::BinaryOperatorKind> BinaryOpNames;
+  /// Contains a large amount of constant information about individual operators
+  /// If it's not in here it cannot be overriden.
+  const OperatorInfo OpInfo;
 
 
   using AttributeHandler = void(*)(Elaborator &, Declaration*,

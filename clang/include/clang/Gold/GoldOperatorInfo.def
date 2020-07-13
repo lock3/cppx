@@ -1,0 +1,151 @@
+//===--- GoldOperatorInfo.def - Gold Overloaded Operator --------*- C++ -*-===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+//  Defines information about operators within gold, how they appear within
+//  the gold AST, their relationship to C++, and how they are declared within 
+//  the gold language.
+//
+//===----------------------------------------------------------------------===//
+#ifndef def_op_name
+#   define def_op_name(Name)
+#endif
+
+#ifndef def_bin_op
+#   define def_bin_op(Name,OpStr,ClangBinOpName,MemberOnly, \
+                      OverloadStyle,OpOverloadName)         \
+    def_op_name(Name)
+#endif
+
+#ifndef def_bin_op_member_only
+#   define def_bin_op_member_only(Name,OpStr,ClangBinOpName,MemberOnly, \
+                                  OverloadStyle,OpOverloadName)         \
+      def_bin_op(Name,OpStr,ClangBinOpName,MemberOnly, \
+                 OverloadStyle,OpOverloadName)
+#endif
+
+#ifndef def_bin_op_second_name
+#   define def_bin_op_second_name(Name,OpStr,SecondOpStr,ClangBinOpName,  \
+                                  MemberOnly,OverloadStyle,OpOverloadName)\
+    def_op_name(Name)
+#endif
+
+#ifndef def_bin_op_missmatch
+#   define def_bin_op_missmatch(Name,OpStr,ClangOpStr,ClangBinOpName,   \
+                                MemberOnly,OverloadStyle,OpOverloadName)\
+    def_op_name(Name)
+#endif
+
+// #ifndef def_unary_op
+// #  define def_unary_op(K, GT)
+// #endif
+#ifndef def_unary_and_binary_op
+#   define def_unary_and_binary_op(Name,OpStr,ClangUnaryOpName,ClangBinOpName,\
+                                  MemberOnly,OverloadStyle,OpOverloadName)    \
+      def_op_name(Name)
+#endif
+
+#ifndef def_unary_and_binary_op_mismatch
+#   define def_unary_and_binary_op_mismatch(Name,OpStr,ClangStr,              \
+                                            ClangUnaryOpName,ClangBinOpName,  \
+                                            MemberOnly,OverloadStyle,         \
+                                            UnaryOpOpverload,                 \
+                                            BinOpOverloadName)                \
+      def_op_name(Name)
+#endif
+
+#ifndef def_unary_op_second_name
+#   define def_unary_op_second_name(Name,OpStr,SecondName,ClangUnaryOpName,   \
+                                    MemberOnly,OverloadStyle,OpOverloadName)  \
+      def_op_name(Name)
+#endif
+
+
+
+#ifndef def_unary_cpp_only_op
+#  define def_unary_cpp_only_op(Name, OpStr, MemberOnly, OverloadStyle,     \
+                                 OpOverloadName)                            \
+      def_op_name(Name)
+#endif
+
+#ifndef def_bin_cpp_only_op
+#  define def_bin_cpp_only_op(Name, OpStr, MemberOnly, OverloadStyle,     \
+                              OpOverloadName)                             \
+    def_unary_cpp_only_op(Name, OpStr, MemberOnly, OverloadStyle,         \
+                          OpOverloadName)
+#endif
+
+#ifndef def_inc_and_dec_cpp_only_op
+#     define def_inc_and_dec_cpp_only_op(Name, OpStr, MemberOnly,        \
+                                         OverloadStyle, OpOverloadName)  \
+    def_unary_cpp_only_op(Name, OpStr, MemberOnly, OverloadStyle,         \
+                          OpOverloadName)
+#endif
+
+#ifndef def_nary_op
+#   define def_nary_op(Name,OpStr,MemberOnly,OverloadStyle,OpOverloadName) \
+      def_op_name(Name)
+#endif
+
+
+// Adding additional operator information.
+// TODO: I need to add additional operators that haven't been created here yet.
+// FIXME: Create a better solution to the dereference problem.
+// def_unary_op(Not, "~")
+// def_unary_and_binary_op(AddrOf, "&") // ?
+def_unary_and_binary_op(            PlusSign,  "+",         Plus,  Add, false,  GoldAndCpp, Plus)
+def_unary_and_binary_op(            MinusSign, "-",         Minus, Sub, false,  GoldAndCpp, Minus)
+def_unary_and_binary_op_mismatch( Dereference, "^",   "*",  Deref, Xor, false,  CppOnly,    Star, Caret)
+def_unary_op_second_name(          LogicalNot, "!", "not",  LNot,       false,  GoldAndCpp, Exclaim)
+
+def_bin_op(                       Division,   "/",          Div,        false,  GoldAndCpp, Slash)
+def_bin_op(                        Modulus,   "%",          Rem,        false,  GoldAndCpp, Percent)
+def_bin_op(                       Multiply,   "*",          Mul,        false,  GoldAndCpp, Star)
+def_bin_op(                      BitWiseOr,   "|",          Or,         false,  GoldAndCpp, Pipe)
+def_bin_op(                     BitWiseAnd,   "&",          And,        false,  GoldAndCpp, Amp)
+def_bin_op(                      LeftShift,  "<<",          Shl,        false,  GoldAndCpp, LessLess)
+def_bin_op(                     RightShfit,  ">>",          Shr,        false,  GoldAndCpp, GreaterGreater)
+def_bin_op_second_name(          LogicalOr,  "||", "or",    LOr,        false,  GoldAndCpp, PipePipe)
+def_bin_op_second_name(         LogicalAnd,  "&&", "and",   LAnd,       false,  GoldAndCpp, AmpAmp)
+def_bin_op(                       LessThen,   "<",          LT,         false,  GoldAndCpp, Less)
+def_bin_op(                    GreaterThen,   ">",          GT,         false,  GoldAndCpp, Greater)
+def_bin_op(                      LessEqual,  "<=",          LE,         false,  GoldAndCpp, LessEqual)
+def_bin_op(                   GreaterEqual,  ">=",          GE,         false,  GoldAndCpp, GreaterEqual)
+def_bin_op(                       Equality,  "==",          EQ,         false,  GoldAndCpp, EqualEqual)
+def_bin_op_missmatch(           Inequality,  "<>", "!=",    NE,         false,  GoldAndCpp, ExclaimEqual)
+def_bin_op_member_only(         Assignment,   "=",          Assign,     true,   GoldAndCpp, Equal)
+def_bin_op(                      AddAssign,  "+=",          AddAssign,  false,  GoldAndCpp, PlusEqual)
+def_bin_op(                      SubAssign,  "-=",          SubAssign,  false,  GoldAndCpp, MinusEqual)
+def_bin_op(                      MulAssign,  "*=",          MulAssign,  false,  GoldAndCpp, StarEqual)
+def_bin_op(                      DivAssign,  "/=",          DivAssign,  false,  GoldAndCpp, SlashEqual)
+def_bin_op(                      RemAssign,  "%=",          RemAssign,  false,  GoldAndCpp, PercentEqual)
+def_bin_op(               BitWiseXOrAssign,  "^=",          XorAssign,  false,  GoldAndCpp, CaretEqual)
+def_bin_op(                BitWiseOrAssign,  "|=",          OrAssign,   false,  GoldAndCpp, PipeEqual)
+def_bin_op(               BitWiseAndAssign,  "&=",          AndAssign,  false,  GoldAndCpp, AmpEqual)
+def_bin_op(                LeftShiftAssign, "<<=",          ShlAssign,  false,  GoldAndCpp, LessLessEqual)
+def_bin_op(               RightShiftAssign, ">>=",          ShrAssign,  false,  GoldAndCpp, GreaterGreaterEqual)
+
+def_nary_op(                     Subscript, "[]",                       true,   GoldAndCpp, Subscript)
+def_nary_op(                  FunctionCall, "()",                       true,   GoldAndCpp, Call)
+
+def_unary_cpp_only_op(               Arrow, "->",                       false,  CppOnly,    Arrow)
+def_bin_cpp_only_op(  MemberPtrAccessArrow, "->*",                      true,   CppOnly,    ArrowStar)
+def_inc_and_dec_cpp_only_op(      PlusPlus, "++",                       false,  CppOnly,    PlusPlus)
+def_inc_and_dec_cpp_only_op(    MinusMinus, "--",                       false,  CppOnly,    MinusMinus)
+
+#undef def_bin_op
+#undef def_bin_op_second_name
+#undef def_bin_op_missmatch
+#undef def_unary_op_second_name
+#undef def_unary_and_binary_op
+#undef def_unary_and_binary_op_mismatch
+#undef def_unary_cpp_only_op
+#undef def_bin_cpp_only_op
+#undef def_inc_and_dec_cpp_only_op
+#undef def_nary_op
+#undef def_op_name
+#undef def_bin_op_member_only

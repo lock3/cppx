@@ -1254,14 +1254,14 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   if (Spelling.startswith("operator'")) {
     if (S->getNumArguments() == 1) {
       clang::UnaryOperatorKind UnaryOpKind;
-      if (!SemaRef.GetUnaryOperatorKind(Spelling, UnaryOpKind))
+      if (!SemaRef.OpInfo.getUnaryOperatorUseKind(Spelling, UnaryOpKind))
         return elaborateUnaryOp(S, UnaryOpKind);
     }
 
     if (S->getNumArguments() == 2) {
       // Check if this is a binary operator.
       clang::BinaryOperatorKind BinaryOpKind;
-      if (!SemaRef.GetBinaryOperatorKind(Spelling, BinaryOpKind))
+      if (!SemaRef.OpInfo.getBinaryOperatorUseKind(Spelling, BinaryOpKind))
         return elaborateBinOp(S, BinaryOpKind);
     }
   }
@@ -1560,6 +1560,12 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     clang::UnqualifiedId Id;
     clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(
                                                       RHSAtom->getSpelling());
+    clang::IdentifierInfo *ClangOpName = SemaRef.OpInfo.getClangName(IdInfo);
+    if (ClangOpName) {
+      IdInfo = ClangOpName;
+      Id.setOperatorFunctionId();
+      // Id.setKind(clang::IK_OperatorFunctionId);
+    }
     Id.setIdentifier(IdInfo, RHSAtom->getLoc());
     clang::CXXScopeSpec SS;
     clang::SourceLocation Loc;
@@ -1578,6 +1584,50 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr.get());
     return RHSExpr.get();
   }
+  //   if (SS.isSet() && SS.isInvalid())
+  //   return ExprError();
+
+  // // Warn about the explicit constructor calls Microsoft extension.
+  // if (getLangOpts().MicrosoftExt &&
+  //     Id.getKind() == UnqualifiedIdKind::IK_ConstructorName)
+  //   Diag(Id.getSourceRange().getBegin(),
+  //        diag::ext_ms_explicit_constructor_call);
+
+  // TemplateArgumentListInfo TemplateArgsBuffer;
+
+  // // Decompose the name into its component parts.
+  // DeclarationNameInfo NameInfo;
+  // const TemplateArgumentListInfo *TemplateArgs;
+  // DecomposeUnqualifiedId(Id, TemplateArgsBuffer,
+  //                        NameInfo, TemplateArgs);
+
+  // DeclarationName Name = NameInfo.getName();
+  // bool IsArrow = (OpKind == tok::arrow);
+
+  // NamedDecl *FirstQualifierInScope
+  //   = (!SS.isSet() ? nullptr : FindFirstQualifierInScope(S, SS.getScopeRep()));
+
+  // // This is a postfix expression, so get rid of ParenListExprs.
+  // ExprResult Result = MaybeConvertParenListExprToParenExpr(S, Base);
+  // if (Result.isInvalid()) return ExprError();
+  // Base = Result.get();
+
+  // if (Base->getType()->isDependentType() || Name.isDependentName() ||
+  //     isDependentScopeSpecifier(SS)) {
+  //   return ActOnDependentMemberExpr(Base, Base->getType(), IsArrow, OpLoc, SS,
+  //                                   TemplateKWLoc, FirstQualifierInScope,
+  //                                   NameInfo, TemplateArgs);
+  // }
+
+  // ActOnMemberAccessExtraArgs ExtraArgs = {S, Id, ObjCImpDecl};
+  // ExprResult Res = BuildMemberReferenceExpr(
+  //     Base, Base->getType(), OpLoc, IsArrow, SS, TemplateKWLoc,
+  //     FirstQualifierInScope, NameInfo, TemplateArgs, S, &ExtraArgs);
+
+  // if (!Res.isInvalid() && isa<MemberExpr>(Res.get()))
+  //   CheckMemberAccessOfNoDeref(cast<MemberExpr>(Res.get()));
+
+  // return Res;
   llvm_unreachable("Member access from non-variables unimplemented.");
 }
 
@@ -1727,6 +1777,61 @@ clang::Expr *ExprElaborator::elaborateNestedLookUpAccess(const clang::Expr *Prev
 
 }
 
+/*  TODO: Remove this at some point in the future after I figure out how it
+    works and can replace it.
+ ExprResult Sema::BuildUnaryOp(Scope *S, SourceLocation OpLoc,
+                               UnaryOperatorKind Opc, Expr *Input) {
+   // First things first: handle placeholders so that the
+   // overloaded-operator check considers the right type.
+   if (const BuiltinType *pty = Input->getType()->getAsPlaceholderType()) {
+     // Increment and decrement of pseudo-object references.
+     if (pty->getKind() == BuiltinType::PseudoObject &&
+         UnaryOperator::isIncrementDecrementOp(Opc))
+       return checkPseudoObjectIncDec(S, OpLoc, Opc, Input);
+ 
+     // extension is always a builtin operator.
+     if (Opc == UO_Extension)
+       return CreateBuiltinUnaryOp(OpLoc, Opc, Input);
+ 
+     // & gets special logic for several kinds of placeholder.
+     // The builtin code knows what to do.
+     if (Opc == UO_AddrOf &&
+         (pty->getKind() == BuiltinType::Overload ||
+          pty->getKind() == BuiltinType::UnknownAny ||
+          pty->getKind() == BuiltinType::BoundMember))
+       return CreateBuiltinUnaryOp(OpLoc, Opc, Input);
+ 
+     // Anything else needs to be handled now.
+     ExprResult Result = CheckPlaceholderExpr(Input);
+     if (Result.isInvalid()) return ExprError();
+     Input = Result.get();
+   }
+ 
+   if (getLangOpts().CPlusPlus && Input->getType()->isOverloadableType() &&
+       UnaryOperator::getOverloadedOperator(Opc) != OO_None &&
+       !(Opc == UO_AddrOf && isQualifiedMemberAccess(Input))) {
+     // Find all of the overloaded operators visible from this
+     // point. We perform both an operator-name lookup from the local
+     // scope and an argument-dependent lookup based on the types of
+     // the arguments.
+     UnresolvedSet<16> Functions;
+     OverloadedOperatorKind OverOp = UnaryOperator::getOverloadedOperator(Opc);
+     if (S && OverOp != OO_None)
+       LookupOverloadedOperatorName(OverOp, S, Input->getType(), QualType(),
+                                    Functions);
+ 
+     return CreateOverloadedUnaryOp(OpLoc, Opc, Functions, Input);
+   }
+ 
+   return CreateBuiltinUnaryOp(OpLoc, Opc, Input);
+ }
+ 
+ // Unary Operators.  'Tok' is the token for the operator.
+ ExprResult Sema::ActOnUnaryOp(Scope *S, SourceLocation OpLoc,
+                               tok::TokenKind Op, Expr *Input) {
+   return BuildUnaryOp(S, OpLoc, ConvertTokenKindToUnaryOpcode(Op), Input);
+ }
+*/
 clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
                                               clang::UnaryOperatorKind Op) {
   const Syntax *Operand = S->getArgument(0);

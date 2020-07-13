@@ -75,49 +75,6 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
   };
 }
 
-static llvm::StringMap<clang::UnaryOperatorKind> createUnaryOpMap() {
-  return {
-    // {"operator'&'", clang::AddrOf}, // FIXME: this needs to be designed
-    {"operator'^'", clang::UO_Deref},
-    {"operator'+'", clang::UO_Plus},
-    {"operator'-'", clang::UO_Minus},
-    // {"operator'~'", clang::UO_Not}, // FIXME: this needs to be designed
-    {"operator'!'", clang::UO_LNot},
-    {"operator'not'", clang::UO_LNot},
-  };
-}
-
-static llvm::StringMap<clang::BinaryOperatorKind> createBinaryOpMap() {
-  return {
-    {"operator'+'" , clang::BO_Add},
-    {"operator'-'" , clang::BO_Sub},
-    {"operator'*'" , clang::BO_Mul},
-    {"operator'/'" , clang::BO_Div},
-    {"operator'%'" , clang::BO_Rem},
-    {"operator'&'" , clang::BO_And},
-    {"operator'|'" , clang::BO_Or},
-    {"operator'^'" , clang::BO_Xor},
-    {"operator'&&'" , clang::BO_LAnd},
-    {"operator'and'", clang::BO_LAnd},
-    {"operator'||'" , clang::BO_LOr},
-    {"operator'or'" , clang::BO_LOr},
-    {"operator'=='" , clang::BO_EQ},
-    {"operator'<>'", clang::BO_NE},
-    {"operator'<'", clang::BO_LT},
-    {"operator'>'", clang::BO_GT},
-    {"operator'<='", clang::BO_LE},
-    {"operator'>='", clang::BO_GE},
-    {"operator'+='" , clang::BO_AddAssign},
-    {"operator'-='" , clang::BO_SubAssign},
-    {"operator'*='" , clang::BO_MulAssign},
-    {"operator'/='" , clang::BO_DivAssign},
-    {"operator'%='" , clang::BO_RemAssign},
-    {"operator'&='" , clang::BO_AndAssign},
-    {"operator'|='" , clang::BO_OrAssign},
-    {"operator'^='" , clang::BO_XorAssign}
-  };
-}
-
 static Sema::StringToAttrHandlerMap buildAttributeMaping() {
 #define ATTR_HANDLER_LAMBDA(METHOD_NAME)\
     [](Elaborator &E, Declaration *D, const Syntax *Attr,\
@@ -166,9 +123,25 @@ static Sema::StringToAttrHandlerMap buildAttributeMaping() {
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : CxxSema(CxxSema), CurrentDecl(), Context(Context),
     Diags(Context.CxxAST.getSourceManager().getDiagnostics()),
+    OperatorColonII(&Context.CxxAST.Idents.get("operator':'")),
+    OperatorArrowII(&Context.CxxAST.Idents.get("operator'->'")),
+    OperatorExclaimII(&Context.CxxAST.Idents.get("operator'!'")),
+    OperatorEqualsII(&Context.CxxAST.Idents.get("operator'='")),
+    OperatorIfII(&Context.CxxAST.Idents.get("operator'if'")),
+    OperatorElseII(&Context.CxxAST.Idents.get("operator'else'")),
+    OperatorReturnII(&Context.CxxAST.Idents.get("operator'return'")),
+    OperatorReturnsII(&Context.CxxAST.Idents.get("operator'returns'")),
+    OperatorDotII(&Context.CxxAST.Idents.get("operator'.'")),
+    OperatorForII(&Context.CxxAST.Idents.get("operator'for'")),
+    OperatorWhileII(&Context.CxxAST.Idents.get("operator'while'")),
+    OperatorInII(&Context.CxxAST.Idents.get("operator'in'")),
+    OperatorDotDotII(&Context.CxxAST.Idents.get("operator'..'")),
+    OperatorConstII(&Context.CxxAST.Idents.get("operator'const'")),
+    OperatorRefII(&Context.CxxAST.Idents.get("operator'ref'")),
+    OperatorRRefII(&Context.CxxAST.Idents.get("operator'rref'")),
+    OperatorArrayBracketsII(&Context.CxxAST.Idents.get("operator'[]'")),
     BuiltinTypes(createBuiltinTypeList(Context)),
-    UnaryOpNames(createUnaryOpMap()),
-    BinaryOpNames(createBinaryOpMap()),
+    OpInfo(Context.CxxAST),
     AttrHandlerMap(buildAttributeMaping())
 {
   NullTTy = Context.CxxAST.NullPtrTy;
@@ -197,59 +170,9 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   Float128Ty = Context.CxxAST.getRealTypeForBitwidth(128);
   
   CxxSema.CurScope = nullptr;
-  OperatorColonII = &Context.CxxAST.Idents.get("operator':'");
-  OperatorArrowII = &Context.CxxAST.Idents.get("operator'->'");
-  OperatorExclaimII = &Context.CxxAST.Idents.get("operator'!'");
-  OperatorEqualsII = &Context.CxxAST.Idents.get("operator'='");
-  OperatorIfII = &Context.CxxAST.Idents.get("operator'if'");
-  OperatorElseII = &Context.CxxAST.Idents.get("operator'else'");
-  OperatorReturnII = &Context.CxxAST.Idents.get("operator'return'");
-  OperatorReturnsII = &Context.CxxAST.Idents.get("operator'returns'");
-  OperatorDotII = &Context.CxxAST.Idents.get("operator'.'");
-  OperatorForII = &Context.CxxAST.Idents.get("operator'for'");
-  OperatorWhileII = &Context.CxxAST.Idents.get("operator'while'");
-  OperatorInII = &Context.CxxAST.Idents.get("operator'in'");
-  OperatorDotDotII = &Context.CxxAST.Idents.get("operator'..'");
-  OperatorConstII =  &Context.CxxAST.Idents.get("operator'const'");
-  OperatorRefII = &Context.CxxAST.Idents.get("operator'ref'");
-  OperatorRRefII = &Context.CxxAST.Idents.get("operator'rref'");
-  OperatorArrayBracketsII = &Context.CxxAST.Idents.get("operator'[]'");
 
-  // All of the names of operators that we use.
-  CPPOp_Plus = &Context.CxxAST.Idents.get("operator+");
-  CPPOp_Minus = &Context.CxxAST.Idents.get("operator-");
-  CPPOp_Mul = &Context.CxxAST.Idents.get("operator*");
-  CPPOp_Div = &Context.CxxAST.Idents.get("operator/");
-  CPPOp_Mod = &Context.CxxAST.Idents.get("operator%");
-  CPPOp_BitWiseXOr = &Context.CxxAST.Idents.get("operator^");
-  CPPOp_BitWiseOr = &Context.CxxAST.Idents.get("operator|");
-  CPPOp_BitWiseAnd = &Context.CxxAST.Idents.get("operator&");
-  CPPOp_BitWiseNot = &Context.CxxAST.Idents.get("operator~");
-  CPPOp_BitWiseLeftShift = &Context.CxxAST.Idents.get("operator<<");
-  CPPOp_BitWiseRightShift = &Context.CxxAST.Idents.get("operator>>");
-  CPPOp_LOr = &Context.CxxAST.Idents.get("operator||");
-  CPPOp_LAnd = &Context.CxxAST.Idents.get("operator&&");
-  CPPOp_LNot = &Context.CxxAST.Idents.get("operator!");
-  CPPOp_Less = &Context.CxxAST.Idents.get("operator<");
-  CPPOp_Greater = &Context.CxxAST.Idents.get("operator>");
-  CPPOp_LessEqual = &Context.CxxAST.Idents.get("operator<=");
-  CPPOp_GreaterEqual = &Context.CxxAST.Idents.get("operator>=");
-  CPPOp_Equal = &Context.CxxAST.Idents.get("operator==");
-  CPPOp_NotEqual = &Context.CxxAST.Idents.get("operator!=");
-  CPPOp_Assign = &Context.CxxAST.Idents.get("operator=");
-  CPPOp_PlusAssign = &Context.CxxAST.Idents.get("operator+=");
-  CPPOp_MinusAssign = &Context.CxxAST.Idents.get("operator-=");
-  CPPOp_MulAssign = &Context.CxxAST.Idents.get("operator*=");
-  CPPOp_DivAssign = &Context.CxxAST.Idents.get("operator/=");
-  CPPOp_ModAssign = &Context.CxxAST.Idents.get("operator%=");
-  CPPOp_BitWiseXOrAssign = &Context.CxxAST.Idents.get("operator^=");
-  CPPOp_BitWiseOrAssign = &Context.CxxAST.Idents.get("operator|=");
-  CPPOp_BitWiseAndAssign = &Context.CxxAST.Idents.get("operator&=");
-  CPPOp_BitWiseLeftShiftAssign = &Context.CxxAST.Idents.get("operator<<=");
-  CPPOp_BitWiseRightShiftAssign = &Context.CxxAST.Idents.get("operator>>=");
-  CPPOp_ArrayAccess = &Context.CxxAST.Idents.get("operator[]");
-  CPPOp_FunctionCall = &Context.CxxAST.Idents.get("operator()");
-  CPPOp_Arrow = &Context.CxxAST.Idents.get("operator->");
+  // All of the names of operators that we use.  
+  
 }
 
 Sema::~Sema() {
@@ -615,6 +538,14 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   return !R.empty();
 }
 
+bool Sema::unqualifiedMemberAccessLookup(clang::LookupResult &R,
+                                         const clang::Expr *LHSResultExpr) {
+  clang::QualType LHSTy= LHSResultExpr->getType();
+  if (LHSTy->isRecordDecl()) {
+    
+  }
+}
+
 bool Sema::scopeIsWithinClass() {
   return getCurrentScope()->getKind() & SK_Class;
 }
@@ -974,41 +905,6 @@ clang::Decl *Sema::getDeclFromExpr(const clang::Expr *DeclExpr,
   llvm_unreachable("Unable to get declaration from expression.");
   // TODO: Change this error message to say that the expression doesn't contain
   // a declaration or something like that.
-  // Diags.Report(DeclExpr->getExprLoc(),
-  //                         clang::diag::err_expression_result_type_not_namespace)
-  //     << DeclExpr;
-  // return nullptr;
-}
-
-
-
-bool Sema::IsUnaryOperator(llvm::StringRef OpName) const {
-  auto It = UnaryOpNames.find(OpName);
-  return It != UnaryOpNames.end();
-}
-
-bool Sema::GetUnaryOperatorKind(llvm::StringRef OpName,
-                                clang::UnaryOperatorKind &Kind) const{
-  auto It = UnaryOpNames.find(OpName);
-  if (It == UnaryOpNames.end())
-    return true;
-
-  Kind = It->second;
-  return false;
-}
-
-bool Sema::IsBinaryOperator(llvm::StringRef OpName) const {
-  auto It = BinaryOpNames.find(OpName);
-  return It != BinaryOpNames.end();
-}
-
-bool Sema::GetBinaryOperatorKind(llvm::StringRef OpName,
-    clang::BinaryOperatorKind &Kind) const {
-  auto It = BinaryOpNames.find(OpName);
-  if (It == BinaryOpNames.end())
-    return true;
-  Kind = It->second;
-  return false;
 }
 
 } // namespace gold

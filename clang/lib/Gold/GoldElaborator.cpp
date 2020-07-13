@@ -685,7 +685,56 @@ void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
     ++I;
   }
 }
-                                              
+static bool getOperatorDeclarationName(SyntaxContext &Context, Sema &SemaRef,
+                                       const OpInfoBase *OpInfo,
+                                       bool InClass, unsigned ParamCount,
+                                       clang::SourceLocation NameLoc,
+                                       clang::DeclarationName &Name) {
+
+
+  if (OpInfo->isMemberOnly() && !InClass) {
+    SemaRef.Diags.Report(NameLoc,
+                        clang::diag::err_operator_overload_must_be_member)
+                        << OpInfo->getGoldDeclName()->getName();
+    return true;
+  }
+
+  if (OpInfo->isUnaryAndBinary()) {
+    if (InClass) {
+      ParamCount += 1;
+    }
+    if (ParamCount == 0) {
+      SemaRef.Diags.Report(NameLoc,
+                           clang::diag::err_operator_too_few_parameters)
+                           << OpInfo->getGoldDeclName();
+        return true;
+    }
+    if (ParamCount == 1) {
+      Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(
+                                                OpInfo->getUnaryOverloadKind());
+    }
+    if (ParamCount == 2) {
+      Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(
+                                               OpInfo->getBinaryOverloadKind());
+    }
+    if (ParamCount > 2) {
+      SemaRef.Diags.Report(NameLoc,
+                           clang::diag::err_operator_overload_must_be)
+                           << OpInfo->getGoldDeclName()
+                           << ParamCount
+                           << /*unary or binary*/2;
+        return true;
+    }
+  } else if(OpInfo->isBinary()) {
+    Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(
+                                               OpInfo->getBinaryOverloadKind());
+  } else {
+    Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(
+                                                OpInfo->getUnaryOverloadKind());
+  }
+  return false;
+}
+
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
@@ -725,13 +774,35 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
                                                    TypeExpr, D->Decl->getLoc());
   if (!TInfo)
     return nullptr;
-    
-  clang::DeclarationName Name = D->getId();
+
+  // Changing the name to use the clang name if it's an operator. This allows
+  // us to correctly 
+  clang::DeclarationName Name;
+  if (D->OpInfo) {
+    const clang::FunctionProtoType *FPT = cast<clang::FunctionProtoType>(
+                                                 TInfo->getType().getTypePtr());
+    if (!FPT) {
+      llvm_unreachable("Invalid function type");
+      return nullptr;
+    }
+
+    if (getOperatorDeclarationName(Context, SemaRef, D->OpInfo, InClass,
+                                   FPT->getNumParams(), 
+                                   D->Decl->Data.Id->getLoc(), Name)) {
+      return nullptr;
+    }
+  } else {
+    Name = D->getId();
+  }
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::FunctionDecl *FD = nullptr;
+  clang::DeclarationNameInfo DNI;
+  DNI.setName(Name);
+  DNI.setLoc(D->Decl->Data.Id->getLoc());
   if(InClass) {
     const clang::FunctionType *FT = cast<clang::FunctionType>(TInfo->getType());
-    clang::DeclarationNameInfo DNI(Name, D->Op->getLoc());
+    DNI.setName(Name);
+    DNI.setLoc(D->Op->getLoc());
     if (D->getId()->isStr("constructor")) {
       if (FT->getReturnType() != Context.CxxAST.VoidTy) {
         // TODO: Emit correct diagonstic message here.
@@ -740,12 +811,16 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       clang::QualType RecordTy = Context.CxxAST.getTypeDeclType(RD);
       clang::CanQualType Ty = Context.CxxAST.getCanonicalType(RecordTy);
       Name = Context.CxxAST.DeclarationNames.getCXXConstructorName(Ty);
-      clang::DeclarationNameInfo DNI2(Name, D->Decl->getLoc());
+      DNI.setName(Name);
       clang::CXXConstructorDecl* CtorDecl = nullptr;
-      clang::ExplicitSpecifier ES(nullptr, clang::ExplicitSpecKind::ResolvedFalse);
-      FD = CtorDecl = clang::CXXConstructorDecl::Create(Context.CxxAST, RD, Loc, DNI2,
-          clang::QualType(), nullptr, ES, false, false,
-          clang::ConstexprSpecKind::CSK_unspecified);
+      clang::ExplicitSpecifier ES(nullptr,
+                                        clang::ExplicitSpecKind::ResolvedFalse);
+      FD = CtorDecl = clang::CXXConstructorDecl::Create(Context.CxxAST, RD,
+                                                        Loc, DNI, 
+                                                        clang::QualType(),
+                                                        nullptr, ES, false,
+                                                        false,
+                                     clang::ConstexprSpecKind::CSK_unspecified);
       CtorDecl->setImplicit(false);
       CtorDecl->setDefaulted(false);
       CtorDecl->setBody(nullptr);
@@ -816,10 +891,8 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       if (isStaticMember(SemaRef, D, IsStatic)) {
         return nullptr;
       }
-      if (IsStatic) {
-        llvm::outs() << "We have a static function!\n";
+      if (IsStatic) 
         SC = clang::SC_Static;
-      }
       FD = clang::CXXMethodDecl::Create(Context.CxxAST, RD, Loc, DNI,
                                         TInfo->getType(), TInfo,
                                         SC, /*isInline*/true,
@@ -881,15 +954,20 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   }
   if (D->declaresConstructor()) {
     clang::CXXConstructorDecl* CtorDecl = cast<clang::CXXConstructorDecl>(D->Cxx);    
-    clang::DeclarationNameInfo DNI2(Name, D->Decl->getLoc());
+    // clang::DeclarationNameInfo DNI2(Name, D->Decl->getLoc());
     SemaRef.getCxxSema().PushOnScopeChains(CtorDecl, SemaRef.getCurClangScope());
     SemaRef.getCxxSema().CheckConstructor(CtorDecl);
     SemaRef.getCxxSema().CheckOverrideControl(CtorDecl);
-    // Need to add 
-    clang::LookupResult R(SemaRef.getCxxSema(), DNI2, clang::Sema::LookupOrdinaryName);
-    if(SemaRef.getCxxSema().CheckFunctionDeclaration(SemaRef.getCurClangScope(),
-        CtorDecl, R, true)) {
-    }
+
+  }
+  clang::LookupResult R(SemaRef.getCxxSema(), DNI,
+                        clang::Sema::LookupOrdinaryName);
+  if(SemaRef.getCxxSema().CheckFunctionDeclaration(SemaRef.getCurClangScope(),
+                                                  FD, R, true)) {
+    // TODO: Figure out if the redeclaration needs an error message or not?                                                       
+  }
+  if (FD->isInvalidDecl()) {
+    return nullptr;
   }
   D->CurrentPhase = Phase::Typing;
   return FD;
@@ -1796,8 +1874,43 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       if (SemaRef.getCurrentScope()->hasDeclaration(S)) {
         return nullptr;
       }
+
+      if (Dcl->getKind() != DK_Identifier) {
+        llvm_unreachable("Invalid declarator structure.");
+      }
+      OpInfoBase const *OpInfo = nullptr;
+      if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(Dcl->Data.Id)) {
+        clang::StringRef Nm = Name->getSpelling();
+        if (Nm.find('"') != llvm::StringRef::npos) {
+          if (Nm.startswith("operator\"")) {
+            OpInfo = SemaRef.OpInfo.getOpInfo(Nm);
+            if (!OpInfo) {
+              SemaRef.Diags.Report(Name->getLoc(),
+                                 clang::diag::err_operator_cannot_be_overloaded)
+                                 << Nm;
+              return nullptr;
+            }
+          } else if (Nm.startswith("literal\"")) {
+            llvm_unreachable("User defined literal declarations not "
+                             "imeplemented yet.");
+          } else if (Nm.startswith("conversion\"")) {
+            llvm_unreachable("User defined conversion declarations not "
+                             "imeplemented yet.");
+          }
+        }
+      } else {
+        llvm_unreachable("Unknown declarator name declaration!\n");
+      }
       Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, Init);
       TheDecl->Id = Id;
+      if (OpInfo) {
+        llvm::outs() << "Processing reference to Id = " << Id->getName() << "\n";
+      }
+      TheDecl->OpInfo = OpInfo;
+
+      if (OpInfo && !TheDecl->declaresFunction()) {
+        llvm_unreachable("INvalid operator id not implemented yet!\n");
+      }
 
       // Getting information that's necessary in order to correctly restore
       // a declaration's context during early elaboration.

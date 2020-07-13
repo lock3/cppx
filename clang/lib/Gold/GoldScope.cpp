@@ -259,6 +259,13 @@ bool Declaration::declaresFunctionTemplate() const {
   return false;
 }
 
+
+bool Declaration::declaresOperatorOverload() const {
+  if (!OpInfo) 
+    return false;
+  return declaresFunction();
+}
+
 bool Declaration::declaresTypeAlias() const {
   return Cxx && isa<clang::TypeAliasDecl>(Cxx);
 }

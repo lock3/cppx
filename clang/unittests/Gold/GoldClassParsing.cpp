@@ -1086,3 +1086,20 @@ c2 : type = class:
   );
   ASSERT_TRUE(matches(Code.str(), Matches));
 }
+
+
+TEST(ClassParsing, ReferenceToTypeInReturnTypeOfMemberFunction) {
+  StringRef Code = R"(
+Test : type = class:
+  foo() :ref Test!
+    return ^this
+)";
+
+  DeclarationMatcher ToMatch = recordDecl(
+    hasName("Test"),
+    has(cxxMethodDecl(hasName("foo"),
+      hasType(asString("struct Test &(void)"))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
