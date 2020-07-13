@@ -261,7 +261,7 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
     if (atEndOfFile())
       break;
 
-    // We're about to exist a nested block ...
+    // We're about to exit a nested block ...
     if (nextTokenIs(tok::Dedent) || nextTokenIs(tok::RightBrace))
       break;
 
@@ -280,7 +280,9 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
     // FIXME: Actually diagnose missing separators.
     // FIXME: If the previous token was a semicolon, there might be a newline
     //        after it. These tokens should be combined by the lexer.
-    while (matchTokenIf(isSeparator));
+    while (matchTokenIf(isSeparator))
+      if (nextTokenIs(tok::Dedent) || nextTokenIs(tok::RightBrace))
+        return;
 
     // The end-of-file is often after the last separator.
     if (atEndOfFile())
