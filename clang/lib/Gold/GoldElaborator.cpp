@@ -1903,9 +1903,6 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       }
       Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, Init);
       TheDecl->Id = Id;
-      if (OpInfo) {
-        llvm::outs() << "Processing reference to Id = " << Id->getName() << "\n";
-      }
       TheDecl->OpInfo = OpInfo;
 
       if (OpInfo && !TheDecl->declaresFunction()) {

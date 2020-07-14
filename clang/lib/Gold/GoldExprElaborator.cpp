@@ -1172,10 +1172,13 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
   // of error actually occurs.
 
   // For any thing else we simply try and make the call and see what happens.
-  clang::ExprResult Call =SemaRef.getCxxSema().ActOnCallExpr(
+  clang::ExprResult Call = SemaRef.getCxxSema().ActOnCallExpr(
                                             SemaRef.getCxxSema().getCurScope(),
                                             CalleeExpr, S->getCalleeLoc(), Args,
                                             S->getCalleeLoc());
+  // if (Args.size() == 1)
+  if (Call.isInvalid())
+    return nullptr;
   return Call.get();
 }
 
@@ -1528,6 +1531,123 @@ clang::Expr *ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
 }
 
 
+/// This function handles explicit operator calls, to member functions that are
+/// have an operator name, if one cannot be located then nullptr is returned.
+static clang::Expr *doMemberOpLookup(SyntaxContext &Context,
+                                     Sema &SemaRef,
+                                     clang::OverloadedOperatorKind UnaryOO,
+                                     clang::OverloadedOperatorKind BinaryOO,
+                                     clang::CXXScopeSpec &SS,
+                                     clang::Expr *BaseExpr,
+                                     const Syntax *OpSyntax,
+                                     clang::SourceLocation RhsLoc,
+                                     OpInfoBase const *Op) {
+  assert(BaseExpr && "Invalid base expression.");
+  assert(Op && "Invalid operator info.");
+  clang::SourceRange BaseRange = BaseExpr ? BaseExpr->getSourceRange() :
+                                 clang::SourceRange();
+  const clang::RecordType *RTy = BaseExpr->getType()->getAsStructureType();
+  if (!RTy) {
+    // TODO: Create a error message.
+    llvm_unreachable("This only happens when we don't have a valid structured "
+                     "type to invoke a member function upon.");
+  }
+  // Getting record decl to search.
+  clang::RecordDecl *RDecl = RTy->getDecl();
+  // I'm not sure what's happening here, or why this is necessary, yet.
+  // There must be some kind of precondition for SOMETHING.
+
+  // Checking if this is outside of a member function body
+  if (!SemaRef.getCxxSema().isThisOutsideMemberFunctionBody(
+                                                    clang::QualType(RTy, 0)) &&
+      SemaRef.getCxxSema().RequireCompleteType(OpSyntax->getLoc(),
+                                               clang::QualType(RTy, 0),
+                                    clang::diag::err_typecheck_incomplete_tag,
+                                               BaseRange))
+    return nullptr;
+  
+  clang::DeclContext *LookupCtxt = RDecl;
+  if (SS.isSet()) {
+    // If the member name was a qualified-id, look into the
+    // nested-name-specifier.
+    LookupCtxt = SemaRef.getCxxSema().computeDeclContext(SS, false);
+
+    // The error in this case might not be necessary because we can guarantee 
+    // that any base type is already elaborated.
+    if (SemaRef.getCxxSema().RequireCompleteDeclContext(SS, LookupCtxt)) {
+      SemaRef.getCxxSema().Diag(SS.getRange().getEnd(),
+                                clang::diag::err_typecheck_incomplete_tag)
+                                << SS.getRange() << LookupCtxt;
+      return nullptr;
+    }
+
+    // Make sure that if we do infact have a valid ScopeSpec that it's a type
+    // if it's not a type we have need to report and return an error.
+    if (!isa<clang::TypeDecl>(LookupCtxt)) {
+      SemaRef.getCxxSema().Diag(RhsLoc,
+                                clang::diag::err_qualified_member_nonclass)
+                                << LookupCtxt << SS.getRange();
+      return nullptr;
+    }
+  }
+
+  assert(LookupCtxt && "Cannot handle non-computable dependent contexts "
+         "in lookup");
+  clang::DeclarationName DN = Context.CxxAST.DeclarationNames
+                                                   .getCXXOperatorName(UnaryOO);
+  auto UnaryOps = LookupCtxt->lookup(DN);
+  clang::DeclarationName DN2 = Context.CxxAST.DeclarationNames
+                                                  .getCXXOperatorName(BinaryOO);
+  auto BinaryOps = LookupCtxt->lookup(DN2);
+  clang::DeclarationNameInfo DNI({Op->getClangName()}, RhsLoc);
+  DNI.setName(DN);
+  clang::LookupResult R(SemaRef.getCxxSema(), DNI,
+                        clang::Sema::LookupMemberName,
+                        clang::Sema::NotForRedeclaration);
+  for (clang::NamedDecl *ND : UnaryOps) {
+    if (!ND->isCXXClassMember()) 
+      continue;
+      
+    if (clang::CXXMethodDecl *MD
+                = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
+      if (!MD->isOverloadedOperator()) 
+        continue;
+      if (MD->getOverloadedOperator() == UnaryOO) {
+        R.addDecl(ND);
+      }
+    }
+
+  }
+  for (clang::NamedDecl *ND : BinaryOps) {
+    if (!ND->isCXXClassMember()) 
+      continue;
+      
+    if (clang::CXXMethodDecl *MD
+                = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
+      if (!MD->isOverloadedOperator()) 
+        continue;
+      if (MD->getOverloadedOperator() == BinaryOO) {
+        R.addDecl(ND);
+      }
+    }
+  }
+  clang::TemplateArgumentListInfo TemplateArgs;
+  auto *UME = clang::UnresolvedMemberExpr::Create(Context.CxxAST,
+                                                  false,
+                                                  BaseExpr,
+                                                  BaseExpr->getType(),
+                                              BaseExpr->getType()->isPointerType(),
+                                                  RhsLoc,
+                                                clang::NestedNameSpecifierLoc(),
+                                                  clang::SourceLocation(),
+                                                  clang::DeclarationNameInfo(),
+                                                  &TemplateArgs,
+                                                  R.begin(),
+                                                  R.end());
+  // llvm::outs() << "UME = \n";
+  // UME->dump();
+  return UME;
+}
 
 clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
                                                    const CallSyntax *Op,
@@ -1555,18 +1675,39 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     // TODO: I need an example where this isn't an atom but I'm not sure
     // one exists yet.
     const AtomSyntax *RHSAtom = cast<AtomSyntax>(RHS);
-    // TODO: figure out how to make the pointer work correctly?
-
     clang::UnqualifiedId Id;
     clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(
-                                                      RHSAtom->getSpelling());
-    clang::IdentifierInfo *ClangOpName = SemaRef.OpInfo.getClangName(IdInfo);
-    if (ClangOpName) {
-      IdInfo = ClangOpName;
-      Id.setOperatorFunctionId();
-      // Id.setKind(clang::IK_OperatorFunctionId);
+                                                        RHSAtom->getSpelling());
+    OpInfoBase const *OpInfo = SemaRef.OpInfo.getOpInfo(IdInfo);
+    if (OpInfo) {
+      clang::OverloadedOperatorKind UnaryOO
+                                               = OpInfo->getUnaryOverloadKind();
+      clang::OverloadedOperatorKind BinaryOO
+                                              = OpInfo->getBinaryOverloadKind();
+      if (UnaryOO != BinaryOO) {
+        llvm::outs() << "We have special binary operators.\n";
+        clang::CXXScopeSpec TempSS;
+        clang::Expr *LookedUpCandidates = doMemberOpLookup(Context, SemaRef,
+                                                           UnaryOO, BinaryOO,
+                                                           TempSS,
+                                                           ElaboratedLHS,
+                                                           Op, RHS->getLoc(),
+                                                           OpInfo);
+        return LookedUpCandidates;
+      }
+
+      // if (!LookedUpCandidates) {
+      //   llvm::outs() << "Operator lookup failed.\n";
+      //   return nullptr;
+      // }
+      
+      clang::SourceLocation RHSLoc = RHSAtom->getLoc();
+      clang::SourceLocation SymbolLocations[3] = {RHSLoc, RHSLoc, RHSLoc};
+      Id.setOperatorFunctionId(RHSLoc, OpInfo->getUnaryOverloadKind(),
+                               SymbolLocations);
+    } else {
+      Id.setIdentifier(IdInfo, RHSAtom->getLoc());
     }
-    Id.setIdentifier(IdInfo, RHSAtom->getLoc());
     clang::CXXScopeSpec SS;
     clang::SourceLocation Loc;
     clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;

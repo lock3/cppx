@@ -340,13 +340,64 @@ foo(X:ref OpTest):void!
     )),
     has(functionDecl(
       hasName("foo"),
-      hasDescendant(cxxOperatorCallExpr(hasAnyOverloadedOperatorName("--")))
+      hasDescendant(memberExpr(member(hasName("operator--"))))
     ))
   );
   ASSERT_TRUE(matches(Code, opMatches))
     << "Failed to declare a valid operator overload";
 }
 
+TEST(GoldUserDefinedOp, ExplicitMemberOperatorDeref) {
+  std::string Code = R"Gold(
+Other : type = class:
+  ;
+
+OpTest : type = class:
+  X:^ Other = null
+  operator"^"():ref Other!
+    return ^X
+  
+
+foo(X:ref OpTest):void!
+  X.operator"^"()
+)Gold";
+  DeclarationMatcher opMatches = translationUnitDecl(
+    has(recordDecl(
+      hasName("OpTest"),
+      has(cxxMethodDecl(hasAnyOverloadedOperatorName("*")))
+    )),
+    has(functionDecl(
+      hasName("foo"),
+      hasDescendant(memberExpr(member(hasName("operator*"))))
+    ))
+  );
+  ASSERT_TRUE(matches(Code, opMatches))
+    << "Failed to declare a valid operator overload";
+}
+
+TEST(GoldUserDefinedOp, ExplicitMemberOperatorXOr) {
+  std::string Code = R"Gold(
+OpTest : type = class:
+  operator"^"(RHS:ref OpTest):bool!
+    return false
+  
+
+foo(X:ref OpTest, Y:ref OpTest):void!
+  X.operator"^"(Y)
+)Gold";
+  DeclarationMatcher opMatches = translationUnitDecl(
+    has(recordDecl(
+      hasName("OpTest"),
+      has(cxxMethodDecl(hasAnyOverloadedOperatorName("^")))
+    )),
+    has(functionDecl(
+      hasName("foo"),
+      hasDescendant(memberExpr(member(hasName("operator^"))))
+    ))
+  );
+  ASSERT_TRUE(matches(Code, opMatches))
+    << "Failed to declare a valid operator overload";
+}
 
 // TEST(GoldUserDefinedOp, ExplicitFreeOperatorCall) {
 //   std::string Code = R"Gold(

@@ -540,10 +540,11 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 
 bool Sema::unqualifiedMemberAccessLookup(clang::LookupResult &R,
                                          const clang::Expr *LHSResultExpr) {
-  clang::QualType LHSTy= LHSResultExpr->getType();
-  if (LHSTy->isRecordDecl()) {
-    
-  }
+  // clang::QualType LHSTy= LHSResultExpr->getType();
+  // if (LHSTy->isRecordDecl()) {
+
+  // }
+  llvm_unreachable("Working on it.");
 }
 
 bool Sema::scopeIsWithinClass() {
