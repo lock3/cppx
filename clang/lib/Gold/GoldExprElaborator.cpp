@@ -937,10 +937,9 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
         clang::Expr* This = SemaRef.getCxxSema().BuildCXXThisExpr(Loc,
                                                                   ThisPtrTy,
                                                                   true);
-        // FIXME: I may need to change the access specifier look up in this case.
-        // Because otherwise we are skirting access to the AccessSpecifier.
+
         clang::DeclAccessPair FoundDecl = clang::DeclAccessPair::make(Field,
-                                             clang::AccessSpecifier::AS_public);
+                                                            Field->getAccess());
         clang::CXXScopeSpec SS;
         clang::ExprResult MemberExpr
             = SemaRef.getCxxSema().BuildFieldReferenceExpr(This, true,
@@ -1533,7 +1532,7 @@ clang::Expr *ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
 
 /// This function handles explicit operator calls, to member functions that are
 /// have an operator name, if one cannot be located then nullptr is returned.
-static clang::Expr *doMemberOpLookup(SyntaxContext &Context,
+static clang::Expr *doDerefAndXOrLookUp(SyntaxContext &Context,
                                      Sema &SemaRef,
                                      clang::OverloadedOperatorKind UnaryOO,
                                      clang::OverloadedOperatorKind BinaryOO,
@@ -1549,8 +1548,12 @@ static clang::Expr *doMemberOpLookup(SyntaxContext &Context,
   const clang::RecordType *RTy = BaseExpr->getType()->getAsStructureType();
   if (!RTy) {
     // TODO: Create a error message.
-    llvm_unreachable("This only happens when we don't have a valid structured "
-                     "type to invoke a member function upon.");
+    SemaRef.Diags.Report(BaseExpr->getExprLoc(),
+                      clang::diag::err_typecheck_member_reference_struct_union)
+                        << BaseExpr->getType();
+    
+    // llvm_unreachable("This only happens when we don't have a valid structured "
+    //                  "type to invoke a member function upon.");
   }
   // Getting record decl to search.
   clang::RecordDecl *RDecl = RTy->getDecl();
@@ -1612,9 +1615,8 @@ static clang::Expr *doMemberOpLookup(SyntaxContext &Context,
                 = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
       if (!MD->isOverloadedOperator()) 
         continue;
-      if (MD->getOverloadedOperator() == UnaryOO) {
-        R.addDecl(ND);
-      }
+      if (MD->getOverloadedOperator() == UnaryOO)
+        R.addDecl(ND, ND->getAccess());
     }
 
   }
@@ -1626,9 +1628,8 @@ static clang::Expr *doMemberOpLookup(SyntaxContext &Context,
                 = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
       if (!MD->isOverloadedOperator()) 
         continue;
-      if (MD->getOverloadedOperator() == BinaryOO) {
-        R.addDecl(ND);
-      }
+      if (MD->getOverloadedOperator() == BinaryOO)
+        R.addDecl(ND, ND->getAccess());
     }
   }
   clang::TemplateArgumentListInfo TemplateArgs;
@@ -1636,7 +1637,7 @@ static clang::Expr *doMemberOpLookup(SyntaxContext &Context,
                                                   false,
                                                   BaseExpr,
                                                   BaseExpr->getType(),
-                                              BaseExpr->getType()->isPointerType(),
+                                           BaseExpr->getType()->isPointerType(),
                                                   RhsLoc,
                                                 clang::NestedNameSpecifierLoc(),
                                                   clang::SourceLocation(),
@@ -1644,8 +1645,6 @@ static clang::Expr *doMemberOpLookup(SyntaxContext &Context,
                                                   &TemplateArgs,
                                                   R.begin(),
                                                   R.end());
-  // llvm::outs() << "UME = \n";
-  // UME->dump();
   return UME;
 }
 
@@ -1685,22 +1684,15 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
       clang::OverloadedOperatorKind BinaryOO
                                               = OpInfo->getBinaryOverloadKind();
       if (UnaryOO != BinaryOO) {
-        llvm::outs() << "We have special binary operators.\n";
         clang::CXXScopeSpec TempSS;
-        clang::Expr *LookedUpCandidates = doMemberOpLookup(Context, SemaRef,
-                                                           UnaryOO, BinaryOO,
-                                                           TempSS,
-                                                           ElaboratedLHS,
-                                                           Op, RHS->getLoc(),
-                                                           OpInfo);
+        clang::Expr *LookedUpCandidates = doDerefAndXOrLookUp(Context, SemaRef,
+                                                              UnaryOO, BinaryOO,
+                                                              TempSS,
+                                                              ElaboratedLHS,
+                                                              Op, RHS->getLoc(),
+                                                              OpInfo);
         return LookedUpCandidates;
-      }
-
-      // if (!LookedUpCandidates) {
-      //   llvm::outs() << "Operator lookup failed.\n";
-      //   return nullptr;
-      // }
-      
+      }    
       clang::SourceLocation RHSLoc = RHSAtom->getLoc();
       clang::SourceLocation SymbolLocations[3] = {RHSLoc, RHSLoc, RHSLoc};
       Id.setOperatorFunctionId(RHSLoc, OpInfo->getUnaryOverloadKind(),
@@ -1725,50 +1717,6 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr.get());
     return RHSExpr.get();
   }
-  //   if (SS.isSet() && SS.isInvalid())
-  //   return ExprError();
-
-  // // Warn about the explicit constructor calls Microsoft extension.
-  // if (getLangOpts().MicrosoftExt &&
-  //     Id.getKind() == UnqualifiedIdKind::IK_ConstructorName)
-  //   Diag(Id.getSourceRange().getBegin(),
-  //        diag::ext_ms_explicit_constructor_call);
-
-  // TemplateArgumentListInfo TemplateArgsBuffer;
-
-  // // Decompose the name into its component parts.
-  // DeclarationNameInfo NameInfo;
-  // const TemplateArgumentListInfo *TemplateArgs;
-  // DecomposeUnqualifiedId(Id, TemplateArgsBuffer,
-  //                        NameInfo, TemplateArgs);
-
-  // DeclarationName Name = NameInfo.getName();
-  // bool IsArrow = (OpKind == tok::arrow);
-
-  // NamedDecl *FirstQualifierInScope
-  //   = (!SS.isSet() ? nullptr : FindFirstQualifierInScope(S, SS.getScopeRep()));
-
-  // // This is a postfix expression, so get rid of ParenListExprs.
-  // ExprResult Result = MaybeConvertParenListExprToParenExpr(S, Base);
-  // if (Result.isInvalid()) return ExprError();
-  // Base = Result.get();
-
-  // if (Base->getType()->isDependentType() || Name.isDependentName() ||
-  //     isDependentScopeSpecifier(SS)) {
-  //   return ActOnDependentMemberExpr(Base, Base->getType(), IsArrow, OpLoc, SS,
-  //                                   TemplateKWLoc, FirstQualifierInScope,
-  //                                   NameInfo, TemplateArgs);
-  // }
-
-  // ActOnMemberAccessExtraArgs ExtraArgs = {S, Id, ObjCImpDecl};
-  // ExprResult Res = BuildMemberReferenceExpr(
-  //     Base, Base->getType(), OpLoc, IsArrow, SS, TemplateKWLoc,
-  //     FirstQualifierInScope, NameInfo, TemplateArgs, S, &ExtraArgs);
-
-  // if (!Res.isInvalid() && isa<MemberExpr>(Res.get()))
-  //   CheckMemberAccessOfNoDeref(cast<MemberExpr>(Res.get()));
-
-  // return Res;
   llvm_unreachable("Member access from non-variables unimplemented.");
 }
 

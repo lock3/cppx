@@ -855,73 +855,6 @@ main() : int!
   ASSERT_TRUE(matches(Code.str(), MemberBaseAccessOutsideOfClass));
 }
 
-
-// TEST(ClassParsing, IncorrectMemberSelected) {
-//   StringRef Code = R"(
-// c : type = class:
-//   i : int = 0
-//   a : type = class:
-//     d : int
-//     foo() : int!
-//       return i
-    
-  
-
-// main() : int!
-//   q : c
-//   return q.i
-// )";
-//   DeclarationMatcher BaseClassMatch = cxxRecordDecl(hasName("c"),
-//     isDirectlyDerivedFrom(hasName("a")),
-//     // Verifying that we are infact using the right constructor.
-//     hasDescendant(cxxConstructorDecl(isDefaultConstructor(),
-//       has(cxxCtorInitializer(
-//         unless(isMemberInitializer())
-//       )),
-//       has(
-//         cxxCtorInitializer(
-//           forField(
-//             hasName("y")
-//           ),
-//           isMemberInitializer()
-//         )
-//       )
-//     )),
-//     // Attempting to verify that we have an actual return statment at the
-//     // very least.
-//     hasDescendant(cxxMethodDecl(hasName("foo"), hasDescendant(returnStmt())))
-//   );
-//   DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
-//     isDefinition(),
-//     hasDescendant(
-//       varDecl(
-//         hasType(asString("struct c")),
-//         hasName("q")
-//       )
-//     ),
-//     hasDescendant(
-//       returnStmt(
-//         has(implicitCastExpr(
-//           has(memberExpr(
-//             has(implicitCastExpr(
-//               has(declRefExpr(
-//                 to(varDecl(hasName("q")))
-//               ))
-//             ))
-//           ))
-//         ))
-//       )
-//     )
-//   );
-//   DeclarationMatcher MemberBaseAccessOutsideOfClass = translationUnitDecl(
-//     hasDescendant(BaseClassMatch),
-//     hasDescendant(MainFnMatcher)
-//   );
-//   ASSERT_TRUE(matches(Code.str(), MemberBaseAccessOutsideOfClass));
-// }
-
-
-
 TEST(ClassParsing, NestedClassWithMemberFunction) {
   StringRef Code = R"(
 outer : type = class:
@@ -1102,4 +1035,13 @@ Test : type = class:
     ))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+TEST(ClassParsing, NonClassTypeMemberAccess) {
+  StringRef Code = R"Gold(
+foo(x:int) : void!
+  x.y
+)Gold";
+  GoldFailureTest(Code);
 }
