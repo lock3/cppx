@@ -22,7 +22,7 @@ using namespace clang;
 using namespace gold;
 
 /*
-TODO: Apparently this is waiting for the () implementation to be completed.
+TODO: Apparently this is waiting for the (x)y implementation to be completed.
 TranslationUnitDecl 0x7fffdb9f6f08 <<invalid sloc>> <invalid sloc>
 |-TypedefDecl 0x7fffdb9f7838 <<invalid sloc>> <invalid sloc> implicit __int128_t '__int128'
 | `-BuiltinType 0x7fffdb9f74a0 '__int128'

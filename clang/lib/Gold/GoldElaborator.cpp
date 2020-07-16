@@ -421,6 +421,8 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
       .ActOnBaseSpecifier(R, clang::SourceRange(Base->getLoc(), Base->getLoc()),
                           Attributes, IsVirtualBase, AS, PT, Base->getLoc(),
                           clang::SourceLocation());
+    if (BaseResult.isInvalid()) 
+      continue;
     GivenBaseClasses.emplace_back(BaseResult.get());
   }
   SemaRef.getCxxSema().ActOnBaseSpecifiers(R, GivenBaseClasses);
@@ -685,7 +687,56 @@ void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
     ++I;
   }
 }
-                                              
+static bool getOperatorDeclarationName(SyntaxContext &Context, Sema &SemaRef,
+                                       const OpInfoBase *OpInfo,
+                                       bool InClass, unsigned ParamCount,
+                                       clang::SourceLocation NameLoc,
+                                       clang::DeclarationName &Name) {
+
+
+  if (OpInfo->isMemberOnly() && !InClass) {
+    SemaRef.Diags.Report(NameLoc,
+                        clang::diag::err_operator_overload_must_be_member)
+                        << OpInfo->getGoldDeclName()->getName();
+    return true;
+  }
+
+  if (OpInfo->isUnaryAndBinary()) {
+    if (InClass) {
+      ParamCount += 1;
+    }
+    if (ParamCount == 0) {
+      SemaRef.Diags.Report(NameLoc,
+                           clang::diag::err_operator_too_few_parameters)
+                           << OpInfo->getGoldDeclName();
+        return true;
+    }
+    if (ParamCount == 1) {
+      Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(
+                                                OpInfo->getUnaryOverloadKind());
+    }
+    if (ParamCount == 2) {
+      Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(
+                                               OpInfo->getBinaryOverloadKind());
+    }
+    if (ParamCount > 2) {
+      SemaRef.Diags.Report(NameLoc,
+                           clang::diag::err_operator_overload_must_be)
+                           << OpInfo->getGoldDeclName()
+                           << ParamCount
+                           << /*unary or binary*/2;
+        return true;
+    }
+  } else if(OpInfo->isBinary()) {
+    Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(
+                                               OpInfo->getBinaryOverloadKind());
+  } else {
+    Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(
+                                                OpInfo->getUnaryOverloadKind());
+  }
+  return false;
+}
+
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
@@ -725,13 +776,35 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
                                                    TypeExpr, D->Decl->getLoc());
   if (!TInfo)
     return nullptr;
-    
-  clang::DeclarationName Name = D->getId();
+
+  // Changing the name to use the clang name if it's an operator. This allows
+  // us to correctly 
+  clang::DeclarationName Name;
+  if (D->OpInfo) {
+    const clang::FunctionProtoType *FPT = cast<clang::FunctionProtoType>(
+                                                 TInfo->getType().getTypePtr());
+    if (!FPT) {
+      llvm_unreachable("Invalid function type");
+      return nullptr;
+    }
+
+    if (getOperatorDeclarationName(Context, SemaRef, D->OpInfo, InClass,
+                                   FPT->getNumParams(), 
+                                   D->Decl->Data.Id->getLoc(), Name)) {
+      return nullptr;
+    }
+  } else {
+    Name = D->getId();
+  }
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::FunctionDecl *FD = nullptr;
+  clang::DeclarationNameInfo DNI;
+  DNI.setName(Name);
+  DNI.setLoc(D->Decl->Data.Id->getLoc());
   if(InClass) {
     const clang::FunctionType *FT = cast<clang::FunctionType>(TInfo->getType());
-    clang::DeclarationNameInfo DNI(Name, D->Op->getLoc());
+    DNI.setName(Name);
+    DNI.setLoc(D->Op->getLoc());
     if (D->getId()->isStr("constructor")) {
       if (FT->getReturnType() != Context.CxxAST.VoidTy) {
         // TODO: Emit correct diagonstic message here.
@@ -740,12 +813,16 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       clang::QualType RecordTy = Context.CxxAST.getTypeDeclType(RD);
       clang::CanQualType Ty = Context.CxxAST.getCanonicalType(RecordTy);
       Name = Context.CxxAST.DeclarationNames.getCXXConstructorName(Ty);
-      clang::DeclarationNameInfo DNI2(Name, D->Decl->getLoc());
+      DNI.setName(Name);
       clang::CXXConstructorDecl* CtorDecl = nullptr;
-      clang::ExplicitSpecifier ES(nullptr, clang::ExplicitSpecKind::ResolvedFalse);
-      FD = CtorDecl = clang::CXXConstructorDecl::Create(Context.CxxAST, RD, Loc, DNI2,
-          clang::QualType(), nullptr, ES, false, false,
-          clang::ConstexprSpecKind::CSK_unspecified);
+      clang::ExplicitSpecifier ES(nullptr,
+                                        clang::ExplicitSpecKind::ResolvedFalse);
+      FD = CtorDecl = clang::CXXConstructorDecl::Create(Context.CxxAST, RD,
+                                                        Loc, DNI, 
+                                                        clang::QualType(),
+                                                        nullptr, ES, false,
+                                                        false,
+                                     clang::ConstexprSpecKind::CSK_unspecified);
       CtorDecl->setImplicit(false);
       CtorDecl->setDefaulted(false);
       CtorDecl->setBody(nullptr);
@@ -816,10 +893,8 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       if (isStaticMember(SemaRef, D, IsStatic)) {
         return nullptr;
       }
-      if (IsStatic) {
-        llvm::outs() << "We have a static function!\n";
+      if (IsStatic) 
         SC = clang::SC_Static;
-      }
       FD = clang::CXXMethodDecl::Create(Context.CxxAST, RD, Loc, DNI,
                                         TInfo->getType(), TInfo,
                                         SC, /*isInline*/true,
@@ -881,15 +956,20 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   }
   if (D->declaresConstructor()) {
     clang::CXXConstructorDecl* CtorDecl = cast<clang::CXXConstructorDecl>(D->Cxx);    
-    clang::DeclarationNameInfo DNI2(Name, D->Decl->getLoc());
+    // clang::DeclarationNameInfo DNI2(Name, D->Decl->getLoc());
     SemaRef.getCxxSema().PushOnScopeChains(CtorDecl, SemaRef.getCurClangScope());
     SemaRef.getCxxSema().CheckConstructor(CtorDecl);
     SemaRef.getCxxSema().CheckOverrideControl(CtorDecl);
-    // Need to add 
-    clang::LookupResult R(SemaRef.getCxxSema(), DNI2, clang::Sema::LookupOrdinaryName);
-    if(SemaRef.getCxxSema().CheckFunctionDeclaration(SemaRef.getCurClangScope(),
-        CtorDecl, R, true)) {
-    }
+
+  }
+  clang::LookupResult R(SemaRef.getCxxSema(), DNI,
+                        clang::Sema::LookupOrdinaryName);
+  if(SemaRef.getCxxSema().CheckFunctionDeclaration(SemaRef.getCurClangScope(),
+                                                  FD, R, true)) {
+    // TODO: Figure out if the redeclaration needs an error message or not?                                                       
+  }
+  if (FD->isInvalidDecl()) {
+    return nullptr;
   }
   D->CurrentPhase = Phase::Typing;
   return FD;
@@ -1688,15 +1768,15 @@ static clang::IdentifierInfo *getIdentifier(Elaborator &Elab,
 Declaration *Elaborator::identifyDecl(const Syntax *S) {
   // Keep track of whether or not this is an operator'=' call.
   bool OperatorEquals = false;
-
+  // if (decomposeElaboratableDecl(S, OperatorEquals, Decl, Init)) {
   // Declarations only appear in calls.
   if (const auto *Call = dyn_cast<CallSyntax>(S)) {
+    const Syntax *Decl;
+    const Syntax *Init;
     if (const auto *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
       llvm::StringRef Op = Callee->getToken().getSpelling();
       // Need to figure out if this is a declaration or expression?
       // Unpack the declarator.
-      const Syntax *Decl;
-      const Syntax *Init;
       if (Op == "operator'='") {
         // This is to reject t.x as a declaration.
         // Also also reject the delcaration
@@ -1715,11 +1795,18 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
             return nullptr;
         }
 
+        // Explicilty ignoring declarations that use x.y.
         if (const CallSyntax *InnerCallOp = dyn_cast<CallSyntax>(Decl))
           if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(
                                                       InnerCallOp->getCallee()))
             if (Atom->getSpelling() == "operator'.'")
               return nullptr;
+        // Attempting to verify if this is an ElemSyntax.
+        if (isa<ElemSyntax>(Decl))
+          // This can't be a declaration, because would need to say":type" after
+          // the name to be considered a template type.
+          return nullptr;
+
         Init = Args->getChild(1);
         OperatorEquals = true;
 
@@ -1740,6 +1827,11 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       } else if (Op == "operator'in'") {
         Decl = S;
         Init = nullptr;
+      } else if (Op == "operator'[]'") {
+
+        // We always return false here because any type alias must indicate
+        // have a ": type" after it or it's not a template alias.
+        return nullptr;
       } else {
         // Syntactically, this is not a declaration.
         return nullptr;
@@ -1756,6 +1848,16 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       // The array case might be tricky to disambiguate, and requires
       // a lookup. If it's the first initialization of the variable, then
       // it must be a declaration. See below.
+      
+      // FIXME: Handling the subscript operator is actually much more dificult 
+      // then previously stated. It might be best to simply label this as a 
+      // possible declaration, and wait until later to figure if it is. In the
+      // event that it isn't a declaration then we can consider it an expression
+      // and try and evaluate it as such. 
+
+      // There is an alternative, and that is that we check for declarations
+      // within the argument lists.
+      // 
 
       // Try to build a declarator for the declaration.
       Declarator *Dcl = makeDeclarator(SemaRef, Decl);
@@ -1796,8 +1898,40 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       if (SemaRef.getCurrentScope()->hasDeclaration(S)) {
         return nullptr;
       }
+
+      if (Dcl->getKind() != DK_Identifier) {
+        llvm_unreachable("Invalid declarator structure.");
+      }
+      OpInfoBase const *OpInfo = nullptr;
+      if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(Dcl->Data.Id)) {
+        clang::StringRef Nm = Name->getSpelling();
+        if (Nm.find('"') != llvm::StringRef::npos) {
+          if (Nm.startswith("operator\"")) {
+            OpInfo = SemaRef.OpInfo.getOpInfo(Nm);
+            if (!OpInfo) {
+              SemaRef.Diags.Report(Name->getLoc(),
+                                  clang::diag::err_operator_cannot_be_overloaded)
+                                  << Nm;
+              return nullptr;
+            }
+          } else if (Nm.startswith("literal\"")) {
+            llvm_unreachable("User defined literal declarations not "
+                              "imeplemented yet.");
+          } else if (Nm.startswith("conversion\"")) {
+            llvm_unreachable("User defined conversion declarations not "
+                              "imeplemented yet.");
+          }
+        }
+      } else {
+        llvm_unreachable("Unknown declarator name declaration!\n");
+      }
       Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, Init);
       TheDecl->Id = Id;
+      TheDecl->OpInfo = OpInfo;
+
+      if (OpInfo && !TheDecl->declaresFunction()) {
+        llvm_unreachable("INvalid operator id not implemented yet!\n");
+      }
 
       // Getting information that's necessary in order to correctly restore
       // a declaration's context during early elaboration.
@@ -1825,7 +1959,6 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       return TheDecl;
     }
   }
-
   // FIXME: What other kinds of things are declarations?
   //
   // TODO: If S is a list, then we might be looking at one of these
@@ -2366,6 +2499,7 @@ void Elaborator::elaborateExceptionSpecAttr(Declaration *D, const Syntax *S,
       return;
     }
     ESI.Type = clang::EST_BasicNoexcept;
+    Status.HasExceptionSpec = true;
   }
 
   if (const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
@@ -2410,8 +2544,6 @@ void Elaborator::elaborateVirtualAttr(Declaration *D, const Syntax *S,
       return;      
     }
     if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(D->Cxx)) {
-      llvm::outs()<< "We are a method!\n";
-      llvm::outs() << "Storage class = " << MD->getStorageClass() << "\n";
       if (MD->getStorageClass() != clang::SC_None) {
         SemaRef.Diags.Report(S->getLoc(),
                  clang::diag::err_cannot_applied_to_function_with_storage_class)
@@ -2441,7 +2573,34 @@ void Elaborator::elaborateOverrideAttr(Declaration *D, const Syntax *S,
 
 void Elaborator::elaborateFinalAttr(Declaration *D, const Syntax *S,
                                     AttrStatus &Status){
-  llvm_unreachable(" not implemented");
+  if (Status.HasFinal) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_duplicate_attribute);
+    return;
+  }
+  if (isa<CallSyntax>(S)) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_attribute_not_valid_as_call)
+                         << "final";
+    return;
+  }
+  Status.HasFinal = true;
+  if (clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(D->Cxx)) {
+    RD->addAttr(clang::FinalAttr::Create(Context.CxxAST, S->getLoc(),
+                                         clang::AttributeCommonInfo::AS_Keyword,
+                               static_cast<clang::FinalAttr::Spelling>(false)));
+    return;
+  }
+
+  if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(D->Cxx)) {
+    MD->addAttr(clang::FinalAttr::Create(Context.CxxAST, S->getLoc(),
+                                         clang::AttributeCommonInfo::AS_Keyword,
+                               static_cast<clang::FinalAttr::Spelling>(false)));
+    return;
+  }
+  SemaRef.Diags.Report(S->getLoc(),
+                        clang::diag::err_invalid_attribute_for_decl)
+                      << "final" << "virtual member function or class"; 
 }
 
 void Elaborator::elaborateConstAttr(Declaration *D, const Syntax *S,

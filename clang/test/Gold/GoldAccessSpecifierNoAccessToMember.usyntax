@@ -1,0 +1,6 @@
+# RUN: %clang_gold -cc1 -verify %s 
+C : type = class:
+  x <private>: int # expected-note {{implicitly declared private here}}
+
+foo(I:C) :void!
+  I.x # expected-error {{'x' is a private member of 'struct C'}}

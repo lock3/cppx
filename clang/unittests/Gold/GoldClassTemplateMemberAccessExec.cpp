@@ -50,3 +50,28 @@ main() : int!
   int result = CB();
   ASSERT_EQ(result, 5);
 }
+
+
+TEST(GoldUserDefinedOp, ExplicitMemberOperatorXOr_Exec) {
+  std::string Code = R"Gold(
+OpTest : type = class:
+  operator"^"(RHS:ref OpTest):bool!
+    return true
+  
+
+foo(X:ref OpTest, Y:ref OpTest):int!
+  return X.operator"^"(Y)
+
+main():int!
+  X:OpTest
+  Y:OpTest
+  return foo(X, Y)
+)Gold";
+  LLVMContext Context;
+  std::unique_ptr<ExecutionEngine> EE;
+  ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
+  MainSig CB = MainSig(EE->getFunctionAddress("main"));
+  ASSERT_TRUE(CB);
+  int result = CB();
+  ASSERT_EQ(result, 1);
+}

@@ -937,10 +937,9 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
         clang::Expr* This = SemaRef.getCxxSema().BuildCXXThisExpr(Loc,
                                                                   ThisPtrTy,
                                                                   true);
-        // FIXME: I may need to change the access specifier look up in this case.
-        // Because otherwise we are skirting access to the AccessSpecifier.
+
         clang::DeclAccessPair FoundDecl = clang::DeclAccessPair::make(Field,
-                                             clang::AccessSpecifier::AS_public);
+                                                            Field->getAccess());
         clang::CXXScopeSpec SS;
         clang::ExprResult MemberExpr
             = SemaRef.getCxxSema().BuildFieldReferenceExpr(This, true,
@@ -1172,10 +1171,13 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
   // of error actually occurs.
 
   // For any thing else we simply try and make the call and see what happens.
-  clang::ExprResult Call =SemaRef.getCxxSema().ActOnCallExpr(
+  clang::ExprResult Call = SemaRef.getCxxSema().ActOnCallExpr(
                                             SemaRef.getCxxSema().getCurScope(),
                                             CalleeExpr, S->getCalleeLoc(), Args,
                                             S->getCalleeLoc());
+  // if (Args.size() == 1)
+  if (Call.isInvalid())
+    return nullptr;
   return Call.get();
 }
 
@@ -1254,14 +1256,14 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   if (Spelling.startswith("operator'")) {
     if (S->getNumArguments() == 1) {
       clang::UnaryOperatorKind UnaryOpKind;
-      if (!SemaRef.GetUnaryOperatorKind(Spelling, UnaryOpKind))
+      if (!SemaRef.OpInfo.getUnaryOperatorUseKind(Spelling, UnaryOpKind))
         return elaborateUnaryOp(S, UnaryOpKind);
     }
 
     if (S->getNumArguments() == 2) {
       // Check if this is a binary operator.
       clang::BinaryOperatorKind BinaryOpKind;
-      if (!SemaRef.GetBinaryOperatorKind(Spelling, BinaryOpKind))
+      if (!SemaRef.OpInfo.getBinaryOperatorUseKind(Spelling, BinaryOpKind))
         return elaborateBinOp(S, BinaryOpKind);
     }
   }
@@ -1528,6 +1530,123 @@ clang::Expr *ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
 }
 
 
+/// This function handles explicit operator calls, to member functions that are
+/// have an operator name, if one cannot be located then nullptr is returned.
+static clang::Expr *doDerefAndXOrLookUp(SyntaxContext &Context,
+                                     Sema &SemaRef,
+                                     clang::OverloadedOperatorKind UnaryOO,
+                                     clang::OverloadedOperatorKind BinaryOO,
+                                     clang::CXXScopeSpec &SS,
+                                     clang::Expr *BaseExpr,
+                                     const Syntax *OpSyntax,
+                                     clang::SourceLocation RhsLoc,
+                                     OpInfoBase const *Op) {
+  assert(BaseExpr && "Invalid base expression.");
+  assert(Op && "Invalid operator info.");
+  clang::SourceRange BaseRange = BaseExpr ? BaseExpr->getSourceRange() :
+                                 clang::SourceRange();
+  const clang::RecordType *RTy = BaseExpr->getType()->getAsStructureType();
+  if (!RTy) {
+    // TODO: Create a error message.
+    SemaRef.Diags.Report(BaseExpr->getExprLoc(),
+                      clang::diag::err_typecheck_member_reference_struct_union)
+                        << BaseExpr->getType();
+    
+    // llvm_unreachable("This only happens when we don't have a valid structured "
+    //                  "type to invoke a member function upon.");
+  }
+  // Getting record decl to search.
+  clang::RecordDecl *RDecl = RTy->getDecl();
+  // I'm not sure what's happening here, or why this is necessary, yet.
+  // There must be some kind of precondition for SOMETHING.
+
+  // Checking if this is outside of a member function body
+  if (!SemaRef.getCxxSema().isThisOutsideMemberFunctionBody(
+                                                    clang::QualType(RTy, 0)) &&
+      SemaRef.getCxxSema().RequireCompleteType(OpSyntax->getLoc(),
+                                               clang::QualType(RTy, 0),
+                                    clang::diag::err_typecheck_incomplete_tag,
+                                               BaseRange))
+    return nullptr;
+  
+  clang::DeclContext *LookupCtxt = RDecl;
+  if (SS.isSet()) {
+    // If the member name was a qualified-id, look into the
+    // nested-name-specifier.
+    LookupCtxt = SemaRef.getCxxSema().computeDeclContext(SS, false);
+
+    // The error in this case might not be necessary because we can guarantee 
+    // that any base type is already elaborated.
+    if (SemaRef.getCxxSema().RequireCompleteDeclContext(SS, LookupCtxt)) {
+      SemaRef.getCxxSema().Diag(SS.getRange().getEnd(),
+                                clang::diag::err_typecheck_incomplete_tag)
+                                << SS.getRange() << LookupCtxt;
+      return nullptr;
+    }
+
+    // Make sure that if we do infact have a valid ScopeSpec that it's a type
+    // if it's not a type we have need to report and return an error.
+    if (!isa<clang::TypeDecl>(LookupCtxt)) {
+      SemaRef.getCxxSema().Diag(RhsLoc,
+                                clang::diag::err_qualified_member_nonclass)
+                                << LookupCtxt << SS.getRange();
+      return nullptr;
+    }
+  }
+
+  assert(LookupCtxt && "Cannot handle non-computable dependent contexts "
+         "in lookup");
+  clang::DeclarationName DN = Context.CxxAST.DeclarationNames
+                                                   .getCXXOperatorName(UnaryOO);
+  auto UnaryOps = LookupCtxt->lookup(DN);
+  clang::DeclarationName DN2 = Context.CxxAST.DeclarationNames
+                                                  .getCXXOperatorName(BinaryOO);
+  auto BinaryOps = LookupCtxt->lookup(DN2);
+  clang::DeclarationNameInfo DNI({Op->getClangName()}, RhsLoc);
+  DNI.setName(DN);
+  clang::LookupResult R(SemaRef.getCxxSema(), DNI,
+                        clang::Sema::LookupMemberName,
+                        clang::Sema::NotForRedeclaration);
+  for (clang::NamedDecl *ND : UnaryOps) {
+    if (!ND->isCXXClassMember()) 
+      continue;
+      
+    if (clang::CXXMethodDecl *MD
+                = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
+      if (!MD->isOverloadedOperator()) 
+        continue;
+      if (MD->getOverloadedOperator() == UnaryOO)
+        R.addDecl(ND, ND->getAccess());
+    }
+
+  }
+  for (clang::NamedDecl *ND : BinaryOps) {
+    if (!ND->isCXXClassMember()) 
+      continue;
+      
+    if (clang::CXXMethodDecl *MD
+                = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
+      if (!MD->isOverloadedOperator()) 
+        continue;
+      if (MD->getOverloadedOperator() == BinaryOO)
+        R.addDecl(ND, ND->getAccess());
+    }
+  }
+  clang::TemplateArgumentListInfo TemplateArgs;
+  auto *UME = clang::UnresolvedMemberExpr::Create(Context.CxxAST,
+                                                  false,
+                                                  BaseExpr,
+                                                  BaseExpr->getType(),
+                                           BaseExpr->getType()->isPointerType(),
+                                                  RhsLoc,
+                                                clang::NestedNameSpecifierLoc(),
+                                                  clang::SourceLocation(),
+                                                  clang::DeclarationNameInfo(),
+                                                  &TemplateArgs,
+                                                  R.begin(),
+                                                  R.end());
+  return UME;
+}
 
 clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
                                                    const CallSyntax *Op,
@@ -1555,12 +1674,32 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     // TODO: I need an example where this isn't an atom but I'm not sure
     // one exists yet.
     const AtomSyntax *RHSAtom = cast<AtomSyntax>(RHS);
-    // TODO: figure out how to make the pointer work correctly?
-
     clang::UnqualifiedId Id;
     clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(
-                                                      RHSAtom->getSpelling());
-    Id.setIdentifier(IdInfo, RHSAtom->getLoc());
+                                                        RHSAtom->getSpelling());
+    OpInfoBase const *OpInfo = SemaRef.OpInfo.getOpInfo(IdInfo);
+    if (OpInfo) {
+      clang::OverloadedOperatorKind UnaryOO
+                                               = OpInfo->getUnaryOverloadKind();
+      clang::OverloadedOperatorKind BinaryOO
+                                              = OpInfo->getBinaryOverloadKind();
+      if (UnaryOO != BinaryOO) {
+        clang::CXXScopeSpec TempSS;
+        clang::Expr *LookedUpCandidates = doDerefAndXOrLookUp(Context, SemaRef,
+                                                              UnaryOO, BinaryOO,
+                                                              TempSS,
+                                                              ElaboratedLHS,
+                                                              Op, RHS->getLoc(),
+                                                              OpInfo);
+        return LookedUpCandidates;
+      }    
+      clang::SourceLocation RHSLoc = RHSAtom->getLoc();
+      clang::SourceLocation SymbolLocations[3] = {RHSLoc, RHSLoc, RHSLoc};
+      Id.setOperatorFunctionId(RHSLoc, OpInfo->getUnaryOverloadKind(),
+                               SymbolLocations);
+    } else {
+      Id.setIdentifier(IdInfo, RHSAtom->getLoc());
+    }
     clang::CXXScopeSpec SS;
     clang::SourceLocation Loc;
     clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
@@ -1727,6 +1866,61 @@ clang::Expr *ExprElaborator::elaborateNestedLookUpAccess(const clang::Expr *Prev
 
 }
 
+/*  TODO: Remove this at some point in the future after I figure out how it
+    works and can replace it.
+ ExprResult Sema::BuildUnaryOp(Scope *S, SourceLocation OpLoc,
+                               UnaryOperatorKind Opc, Expr *Input) {
+   // First things first: handle placeholders so that the
+   // overloaded-operator check considers the right type.
+   if (const BuiltinType *pty = Input->getType()->getAsPlaceholderType()) {
+     // Increment and decrement of pseudo-object references.
+     if (pty->getKind() == BuiltinType::PseudoObject &&
+         UnaryOperator::isIncrementDecrementOp(Opc))
+       return checkPseudoObjectIncDec(S, OpLoc, Opc, Input);
+ 
+     // extension is always a builtin operator.
+     if (Opc == UO_Extension)
+       return CreateBuiltinUnaryOp(OpLoc, Opc, Input);
+ 
+     // & gets special logic for several kinds of placeholder.
+     // The builtin code knows what to do.
+     if (Opc == UO_AddrOf &&
+         (pty->getKind() == BuiltinType::Overload ||
+          pty->getKind() == BuiltinType::UnknownAny ||
+          pty->getKind() == BuiltinType::BoundMember))
+       return CreateBuiltinUnaryOp(OpLoc, Opc, Input);
+ 
+     // Anything else needs to be handled now.
+     ExprResult Result = CheckPlaceholderExpr(Input);
+     if (Result.isInvalid()) return ExprError();
+     Input = Result.get();
+   }
+ 
+   if (getLangOpts().CPlusPlus && Input->getType()->isOverloadableType() &&
+       UnaryOperator::getOverloadedOperator(Opc) != OO_None &&
+       !(Opc == UO_AddrOf && isQualifiedMemberAccess(Input))) {
+     // Find all of the overloaded operators visible from this
+     // point. We perform both an operator-name lookup from the local
+     // scope and an argument-dependent lookup based on the types of
+     // the arguments.
+     UnresolvedSet<16> Functions;
+     OverloadedOperatorKind OverOp = UnaryOperator::getOverloadedOperator(Opc);
+     if (S && OverOp != OO_None)
+       LookupOverloadedOperatorName(OverOp, S, Input->getType(), QualType(),
+                                    Functions);
+ 
+     return CreateOverloadedUnaryOp(OpLoc, Opc, Functions, Input);
+   }
+ 
+   return CreateBuiltinUnaryOp(OpLoc, Opc, Input);
+ }
+ 
+ // Unary Operators.  'Tok' is the token for the operator.
+ ExprResult Sema::ActOnUnaryOp(Scope *S, SourceLocation OpLoc,
+                               tok::TokenKind Op, Expr *Input) {
+   return BuildUnaryOp(S, OpLoc, ConvertTokenKindToUnaryOpcode(Op), Input);
+ }
+*/
 clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
                                               clang::UnaryOperatorKind Op) {
   const Syntax *Operand = S->getArgument(0);

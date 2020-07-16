@@ -42,6 +42,7 @@ struct CallSyntax;
 struct AtomSyntax;
 class Scope;
 struct Attribute;
+class OpInfoBase;
 
 /// Kinds of declarations.
 enum DeclaratorKind {
@@ -238,6 +239,11 @@ public:
   /// True if this declares a template.
   bool declaresFunctionTemplate() const;
 
+  /// This checks to see if the declaration is a possible operator overload.
+  /// This COULD be wrong, all we are checking for is that we have both a
+  /// fused identifier name, OpId, and there is a function declarator.
+  bool declaresOperatorOverload() const;
+
   /// This is true iff isa<TypeAliasDecl>(Cxx)
   bool declaresTypeAlias() const;
 
@@ -264,6 +270,8 @@ public:
   clang::IdentifierInfo *getId() const {
     return Id;
   }
+  
+  // bool nameIsOperator() const;
 
   /// This looks for the first instance of DK_TemplateType and returns it.
   const Declarator *getFirstTemplateDeclarator() const;
@@ -303,6 +311,14 @@ public:
 
   /// The identifier for the declaration.
   clang::IdentifierInfo *Id = nullptr;
+
+  /// This name indicates if this declaration declares an operator name, and if
+  /// the operator name is a known valid operator. This operator name is only
+  /// used by C++ iff there is a function declarator. This is the actual name
+  /// used by the clang::Decl in CXX. This is to be consistent with C++. 
+  // const clang::IdentifierInfo *OpId = nullptr;
+  const OpInfoBase* OpInfo;
+
 
   /// The corresponding C++ declaration.
   clang::Decl* Cxx = nullptr;

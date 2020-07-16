@@ -10,6 +10,7 @@ add_clang_library(gold
   GoldFrontend.cpp
   GoldLateElaboration.cpp
   GoldLexer.cpp
+  GoldOperatorInfo.cpp
   GoldParser.cpp
   GoldScope.cpp
   GoldSema.cpp
