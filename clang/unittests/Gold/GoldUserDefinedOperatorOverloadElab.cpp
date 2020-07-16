@@ -399,17 +399,53 @@ foo(X:ref OpTest, Y:ref OpTest):void!
     << "Failed to declare a valid operator overload";
 }
 
-// TEST(GoldUserDefinedOp, ExplicitFreeOperatorCall) {
-//   std::string Code = R"Gold(
-// OpTest : type = class:
-//   ;
+TEST(GoldUserDefinedOp, ExplicitFreeOperatorCall) {
+  std::string Code = R"Gold(
+OpTest : type = class:
+  ;
 
-// operator"--"(x:ref OpTest, i:int):ref OpTest!
-//   return x
+operator"--"(x:ref OpTest, i:int):ref OpTest!
+  return x
 
-// )Gold";
-//   DeclarationMatcher opMatches =
-//     functionDecl(hasAnyOverloadedOperatorName("--"));
-//   ASSERT_TRUE(matches(Code, opMatches))
-//     << "Failed to declare a valid operator overload";
-// }
+foo (X:ref OpTest) : void!
+  operator"--"(X, 1)
+)Gold";
+  DeclarationMatcher opMatches = functionDecl(
+      hasName("foo"),
+      hasDescendant(
+        callExpr(callee(functionDecl(hasName("operator--"))))
+      )
+  );
+  ASSERT_TRUE(matches(Code, opMatches))
+    << "Failed to declare a valid operator overload";
+}
+
+TEST(GoldUserDefinedOp, Assignment_Copy_DeclVerification) {
+  std::string Code = R"Gold(
+OpTest : type = class:
+  operator"="(Other:ref OpTest):ref OpTest!
+    return ^this
+  
+)Gold";
+  DeclarationMatcher opMatches = recordDecl(
+    hasName("OpTest"),
+    has(cxxMethodDecl(isCopyAssignmentOperator()))
+  );
+  ASSERT_TRUE(matches(Code, opMatches))
+      << "Failed to declare a valid operator overload"; 
+}
+
+TEST(GoldUserDefinedOp, Assignment_Move_DeclVerification) {
+  std::string Code = R"Gold(
+OpTest : type = class:
+  operator"="(Other:rref OpTest):ref OpTest!
+    return ^this
+  
+)Gold";
+  DeclarationMatcher opMatches = recordDecl(
+    hasName("OpTest"),
+    has(cxxMethodDecl(isMoveAssignmentOperator()))
+  );
+  ASSERT_TRUE(matches(Code, opMatches))
+      << "Failed to declare a valid operator overload"; 
+}

@@ -1766,15 +1766,15 @@ static clang::IdentifierInfo *getIdentifier(Elaborator &Elab,
 Declaration *Elaborator::identifyDecl(const Syntax *S) {
   // Keep track of whether or not this is an operator'=' call.
   bool OperatorEquals = false;
-
+  // if (decomposeElaboratableDecl(S, OperatorEquals, Decl, Init)) {
   // Declarations only appear in calls.
   if (const auto *Call = dyn_cast<CallSyntax>(S)) {
+    const Syntax *Decl;
+    const Syntax *Init;
     if (const auto *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
       llvm::StringRef Op = Callee->getToken().getSpelling();
       // Need to figure out if this is a declaration or expression?
       // Unpack the declarator.
-      const Syntax *Decl;
-      const Syntax *Init;
       if (Op == "operator'='") {
         // This is to reject t.x as a declaration.
         // Also also reject the delcaration
@@ -1793,11 +1793,18 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
             return nullptr;
         }
 
+        // Explicilty ignoring declarations that use x.y.
         if (const CallSyntax *InnerCallOp = dyn_cast<CallSyntax>(Decl))
           if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(
                                                       InnerCallOp->getCallee()))
             if (Atom->getSpelling() == "operator'.'")
               return nullptr;
+        // Attempting to verify if this is an ElemSyntax.
+        if (isa<ElemSyntax>(Decl))
+          // This can't be a declaration, because would need to say":type" after
+          // the name to be considered a template type.
+          return nullptr;
+
         Init = Args->getChild(1);
         OperatorEquals = true;
 
@@ -1818,6 +1825,11 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       } else if (Op == "operator'in'") {
         Decl = S;
         Init = nullptr;
+      } else if (Op == "operator'[]'") {
+
+        // We always return false here because any type alias must indicate
+        // have a ": type" after it or it's not a template alias.
+        return nullptr;
       } else {
         // Syntactically, this is not a declaration.
         return nullptr;
@@ -1834,6 +1846,16 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       // The array case might be tricky to disambiguate, and requires
       // a lookup. If it's the first initialization of the variable, then
       // it must be a declaration. See below.
+      
+      // FIXME: Handling the subscript operator is actually much more dificult 
+      // then previously stated. It might be best to simply label this as a 
+      // possible declaration, and wait until later to figure if it is. In the
+      // event that it isn't a declaration then we can consider it an expression
+      // and try and evaluate it as such. 
+
+      // There is an alternative, and that is that we check for declarations
+      // within the argument lists.
+      // 
 
       // Try to build a declarator for the declaration.
       Declarator *Dcl = makeDeclarator(SemaRef, Decl);
@@ -1886,16 +1908,16 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
             OpInfo = SemaRef.OpInfo.getOpInfo(Nm);
             if (!OpInfo) {
               SemaRef.Diags.Report(Name->getLoc(),
-                                 clang::diag::err_operator_cannot_be_overloaded)
-                                 << Nm;
+                                  clang::diag::err_operator_cannot_be_overloaded)
+                                  << Nm;
               return nullptr;
             }
           } else if (Nm.startswith("literal\"")) {
             llvm_unreachable("User defined literal declarations not "
-                             "imeplemented yet.");
+                              "imeplemented yet.");
           } else if (Nm.startswith("conversion\"")) {
             llvm_unreachable("User defined conversion declarations not "
-                             "imeplemented yet.");
+                              "imeplemented yet.");
           }
         }
       } else {
@@ -1935,7 +1957,6 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       return TheDecl;
     }
   }
-
   // FIXME: What other kinds of things are declarations?
   //
   // TODO: If S is a list, then we might be looking at one of these

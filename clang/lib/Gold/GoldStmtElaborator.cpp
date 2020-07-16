@@ -51,7 +51,10 @@ StmtElaborator::elaborateStmt(const Syntax *S) {
   if (isa<MacroSyntax>(S))
     return elaborateMacro(cast<MacroSyntax>(S));
 
-  return nullptr;
+  // If the statement kind is unknown then simply punt to the expression
+  // elaborator.
+  ExprElaborator Elab(Context, SemaRef);
+  return Elab.elaborateExpr(S);
 }
 
 clang::Stmt *

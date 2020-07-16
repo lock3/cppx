@@ -94,7 +94,6 @@
 
 // Adding additional operator information.
 // TODO: I need to add additional operators that haven't been created here yet.
-// FIXME: Create a better solution to the dereference problem.
 // def_unary_op(Not, "~")
 // def_unary_and_binary_op(AddrOf, "&") // ?
 def_unary_and_binary_op(            PlusSign,  "+",         Plus,  Add, false,  GoldAndCpp, Plus)
