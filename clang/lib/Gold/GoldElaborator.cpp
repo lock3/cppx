@@ -421,6 +421,8 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
       .ActOnBaseSpecifier(R, clang::SourceRange(Base->getLoc(), Base->getLoc()),
                           Attributes, IsVirtualBase, AS, PT, Base->getLoc(),
                           clang::SourceLocation());
+    if (BaseResult.isInvalid()) 
+      continue;
     GivenBaseClasses.emplace_back(BaseResult.get());
   }
   SemaRef.getCxxSema().ActOnBaseSpecifiers(R, GivenBaseClasses);
@@ -2497,6 +2499,7 @@ void Elaborator::elaborateExceptionSpecAttr(Declaration *D, const Syntax *S,
       return;
     }
     ESI.Type = clang::EST_BasicNoexcept;
+    Status.HasExceptionSpec = true;
   }
 
   if (const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
@@ -2541,8 +2544,6 @@ void Elaborator::elaborateVirtualAttr(Declaration *D, const Syntax *S,
       return;      
     }
     if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(D->Cxx)) {
-      llvm::outs()<< "We are a method!\n";
-      llvm::outs() << "Storage class = " << MD->getStorageClass() << "\n";
       if (MD->getStorageClass() != clang::SC_None) {
         SemaRef.Diags.Report(S->getLoc(),
                  clang::diag::err_cannot_applied_to_function_with_storage_class)
@@ -2572,7 +2573,34 @@ void Elaborator::elaborateOverrideAttr(Declaration *D, const Syntax *S,
 
 void Elaborator::elaborateFinalAttr(Declaration *D, const Syntax *S,
                                     AttrStatus &Status){
-  llvm_unreachable(" not implemented");
+  if (Status.HasFinal) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_duplicate_attribute);
+    return;
+  }
+  if (isa<CallSyntax>(S)) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_attribute_not_valid_as_call)
+                         << "final";
+    return;
+  }
+  Status.HasFinal = true;
+  if (clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(D->Cxx)) {
+    RD->addAttr(clang::FinalAttr::Create(Context.CxxAST, S->getLoc(),
+                                         clang::AttributeCommonInfo::AS_Keyword,
+                               static_cast<clang::FinalAttr::Spelling>(false)));
+    return;
+  }
+
+  if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(D->Cxx)) {
+    MD->addAttr(clang::FinalAttr::Create(Context.CxxAST, S->getLoc(),
+                                         clang::AttributeCommonInfo::AS_Keyword,
+                               static_cast<clang::FinalAttr::Spelling>(false)));
+    return;
+  }
+  SemaRef.Diags.Report(S->getLoc(),
+                        clang::diag::err_invalid_attribute_for_decl)
+                      << "final" << "virtual member function or class"; 
 }
 
 void Elaborator::elaborateConstAttr(Declaration *D, const Syntax *S,
