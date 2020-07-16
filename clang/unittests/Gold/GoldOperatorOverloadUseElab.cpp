@@ -766,3 +766,26 @@ MemberOperator (X:ref ns.OpTest):void!
   ASSERT_TRUE(matches(Code, opMatches))
               << "Failed to declare a valid operator overload";
 }
+
+TEST(GoldUserDefinedOp, Use_OutOfOrderFreeFunc) {
+  std::string Code = R"Gold(
+FreeUnaryOp(X:ref UnaryOpTest1): void!
+  Z : UnaryOpTest1 = not X
+
+UnaryOpTest1 : type = class:
+  ;
+
+operator"!"(X:ref UnaryOpTest1):UnaryOpTest1!
+  return UnaryOpTest1()
+
+
+
+)Gold";
+  DeclarationMatcher opMatches = translationUnitDecl(
+    hasDescendant(
+      functionDecl( hasName("FreeUnaryOp"),
+        hasDescendant(cxxOperatorCallExpr(hasOverloadedOperatorName("!")))))
+  );
+  ASSERT_TRUE(matches(Code, opMatches))
+              << "Failed to declare a valid operator overload";
+}
