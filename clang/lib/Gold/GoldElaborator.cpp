@@ -573,6 +573,7 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
     NSScope, SourceLocation(), D->Decl->getLoc(),
     D->Decl->getLoc(), D->getId(), D->Decl->getLoc(), ParsedAttrs, UD);
   D->Cxx = NSDecl;
+  Elab.elaborateAttributes(D);
   SemaRef.pushDecl(D);
 
   const MacroSyntax *NSMacro = cast<MacroSyntax>(D->Init);
@@ -1124,11 +1125,8 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
     return elaborateField(D);
   }
 
-
   // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
-  // TODO: I need to fix this so that we use auto instead in the event that we
-  // don't have the type as part of the declaration.
   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(TyLitExpr,
                                                              D->Decl->getLoc());
   if (!TInfo) {
@@ -1146,6 +1144,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   Owner->addDecl(VD);
   D->Cxx = VD;
   D->CurrentPhase = Phase::Typing;
+  elaborateAttributes(D);
   return VD;
 }
 
@@ -2510,7 +2509,31 @@ void Elaborator::elaborateConstExprAttr(Declaration *D, const Syntax *S,
 
 void Elaborator::elaborateInlineAttr(Declaration *D, const Syntax *S,
                                      AttrStatus &Status) {
-  llvm_unreachable(" not implemented");
+  if (Status.HasInLine) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_duplicate_attribute);
+    return;
+  }
+  if (isa<CallSyntax>(S)) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_attribute_not_valid_as_call)
+                         << "final";
+    return;
+  }
+  Status.HasInLine = true;
+  if (clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(D->Cxx)) {
+    FD->setInlineSpecified(true);
+  } else if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(D->Cxx)) {
+    // TODO: This may only work when added to static members of a class and 
+    // when added to global/or namespace level variables.
+    VD->setInlineSpecified();
+  } else if (clang::NamespaceDecl *NsD = dyn_cast<clang::NamespaceDecl>(D->Cxx)) {
+    NsD->setInline(true);
+  } else {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_invalid_attribute_for_decl)
+                         << "inline" << "a function, variable, or namespace"; 
+  }
 }
 
 void Elaborator::elaborateExternAttr(Declaration *D, const Syntax *S,

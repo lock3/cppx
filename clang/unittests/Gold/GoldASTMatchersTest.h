@@ -32,6 +32,12 @@ AST_POLYMORPHIC_MATCHER_P(stringHasValue,
 
 }
 
+AST_POLYMORPHIC_MATCHER(isInlinedVar,
+                        AST_POLYMORPHIC_SUPPORTED_TYPES(VarDecl)) {
+  return Node.isInlineSpecified();
+
+}
+
 struct BaseMatcher {
   bool IsVirtual = false;
   AccessSpecifier AS = AS_none;
