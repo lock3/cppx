@@ -57,6 +57,7 @@ add_clang_unittest(GoldTests
   GoldClassThisAccessElab.cpp
   GoldCompileRun.cpp
   GoldConst.cpp
+  GoldConstAttrElab.cpp
   GoldConstructorCallParsingTest.cpp
   GoldExceptionSpecifierElab.cpp
   GoldFinalAttributeElab.cpp
@@ -77,6 +78,7 @@ add_clang_unittest(GoldTests
   GoldMemberStorageClassElab.cpp
   GoldNNS.cpp
   GoldOperatorOverloadUseElab.cpp
+  GoldOverrideAttributeElab.cpp
   GoldPointerDerefElab.cpp
   GoldQualifiedMemberAccessElab.cpp
   GoldRefAndRValueRefTypeElab.cpp

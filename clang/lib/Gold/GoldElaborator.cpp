@@ -777,8 +777,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   if (!TInfo)
     return nullptr;
 
-  // Changing the name to use the clang name if it's an operator. This allows
-  // us to correctly 
+  // Changing the name to use the clang name if it's an operator.
   clang::DeclarationName Name;
   if (D->OpInfo) {
     const clang::FunctionProtoType *FPT = cast<clang::FunctionProtoType>(
@@ -801,6 +800,26 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::DeclarationNameInfo DNI;
   DNI.setName(Name);
   DNI.setLoc(D->Decl->Data.Id->getLoc());
+  // Doing additional name computations.
+  if (InClass) {
+    clang::QualType RecordTy = Context.CxxAST.getTypeDeclType(RD);
+    clang::CanQualType Ty = Context.CxxAST.getCanonicalType(RecordTy);
+    if (D->getId()->isStr("constructor")) {
+      Name = Context.CxxAST.DeclarationNames.getCXXConstructorName(Ty);
+    } else if (D->getId()->isStr("destructor")) {
+      Name = Context.CxxAST.DeclarationNames.getCXXDestructorName(Ty);
+    }
+  } 
+  clang::Scope *ClangScope = SemaRef.getCurClangScope();
+  while ((ClangScope->getFlags() & clang::Scope::DeclScope) == 0 ||
+         (ClangScope->getFlags() & clang::Scope::TemplateParamScope) != 0)
+    ClangScope = ClangScope->getParent();
+
+  clang::LookupResult Previous(SemaRef.getCxxSema(), DNI,
+                               clang::Sema::LookupOrdinaryName,
+                           SemaRef.getCxxSema().forRedeclarationInCurContext());
+  SemaRef.getCxxSema().LookupName(Previous, ClangScope, false);
+  
   if(InClass) {
     const clang::FunctionType *FT = cast<clang::FunctionType>(TInfo->getType());
     DNI.setName(Name);
@@ -810,9 +829,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
         // TODO: Emit correct diagonstic message here.
         llvm_unreachable("Constructor has incorrect return type.");
       }
-      clang::QualType RecordTy = Context.CxxAST.getTypeDeclType(RD);
-      clang::CanQualType Ty = Context.CxxAST.getCanonicalType(RecordTy);
-      Name = Context.CxxAST.DeclarationNames.getCXXConstructorName(Ty);
+
       DNI.setName(Name);
       clang::CXXConstructorDecl* CtorDecl = nullptr;
       clang::ExplicitSpecifier ES(nullptr,
@@ -851,9 +868,9 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
         // TODO: Emit correct diagonstic message here.
         assert(false && "Constructor has incorrect return type");
       }
-      clang::QualType RecordTy = Context.CxxAST.getTypeDeclType(RD);
-      clang::CanQualType Ty = Context.CxxAST.getCanonicalType(RecordTy);
-      Name = Context.CxxAST.DeclarationNames.getCXXDestructorName(Ty);
+      // clang::QualType RecordTy = Context.CxxAST.getTypeDeclType(RD);
+      // clang::CanQualType Ty = Context.CxxAST.getCanonicalType(RecordTy);
+      // Name = Context.CxxAST.DeclarationNames.getCXXDestructorName(Ty);
       clang::DeclarationNameInfo DNI2(Name, D->Decl->getLoc());
       clang::CXXDestructorDecl* DtorDecl = nullptr;
       clang::ExplicitSpecifier ES(nullptr, clang::ExplicitSpecKind::ResolvedFalse);
@@ -932,9 +949,10 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     Owner->addDecl(FTD);
     FnDclrtr->Data.ParamInfo.TemplateScope = SemaRef.saveScope(TemplParams);
     if (InClass)
-      FTD->setAccess(clang::AS_public);  
+      FTD->setAccess(clang::AS_public);
   }
-
+  SemaRef.getCxxSema().getImplicitCodeSegOrSectionAttrForFunction(FD,
+                                                                  D->Init);
   // Update the function parameters.
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
   getFunctionParameters(D, Params);
@@ -955,25 +973,96 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     Owner->addDecl(FD);
   }
   if (D->declaresConstructor()) {
-    clang::CXXConstructorDecl* CtorDecl = cast<clang::CXXConstructorDecl>(D->Cxx);    
-    // clang::DeclarationNameInfo DNI2(Name, D->Decl->getLoc());
+    clang::CXXConstructorDecl* CtorDecl = cast<clang::CXXConstructorDecl>(D->Cxx);
     SemaRef.getCxxSema().PushOnScopeChains(CtorDecl, SemaRef.getCurClangScope());
     SemaRef.getCxxSema().CheckConstructor(CtorDecl);
-    SemaRef.getCxxSema().CheckOverrideControl(CtorDecl);
 
   }
-  clang::LookupResult R(SemaRef.getCxxSema(), DNI,
-                        clang::Sema::LookupOrdinaryName);
-  if(SemaRef.getCxxSema().CheckFunctionDeclaration(SemaRef.getCurClangScope(),
-                                                  FD, R, true)) {
-    // TODO: Figure out if the redeclaration needs an error message or not?                                                       
+  if (InClass) {
+    SemaRef.getCxxSema().FilterLookupForScope(Previous, Owner, ClangScope,
+                                              false, false);
+  } else {
+    SemaRef.getCxxSema().FilterLookupForScope(Previous, Owner, ClangScope,
+                                              true, true);
+  }
+  SemaRef.getCxxSema().CheckFunctionDeclaration(SemaRef.getCurClangScope(),
+                                                FD, Previous, true);
+  if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(FD)) {
+
+    checkCXXMethodDecl(MD);
+    SemaRef.getCxxSema().CheckOverrideControl(MD);
   }
   if (FD->isInvalidDecl()) {
     return nullptr;
   }
   D->CurrentPhase = Phase::Typing;
   return FD;
+}
+void Elaborator::checkCXXMethodDecl(clang::CXXMethodDecl *MD) {
+  // We can't check dependent instance methods.
+  if (MD && MD->isInstance() &&
+      (MD->getParent()->hasAnyDependentBases() ||
+       MD->getType()->isDependentType()))
+    return;
 
+  // We should delay checking of methods declared inside of a fragment.
+  if (MD && MD->isInFragment())
+    return;
+    
+  // Doing member checking to make sure that we can sew together virtual
+  // function overrides.s
+  if (MD && !MD->isVirtual()) {
+    // If we have a non-virtual method, check if if hides a virtual method.
+    // (In that case, it's most likely the method has the wrong type.)
+    llvm::SmallVector<clang::CXXMethodDecl *, 8> OverloadedMethods;
+    SemaRef.getCxxSema().FindHiddenVirtualMethods(MD, OverloadedMethods);
+
+    if (!OverloadedMethods.empty()) {
+      if (clang::OverrideAttr *OA = MD->getAttr<clang::OverrideAttr>()) {
+        SemaRef.Diags.Report(OA->getLocation(),
+                  clang::diag::override_keyword_hides_virtual_member_function)
+                              << "override" << (OverloadedMethods.size() > 1);
+      } else if (clang::FinalAttr *FA = MD->getAttr<clang::FinalAttr>()) {
+        SemaRef.Diags.Report(FA->getLocation(),
+                  clang::diag::override_keyword_hides_virtual_member_function)
+                          << (FA->isSpelledAsSealed() ? "sealed" : "final")
+                          << (OverloadedMethods.size() > 1);
+      }
+      SemaRef.getCxxSema().NoteHiddenVirtualMethods(MD, OverloadedMethods);
+      MD->setInvalidDecl();
+      return;
+    }
+    // Fall through into the general case diagnostic.
+    // FIXME: We might want to attempt typo correction here.
+  }
+
+  if (!MD || !MD->isVirtual()) {
+    if (clang::OverrideAttr *OA = MD->getAttr<clang::OverrideAttr>()) {
+      SemaRef.Diags.Report(OA->getLocation(),
+        clang::diag::override_keyword_only_allowed_on_virtual_member_functions)
+                            << "override"
+                          << clang::FixItHint::CreateRemoval(OA->getLocation());
+      MD->dropAttr<clang::OverrideAttr>();
+    }
+    if (clang::FinalAttr *FA = MD->getAttr<clang::FinalAttr>()) {
+      SemaRef.Diags.Report(FA->getLocation(),
+        clang::diag::override_keyword_only_allowed_on_virtual_member_functions)
+                            << (FA->isSpelledAsSealed() ? "sealed" : "final")
+                        << clang::FixItHint::CreateRemoval(FA->getLocation());
+      MD->dropAttr<clang::FinalAttr>();
+    }
+    return;
+  }
+
+  // C++11 [class.virtual]p5:
+  //   If a function is marked with the virt-specifier override and
+  //   does not override a member function of a base class, the program is
+  //   ill-formed.
+  bool HasOverriddenMethods = MD->size_overridden_methods() != 0;
+  if (MD->hasAttr<clang::OverrideAttr>() && !HasOverriddenMethods)
+    SemaRef.Diags.Report(MD->getLocation(),
+                      clang::diag::err_function_marked_override_not_overriding)
+                          << MD->getDeclName();
 }
 
 static clang::StorageClass getDefaultVariableStorageClass(Elaborator &Elab) {
@@ -2420,17 +2509,17 @@ void Elaborator::elaborateConstExprAttr(Declaration *D, const Syntax *S,
 }
 
 void Elaborator::elaborateInlineAttr(Declaration *D, const Syntax *S,
-                                     AttrStatus &Status){
+                                     AttrStatus &Status) {
   llvm_unreachable(" not implemented");
 }
 
 void Elaborator::elaborateExternAttr(Declaration *D, const Syntax *S,
-                                     AttrStatus &Status){
+                                     AttrStatus &Status) {
   llvm_unreachable(" not implemented");
 }
 
 void Elaborator::elaborateAccessSpecifierAttr(Declaration *D, const Syntax *S,
-                                              AttrStatus &Status){
+                                              AttrStatus &Status) {
   
   if (!isa<clang::CXXRecordDecl>(D->Cxx->getDeclContext())) {
     SemaRef.Diags.Report(S->getLoc(),
@@ -2520,17 +2609,17 @@ void Elaborator::elaborateExceptionSpecAttr(Declaration *D, const Syntax *S,
 }
 
 void Elaborator::elaborateStorageClassAttr(Declaration *D, const Syntax *S,
-                                           AttrStatus &Status){
+                                           AttrStatus &Status) {
   llvm_unreachable(" not implemented");
 }
 
 void Elaborator::elaborateExplicitAttr(Declaration *D, const Syntax *S,
-                                       AttrStatus &Status){
+                                       AttrStatus &Status) {
   llvm_unreachable(" not implemented");
 }
 
 void Elaborator::elaborateVirtualAttr(Declaration *D, const Syntax *S,
-                                      AttrStatus &Status){
+                                      AttrStatus &Status) {
   if (Status.HasVirtual) {
     SemaRef.Diags.Report(S->getLoc(),
                          clang::diag::err_duplicate_attribute);
@@ -2541,7 +2630,7 @@ void Elaborator::elaborateVirtualAttr(Declaration *D, const Syntax *S,
       SemaRef.Diags.Report(S->getLoc(),
                            clang::diag::err_invalid_attribute_for_decl)
                           << "virtual" << "a member function"; 
-      return;      
+      return;
     }
     if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(D->Cxx)) {
       if (MD->getStorageClass() != clang::SC_None) {
@@ -2567,12 +2656,42 @@ void Elaborator::elaborateVirtualAttr(Declaration *D, const Syntax *S,
 }
 
 void Elaborator::elaborateOverrideAttr(Declaration *D, const Syntax *S,
-                                       AttrStatus &Status){
-  llvm_unreachable(" not implemented");
+                                       AttrStatus &Status) {
+  if (Status.HasOverride) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_duplicate_attribute);
+    return;
+  }
+
+  if (!isa<AtomSyntax>(S)) {
+    SemaRef.Diags.Report(S->getLoc(),
+                        clang::diag::err_attribute_not_valid_as_call)
+                        << "overide";
+    return;
+  }
+  if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(D->Cxx)) {
+    if (isa<clang::CXXConstructorDecl>(D->Cxx)
+        || isa<clang::CXXDestructorDecl>(D->Cxx))
+    {
+      SemaRef.Diags.Report(S->getLoc(),
+                            clang::diag::err_invalid_attribute_for_decl)
+                            << "override" << "a member function"; 
+      return;
+    }
+
+    // Adding override attribute.
+    MD->addAttr(clang::OverrideAttr::Create(Context.CxxAST, S->getLoc(),
+                                      clang::AttributeCommonInfo::AS_Keyword));
+    Status.HasOverride = true;
+    return;
+  }
+  SemaRef.Diags.Report(S->getLoc(),
+                        clang::diag::err_invalid_attribute_for_decl)
+                        << "override" << "a member function";    
 }
 
 void Elaborator::elaborateFinalAttr(Declaration *D, const Syntax *S,
-                                    AttrStatus &Status){
+                                    AttrStatus &Status) {
   if (Status.HasFinal) {
     SemaRef.Diags.Report(S->getLoc(),
                          clang::diag::err_duplicate_attribute);
@@ -2599,42 +2718,42 @@ void Elaborator::elaborateFinalAttr(Declaration *D, const Syntax *S,
     return;
   }
   SemaRef.Diags.Report(S->getLoc(),
-                        clang::diag::err_invalid_attribute_for_decl)
-                      << "final" << "virtual member function or class"; 
+                       clang::diag::err_invalid_attribute_for_decl)
+                       << "final" << "virtual member function or class"; 
 }
 
 void Elaborator::elaborateConstAttr(Declaration *D, const Syntax *S,
-                                    AttrStatus &Status){
+                                    AttrStatus &Status) {
   llvm_unreachable(" not implemented");
 }
 
 void Elaborator::elaborateCarriesDependencyAttr(Declaration *D, const Syntax *S,
-                                                AttrStatus &Status){
+                                                AttrStatus &Status) {
   llvm_unreachable(" not implemented");
 }
 
 void Elaborator::elaborateDeprecatedAttr(Declaration *D, const Syntax *S,
-                                         AttrStatus &Status){
+                                         AttrStatus &Status) {
   llvm_unreachable(" not implemented");
 }
 
 void Elaborator::elaborateMaybeUnusedAttr(Declaration *D, const Syntax *S,
-                                          AttrStatus &Status){
+                                          AttrStatus &Status) {
   llvm_unreachable(" not implemented");
 }
 
 void Elaborator::elaborateNoDiscardAttr(Declaration *D, const Syntax *S,
-                                        AttrStatus &Status){
+                                        AttrStatus &Status) {
   llvm_unreachable(" not implemented");
 }
 
 void Elaborator::elaborateNoReturnAttr(Declaration *D, const Syntax *S,
-                                       AttrStatus &Status){
+                                       AttrStatus &Status) {
   llvm_unreachable(" not implemented");
 }
 
 void Elaborator::elaborateUnknownAttr(Declaration *D, const Syntax *S,
-                                      AttrStatus &Status){
+                                      AttrStatus &Status) {
   // TODO: I may need to stick some kind of warning here possibly.
   // llvm_unreachable("Processing of unknown attributes isn't implemented yet.");
 }

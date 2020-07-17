@@ -57,6 +57,7 @@ public:
   clang::Decl *elaborateDeclType(const Syntax* D);
   clang::Decl *elaborateDecl(Declaration *D);
   clang::Decl *elaborateFunctionDecl(Declaration *D);
+  void checkCXXMethodDecl(clang::CXXMethodDecl *MD);
   clang::Decl *elaborateVariableDecl(Declaration *D);
   clang::Decl *elaborateTypeAlias(Declaration *D);
   clang::Decl *elaborateTemplateAliasOrVariable(Declaration *D,

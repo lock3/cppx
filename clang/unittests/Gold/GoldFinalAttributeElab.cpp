@@ -43,14 +43,19 @@ C2 :type = class(C1):
 
 TEST(GoldFinalAttr, FinalMethod) {
   StringRef Code = R"(
-C1<final> : type = class:
+C1 : type = class:
   foo()<final>:void!
     ;
   
 
 )";
-  DeclarationMatcher ClassC = cxxRecordDecl(hasName("C1"),
-    hasDescendant(cxxMethodDecl(isFinal()
-  )));
-  ASSERT_TRUE(matches(Code.str(), ClassC));
+  GoldFailureTest(Code);
+}
+
+TEST(GoldFinalAttr, DoubleFinal) {
+  StringRef Code = R"(
+C1<final><final> : type = class:
+  ;
+)";
+  GoldFailureTest(Code);
 }
