@@ -262,6 +262,9 @@ Token CharacterScanner::makeToken(TokenKind K, char const* S, std::size_t N) {
       Tok.Flags |= TF_EmptyLine;
   }
 
+  if (K == tok::EmptyLine)
+    Tok.Flags |= TF_EmptyLine;
+
   return Tok;
 }
 
@@ -271,9 +274,21 @@ Token CharacterScanner::matchEof() {
 }
 
 Token CharacterScanner::matchSpace() {
+  bool StartsWithSpace = Column == 1;
   consume();
   while (isSpace(getLookahead()))
     consume();
+
+  if (StartsWithSpace && getLookahead() == '\n') {
+    consume();
+
+    // Update the line and reset the column.
+    ++Line;
+    Column = 1;
+
+    return makeToken(tok::EmptyLine, Start, First);
+  }
+
   return makeToken(tok::Space, Start, First);
 }
 
@@ -750,9 +765,14 @@ Token LineScanner::operator()() {
       StartsLine = false;
     }
 
-    // Empty lines are retained as separators
-    if (Tok.isNewline() && Tok.isAtStartOfLine())
-      break;
+    // Empty lines are usually discarded, but might be
+    // retained in special cases.
+    if ((Tok.isNewline() && Tok.isAtStartOfLine()) || Tok.isEmptyLine()) {
+      if (KeepEmptyLines)
+        break;
+      else
+        continue;
+    }
 
     // Errors, space, and comments are discardable. If a token starts a
     // line, the next token will become the new start of line.
@@ -788,6 +808,26 @@ Token BlockScanner::operator()() {
   else
     Tok = Scanner();
 
+  // Check for an empty line followed by a dedent (the only
+  // significant empty line).
+  if (Tok.isEmptyLine()) {
+    Token Next = Scanner();
+
+    if (Next.isEmptyLine()) {
+      Lookahead = Next;
+      return matchDiscard(Tok);
+    }
+
+    if (Next.isSpace()) {
+      Tok = combineSpace(Tok, Next);
+    } else {
+      Tok = combineSpace(Tok, {});
+      Lookahead = Next;
+    }
+
+    return Tok;
+  }
+
   // Check for a newline followed by indentation.
   if (Tok.isNewline()) {
     Token Next = Scanner();
@@ -819,12 +859,10 @@ Token BlockScanner::operator()() {
       // Note that the second newline is followed by eof, so we'd
       // probably want to do the same.
 
+      Tok = combineSpace(Tok, {});
+
       // Buffer the next token for the next read.
       Lookahead = Next;
-      if (!Lookahead.isEmptyLine())
-        Tok = combineSpace(Tok, {});
-      else
-        Tok = combineSpace(Tok, Lookahead);
     }
   }
 
@@ -842,6 +880,14 @@ Token BlockScanner::matchIndent(Token const& Tok) {
 
 Token BlockScanner::matchDedent(Token const& Tok) {
   return Token(tok::Dedent, Tok.getLocation(), Tok.getSymbol());
+}
+
+Token BlockScanner::matchEmpty(Token const& Tok) {
+  return Token(tok::EmptyLine, Tok.getLocation(), Tok.getSymbol());
+}
+
+Token BlockScanner::matchDiscard(Token const& Tok) {
+  return Token(tok::Discard, Tok.getLocation(), Tok.getSymbol());
 }
 
 static Symbol getSymbol(Token const& Tok) {
@@ -867,10 +913,6 @@ Token BlockScanner::combineSpace(Token const& Nl, Token const& NewIndent) {
   // Emit queued dedents.
   if (!Dedents.empty())
     return popDedent();
-
-  // Don't consider an empty line a dedent.
-  if (NewIndent.isEmptyLine())
-    return matchSeparator(NewIndent);
 
   Token PrevIndent = currentIndentation();
 

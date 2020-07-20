@@ -46,7 +46,13 @@ namespace gold
 
     void fetchToken()
     {
-      Toks.push_back(Lex());
+      Token Tok;
+
+      do
+        Tok = Lex();
+      while (Tok.hasKind(tok::Discard));
+
+      Toks.push_back(Tok);
     }
 
     Token const& peekToken() const {

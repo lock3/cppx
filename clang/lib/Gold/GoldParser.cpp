@@ -129,6 +129,24 @@ struct EnclosingAngles : EnclosingTokens<enc::Angles>
 
 } // namespace
 
+// An RAII object for a boolean variable.
+struct BooleanRAII {
+  BooleanRAII(bool &Boolean, bool Val)
+    : Boolean(Boolean)
+    {
+      SavedValue = Boolean;
+      Boolean = Val;
+    }
+
+  ~BooleanRAII() {
+    Boolean = SavedValue;
+  }
+
+private:
+  bool SavedValue;
+  bool &Boolean;
+};
+
 static Syntax *makeOperator(const SyntaxContext &Ctx,
                             clang::SourceLocation Loc,
                             llvm::StringRef Op);
@@ -170,15 +188,11 @@ static bool isSeparator(TokenKind K) {
 Syntax *Parser::parseFile()
 {
   if (!atEndOfFile()) {
-    // Some wise guy might put a bunch of empty lines at the top of the file.
-    while (matchTokenIf(isSeparator))
-      ;
-
-
     llvm::SmallVector<Syntax *, 16> Vec;
     parseArray(BlockArray, Vec);
     return onFile(Vec);
   }
+
   return nullptr;
 }
 
@@ -280,9 +294,8 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
     // FIXME: Actually diagnose missing separators.
     // FIXME: If the previous token was a semicolon, there might be a newline
     //        after it. These tokens should be combined by the lexer.
-    while (matchTokenIf(isSeparator))
-      if (nextTokenIs(tok::Dedent) || nextTokenIs(tok::RightBrace))
-        return;
+    matchTokenIf(isSeparator)
+      ;
 
     // The end-of-file is often after the last separator.
     if (atEndOfFile())
@@ -470,6 +483,7 @@ Syntax *Parser::parseDef() {
   // with a '!'? It seems like that would work better as a suffix operator
   // on the declarator (it also leads naturally to factorials!).
   if (Token op = matchToken(tok::Bang)) {
+    BooleanRAII NoEmptyLines(Lex.KeepEmptyLines, false);
     // FIXME: This should probably not be inside the loop. It allows
     // weirdness like this: 'f ! { ...} ! { ... } ! ...'. This would also
     // be interspersed with assignments: 'f ! { ... } = expr'
@@ -818,6 +832,9 @@ bool Parser::scanMacroNext() {
   while (true) {
     Token Current = peekToken(I++);
 
+    if (Current.isEmptyLine())
+      return false;
+
     // A fused operator can never appear here.
     if (Current.isFused())
       return false;
@@ -873,6 +890,9 @@ Syntax *Parser::parseMacro()
   // FIXME: add optional post for then/else
   if (nextTokenIs(tok::LeftBrace) ||
       (nextTokenIs(tok::Colon) && nthTokenIs(1, tok::Indent))) {
+    // Macros are the one case where an empty line can change the semantic
+    // meaning of a block.
+    BooleanRAII KeepEmptyLines(Lex.KeepEmptyLines, true);
     Syntax *e2 = parseBlock();
 
     Syntax *Opt = nullptr;
@@ -1249,11 +1269,9 @@ Syntax *Parser::parsePrimary() {
   case tok::DeleteKeyword:
     // FIXME: We need syntax for both new and delete operators.
     llvm_unreachable("new/delete Syntax in undefined.");
-  case tok::Separator:
-    // Just do nothing if we hit an empty line.
-    if (peekToken().isAtStartOfLine())
-      return nullptr;
-    break;
+
+  case tok::EmptyLine:
+    return nullptr;
 
   default:
     break;
@@ -1643,5 +1661,6 @@ void Parser::attachPreattrs(Syntax *S) {
 
   Preattributes.clear();
 }
+
 
 } // namespace gold

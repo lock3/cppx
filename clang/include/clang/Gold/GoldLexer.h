@@ -213,8 +213,8 @@ namespace gold {
 
   /// Removes empty lines and comments from a translation unit.
   struct LineScanner {
-    LineScanner(clang::SourceManager &SM, File const& F)
-      : Scanner(SM, F)
+    LineScanner(clang::SourceManager &SM, File const &F, bool const &EmptyLines)
+      : Scanner(SM, F), KeepEmptyLines(EmptyLines)
     { }
 
     Token operator()();
@@ -230,6 +230,9 @@ namespace gold {
 
     /// The underlying scanner.
     CharacterScanner Scanner;
+
+    /// Reference to the Lexer's KeepEmptyLines property.
+    bool const &KeepEmptyLines;
   };
 
 
@@ -237,8 +240,8 @@ namespace gold {
   /// separators. Note that there are no newlines in the translation unit
   /// returned from this scanner.
   struct BlockScanner {
-    BlockScanner(clang::SourceManager &SM, File const& F)
-      : Scanner(SM, F), Prefix() { }
+    BlockScanner(clang::SourceManager &SM, File const& F, bool const &EmptyLines)
+      : Scanner(SM, F, EmptyLines), KeepEmptyLines(EmptyLines), Prefix() { }
 
     Token operator()();
 
@@ -246,6 +249,8 @@ namespace gold {
     Token matchSeparator(Token const& nl);
     Token matchIndent(Token const& nl);
     Token matchDedent(Token const& nl);
+    Token matchEmpty(Token const& Nl);
+    Token matchDiscard(Token const &Nl);
 
     /// The current level of indentation. If the indentation stack is empty,
     /// return an empty token.
@@ -290,6 +295,9 @@ namespace gold {
     /// A buffered lookahead token.
     Token Lookahead;
 
+    /// Reference to the Lexer's KeepEmptyLines property.
+    bool const &KeepEmptyLines;
+
     /// The indentation stack.
     std::vector<Token> Prefix;
 
@@ -305,7 +313,7 @@ namespace gold {
   /// which applies a phase of translation.
   struct Lexer {
     Lexer(clang::SourceManager &SM, File const& F)
-      : Scanner(SM, F)
+      : Scanner(SM, F, KeepEmptyLines)
     { }
 
     Token operator()()
@@ -314,8 +322,10 @@ namespace gold {
     }
 
     BlockScanner Scanner;
-  };
 
+    /// True if we are in a context where empty lines are significant.
+    bool KeepEmptyLines = false;
+  };
 } // namespace gold
 
 #endif
