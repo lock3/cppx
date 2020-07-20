@@ -1355,16 +1355,17 @@ void Elaborator::elaborateDef(Declaration *D) {
 
 void Elaborator::elaborateFunctionDef(Declaration *D) {
   D->CurrentPhase = Phase::Initialization;
+  if (!D->Cxx)
+    return;
+  if (!D->Init)
+    return;
+
   if (D->declaresConstructor()) {
     llvm::SmallVector<clang::CXXCtorInitializer*, 32> Initializers;
     SemaRef.getCxxSema().ActOnMemInitializers(D->Cxx, clang::SourceLocation(),
         Initializers, false);
   }
 
-  if (!D->Cxx)
-    return;
-  if (!D->Init)
-    return;
   if (SemaRef.checkForRedefinition<clang::FunctionDecl>(D))
     return;
 
@@ -2517,7 +2518,27 @@ void Elaborator::elaborateAttributes(Declaration *D) {
 
 void Elaborator::elaborateConstExprAttr(Declaration *D, const Syntax *S,
                                         AttrStatus &Status) {
-  llvm_unreachable(" not implemented");
+  if (Status.HasConstExpr) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_duplicate_attribute);
+    return;
+  }
+  if (isa<CallSyntax>(S)) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_attribute_not_valid_as_call)
+                         << "constexpr";
+    return;
+  }
+  // Applying constant expression kind to the FunctionDecl.
+  if (clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(D->Cxx)) {
+    FD->setConstexprKind(clang::ConstexprSpecKind::CSK_constexpr);
+  }
+
+  // checking to see if we have a valid variable declaration here or not?
+  if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(D->Cxx)) {
+    VD->setConstexpr(true);
+  }
+  Status.HasConstExpr = true;
 }
 
 void Elaborator::elaborateInlineAttr(Declaration *D, const Syntax *S,
