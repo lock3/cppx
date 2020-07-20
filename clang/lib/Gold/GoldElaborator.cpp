@@ -2739,7 +2739,33 @@ void Elaborator::elaborateThreadLocalAttr(Declaration *D, const Syntax *S,
 
 void Elaborator::elaborateExplicitAttr(Declaration *D, const Syntax *S,
                                        AttrStatus &Status) {
-  llvm_unreachable(" not implemented");
+  if (Status.HasExplicit) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_duplicate_attribute);
+    return;    
+  }
+  if (isa<CallSyntax>(S)) {
+    SemaRef.Diags.Report(S->getLoc(),
+                        clang::diag::err_attribute_not_valid_as_call)
+                        << "override";
+    return; 
+  }
+
+  if (clang::CXXConstructorDecl *CTorDecl
+                                = dyn_cast<clang::CXXConstructorDecl>(D->Cxx)) {
+    clang::ExplicitSpecifier ES(nullptr,
+                                clang::ExplicitSpecKind::ResolvedTrue);
+    CTorDecl->setExplicitSpecifier(ES);
+    
+  } else if (isa<clang::CXXConversionDecl>(D->Cxx)) {
+    llvm_unreachable("ConversionDecl not implemented yet.");
+  } else {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_invalid_attribute_for_decl)
+                         << "explicit" << "constructor or conversion operator";
+    return;
+  }
+  Status.HasExplicit = true;
 }
 
 void Elaborator::elaborateVirtualAttr(Declaration *D, const Syntax *S,
@@ -2753,14 +2779,14 @@ void Elaborator::elaborateVirtualAttr(Declaration *D, const Syntax *S,
     if (isa<clang::CXXConstructorDecl>(D->Cxx)) {
       SemaRef.Diags.Report(S->getLoc(),
                            clang::diag::err_invalid_attribute_for_decl)
-                          << "virtual" << "a member function"; 
+                           << "virtual" << "member function"; 
       return;
     }
     if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(D->Cxx)) {
       if (MD->getStorageClass() != clang::SC_None) {
         SemaRef.Diags.Report(S->getLoc(),
                  clang::diag::err_cannot_applied_to_function_with_storage_class)
-                            << "virtual";
+                             << "virtual";
         return;
       }
 
@@ -2770,13 +2796,13 @@ void Elaborator::elaborateVirtualAttr(Declaration *D, const Syntax *S,
     } else {
       SemaRef.Diags.Report(S->getLoc(),
                            clang::diag::err_invalid_attribute_for_decl)
-                          << "virtual" << "a member function"; 
+                           << "virtual" << "member function"; 
       return;
     }
   }
   SemaRef.Diags.Report(S->getLoc(),
-                        clang::diag::err_attribute_not_valid_as_call)
-                        << "virtual"; 
+                       clang::diag::err_attribute_not_valid_as_call)
+                       << "virtual"; 
 }
 
 void Elaborator::elaborateOverrideAttr(Declaration *D, const Syntax *S,
@@ -2798,8 +2824,8 @@ void Elaborator::elaborateOverrideAttr(Declaration *D, const Syntax *S,
         || isa<clang::CXXDestructorDecl>(D->Cxx))
     {
       SemaRef.Diags.Report(S->getLoc(),
-                            clang::diag::err_invalid_attribute_for_decl)
-                            << "override" << "a member function"; 
+                           clang::diag::err_invalid_attribute_for_decl)
+                           << "override" << "member function"; 
       return;
     }
 
@@ -2811,7 +2837,7 @@ void Elaborator::elaborateOverrideAttr(Declaration *D, const Syntax *S,
   }
   SemaRef.Diags.Report(S->getLoc(),
                         clang::diag::err_invalid_attribute_for_decl)
-                        << "override" << "a member function";    
+                        << "override" << "member function";    
 }
 
 void Elaborator::elaborateFinalAttr(Declaration *D, const Syntax *S,
