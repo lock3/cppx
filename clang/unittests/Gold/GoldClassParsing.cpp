@@ -491,6 +491,24 @@ main() : int!
 
 
 
+TEST(ClassParsing, UserDefinedDestructorDeclOnly) {
+  StringRef Code = R"(
+c : type = class:
+  constructor(q : int) : void!
+    x = 4 + q
+  destructor() : void
+
+
+)";
+
+  DeclarationMatcher ClassCInfo = recordDecl(
+    has(cxxDestructorDecl(unless(isImplicit())))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ClassCInfo));
+}
+
+
 TEST(ClassParsing, NestedTypeDefinition) {
   StringRef Code = R"(
 outer : type = class:

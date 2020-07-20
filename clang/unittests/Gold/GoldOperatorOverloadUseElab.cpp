@@ -582,7 +582,7 @@ TEST(GoldUserDefinedOp, Use_BitWiseAndAssign) {
 TEST(GoldUserDefinedOp, Use_Assignment) {
   std::string Code = R"Gold(
 OpTest : type = class:
-  operator"="(Other:OpTest):ref OpTest!
+  operator"="(Other:ref OpTest):ref OpTest!
     return ^this
   
 

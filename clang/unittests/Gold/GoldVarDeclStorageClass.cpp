@@ -24,6 +24,13 @@ foo<static> : int
   ASSERT_TRUE(matches(Code.str(), StaticVar));
 }
 
+TEST(GoldVarDeclStorageClass, ConflictingStorageClass) {
+  StringRef Code = R"(
+foo<static><extern> : int
+)";
+  GoldFailureTest(Code);
+}
+
 TEST(GoldVarDeclStorageClass, External) {
   StringRef Code = R"(
 foo<extern>: int

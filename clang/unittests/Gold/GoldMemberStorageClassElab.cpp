@@ -28,6 +28,40 @@ c : type = class:
   ASSERT_TRUE(matches(Code.str(), ClassC));
 }
 
+TEST(ClassParsing, Static_Constructor) {
+  StringRef Code = R"(
+c : type = class:
+  constructor() <static>: void!
+    ;
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(ClassParsing, Static_Destructor) {
+  StringRef Code = R"(
+c : type = class:
+  destructor() <static>: void!
+    ;
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(ClassParsing, Static_AsACall) {
+  StringRef Code = R"(
+c : type = class:
+  x <static()>: int = 4
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(ClassParsing, Static_AppliedToAType) {
+  StringRef Code = R"(
+c : type = class:
+  x <static()>: type = int
+)";
+  GoldFailureTest(Code);
+}
+
 // TEST(ClassParsing, Static_StringLiteralVariable) {
 //   StringRef Code = R"(
 // c : type = class:

@@ -86,7 +86,6 @@ static Sema::StringToAttrHandlerMap buildAttributeMaping() {
     
     { "inline", ATTR_HANDLER_LAMBDA(elaborateInlineAttr) },
     
-    { "extern", ATTR_HANDLER_LAMBDA(elaborateExternAttr) },
 
     { "public", ATTR_HANDLER_LAMBDA(elaborateAccessSpecifierAttr) },
     { "private", ATTR_HANDLER_LAMBDA(elaborateAccessSpecifierAttr) },
@@ -96,8 +95,11 @@ static Sema::StringToAttrHandlerMap buildAttributeMaping() {
     { "throw", ATTR_HANDLER_LAMBDA(elaborateExceptionSpecAttr) },
 
     // Should auto be allowed here?
-    { "static", ATTR_HANDLER_LAMBDA(elaborateStorageClassAttr) },
-    { "thread_local", ATTR_HANDLER_LAMBDA(elaborateStorageClassAttr) },
+    { "static", ATTR_HANDLER_LAMBDA(elaborateStaticAttr) },
+    
+    { "thread_local", ATTR_HANDLER_LAMBDA(elaborateThreadLocalAttr) },
+
+    { "extern", ATTR_HANDLER_LAMBDA(elaborateExternAttr) },
 
     { "explicit", ATTR_HANDLER_LAMBDA(elaborateExplicitAttr) },
     
@@ -115,6 +117,9 @@ static Sema::StringToAttrHandlerMap buildAttributeMaping() {
     { "maybe_unused", ATTR_HANDLER_LAMBDA(elaborateMaybeUnusedAttr) },
     { "nodiscard", ATTR_HANDLER_LAMBDA(elaborateNoDiscardAttr) },
     { "noreturn", ATTR_HANDLER_LAMBDA(elaborateNoReturnAttr) },
+
+    // Error Attributes.
+    { "mutable", ATTR_HANDLER_LAMBDA(elaborateAttributeError)},
   };
 #undef ATTR_HANDLER_LAMBDA
 

@@ -57,6 +57,7 @@ public:
   clang::Decl *elaborateDeclType(const Syntax* D);
   clang::Decl *elaborateDecl(Declaration *D);
   clang::Decl *elaborateFunctionDecl(Declaration *D);
+  void checkCXXMethodDecl(clang::CXXMethodDecl *MD);
   clang::Decl *elaborateVariableDecl(Declaration *D);
   clang::Decl *elaborateTypeAlias(Declaration *D);
   clang::Decl *elaborateTemplateAliasOrVariable(Declaration *D,
@@ -155,8 +156,10 @@ public:
                                     AttrStatus &Status);
   void elaborateExceptionSpecAttr(Declaration *D, const Syntax *S,
                                   AttrStatus &Status);
-  void elaborateStorageClassAttr(Declaration *D, const Syntax *S,
-                                 AttrStatus &Status);
+  void elaborateStaticAttr(Declaration *D, const Syntax *S,
+                           AttrStatus &Status);
+  void elaborateThreadLocalAttr(Declaration *D, const Syntax *S,
+                                AttrStatus &Status);
   void elaborateExplicitAttr(Declaration *D, const Syntax *S,
                              AttrStatus &Status);
   void elaborateVirtualAttr(Declaration *D, const Syntax *S,
@@ -180,7 +183,12 @@ public:
   void elaborateUnknownAttr(Declaration *D, const Syntax *S,
                            AttrStatus &Status);
 
-
+  /// This is the attribute that's used to indicate that we have an error.
+  /// For example, if mutable makes it to the list of attributes then we have
+  /// to indicate that it's an error some how.
+  /// This is for attributes that are known to be an error when it's specified.
+  void elaborateAttributeError(Declaration *D, const Syntax *S,
+                               AttrStatus &Status);
 };
 
 /// Represents different kinds of fused operator strings, for example,

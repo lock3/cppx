@@ -61,6 +61,17 @@ c : type = class:
   GoldFailureTest(Code);
 }
 
+TEST(GoldVritualAttr, DoubleVirtual) {
+  StringRef Code = R"(
+c : type = class:
+  foo()<virtual><virtual>:void!
+    ;
+  
+
+)";
+  GoldFailureTest(Code);
+}
+
 TEST(GoldVritualAttr, VirtualOnStaticFunction) {
   StringRef Code = R"(
 c : type = class:
