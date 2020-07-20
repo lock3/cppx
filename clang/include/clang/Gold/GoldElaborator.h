@@ -182,6 +182,13 @@ public:
                            AttrStatus &Status);
   void elaborateUnknownAttr(Declaration *D, const Syntax *S,
                            AttrStatus &Status);
+
+  /// This is the attribute that's used to indicate that we have an error.
+  /// For example, if mutable makes it to the list of attributes then we have
+  /// to indicate that it's an error some how.
+  /// This is for attributes that are known to be an error when it's specified.
+  void elaborateAttributeError(Declaration *D, const Syntax *S,
+                               AttrStatus &Status);
 };
 
 /// Represents different kinds of fused operator strings, for example,

@@ -117,6 +117,9 @@ static Sema::StringToAttrHandlerMap buildAttributeMaping() {
     { "maybe_unused", ATTR_HANDLER_LAMBDA(elaborateMaybeUnusedAttr) },
     { "nodiscard", ATTR_HANDLER_LAMBDA(elaborateNoDiscardAttr) },
     { "noreturn", ATTR_HANDLER_LAMBDA(elaborateNoReturnAttr) },
+
+    // Error Attributes.
+    { "mutable", ATTR_HANDLER_LAMBDA(elaborateAttributeError)},
   };
 #undef ATTR_HANDLER_LAMBDA
 

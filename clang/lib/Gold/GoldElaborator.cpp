@@ -217,6 +217,7 @@ static bool isVirtualBase(Sema& SemaRef, Attributes& attrs,
     });
 }
 
+
 /// This should ONLY be used with member variables
 bool isStaticMember(Sema& SemaRef, Declaration *D, bool &IsStatic) {
   return locateValidAttribute(D,
@@ -1625,10 +1626,13 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
     VDecl->setAccess(clang::AS_public);
     Field = VDecl;
   } else {
+    bool Mutable = false;
+    if (isMutable(SemaRef, D, Mutable))
+      return nullptr;
     // We are create field within a class.
     Field = SemaRef.getCxxSema().CheckFieldDecl(DN, TInfo->getType(),
                                                 TInfo, /*RecordDecl=*/Owner,
-                                                Loc, /*Mutable=*/false,
+                                                Loc, Mutable,
                                                 /*BitWidth=*/nullptr, InitStyle,
                                                 Loc, clang::AS_public, nullptr);
   }
@@ -2095,7 +2099,6 @@ bool Elaborator::delayElaborateDeclType(const Syntax *S) {
       // but the late elaboration from there might not exist yet.
       // So we might need to do partial elaboration of a few things in order to
       // correctly define them.
-      llvm::outs() << "We have a static declatation of a function!\n";
       elaborateFunctionDecl(D);
     } else {
       // Attempting to delay method decl/def combos
@@ -2877,6 +2880,15 @@ void Elaborator::elaborateUnknownAttr(Declaration *D, const Syntax *S,
                                       AttrStatus &Status) {
   // TODO: I may need to stick some kind of warning here possibly.
   // llvm_unreachable("Processing of unknown attributes isn't implemented yet.");
+}
+
+void Elaborator::elaborateAttributeError(Declaration *D, const Syntax *S,
+                                         AttrStatus &Status) {
+  llvm::StringRef AttrName;
+  checkAttrFormatAndName(S, AttrName);
+  SemaRef.Diags.Report(S->getLoc(),
+                       clang::diag::err_invalid_attribute_for_decl)
+                       << AttrName << "different declaration expression"; 
 }
 
 
