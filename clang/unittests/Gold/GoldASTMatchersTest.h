@@ -29,13 +29,16 @@ AST_POLYMORPHIC_MATCHER_P(stringHasValue,
                           AST_POLYMORPHIC_SUPPORTED_TYPES(StringLiteral),
                           std::string, ToCmpWith) {
   return Node.getString() == ToCmpWith;
-
 }
 
 AST_POLYMORPHIC_MATCHER(isInlinedVar,
                         AST_POLYMORPHIC_SUPPORTED_TYPES(VarDecl)) {
   return Node.isInlineSpecified();
+}
 
+AST_POLYMORPHIC_MATCHER(isMutable,
+                        AST_POLYMORPHIC_SUPPORTED_TYPES(FieldDecl)) {
+  return Node.isMutable();
 }
 
 struct BaseMatcher {

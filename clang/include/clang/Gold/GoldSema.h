@@ -77,6 +77,7 @@ struct AttrStatus {
     HasMaybeUnused = false;
     HasNoDiscard = false;
     HasNoReturn = false;
+    HasThreadLocal = false;
   }
   bool HasConstExpr : 1;
   bool HasInLine : 1;
@@ -84,6 +85,7 @@ struct AttrStatus {
   bool HasMemberAccessSpecifier : 1;
   bool HasExceptionSpec : 1;
   bool HasStatic : 1;
+  bool HasThreadLocal : 1;
   bool HasExplicit : 1;
   bool HasVirtual : 1;
   bool HasOverride : 1;

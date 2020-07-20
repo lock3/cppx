@@ -156,8 +156,10 @@ public:
                                     AttrStatus &Status);
   void elaborateExceptionSpecAttr(Declaration *D, const Syntax *S,
                                   AttrStatus &Status);
-  void elaborateStorageClassAttr(Declaration *D, const Syntax *S,
-                                 AttrStatus &Status);
+  void elaborateStaticAttr(Declaration *D, const Syntax *S,
+                           AttrStatus &Status);
+  void elaborateThreadLocalAttr(Declaration *D, const Syntax *S,
+                                AttrStatus &Status);
   void elaborateExplicitAttr(Declaration *D, const Syntax *S,
                              AttrStatus &Status);
   void elaborateVirtualAttr(Declaration *D, const Syntax *S,
@@ -180,8 +182,6 @@ public:
                            AttrStatus &Status);
   void elaborateUnknownAttr(Declaration *D, const Syntax *S,
                            AttrStatus &Status);
-
-
 };
 
 /// Represents different kinds of fused operator strings, for example,
