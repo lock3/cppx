@@ -37,6 +37,7 @@ namespace gold {
 LateElaboratedDecl::~LateElaboratedDecl() { }
 void LateElaboratedDecl::ElaborateMethodDeclarations() { }
 void LateElaboratedDecl::ElaborateMemberInitializers() { }
+void LateElaboratedDecl::ElaborateDefaultParams() { }
 void LateElaboratedDecl::ElaborateMethodDefs() { }
 void LateElaboratedDecl::ElaborateAttributes() { }
 
@@ -64,6 +65,11 @@ void LateElaboratedClass::ElaborateMethodDefs() {
   Elab.lateElaborateMethodDefs(*Class);
 }
 
+void LateElaboratedClass::ElaborateDefaultParams() {
+  Elaborator Elab(Context, SemaRef);
+  Elab.lateElaborateDefaultParams(*Class);
+}
+
 void LateElaboratedClass::ElaborateAttributes() {
   Elaborator Elab(Context, SemaRef);
   Elab.lateElaborateAttributes(*Class);
@@ -82,6 +88,11 @@ void LateElaboratedMethodDef::ElaborateMethodDefs() {
 void LateElaboratedMethodDeclaration::ElaborateMethodDeclarations() {
   Elaborator Elab(Context, SemaRef);
   Elab.lateElaborateMethodDecl(*this);
+}
+
+void LateElaboratedMethodDeclaration::ElaborateDefaultParams() {
+  Elaborator Elab(Context, SemaRef);
+  Elab.lateElaborateDefaultParams(*this);
 }
 
 void LateElaborateMemberInitializer::ElaborateMemberInitializers() {

@@ -966,8 +966,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     if (InClass)
       FTD->setAccess(clang::AS_public);
   }
-  SemaRef.getCxxSema().getImplicitCodeSegOrSectionAttrForFunction(FD,
-                                                                  D->Init);
+  SemaRef.getCxxSema().getImplicitCodeSegOrSectionAttrForFunction(FD, D->Init);
   // Update the function parameters.
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
   getFunctionParameters(D, Params);
@@ -1318,6 +1317,32 @@ clang::Decl *Elaborator::elaborateDeclSyntax(const Syntax *S) {
   return nullptr;
 }
 
+clang::Decl *Elaborator::elaborateParmDeclSyntax(const Syntax *S) {
+// Identify this as a declaration first.
+  identifyDecl(S);
+
+  // Elaborate the declaration.
+  Declaration *D = SemaRef.getCurrentScope()->findDecl(S); 
+  if (D) {
+    elaborateDecl(D);
+    if (!D->Cxx)
+      return nullptr;
+    if (D->Init) {
+
+      if (SemaRef.isElaboratingClass()) {
+        
+        delayElaborateDefaultParam(D);
+      } else {
+        // In the event we are not a member declaration then process the
+        // default argument right off the bat.
+        elaborateDef(D);
+      }
+    }
+    return D->Cxx;
+  }
+
+  return nullptr;
+}
 clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
   assert(D && D->getId() && "Early elaboration of unidentified declaration");
   Sema::OptionalInitScope<Sema::EnterNonNestedClassEarlyElaboration>
@@ -2155,11 +2180,9 @@ void Elaborator::delayElaborationClassBody(Declaration *D) {
   processCXXRecordDecl(*this, Context, SemaRef, D);
 }
 
-void Elaborator::delayElaborateDefaultArgument(Declaration *ParamDecl) {
-  // TODO: This will need fixed so that we can properly add to the most recently
-  // delayed function possibly.
-  llvm_unreachable("Evaluation of default arguemtns within a class body "
-    "not implemented yet.");
+void Elaborator::delayElaborateDefaultParam(Declaration *ParamDecl) {
+  assert(SemaRef.CurrentLateMethodDecl && "Late method decl not set");
+  SemaRef.CurrentLateMethodDecl->DefaultArgs.emplace_back(ParamDecl);
 }
 
 
@@ -2167,7 +2190,7 @@ void Elaborator::delayElaborateDefaultArgument(Declaration *ParamDecl) {
 void Elaborator::finishDelayedElaboration(ElaboratingClass &Class) {
   lateElaborateAttributes(Class);
   lateElaborateMethodDecls(Class);
-
+  lateElaborateDefaultParams(Class);
   // We call this because no new declarations can be added after this point.
   // This is only called for the top level class.
   SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
@@ -2232,6 +2255,12 @@ void Elaborator::lateElaborateMethodDecls(ElaboratingClass &Class) {
   if (CurrentlyNested)
     SemaRef.getCxxSema().ActOnFinishDelayedMemberDeclarations(
       SemaRef.getCurClangScope(), Class.TagOrTemplate->Cxx);
+}
+
+void Elaborator::lateElaborateDefaultParams(ElaboratingClass &Class) {
+  for (size_t i = 0; i < Class.LateElaborations.size(); ++i) {
+    Class.LateElaborations[i]->ElaborateDefaultParams();
+  }
 }
 
 void Elaborator::lateElaborateMemberInitializers(ElaboratingClass &Class) {
@@ -2312,6 +2341,7 @@ void Elaborator::lateElaborateMethodDecl(
       clang::Scope::FunctionPrototypeScope |
       clang::Scope::FunctionDeclarationScope,
       clang::SourceLocation());
+  Sema::LateMethodRAII MethodTracking(SemaRef, &Method);
   elaborateFunctionDecl(Method.D);
   // This is to check if the method delcaration was a success and in the event
   // that it is we need to finish the exception specifier after the end of the
@@ -2331,10 +2361,15 @@ void Elaborator::lateElaborateMethodDecl(
       SemaRef.getCurClangScope(), Method.D->Cxx);
 }
 
-void Elaborator::lateElaborateDefaultArgument(
+void Elaborator::lateElaborateDefaultParams(
+    LateElaboratedMethodDeclaration &MethodDecl) {
+  for(LateElaboratedDefaultArgument &Arg : MethodDecl.DefaultArgs)
+    lateElaborateDefaultParam(Arg);
+}
+
+void Elaborator::lateElaborateDefaultParam(
     LateElaboratedDefaultArgument &DefaultParam) {
-  llvm_unreachable("Default arguments for function declarations haven't "
-      "been processed yet.");
+  elaborateDef(DefaultParam.Param);
 }
 
 static void applyESIToFunctionType(SyntaxContext &Context, Sema &SemaRef,

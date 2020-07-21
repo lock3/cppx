@@ -46,6 +46,7 @@ public:
 
   virtual void ElaborateMethodDeclarations();
   virtual void ElaborateMemberInitializers();
+  virtual void ElaborateDefaultParams();
   virtual void ElaborateMethodDefs();
   virtual void ElaborateAttributes(); 
 };
@@ -60,6 +61,7 @@ public:
 
   void ElaborateMemberInitializers() override;
   void ElaborateMethodDeclarations() override;
+  void ElaborateDefaultParams() override;
   void ElaborateMethodDefs() override;
   void ElaborateAttributes() override;
 
@@ -134,7 +136,7 @@ struct LateElaboratedMethodDeclaration : public LateElaboratedDecl {
     : SemaRef(S), Context(Ctxt), D(MD), TemplateScope(false) { }
 
   void ElaborateMethodDeclarations() override;
-
+  void ElaborateDefaultParams() override;
   Sema &SemaRef;
   SyntaxContext &Context;
 

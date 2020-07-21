@@ -72,14 +72,19 @@ public:
   void elaborateVariableInit(Declaration *D);
   void elaborateTemplateParamInit(Declaration *D);
 
-  // Perform all three passes on a single declaration in one shot.
-  // This is used to elaborate parameters and block-scope variables.
-  clang::Decl *elaborateDeclSyntax(const Syntax* S);
+  /// Perform all three passes on a single declaration in one shot.
+  /// This is used to elaborate parameters and block-scope variables.
+  clang::Decl *elaborateDeclSyntax(const Syntax *S);
 
-  // Perform the latter two passes on a Declaration that was previously
-  // identified. This is used when lookup finds an unelaborated declaration.
+  /// elaborateParmDeclSyntax very similar to a call to elaborateDeclSyntax
+  /// with the exception that this is ONLY ever used on a suspected
+  /// parameter. 
+  clang::Decl *elaborateParmDeclSyntax(const Syntax *S);
+
+  /// Perform the latter two passes on a Declaration that was previously
+  /// identified. This is used when lookup finds an unelaborated declaration.
   clang::Decl *elaborateDeclEarly(Declaration *D);
-  
+
   // class type body elaboration.
   clang::Decl *elaborateTypeBody(Declaration *D, clang::CXXRecordDecl *R);
   clang::Decl *elaborateField(Declaration *D);
@@ -105,8 +110,7 @@ public:
   void delayElaborateMethodDef(Declaration *D);
   void delayElaborationClassBody(Declaration *D);
 
-  // TODO: Need to implement default arguments for parameters
-  void delayElaborateDefaultArgument(Declaration *ParamDecl);
+  void delayElaborateDefaultParam(Declaration *ParamDecl);
 
 
   /// Functions used for late elaboration processing.
@@ -114,14 +118,15 @@ public:
   void finishDelayedElaboration(ElaboratingClass &Class);
   void lateElaborateAttributes(ElaboratingClass &Class);
   void lateElaborateMethodDecls(ElaboratingClass &Class);
+  void lateElaborateDefaultParams(ElaboratingClass &Class);
   void lateElaborateMemberInitializers(ElaboratingClass &Class);
   void lateElaborateMethodDefs(ElaboratingClass &Class);
   
   /// Special callbacks used in order to interact a lateElaborated class.
   void lateElaborateAttribute(LateElaboratedAttributeDecl &Field);
   void lateElaborateMethodDef(LateElaboratedMethodDef &Method);
-  void lateElaborateDefaultArgument(
-      LateElaboratedDefaultArgument &DefaultParam);
+  void lateElaborateDefaultParams(LateElaboratedMethodDeclaration &MethodDecl);
+  void lateElaborateDefaultParam(LateElaboratedDefaultArgument &DefaultParam);
   void lateElaborateMethodDecl(LateElaboratedMethodDeclaration &Method);
   void lateElaborateMemberInitializer(
       LateElaborateMemberInitializer &MemberInit);

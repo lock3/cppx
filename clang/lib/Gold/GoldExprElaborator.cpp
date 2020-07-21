@@ -2190,7 +2190,7 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
 
     Elaborator Elab(Context, SemaRef);
     clang::ValueDecl *VD =
-      cast_or_null<clang::ValueDecl>(Elab.elaborateDeclSyntax(P));
+      cast_or_null<clang::ValueDecl>(Elab.elaborateParmDeclSyntax(P));
     if (!VD) {
       SemaRef.leaveScope(Call);
       return nullptr;
