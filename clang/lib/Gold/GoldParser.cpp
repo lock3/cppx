@@ -626,70 +626,15 @@ static bool isMulOperator(Parser& P) {
 }
 
 /// mul:
-///   call
-///   mul mul-operator call
+///   pre
+///   pre mul-operator pre
 Syntax *Parser::parseMul() {
-  Syntax *E1 = parseMacro();
+  Syntax *E1 = parsePre();
   while (Token Op = matchTokens(isMulOperator, *this)) {
-    Syntax *E2 = parseMacro();
+    Syntax *E2 = parsePre();
     E1 = onBinary(Op, E1, E2);
   }
   return E1;
-}
-
-/// macro:
-///   post
-///   post block
-///   if ( list ) block
-///   if ( list ) block else block
-///   while ( list ) block
-///   for ( list ) block
-///   block
-///
-/// catch:
-///   catch ( list ) block
-///
-/// \todo We can parse a macro as a list of (post block) chains if we
-/// had an continuation token (e.g., 'else').
-///
-/// \todo Implement catch blocks. We should probably only allow these
-/// on the 'block' production, and possibly explicitly allow a 'try'
-/// statement. Note that catch-blocks are really a sequence of catches,
-/// possibly followed by a finally.
-///
-/// \note Macros are essentially right associative in structure, so
-/// that a naive post-order traversal will not produce the correct typing
-/// or evaluation. They must be traversed pre-order (i.e., analyze the
-/// outermost properties, followed by the innermost).
-Syntax *Parser::parseMacro()
-{
-  if (nextTokenIs("if"))
-    return parseIf();
-
-  if (nextTokenIs("while"))
-    return parseWhile();
-
-  if (nextTokenIs("for"))
-    return parseFor();
-
-  // FIXME: What are we matching here?
-  if (nextTokenIs(tok::LeftBrace) || nextTokenIs(tok::Colon))
-    return parseBlock();
-
-  // FIXME: Should this be parsePost?
-  Syntax *e1 = parsePre();
-
-  if (nextTokenIs(tok::LeftBrace))
-  {
-    Syntax *e2 = parseBlock();
-    return onMacro(e1, e2);
-  }
-  if (nextTokenIs(tok::Colon) && nthTokenIs(1, tok::Indent)) {
-      Syntax *e2 = parseBlock();
-      return onMacro(e1, e2);
-  }
-
-  return e1;
 }
 
 Syntax *Parser::parseIf()
@@ -805,7 +750,57 @@ Syntax *Parser::parsePre()
     return onUnary(Operator, Operand);
   }
 
-  return parsePost();
+  return parseMacro();
+}
+
+/// macro:
+///   post
+///   post block
+///   if ( list ) block
+///   if ( list ) block else block
+///   while ( list ) block
+///   for ( list ) block
+///   block
+///
+/// catch:
+///   catch ( list ) block
+///
+/// \todo We can parse a macro as a list of (post block) chains if we
+/// had an continuation token (e.g., 'else').
+///
+/// \todo Implement catch blocks. We should probably only allow these
+/// on the 'block' production, and possibly explicitly allow a 'try'
+/// statement. Note that catch-blocks are really a sequence of catches,
+/// possibly followed by a finally.
+///
+/// \note Macros are essentially right associative in structure, so
+/// that a naive post-order traversal will not produce the correct typing
+/// or evaluation. They must be traversed pre-order (i.e., analyze the
+/// outermost properties, followed by the innermost).
+Syntax *Parser::parseMacro()
+{
+  if (nextTokenIs("if"))
+    return parseIf();
+
+  if (nextTokenIs("while"))
+    return parseWhile();
+
+  if (nextTokenIs("for"))
+    return parseFor();
+
+  Syntax *e1 = parsePost();
+
+  if (nextTokenIs(tok::LeftBrace))
+  {
+    Syntax *e2 = parseBlock();
+    return onMacro(e1, e2);
+  }
+  if (nextTokenIs(tok::Colon) && nthTokenIs(1, tok::Indent)) {
+      Syntax *e2 = parseBlock();
+      return onMacro(e1, e2);
+  }
+
+  return e1;
 }
 
 static bool isNonAngleEnclosure(TokenKind K) {
