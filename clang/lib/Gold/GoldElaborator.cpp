@@ -808,7 +808,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     const clang::FunctionProtoType *FPT = cast<clang::FunctionProtoType>(
                                                  TInfo->getType().getTypePtr());
     if (!FPT) {
-      llvm_unreachable("Invalid function type");
       return nullptr;
     }
 
@@ -851,8 +850,10 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     DNI.setLoc(D->Op->getLoc());
     if (D->getId()->isStr("constructor")) {
       if (FT->getReturnType() != Context.CxxAST.VoidTy) {
-        // TODO: Emit correct diagonstic message here.
-        llvm_unreachable("Constructor has incorrect return type.");
+        SemaRef.Diags.Report(D->Decl->getLoc(),
+                          clang::diag::err_invalid_return_type_for_ctor_or_dtor)
+                          << 0;
+        return nullptr;
       }
 
       DNI.setName(Name);
@@ -890,12 +891,11 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
 
     } else if(D->getId()->isStr("destructor")) {
       if (FT->getReturnType() != Context.CxxAST.VoidTy) {
-        // TODO: Emit correct diagonstic message here.
-        assert(false && "Constructor has incorrect return type");
+        SemaRef.Diags.Report(D->Decl->getLoc(),
+                          clang::diag::err_invalid_return_type_for_ctor_or_dtor)
+                             << 1;
+        return nullptr;
       }
-      // clang::QualType RecordTy = Context.CxxAST.getTypeDeclType(RD);
-      // clang::CanQualType Ty = Context.CxxAST.getCanonicalType(RecordTy);
-      // Name = Context.CxxAST.DeclarationNames.getCXXDestructorName(Ty);
       clang::DeclarationNameInfo DNI2(Name, D->Decl->getLoc());
       clang::CXXDestructorDecl* DtorDecl = nullptr;
       clang::ExplicitSpecifier ES(nullptr, clang::ExplicitSpecKind::ResolvedFalse);
@@ -922,8 +922,9 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       const clang::FunctionProtoType *FPT = cast<clang::FunctionProtoType>(
         TInfo->getType().getTypePtr());
       if (FPT->getNumParams() != 0) {
-        // TODO: Figure out how to correctly emit diagnostics here.
-        assert(false && "Destructors cannot have any parameters.");
+        SemaRef.Diags.Report(D->Op->getLoc(),
+                             clang::diag::err_destructor_with_params);
+        return nullptr;
       }
       auto QT = Context.CxxAST.getFunctionType(Context.CxxAST.VoidTy,
         clang::None, EPI);

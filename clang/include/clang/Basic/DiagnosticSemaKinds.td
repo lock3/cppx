@@ -11039,11 +11039,16 @@ def err_invalid_dyn_exception_type : Error <
   "only expressions whose reuslts are types can be given to a dynamic excpetion "
   "specification">;
 
+def err_invalid_return_type_for_ctor_or_dtor : Error<
+  "invalid return type for %select{constructor|destructor}0">;
+ 
+
 def err_operator_cannot_be_overloaded : Error<
   "cannot overload operator, unknown operator %0">;
 
 def err_operator_too_few_parameters : Error<
   "%0 must have at least one parameter">;
+  
 def err_operator_too_many_parameters : Error<
   "overload %0 must can must have %1 parameter">;
 
