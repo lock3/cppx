@@ -1061,7 +1061,7 @@ Syntax *Parser::parseArrayPrefix()
   if (!Brackets.expectClose())
     return onError();
 
-  Syntax *Map = parsePrimary();
+  Syntax *Map = parsePre();
   return new (Context)
     CallSyntax(makeOperator(Context, Arg->getLoc(), "[]"),
                makeList(Context, {Arg, Map}));

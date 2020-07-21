@@ -1932,7 +1932,7 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
     return nullptr;
   }
 
-  // This is used to construct a pointer type because the carrot has two
+  // This is used to construct a pointer type because the carot has two
   // meanings. Dereference and pointer declaration.
   if (Op == clang::UO_Deref) {
     if (OperandResult->getType()->isTypeOfTypes()) {
@@ -1942,7 +1942,7 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
         return nullptr;
       clang::QualType RetType = Context.CxxAST.getPointerType(TInfo->getType());
       return SemaRef.buildTypeExpr(RetType, S->getLoc());
-    } 
+    }
   } 
   clang::ExprResult UnaryOpRes = SemaRef.getCxxSema().BuildUnaryOp(
                                                               /*scope*/nullptr,

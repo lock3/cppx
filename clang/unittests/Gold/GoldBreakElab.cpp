@@ -47,7 +47,7 @@ main() : int!
   DeclarationMatcher ToMatch = functionDecl(hasName("main"), isMain(),
                                                   hasDescendant(breakStmt())
                                                  );
-  ASSERT_TRUE(matches(Code.str(), ToMatch));  
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
 TEST(GoldBreak, InvalidBreakLocation) {
