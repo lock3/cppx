@@ -59,11 +59,27 @@ StmtElaborator::elaborateStmt(const Syntax *S) {
 
 clang::Stmt *
 StmtElaborator::elaborateAtom(const AtomSyntax *S) {
-  ExprElaborator ExEl(Context, SemaRef);
-  // TODO: We may need to insert some error checking here to make sure that the
-  // return type of the expression isn't a namespace or kind type?
-  // but then again it should be fine to have an expression with no effect.
-  return ExEl.elaborateExpr(S);
+  Token T = S->Tok;
+  // Grabbing some statement only identifiers
+  switch (T.getKind()) {
+  case tok::ContinueKeyword:
+  {
+    auto StmtResult = SemaRef.getCxxSema().ActOnContinueStmt(S->getLoc(),
+        SemaRef.getCurClangScope());
+    return StmtResult.get();
+  }
+  case tok::BreakKeyword:
+  {
+    auto StmtResult = SemaRef.getCxxSema().ActOnBreakStmt(S->getLoc(),
+        SemaRef.getCurClangScope());
+    return StmtResult.get();
+  }
+  default:
+  {
+    ExprElaborator ExEl(Context, SemaRef);
+    return ExEl.elaborateExpr(S);
+  }
+  }
 }
 
 static clang::Stmt *

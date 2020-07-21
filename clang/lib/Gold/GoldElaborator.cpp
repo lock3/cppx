@@ -2529,16 +2529,26 @@ void Elaborator::elaborateConstExprAttr(Declaration *D, const Syntax *S,
                          << "constexpr";
     return;
   }
+  Status.HasConstExpr = true;
   // Applying constant expression kind to the FunctionDecl.
   if (clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(D->Cxx)) {
+    FD->setImplicitlyInline();
+    if (isa<clang::CXXDestructorDecl>(D->Cxx)) {
+      SemaRef.Diags.Report(S->getLoc(), clang::diag::err_constexpr_dtor)
+                           << clang::ConstexprSpecKind::CSK_constexpr;
+      return;
+    }
     FD->setConstexprKind(clang::ConstexprSpecKind::CSK_constexpr);
-  }
-
-  // checking to see if we have a valid variable declaration here or not?
-  if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(D->Cxx)) {
+  } else if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(D->Cxx)) {
     VD->setConstexpr(true);
+  } else {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_invalid_attribute_for_decl)
+                         << "constexpr"
+                         << "function, static member variable, or "
+                            "non-member variable";
+    return;
   }
-  Status.HasConstExpr = true;
 }
 
 void Elaborator::elaborateInlineAttr(Declaration *D, const Syntax *S,
@@ -2564,7 +2574,7 @@ void Elaborator::elaborateInlineAttr(Declaration *D, const Syntax *S,
   } else {
     SemaRef.Diags.Report(S->getLoc(),
                          clang::diag::err_invalid_attribute_for_decl)
-                         << "inline" << "a function, variable, or namespace"; 
+                         << "inline" << "function, variable, or namespace"; 
   }
 }
 
