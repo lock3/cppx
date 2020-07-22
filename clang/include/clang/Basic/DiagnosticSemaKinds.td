@@ -11052,6 +11052,9 @@ def err_operator_too_few_parameters : Error<
 def err_operator_too_many_parameters : Error<
   "overload %0 must can must have %1 parameter">;
 
+def err_invalid_identifier_type : Error<
+  "invalid indentifier %0">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

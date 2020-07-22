@@ -1111,7 +1111,9 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
     return SemaRef.buildTypeExpr(CxxAST.CppxKindTy, S->getLoc());
   default: break;
   }
-
+  SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_identifier_type)
+                       << S->getSpelling();
+  
   return nullptr;
 }
 
