@@ -1093,3 +1093,16 @@ c : type = class:
 )";
   GoldFailureTest(Code);
 }
+
+TEST(ClassParsing, DoubleDedent) {
+  StringRef Code = R"(
+A : type = class:
+  B : type = class:
+    x : int = 0
+
+main() : int!
+  a : A
+)";
+
+  SimpleGoldParseTest(Code);
+}
