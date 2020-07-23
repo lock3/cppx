@@ -198,13 +198,12 @@ static bool isSeparator(TokenKind K) {
 }
 
 // array:
-//    list
-//    array sequencer list
-//
-// sequencer:
+//   list
+//   indent array dedent catch_opt
+//   array separator list
+// separator:
 //    ;
-//    separator
-//
+//    newline
 // Note that the original expression allows arrays to be empty. I think
 // it's better to make that optionality part of the lower-precedence rule
 // that contains this one.
@@ -249,6 +248,7 @@ Syntax *Parser::parseArray(ArraySemantic S) {
 void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
   Syntax *List = parseList(S);
   appendTerm(Vec, List);
+  bool ExitBlock = false;
 
   while (true)
   {
@@ -256,9 +256,11 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
     if (atEndOfFile())
       break;
 
-    // We're about to exist a nested block ...
-    if (nextTokenIs(tok::Dedent) || nextTokenIs(tok::RightBrace))
+    // We're about to exit a nested block ...
+    if (nextTokenIs(tok::Dedent) || nextTokenIs(tok::RightBrace)) {
+      ExitBlock = true;
       break;
+    }
 
     // ... or a paren-enclosed array ...
     if (nextTokenIs(tok::RightParen))
@@ -274,9 +276,6 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
     //
     // FIXME: Actually diagnose missing separators.
     matchTokenIf(isSeparator);
-    // If the previous token was a semicolon, there might be a newline after it.
-    // FIXME: these tokens should be combined by the lexer.
-    matchTokenIf(isSeparator);
 
     // The end-of-file is often after the last separator.
     if (atEndOfFile())
@@ -284,6 +283,11 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
 
     List = parseList(S);
     appendTerm(Vec, List);
+  }
+
+  if (nextTokenIs("catch") && ExitBlock) {
+    Syntax *Catch = parseCatch();
+    appendTerm(Vec, Catch);
   }
 }
 
@@ -626,70 +630,15 @@ static bool isMulOperator(Parser& P) {
 }
 
 /// mul:
-///   call
-///   mul mul-operator call
+///   pre
+///   pre mul-operator pre
 Syntax *Parser::parseMul() {
-  Syntax *E1 = parseMacro();
+  Syntax *E1 = parsePre();
   while (Token Op = matchTokens(isMulOperator, *this)) {
-    Syntax *E2 = parseMacro();
+    Syntax *E2 = parsePre();
     E1 = onBinary(Op, E1, E2);
   }
   return E1;
-}
-
-/// macro:
-///   post
-///   post block
-///   if ( list ) block
-///   if ( list ) block else block
-///   while ( list ) block
-///   for ( list ) block
-///   block
-///
-/// catch:
-///   catch ( list ) block
-///
-/// \todo We can parse a macro as a list of (post block) chains if we
-/// had an continuation token (e.g., 'else').
-///
-/// \todo Implement catch blocks. We should probably only allow these
-/// on the 'block' production, and possibly explicitly allow a 'try'
-/// statement. Note that catch-blocks are really a sequence of catches,
-/// possibly followed by a finally.
-///
-/// \note Macros are essentially right associative in structure, so
-/// that a naive post-order traversal will not produce the correct typing
-/// or evaluation. They must be traversed pre-order (i.e., analyze the
-/// outermost properties, followed by the innermost).
-Syntax *Parser::parseMacro()
-{
-  if (nextTokenIs("if"))
-    return parseIf();
-
-  if (nextTokenIs("while"))
-    return parseWhile();
-
-  if (nextTokenIs("for"))
-    return parseFor();
-
-  // FIXME: What are we matching here?
-  if (nextTokenIs(tok::LeftBrace) || nextTokenIs(tok::Colon))
-    return parseBlock();
-
-  // FIXME: Should this be parsePost?
-  Syntax *e1 = parsePre();
-
-  if (nextTokenIs(tok::LeftBrace))
-  {
-    Syntax *e2 = parseBlock();
-    return onMacro(e1, e2);
-  }
-  if (nextTokenIs(tok::Colon) && nthTokenIs(1, tok::Indent)) {
-      Syntax *e2 = parseBlock();
-      return onMacro(e1, e2);
-  }
-
-  return e1;
 }
 
 Syntax *Parser::parseIf()
@@ -805,7 +754,57 @@ Syntax *Parser::parsePre()
     return onUnary(Operator, Operand);
   }
 
-  return parsePost();
+  return parseMacro();
+}
+
+/// macro:
+///   post
+///   post block
+///   if ( list ) block
+///   if ( list ) block else block
+///   while ( list ) block
+///   for ( list ) block
+///   block
+///
+/// catch:
+///   catch ( list ) block
+///
+/// \todo We can parse a macro as a list of (post block) chains if we
+/// had an continuation token (e.g., 'else').
+///
+/// \todo Implement catch blocks. We should probably only allow these
+/// on the 'block' production, and possibly explicitly allow a 'try'
+/// statement. Note that catch-blocks are really a sequence of catches,
+/// possibly followed by a finally.
+///
+/// \note Macros are essentially right associative in structure, so
+/// that a naive post-order traversal will not produce the correct typing
+/// or evaluation. They must be traversed pre-order (i.e., analyze the
+/// outermost properties, followed by the innermost).
+Syntax *Parser::parseMacro()
+{
+  if (nextTokenIs("if"))
+    return parseIf();
+
+  if (nextTokenIs("while"))
+    return parseWhile();
+
+  if (nextTokenIs("for"))
+    return parseFor();
+
+  Syntax *e1 = parsePost();
+
+  if (nextTokenIs(tok::LeftBrace))
+  {
+    Syntax *e2 = parseBlock();
+    return onMacro(e1, e2);
+  }
+  if (nextTokenIs(tok::Colon) && nthTokenIs(1, tok::Indent)) {
+      Syntax *e2 = parseBlock();
+      return onMacro(e1, e2);
+  }
+
+  return e1;
 }
 
 static bool isNonAngleEnclosure(TokenKind K) {
@@ -1240,14 +1239,34 @@ Syntax *Parser::parseNestedArray() {
 }
 
 /// block:
-///   braced-array
-///   : nested-array
+///   braced-array  catch_opt
+///   : nested-array  catch_opt
+/// FIXME: allow catch blocks to be parsed here
 Syntax *Parser::parseBlock() {
   if (nextTokenIs(tok::LeftBrace))
     return parseBracedArray();
 
   expectToken(tok::Colon);
   return parseNestedArray();
+}
+
+/// catch:
+/// catch ( list ) block
+Syntax *Parser::parseCatch() {
+  Token KW = expectToken("catch");
+
+  EnclosingParens Parens(*this);
+  if (!Parens.expectOpen())
+    return onError();
+
+  Syntax *Args = !nextTokenIs(tok::RightParen) ? parseList(ArgArray)
+    : onList(ArgArray, llvm::SmallVector<Syntax *, 0>());
+
+  if (!Parens.expectClose())
+    return onError();
+
+  Syntax *Block = parseBlock();
+  return onCatch(KW, Args, Block);
 }
 
 // Semantic actions
@@ -1454,6 +1473,11 @@ Syntax *Parser::onElem(TokenPair const& tok, Syntax *e1, Syntax *e2) {
 
 Syntax *Parser::onMacro(Syntax *e1, Syntax *e2) {
   return new (Context) MacroSyntax(e1, e2, nullptr);
+}
+
+Syntax *Parser::onCatch(const Token &Catch, Syntax *Args, Syntax *Block) {
+  return new (Context) MacroSyntax(makeCall(Context, Catch, Args),
+                                   Block, nullptr);
 }
 
 Syntax *Parser::onElse(Token const& Tok, Syntax *e1) {

@@ -245,11 +245,10 @@ namespace gold
     Syntax *parseBlock();
     Syntax *parseBracedArray();
     Syntax *parseNestedArray();
+    Syntax *parseCatch();
 
     bool parsePreAttr();
     Syntax *parseDocAttr();
-
-    Syntax *parseCatch();
 
     // Primary expressions
     Syntax *parseReserved();
@@ -271,6 +270,7 @@ namespace gold
     Syntax *onCall(Syntax *e1, Syntax *e2);
     Syntax *onElem(const TokenPair& toks, Syntax *e1, Syntax *e2);
     Syntax *onMacro(Syntax *e1, Syntax *e2);
+    Syntax *onCatch(const Token &Catch, Syntax *Args, Syntax *Block);
     Syntax *onIf(const Token& tok, Syntax *e1, Syntax *e2, Syntax *e3);
     Syntax *onElse(const Token& tok, Syntax *e1);
     Syntax *onLoop(const Token& tok, Syntax *e1, Syntax *e2);
