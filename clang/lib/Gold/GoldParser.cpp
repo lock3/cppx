@@ -198,13 +198,12 @@ static bool isSeparator(TokenKind K) {
 }
 
 // array:
-//    list
-//    array sequencer list
-//
-// sequencer:
+//   list
+//   indent array dedent catch_opt
+//   array separator list
+// separator:
 //    ;
-//    separator
-//
+//    newline
 // Note that the original expression allows arrays to be empty. I think
 // it's better to make that optionality part of the lower-precedence rule
 // that contains this one.
@@ -249,6 +248,7 @@ Syntax *Parser::parseArray(ArraySemantic S) {
 void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
   Syntax *List = parseList(S);
   appendTerm(Vec, List);
+  bool ExitBlock = false;
 
   while (true)
   {
@@ -256,9 +256,11 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
     if (atEndOfFile())
       break;
 
-    // We're about to exist a nested block ...
-    if (nextTokenIs(tok::Dedent) || nextTokenIs(tok::RightBrace))
+    // We're about to exit a nested block ...
+    if (nextTokenIs(tok::Dedent) || nextTokenIs(tok::RightBrace)) {
+      ExitBlock = true;
       break;
+    }
 
     // ... or a paren-enclosed array ...
     if (nextTokenIs(tok::RightParen))
@@ -274,9 +276,6 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
     //
     // FIXME: Actually diagnose missing separators.
     matchTokenIf(isSeparator);
-    // If the previous token was a semicolon, there might be a newline after it.
-    // FIXME: these tokens should be combined by the lexer.
-    matchTokenIf(isSeparator);
 
     // The end-of-file is often after the last separator.
     if (atEndOfFile())
@@ -284,6 +283,11 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
 
     List = parseList(S);
     appendTerm(Vec, List);
+  }
+
+  if (nextTokenIs("catch") && ExitBlock) {
+    Syntax *Catch = parseCatch();
+    appendTerm(Vec, Catch);
   }
 }
 
@@ -1233,14 +1237,34 @@ Syntax *Parser::parseNestedArray() {
 }
 
 /// block:
-///   braced-array
-///   : nested-array
+///   braced-array  catch_opt
+///   : nested-array  catch_opt
+/// FIXME: allow catch blocks to be parsed here
 Syntax *Parser::parseBlock() {
   if (nextTokenIs(tok::LeftBrace))
     return parseBracedArray();
 
   expectToken(tok::Colon);
   return parseNestedArray();
+}
+
+/// catch:
+/// catch ( list ) block
+Syntax *Parser::parseCatch() {
+  Token KW = expectToken("catch");
+
+  EnclosingParens Parens(*this);
+  if (!Parens.expectOpen())
+    return onError();
+
+  Syntax *Args = !nextTokenIs(tok::RightParen) ? parseList(ArgArray)
+    : onList(ArgArray, llvm::SmallVector<Syntax *, 0>());
+
+  if (!Parens.expectClose())
+    return onError();
+
+  Syntax *Block = parseBlock();
+  return onCatch(KW, Args, Block);
 }
 
 // Semantic actions
@@ -1447,6 +1471,11 @@ Syntax *Parser::onElem(TokenPair const& tok, Syntax *e1, Syntax *e2) {
 
 Syntax *Parser::onMacro(Syntax *e1, Syntax *e2) {
   return new (Context) MacroSyntax(e1, e2, nullptr);
+}
+
+Syntax *Parser::onCatch(const Token &Catch, Syntax *Args, Syntax *Block) {
+  return new (Context) MacroSyntax(makeCall(Context, Catch, Args),
+                                   Block, nullptr);
 }
 
 Syntax *Parser::onElse(Token const& Tok, Syntax *e1) {
