@@ -1063,3 +1063,33 @@ foo(x:int) : void!
 )Gold";
   GoldFailureTest(Code);
 }
+
+TEST(ClassParsing, ConstructorWithInvalidReturnType) {
+  StringRef Code = R"(
+c : type = class:
+  constructor() : int!
+    ;
+  
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(ClassParsing, DestructorWithInvalidReturnType) {
+  StringRef Code = R"(
+c : type = class:
+  destructor() : int!
+    ;
+  
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(ClassParsing, DestructorWithParams) {
+  StringRef Code = R"(
+c : type = class:
+  destructor(x:int) : void!
+    ;
+  
+)";
+  GoldFailureTest(Code);
+}

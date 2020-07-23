@@ -115,11 +115,6 @@ public:
 
   clang::Expr *elaborateTypeExpr(Declarator *D);
 
-  clang::Expr *elaboratePointerType(Declarator *D, clang::Expr *Ty);
-  clang::Expr *elaborateConstType(Declarator *D, clang::Expr *Ty);
-  clang::Expr *elaborateRefType(Declarator *D, clang::Expr *Ty);
-  clang::Expr *elaborateRRefType(Declarator *D, clang::Expr *Ty);
-  clang::Expr *elaborateArrayType(Declarator *D, clang::Expr *Ty);
   clang::Expr *elaborateFunctionType(Declarator *D, clang::Expr *Ty);
   clang::Expr *elaborateExplicitType(Declarator *D, clang::Expr *Ty);
 

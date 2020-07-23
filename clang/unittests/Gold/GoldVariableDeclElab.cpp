@@ -21,3 +21,22 @@ x : V
 )";
   GoldFailureTest(Code);
 }
+
+TEST(GoldVarDecl, PointerToAnArrayOf3Elements) {
+    StringRef Code = R"(
+x : ^[3]const int
+)";
+  DeclarationMatcher ToMatch = varDecl(hasName("x"),
+    hasType(
+      pointerType(
+        pointee(
+          constantArrayType(
+            hasSize(3),
+            hasElementType(asString("const int"))
+          )
+        )
+      )
+    )
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

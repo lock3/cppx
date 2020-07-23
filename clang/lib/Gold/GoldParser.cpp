@@ -1061,7 +1061,7 @@ Syntax *Parser::parseArrayPrefix()
   if (!Brackets.expectClose())
     return onError();
 
-  Syntax *Map = parsePrimary();
+  Syntax *Map = parsePre();
   return new (Context)
     CallSyntax(makeOperator(Context, Arg->getLoc(), "[]"),
                makeList(Context, {Arg, Map}));
@@ -1143,6 +1143,8 @@ Syntax *Parser::parsePrimary() {
   case tok::Float128Keyword:
   case tok::TypeKeyword:
   case tok::ArgsKeyword:
+  case tok::ContinueKeyword:
+  case tok::BreakKeyword:
     return onAtom(consumeToken());
 
   case tok::LeftParen:

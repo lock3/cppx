@@ -263,7 +263,22 @@ public:
                                              bool TopLevelClass);
   void deallocateElaboratingClass(ElaboratingClass *D);
   void popElaboratingClass(ClassElaborationState State);
-
+  
+  LateElaboratedMethodDeclaration *CurrentLateMethodDecl = nullptr;
+  class LateMethodRAII {
+    Sema &SemaRef;
+    LateElaboratedMethodDeclaration *Previous;
+  public:
+    LateMethodRAII(Sema &S, LateElaboratedMethodDeclaration *NextDecl)
+      :SemaRef(S),
+      Previous(SemaRef.CurrentLateMethodDecl)
+    {
+      SemaRef.CurrentLateMethodDecl = NextDecl;
+    }
+    ~LateMethodRAII() {
+      SemaRef.CurrentLateMethodDecl = Previous; 
+    }
+  };
   /// This attempts to check if declaration needs to be delayed during class
   /// elaboration.
   bool declNeedsDelayed(Declaration *D);
