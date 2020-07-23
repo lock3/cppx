@@ -1106,3 +1106,16 @@ main() : int!
 
   SimpleGoldParseTest(Code);
 }
+
+TEST(ClassParsing, DedentAfterSemi) {
+  StringRef Code = R"(
+A : type = class:
+  foo() :void!
+    ;
+
+main():int !
+  return 0
+)";
+
+  SimpleGoldParseTest(Code);
+}
