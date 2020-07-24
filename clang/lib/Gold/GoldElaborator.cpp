@@ -2799,7 +2799,25 @@ void Elaborator::elaborateStaticAttr(Declaration *D, const Syntax *S,
 
 void Elaborator::elaborateThreadLocalAttr(Declaration *D, const Syntax *S,
                                           AttrStatus &Status) {
-  llvm_unreachable(" not implemented");
+  if (Status.HasThreadLocal) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_duplicate_attribute);
+    return;    
+  }
+  if (isa<CallSyntax>(S)) {
+    SemaRef.Diags.Report(S->getLoc(),
+                        clang::diag::err_attribute_not_valid_as_call)
+                        << "override";
+    return; 
+  }
+  if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(D->Cxx)) {
+    Status.HasThreadLocal = true;
+    VD->setTSCSpec(clang::TSCS_thread_local);
+    return;
+  }
+  SemaRef.Diags.Report(S->getLoc(),
+                       clang::diag::err_invalid_attribute_for_decl)
+                       << "thread_local" << "variable declaration"; 
 }
 
 void Elaborator::elaborateExplicitAttr(Declaration *D, const Syntax *S,
@@ -2992,7 +3010,7 @@ void Elaborator::elaborateBitsAttr(Declaration *D, const Syntax *S,
 
 void Elaborator::elaborateAlignAsAttr(Declaration *D, const Syntax *S,
                                       AttrStatus &Status) {
-  if (Status.HasBits) {
+  if (Status.HasAlignAs) {
     SemaRef.Diags.Report(S->getLoc(),
                          clang::diag::err_duplicate_attribute);
     return;
