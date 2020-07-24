@@ -477,6 +477,20 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
       for (auto *FoundDecl : Found) {
         // If we find a name that hasn't been elaborated,
         // then we actually need to elaborate it.
+
+        // Attempting to add special processing of declarations being elaborated
+        // during a constant expression, and require full elaboration before
+        // use.
+        if (CxxSema.isConstantEvaluated())
+          // If we aren't 100% completed then do complete elaboration.
+          if (phaseOf(FoundDecl) < Phase::Initialization) {
+            // change the elaboration context back to PotentiallyEvaluated.
+            clang::EnterExpressionEvaluationContext ConstantEvaluated(CxxSema,
+                clang::Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
+            Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);  
+          }
+        
+
         if (!FoundDecl->Cxx)
           Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
 
