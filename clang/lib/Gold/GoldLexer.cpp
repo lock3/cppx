@@ -822,6 +822,9 @@ Token BlockScanner::operator()() {
       // Buffer the next token for the next read.
       Lookahead = Next;
     }
+  } else if (!Dedents.empty()) {
+    Lookahead = Tok;
+    Tok = combineSpace({}, {});
   }
 
   assert(!Tok.isNewline());
