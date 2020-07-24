@@ -1718,9 +1718,9 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     clang::CXXScopeSpec SS;
     clang::SourceLocation Loc;
     clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
-    if (ElaboratedLHS->getType()->isPointerType()) {
+    if (ElaboratedLHS->getType()->isPointerType())
       AccessTokenKind = clang::tok::TokenKind::arrow;
-    }
+
     clang::ExprResult RHSExpr =
       SemaRef.getCxxSema().ActOnMemberAccessExpr(SemaRef.getCurClangScope(),
                                                  ElaboratedLHS, Op->getLoc(),
@@ -1766,18 +1766,44 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     clang::FieldDecl *Field = cast<clang::FieldDecl>(FieldRef->getDecl());
 
     // FIXME: needs to handle templates and prefixes
-    clang::NestedNameSpecifier *NNS =
-      clang::NestedNameSpecifier::Create(CxxAST, nullptr, /*template=*/false,
-                                         Base.getTypePtr());
+    // clang::NestedNameSpecifier *NNS =
+    //   clang::NestedNameSpecifier::Create(CxxAST, nullptr, /*template=*/false,
+    //                                      Base.getTypePtr());
 
-    clang::ExprResult ConvertedField =
-      SemaRef.getCxxSema().PerformObjectMemberConversion(
-        ElaboratedLHS, NNS, Field, Field);
-    if (ConvertedField.isInvalid())
+    // clang::ExprResult ConvertedField =
+    //   SemaRef.getCxxSema().PerformObjectMemberConversion(
+    //     ElaboratedLHS, NNS, Field, Field);
+    // if (ConvertedField.isInvalid())
+    //   return nullptr;
+
+    // ExprResult MemberRef =
+    //   SemaRef.getCxxSema().BuildMemberReferenceExpr(
+    //     ElaboratedLHS, ElaboratedLHS->getType(), Op->getLoc(), false,
+    //     clang::CXXScopeSpec(), clang::SourceLocation(), nullptr,
+        
+    // return ConvertedField.get();
+    clang::CXXScopeSpec SS;
+    clang::TypeLoc BaseTL =
+      BuildAnyTypeLoc(CxxAST, Base, LHS->getExprLoc())->getTypeLoc();
+    SS.Extend(CxxAST, clang::SourceLocation(), BaseTL, Disambig->getLoc());
+    clang::UnqualifiedId Id;
+    clang::IdentifierInfo *IdInfo =
+      &Context.CxxAST.Idents.get(Field->getName());
+    Id.setIdentifier(IdInfo, Field->getLocation());
+    clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
+    if (ElaboratedLHS->getType()->isPointerType())
+      AccessTokenKind = clang::tok::TokenKind::arrow;
+    clang::SourceLocation Loc;
+    clang::ExprResult Access =
+      SemaRef.getCxxSema().ActOnMemberAccessExpr(SemaRef.getCurClangScope(),
+                                                 ElaboratedLHS, Op->getLoc(),
+                                                 AccessTokenKind, SS, Loc,
+                                                 Id, nullptr);
+    if (Access.isInvalid())
       return nullptr;
 
-    ConvertedField.get()->dump();
-    return ConvertedField.get();
+    Access.get()->dump();
+    return Access.get();
   }
 
   unsigned DiagID =
