@@ -11025,6 +11025,9 @@ def err_cannot_applied_to_function_with_storage_class : Error <
 def err_attribute_not_valid_as_call : Error <
   "attribute %0 is not valid in call form, try removing '()'">;
 
+def err_attribute_only_valid_as_call : Error <
+  "attribute %0 is only valid in call form, try adding '()'">;
+
 def err_attribute_requires_call_syntax : Error <
   "attribute %0 is only valid in call form, try adding '()'">;
 

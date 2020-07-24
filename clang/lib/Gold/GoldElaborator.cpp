@@ -1148,9 +1148,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::StorageClass SC = getDefaultVariableStorageClass(*this);
-  // if (compluteVariableStorageClassSpec(SemaRef, D, SC)) {
-  //   return nullptr;
-  // }
+
   // Create the variable and add it to it's owning context.
   clang::VarDecl *VD = clang::VarDecl::Create(Context.CxxAST, Owner, Loc, Loc,
                                               Id, TInfo->getType(), TInfo, SC);
@@ -2942,6 +2940,94 @@ void Elaborator::elaborateFinalAttr(Declaration *D, const Syntax *S,
 void Elaborator::elaborateConstAttr(Declaration *D, const Syntax *S,
                                     AttrStatus &Status) {
   llvm_unreachable(" not implemented");
+}
+
+void Elaborator::elaborateBitsAttr(Declaration *D, const Syntax *S,
+                                   AttrStatus &Status) {
+  if (Status.HasBits) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_duplicate_attribute);
+    return;
+  }
+  if (!isa<CallSyntax>(S)) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_attribute_only_valid_as_call)
+                         << "bits";
+    return;
+  }
+  if (!isa<clang::FieldDecl>(D->Cxx)) {
+    SemaRef.Diags.Report(S->getLoc(),
+                          clang::diag::err_invalid_attribute_for_decl)
+                          << "bits()" << "class member variable"; 
+    return;
+  }
+  const CallSyntax *BitsCall = cast<CallSyntax>(S);
+  const ListSyntax *BitsArguments = cast<ListSyntax>(BitsCall->getArguments());
+
+  if (BitsArguments->getNumChildren() == 0
+      || BitsArguments->getNumChildren() > 1) {
+    SemaRef.Diags.Report(BitsCall->getLoc(),
+                         clang::diag::err_incorrect_number_of_arguments)
+                         << "bits";
+    return;
+  }
+  Status.HasBits = true;
+  ExprElaborator Elab(Context, SemaRef);
+  clang::ExprResult ConstExpr;
+  /*
+|-VarDecl 0x7fffc599e6d8 <cpp_test.cpp:1:1, col:15> col:11 referenced p 'const int' cinit
+| `-IntegerLiteral 0x7fffc599e788 <col:15> 'int' 2
+|-VarDecl 0x7fffc599e818 <line:2:1, col:15> col:11 referenced q 'const int' cinit
+| `-IntegerLiteral 0x7fffc599e880 <col:15> 'int' 2
+`-CXXRecordDecl 0x7fffc599e8f8 <line:3:1, line:5:1> line:3:8 struct Base definition
+  |-DefinitionData pass_in_registers aggregate standard_layout trivially_copyable pod trivial literal
+  | |-DefaultConstructor exists trivial needs_implicit
+  | |-CopyConstructor simple trivial has_const_param needs_implicit implicit_has_const_param
+  | |-MoveConstructor exists simple trivial needs_implicit
+  | |-CopyAssignment trivial has_const_param needs_implicit implicit_has_const_param
+  | |-MoveAssignment exists simple trivial needs_implicit
+  | `-Destructor simple irrelevant trivial needs_implicit
+  |-CXXRecordDecl 0x7fffc599ea18 <col:1, col:8> col:8 implicit struct Base
+  `-FieldDecl 0x7fffc599ebb8 <line:4:3, col:14> col:7 x 'int'
+    `-ConstantExpr 0x7fffc599eb98 <col:10, col:14> 'int' Int: 4
+      `-BinaryOperator 0x7fffc599eb60 <col:10, col:14> 'int' '+'
+        |-ImplicitCastExpr 0x7fffc599eb10 <col:10> 'int' <LValueToRValue>
+        | `-DeclRefExpr 0x7fffc599eaf0 <col:10> 'const int' lvalue Var 0x7fffc599e6d8 'p' 'const int' non_odr_use_constant
+        `-ImplicitCastExpr 0x7fffc599eb48 <col:14> 'int' <LValueToRValue>
+          `-DeclRefExpr 0x7fffc599eb28 <col:14> 'const int' lvalue Var 0x7fffc599e818 'q' 'const int' non_odr_use_constant
+  */
+  {
+    clang::EnterExpressionEvaluationContext ConstantEvaluated(SemaRef.getCxxSema(),
+      clang::Sema::ExpressionEvaluationContext::ConstantEvaluated);
+    // Sema::ExprEvalRAII Ctxt(SemaRef,
+    //                 clang::Sema::ExpressionEvaluationContext::ConstantEvaluated);
+    llvm::outs() << "Dumping bits arg!\n";
+    BitsArguments->getChild(0)->dump();
+    clang::Expr *BitsExpr = Elab.elaborateExpr(BitsArguments->getChild(0));
+    if (!BitsExpr)
+      return;
+    llvm::outs() << "Dumping constant expression to verify!\n";
+    BitsExpr->dump();
+    ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(BitsExpr);
+    if (ConstExpr.isInvalid())
+      // TODO: Figure out if an error message is necessary here.
+      return;
+  }
+  llvm::outs() << "Dumping acted on const expr\n";
+  ConstExpr.get()->dump();
+  clang::FieldDecl *Field = cast<clang::FieldDecl>(D->Cxx);
+  bool IsZeroWidth = false;
+  auto ExprResult = SemaRef.getCxxSema().VerifyBitField(BitsCall->getLoc(),
+                                                        Field->getDeclName(),
+                                                        Field->getType(),
+                                                        /*IsMsStruct=*/false,
+                                                        ConstExpr.get(),
+                                                        &IsZeroWidth);
+  llvm::outs() << "Completed VerifyBitFields!\n";
+  if (ExprResult.isInvalid()) {
+    return;
+  }
+  Field->setBitWidth(ExprResult.get());
 }
 
 void Elaborator::elaborateCarriesDependencyAttr(Declaration *D, const Syntax *S,

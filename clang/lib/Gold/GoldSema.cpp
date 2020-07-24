@@ -120,6 +120,9 @@ static Sema::StringToAttrHandlerMap buildAttributeMaping() {
 
     // Error Attributes.
     { "mutable", ATTR_HANDLER_LAMBDA(elaborateAttributeError)},
+    
+    { "bits", ATTR_HANDLER_LAMBDA(elaborateBitsAttr)},
+    
   };
 #undef ATTR_HANDLER_LAMBDA
 

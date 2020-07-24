@@ -980,12 +980,11 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
         ResultType = ResultType.getTypePtr()->getPointeeType();
       }
       
-      // FIXME: discern whether this is an lvalue or rvalue properly
-      // This was altered so that it would handle implicit conversions
-      // for references correctly.
+      clang::ExprValueKind ValueKind = SemaRef.getCxxSema()
+                     .getValueKindForDeclReference(ResultType, VD, S->getLoc());
+
       clang::DeclRefExpr *DRE =
-        SemaRef.getCxxSema().BuildDeclRefExpr(VD, ResultType, clang::VK_LValue,
-                                              DNI,
+        SemaRef.getCxxSema().BuildDeclRefExpr(VD, ResultType, ValueKind, DNI,
                                               clang::NestedNameSpecifierLoc(),
                                               VD, clang::SourceLocation(),
                                               nullptr);

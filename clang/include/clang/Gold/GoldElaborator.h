@@ -162,6 +162,8 @@ public:
                           AttrStatus &Status);
   void elaborateConstAttr(Declaration *D, const Syntax *S,
                           AttrStatus &Status);
+  void elaborateBitsAttr(Declaration *D, const Syntax *S,
+                         AttrStatus &Status);
   void elaborateCarriesDependencyAttr(Declaration *D, const Syntax *S,
                                       AttrStatus &Status);
   void elaborateDeprecatedAttr(Declaration *D, const Syntax *S,
