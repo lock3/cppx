@@ -118,10 +118,11 @@ static Sema::StringToAttrHandlerMap buildAttributeMaping() {
     { "nodiscard", ATTR_HANDLER_LAMBDA(elaborateNoDiscardAttr) },
     { "noreturn", ATTR_HANDLER_LAMBDA(elaborateNoReturnAttr) },
 
+    { "bits", ATTR_HANDLER_LAMBDA(elaborateBitsAttr)},
+    { "alignas", ATTR_HANDLER_LAMBDA(elaborateAlignAsAttr)},
+    
     // Error Attributes.
     { "mutable", ATTR_HANDLER_LAMBDA(elaborateAttributeError)},
-    
-    { "bits", ATTR_HANDLER_LAMBDA(elaborateBitsAttr)},
     
   };
 #undef ATTR_HANDLER_LAMBDA

@@ -2958,7 +2958,7 @@ void Elaborator::elaborateBitsAttr(Declaration *D, const Syntax *S,
   if (!isa<clang::FieldDecl>(D->Cxx)) {
     SemaRef.Diags.Report(S->getLoc(),
                           clang::diag::err_invalid_attribute_for_decl)
-                          << "bits()" << "class member variable"; 
+                          << "bits(expr)" << "class member variable"; 
     return;
   }
   const CallSyntax *BitsCall = cast<CallSyntax>(S);
@@ -2973,19 +2973,8 @@ void Elaborator::elaborateBitsAttr(Declaration *D, const Syntax *S,
   }
   Status.HasBits = true;
   ExprElaborator Elab(Context, SemaRef);
-  clang::ExprResult ConstExpr;
-  {
-    clang::EnterExpressionEvaluationContext ConstantEvaluated(SemaRef.getCxxSema(),
-      clang::Sema::ExpressionEvaluationContext::ConstantEvaluated);
-    clang::Expr *BitsExpr = Elab.elaborateExpr(BitsArguments->getChild(0));
-    if (!BitsExpr)
-      return;
-
-    ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(BitsExpr);
-    if (ConstExpr.isInvalid())
-      // TODO: Figure out if an error message is necessary here.
-      return;
-  }
+  clang::Expr *BitsExpr = Elab.elaborateExpectedConstantExpr(
+                                                      BitsCall->getArgument(0));
 
   clang::FieldDecl *Field = cast<clang::FieldDecl>(D->Cxx);
   bool IsZeroWidth = false;
@@ -2993,12 +2982,79 @@ void Elaborator::elaborateBitsAttr(Declaration *D, const Syntax *S,
                                                         Field->getDeclName(),
                                                         Field->getType(),
                                                         /*IsMsStruct=*/false,
-                                                        ConstExpr.get(),
+                                                        BitsExpr,
                                                         &IsZeroWidth);
   if (ExprResult.isInvalid()) {
     return;
   }
   Field->setBitWidth(ExprResult.get());
+}
+
+void Elaborator::elaborateAlignAsAttr(Declaration *D, const Syntax *S,
+                                      AttrStatus &Status) {
+  if (Status.HasBits) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_duplicate_attribute);
+    return;
+  }
+  if (!isa<CallSyntax>(S)) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_attribute_only_valid_as_call)
+                         << "alignas";
+    return;
+  }
+
+  const CallSyntax *AlignAsCall = cast<CallSyntax>(S);
+  const ListSyntax *AlignAsArgs = cast<ListSyntax>(AlignAsCall->getArguments());
+
+  if (AlignAsArgs->getNumChildren() == 0
+      || AlignAsArgs->getNumChildren() > 1) {
+    SemaRef.Diags.Report(AlignAsCall->getLoc(),
+                         clang::diag::err_incorrect_number_of_arguments)
+                         << "alignas";
+    return;
+  }
+
+
+  
+  if (isa<clang::VarDecl>(D->Cxx) || isa<clang::TagDecl>(D->Cxx)
+      || isa<clang::FieldDecl>(D->Cxx)) {
+    Status.HasAlignAs = true;
+    ExprElaborator Elab(Context, SemaRef);
+    clang::Expr *AlignmentExpr = Elab.elaborateExpectedConstantExpr(
+                                                   AlignAsCall->getArgument(0));
+    clang::QualType AlignmentExprTy = AlignmentExpr->getType();
+    if (AlignmentExprTy->isNamespaceType()
+        || AlignmentExprTy->isTemplateType()) {
+      SemaRef.Diags.Report(AlignAsCall->getArgument(0)->getLoc(),
+                           clang::diag::err_invalid_result_type);
+      return;
+    }
+    clang::IdentifierInfo *AttrName = &Context.CxxAST.Idents.get({"alignas"});
+    clang::AttributeCommonInfo::Syntax SyntaxKind
+                                 = clang::AttributeCommonInfo::Syntax::AS_CXX11;
+    clang::SourceRange SR(AlignAsCall->getLoc(),
+                          AlignAsCall->getArgument(0)->getLoc());
+    clang::AttributeCommonInfo AttrInfo(AttrName, AttrName, SR,
+                                        AlignAsCall->getLoc(),
+                                   clang::AttributeCommonInfo::Kind::AT_Aligned,
+                                        SyntaxKind);
+    if (AlignmentExprTy->isTypeOfTypes()) {
+      clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
+                        AlignmentExpr, AlignAsCall->getArgument(0)->getLoc());
+      if (!TInfo)
+        return;
+      SemaRef.getCxxSema().AddAlignedAttr(D->Cxx, AttrInfo, TInfo,
+                                          /*IsPackExpansion=*/false);
+    } else {
+      SemaRef.getCxxSema().AddAlignedAttr(D->Cxx, AttrInfo, AlignmentExpr,
+                                          /*IsPackExpansion=*/false);
+    }
+    return;
+  }
+  SemaRef.Diags.Report(S->getLoc(),
+                       clang::diag::err_invalid_attribute_for_decl)
+                       << "alignas(expr)" << "class or variable declaration"; 
 }
 
 void Elaborator::elaborateCarriesDependencyAttr(Declaration *D, const Syntax *S,

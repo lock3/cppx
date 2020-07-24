@@ -79,6 +79,7 @@ struct AttrStatus {
     HasNoReturn = false;
     HasThreadLocal = false;
     HasBits = false;
+    HasAlignAs = false;
   }
   bool HasConstExpr : 1;
   bool HasInLine : 1;
@@ -98,6 +99,7 @@ struct AttrStatus {
   bool HasNoDiscard : 1;
   bool HasNoReturn : 1;
   bool HasBits : 1;
+  bool HasAlignAs : 1;
 };
 
 /// Maintains the state of Gold-to-C++ translation for a

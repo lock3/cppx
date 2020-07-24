@@ -76,6 +76,19 @@ clang::Expr *ExprElaborator::elaborateExpr(const Syntax *S) {
   return nullptr;
 }
 
+clang::Expr *ExprElaborator::elaborateExpectedConstantExpr(const Syntax* S) {
+  clang::EnterExpressionEvaluationContext ConstantEvaluated(
+                                                           SemaRef.getCxxSema(),
+                   clang::Sema::ExpressionEvaluationContext::ConstantEvaluated);
+  clang::Expr *Res = elaborateExpr(S);
+  if (!Res)
+    return Res;
+  auto ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(Res);
+  if (ConstExpr.isInvalid())
+    return nullptr;
+  return ConstExpr.get();
+}
+
 static clang::IntegerLiteral *
 createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
                      clang::QualType IntType, clang::SourceLocation Loc,

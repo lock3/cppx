@@ -33,6 +33,7 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_clang_unittest(GoldTests
+  GoldAlignAsAttributeElab.cpp
   GoldArrayElab.cpp
   GoldAtom.cpp
   GoldAttributes.cpp
