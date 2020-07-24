@@ -481,14 +481,17 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         // Attempting to add special processing of declarations being elaborated
         // during a constant expression, and require full elaboration before
         // use.
-        if (CxxSema.isConstantEvaluated())
+        if (CxxSema.isConstantEvaluated() || IsInDeepElaborationMode()) {
+
           // If we aren't 100% completed then do complete elaboration.
           if (phaseOf(FoundDecl) < Phase::Initialization) {
+            EnterDeepElabRAII DeepElab(*this);
             // change the elaboration context back to PotentiallyEvaluated.
             clang::EnterExpressionEvaluationContext ConstantEvaluated(CxxSema,
                 clang::Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
             Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);  
           }
+        }
         
 
         if (!FoundDecl->Cxx)
@@ -930,5 +933,16 @@ clang::Decl *Sema::getDeclFromExpr(const clang::Expr *DeclExpr,
   // a declaration or something like that.
 }
 
+bool Sema::IsInDeepElaborationMode() const {
+  return ForceDeepElaborationDuringLookup;
+}
+
+bool Sema::SetDeepElaborationMode(bool EnableDisable) {
+  bool Res = ForceDeepElaborationDuringLookup;
+  ForceDeepElaborationDuringLookup = EnableDisable;
+  return Res;
+}
+
 } // namespace gold
+
 

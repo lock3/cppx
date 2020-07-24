@@ -2977,22 +2977,16 @@ void Elaborator::elaborateBitsAttr(Declaration *D, const Syntax *S,
   {
     clang::EnterExpressionEvaluationContext ConstantEvaluated(SemaRef.getCxxSema(),
       clang::Sema::ExpressionEvaluationContext::ConstantEvaluated);
-    // Sema::ExprEvalRAII Ctxt(SemaRef,
-    //                 clang::Sema::ExpressionEvaluationContext::ConstantEvaluated);
-    llvm::outs() << "Dumping bits arg!\n";
-    BitsArguments->getChild(0)->dump();
     clang::Expr *BitsExpr = Elab.elaborateExpr(BitsArguments->getChild(0));
     if (!BitsExpr)
       return;
-    llvm::outs() << "Dumping constant expression to verify!\n";
-    BitsExpr->dump();
+
     ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(BitsExpr);
     if (ConstExpr.isInvalid())
       // TODO: Figure out if an error message is necessary here.
       return;
   }
-  // llvm::outs() << "Dumping acted on const expr\n";
-  // ConstExpr.get()->dump();
+
   clang::FieldDecl *Field = cast<clang::FieldDecl>(D->Cxx);
   bool IsZeroWidth = false;
   auto ExprResult = SemaRef.getCxxSema().VerifyBitField(BitsCall->getLoc(),
@@ -3001,7 +2995,6 @@ void Elaborator::elaborateBitsAttr(Declaration *D, const Syntax *S,
                                                         /*IsMsStruct=*/false,
                                                         ConstExpr.get(),
                                                         &IsZeroWidth);
-  llvm::outs() << "Completed VerifyBitFields!\n";
   if (ExprResult.isInvalid()) {
     return;
   }

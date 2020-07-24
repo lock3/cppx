@@ -115,6 +115,12 @@ class Sema {
   // The declaration context.
   Declaration *CurrentDecl = nullptr;
 
+  /// This is used to trigger a complete elaboration of a declaration during
+  /// lookup. This is used to indicate that any definition needed must be
+  /// fully elaborated before it can be used. Used during constant
+  /// expression evaluation, but this is triggerred during lookup.
+  bool ForceDeepElaborationDuringLookup = false;
+
 public:
   Sema(SyntaxContext &Context, clang::Sema &S);
   ~Sema();
@@ -700,6 +706,26 @@ public:
   /// The reason that this is here instead of inside the elaborator class
   /// is that the elaborator class gets constructed multiple times.
   const StringToAttrHandlerMap AttrHandlerMap;
+
+
+  /// Deep elaboration mode functions.
+  bool IsInDeepElaborationMode() const;
+
+  /// Sets Deep elaboration to true, returns the previous elaboration mode.
+  bool SetDeepElaborationMode(bool EnableDisable);
+
+  struct EnterDeepElabRAII { 
+    Sema &SemaRef;
+    bool PreviousValue;
+    EnterDeepElabRAII(Sema &S)
+      :SemaRef(S),
+      PreviousValue(S.SetDeepElaborationMode(true))
+    {}
+    ~EnterDeepElabRAII() {
+      SemaRef.SetDeepElaborationMode(PreviousValue);
+    }
+  };
+
 };
 
 } // namespace gold

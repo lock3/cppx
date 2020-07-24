@@ -50,3 +50,26 @@ Clx : type = class:
 )";
   GoldFailureTest(Code);
 }
+
+TEST(GoldBitsAttribute, BitFieldOfInvalidType) {
+  StringRef Code = R"(
+NotAnInteger : type = class:
+  ;
+Clx : type = class:
+  x<bits(5)>:NotAnInteger
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldBitsAttribute, ChainOfConstantExpressionVars) {
+  StringRef Code = R"(
+A:const int = 9
+P:const int = 10
+Q:const int = A
+Clx : type = class:
+  x<bits(P+Q)>:int
+)";
+  DeclarationMatcher ToMatch = fieldDecl(hasName("x"),
+    	isBitField(), hasBitWidth(19));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
