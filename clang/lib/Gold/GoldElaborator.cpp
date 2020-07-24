@@ -153,8 +153,6 @@ static bool computeAccessSpecifier(Sema& SemaRef, Attributes& attrs,
           return true;
         }
         return false;
-      default:
-        return false;
       }
     },
     // CheckAttr
@@ -199,8 +197,6 @@ static bool isVirtualBase(Sema& SemaRef, Attributes& attrs,
           return true;
         }
         return false;
-      default:
-        return false;
       }
     },
     // CheckAttr
@@ -241,8 +237,6 @@ bool isStaticMember(Sema& SemaRef, Declaration *D, bool &IsStatic) {
           IsStatic = true;
           return true;
         }
-        return false;
-      default:
         return false;
       }
       return false;
@@ -289,8 +283,6 @@ bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
           IsMutable = true;
           return true;
         }
-        return false;
-      default:
         return false;
       }
     },

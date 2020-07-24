@@ -91,8 +91,7 @@ public:
 
   clang::Expr *elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op,
                                      const Syntax *RHS);
-  clang::Expr *elaborateNestedLookUpAccess(const clang::Expr *Previous,
-                                           const CallSyntax *Op,
+  clang::Expr *elaborateNestedLookupAccess(const clang::Expr *Previous,
                                            const Syntax *RHS);
   clang::Expr *elaborateNNS(clang::CppxNamespaceDecl *NS,
                             const CallSyntax *Op, const Syntax *RHS);

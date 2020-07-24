@@ -1648,6 +1648,23 @@ static clang::Expr *doDerefAndXOrLookUp(SyntaxContext &Context,
   return UME;
 }
 
+// possible expression results, used for diagnostics.
+#define VALUE 0
+#define NAMESPACE 1
+#define TYPE 2
+#define TEMPLATE 3
+
+static unsigned getExprResultFromType(clang::QualType const &T) {
+  if (T->isCppxNamespaceType())
+    return NAMESPACE;
+  if (T->isTemplateType())
+    return TEMPLATE;
+  if (T->isTypeOfTypes())
+    return TYPE;
+
+  return VALUE;
+}
+
 clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
                                                    const CallSyntax *Op,
                                                    const Syntax *RHS) {
@@ -1659,8 +1676,8 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
   }
 
   if (ElaboratedLHS->getType()->isTypeOfTypes())
-    return elaborateNestedLookUpAccess(ElaboratedLHS, Op, RHS);
-  
+    return elaborateNestedLookupAccess(ElaboratedLHS, RHS);
+
   if (ElaboratedLHS->getType()->isNamespaceType()) {
     if (clang::CppxNamespaceDecl *NSRef = dyn_cast<clang::CppxNamespaceDecl>(
                                         SemaRef.getDeclFromExpr(ElaboratedLHS,
@@ -1671,12 +1688,10 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
   }
 
   if (isa<AtomSyntax>(RHS)) {
-    // TODO: I need an example where this isn't an atom but I'm not sure
-    // one exists yet.
     const AtomSyntax *RHSAtom = cast<AtomSyntax>(RHS);
     clang::UnqualifiedId Id;
-    clang::IdentifierInfo *IdInfo = &Context.CxxAST.Idents.get(
-                                                        RHSAtom->getSpelling());
+    clang::IdentifierInfo *IdInfo =
+      &Context.CxxAST.Idents.get(RHSAtom->getSpelling());
     OpInfoBase const *OpInfo = SemaRef.OpInfo.getOpInfo(IdInfo);
     if (OpInfo) {
       clang::OverloadedOperatorKind UnaryOO
@@ -1713,11 +1728,63 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
                                                  nullptr);
     if (RHSExpr.isInvalid())
       return nullptr;
-      
+
     ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr.get());
     return RHSExpr.get();
   }
-  llvm_unreachable("Member access from non-variables unimplemented.");
+
+  // A disambiguator of the form (a)b
+  if (const CallSyntax *Disambig = dyn_cast<CallSyntax>(RHS)) {
+    clang::Expr *LHS =
+      ExprElaborator(Context, SemaRef).elaborateExpr(Disambig->getArgument(0));
+
+    if (!LHS)
+      return nullptr;
+    if (!LHS->getType()->isTypeOfTypes()) {
+      SemaRef.Diags.Report(LHS->getExprLoc(),
+                           clang::diag::err_unexpected_expression_result)
+        << TYPE << getExprResultFromType(LHS->getType());
+      return nullptr;
+    }
+
+    clang::QualType Base =
+      cast<clang::CppxTypeLiteral>(LHS)->getValue()->getType();
+
+    clang::Expr *Res = elaborateNestedLookupAccess(LHS, Disambig->getArgument(1));
+    if (!Res)
+      return nullptr;
+    if (!isa<clang::DeclRefExpr>(Res)) {
+      SemaRef.Diags.Report(LHS->getExprLoc(),
+                           clang::diag::err_failed_to_translate_expr);
+      return nullptr;
+    }
+
+    clang::DeclRefExpr *FieldRef = cast<clang::DeclRefExpr>(Res);
+    // TODO: need a diagnostic here, not sure what it should say
+    if (!isa<clang::FieldDecl>(FieldRef->getDecl()))
+      return nullptr;
+    clang::FieldDecl *Field = cast<clang::FieldDecl>(FieldRef->getDecl());
+
+    // FIXME: needs to handle templates and prefixes
+    clang::NestedNameSpecifier *NNS =
+      clang::NestedNameSpecifier::Create(CxxAST, nullptr, /*template=*/false,
+                                         Base.getTypePtr());
+
+    clang::ExprResult ConvertedField =
+      SemaRef.getCxxSema().PerformObjectMemberConversion(
+        ElaboratedLHS, NNS, Field, Field);
+    if (ConvertedField.isInvalid())
+      return nullptr;
+
+    ConvertedField.get()->dump();
+    return ConvertedField.get();
+  }
+
+  unsigned DiagID =
+    SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                  "member access from non-object");
+  SemaRef.Diags.Report(LHS->getLoc(), DiagID);
+  return nullptr;
 }
 
 clang::Expr *ExprElaborator::elaborateNNS(clang::CppxNamespaceDecl *NS,
@@ -1771,7 +1838,7 @@ clang::Expr *ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
   gold::Scope *GlobalScope = SemaRef.getCurrentScope();
   while (GlobalScope->getParent())
     GlobalScope = GlobalScope->getParent();
-    
+
   auto *NS = clang::CppxNamespaceDecl::Create(Context.CxxAST,
                                         Context.CxxAST.getTranslationUnitDecl(),
                                               clang::SourceLocation(),
@@ -1780,32 +1847,26 @@ clang::Expr *ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
   Sema::QualifiedLookupRAII Qual(SemaRef, SemaRef.QualifiedLookupContext, &NS);
   clang::Expr *RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
 
-  if (!RHSExpr) {
+  if (!RHSExpr)
     return nullptr;
-  }
-
 
   if (RHSExpr->getType()->isNamespaceType())
     return RHSExpr;
 
-  // FIXME: I'm not sure why we need to clear this. Basically, we will need 
-  // to clear on the way out only? Also this doesn't account for a NNS
-  // that's somehow returned form a function (this is something that "SHOULD"
-  // be possible in) some scenarios?
+  // TODO: should we account for an NNS that is returned from a function?
+
   SemaRef.CurNNSContext.clear();
   ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr);
   return RHSExpr;
 }
 
-static clang::Expr *handleLookUpInsideType(Sema &SemaRef,
+static clang::Expr *handleLookupInsideType(Sema &SemaRef,
                                            clang::ASTContext &CxxAST,
                                            const clang::Expr *Previous,
-                                           const CallSyntax *Op,
                                            const Syntax *RHS) {
-
   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
                                               Previous, Previous->getExprLoc());
-  if (!TInfo) 
+  if (!TInfo)
     return nullptr;
 
   clang::QualType QT = TInfo->getType();
@@ -1843,20 +1904,23 @@ static clang::Expr *handleLookUpInsideType(Sema &SemaRef,
                                         VDecl->getType(), clang::VK_LValue);
     }
 
-    // FIXME: This needs to support referencing base members by qualified name.
-    llvm_unreachable("Direct referencing of member variables it not "
-        "permitted yet.");
+    // otherwise, we have a FieldDecl from a nested name specifier lookup.
+    if (clang::FieldDecl *FD = dyn_cast<clang::FieldDecl>(ND)) {
+      return clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
+                                        clang::SourceLocation(), FD,
+                                        /*Capture=*/false, RHS->getLoc(),
+                                        FD->getType(), clang::VK_LValue);
+    }
   }
 
   llvm_unreachable("Unknown syntax encountered during nested member lookup.");
 }
 
-clang::Expr *ExprElaborator::elaborateNestedLookUpAccess(const clang::Expr *Previous,
-                                                         const CallSyntax *Op,
+clang::Expr *ExprElaborator::elaborateNestedLookupAccess(const clang::Expr *Previous,
                                                          const Syntax *RHS) {
   assert(Previous && "Expression scoping.");
   if (Previous->getType()->isTypeOfTypes()) 
-    return handleLookUpInsideType(SemaRef, Context.CxxAST, Previous, Op, RHS);
+    return handleLookupInsideType(SemaRef, Context.CxxAST, Previous, RHS);
 
   if (Previous->getType()->isNamespaceType())
     llvm_unreachable("Nested namepsace not implemented");
@@ -2497,5 +2561,10 @@ clang::Expr *ExprElaborator::makeRRefType(clang::Expr *InnerTy,
                                RRefOpNode->getLoc());
 }
 
+#undef VALUE
+#undef NAMESPACE
+#undef TYPE
+#undef TEMPLATE
 
 } // namespace gold
+

@@ -721,6 +721,20 @@ auto is_unary_operator = [](TokenKind k) -> bool
   }
 };
 
+
+// pre:
+//   macro
+//   ? pre
+//   ^ pre
+//   + pre
+//   - pre
+//   * pre
+//   . pre
+//   [ expr ] pre
+//   ( expr ) pre
+//   const pre
+//   return pre
+//   returns pre
 Syntax *Parser::parsePre()
 {
   if (Token Op = matchTokenIf(is_unary_operator)) {
@@ -744,9 +758,12 @@ Syntax *Parser::parsePre()
     return onUnaryOrNull(Op, E);
   }
 
-  if (nextTokenIs(tok::LeftBracket)) {
+  if (nextTokenIs(tok::LeftBracket))
     return parseArrayPrefix();
-  }
+
+  if (nextTokenIs(tok::LeftParen))
+    if (scanNNSPrefix())
+      return parseNNSPrefix();
 
   if (nextTokenIs(tok::Dot)) {
     Token Operator = consumeToken();
@@ -952,6 +969,7 @@ bool Parser::scanAngles(Syntax *Base) {
 ///   postfix [ array ]
 ///   postfix < expr >
 ///   postfix . identifier
+///   postfix . ( expr ) identifier
 ///   postfix suffix-operator
 ///
 /// suffix-operator:
@@ -1037,15 +1055,15 @@ Syntax *Parser::parseElem(Syntax *Map)
   return onElem({Brackets.open, Brackets.close}, Map, Args);
 }
 
-Syntax *Parser::parseDot(Syntax *obj)
+Syntax *Parser::parseDot(Syntax *Obj)
 {
-  Token op = expectToken(tok::Dot);
+  Token Op = expectToken(tok::Dot);
 
-  // FIXME: This is somehow a qualified-id, except that I don't know
-  // what that means.
-  Syntax *sub = parseId();
+  // FIXME: this is a qualified-id, which is not clearly defined.
+  // Perhaps our disambiguating operator'()' is enough to meet the criteria?
+  Syntax *Sub = nextTokenIs(tok::LeftParen) ? parsePre() : parseId();
 
-  return onBinary(op, obj, sub);
+  return onBinary(Op, Obj, Sub);
 }
 
 // Parse a call to operator'[]' of the form [a]b
@@ -1064,6 +1082,57 @@ Syntax *Parser::parseArrayPrefix()
   return new (Context)
     CallSyntax(makeOperator(Context, Arg->getLoc(), "[]"),
                makeList(Context, {Arg, Map}));
+}
+
+// Parse a call to operator'()' of the form (a)b
+Syntax *Parser::parseNNSPrefix()
+{
+  EnclosingParens Parens(*this);
+  if (!Parens.expectOpen())
+    return onError();
+
+  Syntax *Arg = parseExpr();
+
+  if (!Parens.expectClose())
+    return onError();
+
+  Syntax *Map = parsePre();
+  return new (Context)
+    CallSyntax(makeOperator(Context, Arg->getLoc(), "()"),
+               makeList(Context, {Arg, Map}));
+}
+
+/// Use lookahead to determine if this could be an NNS prefix of the form (a)b,
+/// essentially meaning there is an identifier following a balanced rparen.
+bool Parser::scanNNSPrefix() {
+  assert(getLookahead() == tok::LeftParen && "Invalid NNS scan");
+
+  std::size_t I = 0;
+  std::size_t ParenDepth = 1;
+  Token Current = peekToken(I++);
+
+  while (ParenDepth) {
+    Current = peekToken(I++);
+
+    if (Current.hasKind(tok::LeftParen))
+      ++ParenDepth;
+
+    if (Current.hasKind(tok::RightParen))
+      if (ParenDepth)
+        --ParenDepth;
+
+    if (Current.isNewline() ||
+        Current.hasKind(tok::Dedent) ||
+        Current.hasKind(tok::Indent) ||
+        Current.isEndOfFile())
+      return false;
+  }
+
+  Current = peekToken(I++);
+  if (Current.hasKind(tok::Identifier))
+    return true;
+
+  return false;
 }
 
 Syntax *Parser::parsePostAttr(Syntax *Pre) {

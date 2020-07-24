@@ -233,6 +233,7 @@ namespace gold
     Syntax *parseElem(Syntax *map);
     Syntax *parseDot(Syntax *obj);
     Syntax *parseArrayPrefix();
+    Syntax *parseNNSPrefix();
     Syntax *parsePostAttr(Syntax *Pre);
 
     Syntax *parsePrimary();
@@ -355,6 +356,9 @@ namespace gold
       // The amount of other open enclosure tokens we have encountered.
       llvm::SmallVector<Loc, 4> Enclosures;
     };
+
+  private:
+    bool scanNNSPrefix();
 
   private:
     AngleBracketTracker Angles;

@@ -11035,6 +11035,10 @@ def err_invalid_result_type : Error <
   "invalid expression result, the result of a given expression cannot be a "
   "namespace, template, or type of types" >;
 
+def err_unexpected_expression_result : Error<
+  "unexpected expression result, expected a %select{value|namespace|type|template}0 "
+  "but got a %select{value|namespace|type|template}1">;
+
 def err_invalid_dyn_exception_type : Error <
   "only expressions whose reuslts are types can be given to a dynamic excpetion "
   "specification">;
