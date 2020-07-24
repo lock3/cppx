@@ -3013,8 +3013,8 @@ void Elaborator::elaborateBitsAttr(Declaration *D, const Syntax *S,
       // TODO: Figure out if an error message is necessary here.
       return;
   }
-  llvm::outs() << "Dumping acted on const expr\n";
-  ConstExpr.get()->dump();
+  // llvm::outs() << "Dumping acted on const expr\n";
+  // ConstExpr.get()->dump();
   clang::FieldDecl *Field = cast<clang::FieldDecl>(D->Cxx);
   bool IsZeroWidth = false;
   auto ExprResult = SemaRef.getCxxSema().VerifyBitField(BitsCall->getLoc(),
