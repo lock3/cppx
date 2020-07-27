@@ -2990,6 +2990,12 @@ void Elaborator::elaborateBitsAttr(Declaration *D, const Syntax *S,
     return;
   }
   Status.HasBits = true;
+  if (Status.HasAlignAs) {
+    SemaRef.Diags.Report(BitsCall->getLoc(),
+                         clang::diag::err_alignas_attribute_wrong_decl_type)
+                         << "alignas" << 3;
+    return;
+  }
   ExprElaborator Elab(Context, SemaRef);
   clang::Expr *BitsExpr = Elab.elaborateExpectedConstantExpr(
                                                       BitsCall->getArgument(0));
@@ -3032,8 +3038,6 @@ void Elaborator::elaborateAlignAsAttr(Declaration *D, const Syntax *S,
                          << "alignas";
     return;
   }
-
-
   
   if (isa<clang::VarDecl>(D->Cxx) || isa<clang::TagDecl>(D->Cxx)
       || isa<clang::FieldDecl>(D->Cxx)) {
@@ -3049,11 +3053,12 @@ void Elaborator::elaborateAlignAsAttr(Declaration *D, const Syntax *S,
       return;
     }
     clang::IdentifierInfo *AttrName = &Context.CxxAST.Idents.get({"alignas"});
+
     clang::AttributeCommonInfo::Syntax SyntaxKind
-                                 = clang::AttributeCommonInfo::Syntax::AS_CXX11;
+                               = clang::AttributeCommonInfo::Syntax::AS_Keyword;
     clang::SourceRange SR(AlignAsCall->getLoc(),
                           AlignAsCall->getArgument(0)->getLoc());
-    clang::AttributeCommonInfo AttrInfo(AttrName, AttrName, SR,
+    clang::AttributeCommonInfo AttrInfo(AttrName, nullptr, SR,
                                         AlignAsCall->getLoc(),
                                    clang::AttributeCommonInfo::Kind::AT_Aligned,
                                         SyntaxKind);
@@ -3068,6 +3073,8 @@ void Elaborator::elaborateAlignAsAttr(Declaration *D, const Syntax *S,
       SemaRef.getCxxSema().AddAlignedAttr(D->Cxx, AttrInfo, AlignmentExpr,
                                           /*IsPackExpansion=*/false);
     }
+    if (D->Cxx->hasAttrs())
+      SemaRef.getCxxSema().CheckAlignasUnderalignment(D->Cxx);
     return;
   }
   SemaRef.Diags.Report(S->getLoc(),
