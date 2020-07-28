@@ -381,9 +381,8 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
                                   clang::CXXRecordDecl *R,
                                   const CallSyntax *ClsKwCall) {
   const ListSyntax *Bases = dyn_cast<ListSyntax>(ClsKwCall->getArguments());
-  if (!Bases) {
+  if (!Bases)
     return;
-  }
 
   ExprElaborator TypeElab(Context, SemaRef);
 
@@ -393,30 +392,35 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
   Sema::ClangScopeRAII InheritanceScope(SemaRef, clang::Scope::DeclScope |
       clang::Scope::ClassScope | clang::Scope::ClassInheritanceScope,
       clang::SourceLocation());
-  
+
   llvm::SmallVector<clang::CXXBaseSpecifier *, 4> GivenBaseClasses;
   // FIXME: This currently doesn't account for dependent names.
   Attributes Attrs;
   bool IsVirtualBase = false;
   for (const Syntax *Base : Bases->children()) {
     clang::Expr *BaseExpr = TypeElab.elaborateExpr(Base);
+
+    if (!BaseExpr) {
+      SemaRef.Diags.Report(Base->getLoc(),
+                           clang::diag::err_failed_to_translate_expr);
+      continue;
+    }
+
     Attrs.clear();
     clang::AccessSpecifier AS = clang::AS_public;
     IsVirtualBase = false;
     if (!Base->getAttributes().empty()) {
       // Gathering all of the attributes from the root node of the expression
       // (Which is technically)
-      for (const Attribute *Attr : Base->getAttributes()) {
+      for (const Attribute *Attr : Base->getAttributes())
         Attrs.emplace_back(Attr->getArg());
-      }
-    
-      if (computeAccessSpecifier(SemaRef, Attrs, AS)) {
-        return;
-      }
 
-      if (isVirtualBase(SemaRef, Attrs, IsVirtualBase)) {
+      if (computeAccessSpecifier(SemaRef, Attrs, AS))
         return;
-      }
+
+      if (isVirtualBase(SemaRef, Attrs, IsVirtualBase))
+        return;
+
       // TODO: Create an error message in the event that the attributes
       // associated with the current type are wrong.
       if (!Attrs.empty()) {
@@ -425,11 +429,12 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
         return;
       }
     }
+
     clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
                                                       BaseExpr, Base->getLoc());
     if (!TInfo)
       return;
-      
+
     clang::ParsedType PT = SemaRef.getCxxSema().CreateParsedType(
                                                        TInfo->getType(), TInfo);
     clang::ParsedAttributes Attributes(SemaRef.AttrFactory);
@@ -437,10 +442,12 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
       .ActOnBaseSpecifier(R, clang::SourceRange(Base->getLoc(), Base->getLoc()),
                           Attributes, IsVirtualBase, AS, PT, Base->getLoc(),
                           clang::SourceLocation());
-    if (BaseResult.isInvalid()) 
+
+    if (BaseResult.isInvalid())
       continue;
     GivenBaseClasses.emplace_back(BaseResult.get());
   }
+
   SemaRef.getCxxSema().ActOnBaseSpecifiers(R, GivenBaseClasses);
 }
 
@@ -1493,7 +1500,8 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     // This handles implcit initialization/constructor calls for variables
     // that don't have a = sign on first use, but have a type.
     // That includes complex types.
-    SemaRef.getCxxSema().ActOnUninitializedDecl(VD); 
+    SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
+    SemaRef.getCxxSema().FinalizeDeclaration(VD);
     return;
   }
 

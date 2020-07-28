@@ -618,9 +618,14 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
                                                 /*LambdaContextDecl=*/nullptr,
                                                               /*ExprContext=*/
           clang::Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
+
     clang::Expr *ArgExpr = Elab.elaborateExpr(SyntaxArg);
-    if (!ArgExpr)
-      return nullptr;
+    if (!ArgExpr) {
+      SemaRef.Diags.Report(SyntaxArg->getLoc(),
+                           clang::diag::err_failed_to_translate_expr);
+      continue;
+    }
+
     auto TemplateArg = convertExprToTemplateArg(SemaRef, ArgExpr);
     if (TemplateArg.isInvalid())
       // TODO: Figure out if this needs an error message or not.
@@ -993,17 +998,18 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
     }
 
     // Processing the case when the returned result is a type.
-    if (const clang::TagDecl *TD = R.getAsSingle<clang::TagDecl>()) {
+    if (const clang::TagDecl *TD = R.getAsSingle<clang::TagDecl>())
       return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
-    }
 
     if (clang::ClassTemplateDecl *CTD
-                                  = R.getAsSingle<clang::ClassTemplateDecl>()) {
+                                  = R.getAsSingle<clang::ClassTemplateDecl>())
       return SemaRef.buildTemplateType(CTD, Loc);
-    }
 
     if (auto *NS = R.getAsSingle<clang::CppxNamespaceDecl>())
       return SemaRef.buildNSDeclRef(NS, Loc);
+
+    if (auto *TD = R.getAsSingle<clang::TypeDecl>())
+      return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
   }
 
   // TODO: FIXME: Create error reporting here for lookup failure.
@@ -1766,22 +1772,6 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     clang::FieldDecl *Field = cast<clang::FieldDecl>(FieldRef->getDecl());
 
     // FIXME: needs to handle templates and prefixes
-    // clang::NestedNameSpecifier *NNS =
-    //   clang::NestedNameSpecifier::Create(CxxAST, nullptr, /*template=*/false,
-    //                                      Base.getTypePtr());
-
-    // clang::ExprResult ConvertedField =
-    //   SemaRef.getCxxSema().PerformObjectMemberConversion(
-    //     ElaboratedLHS, NNS, Field, Field);
-    // if (ConvertedField.isInvalid())
-    //   return nullptr;
-
-    // ExprResult MemberRef =
-    //   SemaRef.getCxxSema().BuildMemberReferenceExpr(
-    //     ElaboratedLHS, ElaboratedLHS->getType(), Op->getLoc(), false,
-    //     clang::CXXScopeSpec(), clang::SourceLocation(), nullptr,
-        
-    // return ConvertedField.get();
     clang::CXXScopeSpec SS;
     clang::TypeLoc BaseTL =
       BuildAnyTypeLoc(CxxAST, Base, LHS->getExprLoc())->getTypeLoc();
@@ -1802,7 +1792,6 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     if (Access.isInvalid())
       return nullptr;
 
-    Access.get()->dump();
     return Access.get();
   }
 
