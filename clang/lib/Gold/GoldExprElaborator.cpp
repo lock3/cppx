@@ -642,10 +642,8 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
     return nullptr;
 
   clang::ClassTemplateDecl *CTD = dyn_cast<clang::ClassTemplateDecl>(Decl);
-  if (!CTD) {
-    llvm_unreachable("Invlid CppxDeclRefExpr expression.");
-  }
-    
+  assert(CTD && "Invalid CppxDeclRefExpr");
+
   clang::CXXScopeSpec SS;
   clang::TemplateName TName(CTD);
   clang::Sema::TemplateTy TemplateTyName = clang::Sema::TemplateTy::make(TName);
@@ -655,11 +653,13 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
     SemaRef.getCurClangScope(), SS, /*TemplateKWLoc*/ clang::SourceLocation(),
     TemplateTyName, II, Elem->getObject()->getLoc(), /*LAngleLoc*/ clang::SourceLocation(),
     InArgs, /*RAngleLoc*/ clang::SourceLocation(), false, false);
+
   if (Result.isInvalid()) {
-    // TODO: Figure out correct error message this.
-    llvm::errs() << "We hae an invalid result ?!\n";
-    llvm_unreachable("We have an invlaid result for ActOnTemplateIdType.");
+    SemaRef.Diags.Report(Elem->getObject()->getLoc(),
+                         clang::diag::err_failed_to_translate_expr);
+    return nullptr;
   }
+
   clang::QualType Ty(Result.get().get());
   const clang::LocInfoType *TL = cast<clang::LocInfoType>(Ty.getTypePtr());
   return SemaRef.buildTypeExpr(TL->getType(), Elem->getLoc());
@@ -2520,14 +2520,13 @@ clang::Expr *ExprElaborator::makeConstType(clang::Expr *InnerTy,
   clang::QualType EvaluatedTy = TInfo->getType();
   if (EvaluatedTy.isConstQualified()) {
     SemaRef.Diags.Report(ConstOpNode->getLoc(),
-                         clang::diag::err_conflicting_specifier)
+                         clang::diag::ext_warn_duplicate_declspec)
       << "const";
-    return nullptr;
+    return SemaRef.buildTypeExpr(EvaluatedTy, ConstOpNode->getLoc());
   }
-  
-  auto * T = SemaRef.buildTypeExpr(Context.CxxAST.getConstType(EvaluatedTy),
+
+  return SemaRef.buildTypeExpr(Context.CxxAST.getConstType(EvaluatedTy),
                                ConstOpNode->getLoc());
-  return T;
 }
 
 clang::Expr *ExprElaborator::makeRefType(clang::Expr *InnerTy,
