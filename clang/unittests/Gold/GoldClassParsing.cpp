@@ -1119,3 +1119,30 @@ main():int !
 
   SimpleGoldParseTest(Code);
 }
+
+
+TEST(ClassParsing, ForwardClassDeclaration) {
+  StringRef Code = R"(
+a : type = class
+
+)";
+  DeclarationMatcher ToMatch = cxxRecordDecl(hasName("a"),
+      unless(isDefinition()));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(ClassParsing, ForwardClassDeclarationWithDefinition) {
+  StringRef Code = R"(
+a : type = class
+
+a : type = class:
+  ;
+
+)";
+  DeclarationMatcher ToMatch = translationUnitDecl(
+    has(cxxRecordDecl(hasName("a"), unless(isDefinition()))),
+
+    has(cxxRecordDecl(hasName("a"), isDefinition()))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

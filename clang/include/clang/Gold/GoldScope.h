@@ -208,6 +208,9 @@ public:
   /// True if this is a type declaration.
   bool declaresType() const;
 
+  /// Checks to see if this is a forward declaration or not.
+  bool declaresForwardRecordDecl() const;
+  
   /// Checks if the type declaration is declaring a record.
   bool declaresRecord() const;
 
