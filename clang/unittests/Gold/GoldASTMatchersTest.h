@@ -11,6 +11,7 @@
 
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/Frontend/ASTUnit.h"
+#include "clang/AST/Attr.h"
 #include "clang/Tooling/Tooling.h"
 #include "gtest/gtest.h"
 
@@ -40,6 +41,47 @@ AST_POLYMORPHIC_MATCHER(isMutable,
                         AST_POLYMORPHIC_SUPPORTED_TYPES(FieldDecl)) {
   return Node.isMutable();
 }
+
+AST_POLYMORPHIC_MATCHER(isAligned,
+                        AST_POLYMORPHIC_SUPPORTED_TYPES(FieldDecl, VarDecl,
+                                                   RecordDecl, CXXRecordDecl)) {
+  return Node.template hasAttr<AlignedAttr>();
+}
+
+AST_POLYMORPHIC_MATCHER_P(valueDeclAlignedTo,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(ValueDecl
+                                                          ),
+                          unsigned, ExpectedAlignment) {
+  if (!Node.template hasAttr<AlignedAttr>()) {
+    return false;
+  }
+
+  // AlignedAttr *Attr = Node.template getAttr<AlignedAttr>();
+  TypeInfo Ti = Node.getASTContext().getTypeInfo(Node.getType());
+  llvm::outs() << "Type info align = " << Ti.Align << "\n";
+  llvm::outs() << "Expected alignment = " << ExpectedAlignment << "\n";
+  llvm::outs() << "Max alignment = " << Node.getMaxAlignment() << "\n";
+  // unsigned ActualAlignment = Attr->getAlignment(Node.getASTContext());
+  return Ti.Align == ExpectedAlignment;
+}
+
+AST_POLYMORPHIC_MATCHER_P(typeDeclAlignedTo,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(TypeDecl),
+                          unsigned, ExpectedAlignment) {
+  if (!Node.template hasAttr<AlignedAttr>()) {
+    return false;
+  }
+
+  // AlignedAttr *Attr = Node.template getAttr<AlignedAttr>();
+  TypeInfo Ti = Node.getASTContext().getTypeInfo(
+      Node.getASTContext().getTypeDeclType(&Node));
+  llvm::outs() << "Type info align = " << Ti.Align << "\n";
+  llvm::outs() << "Expected alignment = " << ExpectedAlignment << "\n";
+  llvm::outs() << "Max alignment = " << Node.getMaxAlignment() << "\n";
+  // unsigned ActualAlignment = Attr->getAlignment(Node.getASTContext());
+  return Ti.Align == ExpectedAlignment;
+}
+
 
 struct BaseMatcher {
   bool IsVirtual = false;

@@ -1146,6 +1146,8 @@ Syntax *Parser::parsePrimary() {
   case tok::ArgsKeyword:
   case tok::ContinueKeyword:
   case tok::BreakKeyword:
+  case tok::DeleteKeyword: // TODO: Refactor this, so it can work as an operator 
+                           // and as = delete for a function body.
     return onAtom(consumeToken());
 
   case tok::RefKeyword:
@@ -1175,9 +1177,8 @@ Syntax *Parser::parsePrimary() {
     return onLiteral(consumeToken());
 
   case tok::NewKeyword:
-  case tok::DeleteKeyword:
     // FIXME: We need syntax for both new and delete operators.
-    llvm_unreachable("new/delete Syntax in undefined.");
+    llvm_unreachable("new Syntax in undefined.");
   default:
     break;
   }
