@@ -728,8 +728,9 @@ Syntax *Parser::parsePre()
     return onUnary(Op, E);
   }
 
-  if (nextTokenIs("const") || nextTokenIs(tok::RefKeyword)
-      || nextTokenIs(tok::RValueRefKeyword)) {
+  if (!InAttribute && (nextTokenIs(tok::ConstKeyword)
+                       || nextTokenIs(tok::RefKeyword)
+                       || nextTokenIs(tok::RValueRefKeyword))) {
     Token Op = consumeToken();
     Syntax *E = parsePre();
     return onUnary(Op, E);
@@ -1072,6 +1073,7 @@ Syntax *Parser::parsePostAttr(Syntax *Pre) {
     return onError();
 
   GreaterThanIsOperatorScope GTIOS(GreaterThanIsOperator, false);
+  AttributeScope AttrScope(InAttribute);
 
   // Don't parse an attribute if the angles are empty.
   Syntax *Arg = !(nextTokenIs(tok::Greater) || nextTokenIs(tok::GreaterEqual))
@@ -1146,6 +1148,13 @@ Syntax *Parser::parsePrimary() {
   case tok::BreakKeyword:
     return onAtom(consumeToken());
 
+  case tok::RefKeyword:
+  case tok::RValueRefKeyword:
+  case tok::ConstKeyword:
+    assert(InAttribute && "unary keyword should not be a primary expression "
+           "outside of attributes");
+    return onAtom(consumeToken());
+
   case tok::LeftParen:
     return parseParen();
 
@@ -1172,7 +1181,7 @@ Syntax *Parser::parsePrimary() {
   default:
     break;
   }
-    
+
   // Diagnose the error and consume the token so we don't see it again.
   Diags.Report(getInputLocation(), clang::diag::err_expected)
       << "primary-expression";
