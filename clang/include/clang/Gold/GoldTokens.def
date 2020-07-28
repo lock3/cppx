@@ -121,6 +121,7 @@ def_keyword(This, "this")
 def_keyword(TypeId, "typeid")
 def_keyword(Continue, "continue")
 def_keyword(Break, "break")
+def_keyword(Const, "const")
 def_keyword(Ref, "ref")
 def_keyword(RValueRef, "rref")
 

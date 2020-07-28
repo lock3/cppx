@@ -11025,6 +11025,9 @@ def err_cannot_applied_to_function_with_storage_class : Error <
 def err_attribute_not_valid_as_call : Error <
   "attribute %0 is not valid in call form, try removing '()'">;
 
+def err_attribute_only_valid_as_call : Error <
+  "attribute %0 is only valid in call form, try adding '()'">;
+
 def err_attribute_requires_call_syntax : Error <
   "attribute %0 is only valid in call form, try adding '()'">;
 
@@ -11055,6 +11058,9 @@ def err_operator_too_few_parameters : Error<
   
 def err_operator_too_many_parameters : Error<
   "overload %0 must can must have %1 parameter">;
+
+def err_invalid_identifier_type : Error<
+  "invalid indentifier %0">;
 
 } // end of Gold category
 

@@ -1119,3 +1119,78 @@ main():int !
 
   SimpleGoldParseTest(Code);
 }
+
+
+TEST(ClassParsing, ClassNameConflict) {
+  StringRef Code = R"(
+a : type = class:
+  ;
+a : type = class:
+  i:int
+
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(ClassParsing, ForwardClassDeclaration) {
+  StringRef Code = R"(
+a : type = class
+
+)";
+  DeclarationMatcher ToMatch = cxxRecordDecl(hasName("a"),
+      unless(isDefinition()));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(ClassParsing, ForwardClassDeclarationWithDefinition) {
+  StringRef Code = R"(
+a : type = class
+
+a : type = class:
+  ;
+
+)";
+  DeclarationMatcher ToMatch = translationUnitDecl(
+    has(cxxRecordDecl(hasName("a"), unless(isDefinition()))),
+
+    has(cxxRecordDecl(hasName("a"), isDefinition()))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(ClassParsing, WithUseBeforeSecondDecl) {
+  StringRef Code = R"(
+a : type = class
+
+foo(x:a):void
+
+a : type = class:
+  ;
+
+)";
+  DeclarationMatcher ToMatch = translationUnitDecl(
+    has(cxxRecordDecl(hasName("a"), unless(isDefinition()))),
+
+    has(cxxRecordDecl(hasName("a"), isDefinition()))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(ClassParsing, WithUseBeforeSecondDeclInstanceUsed) {
+  StringRef Code = R"(
+a : type = class
+
+foo(x:ref a):void!
+  x.i
+
+a : type = class:
+  i:int
+
+)";
+  DeclarationMatcher ToMatch = translationUnitDecl(
+    has(cxxRecordDecl(hasName("a"), unless(isDefinition()))),
+
+    has(cxxRecordDecl(hasName("a"), isDefinition()))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

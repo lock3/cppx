@@ -166,7 +166,7 @@ bool Declaration::declaresInitializedVariable() const {
   return declaresVariable() && Init;
 }
 
-bool Declaration::declaresType() const {  
+bool Declaration::declaresType() const {
   const Declarator* D = Decl;
   while (D && D->Kind != DK_Type) {
     D = D->Next;
@@ -175,6 +175,13 @@ bool Declaration::declaresType() const {
     if (D->Kind == DK_Type)
       if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type))
         return Atom->getSpelling() == "type";
+  return false;
+}
+
+bool Declaration::declaresForwardRecordDecl() const {
+  if (declaresInitializedVariable())
+    if (const AtomSyntax *RHS = dyn_cast<AtomSyntax>(Init))
+      return RHS->hasToken(tok::ClassKeyword);
   return false;
 }
 

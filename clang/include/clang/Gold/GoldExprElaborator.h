@@ -69,7 +69,7 @@ public:
   //                        Value Expression Elaboration                      //
   //===--------------------------------------------------------------------===//
   clang::Expr *elaborateExpr(const Syntax *S);
-
+  clang::Expr *elaborateExpectedConstantExpr(const Syntax* S);
   clang::Expr *elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType);
   
   clang::Expr *elaborateCall(const CallSyntax *S);

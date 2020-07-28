@@ -780,6 +780,10 @@ StmtElaborator::elaborateBlock(const Syntax *S) {
     // FIXME: Make sure this only creates return stmts in a function context.
     clang::Expr *ReturnVal =
       ExprElaborator(Context, SemaRef).elaborateExpr(S);
+    if (!ReturnVal){
+      SemaRef.leaveScope(S);
+      return nullptr;
+    }
     ExprMarker(CxxAST, SemaRef).Visit(ReturnVal);
 
     clang::StmtResult ReturnRes = SemaRef.getCxxSema().BuildReturnStmt(

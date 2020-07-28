@@ -45,3 +45,20 @@ y() : int!
 
   SimpleGoldParseTest(Code);
 }
+
+TEST(Attributes, UnaryKWAttributes) {
+  StringRef Code = R"(
+x<const> = 10
+y<ref> = 10
+z<rref> = 10
+
+[const]
+alpha = 10
+[ref]
+beta = 10
+[rref]
+gamma = 10
+)";
+
+  SimpleGoldParseTest(Code);
+}
