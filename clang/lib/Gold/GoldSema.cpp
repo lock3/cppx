@@ -450,6 +450,15 @@ static bool lookupInSideOfRecordBases(Sema &SemaRef, clang::ASTContext &Context,
   return true;
 }
 
+static void addIfNotDuplicate(clang::LookupResult &R, clang::NamedDecl *ND) {
+  for (clang::Decl *D : R) {
+    if (D == ND) {
+      return;
+    }
+  }
+  R.addDecl(ND);
+}
+
 bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   assert(S);
 
@@ -483,7 +492,6 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         // during a constant expression, and require full elaboration before
         // use.
         if (CxxSema.isConstantEvaluated() || IsInDeepElaborationMode()) {
-
           // If we aren't 100% completed then do complete elaboration.
           if (phaseOf(FoundDecl) < Phase::Initialization) {
             EnterDeepElabRAII DeepElab(*this);
@@ -491,6 +499,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
             clang::EnterExpressionEvaluationContext ConstantEvaluated(CxxSema,
                 clang::Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
             Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);  
+            
           }
         }
         
@@ -526,9 +535,17 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
           // This is used to get the correct template name.
           if (auto *RD = dyn_cast<clang::CXXRecordDecl>(FoundDecl->Cxx)) {
             ND = RD->getDescribedClassTemplate();
+            ND = cast<clang::NamedDecl>(ND->getCanonicalDecl());
+          }
+        } else {
+          // Getting the cannonical declaration so hopefully this will prevent
+          // us from returning the same thing more then once.
+          if (auto *RD = dyn_cast<clang::CXXRecordDecl>(FoundDecl->Cxx)) {
+            ND = cast<clang::NamedDecl>(RD->getCanonicalDecl());
           }
         }
-        R.addDecl(ND);
+        addIfNotDuplicate(R, ND);
+        // R.addDecl(ND);
       }
       break;
     }
@@ -559,8 +576,6 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
       }
     }
   }
-
-  // This is necessary because we are 
   return !R.empty();
 }
 

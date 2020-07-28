@@ -507,6 +507,9 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
       /*ScopeEnumUsesClassTag=*/false, UnderlyingType, /*IsTypeSpecifier=*/false,
       /*IsTemplateParamOrArg=*/false, /*SkipBody=*/nullptr);
   CXXRecordDecl *ClsDecl = nullptr;
+  if (!Declaration) {
+    return nullptr;
+  }
   if(isa<CXXRecordDecl>(Declaration)) {
     ClsDecl = cast<CXXRecordDecl>(Declaration);
   } else if (isa<ClassTemplateDecl>(Declaration)) {
@@ -1823,10 +1826,6 @@ void Elaborator::elaborateFieldInit(Declaration *D) {
                                                          D->Op->getLoc(), Init);
 }
 
-
-
-
-// Declarator building section
 static Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S);
 static Declarator *makeTopLevelDeclarator(Sema &SemaRef, const Syntax *S,
                                           Declarator *Next);
@@ -2017,12 +2016,6 @@ Declarator *makeDeclarator(Sema &SemaRef, const Syntax *S) {
   Declarator *D = nullptr;
   return makeTopLevelDeclarator(SemaRef, S, D);
 }
-
-
-
-
-
-
 
 static clang::IdentifierInfo *getIdentifier(Elaborator &Elab,
                                             const Declarator *D) {

@@ -19,45 +19,45 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-// TEST(GoldFuncSyntax, FunctionDecl) {
-//   StringRef Code = R"(
-// foo():void
-// )";
-//   DeclarationMatcher ToMatch = functionDecl(hasName("foo"),
-//     unless(hasBody(compoundStmt())));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+TEST(GoldFuncSyntax, FunctionDecl) {
+  StringRef Code = R"(
+foo():void
+)";
+  DeclarationMatcher ToMatch = functionDecl(hasName("foo"),
+    unless(hasBody(compoundStmt())));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
-// TEST(GoldFuncSyntax, FunctionDef) {
-//   StringRef Code = R"(
-// foo():void!
-//   ;
-// )";
-//   DeclarationMatcher ToMatch = functionDecl(hasName("foo"),
-//     hasBody(compoundStmt()));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+TEST(GoldFuncSyntax, FunctionDef) {
+  StringRef Code = R"(
+foo():void!
+  ;
+)";
+  DeclarationMatcher ToMatch = functionDecl(hasName("foo"),
+    hasBody(compoundStmt()));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
-// TEST(GoldFuncSyntax, MemberFunctionDecl) {
-//   StringRef Code = R"(
-// C : type = class:
-//   foo():void
-// )";
-//   DeclarationMatcher ToMatch = cxxMethodDecl(hasName("foo"),
-//     unless(hasBody(compoundStmt())));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+TEST(GoldFuncSyntax, MemberFunctionDecl) {
+  StringRef Code = R"(
+C : type = class:
+  foo():void
+)";
+  DeclarationMatcher ToMatch = cxxMethodDecl(hasName("foo"),
+    unless(hasBody(compoundStmt())));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
-// TEST(GoldFuncSyntax, MemberFunctionDef) {
-//   StringRef Code = R"(
-// C :type = class:
-//   foo():void!
-//     ;
-// )";
-//   DeclarationMatcher ToMatch = cxxMethodDecl(hasName("foo"),
-//     hasBody(compoundStmt()));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+TEST(GoldFuncSyntax, MemberFunctionDef) {
+  StringRef Code = R"(
+C :type = class:
+  foo():void!
+    ;
+)";
+  DeclarationMatcher ToMatch = cxxMethodDecl(hasName("foo"),
+    hasBody(compoundStmt()));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
 // TEST(GoldFuncSyntax, PureVirtualDecl) {
 //   StringRef Code = R"(
