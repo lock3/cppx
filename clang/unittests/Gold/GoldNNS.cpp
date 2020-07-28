@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GoldParseUtil.h"
+#include "GoldASTMatchersTest.h"
 
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
@@ -68,4 +69,48 @@ main() : int!
 )";
 
   SimpleGoldParseTest(Code);
+}
+
+TEST(NNS, PrefixBaseSpecifier) {
+  StringRef Code = R"(
+A : type = class:
+  i : int = 9
+
+B: type = class (A):
+  ;
+
+main() : int!
+  b : B
+  result = b.(A)i
+)";
+
+  StatementMatcher Matcher(hasDescendant(
+                             varDecl(hasName("result"),
+                                     hasType(asString("int"))
+                               )
+                             )
+                   );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}
+
+TEST(NNS, PrefixBaseSpecifierTempl) {
+  StringRef Code = R"(
+A[T : type] : type = class:
+  i : T = 9
+
+B[T : type] : type = class (A[T]):
+  ;
+
+main() : int!
+  b : B[int]
+  result = b.(A[int])i
+)";
+
+  StatementMatcher Matcher(hasDescendant(
+                             varDecl(hasName("result"),
+                                     hasType(asString("int"))
+                               )
+                             )
+                   );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
 }
