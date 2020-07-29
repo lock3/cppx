@@ -226,3 +226,30 @@ main() : int!
   ASSERT_TRUE(matches(Code.str(), Matcher));
   ASSERT_TRUE(matches(Code.str(), Matcher2));
 }
+
+TEST(NNS, RawBaseSpecifier) {
+  StringRef Code = R"(
+A : type = class:
+  i : int
+
+B : type = class:
+  i : float
+
+C : type = class(A):
+  foo() : void!
+    (A)i = 5
+
+main() : int!
+  c : C
+  c.foo()
+  result = c.(A)i
+)";
+
+  StatementMatcher Matcher(hasDescendant(
+                             varDecl(hasName("result"),
+                                     hasType(asString("int"))
+                               )
+                             )
+                   );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}

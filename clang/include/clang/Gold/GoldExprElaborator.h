@@ -107,6 +107,9 @@ public:
   clang::Expr *elaborateElementExpr(const ElemSyntax *Elem);
   clang::Expr *elaborateCastOp(const CallSyntax *CastOp);
 
+private:
+  clang::Expr *handleRawBaseSpecifier(const CallSyntax *Op);
+
 public:
   //===--------------------------------------------------------------------===//
   //                        Type Expression Elaboration                       //

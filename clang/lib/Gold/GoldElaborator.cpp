@@ -2038,13 +2038,11 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       // Unpack the declarator.
       if (Op == "operator'='") {
         // This is to reject t.x as a declaration.
-        // Also also reject the delcaration
         const auto *Args = cast<ListSyntax>(Call->getArguments());
         Decl = Args->getChild(0);
 
-        // This is for checking if a declaration already exists in a parent scope
-        // for example if this is in a member function and we are accessing a
-        // member variable.
+        // This checks if a declaration already exists in a parent scope.
+        // For example, we are in a member function and are accessing a member.
         if(const AtomSyntax *LHS = dyn_cast<AtomSyntax>(Decl)) {
           clang::DeclarationNameInfo DNI({
               &Context.CxxAST.Idents.get(LHS->getSpelling())
@@ -2054,12 +2052,13 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
             return nullptr;
         }
 
-        // Explicilty ignoring declarations that use x.y.
-        if (const CallSyntax *InnerCallOp = dyn_cast<CallSyntax>(Decl))
-          if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(
-                                                      InnerCallOp->getCallee()))
-            if (Atom->getSpelling() == "operator'.'")
+        // Explicilty ignoring declarations that use x.y or (x)y.
+        if (const CallSyntax *Inner = dyn_cast<CallSyntax>(Decl))
+          if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Inner->getCallee()))
+            if (Atom->getSpelling() == "operator'.'" ||
+                Atom->getSpelling() == "operator'()'")
               return nullptr;
+
         // Attempting to verify if this is an ElemSyntax.
         if (isa<ElemSyntax>(Decl))
           // This can't be a declaration, because would need to say":type" after
@@ -3299,8 +3298,10 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
     return FOK_Ref;
   if (Tokenization == SemaRef.OperatorRRefII)
     return FOK_RRef;
-  if (Tokenization == SemaRef.OperatorArrayBracketsII) 
-    return FOK_Array;
+  if (Tokenization == SemaRef.OperatorBracketsII)
+    return FOK_Brackets;
+  if (Tokenization == SemaRef.OperatorParensII)
+    return FOK_Parens;
   return FOK_Unknown;
 }
 

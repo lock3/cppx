@@ -1229,14 +1229,12 @@ static bool callIsCastOperator(const CallSyntax *S) {
 
 
 clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
-  
   if (clang::Expr *elaboratedCall = elaborateBuiltinOperator(S))
     return elaboratedCall;
 
   if (callIsCastOperator(S)) 
     return elaborateCastOp(S);
-  
-  
+
   // Determining the type of call associated with the given syntax.
   // There are multiple kinds of atoms for multiple types of calls
   // but in the event that the callee object is not an Atom, it means
@@ -1279,8 +1277,10 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     return handleRRefType(S);
   case FOK_Arrow:
     return handleFunctionType(S);
-  case FOK_Array:
+  case FOK_Brackets:
     return handleArrayType(S);
+  case FOK_Parens:
+    return handleRawBaseSpecifier(S);
   default:
     break;
   }
@@ -1562,6 +1562,32 @@ clang::Expr *ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
   return CastExpr.get();
 }
 
+static clang::Expr *handleLookupInsideType(Sema &SemaRef,
+                                           clang::ASTContext &CxxAST,
+                                           const clang::Expr *Previous,
+                                           const Syntax *RHS);
+
+/// Elaborate a base specifier that is not part of a member access expression.
+/// For example:
+///
+/// \code
+///   some_method() : void!
+///     (some_base)base_member
+/// \endcode
+clang::Expr *ExprElaborator::handleRawBaseSpecifier(const CallSyntax *Op) {
+  // Fabricate a `this` to be an LHS of a member access and save ourselves
+  // some work.
+  Token ThisTok(tok::ThisKeyword, Op->getLoc(), getSymbol("this"));
+  AtomSyntax *This = new (Context) AtomSyntax(ThisTok);
+
+  Token DotTok(tok::ThisKeyword, Op->getLoc(), getSymbol("operator'.'"));
+  AtomSyntax *Dot = new (Context) AtomSyntax(DotTok);
+  Syntax *Arg = const_cast<CallSyntax *>(Op);
+  ListSyntax *Args = new (Context) ListSyntax(&Arg, 1);
+  CallSyntax *DotCall = new (Context) CallSyntax(Dot, Args);
+
+  return elaborateMemberAccess(This, DotCall, Op);
+}
 
 /// This function handles explicit operator calls, to member functions that are
 /// have an operator name, if one cannot be located then nullptr is returned.
@@ -1902,10 +1928,8 @@ clang::Expr *ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
   return RHSExpr;
 }
 
-static clang::Expr *handleLookupInsideType(Sema &SemaRef,
-                                           clang::ASTContext &CxxAST,
-                                           const clang::Expr *Previous,
-                                           const Syntax *RHS) {
+clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
+                                    const clang::Expr *Previous, const Syntax *RHS) {
   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
                                               Previous, Previous->getExprLoc());
   if (!TInfo)
