@@ -114,3 +114,115 @@ main() : int!
                    );
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }
+
+TEST(NNS, PrefixBaseSpecifierRefParam) {
+  StringRef Code = R"(
+Base0 : type = class:
+  x : int = 28
+
+DerivedEx0 : type = class(Base0):
+  ;
+
+f0(I:ref DerivedEx0):int!
+  return I.x
+
+main() : int!
+  d : DerivedEx0
+  result = f0(d)
+  result2 = d.(Base0)x
+  result3 = d.(.Base0)x
+)";
+
+  StatementMatcher Matcher(hasDescendant(
+                             varDecl(hasName("result"),
+                                     hasType(asString("int"))
+                               )
+                             )
+                   );
+  StatementMatcher Matcher2(hasDescendant(
+                             varDecl(hasName("result2"),
+                                     hasType(asString("int"))
+                               )
+                             )
+                   );
+  StatementMatcher Matcher3(hasDescendant(
+                             varDecl(hasName("result3"),
+                                     hasType(asString("int"))
+                               )
+                             )
+                   );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+  ASSERT_TRUE(matches(Code.str(), Matcher2));
+  ASSERT_TRUE(matches(Code.str(), Matcher3));
+}
+
+TEST(NNS, PrefixBaseSpecifierNested) {
+  StringRef Code = R"(
+Base0 : type = class:
+  x : int = 29
+
+Base1 : type = class(Base0):
+  y : int
+
+DerivedEx1 : type = class(Base1):
+  ;
+
+f1(I:ref DerivedEx1):int!
+  return I.(Base1.Base0)x
+
+main() : int!
+  d : DerivedEx1
+  result = f1(d)
+)";
+
+  StatementMatcher Matcher(hasDescendant(
+                             varDecl(hasName("result"),
+                                     hasType(asString("int"))
+                               )
+                             )
+                   );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}
+
+TEST(NNS, PrefixBaseSpecifierNestedTemplate) {
+  StringRef Code = R"(
+Base0[T : type] : type = class:
+  x : T = 20
+
+Base1 : type = class:
+  y : int
+
+Base2 : type = class(Base1):
+  z : int
+
+Base3[T:type] : type = class(Base0[T]):
+  someeType : type = int
+  a : T = T() + 1
+
+DerivedEx2 : type = class(Base2, Base3[int]):
+  ;
+
+f(I:ref DerivedEx2):int!
+  return I.(Base3[int].Base0[int])x
+
+main() : int!
+  d : DerivedEx2
+  result = f(d)
+  result2 = d.(Base3[int])a
+)";
+
+  StatementMatcher Matcher(hasDescendant(
+                             varDecl(hasName("result"),
+                                     hasType(asString("int"))
+                               )
+                             )
+                   );
+  StatementMatcher Matcher2(hasDescendant(
+                             varDecl(hasName("result2"),
+                                     hasType(asString("int"))
+                               )
+                             )
+                   );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+  ASSERT_TRUE(matches(Code.str(), Matcher2));
+}

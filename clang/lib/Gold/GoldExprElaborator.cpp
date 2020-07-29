@@ -874,10 +874,21 @@ clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
   if (!IdExpr)
     return nullptr;
 
+  // If we got a template specialization from elaboration, this is probably
+  // a nested-name-specifier, there's nothing left to do.
+  if (IdExpr->getType()->isTypeOfTypes()) {
+    clang::CppxTypeLiteral *Lit = cast<clang::CppxTypeLiteral>(IdExpr);
+    clang::CXXRecordDecl *RD = Lit->getValue()->getType()->getAsCXXRecordDecl();
+
+    if (isa<clang::ClassTemplateSpecializationDecl>(RD))
+      return IdExpr;
+  }
+
   if (IdExpr->getType()->isTypeOfTypes()
       || IdExpr->getType()->isNamespaceType()) {
     SemaRef.Diags.Report(Elem->getObject()->getLoc(),
-                         clang::diag::err_non_template_in_template_id);
+                         clang::diag::err_non_template_in_template_id)
+      << IdExpr;
     return nullptr;
   }
 
@@ -1160,9 +1171,11 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
                                                const CallSyntax *S,
                                                clang::Expr *CalleeExpr,
                                     llvm::SmallVector<clang::Expr *, 8> &Args) {
-  if (!CalleeExpr)
-    // TODO: Create error message for this.
+  if (!CalleeExpr) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_failed_to_translate_expr);
     return nullptr;
+  }
 
   if (CalleeExpr->getType()->isTypeOfTypes()) {
     // This means constructor call possibly, unless it's some how a function
@@ -1913,33 +1926,50 @@ static clang::Expr *handleLookupInsideType(Sema &SemaRef,
     clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Atom->getSpelling())},
       Atom->getLoc());
     auto R = TD->lookup(DNI.getName());
+
+    clang::NamedDecl *ND = nullptr;
     if (R.size() != 1u) {
-      SemaRef.Diags.Report(RHS->getLoc(), clang::diag::err_no_member)
-        << Atom->getSpelling() << TD;
-      return nullptr;
+      // This wasn't the name of a member, check if it is the name of a base.
+      if (clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(TD)) {
+        for (const auto &Base : RD->bases()) {
+          clang::CXXRecordDecl *BaseRD = Base.getType()->getAsCXXRecordDecl();
+          if (BaseRD->getIdentifier() == DNI.getName().getAsIdentifierInfo())
+            ND = BaseRD;
+        }
+      }
+
+      if (!ND) {
+        SemaRef.Diags.Report(RHS->getLoc(), clang::diag::err_no_member)
+          << Atom->getSpelling() << TD;
+        return nullptr;
+      }
     }
-    clang::NamedDecl *ND = R.front();
+
+    if (!ND)
+      ND = R.front();
     if (clang::TypeDecl *TD = dyn_cast<clang::TypeDecl>(ND)) {
       TD->setIsUsed();
       clang::QualType Ty = CxxAST.getTypeDeclType(TD);
       return SemaRef.buildTypeExpr(Ty, RHS->getLoc());
     }
 
-    if (clang::VarDecl *VDecl = dyn_cast<clang::VarDecl>(ND)) {
-      // This is how we access static member variables.
+    // This is how we access static member variables.
+    if (clang::VarDecl *VDecl = dyn_cast<clang::VarDecl>(ND))
       return clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
                                         clang::SourceLocation(),VDecl,
                                         /*Capture=*/false, RHS->getLoc(),
                                         VDecl->getType(), clang::VK_LValue);
-    }
+
+    // access a record from an NNS
+    if (clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(ND))
+      return SemaRef.buildTypeExprFromTypeDecl(TD, RHS->getLoc());
 
     // otherwise, we have a FieldDecl from a nested name specifier lookup.
-    if (clang::FieldDecl *FD = dyn_cast<clang::FieldDecl>(ND)) {
+    if (clang::FieldDecl *FD = dyn_cast<clang::FieldDecl>(ND))
       return clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
                                         clang::SourceLocation(), FD,
                                         /*Capture=*/false, RHS->getLoc(),
                                         FD->getType(), clang::VK_LValue);
-    }
   }
 
   llvm_unreachable("Unknown syntax encountered during nested member lookup.");
@@ -2187,10 +2217,12 @@ clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
     assert(false && "For loop processing not implemented yet.");
   else if (Call->getSpelling() == "array")
     return handleArrayMacro(Context, SemaRef, S);
-  else{
-    // FIXME: Need to handle any other conditions here.
-    assert(false && "Unsupported macro");
-  }
+
+  unsigned DiagID =
+    SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                  "unknown macro");
+  SemaRef.Diags.Report(S->getLoc(), DiagID);
+  return nullptr;
 }
 
 
