@@ -64,6 +64,7 @@ add_clang_unittest(GoldTests
   GoldConstexprAttributeElab.cpp
   GoldConstructorCallParsingTest.cpp
   GoldContinueElab.cpp
+  GoldDeclaratorElab.cpp
   GoldDefaultFunctionArgumentsElab.cpp
   GoldEnumElab.cpp
   GoldExceptionSpecifierElab.cpp

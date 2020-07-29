@@ -43,6 +43,10 @@ enum AttrFormat {
   AF_Name
 };
 
+static void applyESIToFunctionType(SyntaxContext &Context, Sema &SemaRef,
+                                   clang::FunctionDecl *FD,
+                       const clang::FunctionProtoType::ExceptionSpecInfo &ESI);
+
 static AttrFormat checkAttrFormatAndName(const Syntax *Attr, llvm::StringRef &Name) {
 
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
@@ -2185,9 +2189,9 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
           }
         }
       } else {
-        llvm::outs() << "Dumping declarator stuff\n";
-        Dcl->Data.Id->dump();
-        llvm_unreachable("Unknown declarator name declaration!\n");
+        SemaRef.Diags.Report(Dcl->Data.Id->getLoc(),
+                             clang::diag::err_invalid_declaration);
+        return nullptr;
       }
       Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, Init);
       TheDecl->Id = Id;
@@ -2509,7 +2513,7 @@ void Elaborator::lateElaborateDefaultParam(
   elaborateDef(DefaultParam.Param);
 }
 
-static void applyESIToFunctionType(SyntaxContext &Context, Sema &SemaRef,
+void applyESIToFunctionType(SyntaxContext &Context, Sema &SemaRef,
                                    clang::FunctionDecl *FD,
                        const clang::FunctionProtoType::ExceptionSpecInfo &ESI) {
   clang::QualType ExceptionAdjustedTy
@@ -3096,7 +3100,69 @@ void Elaborator::elaborateFinalAttr(Declaration *D, const Syntax *S,
 
 void Elaborator::elaborateConstAttr(Declaration *D, const Syntax *S,
                                     AttrStatus &Status) {
-  llvm_unreachable(" not implemented");
+  if (Status.HasConst) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_duplicate_attribute);
+    return;
+  }
+  if (isa<CallSyntax>(S)) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_attribute_not_valid_as_call)
+                         << "const";
+    return;
+  }
+  Status.HasConst = true;
+
+  if (isa<clang::CXXMethodDecl>(D->Cxx) &&
+      !(isa<clang::CXXConstructorDecl>(D->Cxx)
+      || isa<clang::CXXDestructorDecl>(D->Cxx))) {
+    clang::CXXMethodDecl *MD = cast<clang::CXXMethodDecl>(D->Cxx);
+    if (MD->getStorageClass() == clang::SC_Static) {
+      SemaRef.Diags.Report(S->getLoc(),
+                          clang::diag::err_invalid_attribute_for_decl)
+                          << "const" << "member function";
+      return;
+    }
+    clang::QualType MemberFuncTy = MD->getType();
+    llvm::SmallVector<clang::QualType, 10> ParamTypes;
+    for (clang::ParmVarDecl *PVD : MD->parameters()) {
+      ParamTypes.emplace_back(PVD->getType());
+    }
+    const clang::FunctionProtoType *FPT = MemberFuncTy
+                                            ->getAs<clang::FunctionProtoType>();
+    auto EPI = FPT->getExtProtoInfo();
+    EPI.TypeQuals.addConst();
+    clang::QualType NewFuncTy = SemaRef.getCxxSema().BuildFunctionType(
+                                                           FPT->getReturnType(),
+                                                           ParamTypes,
+                                                           S->getLoc(),
+                                                 MD->getParent()->getDeclName(),
+                                                           EPI);
+    FPT = NewFuncTy->getAs<clang::FunctionProtoType>();
+    
+    clang::QualType Ty(Context.CxxAST.adjustFunctionType(FPT, FPT->getExtInfo()),
+                       /*Qualifiers=*/0);
+    llvm::SmallVector<clang::ParmVarDecl *, 10> Parameters(
+                              MD->parameters().begin(), MD->parameters().end());
+    clang::TypeSourceInfo *TInfo = BuildFunctionTypeLoc(Context.CxxAST,
+                                                        Ty,
+                                                        MD->getBeginLoc(),
+                                                        clang::SourceLocation(),
+                                                        clang::SourceLocation(),
+                                                        clang::SourceRange(),
+                                                        MD->getEndLoc(),
+                                                        Parameters);
+    MD->setType(TInfo->getType());
+    MD->setTypeSourceInfo(TInfo);
+    clang::FunctionProtoType::ExceptionSpecInfo SpecInfo
+                                               = FPT->getExceptionSpecInfo();
+    // Re applying exception specification.
+    applyESIToFunctionType(Context, SemaRef, MD, SpecInfo);
+    return;
+  }
+  SemaRef.Diags.Report(S->getLoc(),
+                      clang::diag::err_invalid_attribute_for_decl)
+                      << "const" << "member function"; 
 }
 
 void Elaborator::elaborateBitsAttr(Declaration *D, const Syntax *S,
