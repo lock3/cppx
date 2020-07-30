@@ -11048,6 +11048,9 @@ def err_invalid_return_type_for_ctor_or_dtor : Error<
 def err_invalid_declaration : Error<
   "invalid declaration">;
 
+def err_invalid_function_type : Error<
+  "invalid function type">;
+
 def err_operator_cannot_be_overloaded : Error<
   "cannot overload operator, unknown operator %0">;
 

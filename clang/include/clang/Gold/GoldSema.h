@@ -711,23 +711,36 @@ public:
 
 
   /// Deep elaboration mode functions.
-  bool IsInDeepElaborationMode() const;
+  bool isInDeepElaborationMode() const;
 
   /// Sets Deep elaboration to true, returns the previous elaboration mode.
-  bool SetDeepElaborationMode(bool EnableDisable);
+  bool setDeepElaborationMode(bool EnableDisable);
 
   struct EnterDeepElabRAII { 
     Sema &SemaRef;
     bool PreviousValue;
     EnterDeepElabRAII(Sema &S)
       :SemaRef(S),
-      PreviousValue(S.SetDeepElaborationMode(true))
+      PreviousValue(S.setDeepElaborationMode(true))
     {}
     ~EnterDeepElabRAII() {
-      SemaRef.SetDeepElaborationMode(PreviousValue);
+      SemaRef.setDeepElaborationMode(PreviousValue);
     }
   };
-
+public:
+  using FunctionExtInfo = clang::FunctionProtoType::ExtInfo;
+  using FunctionExtProtoInfo = clang::FunctionProtoType::ExtProtoInfo;
+  using FunctionExceptionSpec = clang::FunctionProtoType::ExceptionSpecInfo;
+  /// This does a rebuild the type of the function, in a single action without
+  /// the need to rebuild the TypeLoc for the function more then a single time.
+  /// This returns true if there was an error.
+  /// In the event of an error no changes are made to the FD.
+  bool rebuildFunctionType(clang::FunctionDecl *FD,
+                           clang::SourceLocation Loc,
+                           const clang::FunctionProtoType *FuncProtoType,
+                           const FunctionExtInfo &ExtInfo,
+                           const FunctionExtProtoInfo &ProtoTypeInfo,
+                           const FunctionExceptionSpec &ExceptionSpecInfo);
 };
 
 } // namespace gold

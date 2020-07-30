@@ -2514,23 +2514,12 @@ void Elaborator::lateElaborateDefaultParam(
 }
 
 void applyESIToFunctionType(SyntaxContext &Context, Sema &SemaRef,
-                                   clang::FunctionDecl *FD,
+                            clang::FunctionDecl *FD,
                        const clang::FunctionProtoType::ExceptionSpecInfo &ESI) {
-  clang::QualType ExceptionAdjustedTy
-      = Context.CxxAST.getFunctionTypeWithExceptionSpec(FD->getType(), ESI);
-  llvm::SmallVector<clang::ParmVarDecl *, 10> Parameters(
-                              FD->parameters().begin(), FD->parameters().end());
-  clang::TypeSourceInfo *TInfo = BuildFunctionTypeLoc(Context.CxxAST,
-                                                      ExceptionAdjustedTy,
-                                                      FD->getBeginLoc(),
-                                                      clang::SourceLocation(),
-                                                      clang::SourceLocation(),
-                                                      clang::SourceRange(),
-                                                      FD->getEndLoc(),
-                                                      Parameters);
-
-  FD->setType(ExceptionAdjustedTy);
-  FD->setTypeSourceInfo(TInfo);
+  const clang::FunctionProtoType *FPT
+                             = FD->getType()->getAs<clang::FunctionProtoType>();
+  SemaRef.rebuildFunctionType(FD, FD->getBeginLoc(), FPT, FPT->getExtInfo(),
+                              FPT->getExtProtoInfo(), ESI);
 }
 
 static void applyCallExceptionSpecAttr(SyntaxContext &Context, Sema &SemaRef,
@@ -3132,32 +3121,8 @@ void Elaborator::elaborateConstAttr(Declaration *D, const Syntax *S,
                                             ->getAs<clang::FunctionProtoType>();
     auto EPI = FPT->getExtProtoInfo();
     EPI.TypeQuals.addConst();
-    clang::QualType NewFuncTy = SemaRef.getCxxSema().BuildFunctionType(
-                                                           FPT->getReturnType(),
-                                                           ParamTypes,
-                                                           S->getLoc(),
-                                                 MD->getParent()->getDeclName(),
-                                                           EPI);
-    FPT = NewFuncTy->getAs<clang::FunctionProtoType>();
-    
-    clang::QualType Ty(Context.CxxAST.adjustFunctionType(FPT, FPT->getExtInfo()),
-                       /*Qualifiers=*/0);
-    llvm::SmallVector<clang::ParmVarDecl *, 10> Parameters(
-                              MD->parameters().begin(), MD->parameters().end());
-    clang::TypeSourceInfo *TInfo = BuildFunctionTypeLoc(Context.CxxAST,
-                                                        Ty,
-                                                        MD->getBeginLoc(),
-                                                        clang::SourceLocation(),
-                                                        clang::SourceLocation(),
-                                                        clang::SourceRange(),
-                                                        MD->getEndLoc(),
-                                                        Parameters);
-    MD->setType(TInfo->getType());
-    MD->setTypeSourceInfo(TInfo);
-    clang::FunctionProtoType::ExceptionSpecInfo SpecInfo
-                                               = FPT->getExceptionSpecInfo();
-    // Re applying exception specification.
-    applyESIToFunctionType(Context, SemaRef, MD, SpecInfo);
+    SemaRef.rebuildFunctionType(MD, MD->getBeginLoc(), FPT, FPT->getExtInfo(),
+                                EPI, FPT->getExceptionSpecInfo());
     return;
   }
   SemaRef.Diags.Report(S->getLoc(),
