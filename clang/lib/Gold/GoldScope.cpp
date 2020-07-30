@@ -230,6 +230,70 @@ bool Declaration::declaresFunction() const {
   return false;
 }
 
+
+bool Declaration::declaresFunctionWithImplicitReturn() const {
+  if (declaresFunction() || declaresFunctionTemplate()) {
+    if (!Op)
+      // Something is very wrong here?!
+      return false;
+    if (const CallSyntax *Call = dyn_cast<CallSyntax>(Op)){
+      if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(Call->getCallee())) {
+        if (Name->getSpelling() == "operator'='") {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+
+
+bool Declaration::declaresPossiblePureVirtualFunction() const {
+  if (declaresFunction() || declaresFunctionTemplate()) {
+    if (!Op)
+      return false;
+    if (const CallSyntax *Call = dyn_cast<CallSyntax>(Op))
+      if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(Call->getCallee()))
+        if (Name->getSpelling() == "operator'='")
+          if (const LiteralSyntax *Lit
+                                = dyn_cast<LiteralSyntax>(Call->getArgument(1)))
+            if (Lit->getToken().getKind() == tok::DecimalInteger)
+              if (Lit->getSpelling() == "0")
+                return true;
+  }
+  return false;
+}
+
+static bool isSpecialExpectedAssignedFuncValue(const Syntax *Op, TokenKind TK) {
+  if (const CallSyntax *Call = dyn_cast<CallSyntax>(Op))
+    if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(Call->getCallee()))
+      if (Name->getSpelling() == "operator'='")
+        if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Call->getArgument(1)))
+          if (Atom->getToken().getKind() == TK)
+            return true;
+  return false;
+}
+
+bool Declaration::declaresDefaultedFunction() const {
+ if (declaresFunction() || declaresFunctionTemplate()) {
+    if (!Op)
+      return false;
+    return isSpecialExpectedAssignedFuncValue(Op, tok::DefaultKeyword);
+  }
+  return false;
+}
+
+
+bool Declaration::declaresDeletedFunction() const {
+ if (declaresFunction() || declaresFunctionTemplate()) {
+    if (!Op)
+      return false;
+    return isSpecialExpectedAssignedFuncValue(Op, tok::DeleteKeyword);
+  }
+  return false;
+}
+
 bool Declaration::declaresMemberVariable() const {
   return declaresVariable() && Cxx && clang::isa<clang::FieldDecl>(Cxx);
 }
@@ -352,6 +416,22 @@ const Declarator *Declaration::getIdDeclarator() const {
 Declarator *Declaration::getIdDeclarator() {
   Declarator *D = Decl;
   while (D && D->Kind != DK_Identifier) {
+    D = D->Next;
+  }
+  return D;
+}
+
+const Declarator *Declaration::getFirstDeclarator(DeclaratorKind DK) const {
+  const Declarator *D = Decl;
+  while (D && D->Kind != DK) {
+    D = D->Next;
+  }
+  return D;
+}
+
+Declarator *Declaration::getFirstDeclarator(DeclaratorKind DK) {
+  Declarator *D = Decl;
+  while (D && D->Kind != DK) {
     D = D->Next;
   }
   return D;

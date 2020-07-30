@@ -223,6 +223,18 @@ public:
   /// True if this declares a function.
   bool declaresFunction() const;
 
+  /// Check if we use = and we are a function 
+  bool declaresFunctionWithImplicitReturn() const;
+
+  /// Check if we have a function who has = 0 assignment.
+  bool declaresPossiblePureVirtualFunction() const;
+
+  /// Checks to see if the function is defined as = default
+  bool declaresDefaultedFunction() const;
+
+  /// Checks to see if the function is defined as = delete
+  bool declaresDeletedFunction() const;
+
   /// Returns true if the CXX type is a FieldDecl.
   /// This is true when declares variable is also true some times.
   bool declaresMemberVariable() const;
@@ -263,6 +275,13 @@ public:
   bool defines() const {
     return Cxx && clang::isa<T>(Cxx);
   }
+
+  template<typename T>
+  T* getAs() const {
+    if (!Cxx)
+      return nullptr;
+    return clang::dyn_cast<T>(Cxx);
+  }
   /// Checks if the current Cxx decl is a static member variable of a class.
   bool declaresInlineInitializedStaticVarDecl() const;
 
@@ -282,6 +301,9 @@ public:
   
   const Declarator *getIdDeclarator() const;
   Declarator *getIdDeclarator();
+
+  const Declarator *getFirstDeclarator(DeclaratorKind DK) const;
+  Declarator *getFirstDeclarator(DeclaratorKind DK);
 
   /// The corresponding C++ declaration as a context.
   clang::DeclContext *getCxxContext() const;
@@ -365,8 +387,8 @@ public:
   /// member functions.
   const CallSyntax *ES_Call = nullptr;
   const AtomSyntax *ES_Name = nullptr;
-
   ///}
+
 };
 
 Phase phaseOf(Declaration *D);

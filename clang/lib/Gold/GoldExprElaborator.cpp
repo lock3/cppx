@@ -1985,7 +1985,7 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
                                         VDecl->getType(), clang::VK_LValue);
 
     // access a record from an NNS
-    if (clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(ND))
+    if (isa<clang::CXXRecordDecl>(ND))
       return SemaRef.buildTypeExprFromTypeDecl(TD, RHS->getLoc());
 
     // otherwise, we have a FieldDecl from a nested name specifier lookup.

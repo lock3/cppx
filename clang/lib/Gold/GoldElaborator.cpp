@@ -158,6 +158,7 @@ static bool computeAccessSpecifier(Sema& SemaRef, Attributes& attrs,
         }
         return false;
       }
+      return false;
     },
     // CheckAttr
     [](const Syntax *Attr) -> bool{
@@ -202,6 +203,7 @@ static bool isVirtualBase(Sema& SemaRef, Attributes& attrs,
         }
         return false;
       }
+      return false;
     },
     // CheckAttr
     [](const Syntax *Attr) -> bool{
@@ -289,6 +291,7 @@ bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
         }
         return false;
       }
+      return false;
     },
     // CheckAttr
     [](const Syntax *Attr) -> bool{
@@ -982,11 +985,32 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   SemaRef.getCxxSema().LookupName(Previous, ClangScope, false);
   
   if(InClass) {
-    const clang::FunctionType *FT = cast<clang::FunctionType>(TInfo->getType());
+    const clang::FunctionProtoType *FPT
+                             = cast<clang::FunctionProtoType>(TInfo->getType());
     DNI.setName(Name);
     DNI.setLoc(D->Op->getLoc());
     if (D->getId()->isStr("constructor")) {
-      if (FT->getReturnType() != Context.CxxAST.VoidTy) {
+      if (FPT->getReturnType() == Context.CxxAST.getAutoDeductType()) {
+        // double verifying function type.
+        if (!D->getFirstDeclarator(DK_Type)) {
+          // The we set the default type to void instead because we are a
+          // constructor.
+          auto ParamTys = FPT->getParamTypes();
+          llvm::SmallVector<clang::QualType, 10> ParamTypes(ParamTys.begin(),
+                                                            ParamTys.end());          
+          clang::QualType Ty = SemaRef.getCxxSema().BuildFunctionType(
+                                                      Context.CxxAST.VoidTy,
+                                                      ParamTypes, Loc,
+                                                      clang::DeclarationName(),
+                                                      FPT->getExtProtoInfo());
+          if (Ty->isFunctionProtoType()) {
+            FPT = Ty->getAs<clang::FunctionProtoType>();
+          } else {
+            llvm_unreachable("Failed to create new prototype");
+          }
+        }
+      }
+      if (FPT->getReturnType() != Context.CxxAST.VoidTy) {
         SemaRef.Diags.Report(D->Decl->getLoc(),
                           clang::diag::err_invalid_return_type_for_ctor_or_dtor)
                           << 0;
@@ -1027,7 +1051,27 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       CtorDecl->setType(QT);
 
     } else if(D->getId()->isStr("destructor")) {
-      if (FT->getReturnType() != Context.CxxAST.VoidTy) {
+      if (FPT->getReturnType() == Context.CxxAST.getAutoDeductType()) {
+        // double verifying function type.
+        if (!D->getFirstDeclarator(DK_Type)) {
+          // The we set the default type to void instead because we are a
+          // constructor.
+          auto ParamTys = FPT->getParamTypes();
+          llvm::SmallVector<clang::QualType, 10> ParamTypes(ParamTys.begin(),
+                                                            ParamTys.end());          
+          clang::QualType Ty = SemaRef.getCxxSema().BuildFunctionType(
+                                                      Context.CxxAST.VoidTy,
+                                                      ParamTypes, Loc,
+                                                      clang::DeclarationName(),
+                                                      FPT->getExtProtoInfo());
+          if (Ty->isFunctionProtoType()) {
+            FPT = Ty->getAs<clang::FunctionProtoType>();
+          } else {
+            llvm_unreachable("Failed to create new prototype");
+          }
+        }
+      }
+      if (FPT->getReturnType() != Context.CxxAST.VoidTy) {
         SemaRef.Diags.Report(D->Decl->getLoc(),
                           clang::diag::err_invalid_return_type_for_ctor_or_dtor)
                              << 1;
@@ -1528,6 +1572,30 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
     llvm::SmallVector<clang::CXXCtorInitializer*, 32> Initializers;
     SemaRef.getCxxSema().ActOnMemInitializers(D->Cxx, clang::SourceLocation(),
         Initializers, false);
+  }
+  
+  if (D->Op) {
+    if (D->declaresFunctionWithImplicitReturn()) {
+      // Checking to see if the declaration is actually what we are expected
+      // in order to be consider implicitly virtual or not.
+      if (clang::CXXMethodDecl *MD = D->getAs<clang::CXXMethodDecl>()) {
+        if (MD->isVirtual() && D->declaresPossiblePureVirtualFunction()
+            && !D->defines<clang::CXXConstructorDecl>()) {
+          // Declaring this as an abstract function declaration.
+          SemaRef.getCxxSema().ActOnPureSpecifier(D->Cxx, D->Init->getLoc());
+          return;
+        }
+      }
+      // Checking other kinds of functions.
+      if (D->declaresDefaultedFunction()) {
+        SemaRef.getCxxSema().SetDeclDefaulted(D->Cxx, D->Init->getLoc());
+        return;
+      }
+      if (D->declaresDeletedFunction()) {
+        SemaRef.getCxxSema().SetDeclDeleted(D->Cxx, D->Init->getLoc());
+        return;
+      }
+    }
   }
 
   if (SemaRef.checkForRedefinition<clang::FunctionDecl>(D))
@@ -2998,7 +3066,10 @@ void Elaborator::elaborateVirtualAttr(Declaration *D, const Syntax *S,
                              << "virtual";
         return;
       }
-
+      if (MD->getReturnType() == Context.CxxAST.getAutoDeductType()) {
+        SemaRef.Diags.Report(S->getLoc(), clang::diag::err_auto_fn_virtual);
+        return;
+      }
       MD->setVirtualAsWritten(true);
       Status.HasVirtual = true;
       return;
@@ -3276,7 +3347,6 @@ void Elaborator::elaborateRefQualifierAttr(Declaration *D, const Syntax *S,
     const clang::FunctionProtoType *FPT = MemberFuncTy
                                             ->getAs<clang::FunctionProtoType>();
     auto EPI = FPT->getExtProtoInfo();
-    // EPI.TypeQuals.addConst();
     if (Name->getToken().getKind() == tok::RefKeyword) {
       EPI.RefQualifier = clang::RQ_LValue;
     } else if (Name->getToken().getKind() == tok::RValueRefKeyword){
