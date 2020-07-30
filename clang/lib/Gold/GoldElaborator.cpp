@@ -157,8 +157,6 @@ static bool computeAccessSpecifier(Sema& SemaRef, Attributes& attrs,
           return true;
         }
         return false;
-      default:
-        return false;
       }
     },
     // CheckAttr
@@ -203,8 +201,6 @@ static bool isVirtualBase(Sema& SemaRef, Attributes& attrs,
           return true;
         }
         return false;
-      default:
-        return false;
       }
     },
     // CheckAttr
@@ -245,8 +241,6 @@ bool isStaticMember(Sema& SemaRef, Declaration *D, bool &IsStatic) {
           IsStatic = true;
           return true;
         }
-        return false;
-      default:
         return false;
       }
       return false;
@@ -293,8 +287,6 @@ bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
           IsMutable = true;
           return true;
         }
-        return false;
-      default:
         return false;
       }
     },
@@ -393,9 +385,8 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
                                   clang::CXXRecordDecl *R,
                                   const CallSyntax *ClsKwCall) {
   const ListSyntax *Bases = dyn_cast<ListSyntax>(ClsKwCall->getArguments());
-  if (!Bases) {
+  if (!Bases)
     return;
-  }
 
   ExprElaborator TypeElab(Context, SemaRef);
 
@@ -405,30 +396,35 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
   Sema::ClangScopeRAII InheritanceScope(SemaRef, clang::Scope::DeclScope |
       clang::Scope::ClassScope | clang::Scope::ClassInheritanceScope,
       clang::SourceLocation());
-  
+
   llvm::SmallVector<clang::CXXBaseSpecifier *, 4> GivenBaseClasses;
   // FIXME: This currently doesn't account for dependent names.
   Attributes Attrs;
   bool IsVirtualBase = false;
   for (const Syntax *Base : Bases->children()) {
     clang::Expr *BaseExpr = TypeElab.elaborateExpr(Base);
+
+    if (!BaseExpr) {
+      SemaRef.Diags.Report(Base->getLoc(),
+                           clang::diag::err_failed_to_translate_expr);
+      continue;
+    }
+
     Attrs.clear();
     clang::AccessSpecifier AS = clang::AS_public;
     IsVirtualBase = false;
     if (!Base->getAttributes().empty()) {
       // Gathering all of the attributes from the root node of the expression
       // (Which is technically)
-      for (const Attribute *Attr : Base->getAttributes()) {
+      for (const Attribute *Attr : Base->getAttributes())
         Attrs.emplace_back(Attr->getArg());
-      }
-    
-      if (computeAccessSpecifier(SemaRef, Attrs, AS)) {
-        return;
-      }
 
-      if (isVirtualBase(SemaRef, Attrs, IsVirtualBase)) {
+      if (computeAccessSpecifier(SemaRef, Attrs, AS))
         return;
-      }
+
+      if (isVirtualBase(SemaRef, Attrs, IsVirtualBase))
+        return;
+
       // TODO: Create an error message in the event that the attributes
       // associated with the current type are wrong.
       if (!Attrs.empty()) {
@@ -437,11 +433,12 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
         return;
       }
     }
+
     clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
                                                       BaseExpr, Base->getLoc());
     if (!TInfo)
       return;
-      
+
     clang::ParsedType PT = SemaRef.getCxxSema().CreateParsedType(
                                                        TInfo->getType(), TInfo);
     clang::ParsedAttributes Attributes(SemaRef.AttrFactory);
@@ -449,10 +446,12 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
       .ActOnBaseSpecifier(R, clang::SourceRange(Base->getLoc(), Base->getLoc()),
                           Attributes, IsVirtualBase, AS, PT, Base->getLoc(),
                           clang::SourceLocation());
-    if (BaseResult.isInvalid()) 
+
+    if (BaseResult.isInvalid())
       continue;
     GivenBaseClasses.emplace_back(BaseResult.get());
   }
+
   SemaRef.getCxxSema().ActOnBaseSpecifiers(R, GivenBaseClasses);
 }
 
@@ -1640,7 +1639,8 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     // This handles implcit initialization/constructor calls for variables
     // that don't have a = sign on first use, but have a type.
     // That includes complex types.
-    SemaRef.getCxxSema().ActOnUninitializedDecl(VD); 
+    SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
+    SemaRef.getCxxSema().FinalizeDeclaration(VD);
     return;
   }
 
@@ -2042,13 +2042,11 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       // Unpack the declarator.
       if (Op == "operator'='") {
         // This is to reject t.x as a declaration.
-        // Also also reject the delcaration
         const auto *Args = cast<ListSyntax>(Call->getArguments());
         Decl = Args->getChild(0);
 
-        // This is for checking if a declaration already exists in a parent scope
-        // for example if this is in a member function and we are accessing a
-        // member variable.
+        // This checks if a declaration already exists in a parent scope.
+        // For example, we are in a member function and are accessing a member.
         if(const AtomSyntax *LHS = dyn_cast<AtomSyntax>(Decl)) {
           clang::DeclarationNameInfo DNI({
               &Context.CxxAST.Idents.get(LHS->getSpelling())
@@ -2058,12 +2056,13 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
             return nullptr;
         }
 
-        // Explicilty ignoring declarations that use x.y.
-        if (const CallSyntax *InnerCallOp = dyn_cast<CallSyntax>(Decl))
-          if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(
-                                                      InnerCallOp->getCallee()))
-            if (Atom->getSpelling() == "operator'.'")
+        // Explicilty ignoring declarations that use x.y or (x)y.
+        if (const CallSyntax *Inner = dyn_cast<CallSyntax>(Decl))
+          if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Inner->getCallee()))
+            if (Atom->getSpelling() == "operator'.'" ||
+                Atom->getSpelling() == "operator'()'")
               return nullptr;
+
         // Attempting to verify if this is an ElemSyntax.
         if (isa<ElemSyntax>(Decl))
           // This can't be a declaration, because would need to say":type" after
@@ -3372,8 +3371,10 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
     return FOK_Ref;
   if (Tokenization == SemaRef.OperatorRRefII)
     return FOK_RRef;
-  if (Tokenization == SemaRef.OperatorArrayBracketsII) 
-    return FOK_Array;
+  if (Tokenization == SemaRef.OperatorBracketsII)
+    return FOK_Brackets;
+  if (Tokenization == SemaRef.OperatorParensII)
+    return FOK_Parens;
   return FOK_Unknown;
 }
 
