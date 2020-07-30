@@ -1194,3 +1194,19 @@ a : type = class:
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+TEST(ClassParsing, ConstructorDeclOnly) {
+  StringRef Code = R"(
+c : type = class:
+  constructor() : void
+)";
+
+  DeclarationMatcher ToMatch = recordDecl(
+    recordDecl(hasName("c")),
+    hasDescendant(cxxConstructorDecl(isDefaultConstructor(),
+                  unless(isImplicit()),
+                  unless(isDefinition())))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
