@@ -407,7 +407,8 @@ public:
   clang::IdentifierInfo *const OperatorConstII;
   clang::IdentifierInfo *const OperatorRefII;
   clang::IdentifierInfo *const OperatorRRefII;
-  clang::IdentifierInfo *const OperatorArrayBracketsII;
+  clang::IdentifierInfo *const OperatorBracketsII;
+  clang::IdentifierInfo *const OperatorParensII;
 
   // An RAII type for constructing scopes.
   struct ScopeRAII {

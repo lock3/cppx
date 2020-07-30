@@ -64,6 +64,7 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
     {"uint128", Context.CxxAST.getIntTypeForBitwidth(128, false)},
 
     // Floating point numbers
+    {"float", Context.CxxAST.FloatTy},
     {"float16", Context.CxxAST.HalfTy},
     {"float32", Context.CxxAST.getRealTypeForBitwidth(32)},
     {"float64", Context.CxxAST.getRealTypeForBitwidth(64)},
@@ -148,7 +149,8 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     OperatorConstII(&Context.CxxAST.Idents.get("operator'const'")),
     OperatorRefII(&Context.CxxAST.Idents.get("operator'ref'")),
     OperatorRRefII(&Context.CxxAST.Idents.get("operator'rref'")),
-    OperatorArrayBracketsII(&Context.CxxAST.Idents.get("operator'[]'")),
+    OperatorBracketsII(&Context.CxxAST.Idents.get("operator'[]'")),
+    OperatorParensII(&Context.CxxAST.Idents.get("operator'()'")),
     BuiltinTypes(createBuiltinTypeList(Context)),
     OpInfo(Context.CxxAST),
     AttrHandlerMap(buildAttributeMaping())

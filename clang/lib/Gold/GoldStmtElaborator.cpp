@@ -85,8 +85,11 @@ StmtElaborator::elaborateAtom(const AtomSyntax *S) {
 static clang::Stmt *
 createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
                const CallSyntax *S) {
-  // FIXME: elaborate this expression, it might not be a name.
-  const AtomSyntax *Name = cast<AtomSyntax>(S->getArgument(0));
+  // For now, since we don't know of any cases where this is not an identifier,
+  // we reject any non-Atomic syntax. This could change in the future.
+  const AtomSyntax *Name = dyn_cast<AtomSyntax>(S->getArgument(0));
+  if (!Name)
+    return nullptr;
 
   clang::Sema &ClangSema = SemaRef.getCxxSema();
   clang::IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
