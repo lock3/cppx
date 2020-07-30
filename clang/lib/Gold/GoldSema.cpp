@@ -108,8 +108,10 @@ static Sema::StringToAttrHandlerMap buildAttributeMaping() {
     { "override", ATTR_HANDLER_LAMBDA(elaborateOverrideAttr) },
     { "final", ATTR_HANDLER_LAMBDA(elaborateFinalAttr) },
 
-    // This is only for methods
+    // This only apply to methods.
     { "const", ATTR_HANDLER_LAMBDA(elaborateConstAttr) },
+    { "ref", ATTR_HANDLER_LAMBDA(elaborateRefQualifierAttr) },
+    { "rref", ATTR_HANDLER_LAMBDA(elaborateRefQualifierAttr) },
 
     // Actual known C++ attributes.
     { "carries_dependency", ATTR_HANDLER_LAMBDA(elaborateCarriesDependencyAttr) },

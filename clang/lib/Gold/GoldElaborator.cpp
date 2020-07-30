@@ -2455,15 +2455,11 @@ void Elaborator::lateElaborateMethodDefs(ElaboratingClass &Class) {
   }
 }
 
-
-
 void Elaborator::lateElaborateAttribute(LateElaboratedAttributeDecl &Field) {
   // TODO: find a valid example of how this actually works/when this is used.
   llvm_unreachable("We currently don't have late binding attributes? I don't "
       "really know.");
 }
-
-
 
 void Elaborator::lateElaborateMemberInitializer(
     LateElaborateMemberInitializer &MemberInit) {
@@ -2597,7 +2593,6 @@ static void applyCallExceptionSpecAttr(SyntaxContext &Context, Sema &SemaRef,
   } else {
     llvm_unreachable("There are no other valid attributes for exception "
                      "specficiaton.");
-  
   }
   
   // Updating the function type with exception specification info correctly.
@@ -3113,10 +3108,6 @@ void Elaborator::elaborateConstAttr(Declaration *D, const Syntax *S,
       return;
     }
     clang::QualType MemberFuncTy = MD->getType();
-    llvm::SmallVector<clang::QualType, 10> ParamTypes;
-    for (clang::ParmVarDecl *PVD : MD->parameters()) {
-      ParamTypes.emplace_back(PVD->getType());
-    }
     const clang::FunctionProtoType *FPT = MemberFuncTy
                                             ->getAs<clang::FunctionProtoType>();
     auto EPI = FPT->getExtProtoInfo();
@@ -3252,29 +3243,80 @@ void Elaborator::elaborateAlignAsAttr(Declaration *D, const Syntax *S,
                        << "alignas(expr)" << "class or variable declaration"; 
 }
 
+void Elaborator::elaborateRefQualifierAttr(Declaration *D, const Syntax *S,
+                                           AttrStatus &Status) {
+  if (Status.HasRefQualifier) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_duplicate_attribute);
+    return;
+  }
+  
+  const AtomSyntax *Name;
+  if (const CallSyntax *Call = dyn_cast<CallSyntax>(S)) {
+    Name = cast<AtomSyntax>(Call->getCallee());
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_attribute_only_valid_as_call)
+                         << Name->getSpelling();
+    return;
+  }
+  
+  Name = cast<AtomSyntax>(S);
+  Status.HasRefQualifier = true;
+  if (isa<clang::CXXMethodDecl>(D->Cxx) &&
+     !(isa<clang::CXXConstructorDecl>(D->Cxx)
+      || isa<clang::CXXDestructorDecl>(D->Cxx))) {
+ 
+    clang::CXXMethodDecl *MD = cast<clang::CXXMethodDecl>(D->Cxx);
+    if (MD->getStorageClass() == clang::SC_Static) {
+      SemaRef.Diags.Report(S->getLoc(),
+                           clang::diag::err_invalid_attribute_for_decl)
+                           << Name->getSpelling() << "method";
+      return;
+    }
+    clang::QualType MemberFuncTy = MD->getType();
+    const clang::FunctionProtoType *FPT = MemberFuncTy
+                                            ->getAs<clang::FunctionProtoType>();
+    auto EPI = FPT->getExtProtoInfo();
+    // EPI.TypeQuals.addConst();
+    if (Name->getToken().getKind() == tok::RefKeyword) {
+      EPI.RefQualifier = clang::RQ_LValue;
+    } else if (Name->getToken().getKind() == tok::RValueRefKeyword){
+      EPI.RefQualifier = clang::RQ_RValue;
+    } else {
+      llvm_unreachable("Invalid reference qualifier given.");
+    }
+    SemaRef.rebuildFunctionType(MD, MD->getBeginLoc(), FPT, FPT->getExtInfo(),
+                                EPI, FPT->getExceptionSpecInfo());
+    return;
+  }
+  SemaRef.Diags.Report(S->getLoc(),
+                      clang::diag::err_invalid_attribute_for_decl)
+                      << "const" << "member function";
+}
+
 void Elaborator::elaborateCarriesDependencyAttr(Declaration *D, const Syntax *S,
                                                 AttrStatus &Status) {
-  llvm_unreachable(" not implemented");
+  llvm_unreachable("not implemented");
 }
 
 void Elaborator::elaborateDeprecatedAttr(Declaration *D, const Syntax *S,
                                          AttrStatus &Status) {
-  llvm_unreachable(" not implemented");
+  llvm_unreachable("not implemented");
 }
 
 void Elaborator::elaborateMaybeUnusedAttr(Declaration *D, const Syntax *S,
                                           AttrStatus &Status) {
-  llvm_unreachable(" not implemented");
+  llvm_unreachable("not implemented");
 }
 
 void Elaborator::elaborateNoDiscardAttr(Declaration *D, const Syntax *S,
                                         AttrStatus &Status) {
-  llvm_unreachable(" not implemented");
+  llvm_unreachable("not implemented");
 }
 
 void Elaborator::elaborateNoReturnAttr(Declaration *D, const Syntax *S,
                                        AttrStatus &Status) {
-  llvm_unreachable(" not implemented");
+  llvm_unreachable("not implemented");
 }
 
 void Elaborator::elaborateUnknownAttr(Declaration *D, const Syntax *S,

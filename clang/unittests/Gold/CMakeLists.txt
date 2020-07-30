@@ -87,6 +87,7 @@ add_clang_unittest(GoldTests
   GoldLiteralSuffix.cpp
   GoldMemberExecuteTest.cpp
   GoldMemberStorageClassElab.cpp
+  GoldMethodRefQualifierElab.cpp
   GoldMutableAttributeElab.cpp
   GoldNNS.cpp
   GoldOperatorOverloadUseElab.cpp

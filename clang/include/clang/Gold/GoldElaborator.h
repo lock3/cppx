@@ -166,6 +166,8 @@ public:
                          AttrStatus &Status);
   void elaborateAlignAsAttr(Declaration *D, const Syntax *S,
                             AttrStatus &Status);
+  void elaborateRefQualifierAttr(Declaration *D, const Syntax *S,
+                                 AttrStatus &Status);
   void elaborateCarriesDependencyAttr(Declaration *D, const Syntax *S,
                                       AttrStatus &Status);
   void elaborateDeprecatedAttr(Declaration *D, const Syntax *S,
