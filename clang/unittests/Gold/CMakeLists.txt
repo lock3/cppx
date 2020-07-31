@@ -99,6 +99,7 @@ add_clang_unittest(GoldTests
   GoldStringLiteralElab.cpp
   GoldThreadLocalAttributeElab.cpp
   GoldTypeExpressionsTest.cpp
+  GoldUnionElab.cpp
   GoldUserDefinedOperatorOverloadElab.cpp
   GoldVarDeclStorageClass.cpp
   GoldVariableDeclElab.cpp

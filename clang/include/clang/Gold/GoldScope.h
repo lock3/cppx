@@ -212,7 +212,13 @@ public:
   bool declaresForwardRecordDecl() const;
   
   /// Checks if the type declaration is declaring a record.
-  bool declaresRecord() const;
+  bool declaresTag() const;
+
+  /// Get tag name.
+  bool getTagName(const AtomSyntax *&NameNode) const;
+
+  /// Checks to see if we declare a union or not.
+  bool declaresUnion() const;
 
   /// Checks if the type declaration is declaring a namespace.
   bool declaresNamespace() const;

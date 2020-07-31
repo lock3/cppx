@@ -101,7 +101,7 @@ public:
   /// Complete class parsing/elaboration
   ///{
   /// This returns true if part of the declaration was delayed.
-  bool delayElaborateDeclType(const Syntax *S);
+  bool delayElaborateDeclType(clang::CXXRecordDecl *RD, const Syntax *S);
   
   /// Functionality associated with late elaboration and are used to either
   /// elaborate the full class or elaborate everything if they are able to.

@@ -181,21 +181,44 @@ bool Declaration::declaresType() const {
 bool Declaration::declaresForwardRecordDecl() const {
   if (declaresInitializedVariable())
     if (const AtomSyntax *RHS = dyn_cast<AtomSyntax>(Init))
-      return RHS->hasToken(tok::ClassKeyword);
+      return RHS->hasToken(tok::ClassKeyword) || RHS->hasToken(tok::UnionKeyword);
   return false;
 }
 
-bool Declaration::declaresRecord() const {
+bool Declaration::declaresTag() const {
   if (Cxx)
     return isa<clang::CXXRecordDecl>(Cxx);
   if (Init)
     if (const MacroSyntax *Macro = dyn_cast<MacroSyntax>(Init)) {
       if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Macro->getCall()))
-        return Atom->hasToken(tok::ClassKeyword);
+        return Atom->hasToken(tok::ClassKeyword)
+               || Atom->hasToken(tok::UnionKeyword);
       if (const CallSyntax *ClsWithBases = dyn_cast<CallSyntax>(Macro->getCall()))
         if (const AtomSyntax *Callee
                   = dyn_cast<AtomSyntax>(ClsWithBases->getCallee()))
-            return Callee->hasToken(tok::ClassKeyword);
+          return Callee->hasToken(tok::ClassKeyword)
+                  || Callee->hasToken(tok::UnionKeyword);
+    }
+  return false;
+}
+
+bool Declaration::getTagName(const AtomSyntax *&NameNode) const {
+  if (Init)
+    if (const MacroSyntax *Macro = dyn_cast<MacroSyntax>(Init)) {
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Macro->getCall()))
+        if (Atom->hasToken(tok::ClassKeyword)
+            || Atom->hasToken(tok::UnionKeyword)) {
+          NameNode = Atom;
+          return true;
+        }
+      if (const CallSyntax *ClsWithBases = dyn_cast<CallSyntax>(Macro->getCall()))
+        if (const AtomSyntax *Callee
+                  = dyn_cast<AtomSyntax>(ClsWithBases->getCallee()))
+          if (Callee->hasToken(tok::ClassKeyword)
+              || Callee->hasToken(tok::UnionKeyword)) {
+            NameNode = Callee;
+            return true;
+          }
     }
   return false;
 }
@@ -230,7 +253,6 @@ bool Declaration::declaresFunction() const {
   return false;
 }
 
-
 bool Declaration::declaresFunctionWithImplicitReturn() const {
   if (declaresFunction() || declaresFunctionTemplate()) {
     if (!Op)
@@ -246,8 +268,6 @@ bool Declaration::declaresFunctionWithImplicitReturn() const {
   }
   return false;
 }
-
-
 
 bool Declaration::declaresPossiblePureVirtualFunction() const {
   if (declaresFunction() || declaresFunctionTemplate()) {

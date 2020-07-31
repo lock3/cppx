@@ -562,7 +562,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
       // Checking that if we are in side of a record and within that record has base classes.
       Declaration *DeclEntity = S->Entity;
       if (DeclEntity) {
-        if (DeclEntity->declaresRecord()) {
+        if (DeclEntity->declaresTag()) {
           if (DeclEntity->Cxx) {
             clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(DeclEntity->Cxx);
             // We do this because if for whatever reason if this hasn't been initially
@@ -791,7 +791,7 @@ bool Sema::declNeedsDelayed(Declaration *D) {
   if (D->declaresTypeAlias())
     return false;
 
-  if (D->declaresTemplateType() || D->declaresRecord())
+  if (D->declaresTemplateType() || D->declaresTag())
     return true;
 
   // I haven't found an reason that these would need to be delayed any more
