@@ -11049,6 +11049,11 @@ def err_invalid_dyn_exception_type : Error <
 def err_invalid_return_type_for_ctor_or_dtor : Error<
   "invalid return type for %select{constructor|destructor}0">;
  
+def err_invalid_declaration : Error<
+  "invalid declaration">;
+
+def err_invalid_function_type : Error<
+  "invalid function type">;
 
 def err_operator_cannot_be_overloaded : Error<
   "cannot overload operator, unknown operator %0">;

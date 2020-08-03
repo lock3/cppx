@@ -107,6 +107,19 @@ AST_MATCHER_P(CXXRecordDecl, hasBaseSpecifier, BaseMatcher, BaseCheck) {
   return false;
 }
 
+AST_POLYMORPHIC_MATCHER(methodHasRRefQualifier,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(CXXMethodDecl)) {
+  const FunctionProtoType *FPT= Node.getType()->template getAs<FunctionProtoType>();
+  return FPT->getExtProtoInfo().RefQualifier == RQ_RValue;
+}
+
+AST_POLYMORPHIC_MATCHER(methodHasRefQualifier,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(CXXMethodDecl)) {
+  const FunctionProtoType *FPT= Node.getType()->template getAs<FunctionProtoType>();
+  return FPT->getExtProtoInfo().RefQualifier == RQ_LValue;
+}
+
+
 
 using clang::tooling::buildASTFromCodeWithArgs;
 using clang::tooling::newFrontendActionFactory;

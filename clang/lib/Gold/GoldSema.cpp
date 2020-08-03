@@ -109,8 +109,10 @@ static Sema::StringToAttrHandlerMap buildAttributeMaping() {
     { "override", ATTR_HANDLER_LAMBDA(elaborateOverrideAttr) },
     { "final", ATTR_HANDLER_LAMBDA(elaborateFinalAttr) },
 
-    // This is only for methods
+    // This only apply to methods.
     { "const", ATTR_HANDLER_LAMBDA(elaborateConstAttr) },
+    { "ref", ATTR_HANDLER_LAMBDA(elaborateRefQualifierAttr) },
+    { "rref", ATTR_HANDLER_LAMBDA(elaborateRefQualifierAttr) },
 
     // Actual known C++ attributes.
     { "carries_dependency", ATTR_HANDLER_LAMBDA(elaborateCarriesDependencyAttr) },
@@ -493,7 +495,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         // Attempting to add special processing of declarations being elaborated
         // during a constant expression, and require full elaboration before
         // use.
-        if (CxxSema.isConstantEvaluated() || IsInDeepElaborationMode()) {
+        if (CxxSema.isConstantEvaluated() || isInDeepElaborationMode()) {
           // If we aren't 100% completed then do complete elaboration.
           if (phaseOf(FoundDecl) < Phase::Initialization) {
             EnterDeepElabRAII DeepElab(*this);
@@ -560,7 +562,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
       // Checking that if we are in side of a record and within that record has base classes.
       Declaration *DeclEntity = S->Entity;
       if (DeclEntity) {
-        if (DeclEntity->declaresRecord()) {
+        if (DeclEntity->declaresTag()) {
           if (DeclEntity->Cxx) {
             clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(DeclEntity->Cxx);
             // We do this because if for whatever reason if this hasn't been initially
@@ -789,7 +791,7 @@ bool Sema::declNeedsDelayed(Declaration *D) {
   if (D->declaresTypeAlias())
     return false;
 
-  if (D->declaresTemplateType() || D->declaresRecord())
+  if (D->declaresTemplateType() || D->declaresTag())
     return true;
 
   // I haven't found an reason that these would need to be delayed any more
@@ -951,14 +953,75 @@ clang::Decl *Sema::getDeclFromExpr(const clang::Expr *DeclExpr,
   // a declaration or something like that.
 }
 
-bool Sema::IsInDeepElaborationMode() const {
+bool Sema::isInDeepElaborationMode() const {
   return ForceDeepElaborationDuringLookup;
 }
 
-bool Sema::SetDeepElaborationMode(bool EnableDisable) {
+bool Sema::setDeepElaborationMode(bool EnableDisable) {
   bool Res = ForceDeepElaborationDuringLookup;
   ForceDeepElaborationDuringLookup = EnableDisable;
   return Res;
+}
+
+bool Sema::rebuildFunctionType(clang::FunctionDecl *FD,
+                               clang::SourceLocation Loc,
+                               const clang::FunctionProtoType *FPT,
+                               const FunctionExtInfo &EI,
+                               const FunctionExtProtoInfo &EPI,
+                               const FunctionExceptionSpec &ESI) {
+  assert(FD && "Invalid function declaration");
+  assert(FPT && "Invalid function proto type");
+  auto ParamTys = FPT->getParamTypes();
+  llvm::SmallVector<clang::QualType, 10> ParamTypes(ParamTys.begin(),
+                                                    ParamTys.end());
+  clang::QualType NewFuncTy;
+  if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(FD)) {
+    NewFuncTy = CxxSema.BuildFunctionType(FPT->getReturnType(), ParamTypes, Loc,
+                                          MD->getParent()->getDeclName(), EPI);
+  } else {
+    NewFuncTy = CxxSema.BuildFunctionType(FPT->getReturnType(), ParamTypes, Loc,
+                                          clang::DeclarationName(), EPI);
+  }
+  if (NewFuncTy.isNull()) {
+    Diags.Report(Loc, clang::diag::err_invalid_function_type); 
+    return true;
+  }
+  const clang::FunctionProtoType *NewFPT
+                                 = NewFuncTy->getAs<clang::FunctionProtoType>();
+  if (!NewFPT) {
+    Diags.Report(Loc, clang::diag::err_invalid_function_type); 
+    return true;
+  }
+  clang::QualType ExtInfoAdjustedTy(
+               Context.CxxAST.adjustFunctionType(NewFPT, EI), /*Qualifiers=*/0);
+  if (ExtInfoAdjustedTy.isNull()) {
+    Diags.Report(Loc, clang::diag::err_invalid_function_type); 
+    return true;
+  }
+  clang::QualType ExceptionAdjustedTy
+      = Context.CxxAST.getFunctionTypeWithExceptionSpec(ExtInfoAdjustedTy, ESI);
+  if (ExceptionAdjustedTy.isNull()) {
+    Diags.Report(Loc, clang::diag::err_invalid_function_type); 
+    return true;
+  }
+  auto ParmVarDecls = FD->parameters();
+  llvm::SmallVector<clang::ParmVarDecl *, 32> Parmeters(ParmVarDecls.begin(),
+                                                         ParmVarDecls.end());
+  clang::TypeSourceInfo *TInfo = BuildFunctionTypeLoc(Context.CxxAST,
+                                                      ExceptionAdjustedTy,
+                                                      FD->getBeginLoc(),
+                                                      clang::SourceLocation(),
+                                                      clang::SourceLocation(),
+                                                      clang::SourceRange(),
+                                                      FD->getEndLoc(),
+                                                      Parmeters);
+  if (!TInfo) {
+    Diags.Report(Loc, clang::diag::err_invalid_function_type); 
+    return true;
+  }
+  FD->setType(ExceptionAdjustedTy);
+  FD->setTypeSourceInfo(TInfo);
+  return false;
 }
 
 } // namespace gold

@@ -1194,7 +1194,7 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
     if (!ConstructorExpr.get()) {
       SemaRef.Diags.Report(S->getLoc(),
                             clang::diag::err_coroutine_invalid_func_context)
-                            << TInfo->getType() << "a constructor";
+                            << 0 << TInfo->getType();
       return nullptr;
     }
     return ConstructorExpr.get();
@@ -1937,7 +1937,7 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
 
   clang::QualType QT = TInfo->getType();
   const clang::Type *T = QT.getTypePtr();
-  if (!T->isStructureOrClassType()) {
+  if (!(T->isStructureOrClassType() || T->isUnionType())) {
       SemaRef.Diags.Report(Previous->getExprLoc(),
                            clang::diag::err_invalid_type_for_name_spec)
                            << QT;
@@ -1985,7 +1985,7 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
                                         VDecl->getType(), clang::VK_LValue);
 
     // access a record from an NNS
-    if (clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(ND))
+    if (isa<clang::CXXRecordDecl>(ND))
       return SemaRef.buildTypeExprFromTypeDecl(TD, RHS->getLoc());
 
     // otherwise, we have a FieldDecl from a nested name specifier lookup.

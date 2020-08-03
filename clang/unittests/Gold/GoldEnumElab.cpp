@@ -1,4 +1,4 @@
-//=== GoldAttributes.cpp - Test Gold attributes ----------------------------==//
+//=== GoldEnumElab.cpp ----------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,41 +7,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file implements tests for parsing of attributes.
+//  This tests all of the ways we can declare an enum.
 //
 //===----------------------------------------------------------------------===//
 
 #include "GoldParseUtil.h"
+#include "GoldASTMatchersTest.h"
 
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-TEST(Attributes, SimpleAttributes) {
-  StringRef Code = R"(
-x<(i < 10)> = 10
-x<i> = 10
-x<(10 == 10)> = 10
-x < 20
-x<i> < 10
-x<z<10>><(i < 10)> < y<10>
-)";
-
-  SimpleGoldParseTest(Code);
-}
-
-TEST(Attributes, LineAttributes) {
-  StringRef Code = R"(
-[20]
-[10]
-x : int = 0
-
-[520]
-[10]
-y() : int!
-  return 0
-)";
-
-  SimpleGoldParseTest(Code);
-}
+// TEST(GoldEnumSyntax, EnumForwardDecl) {
+//   StringRef Code = R"(
+// x : type = enum
+// )";
+//   DeclarationMatcher ToMatch = functionDecl(hasName("foo"),
+//     unless(hasBody(compoundStmt())));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
