@@ -11064,6 +11064,9 @@ def err_operator_too_few_parameters : Error<
 def err_operator_too_many_parameters : Error<
   "overload %0 must can must have %1 parameter">;
 
+def err_identifier_not_declared_in_scope : Error<
+  "identifier %0, not declared in scope">;
+
 def err_invalid_identifier_type : Error<
   "invalid indentifier %0">;
 
@@ -11072,6 +11075,13 @@ def err_too_many_underlying_enum_types : Error <
 
 def err_invalid_enum_member_decl : Error <
   "invalid enum member declaration">;
+
+def err_templated_namespace_type : Error <
+  "cannot declare a templated namespace alias">;
+
+def err_invalid_template_decl : Error <
+  "invalid template forward declaration, template could be a type alias, "
+  "or a templated variable">;
 
 } // end of Gold category
 

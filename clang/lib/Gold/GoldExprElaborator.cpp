@@ -622,7 +622,6 @@ static clang::Expr*
 handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
     SyntaxContext& Context, clang::Expr* IdExpr, const ElemSyntax *Elem) {
   llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
-
   const ListSyntax *ElemArgs = cast<ListSyntax>(Elem->getArguments());
   for(const Syntax *SyntaxArg : ElemArgs->children()) {
     clang::EnterExpressionEvaluationContext EnterConstantEvaluated(
@@ -654,7 +653,7 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
   if (!Decl)
     return nullptr;
 
-  clang::ClassTemplateDecl *CTD = dyn_cast<clang::ClassTemplateDecl>(Decl);
+  clang::TemplateDecl *CTD = dyn_cast<clang::TemplateDecl>(Decl);
   assert(CTD && "Invalid CppxDeclRefExpr");
 
   clang::CXXScopeSpec SS;
@@ -664,7 +663,8 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
   clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
   clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
     SemaRef.getCurClangScope(), SS, /*TemplateKWLoc*/ clang::SourceLocation(),
-    TemplateTyName, II, Elem->getObject()->getLoc(), /*LAngleLoc*/ clang::SourceLocation(),
+    TemplateTyName, II, Elem->getObject()->getLoc(),
+    /*LAngleLoc*/clang::SourceLocation(),
     InArgs, /*RAngleLoc*/ clang::SourceLocation(), false, false);
 
   if (Result.isInvalid()) {
@@ -682,7 +682,6 @@ static clang::Expr *
 handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
                         SyntaxContext &Context, const ElemSyntax *Elem,
                         clang::Expr *E) {
-
   // Attempting to correctly handle the result of an Id expression.
   clang::OverloadExpr *OverloadExpr = dyn_cast<clang::OverloadExpr>(E);
   if (!OverloadExpr) {
@@ -880,7 +879,6 @@ clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
   if (IdExpr->getType()->isTypeOfTypes()) {
     clang::CppxTypeLiteral *Lit = cast<clang::CppxTypeLiteral>(IdExpr);
     clang::CXXRecordDecl *RD = Lit->getValue()->getType()->getAsCXXRecordDecl();
-
     if (isa<clang::ClassTemplateSpecializationDecl>(RD))
       return IdExpr;
   }
@@ -895,11 +893,7 @@ clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
 
   if (IdExpr->getType()->isTemplateType())
     return handleClassTemplateSelection(*this, SemaRef, Context, IdExpr, Elem);
-
   return handleElementExpression(*this, SemaRef, Context, Elem, IdExpr);
-
-  llvm_unreachable("Unable to handle indexing into given expression within "
-      "the AST.");
 }
 
 static clang::Expr *
@@ -960,7 +954,6 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
         // Building this access.
         clang::FieldDecl* Field = cast<clang::FieldDecl>(VD);
         clang::RecordDecl* RD = Field->getParent();
-        // FIXME: Add CV qualifiers here if needed
         clang::QualType ThisTy(RD->getTypeForDecl(), 0);
         clang::QualType ThisPtrTy = SemaRef.getContext().CxxAST.getPointerType(
                                                                         ThisTy);
@@ -1034,9 +1027,13 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
 
     if (auto *TD = R.getAsSingle<clang::TypeDecl>())
       return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
-  }
 
-  // TODO: FIXME: Create error reporting here for lookup failure.
+    if (auto *TD = R.getAsSingle<clang::TemplateDecl>())
+      return SemaRef.buildTemplateType(TD, Loc);
+  }
+  SemaRef.Diags.Report(S->getLoc(),
+                       clang::diag::err_identifier_not_declared_in_scope)
+                       << S->getSpelling();
   return nullptr;
 }
 static clang::Expr *createThisExpr(Sema &SemaRef, const AtomSyntax *S) {
@@ -2338,7 +2335,6 @@ clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *T
       if (BuiltinMapIter == SemaRef.BuiltinTypes.end()) {
         return nullptr;
       }
-
       return SemaRef.buildTypeExpr(BuiltinMapIter->second, Loc);
     }
 
@@ -2346,7 +2342,6 @@ clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *T
     TD->setIsUsed();
     return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
   }
-
   return elaborateExpr(D->Data.Type);
 }
 

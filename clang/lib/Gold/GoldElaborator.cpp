@@ -1460,7 +1460,105 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
 
 clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D,
     Declarator *TemplateParams) {
-  llvm_unreachable("This isn't implemented yet!");
+  if (!D->Init) {
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_templated_namespace_type);
+    return nullptr;
+  }
+  // Attempting to elaborate template for scope.
+  bool Template = D->declaresTemplateType();
+  const Syntax *TemplParams;
+
+  // Checking if we are a nested template decl/class.
+  llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
+  llvm::SmallVector<clang::TemplateParameterList *, 4> TPLStorage;
+  clang::MultiTemplateParamsArg MTP;
+  Declarator *TemplateDeclarator = nullptr;
+  Sema::OptionalScopeRAII TemplateScope(SemaRef);
+  Sema::OptioanlClangScopeRAII ClangTemplateScope(SemaRef);
+  if (Template) {
+    // TODO: In the future change this so we can enter multiple template scopes
+    // and track their depth
+    TemplateDeclarator = D->getFirstTemplateDeclarator();
+    TemplParams = TemplateDeclarator->Data.TemplateInfo.Params;
+
+    // Entering initial template scope.
+    TemplateScope.Init(SK_Template, TemplParams);
+    clang::SourceLocation Loc = TemplParams->getLoc();
+    ClangTemplateScope.Init(clang::Scope::TemplateParamScope, Loc);
+    BuildTemplateParams(Context, SemaRef, TemplParams, TemplateParamDecls);
+    clang::TemplateParameterList *TPL
+      = SemaRef.getCxxSema().ActOnTemplateParameterList(
+      /*unsigned Depth*/SemaRef.computeTemplateDepth(), /*ExportLoc*/Loc,
+      /*TemplateLoc*/Loc, /*LAngleLoc*/Loc, TemplateParamDecls,
+      /*RAngleLoc*/Loc, /*RequiresClause*/nullptr);
+    TPLStorage.push_back(TPL);
+    MTP = TPLStorage;
+  }
+
+
+  // This REQUIRES that we have specified type for now. But in order to do this
+  // correctly we can't construct a templated type right off the bat we need
+  // to figure out
+  // Attempting to get the
+  ExprElaborator Elab(Context, SemaRef);
+  Declarator *TyDeclarator = D->getFirstDeclarator(DK_Type);
+  if (!TyDeclarator) {
+    llvm_unreachable("Improperly identified template type alias, "
+                     "or template variable");
+  }
+  clang::Expr *TypeExpr = Elab.elaborateTypeExpr(TyDeclarator);
+  if (!TypeExpr) {
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+
+  if (!TypeExpr->getType()->isTypeOfTypes()) {
+    if (TypeExpr->getType()->isNamespaceType()) {
+      SemaRef.Diags.Report(D->Op->getLoc(),
+                           clang::diag::err_templated_namespace_type);
+      return nullptr;
+    }
+    if (TypeExpr->getType()->isTemplateType()) {
+      llvm_unreachable("Template variables not implemented yet");
+    }
+    // We MUST be a template variable type.
+    // Because I said so!
+    if (TypeExpr->getType()->isDependentType()) {
+      llvm_unreachable("Template variable not implemented just yet, Still "
+                      "working on it.");
+    }
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_declaration_type_not_a_type);
+    return nullptr;
+  }
+  // Attempting to elaborate the type expression.
+  clang::Expr *InitTyExpr = Elab.elaborateExpr(D->Init);
+  if (!InitTyExpr)
+    return nullptr;
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InitTyExpr,
+                                                             D->Init->getLoc());
+  if (!TInfo)
+    return nullptr;
+  clang::ParsedType PT;
+  PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
+
+  // Constructing the elaboration name.
+  clang::IdentifierInfo *IdInfo = D->getId();
+  clang::UnqualifiedId Id;
+  Id.setIdentifier(IdInfo, D->Decl->getLoc());
+  clang::SourceLocation Loc = D->Op->getLoc();
+  clang::TypeResult TR(PT);
+  clang::Decl *TypeAlias = SemaRef.getCxxSema().ActOnAliasDeclaration(
+      SemaRef.getCurClangScope(), clang::AS_public, MTP, Loc, Id,
+      clang::ParsedAttributesView(), TR, nullptr);
+  D->Cxx = TypeAlias;
+  if (D->Cxx) {
+    D->CurrentPhase = Phase::Initialization;
+    elaborateAttributes(D);
+  }
+  return D->Cxx;
 }
 
 clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {

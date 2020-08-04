@@ -236,7 +236,7 @@ TEST(GoldExceptionSpec, throw_DynamicThrows) {
 FakeException : type = class:
   i:int
 
-foo()<throw(FakeExceptions)> : int !
+foo()<throw(FakeException)> : int !
   return 4
 )";
   DeclarationMatcher NoExceptAttr = functionDecl(
@@ -250,7 +250,7 @@ TEST(GoldExceptionSpec, LineAttr_throw_DynamicThrows) {
 FakeException : type = class:
   i:int
 
-[throw(FakeExceptions)]
+[throw(FakeException)]
 foo() : int !
   return 4
 )";
