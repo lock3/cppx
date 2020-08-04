@@ -181,7 +181,9 @@ bool Declaration::declaresType() const {
 bool Declaration::declaresForwardRecordDecl() const {
   if (declaresInitializedVariable())
     if (const AtomSyntax *RHS = dyn_cast<AtomSyntax>(Init))
-      return RHS->hasToken(tok::ClassKeyword) || RHS->hasToken(tok::UnionKeyword);
+      return RHS->hasToken(tok::ClassKeyword)
+             || RHS->hasToken(tok::UnionKeyword)
+             || RHS->hasToken(tok::EnumKeyword);
   return false;
 }
 
@@ -192,12 +194,14 @@ bool Declaration::declaresTag() const {
     if (const MacroSyntax *Macro = dyn_cast<MacroSyntax>(Init)) {
       if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Macro->getCall()))
         return Atom->hasToken(tok::ClassKeyword)
-               || Atom->hasToken(tok::UnionKeyword);
+               || Atom->hasToken(tok::UnionKeyword)
+               || Atom->hasToken(tok::EnumKeyword);
       if (const CallSyntax *ClsWithBases = dyn_cast<CallSyntax>(Macro->getCall()))
         if (const AtomSyntax *Callee
                   = dyn_cast<AtomSyntax>(ClsWithBases->getCallee()))
           return Callee->hasToken(tok::ClassKeyword)
-                  || Callee->hasToken(tok::UnionKeyword);
+                  || Callee->hasToken(tok::UnionKeyword)
+                  || Callee->hasToken(tok::EnumKeyword);
     }
   return false;
 }
@@ -207,7 +211,8 @@ bool Declaration::getTagName(const AtomSyntax *&NameNode) const {
     if (const MacroSyntax *Macro = dyn_cast<MacroSyntax>(Init)) {
       if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Macro->getCall()))
         if (Atom->hasToken(tok::ClassKeyword)
-            || Atom->hasToken(tok::UnionKeyword)) {
+            || Atom->hasToken(tok::UnionKeyword)
+            || Atom->hasToken(tok::EnumKeyword)) {
           NameNode = Atom;
           return true;
         }
@@ -215,7 +220,8 @@ bool Declaration::getTagName(const AtomSyntax *&NameNode) const {
         if (const AtomSyntax *Callee
                   = dyn_cast<AtomSyntax>(ClsWithBases->getCallee()))
           if (Callee->hasToken(tok::ClassKeyword)
-              || Callee->hasToken(tok::UnionKeyword)) {
+              || Callee->hasToken(tok::UnionKeyword)
+              || Callee->hasToken(tok::EnumKeyword)) {
             NameNode = Callee;
             return true;
           }
@@ -352,7 +358,7 @@ bool Declaration::declaresFunctionTemplate() const {
 
 
 bool Declaration::declaresOperatorOverload() const {
-  if (!OpInfo) 
+  if (!OpInfo)
     return false;
   return declaresFunction();
 }
@@ -369,7 +375,7 @@ bool Declaration::declIsStatic() const {
   }
   if (!D->UnprocessedAttributes)
     return false;
-  
+
   auto Iter = std::find_if(D->UnprocessedAttributes->begin(),
       D->UnprocessedAttributes->end(), [](const Syntax *S) -> bool{
         if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(S)) {
@@ -394,7 +400,7 @@ bool Declaration::declaresInlineInitializedStaticVarDecl() const {
   if (!Cxx)
     return false;
   clang::VarDecl *VD = dyn_cast<clang::VarDecl>(Cxx);
-  if (!VD) 
+  if (!VD)
     return false;
   return VD->isInline() && VD->getStorageClass() == clang::SC_Static;
 }
@@ -514,7 +520,7 @@ void Scope::dump(llvm::raw_ostream &os) const {
       else
         os << "\n";
     }
-  } else 
+  } else
     for (auto D : IdMap)
       os << D.first->getName() << '\n';
 }

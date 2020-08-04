@@ -12,7 +12,7 @@ OperatorNameConstants::OperatorNameConstants(clang::ASTContext &Context)
 #define init_second_names(Name, OpStr, SecondName)                          \
   init_names(Name,OpStr,OpStr)                                              \
   GoldDecl_##Name##Text(&Context.Idents.get("operator\"" SecondName "\"")), \
-  GoldUse_##Name##Text(&Context.Idents.get("operator'" SecondName "'")),  
+  GoldUse_##Name##Text(&Context.Idents.get("operator'" SecondName "'")),
 
 #define def_bin_op_missmatch(Name,OpStr,ClangOpStr,ClangBinOpName,    \
                              MemberOnly,OverloadStyle,OpOverloadName) \
@@ -338,7 +338,7 @@ bool OperatorInfo::getBinaryOperatorUseKind(clang::IdentifierInfo *Id,
   auto It = OpLookupTable.find(Id);
   if (It == OpLookupTable.end())
     return true;
-  
+
   if (!It->second->isBinary())
     return true;
   Kind = It->second->getBinaryOperatorKind();
@@ -366,7 +366,7 @@ bool OperatorInfo::getUnaryOperatorUseKind(clang::IdentifierInfo *Id,
   auto It = OpLookupTable.find(Id);
   if (It == OpLookupTable.end())
     return true;
-  
+
   if (!It->second->isUnary())
     return true;
   Kind = It->second->getUnaryOperatorKind();

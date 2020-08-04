@@ -58,11 +58,17 @@ AST_POLYMORPHIC_MATCHER_P(valueDeclAlignedTo,
 
   // AlignedAttr *Attr = Node.template getAttr<AlignedAttr>();
   TypeInfo Ti = Node.getASTContext().getTypeInfo(Node.getType());
-  llvm::outs() << "Type info align = " << Ti.Align << "\n";
-  llvm::outs() << "Expected alignment = " << ExpectedAlignment << "\n";
-  llvm::outs() << "Max alignment = " << Node.getMaxAlignment() << "\n";
   // unsigned ActualAlignment = Attr->getAlignment(Node.getASTContext());
   return Ti.Align == ExpectedAlignment;
+}
+
+AST_POLYMORPHIC_MATCHER_P(underlyingIntegerType,
+                        AST_POLYMORPHIC_SUPPORTED_TYPES(EnumDecl),
+                        internal::Matcher<QualType>, InnerMatcher) {
+  QualType QT = Node.getIntegerType();
+  if (!QT.isNull())
+    return InnerMatcher.matches(QT, Finder, Builder);
+  return false;
 }
 
 AST_POLYMORPHIC_MATCHER_P(typeDeclAlignedTo,

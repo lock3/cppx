@@ -11067,6 +11067,12 @@ def err_operator_too_many_parameters : Error<
 def err_invalid_identifier_type : Error<
   "invalid indentifier %0">;
 
+def err_too_many_underlying_enum_types : Error <
+  "too many underlying enum types">;
+
+def err_invalid_enum_member_decl : Error <
+  "invalid enum member declaration">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

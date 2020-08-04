@@ -19,11 +19,113 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-// TEST(GoldEnumSyntax, EnumForwardDecl) {
-//   StringRef Code = R"(
-// x : type = enum
-// )";
-//   DeclarationMatcher ToMatch = functionDecl(hasName("foo"),
-//     unless(hasBody(compoundStmt())));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+TEST(GoldEnum, EnumForwardDecl) {
+  StringRef Code = R"(
+E : type = enum
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldEnum, Definition) {
+  StringRef Code = R"(
+E : type = enum:
+  x
+  y
+  z
+)";
+  DeclarationMatcher ToMatch = enumDecl(
+    hasName("E"), isScoped(),
+    has(enumConstantDecl(hasName("x"))),
+    has(enumConstantDecl(hasName("y"))),
+    has(enumConstantDecl(hasName("z")))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldEnum, WithUnderlyingType) {
+  StringRef Code = R"(
+E : type = enum(uint64):
+  x
+  y
+  z
+)";
+  DeclarationMatcher ToMatch = enumDecl(
+    hasName("E"), underlyingIntegerType(asString("unsigned long")),
+    has(enumConstantDecl(hasName("x"))),
+    has(enumConstantDecl(hasName("y"))),
+    has(enumConstantDecl(hasName("z")))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldEnum, WithInitExpr) {
+  StringRef Code = R"(
+E : type = enum:
+  x = 4
+  y
+  z
+)";
+  DeclarationMatcher ToMatch = enumDecl(
+    hasName("E"),
+    has(enumConstantDecl(hasName("x"), has(integerLiteral()))),
+    has(enumConstantDecl(hasName("y"))),
+    has(enumConstantDecl(hasName("z")))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldEnum, UseAsAType) {
+  StringRef Code = R"(
+E : type = enum:
+  x = 4
+  y
+  z
+
+V : E
+)";
+  DeclarationMatcher ToMatch = translationUnitDecl(
+    has(enumDecl(
+      hasName("E"),
+      has(enumConstantDecl(hasName("x"), has(integerLiteral()))),
+      has(enumConstantDecl(hasName("y"))),
+      has(enumConstantDecl(hasName("z")))
+    )),
+    has(varDecl(hasName("V"), hasType(asString("enum E"))))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldEnum, HasMemberFunction) {
+  StringRef Code = R"(
+E : type = enum:
+  x = 4
+  y
+  z
+  foo():void
+)";
+  GoldFailureTest(Code);
+}
+
+
+TEST(GoldEnum, ValueAccess) {
+  StringRef Code = R"(
+E : type = enum:
+  x = 4
+  y
+  z
+
+V : E = E.y
+)";
+  DeclarationMatcher ToMatch = translationUnitDecl(
+    has(enumDecl(
+      hasName("E"),
+      has(enumConstantDecl(hasName("x"), has(integerLiteral()))),
+      has(enumConstantDecl(hasName("y"))),
+      has(enumConstantDecl(hasName("z")))
+    )),
+    has(varDecl(hasName("V"), hasType(asString("enum E")),
+        hasInitializer(hasDescendant(declRefExpr(to(enumConstantDecl(hasName("y"))))))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

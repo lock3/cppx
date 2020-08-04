@@ -493,7 +493,9 @@ template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::CppxNamespaceTyp
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::EnumTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  clang::EnumTypeLoc EnumTL = TLB.push<clang::EnumTypeLoc>(Ty);
+  EnumTL.setNameLoc(Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::EnumTypeLoc>
@@ -771,7 +773,7 @@ TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context,
     for (unsigned I = 0; I < Params.size(); ++I)
       TL.setParam(I, Params[I]);
 
-    return TLB.getTypeSourceInfo(Context, Ty);    
+    return TLB.getTypeSourceInfo(Context, Ty);
   } else {
 
     clang::FunctionTypeLoc NewTL = TLB.push<clang::FunctionTypeLoc>(Ty);
