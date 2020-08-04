@@ -751,7 +751,8 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
               &TemplateArgList, Elem->getLoc());
         if (!FD) {
           // TODO: Create error message for this.
-          llvm_unreachable("Function template instantiation failure.");
+          llvm_unreachable("Function template instantiation failure Need to "
+                           "do SFINAE here.");
         }
         SemaRef.getCxxSema().InstantiateFunctionDefinition(Elem->getLoc(), FD,
                                                            true, true, false);
@@ -2014,61 +2015,6 @@ clang::Expr *ExprElaborator::elaborateNestedLookupAccess(const clang::Expr *Prev
 
 }
 
-/*  TODO: Remove this at some point in the future after I figure out how it
-    works and can replace it.
- ExprResult Sema::BuildUnaryOp(Scope *S, SourceLocation OpLoc,
-                               UnaryOperatorKind Opc, Expr *Input) {
-   // First things first: handle placeholders so that the
-   // overloaded-operator check considers the right type.
-   if (const BuiltinType *pty = Input->getType()->getAsPlaceholderType()) {
-     // Increment and decrement of pseudo-object references.
-     if (pty->getKind() == BuiltinType::PseudoObject &&
-         UnaryOperator::isIncrementDecrementOp(Opc))
-       return checkPseudoObjectIncDec(S, OpLoc, Opc, Input);
-
-     // extension is always a builtin operator.
-     if (Opc == UO_Extension)
-       return CreateBuiltinUnaryOp(OpLoc, Opc, Input);
-
-     // & gets special logic for several kinds of placeholder.
-     // The builtin code knows what to do.
-     if (Opc == UO_AddrOf &&
-         (pty->getKind() == BuiltinType::Overload ||
-          pty->getKind() == BuiltinType::UnknownAny ||
-          pty->getKind() == BuiltinType::BoundMember))
-       return CreateBuiltinUnaryOp(OpLoc, Opc, Input);
-
-     // Anything else needs to be handled now.
-     ExprResult Result = CheckPlaceholderExpr(Input);
-     if (Result.isInvalid()) return ExprError();
-     Input = Result.get();
-   }
-
-   if (getLangOpts().CPlusPlus && Input->getType()->isOverloadableType() &&
-       UnaryOperator::getOverloadedOperator(Opc) != OO_None &&
-       !(Opc == UO_AddrOf && isQualifiedMemberAccess(Input))) {
-     // Find all of the overloaded operators visible from this
-     // point. We perform both an operator-name lookup from the local
-     // scope and an argument-dependent lookup based on the types of
-     // the arguments.
-     UnresolvedSet<16> Functions;
-     OverloadedOperatorKind OverOp = UnaryOperator::getOverloadedOperator(Opc);
-     if (S && OverOp != OO_None)
-       LookupOverloadedOperatorName(OverOp, S, Input->getType(), QualType(),
-                                    Functions);
-
-     return CreateOverloadedUnaryOp(OpLoc, Opc, Functions, Input);
-   }
-
-   return CreateBuiltinUnaryOp(OpLoc, Opc, Input);
- }
-
- // Unary Operators.  'Tok' is the token for the operator.
- ExprResult Sema::ActOnUnaryOp(Scope *S, SourceLocation OpLoc,
-                               tok::TokenKind Op, Expr *Input) {
-   return BuildUnaryOp(S, OpLoc, ConvertTokenKindToUnaryOpcode(Op), Input);
- }
-*/
 clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
                                               clang::UnaryOperatorKind Op) {
   const Syntax *Operand = S->getArgument(0);
