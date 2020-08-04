@@ -180,10 +180,15 @@ bool Declaration::declaresType() const {
 
 bool Declaration::declaresForwardRecordDecl() const {
   if (declaresInitializedVariable())
-    if (const AtomSyntax *RHS = dyn_cast<AtomSyntax>(Init))
+    if (const AtomSyntax *RHS = dyn_cast<AtomSyntax>(Init)) {
       return RHS->hasToken(tok::ClassKeyword)
              || RHS->hasToken(tok::UnionKeyword)
              || RHS->hasToken(tok::EnumKeyword);
+    } else if (const CallSyntax *Call = dyn_cast<CallSyntax>(Init)) {
+      if (const AtomSyntax *Nm = dyn_cast<AtomSyntax>(Call->getCallee())) {
+        return Nm->hasToken(tok::EnumKeyword);
+      }
+    }
   return false;
 }
 

@@ -23,7 +23,21 @@ TEST(GoldEnum, EnumForwardDecl) {
   StringRef Code = R"(
 E : type = enum
 )";
-  GoldFailureTest(Code);
+  DeclarationMatcher ToMatch = enumDecl(
+    hasName("E"), unless(isDefinition())
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldEnum, EnumForwardDeclWithUnderlyingType) {
+  StringRef Code = R"(
+E : type = enum(uint64)
+)";
+  DeclarationMatcher ToMatch = enumDecl(
+    hasName("E"), underlyingIntegerType(asString("unsigned long")),
+    unless(isDefinition())
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
 TEST(GoldEnum, Definition) {

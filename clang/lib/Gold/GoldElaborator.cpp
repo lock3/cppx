@@ -460,33 +460,31 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
 
 static clang::TypeResult
 getUnderlyingEnumType(SyntaxContext& Context, Sema& SemaRef,
-                      const Syntax *EnumInit) {
-  if (const MacroSyntax *MS = dyn_cast<MacroSyntax>(EnumInit)) {
-    if (const CallSyntax *Call = dyn_cast<CallSyntax>(MS->getCall())) {
+                      const Syntax *MS) {
+  if (const CallSyntax *Call = dyn_cast<CallSyntax>(MS)) {
 
-      if (Call->getNumArguments() > 1) {
-        SemaRef.Diags.Report(Call->getLoc(),
-                            clang::diag::err_too_many_underlying_enum_types);
-        return clang::TypeResult();
-      }
-
-      // We have no underlying type so exit.
-      if (Call->getNumArguments() == 0)
-        return clang::TypeResult();
-
-      // We must have 1 argument so elaborate it.
-      ExprElaborator ExprElab(Context, SemaRef);
-      clang::Expr *UnderlyingTy = ExprElab.elaborateExpr(Call->getArgument(0));
-      if (!UnderlyingTy)
-        return clang::TypeResult();
-      clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
-                                                    UnderlyingTy, Call->getLoc());
-      if (!TInfo)
-        return clang::TypeResult();
-      clang::ParsedType PT;
-      PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
-      return clang::TypeResult(PT);
+    if (Call->getNumArguments() > 1) {
+      SemaRef.Diags.Report(Call->getLoc(),
+                          clang::diag::err_too_many_underlying_enum_types);
+      return clang::TypeResult();
     }
+
+    // We have no underlying type so exit.
+    if (Call->getNumArguments() == 0)
+      return clang::TypeResult();
+
+    // We must have 1 argument so elaborate it.
+    ExprElaborator ExprElab(Context, SemaRef);
+    clang::Expr *UnderlyingTy = ExprElab.elaborateExpr(Call->getArgument(0));
+    if (!UnderlyingTy)
+      return clang::TypeResult();
+    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                                  UnderlyingTy, Call->getLoc());
+    if (!TInfo)
+      return clang::TypeResult();
+    clang::ParsedType PT;
+    PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
+    return clang::TypeResult(PT);
   }
 
   // Return an empty expression result.
@@ -553,7 +551,11 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
       TST = clang::DeclSpec::TST_enum;
       // I need to extract the underlying type for an enum.
       ScopeEnumUsesClassTag = true;
-      UnderlyingType = getUnderlyingEnumType(Context, SemaRef, D->Init);
+      if (const MacroSyntax *MS = dyn_cast<MacroSyntax>(D->Init)) {
+        UnderlyingType = getUnderlyingEnumType(Context, SemaRef, MS->getCall());
+      } else {
+        llvm_unreachable("Invalid tree syntax.");
+      }
       ScopedEnumClassKW = Name->getLoc();
       SK = SK_Enum;
     } else {
@@ -700,18 +702,44 @@ processCXXForwardRecordDecl(Elaborator& Elab, SyntaxContext& Context,
   bool IsDependent = false;
   CXXScopeSpec SS;
   TypeResult UnderlyingType;
+  bool ScopeEnumUsesClassTag = false;
+  SourceLocation ScopedEnumClassKW;
   AccessSpecifier AS = AS_none;
   if (WithinClass)
     AS = AS_public;
   clang::SourceLocation IdLoc = D->Decl->getLoc();
   clang::TypeSpecifierType TST = clang::DeclSpec::TST_struct;
-  const AtomSyntax *Name = dyn_cast<AtomSyntax>(D->Init);
-  if (Name->hasToken(tok::ClassKeyword)) {
-    TST = clang::DeclSpec::TST_struct;
-  } else if (Name->hasToken(tok::UnionKeyword)) {
-    TST = clang::DeclSpec::TST_union;
-  } else if (Name->hasToken(tok::EnumKeyword)) {
-    TST = clang::DeclSpec::TST_enum;
+  if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(D->Init)) {
+    if (Name->hasToken(tok::ClassKeyword)) {
+      TST = clang::DeclSpec::TST_struct;
+    } else if (Name->hasToken(tok::UnionKeyword)) {
+      TST = clang::DeclSpec::TST_union;
+    } else if (Name->hasToken(tok::EnumKeyword)) {
+      // This is here because it's used specifically to generate an error from
+      // Sema::ActOnTag
+      TST = clang::DeclSpec::TST_enum;
+      ScopeEnumUsesClassTag = true;
+      ScopedEnumClassKW = Name->getLoc();
+    } else {
+      llvm_unreachable("Incorrectly identified tag type");
+    }
+  } else if (const CallSyntax *EnumCall = dyn_cast<CallSyntax>(D->Init)) {
+    if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(EnumCall->getCallee())) {
+      if (Name->hasToken(tok::EnumKeyword)) {
+        TST = clang::DeclSpec::TST_enum;
+        ScopeEnumUsesClassTag = true;
+        UnderlyingType = getUnderlyingEnumType(Context, SemaRef, EnumCall);
+        ScopedEnumClassKW = Name->getLoc();
+      } else {
+        SemaRef.Diags.Report(EnumCall->getLoc(),
+                            clang::diag::err_invalid_declaration);
+        return nullptr;
+      }
+    } else {
+      SemaRef.Diags.Report(EnumCall->getLoc(),
+                          clang::diag::err_invalid_declaration);
+      return nullptr;
+    }
   } else {
     llvm_unreachable("Incorrectly identified tag type");
   }
@@ -723,9 +751,10 @@ processCXXForwardRecordDecl(Elaborator& Elab, SyntaxContext& Context,
       clang::ParsedAttributesView(), /*AccessSpecifier=*/AS,
       /*ModulePrivateLoc=*/SourceLocation(),
       MTP, IsOwned, IsDependent,
-      /*ScopedEnumKWLoc=*/SourceLocation(),
-      /*ScopeEnumUsesClassTag=*/false, UnderlyingType, /*IsTypeSpecifier=*/false,
-      /*IsTemplateParamOrArg=*/false, /*SkipBody=*/nullptr);
+      /*ScopedEnumKWLoc=*/ScopedEnumClassKW,
+      /*ScopeEnumUsesClassTag=*/ScopeEnumUsesClassTag, UnderlyingType,
+      /*IsTypeSpecifier=*/false, /*IsTemplateParamOrArg=*/false,
+      /*SkipBody=*/nullptr);
   CXXRecordDecl *ClsDecl = nullptr;
   if(isa<CXXRecordDecl>(Declaration)) {
     ClsDecl = cast<CXXRecordDecl>(Declaration);
