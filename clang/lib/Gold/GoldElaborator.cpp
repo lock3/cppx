@@ -1434,10 +1434,6 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
   clang::UnqualifiedId Id;
   Id.setIdentifier(IdInfo, D->Decl->getLoc());
   clang::SourceLocation Loc = D->Op->getLoc();
-
-
-  // TODO: In future create a means for us to correctly construct any template
-  // parameters.
   clang::MultiTemplateParamsArg MTP;
 
   // Constructing the type alias on the way out because I need to correctly
@@ -1446,12 +1442,6 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
   clang::Decl *TypeAlias = SemaRef.getCxxSema().ActOnAliasDeclaration(
       SemaRef.getCurClangScope(), clang::AS_public, MTP, Loc, Id,
       clang::ParsedAttributesView(), TR, nullptr);
-  // Attempting to add attribute support for this kind of declaration.
-
-  bool InClass = SemaRef.getCurrentScope()->getKind() == SK_Class;
-  if (InClass) {
-    TypeAlias->setAccess(clang::AS_public);
-  }
 
   D->Cxx = TypeAlias;
   elaborateAttributes(D);
@@ -1460,13 +1450,9 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
 
 clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D,
     Declarator *TemplateParams) {
-  if (!D->Init) {
-    SemaRef.Diags.Report(D->Op->getLoc(),
-                         clang::diag::err_templated_namespace_type);
-    return nullptr;
-  }
+
+  bool InClass = SemaRef.getCurrentScope()->isClassScope();
   // Attempting to elaborate template for scope.
-  bool Template = D->declaresTemplateType();
   const Syntax *TemplParams;
 
   // Checking if we are a nested template decl/class.
@@ -1476,25 +1462,24 @@ clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D,
   Declarator *TemplateDeclarator = nullptr;
   Sema::OptionalScopeRAII TemplateScope(SemaRef);
   Sema::OptioanlClangScopeRAII ClangTemplateScope(SemaRef);
-  if (Template) {
-    // TODO: In the future change this so we can enter multiple template scopes
-    // and track their depth
-    TemplateDeclarator = D->getFirstTemplateDeclarator();
-    TemplParams = TemplateDeclarator->Data.TemplateInfo.Params;
-
-    // Entering initial template scope.
-    TemplateScope.Init(SK_Template, TemplParams);
-    clang::SourceLocation Loc = TemplParams->getLoc();
-    ClangTemplateScope.Init(clang::Scope::TemplateParamScope, Loc);
-    BuildTemplateParams(Context, SemaRef, TemplParams, TemplateParamDecls);
-    clang::TemplateParameterList *TPL
-      = SemaRef.getCxxSema().ActOnTemplateParameterList(
-      /*unsigned Depth*/SemaRef.computeTemplateDepth(), /*ExportLoc*/Loc,
-      /*TemplateLoc*/Loc, /*LAngleLoc*/Loc, TemplateParamDecls,
-      /*RAngleLoc*/Loc, /*RequiresClause*/nullptr);
-    TPLStorage.push_back(TPL);
-    MTP = TPLStorage;
-  }
+  TemplateDeclarator = D->getFirstTemplateDeclarator();
+  TemplParams = TemplateDeclarator->Data.TemplateInfo.Params;
+  // Entering initial template scope.
+  TemplateScope.Init(SK_Template, D->Op, &D->SavedScope);
+  clang::SourceLocation TemplateParamsLoc = TemplParams->getLoc();
+  ClangTemplateScope.Init(clang::Scope::TemplateParamScope, TemplateParamsLoc);
+  BuildTemplateParams(Context, SemaRef, TemplParams, TemplateParamDecls);
+  clang::TemplateParameterList *TPL
+    = SemaRef.getCxxSema().ActOnTemplateParameterList(
+                               /*unsigned Depth*/SemaRef.computeTemplateDepth(),
+                               /*ExportLoc*/TemplateParamsLoc,
+                               /*TemplateLoc*/TemplateParamsLoc,
+                               /*LAngleLoc*/TemplateParamsLoc,
+                               TemplateParamDecls,
+                               /*RAngleLoc*/TemplateParamsLoc,
+                               /*RequiresClause*/nullptr);
+  TPLStorage.push_back(TPL);
+  MTP = TPLStorage;
 
 
   // This REQUIRES that we have specified type for now. But in order to do this
@@ -1523,39 +1508,79 @@ clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D,
     if (TypeExpr->getType()->isTemplateType()) {
       llvm_unreachable("Template variables not implemented yet");
     }
-    // We MUST be a template variable type.
-    // Because I said so!
-    if (TypeExpr->getType()->isDependentType()) {
-      llvm_unreachable("Template variable not implemented just yet, Still "
-                      "working on it.");
-    }
     SemaRef.Diags.Report(D->Op->getLoc(),
                          clang::diag::err_declaration_type_not_a_type);
     return nullptr;
   }
-  // Attempting to elaborate the type expression.
-  clang::Expr *InitTyExpr = Elab.elaborateExpr(D->Init);
-  if (!InitTyExpr)
+  clang::TypeSourceInfo *TypeExprInfo
+               = SemaRef.getTypeSourceInfoFromExpr(TypeExpr,
+                                             TyDeclarator->Data.Type->getLoc());
+  if (!TypeExprInfo)
     return nullptr;
-  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InitTyExpr,
-                                                             D->Init->getLoc());
-  if (!TInfo)
-    return nullptr;
-  clang::ParsedType PT;
-  PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
 
   // Constructing the elaboration name.
   clang::IdentifierInfo *IdInfo = D->getId();
   clang::UnqualifiedId Id;
   Id.setIdentifier(IdInfo, D->Decl->getLoc());
   clang::SourceLocation Loc = D->Op->getLoc();
-  clang::TypeResult TR(PT);
-  clang::Decl *TypeAlias = SemaRef.getCxxSema().ActOnAliasDeclaration(
-      SemaRef.getCurClangScope(), clang::AS_public, MTP, Loc, Id,
-      clang::ParsedAttributesView(), TR, nullptr);
-  D->Cxx = TypeAlias;
-  if (D->Cxx) {
+
+  if (!TypeExprInfo->getType()->isTypeOfTypes()) {
+    bool DeclIsStatic = false;
+    if (isStaticMember(SemaRef, D, DeclIsStatic)) {
+      return nullptr;
+    }
+
+    // Emit an error message here.
+    if (InClass && !DeclIsStatic) {
+      SemaRef.Diags.Report(D->Decl->Data.Id->getLoc(),
+                           clang::diag::err_template_member)
+                           << D->getId()->getName();
+      return nullptr;
+    }
+    clang::StorageClass TS = clang::SC_None;
+    if (DeclIsStatic) {
+      TS = clang::SC_Static;
+    }
+    clang::VarDecl *VDecl = clang::VarDecl::Create(Context.CxxAST,
+                                               SemaRef.getCurClangDeclContext(),
+                                                   Loc, Loc, IdInfo,
+                                                   TypeExprInfo->getType(),
+                                                   TypeExprInfo, TS);
+    clang::DeclarationName DeclName = IdInfo;
+    clang::VarTemplateDecl *VTD = clang::VarTemplateDecl::Create(
+                                                      Context.CxxAST,
+                                                      VDecl->getDeclContext(),
+                                                      Loc, DeclName, MTP.back(),
+                                                      VDecl);
+    SemaRef.getCxxSema().PushOnScopeChains(VTD, SemaRef.getCurClangScope(),
+                                           true);
+    D->CurrentPhase = Phase::Typing;
+    D->Cxx = VTD;
+  } else {
+    if (!D->Init) {
+      SemaRef.Diags.Report(D->Op->getLoc(),
+                          clang::diag::err_templated_namespace_type);
+      return nullptr;
+    }
+    // Attempting to elaborate the type expression.
+    clang::Expr *InitTyExpr = Elab.elaborateExpr(D->Init);
+    if (!InitTyExpr)
+      return nullptr;
+    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InitTyExpr,
+                                                              D->Init->getLoc());
+    if (!TInfo)
+      return nullptr;
+    clang::ParsedType PT;
+    PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
+    clang::TypeResult TR(PT);
+    clang::Decl *TypeAlias = SemaRef.getCxxSema().ActOnAliasDeclaration(
+        SemaRef.getCurClangScope(), clang::AS_public, MTP, Loc, Id,
+        clang::ParsedAttributesView(), TR, nullptr);
+    D->Cxx = TypeAlias;
+    // Only the type alias is fully elaborated at this point in time.
     D->CurrentPhase = Phase::Initialization;
+  }
+  if (D->Cxx) {
     elaborateAttributes(D);
   }
   return D->Cxx;
@@ -1673,6 +1698,7 @@ clang::Decl *Elaborator::elaborateParmDeclSyntax(const Syntax *S) {
 
   return nullptr;
 }
+
 clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
   assert(D && D->getId() && "Early elaboration of unidentified declaration");
   Sema::OptionalInitScope<Sema::EnterNonNestedClassEarlyElaboration>
@@ -1722,7 +1748,7 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   if (D->declaresConstructor()) {
     llvm::SmallVector<clang::CXXCtorInitializer*, 32> Initializers;
     SemaRef.getCxxSema().ActOnMemInitializers(D->Cxx, clang::SourceLocation(),
-        Initializers, false);
+                                              Initializers, false);
   }
 
   if (D->Op) {
@@ -1835,13 +1861,26 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   D->CurrentPhase = Phase::Initialization;
   if (!D->Cxx)
     return;
+  // TemplateScope.Init(SK_Template, TemplParams, D->Op, &D->SavedScope);
+  Sema::OptionalInitScope<Sema::ResumeScopeRAII> OptResumeScope(SemaRef);
+  bool NeedsConstEvaluation = false;
+  clang::VarDecl *VD = nullptr;
+  if (D->defines<clang::VarTemplateDecl>()) {
+    if (SemaRef.checkForRedefinition<clang::VarTemplateDecl>(D))
+      return;
 
-  // FIXME: If we synthesize initializers, this might need to happen before that
-  if (SemaRef.checkForRedefinition<clang::VarDecl>(D))
-    return;
-
-  clang::VarDecl *VD = cast<clang::VarDecl>(D->Cxx);
-
+    // We need to attempt to re-enter the template context for this variable.
+    OptResumeScope.Init(D->SavedScope, D->Op);
+    clang::VarTemplateDecl *VTD = cast<clang::VarTemplateDecl>(D->Cxx);
+    VD = VTD->getTemplatedDecl();
+  } else {
+    if (SemaRef.checkForRedefinition<clang::VarDecl>(D))
+      return;
+    VD = cast<clang::VarDecl>(D->Cxx);
+  }
+  if (VD->isConstexpr()) {
+    NeedsConstEvaluation = true;
+  }
   if (!D->Init) {
     if (isa<clang::ParmVarDecl>(VD))
       return;
@@ -1863,29 +1902,20 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     return;
   }
 
-  // Doing
-  // ExprElaborator::Expression Init;
+  // If we are inside of a variable template we need to re-enter the scope
+  // for the variable.
   clang::Expr *InitExpr = nullptr;
   ExprElaborator ExprElab(Context, SemaRef);
-  if (D->declaresInlineInitializedStaticVarDecl()) {
-    Sema::ExprEvalRAII Ctxt(SemaRef,
+  if (D->declaresInlineInitializedStaticVarDecl() && !NeedsConstEvaluation) {
+    Sema::ExprEvalRAII EvalScope(SemaRef,
       clang::Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
     InitExpr = ExprElab.elaborateExpr(D->Init);
   } else {
-    InitExpr = ExprElab.elaborateExpr(D->Init);
+    if (NeedsConstEvaluation)
+      InitExpr = ExprElab.elaborateExpectedConstantExpr(D->Init);
+    else
+      InitExpr = ExprElab.elaborateExpr(D->Init);
   }
-
-  // Make sure the initializer was elaborated as a type.
-  // FIXME: This will need to change in order to properly address how identifiers
-  // are being processed. Because we will need to change things so that we can
-  // properly identify member types, and member templates, template template
-  // parameters etc.
-  // if (Init.is<clang::TypeSourceInfo *>()) {
-  //   llvm::errs() << "Expected expression.\n";
-  //   return;
-  // }
-
-
 
   // Perform auto deduction.
   if (VD->getType()->isUndeducedType()) {
@@ -1929,9 +1959,14 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
                          clang::diag::err_failed_to_translate_expr);
     return;
   }
-
-  // Update the initializer.
-  SemaRef.getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
+  if (D->defines<clang::VarTemplateDecl>()) {
+    // I may need to revisit this in the furture becaus this might not be
+    // the right thing to do in this case.
+    VD->setInit(InitExpr);
+  } else {
+    // Update the initializer.
+    SemaRef.getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
+  }
 }
 
 void Elaborator::elaborateTemplateParamInit(Declaration *D) {
@@ -2134,7 +2169,6 @@ void Elaborator::elaborateEnumMemberInit(const Syntax *S) {
   if (!D->Cxx)
     return;
 
-  // llvm::outs() << "Elaborating of enumeration memebers with values isn't implemented yet\n";
   ExprElaborator Elab(Context, SemaRef);
   if (D->Init) {
     clang::Expr *ConstExpr = Elab.elaborateExpectedConstantExpr(D->Init);

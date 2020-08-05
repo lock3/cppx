@@ -1,4 +1,4 @@
-//=== GoldTemplateTypeAliasElab.cpp ---------------------------------------===//
+//=== GoldVariableTemplateElab ---------------------------------------------==//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This tests the implementation for a template type alias implementation.
+//  Testing elaboration of variable templates.
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,42 +19,41 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-TEST(GoldTemplateTypeAlias, Declaration) {
+TEST(GoldVariableTemplate, Simple) {
   StringRef Code = R"(
-TCls[T:type] : type = class:
-  ;
-
-TTA[T:type] : type = TCls[T]
+X[T:type] : const T = T(4)
 )";
-  DeclarationMatcher ToMatch = typeAliasTemplateDecl(
-    hasName("TTA"), has(typeAliasDecl(has(templateSpecializationType())))
+
+  DeclarationMatcher ToMatch = varTemplateDecl(hasName("X"),
+    has(varDecl(hasInitializer(hasType(asString("T")))))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-TEST(GoldTemplateTypeAlias, NonDependentAlias) {
+TEST(GoldVariableTemplate, NoInit) {
   StringRef Code = R"(
-TTA[T:type] : type = int
+X[T:type] : const T
 )";
-  DeclarationMatcher ToMatch = typeAliasTemplateDecl(hasName("TTA"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
 
-TEST(GoldTemplateTypeAlias, Use) {
-  StringRef Code = R"(
-TTA[T:type] : type = int
-
-foo() :TTA[int]
-)";
-  DeclarationMatcher ToMatch = functionDecl(
-    hasType(asString("TTA<int> (void)"))
+  DeclarationMatcher ToMatch = varTemplateDecl(hasName("X"),
+    has(varDecl())
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-TEST(GoldTemplateTypeAlias, InvalidForwardDecl) {
+TEST(GoldVariableTemplate, UseOfDeclWithNoConst) {
   StringRef Code = R"(
-TTA[T:type] : type
+X[T:type] : T
+
+foo() : void!
+  v = X[int]
 )";
-  GoldFailureTest(Code);
+
+  DeclarationMatcher ToMatch = translationUnitDecl(
+    has(varTemplateDecl(hasName("X"))),
+    has(functionDecl(hasName("foo"),
+      hasDescendant(varDecl())
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

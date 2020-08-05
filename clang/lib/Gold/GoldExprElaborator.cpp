@@ -621,8 +621,10 @@ convertExprToTemplateArg(Sema &SemaRef, clang::Expr *E) {
 static clang::Expr*
 handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
     SyntaxContext& Context, clang::Expr* IdExpr, const ElemSyntax *Elem) {
+  clang::TemplateArgumentListInfo TemplateArgs(Elem->getLoc(), Elem->getLoc());
   llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
   const ListSyntax *ElemArgs = cast<ListSyntax>(Elem->getArguments());
+
   for(const Syntax *SyntaxArg : ElemArgs->children()) {
     clang::EnterExpressionEvaluationContext EnterConstantEvaluated(
                                                           SemaRef.getCxxSema(),
@@ -646,6 +648,18 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
 
     ParsedArguments.emplace_back(TemplateArg);
 
+    // Also building template Argument Info.
+    if (ArgExpr->getType()->isTypeOfTypes()) {
+      clang::TypeSourceInfo *ArgTInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                                       ArgExpr, Elem->getLoc());
+      if (!ArgTInfo)
+        return nullptr;
+      clang::TemplateArgument Arg(ArgTInfo->getType());
+      TemplateArgs.addArgument({Arg, ArgTInfo});
+    } else {
+      clang::TemplateArgument Arg(ArgExpr, clang::TemplateArgument::Expression);
+      TemplateArgs.addArgument({Arg, ArgExpr});
+    }
   }
 
   clang::Decl *Decl = SemaRef.getDeclFromExpr(IdExpr,
@@ -661,21 +675,35 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
   clang::Sema::TemplateTy TemplateTyName = clang::Sema::TemplateTy::make(TName);
   clang::IdentifierInfo *II = CTD->getIdentifier();
   clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
-  clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
-    SemaRef.getCurClangScope(), SS, /*TemplateKWLoc*/ clang::SourceLocation(),
-    TemplateTyName, II, Elem->getObject()->getLoc(),
-    /*LAngleLoc*/clang::SourceLocation(),
-    InArgs, /*RAngleLoc*/ clang::SourceLocation(), false, false);
+  if (clang::VarTemplateDecl *VTD = dyn_cast<clang::VarTemplateDecl>(CTD)) {
+    clang::DeclarationNameInfo DNI(VTD->getDeclName(), Elem->getLoc());
+    clang::LookupResult R(SemaRef.getCxxSema(), DNI,
+                          clang::Sema::LookupAnyName);
+    R.addDecl(VTD);
+    clang::ExprResult ER = SemaRef.getCxxSema().BuildTemplateIdExpr(
+          SS, clang::SourceLocation(), R, false, &TemplateArgs);
+    if (ER.isInvalid())
+      return nullptr;
+    return ER.get();
+  } else {
 
-  if (Result.isInvalid()) {
-    SemaRef.Diags.Report(Elem->getObject()->getLoc(),
-                         clang::diag::err_failed_to_translate_expr);
-    return nullptr;
+
+    clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
+      SemaRef.getCurClangScope(), SS, /*TemplateKWLoc*/ clang::SourceLocation(),
+      TemplateTyName, II, Elem->getObject()->getLoc(),
+      /*LAngleLoc*/clang::SourceLocation(),
+      InArgs, /*RAngleLoc*/ clang::SourceLocation(), false, false);
+
+    if (Result.isInvalid()) {
+      SemaRef.Diags.Report(Elem->getObject()->getLoc(),
+                          clang::diag::err_failed_to_translate_expr);
+      return nullptr;
+    }
+
+    clang::QualType Ty(Result.get().get());
+    const clang::LocInfoType *TL = cast<clang::LocInfoType>(Ty.getTypePtr());
+    return SemaRef.buildTypeExpr(TL->getType(), Elem->getLoc());
   }
-
-  clang::QualType Ty(Result.get().get());
-  const clang::LocInfoType *TL = cast<clang::LocInfoType>(Ty.getTypePtr());
-  return SemaRef.buildTypeExpr(TL->getType(), Elem->getLoc());
 }
 
 static clang::Expr *
@@ -709,7 +737,6 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
                                                      clang::SourceLocation());
     return SubScriptExpr.get();
   }
-
   // At this point we are an overload set which means we must be some kind of
   // templated function, or overloaded function.
   clang::TemplateArgumentListInfo TemplateArgs(Elem->getLoc(), Elem->getLoc());
@@ -887,7 +914,7 @@ clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
       || IdExpr->getType()->isNamespaceType()) {
     SemaRef.Diags.Report(Elem->getObject()->getLoc(),
                          clang::diag::err_non_template_in_template_id)
-      << IdExpr;
+                         << IdExpr;
     return nullptr;
   }
 

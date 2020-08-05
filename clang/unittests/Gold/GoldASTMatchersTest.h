@@ -9,6 +9,7 @@
 #ifndef LLVM_CLANG_UNITTESTS_GOLD_ASTMATCHERSTEST_H
 #define LLVM_CLANG_UNITTESTS_GOLD_ASTMATCHERSTEST_H
 
+#include "clang/Gold/GoldFrontend.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/AST/Attr.h"
@@ -17,7 +18,7 @@
 
 namespace clang {
 namespace ast_matchers {
-
+extern const internal::VariadicDynCastAllOfMatcher<Decl, VarTemplateDecl> varTemplateDecl;
 // I created this because it didn't exist before this and I acutally needed it
 // for a particular test.
 AST_POLYMORPHIC_MATCHER(isExternStorageClass,
