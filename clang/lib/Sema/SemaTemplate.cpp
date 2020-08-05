@@ -9018,16 +9018,21 @@ bool Sema::CheckFunctionTemplateSpecialization(
     MarkUnusedFileScopedDecl(Specialization);
   }
 
+  // The Gold elaborator possibly already handled this.
+  bool AlreadySpecialized = LangOpts.Gold &&
+    (FD->getTemplatedKind() != FunctionDecl::TK_NonTemplate);
   // Turn the given function declaration into a function template
   // specialization, with the template arguments from the previous
   // specialization.
   // Take copies of (semantic and syntactic) template argument lists.
-  const TemplateArgumentList* TemplArgs = new (Context)
-    TemplateArgumentList(Specialization->getTemplateSpecializationArgs());
-  FD->setFunctionTemplateSpecialization(
+  if (!AlreadySpecialized) {
+    const TemplateArgumentList* TemplArgs = new (Context)
+      TemplateArgumentList(Specialization->getTemplateSpecializationArgs());
+    FD->setFunctionTemplateSpecialization(
       Specialization->getPrimaryTemplate(), TemplArgs, /*InsertPos=*/nullptr,
       SpecInfo->getTemplateSpecializationKind(),
       ExplicitTemplateArgs ? &ConvertedTemplateArgs[Specialization] : nullptr);
+  }
 
   // A function template specialization inherits the target attributes
   // of its template.  (We require the attributes explicitly in the
