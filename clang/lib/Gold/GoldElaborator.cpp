@@ -896,10 +896,11 @@ static bool getOperatorDeclarationName(SyntaxContext &Context, Sema &SemaRef,
 }
 
 // Get either the canonical name of a function, or its C++ name if it's
-// an operator or special function.
+// an operator.
 static clang::DeclarationName getFunctionName(SyntaxContext &Ctx, Sema &SemaRef,
                                               Declaration *D,
                                               clang::TypeSourceInfo *TInfo,
+                                              bool InClass,
                                               const clang::RecordDecl *RD) {
   clang::DeclarationName Name;
   if (D->OpInfo) {
@@ -907,7 +908,7 @@ static clang::DeclarationName getFunctionName(SyntaxContext &Ctx, Sema &SemaRef,
       TInfo->getType().getTypePtr());
     assert(FPT && "function does not have prototype");
 
-    if (getOperatorDeclarationName(Ctx, SemaRef, D->OpInfo, RD,
+    if (getOperatorDeclarationName(Ctx, SemaRef, D->OpInfo, InClass,
                                    FPT->getNumParams(),
                                    D->Decl->Data.Id->getLoc(), Name)) {
       return clang::DeclarationName();
@@ -916,27 +917,147 @@ static clang::DeclarationName getFunctionName(SyntaxContext &Ctx, Sema &SemaRef,
     Name = D->getId();
   }
 
-  if (RD) {
-    clang::QualType RecordTy = Ctx.CxxAST.getTypeDeclType(RD);
-    clang::CanQualType Ty = Ctx.CxxAST.getCanonicalType(RecordTy);
-    if (D->getId()->isStr("constructor")) {
-      Name = Ctx.CxxAST.DeclarationNames.getCXXConstructorName(Ty);
-    } else if (D->getId()->isStr("destructor")) {
-      Name = Ctx.CxxAST.DeclarationNames.getCXXDestructorName(Ty);
-    }
-  }
-
   return Name;
 }
 
-static void lookupFunctionRedecls(Sema &SemaRef,
-                                  clang::LookupResult &Previous) {
-  clang::Scope *ClangScope = SemaRef.getCurClangScope();
-  while ((ClangScope->getFlags() & clang::Scope::DeclScope) == 0 ||
-         (ClangScope->getFlags() & clang::Scope::TemplateParamScope) != 0)
-    ClangScope = ClangScope->getParent();
+static void setSpecialFunctionName(SyntaxContext &Ctx, clang::CXXRecordDecl *RD,
+                                   Declaration *D, clang::DeclarationName &Name) {
+  clang::QualType RecordTy = Ctx.CxxAST.getTypeDeclType(RD);
+  clang::CanQualType Ty = Ctx.CxxAST.getCanonicalType(RecordTy);
+  if (D->getId()->isStr("constructor")) {
+    Name = Ctx.CxxAST.DeclarationNames.getCXXConstructorName(Ty);
+  } else if (D->getId()->isStr("destructor")) {
+    Name = Ctx.CxxAST.DeclarationNames.getCXXDestructorName(Ty);
+  }
+}
 
-  SemaRef.getCxxSema().LookupName(Previous, ClangScope, false);
+static void lookupFunctionRedecls(Sema &SemaRef,
+                                  clang::Scope *FoundScope,
+                                  clang::LookupResult &Previous) {
+  while ((FoundScope->getFlags() & clang::Scope::DeclScope) == 0 ||
+         (FoundScope->getFlags() & clang::Scope::TemplateParamScope) != 0)
+    FoundScope = FoundScope->getParent();
+
+  SemaRef.getCxxSema().LookupName(Previous, FoundScope, false);
+}
+
+static bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
+                        clang::DeclarationName const &Name, clang::FunctionDecl **FD,
+                        clang::TypeSourceInfo *Ty, clang::CXXRecordDecl *RD) {
+  clang::SourceLocation ExLoc = Fn->Op->getLoc();
+  clang::SourceLocation FnLoc = Fn->Decl->getLoc();
+  const clang::FunctionType *FT = cast<clang::FunctionType>(Ty->getType());
+  clang::DeclarationNameInfo DNI;
+  DNI.setName(Name);
+  DNI.setLoc(ExLoc);
+
+  bool Constructor = Fn->getId()->isStr("constructor");
+  bool Destructor = Fn->getId()->isStr("destructor");
+  if (Constructor || Destructor) {
+    if (FT->getReturnType() != Context.CxxAST.VoidTy) {
+      SemaRef.Diags.Report(FnLoc,
+                           clang::diag::err_invalid_return_type_for_ctor_or_dtor)
+        << 0;
+      return false;
+    }
+
+    clang::ExplicitSpecifier
+      ES(nullptr, clang::ExplicitSpecKind::ResolvedFalse);
+    clang::CXXMethodDecl *Method = nullptr;
+
+    if (Constructor)
+      *FD = Method =
+        clang::CXXConstructorDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
+                                          clang::QualType(), nullptr, ES, false,
+                              false, clang::ConstexprSpecKind::CSK_unspecified);
+    else if (Destructor)
+    *FD = Method =
+      clang::CXXDestructorDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
+                                       clang::QualType(), nullptr, false, false,
+                                     clang::ConstexprSpecKind::CSK_unspecified);
+
+
+    Method->setImplicit(false);
+    Method->setDefaulted(false);
+    Method->setBody(nullptr);
+
+    // Build an exception specification pointing back at this member.
+    clang::FunctionProtoType::ExtProtoInfo EPI;
+    EPI.ExceptionSpec.Type = clang::EST_None;
+    EPI.ExceptionSpec.SourceDecl = Method;
+
+    // Set the calling convention to the default for C++ instance methods.
+    EPI.ExtInfo = EPI.ExtInfo.withCallingConv(
+      Context.CxxAST.getDefaultCallingConvention(/*IsVariadic=*/false,
+                                                 /*IsCXXMethod=*/true));
+    clang::LangAS AS = SemaRef.getCxxSema().getDefaultCXXMethodAddrSpace();
+    if (AS != clang::LangAS::Default)
+      EPI.TypeQuals.addAddressSpace(AS);
+
+    const clang::FunctionProtoType *FPT
+      = cast<clang::FunctionProtoType>(Ty->getType().getTypePtr());
+    if (Destructor && FPT->getNumParams() != 0) {
+      SemaRef.Diags.Report(ExLoc,
+                           clang::diag::err_destructor_with_params);
+      return false;
+    }
+
+    auto VoidFnTy =
+      Context.CxxAST.getFunctionType(Context.CxxAST.VoidTy,
+                                     Constructor ?
+                                     FPT->getParamTypes() : clang::None,
+                                     EPI);
+    Method->setType(VoidFnTy);
+  } else {
+    clang::StorageClass SC = clang::SC_None;
+    *FD = clang::CXXMethodDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
+                                       Ty->getType(), Ty,
+                                       SC, /*isInline*/true,
+                                       clang::ConstexprSpecKind::CSK_unspecified,
+                                       ExLoc);
+  }
+
+  (*FD)->setAccess(clang::AS_public);
+  return true;
+}
+
+static void handleFunctionTemplateSpecialization(SyntaxContext &Context,
+                                                 Sema &SemaRef,
+                                                 const Syntax *TemplateParams,
+                                                 Declarator *Fn,
+                                                 clang::FunctionDecl *FD,
+                                                 clang::LookupResult &Prev) {
+    bool HasExplicitTemplateArgs = false;
+    clang::TemplateArgumentListInfo TemplateArgs;
+
+    for (auto *SS : TemplateParams->children()) {
+      clang::Expr *E = ExprElaborator(Context, SemaRef).elaborateExpr(SS);
+      // TODO: create a list of valid expressions this can or cannot be;
+      // for example, namespace or pseudo-destructor is invalid here.
+      if (E->getType()->isTypeOfTypes()) {
+        auto *TInfo = SemaRef.getTypeSourceInfoFromExpr(E, SS->getLoc());
+        clang::TemplateArgument Arg(TInfo->getType());
+        clang::TemplateArgumentLoc ArgLoc(Arg, TInfo);
+        TemplateArgs.addArgument(ArgLoc);
+      } else {
+        clang::TemplateArgument Arg(E, clang::TemplateArgument::Expression);
+        clang::TemplateArgumentLoc ArgLoc(Arg, E);
+        TemplateArgs.addArgument(ArgLoc);
+      }
+
+      HasExplicitTemplateArgs = true;
+    }
+
+    if (HasExplicitTemplateArgs) {
+      TemplateArgs.setLAngleLoc(TemplateParams->getLoc());
+      TemplateArgs.setRAngleLoc(TemplateParams->getLoc());
+    }
+
+    Fn->Data.ParamInfo.TemplateScope = SemaRef.saveScope(TemplateParams);
+    if (SemaRef.getCxxSema().CheckFunctionTemplateSpecialization(
+          FD, (HasExplicitTemplateArgs ? &TemplateArgs : nullptr),
+          Prev))
+      FD->setInvalidDecl();
 }
 
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
@@ -978,12 +1099,18 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
 
   // Get name info for the AST.
   clang::DeclarationName Name =
-    getFunctionName(Context, SemaRef, D, TInfo, InClass ? RD : nullptr);
+    getFunctionName(Context, SemaRef, D, TInfo, InClass, RD);
   if (Name.isEmpty())
     return nullptr;
+
+  // Set the declaration info here to help determine if this should have
+  // a C++ special name.
   clang::DeclarationNameInfo DNI;
   DNI.setName(Name);
   DNI.setLoc(D->Decl->Data.Id->getLoc());
+
+  if (InClass)
+    setSpecialFunctionName(Context, RD, D, Name);
 
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::FunctionDecl *FD = nullptr;
@@ -991,102 +1118,12 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::LookupResult Previous(SemaRef.getCxxSema(), DNI,
                                clang::Sema::LookupOrdinaryName,
                            SemaRef.getCxxSema().forRedeclarationInCurContext());
-  lookupFunctionRedecls(SemaRef, Previous);
+  clang::Scope *CxxScope = SemaRef.getCurClangScope();
+  lookupFunctionRedecls(SemaRef, CxxScope, Previous);
 
   if(InClass) {
-    const clang::FunctionType *FT = cast<clang::FunctionType>(TInfo->getType());
-    DNI.setLoc(D->Op->getLoc());
-    if (D->getId()->isStr("constructor")) {
-      if (FT->getReturnType() != Context.CxxAST.VoidTy) {
-        SemaRef.Diags.Report(D->Decl->getLoc(),
-                          clang::diag::err_invalid_return_type_for_ctor_or_dtor)
-                          << 0;
-        return nullptr;
-      }
-
-      clang::CXXConstructorDecl* CtorDecl = nullptr;
-      clang::ExplicitSpecifier ES(nullptr,
-                                        clang::ExplicitSpecKind::ResolvedFalse);
-      FD = CtorDecl = clang::CXXConstructorDecl::Create(Context.CxxAST, RD,
-                                                        Loc, DNI, 
-                                                        clang::QualType(),
-                                                        nullptr, ES, false,
-                                                        false,
-                                     clang::ConstexprSpecKind::CSK_unspecified);
-      CtorDecl->setImplicit(false);
-      CtorDecl->setDefaulted(false);
-      CtorDecl->setBody(nullptr);
-      clang::FunctionProtoType::ExtProtoInfo EPI;
-
-      // Build an exception specification pointing back at this member.
-      EPI.ExceptionSpec.Type = clang::EST_None;
-      EPI.ExceptionSpec.SourceDecl = CtorDecl;
-
-      // Set the calling convention to the default for C++ instance methods.
-      EPI.ExtInfo = EPI.ExtInfo.withCallingConv(
-          Context.CxxAST.getDefaultCallingConvention(/*IsVariadic=*/false,
-                                                /*IsCXXMethod=*/true));
-      clang::LangAS AS = SemaRef.getCxxSema().getDefaultCXXMethodAddrSpace();
-      if (AS != clang::LangAS::Default) {
-        EPI.TypeQuals.addAddressSpace(AS);
-      }
-      const clang::FunctionProtoType *FPT = cast<clang::FunctionProtoType>(
-        TInfo->getType().getTypePtr());
-      auto QT = Context.CxxAST.getFunctionType(Context.CxxAST.VoidTy,
-        FPT->getParamTypes(), EPI);
-      CtorDecl->setType(QT);
-
-    } else if(D->getId()->isStr("destructor")) {
-      if (FT->getReturnType() != Context.CxxAST.VoidTy) {
-        SemaRef.Diags.Report(D->Decl->getLoc(),
-                          clang::diag::err_invalid_return_type_for_ctor_or_dtor)
-                             << 1;
-        return nullptr;
-      }
-      clang::DeclarationNameInfo DNI2(Name, D->Decl->getLoc());
-      clang::CXXDestructorDecl* DtorDecl = nullptr;
-      clang::ExplicitSpecifier ES(nullptr, clang::ExplicitSpecKind::ResolvedFalse);
-      FD = DtorDecl = clang::CXXDestructorDecl::Create(Context.CxxAST, RD, Loc,
-          DNI2, clang::QualType(), nullptr, false, false,
-          clang::ConstexprSpecKind::CSK_unspecified);
-      DtorDecl->setImplicit(false);
-      DtorDecl->setDefaulted(false);
-      DtorDecl->setBody(nullptr);
-      clang::FunctionProtoType::ExtProtoInfo EPI;
-
-      // Build an exception specification pointing back at this member.
-      EPI.ExceptionSpec.Type = clang::EST_None;
-      EPI.ExceptionSpec.SourceDecl = DtorDecl;
-
-      // Set the calling convention to the default for C++ instance methods.
-      EPI.ExtInfo = EPI.ExtInfo.withCallingConv(
-          Context.CxxAST.getDefaultCallingConvention(/*IsVariadic=*/false,
-                                                /*IsCXXMethod=*/true));
-      clang::LangAS AS = SemaRef.getCxxSema().getDefaultCXXMethodAddrSpace();
-      if (AS != clang::LangAS::Default) {
-        EPI.TypeQuals.addAddressSpace(AS);
-      }
-      const clang::FunctionProtoType *FPT = cast<clang::FunctionProtoType>(
-        TInfo->getType().getTypePtr());
-      if (FPT->getNumParams() != 0) {
-        SemaRef.Diags.Report(D->Op->getLoc(),
-                             clang::diag::err_destructor_with_params);
-        return nullptr;
-      }
-      auto QT = Context.CxxAST.getFunctionType(Context.CxxAST.VoidTy,
-        clang::None, EPI);
-      DtorDecl->setType(QT);
-
-    } else {
-      clang::StorageClass SC = clang::SC_None;
-      FD = clang::CXXMethodDecl::Create(Context.CxxAST, RD, Loc, DNI,
-                                        TInfo->getType(), TInfo,
-                                        SC, /*isInline*/true,
-                                      clang::ConstexprSpecKind::CSK_unspecified,
-                                        Loc);
-    }
-    FD->setAccess(clang::AS_public);
-
+    if (!buildMethod(Context, SemaRef, D, Name, &FD, TInfo, RD))
+      return nullptr;
   } else {
     FD = clang::FunctionDecl::Create(Context.CxxAST, Owner, Loc, Loc, Name,
                                      TInfo->getType(), TInfo, clang::SC_None);
@@ -1098,7 +1135,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   }
 
   // If this describes a principal template declaration, create it.
-  if (Template && Previous.empty()) {
+  if (Template) {
     clang::SourceLocation Loc = TemplParams->getLoc();
     auto *TPL =
       clang::TemplateParameterList::Create(Context.CxxAST, Loc, Loc,
@@ -1133,61 +1170,30 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   if (!Template && !D->declaresConstructor())
     Owner->addDecl(FD);
 
-  clang::Scope *CxxScope = SemaRef.getCurClangScope();
   if (D->declaresConstructor()) {
-    clang::CXXConstructorDecl* CtorDecl = cast<clang::CXXConstructorDecl>(D->Cxx);
+    clang::CXXConstructorDecl* CtorDecl =
+      cast<clang::CXXConstructorDecl>(D->Cxx);
     SemaRef.getCxxSema().PushOnScopeChains(CtorDecl, CxxScope);
     SemaRef.getCxxSema().CheckConstructor(CtorDecl);
   }
 
-  if (InClass)
-    SemaRef.getCxxSema().FilterLookupForScope(Previous, Owner, CxxScope,
-                                              false, false);
-  else
-    SemaRef.getCxxSema().FilterLookupForScope(Previous, Owner, CxxScope,
-                                              true, true);
-
+  SemaRef.getCxxSema().FilterLookupForScope(Previous, Owner, CxxScope,
+                                            !InClass, !InClass);
   SemaRef.getCxxSema().CheckFunctionDeclaration(CxxScope,
                                                 FD, Previous, true);
+
   if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(FD)) {
 
     checkCXXMethodDecl(MD);
     SemaRef.getCxxSema().CheckOverrideControl(MD);
   }
 
-  if (!FD->isInvalidDecl() && !Previous.empty()) {
-    bool HasExplicitTemplateArgs = false;
-    clang::TemplateArgumentListInfo TemplateArgs;
-
-    for (auto *SS : TemplParams->children()) {
-      clang::Expr *E = ExprElaborator(Context, SemaRef).elaborateExpr(SS);
-      // TODO: create a list of valid expressions this can or cannot be;
-      // for example, namespace or pseudo-destructor is invalid here.
-      if (E->getType()->isTypeOfTypes()) {
-        auto *TInfo = SemaRef.getTypeSourceInfoFromExpr(E, SS->getLoc());
-        clang::TemplateArgument Arg(TInfo->getType());
-        clang::TemplateArgumentLoc ArgLoc(Arg, TInfo);
-        TemplateArgs.addArgument(ArgLoc);
-      } else {
-        clang::TemplateArgument Arg(E, clang::TemplateArgument::Expression);
-        clang::TemplateArgumentLoc ArgLoc(Arg, E);
-        TemplateArgs.addArgument(ArgLoc);
-      }
-
-      HasExplicitTemplateArgs = true;
-    }
-
-    if (HasExplicitTemplateArgs) {
-      TemplateArgs.setLAngleLoc(TemplParams->getLoc());
-      TemplateArgs.setRAngleLoc(TemplParams->getLoc());
-    }
-
-    FnDclrtr->Data.ParamInfo.TemplateScope = SemaRef.saveScope(TemplParams);
-    if (SemaRef.getCxxSema().CheckFunctionTemplateSpecialization(
-          FD, (HasExplicitTemplateArgs ? &TemplateArgs : nullptr),
-          Previous))
-      FD->setInvalidDecl();
-  }
+#if 0
+  // Handle function template specialization.
+  if (!FD->isInvalidDecl() && !Previous.empty())
+    handleFunctionTemplateSpecialization(Context, SemaRef, TemplParams,
+                                         FnDclrtr, FD, Previous);
+#endif
 
   // FIXME: this is not necessarily what should happen.
   if (FD->isInvalidDecl())
@@ -1196,6 +1202,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   D->CurrentPhase = Phase::Typing;
   return FD;
 }
+
 void Elaborator::checkCXXMethodDecl(clang::CXXMethodDecl *MD) {
   // We can't check dependent instance methods.
   if (MD && MD->isInstance() &&
