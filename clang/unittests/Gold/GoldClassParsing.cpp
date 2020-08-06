@@ -985,9 +985,6 @@ outer : type = class:
     b : float32
     foo() : int!
       return z
-    
-  
-
 )";
 
   DeclarationMatcher ClassCInfo = recordDecl(

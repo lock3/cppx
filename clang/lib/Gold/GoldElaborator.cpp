@@ -987,7 +987,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
   if (!TypeExpr) {
     SemaRef.Diags.Report(D->Op->getLoc(),
-                         clang::diag::err_failed_to_translate_type);
+                        clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
@@ -1036,7 +1036,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
                                clang::Sema::LookupOrdinaryName,
                            SemaRef.getCxxSema().forRedeclarationInCurContext());
   SemaRef.getCxxSema().LookupName(Previous, ClangScope, false);
-
   if(InClass) {
     const clang::FunctionProtoType *FPT
                              = cast<clang::FunctionProtoType>(TInfo->getType());
@@ -1606,6 +1605,11 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::DeclarationNameInfo DNI({Id, Loc});
+  // This may help attribute elaboration.
+  Sema::ClangScopeRAII FunctionDeclScope(SemaRef, clang::Scope::DeclScope |
+      clang::Scope::FunctionPrototypeScope |
+      clang::Scope::FunctionDeclarationScope,
+      clang::SourceLocation());
   // Just return the parameter. We add it to it's function later.
   clang::ParmVarDecl *P = SemaRef.getCxxSema().CheckParameter(Owner, Loc, DNI,
                                                               TInfo->getType(),
@@ -3053,6 +3057,7 @@ void Elaborator::elaborateAttributes(Declaration *D) {
   Declarator *DeclaratorWithAttrs = D->getIdDeclarator();
   if (!DeclaratorWithAttrs || !DeclaratorWithAttrs->UnprocessedAttributes)
     return;
+  clang::ParsedAttributes AttrList(SemaRef.AttrFactory);
   auto Iter = DeclaratorWithAttrs->UnprocessedAttributes->begin();
   auto End = DeclaratorWithAttrs->UnprocessedAttributes->end();
   for (; Iter != End; ++Iter) {
@@ -3060,7 +3065,7 @@ void Elaborator::elaborateAttributes(Declaration *D) {
     if ((Name = dyn_cast<AtomSyntax>(*Iter))) {
       auto Handler = SemaRef.AttrHandlerMap.find(Name->getSpelling());
       if (Handler == SemaRef.AttrHandlerMap.end()) {
-        elaborateUnknownAttr(D, *Iter, Status);
+        elaborateSystemAttribute(D->Cxx, *Iter, Status, AttrList);
       } else {
         Handler->second(*this, D, *Iter, Status);
       }
@@ -3070,15 +3075,18 @@ void Elaborator::elaborateAttributes(Declaration *D) {
       if ((Name = dyn_cast<AtomSyntax>(Call->getCallee()))) {
         auto Handler = SemaRef.AttrHandlerMap.find(Name->getSpelling());
         if (Handler == SemaRef.AttrHandlerMap.end()) {
-          elaborateUnknownAttr(D, *Iter, Status);
+          elaborateSystemAttribute(D->Cxx, *Iter, Status, AttrList);
         } else {
           Handler->second(*this, D, *Iter, Status);
         }
         continue;
       }
     }
-    elaborateUnknownAttr(D, *Iter, Status);
+    elaborateSystemAttribute(D->Cxx, *Iter, Status, AttrList);
   }
+  // Attempting to handle the remaining declarations.
+  SemaRef.getCxxSema().ProcessDeclAttributeList(SemaRef.getCurClangScope(),
+                                                D->Cxx, AttrList, true);
 }
 
 void Elaborator::elaborateConstExprAttr(Declaration *D, const Syntax *S,
@@ -3698,35 +3706,155 @@ void Elaborator::elaborateRefQualifierAttr(Declaration *D, const Syntax *S,
                       << "const" << "member function";
 }
 
-void Elaborator::elaborateCarriesDependencyAttr(Declaration *D, const Syntax *S,
-                                                AttrStatus &Status) {
-  llvm_unreachable("not implemented");
+// void Elaborator::elaborateCarriesDependencyAttr(Declaration *D, const Syntax *S,
+//                                                 AttrStatus &Status) {
+//   // if (Status.HasRefQualifier) {
+//   //   SemaRef.Diags.Report(S->getLoc(),
+//   //                        clang::diag::err_duplicate_attribute);
+//   //   return;
+//   // }
+// }
+
+// void Elaborator::elaborateDeprecatedAttr(Declaration *D, const Syntax *S,
+//                                          AttrStatus &Status) {
+//   llvm_unreachable("not implemented");
+// }
+
+// void Elaborator::elaborateMaybeUnusedAttr(Declaration *D, const Syntax *S,
+//                                           AttrStatus &Status) {
+//   llvm_unreachable("not implemented");
+// }
+
+// void Elaborator::elaborateNoDiscardAttr(Declaration *D, const Syntax *S,
+//                                         AttrStatus &Status) {
+//   llvm_unreachable("not implemented");
+// }
+
+// void Elaborator::elaborateNoReturnAttr(Declaration *D, const Syntax *S,
+//                                        AttrStatus &Status) {
+//   llvm_unreachable("not implemented");
+// }
+
+
+namespace {
+
+enum SysAttrFormatKind {
+  SAFK_Invalid,
+  SAFK_Name,
+  SAFK_NameCall,
+  SAFK_ScopeName,
+  SAFK_ScopeNameCall
+};
+/// This stores attribute information for a single attribute.
+struct SysAttrInfo {
+  SysAttrFormatKind Kind = SAFK_Invalid;
+  const AtomSyntax *ScopeName = nullptr;
+  const AtomSyntax *AttrId = nullptr;
+  const CallSyntax *CallNode = nullptr;
+  const ListSyntax *Args = nullptr;
+};
+
+void getSysAttrInfo(const Syntax *Attr, SysAttrInfo &Info) {
+  if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+    Info.Kind = SAFK_Name;
+    Info.AttrId = Atom;
+    return;
+  } else if (const CallSyntax *Call = dyn_cast<CallSyntax>(Attr)) {
+    if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Call->getCallee())) {
+      if (Atom->getSpelling() == "operator'.'") {
+        if (const AtomSyntax *Name
+                                 = dyn_cast<AtomSyntax>(Call->getArgument(1))) {
+          Info.AttrId = Name;
+        } else {
+          Info.Kind = SAFK_Invalid;
+          return;
+        }
+        if ((Info.ScopeName = dyn_cast<AtomSyntax>(Call->getArgument(0)))) {
+          Info.Kind = SAFK_ScopeName;
+        } else {
+          Info.Kind = SAFK_Invalid;
+        }
+        return;
+      }
+      Info.Kind = SAFK_NameCall;
+      Info.AttrId = Atom;
+      Info.Args = cast<ListSyntax>(Call->getArguments());
+      return;
+    }
+    // Checking for nested name in combination with something.
+    if (const CallSyntax *InnerCall = dyn_cast<CallSyntax>(Call->getCallee())) {
+      if (const AtomSyntax *Dot
+                               = dyn_cast<AtomSyntax>(InnerCall->getCallee())) {
+        if (Dot->getSpelling() == "operator'.'") {
+          if (const AtomSyntax *Name
+                            = dyn_cast<AtomSyntax>(InnerCall->getArgument(1))) {
+            Info.AttrId = Name;
+          } else {
+            Info.Kind = SAFK_Invalid;
+            return;
+          }
+          if ((Info.ScopeName
+                           = dyn_cast<AtomSyntax>(InnerCall->getArgument(0)))) {
+            Info.Kind = SAFK_ScopeNameCall;
+          } else {
+            Info.Kind = SAFK_Invalid;
+            return;
+          }
+          Info.Args = cast<ListSyntax>(Call->getArguments());
+          return;
+        }
+      }
+    }
+  }
+  Info.Kind = SysAttrFormatKind::SAFK_Invalid;
+}
 }
 
-void Elaborator::elaborateDeprecatedAttr(Declaration *D, const Syntax *S,
-                                         AttrStatus &Status) {
-  llvm_unreachable("not implemented");
-}
-
-void Elaborator::elaborateMaybeUnusedAttr(Declaration *D, const Syntax *S,
-                                          AttrStatus &Status) {
-  llvm_unreachable("not implemented");
-}
-
-void Elaborator::elaborateNoDiscardAttr(Declaration *D, const Syntax *S,
-                                        AttrStatus &Status) {
-  llvm_unreachable("not implemented");
-}
-
-void Elaborator::elaborateNoReturnAttr(Declaration *D, const Syntax *S,
-                                       AttrStatus &Status) {
-  llvm_unreachable("not implemented");
-}
-
-void Elaborator::elaborateUnknownAttr(Declaration *D, const Syntax *S,
-                                      AttrStatus &Status) {
-  // TODO: I may need to stick some kind of warning here possibly.
-  // llvm_unreachable("Processing of unknown attributes isn't implemented yet.");
+void Elaborator::elaborateSystemAttribute(clang::Decl *D, const Syntax *S,
+                                          AttrStatus &Status,
+                                          clang::ParsedAttributes &Attrs) {
+  SysAttrInfo Info;
+  getSysAttrInfo(S, Info);
+  switch(Info.Kind) {
+  case SAFK_Invalid: {
+    // FIXME: I'm not sure how to handle this properly,
+    // I might have to create some kind of warning here or something?
+    return;
+  }
+  break;
+  case SAFK_Name: {
+    Attrs.addNew(&Context.CxxAST.Idents.get(Info.AttrId->getSpelling()),
+                 clang::SourceRange(Info.AttrId->getLoc(),
+                                    Info.AttrId->getLoc()),
+                 nullptr, clang::SourceLocation(), nullptr, 0u,
+                 clang::ParsedAttr::Syntax::AS_CXX11);
+  }
+  break;
+  case SAFK_NameCall:{
+    // Just going to assume that anything that doesn't have a parameter
+    // is simply the same as the previous Name.
+    if (Info.Args->getNumChildren() == 0) {
+      Attrs.addNew(&Context.CxxAST.Idents.get(Info.AttrId->getSpelling()),
+                   clang::SourceRange(Info.AttrId->getLoc(),
+                                      Info.AttrId->getLoc()),
+                   nullptr, clang::SourceLocation(), nullptr, 0u,
+                   clang::ParsedAttr::Syntax::AS_CXX11);
+      break;
+    }
+    llvm_unreachable("NameCall Attribute not implemented yet.");
+  }
+  break;
+  case SAFK_ScopeName:{
+    llvm_unreachable("ScopeName Attribute not implemented yet.");
+  }
+  break;
+  case SAFK_ScopeNameCall:{
+    llvm_unreachable("ScopeNameCall Attribute not implemented yet.");
+  }
+  break;
+  default:
+    llvm_unreachable("Unknown attribute format.");
+  }
 }
 
 void Elaborator::elaborateAttributeError(Declaration *D, const Syntax *S,

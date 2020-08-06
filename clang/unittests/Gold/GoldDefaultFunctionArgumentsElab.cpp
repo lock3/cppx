@@ -33,9 +33,12 @@ TEST(GoldDefaultArguments, InvalidRedeclaration) {
   StringRef Code = R"(
 foo(y:int) : int!
   return y
+
 foo(x:int = 4): int!
   return x
 )";
+  // DeclarationMatcher ToMatch = parmVarDecl(hasName("q"), hasDefaultArgument());
+  // ASSERT_TRUE(matches(Code.str(), ToMatch));
   GoldFailureTest(Code);
 }
 
@@ -56,7 +59,7 @@ TEST(GoldDefaultArguments, DefaultArgumentForMemberFunctions) {
 Cls : type = class:
   foo(x:int = 4): int!
     return x
-  
+
 bar():void!
   V:Cls
   V.foo()

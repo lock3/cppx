@@ -114,19 +114,12 @@ static Sema::StringToAttrHandlerMap buildAttributeMaping() {
     { "ref", ATTR_HANDLER_LAMBDA(elaborateRefQualifierAttr) },
     { "rref", ATTR_HANDLER_LAMBDA(elaborateRefQualifierAttr) },
 
-    // Actual known C++ attributes.
-    { "carries_dependency", ATTR_HANDLER_LAMBDA(elaborateCarriesDependencyAttr) },
-    { "deprecated", ATTR_HANDLER_LAMBDA(elaborateDeprecatedAttr) },
-    { "maybe_unused", ATTR_HANDLER_LAMBDA(elaborateMaybeUnusedAttr) },
-    { "nodiscard", ATTR_HANDLER_LAMBDA(elaborateNoDiscardAttr) },
-    { "noreturn", ATTR_HANDLER_LAMBDA(elaborateNoReturnAttr) },
-
     { "bits", ATTR_HANDLER_LAMBDA(elaborateBitsAttr)},
     { "alignas", ATTR_HANDLER_LAMBDA(elaborateAlignAsAttr)},
 
     // Error Attributes.
     { "mutable", ATTR_HANDLER_LAMBDA(elaborateAttributeError)},
-
+    // NOTE: All other attributes are handled by elaborateSystemAttributes
   };
 #undef ATTR_HANDLER_LAMBDA
 

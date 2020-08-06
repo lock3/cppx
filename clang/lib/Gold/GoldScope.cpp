@@ -179,7 +179,7 @@ bool Declaration::declaresType() const {
 }
 
 bool Declaration::declaresForwardRecordDecl() const {
-  if (declaresInitializedVariable())
+  if (declaresInitializedVariable()) {
     if (const AtomSyntax *RHS = dyn_cast<AtomSyntax>(Init)) {
       return RHS->hasToken(tok::ClassKeyword)
              || RHS->hasToken(tok::UnionKeyword)
@@ -189,6 +189,7 @@ bool Declaration::declaresForwardRecordDecl() const {
         return Nm->hasToken(tok::EnumKeyword);
       }
     }
+  }
   return false;
 }
 
@@ -510,6 +511,8 @@ static llvm::StringRef getScopeKindName(ScopeKind K) {
 
   case SK_Control:
     return "Control";
+  case SK_Enum:
+    return "Enum";
   }
 
   llvm_unreachable("invalid scope");

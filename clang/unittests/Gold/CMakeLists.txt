@@ -49,6 +49,7 @@ add_clang_unittest(GoldTests
   GoldBuiltinLogicalOpsElab.cpp
   GoldBuiltInTypeConstructorsExec.cpp
   GoldBuiltinTypeElab.cpp
+  GoldCarriesDependencyElab.cpp
   GoldCastElab.cpp
   GoldCharLiteralElab.cpp
   GoldClassConversionsElab.cpp

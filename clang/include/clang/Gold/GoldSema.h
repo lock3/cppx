@@ -72,11 +72,6 @@ struct AttrStatus {
     HasOverride = false;
     HasFinal = false;
     HasConst = false;
-    HasCarriesDependency = false;
-    HasDeprecated = false;
-    HasMaybeUnused = false;
-    HasNoDiscard = false;
-    HasNoReturn = false;
     HasThreadLocal = false;
     HasBits = false;
     HasAlignAs = false;
@@ -94,11 +89,6 @@ struct AttrStatus {
   bool HasOverride : 1;
   bool HasFinal : 1;
   bool HasConst : 1;
-  bool HasCarriesDependency : 1;
-  bool HasDeprecated : 1;
-  bool HasMaybeUnused : 1;
-  bool HasNoDiscard : 1;
-  bool HasNoReturn : 1;
   bool HasBits : 1;
   bool HasAlignAs : 1;
   bool HasRefQualifier : 1;
@@ -512,6 +502,7 @@ public:
         SemaRef.popDecl();
     }
   };
+
 
   struct EnterNonNestedClassEarlyElaboration {
     EnterNonNestedClassEarlyElaboration(Sema& S, Declaration* Decl)

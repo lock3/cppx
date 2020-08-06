@@ -29,6 +29,7 @@ namespace clang
 class Preprocessor;
 class Stmt;
 class CXXRecordDecl;
+class ParsedAttributes;
 } // namespace clang
 
 namespace gold {
@@ -172,19 +173,21 @@ public:
                             AttrStatus &Status);
   void elaborateRefQualifierAttr(Declaration *D, const Syntax *S,
                                  AttrStatus &Status);
-  void elaborateCarriesDependencyAttr(Declaration *D, const Syntax *S,
-                                      AttrStatus &Status);
-  void elaborateDeprecatedAttr(Declaration *D, const Syntax *S,
-                               AttrStatus &Status);
-  void elaborateMaybeUnusedAttr(Declaration *D, const Syntax *S,
-                                AttrStatus &Status);
-  void elaborateNoDiscardAttr(Declaration *D, const Syntax *S,
-                              AttrStatus &Status);
-  void elaborateNoReturnAttr(Declaration *D, const Syntax *S,
-                           AttrStatus &Status);
-  void elaborateUnknownAttr(Declaration *D, const Syntax *S,
-                           AttrStatus &Status);
+  // void elaborateCarriesDependencyAttr(Declaration *D, const Syntax *S,
+  //                                     AttrStatus &Status);
+  // void elaborateDeprecatedAttr(Declaration *D, const Syntax *S,
+  //                              AttrStatus &Status);
+  // void elaborateMaybeUnusedAttr(Declaration *D, const Syntax *S,
+  //                               AttrStatus &Status);
+  // void elaborateNoDiscardAttr(Declaration *D, const Syntax *S,
+  //                             AttrStatus &Status);
+  // void elaborateNoReturnAttr(Declaration *D, const Syntax *S,
+  //                          AttrStatus &Status);
 
+  void elaborateSystemAttribute(clang::Decl *D, const Syntax *S,
+                                AttrStatus &Status,
+                                clang::ParsedAttributes &Attrs);
+  clang::IdentifierInfo *elaborateAttrScopeName(const Syntax * S);
   /// This is the attribute that's used to indicate that we have an error.
   /// For example, if mutable makes it to the list of attributes then we have
   /// to indicate that it's an error some how.
