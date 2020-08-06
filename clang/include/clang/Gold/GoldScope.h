@@ -393,8 +393,6 @@ public:
   /// member functions.
   const CallSyntax *ES_Call = nullptr;
   const AtomSyntax *ES_Name = nullptr;
-  ///}
-
 };
 
 Phase phaseOf(Declaration *D);
