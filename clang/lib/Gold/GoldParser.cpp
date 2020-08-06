@@ -1215,7 +1215,8 @@ Syntax *Parser::parsePrimary() {
   case tok::ArgsKeyword:
   case tok::ContinueKeyword:
   case tok::BreakKeyword:
-  case tok::DeleteKeyword: // TODO: Refactor this, so it can work as an operator 
+  case tok::DefaultKeyword:
+  case tok::DeleteKeyword: // TODO: Refactor this, so it can work as an operator
                            // and as = delete for a function body.
     return onAtom(consumeToken());
 

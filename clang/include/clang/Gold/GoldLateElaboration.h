@@ -48,7 +48,7 @@ public:
   virtual void ElaborateMemberInitializers();
   virtual void ElaborateDefaultParams();
   virtual void ElaborateMethodDefs();
-  virtual void ElaborateAttributes(); 
+  virtual void ElaborateAttributes();
 };
 
 
@@ -72,7 +72,7 @@ private:
 };
 
 /// Contains the member variable that depend on other types within the class
-/// body that may have not been processed yet. 
+/// body that may have not been processed yet.
 struct LateElaboratedAttributeDecl : public LateElaboratedDecl {
   Sema &SemaRef;
   SyntaxContext &Context;
@@ -80,7 +80,7 @@ struct LateElaboratedAttributeDecl : public LateElaboratedDecl {
   clang::IdentifierInfo &Id;
   clang::SourceLocation NameLoc;
   // TODO: Not sure what this is for off hand.
-  // IdentifierInfo *MacroII = nullptr; 
+  // IdentifierInfo *MacroII = nullptr;
   llvm::SmallVector<Declaration *, 2> Decls;
 
   explicit LateElaboratedAttributeDecl(Sema &S, SyntaxContext &Ctxt,

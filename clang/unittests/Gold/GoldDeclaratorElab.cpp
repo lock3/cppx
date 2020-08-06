@@ -1,47 +1,27 @@
-//=== GoldAttributes.cpp - Test Gold attributes ----------------------------==//
+//===- unittest/Gold/GoldDeclaratorElab.cpp -------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Copyright (c) Lock3 Software 2019, all rights reserved.
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file implements tests for parsing of attributes.
+//  Errors associated with declarator elaboration.
 //
 //===----------------------------------------------------------------------===//
 
+
 #include "GoldParseUtil.h"
+#include "GoldASTMatchersTest.h"
+
 
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
-
-TEST(Attributes, SimpleAttributes) {
+TEST(GoldDeclarator, InvalidDecl) {
   StringRef Code = R"(
-x<(i < 10)> = 10
-x<i> = 10
-x<(10 == 10)> = 10
-x < 20
-x<i> < 10
-x<z<10>><(i < 10)> < y<10>
+foo()<const>():void
 )";
-
-  SimpleGoldParseTest(Code);
-}
-
-TEST(Attributes, LineAttributes) {
-  StringRef Code = R"(
-[20]
-[10]
-x : int = 0
-
-[520]
-[10]
-y() : int!
-  return 0
-)";
-
-  SimpleGoldParseTest(Code);
+  GoldFailureTest(Code);
 }

@@ -87,7 +87,7 @@ public:
     return Kind == DK_Identifier;
   }
 
-  bool isType() const { 
+  bool isType() const {
     return Kind == DK_Type;
   }
 
@@ -101,7 +101,7 @@ public:
   /// Returns the type for declarator, if given.
   const Syntax *getType() const;
 
-  /// Get a SourceLocation representative of this declarator. 
+  /// Get a SourceLocation representative of this declarator.
   clang::SourceLocation getLoc() const;
 
   /// Returns a readable string representing this declarator.
@@ -210,9 +210,15 @@ public:
 
   /// Checks to see if this is a forward declaration or not.
   bool declaresForwardRecordDecl() const;
-  
+
   /// Checks if the type declaration is declaring a record.
-  bool declaresRecord() const;
+  bool declaresTag() const;
+
+  /// Get tag name.
+  bool getTagName(const AtomSyntax *&NameNode) const;
+
+  /// Checks to see if we declare a union or not.
+  bool declaresUnion() const;
 
   /// Checks if the type declaration is declaring a namespace.
   bool declaresNamespace() const;
@@ -222,6 +228,18 @@ public:
 
   /// True if this declares a function.
   bool declaresFunction() const;
+
+  /// Check if we use = and we are a function
+  bool declaresFunctionWithImplicitReturn() const;
+
+  /// Check if we have a function who has = 0 assignment.
+  bool declaresPossiblePureVirtualFunction() const;
+
+  /// Checks to see if the function is defined as = default
+  bool declaresDefaultedFunction() const;
+
+  /// Checks to see if the function is defined as = delete
+  bool declaresDeletedFunction() const;
 
   /// Returns true if the CXX type is a FieldDecl.
   /// This is true when declares variable is also true some times.
@@ -263,6 +281,13 @@ public:
   bool defines() const {
     return Cxx && clang::isa<T>(Cxx);
   }
+
+  template<typename T>
+  T* getAs() const {
+    if (!Cxx)
+      return nullptr;
+    return clang::dyn_cast<T>(Cxx);
+  }
   /// Checks if the current Cxx decl is a static member variable of a class.
   bool declaresInlineInitializedStaticVarDecl() const;
 
@@ -273,15 +298,18 @@ public:
   clang::IdentifierInfo *getId() const {
     return Id;
   }
-  
+
   // bool nameIsOperator() const;
 
   /// This looks for the first instance of DK_TemplateType and returns it.
   const Declarator *getFirstTemplateDeclarator() const;
   Declarator *getFirstTemplateDeclarator();
-  
+
   const Declarator *getIdDeclarator() const;
   Declarator *getIdDeclarator();
+
+  const Declarator *getFirstDeclarator(DeclaratorKind DK) const;
+  Declarator *getFirstDeclarator(DeclaratorKind DK);
 
   /// The corresponding C++ declaration as a context.
   clang::DeclContext *getCxxContext() const;
@@ -318,7 +346,7 @@ public:
   /// This name indicates if this declaration declares an operator name, and if
   /// the operator name is a known valid operator. This operator name is only
   /// used by C++ iff there is a function declarator. This is the actual name
-  /// used by the clang::Decl in CXX. This is to be consistent with C++. 
+  /// used by the clang::Decl in CXX. This is to be consistent with C++.
   // const clang::IdentifierInfo *OpId = nullptr;
   const OpInfoBase* OpInfo;
 
@@ -365,8 +393,8 @@ public:
   /// member functions.
   const CallSyntax *ES_Call = nullptr;
   const AtomSyntax *ES_Name = nullptr;
-
   ///}
+
 };
 
 Phase phaseOf(Declaration *D);
@@ -393,6 +421,9 @@ enum ScopeKind {
 
   /// The scope associated with a control statement.
   SK_Control,
+
+  /// This scope is used for enum declaration.
+  SK_Enum,
 };
 
 template<typename K, typename V>
@@ -497,6 +528,10 @@ public:
     return Kind == SK_Control;
   }
 
+  bool isEnumScope() const {
+    return Kind == SK_Enum;
+  }
+
   /// The parent of this scope.
   Scope *getParent() const {
     return Parent;
@@ -541,7 +576,7 @@ public:
   std::set<Declaration *> findDecl(const clang::IdentifierInfo *Id) {
     assert(Id);
     auto Range = IdMap.find_range(Id);
-    if (Range.empty()) 
+    if (Range.empty())
       return std::set<Declaration *>();
 
     std::set<Declaration *> Ret;

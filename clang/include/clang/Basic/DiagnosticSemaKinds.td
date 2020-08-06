@@ -10963,7 +10963,7 @@ def err_duplicate_access_specifier : Error<
 
 def err_duplicate_attribute : Error<
   "duplicate or conflicting attributes specified">;
-  
+
 def err_conflicting_attributes : Error<
   "conflicting attributes given, given %0, and %1">;
 
@@ -11006,7 +11006,7 @@ def err_cannot_appy_operator_to_type : Error<
 
 def err_cannot_apply_operator_to_a_namespace : Error<
   "Cannot evalute %0 on a namespace">;
-  
+
 def err_cannot_apply_operator_to_template : Error<
   "Cannot evaluate %0 on a template">;
 
@@ -11048,19 +11048,40 @@ def err_invalid_dyn_exception_type : Error <
 
 def err_invalid_return_type_for_ctor_or_dtor : Error<
   "invalid return type for %select{constructor|destructor}0">;
- 
+
+def err_invalid_declaration : Error<
+  "invalid declaration">;
+
+def err_invalid_function_type : Error<
+  "invalid function type">;
 
 def err_operator_cannot_be_overloaded : Error<
   "cannot overload operator, unknown operator %0">;
 
 def err_operator_too_few_parameters : Error<
   "%0 must have at least one parameter">;
-  
+
 def err_operator_too_many_parameters : Error<
   "overload %0 must can must have %1 parameter">;
 
+def err_identifier_not_declared_in_scope : Error<
+  "identifier %0, not declared in scope">;
+
 def err_invalid_identifier_type : Error<
   "invalid indentifier %0">;
+
+def err_too_many_underlying_enum_types : Error <
+  "too many underlying enum types">;
+
+def err_invalid_enum_member_decl : Error <
+  "invalid enum member declaration">;
+
+def err_templated_namespace_type : Error <
+  "cannot declare a templated namespace alias">;
+
+def err_invalid_template_decl : Error <
+  "invalid template forward declaration, template could be a type alias, "
+  "or a templated variable">;
 
 } // end of Gold category
 

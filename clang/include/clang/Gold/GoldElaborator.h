@@ -78,7 +78,7 @@ public:
 
   /// elaborateParmDeclSyntax very similar to a call to elaborateDeclSyntax
   /// with the exception that this is ONLY ever used on a suspected
-  /// parameter. 
+  /// parameter.
   clang::Decl *elaborateParmDeclSyntax(const Syntax *S);
 
   /// Perform the latter two passes on a Declaration that was previously
@@ -90,19 +90,23 @@ public:
   clang::Decl *elaborateField(Declaration *D);
   void elaborateFieldInit(Declaration *D);
 
+  clang::Decl *elaborateEnumBody(Declaration* D, clang::Decl *EnumD);
+  clang::Decl *elaborateEnumMemberDecl(const Syntax *S, clang::Decl *EnumD);
+  void elaborateEnumMemberInit(const Syntax *S);
+
   // Identification (1st pass)
   Declaration *identifyDecl(const Syntax *S);
 
   // Semantic actions.
   void startFile(const Syntax *S);
   void finishFile(const Syntax *S);
-  
+
 
   /// Complete class parsing/elaboration
   ///{
   /// This returns true if part of the declaration was delayed.
-  bool delayElaborateDeclType(const Syntax *S);
-  
+  bool delayElaborateDeclType(clang::CXXRecordDecl *RD, const Syntax *S);
+
   /// Functionality associated with late elaboration and are used to either
   /// elaborate the full class or elaborate everything if they are able to.
   void delayElaborateMemberInitializer(Declaration *D);
@@ -121,7 +125,7 @@ public:
   void lateElaborateDefaultParams(ElaboratingClass &Class);
   void lateElaborateMemberInitializers(ElaboratingClass &Class);
   void lateElaborateMethodDefs(ElaboratingClass &Class);
-  
+
   /// Special callbacks used in order to interact a lateElaborated class.
   void lateElaborateAttribute(LateElaboratedAttributeDecl &Field);
   void lateElaborateMethodDef(LateElaboratedMethodDef &Method);
@@ -131,7 +135,7 @@ public:
   void lateElaborateMemberInitializer(
       LateElaborateMemberInitializer &MemberInit);
   ///}
-  
+
   /// This single function is responsible for applying attributes to things
   /// any type of declaration we create.
   void elaborateAttributes(Declaration *D);
@@ -166,6 +170,8 @@ public:
                          AttrStatus &Status);
   void elaborateAlignAsAttr(Declaration *D, const Syntax *S,
                             AttrStatus &Status);
+  void elaborateRefQualifierAttr(Declaration *D, const Syntax *S,
+                                 AttrStatus &Status);
   void elaborateCarriesDependencyAttr(Declaration *D, const Syntax *S,
                                       AttrStatus &Status);
   void elaborateDeprecatedAttr(Declaration *D, const Syntax *S,

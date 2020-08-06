@@ -40,8 +40,8 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
     {"void", Context.CxxAST.VoidTy},
     {"bool", Context.CxxAST.BoolTy},
     {"null_t", Context.CxxAST.NullPtrTy},
-    
-    // character 
+
+    // character
     {"char", Context.CxxAST.CharTy},
     {"char8", Context.CxxAST.getIntTypeForBitwidth(8, true)},
     {"char16", Context.CxxAST.getIntTypeForBitwidth(16, true)},
@@ -84,33 +84,35 @@ static Sema::StringToAttrHandlerMap buildAttributeMaping() {
     }
   return {
     { "constexpr", ATTR_HANDLER_LAMBDA(elaborateConstExprAttr) },
-    
+
     { "inline", ATTR_HANDLER_LAMBDA(elaborateInlineAttr) },
-    
+
 
     { "public", ATTR_HANDLER_LAMBDA(elaborateAccessSpecifierAttr) },
     { "private", ATTR_HANDLER_LAMBDA(elaborateAccessSpecifierAttr) },
     { "protected", ATTR_HANDLER_LAMBDA(elaborateAccessSpecifierAttr) },
-    
+
     { "noexcept", ATTR_HANDLER_LAMBDA(elaborateExceptionSpecAttr) },
     { "throw", ATTR_HANDLER_LAMBDA(elaborateExceptionSpecAttr) },
 
     // Should auto be allowed here?
     { "static", ATTR_HANDLER_LAMBDA(elaborateStaticAttr) },
-    
+
     { "thread_local", ATTR_HANDLER_LAMBDA(elaborateThreadLocalAttr) },
 
     { "extern", ATTR_HANDLER_LAMBDA(elaborateExternAttr) },
 
     { "explicit", ATTR_HANDLER_LAMBDA(elaborateExplicitAttr) },
-    
+
     // Poylmorphic attributes.
     { "virtual", ATTR_HANDLER_LAMBDA(elaborateVirtualAttr) },
     { "override", ATTR_HANDLER_LAMBDA(elaborateOverrideAttr) },
     { "final", ATTR_HANDLER_LAMBDA(elaborateFinalAttr) },
 
-    // This is only for methods
+    // This only apply to methods.
     { "const", ATTR_HANDLER_LAMBDA(elaborateConstAttr) },
+    { "ref", ATTR_HANDLER_LAMBDA(elaborateRefQualifierAttr) },
+    { "rref", ATTR_HANDLER_LAMBDA(elaborateRefQualifierAttr) },
 
     // Actual known C++ attributes.
     { "carries_dependency", ATTR_HANDLER_LAMBDA(elaborateCarriesDependencyAttr) },
@@ -121,10 +123,10 @@ static Sema::StringToAttrHandlerMap buildAttributeMaping() {
 
     { "bits", ATTR_HANDLER_LAMBDA(elaborateBitsAttr)},
     { "alignas", ATTR_HANDLER_LAMBDA(elaborateAlignAsAttr)},
-    
+
     // Error Attributes.
     { "mutable", ATTR_HANDLER_LAMBDA(elaborateAttributeError)},
-    
+
   };
 #undef ATTR_HANDLER_LAMBDA
 
@@ -179,11 +181,11 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   Float32Ty = Context.CxxAST.getRealTypeForBitwidth(32);
   Float64Ty = Context.CxxAST.getRealTypeForBitwidth(64);
   Float128Ty = Context.CxxAST.getRealTypeForBitwidth(128);
-  
+
   CxxSema.CurScope = nullptr;
 
-  // All of the names of operators that we use.  
-  
+  // All of the names of operators that we use.
+
 }
 
 Sema::~Sema() {
@@ -263,7 +265,7 @@ void Sema::restoreDeclContext(Declaration *D) {
 
 void Sema::pushDecl(Declaration *D) {
   assert(D->getOwner() == CurrentDecl);
-  
+
   // FIXME: this might be an incorrect assertion.
   assert(D->Cxx && isa<clang::DeclContext>(D->Cxx)
          && "No Cxx declaration to push.");
@@ -347,13 +349,13 @@ static bool lookupInSideOfRecordBases(Sema &SemaRef, clang::ASTContext &Context,
       }, Paths, /*LookupInDependent=*/false)) {
     return false;
   }
-  
-  // This code taken almost directly from Sema::LookupQualifiedName in 
+
+  // This code taken almost directly from Sema::LookupQualifiedName in
   // SemaLookup.cpp:2236
-  
+
   // Need to finish gathering all of the necessary decls?
   R.setNamingClass(RD);
-  
+
   // C++ [class.member.lookup]p2:
   //   [...] If the resulting set of declarations are not all from
   //   sub-objects of the same type, or the set has a nonstatic member
@@ -493,18 +495,18 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         // Attempting to add special processing of declarations being elaborated
         // during a constant expression, and require full elaboration before
         // use.
-        if (CxxSema.isConstantEvaluated() || IsInDeepElaborationMode()) {
+        if (CxxSema.isConstantEvaluated() || isInDeepElaborationMode()) {
           // If we aren't 100% completed then do complete elaboration.
           if (phaseOf(FoundDecl) < Phase::Initialization) {
             EnterDeepElabRAII DeepElab(*this);
             // change the elaboration context back to PotentiallyEvaluated.
             clang::EnterExpressionEvaluationContext ConstantEvaluated(CxxSema,
                 clang::Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
-            Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);  
-            
+            Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
+
           }
         }
-        
+
 
         if (!FoundDecl->Cxx)
           Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
@@ -560,7 +562,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
       // Checking that if we are in side of a record and within that record has base classes.
       Declaration *DeclEntity = S->Entity;
       if (DeclEntity) {
-        if (DeclEntity->declaresRecord()) {
+        if (DeclEntity->declaresTag()) {
           if (DeclEntity->Cxx) {
             clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(DeclEntity->Cxx);
             // We do this because if for whatever reason if this hasn't been initially
@@ -678,7 +680,7 @@ static void VisitClangScope(clang::Scope *S, llvm::raw_ostream &Out) {
       RD->dump(Out);
     } else if (isa<clang::TranslationUnitDecl>(DC)) {
       Out << "We are a translation unit decl.\n";
-    } else 
+    } else
       Out << "Unexpected DeclContext type\n";
   } else
     Out << "Current Scope has no entity.\n";
@@ -699,7 +701,7 @@ static void VisitDeclContext(clang::DeclContext *DC, llvm::raw_ostream &Out) {
     RD->dump(Out);
   } else if (isa<clang::TranslationUnitDecl>(DC)) {
     Out << "We are a translation unit decl.\n";
-  } else 
+  } else
     Out << "Unexpected DeclContext type\n";
   DC->dumpDeclContext();
   Out << "=================================\n";
@@ -726,7 +728,7 @@ void Sema::dumpState(llvm::raw_ostream &Out) {
     VisitDeclContext(CxxSema.CurContext, Out);
   } else
     Out << "Current Context invalid.\n";
-  
+
   Out.flush();
 }
 
@@ -789,7 +791,7 @@ bool Sema::declNeedsDelayed(Declaration *D) {
   if (D->declaresTypeAlias())
     return false;
 
-  if (D->declaresTemplateType() || D->declaresRecord())
+  if (D->declaresTemplateType() || D->declaresTag())
     return true;
 
   // I haven't found an reason that these would need to be delayed any more
@@ -871,7 +873,7 @@ clang::Expr *Sema::addRefToTypeExpr(const clang::Expr *TyExpr,
                                     clang::SourceLocation Loc) {
   llvm_unreachable("Working on it!");
   // CxxAST.getLValueReferenceType(Inner),
-  
+
 }
 
 clang::Expr *Sema::addRRefToTypeExpr(const clang::Expr *TyExpr,
@@ -890,7 +892,7 @@ clang::QualType Sema::getQualTypeFromTypeExpr(const clang::Expr *TyExpr) {
   }
   if (const clang::CppxTypeLiteral *Ty
                                    = dyn_cast<clang::CppxTypeLiteral>(TyExpr)) {
-    
+
     return Ty->getValue()->getType();
   }
   llvm_unreachable("Invaild type expression evaluates to type of types.");
@@ -909,7 +911,7 @@ Sema::getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
   }
   if (const clang::CppxTypeLiteral *Ty
                                    = dyn_cast<clang::CppxTypeLiteral>(TyExpr)) {
-    
+
     return Ty->getValue();
   }
   llvm_unreachable("Invaild type expression evaluates to type of types.");
@@ -941,7 +943,7 @@ Sema::buildAnyDeclRef(clang::QualType KindTy, clang::Decl *D,
 clang::Decl *Sema::getDeclFromExpr(const clang::Expr *DeclExpr,
                                    clang::SourceLocation Loc) {
   assert(DeclExpr && "Invalid expression");
-  
+
   if (const clang::CppxDeclRefExpr *DecRef
                           = dyn_cast<clang::CppxDeclRefExpr>(DeclExpr)) {
     return DecRef->getValue();
@@ -951,14 +953,75 @@ clang::Decl *Sema::getDeclFromExpr(const clang::Expr *DeclExpr,
   // a declaration or something like that.
 }
 
-bool Sema::IsInDeepElaborationMode() const {
+bool Sema::isInDeepElaborationMode() const {
   return ForceDeepElaborationDuringLookup;
 }
 
-bool Sema::SetDeepElaborationMode(bool EnableDisable) {
+bool Sema::setDeepElaborationMode(bool EnableDisable) {
   bool Res = ForceDeepElaborationDuringLookup;
   ForceDeepElaborationDuringLookup = EnableDisable;
   return Res;
+}
+
+bool Sema::rebuildFunctionType(clang::FunctionDecl *FD,
+                               clang::SourceLocation Loc,
+                               const clang::FunctionProtoType *FPT,
+                               const FunctionExtInfo &EI,
+                               const FunctionExtProtoInfo &EPI,
+                               const FunctionExceptionSpec &ESI) {
+  assert(FD && "Invalid function declaration");
+  assert(FPT && "Invalid function proto type");
+  auto ParamTys = FPT->getParamTypes();
+  llvm::SmallVector<clang::QualType, 10> ParamTypes(ParamTys.begin(),
+                                                    ParamTys.end());
+  clang::QualType NewFuncTy;
+  if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(FD)) {
+    NewFuncTy = CxxSema.BuildFunctionType(FPT->getReturnType(), ParamTypes, Loc,
+                                          MD->getParent()->getDeclName(), EPI);
+  } else {
+    NewFuncTy = CxxSema.BuildFunctionType(FPT->getReturnType(), ParamTypes, Loc,
+                                          clang::DeclarationName(), EPI);
+  }
+  if (NewFuncTy.isNull()) {
+    Diags.Report(Loc, clang::diag::err_invalid_function_type);
+    return true;
+  }
+  const clang::FunctionProtoType *NewFPT
+                                 = NewFuncTy->getAs<clang::FunctionProtoType>();
+  if (!NewFPT) {
+    Diags.Report(Loc, clang::diag::err_invalid_function_type);
+    return true;
+  }
+  clang::QualType ExtInfoAdjustedTy(
+               Context.CxxAST.adjustFunctionType(NewFPT, EI), /*Qualifiers=*/0);
+  if (ExtInfoAdjustedTy.isNull()) {
+    Diags.Report(Loc, clang::diag::err_invalid_function_type);
+    return true;
+  }
+  clang::QualType ExceptionAdjustedTy
+      = Context.CxxAST.getFunctionTypeWithExceptionSpec(ExtInfoAdjustedTy, ESI);
+  if (ExceptionAdjustedTy.isNull()) {
+    Diags.Report(Loc, clang::diag::err_invalid_function_type);
+    return true;
+  }
+  auto ParmVarDecls = FD->parameters();
+  llvm::SmallVector<clang::ParmVarDecl *, 32> Parmeters(ParmVarDecls.begin(),
+                                                         ParmVarDecls.end());
+  clang::TypeSourceInfo *TInfo = BuildFunctionTypeLoc(Context.CxxAST,
+                                                      ExceptionAdjustedTy,
+                                                      FD->getBeginLoc(),
+                                                      clang::SourceLocation(),
+                                                      clang::SourceLocation(),
+                                                      clang::SourceRange(),
+                                                      FD->getEndLoc(),
+                                                      Parmeters);
+  if (!TInfo) {
+    Diags.Report(Loc, clang::diag::err_invalid_function_type);
+    return true;
+  }
+  FD->setType(ExceptionAdjustedTy);
+  FD->setTypeSourceInfo(TInfo);
+  return false;
 }
 
 } // namespace gold

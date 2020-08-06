@@ -9,6 +9,7 @@
 #ifndef LLVM_CLANG_UNITTESTS_GOLD_ASTMATCHERSTEST_H
 #define LLVM_CLANG_UNITTESTS_GOLD_ASTMATCHERSTEST_H
 
+#include "clang/Gold/GoldFrontend.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/AST/Attr.h"
@@ -17,7 +18,7 @@
 
 namespace clang {
 namespace ast_matchers {
-
+extern const internal::VariadicDynCastAllOfMatcher<Decl, VarTemplateDecl> varTemplateDecl;
 // I created this because it didn't exist before this and I acutally needed it
 // for a particular test.
 AST_POLYMORPHIC_MATCHER(isExternStorageClass,
@@ -58,11 +59,17 @@ AST_POLYMORPHIC_MATCHER_P(valueDeclAlignedTo,
 
   // AlignedAttr *Attr = Node.template getAttr<AlignedAttr>();
   TypeInfo Ti = Node.getASTContext().getTypeInfo(Node.getType());
-  llvm::outs() << "Type info align = " << Ti.Align << "\n";
-  llvm::outs() << "Expected alignment = " << ExpectedAlignment << "\n";
-  llvm::outs() << "Max alignment = " << Node.getMaxAlignment() << "\n";
   // unsigned ActualAlignment = Attr->getAlignment(Node.getASTContext());
   return Ti.Align == ExpectedAlignment;
+}
+
+AST_POLYMORPHIC_MATCHER_P(underlyingIntegerType,
+                        AST_POLYMORPHIC_SUPPORTED_TYPES(EnumDecl),
+                        internal::Matcher<QualType>, InnerMatcher) {
+  QualType QT = Node.getIntegerType();
+  if (!QT.isNull())
+    return InnerMatcher.matches(QT, Finder, Builder);
+  return false;
 }
 
 AST_POLYMORPHIC_MATCHER_P(typeDeclAlignedTo,
@@ -106,6 +113,19 @@ AST_MATCHER_P(CXXRecordDecl, hasBaseSpecifier, BaseMatcher, BaseCheck) {
       }
   return false;
 }
+
+AST_POLYMORPHIC_MATCHER(methodHasRRefQualifier,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(CXXMethodDecl)) {
+  const FunctionProtoType *FPT= Node.getType()->template getAs<FunctionProtoType>();
+  return FPT->getExtProtoInfo().RefQualifier == RQ_RValue;
+}
+
+AST_POLYMORPHIC_MATCHER(methodHasRefQualifier,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(CXXMethodDecl)) {
+  const FunctionProtoType *FPT= Node.getType()->template getAs<FunctionProtoType>();
+  return FPT->getExtProtoInfo().RefQualifier == RQ_LValue;
+}
+
 
 
 using clang::tooling::buildASTFromCodeWithArgs;

@@ -33,7 +33,7 @@
 #include "clang/AST/DeclCXX.h"
 
 namespace gold {
-  
+
 LateElaboratedDecl::~LateElaboratedDecl() { }
 void LateElaboratedDecl::ElaborateMethodDeclarations() { }
 void LateElaboratedDecl::ElaborateMemberInitializers() { }

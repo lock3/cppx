@@ -85,7 +85,7 @@ private:
   AttrVec Attributes;
 };
 
-struct ErrorSyntax : Syntax 
+struct ErrorSyntax : Syntax
 {
   ErrorSyntax()
     : Syntax(SK_Error)
@@ -105,7 +105,7 @@ struct ErrorSyntax : Syntax
 };
 
 /// Any term represented by a single token (e.g., literals, identifiers).
-struct AtomSyntax : Syntax 
+struct AtomSyntax : Syntax
 {
   AtomSyntax(Token Tok)
     : Syntax(SK_Atom), Tok(Tok)
@@ -161,7 +161,7 @@ struct LiteralSuffix
 };
 
 /// Represents literal values.
-struct LiteralSyntax : AtomSyntax 
+struct LiteralSyntax : AtomSyntax
 {
   LiteralSyntax(const Token &Tok)
     : AtomSyntax(SK_Literal, Tok)
@@ -211,7 +211,7 @@ struct VectorNode
 ///
 /// \todo These are separated by either commas, semicolons, pr separators,
 /// and there's (possibly) a semantic difference.
-struct ListSyntax : Syntax, VectorNode<Syntax> 
+struct ListSyntax : Syntax, VectorNode<Syntax>
 {
   ListSyntax(Syntax **Ts, unsigned NumElems)
     : Syntax(SK_List), VectorNode(Ts, NumElems)
@@ -230,7 +230,7 @@ struct ListSyntax : Syntax, VectorNode<Syntax>
   }
 };
 
-struct ArraySyntax : Syntax, VectorNode<Syntax> 
+struct ArraySyntax : Syntax, VectorNode<Syntax>
 {
   ArraySyntax(Syntax **Ts, unsigned NumElems)
     : Syntax(SK_Array), VectorNode(Ts, NumElems)
@@ -355,7 +355,7 @@ struct ElemSyntax : Syntax
 };
 
 /// A labeled block of code (e.g., a loop).
-struct MacroSyntax : Syntax 
+struct MacroSyntax : Syntax
 {
   MacroSyntax(Syntax *Call, Syntax *Block, Syntax *Next)
     : Syntax(SK_Macro)

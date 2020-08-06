@@ -80,6 +80,7 @@ struct AttrStatus {
     HasThreadLocal = false;
     HasBits = false;
     HasAlignAs = false;
+    HasRefQualifier = false;
   }
   bool HasConstExpr : 1;
   bool HasInLine : 1;
@@ -100,6 +101,7 @@ struct AttrStatus {
   bool HasNoReturn : 1;
   bool HasBits : 1;
   bool HasAlignAs : 1;
+  bool HasRefQualifier : 1;
 };
 
 /// Maintains the state of Gold-to-C++ translation for a
@@ -144,7 +146,7 @@ public:
   /// replace. This is done to allow for breaks in elaboration, and switching
   /// between valid lookup contexts while additional elaboration is completed.
   void setCurrentScope(Scope *S);
-  
+
   /// Pop the current scope, returning it.
   Scope *popScope();
 
@@ -273,7 +275,7 @@ public:
                                              bool TopLevelClass);
   void deallocateElaboratingClass(ElaboratingClass *D);
   void popElaboratingClass(ClassElaborationState State);
-  
+
   LateElaboratedMethodDeclaration *CurrentLateMethodDecl = nullptr;
   class LateMethodRAII {
     Sema &SemaRef;
@@ -286,7 +288,7 @@ public:
       SemaRef.CurrentLateMethodDecl = NextDecl;
     }
     ~LateMethodRAII() {
-      SemaRef.CurrentLateMethodDecl = Previous; 
+      SemaRef.CurrentLateMethodDecl = Previous;
     }
   };
   /// This attempts to check if declaration needs to be delayed during class
@@ -311,7 +313,7 @@ public:
   clang::CppxTypeLiteral *buildAnyTypeExpr(clang::QualType KindTy,
                                            clang::TypeSourceInfo *TInfo);
 
-  
+
   clang::CppxTypeLiteral *buildAnyTypeExpr(clang::QualType KindTy,
                                            clang::QualType Ty,
                                            clang::SourceLocation Loc);
@@ -328,7 +330,7 @@ public:
 
   clang::CppxDeclRefExpr *buildTemplateType(clang::TemplateDecl *TD,
                                             clang::SourceLocation Loc);
-  
+
   clang::Expr *addConstToTypeExpr(const clang::Expr *TyExpr,
                                   clang::SourceLocation Loc);
   clang::Expr *addRefToTypeExpr(const clang::Expr *TyExpr,
@@ -386,7 +388,7 @@ public:
   SyntaxContext &Context;
 
   clang::AttributeFactory AttrFactory;
-  
+
   // The Clang diagnostics engine.
   clang::DiagnosticsEngine &Diags;
 
@@ -487,7 +489,7 @@ public:
     clang::SourceLocation ExitingLocation;
   };
 
-  /// This class provides RAII for keeping track of DeclContexts, even if 
+  /// This class provides RAII for keeping track of DeclContexts, even if
   /// the DeclContext isn't set by us for clang::Sema.
   class DeclContextRAII {
     Sema &SemaRef;
@@ -500,17 +502,17 @@ public:
     {
       if (DoSetAndReset)
         SemaRef.CurrentDecl = D;
-      else 
+      else
         SemaRef.pushDecl(D);
     }
     ~DeclContextRAII() {
       if (DoSetAndReset){
         SemaRef.setCurrentDecl(OriginalDecl);
-      } else 
+      } else
         SemaRef.popDecl();
     }
   };
-  
+
   struct EnterNonNestedClassEarlyElaboration {
     EnterNonNestedClassEarlyElaboration(Sema& S, Declaration* Decl)
       :SemaRef(S),
@@ -685,7 +687,7 @@ public:
   clang::QualType UInt32Ty;
   clang::QualType UInt64Ty;
   clang::QualType UInt128Ty;
-  
+
   clang::QualType Float16Ty;
   clang::QualType Float32Ty;
   clang::QualType Float64Ty;
@@ -693,7 +695,7 @@ public:
 
   // Dictionary of built in types.
   const llvm::StringMap<clang::QualType> BuiltinTypes;
-  
+
   /// Contains a large amount of constant information about individual operators
   /// If it's not in here it cannot be overriden.
   const OperatorInfo OpInfo;
@@ -712,23 +714,36 @@ public:
 
 
   /// Deep elaboration mode functions.
-  bool IsInDeepElaborationMode() const;
+  bool isInDeepElaborationMode() const;
 
   /// Sets Deep elaboration to true, returns the previous elaboration mode.
-  bool SetDeepElaborationMode(bool EnableDisable);
+  bool setDeepElaborationMode(bool EnableDisable);
 
-  struct EnterDeepElabRAII { 
+  struct EnterDeepElabRAII {
     Sema &SemaRef;
     bool PreviousValue;
     EnterDeepElabRAII(Sema &S)
       :SemaRef(S),
-      PreviousValue(S.SetDeepElaborationMode(true))
+      PreviousValue(S.setDeepElaborationMode(true))
     {}
     ~EnterDeepElabRAII() {
-      SemaRef.SetDeepElaborationMode(PreviousValue);
+      SemaRef.setDeepElaborationMode(PreviousValue);
     }
   };
-
+public:
+  using FunctionExtInfo = clang::FunctionProtoType::ExtInfo;
+  using FunctionExtProtoInfo = clang::FunctionProtoType::ExtProtoInfo;
+  using FunctionExceptionSpec = clang::FunctionProtoType::ExceptionSpecInfo;
+  /// This does a rebuild the type of the function, in a single action without
+  /// the need to rebuild the TypeLoc for the function more then a single time.
+  /// This returns true if there was an error.
+  /// In the event of an error no changes are made to the FD.
+  bool rebuildFunctionType(clang::FunctionDecl *FD,
+                           clang::SourceLocation Loc,
+                           const clang::FunctionProtoType *FuncProtoType,
+                           const FunctionExtInfo &ExtInfo,
+                           const FunctionExtProtoInfo &ProtoTypeInfo,
+                           const FunctionExceptionSpec &ExceptionSpecInfo);
 };
 
 } // namespace gold

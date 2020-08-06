@@ -206,7 +206,7 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   case FOK_Return: {
     clang::StmtResult ReturnResult;
     if (S->getNumArguments()) {
-      clang::Expr *RetVal = 
+      clang::Expr *RetVal =
         ExprElaborator(Context, SemaRef).elaborateExpr(S->getArgument(0));
       if (!RetVal)
         return nullptr;
@@ -525,7 +525,7 @@ static bool checkBlockForArgs(Sema &SemaRef, const ArraySyntax *Args,
           unsigned ErrID =
             SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
                                           "for macro may only have one range");
-          unsigned NoteID = 
+          unsigned NoteID =
             SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Note,
                                           "previous range is here");
           SemaRef.Diags.Report(Arg->getLoc(), ErrID);
@@ -791,7 +791,7 @@ StmtElaborator::elaborateBlock(const Syntax *S) {
 
     clang::StmtResult ReturnRes = SemaRef.getCxxSema().BuildReturnStmt(
                                                         S->getLoc(), ReturnVal);
-    if (!ReturnRes.isInvalid()) 
+    if (!ReturnRes.isInvalid())
       Results.push_back(ReturnRes.get());
 
     StartLoc = EndLoc = S->getLoc();

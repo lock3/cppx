@@ -493,7 +493,9 @@ template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::CppxNamespaceTyp
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::EnumTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  clang::EnumTypeLoc EnumTL = TLB.push<clang::EnumTypeLoc>(Ty);
+  EnumTL.setNameLoc(Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::EnumTypeLoc>
@@ -748,6 +750,7 @@ TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context, QualType Ty,
                               ExceptionSpecRange, EndLoc, Params);
 }
 
+
 TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context,
     clang::TypeLocBuilder &TLB, QualType Ty, SourceLocation BeginLoc,
     SourceLocation LParenLoc, SourceLocation RParenLoc,
@@ -759,18 +762,32 @@ TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context,
   // Push the return type to the TypeLocBuilder.
   QualType ReturnType = Ty->getAs<clang::FunctionType>()->getReturnType();
   BuildAnyTypeLoc(Context, TLB, ReturnType, BeginLoc);
+  if (Ty->isFunctionProtoType()) {
+    clang::FunctionProtoTypeLoc TL = TLB.push<clang::FunctionProtoTypeLoc>(Ty);
+    TL.setLocalRangeBegin(BeginLoc);
+    TL.setLParenLoc(LParenLoc);
+    TL.setRParenLoc(RParenLoc);
+    TL.setExceptionSpecRange(ExceptionSpecRange);
+    TL.setLocalRangeEnd(EndLoc);
 
-  clang::FunctionTypeLoc NewTL = TLB.push<clang::FunctionTypeLoc>(Ty);
-  NewTL.setLocalRangeBegin(BeginLoc);
-  NewTL.setLParenLoc(LParenLoc);
-  NewTL.setRParenLoc(RParenLoc);
-  NewTL.setExceptionSpecRange(ExceptionSpecRange);
-  NewTL.setLocalRangeEnd(EndLoc);
+    for (unsigned I = 0; I < Params.size(); ++I)
+      TL.setParam(I, Params[I]);
 
-  for (unsigned I = 0; I < Params.size(); ++I)
-    NewTL.setParam(I, Params[I]);
+    return TLB.getTypeSourceInfo(Context, Ty);
+  } else {
 
-  return TLB.getTypeSourceInfo(Context, Ty);
+    clang::FunctionTypeLoc NewTL = TLB.push<clang::FunctionTypeLoc>(Ty);
+    NewTL.setLocalRangeBegin(BeginLoc);
+    NewTL.setLParenLoc(LParenLoc);
+    NewTL.setRParenLoc(RParenLoc);
+    NewTL.setExceptionSpecRange(ExceptionSpecRange);
+    NewTL.setLocalRangeEnd(EndLoc);
+
+    for (unsigned I = 0; I < Params.size(); ++I)
+      NewTL.setParam(I, Params[I]);
+
+    return TLB.getTypeSourceInfo(Context, Ty);
+  }
 }
 
 TypeSourceInfo *BuildFunctionPtrTypeLoc(clang::ASTContext &Context,

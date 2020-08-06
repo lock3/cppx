@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  Operator overload information stroage and building information.  
+//  Operator overload information stroage and building information.
 //  This file is largely responsible for providing a type to contain all
 //  necessary and overertly annoying operator overloadings.
 //
@@ -158,7 +158,7 @@ class UnaryOpInfo : public OpInfoBase {
   clang::IdentifierInfo *GoldUseName;
   clang::UnaryOperatorKind UnaryOpKind;
 public:
-  UnaryOpInfo(clang::IdentifierInfo *CName, clang::IdentifierInfo *GDName, 
+  UnaryOpInfo(clang::IdentifierInfo *CName, clang::IdentifierInfo *GDName,
               clang::IdentifierInfo *GUseName, clang::UnaryOperatorKind Kind,
               bool MemberOnly, AllowedOverloadUse AllowedOverloadStyle,
               clang::OverloadedOperatorKind OpKind)
@@ -178,9 +178,9 @@ class UnaryOpWith2ndName : public UnaryOpInfo {
   clang::IdentifierInfo *GoldUse2ndName;
 public:
   UnaryOpWith2ndName(clang::IdentifierInfo *CName,
-                     clang::IdentifierInfo *GDName, 
+                     clang::IdentifierInfo *GDName,
                      clang::IdentifierInfo *GUseName,
-                     clang::IdentifierInfo *GDName2, 
+                     clang::IdentifierInfo *GDName2,
                      clang::IdentifierInfo *GUseName2,
                      clang::UnaryOperatorKind Kind,
                      bool MemberOnly,
@@ -200,7 +200,7 @@ class BinOpInfo : public OpInfoBase {
   clang::IdentifierInfo *GoldUseName;
   clang::BinaryOperatorKind BinOpKind;
 public:
-  BinOpInfo(clang::IdentifierInfo *CName, clang::IdentifierInfo *GDName, 
+  BinOpInfo(clang::IdentifierInfo *CName, clang::IdentifierInfo *GDName,
             clang::IdentifierInfo *GUseName, clang::BinaryOperatorKind Kind,
             bool isMemberOnly, AllowedOverloadUse AllowedOverloadStyle,
             clang::OverloadedOperatorKind OpKind)
@@ -219,8 +219,8 @@ class BinOpInfoWith2ndName : public BinOpInfo {
   clang::IdentifierInfo *GoldDecl2ndName;
   clang::IdentifierInfo *GoldUse2ndName;
 public:
-  BinOpInfoWith2ndName(clang::IdentifierInfo *CName, clang::IdentifierInfo *GDName, 
-            clang::IdentifierInfo *GUseName, clang::IdentifierInfo *GName2, 
+  BinOpInfoWith2ndName(clang::IdentifierInfo *CName, clang::IdentifierInfo *GDName,
+            clang::IdentifierInfo *GUseName, clang::IdentifierInfo *GName2,
             clang::IdentifierInfo *GUseName2, clang::BinaryOperatorKind Kind,
             bool MemberOnly, AllowedOverloadUse AllowedOverloadStyle,
             clang::OverloadedOperatorKind OpKind)
@@ -262,7 +262,7 @@ class UnaryAndBinOpInfo : public OpInfoBase {
   clang::BinaryOperatorKind BinOpKind;
 public:
   UnaryAndBinOpInfo(clang::IdentifierInfo *CName,
-                    clang::IdentifierInfo *GDName, 
+                    clang::IdentifierInfo *GDName,
                     clang::IdentifierInfo *GUseName,
                     clang::UnaryOperatorKind UnaryKind,
                     clang::BinaryOperatorKind BinaryKind,
@@ -288,7 +288,7 @@ class DerefAndXOrComboOp : public OpInfoBase {
   clang::OverloadedOperatorKind BinOOKind;
 public:
   DerefAndXOrComboOp(clang::IdentifierInfo *CName,
-                     clang::IdentifierInfo *GDName, 
+                     clang::IdentifierInfo *GDName,
                      clang::IdentifierInfo *GUseName,
                      clang::UnaryOperatorKind UnaryKind,
                      clang::BinaryOperatorKind BinaryKind,

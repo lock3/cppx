@@ -71,9 +71,9 @@ public:
   clang::Expr *elaborateExpr(const Syntax *S);
   clang::Expr *elaborateExpectedConstantExpr(const Syntax* S);
   clang::Expr *elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType);
-  
+
   clang::Expr *elaborateCall(const CallSyntax *S);
-  
+
   /// This elaborates sizeof, alignof, noexcept used as an operator, constexpr
   /// as an operator, and decltype.
   /// This function also tests if the call is one of these operators, and returns
@@ -124,9 +124,9 @@ private:
   clang::Expr *handleOperatorConst(const CallSyntax *S);
   clang::Expr *handleRefType(const CallSyntax *S);
   clang::Expr *handleRRefType(const CallSyntax *S);
-  clang::Expr *handleFunctionType(const CallSyntax *S);  
+  clang::Expr *handleFunctionType(const CallSyntax *S);
   clang::Expr *handleArrayType(const CallSyntax *S);
-  
+
 private:
   /// Utility functions that handle operations assocated with type elaboration,
   /// but not the actual elaboration. These functions also handle error

@@ -21,52 +21,39 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-// TEST(GoldConstAttr, ConstMemberFunctionDecl) {
-//   StringRef Code = R"(
-// c : type = class:
-//   foo()<const>():void
-// )";
-//   DeclarationMatcher ClassC = cxxRecordDecl(hasName("c"), 
-//     has(cxxMethodDecl(hasName("foo"), isConst()))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ClassC));
-// }
+TEST(GoldConstAttr, ConstMemberFunctionDecl) {
+  StringRef Code = R"(
+c : type = class:
+  foo()<const>:void
+)";
+  DeclarationMatcher ClassC = cxxRecordDecl(hasName("c"), 
+    has(cxxMethodDecl(hasName("foo"), isConst()))
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
 
-// TEST(GoldConstAttr, ConstMemberFunctionDef) {
-//   StringRef Code = R"(
-// c : type = class:
-//   foo()<const>():void!
-//     ;
+TEST(GoldConstAttr, ConstMemberFunctionDeclWithExceptionSpecInfo) {
+  StringRef Code = R"(
+c : type = class:
+  foo()<noexcept><const>:void
+)";
+  DeclarationMatcher ClassC = cxxRecordDecl(hasName("c"), 
+    has(cxxMethodDecl(hasName("foo"), isConst(), isNoThrow()))
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+
+TEST(GoldConstAttr, ConstMemberFunctionDef) {
+  StringRef Code = R"(
+c : type = class:
+  foo()<const>:void!
+    ;
   
-// )";
-//   DeclarationMatcher ClassC = cxxRecordDecl(hasName("c"), 
-//     has(cxxMethodDecl(hasName("foo"), isConst()))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ClassC));
-// }
+)";
+  DeclarationMatcher ClassC = cxxRecordDecl(hasName("c"), 
+    has(cxxMethodDecl(hasName("foo"), isConst()))
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
 
-// TEST(GoldConstAttr, InheritingFromAFinalClass) {
-//   StringRef Code = R"(
-// C1<final> : type = class:
-//   ;
-
-// C2 :type = class(C1):
-//   ;
-
-// )";
-//   GoldFailureTest(Code);
-// }
-
-// TEST(GoldConstAttr, FinalMethod) {
-//   StringRef Code = R"(
-// C1<final> : type = class:
-//   foo()<final>:void!
-//     ;
-  
-
-// )";
-//   DeclarationMatcher ClassC = cxxRecordDecl(hasName("C1"),
-//     hasDescendant(cxxMethodDecl(isFinal()
-//   )));
-//   ASSERT_TRUE(matches(Code.str(), ClassC));
-// }

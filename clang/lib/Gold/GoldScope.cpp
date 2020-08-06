@@ -180,22 +180,56 @@ bool Declaration::declaresType() const {
 
 bool Declaration::declaresForwardRecordDecl() const {
   if (declaresInitializedVariable())
-    if (const AtomSyntax *RHS = dyn_cast<AtomSyntax>(Init))
-      return RHS->hasToken(tok::ClassKeyword);
+    if (const AtomSyntax *RHS = dyn_cast<AtomSyntax>(Init)) {
+      return RHS->hasToken(tok::ClassKeyword)
+             || RHS->hasToken(tok::UnionKeyword)
+             || RHS->hasToken(tok::EnumKeyword);
+    } else if (const CallSyntax *Call = dyn_cast<CallSyntax>(Init)) {
+      if (const AtomSyntax *Nm = dyn_cast<AtomSyntax>(Call->getCallee())) {
+        return Nm->hasToken(tok::EnumKeyword);
+      }
+    }
   return false;
 }
 
-bool Declaration::declaresRecord() const {
+bool Declaration::declaresTag() const {
   if (Cxx)
     return isa<clang::CXXRecordDecl>(Cxx);
   if (Init)
     if (const MacroSyntax *Macro = dyn_cast<MacroSyntax>(Init)) {
       if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Macro->getCall()))
-        return Atom->hasToken(tok::ClassKeyword);
+        return Atom->hasToken(tok::ClassKeyword)
+               || Atom->hasToken(tok::UnionKeyword)
+               || Atom->hasToken(tok::EnumKeyword);
       if (const CallSyntax *ClsWithBases = dyn_cast<CallSyntax>(Macro->getCall()))
         if (const AtomSyntax *Callee
                   = dyn_cast<AtomSyntax>(ClsWithBases->getCallee()))
-            return Callee->hasToken(tok::ClassKeyword);
+          return Callee->hasToken(tok::ClassKeyword)
+                  || Callee->hasToken(tok::UnionKeyword)
+                  || Callee->hasToken(tok::EnumKeyword);
+    }
+  return false;
+}
+
+bool Declaration::getTagName(const AtomSyntax *&NameNode) const {
+  if (Init)
+    if (const MacroSyntax *Macro = dyn_cast<MacroSyntax>(Init)) {
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Macro->getCall()))
+        if (Atom->hasToken(tok::ClassKeyword)
+            || Atom->hasToken(tok::UnionKeyword)
+            || Atom->hasToken(tok::EnumKeyword)) {
+          NameNode = Atom;
+          return true;
+        }
+      if (const CallSyntax *ClsWithBases = dyn_cast<CallSyntax>(Macro->getCall()))
+        if (const AtomSyntax *Callee
+                  = dyn_cast<AtomSyntax>(ClsWithBases->getCallee()))
+          if (Callee->hasToken(tok::ClassKeyword)
+              || Callee->hasToken(tok::UnionKeyword)
+              || Callee->hasToken(tok::EnumKeyword)) {
+            NameNode = Callee;
+            return true;
+          }
     }
   return false;
 }
@@ -227,6 +261,67 @@ bool Declaration::declaresFunction() const {
     D = D->Next;
   if (D)
     return D->Kind == DK_Function;
+  return false;
+}
+
+bool Declaration::declaresFunctionWithImplicitReturn() const {
+  if (declaresFunction() || declaresFunctionTemplate()) {
+    if (!Op)
+      // Something is very wrong here?!
+      return false;
+    if (const CallSyntax *Call = dyn_cast<CallSyntax>(Op)){
+      if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(Call->getCallee())) {
+        if (Name->getSpelling() == "operator'='") {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+bool Declaration::declaresPossiblePureVirtualFunction() const {
+  if (declaresFunction() || declaresFunctionTemplate()) {
+    if (!Op)
+      return false;
+    if (const CallSyntax *Call = dyn_cast<CallSyntax>(Op))
+      if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(Call->getCallee()))
+        if (Name->getSpelling() == "operator'='")
+          if (const LiteralSyntax *Lit
+                                = dyn_cast<LiteralSyntax>(Call->getArgument(1)))
+            if (Lit->getToken().getKind() == tok::DecimalInteger)
+              if (Lit->getSpelling() == "0")
+                return true;
+  }
+  return false;
+}
+
+static bool isSpecialExpectedAssignedFuncValue(const Syntax *Op, TokenKind TK) {
+  if (const CallSyntax *Call = dyn_cast<CallSyntax>(Op))
+    if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(Call->getCallee()))
+      if (Name->getSpelling() == "operator'='")
+        if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Call->getArgument(1)))
+          if (Atom->getToken().getKind() == TK)
+            return true;
+  return false;
+}
+
+bool Declaration::declaresDefaultedFunction() const {
+ if (declaresFunction() || declaresFunctionTemplate()) {
+    if (!Op)
+      return false;
+    return isSpecialExpectedAssignedFuncValue(Op, tok::DefaultKeyword);
+  }
+  return false;
+}
+
+
+bool Declaration::declaresDeletedFunction() const {
+ if (declaresFunction() || declaresFunctionTemplate()) {
+    if (!Op)
+      return false;
+    return isSpecialExpectedAssignedFuncValue(Op, tok::DeleteKeyword);
+  }
   return false;
 }
 
@@ -268,7 +363,7 @@ bool Declaration::declaresFunctionTemplate() const {
 
 
 bool Declaration::declaresOperatorOverload() const {
-  if (!OpInfo) 
+  if (!OpInfo)
     return false;
   return declaresFunction();
 }
@@ -285,7 +380,7 @@ bool Declaration::declIsStatic() const {
   }
   if (!D->UnprocessedAttributes)
     return false;
-  
+
   auto Iter = std::find_if(D->UnprocessedAttributes->begin(),
       D->UnprocessedAttributes->end(), [](const Syntax *S) -> bool{
         if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(S)) {
@@ -310,7 +405,7 @@ bool Declaration::declaresInlineInitializedStaticVarDecl() const {
   if (!Cxx)
     return false;
   clang::VarDecl *VD = dyn_cast<clang::VarDecl>(Cxx);
-  if (!VD) 
+  if (!VD)
     return false;
   return VD->isInline() && VD->getStorageClass() == clang::SC_Static;
 }
@@ -352,6 +447,22 @@ const Declarator *Declaration::getIdDeclarator() const {
 Declarator *Declaration::getIdDeclarator() {
   Declarator *D = Decl;
   while (D && D->Kind != DK_Identifier) {
+    D = D->Next;
+  }
+  return D;
+}
+
+const Declarator *Declaration::getFirstDeclarator(DeclaratorKind DK) const {
+  const Declarator *D = Decl;
+  while (D && D->Kind != DK) {
+    D = D->Next;
+  }
+  return D;
+}
+
+Declarator *Declaration::getFirstDeclarator(DeclaratorKind DK) {
+  Declarator *D = Decl;
+  while (D && D->Kind != DK) {
     D = D->Next;
   }
   return D;
@@ -414,7 +525,7 @@ void Scope::dump(llvm::raw_ostream &os) const {
       else
         os << "\n";
     }
-  } else 
+  } else
     for (auto D : IdMap)
       os << D.first->getName() << '\n';
 }
