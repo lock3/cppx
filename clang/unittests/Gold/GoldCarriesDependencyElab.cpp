@@ -44,6 +44,6 @@ TEST(GoldCarriesDependency, AsCall) {
 f(i:int)<carries_dependency()> : int
 )";
   DeclarationMatcher ToMatch =
-    parmVarDecl(hasAttr(clang::attr::CarriesDependency));
+    functionDecl(hasAttr(clang::attr::CarriesDependency));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
