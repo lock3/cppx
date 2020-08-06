@@ -858,28 +858,9 @@ static Declarator *getFunctionDeclarator(Declaration *D) {
   return getFunctionDeclarator(D->Decl);
 }
 
-// Get the Clang parameter declarations for D
-static void getFunctionParameters(Declaration *D,
-                          llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
-  Declarator *FnDecl = getFunctionDeclarator(D);
-  const ListSyntax *ParamList = cast<ListSyntax>(FnDecl->Data.ParamInfo.Params);
-  Scope *ParamScope = FnDecl->Data.ParamInfo.ConstructedScope;
-  bool Variadic = FnDecl->Data.ParamInfo.VariadicParam;
-
-  unsigned N = ParamList->getNumChildren();
-  for (unsigned I = 0; I < N; ++I) {
-    if (I == N - 1 && Variadic)
-      break;
-    const Syntax *P = ParamList->getChild(I);
-    Declaration *PD = ParamScope->findDecl(P);
-    assert(PD->Cxx && "No corresponding declaration");
-    Params.push_back(cast<clang::ParmVarDecl>(PD->Cxx));
-  }
-}
-
-void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
-                         const Syntax *Params,
-                         llvm::SmallVectorImpl<clang::NamedDecl *> &Res)
+static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
+                                const Syntax *Params,
+                                llvm::SmallVectorImpl<clang::NamedDecl *> &Res)
 {
   std::size_t I = 0;
   for (const Syntax *P : Params->children()) {
@@ -905,11 +886,34 @@ void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
     ++I;
   }
 }
-static bool getOperatorDeclarationName(SyntaxContext &Context, Sema &SemaRef,
-                                       const OpInfoBase *OpInfo,
-                                       bool InClass, unsigned ParamCount,
-                                       clang::SourceLocation NameLoc,
-                                       clang::DeclarationName &Name) {
+
+// anonymous namespace comprised of subroutines for elaborateFunctionDecl
+namespace {
+
+// Get the Clang parameter declarations for D
+void getFunctionParameters(Declaration *D,
+                          llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
+  Declarator *FnDecl = getFunctionDeclarator(D);
+  const ListSyntax *ParamList = cast<ListSyntax>(FnDecl->Data.ParamInfo.Params);
+  Scope *ParamScope = FnDecl->Data.ParamInfo.ConstructedScope;
+  bool Variadic = FnDecl->Data.ParamInfo.VariadicParam;
+
+  unsigned N = ParamList->getNumChildren();
+  for (unsigned I = 0; I < N; ++I) {
+    if (I == N - 1 && Variadic)
+      break;
+    const Syntax *P = ParamList->getChild(I);
+    Declaration *PD = ParamScope->findDecl(P);
+    assert(PD->Cxx && "No corresponding declaration");
+    Params.push_back(cast<clang::ParmVarDecl>(PD->Cxx));
+  }
+}
+
+bool getOperatorDeclarationName(SyntaxContext &Context, Sema &SemaRef,
+                                const OpInfoBase *OpInfo,
+                                bool InClass, unsigned ParamCount,
+                                clang::SourceLocation NameLoc,
+                                clang::DeclarationName &Name) {
 
 
   if (OpInfo->isMemberOnly() && !InClass) {
@@ -957,11 +961,11 @@ static bool getOperatorDeclarationName(SyntaxContext &Context, Sema &SemaRef,
 
 // Get either the canonical name of a function, or its C++ name if it's
 // an operator.
-static clang::DeclarationName getFunctionName(SyntaxContext &Ctx, Sema &SemaRef,
-                                              Declaration *D,
-                                              clang::TypeSourceInfo *TInfo,
-                                              bool InClass,
-                                              const clang::RecordDecl *RD) {
+clang::DeclarationName getFunctionName(SyntaxContext &Ctx, Sema &SemaRef,
+                                       Declaration *D,
+                                       clang::TypeSourceInfo *TInfo,
+                                       bool InClass,
+                                       const clang::RecordDecl *RD) {
   clang::DeclarationName Name;
   if (D->OpInfo) {
     const clang::FunctionProtoType *FPT = cast<clang::FunctionProtoType>(
@@ -980,8 +984,8 @@ static clang::DeclarationName getFunctionName(SyntaxContext &Ctx, Sema &SemaRef,
   return Name;
 }
 
-static void setSpecialFunctionName(SyntaxContext &Ctx, clang::CXXRecordDecl *RD,
-                                   Declaration *D, clang::DeclarationName &Name) {
+void setSpecialFunctionName(SyntaxContext &Ctx, clang::CXXRecordDecl *RD,
+                            Declaration *D, clang::DeclarationName &Name) {
   clang::QualType RecordTy = Ctx.CxxAST.getTypeDeclType(RD);
   clang::CanQualType Ty = Ctx.CxxAST.getCanonicalType(RecordTy);
   if (D->getId()->isStr("constructor")) {
@@ -991,9 +995,8 @@ static void setSpecialFunctionName(SyntaxContext &Ctx, clang::CXXRecordDecl *RD,
   }
 }
 
-static void lookupFunctionRedecls(Sema &SemaRef,
-                                  clang::Scope *FoundScope,
-                                  clang::LookupResult &Previous) {
+void lookupFunctionRedecls(Sema &SemaRef, clang::Scope *FoundScope,
+                           clang::LookupResult &Previous) {
   while ((FoundScope->getFlags() & clang::Scope::DeclScope) == 0 ||
          (FoundScope->getFlags() & clang::Scope::TemplateParamScope) != 0)
     FoundScope = FoundScope->getParent();
@@ -1001,9 +1004,9 @@ static void lookupFunctionRedecls(Sema &SemaRef,
   SemaRef.getCxxSema().LookupName(Previous, FoundScope, false);
 }
 
-static bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
-                        clang::DeclarationName const &Name, clang::FunctionDecl **FD,
-                        clang::TypeSourceInfo *Ty, clang::CXXRecordDecl *RD) {
+bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
+                 clang::DeclarationName const &Name, clang::FunctionDecl **FD,
+                 clang::TypeSourceInfo *Ty, clang::CXXRecordDecl *RD) {
   clang::SourceLocation ExLoc = Fn->Op->getLoc();
   clang::SourceLocation FnLoc = Fn->Decl->getLoc();
   const clang::FunctionProtoType *FPT =
@@ -1105,12 +1108,12 @@ static bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
   return true;
 }
 
-static void handleFunctionTemplateSpecialization(SyntaxContext &Context,
-                                                 Sema &SemaRef,
-                                                 const Syntax *TemplateParams,
-                                                 Declarator *Fn,
-                                                 clang::FunctionDecl *FD,
-                                                 clang::LookupResult &Prev) {
+void handleFunctionTemplateSpecialization(SyntaxContext &Context,
+                                          Sema &SemaRef,
+                                          const Syntax *TemplateParams,
+                                          Declarator *Fn,
+                                          clang::FunctionDecl *FD,
+                                          clang::LookupResult &Prev) {
     bool HasExplicitTemplateArgs = false;
     clang::TemplateArgumentListInfo TemplateArgs;
 
@@ -1143,6 +1146,8 @@ static void handleFunctionTemplateSpecialization(SyntaxContext &Context,
           Prev))
       FD->setInvalidDecl();
 }
+
+} // end anonymous namespace
 
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Get the type of the entity.
