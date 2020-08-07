@@ -3890,11 +3890,26 @@ void Elaborator::elaborateSystemAttribute(clang::Decl *D, const Syntax *S,
   }
   break;
   case SAFK_ScopeName:{
-    llvm_unreachable("ScopeName Attribute not implemented yet.");
+    Attrs.addNew(&Context.CxxAST.Idents.get(Info.AttrId->getSpelling()),
+                 clang::SourceRange(Info.AttrId->getLoc(),
+                                    Info.AttrId->getLoc()),
+                 &Context.CxxAST.Idents.get(Info.ScopeName->getSpelling()),
+                 Info.ScopeName->getLoc(), nullptr, 0u,
+                 clang::ParsedAttr::Syntax::AS_CXX11);
   }
   break;
   case SAFK_ScopeNameCall:{
-    llvm_unreachable("ScopeNameCall Attribute not implemented yet.");
+    clang::ArgsVector Args;
+    if (processAttributeArgs(Context, SemaRef, Info.Args, Args)) {
+      return;
+    }
+    // Handling simple call style attributes.
+    Attrs.addNew(&Context.CxxAST.Idents.get(Info.AttrId->getSpelling()),
+                 clang::SourceRange(Info.AttrId->getLoc(),
+                                    Info.AttrId->getLoc()),
+                 &Context.CxxAST.Idents.get(Info.ScopeName->getSpelling()),
+                 Info.ScopeName->getLoc(), Args.data(),
+                 Args.size(), clang::ParsedAttr::Syntax::AS_CXX11);
   }
   break;
   default:
