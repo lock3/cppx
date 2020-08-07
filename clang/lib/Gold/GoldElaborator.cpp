@@ -1119,6 +1119,10 @@ void handleFunctionTemplateSpecialization(SyntaxContext &Context,
 
     for (auto *SS : TemplateParams->children()) {
       clang::Expr *E = ExprElaborator(Context, SemaRef).elaborateExpr(SS);
+      if (!E) {
+        FD->setInvalidDecl();
+        continue;
+      }
       // TODO: create a list of valid expressions this can or cannot be;
       // for example, namespace or pseudo-destructor is invalid here.
       if (E->getType()->isTypeOfTypes()) {
@@ -1132,15 +1136,13 @@ void handleFunctionTemplateSpecialization(SyntaxContext &Context,
         TemplateArgs.addArgument(ArgLoc);
       }
 
-      HasExplicitTemplateArgs = true;
+     if (E)
+        HasExplicitTemplateArgs = true;
     }
 
-    if (HasExplicitTemplateArgs) {
-      TemplateArgs.setLAngleLoc(TemplateParams->getLoc());
-      TemplateArgs.setRAngleLoc(TemplateParams->getLoc());
-    }
+    TemplateArgs.setLAngleLoc(TemplateParams->getLoc());
+    TemplateArgs.setRAngleLoc(TemplateParams->getLoc());
 
-    Fn->Data.ParamInfo.TemplateScope = SemaRef.saveScope(TemplateParams);
     if (SemaRef.getCxxSema().CheckFunctionTemplateSpecialization(
           FD, (HasExplicitTemplateArgs ? &TemplateArgs : nullptr),
           Prev))
@@ -1167,10 +1169,16 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Create the template parameters if they exist.
   const Syntax *TemplParams = D->getTemplateParams();
   bool Template = TemplParams;
+  bool Specialization = false;
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
   if (Template) {
     SemaRef.enterScope(SK_Template, TemplParams);
     BuildTemplateParams(Context, SemaRef, TemplParams, TemplateParamDecls);
+    // There are parameters but none are declarations, this
+    // must be a specialization.
+    Specialization = TemplateParamDecls.empty();
+    if (Specialization)
+      SemaRef.leaveScope(TemplParams);
   }
 
   // Elaborate the return type.
@@ -1223,7 +1231,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   }
 
   // If this describes a principal template declaration, create it.
-  if (Template) {
+  if (Template && !Specialization) {
     clang::SourceLocation Loc = TemplParams->getLoc();
     auto *TPL =
       clang::TemplateParameterList::Create(Context.CxxAST, Loc, Loc,
@@ -1256,7 +1264,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     elaborateAttributes(D);
   }
   // Add the declaration and update bindings.
-  if (!Template && !D->declaresConstructor())
+  if ((!Template || Specialization) && !D->declaresConstructor())
     Owner->addDecl(FD);
 
   if (D->declaresConstructor()) {
@@ -1278,11 +1286,9 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   }
 
   // Handle function template specialization.
-#if 0
-  if (!FD->isInvalidDecl() && !Previous.empty() && Template)
+  if (!FD->isInvalidDecl() && !Previous.empty() && Specialization)
     handleFunctionTemplateSpecialization(Context, SemaRef, TemplParams,
                                          FnDclrtr, FD, Previous);
-#endif
 
   // FIXME: this is not necessarily what should happen.
   if (FD->isInvalidDecl())

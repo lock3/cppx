@@ -1117,54 +1117,14 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
     return createNullLiteral(CxxAST, S->getLoc());
   case tok::ThisKeyword:
     return createThisExpr(SemaRef, S);
-  case tok::VoidKeyword:
-    return SemaRef.buildTypeExpr(CxxAST.VoidTy, S->getLoc());
-  case tok::BoolKeyword:
-    return SemaRef.buildTypeExpr(CxxAST.BoolTy, S->getLoc());
-  case tok::CharKeyword:
-    return SemaRef.buildTypeExpr(CxxAST.CharTy, S->getLoc());
-  case tok::Char8Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Char8Ty, S->getLoc());
-  case tok::Char16Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Char16Ty, S->getLoc());
-  case tok::Char32Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Char32Ty, S->getLoc());
-  case tok::IntKeyword:
-    return SemaRef.buildTypeExpr(CxxAST.IntTy, S->getLoc());
-  case tok::Int8Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Int8Ty, S->getLoc());
-  case tok::Int16Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Int16Ty, S->getLoc());
-  case tok::Int32Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Int32Ty, S->getLoc());
-  case tok::Int64Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Int64Ty, S->getLoc());
-  case tok::Int128Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Int128Ty, S->getLoc());
-  case tok::UintKeyword:
-    return SemaRef.buildTypeExpr(SemaRef.UIntTy, S->getLoc());
-  case tok::Uint8Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.UInt8Ty, S->getLoc());
-  case tok::Uint16Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.UInt16Ty, S->getLoc());
-  case tok::Uint32Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.UInt32Ty, S->getLoc());
-  case tok::Uint64Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.UInt64Ty, S->getLoc());
-  case tok::Uint128Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.UInt128Ty, S->getLoc());
-  case tok::Float16Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Float16Ty, S->getLoc());
-  case tok::Float32Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Float32Ty, S->getLoc());
-  case tok::Float64Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Float64Ty, S->getLoc());
-  case tok::Float128Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Float128Ty, S->getLoc());
-  case tok::TypeKeyword:
-    return SemaRef.buildTypeExpr(CxxAST.CppxKindTy, S->getLoc());
-  default: break;
+  default:
+    break;
   }
+
+  auto BuiltinMapIter = SemaRef.BuiltinTypes.find(S->getSpelling());
+  if (BuiltinMapIter != SemaRef.BuiltinTypes.end())
+    return SemaRef.buildTypeExpr(BuiltinMapIter->second, S->getLoc());
+
   SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_identifier_type)
                        << S->getSpelling();
 

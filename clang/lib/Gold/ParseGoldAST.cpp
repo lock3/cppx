@@ -41,7 +41,6 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
 
   Parser Parser(Context, SM, InputFile);
   Syntax *CST = Parser.parseFile();
-  // CST->dump();
   // FIXME: There's a -fdump-syntax flag that we should tie this too.
 
   // FIXME: We should handle -fsyntax-only here -- or maybe make a separate
@@ -54,7 +53,6 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
 
   clang::TranslationUnitDecl *TU =
     cast<clang::TranslationUnitDecl>(Elab.elaborateFile(CST));
-  // TU->dump();
   clang::ASTConsumer *Consumer = &ClangSema.getASTConsumer();
   for (auto *D : TU->decls()) {
     auto DPtr = ClangSema.ConvertDeclToDeclGroup(D);
