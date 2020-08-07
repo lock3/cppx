@@ -2272,7 +2272,7 @@ clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
       break;
     }
 
-    case DK_TemplateType:{
+    case DK_TemplateParams:{
       // Expression
       llvm_unreachable("Template parameters within the declarator "
           "not implemented yet.");

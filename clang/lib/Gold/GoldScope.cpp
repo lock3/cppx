@@ -69,7 +69,7 @@ static const char* getDeclaratorKindName(DeclaratorKind DK) {
     return "Unknown";
   case DK_Identifier:
     return "Identifier";
-  case DK_TemplateType:
+  case DK_TemplateParams:
     return "TemplateType";
   case DK_Function:
     return "Function";
@@ -245,7 +245,7 @@ bool Declaration::declaresNamespace() const {
 
 bool Declaration::declaresTemplateType() const {
   const Declarator *D = Decl;
-  while (D && D->Kind != DK_TemplateType) {
+  while (D && D->Kind != DK_TemplateParams) {
     D = D->Next;
   }
   if (!D)
@@ -423,7 +423,7 @@ const Syntax *Declaration::getTemplateParams() const {
 
 const Declarator *Declaration::getFirstTemplateDeclarator() const {
   const Declarator *D = Decl;
-  while (D && D->Kind != DK_TemplateType) {
+  while (D && D->Kind != DK_TemplateParams) {
     D = D->Next;
   }
   return D;
@@ -431,7 +431,7 @@ const Declarator *Declaration::getFirstTemplateDeclarator() const {
 
 Declarator *Declaration::getFirstTemplateDeclarator() {
   Declarator *D = Decl;
-  while (D && D->Kind != DK_TemplateType) {
+  while (D && D->Kind != DK_TemplateParams) {
     D = D->Next;
   }
   return D;

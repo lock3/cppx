@@ -2319,7 +2319,7 @@ Declarator *buildFunctionTemplateDeclarator(Sema &SemaRef,
 
 Declarator *buildTemplateTypeDeclarator(const ElemSyntax *Call,
                                         Declarator *Next) {
-  Declarator *D = new Declarator(DK_TemplateType, Next);
+  Declarator *D = new Declarator(DK_TemplateParams, Next);
   D->Call = Call;
   D->Data.TemplateInfo.Params = Call->getArguments();
   return D;

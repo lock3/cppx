@@ -54,13 +54,20 @@ enum DeclaratorKind {
 
   /// Template indication for classes. This part of the declarator is used to
   /// track if a templated type declaration is being given.
-  DK_TemplateType,
+  DK_TemplateParams,
 
   /// Declares function parameters.
   DK_Function,
 
   /// Declares a type.
+  /// This is whatever is on the RHS of a :
+  /// For example, x:int
+  /// int is labeled as a DK_Type.
   DK_Type,
+
+  /// This is for things which are defined outside of their declared scope.
+  /// Example: a.b. The name specifier would be a
+  // DK_NameSpecifier,
 
   /// This declarator indicates that there was an error evaluating
   /// the declarator. This usually means that there is an ErrorSyntax node
@@ -152,7 +159,7 @@ public:
     /// For DK_Type, the type in the call.
     const Syntax *Type;
 
-    /// For DK_TemplateType, for templated types.
+    /// For DK_TemplateParams, for templated types.
     struct TemplateInfoStruct {
       /// A pointer to the template parameters within the declaration.
       const Syntax* Params;
@@ -171,6 +178,8 @@ enum class Phase : std::size_t
   Typing,
   Initialization
 };
+
+
 
 /// A declaration is stores information about the declaration of an
 /// identifier. It binds together the declaring operator, the declarator,
@@ -301,7 +310,7 @@ public:
 
   // bool nameIsOperator() const;
 
-  /// This looks for the first instance of DK_TemplateType and returns it.
+  /// This looks for the first instance of DK_TemplateParams and returns it.
   const Declarator *getFirstTemplateDeclarator() const;
   Declarator *getFirstTemplateDeclarator();
 
