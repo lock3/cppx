@@ -14,6 +14,7 @@
 
 #include "GoldParseUtil.h"
 #include "GoldASTMatchersTest.h"
+#include "GoldCompileRun.h"
 
 using namespace clang::ast_matchers;
 using namespace clang::tooling;

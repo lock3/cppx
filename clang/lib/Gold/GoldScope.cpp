@@ -352,13 +352,13 @@ bool Declaration::declaresFunctionTemplate() const {
   // TODO: In the future we would need to extend this definition to make sure
   // that everything works as expected whe we do have an identifier that
   // is infact also a template name.
+  while (D && D->Kind == DK_Identifier)
+    D = D->Next;
+  if (!D)
+    return false;
   if (D->Kind != DK_Function)
     return false;
-  if (D->Kind == DK_Identifier)
-    D = D->Next;
-  if (D)
-    return D->Data.ParamInfo.TemplateParams;
-  return false;
+  return D->Data.ParamInfo.TemplateParams;
 }
 
 
