@@ -575,6 +575,19 @@ createUnicodeLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
   return new (CxxAST) clang::CharacterLiteral(Value, CharKind, CharType, Loc);
 }
 
+static clang::StringLiteral *
+createStringLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
+                    Token T, const Syntax *StrNode) {
+  llvm::StringRef StrWithQuotes = T.getSpelling();
+  llvm::StringRef StrRef(StrWithQuotes.data() + 1, StrWithQuotes.size() - 2);
+  unsigned StrSize = StrRef.size();
+  clang::QualType StrTy =
+                      CxxAST.getStringLiteralArrayType(CxxAST.Char8Ty, StrSize);
+  return clang::StringLiteral::Create(CxxAST, StrRef,
+                                      clang::StringLiteral::Ascii,
+                                      false, StrTy, StrNode->getLoc());
+}
+
 static clang::IntegerLiteral *
 createBoolLiteral(clang::ASTContext &CxxAST, Token T,
                   clang::SourceLocation Loc) {
@@ -1103,7 +1116,7 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
   case tok::UnicodeCharacter:
     return createUnicodeLiteral(CxxAST, SemaRef, T, S->getLoc());
   case tok::String:
-    llvm_unreachable("String not implemented.");
+    return createStringLiteral(CxxAST, SemaRef, T, S);
   case tok::DecimalExponent:
     return createExponentLiteral(CxxAST, SemaRef,
                                  cast<LiteralSyntax>(S), S->getLoc());

@@ -49,7 +49,6 @@ add_clang_unittest(GoldTests
   GoldBuiltinLogicalOpsElab.cpp
   GoldBuiltInTypeConstructorsExec.cpp
   GoldBuiltinTypeElab.cpp
-  GoldCarriesDependencyElab.cpp
   GoldCastElab.cpp
   GoldCharLiteralElab.cpp
   GoldClassConversionsElab.cpp
@@ -66,6 +65,7 @@ add_clang_unittest(GoldTests
   GoldConstexprAttributeElab.cpp
   GoldConstructorCallParsingTest.cpp
   GoldContinueElab.cpp
+  GoldCXX11AttributeElab.cpp
   GoldDeclaratorElab.cpp
   GoldDefaultFunctionArgumentsElab.cpp
   GoldEnumElab.cpp

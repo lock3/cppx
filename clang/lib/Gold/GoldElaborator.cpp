@@ -623,7 +623,7 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
     // Attempt to figure out if any nested elaboration is actually required.
     // If not then we can proceed as normal.
     auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
-    auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
+    auto const* BodyArray = MacroRoot->getBlock();
 
     // Handling possible base classes.
     if (const CallSyntax *ClsKwCall
@@ -792,7 +792,7 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
   SemaRef.pushDecl(D);
 
   const MacroSyntax *NSMacro = cast<MacroSyntax>(D->Init);
-  const ArraySyntax *NSBody = cast<ArraySyntax>(NSMacro->getBlock());
+  const Syntax *NSBody = NSMacro->getBlock();
 
   // Keep track of the location of the last syntax, as a closing location.
   clang::SourceLocation LastLoc;
@@ -2043,8 +2043,7 @@ clang::Decl *Elaborator::elaborateTypeBody(Declaration* D, clang::CXXRecordDecl*
   }
   auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
   assert(MacroRoot && "Invalid AST structure.");
-  auto const* BodyArray = dyn_cast<ArraySyntax>(MacroRoot->getBlock());
-  assert(BodyArray && "Invalid AST structure Expected array structure.");
+  auto const* BodyArray = MacroRoot->getBlock();
   D->CurrentPhase = Phase::Typing;
 
   for (auto const* ChildDecl : BodyArray->children()) {
@@ -2142,7 +2141,7 @@ Elaborator::elaborateEnumBody(Declaration* D,
   SemaRef.getCxxSema().LastEnumConstDecl = nullptr;
 
   auto const* MacroRoot = cast<MacroSyntax>(D->Init);
-  auto const* BodyArray = cast<ArraySyntax>(MacroRoot->getBlock());
+  auto const* BodyArray = MacroRoot->getBlock();
   // Phase 1
   for (const Syntax *EnumMember : BodyArray->children()) {
     identifyDecl(EnumMember);
@@ -3750,36 +3749,6 @@ void Elaborator::elaborateRefQualifierAttr(Declaration *D, const Syntax *S,
                       << "const" << "member function";
 }
 
-// void Elaborator::elaborateCarriesDependencyAttr(Declaration *D, const Syntax *S,
-//                                                 AttrStatus &Status) {
-//   // if (Status.HasRefQualifier) {
-//   //   SemaRef.Diags.Report(S->getLoc(),
-//   //                        clang::diag::err_duplicate_attribute);
-//   //   return;
-//   // }
-// }
-
-// void Elaborator::elaborateDeprecatedAttr(Declaration *D, const Syntax *S,
-//                                          AttrStatus &Status) {
-//   llvm_unreachable("not implemented");
-// }
-
-// void Elaborator::elaborateMaybeUnusedAttr(Declaration *D, const Syntax *S,
-//                                           AttrStatus &Status) {
-//   llvm_unreachable("not implemented");
-// }
-
-// void Elaborator::elaborateNoDiscardAttr(Declaration *D, const Syntax *S,
-//                                         AttrStatus &Status) {
-//   llvm_unreachable("not implemented");
-// }
-
-// void Elaborator::elaborateNoReturnAttr(Declaration *D, const Syntax *S,
-//                                        AttrStatus &Status) {
-//   llvm_unreachable("not implemented");
-// }
-
-
 namespace {
 
 enum SysAttrFormatKind {
@@ -3822,6 +3791,7 @@ void getSysAttrInfo(const Syntax *Attr, SysAttrInfo &Info) {
       }
       Info.Kind = SAFK_NameCall;
       Info.AttrId = Atom;
+      Info.CallNode = Call;
       Info.Args = cast<ListSyntax>(Call->getArguments());
       return;
     }
@@ -3853,7 +3823,37 @@ void getSysAttrInfo(const Syntax *Attr, SysAttrInfo &Info) {
   Info.Kind = SysAttrFormatKind::SAFK_Invalid;
 }
 }
+static bool processAttributeArgs(SyntaxContext &Context, Sema &SemaRef,
+                                 const Syntax *CallArgs,
+                                 clang::ArgsVector &Args) {
+  ExprElaborator Elab(Context, SemaRef);
+  for (const Syntax *ArgOrId : CallArgs->children()) {
+    clang::ArgsUnion CurArg;
+    if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(ArgOrId)) {
+      if (Name->hasToken(tok::Identifier)) {
+        Args.emplace_back(
+          clang::IdentifierLoc::create(Context.CxxAST, Name->getLoc(),
+                                       &Context.CxxAST.Idents.get(
+                                                         Name->getSpelling())));
+        continue;
+      }
+    }
 
+    // Just going a head and assuming that we expect an expression here.
+    clang::Expr *Res = Elab.elaborateExpr(ArgOrId);
+    if (!Res)
+      return true;
+    if (Res->getType()->isTypeOfTypes()
+        || Res->getType()->isNamespaceType()
+        || Res->getType()->isTemplateType()) {
+      SemaRef.Diags.Report(ArgOrId->getLoc(),
+                           clang::diag::err_invalid_attribute_argument);
+      return true;
+    }
+    Args.emplace_back(Res);
+  }
+  return false;
+}
 void Elaborator::elaborateSystemAttribute(clang::Decl *D, const Syntax *S,
                                           AttrStatus &Status,
                                           clang::ParsedAttributes &Attrs) {
@@ -3863,6 +3863,8 @@ void Elaborator::elaborateSystemAttribute(clang::Decl *D, const Syntax *S,
   case SAFK_Invalid: {
     // FIXME: I'm not sure how to handle this properly,
     // I might have to create some kind of warning here or something?
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::warn_invalid_attribute_format);
     return;
   }
   break;
@@ -3875,17 +3877,16 @@ void Elaborator::elaborateSystemAttribute(clang::Decl *D, const Syntax *S,
   }
   break;
   case SAFK_NameCall:{
-    // Just going to assume that anything that doesn't have a parameter
-    // is simply the same as the previous Name.
-    if (Info.Args->getNumChildren() == 0) {
-      Attrs.addNew(&Context.CxxAST.Idents.get(Info.AttrId->getSpelling()),
-                   clang::SourceRange(Info.AttrId->getLoc(),
-                                      Info.AttrId->getLoc()),
-                   nullptr, clang::SourceLocation(), nullptr, 0u,
-                   clang::ParsedAttr::Syntax::AS_CXX11);
-      break;
+    clang::ArgsVector Args;
+    if (processAttributeArgs(Context, SemaRef, Info.Args, Args)) {
+      return;
     }
-    llvm_unreachable("NameCall Attribute not implemented yet.");
+    // Handling simple call style attributes.
+    Attrs.addNew(&Context.CxxAST.Idents.get(Info.AttrId->getSpelling()),
+                 clang::SourceRange(Info.AttrId->getLoc(),
+                                    Info.AttrId->getLoc()),
+                 nullptr, clang::SourceLocation(), Args.data(),
+                 Args.size(), clang::ParsedAttr::Syntax::AS_CXX11);
   }
   break;
   case SAFK_ScopeName:{

@@ -140,7 +140,7 @@ public:
   /// This single function is responsible for applying attributes to things
   /// any type of declaration we create.
   void elaborateAttributes(Declaration *D);
-
+  
   /// Methods that direct the declaration to modify the declaration to have the
   /// given attribute.
   void elaborateConstExprAttr(Declaration *D, const Syntax *S,

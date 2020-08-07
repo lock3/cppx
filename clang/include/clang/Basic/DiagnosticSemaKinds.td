@@ -11083,6 +11083,12 @@ def err_invalid_template_decl : Error <
   "invalid template forward declaration, template could be a type alias, "
   "or a templated variable">;
 
+def err_invalid_attribute_argument : Error <
+  "Invalid attribute argument">;
+
+def warn_invalid_attribute_format : Warning <
+  "invalid attribute format">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {
