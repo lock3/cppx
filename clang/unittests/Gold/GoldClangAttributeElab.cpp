@@ -30,14 +30,6 @@ foo(i:int) : ^void
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// TEST(GoldClangAttr, Nullable) {
-//   StringRef Code = R"(
-// foo(i<_Nullable>:^int) : ^void
-// )";
-//   DeclarationMatcher ToMatch = functionDecl(hasName("foo"),
-//       hasAttr(clang::attr::Nullable));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
 TEST(GoldClangAttr, gsl_suppress) {
   StringRef Code = R"(
 [gsl.suppress("Rh-public")]
@@ -47,4 +39,3 @@ foo(i:^int) : ^void
       hasAttr(clang::attr::Suppress));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
-// 
