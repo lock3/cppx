@@ -3903,7 +3903,6 @@ void Elaborator::elaborateSystemAttribute(clang::Decl *D, const Syntax *S,
     if (processAttributeArgs(Context, SemaRef, Info.Args, Args)) {
       return;
     }
-    // Handling simple call style attributes.
     Attrs.addNew(&Context.CxxAST.Idents.get(Info.AttrId->getSpelling()),
                  clang::SourceRange(Info.AttrId->getLoc(),
                                     Info.AttrId->getLoc()),
