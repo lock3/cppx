@@ -745,6 +745,7 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
                                                      clang::SourceLocation());
     return SubScriptExpr.get();
   }
+
   // At this point we are an overload set which means we must be some kind of
   // templated function, or overloaded function.
   clang::TemplateArgumentListInfo TemplateArgs(Elem->getLoc(), Elem->getLoc());
@@ -770,6 +771,7 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
       ActualArgs.emplace_back(Arg);
     }
   }
+
   clang::TemplateArgumentList TemplateArgList(
                               clang::TemplateArgumentList::OnStack, ActualArgs);
   if (OverloadExpr->getNumDecls() == 1) {
@@ -801,9 +803,6 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
                                          MemAccess->getValueKind(),
                                          MemAccess->getObjectKind(),
                                          clang::NonOdrUseReason::NOUR_None);
-      } else {
-        llvm_unreachable("We don't have code for processing of non-member "
-            "lookup expressions.");
       }
     } else if (clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(ND)) {
       if (FD->getTemplatedKind() == clang::FunctionDecl::TK_NonTemplate) {
@@ -834,74 +833,76 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
                                                  ResultTemp.begin(),
                                                  ResultTemp.end());
     }
-    llvm_unreachable("Unknown unresolved lookup type located. Unable to "
-        "continue.");
-  } else {
-    if (isa<clang::UnresolvedLookupExpr>(OverloadExpr)) {
-      clang::LookupResult ResultTemp(SemaRef.getCxxSema(),
-                                     OverloadExpr->getNameInfo(),
-                                     clang::Sema::LookupAnyName);
-      ResultTemp.setTemplateNameLookup(true);
-      for (clang::NamedDecl *ND : OverloadExpr->decls()) {
+  }
+
+
+  if (isa<clang::UnresolvedLookupExpr>(OverloadExpr)) {
+    clang::LookupResult ResultTemp(SemaRef.getCxxSema(),
+                                   OverloadExpr->getNameInfo(),
+                                   clang::Sema::LookupAnyName);
+    ResultTemp.setTemplateNameLookup(true);
+    for (clang::NamedDecl *ND : OverloadExpr->decls()) {
+      if(clang::FunctionDecl *FD = ND->getAsFunction())
+        if(clang::FunctionTemplateDecl *FTD = FD->getDescribedFunctionTemplate()) {
+          ResultTemp.addDecl(FTD);
+        }
+    }
+
+    ResultTemp.resolveKind();
+    if (ResultTemp.empty()) {
+      // TODO: Create an error message for here. This should indicate that we
+      // don't have a valid template to instantiate.
+      llvm_unreachable("None of the given names were a template.");
+    }
+
+    return clang::UnresolvedLookupExpr::Create(Context.CxxAST,
+                                               OverloadExpr->getNamingClass(),
+                                               OverloadExpr->getQualifierLoc(),
+                                               OverloadExpr->getNameLoc(),
+                                               OverloadExpr->getNameInfo(),
+                                               /*ADL=*/true, &TemplateArgs,
+                                               ResultTemp.begin(),
+                                               ResultTemp.end());
+  }
+
+  if (clang::UnresolvedMemberExpr *UME =
+     dyn_cast<clang::UnresolvedMemberExpr>(OverloadExpr)) {
+    clang::LookupResult ResultTemp(SemaRef.getCxxSema(),
+                                   OverloadExpr->getNameInfo(),
+                                   clang::Sema::LookupAnyName);
+    ResultTemp.setTemplateNameLookup(true);
+    for (clang::NamedDecl *ND : OverloadExpr->decls()) {
+      ND = SemaRef.getCxxSema().getAsTemplateNameDecl(ND, true, true);
+      if(ND)
         if(clang::FunctionDecl *FD = ND->getAsFunction())
-          if(clang::FunctionTemplateDecl *FTD = FD->getDescribedFunctionTemplate()) {
+          if(clang::FunctionTemplateDecl *FTD
+             = FD->getDescribedFunctionTemplate()) {
             ResultTemp.addDecl(FTD);
           }
-      }
-      ResultTemp.resolveKind();
-      if (ResultTemp.empty()) {
-        // TODO: Create an error message for here. This should indicate that we
-        // don't have a valid template to instantiate.
-        llvm_unreachable("None of the given names were a template.");
-      }
-      return clang::UnresolvedLookupExpr::Create(Context.CxxAST,
-                                                 OverloadExpr->getNamingClass(),
-                                                OverloadExpr->getQualifierLoc(),
-                                                 OverloadExpr->getNameLoc(),
-                                                 OverloadExpr->getNameInfo(),
-                                                 /*ADL=*/true, &TemplateArgs,
-                                                 ResultTemp.begin(),
-                                                 ResultTemp.end());
+    }
 
+    ResultTemp.resolveKind();
+    if (ResultTemp.empty()) {
+      // TODO: Create an error message for here. This should indicate that we
+      // don't have a valid template to instantiate.
+      llvm_unreachable("None of the given names were a template.");
     }
-    if(clang::UnresolvedMemberExpr *UME =
-                          dyn_cast<clang::UnresolvedMemberExpr>(OverloadExpr)) {
-      clang::LookupResult ResultTemp(SemaRef.getCxxSema(),
-                                     OverloadExpr->getNameInfo(),
-                                     clang::Sema::LookupAnyName);
-      ResultTemp.setTemplateNameLookup(true);
-      for (clang::NamedDecl *ND : OverloadExpr->decls()) {
-        ND = SemaRef.getCxxSema().getAsTemplateNameDecl(ND, true, true);
-        if(ND)
-          if(clang::FunctionDecl *FD = ND->getAsFunction())
-            if(clang::FunctionTemplateDecl *FTD
-                                         = FD->getDescribedFunctionTemplate()) {
-              ResultTemp.addDecl(FTD);
-            }
-      }
-      ResultTemp.resolveKind();
-      if (ResultTemp.empty()) {
-        // TODO: Create an error message for here. This should indicate that we
-        // don't have a valid template to instantiate.
-        llvm_unreachable("None of the given names were a template.");
-      }
-      return clang::UnresolvedMemberExpr::Create(Context.CxxAST,
-                                                 UME->hasUnresolvedUsing(),
-                                                 UME->getBase(),
-                                                 UME->getBaseType(),
-                                                 UME->isArrow(),
-                                                 UME->getOperatorLoc(),
-                                                 UME->getQualifierLoc(),
-                                                 UME->getTemplateKeywordLoc(),
-                                                 UME->getNameInfo(),
-                                                 &TemplateArgs,
-                                                 ResultTemp.begin(),
-                                                 ResultTemp.end());
-    }
-    llvm_unreachable("Unhandled type of overload.");
+
+    return clang::UnresolvedMemberExpr::Create(Context.CxxAST,
+                                               UME->hasUnresolvedUsing(),
+                                               UME->getBase(),
+                                               UME->getBaseType(),
+                                               UME->isArrow(),
+                                               UME->getOperatorLoc(),
+                                               UME->getQualifierLoc(),
+                                               UME->getTemplateKeywordLoc(),
+                                               UME->getNameInfo(),
+                                               &TemplateArgs,
+                                               ResultTemp.begin(),
+                                               ResultTemp.end());
   }
-  llvm_unreachable("This should never occur all other paths lead to return "
-      "or abort.");
+
+  llvm_unreachable("Unhandled type of overload.");
 }
 
 clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
@@ -1125,54 +1126,14 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
     return createNullLiteral(CxxAST, S->getLoc());
   case tok::ThisKeyword:
     return createThisExpr(SemaRef, S);
-  case tok::VoidKeyword:
-    return SemaRef.buildTypeExpr(CxxAST.VoidTy, S->getLoc());
-  case tok::BoolKeyword:
-    return SemaRef.buildTypeExpr(CxxAST.BoolTy, S->getLoc());
-  case tok::CharKeyword:
-    return SemaRef.buildTypeExpr(CxxAST.CharTy, S->getLoc());
-  case tok::Char8Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Char8Ty, S->getLoc());
-  case tok::Char16Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Char16Ty, S->getLoc());
-  case tok::Char32Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Char32Ty, S->getLoc());
-  case tok::IntKeyword:
-    return SemaRef.buildTypeExpr(CxxAST.IntTy, S->getLoc());
-  case tok::Int8Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Int8Ty, S->getLoc());
-  case tok::Int16Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Int16Ty, S->getLoc());
-  case tok::Int32Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Int32Ty, S->getLoc());
-  case tok::Int64Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Int64Ty, S->getLoc());
-  case tok::Int128Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Int128Ty, S->getLoc());
-  case tok::UintKeyword:
-    return SemaRef.buildTypeExpr(SemaRef.UIntTy, S->getLoc());
-  case tok::Uint8Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.UInt8Ty, S->getLoc());
-  case tok::Uint16Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.UInt16Ty, S->getLoc());
-  case tok::Uint32Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.UInt32Ty, S->getLoc());
-  case tok::Uint64Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.UInt64Ty, S->getLoc());
-  case tok::Uint128Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.UInt128Ty, S->getLoc());
-  case tok::Float16Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Float16Ty, S->getLoc());
-  case tok::Float32Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Float32Ty, S->getLoc());
-  case tok::Float64Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Float64Ty, S->getLoc());
-  case tok::Float128Keyword:
-    return SemaRef.buildTypeExpr(SemaRef.Float128Ty, S->getLoc());
-  case tok::TypeKeyword:
-    return SemaRef.buildTypeExpr(CxxAST.CppxKindTy, S->getLoc());
-  default: break;
+  default:
+    break;
   }
+
+  auto BuiltinMapIter = SemaRef.BuiltinTypes.find(S->getSpelling());
+  if (BuiltinMapIter != SemaRef.BuiltinTypes.end())
+    return SemaRef.buildTypeExpr(BuiltinMapIter->second, S->getLoc());
+
   SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_identifier_type)
                        << S->getSpelling();
 
@@ -1233,6 +1194,17 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
     return ConstructorExpr.get();
 
   }
+
+  // A call to a specialization without arguments has to be handled differently
+  // than other call expressions, so figure out if this could be one.
+  if (auto *ULE = dyn_cast<clang::UnresolvedLookupExpr>(CalleeExpr))
+    if (!ULE->hasExplicitTemplateArgs())
+      for (auto D : ULE->decls())
+        if (auto *FD = dyn_cast<clang::FunctionDecl>(D))
+          if (FD->getTemplatedKind() ==
+              clang::FunctionDecl::TK_FunctionTemplateSpecialization)
+            ;
+
   // TODO: create a test for this were we call a namespace just to see what kind
   // of error actually occurs.
 
@@ -1241,7 +1213,6 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
                                             SemaRef.getCxxSema().getCurScope(),
                                             CalleeExpr, S->getCalleeLoc(), Args,
                                             S->getCalleeLoc());
-  // if (Args.size() == 1)
   if (Call.isInvalid())
     return nullptr;
   return Call.get();

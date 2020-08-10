@@ -54,6 +54,8 @@ testing::AssertionResult CompileGoldCode(llvm::LLVMContext &Context,
 
   compiler.createDiagnostics();
   compiler.getLangOpts().CPlusPlus = 1;
+  compiler.getLangOpts().CPlusPlus11 = 1;
+  compiler.getLangOpts().CPlusPlus14 = 1;
   compiler.getLangOpts().CPlusPlus17 = 1;
   compiler.getLangOpts().Gold = 1;
 

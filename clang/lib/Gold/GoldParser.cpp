@@ -1049,7 +1049,8 @@ Syntax *Parser::parseElem(Syntax *Map)
   if (!Brackets.expectOpen())
     return onError();
 
-  Syntax *Args = parseArray(ArgArray);
+  Syntax *Args = !nextTokenIs(tok::RightBracket) ? parseArray(ArgArray)
+    : onList(ArgArray, llvm::SmallVector<Syntax *, 0>());
 
   if (!Brackets.expectClose())
     return onError();
@@ -1208,10 +1209,12 @@ Syntax *Parser::parsePrimary() {
   case tok::Uint32Keyword:
   case tok::Uint64Keyword:
   case tok::Uint128Keyword:
+  case tok::FloatKeyword:
   case tok::Float16Keyword:
   case tok::Float32Keyword:
   case tok::Float64Keyword:
   case tok::Float128Keyword:
+  case tok::DoubleKeyword:
   case tok::TypeKeyword:
   case tok::ArgsKeyword:
   case tok::ContinueKeyword:

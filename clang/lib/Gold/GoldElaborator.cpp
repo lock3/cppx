@@ -1119,6 +1119,10 @@ void handleFunctionTemplateSpecialization(SyntaxContext &Context,
 
     for (auto *SS : TemplateParams->children()) {
       clang::Expr *E = ExprElaborator(Context, SemaRef).elaborateExpr(SS);
+      if (!E) {
+        FD->setInvalidDecl();
+        continue;
+      }
       // TODO: create a list of valid expressions this can or cannot be;
       // for example, namespace or pseudo-destructor is invalid here.
       if (E->getType()->isTypeOfTypes()) {
@@ -1132,15 +1136,13 @@ void handleFunctionTemplateSpecialization(SyntaxContext &Context,
         TemplateArgs.addArgument(ArgLoc);
       }
 
-      HasExplicitTemplateArgs = true;
+     if (E)
+        HasExplicitTemplateArgs = true;
     }
 
-    if (HasExplicitTemplateArgs) {
-      TemplateArgs.setLAngleLoc(TemplateParams->getLoc());
-      TemplateArgs.setRAngleLoc(TemplateParams->getLoc());
-    }
+    TemplateArgs.setLAngleLoc(TemplateParams->getLoc());
+    TemplateArgs.setRAngleLoc(TemplateParams->getLoc());
 
-    Fn->Data.ParamInfo.TemplateScope = SemaRef.saveScope(TemplateParams);
     if (SemaRef.getCxxSema().CheckFunctionTemplateSpecialization(
           FD, (HasExplicitTemplateArgs ? &TemplateArgs : nullptr),
           Prev))
@@ -1167,10 +1169,16 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Create the template parameters if they exist.
   const Syntax *TemplParams = D->getTemplateParams();
   bool Template = TemplParams;
+  bool Specialization = false;
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
   if (Template) {
     SemaRef.enterScope(SK_Template, TemplParams);
     BuildTemplateParams(Context, SemaRef, TemplParams, TemplateParamDecls);
+    // There are parameters but none are declarations, this
+    // must be a specialization.
+    Specialization = TemplateParamDecls.empty();
+    if (Specialization)
+      SemaRef.leaveScope(TemplParams);
   }
 
   // Elaborate the return type.
@@ -1201,15 +1209,14 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   if (InClass)
     setSpecialFunctionName(Context, RD, D, Name);
 
-  clang::SourceLocation Loc = D->Op->getLoc();
-  clang::FunctionDecl *FD = nullptr;
-
   clang::LookupResult Previous(SemaRef.getCxxSema(), DNI,
                                clang::Sema::LookupOrdinaryName,
                            SemaRef.getCxxSema().forRedeclarationInCurContext());
   clang::Scope *CxxScope = SemaRef.getCurClangScope();
   lookupFunctionRedecls(SemaRef, CxxScope, Previous);
 
+  clang::SourceLocation Loc = D->Op->getLoc();
+  clang::FunctionDecl *FD = nullptr;
   if(InClass) {
     if (!buildMethod(Context, SemaRef, D, Name, &FD, TInfo, RD))
       return nullptr;
@@ -1224,7 +1231,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   }
 
   // If this describes a principal template declaration, create it.
-  if (Template) {
+  if (Template && !Specialization) {
     clang::SourceLocation Loc = TemplParams->getLoc();
     auto *TPL =
       clang::TemplateParameterList::Create(Context.CxxAST, Loc, Loc,
@@ -1241,6 +1248,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   }
 
   SemaRef.getCxxSema().getImplicitCodeSegOrSectionAttrForFunction(FD, D->Init);
+
   // Update the function parameters.
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
   getFunctionParameters(D, Params);
@@ -1256,7 +1264,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     elaborateAttributes(D);
   }
   // Add the declaration and update bindings.
-  if (!Template && !D->declaresConstructor())
+  if ((!Template || Specialization) && !D->declaresConstructor())
     Owner->addDecl(FD);
 
   if (D->declaresConstructor()) {
@@ -1277,12 +1285,10 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     SemaRef.getCxxSema().CheckOverrideControl(MD);
   }
 
-#if 0
   // Handle function template specialization.
-  if (!FD->isInvalidDecl() && !Previous.empty())
+  if (!FD->isInvalidDecl() && !Previous.empty() && Specialization)
     handleFunctionTemplateSpecialization(Context, SemaRef, TemplParams,
                                          FnDclrtr, FD, Previous);
-#endif
 
   // FIXME: this is not necessarily what should happen.
   if (FD->isInvalidDecl())
@@ -2379,6 +2385,7 @@ Declarator *buildTemplateFunctionOrNameDeclarator(Sema &SemaRef,
   } else if (const ErrorSyntax *Es = dyn_cast<ErrorSyntax>(S)) {
     return buildErrorDeclarator(Es, Next);
   }
+
   return buildTemplateOrNameDeclarator(SemaRef, S, Next);
 }
 
@@ -2411,6 +2418,7 @@ Declarator *makeTopLevelDeclarator(Sema &SemaRef, const Syntax *S,
   } else if(const ErrorSyntax *Err = dyn_cast<ErrorSyntax>(S)) {
     return buildErrorDeclarator(Err, Next);
   }
+
   return buildTemplateFunctionOrNameDeclarator(SemaRef, S, Next);
 }
 
@@ -2424,6 +2432,49 @@ static clang::IdentifierInfo *getIdentifier(Elaborator &Elab,
   if (const auto *Atom = dyn_cast_or_null<AtomSyntax>(D->getId()))
     return &Elab.Context.CxxAST.Idents.get(Atom->getSpelling());
   return nullptr;
+}
+
+// Create a Gold Declaration.
+static Declaration *createDeclaration(Sema &SemaRef, const Syntax *S,
+                                      Declarator *Dcl, const Syntax *Init,
+                                      clang::IdentifierInfo *Id,
+                                      OpInfoBase const *OpInfo) {
+  Declaration *ParentDecl = SemaRef.getCurrentDecl();
+
+  // FIXME: manage memory
+  Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, Init);
+  TheDecl->Id = Id;
+  TheDecl->OpInfo = OpInfo;
+
+  if (OpInfo && !TheDecl->declaresFunction())
+    llvm_unreachable("unimplemented operator!");
+
+  // Getting information that's necessary in order to correctly restore
+  // a declaration's context during early elaboration.
+  TheDecl->ClangDeclaringScope = SemaRef.getCurClangScope();
+  TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
+  TheDecl->ScopeForDecl = SemaRef.getCurrentScope(); 
+
+  Scope *CurScope = SemaRef.getCurrentScope();
+
+  // If we're in namespace or parameter scope and this identifier already
+  // exists, consider it a redeclaration.
+  // TODO: distinguish between redefinition, redeclaration, and redeclaration
+  // with different type.
+  if ((CurScope->isNamespaceScope() || CurScope->isParameterScope()) &&
+      !TheDecl->declaresFunction()) {
+    // FIXME: rewrite this!!
+    auto DeclSet = CurScope->findDecl(Id);
+
+    if (!DeclSet.empty()) {
+      assert((DeclSet.size() == 1) && "elaborated redefinition.");
+      TheDecl->setPreviousDecl(*DeclSet.begin());
+    }
+  }
+
+  SemaRef.getCurrentScope()->addDecl(TheDecl);
+  TheDecl->CurrentPhase = Phase::Identification;
+  return TheDecl;
 }
 
 Declaration *Elaborator::identifyDecl(const Syntax *S) {
@@ -2457,7 +2508,6 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
                             clang::diag::err_invalid_enum_member_decl);
       return nullptr;
     }
-    Declaration *ParentDecl = SemaRef.getCurrentDecl();
 
     // This was created to prevent duplicate elaboration failure which could
     // previously result in an error.
@@ -2471,18 +2521,14 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       Dcl->printSequence(llvm::outs() << "Declarator Chain\n");
       llvm_unreachable("Invalid declarator structure.");
     }
-    Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, Init);
-    TheDecl->Id = getIdentifier(*this, Dcl);
-    TheDecl->ClangDeclaringScope = SemaRef.getCurClangScope();
-    TheDecl->ParentDecl = SemaRef.getCurrentDecl();
-    TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
-    TheDecl->ScopeForDecl = SemaRef.getCurrentScope();
-    TheDecl->CurrentPhase = Phase::Identification;
-    SemaRef.getCurrentScope()->addDecl(TheDecl);
-    return TheDecl;
+
+    clang::IdentifierInfo *Id = getIdentifier(*this, Dcl);
+    return createDeclaration(SemaRef, S, Dcl, Init, Id, /*OpInfo=*/nullptr);
   }
+
   // Keep track of whether or not this is an operator'=' call.
   bool OperatorEquals = false;
+
   // if (decomposeElaboratableDecl(S, OperatorEquals, Decl, Init)) {
   // Declarations only appear in calls.
   if (const auto *Call = dyn_cast<CallSyntax>(S)) {
@@ -2603,7 +2649,6 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
       // Create a declaration for this node.
       //
       // FIXME: Do a better job managing memory.
-      Declaration *ParentDecl = SemaRef.getCurrentDecl();
 
       // This was created to prevent duplicate elaboration failure which could
       // previously result in an error.
@@ -2642,38 +2687,8 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
                              clang::diag::err_invalid_declaration);
         return nullptr;
       }
-      Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, Init);
-      TheDecl->Id = Id;
-      TheDecl->OpInfo = OpInfo;
 
-      if (OpInfo && !TheDecl->declaresFunction()) {
-        llvm_unreachable("INvalid operator id not implemented yet!\n");
-      }
-
-      // Getting information that's necessary in order to correctly restore
-      // a declaration's context during early elaboration.
-      TheDecl->ClangDeclaringScope = SemaRef.getCurClangScope();
-      TheDecl->ParentDecl = SemaRef.getCurrentDecl();
-      TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
-      TheDecl->ScopeForDecl = SemaRef.getCurrentScope();
-
-      // If we're in namespace or parameter scope and this identifier already
-      // exists, consider it a redeclaration.
-      // TODO: distinguish between redefinition, redeclaration, and redeclaration
-      // with different type.
-      if ((CurScope->isNamespaceScope() || CurScope->isParameterScope()) &&
-          !TheDecl->declaresFunction()) {
-        // FIXME: rewrite this!!
-        auto DeclSet = CurScope->findDecl(Id);
-
-        if (!DeclSet.empty()) {
-          assert((DeclSet.size() == 1) && "elaborated redefinition.");
-          TheDecl->setPreviousDecl(*DeclSet.begin());
-        }
-      }
-      SemaRef.getCurrentScope()->addDecl(TheDecl);
-      TheDecl->CurrentPhase = Phase::Identification;
-      return TheDecl;
+      return createDeclaration(SemaRef, S, Dcl, Init, Id, OpInfo);
     }
   }
   // FIXME: What other kinds of things are declarations?

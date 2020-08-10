@@ -523,7 +523,8 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         // of the bare declaration.
         if (FoundDecl->declaresFunctionTemplate()) {
           if (auto *FD = dyn_cast<clang::FunctionDecl>(ND))
-            ND = FD->getDescribedFunctionTemplate();
+            ND = FD->isFunctionTemplateSpecialization() ?
+              FD->getPrimaryTemplate() : FD->getDescribedFunctionTemplate();
           else if (auto *VD = dyn_cast<clang::VarDecl>(ND))
             ND = VD->getDescribedVarTemplate();
           else

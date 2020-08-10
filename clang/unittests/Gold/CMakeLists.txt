@@ -81,6 +81,8 @@ add_clang_unittest(GoldTests
   GoldFunctionStorageClassElab.cpp
   GoldFunctionTemplate.cpp
   GoldFunctionTemplateExec.cpp
+  GoldFunctionTemplateSpec.cpp
+  GoldFunctionTemplateSpecExec.cpp
   GoldFunctionType.cpp
   GoldFusedIdentifierElab.cpp
   GoldFusedIdentifierParse.cpp
