@@ -3007,21 +3007,10 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
       break;
 
     case Type::CppxKind:
+    case Type::CppxNamespace:
     case Type::CppxTemplate: // TODO: This is handled in the same way that CppxKind is?
       // Like a builtin type. No associated types or namespaces.
       break;
-
-    // If T is a namespace type, its associated namespaces are: the namespace
-    // itself and the namespace of which it is a member, if any.
-    case Type::CppxNamespace: {
-      NamespaceDecl *NS = cast<CppxNamespaceType>(T)->getDecl();
-
-      DeclContext *Ctx = NS->getDeclContext();
-      CollectEnclosingNamespace(Result.Namespaces, Ctx);
-
-      Result.addNamespace(NS);
-      break;
-    }
 
     // Atomic types are just wrappers; use the associations of the
     // contained type.

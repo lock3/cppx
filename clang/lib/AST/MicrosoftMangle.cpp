@@ -2825,13 +2825,16 @@ void MicrosoftCXXNameMangler::mangleType(const CppxKindType *T,
                                          Qualifiers, SourceRange Range) {
   DiagnosticsEngine &Diags = Context.getDiags();
   unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
-    "cannot mangle this type yet");
+    "cannot mangle kind type yet");
   Diags.Report(Range.getBegin(), DiagID) << Range;
 }
 
 void MicrosoftCXXNameMangler::mangleType(const CppxNamespaceType *T,
                                          Qualifiers, SourceRange Range) {
-  mangleType(T->getDecl());
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+    "cannot mangle namespace types");
+  Diags.Report(Range.getBegin(), DiagID) << Range;
 }
 
 void MicrosoftCXXNameMangler::mangleType(const NamespaceDecl *ND) {

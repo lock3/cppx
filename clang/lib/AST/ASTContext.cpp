@@ -1539,6 +1539,11 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target,
   {
     auto *Ty = new (*this, TypeAlignment) CppxKindType();
     CppxKindTy = CanQualType::CreateUnsafe(QualType(Ty, 0));
+
+  }
+  {
+    auto *Ty = new (*this, TypeAlignment) CppxNamespaceType();
+    CppxNamespaceTy = CanQualType::CreateUnsafe(QualType(Ty, 0));
   }
 
   // MSVC predeclares struct _GUID, and we need it to create MSGuidDecls.
@@ -4342,18 +4347,6 @@ QualType ASTContext::getEnumType(const EnumDecl *Decl) const {
   return QualType(newType, 0);
 }
 
-QualType ASTContext::getCppxNamespaceType(const NamespaceDecl *Decl) const {
-  const NamespaceDecl *UsedDecl;
-
-  if (const NamespaceDecl *PrevDecl = Decl->getPreviousDecl())
-    UsedDecl = PrevDecl;
-  else
-    UsedDecl = Decl;
-
-  auto *newType = new (*this, TypeAlignment) CppxNamespaceType(UsedDecl);
-  Types.push_back(newType);
-  return QualType(newType, 0);
-}
 
 QualType ASTContext::getAttributedType(attr::Kind attrKind,
                                        QualType modifiedType,

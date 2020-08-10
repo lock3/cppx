@@ -13,25 +13,20 @@ CppxNamespaceDecl *CppxNamespaceDecl::Create(const ASTContext &C,
                                              IdentifierInfo *II,
                                              NamespaceDecl *NS,
                                              gold::Scope *Rep) {
-  auto *Ret = new (C, DC) CppxNamespaceDecl(Decl::CppxNamespace,
-                                            C, DC, L, II, Rep);
+  auto *Ret = new (C, DC) CppxNamespaceDecl(C, DC, L, II, NS, Rep);
   // NS can be null in the case of the global scope specifier.
   if (!NS)
     return Ret;
-  Ret->setTypeForDecl(C.getCppxNamespaceType(NS).getTypePtr());
+  Ret->setTypeForDecl(C.CppxNamespaceTy.getTypePtr());
   return Ret;
 }
 
 NamespaceDecl *CppxNamespaceDecl::getNamespace() {
-  assert(isa<CppxNamespaceType>(getTypeForDecl()));
-  auto *Ty = getTypeForDecl()->getAs<CppxNamespaceType>();
-  return Ty->getDecl();
+  return NsDecl;
 }
 
 NamespaceDecl *CppxNamespaceDecl::getNamespace() const {
-  assert(isa<CppxNamespaceType>(getTypeForDecl()));
-  auto *Ty = getTypeForDecl()->getAs<CppxNamespaceType>();
-  return Ty->getDecl();
+  return NsDecl;
 }
 
 gold::Scope *CppxNamespaceDecl::getScopeRep() {

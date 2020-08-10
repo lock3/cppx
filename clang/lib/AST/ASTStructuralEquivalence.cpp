@@ -1006,10 +1006,7 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
     llvm_unreachable("IsStructurallyEquivalent. TemplateType needs implemented!");
 
   case Type::CppxNamespace:
-    if (!IsStructurallyEquivalent(Context,
-                                  cast<CppxNamespaceType>(T1)->getDecl(),
-                                  cast<CppxNamespaceType>(T2)->getDecl()))
-      return false;
+      return true;
     break;
 
   case Type::ExtInt: {

@@ -4537,12 +4537,13 @@ public:
 /// A wrapper around a  NamespaceDecl that encapsulates CPPX-specific
 /// information about the namespace.
 class CppxNamespaceDecl : public TypeDecl {
+  clang::NamespaceDecl *NsDecl;
   gold::Scope *Rep;
-
 protected:
-  CppxNamespaceDecl(Kind DK, const ASTContext &C, DeclContext *DC,
-                    SourceLocation L, IdentifierInfo *II, gold::Scope *Rep)
-    : TypeDecl(DK, DC, L, II), Rep(Rep)
+  CppxNamespaceDecl(const ASTContext &C, DeclContext *DC,
+                    SourceLocation L, IdentifierInfo *II, NamespaceDecl *D,
+                    gold::Scope *Rep)
+    : TypeDecl(Decl::CppxNamespace, DC, L, II), NsDecl(D), Rep(Rep)
   {}
 
 public:

@@ -96,6 +96,7 @@ add_clang_unittest(GoldTests
   GoldMemberStorageClassElab.cpp
   GoldMethodRefQualifierElab.cpp
   GoldMutableAttributeElab.cpp
+  GoldNamespaceAliasElab.cpp
   GoldNNS.cpp
   GoldOperatorOverloadUseElab.cpp
   GoldOverrideAttributeElab.cpp

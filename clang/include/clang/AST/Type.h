@@ -6444,16 +6444,10 @@ class CppxNamespaceType : public Type {
   /// ASTContext creates these.
   friend class ASTContext;
 
-  /// Stores the NamespaceDecl associated with this type.
-  const NamespaceDecl *NS;
-
 public:
-  CppxNamespaceType(const NamespaceDecl *NS)
-    : Type(CppxNamespace, QualType(), TypeDependence(), /*MetaType=*/false),
-      NS(NS)
+  CppxNamespaceType()
+    : Type(CppxNamespace, QualType(), TypeDependence(), /*MetaType=*/false)
     {}
-
-  NamespaceDecl *getDecl() const;
 
   bool isSugared() const {
     return false;

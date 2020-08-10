@@ -923,8 +923,7 @@ clang::ParsedType Sema::getParsedTypeFromExpr(const clang::Expr *TyExpr,
 
 clang::CppxDeclRefExpr *Sema::buildNSDeclRef(clang::CppxNamespaceDecl *D,
                                              clang::SourceLocation Loc) {
-  return buildAnyDeclRef(Context.CxxAST.getCppxNamespaceType(D->getNamespace()),
-                         D, Loc);
+  return buildAnyDeclRef(Context.CxxAST.CppxNamespaceTy, D, Loc);
 }
 
 clang::CppxDeclRefExpr *
