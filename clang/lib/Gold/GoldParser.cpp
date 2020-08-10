@@ -758,7 +758,8 @@ Syntax *Parser::parsePre()
     }
     return onUnaryOrNull(Op, E);
   }
-
+  // This might not be right, there is a chance that this could be a pre-attribute
+  // or something like that, this would be to support constexpr if statements.
   if (nextTokenIs(tok::LeftBracket))
     return parseArrayPrefix();
 

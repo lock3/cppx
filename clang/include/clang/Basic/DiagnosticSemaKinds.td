@@ -11089,6 +11089,9 @@ def err_invalid_attribute_argument : Error <
 def warn_invalid_attribute_format : Warning <
   "invalid attribute format">;
 
+def err_in_ast : Error <
+  "error during syntax handling">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

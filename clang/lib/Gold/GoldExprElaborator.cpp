@@ -588,16 +588,11 @@ createStringLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
                                       false, StrTy, StrNode->getLoc());
 }
 
-static clang::IntegerLiteral *
+static clang::CXXBoolLiteralExpr *
 createBoolLiteral(clang::ASTContext &CxxAST, Token T,
                   clang::SourceLocation Loc) {
-  llvm::APInt Value = llvm::APSInt::get(T.hasKind(tok::TrueKeyword));
-
-  unsigned Width = CxxAST.getIntWidth(CxxAST.BoolTy);
-  if (Value.getBitWidth() != Width)
-    Value = Value.trunc(Width);
-
-  return clang::IntegerLiteral::Create(CxxAST, Value, CxxAST.BoolTy, Loc);
+  return new (CxxAST) clang::CXXBoolLiteralExpr(T.hasKind(tok::TrueKeyword),
+                                                CxxAST.BoolTy, Loc);
 }
 
 static clang::CXXNullPtrLiteralExpr *

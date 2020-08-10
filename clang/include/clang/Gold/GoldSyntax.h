@@ -79,6 +79,16 @@ struct Syntax
   using AttrVec = llvm::SmallVector<Attribute *, 4>;
   AttrVec const &getAttributes() const { return Attributes; }
   void addAttribute(Attribute *Attr);
+  void updateAttributes(const AttrVec &Attrs) {
+    Attributes.insert(Attributes.end(), Attrs.begin(), Attrs.end());
+  }
+  void updateAttributes(AttrVec &&Attrs) {
+    if (Attributes.empty()) {
+      Attributes = Attrs;
+      return;
+    }
+    updateAttributes(Attrs);
+  }
 
 private:
   SyntaxKind Kind;

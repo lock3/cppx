@@ -230,7 +230,6 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
 
 clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
   const CallSyntax *Call = cast<CallSyntax>(S->getCall());
-
   clang::Expr *ConditionExpr;
   ExprElaborator ExEl(Context, SemaRef);
   if (const ArraySyntax *BlockCond
@@ -249,9 +248,13 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
                                         S->getLoc(), ConditionExpr,
                                         clang::Sema::ConditionKind::Boolean);
 
-  SemaRef.enterScope(SK_Block, S);
 
   clang::Stmt *Then;
+  if (isa<ErrorSyntax>(S->getBlock())) {
+    SemaRef.Diags.Report(S->getBlock()->getLoc(), clang::diag::err_in_ast);
+    return nullptr;
+  }
+  SemaRef.enterScope(SK_Block, S);
   if (isa<ArraySyntax>(S->getBlock()) || isa<ListSyntax>(S->getBlock()))
     Then = elaborateBlock(S->getBlock());
   else

@@ -173,17 +173,6 @@ public:
                             AttrStatus &Status);
   void elaborateRefQualifierAttr(Declaration *D, const Syntax *S,
                                  AttrStatus &Status);
-  // void elaborateCarriesDependencyAttr(Declaration *D, const Syntax *S,
-  //                                     AttrStatus &Status);
-  // void elaborateDeprecatedAttr(Declaration *D, const Syntax *S,
-  //                              AttrStatus &Status);
-  // void elaborateMaybeUnusedAttr(Declaration *D, const Syntax *S,
-  //                               AttrStatus &Status);
-  // void elaborateNoDiscardAttr(Declaration *D, const Syntax *S,
-  //                             AttrStatus &Status);
-  // void elaborateNoReturnAttr(Declaration *D, const Syntax *S,
-  //                          AttrStatus &Status);
-
   void elaborateSystemAttribute(clang::Decl *D, const Syntax *S,
                                 AttrStatus &Status,
                                 clang::ParsedAttributes &Attrs);
