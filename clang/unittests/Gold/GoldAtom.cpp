@@ -83,11 +83,11 @@ main() : int!
   StatementMatcher
     TrueMatcher(hasDescendant(
                   varDecl(hasName("t"), hasType(asString("_Bool")),
-                          hasDescendant(integerLiteral(equals(true))))));
+                          hasDescendant(cxxBoolLiteral(equals(true))))));
   StatementMatcher
     FalseMatcher(hasDescendant(
                   varDecl(hasName("f"), hasType(asString("_Bool")),
-                          hasDescendant(integerLiteral(equals(false))))));
+                          hasDescendant(cxxBoolLiteral(equals(false))))));
   ASSERT_TRUE(matches(Code.str(), TrueMatcher)
               && matches(Code.str(), FalseMatcher));
 }
