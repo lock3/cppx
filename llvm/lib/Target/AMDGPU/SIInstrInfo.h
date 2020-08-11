@@ -84,6 +84,9 @@ private:
   bool moveScalarAddSub(SetVectorType &Worklist, MachineInstr &Inst,
                         MachineDominatorTree *MDT = nullptr) const;
 
+  void lowerSelect(SetVectorType &Worklist, MachineInstr &Inst,
+                   MachineDominatorTree *MDT = nullptr) const;
+
   void lowerScalarAbs(SetVectorType &Worklist,
                       MachineInstr &Inst) const;
 
@@ -181,15 +184,15 @@ public:
                                int64_t &Offset1,
                                int64_t &Offset2) const override;
 
-  bool
-  getMemOperandsWithOffset(const MachineInstr &LdSt,
-                           SmallVectorImpl<const MachineOperand *> &BaseOps,
-                           int64_t &Offset, bool &OffsetIsScalable,
-                           const TargetRegisterInfo *TRI) const final;
+  bool getMemOperandsWithOffsetWidth(
+      const MachineInstr &LdSt,
+      SmallVectorImpl<const MachineOperand *> &BaseOps, int64_t &Offset,
+      bool &OffsetIsScalable, unsigned &Width,
+      const TargetRegisterInfo *TRI) const final;
 
   bool shouldClusterMemOps(ArrayRef<const MachineOperand *> BaseOps1,
                            ArrayRef<const MachineOperand *> BaseOps2,
-                           unsigned NumLoads) const override;
+                           unsigned NumLoads, unsigned NumBytes) const override;
 
   bool shouldScheduleLoadsNear(SDNode *Load0, SDNode *Load1, int64_t Offset0,
                                int64_t Offset1, unsigned NumLoads) const override;
@@ -688,6 +691,9 @@ public:
       return MO.isReg() && RI.isVGPR(MRI, MO.getReg());});
   }
 
+  /// Return true if the instruction modifies the mode register.q
+  static bool modifiesModeRegister(const MachineInstr &MI);
+
   /// Whether we must prevent this instruction from executing with EXEC = 0.
   bool hasUnwantedEffectsWhenEXECEmpty(const MachineInstr &MI) const;
 
@@ -1047,6 +1053,8 @@ public:
   unsigned getInstrLatency(const InstrItineraryData *ItinData,
                            const MachineInstr &MI,
                            unsigned *PredCost = nullptr) const override;
+
+  static unsigned getDSShaderTypeValue(const MachineFunction &MF);
 };
 
 /// \brief Returns true if a reg:subreg pair P has a TRC class

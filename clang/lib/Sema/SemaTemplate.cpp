@@ -51,8 +51,7 @@ unsigned Sema::getTemplateDepth(Scope *S) const {
 
   // Each template parameter scope represents one level of template parameter
   // depth.
-  for (Scope *TempParamScope = S->getTemplateParamParent();
-       TempParamScope && !Depth;
+  for (Scope *TempParamScope = S->getTemplateParamParent(); TempParamScope;
        TempParamScope = TempParamScope->getParent()->getTemplateParamParent()) {
     ++Depth;
   }
@@ -721,17 +720,10 @@ void Sema::diagnoseExprIntendedAsTemplateName(Scope *S, ExprResult TemplateName,
 /// specifier naming a dependent type.
 ExprResult
 Sema::ActOnDependentIdExpression(const CXXScopeSpec &SS,
-        SourceLocation TemplateKWLoc, const DeclarationNameInfo &NameInfo,
-        bool HasTrailingLParen, bool isAddressOfOperand,
-        const TemplateArgumentListInfo *TemplateArgs) {
-  // If the name is a CXXReflectedIdName, then one or more of the
-  // operands is dependent, and we cannot form an identifier. Simply preserve
-  // the name as it is.
-  if (NameInfo.getName().getNameKind() == DeclarationName::CXXReflectedIdName)
-    return CXXReflectedIdExpr::Create(Context, NameInfo, Context.DependentTy,
-        SS, SS.getWithLocInContext(Context), TemplateKWLoc, HasTrailingLParen,
-        isAddressOfOperand, TemplateArgs);
-
+                                 SourceLocation TemplateKWLoc,
+                                 const DeclarationNameInfo &NameInfo,
+                                 bool isAddressOfOperand,
+                           const TemplateArgumentListInfo *TemplateArgs) {
   DeclContext *DC = getFunctionLevelDeclContext();
 
   // C++11 [expr.prim.general]p12:
@@ -1189,7 +1181,11 @@ static ExprResult formImmediatelyDeclaredConstraint(
   // template<C1... T> struct s1;
   //
   // The constraint: (C1<T> && ...)
-  return S.BuildCXXFoldExpr(/*LParenLoc=*/SourceLocation(),
+  //
+  // Note that the type of C1<T> is known to be 'bool', so we don't need to do
+  // any unqualified lookups for 'operator&&' here.
+  return S.BuildCXXFoldExpr(/*UnqualifiedLookup=*/nullptr,
+                            /*LParenLoc=*/SourceLocation(),
                             ImmediatelyDeclaredConstraint.get(), BO_LAnd,
                             EllipsisLoc, /*RHS=*/nullptr,
                             /*RParenLoc=*/SourceLocation(),
@@ -1964,16 +1960,46 @@ namespace {
 /// constructor to a deduction guide.
 class ExtractTypeForDeductionGuide
   : public TreeTransform<ExtractTypeForDeductionGuide> {
+  llvm::SmallVectorImpl<TypedefNameDecl *> &MaterializedTypedefs;
+
 public:
   typedef TreeTransform<ExtractTypeForDeductionGuide> Base;
-  ExtractTypeForDeductionGuide(Sema &SemaRef) : Base(SemaRef) {}
+  ExtractTypeForDeductionGuide(
+      Sema &SemaRef,
+      llvm::SmallVectorImpl<TypedefNameDecl *> &MaterializedTypedefs)
+      : Base(SemaRef), MaterializedTypedefs(MaterializedTypedefs) {}
 
   TypeSourceInfo *transform(TypeSourceInfo *TSI) { return TransformType(TSI); }
 
   QualType TransformTypedefType(TypeLocBuilder &TLB, TypedefTypeLoc TL) {
-    return TransformType(
-        TLB,
-        TL.getTypedefNameDecl()->getTypeSourceInfo()->getTypeLoc());
+    ASTContext &Context = SemaRef.getASTContext();
+    TypedefNameDecl *OrigDecl = TL.getTypedefNameDecl();
+    TypeLocBuilder InnerTLB;
+    QualType Transformed =
+        TransformType(InnerTLB, OrigDecl->getTypeSourceInfo()->getTypeLoc());
+    TypeSourceInfo *TSI =
+        TransformType(InnerTLB.getTypeSourceInfo(Context, Transformed));
+
+    TypedefNameDecl *Decl = nullptr;
+
+    if (isa<TypeAliasDecl>(OrigDecl))
+      Decl = TypeAliasDecl::Create(
+          Context, Context.getTranslationUnitDecl(), OrigDecl->getBeginLoc(),
+          OrigDecl->getLocation(), OrigDecl->getIdentifier(), TSI);
+    else {
+      assert(isa<TypedefDecl>(OrigDecl) && "Not a Type alias or typedef");
+      Decl = TypedefDecl::Create(
+          Context, Context.getTranslationUnitDecl(), OrigDecl->getBeginLoc(),
+          OrigDecl->getLocation(), OrigDecl->getIdentifier(), TSI);
+    }
+
+    MaterializedTypedefs.push_back(Decl);
+
+    QualType TDTy = Context.getTypedefType(Decl);
+    TypedefTypeLoc TypedefTL = TLB.push<TypedefTypeLoc>(TDTy);
+    TypedefTL.setNameLoc(TL.getNameLoc());
+
+    return TDTy;
   }
 };
 
@@ -2025,6 +2051,7 @@ struct ConvertConstructorToDeductionGuideTransform {
       // a list of substituted template arguments as we go.
       for (NamedDecl *Param : *InnerParams) {
         MultiLevelTemplateArgumentList Args;
+        Args.setKind(TemplateSubstitutionKind::Rewrite);
         Args.addOuterTemplateArguments(SubstArgs);
         Args.addOuterRetainedLevel();
         NamedDecl *NewParam = transformTemplateParameter(Param, Args);
@@ -2044,6 +2071,7 @@ struct ConvertConstructorToDeductionGuideTransform {
     // substitute references to the old parameters into references to the
     // new ones.
     MultiLevelTemplateArgumentList Args;
+    Args.setKind(TemplateSubstitutionKind::Rewrite);
     if (FTD) {
       Args.addOuterTemplateArguments(SubstArgs);
       Args.addOuterRetainedLevel();
@@ -2058,15 +2086,17 @@ struct ConvertConstructorToDeductionGuideTransform {
     // new ones.
     TypeLocBuilder TLB;
     SmallVector<ParmVarDecl*, 8> Params;
-    QualType NewType = transformFunctionProtoType(TLB, FPTL, Params, Args);
+    SmallVector<TypedefNameDecl *, 4> MaterializedTypedefs;
+    QualType NewType = transformFunctionProtoType(TLB, FPTL, Params, Args,
+                                                  MaterializedTypedefs);
     if (NewType.isNull())
       return nullptr;
     TypeSourceInfo *NewTInfo = TLB.getTypeSourceInfo(SemaRef.Context, NewType);
 
-    return buildDeductionGuide(TemplateParams, CD->getExplicitSpecifier(),
-                               CD->getConstexprKind(), NewTInfo,
-                               CD->getBeginLoc(), CD->getLocation(),
-                               CD->getEndLoc());
+    return buildDeductionGuide(
+        TemplateParams, CD->getExplicitSpecifier(), CD->getConstexprKind(),
+        NewTInfo, CD->getBeginLoc(), CD->getLocation(), CD->getEndLoc(),
+        MaterializedTypedefs);
   }
 
   /// Build a deduction guide with the specified parameter types.
@@ -2163,16 +2193,18 @@ private:
     return NewParam;
   }
 
-  QualType transformFunctionProtoType(TypeLocBuilder &TLB,
-                                      FunctionProtoTypeLoc TL,
-                                      SmallVectorImpl<ParmVarDecl*> &Params,
-                                      MultiLevelTemplateArgumentList &Args) {
+  QualType transformFunctionProtoType(
+      TypeLocBuilder &TLB, FunctionProtoTypeLoc TL,
+      SmallVectorImpl<ParmVarDecl *> &Params,
+      MultiLevelTemplateArgumentList &Args,
+      SmallVectorImpl<TypedefNameDecl *> &MaterializedTypedefs) {
     SmallVector<QualType, 4> ParamTypes;
     const FunctionProtoType *T = TL.getTypePtr();
 
     //    -- The types of the function parameters are those of the constructor.
     for (auto *OldParam : TL.getParams()) {
-      ParmVarDecl *NewParam = transformFunctionTypeParam(OldParam, Args);
+      ParmVarDecl *NewParam =
+          transformFunctionTypeParam(OldParam, Args, MaterializedTypedefs);
       if (!NewParam)
         return QualType();
       ParamTypes.push_back(NewParam->getType());
@@ -2214,9 +2246,9 @@ private:
     return Result;
   }
 
-  ParmVarDecl *
-  transformFunctionTypeParam(ParmVarDecl *OldParam,
-                             MultiLevelTemplateArgumentList &Args) {
+  ParmVarDecl *transformFunctionTypeParam(
+      ParmVarDecl *OldParam, MultiLevelTemplateArgumentList &Args,
+      llvm::SmallVectorImpl<TypedefNameDecl *> &MaterializedTypedefs) {
     TypeSourceInfo *OldDI = OldParam->getTypeSourceInfo();
     TypeSourceInfo *NewDI;
     if (auto PackTL = OldDI->getTypeLoc().getAs<PackExpansionTypeLoc>()) {
@@ -2239,7 +2271,8 @@ private:
     // members of the current instantiations with the definitions of those
     // typedefs, avoiding triggering instantiation of the deduced type during
     // deduction.
-    NewDI = ExtractTypeForDeductionGuide(SemaRef).transform(NewDI);
+    NewDI = ExtractTypeForDeductionGuide(SemaRef, MaterializedTypedefs)
+                .transform(NewDI);
 
     // Resolving a wording defect, we also inherit default arguments from the
     // constructor.
@@ -2270,10 +2303,11 @@ private:
     return NewParam;
   }
 
-  NamedDecl *buildDeductionGuide(
+  FunctionTemplateDecl *buildDeductionGuide(
       TemplateParameterList *TemplateParams, ExplicitSpecifier ES,
       ConstexprSpecKind ConstexprKind, TypeSourceInfo *TInfo,
-      SourceLocation LocStart, SourceLocation Loc, SourceLocation LocEnd) {
+      SourceLocation LocStart, SourceLocation Loc, SourceLocation LocEnd,
+      llvm::ArrayRef<TypedefNameDecl *> MaterializedTypedefs = {}) {
     DeclarationNameInfo Name(DeductionGuideName, Loc);
     ArrayRef<ParmVarDecl *> Params =
         TInfo->getTypeLoc().castAs<FunctionProtoTypeLoc>().getParams();
@@ -2288,6 +2322,8 @@ private:
 
     for (auto *Param : Params)
       Param->setDeclContext(Guide);
+    for (auto *TD : MaterializedTypedefs)
+      TD->setDeclContext(Guide);
 
     auto *GuideTemplate = FunctionTemplateDecl::Create(
         SemaRef.Context, DC, Loc, DeductionGuideName, TemplateParams, Guide);
@@ -3542,9 +3578,8 @@ QualType Sema::CheckTemplateIdType(TemplateName Name,
     // Only substitute for the innermost template argument list.
     MultiLevelTemplateArgumentList TemplateArgLists;
     TemplateArgLists.addOuterTemplateArguments(&StackTemplateArgs);
-    unsigned Depth = AliasTemplate->getTemplateParameters()->getDepth();
-    for (unsigned I = 0; I < Depth; ++I)
-      TemplateArgLists.addOuterTemplateArguments(None);
+    TemplateArgLists.addOuterRetainedLevels(
+        AliasTemplate->getTemplateParameters()->getDepth());
 
     LocalInstantiationScope Scope(*this);
     InstantiatingTemplate Inst(*this, TemplateLoc, Template);
@@ -4343,6 +4378,13 @@ Sema::CheckVarTemplateId(VarTemplateDecl *Template, SourceLocation TemplateLoc,
           Converted, /*UpdateArgsWithConversion=*/true))
     return true;
 
+  // Produce a placeholder value if the specialization is dependent.
+  bool InstantiationDependent = false;
+  if (Template->getDeclContext()->isDependentContext() ||
+      TemplateSpecializationType::anyDependentTemplateArguments(
+          TemplateArgs, InstantiationDependent))
+    return DeclResult();
+
   // Find the variable template specialization declaration that
   // corresponds to these arguments.
   void *InsertPos = nullptr;
@@ -4370,84 +4412,75 @@ Sema::CheckVarTemplateId(VarTemplateDecl *Template, SourceLocation TemplateLoc,
 
   // 1. Attempt to find the closest partial specialization that this
   // specializes, if any.
-  // If any of the template arguments is dependent, then this is probably
-  // a placeholder for an incomplete declarative context; which must be
-  // complete by instantiation time. Thus, do not search through the partial
-  // specializations yet.
   // TODO: Unify with InstantiateClassTemplateSpecialization()?
   //       Perhaps better after unification of DeduceTemplateArguments() and
   //       getMoreSpecializedPartialSpecialization().
-  bool InstantiationDependent = false;
-  if (!TemplateSpecializationType::anyDependentTemplateArguments(
-          TemplateArgs, InstantiationDependent)) {
+  SmallVector<VarTemplatePartialSpecializationDecl *, 4> PartialSpecs;
+  Template->getPartialSpecializations(PartialSpecs);
 
-    SmallVector<VarTemplatePartialSpecializationDecl *, 4> PartialSpecs;
-    Template->getPartialSpecializations(PartialSpecs);
+  for (unsigned I = 0, N = PartialSpecs.size(); I != N; ++I) {
+    VarTemplatePartialSpecializationDecl *Partial = PartialSpecs[I];
+    TemplateDeductionInfo Info(FailedCandidates.getLocation());
 
-    for (unsigned I = 0, N = PartialSpecs.size(); I != N; ++I) {
-      VarTemplatePartialSpecializationDecl *Partial = PartialSpecs[I];
-      TemplateDeductionInfo Info(FailedCandidates.getLocation());
-
-      if (TemplateDeductionResult Result =
-              DeduceTemplateArguments(Partial, TemplateArgList, Info)) {
-        // Store the failed-deduction information for use in diagnostics, later.
-        // TODO: Actually use the failed-deduction info?
-        FailedCandidates.addCandidate().set(
-            DeclAccessPair::make(Template, AS_public), Partial,
-            MakeDeductionFailureInfo(Context, Result, Info));
-        (void)Result;
-      } else {
-        Matched.push_back(PartialSpecMatchResult());
-        Matched.back().Partial = Partial;
-        Matched.back().Args = Info.take();
-      }
-    }
-
-    if (Matched.size() >= 1) {
-      SmallVector<MatchResult, 4>::iterator Best = Matched.begin();
-      if (Matched.size() == 1) {
-        //   -- If exactly one matching specialization is found, the
-        //      instantiation is generated from that specialization.
-        // We don't need to do anything for this.
-      } else {
-        //   -- If more than one matching specialization is found, the
-        //      partial order rules (14.5.4.2) are used to determine
-        //      whether one of the specializations is more specialized
-        //      than the others. If none of the specializations is more
-        //      specialized than all of the other matching
-        //      specializations, then the use of the variable template is
-        //      ambiguous and the program is ill-formed.
-        for (SmallVector<MatchResult, 4>::iterator P = Best + 1,
-                                                   PEnd = Matched.end();
-             P != PEnd; ++P) {
-          if (getMoreSpecializedPartialSpecialization(P->Partial, Best->Partial,
-                                                      PointOfInstantiation) ==
-              P->Partial)
-            Best = P;
-        }
-
-        // Determine if the best partial specialization is more specialized than
-        // the others.
-        for (SmallVector<MatchResult, 4>::iterator P = Matched.begin(),
-                                                   PEnd = Matched.end();
-             P != PEnd; ++P) {
-          if (P != Best && getMoreSpecializedPartialSpecialization(
-                               P->Partial, Best->Partial,
-                               PointOfInstantiation) != Best->Partial) {
-            AmbiguousPartialSpec = true;
-            break;
-          }
-        }
-      }
-
-      // Instantiate using the best variable template partial specialization.
-      InstantiationPattern = Best->Partial;
-      InstantiationArgs = Best->Args;
+    if (TemplateDeductionResult Result =
+            DeduceTemplateArguments(Partial, TemplateArgList, Info)) {
+      // Store the failed-deduction information for use in diagnostics, later.
+      // TODO: Actually use the failed-deduction info?
+      FailedCandidates.addCandidate().set(
+          DeclAccessPair::make(Template, AS_public), Partial,
+          MakeDeductionFailureInfo(Context, Result, Info));
+      (void)Result;
     } else {
-      //   -- If no match is found, the instantiation is generated
-      //      from the primary template.
-      // InstantiationPattern = Template->getTemplatedDecl();
+      Matched.push_back(PartialSpecMatchResult());
+      Matched.back().Partial = Partial;
+      Matched.back().Args = Info.take();
     }
+  }
+
+  if (Matched.size() >= 1) {
+    SmallVector<MatchResult, 4>::iterator Best = Matched.begin();
+    if (Matched.size() == 1) {
+      //   -- If exactly one matching specialization is found, the
+      //      instantiation is generated from that specialization.
+      // We don't need to do anything for this.
+    } else {
+      //   -- If more than one matching specialization is found, the
+      //      partial order rules (14.5.4.2) are used to determine
+      //      whether one of the specializations is more specialized
+      //      than the others. If none of the specializations is more
+      //      specialized than all of the other matching
+      //      specializations, then the use of the variable template is
+      //      ambiguous and the program is ill-formed.
+      for (SmallVector<MatchResult, 4>::iterator P = Best + 1,
+                                                 PEnd = Matched.end();
+           P != PEnd; ++P) {
+        if (getMoreSpecializedPartialSpecialization(P->Partial, Best->Partial,
+                                                    PointOfInstantiation) ==
+            P->Partial)
+          Best = P;
+      }
+
+      // Determine if the best partial specialization is more specialized than
+      // the others.
+      for (SmallVector<MatchResult, 4>::iterator P = Matched.begin(),
+                                                 PEnd = Matched.end();
+           P != PEnd; ++P) {
+        if (P != Best && getMoreSpecializedPartialSpecialization(
+                             P->Partial, Best->Partial,
+                             PointOfInstantiation) != Best->Partial) {
+          AmbiguousPartialSpec = true;
+          break;
+        }
+      }
+    }
+
+    // Instantiate using the best variable template partial specialization.
+    InstantiationPattern = Best->Partial;
+    InstantiationArgs = Best->Args;
+  } else {
+    //   -- If no match is found, the instantiation is generated
+    //      from the primary template.
+    // InstantiationPattern = Template->getTemplatedDecl();
   }
 
   // 2. Create the canonical declaration.
@@ -4494,6 +4527,9 @@ Sema::CheckVarTemplateId(const CXXScopeSpec &SS,
                                        *TemplateArgs);
   if (Decl.isInvalid())
     return ExprError();
+
+  if (!Decl.get())
+    return ExprResult();
 
   VarDecl *Var = cast<VarDecl>(Decl.get());
   if (!Var->getTemplateSpecializationKind())
@@ -4582,18 +4618,14 @@ ExprResult Sema::BuildTemplateIdExpr(const CXXScopeSpec &SS,
     }
   }
 
-  auto AnyDependentArguments = [&]() -> bool {
-    bool InstantiationDependent;
-    return TemplateArgs &&
-           TemplateSpecializationType::anyDependentTemplateArguments(
-               *TemplateArgs, InstantiationDependent);
-  };
-
   // In C++1y, check variable template ids.
-  if (R.getAsSingle<VarTemplateDecl>() && !AnyDependentArguments()) {
-    return CheckVarTemplateId(SS, R.getLookupNameInfo(),
-                              R.getAsSingle<VarTemplateDecl>(),
-                              TemplateKWLoc, TemplateArgs);
+  if (R.getAsSingle<VarTemplateDecl>()) {
+    ExprResult Res = CheckVarTemplateId(SS, R.getLookupNameInfo(),
+                                        R.getAsSingle<VarTemplateDecl>(),
+                                        TemplateKWLoc, TemplateArgs);
+    if (Res.isInvalid() || Res.isUsable())
+      return Res;
+    // Result is dependent. Carry on to build an UnresolvedLookupEpxr.
   }
 
   if (R.getAsSingle<ConceptDecl>()) {
@@ -4832,10 +4864,7 @@ bool Sema::CheckTemplateTypeArgument(TemplateTypeParmDecl *Param,
     CXXScopeSpec SS;
     DeclarationNameInfo NameInfo;
 
-    if (DeclRefExpr *ArgExpr = dyn_cast<DeclRefExpr>(Arg.getAsExpr())) {
-      SS.Adopt(ArgExpr->getQualifierLoc());
-      NameInfo = ArgExpr->getNameInfo();
-    } else if (DependentScopeDeclRefExpr *ArgExpr =
+   if (DependentScopeDeclRefExpr *ArgExpr =
                dyn_cast<DependentScopeDeclRefExpr>(Arg.getAsExpr())) {
       SS.Adopt(ArgExpr->getQualifierLoc());
       NameInfo = ArgExpr->getNameInfo();
@@ -4854,6 +4883,7 @@ bool Sema::CheckTemplateTypeArgument(TemplateTypeParmDecl *Param,
       if (Result.getAsSingle<TypeDecl>() ||
           Result.getResultKind() ==
               LookupResult::NotFoundInCurrentInstantiation) {
+        assert(SS.getScopeRep() && "dependent scope expr must has a scope!");
         // Suggest that the user add 'typename' before the NNS.
         SourceLocation Loc = AL.getSourceRange().getBegin();
         Diag(Loc, getLangOpts().MSVCCompat
@@ -5912,6 +5942,11 @@ bool UnnamedLocalNoLinkageFinder::VisitDependentSizedExtVectorType(
   return Visit(T->getElementType());
 }
 
+bool UnnamedLocalNoLinkageFinder::VisitDependentSizedMatrixType(
+    const DependentSizedMatrixType *T) {
+  return Visit(T->getElementType());
+}
+
 bool UnnamedLocalNoLinkageFinder::VisitDependentAddressSpaceType(
     const DependentAddressSpaceType *T) {
   return Visit(T->getPointeeType());
@@ -5927,6 +5962,11 @@ bool UnnamedLocalNoLinkageFinder::VisitDependentVectorType(
 }
 
 bool UnnamedLocalNoLinkageFinder::VisitExtVectorType(const ExtVectorType* T) {
+  return Visit(T->getElementType());
+}
+
+bool UnnamedLocalNoLinkageFinder::VisitConstantMatrixType(
+    const ConstantMatrixType *T) {
   return Visit(T->getElementType());
 }
 
@@ -5964,6 +6004,11 @@ bool UnnamedLocalNoLinkageFinder::VisitTypeOfType(const TypeOfType* T) {
 }
 
 bool UnnamedLocalNoLinkageFinder::VisitDecltypeType(const DecltypeType*) {
+  return false;
+}
+
+bool UnnamedLocalNoLinkageFinder::VisitDependentIdentifierSpliceType(
+    const DependentIdentifierSpliceType*) {
   return false;
 }
 
@@ -7812,22 +7857,28 @@ Sema::CheckTemplateDeclScope(Scope *S, TemplateParameterList *TemplateParams) {
          (S->getFlags() & Scope::TemplateParamScope) != 0)
     S = S->getParent();
 
-  // C++ [temp]p4:
-  //   A template [...] shall not have C linkage.
+  // C++ [temp.pre]p6: [P2096]
+  //   A template, explicit specialization, or partial specialization shall not
+  //   have C linkage.
   DeclContext *Ctx = S->getEntity();
-  assert(Ctx && "Unknown context");
-  if (Ctx->isExternCContext()) {
+  if (Ctx && Ctx->isExternCContext()) {
     Diag(TemplateParams->getTemplateLoc(), diag::err_template_linkage)
         << TemplateParams->getSourceRange();
     if (const LinkageSpecDecl *LSD = Ctx->getExternCContext())
       Diag(LSD->getExternLoc(), diag::note_extern_c_begins_here);
     return true;
   }
-  Ctx = Ctx->getRedeclContext();
+  Ctx = Ctx ? Ctx->getRedeclContext() : nullptr;
 
   // C++ [temp]p2:
   //   A template-declaration can appear only as a namespace scope or
   //   class scope declaration.
+  // C++ [temp.expl.spec]p3:
+  //   An explicit specialization may be declared in any scope in which the
+  //   corresponding primary template may be defined.
+  // C++ [temp.class.spec]p6: [P2096]
+  //   A partial specialization may be declared in any scope in which the
+  //   corresponding primary template may be defined.
   if (Ctx) {
     if (Ctx->isFileContext())
       return false;
@@ -8145,6 +8196,10 @@ DeclResult Sema::ActOnClassTemplateSpecialization(
           TemplateParameterLists, TUK == TUK_Friend, isMemberSpecialization,
           Invalid);
   if (Invalid)
+    return true;
+
+  // Check that we can declare a template specialization here.
+  if (TemplateParams && CheckTemplateDeclScope(S, TemplateParams))
     return true;
 
   if (TemplateParams && TemplateParams->size() > 0) {
@@ -8500,6 +8555,9 @@ Decl *Sema::ActOnConceptDefinition(Scope *S,
     Diag(NameLoc, diag::err_concept_no_parameters);
     return nullptr;
   }
+
+  if (DiagnoseUnexpandedParameterPack(ConstraintExpr))
+    return nullptr;
 
   ConceptDecl *NewDecl = ConceptDecl::Create(Context, DC, NameLoc, Name,
                                              TemplateParameterLists.front(),
@@ -9947,6 +10005,14 @@ DeclResult Sema::ActOnExplicitInstantiation(Scope *S,
                                           D.getIdentifierLoc(), TemplateArgs);
       if (Res.isInvalid())
         return true;
+
+      if (!Res.isUsable()) {
+        // We somehow specified dependent template arguments in an explicit
+        // instantiation. This should probably only happen during error
+        // recovery.
+        Diag(D.getIdentifierLoc(), diag::err_explicit_instantiation_dependent);
+        return true;
+      }
 
       // Ignore access control bits, we don't need them for redeclaration
       // checking.

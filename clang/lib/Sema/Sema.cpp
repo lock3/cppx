@@ -43,7 +43,7 @@
 #include "clang/Sema/TemplateInstCallback.h"
 #include "clang/Sema/TypoCorrection.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/TimeProfiler.h"
 
 using namespace clang;
@@ -160,9 +160,8 @@ Sema::Sema(Preprocessor &pp, ASTContext &ctxt, ASTConsumer &consumer,
           LangOpts.getMSPointerToMemberRepresentationMethod()),
       VtorDispStack(LangOpts.getVtorDispMode()), PackStack(0),
       DataSegStack(nullptr), BSSSegStack(nullptr), ConstSegStack(nullptr),
-      CodeSegStack(nullptr), FpPragmaStack(CurFPFeatures.getAsOpaqueInt()),
-      CurInitSeg(nullptr), VisContext(nullptr),
-      PragmaAttributeCurrentTargetDecl(nullptr),
+      CodeSegStack(nullptr), FpPragmaStack(0xffffffff), CurInitSeg(nullptr),
+      VisContext(nullptr), PragmaAttributeCurrentTargetDecl(nullptr),
       IsBuildingRecoveryCallExpr(false), Cleanup{}, LateTemplateParser(nullptr),
       LateTemplateParserCleanup(nullptr), OpaqueParser(nullptr),
       IdResolver(new (ctxt) IdentifierResolver(pp)),
@@ -544,8 +543,10 @@ ExprResult Sema::ImpCastExprToType(Expr *E, QualType Ty,
   if (VK == VK_RValue && !E->isRValue()) {
     switch (Kind) {
     default:
-      llvm_unreachable("can't implicitly cast lvalue to rvalue with this cast "
-                       "kind");
+      llvm_unreachable(("can't implicitly cast lvalue to rvalue with this cast "
+                        "kind: " +
+                        std::string(CastExpr::getCastKindName(Kind)))
+                           .c_str());
     case CK_Dependent:
     case CK_LValueToRValue:
     case CK_ArrayToPointerDecay:
@@ -1014,6 +1015,11 @@ void Sema::ActOnEndOfTranslationUnit() {
                                  LateParsedInstantiations.begin(),
                                  LateParsedInstantiations.end());
     LateParsedInstantiations.clear();
+
+    if (LangOpts.PCHInstantiateTemplates) {
+      llvm::TimeTraceScope TimeScope("PerformPendingInstantiations");
+      PerformPendingInstantiations();
+    }
   }
 
   DiagnoseUnterminatedPragmaPack();
@@ -1195,7 +1201,7 @@ void Sema::ActOnEndOfTranslationUnit() {
         if (DiagD->isReferenced()) {
           if (isa<CXXMethodDecl>(DiagD))
             Diag(DiagD->getLocation(), diag::warn_unneeded_member_function)
-                  << DiagD->getDeclName();
+                << DiagD;
           else {
             if (FD->getStorageClass() == SC_Static &&
                 !FD->isInlineSpecified() &&
@@ -1203,20 +1209,20 @@ void Sema::ActOnEndOfTranslationUnit() {
                    SourceMgr.getExpansionLoc(FD->getLocation())))
               Diag(DiagD->getLocation(),
                    diag::warn_unneeded_static_internal_decl)
-                  << DiagD->getDeclName();
+                  << DiagD;
             else
               Diag(DiagD->getLocation(), diag::warn_unneeded_internal_decl)
-                   << /*function*/0 << DiagD->getDeclName();
+                  << /*function*/ 0 << DiagD;
           }
         } else {
           if (FD->getDescribedFunctionTemplate())
             Diag(DiagD->getLocation(), diag::warn_unused_template)
-              << /*function*/0 << DiagD->getDeclName();
+                << /*function*/ 0 << DiagD;
           else
-            Diag(DiagD->getLocation(),
-                 isa<CXXMethodDecl>(DiagD) ? diag::warn_unused_member_function
+            Diag(DiagD->getLocation(), isa<CXXMethodDecl>(DiagD)
+                                           ? diag::warn_unused_member_function
                                            : diag::warn_unused_function)
-              << DiagD->getDeclName();
+                << DiagD;
         }
       } else {
         const VarDecl *DiagD = cast<VarDecl>(*I)->getDefinition();
@@ -1224,20 +1230,19 @@ void Sema::ActOnEndOfTranslationUnit() {
           DiagD = cast<VarDecl>(*I);
         if (DiagD->isReferenced()) {
           Diag(DiagD->getLocation(), diag::warn_unneeded_internal_decl)
-                << /*variable*/1 << DiagD->getDeclName();
+              << /*variable*/ 1 << DiagD;
         } else if (DiagD->getType().isConstQualified()) {
           const SourceManager &SM = SourceMgr;
           if (SM.getMainFileID() != SM.getFileID(DiagD->getLocation()) ||
               !PP.getLangOpts().IsHeaderFile)
             Diag(DiagD->getLocation(), diag::warn_unused_const_variable)
-                << DiagD->getDeclName();
+                << DiagD;
         } else {
           if (DiagD->getDescribedVarTemplate())
             Diag(DiagD->getLocation(), diag::warn_unused_template)
-              << /*variable*/1 << DiagD->getDeclName();
+                << /*variable*/ 1 << DiagD;
           else
-            Diag(DiagD->getLocation(), diag::warn_unused_variable)
-              << DiagD->getDeclName();
+            Diag(DiagD->getLocation(), diag::warn_unused_variable) << DiagD;
         }
       }
     }
@@ -1490,7 +1495,7 @@ public:
   typedef UsedDeclVisitor<DeferredDiagnosticsEmitter> Inherited;
 
   // Whether the function is already in the current use-path.
-  llvm::SmallSet<CanonicalDeclPtr<Decl>, 4> InUsePath;
+  llvm::SmallPtrSet<CanonicalDeclPtr<Decl>, 4> InUsePath;
 
   // The current use-path.
   llvm::SmallVector<CanonicalDeclPtr<FunctionDecl>, 4> UsePath;
@@ -1499,7 +1504,7 @@ public:
   // case not in OpenMP device context. Done[1] is for the case in OpenMP
   // device context. We need two sets because diagnostics emission may be
   // different depending on whether it is in OpenMP device context.
-  llvm::SmallSet<CanonicalDeclPtr<Decl>, 4> DoneMap[2];
+  llvm::SmallPtrSet<CanonicalDeclPtr<Decl>, 4> DoneMap[2];
 
   // Emission state of the root node of the current use graph.
   bool ShouldEmitRootNode;
@@ -1543,7 +1548,7 @@ public:
   }
 
   void checkFunc(SourceLocation Loc, FunctionDecl *FD) {
-    auto &Done = DoneMap[InOMPDeviceContext];
+    auto &Done = DoneMap[InOMPDeviceContext > 0 ? 1 : 0];
     FunctionDecl *Caller = UsePath.empty() ? nullptr : UsePath.back();
     if ((!ShouldEmitRootNode && !S.getLangOpts().OpenMP && !Caller) ||
         S.shouldIgnoreInHostDeviceCheck(FD) || InUsePath.count(FD))
@@ -1702,8 +1707,57 @@ Sema::DeviceDiagBuilder Sema::targetDiag(SourceLocation Loc, unsigned DiagID) {
   if (getLangOpts().CUDA)
     return getLangOpts().CUDAIsDevice ? CUDADiagIfDeviceCode(Loc, DiagID)
                                       : CUDADiagIfHostCode(Loc, DiagID);
+
+  if (getLangOpts().SYCLIsDevice)
+    return SYCLDiagIfDeviceCode(Loc, DiagID);
+
   return DeviceDiagBuilder(DeviceDiagBuilder::K_Immediate, Loc, DiagID,
                            getCurFunctionDecl(), *this);
+}
+
+void Sema::checkDeviceDecl(const ValueDecl *D, SourceLocation Loc) {
+  if (isUnevaluatedContext())
+    return;
+
+  Decl *C = cast<Decl>(getCurLexicalContext());
+
+  // Memcpy operations for structs containing a member with unsupported type
+  // are ok, though.
+  if (const auto *MD = dyn_cast<CXXMethodDecl>(C)) {
+    if ((MD->isCopyAssignmentOperator() || MD->isMoveAssignmentOperator()) &&
+        MD->isTrivial())
+      return;
+
+    if (const auto *Ctor = dyn_cast<CXXConstructorDecl>(MD))
+      if (Ctor->isCopyOrMoveConstructor() && Ctor->isTrivial())
+        return;
+  }
+
+  auto CheckType = [&](QualType Ty) {
+    if (Ty->isDependentType())
+      return;
+
+    if ((Ty->isFloat16Type() && !Context.getTargetInfo().hasFloat16Type()) ||
+        ((Ty->isFloat128Type() ||
+          (Ty->isRealFloatingType() && Context.getTypeSize(Ty) == 128)) &&
+         !Context.getTargetInfo().hasFloat128Type()) ||
+        (Ty->isIntegerType() && Context.getTypeSize(Ty) == 128 &&
+         !Context.getTargetInfo().hasInt128Type())) {
+      targetDiag(Loc, diag::err_device_unsupported_type)
+          << D << static_cast<unsigned>(Context.getTypeSize(Ty)) << Ty
+          << Context.getTargetInfo().getTriple().str();
+      targetDiag(D->getLocation(), diag::note_defined_here) << D;
+    }
+  };
+
+  QualType Ty = D->getType();
+  CheckType(Ty);
+
+  if (const auto *FPTy = dyn_cast<FunctionProtoType>(Ty)) {
+    for (const auto &ParamTy : FPTy->param_types())
+      CheckType(ParamTy);
+    CheckType(FPTy->getReturnType());
+  }
 }
 
 /// Looks through the macro-expansion chain for the given
@@ -1907,7 +1961,7 @@ void Sema::PopCompoundScope() {
 /// Determine whether any errors occurred within this function/method/
 /// block.
 bool Sema::hasAnyUnrecoverableErrorsInThisFunction() const {
-  return getCurFunction()->ErrorTrap.hasUnrecoverableErrorOccurred();
+  return getCurFunction()->hasUnrecoverableErrorOccurred();
 }
 
 void Sema::setFunctionHasBranchIntoScope() {

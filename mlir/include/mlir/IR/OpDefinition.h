@@ -79,17 +79,12 @@ namespace impl {
 /// is empty, insert a new block first. `buildTerminatorOp` should return the
 /// terminator operation to insert.
 void ensureRegionTerminator(
-    Region &region, Location loc,
-    function_ref<Operation *(OpBuilder &)> buildTerminatorOp);
-/// Templated version that fills the generates the provided operation type.
-template <typename OpTy>
-void ensureRegionTerminator(Region &region, Builder &builder, Location loc) {
-  ensureRegionTerminator(region, loc, [&](OpBuilder &b) {
-    OperationState state(loc, OpTy::getOperationName());
-    OpTy::build(b, state);
-    return Operation::create(state);
-  });
-}
+    Region &region, OpBuilder &builder, Location loc,
+    function_ref<Operation *(OpBuilder &, Location)> buildTerminatorOp);
+void ensureRegionTerminator(
+    Region &region, Builder &builder, Location loc,
+    function_ref<Operation *(OpBuilder &, Location)> buildTerminatorOp);
+
 } // namespace impl
 
 /// This is the concrete base class that holds the operation pointer and has
@@ -265,6 +260,12 @@ class OpFoldResult : public PointerUnion<Attribute, Value> {
   using PointerUnion<Attribute, Value>::PointerUnion;
 };
 
+/// Allow printing to a stream.
+inline raw_ostream &operator<<(raw_ostream &os, OpState &op) {
+  op.print(os, OpPrintingFlags().useLocalScope());
+  return os;
+}
+
 /// This template defines the foldHook as used by AbstractOperation.
 ///
 /// The default implementation uses a general fold method that can be defined on
@@ -399,6 +400,7 @@ LogicalResult verifyNSuccessors(Operation *op, unsigned numSuccessors);
 LogicalResult verifyAtLeastNSuccessors(Operation *op, unsigned numSuccessors);
 LogicalResult verifyOperandSizeAttr(Operation *op, StringRef sizeAttrName);
 LogicalResult verifyResultSizeAttr(Operation *op, StringRef sizeAttrName);
+LogicalResult verifyNoRegionArguments(Operation *op);
 } // namespace impl
 
 /// Helper class for implementing traits.  Clients are not expected to interact
@@ -1045,9 +1047,9 @@ public:
 /// optimization purposes. Any SSA values of 'index' type that either dominate
 /// such an operation or are used at the top-level of such an operation
 /// automatically become valid symbols for the polyhedral scope defined by that
-/// operation. For more details, see `Traits.md#PolyhedralScope`.
+/// operation. For more details, see `Traits.md#AffineScope`.
 template <typename ConcreteType>
-class PolyhedralScope : public TraitBase<ConcreteType, PolyhedralScope> {
+class AffineScope : public TraitBase<ConcreteType, AffineScope> {
 public:
   static LogicalResult verifyTrait(Operation *op) {
     static_assert(!ConcreteType::template hasTrait<ZeroRegion>(),
@@ -1077,6 +1079,15 @@ public:
 template <typename TerminatorOpType> struct SingleBlockImplicitTerminator {
   template <typename ConcreteType>
   class Impl : public TraitBase<ConcreteType, Impl> {
+  private:
+    /// Builds a terminator operation without relying on OpBuilder APIs to avoid
+    /// cyclic header inclusion.
+    static Operation *buildTerminator(OpBuilder &builder, Location loc) {
+      OperationState state(loc, TerminatorOpType::getOperationName());
+      TerminatorOpType::build(builder, state);
+      return Operation::create(state);
+    }
+
   public:
     static LogicalResult verifyTrait(Operation *op) {
       for (unsigned i = 0, e = op->getNumRegions(); i < e; ++i) {
@@ -1112,10 +1123,19 @@ template <typename TerminatorOpType> struct SingleBlockImplicitTerminator {
     }
 
     /// Ensure that the given region has the terminator required by this trait.
+    /// If OpBuilder is provided, use it to build the terminator and notify the
+    /// OpBuilder litsteners accoridngly. If only a Builder is provided, locally
+    /// construct an OpBuilder with no listeners; this should only be used if no
+    /// OpBuilder is available at the call site, e.g., in the parser.
     static void ensureTerminator(Region &region, Builder &builder,
                                  Location loc) {
-      ::mlir::impl::template ensureRegionTerminator<TerminatorOpType>(
-          region, builder, loc);
+      ::mlir::impl::ensureRegionTerminator(region, builder, loc,
+                                           buildTerminator);
+    }
+    static void ensureTerminator(Region &region, OpBuilder &builder,
+                                 Location loc) {
+      ::mlir::impl::ensureRegionTerminator(region, builder, loc,
+                                           buildTerminator);
     }
 
     Block *getBody(unsigned idx = 0) {
@@ -1126,16 +1146,22 @@ template <typename TerminatorOpType> struct SingleBlockImplicitTerminator {
   };
 };
 
-/// This class provides a verifier for ops that are expecting a specific parent.
-template <typename ParentOpType> struct HasParent {
+/// This class provides a verifier for ops that are expecting their parent
+/// to be one of the given parent ops
+template <typename... ParentOpTypes>
+struct HasParent {
   template <typename ConcreteType>
   class Impl : public TraitBase<ConcreteType, Impl> {
   public:
     static LogicalResult verifyTrait(Operation *op) {
-      if (isa<ParentOpType>(op->getParentOp()))
+      if (llvm::isa<ParentOpTypes...>(op->getParentOp()))
         return success();
-      return op->emitOpError() << "expects parent op '"
-                               << ParentOpType::getOperationName() << "'";
+
+      return op->emitOpError()
+             << "expects parent op "
+             << (sizeof...(ParentOpTypes) != 1 ? "to be one of '" : "'")
+             << llvm::makeArrayRef({ParentOpTypes::getOperationName()...})
+             << "'";
     }
   };
 };
@@ -1174,6 +1200,15 @@ public:
   static LogicalResult verifyTrait(Operation *op) {
     return ::mlir::OpTrait::impl::verifyResultSizeAttr(
         op, getResultSegmentSizeAttr());
+  }
+};
+
+/// This trait provides a verifier for ops that are expecting their regions to
+/// not have any arguments
+template <typename ConcrentType>
+struct NoRegionArguments : public TraitBase<ConcrentType, NoRegionArguments> {
+  static LogicalResult verifyTrait(Operation *op) {
+    return ::mlir::OpTrait::impl::verifyNoRegionArguments(op);
   }
 };
 
@@ -1222,7 +1257,10 @@ public:
   static bool classof(Operation *op) {
     if (auto *abstractOp = op->getAbstractOperation())
       return TypeID::get<ConcreteType>() == abstractOp->typeID;
-    return op->getName().getStringRef() == ConcreteType::getOperationName();
+    assert(op->getContext()->isOperationRegistered(
+               ConcreteType::getOperationName()) &&
+           "Casting attempt to an unregistered operation");
+    return false;
   }
 
   /// This is the hook used by the AsmParser to parse the custom form of this
@@ -1320,120 +1358,39 @@ private:
                               traitID);
   }
 
-  /// Returns an opaque pointer to a concept instance of the interface with the
-  /// given ID if one was registered to this operation.
-  static void *getRawInterface(TypeID id) {
-    return InterfaceLookup::template lookup<Traits<ConcreteType>...>(id);
+  /// Returns an interface map for the interfaces registered to this operation.
+  static detail::InterfaceMap getInterfaceMap() {
+    return detail::InterfaceMap::template get<Traits<ConcreteType>...>();
   }
 
-  struct InterfaceLookup {
-    /// Trait to check if T provides a static 'getInterfaceID' method.
-    template <typename T, typename... Args>
-    using has_get_interface_id = decltype(T::getInterfaceID());
-
-    /// If 'T' is the same interface as 'interfaceID' return the concept
-    /// instance.
-    template <typename T>
-    static typename std::enable_if<
-        llvm::is_detected<has_get_interface_id, T>::value, void *>::type
-    lookup(TypeID interfaceID) {
-      return (T::getInterfaceID() == interfaceID) ? &T::instance() : nullptr;
-    }
-
-    /// 'T' is known to not be an interface, return nullptr.
-    template <typename T>
-    static typename std::enable_if<
-        !llvm::is_detected<has_get_interface_id, T>::value, void *>::type
-    lookup(TypeID) {
-      return nullptr;
-    }
-
-    template <typename T, typename T2, typename... Ts>
-    static void *lookup(TypeID interfaceID) {
-      auto *concept = lookup<T>(interfaceID);
-      return concept ? concept : lookup<T2, Ts...>(interfaceID);
-    }
-  };
-
-  /// Allow access to 'hasTrait' and 'getRawInterface'.
+  /// Allow access to 'hasTrait' and 'getInterfaceMap'.
   friend AbstractOperation;
 };
 
-/// This class represents the base of an operation interface. Operation
-/// interfaces provide access to derived *Op properties through an opaquely
-/// Operation instance. Derived interfaces must also provide a 'Traits' class
-/// that defines a 'Concept' and a 'Model' class. The 'Concept' class defines an
-/// abstract virtual interface, where as the 'Model' class implements this
-/// interface for a specific derived *Op type. Both of these classes *must* not
-/// contain non-static data. A simple example is shown below:
-///
-///  struct ExampleOpInterfaceTraits {
-///    struct Concept {
-///      virtual unsigned getNumInputs(Operation *op) = 0;
-///    };
-///    template <typename OpT> class Model {
-///      unsigned getNumInputs(Operation *op) final {
-///        return cast<OpT>(op).getNumInputs();
-///      }
-///    };
-///  };
-///
+/// This class represents the base of an operation interface. See the definition
+/// of `detail::Interface` for requirements on the `Traits` type.
 template <typename ConcreteType, typename Traits>
-class OpInterface : public Op<ConcreteType> {
+class OpInterface
+    : public detail::Interface<ConcreteType, Operation *, Traits,
+                               Op<ConcreteType>, OpTrait::TraitBase> {
 public:
-  using Concept = typename Traits::Concept;
-  template <typename T> using Model = typename Traits::template Model<T>;
   using Base = OpInterface<ConcreteType, Traits>;
+  using InterfaceBase = detail::Interface<ConcreteType, Operation *, Traits,
+                                          Op<ConcreteType>, OpTrait::TraitBase>;
 
-  OpInterface(Operation *op = nullptr)
-      : Op<ConcreteType>(op), impl(op ? getInterfaceFor(op) : nullptr) {
-    assert((!op || impl) &&
-           "instantiating an interface with an unregistered operation");
-  }
-
-  /// Support 'classof' by checking if the given operation defines the concrete
-  /// interface.
-  static bool classof(Operation *op) { return getInterfaceFor(op); }
-
-  /// Define an accessor for the ID of this interface.
-  static TypeID getInterfaceID() { return TypeID::get<ConcreteType>(); }
-
-  /// This is a special trait that registers a given interface with an
-  /// operation.
-  template <typename ConcreteOp>
-  struct Trait : public OpTrait::TraitBase<ConcreteOp, Trait> {
-    /// Define an accessor for the ID of this interface.
-    static TypeID getInterfaceID() { return TypeID::get<ConcreteType>(); }
-
-    /// Provide an accessor to a static instance of the interface model for the
-    /// concrete operation type.
-    /// The implementation is inspired from Sean Parent's concept-based
-    /// polymorphism. A key difference is that the set of classes erased is
-    /// statically known, which alleviates the need for using dynamic memory
-    /// allocation.
-    /// We use a zero-sized templated class `Model<ConcreteOp>` to emit the
-    /// virtual table and generate a singleton object for each instantiation of
-    /// this class.
-    static Concept &instance() {
-      static Model<ConcreteOp> singleton;
-      return singleton;
-    }
-  };
-
-protected:
-  /// Get the raw concept in the correct derived concept type.
-  Concept *getImpl() { return impl; }
+  /// Inherit the base class constructor.
+  using InterfaceBase::InterfaceBase;
 
 private:
   /// Returns the impl interface instance for the given operation.
-  static Concept *getInterfaceFor(Operation *op) {
+  static typename InterfaceBase::Concept *getInterfaceFor(Operation *op) {
     // Access the raw interface from the abstract operation.
     auto *abstractOp = op->getAbstractOperation();
     return abstractOp ? abstractOp->getInterface<ConcreteType>() : nullptr;
   }
 
-  /// A pointer to the impl concept object.
-  Concept *impl;
+  /// Allow access to `getInterfaceFor`.
+  friend InterfaceBase;
 };
 
 //===----------------------------------------------------------------------===//

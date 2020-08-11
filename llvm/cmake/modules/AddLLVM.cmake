@@ -90,6 +90,7 @@ function(add_llvm_symbol_exports target_name export_file)
     set_property(TARGET ${target_name} APPEND_STRING PROPERTY
                  LINK_FLAGS " -Wl,-exported_symbols_list,\"${CMAKE_CURRENT_BINARY_DIR}/${native_export_file}\"")
   elseif(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+    set(native_export_file "${export_file}")
     set_property(TARGET ${target_name} APPEND_STRING PROPERTY
                  LINK_FLAGS " -Wl,-bE:${export_file}")
   elseif(LLVM_HAVE_LINK_VERSION_SCRIPT)
@@ -239,8 +240,14 @@ function(add_link_opts target_name)
         set_property(TARGET ${target_name} APPEND_STRING PROPERTY
                      LINK_FLAGS " -Wl,-dead_strip")
       elseif(${CMAKE_SYSTEM_NAME} MATCHES "SunOS")
-        set_property(TARGET ${target_name} APPEND_STRING PROPERTY
-                     LINK_FLAGS " -Wl,-z -Wl,discard-unused=sections")
+        # Support for ld -z discard-unused=sections was only added in
+        # Solaris 11.4.
+        include(CheckLinkerFlag)
+        check_linker_flag("-Wl,-z,discard-unused=sections" LINKER_SUPPORTS_Z_DISCARD_UNUSED)
+        if (LINKER_SUPPORTS_Z_DISCARD_UNUSED)
+          set_property(TARGET ${target_name} APPEND_STRING PROPERTY
+                       LINK_FLAGS " -Wl,-z,discard-unused=sections")
+        endif()
       elseif(NOT WIN32 AND NOT LLVM_LINKER_IS_GOLD AND
              NOT ${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD|AIX")
         # Object files are compiled with -ffunction-data-sections.
@@ -256,6 +263,11 @@ function(add_link_opts target_name)
                      LINK_FLAGS " -Wl,-bnogc")
       endif()
     endif()
+  endif()
+
+  if(ARG_SUPPORT_PLUGINS AND ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+    set_property(TARGET ${target_name} APPEND_STRING PROPERTY
+                 LINK_FLAGS " -Wl,-brtl")
   endif()
 endfunction(add_link_opts)
 
@@ -477,7 +489,12 @@ function(llvm_add_library name)
         "PUBLIC;PRIVATE"
         ${ARG_LINK_LIBS})
       foreach(link_lib ${LINK_LIBS_ARG_PUBLIC})
-        if(TARGET ${link_lib})
+        if(LLVM_PTHREAD_LIB)
+          # Can't specify a dependence on -lpthread
+          if(NOT ${link_lib} STREQUAL ${LLVM_PTHREAD_LIB})
+            add_dependencies(${obj_name} ${link_lib})
+          endif()
+        else()
           add_dependencies(${obj_name} ${link_lib})
         endif()
       endforeach()
@@ -810,6 +827,10 @@ macro(add_llvm_executable name)
 
   if(NOT ARG_NO_INSTALL_RPATH)
     llvm_setup_rpath(${name})
+  elseif (LLVM_LOCAL_RPATH)
+    set_target_properties(${name} PROPERTIES
+                          BUILD_WITH_INSTALL_RPATH On
+                          INSTALL_RPATH "${LLVM_LOCAL_RPATH}")
   endif()
 
   if(DEFINED windows_resource_file)
@@ -870,7 +891,7 @@ endmacro(add_llvm_executable name)
 #   only an object library is built, and no module is built. This is specific to the Polly use case.
 #
 #   The SUBPROJECT argument contains the LLVM project the plugin belongs
-#   to. If set, the plugin will link statically by default it if the 
+#   to. If set, the plugin will link statically by default it if the
 #   project was enabled.
 function(add_llvm_pass_plugin name)
   cmake_parse_arguments(ARG
@@ -903,6 +924,12 @@ function(add_llvm_pass_plugin name)
     set_property(TARGET ${name} APPEND PROPERTY COMPILE_DEFINITIONS LLVM_LINK_INTO_TOOLS)
     if (TARGET intrinsics_gen)
       add_dependencies(obj.${name} intrinsics_gen)
+    endif()
+    if (TARGET omp_gen)
+      add_dependencies(obj.${name} omp_gen)
+    endif()
+    if (TARGET acc_gen)
+      add_dependencies(obj.${name} acc_gen)
     endif()
     set_property(GLOBAL APPEND PROPERTY LLVM_STATIC_EXTENSIONS ${name})
   elseif(NOT ARG_NO_MODULE)
@@ -1373,11 +1400,8 @@ function(add_unittest test_suite test_name)
     set(EXCLUDE_FROM_ALL ON)
   endif()
 
-  # Our current version of gtest does not properly recognize C++11 support
-  # with MSVC, so it falls back to tr1 / experimental classes.  Since LLVM
-  # itself requires C++11, we can safely force it on unconditionally so that
-  # we don't have to fight with the buggy gtest check.
-  add_definitions(-DGTEST_LANG_CXX11=1)
+  # Our current version of gtest uses tr1/tuple which is deprecated on MSVC.
+  # Since LLVM itself requires C++14, we can safely force it off.
   add_definitions(-DGTEST_HAS_TR1_TUPLE=0)
 
   include_directories(${LLVM_MAIN_SRC_DIR}/utils/unittest/googletest/include)
@@ -1407,7 +1431,7 @@ function(add_unittest test_suite test_name)
 
   add_dependencies(${test_suite} ${test_name})
   get_target_property(test_suite_folder ${test_suite} FOLDER)
-  if (NOT ${test_suite_folder} STREQUAL "NOTFOUND")
+  if (test_suite_folder)
     set_property(TARGET ${test_name} PROPERTY FOLDER "${test_suite_folder}")
   endif ()
 endfunction()
@@ -1490,17 +1514,10 @@ endfunction()
 # path. Since this uses __file__, it has to be emitted into python files that
 # use it and can't be in a lit module. Use with make_paths_relative().
 string(CONCAT LLVM_LIT_PATH_FUNCTION
-  # Lit converts config paths to lower case in discovery.py, before
-  # loading the config. This causes __file__ to be all lower-case (including
-  # the drive letter), but several clang tests pass -include %s and a
-  # clang warning checks that passed case matches on-disk cache. So it's
-  # important that this restores the on-disk case of the prefix.
   "# Allow generated file to be relocatable.\n"
   "def path(p):\n"
   "    if not p: return ''\n"
-  "    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), p)\n"
-  "    if os.name == 'nt' and os.path.isabs(p): return p[0].upper() + p[1:]\n"
-  "    return p\n"
+  "    return os.path.join(os.path.dirname(os.path.abspath(__file__)), p)\n"
   )
 
 # This function provides an automatic way to 'configure'-like generate a file
@@ -2086,34 +2103,27 @@ function(find_first_existing_vc_file path out_var)
   if(NOT EXISTS "${path}")
     return()
   endif()
-  if(EXISTS "${path}/.svn")
-    set(svn_files
-      "${path}/.svn/wc.db"   # SVN 1.7
-      "${path}/.svn/entries" # SVN 1.6
-    )
-    foreach(file IN LISTS svn_files)
-      if(EXISTS "${file}")
-        set(${out_var} "${file}" PARENT_SCOPE)
-        return()
-      endif()
-    endforeach()
-  else()
-    find_package(Git)
-    if(GIT_FOUND)
-      execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --git-dir
-        WORKING_DIRECTORY ${path}
-        RESULT_VARIABLE git_result
-        OUTPUT_VARIABLE git_output
-        ERROR_QUIET)
-      if(git_result EQUAL 0)
-        string(STRIP "${git_output}" git_output)
-        get_filename_component(git_dir ${git_output} ABSOLUTE BASE_DIR ${path})
-        # Some branchless cases (e.g. 'repo') may not yet have .git/logs/HEAD
-        if (NOT EXISTS "${git_dir}/logs/HEAD")
-          file(WRITE "${git_dir}/logs/HEAD" "")
+  find_package(Git)
+  if(GIT_FOUND)
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --git-dir
+      WORKING_DIRECTORY ${path}
+      RESULT_VARIABLE git_result
+      OUTPUT_VARIABLE git_output
+      ERROR_QUIET)
+    if(git_result EQUAL 0)
+      string(STRIP "${git_output}" git_output)
+      get_filename_component(git_dir ${git_output} ABSOLUTE BASE_DIR ${path})
+      # Some branchless cases (e.g. 'repo') may not yet have .git/logs/HEAD
+      if (NOT EXISTS "${git_dir}/logs/HEAD")
+        execute_process(COMMAND ${CMAKE_COMMAND} -E touch HEAD
+          WORKING_DIRECTORY "${git_dir}/logs"
+          RESULT_VARIABLE touch_head_result
+          ERROR_QUIET)
+        if (NOT touch_head_result EQUAL 0)
+          return()
         endif()
-        set(${out_var} "${git_dir}/logs/HEAD" PARENT_SCOPE)
       endif()
+      set(${out_var} "${git_dir}/logs/HEAD" PARENT_SCOPE)
     endif()
   endif()
 endfunction()

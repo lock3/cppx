@@ -39,7 +39,7 @@ entry:
 ; CHECKASM-LABEL: .call_test_byval_1Byte:
 
 ; ASM32:       stwu 1, -64(1)
-; ASM32-NEXT:  lwz [[REG:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM32-NEXT:  lwz [[REG:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM32-NEXT:  lbz 3, 0([[REG]])
 ; ASM32-NEXT:  slwi 3, 3, 24
 ; ASM32-NEXT:  bl .test_byval_1Byte
@@ -55,7 +55,7 @@ entry:
 
 ; ASM64:       std 0, 16(1)
 ; ASM64-NEXT:  stdu 1, -128(1)
-; ASM64-NEXT:  ld [[REG:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM64-NEXT:  ld [[REG:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM64-NEXT:  lbz 3, 0([[REG]])
 ; ASM64-NEXT:  sldi 3, 3, 56
 ; ASM64-NEXT:  bl .test_byval_1Byte
@@ -139,9 +139,9 @@ entry:
 ; The DAG block permits some invalid inputs for the benefit of allowing more valid orderings.
 ; ASM32:       stwu 1, -64(1)
 ; ASM32-DAG:   li 3, 42
-; ASM32-DAG:   lwz [[REG1:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM32-DAG:   lwz [[REG1:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM32-DAG:   lfs 1, 0([[REG1]])
-; ASM32-DAG:   lwz [[REG2:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM32-DAG:   lwz [[REG2:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM32-DAG:   lhz [[REG3:[0-9]+]], 0([[REG2]])
 ; ASM32-DAG:   slwi 5, [[REG3]], 16
 ; ASM32-DAG:   fmr 2, 1
@@ -167,9 +167,9 @@ entry:
 ; ASM64:       std 0, 16(1)
 ; ASM64-NEXT:  stdu 1, -112(1)
 ; ASM64-DAG:   li 3, 42
-; ASM64-DAG:   ld [[REG1:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM64-DAG:   ld [[REG1:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM64-DAG:   lfs 1, 0([[REG1]])
-; ASM64-DAG:   ld [[REG2:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM64-DAG:   ld [[REG2:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM64-DAG:   lhz [[REG3:[0-9]+]], 0([[REG2]])
 ; ASM64-DAG:   sldi 5, [[REG3]], 48
 ; ASM64-DAG:   fmr 2, 1
@@ -254,7 +254,7 @@ entry:
 ; ASM32-DAG:   li 7, 5
 ; ASM32-DAG:   li 8, 6
 ; ASM32-DAG:   li 9, 7
-; ASM32-DAG:   lwz [[REGADDR:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM32-DAG:   lwz [[REGADDR:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM32-DAG:   lhz [[REG1:[0-9]+]], 0([[REGADDR]])
 ; ASM32-DAG:   lbz [[REG2:[0-9]+]], 2([[REGADDR]])
 ; ASM32-DAG:   rlwinm 10, [[REG2]], 8, 16, 23
@@ -292,7 +292,7 @@ entry:
 ; ASM64-DAG:   li 7, 5
 ; ASM64-DAG:   li 8, 6
 ; ASM64-DAG:   li 9, 7
-; ASM64-DAG:   ld [[REGADDR:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM64-DAG:   ld [[REGADDR:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM64-DAG:   lhz [[REG1:[0-9]+]], 0([[REGADDR]])
 ; ASM64-DAG:   lbz [[REG2:[0-9]+]], 2([[REGADDR]])
 ; ASM64-DAG:   rldic 10, [[REG2]], 40, 16
@@ -366,7 +366,7 @@ entry:
 ; CHECKASM-LABEL: .call_test_byval_4Byte:
 
 ; ASM32:       stwu 1, -80(1)
-; ASM32-NEXT:  lwz [[REG:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM32-NEXT:  lwz [[REG:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM32-DAG:   lwz 3, 0([[REG]])
 ; ASM32-DAG:   lwz 4, 64(1)
 ; ASM32-NEXT:  bl .test_byval_4Byte
@@ -383,7 +383,7 @@ entry:
 ; 64BIT-NEXT:  ADJCALLSTACKUP 112, 0, implicit-def dead $r1, implicit $r1
 
 ; ASM64:       stdu 1, -128(1)
-; ASM64-NEXT:  ld [[REGADDR:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM64-NEXT:  ld [[REGADDR:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM64-DAG:   lwz [[LD1:[0-9]+]], 0([[REGADDR]])
 ; ASM64-DAG:   lwz [[LD2:[0-9]+]], 112(1)
 ; ASM64-DAG:   sldi 3, [[LD1]], 32
@@ -486,7 +486,7 @@ declare zeroext i8 @test_byval_5Byte(%struct.S5* byval(%struct.S5) align 1)
 
 ; The DAG block permits some invalid inputs for the benefit of allowing more valid orderings.
 ; ASM32:       stwu 1, -64(1)
-; ASM32-NEXT:  lwz [[REGADDR:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM32-NEXT:  lwz [[REGADDR:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM32-DAG:   lbz [[REG1:[0-9]+]], 4([[REGADDR]])
 ; ASM32-DAG:   lwz 3, 0([[REGADDR]])
 ; ASM32-DAG:   slwi 4, [[REG1]], 24
@@ -505,7 +505,7 @@ declare zeroext i8 @test_byval_5Byte(%struct.S5* byval(%struct.S5) align 1)
 
 ; The DAG block permits some invalid inputs for the benefit of allowing more valid orderings.
 ; ASM64:       stdu 1, -112(1)
-; ASM64-NEXT:  ld [[REGADDR:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM64-NEXT:  ld [[REGADDR:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM64-DAG:   lwz [[REG1:[0-9]+]], 0([[REGADDR]])
 ; ASM64-DAG:   lbz [[REG2:[0-9]+]], 4([[REGADDR]])
 ; ASM64-DAG:   rlwinm 3, [[REG2]], 24, 0, 7
@@ -541,7 +541,7 @@ declare zeroext i8 @test_byval_6Byte(%struct.S6* byval(%struct.S6) align 1)
 
 ; The DAG block permits some invalid inputs for the benefit of allowing more valid orderings.
 ; ASM32:       stwu 1, -64(1)
-; ASM32-NEXT:  lwz [[REGADDR:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM32-NEXT:  lwz [[REGADDR:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM32-DAG:   lhz [[REG1:[0-9]+]], 4([[REGADDR]])
 ; ASM32-DAG:   lwz 3, 0([[REGADDR]])
 ; ASM32-DAG:   slwi 4, [[REG1]], 16
@@ -560,7 +560,7 @@ declare zeroext i8 @test_byval_6Byte(%struct.S6* byval(%struct.S6) align 1)
 
 ; The DAG block permits some invalid inputs for the benefit of allowing more valid orderings.
 ; ASM64:       stdu 1, -112(1)
-; ASM64-NEXT:  ld [[REGADDR:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM64-NEXT:  ld [[REGADDR:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM64-DAG:   lwz [[REG1:[0-9]+]], 0([[REGADDR]])
 ; ASM64-DAG:   lhz [[REG2:[0-9]+]], 4([[REGADDR]])
 ; ASM64-DAG:   rlwinm 3, [[REG2]], 16, 0, 15
@@ -598,7 +598,7 @@ declare zeroext i8 @test_byval_7Byte(%struct.S7* byval(%struct.S7) align 1)
 
 ; The DAG block permits some invalid inputs for the benefit of allowing more valid orderings.
 ; ASM32:       stwu 1, -64(1)
-; ASM32-NEXT:  lwz [[REGADDR:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM32-NEXT:  lwz [[REGADDR:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM32-DAG:   lwz 3, 0([[REGADDR]])
 ; ASM32-DAG:   lhz [[REG1:[0-9]+]], 4([[REGADDR]])
 ; ASM32-DAG:   lbz [[REG2:[0-9]+]], 6([[REGADDR]])
@@ -621,7 +621,7 @@ declare zeroext i8 @test_byval_7Byte(%struct.S7* byval(%struct.S7) align 1)
 
 ; The DAG block permits some invalid inputs for the benefit of allowing more valid orderings.
 ; ASM64:       stdu 1, -112(1)
-; ASM64-NEXT:  ld [[REGADDR:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM64-NEXT:  ld [[REGADDR:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM64-DAG:   lwz [[REG1:[0-9]+]], 0([[REGADDR]])
 ; ASM64-DAG:   lhz [[REG2:[0-9]+]], 4([[REGADDR]])
 ; ASM64-DAG:   lbz [[REG3:[0-9]+]], 6([[REGADDR]])
@@ -658,7 +658,7 @@ declare zeroext i8 @test_byval_8Byte(%struct.S8* byval(%struct.S8) align 1)
 
 ; The DAG block permits some invalid inputs for the benefit of allowing more valid orderings.
 ; ASM32:       stwu 1, -64(1)
-; ASM32-NEXT:  lwz [[REGADDR:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM32-NEXT:  lwz [[REGADDR:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM32-DAG:   lwz 3, 0([[REGADDR]])
 ; ASM32-DAG:   lwz 4, 4([[REGADDR]])
 ; ASM32-NEXT:  bl .test_byval_8Byte
@@ -671,7 +671,7 @@ declare zeroext i8 @test_byval_8Byte(%struct.S8* byval(%struct.S8) align 1)
 ; 64BIT-NEXT:  ADJCALLSTACKUP 112, 0, implicit-def dead $r1, implicit $r1
 
 ; ASM64:       stdu 1, -112(1)
-; ASM64-NEXT:  ld [[REGADDR:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM64-NEXT:  ld [[REGADDR:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM64-NEXT:  ld 3, 0([[REGADDR]])
 ; ASM64-NEXT:  bl .test_byval_8Byte
 ; ASM64-NEXT:  nop
@@ -707,7 +707,7 @@ entry:
 
 ; The DAG block permits some invalid inputs for the benefit of allowing more valid orderings.
 ; ASM32:       stwu 1, -64(1)
-; ASM32-NEXT:  lwz [[REGADDR:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM32-NEXT:  lwz [[REGADDR:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM32-DAG:   lwz 3, 0([[REGADDR]])
 ; ASM32-DAG:   lwz 4, 4([[REGADDR]])
 ; ASM32-DAG:   lwz 5, 8([[REGADDR]])
@@ -730,7 +730,7 @@ entry:
 ; 64BIT-NEXT:  ADJCALLSTACKUP 112, 0, implicit-def dead $r1, implicit $r1
 
 ; ASM64:       stdu 1, -112(1)
-; ASM64-NEXT:  ld [[REGADDR:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM64-NEXT:  ld [[REGADDR:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM64-DAG:   ld 3, 0([[REGADDR]])
 ; ASM64-DAG:   ld 4, 8([[REGADDR]])
 ; ASM64-DAG:   ld 5, 16([[REGADDR]])
@@ -756,15 +756,15 @@ entry:
 
 ; 32BIT:      bb.0.entry:
 ; 32BIT-NEXT:   liveins: $r3, $r4, $r5, $r6, $r7, $r8, $r9, $r10
+; 32BIT:        STW killed renamable $r8,  20, %fixed-stack.0 :: (store 4 into %fixed-stack.0 + 20
 ; 32BIT-DAG:    STW killed renamable $r3,   0, %fixed-stack.0 :: (store 4 into %fixed-stack.0
 ; 32BIT-DAG:    STW killed renamable $r4,   4, %fixed-stack.0 :: (store 4 into %fixed-stack.0 + 4
 ; 32BIT-DAG:    STW killed renamable $r5,   8, %fixed-stack.0 :: (store 4 into %fixed-stack.0 + 8
 ; 32BIT-DAG:    STW killed renamable $r6,  12, %fixed-stack.0 :: (store 4 into %fixed-stack.0 + 12
 ; 32BIT-DAG:    STW killed renamable $r7,  16, %fixed-stack.0 :: (store 4 into %fixed-stack.0 + 16
-; 32BIT-DAG:    STW killed renamable $r8,  20, %fixed-stack.0 :: (store 4 into %fixed-stack.0 + 20
+; 32BIT:        renamable $r3 = LBZ 21, %fixed-stack.0 :: (dereferenceable load 1
 ; 32BIT-DAG:    STW killed renamable $r9,  24, %fixed-stack.0 :: (store 4 into %fixed-stack.0 + 24
 ; 32BIT-DAG:    STW killed renamable $r10, 28, %fixed-stack.0 :: (store 4 into %fixed-stack.0 + 28
-; 32BIT:        renamable $r3 = LBZ 21, %fixed-stack.0 :: (dereferenceable load 1
 ; 32BIT:        BLR
 
 ; 64BIT:      fixedStack:
@@ -773,11 +773,11 @@ entry:
 
 ; 64BIT:      bb.0.entry:
 ; 64BIT-NEXT:   liveins: $x3, $x4, $x5, $x6
+; 64BIT:        STD killed renamable $x5, 16, %fixed-stack.0 :: (store 8 into %fixed-stack.0 + 16
 ; 64BIT-DAG:    STD killed renamable $x3, 0, %fixed-stack.0 :: (store 8 into %fixed-stack.0
-; 64BIT-DAG:    STD killed renamable $x4, 8, %fixed-stack.0 :: (store 8 into %fixed-stack.0 + 8
-; 64BIT-DAG:    STD killed renamable $x5, 16, %fixed-stack.0 :: (store 8 into %fixed-stack.0 + 16
-; 64BIT-DAG:    STD killed renamable $x6, 24, %fixed-stack.0 :: (store 8 into %fixed-stack.0 + 24
 ; 64BIT-NEXT:   renamable $x3 = LBZ8 21, %fixed-stack.0 :: (dereferenceable load 1
+; 64BIT-DAG:    STD killed renamable $x4, 8, %fixed-stack.0 :: (store 8 into %fixed-stack.0 + 8
+; 64BIT-DAG:    STD killed renamable $x6, 24, %fixed-stack.0 :: (store 8 into %fixed-stack.0 + 24
 ; 64BIT-NEXT:   BLR8
 
 ; ASM-LABEL: .test_byval_32Byte:
@@ -834,7 +834,7 @@ entry:
 
 ; The DAG block permits some invalid inputs for the benefit of allowing more valid orderings.
 ; ASM32:       stwu 1, -64(1)
-; ASM32-NEXT:  lwz [[REGADDR:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM32-NEXT:  lwz [[REGADDR:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM32-DAG:   lwz 3, 0([[REGADDR]])
 ; ASM32-DAG:   lwz 4, 4([[REGADDR]])
 ; ASM32-DAG:   lwz 5, 8([[REGADDR]])
@@ -865,7 +865,7 @@ entry:
 ; 64BIT-NEXT:  ADJCALLSTACKUP 112, 0, implicit-def dead $r1, implicit $r1
 
 ; ASM64:       stdu 1, -112(1)
-; ASM64-NEXT:  ld [[REGADDR:[0-9]+]], LC{{[0-9]+}}(2)
+; ASM64-NEXT:  ld [[REGADDR:[0-9]+]], L..C{{[0-9]+}}(2)
 ; ASM64-DAG:   ld 3, 0([[REGADDR]])
 ; ASM64-DAG:   ld 4, 8([[REGADDR]])
 ; ASM64-DAG:   ld 5, 16([[REGADDR]])
@@ -901,9 +901,9 @@ entry:
 ; 32BIT-DAG:    STW killed renamable $r6,  12, %fixed-stack.0 :: (store 4 into %fixed-stack.0 + 12
 ; 32BIT-DAG:    STW killed renamable $r7,  16, %fixed-stack.0 :: (store 4 into %fixed-stack.0 + 16
 ; 32BIT-DAG:    STW killed renamable $r8,  20, %fixed-stack.0 :: (store 4 into %fixed-stack.0 + 20
+; 32BIT-NEXT:   renamable $f1 = LFD 16, %fixed-stack.0 :: (dereferenceable load 8
 ; 32BIT-DAG:    STW killed renamable $r9,  24, %fixed-stack.0 :: (store 4 into %fixed-stack.0 + 24
 ; 32BIT-DAG:    STW killed renamable $r10, 28, %fixed-stack.0 :: (store 4 into %fixed-stack.0 + 28
-; 32BIT-NEXT:   renamable $f1 = LFD 16, %fixed-stack.0 :: (dereferenceable load 8
 ; 32BIT-NEXT:   BLR
 
 ; 64BIT:      fixedStack:
@@ -913,10 +913,10 @@ entry:
 ; 64BIT:      bb.0.entry:
 ; 64BIT-NEXT:   liveins: $x3, $x4, $x5, $x6
 ; 64BIT-DAG:    STD killed renamable $x3,  0, %fixed-stack.0 :: (store 8 into %fixed-stack.0
-; 64BIT-DAG:    STD killed renamable $x4,  8, %fixed-stack.0 :: (store 8 into %fixed-stack.0 + 8
 ; 64BIT-DAG:    STD killed renamable $x5, 16, %fixed-stack.0 :: (store 8 into %fixed-stack.0 + 16
-; 64BIT-DAG:    STD killed renamable $x6, 24, %fixed-stack.0 :: (store 8 into %fixed-stack.0 + 24
 ; 64BIT-NEXT:   renamable $f1 = LFD 16, %fixed-stack.0 :: (dereferenceable load 8
+; 64BIT-DAG:    STD killed renamable $x4,  8, %fixed-stack.0 :: (store 8 into %fixed-stack.0 + 8
+; 64BIT-DAG:    STD killed renamable $x6, 24, %fixed-stack.0 :: (store 8 into %fixed-stack.0 + 24
 ; 64BIT-NEXT:   BLR8
 
 ; ASM32-LABEL: .test_byval_31Byte:

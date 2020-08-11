@@ -227,8 +227,6 @@
 ; CHECK-NEXT:       Optimization Remark Emitter
 ; CHECK-NEXT:       Inject TLI Mappings
 ; CHECK-NEXT:       Loop Vectorization
-; CHECK-NEXT:       Optimize scalar/vector ops
-; CHECK-NEXT:       Early CSE
 ; CHECK-NEXT:       Canonicalize natural loops
 ; CHECK-NEXT:       Scalar Evolution Analysis
 ; CHECK-NEXT:       Function Alias Analysis Results
@@ -254,6 +252,7 @@
 ; CHECK-NEXT:       Optimization Remark Emitter
 ; CHECK-NEXT:       Inject TLI Mappings
 ; CHECK-NEXT:       SLP Vectorizer
+; CHECK-NEXT:       Optimize scalar/vector ops
 ; CHECK-NEXT:       Optimization Remark Emitter
 ; CHECK-NEXT:       Combine redundant instructions
 ; CHECK-NEXT:       Canonicalize natural loops
@@ -281,6 +280,12 @@
 ; CHECK-NEXT:     Strip Unused Function Prototypes
 ; CHECK-NEXT:     Dead Global Elimination
 ; CHECK-NEXT:     Merge Duplicate Global Constants
+; CHECK-NEXT:     Call Graph Profile
+; CHECK-NEXT:       FunctionPass Manager
+; CHECK-NEXT:         Dominator Tree Construction
+; CHECK-NEXT:         Natural Loop Information
+; CHECK-NEXT:         Lazy Branch Probability Analysis
+; CHECK-NEXT:         Lazy Block Frequency Analysis
 ; CHECK-NEXT:     FunctionPass Manager
 ; CHECK-NEXT:       Dominator Tree Construction
 ; CHECK-NEXT:       Natural Loop Information

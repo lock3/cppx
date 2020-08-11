@@ -167,9 +167,12 @@ void replace_extension(SmallVectorImpl<char> &path, const Twine &extension,
 ///        start with \a NewPrefix.
 /// @param OldPrefix The path prefix to strip from \a Path.
 /// @param NewPrefix The path prefix to replace \a NewPrefix with.
+/// @param style The style used to match the prefix. Exact match using
+/// Posix style, case/separator insensitive match for Windows style.
 /// @result true if \a Path begins with OldPrefix
 bool replace_path_prefix(SmallVectorImpl<char> &Path, StringRef OldPrefix,
-                         StringRef NewPrefix);
+                         StringRef NewPrefix,
+                         Style style = Style::native);
 
 /// Append to path.
 ///
@@ -367,6 +370,13 @@ void system_temp_directory(bool erasedOnReboot, SmallVectorImpl<char> &result);
 /// @param result Holds the resulting path name.
 /// @result True if a home directory is set, false otherwise.
 bool home_directory(SmallVectorImpl<char> &result);
+
+/// Get the directory where packages should read user-specific configurations.
+/// e.g. $XDG_CONFIG_HOME.
+///
+/// @param result Holds the resulting path name.
+/// @result True if the appropriate path was determined, it need not exist.
+bool user_config_directory(SmallVectorImpl<char> &result);
 
 /// Get the directory where installed packages should put their
 /// machine-local cache, e.g. $XDG_CACHE_HOME.

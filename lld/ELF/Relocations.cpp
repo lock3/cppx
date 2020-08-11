@@ -62,9 +62,9 @@ using namespace llvm;
 using namespace llvm::ELF;
 using namespace llvm::object;
 using namespace llvm::support::endian;
+using namespace lld;
+using namespace lld::elf;
 
-namespace lld {
-namespace elf {
 static Optional<std::string> getLinkerScriptLocation(const Symbol &sym) {
   for (BaseCommand *base : script->sectionCommands)
     if (auto *cmd = dyn_cast<SymbolAssignment>(base))
@@ -96,8 +96,8 @@ static std::string getLocation(InputSectionBase &s, const Symbol &sym,
   return msg + s.getObjMsg(off);
 }
 
-void reportRangeError(uint8_t *loc, const Relocation &rel, const Twine &v,
-                      int64_t min, uint64_t max) {
+void elf::reportRangeError(uint8_t *loc, const Relocation &rel, const Twine &v,
+                           int64_t min, uint64_t max) {
   ErrorPlace errPlace = getErrorPlace(loc);
   std::string hint;
   if (rel.sym && !rel.sym->isLocal())
@@ -197,9 +197,9 @@ handleTlsRelocation(RelType type, Symbol &sym, InputSectionBase &c,
     return 1;
   }
 
-  bool canRelax = config->emachine != EM_ARM &&
-                  config->emachine != EM_HEXAGON &&
-                  config->emachine != EM_RISCV;
+  bool toExecRelax = !config->shared && config->emachine != EM_ARM &&
+                     config->emachine != EM_HEXAGON &&
+                     config->emachine != EM_RISCV;
 
   // If we are producing an executable and the symbol is non-preemptable, it
   // must be defined and the code sequence can be relaxed to use Local-Exec.
@@ -217,7 +217,7 @@ handleTlsRelocation(RelType type, Symbol &sym, InputSectionBase &c,
   if (oneof<R_TLSLD_GOT, R_TLSLD_GOTPLT, R_TLSLD_PC, R_TLSLD_HINT>(
           expr)) {
     // Local-Dynamic relocs can be relaxed to Local-Exec.
-    if (canRelax && !config->shared) {
+    if (toExecRelax) {
       c.relocations.push_back(
           {target->adjustRelaxExpr(type, nullptr, R_RELAX_TLS_LD_TO_LE), type,
            offset, addend, &sym});
@@ -238,7 +238,7 @@ handleTlsRelocation(RelType type, Symbol &sym, InputSectionBase &c,
   }
 
   // Local-Dynamic relocs can be relaxed to Local-Exec.
-  if (expr == R_DTPREL && !config->shared) {
+  if (expr == R_DTPREL && toExecRelax) {
     c.relocations.push_back(
         {target->adjustRelaxExpr(type, nullptr, R_RELAX_TLS_LD_TO_LE), type,
          offset, addend, &sym});
@@ -260,7 +260,7 @@ handleTlsRelocation(RelType type, Symbol &sym, InputSectionBase &c,
 
   if (oneof<R_AARCH64_TLSDESC_PAGE, R_TLSDESC, R_TLSDESC_CALL, R_TLSDESC_PC,
             R_TLSGD_GOT, R_TLSGD_GOTPLT, R_TLSGD_PC>(expr)) {
-    if (!canRelax || config->shared) {
+    if (!toExecRelax) {
       if (in.got->addDynTlsEntry(sym)) {
         uint64_t off = in.got->getGlobalDynOffset(sym);
 
@@ -308,7 +308,7 @@ handleTlsRelocation(RelType type, Symbol &sym, InputSectionBase &c,
   // defined.
   if (oneof<R_GOT, R_GOTPLT, R_GOT_PC, R_AARCH64_GOT_PAGE_PC, R_GOT_OFF,
             R_TLSIE_HINT>(expr) &&
-      canRelax && isLocalInExecutable) {
+      toExecRelax && isLocalInExecutable) {
     c.relocations.push_back({R_RELAX_TLS_IE_TO_LE, type, offset, addend, &sym});
     return 1;
   }
@@ -911,7 +911,7 @@ static void reportUndefinedSymbol(const UndefinedDiag &undef,
     error(msg);
 }
 
-template <class ELFT> void reportUndefinedSymbols() {
+template <class ELFT> void elf::reportUndefinedSymbols() {
   // Find the first "undefined symbol" diagnostic for each diagnostic, and
   // collect all "referenced from" lines at the first diagnostic.
   DenseMap<Symbol *, UndefinedDiag *> firstRef;
@@ -1514,7 +1514,7 @@ static void scanRelocs(InputSectionBase &sec, ArrayRef<RelTy> rels) {
                       });
 }
 
-template <class ELFT> void scanRelocations(InputSectionBase &s) {
+template <class ELFT> void elf::scanRelocations(InputSectionBase &s) {
   if (s.areRelocsRela)
     scanRelocs<ELFT>(s, s.relas<ELFT>());
   else
@@ -1999,7 +1999,7 @@ bool ThunkCreator::createThunks(ArrayRef<OutputSection *> outputSections) {
 // hexagonNeedsTLSSymbol scans for relocations would require a call to
 // __tls_get_addr.
 // hexagonTLSSymbolUpdate rebinds the relocation to __tls_get_addr.
-bool hexagonNeedsTLSSymbol(ArrayRef<OutputSection *> outputSections) {
+bool elf::hexagonNeedsTLSSymbol(ArrayRef<OutputSection *> outputSections) {
   bool needTlsSymbol = false;
   forEachInputSectionDescription(
       outputSections, [&](OutputSection *os, InputSectionDescription *isd) {
@@ -2013,7 +2013,7 @@ bool hexagonNeedsTLSSymbol(ArrayRef<OutputSection *> outputSections) {
   return needTlsSymbol;
 }
 
-void hexagonTLSSymbolUpdate(ArrayRef<OutputSection *> outputSections) {
+void elf::hexagonTLSSymbolUpdate(ArrayRef<OutputSection *> outputSections) {
   Symbol *sym = symtab->find("__tls_get_addr");
   if (!sym)
     return;
@@ -2033,14 +2033,11 @@ void hexagonTLSSymbolUpdate(ArrayRef<OutputSection *> outputSections) {
       });
 }
 
-template void scanRelocations<ELF32LE>(InputSectionBase &);
-template void scanRelocations<ELF32BE>(InputSectionBase &);
-template void scanRelocations<ELF64LE>(InputSectionBase &);
-template void scanRelocations<ELF64BE>(InputSectionBase &);
-template void reportUndefinedSymbols<ELF32LE>();
-template void reportUndefinedSymbols<ELF32BE>();
-template void reportUndefinedSymbols<ELF64LE>();
-template void reportUndefinedSymbols<ELF64BE>();
-
-} // namespace elf
-} // namespace lld
+template void elf::scanRelocations<ELF32LE>(InputSectionBase &);
+template void elf::scanRelocations<ELF32BE>(InputSectionBase &);
+template void elf::scanRelocations<ELF64LE>(InputSectionBase &);
+template void elf::scanRelocations<ELF64BE>(InputSectionBase &);
+template void elf::reportUndefinedSymbols<ELF32LE>();
+template void elf::reportUndefinedSymbols<ELF32BE>();
+template void elf::reportUndefinedSymbols<ELF64LE>();
+template void elf::reportUndefinedSymbols<ELF64BE>();

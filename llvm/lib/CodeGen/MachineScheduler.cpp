@@ -18,6 +18,7 @@
 #include "llvm/ADT/PriorityQueue.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/CodeGen/LiveInterval.h"
@@ -72,6 +73,8 @@
 using namespace llvm;
 
 #define DEBUG_TYPE "machine-scheduler"
+
+STATISTIC(NumClustered, "Number of load/store pairs clustered");
 
 namespace llvm {
 
@@ -1298,7 +1301,7 @@ void ScheduleDAGMILive::computeDFSResult() {
 /// The cyclic path estimation identifies a def-use pair that crosses the back
 /// edge and considers the depth and height of the nodes. For example, consider
 /// the following instruction sequence where each instruction has unit latency
-/// and defines an epomymous virtual register:
+/// and defines an eponymous virtual register:
 ///
 /// a->b(a,c)->c(b)->d(c)->exit
 ///
@@ -1473,10 +1476,12 @@ class BaseMemOpClusterMutation : public ScheduleDAGMutation {
     SUnit *SU;
     SmallVector<const MachineOperand *, 4> BaseOps;
     int64_t Offset;
+    unsigned Width;
 
     MemOpInfo(SUnit *SU, ArrayRef<const MachineOperand *> BaseOps,
-              int64_t Offset)
-        : SU(SU), BaseOps(BaseOps.begin(), BaseOps.end()), Offset(Offset) {}
+              int64_t Offset, unsigned Width)
+        : SU(SU), BaseOps(BaseOps.begin(), BaseOps.end()), Offset(Offset),
+          Width(Width) {}
 
     static bool Compare(const MachineOperand *const &A,
                         const MachineOperand *const &B) {
@@ -1565,12 +1570,19 @@ void BaseMemOpClusterMutation::clusterNeighboringMemOps(
     ArrayRef<SUnit *> MemOps, ScheduleDAGInstrs *DAG) {
   SmallVector<MemOpInfo, 32> MemOpRecords;
   for (SUnit *SU : MemOps) {
+    const MachineInstr &MI = *SU->getInstr();
     SmallVector<const MachineOperand *, 4> BaseOps;
     int64_t Offset;
     bool OffsetIsScalable;
-    if (TII->getMemOperandsWithOffset(*SU->getInstr(), BaseOps, Offset,
-                                      OffsetIsScalable, TRI))
-      MemOpRecords.push_back(MemOpInfo(SU, BaseOps, Offset));
+    unsigned Width;
+    if (TII->getMemOperandsWithOffsetWidth(MI, BaseOps, Offset,
+                                           OffsetIsScalable, Width, TRI)) {
+      MemOpRecords.push_back(MemOpInfo(SU, BaseOps, Offset, Width));
+
+      LLVM_DEBUG(dbgs() << "Num BaseOps: " << BaseOps.size() << ", Offset: "
+                        << Offset << ", OffsetIsScalable: " << OffsetIsScalable
+                        << ", Width: " << Width << "\n");
+    }
 #ifndef NDEBUG
     for (auto *Op : BaseOps)
       assert(Op);
@@ -1580,34 +1592,73 @@ void BaseMemOpClusterMutation::clusterNeighboringMemOps(
     return;
 
   llvm::sort(MemOpRecords);
+
+  // At this point, `MemOpRecords` array must hold atleast two mem ops. Try to
+  // cluster mem ops collected within `MemOpRecords` array.
   unsigned ClusterLength = 1;
+  unsigned CurrentClusterBytes = MemOpRecords[0].Width;
   for (unsigned Idx = 0, End = MemOpRecords.size(); Idx < (End - 1); ++Idx) {
-    SUnit *SUa = MemOpRecords[Idx].SU;
-    SUnit *SUb = MemOpRecords[Idx+1].SU;
-    if (TII->shouldClusterMemOps(MemOpRecords[Idx].BaseOps,
-                                 MemOpRecords[Idx + 1].BaseOps,
-                                 ClusterLength + 1)) {
-      if (SUa->NodeNum > SUb->NodeNum)
-        std::swap(SUa, SUb);
-      if (DAG->addEdge(SUb, SDep(SUa, SDep::Cluster))) {
-        LLVM_DEBUG(dbgs() << "Cluster ld/st SU(" << SUa->NodeNum << ") - SU("
-                          << SUb->NodeNum << ")\n");
-        // Copy successor edges from SUa to SUb. Interleaving computation
-        // dependent on SUa can prevent load combining due to register reuse.
-        // Predecessor edges do not need to be copied from SUb to SUa since
-        // nearby loads should have effectively the same inputs.
-        for (const SDep &Succ : SUa->Succs) {
-          if (Succ.getSUnit() == SUb)
-            continue;
-          LLVM_DEBUG(dbgs()
-                     << "  Copy Succ SU(" << Succ.getSUnit()->NodeNum << ")\n");
-          DAG->addEdge(Succ.getSUnit(), SDep(SUb, SDep::Artificial));
-        }
-        ++ClusterLength;
-      } else
-        ClusterLength = 1;
-    } else
+    // Decision to cluster mem ops is taken based on target dependent logic
+    auto MemOpa = MemOpRecords[Idx];
+    auto MemOpb = MemOpRecords[Idx + 1];
+    ++ClusterLength;
+    CurrentClusterBytes += MemOpb.Width;
+    if (!TII->shouldClusterMemOps(MemOpa.BaseOps, MemOpb.BaseOps, ClusterLength,
+                                  CurrentClusterBytes)) {
+      // Current mem ops pair could not be clustered, reset cluster length, and
+      // go to next pair
       ClusterLength = 1;
+      CurrentClusterBytes = MemOpb.Width;
+      continue;
+    }
+
+    SUnit *SUa = MemOpa.SU;
+    SUnit *SUb = MemOpb.SU;
+    if (SUa->NodeNum > SUb->NodeNum)
+      std::swap(SUa, SUb);
+
+    // FIXME: Is this check really required?
+    if (!DAG->addEdge(SUb, SDep(SUa, SDep::Cluster))) {
+      ClusterLength = 1;
+      CurrentClusterBytes = MemOpb.Width;
+      continue;
+    }
+
+    LLVM_DEBUG(dbgs() << "Cluster ld/st SU(" << SUa->NodeNum << ") - SU("
+                      << SUb->NodeNum << ")\n");
+    ++NumClustered;
+
+    if (IsLoad) {
+      // Copy successor edges from SUa to SUb. Interleaving computation
+      // dependent on SUa can prevent load combining due to register reuse.
+      // Predecessor edges do not need to be copied from SUb to SUa since
+      // nearby loads should have effectively the same inputs.
+      for (const SDep &Succ : SUa->Succs) {
+        if (Succ.getSUnit() == SUb)
+          continue;
+        LLVM_DEBUG(dbgs() << "  Copy Succ SU(" << Succ.getSUnit()->NodeNum
+                          << ")\n");
+        DAG->addEdge(Succ.getSUnit(), SDep(SUb, SDep::Artificial));
+      }
+    } else {
+      // Copy predecessor edges from SUb to SUa to avoid the SUnits that
+      // SUb dependent on scheduled in-between SUb and SUa. Successor edges
+      // do not need to be copied from SUa to SUb since no one will depend
+      // on stores.
+      // Notice that, we don't need to care about the memory dependency as
+      // we won't try to cluster them if they have any memory dependency.
+      for (const SDep &Pred : SUb->Preds) {
+        if (Pred.getSUnit() == SUa)
+          continue;
+        LLVM_DEBUG(dbgs() << "  Copy Pred SU(" << Pred.getSUnit()->NodeNum
+                          << ")\n");
+        DAG->addEdge(SUa, SDep(Pred.getSUnit(), SDep::Artificial));
+      }
+    }
+
+    LLVM_DEBUG(dbgs() << "  Curr cluster length: " << ClusterLength
+                      << ", Curr cluster bytes: " << CurrentClusterBytes
+                      << "\n");
   }
 }
 
@@ -1622,7 +1673,13 @@ void BaseMemOpClusterMutation::apply(ScheduleDAGInstrs *DAG) {
 
     unsigned ChainPredID = DAG->SUnits.size();
     for (const SDep &Pred : SU.Preds) {
-      if (Pred.isCtrl() && !Pred.isArtificial()) {
+      // We only want to cluster the mem ops that have the same ctrl(non-data)
+      // pred so that they didn't have ctrl dependency for each other. But for
+      // store instrs, we can still cluster them if the pred is load instr.
+      if ((Pred.isCtrl() &&
+           (IsLoad ||
+            (Pred.getSUnit() && Pred.getSUnit()->getInstr()->mayStore()))) &&
+          !Pred.isArtificial()) {
         ChainPredID = Pred.getSUnit()->NodeNum;
         break;
       }
@@ -2402,16 +2459,14 @@ SUnit *SchedBoundary::pickOnlyChoice() {
   if (CheckPending)
     releasePending();
 
-  if (CurrMOps > 0) {
-    // Defer any ready instrs that now have a hazard.
-    for (ReadyQueue::iterator I = Available.begin(); I != Available.end();) {
-      if (checkHazard(*I)) {
-        Pending.push(*I);
-        I = Available.remove(I);
-        continue;
-      }
-      ++I;
+  // Defer any ready instrs that now have a hazard.
+  for (ReadyQueue::iterator I = Available.begin(); I != Available.end();) {
+    if (checkHazard(*I)) {
+      Pending.push(*I);
+      I = Available.remove(I);
+      continue;
     }
+    ++I;
   }
   for (unsigned i = 0; Available.empty(); ++i) {
 //  FIXME: Re-enable assert once PR20057 is resolved.
@@ -2695,7 +2750,11 @@ bool tryLatency(GenericSchedulerBase::SchedCandidate &TryCand,
                 GenericSchedulerBase::SchedCandidate &Cand,
                 SchedBoundary &Zone) {
   if (Zone.isTop()) {
-    if (Cand.SU->getDepth() > Zone.getScheduledLatency()) {
+    // Prefer the candidate with the lesser depth, but only if one of them has
+    // depth greater than the total latency scheduled so far, otherwise either
+    // of them could be scheduled now with no stall.
+    if (std::max(TryCand.SU->getDepth(), Cand.SU->getDepth()) >
+        Zone.getScheduledLatency()) {
       if (tryLess(TryCand.SU->getDepth(), Cand.SU->getDepth(),
                   TryCand, Cand, GenericSchedulerBase::TopDepthReduce))
         return true;
@@ -2704,7 +2763,11 @@ bool tryLatency(GenericSchedulerBase::SchedCandidate &TryCand,
                    TryCand, Cand, GenericSchedulerBase::TopPathReduce))
       return true;
   } else {
-    if (Cand.SU->getHeight() > Zone.getScheduledLatency()) {
+    // Prefer the candidate with the lesser height, but only if one of them has
+    // height greater than the total latency scheduled so far, otherwise either
+    // of them could be scheduled now with no stall.
+    if (std::max(TryCand.SU->getHeight(), Cand.SU->getHeight()) >
+        Zone.getScheduledLatency()) {
       if (tryLess(TryCand.SU->getHeight(), Cand.SU->getHeight(),
                   TryCand, Cand, GenericSchedulerBase::BotHeightReduce))
         return true;

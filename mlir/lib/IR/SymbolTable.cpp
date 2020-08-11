@@ -383,9 +383,9 @@ static WalkResult walkSymbolRefs(
     Operation *op,
     function_ref<WalkResult(SymbolTable::SymbolUse, ArrayRef<int>)> callback) {
   // Check to see if the operation has any attributes.
-  DictionaryAttr attrDict = op->getMutableAttrDict().getDictionary();
-  if (!attrDict)
+  if (op->getMutableAttrDict().empty())
     return WalkResult::advance();
+  DictionaryAttr attrDict = op->getAttrDictionary();
 
   // A worklist of a container attribute and the current index into the held
   // attribute list.
@@ -397,7 +397,7 @@ static WalkResult walkSymbolRefs(
     for (Attribute attr : llvm::drop_begin(attrRange, index)) {
       /// Check for a nested container attribute, these will also need to be
       /// walked.
-      if (attr.isa<ArrayAttr>() || attr.isa<DictionaryAttr>()) {
+      if (attr.isa<ArrayAttr, DictionaryAttr>()) {
         attrWorklist.push_back(attr);
         curAccessChain.push_back(-1);
         return WalkResult::advance();
@@ -799,7 +799,7 @@ replaceAllSymbolUsesImpl(SymbolT symbol, StringRef newSymbol, IRUnitT *limit) {
   // Generate a new attribute dictionary for the current operation by replacing
   // references to the old symbol.
   auto generateNewAttrDict = [&] {
-    auto oldDict = curOp->getMutableAttrDict().getDictionary();
+    auto oldDict = curOp->getAttrDictionary();
     auto newDict = rebuildAttrAfterRAUW(oldDict, accessChains, /*depth=*/0);
     return newDict.cast<DictionaryAttr>();
   };

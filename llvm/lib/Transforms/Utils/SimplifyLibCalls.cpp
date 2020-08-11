@@ -20,7 +20,6 @@
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
 #include "llvm/Analysis/ProfileSummaryInfo.h"
-#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Analysis/CaptureTracking.h"
@@ -1448,7 +1447,7 @@ static Value *getIntToFPVal(Value *I2F, IRBuilderBase &B) {
 /// exp10(x) for pow(10.0, x); exp2(log2(n) * x) for pow(n, x).
 Value *LibCallSimplifier::replacePowWithExp(CallInst *Pow, IRBuilderBase &B) {
   Value *Base = Pow->getArgOperand(0), *Expo = Pow->getArgOperand(1);
-  AttributeList Attrs = Pow->getCalledFunction()->getAttributes();
+  AttributeList Attrs; // Attributes are only meaningful on the original call
   Module *Mod = Pow->getModule();
   Type *Ty = Pow->getType();
   bool Ignored;
@@ -1563,9 +1562,14 @@ Value *LibCallSimplifier::replacePowWithExp(CallInst *Pow, IRBuilderBase &B) {
     return emitUnaryFloatFnCall(Expo, TLI, LibFunc_exp10, LibFunc_exp10f,
                                 LibFunc_exp10l, B, Attrs);
 
-  // pow(n, x) -> exp2(log2(n) * x)
-  if (Pow->hasApproxFunc() && Pow->hasNoNaNs() && Pow->hasNoInfs() &&
-      BaseF->isFiniteNonZero() && !BaseF->isNegative()) {
+  // pow(x, y) -> exp2(log2(x) * y)
+  if (Pow->hasApproxFunc() && Pow->hasNoNaNs() && BaseF->isFiniteNonZero() &&
+      !BaseF->isNegative()) {
+    // pow(1, inf) is defined to be 1 but exp2(log2(1) * inf) evaluates to NaN.
+    // Luckily optimizePow has already handled the x == 1 case.
+    assert(!match(Base, m_FPOne()) &&
+           "pow(1.0, y) should have been simplified earlier!");
+
     Value *Log = nullptr;
     if (Ty->isFloatTy())
       Log = ConstantFP::get(Ty, std::log2(BaseF->convertToFloat()));
@@ -1610,7 +1614,7 @@ static Value *getSqrtCall(Value *V, AttributeList Attrs, bool NoErrno,
 /// Use square root in place of pow(x, +/-0.5).
 Value *LibCallSimplifier::replacePowWithSqrt(CallInst *Pow, IRBuilderBase &B) {
   Value *Sqrt, *Base = Pow->getArgOperand(0), *Expo = Pow->getArgOperand(1);
-  AttributeList Attrs = Pow->getCalledFunction()->getAttributes();
+  AttributeList Attrs; // Attributes are only meaningful on the original call
   Module *Mod = Pow->getModule();
   Type *Ty = Pow->getType();
 
@@ -1780,6 +1784,7 @@ Value *LibCallSimplifier::optimizePow(CallInst *Pow, IRBuilderBase &B) {
 
 Value *LibCallSimplifier::optimizeExp2(CallInst *CI, IRBuilderBase &B) {
   Function *Callee = CI->getCalledFunction();
+  AttributeList Attrs; // Attributes are only meaningful on the original call
   StringRef Name = Callee->getName();
   Value *Ret = nullptr;
   if (UnsafeFPShrink && Name == TLI->getName(LibFunc_exp2) &&
@@ -1796,7 +1801,7 @@ Value *LibCallSimplifier::optimizeExp2(CallInst *CI, IRBuilderBase &B) {
     if (Value *Exp = getIntToFPVal(Op, B))
       return emitBinaryFloatFnCall(ConstantFP::get(Ty, 1.0), Exp, TLI,
                                    LibFunc_ldexp, LibFunc_ldexpf, LibFunc_ldexpl,
-                                   B, CI->getCalledFunction()->getAttributes());
+                                   B, Attrs);
   }
 
   return Ret;
@@ -1831,7 +1836,7 @@ Value *LibCallSimplifier::optimizeFMinFMax(CallInst *CI, IRBuilderBase &B) {
 
 Value *LibCallSimplifier::optimizeLog(CallInst *Log, IRBuilderBase &B) {
   Function *LogFn = Log->getCalledFunction();
-  AttributeList Attrs = LogFn->getAttributes();
+  AttributeList Attrs; // Attributes are only meaningful on the original call
   StringRef LogNm = LogFn->getName();
   Intrinsic::ID LogID = LogFn->getIntrinsicID();
   Module *Mod = Log->getModule();
@@ -2102,7 +2107,7 @@ static void insertSinCosCall(IRBuilderBase &B, Function *OrigCallee, Value *Arg,
     // x86_64 can't use {float, float} since that would be returned in both
     // xmm0 and xmm1, which isn't what a real struct would do.
     ResTy = T.getArch() == Triple::x86_64
-                ? static_cast<Type *>(VectorType::get(ArgTy, 2))
+                ? static_cast<Type *>(FixedVectorType::get(ArgTy, 2))
                 : static_cast<Type *>(StructType::get(ArgTy, ArgTy));
   } else {
     Name = "__sincospi_stret";
@@ -2925,6 +2930,8 @@ Value *LibCallSimplifier::optimizeFloatingPointLibCall(CallInst *CI,
     return replaceUnaryCall(CI, Builder, Intrinsic::floor);
   case LibFunc_round:
     return replaceUnaryCall(CI, Builder, Intrinsic::round);
+  case LibFunc_roundeven:
+    return replaceUnaryCall(CI, Builder, Intrinsic::roundeven);
   case LibFunc_nearbyint:
     return replaceUnaryCall(CI, Builder, Intrinsic::nearbyint);
   case LibFunc_rint:

@@ -10,7 +10,7 @@
 #include "mlir/Dialect/Affine/EDSC/Intrinsics.h"
 #include "mlir/Dialect/Linalg/EDSC/Builders.h"
 #include "mlir/Dialect/Linalg/EDSC/Intrinsics.h"
-#include "mlir/Dialect/LoopOps/EDSC/Builders.h"
+#include "mlir/Dialect/SCF/EDSC/Builders.h"
 #include "mlir/Dialect/StandardOps/EDSC/Intrinsics.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/AffineExpr.h"
@@ -19,111 +19,13 @@ using namespace mlir;
 using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
-using namespace mlir::loop;
-
-mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(Value *iv, Value range) {
-  assert(range.getType() && "expected !linalg.range type");
-  assert(range.getDefiningOp() && "need operations to extract range parts");
-  auto rangeOp = cast<RangeOp>(range.getDefiningOp());
-  auto lb = rangeOp.min();
-  auto ub = rangeOp.max();
-  auto step = rangeOp.step();
-  ForOp forOp = OperationBuilder<ForOp>(lb, ub, step);
-  *iv = forOp.getInductionVar();
-  auto *body = forOp.getBody();
-  enter(body);
-}
-
-mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(Value *iv,
-                                               SubViewOp::Range range) {
-  ForOp forOp = OperationBuilder<ForOp>(range.offset, range.size, range.stride);
-  *iv = forOp.getInductionVar();
-  auto *body = forOp.getBody();
-  enter(body);
-}
-
-Value mlir::edsc::LoopRangeBuilder::operator()(std::function<void(void)> fun) {
-  if (fun)
-    fun();
-  exit();
-  return Value();
-}
-
-mlir::edsc::LoopNestRangeBuilder::LoopNestRangeBuilder(
-    MutableArrayRef<Value> ivs, ArrayRef<SubViewOp::Range> ranges) {
-  loops.reserve(ranges.size());
-  for (unsigned i = 0, e = ranges.size(); i < e; ++i)
-    loops.emplace_back(&ivs[i], ranges[i]);
-  assert(loops.size() == ivs.size() && "Mismatch loops vs ivs size");
-}
-
-mlir::edsc::LoopNestRangeBuilder::LoopNestRangeBuilder(
-    MutableArrayRef<Value> ivs, ArrayRef<Value> ranges) {
-  loops.reserve(ranges.size());
-  for (unsigned i = 0, e = ranges.size(); i < e; ++i)
-    loops.emplace_back(&ivs[i], ranges[i]);
-  assert(loops.size() == ivs.size() && "Mismatch loops vs ivs size");
-}
-
-Value LoopNestRangeBuilder::LoopNestRangeBuilder::operator()(
-    std::function<void(void)> fun) {
-  if (fun)
-    fun();
-  for (auto &lit : reverse(loops)) {
-    lit({});
-  }
-  return Value();
-}
-
-namespace mlir {
-namespace edsc {
-
-template <>
-GenericLoopNestRangeBuilder<loop::ForOp>::GenericLoopNestRangeBuilder(
-    MutableArrayRef<Value> ivs, ArrayRef<Value> ranges) {
-  builder = std::make_unique<LoopNestRangeBuilder>(ivs, ranges);
-}
-
-template <>
-GenericLoopNestRangeBuilder<AffineForOp>::GenericLoopNestRangeBuilder(
-    MutableArrayRef<Value> ivs, ArrayRef<Value> ranges) {
-  SmallVector<Value, 4> lbs;
-  SmallVector<Value, 4> ubs;
-  SmallVector<int64_t, 4> steps;
-  for (Value range : ranges) {
-    assert(range.getType() && "expected linalg.range type");
-    assert(range.getDefiningOp() && "need operations to extract range parts");
-    RangeOp rangeOp = cast<RangeOp>(range.getDefiningOp());
-    lbs.emplace_back(rangeOp.min());
-    ubs.emplace_back(rangeOp.max());
-    steps.emplace_back(rangeOp.step());
-  }
-  builder = std::make_unique<AffineLoopNestBuilder>(ivs, lbs, ubs, steps);
-}
-
-template <>
-GenericLoopNestRangeBuilder<loop::ParallelOp>::GenericLoopNestRangeBuilder(
-    MutableArrayRef<Value> ivs, ArrayRef<Value> ranges) {
-  SmallVector<Value, 4> lbs, ubs, steps;
-  for (Value range : ranges) {
-    assert(range.getType() && "expected linalg.range type");
-    assert(range.getDefiningOp() && "need operations to extract range parts");
-    RangeOp rangeOp = cast<RangeOp>(range.getDefiningOp());
-    lbs.emplace_back(rangeOp.min());
-    ubs.emplace_back(rangeOp.max());
-    steps.emplace_back(rangeOp.step());
-  }
-  builder = std::make_unique<ParallelLoopNestBuilder>(ivs, lbs, ubs, steps);
-}
-
-} // namespace edsc
-} // namespace mlir
+using namespace mlir::scf;
 
 Operation *mlir::edsc::makeGenericLinalgOp(
     ArrayRef<IteratorType> iteratorTypes, ArrayRef<StructuredIndexed> inputs,
     ArrayRef<StructuredIndexed> outputs,
-    function_ref<void(ArrayRef<BlockArgument>)> regionBuilder,
-    ArrayRef<Value> otherValues, ArrayRef<Attribute> otherAttributes) {
+    function_ref<void(ValueRange)> regionBuilder, ArrayRef<Value> otherValues,
+    ArrayRef<Attribute> otherAttributes) {
   for (unsigned i = 0, e = outputs.size(); i + 1 < e; ++i)
     assert(!(outputs[i].getType().isa<RankedTensorType>() &&
              outputs[i + 1].getType().isa<MemRefType>()) &&
@@ -167,7 +69,8 @@ Operation *mlir::edsc::makeGenericLinalgOp(
               builder.getAffineMapArrayAttr(maps),
               builder.getStrArrayAttr(iteratorStrTypes),
               StringAttr() /*doc*/,
-              StringAttr() /*library_call*/
+              StringAttr() /*library_call*/,
+              IntegerAttr() /*symbol_source*/
               /* TODO: other attributes in op */
               )
           .getOperation();
@@ -185,15 +88,12 @@ Operation *mlir::edsc::makeGenericLinalgOp(
   assert(op->getRegion(0).empty());
   OpBuilder opBuilder(op);
   ScopedContext scope(opBuilder, op->getLoc());
-  BlockHandle b;
-  SmallVector<Value, 8> handles(blockTypes.size());
-  BlockBuilder(&b, op->getRegion(0), blockTypes,
-               handles)([&] { regionBuilder(b.getBlock()->getArguments()); });
-  assert(op->getRegion(0).getBlocks().size() == 1);
+  buildInNewBlock(op->getRegion(0), blockTypes, regionBuilder);
+  assert(llvm::hasSingleElement(op->getRegion(0)));
   return op;
 }
 
-void mlir::edsc::ops::mulRegionBuilder(ArrayRef<BlockArgument> args) {
+void mlir::edsc::ops::mulRegionBuilder(ValueRange args) {
   using edsc::op::operator+;
   using edsc::op::operator*;
   assert(args.size() == 2 && "expected 2 block arguments");
@@ -201,7 +101,7 @@ void mlir::edsc::ops::mulRegionBuilder(ArrayRef<BlockArgument> args) {
   linalg_yield(a * b);
 }
 
-void mlir::edsc::ops::macRegionBuilder(ArrayRef<BlockArgument> args) {
+void mlir::edsc::ops::macRegionBuilder(ValueRange args) {
   using edsc::op::operator+;
   using edsc::op::operator*;
   assert(args.size() == 3 && "expected 3 block arguments");
@@ -214,14 +114,14 @@ Operation *mlir::edsc::ops::linalg_generic_pointwise(
   SmallVector<IteratorType, 4> iterTypes(O.getExprs().size(),
                                          IteratorType::Parallel);
   if (O.getType().isa<RankedTensorType>()) {
-    auto fun = [&unaryOp](ArrayRef<BlockArgument> args) {
+    auto fun = [&unaryOp](ValueRange args) {
       assert(args.size() == 1 && "expected 1 block arguments");
       Value a(args[0]);
       linalg_yield(unaryOp(a));
     };
     return makeGenericLinalgOp(iterTypes, {I}, {O}, fun);
   }
-  auto fun = [&unaryOp](ArrayRef<BlockArgument> args) {
+  auto fun = [&unaryOp](ValueRange args) {
     assert(args.size() == 2 && "expected 2 block arguments");
     Value a(args[0]);
     linalg_yield(unaryOp(a));
@@ -242,14 +142,14 @@ Operation *mlir::edsc::ops::linalg_generic_pointwise(
   SmallVector<IteratorType, 4> iterTypes(O.getExprs().size(),
                                          IteratorType::Parallel);
   if (O.getType().isa<RankedTensorType>()) {
-    auto fun = [&binaryOp](ArrayRef<BlockArgument> args) {
+    auto fun = [&binaryOp](ValueRange args) {
       assert(args.size() == 2 && "expected 2 block arguments");
       Value a(args[0]), b(args[1]);
       linalg_yield(binaryOp(a, b));
     };
     return makeGenericLinalgOp(iterTypes, {I1, I2}, {O}, fun);
   }
-  auto fun = [&binaryOp](ArrayRef<BlockArgument> args) {
+  auto fun = [&binaryOp](ValueRange args) {
     assert(args.size() == 3 && "expected 3 block arguments");
     Value a(args[0]), b(args[1]);
     linalg_yield(binaryOp(a, b));
@@ -270,8 +170,8 @@ Operation *mlir::edsc::ops::linalg_generic_pointwise_max(StructuredIndexed I1,
                                                          StructuredIndexed I2,
                                                          StructuredIndexed O) {
   BinaryPointwiseOpBuilder binOp([](Value a, Value b) -> Value {
-    using edsc::op::operator>;
-    return std_select(a > b, a, b);
+    using edsc::op::sgt;
+    return std_select(sgt(a, b), a, b);
   });
   return linalg_generic_pointwise(binOp, I1, I2, O);
 }
@@ -327,7 +227,7 @@ Operation *mlir::edsc::ops::linalg_generic_conv_nhwc(Value vI, Value vW,
                                                      ArrayRef<int> strides,
                                                      ArrayRef<int> dilations) {
   MLIRContext *ctx = ScopedContext::getContext();
-  // TODO(ntv) some template magic to make everything rank-polymorphic.
+  // TODO: some template magic to make everything rank-polymorphic.
   assert((dilations.empty() || dilations.size() == 2) && "only 2-D conv atm");
   assert((strides.empty() || strides.size() == 2) && "only 2-D conv atm");
 
@@ -360,7 +260,7 @@ Operation *mlir::edsc::ops::linalg_generic_dilated_conv_nhwc(
     Value vI, Value vW, Value vO, int depth_multiplier, ArrayRef<int> strides,
     ArrayRef<int> dilations) {
   MLIRContext *ctx = ScopedContext::getContext();
-  // TODO(ntv) some template magic to make everything rank-polymorphic.
+  // TODO: some template magic to make everything rank-polymorphic.
   assert((dilations.empty() || dilations.size() == 2) && "only 2-D conv atm");
   assert((strides.empty() || strides.size() == 2) && "only 2-D conv atm");
 

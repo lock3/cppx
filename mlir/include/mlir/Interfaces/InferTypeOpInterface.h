@@ -83,19 +83,17 @@ namespace detail {
 LogicalResult inferReturnTensorTypes(
     function_ref<LogicalResult(
         MLIRContext *, Optional<Location> location, ValueRange operands,
-        ArrayRef<NamedAttribute> attributes, RegionRange regions,
+        DictionaryAttr attributes, RegionRange regions,
         SmallVectorImpl<ShapedTypeComponents> &retComponents)>
         componentTypeFn,
     MLIRContext *context, Optional<Location> location, ValueRange operands,
-    ArrayRef<NamedAttribute> attributes, RegionRange regions,
+    DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes);
 
 /// Verifies that the inferred result types match the actual result types for
 /// the op. Precondition: op implements InferTypeOpInterface.
 LogicalResult verifyInferredResultTypes(Operation *op);
 } // namespace detail
-
-#include "mlir/Interfaces/InferTypeOpInterface.h.inc"
 
 namespace OpTrait {
 
@@ -107,7 +105,7 @@ class InferTensorType : public TraitBase<ConcreteType, InferTensorType> {
 public:
   static LogicalResult
   inferReturnTypes(MLIRContext *context, Optional<Location> location,
-                   ValueRange operands, ArrayRef<NamedAttribute> attributes,
+                   ValueRange operands, DictionaryAttr attributes,
                    RegionRange regions,
                    SmallVectorImpl<Type> &inferredReturnTypes) {
     return ::mlir::detail::inferReturnTensorTypes(
@@ -118,5 +116,8 @@ public:
 
 } // namespace OpTrait
 } // namespace mlir
+
+/// Include the generated interface declarations.
+#include "mlir/Interfaces/InferTypeOpInterface.h.inc"
 
 #endif // MLIR_INTERFACES_INFERTYPEOPINTERFACE_H_

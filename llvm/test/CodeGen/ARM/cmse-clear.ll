@@ -67,17 +67,17 @@ define i32 @ns_entry(i32 (i32)* nocapture %fptr) #0 {
 ; CHECK-8M-SOFTFP-NEXT:    beq .LBB0_2
 ; CHECK-8M-SOFTFP-NEXT:  @ %bb.1: @ %entry
 ; CHECK-8M-SOFTFP-NEXT:    vmrs r12, fpscr
-; CHECK-8M-SOFTFP-NEXT:    bic r12, r12, #159
-; CHECK-8M-SOFTFP-NEXT:    bic r12, r12, #4026531840
 ; CHECK-8M-SOFTFP-NEXT:    vmov d0, lr, lr
 ; CHECK-8M-SOFTFP-NEXT:    vmov d1, lr, lr
-; CHECK-8M-SOFTFP-NEXT:    vmsr fpscr, r12
 ; CHECK-8M-SOFTFP-NEXT:    vmov d2, lr, lr
 ; CHECK-8M-SOFTFP-NEXT:    vmov d3, lr, lr
 ; CHECK-8M-SOFTFP-NEXT:    vmov d4, lr, lr
 ; CHECK-8M-SOFTFP-NEXT:    vmov d5, lr, lr
 ; CHECK-8M-SOFTFP-NEXT:    vmov d6, lr, lr
 ; CHECK-8M-SOFTFP-NEXT:    vmov d7, lr, lr
+; CHECK-8M-SOFTFP-NEXT:    bic r12, r12, #159
+; CHECK-8M-SOFTFP-NEXT:    bic r12, r12, #4026531840
+; CHECK-8M-SOFTFP-NEXT:    vmsr fpscr, r12
 ; CHECK-8M-SOFTFP-NEXT:  .LBB0_2: @ %entry
 ; CHECK-8M-SOFTFP-NEXT:    mov r1, lr
 ; CHECK-8M-SOFTFP-NEXT:    mov r2, lr

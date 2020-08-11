@@ -6,20 +6,21 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "SymbolTable.h"
 #include "Symbols.h"
 #include "SyntheticSections.h"
 #include "Target.h"
 #include "Thunks.h"
 #include "lld/Common/ErrorHandler.h"
+#include "lld/Common/Memory.h"
 #include "llvm/Support/Endian.h"
 
 using namespace llvm;
 using namespace llvm::object;
 using namespace llvm::support::endian;
 using namespace llvm::ELF;
-
-namespace lld {
-namespace elf {
+using namespace lld;
+using namespace lld::elf;
 
 static uint64_t ppc64TocOffset = 0x8000;
 static uint64_t dynamicThreadPointerOffset = 0x8000;
@@ -61,7 +62,7 @@ enum DFormOpcd {
   ADDI = 14
 };
 
-uint64_t getPPC64TocBase() {
+uint64_t elf::getPPC64TocBase() {
   // The TOC consists of sections .got, .toc, .tocbss, .plt in that order. The
   // TOC starts where the first of these sections starts. We always create a
   // .got when we see a relocation that uses it, so for us the start is always
@@ -75,7 +76,7 @@ uint64_t getPPC64TocBase() {
   return tocVA + ppc64TocOffset;
 }
 
-unsigned getPPC64GlobalEntryToLocalEntryOffset(uint8_t stOther) {
+unsigned elf::getPPC64GlobalEntryToLocalEntryOffset(uint8_t stOther) {
   // The offset is encoded into the 3 most significant bits of the st_other
   // field, with some special values described in section 3.4.1 of the ABI:
   // 0   --> Zero offset between the GEP and LEP, and the function does NOT use
@@ -100,9 +101,92 @@ unsigned getPPC64GlobalEntryToLocalEntryOffset(uint8_t stOther) {
   return 0;
 }
 
-bool isPPC64SmallCodeModelTocReloc(RelType type) {
+bool elf::isPPC64SmallCodeModelTocReloc(RelType type) {
   // The only small code model relocations that access the .toc section.
   return type == R_PPC64_TOC16 || type == R_PPC64_TOC16_DS;
+}
+
+void elf::writePrefixedInstruction(uint8_t *loc, uint64_t insn) {
+  insn = config->isLE ? insn << 32 | insn >> 32 : insn;
+  write64(loc, insn);
+}
+
+static bool addOptional(StringRef name, uint64_t value,
+                        std::vector<Defined *> &defined) {
+  Symbol *sym = symtab->find(name);
+  if (!sym || sym->isDefined())
+    return false;
+  sym->resolve(Defined{/*file=*/nullptr, saver.save(name), STB_GLOBAL,
+                       STV_HIDDEN, STT_FUNC, value,
+                       /*size=*/0, /*section=*/nullptr});
+  defined.push_back(cast<Defined>(sym));
+  return true;
+}
+
+// If from is 14, write ${prefix}14: firstInsn; ${prefix}15:
+// firstInsn+0x200008; ...; ${prefix}31: firstInsn+(31-14)*0x200008; $tail
+// The labels are defined only if they exist in the symbol table.
+static void writeSequence(MutableArrayRef<uint32_t> buf, const char *prefix,
+                          int from, uint32_t firstInsn,
+                          ArrayRef<uint32_t> tail) {
+  std::vector<Defined *> defined;
+  char name[16];
+  int first;
+  uint32_t *ptr = buf.data();
+  for (int r = from; r < 32; ++r) {
+    format("%s%d", prefix, r).snprint(name, sizeof(name));
+    if (addOptional(name, 4 * (r - from), defined) && defined.size() == 1)
+      first = r - from;
+    write32(ptr++, firstInsn + 0x200008 * (r - from));
+  }
+  for (uint32_t insn : tail)
+    write32(ptr++, insn);
+  assert(ptr == &*buf.end());
+
+  if (defined.empty())
+    return;
+  // The full section content has the extent of [begin, end). We drop unused
+  // instructions and write [first,end).
+  auto *sec = make<InputSection>(
+      nullptr, SHF_ALLOC, SHT_PROGBITS, 4,
+      makeArrayRef(reinterpret_cast<uint8_t *>(buf.data() + first),
+                   4 * (buf.size() - first)),
+      ".text");
+  inputSections.push_back(sec);
+  for (Defined *sym : defined) {
+    sym->section = sec;
+    sym->value -= 4 * first;
+  }
+}
+
+// Implements some save and restore functions as described by ELF V2 ABI to be
+// compatible with GCC. With GCC -Os, when the number of call-saved registers
+// exceeds a certain threshold, GCC generates _savegpr0_* _restgpr0_* calls and
+// expects the linker to define them. See
+// https://sourceware.org/pipermail/binutils/2002-February/017444.html and
+// https://sourceware.org/pipermail/binutils/2004-August/036765.html . This is
+// weird because libgcc.a would be the natural place. The linker generation
+// approach has the advantage that the linker can generate multiple copies to
+// avoid long branch thunks. However, we don't consider the advantage
+// significant enough to complicate our trunk implementation, so we take the
+// simple approach and synthesize .text sections providing the implementation.
+void elf::addPPC64SaveRestore() {
+  static uint32_t savegpr0[20], restgpr0[21], savegpr1[19], restgpr1[19];
+  constexpr uint32_t blr = 0x4e800020, mtlr_0 = 0x7c0803a6;
+
+  // _restgpr0_14: ld 14, -144(1); _restgpr0_15: ld 15, -136(1); ...
+  // Tail: ld 0, 16(1); mtlr 0; blr
+  writeSequence(restgpr0, "_restgpr0_", 14, 0xe9c1ff70,
+                {0xe8010010, mtlr_0, blr});
+  // _restgpr1_14: ld 14, -144(12); _restgpr1_15: ld 15, -136(12); ...
+  // Tail: blr
+  writeSequence(restgpr1, "_restgpr1_", 14, 0xe9ccff70, {blr});
+  // _savegpr0_14: std 14, -144(1); _savegpr0_15: std 15, -136(1); ...
+  // Tail: std 0, 16(1); blr
+  writeSequence(savegpr0, "_savegpr0_", 14, 0xf9c1ff70, {0xf8010010, blr});
+  // _savegpr1_14: std 14, -144(12); _savegpr1_15: std 15, -136(12); ...
+  // Tail: blr
+  writeSequence(savegpr1, "_savegpr1_", 14, 0xf9ccff70, {blr});
 }
 
 // Find the R_PPC64_ADDR64 in .rela.toc with matching offset.
@@ -155,7 +239,7 @@ getRelaTocSymAndAddend(InputSectionBase *tocSec, uint64_t offset) {
 //   ld/lwa 3, 0(3)           # load the value from the address
 //
 // Returns true if the relaxation is performed.
-bool tryRelaxPPC64TocIndirection(const Relocation &rel, uint8_t *bufLoc) {
+bool elf::tryRelaxPPC64TocIndirection(const Relocation &rel, uint8_t *bufLoc) {
   assert(config->tocOptimize);
   if (rel.addend < 0)
     return false;
@@ -295,6 +379,11 @@ static void writeFromHalf16(uint8_t *loc, uint32_t insn) {
 
 static uint32_t readFromHalf16(const uint8_t *loc) {
   return read32(config->isLE ? loc : loc - 2);
+}
+
+static uint64_t readPrefixedInstruction(const uint8_t *loc) {
+  uint64_t fullInstr = read64(loc);
+  return config->isLE ? (fullInstr << 32 | fullInstr >> 32) : fullInstr;
 }
 
 PPC64::PPC64() {
@@ -472,7 +561,7 @@ void PPC64::relaxTlsLdToLe(uint8_t *loc, const Relocation &rel,
   }
 }
 
-unsigned getPPCDFormOp(unsigned secondaryOp) {
+unsigned elf::getPPCDFormOp(unsigned secondaryOp) {
   switch (secondaryOp) {
   case LBZX:
     return LBZ;
@@ -578,6 +667,8 @@ RelExpr PPC64::getRelExpr(RelType type, const Symbol &s,
   case R_PPC64_TOC16_HI:
   case R_PPC64_TOC16_LO:
     return R_GOTREL;
+  case R_PPC64_GOT_PCREL34:
+    return R_GOT_PC;
   case R_PPC64_TOC16_HA:
   case R_PPC64_TOC16_LO_DS:
     return config->tocOptimize ? R_PPC64_RELAX_TOC : R_GOTREL;
@@ -586,11 +677,14 @@ RelExpr PPC64::getRelExpr(RelType type, const Symbol &s,
   case R_PPC64_REL14:
   case R_PPC64_REL24:
     return R_PPC64_CALL_PLT;
+  case R_PPC64_REL24_NOTOC:
+    return R_PLT_PC;
   case R_PPC64_REL16_LO:
   case R_PPC64_REL16_HA:
   case R_PPC64_REL16_HI:
   case R_PPC64_REL32:
   case R_PPC64_REL64:
+  case R_PPC64_PCREL34:
     return R_PC;
   case R_PPC64_GOT_TLSGD16:
   case R_PPC64_GOT_TLSGD16_HA:
@@ -897,7 +991,8 @@ void PPC64::relocate(uint8_t *loc, const Relocation &rel, uint64_t val) const {
     write32(loc, (read32(loc) & ~mask) | (val & mask));
     break;
   }
-  case R_PPC64_REL24: {
+  case R_PPC64_REL24:
+  case R_PPC64_REL24_NOTOC: {
     uint32_t mask = 0x03FFFFFC;
     checkInt(loc, val, 26, rel);
     checkAlignment(loc, val, 4, rel);
@@ -907,6 +1002,28 @@ void PPC64::relocate(uint8_t *loc, const Relocation &rel, uint64_t val) const {
   case R_PPC64_DTPREL64:
     write64(loc, val - dynamicThreadPointerOffset);
     break;
+  case R_PPC64_PCREL34: {
+    const uint64_t si0Mask = 0x00000003ffff0000;
+    const uint64_t si1Mask = 0x000000000000ffff;
+    const uint64_t fullMask = 0x0003ffff0000ffff;
+    checkInt(loc, val, 34, rel);
+
+    uint64_t instr = readPrefixedInstruction(loc) & ~fullMask;
+    writePrefixedInstruction(loc, instr | ((val & si0Mask) << 16) |
+                             (val & si1Mask));
+    break;
+  }
+  case R_PPC64_GOT_PCREL34: {
+    const uint64_t si0Mask = 0x00000003ffff0000;
+    const uint64_t si1Mask = 0x000000000000ffff;
+    const uint64_t fullMask = 0x0003ffff0000ffff;
+    checkInt(loc, val, 34, rel);
+
+    uint64_t instr = readPrefixedInstruction(loc) & ~fullMask;
+    writePrefixedInstruction(loc, instr | ((val & si0Mask) << 16) |
+                             (val & si1Mask));
+    break;
+  }
   default:
     llvm_unreachable("unknown relocation");
   }
@@ -914,11 +1031,21 @@ void PPC64::relocate(uint8_t *loc, const Relocation &rel, uint64_t val) const {
 
 bool PPC64::needsThunk(RelExpr expr, RelType type, const InputFile *file,
                        uint64_t branchAddr, const Symbol &s, int64_t a) const {
-  if (type != R_PPC64_REL14 && type != R_PPC64_REL24)
+  if (type != R_PPC64_REL14 && type != R_PPC64_REL24 &&
+      type != R_PPC64_REL24_NOTOC)
     return false;
 
   // If a function is in the Plt it needs to be called with a call-stub.
   if (s.isInPlt())
+    return true;
+
+  // This check looks at the st_other bits of the callee with relocation
+  // R_PPC64_REL14 or R_PPC64_REL24. If the value is 1, then the callee
+  // clobbers the TOC and we need an R2 save stub.
+  if (type != R_PPC64_REL24_NOTOC && (s.stOther >> 5) == 1)
+    return true;
+
+  if (type == R_PPC64_REL24_NOTOC && (s.stOther >> 5) > 1)
     return true;
 
   // If a symbol is a weak undefined and we are compiling an executable
@@ -946,7 +1073,7 @@ bool PPC64::inBranchRange(RelType type, uint64_t src, uint64_t dst) const {
   int64_t offset = dst - src;
   if (type == R_PPC64_REL14)
     return isInt<16>(offset);
-  if (type == R_PPC64_REL24)
+  if (type == R_PPC64_REL24 || type == R_PPC64_REL24_NOTOC)
     return isInt<26>(offset);
   llvm_unreachable("unsupported relocation type used in branch");
 }
@@ -1110,10 +1237,7 @@ bool PPC64::adjustPrologueForCrossSplitStack(uint8_t *loc, uint8_t *end,
   return true;
 }
 
-TargetInfo *getPPC64TargetInfo() {
+TargetInfo *elf::getPPC64TargetInfo() {
   static PPC64 target;
   return &target;
 }
-
-} // namespace elf
-} // namespace lld

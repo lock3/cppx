@@ -235,9 +235,9 @@ struct StackAdjustingInsts {
       if (HasFP && !Info.BeforeFPSet)
         return;
 
-      CFAOffset -= Info.SPAdjust;
+      CFAOffset += Info.SPAdjust;
       unsigned CFIIndex = MF.addFrameInst(
-          MCCFIInstruction::createDefCfaOffset(nullptr, CFAOffset));
+          MCCFIInstruction::cfiDefCfaOffset(nullptr, CFAOffset));
       BuildMI(MBB, std::next(Info.I), dl,
               TII.get(TargetOpcode::CFI_INSTRUCTION))
               .addCFIIndex(CFIIndex)
@@ -593,9 +593,9 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF,
                          PushSize + FramePtrOffsetInPush,
                          MachineInstr::FrameSetup);
     if (FramePtrOffsetInPush + PushSize != 0) {
-      unsigned CFIIndex = MF.addFrameInst(MCCFIInstruction::createDefCfa(
+      unsigned CFIIndex = MF.addFrameInst(MCCFIInstruction::cfiDefCfa(
           nullptr, MRI->getDwarfRegNum(FramePtr, true),
-          -(FPCXTSaveSize + ArgRegsSaveSize - FramePtrOffsetInPush)));
+          FPCXTSaveSize + ArgRegsSaveSize - FramePtrOffsetInPush));
       BuildMI(MBB, AfterPush, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
           .addCFIIndex(CFIIndex)
           .setMIFlags(MachineInstr::FrameSetup);
@@ -2144,8 +2144,9 @@ void ARMFrameLowering::determineCalleeSaves(MachineFunction &MF,
         LLVM_DEBUG(dbgs() << "Reserving emergency spill slot\n");
         const TargetRegisterClass &RC = ARM::GPRRegClass;
         unsigned Size = TRI->getSpillSize(RC);
-        unsigned Align = TRI->getSpillAlignment(RC);
-        RS->addScavengingFrameIndex(MFI.CreateStackObject(Size, Align, false));
+        Align Alignment = TRI->getSpillAlign(RC);
+        RS->addScavengingFrameIndex(
+            MFI.CreateStackObject(Size, Alignment, false));
       }
     }
   }
@@ -2410,8 +2411,7 @@ void ARMFrameLowering::adjustForSegmentedStacks(
 
   // Emit the relevant DWARF information about the change in stack pointer as
   // well as where to find both r4 and r5 (the callee-save registers)
-  CFIIndex =
-      MF.addFrameInst(MCCFIInstruction::createDefCfaOffset(nullptr, -8));
+  CFIIndex = MF.addFrameInst(MCCFIInstruction::cfiDefCfaOffset(nullptr, 8));
   BuildMI(PrevStackMBB, DL, TII.get(TargetOpcode::CFI_INSTRUCTION))
       .addCFIIndex(CFIIndex);
   CFIIndex = MF.addFrameInst(MCCFIInstruction::createOffset(
@@ -2455,7 +2455,7 @@ void ARMFrameLowering::adjustForSegmentedStacks(
     ARMConstantPoolValue *NewCPV = ARMConstantPoolSymbol::Create(
         MF.getFunction().getContext(), "__STACK_LIMIT", PCLabelId, 0);
     MachineConstantPool *MCP = MF.getConstantPool();
-    unsigned CPI = MCP->getConstantPoolIndex(NewCPV, 4);
+    unsigned CPI = MCP->getConstantPoolIndex(NewCPV, Align(4));
 
     // ldr SR0, [pc, offset(STACK_LIMIT)]
     BuildMI(GetMBB, DL, TII.get(ARM::tLDRpci), ScratchReg0)
@@ -2553,8 +2553,7 @@ void ARMFrameLowering::adjustForSegmentedStacks(
 
   // Emit the DWARF info about the change in stack as well as where to find the
   // previous link register
-  CFIIndex =
-      MF.addFrameInst(MCCFIInstruction::createDefCfaOffset(nullptr, -12));
+  CFIIndex = MF.addFrameInst(MCCFIInstruction::cfiDefCfaOffset(nullptr, 12));
   BuildMI(AllocMBB, DL, TII.get(TargetOpcode::CFI_INSTRUCTION))
       .addCFIIndex(CFIIndex);
   CFIIndex = MF.addFrameInst(MCCFIInstruction::createOffset(
@@ -2616,7 +2615,7 @@ void ARMFrameLowering::adjustForSegmentedStacks(
   }
 
   // Update the CFA offset now that we've popped
-  CFIIndex = MF.addFrameInst(MCCFIInstruction::createDefCfaOffset(nullptr, 0));
+  CFIIndex = MF.addFrameInst(MCCFIInstruction::cfiDefCfaOffset(nullptr, 0));
   BuildMI(AllocMBB, DL, TII.get(TargetOpcode::CFI_INSTRUCTION))
       .addCFIIndex(CFIIndex);
 
@@ -2640,7 +2639,7 @@ void ARMFrameLowering::adjustForSegmentedStacks(
   }
 
   // Update the CFA offset now that we've popped
-  CFIIndex = MF.addFrameInst(MCCFIInstruction::createDefCfaOffset(nullptr, 0));
+  CFIIndex = MF.addFrameInst(MCCFIInstruction::cfiDefCfaOffset(nullptr, 0));
   BuildMI(PostStackMBB, DL, TII.get(TargetOpcode::CFI_INSTRUCTION))
       .addCFIIndex(CFIIndex);
 

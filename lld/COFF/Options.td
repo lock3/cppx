@@ -16,6 +16,13 @@ multiclass B<string name, string help_on, string help_off> {
   def _no : F<name#":no">, HelpText<help_off>;
 }
 
+// Same as B<> above, but without help texts, for private undocumented
+// options.
+multiclass B_priv<string name> {
+  def "" : F<name>;
+  def _no : F<name#":no">;
+}
+
 def align   : P<"align", "Section alignment">;
 def aligncomm : P<"aligncomm", "Set common symbol alignment">;
 def alternatename : P<"alternatename", "Define weak alias">;
@@ -184,6 +191,8 @@ def help : F<"help">;
 def help_q : Flag<["/??", "-??", "/?", "-?"], "">, Alias<help>;
 
 // LLD extensions
+defm auto_import : B_priv<"auto-import">;
+defm runtime_pseudo_reloc : B_priv<"runtime-pseudo-reloc">;
 def end_lib : F<"end-lib">,
   HelpText<"Ends group of objects treated as if they were in a library">;
 def exclude_all_symbols : F<"exclude-all-symbols">;
@@ -195,6 +204,7 @@ def include_optional : Joined<["/", "-", "/?", "-?"], "includeoptional:">,
     HelpText<"Add symbol as undefined, but allow it to remain undefined">;
 def kill_at : F<"kill-at">;
 def lldmingw : F<"lldmingw">;
+def noseh : F<"noseh">;
 def output_def : Joined<["/", "-", "/?", "-?"], "output-def:">;
 def pdb_source_path : P<"pdbsourcepath",
     "Base path used to make relative source file path absolute in PDB">;
@@ -225,6 +235,17 @@ def dash_dash_version : Flag<["--"], "version">,
 def threads
     : P<"threads", "Number of threads. '1' disables multi-threading. By "
                    "default all available hardware threads are used">;
+def call_graph_ordering_file: P<
+    "call-graph-ordering-file", 
+    "Layout sections to optimize the given callgraph">;
+defm call_graph_profile_sort: B<
+    "call-graph-profile-sort",
+    "Reorder sections with call graph profile (default)",
+    "Do not reorder sections with call graph profile">;
+def print_symbol_order: P<
+    "print-symbol-order",
+    "Print a symbol order specified by /call-graph-ordering-file and "
+    "/call-graph-profile-sort into the specified file">;
 
 // Flags for debugging
 def lldmap : F<"lldmap">;

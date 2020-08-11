@@ -27,17 +27,20 @@ void UnusedRaiiCheck::registerMatchers(MatchFinder *Finder) {
   // Look for temporaries that are constructed in-place and immediately
   // destroyed. Look for temporaries created by a functional cast but not for
   // those returned from a call.
-  auto BindTemp =
-      cxxBindTemporaryExpr(unless(has(ignoringParenImpCasts(callExpr()))))
-          .bind("temp");
+  auto BindTemp = cxxBindTemporaryExpr(
+                      unless(has(ignoringParenImpCasts(callExpr()))),
+                      unless(has(ignoringParenImpCasts(objcMessageExpr()))))
+                      .bind("temp");
   Finder->addMatcher(
-      exprWithCleanups(unless(isInTemplateInstantiation()),
-                       hasParent(compoundStmt().bind("compound")),
-                       hasType(cxxRecordDecl(hasNonTrivialDestructor())),
-                       anyOf(has(ignoringParenImpCasts(BindTemp)),
-                             has(ignoringParenImpCasts(cxxFunctionalCastExpr(
-                                 has(ignoringParenImpCasts(BindTemp)))))))
-          .bind("expr"),
+      traverse(ast_type_traits::TK_AsIs,
+               exprWithCleanups(
+                   unless(isInTemplateInstantiation()),
+                   hasParent(compoundStmt().bind("compound")),
+                   hasType(cxxRecordDecl(hasNonTrivialDestructor())),
+                   anyOf(has(ignoringParenImpCasts(BindTemp)),
+                         has(ignoringParenImpCasts(cxxFunctionalCastExpr(
+                             has(ignoringParenImpCasts(BindTemp)))))))
+                   .bind("expr")),
       this);
 }
 
@@ -77,6 +80,7 @@ void UnusedRaiiCheck::check(const MatchFinder::MatchResult &Result) {
   auto Matches =
       match(expr(hasDescendant(typeLoc().bind("t"))), *E, *Result.Context);
   const auto *TL = selectFirst<TypeLoc>("t", Matches);
+  assert(TL);
   D << FixItHint::CreateInsertion(
       Lexer::getLocForEndOfToken(TL->getEndLoc(), 0, *Result.SourceManager,
                                  getLangOpts()),

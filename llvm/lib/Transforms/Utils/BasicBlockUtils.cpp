@@ -315,6 +315,31 @@ bool llvm::MergeBlockIntoPredecessor(BasicBlock *BB, DomTreeUpdater *DTU,
   return true;
 }
 
+bool llvm::MergeBlockSuccessorsIntoGivenBlocks(
+    SmallPtrSetImpl<BasicBlock *> &MergeBlocks, Loop *L, DomTreeUpdater *DTU,
+    LoopInfo *LI) {
+  assert(!MergeBlocks.empty() && "MergeBlocks should not be empty");
+
+  bool BlocksHaveBeenMerged = false;
+  while (!MergeBlocks.empty()) {
+    BasicBlock *BB = *MergeBlocks.begin();
+    BasicBlock *Dest = BB->getSingleSuccessor();
+    if (Dest && (!L || L->contains(Dest))) {
+      BasicBlock *Fold = Dest->getUniquePredecessor();
+      (void)Fold;
+      if (MergeBlockIntoPredecessor(Dest, DTU, LI)) {
+        assert(Fold == BB &&
+               "Expecting BB to be unique predecessor of the Dest block");
+        MergeBlocks.erase(Dest);
+        BlocksHaveBeenMerged = true;
+      } else
+        MergeBlocks.erase(BB);
+    } else
+      MergeBlocks.erase(BB);
+  }
+  return BlocksHaveBeenMerged;
+}
+
 /// Remove redundant instructions within sequences of consecutive dbg.value
 /// instructions. This is done using a backward scan to keep the last dbg.value
 /// describing a specific variable/fragment.
@@ -733,12 +758,22 @@ BasicBlock *llvm::SplitBlockPredecessors(BasicBlock *BB,
 
   // The new block unconditionally branches to the old block.
   BranchInst *BI = BranchInst::Create(BB, NewBB);
+
+  Loop *L = nullptr;
+  BasicBlock *OldLatch = nullptr;
   // Splitting the predecessors of a loop header creates a preheader block.
-  if (LI && LI->isLoopHeader(BB))
+  if (LI && LI->isLoopHeader(BB)) {
+    L = LI->getLoopFor(BB);
     // Using the loop start line number prevents debuggers stepping into the
     // loop body for this instruction.
-    BI->setDebugLoc(LI->getLoopFor(BB)->getStartLoc());
-  else
+    BI->setDebugLoc(L->getStartLoc());
+
+    // If BB is the header of the Loop, it is possible that the loop is
+    // modified, such that the current latch does not remain the latch of the
+    // loop. If that is the case, the loop metadata from the current latch needs
+    // to be applied to the new latch.
+    OldLatch = L->getLoopLatch();
+  } else
     BI->setDebugLoc(BB->getFirstNonPHIOrDbg()->getDebugLoc());
 
   // Move the edges from Preds to point to NewBB instead of BB.
@@ -771,6 +806,15 @@ BasicBlock *llvm::SplitBlockPredecessors(BasicBlock *BB,
   if (!Preds.empty()) {
     // Update the PHI nodes in BB with the values coming from NewBB.
     UpdatePHINodes(BB, NewBB, Preds, BI, HasLoopExit);
+  }
+
+  if (OldLatch) {
+    BasicBlock *NewLatch = L->getLoopLatch();
+    if (NewLatch != OldLatch) {
+      MDNode *MD = OldLatch->getTerminator()->getMetadata("llvm.loop");
+      NewLatch->getTerminator()->setMetadata("llvm.loop", MD);
+      OldLatch->getTerminator()->setMetadata("llvm.loop", nullptr);
+    }
   }
 
   return NewBB;

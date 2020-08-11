@@ -69,7 +69,7 @@ class X86InterleavedAccessGroup {
 
   /// Breaks down a vector \p 'Inst' of N elements into \p NumSubVectors
   /// sub vectors of type \p T. Returns the sub-vectors in \p DecomposedVectors.
-  void decompose(Instruction *Inst, unsigned NumSubVectors, VectorType *T,
+  void decompose(Instruction *Inst, unsigned NumSubVectors, FixedVectorType *T,
                  SmallVectorImpl<Instruction *> &DecomposedVectors);
 
   /// Performs matrix transposition on a 4x4 matrix \p InputVectors and
@@ -150,7 +150,7 @@ bool X86InterleavedAccessGroup::isSupported() const {
   // We support shuffle represents stride 4 for byte type with size of
   // WideInstSize.
   if (ShuffleElemSize == 64 && WideInstSize == 1024 && Factor == 4)
-     return true;
+    return true;
 
   if (ShuffleElemSize == 8 && isa<StoreInst>(Inst) && Factor == 4 &&
       (WideInstSize == 256 || WideInstSize == 512 || WideInstSize == 1024 ||
@@ -165,7 +165,7 @@ bool X86InterleavedAccessGroup::isSupported() const {
 }
 
 void X86InterleavedAccessGroup::decompose(
-    Instruction *VecInst, unsigned NumSubVectors, VectorType *SubVecTy,
+    Instruction *VecInst, unsigned NumSubVectors, FixedVectorType *SubVecTy,
     SmallVectorImpl<Instruction *> &DecomposedVectors) {
   assert((isa<LoadInst>(VecInst) || isa<ShuffleVectorInst>(VecInst)) &&
          "Expected Load or Shuffle");
@@ -201,7 +201,7 @@ void X86InterleavedAccessGroup::decompose(
   // [0,1...,VF/2-1,VF/2+VF,VF/2+VF+1,...,2VF-1]
   unsigned VecLength = DL.getTypeSizeInBits(VecWidth);
   if (VecLength == 768 || VecLength == 1536) {
-    VecBaseTy = VectorType::get(Type::getInt8Ty(LI->getContext()), 16);
+    VecBaseTy = FixedVectorType::get(Type::getInt8Ty(LI->getContext()), 16);
     VecBasePtrTy = VecBaseTy->getPointerTo(LI->getPointerAddressSpace());
     VecBasePtr = Builder.CreateBitCast(LI->getPointerOperand(), VecBasePtrTy);
     NumLoads = NumSubVectors * (VecLength / 384);
@@ -211,13 +211,20 @@ void X86InterleavedAccessGroup::decompose(
     VecBasePtr = Builder.CreateBitCast(LI->getPointerOperand(), VecBasePtrTy);
   }
   // Generate N loads of T type.
+  assert(VecBaseTy->getPrimitiveSizeInBits().isByteSized() &&
+         "VecBaseTy's size must be a multiple of 8");
+  const Align FirstAlignment = LI->getAlign();
+  const Align SubsequentAlignment = commonAlignment(
+      FirstAlignment, VecBaseTy->getPrimitiveSizeInBits().getFixedSize() / 8);
+  Align Alignment = FirstAlignment;
   for (unsigned i = 0; i < NumLoads; i++) {
     // TODO: Support inbounds GEP.
     Value *NewBasePtr =
         Builder.CreateGEP(VecBaseTy, VecBasePtr, Builder.getInt32(i));
     Instruction *NewLoad =
-        Builder.CreateAlignedLoad(VecBaseTy, NewBasePtr, LI->getAlign());
+        Builder.CreateAlignedLoad(VecBaseTy, NewBasePtr, Alignment);
     DecomposedVectors.push_back(NewLoad);
+    Alignment = SubsequentAlignment;
   }
 }
 
@@ -255,7 +262,7 @@ static void genShuffleBland(MVT VT, ArrayRef<int> Mask,
                             SmallVectorImpl<int> &Out, int LowOffset,
                             int HighOffset) {
   assert(VT.getSizeInBits() >= 256 &&
-    "This function doesn't accept width smaller then 256");
+         "This function doesn't accept width smaller then 256");
   unsigned NumOfElm = VT.getVectorNumElements();
   for (unsigned i = 0; i < Mask.size(); i++)
     Out.push_back(Mask[i] + LowOffset);
@@ -289,7 +296,7 @@ static void reorderSubVector(MVT VT, SmallVectorImpl<Value *> &TransposedMatrix,
   if (VecElems == 16) {
     for (unsigned i = 0; i < Stride; i++)
       TransposedMatrix[i] = Builder.CreateShuffleVector(
-        Vec[i], UndefValue::get(Vec[i]->getType()), VPShuf);
+          Vec[i], UndefValue::get(Vec[i]->getType()), VPShuf);
     return;
   }
 
@@ -298,20 +305,19 @@ static void reorderSubVector(MVT VT, SmallVectorImpl<Value *> &TransposedMatrix,
 
   for (unsigned i = 0; i < (VecElems / 16) * Stride; i += 2) {
     genShuffleBland(VT, VPShuf, OptimizeShuf, (i / Stride) * 16,
-      (i + 1) / Stride * 16);
+                    (i + 1) / Stride * 16);
     Temp[i / 2] = Builder.CreateShuffleVector(
-      Vec[i % Stride], Vec[(i + 1) % Stride], OptimizeShuf);
+        Vec[i % Stride], Vec[(i + 1) % Stride], OptimizeShuf);
     OptimizeShuf.clear();
   }
 
   if (VecElems == 32) {
     std::copy(Temp, Temp + Stride, TransposedMatrix.begin());
     return;
-  }
-  else
+  } else
     for (unsigned i = 0; i < Stride; i++)
       TransposedMatrix[i] =
-      Builder.CreateShuffleVector(Temp[2 * i], Temp[2 * i + 1], Concat);
+          Builder.CreateShuffleVector(Temp[2 * i], Temp[2 * i + 1], Concat);
 }
 
 void X86InterleavedAccessGroup::interleave8bitStride4VF8(
@@ -682,7 +688,7 @@ void X86InterleavedAccessGroup::interleave8bitStride3(
 
   unsigned NumOfElm = VT.getVectorNumElements();
   group2Shuffle(VT, GroupSize, VPShuf);
-  reorderSubVector(VT, TransposedMatrix, Vec, VPShuf, NumOfElm,3, Builder);
+  reorderSubVector(VT, TransposedMatrix, Vec, VPShuf, NumOfElm, 3, Builder);
 }
 
 void X86InterleavedAccessGroup::transpose_4x4(
@@ -721,13 +727,13 @@ void X86InterleavedAccessGroup::transpose_4x4(
 bool X86InterleavedAccessGroup::lowerIntoOptimizedSequence() {
   SmallVector<Instruction *, 4> DecomposedVectors;
   SmallVector<Value *, 4> TransposedVectors;
-  VectorType *ShuffleTy = Shuffles[0]->getType();
+  auto *ShuffleTy = cast<FixedVectorType>(Shuffles[0]->getType());
 
   if (isa<LoadInst>(Inst)) {
     // Try to generate target-sized register(/instruction).
     decompose(Inst, Factor, ShuffleTy, DecomposedVectors);
 
-    auto *ShuffleEltTy = cast<VectorType>(Inst->getType());
+    auto *ShuffleEltTy = cast<FixedVectorType>(Inst->getType());
     unsigned NumSubVecElems = ShuffleEltTy->getNumElements() / Factor;
     // Perform matrix-transposition in order to compute interleaved
     // results by generating some sort of (optimized) target-specific
@@ -762,7 +768,8 @@ bool X86InterleavedAccessGroup::lowerIntoOptimizedSequence() {
   // Lower the interleaved stores:
   //   1. Decompose the interleaved wide shuffle into individual shuffle
   //   vectors.
-  decompose(Shuffles[0], Factor, VectorType::get(ShuffleEltTy, NumSubVecElems),
+  decompose(Shuffles[0], Factor,
+            FixedVectorType::get(ShuffleEltTy, NumSubVecElems),
             DecomposedVectors);
 
   //   2. Transpose the interleaved-vectors into vectors of contiguous
@@ -825,7 +832,8 @@ bool X86TargetLowering::lowerInterleavedStore(StoreInst *SI,
   assert(Factor >= 2 && Factor <= getMaxSupportedInterleaveFactor() &&
          "Invalid interleave factor");
 
-  assert(SVI->getType()->getNumElements() % Factor == 0 &&
+  assert(cast<FixedVectorType>(SVI->getType())->getNumElements() % Factor ==
+             0 &&
          "Invalid interleaved store");
 
   // Holds the indices of SVI that correspond to the starting index of each

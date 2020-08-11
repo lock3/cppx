@@ -197,8 +197,8 @@ Parser::TPResult Parser::TryConsumeDeclarationSpecifier() {
       return TPResult::Error;
     if (Tok.is(tok::annot_cxxscope))
       ConsumeAnnotationToken();
-    if (Tok.is(tok::identifier))
-      ConsumeToken();
+    if (isIdentifier())
+      ConsumeIdentifier();
     else if (Tok.is(tok::annot_template_id))
       ConsumeAnnotationToken();
     else
@@ -431,6 +431,38 @@ struct Parser::ConditionDeclarationOrInitStatementState {
     return ConditionOrInitStatement::Error;
   }
 };
+
+bool Parser::isEnumBase(bool AllowSemi) {
+  assert(Tok.is(tok::colon) && "should be looking at the ':'");
+
+  RevertingTentativeParsingAction PA(*this);
+  // ':'
+  ConsumeToken();
+
+  // type-specifier-seq
+  bool InvalidAsDeclSpec = false;
+  // FIXME: We could disallow non-type decl-specifiers here, but it makes no
+  // difference: those specifiers are ill-formed regardless of the
+  // interpretation.
+  TPResult R = isCXXDeclarationSpecifier(/*BracedCastResult*/ TPResult::True,
+                                         &InvalidAsDeclSpec);
+  if (R == TPResult::Ambiguous) {
+    // We either have a decl-specifier followed by '(' or an undeclared
+    // identifier.
+    if (TryConsumeDeclarationSpecifier() == TPResult::Error)
+      return true;
+
+    // If we get to the end of the enum-base, we hit either a '{' or a ';'.
+    // Don't bother checking the enumerator-list.
+    if (Tok.is(tok::l_brace) || (AllowSemi && Tok.is(tok::semi)))
+      return true;
+
+    // A second decl-specifier unambiguously indicatges an enum-base.
+    R = isCXXDeclarationSpecifier(TPResult::True, &InvalidAsDeclSpec);
+  }
+
+  return R != TPResult::False;
+}
 
 /// Disambiguates between a declaration in a condition, a
 /// simple-declaration in an init-statement, and an expression for
@@ -890,7 +922,7 @@ Parser::TPResult Parser::TryParseOperatorId() {
     } while (isTokenStringLiteral());
 
     if (!FoundUDSuffix) {
-      if (Tok.is(tok::identifier))
+      if (isIdentifier())
         ConsumeToken();
       else
         return TPResult::Error;
@@ -983,8 +1015,8 @@ Parser::TPResult Parser::TryParseDeclarator(bool mayBeAbstract,
   if (Tok.is(tok::ellipsis))
     ConsumeToken();
 
-  if ((Tok.isOneOf(tok::identifier, tok::kw_operator) ||
-       (Tok.is(tok::annot_cxxscope) && (NextToken().is(tok::identifier) ||
+  if (((isIdentifier() || Tok.is(tok::kw_operator)) ||
+       (Tok.is(tok::annot_cxxscope) && (NextToken().isIdentifier() ||
                                         NextToken().is(tok::kw_operator)))) &&
       mayHaveIdentifier) {
     // declarator-id
@@ -995,14 +1027,14 @@ Parser::TPResult Parser::TryParseDeclarator(bool mayBeAbstract,
       if (SS.isInvalid())
         return TPResult::Error;
       ConsumeAnnotationToken();
-    } else if (Tok.is(tok::identifier)) {
+    } else if (isIdentifier()) {
       TentativelyDeclaredIdentifiers.push_back(Tok.getIdentifierInfo());
     }
     if (Tok.is(tok::kw_operator)) {
       if (TryParseOperatorId() == TPResult::Error)
         return TPResult::Error;
     } else
-      ConsumeToken();
+      ConsumeIdentifier();
   } else if (Tok.is(tok::l_paren)) {
     ConsumeParen();
     if (mayBeAbstract &&
@@ -1071,133 +1103,6 @@ Parser::TPResult Parser::TryParseDeclarator(bool mayBeAbstract,
   return TPResult::Ambiguous;
 }
 
-Parser::TPResult
-Parser::isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind) {
-  switch (Kind) {
-  // Obviously starts an expression.
-  case tok::numeric_constant:
-  case tok::char_constant:
-  case tok::wide_char_constant:
-  case tok::utf8_char_constant:
-  case tok::utf16_char_constant:
-  case tok::utf32_char_constant:
-  case tok::string_literal:
-  case tok::wide_string_literal:
-  case tok::utf8_string_literal:
-  case tok::utf16_string_literal:
-  case tok::utf32_string_literal:
-  case tok::l_square:
-  case tok::l_paren:
-  case tok::amp:
-  case tok::ampamp:
-  case tok::star:
-  case tok::plus:
-  case tok::plusplus:
-  case tok::minus:
-  case tok::minusminus:
-  case tok::tilde:
-  case tok::exclaim:
-  case tok::kw_sizeof:
-  case tok::kw___func__:
-  case tok::kw_const_cast:
-  case tok::kw_delete:
-  case tok::kw_dynamic_cast:
-  case tok::kw_false:
-  case tok::kw_new:
-  case tok::kw_operator:
-  case tok::kw_reinterpret_cast:
-  case tok::kw_static_cast:
-  case tok::kw_this:
-  case tok::kw_throw:
-  case tok::kw_true:
-  case tok::kw_typeid:
-  case tok::kw_alignof:
-  case tok::kw_noexcept:
-  case tok::kw_nullptr:
-  case tok::kw__Alignof:
-  case tok::kw___null:
-  case tok::kw___alignof:
-  case tok::kw___builtin_choose_expr:
-  case tok::kw___builtin_offsetof:
-  case tok::kw___builtin_va_arg:
-  case tok::kw___imag:
-  case tok::kw___real:
-  case tok::kw___FUNCTION__:
-  case tok::kw___FUNCDNAME__:
-  case tok::kw___FUNCSIG__:
-  case tok::kw_L__FUNCTION__:
-  case tok::kw_L__FUNCSIG__:
-  case tok::kw___PRETTY_FUNCTION__:
-  case tok::kw___uuidof:
-  case tok::kw___builtin_unique_stable_name:
-  case tok::kw___compiler_error:
-#define TYPE_TRAIT(N,Spelling,K) \
-  case tok::kw_##Spelling:
-#include "clang/Basic/TokenKinds.def"
-    return TPResult::True;
-
-  // Obviously starts a type-specifier-seq:
-  case tok::kw_char:
-  case tok::kw_const:
-  case tok::kw_double:
-  case tok::kw__Float16:
-  case tok::kw___float128:
-  case tok::kw_enum:
-  case tok::kw_half:
-  case tok::kw_float:
-  case tok::kw_int:
-  case tok::kw__ExtInt:
-  case tok::kw_long:
-  case tok::kw___int64:
-  case tok::kw___int128:
-  case tok::kw_restrict:
-  case tok::kw_short:
-  case tok::kw_signed:
-  case tok::kw_struct:
-  case tok::kw_union:
-  case tok::kw_unsigned:
-  case tok::kw_void:
-  case tok::kw_volatile:
-  case tok::kw__Bool:
-  case tok::kw__Complex:
-  case tok::kw_class:
-  case tok::kw_typename:
-  case tok::kw_wchar_t:
-  case tok::kw_char8_t:
-  case tok::kw_char16_t:
-  case tok::kw_char32_t:
-  case tok::kw__Decimal32:
-  case tok::kw__Decimal64:
-  case tok::kw__Decimal128:
-  case tok::kw___interface:
-  case tok::kw___thread:
-  case tok::kw_thread_local:
-  case tok::kw__Thread_local:
-  case tok::kw_typeof:
-  case tok::kw___underlying_type:
-  case tok::kw___cdecl:
-  case tok::kw___stdcall:
-  case tok::kw___fastcall:
-  case tok::kw___thiscall:
-  case tok::kw___regcall:
-  case tok::kw___vectorcall:
-  case tok::kw___unaligned:
-  case tok::kw___vector:
-  case tok::kw___pixel:
-  case tok::kw___bool:
-  case tok::kw__Atomic:
-#define GENERIC_IMAGE_TYPE(ImgType, Id) case tok::kw_##ImgType##_t:
-#include "clang/Basic/OpenCLImageTypes.def"
-  case tok::kw___unknown_anytype:
-    return TPResult::False;
-
-  default:
-    break;
-  }
-
-  return TPResult::Ambiguous;
-}
-
 bool Parser::isTentativelyDeclared(IdentifierInfo *II) {
   return std::find(TentativelyDeclaredIdentifiers.begin(),
                    TentativelyDeclaredIdentifiers.end(), II)
@@ -1209,8 +1114,9 @@ class TentativeParseCCC final : public CorrectionCandidateCallback {
 public:
   TentativeParseCCC(const Token &Next) {
     WantRemainingKeywords = false;
-    WantTypeSpecifiers = Next.isOneOf(tok::l_paren, tok::r_paren, tok::greater,
-                                      tok::l_brace, tok::identifier);
+    WantTypeSpecifiers =
+        Next.isOneOf(tok::l_paren, tok::r_paren, tok::greater, tok::l_brace,
+                     tok::identifier, tok::comma);
   }
 
   bool ValidateCandidate(const TypoCorrection &Candidate) override {
@@ -1357,7 +1263,8 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
             tok::identifier);
   };
   switch (Tok.getKind()) {
-  case tok::identifier: {
+  case tok::identifier:
+  case tok::annot_identifier_splice: {
     // Check for need to substitute AltiVec __vector keyword
     // for "vector" identifier.
     if (TryAltiVecVectorToken())
@@ -1365,7 +1272,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
 
     const Token &Next = NextToken();
     // In 'foo bar', 'foo' is always a type name outside of Objective-C.
-    if (!getLangOpts().ObjC && Next.is(tok::identifier))
+    if (!getLangOpts().ObjC && Next.isIdentifier())
       return TPResult::True;
 
     if (Next.isNot(tok::coloncolon) && Next.isNot(tok::less)) {
@@ -1387,7 +1294,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
         if (getLangOpts().CPlusPlus17) {
           if (TryAnnotateTypeOrScopeToken())
             return TPResult::Error;
-          if (Tok.isNot(tok::identifier))
+          if (!isIdentifier())
             break;
         }
 
@@ -1399,7 +1306,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
       case ANK_Success:
         break;
       }
-      assert(Tok.isNot(tok::identifier) &&
+      assert(!isIdentifier() &&
              "TryAnnotateName succeeded without producing an annotation");
     } else {
       // This might possibly be a type with a dependent scope specifier and
@@ -1411,7 +1318,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
       // If annotation failed, assume it's a non-type.
       // FIXME: If this happens due to an undeclared identifier, treat it as
       // ambiguous.
-      if (Tok.is(tok::identifier))
+      if (isIdentifier())
         return TPResult::False;
     }
 
@@ -1595,7 +1502,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
       }
       // If the next token is an identifier or a type qualifier, then this
       // can't possibly be a valid expression either.
-      if (Tok.is(tok::annot_cxxscope) && NextToken().is(tok::identifier)) {
+      if (Tok.is(tok::annot_cxxscope) && NextToken().isIdentifier()) {
         CXXScopeSpec SS;
         Actions.RestoreNestedNameSpecifierAnnotation(Tok.getAnnotationValue(),
                                                      Tok.getAnnotationRange(),
@@ -1603,14 +1510,14 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
         if (SS.getScopeRep() && SS.getScopeRep()->isDependent()) {
           RevertingTentativeParsingAction PA(*this);
           ConsumeAnnotationToken();
-          ConsumeToken();
-          bool isIdentifier = Tok.is(tok::identifier);
+          ConsumeIdentifier();
+          bool isIdent = isIdentifier();
           TPResult TPR = TPResult::False;
-          if (!isIdentifier)
+          if (!isIdent)
             TPR = isCXXDeclarationSpecifier(BracedCastResult,
                                             InvalidAsDeclSpec);
 
-          if (isIdentifier ||
+          if (isIdent ||
               TPR == TPResult::True || TPR == TPResult::Error)
             return TPResult::Error;
 
@@ -1645,7 +1552,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
             if (getLangOpts().CPlusPlus17) {
               if (TryAnnotateTypeOrScopeToken())
                 return TPResult::Error;
-              if (Tok.isNot(tok::identifier))
+              if (!isIdentifier())
                 break;
             }
 
@@ -1732,6 +1639,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw_half:
   case tok::kw_float:
   case tok::kw_double:
+  case tok::kw___bf16:
   case tok::kw__Float16:
   case tok::kw___float128:
   case tok::kw_void:
@@ -1845,6 +1753,7 @@ bool Parser::isCXXDeclarationSpecifierAType() {
   case tok::kw_half:
   case tok::kw_float:
   case tok::kw_double:
+  case tok::kw___bf16:
   case tok::kw__Float16:
   case tok::kw___float128:
   case tok::kw_void:
@@ -1889,7 +1798,7 @@ Parser::TPResult Parser::TryParseProtocolQualifiers() {
   assert(Tok.is(tok::less) && "Expected '<' for qualifier list");
   ConsumeToken();
   do {
-    if (Tok.isNot(tok::identifier))
+    if (!isIdentifier())
       return TPResult::Error;
     ConsumeToken();
 
@@ -2026,7 +1935,7 @@ Parser::TryParseParameterDeclarationClause(bool *InvalidAsDeclaration,
         return TPResult::Error;
 
       // If we see a parameter name, this can't be a template argument.
-      if (SeenType && Tok.is(tok::identifier))
+      if (SeenType && isIdentifier())
         return TPResult::True;
 
       TPR = isCXXDeclarationSpecifier(TPResult::False,
@@ -2251,9 +2160,9 @@ Parser::TPResult Parser::isExplicitBool() {
     return TPResult::Ambiguous;
 
   // If this can't be a constructor name, it can only be explicit(bool).
-  if (Tok.isNot(tok::identifier) && Tok.isNot(tok::annot_template_id))
+  if (!isIdentifier() && Tok.isNot(tok::annot_template_id))
     return TPResult::True;
-  if (!Actions.isCurrentClassName(Tok.is(tok::identifier)
+  if (!Actions.isCurrentClassName(isIdentifier()
                                       ? *Tok.getIdentifierInfo()
                                       : *takeTemplateIdAnnotation(Tok)->Name,
                                   getCurScope(), &SS))

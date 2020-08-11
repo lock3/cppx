@@ -25,12 +25,12 @@ define void @fidififiddddff(void (float, i32, double, i32, float, i32, float, i3
 ; CHECK-V8-LE-NEXT:    push.w {r4, r5, r6, r7, r8, r9, r10, r11}
 ; CHECK-V8-LE-NEXT:    bic r12, r12, #1
 ; CHECK-V8-LE-NEXT:    sub sp, #136
+; CHECK-V8-LE-NEXT:    vmov r4, s5
 ; CHECK-V8-LE-NEXT:    vmov r11, s0
 ; CHECK-V8-LE-NEXT:    vmov r9, r10, d1
 ; CHECK-V8-LE-NEXT:    vmov r8, s1
 ; CHECK-V8-LE-NEXT:    vmov r7, s4
 ; CHECK-V8-LE-NEXT:    vmov r5, r6, d3
-; CHECK-V8-LE-NEXT:    vmov r4, s5
 ; CHECK-V8-LE-NEXT:    vlstm sp
 ; CHECK-V8-LE-NEXT:    vmov s0, r11
 ; CHECK-V8-LE-NEXT:    vmov d1, r9, r10
@@ -65,12 +65,12 @@ define void @fidififiddddff(void (float, i32, double, i32, float, i32, float, i3
 ; CHECK-V8-BE-NEXT:    push.w {r4, r5, r6, r7, r8, r9, r10, r11}
 ; CHECK-V8-BE-NEXT:    bic r12, r12, #1
 ; CHECK-V8-BE-NEXT:    sub sp, #136
+; CHECK-V8-BE-NEXT:    vmov r4, s5
 ; CHECK-V8-BE-NEXT:    vmov r11, s0
 ; CHECK-V8-BE-NEXT:    vmov r9, r10, d1
 ; CHECK-V8-BE-NEXT:    vmov r8, s1
 ; CHECK-V8-BE-NEXT:    vmov r7, s4
 ; CHECK-V8-BE-NEXT:    vmov r5, r6, d3
-; CHECK-V8-BE-NEXT:    vmov r4, s5
 ; CHECK-V8-BE-NEXT:    vlstm sp
 ; CHECK-V8-BE-NEXT:    vmov s0, r11
 ; CHECK-V8-BE-NEXT:    vmov d1, r9, r10

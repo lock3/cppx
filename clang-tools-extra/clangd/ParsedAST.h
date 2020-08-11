@@ -33,6 +33,9 @@
 #include "clang/Tooling/CompilationDatabase.h"
 #include "clang/Tooling/Syntax/Tokens.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/None.h"
+#include "llvm/ADT/Optional.h"
+#include "llvm/ADT/StringRef.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -102,6 +105,10 @@ public:
   /// Returns the version of the ParseInputs this AST was built from.
   llvm::StringRef version() const { return Version; }
 
+  /// Returns the version of the ParseInputs used to build Preamble part of this
+  /// AST. Might be None if no Preamble is used.
+  llvm::Optional<llvm::StringRef> preambleVersion() const;
+
 private:
   ParsedAST(llvm::StringRef Version,
             std::shared_ptr<const PreambleData> Preamble,
@@ -124,7 +131,7 @@ private:
   std::unique_ptr<FrontendAction> Action;
   /// Tokens recorded after the preamble finished.
   ///   - Includes all spelled tokens for the main file.
-  ///   - Includes expanded tokens produced **after** preabmle.
+  ///   - Includes expanded tokens produced **after** preamble.
   ///   - Does not have spelled or expanded tokens for files from preamble.
   syntax::TokenBuffer Tokens;
 

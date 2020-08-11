@@ -37,6 +37,7 @@
 #include "ExportTrie.h"
 #include "Symbols.h"
 
+#include "lld/Common/ErrorHandler.h"
 #include "lld/Common/Memory.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/BinaryFormat/MachO.h"
@@ -58,15 +59,16 @@ struct Edge {
 
 struct ExportInfo {
   uint64_t address;
+  uint8_t flags;
+  explicit ExportInfo(const Symbol &sym)
+      : address(sym.getVA()),
+        flags(sym.isWeakDef() ? EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION : 0) {}
   // TODO: Add proper support for re-exports & stub-and-resolver flags.
 };
 
 } // namespace
 
-namespace lld {
-namespace macho {
-
-struct TrieNode {
+struct macho::TrieNode {
   std::vector<Edge> edges;
   Optional<ExportInfo> info;
   // Estimated offset from the start of the serialized trie to the current node.
@@ -85,9 +87,8 @@ bool TrieNode::updateOffset(size_t &nextOffset) {
   // node.
   size_t nodeSize;
   if (info) {
-    uint64_t flags = 0;
     uint32_t terminalSize =
-        getULEB128Size(flags) + getULEB128Size(info->address);
+        getULEB128Size(info->flags) + getULEB128Size(info->address);
     // Overall node size so far is the uleb128 size of the length of the symbol
     // info + the symbol info itself.
     nodeSize = terminalSize + getULEB128Size(terminalSize);
@@ -112,11 +113,10 @@ void TrieNode::writeTo(uint8_t *buf) const {
   buf += offset;
   if (info) {
     // TrieNodes with Symbol info: size, flags address
-    uint64_t flags = 0; // TODO: emit proper flags
     uint32_t terminalSize =
-        getULEB128Size(flags) + getULEB128Size(info->address);
+        getULEB128Size(info->flags) + getULEB128Size(info->address);
     buf += encodeULEB128(terminalSize, buf);
-    buf += encodeULEB128(flags, buf);
+    buf += encodeULEB128(info->flags, buf);
     buf += encodeULEB128(info->address, buf);
   } else {
     // TrieNode with no Symbol info.
@@ -196,7 +196,7 @@ tailcall:
 
   if (isTerminal) {
     assert(j - i == 1); // no duplicate symbols
-    node->info = {pivotSymbol->getVA()};
+    node->info = ExportInfo(*pivotSymbol);
   } else {
     // This is the tail-call-optimized version of the following:
     // sortAndBuild(vec.slice(i, j - i), node, lastPos, pos + 1);
@@ -232,5 +232,54 @@ void TrieBuilder::writeTo(uint8_t *buf) const {
     node->writeTo(buf);
 }
 
-} // namespace macho
-} // namespace lld
+namespace {
+
+// Parse a serialized trie and invoke a callback for each entry.
+class TrieParser {
+public:
+  TrieParser(const uint8_t *buf, size_t size, const TrieEntryCallback &callback)
+      : start(buf), end(start + size), callback(callback) {}
+
+  void parse(const uint8_t *buf, const Twine &cumulativeString);
+
+  void parse() { parse(start, ""); }
+
+  const uint8_t *start;
+  const uint8_t *end;
+  const TrieEntryCallback &callback;
+};
+
+} // namespace
+
+void TrieParser::parse(const uint8_t *buf, const Twine &cumulativeString) {
+  if (buf >= end)
+    fatal("Node offset points outside export section");
+
+  unsigned ulebSize;
+  uint64_t terminalSize = decodeULEB128(buf, &ulebSize);
+  buf += ulebSize;
+  uint64_t flags = 0;
+  size_t offset;
+  if (terminalSize != 0) {
+    flags = decodeULEB128(buf, &ulebSize);
+    callback(cumulativeString, flags);
+  }
+  buf += terminalSize;
+  uint8_t numEdges = *buf++;
+  for (uint8_t i = 0; i < numEdges; ++i) {
+    const char *cbuf = reinterpret_cast<const char *>(buf);
+    StringRef substring = StringRef(cbuf, strnlen(cbuf, end - buf));
+    buf += substring.size() + 1;
+    offset = decodeULEB128(buf, &ulebSize);
+    buf += ulebSize;
+    parse(start + offset, cumulativeString + substring);
+  }
+}
+
+void macho::parseTrie(const uint8_t *buf, size_t size,
+                      const TrieEntryCallback &callback) {
+  if (size == 0)
+    return;
+
+  TrieParser(buf, size, callback).parse();
+}

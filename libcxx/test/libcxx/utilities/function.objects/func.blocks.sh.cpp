@@ -8,19 +8,20 @@
 
 // std::function support for the "blocks" extension
 
-// UNSUPPORTED: c++98, c++03
+// UNSUPPORTED: c++03
 
 // This test requires the Blocks runtime, which is (only?) available
 // on Darwin out-of-the-box.
 // REQUIRES: has-fblocks && darwin
 
-// FILE_DEPENDENCIES: %t.exe
 // RUN: %{build} -fblocks
 // RUN: %{run}
 
 #include <functional>
 #include <cstdlib>
 #include <cassert>
+
+#include <Block.h>
 
 #include "test_macros.h"
 #include "count_new.h"

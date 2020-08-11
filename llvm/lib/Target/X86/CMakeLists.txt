@@ -28,7 +28,6 @@ set(sources
   X86CallingConv.cpp
   X86CallLowering.cpp
   X86CmovConversion.cpp
-  X86CondBrFolding.cpp
   X86DomainReassignment.cpp
   X86DiscriminateMemOps.cpp
   X86ExpandPseudo.cpp
@@ -47,11 +46,13 @@ set(sources
   X86IndirectThunks.cpp
   X86InterleavedAccess.cpp
   X86InsertPrefetch.cpp
+  X86InstCombineIntrinsic.cpp
   X86InstrFMA3Info.cpp
   X86InstrFoldTables.cpp
   X86InstrInfo.cpp
   X86EvexToVex.cpp
   X86LegalizerInfo.cpp
+  X86LoadValueInjectionLoadHardening.cpp
   X86LoadValueInjectionRetHardening.cpp
   X86MCInstLower.cpp
   X86MachineFunctionInfo.cpp
@@ -64,6 +65,7 @@ set(sources
   X86SelectionDAGInfo.cpp
   X86ShuffleDecodeConstantPool.cpp
   X86SpeculativeLoadHardening.cpp
+  X86SpeculativeExecutionSideEffectSuppression.cpp
   X86Subtarget.cpp
   X86TargetMachine.cpp
   X86TargetObjectFile.cpp

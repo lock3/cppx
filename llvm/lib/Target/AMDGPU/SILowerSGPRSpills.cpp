@@ -26,6 +26,7 @@
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineOperand.h"
+#include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/CodeGen/VirtRegMap.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Target/TargetMachine.h"
@@ -211,8 +212,7 @@ bool SILowerSGPRSpills::spillCalleeSavedRegs(MachineFunction &MF) {
         const TargetRegisterClass *RC =
           TRI->getMinimalPhysRegClass(Reg, MVT::i32);
         int JunkFI = MFI.CreateStackObject(TRI->getSpillSize(*RC),
-                                           TRI->getSpillAlignment(*RC),
-                                           true);
+                                           TRI->getSpillAlign(*RC), true);
 
         CSI.push_back(CalleeSavedInfo(Reg, JunkFI));
       }
@@ -229,6 +229,58 @@ bool SILowerSGPRSpills::spillCalleeSavedRegs(MachineFunction &MF) {
   }
 
   return false;
+}
+
+// Find lowest available VGPR and use it as VGPR reserved for SGPR spills.
+static bool lowerShiftReservedVGPR(MachineFunction &MF,
+                                   const GCNSubtarget &ST) {
+  SIMachineFunctionInfo *FuncInfo = MF.getInfo<SIMachineFunctionInfo>();
+  const Register PreReservedVGPR = FuncInfo->VGPRReservedForSGPRSpill;
+  // Early out if pre-reservation of a VGPR for SGPR spilling is disabled.
+  if (!PreReservedVGPR)
+    return false;
+
+  // If there are no free lower VGPRs available, default to using the
+  // pre-reserved register instead.
+  Register LowestAvailableVGPR = PreReservedVGPR;
+
+  MachineRegisterInfo &MRI = MF.getRegInfo();
+  MachineFrameInfo &FrameInfo = MF.getFrameInfo();
+  ArrayRef<MCPhysReg> AllVGPR32s = ST.getRegisterInfo()->getAllVGPR32(MF);
+  for (MCPhysReg Reg : AllVGPR32s) {
+    if (MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg)) {
+      LowestAvailableVGPR = Reg;
+      break;
+    }
+  }
+
+  const MCPhysReg *CSRegs = MF.getRegInfo().getCalleeSavedRegs();
+  Optional<int> FI;
+  // Check if we are reserving a CSR. Create a stack object for a possible spill
+  // in the function prologue.
+  if (FuncInfo->isCalleeSavedReg(CSRegs, LowestAvailableVGPR))
+    FI = FrameInfo.CreateSpillStackObject(4, Align(4));
+
+  // Find saved info about the pre-reserved register.
+  const auto *ReservedVGPRInfoItr =
+      std::find_if(FuncInfo->getSGPRSpillVGPRs().begin(),
+                   FuncInfo->getSGPRSpillVGPRs().end(),
+                   [PreReservedVGPR](const auto &SpillRegInfo) {
+                     return SpillRegInfo.VGPR == PreReservedVGPR;
+                   });
+
+  assert(ReservedVGPRInfoItr != FuncInfo->getSGPRSpillVGPRs().end());
+  auto Index =
+      std::distance(FuncInfo->getSGPRSpillVGPRs().begin(), ReservedVGPRInfoItr);
+
+  FuncInfo->setSGPRSpillVGPRs(LowestAvailableVGPR, FI, Index);
+
+  for (MachineBasicBlock &MBB : MF) {
+    MBB.addLiveIn(LowestAvailableVGPR);
+    MBB.sortUniqueLiveIns();
+  }
+
+  return true;
 }
 
 bool SILowerSGPRSpills::runOnMachineFunction(MachineFunction &MF) {
@@ -260,6 +312,7 @@ bool SILowerSGPRSpills::runOnMachineFunction(MachineFunction &MF) {
   bool MadeChange = false;
 
   const bool SpillToAGPR = EnableSpillVGPRToAGPR && ST.hasMAIInsts();
+  std::unique_ptr<RegScavenger> RS;
 
   // TODO: CSR VGPRs will never be spilled to AGPRs. These can probably be
   // handled as SpilledToReg in regular PrologEpilogInserter.
@@ -270,6 +323,9 @@ bool SILowerSGPRSpills::runOnMachineFunction(MachineFunction &MF) {
     //
     // This operates under the assumption that only other SGPR spills are users
     // of the frame index.
+
+    lowerShiftReservedVGPR(MF, ST);
+
     for (MachineBasicBlock &MBB : MF) {
       MachineBasicBlock::iterator Next;
       for (auto I = MBB.begin(), E = MBB.end(); I != E; I = Next) {
@@ -286,7 +342,12 @@ bool SILowerSGPRSpills::runOnMachineFunction(MachineFunction &MF) {
               TII->getNamedOperand(MI, AMDGPU::OpName::vdata)->getReg();
           if (FuncInfo->allocateVGPRSpillToAGPR(MF, FI,
                                                 TRI->isAGPR(MRI, VReg))) {
-            TRI->eliminateFrameIndex(MI, 0, FIOp, nullptr);
+            if (!RS)
+              RS.reset(new RegScavenger());
+
+            // FIXME: change to enterBasicBlockEnd()
+            RS->enterBasicBlock(MBB);
+            TRI->eliminateFrameIndex(MI, 0, FIOp, RS.get());
             continue;
           }
         }
@@ -318,6 +379,8 @@ bool SILowerSGPRSpills::runOnMachineFunction(MachineFunction &MF) {
     }
 
     MadeChange = true;
+  } else if (FuncInfo->VGPRReservedForSGPRSpill) {
+    FuncInfo->removeVGPRForSGPRSpill(FuncInfo->VGPRReservedForSGPRSpill, MF);
   }
 
   SaveBlocks.clear();

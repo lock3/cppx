@@ -33,10 +33,7 @@ public:
 
   void Check() { Check(context_.globalScope()); }
   void Check(const ParamValue &, bool canBeAssumed);
-  void Check(const Bound &bound) {
-    CheckSpecExpr(
-        bound.GetExplicit(), evaluate::SpecificationExprContext::BOUND);
-  }
+  void Check(const Bound &bound) { CheckSpecExpr(bound.GetExplicit()); }
   void Check(const ShapeSpec &spec) {
     Check(spec.lbound());
     Check(spec.ubound());
@@ -47,33 +44,9 @@ public:
   void Check(const Scope &);
 
 private:
-  template <typename A>
-  void CheckSpecExpr(
-      const A &x, const evaluate::SpecificationExprContext specExprContext) {
-    if (symbolBeingChecked_ && IsSaved(*symbolBeingChecked_)) {
-      if (!evaluate::IsConstantExpr(x)) {
-        messages_.Say(
-            "Specification expression must be constant in declaration of '%s' with the SAVE attribute"_err_en_US,
-            symbolBeingChecked_->name());
-      }
-    } else {
-      evaluate::CheckSpecificationExpr(
-          x, messages_, DEREF(scope_), context_.intrinsics(), specExprContext);
-    }
-  }
-  template <typename A>
-  void CheckSpecExpr(const std::optional<A> &x,
-      const evaluate::SpecificationExprContext specExprContext) {
-    if (x) {
-      CheckSpecExpr(*x, specExprContext);
-    }
-  }
-  template <typename A>
-  void CheckSpecExpr(
-      A &x, const evaluate::SpecificationExprContext specExprContext) {
-    x = Fold(foldingContext_, std::move(x));
-    const A &constx{x};
-    CheckSpecExpr(constx, specExprContext);
+  template <typename A> void CheckSpecExpr(const A &x) {
+    evaluate::CheckSpecificationExpr(
+        x, messages_, DEREF(scope_), context_.intrinsics());
   }
   void CheckValue(const Symbol &, const DerivedTypeSpec *);
   void CheckVolatile(
@@ -113,7 +86,7 @@ private:
     return innermostSymbol_ && IsFunction(*innermostSymbol_);
   }
   template <typename... A>
-  void SayWithDeclaration(const Symbol &symbol, A &&... x) {
+  void SayWithDeclaration(const Symbol &symbol, A &&...x) {
     if (parser::Message * msg{messages_.Say(std::forward<A>(x)...)}) {
       if (messages_.at().begin() != symbol.name().begin()) {
         evaluate::AttachDeclaration(*msg, symbol);
@@ -129,7 +102,6 @@ private:
   // This symbol is the one attached to the innermost enclosing scope
   // that has a symbol.
   const Symbol *innermostSymbol_{nullptr};
-  const Symbol *symbolBeingChecked_{nullptr};
 };
 
 void CheckHelper::Check(const ParamValue &value, bool canBeAssumed) {
@@ -141,8 +113,7 @@ void CheckHelper::Check(const ParamValue &value, bool canBeAssumed) {
           " external function result"_err_en_US);
     }
   } else {
-    CheckSpecExpr(
-        value.GetExplicit(), evaluate::SpecificationExprContext::TYPE_PARAM);
+    CheckSpecExpr(value.GetExplicit());
   }
 }
 
@@ -293,6 +264,23 @@ void CheckHelper::Check(const Symbol &symbol) {
       messages_.Say(
           "A dummy argument may not have the SAVE attribute"_err_en_US);
     }
+  } else if (IsFunctionResult(symbol)) {
+    if (IsSaved(symbol)) {
+      messages_.Say(
+          "A function result may not have the SAVE attribute"_err_en_US);
+    }
+  }
+  if (symbol.owner().IsDerivedType() &&
+      (symbol.attrs().test(Attr::CONTIGUOUS) &&
+          !(IsPointer(symbol) && symbol.Rank() > 0))) { // C752
+    messages_.Say(
+        "A CONTIGUOUS component must be an array with the POINTER attribute"_err_en_US);
+  }
+  if (symbol.owner().IsModule() && IsAutomatic(symbol)) {
+    messages_.Say(
+        "Automatic data object '%s' may not appear in the specification part"
+        " of a module"_err_en_US,
+        symbol.name());
   }
 }
 
@@ -345,7 +333,7 @@ void CheckHelper::CheckAssumedTypeEntity( // C709
     const Symbol &symbol, const ObjectEntityDetails &details) {
   if (const DeclTypeSpec * type{symbol.GetType()};
       type && type->category() == DeclTypeSpec::TypeStar) {
-    if (!symbol.IsDummy()) {
+    if (!IsDummy(symbol)) {
       messages_.Say(
           "Assumed-type entity '%s' must be a dummy argument"_err_en_US,
           symbol.name());
@@ -387,13 +375,10 @@ void CheckHelper::CheckAssumedTypeEntity( // C709
 
 void CheckHelper::CheckObjectEntity(
     const Symbol &symbol, const ObjectEntityDetails &details) {
-  CHECK(!symbolBeingChecked_);
-  symbolBeingChecked_ = &symbol; // for specification expr checks
   CheckArraySpec(symbol, details.shape());
   Check(details.shape());
   Check(details.coshape());
   CheckAssumedTypeEntity(symbol, details);
-  symbolBeingChecked_ = nullptr;
   if (!details.coshape().empty()) {
     bool isDeferredShape{details.coshape().IsDeferredShape()};
     if (IsAllocatable(symbol)) {
@@ -462,26 +447,32 @@ void CheckHelper::CheckObjectEntity(
     }
   }
   if (symbol.owner().kind() != Scope::Kind::DerivedType &&
+      IsInitialized(symbol, true /*ignore DATA, already caught*/)) { // C808
+    if (IsAutomatic(symbol)) {
+      messages_.Say("An automatic variable must not be initialized"_err_en_US);
+    } else if (IsDummy(symbol)) {
+      messages_.Say("A dummy argument must not be initialized"_err_en_US);
+    } else if (IsFunctionResult(symbol)) {
+      messages_.Say("A function result must not be initialized"_err_en_US);
+    } else if (IsInBlankCommon(symbol)) {
+      messages_.Say(
+          "A variable in blank COMMON should not be initialized"_en_US);
+    }
+  }
+  if (symbol.owner().kind() == Scope::Kind::BlockData &&
       IsInitialized(symbol)) {
-    if (details.commonBlock()) {
-      if (details.commonBlock()->name().empty()) {
-        messages_.Say(
-            "A variable in blank COMMON should not be initialized"_en_US);
-      }
-    } else if (symbol.owner().kind() == Scope::Kind::BlockData) {
-      if (IsAllocatable(symbol)) {
-        messages_.Say(
-            "An ALLOCATABLE variable may not appear in a BLOCK DATA subprogram"_err_en_US);
-      } else {
-        messages_.Say(
-            "An initialized variable in BLOCK DATA must be in a COMMON block"_err_en_US);
-      }
+    if (IsAllocatable(symbol)) {
+      messages_.Say(
+          "An ALLOCATABLE variable may not appear in a BLOCK DATA subprogram"_err_en_US);
+    } else if (!FindCommonBlockContaining(symbol)) {
+      messages_.Say(
+          "An initialized variable in BLOCK DATA must be in a COMMON block"_err_en_US);
     }
   }
   if (const DeclTypeSpec * type{details.type()}) { // C708
     if (type->IsPolymorphic() &&
         !(type->IsAssumedType() || IsAllocatableOrPointer(symbol) ||
-            symbol.IsDummy())) {
+            IsDummy(symbol))) {
       messages_.Say("CLASS entity '%s' must be a dummy argument or have "
                     "ALLOCATABLE or POINTER attribute"_err_en_US,
           symbol.name());
@@ -534,7 +525,7 @@ void CheckHelper::CheckArraySpec(
               " assumed rank"_err_en_US;
       }
     }
-  } else if (symbol.IsDummy()) {
+  } else if (IsDummy(symbol)) {
     if (isImplied && !isAssumedSize) { // C836
       msg = "Dummy array argument '%s' may not have implied shape"_err_en_US;
     }
@@ -584,6 +575,12 @@ void CheckHelper::CheckProcEntity(
       messages_.Say("A dummy procedure may not be ELEMENTAL"_err_en_US);
     }
   } else if (symbol.owner().IsDerivedType()) {
+    if (!symbol.attrs().test(Attr::POINTER)) { // C756
+      const auto &name{symbol.name()};
+      messages_.Say(name,
+          "Procedure component '%s' must have POINTER attribute"_err_en_US,
+          name);
+    }
     CheckPassArg(symbol, details.interface().symbol(), details);
   }
   if (symbol.attrs().test(Attr::POINTER)) {
@@ -594,6 +591,10 @@ void CheckHelper::CheckProcEntity(
             symbol.name()); // C1517
       }
     }
+  } else if (symbol.attrs().test(Attr::SAVE)) {
+    messages_.Say(
+        "Procedure '%s' with SAVE attribute must also have POINTER attribute"_err_en_US,
+        symbol.name());
   }
 }
 
@@ -1066,7 +1067,7 @@ void CheckHelper::CheckVolatile(const Symbol &symbol, bool isAssociated,
 
 void CheckHelper::CheckPointer(const Symbol &symbol) { // C852
   CheckConflicting(symbol, Attr::POINTER, Attr::TARGET);
-  CheckConflicting(symbol, Attr::POINTER, Attr::ALLOCATABLE);
+  CheckConflicting(symbol, Attr::POINTER, Attr::ALLOCATABLE); // C751
   CheckConflicting(symbol, Attr::POINTER, Attr::INTRINSIC);
   if (symbol.Corank() > 0) {
     messages_.Say(
@@ -1076,6 +1077,7 @@ void CheckHelper::CheckPointer(const Symbol &symbol) { // C852
 }
 
 // C760 constraints on the passed-object dummy argument
+// C757 constraints on procedure pointer components
 void CheckHelper::CheckPassArg(
     const Symbol &proc, const Symbol *interface, const WithPassArg &details) {
   if (proc.attrs().test(Attr::NOPASS)) {
@@ -1117,7 +1119,7 @@ void CheckHelper::CheckPassArg(
       break;
     }
   }
-  if (!passArgIndex) {
+  if (!passArgIndex) { // C758
     messages_.Say(*passName,
         "'%s' is not a dummy argument of procedure interface '%s'"_err_en_US,
         *passName, interface->name());
@@ -1452,7 +1454,10 @@ void SubprogramMatchHelper::CheckDummyArg(const Symbol &symbol1,
                        "Dummy argument '%s' is a procedure; the corresponding"
                        " argument in the interface body is not"_err_en_US);
                  },
-                 [&](const auto &, const auto &) { DIE("can't happen"); },
+                 [&](const auto &, const auto &) {
+                   llvm_unreachable("Dummy arguments are not data objects or"
+                                    "procedures");
+                 },
              },
       arg1.u, arg2.u);
 }
@@ -1502,7 +1507,7 @@ bool SubprogramMatchHelper::CheckSameIntent(const Symbol &symbol1,
 // Report an error referring to first symbol with declaration of second symbol
 template <typename... A>
 void SubprogramMatchHelper::Say(const Symbol &symbol1, const Symbol &symbol2,
-    parser::MessageFixedText &&text, A &&... args) {
+    parser::MessageFixedText &&text, A &&...args) {
   auto &message{context.Say(symbol1.name(), std::move(text), symbol1.name(),
       std::forward<A>(args)...)};
   evaluate::AttachDeclaration(message, symbol2);

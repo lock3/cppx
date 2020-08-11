@@ -154,11 +154,6 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
     return IsStructurallyEquivalent(Name1.getCXXLiteralIdentifier(),
                                     Name2.getCXXLiteralIdentifier());
 
-  case DeclarationName::CXXReflectedIdName:
-    return IsStructurallyEquivalent(Context,
-                                    Name1.getCXXReflectedIdArguments(),
-                                    Name2.getCXXReflectedIdArguments());
-
   case DeclarationName::CXXUsingDirective:
     return true; // FIXME When do we consider two using directives equal?
 
@@ -641,6 +636,34 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
     break;
   }
 
+  case Type::DependentSizedMatrix: {
+    const DependentSizedMatrixType *Mat1 = cast<DependentSizedMatrixType>(T1);
+    const DependentSizedMatrixType *Mat2 = cast<DependentSizedMatrixType>(T2);
+    // The element types, row and column expressions must be structurally
+    // equivalent.
+    if (!IsStructurallyEquivalent(Context, Mat1->getRowExpr(),
+                                  Mat2->getRowExpr()) ||
+        !IsStructurallyEquivalent(Context, Mat1->getColumnExpr(),
+                                  Mat2->getColumnExpr()) ||
+        !IsStructurallyEquivalent(Context, Mat1->getElementType(),
+                                  Mat2->getElementType()))
+      return false;
+    break;
+  }
+
+  case Type::ConstantMatrix: {
+    const ConstantMatrixType *Mat1 = cast<ConstantMatrixType>(T1);
+    const ConstantMatrixType *Mat2 = cast<ConstantMatrixType>(T2);
+    // The element types must be structurally equivalent and the number of rows
+    // and columns must match.
+    if (!IsStructurallyEquivalent(Context, Mat1->getElementType(),
+                                  Mat2->getElementType()) ||
+        Mat1->getNumRows() != Mat2->getNumRows() ||
+        Mat1->getNumColumns() != Mat2->getNumColumns())
+      return false;
+    break;
+  }
+
   case Type::FunctionProto: {
     const auto *Proto1 = cast<FunctionProtoType>(T1);
     const auto *Proto2 = cast<FunctionProtoType>(T2);
@@ -759,6 +782,14 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
     if (!IsStructurallyEquivalent(Context,
                                   cast<ReflectedType>(T1)->getReflection(),
                                   cast<ReflectedType>(T2)->getReflection()))
+      return false;
+    break;
+
+  case Type::DependentIdentifierSplice:
+    if (!IsStructurallyEquivalent(
+        Context,
+        cast<DependentIdentifierSpliceType>(T1)->getIdentifierInfo(),
+        cast<DependentIdentifierSpliceType>(T2)->getIdentifierInfo()))
       return false;
     break;
 

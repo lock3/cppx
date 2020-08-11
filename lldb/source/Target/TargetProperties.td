@@ -1,13 +1,9 @@
 include "../../include/lldb/Core/PropertiesBase.td"
 
-let Definition = "experimental" in {
+let Definition = "target_experimental" in {
   def InjectLocalVars : Property<"inject-local-vars", "Boolean">,
     Global, DefaultTrue,
     Desc<"If true, inject local variables explicitly into the expression text. This will fix symbol resolution when there are name collisions between ivars and local variables. But it can make expressions run much more slowly.">;
-  def OSPluginReportsAllThreads: Property<"os-plugin-reports-all-threads", "Boolean">,
-    Global,
-    DefaultTrue,
-    Desc<"Set to False if your OS Plugins doesn't report all threads on each stop.">;
 }
 
 let Definition = "target" in {
@@ -115,6 +111,9 @@ let Definition = "target" in {
   def DisableSTDIO: Property<"disable-stdio", "Boolean">,
     DefaultFalse,
     Desc<"Disable stdin/stdout for process (e.g. for a GUI application)">;
+  def InheritTCC: Property<"inherit-tcc", "Boolean">,
+    DefaultFalse,
+    Desc<"Inherit the TCC permissions from the inferior's parent instead of making the process itself responsible.">;
   def InlineStrategy: Property<"inline-breakpoint-strategy", "Enum">,
     DefaultEnumValue<"eInlineBreakpointsAlways">,
     EnumValues<"OptionEnumValues(g_inline_breakpoint_enums)">,
@@ -169,6 +168,13 @@ let Definition = "target" in {
     Desc<"Always install the main executable when connected to a remote platform.">;
 }
 
+let Definition = "process_experimental" in {
+  def OSPluginReportsAllThreads: Property<"os-plugin-reports-all-threads", "Boolean">,
+    Global,
+    DefaultTrue,
+    Desc<"Set to False if your OS Plugins doesn't report all threads on each stop.">;
+}
+
 let Definition = "process" in {
   def DisableMemCache: Property<"disable-memory-cache", "Boolean">,
     DefaultFalse,
@@ -201,6 +207,9 @@ let Definition = "process" in {
   def WarningOptimization: Property<"optimization-warnings", "Boolean">,
     DefaultTrue,
     Desc<"If true, warn when stopped in code that is optimized where stepping and variable availability may not behave as expected.">;
+  def WarningUnsupportedLanguage: Property<"unsupported-language-warnings", "Boolean">,
+    DefaultTrue,
+    Desc<"If true, warn when stopped in code that is written in a source language that LLDB does not support.">;
   def StopOnExec: Property<"stop-on-exec", "Boolean">,
     Global,
     DefaultTrue,
@@ -208,6 +217,9 @@ let Definition = "process" in {
   def UtilityExpressionTimeout: Property<"utility-expression-timeout", "UInt64">,
     DefaultUnsignedValue<15>,
     Desc<"The time in seconds to wait for LLDB-internal utility expressions.">;
+  def SteppingRunsAllThreads: Property<"run-all-threads", "Boolean">,
+    DefaultFalse,
+    Desc<"If true, stepping operations will run all threads.  This is equivalent to setting the run-mode option to 'all-threads'.">;
 }
 
 let Definition = "platform" in {

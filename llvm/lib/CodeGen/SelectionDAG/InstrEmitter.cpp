@@ -29,6 +29,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Target/TargetMachine.h"
 using namespace llvm;
 
 #define DEBUG_TYPE "instr-emitter"
@@ -79,6 +80,28 @@ static unsigned countOperands(SDNode *Node, unsigned NumExpUses,
   }
 
   return N;
+}
+
+/// Return starting index of GC operand list.
+// FIXME: need a better place for this. Put it in StackMaps?
+static unsigned getStatepointGCArgStartIdx(MachineInstr *MI) {
+  assert(MI->getOpcode() == TargetOpcode::STATEPOINT &&
+         "STATEPOINT node expected");
+  unsigned OperIdx = StatepointOpers(MI).getNumDeoptArgsIdx();
+  unsigned NumDeopts = MI->getOperand(OperIdx).getImm();
+  // At this point stack references has not been lowered yet, so they
+  // take single operand.
+  ++OperIdx;
+  while (NumDeopts--) {
+    MachineOperand &MO = MI->getOperand(OperIdx);
+    if (MO.isImm() && MO.getImm() == StackMaps::ConstantOp) {
+      ++OperIdx;
+      assert(MI->getOperand(OperIdx).isImm() &&
+             "Unexpected statepoint operand");
+    }
+    ++OperIdx;
+  }
+  return OperIdx;
 }
 
 /// EmitCopyFromReg - Generate machine code for an CopyFromReg node or an
@@ -199,6 +222,8 @@ void InstrEmitter::CreateVirtualRegisters(SDNode *Node,
   bool HasVRegVariadicDefs = !MF->getTarget().usesPhysRegsForValues() &&
                              II.isVariadic() && II.variadicOpsAreDefs();
   unsigned NumVRegs = HasVRegVariadicDefs ? NumResults : II.getNumDefs();
+  if (Node->getMachineOpcode() == TargetOpcode::STATEPOINT)
+    NumVRegs = NumResults;
   for (unsigned i = 0; i < NumVRegs; ++i) {
     // If the specific node value is only used by a CopyToReg and the dest reg
     // is a vreg in the same register class, use the CopyToReg'd destination
@@ -413,23 +438,14 @@ void InstrEmitter::AddOperand(MachineInstrBuilder &MIB,
     MIB.addJumpTableIndex(JT->getIndex(), JT->getTargetFlags());
   } else if (ConstantPoolSDNode *CP = dyn_cast<ConstantPoolSDNode>(Op)) {
     int Offset = CP->getOffset();
-    unsigned Align = CP->getAlignment();
-    Type *Type = CP->getType();
-    // MachineConstantPool wants an explicit alignment.
-    if (Align == 0) {
-      Align = MF->getDataLayout().getPrefTypeAlignment(Type);
-      if (Align == 0) {
-        // Alignment of vector types.  FIXME!
-        Align = MF->getDataLayout().getTypeAllocSize(Type);
-      }
-    }
+    Align Alignment = CP->getAlign();
 
     unsigned Idx;
     MachineConstantPool *MCP = MF->getConstantPool();
     if (CP->isMachineConstantPoolEntry())
-      Idx = MCP->getConstantPoolIndex(CP->getMachineCPVal(), Align);
+      Idx = MCP->getConstantPoolIndex(CP->getMachineCPVal(), Alignment);
     else
-      Idx = MCP->getConstantPoolIndex(CP->getConstVal(), Align);
+      Idx = MCP->getConstantPoolIndex(CP->getConstVal(), Alignment);
     MIB.addConstantPoolIndex(Idx, Offset, CP->getTargetFlags());
   } else if (ExternalSymbolSDNode *ES = dyn_cast<ExternalSymbolSDNode>(Op)) {
     MIB.addExternalSymbol(ES->getSymbol(), ES->getTargetFlags());
@@ -829,6 +845,8 @@ EmitMachineNode(SDNode *Node, bool IsClone, bool IsCloned,
       NumDefs = NumResults;
     }
     ScratchRegs = TLI->getScratchRegisters((CallingConv::ID) CC);
+  } else if (Opc == TargetOpcode::STATEPOINT) {
+    NumDefs = NumResults;
   }
 
   unsigned NumImpUses = 0;
@@ -977,6 +995,20 @@ EmitMachineNode(SDNode *Node, bool IsClone, bool IsCloned,
   // Finally mark unused registers as dead.
   if (!UsedRegs.empty() || II.getImplicitDefs() || II.hasOptionalDef())
     MIB->setPhysRegsDeadExcept(UsedRegs, *TRI);
+
+  // STATEPOINT is too 'dynamic' to have meaningful machine description.
+  // We have to manually tie operands.
+  if (Opc == TargetOpcode::STATEPOINT && NumDefs > 0) {
+    assert(!HasPhysRegOuts && "STATEPOINT mishandled");
+    MachineInstr *MI = MIB;
+    unsigned Def = 0;
+    unsigned Use = getStatepointGCArgStartIdx(MI) + 1;
+    while (Def < NumDefs) {
+      if (MI->getOperand(Use).isReg())
+        MI->tieOperands(Def++, Use);
+      Use += 2;
+    }
+  }
 
   // Run post-isel target hook to adjust this instruction if needed.
   if (II.hasPostISelHook())

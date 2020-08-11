@@ -191,6 +191,15 @@ public:
 
     /// Determines when to keep idle ASTs in memory for future use.
     ASTRetentionPolicy RetentionPolicy;
+
+    /// Whether to run PreamblePeer asynchronously.
+    /// No-op if AsyncThreadsCount is 0.
+    bool AsyncPreambleBuilds = true;
+
+    /// Used to create a context that wraps each single operation.
+    /// Typically to inject per-file configuration.
+    /// If the path is empty, context sholud be "generic".
+    std::function<Context(PathRef)> ContextProvider;
   };
 
   TUScheduler(const GlobalCompilationDatabase &CDB, const Options &Opts,
@@ -229,7 +238,9 @@ public:
   llvm::StringMap<std::string> getAllFileContents() const;
 
   /// Schedule an async task with no dependencies.
-  void run(llvm::StringRef Name, llvm::unique_function<void()> Action);
+  /// Path may be empty (it is used only to set the Context).
+  void run(llvm::StringRef Name, llvm::StringRef Path,
+           llvm::unique_function<void()> Action);
 
   /// Defines how a runWithAST action is implicitly cancelled by other actions.
   enum ASTActionInvalidation {
@@ -297,11 +308,12 @@ public:
   // this inside clangd.
   // FIXME: remove this when there is proper index support via build system
   // integration.
+  // FIXME: move to ClangdServer via createProcessingContext.
   static llvm::Optional<llvm::StringRef> getFileBeingProcessedInContext();
 
 private:
   const GlobalCompilationDatabase &CDB;
-  const bool StorePreamblesInMemory;
+  Options Opts;
   std::unique_ptr<ParsingCallbacks> Callbacks; // not nullptr
   Semaphore Barrier;
   llvm::StringMap<std::unique_ptr<FileData>> Files;
@@ -310,7 +322,6 @@ private:
   // asynchronously.
   llvm::Optional<AsyncTaskRunner> PreambleTasks;
   llvm::Optional<AsyncTaskRunner> WorkerThreads;
-  DebouncePolicy UpdateDebounce;
 };
 
 } // namespace clangd

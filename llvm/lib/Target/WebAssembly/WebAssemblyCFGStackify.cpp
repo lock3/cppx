@@ -24,6 +24,7 @@
 #include "WebAssembly.h"
 #include "WebAssemblyExceptionInfo.h"
 #include "WebAssemblyMachineFunctionInfo.h"
+#include "WebAssemblySortRegion.h"
 #include "WebAssemblySubtarget.h"
 #include "WebAssemblyUtilities.h"
 #include "llvm/ADT/Statistic.h"
@@ -31,7 +32,9 @@
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineLoopInfo.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/Target/TargetMachine.h"
 using namespace llvm;
+using WebAssembly::SortRegionInfo;
 
 #define DEBUG_TYPE "wasm-cfg-stackify"
 
@@ -381,6 +384,8 @@ void WebAssemblyCFGStackify::placeBlockMarker(MachineBasicBlock &MBB) {
 void WebAssemblyCFGStackify::placeLoopMarker(MachineBasicBlock &MBB) {
   MachineFunction &MF = *MBB.getParent();
   const auto &MLI = getAnalysis<MachineLoopInfo>();
+  const auto &WEI = getAnalysis<WebAssemblyExceptionInfo>();
+  SortRegionInfo SRI(MLI, WEI);
   const auto &TII = *MF.getSubtarget<WebAssemblySubtarget>().getInstrInfo();
 
   MachineLoop *Loop = MLI.getLoopFor(&MBB);
@@ -389,7 +394,7 @@ void WebAssemblyCFGStackify::placeLoopMarker(MachineBasicBlock &MBB) {
 
   // The operand of a LOOP is the first block after the loop. If the loop is the
   // bottom of the function, insert a dummy block at the end.
-  MachineBasicBlock *Bottom = WebAssembly::getBottom(Loop);
+  MachineBasicBlock *Bottom = SRI.getBottom(Loop);
   auto Iter = std::next(Bottom->getIterator());
   if (Iter == MF.end()) {
     getAppendixBlock(MF);
@@ -449,7 +454,9 @@ void WebAssemblyCFGStackify::placeTryMarker(MachineBasicBlock &MBB) {
   MachineFunction &MF = *MBB.getParent();
   auto &MDT = getAnalysis<MachineDominatorTree>();
   const auto &TII = *MF.getSubtarget<WebAssemblySubtarget>().getInstrInfo();
+  const auto &MLI = getAnalysis<MachineLoopInfo>();
   const auto &WEI = getAnalysis<WebAssemblyExceptionInfo>();
+  SortRegionInfo SRI(MLI, WEI);
   const auto &MFI = *MF.getInfo<WebAssemblyFunctionInfo>();
 
   // Compute the nearest common dominator of all unwind predecessors
@@ -469,7 +476,7 @@ void WebAssemblyCFGStackify::placeTryMarker(MachineBasicBlock &MBB) {
   // end.
   WebAssemblyException *WE = WEI.getExceptionFor(&MBB);
   assert(WE);
-  MachineBasicBlock *Bottom = WebAssembly::getBottom(WE);
+  MachineBasicBlock *Bottom = SRI.getBottom(WE);
 
   auto Iter = std::next(Bottom->getIterator());
   if (Iter == MF.end()) {
@@ -669,9 +676,28 @@ void WebAssemblyCFGStackify::removeUnnecessaryInstrs(MachineFunction &MF) {
     MachineBasicBlock *EHPadLayoutPred = MBB.getPrevNode();
     MachineBasicBlock *Cont = BeginToEnd[EHPadToTry[&MBB]]->getParent();
     bool Analyzable = !TII.analyzeBranch(*EHPadLayoutPred, TBB, FBB, Cond);
+    // This condition means either
+    // 1. This BB ends with a single unconditional branch whose destinaion is
+    //    Cont.
+    // 2. This BB ends with a conditional branch followed by an unconditional
+    //    branch, and the unconditional branch's destination is Cont.
+    // In both cases, we want to remove the last (= unconditional) branch.
     if (Analyzable && ((Cond.empty() && TBB && TBB == Cont) ||
-                       (!Cond.empty() && FBB && FBB == Cont)))
-      TII.removeBranch(*EHPadLayoutPred);
+                       (!Cond.empty() && FBB && FBB == Cont))) {
+      bool ErasedUncondBr = false;
+      (void)ErasedUncondBr;
+      for (auto I = EHPadLayoutPred->end(), E = EHPadLayoutPred->begin();
+           I != E; --I) {
+        auto PrevI = std::prev(I);
+        if (PrevI->isTerminator()) {
+          assert(PrevI->getOpcode() == WebAssembly::BR);
+          PrevI->eraseFromParent();
+          ErasedUncondBr = true;
+          break;
+        }
+      }
+      assert(ErasedUncondBr && "Unconditional branch not erased!");
+    }
   }
 
   // When there are block / end_block markers that overlap with try / end_try
@@ -713,12 +739,30 @@ void WebAssemblyCFGStackify::removeUnnecessaryInstrs(MachineFunction &MF) {
   }
 }
 
+// Get the appropriate copy opcode for the given register class.
+static unsigned getCopyOpcode(const TargetRegisterClass *RC) {
+  if (RC == &WebAssembly::I32RegClass)
+    return WebAssembly::COPY_I32;
+  if (RC == &WebAssembly::I64RegClass)
+    return WebAssembly::COPY_I64;
+  if (RC == &WebAssembly::F32RegClass)
+    return WebAssembly::COPY_F32;
+  if (RC == &WebAssembly::F64RegClass)
+    return WebAssembly::COPY_F64;
+  if (RC == &WebAssembly::V128RegClass)
+    return WebAssembly::COPY_V128;
+  if (RC == &WebAssembly::EXNREFRegClass)
+    return WebAssembly::COPY_EXNREF;
+  llvm_unreachable("Unexpected register class");
+}
+
 // When MBB is split into MBB and Split, we should unstackify defs in MBB that
 // have their uses in Split.
 static void unstackifyVRegsUsedInSplitBB(MachineBasicBlock &MBB,
                                          MachineBasicBlock &Split,
                                          WebAssemblyFunctionInfo &MFI,
-                                         MachineRegisterInfo &MRI) {
+                                         MachineRegisterInfo &MRI,
+                                         const WebAssemblyInstrInfo &TII) {
   for (auto &MI : Split) {
     for (auto &MO : MI.explicit_uses()) {
       if (!MO.isReg() || Register::isPhysicalRegister(MO.getReg()))
@@ -726,6 +770,47 @@ static void unstackifyVRegsUsedInSplitBB(MachineBasicBlock &MBB,
       if (MachineInstr *Def = MRI.getUniqueVRegDef(MO.getReg()))
         if (Def->getParent() == &MBB)
           MFI.unstackifyVReg(MO.getReg());
+    }
+  }
+
+  // In RegStackify, when a register definition is used multiple times,
+  //    Reg = INST ...
+  //    INST ..., Reg, ...
+  //    INST ..., Reg, ...
+  //    INST ..., Reg, ...
+  //
+  // we introduce a TEE, which has the following form:
+  //    DefReg = INST ...
+  //    TeeReg, Reg = TEE_... DefReg
+  //    INST ..., TeeReg, ...
+  //    INST ..., Reg, ...
+  //    INST ..., Reg, ...
+  // with DefReg and TeeReg stackified but Reg not stackified.
+  //
+  // But the invariant that TeeReg should be stackified can be violated while we
+  // unstackify registers in the split BB above. In this case, we convert TEEs
+  // into two COPYs. This COPY will be eventually eliminated in ExplicitLocals.
+  //    DefReg = INST ...
+  //    TeeReg = COPY DefReg
+  //    Reg = COPY DefReg
+  //    INST ..., TeeReg, ...
+  //    INST ..., Reg, ...
+  //    INST ..., Reg, ...
+  for (auto I = MBB.begin(), E = MBB.end(); I != E;) {
+    MachineInstr &MI = *I++;
+    if (!WebAssembly::isTee(MI.getOpcode()))
+      continue;
+    Register TeeReg = MI.getOperand(0).getReg();
+    Register Reg = MI.getOperand(1).getReg();
+    Register DefReg = MI.getOperand(2).getReg();
+    if (!MFI.isVRegStackified(TeeReg)) {
+      // Now we are not using TEE anymore, so unstackify DefReg too
+      MFI.unstackifyVReg(DefReg);
+      unsigned CopyOpc = getCopyOpcode(MRI.getRegClass(DefReg));
+      BuildMI(MBB, &MI, MI.getDebugLoc(), TII.get(CopyOpc), TeeReg)
+          .addReg(DefReg);
+      BuildMI(MBB, &MI, MI.getDebugLoc(), TII.get(CopyOpc), Reg).addReg(DefReg);
+      MI.eraseFromParent();
     }
   }
 }
@@ -1048,7 +1133,7 @@ bool WebAssemblyCFGStackify::fixUnwindMismatches(MachineFunction &MF) {
     BrDest->insert(BrDest->end(), EndTry->removeFromParent());
     // Take out the handler body from EH pad to the new branch destination BB.
     BrDest->splice(BrDest->end(), EHPad, SplitPos, EHPad->end());
-    unstackifyVRegsUsedInSplitBB(*EHPad, *BrDest, MFI, MRI);
+    unstackifyVRegsUsedInSplitBB(*EHPad, *BrDest, MFI, MRI, TII);
     // Fix predecessor-successor relationship.
     BrDest->transferSuccessors(EHPad);
     EHPad->addSuccessor(BrDest);
@@ -1186,7 +1271,7 @@ bool WebAssemblyCFGStackify::fixUnwindMismatches(MachineFunction &MF) {
       // new nested continuation BB.
       NestedCont->splice(NestedCont->end(), MBB,
                          std::next(RangeEnd->getIterator()), MBB->end());
-      unstackifyVRegsUsedInSplitBB(*MBB, *NestedCont, MFI, MRI);
+      unstackifyVRegsUsedInSplitBB(*MBB, *NestedCont, MFI, MRI, TII);
       registerTryScope(NestedTry, NestedEndTry, NestedEHPad);
 
       // Fix predecessor-successor relationship.

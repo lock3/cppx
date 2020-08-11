@@ -22,7 +22,8 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
-#include "mlir/Interfaces/SideEffects.h"
+#include "mlir/Interfaces/CopyOpInterface.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Support/LLVM.h"
 
@@ -33,6 +34,9 @@ class ConvOp;
 class PoolingMaxOp;
 class PoolingMinOp;
 class PoolingSumOp;
+
+using ReassociationIndices = SmallVector<int64_t, 2>;
+using ReassociationExprs = SmallVector<AffineExpr, 2>;
 
 /// Returns the name mangled library call name to disambiguate between different
 /// overloads at the C level. The name mangling scheme is basic and uses MLIR
@@ -47,9 +51,9 @@ class PoolingSumOp;
 /// 1. linalg.fill(%A, %f) : memref<f32>, f32
 ///   name mangles into `linalg_fill_viewf32_f32_impl`
 ///
-/// 2. linalg.dot(%A, %B, %C) :
-///      memref<?xf32, stride_specification>,
-///      memref<?xf32, stride_specification>, memref<f32>
+/// 2. linalg.dot %A, %B, %C :
+///      (memref<?xf32, stride_specification>,
+///       memref<?xf32, stride_specification>, memref<f32>)
 ///   name mangles into `linalg_dot_viewxf32_viewxf32_viewf32_impl`
 ///
 /// 3. linalg.matmul(...) :

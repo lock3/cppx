@@ -9,14 +9,11 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_TRANSFORMER_CLANG_TIDY_CHECK_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_TRANSFORMER_CLANG_TIDY_CHECK_H
 
-#include "../ClangTidy.h"
+#include "../ClangTidyCheck.h"
 #include "IncludeInserter.h"
 #include "IncludeSorter.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
-#include "clang/Frontend/CompilerInstance.h"
 #include "clang/Tooling/Transformer/Transformer.h"
-#include <deque>
-#include <vector>
 
 namespace clang {
 namespace tidy {
@@ -67,10 +64,13 @@ public:
   void registerMatchers(ast_matchers::MatchFinder *Finder) final;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) final;
 
+  /// Derived classes that override this function should call this method from
+  /// the overridden method.
+  void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
+
 private:
   Optional<transformer::RewriteRule> Rule;
-  const IncludeSorter::IncludeStyle IncludeStyle;
-  std::unique_ptr<IncludeInserter> Inserter;
+  IncludeInserter Inserter;
 };
 
 } // namespace utils

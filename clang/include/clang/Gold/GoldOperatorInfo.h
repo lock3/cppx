@@ -246,7 +246,6 @@ public:
 };
 
 class OtherOpInfo :public OpInfoBase {
-  clang::BinaryOperatorKind BinOpKind;
 public:
   OtherOpInfo(clang::IdentifierInfo *CName, clang::IdentifierInfo *GName,
               bool IsMemberOnly, AllowedOverloadUse AllowedOverloadStyle,

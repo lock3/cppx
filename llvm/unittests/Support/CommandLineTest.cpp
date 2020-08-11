@@ -45,8 +45,6 @@ class TempEnvVar {
     EXPECT_EQ(nullptr, old_value) << old_value;
 #if HAVE_SETENV
     setenv(name, value, true);
-#else
-#   define SKIP_ENVIRONMENT_TESTS
 #endif
   }
 
@@ -137,36 +135,6 @@ TEST(CommandLineTest, ModifyExisitingOption) {
   ASSERT_EQ(cl::Hidden, TestOption.getOptionHiddenFlag()) <<
     "Failed to modify option's hidden flag.";
 }
-#ifndef SKIP_ENVIRONMENT_TESTS
-
-const char test_env_var[] = "LLVM_TEST_COMMAND_LINE_FLAGS";
-
-cl::opt<std::string> EnvironmentTestOption("env-test-opt");
-TEST(CommandLineTest, ParseEnvironment) {
-  TempEnvVar TEV(test_env_var, "-env-test-opt=hello");
-  EXPECT_EQ("", EnvironmentTestOption);
-  cl::ParseEnvironmentOptions("CommandLineTest", test_env_var);
-  EXPECT_EQ("hello", EnvironmentTestOption);
-}
-
-// This test used to make valgrind complain
-// ("Conditional jump or move depends on uninitialised value(s)")
-//
-// Warning: Do not run any tests after this one that try to gain access to
-// registered command line options because this will likely result in a
-// SEGFAULT. This can occur because the cl::opt in the test below is declared
-// on the stack which will be destroyed after the test completes but the
-// command line system will still hold a pointer to a deallocated cl::Option.
-TEST(CommandLineTest, ParseEnvironmentToLocalVar) {
-  // Put cl::opt on stack to check for proper initialization of fields.
-  StackOption<std::string> EnvironmentTestOptionLocal("env-test-opt-local");
-  TempEnvVar TEV(test_env_var, "-env-test-opt-local=hello-local");
-  EXPECT_EQ("", EnvironmentTestOptionLocal);
-  cl::ParseEnvironmentOptions("CommandLineTest", test_env_var);
-  EXPECT_EQ("hello-local", EnvironmentTestOptionLocal);
-}
-
-#endif  // SKIP_ENVIRONMENT_TESTS
 
 TEST(CommandLineTest, UseOptionCategory) {
   StackOption<int> TestOption2("test-option", cl::cat(TestCategory));
@@ -253,8 +221,8 @@ TEST(CommandLineTest, TokenizeGNUCommandLine) {
 }
 
 TEST(CommandLineTest, TokenizeWindowsCommandLine1) {
-  const char Input[] = "a\\b c\\\\d e\\\\\"f g\" h\\\"i j\\\\\\\"k \"lmn\" o pqr "
-                      "\"st \\\"u\" \\v";
+  const char Input[] =
+      R"(a\b c\\d e\\"f g" h\"i j\\\"k "lmn" o pqr "st \"u" \v)";
   const char *const Output[] = { "a\\b", "c\\\\d", "e\\f g", "h\"i", "j\\\"k",
                                  "lmn", "o", "pqr", "st \"u", "\\v" };
   testCommandLineTokenizer(cl::TokenizeWindowsCommandLine, Input, Output,
@@ -266,6 +234,17 @@ TEST(CommandLineTest, TokenizeWindowsCommandLine2) {
   const char *const Output[] = { "clang", "-c", "-DFOO=\"ABC\"", "x.cpp"};
   testCommandLineTokenizer(cl::TokenizeWindowsCommandLine, Input, Output,
                            array_lengthof(Output));
+}
+
+TEST(CommandLineTest, TokenizeWindowsCommandLineQuotedLastArgument) {
+  const char Input1[] = R"(a b c d "")";
+  const char *const Output1[] = {"a", "b", "c", "d", ""};
+  testCommandLineTokenizer(cl::TokenizeWindowsCommandLine, Input1, Output1,
+                           array_lengthof(Output1));
+  const char Input2[] = R"(a b c d ")";
+  const char *const Output2[] = {"a", "b", "c", "d"};
+  testCommandLineTokenizer(cl::TokenizeWindowsCommandLine, Input2, Output2,
+                           array_lengthof(Output2));
 }
 
 TEST(CommandLineTest, TokenizeConfigFile1) {
@@ -752,6 +731,18 @@ TEST(CommandLineTest, DefaultOptions) {
 TEST(CommandLineTest, ArgumentLimit) {
   std::string args(32 * 4096, 'a');
   EXPECT_FALSE(llvm::sys::commandLineFitsWithinSystemLimits("cl", args.data()));
+  std::string args2(256, 'a');
+  EXPECT_TRUE(llvm::sys::commandLineFitsWithinSystemLimits("cl", args2.data()));
+  if (Triple(sys::getProcessTriple()).isOSWindows()) {
+    // We use 32000 as a limit for command line length. Program name ('cl'),
+    // separating spaces and termination null character occupy 5 symbols.
+    std::string long_arg(32000 - 5, 'b');
+    EXPECT_TRUE(
+        llvm::sys::commandLineFitsWithinSystemLimits("cl", long_arg.data()));
+    long_arg += 'b';
+    EXPECT_FALSE(
+        llvm::sys::commandLineFitsWithinSystemLimits("cl", long_arg.data()));
+  }
 }
 
 TEST(CommandLineTest, ResponseFileWindows) {
@@ -1711,6 +1702,29 @@ TEST(CommandLineTest, OptionErrorMessageSuggest) {
   StackOption<bool> OptLong("aluminium", cl::desc("Some long option"));
 
   const char *args[] = {"prog", "--aluminum"};
+
+  std::string Errs;
+  raw_string_ostream OS(Errs);
+
+  EXPECT_FALSE(cl::ParseCommandLineOptions(2, args, StringRef(), &OS));
+  OS.flush();
+  EXPECT_FALSE(Errs.find("prog: Did you mean '--aluminium'?\n") ==
+               std::string::npos);
+  Errs.clear();
+
+  cl::ResetAllOptionOccurrences();
+}
+
+TEST(CommandLineTest, OptionErrorMessageSuggestNoHidden) {
+  // We expect that 'really hidden' option do not show up in option
+  // suggestions.
+  cl::ResetCommandLineParser();
+
+  StackOption<bool> OptLong("aluminium", cl::desc("Some long option"));
+  StackOption<bool> OptLong2("aluminum", cl::desc("Bad option"),
+                             cl::ReallyHidden);
+
+  const char *args[] = {"prog", "--alumnum"};
 
   std::string Errs;
   raw_string_ostream OS(Errs);

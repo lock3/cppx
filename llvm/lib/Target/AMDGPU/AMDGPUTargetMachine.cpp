@@ -16,6 +16,7 @@
 #include "AMDGPU.h"
 #include "AMDGPUAliasAnalysis.h"
 #include "AMDGPUCallLowering.h"
+#include "AMDGPUExportClustering.h"
 #include "AMDGPUInstructionSelector.h"
 #include "AMDGPULegalizerInfo.h"
 #include "AMDGPUMacroFusion.h"
@@ -194,7 +195,7 @@ static cl::opt<bool> EnableScalarIRPasses(
 
 static cl::opt<bool> EnableStructurizerWorkarounds(
     "amdgpu-enable-structurizer-workarounds",
-    cl::desc("Enable workarounds for the StructurizeCFG pass"), cl::init(false),
+    cl::desc("Enable workarounds for the StructurizeCFG pass"), cl::init(true),
     cl::Hidden);
 
 extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAMDGPUTarget() {
@@ -234,12 +235,14 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAMDGPUTarget() {
   initializeAMDGPUPostLegalizerCombinerPass(*PR);
   initializeAMDGPUPreLegalizerCombinerPass(*PR);
   initializeAMDGPUPromoteAllocaPass(*PR);
+  initializeAMDGPUPromoteAllocaToVectorPass(*PR);
   initializeAMDGPUCodeGenPreparePass(*PR);
   initializeAMDGPUPropagateAttributesEarlyPass(*PR);
   initializeAMDGPUPropagateAttributesLatePass(*PR);
   initializeAMDGPURewriteOutArgumentsPass(*PR);
   initializeAMDGPUUnifyMetadataPass(*PR);
   initializeSIAnnotateControlFlowPass(*PR);
+  initializeSIInsertHardClausesPass(*PR);
   initializeSIInsertWaitcntsPass(*PR);
   initializeSIModeRegisterPass(*PR);
   initializeSIWholeQuadModePass(*PR);
@@ -283,6 +286,7 @@ createGCNMaxOccupancyMachineScheduler(MachineSchedContext *C) {
   DAG->addMutation(createLoadClusterDAGMutation(DAG->TII, DAG->TRI));
   DAG->addMutation(createStoreClusterDAGMutation(DAG->TII, DAG->TRI));
   DAG->addMutation(createAMDGPUMacroFusionDAGMutation());
+  DAG->addMutation(createAMDGPUExportClusteringDAGMutation());
   return DAG;
 }
 
@@ -467,7 +471,7 @@ void AMDGPUTargetMachine::adjustPassManager(PassManagerBuilder &Builder) {
 
   Builder.addExtension(
     PassManagerBuilder::EP_CGSCCOptimizerLate,
-    [](const PassManagerBuilder &, legacy::PassManagerBase &PM) {
+    [EnableOpt](const PassManagerBuilder &, legacy::PassManagerBase &PM) {
       // Add infer address spaces pass to the opt pipeline after inlining
       // but before SROA to increase SROA opportunities.
       PM.add(createInferAddressSpacesPass());
@@ -475,6 +479,11 @@ void AMDGPUTargetMachine::adjustPassManager(PassManagerBuilder &Builder) {
       // This should run after inlining to have any chance of doing anything,
       // and before other cleanup optimizations.
       PM.add(createAMDGPULowerKernelAttributesPass());
+
+      // Promote alloca to vector before SROA and loop unroll. If we manage
+      // to eliminate allocas before unroll we may choose to unroll less.
+      if (EnableOpt)
+        PM.add(createAMDGPUPromoteAllocaToVector());
   });
 }
 
@@ -515,6 +524,12 @@ const R600Subtarget *R600TargetMachine::getSubtargetImpl(
   }
 
   return I.get();
+}
+
+bool AMDGPUTargetMachine::isNoopAddrSpaceCast(unsigned SrcAS,
+                                              unsigned DestAS) const {
+  return AMDGPU::isFlatGlobalAddrSpace(SrcAS) &&
+         AMDGPU::isFlatGlobalAddrSpace(DestAS);
 }
 
 TargetTransformInfo
@@ -778,10 +793,15 @@ void AMDGPUPassConfig::addCodeGenPrepare() {
 
   if (EnableLoadStoreVectorizer)
     addPass(createLoadStoreVectorizerPass());
+
+  // LowerSwitch pass may introduce unreachable blocks that can
+  // cause unexpected behavior for subsequent passes. Placing it
+  // here seems better that these blocks would get cleaned up by
+  // UnreachableBlockElim inserted next in the pass flow.
+  addPass(createLowerSwitchPass());
 }
 
 bool AMDGPUPassConfig::addPreISel() {
-  addPass(createLowerSwitchPass());
   addPass(createFlattenCFGPass());
   return false;
 }
@@ -981,12 +1001,9 @@ void GCNPassConfig::addFastRegAlloc() {
 }
 
 void GCNPassConfig::addOptimizedRegAlloc() {
-  if (OptExecMaskPreRA) {
+  if (OptExecMaskPreRA)
     insertPass(&MachineSchedulerID, &SIOptimizeExecMaskingPreRAID);
-    insertPass(&SIOptimizeExecMaskingPreRAID, &SIFormMemoryClausesID);
-  } else {
-    insertPass(&MachineSchedulerID, &SIFormMemoryClausesID);
-  }
+  insertPass(&MachineSchedulerID, &SIFormMemoryClausesID);
 
   // This must be run immediately after phi elimination and before
   // TwoAddressInstructions, otherwise the processing of the tied operand of
@@ -1042,10 +1059,12 @@ void GCNPassConfig::addPreEmitPass() {
   // FIXME: This stand-alone pass will emit indiv. S_NOP 0, as needed. It would
   // be better for it to emit S_NOP <N> when possible.
   addPass(&PostRAHazardRecognizerID);
+  if (getOptLevel() > CodeGenOpt::None)
+    addPass(&SIInsertHardClausesID);
 
   addPass(&SIRemoveShortExecBranchesID);
-  addPass(&SIPreEmitPeepholeID);
   addPass(&SIInsertSkipsPassID);
+  addPass(&SIPreEmitPeepholeID);
   addPass(&BranchRelaxationPassID);
 }
 

@@ -16,7 +16,7 @@
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 class LLVM_Builder<string builder> {
   string llvmBuilder = builder;
@@ -61,9 +61,8 @@ def LLVM_VoidResultTypeOpBuilder : OpBuilder<
   [{
     auto llvmType = resultType.dyn_cast<LLVM::LLVMType>(); (void)llvmType;
     assert(llvmType && "result must be an LLVM type");
-    assert(llvmType.getUnderlyingType() &&
-            llvmType.getUnderlyingType()->isVoidTy() &&
-            "for zero-result operands, only 'void' is accepted as result type");
+    assert(llvmType.isVoidTy() &&
+           "for zero-result operands, only 'void' is accepted as result type");
     build(builder, result, operands, attributes);
   }]>;
 
@@ -152,8 +151,7 @@ def LLVM_ICmpOp : LLVM_OneResultOp<"icmp", [NoSideEffect]>,
   let builders = [OpBuilder<
     "OpBuilder &b, OperationState &result, ICmpPredicate predicate, Value lhs, "
     "Value rhs", [{
-      LLVMDialect *dialect = &lhs.getType().cast<LLVMType>().getDialect();
-      build(b, result, LLVMType::getInt1Ty(dialect),
+      build(b, result, LLVMType::getInt1Ty(lhs.getType().getContext()),
             b.getI64IntegerAttr(static_cast<int64_t>(predicate)), lhs, rhs);
     }]>];
   let parser = [{ return parseCmpOp<ICmpPredicate>(parser, result); }];
@@ -199,8 +197,7 @@ def LLVM_FCmpOp : LLVM_OneResultOp<"fcmp", [NoSideEffect]>,
   let builders = [OpBuilder<
     "OpBuilder &b, OperationState &result, FCmpPredicate predicate, Value lhs, "
     "Value rhs", [{
-      LLVMDialect *dialect = &lhs.getType().cast<LLVMType>().getDialect();
-      build(b, result, LLVMType::getInt1Ty(dialect),
+      build(b, result, LLVMType::getInt1Ty(lhs.getType().getContext()),
             b.getI64IntegerAttr(static_cast<int64_t>(predicate)), lhs, rhs);
     }]>];
   let parser = [{ return parseCmpOp<FCmpPredicate>(parser, result); }];
@@ -215,19 +212,49 @@ def LLVM_FDivOp : LLVM_ArithmeticOp<"fdiv", "CreateFDiv">;
 def LLVM_FRemOp : LLVM_ArithmeticOp<"frem", "CreateFRem">;
 def LLVM_FNegOp : LLVM_UnaryArithmeticOp<"fneg", "CreateFNeg">;
 
-// Memory-related operations.
-def LLVM_AllocaOp :
-    LLVM_OneResultOp<"alloca">,
-    Arguments<(ins LLVM_Type:$arraySize, OptionalAttr<I64Attr>:$alignment)> {
-  string llvmBuilder = [{
-    auto *alloca = builder.CreateAlloca(
-      $_resultType->getPointerElementType(), $arraySize);
+// Common code definition that is used to verify and set the alignment attribute
+// of LLVM ops that accept such an attribute.
+class MemoryOpWithAlignmentBase {
+  code alignmentVerifierCode = [{
+    if (alignment().hasValue()) {
+      auto align = alignment().getValue().getSExtValue();
+      if (align < 0)
+        return emitOpError("expected positive alignment");
+    }
+    return success();
+  }];
+  code setAlignmentCode = [{
     if ($alignment.hasValue()) {
       auto align = $alignment.getValue().getZExtValue();
       if (align != 0)
-        alloca->setAlignment(llvm::MaybeAlign(align));
+        inst->setAlignment(llvm::Align(align));
     }
-    $res = alloca;
+  }];
+}
+
+// Code definition that is used for nontemporal metadata creation.
+class MemoryOpWithAlignmentAndAttributes : MemoryOpWithAlignmentBase {
+  code setNonTemporalMetadataCode = [{
+    if ($nontemporal) {
+      llvm::Module *module = builder.GetInsertBlock()->getModule();
+      llvm::MDNode *metadata = llvm::MDNode::get(
+          inst->getContext(), llvm::ConstantAsMetadata::get(
+              builder.getInt32(1)));
+      inst->setMetadata(module->getMDKindID("nontemporal"), metadata);
+    }
+  }];
+}
+
+// Memory-related operations.
+def LLVM_AllocaOp :
+    MemoryOpWithAlignmentBase,
+    LLVM_OneResultOp<"alloca">,
+    Arguments<(ins LLVM_Type:$arraySize, OptionalAttr<I64Attr>:$alignment)> {
+  string llvmBuilder = [{
+    auto *inst = builder.CreateAlloca(
+      $_resultType->getPointerElementType(), $arraySize);
+    }] # setAlignmentCode # [{
+    $res = inst;
   }];
   let builders = [OpBuilder<
     "OpBuilder &b, OperationState &result, Type resultType, Value arraySize, "
@@ -239,14 +266,7 @@ def LLVM_AllocaOp :
   }]>];
   let parser = [{ return parseAllocaOp(parser, result); }];
   let printer = [{ printAllocaOp(p, *this); }];
-  let verifier = [{
-    if (alignment().hasValue()) {
-      auto align = alignment().getValue().getSExtValue();
-      if (align < 0)
-        return emitOpError("expected positive alignment");
-    }
-    return success();
-  }];
+  let verifier = alignmentVerifierCode;
 }
 def LLVM_GEPOp : LLVM_OneResultOp<"getelementptr", [NoSideEffect]>,
                  Arguments<(ins LLVM_Type:$base, Variadic<LLVM_Type>:$indices)>,
@@ -255,22 +275,53 @@ def LLVM_GEPOp : LLVM_OneResultOp<"getelementptr", [NoSideEffect]>,
     $base `[` $indices `]` attr-dict `:` functional-type(operands, results)
   }];
 }
-def LLVM_LoadOp : LLVM_OneResultOp<"load">, Arguments<(ins LLVM_Type:$addr)>,
-                  LLVM_Builder<"$res = builder.CreateLoad($addr);"> {
+def LLVM_LoadOp :
+    MemoryOpWithAlignmentAndAttributes,
+    LLVM_OneResultOp<"load">,
+    Arguments<(ins LLVM_Type:$addr,
+                   OptionalAttr<I64Attr>:$alignment,
+                   UnitAttr:$volatile_,
+                   UnitAttr:$nontemporal)> {
+  string llvmBuilder = [{
+    auto *inst = builder.CreateLoad($addr, $volatile_);
+  }] # setAlignmentCode # setNonTemporalMetadataCode # [{
+    $res = inst;
+  }];
   let builders = [OpBuilder<
-    "OpBuilder &b, OperationState &result, Value addr",
+    "OpBuilder &b, OperationState &result, Value addr, "
+    "unsigned alignment = 0, bool isVolatile = false, "
+    "bool isNonTemporal = false",
     [{
       auto type = addr.getType().cast<LLVM::LLVMType>().getPointerElementTy();
-      build(b, result, type, addr);
-    }]>];
+      build(b, result, type, addr, alignment, isVolatile, isNonTemporal);
+    }]>,
+    OpBuilder<
+    "OpBuilder &b, OperationState &result, Type t, Value addr, "
+    "unsigned alignment = 0, bool isVolatile = false, "
+    "bool isNonTemporal = false">];
   let parser = [{ return parseLoadOp(parser, result); }];
   let printer = [{ printLoadOp(p, *this); }];
+  let verifier = alignmentVerifierCode;
 }
-def LLVM_StoreOp : LLVM_ZeroResultOp<"store">,
-                   Arguments<(ins LLVM_Type:$value, LLVM_Type:$addr)>,
-                   LLVM_Builder<"builder.CreateStore($value, $addr);"> {
+def LLVM_StoreOp :
+    MemoryOpWithAlignmentAndAttributes,
+    LLVM_ZeroResultOp<"store">,
+    Arguments<(ins LLVM_Type:$value,
+                   LLVM_Type:$addr,
+                   OptionalAttr<I64Attr>:$alignment,
+                   UnitAttr:$volatile_,
+                   UnitAttr:$nontemporal)> {
+  string llvmBuilder = [{
+    auto *inst = builder.CreateStore($value, $addr, $volatile_);
+  }] # setAlignmentCode # setNonTemporalMetadataCode;
+  let builders = [OpBuilder<
+    "OpBuilder &b, OperationState &result, Value value, Value addr, "
+    "unsigned alignment = 0, bool isVolatile = false, "
+    "bool isNonTemporal = false">
+    ];
   let parser = [{ return parseStoreOp(parser, result); }];
   let printer = [{ printStoreOp(p, *this); }];
+  let verifier = alignmentVerifierCode;
 }
 
 // Casts.
@@ -423,7 +474,7 @@ def LLVM_ShuffleVectorOp
   let verifier = [{
     auto wrappedVectorType1 = v1().getType().cast<LLVM::LLVMType>();
     auto wrappedVectorType2 = v2().getType().cast<LLVM::LLVMType>();
-    if (!wrappedVectorType2.getUnderlyingType()->isVectorTy())
+    if (!wrappedVectorType2.isVectorTy())
       return emitOpError("expected LLVM IR Dialect vector type for operand #2");
     if (wrappedVectorType1.getVectorElementType() !=
         wrappedVectorType2.getVectorElementType())
@@ -470,21 +521,29 @@ def LLVM_CondBrOp : LLVM_TerminatorOp<"cond_br",
      NoSideEffect]> {
   let arguments = (ins LLVMI1:$condition,
                    Variadic<LLVM_Type>:$trueDestOperands,
-                   Variadic<LLVM_Type>:$falseDestOperands);
+                   Variadic<LLVM_Type>:$falseDestOperands,
+                   OptionalAttr<ElementsAttr>:$branch_weights);
   let successors = (successor AnySuccessor:$trueDest, AnySuccessor:$falseDest);
   let assemblyFormat = [{
-    $condition `,`
+    $condition ( `weights` `(` $branch_weights^ `)` )? `,`
     $trueDest (`(` $trueDestOperands^ `:` type($trueDestOperands) `)`)? `,`
     $falseDest (`(` $falseDestOperands^ `:` type($falseDestOperands) `)`)?
     attr-dict
   }];
 
   let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value condition,"
-    "Block *trueDest, ValueRange trueOperands,"
-    "Block *falseDest, ValueRange falseOperands", [{
-      build(builder, result, condition, trueOperands, falseOperands, trueDest,
-            falseDest);
+     "OpBuilder &builder, OperationState &result, Value condition,"
+     "Block *trueDest, ValueRange trueOperands,"
+     "Block *falseDest, ValueRange falseOperands,"
+     "Optional<std::pair<uint32_t, uint32_t>> weights = {}", [{
+        ElementsAttr weightsAttr;
+        if (weights) {
+          weightsAttr =
+              builder.getI32VectorAttr({static_cast<int32_t>(weights->first),
+                                       static_cast<int32_t>(weights->second)});
+        }
+        build(builder, result, condition, trueOperands, falseOperands, weightsAttr,
+              trueDest, falseDest);
   }]>, OpBuilder<
     "OpBuilder &builder, OperationState &result, Value condition,"
     "Block *trueDest, Block *falseDest, ValueRange falseOperands = {}", [{
@@ -575,6 +634,8 @@ def Linkage : LLVM_EnumAttr<
 def LLVM_AddressOfOp
     : LLVM_OneResultOp<"mlir.addressof">,
       Arguments<(ins FlatSymbolRefAttr:$global_name)> {
+  let summary = "Creates a pointer pointing to a global or a function";
+
   let builders = [
     OpBuilder<"OpBuilder &builder, OperationState &result, LLVMType resType, "
               "StringRef name, ArrayRef<NamedAttribute> attrs = {}", [{
@@ -586,13 +647,21 @@ def LLVM_AddressOfOp
               "ArrayRef<NamedAttribute> attrs = {}", [{
       build(builder, result,
             global.getType().getPointerTo(global.addr_space().getZExtValue()),
-            global.sym_name(), attrs);}]>
+            global.sym_name(), attrs);}]>,
+
+    OpBuilder<"OpBuilder &builder, OperationState &result, LLVMFuncOp func, "
+              "ArrayRef<NamedAttribute> attrs = {}", [{
+      build(builder, result,
+            func.getType().getPointerTo(), func.getName(), attrs);}]>
   ];
 
   let extraClassDeclaration = [{
     /// Return the llvm.mlir.global operation that defined the value referenced
     /// here.
     GlobalOp getGlobal();
+
+    /// Return the llvm.func operation that is referenced here.
+    LLVMFuncOp getFunction();
   }];
 
   let assemblyFormat = "$global_name attr-dict `:` type($res)";
@@ -693,10 +762,10 @@ def LLVM_LLVMFuncOp
           .getValue().cast<LLVMType>();
     }
     bool isVarArg() {
-      return getType().getUnderlyingType()->isFunctionVarArg();
+      return getType().isFunctionVarArg();
     }
 
-    // Hook for OpTrait::FunctionLike, returns the number of function arguments.
+    // Hook for OpTrait::FunctionLike, returns the number of function arguments`.
     // Depends on the type attribute being correct as checked by verifyType.
     unsigned getNumFuncArguments();
 
@@ -733,6 +802,7 @@ def LLVM_ConstantOp
       LLVM_Builder<"$res = getLLVMConstant($_resultType, $value, $_location);">
 {
   let assemblyFormat = "`(` $value `)` attr-dict `:` type($res)";
+  let verifier = [{ return ::verify(*this); }];
 }
 
 def LLVM_DialectCastOp : LLVM_Op<"mlir.cast", [NoSideEffect]>,
@@ -780,6 +850,7 @@ def LLVM_ExpOp : LLVM_UnaryIntrinsicOp<"exp">;
 def LLVM_Exp2Op : LLVM_UnaryIntrinsicOp<"exp2">;
 def LLVM_FAbsOp : LLVM_UnaryIntrinsicOp<"fabs">;
 def LLVM_FCeilOp : LLVM_UnaryIntrinsicOp<"ceil">;
+def LLVM_FFloorOp : LLVM_UnaryIntrinsicOp<"floor">;
 def LLVM_FMAOp : LLVM_TernarySameArgsIntrinsicOp<"fma">;
 def LLVM_FMulAddOp : LLVM_TernarySameArgsIntrinsicOp<"fmuladd">;
 def LLVM_Log10Op : LLVM_UnaryIntrinsicOp<"log10">;
@@ -788,7 +859,22 @@ def LLVM_LogOp : LLVM_UnaryIntrinsicOp<"log">;
 def LLVM_Prefetch : LLVM_ZeroResultIntrOp<"prefetch", [0]>,
                     Arguments<(ins LLVM_Type:$addr, LLVM_Type:$rw,
                                LLVM_Type:$hint, LLVM_Type:$cache)>;
+def LLVM_SinOp : LLVM_UnaryIntrinsicOp<"sin">;
 def LLVM_SqrtOp : LLVM_UnaryIntrinsicOp<"sqrt">;
+def LLVM_PowOp : LLVM_BinarySameArgsIntrinsicOp<"pow">;
+def LLVM_BitReverseOp : LLVM_UnaryIntrinsicOp<"bitreverse">;
+def LLVM_CtPopOp : LLVM_UnaryIntrinsicOp<"ctpop">;
+def LLVM_MaxNumOp : LLVM_BinarySameArgsIntrinsicOp<"maxnum">;
+def LLVM_MinNumOp : LLVM_BinarySameArgsIntrinsicOp<"minnum">;
+def LLVM_SMaxOp : LLVM_BinarySameArgsIntrinsicOp<"smax">;
+def LLVM_SMinOp : LLVM_BinarySameArgsIntrinsicOp<"smin">;
+
+def LLVM_MemcpyOp : LLVM_ZeroResultIntrOp<"memcpy", [0, 1, 2]>,
+                    Arguments<(ins LLVM_Type:$dst, LLVM_Type:$src,
+                               LLVM_Type:$len, LLVM_Type:$isVolatile)>;
+def LLVM_MemcpyInlineOp : LLVM_ZeroResultIntrOp<"memcpy.inline", [0, 1, 2]>,
+                          Arguments<(ins LLVM_Type:$dst, LLVM_Type:$src,
+                                     LLVM_Type:$len, LLVM_Type:$isVolatile)>;
 
 //
 // Vector Reductions.
@@ -813,40 +899,52 @@ def LLVM_experimental_vector_reduce_v2_fmul : LLVM_VectorReductionV2<"fmul">;
 // LLVM Matrix operations.
 //
 
-/// Create a columnwise, strided 2-D matrix load, as specified in the LLVM
+/// Create a column major, strided 2-D matrix load, as specified in the LLVM
 /// MatrixBuilder.
-/// data    - Start address of the matrix read
-/// rows    - Number of rows in matrix (must be a constant)
-/// columns - Number of columns in matrix (must be a constant)
-/// stride  - Space between columns
-def LLVM_MatrixColumnsWiseLoadOp
-    : LLVM_OneResultOp<"intr.matrix.columnwise.load">,
-      Arguments<(ins LLVM_Type:$data, LLVM_Type:$stride,
+/// data       - Start address of the matrix read
+/// rows       - Number of rows in matrix (must be a constant)
+/// isVolatile - True if the load operation is marked as volatile.
+/// columns    - Number of columns in matrix (must be a constant)
+/// stride     - Space between columns
+def LLVM_MatrixColumnMajorLoadOp
+    : LLVM_OneResultOp<"intr.matrix.column.major.load">,
+      Arguments<(ins LLVM_Type:$data, LLVM_Type:$stride, I1Attr:$isVolatile,
                  I32Attr:$rows, I32Attr:$columns)> {
   string llvmBuilder = [{
     llvm::MatrixBuilder<decltype(builder)> mb(builder);
-    $res = mb.CreateMatrixColumnwiseLoad(
-      $data, $rows.getZExtValue(), $columns.getZExtValue(), $stride);
+    const llvm::DataLayout &dl =
+      builder.GetInsertBlock()->getModule()->getDataLayout();
+    llvm::Align align = dl.getABITypeAlign(
+      $data->getType()->getPointerElementType());
+    $res = mb.CreateColumnMajorLoad(
+      $data, align, $stride, $isVolatile.getZExtValue(), $rows.getZExtValue(),
+      $columns.getZExtValue());
   }];
   let assemblyFormat = "$data `,` `<` `stride` `=` $stride `>` attr-dict"
     "`:` type($res) `from` type($data) `stride` type($stride)";
 }
 
-/// Create a columnwise, strided 2-D matrix store, as specified in the LLVM
+/// Create a column major, strided 2-D matrix store, as specified in the LLVM
 /// MatrixBuilder.
-/// matrix  - Matrix to store
-/// ptr     - Pointer to write back to
-/// rows    - Number of rows in matrix (must be a constant)
-/// columns - Number of columns in matrix (must be a constant)
-/// stride  - Space between columns
-def LLVM_MatrixColumnsWiseStoreOp
-    : LLVM_ZeroResultOp<"intr.matrix.columnwise.store">,
+/// matrix     - Matrix to store
+/// ptr        - Pointer to write back to
+/// isVolatile - True if the load operation is marked as volatile.
+/// rows       - Number of rows in matrix (must be a constant)
+/// columns    - Number of columns in matrix (must be a constant)
+/// stride     - Space between columns
+def LLVM_MatrixColumnMajorStoreOp
+    : LLVM_ZeroResultOp<"intr.matrix.column.major.store">,
       Arguments<(ins LLVM_Type:$matrix, LLVM_Type:$data, LLVM_Type:$stride,
-                 I32Attr:$rows, I32Attr:$columns)> {
+                 I1Attr:$isVolatile, I32Attr:$rows, I32Attr:$columns)> {
   string llvmBuilder = [{
     llvm::MatrixBuilder<decltype(builder)> mb(builder);
-    mb.CreateMatrixColumnwiseStore(
-      $matrix, $data, $stride, $rows.getZExtValue(), $columns.getZExtValue());
+    const llvm::DataLayout &dl =
+      builder.GetInsertBlock()->getModule()->getDataLayout();
+    llvm::Align align = dl.getABITypeAlign(
+      $data->getType()->getPointerElementType());
+    mb.CreateColumnMajorStore(
+      $matrix, $data, align, $stride, $isVolatile.getZExtValue(),
+      $rows.getZExtValue(), $columns.getZExtValue());
   }];
   let assemblyFormat = "$matrix `,` $data `,` `<` `stride` `=` $stride `>` "
     "attr-dict`:` type($matrix) `to` type($data) `stride` type($stride)";
@@ -913,6 +1011,45 @@ def LLVM_MaskedStoreOp
   let assemblyFormat = "$value `,` $data `,` $mask attr-dict `:` "
     "type($value) `,` type($mask) `into` type($data)";
 }
+
+/// Create a call to Masked Gather intrinsic.
+def LLVM_masked_gather
+    : LLVM_OneResultOp<"intr.masked.gather">,
+      Arguments<(ins LLVM_Type:$ptrs, LLVM_Type:$mask,
+                 Variadic<LLVM_Type>:$pass_thru, I32Attr:$alignment)> {
+  string llvmBuilder = [{
+    $res = $pass_thru.empty() ? builder.CreateMaskedGather(
+      $ptrs, llvm::Align($alignment.getZExtValue()), $mask) :
+      builder.CreateMaskedGather(
+        $ptrs, llvm::Align($alignment.getZExtValue()), $mask, $pass_thru[0]);
+  }];
+  let assemblyFormat =
+    "operands attr-dict `:` functional-type(operands, results)";
+}
+
+/// Create a call to Masked Scatter intrinsic.
+def LLVM_masked_scatter
+    : LLVM_ZeroResultOp<"intr.masked.scatter">,
+      Arguments<(ins LLVM_Type:$value, LLVM_Type:$ptrs, LLVM_Type:$mask,
+                 I32Attr:$alignment)> {
+  string llvmBuilder = [{
+    builder.CreateMaskedScatter(
+      $value, $ptrs, llvm::Align($alignment.getZExtValue()), $mask);
+  }];
+  let assemblyFormat = "$value `,` $ptrs `,` $mask attr-dict `:` "
+    "type($value) `,` type($mask) `into` type($ptrs)";
+}
+
+/// Create a call to Masked Expand Load intrinsic.
+def LLVM_masked_expandload
+    : LLVM_IntrOp<"masked.expandload", [0], [], [], 1>,
+      Arguments<(ins LLVM_Type, LLVM_Type, LLVM_Type)>;
+
+/// Create a call to Masked Compress Store intrinsic.
+def LLVM_masked_compressstore
+    : LLVM_IntrOp<"masked.compressstore", [], [0], [], 0>,
+    Arguments<(ins LLVM_Type, LLVM_Type, LLVM_Type)>;
+
 //
 // Atomic operations.
 //

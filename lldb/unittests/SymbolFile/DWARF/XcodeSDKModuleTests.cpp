@@ -47,8 +47,7 @@ debug_abbrev:
       - Attribute:       DW_AT_APPLE_sdk
         Form:            DW_FORM_strp
 debug_info:
-  - Length:
-      TotalLength:     8
+  - Length:          8
     Version:         2
     AbbrOffset:      0
     AddrSize:        8
@@ -64,13 +63,16 @@ debug_info:
 
   auto triple = "x86_64-apple-macosx";
   YAMLModuleTester t(yamldata, triple);
-  auto module = t.GetModule();
   auto dwarf_unit_sp = t.GetDwarfUnit();
   auto *dwarf_cu = llvm::cast<DWARFCompileUnit>(dwarf_unit_sp.get());
   ASSERT_TRUE((bool)dwarf_cu);
-  ASSERT_TRUE((bool)dwarf_cu->GetSymbolFileDWARF().GetCompUnitForDWARFCompUnit(
-      *dwarf_cu));
-  XcodeSDK sdk = module->GetXcodeSDK();
+  SymbolFileDWARF &sym_file = dwarf_cu->GetSymbolFileDWARF();
+  CompUnitSP comp_unit = sym_file.GetCompileUnitAtIndex(0);
+  ASSERT_TRUE((bool)comp_unit.get());
+  ModuleSP module = t.GetModule();
+  ASSERT_EQ(module->GetSourceMappingList().GetSize(), 0u);
+  XcodeSDK sdk = sym_file.ParseXcodeSDK(*comp_unit);
   ASSERT_EQ(sdk.GetType(), XcodeSDK::Type::MacOSX);
+  ASSERT_EQ(module->GetSourceMappingList().GetSize(), 1u);
 }
 #endif

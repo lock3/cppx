@@ -25,6 +25,7 @@ namespace llvm {
 /// Contains info about various FileCheck options.
 struct FileCheckRequest {
   std::vector<StringRef> CheckPrefixes;
+  std::vector<StringRef> CommentPrefixes;
   bool NoCanonicalizeWhiteSpace = false;
   std::vector<StringRef> ImplicitCheckNot;
   std::vector<StringRef> GlobalDefines;
@@ -38,10 +39,6 @@ struct FileCheckRequest {
   bool VerboseVerbose = false;
 };
 
-//===----------------------------------------------------------------------===//
-// Summary of a FileCheck diagnostic.
-//===----------------------------------------------------------------------===//
-
 namespace Check {
 
 enum FileCheckKind {
@@ -53,6 +50,7 @@ enum FileCheckKind {
   CheckDAG,
   CheckLabel,
   CheckEmpty,
+  CheckComment,
 
   /// Indicates the pattern only matches the end of file. This is used for
   /// trailing CHECK-NOTs.
@@ -84,6 +82,7 @@ public:
 };
 } // namespace Check
 
+/// Summary of a FileCheck diagnostic.
 struct FileCheckDiag {
   /// What is the FileCheck directive for this diagnostic?
   Check::FileCheckType CheckTy;
@@ -129,8 +128,12 @@ struct FileCheckDiag {
   unsigned InputStartCol;
   unsigned InputEndLine;
   unsigned InputEndCol;
+  /// A note to replace the one normally indicated by MatchTy, or the empty
+  /// string if none.
+  std::string Note;
   FileCheckDiag(const SourceMgr &SM, const Check::FileCheckType &CheckTy,
-                SMLoc CheckLoc, MatchType MatchTy, SMRange InputRange);
+                SMLoc CheckLoc, MatchType MatchTy, SMRange InputRange,
+                StringRef Note = "");
 };
 
 class FileCheckPatternContext;

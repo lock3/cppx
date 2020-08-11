@@ -24,12 +24,9 @@
 #define LLVM_ANALYSIS_MUSTEXECUTE_H
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/Analysis/EHPersonalities.h"
 #include "llvm/Analysis/InstructionPrecedenceTracking.h"
-#include "llvm/Analysis/LoopInfo.h"
-#include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/Dominators.h"
-#include "llvm/IR/Instruction.h"
 
 namespace llvm {
 
@@ -37,15 +34,17 @@ namespace {
 template <typename T> using GetterTy = std::function<T *(const Function &F)>;
 }
 
-class Instruction;
+class BasicBlock;
 class DominatorTree;
-class PostDominatorTree;
+class Instruction;
 class Loop;
+class LoopInfo;
+class PostDominatorTree;
 
 /// Captures loop safety information.
 /// It keep information for loop blocks may throw exception or otherwise
-/// exit abnormaly on any iteration of the loop which might actually execute
-/// at runtime.  The primary way to consume this infromation is via
+/// exit abnormally on any iteration of the loop which might actually execute
+/// at runtime.  The primary way to consume this information is via
 /// isGuaranteedToExecute below, but some callers bailout or fallback to
 /// alternate reasoning if a loop contains any implicit control flow.
 /// NOTE: LoopSafetyInfo contains cached information regarding loops and their
@@ -112,17 +111,15 @@ class SimpleLoopSafetyInfo: public LoopSafetyInfo {
   bool HeaderMayThrow = false; // Same as previous, but specific to loop header
 
 public:
-  virtual bool blockMayThrow(const BasicBlock *BB) const;
+  bool blockMayThrow(const BasicBlock *BB) const override;
 
-  virtual bool anyBlockMayThrow() const;
+  bool anyBlockMayThrow() const override;
 
-  virtual void computeLoopSafetyInfo(const Loop *CurLoop);
+  void computeLoopSafetyInfo(const Loop *CurLoop) override;
 
-  virtual bool isGuaranteedToExecute(const Instruction &Inst,
-                                     const DominatorTree *DT,
-                                     const Loop *CurLoop) const;
-
-  virtual ~SimpleLoopSafetyInfo() {};
+  bool isGuaranteedToExecute(const Instruction &Inst,
+                             const DominatorTree *DT,
+                             const Loop *CurLoop) const override;
 };
 
 /// This implementation of LoopSafetyInfo use ImplicitControlFlowTracking to
@@ -139,15 +136,15 @@ class ICFLoopSafetyInfo: public LoopSafetyInfo {
   mutable MemoryWriteTracking MW;
 
 public:
-  virtual bool blockMayThrow(const BasicBlock *BB) const;
+  bool blockMayThrow(const BasicBlock *BB) const override;
 
-  virtual bool anyBlockMayThrow() const;
+  bool anyBlockMayThrow() const override;
 
-  virtual void computeLoopSafetyInfo(const Loop *CurLoop);
+  void computeLoopSafetyInfo(const Loop *CurLoop) override;
 
-  virtual bool isGuaranteedToExecute(const Instruction &Inst,
-                                     const DominatorTree *DT,
-                                     const Loop *CurLoop) const;
+  bool isGuaranteedToExecute(const Instruction &Inst,
+                             const DominatorTree *DT,
+                             const Loop *CurLoop) const override;
 
   /// Returns true if we could not execute a memory-modifying instruction before
   /// we enter \p BB under assumption that \p CurLoop is entered.
@@ -168,8 +165,6 @@ public:
   /// from its block. It will make all cache updates to keep it correct after
   /// this removal.
   void removeInstruction(const Instruction *Inst);
-
-  virtual ~ICFLoopSafetyInfo() {};
 };
 
 bool mayContainIrreducibleControl(const Function &F, const LoopInfo *LI);

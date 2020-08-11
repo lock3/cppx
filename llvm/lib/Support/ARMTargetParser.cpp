@@ -13,6 +13,7 @@
 
 #include "llvm/Support/ARMTargetParser.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/ADT/Triple.h"
 #include <cctype>
 
 using namespace llvm;
@@ -489,9 +490,10 @@ static unsigned findDoublePrecisionFPU(unsigned InputFPUKind) {
   return ARM::FK_INVALID;
 }
 
-bool ARM::appendArchExtFeatures(
-  StringRef CPU, ARM::ArchKind AK, StringRef ArchExt,
-  std::vector<StringRef> &Features) {
+bool ARM::appendArchExtFeatures(StringRef CPU, ARM::ArchKind AK,
+                                StringRef ArchExt,
+                                std::vector<StringRef> &Features,
+                                unsigned &ArgFPUID) {
 
   size_t StartingNumFeatures = Features.size();
   const bool Negated = stripNegationPrefix(ArchExt);
@@ -526,6 +528,7 @@ bool ARM::appendArchExtFeatures(
     } else {
       FPUKind = getDefaultFPU(CPU, AK);
     }
+    ArgFPUID = FPUKind;
     return ARM::getFPUFeatures(FPUKind, Features);
   }
   return StartingNumFeatures != Features.size();

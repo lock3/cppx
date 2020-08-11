@@ -72,7 +72,7 @@ template <typename AttrT> struct constant_op_binder {
     SmallVector<OpFoldResult, 1> foldedOp;
     LogicalResult result = op->fold(/*operands=*/llvm::None, foldedOp);
     (void)result;
-    assert(succeeded(result) && "expected constant to be foldable");
+    assert(succeeded(result) && "expected ConstantLike op to be foldable");
 
     if (auto attr = foldedOp.front().get<Attribute>().dyn_cast<AttrT>()) {
       if (bind_value)
@@ -97,9 +97,9 @@ struct constant_int_op_binder {
       return false;
     auto type = op->getResult(0).getType();
 
-    if (type.isa<IntegerType>() || type.isa<IndexType>())
+    if (type.isa<IntegerType, IndexType>())
       return attr_value_binder<IntegerAttr>(bind_value).match(attr);
-    if (type.isa<VectorType>() || type.isa<RankedTensorType>()) {
+    if (type.isa<VectorType, RankedTensorType>()) {
       if (auto splatAttr = attr.dyn_cast<SplatElementsAttr>()) {
         return attr_value_binder<IntegerAttr>(bind_value)
             .match(splatAttr.getSplatValue());

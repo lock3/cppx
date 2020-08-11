@@ -64,7 +64,6 @@ enum LoadDependentFiles {
   eLoadDependentsNo,
 };
 
-// TargetProperties
 class TargetExperimentalProperties : public Properties {
 public:
   TargetExperimentalProperties();
@@ -93,6 +92,10 @@ public:
   bool GetDisableASLR() const;
 
   void SetDisableASLR(bool b);
+
+  bool GetInheritTCC() const;
+
+  void SetInheritTCC(bool b);
 
   bool GetDetachOnError() const;
 
@@ -207,10 +210,6 @@ public:
 
   void SetInjectLocalVariables(ExecutionContext *exe_ctx, bool b);
   
-  bool GetOSPluginReportsAllThreads() const;
-
-  void SetOSPluginReportsAllThreads(bool does_report);
-
   void SetRequireHardwareBreakpoints(bool b);
 
   bool GetRequireHardwareBreakpoints() const;
@@ -230,6 +229,7 @@ private:
   void ErrorPathValueChangedCallback();
   void DetachOnErrorValueChangedCallback();
   void DisableASLRValueChangedCallback();
+  void InheritTCCValueChangedCallback();
   void DisableSTDIOValueChangedCallback();
 
   Environment ComputeEnvironment() const;
@@ -490,7 +490,8 @@ public:
     lldb::TargetSP m_target_sp;
     ModuleList m_module_list;
 
-    DISALLOW_COPY_AND_ASSIGN(TargetEventData);
+    TargetEventData(const TargetEventData &) = delete;
+    const TargetEventData &operator=(const TargetEventData &) = delete;
   };
 
   ~Target() override;
@@ -1255,6 +1256,10 @@ public:
 
   void SetREPL(lldb::LanguageType language, lldb::REPLSP repl_sp);
 
+  StackFrameRecognizerManager &GetFrameRecognizerManager() {
+    return *m_frame_recognizer_manager_up;
+  }
+
 protected:
   /// Implementing of ModuleList::Notifier.
 
@@ -1329,6 +1334,8 @@ protected:
   bool m_suppress_stop_hooks;
   bool m_is_dummy_target;
   unsigned m_next_persistent_variable_index = 0;
+  /// Stores the frame recognizers of this target.
+  lldb::StackFrameRecognizerManagerUP m_frame_recognizer_manager_up;
 
   static void ImageSearchPathsChanged(const PathMappingList &path_list,
                                       void *baton);
@@ -1374,7 +1381,8 @@ private:
 
   void FinalizeFileActions(ProcessLaunchInfo &info);
 
-  DISALLOW_COPY_AND_ASSIGN(Target);
+  Target(const Target &) = delete;
+  const Target &operator=(const Target &) = delete;
 };
 
 } // namespace lldb_private

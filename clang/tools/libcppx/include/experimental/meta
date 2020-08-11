@@ -98,6 +98,9 @@ enum reflection_query : unsigned {
   query_is_externally_linked,
   query_is_internally_linked,
 
+  // Initializers
+  query_has_initializer,
+
   // General purpose
   query_is_extern_specified,
   query_is_inline,
@@ -257,9 +260,9 @@ enum reflection_query : unsigned {
   query_remove_reference,
   query_add_lvalue_reference,
   query_add_rvalue_reference,
+  query_remove_extent,
   query_remove_pointer,
   query_add_pointer,
-  query_decay,
   query_make_signed,
   query_make_unsigned,
 
@@ -280,6 +283,8 @@ enum reflection_query : unsigned {
 /// Explicit requirements.
 consteval static void require_variable(info reflection,
                                        const char *custom_err = nullptr);
+consteval static void require_var_or_data_mem(info reflection,
+                                              const char *custom_err = nullptr);
 consteval static void require_class(info reflection,
                                     const char *custom_err = nullptr);
 consteval static void require_class_member(info reflection,
@@ -698,8 +703,7 @@ constexpr struct is_nonstatic_data_member_fn
   }
 } is_nonstatic_data_member;
 
-// Returns true if the reflected entity is a data member
-// declared without the static declaration specifier.
+// Returns true if the reflected entity is a data member.
 constexpr struct is_data_member_fn
 {
   consteval bool operator()(info reflection) const
@@ -1084,6 +1088,21 @@ consteval bool is_internally_linked(info reflection) {
 [[deprecated]] consteval bool has_internal_linkage(info reflection) {
   return is_internally_linked(reflection);
 }
+
+// -------------------------------------------------------------------------- //
+// Initializers
+
+// Requires: is_variable(var_or_data_mem) || is_data_member(var_or_data_mem)
+//
+// Returns true if the reflected entity has an initializer.
+constexpr struct has_initializer_fn
+{
+  consteval bool operator()(info var_or_data_mem) const
+  {
+    detail::require_var_or_data_mem(var_or_data_mem);
+    return __reflect(detail::query_has_initializer, var_or_data_mem);
+  }
+} has_initializer;
 
 // -------------------------------------------------------------------------- //
 // General purpose
@@ -2808,6 +2827,20 @@ consteval info add_rvalue_reference(info type) {
 
 // Requires: is_type(type)
 //
+// Equivalent to reflexpr(std::remove_extent<T>::type) where type
+// is reflexpr(T).
+//
+// If the provided type reflection reflects an array type, returns
+// a new type reflection of the underlying (i.e. element) type.
+//
+// Otherwise, returns a new type reflection of equivalent type.
+consteval info remove_extent(info type) {
+  detail::require_type(type);
+  return __reflect(detail::query_remove_extent, type);
+}
+
+// Requires: is_type(type)
+//
 // Equivalent to reflexpr(std::remove_pointer<T>::type) where type
 // is reflexpr(T).
 //
@@ -2849,15 +2882,25 @@ consteval info remove_cvref(info type) {
 //
 // Equivalent to reflexpr(std::decay<T>::type) where type is reflexpr(T).
 //
-// If reflected type names the type "array of U" or "reference to array of U",
-// returns a new type reflection of U*.
+// Let U be remove_reference(reflexpr(T)).
 //
-// If T is a function type F or a reference thereto, equivalent to add_pointer(type).
+// If U is an array type, equivalent to add_pointer(remove_extent(U)).
 //
-// Otherwise, equivalent to remove_cvref(type).
+// If U is a function type, equivalent to add_pointer(U).
+//
+// Otherwise, equivalent to remove_cvref(U).
 consteval info decay(info type) {
   detail::require_type(type);
-  return __reflect(detail::query_decay, type);
+
+  info ref_removed = remove_reference(type);
+
+  if (is_array_type(ref_removed))
+    return add_pointer(remove_extent(ref_removed));
+
+  if (is_function_type(ref_removed))
+    return add_pointer(ref_removed);
+
+  return remove_cv(ref_removed);
 }
 
 // Requires: is_type(type)
@@ -3409,6 +3452,17 @@ detail::require_variable(info reflection, const char* custom_err) {
   if(custom_err)
     __compiler_error(custom_err);
   __compiler_error("Reflected entity must be a variable.");
+}
+
+consteval void
+detail::require_var_or_data_mem(info reflection, const char* custom_err) {
+  if (is_variable(reflection))
+    return;
+  if (is_data_member(reflection))
+    return;
+  if(custom_err)
+    __compiler_error(custom_err);
+  __compiler_error("Reflected entity must be a variable or data member.");
 }
 
 consteval void

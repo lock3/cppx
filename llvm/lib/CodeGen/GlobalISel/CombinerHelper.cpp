@@ -9,6 +9,7 @@
 #include "llvm/CodeGen/GlobalISel/Combiner.h"
 #include "llvm/CodeGen/GlobalISel/GISelChangeObserver.h"
 #include "llvm/CodeGen/GlobalISel/GISelKnownBits.h"
+#include "llvm/CodeGen/GlobalISel/LegalizerInfo.h"
 #include "llvm/CodeGen/GlobalISel/MIPatternMatch.h"
 #include "llvm/CodeGen/GlobalISel/MachineIRBuilder.h"
 #include "llvm/CodeGen/GlobalISel/Utils.h"
@@ -36,9 +37,10 @@ static cl::opt<bool>
 
 CombinerHelper::CombinerHelper(GISelChangeObserver &Observer,
                                MachineIRBuilder &B, GISelKnownBits *KB,
-                               MachineDominatorTree *MDT)
+                               MachineDominatorTree *MDT,
+                               const LegalizerInfo *LI)
     : Builder(B), MRI(Builder.getMF().getRegInfo()), Observer(Observer),
-      KB(KB), MDT(MDT) {
+      KB(KB), MDT(MDT), LI(LI) {
   (void)this->KB;
 }
 
@@ -405,7 +407,20 @@ bool CombinerHelper::matchCombineExtendingLoads(MachineInstr &MI,
   for (auto &UseMI : MRI.use_nodbg_instructions(LoadValue.getReg())) {
     if (UseMI.getOpcode() == TargetOpcode::G_SEXT ||
         UseMI.getOpcode() == TargetOpcode::G_ZEXT ||
-        UseMI.getOpcode() == TargetOpcode::G_ANYEXT) {
+        (UseMI.getOpcode() == TargetOpcode::G_ANYEXT)) {
+      // Check for legality.
+      if (LI) {
+        LegalityQuery::MemDesc MMDesc;
+        const auto &MMO = **MI.memoperands_begin();
+        MMDesc.SizeInBits = MMO.getSizeInBits();
+        MMDesc.AlignInBits = MMO.getAlign().value() * 8;
+        MMDesc.Ordering = MMO.getOrdering();
+        LLT UseTy = MRI.getType(UseMI.getOperand(0).getReg());
+        LLT SrcTy = MRI.getType(MI.getOperand(1).getReg());
+        if (LI->getAction({MI.getOpcode(), {UseTy, SrcTy}, {MMDesc}}).Action !=
+            LegalizeActions::Legal)
+          continue;
+      }
       Preferred = ChoosePreferredUse(Preferred,
                                      MRI.getType(UseMI.getOperand(0).getReg()),
                                      UseMI.getOpcode(), &UseMI);
@@ -559,6 +574,40 @@ bool CombinerHelper::dominates(const MachineInstr &DefMI,
     return false;
 
   return isPredecessor(DefMI, UseMI);
+}
+
+bool CombinerHelper::matchSextTruncSextLoad(MachineInstr &MI) {
+  assert(MI.getOpcode() == TargetOpcode::G_SEXT_INREG);
+  Register SrcReg = MI.getOperand(1).getReg();
+  Register LoadUser = SrcReg;
+
+  if (MRI.getType(SrcReg).isVector())
+    return false;
+
+  Register TruncSrc;
+  if (mi_match(SrcReg, MRI, m_GTrunc(m_Reg(TruncSrc))))
+    LoadUser = TruncSrc;
+
+  uint64_t SizeInBits = MI.getOperand(2).getImm();
+  // If the source is a G_SEXTLOAD from the same bit width, then we don't
+  // need any extend at all, just a truncate.
+  if (auto *LoadMI = getOpcodeDef(TargetOpcode::G_SEXTLOAD, LoadUser, MRI)) {
+    const auto &MMO = **LoadMI->memoperands_begin();
+    // If truncating more than the original extended value, abort.
+    if (TruncSrc && MRI.getType(TruncSrc).getSizeInBits() < MMO.getSizeInBits())
+      return false;
+    if (MMO.getSizeInBits() == SizeInBits)
+      return true;
+  }
+  return false;
+}
+
+bool CombinerHelper::applySextTruncSextLoad(MachineInstr &MI) {
+  assert(MI.getOpcode() == TargetOpcode::G_SEXT_INREG);
+  Builder.setInstrAndDebugLoc(MI);
+  Builder.buildCopy(MI.getOperand(0).getReg(), MI.getOperand(1).getReg());
+  MI.eraseFromParent();
+  return true;
 }
 
 bool CombinerHelper::findPostIndexCandidate(MachineInstr &MI, Register &Addr,
@@ -852,8 +901,7 @@ static bool findGISelOptimalMemOpLowering(std::vector<LLT> &MemOps,
     Ty = LLT::scalar(64);
     if (Op.isFixedDstAlign())
       while (Op.getDstAlign() < Ty.getSizeInBytes() &&
-             !TLI.allowsMisalignedMemoryAccesses(Ty, DstAS,
-                                                 Op.getDstAlign().value()))
+             !TLI.allowsMisalignedMemoryAccesses(Ty, DstAS, Op.getDstAlign()))
         Ty = LLT::scalar(Ty.getSizeInBytes());
     assert(Ty.getSizeInBits() > 0 && "Could not find valid type");
     // FIXME: check for the largest legal type we can load/store to.
@@ -903,8 +951,8 @@ static bool findGISelOptimalMemOpLowering(std::vector<LLT> &MemOps,
 
 static Type *getTypeForLLT(LLT Ty, LLVMContext &C) {
   if (Ty.isVector())
-    return VectorType::get(IntegerType::get(C, Ty.getScalarSizeInBits()),
-                           Ty.getNumElements());
+    return FixedVectorType::get(IntegerType::get(C, Ty.getScalarSizeInBits()),
+                                Ty.getNumElements());
   return IntegerType::get(C, Ty.getSizeInBits());
 }
 
@@ -919,12 +967,14 @@ static Register getMemsetValue(Register Val, LLT Ty, MachineIRBuilder &MIB) {
     APInt SplatVal = APInt::getSplat(NumBits, Scalar);
     return MIB.buildConstant(Ty, SplatVal).getReg(0);
   }
-  // FIXME: for vector types create a G_BUILD_VECTOR.
-  if (Ty.isVector())
-    return Register();
 
   // Extend the byte value to the larger type, and then multiply by a magic
   // value 0x010101... in order to replicate it across every byte.
+  // Unless it's zero, in which case just emit a larger G_CONSTANT 0.
+  if (ValVRegAndVal && ValVRegAndVal->Value == 0) {
+    return MIB.buildConstant(Ty, 0).getReg(0);
+  }
+
   LLT ExtType = Ty.getScalarType();
   auto ZExt = MIB.buildZExtOrTrunc(ExtType, Val);
   if (NumBits > 8) {
@@ -933,7 +983,10 @@ static Register getMemsetValue(Register Val, LLT Ty, MachineIRBuilder &MIB) {
     Val = MIB.buildMul(ExtType, ZExt, MagicMI).getReg(0);
   }
 
-  assert(ExtType == Ty && "Vector memset value type not supported yet");
+  // For vector types create a G_BUILD_VECTOR.
+  if (Ty.isVector())
+    Val = MIB.buildSplatVector(Ty, Val).getReg(0);
+
   return Val;
 }
 
@@ -1492,6 +1545,39 @@ bool CombinerHelper::tryCombineShiftToUnmerge(MachineInstr &MI,
   return false;
 }
 
+bool CombinerHelper::matchCombineI2PToP2I(MachineInstr &MI, Register &Reg) {
+  assert(MI.getOpcode() == TargetOpcode::G_INTTOPTR && "Expected a G_INTTOPTR");
+  Register DstReg = MI.getOperand(0).getReg();
+  LLT DstTy = MRI.getType(DstReg);
+  Register SrcReg = MI.getOperand(1).getReg();
+  return mi_match(SrcReg, MRI,
+                  m_GPtrToInt(m_all_of(m_SpecificType(DstTy), m_Reg(Reg))));
+}
+
+bool CombinerHelper::applyCombineI2PToP2I(MachineInstr &MI, Register &Reg) {
+  assert(MI.getOpcode() == TargetOpcode::G_INTTOPTR && "Expected a G_INTTOPTR");
+  Register DstReg = MI.getOperand(0).getReg();
+  Builder.setInstr(MI);
+  Builder.buildCopy(DstReg, Reg);
+  MI.eraseFromParent();
+  return true;
+}
+
+bool CombinerHelper::matchCombineP2IToI2P(MachineInstr &MI, Register &Reg) {
+  assert(MI.getOpcode() == TargetOpcode::G_PTRTOINT && "Expected a G_PTRTOINT");
+  Register SrcReg = MI.getOperand(1).getReg();
+  return mi_match(SrcReg, MRI, m_GIntToPtr(m_Reg(Reg)));
+}
+
+bool CombinerHelper::applyCombineP2IToI2P(MachineInstr &MI, Register &Reg) {
+  assert(MI.getOpcode() == TargetOpcode::G_PTRTOINT && "Expected a G_PTRTOINT");
+  Register DstReg = MI.getOperand(0).getReg();
+  Builder.setInstr(MI);
+  Builder.buildZExtOrTrunc(DstReg, Reg);
+  MI.eraseFromParent();
+  return true;
+}
+
 bool CombinerHelper::matchAnyExplicitUseIsUndef(MachineInstr &MI) {
   return any_of(MI.explicit_uses(), [this](const MachineOperand &MO) {
     return MO.isReg() &&
@@ -1512,6 +1598,17 @@ bool CombinerHelper::matchUndefShuffleVectorMask(MachineInstr &MI) {
   return all_of(Mask, [](int Elt) { return Elt < 0; });
 }
 
+bool CombinerHelper::matchUndefStore(MachineInstr &MI) {
+  assert(MI.getOpcode() == TargetOpcode::G_STORE);
+  return getOpcodeDef(TargetOpcode::G_IMPLICIT_DEF, MI.getOperand(0).getReg(),
+                      MRI);
+}
+
+bool CombinerHelper::eraseInst(MachineInstr &MI) {
+  MI.eraseFromParent();
+  return true;
+}
+
 bool CombinerHelper::matchEqualDefs(const MachineOperand &MOP1,
                                     const MachineOperand &MOP2) {
   if (!MOP1.isReg() || !MOP2.isReg())
@@ -1523,8 +1620,37 @@ bool CombinerHelper::matchEqualDefs(const MachineOperand &MOP1,
   if (!I2)
     return false;
 
-  // Check for physical registers on the instructions first to avoid cases like
-  // this:
+  // Handle a case like this:
+  //
+  // %0:_(s64), %1:_(s64) = G_UNMERGE_VALUES %2:_(<2 x s64>)
+  //
+  // Even though %0 and %1 are produced by the same instruction they are not
+  // the same values.
+  if (I1 == I2)
+    return MOP1.getReg() == MOP2.getReg();
+
+  // If we have an instruction which loads or stores, we can't guarantee that
+  // it is identical.
+  //
+  // For example, we may have
+  //
+  // %x1 = G_LOAD %addr (load N from @somewhere)
+  // ...
+  // call @foo
+  // ...
+  // %x2 = G_LOAD %addr (load N from @somewhere)
+  // ...
+  // %or = G_OR %x1, %x2
+  //
+  // It's possible that @foo will modify whatever lives at the address we're
+  // loading from. To be safe, let's just assume that all loads and stores
+  // are different (unless we have something which is guaranteed to not
+  // change.)
+  if (I1->mayLoadOrStore() && !I1->isDereferenceableInvariantLoad(nullptr))
+    return false;
+
+  // Check for physical registers on the instructions first to avoid cases
+  // like this:
   //
   // %a = COPY $physreg
   // ...
@@ -1558,8 +1684,9 @@ bool CombinerHelper::matchEqualDefs(const MachineOperand &MOP1,
 bool CombinerHelper::matchConstantOp(const MachineOperand &MOP, int64_t C) {
   if (!MOP.isReg())
     return false;
-  int64_t Cst;
-  return mi_match(MOP.getReg(), MRI, m_ICst(Cst)) && Cst == C;
+  // MIPatternMatch doesn't let us look through G_ZEXT etc.
+  auto ValAndVReg = getConstantVRegValWithLookThrough(MOP.getReg(), MRI);
+  return ValAndVReg && ValAndVReg->Value == C;
 }
 
 bool CombinerHelper::replaceSingleDefInstWithOperand(MachineInstr &MI,
@@ -1587,6 +1714,12 @@ bool CombinerHelper::matchBinOpSameVal(MachineInstr &MI) {
                        MRI);
 }
 
+bool CombinerHelper::matchOperandIsZero(MachineInstr &MI, unsigned OpIdx) {
+  return matchConstantOp(MI.getOperand(OpIdx), 0) &&
+         canReplaceReg(MI.getOperand(0).getReg(), MI.getOperand(OpIdx).getReg(),
+                       MRI);
+}
+
 bool CombinerHelper::replaceInstWithFConstant(MachineInstr &MI, double C) {
   assert(MI.getNumDefs() == 1 && "Expected only one def?");
   Builder.setInstr(MI);
@@ -1607,6 +1740,38 @@ bool CombinerHelper::replaceInstWithUndef(MachineInstr &MI) {
   assert(MI.getNumDefs() == 1 && "Expected only one def?");
   Builder.setInstr(MI);
   Builder.buildUndef(MI.getOperand(0));
+  MI.eraseFromParent();
+  return true;
+}
+
+bool CombinerHelper::matchSimplifyAddToSub(
+    MachineInstr &MI, std::tuple<Register, Register> &MatchInfo) {
+  Register LHS = MI.getOperand(1).getReg();
+  Register RHS = MI.getOperand(2).getReg();
+  Register &NewLHS = std::get<0>(MatchInfo);
+  Register &NewRHS = std::get<1>(MatchInfo);
+
+  // Helper lambda to check for opportunities for
+  // ((0-A) + B) -> B - A
+  // (A + (0-B)) -> A - B
+  auto CheckFold = [&](Register &MaybeSub, Register &MaybeNewLHS) {
+    int64_t Cst;
+    if (!mi_match(MaybeSub, MRI, m_GSub(m_ICst(Cst), m_Reg(NewRHS))) ||
+        Cst != 0)
+      return false;
+    NewLHS = MaybeNewLHS;
+    return true;
+  };
+
+  return CheckFold(LHS, RHS) || CheckFold(RHS, LHS);
+}
+
+bool CombinerHelper::applySimplifyAddToSub(
+    MachineInstr &MI, std::tuple<Register, Register> &MatchInfo) {
+  Builder.setInstr(MI);
+  Register SubLHS, SubRHS;
+  std::tie(SubLHS, SubRHS) = MatchInfo;
+  Builder.buildSub(MI.getOperand(0).getReg(), SubLHS, SubRHS);
   MI.eraseFromParent();
   return true;
 }

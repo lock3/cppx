@@ -21,7 +21,6 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/GlobalISel/CSEMIRBuilder.h"
-#include "llvm/CodeGen/GlobalISel/Types.h"
 #include "llvm/CodeGen/SwiftErrorValueTracking.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/SwitchLoweringUtils.h"
@@ -202,6 +201,10 @@ private:
   /// \return true if the materialization succeeded.
   bool translate(const Constant &C, Register Reg);
 
+  // Translate U as a copy of V.
+  bool translateCopy(const User &U, const Value &V,
+                     MachineIRBuilder &MIRBuilder);
+
   /// Translate an LLVM bitcast into generic IR. Either a COPY or a G_BITCAST is
   /// emitted.
   bool translateBitCast(const User &U, MachineIRBuilder &MIRBuilder);
@@ -220,6 +223,8 @@ private:
 
   bool translateOverflowIntrinsic(const CallInst &CI, unsigned Op,
                                   MachineIRBuilder &MIRBuilder);
+  bool translateFixedPointIntrinsic(unsigned Op, const CallInst &CI,
+                                    MachineIRBuilder &MIRBuilder);
 
   /// Helper function for translateSimpleIntrinsic.
   /// \return The generic opcode for \p IntrinsicID if \p IntrinsicID is a
@@ -231,6 +236,9 @@ private:
   /// \return true if the translation succeeded.
   bool translateSimpleIntrinsic(const CallInst &CI, Intrinsic::ID ID,
                                 MachineIRBuilder &MIRBuilder);
+
+  bool translateConstrainedFPIntrinsic(const ConstrainedFPIntrinsic &FPI,
+                                       MachineIRBuilder &MIRBuilder);
 
   bool translateKnownIntrinsic(const CallInst &CI, Intrinsic::ID ID,
                                MachineIRBuilder &MIRBuilder);
@@ -345,8 +353,6 @@ private:
   /// \pre \p U is a return instruction.
   bool translateRet(const User &U, MachineIRBuilder &MIRBuilder);
 
-  bool translateFSub(const User &U, MachineIRBuilder &MIRBuilder);
-
   bool translateFNeg(const User &U, MachineIRBuilder &MIRBuilder);
 
   bool translateAdd(const User &U, MachineIRBuilder &MIRBuilder) {
@@ -430,6 +436,9 @@ private:
 
   bool translateFAdd(const User &U, MachineIRBuilder &MIRBuilder) {
     return translateBinaryOp(TargetOpcode::G_FADD, U, MIRBuilder);
+  }
+  bool translateFSub(const User &U, MachineIRBuilder &MIRBuilder) {
+    return translateBinaryOp(TargetOpcode::G_FSUB, U, MIRBuilder);
   }
   bool translateFMul(const User &U, MachineIRBuilder &MIRBuilder) {
     return translateBinaryOp(TargetOpcode::G_FMUL, U, MIRBuilder);
@@ -575,15 +584,6 @@ private:
   /// Get the frame index that represents \p Val.
   /// If such VReg does not exist, it is created.
   int getOrCreateFrameIndex(const AllocaInst &AI);
-
-  /// Get the alignment of the given memory operation instruction. This will
-  /// either be the explicitly specified value or the ABI-required alignment for
-  /// the type being accessed (according to the Module's DataLayout).
-  LLVM_ATTRIBUTE_DEPRECATED(
-      inline unsigned getMemOpAlignment(const Instruction &I),
-      "Use getMemOpAlign instead") {
-    return getMemOpAlign(I).value();
-  }
 
   /// Get the alignment of the given memory operation instruction. This will
   /// either be the explicitly specified value or the ABI-required alignment for

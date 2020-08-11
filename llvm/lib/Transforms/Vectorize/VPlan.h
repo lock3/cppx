@@ -54,6 +54,7 @@ class InnerLoopVectorizer;
 template <class T> class InterleaveGroup;
 class LoopInfo;
 class raw_ostream;
+class RecurrenceDescriptor;
 class Value;
 class VPBasicBlock;
 class VPRegionBlock;
@@ -270,10 +271,20 @@ struct VPTransformState {
     return Callback.getOrCreateVectorValues(VPValue2Value[Def], Part);
   }
 
-  /// Get the generated Value for a given VPValue and given Part and Lane. Note
-  /// that as per-lane Defs are still created by ILV and managed in its ValueMap
-  /// this method currently just delegates the call to ILV.
+  /// Get the generated Value for a given VPValue and given Part and Lane.
   Value *get(VPValue *Def, const VPIteration &Instance) {
+    // If the Def is managed directly by VPTransformState, extract the lane from
+    // the relevant part. Note that currently only VPInstructions and external
+    // defs are managed by VPTransformState. Other Defs are still created by ILV
+    // and managed in its ValueMap. For those this method currently just
+    // delegates the call to ILV below.
+    if (Data.PerPartOutput.count(Def)) {
+      auto *VecPart = Data.PerPartOutput[Def][Instance.Part];
+      // TODO: Cache created scalar values.
+      return Builder.CreateExtractElement(VecPart,
+                                          Builder.getInt32(Instance.Lane));
+    }
+
     return Callback.getOrCreateScalarValue(VPValue2Value[Def], Instance);
   }
 
@@ -608,6 +619,7 @@ public:
     VPInstructionSC,
     VPInterleaveSC,
     VPPredInstPHISC,
+    VPReductionSC,
     VPReplicateSC,
     VPWidenCallSC,
     VPWidenCanonicalIVSC,
@@ -675,6 +687,7 @@ public:
     ICmpULE,
     SLPLoad,
     SLPStore,
+    ActiveLaneMask,
   };
 
 private:
@@ -823,15 +836,17 @@ private:
   /// Hold the select to be widened.
   SelectInst &Ingredient;
 
+  /// Hold VPValues for the operands of the select.
+  VPUser User;
+
   /// Is the condition of the select loop invariant?
   bool InvariantCond;
 
-  /// Hold VPValues for the arguments of the call.
-  VPUser User;
-
 public:
-  VPWidenSelectRecipe(SelectInst &I, bool InvariantCond)
-      : VPRecipeBase(VPWidenSelectSC), Ingredient(I),
+  template <typename IterT>
+  VPWidenSelectRecipe(SelectInst &I, iterator_range<IterT> Operands,
+                      bool InvariantCond)
+      : VPRecipeBase(VPWidenSelectSC), Ingredient(I), User(Operands),
         InvariantCond(InvariantCond) {}
 
   ~VPWidenSelectRecipe() override = default;
@@ -852,12 +867,18 @@ public:
 /// A recipe for handling GEP instructions.
 class VPWidenGEPRecipe : public VPRecipeBase {
   GetElementPtrInst *GEP;
+
+  /// Hold VPValues for the base and indices of the GEP.
+  VPUser User;
+
   bool IsPtrLoopInvariant;
   SmallBitVector IsIndexLoopInvariant;
 
 public:
-  VPWidenGEPRecipe(GetElementPtrInst *GEP, Loop *OrigLoop)
-      : VPRecipeBase(VPWidenGEPSC), GEP(GEP),
+  template <typename IterT>
+  VPWidenGEPRecipe(GetElementPtrInst *GEP, iterator_range<IterT> Operands,
+                   Loop *OrigLoop)
+      : VPRecipeBase(VPWidenGEPSC), GEP(GEP), User(Operands),
         IsIndexLoopInvariant(GEP->getNumIndices(), false) {
     IsPtrLoopInvariant = OrigLoop->isLoopInvariant(GEP->getPointerOperand());
     for (auto Index : enumerate(GEP->indices()))
@@ -1013,6 +1034,43 @@ public:
   const InterleaveGroup<Instruction> *getInterleaveGroup() { return IG; }
 };
 
+/// A recipe to represent inloop reduction operations, performing a reduction on
+/// a vector operand into a scalar value, and adding the result to a chain.
+class VPReductionRecipe : public VPRecipeBase {
+  /// The recurrence decriptor for the reduction in question.
+  RecurrenceDescriptor *RdxDesc;
+  /// The original instruction being converted to a reduction.
+  Instruction *I;
+  /// The VPValue of the vector value to be reduced.
+  VPValue *VecOp;
+  /// The VPValue of the scalar Chain being accumulated.
+  VPValue *ChainOp;
+  /// Fast math flags to use for the resulting reduction operation.
+  bool NoNaN;
+  /// Pointer to the TTI, needed to create the target reduction
+  const TargetTransformInfo *TTI;
+
+public:
+  VPReductionRecipe(RecurrenceDescriptor *R, Instruction *I, VPValue *ChainOp,
+                    VPValue *VecOp, bool NoNaN, const TargetTransformInfo *TTI)
+      : VPRecipeBase(VPReductionSC), RdxDesc(R), I(I), VecOp(VecOp),
+        ChainOp(ChainOp), NoNaN(NoNaN), TTI(TTI) {}
+
+  ~VPReductionRecipe() override = default;
+
+  /// Method to support type inquiry through isa, cast, and dyn_cast.
+  static inline bool classof(const VPRecipeBase *V) {
+    return V->getVPRecipeID() == VPRecipeBase::VPReductionSC;
+  }
+
+  /// Generate the reduction in the loop
+  void execute(VPTransformState &State) override;
+
+  /// Print the recipe.
+  void print(raw_ostream &O, const Twine &Indent,
+             VPSlotTracker &SlotTracker) const override;
+};
+
 /// VPReplicateRecipe replicates a given instruction producing multiple scalar
 /// copies of the original scalar type, one per lane, instead of producing a
 /// single copy of widened type for all lanes. If the instruction is known to be
@@ -1020,6 +1078,9 @@ public:
 class VPReplicateRecipe : public VPRecipeBase {
   /// The instruction being replicated.
   Instruction *Ingredient;
+
+  /// Hold VPValues for the operands of the ingredient.
+  VPUser User;
 
   /// Indicator if only a single replica per lane is needed.
   bool IsUniform;
@@ -1031,9 +1092,11 @@ class VPReplicateRecipe : public VPRecipeBase {
   bool AlsoPack;
 
 public:
-  VPReplicateRecipe(Instruction *I, bool IsUniform, bool IsPredicated = false)
-      : VPRecipeBase(VPReplicateSC), Ingredient(I), IsUniform(IsUniform),
-        IsPredicated(IsPredicated) {
+  template <typename IterT>
+  VPReplicateRecipe(Instruction *I, iterator_range<IterT> Operands,
+                    bool IsUniform, bool IsPredicated = false)
+      : VPRecipeBase(VPReplicateSC), Ingredient(I), User(Operands),
+        IsUniform(IsUniform), IsPredicated(IsPredicated) {
     // Retain the previous behavior of predicateInstructions(), where an
     // insert-element of a predicated instruction got hoisted into the
     // predicated basic block iff it was its only user. This is achieved by
@@ -1063,12 +1126,12 @@ public:
 
 /// A recipe for generating conditional branches on the bits of a mask.
 class VPBranchOnMaskRecipe : public VPRecipeBase {
-  std::unique_ptr<VPUser> User;
+  VPUser User;
 
 public:
   VPBranchOnMaskRecipe(VPValue *BlockInMask) : VPRecipeBase(VPBranchOnMaskSC) {
     if (BlockInMask) // nullptr means all-one mask.
-      User.reset(new VPUser({BlockInMask}));
+      User.addOperand(BlockInMask);
   }
 
   /// Method to support type inquiry through isa, cast, and dyn_cast.
@@ -1084,11 +1147,19 @@ public:
   void print(raw_ostream &O, const Twine &Indent,
              VPSlotTracker &SlotTracker) const override {
     O << " +\n" << Indent << "\"BRANCH-ON-MASK ";
-    if (User)
-      User->getOperand(0)->print(O, SlotTracker);
+    if (VPValue *Mask = getMask())
+      Mask->print(O, SlotTracker);
     else
       O << " All-One";
     O << "\\l\"";
+  }
+
+  /// Return the mask used by this recipe. Note that a full mask is represented
+  /// by a nullptr.
+  VPValue *getMask() const {
+    assert(User.getNumOperands() <= 1 && "should have either 0 or 1 operands");
+    // Mask is optional.
+    return User.getNumOperands() == 1 ? User.getOperand(0) : nullptr;
   }
 };
 

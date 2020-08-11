@@ -299,9 +299,8 @@ HexagonTargetLowering::isHvxBoolTy(MVT Ty) const {
          Ty.getVectorElementType() == MVT::i1;
 }
 
-bool
-HexagonTargetLowering::allowsHvxMemoryAccess(MVT VecTy, unsigned Alignment,
-        MachineMemOperand::Flags Flags, bool *Fast) const {
+bool HexagonTargetLowering::allowsHvxMemoryAccess(
+    MVT VecTy, MachineMemOperand::Flags Flags, bool *Fast) const {
   // Bool vectors are excluded by default, but make it explicit to
   // emphasize that bool vectors cannot be loaded or stored.
   // Also, disallow double vector stores (to prevent unnecessary
@@ -315,9 +314,8 @@ HexagonTargetLowering::allowsHvxMemoryAccess(MVT VecTy, unsigned Alignment,
   return true;
 }
 
-bool
-HexagonTargetLowering::allowsHvxMisalignedMemoryAccesses(MVT VecTy,
-        unsigned Align, MachineMemOperand::Flags Flags, bool *Fast) const {
+bool HexagonTargetLowering::allowsHvxMisalignedMemoryAccesses(
+    MVT VecTy, MachineMemOperand::Flags Flags, bool *Fast) const {
   if (!Subtarget.isHVXVectorType(VecTy))
     return false;
   // XXX Should this be false?  vmemu are a bit slower than vmem.
@@ -445,10 +443,11 @@ HexagonTargetLowering::buildHvxVectorReg(ArrayRef<SDValue> Values,
     ArrayRef<Constant*> Tmp((Constant**)Consts.begin(),
                             (Constant**)Consts.end());
     Constant *CV = ConstantVector::get(Tmp);
-    unsigned Align = HwLen;
-    SDValue CP = LowerConstantPool(DAG.getConstantPool(CV, VecTy, Align), DAG);
+    Align Alignment(HwLen);
+    SDValue CP =
+        LowerConstantPool(DAG.getConstantPool(CV, VecTy, Alignment), DAG);
     return DAG.getLoad(VecTy, dl, DAG.getEntryNode(), CP,
-                       MachinePointerInfo::getConstantPool(MF), Align);
+                       MachinePointerInfo::getConstantPool(MF), Alignment);
   }
 
   // A special case is a situation where the vector is built entirely from
@@ -1090,10 +1089,12 @@ HexagonTargetLowering::compressHvxPred(SDValue VecQ, const SDLoc &dl,
       Tmp.push_back(ConstantInt::get(Int8Ty, 1ull << j));
   }
   Constant *CV = ConstantVector::get(Tmp);
-  unsigned Align = HwLen;
-  SDValue CP = LowerConstantPool(DAG.getConstantPool(CV, ByteTy, Align), DAG);
-  SDValue Bytes = DAG.getLoad(ByteTy, dl, DAG.getEntryNode(), CP,
-      MachinePointerInfo::getConstantPool(MF), Align);
+  Align Alignment(HwLen);
+  SDValue CP =
+      LowerConstantPool(DAG.getConstantPool(CV, ByteTy, Alignment), DAG);
+  SDValue Bytes =
+      DAG.getLoad(ByteTy, dl, DAG.getEntryNode(), CP,
+                  MachinePointerInfo::getConstantPool(MF), Alignment);
 
   // Select the bytes that correspond to true bits in the vector predicate.
   SDValue Sel = DAG.getSelect(dl, VecTy, VecQ, DAG.getBitcast(VecTy, Bytes),

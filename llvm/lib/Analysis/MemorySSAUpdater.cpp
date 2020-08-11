@@ -10,11 +10,13 @@
 //
 //===----------------------------------------------------------------===//
 #include "llvm/Analysis/MemorySSAUpdater.h"
+#include "llvm/Analysis/LoopIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Analysis/IteratedDominanceFrontier.h"
 #include "llvm/Analysis/MemorySSA.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -317,8 +319,7 @@ void MemorySSAUpdater::insertDef(MemoryDef *MD, bool RenameUses) {
   bool DefBeforeSameBlock = false;
   if (DefBefore->getBlock() == MD->getBlock() &&
       !(isa<MemoryPhi>(DefBefore) &&
-        std::find(InsertedPHIs.begin(), InsertedPHIs.end(), DefBefore) !=
-            InsertedPHIs.end()))
+        llvm::is_contained(InsertedPHIs, DefBefore)))
     DefBeforeSameBlock = true;
 
   // There is a def before us, which means we can replace any store/phi uses
@@ -830,8 +831,8 @@ void MemorySSAUpdater::applyInsertUpdates(ArrayRef<CFGUpdate> Updates,
       // Check number of predecessors, we only care if there's more than one.
       unsigned Count = 0;
       BasicBlock *Pred = nullptr;
-      for (auto &Pair : children<GraphDiffInvBBPair>({GD, BB})) {
-        Pred = Pair.second;
+      for (auto *Pi : GD->template getChildren</*InverseEdge=*/true>(BB)) {
+        Pred = Pi;
         Count++;
         if (Count == 2)
           break;
@@ -924,8 +925,7 @@ void MemorySSAUpdater::applyInsertUpdates(ArrayRef<CFGUpdate> Updates,
     auto *BB = BBPredPair.first;
     const auto &AddedBlockSet = BBPredPair.second.Added;
     auto &PrevBlockSet = BBPredPair.second.Prev;
-    for (auto &Pair : children<GraphDiffInvBBPair>({GD, BB})) {
-      BasicBlock *Pi = Pair.second;
+    for (auto *Pi : GD->template getChildren</*InverseEdge=*/true>(BB)) {
       if (!AddedBlockSet.count(Pi))
         PrevBlockSet.insert(Pi);
       EdgeCountMap[{Pi, BB}]++;
@@ -1076,10 +1076,8 @@ void MemorySSAUpdater::applyInsertUpdates(ArrayRef<CFGUpdate> Updates,
         for (unsigned I = 0, E = IDFPhi->getNumIncomingValues(); I < E; ++I)
           IDFPhi->setIncomingValue(I, GetLastDef(IDFPhi->getIncomingBlock(I)));
       } else {
-        for (auto &Pair : children<GraphDiffInvBBPair>({GD, BBIDF})) {
-          BasicBlock *Pi = Pair.second;
+        for (auto *Pi : GD->template getChildren</*InverseEdge=*/true>(BBIDF))
           IDFPhi->addIncoming(GetLastDef(Pi), Pi);
-        }
       }
     }
   }

@@ -57,7 +57,7 @@ public:
   Callback(const NumberObjectConversionChecker *C,
            BugReporter &BR, AnalysisDeclContext *ADC)
       : C(C), BR(BR), ADC(ADC) {}
-  virtual void run(const MatchFinder::MatchResult &Result);
+  void run(const MatchFinder::MatchResult &Result) override;
 };
 } // end of anonymous namespace
 
@@ -339,7 +339,7 @@ void NumberObjectConversionChecker::checkASTCodeBody(const Decl *D,
   MatchFinder F;
   Callback CB(this, BR, AM.getAnalysisDeclContext(D));
 
-  F.addMatcher(stmt(forEachDescendant(FinalM)), &CB);
+  F.addMatcher(traverse(TK_AsIs, stmt(forEachDescendant(FinalM))), &CB);
   F.match(*D->getBody(), AM.getASTContext());
 }
 

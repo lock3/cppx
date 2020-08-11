@@ -13,6 +13,7 @@
 #include "OutputSegment.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
+#include "SyntheticSections.h"
 #include "Target.h"
 #include "Writer.h"
 
@@ -22,17 +23,23 @@
 #include "lld/Common/LLVM.h"
 #include "lld/Common/Memory.h"
 #include "lld/Common/Version.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/BinaryFormat/MachO.h"
 #include "llvm/BinaryFormat/Magic.h"
+#include "llvm/Object/Archive.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/Option.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Host.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Path.h"
 
 using namespace llvm;
 using namespace llvm::MachO;
 using namespace llvm::sys;
+using namespace llvm::opt;
 using namespace lld;
 using namespace lld::macho;
 
@@ -70,31 +77,131 @@ opt::InputArgList MachOOptTable::parse(ArrayRef<const char *> argv) {
   return args;
 }
 
-// This is for -lfoo. We'll look for libfoo.dylib from search paths.
-static Optional<std::string> findDylib(StringRef name) {
-  for (StringRef dir : config->searchPaths) {
-    std::string path = (dir + "/lib" + name + ".dylib").str();
-    if (fs::exists(path))
+void MachOOptTable::printHelp(const char *argv0, bool showHidden) const {
+  PrintHelp(lld::outs(), (std::string(argv0) + " [options] file...").c_str(),
+            "LLVM Linker", showHidden);
+  lld::outs() << "\n";
+}
+
+static Optional<std::string> findWithExtension(StringRef base,
+                                               ArrayRef<StringRef> extensions) {
+  for (StringRef ext : extensions) {
+    Twine location = base + ext;
+    if (fs::exists(location))
+      return location.str();
+  }
+  return {};
+}
+
+static Optional<std::string> findLibrary(StringRef name) {
+  llvm::SmallString<261> location;
+  for (StringRef dir : config->librarySearchPaths) {
+      location = dir;
+      path::append(location, Twine("lib") + name);
+      if (Optional<std::string> path =
+              findWithExtension(location, {".tbd", ".dylib", ".a"}))
+        return path;
+  }
+  return {};
+}
+
+static Optional<std::string> findFramework(StringRef name) {
+  llvm::SmallString<260> symlink;
+  StringRef suffix;
+  std::tie(name, suffix) = name.split(",");
+  for (StringRef dir : config->frameworkSearchPaths) {
+    symlink = dir;
+    path::append(symlink, name + ".framework", name);
+
+    if (!suffix.empty()) {
+      // NOTE: we must resolve the symlink before trying the suffixes, because
+      // there are no symlinks for the suffixed paths.
+      llvm::SmallString<260> location;
+      if (!fs::real_path(symlink, location)) {
+        // only append suffix if realpath() succeeds
+        Twine suffixed = location + suffix;
+        if (fs::exists(suffixed))
+          return suffixed.str();
+      }
+      // Suffix lookup failed, fall through to the no-suffix case.
+    }
+
+    if (Optional<std::string> path = findWithExtension(symlink, {".tbd", ""}))
       return path;
   }
-  error("library not found for -l" + name);
-  return None;
+  return {};
 }
 
 static TargetInfo *createTargetInfo(opt::InputArgList &args) {
-  StringRef s = args.getLastArgValue(OPT_arch, "x86_64");
-  if (s != "x86_64")
-    error("missing or unsupported -arch " + s);
-  return createX86_64TargetInfo();
+  StringRef arch = args.getLastArgValue(OPT_arch, "x86_64");
+  config->arch = llvm::MachO::getArchitectureFromName(
+      args.getLastArgValue(OPT_arch, arch));
+  switch (config->arch) {
+  case llvm::MachO::AK_x86_64:
+  case llvm::MachO::AK_x86_64h:
+    return createX86_64TargetInfo();
+  default:
+    fatal("missing or unsupported -arch " + arch);
+  }
 }
 
-static std::vector<StringRef> getSearchPaths(opt::InputArgList &args) {
-  std::vector<StringRef> ret{args::getStrings(args, OPT_L)};
-  if (!args.hasArg(OPT_Z)) {
-    ret.push_back("/usr/lib");
-    ret.push_back("/usr/local/lib");
+static bool isDirectory(StringRef option, StringRef path) {
+  if (!fs::exists(path)) {
+    warn("directory not found for option -" + option + path);
+    return false;
+  } else if (!fs::is_directory(path)) {
+    warn("option -" + option + path + " references a non-directory path");
+    return false;
   }
-  return ret;
+  return true;
+}
+
+static void getSearchPaths(std::vector<StringRef> &paths, unsigned optionCode,
+                           opt::InputArgList &args,
+                           const std::vector<StringRef> &roots,
+                           const SmallVector<StringRef, 2> &systemPaths) {
+  StringRef optionLetter{(optionCode == OPT_F ? "F" : "L")};
+  for (auto const &path : args::getStrings(args, optionCode)) {
+    // NOTE: only absolute paths are re-rooted to syslibroot(s)
+    if (llvm::sys::path::is_absolute(path, llvm::sys::path::Style::posix)) {
+      for (StringRef root : roots) {
+        SmallString<261> buffer(root);
+        llvm::sys::path::append(buffer, path);
+        // Do not warn about paths that are computed via the syslib roots
+        if (llvm::sys::fs::is_directory(buffer))
+          paths.push_back(saver.save(buffer.str()));
+      }
+    } else {
+      if (isDirectory(optionLetter, path))
+        paths.push_back(path);
+    }
+  }
+
+  // `-Z` suppresses the standard "system" search paths.
+  if (args.hasArg(OPT_Z))
+    return;
+
+  for (auto const &path : systemPaths) {
+    for (auto root : roots) {
+      SmallString<261> buffer(root);
+      llvm::sys::path::append(buffer, path);
+      if (isDirectory(optionLetter, buffer))
+        paths.push_back(saver.save(buffer.str()));
+    }
+  }
+}
+
+static void getLibrarySearchPaths(opt::InputArgList &args,
+                                  const std::vector<StringRef> &roots,
+                                  std::vector<StringRef> &paths) {
+  getSearchPaths(paths, OPT_L, args, roots, {"/usr/lib", "/usr/local/lib"});
+}
+
+static void getFrameworkSearchPaths(opt::InputArgList &args,
+                                    const std::vector<StringRef> &roots,
+                                    std::vector<StringRef> &paths) {
+  getSearchPaths(paths, OPT_F, args, roots,
+                 {"/Library/Frameworks", "/System/Library/Frameworks"});
 }
 
 static void addFile(StringRef path) {
@@ -104,14 +211,188 @@ static void addFile(StringRef path) {
   MemoryBufferRef mbref = *buffer;
 
   switch (identify_magic(mbref.getBuffer())) {
+  case file_magic::archive: {
+    std::unique_ptr<object::Archive> file = CHECK(
+        object::Archive::create(mbref), path + ": failed to parse archive");
+
+    if (!file->isEmpty() && !file->hasSymbolTable())
+      error(path + ": archive has no index; run ranlib to add one");
+
+    inputFiles.push_back(make<ArchiveFile>(std::move(file)));
+    break;
+  }
   case file_magic::macho_object:
     inputFiles.push_back(make<ObjFile>(mbref));
     break;
   case file_magic::macho_dynamically_linked_shared_lib:
     inputFiles.push_back(make<DylibFile>(mbref));
     break;
+  case file_magic::tapi_file: {
+    llvm::Expected<std::unique_ptr<llvm::MachO::InterfaceFile>> result =
+        TextAPIReader::get(mbref);
+    if (!result)
+      return;
+
+    inputFiles.push_back(make<DylibFile>(std::move(*result)));
+    break;
+  }
   default:
     error(path + ": unhandled file type");
+  }
+}
+
+static void addFileList(StringRef path) {
+  Optional<MemoryBufferRef> buffer = readFile(path);
+  if (!buffer)
+    return;
+  MemoryBufferRef mbref = *buffer;
+  for (StringRef path : args::getLines(mbref))
+    addFile(path);
+}
+
+static std::array<StringRef, 6> archNames{"arm",    "arm64", "i386",
+                                          "x86_64", "ppc",   "ppc64"};
+static bool isArchString(StringRef s) {
+  static DenseSet<StringRef> archNamesSet(archNames.begin(), archNames.end());
+  return archNamesSet.find(s) != archNamesSet.end();
+}
+
+// An order file has one entry per line, in the following format:
+//
+//   <arch>:<object file>:<symbol name>
+//
+// <arch> and <object file> are optional. If not specified, then that entry
+// matches any symbol of that name.
+//
+// If a symbol is matched by multiple entries, then it takes the lowest-ordered
+// entry (the one nearest to the front of the list.)
+//
+// The file can also have line comments that start with '#'.
+static void parseOrderFile(StringRef path) {
+  Optional<MemoryBufferRef> buffer = readFile(path);
+  if (!buffer) {
+    error("Could not read order file at " + path);
+    return;
+  }
+
+  MemoryBufferRef mbref = *buffer;
+  size_t priority = std::numeric_limits<size_t>::max();
+  for (StringRef rest : args::getLines(mbref)) {
+    StringRef arch, objectFile, symbol;
+
+    std::array<StringRef, 3> fields;
+    uint8_t fieldCount = 0;
+    while (rest != "" && fieldCount < 3) {
+      std::pair<StringRef, StringRef> p = getToken(rest, ": \t\n\v\f\r");
+      StringRef tok = p.first;
+      rest = p.second;
+
+      // Check if we have a comment
+      if (tok == "" || tok[0] == '#')
+        break;
+
+      fields[fieldCount++] = tok;
+    }
+
+    switch (fieldCount) {
+    case 3:
+      arch = fields[0];
+      objectFile = fields[1];
+      symbol = fields[2];
+      break;
+    case 2:
+      (isArchString(fields[0]) ? arch : objectFile) = fields[0];
+      symbol = fields[1];
+      break;
+    case 1:
+      symbol = fields[0];
+      break;
+    case 0:
+      break;
+    default:
+      llvm_unreachable("too many fields in order file");
+    }
+
+    if (!arch.empty()) {
+      if (!isArchString(arch)) {
+        error("invalid arch \"" + arch + "\" in order file: expected one of " +
+              llvm::join(archNames, ", "));
+        continue;
+      }
+
+      // TODO: Update when we extend support for other archs
+      if (arch != "x86_64")
+        continue;
+    }
+
+    if (!objectFile.empty() && !objectFile.endswith(".o")) {
+      error("invalid object file name \"" + objectFile +
+            "\" in order file: should end with .o");
+      continue;
+    }
+
+    if (!symbol.empty()) {
+      SymbolPriorityEntry &entry = config->priorities[symbol];
+      if (!objectFile.empty())
+        entry.objectFiles.insert(std::make_pair(objectFile, priority));
+      else
+        entry.anyObjectFile = std::max(entry.anyObjectFile, priority);
+    }
+
+    --priority;
+  }
+}
+
+// We expect sub-library names of the form "libfoo", which will match a dylib
+// with a path of .*/libfoo.dylib.
+static bool markSubLibrary(StringRef searchName) {
+  for (InputFile *file : inputFiles) {
+    if (auto *dylibFile = dyn_cast<DylibFile>(file)) {
+      StringRef filename = path::filename(dylibFile->getName());
+      if (filename.consume_front(searchName) && filename == ".dylib") {
+        dylibFile->reexport = true;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+static void handlePlatformVersion(const opt::Arg *arg) {
+  // TODO: implementation coming very soon ...
+}
+
+static void warnIfDeprecatedOption(const opt::Option &opt) {
+  if (!opt.getGroup().isValid())
+    return;
+  if (opt.getGroup().getID() == OPT_grp_deprecated) {
+    warn("Option `" + opt.getPrefixedName() + "' is deprecated in ld64:");
+    warn(opt.getHelpText());
+  }
+}
+
+static void warnIfUnimplementedOption(const opt::Option &opt) {
+  if (!opt.getGroup().isValid())
+    return;
+  switch (opt.getGroup().getID()) {
+  case OPT_grp_deprecated:
+    // warn about deprecated options elsewhere
+    break;
+  case OPT_grp_undocumented:
+    warn("Option `" + opt.getPrefixedName() +
+         "' is undocumented. Should lld implement it?");
+    break;
+  case OPT_grp_obsolete:
+    warn("Option `" + opt.getPrefixedName() +
+         "' is obsolete. Please modernize your usage.");
+    break;
+  case OPT_grp_ignored:
+    warn("Option `" + opt.getPrefixedName() + "' is ignored.");
+    break;
+  default:
+    warn("Option `" + opt.getPrefixedName() +
+         "' is not yet implemented. Stay tuned...");
+    break;
   }
 }
 
@@ -126,6 +407,14 @@ bool macho::link(llvm::ArrayRef<const char *> argsArr, bool canExitEarly,
   MachOOptTable parser;
   opt::InputArgList args = parser.parse(argsArr.slice(1));
 
+  if (args.hasArg(OPT_help_hidden)) {
+    parser.printHelp(argsArr[0], /*showHidden=*/true);
+    return true;
+  } else if (args.hasArg(OPT_help)) {
+    parser.printHelp(argsArr[0], /*showHidden=*/false);
+    return true;
+  }
+
   config = make<Configuration>();
   symtab = make<SymbolTable>();
   target = createTargetInfo(args);
@@ -134,29 +423,98 @@ bool macho::link(llvm::ArrayRef<const char *> argsArr, bool canExitEarly,
   config->outputFile = args.getLastArgValue(OPT_o, "a.out");
   config->installName =
       args.getLastArgValue(OPT_install_name, config->outputFile);
-  config->searchPaths = getSearchPaths(args);
+  config->headerPad = args::getHex(args, OPT_headerpad, /*Default=*/32);
   config->outputType = args.hasArg(OPT_dylib) ? MH_DYLIB : MH_EXECUTE;
+
+  std::vector<StringRef> roots;
+  for (const Arg *arg : args.filtered(OPT_syslibroot))
+    roots.push_back(arg->getValue());
+  // NOTE: the final `-syslibroot` being `/` will ignore all roots
+  if (roots.size() && roots.back() == "/")
+    roots.clear();
+  // NOTE: roots can never be empty - add an empty root to simplify the library
+  // and framework search path computation.
+  if (roots.empty())
+    roots.emplace_back("");
+
+  getLibrarySearchPaths(args, roots, config->librarySearchPaths);
+  getFrameworkSearchPaths(args, roots, config->frameworkSearchPaths);
 
   if (args.hasArg(OPT_v)) {
     message(getLLDVersion());
-    std::vector<StringRef> &searchPaths = config->searchPaths;
-    message("Library search paths:\n" +
-            llvm::join(searchPaths.begin(), searchPaths.end(), "\n"));
+    message(StringRef("Library search paths:") +
+            (config->librarySearchPaths.size()
+                 ? "\n\t" + llvm::join(config->librarySearchPaths, "\n\t")
+                 : ""));
+    message(StringRef("Framework search paths:") +
+            (config->frameworkSearchPaths.size()
+                 ? "\n\t" + llvm::join(config->frameworkSearchPaths, "\n\t")
+                 : ""));
     freeArena();
     return !errorCount();
   }
 
-  for (opt::Arg *arg : args) {
+  for (const auto &arg : args) {
+    const auto &opt = arg->getOption();
+    warnIfDeprecatedOption(opt);
     switch (arg->getOption().getID()) {
     case OPT_INPUT:
       addFile(arg->getValue());
       break;
-    case OPT_l:
-      if (Optional<std::string> path = findDylib(arg->getValue()))
+    case OPT_filelist:
+      addFileList(arg->getValue());
+      break;
+    case OPT_l: {
+      StringRef name = arg->getValue();
+      if (Optional<std::string> path = findLibrary(name)) {
         addFile(*path);
+        break;
+      }
+      error("library not found for -l" + name);
+      break;
+    }
+    case OPT_framework: {
+      StringRef name = arg->getValue();
+      if (Optional<std::string> path = findFramework(name)) {
+        addFile(*path);
+        break;
+      }
+      error("framework not found for -framework " + name);
+      break;
+    }
+    case OPT_platform_version:
+      handlePlatformVersion(arg);
+      break;
+    case OPT_o:
+    case OPT_dylib:
+    case OPT_e:
+    case OPT_F:
+    case OPT_L:
+    case OPT_headerpad:
+    case OPT_install_name:
+    case OPT_Z:
+    case OPT_arch:
+    case OPT_syslibroot:
+      // handled elsewhere
+      break;
+    default:
+      warnIfUnimplementedOption(opt);
       break;
     }
   }
+
+  // Now that all dylibs have been loaded, search for those that should be
+  // re-exported.
+  for (opt::Arg *arg : args.filtered(OPT_sub_library)) {
+    config->hasReexports = true;
+    StringRef searchName = arg->getValue();
+    if (!markSubLibrary(searchName))
+      error("-sub_library " + searchName + " does not match a supplied dylib");
+  }
+
+  StringRef orderFile = args.getLastArgValue(OPT_order_file);
+  if (!orderFile.empty())
+    parseOrderFile(orderFile);
 
   if (config->outputType == MH_EXECUTE && !isa<Defined>(config->entry)) {
     error("undefined symbol: " + config->entry->getName());
@@ -164,11 +522,17 @@ bool macho::link(llvm::ArrayRef<const char *> argsArr, bool canExitEarly,
   }
 
   createSyntheticSections();
+  symtab->addDSOHandle(in.header);
 
   // Initialize InputSections.
-  for (InputFile *file : inputFiles)
-    for (InputSection *sec : file->sections)
-      inputSections.push_back(sec);
+  for (InputFile *file : inputFiles) {
+    for (SubsectionMap &map : file->subsections) {
+      for (auto &p : map) {
+        InputSection *isec = p.second;
+        inputSections.push_back(isec);
+      }
+    }
+  }
 
   // Write to an output file.
   writeResult();

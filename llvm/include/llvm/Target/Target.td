@@ -1017,10 +1017,10 @@ def INLINEASM_BR : StandardPseudoInstruction {
   let OutOperandList = (outs);
   let InOperandList = (ins variable_ops);
   let AsmString = "";
-  let hasSideEffects = 0;  // Note side effect is encoded in an operand.
-  let isTerminator = 1;
-  let isBranch = 1;
-  let isIndirectBranch = 1;
+  // Unlike INLINEASM, this is always treated as having side-effects.
+  let hasSideEffects = 1;
+  // Despite potentially branching, this instruction is intentionally _not_
+  // marked as a terminator or a branch.
 }
 def CFI_INSTRUCTION : StandardPseudoInstruction {
   let OutOperandList = (outs);
@@ -1157,7 +1157,7 @@ def PATCHPOINT : StandardPseudoInstruction {
   let usesCustomInserter = 1;
 }
 def STATEPOINT : StandardPseudoInstruction {
-  let OutOperandList = (outs);
+  let OutOperandList = (outs variable_ops);
   let InOperandList = (ins variable_ops);
   let usesCustomInserter = 1;
   let mayLoad = 1;
@@ -1172,6 +1172,18 @@ def LOAD_STACK_GUARD : StandardPseudoInstruction {
   bit isReMaterializable = 1;
   let hasSideEffects = 0;
   bit isPseudo = 1;
+}
+def PREALLOCATED_SETUP : StandardPseudoInstruction {
+  let OutOperandList = (outs);
+  let InOperandList = (ins i32imm:$a);
+  let usesCustomInserter = 1;
+  let hasSideEffects = 1;
+}
+def PREALLOCATED_ARG : StandardPseudoInstruction {
+  let OutOperandList = (outs ptr_rc:$loc);
+  let InOperandList = (ins i32imm:$a, i32imm:$b);
+  let usesCustomInserter = 1;
+  let hasSideEffects = 1;
 }
 def LOCAL_ESCAPE : StandardPseudoInstruction {
   // This instruction is really just a label. It has to be part of the chain so

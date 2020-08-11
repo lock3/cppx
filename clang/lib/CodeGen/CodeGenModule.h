@@ -302,6 +302,7 @@ private:
   const HeaderSearchOptions &HeaderSearchOpts; // Only used for debug info.
   const PreprocessorOptions &PreprocessorOpts; // Only used for debug info.
   const CodeGenOptions &CodeGenOpts;
+  unsigned NumAutoVarInit = 0;
   llvm::Module &TheModule;
   DiagnosticsEngine &Diags;
   const TargetInfo &Target;
@@ -323,7 +324,6 @@ private:
   std::unique_ptr<CGObjCRuntime> ObjCRuntime;
   std::unique_ptr<CGOpenCLRuntime> OpenCLRuntime;
   std::unique_ptr<CGOpenMPRuntime> OpenMPRuntime;
-  std::unique_ptr<llvm::OpenMPIRBuilder> OMPBuilder;
   std::unique_ptr<CGCUDARuntime> CUDARuntime;
   std::unique_ptr<CGDebugInfo> DebugInfo;
   std::unique_ptr<ObjCEntrypoints> ObjCData;
@@ -464,9 +464,11 @@ private:
   SmallVector<GlobalInitData, 8> PrioritizedCXXGlobalInits;
 
   /// Global destructor functions and arguments that need to run on termination.
+  /// When UseSinitAndSterm is set, it instead contains sterm finalizer
+  /// functions, which also run on unloading a shared library.
   std::vector<
       std::tuple<llvm::FunctionType *, llvm::WeakTrackingVH, llvm::Constant *>>
-      CXXGlobalDtors;
+      CXXGlobalDtorsOrStermFinalizers;
 
   /// The complete set of modules that has been imported.
   llvm::SetVector<clang::Module *> ImportedModules;
@@ -589,9 +591,6 @@ public:
     assert(OpenMPRuntime != nullptr);
     return *OpenMPRuntime;
   }
-
-  /// Return a pointer to the configured OpenMPIRBuilder, if any.
-  llvm::OpenMPIRBuilder *getOpenMPIRBuilder() { return OMPBuilder.get(); }
 
   /// Return a reference to the configured CUDA runtime.
   CGCUDARuntime &getCUDARuntime() {
@@ -789,6 +788,9 @@ public:
   /// variable declaration D.
   void setTLSMode(llvm::GlobalValue *GV, const VarDecl &D) const;
 
+  /// Get LLVM TLS mode from CodeGenOptions.
+  llvm::GlobalVariable::ThreadLocalMode GetDefaultLLVMTLSModel() const;
+
   static llvm::GlobalValue::VisibilityTypes GetLLVMVisibility(Visibility V) {
     switch (V) {
     case DefaultVisibility:   return llvm::GlobalValue::DefaultVisibility;
@@ -811,11 +813,9 @@ public:
                                     llvm::GlobalValue::LinkageTypes Linkage,
                                     unsigned Alignment);
 
-  llvm::Function *
-  CreateGlobalInitOrDestructFunction(llvm::FunctionType *ty, const Twine &name,
-                                     const CGFunctionInfo &FI,
-                                     SourceLocation Loc = SourceLocation(),
-                                     bool TLS = false);
+  llvm::Function *CreateGlobalInitOrCleanUpFunction(
+      llvm::FunctionType *ty, const Twine &name, const CGFunctionInfo &FI,
+      SourceLocation Loc = SourceLocation(), bool TLS = false);
 
   /// Return the AST address space of the underlying global variable for D, as
   /// determined by its declaration. Normally this is the same as the address
@@ -1044,8 +1044,20 @@ public:
 
   /// Add a destructor and object to add to the C++ global destructor function.
   void AddCXXDtorEntry(llvm::FunctionCallee DtorFn, llvm::Constant *Object) {
-    CXXGlobalDtors.emplace_back(DtorFn.getFunctionType(), DtorFn.getCallee(),
-                                Object);
+    CXXGlobalDtorsOrStermFinalizers.emplace_back(DtorFn.getFunctionType(),
+                                                 DtorFn.getCallee(), Object);
+  }
+
+  /// Add an sterm finalizer to the C++ global cleanup function.
+  void AddCXXStermFinalizerEntry(llvm::FunctionCallee DtorFn) {
+    CXXGlobalDtorsOrStermFinalizers.emplace_back(DtorFn.getFunctionType(),
+                                                 DtorFn.getCallee(), nullptr);
+  }
+
+  /// Add an sterm finalizer to its own llvm.global_dtors entry.
+  void AddCXXStermFinalizerToGlobalDtor(llvm::Function *StermFinalizer,
+                                        int Priority) {
+    AddGlobalDtor(StermFinalizer, Priority);
   }
 
   /// Create or return a runtime function declaration with the specified type
@@ -1170,7 +1182,11 @@ public:
   /// on the function more conservative.  But it's unsafe to call this on a
   /// function which relies on particular fast-math attributes for correctness.
   /// It's up to you to ensure that this is safe.
-  void AddDefaultFnAttrs(llvm::Function &F);
+  void addDefaultFunctionDefinitionAttributes(llvm::Function &F);
+
+  /// Like the overload taking a `Function &`, but intended specifically
+  /// for frontends that want to build on Clang's target-configuration logic.
+  void addDefaultFunctionDefinitionAttributes(llvm::AttrBuilder &attrs);
 
   StringRef getMangledName(GlobalDecl GD);
   StringRef getBlockMangledName(GlobalDecl GD, const BlockDecl *BD);
@@ -1382,6 +1398,15 @@ public:
   /// \param QT is the clang QualType of the null pointer.
   llvm::Constant *getNullPointer(llvm::PointerType *T, QualType QT);
 
+  CharUnits getNaturalTypeAlignment(QualType T,
+                                    LValueBaseInfo *BaseInfo = nullptr,
+                                    TBAAAccessInfo *TBAAInfo = nullptr,
+                                    bool forPointeeType = false);
+  CharUnits getNaturalPointeeTypeAlignment(QualType T,
+                                           LValueBaseInfo *BaseInfo = nullptr,
+                                           TBAAAccessInfo *TBAAInfo = nullptr);
+  bool stopAutoInit();
+
 private:
   llvm::Constant *GetOrCreateLLVMFunction(
       StringRef MangledName, llvm::Type *Ty, GlobalDecl D, bool ForVTable,
@@ -1432,8 +1457,8 @@ private:
   /// Emit the function that initializes C++ globals.
   void EmitCXXGlobalInitFunc();
 
-  /// Emit the function that destroys C++ globals.
-  void EmitCXXGlobalDtorFunc();
+  /// Emit the function that performs cleanup associated with C++ globals.
+  void EmitCXXGlobalCleanUpFunc();
 
   /// Emit the function that initializes the specified global (if PerformInit is
   /// true) and registers its destructor.
@@ -1504,9 +1529,6 @@ private:
   /// Emit the Clang commandline as llvm.commandline metadata.
   void EmitCommandLineMetadata();
 
-  /// Emits target specific Metadata for global declarations.
-  void EmitTargetMetadata();
-
   /// Emit the module flag metadata used to pass options controlling the
   /// the backend to LLVM.
   void EmitBackendOptionsMetadata(const CodeGenOptions CodeGenOpts);
@@ -1532,11 +1554,12 @@ private:
   /// function.
   void SimplifyPersonality();
 
-  /// Helper function for ConstructAttributeList and AddDefaultFnAttrs.
-  /// Constructs an AttrList for a function with the given properties.
-  void ConstructDefaultFnAttrList(StringRef Name, bool HasOptnone,
-                                  bool AttrOnCallSite,
-                                  llvm::AttrBuilder &FuncAttrs);
+  /// Helper function for ConstructAttributeList and
+  /// addDefaultFunctionDefinitionAttributes.  Builds a set of function
+  /// attributes to add to a function with the given properties.
+  void getDefaultFunctionAttributes(StringRef Name, bool HasOptnone,
+                                    bool AttrOnCallSite,
+                                    llvm::AttrBuilder &FuncAttrs);
 
   llvm::Metadata *CreateMetadataIdentifierImpl(QualType T, MetadataTypeMap &Map,
                                                StringRef Suffix);

@@ -82,7 +82,7 @@ class targetCommandTestCase(TestBase):
                 if match:
                     # We will start from (index + 1) ....
                     base = int(match.group(1), 10) + 1
-                    #print("base is:", base)
+                    self.trace("base is:", base)
                     break
 
         self.runCmd("target create " + exe_a, CURRENT_EXECUTABLE_SET)
@@ -114,6 +114,33 @@ class targetCommandTestCase(TestBase):
                              ])
 
         self.runCmd("target list")
+
+    @no_debug_info_test
+    def test_target_create_invalid_arch(self):
+        exe = self.getBuildArtifact("a.out")
+        self.expect("target create {} --arch doesntexist".format(exe), error=True,
+                    patterns=["error: invalid triple 'doesntexist'"])
+
+    @no_debug_info_test
+    def test_target_create_platform(self):
+        self.buildB()
+        exe = self.getBuildArtifact("b.out")
+        self.expect("target create {} --platform host".format(exe))
+
+    @no_debug_info_test
+    def test_target_create_unsupported_platform(self):
+        yaml = os.path.join(self.getSourceDir(), "bogus.yaml")
+        exe = self.getBuildArtifact("bogus")
+        self.yaml2obj(yaml, exe)
+        self.expect("target create {}".format(exe), error=True,
+                    patterns=['error: no matching platforms found for this file'])
+
+    @no_debug_info_test
+    def test_target_create_invalid_platform(self):
+        self.buildB()
+        exe = self.getBuildArtifact("b.out")
+        self.expect("target create {} --platform doesntexist".format(exe), error=True,
+                    patterns=['error: unable to find a plug-in for the platform named "doesntexist"'])
 
     def do_target_variable_command(self, exe_name):
         """Exercise 'target variable' command before and after starting the inferior."""
@@ -330,6 +357,7 @@ class targetCommandTestCase(TestBase):
 
     # Write only files don't seem to be supported on Windows.
     @skipIfWindows
+    @skipIfReproducer # Cannot be captured in the VFS.
     @no_debug_info_test
     def test_target_create_unreadable_core_file(self):
         tf = tempfile.NamedTemporaryFile()
@@ -353,6 +381,7 @@ class targetCommandTestCase(TestBase):
     # Write only files don't seem to be supported on Windows.
     @skipIfWindows
     @no_debug_info_test
+    @skipIfReproducer # Cannot be captured in the VFS.
     def test_target_create_unreadable_sym_file(self):
         tf = tempfile.NamedTemporaryFile()
         os.chmod(tf.name, stat.S_IWRITE)

@@ -262,17 +262,23 @@ template <int64_t Val> inline constantint_match<Val> m_ConstantInt() {
   return constantint_match<Val>();
 }
 
-/// This helper class is used to match scalar and fixed width vector integer
-/// constants that satisfy a specified predicate.
-/// For vector constants, undefined elements are ignored.
-template <typename Predicate> struct cst_pred_ty : public Predicate {
+/// This helper class is used to match constant scalars, vector splats,
+/// and fixed width vectors that satisfy a specified predicate.
+/// For fixed width vector constants, undefined elements are ignored.
+template <typename Predicate, typename ConstantVal>
+struct cstval_pred_ty : public Predicate {
   template <typename ITy> bool match(ITy *V) {
-    if (const auto *CI = dyn_cast<ConstantInt>(V))
-      return this->isValue(CI->getValue());
-    if (const auto *FVTy = dyn_cast<FixedVectorType>(V->getType())) {
+    if (const auto *CV = dyn_cast<ConstantVal>(V))
+      return this->isValue(CV->getValue());
+    if (const auto *VTy = dyn_cast<VectorType>(V->getType())) {
       if (const auto *C = dyn_cast<Constant>(V)) {
-        if (const auto *CI = dyn_cast_or_null<ConstantInt>(C->getSplatValue()))
-          return this->isValue(CI->getValue());
+        if (const auto *CV = dyn_cast_or_null<ConstantVal>(C->getSplatValue()))
+          return this->isValue(CV->getValue());
+
+        // Number of elements of a scalable vector unknown at compile time
+        auto *FVTy = dyn_cast<FixedVectorType>(VTy);
+        if (!FVTy)
+          return false;
 
         // Non-splat vector constant: check each element for a match.
         unsigned NumElts = FVTy->getNumElements();
@@ -284,8 +290,8 @@ template <typename Predicate> struct cst_pred_ty : public Predicate {
             return false;
           if (isa<UndefValue>(Elt))
             continue;
-          auto *CI = dyn_cast<ConstantInt>(Elt);
-          if (!CI || !this->isValue(CI->getValue()))
+          auto *CV = dyn_cast<ConstantVal>(Elt);
+          if (!CV || !this->isValue(CV->getValue()))
             return false;
           HasNonUndefElements = true;
         }
@@ -295,6 +301,14 @@ template <typename Predicate> struct cst_pred_ty : public Predicate {
     return false;
   }
 };
+
+/// specialization of cstval_pred_ty for ConstantInt
+template <typename Predicate>
+using cst_pred_ty = cstval_pred_ty<Predicate, ConstantInt>;
+
+/// specialization of cstval_pred_ty for ConstantFP
+template <typename Predicate>
+using cstfp_pred_ty = cstval_pred_ty<Predicate, ConstantFP>;
 
 /// This helper class is used to match scalar and vector constants that
 /// satisfy a specified predicate, and bind them to an APInt.
@@ -317,40 +331,6 @@ template <typename Predicate> struct api_pred_ty : public Predicate {
             return true;
           }
 
-    return false;
-  }
-};
-
-/// This helper class is used to match scalar and vector floating-point
-/// constants that satisfy a specified predicate.
-/// For vector constants, undefined elements are ignored.
-template <typename Predicate> struct cstfp_pred_ty : public Predicate {
-  template <typename ITy> bool match(ITy *V) {
-    if (const auto *CF = dyn_cast<ConstantFP>(V))
-      return this->isValue(CF->getValueAPF());
-    if (V->getType()->isVectorTy()) {
-      if (const auto *C = dyn_cast<Constant>(V)) {
-        if (const auto *CF = dyn_cast_or_null<ConstantFP>(C->getSplatValue()))
-          return this->isValue(CF->getValueAPF());
-
-        // Non-splat vector constant: check each element for a match.
-        unsigned NumElts = cast<VectorType>(V->getType())->getNumElements();
-        assert(NumElts != 0 && "Constant vector with no elements?");
-        bool HasNonUndefElements = false;
-        for (unsigned i = 0; i != NumElts; ++i) {
-          Constant *Elt = C->getAggregateElement(i);
-          if (!Elt)
-            return false;
-          if (isa<UndefValue>(Elt))
-            continue;
-          auto *CF = dyn_cast<ConstantFP>(Elt);
-          if (!CF || !this->isValue(CF->getValueAPF()))
-            return false;
-          HasNonUndefElements = true;
-        }
-        return HasNonUndefElements;
-      }
-    }
     return false;
   }
 };
@@ -1343,7 +1323,7 @@ inline OneOps_match<OpTy, Instruction::Freeze> m_Freeze(const OpTy &Op) {
 /// Matches InsertElementInst.
 template <typename Val_t, typename Elt_t, typename Idx_t>
 inline ThreeOps_match<Val_t, Elt_t, Idx_t, Instruction::InsertElement>
-m_InsertElement(const Val_t &Val, const Elt_t &Elt, const Idx_t &Idx) {
+m_InsertElt(const Val_t &Val, const Elt_t &Elt, const Idx_t &Idx) {
   return ThreeOps_match<Val_t, Elt_t, Idx_t, Instruction::InsertElement>(
       Val, Elt, Idx);
 }
@@ -1351,7 +1331,7 @@ m_InsertElement(const Val_t &Val, const Elt_t &Elt, const Idx_t &Idx) {
 /// Matches ExtractElementInst.
 template <typename Val_t, typename Idx_t>
 inline TwoOps_match<Val_t, Idx_t, Instruction::ExtractElement>
-m_ExtractElement(const Val_t &Val, const Idx_t &Idx) {
+m_ExtractElt(const Val_t &Val, const Idx_t &Idx) {
   return TwoOps_match<Val_t, Idx_t, Instruction::ExtractElement>(Val, Idx);
 }
 
@@ -1410,13 +1390,13 @@ struct m_SplatOrUndefMask {
 /// Matches ShuffleVectorInst independently of mask value.
 template <typename V1_t, typename V2_t>
 inline TwoOps_match<V1_t, V2_t, Instruction::ShuffleVector>
-m_ShuffleVector(const V1_t &v1, const V2_t &v2) {
+m_Shuffle(const V1_t &v1, const V2_t &v2) {
   return TwoOps_match<V1_t, V2_t, Instruction::ShuffleVector>(v1, v2);
 }
 
 template <typename V1_t, typename V2_t, typename Mask_t>
 inline Shuffle_match<V1_t, V2_t, Mask_t>
-m_ShuffleVector(const V1_t &v1, const V2_t &v2, const Mask_t &mask) {
+m_Shuffle(const V1_t &v1, const V2_t &v2, const Mask_t &mask) {
   return Shuffle_match<V1_t, V2_t, Mask_t>(v1, v2, mask);
 }
 
@@ -1460,6 +1440,12 @@ inline CastClass_match<OpTy, Instruction::BitCast> m_BitCast(const OpTy &Op) {
 template <typename OpTy>
 inline CastClass_match<OpTy, Instruction::PtrToInt> m_PtrToInt(const OpTy &Op) {
   return CastClass_match<OpTy, Instruction::PtrToInt>(Op);
+}
+
+/// Matches IntToPtr.
+template <typename OpTy>
+inline CastClass_match<OpTy, Instruction::IntToPtr> m_IntToPtr(const OpTy &Op) {
+  return CastClass_match<OpTy, Instruction::IntToPtr>(Op);
 }
 
 /// Matches Trunc.
@@ -1514,25 +1500,31 @@ m_ZExtOrSExtOrSelf(const OpTy &Op) {
   return m_CombineOr(m_ZExtOrSExt(Op), Op);
 }
 
-/// Matches UIToFP.
 template <typename OpTy>
 inline CastClass_match<OpTy, Instruction::UIToFP> m_UIToFP(const OpTy &Op) {
   return CastClass_match<OpTy, Instruction::UIToFP>(Op);
 }
 
-/// Matches SIToFP.
 template <typename OpTy>
 inline CastClass_match<OpTy, Instruction::SIToFP> m_SIToFP(const OpTy &Op) {
   return CastClass_match<OpTy, Instruction::SIToFP>(Op);
 }
 
-/// Matches FPTrunc
+template <typename OpTy>
+inline CastClass_match<OpTy, Instruction::FPToUI> m_FPToUI(const OpTy &Op) {
+  return CastClass_match<OpTy, Instruction::FPToUI>(Op);
+}
+
+template <typename OpTy>
+inline CastClass_match<OpTy, Instruction::FPToSI> m_FPToSI(const OpTy &Op) {
+  return CastClass_match<OpTy, Instruction::FPToSI>(Op);
+}
+
 template <typename OpTy>
 inline CastClass_match<OpTy, Instruction::FPTrunc> m_FPTrunc(const OpTy &Op) {
   return CastClass_match<OpTy, Instruction::FPTrunc>(Op);
 }
 
-/// Matches FPExt
 template <typename OpTy>
 inline CastClass_match<OpTy, Instruction::FPExt> m_FPExt(const OpTy &Op) {
   return CastClass_match<OpTy, Instruction::FPExt>(Op);
@@ -1604,6 +1596,17 @@ struct MaxMin_match {
   MaxMin_match(const LHS_t &LHS, const RHS_t &RHS) : L(LHS), R(RHS) {}
 
   template <typename OpTy> bool match(OpTy *V) {
+    if (auto *II = dyn_cast<IntrinsicInst>(V)) {
+      Intrinsic::ID IID = II->getIntrinsicID();
+      if ((IID == Intrinsic::smax && Pred_t::match(ICmpInst::ICMP_SGT)) ||
+          (IID == Intrinsic::smin && Pred_t::match(ICmpInst::ICMP_SLT)) ||
+          (IID == Intrinsic::umax && Pred_t::match(ICmpInst::ICMP_UGT)) ||
+          (IID == Intrinsic::umin && Pred_t::match(ICmpInst::ICMP_ULT))) {
+        Value *LHS = II->getOperand(0), *RHS = II->getOperand(1);
+        return (L.match(LHS) && R.match(RHS)) ||
+               (Commutable && L.match(RHS) && R.match(LHS));
+      }
+    }
     // Look for "(x pred y) ? x : y" or "(x pred y) ? y : x".
     auto *SI = dyn_cast<SelectInst>(V);
     if (!SI)
@@ -1914,6 +1917,12 @@ struct m_Intrinsic_Ty<T0, T1, T2, T3, T4> {
                                Argument_match<T4>>;
 };
 
+template <typename T0, typename T1, typename T2, typename T3, typename T4, typename T5>
+struct m_Intrinsic_Ty<T0, T1, T2, T3, T4, T5> {
+  using Ty = match_combine_and<typename m_Intrinsic_Ty<T0, T1, T2, T3, T4>::Ty,
+                               Argument_match<T5>>;
+};
+
 /// Match intrinsic calls like this:
 /// m_Intrinsic<Intrinsic::fabs>(m_Value(X))
 template <Intrinsic::ID IntrID> inline IntrinsicID_match m_Intrinsic() {
@@ -1951,6 +1960,15 @@ m_Intrinsic(const T0 &Op0, const T1 &Op1, const T2 &Op2, const T3 &Op3,
             const T4 &Op4) {
   return m_CombineAnd(m_Intrinsic<IntrID>(Op0, Op1, Op2, Op3),
                       m_Argument<4>(Op4));
+}
+
+template <Intrinsic::ID IntrID, typename T0, typename T1, typename T2,
+          typename T3, typename T4, typename T5>
+inline typename m_Intrinsic_Ty<T0, T1, T2, T3, T4, T5>::Ty
+m_Intrinsic(const T0 &Op0, const T1 &Op1, const T2 &Op2, const T3 &Op3,
+            const T4 &Op4, const T5 &Op5) {
+  return m_CombineAnd(m_Intrinsic<IntrID>(Op0, Op1, Op2, Op3, Op4),
+                      m_Argument<5>(Op5));
 }
 
 // Helper intrinsic matching specializations.
@@ -2045,6 +2063,15 @@ template <typename ValTy>
 inline BinaryOp_match<cst_pred_ty<is_zero_int>, ValTy, Instruction::Sub>
 m_Neg(const ValTy &V) {
   return m_Sub(m_ZeroInt(), V);
+}
+
+/// Matches a 'Neg' as 'sub nsw 0, V'.
+template <typename ValTy>
+inline OverflowingBinaryOp_match<cst_pred_ty<is_zero_int>, ValTy,
+                                 Instruction::Sub,
+                                 OverflowingBinaryOperator::NoSignedWrap>
+m_NSWNeg(const ValTy &V) {
+  return m_NSWSub(m_ZeroInt(), V);
 }
 
 /// Matches a 'Not' as 'xor V, -1' or 'xor -1, V'.

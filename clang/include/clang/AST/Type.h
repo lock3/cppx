@@ -482,6 +482,11 @@ public:
            // Otherwise in OpenCLC v2.0 s6.5.5: every address space except
            // for __constant can be used as __generic.
            (A == LangAS::opencl_generic && B != LangAS::opencl_constant) ||
+           // We also define global_device and global_host address spaces,
+           // to distinguish global pointers allocated on host from pointers
+           // allocated on device, which are a subset of __global.
+           (A == LangAS::opencl_global && (B == LangAS::opencl_global_device ||
+                                           B == LangAS::opencl_global_host)) ||
            // Consider pointer size address spaces to be equivalent to default.
            ((isPtrSizeAddressSpace(A) || A == LangAS::Default) &&
             (isPtrSizeAddressSpace(B) || B == LangAS::Default));
@@ -949,6 +954,12 @@ public:
   /// from non-class types (in C++) or all types (in C).
   QualType getNonLValueExprType(const ASTContext &Context) const;
 
+  /// Remove an outer pack expansion type (if any) from this type. Used as part
+  /// of converting the type of a declaration to the type of an expression that
+  /// references that expression. It's meaningless for an expression to have a
+  /// pack expansion type.
+  QualType getNonPackExpansionType() const;
+
   /// Return the specified type with any "sugar" removed from
   /// the type.  This takes off typedefs, typeof's etc.  If the outer level of
   /// the type is already concrete, it returns it unmodified.  This is similar
@@ -1057,7 +1068,7 @@ public:
 
   void dump(const char *s) const;
   void dump() const;
-  void dump(llvm::raw_ostream &OS) const;
+  void dump(llvm::raw_ostream &OS, const ASTContext &Context) const;
 
   void Profile(llvm::FoldingSetNodeID &ID) const {
     ID.AddPointer(getAsOpaquePtr());
@@ -1068,6 +1079,21 @@ public:
 
   /// Return the address space of this type.
   inline LangAS getAddressSpace() const;
+
+  /// Returns true if address space qualifiers overlap with T address space
+  /// qualifiers.
+  /// OpenCL C defines conversion rules for pointers to different address spaces
+  /// and notion of overlapping address spaces.
+  /// CL1.1 or CL1.2:
+  ///   address spaces overlap iff they are they same.
+  /// OpenCL C v2.0 s6.5.5 adds:
+  ///   __generic overlaps with any address space except for __constant.
+  bool isAddressSpaceOverlapping(QualType T) const {
+    Qualifiers Q = getQualifiers();
+    Qualifiers TQ = T.getQualifiers();
+    // Address spaces overlap if at least one of them is a superset of another
+    return Q.isAddressSpaceSupersetOf(TQ) || TQ.isAddressSpaceSupersetOf(Q);
+  }
 
   /// Returns gc attribute of this type.
   inline Qualifiers::GC getObjCGCAttr() const;
@@ -1752,6 +1778,14 @@ protected:
     unsigned NumExpansions;
   };
 
+  class DependentIdentifierSpliceTypeBitfields {
+    friend class DependentIdentifierSpliceType;
+
+    unsigned : NumTypeBits;
+
+    unsigned NumTemplateArgs;
+  };
+
   class CXXDependentVariadicReifierTypeBitfields {
     friend class CXXDependentVariadicReifierType;
 
@@ -1776,6 +1810,7 @@ protected:
     DependentTemplateSpecializationTypeBitfields
       DependentTemplateSpecializationTypeBits;
     PackExpansionTypeBitfields PackExpansionTypeBits;
+    DependentIdentifierSpliceTypeBitfields DependentIdentifierSpliceTypeBits;
 
     static_assert(sizeof(TypeBitfields) <= 8,
                   "TypeBitfields is larger than 8 bytes!");
@@ -1810,6 +1845,8 @@ protected:
                   " than 8 bytes!");
     static_assert(sizeof(PackExpansionTypeBitfields) <= 8,
                   "PackExpansionTypeBitfields is larger than 8 bytes");
+    static_assert(sizeof(DependentIdentifierSpliceTypeBitfields) <= 8,
+                  "DependentIdentifierSpliceTypeBitfields is larger than 8 bytes");
   };
 
 private:
@@ -1826,6 +1863,10 @@ protected:
   Type(TypeClass tc, QualType canon, TypeDependence Dependence, bool MetaType)
       : ExtQualsTypeCommonBase(this,
                                canon.isNull() ? QualType(this_(), 0) : canon) {
+    static_assert(sizeof(*this) <= 8 + sizeof(ExtQualsTypeCommonBase),
+                  "changing bitfields changed sizeof(Type)!");
+    static_assert(alignof(decltype(*this)) % sizeof(void *) == 0,
+                  "Insufficient alignment!");
     TypeBits.TC = tc;
     TypeBits.Dependence = static_cast<unsigned>(Dependence);
     TypeBits.MetaType = MetaType;
@@ -1904,6 +1945,14 @@ public:
   /// or layout.
   bool isSizelessType() const;
   bool isSizelessBuiltinType() const;
+
+  /// Determines if this is a vector-length-specific type (VLST), i.e. a
+  /// sizeless type with the 'arm_sve_vector_bits' attribute applied.
+  bool isVLST() const;
+  /// Determines if this is a sizeless type supported by the
+  /// 'arm_sve_vector_bits' type attribute, which can be applied to a single
+  /// SVE vector or predicate, excluding tuple types such as svint32x4_t.
+  bool isVLSTBuiltinType() const;
 
   /// Types are partitioned into 3 broad categories (C99 6.2.5p1):
   /// object types, function types, and incomplete types.
@@ -1994,6 +2043,7 @@ public:
   bool isFloatingType() const;     // C99 6.2.5p11 (real floating + complex)
   bool isHalfType() const;         // OpenCL 6.1.1.1, NEON (IEEE 754-2008 half)
   bool isFloat16Type() const;      // C11 extension ISO/IEC TS 18661
+  bool isBFloat16Type() const;
   bool isFloat128Type() const;
   bool isRealType() const;         // C99 6.2.5p17 (real floating + integer)
   bool isArithmeticType() const;   // C99 6.2.5p18 (integer + floating)
@@ -2039,6 +2089,8 @@ public:
   bool isComplexIntegerType() const;            // GCC _Complex integer type.
   bool isVectorType() const;                    // GCC vector type.
   bool isExtVectorType() const;                 // Extended vector type.
+  bool isMatrixType() const;                    // Matrix type.
+  bool isConstantMatrixType() const;            // Constant matrix type.
   bool isDependentAddressSpaceType() const;     // value-dependent address space qualifier
   bool isObjCObjectPointerType() const;         // pointer to ObjC object
   bool isObjCRetainableType() const;            // ObjC object or block pointer
@@ -2460,7 +2512,7 @@ public:
 
   CanQualType getCanonicalTypeUnqualified() const; // in CanonicalType.h
   void dump() const;
-  void dump(llvm::raw_ostream &OS) const;
+  void dump(llvm::raw_ostream &OS, const ASTContext &Context) const;
 };
 
 /// This will check for a TypedefType by removing any existing sugar
@@ -2647,22 +2699,6 @@ class PointerType : public Type, public llvm::FoldingSetNode {
 
 public:
   QualType getPointeeType() const { return PointeeType; }
-
-  /// Returns true if address spaces of pointers overlap.
-  /// OpenCL v2.0 defines conversion rules for pointers to different
-  /// address spaces (OpenCLC v2.0 s6.5.5) and notion of overlapping
-  /// address spaces.
-  /// CL1.1 or CL1.2:
-  ///   address spaces overlap iff they are they same.
-  /// CL2.0 adds:
-  ///   __generic overlaps with any address space except for __constant.
-  bool isAddressSpaceOverlapping(const PointerType &other) const {
-    Qualifiers thisQuals = PointeeType.getQualifiers();
-    Qualifiers otherQuals = other.getPointeeType().getQualifiers();
-    // Address spaces overlap if at least one of them is a superset of another
-    return thisQuals.isAddressSpaceSupersetOf(otherQuals) ||
-           otherQuals.isAddressSpaceSupersetOf(thisQuals);
-  }
 
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
@@ -3422,6 +3458,142 @@ public:
   static bool classof(const Type *T) {
     return T->getTypeClass() == ExtVector;
   }
+};
+
+/// Represents a matrix type, as defined in the Matrix Types clang extensions.
+/// __attribute__((matrix_type(rows, columns))), where "rows" specifies
+/// number of rows and "columns" specifies the number of columns.
+class MatrixType : public Type, public llvm::FoldingSetNode {
+protected:
+  friend class ASTContext;
+
+  /// The element type of the matrix.
+  QualType ElementType;
+
+  MatrixType(QualType ElementTy, QualType CanonElementTy);
+
+  MatrixType(TypeClass TypeClass, QualType ElementTy, QualType CanonElementTy,
+             const Expr *RowExpr = nullptr, const Expr *ColumnExpr = nullptr);
+
+public:
+  /// Returns type of the elements being stored in the matrix
+  QualType getElementType() const { return ElementType; }
+
+  /// Valid elements types are the following:
+  /// * an integer type (as in C2x 6.2.5p19), but excluding enumerated types
+  ///   and _Bool
+  /// * the standard floating types float or double
+  /// * a half-precision floating point type, if one is supported on the target
+  static bool isValidElementType(QualType T) {
+    return T->isDependentType() ||
+           (T->isRealType() && !T->isBooleanType() && !T->isEnumeralType());
+  }
+
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == ConstantMatrix ||
+           T->getTypeClass() == DependentSizedMatrix;
+  }
+};
+
+/// Represents a concrete matrix type with constant number of rows and columns
+class ConstantMatrixType final : public MatrixType {
+protected:
+  friend class ASTContext;
+
+  /// The element type of the matrix.
+  // FIXME: Appears to be unused? There is also MatrixType::ElementType...
+  QualType ElementType;
+
+  /// Number of rows and columns.
+  unsigned NumRows;
+  unsigned NumColumns;
+
+  static constexpr unsigned MaxElementsPerDimension = (1 << 20) - 1;
+
+  ConstantMatrixType(QualType MatrixElementType, unsigned NRows,
+                     unsigned NColumns, QualType CanonElementType);
+
+  ConstantMatrixType(TypeClass typeClass, QualType MatrixType, unsigned NRows,
+                     unsigned NColumns, QualType CanonElementType);
+
+public:
+  /// Returns the number of rows in the matrix.
+  unsigned getNumRows() const { return NumRows; }
+
+  /// Returns the number of columns in the matrix.
+  unsigned getNumColumns() const { return NumColumns; }
+
+  /// Returns the number of elements required to embed the matrix into a vector.
+  unsigned getNumElementsFlattened() const {
+    return getNumRows() * getNumColumns();
+  }
+
+  /// Returns true if \p NumElements is a valid matrix dimension.
+  static constexpr bool isDimensionValid(size_t NumElements) {
+    return NumElements > 0 && NumElements <= MaxElementsPerDimension;
+  }
+
+  /// Returns the maximum number of elements per dimension.
+  static constexpr unsigned getMaxElementsPerDimension() {
+    return MaxElementsPerDimension;
+  }
+
+  void Profile(llvm::FoldingSetNodeID &ID) {
+    Profile(ID, getElementType(), getNumRows(), getNumColumns(),
+            getTypeClass());
+  }
+
+  static void Profile(llvm::FoldingSetNodeID &ID, QualType ElementType,
+                      unsigned NumRows, unsigned NumColumns,
+                      TypeClass TypeClass) {
+    ID.AddPointer(ElementType.getAsOpaquePtr());
+    ID.AddInteger(NumRows);
+    ID.AddInteger(NumColumns);
+    ID.AddInteger(TypeClass);
+  }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == ConstantMatrix;
+  }
+};
+
+/// Represents a matrix type where the type and the number of rows and columns
+/// is dependent on a template.
+class DependentSizedMatrixType final : public MatrixType {
+  friend class ASTContext;
+
+  const ASTContext &Context;
+  Expr *RowExpr;
+  Expr *ColumnExpr;
+
+  SourceLocation loc;
+
+  DependentSizedMatrixType(const ASTContext &Context, QualType ElementType,
+                           QualType CanonicalType, Expr *RowExpr,
+                           Expr *ColumnExpr, SourceLocation loc);
+
+public:
+  QualType getElementType() const { return ElementType; }
+  Expr *getRowExpr() const { return RowExpr; }
+  Expr *getColumnExpr() const { return ColumnExpr; }
+  SourceLocation getAttributeLoc() const { return loc; }
+
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == DependentSizedMatrix;
+  }
+
+  void Profile(llvm::FoldingSetNodeID &ID) {
+    Profile(ID, Context, getElementType(), getRowExpr(), getColumnExpr());
+  }
+
+  static void Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
+                      QualType ElementType, Expr *RowExpr, Expr *ColumnExpr);
 };
 
 /// FunctionType - C99 6.7.5.3 - Function Declarators.  This is the common base
@@ -4294,12 +4466,7 @@ class TypedefType : public Type {
 protected:
   friend class ASTContext; // ASTContext creates these.
 
-  TypedefType(TypeClass tc, const TypedefNameDecl *D, QualType can)
-      : Type(tc, can, can->getDependence() & ~TypeDependence::UnexpandedPack,
-             can->isMetaType()),
-        Decl(const_cast<TypedefNameDecl *>(D)) {
-    assert(!isa<TypedefType>(can) && "Invalid canonical type");
-  }
+  TypedefType(TypeClass tc, const TypedefNameDecl *D, QualType can);
 
 public:
   TypedefNameDecl *getDecl() const { return Decl; }
@@ -4450,6 +4617,68 @@ public:
 
   static void Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
                       Expr *E);
+};
+
+/// \brief Representation of a dependent identifier splice.
+class DependentIdentifierSpliceType : public Type,
+                                      public llvm::FoldingSetNode {
+  const ASTContext &Context;
+
+  /// The optional qualifier
+  NestedNameSpecifier *NNS;
+
+  /// The dependent identifier that names this type.
+  IdentifierInfo *II;
+
+  DependentIdentifierSpliceType(
+      const ASTContext &C, NestedNameSpecifier *NNS, IdentifierInfo *II,
+      unsigned NumTemplateArgs);
+
+public:
+  static DependentIdentifierSpliceType *Create(
+      const ASTContext &C, NestedNameSpecifier *NNS, IdentifierInfo *II,
+      ArrayRef<TemplateArgument> TemplateArgs);
+
+  NestedNameSpecifier *getQualifier() const { return NNS; }
+
+  IdentifierInfo *getIdentifierInfo() const { return II; }
+
+  /// Retrieve the template arguments.
+  const TemplateArgument *getArgs() const {
+    return reinterpret_cast<const TemplateArgument *>(this + 1);
+  }
+
+  /// Retrieve the number of template arguments.
+  unsigned getNumArgs() const {
+    return DependentIdentifierSpliceTypeBits.NumTemplateArgs;
+  }
+
+  const TemplateArgument &getArg(unsigned Idx) const; // in TemplateBase.h
+
+  ArrayRef<TemplateArgument> template_arguments() const {
+    return {getArgs(), getNumArgs()};
+  }
+
+  /// Remove a single level of sugar.
+  QualType desugar() const { return QualType(this, 0); }
+
+  /// Returns whether this type directly provides sugar.
+  bool isSugared() const { return false; }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == DependentIdentifierSplice;
+  }
+
+  void Profile(llvm::FoldingSetNodeID &ID) {
+    Profile(
+        ID, Context, getQualifier(), getIdentifierInfo(),
+        template_arguments());
+  }
+
+  static void Profile(
+      llvm::FoldingSetNodeID &ID, const ASTContext &Context,
+      NestedNameSpecifier *NNS, IdentifierInfo *II,
+      ArrayRef<TemplateArgument> TemplateArgs);
 };
 
 /// \brief Representation of reflected types.
@@ -5588,7 +5817,8 @@ class PackExpansionType : public Type, public llvm::FoldingSetNode {
   PackExpansionType(QualType Pattern, QualType Canon,
                     Optional<unsigned> NumExpansions)
       : Type(PackExpansion, Canon,
-             (Pattern->getDependence() | TypeDependence::Instantiation) &
+             (Pattern->getDependence() | TypeDependence::Dependent |
+              TypeDependence::Instantiation) &
                  ~TypeDependence::UnexpandedPack, /*MetaType=*/false),
         Pattern(Pattern) {
     PackExpansionTypeBits.NumExpansions =
@@ -5609,8 +5839,8 @@ public:
     return None;
   }
 
-  bool isSugared() const { return !Pattern->isDependentType(); }
-  QualType desugar() const { return isSugared() ? Pattern : QualType(this, 0); }
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
 
   void Profile(llvm::FoldingSetNodeID &ID) {
     Profile(ID, getPattern(), getNumExpansions());
@@ -6865,6 +7095,14 @@ inline bool Type::isExtVectorType() const {
   return isa<ExtVectorType>(CanonicalType);
 }
 
+inline bool Type::isMatrixType() const {
+  return isa<MatrixType>(CanonicalType);
+}
+
+inline bool Type::isConstantMatrixType() const {
+  return isa<ConstantMatrixType>(CanonicalType);
+}
+
 inline bool Type::isDependentAddressSpaceType() const {
   return isa<DependentAddressSpaceType>(CanonicalType);
 }
@@ -7068,6 +7306,10 @@ inline bool Type::isHalfType() const {
 
 inline bool Type::isFloat16Type() const {
   return isSpecificBuiltinType(BuiltinType::Float16);
+}
+
+inline bool Type::isBFloat16Type() const {
+  return isSpecificBuiltinType(BuiltinType::BFloat16);
 }
 
 inline bool Type::isFloat128Type() const {

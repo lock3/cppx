@@ -29,10 +29,14 @@ static Matcher<TypedefDecl> hasAnyListedName(const std::string &Names) {
 SignedCharMisuseCheck::SignedCharMisuseCheck(StringRef Name,
                                              ClangTidyContext *Context)
     : ClangTidyCheck(Name, Context),
-      CharTypdefsToIgnoreList(Options.get("CharTypdefsToIgnore", "")) {}
+      CharTypdefsToIgnoreList(Options.get("CharTypdefsToIgnore", "")),
+      DiagnoseSignedUnsignedCharComparisons(
+          Options.get("DiagnoseSignedUnsignedCharComparisons", true)) {}
 
 void SignedCharMisuseCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
   Options.store(Opts, "CharTypdefsToIgnore", CharTypdefsToIgnoreList);
+  Options.store(Opts, "DiagnoseSignedUnsignedCharComparisons",
+                DiagnoseSignedUnsignedCharComparisons);
 }
 
 // Create a matcher for char -> integer cast.
@@ -66,8 +70,9 @@ BindableMatcher<clang::Stmt> SignedCharMisuseCheck::charCastExpression(
   // We catch any type of casts to an integer. We need to have these cast
   // expressions explicitly to catch only those casts which are direct children
   // of the checked expressions. (e.g. assignment, declaration).
-  return expr(anyOf(ImplicitCastExpr, CStyleCastExpr, StaticCastExpr,
-                    FunctionalCastExpr));
+  return traverse(ast_type_traits::TK_AsIs,
+                  expr(anyOf(ImplicitCastExpr, CStyleCastExpr, StaticCastExpr,
+                             FunctionalCastExpr)));
 }
 
 void SignedCharMisuseCheck::registerMatchers(MatchFinder *Finder) {
@@ -92,16 +97,18 @@ void SignedCharMisuseCheck::registerMatchers(MatchFinder *Finder) {
 
   Finder->addMatcher(Declaration, this);
 
-  // Catch signed char/unsigned char comparison.
-  const auto CompareOperator =
-      expr(binaryOperator(hasAnyOperatorName("==", "!="),
-                          anyOf(allOf(hasLHS(SignedCharCastExpr),
-                                      hasRHS(UnSignedCharCastExpr)),
-                                allOf(hasLHS(UnSignedCharCastExpr),
-                                      hasRHS(SignedCharCastExpr)))))
-          .bind("comparison");
+  if (DiagnoseSignedUnsignedCharComparisons) {
+    // Catch signed char/unsigned char comparison.
+    const auto CompareOperator =
+        expr(binaryOperator(hasAnyOperatorName("==", "!="),
+                            anyOf(allOf(hasLHS(SignedCharCastExpr),
+                                        hasRHS(UnSignedCharCastExpr)),
+                                  allOf(hasLHS(UnSignedCharCastExpr),
+                                        hasRHS(SignedCharCastExpr)))))
+            .bind("comparison");
 
-  Finder->addMatcher(CompareOperator, this);
+    Finder->addMatcher(CompareOperator, this);
+  }
 
   // Catch array subscripts with signed char -> integer conversion.
   // Matcher for C arrays.

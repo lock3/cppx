@@ -1311,7 +1311,6 @@ bool CursorVisitor::VisitDeclarationNameInfo(DeclarationNameInfo Name) {
   case clang::DeclarationName::CXXDeductionGuideName:
   case clang::DeclarationName::CXXOperatorName:
   case clang::DeclarationName::CXXUsingDirective:
-  case clang::DeclarationName::CXXReflectedIdName:
     return false;
 
   case clang::DeclarationName::CXXConstructorName:
@@ -1787,6 +1786,28 @@ bool CursorVisitor::VisitDecltypeTypeLoc(DecltypeTypeLoc TL) {
   return false;
 }
 
+bool CursorVisitor::VisitDependentIdentifierSpliceTypeLoc(
+    DependentIdentifierSpliceTypeLoc TL) {
+  // Visit the nested-name-specifier, if there is one.
+  if (NestedNameSpecifierLoc QualifierLoc = TL.getQualifierLoc()) {
+    if (VisitNestedNameSpecifierLoc(QualifierLoc))
+      return true;
+  }
+
+  auto II = static_cast<SplicedIdentifierInfo *>(TL.getIdentifierInfo());
+  for (Expr *E : II->getExprs()) {
+    if (Visit(MakeCXCursor(E, StmtParent, TU)))
+      return true;
+  }
+
+  // Visit the template arguments.
+  for (unsigned I = 0, N = TL.getNumArgs(); I != N; ++I)
+    if (VisitTemplateArgumentLoc(TL.getArgLoc(I)))
+      return true;
+
+  return false;
+}
+
 bool CursorVisitor::VisitReflectedTypeLoc(ReflectedTypeLoc TL) {
   if (Expr *E = TL.getReflection())
     return Visit(MakeCXCursor(E, StmtParent, TU));
@@ -1829,6 +1850,8 @@ DEFAULT_TYPELOC_IMPL(DependentVector, Type)
 DEFAULT_TYPELOC_IMPL(DependentSizedExtVector, Type)
 DEFAULT_TYPELOC_IMPL(Vector, Type)
 DEFAULT_TYPELOC_IMPL(ExtVector, VectorType)
+DEFAULT_TYPELOC_IMPL(ConstantMatrix, MatrixType)
+DEFAULT_TYPELOC_IMPL(DependentSizedMatrix, MatrixType)
 DEFAULT_TYPELOC_IMPL(FunctionProto, FunctionType)
 DEFAULT_TYPELOC_IMPL(FunctionNoProto, FunctionType)
 DEFAULT_TYPELOC_IMPL(Record, TagType)
@@ -2408,6 +2431,17 @@ void OMPClauseEnqueue::VisitOMPReductionClause(const OMPReductionClause *C) {
   for (auto *E : C->reduction_ops()) {
     Visitor->AddStmt(E);
   }
+  if (C->getModifier() == clang::OMPC_REDUCTION_inscan) {
+    for (auto *E : C->copy_ops()) {
+      Visitor->AddStmt(E);
+    }
+    for (auto *E : C->copy_array_temps()) {
+      Visitor->AddStmt(E);
+    }
+    for (auto *E : C->copy_array_elems()) {
+      Visitor->AddStmt(E);
+    }
+  }
 }
 void OMPClauseEnqueue::VisitOMPTaskReductionClause(
     const OMPTaskReductionClause *C) {
@@ -2521,6 +2555,10 @@ void OMPClauseEnqueue::VisitOMPUseDevicePtrClause(
     const OMPUseDevicePtrClause *C) {
   VisitOMPClauseList(C);
 }
+void OMPClauseEnqueue::VisitOMPUseDeviceAddrClause(
+    const OMPUseDeviceAddrClause *C) {
+  VisitOMPClauseList(C);
+}
 void OMPClauseEnqueue::VisitOMPIsDevicePtrClause(
     const OMPIsDevicePtrClause *C) {
   VisitOMPClauseList(C);
@@ -2539,6 +2577,11 @@ void OMPClauseEnqueue::VisitOMPUsesAllocatorsClause(
     Visitor->AddStmt(D.Allocator);
     Visitor->AddStmt(D.AllocatorTraits);
   }
+}
+void OMPClauseEnqueue::VisitOMPAffinityClause(const OMPAffinityClause *C) {
+  Visitor->AddStmt(C->getModifier());
+  for (const Expr *E : C->varlists())
+    Visitor->AddStmt(E);
 }
 } // namespace
 
@@ -3284,7 +3327,7 @@ bool CursorVisitor::RunVisitorWorkList(VisitorWorkList &WL) {
       }
       // Visit init captures
       for (auto InitExpr : E->capture_inits()) {
-        if (Visit(InitExpr))
+        if (InitExpr && Visit(InitExpr))
           return true;
       }
 
@@ -4069,10 +4112,14 @@ static const Expr *evaluateCompoundStmtExpr(const CompoundStmt *CS) {
 }
 
 CXEvalResult clang_Cursor_Evaluate(CXCursor C) {
-  if (const Expr *E =
-          clang_getCursorKind(C) == CXCursor_CompoundStmt
-              ? evaluateCompoundStmtExpr(cast<CompoundStmt>(getCursorStmt(C)))
-              : evaluateDeclExpr(getCursorDecl(C)))
+  const Expr *E = nullptr;
+  if (clang_getCursorKind(C) == CXCursor_CompoundStmt)
+    E = evaluateCompoundStmtExpr(cast<CompoundStmt>(getCursorStmt(C)));
+  else if (clang_isDeclaration(C.kind))
+    E = evaluateDeclExpr(getCursorDecl(C));
+  else if (clang_isExpression(C.kind))
+    E = getCursorExpr(C);
+  if (E)
     return const_cast<CXEvalResult>(
         reinterpret_cast<const void *>(evaluateExpr(const_cast<Expr *>(E), C)));
   return nullptr;
@@ -5272,6 +5319,8 @@ CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
     return cxstring::createRef("CXXConstCastExpr");
   case CXCursor_CXXFunctionalCastExpr:
     return cxstring::createRef("CXXFunctionalCastExpr");
+  case CXCursor_CXXAddrspaceCastExpr:
+    return cxstring::createRef("CXXAddrspaceCastExpr");
   case CXCursor_CXXTypeidExpr:
     return cxstring::createRef("CXXTypeidExpr");
   case CXCursor_CXXBoolLiteralExpr:
@@ -6874,7 +6923,7 @@ static void getTokens(ASTUnit *CXXUnit, SourceRange Range,
         CXTok.int_data[0] = CXToken_Keyword;
       } else {
         CXTok.int_data[0] =
-            Tok.is(tok::identifier) ? CXToken_Identifier : CXToken_Keyword;
+            Tok.isIdentifier() ? CXToken_Identifier : CXToken_Keyword;
       }
       CXTok.ptr_data = II;
     } else if (Tok.is(tok::comment)) {

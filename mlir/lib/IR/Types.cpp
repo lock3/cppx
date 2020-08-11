@@ -21,22 +21,22 @@ using namespace mlir::detail;
 
 unsigned Type::getKind() const { return impl->getKind(); }
 
-/// Get the dialect this type is registered to.
-Dialect &Type::getDialect() const { return impl->getDialect(); }
+Dialect &Type::getDialect() const {
+  return impl->getAbstractType().getDialect();
+}
 
 MLIRContext *Type::getContext() const { return getDialect().getContext(); }
-
-unsigned Type::getSubclassData() const { return impl->getSubclassData(); }
-void Type::setSubclassData(unsigned val) { impl->setSubclassData(val); }
 
 //===----------------------------------------------------------------------===//
 // FunctionType
 //===----------------------------------------------------------------------===//
 
-FunctionType FunctionType::get(ArrayRef<Type> inputs, ArrayRef<Type> results,
+FunctionType FunctionType::get(TypeRange inputs, TypeRange results,
                                MLIRContext *context) {
   return Base::get(context, Type::Kind::Function, inputs, results);
 }
+
+unsigned FunctionType::getNumInputs() const { return getImpl()->numInputs; }
 
 ArrayRef<Type> FunctionType::getInputs() const {
   return getImpl()->getInputs();

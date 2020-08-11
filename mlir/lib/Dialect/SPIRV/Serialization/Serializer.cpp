@@ -227,9 +227,9 @@ private:
   }
 
   /// Process member decoration
-  LogicalResult processMemberDecoration(uint32_t structID, uint32_t memberIndex,
-                                        spirv::Decoration decorationType,
-                                        ArrayRef<uint32_t> values = {});
+  LogicalResult processMemberDecoration(
+      uint32_t structID,
+      const spirv::StructType::MemberDecorationInfo &memberDecorationInfo);
 
   //===--------------------------------------------------------------------===//
   // Types
@@ -283,7 +283,7 @@ private:
   /// iterates the DenseElementsAttr to construct the constant array, and
   /// returns the result <id>  associated with it. Returns 0 if failed. Note
   /// that the size of `index` must match the rank.
-  /// TODO(hanchung): Consider to enhance splat elements cases. For splat cases,
+  /// TODO: Consider to enhance splat elements cases. For splat cases,
   /// we don't need to loop over all elements, especially when the splat value
   /// is zero. We can use OpConstantNull when the value is zero.
   uint32_t prepareDenseElementsConstant(Location loc, Type constType,
@@ -364,7 +364,8 @@ private:
   /// Method to serialize an operation in the SPIR-V dialect that is a mirror of
   /// an instruction in the SPIR-V spec. This is auto generated if hasOpcode ==
   /// 1 and autogenSerialization == 1 in ODS.
-  template <typename OpTy> LogicalResult processOp(OpTy op) {
+  template <typename OpTy>
+  LogicalResult processOp(OpTy op) {
     return op.emitError("unsupported op serialization");
   }
 
@@ -390,6 +391,12 @@ private:
 
   /// A flag which indicates if the debuginfo should be emitted.
   bool emitDebugInfo = false;
+
+  /// A flag which indicates if the last processed instruction was a merge
+  /// instruction.
+  /// According to SPIR-V spec: "If a branch merge instruction is used, the last
+  /// OpLine in the block must be before its merge instruction".
+  bool lastProcessedWasMergeInst = false;
 
   /// The <id> of the OpString instruction, which specifies a file name, for
   /// use by other debug instructions.
@@ -505,7 +512,7 @@ LogicalResult Serializer::serialize() {
   if (failed(module.verify()))
     return failure();
 
-  // TODO(antiagainst): handle the other sections
+  // TODO: handle the other sections
   processCapability();
   processExtension();
   processMemoryModel();
@@ -666,8 +673,9 @@ LogicalResult Serializer::processDecoration(Location loc, uint32_t resultID,
   }
   SmallVector<uint32_t, 1> args;
   switch (decoration.getValue()) {
-  case spirv::Decoration::DescriptorSet:
   case spirv::Decoration::Binding:
+  case spirv::Decoration::DescriptorSet:
+  case spirv::Decoration::Location:
     if (auto intAttr = attr.second.dyn_cast<IntegerAttr>()) {
       args.push_back(intAttr.getValue().getZExtValue());
       break;
@@ -684,6 +692,13 @@ LogicalResult Serializer::processDecoration(Location loc, uint32_t resultID,
              << attrName << " attribute " << strAttr.getValue();
     }
     return emitError(loc, "expected string attribute for ") << attrName;
+  case spirv::Decoration::Flat:
+  case spirv::Decoration::NoPerspective:
+    if (auto unitAttr = attr.second.dyn_cast<UnitAttr>()) {
+      // For unit attributes, the args list has no values so we do nothing
+      break;
+    }
+    return emitError(loc, "expected unit attribute for ") << attrName;
   default:
     return emitError(loc, "unhandled decoration ") << decorationName;
   }
@@ -722,14 +737,14 @@ LogicalResult Serializer::processTypeDecoration<spirv::RuntimeArrayType>(
   return success();
 }
 
-LogicalResult
-Serializer::processMemberDecoration(uint32_t structID, uint32_t memberIndex,
-                                    spirv::Decoration decorationType,
-                                    ArrayRef<uint32_t> values) {
+LogicalResult Serializer::processMemberDecoration(
+    uint32_t structID,
+    const spirv::StructType::MemberDecorationInfo &memberDecoration) {
   SmallVector<uint32_t, 4> args(
-      {structID, memberIndex, static_cast<uint32_t>(decorationType)});
-  if (!values.empty()) {
-    args.append(values.begin(), values.end());
+      {structID, memberDecoration.memberIndex,
+       static_cast<uint32_t>(memberDecoration.decoration)});
+  if (memberDecoration.hasValue) {
+    args.push_back(memberDecoration.decorationValue);
   }
   return encodeInstructionInto(decorations, spirv::Opcode::OpMemberDecorate,
                                args);
@@ -759,7 +774,7 @@ LogicalResult Serializer::processFuncOp(spirv::FuncOp op) {
   operands.push_back(resTypeID);
   auto funcID = getOrCreateFunctionID(op.getName());
   operands.push_back(funcID);
-  // TODO : Support other function control options.
+  // TODO: Support other function control options.
   operands.push_back(static_cast<uint32_t>(spirv::FunctionControl::None));
   operands.push_back(fnTypeID);
   encodeInstructionInto(functionHeader, spirv::Opcode::OpFunction, operands);
@@ -852,8 +867,8 @@ LogicalResult Serializer::processVariableOp(spirv::VariableOp op) {
     }
     operands.push_back(argID);
   }
-  encodeInstructionInto(functionHeader, spirv::getOpcode<spirv::VariableOp>(),
-                        operands);
+  emitDebugLine(functionHeader, op.getLoc());
+  encodeInstructionInto(functionHeader, spirv::Opcode::OpVariable, operands);
   for (auto attr : op.getAttrs()) {
     if (llvm::any_of(elidedAttrs,
                      [&](StringRef elided) { return attr.first == elided; })) {
@@ -915,6 +930,7 @@ Serializer::processGlobalVariableOp(spirv::GlobalVariableOp varOp) {
     elidedAttrs.push_back("initializer");
   }
 
+  emitDebugLine(typesGlobalValues, varOp.getLoc());
   if (failed(encodeInstructionInto(typesGlobalValues, spirv::Opcode::OpVariable,
                                    operands))) {
     elidedAttrs.push_back("initializer");
@@ -1055,7 +1071,7 @@ Serializer::prepareBasicType(Location loc, Type type, uint32_t resultID,
   }
 
   if (auto structType = type.dyn_cast<spirv::StructType>()) {
-    bool hasLayout = structType.hasLayout();
+    bool hasOffset = structType.hasOffset();
     for (auto elementIndex :
          llvm::seq<uint32_t>(0, structType.getNumElements())) {
       uint32_t elementTypeID = 0;
@@ -1064,11 +1080,12 @@ Serializer::prepareBasicType(Location loc, Type type, uint32_t resultID,
         return failure();
       }
       operands.push_back(elementTypeID);
-      if (hasLayout) {
+      if (hasOffset) {
         // Decorate each struct member with an offset
-        if (failed(processMemberDecoration(
-                resultID, elementIndex, spirv::Decoration::Offset,
-                static_cast<uint32_t>(structType.getOffset(elementIndex))))) {
+        spirv::StructType::MemberDecorationInfo offsetDecoration{
+            elementIndex, /*hasValue=*/1, spirv::Decoration::Offset,
+            static_cast<uint32_t>(structType.getMemberOffset(elementIndex))};
+        if (failed(processMemberDecoration(resultID, offsetDecoration))) {
           return emitError(loc, "cannot decorate ")
                  << elementIndex << "-th member of " << structType
                  << " with its offset";
@@ -1078,18 +1095,49 @@ Serializer::prepareBasicType(Location loc, Type type, uint32_t resultID,
     SmallVector<spirv::StructType::MemberDecorationInfo, 4> memberDecorations;
     structType.getMemberDecorations(memberDecorations);
     for (auto &memberDecoration : memberDecorations) {
-      if (failed(processMemberDecoration(resultID, memberDecoration.first,
-                                         memberDecoration.second))) {
+      if (failed(processMemberDecoration(resultID, memberDecoration))) {
         return emitError(loc, "cannot decorate ")
-               << memberDecoration.first << "-th member of " << structType
-               << " with " << stringifyDecoration(memberDecoration.second);
+               << static_cast<uint32_t>(memberDecoration.memberIndex)
+               << "-th member of " << structType << " with "
+               << stringifyDecoration(memberDecoration.decoration);
       }
     }
     typeEnum = spirv::Opcode::OpTypeStruct;
     return success();
   }
 
-  // TODO(ravishankarm) : Handle other types.
+  if (auto cooperativeMatrixType =
+          type.dyn_cast<spirv::CooperativeMatrixNVType>()) {
+    uint32_t elementTypeID = 0;
+    if (failed(processType(loc, cooperativeMatrixType.getElementType(),
+                           elementTypeID))) {
+      return failure();
+    }
+    typeEnum = spirv::Opcode::OpTypeCooperativeMatrixNV;
+    auto getConstantOp = [&](uint32_t id) {
+      auto attr = IntegerAttr::get(IntegerType::get(32, type.getContext()), id);
+      return prepareConstantInt(loc, attr);
+    };
+    operands.push_back(elementTypeID);
+    operands.push_back(
+        getConstantOp(static_cast<uint32_t>(cooperativeMatrixType.getScope())));
+    operands.push_back(getConstantOp(cooperativeMatrixType.getRows()));
+    operands.push_back(getConstantOp(cooperativeMatrixType.getColumns()));
+    return success();
+  }
+
+  if (auto matrixType = type.dyn_cast<spirv::MatrixType>()) {
+    uint32_t elementTypeID = 0;
+    if (failed(processType(loc, matrixType.getColumnType(), elementTypeID))) {
+      return failure();
+    }
+    typeEnum = spirv::Opcode::OpTypeMatrix;
+    operands.push_back(elementTypeID);
+    operands.push_back(matrixType.getNumColumns());
+    return success();
+  }
+
+  // TODO: Handle other types.
   return emitError(loc, "unhandled type in serialization: ") << type;
 }
 
@@ -1182,7 +1230,7 @@ uint32_t Serializer::prepareArrayConstant(Location loc, Type constType,
   return resultID;
 }
 
-// TODO(hanchung): Turn the below function into iterative function, instead of
+// TODO: Turn the below function into iterative function, instead of
 // recursive function.
 uint32_t
 Serializer::prepareDenseElementsConstant(Location loc, Type constType,
@@ -1231,11 +1279,11 @@ uint32_t Serializer::prepareConstantScalar(Location loc, Attribute valueAttr,
   if (auto floatAttr = valueAttr.dyn_cast<FloatAttr>()) {
     return prepareConstantFp(loc, floatAttr, isSpec);
   }
-  if (auto intAttr = valueAttr.dyn_cast<IntegerAttr>()) {
-    return prepareConstantInt(loc, intAttr, isSpec);
-  }
   if (auto boolAttr = valueAttr.dyn_cast<BoolAttr>()) {
     return prepareConstantBool(loc, boolAttr, isSpec);
+  }
+  if (auto intAttr = valueAttr.dyn_cast<IntegerAttr>()) {
+    return prepareConstantInt(loc, intAttr, isSpec);
   }
 
   return 0;
@@ -1517,15 +1565,17 @@ LogicalResult Serializer::processSelectionOp(spirv::SelectionOp selectionOp) {
   auto *headerBlock = selectionOp.getHeaderBlock();
   auto *mergeBlock = selectionOp.getMergeBlock();
   auto mergeID = getBlockID(mergeBlock);
+  auto loc = selectionOp.getLoc();
 
   // Emit the selection header block, which dominates all other blocks, first.
   // We need to emit an OpSelectionMerge instruction before the selection header
   // block's terminator.
   auto emitSelectionMerge = [&]() {
-    // TODO(antiagainst): properly support selection control here
+    emitDebugLine(functionBody, loc);
+    lastProcessedWasMergeInst = true;
     encodeInstructionInto(
         functionBody, spirv::Opcode::OpSelectionMerge,
-        {mergeID, static_cast<uint32_t>(spirv::SelectionControl::None)});
+        {mergeID, static_cast<uint32_t>(selectionOp.selection_control())});
   };
   // For structured selection, we cannot have blocks in the selection construct
   // branching to the selection header block. Entering the selection (and
@@ -1566,6 +1616,7 @@ LogicalResult Serializer::processLoopOp(spirv::LoopOp loopOp) {
   auto headerID = getBlockID(headerBlock);
   auto continueID = getBlockID(continueBlock);
   auto mergeID = getBlockID(mergeBlock);
+  auto loc = loopOp.getLoc();
 
   // This LoopOp is in some MLIR block with preceding and following ops. In the
   // binary format, it should reside in separate SPIR-V blocks from its
@@ -1582,10 +1633,11 @@ LogicalResult Serializer::processLoopOp(spirv::LoopOp loopOp) {
   // need to emit an OpLoopMerge instruction before the loop header block's
   // terminator.
   auto emitLoopMerge = [&]() {
-    // TODO(antiagainst): properly support loop control here
+    emitDebugLine(functionBody, loc);
+    lastProcessedWasMergeInst = true;
     encodeInstructionInto(
         functionBody, spirv::Opcode::OpLoopMerge,
-        {mergeID, continueID, static_cast<uint32_t>(spirv::LoopControl::None)});
+        {mergeID, continueID, static_cast<uint32_t>(loopOp.loop_control())});
   };
   if (failed(processBlock(headerBlock, /*omitLabel=*/false, emitLoopMerge)))
     return failure();
@@ -1621,11 +1673,13 @@ LogicalResult Serializer::processBranchConditionalOp(
       arguments.push_back(val.cast<IntegerAttr>().getInt());
   }
 
+  emitDebugLine(functionBody, condBranchOp.getLoc());
   return encodeInstructionInto(functionBody, spirv::Opcode::OpBranchConditional,
                                arguments);
 }
 
 LogicalResult Serializer::processBranchOp(spirv::BranchOp branchOp) {
+  emitDebugLine(functionBody, branchOp.getLoc());
   return encodeInstructionInto(functionBody, spirv::Opcode::OpBranch,
                                {getOrCreateBlockID(branchOp.getTarget())});
 }
@@ -1849,6 +1903,51 @@ Serializer::processOp<spirv::FunctionCallOp>(spirv::FunctionCallOp op) {
                                operands);
 }
 
+template <>
+LogicalResult
+Serializer::processOp<spirv::CopyMemoryOp>(spirv::CopyMemoryOp op) {
+  SmallVector<uint32_t, 4> operands;
+  SmallVector<StringRef, 2> elidedAttrs;
+
+  for (Value operand : op.getOperation()->getOperands()) {
+    auto id = getValueID(operand);
+    assert(id && "use before def!");
+    operands.push_back(id);
+  }
+
+  if (auto attr = op.getAttr("memory_access")) {
+    operands.push_back(static_cast<uint32_t>(
+        attr.cast<IntegerAttr>().getValue().getZExtValue()));
+  }
+
+  elidedAttrs.push_back("memory_access");
+
+  if (auto attr = op.getAttr("alignment")) {
+    operands.push_back(static_cast<uint32_t>(
+        attr.cast<IntegerAttr>().getValue().getZExtValue()));
+  }
+
+  elidedAttrs.push_back("alignment");
+
+  if (auto attr = op.getAttr("source_memory_access")) {
+    operands.push_back(static_cast<uint32_t>(
+        attr.cast<IntegerAttr>().getValue().getZExtValue()));
+  }
+
+  elidedAttrs.push_back("source_memory_access");
+
+  if (auto attr = op.getAttr("source_alignment")) {
+    operands.push_back(static_cast<uint32_t>(
+        attr.cast<IntegerAttr>().getValue().getZExtValue()));
+  }
+
+  elidedAttrs.push_back("source_alignment");
+  emitDebugLine(functionBody, op.getLoc());
+  encodeInstructionInto(functionBody, spirv::Opcode::OpCopyMemory, operands);
+
+  return success();
+}
+
 // Pull in auto-generated Serializer::dispatchToAutogenSerialization() and
 // various Serializer::processOp<...>() specializations.
 #define GET_SERIALIZATION_FNS
@@ -1871,6 +1970,11 @@ LogicalResult Serializer::emitDebugLine(SmallVectorImpl<uint32_t> &binary,
                                         Location loc) {
   if (!emitDebugInfo)
     return success();
+
+  if (lastProcessedWasMergeInst) {
+    lastProcessedWasMergeInst = false;
+    return success();
+  }
 
   auto fileLoc = loc.dyn_cast<FileLineColLoc>();
   if (fileLoc)

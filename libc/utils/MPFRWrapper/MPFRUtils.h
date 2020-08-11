@@ -39,9 +39,16 @@ struct Tolerance {
   uint32_t bits;
 };
 
-enum Operation {
-  OP_Cos,
-  OP_Sin,
+enum class Operation : int {
+  Abs,
+  Ceil,
+  Cos,
+  Exp,
+  Exp2,
+  Floor,
+  Round,
+  Sin,
+  Trunc
 };
 
 namespace internal {
@@ -73,6 +80,7 @@ public:
 } // namespace internal
 
 template <typename T>
+__attribute__((no_sanitize("address")))
 internal::MPFRMatcher<T> getMPFRMatcher(Operation op, T input, Tolerance t) {
   static_assert(
       __llvm_libc::cpp::IsFloatingPointType<T>::Value,

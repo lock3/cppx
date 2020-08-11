@@ -108,6 +108,7 @@ public:
   static const TST TST_int128 = clang::TST_int128;
   static const TST TST_extint = clang::TST_extint;
   static const TST TST_half = clang::TST_half;
+  static const TST TST_BFloat16 = clang::TST_BFloat16;
   static const TST TST_float = clang::TST_float;
   static const TST TST_double = clang::TST_double;
   static const TST TST_float16 = clang::TST_Float16;
@@ -774,9 +775,7 @@ enum class UnqualifiedIdKind {
   /// An implicit 'self' parameter
   IK_ImplicitSelfParam,
   /// A deduction-guide name (a template-name)
-  IK_DeductionGuideName,
-  /// A reflected-id
-  IK_ReflectedId
+  IK_DeductionGuideName
 };
 
 /// Represents a C++ unqualified-id that has been parsed.
@@ -833,9 +832,6 @@ public:
     /// the template-id annotation that contains the template name and
     /// template arguments.
     TemplateIdAnnotation *TemplateId;
-
-    /// When Kind == IK_ReflectedId.
-    ReflectedIdentifierInfo *ReflectedIdentifier;
   };
 
   /// The location of the first token that describes this unqualified-id,
@@ -980,20 +976,6 @@ public:
     Kind = UnqualifiedIdKind::IK_DeductionGuideName;
     TemplateName = Template;
     StartLocation = EndLocation = TemplateLoc;
-  }
-
-  /// Specify that this unqualified-id was parsed an an
-  /// reflected-id.
-  ///
-  /// \param BeginLoc The location of the starting token.
-  /// \param Args The array of arguments for the reflected id.
-  /// \param EndLoc The location of the ending token.
-  void setReflectedId(SourceLocation BeginLoc, ReflectedIdentifierInfo *ReflectedId,
-                      SourceLocation EndLoc) {
-    Kind = UnqualifiedIdKind::IK_ReflectedId;
-    ReflectedIdentifier = ReflectedId;
-    StartLocation = BeginLoc;
-    EndLocation = EndLoc;
   }
 
   /// Return the source range that covers this unqualified-id.
@@ -2280,10 +2262,21 @@ public:
         return true;
     return false;
   }
+  /// Get the trailing return type appearing (at any level) within this
+  /// declarator.
+  ParsedType getTrailingReturnType() const {
+    for (const auto &Chunk : type_objects())
+      if (Chunk.Kind == DeclaratorChunk::Function &&
+          Chunk.Fun.hasTrailingReturnType())
+        return Chunk.Fun.getTrailingReturnType();
+    return ParsedType();
+  }
 
   /// \brief Sets a trailing requires clause for this declarator.
   void setTrailingRequiresClause(Expr *TRC) {
     TrailingRequiresClause = TRC;
+
+    SetRangeEnd(TRC->getEndLoc());
   }
 
   /// \brief Sets a trailing requires clause for this declarator.

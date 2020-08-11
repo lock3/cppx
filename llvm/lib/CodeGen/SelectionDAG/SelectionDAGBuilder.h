@@ -406,6 +406,8 @@ public:
     SelectionDAGBuilder *SDB;
   };
 
+  // Data related to deferred switch lowerings. Used to construct additional
+  // Basic Blocks in SelectionDAGISel::FinishBasicBlock.
   std::unique_ptr<SDAGSwitchLowering> SL;
 
   /// A StackProtectorDescriptor structure used to communicate stack protector
@@ -623,7 +625,7 @@ public:
 
   // This function is responsible for the whole statepoint lowering process.
   // It uniformly handles invoke and call statepoints.
-  void LowerStatepoint(ImmutableStatepoint ISP,
+  void LowerStatepoint(const GCStatepointInst &I,
                        const BasicBlock *EHPadBB = nullptr);
 
   void LowerCallSiteWithDeoptBundle(const CallBase *Call, SDValue Callee,
@@ -690,7 +692,7 @@ private:
   void visitAdd(const User &I)  { visitBinary(I, ISD::ADD); }
   void visitFAdd(const User &I) { visitBinary(I, ISD::FADD); }
   void visitSub(const User &I)  { visitBinary(I, ISD::SUB); }
-  void visitFSub(const User &I);
+  void visitFSub(const User &I) { visitBinary(I, ISD::FSUB); }
   void visitMul(const User &I)  { visitBinary(I, ISD::MUL); }
   void visitFMul(const User &I) { visitBinary(I, ISD::FMUL); }
   void visitURem(const User &I) { visitBinary(I, ISD::UREM); }

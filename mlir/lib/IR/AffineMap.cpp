@@ -104,12 +104,10 @@ AffineMap AffineMap::getMinorIdentityMap(unsigned dims, unsigned results,
   return AffineMap::get(dims, 0, id.getResults().take_back(results), context);
 }
 
-bool AffineMap::isMinorIdentity(AffineMap map) {
-  if (!map)
-    return false;
-  return map == getMinorIdentityMap(map.getNumDims(), map.getNumResults(),
-                                    map.getContext());
-};
+bool AffineMap::isMinorIdentity() const {
+  return *this ==
+         getMinorIdentityMap(getNumDims(), getNumResults(), getContext());
+}
 
 /// Returns an AffineMap representing a permutation.
 AffineMap AffineMap::getPermutationMap(ArrayRef<unsigned> permutation,
@@ -234,22 +232,51 @@ AffineExpr AffineMap::getResult(unsigned idx) const {
 LogicalResult
 AffineMap::constantFold(ArrayRef<Attribute> operandConstants,
                         SmallVectorImpl<Attribute> &results) const {
+  // Attempt partial folding.
+  SmallVector<int64_t, 2> integers;
+  partialConstantFold(operandConstants, &integers);
+
+  // If all expressions folded to a constant, populate results with attributes
+  // containing those constants.
+  if (integers.empty())
+    return failure();
+
+  auto range = llvm::map_range(integers, [this](int64_t i) {
+    return IntegerAttr::get(IndexType::get(getContext()), i);
+  });
+  results.append(range.begin(), range.end());
+  return success();
+}
+
+AffineMap
+AffineMap::partialConstantFold(ArrayRef<Attribute> operandConstants,
+                               SmallVectorImpl<int64_t> *results) const {
   assert(getNumInputs() == operandConstants.size());
 
   // Fold each of the result expressions.
   AffineExprConstantFolder exprFolder(getNumDims(), operandConstants);
-  // Constant fold each AffineExpr in AffineMap and add to 'results'.
+  SmallVector<AffineExpr, 4> exprs;
+  exprs.reserve(getNumResults());
+
   for (auto expr : getResults()) {
     auto folded = exprFolder.constantFold(expr);
-    // If we didn't fold to a constant, then folding fails.
-    if (!folded)
-      return failure();
-
-    results.push_back(folded);
+    // If did not fold to a constant, keep the original expression, and clear
+    // the integer results vector.
+    if (folded) {
+      exprs.push_back(
+          getAffineConstantExpr(folded.getInt(), folded.getContext()));
+      if (results)
+        results->push_back(folded.getInt());
+    } else {
+      exprs.push_back(expr);
+      if (results) {
+        results->clear();
+        results = nullptr;
+      }
+    }
   }
-  assert(results.size() == getNumResults() &&
-         "constant folding produced the wrong number of results");
-  return success();
+
+  return get(getNumDims(), getNumSymbols(), exprs, getContext());
 }
 
 /// Walk all of the AffineExpr's in this mapping. Each node in an expression
@@ -267,7 +294,7 @@ void AffineMap::walkExprs(std::function<void(AffineExpr)> callback) const {
 AffineMap AffineMap::replaceDimsAndSymbols(ArrayRef<AffineExpr> dimReplacements,
                                            ArrayRef<AffineExpr> symReplacements,
                                            unsigned numResultDims,
-                                           unsigned numResultSyms) {
+                                           unsigned numResultSyms) const {
   SmallVector<AffineExpr, 8> results;
   results.reserve(getNumResults());
   for (auto expr : getResults())
@@ -301,6 +328,21 @@ AffineMap AffineMap::compose(AffineMap map) {
   return AffineMap::get(numDims, numSymbols, exprs, map.getContext());
 }
 
+SmallVector<int64_t, 4> AffineMap::compose(ArrayRef<int64_t> values) {
+  assert(getNumSymbols() == 0 && "Expected symbol-less map");
+  SmallVector<AffineExpr, 4> exprs;
+  exprs.reserve(values.size());
+  MLIRContext *ctx = getContext();
+  for (auto v : values)
+    exprs.push_back(getAffineConstantExpr(v, ctx));
+  auto resMap = compose(AffineMap::get(0, 0, exprs, ctx));
+  SmallVector<int64_t, 4> res;
+  res.reserve(resMap.getNumResults());
+  for (auto e : resMap.getResults())
+    res.push_back(e.cast<AffineConstantExpr>().getValue());
+  return res;
+}
+
 bool AffineMap::isProjectedPermutation() {
   if (getNumSymbols() > 0)
     return false;
@@ -326,10 +368,26 @@ bool AffineMap::isPermutation() {
 AffineMap AffineMap::getSubMap(ArrayRef<unsigned> resultPos) {
   SmallVector<AffineExpr, 4> exprs;
   exprs.reserve(resultPos.size());
-  for (auto idx : resultPos) {
+  for (auto idx : resultPos)
     exprs.push_back(getResult(idx));
-  }
   return AffineMap::get(getNumDims(), getNumSymbols(), exprs, getContext());
+}
+
+AffineMap AffineMap::getMajorSubMap(unsigned numResults) {
+  if (numResults == 0)
+    return AffineMap();
+  if (numResults > getNumResults())
+    return *this;
+  return getSubMap(llvm::to_vector<4>(llvm::seq<unsigned>(0, numResults)));
+}
+
+AffineMap AffineMap::getMinorSubMap(unsigned numResults) {
+  if (numResults == 0)
+    return AffineMap();
+  if (numResults > getNumResults())
+    return *this;
+  return getSubMap(llvm::to_vector<4>(
+      llvm::seq<unsigned>(getNumResults() - numResults, getNumResults())));
 }
 
 AffineMap mlir::simplifyAffineMap(AffineMap map) {
@@ -376,18 +434,19 @@ AffineMap mlir::inversePermutation(AffineMap map) {
 }
 
 AffineMap mlir::concatAffineMaps(ArrayRef<AffineMap> maps) {
-  unsigned numResults = 0;
+  unsigned numResults = 0, numDims = 0, numSymbols = 0;
   for (auto m : maps)
     numResults += m.getNumResults();
-  unsigned numDims = 0;
   SmallVector<AffineExpr, 8> results;
   results.reserve(numResults);
   for (auto m : maps) {
-    assert(m.getNumSymbols() == 0 && "expected map without symbols");
-    results.append(m.getResults().begin(), m.getResults().end());
+    for (auto res : m.getResults())
+      results.push_back(res.shiftSymbols(m.getNumSymbols(), numSymbols));
+
+    numSymbols += m.getNumSymbols();
     numDims = std::max(m.getNumDims(), numDims);
   }
-  return AffineMap::get(numDims, /*numSymbols=*/0, results,
+  return AffineMap::get(numDims, numSymbols, results,
                         maps.front().getContext());
 }
 
@@ -415,7 +474,7 @@ bool MutableAffineMap::isMultipleOf(unsigned idx, int64_t factor) const {
   if (results[idx].isMultipleOf(factor))
     return true;
 
-  // TODO(bondhugula): use simplifyAffineExpr and FlatAffineConstraints to
+  // TODO: use simplifyAffineExpr and FlatAffineConstraints to
   // complete this (for a more powerful analysis).
   return false;
 }
@@ -424,7 +483,7 @@ bool MutableAffineMap::isMultipleOf(unsigned idx, int64_t factor) const {
 // be pure for the simplification implemented.
 void MutableAffineMap::simplify() {
   // Simplify each of the results if possible.
-  // TODO(ntv): functional-style map
+  // TODO: functional-style map
   for (unsigned i = 0, e = getNumResults(); i < e; i++) {
     results[i] = simplifyAffineExpr(getResult(i), numDims, numSymbols);
   }

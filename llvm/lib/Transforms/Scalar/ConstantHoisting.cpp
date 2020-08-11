@@ -250,7 +250,7 @@ static void findBestInsertionSet(DominatorTree &DT, BlockFrequencyInfo &BFI,
   Orders.push_back(Entry);
   while (Idx != Orders.size()) {
     BasicBlock *Node = Orders[Idx++];
-    for (auto ChildDomNode : DT.getNode(Node)->getChildren()) {
+    for (auto ChildDomNode : DT.getNode(Node)->children()) {
       if (Candidates.count(ChildDomNode->getBlock()))
         Orders.push_back(ChildDomNode->getBlock());
     }
@@ -979,8 +979,8 @@ PreservedAnalyses ConstantHoistingPass::run(Function &F,
   auto BFI = ConstHoistWithBlockFrequency
                  ? &AM.getResult<BlockFrequencyAnalysis>(F)
                  : nullptr;
-  auto &MAM = AM.getResult<ModuleAnalysisManagerFunctionProxy>(F).getManager();
-  auto *PSI = MAM.getCachedResult<ProfileSummaryAnalysis>(*F.getParent());
+  auto &MAMProxy = AM.getResult<ModuleAnalysisManagerFunctionProxy>(F);
+  auto *PSI = MAMProxy.getCachedResult<ProfileSummaryAnalysis>(*F.getParent());
   if (!runImpl(F, TTI, DT, BFI, F.getEntryBlock(), PSI))
     return PreservedAnalyses::all();
 

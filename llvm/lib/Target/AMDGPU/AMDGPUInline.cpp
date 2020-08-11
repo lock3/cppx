@@ -134,7 +134,7 @@ unsigned AMDGPUInliner::getInlineThreshold(CallBase &CB) const {
                 Ty->getAddressSpace() != AMDGPUAS::FLAT_ADDRESS))
       continue;
 
-    PtrArg = GetUnderlyingObject(PtrArg, DL);
+    PtrArg = getUnderlyingObject(PtrArg);
     if (const AllocaInst *AI = dyn_cast<AllocaInst>(PtrArg)) {
       if (!AI->isStaticAlloca() || !AIVisited.insert(AI).second)
         continue;
@@ -208,14 +208,13 @@ InlineCost AMDGPUInliner::getInlineCost(CallBase &CB) {
   }
 
   OptimizationRemarkEmitter ORE(Caller);
-  std::function<AssumptionCache &(Function &)> GetAssumptionCache =
-      [this](Function &F) -> AssumptionCache & {
+  auto GetAssumptionCache = [this](Function &F) -> AssumptionCache & {
     return ACT->getAssumptionCache(F);
   };
 
-  auto IC =
-      llvm::getInlineCost(CB, Callee, LocalParams, TTI, GetAssumptionCache,
-                          None, GetTLI, PSI, RemarksEnabled ? &ORE : nullptr);
+  auto IC = llvm::getInlineCost(CB, Callee, LocalParams, TTI,
+                                GetAssumptionCache, GetTLI, nullptr, PSI,
+                                RemarksEnabled ? &ORE : nullptr);
 
   if (IC && !IC.isAlways() && !Callee->hasFnAttribute(Attribute::InlineHint)) {
     // Single BB does not increase total BB amount, thus subtract 1

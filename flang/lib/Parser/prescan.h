@@ -64,7 +64,7 @@ public:
   TokenSequence TokenizePreprocessorDirective();
   Provenance GetCurrentProvenance() const { return GetProvenance(at_); }
 
-  template <typename... A> Message &Say(A &&... a) {
+  template <typename... A> Message &Say(A &&...a) {
     Message &m{messages_.Say(std::forward<A>(a)...)};
     std::optional<ProvenanceRange> range{m.GetProvenanceRange(cooked_)};
     CHECK(!range || cooked_.IsValid(*range));
@@ -147,6 +147,7 @@ private:
   void SkipToEndOfLine();
   bool MustSkipToEndOfLine() const;
   void NextChar();
+  void SkipToNextSignificantCharacter();
   void SkipCComments();
   void SkipSpaces();
   static const char *SkipWhiteSpace(const char *);
@@ -165,6 +166,7 @@ private:
   const char *IsPreprocessorDirectiveLine(const char *) const;
   const char *FixedFormContinuationLine(bool mightNeedSpace);
   const char *FreeFormContinuationLine(bool ampersand);
+  bool IsImplicitContinuation() const;
   bool FixedFormContinuation(bool mightNeedSpace);
   bool FreeFormContinuation();
   bool Continuation(bool mightNeedFixedFormSpace);
@@ -219,8 +221,6 @@ private:
       cooked_.allSources().CompilerInsertionProvenance(' ')};
   const Provenance backslashProvenance_{
       cooked_.allSources().CompilerInsertionProvenance('\\')};
-  const ProvenanceRange sixSpaceProvenance_{
-      cooked_.allSources().AddCompilerInsertion("      "s)};
 
   // To avoid probing the set of active compiler directive sentinel strings
   // on every comment line, they're checked first with a cheap Bloom filter.

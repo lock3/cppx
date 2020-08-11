@@ -495,8 +495,7 @@ bool AMDGPULibCalls::isUnsafeMath(const CallInst *CI) const {
 }
 
 bool AMDGPULibCalls::useNativeFunc(const StringRef F) const {
-  return AllNative ||
-         std::find(UseNative.begin(), UseNative.end(), F) != UseNative.end();
+  return AllNative || llvm::is_contained(UseNative, F);
 }
 
 void AMDGPULibCalls::initNativeFuncs() {
@@ -590,15 +589,15 @@ bool AMDGPULibCalls::fold_read_write_pipe(CallInst *CI, IRBuilder<> &B,
   if (!isa<ConstantInt>(PacketSize) || !isa<ConstantInt>(PacketAlign))
     return false;
   unsigned Size = cast<ConstantInt>(PacketSize)->getZExtValue();
-  unsigned Align = cast<ConstantInt>(PacketAlign)->getZExtValue();
-  if (Size != Align || !isPowerOf2_32(Size))
+  Align Alignment = cast<ConstantInt>(PacketAlign)->getAlignValue();
+  if (Alignment != Size)
     return false;
 
   Type *PtrElemTy;
   if (Size <= 8)
     PtrElemTy = Type::getIntNTy(Ctx, Size * 8);
   else
-    PtrElemTy = VectorType::get(Type::getInt64Ty(Ctx), Size / 8);
+    PtrElemTy = FixedVectorType::get(Type::getInt64Ty(Ctx), Size / 8);
   unsigned PtrArgLoc = CI->getNumArgOperands() - 3;
   auto PtrArg = CI->getArgOperand(PtrArgLoc);
   unsigned PtrArgAS = PtrArg->getType()->getPointerAddressSpace();
@@ -1126,8 +1125,8 @@ bool AMDGPULibCalls::fold_pow(CallInst *CI, IRBuilder<> &B,
     Type* rTy = opr0->getType();
     Type* nTyS = eltType->isDoubleTy() ? B.getInt64Ty() : B.getInt32Ty();
     Type *nTy = nTyS;
-    if (const VectorType *vTy = dyn_cast<VectorType>(rTy))
-      nTy = VectorType::get(nTyS, vTy->getNumElements());
+    if (const auto *vTy = dyn_cast<FixedVectorType>(rTy))
+      nTy = FixedVectorType::get(nTyS, vTy);
     unsigned size = nTy->getScalarSizeInBits();
     opr_n = CI->getArgOperand(1);
     if (opr_n->getType()->isIntegerTy())
@@ -1416,8 +1415,8 @@ AllocaInst* AMDGPULibCalls::insertAlloca(CallInst *UI, IRBuilder<> &B,
   B.SetInsertPoint(&*ItNew);
   AllocaInst *Alloc = B.CreateAlloca(RetType, 0,
     std::string(prefix) + UI->getName());
-  Alloc->setAlignment(MaybeAlign(
-      UCallee->getParent()->getDataLayout().getTypeAllocSize(RetType)));
+  Alloc->setAlignment(
+      Align(UCallee->getParent()->getDataLayout().getTypeAllocSize(RetType)));
   return Alloc;
 }
 
@@ -1730,7 +1729,9 @@ bool AMDGPUSimplifyLibCalls::runOnFunction(Function &F) {
       // Ignore non-calls.
       CallInst *CI = dyn_cast<CallInst>(I);
       ++I;
-      if (!CI) continue;
+      // Ignore intrinsics that do not become real instructions.
+      if (!CI || isa<DbgInfoIntrinsic>(CI) || CI->isLifetimeStartOrEnd())
+        continue;
 
       // Ignore indirect calls.
       Function *Callee = CI->getCalledFunction();

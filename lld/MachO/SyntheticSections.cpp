@@ -10,27 +10,30 @@
 #include "Config.h"
 #include "ExportTrie.h"
 #include "InputFiles.h"
+#include "MachOStructs.h"
+#include "MergedOutputSection.h"
 #include "OutputSegment.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
 #include "Writer.h"
 
 #include "lld/Common/ErrorHandler.h"
+#include "lld/Common/Memory.h"
 #include "llvm/Support/EndianStream.h"
 #include "llvm/Support/LEB128.h"
 
 using namespace llvm;
-using namespace llvm::MachO;
 using namespace llvm::support;
+using namespace llvm::support::endian;
+using namespace lld;
+using namespace lld::macho;
 
-namespace lld {
-namespace macho {
+InStruct macho::in;
+std::vector<SyntheticSection *> macho::syntheticSections;
 
 SyntheticSection::SyntheticSection(const char *segname, const char *name)
-    : OutputSection(name) {
-  // Synthetic sections always know which segment they belong to so hook
-  // them up when they're made
-  getOrCreateOutputSegment(segname)->addOutputSection(this);
+    : OutputSection(SyntheticKind, name), segname(segname) {
+  syntheticSections.push_back(this);
 }
 
 // dyld3's MachOLoaded::getSlide() assumes that the __TEXT segment starts
@@ -43,19 +46,31 @@ void MachHeaderSection::addLoadCommand(LoadCommand *lc) {
   sizeOfCmds += lc->getSize();
 }
 
-size_t MachHeaderSection::getSize() const {
-  return sizeof(mach_header_64) + sizeOfCmds;
+uint64_t MachHeaderSection::getSize() const {
+  return sizeof(MachO::mach_header_64) + sizeOfCmds + config->headerPad;
 }
 
 void MachHeaderSection::writeTo(uint8_t *buf) const {
-  auto *hdr = reinterpret_cast<mach_header_64 *>(buf);
-  hdr->magic = MH_MAGIC_64;
-  hdr->cputype = CPU_TYPE_X86_64;
-  hdr->cpusubtype = CPU_SUBTYPE_X86_64_ALL | CPU_SUBTYPE_LIB64;
+  auto *hdr = reinterpret_cast<MachO::mach_header_64 *>(buf);
+  hdr->magic = MachO::MH_MAGIC_64;
+  hdr->cputype = MachO::CPU_TYPE_X86_64;
+  hdr->cpusubtype = MachO::CPU_SUBTYPE_X86_64_ALL | MachO::CPU_SUBTYPE_LIB64;
   hdr->filetype = config->outputType;
   hdr->ncmds = loadCommands.size();
   hdr->sizeofcmds = sizeOfCmds;
-  hdr->flags = MH_NOUNDEFS | MH_DYLDLINK | MH_TWOLEVEL;
+  hdr->flags = MachO::MH_NOUNDEFS | MachO::MH_DYLDLINK | MachO::MH_TWOLEVEL;
+
+  if (config->outputType == MachO::MH_DYLIB && !config->hasReexports)
+    hdr->flags |= MachO::MH_NO_REEXPORTED_DYLIBS;
+
+  for (OutputSegment *seg : outputSegments) {
+    for (OutputSection *osec : seg->getSections()) {
+      if (isThreadLocalVariables(osec->flags)) {
+        hdr->flags |= MachO::MH_HAS_TLV_DESCRIPTORS;
+        break;
+      }
+    }
+  }
 
   uint8_t *p = reinterpret_cast<uint8_t *>(hdr + 1);
   for (LoadCommand *lc : loadCommands) {
@@ -70,22 +85,89 @@ PageZeroSection::PageZeroSection()
 GotSection::GotSection()
     : SyntheticSection(segment_names::dataConst, section_names::got) {
   align = 8;
-  flags = S_NON_LAZY_SYMBOL_POINTERS;
+  flags = MachO::S_NON_LAZY_SYMBOL_POINTERS;
 
   // TODO: section_64::reserved1 should be an index into the indirect symbol
   // table, which we do not currently emit
 }
 
-void GotSection::addEntry(DylibSymbol &sym) {
+void GotSection::addEntry(Symbol &sym) {
   if (entries.insert(&sym)) {
     sym.gotIndex = entries.size() - 1;
   }
 }
 
-BindingSection::BindingSection()
-    : SyntheticSection(segment_names::linkEdit, section_names::binding) {}
+void GotSection::writeTo(uint8_t *buf) const {
+  for (size_t i = 0, n = entries.size(); i < n; ++i)
+    if (auto *defined = dyn_cast<Defined>(entries[i]))
+      write64le(&buf[i * WordSize], defined->getVA());
+}
 
-bool BindingSection::isNeeded() const { return in.got->isNeeded(); }
+BindingSection::BindingSection()
+    : LinkEditSection(segment_names::linkEdit, section_names::binding) {}
+
+bool BindingSection::isNeeded() const {
+  return bindings.size() != 0 || in.got->isNeeded();
+}
+
+namespace {
+struct Binding {
+  OutputSegment *segment = nullptr;
+  uint64_t offset = 0;
+  int64_t addend = 0;
+  uint8_t ordinal = 0;
+};
+} // namespace
+
+// Encode a sequence of opcodes that tell dyld to write the address of dysym +
+// addend at osec->addr + outSecOff.
+//
+// The bind opcode "interpreter" remembers the values of each binding field, so
+// we only need to encode the differences between bindings. Hence the use of
+// lastBinding.
+static void encodeBinding(const DylibSymbol &dysym, const OutputSection *osec,
+                          uint64_t outSecOff, int64_t addend,
+                          Binding &lastBinding, raw_svector_ostream &os) {
+  using namespace llvm::MachO;
+  OutputSegment *seg = osec->parent;
+  uint64_t offset = osec->getSegmentOffset() + outSecOff;
+  if (lastBinding.segment != seg) {
+    os << static_cast<uint8_t>(BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB |
+                               seg->index);
+    encodeULEB128(offset, os);
+    lastBinding.segment = seg;
+    lastBinding.offset = offset;
+  } else if (lastBinding.offset != offset) {
+    assert(lastBinding.offset <= offset);
+    os << static_cast<uint8_t>(BIND_OPCODE_ADD_ADDR_ULEB);
+    encodeULEB128(offset - lastBinding.offset, os);
+    lastBinding.offset = offset;
+  }
+
+  if (lastBinding.ordinal != dysym.file->ordinal) {
+    if (dysym.file->ordinal <= BIND_IMMEDIATE_MASK) {
+      os << static_cast<uint8_t>(BIND_OPCODE_SET_DYLIB_ORDINAL_IMM |
+                                 dysym.file->ordinal);
+    } else {
+      error("TODO: Support larger dylib symbol ordinals");
+      return;
+    }
+    lastBinding.ordinal = dysym.file->ordinal;
+  }
+
+  if (lastBinding.addend != addend) {
+    os << static_cast<uint8_t>(BIND_OPCODE_SET_ADDEND_SLEB);
+    encodeSLEB128(addend, os);
+    lastBinding.addend = addend;
+  }
+
+  os << static_cast<uint8_t>(BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM)
+     << dysym.getName() << '\0'
+     << static_cast<uint8_t>(BIND_OPCODE_SET_TYPE_IMM | BIND_TYPE_POINTER)
+     << static_cast<uint8_t>(BIND_OPCODE_DO_BIND);
+  // DO_BIND causes dyld to both perform the binding and increment the offset
+  lastBinding.offset += WordSize;
+}
 
 // Emit bind opcodes, which are a stream of byte-sized opcodes that dyld
 // interprets to update a record with the following fields:
@@ -101,38 +183,178 @@ bool BindingSection::isNeeded() const { return in.got->isNeeded(); }
 // entry. It does *not* clear the record state after doing the bind, so
 // subsequent opcodes only need to encode the differences between bindings.
 void BindingSection::finalizeContents() {
-  if (!isNeeded())
-    return;
-
   raw_svector_ostream os{contents};
-  os << static_cast<uint8_t>(BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB |
-                             in.got->parent->index);
-  encodeULEB128(in.got->getSegmentOffset(), os);
-  for (const DylibSymbol *sym : in.got->getEntries()) {
-    // TODO: Implement compact encoding -- we only need to encode the
-    // differences between consecutive symbol entries.
-    if (sym->file->ordinal <= BIND_IMMEDIATE_MASK) {
-      os << static_cast<uint8_t>(BIND_OPCODE_SET_DYLIB_ORDINAL_IMM |
-                                 sym->file->ordinal);
-    } else {
-      error("TODO: Support larger dylib symbol ordinals");
-      continue;
+  Binding lastBinding;
+  bool didEncode = false;
+  size_t gotIdx = 0;
+  for (const Symbol *sym : in.got->getEntries()) {
+    if (const auto *dysym = dyn_cast<DylibSymbol>(sym)) {
+      didEncode = true;
+      encodeBinding(*dysym, in.got, gotIdx * WordSize, 0, lastBinding, os);
     }
-    os << static_cast<uint8_t>(BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM)
-       << sym->getName() << '\0'
-       << static_cast<uint8_t>(BIND_OPCODE_SET_TYPE_IMM | BIND_TYPE_POINTER)
-       << static_cast<uint8_t>(BIND_OPCODE_DO_BIND);
+    ++gotIdx;
   }
 
-  os << static_cast<uint8_t>(BIND_OPCODE_DONE);
+  // Sorting the relocations by segment and address allows us to encode them
+  // more compactly.
+  llvm::sort(bindings, [](const BindingEntry &a, const BindingEntry &b) {
+    OutputSegment *segA = a.isec->parent->parent;
+    OutputSegment *segB = b.isec->parent->parent;
+    if (segA != segB)
+      return segA->fileOff < segB->fileOff;
+    OutputSection *osecA = a.isec->parent;
+    OutputSection *osecB = b.isec->parent;
+    if (osecA != osecB)
+      return osecA->addr < osecB->addr;
+    if (a.isec != b.isec)
+      return a.isec->outSecOff < b.isec->outSecOff;
+    return a.offset < b.offset;
+  });
+  for (const BindingEntry &b : bindings) {
+    didEncode = true;
+    encodeBinding(*b.dysym, b.isec->parent, b.isec->outSecOff + b.offset,
+                  b.addend, lastBinding, os);
+  }
+  if (didEncode)
+    os << static_cast<uint8_t>(MachO::BIND_OPCODE_DONE);
 }
 
 void BindingSection::writeTo(uint8_t *buf) const {
   memcpy(buf, contents.data(), contents.size());
 }
 
+StubsSection::StubsSection()
+    : SyntheticSection(segment_names::text, "__stubs") {}
+
+uint64_t StubsSection::getSize() const {
+  return entries.size() * target->stubSize;
+}
+
+void StubsSection::writeTo(uint8_t *buf) const {
+  size_t off = 0;
+  for (const DylibSymbol *sym : in.stubs->getEntries()) {
+    target->writeStub(buf + off, *sym);
+    off += target->stubSize;
+  }
+}
+
+void StubsSection::addEntry(DylibSymbol &sym) {
+  if (entries.insert(&sym))
+    sym.stubsIndex = entries.size() - 1;
+}
+
+StubHelperSection::StubHelperSection()
+    : SyntheticSection(segment_names::text, "__stub_helper") {}
+
+uint64_t StubHelperSection::getSize() const {
+  return target->stubHelperHeaderSize +
+         in.stubs->getEntries().size() * target->stubHelperEntrySize;
+}
+
+bool StubHelperSection::isNeeded() const {
+  return !in.stubs->getEntries().empty();
+}
+
+void StubHelperSection::writeTo(uint8_t *buf) const {
+  target->writeStubHelperHeader(buf);
+  size_t off = target->stubHelperHeaderSize;
+  for (const DylibSymbol *sym : in.stubs->getEntries()) {
+    target->writeStubHelperEntry(buf + off, *sym, addr + off);
+    off += target->stubHelperEntrySize;
+  }
+}
+
+void StubHelperSection::setup() {
+  stubBinder = dyn_cast_or_null<DylibSymbol>(symtab->find("dyld_stub_binder"));
+  if (stubBinder == nullptr) {
+    error("symbol dyld_stub_binder not found (normally in libSystem.dylib). "
+          "Needed to perform lazy binding.");
+    return;
+  }
+  in.got->addEntry(*stubBinder);
+
+  inputSections.push_back(in.imageLoaderCache);
+  symtab->addDefined("__dyld_private", in.imageLoaderCache, 0,
+                     /*isWeakDef=*/false);
+}
+
+ImageLoaderCacheSection::ImageLoaderCacheSection() {
+  segname = segment_names::data;
+  name = "__data";
+  uint8_t *arr = bAlloc.Allocate<uint8_t>(WordSize);
+  memset(arr, 0, WordSize);
+  data = {arr, WordSize};
+}
+
+LazyPointerSection::LazyPointerSection()
+    : SyntheticSection(segment_names::data, "__la_symbol_ptr") {
+  align = 8;
+  flags = MachO::S_LAZY_SYMBOL_POINTERS;
+}
+
+uint64_t LazyPointerSection::getSize() const {
+  return in.stubs->getEntries().size() * WordSize;
+}
+
+bool LazyPointerSection::isNeeded() const {
+  return !in.stubs->getEntries().empty();
+}
+
+void LazyPointerSection::writeTo(uint8_t *buf) const {
+  size_t off = 0;
+  for (const DylibSymbol *sym : in.stubs->getEntries()) {
+    uint64_t stubHelperOffset = target->stubHelperHeaderSize +
+                                sym->stubsIndex * target->stubHelperEntrySize;
+    write64le(buf + off, in.stubHelper->addr + stubHelperOffset);
+    off += WordSize;
+  }
+}
+
+LazyBindingSection::LazyBindingSection()
+    : LinkEditSection(segment_names::linkEdit, section_names::lazyBinding) {}
+
+bool LazyBindingSection::isNeeded() const { return in.stubs->isNeeded(); }
+
+void LazyBindingSection::finalizeContents() {
+  // TODO: Just precompute output size here instead of writing to a temporary
+  // buffer
+  for (DylibSymbol *sym : in.stubs->getEntries())
+    sym->lazyBindOffset = encode(*sym);
+}
+
+void LazyBindingSection::writeTo(uint8_t *buf) const {
+  memcpy(buf, contents.data(), contents.size());
+}
+
+// Unlike the non-lazy binding section, the bind opcodes in this section aren't
+// interpreted all at once. Rather, dyld will start interpreting opcodes at a
+// given offset, typically only binding a single symbol before it finds a
+// BIND_OPCODE_DONE terminator. As such, unlike in the non-lazy-binding case,
+// we cannot encode just the differences between symbols; we have to emit the
+// complete bind information for each symbol.
+uint32_t LazyBindingSection::encode(const DylibSymbol &sym) {
+  uint32_t opstreamOffset = contents.size();
+  OutputSegment *dataSeg = in.lazyPointers->parent;
+  os << static_cast<uint8_t>(MachO::BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB |
+                             dataSeg->index);
+  uint64_t offset = in.lazyPointers->addr - dataSeg->firstSection()->addr +
+                    sym.stubsIndex * WordSize;
+  encodeULEB128(offset, os);
+  if (sym.file->ordinal <= MachO::BIND_IMMEDIATE_MASK)
+    os << static_cast<uint8_t>(MachO::BIND_OPCODE_SET_DYLIB_ORDINAL_IMM |
+                               sym.file->ordinal);
+  else
+    fatal("TODO: Support larger dylib symbol ordinals");
+
+  os << static_cast<uint8_t>(MachO::BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM)
+     << sym.getName() << '\0'
+     << static_cast<uint8_t>(MachO::BIND_OPCODE_DO_BIND)
+     << static_cast<uint8_t>(MachO::BIND_OPCODE_DONE);
+  return opstreamOffset;
+}
+
 ExportSection::ExportSection()
-    : SyntheticSection(segment_names::linkEdit, section_names::export_) {}
+    : LinkEditSection(segment_names::linkEdit, section_names::export_) {}
 
 void ExportSection::finalizeContents() {
   // TODO: We should check symbol visibility.
@@ -146,14 +368,10 @@ void ExportSection::writeTo(uint8_t *buf) const { trieBuilder.writeTo(buf); }
 
 SymtabSection::SymtabSection(StringTableSection &stringTableSection)
     : SyntheticSection(segment_names::linkEdit, section_names::symbolTable),
-      stringTableSection(stringTableSection) {
-  // TODO: When we introduce the SyntheticSections superclass, we should make
-  // all synthetic sections aligned to WordSize by default.
-  align = WordSize;
-}
+      stringTableSection(stringTableSection) {}
 
-size_t SymtabSection::getSize() const {
-  return symbols.size() * sizeof(nlist_64);
+uint64_t SymtabSection::getSize() const {
+  return symbols.size() * sizeof(structs::nlist_64);
 }
 
 void SymtabSection::finalizeContents() {
@@ -164,13 +382,13 @@ void SymtabSection::finalizeContents() {
 }
 
 void SymtabSection::writeTo(uint8_t *buf) const {
-  auto *nList = reinterpret_cast<nlist_64 *>(buf);
+  auto *nList = reinterpret_cast<structs::nlist_64 *>(buf);
   for (const SymtabEntry &entry : symbols) {
     nList->n_strx = entry.strx;
     // TODO support other symbol types
     // TODO populate n_desc
-    if (auto defined = dyn_cast<Defined>(entry.sym)) {
-      nList->n_type = N_EXT | N_SECT;
+    if (auto *defined = dyn_cast<Defined>(entry.sym)) {
+      nList->n_type = MachO::N_EXT | MachO::N_SECT;
       nList->n_sect = defined->isec->parent->index;
       // For the N_SECT symbol type, n_value is the address of the symbol
       nList->n_value = defined->value + defined->isec->getVA();
@@ -180,7 +398,7 @@ void SymtabSection::writeTo(uint8_t *buf) const {
 }
 
 StringTableSection::StringTableSection()
-    : SyntheticSection(segment_names::linkEdit, section_names::stringTable) {}
+    : LinkEditSection(segment_names::linkEdit, section_names::stringTable) {}
 
 uint32_t StringTableSection::addString(StringRef str) {
   uint32_t strx = size;
@@ -196,8 +414,3 @@ void StringTableSection::writeTo(uint8_t *buf) const {
     off += str.size() + 1; // account for null terminator
   }
 }
-
-InStruct in;
-
-} // namespace macho
-} // namespace lld

@@ -92,8 +92,6 @@ public:
                                                     Type elementType);
 
   Type getElementType();
-
-  static bool kindof(unsigned kind) { return kind == StandardTypes::Complex; }
 };
 
 //===----------------------------------------------------------------------===//
@@ -102,15 +100,12 @@ public:
 
 /// Index is a special integer-like type with unknown platform-dependent bit
 /// width.
-class IndexType : public Type::TypeBase<IndexType, Type> {
+class IndexType : public Type::TypeBase<IndexType, Type, TypeStorage> {
 public:
   using Base::Base;
 
   /// Get an instance of the IndexType.
   static IndexType get(MLIRContext *context);
-
-  /// Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) { return kind == StandardTypes::Index; }
 
   /// Storage bit width used for IndexType by internal compiler data structures.
   static constexpr unsigned kInternalStorageBitWidth = 64;
@@ -127,7 +122,7 @@ public:
   using Base::Base;
 
   /// Signedness semantics.
-  enum SignednessSemantics {
+  enum SignednessSemantics : uint32_t {
     Signless, /// No signedness semantics
     Signed,   /// Signed integer
     Unsigned, /// Unsigned integer
@@ -177,9 +172,6 @@ public:
   /// Return true if this is an unsigned integer type.
   bool isUnsigned() const { return getSignedness() == Unsigned; }
 
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(unsigned kind) { return kind == StandardTypes::Integer; }
-
   /// Integer representation maximal bitwidth.
   static constexpr unsigned kMaxWidth = 4096;
 };
@@ -188,7 +180,7 @@ public:
 // FloatType
 //===----------------------------------------------------------------------===//
 
-class FloatType : public Type::TypeBase<FloatType, Type> {
+class FloatType : public Type::TypeBase<FloatType, Type, TypeStorage> {
 public:
   using Base::Base;
 
@@ -208,12 +200,6 @@ public:
     return get(StandardTypes::F64, ctx);
   }
 
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(unsigned kind) {
-    return kind >= StandardTypes::FIRST_FLOATING_POINT_TYPE &&
-           kind <= StandardTypes::LAST_FLOATING_POINT_TYPE;
-  }
-
   /// Return the bitwidth of this float type.
   unsigned getWidth();
 
@@ -227,14 +213,12 @@ public:
 
 /// NoneType is a unit type, i.e. a type with exactly one possible value, where
 /// its value does not have a defined dynamic representation.
-class NoneType : public Type::TypeBase<NoneType, Type> {
+class NoneType : public Type::TypeBase<NoneType, Type, TypeStorage> {
 public:
   using Base::Base;
 
   /// Get an instance of the NoneType.
   static NoneType get(MLIRContext *context);
-
-  static bool kindof(unsigned kind) { return kind == StandardTypes::None; }
 };
 
 //===----------------------------------------------------------------------===//
@@ -250,7 +234,7 @@ public:
   using ImplType = detail::ShapedTypeStorage;
   using Type::Type;
 
-  // TODO(ntv): merge these two special values in a single one used everywhere.
+  // TODO: merge these two special values in a single one used everywhere.
   // Unfortunately, uses of `-1` have crept deep into the codebase now and are
   // hard to track.
   static constexpr int64_t kDynamicSize = -1;
@@ -310,13 +294,7 @@ public:
   int64_t getSizeInBits() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(Type type) {
-    return type.getKind() == StandardTypes::Vector ||
-           type.getKind() == StandardTypes::RankedTensor ||
-           type.getKind() == StandardTypes::UnrankedTensor ||
-           type.getKind() == StandardTypes::UnrankedMemRef ||
-           type.getKind() == StandardTypes::MemRef;
-  }
+  static bool classof(Type type);
 
   /// Whether the given dimension size indicates a dynamic dimension.
   static constexpr bool isDynamic(int64_t dSize) {
@@ -357,13 +335,10 @@ public:
   /// Returns true of the given type can be used as an element of a vector type.
   /// In particular, vectors can consist of integer or float primitives.
   static bool isValidElementType(Type t) {
-    return t.isa<IntegerType>() || t.isa<FloatType>();
+    return t.isa<IntegerType, FloatType>();
   }
 
   ArrayRef<int64_t> getShape() const;
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(unsigned kind) { return kind == StandardTypes::Vector; }
 };
 
 //===----------------------------------------------------------------------===//
@@ -377,21 +352,10 @@ public:
   using ShapedType::ShapedType;
 
   /// Return true if the specified element type is ok in a tensor.
-  static bool isValidElementType(Type type) {
-    // Note: Non standard/builtin types are allowed to exist within tensor
-    // types. Dialects are expected to verify that tensor types have a valid
-    // element type within that dialect.
-    return type.isa<ComplexType>() || type.isa<FloatType>() ||
-           type.isa<IntegerType>() || type.isa<OpaqueType>() ||
-           type.isa<VectorType>() || type.isa<IndexType>() ||
-           (type.getKind() > Type::Kind::LAST_STANDARD_TYPE);
-  }
+  static bool isValidElementType(Type type);
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(Type type) {
-    return type.getKind() == StandardTypes::RankedTensor ||
-           type.getKind() == StandardTypes::UnrankedTensor;
-  }
+  static bool classof(Type type);
 };
 
 //===----------------------------------------------------------------------===//
@@ -423,10 +387,6 @@ public:
                                                     Type elementType);
 
   ArrayRef<int64_t> getShape() const;
-
-  static bool kindof(unsigned kind) {
-    return kind == StandardTypes::RankedTensor;
-  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -455,10 +415,6 @@ public:
                                                     Type elementType);
 
   ArrayRef<int64_t> getShape() const { return llvm::None; }
-
-  static bool kindof(unsigned kind) {
-    return kind == StandardTypes::UnrankedTensor;
-  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -470,11 +426,13 @@ class BaseMemRefType : public ShapedType {
 public:
   using ShapedType::ShapedType;
 
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(Type type) {
-    return type.getKind() == StandardTypes::MemRef ||
-           type.getKind() == StandardTypes::UnrankedMemRef;
+  /// Return true if the specified element type is ok in a memref.
+  static bool isValidElementType(Type type) {
+    return type.isIntOrIndexOrFloat() || type.isa<VectorType, ComplexType>();
   }
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(Type type);
 };
 
 //===----------------------------------------------------------------------===//
@@ -562,15 +520,12 @@ public:
   /// Returns the memory space in which data referred to by this memref resides.
   unsigned getMemorySpace() const;
 
-  // TODO(ntv): merge these two special values in a single one used everywhere.
+  // TODO: merge these two special values in a single one used everywhere.
   // Unfortunately, uses of `-1` have crept deep into the codebase now and are
   // hard to track.
-  static constexpr int64_t kDynamicSize = -1;
   static int64_t getDynamicStrideOrOffset() {
     return ShapedType::kDynamicStrideOrOffset;
   }
-
-  static bool kindof(unsigned kind) { return kind == StandardTypes::MemRef; }
 
 private:
   /// Get or create a new MemRefType defined by the arguments.  If the resulting
@@ -613,9 +568,6 @@ public:
 
   /// Returns the memory space in which data referred to by this memref resides.
   unsigned getMemorySpace() const;
-  static bool kindof(unsigned kind) {
-    return kind == StandardTypes::UnrankedMemRef;
-  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -634,10 +586,10 @@ public:
 
   /// Get or create a new TupleType with the provided element types. Assumes the
   /// arguments define a well-formed type.
-  static TupleType get(ArrayRef<Type> elementTypes, MLIRContext *context);
+  static TupleType get(TypeRange elementTypes, MLIRContext *context);
 
   /// Get or create an empty tuple type.
-  static TupleType get(MLIRContext *context) { return get({}, context); }
+  static TupleType get(MLIRContext *context);
 
   /// Return the elements types for this tuple.
   ArrayRef<Type> getTypes() const;
@@ -661,9 +613,24 @@ public:
     assert(index < size() && "invalid index for tuple type");
     return getTypes()[index];
   }
-
-  static bool kindof(unsigned kind) { return kind == StandardTypes::Tuple; }
 };
+
+//===----------------------------------------------------------------------===//
+// Deferred Method Definitions
+//===----------------------------------------------------------------------===//
+
+inline bool BaseMemRefType::classof(Type type) {
+  return type.isa<MemRefType, UnrankedMemRefType>();
+}
+
+inline bool ShapedType::classof(Type type) {
+  return type.isa<RankedTensorType, VectorType, UnrankedTensorType,
+                  UnrankedMemRefType, MemRefType>();
+}
+
+inline bool TensorType::classof(Type type) {
+  return type.isa<RankedTensorType, UnrankedTensorType>();
+}
 
 //===----------------------------------------------------------------------===//
 // Type Utilities
@@ -722,6 +689,10 @@ AffineMap makeStridedLinearLayoutMap(ArrayRef<int64_t> strides, int64_t offset,
 /// Otherwise pass `t`'s layout into `simplifyAffineMap` and return a copy of
 /// `t` with simplified layout.
 MemRefType canonicalizeStridedLayout(MemRefType t);
+
+/// Return a version of `t` with a layout that has all dynamic offset and
+/// strides. This is used to erase the static layout.
+MemRefType eraseStridedLayout(MemRefType t);
 
 /// Given MemRef `sizes` that are either static or dynamic, returns the
 /// canonical "contiguous" strides AffineExpr. Strides are multiplicative and

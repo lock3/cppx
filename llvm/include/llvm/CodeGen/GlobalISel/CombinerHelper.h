@@ -30,6 +30,7 @@ class MachineInstr;
 class MachineOperand;
 class GISelKnownBits;
 class MachineDominatorTree;
+class LegalizerInfo;
 
 struct PreferredTuple {
   LLT Ty;                // The result type of the extend.
@@ -56,11 +57,13 @@ protected:
   GISelChangeObserver &Observer;
   GISelKnownBits *KB;
   MachineDominatorTree *MDT;
+  const LegalizerInfo *LI;
 
 public:
   CombinerHelper(GISelChangeObserver &Observer, MachineIRBuilder &B,
                  GISelKnownBits *KB = nullptr,
-                 MachineDominatorTree *MDT = nullptr);
+                 MachineDominatorTree *MDT = nullptr,
+                 const LegalizerInfo *LI = nullptr);
 
   GISelKnownBits *getKnownBits() const {
     return KB;
@@ -103,6 +106,9 @@ public:
   bool tryCombineIndexedLoadStore(MachineInstr &MI);
   bool matchCombineIndexedLoadStore(MachineInstr &MI, IndexedLoadStoreMatchInfo &MatchInfo);
   void applyCombineIndexedLoadStore(MachineInstr &MI, IndexedLoadStoreMatchInfo &MatchInfo);
+
+  bool matchSextTruncSextLoad(MachineInstr &MI);
+  bool applySextTruncSextLoad(MachineInstr &MI);
 
   bool matchElideBrByInvertingCond(MachineInstr &MI);
   void applyElideBrByInvertingCond(MachineInstr &MI);
@@ -194,6 +200,14 @@ public:
   bool applyCombineShiftToUnmerge(MachineInstr &MI, const unsigned &ShiftVal);
   bool tryCombineShiftToUnmerge(MachineInstr &MI, unsigned TargetShiftAmount);
 
+  /// Transform IntToPtr(PtrToInt(x)) to x if cast is in the same address space.
+  bool matchCombineI2PToP2I(MachineInstr &MI, Register &Reg);
+  bool applyCombineI2PToP2I(MachineInstr &MI, Register &Reg);
+
+  /// Transform PtrToInt(IntToPtr(x)) to x.
+  bool matchCombineP2IToI2P(MachineInstr &MI, Register &Reg);
+  bool applyCombineP2IToI2P(MachineInstr &MI, Register &Reg);
+
   /// Return true if any explicit use operand on \p MI is defined by a
   /// G_IMPLICIT_DEF.
   bool matchAnyExplicitUseIsUndef(MachineInstr &MI);
@@ -204,6 +218,9 @@ public:
 
   /// Return true if a G_SHUFFLE_VECTOR instruction \p MI has an undef mask.
   bool matchUndefShuffleVectorMask(MachineInstr &MI);
+
+  /// Return true if a G_STORE instruction \p MI is storing an undef value.
+  bool matchUndefStore(MachineInstr &MI);
 
   /// Replace an instruction with a G_FCONSTANT with value \p C.
   bool replaceInstWithFConstant(MachineInstr &MI, double C);
@@ -230,6 +247,18 @@ public:
 
   /// Optimize (x op x) -> x
   bool matchBinOpSameVal(MachineInstr &MI);
+
+  /// Check if operand \p OpIdx is zero.
+  bool matchOperandIsZero(MachineInstr &MI, unsigned OpIdx);
+
+  /// Erase \p MI
+  bool eraseInst(MachineInstr &MI);
+
+  /// Return true if MI is a G_ADD which can be simplified to a G_SUB.
+  bool matchSimplifyAddToSub(MachineInstr &MI,
+                             std::tuple<Register, Register> &MatchInfo);
+  bool applySimplifyAddToSub(MachineInstr &MI,
+                             std::tuple<Register, Register> &MatchInfo);
 
   /// Try to transform \p MI by using all of the above
   /// combine functions. Returns true if changed.

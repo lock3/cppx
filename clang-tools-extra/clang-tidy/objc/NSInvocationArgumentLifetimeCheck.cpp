@@ -8,7 +8,6 @@
 
 #include "NSInvocationArgumentLifetimeCheck.h"
 #include "clang/AST/ASTContext.h"
-#include "clang/AST/Attrs.inc"
 #include "clang/AST/ComputeDependence.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/Expr.h"
@@ -23,10 +22,10 @@
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
+#include "clang/Lex/Lexer.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace clang::ast_matchers;
 
@@ -101,23 +100,26 @@ fixItHintForVarDecl(const VarDecl *VD, const SourceManager &SM,
 
 void NSInvocationArgumentLifetimeCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(
-      objcMessageExpr(
-          hasReceiverType(asString("NSInvocation *")),
-          anyOf(hasSelector("getArgument:atIndex:"),
-                hasSelector("getReturnValue:")),
-          hasArgument(
-              0, anyOf(hasDescendant(memberExpr(isObjCManagedLifetime())),
-                       hasDescendant(objcIvarRefExpr(isObjCManagedLifetime())),
-                       hasDescendant(
-                           // Reference to variables, but when dereferencing
-                           // to ivars/fields a more-descendent variable
-                           // reference (e.g. self) may match with strong
-                           // object lifetime, leading to an incorrect match.
-                           // Exclude these conditions.
-                           declRefExpr(to(varDecl().bind("var")),
-                                       unless(hasParent(implicitCastExpr())),
-                                       isObjCManagedLifetime())))))
-          .bind("call"),
+      traverse(
+          ast_type_traits::TK_AsIs,
+          objcMessageExpr(
+              hasReceiverType(asString("NSInvocation *")),
+              anyOf(hasSelector("getArgument:atIndex:"),
+                    hasSelector("getReturnValue:")),
+              hasArgument(
+                  0,
+                  anyOf(hasDescendant(memberExpr(isObjCManagedLifetime())),
+                        hasDescendant(objcIvarRefExpr(isObjCManagedLifetime())),
+                        hasDescendant(
+                            // Reference to variables, but when dereferencing
+                            // to ivars/fields a more-descendent variable
+                            // reference (e.g. self) may match with strong
+                            // object lifetime, leading to an incorrect match.
+                            // Exclude these conditions.
+                            declRefExpr(to(varDecl().bind("var")),
+                                        unless(hasParent(implicitCastExpr())),
+                                        isObjCManagedLifetime())))))
+              .bind("call")),
       this);
 }
 

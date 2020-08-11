@@ -1037,7 +1037,7 @@ static void AddAliasScopeMetadata(CallBase &CB, ValueToValueMapTy &VMap,
       SmallSetVector<const Argument *, 4> NAPtrArgs;
       for (const Value *V : PtrArgs) {
         SmallVector<const Value *, 4> Objects;
-        GetUnderlyingObjects(V, Objects, DL, /* LI = */ nullptr);
+        getUnderlyingObjects(V, Objects, /* LI = */ nullptr);
 
         for (const Value *O : Objects)
           ObjSet.insert(O);
@@ -1234,7 +1234,7 @@ static void AddAlignmentAssumptions(CallBase &CB, InlineFunctionInfo &IFI) {
   if (!PreserveAlignmentAssumptions || !IFI.GetAssumptionCache)
     return;
 
-  AssumptionCache *AC = &(*IFI.GetAssumptionCache)(*CB.getCaller());
+  AssumptionCache *AC = &IFI.GetAssumptionCache(*CB.getCaller());
   auto &DL = CB.getCaller()->getParent()->getDataLayout();
 
   // To avoid inserting redundant assumptions, we should check for assumptions
@@ -1245,7 +1245,7 @@ static void AddAlignmentAssumptions(CallBase &CB, InlineFunctionInfo &IFI) {
   Function *CalledFunc = CB.getCalledFunction();
   for (Argument &Arg : CalledFunc->args()) {
     unsigned Align = Arg.getType()->isPointerTy() ? Arg.getParamAlignment() : 0;
-    if (Align && !Arg.hasPassPointeeByValueAttr() && !Arg.hasNUses(0)) {
+    if (Align && !Arg.hasPassPointeeByValueCopyAttr() && !Arg.hasNUses(0)) {
       if (!DTCalculated) {
         DT.recalculate(*CB.getCaller());
         DTCalculated = true;
@@ -1291,7 +1291,11 @@ static void UpdateCallGraphAfterInlining(CallBase &CB,
   }
 
   for (; I != E; ++I) {
-    const Value *OrigCall = I->first;
+    // Skip 'refererence' call records.
+    if (!I->first)
+      continue;
+
+    const Value *OrigCall = *I->first;
 
     ValueToValueMapTy::iterator VMI = VMap.find(OrigCall);
     // Only copy the edge if the call was inlined!
@@ -1373,7 +1377,7 @@ static Value *HandleByValArgument(Value *Arg, Instruction *TheCall,
       return Arg;
 
     AssumptionCache *AC =
-        IFI.GetAssumptionCache ? &(*IFI.GetAssumptionCache)(*Caller) : nullptr;
+        IFI.GetAssumptionCache ? &IFI.GetAssumptionCache(*Caller) : nullptr;
 
     // If the pointer is already known to be sufficiently aligned, or if we can
     // round it up to a larger alignment, then we don't need a temporary.
@@ -1792,7 +1796,7 @@ llvm::InlineResult llvm::InlineFunction(CallBase &CB, InlineFunctionInfo &IFI,
     AddAlignmentAssumptions(CB, IFI);
 
     AssumptionCache *AC =
-        IFI.GetAssumptionCache ? &(*IFI.GetAssumptionCache)(*Caller) : nullptr;
+        IFI.GetAssumptionCache ? &IFI.GetAssumptionCache(*Caller) : nullptr;
 
     /// Preserve all attributes on of the call and its parameters.
     salvageKnowledge(&CB, AC);
@@ -1860,13 +1864,7 @@ llvm::InlineResult llvm::InlineFunction(CallBase &CB, InlineFunctionInfo &IFI,
           OpDefs.emplace_back("deopt", std::move(MergedDeoptArgs));
         }
 
-        Instruction *NewI = nullptr;
-        if (isa<CallInst>(ICS))
-          NewI = CallInst::Create(cast<CallInst>(ICS), OpDefs, ICS);
-        else if (isa<CallBrInst>(ICS))
-          NewI = CallBrInst::Create(cast<CallBrInst>(ICS), OpDefs, ICS);
-        else
-          NewI = InvokeInst::Create(cast<InvokeInst>(ICS), OpDefs, ICS);
+        Instruction *NewI = CallBase::Create(ICS, OpDefs, ICS);
 
         // Note: the RAUW does the appropriate fixup in VMap, so we need to do
         // this even if the call returns void.
@@ -1904,11 +1902,10 @@ llvm::InlineResult llvm::InlineFunction(CallBase &CB, InlineFunctionInfo &IFI,
     if (IFI.GetAssumptionCache)
       for (BasicBlock &NewBlock :
            make_range(FirstNewBlock->getIterator(), Caller->end()))
-        for (Instruction &I : NewBlock) {
+        for (Instruction &I : NewBlock)
           if (auto *II = dyn_cast<IntrinsicInst>(&I))
             if (II->getIntrinsicID() == Intrinsic::assume)
-              (*IFI.GetAssumptionCache)(*Caller).registerAssumption(II);
-        }
+              IFI.GetAssumptionCache(*Caller).registerAssumption(II);
   }
 
   // If there are any alloca instructions in the block that used to be the entry
@@ -2163,13 +2160,7 @@ llvm::InlineResult llvm::InlineFunction(CallBase &CB, InlineFunctionInfo &IFI,
         I->getOperandBundlesAsDefs(OpBundles);
         OpBundles.emplace_back("funclet", CallSiteEHPad);
 
-        Instruction *NewInst;
-        if (auto *CallI = dyn_cast<CallInst>(I))
-          NewInst = CallInst::Create(CallI, OpBundles, CallI);
-        else if (auto *CallBrI = dyn_cast<CallBrInst>(I))
-          NewInst = CallBrInst::Create(CallBrI, OpBundles, CallBrI);
-        else
-          NewInst = InvokeInst::Create(cast<InvokeInst>(I), OpBundles, I);
+        Instruction *NewInst = CallBase::Create(I, OpBundles, I);
         NewInst->takeName(I);
         I->replaceAllUsesWith(NewInst);
         I->eraseFromParent();
@@ -2496,7 +2487,7 @@ llvm::InlineResult llvm::InlineFunction(CallBase &CB, InlineFunctionInfo &IFI,
   // block other optimizations.
   if (PHI) {
     AssumptionCache *AC =
-        IFI.GetAssumptionCache ? &(*IFI.GetAssumptionCache)(*Caller) : nullptr;
+        IFI.GetAssumptionCache ? &IFI.GetAssumptionCache(*Caller) : nullptr;
     auto &DL = Caller->getParent()->getDataLayout();
     if (Value *V = SimplifyInstruction(PHI, {DL, nullptr, nullptr, AC})) {
       PHI->replaceAllUsesWith(V);

@@ -38,7 +38,6 @@
 #include "llvm/Analysis/MemorySSA.h"
 #include "llvm/Analysis/ProfileSummaryInfo.h"
 #include "llvm/Analysis/ScalarEvolution.h"
-#include "llvm/Analysis/ScalarEvolutionExpander.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
@@ -58,6 +57,7 @@
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils.h"
 #include "llvm/Transforms/Utils/LoopVersioning.h"
+#include "llvm/Transforms/Utils/ScalarEvolutionExpander.h"
 #include "llvm/Transforms/Utils/SizeOpts.h"
 #include <algorithm>
 #include <cassert>
@@ -308,8 +308,8 @@ public:
   /// We need a check if one is a pointer for a candidate load and the other is
   /// a pointer for a possibly intervening store.
   bool needsChecking(unsigned PtrIdx1, unsigned PtrIdx2,
-                     const SmallPtrSet<Value *, 4> &PtrsWrittenOnFwdingPath,
-                     const std::set<Value *> &CandLoadPtrs) {
+                     const SmallPtrSetImpl<Value *> &PtrsWrittenOnFwdingPath,
+                     const SmallPtrSetImpl<Value *> &CandLoadPtrs) {
     Value *Ptr1 =
         LAI.getRuntimePointerChecking()->getPointerInfo(PtrIdx1).PointerValue;
     Value *Ptr2 =
@@ -384,11 +384,9 @@ public:
         findPointersWrittenOnForwardingPath(Candidates);
 
     // Collect the pointers of the candidate loads.
-    // FIXME: SmallPtrSet does not work with std::inserter.
-    std::set<Value *> CandLoadPtrs;
-    transform(Candidates,
-                   std::inserter(CandLoadPtrs, CandLoadPtrs.begin()),
-                   std::mem_fn(&StoreToLoadForwardingCandidate::getLoadPtr));
+    SmallPtrSet<Value *, 4> CandLoadPtrs;
+    for (const auto &Candidate : Candidates)
+      CandLoadPtrs.insert(Candidate.getLoadPtr());
 
     const auto &AllChecks = LAI.getRuntimePointerChecking()->getChecks();
     SmallVector<RuntimePointerCheck, 4> Checks;
@@ -696,8 +694,8 @@ PreservedAnalyses LoopLoadEliminationPass::run(Function &F,
   auto &TLI = AM.getResult<TargetLibraryAnalysis>(F);
   auto &AA = AM.getResult<AAManager>(F);
   auto &AC = AM.getResult<AssumptionAnalysis>(F);
-  auto &MAM = AM.getResult<ModuleAnalysisManagerFunctionProxy>(F).getManager();
-  auto *PSI = MAM.getCachedResult<ProfileSummaryAnalysis>(*F.getParent());
+  auto &MAMProxy = AM.getResult<ModuleAnalysisManagerFunctionProxy>(F);
+  auto *PSI = MAMProxy.getCachedResult<ProfileSummaryAnalysis>(*F.getParent());
   auto *BFI = (PSI && PSI->hasProfileSummary()) ?
       &AM.getResult<BlockFrequencyAnalysis>(F) : nullptr;
   MemorySSA *MSSA = EnableMSSALoopDependency

@@ -48,7 +48,6 @@ public:
 
   mlir::Type getType() const;
 
-  static constexpr bool kindof(unsigned kind) { return kind == getId(); }
   static constexpr unsigned getId() { return AttributeKind::FIR_EXACTTYPE; }
 };
 
@@ -64,7 +63,6 @@ public:
 
   mlir::Type getType() const;
 
-  static constexpr bool kindof(unsigned kind) { return kind == getId(); }
   static constexpr unsigned getId() { return AttributeKind::FIR_SUBCLASS; }
 };
 
@@ -75,13 +73,13 @@ public:
 /// A case selector of `CASE (n:m)` corresponds to any value from `n` to `m` and
 /// is encoded as `#fir.interval, %n, %m`.
 class ClosedIntervalAttr
-    : public mlir::Attribute::AttrBase<ClosedIntervalAttr> {
+    : public mlir::Attribute::AttrBase<ClosedIntervalAttr, mlir::Attribute,
+                                       mlir::AttributeStorage> {
 public:
   using Base::Base;
 
   static constexpr llvm::StringRef getAttrName() { return "interval"; }
   static ClosedIntervalAttr get(mlir::MLIRContext *ctxt);
-  static constexpr bool kindof(unsigned kind) { return kind == getId(); }
   static constexpr unsigned getId() {
     return AttributeKind::FIR_CLOSEDCLOSED_INTERVAL;
   }
@@ -91,13 +89,14 @@ public:
 /// an ssa-value.
 /// A case selector of `CASE (:m)` corresponds to any value up to and including
 /// `m` and is encoded as `#fir.upper, %m`.
-class UpperBoundAttr : public mlir::Attribute::AttrBase<UpperBoundAttr> {
+class UpperBoundAttr
+    : public mlir::Attribute::AttrBase<UpperBoundAttr, mlir::Attribute,
+                                       mlir::AttributeStorage> {
 public:
   using Base::Base;
 
   static constexpr llvm::StringRef getAttrName() { return "upper"; }
   static UpperBoundAttr get(mlir::MLIRContext *ctxt);
-  static constexpr bool kindof(unsigned kind) { return kind == getId(); }
   static constexpr unsigned getId() {
     return AttributeKind::FIR_OPENCLOSED_INTERVAL;
   }
@@ -107,13 +106,14 @@ public:
 /// an ssa-value.
 /// A case selector of `CASE (n:)` corresponds to any value down to and
 /// including `n` and is encoded as `#fir.lower, %n`.
-class LowerBoundAttr : public mlir::Attribute::AttrBase<LowerBoundAttr> {
+class LowerBoundAttr
+    : public mlir::Attribute::AttrBase<LowerBoundAttr, mlir::Attribute,
+                                       mlir::AttributeStorage> {
 public:
   using Base::Base;
 
   static constexpr llvm::StringRef getAttrName() { return "lower"; }
   static LowerBoundAttr get(mlir::MLIRContext *ctxt);
-  static constexpr bool kindof(unsigned kind) { return kind == getId(); }
   static constexpr unsigned getId() {
     return AttributeKind::FIR_CLOSEDOPEN_INTERVAL;
   }
@@ -123,13 +123,14 @@ public:
 /// interval contains exactly one value.
 /// A case selector of `CASE (p)` corresponds to exactly the value `p` and is
 /// encoded as `#fir.point, %p`.
-class PointIntervalAttr : public mlir::Attribute::AttrBase<PointIntervalAttr> {
+class PointIntervalAttr
+    : public mlir::Attribute::AttrBase<PointIntervalAttr, mlir::Attribute,
+                                       mlir::AttributeStorage> {
 public:
   using Base::Base;
 
   static constexpr llvm::StringRef getAttrName() { return "point"; }
   static PointIntervalAttr get(mlir::MLIRContext *ctxt);
-  static constexpr bool kindof(unsigned kind) { return kind == getId(); }
   static constexpr unsigned getId() { return AttributeKind::FIR_POINT; }
 };
 
@@ -150,7 +151,6 @@ public:
   int getFKind() const;
   llvm::APFloat getValue() const;
 
-  static constexpr bool kindof(unsigned kind) { return kind == getId(); }
   static constexpr unsigned getId() { return AttributeKind::FIR_REAL_ATTR; }
 };
 

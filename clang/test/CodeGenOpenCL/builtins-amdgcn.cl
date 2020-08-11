@@ -116,6 +116,20 @@ void test_rcp_f64(global double* out, double a)
   *out = __builtin_amdgcn_rcp(a);
 }
 
+// CHECK-LABEL: @test_sqrt_f32
+// CHECK: call float @llvm.amdgcn.sqrt.f32
+void test_sqrt_f32(global float* out, float a)
+{
+  *out = __builtin_amdgcn_sqrtf(a);
+}
+
+// CHECK-LABEL: @test_sqrt_f64
+// CHECK: call double @llvm.amdgcn.sqrt.f64
+void test_sqrt_f64(global double* out, double a)
+{
+  *out = __builtin_amdgcn_sqrt(a);
+}
+
 // CHECK-LABEL: @test_rsq_f32
 // CHECK: call float @llvm.amdgcn.rsq.f32
 void test_rsq_f32(global float* out, float a)
@@ -713,6 +727,12 @@ kernel void test_mqsad_pk_u16_u8(global ulong* out, ulong src0, uint src1, ulong
 // CHECK: call <4 x i32> @llvm.amdgcn.mqsad.u32.u8(i64 %src0, i32 %src1, <4 x i32> %src2)
 kernel void test_mqsad_u32_u8(global uint4* out, ulong src0, uint src1, uint4 src2) {
   *out = __builtin_amdgcn_mqsad_u32_u8(src0, src1, src2);
+}
+
+// CHECK-LABEL: test_s_setreg(
+// CHECK: call void @llvm.amdgcn.s.setreg(i32 8193, i32 %val)
+kernel void test_s_setreg(uint val) {
+  __builtin_amdgcn_s_setreg(8193, val);
 }
 
 // CHECK-DAG: [[$WI_RANGE]] = !{i32 0, i32 1024}

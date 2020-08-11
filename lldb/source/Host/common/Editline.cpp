@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include <iomanip>
-#include <iostream>
 #include <limits.h>
 
 #include "lldb/Host/ConnectionFileDescriptor.h"
@@ -49,9 +48,12 @@ int setupterm(char *term, int fildes, int *errret);
 // understand the relationship between DisplayInput(), MoveCursor(),
 // SetCurrentLine(), and SaveEditedLine() before making changes.
 
+/// https://www.ecma-international.org/publications/files/ECMA-ST/Ecma-048.pdf
 #define ESCAPE "\x1b"
+/// Faint, decreased intensity or second colour.
 #define ANSI_FAINT ESCAPE "[2m"
-#define ANSI_UNFAINT ESCAPE "[22m"
+/// Normal colour or normal intensity (neither bold nor faint).
+#define ANSI_UNFAINT ESCAPE "[0m"
 #define ANSI_CLEAR_BELOW ESCAPE "[J"
 #define ANSI_CLEAR_RIGHT ESCAPE "[K"
 #define ANSI_SET_COLUMN_N ESCAPE "[%dG"
@@ -560,6 +562,9 @@ int Editline::GetCharacter(EditLineGetCharType *c) {
     lldb::ConnectionStatus status = lldb::eConnectionStatusSuccess;
     char ch = 0;
 
+    if (m_terminal_size_has_changed)
+      ApplyTerminalSizeChange();
+
     // This mutex is locked by our caller (GetLine). Unlock it while we read a
     // character (blocking operation), so we do not hold the mutex
     // indefinitely. This gives a chance for someone to interrupt us. After
@@ -1052,7 +1057,7 @@ void Editline::ConfigureEditor(bool multiline) {
 
   m_editline =
       el_init(m_editor_name.c_str(), m_input_file, m_output_file, m_error_file);
-  TerminalSizeChanged();
+  ApplyTerminalSizeChange();
 
   if (m_history_sp && m_history_sp->IsValid()) {
     if (!m_history_sp->Load()) {
@@ -1305,28 +1310,32 @@ void Editline::SetContinuationPrompt(const char *continuation_prompt) {
       continuation_prompt == nullptr ? "" : continuation_prompt;
 }
 
-void Editline::TerminalSizeChanged() {
-  if (m_editline != nullptr) {
-    el_resize(m_editline);
-    int columns;
-    // This function is documenting as taking (const char *, void *) for the
-    // vararg part, but in reality in was consuming arguments until the first
-    // null pointer. This was fixed in libedit in April 2019
-    // <http://mail-index.netbsd.org/source-changes/2019/04/26/msg105454.html>,
-    // but we're keeping the workaround until a version with that fix is more
-    // widely available.
-    if (el_get(m_editline, EL_GETTC, "co", &columns, nullptr) == 0) {
-      m_terminal_width = columns;
-      if (m_current_line_rows != -1) {
-        const LineInfoW *info = el_wline(m_editline);
-        int lineLength =
-            (int)((info->lastchar - info->buffer) + GetPromptWidth());
-        m_current_line_rows = (lineLength / columns) + 1;
-      }
-    } else {
-      m_terminal_width = INT_MAX;
-      m_current_line_rows = 1;
+void Editline::TerminalSizeChanged() { m_terminal_size_has_changed = 1; }
+
+void Editline::ApplyTerminalSizeChange() {
+  if (!m_editline)
+    return;
+
+  m_terminal_size_has_changed = 0;
+  el_resize(m_editline);
+  int columns;
+  // This function is documenting as taking (const char *, void *) for the
+  // vararg part, but in reality in was consuming arguments until the first
+  // null pointer. This was fixed in libedit in April 2019
+  // <http://mail-index.netbsd.org/source-changes/2019/04/26/msg105454.html>,
+  // but we're keeping the workaround until a version with that fix is more
+  // widely available.
+  if (el_get(m_editline, EL_GETTC, "co", &columns, nullptr) == 0) {
+    m_terminal_width = columns;
+    if (m_current_line_rows != -1) {
+      const LineInfoW *info = el_wline(m_editline);
+      int lineLength =
+          (int)((info->lastchar - info->buffer) + GetPromptWidth());
+      m_current_line_rows = (lineLength / columns) + 1;
     }
+  } else {
+    m_terminal_width = INT_MAX;
+    m_current_line_rows = 1;
   }
 }
 

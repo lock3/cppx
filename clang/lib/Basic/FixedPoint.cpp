@@ -173,6 +173,176 @@ APFixedPoint APFixedPoint::add(const APFixedPoint &Other,
   return APFixedPoint(Result, CommonFXSema);
 }
 
+APFixedPoint APFixedPoint::sub(const APFixedPoint &Other,
+                               bool *Overflow) const {
+  auto CommonFXSema = Sema.getCommonSemantics(Other.getSemantics());
+  APFixedPoint ConvertedThis = convert(CommonFXSema);
+  APFixedPoint ConvertedOther = Other.convert(CommonFXSema);
+  llvm::APSInt ThisVal = ConvertedThis.getValue();
+  llvm::APSInt OtherVal = ConvertedOther.getValue();
+  bool Overflowed = false;
+
+  llvm::APSInt Result;
+  if (CommonFXSema.isSaturated()) {
+    Result = CommonFXSema.isSigned() ? ThisVal.ssub_sat(OtherVal)
+                                     : ThisVal.usub_sat(OtherVal);
+  } else {
+    Result = ThisVal.isSigned() ? ThisVal.ssub_ov(OtherVal, Overflowed)
+                                : ThisVal.usub_ov(OtherVal, Overflowed);
+  }
+
+  if (Overflow)
+    *Overflow = Overflowed;
+
+  return APFixedPoint(Result, CommonFXSema);
+}
+
+APFixedPoint APFixedPoint::mul(const APFixedPoint &Other,
+                               bool *Overflow) const {
+  auto CommonFXSema = Sema.getCommonSemantics(Other.getSemantics());
+  APFixedPoint ConvertedThis = convert(CommonFXSema);
+  APFixedPoint ConvertedOther = Other.convert(CommonFXSema);
+  llvm::APSInt ThisVal = ConvertedThis.getValue();
+  llvm::APSInt OtherVal = ConvertedOther.getValue();
+  bool Overflowed = false;
+
+  // Widen the LHS and RHS so we can perform a full multiplication.
+  unsigned Wide = CommonFXSema.getWidth() * 2;
+  if (CommonFXSema.isSigned()) {
+    ThisVal = ThisVal.sextOrSelf(Wide);
+    OtherVal = OtherVal.sextOrSelf(Wide);
+  } else {
+    ThisVal = ThisVal.zextOrSelf(Wide);
+    OtherVal = OtherVal.zextOrSelf(Wide);
+  }
+
+  // Perform the full multiplication and downscale to get the same scale.
+  //
+  // Note that the right shifts here perform an implicit downwards rounding.
+  // This rounding could discard bits that would technically place the result
+  // outside the representable range. We interpret the spec as allowing us to
+  // perform the rounding step first, avoiding the overflow case that would
+  // arise.
+  llvm::APSInt Result;
+  if (CommonFXSema.isSigned())
+    Result = ThisVal.smul_ov(OtherVal, Overflowed)
+                    .ashr(CommonFXSema.getScale());
+  else
+    Result = ThisVal.umul_ov(OtherVal, Overflowed)
+                    .lshr(CommonFXSema.getScale());
+  assert(!Overflowed && "Full multiplication cannot overflow!");
+  Result.setIsSigned(CommonFXSema.isSigned());
+
+  // If our result lies outside of the representative range of the common
+  // semantic, we either have overflow or saturation.
+  llvm::APSInt Max = APFixedPoint::getMax(CommonFXSema).getValue()
+                                                       .extOrTrunc(Wide);
+  llvm::APSInt Min = APFixedPoint::getMin(CommonFXSema).getValue()
+                                                       .extOrTrunc(Wide);
+  if (CommonFXSema.isSaturated()) {
+    if (Result < Min)
+      Result = Min;
+    else if (Result > Max)
+      Result = Max;
+  } else
+    Overflowed = Result < Min || Result > Max;
+
+  if (Overflow)
+    *Overflow = Overflowed;
+
+  return APFixedPoint(Result.sextOrTrunc(CommonFXSema.getWidth()),
+                      CommonFXSema);
+}
+
+APFixedPoint APFixedPoint::div(const APFixedPoint &Other,
+                               bool *Overflow) const {
+  auto CommonFXSema = Sema.getCommonSemantics(Other.getSemantics());
+  APFixedPoint ConvertedThis = convert(CommonFXSema);
+  APFixedPoint ConvertedOther = Other.convert(CommonFXSema);
+  llvm::APSInt ThisVal = ConvertedThis.getValue();
+  llvm::APSInt OtherVal = ConvertedOther.getValue();
+  bool Overflowed = false;
+
+  // Widen the LHS and RHS so we can perform a full division.
+  unsigned Wide = CommonFXSema.getWidth() * 2;
+  if (CommonFXSema.isSigned()) {
+    ThisVal = ThisVal.sextOrSelf(Wide);
+    OtherVal = OtherVal.sextOrSelf(Wide);
+  } else {
+    ThisVal = ThisVal.zextOrSelf(Wide);
+    OtherVal = OtherVal.zextOrSelf(Wide);
+  }
+
+  // Upscale to compensate for the loss of precision from division, and
+  // perform the full division.
+  ThisVal = ThisVal.shl(CommonFXSema.getScale());
+  llvm::APSInt Result;
+  if (CommonFXSema.isSigned()) {
+    llvm::APInt Rem;
+    llvm::APInt::sdivrem(ThisVal, OtherVal, Result, Rem);
+    // If the quotient is negative and the remainder is nonzero, round
+    // towards negative infinity by subtracting epsilon from the result.
+    if (ThisVal.isNegative() != OtherVal.isNegative() && !Rem.isNullValue())
+      Result = Result - 1;
+  } else
+    Result = ThisVal.udiv(OtherVal);
+  Result.setIsSigned(CommonFXSema.isSigned());
+
+  // If our result lies outside of the representative range of the common
+  // semantic, we either have overflow or saturation.
+  llvm::APSInt Max = APFixedPoint::getMax(CommonFXSema).getValue()
+                                                       .extOrTrunc(Wide);
+  llvm::APSInt Min = APFixedPoint::getMin(CommonFXSema).getValue()
+                                                       .extOrTrunc(Wide);
+  if (CommonFXSema.isSaturated()) {
+    if (Result < Min)
+      Result = Min;
+    else if (Result > Max)
+      Result = Max;
+  } else
+    Overflowed = Result < Min || Result > Max;
+
+  if (Overflow)
+    *Overflow = Overflowed;
+
+  return APFixedPoint(Result.sextOrTrunc(CommonFXSema.getWidth()),
+                      CommonFXSema);
+}
+
+APFixedPoint APFixedPoint::shl(unsigned Amt, bool *Overflow) const {
+  llvm::APSInt ThisVal = Val;
+  bool Overflowed = false;
+
+  // Widen the LHS.
+  unsigned Wide = Sema.getWidth() * 2;
+  if (Sema.isSigned())
+    ThisVal = ThisVal.sextOrSelf(Wide);
+  else
+    ThisVal = ThisVal.zextOrSelf(Wide);
+
+  // Clamp the shift amount at the original width, and perform the shift.
+  Amt = std::min(Amt, ThisVal.getBitWidth());
+  llvm::APSInt Result = ThisVal << Amt;
+  Result.setIsSigned(Sema.isSigned());
+
+  // If our result lies outside of the representative range of the
+  // semantic, we either have overflow or saturation.
+  llvm::APSInt Max = APFixedPoint::getMax(Sema).getValue().extOrTrunc(Wide);
+  llvm::APSInt Min = APFixedPoint::getMin(Sema).getValue().extOrTrunc(Wide);
+  if (Sema.isSaturated()) {
+    if (Result < Min)
+      Result = Min;
+    else if (Result > Max)
+      Result = Max;
+  } else
+    Overflowed = Result < Min || Result > Max;
+
+  if (Overflow)
+    *Overflow = Overflowed;
+
+  return APFixedPoint(Result.sextOrTrunc(Sema.getWidth()), Sema);
+}
+
 void APFixedPoint::toString(llvm::SmallVectorImpl<char> &Str) const {
   llvm::APSInt Val = getValue();
   unsigned Scale = getScale();

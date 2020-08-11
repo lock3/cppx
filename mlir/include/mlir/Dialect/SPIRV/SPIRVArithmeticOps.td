@@ -15,14 +15,25 @@
 #define SPIRV_ARITHMETIC_OPS
 
 include "mlir/Dialect/SPIRV/SPIRVBase.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 class SPV_ArithmeticBinaryOp<string mnemonic, Type type,
                        list<OpTrait> traits = []> :
       // Operands type same as result type.
       SPV_BinaryOp<mnemonic, type, type,
                    !listconcat(traits,
-                               [NoSideEffect, SameOperandsAndResultType])>;
+                               [NoSideEffect, SameOperandsAndResultType])> {
+  // In addition to normal types arithmetic instructions can support cooperative
+  // matrix.
+  let arguments = (ins
+    SPV_ScalarOrVectorOrCoopMatrixOf<type>:$operand1,
+    SPV_ScalarOrVectorOrCoopMatrixOf<type>:$operand2
+  );
+
+  let results = (outs
+    SPV_ScalarOrVectorOrCoopMatrixOf<type>:$result
+  );
+}
 
 class SPV_ArithmeticUnaryOp<string mnemonic, Type type,
                             list<OpTrait> traits = []> :
@@ -435,6 +446,31 @@ def SPV_SModOp : SPV_ArithmeticBinaryOp<"SMod", SPV_Integer, []> {
     %4 = spv.SMod %0, %1 : i32
     %5 = spv.SMod %2, %3 : vector<4xi32>
 
+    ```
+  }];
+}
+
+// -----
+
+def SPV_SNegateOp : SPV_ArithmeticUnaryOp<"SNegate", SPV_Integer, []> {
+  let summary = "Signed-integer subtract of Operand from zero.";
+
+  let description = [{
+    Result Type must be a scalar or vector of integer type.
+
+    Operand’s type  must be a scalar or vector of integer type.  It must
+    have the same number of components as Result Type.  The component width
+    must equal the component width in Result Type.
+
+     Results are computed per component.
+
+    <!-- End of AutoGen section -->
+
+    #### Example:
+
+    ```mlir
+    %1 = spv.SNegate %0 : i32
+    %3 = spv.SNegate %2 : vector<4xi32>
     ```
   }];
 }

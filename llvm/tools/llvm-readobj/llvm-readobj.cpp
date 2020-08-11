@@ -183,14 +183,18 @@ namespace opts {
                           cl::aliasopt(ProgramHeaders));
 
   // --string-dump, -p
-  cl::list<std::string> StringDump("string-dump", cl::desc("<number|name>"),
-                                   cl::ZeroOrMore);
+  cl::list<std::string> StringDump(
+      "string-dump", cl::value_desc("number|name"),
+      cl::desc("Display the specified section(s) as a list of strings"),
+      cl::ZeroOrMore);
   cl::alias StringDumpShort("p", cl::desc("Alias for --string-dump"),
                             cl::aliasopt(StringDump), cl::Prefix);
 
   // --hex-dump, -x
-  cl::list<std::string> HexDump("hex-dump", cl::desc("<number|name>"),
-                                cl::ZeroOrMore);
+  cl::list<std::string>
+      HexDump("hex-dump", cl::value_desc("number|name"),
+              cl::desc("Display the specified section(s) as hexadecimal bytes"),
+              cl::ZeroOrMore);
   cl::alias HexDumpShort("x", cl::desc("Alias for --hex-dump"),
                          cl::aliasopt(HexDump), cl::Prefix);
 
@@ -345,8 +349,11 @@ namespace opts {
                            cl::desc("Alias for --elf-hash-histogram"),
                            cl::aliasopt(HashHistogram));
 
-  // --elf-cg-profile
-  cl::opt<bool> CGProfile("elf-cg-profile", cl::desc("Display callgraph profile section"));
+  // --cg-profile
+  cl::opt<bool> CGProfile("cg-profile",
+                          cl::desc("Display callgraph profile section"));
+  cl::alias ELFCGProfile("elf-cg-profile", cl::desc("Alias for --cg-profile"),
+                         cl::aliasopt(CGProfile));
 
   // -addrsig
   cl::opt<bool> Addrsig("addrsig",
@@ -489,7 +496,7 @@ static void dumpObject(const ObjectFile *Obj, ScopedPrinter &Writer,
   if (opts::HashTable)
     Dumper->printHashTable();
   if (opts::GnuHashTable)
-    Dumper->printGnuHashTable();
+    Dumper->printGnuHashTable(Obj);
   if (opts::VersionInfo)
     Dumper->printVersionInfo();
   if (Obj->isELF()) {
@@ -502,7 +509,7 @@ static void dumpObject(const ObjectFile *Obj, ScopedPrinter &Writer,
     if (opts::SectionGroups)
       Dumper->printGroupSections();
     if (opts::HashHistogram)
-      Dumper->printHashHistogram();
+      Dumper->printHashHistograms();
     if (opts::CGProfile)
       Dumper->printCGProfile();
     if (opts::Addrsig)
@@ -525,6 +532,8 @@ static void dumpObject(const ObjectFile *Obj, ScopedPrinter &Writer,
       Dumper->printCOFFResources();
     if (opts::COFFLoadConfig)
       Dumper->printCOFFLoadConfig();
+    if (opts::CGProfile)
+      Dumper->printCGProfile();
     if (opts::Addrsig)
       Dumper->printAddrsig();
     if (opts::CodeView)
@@ -685,6 +694,11 @@ int main(int argc, const char *argv[]) {
 
   cl::ParseCommandLineOptions(argc, argv, "LLVM Object Reader\n");
 
+  // Default to print error if no filename is specified.
+  if (opts::InputFilenames.empty()) {
+    error("no input files specified");
+  }
+
   if (opts::All) {
     opts::FileHeaders = true;
     opts::ProgramHeaders = true;
@@ -708,10 +722,6 @@ int main(int argc, const char *argv[]) {
     opts::ProgramHeaders = true;
     opts::SectionHeaders = true;
   }
-
-  // Default to stdin if no filename is specified.
-  if (opts::InputFilenames.empty())
-    opts::InputFilenames.push_back("-");
 
   ScopedPrinter Writer(fouts());
   for (const std::string &I : opts::InputFilenames)

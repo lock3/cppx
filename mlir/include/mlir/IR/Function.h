@@ -34,7 +34,7 @@ class FuncOp
     : public Op<FuncOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
                 OpTrait::OneRegion, OpTrait::IsIsolatedFromAbove,
                 OpTrait::FunctionLike, OpTrait::AutomaticAllocationScope,
-                OpTrait::PolyhedralScope, CallableOpInterface::Trait,
+                OpTrait::AffineScope, CallableOpInterface::Trait,
                 SymbolOpInterface::Trait> {
 public:
   using Op::Op;
@@ -51,10 +51,8 @@ public:
                        ArrayRef<MutableDictionaryAttr> argAttrs);
 
   static void build(OpBuilder &builder, OperationState &result, StringRef name,
-                    FunctionType type, ArrayRef<NamedAttribute> attrs);
-  static void build(OpBuilder &builder, OperationState &result, StringRef name,
-                    FunctionType type, ArrayRef<NamedAttribute> attrs,
-                    ArrayRef<MutableDictionaryAttr> argAttrs);
+                    FunctionType type, ArrayRef<NamedAttribute> attrs = {},
+                    ArrayRef<MutableDictionaryAttr> argAttrs = {});
 
   /// Operation hooks.
   static ParseResult parse(OpAsmParser &parser, OperationState &result);

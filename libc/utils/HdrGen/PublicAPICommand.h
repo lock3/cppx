@@ -12,10 +12,8 @@
 #include "Command.h"
 
 #include "llvm/ADT/StringRef.h"
-
-#include <string>
-#include <unordered_map>
-#include <unordered_set>
+#include "llvm/TableGen/Error.h"
+#include "llvm/TableGen/Record.h"
 
 namespace llvm {
 

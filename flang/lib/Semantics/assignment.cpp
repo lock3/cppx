@@ -47,7 +47,7 @@ private:
       parser::CharBlock rhsSource, bool isPointerAssignment);
   void CheckShape(parser::CharBlock, const SomeExpr *);
   template <typename... A>
-  parser::Message *Say(parser::CharBlock at, A &&... args) {
+  parser::Message *Say(parser::CharBlock at, A &&...args) {
     return &context_.Say(at, std::forward<A>(args)...);
   }
   evaluate::FoldingContext &foldingContext() {
@@ -75,7 +75,7 @@ void AssignmentContext::Analyze(const parser::AssignmentStmt &stmt) {
       const Scope &scope{context_.FindScope(lhsLoc)};
       if (auto whyNot{WhyNotModifiable(lhsLoc, lhs, scope, true)}) {
         if (auto *msg{Say(lhsLoc,
-                "Left-hand side of assignment is not modifiable"_err_en_US)}) {
+                "Left-hand side of assignment is not modifiable"_err_en_US)}) { // C1158
           msg->Attach(*whyNot);
         }
       }

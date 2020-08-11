@@ -46,7 +46,7 @@ BasicBlock *llvm::CloneBasicBlock(const BasicBlock *BB, ValueToValueMapTy &VMap,
   if (BB->hasName())
     NewBB->setName(BB->getName() + NameSuffix);
 
-  bool hasCalls = false, hasDynamicAllocas = false, hasStaticAllocas = false;
+  bool hasCalls = false, hasDynamicAllocas = false;
   Module *TheModule = F ? F->getParent() : nullptr;
 
   // Loop over all instructions, and copy them over.
@@ -62,18 +62,15 @@ BasicBlock *llvm::CloneBasicBlock(const BasicBlock *BB, ValueToValueMapTy &VMap,
 
     hasCalls |= (isa<CallInst>(I) && !isa<DbgInfoIntrinsic>(I));
     if (const AllocaInst *AI = dyn_cast<AllocaInst>(&I)) {
-      if (isa<ConstantInt>(AI->getArraySize()))
-        hasStaticAllocas = true;
-      else
+      if (!AI->isStaticAlloca()) {
         hasDynamicAllocas = true;
+      }
     }
   }
 
   if (CodeInfo) {
     CodeInfo->ContainsCalls          |= hasCalls;
     CodeInfo->ContainsDynamicAllocas |= hasDynamicAllocas;
-    CodeInfo->ContainsDynamicAllocas |= hasStaticAllocas &&
-                                        BB != &BB->getParent()->getEntryBlock();
   }
   return NewBB;
 }
@@ -149,6 +146,11 @@ void llvm::CloneFunctionInto(Function *NewFunc, const Function *OldFunc,
                      ModuleLevelChanges ? RF_None : RF_NoModuleLevelChanges,
                      TypeMapper, Materializer));
   }
+
+  // Everything else beyond this point deals with function instructions,
+  // so if we are dealing with a function declaration, we're done.
+  if (OldFunc->isDeclaration())
+    return;
 
   // When we remap instructions, we want to avoid duplicating inlined
   // DISubprograms, so record all subprograms we find as we duplicate

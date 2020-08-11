@@ -18,9 +18,8 @@
 using namespace llvm;
 using namespace llvm::support::endian;
 using namespace llvm::ELF;
-
-namespace lld {
-namespace elf {
+using namespace lld;
+using namespace lld::elf;
 
 namespace {
 class ARM final : public TargetInfo {
@@ -122,6 +121,8 @@ RelExpr ARM::getRelExpr(RelType type, const Symbol &s,
     return R_TLSGD_PC;
   case R_ARM_TLS_LDM32:
     return R_TLSLD_PC;
+  case R_ARM_TLS_LDO32:
+    return R_DTPREL;
   case R_ARM_BASE_PREL:
     // B(S) + A - P
     // FIXME: currently B(S) assumed to be .got, this may not hold for all
@@ -845,10 +846,7 @@ int64_t ARM::getImplicitAddend(const uint8_t *buf, RelType type) const {
   }
 }
 
-TargetInfo *getARMTargetInfo() {
+TargetInfo *elf::getARMTargetInfo() {
   static ARM target;
   return &target;
 }
-
-} // namespace elf
-} // namespace lld
