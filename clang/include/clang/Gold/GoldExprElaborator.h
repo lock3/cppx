@@ -102,7 +102,8 @@ public:
   clang::Expr *elaborateUnaryOp(const CallSyntax *S, clang::UnaryOperatorKind Op);
   clang::Expr *elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
 
-  clang::Expr *elaborateBlockCondition(const ArraySyntax *Conditions);
+  clang::Expr *elaborateBlockCondition(const ArraySyntax *Conditions,
+                                      bool IsConstExpr = false);
 
   clang::Expr *elaborateMacro(const MacroSyntax *Macro);
   clang::Expr *elaborateClass(const MacroSyntax *Macro);

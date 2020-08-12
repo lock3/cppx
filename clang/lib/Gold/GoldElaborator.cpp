@@ -37,18 +37,13 @@
 
 namespace gold {
 
-enum AttrFormat {
-  AF_Invalid,
-  AF_Call,
-  AF_Name
-};
+
 
 static void applyESIToFunctionType(SyntaxContext &Context, Sema &SemaRef,
                                    clang::FunctionDecl *FD,
                        const clang::FunctionProtoType::ExceptionSpecInfo &ESI);
 
-static AttrFormat checkAttrFormatAndName(const Syntax *Attr, llvm::StringRef &Name) {
-
+AttrFormat checkAttrFormatAndName(const Syntax *Attr, llvm::StringRef &Name) {
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
     Name = Atom->getSpelling();
     return AF_Name;
@@ -61,57 +56,7 @@ static AttrFormat checkAttrFormatAndName(const Syntax *Attr, llvm::StringRef &Na
   return AF_Invalid;
 }
 
-/// locateValidAttribute
-/// This is a privately used template function, basucally taking the place of me
-/// duplicating the same thing over and over again for each type of attribute
-/// I need to find.
-///
-/// OnAttr is a callable with signature
-///       bool (const Syntax *)
-///   Returing true means you've located one of the possible attributes.
-///   This should also be used to set the correct value of any possible return
-///   value.
-///     true = Matched an attribute.
-///     false = didn't match an attribute.
-///
-/// IsSameAttr is a callable used to detect duplicates of the same attribute class.
-///   This is the same as OnAttr with the exception that it doesn't set
-///   the current desired attribute when it's true.
-///   Signature:
-///       bool (const Syntax *)
-///     true = we hvae a failure (meaning that we have a duplicate attribute)
-///     false = we don't have an attribute of the same class.
-///
-/// OnDuplicate is a callable with signature
-///       void (const syntax *first, const Syntax *Duplicate)
-///   This is used to create error messages.
-template<typename OnAttr, typename IsSameAttr, typename OnDuplicate>
-static bool locateValidAttribute(Attributes& UnprocessedAttributes,
-    OnAttr OnAttribute, IsSameAttr CheckAttr, OnDuplicate OnDup) {
 
-  auto Iter = UnprocessedAttributes.begin();
-  auto End = UnprocessedAttributes.end();
-  for (;Iter != End; ++Iter) {
-    if (OnAttribute(*Iter)) {
-      break;
-    }
-  }
-  const Syntax *AttribSpec = nullptr;
-  bool didFail = false;
-  if(Iter != End) {
-    AttribSpec = *Iter;
-    UnprocessedAttributes.erase(Iter);
-    Iter = UnprocessedAttributes.begin();
-    End = UnprocessedAttributes.end();
-    for (;Iter != End; ++Iter) {
-      if (CheckAttr(*Iter)) {
-        OnDup(AttribSpec, *Iter);
-        didFail = true;
-      }
-    }
-  }
-  return didFail;
-}
 
 /// Overload for declaration processing.
 template<typename OnAttr, typename IsSameAttr, typename OnDuplicate>

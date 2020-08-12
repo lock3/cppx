@@ -20,11 +20,10 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-TEST(GoldConstExprIf, LineAttribute) {
+TEST(GoldConstExprIf, NameAttr) {
   StringRef Code = R"(
 foo() : int!
-  [constexpr]
-  if (true):
+  if<constexpr> (true):
     return 1
 )";
   auto ToMatch = ifStmt(hasCondition(constantExpr(cxxBoolLiteral())));

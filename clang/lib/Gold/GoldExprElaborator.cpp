@@ -1901,7 +1901,8 @@ clang::Expr *ExprElaborator::elaborateNNS(clang::NamedDecl *NS,
     Qual.Init(SemaRef.QualifiedLookupContext, Alias);
   } else {
     NS->dump();
-    llvm_unreachable("We hvae a new type of namespace specifier that we've never seen before.");
+    llvm_unreachable("We hvae a new type of namespace specifier that we've "
+                     "never seen before.");
   }
   clang::Expr *RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
   if (!RHSExpr)
@@ -2115,17 +2116,24 @@ clang::Expr *ExprElaborator::elaborateBinOp(const CallSyntax *S,
 /// We just create a logical and expression with n terms: one for each
 /// sub expression.
 clang::Expr *
-ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
+ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions,
+                                        bool IsConstExpr) {
   // If there's only one term, we don't need to do anything else.
   if (Conditions->getNumChildren() == 1)
-    return elaborateExpr(Conditions->getChild(0));
+    if (IsConstExpr)
+      return elaborateExpectedConstantExpr(Conditions->getChild(0));
+    else
+      return elaborateExpr(Conditions->getChild(0));
 
   clang::Expr *LHS = nullptr;
   clang::Expr *RHS = nullptr;
 
   {
     ExprElaborator ExEl(Context, SemaRef);
-    LHS = ExEl.elaborateExpr(Conditions->getChild(0));
+    if (IsConstExpr)
+      LHS = ExEl.elaborateExpectedConstantExpr(Conditions->getChild(0));
+    else
+      LHS = ExEl.elaborateExpr(Conditions->getChild(0));
 
     if (!LHS) {
       SemaRef.Diags.Report(Conditions->getChild(0)->getLoc(),
@@ -2135,7 +2143,10 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
   }
   {
     ExprElaborator ExEl(Context, SemaRef);
-    RHS = ExEl.elaborateExpr(Conditions->getChild(1));
+    if (IsConstExpr)
+      RHS = ExEl.elaborateExpectedConstantExpr(Conditions->getChild(1));
+    else
+      RHS = ExEl.elaborateExpr(Conditions->getChild(1));
 
     if (!RHS) {
       SemaRef.Diags.Report(Conditions->getChild(1)->getLoc(),
@@ -2157,7 +2168,10 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
   // Ex., if we had `1 && 2`, we would append `3` to get `1 && 2 && 3`.
   for (unsigned I = 2; I < Conditions->getNumChildren(); ++I) {
     ExprElaborator ExEl(Context, SemaRef);
-    RHS = ExEl.elaborateExpr(Conditions->getChild(I));
+    if (IsConstExpr)
+      RHS = ExEl.elaborateExpectedConstantExpr(Conditions->getChild(I));
+    else
+      RHS = ExEl.elaborateExpr(Conditions->getChild(I));
 
     BinOp =
       SemaRef.getCxxSema().ActOnBinOp(/*Scope=*/nullptr, clang::SourceLocation(),

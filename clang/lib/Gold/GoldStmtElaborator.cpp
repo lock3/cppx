@@ -228,17 +228,75 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   return elaborateDefaultCall(Context, SemaRef, S);
 }
 
+static bool isConstExprIf(Sema &SemaRef, Attributes &Attrs, bool &IsConstExpr) {
+  return locateValidAttribute(Attrs,
+    // OnAttr
+    [&](const Syntax *Attr) -> bool{
+      llvm::StringRef ActualName;
+      switch(checkAttrFormatAndName(Attr, ActualName)) {
+      case AF_Name:
+        if (ActualName == "constexpr") {
+          IsConstExpr = true;
+          return true;
+        }
+        return false;
+      case AF_Invalid:
+        return false;
+      case AF_Call:
+        if (ActualName == "constexpr") {
+          SemaRef.Diags.Report(Attr->getLoc(),
+                               clang::diag::err_attribute_not_valid_as_call)
+                               << ActualName;
+          IsConstExpr = true;
+          return true;
+        }
+        return false;
+      }
+      return false;
+    },
+    // CheckAttr
+    [](const Syntax *Attr) -> bool{
+      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
+        if (Atom->getSpelling() == "constexpr") {
+          return true;
+        }
+      }
+      return false;
+    },
+    // OnDup
+    [&](const Syntax *FirstAttr, const Syntax *DuplicateAttr) {
+      return SemaRef.Diags.Report(DuplicateAttr->getLoc(),
+                                  clang::diag::err_conflicting_attributes)
+                                  << FirstAttr->getLoc()
+                                  << DuplicateAttr->getLoc();
+    });
+}
+
 clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
   const CallSyntax *Call = cast<CallSyntax>(S->getCall());
   clang::Expr *ConditionExpr;
   ExprElaborator ExEl(Context, SemaRef);
+  bool IsConstExprIfStmt = false;
+  Attributes Attrs;
+  for (const Attribute *Attr : S->getAttributes()) {
+    Attrs.emplace_back(Attr->getArg());
+  }
+  if (isConstExprIf(SemaRef, Attrs, IsConstExprIfStmt)) {
+    return nullptr;
+  }
+  if (IsConstExprIfStmt) {
+    llvm::outs () << "We have a constant if stmt expression!\n";
+  }
   if (const ArraySyntax *BlockCond
                                 = dyn_cast<ArraySyntax>(Call->getArguments())) {
-    ConditionExpr = ExEl.elaborateBlockCondition(BlockCond);
+    ConditionExpr = ExEl.elaborateBlockCondition(BlockCond, IsConstExprIfStmt);
 
   } else if (const ListSyntax *Args
                                  = dyn_cast<ListSyntax>(Call->getArguments())) {
-    ConditionExpr = ExEl.elaborateExpr(Args->getChild(0));
+    if (IsConstExprIfStmt)
+      ConditionExpr = ExEl.elaborateExpectedConstantExpr(Args->getChild(0));
+    else
+      ConditionExpr = ExEl.elaborateExpr(Args->getChild(0));
   } else {
     return nullptr;
   }
@@ -246,6 +304,8 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
   clang::Sema::ConditionResult Condition =
     SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr,
                                         S->getLoc(), ConditionExpr,
+                                        IsConstExprIfStmt ?
+                                        clang::Sema::ConditionKind::ConstexprIf:
                                         clang::Sema::ConditionKind::Boolean);
 
 
