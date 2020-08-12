@@ -22,6 +22,7 @@
 
 #include <iostream>
 #include <string>
+#include <iterator>
 
 namespace gold {
 
@@ -646,15 +647,16 @@ Syntax *Parser::parseMul() {
 Syntax *Parser::parseIf()
 {
   Token if_tok = expectToken("if");
+  llvm::SmallVector<Attribute *, 4> Attrs;
 
   // FIXME: only allow attributes here for `if:` style syntax.
-  while (nextTokenIs(tok::Less))
-    Preattributes.push_back(parsePostAttr());
+ while (nextTokenIs(tok::Less))
+    Attrs.push_back(parsePostAttr());
 
   Syntax *cond = nextTokenIs(tok::Colon) ? parseBlock() : parseParen();
 
   while (nextTokenIs(tok::Less))
-    Preattributes.push_back(parsePostAttr());
+    Attrs.push_back(parsePostAttr());
 
   Syntax *then_block;
   if (matchToken("then")) {
@@ -680,13 +682,10 @@ Syntax *Parser::parseIf()
     else_macro = nullptr;
   }
 
+  // Abuse the preattribute vector to attach these to the operator'if' atom.
+  std::copy_if(Attrs.begin(), Attrs.end(), std::back_inserter(Preattributes),
+               [](Attribute *Attr) -> bool { return Attr; });
   return onIf(if_tok, cond, then_block, else_macro);
-
-  // Syntax *OperatorIf =
-  //   cast<CallSyntax>(cast<MacroSyntax>(Ret)->getCall())->getCallee();
-  // for (Attribute *Attr : Attributes)
-  //   OperatorIf->addAttribute(Attr);
-  // return Ret;
 }
 
 Syntax *Parser::parseWhile()
