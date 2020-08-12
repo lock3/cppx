@@ -169,7 +169,7 @@ public:
     if (S) {
       S->printJson(Out, Helper, PP, /*AddQuotes=*/true);
     } else {
-      Out << '\"' << I->getAnyMember()->getNameAsString() << '\"';
+      Out << '\"' << I->getAnyMember()->getDeclName() << '\"';
     }
   }
 
@@ -1210,7 +1210,6 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
 
   switch (S->getStmtClass()) {
     // C++, OpenMP and ARC stuff we don't support yet.
-    case Expr::ObjCIndirectCopyRestoreExprClass:
     case Stmt::CXXDependentScopeMemberExprClass:
     case Stmt::CXXTryStmtClass:
     case Stmt::CXXTypeidExprClass:
@@ -1225,7 +1224,8 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::CXXReflectDumpReflectionExprClass:
     case Stmt::CXXCompilerErrorExprClass:
     case Stmt::CXXIdExprExprClass:
-    case Stmt::CXXReflectedIdExprClass:
+    case Stmt::CXXMemberIdExprExprClass:
+    case Stmt::CXXDependentSpliceIdExprClass:
     case Stmt::CXXValueOfExprClass:
     case Stmt::CXXConcatenateExprClass:
     case Stmt::CXXDependentVariadicReifierExprClass:
@@ -1539,6 +1539,10 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
       Bldr.addNodes(Dst);
       break;
 
+    case Stmt::MatrixSubscriptExprClass:
+      llvm_unreachable("Support for MatrixSubscriptExpr is not implemented.");
+      break;
+
     case Stmt::GCCAsmStmtClass:
       Bldr.takeNodes(Pred);
       VisitGCCAsmStmt(cast<GCCAsmStmt>(S), Pred, Dst);
@@ -1673,8 +1677,10 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
       ExplodedNodeSet PreVisit;
       const auto *CDE = cast<CXXDeleteExpr>(S);
       getCheckerManager().runCheckersForPreStmt(PreVisit, Pred, S, *this);
+      ExplodedNodeSet PostVisit;
+      getCheckerManager().runCheckersForPostStmt(PostVisit, PreVisit, S, *this);
 
-      for (const auto i : PreVisit)
+      for (const auto i : PostVisit)
         VisitCXXDeleteExpr(CDE, i, Dst);
 
       Bldr.addNodes(Dst);
@@ -1740,7 +1746,8 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::CXXConstCastExprClass:
     case Stmt::CXXFunctionalCastExprClass:
     case Stmt::BuiltinBitCastExprClass:
-    case Stmt::ObjCBridgedCastExprClass: {
+    case Stmt::ObjCBridgedCastExprClass:
+    case Stmt::CXXAddrspaceCastExprClass: {
       Bldr.takeNodes(Pred);
       const auto *C = cast<CastExpr>(S);
       ExplodedNodeSet dstExpr;
@@ -1884,6 +1891,21 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
                           state->BindExpr(S, Pred->getLocationContext(),
                                                    UnknownVal()));
 
+      Bldr.addNodes(Dst);
+      break;
+    }
+
+    case Expr::ObjCIndirectCopyRestoreExprClass: {
+      // ObjCIndirectCopyRestoreExpr implies passing a temporary for
+      // correctness of lifetime management.  Due to limited analysis
+      // of ARC, this is implemented as direct arg passing.
+      Bldr.takeNodes(Pred);
+      ProgramStateRef state = Pred->getState();
+      const auto *OIE = cast<ObjCIndirectCopyRestoreExpr>(S);
+      const Expr *E = OIE->getSubExpr();
+      SVal V = state->getSVal(E, Pred->getLocationContext());
+      Bldr.generateNode(S, Pred,
+              state->BindExpr(S, Pred->getLocationContext(), V));
       Bldr.addNodes(Dst);
       break;
     }
@@ -3228,3 +3250,5 @@ void *ProgramStateTrait<ReplayWithoutInlining>::GDMIndex() {
   static int index = 0;
   return &index;
 }
+
+void ExprEngine::anchor() { }

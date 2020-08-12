@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/Analysis/LegacyDivergenceAnalysis.h"
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
@@ -134,8 +135,20 @@ void FunctionLoweringInfo::set(const Function &fn, MachineFunction &mf,
     for (const Instruction &I : BB) {
       if (const AllocaInst *AI = dyn_cast<AllocaInst>(&I)) {
         Type *Ty = AI->getAllocatedType();
+        Align TyPrefAlign = MF->getDataLayout().getPrefTypeAlign(Ty);
+        // The "specified" alignment is the alignment written on the alloca,
+        // or the preferred alignment of the type if none is specified.
+        //
+        // (Unspecified alignment on allocas will be going away soon.)
+        Align SpecifiedAlign = AI->getAlign();
+
+        // If the preferred alignment of the type is higher than the specified
+        // alignment of the alloca, promote the alignment, as long as it doesn't
+        // require realigning the stack.
+        //
+        // FIXME: Do we really want to second-guess the IR in isel?
         Align Alignment =
-            max(MF->getDataLayout().getPrefTypeAlign(Ty), AI->getAlign());
+            std::max(std::min(TyPrefAlign, StackAlign), SpecifiedAlign);
 
         // Static allocas can be folded into the initial stack frame
         // adjustment. For targets that don't realign the stack, don't
@@ -177,7 +190,7 @@ void FunctionLoweringInfo::set(const Function &fn, MachineFunction &mf,
           // stack allocation for each one.
           // Inform the Frame Information that we have variable-sized objects.
           MF->getFrameInfo().CreateVariableSizedObject(
-              Alignment <= StackAlign ? 0 : Alignment.value(), AI);
+              Alignment <= StackAlign ? Align(1) : Alignment, AI);
         }
       }
 
@@ -347,7 +360,7 @@ void FunctionLoweringInfo::clear() {
   RegFixups.clear();
   RegsWithFixups.clear();
   StatepointStackSlots.clear();
-  StatepointSpillMaps.clear();
+  StatepointRelocationMaps.clear();
   PreferredExtendType.clear();
 }
 

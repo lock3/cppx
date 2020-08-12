@@ -79,11 +79,6 @@ if(LLDB_BUILD_FRAMEWORK)
   if(NOT APPLE)
     message(FATAL_ERROR "LLDB.framework can only be generated when targeting Apple platforms")
   endif()
-  # CMake 3.6 did not correctly emit POST_BUILD commands for Apple Framework targets
-  # CMake < 3.8 did not have the BUILD_RPATH target property
-  if(CMAKE_VERSION VERSION_LESS 3.8)
-    message(FATAL_ERROR "LLDB_BUILD_FRAMEWORK is not supported on CMake < 3.8")
-  endif()
 
   set(LLDB_FRAMEWORK_VERSION A CACHE STRING "LLDB.framework version (default is A)")
   set(LLDB_FRAMEWORK_BUILD_DIR bin CACHE STRING "Output directory for LLDB.framework")
@@ -234,7 +229,6 @@ if (LLDB_ENABLE_LZMA)
 endif()
 
 if (LLDB_ENABLE_LIBXML2)
-  list(APPEND system_libs ${LIBXML2_LIBRARIES})
   include_directories(${LIBXML2_INCLUDE_DIR})
 endif()
 
@@ -280,12 +274,6 @@ if (APPLE)
   find_library(FOUNDATION_LIBRARY Foundation)
   find_library(CORE_FOUNDATION_LIBRARY CoreFoundation)
   find_library(SECURITY_LIBRARY Security)
-  list(APPEND system_libs
-       ${FOUNDATION_LIBRARY}
-       ${CORE_FOUNDATION_LIBRARY}
-       ${CORE_SERVICES_LIBRARY}
-       ${SECURITY_LIBRARY}
-       ${DEBUG_SYMBOLS_LIBRARY})
   include_directories(${LIBXML2_INCLUDE_DIR})
 endif()
 
@@ -296,10 +284,7 @@ endif()
 if(NOT PURE_WINDOWS)
   set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
   find_package(Threads REQUIRED)
-  list(APPEND system_libs ${CMAKE_THREAD_LIBS_INIT})
 endif()
-
-list(APPEND system_libs ${CMAKE_DL_LIBS})
 
 # Figure out if lldb could use lldb-server.  If so, then we'll
 # ensure we build lldb-server when an lldb target is being built.

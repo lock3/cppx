@@ -16,6 +16,7 @@
 #include "FuzzerInternal.h"
 #include "FuzzerMerge.h"
 #include "FuzzerMutate.h"
+#include "FuzzerPlatform.h"
 #include "FuzzerRandom.h"
 #include "FuzzerTracePC.h"
 #include <algorithm>
@@ -32,7 +33,11 @@
 // binary can test for its existence.
 #if LIBFUZZER_MSVC
 extern "C" void __libfuzzer_is_present() {}
+#if defined(_M_IX86) || defined(__i386__)
+#pragma comment(linker, "/include:___libfuzzer_is_present")
+#else
 #pragma comment(linker, "/include:__libfuzzer_is_present")
+#endif
 #else
 extern "C" __attribute__((used)) void __libfuzzer_is_present() {}
 #endif  // LIBFUZZER_MSVC
@@ -708,6 +713,26 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
     Options.CollectDataFlow = Flags.collect_data_flow;
   if (Flags.stop_file)
     Options.StopFile = Flags.stop_file;
+  Options.Entropic = Flags.entropic;
+  Options.EntropicFeatureFrequencyThreshold =
+      (size_t)Flags.entropic_feature_frequency_threshold;
+  Options.EntropicNumberOfRarestFeatures =
+      (size_t)Flags.entropic_number_of_rarest_features;
+  if (Options.Entropic) {
+    if (!Options.FocusFunction.empty()) {
+      Printf("ERROR: The parameters `--entropic` and `--focus_function` cannot "
+             "be used together.\n");
+      exit(1);
+    }
+    Printf("INFO: Running with entropic power schedule (0x%X, %d).\n",
+           Options.EntropicFeatureFrequencyThreshold,
+           Options.EntropicNumberOfRarestFeatures);
+  }
+  struct EntropicOptions Entropic;
+  Entropic.Enabled = Options.Entropic;
+  Entropic.FeatureFrequencyThreshold =
+      Options.EntropicFeatureFrequencyThreshold;
+  Entropic.NumberOfRarestFeatures = Options.EntropicNumberOfRarestFeatures;
 
   unsigned Seed = Flags.seed;
   // Initialize Seed.
@@ -728,7 +753,7 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
 
   Random Rand(Seed);
   auto *MD = new MutationDispatcher(Rand, Options);
-  auto *Corpus = new InputCorpus(Options.OutputCorpus);
+  auto *Corpus = new InputCorpus(Options.OutputCorpus, Entropic);
   auto *F = new Fuzzer(Callback, *Corpus, *MD, Options);
 
   for (auto &U: Dictionary)
@@ -831,6 +856,12 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
   F->PrintFinalStats();
 
   exit(0);  // Don't let F destroy itself.
+}
+
+extern "C" ATTRIBUTE_INTERFACE int
+LLVMFuzzerRunDriver(int *argc, char ***argv,
+                    int (*UserCb)(const uint8_t *Data, size_t Size)) {
+  return FuzzerDriver(argc, argv, UserCb);
 }
 
 // Storage for global ExternalFunctions object.

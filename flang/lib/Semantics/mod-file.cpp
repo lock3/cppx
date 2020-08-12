@@ -8,6 +8,7 @@
 
 #include "mod-file.h"
 #include "resolve-names.h"
+#include "flang/Common/restorer.h"
 #include "flang/Evaluate/tools.h"
 #include "flang/Parser/message.h"
 #include "flang/Parser/parsing.h"
@@ -99,6 +100,9 @@ private:
 };
 
 bool ModFileWriter::WriteAll() {
+  // this flag affects character literals: force it to be consistent
+  auto restorer{
+      common::ScopedSet(parser::useHexadecimalEscapeSequences, false)};
   WriteAll(context_.globalScope());
   return !context_.AnyFatalError();
 }
@@ -243,8 +247,8 @@ void ModFileWriter::PutSymbol(
                  [&](const CommonBlockDetails &x) {
                    decls_ << "common/" << symbol.name();
                    char sep = '/';
-                   for (const Symbol &object : x.objects()) {
-                     decls_ << sep << object.name();
+                   for (const auto &object : x.objects()) {
+                     decls_ << sep << object->name();
                      sep = ',';
                    }
                    decls_ << '\n';
@@ -322,7 +326,11 @@ void ModFileWriter::PutSubprogram(const Symbol &symbol) {
     if (n++ > 0) {
       os << ',';
     }
-    os << dummy->name();
+    if (dummy) {
+      os << dummy->name();
+    } else {
+      os << "*";
+    }
   }
   os << ')';
   PutAttrs(os, bindAttrs, details.bindName(), " "s, ""s);
@@ -389,7 +397,7 @@ void ModFileWriter::PutGeneric(const Symbol &symbol) {
 void ModFileWriter::PutUse(const Symbol &symbol) {
   auto &details{symbol.get<UseDetails>()};
   auto &use{details.symbol()};
-  uses_ << "use " << details.module().name();
+  uses_ << "use " << GetUsedModule(details).name();
   PutGenericName(uses_ << ",only:", symbol);
   // Can have intrinsic op with different local-name and use-name
   // (e.g. `operator(<)` and `operator(.lt.)`) but rename is not allowed
@@ -825,7 +833,9 @@ void SubprogramSymbolCollector::Collect() {
   const auto &details{symbol_.get<SubprogramDetails>()};
   isInterface_ = details.isInterface();
   for (const Symbol *dummyArg : details.dummyArgs()) {
-    DoSymbol(DEREF(dummyArg));
+    if (dummyArg) {
+      DoSymbol(*dummyArg);
+    }
   }
   if (details.isFunction()) {
     DoSymbol(details.result());
@@ -833,7 +843,7 @@ void SubprogramSymbolCollector::Collect() {
   for (const auto &pair : scope_) {
     const Symbol &symbol{*pair.second};
     if (const auto *useDetails{symbol.detailsIf<UseDetails>()}) {
-      if (useSet_.count(useDetails->symbol()) > 0) {
+      if (useSet_.count(useDetails->symbol().GetUltimate()) > 0) {
         need_.push_back(symbol);
       }
     }
@@ -875,8 +885,8 @@ void SubprogramSymbolCollector::DoSymbol(
                    }
                  },
                  [this](const CommonBlockDetails &details) {
-                   for (const Symbol &object : details.objects()) {
-                     DoSymbol(object);
+                   for (const auto &object : details.objects()) {
+                     DoSymbol(*object);
                    }
                  },
                  [](const auto &) {},

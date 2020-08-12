@@ -75,7 +75,7 @@ foo(x:bool, y:bool) : int!
     x
     y
   do:
-    return 1;
+    return 1
   return 0
 )";
   auto ToMatch = ifStmt(hasCondition(binaryOperator()));

@@ -94,8 +94,8 @@ body:             |
 ...
 
 # CHECK: VLSTM
-# CHECK-DAG: $s12 = VLDRS internal $sp, 12, 14 /* CC::al */, $noreg
-# CHECK-DAG: $s13 = VLDRS internal $sp, 13, 14 /* CC::al */, $noreg
-# CHECK-DAG: $s14 = VLDRS internal $sp, 14, 14 /* CC::al */, $noreg
-# CHECK-DAG: $s15 = VLDRS internal $sp, 15, 14 /* CC::al */, $noreg
+# CHECK-DAG: $s12 = VLDRS $sp, 12, 14 /* CC::al */, $noreg
+# CHECK-DAG: $s13 = VLDRS $sp, 13, 14 /* CC::al */, $noreg
+# CHECK-DAG: $s14 = VLDRS $sp, 14, 14 /* CC::al */, $noreg
+# CHECK-DAG: $s15 = VLDRS $sp, 15, 14 /* CC::al */, $noreg
 # CHECK: tBLXNSr

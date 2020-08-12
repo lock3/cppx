@@ -20,7 +20,8 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
-#include "mlir/Interfaces/SideEffects.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "mlir/Interfaces/VectorInterfaces.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 
 // Pull in all enum type definitions and utility function declarations.
@@ -128,9 +129,9 @@ public:
 //   dma_start %src[%i, %j], %dst[%k, %l], %num_elements, %tag[%idx], %stride,
 //             %num_elt_per_stride :
 //
-// TODO(mlir-team): add additional operands to allow source and destination
-// striding, and multiple stride levels.
-// TODO(andydavis) Consider replacing src/dst memref indices with view memrefs.
+// TODO: add additional operands to allow source and destination striding, and
+// multiple stride levels.
+// TODO: Consider replacing src/dst memref indices with view memrefs.
 class DmaStartOp
     : public Op<DmaStartOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
@@ -286,6 +287,7 @@ public:
   void print(OpAsmPrinter &p);
   LogicalResult fold(ArrayRef<Attribute> cstOperands,
                      SmallVectorImpl<OpFoldResult> &results);
+  LogicalResult verify();
 };
 
 /// Prints dimension and symbol list.
@@ -300,6 +302,54 @@ ParseResult parseDimAndSymbolList(OpAsmParser &parser,
 
 raw_ostream &operator<<(raw_ostream &os, SubViewOp::Range &range);
 
+/// Determines whether MemRefCastOp casts to a more dynamic version of the
+/// source memref. This is useful to to fold a memref_cast into a consuming op
+/// and implement canonicalization patterns for ops in different dialects that
+/// may consume the results of memref_cast operations. Such foldable memref_cast
+/// operations are typically inserted as `view` and `subview` ops are
+/// canonicalized, to preserve the type compatibility of their uses.
+///
+/// Returns true when all conditions are met:
+/// 1. source and result are ranked memrefs with strided semantics and same
+/// element type and rank.
+/// 2. each of the source's size, offset or stride has more static information
+/// than the corresponding result's size, offset or stride.
+///
+/// Example 1:
+/// ```mlir
+///   %1 = memref_cast %0 : memref<8x16xf32> to memref<?x?xf32>
+///   %2 = consumer %1 ... : memref<?x?xf32> ...
+/// ```
+///
+/// may fold into:
+///
+/// ```mlir
+///   %2 = consumer %0 ... : memref<8x16xf32> ...
+/// ```
+///
+/// Example 2:
+/// ```
+///   %1 = memref_cast %0 : memref<?x16xf32, affine_map<(i, j)->(16 * i + j)>>
+///          to memref<?x?xf32>
+///   consumer %1 : memref<?x?xf32> ...
+/// ```
+///
+/// may fold into:
+///
+/// ```
+///   consumer %0 ... : memref<?x16xf32, affine_map<(i, j)->(16 * i + j)>>
+/// ```
+bool canFoldIntoConsumerOp(MemRefCastOp castOp);
+
+/// Compute `lhs` `pred` `rhs`, where `pred` is one of the known integer
+/// comparison predicates.
+bool applyCmpPredicate(CmpIPredicate predicate, const APInt &lhs,
+                       const APInt &rhs);
+
+/// Compute `lhs` `pred` `rhs`, where `pred` is one of the known floating point
+/// comparison predicates.
+bool applyCmpPredicate(CmpFPredicate predicate, const APFloat &lhs,
+                       const APFloat &rhs);
 } // end namespace mlir
 
 #endif // MLIR_DIALECT_IR_STANDARDOPS_IR_OPS_H

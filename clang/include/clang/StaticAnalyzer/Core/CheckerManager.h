@@ -37,15 +37,18 @@ class TranslationUnitDecl;
 namespace ento {
 
 class AnalysisManager;
+class CXXAllocatorCall;
 class BugReporter;
 class CallEvent;
 class CheckerBase;
 class CheckerContext;
 class CheckerRegistry;
+struct CheckerRegistryData;
 class ExplodedGraph;
 class ExplodedNode;
 class ExplodedNodeSet;
 class ExprEngine;
+struct EvalCallOptions;
 class MemRegion;
 struct NodeBuilderContext;
 class ObjCMethodCall;
@@ -128,7 +131,7 @@ class CheckerManager {
   const Preprocessor *PP = nullptr;
   CheckerNameRef CurrentCheckerName;
   DiagnosticsEngine &Diags;
-  std::unique_ptr<CheckerRegistry> Registry;
+  std::unique_ptr<CheckerRegistryData> RegistryData;
 
 public:
   // These constructors are defined in the Frontend library, because
@@ -150,8 +153,8 @@ public:
       : CheckerManager(Context, AOptions, PP, {}, {}) {}
 
   /// Constructs a CheckerManager without requiring an AST. No checker
-  /// registration will take place. Only useful for retrieving the
-  /// CheckerRegistry and print for help flags where the AST is unavalaible.
+  /// registration will take place. Only useful when one needs to print the
+  /// help flags through CheckerRegistryData, and the AST is unavalaible.
   CheckerManager(AnalyzerOptions &AOptions, const LangOptions &LangOpts,
                  DiagnosticsEngine &Diags, ArrayRef<std::string> plugins);
 
@@ -170,7 +173,9 @@ public:
     assert(PP);
     return *PP;
   }
-  const CheckerRegistry &getCheckerRegistry() const { return *Registry; }
+  const CheckerRegistryData &getCheckerRegistryData() const {
+    return *RegistryData;
+  }
   DiagnosticsEngine &getDiagnostics() const { return Diags; }
   ASTContext &getASTContext() const {
     assert(Context);
@@ -361,11 +366,9 @@ public:
                                      ExprEngine &Eng);
 
   /// Run checkers between C++ operator new and constructor calls.
-  void runCheckersForNewAllocator(const CXXNewExpr *NE, SVal Target,
-                                  ExplodedNodeSet &Dst,
-                                  ExplodedNode *Pred,
-                                  ExprEngine &Eng,
-                                  bool wasInlined = false);
+  void runCheckersForNewAllocator(const CXXAllocatorCall &Call,
+                                  ExplodedNodeSet &Dst, ExplodedNode *Pred,
+                                  ExprEngine &Eng, bool wasInlined = false);
 
   /// Run checkers for live symbols.
   ///
@@ -434,9 +437,9 @@ public:
   /// Run checkers for evaluating a call.
   ///
   /// Warning: Currently, the CallEvent MUST come from a CallExpr!
-  void runCheckersForEvalCall(ExplodedNodeSet &Dst,
-                              const ExplodedNodeSet &Src,
-                              const CallEvent &CE, ExprEngine &Eng);
+  void runCheckersForEvalCall(ExplodedNodeSet &Dst, const ExplodedNodeSet &Src,
+                              const CallEvent &CE, ExprEngine &Eng,
+                              const EvalCallOptions &CallOpts);
 
   /// Run checkers for the entire Translation Unit.
   void runCheckersOnEndOfTranslationUnit(const TranslationUnitDecl *TU,
@@ -506,7 +509,7 @@ public:
       CheckerFn<void (const Stmt *, CheckerContext &)>;
 
   using CheckNewAllocatorFunc =
-      CheckerFn<void (const CXXNewExpr *, SVal, CheckerContext &)>;
+      CheckerFn<void(const CXXAllocatorCall &Call, CheckerContext &)>;
 
   using CheckDeadSymbolsFunc =
       CheckerFn<void (SymbolReaper &, CheckerContext &)>;

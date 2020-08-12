@@ -131,6 +131,9 @@ MipsTargetMachine::MipsTargetMachine(const Target &T, const Triple &TT,
                       MaybeAlign(Options.StackAlignmentOverride)) {
   Subtarget = &DefaultSubtarget;
   initAsmInfo();
+
+  // Mips supports the debug entry values.
+  setSupportsDebugEntryValues(true);
 }
 
 MipsTargetMachine::~MipsTargetMachine() = default;
@@ -292,8 +295,7 @@ MipsTargetMachine::getTargetTransformInfo(const Function &F) {
 }
 
 // Implemented by targets that want to run passes immediately before
-// machine code is emitted. return true if -print-machineinstrs should
-// print out the code after the passes.
+// machine code is emitted.
 void MipsPassConfig::addPreEmitPass() {
   // Expand pseudo instructions that are sensitive to register allocation.
   addPass(createMipsExpandPseudoPass());

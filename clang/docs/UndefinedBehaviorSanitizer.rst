@@ -81,7 +81,9 @@ Available checks are:
      ``true`` nor ``false``.
   -  ``-fsanitize=builtin``: Passing invalid values to compiler builtins.
   -  ``-fsanitize=bounds``: Out of bounds array indexing, in cases
-     where the array bound can be statically determined.
+     where the array bound can be statically determined. The check includes
+     ``-fsanitize=array-bounds`` and ``-fsanitize=local-bounds``. Note that
+     ``-fsanitize=local-bounds`` is not included in ``-fsanitize=undefined``.
   -  ``-fsanitize=enum``: Load of a value of an enumerated type which
      is not in the range of representable values for that enumerated
      type.
@@ -125,6 +127,10 @@ Available checks are:
      is annotated with ``_Nonnull``.
   -  ``-fsanitize=nullability-return``: Returning null from a function with
      a return type annotated with ``_Nonnull``.
+  -  ``-fsanitize=objc-cast``: Invalid implicit cast of an ObjC object pointer
+     to an incompatible type. This is often unintentional, but is not undefined
+     behavior, therefore the check is not a part of the ``undefined`` group.
+     Currently only supported on Darwin.
   -  ``-fsanitize=object-size``: An attempt to potentially use bytes which
      the optimizer can determine are not part of the object being accessed.
      This will also detect some types of undefined behavior that may not
@@ -173,7 +179,8 @@ Available checks are:
 You can also use the following check groups:
   -  ``-fsanitize=undefined``: All of the checks listed above other than
      ``float-divide-by-zero``, ``unsigned-integer-overflow``,
-     ``implicit-conversion``, and the ``nullability-*`` group of checks.
+     ``implicit-conversion``, ``local-bounds`` and the ``nullability-*`` group
+     of checks.
   -  ``-fsanitize=undefined-trap``: Deprecated alias of
      ``-fsanitize=undefined``.
   -  ``-fsanitize=implicit-integer-truncation``: Catches lossy integral
@@ -202,7 +209,7 @@ You can also use the following check groups:
 Volatile
 --------
 
-The ``null``, ``alignment``, ``object-size``, and ``vptr`` checks do not apply
+The ``null``, ``alignment``, ``object-size``, ``local-bounds``, and ``vptr`` checks do not apply
 to pointers to types with the ``volatile`` qualifier.
 
 Minimal Runtime

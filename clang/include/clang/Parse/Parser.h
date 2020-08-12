@@ -242,6 +242,9 @@ class Parser : public CodeCompletionHandler {
   /// The "depth" of the template parameters currently being parsed.
   unsigned TemplateParameterDepth;
 
+  /// Current kind of OpenMP clause
+  OpenMPClauseKind OMPClauseKind = llvm::omp::OMPC_unknown;
+
   /// RAII class that manages the template parameter depth.
   class TemplateParameterDepthRAII {
     unsigned &Depth;
@@ -498,6 +501,50 @@ public:
     return true;
   }
 
+  bool AnnotateIdentifierSplice();
+  bool TryAnnotateIdentifierSplice();
+
+  bool isIdentifier() {
+    if (Tok.is(tok::kw_unqualid) && GetLookAheadToken(2).isNot(tok::ellipsis)) {
+      AnnotateIdentifierSplice();
+      return true;
+    }
+
+    return Tok.isOneOf(tok::identifier, tok::annot_identifier_splice,
+                       tok::annot_invalid_identifier_splice);
+  }
+
+  // FIXME: This should probably be private similar to the other
+  // special token methods. However, this causes problems for
+  // some static functions for parser implementation details.
+  SourceLocation ConsumeIdentifier() {
+    assert(isIdentifier() && "wrong consume method");
+    SourceLocation Loc = Tok.getLocation();
+
+    // FIXME: This is a bit strange, ConsumeToken
+    // sets PrevTokLocation to the beginning of the token
+    // and ConsumeAnnotationToken sets PrevTokLocation to
+    // the end of the token.
+    //
+    // Both return the current location of the token.
+    if (Tok.isAnnotation()) {
+      PrevTokLocation = Tok.getAnnotationEndLoc();
+    } else {
+      PrevTokLocation = Loc;
+    }
+
+    PP.Lex(Tok);
+    return Loc;
+  }
+
+  SourceLocation ConsumeAsIdentifier() {
+    if (isIdentifier())
+      return ConsumeIdentifier();
+
+    assert(Tok.getIdentifierInfo());
+    return ConsumeToken();
+  }
+
   /// ConsumeAnyToken - Dispatch to the right Consume* method based on the
   /// current token type.  This should only be used in cases where the type of
   /// the token really isn't known, e.g. in error recovery.
@@ -513,6 +560,8 @@ public:
     if (Tok.is(tok::code_completion))
       return ConsumeCodeCompletionTok ? ConsumeCodeCompletionToken()
                                       : handleUnexpectedCodeCompletionToken();
+    if (Tok.isOneOf(tok::identifier, tok::annot_identifier_splice))
+      return ConsumeIdentifier();
     if (Tok.isAnnotation())
       return ConsumeAnnotationToken();
     return ConsumeToken();
@@ -552,8 +601,9 @@ private:
   }
   /// isTokenSpecial - True if this token requires special consumption methods.
   bool isTokenSpecial() const {
-    return isTokenStringLiteral() || isTokenParen() || isTokenBracket() ||
-           isTokenBrace() || Tok.is(tok::code_completion) || Tok.isAnnotation();
+    return isTokenStringLiteral() || /*Tok.isIdentifier ||*/ isTokenParen() ||
+           isTokenBracket() || isTokenBrace() || Tok.is(tok::code_completion) ||
+           Tok.isAnnotation() || Tok.isOneOf(tok::identifier, tok::annot_identifier_splice);
   }
 
   /// Returns true if the current token is '=' or is a type of '='.
@@ -839,7 +889,7 @@ public:
   bool TryAnnotateCXXScopeToken(bool EnteringContext = false);
 
   bool MightBeCXXScopeToken() {
-    return Tok.is(tok::identifier) || Tok.is(tok::coloncolon) ||
+    return isIdentifier() || Tok.is(tok::coloncolon) ||
            (Tok.is(tok::annot_template_id) &&
             NextToken().is(tok::coloncolon)) ||
            Tok.is(tok::kw_decltype) || Tok.is(tok::kw___super);
@@ -1089,11 +1139,39 @@ public:
     }
   };
 
+  /// Introduces zero or more scopes for parsing. The scopes will all be exited
+  /// when the object is destroyed.
+  class MultiParseScope {
+    Parser &Self;
+    unsigned NumScopes = 0;
+
+    MultiParseScope(const MultiParseScope&) = delete;
+
+  public:
+    MultiParseScope(Parser &Self) : Self(Self) {}
+    void Enter(unsigned ScopeFlags) {
+      Self.EnterScope(ScopeFlags);
+      ++NumScopes;
+    }
+    void Exit() {
+      while (NumScopes) {
+        Self.ExitScope();
+        --NumScopes;
+      }
+    }
+    ~MultiParseScope() {
+      Exit();
+    }
+  };
+
   /// EnterScope - Start a new scope.
   void EnterScope(unsigned ScopeFlags);
 
   /// ExitScope - Pop a scope off the scope stack.
   void ExitScope();
+
+  /// Re-enter the template scopes for a declaration that might be a template.
+  unsigned ReenterTemplateScopes(MultiParseScope &S, Decl *D);
 
 private:
   /// RAII object used to modify the scope flags for the current scope.
@@ -1279,13 +1357,7 @@ private:
     Decl *D;
     CachedTokens Toks;
 
-    /// Whether this member function had an associated template
-    /// scope. When true, D is a template declaration.
-    /// otherwise, it is a member function declaration.
-    bool TemplateScope;
-
-    explicit LexedMethod(Parser* P, Decl *MD)
-      : Self(P), D(MD), TemplateScope(false) {}
+    explicit LexedMethod(Parser *P, Decl *MD) : Self(P), D(MD) {}
 
     void ParseLexedMethodDefs() override;
   };
@@ -1315,8 +1387,7 @@ private:
   /// argument (C++ [class.mem]p2).
   struct LateParsedMethodDeclaration : public LateParsedDeclaration {
     explicit LateParsedMethodDeclaration(Parser *P, Decl *M)
-      : Self(P), Method(M), TemplateScope(false),
-        ExceptionSpecTokens(nullptr) {}
+        : Self(P), Method(M), ExceptionSpecTokens(nullptr) {}
 
     void ParseLexedMethodDeclarations() override;
 
@@ -1324,11 +1395,6 @@ private:
 
     /// Method - The method declaration.
     Decl *Method;
-
-    /// Whether this member function had an associated template
-    /// scope. When true, D is a template declaration.
-    /// otherwise, it is a member function declaration.
-    bool TemplateScope;
 
     /// DefaultArgs - Contains the parameters of the function and
     /// their default arguments. At least one of the parameters will
@@ -1374,17 +1440,12 @@ private:
   /// parsed after the corresponding top-level class is complete.
   struct ParsingClass {
     ParsingClass(Decl *TagOrTemplate, bool TopLevelClass, bool IsInterface)
-      : TopLevelClass(TopLevelClass), TemplateScope(false),
-        IsInterface(IsInterface), TagOrTemplate(TagOrTemplate) { }
+        : TopLevelClass(TopLevelClass), IsInterface(IsInterface),
+          TagOrTemplate(TagOrTemplate) {}
 
     /// Whether this is a "top-level" class, meaning that it is
     /// not nested within another class.
     bool TopLevelClass : 1;
-
-    /// Whether this class had an associated template
-    /// scope. When true, TagOrTemplate is a template declaration;
-    /// otherwise, it is a tag declaration.
-    bool TemplateScope : 1;
 
     /// Whether this class is an __interface.
     bool IsInterface : 1;
@@ -1483,6 +1544,10 @@ private:
 
     SourceRange getSourceRange() const LLVM_READONLY;
   };
+
+  // In ParseCXXInlineMethods.cpp.
+  struct ReenterTemplateScopeRAII;
+  struct ReenterClassScopeRAII;
 
   void LexTemplateFunctionForLateParsing(CachedTokens &Toks);
   void ParseLateTemplatedFuncDef(LateParsedTemplate &LPT);
@@ -2071,8 +2136,9 @@ private:
   StmtResult ParseCompoundStatementBody(bool isStmtExpr = false);
   bool ParseParenExprOrCondition(StmtResult *InitStmt,
                                  Sema::ConditionResult &CondResult,
-                                 SourceLocation Loc,
-                                 Sema::ConditionKind CK);
+                                 SourceLocation Loc, Sema::ConditionKind CK,
+                                 SourceLocation *LParenLoc = nullptr,
+                                 SourceLocation *RParenLoc = nullptr);
   StmtResult ParseIfStatement(SourceLocation *TrailingElseLoc);
   StmtResult ParseSwitchStatement(SourceLocation *TrailingElseLoc);
   StmtResult ParseWhileStatement(SourceLocation *TrailingElseLoc);
@@ -2195,6 +2261,68 @@ private:
     case DeclSpecContext::DSC_trailing:
     case DeclSpecContext::DSC_alias_declaration:
       return true;
+    }
+    llvm_unreachable("Missing DeclSpecContext case");
+  }
+
+  /// Whether a defining-type-specifier is permitted in a given context.
+  enum class AllowDefiningTypeSpec {
+    /// The grammar doesn't allow a defining-type-specifier here, and we must
+    /// not parse one (eg, because a '{' could mean something else).
+    No,
+    /// The grammar doesn't allow a defining-type-specifier here, but we permit
+    /// one for error recovery purposes. Sema will reject.
+    NoButErrorRecovery,
+    /// The grammar allows a defining-type-specifier here, even though it's
+    /// always invalid. Sema will reject.
+    YesButInvalid,
+    /// The grammar allows a defining-type-specifier here, and one can be valid.
+    Yes
+  };
+
+  /// Is this a context in which we are parsing defining-type-specifiers (and
+  /// so permit class and enum definitions in addition to non-defining class and
+  /// enum elaborated-type-specifiers)?
+  static AllowDefiningTypeSpec
+  isDefiningTypeSpecifierContext(DeclSpecContext DSC) {
+    switch (DSC) {
+    case DeclSpecContext::DSC_normal:
+    case DeclSpecContext::DSC_class:
+    case DeclSpecContext::DSC_top_level:
+    case DeclSpecContext::DSC_alias_declaration:
+    case DeclSpecContext::DSC_objc_method_result:
+      return AllowDefiningTypeSpec::Yes;
+
+    case DeclSpecContext::DSC_condition:
+    case DeclSpecContext::DSC_template_param:
+      return AllowDefiningTypeSpec::YesButInvalid;
+
+    case DeclSpecContext::DSC_template_type_arg:
+    case DeclSpecContext::DSC_type_specifier:
+      return AllowDefiningTypeSpec::NoButErrorRecovery;
+
+    case DeclSpecContext::DSC_trailing:
+      return AllowDefiningTypeSpec::No;
+    }
+    llvm_unreachable("Missing DeclSpecContext case");
+  }
+
+  /// Is this a context in which an opaque-enum-declaration can appear?
+  static bool isOpaqueEnumDeclarationContext(DeclSpecContext DSC) {
+    switch (DSC) {
+    case DeclSpecContext::DSC_normal:
+    case DeclSpecContext::DSC_class:
+    case DeclSpecContext::DSC_top_level:
+      return true;
+
+    case DeclSpecContext::DSC_alias_declaration:
+    case DeclSpecContext::DSC_objc_method_result:
+    case DeclSpecContext::DSC_condition:
+    case DeclSpecContext::DSC_template_param:
+    case DeclSpecContext::DSC_template_type_arg:
+    case DeclSpecContext::DSC_type_specifier:
+    case DeclSpecContext::DSC_trailing:
+      return false;
     }
     llvm_unreachable("Missing DeclSpecContext case");
   }
@@ -2427,17 +2555,14 @@ private:
     True, False, Ambiguous, Error
   };
 
-  /// Based only on the given token kind, determine whether we know that
-  /// we're at the start of an expression or a type-specifier-seq (which may
-  /// be an expression, in C++).
+  /// Determine whether we could have an enum-base.
   ///
-  /// This routine does not attempt to resolve any of the trick cases, e.g.,
-  /// those involving lookup of identifiers.
+  /// \p AllowSemi If \c true, then allow a ';' after the enum-base; otherwise
+  /// only consider this to be an enum-base if the next token is a '{'.
   ///
-  /// \returns \c TPR_true if this token starts an expression, \c TPR_false if
-  /// this token starts a type-specifier-seq, or \c TPR_ambiguous if it cannot
-  /// tell.
-  TPResult isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind);
+  /// \return \c false if this cannot possibly be an enum base; \c true
+  /// otherwise.
+  bool isEnumBase(bool AllowSemi);
 
   /// isCXXDeclarationSpecifier - Returns TPResult::True if it is a
   /// declaration specifier, TPResult::False if it is not,
@@ -2622,13 +2747,15 @@ private:
       D.takeAttributes(attrs, endLoc);
     }
   }
-  void MaybeParseCXX11Attributes(ParsedAttributes &attrs,
+  bool MaybeParseCXX11Attributes(ParsedAttributes &attrs,
                                  SourceLocation *endLoc = nullptr) {
     if (standardAttributesAllowed() && isCXX11AttributeSpecifier()) {
       ParsedAttributesWithRange attrsWithRange(AttrFactory);
       ParseCXX11Attributes(attrsWithRange, endLoc);
       attrs.takeAllFrom(attrsWithRange);
+      return true;
     }
+    return false;
   }
   void MaybeParseCXX11Attributes(ParsedAttributesWithRange &attrs,
                                  SourceLocation *endLoc = nullptr,
@@ -2987,6 +3114,7 @@ public:
                                     bool ObjectHadErrors,
                                     SourceLocation TemplateKWLoc,
                                     IdentifierInfo *Name,
+                                    bool NameSpliced,
                                     SourceLocation NameLoc,
                                     bool EnteringContext,
                                     UnqualifiedId &Id,
@@ -3011,9 +3139,14 @@ public:
   ExprResult ParseCXXReflectDumpReflectionExpression();
   ExprResult ParseCXXCompilerErrorExpression();
 
-  bool ParseCXXReflectedId(CXXScopeSpec &SS, SourceLocation TemplateKWLoc,
-                           UnqualifiedId &Result);
+  bool ParseCXXIdentifierSplice(
+      IdentifierInfo *&Id,
+      SourceLocation &IdBeginLoc);
+  bool ParseCXXIdentifierSplice(
+      IdentifierInfo *&Id,
+      SourceLocation &IdBeginLoc, SourceLocation &IdEndLoc);
   ExprResult ParseCXXIdExprExpression();
+  ExprResult ParseCXXMemberIdExprExpression(Expr *Base);
   ExprResult ParseCXXValueOfExpression();
   TypeResult ParseReflectedTypeSpecifier(SourceLocation TypenameLoc,
                                          SourceLocation &EndLoc);
@@ -3263,6 +3396,9 @@ public:
     MapTypeModifiers;
     SmallVector<SourceLocation, NumberOfOMPMapClauseModifiers>
     MapTypeModifiersLoc;
+    SmallVector<OpenMPMotionModifierKind, NumberOfOMPMotionModifiers>
+        MotionModifiers;
+    SmallVector<SourceLocation, NumberOfOMPMotionModifiers> MotionModifiersLoc;
     bool IsMapTypeImplicit = false;
     SourceLocation ExtraModifierLoc;
   };
@@ -3271,11 +3407,19 @@ public:
   bool ParseOpenMPVarList(OpenMPDirectiveKind DKind, OpenMPClauseKind Kind,
                           SmallVectorImpl<Expr *> &Vars,
                           OpenMPVarListDataTy &Data);
-  bool ParseUnqualifiedId(CXXScopeSpec &SS, ParsedType ObjectType,
-                          bool ObjectHadErrors, bool EnteringContext,
-                          bool AllowDestructorName, bool AllowConstructorName,
-                          bool AllowDeductionGuide,
-                          SourceLocation *TemplateKWLoc, UnqualifiedId &Result);
+private:
+  bool ParseUnqualifiedId(
+      CXXScopeSpec &SS, ParsedType ObjectType, bool ObjectHadErrors,
+      bool EnteringContext, bool AllowDestructorName, bool AllowConstructorName,
+      bool AllowDeductionGuide, bool TemplateSpecified,
+      SourceLocation *TemplateKWLoc, IdentifierInfo *Id,
+      bool IdSpliced, SourceLocation IdLoc, UnqualifiedId &Result);
+public:
+  bool ParseUnqualifiedId(
+      CXXScopeSpec &SS, ParsedType ObjectType, bool ObjectHadErrors,
+      bool EnteringContext, bool AllowDestructorName, bool AllowConstructorName,
+      bool AllowDeductionGuide, SourceLocation *TemplateKWLoc,
+      UnqualifiedId &Result);
 
   /// Parses the mapper modifier in map, to, and from clauses.
   bool parseMapperModifier(OpenMPVarListDataTy &Data);
@@ -3301,7 +3445,7 @@ private:
       DeclaratorContext Context, const ParsedTemplateInfo &TemplateInfo,
       ParsingDeclRAIIObject &DiagsFromParams, SourceLocation &DeclEnd,
       ParsedAttributes &AccessAttrs, AccessSpecifier AS = AS_none);
-  bool ParseTemplateParameters(unsigned Depth,
+  bool ParseTemplateParameters(MultiParseScope &TemplateScopes, unsigned Depth,
                                SmallVectorImpl<NamedDecl *> &TemplateParams,
                                SourceLocation &LAngleLoc,
                                SourceLocation &RAngleLoc);
@@ -3336,6 +3480,7 @@ private:
                                CXXScopeSpec &SS,
                                SourceLocation TemplateKWLoc,
                                UnqualifiedId &TemplateName,
+                               bool TemplateNameSpliced,
                                bool AllowTypeAnnotation = true,
                                bool TypeConstraint = false);
   void AnnotateTemplateIdTokenAsType(CXXScopeSpec &SS,

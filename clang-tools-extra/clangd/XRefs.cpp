@@ -27,8 +27,12 @@
 #include "clang/AST/Attrs.inc"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/AST/Stmt.h"
+#include "clang/AST/StmtCXX.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/LLVM.h"
@@ -45,6 +49,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -206,8 +211,8 @@ llvm::Optional<LocatedSymbol>
 locateMacroReferent(const syntax::Token &TouchedIdentifier, ParsedAST &AST,
                     llvm::StringRef MainFilePath) {
   if (auto M = locateMacroAt(TouchedIdentifier, AST.getPreprocessor())) {
-    if (auto Loc = makeLocation(AST.getASTContext(),
-                                M->Info->getDefinitionLoc(), MainFilePath)) {
+    if (auto Loc =
+            makeLocation(AST.getASTContext(), M->NameLoc, MainFilePath)) {
       LocatedSymbol Macro;
       Macro.Name = std::string(M->Name);
       Macro.PreferredDeclaration = *Loc;
@@ -233,6 +238,10 @@ locateASTReferent(SourceLocation CurLoc, const syntax::Token *TouchedIdentifier,
   llvm::DenseMap<SymbolID, size_t> ResultIndex;
 
   auto AddResultDecl = [&](const NamedDecl *D) {
+    // FIXME: Canonical declarations of some symbols might refer to built-in
+    // decls with possibly-invalid source locations (e.g. global new operator).
+    // In such cases we should pick up a redecl with valid source location
+    // instead of failing.
     D = llvm::cast<NamedDecl>(D->getCanonicalDecl());
     auto Loc =
         makeLocation(AST.getASTContext(), nameLocation(*D, SM), MainFilePath);
@@ -279,6 +288,18 @@ locateASTReferent(SourceLocation CurLoc, const syntax::Token *TouchedIdentifier,
         AddResultDecl(CTSD->getSpecializedTemplate());
         continue;
       }
+    }
+
+    // Give the underlying decl if navigation is triggered on a non-renaming
+    // alias.
+    if (llvm::isa<UsingDecl>(D)) {
+      // FIXME: address more complicated cases. TargetDecl(... Underlying) gives
+      // all overload candidates, we only want the targeted one if the cursor is
+      // on an using-alias usage, workround it with getDeclAtPosition.
+      llvm::for_each(
+          getDeclAtPosition(AST, CurLoc, DeclRelation::Underlying, NodeKind),
+          [&](const NamedDecl *UD) { AddResultDecl(UD); });
+      continue;
     }
 
     // Otherwise the target declaration is the right one.
@@ -358,8 +379,8 @@ locateSymbolTextually(const SpelledWord &Word, ParsedAST &AST,
   if ((Word.ExpandedToken && !isDependentName(NodeKind)) ||
       !Word.LikelyIdentifier || !Index)
     return {};
-  // We don't want to handle words in string literals. It'd be nice to whitelist
-  // comments instead, but they're not retained in TokenBuffer.
+  // We don't want to handle words in string literals. It'd be nice to include
+  // comments, but they're not retained in TokenBuffer.
   if (Word.PartOfSpelledToken &&
       isStringLiteral(Word.PartOfSpelledToken->kind()))
     return {};
@@ -400,15 +421,17 @@ locateSymbolTextually(const SpelledWord &Word, ParsedAST &AST,
       log("locateSymbolNamedTextuallyAt: {0}", MaybeDeclLoc.takeError());
       return;
     }
-    Location DeclLoc = *MaybeDeclLoc;
-    Location DefLoc;
+    LocatedSymbol Located;
+    Located.PreferredDeclaration = *MaybeDeclLoc;
+    Located.Name = (Sym.Name + Sym.TemplateSpecializationArgs).str();
     if (Sym.Definition) {
       auto MaybeDefLoc = indexToLSPLocation(Sym.Definition, MainFilePath);
       if (!MaybeDefLoc) {
         log("locateSymbolNamedTextuallyAt: {0}", MaybeDefLoc.takeError());
         return;
       }
-      DefLoc = *MaybeDefLoc;
+      Located.PreferredDeclaration = *MaybeDefLoc;
+      Located.Definition = *MaybeDefLoc;
     }
 
     if (ScoredResults.size() >= 3) {
@@ -418,11 +441,6 @@ locateSymbolTextually(const SpelledWord &Word, ParsedAST &AST,
       TooMany = true;
       return;
     }
-
-    LocatedSymbol Located;
-    Located.Name = (Sym.Name + Sym.TemplateSpecializationArgs).str();
-    Located.PreferredDeclaration = bool(Sym.Definition) ? DefLoc : DeclLoc;
-    Located.Definition = DefLoc;
 
     SymbolQualitySignals Quality;
     Quality.merge(Sym);
@@ -438,8 +456,11 @@ locateSymbolTextually(const SpelledWord &Word, ParsedAST &AST,
     ScoredResults.push_back({Score, std::move(Located)});
   });
 
-  if (TooMany)
+  if (TooMany) {
+    vlog("Heuristic index lookup for {0} returned too many candidates, ignored",
+         Word.Text);
     return {};
+  }
 
   llvm::sort(ScoredResults,
              [](const ScoredLocatedSymbol &A, const ScoredLocatedSymbol &B) {
@@ -448,6 +469,10 @@ locateSymbolTextually(const SpelledWord &Word, ParsedAST &AST,
   std::vector<LocatedSymbol> Results;
   for (auto &Res : std::move(ScoredResults))
     Results.push_back(std::move(Res.second));
+  if (Results.empty())
+    vlog("No heuristic index definition for {0}", Word.Text);
+  else
+    log("Found definition heuristically in index for {0}", Word.Text);
   return Results;
 }
 
@@ -457,8 +482,8 @@ const syntax::Token *findNearbyIdentifier(const SpelledWord &Word,
   // Unlikely identifiers are OK if they were used as identifiers nearby.
   if (Word.ExpandedToken)
     return nullptr;
-  // We don't want to handle words in string literals. It'd be nice to whitelist
-  // comments instead, but they're not retained in TokenBuffer.
+  // We don't want to handle words in string literals. It'd be nice to include
+  // comments, but they're not retained in TokenBuffer.
   if (Word.PartOfSpelledToken &&
       isStringLiteral(Word.PartOfSpelledToken->kind()))
     return {};
@@ -506,7 +531,7 @@ const syntax::Token *findNearbyIdentifier(const SpelledWord &Word,
   // Find where the word occurred in the token stream, to search forward & back.
   auto *I = llvm::partition_point(SpelledTokens, [&](const syntax::Token &T) {
     assert(SM.getFileID(T.location()) == SM.getFileID(Word.Location));
-    return T.location() >= Word.Location; // Comparison OK: same file.
+    return T.location() < Word.Location; // Comparison OK: same file.
   });
   // Search for matches after the cursor.
   for (const syntax::Token &Tok : llvm::makeArrayRef(I, SpelledTokens.end()))
@@ -570,13 +595,22 @@ std::vector<LocatedSymbol> locateSymbolAt(ParsedAST &AST, Position Pos,
     // Is the same word nearby a real identifier that might refer to something?
     if (const syntax::Token *NearbyIdent =
             findNearbyIdentifier(*Word, AST.getTokens())) {
-      if (auto Macro = locateMacroReferent(*NearbyIdent, AST, *MainFilePath))
+      if (auto Macro = locateMacroReferent(*NearbyIdent, AST, *MainFilePath)) {
+        log("Found macro definition heuristically using nearby identifier {0}",
+            Word->Text);
         return {*std::move(Macro)};
+      }
       ASTResults =
           locateASTReferent(NearbyIdent->location(), NearbyIdent, AST,
                             *MainFilePath, Index, /*NodeKind=*/nullptr);
-      if (!ASTResults.empty())
+      if (!ASTResults.empty()) {
+        log("Found definition heuristically using nearby identifier {0}",
+            NearbyIdent->text(SM));
         return ASTResults;
+      } else {
+        vlog("No definition found using nearby identifier {0} at {1}",
+             Word->Text, Word->Location.printToString(SM));
+      }
     }
     // No nearby word, or it didn't refer to anything either. Try the index.
     auto TextualResults =
@@ -696,35 +730,303 @@ findRefs(const std::vector<const NamedDecl *> &Decls, ParsedAST &AST) {
   return std::move(RefFinder).take();
 }
 
+const Stmt *getFunctionBody(DynTypedNode N) {
+  if (const auto *FD = N.get<FunctionDecl>())
+    return FD->getBody();
+  if (const auto *FD = N.get<BlockDecl>())
+    return FD->getBody();
+  if (const auto *FD = N.get<LambdaExpr>())
+    return FD->getBody();
+  if (const auto *FD = N.get<ObjCMethodDecl>())
+    return FD->getBody();
+  return nullptr;
+}
+
+const Stmt *getLoopBody(DynTypedNode N) {
+  if (const auto *LS = N.get<ForStmt>())
+    return LS->getBody();
+  if (const auto *LS = N.get<CXXForRangeStmt>())
+    return LS->getBody();
+  if (const auto *LS = N.get<WhileStmt>())
+    return LS->getBody();
+  if (const auto *LS = N.get<DoStmt>())
+    return LS->getBody();
+  return nullptr;
+}
+
+// AST traversal to highlight control flow statements under some root.
+// Once we hit further control flow we prune the tree (or at least restrict
+// what we highlight) so we capture e.g. breaks from the outer loop only.
+class FindControlFlow : public RecursiveASTVisitor<FindControlFlow> {
+  // Types of control-flow statements we might highlight.
+  enum Target {
+    Break = 1,
+    Continue = 2,
+    Return = 4,
+    Case = 8,
+    Throw = 16,
+    Goto = 32,
+    All = Break | Continue | Return | Case | Throw | Goto,
+  };
+  int Ignore = 0;     // bitmask of Target - what are we *not* highlighting?
+  SourceRange Bounds; // Half-open, restricts reported targets.
+  std::vector<SourceLocation> &Result;
+  const SourceManager &SM;
+
+  // Masks out targets for a traversal into D.
+  // Traverses the subtree using Delegate() if any targets remain.
+  template <typename Func>
+  bool filterAndTraverse(DynTypedNode D, const Func &Delegate) {
+    auto RestoreIgnore = llvm::make_scope_exit(
+        [OldIgnore(Ignore), this] { Ignore = OldIgnore; });
+    if (getFunctionBody(D))
+      Ignore = All;
+    else if (getLoopBody(D))
+      Ignore |= Continue | Break;
+    else if (D.get<SwitchStmt>())
+      Ignore |= Break | Case;
+    // Prune tree if we're not looking for anything.
+    return (Ignore == All) ? true : Delegate();
+  }
+
+  void found(Target T, SourceLocation Loc) {
+    if (T & Ignore)
+      return;
+    if (SM.isBeforeInTranslationUnit(Loc, Bounds.getBegin()) ||
+        SM.isBeforeInTranslationUnit(Bounds.getEnd(), Loc))
+      return;
+    Result.push_back(Loc);
+  }
+
+public:
+  FindControlFlow(SourceRange Bounds, std::vector<SourceLocation> &Result,
+                  const SourceManager &SM)
+      : Bounds(Bounds), Result(Result), SM(SM) {}
+
+  // When traversing function or loops, limit targets to those that still
+  // refer to the original root.
+  bool TraverseDecl(Decl *D) {
+    return !D || filterAndTraverse(DynTypedNode::create(*D), [&] {
+      return RecursiveASTVisitor::TraverseDecl(D);
+    });
+  }
+  bool TraverseStmt(Stmt *S) {
+    return !S || filterAndTraverse(DynTypedNode::create(*S), [&] {
+      return RecursiveASTVisitor::TraverseStmt(S);
+    });
+  }
+
+  // Add leaves that we found and want.
+  bool VisitReturnStmt(ReturnStmt *R) {
+    found(Return, R->getReturnLoc());
+    return true;
+  }
+  bool VisitBreakStmt(BreakStmt *B) {
+    found(Break, B->getBreakLoc());
+    return true;
+  }
+  bool VisitContinueStmt(ContinueStmt *C) {
+    found(Continue, C->getContinueLoc());
+    return true;
+  }
+  bool VisitSwitchCase(SwitchCase *C) {
+    found(Case, C->getKeywordLoc());
+    return true;
+  }
+  bool VisitCXXThrowExpr(CXXThrowExpr *T) {
+    found(Throw, T->getThrowLoc());
+    return true;
+  }
+  bool VisitGotoStmt(GotoStmt *G) {
+    // Goto is interesting if its target is outside the root.
+    if (const auto *LD = G->getLabel()) {
+      if (SM.isBeforeInTranslationUnit(LD->getLocation(), Bounds.getBegin()) ||
+          SM.isBeforeInTranslationUnit(Bounds.getEnd(), LD->getLocation()))
+        found(Goto, G->getGotoLoc());
+    }
+    return true;
+  }
+};
+
+// Given a location within a switch statement, return the half-open range that
+// covers the case it's contained in.
+// We treat `case X: case Y: ...` as one case, and assume no other fallthrough.
+SourceRange findCaseBounds(const SwitchStmt &Switch, SourceLocation Loc,
+                           const SourceManager &SM) {
+  // Cases are not stored in order, sort them first.
+  // (In fact they seem to be stored in reverse order, don't rely on this)
+  std::vector<const SwitchCase *> Cases;
+  for (const SwitchCase *Case = Switch.getSwitchCaseList(); Case;
+       Case = Case->getNextSwitchCase())
+    Cases.push_back(Case);
+  llvm::sort(Cases, [&](const SwitchCase *L, const SwitchCase *R) {
+    return SM.isBeforeInTranslationUnit(L->getKeywordLoc(), R->getKeywordLoc());
+  });
+
+  // Find the first case after the target location, the end of our range.
+  auto CaseAfter = llvm::partition_point(Cases, [&](const SwitchCase *C) {
+    return !SM.isBeforeInTranslationUnit(Loc, C->getKeywordLoc());
+  });
+  SourceLocation End = CaseAfter == Cases.end() ? Switch.getEndLoc()
+                                                : (*CaseAfter)->getKeywordLoc();
+
+  // Our target can be before the first case - cases are optional!
+  if (CaseAfter == Cases.begin())
+    return SourceRange(Switch.getBeginLoc(), End);
+  // The start of our range is usually the previous case, but...
+  auto CaseBefore = std::prev(CaseAfter);
+  // ... rewind CaseBefore to the first in a `case A: case B: ...` sequence.
+  while (CaseBefore != Cases.begin() &&
+         (*std::prev(CaseBefore))->getSubStmt() == *CaseBefore)
+    --CaseBefore;
+  return SourceRange((*CaseBefore)->getKeywordLoc(), End);
+}
+
+// Returns the locations of control flow statements related to N. e.g.:
+//   for    => branches: break/continue/return/throw
+//   break  => controlling loop (forwhile/do), and its related control flow
+//   return => all returns/throws from the same function
+// When an inner block is selected, we include branches bound to outer blocks
+// as these are exits from the inner block. e.g. return in a for loop.
+// FIXME: We don't analyze catch blocks, throw is treated the same as return.
+std::vector<SourceLocation> relatedControlFlow(const SelectionTree::Node &N) {
+  const SourceManager &SM =
+      N.getDeclContext().getParentASTContext().getSourceManager();
+  std::vector<SourceLocation> Result;
+
+  // First, check if we're at a node that can resolve to a root.
+  enum class Cur { None, Break, Continue, Return, Case, Throw } Cursor;
+  if (N.ASTNode.get<BreakStmt>()) {
+    Cursor = Cur::Break;
+  } else if (N.ASTNode.get<ContinueStmt>()) {
+    Cursor = Cur::Continue;
+  } else if (N.ASTNode.get<ReturnStmt>()) {
+    Cursor = Cur::Return;
+  } else if (N.ASTNode.get<CXXThrowExpr>()) {
+    Cursor = Cur::Throw;
+  } else if (N.ASTNode.get<SwitchCase>()) {
+    Cursor = Cur::Case;
+  } else if (const GotoStmt *GS = N.ASTNode.get<GotoStmt>()) {
+    // We don't know what root to associate with, but highlight the goto/label.
+    Result.push_back(GS->getGotoLoc());
+    if (const auto *LD = GS->getLabel())
+      Result.push_back(LD->getLocation());
+    Cursor = Cur::None;
+  } else {
+    Cursor = Cur::None;
+  }
+
+  const Stmt *Root = nullptr; // Loop or function body to traverse.
+  SourceRange Bounds;
+  // Look up the tree for a root (or just at this node if we didn't find a leaf)
+  for (const auto *P = &N; P; P = P->Parent) {
+    // return associates with enclosing function
+    if (const Stmt *FunctionBody = getFunctionBody(P->ASTNode)) {
+      if (Cursor == Cur::Return || Cursor == Cur::Throw) {
+        Root = FunctionBody;
+      }
+      break; // other leaves don't cross functions.
+    }
+    // break/continue associate with enclosing loop.
+    if (const Stmt *LoopBody = getLoopBody(P->ASTNode)) {
+      if (Cursor == Cur::None || Cursor == Cur::Break ||
+          Cursor == Cur::Continue) {
+        Root = LoopBody;
+        // Highlight the loop keyword itself.
+        // FIXME: for do-while, this only covers the `do`..
+        Result.push_back(P->ASTNode.getSourceRange().getBegin());
+        break;
+      }
+    }
+    // For switches, users think of case statements as control flow blocks.
+    // We highlight only occurrences surrounded by the same case.
+    // We don't detect fallthrough (other than 'case X, case Y').
+    if (const auto *SS = P->ASTNode.get<SwitchStmt>()) {
+      if (Cursor == Cur::Break || Cursor == Cur::Case) {
+        Result.push_back(SS->getSwitchLoc()); // Highlight the switch.
+        Root = SS->getBody();
+        // Limit to enclosing case, if there is one.
+        Bounds = findCaseBounds(*SS, N.ASTNode.getSourceRange().getBegin(), SM);
+        break;
+      }
+    }
+    // If we didn't start at some interesting node, we're done.
+    if (Cursor == Cur::None)
+      break;
+  }
+  if (Root) {
+    if (!Bounds.isValid())
+      Bounds = Root->getSourceRange();
+    FindControlFlow(Bounds, Result, SM).TraverseStmt(const_cast<Stmt *>(Root));
+  }
+  return Result;
+}
+
+DocumentHighlight toHighlight(const ReferenceFinder::Reference &Ref,
+                              const SourceManager &SM) {
+  DocumentHighlight DH;
+  DH.range = Ref.range(SM);
+  if (Ref.Role & index::SymbolRoleSet(index::SymbolRole::Write))
+    DH.kind = DocumentHighlightKind::Write;
+  else if (Ref.Role & index::SymbolRoleSet(index::SymbolRole::Read))
+    DH.kind = DocumentHighlightKind::Read;
+  else
+    DH.kind = DocumentHighlightKind::Text;
+  return DH;
+}
+
+llvm::Optional<DocumentHighlight> toHighlight(SourceLocation Loc,
+                                              const syntax::TokenBuffer &TB) {
+  Loc = TB.sourceManager().getFileLoc(Loc);
+  if (const auto *Tok = TB.spelledTokenAt(Loc)) {
+    DocumentHighlight Result;
+    Result.range = halfOpenToRange(
+        TB.sourceManager(),
+        CharSourceRange::getCharRange(Tok->location(), Tok->endLocation()));
+    return Result;
+  }
+  return llvm::None;
+}
+
 } // namespace
 
 std::vector<DocumentHighlight> findDocumentHighlights(ParsedAST &AST,
                                                       Position Pos) {
   const SourceManager &SM = AST.getSourceManager();
   // FIXME: show references to macro within file?
-  DeclRelationSet Relations =
-      DeclRelation::TemplatePattern | DeclRelation::Alias;
   auto CurLoc = sourceLocationInMainFile(SM, Pos);
   if (!CurLoc) {
     llvm::consumeError(CurLoc.takeError());
     return {};
   }
-  auto References = findRefs(getDeclAtPosition(AST, *CurLoc, Relations), AST);
-
-  // FIXME: we may get multiple DocumentHighlights with the same location and
-  // different kinds, deduplicate them.
   std::vector<DocumentHighlight> Result;
-  for (const auto &Ref : References) {
-    DocumentHighlight DH;
-    DH.range = Ref.range(SM);
-    if (Ref.Role & index::SymbolRoleSet(index::SymbolRole::Write))
-      DH.kind = DocumentHighlightKind::Write;
-    else if (Ref.Role & index::SymbolRoleSet(index::SymbolRole::Read))
-      DH.kind = DocumentHighlightKind::Read;
-    else
-      DH.kind = DocumentHighlightKind::Text;
-    Result.push_back(std::move(DH));
-  }
+  auto TryTree = [&](SelectionTree ST) {
+    if (const SelectionTree::Node *N = ST.commonAncestor()) {
+      DeclRelationSet Relations =
+          DeclRelation::TemplatePattern | DeclRelation::Alias;
+      auto Decls = targetDecl(N->ASTNode, Relations);
+      if (!Decls.empty()) {
+        // FIXME: we may get multiple DocumentHighlights with the same location
+        // and different kinds, deduplicate them.
+        for (const auto &Ref : findRefs({Decls.begin(), Decls.end()}, AST))
+          Result.push_back(toHighlight(Ref, SM));
+        return true;
+      }
+      auto ControlFlow = relatedControlFlow(*N);
+      if (!ControlFlow.empty()) {
+        for (SourceLocation Loc : ControlFlow)
+          if (auto Highlight = toHighlight(Loc, AST.getTokens()))
+            Result.push_back(std::move(*Highlight));
+        return true;
+      }
+    }
+    return false;
+  };
+
+  unsigned Offset =
+      AST.getSourceManager().getDecomposedSpellingLoc(*CurLoc).second;
+  SelectionTree::createEach(AST.getASTContext(), AST.getTokens(), Offset,
+                            Offset, TryTree);
   return Result;
 }
 
@@ -760,7 +1062,7 @@ ReferencesResult findReferences(ParsedAST &AST, Position Pos, uint32_t Limit,
       const auto &IDToRefs = AST.getMacros().MacroRefs;
       auto Refs = IDToRefs.find(*MacroSID);
       if (Refs != IDToRefs.end()) {
-        for (const auto Ref : Refs->second) {
+        for (const auto &Ref : Refs->second) {
           Location Result;
           Result.range = Ref;
           Result.uri = URIMainFile;
@@ -894,23 +1196,24 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const LocatedSymbol &S) {
 
 // FIXME(nridge): Reduce duplication between this function and declToSym().
 static llvm::Optional<TypeHierarchyItem>
-declToTypeHierarchyItem(ASTContext &Ctx, const NamedDecl &ND,
-                        const syntax::TokenBuffer &TB) {
+declToTypeHierarchyItem(ASTContext &Ctx, const NamedDecl &ND) {
   auto &SM = Ctx.getSourceManager();
   SourceLocation NameLoc = nameLocation(ND, Ctx.getSourceManager());
+  SourceLocation BeginLoc = SM.getSpellingLoc(SM.getFileLoc(ND.getBeginLoc()));
+  SourceLocation EndLoc = SM.getSpellingLoc(SM.getFileLoc(ND.getEndLoc()));
+  const auto DeclRange =
+      toHalfOpenFileRange(SM, Ctx.getLangOpts(), {BeginLoc, EndLoc});
+  if (!DeclRange)
+    return llvm::None;
   auto FilePath =
       getCanonicalPath(SM.getFileEntryForID(SM.getFileID(NameLoc)), SM);
   auto TUPath = getCanonicalPath(SM.getFileEntryForID(SM.getMainFileID()), SM);
   if (!FilePath || !TUPath)
     return llvm::None; // Not useful without a uri.
 
-  auto DeclToks = TB.spelledForExpanded(TB.expandedTokens(ND.getSourceRange()));
-  if (!DeclToks || DeclToks->empty())
-    return llvm::None;
-
-  auto NameToks = TB.spelledForExpanded(TB.expandedTokens(NameLoc));
-  if (!NameToks || NameToks->empty())
-    return llvm::None;
+  Position NameBegin = sourceLocToPosition(SM, NameLoc);
+  Position NameEnd = sourceLocToPosition(
+      SM, Lexer::getLocForEndOfToken(NameLoc, 0, SM, Ctx.getLangOpts()));
 
   index::SymbolInfo SymInfo = index::getSymbolInfo(&ND);
   // FIXME: this is not classifying constructors, destructors and operators
@@ -921,12 +1224,9 @@ declToTypeHierarchyItem(ASTContext &Ctx, const NamedDecl &ND,
   THI.name = printName(Ctx, ND);
   THI.kind = SK;
   THI.deprecated = ND.isDeprecated();
-  THI.range = halfOpenToRange(
-      SM, syntax::Token::range(SM, DeclToks->front(), DeclToks->back())
-              .toCharRange(SM));
-  THI.selectionRange = halfOpenToRange(
-      SM, syntax::Token::range(SM, NameToks->front(), NameToks->back())
-              .toCharRange(SM));
+  THI.range = Range{sourceLocToPosition(SM, DeclRange->getBegin()),
+                    sourceLocToPosition(SM, DeclRange->getEnd())};
+  THI.selectionRange = Range{NameBegin, NameEnd};
   if (!THI.range.contains(THI.selectionRange)) {
     // 'selectionRange' must be contained in 'range', so in cases where clang
     // reports unrelated ranges we need to reconcile somehow.
@@ -934,6 +1234,14 @@ declToTypeHierarchyItem(ASTContext &Ctx, const NamedDecl &ND,
   }
 
   THI.uri = URIForFile::canonicalize(*FilePath, *TUPath);
+
+  // Compute the SymbolID and store it in the 'data' field.
+  // This allows typeHierarchy/resolve to be used to
+  // resolve children of items returned in a previous request
+  // for parents.
+  if (auto ID = getSymbolID(&ND)) {
+    THI.data = ID->str();
+  }
 
   return THI;
 }
@@ -985,8 +1293,7 @@ using RecursionProtectionSet = llvm::SmallSet<const CXXRecordDecl *, 4>;
 
 static void fillSuperTypes(const CXXRecordDecl &CXXRD, ASTContext &ASTCtx,
                            std::vector<TypeHierarchyItem> &SuperTypes,
-                           RecursionProtectionSet &RPSet,
-                           const syntax::TokenBuffer &TB) {
+                           RecursionProtectionSet &RPSet) {
   // typeParents() will replace dependent template specializations
   // with their class template, so to avoid infinite recursion for
   // certain types of hierarchies, keep the templates encountered
@@ -1001,9 +1308,9 @@ static void fillSuperTypes(const CXXRecordDecl &CXXRD, ASTContext &ASTCtx,
 
   for (const CXXRecordDecl *ParentDecl : typeParents(&CXXRD)) {
     if (Optional<TypeHierarchyItem> ParentSym =
-            declToTypeHierarchyItem(ASTCtx, *ParentDecl, TB)) {
+            declToTypeHierarchyItem(ASTCtx, *ParentDecl)) {
       ParentSym->parents.emplace();
-      fillSuperTypes(*ParentDecl, ASTCtx, *ParentSym->parents, RPSet, TB);
+      fillSuperTypes(*ParentDecl, ASTCtx, *ParentSym->parents, RPSet);
       SuperTypes.emplace_back(std::move(*ParentSym));
     }
   }
@@ -1107,7 +1414,7 @@ getTypeHierarchy(ParsedAST &AST, Position Pos, int ResolveLevels,
     return llvm::None;
 
   Optional<TypeHierarchyItem> Result =
-      declToTypeHierarchyItem(AST.getASTContext(), *CXXRD, AST.getTokens());
+      declToTypeHierarchyItem(AST.getASTContext(), *CXXRD);
   if (!Result)
     return Result;
 
@@ -1116,8 +1423,7 @@ getTypeHierarchy(ParsedAST &AST, Position Pos, int ResolveLevels,
     Result->parents.emplace();
 
     RecursionProtectionSet RPSet;
-    fillSuperTypes(*CXXRD, AST.getASTContext(), *Result->parents, RPSet,
-                   AST.getTokens());
+    fillSuperTypes(*CXXRD, AST.getASTContext(), *Result->parents, RPSet);
   }
 
   if ((Direction == TypeHierarchyDirection::Children ||

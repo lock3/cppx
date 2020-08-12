@@ -33,9 +33,7 @@ public:
       //   - Operation pointer
       addDataToHash(hasher, op);
       //   - Attributes
-      addDataToHash(
-          hasher,
-          op->getMutableAttrDict().getDictionary().getAsOpaquePointer());
+      addDataToHash(hasher, op->getMutableAttrDict());
       //   - Blocks in Regions
       for (Region &region : op->getRegions()) {
         for (Block &block : region) {
@@ -99,7 +97,7 @@ private:
 
 /// Returns true if the given pass is hidden from IR printing.
 static bool isHiddenPass(Pass *pass) {
-  return isa<OpToOpPassAdaptor>(pass) || isa<VerifierPass>(pass);
+  return isa<OpToOpPassAdaptor, VerifierPass>(pass);
 }
 
 static void printIR(Operation *op, bool printModuleScope, raw_ostream &out,
@@ -143,7 +141,8 @@ void IRPrinterInstrumentation::runBeforePass(Pass *pass, Operation *op) {
 
   config->printBeforeIfEnabled(pass, op, [&](raw_ostream &out) {
     out << formatv("// *** IR Dump Before {0} ***", pass->getName());
-    printIR(op, config->shouldPrintAtModuleScope(), out, OpPrintingFlags());
+    printIR(op, config->shouldPrintAtModuleScope(), out,
+            config->getOpPrintingFlags());
     out << "\n\n";
   });
 }
@@ -167,7 +166,8 @@ void IRPrinterInstrumentation::runAfterPass(Pass *pass, Operation *op) {
 
   config->printAfterIfEnabled(pass, op, [&](raw_ostream &out) {
     out << formatv("// *** IR Dump After {0} ***", pass->getName());
-    printIR(op, config->shouldPrintAtModuleScope(), out, OpPrintingFlags());
+    printIR(op, config->shouldPrintAtModuleScope(), out,
+            config->getOpPrintingFlags());
     out << "\n\n";
   });
 }
@@ -192,9 +192,11 @@ void IRPrinterInstrumentation::runAfterPassFailed(Pass *pass, Operation *op) {
 
 /// Initialize the configuration.
 PassManager::IRPrinterConfig::IRPrinterConfig(bool printModuleScope,
-                                              bool printAfterOnlyOnChange)
+                                              bool printAfterOnlyOnChange,
+                                              OpPrintingFlags opPrintingFlags)
     : printModuleScope(printModuleScope),
-      printAfterOnlyOnChange(printAfterOnlyOnChange) {}
+      printAfterOnlyOnChange(printAfterOnlyOnChange),
+      opPrintingFlags(opPrintingFlags) {}
 PassManager::IRPrinterConfig::~IRPrinterConfig() {}
 
 /// A hook that may be overridden by a derived config that checks if the IR
@@ -225,8 +227,10 @@ struct BasicIRPrinterConfig : public PassManager::IRPrinterConfig {
   BasicIRPrinterConfig(
       std::function<bool(Pass *, Operation *)> shouldPrintBeforePass,
       std::function<bool(Pass *, Operation *)> shouldPrintAfterPass,
-      bool printModuleScope, bool printAfterOnlyOnChange, raw_ostream &out)
-      : IRPrinterConfig(printModuleScope, printAfterOnlyOnChange),
+      bool printModuleScope, bool printAfterOnlyOnChange,
+      OpPrintingFlags opPrintingFlags, raw_ostream &out)
+      : IRPrinterConfig(printModuleScope, printAfterOnlyOnChange,
+                        opPrintingFlags),
         shouldPrintBeforePass(shouldPrintBeforePass),
         shouldPrintAfterPass(shouldPrintAfterPass), out(out) {
     assert((shouldPrintBeforePass || shouldPrintAfterPass) &&
@@ -269,8 +273,9 @@ void PassManager::enableIRPrinting(std::unique_ptr<IRPrinterConfig> config) {
 void PassManager::enableIRPrinting(
     std::function<bool(Pass *, Operation *)> shouldPrintBeforePass,
     std::function<bool(Pass *, Operation *)> shouldPrintAfterPass,
-    bool printModuleScope, bool printAfterOnlyOnChange, raw_ostream &out) {
+    bool printModuleScope, bool printAfterOnlyOnChange, raw_ostream &out,
+    OpPrintingFlags opPrintingFlags) {
   enableIRPrinting(std::make_unique<BasicIRPrinterConfig>(
       std::move(shouldPrintBeforePass), std::move(shouldPrintAfterPass),
-      printModuleScope, printAfterOnlyOnChange, out));
+      printModuleScope, printAfterOnlyOnChange, opPrintingFlags, out));
 }

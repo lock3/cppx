@@ -76,6 +76,9 @@ enum reflection_query {
   query_is_externally_linked,
   query_is_internally_linked,
 
+  // Initializers
+  query_has_initializer,
+
   // General purpose
   query_is_extern_specified,
   query_is_inline,
@@ -235,9 +238,9 @@ enum reflection_query {
   query_remove_reference,
   query_add_lvalue_reference,
   query_add_rvalue_reference,
+  query_remove_extent,
   query_remove_pointer,
   query_add_pointer,
-  query_decay,
   query_make_signed,
   query_make_unsigned,
 

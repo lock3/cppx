@@ -99,9 +99,9 @@ public:
   /// dimensional identifiers.
   bool isIdentity() const;
 
-  /// Returns true if the map is a minor identity map, i.e. an identity affine
-  /// map (d0, ..., dn) -> (dp, ..., dn) on the most minor dimensions.
-  static bool isMinorIdentity(AffineMap map);
+  /// Returns true if this affine map is a minor identity, i.e. an identity
+  /// affine map (d0, ..., dn) -> (dp, ..., dn) on the most minor dimensions.
+  bool isMinorIdentity() const;
 
   /// Returns true if this affine map is an empty map, i.e., () -> ().
   bool isEmpty() const;
@@ -137,12 +137,22 @@ public:
   AffineMap replaceDimsAndSymbols(ArrayRef<AffineExpr> dimReplacements,
                                   ArrayRef<AffineExpr> symReplacements,
                                   unsigned numResultDims,
-                                  unsigned numResultSyms);
+                                  unsigned numResultSyms) const;
 
   /// Folds the results of the application of an affine map on the provided
   /// operands to a constant if possible.
   LogicalResult constantFold(ArrayRef<Attribute> operandConstants,
                              SmallVectorImpl<Attribute> &results) const;
+
+  /// Propagates the constant operands into this affine map. Operands are
+  /// allowed to be null, at which point they are treated as non-constant. This
+  /// does not change the number of symbols and dimensions. Returns a new map,
+  /// which may be equal to the old map if no folding happened. If `results` is
+  /// provided and if all expressions in the map were folded to constants,
+  /// `results` will contain the values of these constants.
+  AffineMap
+  partialConstantFold(ArrayRef<Attribute> operandConstants,
+                      SmallVectorImpl<int64_t> *results = nullptr) const;
 
   /// Returns the AffineMap resulting from composing `this` with `map`.
   /// The resulting AffineMap has as many AffineDimExpr as `map` and as many
@@ -160,6 +170,10 @@ public:
   ///     `(d0)[s0, s1, s2] -> (d0 + s1 + s2 + 1, d0 - s0 - s2 - 1)`
   AffineMap compose(AffineMap map);
 
+  /// Applies composition by the dims of `this` to the integer `values` and
+  /// returns the resulting values. `this` must be symbol-less.
+  SmallVector<int64_t, 4> compose(ArrayRef<int64_t> values);
+
   /// Returns true if the AffineMap represents a subset (i.e. a projection) of a
   /// symbol-less permutation map.
   bool isProjectedPermutation();
@@ -169,6 +183,16 @@ public:
 
   /// Returns the map consisting of the `resultPos` subset.
   AffineMap getSubMap(ArrayRef<unsigned> resultPos);
+
+  /// Returns the map consisting of the most major `numResults` results.
+  /// Returns the null AffineMap if `numResults` == 0.
+  /// Returns `*this` if `numResults` >= `this->getNumResults()`.
+  AffineMap getMajorSubMap(unsigned numResults);
+
+  /// Returns the map consisting of the most minor `numResults` results.
+  /// Returns the null AffineMap if `numResults` == 0.
+  /// Returns `*this` if `numResults` >= `this->getNumResults()`.
+  AffineMap getMinorSubMap(unsigned numResults);
 
   friend ::llvm::hash_code hash_value(AffineMap arg);
 

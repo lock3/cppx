@@ -23,7 +23,6 @@
 namespace llvm {
 
 class StringRef;
-class X86Subtarget;
 class TargetTransformInfo;
 
 class X86TargetMachine final : public LLVMTargetMachine {
@@ -55,6 +54,8 @@ public:
   }
 
   bool isJIT() const { return IsJIT; }
+
+  bool isNoopAddrSpaceCast(unsigned SrcAS, unsigned DestAS) const override;
 };
 
 } // end namespace llvm

@@ -14,13 +14,16 @@
 #ifndef LLVM_SUPPORT_AARCH64TARGETPARSERCOMMON_H
 #define LLVM_SUPPORT_AARCH64TARGETPARSERCOMMON_H
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/Support/ARMTargetParser.h"
 #include <vector>
 
 // FIXME:This should be made into class design,to avoid dupplication.
 namespace llvm {
+
+class Triple;
+
 namespace AArch64 {
 
 // Arch extension modifiers for CPUs.

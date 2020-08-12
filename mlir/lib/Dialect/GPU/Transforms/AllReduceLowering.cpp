@@ -151,7 +151,8 @@ private:
 
   /// Adds type to funcOp's workgroup attributions.
   Value createWorkgroupBuffer() {
-    int workgroupMemoryAddressSpace = 3;
+    int workgroupMemoryAddressSpace =
+        gpu::GPUDialect::getWorkgroupAddressSpace();
     auto bufferType =
         MemRefType::get({kSubgroupSize}, valueType, ArrayRef<AffineMap>{},
                         workgroupMemoryAddressSpace);
@@ -180,8 +181,8 @@ private:
 
       // Insert accumulator body between split block.
       BlockAndValueMapping mapping;
-      mapping.map(body.front().getArgument(0), lhs);
-      mapping.map(body.front().getArgument(1), rhs);
+      mapping.map(body.getArgument(0), lhs);
+      mapping.map(body.getArgument(1), rhs);
       rewriter.cloneRegionBefore(body, *split->getParent(),
                                  split->getIterator(), mapping);
 

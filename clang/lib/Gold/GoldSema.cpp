@@ -66,9 +66,9 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
     // Floating point numbers
     {"float", Context.CxxAST.FloatTy},
     {"float16", Context.CxxAST.HalfTy},
-    {"float32", Context.CxxAST.getRealTypeForBitwidth(32)},
-    {"float64", Context.CxxAST.getRealTypeForBitwidth(64)},
-    {"float128", Context.CxxAST.getRealTypeForBitwidth(128)},
+    {"float32", Context.CxxAST.getRealTypeForBitwidth(32, /*IEEE=*/false)},
+    {"float64", Context.CxxAST.getRealTypeForBitwidth(64, /*IEEE=*/false)},
+    {"float128", Context.CxxAST.getRealTypeForBitwidth(128, /*IEEE=*/true)},
     {"double", Context.CxxAST.DoubleTy},
 
     // type of a type.
@@ -151,6 +151,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     OpInfo(Context.CxxAST),
     AttrHandlerMap(buildAttributeMaping())
 {
+  // FIXME: what is this? get rid of it.
   NullTTy = Context.CxxAST.NullPtrTy;
   CharTy = Context.CxxAST.CharTy;
   Char8Ty = Context.CxxAST.getIntTypeForBitwidth(8, true);
@@ -172,9 +173,9 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   UInt128Ty = Context.CxxAST.getIntTypeForBitwidth(128, false);
 
   Float16Ty = Context.CxxAST.HalfTy;
-  Float32Ty = Context.CxxAST.getRealTypeForBitwidth(32);
-  Float64Ty = Context.CxxAST.getRealTypeForBitwidth(64);
-  Float128Ty = Context.CxxAST.getRealTypeForBitwidth(128);
+  Float32Ty = Context.CxxAST.getRealTypeForBitwidth(32, false);
+  Float64Ty = Context.CxxAST.getRealTypeForBitwidth(64, false);
+  Float128Ty = Context.CxxAST.getRealTypeForBitwidth(128, true);
 
   CxxSema.CurScope = nullptr;
 

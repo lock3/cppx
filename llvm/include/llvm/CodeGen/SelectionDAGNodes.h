@@ -1576,6 +1576,8 @@ public:
   uint64_t getLimitedValue(uint64_t Limit = UINT64_MAX) {
     return Value->getLimitedValue(Limit);
   }
+  MaybeAlign getMaybeAlignValue() const { return Value->getMaybeAlignValue(); }
+  Align getAlignValue() const { return Value->getAlignValue(); }
 
   bool isOne() const { return Value->isOne(); }
   bool isNullValue() const { return Value->isZero(); }
@@ -1811,23 +1813,23 @@ class ConstantPoolSDNode : public SDNode {
     MachineConstantPoolValue *MachineCPVal;
   } Val;
   int Offset;  // It's a MachineConstantPoolValue if top bit is set.
-  unsigned Alignment;  // Minimum alignment requirement of CP (not log2 value).
+  Align Alignment; // Minimum alignment requirement of CP.
   unsigned TargetFlags;
 
   ConstantPoolSDNode(bool isTarget, const Constant *c, EVT VT, int o,
-                     unsigned Align, unsigned TF)
-    : SDNode(isTarget ? ISD::TargetConstantPool : ISD::ConstantPool, 0,
-             DebugLoc(), getSDVTList(VT)), Offset(o), Alignment(Align),
-             TargetFlags(TF) {
+                     Align Alignment, unsigned TF)
+      : SDNode(isTarget ? ISD::TargetConstantPool : ISD::ConstantPool, 0,
+               DebugLoc(), getSDVTList(VT)),
+        Offset(o), Alignment(Alignment), TargetFlags(TF) {
     assert(Offset >= 0 && "Offset is too large");
     Val.ConstVal = c;
   }
 
-  ConstantPoolSDNode(bool isTarget, MachineConstantPoolValue *v,
-                     EVT VT, int o, unsigned Align, unsigned TF)
-    : SDNode(isTarget ? ISD::TargetConstantPool : ISD::ConstantPool, 0,
-             DebugLoc(), getSDVTList(VT)), Offset(o), Alignment(Align),
-             TargetFlags(TF) {
+  ConstantPoolSDNode(bool isTarget, MachineConstantPoolValue *v, EVT VT, int o,
+                     Align Alignment, unsigned TF)
+      : SDNode(isTarget ? ISD::TargetConstantPool : ISD::ConstantPool, 0,
+               DebugLoc(), getSDVTList(VT)),
+        Offset(o), Alignment(Alignment), TargetFlags(TF) {
     assert(Offset >= 0 && "Offset is too large");
     Val.MachineCPVal = v;
     Offset |= 1 << (sizeof(unsigned)*CHAR_BIT-1);
@@ -1854,7 +1856,7 @@ public:
 
   // Return the alignment of this constant pool object, which is either 0 (for
   // default alignment) or the desired value.
-  unsigned getAlignment() const { return Alignment; }
+  Align getAlign() const { return Alignment; }
   unsigned getTargetFlags() const { return TargetFlags; }
 
   Type *getType() const;
@@ -2523,6 +2525,22 @@ public:
 
   static bool classof(const SDNode *N) {
     return N->isMachineOpcode();
+  }
+};
+
+/// An SDNode that records if a register contains a value that is guaranteed to
+/// be aligned accordingly.
+class AssertAlignSDNode : public SDNode {
+  Align Alignment;
+
+public:
+  AssertAlignSDNode(unsigned Order, const DebugLoc &DL, EVT VT, Align A)
+      : SDNode(ISD::AssertAlign, Order, DL, getSDVTList(VT)), Alignment(A) {}
+
+  Align getAlign() const { return Alignment; }
+
+  static bool classof(const SDNode *N) {
+    return N->getOpcode() == ISD::AssertAlign;
   }
 };
 

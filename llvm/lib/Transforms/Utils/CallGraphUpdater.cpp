@@ -92,7 +92,7 @@ void CallGraphUpdater::reanalyzeFunction(Function &Fn) {
   } else if (LCG) {
     LazyCallGraph::Node &N = LCG->get(Fn);
     LazyCallGraph::SCC *C = LCG->lookupSCC(N);
-    updateCGAndAnalysisManagerForCGSCCPass(*LCG, *C, N, *AM, *UR);
+    updateCGAndAnalysisManagerForCGSCCPass(*LCG, *C, N, *AM, *UR, *FAM);
   }
 }
 
@@ -149,7 +149,7 @@ bool CallGraphUpdater::replaceCallSite(CallBase &OldCS, CallBase &NewCS) {
       CG->getOrInsertFunction(NewCS.getCalledFunction());
   CallGraphNode *CallerNode = (*CG)[Caller];
   if (llvm::none_of(*CallerNode, [&OldCS](const CallGraphNode::CallRecord &CR) {
-        return CR.first == &OldCS;
+        return CR.first && *CR.first == &OldCS;
       }))
     return false;
   CallerNode->replaceCallEdge(OldCS, NewCS, NewCalleeNode);

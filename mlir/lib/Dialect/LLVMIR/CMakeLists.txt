@@ -2,6 +2,8 @@ add_subdirectory(Transforms)
 
 add_mlir_dialect_library(MLIRLLVMIR
   IR/LLVMDialect.cpp
+  IR/LLVMTypes.cpp
+  IR/LLVMTypeSyntax.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/LLVMIR
@@ -23,7 +25,7 @@ add_mlir_dialect_library(MLIRLLVMIR
   MLIRControlFlowInterfaces
   MLIROpenMP
   MLIRIR
-  MLIRSideEffects
+  MLIRSideEffectInterfaces
   MLIRSupport
   )
 
@@ -45,7 +47,7 @@ add_mlir_dialect_library(MLIRLLVMAVX512
   LINK_LIBS PUBLIC
   MLIRIR
   MLIRLLVMIR
-  MLIRSideEffects
+  MLIRSideEffectInterfaces
   )
 
 add_mlir_dialect_library(MLIRNVVMIR
@@ -66,7 +68,7 @@ add_mlir_dialect_library(MLIRNVVMIR
   LINK_LIBS PUBLIC
   MLIRIR
   MLIRLLVMIR
-  MLIRSideEffects
+  MLIRSideEffectInterfaces
   )
 
 add_mlir_dialect_library(MLIRROCDLIR
@@ -86,6 +88,6 @@ add_mlir_dialect_library(MLIRROCDLIR
 
   LINK_LIBS PUBLIC
   MLIRIR
-  MLIRSideEffects
+  MLIRSideEffectInterfaces
   MLIRVectorToLLVM
   )

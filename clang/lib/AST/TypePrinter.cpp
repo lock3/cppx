@@ -212,6 +212,7 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::TypeOfExpr:
     case Type::TypeOf:
     case Type::Decltype:
+    case Type::DependentIdentifierSplice:
     case Type::Reflected:
     case Type::UnaryTransform:
     case Type::Record:
@@ -259,6 +260,8 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::DependentSizedExtVector:
     case Type::Vector:
     case Type::ExtVector:
+    case Type::ConstantMatrix:
+    case Type::DependentSizedMatrix:
     case Type::FunctionProto:
     case Type::FunctionNoProto:
     case Type::Paren:
@@ -726,6 +729,38 @@ void TypePrinter::printExtVectorAfter(const ExtVectorType *T, raw_ostream &OS) {
   OS << ")))";
 }
 
+void TypePrinter::printConstantMatrixBefore(const ConstantMatrixType *T,
+                                            raw_ostream &OS) {
+  printBefore(T->getElementType(), OS);
+  OS << " __attribute__((matrix_type(";
+  OS << T->getNumRows() << ", " << T->getNumColumns();
+  OS << ")))";
+}
+
+void TypePrinter::printConstantMatrixAfter(const ConstantMatrixType *T,
+                                           raw_ostream &OS) {
+  printAfter(T->getElementType(), OS);
+}
+
+void TypePrinter::printDependentSizedMatrixBefore(
+    const DependentSizedMatrixType *T, raw_ostream &OS) {
+  printBefore(T->getElementType(), OS);
+  OS << " __attribute__((matrix_type(";
+  if (T->getRowExpr()) {
+    T->getRowExpr()->printPretty(OS, nullptr, Policy);
+  }
+  OS << ", ";
+  if (T->getColumnExpr()) {
+    T->getColumnExpr()->printPretty(OS, nullptr, Policy);
+  }
+  OS << ")))";
+}
+
+void TypePrinter::printDependentSizedMatrixAfter(
+    const DependentSizedMatrixType *T, raw_ostream &OS) {
+  printAfter(T->getElementType(), OS);
+}
+
 void
 FunctionProtoType::printExceptionSpecification(raw_ostream &OS,
                                                const PrintingPolicy &Policy)
@@ -1030,6 +1065,25 @@ void TypePrinter::printDecltypeBefore(const DecltypeType *T, raw_ostream &OS) {
 }
 
 void TypePrinter::printDecltypeAfter(const DecltypeType *T, raw_ostream &OS) {}
+
+void TypePrinter::printDependentIdentifierSpliceBefore(
+    const DependentIdentifierSpliceType *T, raw_ostream &OS) {
+  NestedNameSpecifier *Qualifier = T->getQualifier();
+  if (Qualifier)
+    Qualifier->print(OS, Policy);
+
+  OS << "unqualid(" << T->getIdentifierInfo()->getName() << ")";
+
+  if (T->getNumArgs()) {
+    IncludeStrongLifetimeRAII Strong(Policy);
+    printTemplateArgumentList(OS, T->template_arguments(), Policy);
+  }
+
+  spaceBeforePlaceHolder(OS);
+}
+
+void TypePrinter::printDependentIdentifierSpliceAfter(
+    const DependentIdentifierSpliceType *T, raw_ostream &OS) { }
 
 void TypePrinter::printReflectedBefore(const ReflectedType *T,
                                        raw_ostream &OS) {
@@ -1573,6 +1627,8 @@ void TypePrinter::printAttributedAfter(const AttributedType *T,
 
   case attr::OpenCLPrivateAddressSpace:
   case attr::OpenCLGlobalAddressSpace:
+  case attr::OpenCLGlobalDeviceAddressSpace:
+  case attr::OpenCLGlobalHostAddressSpace:
   case attr::OpenCLLocalAddressSpace:
   case attr::OpenCLConstantAddressSpace:
   case attr::OpenCLGenericAddressSpace:
@@ -1640,6 +1696,9 @@ void TypePrinter::printAttributedAfter(const AttributedType *T,
     break;
   case attr::ArmMveStrictPolymorphism:
     OS << "__clang_arm_mve_strict_polymorphism";
+    break;
+  case attr::ArmSveVectorBits:
+    OS << "arm_sve_vector_bits";
     break;
   }
   OS << "))";
@@ -1893,6 +1952,10 @@ std::string Qualifiers::getAddrSpaceAsString(LangAS AS) {
     return "__constant";
   case LangAS::opencl_generic:
     return "__generic";
+  case LangAS::opencl_global_device:
+    return "__global_device";
+  case LangAS::opencl_global_host:
+    return "__global_host";
   case LangAS::cuda_device:
     return "__device__";
   case LangAS::cuda_constant:

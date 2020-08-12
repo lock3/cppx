@@ -224,6 +224,41 @@ let Class = DependentSizedExtVectorType in {
   }]>;
 }
 
+let Class = MatrixType in {
+  def : Property<"elementType", QualType> {
+    let Read = [{ node->getElementType() }];
+  }
+}
+
+let Class = ConstantMatrixType in {
+  def : Property<"numRows", UInt32> {
+    let Read = [{ node->getNumRows() }];
+  }
+  def : Property<"numColumns", UInt32> {
+    let Read = [{ node->getNumColumns() }];
+  }
+
+  def : Creator<[{
+    return ctx.getConstantMatrixType(elementType, numRows, numColumns);
+  }]>;
+}
+
+let Class = DependentSizedMatrixType in {
+  def : Property<"rows", ExprRef> {
+    let Read = [{ node->getRowExpr() }];
+  }
+  def : Property<"columns", ExprRef> {
+    let Read = [{ node->getColumnExpr() }];
+  }
+  def : Property<"attributeLoc", SourceLocation> {
+    let Read = [{ node->getAttributeLoc() }];
+  }
+
+  def : Creator<[{
+    return ctx.getDependentSizedMatrixType(elementType, rows, columns, attributeLoc);
+  }]>;
+}
+
 let Class = FunctionType in {
   def : Property<"returnType", QualType> {
     let Read = [{ node->getReturnType() }];
@@ -386,7 +421,24 @@ let Class = ReflectedType in {
   }
 
   def : Creator<[{
-    return ctx.getDecltypeType(reflection, underlyingType);
+    return ctx.getReflectedType(reflection, underlyingType);
+  }]>;
+}
+
+let Class = DependentIdentifierSpliceType in {
+  def : Property<"qualifier", NestedNameSpecifier> {
+    let Read = [{ node->getQualifier() }];
+  }
+  def : Property<"identifier", Identifier> {
+    let Read = [{ node->getIdentifierInfo() }];
+  }
+  def : Property<"templateArguments", Array<TemplateArgument>> {
+    let Read = [{ node->template_arguments() }];
+  }
+
+  def : Creator<[{
+    return ctx.getDependentIdentifierSpliceType(qualifier, identifier,
+                                                templateArguments);
   }]>;
 }
 
@@ -700,7 +752,8 @@ let Class = PackExpansionType in {
   }
 
   def : Creator<[{
-    return ctx.getPackExpansionType(pattern, numExpansions);
+    return ctx.getPackExpansionType(pattern, numExpansions,
+                                    /*ExpectPackInType*/false);
   }]>;
 }
 

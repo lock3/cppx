@@ -16,6 +16,7 @@ add_clang_library(clangStaticAnalyzerCore
   CheckerContext.cpp
   CheckerHelpers.cpp
   CheckerManager.cpp
+  CheckerRegistryData.cpp
   CommonBugCategories.cpp
   ConstraintManager.cpp
   CoreEngine.cpp
@@ -44,7 +45,6 @@ add_clang_library(clangStaticAnalyzerCore
   SimpleSValBuilder.cpp
   SMTConstraintManager.cpp
   Store.cpp
-  SubEngine.cpp
   SValBuilder.cpp
   SVals.cpp
   SymbolManager.cpp
@@ -61,5 +61,8 @@ add_clang_library(clangStaticAnalyzerCore
   clangLex
   clangRewrite
   clangToolingCore
+
+  DEPENDS
+  omp_gen
   )
 

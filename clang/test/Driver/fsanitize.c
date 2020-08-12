@@ -458,6 +458,10 @@
 
 // RUN: %clang -target x86_64-apple-darwin -fsanitize=thread %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-TSAN-X86-64-DARWIN
 // CHECK-TSAN-X86-64-DARWIN-NOT: unsupported option
+// RUN: %clang -target x86_64-apple-macos -fsanitize=thread %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-TSAN-X86-64-MACOS
+// CHECK-TSAN-X86-64-MACOS-NOT: unsupported option
+// RUN: %clang -target arm64-apple-macos -fsanitize=thread %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-TSAN-ARM64-MACOS
+// CHECK-TSAN-ARM64-MACOS-NOT: unsupported option
 
 // RUN: %clang -target x86_64-apple-iossimulator -fsanitize=thread %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-TSAN-X86-64-IOSSIMULATOR
 // CHECK-TSAN-X86-64-IOSSIMULATOR-NOT: unsupported option
@@ -577,6 +581,7 @@
 // RUN: %clang -target aarch64-linux-gnu -fvisibility=hidden -fsanitize=cfi -flto -c %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-CFI
 // RUN: %clang -target arm-linux-android -fvisibility=hidden -fsanitize=cfi -flto -c %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-CFI
 // RUN: %clang -target aarch64-linux-android -fvisibility=hidden -fsanitize=cfi -flto -c %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-CFI
+// RUN: %clang -target aarch64_be -fvisibility=hidden -fsanitize=cfi -flto -c %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-CFI
 // CHECK-CFI: -emit-llvm-bc{{.*}}-fsanitize=cfi-derived-cast,cfi-icall,cfi-mfcall,cfi-unrelated-cast,cfi-nvcall,cfi-vcall
 // CHECK-CFI-NOMFCALL: -emit-llvm-bc{{.*}}-fsanitize=cfi-derived-cast,cfi-icall,cfi-unrelated-cast,cfi-nvcall,cfi-vcall
 // CHECK-CFI-DCAST: -emit-llvm-bc{{.*}}-fsanitize=cfi-derived-cast
@@ -781,6 +786,10 @@
 // CHECK-UBSAN-MINIMAL: "-fsanitize={{((signed-integer-overflow|integer-divide-by-zero|shift-base|shift-exponent|unreachable|return|vla-bound|alignment|null|pointer-overflow|float-cast-overflow|array-bounds|enum|bool|builtin|returns-nonnull-attribute|nonnull-attribute),?){17}"}}
 // CHECK-UBSAN-MINIMAL: "-fsanitize-minimal-runtime"
 
+// RUN: %clang -target aarch64-linux-android -march=armv8-a+memtag -fsanitize=memtag -fsanitize-minimal-runtime %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-MEMTAG-MINIMAL
+// CHECK-MEMTAG-MINIMAL: "-fsanitize=memtag"
+// CHECK-MEMTAG-MINIMAL: "-fsanitize-minimal-runtime"
+
 // RUN: %clang -target x86_64-linux-gnu -fsanitize=undefined -fsanitize=function -fsanitize-minimal-runtime %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-UBSAN-FUNCTION-MINIMAL
 // CHECK-UBSAN-FUNCTION-MINIMAL: error: invalid argument '-fsanitize=function' not allowed with '-fsanitize-minimal-runtime'
 
@@ -808,6 +817,10 @@
 // RUN: %clang -target x86_64-linux-gnu -fsanitize=shadow-call-stack -fsanitize-minimal-runtime %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-SCS-MINIMAL
 // CHECK-SCS-MINIMAL: "-fsanitize=shadow-call-stack"
 // CHECK-SCS-MINIMAL: "-fsanitize-minimal-runtime"
+
+// RUN: %clang -target aarch64 -fsanitize=shadow-call-stack -ffixed-x18 %s -### 2>&1 | FileCheck %s --check-prefix=AARCH64-SCS
+// RUN: %clang -target aarch64_be -fsanitize=shadow-call-stack -ffixed-x18 %s -### 2>&1 | FileCheck %s --check-prefix=AARCH64-SCS
+// AARCH64-SCS: "-fsanitize=shadow-call-stack"
 
 // RUN: %clang -target aarch64-linux-gnu -fsanitize=scudo %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-SCUDO
 // RUN: %clang -target arm-linux-androideabi -fsanitize=scudo %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-SCUDO
@@ -859,9 +872,7 @@
 // RUN: %clang -target x86_64-linux-gnu -fsanitize=hwaddress -fsanitize-hwaddress-abi=platform %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-HWASAN-PLATFORM-ABI
 // RUN: %clang -target x86_64-linux-gnu -fsanitize=hwaddress -fsanitize-hwaddress-abi=foo %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-HWASAN-FOO-ABI
 // CHECK-HWASAN-INTERCEPTOR-ABI: "-default-function-attr" "hwasan-abi=interceptor"
-// CHECK-HWASAN-INTERCEPTOR-ABI: "-target-feature" "+tagged-globals"
 // CHECK-HWASAN-PLATFORM-ABI: "-default-function-attr" "hwasan-abi=platform"
-// CHECK-HWASAN-PLATFORM-ABI: "-target-feature" "+tagged-globals"
 // CHECK-HWASAN-FOO-ABI: error: invalid value 'foo' in '-fsanitize-hwaddress-abi=foo'
 
 // RUN: %clang -target x86_64-linux-gnu -fsanitize=address,pointer-compare,pointer-subtract %s -### 2>&1 | FileCheck %s --check-prefix=CHECK-POINTER-ALL

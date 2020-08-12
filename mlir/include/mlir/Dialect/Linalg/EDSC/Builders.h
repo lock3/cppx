@@ -14,8 +14,6 @@
 #define MLIR_DIALECT_LINALG_EDSC_BUILDERS_H_
 
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
-// TODO(ntv): Needed for SubViewOp::Range, clean this up.
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/IR/AffineExpr.h"
@@ -24,75 +22,13 @@
 namespace mlir {
 class AffineForOp;
 class BlockArgument;
-class SubViewOp;
 
-namespace loop {
+namespace scf {
 class ParallelOp;
-} // namespace loop
+} // namespace scf
 
 namespace edsc {
-class AffineLoopNestBuilder;
-class ParallelLoopNestBuilder;
-
-/// A LoopRangeBuilder is a generic NestedBuilder for loop.for operations.
-/// More specifically it is meant to be used as a temporary object for
-/// representing any nested MLIR construct that is "related to" an mlir::Value
-/// (for now an induction variable).
-class LoopRangeBuilder : public NestedBuilder {
-public:
-  /// Constructs a new loop.for and captures the associated induction
-  /// variable. A Value pointer is passed as the first argument and is the
-  /// *only* way to capture the loop induction variable.
-  LoopRangeBuilder(Value *iv, Value range);
-  LoopRangeBuilder(Value *iv, SubViewOp::Range range);
-
-  LoopRangeBuilder(const LoopRangeBuilder &) = delete;
-  LoopRangeBuilder(LoopRangeBuilder &&) = default;
-
-  LoopRangeBuilder &operator=(const LoopRangeBuilder &) = delete;
-  LoopRangeBuilder &operator=(LoopRangeBuilder &&) = default;
-
-  /// The only purpose of this operator is to serve as a sequence point so that
-  /// the evaluation of `fun` (which build IR snippets in a scoped fashion) is
-  /// scoped within a LoopRangeBuilder.
-  Value operator()(std::function<void(void)> fun = nullptr);
-};
-
-/// Helper class to sugar building loop.for loop nests from ranges.
-/// This is similar to edsc::AffineLoopNestBuilder except it works on ranges
-/// directly. In the current implementation it produces loop.for operations.
-class LoopNestRangeBuilder {
-public:
-  LoopNestRangeBuilder(MutableArrayRef<Value> ivs, ArrayRef<Value> ranges);
-  LoopNestRangeBuilder(MutableArrayRef<Value> ivs,
-                       ArrayRef<SubViewOp::Range> ranges);
-  Value operator()(std::function<void(void)> fun = nullptr);
-
-private:
-  SmallVector<LoopRangeBuilder, 4> loops;
-};
-
-/// Helper template class for building loop.for and affine.loop nests from
-/// ranges.
-template <typename LoopTy> class GenericLoopNestRangeBuilder {
-public:
-  GenericLoopNestRangeBuilder(MutableArrayRef<Value> ivs,
-                              ArrayRef<Value> ranges);
-  void operator()(std::function<void(void)> fun = nullptr) { (*builder)(fun); }
-
-private:
-  using LoopOrAffineLoopBuilder =
-      typename std::conditional_t<std::is_same<LoopTy, AffineForOp>::value,
-                                  AffineLoopNestBuilder, LoopNestRangeBuilder>;
-  using BuilderType =
-      typename std::conditional_t<std::is_same<LoopTy, loop::ParallelOp>::value,
-                                  ParallelLoopNestBuilder,
-                                  LoopOrAffineLoopBuilder>;
-
-  std::unique_ptr<BuilderType> builder;
-};
-
-inline void defaultRegionBuilder(ArrayRef<BlockArgument> args) {}
+inline void defaultRegionBuilder(ValueRange args) {}
 
 /// Build a `linalg.generic` op with the specified `inputs`, `outputs` and
 /// `region`.
@@ -113,8 +49,7 @@ inline void defaultRegionBuilder(ArrayRef<BlockArgument> args) {}
 Operation *makeGenericLinalgOp(
     ArrayRef<IteratorType> iteratorTypes, ArrayRef<StructuredIndexed> inputs,
     ArrayRef<StructuredIndexed> outputs,
-    function_ref<void(ArrayRef<BlockArgument>)> regionBuilder =
-        defaultRegionBuilder,
+    function_ref<void(ValueRange)> regionBuilder = defaultRegionBuilder,
     ArrayRef<Value> otherValues = {}, ArrayRef<Attribute> otherAttributes = {});
 
 namespace ops {
@@ -126,13 +61,13 @@ using edsc::StructuredIndexed;
 
 /// Build the body of a region to compute a scalar multiply, under the current
 /// ScopedContext, at the current insert point.
-void mulRegionBuilder(ArrayRef<BlockArgument> args);
+void mulRegionBuilder(ValueRange args);
 
 /// Build the body of a region to compute a scalar multiply-accumulate, under
 /// the current ScopedContext, at the current insert point.
-void macRegionBuilder(ArrayRef<BlockArgument> args);
+void macRegionBuilder(ValueRange args);
 
-/// TODO(ntv): In the future we should tie these implementations to something in
+/// TODO: In the future we should tie these implementations to something in
 /// Tablegen that generates the proper interfaces and the proper sugared named
 /// ops.
 
@@ -184,9 +119,9 @@ Operation *linalg_generic_pointwise_max(StructuredIndexed I1,
                                         StructuredIndexed I2,
                                         StructuredIndexed O);
 
-// TODO(ntv): Implement more useful pointwise operations on a per-need basis.
+// TODO: Implement more useful pointwise operations on a per-need basis.
 
-using MatmulRegionBuilder = function_ref<void(ArrayRef<BlockArgument> args)>;
+using MatmulRegionBuilder = function_ref<void(ValueRange args)>;
 
 /// Build a linalg.generic, under the current ScopedContext, at the current
 /// insert point, that computes:
@@ -252,7 +187,7 @@ linalg_generic_matmul(Container values,
 ///
 /// For now `...` must be empty (i.e. only 2-D convolutions are supported).
 ///
-// TODO(ntv) Extend convolution rank with some template magic.
+// TODO: Extend convolution rank with some template magic.
 Operation *linalg_generic_conv_nhwc(Value vI, Value vW, Value vO,
                                     ArrayRef<int> strides = {},
                                     ArrayRef<int> dilations = {});
@@ -287,7 +222,7 @@ Operation *linalg_generic_conv_nhwc(Container values,
 ///
 /// For now `...` must be empty (i.e. only 2-D convolutions are supported).
 ///
-// TODO(ntv) Extend convolution rank with some template magic.
+// TODO: Extend convolution rank with some template magic.
 Operation *linalg_generic_dilated_conv_nhwc(Value vI, Value vW, Value vO,
                                             int depth_multiplier = 1,
                                             ArrayRef<int> strides = {},

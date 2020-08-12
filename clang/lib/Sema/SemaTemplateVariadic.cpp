@@ -408,6 +408,29 @@ bool Sema::DiagnoseUnexpandedParameterPack(Expr *E,
   return DiagnoseUnexpandedParameterPacks(E->getBeginLoc(), UPPC, Unexpanded);
 }
 
+bool Sema::DiagnoseUnexpandedParameterPackInRequiresExpr(RequiresExpr *RE) {
+  if (!RE->containsUnexpandedParameterPack())
+    return false;
+
+  SmallVector<UnexpandedParameterPack, 2> Unexpanded;
+  CollectUnexpandedParameterPacksVisitor(Unexpanded).TraverseStmt(RE);
+  assert(!Unexpanded.empty() && "Unable to find unexpanded parameter packs");
+
+  // We only care about unexpanded references to the RequiresExpr's own
+  // parameter packs.
+  auto Parms = RE->getLocalParameters();
+  llvm::SmallPtrSet<NamedDecl*, 8> ParmSet(Parms.begin(), Parms.end());
+  SmallVector<UnexpandedParameterPack, 2> UnexpandedParms;
+  for (auto Parm : Unexpanded)
+    if (ParmSet.contains(Parm.first.dyn_cast<NamedDecl*>()))
+      UnexpandedParms.push_back(Parm);
+  if (UnexpandedParms.empty())
+    return false;
+
+  return DiagnoseUnexpandedParameterPacks(RE->getBeginLoc(), UPPC_Requirement,
+                                          UnexpandedParms);
+}
+
 bool Sema::DiagnoseUnexpandedParameterPack(const CXXScopeSpec &SS,
                                         UnexpandedParameterPackContext UPPC) {
   // C++0x [temp.variadic]p5:
@@ -439,10 +462,6 @@ bool Sema::DiagnoseUnexpandedParameterPack(const DeclarationNameInfo &NameInfo,
   case DeclarationName::CXXLiteralOperatorName:
   case DeclarationName::CXXUsingDirective:
   case DeclarationName::CXXDeductionGuideName:
-    return false;
-
-  case DeclarationName::CXXReflectedIdName:
-    // FIXME: This is a likely place to allow pack expansion.
     return false;
 
   case DeclarationName::CXXConstructorName:
@@ -621,7 +640,8 @@ QualType Sema::CheckPackExpansion(QualType Pattern, SourceRange PatternRange,
     return QualType();
   }
 
-  return Context.getPackExpansionType(Pattern, NumExpansions);
+  return Context.getPackExpansionType(Pattern, NumExpansions,
+                                      /*ExpectPackInType=*/false);
 }
 
 ExprResult Sema::ActOnPackExpansion(Expr *Pattern, SourceLocation EllipsisLoc) {
@@ -888,6 +908,7 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
   case TST_auto:
   case TST_auto_type:
   case TST_decltype_auto:
+  case TST_BFloat16:
 #define GENERIC_IMAGE_TYPE(ImgType, Id) case TST_##ImgType##_t:
 #include "clang/Basic/OpenCLImageTypes.def"
   case TST_unknown_anytype:
@@ -1169,7 +1190,7 @@ static void CheckFoldOperand(Sema &S, Expr *E) {
   }
 }
 
-ExprResult Sema::ActOnCXXFoldExpr(SourceLocation LParenLoc, Expr *LHS,
+ExprResult Sema::ActOnCXXFoldExpr(Scope *S, SourceLocation LParenLoc, Expr *LHS,
                                   tok::TokenKind Operator,
                                   SourceLocation EllipsisLoc, Expr *RHS,
                                   SourceLocation RParenLoc) {
@@ -1211,18 +1232,37 @@ ExprResult Sema::ActOnCXXFoldExpr(SourceLocation LParenLoc, Expr *LHS,
   }
 
   BinaryOperatorKind Opc = ConvertTokenKindToBinaryOpcode(Operator);
-  return BuildCXXFoldExpr(LParenLoc, LHS, Opc, EllipsisLoc, RHS, RParenLoc,
+
+  // Perform first-phase name lookup now.
+  UnresolvedLookupExpr *ULE = nullptr;
+  {
+    UnresolvedSet<16> Functions;
+    LookupBinOp(S, EllipsisLoc, Opc, Functions);
+    if (!Functions.empty()) {
+      DeclarationName OpName = Context.DeclarationNames.getCXXOperatorName(
+          BinaryOperator::getOverloadedOperator(Opc));
+      ExprResult Callee = CreateUnresolvedLookupExpr(
+          /*NamingClass*/ nullptr, NestedNameSpecifierLoc(),
+          DeclarationNameInfo(OpName, EllipsisLoc), Functions);
+      if (Callee.isInvalid())
+        return ExprError();
+      ULE = cast<UnresolvedLookupExpr>(Callee.get());
+    }
+  }
+
+  return BuildCXXFoldExpr(ULE, LParenLoc, LHS, Opc, EllipsisLoc, RHS, RParenLoc,
                           None);
 }
 
-ExprResult Sema::BuildCXXFoldExpr(SourceLocation LParenLoc, Expr *LHS,
+ExprResult Sema::BuildCXXFoldExpr(UnresolvedLookupExpr *Callee,
+                                  SourceLocation LParenLoc, Expr *LHS,
                                   BinaryOperatorKind Operator,
                                   SourceLocation EllipsisLoc, Expr *RHS,
                                   SourceLocation RParenLoc,
                                   Optional<unsigned> NumExpansions) {
-  return new (Context) CXXFoldExpr(Context.DependentTy, LParenLoc, LHS,
-                                   Operator, EllipsisLoc, RHS, RParenLoc,
-                                   NumExpansions);
+  return new (Context)
+      CXXFoldExpr(Context.DependentTy, Callee, LParenLoc, LHS, Operator,
+                  EllipsisLoc, RHS, RParenLoc, NumExpansions);
 }
 
 ExprResult Sema::BuildEmptyCXXFoldExpr(SourceLocation EllipsisLoc,

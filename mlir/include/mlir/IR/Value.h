@@ -81,6 +81,12 @@ public:
     assert(*this && "isa<> used on a null type.");
     return U::classof(*this);
   }
+
+  template <typename First, typename Second, typename... Rest>
+  bool isa() const {
+    return isa<First>() || isa<Second, Rest...>();
+  }
+
   template <typename U> U dyn_cast() const {
     return isa<U>() ? U(ownerAndKind) : U(nullptr);
   }
@@ -92,7 +98,7 @@ public:
     return U(ownerAndKind);
   }
 
-  operator bool() const { return ownerAndKind.getPointer(); }
+  explicit operator bool() const { return ownerAndKind.getPointer(); }
   bool operator==(const Value &other) const {
     return ownerAndKind == other.ownerAndKind;
   }
@@ -115,6 +121,13 @@ public:
   /// If this value is the result of an operation, return the operation that
   /// defines it.
   Operation *getDefiningOp() const;
+
+  /// If this value is the result of an operation of type OpTy, return the
+  /// operation that defines it.
+  template <typename OpTy>
+  OpTy getDefiningOp() const {
+    return llvm::dyn_cast_or_null<OpTy>(getDefiningOp());
+  }
 
   /// If this value is the result of an operation, use it as a location,
   /// otherwise return an unknown location.

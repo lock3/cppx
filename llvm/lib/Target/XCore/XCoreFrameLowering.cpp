@@ -73,7 +73,7 @@ static void EmitDefCfaOffset(MachineBasicBlock &MBB,
                              int Offset) {
   MachineFunction &MF = *MBB.getParent();
   unsigned CFIIndex =
-      MF.addFrameInst(MCCFIInstruction::createDefCfaOffset(nullptr, -Offset));
+      MF.addFrameInst(MCCFIInstruction::cfiDefCfaOffset(nullptr, Offset));
   BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
       .addCFIIndex(CFIIndex);
 }
@@ -575,9 +575,9 @@ processFunctionBeforeFrameFinalized(MachineFunction &MF,
   // When using SP for large frames, we may need 2 scratch registers.
   // When using FP, for large or small frames, we may need 1 scratch register.
   unsigned Size = TRI.getSpillSize(RC);
-  unsigned Align = TRI.getSpillAlignment(RC);
+  Align Alignment = TRI.getSpillAlign(RC);
   if (XFI->isLargeFrame(MF) || hasFP(MF))
-    RS->addScavengingFrameIndex(MFI.CreateStackObject(Size, Align, false));
+    RS->addScavengingFrameIndex(MFI.CreateStackObject(Size, Alignment, false));
   if (XFI->isLargeFrame(MF) && !hasFP(MF))
-    RS->addScavengingFrameIndex(MFI.CreateStackObject(Size, Align, false));
+    RS->addScavengingFrameIndex(MFI.CreateStackObject(Size, Alignment, false));
 }

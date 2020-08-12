@@ -26,6 +26,7 @@
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/MemorySSA.h"
 #include "llvm/Analysis/MemorySSAUpdater.h"
+#include "llvm/Analysis/MustExecute.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
@@ -93,6 +94,11 @@ static cl::opt<bool> UnswitchGuards(
     "simple-loop-unswitch-guards", cl::init(true), cl::Hidden,
     cl::desc("If enabled, simple loop unswitching will also consider "
              "llvm.experimental.guard intrinsics as unswitch candidates."));
+static cl::opt<bool> DropNonTrivialImplicitNullChecks(
+    "simple-loop-unswitch-drop-non-trivial-implicit-null-checks",
+    cl::init(false), cl::Hidden,
+    cl::desc("If enabled, drop make.implicit metadata in unswitched implicit "
+             "null checks to save time analyzing if we can keep it."));
 
 /// Collect all of the loop invariant input values transitively used by the
 /// homogeneous instruction graph from a given root.
@@ -598,19 +604,36 @@ static bool unswitchTrivialSwitch(Loop &L, SwitchInst &SI, DominatorTree &DT,
 
   auto *ParentBB = SI.getParent();
 
+  // The same check must be used both for the default and the exit cases. We
+  // should never leave edges from the switch instruction to a basic block that
+  // we are unswitching, hence the condition used to determine the default case
+  // needs to also be used to populate ExitCaseIndices, which is then used to
+  // remove cases from the switch.
+  auto IsTriviallyUnswitchableExitBlock = [&](BasicBlock &BBToCheck) {
+    // BBToCheck is not an exit block if it is inside loop L.
+    if (L.contains(&BBToCheck))
+      return false;
+    // BBToCheck is not trivial to unswitch if its phis aren't loop invariant.
+    if (!areLoopExitPHIsLoopInvariant(L, *ParentBB, BBToCheck))
+      return false;
+    // We do not unswitch a block that only has an unreachable statement, as
+    // it's possible this is a previously unswitched block. Only unswitch if
+    // either the terminator is not unreachable, or, if it is, it's not the only
+    // instruction in the block.
+    auto *TI = BBToCheck.getTerminator();
+    bool isUnreachable = isa<UnreachableInst>(TI);
+    return !isUnreachable ||
+           (isUnreachable && (BBToCheck.getFirstNonPHIOrDbg() != TI));
+  };
+
   SmallVector<int, 4> ExitCaseIndices;
-  for (auto Case : SI.cases()) {
-    auto *SuccBB = Case.getCaseSuccessor();
-    if (!L.contains(SuccBB) &&
-        areLoopExitPHIsLoopInvariant(L, *ParentBB, *SuccBB))
+  for (auto Case : SI.cases())
+    if (IsTriviallyUnswitchableExitBlock(*Case.getCaseSuccessor()))
       ExitCaseIndices.push_back(Case.getCaseIndex());
-  }
   BasicBlock *DefaultExitBB = nullptr;
   SwitchInstProfUpdateWrapper::CaseWeightOpt DefaultCaseWeight =
       SwitchInstProfUpdateWrapper::getSuccessorWeight(SI, 0);
-  if (!L.contains(SI.getDefaultDest()) &&
-      areLoopExitPHIsLoopInvariant(L, *ParentBB, *SI.getDefaultDest()) &&
-      !isa<UnreachableInst>(SI.getDefaultDest()->getTerminator())) {
+  if (IsTriviallyUnswitchableExitBlock(*SI.getDefaultDest())) {
     DefaultExitBB = SI.getDefaultDest();
   } else if (ExitCaseIndices.empty())
     return false;
@@ -1557,6 +1580,11 @@ static void deleteDeadBlocksFromLoop(Loop &L,
     // Check that the dominator tree has already been updated.
     assert(!DT.getNode(BB) && "Should already have cleared domtree!");
     LI.changeLoopFor(BB, nullptr);
+    // Drop all uses of the instructions to make sure we won't have dangling
+    // uses in other blocks.
+    for (auto &I : *BB)
+      if (!I.use_empty())
+        I.replaceAllUsesWith(UndefValue::get(I.getType()));
     BB->dropAllReferences();
   }
 
@@ -2046,6 +2074,23 @@ static void unswitchNontrivialInvariants(
     ClonedPHs[SuccBB] = buildClonedLoopBlocks(
         L, LoopPH, SplitBB, ExitBlocks, ParentBB, SuccBB, RetainedSuccBB,
         DominatingSucc, *VMaps.back(), DTUpdates, AC, DT, LI, MSSAU);
+  }
+
+  // Drop metadata if we may break its semantics by moving this instr into the
+  // split block.
+  if (TI.getMetadata(LLVMContext::MD_make_implicit)) {
+    if (DropNonTrivialImplicitNullChecks)
+      // Do not spend time trying to understand if we can keep it, just drop it
+      // to save compile time.
+      TI.setMetadata(LLVMContext::MD_make_implicit, nullptr);
+    else {
+      // It is only legal to preserve make.implicit metadata if we are
+      // guaranteed no reach implicit null check after following this branch.
+      ICFLoopSafetyInfo SafetyInfo;
+      SafetyInfo.computeLoopSafetyInfo(&L);
+      if (!SafetyInfo.isGuaranteedToExecute(TI, &DT, &L))
+        TI.setMetadata(LLVMContext::MD_make_implicit, nullptr);
+    }
   }
 
   // The stitching of the branched code back together depends on whether we're
@@ -2822,7 +2867,6 @@ static bool unswitchLoop(Loop &L, DominatorTree &DT, LoopInfo &LI,
                          ScalarEvolution *SE, MemorySSAUpdater *MSSAU) {
   assert(L.isRecursivelyLCSSAForm(DT, LI) &&
          "Loops must be in LCSSA form before unswitching.");
-  bool Changed = false;
 
   // Must be in loop simplified form: we need a preheader and dedicated exits.
   if (!L.isLoopSimplifyForm())
@@ -2854,7 +2898,7 @@ static bool unswitchLoop(Loop &L, DominatorTree &DT, LoopInfo &LI,
     return true;
 
   // No other opportunities to unswitch.
-  return Changed;
+  return false;
 }
 
 PreservedAnalyses SimpleLoopUnswitchPass::run(Loop &L, LoopAnalysisManager &AM,

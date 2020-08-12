@@ -14,10 +14,10 @@
 #include "clang/Driver/ToolChain.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/SpecialCaseList.h"
 #include "llvm/Support/TargetParser.h"
+#include "llvm/Support/VirtualFileSystem.h"
 #include <memory>
 
 using namespace clang;
@@ -27,7 +27,8 @@ using namespace llvm::opt;
 static const SanitizerMask NeedsUbsanRt =
     SanitizerKind::Undefined | SanitizerKind::Integer |
     SanitizerKind::ImplicitConversion | SanitizerKind::Nullability |
-    SanitizerKind::CFI | SanitizerKind::FloatDivideByZero;
+    SanitizerKind::CFI | SanitizerKind::FloatDivideByZero |
+    SanitizerKind::ObjCCast;
 static const SanitizerMask NeedsUbsanCxxRt =
     SanitizerKind::Vptr | SanitizerKind::CFI;
 static const SanitizerMask NotAllowedWithTrap = SanitizerKind::Vptr;
@@ -43,15 +44,16 @@ static const SanitizerMask SupportsCoverage =
     SanitizerKind::KernelAddress | SanitizerKind::KernelHWAddress |
     SanitizerKind::MemTag | SanitizerKind::Memory |
     SanitizerKind::KernelMemory | SanitizerKind::Leak |
-    SanitizerKind::Undefined | SanitizerKind::Integer |
+    SanitizerKind::Undefined | SanitizerKind::Integer | SanitizerKind::Bounds |
     SanitizerKind::ImplicitConversion | SanitizerKind::Nullability |
     SanitizerKind::DataFlow | SanitizerKind::Fuzzer |
     SanitizerKind::FuzzerNoLink | SanitizerKind::FloatDivideByZero |
-    SanitizerKind::SafeStack | SanitizerKind::ShadowCallStack;
+    SanitizerKind::SafeStack | SanitizerKind::ShadowCallStack |
+    SanitizerKind::Thread | SanitizerKind::ObjCCast;
 static const SanitizerMask RecoverableByDefault =
     SanitizerKind::Undefined | SanitizerKind::Integer |
     SanitizerKind::ImplicitConversion | SanitizerKind::Nullability |
-    SanitizerKind::FloatDivideByZero;
+    SanitizerKind::FloatDivideByZero | SanitizerKind::ObjCCast;
 static const SanitizerMask Unrecoverable =
     SanitizerKind::Unreachable | SanitizerKind::Return;
 static const SanitizerMask AlwaysRecoverable =
@@ -61,14 +63,16 @@ static const SanitizerMask TrappingSupported =
     (SanitizerKind::Undefined & ~SanitizerKind::Vptr) |
     SanitizerKind::UnsignedIntegerOverflow | SanitizerKind::ImplicitConversion |
     SanitizerKind::Nullability | SanitizerKind::LocalBounds |
-    SanitizerKind::CFI | SanitizerKind::FloatDivideByZero;
+    SanitizerKind::CFI | SanitizerKind::FloatDivideByZero |
+    SanitizerKind::ObjCCast;
 static const SanitizerMask TrappingDefault = SanitizerKind::CFI;
 static const SanitizerMask CFIClasses =
     SanitizerKind::CFIVCall | SanitizerKind::CFINVCall |
     SanitizerKind::CFIMFCall | SanitizerKind::CFIDerivedCast |
     SanitizerKind::CFIUnrelatedCast;
 static const SanitizerMask CompatibleWithMinimalRuntime =
-    TrappingSupported | SanitizerKind::Scudo | SanitizerKind::ShadowCallStack;
+    TrappingSupported | SanitizerKind::Scudo | SanitizerKind::ShadowCallStack |
+    SanitizerKind::MemTag;
 
 enum CoverageFeature {
   CoverageFunc = 1 << 0,
@@ -234,6 +238,10 @@ static SanitizerMask parseSanitizeTrapArgs(const Driver &D,
   TrappingKinds |= TrappingDefault & ~TrapRemove;
 
   return TrappingKinds;
+}
+
+bool SanitizerArgs::needsFuzzerInterceptors() const {
+  return needsFuzzer() && !needsAsanRt() && !needsTsanRt() && !needsMsanRt();
 }
 
 bool SanitizerArgs::needsUbsanRt() const {
@@ -487,8 +495,7 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
         << lastArgumentForMask(D, Args, Kinds & NeedsLTO) << "-flto";
   }
 
-  if ((Kinds & SanitizerKind::ShadowCallStack) &&
-      TC.getTriple().getArch() == llvm::Triple::aarch64 &&
+  if ((Kinds & SanitizerKind::ShadowCallStack) && TC.getTriple().isAArch64() &&
       !llvm::AArch64::isX18ReservedByDefault(TC.getTriple()) &&
       !Args.hasArg(options::OPT_ffixed_x18)) {
     D.Diag(diag::err_drv_argument_only_allowed_with)
@@ -744,12 +751,12 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
   // So, there is no way to clear coverage lists but you can append to them.
   if (CoverageFeatures) {
     parseSpecialCaseListArg(
-        D, Args, CoverageWhitelistFiles,
-        options::OPT_fsanitize_coverage_whitelist, OptSpecifier(),
+        D, Args, CoverageAllowlistFiles,
+        options::OPT_fsanitize_coverage_allowlist, OptSpecifier(),
         clang::diag::err_drv_malformed_sanitizer_coverage_whitelist);
     parseSpecialCaseListArg(
-        D, Args, CoverageBlacklistFiles,
-        options::OPT_fsanitize_coverage_blacklist, OptSpecifier(),
+        D, Args, CoverageBlocklistFiles,
+        options::OPT_fsanitize_coverage_blocklist, OptSpecifier(),
         clang::diag::err_drv_malformed_sanitizer_coverage_blacklist);
   }
 
@@ -953,9 +960,9 @@ void SanitizerArgs::addArgs(const ToolChain &TC, const llvm::opt::ArgList &Args,
       CmdArgs.push_back(F.second);
   }
   addSpecialCaseListOpt(
-      Args, CmdArgs, "-fsanitize-coverage-whitelist=", CoverageWhitelistFiles);
+      Args, CmdArgs, "-fsanitize-coverage-allowlist=", CoverageAllowlistFiles);
   addSpecialCaseListOpt(
-      Args, CmdArgs, "-fsanitize-coverage-blacklist=", CoverageBlacklistFiles);
+      Args, CmdArgs, "-fsanitize-coverage-blocklist=", CoverageBlocklistFiles);
 
   if (TC.getTriple().isOSWindows() && needsUbsanRt()) {
     // Instruct the code generator to embed linker directives in the object file
@@ -1067,7 +1074,7 @@ void SanitizerArgs::addArgs(const ToolChain &TC, const llvm::opt::ArgList &Args,
     CmdArgs.push_back(Args.MakeArgString("hwasan-abi=" + HwasanAbi));
   }
 
-  if (Sanitizers.has(SanitizerKind::HWAddress)) {
+  if (Sanitizers.has(SanitizerKind::HWAddress) && TC.getTriple().isAArch64()) {
     CmdArgs.push_back("-target-feature");
     CmdArgs.push_back("+tagged-globals");
   }
@@ -1080,6 +1087,23 @@ void SanitizerArgs::addArgs(const ToolChain &TC, const llvm::opt::ArgList &Args,
   if (Sanitizers.has(SanitizerKind::Memory) ||
       Sanitizers.has(SanitizerKind::Address))
     CmdArgs.push_back("-fno-assume-sane-operator-new");
+
+  // libFuzzer wants to intercept calls to certain library functions, so the
+  // following -fno-builtin-* flags force the compiler to emit interposable
+  // libcalls to these functions. Other sanitizers effectively do the same thing
+  // by marking all library call sites with NoBuiltin attribute in their LLVM
+  // pass. (see llvm::maybeMarkSanitizerLibraryCallNoBuiltin)
+  if (Sanitizers.has(SanitizerKind::FuzzerNoLink)) {
+    CmdArgs.push_back("-fno-builtin-bcmp");
+    CmdArgs.push_back("-fno-builtin-memcmp");
+    CmdArgs.push_back("-fno-builtin-strncmp");
+    CmdArgs.push_back("-fno-builtin-strcmp");
+    CmdArgs.push_back("-fno-builtin-strncasecmp");
+    CmdArgs.push_back("-fno-builtin-strcasecmp");
+    CmdArgs.push_back("-fno-builtin-strstr");
+    CmdArgs.push_back("-fno-builtin-strcasestr");
+    CmdArgs.push_back("-fno-builtin-memmem");
+  }
 
   // Require -fvisibility= flag on non-Windows when compiling if vptr CFI is
   // enabled.

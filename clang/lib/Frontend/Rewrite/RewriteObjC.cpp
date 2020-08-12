@@ -2027,8 +2027,9 @@ RewriteObjC::SynthesizeCallToFunctionDecl(FunctionDecl *FD,
 
   const auto *FT = msgSendType->castAs<FunctionType>();
 
-  CallExpr *Exp = CallExpr::Create(
-      *Context, ICE, Args, FT->getCallResultType(*Context), VK_RValue, EndLoc);
+  CallExpr *Exp =
+      CallExpr::Create(*Context, ICE, Args, FT->getCallResultType(*Context),
+                       VK_RValue, EndLoc, FPOptionsOverride());
   return Exp;
 }
 
@@ -2517,7 +2518,7 @@ Stmt *RewriteObjC::RewriteObjCStringLiteral(ObjCStringLiteral *Exp) {
   Expr *Unop = UnaryOperator::Create(
       const_cast<ASTContext &>(*Context), DRE, UO_AddrOf,
       Context->getPointerType(DRE->getType()), VK_RValue, OK_Ordinary,
-      SourceLocation(), false, FPOptions(Context->getLangOpts()));
+      SourceLocation(), false, FPOptionsOverride());
   // cast to NSConstantString *
   CastExpr *cast = NoTypeInfoCStyleCastExpr(Context, Exp->getType(),
                                             CK_CPointerToObjCPointerCast, Unop);
@@ -2616,8 +2617,9 @@ CallExpr *RewriteObjC::SynthMsgSendStretCallExpr(FunctionDecl *MsgSendStretFlavo
   ParenExpr *PE = new (Context) ParenExpr(SourceLocation(), SourceLocation(), cast);
 
   const auto *FT = msgSendType->castAs<FunctionType>();
-  CallExpr *STCE = CallExpr::Create(*Context, PE, MsgExprs, FT->getReturnType(),
-                                    VK_RValue, SourceLocation());
+  CallExpr *STCE =
+      CallExpr::Create(*Context, PE, MsgExprs, FT->getReturnType(), VK_RValue,
+                       SourceLocation(), FPOptionsOverride());
   return STCE;
 }
 
@@ -2709,8 +2711,9 @@ Stmt *RewriteObjC::SynthMessageExpr(ObjCMessageExpr *Exp,
       DeclRefExpr *DRE = new (Context)
           DeclRefExpr(*Context, SuperConstructorFunctionDecl, false, superType,
                       VK_LValue, SourceLocation());
-      SuperRep = CallExpr::Create(*Context, DRE, InitExprs, superType,
-                                  VK_LValue, SourceLocation());
+      SuperRep =
+          CallExpr::Create(*Context, DRE, InitExprs, superType, VK_LValue,
+                           SourceLocation(), FPOptionsOverride());
       // The code for super is a little tricky to prevent collision with
       // the structure definition in the header. The rewriter has it's own
       // internal definition (__rw_objc_super) that is uses. This is why
@@ -2720,7 +2723,7 @@ Stmt *RewriteObjC::SynthMessageExpr(ObjCMessageExpr *Exp,
       SuperRep = UnaryOperator::Create(
           const_cast<ASTContext &>(*Context), SuperRep, UO_AddrOf,
           Context->getPointerType(SuperRep->getType()), VK_RValue, OK_Ordinary,
-          SourceLocation(), false, FPOptions(Context->getLangOpts()));
+          SourceLocation(), false, FPOptionsOverride());
       SuperRep = NoTypeInfoCStyleCastExpr(Context,
                                           Context->getPointerType(superType),
                                           CK_BitCast, SuperRep);
@@ -2738,7 +2741,7 @@ Stmt *RewriteObjC::SynthMessageExpr(ObjCMessageExpr *Exp,
       SuperRep = UnaryOperator::Create(
           const_cast<ASTContext &>(*Context), SuperRep, UO_AddrOf,
           Context->getPointerType(SuperRep->getType()), VK_RValue, OK_Ordinary,
-          SourceLocation(), false, FPOptions(Context->getLangOpts()));
+          SourceLocation(), false, FPOptionsOverride());
     }
     MsgExprs.push_back(SuperRep);
     break;
@@ -2804,8 +2807,9 @@ Stmt *RewriteObjC::SynthMessageExpr(ObjCMessageExpr *Exp,
       DeclRefExpr *DRE = new (Context)
           DeclRefExpr(*Context, SuperConstructorFunctionDecl, false, superType,
                       VK_LValue, SourceLocation());
-      SuperRep = CallExpr::Create(*Context, DRE, InitExprs, superType,
-                                  VK_LValue, SourceLocation());
+      SuperRep =
+          CallExpr::Create(*Context, DRE, InitExprs, superType, VK_LValue,
+                           SourceLocation(), FPOptionsOverride());
       // The code for super is a little tricky to prevent collision with
       // the structure definition in the header. The rewriter has it's own
       // internal definition (__rw_objc_super) that is uses. This is why
@@ -2815,7 +2819,7 @@ Stmt *RewriteObjC::SynthMessageExpr(ObjCMessageExpr *Exp,
       SuperRep = UnaryOperator::Create(
           const_cast<ASTContext &>(*Context), SuperRep, UO_AddrOf,
           Context->getPointerType(SuperRep->getType()), VK_RValue, OK_Ordinary,
-          SourceLocation(), false, FPOptions(Context->getLangOpts()));
+          SourceLocation(), false, FPOptionsOverride());
       SuperRep = NoTypeInfoCStyleCastExpr(Context,
                                Context->getPointerType(superType),
                                CK_BitCast, SuperRep);
@@ -2970,7 +2974,7 @@ Stmt *RewriteObjC::SynthMessageExpr(ObjCMessageExpr *Exp,
 
   const auto *FT = msgSendType->castAs<FunctionType>();
   CallExpr *CE = CallExpr::Create(*Context, PE, MsgExprs, FT->getReturnType(),
-                                  VK_RValue, EndLoc);
+                                  VK_RValue, EndLoc, FPOptionsOverride());
   Stmt *ReplacingStmt = CE;
   if (MsgSendStretFlavor) {
     // We have the method which returns a struct/union. Must also generate
@@ -3001,7 +3005,7 @@ Stmt *RewriteObjC::SynthMessageExpr(ObjCMessageExpr *Exp,
                                                    SourceLocation());
     BinaryOperator *lessThanExpr = BinaryOperator::Create(
         *Context, sizeofExpr, limit, BO_LE, Context->IntTy, VK_RValue,
-        OK_Ordinary, SourceLocation(), FPOptions(Context->getLangOpts()));
+        OK_Ordinary, SourceLocation(), FPOptionsOverride());
     // (sizeof(returnType) <= 8 ? objc_msgSend(...) : objc_msgSend_stret(...))
     ConditionalOperator *CondExpr =
       new (Context) ConditionalOperator(lessThanExpr,
@@ -3054,7 +3058,7 @@ Stmt *RewriteObjC::RewriteObjCProtocolExpr(ObjCProtocolExpr *Exp) {
   Expr *DerefExpr = UnaryOperator::Create(
       const_cast<ASTContext &>(*Context), DRE, UO_AddrOf,
       Context->getPointerType(DRE->getType()), VK_RValue, OK_Ordinary,
-      SourceLocation(), false, FPOptions(Context->getLangOpts()));
+      SourceLocation(), false, FPOptionsOverride());
   CastExpr *castExpr = NoTypeInfoCStyleCastExpr(Context, DerefExpr->getType(),
                                                 CK_BitCast,
                                                 DerefExpr);
@@ -3819,8 +3823,9 @@ Stmt *RewriteObjC::SynthesizeBlockCall(CallExpr *Exp, const Expr *BlockExp) {
        E = Exp->arg_end(); I != E; ++I) {
     BlkExprs.push_back(*I);
   }
-  CallExpr *CE = CallExpr::Create(*Context, PE, BlkExprs, Exp->getType(),
-                                  VK_RValue, SourceLocation());
+  CallExpr *CE =
+      CallExpr::Create(*Context, PE, BlkExprs, Exp->getType(), VK_RValue,
+                       SourceLocation(), FPOptionsOverride());
   return CE;
 }
 
@@ -3879,10 +3884,9 @@ Stmt *RewriteObjC::RewriteLocalVariableExternalStorage(DeclRefExpr *DRE) {
   if (VarDecl *Var = dyn_cast<VarDecl>(VD))
     if (!ImportedLocalExternalDecls.count(Var))
       return DRE;
-  Expr *Exp = UnaryOperator::Create(const_cast<ASTContext &>(*Context), DRE,
-                                    UO_Deref, DRE->getType(), VK_LValue,
-                                    OK_Ordinary, DRE->getLocation(), false,
-                                    FPOptions(Context->getLangOpts()));
+  Expr *Exp = UnaryOperator::Create(
+      const_cast<ASTContext &>(*Context), DRE, UO_Deref, DRE->getType(),
+      VK_LValue, OK_Ordinary, DRE->getLocation(), false, FPOptionsOverride());
   // Need parens to enforce precedence.
   ParenExpr *PE = new (Context) ParenExpr(SourceLocation(), SourceLocation(),
                                           Exp);
@@ -4442,7 +4446,7 @@ Stmt *RewriteObjC::SynthBlockInitExpr(BlockExpr *Exp,
       new (Context) DeclRefExpr(*Context, NewVD, false, Context->VoidPtrTy,
                                 VK_LValue, SourceLocation()),
       UO_AddrOf, Context->getPointerType(Context->VoidPtrTy), VK_RValue,
-      OK_Ordinary, SourceLocation(), false, FPOptions(Context->getLangOpts()));
+      OK_Ordinary, SourceLocation(), false, FPOptionsOverride());
   InitExprs.push_back(DescRefExpr);
 
   // Add initializers for any closure decl refs.
@@ -4459,10 +4463,9 @@ Stmt *RewriteObjC::SynthBlockInitExpr(BlockExpr *Exp,
         if (HasLocalVariableExternalStorage(*I)) {
           QualType QT = (*I)->getType();
           QT = Context->getPointerType(QT);
-          Exp = UnaryOperator::Create(const_cast<ASTContext &>(*Context), Exp,
-                                      UO_AddrOf, QT, VK_RValue, OK_Ordinary,
-                                      SourceLocation(), false,
-                                      FPOptions(Context->getLangOpts()));
+          Exp = UnaryOperator::Create(
+              const_cast<ASTContext &>(*Context), Exp, UO_AddrOf, QT, VK_RValue,
+              OK_Ordinary, SourceLocation(), false, FPOptionsOverride());
         }
       } else if (isTopLevelBlockPointerType((*I)->getType())) {
         FD = SynthBlockInitFunctionDecl((*I)->getName());
@@ -4477,10 +4480,9 @@ Stmt *RewriteObjC::SynthBlockInitExpr(BlockExpr *Exp,
         if (HasLocalVariableExternalStorage(*I)) {
           QualType QT = (*I)->getType();
           QT = Context->getPointerType(QT);
-          Exp = UnaryOperator::Create(const_cast<ASTContext &>(*Context), Exp,
-                                      UO_AddrOf, QT, VK_RValue, OK_Ordinary,
-                                      SourceLocation(), false,
-                                      FPOptions(Context->getLangOpts()));
+          Exp = UnaryOperator::Create(
+              const_cast<ASTContext &>(*Context), Exp, UO_AddrOf, QT, VK_RValue,
+              OK_Ordinary, SourceLocation(), false, FPOptionsOverride());
         }
       }
       InitExprs.push_back(Exp);
@@ -4520,7 +4522,7 @@ Stmt *RewriteObjC::SynthBlockInitExpr(BlockExpr *Exp,
         Exp = UnaryOperator::Create(
             const_cast<ASTContext &>(*Context), Exp, UO_AddrOf,
             Context->getPointerType(Exp->getType()), VK_RValue, OK_Ordinary,
-            SourceLocation(), false, FPOptions(Context->getLangOpts()));
+            SourceLocation(), false, FPOptionsOverride());
       Exp = NoTypeInfoCStyleCastExpr(Context, castT, CK_BitCast, Exp);
       InitExprs.push_back(Exp);
     }
@@ -4535,11 +4537,11 @@ Stmt *RewriteObjC::SynthBlockInitExpr(BlockExpr *Exp,
     InitExprs.push_back(FlagExp);
   }
   NewRep = CallExpr::Create(*Context, DRE, InitExprs, FType, VK_LValue,
-                            SourceLocation());
+                            SourceLocation(), FPOptionsOverride());
   NewRep = UnaryOperator::Create(
       const_cast<ASTContext &>(*Context), NewRep, UO_AddrOf,
       Context->getPointerType(NewRep->getType()), VK_RValue, OK_Ordinary,
-      SourceLocation(), false, FPOptions(Context->getLangOpts()));
+      SourceLocation(), false, FPOptionsOverride());
   NewRep = NoTypeInfoCStyleCastExpr(Context, FType, CK_BitCast,
                                     NewRep);
   BlockDeclRefs.clear();

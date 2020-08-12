@@ -13,15 +13,10 @@
 #include "CodeViewDebug.h"
 #include "DwarfExpression.h"
 #include "llvm/ADT/APSInt.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/ADT/Triple.h"
@@ -40,7 +35,6 @@
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/Config/llvm-config.h"
 #include "llvm/DebugInfo/CodeView/CVTypeVisitor.h"
-#include "llvm/DebugInfo/CodeView/CodeView.h"
 #include "llvm/DebugInfo/CodeView/CodeViewRecordIO.h"
 #include "llvm/DebugInfo/CodeView/ContinuationRecordBuilder.h"
 #include "llvm/DebugInfo/CodeView/DebugInlineeLinesSubsection.h"
@@ -48,14 +42,12 @@
 #include "llvm/DebugInfo/CodeView/Line.h"
 #include "llvm/DebugInfo/CodeView/SymbolRecord.h"
 #include "llvm/DebugInfo/CodeView/TypeDumpVisitor.h"
-#include "llvm/DebugInfo/CodeView/TypeIndex.h"
 #include "llvm/DebugInfo/CodeView/TypeRecord.h"
 #include "llvm/DebugInfo/CodeView/TypeTableCollection.h"
 #include "llvm/DebugInfo/CodeView/TypeVisitorCallbackPipeline.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfoMetadata.h"
-#include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -71,7 +63,6 @@
 #include "llvm/Support/BinaryStreamWriter.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Compiler.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -85,12 +76,8 @@
 #include <cassert>
 #include <cctype>
 #include <cstddef>
-#include <cstdint>
 #include <iterator>
 #include <limits>
-#include <string>
-#include <utility>
-#include <vector>
 
 using namespace llvm;
 using namespace llvm::codeview;
@@ -101,21 +88,21 @@ public:
   CVMCAdapter(MCStreamer &OS, TypeCollection &TypeTable)
       : OS(&OS), TypeTable(TypeTable) {}
 
-  void emitBytes(StringRef Data) { OS->emitBytes(Data); }
+  void emitBytes(StringRef Data) override { OS->emitBytes(Data); }
 
-  void emitIntValue(uint64_t Value, unsigned Size) {
+  void emitIntValue(uint64_t Value, unsigned Size) override {
     OS->emitIntValueInHex(Value, Size);
   }
 
-  void emitBinaryData(StringRef Data) { OS->emitBinaryData(Data); }
+  void emitBinaryData(StringRef Data) override { OS->emitBinaryData(Data); }
 
-  void AddComment(const Twine &T) { OS->AddComment(T); }
+  void AddComment(const Twine &T) override { OS->AddComment(T); }
 
-  void AddRawComment(const Twine &T) { OS->emitRawComment(T); }
+  void AddRawComment(const Twine &T) override { OS->emitRawComment(T); }
 
-  bool isVerboseAsm() { return OS->isVerboseAsm(); }
+  bool isVerboseAsm() override { return OS->isVerboseAsm(); }
 
-  std::string getTypeName(TypeIndex TI) {
+  std::string getTypeName(TypeIndex TI) override {
     std::string TypeName;
     if (!TI.isNoneType()) {
       if (TI.isSimple())
@@ -343,18 +330,6 @@ static std::string formatNestedName(ArrayRef<StringRef> QualifiedNameComponents,
   return FullyQualifiedName;
 }
 
-std::string CodeViewDebug::getFullyQualifiedName(const DIScope *Scope,
-                                                 StringRef Name) {
-  SmallVector<StringRef, 5> QualifiedNameComponents;
-  collectParentScopeNames(Scope, QualifiedNameComponents);
-  return formatNestedName(QualifiedNameComponents, Name);
-}
-
-std::string CodeViewDebug::getFullyQualifiedName(const DIScope *Ty) {
-  const DIScope *Scope = Ty->getScope();
-  return getFullyQualifiedName(Scope, getPrettyScopeName(Ty));
-}
-
 struct CodeViewDebug::TypeLoweringScope {
   TypeLoweringScope(CodeViewDebug &CVD) : CVD(CVD) { ++CVD.TypeEmissionLevel; }
   ~TypeLoweringScope() {
@@ -366,6 +341,22 @@ struct CodeViewDebug::TypeLoweringScope {
   }
   CodeViewDebug &CVD;
 };
+
+std::string CodeViewDebug::getFullyQualifiedName(const DIScope *Scope,
+                                                 StringRef Name) {
+  // Ensure types in the scope chain are emitted as soon as possible.
+  // This can create otherwise a situation where S_UDTs are emitted while
+  // looping in emitDebugInfoForUDTs.
+  TypeLoweringScope S(*this);
+  SmallVector<StringRef, 5> QualifiedNameComponents;
+  collectParentScopeNames(Scope, QualifiedNameComponents);
+  return formatNestedName(QualifiedNameComponents, Name);
+}
+
+std::string CodeViewDebug::getFullyQualifiedName(const DIScope *Ty) {
+  const DIScope *Scope = Ty->getScope();
+  return getFullyQualifiedName(Scope, getPrettyScopeName(Ty));
+}
 
 TypeIndex CodeViewDebug::getScopeIndex(const DIScope *Scope) {
   // No scope means global scope and that uses the zero index.
@@ -503,8 +494,7 @@ void CodeViewDebug::recordLocalVariable(LocalVariable &&Var,
 
 static void addLocIfNotPresent(SmallVectorImpl<const DILocation *> &Locs,
                                const DILocation *Loc) {
-  auto B = Locs.begin(), E = Locs.end();
-  if (std::find(B, E, Loc) == E)
+  if (!llvm::is_contained(Locs, Loc))
     Locs.push_back(Loc);
 }
 
@@ -1588,7 +1578,7 @@ TypeIndex CodeViewDebug::lowerTypeArray(const DICompositeType *Ty) {
     assert(Element->getTag() == dwarf::DW_TAG_subrange_type);
 
     const DISubrange *Subrange = cast<DISubrange>(Element);
-    assert(Subrange->getLowerBound() == 0 &&
+    assert(!Subrange->getRawLowerBound() &&
            "codeview doesn't support subranges with lower bounds");
     int64_t Count = -1;
     if (auto *CI = Subrange->getCount().dyn_cast<ConstantInt*>())
@@ -1784,11 +1774,12 @@ translatePtrToMemberRep(unsigned SizeInBytes, bool IsPMF, unsigned Flags) {
 TypeIndex CodeViewDebug::lowerTypeMemberPointer(const DIDerivedType *Ty,
                                                 PointerOptions PO) {
   assert(Ty->getTag() == dwarf::DW_TAG_ptr_to_member_type);
+  bool IsPMF = isa<DISubroutineType>(Ty->getBaseType());
   TypeIndex ClassTI = getTypeIndex(Ty->getClassType());
-  TypeIndex PointeeTI = getTypeIndex(Ty->getBaseType(), Ty->getClassType());
+  TypeIndex PointeeTI =
+      getTypeIndex(Ty->getBaseType(), IsPMF ? Ty->getClassType() : nullptr);
   PointerKind PK = getPointerSizeInBytes() == 8 ? PointerKind::Near64
                                                 : PointerKind::Near32;
-  bool IsPMF = isa<DISubroutineType>(Ty->getBaseType());
   PointerMode PM = IsPMF ? PointerMode::PointerToMemberFunction
                          : PointerMode::PointerToDataMember;
 
@@ -2981,14 +2972,18 @@ void CodeViewDebug::emitEndSymbolRecord(SymbolKind EndKind) {
 }
 
 void CodeViewDebug::emitDebugInfoForUDTs(
-    ArrayRef<std::pair<std::string, const DIType *>> UDTs) {
+    const std::vector<std::pair<std::string, const DIType *>> &UDTs) {
+#ifndef NDEBUG
+  size_t OriginalSize = UDTs.size();
+#endif
   for (const auto &UDT : UDTs) {
     const DIType *T = UDT.second;
     assert(shouldEmitUdt(T));
-
     MCSymbol *UDTRecordEnd = beginSymbolRecord(SymbolKind::S_UDT);
     OS.AddComment("Type");
     OS.emitInt32(getCompleteTypeIndex(T).getIndex());
+    assert(OriginalSize == UDTs.size() &&
+           "getCompleteTypeIndex found new UDTs!");
     emitNullTerminatedSymbolName(OS, UDT.first);
     endSymbolRecord(UDTRecordEnd);
   }
@@ -3092,6 +3087,14 @@ void CodeViewDebug::emitGlobalVariableList(ArrayRef<CVGlobalVariable> Globals) {
 
 void CodeViewDebug::emitDebugInfoForGlobal(const CVGlobalVariable &CVGV) {
   const DIGlobalVariable *DIGV = CVGV.DIGV;
+
+  const DIScope *Scope = DIGV->getScope();
+  // For static data members, get the scope from the declaration.
+  if (const auto *MemberDecl = dyn_cast_or_null<DIDerivedType>(
+          DIGV->getRawStaticDataMemberDeclaration()))
+    Scope = MemberDecl->getScope();
+  std::string QualifiedName = getFullyQualifiedName(Scope, DIGV->getName());
+
   if (const GlobalVariable *GV =
           CVGV.GVInfo.dyn_cast<const GlobalVariable *>()) {
     // DataSym record, see SymbolRecord.h for more info. Thread local data
@@ -3111,13 +3114,9 @@ void CodeViewDebug::emitDebugInfoForGlobal(const CVGlobalVariable &CVGV) {
     OS.EmitCOFFSectionIndex(GVSym);
     OS.AddComment("Name");
     const unsigned LengthOfDataRecord = 12;
-    emitNullTerminatedSymbolName(
-        OS, getFullyQualifiedName(DIGV->getScope(), DIGV->getName()),
-        LengthOfDataRecord);
+    emitNullTerminatedSymbolName(OS, QualifiedName, LengthOfDataRecord);
     endSymbolRecord(DataEnd);
   } else {
-    // FIXME: Currently this only emits the global variables in the IR metadata.
-    // This should also emit enums and static data members.
     const DIExpression *DIE = CVGV.GVInfo.get<const DIExpression *>();
     assert(DIE->isConstant() &&
            "Global constant variables must contain a constant expression.");
@@ -3137,13 +3136,7 @@ void CodeViewDebug::emitDebugInfoForGlobal(const CVGlobalVariable &CVGV) {
     OS.emitBinaryData(SRef);
 
     OS.AddComment("Name");
-    const DIScope *Scope = DIGV->getScope();
-    // For static data members, get the scope from the declaration.
-    if (const auto *MemberDecl = dyn_cast_or_null<DIDerivedType>(
-            DIGV->getRawStaticDataMemberDeclaration()))
-      Scope = MemberDecl->getScope();
-    emitNullTerminatedSymbolName(OS,
-                                 getFullyQualifiedName(Scope, DIGV->getName()));
+    emitNullTerminatedSymbolName(OS, QualifiedName);
     endSymbolRecord(SConstantEnd);
   }
 }

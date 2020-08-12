@@ -184,10 +184,6 @@ public:
   /// Inherit some necessary constructors from 'TypeBase'.
   using Base::Base;
 
-  /// This static method is used to support type inquiry through isa, cast,
-  /// and dyn_cast.
-  static bool kindof(unsigned kind) { return kind == ToyTypes::Struct; }
-
   /// Create an instance of a `StructType` with the given element types. There
   /// *must* be at least one element type.
   static StructType get(llvm::ArrayRef<mlir::Type> elementTypes) {
@@ -287,8 +283,7 @@ mlir::Type ToyDialect::parseType(mlir::DialectAsmParser &parser) const {
       return nullptr;
 
     // Check that the type is either a TensorType or another StructType.
-    if (!elementType.isa<mlir::TensorType>() &&
-        !elementType.isa<StructType>()) {
+    if (!elementType.isa<mlir::TensorType, StructType>()) {
       parser.emitError(typeLoc, "element type for a struct must either "
                                 "be a TensorType or a StructType, got: ")
           << elementType;

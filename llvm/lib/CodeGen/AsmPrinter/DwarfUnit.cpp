@@ -90,9 +90,8 @@ bool DIEDwarfExpression::isFrameRegister(const TargetRegisterInfo &TRI,
 
 DwarfUnit::DwarfUnit(dwarf::Tag UnitTag, const DICompileUnit *Node,
                      AsmPrinter *A, DwarfDebug *DW, DwarfFile *DWU)
-    : DIEUnit(A->getDwarfVersion(), A->MAI->getCodePointerSize(), UnitTag),
-      CUNode(Node), Asm(A), DD(DW), DU(DWU), IndexTyDie(nullptr) {
-}
+    : DIEUnit(UnitTag), CUNode(Node), Asm(A), DD(DW), DU(DWU),
+      IndexTyDie(nullptr) {}
 
 DwarfTypeUnit::DwarfTypeUnit(DwarfCompileUnit &CU, AsmPrinter *A,
                              DwarfDebug *DW, DwarfFile *DWU,
@@ -307,23 +306,6 @@ void DwarfUnit::addSectionOffset(DIE &Die, dwarf::Attribute Attribute,
     addUInt(Die, Attribute, dwarf::DW_FORM_data4, Integer);
 }
 
-Optional<MD5::MD5Result> DwarfUnit::getMD5AsBytes(const DIFile *File) const {
-  assert(File);
-  if (DD->getDwarfVersion() < 5)
-    return None;
-  Optional<DIFile::ChecksumInfo<StringRef>> Checksum = File->getChecksum();
-  if (!Checksum || Checksum->Kind != DIFile::CSK_MD5)
-    return None;
-
-  // Convert the string checksum to an MD5Result for the streamer.
-  // The verifier validates the checksum so we assume it's okay.
-  // An MD5 checksum is 16 bytes.
-  std::string ChecksumString = fromHex(Checksum->Value);
-  MD5::MD5Result CKMem;
-  std::copy(ChecksumString.begin(), ChecksumString.end(), CKMem.Bytes.data());
-  return CKMem;
-}
-
 unsigned DwarfTypeUnit::getOrCreateSourceID(const DIFile *File) {
   if (!SplitLineTable)
     return getCU().getOrCreateSourceID(File);
@@ -332,10 +314,9 @@ unsigned DwarfTypeUnit::getOrCreateSourceID(const DIFile *File) {
     // This is a split type unit that needs a line table.
     addSectionOffset(getUnitDie(), dwarf::DW_AT_stmt_list, 0);
   }
-  return SplitLineTable->getFile(File->getDirectory(), File->getFilename(),
-                                 getMD5AsBytes(File),
-                                 Asm->OutContext.getDwarfVersion(),
-                                 File->getSource());
+  return SplitLineTable->getFile(
+      File->getDirectory(), File->getFilename(), DD->getMD5AsBytes(File),
+      Asm->OutContext.getDwarfVersion(), File->getSource());
 }
 
 void DwarfUnit::addOpAddress(DIELoc &Die, const MCSymbol *Sym) {
@@ -353,7 +334,7 @@ void DwarfUnit::addOpAddress(DIELoc &Die, const MCSymbol *Sym) {
   }
 
   addUInt(Die, dwarf::DW_FORM_data1, dwarf::DW_OP_addr);
-  addLabel(Die, dwarf::DW_FORM_udata, Sym);
+  addLabel(Die, dwarf::DW_FORM_addr, Sym);
 }
 
 void DwarfUnit::addLabelDelta(DIE &Die, dwarf::Attribute Attribute,
@@ -1128,6 +1109,11 @@ DIE *DwarfUnit::getOrCreateModule(const DIModule *M) {
     addString(MDie, dwarf::DW_AT_LLVM_include_path, M->getIncludePath());
   if (!M->getAPINotesFile().empty())
     addString(MDie, dwarf::DW_AT_LLVM_apinotes, M->getAPINotesFile());
+  if (M->getFile())
+    addUInt(MDie, dwarf::DW_AT_decl_file, None,
+            getOrCreateSourceID(M->getFile()));
+  if (M->getLineNo())
+    addUInt(MDie, dwarf::DW_AT_decl_line, None, M->getLineNo());
 
   return &MDie;
 }
@@ -1344,20 +1330,40 @@ void DwarfUnit::constructSubrangeDIE(DIE &Buffer, const DISubrange *SR,
   // C/C++. The Count value is the number of elements.  Values are 64 bit. If
   // Count == -1 then the array is unbounded and we do not emit
   // DW_AT_lower_bound and DW_AT_count attributes.
-  int64_t LowerBound = SR->getLowerBound();
   int64_t DefaultLowerBound = getDefaultLowerBound();
   int64_t Count = -1;
   if (auto *CI = SR->getCount().dyn_cast<ConstantInt*>())
     Count = CI->getSExtValue();
 
-  if (DefaultLowerBound == -1 || LowerBound != DefaultLowerBound)
-    addUInt(DW_Subrange, dwarf::DW_AT_lower_bound, None, LowerBound);
+  auto addBoundTypeEntry = [&](dwarf::Attribute Attr,
+                               DISubrange::BoundType Bound) -> void {
+    if (auto *BV = Bound.dyn_cast<DIVariable *>()) {
+      if (auto *VarDIE = getDIE(BV))
+        addDIEEntry(DW_Subrange, Attr, *VarDIE);
+    } else if (auto *BE = Bound.dyn_cast<DIExpression *>()) {
+      DIELoc *Loc = new (DIEValueAllocator) DIELoc;
+      DIEDwarfExpression DwarfExpr(*Asm, getCU(), *Loc);
+      DwarfExpr.setMemoryLocationKind();
+      DwarfExpr.addExpression(BE);
+      addBlock(DW_Subrange, Attr, DwarfExpr.finalize());
+    } else if (auto *BI = Bound.dyn_cast<ConstantInt *>()) {
+      if (Attr != dwarf::DW_AT_lower_bound || DefaultLowerBound == -1 ||
+          BI->getSExtValue() != DefaultLowerBound)
+        addSInt(DW_Subrange, Attr, dwarf::DW_FORM_sdata, BI->getSExtValue());
+    }
+  };
+
+  addBoundTypeEntry(dwarf::DW_AT_lower_bound, SR->getLowerBound());
 
   if (auto *CV = SR->getCount().dyn_cast<DIVariable*>()) {
     if (auto *CountVarDIE = getDIE(CV))
       addDIEEntry(DW_Subrange, dwarf::DW_AT_count, *CountVarDIE);
   } else if (Count != -1)
     addUInt(DW_Subrange, dwarf::DW_AT_count, None, Count);
+
+  addBoundTypeEntry(dwarf::DW_AT_upper_bound, SR->getUpperBound());
+
+  addBoundTypeEntry(dwarf::DW_AT_byte_stride, SR->getStride());
 }
 
 DIE *DwarfUnit::getIndexTyDie() {
@@ -1407,6 +1413,39 @@ void DwarfUnit::constructArrayTypeDIE(DIE &Buffer, const DICompositeType *CTy) {
     if (hasVectorBeenPadded(CTy))
       addUInt(Buffer, dwarf::DW_AT_byte_size, None,
               CTy->getSizeInBits() / CHAR_BIT);
+  }
+
+  if (DIVariable *Var = CTy->getDataLocation()) {
+    if (auto *VarDIE = getDIE(Var))
+      addDIEEntry(Buffer, dwarf::DW_AT_data_location, *VarDIE);
+  } else if (DIExpression *Expr = CTy->getDataLocationExp()) {
+    DIELoc *Loc = new (DIEValueAllocator) DIELoc;
+    DIEDwarfExpression DwarfExpr(*Asm, getCU(), *Loc);
+    DwarfExpr.setMemoryLocationKind();
+    DwarfExpr.addExpression(Expr);
+    addBlock(Buffer, dwarf::DW_AT_data_location, DwarfExpr.finalize());
+  }
+
+  if (DIVariable *Var = CTy->getAssociated()) {
+    if (auto *VarDIE = getDIE(Var))
+      addDIEEntry(Buffer, dwarf::DW_AT_associated, *VarDIE);
+  } else if (DIExpression *Expr = CTy->getAssociatedExp()) {
+    DIELoc *Loc = new (DIEValueAllocator) DIELoc;
+    DIEDwarfExpression DwarfExpr(*Asm, getCU(), *Loc);
+    DwarfExpr.setMemoryLocationKind();
+    DwarfExpr.addExpression(Expr);
+    addBlock(Buffer, dwarf::DW_AT_associated, DwarfExpr.finalize());
+  }
+
+  if (DIVariable *Var = CTy->getAllocated()) {
+    if (auto *VarDIE = getDIE(Var))
+      addDIEEntry(Buffer, dwarf::DW_AT_allocated, *VarDIE);
+  } else if (DIExpression *Expr = CTy->getAllocatedExp()) {
+    DIELoc *Loc = new (DIEValueAllocator) DIELoc;
+    DIEDwarfExpression DwarfExpr(*Asm, getCU(), *Loc);
+    DwarfExpr.setMemoryLocationKind();
+    DwarfExpr.addExpression(Expr);
+    addBlock(Buffer, dwarf::DW_AT_allocated, DwarfExpr.finalize());
   }
 
   // Emit the element type.

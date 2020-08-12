@@ -1730,6 +1730,10 @@ bool HexagonInstrInfo::isSchedulingBoundary(const MachineInstr &MI,
   if (MI.getDesc().isTerminator() || MI.isPosition())
     return true;
 
+  // INLINEASM_BR can jump to another block
+  if (MI.getOpcode() == TargetOpcode::INLINEASM_BR)
+    return true;
+
   if (MI.isInlineAsm() && !ScheduleInlineAsm)
     return true;
 
@@ -2963,12 +2967,12 @@ bool HexagonInstrInfo::addLatencyToSchedule(const MachineInstr &MI1,
 }
 
 /// Get the base register and byte offset of a load/store instr.
-bool HexagonInstrInfo::getMemOperandsWithOffset(
+bool HexagonInstrInfo::getMemOperandsWithOffsetWidth(
     const MachineInstr &LdSt, SmallVectorImpl<const MachineOperand *> &BaseOps,
-    int64_t &Offset, bool &OffsetIsScalable, const TargetRegisterInfo *TRI) const {
-  unsigned AccessSize = 0;
+    int64_t &Offset, bool &OffsetIsScalable, unsigned &Width,
+    const TargetRegisterInfo *TRI) const {
   OffsetIsScalable = false;
-  const MachineOperand *BaseOp = getBaseAndOffset(LdSt, Offset, AccessSize);
+  const MachineOperand *BaseOp = getBaseAndOffset(LdSt, Offset, Width);
   if (!BaseOp || !BaseOp->isReg())
     return false;
   BaseOps.push_back(BaseOp);

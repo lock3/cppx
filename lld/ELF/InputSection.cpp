@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <mutex>
 #include <set>
+#include <unordered_set>
 #include <vector>
 
 using namespace llvm;
@@ -36,16 +37,16 @@ using namespace llvm::object;
 using namespace llvm::support;
 using namespace llvm::support::endian;
 using namespace llvm::sys;
+using namespace lld;
+using namespace lld::elf;
 
-namespace lld {
+std::vector<InputSectionBase *> elf::inputSections;
+DenseSet<std::pair<const Symbol *, uint64_t>> elf::ppc64noTocRelax;
+
 // Returns a string to construct an error message.
-std::string toString(const elf::InputSectionBase *sec) {
+std::string lld::toString(const InputSectionBase *sec) {
   return (toString(sec->file) + ":(" + sec->name + ")").str();
 }
-
-namespace elf {
-std::vector<InputSectionBase *> inputSections;
-DenseSet<std::pair<const Symbol *, uint64_t>> ppc64noTocRelax;
 
 template <class ELFT>
 static ArrayRef<uint8_t> getSectionContents(ObjFile<ELFT> &file,
@@ -275,8 +276,9 @@ void InputSectionBase::parseCompressedHeader() {
 }
 
 InputSection *InputSectionBase::getLinkOrderDep() const {
-  assert(link);
   assert(flags & SHF_LINK_ORDER);
+  if (!link)
+    return nullptr;
   return cast<InputSection>(file->getSections()[link]);
 }
 
@@ -389,11 +391,16 @@ template <class ELFT> void InputSection::copyShtGroup(uint8_t *buf) {
   // The first entry is not a section number but a flag.
   *to++ = from[0];
 
-  // Adjust section numbers because section numbers in an input object
-  // files are different in the output.
+  // Adjust section numbers because section numbers in an input object files are
+  // different in the output. We also need to handle combined or discarded
+  // members.
   ArrayRef<InputSectionBase *> sections = file->getSections();
-  for (uint32_t idx : from.slice(1))
-    *to++ = sections[idx]->getOutputSection()->sectionIndex;
+  std::unordered_set<uint32_t> seen;
+  for (uint32_t idx : from.slice(1)) {
+    OutputSection *osec = sections[idx]->getOutputSection();
+    if (osec && seen.insert(osec->sectionIndex).second)
+      *to++ = osec->sectionIndex;
+  }
 }
 
 InputSectionBase *InputSection::getRelocatedSection() const {
@@ -556,6 +563,7 @@ static uint64_t getAArch64UndefinedRelativeWeakVA(uint64_t type, uint64_t a,
   case R_AARCH64_PREL64:
   case R_AARCH64_ADR_PREL_LO21:
   case R_AARCH64_LD_PREL_LO19:
+  case R_AARCH64_PLT32:
     return p + a;
   }
   llvm_unreachable("AArch64 pc-relative relocation expected\n");
@@ -852,6 +860,16 @@ uint64_t InputSectionBase::getRelocTargetVA(const InputFile *file, RelType type,
 template <class ELFT, class RelTy>
 void InputSection::relocateNonAlloc(uint8_t *buf, ArrayRef<RelTy> rels) {
   const unsigned bits = sizeof(typename ELFT::uint) * 8;
+  const bool isDebug = isDebugSection(*this);
+  const bool isDebugLocOrRanges =
+      isDebug && (name == ".debug_loc" || name == ".debug_ranges");
+  const bool isDebugLine = isDebug && name == ".debug_line";
+  Optional<uint64_t> tombstone;
+  for (const auto &patAndValue : llvm::reverse(config->deadRelocInNonAlloc))
+    if (patAndValue.first.match(this->name)) {
+      tombstone = patAndValue.second;
+      break;
+    }
 
   for (const RelTy &rel : rels) {
     RelType type = rel.getType(config->isMips64EL);
@@ -902,11 +920,47 @@ void InputSection::relocateNonAlloc(uint8_t *buf, ArrayRef<RelTy> rels) {
       continue;
     }
 
-    if (sym.isTls() && !Out::tlsPhdr)
-      target->relocateNoSym(bufLoc, type, 0);
-    else
-      target->relocateNoSym(bufLoc, type,
-                            SignExtend64<bits>(sym.getVA(addend)));
+    if (tombstone ||
+        (isDebug && (type == target->symbolicRel || expr == R_DTPREL))) {
+      // Resolve relocations in .debug_* referencing (discarded symbols or ICF
+      // folded section symbols) to a tombstone value. Resolving to addend is
+      // unsatisfactory because the result address range may collide with a
+      // valid range of low address, or leave multiple CUs claiming ownership of
+      // the same range of code, which may confuse consumers.
+      //
+      // To address the problems, we use -1 as a tombstone value for most
+      // .debug_* sections. We have to ignore the addend because we don't want
+      // to resolve an address attribute (which may have a non-zero addend) to
+      // -1+addend (wrap around to a low address).
+      //
+      // R_DTPREL type relocations represent an offset into the dynamic thread
+      // vector. The computed value is st_value plus a non-negative offset.
+      // Negative values are invalid, so -1 can be used as the tombstone value.
+      //
+      // If the referenced symbol is discarded (made Undefined), or the
+      // section defining the referenced symbol is garbage collected,
+      // sym.getOutputSection() is nullptr. `ds->section->repl != ds->section`
+      // catches the ICF folded case. However, resolving a relocation in
+      // .debug_line to -1 would stop debugger users from setting breakpoints on
+      // the folded-in function, so exclude .debug_line.
+      //
+      // For pre-DWARF-v5 .debug_loc and .debug_ranges, -1 is a reserved value
+      // (base address selection entry), use 1 (which is used by GNU ld for
+      // .debug_ranges).
+      //
+      // TODO To reduce disruption, we use 0 instead of -1 as the tombstone
+      // value. Enable -1 in a future release.
+      auto *ds = dyn_cast<Defined>(&sym);
+      if (!sym.getOutputSection() ||
+          (ds && ds->section->repl != ds->section && !isDebugLine)) {
+        // If -z dead-reloc-in-nonalloc= is specified, respect it.
+        const uint64_t value = tombstone ? SignExtend64<bits>(*tombstone)
+                                         : (isDebugLocOrRanges ? 1 : 0);
+        target->relocateNoSym(bufLoc, type, value);
+        continue;
+      }
+    }
+    target->relocateNoSym(bufLoc, type, SignExtend64<bits>(sym.getVA(addend)));
   }
 }
 
@@ -1137,7 +1191,7 @@ void InputSectionBase::adjustSplitStackFunctionPrologues(uint8_t *buf,
                                                    end, f->stOther))
         continue;
       if (!getFile<ELFT>()->someNoSplitStack)
-        error(toString(this) + ": " + f->getName() +
+        error(lld::toString(this) + ": " + f->getName() +
               " (with -fsplit-stack) calls " + rel.sym->getName() +
               " (without -fsplit-stack), but couldn't adjust its prologue");
     }
@@ -1400,6 +1454,3 @@ template void EhInputSection::split<ELF32LE>();
 template void EhInputSection::split<ELF32BE>();
 template void EhInputSection::split<ELF64LE>();
 template void EhInputSection::split<ELF64BE>();
-
-} // namespace elf
-} // namespace lld

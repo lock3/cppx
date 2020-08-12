@@ -15,7 +15,7 @@
 #define SPIRV_LOGICAL_OPS
 
 include "mlir/Dialect/SPIRV/SPIRVBase.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 class SPV_LogicalBinaryOp<string mnemonic, Type operandsType,
                     list<OpTrait> traits = []> :
@@ -26,6 +26,12 @@ class SPV_LogicalBinaryOp<string mnemonic, Type operandsType,
                                 SameOperandsAndResultShape])> {
   let parser = [{ return ::parseLogicalBinaryOp(parser, result); }];
   let printer = [{ return ::printLogicalOp(getOperation(), p); }];
+
+  let builders = [
+    OpBuilder<
+      "OpBuilder &builder, OperationState &state, Value lhs, Value rhs",
+      "::buildLogicalBinaryOp(builder, state, lhs, rhs);">
+  ];
 }
 
 class SPV_LogicalUnaryOp<string mnemonic, Type operandType,

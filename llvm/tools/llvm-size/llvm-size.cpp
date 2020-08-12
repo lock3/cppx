@@ -187,10 +187,11 @@ static bool considerForSize(ObjectFile *Obj, SectionRef Section) {
   switch (static_cast<ELFSectionRef>(Section).getType()) {
   case ELF::SHT_NULL:
   case ELF::SHT_SYMTAB:
+    return false;
   case ELF::SHT_STRTAB:
   case ELF::SHT_REL:
   case ELF::SHT_RELA:
-    return false;
+    return static_cast<ELFSectionRef>(Section).getFlags() & ELF::SHF_ALLOC;
   }
   return true;
 }
@@ -202,7 +203,6 @@ static Expected<uint64_t> getCommonSize(ObjectFile *Obj) {
     Expected<uint32_t> SymFlagsOrErr =
         Obj->getSymbolFlags(Sym.getRawDataRefImpl());
     if (!SymFlagsOrErr)
-      // TODO: Test this error.
       return SymFlagsOrErr.takeError();
     if (*SymFlagsOrErr & SymbolRef::SF_Common)
       TotalCommons += Obj->getCommonSymbolSize(Sym.getRawDataRefImpl());

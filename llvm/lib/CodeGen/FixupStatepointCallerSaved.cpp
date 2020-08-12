@@ -57,6 +57,7 @@ public:
   }
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
+    AU.setPreservesCFG();
     MachineFunctionPass::getAnalysisUsage(AU);
   }
 
@@ -131,7 +132,7 @@ public:
       }
       return FI;
     }
-    int FI = MFI.CreateSpillStackObject(Size, Size);
+    int FI = MFI.CreateSpillStackObject(Size, Align(Size));
     NumSpillSlotsAllocated++;
     Line.Slots.push_back(FI);
     ++Line.Index;

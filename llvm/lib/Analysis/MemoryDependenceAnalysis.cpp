@@ -406,8 +406,6 @@ MemDepResult MemoryDependenceResults::getSimplePointerDependencyFrom(
       isInvariantLoad = true;
   }
 
-  const DataLayout &DL = BB->getModule()->getDataLayout();
-
   // Return "true" if and only if the instruction I is either a non-simple
   // load or a non-simple store.
   auto isNonSimpleLoadOrStore = [](Instruction *I) -> bool {
@@ -576,7 +574,7 @@ MemDepResult MemoryDependenceResults::getSimplePointerDependencyFrom(
     // looking for a clobber in many cases; that's an alias property and is
     // handled by BasicAA.
     if (isa<AllocaInst>(Inst) || isNoAliasFn(Inst, &TLI)) {
-      const Value *AccessPtr = GetUnderlyingObject(MemLoc.Ptr, DL);
+      const Value *AccessPtr = getUnderlyingObject(MemLoc.Ptr);
       if (AccessPtr == Inst || AA.isMustAlias(Inst, AccessPtr))
         return MemDepResult::getDef(Inst);
     }
@@ -1518,15 +1516,25 @@ void MemoryDependenceResults::removeInstruction(Instruction *RemInst) {
     LocalDeps.erase(LocalDepEntry);
   }
 
-  // If we have any cached pointer dependencies on this instruction, remove
-  // them.  If the instruction has non-pointer type, then it can't be a pointer
-  // base.
+  // If we have any cached dependencies on this instruction, remove
+  // them.
 
-  // Remove it from both the load info and the store info.  The instruction
-  // can't be in either of these maps if it is non-pointer.
+  // If the instruction is a pointer, remove it from both the load info and the
+  // store info.
   if (RemInst->getType()->isPointerTy()) {
     RemoveCachedNonLocalPointerDependencies(ValueIsLoadPair(RemInst, false));
     RemoveCachedNonLocalPointerDependencies(ValueIsLoadPair(RemInst, true));
+  } else {
+    // Otherwise, if the instructions is in the map directly, it must be a load.
+    // Remove it.
+    auto toRemoveIt = NonLocalDefsCache.find(RemInst);
+    if (toRemoveIt != NonLocalDefsCache.end()) {
+      assert(isa<LoadInst>(RemInst) &&
+             "only load instructions should be added directly");
+      const Instruction *DepV = toRemoveIt->second.getResult().getInst();
+      ReverseNonLocalDefsCache.find(DepV)->second.erase(RemInst);
+      NonLocalDefsCache.erase(toRemoveIt);
+    }
   }
 
   // Loop over all of the things that depend on the instruction we're removing.

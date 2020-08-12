@@ -19,6 +19,7 @@
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Transforms/IPO/Inliner.h"
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/Transforms/Scalar/LoopPassManager.h"
 #include <vector>
@@ -345,9 +346,9 @@ public:
 
   /// Construct the module pipeline that performs inlining as well as
   /// the inlining-driven cleanups.
-  ModulePassManager buildInlinerPipeline(OptimizationLevel Level,
-                                         ThinLTOPhase Phase,
-                                         bool DebugLogging = false);
+  ModuleInlinerWrapperPass buildInlinerPipeline(OptimizationLevel Level,
+                                                ThinLTOPhase Phase,
+                                                bool DebugLogging = false);
 
   /// Construct the core LLVM module optimization pipeline.
   ///
@@ -471,10 +472,21 @@ public:
   ///   module(function(loop(lpass1,lpass2,lpass3)))
   ///
   /// This shortcut is especially useful for debugging and testing small pass
-  /// combinations. Note that these shortcuts don't introduce any other magic.
-  /// If the sequence of passes aren't all the exact same kind of pass, it will
-  /// be an error. You cannot mix different levels implicitly, you must
-  /// explicitly form a pass manager in which to nest passes.
+  /// combinations.
+  ///
+  /// The sequence of passes aren't necessarily the exact same kind of pass.
+  /// You can mix different levels implicitly if adaptor passes are defined to
+  /// make them work. For example,
+  ///
+  ///   mpass1,fpass1,fpass2,mpass2,lpass1
+  ///
+  /// This pipeline uses only one pass manager: the top-level module manager.
+  /// fpass1,fpass2 and lpass1 are added into the the top-level module manager
+  /// using only adaptor passes. No nested function/loop pass managers are
+  /// added. The purpose is to allow easy pass testing when the user
+  /// specifically want the pass to run under a adaptor directly. This is
+  /// preferred when a pipeline is largely of one type, but one or just a few
+  /// passes are of different types(See PassBuilder.cpp for examples).
   Error parsePassPipeline(ModulePassManager &MPM, StringRef PipelineText,
                           bool VerifyEachPass = true,
                           bool DebugLogging = false);
@@ -513,6 +525,12 @@ public:
   /// the \p AA manager is unspecified if such an error is encountered and this
   /// returns false.
   Error parseAAPipeline(AAManager &AA, StringRef PipelineText);
+
+  /// Returns true if the pass name is the name of an alias analysis pass.
+  bool isAAPassName(StringRef PassName);
+
+  /// Returns true if the pass name is the name of a (non-alias) analysis pass.
+  bool isAnalysisPassName(StringRef PassName);
 
   /// Register a callback for a default optimizer pipeline extension
   /// point
@@ -599,7 +617,7 @@ public:
   /// is not triggered at O0. Extensions to the O0 pipeline should append their
   /// passes to the end of the overall pipeline.
   void registerOptimizerLastEPCallback(
-      const std::function<void(FunctionPassManager &, OptimizationLevel)> &C) {
+      const std::function<void(ModulePassManager &, OptimizationLevel)> &C) {
     OptimizerLastEPCallbacks.push_back(C);
   }
 
@@ -682,6 +700,10 @@ public:
   }
 
 private:
+  // O1 pass pipeline
+  FunctionPassManager buildO1FunctionSimplificationPipeline(
+      OptimizationLevel Level, ThinLTOPhase Phase, bool DebugLogging = false);
+
   static Optional<std::vector<PipelineElement>>
   parsePipelineText(StringRef Text);
 
@@ -727,7 +749,7 @@ private:
       CGSCCOptimizerLateEPCallbacks;
   SmallVector<std::function<void(FunctionPassManager &, OptimizationLevel)>, 2>
       VectorizerStartEPCallbacks;
-  SmallVector<std::function<void(FunctionPassManager &, OptimizationLevel)>, 2>
+  SmallVector<std::function<void(ModulePassManager &, OptimizationLevel)>, 2>
       OptimizerLastEPCallbacks;
   // Module callbacks
   SmallVector<std::function<void(ModulePassManager &)>, 2>

@@ -25,6 +25,7 @@
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
 
@@ -272,7 +273,7 @@ void llvm::PointerMayBeCaptured(const Value *V, CaptureTracker *Tracker,
       // The pointer is not captured if returned pointer is not captured.
       // NOTE: CaptureTracking users should not assume that only functions
       // marked with nocapture do not capture. This means that places like
-      // GetUnderlyingObject in ValueTracking or DecomposeGEPExpression
+      // getUnderlyingObject in ValueTracking or DecomposeGEPExpression
       // in BasicAA also need to know about this property.
       if (isIntrinsicReturningPointerAliasingArgumentWithoutCapturing(Call,
                                                                       true)) {

@@ -475,10 +475,10 @@ unary operators +, --            yes     yes       yes         --
 +,--,*,/,%                       yes     yes       yes         --
 bitwise operators &,|,^,~        yes     yes       yes         --
 >>,<<                            yes     yes       yes         --
-!, &&, ||                        yes     --        yes [#]_    --
+!, &&, ||                        yes     --        yes         --
 ==, !=, >, <, >=, <=             yes     yes       yes         --
 =                                yes     yes       yes         yes
-:? [#]_                          yes     --        yes         --
+?: [#]_                          yes     --        yes         --
 sizeof                           yes     yes       yes         yes
 C-style cast                     yes     yes       yes         no
 reinterpret_cast                 yes     no        yes         no
@@ -488,10 +488,11 @@ const_cast                       no      no        no          no
 
 See also :ref:`langext-__builtin_shufflevector`, :ref:`langext-__builtin_convertvector`.
 
-.. [#] unary operator ! is not implemented, however && and || are.
-.. [#] While OpenCL and GCC vectors both implement the comparison operator(?:) as a
-  'select', they operate somewhat differently. OpenCL selects based on signedness of
-  the condition operands, but GCC vectors use normal bool conversions (that is, != 0).
+.. [#] ternary operator(?:) has different behaviors depending on condition
+  operand's vector type. If the condition is a GNU vector (i.e. __vector_size__),
+  it's only available in C++ and uses normal bool conversions (that is, != 0).
+  If it's an extension (OpenCL) vector, it's only available in C and OpenCL C.
+  And it selects base on signedness of the condition operands (OpenCL v1.1 s6.3.9).
 
 Matrix Types
 ============
@@ -514,8 +515,8 @@ float matrices and add the result to a third 4x4 matrix.
 Half-Precision Floating Point
 =============================
 
-Clang supports two half-precision (16-bit) floating point types: ``__fp16`` and
-``_Float16``.  These types are supported in all language modes.
+Clang supports three half-precision (16-bit) floating point types: ``__fp16``,
+``_Float16`` and ``__bf16``.  These types are supported in all language modes.
 
 ``__fp16`` is supported on every target, as it is purely a storage format; see below.
 ``_Float16`` is currently only supported on the following targets, with further
@@ -526,6 +527,12 @@ targets pending ABI standardization:
 * SPIR
 
 ``_Float16`` will be supported on more targets as they define ABIs for it.
+
+``__bf16`` is purely a storage format; it is currently only supported on the following targets:
+* 32-bit ARM
+* 64-bit ARM (AArch64)
+
+The ``__bf16`` type is only available when supported in hardware.
 
 ``__fp16`` is a storage and interchange format only.  This means that values of
 ``__fp16`` are immediately promoted to (at least) ``float`` when used in arithmetic
@@ -1711,6 +1718,9 @@ following two lines is different:
 This extension also works in C++ mode, as far as that goes, but does not apply
 to the C++ ``std::complex``.  (In C++11, list initialization allows the same
 syntax to be used with ``std::complex`` with the same meaning.)
+
+For GCC compatibility, ``__builtin_complex(re, im)`` can also be used to
+construct a complex number from the given real and imaginary components.
 
 Builtin Functions
 =================
@@ -3173,16 +3183,36 @@ at the start of a compound statement (excluding comments). When using within a
 compound statement, the pragma is active within the scope of the compound
 statement.
 
-Currently, only FP contraction can be controlled with the pragma. ``#pragma
-clang fp contract`` specifies whether the compiler should contract a multiply
-and an addition (or subtraction) into a fused FMA operation when supported by
-the target.
+Currently, the following settings can be controlled with this pragma:
+
+``#pragma clang fp reassociate`` allows control over the reassociation
+of floating point expressions. When enabled, this pragma allows the expression
+``x + (y + z)`` to be reassociated as ``(x + y) + z``.
+Reassociation can also occur across multiple statements.
+This pragma can be used to disable reassociation when it is otherwise
+enabled for the translation unit with the ``-fassociative-math`` flag.
+The pragma can take two values: ``on`` and ``off``.
+
+.. code-block:: c++
+
+  float f(float x, float y, float z)
+  {
+    // Enable floating point reassociation across statements
+    #pragma fp reassociate(on)
+    float t = x + y;
+    float v = t + z;
+  }
+
+
+``#pragma clang fp contract`` specifies whether the compiler should
+contract a multiply and an addition (or subtraction) into a fused FMA
+operation when supported by the target.
 
 The pragma can take three values: ``on``, ``fast`` and ``off``.  The ``on``
 option is identical to using ``#pragma STDC FP_CONTRACT(ON)`` and it allows
-fusion as specified the language standard.  The ``fast`` option allows fusiong
+fusion as specified the language standard.  The ``fast`` option allows fusion
 in cases when the language standard does not make this possible (e.g. across
-statements in C)
+statements in C).
 
 .. code-block:: c++
 

@@ -46,6 +46,10 @@ inline bool isColumnMajorMatmul(ArrayAttr indexingMaps) {
   return indexingMaps == maps;
 }
 
+/// Attribute name for the IntegerAttr which encodes the index of operand
+/// whose dimensions will be propagated as symbols to the indexing maps
+constexpr StringRef getSymbolSourceAttrName() { return "symbol_source"; }
+
 /// Attribute name for the AffineArrayAttr which encodes the relationship
 /// between a structured op iterators' and its operands.
 constexpr StringRef getIndexingMapsAttrName() { return "indexing_maps"; }
@@ -81,12 +85,24 @@ constexpr StringRef getPaddingAttrName() { return "padding"; }
 
 /// Use to encode that a particular iterator type has parallel semantics.
 constexpr StringRef getParallelIteratorTypeName() { return "parallel"; }
+inline bool isParallelIterator(Attribute attr) {
+  auto strAttr = attr.dyn_cast_or_null<StringAttr>();
+  return strAttr && strAttr.getValue() == getParallelIteratorTypeName();
+}
 
 /// Use to encode that a particular iterator type has reduction semantics.
 constexpr StringRef getReductionIteratorTypeName() { return "reduction"; }
+inline bool isReductionIterator(Attribute attr) {
+  auto strAttr = attr.dyn_cast_or_null<StringAttr>();
+  return strAttr && strAttr.getValue() == getReductionIteratorTypeName();
+}
 
 /// Use to encode that a particular iterator type has window semantics.
 constexpr StringRef getWindowIteratorTypeName() { return "window"; }
+inline bool isWindowIterator(Attribute attr) {
+  auto strAttr = attr.dyn_cast_or_null<StringAttr>();
+  return strAttr && strAttr.getValue() == getWindowIteratorTypeName();
+}
 
 /// Use to encode that a particular iterator type has window semantics.
 inline ArrayRef<StringRef> getAllIteratorTypeNames() {

@@ -426,7 +426,7 @@ def system(commands, **kwargs):
         process = Popen(
             shellCommand,
             stdout=PIPE,
-            stderr=PIPE,
+            stderr=STDOUT,
             shell=True,
             **kwargs)
         pid = process.pid
@@ -440,14 +440,12 @@ def system(commands, **kwargs):
             cpe = CalledProcessError(retcode, cmd)
             # Ensure caller can access the stdout/stderr.
             cpe.lldb_extensions = {
-                "stdout_content": this_output,
-                "stderr_content": this_error,
+                "combined_output": this_output,
                 "command": shellCommand
             }
             raise cpe
         output = output + this_output.decode("utf-8")
-        error = error + this_error.decode("utf-8")
-    return (output, error)
+    return output
 
 
 def getsource_if_available(obj):
@@ -498,12 +496,20 @@ class Base(unittest2.TestCase):
             mydir = TestBase.compute_mydir(__file__)
         '''
         # /abs/path/to/packages/group/subdir/mytest.py -> group/subdir
-        rel_prefix = test_file[len(os.environ["LLDB_TEST_SRC"]) + 1:]
-        return os.path.dirname(rel_prefix)
+        lldb_test_src = configuration.test_src_root
+        if not test_file.startswith(lldb_test_src):
+          raise Exception(
+              "Test file '%s' must reside within lldb_test_src "
+              "(which is '%s')." % (test_file, lldb_test_src))
+        return os.path.dirname(os.path.relpath(test_file, start=lldb_test_src))
 
     def TraceOn(self):
         """Returns True if we are in trace mode (tracing detailed test execution)."""
         return traceAlways
+
+    def trace(self, *args,**kwargs):
+        with recording(self, self.TraceOn()) as sbuf:
+            print(*args, file=sbuf, **kwargs)
 
     @classmethod
     def setUpClass(cls):
@@ -518,14 +524,11 @@ class Base(unittest2.TestCase):
         # Save old working directory.
         cls.oldcwd = os.getcwd()
 
-        # Change current working directory if ${LLDB_TEST_SRC} is defined.
-        # See also dotest.py which sets up ${LLDB_TEST_SRC}.
-        if ("LLDB_TEST_SRC" in os.environ):
-            full_dir = os.path.join(os.environ["LLDB_TEST_SRC"],
-                                    cls.mydir)
-            if traceAlways:
-                print("Change dir to:", full_dir, file=sys.stderr)
-            os.chdir(full_dir)
+        full_dir = os.path.join(configuration.test_src_root, cls.mydir)
+        if traceAlways:
+            print("Change dir to:", full_dir, file=sys.stderr)
+        os.chdir(full_dir)
+        lldb.SBReproducer.SetWorkingDirectory(full_dir)
 
         # Set platform context.
         cls.platformContext = lldbplatformutil.createPlatformContext()
@@ -571,6 +574,7 @@ class Base(unittest2.TestCase):
         # confirm that the file is writeable
         host_log_path = "{}-host.log".format(log_basename)
         open(host_log_path, 'w').close()
+        self.log_files.append(host_log_path)
 
         log_enable = "log enable -Tpn -f {} ".format(host_log_path)
         for channel_with_categories in lldbtest_config.channels:
@@ -597,6 +601,7 @@ class Base(unittest2.TestCase):
         if lldb.remote_platform is None:
             server_log_path = "{}-server.log".format(log_basename)
             open(server_log_path, 'w').close()
+            self.log_files.append(server_log_path)
             os.environ["LLDB_DEBUGSERVER_LOG_FILE"] = server_log_path
 
             # Communicate channels to lldb-server
@@ -618,12 +623,13 @@ class Base(unittest2.TestCase):
         # Retrieve the server log (if any) from the remote system. It is assumed the server log
         # is writing to the "server.log" file in the current test directory. This can be
         # achieved by setting LLDB_DEBUGSERVER_LOG_FILE="server.log" when starting remote
-        # platform. If the remote logging is not enabled, then just let the Get() command silently
-        # fail.
+        # platform.
         if lldb.remote_platform:
-            lldb.remote_platform.Get(
-                lldb.SBFileSpec("server.log"), lldb.SBFileSpec(
-                    self.getLogBasenameForCurrentTest() + "-server.log"))
+            server_log_path = self.getLogBasenameForCurrentTest() + "-server.log"
+            if lldb.remote_platform.Get(
+                lldb.SBFileSpec("server.log"),
+                lldb.SBFileSpec(server_log_path)).Success():
+                self.log_files.append(server_log_path)
 
     def setPlatformWorkingDir(self):
         if not lldb.remote_platform or not configuration.lldb_platform_working_dir:
@@ -656,21 +662,27 @@ class Base(unittest2.TestCase):
 
     def getSourceDir(self):
         """Return the full path to the current test."""
-        return os.path.join(os.environ["LLDB_TEST_SRC"], self.mydir)
+        return os.path.join(configuration.test_src_root, self.mydir)
 
     def getBuildDirBasename(self):
         return self.__class__.__module__ + "." + self.testMethodName
 
     def getBuildDir(self):
         """Return the full path to the current test."""
-        return os.path.join(os.environ["LLDB_BUILD"], self.mydir,
+        return os.path.join(configuration.test_build_dir, self.mydir,
                             self.getBuildDirBasename())
 
+    def getReproducerDir(self):
+        """Return the full path to the reproducer if enabled."""
+        if configuration.capture_path:
+            return configuration.capture_path
+        if configuration.replay_path:
+            return configuration.replay_path
+        return None
 
     def makeBuildDir(self):
         """Create the test-specific working directory, deleting any previous
         contents."""
-        # See also dotest.py which sets up ${LLDB_BUILD}.
         bdir = self.getBuildDir()
         if os.path.isdir(bdir):
             shutil.rmtree(bdir)
@@ -684,6 +696,16 @@ class Base(unittest2.TestCase):
         """Return absolute path to a file in the test's source directory."""
         return os.path.join(self.getSourceDir(), name)
 
+    def getReproducerArtifact(self, name):
+        lldbutil.mkdir_p(self.getReproducerDir())
+        return os.path.join(self.getReproducerDir(), name)
+
+    def getReproducerRemappedPath(self, path):
+        assert configuration.replay_path
+        assert os.path.isabs(path)
+        path = os.path.relpath(path, '/')
+        return os.path.join(configuration.replay_path, 'root', path)
+
     @classmethod
     def setUpCommands(cls):
         commands = [
@@ -694,6 +716,9 @@ class Base(unittest2.TestCase):
             # different binaries with the same UUID, because they only
             # differ in the debug info, which is not being hashed.
             "settings set symbols.enable-external-lookup false",
+
+            # Inherit the TCC permissions from the inferior's parent.
+            "settings set target.inherit-tcc true",
 
             # Disable fix-its by default so that incorrect expressions in tests don't
             # pass just because Clang thinks it has a fix-it.
@@ -776,14 +801,12 @@ class Base(unittest2.TestCase):
         # List of spawned subproces.Popen objects
         self.subprocesses = []
 
-        # List of forked process PIDs
-        self.forkedProcessPids = []
+        # List of log files produced by the current test.
+        self.log_files = []
 
-        # Create a string buffer to record the session info, to be dumped into a
-        # test case specific file if test failure is encountered.
-        self.log_basename = self.getLogBasenameForCurrentTest()
+        session_file = self.getLogBasenameForCurrentTest()+".log"
+        self.log_files.append(session_file)
 
-        session_file = "{}.log".format(self.log_basename)
         # Python 3 doesn't support unbuffered I/O in text mode.  Open buffered.
         self.session = encoded_file.open(session_file, "utf-8", mode="w")
 
@@ -862,52 +885,21 @@ class Base(unittest2.TestCase):
         self.addTearDownHook(lambda: self.dbg.SetAsync(old_async))
 
     def cleanupSubprocesses(self):
-        # Ensure any subprocesses are cleaned up
-        for p in self.subprocesses:
+        # Terminate subprocesses in reverse order from how they were created.
+        for p in reversed(self.subprocesses):
             p.terminate()
             del p
         del self.subprocesses[:]
-        # Ensure any forked processes are cleaned up
-        for pid in self.forkedProcessPids:
-            if os.path.exists("/proc/" + str(pid)):
-                os.kill(pid, signal.SIGTERM)
 
     def spawnSubprocess(self, executable, args=[], install_remote=True):
         """ Creates a subprocess.Popen object with the specified executable and arguments,
             saves it in self.subprocesses, and returns the object.
-            NOTE: if using this function, ensure you also call:
-
-              self.addTearDownHook(self.cleanupSubprocesses)
-
-            otherwise the test suite will leak processes.
         """
         proc = _RemoteProcess(
             install_remote) if lldb.remote_platform else _LocalProcess(self.TraceOn())
         proc.launch(executable, args)
         self.subprocesses.append(proc)
         return proc
-
-    def forkSubprocess(self, executable, args=[]):
-        """ Fork a subprocess with its own group ID.
-            NOTE: if using this function, ensure you also call:
-
-              self.addTearDownHook(self.cleanupSubprocesses)
-
-            otherwise the test suite will leak processes.
-        """
-        child_pid = os.fork()
-        if child_pid == 0:
-            # If more I/O support is required, this can be beefed up.
-            fd = os.open(os.devnull, os.O_RDWR)
-            os.dup2(fd, 1)
-            os.dup2(fd, 2)
-            # This call causes the child to have its of group ID
-            os.setpgid(0, 0)
-            os.execvp(executable, [executable] + args)
-        # Give the child time to get through the execvp() call
-        time.sleep(0.1)
-        self.forkedProcessPids.append(child_pid)
-        return child_pid
 
     def HideStdout(self):
         """Hide output to stdout from the user.
@@ -997,9 +989,6 @@ class Base(unittest2.TestCase):
 
     def tearDown(self):
         """Fixture for unittest test case teardown."""
-        #import traceback
-        # traceback.print_stack()
-
         self.deletePexpectChild()
 
         # Check and run any hook functions.
@@ -1025,6 +1014,9 @@ class Base(unittest2.TestCase):
             if self.dicts:
                 for dict in reversed(self.dicts):
                     self.cleanup(dictionary=dict)
+
+        # Remove subprocesses created by the test.
+        self.cleanupSubprocesses()
 
         # This must be the last statement, otherwise teardown hooks or other
         # lines might depend on this still being active.
@@ -1106,7 +1098,7 @@ class Base(unittest2.TestCase):
 
         <session-dir>/<arch>-<compiler>-<test-file>.<test-class>.<test-method>
         """
-        dname = os.path.join(os.environ["LLDB_TEST_SRC"],
+        dname = os.path.join(configuration.test_src_root,
                              os.environ["LLDB_SESSION_DIRNAME"])
         if not os.path.isdir(dname):
             os.mkdir(dname)
@@ -1195,14 +1187,13 @@ class Base(unittest2.TestCase):
         del self.session
 
         # process the log files
-        log_files_for_this_test = glob.glob(self.log_basename + "*")
-
         if prefix != 'Success' or lldbtest_config.log_success:
             # keep all log files, rename them to include prefix
+            src_log_basename = self.getLogBasenameForCurrentTest(None)
             dst_log_basename = self.getLogBasenameForCurrentTest(prefix)
-            for src in log_files_for_this_test:
+            for src in self.log_files:
                 if os.path.isfile(src):
-                    dst = src.replace(self.log_basename, dst_log_basename)
+                    dst = src.replace(src_log_basename, dst_log_basename)
                     if os.name == "nt" and os.path.isfile(dst):
                         # On Windows, renaming a -> b will throw an exception if
                         # b exists.  On non-Windows platforms it silently
@@ -1216,8 +1207,9 @@ class Base(unittest2.TestCase):
                     os.rename(src, dst)
         else:
             # success!  (and we don't want log files) delete log files
-            for log_file in log_files_for_this_test:
-                remove_file(log_file)
+            for log_file in self.log_files:
+                if os.path.isfile(log_file):
+                    remove_file(log_file)
 
     # ====================================================
     # Config. methods supported through a plugin interface
@@ -1289,7 +1281,7 @@ class Base(unittest2.TestCase):
         version = 'unknown'
 
         compiler = self.getCompilerBinary()
-        version_output = system([[compiler, "-v"]])[1]
+        version_output = system([[compiler, "-v"]])
         for line in version_output.split(os.linesep):
             m = re.search('version ([0-9\.]+)', line)
             if m:
@@ -1333,25 +1325,35 @@ class Base(unittest2.TestCase):
            Use compiler_version[0] to specify the operator used to determine if a match has occurred.
            Any operator other than the following defaults to an equality test:
              '>', '>=', "=>", '<', '<=', '=<', '!=', "!" or 'not'
+
+           If the current compiler version cannot be determined, we assume it is close to the top
+           of trunk, so any less-than or equal-to comparisons will return False, and any
+           greater-than or not-equal-to comparisons will return True.
         """
-        if (compiler_version is None):
+        if compiler_version is None:
             return True
         operator = str(compiler_version[0])
         version = compiler_version[1]
 
-        if (version is None):
+        if version is None:
             return True
-        if (operator == '>'):
-            return LooseVersion(self.getCompilerVersion()) > LooseVersion(version)
-        if (operator == '>=' or operator == '=>'):
-            return LooseVersion(self.getCompilerVersion()) >= LooseVersion(version)
-        if (operator == '<'):
-            return LooseVersion(self.getCompilerVersion()) < LooseVersion(version)
-        if (operator == '<=' or operator == '=<'):
-            return LooseVersion(self.getCompilerVersion()) <= LooseVersion(version)
-        if (operator == '!=' or operator == '!' or operator == 'not'):
-            return str(version) not in str(self.getCompilerVersion())
-        return str(version) in str(self.getCompilerVersion())
+
+        test_compiler_version = self.getCompilerVersion()
+        if test_compiler_version == 'unknown':
+            # Assume the compiler version is at or near the top of trunk.
+            return operator in ['>', '>=', '!', '!=', 'not']
+
+        if operator == '>':
+            return LooseVersion(test_compiler_version) > LooseVersion(version)
+        if operator == '>=' or operator == '=>':
+            return LooseVersion(test_compiler_version) >= LooseVersion(version)
+        if operator == '<':
+            return LooseVersion(test_compiler_version) < LooseVersion(version)
+        if operator == '<=' or operator == '=<':
+            return LooseVersion(test_compiler_version) <= LooseVersion(version)
+        if operator == '!=' or operator == '!' or operator == 'not':
+            return str(version) not in str(test_compiler_version)
+        return str(version) in str(test_compiler_version)
 
     def expectedCompiler(self, compilers):
         """Returns True iff any element of compilers is a sub-string of the current compiler."""
@@ -1610,20 +1612,6 @@ class Base(unittest2.TestCase):
 
         return os.environ["CC"]
 
-    def findYaml2obj(self):
-        """
-        Get the path to the yaml2obj executable, which can be used to create
-        test object files from easy to write yaml instructions.
-
-        Throws an Exception if the executable cannot be found.
-        """
-        # Tries to find yaml2obj at the same folder as clang
-        clang_dir = os.path.dirname(self.findBuiltClang())
-        path = distutils.spawn.find_executable("yaml2obj", clang_dir)
-        if path is not None:
-            return path
-        raise Exception("yaml2obj executable not found")
-
 
     def yaml2obj(self, yaml_path, obj_path):
         """
@@ -1631,8 +1619,10 @@ class Base(unittest2.TestCase):
 
         Throws subprocess.CalledProcessError if the object could not be created.
         """
-        yaml2obj = self.findYaml2obj()
-        command = [yaml2obj, "-o=%s" % obj_path, yaml_path]
+        yaml2obj_bin = configuration.get_yaml2obj_path()
+        if not yaml2obj_bin:
+            self.assertTrue(False, "No valid yaml2obj executable specified")
+        command = [yaml2obj_bin, "-o=%s" % obj_path, yaml_path]
         system([command])
 
     def getBuildFlags(
@@ -1862,9 +1852,6 @@ class TestBase(Base):
         self.addTearDownHook(lambda: os.remove(src))
 
     def setUp(self):
-        #import traceback
-        # traceback.print_stack()
-
         # Works with the test driver to conditionally skip tests via
         # decorators.
         Base.setUp(self)
@@ -1905,8 +1892,7 @@ class TestBase(Base):
         shlib_prefix = self.platformContext.shlib_prefix
         shlib_extension = '.' + self.platformContext.shlib_extension
 
-        working_dir = self.get_process_working_directory()
-        environment = ['%s=%s' % (shlib_environment_var, working_dir)]
+        dirs = []
         # Add any shared libraries to our target if remote so they get
         # uploaded into the working directory on the remote side
         for name in shlibs:
@@ -1929,6 +1915,7 @@ class TestBase(Base):
                 # Make sure we found the local shared library in the above code
                 self.assertTrue(os.path.exists(local_shlib_path))
 
+
             # Add the shared library to our target
             shlib_module = target.AddModule(local_shlib_path, None, None, None)
             if lldb.remote_platform:
@@ -1938,8 +1925,15 @@ class TestBase(Base):
                     os.path.basename(local_shlib_path))
                 shlib_module.SetRemoteInstallFileSpec(
                     lldb.SBFileSpec(remote_shlib_path, False))
+                dir_to_add = self.get_process_working_directory()
+            else:
+                dir_to_add = os.path.dirname(local_shlib_path)
 
-        return environment
+            if dir_to_add not in dirs:
+                dirs.append(dir_to_add)
+
+        env_value = self.platformContext.shlib_path_separator.join(dirs)
+        return ['%s=%s' % (shlib_environment_var, env_value)]
 
     def registerSanitizerLibrariesWithTarget(self, target):
         runtimes = []
@@ -1983,9 +1977,6 @@ class TestBase(Base):
             return self.getBuildDir()
 
     def tearDown(self):
-        #import traceback
-        # traceback.print_stack()
-
         # Ensure all the references to SB objects have gone away so that we can
         # be sure that all test-specific resources have been freed before we
         # attempt to delete the targets.
@@ -2002,9 +1993,17 @@ class TestBase(Base):
                 process = target.GetProcess()
                 if process:
                     rc = self.invoke(process, "Kill")
-                    self.assertTrue(rc.Success(), PROCESS_KILLED)
+                    assert rc.Success()
         for target in targets:
             self.dbg.DeleteTarget(target)
+
+        # Modules are not orphaned during reproducer replay because they're
+        # leaked on purpose.
+        if not configuration.is_reproducer():
+            # Assert that all targets are deleted.
+            assert self.dbg.GetNumTargets() == 0
+            # Assert that the global module cache is empty.
+            assert lldb.SBModule.GetNumberAllocatedModules() == 0
 
         # Do this last, to make sure it's in reverse order from how we setup.
         Base.tearDown(self)
@@ -2132,13 +2131,27 @@ class TestBase(Base):
 
         return match_object
 
-    def check_completion_with_desc(self, str_input, match_desc_pairs):
+    def check_completion_with_desc(self, str_input, match_desc_pairs, enforce_order=False):
+        """
+        Checks that when the given input is completed at the given list of
+        completions and descriptions is returned.
+        :param str_input: The input that should be completed. The completion happens at the end of the string.
+        :param match_desc_pairs: A list of pairs that indicate what completions have to be in the list of
+                                 completions returned by LLDB. The first element of the pair is the completion
+                                 string that LLDB should generate and the second element the description.
+        :param enforce_order: True iff the order in which the completions are returned by LLDB
+                              should match the order of the match_desc_pairs pairs.
+        """
         interp = self.dbg.GetCommandInterpreter()
         match_strings = lldb.SBStringList()
         description_strings = lldb.SBStringList()
         num_matches = interp.HandleCompletionWithDescriptions(str_input, len(str_input), 0, -1, match_strings, description_strings)
         self.assertEqual(len(description_strings), len(match_strings))
 
+        # The index of the last matched description in description_strings or
+        # -1 if no description has been matched yet.
+        last_found_index = -1
+        out_of_order_errors = ""
         missing_pairs = []
         for pair in match_desc_pairs:
             found_pair = False
@@ -2147,20 +2160,35 @@ class TestBase(Base):
                 description_candidate = description_strings.GetStringAtIndex(i)
                 if match_candidate == pair[0] and description_candidate == pair[1]:
                     found_pair = True
+                    if enforce_order and last_found_index > i:
+                        new_err = ("Found completion " + pair[0] + " at index " +
+                                  str(i) + " in returned completion list but " +
+                                  "should have been after completion " +
+                                  match_strings.GetStringAtIndex(last_found_index) +
+                                  " (index:" + str(last_found_index) + ")\n")
+                        out_of_order_errors += new_err
+                    last_found_index = i
                     break
             if not found_pair:
                 missing_pairs.append(pair)
 
+        error_msg = ""
+        got_failure = False
         if len(missing_pairs):
-            error_msg = "Missing pairs:\n"
+            got_failure = True
+            error_msg += "Missing pairs:\n"
             for pair in missing_pairs:
                 error_msg += " [" + pair[0] + ":" + pair[1] + "]\n"
+        if len(out_of_order_errors):
+            got_failure = True
+            error_msg += out_of_order_errors
+        if got_failure:
             error_msg += "Got the following " + str(num_matches) + " completions back:\n"
             for i in range(num_matches + 1):
                 match_candidate = match_strings.GetStringAtIndex(i)
                 description_candidate = description_strings.GetStringAtIndex(i)
-                error_msg += "[" + match_candidate + ":" + description_candidate + "]\n"
-            self.assertEqual(0, len(missing_pairs), error_msg)
+                error_msg += "[" + match_candidate + ":" + description_candidate + "] index " + str(i) + "\n"
+            self.assertFalse(got_failure, error_msg)
 
     def complete_exactly(self, str_input, patterns):
         self.complete_from_to(str_input, patterns, True)
@@ -2416,14 +2444,17 @@ FileCheck output:
         options.SetIgnoreBreakpoints(True)
 
         if self.frame().IsValid():
-          options.SetLanguage(frame.GuessLanguage())
-          eval_result = self.frame().EvaluateExpression(expr, options)
+            options.SetLanguage(frame.GuessLanguage())
+            eval_result = self.frame().EvaluateExpression(expr, options)
         else:
-          eval_result = self.target().EvaluateExpression(expr, options)
+            target = self.target()
+            # If there is no selected target, run the expression in the dummy
+            # target.
+            if not target.IsValid():
+                target = self.dbg.GetDummyTarget()
+            eval_result = target.EvaluateExpression(expr, options)
 
-        if not eval_result.GetError().Success():
-            self.assertTrue(eval_result.GetError().Success(),
-                "Unexpected failure with msg: " + eval_result.GetError().GetCString())
+        self.assertSuccess(eval_result.GetError())
 
         if result_type:
             self.assertEqual(result_type, eval_result.GetDisplayTypeName())
@@ -2474,6 +2505,13 @@ FileCheck output:
         shell_command = lldb.SBPlatformShellCommand(cmd)
         err = platform.Run(shell_command)
         return (err, shell_command.GetStatus(), shell_command.GetOutput())
+
+    """Assert that an lldb.SBError is in the "success" state."""
+    def assertSuccess(self, obj, msg=None):
+        if not obj.Success():
+            error = obj.GetCString()
+            self.fail(self._formatMessage(msg,
+                "'{}' is not success".format(error)))
 
     # =================================================
     # Misc. helper methods for debugging test execution

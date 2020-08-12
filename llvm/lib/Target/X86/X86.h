@@ -67,9 +67,6 @@ FunctionPass *createX86OptimizeLEAs();
 /// Return a pass that transforms setcc + movzx pairs into xor + setcc.
 FunctionPass *createX86FixupSetCC();
 
-/// Return a pass that folds conditional branch jumps.
-FunctionPass *createX86CondBrFolding();
-
 /// Return a pass that avoids creating store forward block issues in the hardware.
 FunctionPass *createX86AvoidStoreForwardingBlocks();
 
@@ -140,8 +137,10 @@ InstructionSelector *createX86InstructionSelector(const X86TargetMachine &TM,
                                                   X86Subtarget &,
                                                   X86RegisterBankInfo &);
 
+FunctionPass *createX86LoadValueInjectionLoadHardeningPass();
 FunctionPass *createX86LoadValueInjectionRetHardeningPass();
 FunctionPass *createX86SpeculativeLoadHardeningPass();
+FunctionPass *createX86SpeculativeExecutionSideEffectSuppression();
 
 void initializeEvexToVexInstPassPass(PassRegistry &);
 void initializeFixupBWInstPassPass(PassRegistry &);
@@ -152,16 +151,17 @@ void initializeX86AvoidSFBPassPass(PassRegistry &);
 void initializeX86AvoidTrailingCallPassPass(PassRegistry &);
 void initializeX86CallFrameOptimizationPass(PassRegistry &);
 void initializeX86CmovConverterPassPass(PassRegistry &);
-void initializeX86CondBrFoldingPassPass(PassRegistry &);
 void initializeX86DomainReassignmentPass(PassRegistry &);
 void initializeX86ExecutionDomainFixPass(PassRegistry &);
 void initializeX86ExpandPseudoPass(PassRegistry &);
 void initializeX86FixupSetCCPassPass(PassRegistry &);
 void initializeX86FlagsCopyLoweringPassPass(PassRegistry &);
+void initializeX86LoadValueInjectionLoadHardeningPassPass(PassRegistry &);
 void initializeX86LoadValueInjectionRetHardeningPassPass(PassRegistry &);
 void initializeX86OptimizeLEAPassPass(PassRegistry &);
 void initializeX86PartialReductionPass(PassRegistry &);
 void initializeX86SpeculativeLoadHardeningPassPass(PassRegistry &);
+void initializeX86SpeculativeExecutionSideEffectSuppressionPass(PassRegistry &);
 
 namespace X86AS {
 enum : unsigned {

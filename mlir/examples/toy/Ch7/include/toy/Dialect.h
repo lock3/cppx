@@ -17,7 +17,7 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/Interfaces/SideEffects.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "toy/ShapeInferenceInterface.h"
 
 namespace mlir {
@@ -80,10 +80,6 @@ class StructType : public mlir::Type::TypeBase<StructType, mlir::Type,
 public:
   /// Inherit some necessary constructors from 'TypeBase'.
   using Base::Base;
-
-  /// This static method is used to support type inquiry through isa, cast,
-  /// and dyn_cast.
-  static bool kindof(unsigned kind) { return kind == ToyTypes::Struct; }
 
   /// Create an instance of a `StructType` with the given element types. There
   /// *must* be atleast one element type.

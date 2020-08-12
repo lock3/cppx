@@ -3,7 +3,7 @@
 // RUN: %clang_cc1 -fopenmp -x c++ -triple x86_64-unknown-unknown -fexceptions -fcxx-exceptions -debug-info-kind=limited -std=c++11 -include-pch %t -verify %s -emit-llvm -o - | FileCheck --check-prefixes=ALL-DEBUG,CHECK-DEBUG %s
 // RUN: %clang_cc1 -verify -fopenmp -fopenmp-enable-irbuilder -DIRBUILDER -x c++ -emit-llvm %s -triple %itanium_abi_triple -fexceptions -fcxx-exceptions -o - | FileCheck %s --check-prefixes=ALL,IRBUILDER
 // RUN: %clang_cc1 -fopenmp -fopenmp-enable-irbuilder -DIRBUILDER -x c++ -std=c++11 -triple x86_64-unknown-unknown -fexceptions -fcxx-exceptions -emit-pch -o %t %s
-// RUN: %clang_cc1 -fopenmp -fopenmp-enable-irbuilder -DIRBUILDER -x c++ -triple x86_64-unknown-unknown -fexceptions -fcxx-exceptions -debug-info-kind=limited -std=c++11 -include-pch %t -verify %s -emit-llvm -o - | FileCheck --check-prefixes=ALL-DEBUG,IRBUILDER-DEBUG %s
+// RUN: %clang_cc1 -fopenmp -fopenmp-enable-irbuilder -DIRBUILDER -x c++ -triple x86_64-unknown-unknown -fexceptions -fcxx-exceptions -debug-info-kind=limited -gno-column-info -std=c++11 -include-pch %t -verify %s -emit-llvm -o - | FileCheck --check-prefixes=ALL-DEBUG,IRBUILDER-DEBUG %s
 
 // RUN: %clang_cc1 -verify -fopenmp-simd -x c++ -emit-llvm %s -triple %itanium_abi_triple -fexceptions -fcxx-exceptions -o - | FileCheck --check-prefix SIMD-ONLY0 %s
 // RUN: %clang_cc1 -fopenmp-simd -x c++ -std=c++11 -triple x86_64-unknown-unknown -fexceptions -fcxx-exceptions -emit-pch -o %t %s
@@ -155,7 +155,7 @@ int main (int argc, char **argv) {
 // ALL-DEBUG:  ret i32 0
 // ALL-DEBUG-NEXT:  }
 
-// CHECK:       define internal {{.*}}void [[OMP_OUTLINED]](i32* noalias %.global_tid., i32* noalias %.bound_tid., i8*** dereferenceable({{4|8}}) %argc, i{{64|32}}{{.*}} %{{.+}})
+// CHECK:       define internal {{.*}}void [[OMP_OUTLINED]](i32* noalias %.global_tid., i32* noalias %.bound_tid., i8*** nonnull align {{[0-9]+}} dereferenceable({{4|8}}) %argc, i{{64|32}}{{.*}} %{{.+}})
 // IRBUILDER:   define internal {{.*}}void [[OMP_OUTLINED]](i32* noalias %{{.*}}, i32* noalias %{{.*}}, i8*** [[ARGC_REF:%.*]], i{{64|32}}{{.*}} %{{.+}})
 // CHECK:       store i8*** %argc, i8**** [[ARGC_PTR_ADDR:%.+]],
 // CHECK:       [[ARGC_REF:%.+]] = load i8***, i8**** [[ARGC_PTR_ADDR]]
@@ -166,7 +166,7 @@ int main (int argc, char **argv) {
 // CHECK:       call {{.*}}void @{{.+terminate.*|abort}}(
 // CHECK-NEXT:  unreachable
 // CHECK-NEXT:  }
-// CHECK-DEBUG:       define internal void [[OMP_OUTLINED_DEBUG:@.+]](i32* noalias %.global_tid., i32* noalias %.bound_tid., i8*** dereferenceable({{4|8}}) %argc, i64 %{{.+}})
+// CHECK-DEBUG:       define internal void [[OMP_OUTLINED_DEBUG:@.+]](i32* noalias %.global_tid., i32* noalias %.bound_tid., i8*** nonnull align {{[0-9]+}} dereferenceable({{4|8}}) %argc, i64 %{{.+}})
 // IRBUILDER-DEBUG:   define internal void [[OMP_OUTLINED_DEBUG:@.+]](i32* noalias %{{.*}}, i32* noalias %{{.*}}, i8*** [[ARGC_REF:%.*]], i64 %{{.+}})
 // CHECK-DEBUG:       store i8*** %argc, i8**** [[ARGC_PTR_ADDR:%.+]],
 // CHECK-DEBUG:       [[ARGC_REF:%.+]] = load i8***, i8**** [[ARGC_PTR_ADDR]]
@@ -180,7 +180,7 @@ int main (int argc, char **argv) {
 
 // ALL: define linkonce_odr {{.*}}void [[FOO1]](i8** %argc)
 // CHECK-DEBUG-DAG: define linkonce_odr void [[FOO1]](i8** %argc)
-// CHECK-DEBUG-DAG: define internal void [[OMP_OUTLINED]](i32* noalias %.global_tid., i32* noalias %.bound_tid., i8*** dereferenceable({{4|8}}) %argc, i64 %{{.+}})
+// CHECK-DEBUG-DAG: define internal void [[OMP_OUTLINED]](i32* noalias %.global_tid., i32* noalias %.bound_tid., i8*** nonnull align {{[0-9]+}} dereferenceable({{4|8}}) %argc, i64 %{{.+}})
 // CHECK-DEBUG-DAG: call void [[OMP_OUTLINED_DEBUG]]({{[^)]+}}){{[^,]*}}, !dbg
 
 // ALL: attributes #[[FN_ATTRS]] = {{.+}} nounwind

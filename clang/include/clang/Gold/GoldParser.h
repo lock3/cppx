@@ -235,7 +235,10 @@ namespace gold
     Syntax *parseArrayPrefix();
     Syntax *parseNNSPrefix();
     Syntax *parsePostAttr(Syntax *Pre);
+  private:
+    Attribute *parsePostAttr();
 
+  public:
     Syntax *parsePrimary();
     Syntax *parseId();
     Syntax *parseParen();

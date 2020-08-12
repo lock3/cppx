@@ -31,9 +31,10 @@ using namespace mlir;
 // Create a call to llvm intrinsic
 static llvm::Value *createIntrinsicCall(llvm::IRBuilder<> &builder,
                                         llvm::Intrinsic::ID intrinsic,
-                                        ArrayRef<llvm::Value *> args = {}) {
+                                        ArrayRef<llvm::Value *> args = {},
+                                        ArrayRef<llvm::Type *> tys = {}) {
   llvm::Module *module = builder.GetInsertBlock()->getModule();
-  llvm::Function *fn = llvm::Intrinsic::getDeclaration(module, intrinsic);
+  llvm::Function *fn = llvm::Intrinsic::getDeclaration(module, intrinsic, tys);
   return builder.CreateCall(fn, args);
 }
 
@@ -74,10 +75,12 @@ protected:
 };
 } // namespace
 
-std::unique_ptr<llvm::Module> mlir::translateModuleToROCDLIR(Operation *m) {
+std::unique_ptr<llvm::Module>
+mlir::translateModuleToROCDLIR(Operation *m, llvm::LLVMContext &llvmContext,
+                               StringRef name) {
   // lower MLIR (with RODL Dialect) to LLVM IR (with ROCDL intrinsics)
-  auto llvmModule =
-      LLVM::ModuleTranslation::translateModule<ModuleTranslation>(m);
+  auto llvmModule = LLVM::ModuleTranslation::translateModule<ModuleTranslation>(
+      m, llvmContext, name);
 
   // foreach GPU kernel
   // 1. Insert AMDGPU_KERNEL calling convention.
@@ -98,10 +101,11 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToROCDLIR(Operation *m) {
 }
 
 namespace mlir {
-void registerToROCLDIRTranslation() {
+void registerToROCDLIRTranslation() {
   TranslateFromMLIRRegistration registration(
       "mlir-to-rocdlir", [](ModuleOp module, raw_ostream &output) {
-        auto llvmModule = mlir::translateModuleToROCDLIR(module);
+        llvm::LLVMContext llvmContext;
+        auto llvmModule = mlir::translateModuleToROCDLIR(module, llvmContext);
         if (!llvmModule)
           return failure();
 

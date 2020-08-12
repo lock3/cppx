@@ -8,6 +8,8 @@
 
 // dummies for outer let
 class LetDummies {
+  bit ReadsModeReg;
+  bit mayRaiseFPException;
   bit isCommutable;
   bit isConvertibleToThreeAddress;
   bit isMoveImm;
@@ -35,7 +37,7 @@ class VOPAnyCommon <dag outs, dag ins, string asm, list<dag> pattern> :
   let hasSideEffects = 0;
   let UseNamedOperandTable = 1;
   let VALU = 1;
-  let Uses = [EXEC];
+  let Uses = !if(ReadsModeReg, [MODE, EXEC], [EXEC]);
 }
 
 class VOP_Pseudo <string opName, string suffix, VOPProfile P, dag outs, dag ins,
@@ -118,7 +120,10 @@ class VOP3_Pseudo <string opName, VOPProfile P, list<dag> pattern = [],
   let ClampLo = P.HasClampLo;
   let ClampHi = P.HasClampHi;
 
-  let Uses = [EXEC];
+  let ReadsModeReg = !or(isFloatType<P.DstVT>.ret, isFloatType<P.Src0VT>.ret);
+
+  let mayRaiseFPException = ReadsModeReg;
+  let Uses = !if(ReadsModeReg, [MODE, EXEC], [EXEC]);
 
   let AsmVariantName = AMDGPUAsmVariants.VOP3;
   let AsmMatchConverter =
@@ -490,7 +495,11 @@ class VOP_SDWA_Pseudo <string opName, VOPProfile P, list<dag> pattern=[]> :
 
   let VALU = 1;
   let SDWA = 1;
-  let Uses = [EXEC];
+
+  let ReadsModeReg = !or(isFloatType<P.DstVT>.ret, isFloatType<P.Src0VT>.ret);
+
+  let mayRaiseFPException = ReadsModeReg;
+  let Uses = !if(ReadsModeReg, [MODE, EXEC], [EXEC]);
 
   let SubtargetPredicate = HasSDWA;
   let AssemblerPredicate = HasSDWA;
@@ -607,7 +616,11 @@ class VOP_DPP_Pseudo <string OpName, VOPProfile P, list<dag> pattern=[]> :
   let VALU = 1;
   let DPP = 1;
   let Size = 8;
-  let Uses = [EXEC];
+
+  let ReadsModeReg = !or(isFloatType<P.DstVT>.ret, isFloatType<P.Src0VT>.ret);
+
+  let mayRaiseFPException = ReadsModeReg;
+  let Uses = !if(ReadsModeReg, [MODE, EXEC], [EXEC]);
   let isConvergent = 1;
 
   string Mnemonic = OpName;
@@ -762,6 +775,19 @@ class DivergentFragOrOp<SDPatternOperator Op, VOPProfile P> {
   SDPatternOperator ret = !if(!eq(P.NeedPatGen,PatGenMode.Pattern),
    !if(!isa<SDNode>(Op), getDivergentFrag<Op>.ret, Op), Op);
 }
+
+class getVSrcOp<ValueType vt> {
+  RegisterOperand ret = !if(!eq(vt.Size, 32), VSrc_b32, VSrc_b16);
+}
+
+// Class for binary integer operations with the clamp bit set for saturation
+// TODO: Add sub with negated inline constant pattern.
+class VOPBinOpClampPat<SDPatternOperator node, Instruction inst, ValueType vt> :
+  GCNPat<(node vt:$src0, vt:$src1),
+         (inst getVSrcOp<vt>.ret:$src0, getVSrcOp<vt>.ret:$src1,
+               DSTCLAMP.ENABLE)
+>;
+
 
 include "VOPCInstructions.td"
 include "VOP1Instructions.td"

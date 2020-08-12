@@ -419,6 +419,9 @@ class Preprocessor {
   /// The number of (LexLevel 0) preprocessor tokens.
   unsigned TokenCount = 0;
 
+  /// Preprocess every token regardless of LexLevel.
+  bool PreprocessToken = false;
+
   /// The maximum number of (LexLevel 0) tokens before issuing a -Wmax-tokens
   /// warning, or zero for unlimited.
   unsigned MaxTokens = 0;
@@ -1037,6 +1040,8 @@ public:
   void setTokenWatcher(llvm::unique_function<void(const clang::Token &)> F) {
     OnToken = std::move(F);
   }
+
+  void setPreprocessToken(bool Preprocess) { PreprocessToken = Preprocess; }
 
   bool isMacroDefined(StringRef Id) {
     return isMacroDefined(&Identifiers.get(Id));
@@ -2242,11 +2247,11 @@ private:
   };
 
   Optional<FileEntryRef> LookupHeaderIncludeOrImport(
-      const DirectoryLookup *&CurDir, StringRef Filename,
+      const DirectoryLookup *&CurDir, StringRef &Filename,
       SourceLocation FilenameLoc, CharSourceRange FilenameRange,
       const Token &FilenameTok, bool &IsFrameworkFound, bool IsImportDecl,
       bool &IsMapped, const DirectoryLookup *LookupFrom,
-      const FileEntry *LookupFromFile, StringRef LookupFilename,
+      const FileEntry *LookupFromFile, StringRef &LookupFilename,
       SmallVectorImpl<char> &RelativePath, SmallVectorImpl<char> &SearchPath,
       ModuleMap::KnownHeader &SuggestedModule, bool isAngled);
 

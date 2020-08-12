@@ -505,7 +505,7 @@ RegInterval WaitcntBrackets::getRegInterval(const MachineInstr *MI,
 
   const TargetRegisterClass *RC = TII->getOpRegClass(*MI, OpNo);
   unsigned Size = TRI->getRegSizeInBits(*RC);
-  Result.second = Result.first + (Size / 32);
+  Result.second = Result.first + ((Size + 16) / 32);
 
   return Result;
 }
@@ -963,26 +963,28 @@ bool SIInsertWaitcnts::generateWaitcntInstBefore(
 
       int CallAddrOpIdx =
           AMDGPU::getNamedOperandIdx(MI.getOpcode(), AMDGPU::OpName::src0);
-      RegInterval CallAddrOpInterval =
+
+      if (MI.getOperand(CallAddrOpIdx).isReg()) {
+        RegInterval CallAddrOpInterval =
           ScoreBrackets.getRegInterval(&MI, TII, MRI, TRI, CallAddrOpIdx);
 
-      for (int RegNo = CallAddrOpInterval.first;
-           RegNo < CallAddrOpInterval.second; ++RegNo)
-        ScoreBrackets.determineWait(
+        for (int RegNo = CallAddrOpInterval.first;
+             RegNo < CallAddrOpInterval.second; ++RegNo)
+          ScoreBrackets.determineWait(
             LGKM_CNT, ScoreBrackets.getRegScore(RegNo, LGKM_CNT), Wait);
 
-      int RtnAddrOpIdx =
-            AMDGPU::getNamedOperandIdx(MI.getOpcode(), AMDGPU::OpName::dst);
-      if (RtnAddrOpIdx != -1) {
-        RegInterval RtnAddrOpInterval =
+        int RtnAddrOpIdx =
+          AMDGPU::getNamedOperandIdx(MI.getOpcode(), AMDGPU::OpName::dst);
+        if (RtnAddrOpIdx != -1) {
+          RegInterval RtnAddrOpInterval =
             ScoreBrackets.getRegInterval(&MI, TII, MRI, TRI, RtnAddrOpIdx);
 
-        for (int RegNo = RtnAddrOpInterval.first;
-             RegNo < RtnAddrOpInterval.second; ++RegNo)
-          ScoreBrackets.determineWait(
+          for (int RegNo = RtnAddrOpInterval.first;
+               RegNo < RtnAddrOpInterval.second; ++RegNo)
+            ScoreBrackets.determineWait(
               LGKM_CNT, ScoreBrackets.getRegScore(RegNo, LGKM_CNT), Wait);
+        }
       }
-
     } else {
       // FIXME: Should not be relying on memoperands.
       // Look at the source operands of every instruction to see if
@@ -1632,13 +1634,15 @@ bool SIInsertWaitcnts::runOnMachineFunction(MachineFunction &MF) {
     // TODO: Could insert earlier and schedule more liberally with operations
     // that only use caller preserved registers.
     MachineBasicBlock &EntryBB = MF.front();
+    MachineBasicBlock::iterator I = EntryBB.begin();
+    for (MachineBasicBlock::iterator E = EntryBB.end();
+         I != E && (I->isPHI() || I->isMetaInstruction()); ++I)
+      ;
+    BuildMI(EntryBB, I, DebugLoc(), TII->get(AMDGPU::S_WAITCNT)).addImm(0);
     if (ST->hasVscnt())
-      BuildMI(EntryBB, EntryBB.getFirstNonPHI(), DebugLoc(),
-              TII->get(AMDGPU::S_WAITCNT_VSCNT))
-      .addReg(AMDGPU::SGPR_NULL, RegState::Undef)
-      .addImm(0);
-    BuildMI(EntryBB, EntryBB.getFirstNonPHI(), DebugLoc(), TII->get(AMDGPU::S_WAITCNT))
-      .addImm(0);
+      BuildMI(EntryBB, I, DebugLoc(), TII->get(AMDGPU::S_WAITCNT_VSCNT))
+          .addReg(AMDGPU::SGPR_NULL, RegState::Undef)
+          .addImm(0);
 
     Modified = true;
   }

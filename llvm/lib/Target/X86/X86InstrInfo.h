@@ -317,11 +317,11 @@ public:
                      SmallVectorImpl<MachineOperand> &Cond,
                      bool AllowModify) const override;
 
-  bool
-  getMemOperandsWithOffset(const MachineInstr &LdSt,
-                           SmallVectorImpl<const MachineOperand *> &BaseOps,
-                           int64_t &Offset, bool &OffsetIsScalable,
-                           const TargetRegisterInfo *TRI) const override;
+  bool getMemOperandsWithOffsetWidth(
+      const MachineInstr &LdSt,
+      SmallVectorImpl<const MachineOperand *> &BaseOps, int64_t &Offset,
+      bool &OffsetIsScalable, unsigned &Width,
+      const TargetRegisterInfo *TRI) const override;
   bool analyzeBranchPredicate(MachineBasicBlock &MBB,
                               TargetInstrInfo::MachineBranchPredicate &MBP,
                               bool AllowModify = false) const override;
@@ -409,6 +409,13 @@ public:
   bool areLoadsFromSameBasePtr(SDNode *Load1, SDNode *Load2, int64_t &Offset1,
                                int64_t &Offset2) const override;
 
+  /// isSchedulingBoundary - Overrides the isSchedulingBoundary from
+  ///	Codegen/TargetInstrInfo.cpp to make it capable of identifying ENDBR
+  /// intructions and prevent it from being re-scheduled.
+  bool isSchedulingBoundary(const MachineInstr &MI,
+                            const MachineBasicBlock *MBB,
+                            const MachineFunction &MF) const override;
+
   /// shouldScheduleLoadsNear - This is a used by the pre-regalloc scheduler to
   /// determine (in conjunction with areLoadsFromSameBasePtr) if two loads
   /// should be scheduled togther. On some targets if two loads are loading from
@@ -429,16 +436,6 @@ public:
   /// isSafeToMoveRegClassDefs - Return true if it's safe to move a machine
   /// instruction that defines the specified register class.
   bool isSafeToMoveRegClassDefs(const TargetRegisterClass *RC) const override;
-
-  /// isSafeToClobberEFLAGS - Return true if it's safe insert an instruction tha
-  /// would clobber the EFLAGS condition register. Note the result may be
-  /// conservative. If it cannot definitely determine the safety after visiting
-  /// a few instructions in each direction it assumes it's not safe.
-  bool isSafeToClobberEFLAGS(MachineBasicBlock &MBB,
-                             MachineBasicBlock::iterator I) const {
-    return MBB.computeRegisterLiveness(&RI, X86::EFLAGS, I, 4) ==
-           MachineBasicBlock::LQR_Dead;
-  }
 
   /// True if MI has a condition code def, e.g. EFLAGS, that is
   /// not marked dead.
@@ -517,7 +514,7 @@ public:
   /// the machine instruction generated due to folding.
   MachineInstr *optimizeLoadInstr(MachineInstr &MI,
                                   const MachineRegisterInfo *MRI,
-                                  unsigned &FoldAsLoadDefReg,
+                                  Register &FoldAsLoadDefReg,
                                   MachineInstr *&DefMI) const override;
 
   std::pair<unsigned, unsigned>

@@ -1748,7 +1748,7 @@ def t2STRHT  : T2IstT<0b01, "strht", IIC_iStore_bh_i>;
 
 // ldrd / strd pre / post variants
 
-let mayLoad = 1 in
+let mayLoad = 1, hasSideEffects = 0 in
 def t2LDRD_PRE  : T2Ii8s4<1, 1, 1, (outs rGPR:$Rt, rGPR:$Rt2, GPR:$wb),
                  (ins t2addrmode_imm8s4_pre:$addr), IIC_iLoad_d_ru,
                  "ldrd", "\t$Rt, $Rt2, $addr!", "$addr.base = $wb", []>,
@@ -1756,13 +1756,13 @@ def t2LDRD_PRE  : T2Ii8s4<1, 1, 1, (outs rGPR:$Rt, rGPR:$Rt2, GPR:$wb),
   let DecoderMethod = "DecodeT2LDRDPreInstruction";
 }
 
-let mayLoad = 1 in
+let mayLoad = 1, hasSideEffects = 0 in
 def t2LDRD_POST : T2Ii8s4post<0, 1, 1, (outs rGPR:$Rt, rGPR:$Rt2, GPR:$wb),
                  (ins addr_offset_none:$addr, t2am_imm8s4_offset:$imm),
                  IIC_iLoad_d_ru, "ldrd", "\t$Rt, $Rt2, $addr$imm",
                  "$addr.base = $wb", []>, Sched<[WriteLd]>;
 
-let mayStore = 1 in
+let mayStore = 1, hasSideEffects = 0 in
 def t2STRD_PRE  : T2Ii8s4<1, 1, 0, (outs GPR:$wb),
                  (ins rGPR:$Rt, rGPR:$Rt2, t2addrmode_imm8s4_pre:$addr),
                  IIC_iStore_d_ru, "strd", "\t$Rt, $Rt2, $addr!",
@@ -1770,7 +1770,7 @@ def t2STRD_PRE  : T2Ii8s4<1, 1, 0, (outs GPR:$wb),
   let DecoderMethod = "DecodeT2STRDPreInstruction";
 }
 
-let mayStore = 1 in
+let mayStore = 1, hasSideEffects = 0 in
 def t2STRD_POST : T2Ii8s4post<0, 1, 0, (outs GPR:$wb),
                  (ins rGPR:$Rt, rGPR:$Rt2, addr_offset_none:$addr,
                       t2am_imm8s4_offset:$imm),
@@ -2636,6 +2636,15 @@ def : T2Pat<(int_arm_ssat16 GPR:$a, imm1_16:$pos),
             (t2SSAT16 imm1_16:$pos, GPR:$a)>;
 def : T2Pat<(int_arm_usat16 GPR:$a, imm0_15:$pos),
             (t2USAT16 imm0_15:$pos, GPR:$a)>;
+def : T2Pat<(int_arm_ssat (shl GPRnopc:$a, imm0_31:$shft), imm1_32:$pos),
+            (t2SSAT imm1_32:$pos, GPRnopc:$a, imm0_31:$shft)>;
+def : T2Pat<(int_arm_ssat (sra GPRnopc:$a, asr_imm:$shft), imm1_32:$pos),
+            (t2SSAT imm1_32:$pos, GPRnopc:$a, asr_imm:$shft)>;
+def : T2Pat<(int_arm_usat (shl GPRnopc:$a, imm0_31:$shft), imm0_31:$pos),
+            (t2USAT imm0_31:$pos, GPRnopc:$a, imm0_31:$shft)>;
+def : T2Pat<(int_arm_usat (sra GPRnopc:$a, asr_imm:$shft), imm0_31:$pos),
+            (t2USAT imm0_31:$pos, GPRnopc:$a, asr_imm:$shft)>;
+
 
 //===----------------------------------------------------------------------===//
 //  Shift and rotate Instructions.
@@ -2765,6 +2774,8 @@ def t2SBFX: T2TwoRegBitFI<
   let Inst{25} = 1;
   let Inst{24-20} = 0b10100;
   let Inst{15} = 0;
+
+  let hasSideEffects = 0;
 }
 
 def t2UBFX: T2TwoRegBitFI<
@@ -2774,6 +2785,8 @@ def t2UBFX: T2TwoRegBitFI<
   let Inst{25} = 1;
   let Inst{24-20} = 0b11100;
   let Inst{15} = 0;
+
+  let hasSideEffects = 0;
 }
 
 // A8.8.247  UDF - Undefined (Encoding T2)
@@ -5442,6 +5455,7 @@ class CS<string iname, bits<4> opcode, list<dag> pattern=[]>
   let Inst{3-0} = Rm{3-0};
 
   let Uses = [CPSR];
+  let hasSideEffects = 0;
 }
 
 def t2CSEL  : CS<"csel",  0b1000>;

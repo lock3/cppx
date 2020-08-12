@@ -141,14 +141,14 @@ static void doList(opt::InputArgList& Args) {
 
 static COFF::MachineTypes getCOFFFileMachine(MemoryBufferRef MB) {
   std::error_code EC;
-  object::COFFObjectFile Obj(MB, EC);
-  if (EC) {
+  auto Obj = object::COFFObjectFile::create(MB);
+  if (!Obj) {
     llvm::errs() << MB.getBufferIdentifier()
-                 << ": failed to open: " << EC.message() << '\n';
+                 << ": failed to open: " << Obj.takeError() << '\n';
     exit(1);
   }
 
-  uint16_t Machine = Obj.getMachine();
+  uint16_t Machine = (*Obj)->getMachine();
   if (Machine != COFF::IMAGE_FILE_MACHINE_I386 &&
       Machine != COFF::IMAGE_FILE_MACHINE_AMD64 &&
       Machine != COFF::IMAGE_FILE_MACHINE_ARMNT &&
@@ -191,9 +191,11 @@ static void appendFile(std::vector<NewArchiveMember> &Members,
   file_magic Magic = identify_magic(MB.getBuffer());
 
   if (Magic != file_magic::coff_object && Magic != file_magic::bitcode &&
-      Magic != file_magic::archive && Magic != file_magic::windows_resource) {
+      Magic != file_magic::archive && Magic != file_magic::windows_resource &&
+      Magic != file_magic::coff_import_library) {
     llvm::errs() << MB.getBufferIdentifier()
-                 << ": not a COFF object, bitcode, archive or resource file\n";
+                 << ": not a COFF object, bitcode, archive, import library or "
+                    "resource file\n";
     exit(1);
   }
 

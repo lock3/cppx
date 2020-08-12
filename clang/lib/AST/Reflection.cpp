@@ -97,6 +97,9 @@ namespace clang {
     query_is_externally_linked,
     query_is_internally_linked,
 
+    // Initializers
+    query_has_initializer,
+
     // General purpose
     query_is_extern_specified,
     query_is_inline,
@@ -256,9 +259,9 @@ namespace clang {
     query_remove_reference,
     query_add_lvalue_reference,
     query_add_rvalue_reference,
+    query_remove_extent,
     query_remove_pointer,
     query_add_pointer,
-    query_decay,
     query_make_signed,
     query_make_unsigned,
 
@@ -1067,6 +1070,19 @@ static bool isInternallyLinked(ReflectionQueryEvaluator &Eval,
     if (const NamedDecl *ND = dyn_cast<NamedDecl>(D))
       return SuccessBool(Eval, Result, ND->hasInternalFormalLinkage());
   }
+  return SuccessFalse(Eval, Result);
+}
+
+/// Initializers
+
+static bool hasInitializer(ReflectionQueryEvaluator &Eval,
+                           SmallVectorImpl<APValue> &Args,
+                           APValue &Result) {
+  Reflection R(Eval.getContext(), Args[1]);
+  if (const VarDecl *D = getAsVarDecl(R))
+    return SuccessBool(Eval, Result, D->hasInit());
+  if (const FieldDecl *D = getAsDataMember(R))
+    return SuccessBool(Eval, Result, D->hasInClassInitializer());
   return SuccessFalse(Eval, Result);
 }
 
@@ -2126,6 +2142,10 @@ bool ReflectionQueryEvaluator::EvaluatePredicate(SmallVectorImpl<APValue> &Args,
   case query_is_internally_linked:
     return isInternallyLinked(*this, Args, Result);
 
+  // Initializers
+  case query_has_initializer:
+    return hasInitializer(*this, Args, Result);
+
   // General purpose
   case query_is_extern_specified:
     return isExternSpecified(*this, Args, Result);
@@ -2504,7 +2524,7 @@ static bool getDefinition(const Reflection &R, APValue &Result) {
 }
 
 /// True if D is reflectable. Some declarations are not reflected (e.g.,
-/// access specifiers).
+/// access specifiers, non-canonical decls).
 static bool isReflectableDecl(const Decl *D) {
   assert(D && "null declaration");
   if (isa<AccessSpecDecl>(D))
@@ -2514,7 +2534,7 @@ static bool isReflectableDecl(const Decl *D) {
   if (const CXXRecordDecl *Class = dyn_cast<CXXRecordDecl>(D))
     if (Class->isInjectedClassName())
       return false;
-  return true;
+  return D->getCanonicalDecl() == D;
 }
 
 /// Filter non-reflectable members.
@@ -2883,6 +2903,21 @@ static bool addRvalueReference(const Reflection &R, APValue &Result) {
 }
 
 // Equivalent [meta.trans.ptr]p1:
+// If the reflected type names a type "array of U"
+// then returns a reflection of type U.
+//
+// Otherwise returns the reflected type.
+static bool removeExtent(const Reflection &R, APValue &Result) {
+  if (MaybeType MT = getCanonicalType(R)) {
+    if (MT->isArrayType())
+      return makeReflection(cast<ArrayType>(*MT)->getElementType(), Result);
+    return makeReflection(*MT, Result);
+  }
+
+  return Error(R);
+}
+
+// Equivalent [meta.trans.ptr]p1:
 // If typename(R) = T has type “(possibly cv-qualified) pointer to T1” then the
 // reflected type names T1; otherwise, it names T.
 static bool removePointer(const Reflection &R, APValue &Result) {
@@ -2906,25 +2941,6 @@ static bool addPointer(const Reflection &R, APValue &Result) {
     if (!T.isNull())
       return makeReflection(T.getNonReferenceType(), Result);
     return makeReflection(*MT, Result);
-  }
-
-  return Error(R);
-}
-
-// Equivalent [meta.trans.other]p5:
-// Let U be typename(remove_reference(typename(R). If
-// is_array_type(reflexpr(U)) is true, the reflected type shall equal
-// remove_extent_t<U>*. If is_function_type(reflexpr(U)) is true,
-// the reflected type shall equal add_pointer(reflexpr(U)). Otherwise
-// the reflected type equals remove_cv(reflexpr(U)).
-// NOTE: our library currently has no equivalent to std::remove_extent
-static bool decay(const Reflection &R, APValue &Result) {
-  // That's a lot of rules, but Clang already handles this for us. :)
-  if (MaybeType MT = getCanonicalType(R)) {
-    if (!MT->canDecayToPointerType())
-      return Error(R);
-    QualType T = R.getContext().getDecayedType(*MT);
-    return makeReflection(T, Result);
   }
 
   return Error(R);
@@ -3077,12 +3093,12 @@ bool Reflection::GetAssociatedReflection(ReflectionQuery Q, APValue &Result) {
     return addLvalueReference(*this, Result);
   case query_add_rvalue_reference:
     return addRvalueReference(*this, Result);
+  case query_remove_extent:
+    return removeExtent(*this, Result);
   case query_remove_pointer:
     return removePointer(*this, Result);
   case query_add_pointer:
     return addPointer(*this, Result);
-  case query_decay:
-    return decay(*this, Result);
   case query_make_signed:
     return makeSigned(*this, Result);
   case query_make_unsigned:

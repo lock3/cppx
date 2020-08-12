@@ -80,7 +80,7 @@ findAffectedValues(CallInst *CI,
 
   for (unsigned Idx = 0; Idx != CI->getNumOperandBundles(); Idx++) {
     if (CI->getOperandBundleAt(Idx).Inputs.size() > ABA_WasOn &&
-        CI->getOperandBundleAt(Idx).getTagName() != "ignore")
+        CI->getOperandBundleAt(Idx).getTagName() != IgnoreBundleTag)
       AddAffected(CI->getOperandBundleAt(Idx).Inputs[ABA_WasOn], Idx);
   }
 
@@ -175,7 +175,7 @@ void AssumptionCache::transferAffectedValuesInCache(Value *OV, Value *NV) {
     return;
 
   for (auto &A : AVI->second)
-    if (std::find(NAVV.begin(), NAVV.end(), A) == NAVV.end())
+    if (!llvm::is_contained(NAVV, A))
       NAVV.push_back(A);
   AffectedValues.erase(OV);
 }

@@ -44,8 +44,10 @@ using namespace llvm;
 
 std::string X86_MC::ParseX86Triple(const Triple &TT) {
   std::string FS;
-  if (TT.getArch() == Triple::x86_64)
-    FS = "+64bit-mode,-32bit-mode,-16bit-mode";
+  // SSE2 should default to enabled in 64-bit mode, but can be turned off
+  // explicitly.
+  if (TT.isArch64Bit())
+    FS = "+64bit-mode,-32bit-mode,-16bit-mode,+sse2";
   else if (TT.getEnvironment() != Triple::CODE16)
     FS = "-64bit-mode,+32bit-mode,-16bit-mode";
   else
@@ -290,11 +292,10 @@ MCSubtargetInfo *X86_MC::createX86MCSubtargetInfo(const Triple &TT,
   if (!FS.empty())
     ArchFS = (Twine(ArchFS) + "," + FS).str();
 
-  std::string CPUName = std::string(CPU);
-  if (CPUName.empty())
-    CPUName = "generic";
+  if (CPU.empty())
+    CPU = "generic";
 
-  return createX86MCSubtargetInfoImpl(TT, CPUName, ArchFS);
+  return createX86MCSubtargetInfoImpl(TT, CPU, ArchFS);
 }
 
 static MCInstrInfo *createX86MCInstrInfo() {
@@ -349,7 +350,7 @@ static MCAsmInfo *createX86MCAsmInfo(const MCRegisterInfo &MRI,
 
   // Initial state of the frame pointer is esp+stackGrowth.
   unsigned StackPtr = is64Bit ? X86::RSP : X86::ESP;
-  MCCFIInstruction Inst = MCCFIInstruction::createDefCfa(
+  MCCFIInstruction Inst = MCCFIInstruction::cfiDefCfa(
       nullptr, MRI.getDwarfRegNum(StackPtr, true), -stackGrowth);
   MAI->addInitialFrameState(Inst);
 

@@ -7,7 +7,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Analysis/ValueTracking.h"
+#include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/AsmParser/Parser.h"
+#include "llvm/IR/ConstantRange.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
@@ -21,6 +23,14 @@
 using namespace llvm;
 
 namespace {
+
+static Instruction &findInstructionByName(Function *F, StringRef Name) {
+  for (Instruction &I : instructions(F))
+    if (I.getName() == Name)
+      return I;
+
+  llvm_unreachable("Expected value not found");
+}
 
 class ValueTrackingTest : public testing::Test {
 protected:
@@ -40,23 +50,18 @@ protected:
     M = parseModule(Assembly);
     ASSERT_TRUE(M);
 
-    Function *F = M->getFunction("test");
+    F = M->getFunction("test");
     ASSERT_TRUE(F) << "Test must have a function @test";
     if (!F)
       return;
 
-    A = nullptr;
-    for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-      if (I->hasName()) {
-        if (I->getName() == "A")
-          A = &*I;
-      }
-    }
+    A = &findInstructionByName(F, "A");
     ASSERT_TRUE(A) << "@test must have an instruction %A";
   }
 
   LLVMContext Context;
   std::unique_ptr<Module> M;
+  Function *F = nullptr;
   Instruction *A = nullptr;
 };
 
@@ -668,57 +673,29 @@ TEST_F(ValueTrackingTest, ComputeNumSignBits_Shuffle2) {
   EXPECT_EQ(ComputeNumSignBits(A, M->getDataLayout()), 1u);
 }
 
-TEST(ValueTracking, canCreatePoison) {
-  std::string AsmHead =
-      "declare i32 @g(i32)\n"
-      "define void @f(i32 %x, i32 %y, float %fx, float %fy, i1 %cond, "
-      "<4 x i32> %vx, <4 x i32> %vx2, <vscale x 4 x i32> %svx, i8* %p) {\n";
+TEST(ValueTracking, propagatesPoison) {
+  std::string AsmHead = "declare i32 @g(i32)\n"
+                        "define void @f(i32 %x, i32 %y, float %fx, float %fy, "
+                        "i1 %cond, i8* %p) {\n";
   std::string AsmTail = "  ret void\n}";
-  // (can create poison?, IR instruction)
+  // (propagates poison?, IR instruction)
   SmallVector<std::pair<bool, std::string>, 32> Data = {
-      {false, "add i32 %x, %y"},
+      {true, "add i32 %x, %y"},
       {true, "add nsw nuw i32 %x, %y"},
-      {true, "shl i32 %x, %y"},
-      {true, "shl <4 x i32> %vx, %vx2"},
-      {true, "shl nsw i32 %x, %y"},
-      {true, "shl nsw <4 x i32> %vx, <i32 0, i32 1, i32 2, i32 3>"},
-      {false, "shl i32 %x, 31"},
-      {true, "shl i32 %x, 32"},
-      {false, "shl <4 x i32> %vx, <i32 0, i32 1, i32 2, i32 3>"},
-      {true, "shl <4 x i32> %vx, <i32 0, i32 1, i32 2, i32 32>"},
       {true, "ashr i32 %x, %y"},
-      {true, "ashr exact i32 %x, %y"},
-      {false, "ashr i32 %x, 31"},
-      {true, "ashr exact i32 %x, 31"},
-      {false, "ashr <4 x i32> %vx, <i32 0, i32 1, i32 2, i32 3>"},
-      {true, "ashr <4 x i32> %vx, <i32 0, i32 1, i32 2, i32 32>"},
-      {true, "ashr exact <4 x i32> %vx, <i32 0, i32 1, i32 2, i32 3>"},
-      {true, "lshr i32 %x, %y"},
       {true, "lshr exact i32 %x, 31"},
-      {false, "udiv i32 %x, %y"},
-      {true, "udiv exact i32 %x, %y"},
-      {false, "getelementptr i8, i8* %p, i32 %x"},
+      {true, "fcmp oeq float %fx, %fy"},
+      {true, "icmp eq i32 %x, %y"},
+      {true, "getelementptr i8, i8* %p, i32 %x"},
       {true, "getelementptr inbounds i8, i8* %p, i32 %x"},
-      {true, "fneg nnan float %fx"},
-      {false, "fneg float %fx"},
-      {false, "fadd float %fx, %fy"},
-      {true, "fadd nnan float %fx, %fy"},
-      {false, "urem i32 %x, %y"},
-      {true, "fptoui float %fx to i32"},
-      {true, "fptosi float %fx to i32"},
-      {false, "bitcast float %fx to i32"},
+      {true, "bitcast float %fx to i32"},
       {false, "select i1 %cond, i32 %x, i32 %y"},
-      {true, "select nnan i1 %cond, float %fx, float %fy"},
-      {true, "extractelement <4 x i32> %vx, i32 %x"},
-      {false, "extractelement <4 x i32> %vx, i32 3"},
-      {true, "extractelement <vscale x 4 x i32> %svx, i32 4"},
-      {true, "insertelement <4 x i32> %vx, i32 %x, i32 %y"},
-      {false, "insertelement <4 x i32> %vx, i32 %x, i32 3"},
-      {true, "insertelement <vscale x 4 x i32> %svx, i32 %x, i32 4"},
       {false, "freeze i32 %x"},
-      {true, "call i32 @g(i32 %x)"},
-      {true, "fcmp nnan oeq float %fx, %fy"},
-      {false, "fcmp oeq float %fx, %fy"}};
+      {true, "udiv i32 %x, %y"},
+      {true, "urem i32 %x, %y"},
+      {true, "sdiv exact i32 %x, %y"},
+      {true, "srem i32 %x, %y"},
+      {false, "call i32 @g(i32 %x)"}};
 
   std::string AssemblyStr = AsmHead;
   for (auto &Itm : Data)
@@ -739,8 +716,101 @@ TEST(ValueTracking, canCreatePoison) {
   for (auto &I : BB) {
     if (isa<ReturnInst>(&I))
       break;
-    EXPECT_EQ(canCreatePoison(&I), Data[Index].first)
+    EXPECT_EQ(propagatesPoison(&I), Data[Index].first)
         << "Incorrect answer at instruction " << Index << " = " << I;
+    Index++;
+  }
+}
+
+TEST(ValueTracking, canCreatePoisonOrUndef) {
+  std::string AsmHead =
+      "declare i32 @g(i32)\n"
+      "define void @f(i32 %x, i32 %y, float %fx, float %fy, i1 %cond, "
+      "<4 x i32> %vx, <4 x i32> %vx2, <vscale x 4 x i32> %svx, i8* %p) {\n";
+  std::string AsmTail = "  ret void\n}";
+  // (can create poison?, can create undef?, IR instruction)
+  SmallVector<std::pair<std::pair<bool, bool>, std::string>, 32> Data = {
+      {{false, false}, "add i32 %x, %y"},
+      {{true, false}, "add nsw nuw i32 %x, %y"},
+      {{true, false}, "shl i32 %x, %y"},
+      {{true, false}, "shl <4 x i32> %vx, %vx2"},
+      {{true, false}, "shl nsw i32 %x, %y"},
+      {{true, false}, "shl nsw <4 x i32> %vx, <i32 0, i32 1, i32 2, i32 3>"},
+      {{false, false}, "shl i32 %x, 31"},
+      {{true, false}, "shl i32 %x, 32"},
+      {{false, false}, "shl <4 x i32> %vx, <i32 0, i32 1, i32 2, i32 3>"},
+      {{true, false}, "shl <4 x i32> %vx, <i32 0, i32 1, i32 2, i32 32>"},
+      {{true, false}, "ashr i32 %x, %y"},
+      {{true, false}, "ashr exact i32 %x, %y"},
+      {{false, false}, "ashr i32 %x, 31"},
+      {{true, false}, "ashr exact i32 %x, 31"},
+      {{false, false}, "ashr <4 x i32> %vx, <i32 0, i32 1, i32 2, i32 3>"},
+      {{true, false}, "ashr <4 x i32> %vx, <i32 0, i32 1, i32 2, i32 32>"},
+      {{true, false}, "ashr exact <4 x i32> %vx, <i32 0, i32 1, i32 2, i32 3>"},
+      {{true, false}, "lshr i32 %x, %y"},
+      {{true, false}, "lshr exact i32 %x, 31"},
+      {{false, false}, "udiv i32 %x, %y"},
+      {{true, false}, "udiv exact i32 %x, %y"},
+      {{false, false}, "getelementptr i8, i8* %p, i32 %x"},
+      {{true, false}, "getelementptr inbounds i8, i8* %p, i32 %x"},
+      {{true, false}, "fneg nnan float %fx"},
+      {{false, false}, "fneg float %fx"},
+      {{false, false}, "fadd float %fx, %fy"},
+      {{true, false}, "fadd nnan float %fx, %fy"},
+      {{false, false}, "urem i32 %x, %y"},
+      {{true, false}, "fptoui float %fx to i32"},
+      {{true, false}, "fptosi float %fx to i32"},
+      {{false, false}, "bitcast float %fx to i32"},
+      {{false, false}, "select i1 %cond, i32 %x, i32 %y"},
+      {{true, false}, "select nnan i1 %cond, float %fx, float %fy"},
+      {{true, false}, "extractelement <4 x i32> %vx, i32 %x"},
+      {{false, false}, "extractelement <4 x i32> %vx, i32 3"},
+      {{true, false}, "extractelement <vscale x 4 x i32> %svx, i32 4"},
+      {{true, false}, "insertelement <4 x i32> %vx, i32 %x, i32 %y"},
+      {{false, false}, "insertelement <4 x i32> %vx, i32 %x, i32 3"},
+      {{true, false}, "insertelement <vscale x 4 x i32> %svx, i32 %x, i32 4"},
+      {{false, false}, "freeze i32 %x"},
+      {{false, false},
+       "shufflevector <4 x i32> %vx, <4 x i32> %vx2, "
+       "<4 x i32> <i32 0, i32 1, i32 2, i32 3>"},
+      {{false, true},
+       "shufflevector <4 x i32> %vx, <4 x i32> %vx2, "
+       "<4 x i32> <i32 0, i32 1, i32 2, i32 undef>"},
+      {{false, true},
+       "shufflevector <vscale x 4 x i32> %svx, "
+       "<vscale x 4 x i32> %svx, <vscale x 4 x i32> undef"},
+      {{true, false}, "call i32 @g(i32 %x)"},
+      {{false, false}, "call noundef i32 @g(i32 %x)"},
+      {{true, false}, "fcmp nnan oeq float %fx, %fy"},
+      {{false, false}, "fcmp oeq float %fx, %fy"}};
+
+  std::string AssemblyStr = AsmHead;
+  for (auto &Itm : Data)
+    AssemblyStr += Itm.second + "\n";
+  AssemblyStr += AsmTail;
+
+  LLVMContext Context;
+  SMDiagnostic Error;
+  auto M = parseAssemblyString(AssemblyStr, Error, Context);
+  assert(M && "Bad assembly?");
+
+  auto *F = M->getFunction("f");
+  assert(F && "Bad assembly?");
+
+  auto &BB = F->getEntryBlock();
+
+  int Index = 0;
+  for (auto &I : BB) {
+    if (isa<ReturnInst>(&I))
+      break;
+    bool Poison = Data[Index].first.first;
+    bool Undef = Data[Index].first.second;
+    EXPECT_EQ(canCreatePoison(cast<Operator>(&I)), Poison)
+        << "Incorrect answer of canCreatePoison at instruction " << Index
+        << " = " << I;
+    EXPECT_EQ(canCreateUndefOrPoison(cast<Operator>(&I)), Undef || Poison)
+        << "Incorrect answer of canCreateUndef at instruction " << Index
+        << " = " << I;
     Index++;
   }
 }
@@ -903,6 +973,44 @@ TEST_F(ComputeKnownBitsTest, ComputeKnownUSubSatZerosPreserved) {
       "}\n"
       "declare i8 @llvm.usub.sat.i8(i8, i8)\n");
   expectKnownBits(/*zero*/ 2u, /*one*/ 0u);
+}
+
+TEST_F(ComputeKnownBitsTest, ComputeKnownBitsPtrToIntTrunc) {
+  // ptrtoint truncates the pointer type.
+  parseAssembly(
+      "define void @test(i8** %p) {\n"
+      "  %A = load i8*, i8** %p\n"
+      "  %i = ptrtoint i8* %A to i32\n"
+      "  %m = and i32 %i, 31\n"
+      "  %c = icmp eq i32 %m, 0\n"
+      "  call void @llvm.assume(i1 %c)\n"
+      "  ret void\n"
+      "}\n"
+      "declare void @llvm.assume(i1)\n");
+  AssumptionCache AC(*F);
+  KnownBits Known = computeKnownBits(
+      A, M->getDataLayout(), /* Depth */ 0, &AC, F->front().getTerminator());
+  EXPECT_EQ(Known.Zero.getZExtValue(), 31u);
+  EXPECT_EQ(Known.One.getZExtValue(), 0u);
+}
+
+TEST_F(ComputeKnownBitsTest, ComputeKnownBitsPtrToIntZext) {
+  // ptrtoint zero extends the pointer type.
+  parseAssembly(
+      "define void @test(i8** %p) {\n"
+      "  %A = load i8*, i8** %p\n"
+      "  %i = ptrtoint i8* %A to i128\n"
+      "  %m = and i128 %i, 31\n"
+      "  %c = icmp eq i128 %m, 0\n"
+      "  call void @llvm.assume(i1 %c)\n"
+      "  ret void\n"
+      "}\n"
+      "declare void @llvm.assume(i1)\n");
+  AssumptionCache AC(*F);
+  KnownBits Known = computeKnownBits(
+      A, M->getDataLayout(), /* Depth */ 0, &AC, F->front().getTerminator());
+  EXPECT_EQ(Known.Zero.getZExtValue(), 31u);
+  EXPECT_EQ(Known.One.getZExtValue(), 0u);
 }
 
 class IsBytewiseValueTest : public ValueTrackingTest,
@@ -1156,4 +1264,169 @@ TEST_P(IsBytewiseValueTest, IsBytewiseValue) {
   if (Actual)
     S << *Actual;
   EXPECT_EQ(GetParam().first, S.str());
+}
+
+TEST_F(ValueTrackingTest, ComputeConstantRange) {
+  {
+    // Assumptions:
+    //  * stride >= 5
+    //  * stride < 10
+    //
+    // stride = [5, 10)
+    auto M = parseModule(R"(
+  declare void @llvm.assume(i1)
+
+  define i32 @test(i32 %stride) {
+    %gt = icmp uge i32 %stride, 5
+    call void @llvm.assume(i1 %gt)
+    %lt = icmp ult i32 %stride, 10
+    call void @llvm.assume(i1 %lt)
+    %stride.plus.one = add nsw nuw i32 %stride, 1
+    ret i32 %stride.plus.one
+  })");
+    Function *F = M->getFunction("test");
+
+    AssumptionCache AC(*F);
+    Value *Stride = &*F->arg_begin();
+    ConstantRange CR1 = computeConstantRange(Stride, true, &AC, nullptr);
+    EXPECT_TRUE(CR1.isFullSet());
+
+    Instruction *I = &findInstructionByName(F, "stride.plus.one");
+    ConstantRange CR2 = computeConstantRange(Stride, true, &AC, I);
+    EXPECT_EQ(5, CR2.getLower());
+    EXPECT_EQ(10, CR2.getUpper());
+  }
+
+  {
+    // Assumptions:
+    //  * stride >= 5
+    //  * stride < 200
+    //  * stride == 99
+    //
+    // stride = [99, 100)
+    auto M = parseModule(R"(
+  declare void @llvm.assume(i1)
+
+  define i32 @test(i32 %stride) {
+    %gt = icmp uge i32 %stride, 5
+    call void @llvm.assume(i1 %gt)
+    %lt = icmp ult i32 %stride, 200
+    call void @llvm.assume(i1 %lt)
+    %eq = icmp eq i32 %stride, 99
+    call void @llvm.assume(i1 %eq)
+    %stride.plus.one = add nsw nuw i32 %stride, 1
+    ret i32 %stride.plus.one
+  })");
+    Function *F = M->getFunction("test");
+
+    AssumptionCache AC(*F);
+    Value *Stride = &*F->arg_begin();
+    Instruction *I = &findInstructionByName(F, "stride.plus.one");
+    ConstantRange CR = computeConstantRange(Stride, true, &AC, I);
+    EXPECT_EQ(99, *CR.getSingleElement());
+  }
+
+  {
+    // Assumptions:
+    //  * stride >= 5
+    //  * stride >= 50
+    //  * stride < 100
+    //  * stride < 200
+    //
+    // stride = [50, 100)
+    auto M = parseModule(R"(
+  declare void @llvm.assume(i1)
+
+  define i32 @test(i32 %stride, i1 %cond) {
+    %gt = icmp uge i32 %stride, 5
+    call void @llvm.assume(i1 %gt)
+    %gt.2 = icmp uge i32 %stride, 50
+    call void @llvm.assume(i1 %gt.2)
+    br i1 %cond, label %bb1, label %bb2
+
+  bb1:
+    %lt = icmp ult i32 %stride, 200
+    call void @llvm.assume(i1 %lt)
+    %lt.2 = icmp ult i32 %stride, 100
+    call void @llvm.assume(i1 %lt.2)
+    %stride.plus.one = add nsw nuw i32 %stride, 1
+    ret i32 %stride.plus.one
+
+  bb2:
+    ret i32 0
+  })");
+    Function *F = M->getFunction("test");
+
+    AssumptionCache AC(*F);
+    Value *Stride = &*F->arg_begin();
+    Instruction *GT2 = &findInstructionByName(F, "gt.2");
+    ConstantRange CR = computeConstantRange(Stride, true, &AC, GT2);
+    EXPECT_EQ(5, CR.getLower());
+    EXPECT_EQ(0, CR.getUpper());
+
+    Instruction *I = &findInstructionByName(F, "stride.plus.one");
+    ConstantRange CR2 = computeConstantRange(Stride, true, &AC, I);
+    EXPECT_EQ(50, CR2.getLower());
+    EXPECT_EQ(100, CR2.getUpper());
+  }
+
+  {
+    // Assumptions:
+    //  * stride > 5
+    //  * stride < 5
+    //
+    // stride = empty range, as the assumptions contradict each other.
+    auto M = parseModule(R"(
+  declare void @llvm.assume(i1)
+
+  define i32 @test(i32 %stride, i1 %cond) {
+    %gt = icmp ugt i32 %stride, 5
+    call void @llvm.assume(i1 %gt)
+    %lt = icmp ult i32 %stride, 5
+    call void @llvm.assume(i1 %lt)
+    %stride.plus.one = add nsw nuw i32 %stride, 1
+    ret i32 %stride.plus.one
+  })");
+    Function *F = M->getFunction("test");
+
+    AssumptionCache AC(*F);
+    Value *Stride = &*F->arg_begin();
+
+    Instruction *I = &findInstructionByName(F, "stride.plus.one");
+    ConstantRange CR = computeConstantRange(Stride, true, &AC, I);
+    EXPECT_TRUE(CR.isEmptySet());
+  }
+
+  {
+    // Assumptions:
+    //  * x.1 >= 5
+    //  * x.2 < x.1
+    //
+    // stride = [0, 5)
+    auto M = parseModule(R"(
+  declare void @llvm.assume(i1)
+
+  define i32 @test(i32 %x.1, i32 %x.2) {
+    %gt = icmp uge i32 %x.1, 5
+    call void @llvm.assume(i1 %gt)
+    %lt = icmp ult i32 %x.2, %x.1
+    call void @llvm.assume(i1 %lt)
+    %stride.plus.one = add nsw nuw i32 %x.1, 1
+    ret i32 %stride.plus.one
+  })");
+    Function *F = M->getFunction("test");
+
+    AssumptionCache AC(*F);
+    Value *X2 = &*std::next(F->arg_begin());
+
+    Instruction *I = &findInstructionByName(F, "stride.plus.one");
+    ConstantRange CR1 = computeConstantRange(X2, true, &AC, I);
+    EXPECT_EQ(0, CR1.getLower());
+    EXPECT_EQ(5, CR1.getUpper());
+
+    // Check the depth cutoff results in a conservative result (full set) by
+    // passing Depth == MaxDepth == 6.
+    ConstantRange CR2 = computeConstantRange(X2, true, &AC, I, 6);
+    EXPECT_TRUE(CR2.isFullSet());
+  }
 }

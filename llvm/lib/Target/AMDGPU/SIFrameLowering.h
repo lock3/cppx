@@ -61,9 +61,7 @@ private:
                                         const DebugLoc &DL,
                                         Register ScratchWaveOffsetReg) const;
 
-  Register
-  getEntryFunctionReservedScratchRsrcReg(MachineFunction &MF,
-                                         Register ScratchWaveOffsetReg) const;
+  Register getEntryFunctionReservedScratchRsrcReg(MachineFunction &MF) const;
 
   void emitEntryFunctionScratchRsrcRegSetup(
       MachineFunction &MF, MachineBasicBlock &MBB,
@@ -73,6 +71,8 @@ private:
 
 public:
   bool hasFP(const MachineFunction &MF) const override;
+
+  bool requiresStackPointerReference(const MachineFunction &MF) const;
 };
 
 } // end namespace llvm

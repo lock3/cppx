@@ -14,7 +14,6 @@
 #define LLVM_TRANSFORMS_UTILS_LOOPUTILS_H
 
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/IVDescriptors.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
@@ -23,10 +22,10 @@ namespace llvm {
 
 template <typename T> class DomTreeNodeBase;
 using DomTreeNode = DomTreeNodeBase<BasicBlock>;
+class AAResults;
 class AliasSet;
 class AliasSetTracker;
 class BasicBlock;
-class DataLayout;
 class IRBuilderBase;
 class Loop;
 class LoopInfo;
@@ -34,7 +33,6 @@ class MemoryAccess;
 class MemorySSA;
 class MemorySSAUpdater;
 class OptimizationRemarkEmitter;
-class PredicatedScalarEvolution;
 class PredIteratorCache;
 class ScalarEvolution;
 class SCEV;
@@ -43,6 +41,10 @@ class TargetLibraryInfo;
 class TargetTransformInfo;
 class LPPassManager;
 class Instruction;
+struct RuntimeCheckingPtrGroup;
+typedef std::pair<const RuntimeCheckingPtrGroup *,
+                  const RuntimeCheckingPtrGroup *>
+    RuntimePointerCheck;
 
 template <typename T> class Optional;
 template <typename T, unsigned N> class SmallSetVector;
@@ -72,9 +74,14 @@ bool formDedicatedExitBlocks(Loop *L, DominatorTree *DT, LoopInfo *LI,
 /// changes to CFG, preserved.
 ///
 /// Returns true if any modifications are made.
-bool formLCSSAForInstructions(SmallVectorImpl<Instruction *> &Worklist,
-                              const DominatorTree &DT, const LoopInfo &LI,
-                              ScalarEvolution *SE);
+///
+/// This function may introduce unused PHI nodes. If \p PHIsToRemove is not
+/// nullptr, those are added to it (before removing, the caller has to check if
+/// they still do not have any uses). Otherwise the PHIs are directly removed.
+bool formLCSSAForInstructions(
+    SmallVectorImpl<Instruction *> &Worklist, const DominatorTree &DT,
+    const LoopInfo &LI, ScalarEvolution *SE, IRBuilderBase &Builder,
+    SmallVectorImpl<PHINode *> *PHIsToRemove = nullptr);
 
 /// Put loop into LCSSA form.
 ///
@@ -115,11 +122,11 @@ struct SinkAndHoistLICMFlags {
 /// dominated by the specified block, and that are in the current loop) in
 /// reverse depth first order w.r.t the DominatorTree. This allows us to visit
 /// uses before definitions, allowing us to sink a loop body in one pass without
-/// iteration. Takes DomTreeNode, AliasAnalysis, LoopInfo, DominatorTree,
-/// DataLayout, TargetLibraryInfo, Loop, AliasSet information for all
+/// iteration. Takes DomTreeNode, AAResults, LoopInfo, DominatorTree,
+/// TargetLibraryInfo, Loop, AliasSet information for all
 /// instructions of the loop and loop safety information as
 /// arguments. Diagnostics is emitted via \p ORE. It returns changed status.
-bool sinkRegion(DomTreeNode *, AliasAnalysis *, LoopInfo *, DominatorTree *,
+bool sinkRegion(DomTreeNode *, AAResults *, LoopInfo *, DominatorTree *,
                 TargetLibraryInfo *, TargetTransformInfo *, Loop *,
                 AliasSetTracker *, MemorySSAUpdater *, ICFLoopSafetyInfo *,
                 SinkAndHoistLICMFlags &, OptimizationRemarkEmitter *);
@@ -128,11 +135,11 @@ bool sinkRegion(DomTreeNode *, AliasAnalysis *, LoopInfo *, DominatorTree *,
 /// dominated by the specified block, and that are in the current loop) in depth
 /// first order w.r.t the DominatorTree.  This allows us to visit definitions
 /// before uses, allowing us to hoist a loop body in one pass without iteration.
-/// Takes DomTreeNode, AliasAnalysis, LoopInfo, DominatorTree, DataLayout,
+/// Takes DomTreeNode, AAResults, LoopInfo, DominatorTree,
 /// TargetLibraryInfo, Loop, AliasSet information for all instructions of the
 /// loop and loop safety information as arguments. Diagnostics is emitted via \p
 /// ORE. It returns changed status.
-bool hoistRegion(DomTreeNode *, AliasAnalysis *, LoopInfo *, DominatorTree *,
+bool hoistRegion(DomTreeNode *, AAResults *, LoopInfo *, DominatorTree *,
                  TargetLibraryInfo *, Loop *, AliasSetTracker *,
                  MemorySSAUpdater *, ScalarEvolution *, ICFLoopSafetyInfo *,
                  SinkAndHoistLICMFlags &, OptimizationRemarkEmitter *);
@@ -429,6 +436,17 @@ void appendLoopsToWorklist(LoopInfo &, SmallPriorityWorklist<Loop *, 4> &);
 /// mapping the blocks with the specified map.
 Loop *cloneLoop(Loop *L, Loop *PL, ValueToValueMapTy &VM,
                 LoopInfo *LI, LPPassManager *LPM);
+
+/// Add code that checks at runtime if the accessed arrays in \p PointerChecks
+/// overlap.
+///
+/// Returns a pair of instructions where the first element is the first
+/// instruction generated in possibly a sequence of instructions and the
+/// second value is the final comparator value or NULL if no check is needed.
+std::pair<Instruction *, Instruction *>
+addRuntimeChecks(Instruction *Loc, Loop *TheLoop,
+                 const SmallVectorImpl<RuntimePointerCheck> &PointerChecks,
+                 ScalarEvolution *SE);
 
 } // end namespace llvm
 

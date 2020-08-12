@@ -271,7 +271,7 @@ lldb::StackFrameSP Thread::GetSelectedFrame() {
   StackFrameListSP stack_frame_list_sp(GetStackFrameList());
   StackFrameSP frame_sp = stack_frame_list_sp->GetFrameAtIndex(
       stack_frame_list_sp->GetSelectedFrameIndex());
-  FunctionOptimizationWarning(frame_sp.get());
+  FrameSelectedCallback(frame_sp.get());
   return frame_sp;
 }
 
@@ -280,7 +280,7 @@ uint32_t Thread::SetSelectedFrame(lldb_private::StackFrame *frame,
   uint32_t ret_value = GetStackFrameList()->SetSelectedFrame(frame);
   if (broadcast)
     BroadcastSelectedFrameChange(frame->GetStackID());
-  FunctionOptimizationWarning(frame);
+  FrameSelectedCallback(frame);
   return ret_value;
 }
 
@@ -290,7 +290,7 @@ bool Thread::SetSelectedFrameByIndex(uint32_t frame_idx, bool broadcast) {
     GetStackFrameList()->SetSelectedFrame(frame_sp.get());
     if (broadcast)
       BroadcastSelectedFrameChange(frame_sp->GetStackID());
-    FunctionOptimizationWarning(frame_sp.get());
+    FrameSelectedCallback(frame_sp.get());
     return true;
   } else
     return false;
@@ -314,7 +314,7 @@ bool Thread::SetSelectedFrameByIndexNoisily(uint32_t frame_idx,
 
       bool show_frame_info = true;
       bool show_source = !already_shown;
-      FunctionOptimizationWarning(frame_sp.get());
+      FrameSelectedCallback(frame_sp.get());
       return frame_sp->GetStatus(output_stream, show_frame_info, show_source);
     }
     return false;
@@ -322,12 +322,17 @@ bool Thread::SetSelectedFrameByIndexNoisily(uint32_t frame_idx,
     return false;
 }
 
-void Thread::FunctionOptimizationWarning(StackFrame *frame) {
-  if (frame && frame->HasDebugInformation() &&
-      GetProcess()->GetWarningsOptimization()) {
+void Thread::FrameSelectedCallback(StackFrame *frame) {
+  if (!frame)
+    return;
+
+  if (frame->HasDebugInformation() &&
+      (GetProcess()->GetWarningsOptimization() ||
+       GetProcess()->GetWarningsUnsupportedLanguage())) {
     SymbolContext sc =
         frame->GetSymbolContext(eSymbolContextFunction | eSymbolContextModule);
     GetProcess()->PrintWarningOptimization(sc);
+    GetProcess()->PrintWarningUnsupportedLanguage(sc);
   }
 }
 
@@ -396,7 +401,7 @@ lldb::StopInfoSP Thread::GetPrivateStopInfo() {
     // "m_stop_info_stop_id != process_stop_id" as the condition for the if
     // statement below, we must also check the stop info to see if we need to
     // override it. See the header documentation in
-    // Process::GetStopInfoOverrideCallback() for more information on the stop
+    // Architecture::OverrideStopInfo() for more information on the stop
     // info override callback.
     if (m_stop_info_override_stop_id != process_stop_id) {
       m_stop_info_override_stop_id = process_stop_id;
@@ -1061,7 +1066,7 @@ ThreadPlanStack &Thread::GetPlans() const {
   // ThreadPlanNull as its base plan.  That will give the right answers to the
   // queries GetDescription makes, and only assert if you try to run the thread.
   if (!m_null_plan_stack_up)
-    m_null_plan_stack_up.reset(new ThreadPlanStack(*this, true));
+    m_null_plan_stack_up = std::make_unique<ThreadPlanStack>(*this, true);
   return *(m_null_plan_stack_up.get());
 }
 
@@ -1375,7 +1380,7 @@ lldb::ThreadPlanSP Thread::QueueThreadPlanForStepScripted(
 
   ThreadPlanSP thread_plan_sp(new ThreadPlanPython(*this, class_name, 
                                                    extra_args_impl));
-
+  thread_plan_sp->SetStopOthers(stop_other_threads);
   status = QueueThreadPlan(thread_plan_sp, abort_other_plans);
   return thread_plan_sp;
 }
@@ -1656,7 +1661,7 @@ Thread::GetStackFrameSPForStackFramePtr(StackFrame *stack_frame_ptr) {
   return GetStackFrameList()->GetStackFrameSPForStackFramePtr(stack_frame_ptr);
 }
 
-const char *Thread::StopReasonAsCString(lldb::StopReason reason) {
+std::string Thread::StopReasonAsString(lldb::StopReason reason) {
   switch (reason) {
   case eStopReasonInvalid:
     return "invalid";
@@ -1682,13 +1687,10 @@ const char *Thread::StopReasonAsCString(lldb::StopReason reason) {
     return "instrumentation break";
   }
 
-  static char unknown_state_string[64];
-  snprintf(unknown_state_string, sizeof(unknown_state_string),
-           "StopReason = %i", reason);
-  return unknown_state_string;
+  return "StopReason = " + std::to_string(reason);
 }
 
-const char *Thread::RunModeAsCString(lldb::RunMode mode) {
+std::string Thread::RunModeAsString(lldb::RunMode mode) {
   switch (mode) {
   case eOnlyThisThread:
     return "only this thread";
@@ -1698,10 +1700,7 @@ const char *Thread::RunModeAsCString(lldb::RunMode mode) {
     return "only during stepping";
   }
 
-  static char unknown_state_string[64];
-  snprintf(unknown_state_string, sizeof(unknown_state_string), "RunMode = %i",
-           mode);
-  return unknown_state_string;
+  return "RunMode = " + std::to_string(mode);
 }
 
 size_t Thread::GetStatus(Stream &strm, uint32_t start_frame,
@@ -1854,7 +1853,7 @@ size_t Thread::GetStackFrameStatus(Stream &strm, uint32_t first_frame,
 
 Unwind &Thread::GetUnwinder() {
   if (!m_unwinder_up)
-    m_unwinder_up.reset(new UnwindLLDB(*this));
+    m_unwinder_up = std::make_unique<UnwindLLDB>(*this);
   return *m_unwinder_up;
 }
 

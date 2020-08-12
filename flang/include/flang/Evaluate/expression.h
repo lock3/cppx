@@ -129,8 +129,8 @@ private:
 
 public:
   CLASS_BOILERPLATE(Operation)
-  explicit Operation(const Expr<OPERANDS> &... x) : operand_{x...} {}
-  explicit Operation(Expr<OPERANDS> &&... x) : operand_{std::move(x)...} {}
+  explicit Operation(const Expr<OPERANDS> &...x) : operand_{x...} {}
+  explicit Operation(Expr<OPERANDS> &&...x) : operand_{std::move(x)...} {}
 
   Derived &derived() { return *static_cast<Derived *>(this); }
   const Derived &derived() const { return *static_cast<const Derived *>(this); }
@@ -841,6 +841,7 @@ struct GenericExprWrapper {
   explicit GenericExprWrapper(std::optional<Expr<SomeType>> &&x)
       : v{std::move(x)} {}
   ~GenericExprWrapper();
+  static void Deleter(GenericExprWrapper *);
   std::optional<Expr<SomeType>> v; // vacant if error
 };
 
@@ -849,6 +850,7 @@ struct GenericAssignmentWrapper {
   GenericAssignmentWrapper() {}
   explicit GenericAssignmentWrapper(Assignment &&x) : v{std::move(x)} {}
   ~GenericAssignmentWrapper();
+  static void Deleter(GenericAssignmentWrapper *);
   std::optional<Assignment> v; // vacant if error
 };
 

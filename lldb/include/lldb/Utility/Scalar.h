@@ -9,14 +9,15 @@
 #ifndef LLDB_UTILITY_SCALAR_H
 #define LLDB_UTILITY_SCALAR_H
 
+#include "lldb/Utility/LLDBAssert.h"
 #include "lldb/Utility/Status.h"
 #include "lldb/lldb-enumerations.h"
 #include "lldb/lldb-private-types.h"
-#include "lldb/Utility/LLDBAssert.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 
 namespace lldb_private {
 class DataExtractor;
@@ -59,50 +60,35 @@ public:
   };
 
   // Constructors and Destructors
-  Scalar();
-  Scalar(int v) : m_type(e_sint), m_float(static_cast<float>(0)) {
-    m_integer = llvm::APInt(sizeof(int) * 8, v, true);
-  }
-  Scalar(unsigned int v) : m_type(e_uint), m_float(static_cast<float>(0)) {
-    m_integer = llvm::APInt(sizeof(int) * 8, v);
-  }
-  Scalar(long v) : m_type(e_slong), m_float(static_cast<float>(0)) {
-    m_integer = llvm::APInt(sizeof(long) * 8, v, true);
-  }
-  Scalar(unsigned long v) : m_type(e_ulong), m_float(static_cast<float>(0)) {
-    m_integer = llvm::APInt(sizeof(long) * 8, v);
-  }
-  Scalar(long long v) : m_type(e_slonglong), m_float(static_cast<float>(0)) {
-    m_integer = llvm::APInt(sizeof(long long) * 8, v, true);
-  }
+  Scalar() : m_type(e_void), m_float(0.0f) {}
+  Scalar(int v)
+      : m_type(e_sint), m_integer(sizeof(v) * 8, uint64_t(v), true),
+        m_float(0.0f) {}
+  Scalar(unsigned int v)
+      : m_type(e_uint), m_integer(sizeof(v) * 8, uint64_t(v), false),
+        m_float(0.0f) {}
+  Scalar(long v)
+      : m_type(e_slong), m_integer(sizeof(v) * 8, uint64_t(v), true),
+        m_float(0.0f) {}
+  Scalar(unsigned long v)
+      : m_type(e_ulong), m_integer(sizeof(v) * 8, uint64_t(v), false),
+        m_float(0.0f) {}
+  Scalar(long long v)
+      : m_type(e_slonglong), m_integer(sizeof(v) * 8, uint64_t(v), true),
+        m_float(0.0f) {}
   Scalar(unsigned long long v)
-      : m_type(e_ulonglong), m_float(static_cast<float>(0)) {
-    m_integer = llvm::APInt(sizeof(long long) * 8, v);
+      : m_type(e_ulonglong), m_integer(sizeof(v) * 8, uint64_t(v), false),
+        m_float(0.0f) {}
+  Scalar(float v) : m_type(e_float), m_float(v) {}
+  Scalar(double v) : m_type(e_double), m_float(v) {}
+  Scalar(long double v) : m_type(e_long_double), m_float(double(v)) {
+    bool ignore;
+    m_float.convert(llvm::APFloat::x87DoubleExtended(),
+                    llvm::APFloat::rmNearestTiesToEven, &ignore);
   }
-  Scalar(float v) : m_type(e_float), m_float(v) { m_float = llvm::APFloat(v); }
-  Scalar(double v) : m_type(e_double), m_float(v) {
-    m_float = llvm::APFloat(v);
-  }
-  Scalar(long double v, bool ieee_quad)
-      : m_type(e_long_double), m_float(static_cast<float>(0)),
-        m_ieee_quad(ieee_quad) {
-    if (ieee_quad)
-      m_float =
-          llvm::APFloat(llvm::APFloat::IEEEquad(),
-                        llvm::APInt(BITWIDTH_INT128, NUM_OF_WORDS_INT128,
-                                    (reinterpret_cast<type128 *>(&v))->x));
-    else
-      m_float =
-          llvm::APFloat(llvm::APFloat::x87DoubleExtended(),
-                        llvm::APInt(BITWIDTH_INT128, NUM_OF_WORDS_INT128,
-                                    (reinterpret_cast<type128 *>(&v))->x));
-  }
-  Scalar(llvm::APInt v) : m_type(), m_float(static_cast<float>(0)) {
-    m_integer = llvm::APInt(v);
-    m_type = GetBestTypeForBitSize(m_integer.getBitWidth(), true);
-  }
-  // Scalar(const RegisterValue& reg_value);
-  virtual ~Scalar();
+  Scalar(llvm::APInt v)
+      : m_type(GetBestTypeForBitSize(v.getBitWidth(), true)),
+        m_integer(std::move(v)), m_float(0.0f) {}
 
   /// Return the most efficient Scalar::Type for the requested bit size.
   static Type GetBestTypeForBitSize(size_t bit_size, bool sign);
@@ -115,7 +101,10 @@ public:
 
   bool ClearBit(uint32_t bit);
 
-  const void *GetBytes() const;
+  /// Store the binary representation of this value into the given storage.
+  /// Exactly GetByteSize() bytes will be stored, and the buffer must be large
+  /// enough to hold this data.
+  void GetBytes(llvm::MutableArrayRef<uint8_t> storage) const;
 
   size_t GetByteSize() const;
 
@@ -131,7 +120,7 @@ public:
     m_integer.clearAllBits();
   }
 
-  const char *GetTypeAsCString() const;
+  const char *GetTypeAsCString() const { return GetValueTypeAsCString(m_type); }
 
   void GetValue(Stream *s, bool show_type) const;
 
@@ -139,8 +128,8 @@ public:
     return (m_type >= e_sint) && (m_type <= e_long_double);
   }
 
-  /// Convert integer to \p type, limited to \p bits size.
-  void TruncOrExtendTo(Scalar::Type type, uint16_t bits);
+  /// Convert to an integer with \p bits and the given signedness.
+  void TruncOrExtendTo(uint16_t bits, bool sign);
 
   bool Promote(Scalar::Type type);
 
@@ -162,16 +151,6 @@ public:
   // automagically by the compiler, so no temporary objects will need to be
   // created. As a result, we currently don't need a variety of overloaded set
   // value accessors.
-  Scalar &operator=(const int i);
-  Scalar &operator=(unsigned int v);
-  Scalar &operator=(long v);
-  Scalar &operator=(unsigned long v);
-  Scalar &operator=(long long v);
-  Scalar &operator=(unsigned long long v);
-  Scalar &operator=(float v);
-  Scalar &operator=(double v);
-  Scalar &operator=(long double v);
-  Scalar &operator=(llvm::APInt v);
   Scalar &operator+=(const Scalar &rhs);
   Scalar &operator<<=(const Scalar &rhs); // Shift left
   Scalar &operator>>=(const Scalar &rhs); // Shift right (arithmetic)
@@ -204,7 +183,7 @@ public:
 
   unsigned char UChar(unsigned char fail_value = 0) const;
 
-  signed char SChar(char fail_value = 0) const;
+  signed char SChar(signed char fail_value = 0) const;
 
   unsigned short UShort(unsigned short fail_value = 0) const;
 
@@ -220,7 +199,7 @@ public:
 
   unsigned long long ULongLong(unsigned long long fail_value = 0) const;
 
-  llvm::APInt SInt128(llvm::APInt &fail_value) const;
+  llvm::APInt SInt128(const llvm::APInt &fail_value) const;
 
   llvm::APInt UInt128(const llvm::APInt &fail_value) const;
 
@@ -233,7 +212,7 @@ public:
   Status SetValueFromCString(const char *s, lldb::Encoding encoding,
                              size_t byte_size);
 
-  Status SetValueFromData(DataExtractor &data, lldb::Encoding encoding,
+  Status SetValueFromData(const DataExtractor &data, lldb::Encoding encoding,
                           size_t byte_size);
 
   static bool UIntValueIsValidForSize(uint64_t uval64, size_t total_byte_size) {
@@ -282,7 +261,8 @@ protected:
   Scalar::Type m_type;
   llvm::APInt m_integer;
   llvm::APFloat m_float;
-  bool m_ieee_quad = false;
+
+  template <typename T> T GetAs(T fail_value) const;
 
 private:
   friend const Scalar operator+(const Scalar &lhs, const Scalar &rhs);

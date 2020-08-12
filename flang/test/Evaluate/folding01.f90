@@ -1,4 +1,4 @@
-! RUN: %S/test_folding.sh %s %flang %t
+! RUN: %S/test_folding.sh %s %t %f18
 
 ! Test intrinsic operation folding
 
@@ -62,6 +62,14 @@ module m
 
   logical, parameter :: test_ne_i1 =.NOT.(2.NE.2)
   logical, parameter :: test_ne_i2 = -2.NE.2
+
+! Check conversions
+  logical, parameter :: test_cmplx1 = cmplx((1._4, -1._4)).EQ.((1._4, -1._4))
+  logical, parameter :: test_cmplx2 = cmplx((1._4, -1._4), 8).EQ.((1._8, -1._8))
+  logical, parameter :: test_cmplx3 = cmplx(1._4, -1._4).EQ.((1._4, -1._4))
+  logical, parameter :: test_cmplx4 = cmplx(1._4, -1._4, 8).EQ.((1._8, -1._8))
+  logical, parameter :: test_cmplx5 = cmplx(1._4).EQ.((1._4, 0._4))
+  logical, parameter :: test_cmplx6 = cmplx(1._4, kind=8).EQ.((1._8, 0._8))
 
 ! Check integer intrinsic operation folding
   logical, parameter :: test_unaryminus_i = (-(-1)).EQ.1

@@ -17,9 +17,10 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
-#include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/InterfaceSupport.h"
 #include "llvm/ADT/BitmaskEnum.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/Support/PointerLikeTypeTraits.h"
@@ -46,14 +47,6 @@ class Type;
 class Value;
 class ValueRange;
 template <typename ValueRangeT> class ValueTypeRange;
-
-/// This is an adaptor from a list of values to named operands of OpTy.  In a
-/// generic operation context, e.g., in dialect conversions, an ordered array of
-/// `Value`s is treated as operands of `OpTy`.  This adaptor takes a reference
-/// to the array and provides accessors with the same names as `OpTy` for
-/// operands.  This makes possible to create function templates that operate on
-/// either OpTy or OperandAdaptor<OpTy> seamlessly.
-template <typename OpTy> using OperandAdaptor = typename OpTy::OperandAdaptor;
 
 class OwningRewritePatternList;
 
@@ -144,8 +137,7 @@ public:
   /// was registered to this operation, null otherwise. This should not be used
   /// directly.
   template <typename T> typename T::Concept *getInterface() const {
-    return reinterpret_cast<typename T::Concept *>(
-        getRawInterface(T::getInterfaceID()));
+    return interfaceMap.lookup<T>();
   }
 
   /// Returns if the operation has a particular trait.
@@ -165,7 +157,7 @@ public:
         T::getOperationName(), dialect, T::getOperationProperties(),
         TypeID::get<T>(), T::parseAssembly, T::printAssembly,
         T::verifyInvariants, T::foldHook, T::getCanonicalizationPatterns,
-        T::getRawInterface, T::hasTrait);
+        T::getInterfaceMap(), T::hasTrait);
   }
 
 private:
@@ -179,26 +171,117 @@ private:
                                 SmallVectorImpl<OpFoldResult> &results),
       void (&getCanonicalizationPatterns)(OwningRewritePatternList &results,
                                           MLIRContext *context),
-      void *(&getRawInterface)(TypeID interfaceID),
-      bool (&hasTrait)(TypeID traitID))
+      detail::InterfaceMap &&interfaceMap, bool (&hasTrait)(TypeID traitID))
       : name(name), dialect(dialect), typeID(typeID),
         parseAssembly(parseAssembly), printAssembly(printAssembly),
         verifyInvariants(verifyInvariants), foldHook(foldHook),
         getCanonicalizationPatterns(getCanonicalizationPatterns),
-        opProperties(opProperties), getRawInterface(getRawInterface),
+        opProperties(opProperties), interfaceMap(std::move(interfaceMap)),
         hasRawTrait(hasTrait) {}
 
   /// The properties of the operation.
   const OperationProperties opProperties;
 
-  /// Returns a raw instance of the concept for the given interface id if it is
-  /// registered to this operation, nullptr otherwise. This should not be used
-  /// directly.
-  void *(&getRawInterface)(TypeID interfaceID);
+  /// A map of interfaces that were registered to this operation.
+  detail::InterfaceMap interfaceMap;
 
   /// This hook returns if the operation contains the trait corresponding
   /// to the given TypeID.
   bool (&hasRawTrait)(TypeID traitID);
+};
+
+//===----------------------------------------------------------------------===//
+// NamedAttrList
+//===----------------------------------------------------------------------===//
+
+/// NamedAttrList is array of NamedAttributes that tracks whether it is sorted
+/// and does some basic work to remain sorted.
+class NamedAttrList {
+public:
+  using const_iterator = SmallVectorImpl<NamedAttribute>::const_iterator;
+  using const_reference = const NamedAttribute &;
+  using reference = NamedAttribute &;
+  using size_type = size_t;
+
+  NamedAttrList() : dictionarySorted({}, true) {}
+  NamedAttrList(ArrayRef<NamedAttribute> attributes);
+  NamedAttrList(const_iterator in_start, const_iterator in_end);
+
+  bool operator!=(const NamedAttrList &other) const {
+    return !(*this == other);
+  }
+  bool operator==(const NamedAttrList &other) const {
+    return attrs == other.attrs;
+  }
+
+  /// Add an attribute with the specified name.
+  void append(StringRef name, Attribute attr);
+
+  /// Add an attribute with the specified name.
+  void append(Identifier name, Attribute attr);
+
+  /// Add an array of named attributes.
+  void append(ArrayRef<NamedAttribute> newAttributes);
+
+  /// Add a range of named attributes.
+  void append(const_iterator in_start, const_iterator in_end);
+
+  /// Replaces the attributes with new list of attributes.
+  void assign(const_iterator in_start, const_iterator in_end);
+
+  /// Replaces the attributes with new list of attributes.
+  void assign(ArrayRef<NamedAttribute> range) {
+    append(range.begin(), range.end());
+  }
+
+  bool empty() const { return attrs.empty(); }
+
+  void reserve(size_type N) { attrs.reserve(N); }
+
+  /// Add an attribute with the specified name.
+  void push_back(NamedAttribute newAttribute);
+
+  /// Pop last element from list.
+  void pop_back() { attrs.pop_back(); }
+
+  /// Return a dictionary attribute for the underlying dictionary. This will
+  /// return an empty dictionary attribute if empty rather than null.
+  DictionaryAttr getDictionary(MLIRContext *context) const;
+
+  /// Return all of the attributes on this operation.
+  ArrayRef<NamedAttribute> getAttrs() const;
+
+  /// Return the specified attribute if present, null otherwise.
+  Attribute get(Identifier name) const;
+  Attribute get(StringRef name) const;
+
+  /// Return the specified named attribute if present, None otherwise.
+  Optional<NamedAttribute> getNamed(StringRef name) const;
+  Optional<NamedAttribute> getNamed(Identifier name) const;
+
+  /// If the an attribute exists with the specified name, change it to the new
+  /// value.  Otherwise, add a new attribute with the specified name/value.
+  void set(Identifier name, Attribute value);
+  void set(StringRef name, Attribute value);
+
+  const_iterator begin() const { return attrs.begin(); }
+  const_iterator end() const { return attrs.end(); }
+
+  NamedAttrList &operator=(const SmallVectorImpl<NamedAttribute> &rhs);
+  operator ArrayRef<NamedAttribute>() const;
+  operator MutableDictionaryAttr() const;
+
+private:
+  /// Return whether the attributes are sorted.
+  bool isSorted() const { return dictionarySorted.getInt(); }
+
+  // These are marked mutable as they may be modified (e.g., sorted)
+  mutable SmallVector<NamedAttribute, 4> attrs;
+  // Pair with cached DictionaryAttr and status of whether attrs is sorted.
+  // Note: just because sorted does not mean a DictionaryAttr has been created
+  // but the case where there is a DictionaryAttr but attrs isn't sorted should
+  // not occur.
+  mutable llvm::PointerIntPair<Attribute, 1, bool> dictionarySorted;
 };
 
 //===----------------------------------------------------------------------===//
@@ -215,6 +298,9 @@ public:
 
   /// Return the name of the dialect this operation is registered to.
   StringRef getDialect() const;
+
+  /// Return the operation name with dialect name stripped, if it has one.
+  StringRef stripDialect() const;
 
   /// Return the name of this operation.  This always succeeds.
   StringRef getStringRef() const;
@@ -269,7 +355,7 @@ struct OperationState {
   SmallVector<Value, 4> operands;
   /// Types of the results of this operation.
   SmallVector<Type, 4> types;
-  SmallVector<NamedAttribute, 4> attributes;
+  NamedAttrList attributes;
   /// Successors of this operation and their respective operands.
   SmallVector<Block *, 1> successors;
   /// Regions that the op will hold.
@@ -303,12 +389,12 @@ public:
 
   /// Add an attribute with the specified name.
   void addAttribute(Identifier name, Attribute attr) {
-    attributes.push_back({name, attr});
+    attributes.append(name, attr);
   }
 
   /// Add an array of named attributes.
   void addAttributes(ArrayRef<NamedAttribute> newAttributes) {
-    attributes.append(newAttributes.begin(), newAttributes.end());
+    attributes.append(newAttributes);
   }
 
   /// Add an array of successors.
@@ -329,7 +415,7 @@ public:
   void addRegion(std::unique_ptr<Region> &&region);
 
   /// Get the context held by this operation state.
-  MLIRContext *getContext() { return location->getContext(); }
+  MLIRContext *getContext() const { return location->getContext(); }
 };
 
 //===----------------------------------------------------------------------===//
@@ -538,104 +624,6 @@ private:
 //===----------------------------------------------------------------------===//
 // Operation Value-Iterators
 //===----------------------------------------------------------------------===//
-
-//===----------------------------------------------------------------------===//
-// TypeRange
-
-/// This class provides an abstraction over the various different ranges of
-/// value types. In many cases, this prevents the need to explicitly materialize
-/// a SmallVector/std::vector. This class should be used in places that are not
-/// suitable for a more derived type (e.g. ArrayRef) or a template range
-/// parameter.
-class TypeRange
-    : public llvm::detail::indexed_accessor_range_base<
-          TypeRange,
-          llvm::PointerUnion<const Value *, const Type *, OpOperand *>, Type,
-          Type, Type> {
-public:
-  using RangeBaseT::RangeBaseT;
-  TypeRange(ArrayRef<Type> types = llvm::None);
-  explicit TypeRange(OperandRange values);
-  explicit TypeRange(ResultRange values);
-  explicit TypeRange(ValueRange values);
-  explicit TypeRange(ArrayRef<Value> values);
-  explicit TypeRange(ArrayRef<BlockArgument> values)
-      : TypeRange(ArrayRef<Value>(values.data(), values.size())) {}
-  template <typename ValueRangeT>
-  TypeRange(ValueTypeRange<ValueRangeT> values)
-      : TypeRange(ValueRangeT(values.begin().getCurrent(),
-                              values.end().getCurrent())) {}
-  template <typename Arg,
-            typename = typename std::enable_if_t<
-                std::is_constructible<ArrayRef<Type>, Arg>::value>>
-  TypeRange(Arg &&arg) : TypeRange(ArrayRef<Type>(std::forward<Arg>(arg))) {}
-  TypeRange(std::initializer_list<Type> types)
-      : TypeRange(ArrayRef<Type>(types)) {}
-
-private:
-  /// The owner of the range is either:
-  /// * A pointer to the first element of an array of values.
-  /// * A pointer to the first element of an array of types.
-  /// * A pointer to the first element of an array of operands.
-  using OwnerT = llvm::PointerUnion<const Value *, const Type *, OpOperand *>;
-
-  /// See `llvm::detail::indexed_accessor_range_base` for details.
-  static OwnerT offset_base(OwnerT object, ptrdiff_t index);
-  /// See `llvm::detail::indexed_accessor_range_base` for details.
-  static Type dereference_iterator(OwnerT object, ptrdiff_t index);
-
-  /// Allow access to `offset_base` and `dereference_iterator`.
-  friend RangeBaseT;
-};
-
-//===----------------------------------------------------------------------===//
-// ValueTypeRange
-
-/// This class implements iteration on the types of a given range of values.
-template <typename ValueIteratorT>
-class ValueTypeIterator final
-    : public llvm::mapped_iterator<ValueIteratorT, Type (*)(Value)> {
-  static Type unwrap(Value value) { return value.getType(); }
-
-public:
-  using reference = Type;
-
-  /// Provide a const dereference method.
-  Type operator*() const { return unwrap(*this->I); }
-
-  /// Initializes the type iterator to the specified value iterator.
-  ValueTypeIterator(ValueIteratorT it)
-      : llvm::mapped_iterator<ValueIteratorT, Type (*)(Value)>(it, &unwrap) {}
-};
-
-/// This class implements iteration on the types of a given range of values.
-template <typename ValueRangeT>
-class ValueTypeRange final
-    : public llvm::iterator_range<
-          ValueTypeIterator<typename ValueRangeT::iterator>> {
-public:
-  using llvm::iterator_range<
-      ValueTypeIterator<typename ValueRangeT::iterator>>::iterator_range;
-  template <typename Container>
-  ValueTypeRange(Container &&c) : ValueTypeRange(c.begin(), c.end()) {}
-
-  /// Compare this range with another.
-  template <typename OtherT>
-  bool operator==(const OtherT &other) const {
-    return llvm::size(*this) == llvm::size(other) &&
-           std::equal(this->begin(), this->end(), other.begin());
-  }
-  template <typename OtherT>
-  bool operator!=(const OtherT &other) const {
-    return !(*this == other);
-  }
-};
-
-template <typename RangeT>
-inline bool operator==(ArrayRef<Type> lhs, const ValueTypeRange<RangeT> &rhs) {
-  return lhs.size() == static_cast<size_t>(llvm::size(rhs)) &&
-         std::equal(lhs.begin(), lhs.end(), rhs.begin());
-}
 
 //===----------------------------------------------------------------------===//
 // OperandRange

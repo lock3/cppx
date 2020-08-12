@@ -566,7 +566,6 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
     llvm_unreachable("Incorrectly identified tag type");
   }
 
-
   Decl *Declaration = SemaRef.getCxxSema().ActOnTag(SemaRef.getCurClangScope(),
                                                     TST,
                                                     /*Metafunction=*/nullptr,
@@ -595,6 +594,7 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   } else if (isa<EnumDecl>(Declaration)) {
     Tag = cast<TagDecl>(Declaration);
   }
+
   D->Cxx = Tag;
   Elab.elaborateAttributes(D);
 
@@ -2898,8 +2898,10 @@ void Elaborator::lateElaborateMethodDecls(ElaboratingClass &Class) {
     clang::Scope::TemplateParamScope, clang::SourceLocation(), HasTemplateScope);
 
   if (HasTemplateScope)
-    SemaRef.getCxxSema().ActOnReenterTemplateScope(SemaRef.getCurClangScope(),
-        Class.TagOrTemplate->Cxx);
+    SemaRef.getCxxSema().ActOnReenterTemplateScope(Class.TagOrTemplate->Cxx,
+                                                   [&] {
+      return SemaRef.getCurClangScope();
+    });
 
   bool CurrentlyNested = !Class.IsTopLevelClass;
   Sema::ClangScopeRAII FunctionDeclScope(SemaRef, clang::Scope::DeclScope |

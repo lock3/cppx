@@ -145,6 +145,13 @@ StringRef llvm::object::getELFRelocationTypeName(uint32_t Machine,
       break;
     }
     break;
+  case ELF::EM_VE:
+    switch (Type) {
+#include "llvm/BinaryFormat/ELFRelocs/VE.def"
+    default:
+      break;
+    }
+    break;
   default:
     break;
   }
@@ -271,7 +278,7 @@ StringRef llvm::object::getELFSectionTypeName(uint32_t Machine, unsigned Type) {
 }
 
 template <class ELFT>
-Expected<std::vector<typename ELFT::Rela>>
+std::vector<typename ELFT::Rel>
 ELFFile<ELFT>::decode_relrs(Elf_Relr_Range relrs) const {
   // This function decodes the contents of an SHT_RELR packed relocation
   // section.
@@ -303,11 +310,10 @@ ELFFile<ELFT>::decode_relrs(Elf_Relr_Range relrs) const {
   //    even means address, odd means bitmap.
   // 2. Just a simple list of addresses is a valid encoding.
 
-  Elf_Rela Rela;
-  Rela.r_info = 0;
-  Rela.r_addend = 0;
-  Rela.setType(getRelativeRelocationType(), false);
-  std::vector<Elf_Rela> Relocs;
+  Elf_Rel Rel;
+  Rel.r_info = 0;
+  Rel.setType(getRelativeRelocationType(), false);
+  std::vector<Elf_Rel> Relocs;
 
   // Word type: uint32_t for Elf32, and uint64_t for Elf64.
   typedef typename ELFT::uint Word;
@@ -324,8 +330,8 @@ ELFFile<ELFT>::decode_relrs(Elf_Relr_Range relrs) const {
     Word Entry = R;
     if ((Entry&1) == 0) {
       // Even entry: encodes the offset for next relocation.
-      Rela.r_offset = Entry;
-      Relocs.push_back(Rela);
+      Rel.r_offset = Entry;
+      Relocs.push_back(Rel);
       // Set base offset for subsequent bitmap entries.
       Base = Entry + WordSize;
       continue;
@@ -336,8 +342,8 @@ ELFFile<ELFT>::decode_relrs(Elf_Relr_Range relrs) const {
     while (Entry != 0) {
       Entry >>= 1;
       if ((Entry&1) != 0) {
-        Rela.r_offset = Offset;
-        Relocs.push_back(Rela);
+        Rel.r_offset = Offset;
+        Relocs.push_back(Rel);
       }
       Offset += WordSize;
     }
@@ -502,7 +508,6 @@ std::string ELFFile<ELFT>::getDynamicTagAsString(uint64_t Type) const {
 template <class ELFT>
 Expected<typename ELFT::DynRange> ELFFile<ELFT>::dynamicEntries() const {
   ArrayRef<Elf_Dyn> Dyn;
-  size_t DynSecSize = 0;
 
   auto ProgramHeadersOrError = program_headers();
   if (!ProgramHeadersOrError)
@@ -513,7 +518,6 @@ Expected<typename ELFT::DynRange> ELFFile<ELFT>::dynamicEntries() const {
       Dyn = makeArrayRef(
           reinterpret_cast<const Elf_Dyn *>(base() + Phdr.p_offset),
           Phdr.p_filesz / sizeof(Elf_Dyn));
-      DynSecSize = Phdr.p_filesz;
       break;
     }
   }
@@ -532,7 +536,6 @@ Expected<typename ELFT::DynRange> ELFFile<ELFT>::dynamicEntries() const {
         if (!DynOrError)
           return DynOrError.takeError();
         Dyn = *DynOrError;
-        DynSecSize = Sec.sh_size;
         break;
       }
     }
@@ -544,10 +547,6 @@ Expected<typename ELFT::DynRange> ELFFile<ELFT>::dynamicEntries() const {
   if (Dyn.empty())
     // TODO: this error is untested.
     return createError("invalid empty dynamic section");
-
-  if (DynSecSize % sizeof(Elf_Dyn) != 0)
-    // TODO: this error is untested.
-    return createError("malformed dynamic section");
 
   if (Dyn.back().d_tag != ELF::DT_NULL)
     // TODO: this error is untested.

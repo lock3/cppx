@@ -76,6 +76,7 @@
 #include "llvm/Support/Threading.h"
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -239,10 +240,14 @@ public:
       return;
     }
     {
-      std::lock_guard<std::mutex> Lock(Mutex);
-      // If shutdown is issued, don't bother building.
-      if (Done)
-        return;
+      std::unique_lock<std::mutex> Lock(Mutex);
+      // If NextReq was requested with WantDiagnostics::Yes we cannot just drop
+      // that on the floor. Block until we start building it. This won't
+      // dead-lock as we are blocking the caller thread, while builds continue
+      // on preamble thread.
+      ReqCV.wait(Lock, [this] {
+        return !NextReq || NextReq->WantDiags != WantDiagnostics::Yes;
+      });
       NextReq = std::move(Req);
     }
     // Let the worker thread know there's a request, notify_one is safe as there
@@ -265,6 +270,10 @@ public:
 
       {
         WithContext Guard(std::move(CurrentReq->Ctx));
+        // Note that we don't make use of the ContextProvider here.
+        // Preamble tasks are always scheduled by ASTWorker tasks, and we
+        // reuse the context/config that was created at that level.
+
         // Build the preamble and let the waiters know about it.
         build(std::move(*CurrentReq));
       }
@@ -359,8 +368,7 @@ class ASTWorker {
   friend class ASTWorkerHandle;
   ASTWorker(PathRef FileName, const GlobalCompilationDatabase &CDB,
             TUScheduler::ASTCache &LRUCache, Semaphore &Barrier, bool RunSync,
-            DebouncePolicy UpdateDebounce, bool StorePreamblesInMemory,
-            ParsingCallbacks &Callbacks);
+            const TUScheduler::Options &Opts, ParsingCallbacks &Callbacks);
 
 public:
   /// Create a new ASTWorker and return a handle to it.
@@ -368,11 +376,12 @@ public:
   /// is null, all requests will be processed on the calling thread
   /// synchronously instead. \p Barrier is acquired when processing each
   /// request, it is used to limit the number of actively running threads.
-  static ASTWorkerHandle
-  create(PathRef FileName, const GlobalCompilationDatabase &CDB,
-         TUScheduler::ASTCache &IdleASTs, AsyncTaskRunner *Tasks,
-         Semaphore &Barrier, DebouncePolicy UpdateDebounce,
-         bool StorePreamblesInMemory, ParsingCallbacks &Callbacks);
+  static ASTWorkerHandle create(PathRef FileName,
+                                const GlobalCompilationDatabase &CDB,
+                                TUScheduler::ASTCache &IdleASTs,
+                                AsyncTaskRunner *Tasks, Semaphore &Barrier,
+                                const TUScheduler::Options &Opts,
+                                ParsingCallbacks &Callbacks);
   ~ASTWorker();
 
   void update(ParseInputs Inputs, WantDiagnostics);
@@ -451,12 +460,11 @@ private:
   const DebouncePolicy UpdateDebounce;
   /// File that ASTWorker is responsible for.
   const Path FileName;
+  /// Callback to create processing contexts for tasks.
+  const std::function<Context(llvm::StringRef)> ContextProvider;
   const GlobalCompilationDatabase &CDB;
   /// Callback invoked when preamble or main file AST is built.
   ParsingCallbacks &Callbacks;
-  /// Latest build preamble for current TU.
-  std::shared_ptr<const PreambleData> LatestPreamble;
-  Notification BuiltFirstPreamble;
 
   Semaphore &Barrier;
   /// Whether the 'onMainAST' callback ran for the current FileInputs.
@@ -473,9 +481,18 @@ private:
   /// Set to true to signal run() to finish processing.
   bool Done;                              /* GUARDED_BY(Mutex) */
   std::deque<Request> Requests;           /* GUARDED_BY(Mutex) */
-  std::queue<Request> PreambleRequests;   /* GUARDED_BY(Mutex) */
   llvm::Optional<Request> CurrentRequest; /* GUARDED_BY(Mutex) */
+  /// Signalled whenever a new request has been scheduled or processing of a
+  /// request has completed.
   mutable std::condition_variable RequestsCV;
+  /// Latest build preamble for current TU.
+  /// None means no builds yet, null means there was an error while building.
+  /// Only written by ASTWorker's thread.
+  llvm::Optional<std::shared_ptr<const PreambleData>> LatestPreamble;
+  std::queue<Request> PreambleRequests; /* GUARDED_BY(Mutex) */
+  /// Signaled whenever LatestPreamble changes state or there's a new
+  /// PreambleRequest.
+  mutable std::condition_variable PreambleCV;
   /// Guards the callback that publishes results of AST-related computations
   /// (diagnostics, highlightings) and file statuses.
   std::mutex PublishMu;
@@ -535,14 +552,14 @@ private:
   std::shared_ptr<ASTWorker> Worker;
 };
 
-ASTWorkerHandle
-ASTWorker::create(PathRef FileName, const GlobalCompilationDatabase &CDB,
-                  TUScheduler::ASTCache &IdleASTs, AsyncTaskRunner *Tasks,
-                  Semaphore &Barrier, DebouncePolicy UpdateDebounce,
-                  bool StorePreamblesInMemory, ParsingCallbacks &Callbacks) {
-  std::shared_ptr<ASTWorker> Worker(
-      new ASTWorker(FileName, CDB, IdleASTs, Barrier, /*RunSync=*/!Tasks,
-                    UpdateDebounce, StorePreamblesInMemory, Callbacks));
+ASTWorkerHandle ASTWorker::create(PathRef FileName,
+                                  const GlobalCompilationDatabase &CDB,
+                                  TUScheduler::ASTCache &IdleASTs,
+                                  AsyncTaskRunner *Tasks, Semaphore &Barrier,
+                                  const TUScheduler::Options &Opts,
+                                  ParsingCallbacks &Callbacks) {
+  std::shared_ptr<ASTWorker> Worker(new ASTWorker(
+      FileName, CDB, IdleASTs, Barrier, /*RunSync=*/!Tasks, Opts, Callbacks));
   if (Tasks) {
     Tasks->runAsync("ASTWorker:" + llvm::sys::path::filename(FileName),
                     [Worker]() { Worker->run(); });
@@ -555,15 +572,14 @@ ASTWorker::create(PathRef FileName, const GlobalCompilationDatabase &CDB,
 
 ASTWorker::ASTWorker(PathRef FileName, const GlobalCompilationDatabase &CDB,
                      TUScheduler::ASTCache &LRUCache, Semaphore &Barrier,
-                     bool RunSync, DebouncePolicy UpdateDebounce,
-                     bool StorePreamblesInMemory, ParsingCallbacks &Callbacks)
-    : IdleASTs(LRUCache), RunSync(RunSync), UpdateDebounce(UpdateDebounce),
-      FileName(FileName), CDB(CDB), Callbacks(Callbacks), Barrier(Barrier),
-      Done(false), Status(FileName, Callbacks),
-      PreamblePeer(FileName, Callbacks, StorePreamblesInMemory,
-                   // FIXME: Run PreamblePeer asynchronously once ast patching
-                   // is available.
-                   /*RunSync=*/true, Status, *this) {
+                     bool RunSync, const TUScheduler::Options &Opts,
+                     ParsingCallbacks &Callbacks)
+    : IdleASTs(LRUCache), RunSync(RunSync), UpdateDebounce(Opts.UpdateDebounce),
+      FileName(FileName), ContextProvider(Opts.ContextProvider), CDB(CDB),
+      Callbacks(Callbacks), Barrier(Barrier), Done(false),
+      Status(FileName, Callbacks),
+      PreamblePeer(FileName, Callbacks, Opts.StorePreamblesInMemory,
+                   RunSync || !Opts.AsyncPreambleBuilds, Status, *this) {
   // Set a fallback command because compile command can be accessed before
   // `Inputs` is initialized. Other fields are only used after initialization
   // from client inputs.
@@ -640,14 +656,26 @@ void ASTWorker::update(ParseInputs Inputs, WantDiagnostics WantDiags) {
                               if (CanPublishResults)
                                 Publish();
                             });
+      // Note that this might throw away a stale preamble that might still be
+      // useful, but this is how we communicate a build error.
+      LatestPreamble.emplace();
       // Make sure anyone waiting for the preamble gets notified it could not be
       // built.
-      BuiltFirstPreamble.notify();
+      PreambleCV.notify_all();
       return;
     }
 
     PreamblePeer.update(std::move(Invocation), std::move(Inputs),
                         std::move(CompilerInvocationDiags), WantDiags);
+    std::unique_lock<std::mutex> Lock(Mutex);
+    PreambleCV.wait(Lock, [this] {
+      // Block until we reiceve a preamble request, unless a preamble already
+      // exists, as patching an empty preamble would imply rebuilding it from
+      // scratch.
+      // We block here instead of the consumer to prevent any deadlocks. Since
+      // LatestPreamble is only populated by ASTWorker thread.
+      return LatestPreamble || !PreambleRequests.empty() || Done;
+    });
     return;
   };
   startTask(TaskName, std::move(Task), WantDiags, TUScheduler::NoInvalidation);
@@ -747,7 +775,7 @@ void ASTWorker::updatePreamble(std::unique_ptr<CompilerInvocation> CI,
     // Update the preamble inside ASTWorker queue to ensure atomicity. As a task
     // running inside ASTWorker assumes internals won't change until it
     // finishes.
-    if (Preamble != LatestPreamble) {
+    if (!LatestPreamble || Preamble != *LatestPreamble) {
       ++PreambleBuildCount;
       // Cached AST is no longer valid.
       IdleASTs.take(this);
@@ -755,12 +783,16 @@ void ASTWorker::updatePreamble(std::unique_ptr<CompilerInvocation> CI,
       std::lock_guard<std::mutex> Lock(Mutex);
       // LatestPreamble might be the last reference to old preamble, do not
       // trigger destructor while holding the lock.
-      std::swap(LatestPreamble, Preamble);
+      if (LatestPreamble)
+        std::swap(*LatestPreamble, Preamble);
+      else
+        LatestPreamble = std::move(Preamble);
     }
+    // Notify anyone waiting for a preamble.
+    PreambleCV.notify_all();
     // Give up our ownership to old preamble before starting expensive AST
     // build.
     Preamble.reset();
-    BuiltFirstPreamble.notify();
     // We only need to build the AST if diagnostics were requested.
     if (WantDiags == WantDiagnostics::No)
       return;
@@ -779,6 +811,7 @@ void ASTWorker::updatePreamble(std::unique_ptr<CompilerInvocation> CI,
                            steady_clock::now(), Context::current().clone(),
                            llvm::None, TUScheduler::NoInvalidation, nullptr});
   }
+  PreambleCV.notify_all();
   RequestsCV.notify_all();
 }
 
@@ -789,6 +822,7 @@ void ASTWorker::generateDiagnostics(
   static constexpr trace::Metric ASTAccessForDiag(
       "ast_access_diag", trace::Metric::Counter, "result");
   assert(Invocation);
+  assert(LatestPreamble);
   // No need to rebuild the AST if we won't send the diagnostics.
   {
     std::lock_guard<std::mutex> Lock(PublishMu);
@@ -821,7 +855,7 @@ void ASTWorker::generateDiagnostics(
   if (!AST || !InputsAreLatest) {
     auto RebuildStartTime = DebouncePolicy::clock::now();
     llvm::Optional<ParsedAST> NewAST = ParsedAST::build(
-        FileName, Inputs, std::move(Invocation), CIDiags, LatestPreamble);
+        FileName, Inputs, std::move(Invocation), CIDiags, *LatestPreamble);
     auto RebuildDuration = DebouncePolicy::clock::now() - RebuildStartTime;
     ++ASTBuildCount;
     // Try to record the AST-build time, to inform future update debouncing.
@@ -879,10 +913,13 @@ void ASTWorker::generateDiagnostics(
 std::shared_ptr<const PreambleData>
 ASTWorker::getPossiblyStalePreamble() const {
   std::lock_guard<std::mutex> Lock(Mutex);
-  return LatestPreamble;
+  return LatestPreamble ? *LatestPreamble : nullptr;
 }
 
-void ASTWorker::waitForFirstPreamble() const { BuiltFirstPreamble.wait(); }
+void ASTWorker::waitForFirstPreamble() const {
+  std::unique_lock<std::mutex> Lock(Mutex);
+  PreambleCV.wait(Lock, [this] { return LatestPreamble.hasValue() || Done; });
+}
 
 tooling::CompileCommand ASTWorker::getCurrentCompileCommand() const {
   std::unique_lock<std::mutex> Lock(Mutex);
@@ -914,9 +951,9 @@ void ASTWorker::stop() {
     assert(!Done && "stop() called twice");
     Done = true;
   }
-  // We are no longer going to build any preambles, let the waiters know that.
-  BuiltFirstPreamble.notify();
   PreamblePeer.stop();
+  // We are no longer going to build any preambles, let the waiters know that.
+  PreambleCV.notify_all();
   Status.stop();
   RequestsCV.notify_all();
 }
@@ -928,6 +965,7 @@ void ASTWorker::startTask(llvm::StringRef Name,
   if (RunSync) {
     assert(!Done && "running a task after stop()");
     trace::Span Tracer(Name + ":" + llvm::sys::path::filename(FileName));
+    WithContext WithProvidedContext(ContextProvider(FileName));
     Task();
     return;
   }
@@ -1025,6 +1063,7 @@ void ASTWorker::run() {
         Status.ASTActivity.K = ASTAction::RunningAction;
         Status.ASTActivity.Name = CurrentRequest->Name;
       });
+      WithContext WithProvidedContext(ContextProvider(FileName));
       CurrentRequest->Action();
     }
 
@@ -1117,10 +1156,24 @@ bool ASTWorker::shouldSkipHeadLocked() const {
 }
 
 bool ASTWorker::blockUntilIdle(Deadline Timeout) const {
-  std::unique_lock<std::mutex> Lock(Mutex);
-  return wait(Lock, RequestsCV, Timeout, [&] {
-    return PreambleRequests.empty() && Requests.empty() && !CurrentRequest;
-  });
+  auto WaitUntilASTWorkerIsIdle = [&] {
+    std::unique_lock<std::mutex> Lock(Mutex);
+    return wait(Lock, RequestsCV, Timeout, [&] {
+      return PreambleRequests.empty() && Requests.empty() && !CurrentRequest;
+    });
+  };
+  // Make sure ASTWorker has processed all requests, which might issue new
+  // updates to PreamblePeer.
+  WaitUntilASTWorkerIsIdle();
+  // Now that ASTWorker processed all requests, ensure PreamblePeer has served
+  // all update requests. This might create new PreambleRequests for the
+  // ASTWorker.
+  PreamblePeer.blockUntilIdle(Timeout);
+  assert(Requests.empty() &&
+         "No new normal tasks can be scheduled concurrently with "
+         "blockUntilIdle(): ASTWorker isn't threadsafe");
+  // Finally make sure ASTWorker has processed all of the preamble updates.
+  return WaitUntilASTWorkerIsIdle();
 }
 
 // Render a TUAction to a user-facing string representation.
@@ -1178,13 +1231,18 @@ struct TUScheduler::FileData {
 TUScheduler::TUScheduler(const GlobalCompilationDatabase &CDB,
                          const Options &Opts,
                          std::unique_ptr<ParsingCallbacks> Callbacks)
-    : CDB(CDB), StorePreamblesInMemory(Opts.StorePreamblesInMemory),
+    : CDB(CDB), Opts(Opts),
       Callbacks(Callbacks ? move(Callbacks)
                           : std::make_unique<ParsingCallbacks>()),
       Barrier(Opts.AsyncThreadsCount),
       IdleASTs(
-          std::make_unique<ASTCache>(Opts.RetentionPolicy.MaxRetainedASTs)),
-      UpdateDebounce(Opts.UpdateDebounce) {
+          std::make_unique<ASTCache>(Opts.RetentionPolicy.MaxRetainedASTs)) {
+  // Avoid null checks everywhere.
+  if (!Opts.ContextProvider) {
+    this->Opts.ContextProvider = [](llvm::StringRef) {
+      return Context::current().clone();
+    };
+  }
   if (0 < Opts.AsyncThreadsCount) {
     PreambleTasks.emplace();
     WorkerThreads.emplace();
@@ -1218,10 +1276,10 @@ bool TUScheduler::update(PathRef File, ParseInputs Inputs,
   bool NewFile = FD == nullptr;
   if (!FD) {
     // Create a new worker to process the AST-related tasks.
-    ASTWorkerHandle Worker = ASTWorker::create(
-        File, CDB, *IdleASTs,
-        WorkerThreads ? WorkerThreads.getPointer() : nullptr, Barrier,
-        UpdateDebounce, StorePreamblesInMemory, *Callbacks);
+    ASTWorkerHandle Worker =
+        ASTWorker::create(File, CDB, *IdleASTs,
+                          WorkerThreads ? WorkerThreads.getPointer() : nullptr,
+                          Barrier, Opts, *Callbacks);
     FD = std::unique_ptr<FileData>(
         new FileData{Inputs.Contents, std::move(Worker)});
   } else {
@@ -1245,14 +1303,18 @@ llvm::StringMap<std::string> TUScheduler::getAllFileContents() const {
   return Results;
 }
 
-void TUScheduler::run(llvm::StringRef Name,
+void TUScheduler::run(llvm::StringRef Name, llvm::StringRef Path,
                       llvm::unique_function<void()> Action) {
-  if (!PreambleTasks)
+  if (!PreambleTasks) {
+    WithContext WithProvidedContext(Opts.ContextProvider(Path));
     return Action();
+  }
   PreambleTasks->runAsync(Name, [this, Ctx = Context::current().clone(),
+                                 Path(Path.str()),
                                  Action = std::move(Action)]() mutable {
     std::lock_guard<Semaphore> BarrierLock(Barrier);
     WithContext WC(std::move(Ctx));
+    WithContext WithProvidedContext(Opts.ContextProvider(Path));
     Action();
   });
 }
@@ -1287,6 +1349,7 @@ void TUScheduler::runWithPreamble(llvm::StringRef Name, PathRef File,
     SPAN_ATTACH(Tracer, "file", File);
     std::shared_ptr<const PreambleData> Preamble =
         It->second->Worker->getPossiblyStalePreamble();
+    WithContext WithProvidedContext(Opts.ContextProvider(File));
     Action(InputsAndPreamble{It->second->Contents,
                              It->second->Worker->getCurrentCompileCommand(),
                              Preamble.get()});
@@ -1313,6 +1376,7 @@ void TUScheduler::runWithPreamble(llvm::StringRef Name, PathRef File,
         WithContext Guard(std::move(Ctx));
         trace::Span Tracer(Name);
         SPAN_ATTACH(Tracer, "file", File);
+        WithContext WithProvidedContext(Opts.ContextProvider(File));
         Action(InputsAndPreamble{Contents, Command, Preamble.get()});
       };
 

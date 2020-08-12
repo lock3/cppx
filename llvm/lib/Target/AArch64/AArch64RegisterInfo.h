@@ -42,12 +42,17 @@ public:
   void UpdateCustomCallPreservedMask(MachineFunction &MF,
                                      const uint32_t **Mask) const;
 
+  static bool hasSVEArgsOrReturn(const MachineFunction *MF);
+
   /// Code Generation virtual methods...
   const MCPhysReg *getCalleeSavedRegs(const MachineFunction *MF) const override;
+  const MCPhysReg *getDarwinCalleeSavedRegs(const MachineFunction *MF) const;
   const MCPhysReg *
   getCalleeSavedRegsViaCopy(const MachineFunction *MF) const;
   const uint32_t *getCallPreservedMask(const MachineFunction &MF,
                                        CallingConv::ID) const override;
+  const uint32_t *getDarwinCallPreservedMask(const MachineFunction &MF,
+                                             CallingConv::ID) const;
 
   unsigned getCSRFirstUseCost() const override {
     // The cost will be compared against BlockFrequency where entry has the
@@ -119,6 +124,7 @@ public:
                                MachineFunction &MF) const override;
 
   unsigned getLocalAddressRegister(const MachineFunction &MF) const;
+  bool regNeedsCFI(unsigned Reg, unsigned &RegToUseForCFI) const;
 };
 
 } // end namespace llvm

@@ -8,8 +8,10 @@
 
 #include "flang/Semantics/semantics.h"
 #include "assignment.h"
+#include "canonicalize-acc.h"
 #include "canonicalize-do.h"
 #include "canonicalize-omp.h"
+#include "check-acc-structure.h"
 #include "check-allocate.h"
 #include "check-arithmeticif.h"
 #include "check-case.h"
@@ -25,6 +27,8 @@
 #include "check-omp-structure.h"
 #include "check-purity.h"
 #include "check-return.h"
+#include "check-select-rank.h"
+#include "check-select-type.h"
 #include "check-stop.h"
 #include "compute-offsets.h"
 #include "mod-file.h"
@@ -152,11 +156,12 @@ private:
 };
 
 using StatementSemanticsPass1 = ExprChecker;
-using StatementSemanticsPass2 = SemanticsVisitor<AllocateChecker,
-    ArithmeticIfStmtChecker, AssignmentChecker, CaseChecker, CoarrayChecker,
-    DataChecker, DeallocateChecker, DoForallChecker, IfStmtChecker, IoChecker,
-    MiscChecker, NamelistChecker, NullifyChecker, OmpStructureChecker,
-    PurityChecker, ReturnStmtChecker, StopChecker>;
+using StatementSemanticsPass2 = SemanticsVisitor<AccStructureChecker,
+    AllocateChecker, ArithmeticIfStmtChecker, AssignmentChecker, CaseChecker,
+    CoarrayChecker, DataChecker, DeallocateChecker, DoForallChecker,
+    IfStmtChecker, IoChecker, MiscChecker, NamelistChecker, NullifyChecker,
+    OmpStructureChecker, PurityChecker, ReturnStmtChecker,
+    SelectRankConstructChecker, SelectTypeChecker, StopChecker>;
 
 static bool PerformStatementSemantics(
     SemanticsContext &context, parser::Program &program) {
@@ -165,7 +170,11 @@ static bool PerformStatementSemantics(
   ComputeOffsets(context);
   CheckDeclarations(context);
   StatementSemanticsPass1{context}.Walk(program);
-  StatementSemanticsPass2{context}.Walk(program);
+  StatementSemanticsPass2 pass2{context};
+  pass2.Walk(program);
+  if (!context.AnyFatalError()) {
+    pass2.CompileDataInitializationsIntoInitializers();
+  }
   return !context.AnyFatalError();
 }
 
@@ -315,9 +324,22 @@ SymbolVector SemanticsContext::GetIndexVars(IndexVarKind kind) {
   return result;
 }
 
+SourceName SemanticsContext::GetTempName(const Scope &scope) {
+  for (const auto &str : tempNames_) {
+    SourceName name{str};
+    if (scope.find(name) == scope.end()) {
+      return name;
+    }
+  }
+  tempNames_.emplace_back(".F18.");
+  tempNames_.back() += std::to_string(tempNames_.size());
+  return {tempNames_.back()};
+}
+
 bool Semantics::Perform() {
   return ValidateLabels(context_, program_) &&
       parser::CanonicalizeDo(program_) && // force line break
+      CanonicalizeAcc(context_.messages(), program_) &&
       CanonicalizeOmp(context_.messages(), program_) &&
       PerformStatementSemantics(context_, program_) &&
       ModFileWriter{context_}.WriteAll();
@@ -354,7 +376,7 @@ void DoDumpSymbols(llvm::raw_ostream &os, const Scope &scope, int indent) {
     os << ' ' << symbol->name();
   }
   if (scope.size()) {
-    os << " size=" << scope.size() << " align=" << scope.align();
+    os << " size=" << scope.size() << " alignment=" << scope.alignment();
   }
   if (scope.derivedTypeSpec()) {
     os << " instantiation of " << *scope.derivedTypeSpec();

@@ -33,6 +33,7 @@
 #include "Targets/Sparc.h"
 #include "Targets/SystemZ.h"
 #include "Targets/TCE.h"
+#include "Targets/VE.h"
 #include "Targets/WebAssembly.h"
 #include "Targets/X86.h"
 #include "Targets/XCore.h"
@@ -345,6 +346,8 @@ TargetInfo *AllocateTarget(const llvm::Triple &Triple,
       return new FreeBSDTargetInfo<PPC64TargetInfo>(Triple, Opts);
     case llvm::Triple::NetBSD:
       return new NetBSDTargetInfo<PPC64TargetInfo>(Triple, Opts);
+    case llvm::Triple::OpenBSD:
+      return new OpenBSDTargetInfo<PPC64TargetInfo>(Triple, Opts);
     case llvm::Triple::AIX:
       return new AIXPPC64TargetInfo(Triple, Opts);
     default:
@@ -357,6 +360,8 @@ TargetInfo *AllocateTarget(const llvm::Triple &Triple,
       return new LinuxTargetInfo<PPC64TargetInfo>(Triple, Opts);
     case llvm::Triple::NetBSD:
       return new NetBSDTargetInfo<PPC64TargetInfo>(Triple, Opts);
+    case llvm::Triple::OpenBSD:
+      return new OpenBSDTargetInfo<PPC64TargetInfo>(Triple, Opts);
     default:
       return new PPC64TargetInfo(Triple, Opts);
     }
@@ -613,6 +618,9 @@ TargetInfo *AllocateTarget(const llvm::Triple &Triple,
     return new LinuxTargetInfo<RenderScript32TargetInfo>(Triple, Opts);
   case llvm::Triple::renderscript64:
     return new LinuxTargetInfo<RenderScript64TargetInfo>(Triple, Opts);
+
+  case llvm::Triple::ve:
+    return new LinuxTargetInfo<VETargetInfo>(Triple, Opts);
   }
 }
 } // namespace targets

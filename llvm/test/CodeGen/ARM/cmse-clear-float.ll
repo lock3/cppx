@@ -27,17 +27,17 @@ define float @f1(float (float)* nocapture %fptr) #0 {
 ; CHECK-8M-NEXT:    beq .LBB0_2
 ; CHECK-8M-NEXT:  @ %bb.1: @ %entry
 ; CHECK-8M-NEXT:    vmrs r12, fpscr
-; CHECK-8M-NEXT:    bic r12, r12, #159
-; CHECK-8M-NEXT:    bic r12, r12, #4026531840
 ; CHECK-8M-NEXT:    vmov d0, lr, lr
 ; CHECK-8M-NEXT:    vmov d1, lr, lr
-; CHECK-8M-NEXT:    vmsr fpscr, r12
 ; CHECK-8M-NEXT:    vmov d2, lr, lr
 ; CHECK-8M-NEXT:    vmov d3, lr, lr
 ; CHECK-8M-NEXT:    vmov d4, lr, lr
 ; CHECK-8M-NEXT:    vmov d5, lr, lr
 ; CHECK-8M-NEXT:    vmov d6, lr, lr
 ; CHECK-8M-NEXT:    vmov d7, lr, lr
+; CHECK-8M-NEXT:    bic r12, r12, #159
+; CHECK-8M-NEXT:    bic r12, r12, #4026531840
+; CHECK-8M-NEXT:    vmsr fpscr, r12
 ; CHECK-8M-NEXT:  .LBB0_2: @ %entry
 ; CHECK-8M-NEXT:    mov r1, lr
 ; CHECK-8M-NEXT:    mov r2, lr
@@ -83,17 +83,17 @@ define double @d1(double (double)* nocapture %fptr) #0 {
 ; CHECK-8M-LE-NEXT:    beq .LBB1_2
 ; CHECK-8M-LE-NEXT:  @ %bb.1: @ %entry
 ; CHECK-8M-LE-NEXT:    vmrs r12, fpscr
-; CHECK-8M-LE-NEXT:    bic r12, r12, #159
-; CHECK-8M-LE-NEXT:    bic r12, r12, #4026531840
 ; CHECK-8M-LE-NEXT:    vmov d0, lr, lr
 ; CHECK-8M-LE-NEXT:    vmov d1, lr, lr
-; CHECK-8M-LE-NEXT:    vmsr fpscr, r12
 ; CHECK-8M-LE-NEXT:    vmov d2, lr, lr
 ; CHECK-8M-LE-NEXT:    vmov d3, lr, lr
 ; CHECK-8M-LE-NEXT:    vmov d4, lr, lr
 ; CHECK-8M-LE-NEXT:    vmov d5, lr, lr
 ; CHECK-8M-LE-NEXT:    vmov d6, lr, lr
 ; CHECK-8M-LE-NEXT:    vmov d7, lr, lr
+; CHECK-8M-LE-NEXT:    bic r12, r12, #159
+; CHECK-8M-LE-NEXT:    bic r12, r12, #4026531840
+; CHECK-8M-LE-NEXT:    vmsr fpscr, r12
 ; CHECK-8M-LE-NEXT:  .LBB1_2: @ %entry
 ; CHECK-8M-LE-NEXT:    mov r2, lr
 ; CHECK-8M-LE-NEXT:    mov r3, lr
@@ -119,17 +119,17 @@ define double @d1(double (double)* nocapture %fptr) #0 {
 ; CHECK-8M-BE-NEXT:    beq .LBB1_2
 ; CHECK-8M-BE-NEXT:  @ %bb.1: @ %entry
 ; CHECK-8M-BE-NEXT:    vmrs r12, fpscr
-; CHECK-8M-BE-NEXT:    bic r12, r12, #159
-; CHECK-8M-BE-NEXT:    bic r12, r12, #4026531840
 ; CHECK-8M-BE-NEXT:    vmov d0, lr, lr
 ; CHECK-8M-BE-NEXT:    vmov d1, lr, lr
-; CHECK-8M-BE-NEXT:    vmsr fpscr, r12
 ; CHECK-8M-BE-NEXT:    vmov d2, lr, lr
 ; CHECK-8M-BE-NEXT:    vmov d3, lr, lr
 ; CHECK-8M-BE-NEXT:    vmov d4, lr, lr
 ; CHECK-8M-BE-NEXT:    vmov d5, lr, lr
 ; CHECK-8M-BE-NEXT:    vmov d6, lr, lr
 ; CHECK-8M-BE-NEXT:    vmov d7, lr, lr
+; CHECK-8M-BE-NEXT:    bic r12, r12, #159
+; CHECK-8M-BE-NEXT:    bic r12, r12, #4026531840
+; CHECK-8M-BE-NEXT:    vmsr fpscr, r12
 ; CHECK-8M-BE-NEXT:  .LBB1_2: @ %entry
 ; CHECK-8M-BE-NEXT:    mov r2, lr
 ; CHECK-8M-BE-NEXT:    mov r3, lr
@@ -671,22 +671,22 @@ define float @f1_minsize(float (float)* nocapture %fptr) #10 {
 ; CHECK-8M-NEXT:    blx r1
 ; CHECK-8M-NEXT:    pop.w {r7, lr}
 ; CHECK-8M-NEXT:    vmrs r12, fpscr
+; CHECK-8M-NEXT:    vmov d0, lr, lr
+; CHECK-8M-NEXT:    vmov d1, lr, lr
+; CHECK-8M-NEXT:    mov r1, lr
+; CHECK-8M-NEXT:    vmov d2, lr, lr
+; CHECK-8M-NEXT:    mov r2, lr
+; CHECK-8M-NEXT:    vmov d3, lr, lr
+; CHECK-8M-NEXT:    mov r3, lr
+; CHECK-8M-NEXT:    vmov d4, lr, lr
+; CHECK-8M-NEXT:    vmov d5, lr, lr
+; CHECK-8M-NEXT:    vmov d6, lr, lr
+; CHECK-8M-NEXT:    vmov d7, lr, lr
 ; CHECK-8M-NEXT:    bic r12, r12, #159
 ; CHECK-8M-NEXT:    bic r12, r12, #4026531840
-; CHECK-8M-NEXT:    vmov d0, lr, lr
 ; CHECK-8M-NEXT:    vmsr fpscr, r12
-; CHECK-8M-NEXT:    vmov d1, lr, lr
-; CHECK-8M-NEXT:    vmov d2, lr, lr
-; CHECK-8M-NEXT:    mov r1, lr
-; CHECK-8M-NEXT:    vmov d3, lr, lr
-; CHECK-8M-NEXT:    mov r2, lr
-; CHECK-8M-NEXT:    vmov d4, lr, lr
-; CHECK-8M-NEXT:    mov r3, lr
-; CHECK-8M-NEXT:    vmov d5, lr, lr
 ; CHECK-8M-NEXT:    mov r12, lr
-; CHECK-8M-NEXT:    vmov d6, lr, lr
 ; CHECK-8M-NEXT:    msr apsr_nzcvqg, lr
-; CHECK-8M-NEXT:    vmov d7, lr, lr
 ; CHECK-8M-NEXT:    bxns lr
 ; CHECK-8M-NEXT:    .p2align 2
 ; CHECK-8M-NEXT:  @ %bb.1:

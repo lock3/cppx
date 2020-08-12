@@ -83,6 +83,12 @@ ExprDependence clang::computeDependence(ArraySubscriptExpr *E) {
   return E->getLHS()->getDependence() | E->getRHS()->getDependence();
 }
 
+ExprDependence clang::computeDependence(MatrixSubscriptExpr *E) {
+  return E->getBase()->getDependence() | E->getRowIdx()->getDependence() |
+         (E->getColumnIdx() ? E->getColumnIdx()->getDependence()
+                            : ExprDependence::None);
+}
+
 ExprDependence clang::computeDependence(CompoundLiteralExpr *E) {
   return toExprDependence(E->getTypeSourceInfo()->getType()->getDependence()) |
          turnTypeToValueDependence(E->getInitializer()->getDependence());
@@ -122,15 +128,19 @@ ExprDependence clang::computeDependence(BinaryConditionalOperator *E) {
 }
 
 ExprDependence clang::computeDependence(StmtExpr *E, unsigned TemplateDepth) {
-  // FIXME: why is unexpanded-pack not propagated?
-  auto D = toExprDependence(E->getType()->getDependence()) &
-           ~ExprDependence::UnexpandedPack;
+  auto D = toExprDependence(E->getType()->getDependence());
+  // Propagate dependence of the result.
+  if (const auto *CompoundExprResult =
+          dyn_cast_or_null<ValueStmt>(E->getSubStmt()->getStmtExprResult()))
+    if (const Expr *ResultExpr = CompoundExprResult->getExprStmt())
+      D |= ResultExpr->getDependence();
   // Note: we treat a statement-expression in a dependent context as always
   // being value- and instantiation-dependent. This matches the behavior of
   // lambda-expressions and GCC.
   if (TemplateDepth)
     D |= ExprDependence::ValueInstantiation;
-  return D;
+  // A param pack cannot be expanded over stmtexpr boundaries.
+  return D & ~ExprDependence::UnexpandedPack;
 }
 
 ExprDependence clang::computeDependence(ConvertVectorExpr *E) {
@@ -407,6 +417,10 @@ ExprDependence clang::computeDependence(CXXIdExprExpr *E) {
   return ExprDependence::TypeValueInstantiation;
 }
 
+ExprDependence clang::computeDependence(CXXMemberIdExprExpr *E) {
+  return ExprDependence::TypeValueInstantiation;
+}
+
 ExprDependence clang::computeDependence(CXXDependentVariadicReifierExpr *E) {
   return E->getRange()->getDependence() | ExprDependence::TypeValue;
 }
@@ -417,7 +431,7 @@ ExprDependence clang::computeDependence(CXXSelectionExpr *E) {
   return D;
 }
 
-ExprDependence clang::computeDependence(CXXReflectedIdExpr *E) {
+ExprDependence clang::computeDependence(CXXDependentSpliceIdExpr *E) {
   return ExprDependence::TypeValueInstantiation;
 }
 
@@ -625,9 +639,16 @@ ExprDependence clang::computeDependence(DeclRefExpr *E, const ASTContext &Ctx) {
 }
 
 ExprDependence clang::computeDependence(RecoveryExpr *E) {
-  // FIXME: drop type+value+instantiation once Error is sufficient to suppress
-  // bogus dianostics.
-  auto D = ExprDependence::TypeValueInstantiation | ExprDependence::Error;
+  // RecoveryExpr is
+  //   - always value-dependent, and therefore instantiation dependent
+  //   - contains errors (ExprDependence::Error), by definition
+  //   - type-dependent if we don't know the type (fallback to an opaque
+  //     dependent type), or the type is known and dependent, or it has
+  //     type-dependent subexpressions.
+  auto D = toExprDependence(E->getType()->getDependence()) |
+           ExprDependence::ErrorDependent;
+  // FIXME: remove the type-dependent bit from subexpressions, if the
+  // RecoveryExpr has a non-dependent type.
   for (auto *S : E->subExpressions())
     D |= S->getDependence();
   return D;

@@ -17,6 +17,7 @@
 #include "mlir/Transforms/InliningUtils.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallBitVector.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
 
 using namespace mlir;
@@ -67,8 +68,7 @@ struct AffineInlinerInterface : public DialectInlinerInterface {
 // AffineDialect
 //===----------------------------------------------------------------------===//
 
-AffineDialect::AffineDialect(MLIRContext *context)
-    : Dialect(getDialectNamespace(), context) {
+void AffineDialect::initialize() {
   addOperations<AffineDmaStartOp, AffineDmaWaitOp,
 #define GET_OP_LIST
 #include "mlir/Dialect/Affine/IR/AffineOps.cpp.inc"
@@ -85,37 +85,43 @@ Operation *AffineDialect::materializeConstant(OpBuilder &builder,
 }
 
 /// A utility function to check if a value is defined at the top level of an
-/// op with trait `PolyhedralScope`. A value of index type defined at the top
-/// level is always a valid symbol.
+/// op with trait `AffineScope`. If the value is defined in an unlinked region,
+/// conservatively assume it is not top-level. A value of index type defined at
+/// the top level is always a valid symbol.
 bool mlir::isTopLevelValue(Value value) {
-  if (auto arg = value.dyn_cast<BlockArgument>())
-    return arg.getOwner()->getParentOp()->hasTrait<OpTrait::PolyhedralScope>();
-  return value.getDefiningOp()
-      ->getParentOp()
-      ->hasTrait<OpTrait::PolyhedralScope>();
+  if (auto arg = value.dyn_cast<BlockArgument>()) {
+    // The block owning the argument may be unlinked, e.g. when the surrounding
+    // region has not yet been attached to an Op, at which point the parent Op
+    // is null.
+    Operation *parentOp = arg.getOwner()->getParentOp();
+    return parentOp && parentOp->hasTrait<OpTrait::AffineScope>();
+  }
+  // The defining Op may live in an unlinked block so its parent Op may be null.
+  Operation *parentOp = value.getDefiningOp()->getParentOp();
+  return parentOp && parentOp->hasTrait<OpTrait::AffineScope>();
 }
 
 /// A utility function to check if a value is defined at the top level of
 /// `region` or is an argument of `region`. A value of index type defined at the
-/// top level of a `PolyhedralScope` region is always a valid symbol for all
+/// top level of a `AffineScope` region is always a valid symbol for all
 /// uses in that region.
 static bool isTopLevelValue(Value value, Region *region) {
   if (auto arg = value.dyn_cast<BlockArgument>())
     return arg.getParentRegion() == region;
-  return value.getDefiningOp()->getParentOp() == region->getParentOp();
+  return value.getDefiningOp()->getParentRegion() == region;
 }
 
 /// Returns the closest region enclosing `op` that is held by an operation with
-/// trait `PolyhedralScope`.
+/// trait `AffineScope`; `nullptr` if there is no such region.
 //  TODO: getAffineScope should be publicly exposed for affine passes/utilities.
 static Region *getAffineScope(Operation *op) {
   auto *curOp = op;
   while (auto *parentOp = curOp->getParentOp()) {
-    if (parentOp->hasTrait<OpTrait::PolyhedralScope>())
+    if (parentOp->hasTrait<OpTrait::AffineScope>())
       return curOp->getParentRegion();
     curOp = parentOp;
   }
-  llvm_unreachable("op doesn't have an enclosing polyhedral scope");
+  return nullptr;
 }
 
 // A Value can be used as a dimension id iff it meets one of the following
@@ -132,10 +138,10 @@ bool mlir::isValidDim(Value value) {
     return isValidDim(value, getAffineScope(defOp));
 
   // This value has to be a block argument for an op that has the
-  // `PolyhedralScope` trait or for an affine.for or affine.parallel.
+  // `AffineScope` trait or for an affine.for or affine.parallel.
   auto *parentOp = value.cast<BlockArgument>().getOwner()->getParentOp();
-  return parentOp->hasTrait<OpTrait::PolyhedralScope>() ||
-         isa<AffineForOp>(parentOp) || isa<AffineParallelOp>(parentOp);
+  return parentOp && (parentOp->hasTrait<OpTrait::AffineScope>() ||
+                      isa<AffineForOp, AffineParallelOp>(parentOp));
 }
 
 // Value can be used as a dimension id iff it meets one of the following
@@ -157,7 +163,7 @@ bool mlir::isValidDim(Value value, Region *region) {
     // This value has to be a block argument for an affine.for or an
     // affine.parallel.
     auto *parentOp = value.cast<BlockArgument>().getOwner()->getParentOp();
-    return isa<AffineForOp>(parentOp) || isa<AffineParallelOp>(parentOp);
+    return isa<AffineForOp, AffineParallelOp>(parentOp);
   }
 
   // Affine apply operation is ok if all of its operands are ok.
@@ -166,7 +172,7 @@ bool mlir::isValidDim(Value value, Region *region) {
   // The dim op is okay if its operand memref/tensor is defined at the top
   // level.
   if (auto dimOp = dyn_cast<DimOp>(op))
-    return isTopLevelValue(dimOp.getOperand());
+    return isTopLevelValue(dimOp.memrefOrTensor());
   return false;
 }
 
@@ -174,8 +180,8 @@ bool mlir::isValidDim(Value value, Region *region) {
 /// `memrefDefOp` is a statically  shaped one or defined using a valid symbol
 /// for `region`.
 template <typename AnyMemRefDefOp>
-bool isMemRefSizeValidSymbol(AnyMemRefDefOp memrefDefOp, unsigned index,
-                             Region *region) {
+static bool isMemRefSizeValidSymbol(AnyMemRefDefOp memrefDefOp, unsigned index,
+                                    Region *region) {
   auto memRefType = memrefDefOp.getType();
   // Statically shaped.
   if (!memRefType.isDynamicDim(index))
@@ -190,26 +196,26 @@ bool isMemRefSizeValidSymbol(AnyMemRefDefOp memrefDefOp, unsigned index,
 static bool isDimOpValidSymbol(DimOp dimOp, Region *region) {
   // The dim op is okay if its operand memref/tensor is defined at the top
   // level.
-  if (isTopLevelValue(dimOp.getOperand()))
+  if (isTopLevelValue(dimOp.memrefOrTensor()))
     return true;
 
   // The dim op is also okay if its operand memref/tensor is a view/subview
   // whose corresponding size is a valid symbol.
-  unsigned index = dimOp.getIndex();
-  if (auto viewOp = dyn_cast<ViewOp>(dimOp.getOperand().getDefiningOp()))
-    return isMemRefSizeValidSymbol<ViewOp>(viewOp, index, region);
-  if (auto subViewOp = dyn_cast<SubViewOp>(dimOp.getOperand().getDefiningOp()))
-    return isMemRefSizeValidSymbol<SubViewOp>(subViewOp, index, region);
-  if (auto allocOp = dyn_cast<AllocOp>(dimOp.getOperand().getDefiningOp()))
-    return isMemRefSizeValidSymbol<AllocOp>(allocOp, index, region);
-  return false;
+  Optional<int64_t> index = dimOp.getConstantIndex();
+  assert(index.hasValue() &&
+         "expect only `dim` operations with a constant index");
+  int64_t i = index.getValue();
+  return TypeSwitch<Operation *, bool>(dimOp.memrefOrTensor().getDefiningOp())
+      .Case<ViewOp, SubViewOp, AllocOp>(
+          [&](auto op) { return isMemRefSizeValidSymbol(op, i, region); })
+      .Default([](Operation *) { return false; });
 }
 
 // A value can be used as a symbol (at all its use sites) iff it meets one of
 // the following conditions:
 // *) It is a constant.
 // *) Its defining op or block arg appearance is immediately enclosed by an op
-//    with `PolyhedralScope` trait.
+//    with `AffineScope` trait.
 // *) It is the result of an affine.apply operation with symbol operands.
 // *) It is a result of the dim op on a memref whose corresponding size is a
 //    valid symbol.
@@ -228,28 +234,31 @@ bool mlir::isValidSymbol(Value value) {
   return false;
 }
 
-// A value can be used as a symbol for `region` iff it meets onf of the the
-// following conditions:
-// *) It is a constant.
-// *) It is defined at the top level of 'region' or is its argument.
-// *) It dominates `region`'s parent op.
-// *) It is the result of an affine apply operation with symbol arguments.
-// *) It is a result of the dim op on a memref whose corresponding size is
-//    a valid symbol.
+/// A value can be used as a symbol for `region` iff it meets onf of the the
+/// following conditions:
+/// *) It is a constant.
+/// *) It is the result of an affine apply operation with symbol arguments.
+/// *) It is a result of the dim op on a memref whose corresponding size is
+///    a valid symbol.
+/// *) It is defined at the top level of 'region' or is its argument.
+/// *) It dominates `region`'s parent op.
+/// If `region` is null, conservatively assume the symbol definition scope does
+/// not exist and only accept the values that would be symbols regardless of
+/// the surrounding region structure, i.e. the first three cases above.
 bool mlir::isValidSymbol(Value value, Region *region) {
   // The value must be an index type.
   if (!value.getType().isIndex())
     return false;
 
   // A top-level value is a valid symbol.
-  if (::isTopLevelValue(value, region))
+  if (region && ::isTopLevelValue(value, region))
     return true;
 
   auto *defOp = value.getDefiningOp();
   if (!defOp) {
     // A block argument that is not a top-level value is a valid symbol if it
     // dominates region's parent op.
-    if (!region->getParentOp()->isKnownIsolatedFromAbove())
+    if (region && !region->getParentOp()->isKnownIsolatedFromAbove())
       if (auto *parentOpRegion = region->getParentOp()->getParentRegion())
         return isValidSymbol(value, parentOpRegion);
     return false;
@@ -269,7 +278,7 @@ bool mlir::isValidSymbol(Value value, Region *region) {
     return isDimOpValidSymbol(dimOp, region);
 
   // Check for values dominating `region`'s parent op.
-  if (!region->getParentOp()->isKnownIsolatedFromAbove())
+  if (region && !region->getParentOp()->isKnownIsolatedFromAbove())
     if (auto *parentRegion = region->getParentOp()->getParentRegion())
       return isValidSymbol(value, parentRegion);
 
@@ -457,7 +466,7 @@ indicesFromAffineApplyOp(ArrayRef<Value> operands) {
 // of allowing mathematical AffineMap composition.
 // Returns an AffineMap where symbols that come from an AffineApplyOp have been
 // rewritten as dims and are ordered after the original dims.
-// TODO(andydavis,ntv): This promotion makes AffineMap lose track of which
+// TODO: This promotion makes AffineMap lose track of which
 // symbols are represented as dims. This loss is static but can still be
 // recovered dynamically (with `isValidSymbol`). Still this is annoying for the
 // semi-affine map case. A dynamic canonicalization of all dims that are valid
@@ -526,7 +535,7 @@ static AffineMap promoteComposedSymbolsAsDims(AffineMap map,
 /// composition via symbols, which is ambiguous mathematically. This corner case
 /// is handled by locally rewriting such symbols that come from AffineApplyOp
 /// into dims and composing through dims.
-/// TODO(andydavis, ntv): Composition via symbols comes at a significant code
+/// TODO: Composition via symbols comes at a significant code
 /// complexity. Alternatively we should investigate whether we want to
 /// explicitly disallow symbols coming from affine.apply and instead force the
 /// user to compose symbols beforehand. The annoyances may be small (i.e. 1 or 2
@@ -584,7 +593,7 @@ AffineApplyNormalizer::AffineApplyNormalizer(AffineMap map,
     // 2. Compose AffineApplyOps and dispatch dims or symbols.
     for (unsigned i = 0, e = operands.size(); i < e; ++i) {
       auto t = operands[i];
-      auto affineApply = dyn_cast_or_null<AffineApplyOp>(t.getDefiningOp());
+      auto affineApply = t.getDefiningOp<AffineApplyOp>();
       if (affineApply) {
         // a. Compose affine.apply operations.
         LLVM_DEBUG(affineApply.getOperation()->print(
@@ -637,7 +646,7 @@ AffineApplyNormalizer::AffineApplyNormalizer(AffineMap map,
   LLVM_DEBUG(auxiliaryMap.print(dbgs() << "\nWith map: "));
   LLVM_DEBUG(map.compose(auxiliaryMap).print(dbgs() << "\nResult: "));
 
-  // TODO(andydavis,ntv): Disabling simplification results in major speed gains.
+  // TODO: Disabling simplification results in major speed gains.
   // Another option is to cache the results as it is expected a lot of redundant
   // work is performed in practice.
   affineMap = simplifyAffineMap(map.compose(auxiliaryMap));
@@ -905,7 +914,7 @@ void AffineApplyOp::getCanonicalizationPatterns(
 static LogicalResult foldMemRefCast(Operation *op) {
   bool folded = false;
   for (OpOperand &operand : op->getOpOperands()) {
-    auto cast = dyn_cast_or_null<MemRefCastOp>(operand.get().getDefiningOp());
+    auto cast = operand.get().getDefiningOp<MemRefCastOp>();
     if (cast && !cast.getOperand().getType().isa<UnrankedMemRefType>()) {
       operand.set(cast.getOperand());
       folded = true;
@@ -918,7 +927,7 @@ static LogicalResult foldMemRefCast(Operation *op) {
 // AffineDmaStartOp
 //===----------------------------------------------------------------------===//
 
-// TODO(b/133776335) Check that map operands are loop IVs or symbols.
+// TODO: Check that map operands are loop IVs or symbols.
 void AffineDmaStartOp::build(OpBuilder &builder, OperationState &result,
                              Value srcMemRef, AffineMap srcMap,
                              ValueRange srcIndices, Value destMemRef,
@@ -1088,7 +1097,7 @@ LogicalResult AffineDmaStartOp::fold(ArrayRef<Attribute> cstOperands,
 // AffineDmaWaitOp
 //===----------------------------------------------------------------------===//
 
-// TODO(b/133776335) Check that map operands are loop IVs or symbols.
+// TODO: Check that map operands are loop IVs or symbols.
 void AffineDmaWaitOp::build(OpBuilder &builder, OperationState &result,
                             Value tagMemRef, AffineMap tagMap,
                             ValueRange tagIndices, Value numElements) {
@@ -1165,9 +1174,10 @@ LogicalResult AffineDmaWaitOp::fold(ArrayRef<Attribute> cstOperands,
 // AffineForOp
 //===----------------------------------------------------------------------===//
 
-void AffineForOp::build(OpBuilder &builder, OperationState &result,
-                        ValueRange lbOperands, AffineMap lbMap,
-                        ValueRange ubOperands, AffineMap ubMap, int64_t step) {
+void AffineForOp::build(
+    OpBuilder &builder, OperationState &result, ValueRange lbOperands,
+    AffineMap lbMap, ValueRange ubOperands, AffineMap ubMap, int64_t step,
+    function_ref<void(OpBuilder &, Location, Value)> bodyBuilder) {
   assert(((!lbMap && lbOperands.empty()) ||
           lbOperands.size() == lbMap.getNumInputs()) &&
          "lower bound operand count does not match the affine map");
@@ -1191,17 +1201,25 @@ void AffineForOp::build(OpBuilder &builder, OperationState &result,
   // Create a region and a block for the body.  The argument of the region is
   // the loop induction variable.
   Region *bodyRegion = result.addRegion();
-  Block *body = new Block();
-  body->addArgument(IndexType::get(builder.getContext()));
+  Block *body = new Block;
+  Value inductionVar = body->addArgument(IndexType::get(builder.getContext()));
   bodyRegion->push_back(body);
-  ensureTerminator(*bodyRegion, builder, result.location);
+  if (bodyBuilder) {
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(body);
+    bodyBuilder(builder, result.location, inductionVar);
+  } else {
+    ensureTerminator(*bodyRegion, builder, result.location);
+  }
 }
 
-void AffineForOp::build(OpBuilder &builder, OperationState &result, int64_t lb,
-                        int64_t ub, int64_t step) {
+void AffineForOp::build(
+    OpBuilder &builder, OperationState &result, int64_t lb, int64_t ub,
+    int64_t step,
+    function_ref<void(OpBuilder &, Location, Value)> bodyBuilder) {
   auto lbMap = AffineMap::getConstantMap(lb, builder.getContext());
   auto ubMap = AffineMap::getConstantMap(ub, builder.getContext());
-  return build(builder, result, {}, lbMap, {}, ubMap, step);
+  return build(builder, result, {}, lbMap, {}, ubMap, step, bodyBuilder);
 }
 
 static LogicalResult verify(AffineForOp op) {
@@ -1509,7 +1527,7 @@ struct AffineForEmptyLoopFolder : public OpRewritePattern<AffineForOp> {
 
   LogicalResult matchAndRewrite(AffineForOp forOp,
                                 PatternRewriter &rewriter) const override {
-    // Check that the body only contains a terminator.
+    // Check that the body only contains a yield.
     if (!llvm::hasSingleElement(*forOp.getBody()))
       return failure();
     rewriter.eraseOp(forOp);
@@ -1668,19 +1686,99 @@ void mlir::extractForInductionVars(ArrayRef<AffineForOp> forInsts,
     ivs->push_back(forInst.getInductionVar());
 }
 
+/// Builds an affine loop nest, using "loopCreatorFn" to create individual loop
+/// operations.
+template <typename BoundListTy, typename LoopCreatorTy>
+static void buildAffineLoopNestImpl(
+    OpBuilder &builder, Location loc, BoundListTy lbs, BoundListTy ubs,
+    ArrayRef<int64_t> steps,
+    function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn,
+    LoopCreatorTy &&loopCreatorFn) {
+  assert(lbs.size() == ubs.size() && "Mismatch in number of arguments");
+  assert(lbs.size() == steps.size() && "Mismatch in number of arguments");
+
+  // If there are no loops to be constructed, construct the body anyway.
+  OpBuilder::InsertionGuard guard(builder);
+  if (lbs.empty()) {
+    if (bodyBuilderFn)
+      bodyBuilderFn(builder, loc, ValueRange());
+    return;
+  }
+
+  // Create the loops iteratively and store the induction variables.
+  SmallVector<Value, 4> ivs;
+  ivs.reserve(lbs.size());
+  for (unsigned i = 0, e = lbs.size(); i < e; ++i) {
+    // Callback for creating the loop body, always creates the terminator.
+    auto loopBody = [&](OpBuilder &nestedBuilder, Location nestedLoc,
+                        Value iv) {
+      ivs.push_back(iv);
+      // In the innermost loop, call the body builder.
+      if (i == e - 1 && bodyBuilderFn) {
+        OpBuilder::InsertionGuard nestedGuard(nestedBuilder);
+        bodyBuilderFn(nestedBuilder, nestedLoc, ivs);
+      }
+      nestedBuilder.create<AffineYieldOp>(nestedLoc);
+    };
+
+    // Delegate actual loop creation to the callback in order to dispatch
+    // between constant- and variable-bound loops.
+    auto loop = loopCreatorFn(builder, loc, lbs[i], ubs[i], steps[i], loopBody);
+    builder.setInsertionPointToStart(loop.getBody());
+  }
+}
+
+/// Creates an affine loop from the bounds known to be constants.
+static AffineForOp buildAffineLoopFromConstants(
+    OpBuilder &builder, Location loc, int64_t lb, int64_t ub, int64_t step,
+    function_ref<void(OpBuilder &, Location, Value)> bodyBuilderFn) {
+  return builder.create<AffineForOp>(loc, lb, ub, step, bodyBuilderFn);
+}
+
+/// Creates an affine loop from the bounds that may or may not be constants.
+static AffineForOp buildAffineLoopFromValues(
+    OpBuilder &builder, Location loc, Value lb, Value ub, int64_t step,
+    function_ref<void(OpBuilder &, Location, Value)> bodyBuilderFn) {
+  auto lbConst = lb.getDefiningOp<ConstantIndexOp>();
+  auto ubConst = ub.getDefiningOp<ConstantIndexOp>();
+  if (lbConst && ubConst)
+    return buildAffineLoopFromConstants(builder, loc, lbConst.getValue(),
+                                        ubConst.getValue(), step,
+                                        bodyBuilderFn);
+  return builder.create<AffineForOp>(loc, lb, builder.getDimIdentityMap(), ub,
+                                     builder.getDimIdentityMap(), step,
+                                     bodyBuilderFn);
+}
+
+void mlir::buildAffineLoopNest(
+    OpBuilder &builder, Location loc, ArrayRef<int64_t> lbs,
+    ArrayRef<int64_t> ubs, ArrayRef<int64_t> steps,
+    function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
+  buildAffineLoopNestImpl(builder, loc, lbs, ubs, steps, bodyBuilderFn,
+                          buildAffineLoopFromConstants);
+}
+
+void mlir::buildAffineLoopNest(
+    OpBuilder &builder, Location loc, ValueRange lbs, ValueRange ubs,
+    ArrayRef<int64_t> steps,
+    function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
+  buildAffineLoopNestImpl(builder, loc, lbs, ubs, steps, bodyBuilderFn,
+                          buildAffineLoopFromValues);
+}
+
 //===----------------------------------------------------------------------===//
 // AffineIfOp
 //===----------------------------------------------------------------------===//
 
 namespace {
-/// Remove else blocks that have nothing other than the terminator.
+/// Remove else blocks that have nothing other than a zero value yield.
 struct SimplifyDeadElse : public OpRewritePattern<AffineIfOp> {
   using OpRewritePattern<AffineIfOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(AffineIfOp ifOp,
                                 PatternRewriter &rewriter) const override {
     if (ifOp.elseRegion().empty() ||
-        !llvm::hasSingleElement(*ifOp.getElseBlock()))
+        !llvm::hasSingleElement(*ifOp.getElseBlock()) || ifOp.getNumResults())
       return failure();
 
     rewriter.startRootUpdate(ifOp);
@@ -1711,13 +1809,6 @@ static LogicalResult verify(AffineIfOp op) {
                                            condition.getNumDims())))
     return failure();
 
-  // Verify that the entry of each child region does not have arguments.
-  for (auto &region : op.getOperation()->getRegions()) {
-    for (auto &b : region)
-      if (b.getNumArguments() != 0)
-        return op.emitOpError(
-            "requires that child entry blocks have no arguments");
-  }
   return success();
 }
 
@@ -1741,6 +1832,9 @@ static ParseResult parseAffineIfOp(OpAsmParser &parser,
     return parser.emitError(
         parser.getNameLoc(),
         "symbol operand count and integer set symbol count must match");
+
+  if (parser.parseOptionalArrowTypeList(result.types))
+    return failure();
 
   // Create the regions for 'then' and 'else'.  The latter must be created even
   // if it remains empty for the validity of the operation.
@@ -1775,9 +1869,10 @@ static void print(OpAsmPrinter &p, AffineIfOp op) {
   p << "affine.if " << conditionAttr;
   printDimAndSymbolList(op.operand_begin(), op.operand_end(),
                         conditionAttr.getValue().getNumDims(), p);
+  p.printOptionalArrowTypeList(op.getResultTypes());
   p.printRegion(op.thenRegion(),
                 /*printEntryBlockArgs=*/false,
-                /*printBlockTerminators=*/false);
+                /*printBlockTerminators=*/op.getNumResults());
 
   // Print the 'else' regions if it has any blocks.
   auto &elseRegion = op.elseRegion();
@@ -1785,7 +1880,7 @@ static void print(OpAsmPrinter &p, AffineIfOp op) {
     p << " else";
     p.printRegion(elseRegion,
                   /*printEntryBlockArgs=*/false,
-                  /*printBlockTerminators=*/false);
+                  /*printBlockTerminators=*/op.getNumResults());
   }
 
   // Print the attribute list.
@@ -1806,14 +1901,30 @@ void AffineIfOp::setConditional(IntegerSet set, ValueRange operands) {
 }
 
 void AffineIfOp::build(OpBuilder &builder, OperationState &result,
-                       IntegerSet set, ValueRange args, bool withElseRegion) {
+                       TypeRange resultTypes, IntegerSet set, ValueRange args,
+                       bool withElseRegion) {
+  assert(resultTypes.empty() || withElseRegion);
+  result.addTypes(resultTypes);
   result.addOperands(args);
   result.addAttribute(getConditionAttrName(), IntegerSetAttr::get(set));
+
   Region *thenRegion = result.addRegion();
+  thenRegion->push_back(new Block());
+  if (resultTypes.empty())
+    AffineIfOp::ensureTerminator(*thenRegion, builder, result.location);
+
   Region *elseRegion = result.addRegion();
-  AffineIfOp::ensureTerminator(*thenRegion, builder, result.location);
-  if (withElseRegion)
-    AffineIfOp::ensureTerminator(*elseRegion, builder, result.location);
+  if (withElseRegion) {
+    elseRegion->push_back(new Block());
+    if (resultTypes.empty())
+      AffineIfOp::ensureTerminator(*elseRegion, builder, result.location);
+  }
+}
+
+void AffineIfOp::build(OpBuilder &builder, OperationState &result,
+                       IntegerSet set, ValueRange args, bool withElseRegion) {
+  AffineIfOp::build(builder, result, /*resultTypes=*/{}, set, args,
+                    withElseRegion);
 }
 
 /// Canonicalize an affine if op's conditional (integer set + operands).
@@ -1875,7 +1986,8 @@ void AffineLoadOp::build(OpBuilder &builder, OperationState &result,
   build(builder, result, memref, map, indices);
 }
 
-ParseResult parseAffineLoadOp(OpAsmParser &parser, OperationState &result) {
+static ParseResult parseAffineLoadOp(OpAsmParser &parser,
+                                     OperationState &result) {
   auto &builder = parser.getBuilder();
   auto indexTy = builder.getIndexType();
 
@@ -1895,7 +2007,7 @@ ParseResult parseAffineLoadOp(OpAsmParser &parser, OperationState &result) {
       parser.addTypeToList(type.getElementType(), result.types));
 }
 
-void print(OpAsmPrinter &p, AffineLoadOp op) {
+static void print(OpAsmPrinter &p, AffineLoadOp op) {
   p << "affine.load " << op.getMemRef() << '[';
   if (AffineMapAttr mapAttr =
           op.getAttrOfType<AffineMapAttr>(op.getMapAttrName()))
@@ -1905,32 +2017,47 @@ void print(OpAsmPrinter &p, AffineLoadOp op) {
   p << " : " << op.getMemRefType();
 }
 
-LogicalResult verify(AffineLoadOp op) {
-  if (op.getType() != op.getMemRefType().getElementType())
-    return op.emitOpError("result type must match element type of memref");
-
-  auto mapAttr = op.getAttrOfType<AffineMapAttr>(op.getMapAttrName());
+/// Verify common indexing invariants of affine.load, affine.store,
+/// affine.vector_load and affine.vector_store.
+static LogicalResult
+verifyMemoryOpIndexing(Operation *op, AffineMapAttr mapAttr,
+                       Operation::operand_range mapOperands,
+                       MemRefType memrefType, unsigned numIndexOperands) {
   if (mapAttr) {
-    AffineMap map =
-        op.getAttrOfType<AffineMapAttr>(op.getMapAttrName()).getValue();
-    if (map.getNumResults() != op.getMemRefType().getRank())
-      return op.emitOpError("affine.load affine map num results must equal"
-                            " memref rank");
-    if (map.getNumInputs() != op.getNumOperands() - 1)
-      return op.emitOpError("expects as many subscripts as affine map inputs");
+    AffineMap map = mapAttr.getValue();
+    if (map.getNumResults() != memrefType.getRank())
+      return op->emitOpError("affine map num results must equal memref rank");
+    if (map.getNumInputs() != numIndexOperands)
+      return op->emitOpError("expects as many subscripts as affine map inputs");
   } else {
-    if (op.getMemRefType().getRank() != op.getNumOperands() - 1)
-      return op.emitOpError(
+    if (memrefType.getRank() != numIndexOperands)
+      return op->emitOpError(
           "expects the number of subscripts to be equal to memref rank");
   }
 
   Region *scope = getAffineScope(op);
-  for (auto idx : op.getMapOperands()) {
+  for (auto idx : mapOperands) {
     if (!idx.getType().isIndex())
-      return op.emitOpError("index to load must have 'index' type");
+      return op->emitOpError("index to load must have 'index' type");
     if (!isValidAffineIndexOperand(idx, scope))
-      return op.emitOpError("index must be a dimension or symbol identifier");
+      return op->emitOpError("index must be a dimension or symbol identifier");
   }
+
+  return success();
+}
+
+LogicalResult verify(AffineLoadOp op) {
+  auto memrefType = op.getMemRefType();
+  if (op.getType() != memrefType.getElementType())
+    return op.emitOpError("result type must match element type of memref");
+
+  if (failed(verifyMemoryOpIndexing(
+          op.getOperation(),
+          op.getAttrOfType<AffineMapAttr>(op.getMapAttrName()),
+          op.getMapOperands(), memrefType,
+          /*numIndexOperands=*/op.getNumOperands() - 1)))
+    return failure();
+
   return success();
 }
 
@@ -1973,7 +2100,8 @@ void AffineStoreOp::build(OpBuilder &builder, OperationState &result,
   build(builder, result, valueToStore, memref, map, indices);
 }
 
-ParseResult parseAffineStoreOp(OpAsmParser &parser, OperationState &result) {
+static ParseResult parseAffineStoreOp(OpAsmParser &parser,
+                                      OperationState &result) {
   auto indexTy = parser.getBuilder().getIndexType();
 
   MemRefType type;
@@ -1994,7 +2122,7 @@ ParseResult parseAffineStoreOp(OpAsmParser &parser, OperationState &result) {
                  parser.resolveOperands(mapOperands, indexTy, result.operands));
 }
 
-void print(OpAsmPrinter &p, AffineStoreOp op) {
+static void print(OpAsmPrinter &p, AffineStoreOp op) {
   p << "affine.store " << op.getValueToStore();
   p << ", " << op.getMemRef() << '[';
   if (AffineMapAttr mapAttr =
@@ -2007,31 +2135,18 @@ void print(OpAsmPrinter &p, AffineStoreOp op) {
 
 LogicalResult verify(AffineStoreOp op) {
   // First operand must have same type as memref element type.
-  if (op.getValueToStore().getType() != op.getMemRefType().getElementType())
+  auto memrefType = op.getMemRefType();
+  if (op.getValueToStore().getType() != memrefType.getElementType())
     return op.emitOpError(
         "first operand must have same type memref element type");
 
-  auto mapAttr = op.getAttrOfType<AffineMapAttr>(op.getMapAttrName());
-  if (mapAttr) {
-    AffineMap map = mapAttr.getValue();
-    if (map.getNumResults() != op.getMemRefType().getRank())
-      return op.emitOpError("affine.store affine map num results must equal"
-                            " memref rank");
-    if (map.getNumInputs() != op.getNumOperands() - 2)
-      return op.emitOpError("expects as many subscripts as affine map inputs");
-  } else {
-    if (op.getMemRefType().getRank() != op.getNumOperands() - 2)
-      return op.emitOpError(
-          "expects the number of subscripts to be equal to memref rank");
-  }
+  if (failed(verifyMemoryOpIndexing(
+          op.getOperation(),
+          op.getAttrOfType<AffineMapAttr>(op.getMapAttrName()),
+          op.getMapOperands(), memrefType,
+          /*numIndexOperands=*/op.getNumOperands() - 2)))
+    return failure();
 
-  Region *scope = getAffineScope(op);
-  for (auto idx : op.getMapOperands()) {
-    if (!idx.getType().isIndex())
-      return op.emitOpError("index to store must have 'index' type");
-    if (!isValidAffineIndexOperand(idx, scope))
-      return op.emitOpError("index must be a dimension or symbol identifier");
-  }
   return success();
 }
 
@@ -2091,6 +2206,38 @@ static ParseResult parseAffineMinMaxOp(OpAsmParser &parser,
       parser.addTypeToList(indexType, result.types));
 }
 
+/// Fold an affine min or max operation with the given operands. The operand
+/// list may contain nulls, which are interpreted as the operand not being a
+/// constant.
+template <typename T>
+static OpFoldResult foldMinMaxOp(T op, ArrayRef<Attribute> operands) {
+  static_assert(llvm::is_one_of<T, AffineMinOp, AffineMaxOp>::value,
+                "expected affine min or max op");
+
+  // Fold the affine map.
+  // TODO: Fold more cases:
+  // min(some_affine, some_affine + constant, ...), etc.
+  SmallVector<int64_t, 2> results;
+  auto foldedMap = op.map().partialConstantFold(operands, &results);
+
+  // If some of the map results are not constant, try changing the map in-place.
+  if (results.empty()) {
+    // If the map is the same, report that folding did not happen.
+    if (foldedMap == op.map())
+      return {};
+    op.setAttr("map", AffineMapAttr::get(foldedMap));
+    return op.getResult();
+  }
+
+  // Otherwise, completely fold the op into a constant.
+  auto resultIt = std::is_same<T, AffineMinOp>::value
+                      ? std::min_element(results.begin(), results.end())
+                      : std::max_element(results.begin(), results.end());
+  if (resultIt == results.end())
+    return {};
+  return IntegerAttr::get(IndexType::get(op.getContext()), *resultIt);
+}
+
 //===----------------------------------------------------------------------===//
 // AffineMinOp
 //===----------------------------------------------------------------------===//
@@ -2099,26 +2246,7 @@ static ParseResult parseAffineMinMaxOp(OpAsmParser &parser,
 //
 
 OpFoldResult AffineMinOp::fold(ArrayRef<Attribute> operands) {
-  // Fold the affine map.
-  // TODO(andydavis, ntv) Fold more cases: partial static information,
-  // min(some_affine, some_affine + constant, ...).
-  SmallVector<Attribute, 2> results;
-  if (failed(map().constantFold(operands, results)))
-    return {};
-
-  // Compute and return min of folded map results.
-  int64_t min = std::numeric_limits<int64_t>::max();
-  int minIndex = -1;
-  for (unsigned i = 0, e = results.size(); i < e; ++i) {
-    auto intAttr = results[i].cast<IntegerAttr>();
-    if (intAttr.getInt() < min) {
-      min = intAttr.getInt();
-      minIndex = i;
-    }
-  }
-  if (minIndex < 0)
-    return {};
-  return results[minIndex];
+  return foldMinMaxOp(*this, operands);
 }
 
 void AffineMinOp::getCanonicalizationPatterns(
@@ -2134,26 +2262,7 @@ void AffineMinOp::getCanonicalizationPatterns(
 //
 
 OpFoldResult AffineMaxOp::fold(ArrayRef<Attribute> operands) {
-  // Fold the affine map.
-  // TODO(andydavis, ntv, ouhang) Fold more cases: partial static information,
-  // max(some_affine, some_affine + constant, ...).
-  SmallVector<Attribute, 2> results;
-  if (failed(map().constantFold(operands, results)))
-    return {};
-
-  // Compute and return max of folded map results.
-  int64_t max = std::numeric_limits<int64_t>::min();
-  int maxIndex = -1;
-  for (unsigned i = 0, e = results.size(); i < e; ++i) {
-    auto intAttr = results[i].cast<IntegerAttr>();
-    if (intAttr.getInt() > max) {
-      max = intAttr.getInt();
-      maxIndex = i;
-    }
-  }
-  if (maxIndex < 0)
-    return {};
-  return results[maxIndex];
+  return foldMinMaxOp(*this, operands);
 }
 
 void AffineMaxOp::getCanonicalizationPatterns(
@@ -2273,6 +2382,8 @@ LogicalResult AffinePrefetchOp::fold(ArrayRef<Attribute> cstOperands,
 //===----------------------------------------------------------------------===//
 
 void AffineParallelOp::build(OpBuilder &builder, OperationState &result,
+                             ArrayRef<Type> resultTypes,
+                             ArrayRef<AtomicRMWKind> reductions,
                              ArrayRef<int64_t> ranges) {
   SmallVector<AffineExpr, 8> lbExprs(ranges.size(),
                                      builder.getAffineConstantExpr(0));
@@ -2281,10 +2392,13 @@ void AffineParallelOp::build(OpBuilder &builder, OperationState &result,
   for (int64_t range : ranges)
     ubExprs.push_back(builder.getAffineConstantExpr(range));
   auto ubMap = AffineMap::get(0, 0, ubExprs, builder.getContext());
-  build(builder, result, lbMap, {}, ubMap, {});
+  build(builder, result, resultTypes, reductions, lbMap, /*lbArgs=*/{}, ubMap,
+        /*ubArgs=*/{});
 }
 
 void AffineParallelOp::build(OpBuilder &builder, OperationState &result,
+                             ArrayRef<Type> resultTypes,
+                             ArrayRef<AtomicRMWKind> reductions,
                              AffineMap lbMap, ValueRange lbArgs,
                              AffineMap ubMap, ValueRange ubArgs) {
   auto numDims = lbMap.getNumResults();
@@ -2293,10 +2407,13 @@ void AffineParallelOp::build(OpBuilder &builder, OperationState &result,
          "num dims and num results mismatch");
   // Make default step sizes of 1.
   SmallVector<int64_t, 8> steps(numDims, 1);
-  build(builder, result, lbMap, lbArgs, ubMap, ubArgs, steps);
+  build(builder, result, resultTypes, reductions, lbMap, lbArgs, ubMap, ubArgs,
+        steps);
 }
 
 void AffineParallelOp::build(OpBuilder &builder, OperationState &result,
+                             ArrayRef<Type> resultTypes,
+                             ArrayRef<AtomicRMWKind> reductions,
                              AffineMap lbMap, ValueRange lbArgs,
                              AffineMap ubMap, ValueRange ubArgs,
                              ArrayRef<int64_t> steps) {
@@ -2305,6 +2422,15 @@ void AffineParallelOp::build(OpBuilder &builder, OperationState &result,
   assert(numDims == ubMap.getNumResults() &&
          "num dims and num results mismatch");
   assert(numDims == steps.size() && "num dims and num steps mismatch");
+
+  result.addTypes(resultTypes);
+  // Convert the reductions to integer attributes.
+  SmallVector<Attribute, 4> reductionAttrs;
+  for (AtomicRMWKind reduction : reductions)
+    reductionAttrs.push_back(
+        builder.getI64IntegerAttr(static_cast<int64_t>(reduction)));
+  result.addAttribute(getReductionsAttrName(),
+                      builder.getArrayAttr(reductionAttrs));
   result.addAttribute(getLowerBoundsMapAttrName(), AffineMapAttr::get(lbMap));
   result.addAttribute(getUpperBoundsMapAttrName(), AffineMapAttr::get(ubMap));
   result.addAttribute(getStepsAttrName(), builder.getI64ArrayAttr(steps));
@@ -2317,7 +2443,20 @@ void AffineParallelOp::build(OpBuilder &builder, OperationState &result,
   for (unsigned i = 0; i < numDims; ++i)
     body->addArgument(IndexType::get(builder.getContext()));
   bodyRegion->push_back(body);
-  ensureTerminator(*bodyRegion, builder, result.location);
+  if (resultTypes.empty())
+    ensureTerminator(*bodyRegion, builder, result.location);
+}
+
+Region &AffineParallelOp::getLoopBody() { return region(); }
+
+bool AffineParallelOp::isDefinedOutsideOfLoop(Value value) {
+  return !region().isAncestor(value.getParentRegion());
+}
+
+LogicalResult AffineParallelOp::moveOutOfLoop(ArrayRef<Operation *> ops) {
+  for (Operation *op : ops)
+    op->moveBefore(*this);
+  return success();
 }
 
 unsigned AffineParallelOp::getNumDims() { return steps().size(); }
@@ -2376,10 +2515,20 @@ static LogicalResult verify(AffineParallelOp op) {
   if (op.lowerBoundsMap().getNumResults() != numDims ||
       op.upperBoundsMap().getNumResults() != numDims ||
       op.steps().size() != numDims ||
-      op.getBody()->getNumArguments() != numDims) {
+      op.getBody()->getNumArguments() != numDims)
     return op.emitOpError("region argument count and num results of upper "
                           "bounds, lower bounds, and steps must all match");
+
+  if (op.reductions().size() != op.getNumResults())
+    return op.emitOpError("a reduction must be specified for each output");
+
+  // Verify reduction  ops are all valid
+  for (Attribute attr : op.reductions()) {
+    auto intAttr = attr.dyn_cast<IntegerAttr>();
+    if (!intAttr || !symbolizeAtomicRMWKind(intAttr.getInt()))
+      return op.emitOpError("invalid reduction attribute");
   }
+
   // Verify that the bound operands are valid dimension/symbols.
   /// Lower bounds.
   if (failed(verifyDimAndSymbolIdentifiers(op, op.getLowerBoundsOperands(),
@@ -2412,11 +2561,22 @@ static void print(OpAsmPrinter &p, AffineParallelOp op) {
     llvm::interleaveComma(steps, p);
     p << ')';
   }
+  if (op.getNumResults()) {
+    p << " reduce (";
+    llvm::interleaveComma(op.reductions(), p, [&](auto &attr) {
+      AtomicRMWKind sym =
+          *symbolizeAtomicRMWKind(attr.template cast<IntegerAttr>().getInt());
+      p << "\"" << stringifyAtomicRMWKind(sym) << "\"";
+    });
+    p << ") -> (" << op.getResultTypes() << ")";
+  }
+
   p.printRegion(op.region(), /*printEntryBlockArgs=*/false,
-                /*printBlockTerminators=*/false);
+                /*printBlockTerminators=*/op.getNumResults());
   p.printOptionalAttrDict(
       op.getAttrs(),
-      /*elidedAttrs=*/{AffineParallelOp::getLowerBoundsMapAttrName(),
+      /*elidedAttrs=*/{AffineParallelOp::getReductionsAttrName(),
+                       AffineParallelOp::getLowerBoundsMapAttrName(),
                        AffineParallelOp::getUpperBoundsMapAttrName(),
                        AffineParallelOp::getStepsAttrName()});
 }
@@ -2453,7 +2613,7 @@ static ParseResult parseAffineParallelOp(OpAsmParser &parser,
     return failure();
 
   AffineMapAttr stepsMapAttr;
-  SmallVector<NamedAttribute, 1> stepsAttrs;
+  NamedAttrList stepsAttrs;
   SmallVector<OpAsmParser::OperandType, 4> stepsMapOperands;
   if (failed(parser.parseOptionalKeyword("step"))) {
     SmallVector<int64_t, 4> steps(ivs.size(), 1);
@@ -2480,6 +2640,40 @@ static ParseResult parseAffineParallelOp(OpAsmParser &parser,
                         builder.getI64ArrayAttr(steps));
   }
 
+  // Parse optional clause of the form: `reduce ("addf", "maxf")`, where the
+  // quoted strings a member of the enum AtomicRMWKind.
+  SmallVector<Attribute, 4> reductions;
+  if (succeeded(parser.parseOptionalKeyword("reduce"))) {
+    if (parser.parseLParen())
+      return failure();
+    do {
+      // Parse a single quoted string via the attribute parsing, and then
+      // verify it is a member of the enum and convert to it's integer
+      // representation.
+      StringAttr attrVal;
+      NamedAttrList attrStorage;
+      auto loc = parser.getCurrentLocation();
+      if (parser.parseAttribute(attrVal, builder.getNoneType(), "reduce",
+                                attrStorage))
+        return failure();
+      llvm::Optional<AtomicRMWKind> reduction =
+          symbolizeAtomicRMWKind(attrVal.getValue());
+      if (!reduction)
+        return parser.emitError(loc, "invalid reduction value: ") << attrVal;
+      reductions.push_back(builder.getI64IntegerAttr(
+          static_cast<int64_t>(reduction.getValue())));
+      // While we keep getting commas, keep parsing.
+    } while (succeeded(parser.parseOptionalComma()));
+    if (parser.parseRParen())
+      return failure();
+  }
+  result.addAttribute(AffineParallelOp::getReductionsAttrName(),
+                      builder.getArrayAttr(reductions));
+
+  // Parse return types of reductions (if any)
+  if (parser.parseOptionalArrowTypeList(result.types))
+    return failure();
+
   // Now parse the body.
   Region *body = result.addRegion();
   SmallVector<Type, 4> types(ivs.size(), indexType);
@@ -2489,6 +2683,147 @@ static ParseResult parseAffineParallelOp(OpAsmParser &parser,
 
   // Add a terminator if none was parsed.
   AffineParallelOp::ensureTerminator(*body, builder, result.location);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AffineYieldOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(AffineYieldOp op) {
+  auto *parentOp = op.getParentOp();
+  auto results = parentOp->getResults();
+  auto operands = op.getOperands();
+
+  if (!isa<AffineParallelOp, AffineIfOp, AffineForOp>(parentOp))
+    return op.emitOpError() << "only terminates affine.if/for/parallel regions";
+  if (parentOp->getNumResults() != op.getNumOperands())
+    return op.emitOpError() << "parent of yield must have same number of "
+                               "results as the yield operands";
+  for (auto it : llvm::zip(results, operands)) {
+    if (std::get<0>(it).getType() != std::get<1>(it).getType())
+      return op.emitOpError()
+             << "types mismatch between yield op and its parent";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AffineVectorLoadOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseAffineVectorLoadOp(OpAsmParser &parser,
+                                           OperationState &result) {
+  auto &builder = parser.getBuilder();
+  auto indexTy = builder.getIndexType();
+
+  MemRefType memrefType;
+  VectorType resultType;
+  OpAsmParser::OperandType memrefInfo;
+  AffineMapAttr mapAttr;
+  SmallVector<OpAsmParser::OperandType, 1> mapOperands;
+  return failure(
+      parser.parseOperand(memrefInfo) ||
+      parser.parseAffineMapOfSSAIds(mapOperands, mapAttr,
+                                    AffineVectorLoadOp::getMapAttrName(),
+                                    result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(memrefType) || parser.parseComma() ||
+      parser.parseType(resultType) ||
+      parser.resolveOperand(memrefInfo, memrefType, result.operands) ||
+      parser.resolveOperands(mapOperands, indexTy, result.operands) ||
+      parser.addTypeToList(resultType, result.types));
+}
+
+static void print(OpAsmPrinter &p, AffineVectorLoadOp op) {
+  p << "affine.vector_load " << op.getMemRef() << '[';
+  if (AffineMapAttr mapAttr =
+          op.getAttrOfType<AffineMapAttr>(op.getMapAttrName()))
+    p.printAffineMapOfSSAIds(mapAttr, op.getMapOperands());
+  p << ']';
+  p.printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{op.getMapAttrName()});
+  p << " : " << op.getMemRefType() << ", " << op.getType();
+}
+
+/// Verify common invariants of affine.vector_load and affine.vector_store.
+static LogicalResult verifyVectorMemoryOp(Operation *op, MemRefType memrefType,
+                                          VectorType vectorType) {
+  // Check that memref and vector element types match.
+  if (memrefType.getElementType() != vectorType.getElementType())
+    return op->emitOpError(
+        "requires memref and vector types of the same elemental type");
+  return success();
+}
+
+static LogicalResult verify(AffineVectorLoadOp op) {
+  MemRefType memrefType = op.getMemRefType();
+  if (failed(verifyMemoryOpIndexing(
+          op.getOperation(),
+          op.getAttrOfType<AffineMapAttr>(op.getMapAttrName()),
+          op.getMapOperands(), memrefType,
+          /*numIndexOperands=*/op.getNumOperands() - 1)))
+    return failure();
+
+  if (failed(verifyVectorMemoryOp(op.getOperation(), memrefType,
+                                  op.getVectorType())))
+    return failure();
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AffineVectorStoreOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseAffineVectorStoreOp(OpAsmParser &parser,
+                                            OperationState &result) {
+  auto indexTy = parser.getBuilder().getIndexType();
+
+  MemRefType memrefType;
+  VectorType resultType;
+  OpAsmParser::OperandType storeValueInfo;
+  OpAsmParser::OperandType memrefInfo;
+  AffineMapAttr mapAttr;
+  SmallVector<OpAsmParser::OperandType, 1> mapOperands;
+  return failure(
+      parser.parseOperand(storeValueInfo) || parser.parseComma() ||
+      parser.parseOperand(memrefInfo) ||
+      parser.parseAffineMapOfSSAIds(mapOperands, mapAttr,
+                                    AffineVectorStoreOp::getMapAttrName(),
+                                    result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(memrefType) || parser.parseComma() ||
+      parser.parseType(resultType) ||
+      parser.resolveOperand(storeValueInfo, resultType, result.operands) ||
+      parser.resolveOperand(memrefInfo, memrefType, result.operands) ||
+      parser.resolveOperands(mapOperands, indexTy, result.operands));
+}
+
+static void print(OpAsmPrinter &p, AffineVectorStoreOp op) {
+  p << "affine.vector_store " << op.getValueToStore();
+  p << ", " << op.getMemRef() << '[';
+  if (AffineMapAttr mapAttr =
+          op.getAttrOfType<AffineMapAttr>(op.getMapAttrName()))
+    p.printAffineMapOfSSAIds(mapAttr, op.getMapOperands());
+  p << ']';
+  p.printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{op.getMapAttrName()});
+  p << " : " << op.getMemRefType() << ", " << op.getValueToStore().getType();
+}
+
+static LogicalResult verify(AffineVectorStoreOp op) {
+  MemRefType memrefType = op.getMemRefType();
+  if (failed(verifyMemoryOpIndexing(
+          op.getOperation(),
+          op.getAttrOfType<AffineMapAttr>(op.getMapAttrName()),
+          op.getMapOperands(), memrefType,
+          /*numIndexOperands=*/op.getNumOperands() - 2)))
+    return failure();
+
+  if (failed(verifyVectorMemoryOp(op.getOperation(), memrefType,
+                                  op.getVectorType())))
+    return failure();
+
   return success();
 }
 

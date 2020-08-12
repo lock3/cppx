@@ -1706,18 +1706,6 @@ FinishIdentifier:
 
   C = getCharAndSize(CurPtr, Size);
 
-  if (C == '!') {
-    if (LangOpts.Reflection) {
-      if (strncmp(BufferPtr, "constexpr", 9) == 0
-	  && LangOpts.CPlusPlus17) {
-	CurPtr = ConsumeChar(CurPtr, Size, Result);
-	C = getCharAndSize(CurPtr, Size);
-      }
-    }
-
-    goto FinishIdentifier;
-  }
-
   while (true) {
     if (C == '$') {
       // If we hit a $ and they are not supported in identifiers, we are done.
@@ -1876,7 +1864,7 @@ const char *Lexer::LexUDSuffix(Token &Result, const char *CurPtr,
         char Next = getCharAndSizeNoWarn(CurPtr + Consumed, NextSize,
                                          getLangOpts());
         if (!isIdentifierBody(Next)) {
-          // End of suffix. Check whether this is on the whitelist.
+          // End of suffix. Check whether this is on the allowed list.
           const StringRef CompleteSuffix(Buffer, Chars);
           IsUDSuffix = StringLiteralParser::isValidUDSuffix(getLangOpts(),
                                                             CompleteSuffix);

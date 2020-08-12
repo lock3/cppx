@@ -1,4 +1,4 @@
-cmake_minimum_required( VERSION 3.9.2 )
+cmake_minimum_required(VERSION 3.13.4)
 
 project( libclc VERSION 0.2.0 LANGUAGES CXX )
 include( GNUInstallDirs )
@@ -262,7 +262,7 @@ foreach( t ${LIBCLC_TARGETS_TO_BUILD} )
 		target_compile_definitions( builtins.link.${arch_suffix} PRIVATE
 			"__CLC_INTERNAL" )
 		target_compile_options( builtins.link.${arch_suffix} PRIVATE  -target
-			${t} ${mcpu} -fno-builtin )
+			${t} ${mcpu} -fno-builtin -nostdlib )
 		set_target_properties( builtins.link.${arch_suffix} PROPERTIES
 			LINKER_LANGUAGE CLC )
 

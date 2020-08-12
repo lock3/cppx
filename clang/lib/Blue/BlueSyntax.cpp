@@ -63,7 +63,7 @@ Syntax::const_child_range Syntax::children() const {
 }
 
 LLVM_DUMP_METHOD void Syntax::dump() const {
-  clang::ASTDumper D(llvm::errs(), nullptr, nullptr, /*ShowColors=*/true);
+  clang::ASTDumper D(llvm::errs(), /*ShowColors=*/true);
   D.Visit(this);
 }
 

@@ -337,7 +337,8 @@ void SelectionDAGISel::getAnalysisUsage(AnalysisUsage &AU) const {
   if (UseMBPI && OptLevel != CodeGenOpt::None)
     AU.addRequired<BranchProbabilityInfoWrapperPass>();
   AU.addRequired<ProfileSummaryInfoWrapperPass>();
-  LazyBlockFrequencyInfoPass::getLazyBFIAnalysisUsage(AU);
+  if (OptLevel != CodeGenOpt::None)
+    LazyBlockFrequencyInfoPass::getLazyBFIAnalysisUsage(AU);
   MachineFunctionPass::getAnalysisUsage(AU);
 }
 
@@ -441,9 +442,9 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
   auto *LIWP = getAnalysisIfAvailable<LoopInfoWrapperPass>();
   LoopInfo *LI = LIWP ? &LIWP->getLoopInfo() : nullptr;
   auto *PSI = &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();
-  auto *BFI = (PSI && PSI->hasProfileSummary()) ?
-              &getAnalysis<LazyBlockFrequencyInfoPass>().getBFI() :
-              nullptr;
+  BlockFrequencyInfo *BFI = nullptr;
+  if (PSI && PSI->hasProfileSummary() && OptLevel != CodeGenOpt::None)
+    BFI = &getAnalysis<LazyBlockFrequencyInfoPass>().getBFI();
 
   LLVM_DEBUG(dbgs() << "\n\n\n=== " << Fn.getName() << "\n");
 
@@ -622,7 +623,9 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
         // Otherwise this is another use or second copy use.
         CopyUseMI = nullptr; break;
       }
-      if (CopyUseMI) {
+      if (CopyUseMI &&
+          TRI.getRegSizeInBits(LDI->second, MRI) ==
+              TRI.getRegSizeInBits(CopyUseMI->getOperand(0).getReg(), MRI)) {
         // Use MI's debug location, which describes where Variable was
         // declared, rather than whatever is attached to CopyUseMI.
         MachineInstr *NewMI =
@@ -657,36 +660,6 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
 
   // Determine if floating point is used for msvc
   computeUsesMSVCFloatingPoint(TM.getTargetTriple(), Fn, MF->getMMI());
-
-  // Replace forward-declared registers with the registers containing
-  // the desired value.
-  for (DenseMap<Register, Register>::iterator
-       I = FuncInfo->RegFixups.begin(), E = FuncInfo->RegFixups.end();
-       I != E; ++I) {
-    Register From = I->first;
-    Register To = I->second;
-    // If To is also scheduled to be replaced, find what its ultimate
-    // replacement is.
-    while (true) {
-      DenseMap<Register, Register>::iterator J = FuncInfo->RegFixups.find(To);
-      if (J == E) break;
-      To = J->second;
-    }
-    // Make sure the new register has a sufficiently constrained register class.
-    if (Register::isVirtualRegister(From) && Register::isVirtualRegister(To))
-      MRI.constrainRegClass(To, MRI.getRegClass(From));
-    // Replace it.
-
-
-    // Replacing one register with another won't touch the kill flags.
-    // We need to conservatively clear the kill flags as a kill on the old
-    // register might dominate existing uses of the new register.
-    if (!MRI.use_empty(To))
-      MRI.clearKillFlags(From);
-    MRI.replaceRegWith(From, To);
-  }
-
-  TLI->finalizeLowering(*MF);
 
   // Release function-specific state. SDB and CurDAG are already cleared
   // at this point.
@@ -1518,8 +1491,8 @@ void SelectionDAGISel::SelectAllBasicBlocks(const Function &Fn) {
         // to keep track of gc-relocates for a particular gc-statepoint. This is
         // done by SelectionDAGBuilder::LowerAsSTATEPOINT, called before
         // visitGCRelocate.
-        if (isa<CallInst>(Inst) && !isStatepoint(Inst) && !isGCRelocate(Inst) &&
-            !isGCResult(Inst)) {
+        if (isa<CallInst>(Inst) && !isa<GCStatepointInst>(Inst) &&
+            !isa<GCRelocateInst>(Inst) && !isa<GCResultInst>(Inst)) {
           OptimizationRemarkMissed R("sdagisel", "FastISelFailure",
                                      Inst->getDebugLoc(), LLVMBB);
 
@@ -2817,6 +2790,7 @@ void SelectionDAGISel::SelectCodeCommon(SDNode *NodeToMatch,
     return;
   case ISD::AssertSext:
   case ISD::AssertZext:
+  case ISD::AssertAlign:
     ReplaceUses(SDValue(NodeToMatch, 0), NodeToMatch->getOperand(0));
     CurDAG->RemoveDeadNode(NodeToMatch);
     return;

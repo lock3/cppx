@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/AST/EvaluatedExprVisitor.h"
 #include "clang/Sema/SemaInternal.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/Basic/SourceManager.h"
@@ -170,6 +171,48 @@ static Attr *handleLoopHintAttr(Sema &S, Stmt *St, const ParsedAttr &A,
   return LoopHintAttr::CreateImplicit(S.Context, Option, State, ValueExpr, A);
 }
 
+namespace {
+class CallExprFinder : public ConstEvaluatedExprVisitor<CallExprFinder> {
+  bool FoundCallExpr = false;
+
+public:
+  typedef ConstEvaluatedExprVisitor<CallExprFinder> Inherited;
+
+  CallExprFinder(Sema &S, const Stmt* St)
+      : Inherited({S.Context, S.GetReflectionCallbackObj()}) {
+    Visit(St);
+  }
+
+  bool foundCallExpr() { return FoundCallExpr; }
+
+  void VisitCallExpr(const CallExpr *E) { FoundCallExpr = true; }
+  void VisitAsmStmt(const AsmStmt *S) { FoundCallExpr = true; }
+
+  void Visit(const Stmt *St) {
+    if (!St)
+      return;
+    ConstEvaluatedExprVisitor<CallExprFinder>::Visit(St);
+  }
+};
+} // namespace
+
+static Attr *handleNoMergeAttr(Sema &S, Stmt *St, const ParsedAttr &A,
+                               SourceRange Range) {
+  NoMergeAttr NMA(S.Context, A);
+  if (S.CheckAttrNoArgs(A))
+    return nullptr;
+
+  CallExprFinder CEF(S, St);
+
+  if (!CEF.foundCallExpr()) {
+    S.Diag(St->getBeginLoc(), diag::warn_nomerge_attribute_ignored_in_stmt)
+        << NMA.getSpelling();
+    return nullptr;
+  }
+
+  return ::new (S.Context) NoMergeAttr(S.Context, A);
+}
+
 static void
 CheckForIncompatibleAttributes(Sema &S,
                                const SmallVectorImpl<const Attr *> &Attrs) {
@@ -296,16 +339,16 @@ static Attr *handleOpenCLUnrollHint(Sema &S, Stmt *St, const ParsedAttr &A,
 
   if (NumArgs == 1) {
     Expr *E = A.getArgAsExpr(0);
-    llvm::APSInt ArgVal(32);
+    Optional<llvm::APSInt> ArgVal;
 
     Expr::EvalContext EvalCtx(S.Context, S.GetReflectionCallbackObj());
-    if (!E->isIntegerConstantExpr(ArgVal, EvalCtx)) {
+    if (!(ArgVal = E->getIntegerConstantExpr(EvalCtx))) {
       S.Diag(A.getLoc(), diag::err_attribute_argument_type)
           << A << AANT_ArgumentIntegerConstant << E->getSourceRange();
       return nullptr;
     }
 
-    int Val = ArgVal.getSExtValue();
+    int Val = ArgVal->getSExtValue();
 
     if (Val <= 0) {
       S.Diag(A.getRange().getBegin(),
@@ -336,6 +379,8 @@ static Attr *ProcessStmtAttribute(Sema &S, Stmt *St, const ParsedAttr &A,
     return handleOpenCLUnrollHint(S, St, A, Range);
   case ParsedAttr::AT_Suppress:
     return handleSuppressAttr(S, St, A, Range);
+  case ParsedAttr::AT_NoMerge:
+    return handleNoMergeAttr(S, St, A, Range);
   default:
     // if we're here, then we parsed a known attribute, but didn't recognize
     // it as a statement attribute => it is declaration attribute

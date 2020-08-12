@@ -13,7 +13,7 @@ _isClang      = lambda cfg: '__clang__' in compilerMacros(cfg) and '__apple_buil
 _isAppleClang = lambda cfg: '__apple_build_version__' in compilerMacros(cfg)
 _isGCC        = lambda cfg: '__GNUC__' in compilerMacros(cfg) and '__clang__' not in compilerMacros(cfg)
 
-features = [
+DEFAULT_FEATURES = [
   Feature(name='fcoroutines-ts', compileFlag='-fcoroutines-ts',
           when=lambda cfg: hasCompileFlag(cfg, '-fcoroutines-ts') and
                            featureTestMacros(cfg, flags='-fcoroutines-ts').get('__cpp_coroutines', 0) >= 201703),
@@ -32,6 +32,12 @@ features = [
   Feature(name='objective-c++',                 when=lambda cfg: hasCompileFlag(cfg, '-xobjective-c++ -fobjc-arc')),
   Feature(name='diagnose-if-support',           when=lambda cfg: hasCompileFlag(cfg, '-Wuser-defined-warnings'), compileFlag='-Wuser-defined-warnings'),
   Feature(name='modules-support',               when=lambda cfg: hasCompileFlag(cfg, '-fmodules')),
+  Feature(name='non-lockfree-atomics',          when=lambda cfg: sourceBuilds(cfg, """
+                                                                  #include <atomic>
+                                                                  struct Large { int storage[100]; };
+                                                                  std::atomic<Large> x;
+                                                                  int main(int, char**) { return x.load(), x.is_lock_free(); }
+                                                                """)),
 
   Feature(name='apple-clang',                                                                                                      when=_isAppleClang),
   Feature(name=lambda cfg: 'apple-clang-{__clang_major__}'.format(**compilerMacros(cfg)),                                          when=_isAppleClang),
@@ -56,31 +62,58 @@ features = [
 # is defined after including <__config_site>, add a Lit feature called
 # `libcpp-xxx-yyy-zzz`. When a macro is defined to a specific value
 # (e.g. `_LIBCPP_ABI_VERSION=2`), the feature is `libcpp-xxx-yyy-zzz=<value>`.
-macros = [
-  '_LIBCPP_HAS_NO_GLOBAL_FILESYSTEM_NAMESPACE',
-  '_LIBCPP_HAS_NO_MONOTONIC_CLOCK',
-  '_LIBCPP_HAS_NO_STDIN',
-  '_LIBCPP_HAS_NO_STDOUT',
-  '_LIBCPP_HAS_NO_THREAD_UNSAFE_C_FUNCTIONS',
-  '_LIBCPP_HAS_NO_THREADS',
-  '_LIBCPP_HAS_THREAD_API_EXTERNAL',
-  '_LIBCPP_HAS_THREAD_API_PTHREAD',
-  '_LIBCPP_NO_VCRUNTIME',
-  '_LIBCPP_ABI_VERSION',
-  '_LIBCPP_ABI_UNSTABLE'
-]
-for macro in macros:
-  features += [
-    Feature(name=lambda cfg, macro=macro: macro.lower()[1:].replace('_', '-') + (
-              '={}'.format(compilerMacros(cfg)[macro]) if compilerMacros(cfg)[macro] else ''
+macros = {
+  '_LIBCPP_HAS_NO_GLOBAL_FILESYSTEM_NAMESPACE': 'libcpp-has-no-global-filesystem-namespace',
+  '_LIBCPP_HAS_NO_MONOTONIC_CLOCK': 'libcpp-has-no-monotonic-clock',
+  '_LIBCPP_HAS_NO_STDIN': 'libcpp-has-no-stdin',
+  '_LIBCPP_HAS_NO_STDOUT': 'libcpp-has-no-stdout',
+  '_LIBCPP_HAS_NO_THREAD_UNSAFE_C_FUNCTIONS': 'libcpp-has-no-thread-unsafe-c-functions',
+  '_LIBCPP_HAS_NO_THREADS': 'libcpp-has-no-threads',
+  '_LIBCPP_HAS_THREAD_API_EXTERNAL': 'libcpp-has-thread-api-external',
+  '_LIBCPP_HAS_THREAD_API_PTHREAD': 'libcpp-has-thread-api-pthread',
+  '_LIBCPP_NO_VCRUNTIME': 'libcpp-no-vcruntime',
+  '_LIBCPP_ABI_VERSION': 'libcpp-abi-version',
+  '_LIBCPP_ABI_UNSTABLE': 'libcpp-abi-unstable'
+}
+for macro, feature in macros.items():
+  DEFAULT_FEATURES += [
+    Feature(name=lambda cfg, m=macro, f=feature: f + (
+              '={}'.format(compilerMacros(cfg)[m]) if compilerMacros(cfg)[m] else ''
             ),
-            when=lambda cfg, macro=macro: macro in compilerMacros(cfg),
+            when=lambda cfg, m=macro: m in compilerMacros(cfg),
 
             # FIXME: This is a hack that should be fixed using module maps.
             # If modules are enabled then we have to lift all of the definitions
             # in <__config_site> onto the command line.
-            compileFlag=lambda cfg, macro=macro: '-Wno-macro-redefined -D{}'.format(macro) + (
-              '={}'.format(compilerMacros(cfg)[macro]) if compilerMacros(cfg)[macro] else ''
+            compileFlag=lambda cfg, m=macro: '-Wno-macro-redefined -D{}'.format(m) + (
+              '={}'.format(compilerMacros(cfg)[m]) if compilerMacros(cfg)[m] else ''
             )
     )
   ]
+
+
+# Mapping from canonical locale names (used in the tests) to possible locale
+# names on various systems. Each locale is considered supported if any of the
+# alternative names is supported.
+locales = {
+  'en_US.UTF-8':     ['en_US.UTF-8', 'en_US.utf8', 'English_United States.1252'],
+  'fr_FR.UTF-8':     ['fr_FR.UTF-8', 'fr_FR.utf8', 'French_France.1252'],
+  'ru_RU.UTF-8':     ['ru_RU.UTF-8', 'ru_RU.utf8', 'Russian_Russia.1251'],
+  'zh_CN.UTF-8':     ['zh_CN.UTF-8', 'zh_CN.utf8', 'Chinese_China.936'],
+  'fr_CA.ISO8859-1': ['fr_CA.ISO8859-1', 'French_Canada.1252'],
+  'cs_CZ.ISO8859-2': ['cs_CZ.ISO8859-2', 'Czech_Czech Republic.1250']
+}
+for locale, alts in locales.items():
+  # Note: Using alts directly in the lambda body here will bind it to the value at the
+  # end of the loop. Assigning it to a default argument works around this issue.
+  DEFAULT_FEATURES.append(Feature(name='locale.{}'.format(locale),
+                                  when=lambda cfg, alts=alts: any(hasLocale(cfg, alt) for alt in alts)))
+
+
+# Add features representing the platform name: darwin, linux, windows, etc...
+DEFAULT_FEATURES += [
+  Feature(name='darwin', when=lambda cfg: '__APPLE__' in compilerMacros(cfg)),
+  Feature(name='windows', when=lambda cfg: '_WIN32' in compilerMacros(cfg)),
+  Feature(name='linux', when=lambda cfg: '__linux__' in compilerMacros(cfg)),
+  Feature(name='netbsd', when=lambda cfg: '__NetBSD__' in compilerMacros(cfg))
+]

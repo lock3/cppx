@@ -1,4 +1,4 @@
-# RUN: llvm-mc -show-encoding -triple=wasm32-unkown-unknown -mattr=+unimplemented-simd128 < %s | FileCheck %s
+# RUN: llvm-mc -show-encoding -triple=wasm32-unknown-unknown -mattr=+unimplemented-simd128 < %s | FileCheck %s
 
 main:
     .functype main () -> ()
@@ -328,9 +328,6 @@ main:
     # CHECK: i8x16.sub_saturate_u # encoding: [0xfd,0x73]
     i8x16.sub_saturate_u
 
-    # CHECK: i8x16.mul # encoding: [0xfd,0x75]
-    i8x16.mul
-
     # CHECK: i8x16.min_s # encoding: [0xfd,0x76]
     i8x16.min_s
 
@@ -466,9 +463,6 @@ main:
     # CHECK: i32x4.sub # encoding: [0xfd,0xb1,0x01]
     i32x4.sub
 
-    # CHECK: i32x4.dot_i16x8_s # encoding: [0xfd,0xb4,0x01]
-    i32x4.dot_i16x8_s
-
     # CHECK: i32x4.mul # encoding: [0xfd,0xb5,0x01]
     i32x4.mul
 
@@ -483,6 +477,9 @@ main:
 
     # CHECK: i32x4.max_u # encoding: [0xfd,0xb9,0x01]
     i32x4.max_u
+
+    # CHECK: i32x4.dot_i16x8_s # encoding: [0xfd,0xba,0x01]
+    i32x4.dot_i16x8_s
 
     # CHECK: i64x2.neg # encoding: [0xfd,0xc1,0x01]
     i64x2.neg
@@ -507,6 +504,33 @@ main:
 
     # CHECK: i64x2.sub # encoding: [0xfd,0xd1,0x01]
     i64x2.sub
+
+    # CHECK: i64x2.mul # encoding: [0xfd,0xd5,0x01]
+    i64x2.mul
+
+    # CHECK: f32x4.ceil # encoding: [0xfd,0xd8,0x01]
+    f32x4.ceil
+
+    # CHECK: f32x4.floor # encoding: [0xfd,0xd9,0x01]
+    f32x4.floor
+
+    # CHECK: f32x4.trunc # encoding: [0xfd,0xda,0x01]
+    f32x4.trunc
+
+    # CHECK: f32x4.nearest # encoding: [0xfd,0xdb,0x01]
+    f32x4.nearest
+
+    # CHECK: f64x2.ceil # encoding: [0xfd,0xdc,0x01]
+    f64x2.ceil
+
+    # CHECK: f64x2.floor # encoding: [0xfd,0xdd,0x01]
+    f64x2.floor
+
+    # CHECK: f64x2.trunc # encoding: [0xfd,0xde,0x01]
+    f64x2.trunc
+
+    # CHECK: f64x2.nearest # encoding: [0xfd,0xdf,0x01]
+    f64x2.nearest
 
     # CHECK: f32x4.abs # encoding: [0xfd,0xe0,0x01]
     f32x4.abs
@@ -535,6 +559,12 @@ main:
     # CHECK: f32x4.max # encoding: [0xfd,0xe9,0x01]
     f32x4.max
 
+    # CHECK: f32x4.pmin # encoding: [0xfd,0xea,0x01]
+    f32x4.pmin
+
+    # CHECK: f32x4.pmax # encoding: [0xfd,0xeb,0x01]
+    f32x4.pmax
+
     # CHECK: f64x2.abs # encoding: [0xfd,0xec,0x01]
     f64x2.abs
 
@@ -562,6 +592,12 @@ main:
     # CHECK: f64x2.max # encoding: [0xfd,0xf5,0x01]
     f64x2.max
 
+    # CHECK: f64x2.pmin # encoding: [0xfd,0xf6,0x01]
+    f64x2.pmin
+
+    # CHECK: f64x2.pmax # encoding: [0xfd,0xf7,0x01]
+    f64x2.pmax
+
     # CHECK: i32x4.trunc_sat_f32x4_s # encoding: [0xfd,0xf8,0x01]
     i32x4.trunc_sat_f32x4_s
 
@@ -574,10 +610,16 @@ main:
     # CHECK: f32x4.convert_i32x4_u # encoding: [0xfd,0xfb,0x01]
     f32x4.convert_i32x4_u
 
-    # CHECK: f32x4.qfma # encoding: [0xfd,0xfc,0x01]
+    # CHECK: v128.load32_zero 32 # encoding: [0xfd,0xfc,0x01,0x02,0x20]
+    v128.load32_zero 32
+
+    # CHECK: v128.load64_zero 32 # encoding: [0xfd,0xfd,0x01,0x03,0x20]
+    v128.load64_zero 32
+
+    # CHECK: f32x4.qfma # encoding: [0xfd,0xb4,0x01]
     f32x4.qfma
 
-    # CHECK: f32x4.qfms # encoding: [0xfd,0xfd,0x01]
+    # CHECK: f32x4.qfms # encoding: [0xfd,0xd4,0x01]
     f32x4.qfms
 
     # CHECK: f64x2.qfma # encoding: [0xfd,0xfe,0x01]

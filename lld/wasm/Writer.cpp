@@ -20,7 +20,6 @@
 #include "lld/Common/ErrorHandler.h"
 #include "lld/Common/Memory.h"
 #include "lld/Common/Strings.h"
-#include "lld/Common/Threads.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -31,6 +30,7 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/LEB128.h"
+#include "llvm/Support/Parallel.h"
 
 #include <cstdarg>
 #include <map>
@@ -53,6 +53,9 @@ public:
 
 private:
   void openFile();
+
+  bool needsPassiveInitialization(const OutputSegment *segment);
+  bool hasPassiveInitializedSegments();
 
   void createInitMemoryFunction();
   void createApplyRelocationsFunction();
@@ -221,7 +224,16 @@ void Writer::layoutMemory() {
     log("mem: stack base  = " + Twine(memoryPtr));
     memoryPtr += config->zStackSize;
     auto *sp = cast<DefinedGlobal>(WasmSym::stackPointer);
-    sp->global->global.InitExpr.Value.Int32 = memoryPtr;
+    switch (sp->global->global.InitExpr.Opcode) {
+    case WASM_OPCODE_I32_CONST:
+      sp->global->global.InitExpr.Value.Int32 = memoryPtr;
+      break;
+    case WASM_OPCODE_I64_CONST:
+      sp->global->global.InitExpr.Value.Int64 = memoryPtr;
+      break;
+    default:
+      llvm_unreachable("init expr must be i32/i64.const");
+    }
     log("mem: stack top   = " + Twine(memoryPtr));
   };
 
@@ -253,10 +265,13 @@ void Writer::layoutMemory() {
 
     if (WasmSym::tlsSize && seg->name == ".tdata") {
       auto *tlsSize = cast<DefinedGlobal>(WasmSym::tlsSize);
+      assert(tlsSize->global->global.InitExpr.Opcode == WASM_OPCODE_I32_CONST);
       tlsSize->global->global.InitExpr.Value.Int32 = seg->size;
 
       auto *tlsAlign = cast<DefinedGlobal>(WasmSym::tlsAlign);
-      tlsAlign->global->global.InitExpr.Value.Int32 = 1U << seg->alignment;
+      assert(tlsAlign->global->global.InitExpr.Opcode == WASM_OPCODE_I32_CONST);
+      tlsAlign->global->global.InitExpr.Value.Int32 = int64_t{1}
+                                                      << seg->alignment;
     }
   }
 
@@ -289,13 +304,17 @@ void Writer::layoutMemory() {
   if (WasmSym::heapBase)
     WasmSym::heapBase->setVirtualAddress(memoryPtr);
 
+  uint64_t maxMemorySetting = 1ULL
+                              << (config->is64.getValueOr(false) ? 48 : 32);
+
   if (config->initialMemory != 0) {
     if (config->initialMemory != alignTo(config->initialMemory, WasmPageSize))
       error("initial memory must be " + Twine(WasmPageSize) + "-byte aligned");
     if (memoryPtr > config->initialMemory)
       error("initial memory too small, " + Twine(memoryPtr) + " bytes needed");
-    if (config->initialMemory > (1ULL << 32))
-      error("initial memory too large, cannot be greater than 4294967296");
+    if (config->initialMemory > maxMemorySetting)
+      error("initial memory too large, cannot be greater than " +
+            Twine(maxMemorySetting));
     memoryPtr = config->initialMemory;
   }
   out.dylinkSec->memSize = memoryPtr;
@@ -309,8 +328,9 @@ void Writer::layoutMemory() {
       error("maximum memory must be " + Twine(WasmPageSize) + "-byte aligned");
     if (memoryPtr > config->maxMemory)
       error("maximum memory too small, " + Twine(memoryPtr) + " bytes needed");
-    if (config->maxMemory > (1ULL << 32))
-      error("maximum memory too large, cannot be greater than 4294967296");
+    if (config->maxMemory > maxMemorySetting)
+      error("maximum memory too large, cannot be greater than " +
+            Twine(maxMemorySetting));
     out.memorySec->maxMemoryPages = config->maxMemory / WasmPageSize;
     log("mem: max pages   = " + Twine(out.memorySec->maxMemoryPages));
   }
@@ -334,8 +354,8 @@ static void addStartStopSymbols(const OutputSegment *seg) {
   if (!isValidCIdentifier(name))
     return;
   LLVM_DEBUG(dbgs() << "addStartStopSymbols: " << name << "\n");
-  uint32_t start = seg->startVA;
-  uint32_t stop = start + seg->size;
+  uint64_t start = seg->startVA;
+  uint64_t stop = start + seg->size;
   symtab->addOptionalDataSymbol(saver.save("__start_" + name), start);
   symtab->addOptionalDataSymbol(saver.save("__stop_" + name), stop);
 }
@@ -441,21 +461,24 @@ void Writer::populateTargetFeatures() {
   if (!config->checkFeatures)
     return;
 
-  if (disallowed.count("atomics") && config->sharedMemory)
-    error("'atomics' feature is disallowed by " + disallowed["atomics"] +
-          ", so --shared-memory must not be used");
+  if (config->sharedMemory) {
+    if (disallowed.count("shared-mem"))
+      error("--shared-memory is disallowed by " + disallowed["shared-mem"] +
+            " because it was not compiled with 'atomics' or 'bulk-memory' "
+            "features.");
 
-  if (!allowed.count("atomics") && config->sharedMemory)
-    error("'atomics' feature must be used in order to use shared "
-          "memory");
+    for (auto feature : {"atomics", "bulk-memory"})
+      if (!allowed.count(feature))
+        error(StringRef("'") + feature +
+              "' feature must be used in order to use shared memory");
+  }
 
-  if (!allowed.count("bulk-memory") && config->sharedMemory)
-    error("'bulk-memory' feature must be used in order to use shared "
-          "memory");
-
-  if (!allowed.count("bulk-memory") && tlsUsed)
-    error("'bulk-memory' feature must be used in order to use thread-local "
-          "storage");
+  if (tlsUsed) {
+    for (auto feature : {"atomics", "bulk-memory"})
+      if (!allowed.count(feature))
+        error(StringRef("'") + feature +
+              "' feature must be used in order to use thread-local storage");
+  }
 
   // Validate that used features are allowed in output
   if (!inferFeatures) {
@@ -726,6 +749,18 @@ static void createFunction(DefinedFunction *func, StringRef bodyContent) {
   cast<SyntheticFunction>(func->function)->setBody(body);
 }
 
+bool Writer::needsPassiveInitialization(const OutputSegment *segment) {
+  return segment->initFlags & WASM_SEGMENT_IS_PASSIVE &&
+         segment->name != ".tdata" && !segment->isBss;
+}
+
+bool Writer::hasPassiveInitializedSegments() {
+  return std::find_if(segments.begin(), segments.end(),
+                      [this](const OutputSegment *s) {
+                        return this->needsPassiveInitialization(s);
+                      }) != segments.end();
+}
+
 void Writer::createInitMemoryFunction() {
   LLVM_DEBUG(dbgs() << "createInitMemoryFunction\n");
   assert(WasmSym::initMemoryFlag);
@@ -735,7 +770,7 @@ void Writer::createInitMemoryFunction() {
     raw_string_ostream os(bodyContent);
     writeUleb128(os, 0, "num locals");
 
-    if (segments.size()) {
+    if (hasPassiveInitializedSegments()) {
       // Initialize memory in a thread-safe manner. The thread that successfully
       // increments the flag from 0 to 1 is is responsible for performing the
       // memory initialization. Other threads go sleep on the flag until the
@@ -801,9 +836,14 @@ void Writer::createInitMemoryFunction() {
 
       // Did increment 0, so conditionally initialize passive data segments
       for (const OutputSegment *s : segments) {
-        if (s->initFlags & WASM_SEGMENT_IS_PASSIVE && s->name != ".tdata") {
+        if (needsPassiveInitialization(s)) {
           // destination address
-          writeI32Const(os, s->startVA, "destination address");
+          if (config->is64) {
+            writeI64Const(os, s->startVA, "destination address");
+          } else {
+            writeI32Const(os, static_cast<int32_t>(s->startVA),
+                          "destination address");
+          }
           // source segment offset
           writeI32Const(os, 0, "segment offset");
           // memory region size
@@ -835,7 +875,7 @@ void Writer::createInitMemoryFunction() {
 
       // Unconditionally drop passive data segments
       for (const OutputSegment *s : segments) {
-        if (s->initFlags & WASM_SEGMENT_IS_PASSIVE && s->name != ".tdata") {
+        if (needsPassiveInitialization(s)) {
           // data.drop instruction
           writeU8(os, WASM_OPCODE_MISC_PREFIX, "bulk-memory prefix");
           writeUleb128(os, WASM_OPCODE_DATA_DROP, "data.drop");
@@ -891,6 +931,9 @@ void Writer::createCallCtorsFunction() {
     for (const WasmInitEntry &f : initFunctions) {
       writeU8(os, WASM_OPCODE_CALL, "CALL");
       writeUleb128(os, f.sym->getFunctionIndex(), "function index");
+      for (size_t i = 0; i < f.sym->signature->Returns.size(); i++) {
+        writeU8(os, WASM_OPCODE_DROP, "DROP");
+      }
     }
     writeU8(os, WASM_OPCODE_END, "END");
   }
@@ -922,6 +965,7 @@ void Writer::createInitTLSFunction() {
       writeU8(os, WASM_OPCODE_GLOBAL_SET, "global.set");
       writeUleb128(os, WasmSym::tlsBase->getGlobalIndex(), "global index");
 
+      // FIXME(wvo): this local needs to be I64 in wasm64, or we need an extend op.
       writeU8(os, WASM_OPCODE_LOCAL_GET, "local.get");
       writeUleb128(os, 0, "local index");
 
@@ -955,8 +999,8 @@ void Writer::calculateInitFunctions() {
       if (sym->isDiscarded())
         continue;
       assert(sym->isLive());
-      if (*sym->signature != WasmSignature{{}, {}})
-        error("invalid signature for init func: " + toString(*sym));
+      if (sym->signature->Params.size() != 0)
+        error("constructor functions cannot take arguments: " + toString(*sym));
       LLVM_DEBUG(dbgs() << "initFunctions: " << toString(*sym) << "\n");
       initFunctions.emplace_back(WasmInitEntry{sym, f.Priority});
     }
@@ -980,7 +1024,7 @@ void Writer::createSyntheticSections() {
   out.eventSec = make<EventSection>();
   out.globalSec = make<GlobalSection>();
   out.exportSec = make<ExportSection>();
-  out.startSec = make<StartSection>(segments.size());
+  out.startSec = make<StartSection>(hasPassiveInitializedSegments());
   out.elemSec = make<ElemSection>();
   out.dataCountSec = make<DataCountSection>(segments);
   out.linkingSec = make<LinkingSection>(initFunctions, segments);

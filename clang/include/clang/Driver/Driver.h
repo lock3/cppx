@@ -556,6 +556,9 @@ public:
   /// handle this action.
   bool ShouldUseFlangCompiler(const JobAction &JA) const;
 
+  /// ShouldEmitStaticLibrary - Should the linker emit a static library.
+  bool ShouldEmitStaticLibrary(const llvm::opt::ArgList &Args) const;
+
   /// Returns true if we are performing any kind of LTO.
   bool isUsingLTO() const { return LTOMode != LTOK_None; }
 
@@ -626,7 +629,8 @@ public:
   static bool GetReleaseVersion(StringRef Str,
                                 MutableArrayRef<unsigned> Digits);
   /// Compute the default -fmodule-cache-path.
-  static void getDefaultModuleCachePath(SmallVectorImpl<char> &Result);
+  /// \return True if the system provides a default cache directory.
+  static bool getDefaultModuleCachePath(SmallVectorImpl<char> &Result);
 };
 
 /// \return True if the last defined optimization level is -Ofast.

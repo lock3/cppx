@@ -12,9 +12,8 @@
 
 // istream wcin;
 
-// FILE_DEPENDENCIES: %t.exe
 // RUN: %{build}
-// RUN: %{exec} echo "123" | %t.exe > %t.out
+// RUN: %{exec} echo "123" \| %t.exe > %t.out
 // RUN: grep -e 'The number is 123!' %t.out
 
 #include <iostream>

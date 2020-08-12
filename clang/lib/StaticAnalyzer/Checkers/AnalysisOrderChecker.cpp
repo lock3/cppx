@@ -38,7 +38,7 @@ class AnalysisOrderChecker
           check::PostStmt<OffsetOfExpr>, check::PreCall, check::PostCall,
           check::EndFunction, check::EndAnalysis, check::NewAllocator,
           check::Bind, check::PointerEscape, check::RegionChanges,
-          check::LiveSymbols> {
+          check::LiveSymbols, eval::Call> {
 
   bool isCallbackEnabled(const AnalyzerOptions &Opts,
                          StringRef CallbackName) const {
@@ -122,6 +122,19 @@ public:
       llvm::errs() << "PostStmt<OffsetOfExpr>\n";
   }
 
+  bool evalCall(const CallEvent &Call, CheckerContext &C) const {
+    if (isCallbackEnabled(C, "EvalCall")) {
+      llvm::errs() << "EvalCall";
+      if (const NamedDecl *ND = dyn_cast_or_null<NamedDecl>(Call.getDecl()))
+        llvm::errs() << " (" << ND->getQualifiedNameAsString() << ')';
+      llvm::errs() << " {argno: " << Call.getNumArgs() << '}';
+      llvm::errs() << " [" << Call.getKindAsString() << ']';
+      llvm::errs() << '\n';
+      return true;
+    }
+    return false;
+  }
+
   void checkPreCall(const CallEvent &Call, CheckerContext &C) const {
     if (isCallbackEnabled(C, "PreCall")) {
       llvm::errs() << "PreCall";
@@ -165,7 +178,7 @@ public:
       llvm::errs() << "EndAnalysis\n";
   }
 
-  void checkNewAllocator(const CXXNewExpr *CNE, SVal Target,
+  void checkNewAllocator(const CXXAllocatorCall &Call,
                          CheckerContext &C) const {
     if (isCallbackEnabled(C, "NewAllocator"))
       llvm::errs() << "NewAllocator\n";

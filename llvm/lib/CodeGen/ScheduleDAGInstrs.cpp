@@ -18,6 +18,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SparseSet.h"
 #include "llvm/ADT/iterator_range.h"
+#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/CodeGen/LiveIntervals.h"
 #include "llvm/CodeGen/LivePhysRegs.h"
@@ -153,7 +154,7 @@ static bool getUnderlyingObjectsForInstr(const MachineInstr *MI,
         Objects.push_back(UnderlyingObjectsVector::value_type(PSV, MayAlias));
       } else if (const Value *V = MMO->getValue()) {
         SmallVector<Value *, 4> Objs;
-        if (!getUnderlyingObjectsForCodeGen(V, Objs, DL))
+        if (!getUnderlyingObjectsForCodeGen(V, Objs))
           return false;
 
         for (Value *V : Objs) {

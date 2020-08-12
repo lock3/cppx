@@ -376,6 +376,7 @@ TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
   case BuiltinType::SatUShortFract:
   case BuiltinType::SatUFract:
   case BuiltinType::SatULongFract:
+  case BuiltinType::BFloat16:
     llvm_unreachable("Builtin type needs extra local data!");
     // Fall through, if the impossible happens.
 
@@ -404,6 +405,7 @@ TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
   case BuiltinType::Id:
 #include "clang/Basic/AArch64SVEACLETypes.def"
   case BuiltinType::BuiltinFn:
+  case BuiltinType::IncompleteMatrixIdx:
   case BuiltinType::OMPArraySection:
   case BuiltinType::OMPArrayShaping:
   case BuiltinType::OMPIterator:
@@ -501,6 +503,24 @@ void TypeOfTypeLoc::initializeLocal(ASTContext &Context,
       ::initializeLocal(Context, Loc);
   this->getLocalData()->UnderlyingTInfo = Context.getTrivialTypeSourceInfo(
       getUnderlyingType(), Loc);
+}
+
+void DependentIdentifierSpliceTypeLoc::initializeLocal(ASTContext &Context,
+                                                       SourceLocation Loc) {
+  setTypenameKeywordLoc(Loc);
+  if (getTypePtr()->getQualifier()) {
+    NestedNameSpecifierLocBuilder Builder;
+    Builder.MakeTrivial(Context, getTypePtr()->getQualifier(), Loc);
+    setQualifierLoc(Builder.getWithLocInContext(Context));
+  } else {
+    setQualifierLoc(NestedNameSpecifierLoc());
+  }
+  setIdentifierLoc(Loc);
+  setLAngleLoc(Loc);
+  setRAngleLoc(Loc);
+  TemplateSpecializationTypeLoc::initializeArgLocs(Context, getNumArgs(),
+                                                   getTypePtr()->getArgs(),
+                                                   getArgInfos(), Loc);
 }
 
 void UnaryTransformTypeLoc::initializeLocal(ASTContext &Context,

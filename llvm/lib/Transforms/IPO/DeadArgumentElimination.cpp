@@ -25,12 +25,14 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/NoFolder.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Use.h"
@@ -205,10 +207,7 @@ bool DeadArgumentEliminationPass::DeleteDeadVarargs(Function &Fn) {
     }
     NewCB->setCallingConv(CB->getCallingConv());
     NewCB->setAttributes(PAL);
-    NewCB->setDebugLoc(CB->getDebugLoc());
-    uint64_t W;
-    if (CB->extractProfTotalWeight(W))
-      NewCB->setProfWeight(W);
+    NewCB->copyMetadata(*CB, {LLVMContext::MD_prof, LLVMContext::MD_dbg});
 
     Args.clear();
 
@@ -290,7 +289,7 @@ bool DeadArgumentEliminationPass::RemoveDeadArgumentsFromCallers(Function &Fn) {
 
   for (Argument &Arg : Fn.args()) {
     if (!Arg.hasSwiftErrorAttr() && Arg.use_empty() &&
-        !Arg.hasPassPointeeByValueAttr()) {
+        !Arg.hasPassPointeeByValueCopyAttr()) {
       if (Arg.isUsedByMetadata()) {
         Arg.replaceAllUsesWith(UndefValue::get(Arg.getType()));
         Changed = true;
@@ -483,9 +482,10 @@ DeadArgumentEliminationPass::SurveyUses(const Value *V,
 // We consider arguments of non-internal functions to be intrinsically alive as
 // well as arguments to functions which have their "address taken".
 void DeadArgumentEliminationPass::SurveyFunction(const Function &F) {
-  // Functions with inalloca parameters are expecting args in a particular
-  // register and memory layout.
-  if (F.getAttributes().hasAttrSomewhere(Attribute::InAlloca)) {
+  // Functions with inalloca/preallocated parameters are expecting args in a
+  // particular register and memory layout.
+  if (F.getAttributes().hasAttrSomewhere(Attribute::InAlloca) ||
+      F.getAttributes().hasAttrSomewhere(Attribute::Preallocated)) {
     MarkLive(F);
     return;
   }
@@ -935,10 +935,7 @@ bool DeadArgumentEliminationPass::RemoveDeadStuffFromFunction(Function *F) {
     }
     NewCB->setCallingConv(CB.getCallingConv());
     NewCB->setAttributes(NewCallPAL);
-    NewCB->setDebugLoc(CB.getDebugLoc());
-    uint64_t W;
-    if (CB.extractProfTotalWeight(W))
-      NewCB->setProfWeight(W);
+    NewCB->copyMetadata(CB, {LLVMContext::MD_prof, LLVMContext::MD_dbg});
     Args.clear();
     ArgAttrVec.clear();
 
@@ -972,16 +969,16 @@ bool DeadArgumentEliminationPass::RemoveDeadStuffFromFunction(Function *F) {
         for (unsigned Ri = 0; Ri != RetCount; ++Ri)
           if (NewRetIdxs[Ri] != -1) {
             Value *V;
+            IRBuilder<NoFolder> IRB(InsertPt);
             if (RetTypes.size() > 1)
               // We are still returning a struct, so extract the value from our
               // return value
-              V = ExtractValueInst::Create(NewCB, NewRetIdxs[Ri], "newret",
-                                           InsertPt);
+              V = IRB.CreateExtractValue(NewCB, NewRetIdxs[Ri], "newret");
             else
               // We are now returning a single element, so just insert that
               V = NewCB;
             // Insert the value at the old position
-            RetVal = InsertValueInst::Create(RetVal, V, Ri, "oldret", InsertPt);
+            RetVal = IRB.CreateInsertValue(RetVal, V, Ri, "oldret");
           }
         // Now, replace all uses of the old call instruction with the return
         // struct we built
@@ -1024,6 +1021,7 @@ bool DeadArgumentEliminationPass::RemoveDeadStuffFromFunction(Function *F) {
   if (F->getReturnType() != NF->getReturnType())
     for (BasicBlock &BB : *NF)
       if (ReturnInst *RI = dyn_cast<ReturnInst>(BB.getTerminator())) {
+        IRBuilder<NoFolder> IRB(RI);
         Value *RetVal = nullptr;
 
         if (!NFTy->getReturnType()->isVoidTy()) {
@@ -1038,14 +1036,14 @@ bool DeadArgumentEliminationPass::RemoveDeadStuffFromFunction(Function *F) {
           RetVal = UndefValue::get(NRetTy);
           for (unsigned RetI = 0; RetI != RetCount; ++RetI)
             if (NewRetIdxs[RetI] != -1) {
-              ExtractValueInst *EV =
-                  ExtractValueInst::Create(OldRet, RetI, "oldret", RI);
+              Value *EV = IRB.CreateExtractValue(OldRet, RetI, "oldret");
+
               if (RetTypes.size() > 1) {
                 // We're still returning a struct, so reinsert the value into
                 // our new return value at the new index
 
-                RetVal = InsertValueInst::Create(RetVal, EV, NewRetIdxs[RetI],
-                                                 "newret", RI);
+                RetVal = IRB.CreateInsertValue(RetVal, EV, NewRetIdxs[RetI],
+                                               "newret");
               } else {
                 // We are now only returning a simple value, so just return the
                 // extracted value.
@@ -1055,7 +1053,8 @@ bool DeadArgumentEliminationPass::RemoveDeadStuffFromFunction(Function *F) {
         }
         // Replace the return instruction with one returning the new return
         // value (possibly 0 if we became void).
-        ReturnInst::Create(F->getContext(), RetVal, RI);
+        auto *NewRet = ReturnInst::Create(F->getContext(), RetVal, RI);
+        NewRet->setDebugLoc(RI->getDebugLoc());
         BB.getInstList().erase(RI);
       }
 

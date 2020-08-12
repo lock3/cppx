@@ -1,5 +1,4 @@
-! RUN: %S/test_any.sh %s %flang %t
-! EXEC: ${F18} -fopenmp -funparse-with-symbols %s 2>&1 | ${FileCheck} %s
+! RUN: %f18 -fopenmp -funparse-with-symbols %s 2>&1 | FileCheck %s
 ! CHECK-NOT: do *[1-9]
 ! CHECK: omp simd
 

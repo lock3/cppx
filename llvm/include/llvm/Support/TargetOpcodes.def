@@ -127,6 +127,12 @@ HANDLE_TARGET_OPCODE(PATCHPOINT)
 /// additionally expand this pseudo after register allocation.
 HANDLE_TARGET_OPCODE(LOAD_STACK_GUARD)
 
+/// These are used to support call sites that must have the stack adjusted
+/// before the call (e.g. to initialize an argument passed by value).
+/// See llvm.call.preallocated.{setup,arg} in the LangRef for more details.
+HANDLE_TARGET_OPCODE(PREALLOCATED_SETUP)
+HANDLE_TARGET_OPCODE(PREALLOCATED_ARG)
+
 /// Call instruction with associated vm state for deoptimization and list
 /// of live pointers for relocation by the garbage collector.  It is
 /// intended to support garbage collection with fully precise relocating
@@ -287,6 +293,12 @@ HANDLE_TARGET_OPCODE(G_INTRINSIC_TRUNC)
 
 /// INTRINSIC round intrinsic.
 HANDLE_TARGET_OPCODE(G_INTRINSIC_ROUND)
+
+/// INTRINSIC round to integer intrinsic.
+HANDLE_TARGET_OPCODE(G_INTRINSIC_LRINT)
+
+/// INTRINSIC roundeven intrinsic.
+HANDLE_TARGET_OPCODE(G_INTRINSIC_ROUNDEVEN)
 
 /// INTRINSIC readcyclecounter
 HANDLE_TARGET_OPCODE(G_READCYCLECOUNTER)
@@ -463,6 +475,36 @@ HANDLE_TARGET_OPCODE(G_USUBSAT)
 /// Generic saturating signed subtraction.
 HANDLE_TARGET_OPCODE(G_SSUBSAT)
 
+/// Generic saturating unsigned left shift.
+HANDLE_TARGET_OPCODE(G_USHLSAT)
+
+/// Generic saturating signed left shift.
+HANDLE_TARGET_OPCODE(G_SSHLSAT)
+
+// Perform signed fixed point multiplication
+HANDLE_TARGET_OPCODE(G_SMULFIX)
+
+// Perform unsigned fixed point multiplication
+HANDLE_TARGET_OPCODE(G_UMULFIX)
+
+// Perform signed, saturating fixed point multiplication
+HANDLE_TARGET_OPCODE(G_SMULFIXSAT)
+
+// Perform unsigned, saturating fixed point multiplication
+HANDLE_TARGET_OPCODE(G_UMULFIXSAT)
+
+// Perform signed fixed point division
+HANDLE_TARGET_OPCODE(G_SDIVFIX)
+
+// Perform unsigned fixed point division
+HANDLE_TARGET_OPCODE(G_UDIVFIX)
+
+// Perform signed, saturating fixed point division
+HANDLE_TARGET_OPCODE(G_SDIVFIXSAT)
+
+// Perform unsigned, saturating fixed point division
+HANDLE_TARGET_OPCODE(G_UDIVFIXSAT)
+
 /// Generic FP addition.
 HANDLE_TARGET_OPCODE(G_FADD)
 
@@ -486,6 +528,9 @@ HANDLE_TARGET_OPCODE(G_FREM)
 
 /// Generic FP exponentiation.
 HANDLE_TARGET_OPCODE(G_FPOW)
+
+/// Generic FP exponentiation, with an integer exponent.
+HANDLE_TARGET_OPCODE(G_FPOWI)
 
 /// Generic base-e exponential of a value.
 HANDLE_TARGET_OPCODE(G_FEXP)
@@ -550,9 +595,8 @@ HANDLE_TARGET_OPCODE(G_FMAXIMUM)
 /// Generic pointer offset
 HANDLE_TARGET_OPCODE(G_PTR_ADD)
 
-/// Clear the specified number of low bits in a pointer. This rounds the value
-/// *down* to the given alignment.
-HANDLE_TARGET_OPCODE(G_PTR_MASK)
+/// Clear the specified bits in a pointer.
+HANDLE_TARGET_OPCODE(G_PTRMASK)
 
 /// Generic signed integer minimum.
 HANDLE_TARGET_OPCODE(G_SMIN)
@@ -634,6 +678,15 @@ HANDLE_TARGET_OPCODE(G_JUMP_TABLE)
 
 /// Generic dynamic stack allocation.
 HANDLE_TARGET_OPCODE(G_DYN_STACKALLOC)
+
+/// Strict floating point instructions.
+HANDLE_TARGET_OPCODE(G_STRICT_FADD)
+HANDLE_TARGET_OPCODE(G_STRICT_FSUB)
+HANDLE_TARGET_OPCODE(G_STRICT_FMUL)
+HANDLE_TARGET_OPCODE(G_STRICT_FDIV)
+HANDLE_TARGET_OPCODE(G_STRICT_FREM)
+HANDLE_TARGET_OPCODE(G_STRICT_FMA)
+HANDLE_TARGET_OPCODE(G_STRICT_FSQRT)
 
 /// read_register intrinsic
 HANDLE_TARGET_OPCODE(G_READ_REGISTER)

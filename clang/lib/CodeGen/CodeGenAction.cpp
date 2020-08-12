@@ -251,7 +251,7 @@ namespace clang {
       for (auto &LM : LinkModules) {
         if (LM.PropagateAttrs)
           for (Function &F : *LM.Module)
-            Gen->CGM().AddDefaultFnAttrs(F);
+            Gen->CGM().addDefaultFunctionDefinitionAttributes(F);
 
         CurLinkModule = LM.Module.get();
 
@@ -995,11 +995,9 @@ CodeGenAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
 
   CoverageSourceInfo *CoverageInfo = nullptr;
   // Add the preprocessor callback only when the coverage mapping is generated.
-  if (CI.getCodeGenOpts().CoverageMapping) {
-    CoverageInfo = new CoverageSourceInfo;
-    CI.getPreprocessor().addPPCallbacks(
-                                    std::unique_ptr<PPCallbacks>(CoverageInfo));
-  }
+  if (CI.getCodeGenOpts().CoverageMapping)
+    CoverageInfo = CodeGen::CoverageMappingModuleGen::setUpCoverageCallbacks(
+        CI.getPreprocessor());
 
   std::unique_ptr<BackendConsumer> Result(new BackendConsumer(
       BA, CI.getDiagnostics(), CI.getHeaderSearchOpts(),

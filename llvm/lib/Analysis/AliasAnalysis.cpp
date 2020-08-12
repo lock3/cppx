@@ -58,7 +58,7 @@ using namespace llvm;
 
 /// Allow disabling BasicAA from the AA results. This is particularly useful
 /// when testing to isolate a single AA implementation.
-static cl::opt<bool> DisableBasicAA("disable-basicaa", cl::Hidden,
+static cl::opt<bool> DisableBasicAA("disable-basic-aa", cl::Hidden,
                                     cl::init(false));
 
 AAResults::AAResults(AAResults &&Arg)
@@ -641,8 +641,7 @@ ModRefInfo AAResults::callCapturesBefore(const Instruction *I,
   if (!DT)
     return ModRefInfo::ModRef;
 
-  const Value *Object =
-      GetUnderlyingObject(MemLoc.Ptr, I->getModule()->getDataLayout());
+  const Value *Object = getUnderlyingObject(MemLoc.Ptr);
   if (!isIdentifiedObject(Object) || isa<GlobalValue>(Object) ||
       isa<Constant>(Object))
     return ModRefInfo::ModRef;

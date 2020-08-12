@@ -38,8 +38,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/ManagedStatic.h"
-#include "llvm/Support/PrettyStackTrace.h"
+#include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
@@ -300,7 +299,7 @@ protected:
 
     if (len != (unsigned)-1)
       width = len;
-    return VectorType::get(Ty, width);
+    return FixedVectorType::get(Ty, width);
   }
 
   /// Pick a random scalar type.
@@ -628,9 +627,10 @@ struct SelectModifier: public Modifier {
 
     // If the value type is a vector, and we allow vector select, then in 50%
     // of the cases generate a vector select.
-    if (Val0->getType()->isVectorTy() && (getRandom() % 1)) {
-      unsigned NumElem = cast<VectorType>(Val0->getType())->getNumElements();
-      CondTy = VectorType::get(CondTy, NumElem);
+    if (isa<FixedVectorType>(Val0->getType()) && (getRandom() % 1)) {
+      unsigned NumElem =
+          cast<FixedVectorType>(Val0->getType())->getNumElements();
+      CondTy = FixedVectorType::get(CondTy, NumElem);
     }
 
     Value *Cond = getRandomValue(CondTy);
@@ -732,10 +732,8 @@ static void IntroduceControlFlow(Function *F, Random &R) {
 int main(int argc, char **argv) {
   using namespace llvm;
 
-  // Init LLVM, call llvm_shutdown() on exit, parse args, etc.
-  PrettyStackTraceProgram X(argc, argv);
+  InitLLVM X(argc, argv);
   cl::ParseCommandLineOptions(argc, argv, "llvm codegen stress-tester\n");
-  llvm_shutdown_obj Y;
 
   auto M = std::make_unique<Module>("/tmp/autogen.bc", Context);
   Function *F = GenEmptyFunction(M.get());

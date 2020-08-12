@@ -121,6 +121,12 @@ TEST_F(IRBuilderTest, Intrinsics) {
   EXPECT_EQ(II->getIntrinsicID(), Intrinsic::fma);
   EXPECT_TRUE(II->hasNoInfs());
   EXPECT_FALSE(II->hasNoNaNs());
+
+  Call = Builder.CreateUnaryIntrinsic(Intrinsic::roundeven, V);
+  II = cast<IntrinsicInst>(Call);
+  EXPECT_EQ(II->getIntrinsicID(), Intrinsic::roundeven);
+  EXPECT_FALSE(II->hasNoInfs());
+  EXPECT_FALSE(II->hasNoNaNs());
 }
 
 TEST_F(IRBuilderTest, IntrinsicsWithScalableVectors) {
@@ -302,6 +308,52 @@ TEST_F(IRBuilderTest, ConstrainedFP) {
   EXPECT_EQ(CII->getIntrinsicID(), Intrinsic::experimental_constrained_fadd);
   EXPECT_EQ(fp::ebMayTrap, CII->getExceptionBehavior());
   EXPECT_EQ(RoundingMode::TowardNegative, CII->getRoundingMode());
+
+  Builder.CreateRetVoid();
+  EXPECT_FALSE(verifyModule(*M));
+}
+
+TEST_F(IRBuilderTest, ConstrainedFPIntrinsics) {
+  IRBuilder<> Builder(BB);
+  Value *V;
+  Value *VDouble;
+  ConstrainedFPIntrinsic *CII;
+  GlobalVariable *GVDouble = new GlobalVariable(
+      *M, Type::getDoubleTy(Ctx), true, GlobalValue::ExternalLinkage, nullptr);
+  VDouble = Builder.CreateLoad(GVDouble->getValueType(), GVDouble);
+
+  Builder.setDefaultConstrainedExcept(fp::ebStrict);
+  Builder.setDefaultConstrainedRounding(RoundingMode::TowardZero);
+  Function *Fn = Intrinsic::getDeclaration(M.get(),
+      Intrinsic::experimental_constrained_roundeven, { Type::getDoubleTy(Ctx) });
+  V = Builder.CreateConstrainedFPCall(Fn, { VDouble });
+  CII = cast<ConstrainedFPIntrinsic>(V);
+  EXPECT_EQ(Intrinsic::experimental_constrained_roundeven, CII->getIntrinsicID());
+  EXPECT_EQ(fp::ebStrict, CII->getExceptionBehavior());
+}
+
+TEST_F(IRBuilderTest, ConstrainedFPFunctionCall) {
+  IRBuilder<> Builder(BB);
+
+  // Create an empty constrained FP function.
+  FunctionType *FTy = FunctionType::get(Type::getVoidTy(Ctx),
+                                        /*isVarArg=*/false);
+  Function *Callee =
+      Function::Create(FTy, Function::ExternalLinkage, "", M.get());
+  BasicBlock *CalleeBB = BasicBlock::Create(Ctx, "", Callee);
+  IRBuilder<> CalleeBuilder(CalleeBB);
+  CalleeBuilder.setIsFPConstrained(true);
+  CalleeBuilder.setConstrainedFPFunctionAttr();
+  CalleeBuilder.CreateRetVoid();
+
+  // Now call the empty constrained FP function.
+  Builder.setIsFPConstrained(true);
+  Builder.setConstrainedFPFunctionAttr();
+  CallInst *FCall = Builder.CreateCall(Callee, None);
+
+  // Check the attributes to verify the strictfp attribute is on the call.
+  EXPECT_TRUE(FCall->getAttributes().getFnAttributes().hasAttribute(
+      Attribute::StrictFP));
 
   Builder.CreateRetVoid();
   EXPECT_FALSE(verifyModule(*M));
@@ -782,7 +834,7 @@ TEST_F(IRBuilderTest, createArtificialSubprogram) {
 TEST_F(IRBuilderTest, InsertExtractElement) {
   IRBuilder<> Builder(BB);
 
-  auto VecTy = VectorType::get(Builder.getInt64Ty(), 4);
+  auto VecTy = FixedVectorType::get(Builder.getInt64Ty(), 4);
   auto Elt1 = Builder.getInt64(-1);
   auto Elt2 = Builder.getInt64(-2);
   Value *Vec = UndefValue::get(VecTy);

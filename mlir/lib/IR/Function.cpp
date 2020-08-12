@@ -42,22 +42,20 @@ FuncOp FuncOp::create(Location location, StringRef name, FunctionType type,
 }
 
 void FuncOp::build(OpBuilder &builder, OperationState &result, StringRef name,
-                   FunctionType type, ArrayRef<NamedAttribute> attrs) {
+                   FunctionType type, ArrayRef<NamedAttribute> attrs,
+                   ArrayRef<MutableDictionaryAttr> argAttrs) {
   result.addAttribute(SymbolTable::getSymbolAttrName(),
                       builder.getStringAttr(name));
   result.addAttribute(getTypeAttrName(), TypeAttr::get(type));
   result.attributes.append(attrs.begin(), attrs.end());
   result.addRegion();
-}
 
-void FuncOp::build(OpBuilder &builder, OperationState &result, StringRef name,
-                   FunctionType type, ArrayRef<NamedAttribute> attrs,
-                   ArrayRef<MutableDictionaryAttr> argAttrs) {
-  build(builder, result, name, type, attrs);
+  if (argAttrs.empty())
+    return;
   assert(type.getNumInputs() == argAttrs.size());
   SmallString<8> argAttrName;
   for (unsigned i = 0, e = type.getNumInputs(); i != e; ++i)
-    if (auto argDict = argAttrs[i].getDictionary())
+    if (auto argDict = argAttrs[i].getDictionary(builder.getContext()))
       result.addAttribute(getArgAttrName(i, argAttrName), argDict);
 }
 

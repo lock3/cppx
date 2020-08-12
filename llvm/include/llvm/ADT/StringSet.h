@@ -31,13 +31,13 @@ public:
   explicit StringSet(AllocatorTy a) : Base(a) {}
 
   std::pair<typename Base::iterator, bool> insert(StringRef key) {
-    return Base::insert(std::make_pair(key, None));
+    return Base::try_emplace(key);
   }
 
   template <typename InputIt>
   void insert(const InputIt &begin, const InputIt &end) {
     for (auto it = begin; it != end; ++it)
-      Base::insert(std::make_pair(*it, None));
+      insert(*it);
   }
 
   template <typename ValueTy>
@@ -45,6 +45,9 @@ public:
   insert(const StringMapEntry<ValueTy> &mapEntry) {
     return insert(mapEntry.getKey());
   }
+
+  /// Check if the set contains the given \c key.
+  bool contains(StringRef key) const { return Base::FindKey(key) != -1; }
 };
 
 } // end namespace llvm

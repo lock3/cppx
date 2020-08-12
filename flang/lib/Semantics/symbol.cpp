@@ -111,6 +111,9 @@ llvm::raw_ostream &operator<<(
     }
   }
   os << (sep == '(' ? "()" : ")");
+  if (x.stmtFunction_) {
+    os << " -> " << x.stmtFunction_->AsFortran();
+  }
   return os;
 }
 
@@ -119,6 +122,7 @@ void EntityDetails::set_type(const DeclTypeSpec &type) {
   type_ = &type;
 }
 
+void AssocEntityDetails::set_rank(int rank) { rank_ = rank; }
 void EntityDetails::ReplaceType(const DeclTypeSpec &type) { type_ = &type; }
 
 void ObjectEntityDetails::set_shape(const ArraySpec &shape) {
@@ -140,22 +144,14 @@ ProcEntityDetails::ProcEntityDetails(EntityDetails &&d) : EntityDetails(d) {
   }
 }
 
-const Symbol &UseDetails::module() const {
-  // owner is a module so it must have a symbol:
-  return *symbol_->owner().symbol();
-}
-
 UseErrorDetails::UseErrorDetails(const UseDetails &useDetails) {
-  add_occurrence(useDetails.location(), *useDetails.module().scope());
+  add_occurrence(useDetails.location(), *GetUsedModule(useDetails).scope());
 }
 UseErrorDetails &UseErrorDetails::add_occurrence(
     const SourceName &location, const Scope &module) {
   occurrences_.push_back(std::make_pair(location, &module));
   return *this;
 }
-
-GenericDetails::GenericDetails(const SymbolVector &specificProcs)
-    : specificProcs_{specificProcs} {}
 
 void GenericDetails::AddSpecificProc(
     const Symbol &proc, SourceName bindingName) {
@@ -190,6 +186,8 @@ Symbol *GenericDetails::CheckSpecific() {
 }
 
 void GenericDetails::CopyFrom(const GenericDetails &from) {
+  CHECK(specificProcs_.size() == bindingNames_.size());
+  CHECK(from.specificProcs_.size() == from.bindingNames_.size());
   if (from.specific_) {
     CHECK(!specific_ || specific_ == from.specific_);
     specific_ = from.specific_;
@@ -198,11 +196,13 @@ void GenericDetails::CopyFrom(const GenericDetails &from) {
     CHECK(!derivedType_ || derivedType_ == from.derivedType_);
     derivedType_ = from.derivedType_;
   }
-  for (const Symbol &symbol : from.specificProcs_) {
+  for (std::size_t i{0}; i < from.specificProcs_.size(); ++i) {
     if (std::find_if(specificProcs_.begin(), specificProcs_.end(),
-            [&](const Symbol &mySymbol) { return &mySymbol == &symbol; }) ==
-        specificProcs_.end()) {
-      specificProcs_.push_back(symbol);
+            [&](const Symbol &mySymbol) {
+              return &mySymbol == &*from.specificProcs_[i];
+            }) == specificProcs_.end()) {
+      specificProcs_.push_back(from.specificProcs_[i]);
+      bindingNames_.push_back(from.bindingNames_[i]);
     }
   }
 }
@@ -286,16 +286,6 @@ void Symbol::SetType(const DeclTypeSpec &type) {
       details_);
 }
 
-bool Symbol::IsDummy() const {
-  return std::visit(
-      common::visitors{[](const EntityDetails &x) { return x.isDummy(); },
-          [](const ObjectEntityDetails &x) { return x.isDummy(); },
-          [](const ProcEntityDetails &x) { return x.isDummy(); },
-          [](const HostAssocDetails &x) { return x.symbol().IsDummy(); },
-          [](const auto &) { return false; }},
-      details_);
-}
-
 bool Symbol::IsFuncResult() const {
   return std::visit(
       common::visitors{[](const EntityDetails &x) { return x.isFuncResult(); },
@@ -353,6 +343,9 @@ llvm::raw_ostream &operator<<(
 llvm::raw_ostream &operator<<(
     llvm::raw_ostream &os, const AssocEntityDetails &x) {
   os << *static_cast<const EntityDetails *>(&x);
+  if (auto assocRank{x.rank()}) {
+    os << " rank: " << *assocRank;
+  }
   DumpExpr(os, "expr", x.expr());
   return os;
 }
@@ -385,7 +378,7 @@ llvm::raw_ostream &operator<<(
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Details &details) {
   os << DetailsToString(details);
-  std::visit(
+  std::visit( //
       common::visitors{
           [&](const UnknownDetails &) {},
           [&](const MainProgramDetails &) {},
@@ -409,7 +402,8 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Details &details) {
             os << ' ' << EnumToString(x.kind());
           },
           [&](const UseDetails &x) {
-            os << " from " << x.symbol().name() << " in " << x.module().name();
+            os << " from " << x.symbol().name() << " in "
+               << GetUsedModule(x).name();
           },
           [&](const UseErrorDetails &x) {
             os << " uses:";
@@ -434,9 +428,12 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Details &details) {
             DumpSymbolVector(os, x.objects());
           },
           [&](const CommonBlockDetails &x) {
+            if (x.alignment()) {
+              os << " alignment=" << x.alignment();
+            }
             os << ':';
-            for (const Symbol &object : x.objects()) {
-              os << ' ' << object.name();
+            for (const auto &object : x.objects()) {
+              os << ' ' << object->name();
             }
           },
           [&](const FinalProcDetails &) {},

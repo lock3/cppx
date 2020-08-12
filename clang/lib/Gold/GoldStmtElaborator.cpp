@@ -713,7 +713,8 @@ StmtElaborator::elaborateWhileStmt(const MacroSyntax *S) {
     return nullptr;
 
   clang::StmtResult While =
-    SemaRef.getCxxSema().ActOnWhileStmt(WhileLoc, Condition, Body);
+    SemaRef.getCxxSema().ActOnWhileStmt(WhileLoc, WhileLoc,
+                                        Condition, WhileLoc, Body);
   if (While.isInvalid())
     return nullptr;
   return While.get();

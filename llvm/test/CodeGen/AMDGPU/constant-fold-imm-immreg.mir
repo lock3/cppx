@@ -76,7 +76,7 @@ body:             |
     %14:vreg_64 = REG_SEQUENCE %3, %subreg.hi16, %13, %subreg.lo16
     %15:vreg_64 = V_LSHLREV_B64 2, killed %14, implicit $exec
     %5:sreg_32_xm0 = COPY %4.sub1
-    %20:vgpr_32 = V_ADD_I32_e32 %4.sub0, %15.sub0, implicit-def $vcc, implicit $exec
+    %20:vgpr_32 = V_ADD_CO_U32_e32 %4.sub0, %15.sub0, implicit-def $vcc, implicit $exec
     %18:vgpr_32 = COPY killed %5
     %17:vgpr_32 = V_ADDC_U32_e32 %15.sub1, %18, implicit-def $vcc, implicit $vcc, implicit $exec
     %19:vreg_64 = REG_SEQUENCE %20, %subreg.hi16, killed %17, %subreg.lo16
@@ -206,7 +206,7 @@ body:             |
     %16:vreg_64 = REG_SEQUENCE %2, %subreg.hi16, %15, %subreg.lo16
     %17:vreg_64 = V_LSHLREV_B64 2, killed %16, implicit $exec
     %9:sreg_32_xm0 = COPY %3.sub1
-    %21:vgpr_32 = V_ADD_I32_e32 %3.sub0, %17.sub0, implicit-def $vcc, implicit $exec
+    %21:vgpr_32 = V_ADD_CO_U32_e32 %3.sub0, %17.sub0, implicit-def $vcc, implicit $exec
     %19:vgpr_32 = COPY killed %9
     %18:vgpr_32 = V_ADDC_U32_e32 %17.sub1, %19, implicit-def $vcc, implicit $vcc, implicit $exec
     %20:vreg_64 = REG_SEQUENCE %21, %subreg.hi16, killed %18, %subreg.lo16
@@ -330,7 +330,7 @@ body:             |
     %16:vreg_64 = REG_SEQUENCE %2, %subreg.hi16, %15, %subreg.lo16
     %17:vreg_64 = V_LSHLREV_B64 2, killed %16, implicit $exec
     %9:sreg_32_xm0 = COPY %3.sub1
-    %21:vgpr_32 = V_ADD_I32_e32 %3.sub0, %17.sub0, implicit-def $vcc, implicit $exec
+    %21:vgpr_32 = V_ADD_CO_U32_e32 %3.sub0, %17.sub0, implicit-def $vcc, implicit $exec
     %19:vgpr_32 = COPY killed %9
     %18:vgpr_32 = V_ADDC_U32_e32 %17.sub1, %19, implicit-def $vcc, implicit $vcc, implicit $exec
     %20:vreg_64 = REG_SEQUENCE %21, %subreg.hi16, killed %18, %subreg.lo16
@@ -580,7 +580,7 @@ body:             |
     %14:vreg_64 = REG_SEQUENCE %3, %subreg.sub0, %13, %subreg.sub1
     %15:vreg_64 = V_LSHLREV_B64 2, killed %14, implicit $exec
     %5:sreg_32_xm0 = COPY %4.sub1
-    %20:vgpr_32 = V_ADD_I32_e32 %4.sub0, %15.sub0, implicit-def $vcc, implicit $exec
+    %20:vgpr_32 = V_ADD_CO_U32_e32 %4.sub0, %15.sub0, implicit-def $vcc, implicit $exec
     %18:vgpr_32 = COPY killed %5
     %17:vgpr_32 = V_ADDC_U32_e32 %15.sub1, %18, implicit-def $vcc, implicit $vcc, implicit $exec
     %19:vreg_64 = REG_SEQUENCE %20, %subreg.sub0, killed %17, %subreg.sub1
@@ -787,7 +787,7 @@ body:             |
     %16:vreg_64 = REG_SEQUENCE %2, %subreg.sub0, %15, %subreg.sub1
     %17:vreg_64 = V_LSHLREV_B64 2, killed %16, implicit $exec
     %9:sreg_32_xm0 = COPY %3.sub1
-    %21:vgpr_32 = V_ADD_I32_e32 %3.sub0, %17.sub0, implicit-def $vcc, implicit $exec
+    %21:vgpr_32 = V_ADD_CO_U32_e32 %3.sub0, %17.sub0, implicit-def $vcc, implicit $exec
     %19:vgpr_32 = COPY killed %9
     %18:vgpr_32 = V_ADDC_U32_e32 %17.sub1, %19, implicit-def $vcc, implicit $vcc, implicit $exec
     %20:vreg_64 = REG_SEQUENCE %21, %subreg.sub0, killed %18, %subreg.sub1
@@ -963,5 +963,35 @@ body:             |
     %2:vgpr_32 = V_MOV_B32_e32 12345, implicit $exec
     %3:vgpr_32 = V_AND_OR_B32 %0, %1, %2, implicit $exec
     S_ENDPGM 0, implicit %3
+
+...
+
+# This used to incorrectly interpret V_MOV_B32_sdwa as being a move
+# immediate, and interpreting the src0_modifiers field as a
+# materialized immediate.
+
+---
+# GCN-LABEL: name: no_fold_sdwa_mov_imm
+# GCN: %2:vgpr_32 = V_MOV_B32_sdwa 0, %0, 0, 5, 2, 4, implicit $exec, implicit %0(tied-def 0)
+# GCN-NEXT: [[SHIFT:%[0-9]+]]:vgpr_32 = V_LSHRREV_B32_e64 16, %2, implicit $exec
+# GCN-NEXT: S_ENDPGM 0, implicit [[SHIFT]]
+
+name:            no_fold_sdwa_mov_imm
+alignment:       0
+exposesReturnsTwice: false
+legalized:       false
+regBankSelected: false
+selected:        false
+tracksRegLiveness: true
+
+body:             |
+  bb.0:
+    liveins: $vgpr0
+    %0:vgpr_32 = COPY $vgpr0
+    %1:vgpr_32 = V_MOV_B32_e32 16, implicit $exec
+    %2:vgpr_32 = V_MOV_B32_sdwa 0, %0:vgpr_32, 0, 5, 2, 4, implicit $exec, implicit %0:vgpr_32(tied-def 0)
+    %3:vgpr_32 = V_MOV_B32_e32 16, implicit $exec
+    %4:vgpr_32 = V_LSHRREV_B32_e64 %3:vgpr_32, %2:vgpr_32, implicit $exec
+    S_ENDPGM 0, implicit %4
 
 ...

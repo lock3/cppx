@@ -119,6 +119,8 @@ Extensions, deletions, and legacy features supported by default
 * An effectively empty source file (no program unit) is accepted and
   produces an empty relocatable output file.
 * A `RETURN` statement may appear in a main program.
+* DATA statement initialization is allowed for procedure pointers outside
+  structure constructors.
 
 Extensions supported when enabled by options
 --------------------------------------------
@@ -137,6 +139,10 @@ Extensions supported when enabled by options
   `FINDLOC`, `MAXLOC`, and `MINLOC` in the absence of an explicit
   `KIND=` actual argument.  We return `INTEGER(KIND=8)` by default in
   these cases when the `-flarge-sizes` option is enabled.
+* Treat each specification-part like is has `IMPLICIT NONE`
+  [-fimplicit-none-type-always]
+* Ignore occurrences of `IMPLICIT NONE` and `IMPLICIT NONE(TYPE)`
+  [-fimplicit-none-type-never]
 
 Extensions and legacy features deliberately not supported
 ---------------------------------------------------------

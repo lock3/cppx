@@ -250,11 +250,11 @@ ExprResult Parser::ParseMSAsmIdentifier(llvm::SmallVectorImpl<Token> &LineToks,
   // like '.' 'else'.
   while (Result.isUsable() && Tok.is(tok::period)) {
     Token IdTok = PP.LookAhead(0);
-    if (IdTok.isNot(tok::identifier))
+    if (!IdTok.isIdentifier())
       break;
     ConsumeToken(); // Consume the period.
     IdentifierInfo *Id = Tok.getIdentifierInfo();
-    ConsumeToken(); // Consume the identifier.
+    ConsumeIdentifier();
     Result = Actions.LookupInlineAsmVarDeclField(Result.get(), Id->getName(),
                                                  Tok.getLocation());
   }
@@ -729,6 +729,9 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
   if (parseGNUAsmQualifierListOpt(GAQ))
     return StmtError();
 
+  if (GAQ.isGoto() && getLangOpts().SpeculativeLoadHardening)
+    Diag(Loc, diag::warn_slh_does_not_support_asm_goto);
+
   BalancedDelimiterTracker T(*this, tok::l_paren);
   T.consumeOpen();
 
@@ -830,7 +833,7 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
       ConsumeToken();
 
     while (true) {
-      if (Tok.isNot(tok::identifier)) {
+      if (!isIdentifier()) {
         Diag(Tok, diag::err_expected) << tok::identifier;
         SkipUntil(tok::r_paren, StopAtSemi);
         return StmtError();
@@ -846,7 +849,7 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
           Actions.ActOnAddrLabel(Tok.getLocation(), Tok.getLocation(), LD);
       Exprs.push_back(Res.get());
       NumLabels++;
-      ConsumeToken();
+      ConsumeIdentifier();
       if (!TryConsumeToken(tok::comma))
         break;
     }
@@ -888,14 +891,14 @@ bool Parser::ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
       BalancedDelimiterTracker T(*this, tok::l_square);
       T.consumeOpen();
 
-      if (Tok.isNot(tok::identifier)) {
+      if (!isIdentifier()) {
         Diag(Tok, diag::err_expected) << tok::identifier;
         SkipUntil(tok::r_paren, StopAtSemi);
         return true;
       }
 
       IdentifierInfo *II = Tok.getIdentifierInfo();
-      ConsumeToken();
+      ConsumeIdentifier();
 
       Names.push_back(II);
       T.consumeClose();
@@ -938,7 +941,7 @@ const char *Parser::GNUAsmQualifiers::getQualifierName(AQ Qualifier) {
     case AQ_goto: return "goto";
     case AQ_unspecified: return "unspecified";
   }
-  llvm_unreachable("Unkown GNUAsmQualifier");
+  llvm_unreachable("Unknown GNUAsmQualifier");
 }
 
 Parser::GNUAsmQualifiers::AQ

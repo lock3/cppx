@@ -294,12 +294,10 @@ void DeclPrinter::ProcessDeclGroup(SmallVectorImpl<Decl*>& Decls) {
 }
 
 void DeclPrinter::Print(AccessSpecifier AS) {
-  switch(AS) {
-  case AS_none:      llvm_unreachable("No access specifier!");
-  case AS_public:    Out << "public"; break;
-  case AS_protected: Out << "protected"; break;
-  case AS_private:   Out << "private"; break;
-  }
+  const auto AccessSpelling = getAccessSpelling(AS);
+  if (AccessSpelling.empty())
+    llvm_unreachable("No access specifier!");
+  Out << AccessSpelling;
 }
 
 void DeclPrinter::PrintConstructorInitializers(CXXConstructorDecl *CDecl,
@@ -579,9 +577,10 @@ void DeclPrinter::VisitEnumDecl(EnumDecl *D) {
 
   prettyPrintAttributes(D);
 
-  Out << ' ' << *D;
+  if (D->getDeclName())
+    Out << ' ' << D->getDeclName();
 
-  if (D->isFixed() && D->getASTContext().getLangOpts().CPlusPlus11)
+  if (D->isFixed())
     Out << " : " << D->getIntegerType().stream(Policy);
 
   if (D->isCompleteDefinition()) {
@@ -970,7 +969,12 @@ void DeclPrinter::VisitStaticAssertDecl(StaticAssertDecl *D) {
 void DeclPrinter::VisitNamespaceDecl(NamespaceDecl *D) {
   if (D->isInline())
     Out << "inline ";
-  Out << "namespace " << *D << " {\n";
+
+  Out << "namespace ";
+  if (D->getDeclName())
+    Out << D->getDeclName() << ' ';
+  Out << "{\n";
+
   VisitDeclContext(D);
   Indent() << "}";
 }
@@ -1147,10 +1151,15 @@ void DeclPrinter::VisitTemplateDecl(const TemplateDecl *D) {
 
   if (const TemplateTemplateParmDecl *TTP =
         dyn_cast<TemplateTemplateParmDecl>(D)) {
-    Out << "class ";
+    Out << "class";
+
     if (TTP->isParameterPack())
-      Out << "...";
-    Out << D->getName();
+      Out << " ...";
+    else if (TTP->getDeclName())
+      Out << ' ';
+
+    if (TTP->getDeclName())
+      Out << TTP->getDeclName();
   } else if (auto *TD = D->getTemplatedDecl())
     Visit(TD);
   else if (const auto *Concept = dyn_cast<ConceptDecl>(D)) {
@@ -1272,7 +1281,7 @@ void DeclPrinter::PrintObjCTypeParams(ObjCTypeParamList *Params) {
       break;
     }
 
-    Out << Param->getDeclName().getAsString();
+    Out << Param->getDeclName();
 
     if (Param->hasExplicitBound()) {
       Out << " : " << Param->getUnderlyingType().getAsString(Policy);
@@ -1457,7 +1466,12 @@ void DeclPrinter::VisitObjCProtocolDecl(ObjCProtocolDecl *PID) {
 }
 
 void DeclPrinter::VisitObjCCategoryImplDecl(ObjCCategoryImplDecl *PID) {
-  Out << "@implementation " << *PID->getClassInterface() << '(' << *PID <<")\n";
+  Out << "@implementation ";
+  if (const auto *CID = PID->getClassInterface())
+    Out << *CID;
+  else
+    Out << "<<error-type>>";
+  Out << '(' << *PID << ")\n";
 
   VisitDeclContext(PID, false);
   Out << "@end";
@@ -1465,7 +1479,11 @@ void DeclPrinter::VisitObjCCategoryImplDecl(ObjCCategoryImplDecl *PID) {
 }
 
 void DeclPrinter::VisitObjCCategoryDecl(ObjCCategoryDecl *PID) {
-  Out << "@interface " << *PID->getClassInterface();
+  Out << "@interface ";
+  if (const auto *CID = PID->getClassInterface())
+    Out << *CID;
+  else
+    Out << "<<error-type>>";
   if (auto TypeParams = PID->getTypeParamList()) {
     PrintObjCTypeParams(TypeParams);
   }
@@ -1769,10 +1787,11 @@ void DeclPrinter::VisitTemplateTypeParmDecl(const TemplateTypeParmDecl *TTP) {
 
   if (TTP->isParameterPack())
     Out << " ...";
-  else if (!TTP->getName().empty())
+  else if (TTP->getDeclName())
     Out << ' ';
 
-  Out << *TTP;
+  if (TTP->getDeclName())
+    Out << TTP->getDeclName();
 
   if (TTP->hasDefaultArgument()) {
     Out << " = ";

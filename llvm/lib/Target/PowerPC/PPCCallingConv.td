@@ -61,9 +61,6 @@ def RetCC_PPC_Cold : CallingConv<[
   CCIfType<[f64], CCAssignToReg<[F1]>>,
   CCIfType<[f128], CCIfSubtarget<"hasP9Vector()", CCAssignToReg<[V2]>>>,
 
-  CCIfType<[v4f64, v4f32, v4i1],
-           CCIfSubtarget<"hasQPX()", CCAssignToReg<[QF1]>>>,
-
   CCIfType<[v16i8, v8i16, v4i32, v2i64, v1i128, v4f32, v2f64],
            CCIfSubtarget<"hasAltivec()",
            CCAssignToReg<[V2]>>>
@@ -98,10 +95,6 @@ def RetCC_PPC : CallingConv<[
            CCIfSubtarget<"hasP9Vector()",
            CCAssignToReg<[V2, V3, V4, V5, V6, V7, V8, V9]>>>,
 
-  // QPX vectors are returned in QF1 and QF2. 
-  CCIfType<[v4f64, v4f32, v4i1],
-           CCIfSubtarget<"hasQPX()", CCAssignToReg<[QF1, QF2]>>>,
- 
   // Vector types returned as "direct" go into V2 .. V9; note that only the
   // ELFv2 ABI fully utilizes all these registers.
   CCIfType<[v16i8, v8i16, v4i32, v2i64, v1i128, v4f32, v2f64],
@@ -158,8 +151,6 @@ def RetCC_PPC64_ELF_FIS : CallingConv<[
   CCIfType<[f128],
            CCIfSubtarget<"hasP9Vector()",
            CCAssignToReg<[V2, V3, V4, V5, V6, V7, V8, V9]>>>,
-  CCIfType<[v4f64, v4f32, v4i1],
-           CCIfSubtarget<"hasQPX()", CCAssignToReg<[QF1, QF2]>>>,
   CCIfType<[v16i8, v8i16, v4i32, v2i64, v1i128, v4f32, v2f64],
            CCIfSubtarget<"hasAltivec()",
            CCAssignToReg<[V2, V3, V4, V5, V6, V7, V8, V9]>>>
@@ -223,9 +214,6 @@ def CC_PPC32_SVR4_Common : CallingConv<[
   CCIfType<[f32], CCIfSubtarget<"hasSPE()", CCAssignToStack<4, 4>>>,
   CCIfType<[f64], CCIfSubtarget<"hasSPE()", CCAssignToStack<8, 8>>>,
 
-  // QPX vectors that are stored in double precision need 32-byte alignment.
-  CCIfType<[v4f64, v4i1], CCAssignToStack<32, 32>>,
-
   // Vectors and float128 get 16-byte stack slots that are 16-byte aligned.
   CCIfType<[v16i8, v8i16, v4i32, v4f32, v2f64, v2i64], CCAssignToStack<16, 16>>,
   CCIfType<[f128], CCIfSubtarget<"hasP9Vector()", CCAssignToStack<16, 16>>>
@@ -243,10 +231,6 @@ def CC_PPC32_SVR4_VarArg : CallingConv<[
 // put vector arguments in vector registers before putting them on the stack.
 let Entry = 1 in
 def CC_PPC32_SVR4 : CallingConv<[
-  // QPX vectors mirror the scalar FP convention.
-  CCIfType<[v4f64, v4f32, v4i1], CCIfSubtarget<"hasQPX()",
-    CCAssignToReg<[QF1, QF2, QF3, QF4, QF5, QF6, QF7, QF8]>>>,
-
   // The first 12 Vector arguments are passed in AltiVec registers.
   CCIfType<[v16i8, v8i16, v4i32, v2i64, v1i128, v4f32, v2f64],
            CCIfSubtarget<"hasAltivec()", CCAssignToReg<[V2, V3, V4, V5, V6, V7,
@@ -315,22 +299,12 @@ def CSR_PPC64   : CalleeSavedRegs<(add X14, X15, X16, X17, X18, X19, X20,
                                         F27, F28, F29, F30, F31, CR2, CR3, CR4
                                    )>;
 
-// CSRs that are handled by prologue, epilogue.
-def CSR_SRV464_TLS_PE : CalleeSavedRegs<(add)>;
-
-def CSR_SVR464_ViaCopy : CalleeSavedRegs<(add CSR_PPC64)>;
 
 def CSR_PPC64_Altivec : CalleeSavedRegs<(add CSR_PPC64, CSR_Altivec)>;
 
-def CSR_SVR464_Altivec_ViaCopy : CalleeSavedRegs<(add CSR_PPC64_Altivec)>;
-
 def CSR_PPC64_R2 : CalleeSavedRegs<(add CSR_PPC64, X2)>;
 
-def CSR_SVR464_R2_ViaCopy : CalleeSavedRegs<(add CSR_PPC64_R2)>;
-
 def CSR_PPC64_R2_Altivec : CalleeSavedRegs<(add CSR_PPC64_Altivec, X2)>;
-
-def CSR_SVR464_R2_Altivec_ViaCopy : CalleeSavedRegs<(add CSR_PPC64_R2_Altivec)>;
 
 def CSR_NoRegs : CalleeSavedRegs<(add)>;
 

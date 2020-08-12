@@ -41,11 +41,6 @@
 
 namespace llvm {
 
-class ArrayType;
-class IntegerType;
-class PointerType;
-class StructType;
-class VectorType;
 template <class ConstantClass> struct ConstantAggrKeyType;
 
 /// Base class for constants with no operands.
@@ -156,9 +151,19 @@ public:
     return Val.getSExtValue();
   }
 
-  /// Return the constant as an llvm::Align. Note that this method can assert if
-  /// the value does not fit in 64 bits or is not a power of two.
-  inline Align getAlignValue() const { return Align(getZExtValue()); }
+  /// Return the constant as an llvm::MaybeAlign.
+  /// Note that this method can assert if the value does not fit in 64 bits or
+  /// is not a power of two.
+  inline MaybeAlign getMaybeAlignValue() const {
+    return MaybeAlign(getZExtValue());
+  }
+
+  /// Return the constant as an llvm::Align, interpreting `0` as `Align(1)`.
+  /// Note that this method can assert if the value does not fit in 64 bits or
+  /// is not a power of two.
+  inline Align getAlignValue() const {
+    return getMaybeAlignValue().valueOrOne();
+  }
 
   /// A helper method that can be used to determine if the constant contained
   /// within is equal to a constant.  This only works for very small values,
@@ -303,6 +308,7 @@ public:
   /// Return true if Ty is big enough to represent V.
   static bool isValueValidForType(Type *Ty, const APFloat &V);
   inline const APFloat &getValueAPF() const { return Val; }
+  inline const APFloat &getValue() const { return Val; }
 
   /// Return true if the value is positive or negative zero.
   bool isZero() const { return Val.isZero(); }
@@ -721,14 +727,15 @@ public:
     return getImpl(Data, Ty);
   }
 
-  /// getFP() constructors - Return a constant with array type with an element
-  /// count and element type of float with precision matching the number of
-  /// bits in the ArrayRef passed in. (i.e. half for 16bits, float for 32bits,
-  /// double for 64bits) Note that this can return a ConstantAggregateZero
-  /// object.
-  static Constant *getFP(LLVMContext &Context, ArrayRef<uint16_t> Elts);
-  static Constant *getFP(LLVMContext &Context, ArrayRef<uint32_t> Elts);
-  static Constant *getFP(LLVMContext &Context, ArrayRef<uint64_t> Elts);
+  /// getFP() constructors - Return a constant of array type with a float
+  /// element type taken from argument `ElementType', and count taken from
+  /// argument `Elts'.  The amount of bits of the contained type must match the
+  /// number of bits of the type contained in the passed in ArrayRef.
+  /// (i.e. half or bfloat for 16bits, float for 32bits, double for 64bits) Note
+  /// that this can return a ConstantAggregateZero object.
+  static Constant *getFP(Type *ElementType, ArrayRef<uint16_t> Elts);
+  static Constant *getFP(Type *ElementType, ArrayRef<uint32_t> Elts);
+  static Constant *getFP(Type *ElementType, ArrayRef<uint64_t> Elts);
 
   /// This method constructs a CDS and initializes it with a text string.
   /// The default behavior (AddNull==true) causes a null terminator to
@@ -780,14 +787,15 @@ public:
   static Constant *get(LLVMContext &Context, ArrayRef<float> Elts);
   static Constant *get(LLVMContext &Context, ArrayRef<double> Elts);
 
-  /// getFP() constructors - Return a constant with vector type with an element
-  /// count and element type of float with the precision matching the number of
-  /// bits in the ArrayRef passed in.  (i.e. half for 16bits, float for 32bits,
-  /// double for 64bits) Note that this can return a ConstantAggregateZero
-  /// object.
-  static Constant *getFP(LLVMContext &Context, ArrayRef<uint16_t> Elts);
-  static Constant *getFP(LLVMContext &Context, ArrayRef<uint32_t> Elts);
-  static Constant *getFP(LLVMContext &Context, ArrayRef<uint64_t> Elts);
+  /// getFP() constructors - Return a constant of vector type with a float
+  /// element type taken from argument `ElementType', and count taken from
+  /// argument `Elts'.  The amount of bits of the contained type must match the
+  /// number of bits of the type contained in the passed in ArrayRef.
+  /// (i.e. half or bfloat for 16bits, float for 32bits, double for 64bits) Note
+  /// that this can return a ConstantAggregateZero object.
+  static Constant *getFP(Type *ElementType, ArrayRef<uint16_t> Elts);
+  static Constant *getFP(Type *ElementType, ArrayRef<uint32_t> Elts);
+  static Constant *getFP(Type *ElementType, ArrayRef<uint64_t> Elts);
 
   /// Return a ConstantVector with the specified constant in each element.
   /// The specified constant has to be a of a compatible type (i8/i16/
@@ -901,6 +909,8 @@ protected:
     // Operation type (an Instruction opcode) is stored as the SubclassData.
     setValueSubclassData(Opcode);
   }
+
+  ~ConstantExpr() = default;
 
 public:
   // Static methods to construct a ConstantExpr of different kinds.  Note that

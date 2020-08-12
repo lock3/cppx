@@ -293,7 +293,7 @@ bool checkDebugifyMetadata(Module &M,
   // Skip modules without debugify metadata.
   NamedMDNode *NMD = M.getNamedMetadata("llvm.debugify");
   if (!NMD) {
-    dbg() << Banner << "Skipping module without debugify metadata\n";
+    dbg() << Banner << ": Skipping module without debugify metadata\n";
     return false;
   }
 
@@ -330,11 +330,10 @@ bool checkDebugifyMetadata(Module &M,
       }
 
       if (!DL) {
-        dbg() << "ERROR: Instruction with empty DebugLoc in function ";
+        dbg() << "WARNING: Instruction with empty DebugLoc in function ";
         dbg() << F.getName() << " --";
         I.print(dbg());
         dbg() << "\n";
-        HasErrors = true;
       }
     }
 

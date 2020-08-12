@@ -322,6 +322,8 @@ public:
       return wasm::ValType::V128;
     if (Type == "exnref")
       return wasm::ValType::EXNREF;
+    if (Type == "externref")
+      return wasm::ValType::EXTERNREF;
     return Optional<wasm::ValType>();
   }
 
@@ -442,7 +444,7 @@ public:
     Name = StringRef(NameLoc.getPointer(), Name.size());
 
     // WebAssembly has instructions with / in them, which AsmLexer parses
-    // as seperate tokens, so if we find such tokens immediately adjacent (no
+    // as separate tokens, so if we find such tokens immediately adjacent (no
     // whitespace), expand the name to include them:
     for (;;) {
       auto &Sep = Lexer.getTok();
@@ -700,7 +702,7 @@ public:
       // WebAssemblyAsmPrinter::EmitFunctionBodyStart.
       // TODO: would be good to factor this into a common function, but the
       // assembler and backend really don't share any common code, and this code
-      // parses the locals seperately.
+      // parses the locals separately.
       auto SymName = expectIdent();
       if (SymName.empty())
         return true;
@@ -845,6 +847,16 @@ public:
         auto &Op0 = Inst.getOperand(0);
         if (Op0.getImm() == -1)
           Op0.setImm(Align);
+      }
+      if (getSTI().getTargetTriple().isArch64Bit()) {
+        // Upgrade 32-bit loads/stores to 64-bit. These mostly differ by having
+        // an offset64 arg instead of offset32, but to the assembler matcher
+        // they're both immediates so don't get selected for.
+        auto Opc64 = WebAssembly::getWasm64Opcode(
+            static_cast<uint16_t>(Inst.getOpcode()));
+        if (Opc64 >= 0) {
+          Inst.setOpcode(Opc64);
+        }
       }
       Out.emitInstruction(Inst, getSTI());
       if (CurrentState == EndFunction) {

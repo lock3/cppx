@@ -14,6 +14,7 @@
 #define MLIR_IR_DIALECT_H
 
 #include "mlir/IR/OperationSupport.h"
+#include "mlir/Support/TypeID.h"
 
 namespace mlir {
 class DialectAsmParser;
@@ -48,6 +49,9 @@ public:
   MLIRContext *getContext() const { return context; }
 
   StringRef getNamespace() const { return name; }
+
+  /// Returns the unique identifier that corresponds to this dialect.
+  TypeID getTypeID() const { return dialectID; }
 
   /// Returns true if this dialect allows for unregistered operations, i.e.
   /// operations prefixed with the dialect namespace but not registered with
@@ -177,7 +181,7 @@ protected:
   ///       with the namespace followed by '.'.
   /// Example:
   ///       - "tf" for the TensorFlow ops like "tf.add".
-  Dialect(StringRef name, MLIRContext *context);
+  Dialect(StringRef name, MLIRContext *context, TypeID id);
 
   /// This method is used by derived classes to add their operations to the set.
   ///
@@ -190,13 +194,19 @@ protected:
 
   /// This method is used by derived classes to add their types to the set.
   template <typename... Args> void addTypes() {
-    (void)std::initializer_list<int>{0, (addSymbol(Args::getTypeID()), 0)...};
+    (void)std::initializer_list<int>{
+        0, (addType(Args::getTypeID(), AbstractType::get<Args>(*this)), 0)...};
   }
+  void addType(TypeID typeID, AbstractType &&typeInfo);
 
   /// This method is used by derived classes to add their attributes to the set.
   template <typename... Args> void addAttributes() {
-    (void)std::initializer_list<int>{0, (addSymbol(Args::getTypeID()), 0)...};
+    (void)std::initializer_list<int>{
+        0,
+        (addAttribute(Args::getTypeID(), AbstractAttribute::get<Args>(*this)),
+         0)...};
   }
+  void addAttribute(TypeID typeID, AbstractAttribute &&attrInfo);
 
   /// Enable support for unregistered operations.
   void allowUnknownOperations(bool allow = true) { unknownOpsAllowed = allow; }
@@ -214,18 +224,15 @@ protected:
   }
 
 private:
-  // Register a symbol(e.g. type) with its given unique class identifier.
-  void addSymbol(TypeID typeID);
-
   Dialect(const Dialect &) = delete;
   void operator=(Dialect &) = delete;
 
-  /// Register this dialect object with the specified context.  The context
-  /// takes ownership of the heap allocated dialect.
-  void registerDialect(MLIRContext *context);
-
   /// The namespace of this dialect.
   StringRef name;
+
+  /// The unique identifier of the derived Op class, this is used in the context
+  /// to allow registering multiple times the same dialect.
+  TypeID dialectID;
 
   /// This is the context that owns this Dialect object.
   MLIRContext *context;
@@ -252,20 +259,21 @@ private:
                            const DialectAllocatorFunction &function);
   template <typename ConcreteDialect>
   friend void registerDialect();
+  friend class MLIRContext;
 };
+
 /// Registers all dialects and hooks from the global registries with the
 /// specified MLIRContext.
+/// Note: This method is not thread-safe.
 void registerAllDialects(MLIRContext *context);
 
 /// Utility to register a dialect. Client can register their dialect with the
 /// global registry by calling registerDialect<MyDialect>();
+/// Note: This method is not thread-safe.
 template <typename ConcreteDialect> void registerDialect() {
-  Dialect::registerDialectAllocator(TypeID::get<ConcreteDialect>(),
-                                    [](MLIRContext *ctx) {
-                                      // Just allocate the dialect, the context
-                                      // takes ownership of it.
-                                      new ConcreteDialect(ctx);
-                                    });
+  Dialect::registerDialectAllocator(
+      TypeID::get<ConcreteDialect>(),
+      [](MLIRContext *ctx) { ctx->getOrCreateDialect<ConcreteDialect>(); });
 }
 
 /// DialectRegistration provides a global initializer that registers a Dialect
@@ -286,7 +294,7 @@ namespace llvm {
 template <typename T>
 struct isa_impl<T, ::mlir::Dialect> {
   static inline bool doit(const ::mlir::Dialect &dialect) {
-    return T::getDialectNamespace() == dialect.getNamespace();
+    return mlir::TypeID::get<T>() == dialect.getTypeID();
   }
 };
 } // namespace llvm

@@ -378,12 +378,11 @@ Slices:
             - Attribute:       DW_AT_type
               Form:            DW_FORM_ref_addr
       debug_aranges:
-        - Length:
-            TotalLength:     28
-          Version:         2
-          CuOffset:        0
-          AddrSize:        4
-          SegSize:         0
+        - Length:              28
+          Version:             2
+          CuOffset:            0
+          AddressSize:         4
+          SegmentSelectorSize: 0
           Descriptors:
             - Address:         0x000000000000BFF0
               Length:          16
@@ -408,8 +407,7 @@ Slices:
           - DieOffset:       0x0000006F
             Name:            char
       debug_info:
-        - Length:
-            TotalLength:     115
+        - Length:          115
           Version:         4
           AbbrOffset:      0
           AddrSize:        4
@@ -476,8 +474,7 @@ Slices:
             - AbbrCode:        0x00000000
               Values:          []
       debug_line:
-        - Length:
-            TotalLength:     55
+        - Length:          55
           Version:         4
           PrologueLength:  32
           MinInstLength:   1
@@ -859,12 +856,11 @@ Slices:
             - Attribute:       DW_AT_type
               Form:            DW_FORM_ref_addr
       debug_aranges:
-        - Length:
-            TotalLength:     44
-          Version:         2
-          CuOffset:        0
-          AddrSize:        8
-          SegSize:         0
+        - Length:              44
+          Version:             2
+          CuOffset:            0
+          AddressSize:         8
+          SegmentSelectorSize: 0
           Descriptors:
             - Address:         0x0000000100007F9C
               Length:          28
@@ -889,8 +885,7 @@ Slices:
           - DieOffset:       0x00000076
             Name:            char
       debug_info:
-        - Length:
-            TotalLength:     122
+        - Length:          122
           Version:         4
           AbbrOffset:      0
           AddrSize:        8
@@ -956,8 +951,7 @@ Slices:
             - AbbrCode:        0x00000000
               Values:          []
       debug_line:
-        - Length:
-            TotalLength:     59
+        - Length:          59
           Version:         4
           PrologueLength:  32
           MinInstLength:   1

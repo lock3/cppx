@@ -15,6 +15,7 @@
 #ifndef LLVM_CLANG_BASIC_TARGETBUILTINS_H
 #define LLVM_CLANG_BASIC_TARGETBUILTINS_H
 
+#include <algorithm>
 #include <stdint.h>
 #include "clang/Basic/Builtins.h"
 #include "llvm/Support/MathExtras.h"
@@ -118,6 +119,11 @@ namespace clang {
   };
   }
 
+  /// VE builtins
+  namespace VE {
+  enum { LastTIBuiltin = clang::Builtin::FirstTSBuiltin - 1, LastTSBuiltin };
+  }
+
   /// Flags to identify the types for overloaded Neon builtins.
   ///
   /// These must be kept in sync with the flags in utils/TableGen/NeonEmitter.h.
@@ -141,7 +147,8 @@ namespace clang {
       Poly128,
       Float16,
       Float32,
-      Float64
+      Float64,
+      BFloat16
     };
 
     NeonTypeFlags(unsigned F) : Flags(F) {}
@@ -155,7 +162,7 @@ namespace clang {
     EltType getEltType() const { return (EltType)(Flags & EltTypeMask); }
     bool isPoly() const {
       EltType ET = getEltType();
-      return ET == Poly8 || ET == Poly16;
+      return ET == Poly8 || ET == Poly16 || ET == Poly64;
     }
     bool isUnsigned() const { return (Flags & UnsignedFlag) != 0; }
     bool isQuad() const { return (Flags & QuadFlag) != 0; }
@@ -243,6 +250,11 @@ namespace clang {
     bool isAppendSVALL() const { return Flags & IsAppendSVALL; }
     bool isInsertOp1SVALL() const { return Flags & IsInsertOp1SVALL; }
     bool isGatherPrefetch() const { return Flags & IsGatherPrefetch; }
+    bool isReverseUSDOT() const { return Flags & ReverseUSDOT; }
+    bool isUndef() const { return Flags & IsUndef; }
+    bool isTupleCreate() const { return Flags & IsTupleCreate; }
+    bool isTupleGet() const { return Flags & IsTupleGet; }
+    bool isTupleSet() const { return Flags & IsTupleSet; }
 
     uint64_t getBits() const { return Flags; }
     bool isFlagSet(uint64_t Flag) const { return Flags & Flag; }
@@ -307,6 +319,14 @@ namespace clang {
       LastTSBuiltin
     };
   }
+
+  static constexpr uint64_t LargestBuiltinID = std::max<uint64_t>(
+      {NEON::FirstTSBuiltin, ARM::LastTSBuiltin, SVE::FirstTSBuiltin,
+       AArch64::LastTSBuiltin, BPF::LastTSBuiltin, PPC::LastTSBuiltin,
+       NVPTX::LastTSBuiltin, AMDGPU::LastTSBuiltin, X86::LastTSBuiltin,
+       Hexagon::LastTSBuiltin, Mips::LastTSBuiltin, XCore::LastTSBuiltin,
+       Le64::LastTSBuiltin, SystemZ::LastTSBuiltin,
+       WebAssembly::LastTSBuiltin});
 
 } // end namespace clang.
 

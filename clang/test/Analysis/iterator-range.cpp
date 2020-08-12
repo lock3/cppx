@@ -810,6 +810,19 @@ void prev_0_end(const std::vector<int> &V) {
   auto j = std::prev(i, 0); // no-warning
 }
 
+// std::prev() with int* for checking Loc value argument
+namespace std {
+template <typename T>
+T prev(T, int *);
+}
+
+void prev_loc_value(const std::vector<int> &V, int o) {
+
+  auto i = return_any_iterator(V.begin());
+  int *offset = &o;
+  auto j = std::prev(i, offset); // no-warning
+}
+
 //
 // Structure member dereference operators
 //
@@ -840,4 +853,89 @@ void deref_end_after_pop_back(std::vector<int> &V) {
 
   *i; // expected-warning{{Past-the-end iterator dereferenced}}
       // expected-note@-1{{Past-the-end iterator dereferenced}}
+}
+
+template<typename T>
+struct cont_with_ptr_iterator {
+  T* begin() const;
+  T* end() const;
+};
+
+void deref_end_ptr_iterator(const cont_with_ptr_iterator<S> &c) {
+  auto i = c.end();
+  (void) *i; // expected-warning{{Past-the-end iterator dereferenced}}
+             // expected-note@-1{{Past-the-end iterator dereferenced}}
+}
+
+void array_deref_end_ptr_iterator(const cont_with_ptr_iterator<S> &c) {
+  auto i = c.end();
+  (void) i[0]; // expected-warning{{Past-the-end iterator dereferenced}}
+               // expected-note@-1{{Past-the-end iterator dereferenced}}
+}
+
+void arrow_deref_end_ptr_iterator(const cont_with_ptr_iterator<S> &c) {
+  auto i = c.end();
+  (void) i->n; // expected-warning{{Past-the-end iterator dereferenced}}
+               // expected-note@-1{{Past-the-end iterator dereferenced}}
+}
+
+void arrow_star_deref_end_ptr_iterator(const cont_with_ptr_iterator<S> &c,
+                                       int S::*p) {
+  auto i = c.end();
+  (void)(i->*p); // expected-warning{{Past-the-end iterator dereferenced}}
+                 // expected-note@-1{{Past-the-end iterator dereferenced}}
+}
+
+void prefix_incr_end_ptr_iterator(const cont_with_ptr_iterator<S> &c) {
+  auto i = c.end();
+  ++i; // expected-warning{{Iterator incremented behind the past-the-end iterator}}
+       // expected-note@-1{{Iterator incremented behind the past-the-end iterator}}
+}
+
+void postfix_incr_end_ptr_iterator(const cont_with_ptr_iterator<S> &c) {
+  auto i = c.end();
+  i++; // expected-warning{{Iterator incremented behind the past-the-end iterator}}
+       // expected-note@-1{{Iterator incremented behind the past-the-end iterator}}
+}
+
+void prefix_decr_begin_ptr_iterator(const cont_with_ptr_iterator<S> &c) {
+  auto i = c.begin();
+  --i; // expected-warning{{Iterator decremented ahead of its valid range}}
+       // expected-note@-1{{Iterator decremented ahead of its valid range}}
+}
+
+void postfix_decr_begin_ptr_iterator(const cont_with_ptr_iterator<S> &c) {
+  auto i = c.begin();
+  i--; // expected-warning{{Iterator decremented ahead of its valid range}}
+       // expected-note@-1{{Iterator decremented ahead of its valid range}}
+}
+
+void prefix_add_2_end_ptr_iterator(const cont_with_ptr_iterator<S> &c) {
+  auto i = c.end();
+  (void)(i + 2); // expected-warning{{Iterator incremented behind the past-the-end iterator}}
+                 // expected-note@-1{{Iterator incremented behind the past-the-end iterator}}
+}
+
+void postfix_add_assign_2_end_ptr_iterator(const cont_with_ptr_iterator<S> &c) {
+  auto i = c.end();
+  i += 2; // expected-warning{{Iterator incremented behind the past-the-end iterator}}
+          // expected-note@-1{{Iterator incremented behind the past-the-end iterator}}
+}
+
+void prefix_minus_2_begin_ptr_iterator(const cont_with_ptr_iterator<S> &c) {
+  auto i = c.begin();
+  (void)(i - 2); // expected-warning{{Iterator decremented ahead of its valid range}}
+                 // expected-note@-1{{Iterator decremented ahead of its valid range}}
+}
+
+void postfix_minus_assign_2_begin_ptr_iterator(
+    const cont_with_ptr_iterator<S> &c) {
+  auto i = c.begin();
+  i -= 2; // expected-warning{{Iterator decremented ahead of its valid range}}
+          // expected-note@-1{{Iterator decremented ahead of its valid range}}
+}
+
+void ptr_iter_diff(cont_with_ptr_iterator<S> &c) {
+  auto i0 = c.begin(), i1 = c.end();
+  ptrdiff_t len = i1 - i0; // no-crash
 }

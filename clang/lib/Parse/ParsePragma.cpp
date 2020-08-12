@@ -108,6 +108,7 @@ struct PragmaSTDC_FENV_ACCESSHandler : public PragmaHandler {
      return;
     if (OOS == tok::OOS_ON) {
       PP.Diag(Tok, diag::warn_stdc_fenv_access_not_supported);
+      return;
     }
 
     MutableArrayRef<Token> Toks(PP.getPreprocessorAllocator().Allocate<Token>(1),
@@ -533,7 +534,7 @@ void Parser::HandlePragmaUnused() {
   assert(Tok.is(tok::annot_pragma_unused));
   SourceLocation UnusedLoc = ConsumeAnnotationToken();
   Actions.ActOnPragmaUnused(Tok, getCurScope(), UnusedLoc);
-  ConsumeToken(); // The argument token.
+  ConsumeIdentifier(); // The argument token.
 }
 
 void Parser::HandlePragmaVisibility() {
@@ -604,7 +605,7 @@ void Parser::HandlePragmaWeak() {
   SourceLocation PragmaLoc = ConsumeAnnotationToken();
   Actions.ActOnPragmaWeakID(Tok.getIdentifierInfo(), PragmaLoc,
                             Tok.getLocation());
-  ConsumeToken(); // The weak name.
+  ConsumeIdentifier(); // The weak name.
 }
 
 void Parser::HandlePragmaWeakAlias() {
@@ -612,10 +613,10 @@ void Parser::HandlePragmaWeakAlias() {
   SourceLocation PragmaLoc = ConsumeAnnotationToken();
   IdentifierInfo *WeakName = Tok.getIdentifierInfo();
   SourceLocation WeakNameLoc = Tok.getLocation();
-  ConsumeToken();
+  ConsumeIdentifier();
   IdentifierInfo *AliasName = Tok.getIdentifierInfo();
   SourceLocation AliasNameLoc = Tok.getLocation();
-  ConsumeToken();
+  ConsumeIdentifier();
   Actions.ActOnPragmaWeakAlias(WeakName, AliasName, PragmaLoc,
                                WeakNameLoc, AliasNameLoc);
 
@@ -626,10 +627,10 @@ void Parser::HandlePragmaRedefineExtname() {
   SourceLocation RedefLoc = ConsumeAnnotationToken();
   IdentifierInfo *RedefName = Tok.getIdentifierInfo();
   SourceLocation RedefNameLoc = Tok.getLocation();
-  ConsumeToken();
+  ConsumeIdentifier();
   IdentifierInfo *AliasName = Tok.getIdentifierInfo();
   SourceLocation AliasNameLoc = Tok.getLocation();
-  ConsumeToken();
+  ConsumeIdentifier();
   Actions.ActOnPragmaRedefineExtname(RedefName, AliasName, RedefLoc,
                                      RedefNameLoc, AliasNameLoc);
 }
@@ -640,21 +641,21 @@ void Parser::HandlePragmaFPContract() {
     static_cast<tok::OnOffSwitch>(
     reinterpret_cast<uintptr_t>(Tok.getAnnotationValue()));
 
-  LangOptions::FPContractModeKind FPC;
+  LangOptions::FPModeKind FPC;
   switch (OOS) {
   case tok::OOS_ON:
-    FPC = LangOptions::FPC_On;
+    FPC = LangOptions::FPM_On;
     break;
   case tok::OOS_OFF:
-    FPC = LangOptions::FPC_Off;
+    FPC = LangOptions::FPM_Off;
     break;
   case tok::OOS_DEFAULT:
     FPC = getLangOpts().getDefaultFPContractMode();
     break;
   }
 
-  Actions.ActOnPragmaFPContract(FPC);
-  ConsumeAnnotationToken();
+  SourceLocation PragmaLoc = ConsumeAnnotationToken();
+  Actions.ActOnPragmaFPContract(PragmaLoc, FPC);
 }
 
 void Parser::HandlePragmaFloatControl() {
@@ -679,21 +680,21 @@ void Parser::HandlePragmaFEnvAccess() {
     static_cast<tok::OnOffSwitch>(
     reinterpret_cast<uintptr_t>(Tok.getAnnotationValue()));
 
-  LangOptions::FEnvAccessModeKind FPC;
+  bool IsEnabled;
   switch (OOS) {
   case tok::OOS_ON:
-    FPC = LangOptions::FEA_On;
+    IsEnabled = true;
     break;
   case tok::OOS_OFF:
-    FPC = LangOptions::FEA_Off;
+    IsEnabled = false;
     break;
   case tok::OOS_DEFAULT: // FIXME: Add this cli option when it makes sense.
-    FPC = LangOptions::FEA_Off;
+    IsEnabled = false;
     break;
   }
 
   SourceLocation PragmaLoc = ConsumeAnnotationToken();
-  Actions.ActOnPragmaFEnvAccess(PragmaLoc, FPC);
+  Actions.ActOnPragmaFEnvAccess(PragmaLoc, IsEnabled);
 }
 
 
@@ -1210,7 +1211,7 @@ struct PragmaAttributeInfo {
 } // end anonymous namespace
 
 static StringRef getIdentifier(const Token &Tok) {
-  if (Tok.is(tok::identifier))
+  if (Tok.isIdentifier())
     return Tok.getIdentifierInfo()->getName();
   const char *S = tok::getKeywordSpelling(Tok.getKind());
   if (!S)
@@ -1262,7 +1263,7 @@ bool Parser::ParsePragmaAttributeSubjectMatchRuleSet(
   bool IsAny = false;
   BalancedDelimiterTracker AnyParens(*this, tok::l_paren);
   if (getIdentifier(Tok) == "any") {
-    AnyLoc = ConsumeToken();
+    AnyLoc = ConsumeIdentifier();
     IsAny = true;
     if (AnyParens.expectAndConsume())
       return true;
@@ -1283,7 +1284,7 @@ bool Parser::ParsePragmaAttributeSubjectMatchRuleSet(
       return true;
     }
     attr::SubjectMatchRule PrimaryRule = *Rule.first;
-    SourceLocation RuleLoc = ConsumeToken();
+    SourceLocation RuleLoc = ConsumeAsIdentifier();
 
     BalancedDelimiterTracker Parens(*this, tok::l_paren);
     if (isAbstractAttrMatcherRule(PrimaryRule)) {
@@ -1311,7 +1312,7 @@ bool Parser::ParsePragmaAttributeSubjectMatchRuleSet(
     }
     attr::SubjectMatchRule SubRule;
     if (SubRuleName == "unless") {
-      SourceLocation SubRuleLoc = ConsumeToken();
+      SourceLocation SubRuleLoc = ConsumeIdentifier();
       BalancedDelimiterTracker Parens(*this, tok::l_paren);
       if (Parens.expectAndConsume())
         return true;
@@ -1329,7 +1330,7 @@ bool Parser::ParsePragmaAttributeSubjectMatchRuleSet(
         return true;
       }
       SubRule = *SubRuleOrNone;
-      ConsumeToken();
+      ConsumeIdentifier();
       if (Parens.consumeClose())
         return true;
     } else {
@@ -1340,7 +1341,7 @@ bool Parser::ParsePragmaAttributeSubjectMatchRuleSet(
         return true;
       }
       SubRule = *SubRuleOrNone;
-      ConsumeToken();
+      ConsumeIdentifier();
     }
     SourceLocation RuleEndLoc = Tok.getLocation();
     LastMatchRuleEndLoc = RuleEndLoc;
@@ -1491,13 +1492,13 @@ void Parser::HandlePragmaAttribute() {
     if (ExpectAndConsume(tok::l_paren, diag::err_expected_lparen_after, "("))
       return SkipToEnd();
 
-    if (Tok.isNot(tok::identifier)) {
+    if (!isIdentifier()) {
       Diag(Tok, diag::err_pragma_attribute_expected_attribute_name);
       SkipToEnd();
       return;
     }
     IdentifierInfo *AttrName = Tok.getIdentifierInfo();
-    SourceLocation AttrNameLoc = ConsumeToken();
+    SourceLocation AttrNameLoc = ConsumeIdentifier();
 
     if (Tok.isNot(tok::l_paren))
       Attrs.addNew(AttrName, AttrNameLoc, nullptr, AttrNameLoc, nullptr, 0,
@@ -1523,7 +1524,7 @@ void Parser::HandlePragmaAttribute() {
               Tok.getIdentifierInfo(), /*ScopeName=*/nullptr,
               ParsedAttr::AS_GNU) != ParsedAttr::UnknownAttribute) {
         SourceLocation InsertStartLoc = Tok.getLocation();
-        ConsumeToken();
+        ConsumeIdentifier();
         if (Tok.is(tok::l_paren)) {
           ConsumeAnyToken();
           SkipUntil(tok::r_paren, StopBeforeMatch);
@@ -1570,7 +1571,7 @@ void Parser::HandlePragmaAttribute() {
     return;
   }
 
-  if (Tok.isNot(tok::identifier)) {
+  if (!isIdentifier()) {
     createExpectedAttributeSubjectRulesTokenDiagnostic(
         diag::err_pragma_attribute_invalid_subject_set_specifier, Attribute,
         MissingAttributeSubjectRulesRecoveryPoint::ApplyTo, *this);
@@ -1585,7 +1586,7 @@ void Parser::HandlePragmaAttribute() {
     SkipToEnd();
     return;
   }
-  ConsumeToken();
+  ConsumeIdentifier();
 
   if (!TryConsumeToken(tok::equal)) {
     createExpectedAttributeSubjectRulesTokenDiagnostic(
@@ -1714,7 +1715,7 @@ void PragmaPackHandler::HandlePragma(Preprocessor &PP,
     // In Apple gcc, #pragma pack(4) is equivalent to #pragma pack(push, 4)
     Action =
         PP.getLangOpts().ApplePragmaPack ? Sema::PSK_Push_Set : Sema::PSK_Set;
-  } else if (Tok.is(tok::identifier)) {
+  } else if (Tok.isIdentifier()) {
     const IdentifierInfo *II = Tok.getIdentifierInfo();
     if (II->isStr("show")) {
       Action = Sema::PSK_Show;
@@ -1738,7 +1739,7 @@ void PragmaPackHandler::HandlePragma(Preprocessor &PP,
           Alignment = Tok;
 
           PP.Lex(Tok);
-        } else if (Tok.is(tok::identifier)) {
+        } else if (Tok.isIdentifier()) {
           SlotLabel = Tok.getIdentifierInfo()->getName();
           PP.Lex(Tok);
 
@@ -1806,7 +1807,7 @@ void PragmaMSStructHandler::HandlePragma(Preprocessor &PP,
 
   Token Tok;
   PP.Lex(Tok);
-  if (Tok.isNot(tok::identifier)) {
+  if (!Tok.isIdentifier()) {
     PP.Diag(Tok.getLocation(), diag::warn_pragma_ms_struct);
     return;
   }
@@ -1851,7 +1852,7 @@ void PragmaClangSectionHandler::HandlePragma(Preprocessor &PP,
 
   PP.Lex(Tok); // eat 'section'
   while (Tok.isNot(tok::eod)) {
-    if (Tok.isNot(tok::identifier)) {
+    if (!Tok.isIdentifier()) {
       PP.Diag(Tok.getLocation(), diag::err_pragma_expected_clang_section_name) << "clang section";
       return;
     }
@@ -1872,6 +1873,7 @@ void PragmaClangSectionHandler::HandlePragma(Preprocessor &PP,
       return;
     }
 
+    SourceLocation PragmaLocation = Tok.getLocation();
     PP.Lex(Tok); // eat ['bss'|'data'|'rodata'|'text']
     if (Tok.isNot(tok::equal)) {
       PP.Diag(Tok.getLocation(), diag::err_pragma_clang_section_expected_equal) << SecKind;
@@ -1882,10 +1884,11 @@ void PragmaClangSectionHandler::HandlePragma(Preprocessor &PP,
     if (!PP.LexStringLiteral(Tok, SecName, "pragma clang section", false))
       return;
 
-    Actions.ActOnPragmaClangSection(Tok.getLocation(),
-      (SecName.size()? Sema::PragmaClangSectionAction::PCSA_Set :
-                       Sema::PragmaClangSectionAction::PCSA_Clear),
-       SecKind, SecName);
+    Actions.ActOnPragmaClangSection(
+        PragmaLocation,
+        (SecName.size() ? Sema::PragmaClangSectionAction::PCSA_Set
+                        : Sema::PragmaClangSectionAction::PCSA_Clear),
+        SecKind, SecName);
   }
 }
 
@@ -1897,7 +1900,7 @@ static void ParseAlignPragma(Preprocessor &PP, Token &FirstTok,
 
   if (IsOptions) {
     PP.Lex(Tok);
-    if (Tok.isNot(tok::identifier) ||
+    if (!Tok.isIdentifier() ||
         !Tok.getIdentifierInfo()->isStr("align")) {
       PP.Diag(Tok.getLocation(), diag::warn_pragma_options_expected_align);
       return;
@@ -1912,7 +1915,7 @@ static void ParseAlignPragma(Preprocessor &PP, Token &FirstTok,
   }
 
   PP.Lex(Tok);
-  if (Tok.isNot(tok::identifier)) {
+  if (!Tok.isIdentifier()) {
     PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_identifier)
       << (IsOptions ? "options" : "align");
     return;
@@ -1994,7 +1997,7 @@ void PragmaUnusedHandler::HandlePragma(Preprocessor &PP,
     PP.Lex(Tok);
 
     if (LexID) {
-      if (Tok.is(tok::identifier)) {
+      if (Tok.isIdentifier()) {
         Identifiers.push_back(Tok);
         LexID = false;
         continue;
@@ -2060,7 +2063,7 @@ void PragmaWeakHandler::HandlePragma(Preprocessor &PP,
 
   Token Tok;
   PP.Lex(Tok);
-  if (Tok.isNot(tok::identifier)) {
+  if (!Tok.isIdentifier()) {
     PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_identifier) << "weak";
     return;
   }
@@ -2073,7 +2076,7 @@ void PragmaWeakHandler::HandlePragma(Preprocessor &PP,
   if (Tok.is(tok::equal)) {
     HasAlias = true;
     PP.Lex(Tok);
-    if (Tok.isNot(tok::identifier)) {
+    if (!Tok.isIdentifier()) {
       PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_identifier)
           << "weak";
       return;
@@ -2121,7 +2124,7 @@ void PragmaRedefineExtnameHandler::HandlePragma(Preprocessor &PP,
 
   Token Tok;
   PP.Lex(Tok);
-  if (Tok.isNot(tok::identifier)) {
+  if (!Tok.isIdentifier()) {
     PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_identifier) <<
       "redefine_extname";
     return;
@@ -2130,7 +2133,7 @@ void PragmaRedefineExtnameHandler::HandlePragma(Preprocessor &PP,
   Token RedefName = Tok;
   PP.Lex(Tok);
 
-  if (Tok.isNot(tok::identifier)) {
+  if (!Tok.isIdentifier()) {
     PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_identifier)
         << "redefine_extname";
     return;
@@ -2181,7 +2184,7 @@ void PragmaOpenCLExtensionHandler::HandlePragma(Preprocessor &PP,
                                                 PragmaIntroducer Introducer,
                                                 Token &Tok) {
   PP.LexUnexpandedToken(Tok);
-  if (Tok.isNot(tok::identifier)) {
+  if (!Tok.isIdentifier()) {
     PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_identifier) <<
       "OPENCL";
     return;
@@ -2196,7 +2199,7 @@ void PragmaOpenCLExtensionHandler::HandlePragma(Preprocessor &PP,
   }
 
   PP.Lex(Tok);
-  if (Tok.isNot(tok::identifier)) {
+  if (!Tok.isIdentifier()) {
     PP.Diag(Tok.getLocation(), diag::warn_pragma_expected_predicate) << 0;
     return;
   }
@@ -2540,7 +2543,7 @@ void PragmaFloatControlHandler::HandlePragma(Preprocessor &PP,
 
   // Read the identifier.
   PP.Lex(Tok);
-  if (Tok.isNot(tok::identifier)) {
+  if (!Tok.isIdentifier()) {
     PP.Diag(Tok.getLocation(), diag::err_pragma_float_control_malformed);
     return;
   }
@@ -2717,12 +2720,12 @@ void PragmaCommentHandler::HandlePragma(Preprocessor &PP,
 
   // Read the identifier.
   PP.Lex(Tok);
-  if (Tok.isNot(tok::identifier)) {
+  if (!Tok.isIdentifier()) {
     PP.Diag(CommentLoc, diag::err_pragma_comment_malformed);
     return;
   }
 
-  // Verify that this is one of the 5 whitelisted options.
+  // Verify that this is one of the 5 explicitly listed options.
   IdentifierInfo *II = Tok.getIdentifierInfo();
   PragmaMSCommentKind Kind =
     llvm::StringSwitch<PragmaMSCommentKind>(II->getName())
@@ -2763,7 +2766,7 @@ void PragmaCommentHandler::HandlePragma(Preprocessor &PP,
   // FIXME: If the kind is "compiler" warn if the string is present (it is
   // ignored).
   // The MSDN docs say that "lib" and "linker" require a string and have a short
-  // whitelist of linker options they support, but in practice MSVC doesn't
+  // list of linker options they support, but in practice MSVC doesn't
   // issue a diagnostic.  Therefore neither does clang.
 
   if (Tok.isNot(tok::r_paren)) {
@@ -2796,7 +2799,7 @@ void PragmaOptimizeHandler::HandlePragma(Preprocessor &PP,
         << "clang optimize" << /*Expected=*/true << "'on' or 'off'";
     return;
   }
-  if (Tok.isNot(tok::identifier)) {
+  if (!Tok.isIdentifier()) {
     PP.Diag(Tok.getLocation(), diag::err_pragma_optimize_invalid_argument)
       << PP.getSpelling(Tok);
     return;
@@ -2825,7 +2828,7 @@ void PragmaOptimizeHandler::HandlePragma(Preprocessor &PP,
 namespace {
 /// Used as the annotation value for tok::annot_pragma_fp.
 struct TokFPAnnotValue {
-  enum FlagKinds { Contract };
+  enum FlagKinds { Contract, Reassociate };
   enum FlagValues { On, Off, Fast };
 
   FlagKinds FlagKind;
@@ -2840,19 +2843,20 @@ void PragmaFPHandler::HandlePragma(Preprocessor &PP,
   SmallVector<Token, 1> TokenList;
 
   PP.Lex(Tok);
-  if (Tok.isNot(tok::identifier)) {
+  if (!Tok.isIdentifier()) {
     PP.Diag(Tok.getLocation(), diag::err_pragma_fp_invalid_option)
         << /*MissingOption=*/true << "";
     return;
   }
 
-  while (Tok.is(tok::identifier)) {
+  while (Tok.isIdentifier()) {
     IdentifierInfo *OptionInfo = Tok.getIdentifierInfo();
 
     auto FlagKind =
         llvm::StringSwitch<llvm::Optional<TokFPAnnotValue::FlagKinds>>(
             OptionInfo->getName())
             .Case("contract", TokFPAnnotValue::Contract)
+            .Case("reassociate", TokFPAnnotValue::Reassociate)
             .Default(None);
     if (!FlagKind) {
       PP.Diag(Tok.getLocation(), diag::err_pragma_fp_invalid_option)
@@ -2868,9 +2872,10 @@ void PragmaFPHandler::HandlePragma(Preprocessor &PP,
     }
     PP.Lex(Tok);
 
-    if (Tok.isNot(tok::identifier)) {
+    if (!Tok.isIdentifier()) {
       PP.Diag(Tok.getLocation(), diag::err_pragma_fp_invalid_argument)
-          << PP.getSpelling(Tok) << OptionInfo->getName();
+          << PP.getSpelling(Tok) << OptionInfo->getName()
+          << (FlagKind == TokFPAnnotValue::Reassociate);
       return;
     }
     const IdentifierInfo *II = Tok.getIdentifierInfo();
@@ -2883,9 +2888,11 @@ void PragmaFPHandler::HandlePragma(Preprocessor &PP,
             .Case("fast", TokFPAnnotValue::Fast)
             .Default(llvm::None);
 
-    if (!FlagValue) {
+    if (!FlagValue || (FlagKind == TokFPAnnotValue::Reassociate &&
+                       FlagValue == TokFPAnnotValue::Fast)) {
       PP.Diag(Tok.getLocation(), diag::err_pragma_fp_invalid_argument)
-          << PP.getSpelling(Tok) << OptionInfo->getName();
+          << PP.getSpelling(Tok) << OptionInfo->getName()
+          << (FlagKind == TokFPAnnotValue::Reassociate);
       return;
     }
     PP.Lex(Tok);
@@ -2927,20 +2934,24 @@ void Parser::HandlePragmaFP() {
   auto *AnnotValue =
       reinterpret_cast<TokFPAnnotValue *>(Tok.getAnnotationValue());
 
-  LangOptions::FPContractModeKind FPC;
-  switch (AnnotValue->FlagValue) {
-  case TokFPAnnotValue::On:
-    FPC = LangOptions::FPC_On;
-    break;
-  case TokFPAnnotValue::Fast:
-    FPC = LangOptions::FPC_Fast;
-    break;
-  case TokFPAnnotValue::Off:
-    FPC = LangOptions::FPC_Off;
-    break;
+  if (AnnotValue->FlagKind == TokFPAnnotValue::Reassociate)
+    Actions.ActOnPragmaFPReassociate(
+        Tok.getLocation(), AnnotValue->FlagValue == TokFPAnnotValue::On);
+  else {
+    LangOptions::FPModeKind FPC;
+    switch (AnnotValue->FlagValue) {
+    case TokFPAnnotValue::Off:
+      FPC = LangOptions::FPM_Off;
+      break;
+    case TokFPAnnotValue::On:
+      FPC = LangOptions::FPM_On;
+      break;
+    case TokFPAnnotValue::Fast:
+      FPC = LangOptions::FPM_Fast;
+      break;
+    }
+    Actions.ActOnPragmaFPContract(Tok.getLocation(), FPC);
   }
-
-  Actions.ActOnPragmaFPContract(FPC);
   ConsumeAnnotationToken();
 }
 
@@ -3043,13 +3054,13 @@ void PragmaLoopHintHandler::HandlePragma(Preprocessor &PP,
 
   // Lex the optimization option and verify it is an identifier.
   PP.Lex(Tok);
-  if (Tok.isNot(tok::identifier)) {
+  if (!Tok.isIdentifier()) {
     PP.Diag(Tok.getLocation(), diag::err_pragma_loop_invalid_option)
         << /*MissingOption=*/true << "";
     return;
   }
 
-  while (Tok.is(tok::identifier)) {
+  while (Tok.isIdentifier()) {
     Token Option = Tok;
     IdentifierInfo *OptionInfo = Tok.getIdentifierInfo();
 
@@ -3088,7 +3099,7 @@ void PragmaLoopHintHandler::HandlePragma(Preprocessor &PP,
     Token LoopHintTok;
     LoopHintTok.startToken();
     LoopHintTok.setKind(tok::annot_pragma_loop_hint);
-    LoopHintTok.setLocation(PragmaName.getLocation());
+    LoopHintTok.setLocation(Introducer.Loc);
     LoopHintTok.setAnnotationEndLoc(PragmaName.getLocation());
     LoopHintTok.setAnnotationValue(static_cast<void *>(Info));
     TokenList.push_back(LoopHintTok);
@@ -3175,7 +3186,7 @@ void PragmaUnrollHintHandler::HandlePragma(Preprocessor &PP,
   auto TokenArray = std::make_unique<Token[]>(1);
   TokenArray[0].startToken();
   TokenArray[0].setKind(tok::annot_pragma_loop_hint);
-  TokenArray[0].setLocation(PragmaName.getLocation());
+  TokenArray[0].setLocation(Introducer.Loc);
   TokenArray[0].setAnnotationEndLoc(PragmaName.getLocation());
   TokenArray[0].setAnnotationValue(static_cast<void *>(Info));
   PP.EnterTokenStream(std::move(TokenArray), 1,
@@ -3208,7 +3219,7 @@ void PragmaMSIntrinsicHandler::HandlePragma(Preprocessor &PP,
 
   bool SuggestIntrinH = !PP.isMacroDefined("__INTRIN_H");
 
-  while (Tok.is(tok::identifier)) {
+  while (Tok.isIdentifier()) {
     IdentifierInfo *II = Tok.getIdentifierInfo();
     if (!II->getBuiltinID())
       PP.Diag(Tok.getLocation(), diag::warn_pragma_intrinsic_builtin)
@@ -3346,7 +3357,7 @@ void PragmaAttributeHandler::HandlePragma(Preprocessor &PP,
       PragmaAttributeInfo(AttributesForPragmaAttribute);
 
   // Parse the optional namespace followed by a period.
-  if (Tok.is(tok::identifier)) {
+  if (Tok.isIdentifier()) {
     IdentifierInfo *II = Tok.getIdentifierInfo();
     if (!II->isStr("push") && !II->isStr("pop")) {
       Info->Namespace = II;

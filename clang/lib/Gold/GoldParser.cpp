@@ -130,6 +130,7 @@ struct EnclosingAngles : EnclosingTokens<enc::Angles>
 } // namespace
 
 static Syntax *makeOperator(const SyntaxContext &Ctx,
+                            Parser &P,
                             clang::SourceLocation Loc,
                             llvm::StringRef Op);
 static Syntax *makeList(const SyntaxContext &Ctx,
@@ -404,11 +405,12 @@ bool Parser::parsePreattr() {
 
   AttributeScope AttrScope(InAttribute);
 
-  // Don't parse an attribute if the angles are empty.
-  Syntax *Arg = !(nextTokenIs(tok::Greater) || nextTokenIs(tok::GreaterEqual))
-    ? parseExpr() : nullptr;
+  // Don't parse an attribute if the brackets are empty.
+  Syntax *Arg = nextTokenIs(tok::RightBracket) ? nullptr : parseExpr();
 
   if (!Brackets.expectClose())
+    return true;
+  if (!Arg)
     return true;
 
   Attribute *Attr = makeAttr(Context, Arg);
@@ -644,13 +646,23 @@ Syntax *Parser::parseMul() {
 Syntax *Parser::parseIf()
 {
   Token if_tok = expectToken("if");
+
+  // FIXME: only allow attributes here for `if:` style syntax.
+  while (nextTokenIs(tok::Less))
+    Preattributes.push_back(parsePostAttr());
+
   Syntax *cond = nextTokenIs(tok::Colon) ? parseBlock() : parseParen();
 
+  while (nextTokenIs(tok::Less))
+    Preattributes.push_back(parsePostAttr());
+
   Syntax *then_block;
-  if (matchToken("then"))
+  if (matchToken("then")) {
     then_block = nextTokenIs(tok::Colon) ? parseBlock() : parseExpr();
-  else
+  } else {
+    matchToken("do");
     then_block = parseBlock();
+  }
 
   Syntax *else_macro;
   if (Token else_tok = matchToken("else"))
@@ -669,6 +681,12 @@ Syntax *Parser::parseIf()
   }
 
   return onIf(if_tok, cond, then_block, else_macro);
+
+  // Syntax *OperatorIf =
+  //   cast<CallSyntax>(cast<MacroSyntax>(Ret)->getCall())->getCallee();
+  // for (Attribute *Attr : Attributes)
+  //   OperatorIf->addAttribute(Attr);
+  // return Ret;
 }
 
 Syntax *Parser::parseWhile()
@@ -1083,7 +1101,7 @@ Syntax *Parser::parseArrayPrefix()
 
   Syntax *Map = parsePre();
   return new (Context)
-    CallSyntax(makeOperator(Context, Arg->getLoc(), "[]"),
+    CallSyntax(makeOperator(Context, *this, Arg->getLoc(), "[]"),
                makeList(Context, {Arg, Map}));
 }
 
@@ -1101,7 +1119,7 @@ Syntax *Parser::parseNNSPrefix()
 
   Syntax *Map = parsePre();
   return new (Context)
-    CallSyntax(makeOperator(Context, Arg->getLoc(), "()"),
+    CallSyntax(makeOperator(Context, *this, Arg->getLoc(), "()"),
                makeList(Context, {Arg, Map}));
 }
 
@@ -1138,10 +1156,10 @@ bool Parser::scanNNSPrefix() {
   return false;
 }
 
-Syntax *Parser::parsePostAttr(Syntax *Pre) {
+Attribute *Parser::parsePostAttr() {
   EnclosingAngles Angles(*this);
   if (!Angles.expectOpen())
-    return onError();
+    return nullptr;
 
   GreaterThanIsOperatorScope GTIOS(GreaterThanIsOperator, false);
   AttributeScope AttrScope(InAttribute);
@@ -1161,9 +1179,15 @@ Syntax *Parser::parsePostAttr(Syntax *Pre) {
   }
 
   if (!Angles.expectClose())
-    return onError();
+    return nullptr;
 
-  Attribute *Attr = makeAttr(Context, Arg);
+  return makeAttr(Context, Arg);
+}
+
+Syntax *Parser::parsePostAttr(Syntax *Pre) {
+  Attribute *Attr = parsePostAttr();
+  if (!Attr)
+    return onError();
 
   Pre->addAttribute(Attr);
 
@@ -1357,6 +1381,7 @@ Syntax *Parser::parseCatch() {
 
 // Returns the identifier 'operator\'<op>\''.
 static Syntax *makeOperator(const SyntaxContext &Ctx,
+                            Parser &P,
                             clang::SourceLocation Loc,
                             llvm::StringRef Op)
 {
@@ -1364,11 +1389,12 @@ static Syntax *makeOperator(const SyntaxContext &Ctx,
   std::string Name = "operator'" + std::string(Op) + "'";
   Symbol Sym = getSymbol(Name);
   Token Tok(tok::Identifier, Loc, Sym);
-  return new (Ctx) AtomSyntax(Tok);
+  return P.onAtom(Tok);
 }
 
-static Syntax *makeOperator(const SyntaxContext &Ctx, Token const& Tok) {
-  return makeOperator(Ctx, Tok.getLocation(), Tok.getSpelling());
+static Syntax *makeOperator(const SyntaxContext &Ctx, Parser &P,
+                            Token const& Tok) {
+  return makeOperator(Ctx, P, Tok.getLocation(), Tok.getSpelling());
 }
 
 static Syntax *makeList(const SyntaxContext &Ctx,
@@ -1377,13 +1403,13 @@ static Syntax *makeList(const SyntaxContext &Ctx,
   return new (Ctx) ListSyntax(createArray(Ctx, List), List.size());
 }
 
-static Syntax *makeCall(const SyntaxContext &Ctx, const Token& Tok) {
-  return new (Ctx) CallSyntax(makeOperator(Ctx, Tok), makeList(Ctx, {}));
+static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P, const Token& Tok) {
+  return new (Ctx) CallSyntax(makeOperator(Ctx, P, Tok), makeList(Ctx, {}));
 }
 
-static Syntax *makeCall(const SyntaxContext &Ctx, const Token& Tok,
-                        Syntax *Args) {
-  return new (Ctx) CallSyntax(makeOperator(Ctx, Tok), Args);
+static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P,
+                        const Token& Tok, Syntax *Args) {
+  return new (Ctx) CallSyntax(makeOperator(Ctx, P, Tok), Args);
 }
 
 static Attribute *makeAttr(const SyntaxContext &Ctx, Syntax *Arg) {
@@ -1525,21 +1551,21 @@ Syntax *Parser::onList(ArraySemantic S,
 
 Syntax *Parser::onBinary(Token const& Tok, Syntax *e1, Syntax *e2) {
   return new (Context)
-    CallSyntax(makeOperator(Context, Tok), makeList(Context, {e1, e2}));
+    CallSyntax(makeOperator(Context, *this, Tok), makeList(Context, {e1, e2}));
 }
 
 Syntax *Parser::onUnaryOrNull(Token const& Tok, Syntax *e1) {
   if (e1) {
     return new (Context)
-      CallSyntax(makeOperator(Context, Tok), makeList(Context, {e1}));
+      CallSyntax(makeOperator(Context, *this, Tok), makeList(Context, {e1}));
   }
   return new (Context)
-    CallSyntax(makeOperator(Context, Tok), makeList(Context, { }));
+    CallSyntax(makeOperator(Context, *this, Tok), makeList(Context, { }));
 }
 
 Syntax *Parser::onUnary(Token const& Tok, Syntax *e1) {
   return new (Context)
-    CallSyntax(makeOperator(Context, Tok), makeList(Context, {e1}));
+    CallSyntax(makeOperator(Context, *this, Tok), makeList(Context, {e1}));
 }
 
 Syntax *Parser::onCall(TokenPair const& Toks, Syntax *e1, Syntax *e2) {
@@ -1560,20 +1586,21 @@ Syntax *Parser::onMacro(Syntax *e1, Syntax *e2) {
 }
 
 Syntax *Parser::onCatch(const Token &Catch, Syntax *Args, Syntax *Block) {
-  return new (Context) MacroSyntax(makeCall(Context, Catch, Args),
+  return new (Context) MacroSyntax(makeCall(Context, *this, Catch, Args),
                                    Block, nullptr);
 }
 
 Syntax *Parser::onElse(Token const& Tok, Syntax *e1) {
-  return new (Context) MacroSyntax(makeCall(Context, Tok), e1, nullptr);
+  return new (Context) MacroSyntax(makeCall(Context, *this, Tok), e1, nullptr);
 }
 
 Syntax *Parser::onIf(Token const& Tok, Syntax *e1, Syntax *e2, Syntax *e3) {
-  return new (Context) MacroSyntax(makeCall(Context, Tok, e1), e2, e3);
+  return new (Context) MacroSyntax(makeCall(Context, *this, Tok, e1), e2, e3);
 }
 
 Syntax *Parser::onLoop(Token const& Tok, Syntax *e1, Syntax *e2) {
-  return new (Context) MacroSyntax(makeCall(Context, Tok, e1), e2, nullptr);
+  return new (Context) MacroSyntax(makeCall(Context, *this, Tok, e1),
+                                   e2, nullptr);
 }
 
 Syntax *Parser::onFile(const llvm::SmallVectorImpl<Syntax*> &Vec) {

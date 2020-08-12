@@ -95,7 +95,7 @@ static MCAsmInfo *createPPCMCAsmInfo(const MCRegisterInfo &MRI,
   // Initial state of the frame pointer is R1.
   unsigned Reg = isPPC64 ? PPC::X1 : PPC::R1;
   MCCFIInstruction Inst =
-      MCCFIInstruction::createDefCfa(nullptr, MRI.getDwarfRegNum(Reg, true), 0);
+      MCCFIInstruction::cfiDefCfa(nullptr, MRI.getDwarfRegNum(Reg, true), 0);
   MAI->addInitialFrameState(Inst);
 
   return MAI;
@@ -120,14 +120,18 @@ public:
       : PPCTargetStreamer(S), OS(OS) {}
 
   void emitTCEntry(const MCSymbol &S) override {
-    const MCAsmInfo *MAI = Streamer.getContext().getAsmInfo();
-    OS << "\t.tc ";
-    OS << (MAI->getSymbolsHaveSMC()
-               ? cast<MCSymbolXCOFF>(S).getUnqualifiedName()
-               : S.getName());
-    OS << "[TC],";
-    OS << S.getName();
-    OS << '\n';
+    if (const MCSymbolXCOFF *XSym = dyn_cast<MCSymbolXCOFF>(&S)) {
+      MCSymbolXCOFF *TCSym =
+          cast<MCSymbolXCOFF>(Streamer.getContext().getOrCreateSymbol(
+              XSym->getSymbolTableName() + "[TC]"));
+      OS << "\t.tc " << TCSym->getName() << "," << XSym->getName() << '\n';
+
+      if (TCSym->hasRename())
+        Streamer.emitXCOFFRenameDirective(TCSym, TCSym->getSymbolTableName());
+      return;
+    }
+
+    OS << "\t.tc " << S.getName() << "[TC]," << S.getName() << '\n';
   }
 
   void emitMachine(StringRef CPU) override {

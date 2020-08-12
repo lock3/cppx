@@ -284,7 +284,7 @@ GDBRemoteCommunication::WaitForPacketNoLock(StringExtractorGDBRemote &packet,
     LLDB_LOGV(log,
               "Read(buffer, sizeof(buffer), timeout = {0}, "
               "status = {1}, error = {2}) => bytes_read = {3}",
-              timeout, Communication::ConnectionStatusAsCString(status), error,
+              timeout, Communication::ConnectionStatusAsString(status), error,
               bytes_read);
 
     if (bytes_read > 0) {
@@ -763,7 +763,7 @@ GDBRemoteCommunication::CheckForPacket(const uint8_t *src, size_t src_len,
         if (m_bytes[0] == '$' && total_length > 4) {
           for (size_t i = 0; !binary && i < total_length; ++i) {
             unsigned char c = m_bytes[i];
-            if (isprint(c) == 0 && isspace(c) == 0) {
+            if (!llvm::isPrint(c) && !llvm::isSpace(c)) {
               binary = true;
             }
           }

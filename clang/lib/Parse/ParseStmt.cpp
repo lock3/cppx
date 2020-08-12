@@ -210,7 +210,15 @@ Retry:
     cutOffParsing();
     return StmtError();
 
-  case tok::identifier: {
+  case tok::kw_unqualid: {
+    if (AnnotateIdentifierSplice())
+      return StmtError();
+
+    LLVM_FALLTHROUGH;
+  }
+
+  case tok::identifier:
+  case tok::annot_identifier_splice: {
     Token Next = NextToken();
     if (Next.is(tok::colon)) { // C99 6.8.1: labeled-statement
       // identifier ':' statement
@@ -233,7 +241,7 @@ Retry:
       }
 
       // If the identifier was typo-corrected, try again.
-      if (Tok.isNot(tok::identifier))
+      if (!isIdentifier())
         goto Retry;
     }
 
@@ -511,9 +519,9 @@ StmtResult Parser::ParseSEHTryBlock() {
     return TryBlock;
 
   StmtResult Handler;
-  if (Tok.is(tok::identifier) &&
+  if (isIdentifier() &&
       Tok.getIdentifierInfo() == getSEHExceptKeyword()) {
-    SourceLocation Loc = ConsumeToken();
+    SourceLocation Loc = ConsumeIdentifier();
     Handler = ParseSEHExceptBlock(Loc);
   } else if (Tok.is(tok::kw___finally)) {
     SourceLocation Loc = ConsumeToken();
@@ -626,7 +634,7 @@ StmtResult Parser::ParseSEHLeaveStatement() {
 ///
 StmtResult Parser::ParseLabeledStatement(ParsedAttributesWithRange &attrs,
                                          ParsedStmtContext StmtCtx) {
-  assert(Tok.is(tok::identifier) && Tok.getIdentifierInfo() &&
+  assert(isIdentifier() && Tok.getIdentifierInfo() &&
          "Not an identifier!");
 
   // The substatement is always a 'statement', not a 'declaration', but is
@@ -634,7 +642,7 @@ StmtResult Parser::ParseLabeledStatement(ParsedAttributesWithRange &attrs,
   StmtCtx &= ~ParsedStmtContext::AllowDeclarationsInC;
 
   Token IdentTok = Tok;  // Save the whole token.
-  ConsumeToken();  // eat the identifier.
+  ConsumeIdentifier();
 
   assert(Tok.is(tok::colon) && "Not a label!");
 
@@ -1078,13 +1086,13 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
 
     SmallVector<Decl *, 8> DeclsInGroup;
     while (1) {
-      if (Tok.isNot(tok::identifier)) {
+      if (!isIdentifier()) {
         Diag(Tok, diag::err_expected) << tok::identifier;
         break;
       }
 
       IdentifierInfo *II = Tok.getIdentifierInfo();
-      SourceLocation IdLoc = ConsumeToken();
+      SourceLocation IdLoc = ConsumeIdentifier();
       DeclsInGroup.push_back(Actions.LookupOrCreateLabel(II, IdLoc, LabelLoc));
 
       if (!TryConsumeToken(tok::comma))
@@ -1197,10 +1205,14 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
 /// should try to recover harder.  It returns false if the condition is
 /// successfully parsed.  Note that a successful parse can still have semantic
 /// errors in the condition.
+/// Additionally, if LParenLoc and RParenLoc are non-null, it will assign
+/// the location of the outer-most '(' and ')', respectively, to them.
 bool Parser::ParseParenExprOrCondition(StmtResult *InitStmt,
                                        Sema::ConditionResult &Cond,
                                        SourceLocation Loc,
-                                       Sema::ConditionKind CK) {
+                                       Sema::ConditionKind CK,
+                                       SourceLocation *LParenLoc,
+                                       SourceLocation *RParenLoc) {
   BalancedDelimiterTracker T(*this, tok::l_paren);
   T.consumeOpen();
 
@@ -1229,6 +1241,13 @@ bool Parser::ParseParenExprOrCondition(StmtResult *InitStmt,
 
   // Otherwise the condition is valid or the rparen is present.
   T.consumeClose();
+
+  if (LParenLoc != nullptr) {
+    *LParenLoc = T.getOpenLocation();
+  }
+  if (RParenLoc != nullptr) {
+    *RParenLoc = T.getCloseLocation();
+  }
 
   // Check for extraneous ')'s to catch things like "if (foo())) {".  We know
   // that all callers are looking for a statement after the condition, so ")"
@@ -1326,7 +1345,7 @@ struct MisleadingIndentationChecker {
          !Tok.isAtStartOfLine()) &&
         SM.getPresumedLineNumber(StmtLoc) !=
             SM.getPresumedLineNumber(Tok.getLocation()) &&
-        (Tok.isNot(tok::identifier) ||
+        (!P.isIdentifier() ||
          P.getPreprocessor().LookAhead(0).isNot(tok::colon))) {
       P.Diag(Tok.getLocation(), diag::warn_misleading_indentation) << Kind;
       P.Diag(StmtLoc, diag::note_previous_statement);
@@ -1398,6 +1417,8 @@ StmtResult Parser::ParseIfStatement(SourceLocation *TrailingElseLoc) {
   if (IsConstexpr)
     ConstexprCondition = Cond.getKnownValue();
 
+  bool IsBracedThen = Tok.is(tok::l_brace);
+
   // C99 6.8.4p3 - In C99, the body of the if statement is a scope, even if
   // there is no compound stmt.  C90 does not have this clause.  We only do this
   // if the body isn't a compound statement to avoid push/pop in common cases.
@@ -1416,7 +1437,7 @@ StmtResult Parser::ParseIfStatement(SourceLocation *TrailingElseLoc) {
   //    would have to notify ParseStatement not to create a new scope. It's
   //    simpler to let it create a new scope.
   //
-  ParseScope InnerScope(this, Scope::DeclScope, C99orCXX, Tok.is(tok::l_brace));
+  ParseScope InnerScope(this, Scope::DeclScope, C99orCXX, IsBracedThen);
 
   MisleadingIndentationChecker MIChecker(*this, MSK_if, IfLoc);
 
@@ -1477,7 +1498,7 @@ StmtResult Parser::ParseIfStatement(SourceLocation *TrailingElseLoc) {
     // Pop the 'else' scope if needed.
     InnerScope.Exit();
   } else if (Tok.is(tok::code_completion)) {
-    Actions.CodeCompleteAfterIf(getCurScope());
+    Actions.CodeCompleteAfterIf(getCurScope(), IsBracedThen);
     cutOffParsing();
     return StmtError();
   } else if (InnerStatementTrailingElseLoc.isValid()) {
@@ -1630,8 +1651,10 @@ StmtResult Parser::ParseWhileStatement(SourceLocation *TrailingElseLoc) {
 
   // Parse the condition.
   Sema::ConditionResult Cond;
+  SourceLocation LParen;
+  SourceLocation RParen;
   if (ParseParenExprOrCondition(nullptr, Cond, WhileLoc,
-                                Sema::ConditionKind::Boolean))
+                                Sema::ConditionKind::Boolean, &LParen, &RParen))
     return StmtError();
 
   // C99 6.8.5p5 - In C99, the body of the while statement is a scope, even if
@@ -1661,7 +1684,7 @@ StmtResult Parser::ParseWhileStatement(SourceLocation *TrailingElseLoc) {
   if (Cond.isInvalid() || Body.isInvalid())
     return StmtError();
 
-  return Actions.ActOnWhileStmt(WhileLoc, Cond, Body.get());
+  return Actions.ActOnWhileStmt(WhileLoc, LParen, Cond, RParen, Body.get());
 }
 
 /// ParseDoStatement
@@ -1737,7 +1760,7 @@ StmtResult Parser::ParseDoStatement() {
 }
 
 bool Parser::isForRangeIdentifier() {
-  assert(Tok.is(tok::identifier));
+  assert(isIdentifier());
 
   const Token &Next = NextToken();
   if (Next.is(tok::colon))
@@ -1745,7 +1768,7 @@ bool Parser::isForRangeIdentifier() {
 
   if (Next.isOneOf(tok::l_square, tok::kw_alignas)) {
     TentativeParsingAction PA(*this);
-    ConsumeToken();
+    ConsumeIdentifier();
     SkipCXX11Attributes();
     bool Result = Tok.is(tok::colon);
     PA.Revert();
@@ -1856,11 +1879,11 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
     if (!Tok.hasLeadingEmptyMacro() && !SemiLoc.isMacroID())
       EmptyInitStmtSemiLoc = SemiLoc;
     ConsumeToken();
-  } else if (getLangOpts().CPlusPlus && Tok.is(tok::identifier) &&
+  } else if (getLangOpts().CPlusPlus && isIdentifier() &&
              isForRangeIdentifier()) {
     ProhibitAttributes(attrs);
     IdentifierInfo *Name = Tok.getIdentifierInfo();
-    SourceLocation Loc = ConsumeToken();
+    SourceLocation Loc = ConsumeIdentifier();
     MaybeParseCXX11Attributes(attrs);
 
     ForRangeInfo.ColonLoc = ConsumeToken();
@@ -1909,7 +1932,7 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
     } else if ((ForEach = isTokIdentifier_in())) {
       Actions.ActOnForEachDeclStmt(DG);
       // ObjC: for (id x in expr)
-      ConsumeToken(); // consume 'in'
+      ConsumeIdentifier(); // consume 'in'
 
       if (Tok.is(tok::code_completion)) {
         Actions.CodeCompleteObjCForCollection(getCurScope(), DG);
@@ -1945,7 +1968,7 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
     if (Tok.is(tok::semi)) {
       ConsumeToken();
     } else if (ForEach) {
-      ConsumeToken(); // consume 'in'
+      ConsumeIdentifier(); // consume 'in'
 
       if (Tok.is(tok::code_completion)) {
         Actions.CodeCompleteObjCForCollection(getCurScope(), nullptr);
@@ -2153,11 +2176,11 @@ StmtResult Parser::ParseGotoStatement() {
   SourceLocation GotoLoc = ConsumeToken();  // eat the 'goto'.
 
   StmtResult Res;
-  if (Tok.is(tok::identifier)) {
+  if (isIdentifier()) {
     LabelDecl *LD = Actions.LookupOrCreateLabel(Tok.getIdentifierInfo(),
                                                 Tok.getLocation());
     Res = Actions.ActOnGotoStmt(GotoLoc, Tok.getLocation(), LD);
-    ConsumeToken();
+    ConsumeIdentifier();
   } else if (Tok.is(tok::star)) {
     // GNU indirect goto extension.
     Diag(Tok, diag::ext_gnu_indirect_goto);
@@ -2249,6 +2272,8 @@ StmtResult Parser::ParsePragmaLoopHint(StmtVector &Stmts,
   // Create temporary attribute list.
   ParsedAttributesWithRange TempAttrs(AttrFactory);
 
+  SourceLocation StartLoc = Tok.getLocation();
+
   // Get loop hints and consume annotated token.
   while (Tok.is(tok::annot_pragma_loop_hint)) {
     LoopHint Hint;
@@ -2269,6 +2294,12 @@ StmtResult Parser::ParsePragmaLoopHint(StmtVector &Stmts,
       Stmts, StmtCtx, TrailingElseLoc, Attrs);
 
   Attrs.takeAllFrom(TempAttrs);
+
+  // Start of attribute range may already be set for some invalid input.
+  // See PR46336.
+  if (Attrs.Range.getBegin().isInvalid())
+    Attrs.Range.setBegin(StartLoc);
+
   return S;
 }
 
@@ -2418,17 +2449,21 @@ StmtResult Parser::ParseCXXTryBlockCommon(SourceLocation TryLoc, bool FnTry) {
 
   // Borland allows SEH-handlers with 'try'
 
-  if ((Tok.is(tok::identifier) &&
+  if ((isIdentifier() &&
        Tok.getIdentifierInfo() == getSEHExceptKeyword()) ||
       Tok.is(tok::kw___finally)) {
     // TODO: Factor into common return ParseSEHHandlerCommon(...)
     StmtResult Handler;
     if(Tok.getIdentifierInfo() == getSEHExceptKeyword()) {
-      SourceLocation Loc = ConsumeToken();
+      SourceLocation Loc = ConsumeIdentifier();
       Handler = ParseSEHExceptBlock(Loc);
     }
     else {
-      SourceLocation Loc = ConsumeToken();
+      SourceLocation Loc;
+      if (Tok.is(tok::kw___finally))
+        Loc = ConsumeToken();
+      else
+        Loc = ConsumeIdentifier();
       Handler = ParseSEHFinallyBlock(Loc);
     }
     if(Handler.isInvalid())
