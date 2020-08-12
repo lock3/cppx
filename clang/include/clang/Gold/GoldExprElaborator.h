@@ -93,8 +93,11 @@ public:
                                      const Syntax *RHS);
   clang::Expr *elaborateNestedLookupAccess(const clang::Expr *Previous,
                                            const Syntax *RHS);
-  clang::Expr *elaborateNNS(clang::CppxNamespaceDecl *NS,
+  clang::Expr *elaborateNNS(clang::NamedDecl *NS,
                             const CallSyntax *Op, const Syntax *RHS);
+  clang::Expr *elaborateNsAliasSpecifier(clang::CppxNamespaceDecl *NS,
+                                         const CallSyntax *Op,
+                                         const Syntax *RHS);
   clang::Expr *elaborateGlobalNNS(const CallSyntax *Op, const Syntax *RHS);
   clang::Expr *elaborateUnaryOp(const CallSyntax *S, clang::UnaryOperatorKind Op);
   clang::Expr *elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);

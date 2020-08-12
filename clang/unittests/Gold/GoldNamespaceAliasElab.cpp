@@ -22,8 +22,80 @@ using namespace gold;
 TEST(GoldNamespaceAlias, GlobalDeclaration) {
     StringRef Code = R"(
 ns : namespace = namespace { ; }
-newNs :namespace = ns
+newNs : namespace = ns
 )";
-  auto ToMatch = 	namespaceAliasDecl(hasName("newNS"));
+  auto ToMatch = namespaceAliasDecl(hasName("newNs"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldNamespaceAlias, WithinAnotherNamespace) {
+    StringRef Code = R"(
+ns : namespace = namespace { ; }
+ns2 : namespace = namespace:
+  newNs : namespace = ns
+
+)";
+  auto ToMatch = namespaceDecl(hasName("ns2"),
+      has(namespaceAliasDecl(hasName("newNs")))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldNamespaceAlias, DoubleAlias) {
+    StringRef Code = R"(
+ns : namespace = namespace { ; }
+ns2 : namespace = namespace:
+  newNs : namespace = ns
+  newNs2 : namespace = newNs
+)";
+  auto ToMatch = namespaceDecl(hasName("ns2"),
+      has(namespaceAliasDecl(hasName("newNs"))),
+      has(namespaceAliasDecl(hasName("newNs2")))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+TEST(GoldNamespaceAlias, UseThroughGlobalAlias) {
+    StringRef Code = R"(
+ns : namespace = namespace:
+  i:const int = 1
+
+newNs : namespace = ns
+
+foo() :int!
+  return ns.i
+
+)";
+  auto ToMatch = translationUnitDecl(
+    has(namespaceDecl(hasName("ns"))),
+    has(functionDecl(hasName("foo"),
+      hasDescendant(returnStmt(hasDescendant(declRefExpr())))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldNamespaceAlias, UseThroughNestedAlias) {
+    StringRef Code = R"(
+ns : namespace = namespace:
+  i:const int = 1
+ns2 : namespace = namespace:
+  newNs : namespace = ns
+  newNs2 : namespace = newNs
+
+foo() :int!
+  return ns2.newNs.i
+
+)";
+  auto ToMatch = translationUnitDecl(
+    has(namespaceDecl(hasName("ns2"),
+      has(namespaceAliasDecl(hasName("newNs"))),
+      has(namespaceAliasDecl(hasName("newNs2")))
+    )),
+    has(functionDecl(hasName("foo"),
+      hasDescendant(returnStmt(hasDescendant(declRefExpr())))
+    ))
+  );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

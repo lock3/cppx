@@ -346,6 +346,8 @@ public:
   clang::CppxDeclRefExpr *buildNSDeclRef(clang::CppxNamespaceDecl *D,
                                          clang::SourceLocation Loc);
 
+  clang::CppxDeclRefExpr *buildNSDeclRef(clang::NamespaceAliasDecl *D,
+                                         clang::SourceLocation Loc);
   clang::CppxDeclRefExpr *buildAnyDeclRef(clang::QualType KindTy,
                                           clang::Decl *D,
                                           clang::SourceLocation Loc);
@@ -354,8 +356,8 @@ public:
                                clang::SourceLocation Loc);
   /// This function extracts a namespace from an expression and returns the
   /// resulting namespace or nullptr if invalid
-  clang::CppxNamespaceDecl *getNsDeclFromExpr(const clang::Expr *DeclExpr,
-                                          clang::SourceLocation Loc);
+  clang::CppxNamespaceDecl *getNSDeclFromExpr(const clang::Expr *DeclExpr,
+                                              clang::SourceLocation Loc);
 
 
 private:
@@ -363,7 +365,8 @@ private:
   enum NNSKind {
     NNSK_Empty,
     NNSK_Global,
-    NNSK_Namespace
+    NNSK_Namespace,
+    NNSK_NamespaceAlias,
   };
   struct GlobalNNS {
     gold::Scope *Scope;
@@ -372,6 +375,7 @@ private:
   union NNSLookupDecl {
     GlobalNNS Global;
     clang::CppxNamespaceDecl *NNS;
+    clang::NamespaceAliasDecl *Alias;
   };
   NNSKind CurNNSKind = NNSK_Empty;
   // The list of nested-name-specifiers to use for qualified lookup.
@@ -420,6 +424,19 @@ public:
       SemaRef.CurNNSLookupDecl.Global.Scope = Scope;
       SemaRef.CurNNSLookupDecl.Global.DC = DC;
       SemaRef.CurNNSKind = NNSK_Global;
+      QualifiedLookupContext = true;
+    }
+
+    // Constructor for global namespace specifier.
+    QualifiedLookupRAII(Sema &SemaRef,
+                        bool &QualifiedLookupContext,
+                        clang::NamespaceAliasDecl *Alias)
+      : SemaRef(SemaRef),
+        QualifiedLookupContext(QualifiedLookupContext),
+        PreviousKind(SemaRef.CurNNSKind),
+        PreviousLookup(SemaRef.CurNNSLookupDecl) {
+      SemaRef.CurNNSLookupDecl.Alias = Alias;
+      SemaRef.CurNNSKind = NNSK_NamespaceAlias;
       QualifiedLookupContext = true;
     }
 

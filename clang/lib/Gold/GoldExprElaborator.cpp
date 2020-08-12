@@ -947,6 +947,16 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
     SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
 
   if (!R.empty()) {
+    // This has to be done this way specifically because the loop up will resolve
+    // the NamespaceAliasDecl to it's associated namespace before it's used.
+    // So this is the only solution that I could find that doesn't
+    // rely on getUnderlyingType() to obtain the final declaration.
+    const auto &DeclSet = R.asUnresolvedSet();
+    if (DeclSet.size() == 1) {
+      if (auto *NS = dyn_cast<clang::NamespaceAliasDecl>(*DeclSet.begin())) {
+        return SemaRef.buildNSDeclRef(NS, Loc);
+      }
+    }
     R.resolveKind();
     if (!R.isSingleResult()) {
       if (R.isAmbiguous()) {
@@ -1060,6 +1070,7 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
 
     if (auto *NS = R.getAsSingle<clang::CppxNamespaceDecl>())
       return SemaRef.buildNSDeclRef(NS, Loc);
+
 
     if (auto *TD = R.getAsSingle<clang::TypeDecl>())
       return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
@@ -1747,6 +1758,11 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
                                         LHS->getLoc()))) {
       return elaborateNNS(NSRef, Op, RHS);
     }
+    if (clang::NamespaceAliasDecl *NSAliasRef = dyn_cast<clang::NamespaceAliasDecl>(
+                                        SemaRef.getDeclFromExpr(ElaboratedLHS,
+                                        LHS->getLoc()))) {
+      return elaborateNNS(NSAliasRef, Op, RHS);
+    }
     llvm_unreachable("Invalid namespace type returned.");
   }
 
@@ -1859,7 +1875,7 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
   return nullptr;
 }
 
-clang::Expr *ExprElaborator::elaborateNNS(clang::CppxNamespaceDecl *NS,
+clang::Expr *ExprElaborator::elaborateNNS(clang::NamedDecl *NS,
                                           const CallSyntax *Op,
                                           const Syntax *RHS) {
   // FIXME: create the correct ObjectType (last param) that is used when this
@@ -1878,8 +1894,15 @@ clang::Expr *ExprElaborator::elaborateNNS(clang::CppxNamespaceDecl *NS,
                                 /*OnlyNamespace=*/false);
   if (Failure)
     return nullptr;
-
-  Sema::QualifiedLookupRAII Qual(SemaRef, SemaRef.QualifiedLookupContext, NS);
+  Sema::OptionalInitScope<Sema::QualifiedLookupRAII> Qual(SemaRef);
+  if (auto *CppxNs = dyn_cast<clang::CppxNamespaceDecl>(NS)) {
+    Qual.Init(SemaRef.QualifiedLookupContext, CppxNs);
+  } else if (auto *Alias = dyn_cast<clang::NamespaceAliasDecl>(NS)) {
+    Qual.Init(SemaRef.QualifiedLookupContext, Alias);
+  } else {
+    NS->dump();
+    llvm_unreachable("We hvae a new type of namespace specifier that we've never seen before.");
+  }
   clang::Expr *RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
   if (!RHSExpr)
     return nullptr;

@@ -296,6 +296,15 @@ bool Sema::lookupQualifiedName(clang::LookupResult &R) {
   case NNSK_Namespace:
     LookupScope = CurNNSLookupDecl.NNS->getScopeRep();
     break;
+  case NNSK_NamespaceAlias: {
+    if (auto *Ns = dyn_cast<clang::CppxNamespaceDecl>(
+                                      CurNNSLookupDecl.Alias->getNamespace())) {
+      LookupScope = Ns->getScopeRep();
+    } else {
+      Diags.Report(Ns->getLocation(), clang::diag::err_expected_namespace);
+      return false;
+    }
+  }
   }
   return lookupUnqualifiedName(R, LookupScope);
 }
@@ -511,7 +520,6 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
             clang::EnterExpressionEvaluationContext ConstantEvaluated(CxxSema,
                 clang::Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
             Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
-
           }
         }
 
@@ -558,7 +566,6 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
           }
         }
         addIfNotDuplicate(R, ND);
-        // R.addDecl(ND);
       }
       break;
     }
@@ -947,6 +954,11 @@ clang::CppxDeclRefExpr *Sema::buildNSDeclRef(clang::CppxNamespaceDecl *D,
   return buildAnyDeclRef(Context.CxxAST.CppxNamespaceTy, D, Loc);
 }
 
+clang::CppxDeclRefExpr *Sema::buildNSDeclRef(clang::NamespaceAliasDecl *D,
+                                             clang::SourceLocation Loc) {
+  return buildAnyDeclRef(Context.CxxAST.CppxNamespaceTy, D, Loc);
+}
+
 clang::CppxDeclRefExpr *
 Sema::buildAnyDeclRef(clang::QualType KindTy, clang::Decl *D,
                       clang::SourceLocation Loc) {
@@ -967,22 +979,18 @@ clang::Decl *Sema::getDeclFromExpr(const clang::Expr *DeclExpr,
   // a declaration or something like that.
 }
 
-clang::CppxNamespaceDecl *Sema::getNsDeclFromExpr(const clang::Expr *DeclExpr,
+clang::CppxNamespaceDecl *Sema::getNSDeclFromExpr(const clang::Expr *DeclExpr,
                                                   clang::SourceLocation Loc) {
   assert(DeclExpr && "Invalid expression");
   if (const clang::CppxDeclRefExpr *DecRef
                                  = dyn_cast<clang::CppxDeclRefExpr>(DeclExpr)) {
-    llvm::outs() << "We are the The expected CppxDeclRefExpr\n";
     if (clang::CppxNamespaceDecl *NsDecl
                      = dyn_cast<clang::CppxNamespaceDecl>(DecRef->getValue())) {
-      llvm::outs() << "We are the namespace declaration we expected?!\n";
       return NsDecl;
     }
-    llvm::outs() << "We are not a namespace 1\n";
     Diags.Report(Loc, clang::diag::err_expected_namespace);
     return nullptr;
   }
-  llvm::outs() << "We are not a namespace 2\n";
   Diags.Report(Loc, clang::diag::err_expected_namespace);
   return nullptr;
 }

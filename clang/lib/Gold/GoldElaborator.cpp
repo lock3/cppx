@@ -1527,28 +1527,34 @@ clang::Decl *Elaborator::elaborateNsAlias(Declaration *D) {
   clang::Expr *NsExpr = Elab.elaborateExpr(D->Init);
   if (!NsExpr)
     return nullptr;
-  NsExpr->dump();
-  NsExpr->getType()->dump();
-  if (NsExpr->getType()->isNamespaceType()) {
-    llvm::outs() << "I should be a namespace!\n";
-  }
+
   if (!NsExpr->getType()->isNamespaceType()) {
     SemaRef.Diags.Report(D->Op->getLoc(),
                          clang::diag::err_namespace_alias_non_namespace);
     return nullptr;
   }
-  clang::NamespaceDecl *NsD = SemaRef.getNsDeclFromExpr(NsExpr,
-                                                        D->Init->getLoc());
-  if (!NsD)
+  clang::Decl *PossibleNsDecl = SemaRef.getDeclFromExpr(NsExpr, D->Init->getLoc());
+  if (!PossibleNsDecl)
     return nullptr;
+  clang::NamedDecl *UnderlyingNs = nullptr;
+  if (clang::NamedDecl *ND = dyn_cast<clang::NamedDecl>(PossibleNsDecl)) {
+    UnderlyingNs = ND->getUnderlyingDecl();
+  } else {
+    PossibleNsDecl->dump();
+    llvm_unreachable("We have a strange problem where the declaration from a "
+                     "namespace isn't a NamedDecl.");
+  }
+
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
   clang::NamespaceAliasDecl *NsAD
                 = clang::NamespaceAliasDecl::Create(Context.CxxAST, Owner,
-                                                   D->Decl->Next->Data.Type->getLoc(),
+                                             D->Decl->Next->Data.Type->getLoc(),
                                                    D->Decl->getLoc(),
                                                    D->getId(),
                                                 clang::NestedNameSpecifierLoc(),
-                                                   D->Init->getLoc(), NsD);
+                                                   D->Init->getLoc(),
+                                                   UnderlyingNs);
+  Owner->addDecl(NsAD);
   D->Cxx = NsAD;
   D->CurrentPhase = Phase::Initialization;
   return D->Cxx;
