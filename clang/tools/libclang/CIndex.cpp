@@ -6368,6 +6368,7 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   switch (D->getKind()) {
   // Declaration kinds that don't really separate the notions of
   // declaration and definition.
+  case Decl::CppxNamespace:
   case Decl::Namespace:
   case Decl::Typedef:
   case Decl::TypeAlias:
@@ -7878,6 +7879,7 @@ static CXLanguageKind getDeclLanguage(const Decl *D) {
   case Decl::FriendTemplate:
   case Decl::FunctionTemplate:
   case Decl::LinkageSpec:
+  case Decl::CppxNamespace:
   case Decl::Namespace:
   case Decl::NamespaceAlias:
   case Decl::NonTypeTemplateParm:

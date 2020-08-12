@@ -4792,6 +4792,18 @@ NamespaceDecl::NamespaceDecl(ASTContext &C, DeclContext *DC, bool Inline,
     AnonOrFirstNamespaceAndInline.setPointer(PrevDecl->getOriginalNamespace());
 }
 
+NamespaceDecl::NamespaceDecl(ASTContext &C, Kind DK, DeclContext *DC, bool Inline,
+                             SourceLocation StartLoc, SourceLocation IdLoc,
+                             IdentifierInfo *Id, NamespaceDecl *PrevDecl)
+    : NamedDecl(DK, DC, IdLoc, Id), DeclContext(Namespace),
+      redeclarable_base(C), LocStart(StartLoc),
+      AnonOrFirstNamespaceAndInline(nullptr, Inline) {
+  setPreviousDecl(PrevDecl);
+
+  if (PrevDecl)
+    AnonOrFirstNamespaceAndInline.setPointer(PrevDecl->getOriginalNamespace());
+}
+
 NamespaceDecl *NamespaceDecl::Create(ASTContext &C, DeclContext *DC,
                                      bool Inline, SourceLocation StartLoc,
                                      SourceLocation IdLoc, IdentifierInfo *Id,

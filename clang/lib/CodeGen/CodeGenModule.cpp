@@ -5350,6 +5350,7 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
     break;
 
   // C++ Decls
+  case Decl::CppxNamespace:
   case Decl::Namespace:
     EmitDeclContext(cast<NamespaceDecl>(D));
     break;

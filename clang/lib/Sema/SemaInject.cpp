@@ -1932,6 +1932,7 @@ Decl *InjectionContext::InjectCXXMethodDecl(CXXMethodDecl *D) {
 Decl *InjectionContext::InjectDeclImpl(Decl *D) {
   // Inject the declaration.
   switch (D->getKind()) {
+  case Decl::CppxNamespace:
   case Decl::Namespace:
     return InjectNamespaceDecl(cast<NamespaceDecl>(D));
   case Decl::Typedef:

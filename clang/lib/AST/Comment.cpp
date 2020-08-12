@@ -316,6 +316,7 @@ void DeclInfo::fill() {
     Kind = VariableKind;
     break;
   }
+  case Decl::CppxNamespace:
   case Decl::Namespace:
     Kind = NamespaceKind;
     break;

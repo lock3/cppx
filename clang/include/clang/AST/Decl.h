@@ -528,7 +528,11 @@ class NamespaceDecl : public NamedDecl, public DeclContext,
   NamespaceDecl(ASTContext &C, DeclContext *DC, bool Inline,
                 SourceLocation StartLoc, SourceLocation IdLoc,
                 IdentifierInfo *Id, NamespaceDecl *PrevDecl);
-
+public:
+  NamespaceDecl(ASTContext &C, Kind DK, DeclContext *DC, bool Inline,
+                SourceLocation StartLoc, SourceLocation IdLoc,
+                IdentifierInfo *Id, NamespaceDecl *PrevDecl);
+private:
   using redeclarable_base = Redeclarable<NamespaceDecl>;
 
   NamespaceDecl *getNextRedeclarationImpl() override;
@@ -619,7 +623,9 @@ public:
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
-  static bool classofKind(Kind K) { return K == Namespace; }
+  static bool classofKind(Kind K) {
+    return K >= firstNamespace && K <= lastNamespace;
+  }
   static DeclContext *castToDeclContext(const NamespaceDecl *D) {
     return static_cast<DeclContext *>(const_cast<NamespaceDecl*>(D));
   }
@@ -4536,32 +4542,30 @@ public:
 
 /// A wrapper around a  NamespaceDecl that encapsulates CPPX-specific
 /// information about the namespace.
-class CppxNamespaceDecl : public TypeDecl {
-  clang::NamespaceDecl *NsDecl;
+class CppxNamespaceDecl : public NamespaceDecl {
+public:
   gold::Scope *Rep;
 protected:
-  CppxNamespaceDecl(const ASTContext &C, DeclContext *DC,
-                    SourceLocation L, IdentifierInfo *II, NamespaceDecl *D,
-                    gold::Scope *Rep)
-    : TypeDecl(Decl::CppxNamespace, DC, L, II), NsDecl(D), Rep(Rep)
-  {}
+  CppxNamespaceDecl(ASTContext &C, DeclContext *DC, bool Inline,
+                    SourceLocation StartLoc, SourceLocation IdLoc,
+                    IdentifierInfo *Id, NamespaceDecl *PrevDecl,
+                    gold::Scope *GScope)
+    :NamespaceDecl(C, Decl::CppxNamespace, DC, Inline, StartLoc, IdLoc, Id,
+                   PrevDecl),
+    Rep(GScope)
+  { }
 
 public:
-  static CppxNamespaceDecl *Create(const ASTContext &C, DeclContext *DC,
-                                   SourceLocation L, IdentifierInfo *II,
-                                   NamespaceDecl *NS, gold::Scope *Rep);
-
-  NamespaceDecl *getNamespace();
-  NamespaceDecl *getNamespace() const;
+  static CppxNamespaceDecl *Create(ASTContext &C, DeclContext *DC, bool Inline,
+                                   SourceLocation StartLoc,
+                                   SourceLocation IdLoc,
+                                   IdentifierInfo *Id, NamespaceDecl *PrevDecl,
+                                   gold::Scope *GScope);
   gold::Scope *getScopeRep();
-
-  void anchor() override {}
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
-  static bool classofKind(Kind K) {
-    return K == CppxNamespace;
-  }
+  static bool classofKind(Kind K) { return K == CppxNamespace; }
 };
 
 class CppxPartialDecl : public Decl {

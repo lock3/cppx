@@ -244,6 +244,10 @@ SymbolInfo index::getSymbolInfo(const Decl *D) {
       Info.Lang = SymbolLanguage::ObjC;
       checkForIBOutlets(D, Info.Properties);
       break;
+    case Decl::CppxNamespace:
+      Info.Kind = SymbolKind::Namespace;
+      Info.Lang = SymbolLanguage::CXX;
+      break;
     case Decl::Namespace:
       Info.Kind = SymbolKind::Namespace;
       Info.Lang = SymbolLanguage::CXX;

@@ -344,6 +344,7 @@ void Elaborator::startFile(const Syntax *S) {
   SemaRef.getCxxSema().FieldCollector.reset(new clang::CXXFieldCollector());
   // Setting up clang scopes.
   clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::DeclScope);
+  Scope->setEntity(Context.CxxAST.getTranslationUnitDecl());
   SemaRef.getCxxSema().ActOnTranslationUnitScope(Scope);
   SemaRef.getCxxSema().Initialize();
 
@@ -775,20 +776,42 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
   using namespace clang;
 
   // Create and enter a namespace scope.
+  clang::CppxNamespaceDecl *NSDecl = nullptr;
   clang::Scope *NSScope = SemaRef.enterClangScope(clang::Scope::DeclScope);
 
-  gold::Sema::ScopeRAII GoldScopeRAII(SemaRef, SK_Namespace, D->Init);
-
   // FIXME: keep track of nested namespaces?
-
+  gold::Sema::OptionalScopeRAII NewScope(SemaRef);
+  gold::Sema::OptionalResumeScopeRAII ResumedScope(SemaRef);
+  // gold::Sema::ScopeRAII GoldScopeRAII(SemaRef, SK_Namespace, D->Init);
   clang::UsingDirectiveDecl *UD = nullptr;
   clang::AttributeFactory Attrs;
   clang::ParsedAttributes ParsedAttrs(Attrs);
-  clang::Decl *NSDecl = SemaRef.getCxxSema().ActOnStartNamespaceDef(
-    NSScope, SourceLocation(), D->Decl->getLoc(),
-    D->Decl->getLoc(), D->getId(), D->Decl->getLoc(), ParsedAttrs, UD);
+  NSDecl = SemaRef.ActOnStartNamespaceDef(NSScope,
+                                          SourceLocation(),
+                                          D->Decl->getLoc(),
+                                          D->Decl->getLoc(),
+                                          D->getId(),
+                                          D->Decl->getLoc(),
+                                          ParsedAttrs, UD);
+  if (!NSDecl) {
+    // Making sure that if something does go wrong that we properly recover
+    // from it.
+    SemaRef.leaveClangScope(clang::SourceLocation());
+    return nullptr;
+  }
+  // Resume or create a new scope for the current namespace.
+  // This is to allow the representations to all share the same scope.
+  // This makes it easier to handle lookup for those elements of the scope.
+  if (!NSDecl->Rep) {
+    NewScope.Init(SK_Namespace, D->Init, &NSDecl->Rep);
+    NSDecl->Rep = SemaRef.getCurrentScope();
+  } else {
+    ResumedScope.Init(NSDecl->Rep, NSDecl->Rep->Term, false);
+  }
+
   D->Cxx = NSDecl;
   Elab.elaborateAttributes(D);
+
   SemaRef.pushDecl(D);
 
   const MacroSyntax *NSMacro = cast<MacroSyntax>(D->Init);
@@ -801,17 +824,10 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
     LastLoc = S->getLoc();
   }
 
-  gold::Scope *NamespaceRep = SemaRef.getCurrentScope();
+  NSDecl->Rep = SemaRef.getCurrentScope();
   SemaRef.getCxxSema().ActOnFinishNamespaceDef(NSDecl, LastLoc);
   SemaRef.leaveClangScope(LastLoc);
   SemaRef.popDecl();
-
-  DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
-  CppxNamespaceDecl *Wrapper =
-    CppxNamespaceDecl::Create(Context.CxxAST, Owner, D->Decl->getLoc(),
-                              D->getId(), cast<clang::NamespaceDecl>(NSDecl),
-                              NamespaceRep);
-  D->Cxx = Wrapper;
 
   // FIXME: We should be returning a DeclGroupPtr to the NSDecl grouped
   // with the implicit UsingDecl, UD.
@@ -1395,11 +1411,10 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
+
   if (!TypeExpr->getType()->isTypeOfTypes()) {
     // TODO: template and namespace types need a variable implementation.
-    if (TypeExpr->getType()->isNamespaceType()) {
-      llvm_unreachable("Namespace variables not implemented yet");
-    }
+
     if (TypeExpr->getType()->isTemplateType()) {
       llvm_unreachable("Template variables not implemented yet");
     }
@@ -1418,6 +1433,9 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   if (TyLitExpr->getValue()->getType()->isTypeOfTypes()) {
     // TODO: This will need to be handled using a CppxPartialDecl.
     return elaborateTypeAlias(D);
+  }
+  if (TyLitExpr->getValue()->getType()->isNamespaceType()) {
+    return elaborateNsAlias(D);
   }
 
   if (SemaRef.getCurrentScope()->isClassScope()) {
@@ -1496,6 +1514,44 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
   D->Cxx = TypeAlias;
   elaborateAttributes(D);
   return TypeAlias;
+}
+
+clang::Decl *Elaborator::elaborateNsAlias(Declaration *D) {
+  if (!D->Init) {
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_namespace_alias_requires_a_name);
+    return nullptr;
+  }
+  // Attempting to elaborate the RHS to get a namespace.
+  ExprElaborator Elab(Context, SemaRef);
+  clang::Expr *NsExpr = Elab.elaborateExpr(D->Init);
+  if (!NsExpr)
+    return nullptr;
+  NsExpr->dump();
+  NsExpr->getType()->dump();
+  if (NsExpr->getType()->isNamespaceType()) {
+    llvm::outs() << "I should be a namespace!\n";
+  }
+  if (!NsExpr->getType()->isNamespaceType()) {
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_namespace_alias_non_namespace);
+    return nullptr;
+  }
+  clang::NamespaceDecl *NsD = SemaRef.getNsDeclFromExpr(NsExpr,
+                                                        D->Init->getLoc());
+  if (!NsD)
+    return nullptr;
+  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  clang::NamespaceAliasDecl *NsAD
+                = clang::NamespaceAliasDecl::Create(Context.CxxAST, Owner,
+                                                   D->Decl->Next->Data.Type->getLoc(),
+                                                   D->Decl->getLoc(),
+                                                   D->getId(),
+                                                clang::NestedNameSpecifierLoc(),
+                                                   D->Init->getLoc(), NsD);
+  D->Cxx = NsAD;
+  D->CurrentPhase = Phase::Initialization;
+  return D->Cxx;
 }
 
 clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D,

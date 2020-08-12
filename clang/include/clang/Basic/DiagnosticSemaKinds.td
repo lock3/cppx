@@ -11092,6 +11092,15 @@ def warn_invalid_attribute_format : Warning <
 def err_in_ast : Error <
   "error during syntax handling">;
 
+def err_namespace_alias_requires_a_name : Error <
+  "namespace alias must have a namespace to alias">;
+
+def err_namespace_alias_non_namespace : Error <
+  "namespace alias must have a namespace for an initialzier">;
+
+def err_expected_namespace : Error <
+  "expression does not reference a namespace">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

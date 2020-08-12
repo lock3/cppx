@@ -92,6 +92,7 @@ static std::string GetEnclosingDeclContextSignature(const Decl *D) {
     std::string DeclName;
 
     switch (ND->getKind()) {
+    case Decl::CppxNamespace:
     case Decl::Namespace:
     case Decl::Record:
     case Decl::CXXRecord:

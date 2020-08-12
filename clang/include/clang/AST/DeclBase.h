@@ -1878,7 +1878,8 @@ public:
 
   bool isFileContext() const {
     return getDeclKind() == Decl::TranslationUnit ||
-           getDeclKind() == Decl::Namespace;
+      (getDeclKind() >= Decl::firstNamespace && getDeclKind() <= Decl::lastNamespace)
+           ;
   }
 
   bool isTranslationUnit() const {
@@ -1890,7 +1891,10 @@ public:
            getDeclKind() <= Decl::lastRecord;
   }
 
-  bool isNamespace() const { return getDeclKind() == Decl::Namespace; }
+  bool isNamespace() const {
+    return getDeclKind() >= Decl::firstNamespace &&
+           getDeclKind() <= Decl::lastNamespace;
+  }
 
   bool isEnum() const { return getDeclKind() == Decl::Enum; }
 

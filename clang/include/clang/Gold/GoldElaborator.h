@@ -61,6 +61,7 @@ public:
   void checkCXXMethodDecl(clang::CXXMethodDecl *MD);
   clang::Decl *elaborateVariableDecl(Declaration *D);
   clang::Decl *elaborateTypeAlias(Declaration *D);
+  clang::Decl *elaborateNsAlias(Declaration *D);
   clang::Decl *elaborateTemplateAliasOrVariable(Declaration *D,
       Declarator *TemplateParams);
   clang::Decl *elaborateParameterDecl(Declaration *D);

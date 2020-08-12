@@ -299,6 +299,7 @@ public:
   ///{
   clang::CppxTypeLiteral *buildTypeExpr(clang::QualType Ty,
                                         clang::SourceLocation Loc);
+  clang::CppxTypeLiteral *buildNsTypeExpr(clang::SourceLocation Loc);
   clang::CppxTypeLiteral *buildTypeExpr(clang::TypeSourceInfo *TInfo);
   clang::CppxTypeLiteral *buildAnyTypeExpr(clang::QualType KindTy,
                                            clang::TypeSourceInfo *TInfo);
@@ -348,18 +349,35 @@ public:
   clang::CppxDeclRefExpr *buildAnyDeclRef(clang::QualType KindTy,
                                           clang::Decl *D,
                                           clang::SourceLocation Loc);
-  /// This function extracts a namespace from an expression and returns the
-  /// resulting namespace or nullptr if invalid
+
   clang::Decl *getDeclFromExpr(const clang::Expr *DeclExpr,
                                clang::SourceLocation Loc);
+  /// This function extracts a namespace from an expression and returns the
+  /// resulting namespace or nullptr if invalid
+  clang::CppxNamespaceDecl *getNsDeclFromExpr(const clang::Expr *DeclExpr,
+                                          clang::SourceLocation Loc);
+
 
 private:
   /// =============== Members related to qualified lookup. ================= ///
-
+  enum NNSKind {
+    NNSK_Empty,
+    NNSK_Global,
+    NNSK_Namespace
+  };
+  struct GlobalNNS {
+    gold::Scope *Scope;
+    clang::DeclContext *DC;
+  };
+  union NNSLookupDecl {
+    GlobalNNS Global;
+    clang::CppxNamespaceDecl *NNS;
+  };
+  NNSKind CurNNSKind = NNSK_Empty;
   // The list of nested-name-specifiers to use for qualified lookup.
-  // FIXME: make this a list, instead of a single NNS.
-  clang::CppxNamespaceDecl *NNS;
 
+  // FIXME: make this a list, instead of a single NNS.
+  NNSLookupDecl CurNNSLookupDecl;
 public:
   bool isQualifiedLookupContext() const {
     return QualifiedLookupContext;
@@ -373,6 +391,50 @@ public:
   /// A C++ scope specifier that gets set during NNS so we can leverage Clang's
   /// typo correction.
   clang::CXXScopeSpec CurNNSContext;
+
+  /// This class keeps track of the current nested namespace lookup state
+  /// it provides a means of constructing things that are either a
+  /// CppxNamespaceDecl, or the global namespace scope and DeclContext.
+  struct QualifiedLookupRAII {
+    // Constructor for non-global namespace specifier.
+    QualifiedLookupRAII(Sema &SemaRef,
+                        bool &QualifiedLookupContext,
+                        clang::CppxNamespaceDecl *NS)
+      : SemaRef(SemaRef),
+        QualifiedLookupContext(QualifiedLookupContext),
+        PreviousKind(SemaRef.CurNNSKind),
+        PreviousLookup(SemaRef.CurNNSLookupDecl) {
+      SemaRef.CurNNSLookupDecl.NNS = NS;
+      SemaRef.CurNNSKind = NNSK_Namespace;
+      QualifiedLookupContext = true;
+    }
+
+    // Constructor for global namespace specifier.
+    QualifiedLookupRAII(Sema &SemaRef,
+                        bool &QualifiedLookupContext,
+                        gold::Scope *Scope, clang::DeclContext *DC)
+      : SemaRef(SemaRef),
+        QualifiedLookupContext(QualifiedLookupContext),
+        PreviousKind(SemaRef.CurNNSKind),
+        PreviousLookup(SemaRef.CurNNSLookupDecl) {
+      SemaRef.CurNNSLookupDecl.Global.Scope = Scope;
+      SemaRef.CurNNSLookupDecl.Global.DC = DC;
+      SemaRef.CurNNSKind = NNSK_Global;
+      QualifiedLookupContext = true;
+    }
+
+    ~QualifiedLookupRAII() {
+      QualifiedLookupContext = false;
+      SemaRef.CurNNSLookupDecl = PreviousLookup;
+      SemaRef.CurNNSKind = PreviousKind;
+    }
+
+  private:
+    Sema &SemaRef;
+    bool &QualifiedLookupContext;
+    NNSKind PreviousKind;
+    NNSLookupDecl PreviousLookup;
+  };
 public:
   // The context
   SyntaxContext &Context;
@@ -446,7 +508,6 @@ public:
     const Syntax *ExitTerm;
     bool PopOnExit;
   };
-
 
   struct ClangScopeRAII {
     ClangScopeRAII(Sema &S, unsigned ScopeKind, clang::SourceLocation ExitLoc,
@@ -620,25 +681,6 @@ public:
     }
   };
 
-  struct QualifiedLookupRAII {
-    QualifiedLookupRAII(Sema &SemaRef,
-                        bool &QualifiedLookupContext,
-                        clang::CppxNamespaceDecl **NNS)
-      : SemaRef(SemaRef),
-        QualifiedLookupContext(QualifiedLookupContext) {
-      SemaRef.NNS = *NNS;
-      QualifiedLookupContext = true;
-    }
-
-    ~QualifiedLookupRAII() {
-      QualifiedLookupContext = false;
-      SemaRef.NNS = nullptr;
-    }
-
-  private:
-    Sema &SemaRef;
-    bool &QualifiedLookupContext;
-  };
 
   struct NNSRAII {
     NNSRAII(clang::CXXScopeSpec &SS)
@@ -656,6 +698,7 @@ public:
   /// by providing optionally initialized behavior for a scope. This is done
   /// using llvm::optional.
   using OptionalScopeRAII = OptionalInitScope<ScopeRAII>;
+  using OptionalResumeScopeRAII = OptionalInitScope<ResumeScopeRAII>;
   using OptioanlClangScopeRAII = OptionalInitScope<ClangScopeRAII>;
 
   clang::QualType NullTTy;
@@ -735,6 +778,15 @@ public:
                            const FunctionExtInfo &ExtInfo,
                            const FunctionExtProtoInfo &ProtoTypeInfo,
                            const FunctionExceptionSpec &ExceptionSpecInfo);
+
+  clang::CppxNamespaceDecl *ActOnStartNamespaceDef(clang::Scope *NamespcScope,
+                                      clang::SourceLocation InlineLoc,
+                                      clang::SourceLocation NamespaceLoc,
+                                      clang::SourceLocation IdentLoc,
+                                      clang::IdentifierInfo *II,
+                                      clang::SourceLocation LBrace,
+                                      const clang::ParsedAttributesView &AttrList,
+                                      clang::UsingDirectiveDecl *&UD);
 };
 
 } // namespace gold

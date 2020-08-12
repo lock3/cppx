@@ -1862,12 +1862,10 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
 clang::Expr *ExprElaborator::elaborateNNS(clang::CppxNamespaceDecl *NS,
                                           const CallSyntax *Op,
                                           const Syntax *RHS) {
-  clang::NamespaceDecl *CxxNS = NS->getNamespace();
-
   // FIXME: create the correct ObjectType (last param) that is used when this
   // NNS appears as after an operator'.' of an object.
-  clang::Sema::NestedNameSpecInfo IdInfo(CxxNS->getIdentifier(),
-                                         CxxNS->getBeginLoc(),
+  clang::Sema::NestedNameSpecInfo IdInfo(NS->getIdentifier(),
+                                         NS->getBeginLoc(),
                                          Op->getLoc(), clang::QualType());
 
   // Look this up as an NNS.
@@ -1881,7 +1879,7 @@ clang::Expr *ExprElaborator::elaborateNNS(clang::CppxNamespaceDecl *NS,
   if (Failure)
     return nullptr;
 
-  Sema::QualifiedLookupRAII Qual(SemaRef, SemaRef.QualifiedLookupContext, &NS);
+  Sema::QualifiedLookupRAII Qual(SemaRef, SemaRef.QualifiedLookupContext, NS);
   clang::Expr *RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
   if (!RHSExpr)
     return nullptr;
@@ -1911,12 +1909,9 @@ clang::Expr *ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
   while (GlobalScope->getParent())
     GlobalScope = GlobalScope->getParent();
 
-  auto *NS = clang::CppxNamespaceDecl::Create(Context.CxxAST,
-                                        Context.CxxAST.getTranslationUnitDecl(),
-                                              clang::SourceLocation(),
-                                              nullptr, nullptr, GlobalScope);
-  // TODO:: Create a reference to the newly created namespace?
-  Sema::QualifiedLookupRAII Qual(SemaRef, SemaRef.QualifiedLookupContext, &NS);
+  Sema::QualifiedLookupRAII Qual(SemaRef, SemaRef.QualifiedLookupContext,
+                                 GlobalScope,
+                                 Context.CxxAST.getTranslationUnitDecl());
   clang::Expr *RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
 
   if (!RHSExpr)
