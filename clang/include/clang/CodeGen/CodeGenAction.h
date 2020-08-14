@@ -120,22 +120,6 @@ public:
   EmitObjAction(llvm::LLVMContext *_VMContext = nullptr);
 };
 
-class EmitGoldAction : public CodeGenAction {
-  virtual void anchor();
-public:
-  EmitGoldAction(llvm::LLVMContext *_VMContext = nullptr);
-
-  void ExecuteAction() override;
-};
-
-class EmitBlueAction : public CodeGenAction {
-  virtual void anchor();
-public:
-  EmitBlueAction(llvm::LLVMContext *_VMContext = nullptr);
-
-  void ExecuteAction() override;
-};
-
 }
 
 #endif

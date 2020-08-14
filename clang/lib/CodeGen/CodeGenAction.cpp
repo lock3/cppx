@@ -47,9 +47,6 @@
 #include "llvm/Support/YAMLTraits.h"
 #include "llvm/Transforms/IPO/Internalize.h"
 
-// remove these once EmitGoldAction and ParseGoldSyntaxAction merge.
-#include "clang/Parse/ParseAST.h"
-
 #include <memory>
 using namespace clang;
 using namespace llvm;
@@ -1179,7 +1176,6 @@ void CodeGenAction::HandleIRFile() {
 
   if (OptRecordFile)
     OptRecordFile->keep();
-  return;
 }
 
 void CodeGenAction::ExecuteAction() {
@@ -1214,66 +1210,3 @@ EmitCodeGenOnlyAction::EmitCodeGenOnlyAction(llvm::LLVMContext *_VMContext)
 void EmitObjAction::anchor() { }
 EmitObjAction::EmitObjAction(llvm::LLVMContext *_VMContext)
   : CodeGenAction(Backend_EmitObj, _VMContext) {}
-
-void EmitGoldAction::anchor() { }
-EmitGoldAction::EmitGoldAction(llvm::LLVMContext *_VMContext)
-  : CodeGenAction(Backend_EmitObj, _VMContext) {}
-
-void EmitGoldAction::ExecuteAction() {
-  // If this is an IR file, we have to treat it specially.
-  if (getCurrentFileKind().getLanguage() == Language::LLVM_IR)
-    HandleIRFile();
-
-  // Otherwise follow the normal Gold AST path.
-  CompilerInstance &CI = getCompilerInstance();
-  if (!CI.hasPreprocessor())
-    return;
-  if (!CI.hasASTContext())
-    return;
-  if (!CI.hasSema())
-    CI.createSema(getTranslationUnitKind(), nullptr);
-
-  switch (getCurrentFileKind().getLanguage()) {
-  case clang::Language::Gold:
-    CI.getLangOpts().CPlusPlus = true;
-    CI.getLangOpts().CPlusPlus11 = true;
-    CI.getLangOpts().CPlusPlus14 = true;
-    CI.getLangOpts().CPlusPlus17 = true;
-    gold::ParseGoldAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
-    break;
-  default:
-    clang::ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
-                    CI.getFrontendOpts().SkipFunctionBodies);
-    break;
-  }
-}
-
-void EmitBlueAction::anchor() { }
-EmitBlueAction::EmitBlueAction(llvm::LLVMContext *_VMContext)
-  : CodeGenAction(Backend_EmitObj, _VMContext) {}
-
-void EmitBlueAction::ExecuteAction() {
-
-  // If this is an IR file, we have to treat it specially.
-  if (getCurrentFileKind().getLanguage() == Language::LLVM_IR)
-    HandleIRFile();
-
-  // Otherwise follow the normal BlueAST path.
-  CompilerInstance &CI = getCompilerInstance();
-  if (!CI.hasPreprocessor())
-    return;
-  if (!CI.hasASTContext())
-    return;
-  if (!CI.hasSema())
-    CI.createSema(getTranslationUnitKind(), nullptr);
-
-  switch (getCurrentFileKind().getLanguage()) {
-  case clang::Language::Blue:
-    blue::ParseBlueAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
-    break;
-  default:
-    clang::ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
-                    CI.getFrontendOpts().SkipFunctionBodies);
-    break;
-  }
-}
