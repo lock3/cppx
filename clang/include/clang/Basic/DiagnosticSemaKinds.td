@@ -11287,6 +11287,14 @@ def err_namespace_alias_non_namespace : Error <
 def err_expected_namespace : Error <
   "expression does not reference a namespace">;
 
+def err_invalid_declarator_sequence : Error<
+  "%select{function declaration|namespace|template|nested name specifier|"
+  "global name specifier|class|enum|union|template specialization|type}0 not allowed "
+  "in current context">;
+
+def err_type_form_declarator_sequence : Error<
+  "missing type for declaration">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

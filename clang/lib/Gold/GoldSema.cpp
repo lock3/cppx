@@ -557,7 +557,9 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
           // This is used to get the correct template name.
           if (auto *RD = dyn_cast<clang::CXXRecordDecl>(FoundDecl->Cxx)) {
             ND = RD->getDescribedClassTemplate();
-            ND = cast<clang::NamedDecl>(ND->getCanonicalDecl());
+            if (ND) {
+              ND = cast<clang::NamedDecl>(ND->getCanonicalDecl());
+            }
           }
         } else {
           // Getting the cannonical declaration so hopefully this will prevent

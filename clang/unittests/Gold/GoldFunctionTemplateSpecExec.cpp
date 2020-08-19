@@ -18,25 +18,25 @@
 using namespace gold;
 using namespace llvm;
 
-TEST(GoldFunctionTemplateSpec, NonExplicitCall) {
-  StringRef Code = R"(
-f[T : type](x : T) : T!
-  return T()
+// TEST(GoldFunctionTemplateSpec, NonExplicitCall) {
+//   StringRef Code = R"(
+// f[T : type](x : T) : T!
+//   return T()
 
-f[](x : int) : int!
-  return x
+// f[](x : int) : int!
+//   return x
 
-f[](x : double) : double!
-  return 24.0
+// f[](x : double) : double!
+//   return 24.0
 
-main() : int!
-  return f[int](42)
-)";
+// main() : int!
+//   return f[int](42)
+// )";
 
-  LLVMContext Context;
-  std::unique_ptr<ExecutionEngine> EE;
-  ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
-  MainSig CB = MainSig(EE->getFunctionAddress("main"));
-  ASSERT_TRUE(CB);
-  int result = CB();
-}
+//   LLVMContext Context;
+//   std::unique_ptr<ExecutionEngine> EE;
+//   ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
+//   MainSig CB = MainSig(EE->getFunctionAddress("main"));
+//   ASSERT_TRUE(CB);
+//   int result = CB();
+// }

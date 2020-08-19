@@ -1690,7 +1690,7 @@ static clang::Expr *doDerefAndXOrLookUp(SyntaxContext &Context,
       if (!MD->isOverloadedOperator())
         continue;
       if (MD->getOverloadedOperator() == UnaryOO)
-        R.addDecl(ND, ND->getAccess());
+        R.addDecl(MD, MD->getAccess());
     }
 
   }
@@ -1703,8 +1703,13 @@ static clang::Expr *doDerefAndXOrLookUp(SyntaxContext &Context,
       if (!MD->isOverloadedOperator())
         continue;
       if (MD->getOverloadedOperator() == BinaryOO)
-        R.addDecl(ND, ND->getAccess());
+        R.addDecl(MD, MD->getAccess());
     }
+  }
+  if (R.empty()) {
+    // TODO: Create an error message for this.
+    llvm_unreachable("I need an look up failure here because I don't have an "
+                     "expected operator.");
   }
   clang::TemplateArgumentListInfo TemplateArgs;
   auto *UME = clang::UnresolvedMemberExpr::Create(Context.CxxAST,
@@ -2119,12 +2124,12 @@ clang::Expr *
 ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions,
                                         bool IsConstExpr) {
   // If there's only one term, we don't need to do anything else.
-  if (Conditions->getNumChildren() == 1)
+  if (Conditions->getNumChildren() == 1){
     if (IsConstExpr)
       return elaborateExpectedConstantExpr(Conditions->getChild(0));
     else
       return elaborateExpr(Conditions->getChild(0));
-
+  }
   clang::Expr *LHS = nullptr;
   clang::Expr *RHS = nullptr;
 
@@ -2247,6 +2252,7 @@ static void getDeclarators(Declarator *D,
 }
 
 clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
+  // llvm_unreachable("ExprElaborator::elaborateTypeExpr to be delete!");
   // The type of a declarator is constructed back-to-front.
   llvm::SmallVector<Declarator *, 4> Decls;
   getDeclarators(D, Decls);
@@ -2257,7 +2263,7 @@ clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
   clang::Expr *TyExpr = SemaRef.buildTypeExpr(AutoType, D->getLoc());
   for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
     D = *Iter;
-    switch (D->Kind) {
+    switch (D->getKind()) {
     case DK_Identifier:
       break;
 
@@ -2290,7 +2296,7 @@ clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
       break;
     }
     default:
-      llvm_unreachable("Invalid declarator");
+      llvm_unreachable("unhandled declarator.");
     }
   }
   return TyExpr;
@@ -2300,22 +2306,24 @@ clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
 // we're building. Note that T is the return type (if any).
 clang::Expr *
 ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
-  const auto *Call = cast<CallSyntax>(D->Call);
+  // llvm_unreachable("ExprElaborator::elaborateFunctionType to be delete!");
+  FunctionDeclarator *FuncDcl = D->getAsFunction();
+  // const auto *Call = cast<CallSyntax>(FuncDcl->);
 
   // FIXME: Handle array-based arguments.
-  assert(isa<ListSyntax>(D->Data.ParamInfo.Params)
-         && "Array parameters not supported");
-  const ListSyntax *Args = cast<ListSyntax>(D->Data.ParamInfo.Params);
+  // assert(isa<ListSyntax>(D->Data.ParamInfo.Params)
+  //        && "Array parameters not supported");
+  const ListSyntax *Args = FuncDcl->getParams();
 
-  bool IsVariadic = D->Data.ParamInfo.VariadicParam;
+  // bool IsVariadic = D->Data.ParamInfo.VariadicParam;
   // Elaborate the parameter declarations in order to get their types, and save
   // the resulting scope with the declarator.
   llvm::SmallVector<clang::QualType, 4> Types;
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
-  SemaRef.enterScope(SK_Parameter, Call);
+  SemaRef.enterScope(SK_Parameter, FuncDcl->getParams());
   for (unsigned I = 0; I < Args->getNumChildren(); ++I) {
     // There isn't really anything to translate here.
-    if (IsVariadic && I == Args->getNumChildren() - 1)
+    if (FuncDcl->isVariadic() && I == Args->getNumChildren() - 1)
       break;
     const Syntax *P = Args->getChild(I);
 
@@ -2323,7 +2331,7 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
     clang::ValueDecl *VD =
       cast_or_null<clang::ValueDecl>(Elab.elaborateParmDeclSyntax(P));
     if (!VD) {
-      SemaRef.leaveScope(Call);
+      SemaRef.leaveScope(FuncDcl->getParams());
       return nullptr;
     }
 
@@ -2334,12 +2342,12 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
     Types.push_back(VD->getType());
     Params.push_back(cast<clang::ParmVarDecl>(VD));
   }
-  D->Data.ParamInfo.ConstructedScope = SemaRef.saveScope(Call);
+  FuncDcl->setScope(SemaRef.saveScope(FuncDcl->getParams()));
 
 
   // FIXME: We need to configure parts of the prototype (e.g., noexcept).
   clang::FunctionProtoType::ExtProtoInfo EPI;
-  if (IsVariadic) {
+  if (FuncDcl->isVariadic()) {
     EPI.ExtInfo = Context.CxxAST.getDefaultCallingConvention(true, false);
     EPI.Variadic = true;
   }
@@ -2359,8 +2367,10 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
 
 
 clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *Ty) {
-  assert(D->Kind == DK_Type);
-  if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
+  // llvm_unreachable("ExprElaborator::elaborateExplicitType to be delete!");
+  assert(D->isType());
+  TypeDeclarator *TyDcl = D->getAsType();
+  if (const auto *Atom = dyn_cast<AtomSyntax>(TyDcl->getTyExpr())) {
     clang::SourceLocation Loc = Atom->getLoc();
     clang::IdentifierInfo *II = &CxxAST.Idents.get(Atom->getSpelling());
     clang::DeclarationNameInfo DNI(II, Loc);
@@ -2380,7 +2390,7 @@ clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *T
     TD->setIsUsed();
     return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
   }
-  return elaborateExpr(D->Data.Type);
+  return elaborateExpr(TyDcl->getTyExpr());
 }
 
 

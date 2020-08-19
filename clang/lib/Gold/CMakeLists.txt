@@ -4,6 +4,9 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_clang_library(gold
+  GoldDeclaration.cpp
+  GoldDeclarationBuilder.cpp
+  GoldDeclarator.cpp
   GoldElaborator.cpp
   GoldExprElaborator.cpp
   GoldFile.cpp

@@ -6470,8 +6470,7 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::CXXRequiredType:
   case Decl::CXXRequiredDeclarator:
     return C;
-  case Decl::CppxNamespace:
-    return MakeCXCursor(cast<CppxNamespaceDecl>(D)->getNamespace(), TU);
+
   case Decl::CppxPartial:
     llvm_unreachable("I'm not sure what to do for this yet because it's not implemented.");
     
