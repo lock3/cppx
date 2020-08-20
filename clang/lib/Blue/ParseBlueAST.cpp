@@ -31,19 +31,27 @@ namespace blue {
 void ParseBlueAST(clang::ASTContext &CxxContext,
                   clang::Preprocessor &PP,
                   clang::Sema &CxxSema) {
+  llvm::outs() << "Parse blue ast\n";
+
   // Parse the input file.
   clang::SourceManager &SM = PP.getSourceManager();
   File InputFile(SM, SM.getMainFileID());
   Parser Parser(SM, InputFile);
   Syntax *AST = Parser.parseFile();
 
-  AST->dump();
-
   // Elaborate the resulting abstract syntax tree.
   Elaborator Elab(CxxSema);
-  clang::Decl *TU = Elab.elaborateTop(AST);
-  (void)TU;
-  // TU->dump();
+  clang::TranslationUnitDecl *TU =
+    cast<clang::TranslationUnitDecl>(Elab.elaborateTop(AST));
+  clang::ASTConsumer *Consumer = &CxxSema.getASTConsumer();
+
+  for (auto *D : TU->decls()) {
+    auto DPtr = CxxSema.ConvertDeclToDeclGroup(D);
+    if (D && !Consumer->HandleTopLevelDecl(DPtr.get()))
+      return;
+  }
+
+  Consumer->HandleTranslationUnit(CxxSema.getASTContext());
 }
 
 } // namespace blue
