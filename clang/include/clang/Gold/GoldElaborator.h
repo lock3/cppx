@@ -114,8 +114,11 @@ public:
   clang::Decl *elaborateFile(const Syntax *S);
 
   // Typing elaboration (2nd pass)
-  clang::Decl *elaborateDeclType(const Syntax* D);
   clang::Decl *elaborateDecl(Declaration *D);
+  clang::Decl *elaborateDeclContent(Declaration *D);
+  clang::Decl *elaborateDeclInContext(Declaration *D);
+
+  clang::Decl *elaborateDeclType(const Syntax* D);
   clang::Decl *elaborateFunctionDecl(Declaration *D);
   void checkCXXMethodDecl(clang::CXXMethodDecl *MD);
   clang::Decl *elaborateVariableDecl(Declaration *D);

@@ -446,37 +446,10 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
   using namespace clang;
   D->CurrentPhase = Phase::Typing;
 
-  bool Template = D->declaresTemplateType();
-  const ListSyntax *TemplParams;
 
   // Checking if we are a nested template decl/class.
-  bool WithinClass = SemaRef.getCurrentScope()->getKind() == SK_Class;
-
-  llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
-  llvm::SmallVector<clang::TemplateParameterList *, 4> TPLStorage;
-  MultiTemplateParamsArg MTP;
-  TemplateParamsDeclarator *TemplateParamsDcl = nullptr;
-  Sema::OptionalScopeRAII TemplateScope(SemaRef);
-  Sema::OptioanlClangScopeRAII ClangTemplateScope(SemaRef);
-  if (Template) {
-    // TODO: In the future change this so we can enter multiple template scopes
-    // and track their depth
-    TemplateParamsDcl = D->TemplateParameters->getAsTemplateParams();
-    TemplParams = TemplateParamsDcl->getParams();
-
-    // Entering initial template scope.
-    TemplateScope.Init(SK_Template, TemplParams);
-    clang::SourceLocation Loc = TemplParams->getLoc();
-    ClangTemplateScope.Init(clang::Scope::TemplateParamScope, Loc);
-    BuildTemplateParams(Context, SemaRef, TemplParams, TemplateParamDecls);
-    clang::TemplateParameterList *TPL
-      = SemaRef.getCxxSema().ActOnTemplateParameterList(
-      /*unsigned Depth*/SemaRef.computeTemplateDepth(), /*ExportLoc*/Loc,
-      /*TemplateLoc*/Loc, /*LAngleLoc*/Loc, TemplateParamDecls,
-      /*RAngleLoc*/Loc, /*RequiresClause*/nullptr);
-    TPLStorage.push_back(TPL);
-    MTP = TPLStorage;
-  }
+  bool WithinClass = D->ScopeForDecl->getKind() == SK_Class;
+  MultiTemplateParamsArg MTP = D->TemplateParamStorage;
 
   bool IsOwned = false;
   bool IsDependent = false;
@@ -620,37 +593,12 @@ processCXXForwardRecordDecl(Elaborator& Elab, SyntaxContext& Context,
   using namespace clang;
   D->CurrentPhase = Phase::Typing;
 
-  bool Template = D->declaresTemplateType();
-  const ListSyntax *TemplParams;
+  // bool Template = D->declaresTemplateType();
+  // const ListSyntax *TemplParams;
 
   // Checking if we are a nested template decl/class.
-  bool WithinClass = SemaRef.getCurrentScope()->getKind() == SK_Class;
-
-  llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
-  llvm::SmallVector<clang::TemplateParameterList *, 4> TPLStorage;
-  MultiTemplateParamsArg MTP;
-  TemplateParamsDeclarator *TemplateParamsDcl = nullptr;
-  Sema::OptionalScopeRAII TemplateScope(SemaRef);
-  Sema::OptioanlClangScopeRAII ClangTemplateScope(SemaRef);
-  if (Template) {
-    // TODO: In the future change this so we can enter multiple template scopes
-    // and track their depth
-    TemplateParamsDcl = D->TemplateParameters->getAsTemplateParams();
-    TemplParams = TemplateParamsDcl->getParams();
-
-    // Entering initial template scope.
-    TemplateScope.Init(SK_Template, TemplParams);
-    clang::SourceLocation Loc = TemplParams->getLoc();
-    ClangTemplateScope.Init(clang::Scope::TemplateParamScope, Loc);
-    BuildTemplateParams(Context, SemaRef, TemplParams, TemplateParamDecls);
-    clang::TemplateParameterList *TPL
-      = SemaRef.getCxxSema().ActOnTemplateParameterList(
-      /*unsigned Depth*/SemaRef.computeTemplateDepth(), /*ExportLoc*/Loc,
-      /*TemplateLoc*/Loc, /*LAngleLoc*/Loc, TemplateParamDecls,
-      /*RAngleLoc*/Loc, /*RequiresClause*/nullptr);
-    TPLStorage.push_back(TPL);
-    MTP = TPLStorage;
-  }
+  bool WithinClass = D->ScopeForDecl->getKind() == SK_Class;
+  MultiTemplateParamsArg MTP = D->TemplateParamStorage;
 
   bool IsOwned = false;
   bool IsDependent = false;
@@ -786,6 +734,77 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
   // with the implicit UsingDecl, UD.
   return NSDecl;
 }
+static void handleTemplateParameters(Sema &SemaRef,
+                                     Sema::OptionalScopeRAII &ScopeToInit,
+                                     Sema::OptioanlClangScopeRAII &ClangScope,
+                                     Declaration *D, Declarator *Dcl) {
+  gold::Scope **ScopePtr = nullptr;
+  clang::SourceLocation Loc = Dcl->getLoc();
+  clang::TemplateParameterList *ParamList = nullptr;
+  const Syntax *Params = nullptr;
+  TemplateParamsDeclarator *TPD = Dcl->getAsTemplateParams();
+  ScopePtr = TPD->getScopePtrPtr();
+  Params = TPD->getSyntax();
+
+  // Initializing the scopes we have to deal with.
+  ScopeToInit.Init(SK_Template, Params, ScopePtr);
+  ClangScope.Init(clang::Scope::TemplateParamScope, Loc);
+
+  // Constructing actual parameters.
+  llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
+  if (!TPD->isImplicitlyEmpty()) {
+    BuildTemplateParams(SemaRef.getContext(), SemaRef, Params,
+                        TemplateParamDecls);
+  }
+  ParamList = SemaRef.getCxxSema().ActOnTemplateParameterList(
+                               /*unsigned Depth*/SemaRef.computeTemplateDepth(),
+                                                            /*ExportLoc*/Loc,
+                                                            /*TemplateLoc*/Loc,
+                                                            /*LAngleLoc*/Loc,
+                                                            TemplateParamDecls,
+                                                            /*RAngleLoc*/Loc,
+                                                     /*RequiresClause*/nullptr);
+
+  TPD->setTemplateParameterList(ParamList);
+  // Recording template parameters for use during declaration construction.
+  D->TemplateParamStorage.push_back(ParamList);
+}
+
+static bool handleSpecializationArgs(Sema &SemaRef, const Syntax *Args,
+                                clang::TemplateArgumentListInfo &TemplateArgs) {
+  for (auto *SS : Args->children()) {
+    clang::Expr *E = ExprElaborator(SemaRef.getContext(), SemaRef).
+                                              elaborateExpectedConstantExpr(SS);
+    if (!E) {
+      return true;
+    }
+    // TODO: create a list of valid expressions this can or cannot be;
+    // for example, namespace or pseudo-destructor is invalid here.
+    if (E->getType()->isTypeOfTypes()) {
+      auto *TInfo = SemaRef.getTypeSourceInfoFromExpr(E, SS->getLoc());
+      clang::TemplateArgument Arg(TInfo->getType());
+      clang::TemplateArgumentLoc ArgLoc(Arg, TInfo);
+      TemplateArgs.addArgument(ArgLoc);
+    } else {
+      clang::TemplateArgument Arg(E, clang::TemplateArgument::Expression);
+      clang::TemplateArgumentLoc ArgLoc(Arg, E);
+      TemplateArgs.addArgument(ArgLoc);
+    }
+  }
+
+  TemplateArgs.setLAngleLoc(Args->getLoc());
+  TemplateArgs.setRAngleLoc(Args->getLoc());
+  return false;
+}
+
+static bool elaborateSpecializationArgs(Sema &SemaRef,
+                                        Declaration *D) {
+  SpecializationDeclarator *SD = D->SpecializationArgs->getAsSpecialization();
+  if (handleSpecializationArgs(SemaRef, SD->getArgs(), SD->getArgList())){
+    SD->setDidError();
+  }
+  return SD->getDidError();
+}
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   if (phaseOf(D) > Phase::Identification)
@@ -795,6 +814,39 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
     // Adding this here skips some errors.
     return D->Cxx;
 
+  Scope *Sc = SemaRef.getCurrentScope();
+  // Resume the current scope because that will allow us to modify the current
+  // scope during processing and restore when we pop this off the scope
+  // stack.
+  Sema::ResumeScopeRAII ScopeTracking(SemaRef, Sc, Sc->getConcreteTerm());
+  if (!D->NNSInfo.empty() || D->GlobalNsSpecifier)
+    llvm_unreachable("Nested name elaboration not implemented yet.");
+
+  Sema::OptionalScopeRAII TemplateParamScope(SemaRef);
+  Sema::OptioanlClangScopeRAII ClangTemplateScope(SemaRef);
+
+  // Checking to see if we are need to enter a name scope for a template
+  if (D->TemplateParameters)
+    handleTemplateParameters(SemaRef, TemplateParamScope, ClangTemplateScope,
+                             D, D->TemplateParameters);
+
+  if (D->SpecializationArgs)
+    elaborateSpecializationArgs(SemaRef, D);
+
+  clang::Decl *Ret = elaborateDeclContent(D);
+
+  // Checking the error from the specializaton and marking the decl as invalid.
+  if (D->SpecializationArgs) {
+    if (D->SpecializationArgs->getAsSpecialization()->getDidError()) {
+      Ret->setInvalidDecl();
+    }
+  }
+  return Ret;
+  // TODO: We should be able to elaborate definitions at this point too.
+  // We've already loaded salient identifier tables, so it shouldn't any
+  // forward references should be resolvable.
+}
+clang::Decl *Elaborator::elaborateDeclContent(Declaration *D) {
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
@@ -807,24 +859,6 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   if (D->declaresFunction())
     return elaborateFunctionDecl(D);
   return elaborateVariableDecl(D);
-
-  // TODO: We should be able to elaborate definitions at this point too.
-  // We've already loaded salient identifier tables, so it shouldn't any
-  // forward references should be resolvable.
-}
-
-// The parameter scope of a function declaration is always found in the
-// second declarator.
-static Declarator *getFunctionDeclarator(Declarator *D) {
-  assert(D->isIdentifier());
-  assert(D->Next->isFunction());
-  return D->Next;
-}
-
-// Returns the function declarator part of D.
-static Declarator *getFunctionDeclarator(Declaration *D) {
-  assert(D->Decl);
-  return getFunctionDeclarator(D->Decl);
 }
 
 static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
@@ -862,7 +896,6 @@ namespace {
 // Get the Clang parameter declarations for D
 void getFunctionParameters(Declaration *D,
                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
-  // llvm_unreachable("getFunctionParameters Working on it.");
   FunctionDeclarator *FnDecl = D->FunctionDcl->getAsFunction();
   const ListSyntax *ParamList = FnDecl->getParams();
   Scope *ParamScope = FnDecl->getScope();
@@ -1076,57 +1109,15 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
   return true;
 }
 
-void handleFunctionTemplateSpecialization(SyntaxContext &Context,
-                                          Sema &SemaRef,
-                                          const Syntax *TemplateParams,
-                                          Declarator *Fn,
-                                          clang::FunctionDecl *FD,
-                                          clang::LookupResult &Prev) {
-    bool HasExplicitTemplateArgs = false;
-    clang::TemplateArgumentListInfo TemplateArgs;
-
-    for (auto *SS : TemplateParams->children()) {
-      clang::Expr *E = ExprElaborator(Context, SemaRef).elaborateExpr(SS);
-      if (!E) {
-        FD->setInvalidDecl();
-        continue;
-      }
-      // TODO: create a list of valid expressions this can or cannot be;
-      // for example, namespace or pseudo-destructor is invalid here.
-      if (E->getType()->isTypeOfTypes()) {
-        auto *TInfo = SemaRef.getTypeSourceInfoFromExpr(E, SS->getLoc());
-        clang::TemplateArgument Arg(TInfo->getType());
-        clang::TemplateArgumentLoc ArgLoc(Arg, TInfo);
-        TemplateArgs.addArgument(ArgLoc);
-      } else {
-        clang::TemplateArgument Arg(E, clang::TemplateArgument::Expression);
-        clang::TemplateArgumentLoc ArgLoc(Arg, E);
-        TemplateArgs.addArgument(ArgLoc);
-      }
-
-     if (E)
-        HasExplicitTemplateArgs = true;
-    }
-
-    TemplateArgs.setLAngleLoc(TemplateParams->getLoc());
-    TemplateArgs.setRAngleLoc(TemplateParams->getLoc());
-
-    if (SemaRef.getCxxSema().CheckFunctionTemplateSpecialization(
-          FD, (HasExplicitTemplateArgs ? &TemplateArgs : nullptr),
-          Prev))
-      FD->setInvalidDecl();
-}
-
 } // end anonymous namespace
 
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
-  // llvm_unreachable("Elaborator::elaborateFunctionDecl working on it.");
   // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
   FunctionDeclarator *FnDclPtr = D->FunctionDcl->getAsFunction();
 
   // Get a reference to the containing class if there is one.
-  bool InClass = SemaRef.getCurrentScope()->getKind() == SK_Class;
+  bool InClass = D->ScopeForDecl->getKind() == SK_Class;
   clang::CXXRecordDecl *RD = nullptr;
   if (InClass) {
     clang::Decl *ScopesDecl = SemaRef.getDeclForScope();
@@ -1136,20 +1127,11 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   }
 
   // Create the template parameters if they exist.
-  // const Syntax *TemplParams = D->getTemplateParams();
   bool Template = D->TemplateParameters;
   TemplateParamsDeclarator *TPD = nullptr;
-  bool Specialization = false;
-  llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
+  bool Specialization = D->SpecializationArgs;
   if (Template) {
     TPD = D->TemplateParameters->getAsTemplateParams();
-    SemaRef.enterScope(SK_Template, TPD->getParams());
-    BuildTemplateParams(Context, SemaRef, TPD->getParams(), TemplateParamDecls);
-    // There are parameters but none are declarations, this
-    // must be a specialization.
-    Specialization = TemplateParamDecls.empty();
-    if (Specialization)
-      SemaRef.leaveScope(TPD->getParams());
   }
 
 
@@ -1205,16 +1187,13 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // If this describes a principal template declaration, create it.
   if (Template && !Specialization) {
     clang::SourceLocation Loc = TPD->getLoc();
-    auto *TPL =
-      clang::TemplateParameterList::Create(Context.CxxAST, Loc, Loc,
-                                           TemplateParamDecls, Loc,
-                                           /*RequiresClause=*/nullptr);
     auto *FTD = clang::FunctionTemplateDecl::Create(Context.CxxAST, Owner, Loc,
-                                                    FD->getDeclName(), TPL, FD);
+                                                    FD->getDeclName(),
+                                                TPD->getTemplateParameterList(),
+                                                    FD);
     FTD->setLexicalDeclContext(Owner);
     FD->setDescribedFunctionTemplate(FTD);
     Owner->addDecl(FTD);
-    TPD->setScope(SemaRef.saveScope(TPD->getParams()));
     if (InClass)
       FTD->setAccess(clang::AS_public);
   }
@@ -1258,9 +1237,15 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   }
 
   // Handle function template specialization.
-  if (!FD->isInvalidDecl() && !Previous.empty() && Specialization)
-    handleFunctionTemplateSpecialization(Context, SemaRef, TPD->getParams(),
-                                         FnDclPtr, FD, Previous);
+  if (!FD->isInvalidDecl() && !Previous.empty() && Specialization) {
+    SpecializationDeclarator *SpDcl
+                                 = D->SpecializationArgs->getAsSpecialization();
+    if (SemaRef.getCxxSema().CheckFunctionTemplateSpecialization(FD,
+                       (SpDcl->HasArguments() ? &SpDcl->getArgList() : nullptr),
+                                                                 Previous))
+      FD->setInvalidDecl();
+    // Handling function template specialziation.
+  }
 
   // FIXME: this is not necessarily what should happen.
   if (FD->isInvalidDecl())
@@ -1346,10 +1331,11 @@ static clang::StorageClass getDefaultVariableStorageClass(Elaborator &Elab) {
 
 
 clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
-  if (SemaRef.getCurrentScope()->isParameterScope())
+  D->SavedScope = SemaRef.getCurrentScope();
+  if (D->ScopeForDecl->isParameterScope())
     return elaborateParameterDecl(D);
 
-  if (SemaRef.getCurrentScope()->isTemplateScope())
+  if (D->ScopeForDecl->isTemplateScope())
     return elaborateTemplateParamDecl(D);
 
   // This is specifically for processing a special kind of declarator.
@@ -1393,7 +1379,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
     return elaborateNsAlias(D);
   }
 
-  if (SemaRef.getCurrentScope()->isClassScope()) {
+  if (D->ScopeForDecl->isClassScope()) {
     return elaborateField(D);
   }
 
@@ -1517,36 +1503,12 @@ clang::Decl *Elaborator::elaborateNsAlias(Declaration *D) {
 
 clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D,
     Declarator *TemplateParams) {
-  bool InClass = SemaRef.getCurrentScope()->isClassScope();
+  bool InClass = D->ScopeForDecl->getKind();
   // Attempting to elaborate template for scope.
-  const ListSyntax *TemplParams;
+  // const ListSyntax *TemplParams;
 
   // Checking if we are a nested template decl/class.
-  llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
-  llvm::SmallVector<clang::TemplateParameterList *, 4> TPLStorage;
-  clang::MultiTemplateParamsArg MTP;
-  TemplateParamsDeclarator *TemplateDeclarator = nullptr;
-  Sema::OptionalScopeRAII TemplateScope(SemaRef);
-  Sema::OptioanlClangScopeRAII ClangTemplateScope(SemaRef);
-  TemplateDeclarator = D->TemplateParameters->getAsTemplateParams();
-  TemplParams = TemplateDeclarator->getParams();
-  // Entering initial template scope.
-  TemplateScope.Init(SK_Template, D->Op, &D->SavedScope);
-  clang::SourceLocation TemplateParamsLoc = TemplParams->getLoc();
-  ClangTemplateScope.Init(clang::Scope::TemplateParamScope, TemplateParamsLoc);
-  BuildTemplateParams(Context, SemaRef, TemplParams, TemplateParamDecls);
-  clang::TemplateParameterList *TPL
-    = SemaRef.getCxxSema().ActOnTemplateParameterList(
-                               /*unsigned Depth*/SemaRef.computeTemplateDepth(),
-                               /*ExportLoc*/TemplateParamsLoc,
-                               /*TemplateLoc*/TemplateParamsLoc,
-                               /*LAngleLoc*/TemplateParamsLoc,
-                               TemplateParamDecls,
-                               /*RAngleLoc*/TemplateParamsLoc,
-                               /*RequiresClause*/nullptr);
-  TPLStorage.push_back(TPL);
-  MTP = TPLStorage;
-
+  clang::MultiTemplateParamsArg MTP = D->TemplateParamStorage;
 
   // This REQUIRES that we have specified type for now. But in order to do this
   // correctly we can't construct a templated type right off the bat we need
@@ -1757,7 +1719,6 @@ clang::Decl *Elaborator::elaborateParmDeclSyntax(const Syntax *S) {
     if (D->Init) {
 
       if (SemaRef.isElaboratingClass()) {
-
         delayElaborateDefaultParam(D);
       } else {
         // In the event we are not a member declaration then process the
@@ -1801,7 +1762,7 @@ void Elaborator::elaborateDef(Declaration *D) {
 
   if (D->declaresFunction())
     return elaborateFunctionDef(D);
-  if (SemaRef.getCurrentScope()->isTemplateScope())
+  if (D->ScopeForDecl->isTemplateScope())
     return elaborateTemplateParamInit(D);
   if (D->declaresMemberVariable())
     return;
@@ -1811,13 +1772,13 @@ void Elaborator::elaborateDef(Declaration *D) {
 }
 
 void Elaborator::elaborateFunctionDef(Declaration *D) {
-  // llvm_unreachable("Elaborator::elaborateFunctionDef working on it.");
   D->CurrentPhase = Phase::Initialization;
   if (!D->Cxx)
     return;
   if (!D->Init)
     return;
-
+  if (SemaRef.checkForRedefinition<clang::FunctionDecl>(D))
+    return;
   if (D->declaresConstructor()) {
     llvm::SmallVector<clang::CXXCtorInitializer*, 32> Initializers;
     SemaRef.getCxxSema().ActOnMemInitializers(D->Cxx, clang::SourceLocation(),
@@ -1848,25 +1809,26 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
     }
   }
 
-  if (SemaRef.checkForRedefinition<clang::FunctionDecl>(D))
-    return;
+
 
   // We saved the parameter scope while elaborating this function's type,
   // so push it on before we enter the function scope.
   FunctionDeclarator *FnDecl = D->FunctionDcl->getAsFunction();
-  bool IsTemplate = D->declaresFunctionTemplate();
-  
-  Scope *TemplateScope = nullptr;
-  if (IsTemplate) {
-    SemaRef.pushScope(D->TemplateParameters->getAsTemplateParams()->getScope());
-    TemplateScope = SemaRef.getCurrentScope();
-  }
-  SemaRef.pushScope(FnDecl->getScope());
+  // bool IsTemplate = D->declaresFunctionTemplate();
+
+  // Scope *TemplateScope = nullptr;
+  // if (IsTemplate) {
+  //   SemaRef.pushScope(D->TemplateParameters->getAsTemplateParams()->getScope());
+  //   TemplateScope = SemaRef.getCurrentScope();
+  // }
+  Sema::ResumeScopeRAII FnDclScope(SemaRef, FnDecl->getScope(),
+                                   FnDecl->getScope()->getConcreteTerm());
+  // SemaRef.pushScope();
   // The parameter scope is owned by the template scope, but they were
   // constructed out of order.
-  if (TemplateScope) {
-    SemaRef.getCurrentScope()->setParent(TemplateScope);
-  }
+  // if (TemplateScope) {
+  //   SemaRef.getCurrentScope()->setParent(TemplateScope);
+  // }
 
 
   Declaration *CurrentDeclaration = SemaRef.getCurrentDecl();
@@ -1894,11 +1856,11 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   SemaRef.leaveScope(D->Init);
 
   // Leave the parameter scope.
-  SemaRef.popScope();
+  // SemaRef.popScope();
 
   // Leave the template scope
-  if (IsTemplate)
-    SemaRef.popScope();
+  // if (IsTemplate)
+  //   SemaRef.popScope();
   SemaRef.setCurrentDecl(CurrentDeclaration);
 }
 
@@ -2306,10 +2268,10 @@ bool Elaborator::delayElaborateDeclType(clang::CXXRecordDecl *RD,
       // but the late elaboration from there might not exist yet.
       // So we might need to do partial elaboration of a few things in order to
       // correctly define them.
-      elaborateFunctionDecl(D);
+      elaborateDecl(D);
     } else {
       if (RD->isUnion()) {
-        elaborateFunctionDecl(D);
+        elaborateDecl(D);
       } else {
         // Attempting to delay method decl/def combos
         delayElaborateMethodDecl(D);
@@ -2358,7 +2320,7 @@ void Elaborator::delayElaborateMethodDef(Declaration *D) {
 }
 
 void Elaborator::delayElaborationClassBody(Declaration *D) {
-  processCXXRecordDecl(*this, Context, SemaRef, D);
+  elaborateDecl(D);
 }
 
 void Elaborator::delayElaborateDefaultParam(Declaration *ParamDecl) {
@@ -2521,7 +2483,7 @@ void Elaborator::lateElaborateMethodDecl(
       clang::Scope::FunctionDeclarationScope,
       clang::SourceLocation());
   Sema::LateMethodRAII MethodTracking(SemaRef, &Method);
-  elaborateFunctionDecl(Method.D);
+  elaborateDecl(Method.D);
   // This is to check if the method delcaration was a success and in the event
   // that it is we need to finish the exception specifier after the end of the
   // class.

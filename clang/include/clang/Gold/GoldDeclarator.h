@@ -51,8 +51,9 @@ class FunctionDeclarator;
 class TypeDeclarator;
 class TemplateParamsDeclarator;
 class ImplicitEmptyTemplateParamsDeclarator;
-class ExplicitSpecializationDeclarator;
-class PartialSpecializationDeclarator;
+class SpecializationDeclarator;
+// class ExplicitSpecializationDeclarator;
+// class PartialSpecializationDeclarator;
 
 /// Kinds of declarations.
 enum DeclaratorKind {
@@ -91,11 +92,8 @@ enum DeclaratorKind {
   /// This occurs only during explicit specialization x[^int]
   DK_ImplicitEmptyTemplateParams,
 
-  /// This is for when we have x[^int]
-  DK_ExplicitSpecialization,
-
-  /// This is for when we have x[T:type][^T]
-  DK_PartialSpecialization,
+  /// This is for when we have x[^int] or x[T:type][^T]
+  DK_Specialization,
 
   /// This declarator indicates that there was an error evaluating
   /// the declarator. This usually means that there is an ErrorSyntax node
@@ -140,11 +138,7 @@ using Attributes = llvm::SmallVector<const Syntax *, 16>;
 ///   - A pointer to a gold::Scope, that is empty.
 ///   - clang::TemplateParameterList
 ///
-/// DK_ExplicitSpecialization
-///   - A pointer to the node containing the specialization arguments.
-///   - clang::TemplateArgumentListInfo
-///
-/// DK_PartialSpecialization
+/// DK_Specialization
 ///   - A pointer to the node containing the specialization arguments.
 ///   - clang::TemplateArgumentListInfo
 ///
@@ -173,8 +167,7 @@ public:
   bool isNestedNameSpecifier() const { return Kind == DK_NestedNameSpecifier; }
   bool isTemplateParameters() const { return Kind == DK_TemplateParams; }
   bool isImplicitTemplateParameters() const { return Kind == DK_ImplicitEmptyTemplateParams; }
-  bool isExplicitSpecialization() const { return Kind == DK_ExplicitSpecialization; }
-  bool isPartialSpecialization() const { return Kind == DK_PartialSpecialization; }
+  bool isSpecialization() const { return Kind == DK_Specialization; }
   bool isError() const { return Kind == DK_Error; }
 
   UnknownDeclarator *getAsUnknown();
@@ -195,10 +188,8 @@ public:
   const TemplateParamsDeclarator *getAsTemplateParams() const;
   ImplicitEmptyTemplateParamsDeclarator *getAsImplicitEmptyTemplateParams();
   const ImplicitEmptyTemplateParamsDeclarator *getAsImplicitEmptyTemplateParams() const;
-  ExplicitSpecializationDeclarator *getAsExplicitSpecialization();
-  const ExplicitSpecializationDeclarator *getAsExplicitSpecialization() const;
-  PartialSpecializationDeclarator *getAsPartialSpecialization();
-  const PartialSpecializationDeclarator *getAsPartialSpecialization() const;
+  SpecializationDeclarator *getAsSpecialization();
+  const SpecializationDeclarator *getAsSpecialization() const;
 
   /// Get a SourceLocation representative of this declarator.
   virtual clang::SourceLocation getLoc() const = 0;
@@ -223,46 +214,6 @@ public:
   static bool classof(const Declarator *Dcl) {
     return Dcl->getKind() == DK_DeclaratorBase;
   }
-
-  /// For non-identifiers, the call representing the declarator component.
-  // const Syntax *Call = nullptr;
-
-  // The tag's body.
-  // clang::Scope *TagScope = nullptr;
-
-  /// TODO: What other information do we need here?
-  // union {
-  //   /// For DK_Identifier, the id.
-  //   const Syntax *Id;
-
-  //   /// For DK_Function, information about parameters.
-  //   struct ParamInfoType {
-  //     /// The initial parameter list.
-  //     const Syntax *Params;
-
-  //     /// For DK_Function, the template parameter list.
-  //     const Syntax *TemplateParams;
-
-  //     /// The scope constructed during elaboration.
-  //     Scope *ConstructedScope;
-
-  //     /// The scope containing the template parameters
-  //     Scope *TemplateScope;
-
-  //     /// Whether or not this function has a variadic parameter.
-  //     bool VariadicParam;
-  //   } ParamInfo;
-
-  //   /// For DK_Type, the type in the call.
-  //   const Syntax *Type;
-
-  //   /// For DK_TemplateParams, for templated types.
-  //   struct TemplateInfoStruct {
-  //     /// A pointer to the template parameters within the declaration.
-  //     const Syntax* Params;
-  //   } TemplateInfo;
-  // } Data;
-
   /// This is optionally set for each piece of the declarator
   const Syntax* AttributeNode = nullptr;
   llvm::Optional<Attributes> UnprocessedAttributes;
@@ -402,6 +353,15 @@ class TemplateParamsDeclarator : public Declarator {
   const ListSyntax *Params;
   gold::Scope *Scope;
   clang::TemplateParameterList *ClangParamList;
+protected:
+  TemplateParamsDeclarator(DeclaratorKind DK, const ListSyntax *ParamsNode,
+                           gold::Scope *ParamScope,
+                           Declarator *Next)
+    :Declarator(DK, Next),
+    Params(ParamsNode),
+    Scope(ParamScope),
+    ClangParamList(nullptr)
+  { }
 public:
   TemplateParamsDeclarator(const ListSyntax *ParamsNode,
                            gold::Scope *ParamScope,
@@ -417,9 +377,11 @@ public:
 
   gold::Scope *getScope() const { return Scope; }
   void setScope(gold::Scope *NewScope) { Scope = NewScope; }
-  gold::Scope *&getScopePtrRef() { return Scope;}
+  gold::Scope *&getScopePtrRef() { return Scope; }
+  gold::Scope **getScopePtrPtr() { return &Scope; }
   const ListSyntax *getParams() const { return Params; }
-
+  virtual bool isImplicitlyEmpty() const { return getKind() != DK_TemplateParams; }
+  virtual const Syntax *getSyntax() const;
   clang::TemplateParameterList *getTemplateParameterList() const {
     return ClangParamList;
   }
@@ -428,57 +390,44 @@ public:
   }
 
   static bool classof(const Declarator *Dcl) {
-    return Dcl->getKind() == DK_TemplateParams;
+    return Dcl->getKind() == DK_TemplateParams
+          || Dcl->getKind() == DK_ImplicitEmptyTemplateParams;
   }
 };
 
-class ImplicitEmptyTemplateParamsDeclarator : public Declarator {
+class ImplicitEmptyTemplateParamsDeclarator : public TemplateParamsDeclarator {
   const Syntax *Owner;
-  gold::Scope *Scope;
-  clang::TemplateParameterList *ClangParamList;
 public:
   ImplicitEmptyTemplateParamsDeclarator(const Syntax *ExplicitSpecialization,
                                        gold::Scope *ParamScope,
                                        Declarator *Next)
-    :Declarator(DK_ImplicitEmptyTemplateParams, Next),
-    Owner(ExplicitSpecialization),
-    Scope(ParamScope),
-    ClangParamList(nullptr)
+    :TemplateParamsDeclarator(DK_ImplicitEmptyTemplateParams, nullptr, nullptr,
+                              Next),
+    Owner(ExplicitSpecialization)
   { }
 
   virtual clang::SourceLocation getLoc() const override;
   virtual std::string getString(bool IncludeKind = false) const override;
-
-  gold::Scope *getScope() const { return Scope; }
-  void setScope(gold::Scope *NewScope) { Scope = NewScope; }
-  gold::Scope *&getScopePtrRef() { return Scope;}
   const Syntax *getOwner() const { return Owner; }
-
-  clang::TemplateParameterList *getTemplateParameterList() const {
-    return ClangParamList;
-  }
-  void setTemplateParameterList(clang::TemplateParameterList *ParamList) {
-    ClangParamList = ParamList;
-  }
-
+  virtual const Syntax *getSyntax() const;
   static bool classof(const Declarator *Dcl) {
     return Dcl->getKind() == DK_ImplicitEmptyTemplateParams;
   }
 };
 
-class ExplicitSpecializationDeclarator : public Declarator {
+class SpecializationDeclarator : public Declarator {
   const ListSyntax *Args;
   clang::TemplateArgumentListInfo ArgListInfo;
+  bool CreatedAnError = false;
 public:
-  ExplicitSpecializationDeclarator(const ListSyntax *SpecializationArgs,
-                                   Declarator *Next)
-    :Declarator(DK_ExplicitSpecialization, Next),
+  SpecializationDeclarator(const ListSyntax *SpecializationArgs,
+                           Declarator *Next)
+    :Declarator(DK_Specialization, Next),
     Args(SpecializationArgs)
   { }
-
+  bool HasArguments() const;
   virtual clang::SourceLocation getLoc() const override;
   virtual std::string getString(bool IncludeKind = false) const override;
-
   const ListSyntax *getArgs() const { return Args; }
   const clang::TemplateArgumentListInfo &getArgList() const {
     return ArgListInfo;
@@ -487,40 +436,13 @@ public:
   clang::TemplateArgumentListInfo &getArgList() {
     return ArgListInfo;
   }
+  bool getDidError() const {return CreatedAnError; }
+  void setDidError(bool Err = true) { CreatedAnError = Err; }
 
   static bool classof(const Declarator *Dcl) {
-    return Dcl->getKind() == DK_ExplicitSpecialization;
+    return Dcl->getKind() == DK_Specialization;
   }
 };
-
-class PartialSpecializationDeclarator : public Declarator {
-  const ListSyntax *Args;
-  clang::TemplateArgumentListInfo ArgListInfo;
-public:
-  PartialSpecializationDeclarator(const ListSyntax *SpecializationArgs,
-                                  Declarator *Next)
-    :Declarator(DK_PartialSpecialization, Next),
-    Args(SpecializationArgs),
-    ArgListInfo()
-  { }
-
-  virtual clang::SourceLocation getLoc() const override;
-  virtual std::string getString(bool IncludeKind = false) const override;
-
-  const ListSyntax *getArgs() const { return Args; }
-  const clang::TemplateArgumentListInfo &getArgList() const {
-    return ArgListInfo;
-  }
-
-  clang::TemplateArgumentListInfo &getArgList() {
-    return ArgListInfo;
-  }
-
-  static bool classof(const Declarator *Dcl) {
-    return Dcl->getKind() == DK_PartialSpecialization;
-  }
-};
-
 }
 
 #endif

@@ -201,15 +201,13 @@ Scope *Sema::getCurrentScope() {
 }
 
 void Sema::pushScope(Scope *S) {
+  assert(S && "Invalid scope");
   // FIXME: The scope should self-describe itself. We can't rely on
   // the existence of Clang structures at the time we push a scope.
   // if (S->isDeclarationScope())
   //   CxxSema.PushFunctionScope();
-
   ScopeStack.push_back(S);
 }
-
-// llvm::SmallVector<Scope *, 4> ScopeStack;
 
 Scope *Sema::popScope() {
   Scope *R = ScopeStack.back();
@@ -234,6 +232,12 @@ void Sema::leaveScope(const Syntax *S) {
 }
 
 Scope *Sema::saveScope(const Syntax *S) {
+  if (getCurrentScope()->getConcreteTerm() != S) {
+    llvm::outs() << "Actual Expected term = ";
+    getCurrentScope()->getConcreteTerm()->dump();
+    llvm::outs() << "Given Expected term = ";
+    S->dump();
+  }
   assert(getCurrentScope()->getConcreteTerm() == S);
   // FIXME: Queue the scope for subsequent deletion?
   Scope *Scope = getCurrentScope();

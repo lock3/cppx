@@ -121,19 +121,13 @@ const ImplicitEmptyTemplateParamsDeclarator *
 Declarator::getAsImplicitEmptyTemplateParams() const {
   return cast<ImplicitEmptyTemplateParamsDeclarator>(this);
 }
-ExplicitSpecializationDeclarator *Declarator::getAsExplicitSpecialization() {
-  return cast<ExplicitSpecializationDeclarator>(this);
+
+SpecializationDeclarator *Declarator::getAsSpecialization() {
+  return cast<SpecializationDeclarator>(this);
 }
-const ExplicitSpecializationDeclarator *
-Declarator::getAsExplicitSpecialization() const {
-  return cast<ExplicitSpecializationDeclarator>(this);
-}
-PartialSpecializationDeclarator *Declarator::getAsPartialSpecialization() {
-  return cast<PartialSpecializationDeclarator>(this);
-}
-const PartialSpecializationDeclarator *
-Declarator::getAsPartialSpecialization() const {
-  return cast<PartialSpecializationDeclarator>(this);
+
+const SpecializationDeclarator *Declarator::getAsSpecialization() const {
+  return cast<SpecializationDeclarator>(this);
 }
 
 void Declarator::printSequence(llvm::raw_ostream &os) const {
@@ -261,6 +255,8 @@ std::string TemplateParamsDeclarator::getString(bool IncludeKind) const {
   return Ret;
 }
 
+const Syntax *TemplateParamsDeclarator::getSyntax() const { return Params; }
+
 // ------------------ ImplicitEmptyTemplateParamsDeclarator --------------------
 clang::SourceLocation ImplicitEmptyTemplateParamsDeclarator::getLoc() const {
   return Owner->getLoc();
@@ -274,30 +270,22 @@ std::string ImplicitEmptyTemplateParamsDeclarator::getString(bool IncludeKind) c
   return Ret;
 }
 
-// ------------------ ExplicitSpecializationDeclarator -------------------------
-clang::SourceLocation ExplicitSpecializationDeclarator::getLoc() const {
+const Syntax *ImplicitEmptyTemplateParamsDeclarator::getSyntax() const { return Owner; }
+// ------------------ SpecializationDeclarator ---------------------------------
+clang::SourceLocation SpecializationDeclarator::getLoc() const {
   return Args->getLoc();
 }
 
-std::string ExplicitSpecializationDeclarator::getString(bool IncludeKind) const {
+std::string SpecializationDeclarator::getString(bool IncludeKind) const {
   std::string Ret;
   if (IncludeKind)
-    Ret += "[Explicit Specialization] ";
+    Ret += "[Specialization] ";
   Ret += "[" + std::to_string(Args->getNumChildren()) + "]";
   return Ret;
 }
 
-// ------------------ PartialSpecializationDeclarator --------------------------
-clang::SourceLocation PartialSpecializationDeclarator::getLoc() const {
-  return Args->getLoc();
+bool SpecializationDeclarator::HasArguments() const {
+  return Args->getNumChildren();
 }
 
-std::string PartialSpecializationDeclarator::getString(bool IncludeKind) const {
-  std::string Ret;
-  if (IncludeKind)
-    Ret += "[Partial Specialization] ";
-  Ret += "[" + std::to_string(Args->getNumChildren()) + "]";
-  return Ret;
-}
-
-}
+} // end namepsace gold

@@ -41,6 +41,7 @@ static llvm::StringRef getScopeKindName(ScopeKind K) {
 
   case SK_Control:
     return "Control";
+
   case SK_Enum:
     return "Enum";
   }
@@ -48,6 +49,9 @@ static llvm::StringRef getScopeKindName(ScopeKind K) {
   llvm_unreachable("invalid scope");
 }
 
+llvm::StringRef Scope::getKindStr() const {
+  return getScopeKindName(getKind());
+}
 void Scope::dump(llvm::raw_ostream &os) const {
   os << getScopeKindName(getKind()) << '\n';
   if (getKind() == SK_Template) {

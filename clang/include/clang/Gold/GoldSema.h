@@ -154,8 +154,6 @@ public:
   /// S must match the syntax for which the scope was initially pushed.
   Scope *saveScope(const Syntax *S);
 
-  // Name lookup
-
   // Perform unqualified lookup of a name in the current scope.
   bool lookupUnqualifiedName(clang::LookupResult &R);
 

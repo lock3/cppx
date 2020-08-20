@@ -278,14 +278,16 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
   ExprElaborator ExEl(Context, SemaRef);
   bool IsConstExprIfStmt = false;
   Attributes Attrs;
-  for (const Attribute *Attr : S->getAttributes()) {
-    Attrs.emplace_back(Attr->getArg());
-  }
-  if (isConstExprIf(SemaRef, Attrs, IsConstExprIfStmt)) {
-    return nullptr;
-  }
-  if (IsConstExprIfStmt) {
-    llvm::outs () << "We have a constant if stmt expression!\n";
+  // Gathering attributes from if statement.
+  if (const auto *Call = dyn_cast<CallSyntax>(S->getCall())) {
+    if (const auto *IfAtom = dyn_cast<AtomSyntax>(Call->getCallee())) {
+      for (const Attribute *Attr : IfAtom->getAttributes()) {
+        Attrs.emplace_back(Attr->getArg());
+      }
+      if (isConstExprIf(SemaRef, Attrs, IsConstExprIfStmt)) {
+        return nullptr;
+      }
+    }
   }
   if (const ArraySyntax *BlockCond
                                 = dyn_cast<ArraySyntax>(Call->getArguments())) {

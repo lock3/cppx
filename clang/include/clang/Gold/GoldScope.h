@@ -119,7 +119,7 @@ public:
     : Kind(K), Parent(P), Term(S), Entity(D) {
     Depth = Parent ? Parent->getDepth() + 1 : 0;
   }
-
+  llvm::StringRef getKindStr() const;
 
   /// The kind of scope.
   ScopeKind getKind() const {

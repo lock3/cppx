@@ -293,7 +293,7 @@ createFloatLiteral(clang::ASTContext &CxxAST, const LiteralSyntax *S) {
     //                                       FloatType, S->getLoc());
   // }
 
-  // llvm_unreachable("unsupported float type");
+
 }
 
 static clang::FloatingLiteral *
@@ -1621,9 +1621,8 @@ static clang::Expr *doDerefAndXOrLookUp(SyntaxContext &Context,
                                  clang::SourceRange();
   const clang::RecordType *RTy = BaseExpr->getType()->getAsStructureType();
   if (!RTy) {
-    // TODO: Create a error message.
     SemaRef.Diags.Report(BaseExpr->getExprLoc(),
-                      clang::diag::err_typecheck_member_reference_struct_union)
+                       clang::diag::err_typecheck_member_reference_struct_union)
                         << BaseExpr->getType();
 
     // llvm_unreachable("This only happens when we don't have a valid structured "
@@ -2252,7 +2251,6 @@ static void getDeclarators(Declarator *D,
 }
 
 clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
-  // llvm_unreachable("ExprElaborator::elaborateTypeExpr to be delete!");
   // The type of a declarator is constructed back-to-front.
   llvm::SmallVector<Declarator *, 4> Decls;
   getDeclarators(D, Decls);
@@ -2306,13 +2304,9 @@ clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
 // we're building. Note that T is the return type (if any).
 clang::Expr *
 ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
-  // llvm_unreachable("ExprElaborator::elaborateFunctionType to be delete!");
   FunctionDeclarator *FuncDcl = D->getAsFunction();
-  // const auto *Call = cast<CallSyntax>(FuncDcl->);
 
   // FIXME: Handle array-based arguments.
-  // assert(isa<ListSyntax>(D->Data.ParamInfo.Params)
-  //        && "Array parameters not supported");
   const ListSyntax *Args = FuncDcl->getParams();
 
   // bool IsVariadic = D->Data.ParamInfo.VariadicParam;
@@ -2367,7 +2361,6 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
 
 
 clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *Ty) {
-  // llvm_unreachable("ExprElaborator::elaborateExplicitType to be delete!");
   assert(D->isType());
   TypeDeclarator *TyDcl = D->getAsType();
   if (const auto *Atom = dyn_cast<AtomSyntax>(TyDcl->getTyExpr())) {

@@ -15,7 +15,9 @@
 #define CLANG_GOLD_DECLARATION_H
 
 #include "clang/Gold/GoldDeclarator.h"
-
+namespace clang {
+class TemplateParameterList;
+}
 
 
 namespace gold {
@@ -323,7 +325,7 @@ public:
 
   /// The list of template parameter declarations associated
   /// with this declaration.
-  Scope *SavedTemplateScope = nullptr;
+  // Scope *SavedTemplateScope = nullptr;
 
   /// The identifier for the declaration.
   clang::IdentifierInfo *Id = nullptr;
@@ -389,6 +391,9 @@ public:
 
   Declarator *FunctionDcl = nullptr;
   Declarator *TypeDcl = nullptr;
+
+  llvm::SmallVector<clang::TemplateParameterList *, 4> TemplateParamStorage;
+  // clang::MultiTemplateParamsArg MTP;
   /// ====================================================================== ///
   /// Additional identifing information about the current declaration.
 

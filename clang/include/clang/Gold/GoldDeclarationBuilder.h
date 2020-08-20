@@ -44,15 +44,6 @@ public:
   { }
   DeclarationBuilder(Sema &S);
 
-
-  /// Utility functions
-  //@{
-  // bool isDeclaration(const Syntax *S);
-  // // TODO: I need to figure out how to suspend error reporting.
-  // bool isDeclarationNoErrors(const Syntax *S);
-  // bool IsParameter
-  //@}
-
   /// This constructs the declaration simiar to how make declarator
   /// did previously.
   Declaration *build(const Syntax *S);
@@ -64,8 +55,8 @@ private:
   const OpInfoBase *OpInfo = nullptr;
   const Syntax *DeclOperator = nullptr;
   const Syntax *InitExpr = nullptr;
-  bool HasFunctionCallSyntax = false;
   bool OperatorEquals = false;
+
   // Overridding setting, this is special because enums are so restructive
   // as to which declarations are actually allowed within them.
   bool EnableFunctions = true;
@@ -174,10 +165,8 @@ private:
   ImplicitEmptyTemplateParamsDeclarator *
   handleImplicitTemplateParams(const ElemSyntax *Owner, Declarator *Next);
 
-  ExplicitSpecializationDeclarator *
-  handleExplicitSpecialization(const ElemSyntax *SpecializationOwner, Declarator *Next);
-  PartialSpecializationDeclarator *
-  handlePartialSpecialization(const ElemSyntax *SpecializationOwner, Declarator *Next);
+  SpecializationDeclarator *
+  handleSpecialization(const ElemSyntax *SpecializationOwner, Declarator *Next);
 };
 
 

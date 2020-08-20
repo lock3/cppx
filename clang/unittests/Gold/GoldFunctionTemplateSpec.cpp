@@ -21,61 +21,61 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-// TEST(GoldFunctionTemplateSpec, Basic) {
-//   StringRef Code = R"(
-// f[T : type](x : T) : T!
-//   return T()
+TEST(GoldFunctionTemplateSpec, Basic) {
+  StringRef Code = R"(
+f[T : type](x : T) : T!
+  return T()
 
-// f[int](x : int) : int!
-//   return x
+f[int](x : int) : int!
+  return x
 
-// main() : int!
-//   result = f[int](42)
-// )";
+main() : int!
+  result = f[int](42)
+)";
 
-//   SimpleGoldParseTest(Code);
-//   DeclarationMatcher f =
-//     functionDecl(hasName("f"),
-//                  isExplicitTemplateSpecialization());
+  SimpleGoldParseTest(Code);
+  DeclarationMatcher f =
+    functionDecl(hasName("f"),
+                 isExplicitTemplateSpecialization());
 
-//   StatementMatcher
-//     ResultMatcher(hasDescendant(
-//                     varDecl(hasName("result"),
-//                             hasType(asString("int"))
-//                       )
-//                     )
-//       );
-//   ASSERT_TRUE(matches(Code.str(), ResultMatcher));
-//   ASSERT_TRUE(matches(Code.str(), f));
-// }
+  StatementMatcher
+    ResultMatcher(hasDescendant(
+                    varDecl(hasName("result"),
+                            hasType(asString("int"))
+                      )
+                    )
+      );
+  ASSERT_TRUE(matches(Code.str(), ResultMatcher));
+  ASSERT_TRUE(matches(Code.str(), f));
+}
 
-// TEST(GoldFunctionTemplateSpec, BasicNonExplicit) {
-//   StringRef Code = R"(
-// f[T : type](x : T) : T!
-//   return T()
+TEST(GoldFunctionTemplateSpec, BasicNonExplicit) {
+  StringRef Code = R"(
+f[T : type](x : T) : T!
+  return T()
 
-// f[](x : int) : int!
-//   return x
+f[](x : int) : int!
+  return x
 
-// f[](x : double) : double!
-//   return 24.0
+f[](x : double) : double!
+  return 24.0
 
-// main() : int!
-//   result = f[int](42)
-// )";
+main() : int!
+  result = f[int](42)
+)";
 
-//   SimpleGoldParseTest(Code);
-//   DeclarationMatcher f =
-//     functionDecl(hasName("f"),
-//                  isExplicitTemplateSpecialization());
+  SimpleGoldParseTest(Code);
+  DeclarationMatcher f =
+    functionDecl(hasName("f"),
+                 isExplicitTemplateSpecialization());
 
-//   StatementMatcher
-//     ResultMatcher(hasDescendant(
-//                     varDecl(hasName("result"),
-//                             hasType(asString("int"))
-//                       )
-//                     )
-//       );
-//   ASSERT_TRUE(matches(Code.str(), ResultMatcher));
-//   ASSERT_TRUE(matches(Code.str(), f));
-// }
+  StatementMatcher
+    ResultMatcher(hasDescendant(
+                    varDecl(hasName("result"),
+                            hasType(asString("int"))
+                      )
+                    )
+      );
+  ASSERT_TRUE(matches(Code.str(), ResultMatcher));
+  ASSERT_TRUE(matches(Code.str(), f));
+}

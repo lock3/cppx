@@ -38,7 +38,6 @@ clang::SourceLocation Declaration::getEndOfDecl() const {
 
 // A declarator declares a variable, if it does not declare a function.
 bool Declaration::declaresVariable() const {
-  // llvm_unreachable("Declaration::declaresVariable broken!");
   return !declaresFunction();
 }
 
@@ -50,16 +49,11 @@ bool Declaration::templateHasDefaultParameters() const {
 }
 
 bool Declaration::declaresInitializedVariable() const {
-  // llvm_unreachable("Declaration::declaresInitializedVariable broken!");
   return declaresVariable() && Init;
 }
 
 bool Declaration::declaresType() const {
-  // llvm_unreachable("Declaration::declaresType broken!");
   const Declarator* D = Decl;
-  // while (D && D->getKind() != DK_Type) {
-  //   D = D->Next;
-  // }
   if (TypeDcl)
     if (const auto *Atom = dyn_cast<AtomSyntax>(D->getAsType()->getTyExpr()))
       return Atom->getSpelling() == "type";
@@ -67,7 +61,6 @@ bool Declaration::declaresType() const {
 }
 
 bool Declaration::declaresForwardRecordDecl() const {
-  // llvm_unreachable("Declaration::declaresForwardRecordDecl() broken!");
   if (declaresInitializedVariable()) {
     if (const AtomSyntax *RHS = dyn_cast<AtomSyntax>(Init)) {
       return RHS->hasToken(tok::ClassKeyword)
@@ -83,7 +76,6 @@ bool Declaration::declaresForwardRecordDecl() const {
 }
 
 bool Declaration::declaresTag() const {
-  // llvm_unreachable("Declaration::declaresTag broken!");
   if (Cxx)
     return isa<clang::CXXRecordDecl>(Cxx);
   if (Init)
@@ -103,7 +95,6 @@ bool Declaration::declaresTag() const {
 }
 
 bool Declaration::getTagName(const AtomSyntax *&NameNode) const {
-  // llvm_unreachable("Declaration::getTagName broken!");
   if (Init)
     if (const MacroSyntax *Macro = dyn_cast<MacroSyntax>(Init)) {
       if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Macro->getCall()))
@@ -127,7 +118,6 @@ bool Declaration::getTagName(const AtomSyntax *&NameNode) const {
 }
 
 bool Declaration::declaresNamespace() const {
-  // llvm_unreachable("Declaration::declaresNamespace broken!");
   if (Cxx)
     return isa<clang::NamespaceDecl>(Cxx);
   if (const MacroSyntax *Macro = dyn_cast_or_null<MacroSyntax>(Init))
@@ -136,33 +126,16 @@ bool Declaration::declaresNamespace() const {
 }
 
 bool Declaration::declaresTemplateType() const {
-  // llvm_unreachable("Declaration::declaresTemplateType broken!");
-  // const Declarator *D = Decl;
-  // while (D && D->getKind() != DK_TemplateParams) {
-  //   D = D->Next;
-  // }
-  // if (!D)
-  //   return false;
   return TemplateParameters && !FunctionDcl;
-  // return D && D->Call && clang::isa<ElemSyntax>(D->Call);
 }
 
 // A declarator declares a function if it's first non-id declarator is
 // declares parameters.
 bool Declaration::declaresFunction() const {
-  // llvm_unreachable("Declaration::declaresFunction broken!");
-  // assert(Decl);
-  // const Declarator *D = Decl;
-  // if (D->getKind() == DK_Identifier)
-  //   D = D->Next;
-  // if (D)
-  //   return D->getKind() == DK_Function;
-  // return false;
   return FunctionDcl;
 }
 
 bool Declaration::declaresFunctionWithImplicitReturn() const {
-  // llvm_unreachable("Declaration::declaresFunctionWithImplicitReturn broken!");
   if (declaresFunction() || declaresFunctionTemplate()) {
     if (!Op)
       // Something is very wrong here?!
@@ -179,7 +152,6 @@ bool Declaration::declaresFunctionWithImplicitReturn() const {
 }
 
 bool Declaration::declaresPossiblePureVirtualFunction() const {
-  // llvm_unreachable("Declaration::declaresPossiblePureVirtualFunction broken!");
   if (declaresFunction() || declaresFunctionTemplate()) {
     if (!Op)
       return false;
@@ -196,7 +168,6 @@ bool Declaration::declaresPossiblePureVirtualFunction() const {
 }
 
 static bool isSpecialExpectedAssignedFuncValue(const Syntax *Op, TokenKind TK) {
-  // llvm_unreachable("isSpecialExpectedAssignedFuncValue broken!");
   if (const CallSyntax *Call = dyn_cast<CallSyntax>(Op))
     if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(Call->getCallee()))
       if (Name->getSpelling() == "operator'='")
@@ -207,7 +178,6 @@ static bool isSpecialExpectedAssignedFuncValue(const Syntax *Op, TokenKind TK) {
 }
 
 bool Declaration::declaresDefaultedFunction() const {
-  // llvm_unreachable("Declaration::declaresDefaultedFunction broken!");
  if (declaresFunction() || declaresFunctionTemplate()) {
     if (!Op)
       return false;
@@ -218,7 +188,6 @@ bool Declaration::declaresDefaultedFunction() const {
 
 
 bool Declaration::declaresDeletedFunction() const {
-  // llvm_unreachable("Declaration::declaresDeletedFunction broken!");
  if (declaresFunction() || declaresFunctionTemplate()) {
     if (!Op)
       return false;
@@ -228,66 +197,43 @@ bool Declaration::declaresDeletedFunction() const {
 }
 
 bool Declaration::declaresMemberVariable() const {
-  // llvm_unreachable("Declaration::declaresMemberVariable broken!");
   return declaresVariable() && Cxx && clang::isa<clang::FieldDecl>(Cxx);
 }
 
 bool Declaration::declaresMemberFunction() const {
-  // llvm_unreachable("Declaration::declaresMemberFunction broken!");
   return declaresFunction() && Cxx && clang::isa<clang::CXXMethodDecl>(Cxx);
 }
 
 bool Declaration::declaresConstructor() const {
-  // llvm_unreachable("Declaration::declaresConstructor broken!");
   return declaresFunction() && Cxx
     && clang::isa<clang::CXXConstructorDecl>(Cxx);
 }
 
 bool Declaration::declaresDestructor() const {
-  // llvm_unreachable("Declaration::declaresDestructor broken!");
   return declaresFunction() && Cxx && clang::isa<clang::CXXConstructorDecl>(Cxx);
 }
 
 // A declarator declares a template if it's first non-id declarator is
 // declares template parameters.
-// FIXME: this might not work for specializations.
 bool Declaration::declaresFunctionTemplate() const {
-  // llvm_unreachable("Declaration::declaresFunctionTemplate broken!");
-  // assert(Decl);
-  // const Declarator *D = Decl;
   // TODO: In the future we would need to extend this definition to make sure
   // that everything works as expected whe we do have an identifier that
   // is infact also a template name.
   return FunctionDcl && TemplateParameters;
-  // while (D && D->getKind() == DK_Identifier)
-  //   D = D->Next;
-  // if (!D)
-  //   return false;
-  // if (D->getKind() != DK_Function)
-  //   return false;
-  // return D->Data.ParamInfo.TemplateParams;
 }
 
 
 bool Declaration::declaresOperatorOverload() const {
-  // llvm_unreachable("Declaration::declaresOperatorOverload broken!");
   if (!OpInfo)
     return false;
   return declaresFunction();
 }
 
 bool Declaration::declaresTypeAlias() const {
-  // llvm_unreachable("Declaration::declaresTypeAlias broken!");
   return Cxx && isa<clang::TypeAliasDecl>(Cxx);
 }
 
 bool Declaration::declIsStatic() const {
-  // llvm_unreachable("Declaration::declIsStatic broken!");
-  // const Declarator *D = Decl;
-  // D = D->Next;
-  // if (!D) {
-  //   return false;
-  // }
   if (!IdDcl->UnprocessedAttributes)
     return false;
 
@@ -304,17 +250,14 @@ bool Declaration::declIsStatic() const {
 }
 
 bool Declaration::declaresFunctionDecl() const {
-  // llvm_unreachable("Declaration::declaresFunctionDecl broken!");
   return declaresFunction() && !Init;
 }
 
 bool Declaration::decalaresFunctionDef() const {
-  // llvm_unreachable("Declaration::decalaresFunctionDef broken!");
   return declaresFunction() && Init;
 }
 
 bool Declaration::declaresInlineInitializedStaticVarDecl() const {
-  // llvm_unreachable("Declaration::declaresInlineInitializedStaticVarDecl broken!");
   if (!Cxx)
     return false;
   clang::VarDecl *VD = dyn_cast<clang::VarDecl>(Cxx);
@@ -324,20 +267,12 @@ bool Declaration::declaresInlineInitializedStaticVarDecl() const {
 }
 
 const Syntax *Declaration::getTemplateParams() const {
-  // llvm_unreachable("Declaration::getTemplateParams broken!");
   if (!TemplateParameters) {
     return nullptr;
   }
   TemplateParamsDeclarator *TPD
                            = cast<TemplateParamsDeclarator>(TemplateParameters);
   return TPD->getParams();
-  // assert(Decl);
-  // const Declarator *D = Decl;
-  // while (D && D->getKind() == DK_Identifier)
-  //   D = D->Next;
-  // if (D)
-  //   return D->Data.ParamInfo.TemplateParams;
-  // return nullptr;
 }
 
 const Declarator *Declaration::getFirstTemplateDeclarator() const {
@@ -349,7 +284,6 @@ const Declarator *Declaration::getFirstTemplateDeclarator() const {
 }
 
 Declarator *Declaration::getFirstTemplateDeclarator() {
-  // llvm_unreachable("Declaration::getFirstTemplateDeclarator broken!");
   Declarator *D = Decl;
   while (D && D->getKind() != DK_TemplateParams) {
     D = D->Next;
@@ -358,27 +292,14 @@ Declarator *Declaration::getFirstTemplateDeclarator() {
 }
 
 const Declarator *Declaration::getIdDeclarator() const {
-  // llvm_unreachable("Declaration::getIdDeclarator broken!");
   return IdDcl;
-  // const Declarator *D = Decl;
-  // while (D && D->getKind() != DK_Identifier) {
-  //   D = D->Next;
-  // }
-  // return D;
 }
 
 Declarator *Declaration::getIdDeclarator() {
-  // llvm_unreachable("Declaration::getIdDeclarator broken!");
   return IdDcl;
-  // Declarator *D = Decl;
-  // while (D && D->getKind() != DK_Identifier) {
-  //   D = D->Next;
-  // }
-  // return D;
 }
 
 const Declarator *Declaration::getFirstDeclarator(DeclaratorKind DK) const {
-  // llvm_unreachable("Declaration::getFirstDeclarator broken!");
   const Declarator *D = Decl;
   while (D && D->getKind() != DK) {
     D = D->Next;
@@ -387,7 +308,6 @@ const Declarator *Declaration::getFirstDeclarator(DeclaratorKind DK) const {
 }
 
 Declarator *Declaration::getFirstDeclarator(DeclaratorKind DK) {
-  // llvm_unreachable("Declaration::getFirstDeclarator broken!");
   Declarator *D = Decl;
   while (D && D->getKind() != DK) {
     D = D->Next;

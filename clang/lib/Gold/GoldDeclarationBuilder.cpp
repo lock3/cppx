@@ -91,7 +91,6 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
       TheDecl->setPreviousDecl(*DeclSet.begin());
     }
   }
-  TheDecl->Decl->printSequence(llvm::outs() << "DeclaratorSeq = ");
   SemaRef.getCurrentScope()->addDecl(TheDecl);
   TheDecl->CurrentPhase = Phase::Identification;
   return TheDecl;
@@ -189,8 +188,7 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
       if (ReportInvalidDeclarator())
         return true;
     }
-    if (Cur->isExplicitSpecialization()
-        || Cur->isPartialSpecialization()) {
+    if (Cur->isSpecialization()) {
       NNSSpecialization = Cur;
       Cur = Cur->Next;
       if (ReportInvalidDeclarator())
@@ -224,8 +222,7 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
   if (Cur == nullptr)
     return false;
 
-  if (Cur->isPartialSpecialization()
-      || Cur->isExplicitSpecialization()) {
+  if (Cur->isSpecialization()) {
     TheDecl->SpecializationArgs = Cur;
     Cur = Cur->Next;
   }
@@ -292,319 +289,8 @@ bool DeclarationBuilder::checkDeclaration(const Syntax *DeclExpr,
     return checkEnumDeclaration(DeclExpr, TheDecl);
   }
   return false;
-//   bool HasError = false;
-//   // If we have a function declaration and functions are not allowed in the current
-//   // context.
-//   if (!EnableFunctions && TheDecl->FunctionDcl) {
-//     if (RequiresDeclOrError) {
-//       SemaRef.Diags.Report(TheDecl->FunctionDcl->getLoc(),
-//                             clang::diag::err_invalid_declarator_sequence)
-//                             << 0;
-//     }
-//     HasError = true;
-//   }
-
-//   // This implies that it's a variable, of some kind or at least uses the
-//   // variable declaration syntax of x = y with the optional : type
-//   if (RequireTypeForVariable && !TheDecl->FunctionDcl) {
-//     if (RequiresDeclOrError) {
-//       SemaRef.Diags.Report(TheDecl->IdDcl->getLoc(),
-//                           clang::diag::err_type_form_declarator_sequence);
-//     }
-//     HasError = true;
-//   }
-
-//   // Verifying that if we do have template parameters emit an error.
-//   if (!EnableTemplateParameters) {
-//     if (TheDecl->TemplateParameters) {
-//       if (RequiresDeclOrError) {
-//         SemaRef.Diags.Report(TheDecl->TemplateParameters->getLoc(),
-//                               clang::diag::err_invalid_declarator_sequence)
-//                               << 2;
-//       }
-//       HasError = true;
-//     }
-//     if (TheDecl->SpecializationArgs) {
-//       if (RequiresDeclOrError) {
-//         SemaRef.Diags.Report(TheDecl->SpecializationArgs->getLoc(),
-//                               clang::diag::err_invalid_declarator_sequence)
-//                               << 8;
-//       }
-//       HasError = true;
-//     }
-//   }
-
-//   // Verifying that if we do have template parameters emit an error.
-//   if (!EnableNestedNameSpecifiers) {
-//     if (TheDecl->GlobalNsSpecifier) {
-//       if (RequiresDeclOrError) {
-//         SemaRef.Diags.Report(TheDecl->GlobalNsSpecifier->getLoc(),
-//                              clang::diag::err_invalid_declarator_sequence)
-//                              << 4;
-//       }
-//       HasError = true;
-//     }
-//     // If we have nested name info and we shouldn't
-//     if (!TheDecl->NNSInfo.empty()) {
-//       if (RequiresDeclOrError) {
-//         SemaRef.Diags.Report(TheDecl->NNSInfo.front().NNS->getLoc(),
-//                              clang::diag::err_invalid_declarator_sequence)
-//                              << 4;
-//       }
-//       HasError = true;
-//     }
-//   }
-
-  // Checking the InitExpr for possible tags.
-
-  // UDK_Class,                // The declaration is a class, either
-  //                           // a declaration or definition.
-
-  // UDK_Union,                // The declaration is a union, either
-  //                           // a declaration or definition.
-
-  // UDK_Enum,                 // The declaration is an Enum, either
-  //                           // a declaration or definition.
-
-  // UDK_Variable,             // This is a variable that occurs within global
-  //                           // namespace, a namespace, or as the static
-  //                           // member of a class (with the static attribute).
-
-  // UDK_Namespace,            // Defines a nemaspace
-  // UDK_NamespaceAlias,       // Declares a namespace alias
-
-  // UDK_TemplateAlias,        // Suspected template alias. Currently this MUST
-  //                           // have a type that evaluates to : type
-  //                           // - cannot be a template specialization
-
-  // // UDK_VarTemplateDecl,   // We can't handle this unless we have speculative
-  //                           // evaluation.
-  //                           // That's because we don't know all of the types
-  //                           // at the time that this is identified, and I can't
-  //                           // look them all up until phase 2.
-
-  // UDK_TypeAlias,            // This must have a known, RHS that is a known type,
-  //                           // or provide a : type.
-
-  // UDK_Parameter,            // A function parameter
-
-  // UDK_TemplateParam,        // Any template parameter as their type doesn't
-  //                           // matter until they are elaborated, and used.
-
-  // UDK_Field,                // Field associated with a class.
-
-  // UDK_EnumConstant,         // A field declared within an enum.
-
-
-  // UDK_PossibleVarTemplate,  // This is a variable template definiton outside of
-  //                           // a class with a namespecifier.
-
-  // UDK_MemberFunction,       // Only applies to member functions declared within
-  //                           // The body of a class.
-  //                           // In order to figure out if this is a member or just
-  //                           // the definition of something defined within a namespace
-  //                           // it would require additional lookup and evaluation.
-
-  // UDK_Constructor,          // A function with the name constructor declared
-  //                           // within the body of a class
-
-  // UDK_Destructor,           // A function with the name Destructor declared within
-  //                           // the body of a class.
-
-  // UDK_ConversionOperator,   // A conversion operator within the body of a class.
-
-  // UDK_MemberOperator,       // The declaration of a member operator overload.
-
-  // UDK_Function,             // Declares a function
-
-  // UDK_LiteralOperator,      // User defined literal operator declaration.
-
-  // UDK_OperatorOverload,     // An operator overload that's not within a class.
-
-  // UDK_PossibleConstructor,  // This is a function with a nested name specifier
-  //                           // and the name Constructor
-  // UDK_PossibleDestructor,   // This is a function with a nested name specifier
-  //                           // and the name destructor
-  // UDK_PossibleMemberOperator, // This is an operator overload with a
-  //                             // nested name specifier.
-  // UDK_PossibleConversionOperator, // This is conversion operator overload with a
-  //                                 // nested name specifier.
-
-  // UDK_VarTemplateOrTemplateAlais, // This requires that we must specifically
-  //                                 // deduce the evaluated type before we could
-  //                                 // evaluate this as either an alias or a variable.
-  //                                 // but minimally we would know this is a template
-
-  // UDK_DeductionOnlyVariable,  // In order to deduce what type of declartion this
-  //                             // is it requires non-speculative evaluation of it's
-  //                             // assigned epxression.
-  //                             // This could be one of the following:
-  //                             //    - TemplateAlias
-  //                             //    - NamespaceAlias
-  //                             //    - VarTemplate
-  //                             //    - VarDecl
-  //                             //    - TypeAlias
-  //                             //    - FieldDecl
-  //                             //    - Not a declaration, This fully depends
-  //                             //      on where it's used.
-  // UDK_CallOrFunctionDecl,     // Takes the form func() = expr
-  // Things we don't have syntax for yet.
-  /*
-  UDK_UsingDecl,
-  UDK_UsingDirective,
-  UDK_UsingPackDecl,
-  UDK_FriendClass,
-  UDK_FriendUnion,
-  UDK_FriendFunction,
-  UDK_FriendName, // Since we don't have syntax for this yet I'm relying on how
-                  // it's specified in C++.
-  UDK_UsingShadowDecl, // non-constructor. using ::foo() also works in namespace.
-  UDK_UsingShadowConstructor, // using Shadowed constrcutor, does not work in
-                              // namespace
-  UDK_Concept // Not sure if we plan on using concepts or if there's a chance
-              // that their use could be at all similar to other declarations.
-*/
-  // bool IsDelete = true;
-  // bool IsDefault = false;
-  // bool IsTag = false;
-  // bool IsDeclOnly = false;
-  // bool IsEnum = false;
-  // bool IsClass = false;
-  // bool IsUnion = false;
-  // bool HasEqualZero = false;
-  // bool IsNamespace = false;
-  // // Attempting to extract the initializer.
-  // if (TheDecl->Init) {
-  //   if (OperatorEquals) {
-  //     // Checking to see if we have a class, union, enum, = 0, = default,
-  //     // = delete, it could also be a namespace.
-  //     if (const auto *Atom = dyn_cast<AtomSyntax>(TheDecl->Init)) {
-  //       if (Atom->getSpelling() == "class") {
-  //         IsDeclOnly = true;
-  //         IsTag = true;
-  //         IsClass = true;
-  //       } else if (Atom->getSpelling() == "union") {
-  //         IsDeclOnly = true;
-  //         IsTag = true;
-  //         IsUnion = true;
-  //       } else if (Atom->getSpelling() == "enum") {
-  //         IsDeclOnly = true;
-  //         IsTag = true;
-  //         IsEnum = true;
-  //       } else if (Atom->getSpelling() == "default") {
-  //         bool IsDefault = true;
-  //       } else if (Atom->getSpelling() == "delete") {
-  //         bool IsDelete = true;
-  //       } else {
-  //         Token T = Atom->getToken();
-  //         if (T.getKind() == tok::DecimalInteger) {
-  //           if (Atom->getSpelling() == "0") {
-  //             // This means we could be a virtual function.
-  //             // if we are inside of a class.
-  //             HasEqualZero = true;
-  //           }
-  //         }
-  //       }
-  //     } else if (const auto *EnumCall = dyn_cast<CallSyntax>(TheDecl->Init)) {
-  //       if (const auto *ExpectedEnumName = dyn_cast<AtomSyntax>(
-  //                                                      EnumCall->getCallee())) {
-  //         if (ExpectedEnumName->getSpelling() == "enum") {
-  //           // This is an enum forward declaration with an underlying type.
-  //           IsDeclOnly = true;
-  //           IsTag = true;
-  //           IsEnum = true;
-  //         }
-  //       }
-  //     } else if (const auto *Macro = dyn_cast<MacroSyntax>(TheDecl->Init)) {
-  //       // This means it it has the syntax something: that could be a class,
-  //       // namespace, union, or enum. if it's not one of those then it's
-  //       // 100% an error reguardless of if the error setting says otherwise.
-  //       if (const auto *Atom = dyn_cast<AtomSyntax>(Macro->getCall())) {
-  //         if (Atom->getSpelling() == "class") {
-  //           IsDeclOnly = false;
-  //           IsTag = true;
-  //           IsClass = true;
-  //         } else if (Atom->getSpelling() == "union") {
-  //           IsDeclOnly = false;
-  //           IsTag = true;
-  //           IsUnion = true;
-  //         } else if (Atom->getSpelling() == "enum") {
-  //           IsDeclOnly = false;
-  //           IsTag = true;
-  //           IsEnum = true;
-  //         } else if (Atom->getSpelling() == "namespace") {
-  //           IsDeclOnly = false;
-  //           IsNamespace = true;
-  //         }
-  //       }
-  //     } else if (const auto *MacroCall = dyn_cast<CallSyntax>(Macro->getCall())) {
-  //       if (const auto *Atom = dyn_cast<AtomSyntax>(Macro->getCall())) {
-  //         if (Atom->getSpelling() == "class") {
-  //           IsDeclOnly = false;
-  //           IsTag = true;
-  //           IsClass = true;
-  //         } else if (Atom->getSpelling() == "union") {
-  //           IsDeclOnly = false;
-  //           IsTag = true;
-  //           IsUnion = true;
-  //         } else if (Atom->getSpelling() == "enum") {
-  //           IsDeclOnly = false;
-  //           IsTag = true;
-  //           IsEnum = true;
-  //         } else {
-  //           llvm_unreachable("This doesn't make sense?!");
-  //         }
-  //       }
-  //     }
-  //   } else {
-  //     // this means it's a function body and we don't need to do anything about it?
-  //     // I need to verify that I do infact have a valid function and this isn't
-  //     // just x! or something like that.
-  //     if (!FunctionDcl) {
-  //       // This implies that we have a X! or something like that, either way it
-  //       // doesn't make any sense, and is there for not a declaration.
-  //       if (RequiresDeclOrError) {
-  //         SemaRef.Diags.Report(DeclExpr->getLoc(),
-  //                             clang::diag::err_invalid_declaration);
-  //       }
-  //       return true;
-  //     }
-  //   }
-  // } else {
-  //   // if we are a function then we are function declaration.
-  //   if (FunctionDcl) {
-  //     IsDeclOnly = true;
-  //   }
-  // }
-  // // The we are kind of done here, we would need to
-  // if (IsTag) {
-
-  // }
-  // if (!EnableNamespaceDecl) {
-  // }
-  // err_invalid_declarator_sequence : Error<
-  // 0 = function declaration
-  // 1 = namespace
-  // 2 = template
-  // 3 = nested name specifier
-  // 4 = global name specifier
-  // 5 = class
-  // 6 = enum
-  // 7 = union
-  // 8 = template specialization
-
-  // EnableFunctions
-  // EnableTags
-  // EnableAliases
-  // EnableTemplateParameters
-  // RequireTypeForVariable
-  // EnableNestedNameSpecifiers
-  // RequireAliasTypes
-  // EnableNamespaceDecl
-  // RequireTypeForFunctions
-  // RequiresDeclOrError
-  // return HasError;
 }
+
 bool DeclarationBuilder::checkEnumDeclaration(const Syntax *DeclExpr,
                                               Declaration *TheDecl) {
   // We know we are 100% have to be this or an error.
@@ -779,7 +465,6 @@ Declarator *DeclarationBuilder::handleControlScope(const Syntax *S) {
 Declarator *DeclarationBuilder::handleEnumScope(const Syntax *S) {
   // This is done 100% Seperate from all other declarations, because of how
   // limited enum declarations actually are.
-  // llvm_unreachable("Working on it.");
   if (const auto *NameOnly = dyn_cast<AtomSyntax>(S)) {
     return handleIdentifier(NameOnly, nullptr);
   } else if (const auto *Call = dyn_cast<CallSyntax>(S)) {
@@ -869,6 +554,7 @@ Declarator *
 DeclarationBuilder::mainElementTemplateOrSpecialization(const ElemSyntax *Elem,
                                                         Declarator *Next) {
   const auto *ElemArgs = cast<ListSyntax>(Elem->getArguments());
+  Declarator *CurrentNext = Next;
   if (const auto *InnerTemplate = dyn_cast<ElemSyntax>(Elem->getObject())) {
     // We can be 100% sure we are some kind of specialization, either explicit
     // or partial.
@@ -878,41 +564,29 @@ DeclarationBuilder::mainElementTemplateOrSpecialization(const ElemSyntax *Elem,
     // We assume that this is a specialization if we are @ a function declaration
     // and a template if not.
     if (ElemArgs->getNumChildren() == 0) {
-      if (HasFunctionCallSyntax) {
-      Declarator *ExplicitDcl = handleExplicitSpecialization(Elem, Next);
-      Declarator *TDcl = handleImplicitTemplateParams(Elem, ExplicitDcl);
-      Declarator *NameDcl = buildNameDeclarator(Elem->getObject(),TDcl);
-      if (!NameDcl)
-        return nullptr;
-      NameDcl->recordAttributes(Elem);
-      return NameDcl;
+      // The assumption here is that if the parameter list is empty then we
+      // are some kind of specialization, or an error being elaborated.
+      // It's a specializaton if this is a function, and a possible specialization
+      // if it's something else, the error for this is determined later.
+      Declarator *ExplicitDcl = handleSpecialization(Elem, Next);
+      CurrentNext = handleImplicitTemplateParams(Elem, ExplicitDcl);
+    } else {
+      // Attempting to figure out of this is a full specialization or a template.
+      if (isParameterSyntax(ElemArgs->getChild(0))) {
+        // We are template arguments.
+        CurrentNext = handleTemplateParams(Elem, Next);
       } else {
-        Declarator *TDcl = handleTemplateParams(Elem, Next);
-        Declarator *NameDcl = buildNameDeclarator(Elem->getObject(),TDcl);
-        NameDcl->recordAttributes(Elem);
-        return NameDcl;
+        // We are an explicit specialization.
+        Declarator *ExplicitDcl = handleSpecialization(Elem, Next);
+        CurrentNext = handleImplicitTemplateParams(Elem, ExplicitDcl);
       }
     }
-    // Attempting to figure out of this is a full specialization or template
-    if (isParameterSyntax(ElemArgs->getChild(0))) {
-      // We are template arguments.
-      Declarator *TDcl = handleTemplateParams(Elem, Next);
-      Declarator *NameDcl = buildNameDeclarator(Elem->getObject(), TDcl);
-      if (!NameDcl)
-        return nullptr;
-      NameDcl->recordAttributes(Elem);
-      return NameDcl;
-    } else {
-      // We are an explicit specialization.
-      Declarator *ExplicitDcl = handleExplicitSpecialization(Elem, Next);
-      Declarator *TDcl = handleImplicitTemplateParams(Elem, ExplicitDcl);
-      Declarator *NameDcl = buildNameDeclarator(Elem->getObject(),TDcl);
-      if (!NameDcl)
-        return nullptr;
-      NameDcl->recordAttributes(Elem);
-      return NameDcl;
-    }
   }
+  Declarator *NameDcl = buildNameDeclarator(Elem->getObject(), CurrentNext);
+  if (!NameDcl)
+    return nullptr;
+  NameDcl->recordAttributes(Elem);
+  return NameDcl;
 
 }
 
@@ -933,7 +607,7 @@ DeclarationBuilder::buildTemplateFunctionOrNameDeclarator(const Syntax *S,
                                                           Declarator *Next) {
   if (const CallSyntax *Func = dyn_cast<CallSyntax>(S)) {
     // This can only occur at this level.
-    HasFunctionCallSyntax = true;
+    // HasFunctionCallSyntax = true;
     Declarator *Temp = buildTemplateOrNameDeclarator(Func->getCallee(),
                                handleFunction(Func, Next));
     Temp->recordAttributes(Func);
@@ -1112,8 +786,10 @@ DeclarationBuilder::handleType(const Syntax *S, Declarator *Next) {
 
 TemplateParamsDeclarator *
 DeclarationBuilder::handleTemplateParams(const ElemSyntax *S, Declarator *Next) {
-  auto Ret = new TemplateParamsDeclarator(
-                            cast<ListSyntax>(S->getArguments()), nullptr, Next);
+  assert(S && "We don't have element to get arguments from.");
+  const ListSyntax *LS = dyn_cast<ListSyntax>(S->getArguments());
+  assert(LS && "Invalid list of template parameters.");
+  auto Ret = new TemplateParamsDeclarator(LS, nullptr, Next);
   Ret->recordAttributes(S);
   return Ret;
 }
@@ -1125,19 +801,14 @@ DeclarationBuilder::handleImplicitTemplateParams(const ElemSyntax *Owner,
                      cast<ListSyntax>(Owner->getArguments()), nullptr, Next);
 }
 
-ExplicitSpecializationDeclarator *
-DeclarationBuilder::handleExplicitSpecialization(
-                      const ElemSyntax *SpecializationOwner, Declarator *Next) {
-  auto Ret = new ExplicitSpecializationDeclarator(
-                cast<ListSyntax>(SpecializationOwner->getArguments()), Next);
-  Ret->recordAttributes(SpecializationOwner);
+SpecializationDeclarator *
+DeclarationBuilder::handleSpecialization(const ElemSyntax *Specialization,
+                                         Declarator *Next) {
+  auto Ret = new SpecializationDeclarator(
+                cast<ListSyntax>(Specialization->getArguments()), Next);
+  Ret->recordAttributes(Specialization);
   return Ret;
 }
 
-PartialSpecializationDeclarator *
-DeclarationBuilder::handlePartialSpecialization(
-                      const ElemSyntax *SpecializationOwner, Declarator *Next) {
-  llvm_unreachable("DeclarationBuilder::handlePartialSpecialization");
-}
 
 } // end namespace gold

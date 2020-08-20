@@ -26,7 +26,7 @@ foo() : int!
   if<constexpr> (true):
     return 1
 )";
-  auto ToMatch = ifStmt(hasCondition(constantExpr(cxxBoolLiteral())));
+  auto ToMatch = ifStmt(hasCondition(constantExpr(has(cxxBoolLiteral()))));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
@@ -39,7 +39,7 @@ foo() : int!
   else:
     return 0
 )";
-  auto ToMatch = ifStmt(hasCondition(constantExpr(cxxBoolLiteral())));
+  auto ToMatch = ifStmt(hasCondition(constantExpr(has(cxxBoolLiteral()))));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
@@ -55,7 +55,7 @@ foo() : int!
   else:
     return 0
 )";
-  auto ToMatch = ifStmt(hasCondition(constantExpr(cxxBoolLiteral())));
+  auto ToMatch = ifStmt(hasCondition(constantExpr(has(cxxBoolLiteral()))));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
@@ -70,6 +70,6 @@ foo() : int!
   else:
     return 0
 )";
-  auto ToMatch = ifStmt(hasCondition(constantExpr(cxxBoolLiteral())));
+  auto ToMatch = ifStmt(hasCondition(constantExpr(has(cxxBoolLiteral()))));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
