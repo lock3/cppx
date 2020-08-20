@@ -74,12 +74,6 @@ enum ActionKind {
   /// Emit a .o file.
   EmitObj,
 
-  /// Emit a .o file for gold.
-  EmitGold,
-
-  /// Emit a .o file for blue.
-  EmitBlue,
-
   /// Parse and apply any fixits to the source.
   FixIt,
 

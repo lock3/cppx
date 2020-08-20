@@ -1775,10 +1775,6 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
       Opts.ProgramAction = frontend::EmitCodeGenOnly; break;
     case OPT_emit_obj:
       Opts.ProgramAction = frontend::EmitObj; break;
-    case OPT_emit_gold:
-      Opts.ProgramAction = frontend::EmitGold; break;
-    case OPT_emit_blue:
-      Opts.ProgramAction = frontend::EmitBlue; break;
     case OPT_fixit_EQ:
       Opts.FixItSuffix = A->getValue();
       LLVM_FALLTHROUGH;
@@ -3528,8 +3524,6 @@ static bool isStrictlyPreprocessorAction(frontend::ActionKind Action) {
   case frontend::EmitLLVMOnly:
   case frontend::EmitCodeGenOnly:
   case frontend::EmitObj:
-  case frontend::EmitGold:
-  case frontend::EmitBlue:
   case frontend::FixIt:
   case frontend::GenerateModule:
   case frontend::GenerateModuleInterface:
@@ -3822,10 +3816,6 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
     // FIXME: Should we really be calling this for an Language::Asm input?
     ParseLangArgs(LangOpts, Args, DashX, Res.getTargetOpts(),
                   Res.getPreprocessorOpts(), Diags);
-    if (LangOpts.Gold)
-      Res.getFrontendOpts().ProgramAction = frontend::EmitGold;
-    if (LangOpts.Blue)
-      Res.getFrontendOpts().ProgramAction = frontend::EmitBlue;
 
     if (Res.getFrontendOpts().ProgramAction == frontend::RewriteObjC)
       LangOpts.ObjCExceptions = 1;

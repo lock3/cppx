@@ -19,6 +19,7 @@
 #include "clang/Frontend/LayoutOverrideSource.h"
 #include "clang/Frontend/MultiplexConsumer.h"
 #include "clang/Frontend/Utils.h"
+#include "clang/Gold/ParseGoldAST.h"
 #include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/LiteralSupport.h"
 #include "clang/Lex/Preprocessor.h"
@@ -1054,8 +1055,21 @@ void ASTFrontendAction::ExecuteAction() {
   if (!CI.hasSema())
     CI.createSema(getTranslationUnitKind(), CompletionConsumer);
 
-  ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
-           CI.getFrontendOpts().SkipFunctionBodies);
+  // ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
+  //          CI.getFrontendOpts().SkipFunctionBodies);
+  switch (getCurrentFileKind().getLanguage()) {
+  case clang::Language::Gold:
+    CI.getLangOpts().CPlusPlus = true;
+    CI.getLangOpts().CPlusPlus11 = true;
+    CI.getLangOpts().CPlusPlus14 = true;
+    CI.getLangOpts().CPlusPlus17 = true;
+    gold::ParseGoldAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
+    break;
+  default:
+    clang::ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
+                    CI.getFrontendOpts().SkipFunctionBodies);
+    break;
+  }
 }
 
 void PluginASTAction::anchor() { }

@@ -725,12 +725,6 @@ def static_libsan : Flag<["-"], "static-libsan">,
 def : Flag<["-"], "shared-libasan">, Alias<shared_libsan>;
 def fasm : Flag<["-"], "fasm">, Group<f_Group>;
 
-// Gold/Blue Options
-def emit_gold : Flag<["-"], "emit-gold">, Flags<[CC1Option]>, Group<Action_Group>,
-  HelpText<"Emit native object files from the gold language.">;
-def emit_blue : Flag<["-"], "emit-blue">, Flags<[CC1Option]>, Group<Action_Group>,
-  HelpText<"Emit native object files from the blue language.">;
-
 defm asm_blocks : OptInFFlag<"asm-blocks", "">;
 
 def fassume_sane_operator_new : Flag<["-"], "fassume-sane-operator-new">, Group<f_Group>;
