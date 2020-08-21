@@ -72,7 +72,8 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
     {"double", Context.CxxAST.DoubleTy},
 
     // type of a type.
-    {"type", Context.CxxAST.CppxKindTy}
+    { "type", Context.CxxAST.CppxKindTy },
+    { "namespace", Context.CxxAST.CppxNamespaceTy }
   };
 }
 
@@ -200,15 +201,13 @@ Scope *Sema::getCurrentScope() {
 }
 
 void Sema::pushScope(Scope *S) {
+  assert(S && "Invalid scope");
   // FIXME: The scope should self-describe itself. We can't rely on
   // the existence of Clang structures at the time we push a scope.
   // if (S->isDeclarationScope())
   //   CxxSema.PushFunctionScope();
-
   ScopeStack.push_back(S);
 }
-
-// llvm::SmallVector<Scope *, 4> ScopeStack;
 
 Scope *Sema::popScope() {
   Scope *R = ScopeStack.back();
@@ -233,6 +232,12 @@ void Sema::leaveScope(const Syntax *S) {
 }
 
 Scope *Sema::saveScope(const Syntax *S) {
+  if (getCurrentScope()->getConcreteTerm() != S) {
+    llvm::outs() << "Actual Expected term = ";
+    getCurrentScope()->getConcreteTerm()->dump();
+    llvm::outs() << "Given Expected term = ";
+    S->dump();
+  }
   assert(getCurrentScope()->getConcreteTerm() == S);
   // FIXME: Queue the scope for subsequent deletion?
   Scope *Scope = getCurrentScope();
@@ -283,7 +288,30 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R) {
 }
 
 bool Sema::lookupQualifiedName(clang::LookupResult &R) {
-  return lookupUnqualifiedName(R, NNS->getScopeRep());
+  gold::Scope *LookupScope = nullptr;
+  switch (CurNNSKind) {
+  case NNSK_Empty:
+    // TODO: This may need an assertion or an error message.
+    llvm_unreachable("Cannot do qualified name lookup without a nested name "
+                     "specifier.");
+    break;
+  case NNSK_Global:
+    LookupScope = CurNNSLookupDecl.Global.Scope;
+    break;
+  case NNSK_Namespace:
+    LookupScope = CurNNSLookupDecl.NNS->getScopeRep();
+    break;
+  case NNSK_NamespaceAlias: {
+    if (auto *Ns = dyn_cast<clang::CppxNamespaceDecl>(
+                                      CurNNSLookupDecl.Alias->getNamespace())) {
+      LookupScope = Ns->getScopeRep();
+    } else {
+      Diags.Report(Ns->getLocation(), clang::diag::err_expected_namespace);
+      return false;
+    }
+  }
+  }
+  return lookupUnqualifiedName(R, LookupScope);
 }
 
 static bool findOrdinaryMember(clang::RecordDecl *BaseRecord, clang::CXXBasePath &Path,
@@ -497,7 +525,6 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
             clang::EnterExpressionEvaluationContext ConstantEvaluated(CxxSema,
                 clang::Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
             Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
-
           }
         }
 
@@ -534,7 +561,9 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
           // This is used to get the correct template name.
           if (auto *RD = dyn_cast<clang::CXXRecordDecl>(FoundDecl->Cxx)) {
             ND = RD->getDescribedClassTemplate();
-            ND = cast<clang::NamedDecl>(ND->getCanonicalDecl());
+            if (ND) {
+              ND = cast<clang::NamedDecl>(ND->getCanonicalDecl());
+            }
           }
         } else {
           // Getting the cannonical declaration so hopefully this will prevent
@@ -544,7 +573,6 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
           }
         }
         addIfNotDuplicate(R, ND);
-        // R.addDecl(ND);
       }
       break;
     }
@@ -812,8 +840,14 @@ unsigned Sema::computeTemplateDepth() const {
   return Count;
 }
 
-clang::CppxTypeLiteral *Sema::buildTypeExpr(clang::QualType Ty, clang::SourceLocation Loc) {
+clang::CppxTypeLiteral *Sema::buildTypeExpr(clang::QualType Ty,
+                                            clang::SourceLocation Loc) {
   return buildAnyTypeExpr(Context.CxxAST.CppxKindTy, Ty, Loc);
+}
+
+clang::CppxTypeLiteral *Sema::buildNsTypeExpr(clang::SourceLocation Loc) {
+  return buildAnyTypeExpr(Context.CxxAST.CppxNamespaceTy,
+                          Context.CxxAST.CppxNamespaceTy, Loc);
 }
 
 clang::CppxTypeLiteral *Sema::buildTypeExpr(clang::TypeSourceInfo *TInfo) {
@@ -924,8 +958,12 @@ clang::ParsedType Sema::getParsedTypeFromExpr(const clang::Expr *TyExpr,
 
 clang::CppxDeclRefExpr *Sema::buildNSDeclRef(clang::CppxNamespaceDecl *D,
                                              clang::SourceLocation Loc) {
-  return buildAnyDeclRef(Context.CxxAST.getCppxNamespaceType(D->getNamespace()),
-                         D, Loc);
+  return buildAnyDeclRef(Context.CxxAST.CppxNamespaceTy, D, Loc);
+}
+
+clang::CppxDeclRefExpr *Sema::buildNSDeclRef(clang::NamespaceAliasDecl *D,
+                                             clang::SourceLocation Loc) {
+  return buildAnyDeclRef(Context.CxxAST.CppxNamespaceTy, D, Loc);
 }
 
 clang::CppxDeclRefExpr *
@@ -946,6 +984,22 @@ clang::Decl *Sema::getDeclFromExpr(const clang::Expr *DeclExpr,
   llvm_unreachable("Unable to get declaration from expression.");
   // TODO: Change this error message to say that the expression doesn't contain
   // a declaration or something like that.
+}
+
+clang::CppxNamespaceDecl *Sema::getNSDeclFromExpr(const clang::Expr *DeclExpr,
+                                                  clang::SourceLocation Loc) {
+  assert(DeclExpr && "Invalid expression");
+  if (const clang::CppxDeclRefExpr *DecRef
+                                 = dyn_cast<clang::CppxDeclRefExpr>(DeclExpr)) {
+    if (clang::CppxNamespaceDecl *NsDecl
+                     = dyn_cast<clang::CppxNamespaceDecl>(DecRef->getValue())) {
+      return NsDecl;
+    }
+    Diags.Report(Loc, clang::diag::err_expected_namespace);
+    return nullptr;
+  }
+  Diags.Report(Loc, clang::diag::err_expected_namespace);
+  return nullptr;
 }
 
 bool Sema::isInDeepElaborationMode() const {
@@ -1017,6 +1071,107 @@ bool Sema::rebuildFunctionType(clang::FunctionDecl *FD,
   FD->setType(ExceptionAdjustedTy);
   FD->setTypeSourceInfo(TInfo);
   return false;
+}
+
+clang::CppxNamespaceDecl *
+Sema::ActOnStartNamespaceDef(clang::Scope *NamespcScope,
+                             clang::SourceLocation InlineLoc,
+                             clang::SourceLocation NamespaceLoc,
+                             clang::SourceLocation IdentLoc,
+                             clang::IdentifierInfo *II,
+                             clang::SourceLocation LBrace,
+                             const clang::ParsedAttributesView &AttrList,
+                             clang::UsingDirectiveDecl *&UD) {
+  using namespace clang;
+  SourceLocation StartLoc = InlineLoc.isValid() ? InlineLoc : NamespaceLoc;
+
+  // For anonymous namespace, take the location of the left brace.
+  SourceLocation Loc = II ? IdentLoc : LBrace;
+  bool IsInline = InlineLoc.isValid();
+  bool IsInvalid = false;
+  bool IsStd = false;
+  bool AddToKnown = false;
+  clang::Scope *DeclRegionScope = NamespcScope->getParent();
+
+  NamespaceDecl *PrevNS = nullptr;
+  CxxSema.CheckNamespaceDeclaration(II, StartLoc, Loc, IsInline, IsInvalid,
+                                    IsStd, AddToKnown, PrevNS);
+  gold::Scope *PrevScope = nullptr;
+  if (CppxNamespaceDecl *PrevCppxNsDecl = dyn_cast_or_null<CppxNamespaceDecl>(PrevNS)) {
+    PrevScope = PrevCppxNsDecl->Rep;
+  }
+  CppxNamespaceDecl *Namespc = CppxNamespaceDecl::Create(Context.CxxAST,
+                                                         CxxSema.CurContext,
+                                                         IsInline, StartLoc,
+                                                         Loc, II, PrevNS,
+                                                         PrevScope);
+  if (IsInvalid)
+    Namespc->setInvalidDecl();
+
+  CxxSema.ProcessDeclAttributeList(DeclRegionScope, Namespc, AttrList);
+  CxxSema.AddPragmaAttributes(DeclRegionScope, Namespc);
+
+  // FIXME: Should we be merging attributes?
+  if (const VisibilityAttr *Attr = Namespc->getAttr<VisibilityAttr>())
+    CxxSema.PushNamespaceVisibilityAttr(Attr, Loc);
+
+  if (IsStd)
+    CxxSema.StdNamespace = Namespc;
+  if (AddToKnown)
+    CxxSema.KnownNamespaces[Namespc] = false;
+
+  if (II) {
+    CxxSema.PushOnScopeChains(Namespc, DeclRegionScope);
+  } else {
+    // Link the anonymous namespace into its parent.
+    DeclContext *Parent = CxxSema.CurContext->getRedeclContext();
+    if (TranslationUnitDecl *TU = dyn_cast<TranslationUnitDecl>(Parent)) {
+      TU->setAnonymousNamespace(Namespc);
+    } else if (NamespaceDecl *ND = dyn_cast<NamespaceDecl>(Parent)) {
+      ND->setAnonymousNamespace(Namespc);
+    } else {
+      assert(isa<CXXFragmentDecl>(Parent));
+    }
+
+    CxxSema.CurContext->addDecl(Namespc);
+
+    // C++ [namespace.unnamed]p1.  An unnamed-namespace-definition
+    //   behaves as if it were replaced by
+    //     namespace unique { /* empty body */ }
+    //     using namespace unique;
+    //     namespace unique { namespace-body }
+    //   where all occurrences of 'unique' in a translation unit are
+    //   replaced by the same identifier and this identifier differs
+    //   from all other identifiers in the entire program.
+
+    // We just create the namespace with an empty name and then add an
+    // implicit using declaration, just like the standard suggests.
+    //
+    // CodeGen enforces the "universally unique" aspect by giving all
+    // declarations semantically contained within an anonymous
+    // namespace internal linkage.
+
+    if (!PrevNS) {
+      UD = UsingDirectiveDecl::Create(Context.CxxAST, Parent,
+                                      /* 'using' */ LBrace,
+                                      /* 'namespace' */ SourceLocation(),
+                                      /* qualifier */ NestedNameSpecifierLoc(),
+                                      /* identifier */ SourceLocation(),
+                                      Namespc, /* Ancestor */ Parent);
+      UD->setImplicit();
+      Parent->addDecl(UD);
+    }
+  }
+
+  CxxSema.ActOnDocumentableDecl(Namespc);
+
+  // Although we could have an invalid decl (i.e. the namespace name is a
+  // redefinition), push it as current DeclContext and try to continue parsing.
+  // FIXME: We should be able to push Namespc here, so that the each DeclContext
+  // for the namespace has the declarations that showed up in that particular
+  // namespace definition.
+  CxxSema.PushDeclContext(NamespcScope, Namespc);
+  return Namespc;
 }
 
 } // namespace gold

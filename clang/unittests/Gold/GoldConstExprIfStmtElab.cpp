@@ -20,13 +20,56 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-TEST(GoldConstExprIf, LineAttribute) {
+TEST(GoldConstExprIf, NameAttr) {
+  StringRef Code = R"(
+foo() : int!
+  if<constexpr> (true):
+    return 1
+)";
+  auto ToMatch = ifStmt(hasCondition(constantExpr(has(cxxBoolLiteral()))));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldConstExprIf, LineAttr) {
   StringRef Code = R"(
 foo() : int!
   [constexpr]
-  if (true):
+  if(true):
     return 1
+  else:
+    return 0
 )";
-  auto ToMatch = ifStmt(hasCondition(constantExpr(cxxBoolLiteral())));
+  auto ToMatch = ifStmt(hasCondition(constantExpr(has(cxxBoolLiteral()))));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldConstExprIf, IfDo_LineAttr) {
+  StringRef Code = R"(
+foo() : int!
+  [constexpr]
+  if:
+    true
+    true
+  do:
+    return 1
+  else:
+    return 0
+)";
+  auto ToMatch = ifStmt(hasCondition(constantExpr(has(cxxBoolLiteral()))));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldConstExprIf, IfDo_NameAttr) {
+  StringRef Code = R"(
+foo() : int!
+  if<constexpr>:
+    true
+    true
+  do:
+    return 1
+  else:
+    return 0
+)";
+  auto ToMatch = ifStmt(hasCondition(constantExpr(has(cxxBoolLiteral()))));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

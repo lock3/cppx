@@ -57,7 +57,6 @@ TEST(GoldUserDefinedOp, ExplicitMemberOperatorXOr_Exec) {
 OpTest : type = class:
   operator"^"(RHS:ref OpTest):bool!
     return true
-  
 
 foo(X:ref OpTest, Y:ref OpTest):int!
   return X.operator"^"(Y)

@@ -947,16 +947,8 @@ let Class = CppxKindType in {
 }
 
 let Class = CppxNamespaceType in {
-  def : Property<"declaration", DeclRef> {
-    // Serializing a reference to the canonical declaration is apparently
-    // necessary to make module-merging work.
-    let Read = [{ node->getDecl()->getCanonicalDecl() }];
-  }
-
   def : Creator<[{
-    auto ns = cast<NamespaceDecl>(declaration);
-    QualType result = ctx.getCppxNamespaceType(ns);
-    return result;
+    return ctx.CppxNamespaceTy;
   }]>;
 }
 

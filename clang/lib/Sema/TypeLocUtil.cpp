@@ -707,32 +707,32 @@ template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::AtomicTypeLoc>
   return BuildTypeLoc<clang::AtomicTypeLoc>(Context, TLB, Ty, Loc);
 }
 
-template<> TypeSourceInfo *BuildTypeLoc<clang::ConstantMatrixTypeLoc>
+template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::ConstantMatrixTypeLoc>
 (clang::ASTContext &Ctx, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
 }
 
-template<> TypeSourceInfo *BuildTypeLoc<clang::ConstantMatrixTypeLoc>
+template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::ConstantMatrixTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
 }
 
-template<> TypeSourceInfo *BuildTypeLoc<clang::DependentIdentifierSpliceTypeLoc>
+template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DependentIdentifierSpliceTypeLoc>
 (clang::ASTContext &Ctx, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
 }
 
-template<> TypeSourceInfo *BuildTypeLoc<clang::DependentIdentifierSpliceTypeLoc>
+template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DependentIdentifierSpliceTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
 }
 
-template<> TypeSourceInfo *BuildTypeLoc<clang::DependentSizedMatrixTypeLoc>
+template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DependentSizedMatrixTypeLoc>
 (clang::ASTContext &Ctx, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
 }
 
-template<> TypeSourceInfo *BuildTypeLoc<clang::DependentSizedMatrixTypeLoc>
+template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DependentSizedMatrixTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
 }

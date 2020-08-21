@@ -280,6 +280,7 @@ serialization::getDefinitiveDeclContext(const DeclContext *DC) {
   // These entities may have multiple definitions.
   case Decl::TranslationUnit:
   case Decl::ExternCContext:
+  case Decl::CppxNamespace:
   case Decl::Namespace:
   case Decl::LinkageSpec:
   case Decl::Export:
@@ -343,6 +344,7 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
     // Special case of a "merged" declaration.
     return true;
 
+  case Decl::CppxNamespace:
   case Decl::Namespace:
   case Decl::NamespaceAlias:
   case Decl::Typedef:
@@ -370,7 +372,6 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   case Decl::ObjCProtocol:
   case Decl::ObjCInterface:
   case Decl::Empty:
-  case Decl::CppxNamespace:
     return true;
 
   // Never redeclarable.

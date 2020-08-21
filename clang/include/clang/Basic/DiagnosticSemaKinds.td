@@ -11278,6 +11278,23 @@ def warn_invalid_attribute_format : Warning <
 def err_in_ast : Error <
   "error during syntax handling">;
 
+def err_namespace_alias_requires_a_name : Error <
+  "namespace alias must have a namespace to alias">;
+
+def err_namespace_alias_non_namespace : Error <
+  "namespace alias must have a namespace for an initialzier">;
+
+def err_expected_namespace : Error <
+  "expression does not reference a namespace">;
+
+def err_invalid_declarator_sequence : Error<
+  "%select{function declaration|namespace|template|nested name specifier|"
+  "global name specifier|class|enum|union|template specialization|type}0 not allowed "
+  "in current context">;
+
+def err_type_form_declarator_sequence : Error<
+  "missing type for declaration">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

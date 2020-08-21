@@ -806,6 +806,7 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case Enum:
       return IDNS_Tag | IDNS_Type;
 
+    case CppxNamespace:
     case Namespace:
     case NamespaceAlias:
       return IDNS_Namespace;
@@ -864,7 +865,6 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case CXXMetaprogram:
     case CXXInjection:
     case CXXStmtFragment:
-    case CppxNamespace:
     case CppxPartial:
       // Never looked up by name.
       return 0;
@@ -1278,7 +1278,7 @@ DeclContext *DeclContext::getPrimaryContext() {
   case Decl::CXXStmtFragment:
     // There is only one DeclContext for these entities.
     return this;
-
+  case Decl::CppxNamespace:
   case Decl::Namespace:
     // The original namespace is our primary context.
     return static_cast<NamespaceDecl *>(this)->getOriginalNamespace();
@@ -1337,7 +1337,8 @@ void
 DeclContext::collectAllContexts(SmallVectorImpl<DeclContext *> &Contexts){
   Contexts.clear();
 
-  if (getDeclKind() != Decl::Namespace) {
+  if (!(getDeclKind() >= Decl::firstNamespace
+        && getDeclKind() <= Decl::lastNamespace)) {
     Contexts.push_back(this);
     return;
   }

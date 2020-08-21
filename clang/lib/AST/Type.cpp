@@ -3969,8 +3969,7 @@ static CachedProperties computeCachedProperties(const Type *T) {
   }
 
   case Type::CppxNamespace: {
-    const NamespaceDecl *NS = cast<CppxNamespaceType>(T)->getDecl();
-    return CachedProperties(NS->getLinkageInternal(), NS->hasLinkage());
+    return CachedProperties(ExternalLinkage, false);
   }
 
     // C++ [basic.link]p8:
@@ -4124,7 +4123,7 @@ LinkageInfo LinkageComputer::computeTypeLinkageInfo(const Type *T) {
       return LinkageInfo::external();
 
   case Type::CppxNamespace:
-    return getDeclLinkageAndVisibility(cast<CppxNamespaceType>(T)->getDecl());
+    return LinkageInfo::external();
   }
 
   llvm_unreachable("unhandled type class");
@@ -4549,20 +4548,6 @@ void AutoType::Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
   for (const TemplateArgument &Arg : Arguments)
     Arg.Profile(ID, Context);
 }
-
-static NamespaceDecl *getInterestingNamespaceDecl(const NamespaceDecl *NS) {
-  for (auto I : NS->redecls()) {
-    if (I->isOriginalNamespace())
-      return I;
-  }
-  // If there's no definition (not even in progress), return what we have.
-  return const_cast<NamespaceDecl *>(NS);
-}
-
-NamespaceDecl *CppxNamespaceType::getDecl() const {
-  return getInterestingNamespaceDecl(NS);
-}
-
 
 CppxTemplateType::CppxTemplateType(TemplateDecl *TemplateD)
   : Type(CppxTemplate, QualType{ }, TypeDependence(), /*MetaType=*/false),

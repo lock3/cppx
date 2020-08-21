@@ -1244,6 +1244,8 @@ public:
 
   /// The type of types.
   CanQualType CppxKindTy;
+  /// Type for all namespaces
+  CanQualType CppxNamespaceTy;
 
   /// Get address space for OpenCL type.
   LangAS getOpenCLTypeAddrSpace(const Type *T) const;
@@ -1416,8 +1418,6 @@ public:
   QualType getRecordType(const RecordDecl *Decl) const;
 
   QualType getEnumType(const EnumDecl *Decl) const;
-
-  QualType getCppxNamespaceType(const NamespaceDecl *Decl) const;
 
   QualType getInjectedClassNameType(CXXRecordDecl *Decl, QualType TST) const;
 

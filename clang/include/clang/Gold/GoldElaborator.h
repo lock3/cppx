@@ -39,6 +39,65 @@ class Declaration;
 class Sema;
 struct AttrStatus;
 
+enum AttrFormat {
+  AF_Invalid,
+  AF_Call,
+  AF_Name
+};
+AttrFormat checkAttrFormatAndName(const Syntax *Attr, llvm::StringRef &Name);
+
+/// locateValidAttribute
+/// This is a privately used template function, basucally taking the place of me
+/// duplicating the same thing over and over again for each type of attribute
+/// I need to find.
+///
+/// OnAttr is a callable with signature
+///       bool (const Syntax *)
+///   Returing true means you've located one of the possible attributes.
+///   This should also be used to set the correct value of any possible return
+///   value.
+///     true = Matched an attribute.
+///     false = didn't match an attribute.
+///
+/// IsSameAttr is a callable used to detect duplicates of the same attribute class.
+///   This is the same as OnAttr with the exception that it doesn't set
+///   the current desired attribute when it's true.
+///   Signature:
+///       bool (const Syntax *)
+///     true = we hvae a failure (meaning that we have a duplicate attribute)
+///     false = we don't have an attribute of the same class.
+///
+/// OnDuplicate is a callable with signature
+///       void (const syntax *first, const Syntax *Duplicate)
+///   This is used to create error messages.
+template<typename OnAttr, typename IsSameAttr, typename OnDuplicate>
+bool locateValidAttribute(Attributes& UnprocessedAttributes,
+    OnAttr OnAttribute, IsSameAttr CheckAttr, OnDuplicate OnDup) {
+
+  auto Iter = UnprocessedAttributes.begin();
+  auto End = UnprocessedAttributes.end();
+  for (;Iter != End; ++Iter) {
+    if (OnAttribute(*Iter)) {
+      break;
+    }
+  }
+  const Syntax *AttribSpec = nullptr;
+  bool didFail = false;
+  if(Iter != End) {
+    AttribSpec = *Iter;
+    UnprocessedAttributes.erase(Iter);
+    Iter = UnprocessedAttributes.begin();
+    End = UnprocessedAttributes.end();
+    for (;Iter != End; ++Iter) {
+      if (CheckAttr(*Iter)) {
+        OnDup(AttribSpec, *Iter);
+        didFail = true;
+      }
+    }
+  }
+  return didFail;
+}
+
 // Elaborator takes a gold::Syntax tree as input and outputs an equivalent
 // C++ AST. It works closely with the ExprElaborator and StmtElaborator.
 class Elaborator {
@@ -55,12 +114,16 @@ public:
   clang::Decl *elaborateFile(const Syntax *S);
 
   // Typing elaboration (2nd pass)
-  clang::Decl *elaborateDeclType(const Syntax* D);
   clang::Decl *elaborateDecl(Declaration *D);
+  clang::Decl *elaborateDeclContent(Declaration *D);
+  clang::Decl *elaborateDeclInContext(Declaration *D);
+
+  clang::Decl *elaborateDeclType(const Syntax* D);
   clang::Decl *elaborateFunctionDecl(Declaration *D);
   void checkCXXMethodDecl(clang::CXXMethodDecl *MD);
   clang::Decl *elaborateVariableDecl(Declaration *D);
   clang::Decl *elaborateTypeAlias(Declaration *D);
+  clang::Decl *elaborateNsAlias(Declaration *D);
   clang::Decl *elaborateTemplateAliasOrVariable(Declaration *D,
       Declarator *TemplateParams);
   clang::Decl *elaborateParameterDecl(Declaration *D);
@@ -93,7 +156,7 @@ public:
 
   clang::Decl *elaborateEnumBody(Declaration* D, clang::Decl *EnumD);
   clang::Decl *elaborateEnumMemberDecl(const Syntax *S, clang::Decl *EnumD);
-  void elaborateEnumMemberInit(const Syntax *S);
+  bool elaborateEnumMemberInit(const Syntax *S);
 
   // Identification (1st pass)
   Declaration *identifyDecl(const Syntax *S);
@@ -140,7 +203,7 @@ public:
   /// This single function is responsible for applying attributes to things
   /// any type of declaration we create.
   void elaborateAttributes(Declaration *D);
-  
+
   /// Methods that direct the declaration to modify the declaration to have the
   /// given attribute.
   void elaborateConstExprAttr(Declaration *D, const Syntax *S,

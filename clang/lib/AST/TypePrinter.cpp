@@ -1807,13 +1807,7 @@ void TypePrinter::printCppxKindAfter(const CppxKindType *T, raw_ostream &OS) {}
 
 void TypePrinter::printCppxNamespaceBefore(const CppxNamespaceType *T,
                                            raw_ostream &OS) {
-  const NamespaceDecl *NS = T->getDecl();
-  if (NS->isAnonymousNamespace() || NS->isInline()) {
-    OS << "namespace";
-    return;
-  }
-
-  OS << NS->getName();
+  OS << "namespace type";
 }
 
 void TypePrinter::printCppxNamespaceAfter(const CppxNamespaceType *T,

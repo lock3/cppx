@@ -293,7 +293,7 @@ createFloatLiteral(clang::ASTContext &CxxAST, const LiteralSyntax *S) {
     //                                       FloatType, S->getLoc());
   // }
 
-  // llvm_unreachable("unsupported float type");
+
 }
 
 static clang::FloatingLiteral *
@@ -947,6 +947,16 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
     SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
 
   if (!R.empty()) {
+    // This has to be done this way specifically because the loop up will resolve
+    // the NamespaceAliasDecl to it's associated namespace before it's used.
+    // So this is the only solution that I could find that doesn't
+    // rely on getUnderlyingType() to obtain the final declaration.
+    const auto &DeclSet = R.asUnresolvedSet();
+    if (DeclSet.size() == 1) {
+      if (auto *NS = dyn_cast<clang::NamespaceAliasDecl>(*DeclSet.begin())) {
+        return SemaRef.buildNSDeclRef(NS, Loc);
+      }
+    }
     R.resolveKind();
     if (!R.isSingleResult()) {
       if (R.isAmbiguous()) {
@@ -1060,6 +1070,7 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
 
     if (auto *NS = R.getAsSingle<clang::CppxNamespaceDecl>())
       return SemaRef.buildNSDeclRef(NS, Loc);
+
 
     if (auto *TD = R.getAsSingle<clang::TypeDecl>())
       return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
@@ -1610,9 +1621,8 @@ static clang::Expr *doDerefAndXOrLookUp(SyntaxContext &Context,
                                  clang::SourceRange();
   const clang::RecordType *RTy = BaseExpr->getType()->getAsStructureType();
   if (!RTy) {
-    // TODO: Create a error message.
     SemaRef.Diags.Report(BaseExpr->getExprLoc(),
-                      clang::diag::err_typecheck_member_reference_struct_union)
+                       clang::diag::err_typecheck_member_reference_struct_union)
                         << BaseExpr->getType();
 
     // llvm_unreachable("This only happens when we don't have a valid structured "
@@ -1679,7 +1689,7 @@ static clang::Expr *doDerefAndXOrLookUp(SyntaxContext &Context,
       if (!MD->isOverloadedOperator())
         continue;
       if (MD->getOverloadedOperator() == UnaryOO)
-        R.addDecl(ND, ND->getAccess());
+        R.addDecl(MD, MD->getAccess());
     }
 
   }
@@ -1692,8 +1702,13 @@ static clang::Expr *doDerefAndXOrLookUp(SyntaxContext &Context,
       if (!MD->isOverloadedOperator())
         continue;
       if (MD->getOverloadedOperator() == BinaryOO)
-        R.addDecl(ND, ND->getAccess());
+        R.addDecl(MD, MD->getAccess());
     }
+  }
+  if (R.empty()) {
+    // TODO: Create an error message for this.
+    llvm_unreachable("I need an look up failure here because I don't have an "
+                     "expected operator.");
   }
   clang::TemplateArgumentListInfo TemplateArgs;
   auto *UME = clang::UnresolvedMemberExpr::Create(Context.CxxAST,
@@ -1746,6 +1761,11 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
                                         SemaRef.getDeclFromExpr(ElaboratedLHS,
                                         LHS->getLoc()))) {
       return elaborateNNS(NSRef, Op, RHS);
+    }
+    if (clang::NamespaceAliasDecl *NSAliasRef = dyn_cast<clang::NamespaceAliasDecl>(
+                                        SemaRef.getDeclFromExpr(ElaboratedLHS,
+                                        LHS->getLoc()))) {
+      return elaborateNNS(NSAliasRef, Op, RHS);
     }
     llvm_unreachable("Invalid namespace type returned.");
   }
@@ -1859,15 +1879,13 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
   return nullptr;
 }
 
-clang::Expr *ExprElaborator::elaborateNNS(clang::CppxNamespaceDecl *NS,
+clang::Expr *ExprElaborator::elaborateNNS(clang::NamedDecl *NS,
                                           const CallSyntax *Op,
                                           const Syntax *RHS) {
-  clang::NamespaceDecl *CxxNS = NS->getNamespace();
-
   // FIXME: create the correct ObjectType (last param) that is used when this
   // NNS appears as after an operator'.' of an object.
-  clang::Sema::NestedNameSpecInfo IdInfo(CxxNS->getIdentifier(),
-                                         CxxNS->getBeginLoc(),
+  clang::Sema::NestedNameSpecInfo IdInfo(NS->getIdentifier(),
+                                         NS->getBeginLoc(),
                                          Op->getLoc(), clang::QualType());
 
   // Look this up as an NNS.
@@ -1880,8 +1898,16 @@ clang::Expr *ExprElaborator::elaborateNNS(clang::CppxNamespaceDecl *NS,
                                 /*OnlyNamespace=*/false);
   if (Failure)
     return nullptr;
-
-  Sema::QualifiedLookupRAII Qual(SemaRef, SemaRef.QualifiedLookupContext, &NS);
+  Sema::OptionalInitScope<Sema::QualifiedLookupRAII> Qual(SemaRef);
+  if (auto *CppxNs = dyn_cast<clang::CppxNamespaceDecl>(NS)) {
+    Qual.Init(SemaRef.QualifiedLookupContext, CppxNs);
+  } else if (auto *Alias = dyn_cast<clang::NamespaceAliasDecl>(NS)) {
+    Qual.Init(SemaRef.QualifiedLookupContext, Alias);
+  } else {
+    NS->dump();
+    llvm_unreachable("We hvae a new type of namespace specifier that we've "
+                     "never seen before.");
+  }
   clang::Expr *RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
   if (!RHSExpr)
     return nullptr;
@@ -1911,12 +1937,9 @@ clang::Expr *ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
   while (GlobalScope->getParent())
     GlobalScope = GlobalScope->getParent();
 
-  auto *NS = clang::CppxNamespaceDecl::Create(Context.CxxAST,
-                                        Context.CxxAST.getTranslationUnitDecl(),
-                                              clang::SourceLocation(),
-                                              nullptr, nullptr, GlobalScope);
-  // TODO:: Create a reference to the newly created namespace?
-  Sema::QualifiedLookupRAII Qual(SemaRef, SemaRef.QualifiedLookupContext, &NS);
+  Sema::QualifiedLookupRAII Qual(SemaRef, SemaRef.QualifiedLookupContext,
+                                 GlobalScope,
+                                 Context.CxxAST.getTranslationUnitDecl());
   clang::Expr *RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
 
   if (!RHSExpr)
@@ -2097,17 +2120,24 @@ clang::Expr *ExprElaborator::elaborateBinOp(const CallSyntax *S,
 /// We just create a logical and expression with n terms: one for each
 /// sub expression.
 clang::Expr *
-ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
+ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions,
+                                        bool IsConstExpr) {
   // If there's only one term, we don't need to do anything else.
-  if (Conditions->getNumChildren() == 1)
-    return elaborateExpr(Conditions->getChild(0));
-
+  if (Conditions->getNumChildren() == 1){
+    if (IsConstExpr)
+      return elaborateExpectedConstantExpr(Conditions->getChild(0));
+    else
+      return elaborateExpr(Conditions->getChild(0));
+  }
   clang::Expr *LHS = nullptr;
   clang::Expr *RHS = nullptr;
 
   {
     ExprElaborator ExEl(Context, SemaRef);
-    LHS = ExEl.elaborateExpr(Conditions->getChild(0));
+    if (IsConstExpr)
+      LHS = ExEl.elaborateExpectedConstantExpr(Conditions->getChild(0));
+    else
+      LHS = ExEl.elaborateExpr(Conditions->getChild(0));
 
     if (!LHS) {
       SemaRef.Diags.Report(Conditions->getChild(0)->getLoc(),
@@ -2117,7 +2147,10 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
   }
   {
     ExprElaborator ExEl(Context, SemaRef);
-    RHS = ExEl.elaborateExpr(Conditions->getChild(1));
+    if (IsConstExpr)
+      RHS = ExEl.elaborateExpectedConstantExpr(Conditions->getChild(1));
+    else
+      RHS = ExEl.elaborateExpr(Conditions->getChild(1));
 
     if (!RHS) {
       SemaRef.Diags.Report(Conditions->getChild(1)->getLoc(),
@@ -2139,7 +2172,10 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions) {
   // Ex., if we had `1 && 2`, we would append `3` to get `1 && 2 && 3`.
   for (unsigned I = 2; I < Conditions->getNumChildren(); ++I) {
     ExprElaborator ExEl(Context, SemaRef);
-    RHS = ExEl.elaborateExpr(Conditions->getChild(I));
+    if (IsConstExpr)
+      RHS = ExEl.elaborateExpectedConstantExpr(Conditions->getChild(I));
+    else
+      RHS = ExEl.elaborateExpr(Conditions->getChild(I));
 
     BinOp =
       SemaRef.getCxxSema().ActOnBinOp(/*Scope=*/nullptr, clang::SourceLocation(),
@@ -2225,7 +2261,7 @@ clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
   clang::Expr *TyExpr = SemaRef.buildTypeExpr(AutoType, D->getLoc());
   for (auto Iter = Decls.rbegin(); Iter != Decls.rend(); ++Iter) {
     D = *Iter;
-    switch (D->Kind) {
+    switch (D->getKind()) {
     case DK_Identifier:
       break;
 
@@ -2258,7 +2294,7 @@ clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
       break;
     }
     default:
-      llvm_unreachable("Invalid declarator");
+      llvm_unreachable("unhandled declarator.");
     }
   }
   return TyExpr;
@@ -2268,22 +2304,20 @@ clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
 // we're building. Note that T is the return type (if any).
 clang::Expr *
 ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
-  const auto *Call = cast<CallSyntax>(D->Call);
+  FunctionDeclarator *FuncDcl = D->getAsFunction();
 
   // FIXME: Handle array-based arguments.
-  assert(isa<ListSyntax>(D->Data.ParamInfo.Params)
-         && "Array parameters not supported");
-  const ListSyntax *Args = cast<ListSyntax>(D->Data.ParamInfo.Params);
+  const ListSyntax *Args = FuncDcl->getParams();
 
-  bool IsVariadic = D->Data.ParamInfo.VariadicParam;
+  // bool IsVariadic = D->Data.ParamInfo.VariadicParam;
   // Elaborate the parameter declarations in order to get their types, and save
   // the resulting scope with the declarator.
   llvm::SmallVector<clang::QualType, 4> Types;
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
-  SemaRef.enterScope(SK_Parameter, Call);
+  SemaRef.enterScope(SK_Parameter, FuncDcl->getParams());
   for (unsigned I = 0; I < Args->getNumChildren(); ++I) {
     // There isn't really anything to translate here.
-    if (IsVariadic && I == Args->getNumChildren() - 1)
+    if (FuncDcl->isVariadic() && I == Args->getNumChildren() - 1)
       break;
     const Syntax *P = Args->getChild(I);
 
@@ -2291,7 +2325,7 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
     clang::ValueDecl *VD =
       cast_or_null<clang::ValueDecl>(Elab.elaborateParmDeclSyntax(P));
     if (!VD) {
-      SemaRef.leaveScope(Call);
+      SemaRef.leaveScope(FuncDcl->getParams());
       return nullptr;
     }
 
@@ -2302,12 +2336,12 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
     Types.push_back(VD->getType());
     Params.push_back(cast<clang::ParmVarDecl>(VD));
   }
-  D->Data.ParamInfo.ConstructedScope = SemaRef.saveScope(Call);
+  FuncDcl->setScope(SemaRef.saveScope(FuncDcl->getParams()));
 
 
   // FIXME: We need to configure parts of the prototype (e.g., noexcept).
   clang::FunctionProtoType::ExtProtoInfo EPI;
-  if (IsVariadic) {
+  if (FuncDcl->isVariadic()) {
     EPI.ExtInfo = Context.CxxAST.getDefaultCallingConvention(true, false);
     EPI.Variadic = true;
   }
@@ -2327,8 +2361,9 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
 
 
 clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *Ty) {
-  assert(D->Kind == DK_Type);
-  if (const auto *Atom = dyn_cast<AtomSyntax>(D->Data.Type)) {
+  assert(D->isType());
+  TypeDeclarator *TyDcl = D->getAsType();
+  if (const auto *Atom = dyn_cast<AtomSyntax>(TyDcl->getTyExpr())) {
     clang::SourceLocation Loc = Atom->getLoc();
     clang::IdentifierInfo *II = &CxxAST.Idents.get(Atom->getSpelling());
     clang::DeclarationNameInfo DNI(II, Loc);
@@ -2348,7 +2383,7 @@ clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *T
     TD->setIsUsed();
     return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
   }
-  return elaborateExpr(D->Data.Type);
+  return elaborateExpr(TyDcl->getTyExpr());
 }
 
 
