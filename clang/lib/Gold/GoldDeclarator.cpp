@@ -20,50 +20,6 @@
 
 namespace gold{
 
-// static llvm::StringRef getCallName(const CallSyntax *S) {
-//   // Get the bottom-left most element, which should be an
-//   // atom syntax naming the function.
-//   while (S->getNumArguments()) {
-//     const Syntax *L = S->getArgument(0);
-//     if (const auto *Atom = dyn_cast<AtomSyntax>(L))
-//       return Atom->getSpelling();
-
-//     S = cast<CallSyntax>(L);
-//   }
-
-//   // We got here because the parameter list was empty.
-//   return "(void)";
-// }
-
-// static const char* getDeclaratorKindName(DeclaratorKind DK) {
-//   switch(DK) {
-//   case DK_Unknown:
-//     return "Unknown";
-//   case DK_Identifier:
-//     return "Identifier";
-//   case DK_TemplateParams:
-//     return "TemplateType";
-//   case DK_Function:
-//     return "Function";
-//   case DK_Type:
-//     return "Type";
-//   case DK_GlobalNamespecifier:
-//     return "GlobalNamespecifier";
-//   case DK_NestedNameSpecifier:
-//     return "NameSpecifier";
-//   case DK_ImplicitEmptyTemplateParams:
-//     return "ImplicitEmptyTemplateParams";
-//   case DK_PartialSpecialization:
-//     return "PartialSpecialization";
-//   case DK_ExplicitSpecialization:
-//     return "ExplicitSpecialization";
-//   case DK_Error:
-//     return "Error";
-//   default:
-//     llvm_unreachable("Invalid declarator Kind.");
-//   }
-// }
-
 UnknownDeclarator *Declarator::getAsUnknown() {
   return cast<UnknownDeclarator>(this);
 }

@@ -688,7 +688,6 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
   // FIXME: keep track of nested namespaces?
   gold::Sema::OptionalScopeRAII NewScope(SemaRef);
   gold::Sema::OptionalResumeScopeRAII ResumedScope(SemaRef);
-  // gold::Sema::ScopeRAII GoldScopeRAII(SemaRef, SK_Namespace, D->Init);
   clang::UsingDirectiveDecl *UD = nullptr;
   clang::AttributeFactory Attrs;
   clang::ParsedAttributes ParsedAttrs(Attrs);
@@ -739,6 +738,7 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
   // with the implicit UsingDecl, UD.
   return NSDecl;
 }
+
 static void handleTemplateParameters(Sema &SemaRef,
                                      Sema::OptionalScopeRAII &ScopeToInit,
                                      Sema::OptioanlClangScopeRAII &ClangScope,
@@ -757,10 +757,10 @@ static void handleTemplateParameters(Sema &SemaRef,
 
   // Constructing actual parameters.
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
-  if (!TPD->isImplicitlyEmpty()) {
+  if (!TPD->isImplicitlyEmpty())
     BuildTemplateParams(SemaRef.getContext(), SemaRef, Params,
                         TemplateParamDecls);
-  }
+
   ParamList = SemaRef.getCxxSema().ActOnTemplateParameterList(
                                /*unsigned Depth*/SemaRef.computeTemplateDepth(),
                                                             /*ExportLoc*/Loc,
@@ -1819,22 +1819,8 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   // We saved the parameter scope while elaborating this function's type,
   // so push it on before we enter the function scope.
   FunctionDeclarator *FnDecl = D->FunctionDcl->getAsFunction();
-  // bool IsTemplate = D->declaresFunctionTemplate();
-
-  // Scope *TemplateScope = nullptr;
-  // if (IsTemplate) {
-  //   SemaRef.pushScope(D->TemplateParameters->getAsTemplateParams()->getScope());
-  //   TemplateScope = SemaRef.getCurrentScope();
-  // }
   Sema::ResumeScopeRAII FnDclScope(SemaRef, FnDecl->getScope(),
                                    FnDecl->getScope()->getConcreteTerm());
-  // SemaRef.pushScope();
-  // The parameter scope is owned by the template scope, but they were
-  // constructed out of order.
-  // if (TemplateScope) {
-  //   SemaRef.getCurrentScope()->setParent(TemplateScope);
-  // }
-
 
   Declaration *CurrentDeclaration = SemaRef.getCurrentDecl();
   // Entering clang scope. for function definition.
@@ -1860,12 +1846,6 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   // Leave the function scope.
   SemaRef.leaveScope(D->Init);
 
-  // Leave the parameter scope.
-  // SemaRef.popScope();
-
-  // Leave the template scope
-  // if (IsTemplate)
-  //   SemaRef.popScope();
   SemaRef.setCurrentDecl(CurrentDeclaration);
 }
 
@@ -1901,7 +1881,7 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   D->CurrentPhase = Phase::Initialization;
   if (!D->Cxx)
     return;
-  // TemplateScope.Init(SK_Template, TemplParams, D->Op, &D->SavedScope);
+
   Sema::OptionalInitScope<Sema::ResumeScopeRAII> OptResumeScope(SemaRef);
   bool NeedsConstEvaluation = false;
   clang::VarDecl *VD = nullptr;

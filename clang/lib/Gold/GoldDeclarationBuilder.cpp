@@ -13,7 +13,7 @@
 
 #include "clang/Gold/GoldDeclarationBuilder.h"
 #include "clang/Gold/GoldSema.h"
-
+#include "clang/Gold/GoldElaborator.h"
 #include "clang/Sema/Lookup.h"
 
 namespace gold {
@@ -340,10 +340,9 @@ bool DeclarationBuilder::checkEnumDeclaration(const Syntax *DeclExpr,
 
   // TODO: It may be necessary to specifically include a test for
   // TheDecl->Init
-  if (TheDecl->Op) {
-    if (const auto *Call = dyn_cast<CallSyntax>(TheDecl->Op)) {
-      if (const auto *Operator = dyn_cast<AtomSyntax>(Call->getCallee())) {
-        if (Operator->getSpelling() != "operator'='") {
+  if (TheDecl->Op)
+    if (isa<CallSyntax>(TheDecl->Op))
+      if (!OperatorEquals) {
           // This means we are not using the assignment operator, but we are using
           // something else like operator'!'. Indicating we cannot be an
           // enumeration declaration, and we are for some reason using function
@@ -352,12 +351,7 @@ bool DeclarationBuilder::checkEnumDeclaration(const Syntax *DeclExpr,
                               clang::diag::err_invalid_declarator_sequence)
                               << 0;
           return true;
-        }
-      } else {
-        llvm_unreachable("I don't know what happened here.");
       }
-    }
-  }
   return false;
 }
 
@@ -488,23 +482,37 @@ Declarator *DeclarationBuilder::handleEnumScope(const Syntax *S) {
   }
 }
 
-static bool isParameterSyntax(const Syntax *S) {
-  if (const auto * Call = dyn_cast<CallSyntax>(S)) {
-    if (const auto *Name = dyn_cast<AtomSyntax>(Call->getCallee())) {
-      if (Name->getSpelling() == "operator':'") {
-        return true;
-      } else if (Name->getSpelling() == "operator'='") {
-        if (const auto *InnerTypeOpCall
-                                 = dyn_cast<CallSyntax>(Call->getArgument(0))) {
-          if (const auto *InnerName
-                         = dyn_cast<AtomSyntax>(InnerTypeOpCall->getCallee())) {
-            if (InnerName->getSpelling() == "operator':'") {
-              return true;
-            }
-          }
-        }
-      }
-    }
+static bool isParameterSyntax(Sema& SemaRef, const Syntax *S) {
+  const auto *Call = dyn_cast<CallSyntax>(S);
+  if (!Call)
+    return false;
+  // if (const auto * Call = dyn_cast<CallSyntax>(S)) {
+  //   if (const auto *Name = dyn_cast<AtomSyntax>(Call->getCallee())) {
+  //     if (Name->getSpelling() == "operator':'") {
+  //       return true;
+  //     } else if (Name->getSpelling() == "operator'='") {
+  //       if (const auto *InnerTypeOpCall
+  //                                = dyn_cast<CallSyntax>(Call->getArgument(0))) {
+  //         if (const auto *InnerName
+  //                        = dyn_cast<AtomSyntax>(InnerTypeOpCall->getCallee())) {
+  //           if (InnerName->getSpelling() == "operator':'") {
+  //             return true;
+  //           }
+  //         }
+  //       }
+  //     }
+  //   }
+  // }
+  FusedOpKind Op = getFusedOpKind(SemaRef, Call);
+  if (Op == FOK_Colon) {
+    return true;
+  } else if (Op == FOK_Equals) {
+    const Syntax *Arg = Call->getArgument(0);
+    if (!Arg)
+      return false;
+
+    if (getFusedOpKind(SemaRef, dyn_cast<CallSyntax>(Arg)) == FOK_Colon)
+      return true;
   }
   return false;
 }
@@ -572,7 +580,7 @@ DeclarationBuilder::mainElementTemplateOrSpecialization(const ElemSyntax *Elem,
       CurrentNext = handleImplicitTemplateParams(Elem, ExplicitDcl);
     } else {
       // Attempting to figure out of this is a full specialization or a template.
-      if (isParameterSyntax(ElemArgs->getChild(0))) {
+      if (isParameterSyntax(SemaRef, ElemArgs->getChild(0))) {
         // We are template arguments.
         CurrentNext = handleTemplateParams(Elem, Next);
       } else {

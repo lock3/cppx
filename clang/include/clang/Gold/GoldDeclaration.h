@@ -159,7 +159,8 @@ class Declaration {
 public:
   /// Use to create the initial file/global namespace.
   Declaration(const Syntax *File)
-    : Cxt(), Op(), Decl(), Init(File), SuspectedKind(UDK_File)
+    : Cxt(nullptr), Op(nullptr), Decl(nullptr), Init(File),
+    SuspectedKind(UDK_File)
   { }
 
   /// Creates a declaration.

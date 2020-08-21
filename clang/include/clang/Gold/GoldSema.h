@@ -425,7 +425,7 @@ public:
       QualifiedLookupContext = true;
     }
 
-    // Constructor for global namespace specifier.
+    // Constructor for namespace aliases
     QualifiedLookupRAII(Sema &SemaRef,
                         bool &QualifiedLookupContext,
                         clang::NamespaceAliasDecl *Alias)
