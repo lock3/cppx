@@ -82,7 +82,7 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
   // TODO: distinguish between redefinition, redeclaration, and redeclaration
   // with different type.
   if ((CurScope->isNamespaceScope() || CurScope->isParameterScope()) &&
-      !TheDecl->declaresFunction()) {
+      !TheDecl->declaresFunction() && !TheDecl->SpecializationArgs) {
     // FIXME: rewrite this!!
     auto DeclSet = CurScope->findDecl(Id);
 
@@ -566,6 +566,7 @@ DeclarationBuilder::mainElementTemplateOrSpecialization(const ElemSyntax *Elem,
   if (const auto *InnerTemplate = dyn_cast<ElemSyntax>(Elem->getObject())) {
     // We can be 100% sure we are some kind of specialization, either explicit
     // or partial.
+
     llvm_unreachable("Partial and explicit explicit([][])"
                      "specialization not implemented yet.");
   } else {
@@ -590,12 +591,12 @@ DeclarationBuilder::mainElementTemplateOrSpecialization(const ElemSyntax *Elem,
       }
     }
   }
+
   Declarator *NameDcl = buildNameDeclarator(Elem->getObject(), CurrentNext);
   if (!NameDcl)
     return nullptr;
   NameDcl->recordAttributes(Elem);
   return NameDcl;
-
 }
 
 Declarator *

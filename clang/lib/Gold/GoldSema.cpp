@@ -558,12 +558,17 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
           else
             llvm_unreachable("Unknown template function type");
         } else if (FoundDecl->declaresTemplateType()) {
-          // This is used to get the correct template name.
-          if (auto *RD = dyn_cast<clang::CXXRecordDecl>(FoundDecl->Cxx)) {
+          // We want the canonical declaration of a template unless it is
+          // a specialization.
+          using Specialization = clang::ClassTemplateSpecializationDecl;
+          using Record = clang::CXXRecordDecl;
+          if (auto *CD = dyn_cast<Specialization>(FoundDecl->Cxx)) {
+            ND = CD->getSpecializedTemplate();
+          } else if (auto *RD = dyn_cast<Record>(FoundDecl->Cxx)) {
             ND = RD->getDescribedClassTemplate();
-            if (ND) {
+            // FIXME: if ND is null, this is not recoverable.
+            if (ND)
               ND = cast<clang::NamedDecl>(ND->getCanonicalDecl());
-            }
           }
         } else {
           // Getting the cannonical declaration so hopefully this will prevent
@@ -572,6 +577,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
             ND = cast<clang::NamedDecl>(RD->getCanonicalDecl());
           }
         }
+
         addIfNotDuplicate(R, ND);
       }
       break;

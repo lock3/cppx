@@ -28,6 +28,7 @@
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/TypeLocBuilder.h"
 #include "clang/Sema/ParsedAttr.h"
+#include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/TypeLocUtil.h"
 #include "clang/Sema/CXXFieldCollector.h"
 
@@ -492,22 +493,129 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
     llvm_unreachable("Incorrectly identified tag type");
   }
 
-  Decl *Declaration = SemaRef.getCxxSema().ActOnTag(SemaRef.getCurClangScope(),
-                                                    TST,
-                                                    /*Metafunction=*/nullptr,
-                                                    clang::Sema::TUK_Definition,
-                                                    D->Init->getLoc(), SS,
-                                                    D->getId(), IdLoc,
-                                                  clang::ParsedAttributesView(),
-                                                    /*AccessSpecifier=*/AS,
-                                          /*ModulePrivateLoc=*/SourceLocation(),
-                                                    MTP, IsOwned, IsDependent,
-                                          /*ScopedEnumKWLoc=*/ScopedEnumClassKW,
-                                                    ScopeEnumUsesClassTag,
-                                                    UnderlyingType,
-                                                    /*IsTypeSpecifier=*/false,
-                                                 /*IsTemplateParamOrArg=*/false,
-                                                    /*SkipBody=*/nullptr);
+  Decl *Declaration = nullptr;
+  if (D->SpecializationArgs) {
+    clang::Sema &CxxSema = SemaRef.getCxxSema();
+
+    SpecializationDeclarator *SD = D->SpecializationArgs->getAsSpecialization();
+    assert(SD->ElaboratedArgs && "failed to elaborate specialization");
+
+    clang::DeclarationNameInfo DNI;
+    DNI.setName(D->getId());
+    DNI.setLoc(IdLoc);
+    clang::LookupResult Previous(CxxSema, DNI,
+                                 clang::Sema::LookupOrdinaryName,
+                                 CxxSema.forRedeclarationInCurContext());
+    clang::Scope *FoundScope = SemaRef.getCurClangScope();
+    while ((FoundScope->getFlags() & clang::Scope::DeclScope) == 0 ||
+           (FoundScope->getFlags() & clang::Scope::TemplateParamScope) != 0)
+      FoundScope = FoundScope->getParent();
+
+    SemaRef.getCxxSema().LookupName(Previous, FoundScope, false);
+    if (!Previous.isSingleResult()) {
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "specialization of ambiguous template");
+      SemaRef.Diags.Report(IdLoc, DiagID);
+      return nullptr;
+    }
+
+    clang::ClassTemplateDecl *Principal =
+      Previous.getAsSingle<clang::ClassTemplateDecl>();
+    if (!Principal) {
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "specialization of undeclared template");
+      SemaRef.Diags.Report(IdLoc, DiagID);
+      return nullptr;
+    }
+
+    clang::TemplateName Template(Principal);
+    OpaquePtr<clang::TemplateName> TemplatePtr =
+      OpaquePtr<clang::TemplateName>::make(Template);
+    clang::TemplateNameKind TNK = clang::TNK_Non_template;
+    // clang::TemplateParameterList TPL;
+    clang::UnqualifiedId UnqualId;
+    UnqualId.setIdentifier(D->getId(), IdLoc);
+    llvm::SmallVector<clang::TemplateIdAnnotation *, 16> TemplateIds;
+    llvm::SmallVector<clang::ParsedTemplateArgument, 4> Args;
+
+    const clang::TemplateArgumentLoc *ArgInfo =
+      SD->getArgList().getArgumentArray();
+    for (unsigned I = 0; I < SD->getArgList().size(); ++I) {
+      clang::TemplateArgument Arg = ArgInfo[I].getArgument();
+
+      bool BadArgument = false;
+      switch (Arg.getKind()) {
+      case clang::TemplateArgument::Type: {
+        clang::ParsedTemplateArgument NewArg(
+          clang::ParsedTemplateArgument::Type,
+          (void *)Arg.getAsType().getTypePtr(),
+          ArgInfo[I].getLocation());
+        Args.push_back(NewArg);
+        break;
+      }
+
+      case clang::TemplateArgument::Expression: {
+        // FIXME: this might be classified as an expression because it is
+        // dependent, but is actually something else.
+        clang::ParsedTemplateArgument NewArg(
+          clang::ParsedTemplateArgument::NonType, (void *)Arg.getAsExpr(),
+          ArgInfo[I].getLocation());
+        Args.push_back(NewArg);
+        break;
+      }
+
+      default: {
+        unsigned DiagID =
+          SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                        "invalid specialization argument");
+        SemaRef.Diags.Report(ArgInfo[I].getLocation(), DiagID);
+        BadArgument = true;
+      }
+      }
+
+      if (BadArgument)
+        continue;
+    }
+
+    // TNK = SemaRef.getCxxSema().ActOnTemplateName(
+    //   SemaRef.getCurClangScope(), SS, /*ValidTemplateLoc=*/true, UnqualId,
+    //   ObjectType, /*EnteringContext=*/false, Template,
+    //   /*AllowInjectedClassName=*/true);
+    auto *TempId =
+      clang::TemplateIdAnnotation::Create(
+        D->Op->getLoc(), IdLoc, D->getId(), false, clang::OO_None, TemplatePtr,
+        clang::TNK_Type_template, IdLoc, IdLoc, Args, false, TemplateIds);
+
+    // D->getLoc(), D->getLoc(), D->getId(), false, clang::OO_None, Template
+    auto Res = SemaRef.getCxxSema().ActOnClassTemplateSpecialization(
+      SemaRef.getCurClangScope(), TST, clang::Sema::TUK_Definition,
+      D->Init->getLoc(), /*ModulePrivLoc=*/SourceLocation(), SS,
+      *TempId, clang::ParsedAttributesView(), MTP);
+
+    if (Res.isInvalid()) {
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "failed to specialize template");
+      SemaRef.Diags.Report(IdLoc, DiagID);
+      return nullptr;
+    }
+
+    Declaration = Res.get();
+    // We need to be sure this has a valid source location, otherwise clang
+    // will assume it is a partial specialization.
+    cast<clang::ClassTemplateSpecializationDecl>(Declaration)->
+      setTemplateKeywordLoc(IdLoc);
+  } else {
+    Declaration = SemaRef.getCxxSema().ActOnTag(
+      SemaRef.getCurClangScope(), TST, /*Metafunction=*/nullptr,
+      clang::Sema::TUK_Definition, D->Init->getLoc(), SS, D->getId(), IdLoc,
+      clang::ParsedAttributesView(), AS, /*ModulePrivateLoc=*/SourceLocation(),
+      MTP, IsOwned, IsDependent, ScopedEnumClassKW, ScopeEnumUsesClassTag,
+      UnderlyingType, /*IsTypeSpecifier=*/false, /*IsTemplateParamOrArg=*/false);
+  }
+
   TagDecl *Tag = nullptr;
   if (!Declaration) {
     return nullptr;
@@ -805,6 +913,9 @@ static bool handleSpecializationArgs(Sema &SemaRef, const Syntax *Args,
 static bool elaborateSpecializationArgs(Sema &SemaRef,
                                         Declaration *D) {
   SpecializationDeclarator *SD = D->SpecializationArgs->getAsSpecialization();
+  assert(!SD->ElaboratedArgs && "specialization arguments already elaborated");
+
+  SD->ElaboratedArgs = true;
   if (handleSpecializationArgs(SemaRef, SD->getArgs(), SD->getArgList())){
     SD->setDidError();
   }
@@ -1117,6 +1228,8 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
 } // end anonymous namespace
 
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
+  clang::Sema &CxxSema = SemaRef.getCxxSema();
+
   // Get the type of the entity.
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
   FunctionDeclarator *FnDclPtr = D->FunctionDcl->getAsFunction();
@@ -1138,7 +1251,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   if (Template) {
     TPD = D->TemplateParameters->getAsTemplateParams();
   }
-
 
   // Elaborate the return type.
   ExprElaborator TypeElab(Context, SemaRef);
@@ -1168,9 +1280,9 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   if (InClass)
     setSpecialFunctionName(Context, RD, D, Name);
 
-  clang::LookupResult Previous(SemaRef.getCxxSema(), DNI,
+  clang::LookupResult Previous(CxxSema, DNI,
                                clang::Sema::LookupOrdinaryName,
-                           SemaRef.getCxxSema().forRedeclarationInCurContext());
+                               CxxSema.forRedeclarationInCurContext());
   clang::Scope *CxxScope = SemaRef.getCurClangScope();
   lookupFunctionRedecls(SemaRef, CxxScope, Previous);
 
@@ -1185,7 +1297,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     if (FD->isMain()) {
       clang::AttributeFactory Attrs;
       clang::DeclSpec DS(Attrs);
-      SemaRef.getCxxSema().CheckMain(FD, DS);
+      CxxSema.CheckMain(FD, DS);
     }
   }
 
@@ -1203,7 +1315,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       FTD->setAccess(clang::AS_public);
   }
 
-  SemaRef.getCxxSema().getImplicitCodeSegOrSectionAttrForFunction(FD, D->Init);
+  CxxSema.getImplicitCodeSegOrSectionAttrForFunction(FD, D->Init);
 
   // Update the function parameters.
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
@@ -1218,7 +1330,8 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
                                     FnDclPtr->getScope()->getConcreteTerm(),
                                     /*PopOnExit=*/false);
     elaborateAttributes(D);
-  }
+  } // end anonymous scope
+
   // Add the declaration and update bindings.
   if ((!Template || Specialization) && !D->declaresConstructor())
     Owner->addDecl(FD);
@@ -1226,30 +1339,30 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   if (D->declaresConstructor()) {
     clang::CXXConstructorDecl* CtorDecl =
       cast<clang::CXXConstructorDecl>(D->Cxx);
-    SemaRef.getCxxSema().PushOnScopeChains(CtorDecl, CxxScope);
-    SemaRef.getCxxSema().CheckConstructor(CtorDecl);
+    CxxSema.PushOnScopeChains(CtorDecl, CxxScope);
+    CxxSema.CheckConstructor(CtorDecl);
   }
 
-  SemaRef.getCxxSema().FilterLookupForScope(Previous, Owner, CxxScope,
+  CxxSema.FilterLookupForScope(Previous, Owner, CxxScope,
                                             !InClass, !InClass);
-  SemaRef.getCxxSema().CheckFunctionDeclaration(CxxScope,
+  CxxSema.CheckFunctionDeclaration(CxxScope,
                                                 FD, Previous, true);
 
   if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(FD)) {
 
     checkCXXMethodDecl(MD);
-    SemaRef.getCxxSema().CheckOverrideControl(MD);
+    CxxSema.CheckOverrideControl(MD);
   }
 
   // Handle function template specialization.
   if (!FD->isInvalidDecl() && !Previous.empty() && Specialization) {
-    SpecializationDeclarator *SpDcl
-                                 = D->SpecializationArgs->getAsSpecialization();
-    if (SemaRef.getCxxSema().CheckFunctionTemplateSpecialization(FD,
-                       (SpDcl->HasArguments() ? &SpDcl->getArgList() : nullptr),
-                                                                 Previous))
+    SpecializationDeclarator *SpDcl =
+      D->SpecializationArgs->getAsSpecialization();
+    clang::TemplateArgumentListInfo *Args =
+      SpDcl->HasArguments() ? &SpDcl->getArgList() : nullptr;
+
+    if (CxxSema.CheckFunctionTemplateSpecialization(FD, Args, Previous))
       FD->setInvalidDecl();
-    // Handling function template specialziation.
   }
 
   // FIXME: this is not necessarily what should happen.
@@ -2263,7 +2376,7 @@ bool Elaborator::delayElaborateDeclType(clang::CXXRecordDecl *RD,
         WasDelayed = true;
       }
     }
-    if (D->decalaresFunctionDef()) {
+    if (D->declaresFunctionDef()) {
       delayElaborateMethodDef(D);
       WasDelayed = true;
     }
@@ -3366,7 +3479,6 @@ static bool processAttributeArgs(SyntaxContext &Context, Sema &SemaRef,
                                  clang::ArgsVector &Args) {
   ExprElaborator Elab(Context, SemaRef);
   for (const Syntax *ArgOrId : CallArgs->children()) {
-    clang::ArgsUnion CurArg;
     if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(ArgOrId)) {
       if (Name->hasToken(tok::Identifier)) {
         Args.emplace_back(
@@ -3405,16 +3517,18 @@ void Elaborator::elaborateSystemAttribute(clang::Decl *D, const Syntax *S,
                          clang::diag::warn_invalid_attribute_format);
     return;
   }
-  break;
+
   case SAFK_Name: {
     Attrs.addNew(&Context.CxxAST.Idents.get(Info.AttrId->getSpelling()),
                  clang::SourceRange(Info.AttrId->getLoc(),
                                     Info.AttrId->getLoc()),
                  nullptr, clang::SourceLocation(), nullptr, 0u,
                  clang::ParsedAttr::Syntax::AS_CXX11);
+
+    break;
   }
-  break;
-  case SAFK_NameCall:{
+
+  case SAFK_NameCall: {
     clang::ArgsVector Args;
     if (processAttributeArgs(Context, SemaRef, Info.Args, Args)) {
       return;
@@ -3425,18 +3539,22 @@ void Elaborator::elaborateSystemAttribute(clang::Decl *D, const Syntax *S,
                                     Info.AttrId->getLoc()),
                  nullptr, clang::SourceLocation(), Args.data(),
                  Args.size(), clang::ParsedAttr::Syntax::AS_CXX11);
+
+    break;
   }
-  break;
-  case SAFK_ScopeName:{
+
+  case SAFK_ScopeName: {
     Attrs.addNew(&Context.CxxAST.Idents.get(Info.AttrId->getSpelling()),
                  clang::SourceRange(Info.AttrId->getLoc(),
                                     Info.AttrId->getLoc()),
                  &Context.CxxAST.Idents.get(Info.ScopeName->getSpelling()),
                  Info.ScopeName->getLoc(), nullptr, 0u,
                  clang::ParsedAttr::Syntax::AS_CXX11);
+
+    break;
   }
-  break;
-  case SAFK_ScopeNameCall:{
+
+  case SAFK_ScopeNameCall: {
     clang::ArgsVector Args;
     if (processAttributeArgs(Context, SemaRef, Info.Args, Args)) {
       return;
@@ -3447,10 +3565,9 @@ void Elaborator::elaborateSystemAttribute(clang::Decl *D, const Syntax *S,
                  &Context.CxxAST.Idents.get(Info.ScopeName->getSpelling()),
                  Info.ScopeName->getLoc(), Args.data(),
                  Args.size(), clang::ParsedAttr::Syntax::AS_CXX11);
+
+    break;
   }
-  break;
-  default:
-    llvm_unreachable("Unknown attribute format.");
   }
 }
 
