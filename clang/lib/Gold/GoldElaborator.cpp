@@ -446,8 +446,123 @@ getUnderlyingEnumType(SyntaxContext& Context, Sema& SemaRef,
   return clang::TypeResult();
 }
 
-static clang::Decl*
-processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
+static clang::Decl *
+handleClassSpecialization(SyntaxContext &Context,
+                          Sema &SemaRef, Declaration *D,
+                          clang::TypeSpecifierType TST,
+                          clang::CXXScopeSpec &SS,
+                          clang::MultiTemplateParamsArg &MTP) {
+  SpecializationDeclarator *SD = D->SpecializationArgs->getAsSpecialization();
+  assert(SD->ElaboratedArgs && "failed to elaborate specialization");
+
+  clang::Sema &CxxSema = SemaRef.getCxxSema();
+  clang::SourceLocation IdLoc = D->Decl->getLoc();
+
+  clang::DeclarationNameInfo DNI;
+  DNI.setName(D->getId());
+  DNI.setLoc(IdLoc);
+  clang::LookupResult Previous(CxxSema, DNI,
+                               clang::Sema::LookupOrdinaryName,
+                               CxxSema.forRedeclarationInCurContext());
+  clang::Scope *FoundScope = SemaRef.getCurClangScope();
+  while ((FoundScope->getFlags() & clang::Scope::DeclScope) == 0 ||
+         (FoundScope->getFlags() & clang::Scope::TemplateParamScope) != 0)
+    FoundScope = FoundScope->getParent();
+
+  SemaRef.getCxxSema().LookupName(Previous, FoundScope, false);
+  if (!Previous.isSingleResult()) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "specialization of ambiguous template");
+    SemaRef.Diags.Report(IdLoc, DiagID);
+    return nullptr;
+  }
+
+  clang::ClassTemplateDecl *Principal =
+    Previous.getAsSingle<clang::ClassTemplateDecl>();
+  if (!Principal) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "specialization of undeclared template");
+    SemaRef.Diags.Report(IdLoc, DiagID);
+    return nullptr;
+  }
+
+  clang::TemplateName Template(Principal);
+  clang::OpaquePtr<clang::TemplateName> TemplatePtr =
+    clang::OpaquePtr<clang::TemplateName>::make(Template);
+  clang::UnqualifiedId UnqualId;
+  UnqualId.setIdentifier(D->getId(), IdLoc);
+  llvm::SmallVector<clang::TemplateIdAnnotation *, 16> TemplateIds;
+  llvm::SmallVector<clang::ParsedTemplateArgument, 4> Args;
+
+  const clang::TemplateArgumentLoc *ArgInfo =
+    SD->getArgList().getArgumentArray();
+  for (unsigned I = 0; I < SD->getArgList().size(); ++I) {
+    clang::TemplateArgument Arg = ArgInfo[I].getArgument();
+
+    bool BadArgument = false;
+    switch (Arg.getKind()) {
+    case clang::TemplateArgument::Type: {
+      clang::ParsedTemplateArgument NewArg(
+        clang::ParsedTemplateArgument::Type,
+        (void *)Arg.getAsType().getTypePtr(),
+        ArgInfo[I].getLocation());
+      Args.push_back(NewArg);
+      break;
+    }
+
+    case clang::TemplateArgument::Expression: {
+      // FIXME: this might be classified as an expression because it is
+      // dependent, but is actually something else.
+      clang::ParsedTemplateArgument NewArg(
+        clang::ParsedTemplateArgument::NonType, (void *)Arg.getAsExpr(),
+        ArgInfo[I].getLocation());
+      Args.push_back(NewArg);
+      break;
+    }
+
+    default: {
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "invalid specialization argument");
+      SemaRef.Diags.Report(ArgInfo[I].getLocation(), DiagID);
+      BadArgument = true;
+    }
+    }
+
+    if (BadArgument)
+      continue;
+  }
+
+  auto *TempId =
+    clang::TemplateIdAnnotation::Create(
+      D->Op->getLoc(), IdLoc, D->getId(), false, clang::OO_None, TemplatePtr,
+      clang::TNK_Type_template, IdLoc, IdLoc, Args, false, TemplateIds);
+  auto Res = SemaRef.getCxxSema().ActOnClassTemplateSpecialization(
+    SemaRef.getCurClangScope(), TST, clang::Sema::TUK_Definition,
+    D->Init->getLoc(), /*ModulePrivLoc=*/SourceLocation(), SS,
+    *TempId, clang::ParsedAttributesView(), MTP);
+
+  if (Res.isInvalid()) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "failed to specialize template");
+    SemaRef.Diags.Report(IdLoc, DiagID);
+    return nullptr;
+  }
+
+  clang::Decl *Ret = Res.get();
+
+  // We need to be sure this has a valid source location, otherwise clang
+  // will assume it is a partial specialization.
+  using Specialization = clang::ClassTemplateSpecializationDecl;
+  cast<Specialization>(Ret)->setTemplateKeywordLoc(IdLoc);
+  return Ret;
+}
+
+static clang::Decl *
+processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
                      Declaration *D) {
   using namespace clang;
   D->CurrentPhase = Phase::Typing;
@@ -495,118 +610,7 @@ processCXXRecordDecl(Elaborator& Elab, SyntaxContext& Context, Sema& SemaRef,
 
   Decl *Declaration = nullptr;
   if (D->SpecializationArgs) {
-    clang::Sema &CxxSema = SemaRef.getCxxSema();
-
-    SpecializationDeclarator *SD = D->SpecializationArgs->getAsSpecialization();
-    assert(SD->ElaboratedArgs && "failed to elaborate specialization");
-
-    clang::DeclarationNameInfo DNI;
-    DNI.setName(D->getId());
-    DNI.setLoc(IdLoc);
-    clang::LookupResult Previous(CxxSema, DNI,
-                                 clang::Sema::LookupOrdinaryName,
-                                 CxxSema.forRedeclarationInCurContext());
-    clang::Scope *FoundScope = SemaRef.getCurClangScope();
-    while ((FoundScope->getFlags() & clang::Scope::DeclScope) == 0 ||
-           (FoundScope->getFlags() & clang::Scope::TemplateParamScope) != 0)
-      FoundScope = FoundScope->getParent();
-
-    SemaRef.getCxxSema().LookupName(Previous, FoundScope, false);
-    if (!Previous.isSingleResult()) {
-      unsigned DiagID =
-        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                      "specialization of ambiguous template");
-      SemaRef.Diags.Report(IdLoc, DiagID);
-      return nullptr;
-    }
-
-    clang::ClassTemplateDecl *Principal =
-      Previous.getAsSingle<clang::ClassTemplateDecl>();
-    if (!Principal) {
-      unsigned DiagID =
-        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                      "specialization of undeclared template");
-      SemaRef.Diags.Report(IdLoc, DiagID);
-      return nullptr;
-    }
-
-    clang::TemplateName Template(Principal);
-    OpaquePtr<clang::TemplateName> TemplatePtr =
-      OpaquePtr<clang::TemplateName>::make(Template);
-    clang::TemplateNameKind TNK = clang::TNK_Non_template;
-    // clang::TemplateParameterList TPL;
-    clang::UnqualifiedId UnqualId;
-    UnqualId.setIdentifier(D->getId(), IdLoc);
-    llvm::SmallVector<clang::TemplateIdAnnotation *, 16> TemplateIds;
-    llvm::SmallVector<clang::ParsedTemplateArgument, 4> Args;
-
-    const clang::TemplateArgumentLoc *ArgInfo =
-      SD->getArgList().getArgumentArray();
-    for (unsigned I = 0; I < SD->getArgList().size(); ++I) {
-      clang::TemplateArgument Arg = ArgInfo[I].getArgument();
-
-      bool BadArgument = false;
-      switch (Arg.getKind()) {
-      case clang::TemplateArgument::Type: {
-        clang::ParsedTemplateArgument NewArg(
-          clang::ParsedTemplateArgument::Type,
-          (void *)Arg.getAsType().getTypePtr(),
-          ArgInfo[I].getLocation());
-        Args.push_back(NewArg);
-        break;
-      }
-
-      case clang::TemplateArgument::Expression: {
-        // FIXME: this might be classified as an expression because it is
-        // dependent, but is actually something else.
-        clang::ParsedTemplateArgument NewArg(
-          clang::ParsedTemplateArgument::NonType, (void *)Arg.getAsExpr(),
-          ArgInfo[I].getLocation());
-        Args.push_back(NewArg);
-        break;
-      }
-
-      default: {
-        unsigned DiagID =
-          SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                        "invalid specialization argument");
-        SemaRef.Diags.Report(ArgInfo[I].getLocation(), DiagID);
-        BadArgument = true;
-      }
-      }
-
-      if (BadArgument)
-        continue;
-    }
-
-    // TNK = SemaRef.getCxxSema().ActOnTemplateName(
-    //   SemaRef.getCurClangScope(), SS, /*ValidTemplateLoc=*/true, UnqualId,
-    //   ObjectType, /*EnteringContext=*/false, Template,
-    //   /*AllowInjectedClassName=*/true);
-    auto *TempId =
-      clang::TemplateIdAnnotation::Create(
-        D->Op->getLoc(), IdLoc, D->getId(), false, clang::OO_None, TemplatePtr,
-        clang::TNK_Type_template, IdLoc, IdLoc, Args, false, TemplateIds);
-
-    // D->getLoc(), D->getLoc(), D->getId(), false, clang::OO_None, Template
-    auto Res = SemaRef.getCxxSema().ActOnClassTemplateSpecialization(
-      SemaRef.getCurClangScope(), TST, clang::Sema::TUK_Definition,
-      D->Init->getLoc(), /*ModulePrivLoc=*/SourceLocation(), SS,
-      *TempId, clang::ParsedAttributesView(), MTP);
-
-    if (Res.isInvalid()) {
-      unsigned DiagID =
-        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                      "failed to specialize template");
-      SemaRef.Diags.Report(IdLoc, DiagID);
-      return nullptr;
-    }
-
-    Declaration = Res.get();
-    // We need to be sure this has a valid source location, otherwise clang
-    // will assume it is a partial specialization.
-    cast<clang::ClassTemplateSpecializationDecl>(Declaration)->
-      setTemplateKeywordLoc(IdLoc);
+    Declaration = handleClassSpecialization(Context, SemaRef, D, TST, SS, MTP);
   } else {
     Declaration = SemaRef.getCxxSema().ActOnTag(
       SemaRef.getCurClangScope(), TST, /*Metafunction=*/nullptr,
