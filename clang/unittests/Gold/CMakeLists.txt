@@ -59,6 +59,7 @@ add_clang_unittest(GoldTests
   GoldClassTemplateMemberAccessExec.cpp
   GoldClassTemplatedMemberExec.cpp
   GoldClassTemplateParsing.cpp
+  GoldClassTemplateSpec.cpp
   GoldClassThisAccessElab.cpp
   GoldCompileRun.cpp
   GoldConst.cpp
