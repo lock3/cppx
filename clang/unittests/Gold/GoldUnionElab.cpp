@@ -807,6 +807,7 @@ outer : type = union:
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+#if 0
 TEST(GoldUnion, OutOfOrderUnions) {
   StringRef Code = R"(
 c1 : type = union:
@@ -834,7 +835,7 @@ c2 : type = union:
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
-
+#endif
 
 TEST(GoldUnion, ReferenceToTypeInReturnTypeOfMemberFunction) {
   StringRef Code = R"(
