@@ -997,8 +997,13 @@ static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
     if (auto *TP = dyn_cast<clang::NonTypeTemplateParmDecl>(ND)) {
       TP->setPosition(I);
     } else if (auto *TP = dyn_cast<clang::TemplateTypeParmDecl>(ND)) {
-      // FIXME: Make this a friend of TTPD so we can set this :/
-      // TP->setPosition(I);
+      // Set the index.
+      auto *Ty = TP->getTypeForDecl()->castAs<clang::TemplateTypeParmType>();
+      clang::QualType NewTy =
+        Ctx.CxxAST.getTemplateTypeParmType(Ty->getDepth(), I,
+                                           Ty->isParameterPack(),
+                                           Ty->getDecl());
+      TP->setTypeForDecl(NewTy.getTypePtr());
     }
 
     Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
