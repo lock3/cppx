@@ -147,6 +147,8 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     OperatorRRefII(&Context.CxxAST.Idents.get("operator'rref'")),
     OperatorBracketsII(&Context.CxxAST.Idents.get("operator'[]'")),
     OperatorParensII(&Context.CxxAST.Idents.get("operator'()'")),
+    ConstructorII(&Context.CxxAST.Idents.get("constructor")),
+    DestructorII(&Context.CxxAST.Idents.get("destructor")),
     BuiltinTypes(createBuiltinTypeList(Context)),
     OpInfo(Context.CxxAST),
     AttrHandlerMap(buildAttributeMaping())
@@ -286,6 +288,8 @@ void Sema::popDecl() {
 bool Sema::lookupUnqualifiedName(clang::LookupResult &R) {
   return lookupUnqualifiedName(R, getCurrentScope());
 }
+
+
 
 bool Sema::lookupQualifiedName(clang::LookupResult &R) {
   gold::Scope *LookupScope = nullptr;
@@ -569,6 +573,8 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
             // FIXME: if ND is null, this is not recoverable.
             if (ND)
               ND = cast<clang::NamedDecl>(ND->getCanonicalDecl());
+            else
+              ND = RD;
           }
         } else {
           // Getting the cannonical declaration so hopefully this will prevent
@@ -619,6 +625,64 @@ bool Sema::unqualifiedMemberAccessLookup(clang::LookupResult &R,
 
   // }
   llvm_unreachable("Working on it.");
+}
+
+bool Sema::checkUnqualifiedNameIsDecl(const clang::DeclarationNameInfo& DNI) {
+  return checkUnqualifiedNameIsDecl(DNI, getCurrentScope());
+}
+
+bool Sema::checkUnqualifiedNameIsDecl(const clang::DeclarationNameInfo& DNI,
+                                      Scope *S) {
+  assert(S);
+
+  clang::DeclarationName Name = DNI.getName();
+  clang::IdentifierInfo *Id = Name.getAsIdentifierInfo();
+
+  assert(Id && "Invalid id");
+
+  auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
+  if (BuiltinMapIter != BuiltinTypes.end())
+    return false;
+
+  // This is done based on how CppLookUpName is handled, with a few exceptions,
+  // this will return uninstantiated template declarations, namespaces,
+  // and other kinds of declarations. This also handles some early elaboration
+  // of some types.
+  bool FoundFirstClassScope = false;
+  for(;S; S = S->getParent()) {
+    std::set<Declaration *> Found = S->findDecl(Id);
+    if (!Found.empty()) {
+      return false;
+    }
+
+    // This only triggers one time because it's difficult to figure out what kind
+    // of scope we are actually processing when we run into these issues.
+    // There will be more problems like this. That's because scopes are confusing.
+    if (S->getKind() == SK_Class && !FoundFirstClassScope) {
+      FoundFirstClassScope = true;
+      // Checking that if we are in side of a record and within that record has base classes.
+      Declaration *DeclEntity = S->Entity;
+      if (DeclEntity) {
+        if (DeclEntity->declaresTag()) {
+          if (DeclEntity->Cxx) {
+            clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(DeclEntity->Cxx);
+            // We do this because if for whatever reason if this hasn't been initially
+            // elaborated yet but if we are some how in side of it then there is a
+            // really big problem
+            if (!RD)
+              llvm_unreachable("Cyclic depdency detected unable to continue.");
+            clang::LookupResult R(CxxSema, DNI, clang::Sema::LookupOrdinaryName);
+            // Basically, if this is true we found something then exit the loop.
+            if (lookupInSideOfRecordBases(*this, getCxxSema().getASTContext(),
+                                          R, RD, Name)) {
+              return false;
+            }
+          }
+        }
+      }
+    }
+  }
+  return true;
 }
 
 bool Sema::scopeIsWithinClass() {

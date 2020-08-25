@@ -175,8 +175,12 @@ clang::SourceLocation FunctionDeclarator::getLoc() const {
 
 std::string FunctionDeclarator::getString(bool IncludeKind) const {
   if (IncludeKind)
-    return "[Function] (" + std::to_string(Params->getNumChildren()) +")";
-  return "(" + std::to_string(Params->getNumChildren()) +")";
+    return "[Function] (" + std::to_string(getParams()->getNumChildren()) +")";
+  return "(" + std::to_string(getParams()->getNumChildren()) +")";
+}
+
+const ListSyntax *FunctionDeclarator::getParams() const {
+  return cast<ListSyntax>(Params->getArguments());
 }
 
 // ------------------ TypeDeclarator -------------------------------------------
@@ -207,18 +211,25 @@ std::string TemplateParamsDeclarator::getString(bool IncludeKind) const {
   std::string Ret;
   if (IncludeKind)
     Ret += "[Template Parameters] ";
-  Ret += "[" + std::to_string(Params->getNumChildren()) + "]";
+  Ret += "[" + std::to_string(getParams()->getNumChildren()) + "]";
   return Ret;
 }
 
-const Syntax *TemplateParamsDeclarator::getSyntax() const { return Params; }
+const Syntax *TemplateParamsDeclarator::getSyntax() const {
+  return getParams();
+}
+
+const ListSyntax *TemplateParamsDeclarator::getParams() const {
+  return cast<ListSyntax>(Params->getArguments());
+}
 
 // ------------------ ImplicitEmptyTemplateParamsDeclarator --------------------
 clang::SourceLocation ImplicitEmptyTemplateParamsDeclarator::getLoc() const {
   return Owner->getLoc();
 }
 
-std::string ImplicitEmptyTemplateParamsDeclarator::getString(bool IncludeKind) const {
+std::string
+ImplicitEmptyTemplateParamsDeclarator::getString(bool IncludeKind) const {
   std::string Ret;
   if (IncludeKind)
     Ret += "[Implicit Template Parameters] ";
@@ -226,7 +237,10 @@ std::string ImplicitEmptyTemplateParamsDeclarator::getString(bool IncludeKind) c
   return Ret;
 }
 
-const Syntax *ImplicitEmptyTemplateParamsDeclarator::getSyntax() const { return Owner; }
+const Syntax *ImplicitEmptyTemplateParamsDeclarator::getSyntax() const {
+  return Owner;
+}
+
 // ------------------ SpecializationDeclarator ---------------------------------
 clang::SourceLocation SpecializationDeclarator::getLoc() const {
   return Args->getLoc();
@@ -236,12 +250,16 @@ std::string SpecializationDeclarator::getString(bool IncludeKind) const {
   std::string Ret;
   if (IncludeKind)
     Ret += "[Specialization] ";
-  Ret += "[" + std::to_string(Args->getNumChildren()) + "]";
+  Ret += "[" + std::to_string(getArgs()->getNumChildren()) + "]";
   return Ret;
 }
 
 bool SpecializationDeclarator::HasArguments() const {
-  return Args->getNumChildren();
+  return getArgs()->getNumChildren();
+}
+
+const ListSyntax *SpecializationDeclarator::getArgs() const {
+  return cast<ListSyntax>(Args->getArguments());
 }
 
 } // end namepsace gold

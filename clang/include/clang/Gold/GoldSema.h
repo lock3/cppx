@@ -164,9 +164,20 @@ public:
   bool lookupQualifiedName(clang::LookupResult &R, Scope *S);
   bool lookupQualifiedName(clang::LookupResult &R);
 
+
   // Perform unqualified memberlooku
   bool unqualifiedMemberAccessLookup(clang::LookupResult &R,
                                      const clang::Expr *LHSResultExpr);
+
+  /// Doing the same thing that unqualifiedLookup was doing with the exception
+  /// of not doing any actual elaboration. This is only used for checking
+  /// if a declaration references something previosuly declared within the
+  /// current scope.
+  /// Returns true if a previous declaration in scope was found
+  /// and false if not.
+  bool checkUnqualifiedNameIsDecl(const clang::DeclarationNameInfo& DNI);
+  bool checkUnqualifiedNameIsDecl(const clang::DeclarationNameInfo& DNI,
+                                   Scope *S);
 
   /// This checks to see if we are within a class body scope currently.
   bool scopeIsWithinClass();
@@ -479,6 +490,10 @@ public:
   clang::IdentifierInfo *const OperatorBracketsII;
   clang::IdentifierInfo *const OperatorParensII;
 
+  // Tokens used for constructor and destructor;
+  clang::IdentifierInfo *const ConstructorII;
+  clang::IdentifierInfo *const DestructorII;
+
   // An RAII type for constructing scopes.
   struct ScopeRAII {
     ScopeRAII(Sema &S, ScopeKind K, const Syntax *ConcreteTerm,
@@ -559,12 +574,13 @@ public:
   /// the DeclContext isn't set by us for clang::Sema.
   class DeclContextRAII {
     Sema &SemaRef;
-    bool DoSetAndReset;
     Declaration *OriginalDecl;
+    bool DoSetAndReset;
   public:
     DeclContextRAII(Sema &S, Declaration *D,
         bool SetAndResetDeclarationsOnly = false)
-      :SemaRef(S), OriginalDecl(SemaRef.CurrentDecl)
+      :SemaRef(S), OriginalDecl(SemaRef.CurrentDecl),
+      DoSetAndReset(SetAndResetDeclarationsOnly)
     {
       if (DoSetAndReset)
         SemaRef.CurrentDecl = D;

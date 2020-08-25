@@ -875,7 +875,7 @@ static void handleTemplateParameters(Sema &SemaRef,
 
   ParamList = SemaRef.getCxxSema().ActOnTemplateParameterList(
                                /*unsigned Depth*/SemaRef.computeTemplateDepth(),
-                                                            /*ExportLoc*/Loc,
+                                           /*ExportLoc*/clang::SourceLocation(),
                                                             /*TemplateLoc*/Loc,
                                                             /*LAngleLoc*/Loc,
                                                             TemplateParamDecls,
@@ -993,7 +993,6 @@ static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
     // Just skip this on error.
     if (!ND)
       continue;
-
     // FIXME: set the depth too.
     if (auto *TP = dyn_cast<clang::NonTypeTemplateParmDecl>(ND)) {
       TP->setPosition(I);
@@ -1779,19 +1778,17 @@ clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
   ExprElaborator TypeElab(Context, SemaRef);
   clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
   if (!TypeExpr) {
-    SemaRef.Diags.Report(D->Op->getLoc(),
+    SemaRef.Diags.Report(D->IdDcl->getLoc(),
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
-  // clang::Expr *TemplateTy = TypeExpr.get<clang::Expr*>();
   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(TypeExpr,
-                                                             D->Decl->getLoc());
-  if (!TInfo) {
+                                                            D->IdDcl->getLoc());
+  if (!TInfo)
     return nullptr;
-  }
 
   clang::IdentifierInfo *Id = D->getId();
-  clang::SourceLocation Loc = D->Op->getLoc();
+  clang::SourceLocation Loc = D->IdDcl->getLoc();
 
   // This is a template type parameter decl.
   if (TInfo->getType()->getAs<clang::CppxKindType>()) {
