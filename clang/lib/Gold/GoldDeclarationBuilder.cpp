@@ -50,9 +50,8 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
     case SK_Enum:
       Dcl = handleEnumScope(S);
       break;
-    default:
-      llvm_unreachable("unknown scope type");
   }
+
   if (!Dcl)
     return nullptr;
 
@@ -319,23 +318,11 @@ bool DeclarationBuilder::checkDeclaration(const Syntax *DeclExpr,
   if (checkNestedNameSpecifiers(DeclExpr, TheDecl))
     return true;
 
-  if (whatIsIt(DeclExpr, TheDecl))
+  if (classifyDecl(DeclExpr, TheDecl))
     return true;
 
   if (checkRequiresType(DeclExpr, TheDecl))
     return true;
-
-  
-
-  // if (!EnableFunctions && TheDecl->FunctionDcl) {
-  //   // This is not a declatation.
-  //   if (RequiresDeclOrError) {
-  //     SemaRef.Diags.Report(TheDecl->FunctionDcl->getLoc(),
-  //                          clang::diag::err_invalid_declarator_sequence)
-  //                          << 0;
-  //   }
-  //   return nullptr;
-  // }
 
 // EnableNamespaceDecl
 // EnableTags
@@ -348,7 +335,6 @@ bool DeclarationBuilder::checkDeclaration(const Syntax *DeclExpr,
 // RequiresDeclOrError
 // IsInsideEnum
 
-  ///
   return false;
 }
 
@@ -790,7 +776,8 @@ static bool deduceVariableSyntax(Sema &SemaRef, Declaration *TheDecl,
   return true;
 }
 
-bool DeclarationBuilder::whatIsIt(const Syntax *DeclExpr, Declaration *TheDecl) {
+bool DeclarationBuilder::classifyDecl(const Syntax *DeclExpr,
+                                      Declaration *TheDecl) {
   // this is handled within checkEnumDeclaration
   if (TheDecl->SuspectedKind == UDK_EnumConstant)
     return false;
