@@ -573,9 +573,8 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
             // FIXME: if ND is null, this is not recoverable.
             if (ND)
               ND = cast<clang::NamedDecl>(ND->getCanonicalDecl());
-            } else {
+            else
               ND = RD;
-            }
           }
         } else {
           // Getting the cannonical declaration so hopefully this will prevent

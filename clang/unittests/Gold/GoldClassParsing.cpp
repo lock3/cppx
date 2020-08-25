@@ -1005,7 +1005,7 @@ outer : type = class:
   ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
 
-#if 0
+
 TEST(ClassParsing, ClassesOutOfOrder) {
   StringRef Code = R"(
 c1 : type = class:
@@ -1035,7 +1035,7 @@ c2 : type = class:
   );
   ASSERT_TRUE(matches(Code.str(), Matches));
 }
-#endif
+
 
 TEST(ClassParsing, ReferenceToTypeInReturnTypeOfMemberFunction) {
   StringRef Code = R"(
