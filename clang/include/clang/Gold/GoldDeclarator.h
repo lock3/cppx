@@ -424,7 +424,7 @@ public:
   virtual clang::SourceLocation getLoc() const override;
   virtual std::string getString(bool IncludeKind = false) const override;
   const ElemSyntax *getOwner() const { return Owner; }
-  virtual const Syntax *getSyntax() const;
+  virtual const Syntax *getSyntax() const override;
   static bool classof(const Declarator *Dcl) {
     return Dcl->getKind() == DK_ImplicitEmptyTemplateParams;
   }

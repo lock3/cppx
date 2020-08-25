@@ -48,14 +48,10 @@ public:
   /// did previously.
   Declaration *build(const Syntax *S);
 private:
-  UnevaluatedDeclKind SuspectedKind = UDK_None;
-  bool HasType = false;
   llvm::StringRef OriginalName;
   clang::IdentifierInfo *Id = nullptr;
   const OpInfoBase *OpInfo = nullptr;
-  const Syntax *DeclOperator = nullptr;
   const Syntax *InitExpr = nullptr;
-  bool OperatorEquals = false;
   InitKind InitOperatorUsed = IK_None;
 
   // Overridding setting, this is special because enums are so restructive
@@ -95,9 +91,9 @@ private:
   /// and RequireTypeForFunctions
   bool checkRequiresType(const Syntax *DeclExpr, Declaration *TheDecl);
 
-  /// Given the structure and context, attempt to determine what kind of
+  /// Given the structure and context, attempt to classify what kind of
   /// declaration we have and in the current context how it could be used.
-  bool whatIsIt(const Syntax *DeclExpr, Declaration *TheDecl);
+  bool classifyDecl(const Syntax *DeclExpr, Declaration *TheDecl);
 
   // Special requirements.
   // - Can have scoped name declarations.
