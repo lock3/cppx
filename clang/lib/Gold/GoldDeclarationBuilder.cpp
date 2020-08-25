@@ -325,30 +325,6 @@ bool DeclarationBuilder::checkDeclaration(const Syntax *DeclExpr,
   if (checkRequiresType(DeclExpr, TheDecl))
     return true;
 
-  
-
-  // if (!EnableFunctions && TheDecl->FunctionDcl) {
-  //   // This is not a declatation.
-  //   if (RequiresDeclOrError) {
-  //     SemaRef.Diags.Report(TheDecl->FunctionDcl->getLoc(),
-  //                          clang::diag::err_invalid_declarator_sequence)
-  //                          << 0;
-  //   }
-  //   return nullptr;
-  // }
-
-// EnableNamespaceDecl
-// EnableTags
-// EnableAliases
-// EnableTemplateParameters
-// EnableNestedNameSpecifiers
-// RequireTypeForVariable
-// RequireTypeForFunctions
-// RequireAliasTypes
-// RequiresDeclOrError
-// IsInsideEnum
-
-  ///
   return false;
 }
 
