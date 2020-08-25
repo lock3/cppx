@@ -41,6 +41,7 @@ struct CallSyntax;
 struct AtomSyntax;
 struct Attribute;
 struct ListSyntax;
+struct ElemSyntax;
 
 class UnknownDeclarator;
 class ErrorDeclarator;
@@ -52,8 +53,6 @@ class TypeDeclarator;
 class TemplateParamsDeclarator;
 class ImplicitEmptyTemplateParamsDeclarator;
 class SpecializationDeclarator;
-// class ExplicitSpecializationDeclarator;
-// class PartialSpecializationDeclarator;
 
 /// Kinds of declarations.
 enum DeclaratorKind {
@@ -307,16 +306,21 @@ public:
 };
 
 class FunctionDeclarator : public Declarator {
-  const ListSyntax *Params;
+  const CallSyntax *Params;
   gold::Scope *Scope;
   bool HasVariadicParam = false;
 public:
-  FunctionDeclarator(const ListSyntax *ParamsNode, gold::Scope *ParamScope,
+  FunctionDeclarator(const CallSyntax *ParamsNode, gold::Scope *ParamScope,
                      Declarator *Next, bool HasElipsis = false)
     :Declarator(DK_Function, Next),
     Params(ParamsNode),
     Scope(ParamScope),
     HasVariadicParam(HasElipsis)
+  { }
+
+  FunctionDeclarator(const CallSyntax *ParamsNode, Declarator *Next,
+                     bool HasElipsis = false)
+    :FunctionDeclarator(ParamsNode, nullptr, Next, HasElipsis)
   { }
 
   virtual clang::SourceLocation getLoc() const override;
@@ -325,7 +329,7 @@ public:
   gold::Scope *getScope() const { return Scope; }
   void setScope(gold::Scope *NewScope) { Scope = NewScope; }
   gold::Scope *&getScopePtrRef() { return Scope;}
-  const ListSyntax *getParams() const { return Params; }
+  const ListSyntax *getParams() const;
   bool isVariadic() const { return HasVariadicParam; }
   void setIsVariadic(bool Val) { HasVariadicParam = Val; }
 
@@ -350,11 +354,11 @@ public:
 };
 
 class TemplateParamsDeclarator : public Declarator {
-  const ListSyntax *Params;
+  const ElemSyntax *Params;
   gold::Scope *Scope;
   clang::TemplateParameterList *ClangParamList;
 protected:
-  TemplateParamsDeclarator(DeclaratorKind DK, const ListSyntax *ParamsNode,
+  TemplateParamsDeclarator(DeclaratorKind DK, const ElemSyntax *ParamsNode,
                            gold::Scope *ParamScope,
                            Declarator *Next)
     :Declarator(DK, Next),
@@ -363,13 +367,17 @@ protected:
     ClangParamList(nullptr)
   { }
 public:
-  TemplateParamsDeclarator(const ListSyntax *ParamsNode,
+  TemplateParamsDeclarator(const ElemSyntax *ParamsNode,
                            gold::Scope *ParamScope,
                            Declarator *Next)
     :Declarator(DK_TemplateParams, Next),
     Params(ParamsNode),
     Scope(ParamScope),
     ClangParamList(nullptr)
+  { }
+
+  TemplateParamsDeclarator(const ElemSyntax *ParamsNode, Declarator *Next)
+    :TemplateParamsDeclarator(ParamsNode, nullptr, Next)
   { }
 
   virtual clang::SourceLocation getLoc() const override;
@@ -379,8 +387,10 @@ public:
   void setScope(gold::Scope *NewScope) { Scope = NewScope; }
   gold::Scope *&getScopePtrRef() { return Scope; }
   gold::Scope **getScopePtrPtr() { return &Scope; }
-  const ListSyntax *getParams() const { return Params; }
-  virtual bool isImplicitlyEmpty() const { return getKind() != DK_TemplateParams; }
+  const ListSyntax *getParams() const;
+  virtual bool isImplicitlyEmpty() const {
+    return getKind() != DK_TemplateParams;
+  }
   virtual const Syntax *getSyntax() const;
   clang::TemplateParameterList *getTemplateParameterList() const {
     return ClangParamList;
@@ -396,9 +406,9 @@ public:
 };
 
 class ImplicitEmptyTemplateParamsDeclarator : public TemplateParamsDeclarator {
-  const Syntax *Owner;
+  const ElemSyntax *Owner;
 public:
-  ImplicitEmptyTemplateParamsDeclarator(const Syntax *ExplicitSpecialization,
+  ImplicitEmptyTemplateParamsDeclarator(const ElemSyntax *ExplicitSpecialization,
                                        gold::Scope *ParamScope,
                                        Declarator *Next)
     :TemplateParamsDeclarator(DK_ImplicitEmptyTemplateParams, nullptr, nullptr,
@@ -406,9 +416,14 @@ public:
     Owner(ExplicitSpecialization)
   { }
 
+  ImplicitEmptyTemplateParamsDeclarator(const ElemSyntax *Owner,
+                                        Declarator *Next)
+    :ImplicitEmptyTemplateParamsDeclarator(Owner, nullptr, Next)
+  { }
+
   virtual clang::SourceLocation getLoc() const override;
   virtual std::string getString(bool IncludeKind = false) const override;
-  const Syntax *getOwner() const { return Owner; }
+  const ElemSyntax *getOwner() const { return Owner; }
   virtual const Syntax *getSyntax() const;
   static bool classof(const Declarator *Dcl) {
     return Dcl->getKind() == DK_ImplicitEmptyTemplateParams;
@@ -416,11 +431,11 @@ public:
 };
 
 class SpecializationDeclarator : public Declarator {
-  const ListSyntax *Args;
+  const ElemSyntax *Args;
   clang::TemplateArgumentListInfo ArgListInfo;
   bool CreatedAnError = false;
 public:
-  SpecializationDeclarator(const ListSyntax *SpecializationArgs,
+  SpecializationDeclarator(const ElemSyntax *SpecializationArgs,
                            Declarator *Next)
     :Declarator(DK_Specialization, Next),
     Args(SpecializationArgs)
@@ -428,7 +443,7 @@ public:
   bool HasArguments() const;
   virtual clang::SourceLocation getLoc() const override;
   virtual std::string getString(bool IncludeKind = false) const override;
-  const ListSyntax *getArgs() const { return Args; }
+  const ListSyntax *getArgs() const;
   const clang::TemplateArgumentListInfo &getArgList() const {
     return ArgListInfo;
   }

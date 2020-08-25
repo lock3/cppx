@@ -56,6 +56,7 @@ private:
   const Syntax *DeclOperator = nullptr;
   const Syntax *InitExpr = nullptr;
   bool OperatorEquals = false;
+  InitKind InitOperatorUsed = IK_None;
 
   // Overridding setting, this is special because enums are so restructive
   // as to which declarations are actually allowed within them.
@@ -83,6 +84,20 @@ private:
 
   /// This is limited to dealing within things that are within the enumeration.
   bool checkEnumDeclaration(const Syntax *DeclExpr, Declaration *TheDecl);
+
+  /// This checks if the declaration is allowed to have nested name specifiers
+  /// if those nested namespecifiers are allowed within the current context
+  /// and if the declatation with a nested name is valid.
+  bool checkNestedNameSpecifiers(const Syntax *DeclExpr,
+                                 Declaration *TheDecl);
+
+  /// This enforces RequireTypeForVariable, RequireAliasTypes,
+  /// and RequireTypeForFunctions
+  bool checkRequiresType(const Syntax *DeclExpr, Declaration *TheDecl);
+
+  /// Given the structure and context, attempt to determine what kind of
+  /// declaration we have and in the current context how it could be used.
+  bool whatIsIt(const Syntax *DeclExpr, Declaration *TheDecl);
 
   // Special requirements.
   // - Can have scoped name declarations.
@@ -140,11 +155,16 @@ private:
   Declarator *buildTemplateFunctionOrNameDeclarator(const Syntax *S,
                                                     Declarator *Next);
 
-  Declarator *buildNestedNameSpec(const Syntax *S, Declarator *Next);
-  Declarator *buildNestedTemplate(const Syntax *S, Declarator *Next);
+  Declarator *buildNestedNameSpec(const CallSyntax *S, Declarator *Next);
+  Declarator *buildNestedTemplate(const ElemSyntax *S, Declarator *Next);
+  Declarator *buildNestedOrRegularName(const Syntax *S, Declarator *Next);
   Declarator *buildNestedName(const Syntax *S, Declarator *Next);
+  Declarator *buildNestedTemplateSpecializationOrName(const Syntax *S,
+                                                      Declarator *Next);
+
   Declarator *buildNameDeclarator(const Syntax *S, Declarator *Next);
   Declarator *buildTemplateOrNameDeclarator(const Syntax *S, Declarator *Next);
+
 
   /// This is used to peek into a [] and verify that it is a declaration.
   /// The decision is based on if the contains a : because that's
@@ -156,12 +176,16 @@ private:
   // Internal processing functions
   UnknownDeclarator *handleUnknownADeclSyntax(const Syntax *S, Declarator *Next);
   ErrorDeclarator *handleErrorSyntax(const ErrorSyntax *S, Declarator *Next);
-  GlobalNameSpecifierDeclarator *handleGlobalNameSpecifier(const CallSyntax *S, Declarator *Next);
-  NestedNameSpecifierDeclarator *handleNestedNameSpecifier(const AtomSyntax *S, Declarator *Next);
+  GlobalNameSpecifierDeclarator *handleGlobalNameSpecifier(const CallSyntax *S,
+                                                           Declarator *Next);
+  NestedNameSpecifierDeclarator *handleNestedNameSpecifier(const AtomSyntax *S,
+                                                           Declarator *Next);
   IdentifierDeclarator *handleIdentifier(const AtomSyntax *S, Declarator *Next);
-  FunctionDeclarator *handleFunction(const CallSyntax *S, Declarator *Next, bool IsVariadic = false);
+  FunctionDeclarator *handleFunction(const CallSyntax *S, Declarator *Next,
+                                     bool IsVariadic = false);
   TypeDeclarator *handleType(const Syntax *S, Declarator *Next);
-  TemplateParamsDeclarator *handleTemplateParams(const ElemSyntax *S, Declarator *Next);
+  TemplateParamsDeclarator *handleTemplateParams(const ElemSyntax *S,
+                                                 Declarator *Next);
   ImplicitEmptyTemplateParamsDeclarator *
   handleImplicitTemplateParams(const ElemSyntax *Owner, Declarator *Next);
 

@@ -95,10 +95,10 @@ public:
   ScopeKind Kind;
 
   /// The parent/enclosing scope of this scope.
-  Scope *Parent;
+  Scope *Parent = nullptr;
 
   /// The syntax associated with the scope.
-  const Syntax *Term;
+  const Syntax *Term = nullptr;
 
   /// The mapping of original syntax to its construction.
   using DeclMapType = llvm::DenseMap<const Syntax *, Declaration *>;

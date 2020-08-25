@@ -11287,13 +11287,76 @@ def err_namespace_alias_non_namespace : Error <
 def err_expected_namespace : Error <
   "expression does not reference a namespace">;
 
+/*
+  0 - function declaration
+  1 - namespace
+  2 - template
+  3 - nested name specifier
+  4 - global name specifier
+  5 - class
+  6 - enum
+  7 - union
+  8 - template specialization
+  9 - type
+*/
 def err_invalid_declarator_sequence : Error<
   "%select{function declaration|namespace|template|nested name specifier|"
   "global name specifier|class|enum|union|template specialization|type}0 not allowed "
   "in current context">;
 
+def err_invalid_declaration_kind : Error<
+  "invalid declaration %select{function as part of nested name|name|"
+  "syntax}0">;
+
+def err_invalid_macro_decl : Error<
+  "%select{union|class|namespace}0 cannot be declared with call structure and no body">;
+
+def err_namespace_missing_body : Error<
+  "namespace cannot exist as a forward declaration, it must have a body">;
+
+/*
+0 - global name specifier
+1 - nested name specifier
+2 - identifier
+3 - function
+4 - type
+5 - template
+6 - specialization
+*/
+def err_invalid_declarator_chain_sequence : Error<
+  "invalid declarator chain unexpected %select{global name specifier|nested name "
+  "specifier|identifier|function|type|template|specialization}0 "
+  "in declarator sequence">;
+def err_expected_declarator_chain_sequence : Error<
+  "missing declarator %select{global name specifier|nested name "
+  "specifier|identifier|function|type|template|specialization}0 "
+  "in declarator sequence">;
+
 def err_type_form_declarator_sequence : Error<
   "missing type for declaration">;
+
+def err_invalid_function_defintion_syntax : Error<
+  "invalid function defintion, operator ! used without function parameter">;
+
+def err_template_alias_missing_assignment : Error<
+  "template type alias missing assignment">;
+
+def err_special_member_function_non_member : Error<
+  "invalid %select{constructor|destructor|assignment operator}0 declaration "
+  "outside of a class body without a nested name specifier">;
+
+def err_special_member_function_outside_of_class_needs_def : Error<
+  "%select{constructor|destructor|function}0 declaration without a definition">;
+
+def err_parameter_with_no_type : Error<
+  "parameter is missing type">;
+
+def err_function_with_no_type : Error<
+  "Function requires a type when declared within the current context">;
+
+
+def err_variable_must_have_type : Error<
+  "variable must have a type as part of it's declaration">;
 
 } // end of Gold category
 

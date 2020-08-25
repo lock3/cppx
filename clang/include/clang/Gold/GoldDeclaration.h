@@ -38,9 +38,10 @@ enum UnevaluatedDeclKind {
   UDK_Enum,                 // The declaration is an Enum, either
                             // a declaration or definition.
 
-  UDK_Variable,             // This is a variable that occurs within global
-                            // namespace, a namespace, or as the static
-                            // member of a class (with the static attribute).
+  // Until phase 2 we can't be sure this is a variable.
+  // UDK_Variable,             // This is a variable that occurs within global
+  //                           // namespace, a namespace, or as the static
+  //                           // member of a class (with the static attribute).
 
   UDK_Namespace,            // Defines a nemaspace
   UDK_NamespaceAlias,       // Declares a namespace alias
@@ -49,27 +50,26 @@ enum UnevaluatedDeclKind {
                             // have a type that evaluates to : type
                             // - cannot be a template specialization
 
-  // UDK_VarTemplateDecl,   // We can't handle this unless we have speculative
-                            // evaluation.
-                            // That's because we don't know all of the types
-                            // at the time that this is identified, and I can't
-                            // look them all up until phase 2.
+  UDK_VarTemplateDecl,      // The only time we know we are a variable template
+                            // is when we have specialization arguments.
+                            // The we have to assume that we are a variable
+                            // template specialization, because we can't have
+                            // a template alias specialization.
 
-  UDK_TypeAlias,            // This must have a known, RHS that is a known type,
-                            // or provide a : type.
+  UDK_TypeAlias,            // The only time we can have a type alias is iff
+                            // there is a : type, other then that we will
+                            // never know.
 
-  UDK_Parameter,            // A function parameter
+  UDK_Parameter,            // A function parameter, only occurs within a
+                            // SK_Parameter scope
 
   UDK_TemplateParam,        // Any template parameter as their type doesn't
                             // matter until they are elaborated, and used.
 
-  UDK_Field,                // Field associated with a class.
+  // The only time we ever know for sure that this is a field is during phase 2.
+  // UDK_Field,                // Field associated with a class.
 
   UDK_EnumConstant,         // A field declared within an enum.
-
-
-  UDK_PossibleVarTemplate,  // This is a variable template definiton outside of
-                            // a class with a namespecifier.
 
   UDK_MemberFunction,       // Only applies to member functions declared within
                             // The body of a class.
@@ -83,11 +83,11 @@ enum UnevaluatedDeclKind {
   UDK_Destructor,           // A function with the name Destructor declared within
                             // the body of a class.
 
+  UDK_Function,             // Declares a function
+
   UDK_ConversionOperator,   // A conversion operator within the body of a class.
 
   UDK_MemberOperator,       // The declaration of a member operator overload.
-
-  UDK_Function,             // Declares a function
 
   UDK_LiteralOperator,      // User defined literal operator declaration.
 
@@ -102,7 +102,7 @@ enum UnevaluatedDeclKind {
   UDK_PossibleConversionOperator, // This is conversion operator overload with a
                                   // nested name specifier.
 
-  UDK_VarTemplateOrTemplateAlais, // This requires that we must specifically
+  UDK_VarTemplateOrTemplateAlias, // This requires that we must specifically
                                   // deduce the evaluated type before we could
                                   // evaluate this as either an alias or a variable.
                                   // but minimally we would know this is a template
@@ -119,7 +119,7 @@ enum UnevaluatedDeclKind {
                               //    - FieldDecl
                               //    - Not a declaration, This fully depends
                               //      on where it's used.
-  UDK_CallOrFunctionDecl,     // Takes the form func() = expr
+
   // Things we don't have syntax for yet.
   /*
   UDK_UsingDecl,
@@ -150,6 +150,12 @@ struct NNSDeclaratorInfo {
   Declarator *NNS = nullptr;
   Declarator *TemplateParameters = nullptr;
   Declarator *SpecializationArgs = nullptr;
+};
+
+enum InitKind {
+  IK_None,
+  IK_Exlaim,
+  IK_Equals
 };
 
 /// A declaration is stores information about the declaration of an
@@ -307,16 +313,16 @@ public:
 
 
   /// The owning context.
-  Declaration *Cxt;
+  Declaration *Cxt = nullptr;
 
   /// The top-level operator that forms the declaration or definition.
-  const Syntax *Op;
+  const Syntax *Op = nullptr;
 
   /// The declarator of the declaration.
-  Declarator *Decl;
+  Declarator *Decl = nullptr;
 
   /// The initializer or definition.
-  const Syntax *Init;
+  const Syntax *Init = nullptr;
 
   /// This is the deduced kind based on syntax only.
   UnevaluatedDeclKind SuspectedKind = UDK_None;
@@ -336,7 +342,7 @@ public:
   /// used by C++ iff there is a function declarator. This is the actual name
   /// used by the clang::Decl in CXX. This is to be consistent with C++.
   // const clang::IdentifierInfo *OpId = nullptr;
-  const OpInfoBase* OpInfo;
+  const OpInfoBase* OpInfo = nullptr;
 
 
   /// The corresponding C++ declaration.
@@ -410,6 +416,9 @@ public:
 
   /// This is used to indicate if a function has a body of = delete
   bool HasEqualDelete = false;
+
+  /// Identifies if the declaration created uses the equalsOperator
+  InitKind InitOpUsed = IK_None;
 
 };
 
