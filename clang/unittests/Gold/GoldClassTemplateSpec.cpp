@@ -24,6 +24,29 @@ main() : int!
   v : is_void[void]
   return v.value
 )";
+
+  LLVMContext Context;
+  std::unique_ptr<ExecutionEngine> EE;
+  ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
+  MainSig CB = MainSig(EE->getFunctionAddress("main"));
+  ASSERT_TRUE(CB);
+  int result = CB();
+  ASSERT_EQ(result, 1);
+}
+
+TEST(ClassTemplateSpec, Partial) {
+  StringRef Code = R"(
+A[T : type, U : type] : type = class:
+  i : int = 0
+
+A[T : type, U : type][^T, U] : type = class:
+  i : int = 1
+
+main() : int!
+  a : A[^int, float]
+  return a.i
+)";
+
   LLVMContext Context;
   std::unique_ptr<ExecutionEngine> EE;
   ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
