@@ -83,7 +83,7 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
   // TODO: distinguish between redefinition, redeclaration, and redeclaration
   // with different type.
   if ((CurScope->isNamespaceScope() || CurScope->isParameterScope()) &&
-      !TheDecl->declaresFunction()) {
+      !TheDecl->declaresFunction() && !TheDecl->SpecializationArgs) {
     // FIXME: rewrite this!!
     auto DeclSet = CurScope->findDecl(Id);
 

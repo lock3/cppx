@@ -253,7 +253,7 @@ bool Declaration::declaresFunctionDecl() const {
   return declaresFunction() && !Init;
 }
 
-bool Declaration::decalaresFunctionDef() const {
+bool Declaration::declaresFunctionDef() const {
   return declaresFunction() && Init;
 }
 

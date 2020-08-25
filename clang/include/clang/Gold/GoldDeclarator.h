@@ -423,8 +423,9 @@ public:
 
   virtual clang::SourceLocation getLoc() const override;
   virtual std::string getString(bool IncludeKind = false) const override;
-  const ElemSyntax *getOwner() const { return Owner; }
-  virtual const Syntax *getSyntax() const;
+  const Syntax *getOwner() const { return Owner; }
+  virtual const Syntax *getSyntax() const override;
+
   static bool classof(const Declarator *Dcl) {
     return Dcl->getKind() == DK_ImplicitEmptyTemplateParams;
   }
@@ -453,6 +454,10 @@ public:
   }
   bool getDidError() const {return CreatedAnError; }
   void setDidError(bool Err = true) { CreatedAnError = Err; }
+
+  /// True if the specialization arguments have been elaborated into C++
+  /// template arguments.
+  bool ElaboratedArgs = false;
 
   static bool classof(const Declarator *Dcl) {
     return Dcl->getKind() == DK_Specialization;

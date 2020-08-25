@@ -265,7 +265,7 @@ public:
   bool declaresFunctionDecl() const;
 
   /// checks if a function has a body.
-  bool decalaresFunctionDef() const;
+  bool declaresFunctionDef() const;
 
   template<typename T>
   bool defines() const {
@@ -395,6 +395,7 @@ public:
 
   Declarator *TemplateParameters = nullptr;
   Declarator *SpecializationArgs = nullptr;
+  Declarator *PartialSpecializationArgs = nullptr;
 
   Declarator *FunctionDcl = nullptr;
   Declarator *TypeDcl = nullptr;
