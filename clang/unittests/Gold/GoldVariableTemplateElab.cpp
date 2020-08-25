@@ -25,7 +25,7 @@ X[T:type] : const T = T(4)
 )";
 
   DeclarationMatcher ToMatch = varTemplateDecl(hasName("X"),
-    has(varDecl(hasInitializer(hasType(asString("T")))))
+    has(varDecl(hasInitializer(hasType(asString("type-parameter-0-0")))))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

@@ -914,8 +914,6 @@ outer[T : type] : type = class:
     b : U
     foo() : U!
       return b
-    
-  
 )";
 
   DeclarationMatcher ClassCInfo = recordDecl(
@@ -923,7 +921,7 @@ outer[T : type] : type = class:
     has(classTemplateDecl(has(recordDecl(hasName("nested"),
       hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
         isPublic())),
-      hasDescendant(fieldDecl(hasName("b"), hasType(asString("U")),
+      hasDescendant(fieldDecl(hasName("b"), hasType(asString("type-parameter-0-0")),
         isPublic())),
       hasDescendant(cxxMethodDecl(hasName("foo")))
     )) ))

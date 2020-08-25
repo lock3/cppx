@@ -60,7 +60,7 @@ c[T:type] : type = class:
     hasDescendant(cxxRecordDecl(
       hasName("c"),
       has(fieldDecl(
-        hasName("z"), hasType(asString("T"))
+        hasName("z"), hasType(asString("type-parameter-0-0"))
       )),
       has(fieldDecl(
         hasName("y"), hasType(asString("_Bool"))
@@ -89,7 +89,7 @@ main() : int!
     hasDescendant(cxxRecordDecl(
       hasName("c"),
       has(fieldDecl(
-        hasName("z"), hasType(asString("T"))
+        hasName("z"), hasType(asString("type-parameter-0-0"))
       )),
       has(fieldDecl(
         hasName("y"), hasType(asString("_Bool"))
