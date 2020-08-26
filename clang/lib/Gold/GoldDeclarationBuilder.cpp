@@ -71,7 +71,7 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
   if (checkDeclaration(S, TheDecl))
     return nullptr;
 
-  assert(!(OpInfo && TheDecl->declaresFunction()) && "unimplemented operator");
+  assert(!(OpInfo && !TheDecl->declaresFunction()) && "unimplemented operator");
 
   Scope *CurScope = SemaRef.getCurrentScope();
 

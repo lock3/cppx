@@ -304,8 +304,10 @@ public:
 
 
 
-  /// Members that allow construction of the CppxLiteralType
-  ///{
+  /// ====================================================================== ///
+  ///        Members that allow construction of the CppxLiteralType          ///
+  /// ====================================================================== ///
+
   clang::CppxTypeLiteral *buildTypeExpr(clang::QualType Ty,
                                         clang::SourceLocation Loc);
   clang::CppxTypeLiteral *buildNsTypeExpr(clang::SourceLocation Loc);
@@ -337,7 +339,7 @@ public:
                                 clang::SourceLocation Loc);
   clang::Expr *addRRefToTypeExpr(const clang::Expr *TyExpr,
                                  clang::SourceLocation Loc);
-  ///}
+  /// ====================================================================== ///
 
 
   /// This simply checks and extracts the QualType from a type expression.

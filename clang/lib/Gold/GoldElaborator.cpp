@@ -2132,7 +2132,28 @@ void Elaborator::elaborateTemplateParamInit(Declaration *D) {
   //        for template parameters, so we can't check for
   //        redefinition using the template.
 
-  // TODO: these might have default arguments.
+  clang::Expr *Init =
+    ExprElaborator(Context, SemaRef).elaborateExpr(D->Init);
+  if (!Init) {
+    D->CurrentPhase = Phase::Initialization;
+    return;
+  }
+
+  clang::SourceLocation Loc = Init->getExprLoc();
+  if (auto *TD = dyn_cast<clang::NonTypeTemplateParmDecl>(D->Cxx)) {
+    TD->setDefaultArgument(Init);
+  } else if (auto *TD = dyn_cast<clang::TemplateTypeParmDecl>(D->Cxx)) {
+    clang::QualType InitTy = Init->getType();
+    if (!InitTy->isTypeOfTypes())
+      SemaRef.Diags.Report(Loc, clang::diag::err_expected_type);
+    else
+      TD->setDefaultArgument(SemaRef.getTypeSourceInfoFromExpr(Init, Loc));
+  } else if (auto *TD = dyn_cast<clang::TemplateTemplateParmDecl>(D->Cxx)) {
+    clang::TemplateArgument Arg(Init, clang::TemplateArgument::Expression);
+    clang::TemplateArgumentLoc ArgLoc(Arg, Init);
+    TD->setDefaultArgument(Context.CxxAST, ArgLoc);
+  }
+
   D->CurrentPhase = Phase::Initialization;
 }
 

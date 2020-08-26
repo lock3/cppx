@@ -2372,9 +2372,9 @@ clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *T
     clang::IdentifierInfo *II = &CxxAST.Idents.get(Atom->getSpelling());
     clang::DeclarationNameInfo DNI(II, Loc);
     clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
-    if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) {
+    if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope()))
       return nullptr;
-    }
+
     if (R.empty()) {
       auto BuiltinMapIter = SemaRef.BuiltinTypes.find(Atom->getSpelling());
       if (BuiltinMapIter == SemaRef.BuiltinTypes.end()) {
@@ -2384,9 +2384,12 @@ clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *T
     }
 
     clang::TypeDecl *TD = R.getAsSingle<clang::TypeDecl>();
+    if (!TD)
+      return nullptr;
     TD->setIsUsed();
     return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
   }
+
   return elaborateExpr(TyDcl->getTyExpr());
 }
 
