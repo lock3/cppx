@@ -996,6 +996,8 @@ static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
     // FIXME: set the depth too.
     if (auto *TP = dyn_cast<clang::NonTypeTemplateParmDecl>(ND)) {
       TP->setPosition(I);
+    } else if (auto *TP = dyn_cast<clang::TemplateTemplateParmDecl>(ND)) {
+      TP->setPosition(I);
     } else if (auto *TP = dyn_cast<clang::TemplateTypeParmDecl>(ND)) {
       // Set the index.
       auto *Ty = TP->getTypeForDecl()->castAs<clang::TemplateTypeParmType>();
@@ -1004,6 +1006,8 @@ static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
                                            Ty->isParameterPack(),
                                            Ty->getDecl());
       TP->setTypeForDecl(NewTy.getTypePtr());
+    } else {
+      llvm_unreachable("Invalid template parameter");
     }
 
     Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
@@ -1795,14 +1799,21 @@ clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc = D->IdDcl->getLoc();
 
-  // This is a template type parameter decl.
+  // This is a template type or template template parameter decl.
   if (TInfo->getType()->getAs<clang::CppxKindType>()) {
-    auto *TTPD =
-      clang::TemplateTypeParmDecl::Create(Context.CxxAST, Owner, Loc, Loc, 0, 0,
-                              Id, /*TypenameKW=*/true, /*ParameterPack=*/false);
-    D->Cxx = TTPD;
+    using TemplateTemplate = clang::TemplateTemplateParmDecl;
+    using TemplateType = clang::TemplateTypeParmDecl;
+
+    if (D->TemplateParameters)
+      D->Cxx = TemplateTemplate::Create(Context.CxxAST, Owner, Loc, 0,
+                                        0, /*Pack=*/false, Id,
+                                        D->TemplateParamStorage.front());
+    else
+      D->Cxx = TemplateType::Create(Context.CxxAST, Owner, Loc, Loc, 0, 0,
+                                    Id, /*TypenameKW=*/true, /*Pack=*/false);
+
     D->CurrentPhase = Phase::Typing;
-    return TTPD;
+    return D->Cxx;
   }
 
   // The depth and position of the parameter will be set later.

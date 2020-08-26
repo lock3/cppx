@@ -985,6 +985,7 @@ bool Decl::AccessDeclContextSanity() const {
   if (isa<TranslationUnitDecl>(this) ||
       isa<TemplateTypeParmDecl>(this) ||
       isa<NonTypeTemplateParmDecl>(this) ||
+      isa<TemplateTemplateParmDecl>(this) ||
       !getDeclContext() ||
       !isa<CXXRecordDecl>(getDeclContext()) ||
       isInvalidDecl() ||
