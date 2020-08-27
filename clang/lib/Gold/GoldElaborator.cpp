@@ -993,16 +993,19 @@ static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
     // Just skip this on error.
     if (!ND)
       continue;
-    // FIXME: set the depth too.
+
+    unsigned Depth = SemaRef.computeTemplateDepth();
     if (auto *TP = dyn_cast<clang::NonTypeTemplateParmDecl>(ND)) {
       TP->setPosition(I);
+      TP->setDepth(I);
     } else if (auto *TP = dyn_cast<clang::TemplateTemplateParmDecl>(ND)) {
+      TP->setDepth(Depth);
       TP->setPosition(I);
     } else if (auto *TP = dyn_cast<clang::TemplateTypeParmDecl>(ND)) {
       // Set the index.
       auto *Ty = TP->getTypeForDecl()->castAs<clang::TemplateTypeParmType>();
       clang::QualType NewTy =
-        Ctx.CxxAST.getTemplateTypeParmType(Ty->getDepth(), I,
+        Ctx.CxxAST.getTemplateTypeParmType(Depth, I,
                                            Ty->isParameterPack(),
                                            Ty->getDecl());
       TP->setTypeForDecl(NewTy.getTypePtr());

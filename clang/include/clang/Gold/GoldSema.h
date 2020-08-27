@@ -302,8 +302,6 @@ public:
   ///
   unsigned computeTemplateDepth() const;
 
-
-
   /// ====================================================================== ///
   ///        Members that allow construction of the CppxLiteralType          ///
   /// ====================================================================== ///

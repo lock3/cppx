@@ -741,7 +741,7 @@ outer[T : type] : type = union:
     has(classTemplateDecl(has(recordDecl(hasName("nested"), isUnion(),
       hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
         isPublic())),
-      hasDescendant(fieldDecl(hasName("b"), hasType(asString("type-parameter-0-0")),
+      hasDescendant(fieldDecl(hasName("b"), hasType(asString("type-parameter-1-0")),
         isPublic())),
       hasDescendant(cxxMethodDecl(hasName("foo")))
     )) ))
