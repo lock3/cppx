@@ -126,7 +126,7 @@ bool Declaration::declaresNamespace() const {
 }
 
 bool Declaration::declaresTemplateType() const {
-  return TemplateParameters && !FunctionDcl;
+  return Template && !FunctionDcl;
 }
 
 // A declarator declares a function if it's first non-id declarator is
@@ -219,7 +219,7 @@ bool Declaration::declaresFunctionTemplate() const {
   // TODO: In the future we would need to extend this definition to make sure
   // that everything works as expected whe we do have an identifier that
   // is infact also a template name.
-  return FunctionDcl && TemplateParameters;
+  return FunctionDcl && Template;
 }
 
 
@@ -257,6 +257,10 @@ bool Declaration::declaresFunctionDef() const {
   return declaresFunction() && Init;
 }
 
+bool Declaration::hasNestedNameSpecifier() const {
+  return !NNSInfo.empty();
+}
+
 bool Declaration::declaresInlineInitializedStaticVarDecl() const {
   if (!Cxx)
     return false;
@@ -266,54 +270,45 @@ bool Declaration::declaresInlineInitializedStaticVarDecl() const {
   return VD->isInline() && VD->getStorageClass() == clang::SC_Static;
 }
 
-const Syntax *Declaration::getTemplateParams() const {
-  if (!TemplateParameters) {
-    return nullptr;
-  }
-  TemplateParamsDeclarator *TPD
-                           = cast<TemplateParamsDeclarator>(TemplateParameters);
-  return TPD->getParams();
-}
+// const Declarator *Declaration::getFirstTemplateDeclarator() const {
+//   const Declarator *D = Decl;
+//   while (D && D->getKind() != DK_TemplateParams) {
+//     D = D->Next;
+//   }
+//   return D;
+// }
 
-const Declarator *Declaration::getFirstTemplateDeclarator() const {
-  const Declarator *D = Decl;
-  while (D && D->getKind() != DK_TemplateParams) {
-    D = D->Next;
-  }
-  return D;
-}
+// Declarator *Declaration::getFirstTemplateDeclarator() {
+//   Declarator *D = Decl;
+//   while (D && D->getKind() != DK_TemplateParams) {
+//     D = D->Next;
+//   }
+//   return D;
+// }
 
-Declarator *Declaration::getFirstTemplateDeclarator() {
-  Declarator *D = Decl;
-  while (D && D->getKind() != DK_TemplateParams) {
-    D = D->Next;
-  }
-  return D;
-}
-
-const Declarator *Declaration::getIdDeclarator() const {
+const IdentifierDeclarator *Declaration::getIdDeclarator() const {
   return IdDcl;
 }
 
-Declarator *Declaration::getIdDeclarator() {
+IdentifierDeclarator *Declaration::getIdDeclarator() {
   return IdDcl;
 }
 
-const Declarator *Declaration::getFirstDeclarator(DeclaratorKind DK) const {
-  const Declarator *D = Decl;
-  while (D && D->getKind() != DK) {
-    D = D->Next;
-  }
-  return D;
-}
+// const Declarator *Declaration::getFirstDeclarator(DeclaratorKind DK) const {
+//   const Declarator *D = Decl;
+//   while (D && D->getKind() != DK) {
+//     D = D->Next;
+//   }
+//   return D;
+// }
 
-Declarator *Declaration::getFirstDeclarator(DeclaratorKind DK) {
-  Declarator *D = Decl;
-  while (D && D->getKind() != DK) {
-    D = D->Next;
-  }
-  return D;
-}
+// Declarator *Declaration::getFirstDeclarator(DeclaratorKind DK) {
+//   Declarator *D = Decl;
+//   while (D && D->getKind() != DK) {
+//     D = D->Next;
+//   }
+//   return D;
+// }
 
 clang::DeclContext *Declaration::getCxxContext() const {
   return clang::Decl::castToDeclContext(Cxx);

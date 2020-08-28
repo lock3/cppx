@@ -313,7 +313,17 @@ bool Sema::lookupQualifiedName(clang::LookupResult &R) {
       Diags.Report(Ns->getLocation(), clang::diag::err_expected_namespace);
       return false;
     }
+    break;
   }
+  case NNSK_Record:{
+    // Looking something up using qualified name.
+    return CxxSema.LookupQualifiedName(R, CurNNSLookupDecl.Record,
+                                    /*InUnqualifiedLookup*/false);
+    // llvm_unreachable("The recoord declaration qualified lookup not implemented "
+    //                 "in this context");
+
+  }
+  // break;
   }
   return lookupUnqualifiedName(R, LookupScope);
 }
@@ -532,6 +542,9 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
           }
         }
 
+        // Skip early elaboration of declarations with nested name specifiers.
+        if (FoundDecl->hasNestedNameSpecifier())
+          continue;
 
         if (!FoundDecl->Cxx)
           Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
@@ -1070,6 +1083,31 @@ clang::CppxNamespaceDecl *Sema::getNSDeclFromExpr(const clang::Expr *DeclExpr,
   }
   Diags.Report(Loc, clang::diag::err_expected_namespace);
   return nullptr;
+}
+
+Scope *Sema::getLookupScope() {
+  switch(CurNNSKind) {
+    case NNSK_Empty:
+      return nullptr;
+    case NNSK_Global:
+      return CurNNSLookupDecl.Global.Scope;
+    case NNSK_Namespace:
+      return CurNNSLookupDecl.NNS->getScopeRep();
+    case NNSK_NamespaceAlias:{
+      if (auto *NNS = dyn_cast<clang::CppxNamespaceDecl>(
+              CurNNSLookupDecl.Alias->getAliasedNamespace())) {
+        return NNS->getScopeRep();
+      } else {
+        // FIXME: The namespace alias doesn't contain a CppxNamespaceDecl
+        llvm_unreachable("INvalid namespace alias");
+      }
+      return nullptr;
+    }
+    case NNSK_Record:
+      llvm_unreachable("NNSK_Record not implemented for us yet.");
+    default:
+      llvm_unreachable("Invalid or unknown nested name specifier type");
+  }
 }
 
 bool Sema::isInDeepElaborationMode() const {

@@ -164,8 +164,10 @@ public:
   bool isUnknown() const { return Kind == DK_Unknown; }
   bool isGlobalNameSpecifier() const { return Kind == DK_GlobalNamespecifier; }
   bool isNestedNameSpecifier() const { return Kind == DK_NestedNameSpecifier; }
-  bool isTemplateParameters() const { return Kind == DK_TemplateParams; }
   bool isImplicitTemplateParameters() const { return Kind == DK_ImplicitEmptyTemplateParams; }
+  bool isTemplateParameters() const {
+    return Kind == DK_TemplateParams || isImplicitTemplateParameters();
+  }
   bool isSpecialization() const { return Kind == DK_Specialization; }
   bool isError() const { return Kind == DK_Error; }
 

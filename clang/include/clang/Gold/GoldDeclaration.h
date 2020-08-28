@@ -147,9 +147,9 @@ enum class Phase : std::size_t
 };
 
 struct NNSDeclaratorInfo {
-  Declarator *NNS = nullptr;
-  Declarator *TemplateParameters = nullptr;
-  Declarator *SpecializationArgs = nullptr;
+  NestedNameSpecifierDeclarator *Name = nullptr;
+  TemplateParamsDeclarator *Template = nullptr;
+  SpecializationDeclarator *SpecializationArgs = nullptr;
 };
 
 enum InitKind {
@@ -267,6 +267,8 @@ public:
   /// checks if a function has a body.
   bool declaresFunctionDef() const;
 
+  bool hasNestedNameSpecifier() const;
+
   template<typename T>
   bool defines() const {
     return Cxx && clang::isa<T>(Cxx);
@@ -281,25 +283,15 @@ public:
   /// Checks if the current Cxx decl is a static member variable of a class.
   bool declaresInlineInitializedStaticVarDecl() const;
 
-  /// Get the template parameters for this declaration or null if none.
-  const Syntax *getTemplateParams() const;
 
   /// The identifier of the declaration, if any.
-  clang::IdentifierInfo *getId() const {
-    return Id;
-  }
+  clang::IdentifierInfo *getId() const { return Id; }
 
-  // bool nameIsOperator() const;
+  const IdentifierDeclarator *getIdDeclarator() const;
+  IdentifierDeclarator *getIdDeclarator();
 
-  /// This looks for the first instance of DK_TemplateParams and returns it.
-  const Declarator *getFirstTemplateDeclarator() const;
-  Declarator *getFirstTemplateDeclarator();
-
-  const Declarator *getIdDeclarator() const;
-  Declarator *getIdDeclarator();
-
-  const Declarator *getFirstDeclarator(DeclaratorKind DK) const;
-  Declarator *getFirstDeclarator(DeclaratorKind DK);
+  // const Declarator *getFirstDeclarator(DeclaratorKind DK) const;
+  // Declarator *getFirstDeclarator(DeclaratorKind DK);
 
   /// The corresponding C++ declaration as a context.
   clang::DeclContext *getCxxContext() const;
@@ -389,19 +381,18 @@ public:
   const AtomSyntax *ES_Name = nullptr;
 
   /// Declarator inspecting variables.
-  Declarator *GlobalNsSpecifier = nullptr;
+  GlobalNameSpecifierDeclarator *GlobalNsSpecifier = nullptr;
   llvm::SmallVector<NNSDeclaratorInfo, 4> NNSInfo;
-  Declarator *IdDcl = nullptr;
+  IdentifierDeclarator *IdDcl = nullptr;
 
-  Declarator *TemplateParameters = nullptr;
-  Declarator *SpecializationArgs = nullptr;
-  Declarator *PartialSpecializationArgs = nullptr;
+  TemplateParamsDeclarator *Template = nullptr;
+  SpecializationDeclarator *SpecializationArgs = nullptr;
 
-  Declarator *FunctionDcl = nullptr;
-  Declarator *TypeDcl = nullptr;
+  FunctionDeclarator *FunctionDcl = nullptr;
+  TypeDeclarator *TypeDcl = nullptr;
 
   llvm::SmallVector<clang::TemplateParameterList *, 4> TemplateParamStorage;
-  // clang::MultiTemplateParamsArg MTP;
+
   /// ====================================================================== ///
   /// Additional identifing information about the current declaration.
 
@@ -410,17 +401,18 @@ public:
   bool IsDeclOnly = false;
 
   /// This is used to indicate if the declaration was initialized with = 0
-  bool HasEqualZero = false;
+  // bool HasEqualZero = false;
 
   /// This is used to indicate if a function declaration has an = default;
-  bool HasEqualDefault = false;
+  // bool HasEqualDefault = false;
 
   /// This is used to indicate if a function has a body of = delete
-  bool HasEqualDelete = false;
+  // bool HasEqualDelete = false;
 
   /// Identifies if the declaration created uses the equalsOperator
   InitKind InitOpUsed = IK_None;
 
+  clang::CXXScopeSpec ScopeSpec;
 };
 
 Phase phaseOf(Declaration *D);

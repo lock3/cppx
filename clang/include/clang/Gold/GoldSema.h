@@ -376,6 +376,7 @@ private:
     NNSK_Global,
     NNSK_Namespace,
     NNSK_NamespaceAlias,
+    NNSK_Record
   };
   struct GlobalNNS {
     gold::Scope *Scope;
@@ -385,13 +386,37 @@ private:
     GlobalNNS Global;
     clang::CppxNamespaceDecl *NNS;
     clang::NamespaceAliasDecl *Alias;
+    clang::CXXRecordDecl *Record;
   };
+
   NNSKind CurNNSKind = NNSK_Empty;
   // The list of nested-name-specifiers to use for qualified lookup.
-
   // FIXME: make this a list, instead of a single NNS.
   NNSLookupDecl CurNNSLookupDecl;
 public:
+
+  void setLookupScope(GlobalNNS GlobalNs) {
+    CurNNSLookupDecl.Global = GlobalNs;
+    CurNNSKind = NNSK_Global;
+  }
+
+  void setLookupScope(clang::CppxNamespaceDecl *NNS) {
+    CurNNSLookupDecl.NNS = NNS;
+    CurNNSKind = NNSK_Namespace;
+  }
+
+  void setLookupScope(clang::NamespaceAliasDecl *Alias) {
+    CurNNSLookupDecl.Alias = Alias;
+    CurNNSKind = NNSK_NamespaceAlias;
+  }
+
+  void setLookupScope(clang::CXXRecordDecl *Record) {
+    CurNNSLookupDecl.Record = Record;
+    CurNNSKind = NNSK_Record;
+  }
+
+  Scope *getLookupScope();
+
   bool isQualifiedLookupContext() const {
     return QualifiedLookupContext;
   }
@@ -500,6 +525,9 @@ public:
               Scope **SavedScope = nullptr)
       : S(S), SavedScope(SavedScope), ConcreteTerm(ConcreteTerm) {
       S.enterScope(K, ConcreteTerm);
+      if (SavedScope) {
+        *SavedScope = S.getCurrentScope();
+      }
     }
 
     ~ScopeRAII() {
@@ -713,16 +741,30 @@ public:
   };
 
 
-  struct NNSRAII {
-    NNSRAII(clang::CXXScopeSpec &SS)
-      : SS(SS)
-      {}
+  struct NewNameSpecifierRAII {
+    NewNameSpecifierRAII(Sema &S)
+      :SemaRef(S),
+      PrevScopeSpec(S.CurNNSContext),
+      PrevNNSKind(S.CurNNSKind),
+      PrevNNSLookupDecl(S.CurNNSLookupDecl)
+    {
+      // Initializing Scope spec within this context.
+      SemaRef.CurNNSContext.clear();
+      SemaRef.CurNNSKind = NNSK_Empty;
+      SemaRef.CurNNSLookupDecl = NNSLookupDecl();
+    }
 
-    ~NNSRAII() {
-      SS.clear();
+    ~NewNameSpecifierRAII() {
+      // Attempting to return the context to normal before continuing on.
+      SemaRef.CurNNSContext = PrevScopeSpec;
+      SemaRef.CurNNSKind = PrevNNSKind;
+      SemaRef.CurNNSLookupDecl = PrevNNSLookupDecl;
     }
   private:
-    clang::CXXScopeSpec &SS;
+    Sema &SemaRef;
+    clang::CXXScopeSpec PrevScopeSpec;
+    NNSKind PrevNNSKind;
+    NNSLookupDecl PrevNNSLookupDecl;
   };
 
   /// This helps keep track of the scope associated with templated classes

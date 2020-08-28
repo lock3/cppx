@@ -115,6 +115,7 @@ public:
 
   // Typing elaboration (2nd pass)
   clang::Decl *elaborateDecl(Declaration *D);
+  bool elaborateNestedNameForDecl(Declaration *D, clang::CXXScopeSpec &SS);
   clang::Decl *elaborateDeclContent(Declaration *D);
   clang::Decl *elaborateDeclInContext(Declaration *D);
 
@@ -124,8 +125,7 @@ public:
   clang::Decl *elaborateVariableDecl(Declaration *D);
   clang::Decl *elaborateTypeAlias(Declaration *D);
   clang::Decl *elaborateNsAlias(Declaration *D);
-  clang::Decl *elaborateTemplateAliasOrVariable(Declaration *D,
-      Declarator *TemplateParams);
+  clang::Decl *elaborateTemplateAliasOrVariable(Declaration *D);
   clang::Decl *elaborateParameterDecl(Declaration *D);
   clang::Decl *elaborateTemplateParamDecl(Declaration *D);
 

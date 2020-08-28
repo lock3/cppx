@@ -21,14 +21,55 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-TEST(GoldNestedNameDecl, Basic) {
+TEST(GoldNestedNameDecl, NamespaceNameFunctionDef) {
   StringRef Code = R"(
-x = namespace:
+x : namespace = namespace:
   foo():void
 
 x.foo():void!
   ;
 )";
-  auto Matcher = functionDecl(hasName("x::foo"), isDefinition());
+  auto Matcher = translationUnitDecl(
+    has(namespaceDecl(
+      hasName("x"),
+      has(functionDecl(hasName("foo"), unless(isDefinition())))
+    )),
+    has(functionDecl(hasName("foo"),
+      has(nestedNameSpecifier(specifiesNamespace(hasName("x"))))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}
+
+TEST(GoldNestedNameDecl, ImproperFunctionLookup) {
+  StringRef Code = R"(
+x : namespace = namespace:
+  foo():void
+
+x.foo():void!
+  ;
+test():void!
+  foo()
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldNestedNameDecl, NamespaceNameClassDef) {
+  StringRef Code = R"(
+x : namespace = namespace:
+  Ty : type = class
+
+x.Ty : type = class:
+  ;
+)";
+  auto Matcher = translationUnitDecl(
+    has(namespaceDecl(
+      hasName("x"),
+      has(cxxRecordDecl(hasName("Ty"), unless(isDefinition())))
+    )),
+    has(cxxRecordDecl(hasName("Ty"),
+      has(nestedNameSpecifier(specifiesNamespace(hasName("x"))))
+    ))
+  );
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }
