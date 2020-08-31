@@ -576,9 +576,9 @@ static bool deduceFunctionSyntax(Sema &SemaRef, Declaration *TheDecl,
                                  bool &HadError) {
   HadError = false;
   // Making sure that if we have a body we mark it correctly.
-  if (TheDecl->InitOpUsed == IK_None) {
-    TheDecl->IsDeclOnly = false;
-  }
+  if (TheDecl->InitOpUsed == IK_None)
+    TheDecl->IsDeclOnly = true;
+
   // Handling possible member function deduction,
   // STATIC functions within a class body will be labeled as member functions
   // that's because they don't have a different internal type.

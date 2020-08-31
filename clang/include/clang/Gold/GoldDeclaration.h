@@ -195,17 +195,11 @@ public:
   /// Any template has default parameters. Either class or function.
   bool templateHasDefaultParameters() const;
 
-  /// True if this is a type declaration.
-  bool declaresType() const;
-
   /// Checks to see if this is a forward declaration or not.
   bool declaresForwardRecordDecl() const;
 
   /// Checks if the type declaration is declaring a record.
-  bool declaresTag() const;
-
-  /// Get tag name.
-  bool getTagName(const AtomSyntax *&NameNode) const;
+  bool declaresTagDef() const;
 
   /// Checks to see if we declare a union or not.
   bool declaresUnion() const;
@@ -285,6 +279,8 @@ public:
   /// Checks if the current Cxx decl is a static member variable of a class.
   bool declaresInlineInitializedStaticVarDecl() const;
 
+  /// This returns the kind that this most likely evaluates to.
+  UnevaluatedDeclKind getKind() const { return SuspectedKind; }
 
   /// The identifier of the declaration, if any.
   clang::IdentifierInfo *getId() const { return Id; }
@@ -305,7 +301,6 @@ public:
   // the scope of another class body.
   bool isDeclaredWithinClass() const;
 
-
   /// The owning context.
   Declaration *Cxt = nullptr;
 
@@ -323,10 +318,6 @@ public:
 
   /// The list of members associated with this declaration.
   Scope *SavedScope = nullptr;
-
-  /// The list of template parameter declarations associated
-  /// with this declaration.
-  // Scope *SavedTemplateScope = nullptr;
 
   /// The identifier for the declaration.
   clang::IdentifierInfo *Id = nullptr;

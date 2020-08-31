@@ -450,7 +450,6 @@ static clang::Decl *
 handleClassSpecialization(SyntaxContext &Context,
                           Sema &SemaRef, Declaration *D,
                           clang::TypeSpecifierType TST,
-                          clang::CXXScopeSpec &SS,
                           clang::MultiTemplateParamsArg &MTP) {
   SpecializationDeclarator *SD = D->SpecializationArgs->getAsSpecialization();
   assert(SD->ElaboratedArgs && "failed to elaborate specialization");
@@ -541,7 +540,7 @@ handleClassSpecialization(SyntaxContext &Context,
       clang::TNK_Type_template, IdLoc, IdLoc, Args, false, TemplateIds);
   auto Res = SemaRef.getCxxSema().ActOnClassTemplateSpecialization(
     SemaRef.getCurClangScope(), TST, clang::Sema::TUK_Definition,
-    D->Init->getLoc(), /*ModulePrivLoc=*/SourceLocation(), SS,
+    D->Init->getLoc(), /*ModulePrivLoc=*/SourceLocation(), D->ScopeSpec,
     *TempId, clang::ParsedAttributesView(), MTP);
 
   if (Res.isInvalid()) {
@@ -583,34 +582,33 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
   clang::TypeSpecifierType TST = clang::DeclSpec::TST_struct;
   bool ScopeEnumUsesClassTag = false;
   clang::SourceLocation ScopedEnumClassKW;
-  const AtomSyntax *Name = nullptr;
+  // const AtomSyntax *Name = nullptr;
   ScopeKind SK = SK_Class;
-  if (D->getTagName(Name)) {
-    if (Name->hasToken(tok::ClassKeyword)) {
-      TST = clang::DeclSpec::TST_struct;
-    } else if (Name->hasToken(tok::UnionKeyword)) {
-      TST = clang::DeclSpec::TST_union;
-    } else if (Name->hasToken(tok::EnumKeyword)) {
-      TST = clang::DeclSpec::TST_enum;
-      // I need to extract the underlying type for an enum.
-      ScopeEnumUsesClassTag = true;
-      if (const MacroSyntax *MS = dyn_cast<MacroSyntax>(D->Init)) {
-        UnderlyingType = getUnderlyingEnumType(Context, SemaRef, MS->getCall());
-      } else {
-        llvm_unreachable("Invalid tree syntax.");
-      }
-      ScopedEnumClassKW = Name->getLoc();
-      SK = SK_Enum;
+  switch(D->getKind()) {
+  case UDK_Class:
+    TST = clang::DeclSpec::TST_struct;
+    break;
+  case UDK_Union:
+    TST = clang::DeclSpec::TST_union;
+    break;
+  case UDK_Enum:
+    TST = clang::DeclSpec::TST_enum;
+    ScopeEnumUsesClassTag = true;
+    if (const MacroSyntax *MS = dyn_cast<MacroSyntax>(D->Init)) {
+      UnderlyingType = getUnderlyingEnumType(Context, SemaRef, MS->getCall());
     } else {
-      llvm_unreachable("Incorrectly identified tag type");
+      llvm_unreachable("Invalid tree syntax.");
     }
-  } else {
+    ScopedEnumClassKW = D->IdDcl->getLoc();
+    SK = SK_Enum;
+    break;
+  default:
     llvm_unreachable("Incorrectly identified tag type");
   }
 
   Decl *Declaration = nullptr;
   if (D->SpecializationArgs) {
-    Declaration = handleClassSpecialization(Context, SemaRef, D, TST, SS, MTP);
+    Declaration = handleClassSpecialization(Context, SemaRef, D, TST, MTP);
   } else {
     Declaration = SemaRef.getCxxSema().ActOnTag(
       SemaRef.getCurClangScope(), TST, /*Metafunction=*/nullptr,
@@ -728,40 +726,59 @@ processCXXForwardRecordDecl(Elaborator& Elab, SyntaxContext& Context,
     AS = AS_public;
   clang::SourceLocation IdLoc = D->Decl->getLoc();
   clang::TypeSpecifierType TST = clang::DeclSpec::TST_struct;
-  if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(D->Init)) {
-    if (Name->hasToken(tok::ClassKeyword)) {
-      TST = clang::DeclSpec::TST_struct;
-    } else if (Name->hasToken(tok::UnionKeyword)) {
-      TST = clang::DeclSpec::TST_union;
-    } else if (Name->hasToken(tok::EnumKeyword)) {
-      // This is here because it's used specifically to generate an error from
-      // Sema::ActOnTag
-      TST = clang::DeclSpec::TST_enum;
-      ScopeEnumUsesClassTag = true;
-      ScopedEnumClassKW = Name->getLoc();
-    } else {
-      llvm_unreachable("Incorrectly identified tag type");
+  switch(D->getKind()) {
+  case UDK_Class:
+    TST = clang::DeclSpec::TST_struct;
+    break;
+  case UDK_Union:
+    TST = clang::DeclSpec::TST_union;
+    break;
+  case UDK_Enum:
+    // This is here because it's used specifically to generate an error from
+    // Sema::ActOnTag
+    TST = clang::DeclSpec::TST_enum;
+    ScopeEnumUsesClassTag = true;
+    if (const CallSyntax *EnumCall = dyn_cast<CallSyntax>(D->Init)) {
+      UnderlyingType = getUnderlyingEnumType(Context, SemaRef, EnumCall);
     }
-  } else if (const CallSyntax *EnumCall = dyn_cast<CallSyntax>(D->Init)) {
-    if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(EnumCall->getCallee())) {
-      if (Name->hasToken(tok::EnumKeyword)) {
-        TST = clang::DeclSpec::TST_enum;
-        ScopeEnumUsesClassTag = true;
-        UnderlyingType = getUnderlyingEnumType(Context, SemaRef, EnumCall);
-        ScopedEnumClassKW = Name->getLoc();
-      } else {
-        SemaRef.Diags.Report(EnumCall->getLoc(),
-                            clang::diag::err_invalid_declaration);
-        return nullptr;
-      }
-    } else {
-      SemaRef.Diags.Report(EnumCall->getLoc(),
-                          clang::diag::err_invalid_declaration);
-      return nullptr;
-    }
-  } else {
+    ScopedEnumClassKW = D->IdDcl->getLoc();
+    break;
+  default:
     llvm_unreachable("Incorrectly identified tag type");
   }
+  // if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(D->Init)) {
+  //   if (Name->hasToken(tok::ClassKeyword)) {
+  //     TST = clang::DeclSpec::TST_struct;
+  //   } else if (Name->hasToken(tok::UnionKeyword)) {
+  //     TST = clang::DeclSpec::TST_union;
+  //   } else if (Name->hasToken(tok::EnumKeyword)) {
+  //     
+  //     TST = clang::DeclSpec::TST_enum;
+  //     ScopeEnumUsesClassTag = true;
+  //     ScopedEnumClassKW = Name->getLoc();
+  //   } else {
+  //     llvm_unreachable("Incorrectly identified tag type");
+  //   }
+  // } else if (const CallSyntax *EnumCall = dyn_cast<CallSyntax>(D->Init)) {
+  //   if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(EnumCall->getCallee())) {
+  //     if (Name->hasToken(tok::EnumKeyword)) {
+  //       TST = clang::DeclSpec::TST_enum;
+  //       ScopeEnumUsesClassTag = true;
+  //       UnderlyingType = getUnderlyingEnumType(Context, SemaRef, EnumCall);
+  //       ScopedEnumClassKW = Name->getLoc();
+  //     } else {
+  //       SemaRef.Diags.Report(EnumCall->getLoc(),
+  //                           clang::diag::err_invalid_declaration);
+  //       return nullptr;
+  //     }
+  //   } else {
+  //     SemaRef.Diags.Report(EnumCall->getLoc(),
+  //                         clang::diag::err_invalid_declaration);
+  //     return nullptr;
+  //   }
+  // } else {
+  //   llvm_unreachable("Incorrectly identified tag type");
+  // }
 
   Decl *Declaration = SemaRef.getCxxSema().ActOnTag(SemaRef.getCurClangScope(),
       TST, /*Metafunction=*/nullptr,
@@ -1162,7 +1179,7 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   Sema::OptioanlClangScopeRAII ClangReDeclScope(SemaRef);
   Sema::OptionalResumeScopeRAII OriginalDeclScope(SemaRef);
   if (D->ScopeSpec.isSet()) {
-    if (!D->declaresTag()) {
+    if (!D->declaresTagDef()) {
 
       if (SemaRef.getCxxSema().ShouldEnterDeclaratorScope(
                                       SemaRef.getCurClangScope(), D->ScopeSpec)) {
@@ -1190,7 +1207,7 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
       Ret->setInvalidDecl();
     }
   }
-  if (D->ScopeSpec.isSet() && !D->declaresTag())
+  if (D->ScopeSpec.isSet() && !D->declaresTagDef())
     SemaRef.getCxxSema().ActOnCXXExitDeclaratorScope(SemaRef.getCurClangScope(),
                                                      D->ScopeSpec);
   return Ret;
@@ -1204,7 +1221,7 @@ clang::Decl *Elaborator::elaborateDeclContent(Declaration *D) {
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
-  if (D->declaresTag())
+  if (D->declaresTagDef())
     return processCXXRecordDecl(*this, Context, SemaRef, D);
   if (D->declaresForwardRecordDecl())
     return processCXXForwardRecordDecl(*this, Context, SemaRef, D);
@@ -2202,27 +2219,25 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
                                               Initializers, false);
   }
 
-  if (D->Op) {
-    if (D->declaresFunctionWithImplicitReturn()) {
-      // Checking to see if the declaration is actually what we are expected
-      // in order to be consider implicitly virtual or not.
-      if (clang::CXXMethodDecl *MD = D->getAs<clang::CXXMethodDecl>()) {
-        if (MD->isVirtual() && D->declaresPossiblePureVirtualFunction()
-            && !D->defines<clang::CXXConstructorDecl>()) {
-          // Declaring this as an abstract function declaration.
-          SemaRef.getCxxSema().ActOnPureSpecifier(D->Cxx, D->Init->getLoc());
-          return;
-        }
-      }
-      // Checking other kinds of functions.
-      if (D->declaresDefaultedFunction()) {
-        SemaRef.getCxxSema().SetDeclDefaulted(D->Cxx, D->Init->getLoc());
+  if (D->declaresFunctionWithImplicitReturn()) {
+    // Checking to see if the declaration is actually what we are expected
+    // in order to be consider implicitly virtual or not.
+    if (clang::CXXMethodDecl *MD = D->getAs<clang::CXXMethodDecl>()) {
+      if (MD->isVirtual() && D->declaresPossiblePureVirtualFunction()
+          && !D->defines<clang::CXXConstructorDecl>()) {
+        // Declaring this as an abstract function declaration.
+        SemaRef.getCxxSema().ActOnPureSpecifier(D->Cxx, D->Init->getLoc());
         return;
       }
-      if (D->declaresDeletedFunction()) {
-        SemaRef.getCxxSema().SetDeclDeleted(D->Cxx, D->Init->getLoc());
-        return;
-      }
+    }
+    // Checking other kinds of functions.
+    if (D->declaresDefaultedFunction()) {
+      SemaRef.getCxxSema().SetDeclDefaulted(D->Cxx, D->Init->getLoc());
+      return;
+    }
+    if (D->declaresDeletedFunction()) {
+      SemaRef.getCxxSema().SetDeclDeleted(D->Cxx, D->Init->getLoc());
+      return;
     }
   }
 
@@ -2652,7 +2667,7 @@ bool Elaborator::delayElaborateDeclType(clang::CXXRecordDecl *RD,
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
-  if (D->declaresTag()) {
+  if (D->declaresTagDef()) {
     delayElaborationClassBody(D);
     return true;
   }

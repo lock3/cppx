@@ -64,14 +64,6 @@ bool Declaration::declaresInitializedVariable() const {
   return declaresVariable() && Init;
 }
 
-bool Declaration::declaresType() const {
-  const Declarator* D = Decl;
-  if (TypeDcl)
-    if (const auto *Atom = dyn_cast<AtomSyntax>(D->getAsType()->getTyExpr()))
-      return Atom->getSpelling() == "type";
-  return false;
-}
-
 bool Declaration::declaresForwardRecordDecl() const {
   switch(SuspectedKind) {
   case UDK_Class:
@@ -81,94 +73,34 @@ bool Declaration::declaresForwardRecordDecl() const {
   default:
     return false;
   }
-  // if (declaresInitializedVariable()) {
-  //   if (const AtomSyntax *RHS = dyn_cast<AtomSyntax>(Init)) {
-  //     return RHS->hasToken(tok::ClassKeyword)
-  //            || RHS->hasToken(tok::UnionKeyword)
-  //            || RHS->hasToken(tok::EnumKeyword);
-  //   } else if (const CallSyntax *Call = dyn_cast<CallSyntax>(Init)) {
-  //     if (const AtomSyntax *Nm = dyn_cast<AtomSyntax>(Call->getCallee())) {
-  //       return Nm->hasToken(tok::EnumKeyword);
-  //     }
-  //   }
-  // }
-  // return false;
 }
 
-bool Declaration::declaresTag() const {
-  if (Cxx)
-    return isa<clang::CXXRecordDecl>(Cxx);
-  if (Init)
-    if (const MacroSyntax *Macro = dyn_cast<MacroSyntax>(Init)) {
-      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Macro->getCall()))
-        return Atom->hasToken(tok::ClassKeyword)
-               || Atom->hasToken(tok::UnionKeyword)
-               || Atom->hasToken(tok::EnumKeyword);
-      if (const CallSyntax *ClsWithBases = dyn_cast<CallSyntax>(Macro->getCall()))
-        if (const AtomSyntax *Callee
-                  = dyn_cast<AtomSyntax>(ClsWithBases->getCallee()))
-          return Callee->hasToken(tok::ClassKeyword)
-                  || Callee->hasToken(tok::UnionKeyword)
-                  || Callee->hasToken(tok::EnumKeyword);
-    }
-  return false;
-}
-
-bool Declaration::getTagName(const AtomSyntax *&NameNode) const {
-  if (Init)
-    if (const MacroSyntax *Macro = dyn_cast<MacroSyntax>(Init)) {
-      if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Macro->getCall()))
-        if (Atom->hasToken(tok::ClassKeyword)
-            || Atom->hasToken(tok::UnionKeyword)
-            || Atom->hasToken(tok::EnumKeyword)) {
-          NameNode = Atom;
-          return true;
-        }
-      if (const CallSyntax *ClsWithBases = dyn_cast<CallSyntax>(Macro->getCall()))
-        if (const AtomSyntax *Callee
-                  = dyn_cast<AtomSyntax>(ClsWithBases->getCallee()))
-          if (Callee->hasToken(tok::ClassKeyword)
-              || Callee->hasToken(tok::UnionKeyword)
-              || Callee->hasToken(tok::EnumKeyword)) {
-            NameNode = Callee;
-            return true;
-          }
-    }
-  return false;
+bool Declaration::declaresTagDef() const {
+  switch(SuspectedKind){
+  default: return false;
+  case UDK_Class:
+  case UDK_Union:
+  case UDK_Enum:
+    return !IsDeclOnly;
+  }
 }
 
 bool Declaration::declaresNamespace() const {
   if (Cxx)
     return isa<clang::NamespaceDecl>(Cxx);
-  if (const MacroSyntax *Macro = dyn_cast_or_null<MacroSyntax>(Init))
-    return cast<AtomSyntax>(Macro->getCall())->hasToken(tok::NamespaceKeyword);
-  return false;
+  return SuspectedKind == UDK_Namespace;
 }
 
 bool Declaration::declaresTemplateType() const {
   return Template && !FunctionDcl;
 }
 
-// A declarator declares a function if it's first non-id declarator is
-// declares parameters.
 bool Declaration::declaresFunction() const {
   return FunctionDcl;
 }
 
 bool Declaration::declaresFunctionWithImplicitReturn() const {
-  if (declaresFunction() || declaresFunctionTemplate()) {
-    if (!Op)
-      // Something is very wrong here?!
-      return false;
-    if (const CallSyntax *Call = dyn_cast<CallSyntax>(Op)){
-      if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(Call->getCallee())) {
-        if (Name->getSpelling() == "operator'='") {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
+  return declaresFunction() && InitOpUsed == IK_Equals;
 }
 
 bool Declaration::declaresPossiblePureVirtualFunction() const {
@@ -217,20 +149,20 @@ bool Declaration::declaresDeletedFunction() const {
 }
 
 bool Declaration::declaresMemberVariable() const {
+  // This can't be deduced without elaboration.
   return declaresVariable() && Cxx && clang::isa<clang::FieldDecl>(Cxx);
 }
 
 bool Declaration::declaresMemberFunction() const {
-  return declaresFunction() && Cxx && clang::isa<clang::CXXMethodDecl>(Cxx);
+  return SuspectedKind == UDK_MemberFunction;
 }
 
 bool Declaration::declaresConstructor() const {
-  return declaresFunction() && Cxx
-    && clang::isa<clang::CXXConstructorDecl>(Cxx);
+  return SuspectedKind == UDK_Constructor;
 }
 
 bool Declaration::declaresDestructor() const {
-  return declaresFunction() && Cxx && clang::isa<clang::CXXConstructorDecl>(Cxx);
+  return SuspectedKind == UDK_Destructor;
 }
 
 // A declarator declares a template if it's first non-id declarator is
@@ -258,7 +190,7 @@ bool Declaration::declIsStatic() const {
     return false;
 
   auto Iter = std::find_if(IdDcl->UnprocessedAttributes->begin(),
-      IdDcl->UnprocessedAttributes->end(), [](const Syntax *S) -> bool{
+      IdDcl->UnprocessedAttributes->end(), [](const Syntax *S) -> bool {
         if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(S)) {
           if (Atom->getSpelling() == "static") {
             return true;
@@ -346,12 +278,6 @@ void Declaration::setPreviousDecl(Declaration *Prev) {
 }
 
 bool Declaration::isDeclaredWithinClass() const {
-  const Scope *Cur = ScopeForDecl;
-  while(Cur) {
-    if (Cur->getKind() == SK_Class)
-      return true;
-    Cur = Cur->getParent();
-  }
-  return false;
+  return ScopeForDecl->getKind() == SK_Class;
 }
 }
