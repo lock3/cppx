@@ -36,9 +36,21 @@ clang::SourceLocation Declaration::getEndOfDecl() const {
   return D->getLoc();
 }
 
+
 // A declarator declares a variable, if it does not declare a function.
 bool Declaration::declaresVariable() const {
-  return !declaresFunction();
+  switch(SuspectedKind) {
+  default: return false;
+  case UDK_NamespaceAlias:
+  case UDK_TemplateAlias:
+  case UDK_VarTemplateDecl:
+  case UDK_TypeAlias:
+  case UDK_Parameter:
+  case UDK_TemplateParam:
+  case UDK_VarTemplateOrTemplateAlias:
+  case UDK_DeductionOnlyVariable:
+    return true;
+  }
 }
 
 bool Declaration::templateHasDefaultParameters() const {
@@ -61,18 +73,26 @@ bool Declaration::declaresType() const {
 }
 
 bool Declaration::declaresForwardRecordDecl() const {
-  if (declaresInitializedVariable()) {
-    if (const AtomSyntax *RHS = dyn_cast<AtomSyntax>(Init)) {
-      return RHS->hasToken(tok::ClassKeyword)
-             || RHS->hasToken(tok::UnionKeyword)
-             || RHS->hasToken(tok::EnumKeyword);
-    } else if (const CallSyntax *Call = dyn_cast<CallSyntax>(Init)) {
-      if (const AtomSyntax *Nm = dyn_cast<AtomSyntax>(Call->getCallee())) {
-        return Nm->hasToken(tok::EnumKeyword);
-      }
-    }
+  switch(SuspectedKind) {
+  case UDK_Class:
+  case UDK_Union:
+  case UDK_Enum:
+    return IsDeclOnly;
+  default:
+    return false;
   }
-  return false;
+  // if (declaresInitializedVariable()) {
+  //   if (const AtomSyntax *RHS = dyn_cast<AtomSyntax>(Init)) {
+  //     return RHS->hasToken(tok::ClassKeyword)
+  //            || RHS->hasToken(tok::UnionKeyword)
+  //            || RHS->hasToken(tok::EnumKeyword);
+  //   } else if (const CallSyntax *Call = dyn_cast<CallSyntax>(Init)) {
+  //     if (const AtomSyntax *Nm = dyn_cast<AtomSyntax>(Call->getCallee())) {
+  //       return Nm->hasToken(tok::EnumKeyword);
+  //     }
+  //   }
+  // }
+  // return false;
 }
 
 bool Declaration::declaresTag() const {
@@ -261,6 +281,43 @@ bool Declaration::hasNestedNameSpecifier() const {
   return !NNSInfo.empty();
 }
 
+llvm::StringRef Declaration::getSuspectedKindStr() const {
+  switch(SuspectedKind) {
+#define GOLD_CASE_TO_STR(NAME) case NAME: return #NAME;
+  GOLD_CASE_TO_STR(UDK_None)
+  GOLD_CASE_TO_STR(UDK_File)
+  GOLD_CASE_TO_STR(UDK_Class)
+  GOLD_CASE_TO_STR(UDK_Union)
+  GOLD_CASE_TO_STR(UDK_Enum)
+  GOLD_CASE_TO_STR(UDK_EnumConstant)
+  GOLD_CASE_TO_STR(UDK_Namespace)
+  GOLD_CASE_TO_STR(UDK_NamespaceAlias)
+  GOLD_CASE_TO_STR(UDK_TemplateAlias)
+  GOLD_CASE_TO_STR(UDK_VarTemplateDecl)
+  GOLD_CASE_TO_STR(UDK_TypeAlias)
+  GOLD_CASE_TO_STR(UDK_Parameter)
+  GOLD_CASE_TO_STR(UDK_TemplateParam)
+  GOLD_CASE_TO_STR(UDK_VarTemplateOrTemplateAlias)
+  GOLD_CASE_TO_STR(UDK_DeductionOnlyVariable)
+  GOLD_CASE_TO_STR(UDK_MemberFunction)
+  GOLD_CASE_TO_STR(UDK_Constructor)
+  GOLD_CASE_TO_STR(UDK_Destructor)
+  GOLD_CASE_TO_STR(UDK_Function)
+  GOLD_CASE_TO_STR(UDK_ConversionOperator)
+  GOLD_CASE_TO_STR(UDK_MemberOperator)
+  GOLD_CASE_TO_STR(UDK_LiteralOperator)
+  GOLD_CASE_TO_STR(UDK_OperatorOverload)
+  GOLD_CASE_TO_STR(UDK_PossibleConstructor)
+  GOLD_CASE_TO_STR(UDK_PossibleDestructor)
+  GOLD_CASE_TO_STR(UDK_PossibleMemberOperator)
+  GOLD_CASE_TO_STR(UDK_PossibleConversionOperator)
+#undef GOLD_CASE_TO_STR
+  default:
+    llvm::outs() << "Suspected kind number = " << SuspectedKind << "\n";
+    llvm_unreachable("unknown suspected kind");
+  }
+}
+
 bool Declaration::declaresInlineInitializedStaticVarDecl() const {
   if (!Cxx)
     return false;
@@ -270,22 +327,6 @@ bool Declaration::declaresInlineInitializedStaticVarDecl() const {
   return VD->isInline() && VD->getStorageClass() == clang::SC_Static;
 }
 
-// const Declarator *Declaration::getFirstTemplateDeclarator() const {
-//   const Declarator *D = Decl;
-//   while (D && D->getKind() != DK_TemplateParams) {
-//     D = D->Next;
-//   }
-//   return D;
-// }
-
-// Declarator *Declaration::getFirstTemplateDeclarator() {
-//   Declarator *D = Decl;
-//   while (D && D->getKind() != DK_TemplateParams) {
-//     D = D->Next;
-//   }
-//   return D;
-// }
-
 const IdentifierDeclarator *Declaration::getIdDeclarator() const {
   return IdDcl;
 }
@@ -293,22 +334,6 @@ const IdentifierDeclarator *Declaration::getIdDeclarator() const {
 IdentifierDeclarator *Declaration::getIdDeclarator() {
   return IdDcl;
 }
-
-// const Declarator *Declaration::getFirstDeclarator(DeclaratorKind DK) const {
-//   const Declarator *D = Decl;
-//   while (D && D->getKind() != DK) {
-//     D = D->Next;
-//   }
-//   return D;
-// }
-
-// Declarator *Declaration::getFirstDeclarator(DeclaratorKind DK) {
-//   Declarator *D = Decl;
-//   while (D && D->getKind() != DK) {
-//     D = D->Next;
-//   }
-//   return D;
-// }
 
 clang::DeclContext *Declaration::getCxxContext() const {
   return clang::Decl::castToDeclContext(Cxx);

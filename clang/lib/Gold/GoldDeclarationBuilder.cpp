@@ -506,7 +506,7 @@ static bool isTagLikeDeclOrForwardDecl(Sema &SemaRef, Declaration *TheDecl,
                              clang::diag::err_namespace_missing_body);
         return false;
       }
-      TheDecl->IsDeclOnly = false;
+      TheDecl->IsDeclOnly = true;
       return true;
     }
   }

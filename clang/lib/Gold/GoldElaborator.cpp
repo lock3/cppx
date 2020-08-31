@@ -1200,6 +1200,7 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
 }
 
 clang::Decl *Elaborator::elaborateDeclContent(Declaration *D) {
+  assert(D && "missing declaration");
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.

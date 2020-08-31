@@ -269,6 +269,8 @@ public:
 
   bool hasNestedNameSpecifier() const;
 
+  llvm::StringRef getSuspectedKindStr() const;
+
   template<typename T>
   bool defines() const {
     return Cxx && clang::isa<T>(Cxx);
