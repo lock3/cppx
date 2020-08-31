@@ -285,13 +285,15 @@ void Sema::popDecl() {
     clang::Decl::castToDeclContext(CurrentDecl->Cxx) : nullptr;
 }
 
-bool Sema::lookupUnqualifiedName(clang::LookupResult &R) {
-  return lookupUnqualifiedName(R, getCurrentScope());
+bool Sema::lookupUnqualifiedName(clang::LookupResult &R,
+                                 Declaration *NotThisOne) {
+  return lookupUnqualifiedName(R, getCurrentScope(), NotThisOne);
 }
 
 
 
-bool Sema::lookupQualifiedName(clang::LookupResult &R) {
+bool Sema::lookupQualifiedName(clang::LookupResult &R,
+                               Declaration *NotThisOne) {
   gold::Scope *LookupScope = nullptr;
   switch (CurNNSKind) {
   case NNSK_Empty:
@@ -316,16 +318,16 @@ bool Sema::lookupQualifiedName(clang::LookupResult &R) {
     break;
   }
   case NNSK_Record:{
+    llvm_unreachable("NNSK recored lookup not implemented yet.");
     // Looking something up using qualified name.
-    return CxxSema.LookupQualifiedName(R, CurNNSLookupDecl.Record,
-                                    /*InUnqualifiedLookup*/false);
+    // return CxxSema.LookupQualifiedName(R, CurNNSLookupDecl.Record,
+    //                                 /*InUnqualifiedLookup*/false);
     // llvm_unreachable("The recoord declaration qualified lookup not implemented "
     //                 "in this context");
-
   }
   // break;
   }
-  return lookupUnqualifiedName(R, LookupScope);
+  return lookupUnqualifiedName(R, LookupScope, NotThisOne);
 }
 
 static bool findOrdinaryMember(clang::RecordDecl *BaseRecord, clang::CXXBasePath &Path,
@@ -499,7 +501,8 @@ static void addIfNotDuplicate(clang::LookupResult &R, clang::NamedDecl *ND) {
   R.addDecl(ND);
 }
 
-bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
+bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
+                                 Declaration *NotThisOne) {
   assert(S);
 
   clang::DeclarationName Name = R.getLookupName();
@@ -525,6 +528,10 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
     std::set<Declaration *> Found = S->findDecl(Id);
     if (!Found.empty()) {
       for (auto *FoundDecl : Found) {
+        // Skipping this particular declaration to avoid triggering
+        // double early elaboration.
+        if (FoundDecl == NotThisOne)
+          continue;
         // If we find a name that hasn't been elaborated,
         // then we actually need to elaborate it.
 
@@ -629,6 +636,17 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
     }
   }
   return !R.empty();
+}
+
+void Sema::lookupRedecls(Declaration *D, clang::LookupResult &Previous,
+                         Scope *Scope) {
+  // I may need to do something slightly different here so that
+  // We only seach the current scope? Because we don't want to get into
+  // conflict with any other functions that are in different namespaces?
+  if (D->hasNestedNameSpecifier())
+    lookupQualifiedName(Previous, D);
+  else
+    lookupUnqualifiedName(Previous, getCurrentScope(), D);
 }
 
 bool Sema::unqualifiedMemberAccessLookup(clang::LookupResult &R,

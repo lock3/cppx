@@ -155,15 +155,21 @@ public:
   Scope *saveScope(const Syntax *S);
 
   // Perform unqualified lookup of a name in the current scope.
-  bool lookupUnqualifiedName(clang::LookupResult &R);
+  bool lookupUnqualifiedName(clang::LookupResult &R,
+                             Declaration *NotThisOne = nullptr);
 
   // Perform unqualified lookup of a name starting in S.
-  bool lookupUnqualifiedName(clang::LookupResult &R, Scope *S);
+  bool lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
+                             Declaration *NotThisOne = nullptr);
 
   // Perform qualified lookup of a name starting in S.
-  bool lookupQualifiedName(clang::LookupResult &R, Scope *S);
-  bool lookupQualifiedName(clang::LookupResult &R);
+  bool lookupQualifiedName(clang::LookupResult &R, Scope *S,
+                           Declaration *NotThisOne = nullptr);
+  bool lookupQualifiedName(clang::LookupResult &R,
+                           Declaration *NotThisOne = nullptr);
 
+  void lookupRedecls(Declaration *D, clang::LookupResult &Previous,
+                    Scope *Scope);
 
   // Perform unqualified memberlooku
   bool unqualifiedMemberAccessLookup(clang::LookupResult &R,

@@ -184,7 +184,6 @@ x[foo].foo()!
   SimpleGoldParseTest(Code);
 }
 
-#endif
 
 TEST(GoldDeclRevamp, TemplateWithinATemplate) {
   StringRef Code = R"(
@@ -193,3 +192,4 @@ a.b.c[bar].d.x[foo].foo[T:type]()!
 )";
   SimpleGoldParseTest(Code);
 }
+#endif

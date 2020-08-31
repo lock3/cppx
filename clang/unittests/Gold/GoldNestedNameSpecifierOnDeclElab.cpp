@@ -73,3 +73,24 @@ x.Ty : type = class:
   );
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }
+
+
+TEST(GoldNestedNameDecl, NamespaceExternVariableWithLaterDecl) {
+  StringRef Code = R"(
+x : namespace = namespace:
+  Var<extern>:int
+
+x.Var:int = 5
+
+)";
+  auto Matcher = translationUnitDecl(
+    has(namespaceDecl(
+      hasName("x"),
+      has(varDecl(hasName("Var"), unless(isDefinition())))
+    )),
+    has(varDecl(hasName("Var"),
+      has(nestedNameSpecifier(specifiesNamespace(hasName("x"))))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}
