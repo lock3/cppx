@@ -654,7 +654,13 @@ Syntax *Parser::parseMul() {
 Syntax *Parser::parseIf()
 {
   Token if_tok = expectToken("if");
+
   llvm::SmallVector<Attribute *, 4> Attrs;
+  if (!Preattributes.empty()) {
+    std::copy(Preattributes.begin(), Preattributes.end(),
+              std::back_inserter(Attrs));
+    Preattributes.clear();
+  }
 
   // FIXME: only allow attributes here for `if:` style syntax.
  while (nextTokenIs(tok::Less))
