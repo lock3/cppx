@@ -418,7 +418,7 @@ createForRangeLoopVarDecl(SyntaxContext &Ctx, Sema &SemaRef,
 
   Elaborator(Ctx, SemaRef).identifyDecl(S);
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
-  D->Cxx = VD;
+  SemaRef.setDeclForDeclaration(D, VD);
 
   clang::DeclStmt *DS = new (CxxAST) clang::DeclStmt(
     SemaRef.getCxxSema().ConvertDeclToDeclGroup(VD).get(), Loc, Loc);

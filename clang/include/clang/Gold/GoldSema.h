@@ -222,9 +222,6 @@ public:
   /// Make the owner of CurrentDecl current.
   void popDecl();
 
-  // Iterate through the mapped identifiers and determine their type.
-  void elaborateDecls();
-
   /// Iterate through a Declarations redecl chain and see if it has
   /// already been defined.
   /// \param Start - The decl we are beginning the search with.
@@ -255,6 +252,18 @@ public:
   clang::Sema &getCxxSema() { return CxxSema; }
 
   SyntaxContext &getContext() { return Context; }
+
+private:
+  /// Functions which contain a complete mapping of clang::Decl -> gold::Declaration
+  /// if it doesn't exist here then it isn't a declaration that was created
+  /// gold.
+  llvm::DenseMap<clang::Decl *, Declaration *> DeclToDecl;
+public:
+  void addDeclToDecl(clang::Decl *CDecl, gold::Declaration *GDecl);
+  gold::Declaration *getDeclaration(clang::Decl *CDecl) const;
+  void setDeclForDeclaration(gold::Declaration *GDecl, clang::Decl *CDecl);
+public:
+
 
   /// This is the clang processing scope. This is mostly for code GenPieces.
   clang::Scope *getCurClangScope();

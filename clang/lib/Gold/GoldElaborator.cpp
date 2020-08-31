@@ -308,7 +308,8 @@ void Elaborator::startFile(const Syntax *S) {
   /// Build the declaration for the global namespace.
   Declaration *D = new Declaration(S);
   D->SavedScope = SemaRef.getCurrentScope();
-  D->Cxx = Context.CxxAST.getTranslationUnitDecl();
+  SemaRef.setDeclForDeclaration(D, Context.CxxAST.getTranslationUnitDecl());
+
   SemaRef.pushDecl(D);
 }
 
@@ -631,7 +632,7 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
     Tag = cast<TagDecl>(Declaration);
   }
 
-  D->Cxx = Tag;
+  SemaRef.setDeclForDeclaration(D, Tag);
   Elab.elaborateAttributes(D);
 
   Sema::ScopeRAII ClassBodyScope(SemaRef, SK, D->Op, &D->SavedScope);
@@ -797,7 +798,7 @@ processCXXForwardRecordDecl(Elaborator& Elab, SyntaxContext& Context,
     ClassTemplateDecl *TempTemplateDecl = cast<ClassTemplateDecl>(Declaration);
     ClsDecl = cast<CXXRecordDecl>(TempTemplateDecl->getTemplatedDecl());
   }
-  D->Cxx = ClsDecl;
+  SemaRef.setDeclForDeclaration(D, ClsDecl);
   Elab.elaborateAttributes(D);
   D->CurrentPhase = Phase::Initialization;
   return ClsDecl;
@@ -841,8 +842,7 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
   } else {
     ResumedScope.Init(NSDecl->Rep, NSDecl->Rep->Term, false);
   }
-
-  D->Cxx = NSDecl;
+  SemaRef.setDeclForDeclaration(D, NSDecl);
   Elab.elaborateAttributes(D);
 
   SemaRef.pushDecl(D);
@@ -1557,7 +1557,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   getFunctionParameters(D, Params);
   FD->setParams(Params);
   D->CurrentPhase = Phase::Typing;
-  D->Cxx = FD;
+  SemaRef.setDeclForDeclaration(D, FD);
   {
     // We have previously exited this scope that was created during type
     // elaboration.
@@ -1836,7 +1836,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   if (D->ScopeSpec.isSet())
     VD->setQualifierInfo(D->ScopeSpec.getWithLocInContext(Context.CxxAST));
   Owner->addDecl(VD);
-  D->Cxx = VD;
+  SemaRef.setDeclForDeclaration(D, VD);
   D->CurrentPhase = Phase::Typing;
   elaborateAttributes(D);
   return VD;
@@ -1890,7 +1890,7 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
       SemaRef.getCurClangScope(), clang::AS_public, MTP, Loc, Id,
       clang::ParsedAttributesView(), TR, nullptr);
 
-  D->Cxx = TypeAlias;
+  SemaRef.setDeclForDeclaration(D, TypeAlias);
   elaborateAttributes(D);
   return TypeAlias;
 }
@@ -1934,7 +1934,7 @@ clang::Decl *Elaborator::elaborateNsAlias(Declaration *D) {
                                                    D->Init->getLoc(),
                                                    UnderlyingNs);
   Owner->addDecl(NsAD);
-  D->Cxx = NsAD;
+  SemaRef.setDeclForDeclaration(D, NsAD);
   D->CurrentPhase = Phase::Initialization;
   return D->Cxx;
 }
@@ -2020,7 +2020,7 @@ clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D) {
     SemaRef.getCxxSema().PushOnScopeChains(VTD, SemaRef.getCurClangScope(),
                                            true);
     D->CurrentPhase = Phase::Typing;
-    D->Cxx = VTD;
+    SemaRef.setDeclForDeclaration(D, VTD);
   } else {
     if (!D->Init) {
       SemaRef.Diags.Report(D->Op->getLoc(),
@@ -2041,7 +2041,8 @@ clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D) {
     clang::Decl *TypeAlias = SemaRef.getCxxSema().ActOnAliasDeclaration(
         SemaRef.getCurClangScope(), clang::AS_public, MTP, Loc, Id,
         clang::ParsedAttributesView(), TR, nullptr);
-    D->Cxx = TypeAlias;
+
+    SemaRef.setDeclForDeclaration(D, TypeAlias);
     // Only the type alias is fully elaborated at this point in time.
     D->CurrentPhase = Phase::Initialization;
   }
@@ -2081,7 +2082,7 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
                                                               TInfo->getType(),
                                                               TInfo,
                                                               clang::SC_None);
-  D->Cxx = P;
+  SemaRef.setDeclForDeclaration(D, P);
   D->CurrentPhase = Phase::Typing;
   elaborateAttributes(D);
   return P;
@@ -2110,7 +2111,7 @@ clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
     auto *TTPD =
       clang::TemplateTypeParmDecl::Create(Context.CxxAST, Owner, Loc, Loc, 0, 0,
                               Id, /*TypenameKW=*/true, /*ParameterPack=*/false);
-    D->Cxx = TTPD;
+    SemaRef.setDeclForDeclaration(D, TTPD);
     D->CurrentPhase = Phase::Typing;
     return TTPD;
   }
@@ -2120,7 +2121,7 @@ clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
     clang::NonTypeTemplateParmDecl::Create(Context.CxxAST, Owner, Loc, Loc,
                                            0, 0, Id, TInfo->getType(),
                                            /*Pack=*/false, TInfo);
-  D->Cxx = NTTP;
+  SemaRef.setDeclForDeclaration(D, NTTP);
   D->CurrentPhase = Phase::Typing;
   return NTTP;
 }
@@ -2503,7 +2504,7 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
                                                 Loc, clang::AS_public, nullptr);
   }
   Owner->addDecl(Field);
-  D->Cxx = Field;
+  SemaRef.setDeclForDeclaration(D, Field);
   D->CurrentPhase = Phase::Typing;
   elaborateAttributes(D);
   return Field;
@@ -2604,8 +2605,7 @@ clang::Decl *Elaborator::elaborateEnumMemberDecl(const Syntax *S,
   clang::Decl *ECD = SemaRef.getCxxSema().ActOnEnumConstant(
       SemaRef.getCurClangScope(), EnumD, SemaRef.getCxxSema().LastEnumConstDecl,
       DNI, Attributes, clang::SourceLocation(), nullptr);
-
-  D->Cxx = ECD;
+  SemaRef.setDeclForDeclaration(D, ECD);
   D->CurrentPhase = Phase::Typing;
   elaborateAttributes(D);
   SemaRef.getCxxSema().LastEnumConstDecl

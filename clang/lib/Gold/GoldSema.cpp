@@ -285,6 +285,31 @@ void Sema::popDecl() {
     clang::Decl::castToDeclContext(CurrentDecl->Cxx) : nullptr;
 }
 
+void Sema::addDeclToDecl(clang::Decl *CDecl, gold::Declaration *GDecl) {
+  assert(CDecl && "Invalid clang declaration");
+  assert(GDecl && "Invalid gold declaration");
+
+  auto Ret = DeclToDecl.try_emplace(CDecl, GDecl);
+  if (!Ret.second)
+    llvm_unreachable("we should never add something to the decl map 2x.");
+}
+
+gold::Declaration *Sema::getDeclaration(clang::Decl *CDecl) const {
+  assert(CDecl && "Invalid declaration.");
+  auto Iter = DeclToDecl.find(CDecl);
+  if (Iter == DeclToDecl.end()) {
+    return nullptr;
+  }
+  return Iter->second;
+}
+
+void Sema::setDeclForDeclaration(gold::Declaration *GDecl, clang::Decl *CDecl) {
+  assert(GDecl && "Invalid gold declaration");
+  GDecl->Cxx = CDecl;
+  if (CDecl)
+    addDeclToDecl(CDecl, GDecl);
+}
+
 bool Sema::lookupUnqualifiedName(clang::LookupResult &R,
                                  Declaration *NotThisOne) {
   return lookupUnqualifiedName(R, getCurrentScope(), NotThisOne);
