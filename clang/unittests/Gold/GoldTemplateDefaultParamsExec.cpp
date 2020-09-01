@@ -1,4 +1,4 @@
-//===- unittest/Gold/GoldClassTemplateSpec.cpp ----------------------------===//
+//===- unittest/Gold/GoldTemplateDefaultParamsExec.cpp --------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -12,46 +12,59 @@
 using namespace llvm;
 using namespace gold;
 
-TEST(ClassTemplateSpec, Basic) {
+TEST(GoldTemplateDefaultParams, NonType) {
   StringRef Code = R"(
-is_void[T : type] : type = class:
-  value : bool = false
-
-is_void[void] : type = class:
-  value : bool = true
+t[x : int = 10] : type = class:
+  y : const int = x
 
 main() : int!
-  v : is_void[void]
-  return v.value
+  T : t[]
+  return T.y
 )";
-
   LLVMContext Context;
   std::unique_ptr<ExecutionEngine> EE;
   ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
   MainSig CB = MainSig(EE->getFunctionAddress("main"));
   ASSERT_TRUE(CB);
   int result = CB();
-  ASSERT_EQ(result, 1);
+  ASSERT_EQ(result, 10);
 }
 
-TEST(ClassTemplateSpec, Partial) {
+TEST(GoldTemplateDefaultParams, Type) {
   StringRef Code = R"(
-A[T : type, U : type] : type = class:
-  i : int = 0
-
-A[T : type, U : type][^T, U] : type = class:
-  i : int = 1
+t[T : type = int] : type = class:
+  y : T = 10
 
 main() : int!
-  a : A[^int, float]
-  return a.i
+  T : t[]
+  return T.y
 )";
-
   LLVMContext Context;
   std::unique_ptr<ExecutionEngine> EE;
   ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
   MainSig CB = MainSig(EE->getFunctionAddress("main"));
   ASSERT_TRUE(CB);
   int result = CB();
-  ASSERT_EQ(result, 1);
+  ASSERT_EQ(result, 10);
+}
+
+TEST(GoldTemplateDefaultParams, Template) {
+  StringRef Code = R"(
+test[T : type] : type = class:
+  x : T = T(10)
+
+F[U : type, Container[T : type] : type = test] : type = class:
+  c : Container[U]
+
+main() : int!
+  f : F[int, test]
+  return f.c.x
+)";
+  LLVMContext Context;
+  std::unique_ptr<ExecutionEngine> EE;
+  ASSERT_TRUE(CompileGoldCode(Context, Code, EE));
+  MainSig CB = MainSig(EE->getFunctionAddress("main"));
+  ASSERT_TRUE(CB);
+  int result = CB();
+  ASSERT_EQ(result, 10);
 }

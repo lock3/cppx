@@ -614,8 +614,11 @@ convertExprToTemplateArg(Sema &SemaRef, clang::Expr *E) {
   }
 
   if (E->getType()->isTemplateType()) {
-    // This is a template template parameter?
-    llvm_unreachable("Template template params not implemented yet.");
+    clang::TemplateDecl *TD =
+      E->getType()->getAs<clang::CppxTemplateType>()->getTemplateDecl();
+
+    return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::Template,
+                                         (void *)TD, E->getExprLoc());
   }
 
   // Anything else is a constant expression?
@@ -915,6 +918,9 @@ clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
   if (IdExpr->getType()->isTypeOfTypes()) {
     clang::CppxTypeLiteral *Lit = cast<clang::CppxTypeLiteral>(IdExpr);
     clang::CXXRecordDecl *RD = Lit->getValue()->getType()->getAsCXXRecordDecl();
+
+    if (!RD)
+      return nullptr;
     if (isa<clang::ClassTemplateSpecializationDecl>(RD))
       return IdExpr;
   }
@@ -2287,16 +2293,14 @@ clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
       break;
     }
 
-    case DK_TemplateParams:{
-      // Expression
-      llvm_unreachable("Template parameters within the declarator "
-          "not implemented yet.");
+    case DK_TemplateParams:
       break;
-    }
+
     default:
       llvm_unreachable("unhandled declarator.");
     }
   }
+
   return TyExpr;
 }
 
@@ -2368,9 +2372,9 @@ clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *T
     clang::IdentifierInfo *II = &CxxAST.Idents.get(Atom->getSpelling());
     clang::DeclarationNameInfo DNI(II, Loc);
     clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
-    if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) {
+    if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope()))
       return nullptr;
-    }
+
     if (R.empty()) {
       auto BuiltinMapIter = SemaRef.BuiltinTypes.find(Atom->getSpelling());
       if (BuiltinMapIter == SemaRef.BuiltinTypes.end()) {
@@ -2380,9 +2384,12 @@ clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *T
     }
 
     clang::TypeDecl *TD = R.getAsSingle<clang::TypeDecl>();
+    if (!TD)
+      return nullptr;
     TD->setIsUsed();
     return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
   }
+
   return elaborateExpr(TyDcl->getTyExpr());
 }
 

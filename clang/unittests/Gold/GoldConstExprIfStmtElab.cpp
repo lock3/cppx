@@ -55,7 +55,13 @@ foo() : int!
   else:
     return 0
 )";
-  auto ToMatch = ifStmt(hasCondition(constantExpr(has(cxxBoolLiteral()))));
+
+  auto ToMatch = ifStmt(hasCondition(
+                          constantExpr(
+                            has(binaryOperator(
+                                  has(cxxBoolLiteral()), has(cxxBoolLiteral())
+                                  ))
+                            )));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
@@ -70,6 +76,12 @@ foo() : int!
   else:
     return 0
 )";
-  auto ToMatch = ifStmt(hasCondition(constantExpr(has(cxxBoolLiteral()))));
+
+  auto ToMatch = ifStmt(hasCondition(
+                          constantExpr(
+                            has(binaryOperator(
+                                  has(cxxBoolLiteral()), has(cxxBoolLiteral())
+                                  ))
+                            )));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

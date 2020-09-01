@@ -66,6 +66,8 @@ enum UnevaluatedDeclKind {
   UDK_TemplateParam,        // Any template parameter as their type doesn't
                             // matter until they are elaborated, and used.
 
+  UDK_TemplateTemplateParam,// A template template parameter.
+
   // The only time we ever know for sure that this is a field is during phase 2.
   // UDK_Field,                // Field associated with a class.
 

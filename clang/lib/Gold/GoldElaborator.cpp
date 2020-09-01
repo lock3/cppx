@@ -928,35 +928,6 @@ static bool handleSpecializationArgs(Sema &SemaRef, const Syntax *Args,
   return false;
 }
 
-
-static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
-                                const Syntax *Params,
-                                llvm::SmallVectorImpl<clang::NamedDecl *> &Res)
-{
-  std::size_t I = 0;
-  for (const Syntax *P : Params->children()) {
-    Elaborator Elab(Ctx, SemaRef);
-    clang::NamedDecl *ND =
-      cast_or_null<clang::NamedDecl>(Elab.elaborateDeclSyntax(P));
-    // Just skip this on error.
-    if (!ND)
-      continue;
-    // FIXME: set the depth too.
-    if (auto *TP = dyn_cast<clang::NonTypeTemplateParmDecl>(ND)) {
-      TP->setPosition(I);
-    } else if (auto *TP = dyn_cast<clang::TemplateTypeParmDecl>(ND)) {
-      // FIXME: Make this a friend of TTPD so we can set this :/
-      // TP->setPosition(I);
-    }
-
-    Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
-    assert(D && "Didn't find associated declaration");
-    Res.push_back(ND);
-
-    ++I;
-  }
-}
-
 static clang::TemplateParameterList *
 buildNNSTemplateParam(Sema &SemaRef, Declaration *D,
                       TemplateParamsDeclarator *TemplateDcl) {
@@ -1241,6 +1212,45 @@ clang::Decl *Elaborator::elaborateDeclContent(Declaration *D) {
   return elaborateVariableDecl(D);
 }
 
+static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
+                                const Syntax *Params,
+                                llvm::SmallVectorImpl<clang::NamedDecl *> &Res)
+{
+  std::size_t I = 0;
+  for (const Syntax *P : Params->children()) {
+    Elaborator Elab(Ctx, SemaRef);
+    clang::NamedDecl *ND =
+      cast_or_null<clang::NamedDecl>(Elab.elaborateDeclSyntax(P));
+    // Just skip this on error.
+    if (!ND)
+      continue;
+
+    unsigned Depth = SemaRef.computeTemplateDepth();
+    if (auto *TP = dyn_cast<clang::NonTypeTemplateParmDecl>(ND)) {
+      TP->setPosition(I);
+      TP->setDepth(I);
+    } else if (auto *TP = dyn_cast<clang::TemplateTemplateParmDecl>(ND)) {
+      TP->setDepth(Depth);
+      TP->setPosition(I);
+    } else if (auto *TP = dyn_cast<clang::TemplateTypeParmDecl>(ND)) {
+      // Set the index.
+      auto *Ty = TP->getTypeForDecl()->castAs<clang::TemplateTypeParmType>();
+      clang::QualType NewTy =
+        Ctx.CxxAST.getTemplateTypeParmType(Depth, I,
+                                           Ty->isParameterPack(),
+                                           Ty->getDecl());
+      TP->setTypeForDecl(NewTy.getTypePtr());
+    } else {
+      llvm_unreachable("Invalid template parameter");
+    }
+
+    Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
+    assert(D && "Didn't find associated declaration");
+    Res.push_back(ND);
+
+    ++I;
+  }
+}
 
 // anonymous namespace comprised of subroutines for elaborateFunctionDecl
 namespace {
@@ -2106,14 +2116,21 @@ clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc = D->IdDcl->getLoc();
 
-  // This is a template type parameter decl.
+  // This is a template type or template template parameter decl.
   if (TInfo->getType()->getAs<clang::CppxKindType>()) {
-    auto *TTPD =
-      clang::TemplateTypeParmDecl::Create(Context.CxxAST, Owner, Loc, Loc, 0, 0,
-                              Id, /*TypenameKW=*/true, /*ParameterPack=*/false);
-    SemaRef.setDeclForDeclaration(D, TTPD);
+    using TemplateTemplate = clang::TemplateTemplateParmDecl;
+    using TemplateType = clang::TemplateTypeParmDecl;
+
+    if (D->Template)
+      D->Cxx = TemplateTemplate::Create(Context.CxxAST, Owner, Loc, 0,
+                                        0, /*Pack=*/false, Id,
+                                        D->TemplateParamStorage.front());
+    else
+      D->Cxx = TemplateType::Create(Context.CxxAST, Owner, Loc, Loc, 0, 0,
+                                    Id, /*TypenameKW=*/true, /*Pack=*/false);
+
     D->CurrentPhase = Phase::Typing;
-    return TTPD;
+    return D->Cxx;
   }
 
   // The depth and position of the parameter will be set later.
@@ -2246,7 +2263,7 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
 
   // We saved the parameter scope while elaborating this function's type,
   // so push it on before we enter the function scope.
-  FunctionDeclarator *FnDecl = D->FunctionDcl->getAsFunction();
+  FunctionDeclarator *FnDecl = D->FunctionDcl;
   Sema::ResumeScopeRAII FnDclScope(SemaRef, FnDecl->getScope(),
                                    FnDecl->getScope()->getConcreteTerm());
 
@@ -2430,7 +2447,28 @@ void Elaborator::elaborateTemplateParamInit(Declaration *D) {
   //        for template parameters, so we can't check for
   //        redefinition using the template.
 
-  // TODO: these might have default arguments.
+  clang::Expr *Init =
+    ExprElaborator(Context, SemaRef).elaborateExpr(D->Init);
+  if (!Init) {
+    D->CurrentPhase = Phase::Initialization;
+    return;
+  }
+
+  clang::SourceLocation Loc = Init->getExprLoc();
+  if (auto *TD = dyn_cast<clang::NonTypeTemplateParmDecl>(D->Cxx)) {
+    TD->setDefaultArgument(Init);
+  } else if (auto *TD = dyn_cast<clang::TemplateTypeParmDecl>(D->Cxx)) {
+    clang::QualType InitTy = Init->getType();
+    if (!InitTy->isTypeOfTypes())
+      SemaRef.Diags.Report(Loc, clang::diag::err_expected_type);
+    else
+      TD->setDefaultArgument(SemaRef.getTypeSourceInfoFromExpr(Init, Loc));
+  } else if (auto *TD = dyn_cast<clang::TemplateTemplateParmDecl>(D->Cxx)) {
+    clang::TemplateArgument Arg(Init, clang::TemplateArgument::Expression);
+    clang::TemplateArgumentLoc ArgLoc(Arg, Init);
+    TD->setDefaultArgument(Context.CxxAST, ArgLoc);
+  }
+
   D->CurrentPhase = Phase::Initialization;
 }
 

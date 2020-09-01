@@ -279,6 +279,13 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
     // FIXME: Actually diagnose missing separators.
     matchTokenIf(isSeparator);
 
+    // Check for an exit once again, as a semicolon might be followed
+    // by a dedent.
+    if (nextTokenIs(tok::Dedent) || nextTokenIs(tok::RightBrace)) {
+      ExitBlock = true;
+      break;
+    }
+
     // The end-of-file is often after the last separator.
     if (atEndOfFile())
       break;
@@ -647,7 +654,13 @@ Syntax *Parser::parseMul() {
 Syntax *Parser::parseIf()
 {
   Token if_tok = expectToken("if");
+
   llvm::SmallVector<Attribute *, 4> Attrs;
+  if (!Preattributes.empty()) {
+    std::copy(Preattributes.begin(), Preattributes.end(),
+              std::back_inserter(Attrs));
+    Preattributes.clear();
+  }
 
   // FIXME: only allow attributes here for `if:` style syntax.
  while (nextTokenIs(tok::Less))
@@ -1321,8 +1334,17 @@ Syntax *Parser::parseBracedArray() {
   if (!braces.expectOpen())
     return onError();
 
+  // There could be any number of indents here.
+  // They are not relevant.
+  while (nextTokenIs(tok::Indent))
+    consumeToken();
+
   // FIXME: How do we recover from errors?
   Syntax *ret = parseArray(BlockArray);
+
+  // Ignore dedents as well.
+  while (nextTokenIs(tok::Dedent))
+    consumeToken();
 
   if (!braces.expectClose())
     return onError();

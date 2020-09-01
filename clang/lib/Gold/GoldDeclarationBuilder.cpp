@@ -71,11 +71,7 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
   if (checkDeclaration(S, TheDecl))
     return nullptr;
 
-  // Dcl->printSequence(llvm::outs() << "Dumping declaration!\n");
-  if (OpInfo && !TheDecl->declaresFunction())
-    llvm_unreachable("unimplemented operator!");
-
-
+  assert(!(OpInfo && !TheDecl->declaresFunction()) && "unimplemented operator");
   Scope *CurScope = SemaRef.getCurrentScope();
 
   // If we're in namespace or parameter scope and this identifier already
@@ -426,7 +422,8 @@ bool DeclarationBuilder::checkRequiresType(const Syntax *DeclExpr,
   }
 
   case UDK_Parameter:
-  case UDK_TemplateParam:{
+  case UDK_TemplateParam:
+  case UDK_TemplateTemplateParam: {
     if (RequireTypeForVariable) {
       if (!TheDecl->TypeDcl) {
         if (RequiresDeclOrError)
@@ -681,15 +678,25 @@ static bool deduceVariableSyntax(Sema &SemaRef, Declaration *TheDecl,
     // declaration.
     if (TheDecl->TypeDcl) {
       TypeDeclarator *TD = TheDecl->TypeDcl->getAsType();
+
+      // FIXME: this might not be an atom; what about `typeof(some_kind_type)`
       if (const auto *Atom = dyn_cast<AtomSyntax>(TD->getTyExpr())) {
         if (Atom->hasToken(tok::TypeKeyword)) {
+          // If we are declaring a template in template scope, we have a
+          // template template parameter.
+          if (SemaRef.getCurrentScope()->isTemplateScope()) {
+            TheDecl->SuspectedKind = UDK_TemplateTemplateParam;
+            return true;
+          }
+
           TheDecl->SuspectedKind = UDK_TemplateAlias;
-          // if we don't have an equals then this is 100% an error.
+          // We think this is an alias, but it isn't assigned to anything.
           if (TheDecl->InitOpUsed != IK_Equals) {
             HadError = true;
             SemaRef.Diags.Report(TD->getLoc(),
                             clang::diag::err_template_alias_missing_assignment);
           }
+
           // We know this has to be a declaration.
           // even if it's not valid.
           return true;
