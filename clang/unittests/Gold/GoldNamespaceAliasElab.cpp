@@ -99,3 +99,37 @@ foo() :int!
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+TEST(GoldNamespaceAlias, AliasInFunctionCtx) {
+  StringRef Code = R"(
+ns : namespace = namespace:
+  i : const int = 1
+
+main() : int!
+  ys : namespace = ns;
+  return ys.i
+)";
+
+  // A parse test is enough to tell if something went wrong.
+  SimpleGoldParseTest(Code.str());
+}
+
+TEST(GoldNamespaceAlias, AliasInDependentFunctionCtx) {
+  StringRef Code = R"(
+ns = namespace {
+  x : int = 15;
+}
+
+fn[T : type]() : T! {
+  ys : namespace = ns;
+  return ys.x;
+}
+
+main() : int! {
+  return fn[int]();
+}
+)";
+
+  // A parse test is enough to tell if something went wrong.
+  SimpleGoldParseTest(Code.str());
+}

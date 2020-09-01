@@ -277,7 +277,8 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
     // For now, match this as optional.
     //
     // FIXME: Actually diagnose missing separators.
-    matchTokenIf(isSeparator);
+    while (!nextTokenIs(tok::Dedent) && matchTokenIf(isSeparator))
+      ;
 
     // Check for an exit once again, as a semicolon might be followed
     // by a dedent.

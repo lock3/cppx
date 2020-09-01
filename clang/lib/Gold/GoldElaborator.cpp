@@ -927,11 +927,7 @@ static bool elaborateSpecializationArgs(Sema &SemaRef,
 }
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
-  if (phaseOf(D) > Phase::Identification)
-    return D->Cxx;
-
   if (phaseOf(D) != Phase::Identification)
-    // Adding this here skips some errors.
     return D->Cxx;
 
   Scope *Sc = SemaRef.getCurrentScope();
@@ -1596,6 +1592,7 @@ clang::Decl *Elaborator::elaborateNsAlias(Declaration *D) {
                          clang::diag::err_namespace_alias_requires_a_name);
     return nullptr;
   }
+
   // Attempting to elaborate the RHS to get a namespace.
   ExprElaborator Elab(Context, SemaRef);
   clang::Expr *NsExpr = Elab.elaborateExpr(D->Init);
@@ -1607,28 +1604,30 @@ clang::Decl *Elaborator::elaborateNsAlias(Declaration *D) {
                          clang::diag::err_namespace_alias_non_namespace);
     return nullptr;
   }
-  clang::Decl *PossibleNsDecl = SemaRef.getDeclFromExpr(NsExpr, D->Init->getLoc());
-  if (!PossibleNsDecl)
+
+  clang::Decl *PossibleNs = SemaRef.getDeclFromExpr(NsExpr, D->Init->getLoc());
+  if (!PossibleNs)
     return nullptr;
-  clang::NamedDecl *UnderlyingNs = nullptr;
-  if (clang::NamedDecl *ND = dyn_cast<clang::NamedDecl>(PossibleNsDecl)) {
-    UnderlyingNs = ND->getUnderlyingDecl();
-  } else {
-    PossibleNsDecl->dump();
-    llvm_unreachable("We have a strange problem where the declaration from a "
-                     "namespace isn't a NamedDecl.");
-  }
+  assert(isa<clang::NamedDecl>(PossibleNs) && "invalid namespace");
+
+  clang::NamedDecl *Ns
+    = cast<clang::NamedDecl>(PossibleNs)->getUnderlyingDecl();
 
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
   clang::NamespaceAliasDecl *NsAD
-                = clang::NamespaceAliasDecl::Create(Context.CxxAST, Owner,
-                                                   D->TypeDcl->getLoc(),
-                                                   D->Decl->getLoc(),
-                                                   D->getId(),
-                                                clang::NestedNameSpecifierLoc(),
-                                                   D->Init->getLoc(),
-                                                   UnderlyingNs);
+    = clang::NamespaceAliasDecl::Create(Context.CxxAST, Owner,
+                                        D->TypeDcl->getLoc(),
+                                        D->Decl->getLoc(),
+                                        D->getId(),
+                                        clang::NestedNameSpecifierLoc(),
+                                        D->Init->getLoc(),
+                                        Ns);
   Owner->addDecl(NsAD);
+
+  // Nested name specifiers are looked up by clang, so we need to convince
+  // the clang lookup that this namespace actually exists.
+  SemaRef.getCurClangScope()->AddDecl(NsAD);
+  SemaRef.getCxxSema().IdResolver->AddDecl(NsAD);
   D->Cxx = NsAD;
   D->CurrentPhase = Phase::Initialization;
   return D->Cxx;
@@ -1893,9 +1892,6 @@ void Elaborator::elaborateDeclInit(const Syntax *S) {
 
 void Elaborator::elaborateDef(Declaration *D) {
   if (phaseOf(D) != Phase::Typing)
-    return;
-
-  if (phaseOf(D) == Phase::Initialization)
     return;
 
   if (D->declaresFunction())
