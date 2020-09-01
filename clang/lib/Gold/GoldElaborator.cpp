@@ -1464,9 +1464,7 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::Sema &CxxSema = SemaRef.getCxxSema();
 
-  // Get the type of the entity.
-  clang::DeclContext *LexicalContext = SemaRef.getCurrentCxxDeclContext();
-  clang::DeclContext *Owner = LexicalContext;
+  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
   FunctionDeclarator *FnDclPtr = D->FunctionDcl;
 
   // Get a reference to the containing class if there is one.
@@ -1529,8 +1527,11 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   if(InClass) {
     if (!buildMethod(Context, SemaRef, D, Name, &FD, TInfo, RD))
       return nullptr;
-    // Fixing the lexical context.
-    FD->setLexicalDeclContext(LexicalContext);
+
+    // Fixing the lexical context, because this can change in the face of
+    // a nested name specifier.
+    FD->setLexicalDeclContext(Owner);
+
   } else {
     FD = clang::FunctionDecl::Create(Context.CxxAST, Owner, Loc, Loc, Name,
                                      TInfo->getType(), TInfo, clang::SC_None);
@@ -1550,7 +1551,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
                                                     FD->getDeclName(),
                                                 TPD->getTemplateParameterList(),
                                                     FD);
-    FTD->setLexicalDeclContext(LexicalContext);
+    FTD->setLexicalDeclContext(Owner);
     FD->setDescribedFunctionTemplate(FTD);
     Owner->addDecl(FTD);
     if (InClass)
