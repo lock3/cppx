@@ -343,14 +343,17 @@ bool Sema::lookupQualifiedName(clang::LookupResult &R,
     break;
   }
   case NNSK_Record:{
-    llvm_unreachable("NNSK recored lookup not implemented yet.");
+    // llvm_unreachable("NNSK recored lookup not implemented yet.");
     // Looking something up using qualified name.
-    // return CxxSema.LookupQualifiedName(R, CurNNSLookupDecl.Record,
-    //                                 /*InUnqualifiedLookup*/false);
-    // llvm_unreachable("The recoord declaration qualified lookup not implemented "
-    //                 "in this context");
+    Declaration *D = getDeclaration(CurNNSLookupDecl.Record);
+    if (!D) {
+      // FIXME: this needs a valid error message at some point.
+      llvm_unreachable("Invlalid nested name qualifier.");
+    }
+    LookupScope = D->SavedScope;
+    assert(LookupScope && "Invalid scope unable to handle class lookup?");
   }
-  // break;
+  break;
   }
   return lookupUnqualifiedName(R, LookupScope, NotThisOne);
 }
@@ -1146,8 +1149,14 @@ Scope *Sema::getLookupScope() {
       }
       return nullptr;
     }
-    case NNSK_Record:
-      llvm_unreachable("NNSK_Record not implemented for us yet.");
+    case NNSK_Record:{
+      Declaration *D = getDeclaration(CurNNSLookupDecl.Record);
+      if (!D) {
+        // FIXME: this needs a valid error message at some point.
+        llvm_unreachable("Invlalid nested name qualifier.");
+      }
+      return D->SavedScope;
+    }
     default:
       llvm_unreachable("Invalid or unknown nested name specifier type");
   }

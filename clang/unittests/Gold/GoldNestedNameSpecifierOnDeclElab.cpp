@@ -94,3 +94,25 @@ x.Var:int = 5
   );
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }
+
+TEST(GoldNestedNameDecl, FunctionDeclWithinClassDefOutside) {
+  StringRef Code = R"(
+c : type = class:
+  x : int
+  y : bool
+  foo() : int
+
+c.foo() : int!
+  return x
+)";
+  auto Matcher = translationUnitDecl(
+    has(cxxRecordDecl(
+      hasName("c"),
+      has(cxxMethodDecl(hasName("foo"), unless(isDefinition())))
+    )),
+    has(cxxMethodDecl(hasName("foo"),
+      has(nestedNameSpecifier(specifiesType(asString("struct c"))))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}

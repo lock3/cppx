@@ -1027,27 +1027,37 @@ static bool handleNestedName(Sema &SemaRef, Declaration *D,
 
   // Suspend the current qualified lookup because some of the template parameters
   // may have a references to things that are within a different namespace.
+  bool EnteringContext = SemaRef.isQualifiedLookupContext();
   clang::QualType ResultTy = NestedName->getType();
   if (ResultTy->isTypeOfTypes()) {
     clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(NestedName,
                                                           DInfo.Name->getLoc());
     if (!TInfo)
       return true;
-    // we need to call setLookupScope in the event that we get a type.
-    // elaborateNestedLookupAccess
-    // That means we are looking things up inside of a type possibly.
-    // this better be a record type.
-    // bool ActOnCXXNestedNameSpecifier(Scope *S,
-    //                                  CXXScopeSpec &SS,
-    //                                  SourceLocation TemplateKWLoc,
-    //                                  TemplateTy TemplateName,
-    //                                  SourceLocation TemplateNameLoc,
-    //                                  SourceLocation LAngleLoc,
-    //                                  ASTTemplateArgsPtr TemplateArgs,
-    //                                  SourceLocation RAngleLoc,
-    //                                  SourceLocation CCLoc,
-    //                                  bool EnteringContext)
-    llvm_unreachable("type name not implemented.");
+
+    clang::CXXRecordDecl *RD = TInfo->getType()->getAsCXXRecordDecl();
+    if (!RD) {
+      // FIXME: This needs an error message of some kind.
+      // If this isn't a tag then we emit the following error.
+      // err_invalid_decl_spec_combination
+      llvm_unreachable("Derp!");
+    }
+
+    clang::Sema::NestedNameSpecInfo IdInfo(RD->getIdentifier(),
+                                           RD->getBeginLoc(),
+                                           DInfo.Name->getLoc(),
+                                           TInfo->getType());
+
+    if(SemaRef.getCxxSema().
+      ActOnCXXNestedNameSpecifier(SemaRef.getCurClangScope(), IdInfo,
+                                  EnteringContext, SemaRef.CurNNSContext,
+                                  /*RecoveryLookup=*/false,
+                                  /*IsCorrected=*/nullptr,
+                                  /*OnlyNamespace=*/false))
+      return true;
+    // Moving to a new declaration context to continue.
+    SemaRef.setLookupScope(RD);
+    return false;
   } else if (ResultTy->isCppxNamespaceType()) {
     clang::Decl *TempNs = SemaRef.getDeclFromExpr(NestedName,
                                                   DInfo.Name->getLoc());
@@ -1071,9 +1081,6 @@ static bool handleNestedName(Sema &SemaRef, Declaration *D,
                                            NS->getBeginLoc(),
                                            DInfo.Name->getLoc(),
                                            clang::QualType());
-
-    // This means we are referencing through a namespace.
-    bool EnteringContext = SemaRef.isQualifiedLookupContext();
     if(SemaRef.getCxxSema().
       ActOnCXXNestedNameSpecifier(SemaRef.getCurClangScope(), IdInfo,
                                   EnteringContext, SemaRef.CurNNSContext,
@@ -1111,6 +1118,8 @@ static bool handleNestedName(Sema &SemaRef, Declaration *D,
 
 
   // elaborateExpr
+  // this implies that there was an error here.
+  return true;
 }
 
 bool Elaborator::elaborateNestedNameForDecl(Declaration *D,
@@ -1456,11 +1465,12 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::Sema &CxxSema = SemaRef.getCxxSema();
 
   // Get the type of the entity.
-  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
-  FunctionDeclarator *FnDclPtr = D->FunctionDcl->getAsFunction();
+  clang::DeclContext *LexicalContext = SemaRef.getCurrentCxxDeclContext();
+  clang::DeclContext *Owner = LexicalContext;
+  FunctionDeclarator *FnDclPtr = D->FunctionDcl;
 
   // Get a reference to the containing class if there is one.
-  bool InClass = D->ScopeForDecl->getKind() == SK_Class;
+  bool InClass = isa<clang::TagDecl>(SemaRef.getCurClangDeclContext());
   clang::CXXRecordDecl *RD = nullptr;
   if (InClass) {
     clang::Decl *ScopesDecl = SemaRef.getDeclForScope();
@@ -1519,6 +1529,8 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   if(InClass) {
     if (!buildMethod(Context, SemaRef, D, Name, &FD, TInfo, RD))
       return nullptr;
+    // Fixing the lexical context.
+    FD->setLexicalDeclContext(LexicalContext);
   } else {
     FD = clang::FunctionDecl::Create(Context.CxxAST, Owner, Loc, Loc, Name,
                                      TInfo->getType(), TInfo, clang::SC_None);
@@ -1528,22 +1540,17 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       CxxSema.CheckMain(FD, DS);
     }
   }
-  // I'm not sure this is supposed to work like this but this is how I have
-  // to do it.
-
-
-  // Checking for redeclarations while at the same time skipping
-  // SemaRef.lookupRedecls(D, PrevousToElaborate, LookupScope);
 
 
   // If this describes a principal template declaration, create it.
   if (Template && !Specialization) {
     clang::SourceLocation Loc = TPD->getLoc();
-    auto *FTD = clang::FunctionTemplateDecl::Create(Context.CxxAST, Owner, Loc,
+    auto *FTD = clang::FunctionTemplateDecl::Create(Context.CxxAST,
+                                                    Owner, Loc,
                                                     FD->getDeclName(),
                                                 TPD->getTemplateParameterList(),
                                                     FD);
-    FTD->setLexicalDeclContext(Owner);
+    FTD->setLexicalDeclContext(LexicalContext);
     FD->setDescribedFunctionTemplate(FTD);
     Owner->addDecl(FTD);
     if (InClass)
@@ -1791,7 +1798,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
 
     // // Just pretend that we didn't see the previous declaration.
     // Previous.clear();
-    llvm_unreachable("Checkinf for shadowed template parameter.");
+    llvm_unreachable("Checking for shadowed template parameter.");
   }
 
   clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
@@ -1800,14 +1807,6 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
     // Forget that the previous declaration is the injected-class-name.
     Previous.clear();
 
-  // In C++, the previous declaration we find might be a tag type
-  // (class or enum). In this case, the new declaration will hide the
-  // tag type. Note that this applies to functions, function templates, and
-  // variables, but not to typedefs (C++ [dcl.typedef]p4) or variable templates.
-  // if (Previous.isSingleTagDecl() &&
-  //     D.getDeclSpec().getStorageClassSpec() != DeclSpec::SCS_typedef &&
-  //     (TemplateParamLists.size() == 0 || R->isFunctionType()))
-  //   Previous.clear();
 
   // Get the type of the entity.
   clang::IdentifierInfo *Id = D->getId();
