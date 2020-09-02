@@ -1312,7 +1312,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     }
   }
 
-  // If this describes a principal template declaration, create it.
+  // If this describes a primary template declaration, create it.
   if (Template && !Specialization) {
     clang::SourceLocation Loc = TPD->getLoc();
     auto *FTD = clang::FunctionTemplateDecl::Create(Context.CxxAST, Owner, Loc,
@@ -1324,6 +1324,24 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     Owner->addDecl(FTD);
     if (InClass)
       FTD->setAccess(clang::AS_public);
+
+    // An auto return type here is always dependent.
+    if (FD->getReturnType()->isUndeducedAutoType()) {
+      clang::QualType OldTy = FD->getType();
+      const clang::FunctionProtoType *FPT =
+        OldTy->getAs<clang::FunctionProtoType>();
+      clang::ASTContext &CxxAST = Context.CxxAST;
+      clang::QualType NewRet =
+        SemaRef.getCxxSema().SubstAutoType(FD->getReturnType(),
+                                           CxxAST.DependentTy);
+      clang::QualType NewTy =
+        CxxAST.getFunctionType(NewRet, FPT->getParamTypes(),
+                               FPT->getExtProtoInfo());
+      if (OldTy.hasQualifiers())
+        NewTy = clang::QualType(NewTy.getTypePtr(),
+                                OldTy.getQualifiers().getAsOpaqueValue());
+      FD->setType(NewTy);
+    }
   }
 
   CxxSema.getImplicitCodeSegOrSectionAttrForFunction(FD, D->Init);
