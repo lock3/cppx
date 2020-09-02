@@ -1040,7 +1040,7 @@ clang::CppxDeclRefExpr *
 Sema::buildAnyDeclRef(clang::QualType KindTy, clang::Decl *D,
                       clang::SourceLocation Loc) {
   assert(D && "Invalid declaration to reference.");
-  return clang::CppxDeclRefExpr::create(Context.CxxAST, KindTy, D, Loc);
+  return clang::CppxDeclRefExpr::Create(Context.CxxAST, KindTy, D, Loc);
 }
 
 clang::Decl *Sema::getDeclFromExpr(const clang::Expr *DeclExpr,

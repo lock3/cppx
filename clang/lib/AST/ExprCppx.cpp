@@ -45,7 +45,7 @@ CppxTypeLiteral::create(ASTContext &Context, QualType KindTy, ValueType Ty) {
 }
 
 CppxDeclRefExpr *
-CppxDeclRefExpr::create(ASTContext &Context, QualType KindTy, ValueType D,
+CppxDeclRefExpr::Create(ASTContext &Context, QualType KindTy, ValueType D,
                         SourceLocation Loc) {
   return new (Context) CppxDeclRefExpr(KindTy, D, Loc);
 }

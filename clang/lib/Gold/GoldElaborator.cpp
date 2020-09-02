@@ -1533,38 +1533,14 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   return VD;
 }
 
-clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
-  if (!D->Init) {
-    SemaRef.Diags.Report(D->Op->getLoc(), clang::diag::err_expected_type);
-    return nullptr;
-  }
-
-  // Elaborating RHS
-  ExprElaborator Elab(Context, SemaRef);
-  clang::Expr *InitTyExpr = Elab.elaborateExpr(D->Init);
-  // TODO: Create an error message and verify that the result type of the expression
-  // is cppx kind type.
-
-  // We are doing complete evaluation at this point because all types need to be made
-  // available by phase 3.
-  // if (clang::NamespaceDecl *NsD = InitExpr.dyn_cast<clang::NamespaceDecl *>()) {
-  //   SemaRef.Diags.Report(D->Decl->getLoc(), clang::diag::err_unknown_typename)
-  //         << NsD->getName();
-  //   return nullptr;
-  // }
-  // if (!InitExpr.is<clang::Expr *>()) {
-  //   // FIXME: This needs an error message indicating that we have a nemespace
-  //   // instead of a type or a value instead of a type? something like that.
-  //   // However this could be easilly repaired in the event that the resulting
-  //   // expression had a derived namespace type of some kind.
-  //   llvm_unreachable("Received part of an expression that isn't an alias.");
-  // }
+static clang::Decl *buildTypeAlias(Elaborator &E, Sema &SemaRef,
+                                   Declaration *D, clang::Expr *TyExpr) {
   clang::ParsedType PT;
-  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InitTyExpr,
-                                                             D->Init->getLoc());
-  if (!TInfo) {
+  clang::TypeSourceInfo *TInfo =
+    SemaRef.getTypeSourceInfoFromExpr(TyExpr, D->Init->getLoc());
+  if (!TInfo)
     return nullptr;
-  }
+
   PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
   D->CurrentPhase = Phase::Initialization;
 
@@ -1574,16 +1550,69 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::MultiTemplateParamsArg MTP;
 
-  // Constructing the type alias on the way out because I need to correctly
-  // construct it's internal type, before continuing oward.
+  // Constructing the type alias on the way out because we need to correctly
+  // construct its internal type before continuing.
   clang::TypeResult TR(PT);
   clang::Decl *TypeAlias = SemaRef.getCxxSema().ActOnAliasDeclaration(
       SemaRef.getCurClangScope(), clang::AS_public, MTP, Loc, Id,
       clang::ParsedAttributesView(), TR, nullptr);
 
   D->Cxx = TypeAlias;
-  elaborateAttributes(D);
+  E.elaborateAttributes(D);
   return TypeAlias;
+}
+
+clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
+  if (!D->Init) {
+    SemaRef.Diags.Report(D->Op->getLoc(), clang::diag::err_expected_type);
+    return nullptr;
+  }
+
+  // Elaborating RHS
+  ExprElaborator Elab(Context, SemaRef);
+  clang::Expr *InitTyExpr = Elab.elaborateExpr(D->Init);
+  if (!InitTyExpr->getType()->isTypeOfTypes()) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "initializer of type alias is not a type");
+    SemaRef.Diags.Report(D->Init->getLoc(), DiagID);
+    return nullptr;
+  }
+
+  return buildTypeAlias(*this, SemaRef, D, InitTyExpr);
+}
+
+static clang::NamespaceAliasDecl *buildNsAlias(clang::ASTContext &CxxAST,
+                                               Sema &SemaRef, Declaration *D,
+                                               clang::Expr *NsExpr) {
+  clang::Decl *PossibleNs = SemaRef.getDeclFromExpr(NsExpr, D->Init->getLoc());
+  if (!PossibleNs)
+    return nullptr;
+  assert(isa<clang::NamedDecl>(PossibleNs) && "invalid namespace");
+
+  clang::NamedDecl *Ns
+    = cast<clang::NamedDecl>(PossibleNs)->getUnderlyingDecl();
+
+  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  clang::SourceLocation TypeDeclLoc = D->TypeDcl ?
+    D->TypeDcl->getLoc() : clang::SourceLocation();
+  clang::NamespaceAliasDecl *NsAD
+    = clang::NamespaceAliasDecl::Create(CxxAST, Owner,
+                                        TypeDeclLoc,
+                                        D->Decl->getLoc(),
+                                        D->getId(),
+                                        clang::NestedNameSpecifierLoc(),
+                                        D->Init->getLoc(),
+                                        Ns);
+  Owner->addDecl(NsAD);
+
+  // Nested name specifiers are looked up by clang, so we need to convince
+  // the clang lookup that this namespace actually exists.
+  SemaRef.getCurClangScope()->AddDecl(NsAD);
+  SemaRef.getCxxSema().IdResolver->AddDecl(NsAD);
+  D->Cxx = NsAD;
+  D->CurrentPhase = Phase::Initialization;
+  return NsAD;
 }
 
 clang::Decl *Elaborator::elaborateNsAlias(Declaration *D) {
@@ -1605,32 +1634,7 @@ clang::Decl *Elaborator::elaborateNsAlias(Declaration *D) {
     return nullptr;
   }
 
-  clang::Decl *PossibleNs = SemaRef.getDeclFromExpr(NsExpr, D->Init->getLoc());
-  if (!PossibleNs)
-    return nullptr;
-  assert(isa<clang::NamedDecl>(PossibleNs) && "invalid namespace");
-
-  clang::NamedDecl *Ns
-    = cast<clang::NamedDecl>(PossibleNs)->getUnderlyingDecl();
-
-  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
-  clang::NamespaceAliasDecl *NsAD
-    = clang::NamespaceAliasDecl::Create(Context.CxxAST, Owner,
-                                        D->TypeDcl->getLoc(),
-                                        D->Decl->getLoc(),
-                                        D->getId(),
-                                        clang::NestedNameSpecifierLoc(),
-                                        D->Init->getLoc(),
-                                        Ns);
-  Owner->addDecl(NsAD);
-
-  // Nested name specifiers are looked up by clang, so we need to convince
-  // the clang lookup that this namespace actually exists.
-  SemaRef.getCurClangScope()->AddDecl(NsAD);
-  SemaRef.getCxxSema().IdResolver->AddDecl(NsAD);
-  D->Cxx = NsAD;
-  D->CurrentPhase = Phase::Initialization;
-  return D->Cxx;
+  return buildNsAlias(Context.CxxAST, SemaRef, D, NsExpr);
 }
 
 clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D,
@@ -2089,6 +2093,18 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     } else {
       if (!InitExpr) {
         SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_no_init);
+        return;
+      }
+
+      if (InitExpr->getType()->isNamespaceType()) {
+        D->Cxx->getDeclContext()->removeDecl(D->Cxx);
+        D->Cxx = buildNsAlias(Context.CxxAST, SemaRef, D, InitExpr);
+        return;
+      }
+
+      if (InitExpr->getType()->isTypeOfTypes()) {
+        D->Cxx->getDeclContext()->removeDecl(D->Cxx);
+        D->Cxx = buildTypeAlias(*this, SemaRef, D, InitExpr);
         return;
       }
 
