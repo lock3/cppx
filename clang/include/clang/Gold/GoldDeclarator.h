@@ -292,6 +292,7 @@ public:
 
 class NestedNameSpecifierDeclarator : public Declarator {
   const AtomSyntax *Name;
+  Scope *ReenteredScope = nullptr;
 public:
   NestedNameSpecifierDeclarator(const AtomSyntax* NameNode, Declarator *Next)
     :Declarator(DK_NestedNameSpecifier, Next),
@@ -301,6 +302,9 @@ public:
   virtual std::string getString(bool IncludeKind = false) const override;
 
   const AtomSyntax *getNestedName() const { return Name; }
+
+  Scope *getScope() const { return ReenteredScope; }
+  void setScope(Scope *S) { ReenteredScope = S; }
 
   static bool classof(const Declarator *Dcl) {
     return Dcl->getKind() == DK_NestedNameSpecifier;
@@ -357,7 +361,7 @@ public:
 
 class TemplateParamsDeclarator : public Declarator {
   const ElemSyntax *Params;
-  gold::Scope *Scope;
+  gold::Scope *Scope = nullptr;
   clang::TemplateParameterList *ClangParamList;
 protected:
   TemplateParamsDeclarator(DeclaratorKind DK, const ElemSyntax *ParamsNode,

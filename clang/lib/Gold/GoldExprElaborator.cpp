@@ -636,42 +636,8 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
   llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
   const ListSyntax *ElemArgs = cast<ListSyntax>(Elem->getArguments());
 
-  for(const Syntax *SyntaxArg : ElemArgs->children()) {
-    clang::EnterExpressionEvaluationContext EnterConstantEvaluated(
-                                                          SemaRef.getCxxSema(),
-                  clang::Sema::ExpressionEvaluationContext::ConstantEvaluated,
-                                                /*LambdaContextDecl=*/nullptr,
-                                                              /*ExprContext=*/
-          clang::Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
-
-    clang::Expr *ArgExpr = Elab.elaborateExpr(SyntaxArg);
-    if (!ArgExpr) {
-      SemaRef.Diags.Report(SyntaxArg->getLoc(),
-                           clang::diag::err_failed_to_translate_expr);
-      continue;
-    }
-
-    auto TemplateArg = convertExprToTemplateArg(SemaRef, ArgExpr);
-    if (TemplateArg.isInvalid())
-      // TODO: Figure out if this needs an error message or not.
-      // I assume that the errore message should be delivered prior to this.
-      return nullptr;
-
-    ParsedArguments.emplace_back(TemplateArg);
-
-    // Also building template Argument Info.
-    if (ArgExpr->getType()->isTypeOfTypes()) {
-      clang::TypeSourceInfo *ArgTInfo = SemaRef.getTypeSourceInfoFromExpr(
-                                                       ArgExpr, Elem->getLoc());
-      if (!ArgTInfo)
-        return nullptr;
-      clang::TemplateArgument Arg(ArgTInfo->getType());
-      TemplateArgs.addArgument({Arg, ArgTInfo});
-    } else {
-      clang::TemplateArgument Arg(ArgExpr, clang::TemplateArgument::Expression);
-      TemplateArgs.addArgument({Arg, ArgExpr});
-    }
-  }
+  if (Elab.elaborateTemplateArugments(ElemArgs, TemplateArgs, ParsedArguments))
+    return nullptr;
 
   clang::Decl *Decl = SemaRef.getDeclFromExpr(IdExpr,
                                               Elem->getObject()->getLoc());
@@ -936,6 +902,49 @@ clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
   if (IdExpr->getType()->isTemplateType())
     return handleClassTemplateSelection(*this, SemaRef, Context, IdExpr, Elem);
   return handleElementExpression(*this, SemaRef, Context, Elem, IdExpr);
+}
+
+bool ExprElaborator::elaborateTemplateArugments(const ListSyntax *Args,
+                                    clang::TemplateArgumentListInfo &ArgInfo,
+            llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs) {
+
+  for(const Syntax *SyntaxArg : Args->children()) {
+    clang::EnterExpressionEvaluationContext EnterConstantEvaluated(
+                                                          SemaRef.getCxxSema(),
+                  clang::Sema::ExpressionEvaluationContext::ConstantEvaluated,
+                                                /*LambdaContextDecl=*/nullptr,
+                                                              /*ExprContext=*/
+          clang::Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
+
+    clang::Expr *ArgExpr = elaborateExpr(SyntaxArg);
+    if (!ArgExpr) {
+      SemaRef.Diags.Report(SyntaxArg->getLoc(),
+                           clang::diag::err_failed_to_translate_expr);
+      continue;
+    }
+
+    auto TemplateArg = convertExprToTemplateArg(SemaRef, ArgExpr);
+    if (TemplateArg.isInvalid())
+      // TODO: Figure out if this needs an error message or not.
+      // I assume that the errore message should be delivered prior to this.
+      return true;
+
+    ParsedArgs.emplace_back(TemplateArg);
+
+    // Also building template Argument Info.
+    if (ArgExpr->getType()->isTypeOfTypes()) {
+      clang::TypeSourceInfo *ArgTInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                                  ArgExpr, SyntaxArg->getLoc());
+      if (!ArgTInfo)
+        return true;
+      clang::TemplateArgument Arg(ArgTInfo->getType());
+      ArgInfo.addArgument({Arg, ArgTInfo});
+    } else {
+      clang::TemplateArgument Arg(ArgExpr, clang::TemplateArgument::Expression);
+      ArgInfo.addArgument({Arg, ArgExpr});
+    }
+  }
+  return false;
 }
 
 static clang::Expr *

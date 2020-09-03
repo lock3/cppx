@@ -391,7 +391,15 @@ private:
     NNSK_Global,
     NNSK_Namespace,
     NNSK_NamespaceAlias,
-    NNSK_Record
+    NNSK_Record,
+
+    /// Special context used for when we have a nested name specifier
+    /// with template parameters. Beacuse if we simply re-enter the current
+    /// scope we won't have the template parameters that we created before this
+    /// in scope, instead we will have those originally declared within
+    /// the class, struct, or union and none for those from the nested name
+    /// specifier.
+    // NNSK_RecordTemplate
   };
   struct GlobalNNS {
     gold::Scope *Scope;
@@ -401,13 +409,16 @@ private:
     GlobalNNS Global;
     clang::CppxNamespaceDecl *NNS;
     clang::NamespaceAliasDecl *Alias;
-    clang::CXXRecordDecl *Record;
+    // clang::CXXRecordDecl *Record;
+    Scope *RebuiltClassScope;
   };
 
   NNSKind CurNNSKind = NNSK_Empty;
   // The list of nested-name-specifiers to use for qualified lookup.
   // FIXME: make this a list, instead of a single NNS.
   NNSLookupDecl CurNNSLookupDecl;
+
+  Scope *duplicateScopeForNestedNameContext(Declaration *D);
 public:
 
   void setLookupScope(GlobalNNS GlobalNs) {
@@ -425,10 +436,7 @@ public:
     CurNNSKind = NNSK_NamespaceAlias;
   }
 
-  void setLookupScope(clang::CXXRecordDecl *Record) {
-    CurNNSLookupDecl.Record = Record;
-    CurNNSKind = NNSK_Record;
-  }
+  bool setLookupScope(clang::CXXRecordDecl *Record);
 
   Scope *getLookupScope();
 

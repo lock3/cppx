@@ -883,6 +883,7 @@ Declarator *DeclarationBuilder::handleClassScope(const Syntax *S) {
   RequireAliasTypes = false;
   RequireTypeForFunctions = false;
   RequiresDeclOrError = true;
+  AllowShortCtorAndDtorSyntax = true;
   return makeDeclarator(S);
 }
 
@@ -994,7 +995,7 @@ DeclarationBuilder::buildNestedNameSpec(const CallSyntax *Call, Declarator *Next
     return buildNestedTemplateSpecializationOrName(Call->getArgument(0),
                                                     ConstructedName);
   } else {
-    // if it's not then we have an error.
+    // if it's not a nested name then we have an error.
     if (RequiresDeclOrError)
       SemaRef.Diags.Report(Call->getLoc(),
                             clang::diag::err_invalid_declaration);
@@ -1018,10 +1019,12 @@ DeclarationBuilder::buildNestedName(const Syntax *S, Declarator *Next) {
   if (const auto *SimpleName = dyn_cast<AtomSyntax>(S)) {
     return handleNestedNameSpecifier(SimpleName, Next);
   }
-  if (RequiresDeclOrError)
+  if (RequiresDeclOrError){
+    llvm::outs() << "Inside of buildNestedOrRegularName\n";
     SemaRef.Diags.Report(S->getLoc(),
                          clang::diag::err_invalid_declaration_kind)
                          <<2;
+  }
 
   return nullptr;
 }
@@ -1070,9 +1073,11 @@ DeclarationBuilder::buildNameDeclarator(const Syntax *S, Declarator *Next) {
   } else {
     ErrorIndicator = 1;
   }
-  if (RequiresDeclOrError)
+  if (RequiresDeclOrError) {
+    llvm::outs() << "Inside of buildNameDeclarator\n";
     SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_declaration_kind)
                          << ErrorIndicator;
+  }
   return nullptr;
 }
 
@@ -1190,12 +1195,10 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
 
   const auto *Call = dyn_cast<CallSyntax>(S);
   if (!Call) {
-    if (RequiresDeclOrError) {
-      S->dump();
+    if (RequiresDeclOrError)
       SemaRef.Diags.Report(S->getLoc(),
                            clang::diag::err_invalid_declaration_kind)
                            << 2;
-    }
     return nullptr;
   }
 
@@ -1210,7 +1213,7 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
     // This is to reject t.x as a declaration.
     // This checks if a declaration already exists in a parent scope.
     // For example, we are in a member function and are accessing a member.
-    if(const AtomSyntax *LHS = dyn_cast<AtomSyntax>(Decl)) {
+    if (const AtomSyntax *LHS = dyn_cast<AtomSyntax>(Decl)) {
       clang::DeclarationNameInfo DNI({
           &Context.CxxAST.Idents.get(LHS->getSpelling())
         }, S->getLoc());
@@ -1284,10 +1287,18 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
   case FOK_Brackets:
   case FOK_Parens:{
     // None of these operators can be the root of a declaration.
-    if (RequiresDeclOrError)
+    if (RequiresDeclOrError) {
+      if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
+        if (AllowShortCtorAndDtorSyntax &&
+            (Callee->getSpelling() == "constructor"
+            || Callee->getSpelling() == "destructor")) {
+          return buildTemplateFunctionOrNameDeclarator(Call, nullptr);
+        }
+      }
       SemaRef.Diags.Report(S->getLoc(),
                            clang::diag::err_invalid_declaration_kind)
                            << 2;
+    }
     return nullptr;
   }
   }

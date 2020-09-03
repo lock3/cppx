@@ -228,18 +228,19 @@ void Sema::enterScope(ScopeKind K, const Syntax *S, Declaration *D) {
 }
 
 void Sema::leaveScope(const Syntax *S) {
-  assert(getCurrentScope()->getConcreteTerm() == S);
-  // FIXME: Delete the scope. Note that we don't delete the scope in saveScope.
-  popScope();
-}
-
-Scope *Sema::saveScope(const Syntax *S) {
   if (getCurrentScope()->getConcreteTerm() != S) {
     llvm::outs() << "Actual Expected term = ";
     getCurrentScope()->getConcreteTerm()->dump();
     llvm::outs() << "Given Expected term = ";
     S->dump();
   }
+  assert(getCurrentScope()->getConcreteTerm() == S);
+  // FIXME: Delete the scope. Note that we don't delete the scope in saveScope.
+  popScope();
+}
+
+Scope *Sema::saveScope(const Syntax *S) {
+
   assert(getCurrentScope()->getConcreteTerm() == S);
   // FIXME: Queue the scope for subsequent deletion?
   Scope *Scope = getCurrentScope();
@@ -343,15 +344,7 @@ bool Sema::lookupQualifiedName(clang::LookupResult &R,
     break;
   }
   case NNSK_Record:{
-    // llvm_unreachable("NNSK recored lookup not implemented yet.");
-    // Looking something up using qualified name.
-    Declaration *D = getDeclaration(CurNNSLookupDecl.Record);
-    if (!D) {
-      // FIXME: this needs a valid error message at some point.
-      llvm_unreachable("Invlalid nested name qualifier.");
-    }
-    LookupScope = D->SavedScope;
-    assert(LookupScope && "Invalid scope unable to handle class lookup?");
+    LookupScope = CurNNSLookupDecl.RebuiltClassScope;
   }
   break;
   }
@@ -1131,6 +1124,32 @@ clang::CppxNamespaceDecl *Sema::getNSDeclFromExpr(const clang::Expr *DeclExpr,
   return nullptr;
 }
 
+Scope *Sema::duplicateScopeForNestedNameContext(Declaration *D) {
+  assert(D && "invalid declaration");
+  assert(D->Cxx && "Declaration hasn't been elaborated yet");
+  assert(D->SavedScope && "Declaration has no scope to duplicate");
+  // Entering a new scope that we can use for lookup.
+  enterScope(D->SavedScope->getKind(), D->SavedScope->getConcreteTerm());
+  Scope *NextScope = getCurrentScope();
+  for (const auto &DeclPair : D->SavedScope->DeclMap) {
+    NextScope->addDecl(DeclPair.second);
+  }
+  // Copying the current entity into the new scope.
+  NextScope->Entity = D->SavedScope->Entity;
+  return NextScope;
+}
+
+bool Sema::setLookupScope(clang::CXXRecordDecl *Record) {
+  assert(Record && "Invalid lookup context");
+  Declaration *D = getDeclaration(Record);
+  if (!D) {
+    return true;
+  }
+  CurNNSLookupDecl.RebuiltClassScope = duplicateScopeForNestedNameContext(D);
+  CurNNSKind = NNSK_Record;
+  return false;
+}
+
 Scope *Sema::getLookupScope() {
   switch(CurNNSKind) {
     case NNSK_Empty:
@@ -1145,17 +1164,12 @@ Scope *Sema::getLookupScope() {
         return NNS->getScopeRep();
       } else {
         // FIXME: The namespace alias doesn't contain a CppxNamespaceDecl
-        llvm_unreachable("INvalid namespace alias");
+        llvm_unreachable("Invalid namespace alias");
       }
       return nullptr;
     }
     case NNSK_Record:{
-      Declaration *D = getDeclaration(CurNNSLookupDecl.Record);
-      if (!D) {
-        // FIXME: this needs a valid error message at some point.
-        llvm_unreachable("Invlalid nested name qualifier.");
-      }
-      return D->SavedScope;
+      return CurNNSLookupDecl.RebuiltClassScope;
     }
     default:
       llvm_unreachable("Invalid or unknown nested name specifier type");

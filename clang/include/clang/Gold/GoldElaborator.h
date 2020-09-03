@@ -115,7 +115,7 @@ public:
 
   // Typing elaboration (2nd pass)
   clang::Decl *elaborateDecl(Declaration *D);
-  bool elaborateNestedNameForDecl(Declaration *D, clang::CXXScopeSpec &SS);
+  bool elaborateNestedNameForDecl(Declaration *D);
   clang::Decl *elaborateDeclContent(Declaration *D);
   clang::Decl *elaborateDeclInContext(Declaration *D);
 

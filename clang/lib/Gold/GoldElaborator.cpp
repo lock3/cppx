@@ -452,7 +452,7 @@ handleClassSpecialization(SyntaxContext &Context,
                           Sema &SemaRef, Declaration *D,
                           clang::TypeSpecifierType TST,
                           clang::MultiTemplateParamsArg &MTP) {
-  SpecializationDeclarator *SD = D->SpecializationArgs->getAsSpecialization();
+  SpecializationDeclarator *SD = D->SpecializationArgs;
   assert(SD->ElaboratedArgs && "failed to elaborate specialization");
 
   clang::Sema &CxxSema = SemaRef.getCxxSema();
@@ -627,6 +627,9 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
     Tag = cast<CXXRecordDecl>(Declaration);
   } else if (isa<ClassTemplateDecl>(Declaration)) {
     ClassTemplateDecl *TempTemplateDecl = cast<ClassTemplateDecl>(Declaration);
+    // First we need to save the declaration for later because we need to be able
+    // specifically locate the declaration at a later time
+    SemaRef.setDeclForDeclaration(D, TempTemplateDecl);
     Tag = cast<CXXRecordDecl>(TempTemplateDecl->getTemplatedDecl());
   } else if (isa<EnumDecl>(Declaration)) {
     Tag = cast<TagDecl>(Declaration);
@@ -747,39 +750,6 @@ processCXXForwardRecordDecl(Elaborator& Elab, SyntaxContext& Context,
   default:
     llvm_unreachable("Incorrectly identified tag type");
   }
-  // if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(D->Init)) {
-  //   if (Name->hasToken(tok::ClassKeyword)) {
-  //     TST = clang::DeclSpec::TST_struct;
-  //   } else if (Name->hasToken(tok::UnionKeyword)) {
-  //     TST = clang::DeclSpec::TST_union;
-  //   } else if (Name->hasToken(tok::EnumKeyword)) {
-  //     
-  //     TST = clang::DeclSpec::TST_enum;
-  //     ScopeEnumUsesClassTag = true;
-  //     ScopedEnumClassKW = Name->getLoc();
-  //   } else {
-  //     llvm_unreachable("Incorrectly identified tag type");
-  //   }
-  // } else if (const CallSyntax *EnumCall = dyn_cast<CallSyntax>(D->Init)) {
-  //   if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(EnumCall->getCallee())) {
-  //     if (Name->hasToken(tok::EnumKeyword)) {
-  //       TST = clang::DeclSpec::TST_enum;
-  //       ScopeEnumUsesClassTag = true;
-  //       UnderlyingType = getUnderlyingEnumType(Context, SemaRef, EnumCall);
-  //       ScopedEnumClassKW = Name->getLoc();
-  //     } else {
-  //       SemaRef.Diags.Report(EnumCall->getLoc(),
-  //                           clang::diag::err_invalid_declaration);
-  //       return nullptr;
-  //     }
-  //   } else {
-  //     SemaRef.Diags.Report(EnumCall->getLoc(),
-  //                         clang::diag::err_invalid_declaration);
-  //     return nullptr;
-  //   }
-  // } else {
-  //   llvm_unreachable("Incorrectly identified tag type");
-  // }
 
   Decl *Declaration = SemaRef.getCxxSema().ActOnTag(SemaRef.getCurClangScope(),
       TST, /*Metafunction=*/nullptr,
@@ -796,6 +766,9 @@ processCXXForwardRecordDecl(Elaborator& Elab, SyntaxContext& Context,
     ClsDecl = cast<CXXRecordDecl>(Declaration);
   } else if (isa<ClassTemplateDecl>(Declaration)) {
     ClassTemplateDecl *TempTemplateDecl = cast<ClassTemplateDecl>(Declaration);
+    // First we need to save the declaration for later because we need to be able
+    // to locate this later.
+    SemaRef.setDeclForDeclaration(D, TempTemplateDecl);
     ClsDecl = cast<CXXRecordDecl>(TempTemplateDecl->getTemplatedDecl());
   }
   SemaRef.setDeclForDeclaration(D, ClsDecl);
@@ -935,7 +908,7 @@ buildNNSTemplateParam(Sema &SemaRef, Declaration *D,
   // We may need to exit the clang scope? instead of saving it for later.
   SemaRef.enterClangScope(clang::Scope::TemplateParamScope);
   SemaRef.enterScope(SK_Template, TemplateDcl->getSyntax());
-
+  TemplateDcl->setScope(SemaRef.getCurrentScope());
   // Constructing actual parameters.
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
   if (!TemplateDcl->isImplicitlyEmpty())
@@ -970,8 +943,41 @@ static bool elaborateSpecializationArgs(Sema &SemaRef,
   return SD->getDidError();
 }
 
+// used to generate list syntax for our elemenb.
+static Syntax **createArray(const SyntaxContext &Ctx,
+                            const llvm::SmallVectorImpl<Syntax *> &Vec) {
+  Syntax **Array = new (Ctx) Syntax *[Vec.size()];
+  std::copy(Vec.begin(), Vec.end(), Array);
+  return Array;
+}
+
+// Creating a fake token operator.
+static AtomSyntax *RebuildAtom(const SyntaxContext &Ctx,
+                               const AtomSyntax *Name) {
+  return new (Ctx) AtomSyntax(Name->getToken());
+}
+
+static const ListSyntax *buildImplicitTemplateElemSyntax(Sema &SemaRef,
+                                                     NNSDeclaratorInfo &DInfo) {
+  assert(DInfo.Template && "Missing template arguments");
+  SyntaxContext &Ctx = SemaRef.getContext();
+  llvm::SmallVector<Syntax *, 16> Args;
+  gold::Scope *TmpltScope = DInfo.Template->getScope();
+  for (const Syntax *ParamToArg : DInfo.Template->getParams()->children()) {
+    Declaration *D = TmpltScope->findDecl(ParamToArg);
+    if (!D) {
+      // FIXME: In the event we have a failed template parameter declaration
+      // then we need to emit the proper error message and return a nullptr,
+      llvm_unreachable("Fix invalid template parameter declaration.");
+    }
+    // Reusing the existing name in order to recreate implicit arguments.
+    Args.emplace_back(RebuildAtom(Ctx, D->IdDcl->getIdentifier()));
+  }
+  return new (Ctx) ListSyntax(createArray(Ctx, Args), Args.size());
+}
+
 static bool handleNestedName(Sema &SemaRef, Declaration *D,
-                             const NNSDeclaratorInfo& DInfo) {
+                             NNSDeclaratorInfo &DInfo) {
 
   ExprElaborator ExprElab(SemaRef.getContext(), SemaRef);
   clang::Expr *NestedName = nullptr;
@@ -993,25 +999,28 @@ static bool handleNestedName(Sema &SemaRef, Declaration *D,
       return true;
   }
 
-  // Make sure to use the the following for template specializations.
-  // TODO: Sema::NewNameSpecifierRAII NestedNameStack(SemaRef);
-
   // Suspend the current qualified lookup because some of the template parameters
   // may have a references to things that are within a different namespace.
   bool EnteringContext = SemaRef.isQualifiedLookupContext();
   clang::QualType ResultTy = NestedName->getType();
   if (ResultTy->isTypeOfTypes()) {
+    if (DInfo.Template || DInfo.SpecializationArgs) {
+      SemaRef.Diags.Report(DInfo.Name->getLoc(), clang::diag::err_no_template)
+                          << DInfo.Name->getNestedName()->getSpelling();
+      return true;
+    }
     clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(NestedName,
                                                           DInfo.Name->getLoc());
     if (!TInfo)
       return true;
 
+    // This always resolved to the correct record, it cannot be an alias.
     clang::CXXRecordDecl *RD = TInfo->getType()->getAsCXXRecordDecl();
     if (!RD) {
-      // FIXME: This needs an error message of some kind.
-      // If this isn't a tag then we emit the following error.
-      // err_invalid_decl_spec_combination
-      llvm_unreachable("Derp!");
+      SemaRef.Diags.Report(DInfo.Name->getLoc(),
+                           clang::diag::err_invalid_decl_spec_combination)
+                          << DInfo.Name->getNestedName()->getSpelling();
+      return true;
     }
 
     clang::Sema::NestedNameSpecInfo IdInfo(RD->getIdentifier(),
@@ -1028,11 +1037,17 @@ static bool handleNestedName(Sema &SemaRef, Declaration *D,
       return true;
     // Moving to a new declaration context to continue.
     SemaRef.setLookupScope(RD);
+    DInfo.Name->setScope(SemaRef.getCurrentScope());
+
     return false;
   } else if (ResultTy->isCppxNamespaceType()) {
+    if (DInfo.Template || DInfo.SpecializationArgs) {
+      SemaRef.Diags.Report(DInfo.Name->getLoc(), clang::diag::err_no_template)
+                          << DInfo.Name->getNestedName()->getSpelling();
+      return true;
+    }
     clang::Decl *TempNs = SemaRef.getDeclFromExpr(NestedName,
                                                   DInfo.Name->getLoc());
-
     clang::CppxNamespaceDecl *NS;
     // Setting the namespace alias for lookup.
     if (auto *CppxNs = dyn_cast<clang::CppxNamespaceDecl>(TempNs)) {
@@ -1059,42 +1074,87 @@ static bool handleNestedName(Sema &SemaRef, Declaration *D,
                                   /*IsCorrected=*/nullptr,
                                   /*OnlyNamespace=*/false))
       return true;
+
     return false;
   } else if (ResultTy->isTemplateType()) {
-    llvm_unreachable("template name not implemented.");
-    // we need to call setLookupScope in the event that we get a type.
-    // we will need to evaluate the template to make sure that we
-    // find the correct thing inside of the template.
-    // This means we are referencing a templated type.
-    // We may be required to handle specialization lookup also.
-    // bool ActOnCXXNestedNameSpecifier(Scope *S,
-    //                                  CXXScopeSpec &SS,
-    //                                  SourceLocation TemplateKWLoc,
-    //                                  TemplateTy TemplateName,
-    //                                  SourceLocation TemplateNameLoc,
-    //                                  SourceLocation LAngleLoc,
-    //                                  ASTTemplateArgsPtr TemplateArgs,
-    //                                  SourceLocation RAngleLoc,
-    //                                  SourceLocation CCLoc,
-    //                                  bool EnteringContext)
-  } else {
-    // FIXME: Create a new error message for this situation.
-    // This implies we have an invalid nested name specifier.
-    return true;
+    // llvm_unreachable("template name not implemented.");
+    clang::Decl *TmpltDecl = SemaRef.getDeclFromExpr(NestedName,
+                                                  DInfo.Name->getLoc());
+    clang::TemplateDecl *TemplateDeclaration
+                                     = dyn_cast<clang::TemplateDecl>(TmpltDecl);
+    clang::TemplateName TmpltName(TemplateDeclaration);
+    clang::Sema::TemplateTy TmpltTy = clang::Sema::TemplateTy::make(TmpltName);
+
+    const ListSyntax *ArgsList = nullptr;
+
+    // This is for when we have a specialization for our template parameters
+    // we don't handle this yet.
+    if (DInfo.SpecializationArgs) {
+      ArgsList = DInfo.SpecializationArgs->getArgs();
+    } else {
+      // This is the special case where the template parameter are directly
+      // translated into template arguments implicitly.
+      // DInfo.Template->getTemplateParameterList();
+      ArgsList = buildImplicitTemplateElemSyntax(SemaRef, DInfo);
+    }
+    clang::TemplateArgumentListInfo ArgInfo;
+    llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArgs;
+    if (!ArgsList) {
+      // FIXME: this needs an error message.
+      llvm_unreachable("Unable to create specialization for NNS.");
+    }
+
+    clang::ASTTemplateArgsPtr TemplateArgs;
+    {
+      // We need to temporarily ditch lookup stack so we don't
+      // include things that are not in scope.
+      Sema::NewNameSpecifierRAII NestedNameStack(SemaRef);
+      ExprElaborator ExprElab(SemaRef.getContext(), SemaRef);
+      if (ExprElab.elaborateTemplateArugments(ArgsList, ArgInfo, ParsedArgs)) {
+        llvm_unreachable("This needs an error message.");
+        // return true;
+      }
+      TemplateArgs = ParsedArgs;
+    }
+
+    // Filling template argument.
+    if (SemaRef.getCxxSema().ActOnCXXNestedNameSpecifier(
+                                                     SemaRef.getCurClangScope(),
+                                                         SemaRef.CurNNSContext,
+                                          /*TemplateKWLoc*/DInfo.Name->getLoc(),
+                                                         TmpltTy,
+                                        /*TemplateNameLoc*/DInfo.Name->getLoc(),
+                                          /*LAngleLoc*/DInfo.Template->getLoc(),
+                                                         TemplateArgs,
+                                          /*RAngleLoc*/DInfo.Template->getLoc(),
+                                              /*CCLoc*/DInfo.Template->getLoc(),
+                                                         EnteringContext)) {
+      return true;
+    }
+    // Computing the current context based on the current scope spec.
+    clang::DeclContext *NewDC = SemaRef.getCxxSema().computeDeclContext(
+                                                   SemaRef.CurNNSContext, true);
+
+    // FIXME: It may be possible for this to be a type alias, or a template
+    // aliase in which case we may need to change things slightly to check
+    // for that
+    if (auto *RD = dyn_cast<clang::CXXRecordDecl>(NewDC)) {
+      SemaRef.setLookupScope(RD);
+      DInfo.Name->setScope(SemaRef.getCurrentScope());
+
+    } else {
+      // FIXME: This needs a valid error message.
+      llvm_unreachable("Invalid kind of template.");
+    }
+    return false;
   }
 
-  // check to see if it's namespace, or type
-  // and if it's neither of those things then it's an error?
-
-
-
-  // elaborateExpr
-  // this implies that there was an error here.
+  // FIXME: Create a new error message for this situation. This implies we,
+  // have an invalid nested name specifier
   return true;
 }
 
-bool Elaborator::elaborateNestedNameForDecl(Declaration *D,
-                                            clang::CXXScopeSpec &SS) {
+bool Elaborator::elaborateNestedNameForDecl(Declaration *D) {
   Sema::OptionalInitScope<Sema::QualifiedLookupRAII> GlobalNNS(SemaRef);
   if (D->GlobalNsSpecifier) {
     if (SemaRef.getCxxSema().ActOnCXXGlobalScopeSpecifier(
@@ -1112,14 +1172,28 @@ bool Elaborator::elaborateNestedNameForDecl(Declaration *D,
   }
 
   // For each nested name specifier
-  for(const auto &NNS : D->NNSInfo) {
-    if (handleNestedName(SemaRef, D, NNS)) {
-      llvm_unreachable("Failed to created nested name specifier?");
-    }
-  }
-  // Copying the constructed SS into it's correct location.
-  SS = SemaRef.CurNNSContext;
+  for(auto &NNS : D->NNSInfo)
+    if (handleNestedName(SemaRef, D, NNS))
+      return true;
+
+  // Copying the constructed scope into it's correct location.
+  D->ScopeSpec = SemaRef.CurNNSContext;
   return false;
+}
+
+static void exitToCorrectScope(Sema &SemaRef, gold::Scope *ExpectedScope,
+                               Declaration *D) {
+  // We need to exit any previous template scopes we entered as part of the nested
+  // name specifier. Make sure to leave in revese order otherwise we won't have
+  // a valid terms during exit.
+  for (auto RIter = D->NNSInfo.rbegin(); RIter != D->NNSInfo.rend(); ++RIter) {
+    if (RIter->Name->getScope())
+      SemaRef.leaveScope(RIter->Name->getScope()->getConcreteTerm());
+
+    if (RIter->Template && RIter->Template->getScope())
+      SemaRef.leaveScope(RIter->Template->getScope()->getConcreteTerm());
+  }
+  assert(ExpectedScope == SemaRef.getCurrentScope() && "Scope imbalance.");
 }
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
@@ -1132,68 +1206,71 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
 
   Scope *Sc = SemaRef.getCurrentScope();
 
-  // Resume the current scope because that will allow us to modify the current
-  // scope during processing and restore when we pop this off the scope
-  // stack.
-  Sema::ResumeScopeRAII ScopeTracking(SemaRef, Sc, Sc->getConcreteTerm());
   // This clears any previous lookups and restores them once we reach the end.
   // This might be useful for elaborating parameters with default values that
   // are being assigned as a default value.
   Sema::NewNameSpecifierRAII NestedNameStack(SemaRef);
   if (!D->NNSInfo.empty() || D->GlobalNsSpecifier)
-    if (elaborateNestedNameForDecl(D, D->ScopeSpec)) {
+    if (elaborateNestedNameForDecl(D)) {
+      exitToCorrectScope(SemaRef, Sc, D);
       return nullptr;
     }
 
-  Sema::OptionalScopeRAII TemplateParamScope(SemaRef);
-  Sema::OptioanlClangScopeRAII ClangTemplateScope(SemaRef);
+  // In order to maintain correct entry and exit order we have to exit any
+  // other scopes before we attempt to leave the template scopes constructed
+  // as part of the nested name specifier. So they are destructed before we
+  // actually leave their parent scopes.
+  clang::Decl *Ret = nullptr;
+  {
+    Sema::OptionalScopeRAII TemplateParamScope(SemaRef);
+    Sema::OptioanlClangScopeRAII ClangTemplateScope(SemaRef);
 
-  // Checking to see if we are need to enter a name scope for a template
-  if (D->Template)
-    handleTemplateParameters(SemaRef, TemplateParamScope, ClangTemplateScope,
-                             D, D->Template);
-  if (D->SpecializationArgs)
-    elaborateSpecializationArgs(SemaRef, D);
+    // Checking to see if we are need to enter a name scope for a template
+    if (D->Template)
+      handleTemplateParameters(SemaRef, TemplateParamScope, ClangTemplateScope,
+                              D, D->Template);
+    if (D->SpecializationArgs)
+      elaborateSpecializationArgs(SemaRef, D);
 
-  // Special clang scope re-entry.
-  Sema::OptioanlClangScopeRAII ClangReDeclScope(SemaRef);
-  Sema::OptionalResumeScopeRAII OriginalDeclScope(SemaRef);
-  if (D->ScopeSpec.isSet()) {
-    if (!D->declaresTagDef()) {
-
-      if (SemaRef.getCxxSema().ShouldEnterDeclaratorScope(
-                                      SemaRef.getCurClangScope(), D->ScopeSpec)) {
-        ClangReDeclScope.Init(0, D->IdDcl->getLoc());
-        if (SemaRef.getCxxSema().ActOnCXXEnterDeclaratorScope(
-                                      SemaRef.getCurClangScope(), D->ScopeSpec)) {
-          return nullptr;
-        } else {
-          Scope *DeclScope = SemaRef.getLookupScope();
-          if (!DeclScope)
-            llvm_unreachable("We have an invalid scope to resume!");
-          OriginalDeclScope.Init(DeclScope, DeclScope->getConcreteTerm());
+    // Special clang scope re-entry.
+    Sema::OptioanlClangScopeRAII ClangReDeclScope(SemaRef);
+    Sema::OptionalResumeScopeRAII OriginalDeclScope(SemaRef);
+    if (D->ScopeSpec.isSet()) {
+      if (!D->declaresTagDef()) {
+        if (SemaRef.getCxxSema().ShouldEnterDeclaratorScope(
+                                    SemaRef.getCurClangScope(), D->ScopeSpec)) {
+          ClangReDeclScope.Init(0, D->IdDcl->getLoc());
+          if (SemaRef.getCxxSema().ActOnCXXEnterDeclaratorScope(
+                                    SemaRef.getCurClangScope(), D->ScopeSpec)) {
+            return nullptr;
+          }
         }
       }
+      // Attempting re-enter a previously computed scope.
+      Scope *DeclScope = SemaRef.getLookupScope();
+      if (DeclScope)
+        OriginalDeclScope.Init(DeclScope, DeclScope->getConcreteTerm());
+
+      else
+        // FIXME: this may need to be an internal compiler error.
+        llvm_unreachable("We have an invalid scope to resume!");
     }
+
+    Ret = elaborateDeclContent(D);
+
+    // Checking the error from the specializaton and marking the decl as invalid.
+    if (D->SpecializationArgs) {
+      if (D->SpecializationArgs->getAsSpecialization()->getDidError()) {
+        Ret->setInvalidDecl();
+      }
+    }
+    if (D->ScopeSpec.isSet() && !D->declaresTagDef())
+      SemaRef.getCxxSema().ActOnCXXExitDeclaratorScope(SemaRef.getCurClangScope(),
+                                                      D->ScopeSpec);
   }
 
-
-
-  clang::Decl *Ret = elaborateDeclContent(D);
-
-  // Checking the error from the specializaton and marking the decl as invalid.
-  if (D->SpecializationArgs) {
-    if (D->SpecializationArgs->getAsSpecialization()->getDidError()) {
-      Ret->setInvalidDecl();
-    }
-  }
-  if (D->ScopeSpec.isSet() && !D->declaresTagDef())
-    SemaRef.getCxxSema().ActOnCXXExitDeclaratorScope(SemaRef.getCurClangScope(),
-                                                     D->ScopeSpec);
+  exitToCorrectScope(SemaRef, Sc, D);
   return Ret;
-  // TODO: We should be able to elaborate definitions at this point too.
-  // We've already loaded salient identifier tables, so it shouldn't any
-  // forward references should be resolvable.
 }
 
 clang::Decl *Elaborator::elaborateDeclContent(Declaration *D) {

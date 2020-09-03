@@ -104,9 +104,6 @@ public:
   using DeclMapType = llvm::DenseMap<const Syntax *, Declaration *>;
   DeclMapType DeclMap;
 
-  using TypeDecls = llvm::DenseMap<llvm::StringRef, clang::QualType>;
-  TypeDecls Types;
-
   IdMapType<const clang::IdentifierInfo *, Declaration *> IdMap;
 
   // FIXME: Is there any purpose for this at all?
