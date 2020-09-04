@@ -11251,7 +11251,7 @@ def err_operator_too_many_parameters : Error<
   "overload %0 must can must have %1 parameter">;
 
 def err_identifier_not_declared_in_scope : Error<
-  "identifier %0, not declared in scope">;
+  "identifier %0 not declared in scope">;
 
 def err_invalid_identifier_type : Error<
   "invalid indentifier %0">;
