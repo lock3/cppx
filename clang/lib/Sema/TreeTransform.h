@@ -2580,6 +2580,10 @@ public:
                                               TemplateArgs);
   }
 
+  ExprResult RebuildCppxDeclRefExpr(Decl *D, QualType Ty, SourceLocation Loc) {
+    return CppxDeclRefExpr::Create(getSema().getASTContext(), Ty, D, Loc);
+  }
+
   /// Build a new expression in parentheses.
   ///
   /// By default, performs semantic analysis to build the new expression.
@@ -6646,11 +6650,27 @@ QualType TreeTransform<Derived>::TransformCppxNamespaceType(
 
 template<typename Derived>
 ExprResult TreeTransform<Derived>::TransformCppxDeclRefExpr(
-    clang::CppxDeclRefExpr* expr) {
-  // QualType T = TL.getType();
-  // TLB.pushTypeSpec(T).setNameLoc(TL.getNameLoc());
-  // return T;
-  llvm_unreachable("TransformCppxDeclRefExpr Not implemented.");
+    clang::CppxDeclRefExpr *E) {
+  if (E->getType()->isNamespaceType())
+    return E;
+
+  Decl *D =
+    getDerived().TransformDecl(E->getLocation(), E->getValue());
+  if (!D)
+    return ExprError();
+
+  QualType Ty = getDerived().TransformType(E->getType());
+  if (Ty.isNull())
+    return ExprError();
+
+  SemaRef.MarkAnyDeclReferenced(E->getExprLoc(), D, false);
+  if (!getDerived().AlwaysRebuild() &&
+      D == E->getValue() &&
+      Ty == E->getType()) {
+    return E;
+  }
+
+  return getDerived().RebuildCppxDeclRefExpr(D, Ty, E->getExprLoc());
 }
 
 template<typename Derived>

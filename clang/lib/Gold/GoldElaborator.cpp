@@ -1673,7 +1673,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   }
 
 
-  // If this describes a principal template declaration, create it.
+  // If this describes a primary template declaration, create it.
   if (Template && !Specialization) {
     clang::SourceLocation Loc = TPD->getLoc();
     auto *FTD = clang::FunctionTemplateDecl::Create(Context.CxxAST,
@@ -1686,6 +1686,24 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     Owner->addDecl(FTD);
     if (InClass)
       FTD->setAccess(clang::AS_public);
+
+    // An auto return type here is always dependent.
+    if (FD->getReturnType()->isUndeducedAutoType()) {
+      clang::QualType OldTy = FD->getType();
+      const clang::FunctionProtoType *FPT =
+        OldTy->getAs<clang::FunctionProtoType>();
+      clang::ASTContext &CxxAST = Context.CxxAST;
+      clang::QualType NewRet =
+        SemaRef.getCxxSema().SubstAutoType(FD->getReturnType(),
+                                           CxxAST.DependentTy);
+      clang::QualType NewTy =
+        CxxAST.getFunctionType(NewRet, FPT->getParamTypes(),
+                               FPT->getExtProtoInfo());
+      if (OldTy.hasQualifiers())
+        NewTy = clang::QualType(NewTy.getTypePtr(),
+                                OldTy.getQualifiers().getAsOpaqueValue());
+      FD->setType(NewTy);
+    }
   }
 
   CxxSema.getImplicitCodeSegOrSectionAttrForFunction(FD, D->Init);
@@ -2487,38 +2505,14 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   return VD;
 }
 
-clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
-  if (!D->Init) {
-    SemaRef.Diags.Report(D->Op->getLoc(), clang::diag::err_expected_type);
-    return nullptr;
-  }
-
-  // Elaborating RHS
-  ExprElaborator Elab(Context, SemaRef);
-  clang::Expr *InitTyExpr = Elab.elaborateExpr(D->Init);
-  // TODO: Create an error message and verify that the result type of the expression
-  // is cppx kind type.
-
-  // We are doing complete evaluation at this point because all types need to be made
-  // available by phase 3.
-  // if (clang::NamespaceDecl *NsD = InitExpr.dyn_cast<clang::NamespaceDecl *>()) {
-  //   SemaRef.Diags.Report(D->Decl->getLoc(), clang::diag::err_unknown_typename)
-  //         << NsD->getName();
-  //   return nullptr;
-  // }
-  // if (!InitExpr.is<clang::Expr *>()) {
-  //   // FIXME: This needs an error message indicating that we have a nemespace
-  //   // instead of a type or a value instead of a type? something like that.
-  //   // However this could be easilly repaired in the event that the resulting
-  //   // expression had a derived namespace type of some kind.
-  //   llvm_unreachable("Received part of an expression that isn't an alias.");
-  // }
+static clang::Decl *buildTypeAlias(Elaborator &E, Sema &SemaRef,
+                                   Declaration *D, clang::Expr *TyExpr) {
   clang::ParsedType PT;
-  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InitTyExpr,
-                                                             D->Init->getLoc());
-  if (!TInfo) {
+  clang::TypeSourceInfo *TInfo =
+    SemaRef.getTypeSourceInfoFromExpr(TyExpr, D->Init->getLoc());
+  if (!TInfo)
     return nullptr;
-  }
+
   PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
   D->CurrentPhase = Phase::Initialization;
 
@@ -2528,16 +2522,69 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::MultiTemplateParamsArg MTP;
 
-  // Constructing the type alias on the way out because I need to correctly
-  // construct it's internal type, before continuing oward.
+  // Constructing the type alias on the way out because we need to correctly
+  // construct its internal type before continuing.
   clang::TypeResult TR(PT);
   clang::Decl *TypeAlias = SemaRef.getCxxSema().ActOnAliasDeclaration(
       SemaRef.getCurClangScope(), clang::AS_public, MTP, Loc, Id,
       clang::ParsedAttributesView(), TR, nullptr);
 
   SemaRef.setDeclForDeclaration(D, TypeAlias);
-  elaborateAttributes(D);
+  E.elaborateAttributes(D);
   return TypeAlias;
+}
+
+clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
+  if (!D->Init) {
+    SemaRef.Diags.Report(D->Op->getLoc(), clang::diag::err_expected_type);
+    return nullptr;
+  }
+
+  // Elaborating RHS
+  ExprElaborator Elab(Context, SemaRef);
+  clang::Expr *InitTyExpr = Elab.elaborateExpr(D->Init);
+  if (!InitTyExpr->getType()->isTypeOfTypes()) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "initializer of type alias is not a type");
+    SemaRef.Diags.Report(D->Init->getLoc(), DiagID);
+    return nullptr;
+  }
+
+  return buildTypeAlias(*this, SemaRef, D, InitTyExpr);
+}
+
+static clang::NamespaceAliasDecl *buildNsAlias(clang::ASTContext &CxxAST,
+                                               Sema &SemaRef, Declaration *D,
+                                               clang::Expr *NsExpr) {
+  clang::Decl *PossibleNs = SemaRef.getDeclFromExpr(NsExpr, D->Init->getLoc());
+  if (!PossibleNs)
+    return nullptr;
+  assert(isa<clang::NamedDecl>(PossibleNs) && "invalid namespace");
+
+  clang::NamedDecl *Ns
+    = cast<clang::NamedDecl>(PossibleNs)->getUnderlyingDecl();
+
+  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  clang::SourceLocation TypeDeclLoc = D->TypeDcl ?
+    D->TypeDcl->getLoc() : clang::SourceLocation();
+  clang::NamespaceAliasDecl *NsAD
+    = clang::NamespaceAliasDecl::Create(CxxAST, Owner,
+                                        TypeDeclLoc,
+                                        D->Decl->getLoc(),
+                                        D->getId(),
+                                        clang::NestedNameSpecifierLoc(),
+                                        D->Init->getLoc(),
+                                        Ns);
+  Owner->addDecl(NsAD);
+  SemaRef.setDeclForDeclaration(D, NsAD);
+
+  // Nested name specifiers are looked up by clang, so we need to convince
+  // the clang lookup that this namespace actually exists.
+  SemaRef.getCurClangScope()->AddDecl(NsAD);
+  SemaRef.getCxxSema().IdResolver->AddDecl(NsAD);
+  D->CurrentPhase = Phase::Initialization;
+  return NsAD;
 }
 
 clang::Decl *Elaborator::elaborateNsAlias(Declaration *D) {
@@ -2559,32 +2606,7 @@ clang::Decl *Elaborator::elaborateNsAlias(Declaration *D) {
     return nullptr;
   }
 
-  clang::Decl *PossibleNs = SemaRef.getDeclFromExpr(NsExpr, D->Init->getLoc());
-  if (!PossibleNs)
-    return nullptr;
-  assert(isa<clang::NamedDecl>(PossibleNs) && "invalid namespace");
-
-  clang::NamedDecl *Ns
-    = cast<clang::NamedDecl>(PossibleNs)->getUnderlyingDecl();
-
-  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
-  clang::NamespaceAliasDecl *NsAD
-    = clang::NamespaceAliasDecl::Create(Context.CxxAST, Owner,
-                                        D->TypeDcl->getLoc(),
-                                        D->Decl->getLoc(),
-                                        D->getId(),
-                                        clang::NestedNameSpecifierLoc(),
-                                        D->Init->getLoc(),
-                                        Ns);
-  Owner->addDecl(NsAD);
-  SemaRef.setDeclForDeclaration(D, NsAD);
-
-  // Nested name specifiers are looked up by clang, so we need to convince
-  // the clang lookup that this namespace actually exists.
-  SemaRef.getCurClangScope()->AddDecl(NsAD);
-  SemaRef.getCxxSema().IdResolver->AddDecl(NsAD);
-  D->CurrentPhase = Phase::Initialization;
-  return D->Cxx;
+  return buildNsAlias(Context.CxxAST, SemaRef, D, NsExpr);
 }
 
 clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D) {
@@ -2961,97 +2983,112 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
   D->CurrentPhase = Phase::Initialization;
   if (!D->Cxx)
     return;
-    
+
   Sema::OptionalInitScope<Sema::ResumeScopeRAII> OptResumeScope(SemaRef);
   clang::Expr *InitExpr = nullptr;
   clang::VarDecl *VD = nullptr;
-  {
-    Sema::DeclInitializationScope ClangInitScope(SemaRef, D);
-    bool NeedsConstEvaluation = false;
-    if (D->defines<clang::VarTemplateDecl>()) {
-      if (SemaRef.checkForRedefinition<clang::VarTemplateDecl>(D))
-        return;
-
-      // We need to attempt to re-enter the template context for this variable.
-      OptResumeScope.Init(D->SavedScope, D->Op);
-      clang::VarTemplateDecl *VTD = cast<clang::VarTemplateDecl>(D->Cxx);
-      VD = VTD->getTemplatedDecl();
-    } else {
-      if (SemaRef.checkForRedefinition<clang::VarDecl>(D))
-        return;
-      VD = cast<clang::VarDecl>(D->Cxx);
-    }
-    if (VD->isConstexpr()) {
-      NeedsConstEvaluation = true;
-    }
-    if (!D->Init) {
-      if (isa<clang::ParmVarDecl>(VD))
-        return;
-      // FIXME: We probably want to synthesize some kind of initializer here.
-      // Not quite sure how we want to do this.
-      //
-      // FIXME: What if D has type auto? Surely this is an error. For example:
-      //
-      //    x : auto
-      //
-      // declares an undeduced-type variable with no initializer. Presumably
-      // this should be an error.
-
-      // This handles implcit initialization/constructor calls for variables
-      // that don't have a = sign on first use, but have a type.
-      // That includes complex types.
-      SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
-      SemaRef.getCxxSema().FinalizeDeclaration(VD);
+  Sema::DeclInitializationScope ClangInitScope(SemaRef, D);
+  bool NeedsConstEvaluation = false;
+  if (D->defines<clang::VarTemplateDecl>()) {
+    if (SemaRef.checkForRedefinition<clang::VarTemplateDecl>(D))
       return;
-    }
 
-    // If we are inside of a variable template we need to re-enter the scope
-    // for the variable.
+    // We need to attempt to re-enter the template context for this variable.
+    OptResumeScope.Init(D->SavedScope, D->Op);
+    clang::VarTemplateDecl *VTD = cast<clang::VarTemplateDecl>(D->Cxx);
+    VD = VTD->getTemplatedDecl();
+  } else {
+    if (SemaRef.checkForRedefinition<clang::VarDecl>(D))
+      return;
+    VD = cast<clang::VarDecl>(D->Cxx);
+  }
+  if (VD->isConstexpr()) {
+    NeedsConstEvaluation = true;
+  }
+  if (!D->Init) {
+    if (isa<clang::ParmVarDecl>(VD))
+      return;
+    // FIXME: We probably want to synthesize some kind of initializer here.
+    // Not quite sure how we want to do this.
+    //
+    // FIXME: What if D has type auto? Surely this is an error. For example:
+    //
+    //    x : auto
+    //
+    // declares an undeduced-type variable with no initializer. Presumably
+    // this should be an error.
 
-    ExprElaborator ExprElab(Context, SemaRef);
-    if (D->declaresInlineInitializedStaticVarDecl() && !NeedsConstEvaluation) {
-      Sema::ExprEvalRAII EvalScope(SemaRef,
-        clang::Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
+    // This handles implcit initialization/constructor calls for variables
+    // that don't have a = sign on first use, but have a type.
+    // That includes complex types.
+    SemaRef.getCxxSema().ActOnUninitializedDecl(VD);
+    SemaRef.getCxxSema().FinalizeDeclaration(VD);
+    return;
+  }
+
+  // If we are inside of a variable template we need to re-enter the scope
+  // for the variable.
+
+  ExprElaborator ExprElab(Context, SemaRef);
+  if (D->declaresInlineInitializedStaticVarDecl() && !NeedsConstEvaluation) {
+    Sema::ExprEvalRAII EvalScope(SemaRef,
+      clang::Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
+    InitExpr = ExprElab.elaborateExpr(D->Init);
+  } else {
+    if (NeedsConstEvaluation)
+      InitExpr = ExprElab.elaborateExpectedConstantExpr(D->Init);
+    else
       InitExpr = ExprElab.elaborateExpr(D->Init);
-    } else {
-      if (NeedsConstEvaluation)
-        InitExpr = ExprElab.elaborateExpectedConstantExpr(D->Init);
-      else
-        InitExpr = ExprElab.elaborateExpr(D->Init);
-    }
+  }
+  if (!InitExpr) {
+    SemaRef.Diags.Report(VD->getLocation(),
+                        clang::diag::err_failed_to_translate_expr);
+    return;
+  }
 
-    // Perform auto deduction.
-    if (VD->getType()->isUndeducedType()) {
-      clang::QualType Ty;
+  // Perform auto deduction.
+  if (VD->getType()->isUndeducedType()) {
+    clang::QualType Ty;
 
-      // Certain macros must be deduced manually.
-      if (const MacroSyntax *InitM = dyn_cast<MacroSyntax>(D->Init)) {
-          assert (isa<AtomSyntax>(InitM->getCall()) && "Unexpected macro call");
-          assert (isa<clang::InitListExpr>(InitExpr) &&
-                  "Invalid array macro init");
+    // Certain macros must be deduced manually.
+    if (const MacroSyntax *InitM = dyn_cast<MacroSyntax>(D->Init)) {
+        assert (isa<AtomSyntax>(InitM->getCall()) && "Unexpected macro call");
+        assert (isa<clang::InitListExpr>(InitExpr) &&
+                "Invalid array macro init");
 
-          const AtomSyntax *Call = cast<AtomSyntax>(InitM->getCall());
-          if (Call->getSpelling() == "array") {
-            Ty = buildImplicitArrayType(Context.CxxAST, SemaRef.getCxxSema(),
-                                        cast<clang::InitListExpr>(InitExpr));
+        const AtomSyntax *Call = cast<AtomSyntax>(InitM->getCall());
+        if (Call->getSpelling() == "array") {
+          Ty = buildImplicitArrayType(Context.CxxAST, SemaRef.getCxxSema(),
+                                      cast<clang::InitListExpr>(InitExpr));
 
-            if (Ty.isNull()) {
-              VD->setInvalidDecl();
-              return;
-            }
+          if (Ty.isNull()) {
+            VD->setInvalidDecl();
+            return;
           }
-      } else {
-        if (!InitExpr) {
-          SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_no_init);
-          return;
         }
+    } else {
+      if (!InitExpr) {
+        SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_no_init);
+        return;
+      }
 
-        clang::Sema &CxxSema = SemaRef.getCxxSema();
-        auto Result = CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), InitExpr, Ty);
-        if (Result == clang::Sema::DAR_Failed) {
-          SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_failed);
-          return;
-        }
+      if (InitExpr->getType()->isNamespaceType()) {
+        D->Cxx->getDeclContext()->removeDecl(D->Cxx);
+        D->Cxx = buildNsAlias(Context.CxxAST, SemaRef, D, InitExpr);
+        return;
+      }
+
+      if (InitExpr->getType()->isTypeOfTypes()) {
+        D->Cxx->getDeclContext()->removeDecl(D->Cxx);
+        D->Cxx = buildTypeAlias(*this, SemaRef, D, InitExpr);
+        return;
+      }
+
+      clang::Sema &CxxSema = SemaRef.getCxxSema();
+      auto Result = CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), InitExpr, Ty);
+      if (Result == clang::Sema::DAR_Failed) {
+        SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_failed);
+        return;
       }
 
       VD->setType(Ty);

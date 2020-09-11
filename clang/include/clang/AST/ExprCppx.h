@@ -134,7 +134,7 @@ public:
     return T->getStmtClass() == CppxDeclRefExprClass;
   }
 
-  static CppxDeclRefExpr *create(ASTContext &Context, QualType KindTy, 
+  static CppxDeclRefExpr *Create(ASTContext &Context, QualType KindTy, 
                                  ValueType NsDecl, SourceLocation Loc);
 };
 

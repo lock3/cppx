@@ -1593,6 +1593,7 @@ clang::Expr *ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
 
 static clang::Expr *handleLookupInsideType(Sema &SemaRef,
                                            clang::ASTContext &CxxAST,
+                                           const CallSyntax *Op,
                                            const clang::Expr *Previous,
                                            const Syntax *RHS);
 
@@ -1768,7 +1769,7 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
   }
 
   if (ElaboratedLHS->getType()->isTypeOfTypes())
-    return elaborateNestedLookupAccess(ElaboratedLHS, RHS);
+    return elaborateNestedLookupAccess(ElaboratedLHS, Op, RHS);
 
   if (ElaboratedLHS->getType()->isNamespaceType()) {
     if (clang::CppxNamespaceDecl *NSRef = dyn_cast<clang::CppxNamespaceDecl>(
@@ -1847,7 +1848,8 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     clang::QualType Base =
       cast<clang::CppxTypeLiteral>(LHS)->getValue()->getType();
 
-    clang::Expr *Res = elaborateNestedLookupAccess(LHS, Disambig->getArgument(1));
+    clang::Expr *Res =
+      elaborateNestedLookupAccess(LHS, Op, Disambig->getArgument(1));
     if (!Res)
       return nullptr;
     if (!isa<clang::DeclRefExpr>(Res)) {
@@ -1896,11 +1898,11 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
 clang::Expr *ExprElaborator::elaborateNNS(clang::NamedDecl *NS,
                                           const CallSyntax *Op,
                                           const Syntax *RHS) {
-  // FIXME: create the correct ObjectType (last param) that is used when this
-  // NNS appears as after an operator'.' of an object.
+  // The object type cannot coexist with a set scope-specifier.
   clang::Sema::NestedNameSpecInfo IdInfo(NS->getIdentifier(),
                                          NS->getBeginLoc(),
-                                         Op->getLoc(), clang::QualType());
+                                         Op->getLoc(),
+                                         /*ObjectType=*/clang::QualType());
 
   // Look this up as an NNS.
   bool EnteringContext = SemaRef.isQualifiedLookupContext();
@@ -1910,8 +1912,11 @@ clang::Expr *ExprElaborator::elaborateNNS(clang::NamedDecl *NS,
                                 /*RecoveryLookup=*/false,
                                 /*IsCorrected=*/nullptr,
                                 /*OnlyNamespace=*/false);
-  if (Failure)
+  if (Failure) {
+    SemaRef.CurNNSContext.clear();
     return nullptr;
+  }
+
   Sema::OptionalInitScope<Sema::QualifiedLookupRAII> Qual(SemaRef);
   if (auto *CppxNs = dyn_cast<clang::CppxNamespaceDecl>(NS)) {
     Qual.Init(SemaRef.QualifiedLookupContext, CppxNs);
@@ -1923,14 +1928,15 @@ clang::Expr *ExprElaborator::elaborateNNS(clang::NamedDecl *NS,
                      "never seen before.");
   }
   clang::Expr *RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
-  if (!RHSExpr)
+  if (!RHSExpr) {
+    SemaRef.CurNNSContext.clear();
     return nullptr;
+  }
 
   if (RHSExpr->getType()->isNamespaceType())
     return RHSExpr;
 
-  // This means that we've reached the end of a lookup and we can now clear the
-  // namespace specifier context.
+  // We've finished lookup and can clear the NNS context.
   SemaRef.CurNNSContext.clear();
   ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr);
   return RHSExpr;
@@ -1968,10 +1974,27 @@ clang::Expr *ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
   return RHSExpr;
 }
 
+// True if the provided operator is a dot at the right-most level of the tree.
+// e.g., `b.(A)i` would return false, but `b.a.i` would return true.
+static bool isOpDot(Sema &SemaRef, const CallSyntax *Op) {
+  if (Op->getNumArguments() < 2)
+    return false;
+
+  const CallSyntax *S = Op;
+  while (isa<CallSyntax>(S->getArgument(1))) {
+    S = cast<CallSyntax>(S->getArgument(1));
+    if (S->getNumArguments() < 2)
+      return false;
+  }
+
+  return getFusedOpKind(SemaRef, S) == FOK_MemberAccess;
+}
+
 clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
-                                    const clang::Expr *Previous, const Syntax *RHS) {
-  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
-                                              Previous, Previous->getExprLoc());
+                                    const CallSyntax *Op, const clang::Expr *Prev,
+                                    const Syntax *RHS) {
+  clang::TypeSourceInfo *TInfo =
+    SemaRef.getTypeSourceInfoFromExpr(Prev, Prev->getExprLoc());
   if (!TInfo)
     return nullptr;
 
@@ -1979,7 +2002,7 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
   const clang::Type *T = QT.getTypePtr();
   if (!(T->isStructureOrClassType() || T->isUnionType()
       || T->isEnumeralType())) {
-    SemaRef.Diags.Report(Previous->getExprLoc(),
+    SemaRef.Diags.Report(Prev->getExprLoc(),
                          clang::diag::err_invalid_type_for_name_spec)
                          << QT;
     return nullptr;
@@ -2029,7 +2052,22 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
     if (isa<clang::CXXRecordDecl>(ND))
       return SemaRef.buildTypeExprFromTypeDecl(TD, RHS->getLoc());
 
+    // FIXME: static methods should be handled here
+
     // otherwise, we have a FieldDecl from a nested name specifier lookup.
+    // In which case, the rhs should be static or called via operator'()'
+    // if the lhs was a record type.
+    if (Prev->getType()->isTypeOfTypes() && isOpDot(SemaRef, Op)) {
+      clang::QualType Ty =
+        cast<clang::CppxTypeLiteral>(Prev)->getValue()->getType();
+      if (!Ty->isEnumeralType()) {
+        SemaRef.Diags.Report(Prev->getExprLoc(),
+                             clang::diag::err_ref_non_value) << Prev;
+        return nullptr;
+      }
+    }
+
+
     if (clang::ValueDecl *VD = dyn_cast<clang::ValueDecl>(ND))
       return clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
                                         clang::SourceLocation(), VD,
@@ -2040,18 +2078,41 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
   llvm_unreachable("Unknown syntax encountered during nested member lookup.");
 }
 
-clang::Expr *ExprElaborator::elaborateNestedLookupAccess(const clang::Expr *Previous,
-                                                         const Syntax *RHS) {
-  assert(Previous && "Expression scoping.");
-  if (Previous->getType()->isTypeOfTypes())
-    return handleLookupInsideType(SemaRef, Context.CxxAST, Previous, RHS);
+clang::Expr *ExprElaborator::elaborateNestedLookupAccess(
+  clang::Expr *Previous, const CallSyntax *Op, const Syntax *RHS) {
+  assert(Previous && isa<clang::CppxTypeLiteral>(Previous)
+         && "Expression scoping.");
 
-  if (Previous->getType()->isNamespaceType())
-    llvm_unreachable("Nested namepsace not implemented");
+  // Build up an NNS to ensure we get an instantiation of any specializations.
+  clang::CppxTypeLiteral *Literal = cast<clang::CppxTypeLiteral>(Previous);
+  clang::TypeSourceInfo *TInfo = Literal->getValue();
+  clang::TypeLocBuilder TLB;
+  TInfo = BuildAnyTypeLoc(Context.CxxAST, TLB, TInfo->getType(), Op->getLoc());
+  clang::TypeLoc TL = TLB.getTypeLocInContext(Context.CxxAST, TInfo->getType());
+  clang::CXXRecordDecl *RD = TInfo->getType()->getAsCXXRecordDecl();
 
+  if (RD) {
+    clang::Sema::NestedNameSpecInfo IdInfo(RD->getIdentifier(),
+                                           RD->getBeginLoc(),
+                                           Op->getLoc(),
+                                           clang::QualType());
+    clang::CXXScopeSpec SS;
+    SS.Extend(
+      Context.CxxAST, clang::SourceLocation(), TL, Op->getLoc());
+    bool Failure = SemaRef.getCxxSema().
+      ActOnCXXNestedNameSpecifier(SemaRef.getCurClangScope(), IdInfo,
+                                  false, SS,
+                                  /*RecoveryLookup=*/false,
+                                  /*IsCorrected=*/nullptr,
+                                  /*OnlyNamespace=*/false);
 
-  llvm_unreachable("Nested access to static variables not implemented");
+    if (Failure) {
+      SemaRef.CurNNSContext.clear();
+      return nullptr;
+    }
+  }
 
+  return handleLookupInsideType(SemaRef, Context.CxxAST, Op, Previous, RHS);
 }
 
 clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,

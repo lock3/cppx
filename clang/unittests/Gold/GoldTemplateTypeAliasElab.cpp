@@ -58,3 +58,21 @@ TTA[T:type] : type
 )";
   GoldFailureTest(Code);
 }
+
+TEST(GoldTemplateTypeAlias, DependentAlias) {
+  StringRef Code = R"(
+c[T : type] = class {
+  j : type = T
+}
+
+main() : int!
+  int_type = c[int].j
+  x : int_type = int_type(73)
+)";
+
+  SimpleGoldParseTest(Code);
+  DeclarationMatcher int_type =
+    typeAliasDecl(hasName("int_type"),
+                  hasType(asString("c<int>::j")));
+  ASSERT_TRUE(matches(Code.str(), int_type));
+}
