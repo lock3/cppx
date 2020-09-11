@@ -1066,7 +1066,6 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
 
       clang::ExprValueKind ValueKind = SemaRef.getCxxSema()
                      .getValueKindForDeclReference(ResultType, VD, S->getLoc());
-
       clang::DeclRefExpr *DRE =
         SemaRef.getCxxSema().BuildDeclRefExpr(VD, ResultType, ValueKind, DNI,
                                               clang::NestedNameSpecifierLoc(),
@@ -1964,7 +1963,6 @@ clang::Expr *ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
     return RHSExpr;
 
   // TODO: should we account for an NNS that is returned from a function?
-
   SemaRef.CurNNSContext.clear();
   ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr);
   return RHSExpr;

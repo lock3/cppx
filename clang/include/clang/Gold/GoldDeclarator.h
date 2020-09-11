@@ -19,6 +19,7 @@
 #include "clang/AST/Stmt.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/TemplateBase.h"
+#include "clang/Sema/DeclSpec.h"
 
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/DenseMap.h"
@@ -293,6 +294,9 @@ public:
 class NestedNameSpecifierDeclarator : public Declarator {
   const AtomSyntax *Name;
   Scope *ReenteredScope = nullptr;
+  clang::Scope *CScope = nullptr;
+  bool EnteredScope = false;
+  clang::CXXScopeSpec CurScopeSpec;
 public:
   NestedNameSpecifierDeclarator(const AtomSyntax* NameNode, Declarator *Next)
     :Declarator(DK_NestedNameSpecifier, Next),
@@ -305,6 +309,16 @@ public:
 
   Scope *getScope() const { return ReenteredScope; }
   void setScope(Scope *S) { ReenteredScope = S; }
+
+  clang::CXXScopeSpec &getScopeSpec() { return CurScopeSpec; }
+  const clang::CXXScopeSpec &getScopeSpec() const { return CurScopeSpec; }
+  void setScopeSpec(const clang::CXXScopeSpec & SS) { CurScopeSpec = SS; }
+
+  void setEnteredScope(bool DidEnter = true) { EnteredScope = DidEnter; }
+  bool didEnterScope() const { return EnteredScope; }
+
+  clang::Scope *getClangScope() const { return CScope; }
+  void setClangScope(clang::Scope *SC) { CScope = SC; }
 
   static bool classof(const Declarator *Dcl) {
     return Dcl->getKind() == DK_NestedNameSpecifier;

@@ -260,7 +260,7 @@ private:
   llvm::DenseMap<clang::Decl *, Declaration *> DeclToDecl;
 public:
   void addDeclToDecl(clang::Decl *CDecl, gold::Declaration *GDecl);
-  gold::Declaration *getDeclaration(clang::Decl *CDecl) const;
+  gold::Declaration *getDeclaration(clang::Decl *CDecl);
   void setDeclForDeclaration(gold::Declaration *GDecl, clang::Decl *CDecl);
 public:
 
@@ -883,6 +883,80 @@ public:
                                       clang::SourceLocation LBrace,
                                       const clang::ParsedAttributesView &AttrList,
                                       clang::UsingDirectiveDecl *&UD);
+
+  /// DeclaratorScopeObj - RAII object used in Parser::ParseDirectDeclarator to
+  /// enter a new C++ declarator scope and exit it when the function is
+  /// finished.
+  class DeclaratorScopeObj {
+    Sema &SemaRef;
+    clang::CXXScopeSpec &SS;
+    clang::SourceLocation ExitLoc;
+    bool EnteredScope;
+    bool CreatedScope;
+  public:
+    DeclaratorScopeObj(Sema &S, clang::CXXScopeSpec &ss,
+                       clang::SourceLocation Loc)
+      : SemaRef(S), SS(ss),
+      ExitLoc(Loc),
+      EnteredScope(false),
+      CreatedScope(false)
+    { }
+
+    void enterDeclaratorScope() {
+      assert(!EnteredScope && "Already entered the scope!");
+      assert(SS.isSet() && "C++ scope was not set!");
+
+      CreatedScope = true;
+      SemaRef.enterClangScope(0); // Not a decl scope.
+
+      if (!SemaRef.getCxxSema().ActOnCXXEnterDeclaratorScope(
+                                                SemaRef.getCurClangScope(), SS))
+        EnteredScope = true;
+    }
+
+    ~DeclaratorScopeObj() {
+      if (EnteredScope) {
+        assert(SS.isSet() && "C++ scope was cleared ?");
+        SemaRef.getCxxSema().ActOnCXXExitDeclaratorScope(
+                                                SemaRef.getCurClangScope(), SS);
+      }
+      // SemaRef.getCurClangScope()->get
+      if (CreatedScope)
+        SemaRef.leaveClangScope(ExitLoc);
+    }
+  };
+
+    // RAII type used to track whether we're inside an initializer.
+  struct DeclInitializationScope {
+    Sema &SemaRef;
+    Declaration *Dcl;
+    // Decl *ThisDecl;
+
+    DeclInitializationScope(Sema &Sr, Declaration *D)
+        : SemaRef(Sr), Dcl(D)
+      {
+        clang::Scope *S = nullptr;
+        if (Dcl->ScopeSpec.isSet()) {
+          SemaRef.enterClangScope(0);
+          S = SemaRef.getCurClangScope();
+        }
+        SemaRef.getCxxSema().ActOnCXXEnterDeclInitializer(S, Dcl->Cxx);
+    }
+
+    ~DeclInitializationScope() { pop(); }
+    void pop() {
+      if (Dcl) {
+
+        clang::Scope *S = nullptr;
+        if (Dcl->ScopeSpec.isSet())
+          S = SemaRef.getCurClangScope();
+        SemaRef.getCxxSema().ActOnCXXExitDeclInitializer(S, Dcl->Cxx);
+        if (S)
+          SemaRef.leaveClangScope(Dcl->Op->getLoc());
+        Dcl = nullptr;
+      }
+    }
+  };
 };
 
 } // namespace gold

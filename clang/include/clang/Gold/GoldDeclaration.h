@@ -140,6 +140,8 @@ enum UnevaluatedDeclKind {
   */
 };
 
+llvm::StringRef unevaluatedDeclKindToStr(UnevaluatedDeclKind UDK);
+
 enum class Phase : std::size_t
 {
   Unprocessed,
@@ -147,6 +149,8 @@ enum class Phase : std::size_t
   Typing,
   Initialization
 };
+
+llvm::StringRef phaseToStr(Phase p);
 
 struct NNSDeclaratorInfo {
   NestedNameSpecifierDeclarator *Name = nullptr;
@@ -408,6 +412,7 @@ public:
   InitKind InitOpUsed = IK_None;
 
   clang::CXXScopeSpec ScopeSpec;
+  bool IsRedeclaration = false;
 };
 
 Phase phaseOf(Declaration *D);

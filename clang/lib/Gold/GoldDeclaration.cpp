@@ -18,6 +18,82 @@
 #include "llvm/Support/raw_ostream.h"
 namespace gold {
 
+llvm::StringRef unevaluatedDeclKindToStr(UnevaluatedDeclKind UDK) {
+  switch(UDK) {
+  case UDK_None:
+    return "UDK_None";
+  case UDK_File:
+    return "UDK_File";
+  case UDK_Class:
+    return "UDK_Class";
+  case UDK_Union:
+    return "UDK_Union";
+  case UDK_Enum:
+    return "UDK_Enum";
+  case UDK_Namespace:
+    return "UDK_Namespace";
+  case UDK_NamespaceAlias:
+    return "UDK_NamespaceAlias";
+  case UDK_TemplateAlias:
+    return "UDK_TemplateAlias";
+  case UDK_VarTemplateDecl:
+    return "UDK_VarTemplateDecl";
+  case UDK_TypeAlias:
+    return "UDK_TypeAlias";
+  case UDK_Parameter:
+    return "UDK_Parameter";
+  case UDK_TemplateParam:
+    return "UDK_TemplateParam";
+  case UDK_TemplateTemplateParam:
+    return "UDK_TemplateTemplateParam";
+  case UDK_EnumConstant:
+    return "UDK_EnumConstant";
+  case UDK_MemberFunction:
+    return "UDK_MemberFunction";
+  case UDK_Constructor:
+    return "UDK_Constructor";
+  case UDK_Destructor:
+    return "UDK_Destructor";
+  case UDK_Function:
+    return "UDK_Function";
+  case UDK_ConversionOperator:
+    return "UDK_ConversionOperator";
+  case UDK_MemberOperator:
+    return "UDK_MemberOperator";
+  case UDK_LiteralOperator:
+    return "UDK_LiteralOperator";
+  case UDK_OperatorOverload:
+    return "UDK_OperatorOverload";
+  case UDK_PossibleConstructor:
+    return "UDK_PossibleConstructor";
+  case UDK_PossibleDestructor:
+    return "UDK_PossibleDestructor";
+  case UDK_PossibleMemberOperator:
+    return "UDK_PossibleMemberOperator";
+  case UDK_PossibleConversionOperator:
+    return "UDK_PossibleConversionOperator";
+  case UDK_VarTemplateOrTemplateAlias:
+    return "UDK_VarTemplateOrTemplateAlias";
+  case UDK_DeductionOnlyVariable  :
+    return "UDK_DeductionOnlyVariable";
+  }
+  llvm_unreachable("Invalid UnevaluatedDeclKind");
+}
+
+llvm::StringRef phaseToStr(Phase p) {
+  switch(p) {
+  case Phase::Unprocessed:
+    return "Unprocessed";
+  case Phase::Identification:
+    return "Identification";
+  case Phase::Typing:
+    return "Typing";
+  case Phase::Initialization:
+    return "Initialization";
+  }
+  llvm_unreachable("Invalid Phase");
+}
+
 Declaration::~Declaration() {
   delete SavedScope;
 }
@@ -76,7 +152,7 @@ bool Declaration::declaresForwardRecordDecl() const {
 }
 
 bool Declaration::declaresTagDef() const {
-  switch(SuspectedKind){
+  switch(SuspectedKind) {
   default: return false;
   case UDK_Class:
   case UDK_Union:

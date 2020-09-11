@@ -26,13 +26,15 @@
 #include "clang/Sema/TypeLocUtil.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "clang/Gold/ClangToGoldDeclBuilder.h"
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSyntax.h"
-
 namespace gold {
 
 using namespace llvm;
+
+
 
 static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
     SyntaxContext &Context) {
@@ -227,6 +229,11 @@ void Sema::enterScope(ScopeKind K, const Syntax *S, Declaration *D) {
   pushScope(new Scope(K, S, getCurrentScope(), D));
 }
 
+// Scope *Sema::enterScopeNNSContext() {
+//   assert(CurNNSContext.isSet() && "The current NNS set.");
+  
+// }
+
 void Sema::leaveScope(const Syntax *S) {
   if (getCurrentScope()->getConcreteTerm() != S) {
     llvm::outs() << "Actual Expected term = ";
@@ -295,11 +302,26 @@ void Sema::addDeclToDecl(clang::Decl *CDecl, gold::Declaration *GDecl) {
     llvm_unreachable("we should never add something to the decl map 2x.");
 }
 
-gold::Declaration *Sema::getDeclaration(clang::Decl *CDecl) const {
+gold::Declaration *Sema::getDeclaration(clang::Decl *CDecl) {
   assert(CDecl && "Invalid declaration.");
   auto Iter = DeclToDecl.find(CDecl);
   if (Iter == DeclToDecl.end()) {
-    return nullptr;
+    if (!isa<clang::CXXRecordDecl>(CDecl)) {
+      llvm::StringRef Name = "";
+      if (auto *ND = dyn_cast<clang::NamedDecl>(CDecl)) {
+        Name = ND->getName();
+      }
+      Diags.Report(CDecl->getLocation(),
+                   clang::diag::err_unknown_template_declaration)
+                   << Name;
+      return nullptr;
+    }
+    ClangToGoldDeclRebuilder rebuilder(Context, *this);
+    Declaration *GDecl = rebuilder.rebuild(cast<clang::CXXRecordDecl>(CDecl));
+    if (!GDecl)
+      // Any error reporting will be handled the the rebuilder.
+      return nullptr;
+    return GDecl;
   }
   return Iter->second;
 }
