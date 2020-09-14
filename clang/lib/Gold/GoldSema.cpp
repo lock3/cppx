@@ -513,6 +513,21 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   bool FoundFirstClassScope = false;
   for(;S; S = S->getParent()) {
     std::set<Declaration *> Found = S->findDecl(Id);
+
+    // Look through any using directives, but only if we didn't already find
+    // something acceptable.
+    if (Found.empty()) {
+      for (clang::UsingDirectiveDecl *UD : S->UsingDirectives) {
+        assert(isa<clang::CppxNamespaceDecl>(UD->getNominatedNamespace()));
+
+        clang::CppxNamespaceDecl *NS =
+          cast<clang::CppxNamespaceDecl>(UD->getNominatedNamespace());
+        // FIXME: we could potentially find the same name in several namespaces.
+        // Respond accordingly to that situation.
+        Found = NS->Rep->findDecl(Id);
+      }
+    }
+
     if (!Found.empty()) {
       for (auto *FoundDecl : Found) {
         // If we find a name that hasn't been elaborated,
@@ -1167,9 +1182,9 @@ Sema::ActOnStartNamespaceDef(clang::Scope *NamespcScope,
   CxxSema.CheckNamespaceDeclaration(II, StartLoc, Loc, IsInline, IsInvalid,
                                     IsStd, AddToKnown, PrevNS);
   gold::Scope *PrevScope = nullptr;
-  if (CppxNamespaceDecl *PrevCppxNsDecl = dyn_cast_or_null<CppxNamespaceDecl>(PrevNS)) {
-    PrevScope = PrevCppxNsDecl->Rep;
-  }
+  if (CppxNamespaceDecl *Prev = dyn_cast_or_null<CppxNamespaceDecl>(PrevNS))
+    PrevScope = Prev->Rep;
+
   CppxNamespaceDecl *Namespc = CppxNamespaceDecl::Create(Context.CxxAST,
                                                          CxxSema.CurContext,
                                                          IsInline, StartLoc,
@@ -1220,7 +1235,6 @@ Sema::ActOnStartNamespaceDef(clang::Scope *NamespcScope,
     // CodeGen enforces the "universally unique" aspect by giving all
     // declarations semantically contained within an anonymous
     // namespace internal linkage.
-
     if (!PrevNS) {
       UD = UsingDirectiveDecl::Create(Context.CxxAST, Parent,
                                       /* 'using' */ LBrace,
@@ -1230,6 +1244,7 @@ Sema::ActOnStartNamespaceDef(clang::Scope *NamespcScope,
                                       Namespc, /* Ancestor */ Parent);
       UD->setImplicit();
       Parent->addDecl(UD);
+      getCurrentScope()->UsingDirectives.insert(UD);
     }
   }
 

@@ -127,6 +127,7 @@ def_keyword(Break, "break")
 def_keyword(Const, "const")
 def_keyword(Ref, "ref")
 def_keyword(RValueRef, "rref")
+def_keyword(Anonymous, "_")
 
 def_token(Identifier)
 def_token(BinaryInteger)

@@ -803,6 +803,7 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
   clang::UsingDirectiveDecl *UD = nullptr;
   clang::AttributeFactory Attrs;
   clang::ParsedAttributes ParsedAttrs(Attrs);
+
   NSDecl = SemaRef.ActOnStartNamespaceDef(NSScope,
                                           SourceLocation(),
                                           D->Decl->getLoc(),
@@ -816,6 +817,7 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
     SemaRef.leaveClangScope(clang::SourceLocation());
     return nullptr;
   }
+
   // Resume or create a new scope for the current namespace.
   // This is to allow the representations to all share the same scope.
   // This makes it easier to handle lookup for those elements of the scope.

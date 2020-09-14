@@ -80,8 +80,7 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
   // TODO: distinguish between redefinition, redeclaration, and redeclaration
   // with different type.
   if ((CurScope->isNamespaceScope() || CurScope->isParameterScope()) &&
-      !TheDecl->declaresFunction() && !TheDecl->SpecializationArgs) {
-    // FIXME: rewrite this!!
+      !TheDecl->declaresFunction() && !TheDecl->SpecializationArgs && Id) {
     auto DeclSet = CurScope->findDecl(Id);
 
     if (!DeclSet.empty()) {
@@ -89,6 +88,7 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
       TheDecl->setPreviousDecl(*DeclSet.begin());
     }
   }
+
   SemaRef.getCurrentScope()->addDecl(TheDecl);
   TheDecl->CurrentPhase = Phase::Identification;
   return TheDecl;
@@ -1352,6 +1352,13 @@ DeclarationBuilder::handleNestedNameSpecifier(const AtomSyntax *S, Declarator *N
 
 IdentifierDeclarator *
 DeclarationBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
+  // Don't bother with the unnamed name ("_")
+  if (S->getToken().hasKind(tok::AnonymousKeyword)) {
+    auto *D = new IdentifierDeclarator(S, Next);
+    D->recordAttributes(S);
+    return D;
+  }
+
   // Translating the simple identifier.
   OriginalName = S->getSpelling();
   Id = &Context.CxxAST.Idents.get(OriginalName);
