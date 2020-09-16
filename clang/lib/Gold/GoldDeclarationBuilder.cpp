@@ -757,12 +757,13 @@ static bool deduceVariableSyntax(Sema &SemaRef, Declaration *TheDecl,
 
 bool DeclarationBuilder::classifyDecl(const Syntax *DeclExpr,
                                       Declaration *TheDecl) {
+
   // this is handled within checkEnumDeclaration
   if (TheDecl->SuspectedKind == UDK_EnumConstant)
     return false;
 
   bool EncounteredError = false;
-  if (isTagLikeDeclOrForwardDecl(SemaRef, TheDecl, EncounteredError)){
+  if (isTagLikeDeclOrForwardDecl(SemaRef, TheDecl, EncounteredError)) {
     if (EncounteredError)
       return true;
     return false;
@@ -1020,7 +1021,6 @@ DeclarationBuilder::buildNestedName(const Syntax *S, Declarator *Next) {
     return handleNestedNameSpecifier(SimpleName, Next);
   }
   if (RequiresDeclOrError){
-    llvm::outs() << "Inside of buildNestedOrRegularName\n";
     SemaRef.Diags.Report(S->getLoc(),
                          clang::diag::err_invalid_declaration_kind)
                          <<2;
@@ -1074,7 +1074,6 @@ DeclarationBuilder::buildNameDeclarator(const Syntax *S, Declarator *Next) {
     ErrorIndicator = 1;
   }
   if (RequiresDeclOrError) {
-    llvm::outs() << "Inside of buildNameDeclarator\n";
     SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_declaration_kind)
                          << ErrorIndicator;
   }

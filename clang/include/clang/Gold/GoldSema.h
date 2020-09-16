@@ -646,6 +646,21 @@ public:
     }
   };
 
+  struct SaveAndRestoreClangDCAndScopeRAII {
+    Sema &SemaRef;
+    clang::Scope *ScopeOnEntry = nullptr;
+    clang::DeclContext *DCOnEntry = nullptr;
+    SaveAndRestoreClangDCAndScopeRAII(Sema &S)
+      :SemaRef(S),
+      ScopeOnEntry(S.getCxxSema().CurScope),
+      DCOnEntry(S.getCxxSema().CurContext)
+    { }
+    ~SaveAndRestoreClangDCAndScopeRAII() {
+      SemaRef.getCxxSema().CurScope = ScopeOnEntry;
+      SemaRef.getCxxSema().CurContext = DCOnEntry;
+    }
+  };
+
 
   struct EnterNonNestedClassEarlyElaboration {
     EnterNonNestedClassEarlyElaboration(Sema& S, Declaration* Decl)

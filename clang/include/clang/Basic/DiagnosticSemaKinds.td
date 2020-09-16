@@ -11361,6 +11361,9 @@ def err_variable_must_have_type : Error<
 def err_unknown_template_declaration : Error<
   "template declaration %0 is not a class">;
 
+def err_namespace_alias_within_class : Error<
+  "cannot declare a namespace alias within the body of a class">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

@@ -48,6 +48,7 @@ public:
 
   /// Starts the rebuild process.
   Declaration *rebuild(clang::CXXRecordDecl *ToConvert);
+  bool finishDecl(Declaration *D, clang::SourceRange Range);
 private:
   gold::Scope *determineParentScope();
   bool rebuildMember(clang::Decl *Member);
@@ -58,7 +59,6 @@ private:
   bool rebuildMember(clang::CXXConversionDecl *Conversion);
   bool rebuildMember(clang::CXXDestructorDecl *Dtor);
   bool rebuildMember(clang::CXXConstructorDecl *Ctor);
-  bool rebuildMember(clang::NamespaceAliasDecl *Ns);
   bool rebuildMember(clang::VarTemplateDecl *VTD);
   bool rebuildMember(clang::TypeAliasTemplateDecl *TATD);
   bool rebuildMember(clang::TypeAliasDecl *TAD);
@@ -66,7 +66,9 @@ private:
   bool rebuildMember(clang::ClassTemplateSpecializationDecl *Tmplt);
   bool rebuildMember(clang::ClassTemplatePartialSpecializationDecl *Tmplt);
   bool rebuildMember(clang::FunctionTemplateDecl* CTD);
-  bool rebuildOperatorOverload(clang::CXXMethodDecl *Method);
+  bool rebuildMember(clang::EnumDecl* ED);
+  bool rebuildMember(clang::EnumConstantDecl* ECD);
+  // We may need clang::ClassScopeFunctionSpecializationDecl eventually.
 
   /// Saves the previous declaration, creates a new declaration, sets the
   /// current parent declaration, then sets the current declaration to the

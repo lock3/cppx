@@ -646,7 +646,6 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
             ND = cast<clang::NamedDecl>(RD->getCanonicalDecl());
           }
         }
-
         addIfNotDuplicate(R, ND);
       }
       break;

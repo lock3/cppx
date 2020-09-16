@@ -197,6 +197,7 @@ c[T:type].foo() : T!
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }
 
+
 TEST(GoldNestedNameDecl, Method_FromClassTemplateParameterNameSwitch) {
   StringRef Code = R"(
 c[T:type, U:type] : type = class:
@@ -520,6 +521,7 @@ c[T:type] : type = class:
 
 c[int].bar():bool!
   x: c[int]
+  y : c[int]
   return ^this == y
 )";
   auto Matcher = translationUnitDecl(
@@ -561,7 +563,7 @@ c[int].Ty : type = class:
 }
 
 
-TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_NestedTemplateClass) {
+TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_NestedClassTemplate) {
   StringRef Code = R"(
 c[T:type] : type = class:
   bar() : bool
@@ -569,8 +571,24 @@ c[T:type] : type = class:
     y :bool = false
 
 c[int].bar():bool!
-  x = TemplateTyp[float64]()
+  x = TemplateType[float64]()
   return x.y
+)";
+  auto Matcher = translationUnitDecl(
+    hasDescendant(classTemplateSpecializationDecl())
+  );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}
+
+TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_NestedClassTemplate_W_StaticMember) {
+  StringRef Code = R"(
+c[T:type] : type = class:
+  bar() : int
+  TemplateType[U:type] : type = class:
+    z <static><inline>: const int = 5
+
+c[int].bar():int!
+  return TemplateType[float64].z
 )";
   auto Matcher = translationUnitDecl(
     hasDescendant(classTemplateSpecializationDecl())
@@ -589,7 +607,7 @@ c[T:type] : type = class:
     z : bool
 
 c[int].bar():bool!
-  x = TemplateTyp[int]()
+  x = TemplateType[int]()
   return x.z
 )";
   auto Matcher = translationUnitDecl(
@@ -609,7 +627,7 @@ c[T:type] : type = class:
     z : bool
 
 c[int].bar():bool!
-  x = TemplateTyp[^int]()
+  x = TemplateType[^int]()
   return x.z
 )";
   auto Matcher = translationUnitDecl(
@@ -634,43 +652,42 @@ c[int].bar() : bool!
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }
 
-TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_FunctionTemplateImplicitExplicitSpecialization) {
-  StringRef Code = R"(
-c[T:type] : type = class:
-  bar() : bool
-  foo[U:type](p:U) : bool!
-    return false
+// TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_FunctionTemplateImplicitExplicitSpecialization) {
+//   StringRef Code = R"(
+// c[T:type] : type = class:
+//   bar() : bool
+//   foo[U:type](p:U) : bool!
+//     return false
+//   foo[](p:int) : bool!
+//     return false
 
-  foo[](p:int) : void!
-    ;
+// c[int].bar() : bool!
+//   return foo(4)
+// )";
+//   auto Matcher = translationUnitDecl(
+//     hasDescendant(classTemplateSpecializationDecl())
+//   );
+//   ASSERT_TRUE(matches(Code.str(), Matcher));
+// }
 
-c[int].bar() : bool!
-  return foo(4)
-)";
-  auto Matcher = translationUnitDecl(
-    hasDescendant(classTemplateSpecializationDecl())
-  );
-  ASSERT_TRUE(matches(Code.str(), Matcher));
-}
+// TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_FunctionTemplateExplicitSpecialization) {
+//   StringRef Code = R"(
+// c[T:type] : type = class:
+//   bar() : bool
+//   foo[U:type](p:U) : bool!
+//     return false
 
-TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_FunctionTemplateExplicitSpecialization) {
-  StringRef Code = R"(
-c[T:type] : type = class:
-  bar() : bool
-  foo[U:type](p:U) : bool!
-    return false
+//   foo[int](p:int) : bool!
+//     return true
 
-  foo[int](p:int) : void!
-    ;
-
-c[int].bar() : bool!
-  return foo(5)
-)";
-  auto Matcher = translationUnitDecl(
-    hasDescendant(classTemplateSpecializationDecl())
-  );
-  ASSERT_TRUE(matches(Code.str(), Matcher));
-}
+// c[int].bar() : bool!
+//   return foo(5)
+// )";
+//   auto Matcher = translationUnitDecl(
+//     hasDescendant(classTemplateSpecializationDecl())
+//   );
+//   ASSERT_TRUE(matches(Code.str(), Matcher));
+// }
 
 TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_TypeAlias) {
   StringRef Code = R"(
@@ -700,34 +717,13 @@ c[T:type] : type = class:
 c[int].bar() : Q.x!
   return true
 )";
-  auto Matcher = translationUnitDecl(
-    hasDescendant(classTemplateSpecializationDecl())
-  );
-  ASSERT_TRUE(matches(Code.str(), Matcher));
-}
-
-TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_NamespaceAliasLookupGlobal) {
-  StringRef Code = R"(
-NS : namespace = namespace:
-  x: int
-
-c[T:type] : type = class:
-  bar():int
-  Q : namespace = NS
-
-c[int].bar():int!
-  Q.x
-)";
-  auto Matcher = translationUnitDecl(
-    hasDescendant(classTemplateSpecializationDecl())
-  );
-  ASSERT_TRUE(matches(Code.str(), Matcher));
+  GoldFailureTest(Code);
 }
 
 TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_VarTemplate) {
   StringRef Code = R"(
 c[T:type] : type = class:
-  TmpltVar[U:type] : U = 12345
+  TmpltVar[U:type] <static>: U = 12345
   bar() : bool
 
 c[int].bar() : bool!
@@ -739,21 +735,21 @@ c[int].bar() : bool!
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }
 
-TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_VarTemplateSpecialization) {
-  StringRef Code = R"(
-c[T:type] : type = class:
-  TmpltVar[U:type] : U
-  TmpltVar[int] : int = 54321
-  bar() : bool
+// TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_VarTemplateSpecialization) {
+//   StringRef Code = R"(
+// c[T:type] : type = class:
+//   TmpltVar[U:type] : U
+//   TmpltVar[int] : int = 54321
+//   bar() : bool
 
-c[int].bar() : bool!
-  return TmpltVar[int]
-)";
-  auto Matcher = translationUnitDecl(
-    hasDescendant(classTemplateSpecializationDecl())
-  );
-  ASSERT_TRUE(matches(Code.str(), Matcher));
-}
+// c[int].bar() : bool!
+//   return TmpltVar[int]
+// )";
+//   auto Matcher = translationUnitDecl(
+//     hasDescendant(classTemplateSpecializationDecl())
+//   );
+//   ASSERT_TRUE(matches(Code.str(), Matcher));
+// }
 
 TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_Enum) {
   StringRef Code = R"(
@@ -765,7 +761,7 @@ c[T:type] : type = class:
     c
 
 c[int].bar() : bool!
-  return Enum.a
+  return bool(Enum.a)
 )";
   auto Matcher = translationUnitDecl(
     hasDescendant(classTemplateSpecializationDecl())
@@ -814,7 +810,8 @@ c[int].bar() : bool!
 TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_TemplateAlias) {
   StringRef Code = R"(
 X[T:type] : type = class:
-  ;
+  a : bool
+
 c[T:type] : type = class:
   bar() : bool
   TemplateAlias[U:type] : type = X[U]
@@ -832,13 +829,13 @@ c[int].bar() : bool!
 TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_DependentTemplateTypeAlias) {
   StringRef Code = R"(
 X[T:type, U:type] : type = class:
-  ;
+  a :int
 c[T:type] : type = class:
   bar() : bool
   TemplateAlias[U:type] : type = X[T, U]
 
 c[int].bar() : bool!
-  X : TemplateAlias[^float32, float32]
+  X : TemplateAlias[float32]
   return X.a
 )";
   auto Matcher = translationUnitDecl(
@@ -849,80 +846,6 @@ c[int].bar() : bool!
 
 // TODO: Add a conversion operator to this once we implement it.
 
-
-// TEST(GoldNestedNameDecl, ImplicitSpecialization_Duplication) {
-//   StringRef Code = R"(
-// NS : namespace = namespace:
-//   ;
-
-// c[T:type] : type = class:
-//   bar():void
-//   y : bool
-//   x<static>:const int = 5
-//   constructor()!
-//     ;
-//   destructor()!
-//     ;
-//   operator"=="(other:const ref c[T])<const>:bool!
-//     return false
-
-//   NonTemplate : type = class:
-//     ;
-
-//   TemplateType[U:type] : type = class:
-//     ;
-
-//   TemplateType[int] : type = class:
-//     ;
-
-//   TemplateType[U:type][^U] : type = class:
-//     ;
-
-//   foo[U:type](p:U) : void!
-//     ;
-
-//   foo[](p:int) : void!
-//     ;
-
-//   TypeAliase : type = int
-
-//   NsAlias :namespace = NS
-
-//   TmpltVar[U:type] : U = 12345
-
-//   TmpltVar[int] : int = 54321
-
-//   TemplateAlias[T:type] : type = TemplateType[T]
-
-//   Enum :type = enum:
-//     a
-//     b
-//     c
-
-//   UnionType : type = union:
-//     a : int
-//     b : float64
-//     c : ^int
-
-//   UnionTemplateType[U:type] : type = union:
-//     a : U
-//     b : float64
-//     c : ^int
-
-// c[int].bar():void!
-//   ;
-// )";
-//   // Figure out how to check for the implicit specialization.
-// // Figure out how to check for the implicit specialization
-//   auto Matcher = translationUnitDecl(
-//     hasDescendant(cxxRecordDecl(
-//       hasName("c"),
-//       hasDescendant(cxxMethodDecl(hasName("foo"), unless(isDefinition())))
-//     )),
-//     has(cxxMethodDecl(hasName("foo")))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), Matcher));
-// }
 
 TEST(GoldNestedNameDecl, ConstructorOutsideOfClass) {
   StringRef Code = R"(
@@ -958,6 +881,50 @@ c[int].destructor()!
       hasDescendant(cxxDestructorDecl(unless(isDefinition())))
     )),
     has(cxxDestructorDecl())
+  );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}
+
+TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_ThroughTypeAlias) {
+  StringRef Code = R"(
+c[T:type] : type = class:
+  x : T
+  y : bool
+  foo() : T
+
+X : type = c[int]
+
+X.foo() : int!
+  return x
+)";
+  auto Matcher = translationUnitDecl(
+    hasDescendant(cxxRecordDecl(
+      hasName("c"),
+      hasDescendant(cxxMethodDecl(hasName("foo"), unless(isDefinition())))
+    )),
+    has(cxxMethodDecl(hasName("foo")))
+  );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}
+
+TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_ThroughTypeAliasTemplate) {
+  StringRef Code = R"(
+c[T:type] : type = class:
+  x : T
+  y : bool
+  foo() : T
+
+X[T:type] : type = c[T]
+
+X[int].foo() : int!
+  return x
+)";
+  auto Matcher = translationUnitDecl(
+    hasDescendant(cxxRecordDecl(
+      hasName("c"),
+      hasDescendant(cxxMethodDecl(hasName("foo"), unless(isDefinition())))
+    )),
+    has(cxxMethodDecl(hasName("foo")))
   );
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }

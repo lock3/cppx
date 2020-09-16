@@ -12,6 +12,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Gold/ClangToGoldDeclBuilder.h"
+
+#include "clang/Sema/Template.h"
+
 #include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldSymbol.h"
 
@@ -34,12 +37,13 @@ static const Syntax *buildDummyASTNode(SyntaxContext &Ctx,
 struct ClangToGoldDeclRebuilder::StateRAII {
   ClangToGoldDeclRebuilder &Rebuilder;
   Sema::OptionalScopeRAII ChildScope;
+  Sema::OptionalResumeScopeRAII PreviousChildScope;
   Declaration *PrevParent = nullptr;
   Declaration *PrevDecl = nullptr;
   const Syntax *DummyNode = nullptr;
 private:
   void createDecl(UnevaluatedDeclKind SuspectedDeclKind,
-                  clang::NamedDecl *NmdDcl) {
+                  clang::NamedDecl *NmdDcl, bool AddToParentScope) {
     Rebuilder.ParentDecl = Rebuilder.CurDecl;
     DummyNode = buildDummyASTNode(Rebuilder.Context,
                                   NmdDcl->getLocation());
@@ -51,28 +55,32 @@ private:
     Rebuilder.CurDecl->ScopeForDecl = Rebuilder.SemaRef.getCurrentScope();
     Rebuilder.CurDecl->ParentDecl = PrevDecl;
     Rebuilder.SemaRef.setDeclForDeclaration(Rebuilder.CurDecl, NmdDcl);
-    Rebuilder.SemaRef.getCurrentScope()->addDecl(Rebuilder.CurDecl);
+    if (AddToParentScope)
+      Rebuilder.SemaRef.getCurrentScope()->addDecl(Rebuilder.CurDecl);
   }
 public:
   StateRAII(ClangToGoldDeclRebuilder &Builder,
             UnevaluatedDeclKind SuspectedDeclKind, clang::NamedDecl *NmdDcl)
     :Rebuilder(Builder),
     ChildScope(Rebuilder.SemaRef),
+    PreviousChildScope(Rebuilder.SemaRef),
     PrevParent(Rebuilder.ParentDecl),
     PrevDecl(Rebuilder.CurDecl)
   {
-    createDecl(SuspectedDeclKind, NmdDcl);
+    createDecl(SuspectedDeclKind, NmdDcl, true);
   }
 
   StateRAII(ClangToGoldDeclRebuilder &Builder,
             UnevaluatedDeclKind SuspectedDeclKind, clang::NamedDecl *NmdDcl,
-            ScopeKind SK, bool SetAsEntity = false, bool SaveScope = true)
+            ScopeKind SK, bool SetAsEntity = false, bool SaveScope = true,
+            bool AddToParentScope = true)
     :Rebuilder(Builder),
     ChildScope(Rebuilder.SemaRef),
+    PreviousChildScope(Rebuilder.SemaRef),
     PrevParent(Rebuilder.ParentDecl),
     PrevDecl(Rebuilder.CurDecl)
   {
-    createDecl(SuspectedDeclKind, NmdDcl);
+    createDecl(SuspectedDeclKind, NmdDcl, AddToParentScope);
 
     if (SaveScope)
       ChildScope.Init(SK, DummyNode, &Rebuilder.CurDecl->SavedScope);
@@ -82,6 +90,22 @@ public:
     if (SetAsEntity)
       Rebuilder.SemaRef.getCurrentScope()->Entity = Rebuilder.CurDecl;
   }
+
+  // Resuming an existing declaration
+  StateRAII(ClangToGoldDeclRebuilder &Builder, Declaration *Decl)
+    :Rebuilder(Builder),
+    ChildScope(Rebuilder.SemaRef),
+    PreviousChildScope(Rebuilder.SemaRef),
+    PrevParent(Decl->ParentDecl),
+    PrevDecl(Decl)
+  {
+    assert(Decl->SavedScope && "Invalid declaration given");
+    Rebuilder.CurDecl = Decl;
+    Rebuilder.ParentDecl = PrevParent;
+    PreviousChildScope.Init(Decl->SavedScope,
+                            Decl->SavedScope->getConcreteTerm());
+  }
+
 
   ~StateRAII() {
     Rebuilder.CurDecl = PrevDecl;
@@ -134,14 +158,13 @@ Declaration *ClangToGoldDeclRebuilder::rebuild(clang::CXXRecordDecl *ToConvert) 
   if (!RootScope)
     // FIXME: Create an error message for this?!
     llvm_unreachable("Failed to determine parent scope.");
-  // llvm_unreachable("Working on it. rebuild");
 
   // Resuming the parent scope that the parent declaration was declared in.
   Sema::ResumeScopeRAII ParentScopeRAII(SemaRef, RootScope,
                                         RootScope->getConcreteTerm());
   CurDecl = ParentDecl;
   StateRAII RecordState(*this, ParentDecl->getKind(), RD, SK_Template,
-                        false, false);
+                        false, false, false);
   Sema::ScopeRAII RecordBodyScope(SemaRef, ParentDecl->SavedScope->getKind(),
                                   RootScope->getConcreteTerm(),
                                   &CurDecl->SavedScope);
@@ -159,6 +182,80 @@ Declaration *ClangToGoldDeclRebuilder::rebuild(clang::CXXRecordDecl *ToConvert) 
   // llvm::outs() << "Complete declaration structure.\n";
   // dumpScopeStructure(RootScope, RootDecl);
   return CurDecl;
+}
+
+bool ClangToGoldDeclRebuilder::finishDecl(Declaration *D,
+                                          clang::SourceRange Range) {
+  // This is technically a completed type?
+  if (!D->NeedToBeElaboratedByClangBeforeUse)
+    return false;
+
+  if (!D->defines<clang::EnumDecl>()) {
+    llvm_unreachable("Not sure how to handle this declaration.");
+  }
+  clang::TagDecl *TD = dyn_cast<clang::TagDecl>(D->Cxx);
+  if (!TD) {
+    // FIXME: Create an error message here?
+    return true;
+  }
+  clang::SourceLocation Loc = D->Op->getLoc();
+  clang::QualType Type(TD->getTypeForDecl(), 0);
+  if (SemaRef.getCxxSema().RequireCompleteType(Loc, Type,
+                                   clang::diag::err_incomplete_nested_name_spec,
+                                               Range))
+    return true;
+
+   // Fixed enum types are complete, but they aren't valid as scopes
+   // until we see a definition, so awkwardly pull out this special
+   // case.
+  auto *EnumD = dyn_cast<clang::EnumDecl>(TD);
+  if (!EnumD)
+    return false;
+  if (EnumD->isCompleteDefinition()) {
+    // If we know about the definition but it is not visible, complain.
+    clang::NamedDecl *SuggestedDef = nullptr;
+    if (!SemaRef.getCxxSema().hasVisibleDefinition(EnumD,
+                                                   &SuggestedDef,
+                                                   /*OnlyNeedComplete*/false))
+    {
+      // If the user is going to see an error here, recover by making the
+      // definition visible.
+      bool TreatAsComplete = !SemaRef.getCxxSema().isSFINAEContext();
+      SemaRef.getCxxSema().diagnoseMissingImport(Loc, SuggestedDef,
+                                  clang::Sema::MissingImportKind::Definition,
+                                                 /*Recover*/TreatAsComplete);
+      return !TreatAsComplete;
+    }
+  } else {
+    // Try to instantiate the definition, if this is a specialization of an
+    // enumeration temploid.
+    if (clang::EnumDecl *Pattern = EnumD->getInstantiatedFromMemberEnum()) {
+      clang::MemberSpecializationInfo *MSI = EnumD->getMemberSpecializationInfo();
+      if (MSI->getTemplateSpecializationKind() != clang::TSK_ExplicitSpecialization) {
+        if (SemaRef.getCxxSema().InstantiateEnum(Loc, EnumD, Pattern,
+                        SemaRef.getCxxSema().getTemplateInstantiationArgs(EnumD),
+                                                clang::TSK_ImplicitInstantiation))
+        {
+          return true;
+        }
+      }
+    } else {
+      SemaRef.getCxxSema().Diag(Loc,
+                                clang::diag::err_incomplete_nested_name_spec)
+                                << Type << Range;
+      return true;
+
+    }
+  }
+
+  // This will let us re-enter the incompleted state of the enum.
+  StateRAII DclState(*this, D);
+  for (auto Dcl : TD->decls()) {
+    if (rebuildMember(Dcl)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 gold::Scope *ClangToGoldDeclRebuilder::determineParentScope() {
@@ -210,10 +307,6 @@ ClangToGoldDeclRebuilder::rebuildMember(clang::Decl *Member) {
     return rebuildMember(cast<CXXConstructorDecl>(Member));
   }
   break;
-  case clang::Decl::NamespaceAlias:{
-    return rebuildMember(cast<NamespaceAliasDecl>(Member));
-  }
-  break;
   case clang::Decl::VarTemplate:{
     return rebuildMember(cast<VarTemplateDecl>(Member));
   }
@@ -231,11 +324,20 @@ ClangToGoldDeclRebuilder::rebuildMember(clang::Decl *Member) {
   }
   break;
   case clang::Decl::ClassTemplateSpecialization:
+    return rebuildMember(cast<clang::ClassTemplateSpecializationDecl>(Member));
   case clang::Decl::ClassTemplatePartialSpecialization:
-    llvm_unreachable("I'm not sure if this can be reached in here or not");
+    return rebuildMember(
+        cast<clang::ClassTemplatePartialSpecializationDecl>(Member));
   break;
   case clang::Decl::FunctionTemplate:{
     return rebuildMember(cast<FunctionTemplateDecl>(Member));
+  }
+  case clang::Decl::Enum:{
+    return rebuildMember(cast<EnumDecl>(Member));
+  }
+  break;
+  case clang::Decl::EnumConstant:{
+    return rebuildMember(cast<EnumConstantDecl>(Member));
   }
   break;
   default:
@@ -249,7 +351,28 @@ ClangToGoldDeclRebuilder::rebuildMember(clang::CXXRecordDecl *RD) {
   if (RD->isImplicit())
     // Already implicitly in scope.
     return false;
-  llvm_unreachable("Not implemented yet rebuildMember clang::CXXRecordDecl");
+  ScopeKind SK = SK_Class;
+  UnevaluatedDeclKind UDK = UDK_Class;
+  switch(RD->getTagKind()) {
+    case clang::TTK_Union:
+    UDK = UDK_Union;
+    SK = SK_Class;
+    break;
+    case clang::TTK_Struct:
+    case clang::TTK_Class:
+    SK = SK_Class;
+    UDK = UDK_Class;
+    break;
+    case clang::TTK_Enum:
+    SK = SK_Enum;
+    UDK = UDK_Enum;
+    break;
+    case clang::TTK_Interface:
+    default:
+      llvm_unreachable("Unsupported tag declaration.");
+  }
+  StateRAII RecordState(*this, UDK, RD, SK);
+  return false;
 }
 
 bool
@@ -278,71 +401,93 @@ ClangToGoldDeclRebuilder::rebuildMember(clang::CXXConversionDecl *Conversion) {
 
 bool
 ClangToGoldDeclRebuilder::rebuildMember(clang::CXXDestructorDecl *Dtor) {
-  dumpScopeStructure(RootScope, RootDecl);
-  llvm_unreachable("Not implemented yet rebuildMember clang::CXXDestructorDecl");
+  StateRAII CtorState(*this, UDK_Destructor, Dtor);
+  CurDecl->Id = SemaRef.DestructorII;
+  return false;
 }
 
 bool
 ClangToGoldDeclRebuilder::rebuildMember(clang::CXXConstructorDecl *Ctor) {
-  dumpScopeStructure(RootScope, RootDecl);
-  llvm_unreachable("Not implemented yet rebuildMember clang::CXXConstructor");
-}
-
-bool
-ClangToGoldDeclRebuilder::rebuildMember(clang::NamespaceAliasDecl *Ns) {
-  dumpScopeStructure(RootScope, RootDecl);
-  llvm_unreachable("Not implemented yet rebuildMember clang::NamespaceAliasDecl");
+  StateRAII CtorState(*this, UDK_Constructor, Ctor);
+  CurDecl->Id = SemaRef.ConstructorII;
+  return false;
 }
 
 bool
 ClangToGoldDeclRebuilder::rebuildMember(clang::VarTemplateDecl *VTD) {
-  dumpScopeStructure(RootScope, RootDecl);
-  llvm_unreachable("Not implemented yet rebuildMember clang::VarTemplateDecl");
+  StateRAII CtorState(*this, UDK_VarTemplateDecl, VTD);
+  return false;
 }
 
 bool
 ClangToGoldDeclRebuilder::rebuildMember(clang::TypeAliasTemplateDecl *TATD) {
-  dumpScopeStructure(RootScope, RootDecl);
-  llvm_unreachable("Not implemented yet rebuildMember clang::TypeAliasTemplateDecl");
+  StateRAII CtorState(*this, UDK_VarTemplateDecl, TATD);
+  return false;
 }
 
 bool
 ClangToGoldDeclRebuilder::rebuildMember(clang::TypeAliasDecl *TAD) {
-  dumpScopeStructure(RootScope, RootDecl);
-  llvm_unreachable("Not implemented yet rebuildMember clang::TypeAliasDecl");
+  StateRAII CtorState(*this, UDK_TypeAlias, TAD);
+  return false;
 }
 
 bool
 ClangToGoldDeclRebuilder::rebuildMember(clang::ClassTemplateDecl* CTD) {
-  dumpScopeStructure(RootScope, RootDecl);
-  llvm_unreachable("Not implemented yet rebuildMember clang::ClassTemplateDecl");
+  clang::CXXRecordDecl *RD = CTD->getTemplatedDecl();
+  ScopeKind SK = SK_Class;
+  UnevaluatedDeclKind UDK = UDK_Class;
+  switch(RD->getTagKind()) {
+    case clang::TTK_Union:
+    UDK = UDK_Union;
+    SK = SK_Class;
+    break;
+    case clang::TTK_Struct:
+    case clang::TTK_Class:
+    SK = SK_Class;
+    UDK = UDK_Class;
+    break;
+    case clang::TTK_Enum:
+    SK = SK_Enum;
+    UDK = UDK_Enum;
+    break;
+    case clang::TTK_Interface:
+    default:
+      llvm_unreachable("Unsupported tag declaration.");
+  }
+
+  StateRAII ClsTmpltDclState(*this, UDK, CTD, SK);
+  return false;
+  // return rebuildMember(CTD->getTemplatedDecl());
 }
 
 bool
 ClangToGoldDeclRebuilder::rebuildMember(
     clang::ClassTemplateSpecializationDecl *Tmplt) {
-  dumpScopeStructure(RootScope, RootDecl);
-  llvm_unreachable("Not implemented yet rebuildMember clang::ClassTemplateSpecializationDecl");
+  // We handle the specializations differently because they are actually picked up
+  // by the clang side of things.
+  return false;
 }
 
 bool
 ClangToGoldDeclRebuilder::rebuildMember(
     clang::ClassTemplatePartialSpecializationDecl *Tmplt) {
-  dumpScopeStructure(RootScope, RootDecl);
-  llvm_unreachable("Not implemented yet rebuildMember clang::ClassTemplatePartialSpecializationDecl");
+  return false;
 }
 
 bool
 ClangToGoldDeclRebuilder::rebuildMember(clang::FunctionTemplateDecl* CTD) {
-  dumpScopeStructure(RootScope, RootDecl);
-  llvm_unreachable("Not implemented yet rebuildMember clang::FunctionTemplateDecl");
+  return rebuildMember(cast<clang::CXXMethodDecl>(CTD->getTemplatedDecl()));
 }
 
-bool
-ClangToGoldDeclRebuilder::rebuildOperatorOverload(clang::CXXMethodDecl *Method) {
-  dumpScopeStructure(RootScope, RootDecl);
-  llvm_unreachable("Not implemented yet rebuildMember rebuildOperatorOverload");
+bool ClangToGoldDeclRebuilder::rebuildMember(clang::EnumDecl* ED) {
+  StateRAII EnumState(*this, UDK_Enum, ED, SK_Enum, true, true, true);
+  CurDecl->NeedToBeElaboratedByClangBeforeUse = true;
+  return false;
 }
 
+bool ClangToGoldDeclRebuilder::rebuildMember(clang::EnumConstantDecl* ECD) {
+  StateRAII EnumState(*this, UDK_EnumConstant, ECD, SK_Enum);
+  return false;
+}
 
 }

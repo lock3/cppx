@@ -413,6 +413,7 @@ public:
 
   clang::CXXScopeSpec ScopeSpec;
   bool IsRedeclaration = false;
+  bool NeedToBeElaboratedByClangBeforeUse = false;
 };
 
 Phase phaseOf(Declaration *D);

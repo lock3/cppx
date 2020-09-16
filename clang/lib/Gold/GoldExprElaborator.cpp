@@ -36,6 +36,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Error.h"
 
+#include "clang/Gold/ClangToGoldDeclBuilder.h"
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
 #include "clang/Gold/GoldExprMarker.h"
@@ -652,24 +653,22 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
   clang::Sema::TemplateTy TemplateTyName = clang::Sema::TemplateTy::make(TName);
   clang::IdentifierInfo *II = CTD->getIdentifier();
   clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
+  clang::SourceLocation Loc = Elem->getLoc();
   if (clang::VarTemplateDecl *VTD = dyn_cast<clang::VarTemplateDecl>(CTD)) {
-    clang::DeclarationNameInfo DNI(VTD->getDeclName(), Elem->getLoc());
+    clang::DeclarationNameInfo DNI(VTD->getDeclName(), Loc);
     clang::LookupResult R(SemaRef.getCxxSema(), DNI,
                           clang::Sema::LookupAnyName);
     R.addDecl(VTD);
     clang::ExprResult ER = SemaRef.getCxxSema().BuildTemplateIdExpr(
-          SS, clang::SourceLocation(), R, false, &TemplateArgs);
+          SS, Loc, R, false, &TemplateArgs);
     if (ER.isInvalid())
       return nullptr;
     return ER.get();
   } else {
-
-
     clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
-      SemaRef.getCurClangScope(), SS, /*TemplateKWLoc*/ clang::SourceLocation(),
+      SemaRef.getCurClangScope(), SS, /*TemplateKWLoc*/ Loc,
       TemplateTyName, II, Elem->getObject()->getLoc(),
-      /*LAngleLoc*/clang::SourceLocation(),
-      InArgs, /*RAngleLoc*/ clang::SourceLocation(), false, false);
+      /*LAngleLoc*/Loc, InArgs, /*RAngleLoc*/ Loc, false, false);
 
     if (Result.isInvalid()) {
       SemaRef.Diags.Report(Elem->getObject()->getLoc(),
@@ -975,7 +974,8 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
     R.resolveKind();
     if (!R.isSingleResult()) {
       if (R.isAmbiguous()) {
-        SemaRef.Diags.Report(S->getLoc(), clang::diag::err_multiple_declarations);
+        SemaRef.Diags.Report(S->getLoc(), clang::diag::err_multiple_declarations)
+                            << S->getSpelling();
         return nullptr;
       }
       if (R.isOverloadedResult()) {
@@ -1993,6 +1993,7 @@ static bool isOpDot(Sema &SemaRef, const CallSyntax *Op) {
 clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
                                     const CallSyntax *Op, const clang::Expr *Prev,
                                     const Syntax *RHS) {
+
   clang::TypeSourceInfo *TInfo =
     SemaRef.getTypeSourceInfoFromExpr(Prev, Prev->getExprLoc());
   if (!TInfo)
@@ -2007,7 +2008,24 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
                          << QT;
     return nullptr;
   }
+
+
   clang::TagDecl *TD = T->getAsTagDecl();
+
+  // Fetching declaration to ensure that we actually have the current scope
+  // for lookup.
+  // Attempthing to fetch the declaration now and popss
+  Declaration *DeclForTy = SemaRef.getDeclaration(TD);
+  if (!DeclForTy) {
+    llvm_unreachable("This can never happen?");
+  }
+  ClangToGoldDeclRebuilder Rebuilder(SemaRef.getContext(), SemaRef);
+  clang::SourceRange Range = clang::SourceRange(Op->getArgument(0)->getLoc(),
+                                                RHS->getLoc());
+  if (Rebuilder.finishDecl(DeclForTy, Range)) {
+    return nullptr;
+  }
+
 
   // Processing if is a single name.
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(RHS)) {

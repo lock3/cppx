@@ -590,3 +590,124 @@ c : type = class:
   );
   ASSERT_TRUE(matches(Code.str(), ClassC));
 }
+
+
+
+// Variable Template
+TEST(ClassParsing, Access_VarTemplate_Private) {
+  StringRef Code = R"(
+c : type = class:
+  x[T:type]<static><private> : T = 4
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(
+      varTemplateDecl(hasName("x"), isPrivate())
+    )
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+TEST(ClassParsing, Access_VarTemplate_PublicMember) {
+  StringRef Code = R"(
+c : type = class:
+  x[T:type]<static><public> : T = 4
+)";
+  DeclarationMatcher ClassC = recordDecl(recordDecl(hasName("c")),
+    hasDescendant(
+      varTemplateDecl(hasName("x"), isPublic())
+    )
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+TEST(ClassParsing, Access_ImplicitPublic_VarTemplate) {
+  StringRef Code = R"(
+c : type = class:
+  x[T:type] <static>: T = 4
+)";
+  DeclarationMatcher ClassC = recordDecl(recordDecl(hasName("c")),
+    hasDescendant(
+      varTemplateDecl(hasName("x"), isPublic())
+    )
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+TEST(ClassParsing, Access_Protected_VarTemplate) {
+  StringRef Code = R"(
+c : type = class:
+  x[T:type]<static><protected> : T = 4
+)";
+  DeclarationMatcher ClassC = recordDecl(recordDecl(hasName("c")),
+    hasDescendant(
+      varTemplateDecl(hasName("x"), isProtected())
+    )
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+
+// Type Alias Template
+TEST(ClassParsing, Access_TypeAliasTemplate_Private) {
+  StringRef Code = R"(
+Z[T:type] = class:
+  ;
+
+c : type = class:
+  x[T:type]<private> : type = Z[T]
+)";
+  DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
+    hasDescendant(
+      typeAliasTemplateDecl(hasName("x"), isPrivate())
+    )
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+TEST(ClassParsing, Access_TypeAliasTemplate_PublicMember) {
+  StringRef Code = R"(
+Z[T:type] = class:
+  ;
+
+c : type = class:
+  x[T:type]<public> : type = Z[T]
+)";
+  DeclarationMatcher ClassC = recordDecl(recordDecl(hasName("c")),
+    hasDescendant(
+      typeAliasTemplateDecl(hasName("x"), isPublic())
+    )
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+TEST(ClassParsing, Access_ImplicitPublic_TypeAliasTemplate) {
+  StringRef Code = R"(
+Z[T:type] = class:
+  ;
+
+c : type = class:
+  x[T:type] : type = Z[T]
+)";
+  DeclarationMatcher ClassC = recordDecl(recordDecl(hasName("c")),
+    hasDescendant(
+      typeAliasTemplateDecl(hasName("x"), isPublic())
+    )
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
+
+TEST(ClassParsing, Access_Protected_TypeAliasTemplate) {
+  StringRef Code = R"(
+Z[T:type] = class:
+  ;
+
+c : type = class:
+  x[T:type]<protected> : type = Z[T]
+)";
+  DeclarationMatcher ClassC = recordDecl(recordDecl(hasName("c")),
+    hasDescendant(
+      typeAliasTemplateDecl(hasName("x"), isProtected())
+    )
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassC));
+}
