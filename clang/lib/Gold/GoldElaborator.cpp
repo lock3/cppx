@@ -3708,20 +3708,20 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 
     // Certain macros must be deduced manually.
     if (const MacroSyntax *InitM = dyn_cast<MacroSyntax>(D->Init)) {
-        assert (isa<AtomSyntax>(InitM->getCall()) && "Unexpected macro call");
-        assert (isa<clang::InitListExpr>(InitExpr) &&
-                "Invalid array macro init");
+      assert (isa<AtomSyntax>(InitM->getCall()) && "Unexpected macro call");
+      assert (isa<clang::InitListExpr>(InitExpr) &&
+              "Invalid array macro init");
 
-        const AtomSyntax *Call = cast<AtomSyntax>(InitM->getCall());
-        if (Call->getSpelling() == "array") {
-          Ty = buildImplicitArrayType(Context.CxxAST, SemaRef.getCxxSema(),
-                                      cast<clang::InitListExpr>(InitExpr));
+      const AtomSyntax *Call = cast<AtomSyntax>(InitM->getCall());
+      if (Call->getSpelling() == "array") {
+        Ty = buildImplicitArrayType(Context.CxxAST, SemaRef.getCxxSema(),
+                                    cast<clang::InitListExpr>(InitExpr));
 
-          if (Ty.isNull()) {
-            VD->setInvalidDecl();
-            return;
-          }
+        if (Ty.isNull()) {
+          VD->setInvalidDecl();
+          return;
         }
+      }
     } else {
       if (!InitExpr) {
         SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_no_init);
@@ -3746,15 +3746,15 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
         SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_failed);
         return;
       }
-
-      VD->setType(Ty);
     }
 
-    if (D->Init && !InitExpr) {
-      SemaRef.Diags.Report(VD->getLocation(),
-                          clang::diag::err_failed_to_translate_expr);
-      return;
-    }
+    VD->setType(Ty);
+  }
+
+  if (D->Init && !InitExpr) {
+    SemaRef.Diags.Report(VD->getLocation(),
+                         clang::diag::err_failed_to_translate_expr);
+    return;
   }
   if (D->defines<clang::VarTemplateDecl>()) {
     // I may need to revisit this in the furture becaus this might not be
