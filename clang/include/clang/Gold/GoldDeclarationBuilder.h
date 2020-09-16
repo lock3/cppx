@@ -66,6 +66,7 @@ private:
   bool RequireAliasTypes = false;
   bool RequireTypeForFunctions = false;
   bool RequiresDeclOrError = false;
+  bool AllowShortCtorAndDtorSyntax = false;
   bool IsInsideEnum = false;
 
   /// This checks to make sure that the declarator chain conforms to a specific

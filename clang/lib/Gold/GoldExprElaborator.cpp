@@ -36,6 +36,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Error.h"
 
+#include "clang/Gold/ClangToGoldDeclBuilder.h"
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
 #include "clang/Gold/GoldExprMarker.h"
@@ -636,42 +637,8 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
   llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
   const ListSyntax *ElemArgs = cast<ListSyntax>(Elem->getArguments());
 
-  for(const Syntax *SyntaxArg : ElemArgs->children()) {
-    clang::EnterExpressionEvaluationContext EnterConstantEvaluated(
-                                                          SemaRef.getCxxSema(),
-                  clang::Sema::ExpressionEvaluationContext::ConstantEvaluated,
-                                                /*LambdaContextDecl=*/nullptr,
-                                                              /*ExprContext=*/
-          clang::Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
-
-    clang::Expr *ArgExpr = Elab.elaborateExpr(SyntaxArg);
-    if (!ArgExpr) {
-      SemaRef.Diags.Report(SyntaxArg->getLoc(),
-                           clang::diag::err_failed_to_translate_expr);
-      continue;
-    }
-
-    auto TemplateArg = convertExprToTemplateArg(SemaRef, ArgExpr);
-    if (TemplateArg.isInvalid())
-      // TODO: Figure out if this needs an error message or not.
-      // I assume that the errore message should be delivered prior to this.
-      return nullptr;
-
-    ParsedArguments.emplace_back(TemplateArg);
-
-    // Also building template Argument Info.
-    if (ArgExpr->getType()->isTypeOfTypes()) {
-      clang::TypeSourceInfo *ArgTInfo = SemaRef.getTypeSourceInfoFromExpr(
-                                                       ArgExpr, Elem->getLoc());
-      if (!ArgTInfo)
-        return nullptr;
-      clang::TemplateArgument Arg(ArgTInfo->getType());
-      TemplateArgs.addArgument({Arg, ArgTInfo});
-    } else {
-      clang::TemplateArgument Arg(ArgExpr, clang::TemplateArgument::Expression);
-      TemplateArgs.addArgument({Arg, ArgExpr});
-    }
-  }
+  if (Elab.elaborateTemplateArugments(ElemArgs, TemplateArgs, ParsedArguments))
+    return nullptr;
 
   clang::Decl *Decl = SemaRef.getDeclFromExpr(IdExpr,
                                               Elem->getObject()->getLoc());
@@ -686,24 +653,22 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
   clang::Sema::TemplateTy TemplateTyName = clang::Sema::TemplateTy::make(TName);
   clang::IdentifierInfo *II = CTD->getIdentifier();
   clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
+  clang::SourceLocation Loc = Elem->getLoc();
   if (clang::VarTemplateDecl *VTD = dyn_cast<clang::VarTemplateDecl>(CTD)) {
-    clang::DeclarationNameInfo DNI(VTD->getDeclName(), Elem->getLoc());
+    clang::DeclarationNameInfo DNI(VTD->getDeclName(), Loc);
     clang::LookupResult R(SemaRef.getCxxSema(), DNI,
                           clang::Sema::LookupAnyName);
     R.addDecl(VTD);
     clang::ExprResult ER = SemaRef.getCxxSema().BuildTemplateIdExpr(
-          SS, clang::SourceLocation(), R, false, &TemplateArgs);
+          SS, Loc, R, false, &TemplateArgs);
     if (ER.isInvalid())
       return nullptr;
     return ER.get();
   } else {
-
-
     clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
-      SemaRef.getCurClangScope(), SS, /*TemplateKWLoc*/ clang::SourceLocation(),
+      SemaRef.getCurClangScope(), SS, /*TemplateKWLoc*/ Loc,
       TemplateTyName, II, Elem->getObject()->getLoc(),
-      /*LAngleLoc*/clang::SourceLocation(),
-      InArgs, /*RAngleLoc*/ clang::SourceLocation(), false, false);
+      /*LAngleLoc*/Loc, InArgs, /*RAngleLoc*/ Loc, false, false);
 
     if (Result.isInvalid()) {
       SemaRef.Diags.Report(Elem->getObject()->getLoc(),
@@ -938,6 +903,49 @@ clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
   return handleElementExpression(*this, SemaRef, Context, Elem, IdExpr);
 }
 
+bool ExprElaborator::elaborateTemplateArugments(const ListSyntax *Args,
+                                    clang::TemplateArgumentListInfo &ArgInfo,
+            llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs) {
+
+  for(const Syntax *SyntaxArg : Args->children()) {
+    clang::EnterExpressionEvaluationContext EnterConstantEvaluated(
+                                                          SemaRef.getCxxSema(),
+                  clang::Sema::ExpressionEvaluationContext::ConstantEvaluated,
+                                                /*LambdaContextDecl=*/nullptr,
+                                                              /*ExprContext=*/
+          clang::Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
+
+    clang::Expr *ArgExpr = elaborateExpr(SyntaxArg);
+    if (!ArgExpr) {
+      SemaRef.Diags.Report(SyntaxArg->getLoc(),
+                           clang::diag::err_failed_to_translate_expr);
+      continue;
+    }
+
+    auto TemplateArg = convertExprToTemplateArg(SemaRef, ArgExpr);
+    if (TemplateArg.isInvalid())
+      // TODO: Figure out if this needs an error message or not.
+      // I assume that the errore message should be delivered prior to this.
+      return true;
+
+    ParsedArgs.emplace_back(TemplateArg);
+
+    // Also building template Argument Info.
+    if (ArgExpr->getType()->isTypeOfTypes()) {
+      clang::TypeSourceInfo *ArgTInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                                  ArgExpr, SyntaxArg->getLoc());
+      if (!ArgTInfo)
+        return true;
+      clang::TemplateArgument Arg(ArgTInfo->getType());
+      ArgInfo.addArgument({Arg, ArgTInfo});
+    } else {
+      clang::TemplateArgument Arg(ArgExpr, clang::TemplateArgument::Expression);
+      ArgInfo.addArgument({Arg, ArgExpr});
+    }
+  }
+  return false;
+}
+
 static clang::Expr *
 createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
                   clang::QualType Ty, clang::SourceLocation Loc) {
@@ -966,7 +974,8 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
     R.resolveKind();
     if (!R.isSingleResult()) {
       if (R.isAmbiguous()) {
-        SemaRef.Diags.Report(S->getLoc(), clang::diag::err_multiple_declarations);
+        SemaRef.Diags.Report(S->getLoc(), clang::diag::err_multiple_declarations)
+                            << S->getSpelling();
         return nullptr;
       }
       if (R.isOverloadedResult()) {
@@ -1057,7 +1066,6 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
 
       clang::ExprValueKind ValueKind = SemaRef.getCxxSema()
                      .getValueKindForDeclReference(ResultType, VD, S->getLoc());
-
       clang::DeclRefExpr *DRE =
         SemaRef.getCxxSema().BuildDeclRefExpr(VD, ResultType, ValueKind, DNI,
                                               clang::NestedNameSpecifierLoc(),
@@ -1961,7 +1969,6 @@ clang::Expr *ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
     return RHSExpr;
 
   // TODO: should we account for an NNS that is returned from a function?
-
   SemaRef.CurNNSContext.clear();
   ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr);
   return RHSExpr;
@@ -1986,6 +1993,7 @@ static bool isOpDot(Sema &SemaRef, const CallSyntax *Op) {
 clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
                                     const CallSyntax *Op, const clang::Expr *Prev,
                                     const Syntax *RHS) {
+
   clang::TypeSourceInfo *TInfo =
     SemaRef.getTypeSourceInfoFromExpr(Prev, Prev->getExprLoc());
   if (!TInfo)
@@ -2000,7 +2008,24 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
                          << QT;
     return nullptr;
   }
+
+
   clang::TagDecl *TD = T->getAsTagDecl();
+
+  // Fetching declaration to ensure that we actually have the current scope
+  // for lookup.
+  // Attempthing to fetch the declaration now and popss
+  Declaration *DeclForTy = SemaRef.getDeclaration(TD);
+  if (!DeclForTy) {
+    llvm_unreachable("This can never happen?");
+  }
+  ClangToGoldDeclRebuilder Rebuilder(SemaRef.getContext(), SemaRef);
+  clang::SourceRange Range = clang::SourceRange(Op->getArgument(0)->getLoc(),
+                                                RHS->getLoc());
+  if (Rebuilder.finishDecl(DeclForTy, Range)) {
+    return nullptr;
+  }
+
 
   // Processing if is a single name.
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(RHS)) {

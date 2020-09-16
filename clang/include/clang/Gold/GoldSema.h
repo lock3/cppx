@@ -155,15 +155,21 @@ public:
   Scope *saveScope(const Syntax *S);
 
   // Perform unqualified lookup of a name in the current scope.
-  bool lookupUnqualifiedName(clang::LookupResult &R);
+  bool lookupUnqualifiedName(clang::LookupResult &R,
+                             Declaration *NotThisOne = nullptr);
 
   // Perform unqualified lookup of a name starting in S.
-  bool lookupUnqualifiedName(clang::LookupResult &R, Scope *S);
+  bool lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
+                             Declaration *NotThisOne = nullptr);
 
   // Perform qualified lookup of a name starting in S.
-  bool lookupQualifiedName(clang::LookupResult &R, Scope *S);
-  bool lookupQualifiedName(clang::LookupResult &R);
+  bool lookupQualifiedName(clang::LookupResult &R, Scope *S,
+                           Declaration *NotThisOne = nullptr);
+  bool lookupQualifiedName(clang::LookupResult &R,
+                           Declaration *NotThisOne = nullptr);
 
+  void lookupRedecls(Declaration *D, clang::LookupResult &Previous,
+                    Scope *Scope);
 
   // Perform unqualified memberlooku
   bool unqualifiedMemberAccessLookup(clang::LookupResult &R,
@@ -216,9 +222,6 @@ public:
   /// Make the owner of CurrentDecl current.
   void popDecl();
 
-  // Iterate through the mapped identifiers and determine their type.
-  void elaborateDecls();
-
   /// Iterate through a Declarations redecl chain and see if it has
   /// already been defined.
   /// \param Start - The decl we are beginning the search with.
@@ -249,6 +252,18 @@ public:
   clang::Sema &getCxxSema() { return CxxSema; }
 
   SyntaxContext &getContext() { return Context; }
+
+private:
+  /// Functions which contain a complete mapping of clang::Decl -> gold::Declaration
+  /// if it doesn't exist here then it isn't a declaration that was created
+  /// gold.
+  llvm::DenseMap<clang::Decl *, Declaration *> DeclToDecl;
+public:
+  void addDeclToDecl(clang::Decl *CDecl, gold::Declaration *GDecl);
+  gold::Declaration *getDeclaration(clang::Decl *CDecl);
+  void setDeclForDeclaration(gold::Declaration *GDecl, clang::Decl *CDecl);
+public:
+
 
   /// This is the clang processing scope. This is mostly for code GenPieces.
   clang::Scope *getCurClangScope();
@@ -376,6 +391,15 @@ private:
     NNSK_Global,
     NNSK_Namespace,
     NNSK_NamespaceAlias,
+    NNSK_Record,
+
+    /// Special context used for when we have a nested name specifier
+    /// with template parameters. Beacuse if we simply re-enter the current
+    /// scope we won't have the template parameters that we created before this
+    /// in scope, instead we will have those originally declared within
+    /// the class, struct, or union and none for those from the nested name
+    /// specifier.
+    // NNSK_RecordTemplate
   };
   struct GlobalNNS {
     gold::Scope *Scope;
@@ -385,13 +409,37 @@ private:
     GlobalNNS Global;
     clang::CppxNamespaceDecl *NNS;
     clang::NamespaceAliasDecl *Alias;
+    // clang::CXXRecordDecl *Record;
+    Scope *RebuiltClassScope;
   };
+
   NNSKind CurNNSKind = NNSK_Empty;
   // The list of nested-name-specifiers to use for qualified lookup.
-
   // FIXME: make this a list, instead of a single NNS.
   NNSLookupDecl CurNNSLookupDecl;
+
+  Scope *duplicateScopeForNestedNameContext(Declaration *D);
 public:
+
+  void setLookupScope(GlobalNNS GlobalNs) {
+    CurNNSLookupDecl.Global = GlobalNs;
+    CurNNSKind = NNSK_Global;
+  }
+
+  void setLookupScope(clang::CppxNamespaceDecl *NNS) {
+    CurNNSLookupDecl.NNS = NNS;
+    CurNNSKind = NNSK_Namespace;
+  }
+
+  void setLookupScope(clang::NamespaceAliasDecl *Alias) {
+    CurNNSLookupDecl.Alias = Alias;
+    CurNNSKind = NNSK_NamespaceAlias;
+  }
+
+  bool setLookupScope(clang::CXXRecordDecl *Record);
+
+  Scope *getLookupScope();
+
   bool isQualifiedLookupContext() const {
     return QualifiedLookupContext;
   }
@@ -500,6 +548,9 @@ public:
               Scope **SavedScope = nullptr)
       : S(S), SavedScope(SavedScope), ConcreteTerm(ConcreteTerm) {
       S.enterScope(K, ConcreteTerm);
+      if (SavedScope) {
+        *SavedScope = S.getCurrentScope();
+      }
     }
 
     ~ScopeRAII() {
@@ -592,6 +643,21 @@ public:
         SemaRef.setCurrentDecl(OriginalDecl);
       } else
         SemaRef.popDecl();
+    }
+  };
+
+  struct SaveAndRestoreClangDCAndScopeRAII {
+    Sema &SemaRef;
+    clang::Scope *ScopeOnEntry = nullptr;
+    clang::DeclContext *DCOnEntry = nullptr;
+    SaveAndRestoreClangDCAndScopeRAII(Sema &S)
+      :SemaRef(S),
+      ScopeOnEntry(S.getCxxSema().CurScope),
+      DCOnEntry(S.getCxxSema().CurContext)
+    { }
+    ~SaveAndRestoreClangDCAndScopeRAII() {
+      SemaRef.getCxxSema().CurScope = ScopeOnEntry;
+      SemaRef.getCxxSema().CurContext = DCOnEntry;
     }
   };
 
@@ -713,16 +779,30 @@ public:
   };
 
 
-  struct NNSRAII {
-    NNSRAII(clang::CXXScopeSpec &SS)
-      : SS(SS)
-      {}
+  struct NewNameSpecifierRAII {
+    NewNameSpecifierRAII(Sema &S)
+      :SemaRef(S),
+      PrevScopeSpec(S.CurNNSContext),
+      PrevNNSKind(S.CurNNSKind),
+      PrevNNSLookupDecl(S.CurNNSLookupDecl)
+    {
+      // Initializing Scope spec within this context.
+      SemaRef.CurNNSContext.clear();
+      SemaRef.CurNNSKind = NNSK_Empty;
+      SemaRef.CurNNSLookupDecl = NNSLookupDecl();
+    }
 
-    ~NNSRAII() {
-      SS.clear();
+    ~NewNameSpecifierRAII() {
+      // Attempting to return the context to normal before continuing on.
+      SemaRef.CurNNSContext = PrevScopeSpec;
+      SemaRef.CurNNSKind = PrevNNSKind;
+      SemaRef.CurNNSLookupDecl = PrevNNSLookupDecl;
     }
   private:
-    clang::CXXScopeSpec &SS;
+    Sema &SemaRef;
+    clang::CXXScopeSpec PrevScopeSpec;
+    NNSKind PrevNNSKind;
+    NNSLookupDecl PrevNNSLookupDecl;
   };
 
   /// This helps keep track of the scope associated with templated classes
@@ -818,6 +898,80 @@ public:
                                       clang::SourceLocation LBrace,
                                       const clang::ParsedAttributesView &AttrList,
                                       clang::UsingDirectiveDecl *&UD);
+
+  /// DeclaratorScopeObj - RAII object used in Parser::ParseDirectDeclarator to
+  /// enter a new C++ declarator scope and exit it when the function is
+  /// finished.
+  class DeclaratorScopeObj {
+    Sema &SemaRef;
+    clang::CXXScopeSpec &SS;
+    clang::SourceLocation ExitLoc;
+    bool EnteredScope;
+    bool CreatedScope;
+  public:
+    DeclaratorScopeObj(Sema &S, clang::CXXScopeSpec &ss,
+                       clang::SourceLocation Loc)
+      : SemaRef(S), SS(ss),
+      ExitLoc(Loc),
+      EnteredScope(false),
+      CreatedScope(false)
+    { }
+
+    void enterDeclaratorScope() {
+      assert(!EnteredScope && "Already entered the scope!");
+      assert(SS.isSet() && "C++ scope was not set!");
+
+      CreatedScope = true;
+      SemaRef.enterClangScope(0); // Not a decl scope.
+
+      if (!SemaRef.getCxxSema().ActOnCXXEnterDeclaratorScope(
+                                                SemaRef.getCurClangScope(), SS))
+        EnteredScope = true;
+    }
+
+    ~DeclaratorScopeObj() {
+      if (EnteredScope) {
+        assert(SS.isSet() && "C++ scope was cleared ?");
+        SemaRef.getCxxSema().ActOnCXXExitDeclaratorScope(
+                                                SemaRef.getCurClangScope(), SS);
+      }
+      // SemaRef.getCurClangScope()->get
+      if (CreatedScope)
+        SemaRef.leaveClangScope(ExitLoc);
+    }
+  };
+
+    // RAII type used to track whether we're inside an initializer.
+  struct DeclInitializationScope {
+    Sema &SemaRef;
+    Declaration *Dcl;
+    // Decl *ThisDecl;
+
+    DeclInitializationScope(Sema &Sr, Declaration *D)
+        : SemaRef(Sr), Dcl(D)
+      {
+        clang::Scope *S = nullptr;
+        if (Dcl->ScopeSpec.isSet()) {
+          SemaRef.enterClangScope(0);
+          S = SemaRef.getCurClangScope();
+        }
+        SemaRef.getCxxSema().ActOnCXXEnterDeclInitializer(S, Dcl->Cxx);
+    }
+
+    ~DeclInitializationScope() { pop(); }
+    void pop() {
+      if (Dcl) {
+
+        clang::Scope *S = nullptr;
+        if (Dcl->ScopeSpec.isSet())
+          S = SemaRef.getCurClangScope();
+        SemaRef.getCxxSema().ActOnCXXExitDeclInitializer(S, Dcl->Cxx);
+        if (S)
+          SemaRef.leaveClangScope(Dcl->Op->getLoc());
+        Dcl = nullptr;
+      }
+    }
+  };
 };
 
 } // namespace gold

@@ -82,9 +82,6 @@ AST_POLYMORPHIC_MATCHER_P(typeDeclAlignedTo,
   // AlignedAttr *Attr = Node.template getAttr<AlignedAttr>();
   TypeInfo Ti = Node.getASTContext().getTypeInfo(
       Node.getASTContext().getTypeDeclType(&Node));
-  llvm::outs() << "Type info align = " << Ti.Align << "\n";
-  llvm::outs() << "Expected alignment = " << ExpectedAlignment << "\n";
-  llvm::outs() << "Max alignment = " << Node.getMaxAlignment() << "\n";
   // unsigned ActualAlignment = Attr->getAlignment(Node.getASTContext());
   return Ti.Align == ExpectedAlignment;
 }

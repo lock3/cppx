@@ -72,7 +72,6 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
     return nullptr;
 
   assert(!(OpInfo && !TheDecl->declaresFunction()) && "unimplemented operator");
-
   Scope *CurScope = SemaRef.getCurrentScope();
 
   // If we're in namespace or parameter scope and this identifier already
@@ -144,31 +143,21 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
   Declarator *Dcl = TheDecl->Decl;
   assert(Dcl && "Invalid declarator");
   Declarator *Cur = Dcl;
-  // Cur->printSequence(llvm::outs() << "Current declarator contents = ");
-  // err_expected_declarator_chain_sequence
-  // err_invalid_declarator_chain_sequence
-  // 0 - global name specifier
-  // 1 - nested name specifier
-  // 2 - identifier
-  // 3 - function
-  // 4 - type
-  // 5 - template
-  // 6 - specialization
+
   auto ReportMissing = [&](int ErrKind) -> bool {
     if (Cur == nullptr) {
       // Some how the name for this was a dot.
-      if (RequiresDeclOrError) {
+      if (RequiresDeclOrError)
         SemaRef.Diags.Report(DeclExpr->getLoc(),
                             clang::diag::err_expected_declarator_chain_sequence)
-                             << ErrKind;
-      }
+                            << ErrKind;
       return true;
     }
     return false;
   };
 
   if (Cur->isGlobalNameSpecifier()) {
-    TheDecl->GlobalNsSpecifier = Cur;
+    TheDecl->GlobalNsSpecifier = Cur->getAsGlobalNameSpecifier();
     Cur = Cur->Next;
     if (ReportMissing(2))
       return true;
@@ -176,39 +165,34 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
 
   // Checking for Nested Name Specifier
   while(Cur->isNestedNameSpecifier()) {
-    Declarator *NNS = Cur;
-    Declarator *NNSTemplateParams = nullptr;
-    Declarator *NNSSpecialization = nullptr;
+    TheDecl->NNSInfo.emplace_back();
+    TheDecl->NNSInfo.back().Name = Cur->getAsNestedNameSpecifier();
     Cur = Cur->Next;
     if (ReportMissing(2))
       return true;
-
     if (Cur->isTemplateParameters()) {
-      NNSTemplateParams = Cur;
+      TheDecl->NNSInfo.back().Template = Cur->getAsTemplateParams();
       Cur = Cur->Next;
       if (ReportMissing(2))
         return true;
     }
     if (Cur->isSpecialization()) {
-      NNSSpecialization = Cur;
+      TheDecl->NNSInfo.back().SpecializationArgs = Cur->getAsSpecialization();
       Cur = Cur->Next;
       if (ReportMissing(2))
         return true;
     }
-    TheDecl->NNSInfo.emplace_back(NNSDeclaratorInfo{NNS, NNSTemplateParams,
-                                                    NNSSpecialization});
   }
 
   // We expect the regular identifier at this point.
   if (Cur->isIdentifier()) {
-    TheDecl->IdDcl = Cur;
+    TheDecl->IdDcl = Cur->getAsIdentifier();
     Cur = Cur->Next;
   } else {
-    if (RequiresDeclOrError) {
+    if (RequiresDeclOrError)
       SemaRef.Diags.Report(DeclExpr->getLoc(),
                           clang::diag::err_expected_declarator_chain_sequence)
                           << 2;
-    }
     return true;
   }
 
@@ -217,23 +201,22 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
     return false;
 
   // Checking for template arguments, then specializations
-  if (Cur->isTemplateParameters()
-      || Cur->isImplicitTemplateParameters()) {
-    TheDecl->TemplateParameters = Cur;
+  if (Cur->isTemplateParameters()) {
+    TheDecl->Template = Cur->getAsTemplateParams();
     Cur = Cur->Next;
   }
   if (Cur == nullptr)
     return false;
 
   if (Cur->isSpecialization()) {
-    TheDecl->SpecializationArgs = Cur;
+    TheDecl->SpecializationArgs = Cur->getAsSpecialization();
     Cur = Cur->Next;
   }
   if (Cur == nullptr)
     return false;
 
   if (Cur->isFunction()) {
-    TheDecl->FunctionDcl = Cur;
+    TheDecl->FunctionDcl = Cur->getAsFunction();
     Cur = Cur->Next;
   }
   if (Cur == nullptr)
@@ -241,14 +224,15 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
 
   // This is the last thing so after cur == nullptr if not then we have an
   // invalid declarator
-  if (Cur->isType()){
-    TheDecl->TypeDcl = Cur;
+  if (Cur->isType()) {
+    TheDecl->TypeDcl = Cur->getAsType();
     Cur = Cur->Next;
   }
   if (Cur != nullptr) {
     if (RequiresDeclOrError) {
-      SemaRef.Diags.Report(DeclExpr->getLoc(),
-                          clang::diag::err_invalid_declaration);
+      auto Loc = DeclExpr->getLoc();
+      Loc.dump(SemaRef.getCxxSema().getSourceManager());
+      SemaRef.Diags.Report(Cur->getLoc(), clang::diag::err_invalid_declaration);
     }
     return true;
   }
@@ -278,11 +262,8 @@ bool DeclarationBuilder::checkDeclaration(const Syntax *DeclExpr,
     // \endcode
     // The first statement is a declaration. The second is an assignment.
     // FIXME: is this the right way to handle the lookup set?
-    if (InitOperatorUsed == IK_Equals
-        && !CurScope->findDecl(Id).empty()){
-      llvm::outs() << "Declaration already exists?!\n";
+    if (InitOperatorUsed == IK_Equals && !CurScope->findDecl(Id).empty())
       return true;
-    }
   }
 
   if (IsInsideEnum)
@@ -322,17 +303,6 @@ bool DeclarationBuilder::checkDeclaration(const Syntax *DeclExpr,
   if (checkRequiresType(DeclExpr, TheDecl))
     return true;
 
-// EnableNamespaceDecl
-// EnableTags
-// EnableAliases
-// EnableTemplateParameters
-// EnableNestedNameSpecifiers
-// RequireTypeForVariable
-// RequireTypeForFunctions
-// RequireAliasTypes
-// RequiresDeclOrError
-// IsInsideEnum
-
   return false;
 }
 
@@ -350,7 +320,7 @@ bool DeclarationBuilder::checkEnumDeclaration(const Syntax *DeclExpr,
   }
 
   if (!TheDecl->NNSInfo.empty()) {
-    SemaRef.Diags.Report(TheDecl->NNSInfo.front().NNS->getLoc(),
+    SemaRef.Diags.Report(TheDecl->NNSInfo.front().Name->getLoc(),
                          clang::diag::err_invalid_declarator_sequence)
                          << 3;
     return true;
@@ -370,8 +340,8 @@ bool DeclarationBuilder::checkEnumDeclaration(const Syntax *DeclExpr,
     return true;
   }
 
-  if (TheDecl->TemplateParameters) {
-    SemaRef.Diags.Report(TheDecl->TemplateParameters->getLoc(),
+  if (TheDecl->Template) {
+    SemaRef.Diags.Report(TheDecl->Template->getLoc(),
                          clang::diag::err_invalid_declarator_sequence)
                          << 2;
     return true;
@@ -533,7 +503,7 @@ static bool isTagLikeDeclOrForwardDecl(Sema &SemaRef, Declaration *TheDecl,
                              clang::diag::err_namespace_missing_body);
         return false;
       }
-      TheDecl->IsDeclOnly = false;
+      TheDecl->IsDeclOnly = true;
       return true;
     }
   }
@@ -603,9 +573,9 @@ static bool deduceFunctionSyntax(Sema &SemaRef, Declaration *TheDecl,
                                  bool &HadError) {
   HadError = false;
   // Making sure that if we have a body we mark it correctly.
-  if (TheDecl->InitOpUsed == IK_None) {
-    TheDecl->IsDeclOnly = false;
-  }
+  if (TheDecl->InitOpUsed == IK_None)
+    TheDecl->IsDeclOnly = true;
+
   // Handling possible member function deduction,
   // STATIC functions within a class body will be labeled as member functions
   // that's because they don't have a different internal type.
@@ -701,7 +671,7 @@ static bool deduceVariableSyntax(Sema &SemaRef, Declaration *TheDecl,
   TheDecl->SuspectedKind = UDK_DeductionOnlyVariable;
 
   // These are the remaining variable like declarations.
- if (TheDecl->TemplateParameters) {
+  if (TheDecl->Template) {
     TheDecl->SuspectedKind = UDK_VarTemplateOrTemplateAlias;
     // If we have template parameters and an assignment operator
     // we know we could only be a template aliase, variable template, or not a
@@ -787,12 +757,13 @@ static bool deduceVariableSyntax(Sema &SemaRef, Declaration *TheDecl,
 
 bool DeclarationBuilder::classifyDecl(const Syntax *DeclExpr,
                                       Declaration *TheDecl) {
+
   // this is handled within checkEnumDeclaration
   if (TheDecl->SuspectedKind == UDK_EnumConstant)
     return false;
 
   bool EncounteredError = false;
-  if (isTagLikeDeclOrForwardDecl(SemaRef, TheDecl, EncounteredError)){
+  if (isTagLikeDeclOrForwardDecl(SemaRef, TheDecl, EncounteredError)) {
     if (EncounteredError)
       return true;
     return false;
@@ -913,6 +884,7 @@ Declarator *DeclarationBuilder::handleClassScope(const Syntax *S) {
   RequireAliasTypes = false;
   RequireTypeForFunctions = false;
   RequiresDeclOrError = true;
+  AllowShortCtorAndDtorSyntax = true;
   return makeDeclarator(S);
 }
 
@@ -1024,12 +996,10 @@ DeclarationBuilder::buildNestedNameSpec(const CallSyntax *Call, Declarator *Next
     return buildNestedTemplateSpecializationOrName(Call->getArgument(0),
                                                     ConstructedName);
   } else {
-    // if it's not then we have an error.
-    if (RequiresDeclOrError) {
-      llvm::outs() << "4. verifyDeclaratorChain\n";
+    // if it's not a nested name then we have an error.
+    if (RequiresDeclOrError)
       SemaRef.Diags.Report(Call->getLoc(),
                             clang::diag::err_invalid_declaration);
-    }
     return nullptr;
   }
 }
@@ -1050,10 +1020,11 @@ DeclarationBuilder::buildNestedName(const Syntax *S, Declarator *Next) {
   if (const auto *SimpleName = dyn_cast<AtomSyntax>(S)) {
     return handleNestedNameSpecifier(SimpleName, Next);
   }
-  if (RequiresDeclOrError)
+  if (RequiresDeclOrError){
     SemaRef.Diags.Report(S->getLoc(),
                          clang::diag::err_invalid_declaration_kind)
                          <<2;
+  }
 
   return nullptr;
 }
@@ -1102,9 +1073,10 @@ DeclarationBuilder::buildNameDeclarator(const Syntax *S, Declarator *Next) {
   } else {
     ErrorIndicator = 1;
   }
-  if (RequiresDeclOrError)
+  if (RequiresDeclOrError) {
     SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_declaration_kind)
                          << ErrorIndicator;
+  }
   return nullptr;
 }
 
@@ -1166,7 +1138,13 @@ Declarator *
 DeclarationBuilder::buildTemplateFunctionOrNameDeclarator(const Syntax *S,
                                                           Declarator *Next) {
   if (const CallSyntax *Func = dyn_cast<CallSyntax>(S)) {
-    // This can only occur at this level.
+    if (isa<AtomSyntax>(Func->getCallee())) {
+
+      FusedOpKind OpKind = getFusedOpKind(SemaRef, Func);
+      if (OpKind == FOK_MemberAccess) {
+        return buildTemplateOrNameDeclarator(Func, Next);
+      }
+    }
     Declarator *Temp = buildTemplateOrNameDeclarator(Func->getCallee(),
                                handleFunction(Func, Next));
     Temp->recordAttributes(Func);
@@ -1216,12 +1194,10 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
 
   const auto *Call = dyn_cast<CallSyntax>(S);
   if (!Call) {
-    if (RequiresDeclOrError) {
-      S->dump();
+    if (RequiresDeclOrError)
       SemaRef.Diags.Report(S->getLoc(),
                            clang::diag::err_invalid_declaration_kind)
                            << 2;
-    }
     return nullptr;
   }
 
@@ -1236,7 +1212,7 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
     // This is to reject t.x as a declaration.
     // This checks if a declaration already exists in a parent scope.
     // For example, we are in a member function and are accessing a member.
-    if(const AtomSyntax *LHS = dyn_cast<AtomSyntax>(Decl)) {
+    if (const AtomSyntax *LHS = dyn_cast<AtomSyntax>(Decl)) {
       clang::DeclarationNameInfo DNI({
           &Context.CxxAST.Idents.get(LHS->getSpelling())
         }, S->getLoc());
@@ -1310,10 +1286,18 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
   case FOK_Brackets:
   case FOK_Parens:{
     // None of these operators can be the root of a declaration.
-    if (RequiresDeclOrError)
+    if (RequiresDeclOrError) {
+      if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
+        if (AllowShortCtorAndDtorSyntax &&
+            (Callee->getSpelling() == "constructor"
+            || Callee->getSpelling() == "destructor")) {
+          return buildTemplateFunctionOrNameDeclarator(Call, nullptr);
+        }
+      }
       SemaRef.Diags.Report(S->getLoc(),
                            clang::diag::err_invalid_declaration_kind)
                            << 2;
+    }
     return nullptr;
   }
   }
@@ -1355,6 +1339,7 @@ DeclarationBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
   // Translating the simple identifier.
   OriginalName = llvm::StringRef(S->getSpelling());
   Id = &Context.CxxAST.Idents.get(OriginalName);
+  assert(OriginalName != "operator'.'");
   if (OriginalName.find('"') != llvm::StringRef::npos) {
     if (OriginalName.startswith("operator\"")) {
       OpInfo = SemaRef.OpInfo.getOpInfo(OriginalName);

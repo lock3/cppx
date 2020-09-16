@@ -140,6 +140,8 @@ enum UnevaluatedDeclKind {
   */
 };
 
+llvm::StringRef unevaluatedDeclKindToStr(UnevaluatedDeclKind UDK);
+
 enum class Phase : std::size_t
 {
   Unprocessed,
@@ -148,10 +150,12 @@ enum class Phase : std::size_t
   Initialization
 };
 
+llvm::StringRef phaseToStr(Phase p);
+
 struct NNSDeclaratorInfo {
-  Declarator *NNS = nullptr;
-  Declarator *TemplateParameters = nullptr;
-  Declarator *SpecializationArgs = nullptr;
+  NestedNameSpecifierDeclarator *Name = nullptr;
+  TemplateParamsDeclarator *Template = nullptr;
+  SpecializationDeclarator *SpecializationArgs = nullptr;
 };
 
 enum InitKind {
@@ -197,17 +201,11 @@ public:
   /// Any template has default parameters. Either class or function.
   bool templateHasDefaultParameters() const;
 
-  /// True if this is a type declaration.
-  bool declaresType() const;
-
   /// Checks to see if this is a forward declaration or not.
   bool declaresForwardRecordDecl() const;
 
   /// Checks if the type declaration is declaring a record.
-  bool declaresTag() const;
-
-  /// Get tag name.
-  bool getTagName(const AtomSyntax *&NameNode) const;
+  bool declaresTagDef() const;
 
   /// Checks to see if we declare a union or not.
   bool declaresUnion() const;
@@ -269,6 +267,10 @@ public:
   /// checks if a function has a body.
   bool declaresFunctionDef() const;
 
+  bool hasNestedNameSpecifier() const;
+
+  llvm::StringRef getSuspectedKindStr() const;
+
   template<typename T>
   bool defines() const {
     return Cxx && clang::isa<T>(Cxx);
@@ -283,25 +285,17 @@ public:
   /// Checks if the current Cxx decl is a static member variable of a class.
   bool declaresInlineInitializedStaticVarDecl() const;
 
-  /// Get the template parameters for this declaration or null if none.
-  const Syntax *getTemplateParams() const;
+  /// This returns the kind that this most likely evaluates to.
+  UnevaluatedDeclKind getKind() const { return SuspectedKind; }
 
   /// The identifier of the declaration, if any.
-  clang::IdentifierInfo *getId() const {
-    return Id;
-  }
+  clang::IdentifierInfo *getId() const { return Id; }
 
-  // bool nameIsOperator() const;
+  const IdentifierDeclarator *getIdDeclarator() const;
+  IdentifierDeclarator *getIdDeclarator();
 
-  /// This looks for the first instance of DK_TemplateParams and returns it.
-  const Declarator *getFirstTemplateDeclarator() const;
-  Declarator *getFirstTemplateDeclarator();
-
-  const Declarator *getIdDeclarator() const;
-  Declarator *getIdDeclarator();
-
-  const Declarator *getFirstDeclarator(DeclaratorKind DK) const;
-  Declarator *getFirstDeclarator(DeclaratorKind DK);
+  // const Declarator *getFirstDeclarator(DeclaratorKind DK) const;
+  // Declarator *getFirstDeclarator(DeclaratorKind DK);
 
   /// The corresponding C++ declaration as a context.
   clang::DeclContext *getCxxContext() const;
@@ -312,7 +306,6 @@ public:
   /// This function checks to see if the current scope was declared within
   // the scope of another class body.
   bool isDeclaredWithinClass() const;
-
 
   /// The owning context.
   Declaration *Cxt = nullptr;
@@ -331,10 +324,6 @@ public:
 
   /// The list of members associated with this declaration.
   Scope *SavedScope = nullptr;
-
-  /// The list of template parameter declarations associated
-  /// with this declaration.
-  // Scope *SavedTemplateScope = nullptr;
 
   /// The identifier for the declaration.
   clang::IdentifierInfo *Id = nullptr;
@@ -391,17 +380,18 @@ public:
   const AtomSyntax *ES_Name = nullptr;
 
   /// Declarator inspecting variables.
-  Declarator *GlobalNsSpecifier = nullptr;
+  GlobalNameSpecifierDeclarator *GlobalNsSpecifier = nullptr;
   llvm::SmallVector<NNSDeclaratorInfo, 4> NNSInfo;
-  Declarator *IdDcl = nullptr;
+  IdentifierDeclarator *IdDcl = nullptr;
 
-  Declarator *TemplateParameters = nullptr;
-  Declarator *SpecializationArgs = nullptr;
+  TemplateParamsDeclarator *Template = nullptr;
+  SpecializationDeclarator *SpecializationArgs = nullptr;
 
-  Declarator *FunctionDcl = nullptr;
-  Declarator *TypeDcl = nullptr;
+  FunctionDeclarator *FunctionDcl = nullptr;
+  TypeDeclarator *TypeDcl = nullptr;
 
   llvm::SmallVector<clang::TemplateParameterList *, 4> TemplateParamStorage;
+
   /// ====================================================================== ///
   /// Additional identifing information about the current declaration.
 
@@ -410,17 +400,20 @@ public:
   bool IsDeclOnly = false;
 
   /// This is used to indicate if the declaration was initialized with = 0
-  bool HasEqualZero = false;
+  // bool HasEqualZero = false;
 
   /// This is used to indicate if a function declaration has an = default;
-  bool HasEqualDefault = false;
+  // bool HasEqualDefault = false;
 
   /// This is used to indicate if a function has a body of = delete
-  bool HasEqualDelete = false;
+  // bool HasEqualDelete = false;
 
   /// Identifies if the declaration created uses the equalsOperator
   InitKind InitOpUsed = IK_None;
 
+  clang::CXXScopeSpec ScopeSpec;
+  bool IsRedeclaration = false;
+  bool NeedToBeElaboratedByClangBeforeUse = false;
 };
 
 Phase phaseOf(Declaration *D);

@@ -26,13 +26,15 @@
 #include "clang/Sema/TypeLocUtil.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "clang/Gold/ClangToGoldDeclBuilder.h"
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSyntax.h"
-
 namespace gold {
 
 using namespace llvm;
+
+
 
 static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
     SyntaxContext &Context) {
@@ -227,19 +229,25 @@ void Sema::enterScope(ScopeKind K, const Syntax *S, Declaration *D) {
   pushScope(new Scope(K, S, getCurrentScope(), D));
 }
 
-void Sema::leaveScope(const Syntax *S) {
-  assert(getCurrentScope()->getConcreteTerm() == S);
-  // FIXME: Delete the scope. Note that we don't delete the scope in saveScope.
-  popScope();
-}
+// Scope *Sema::enterScopeNNSContext() {
+//   assert(CurNNSContext.isSet() && "The current NNS set.");
+  
+// }
 
-Scope *Sema::saveScope(const Syntax *S) {
+void Sema::leaveScope(const Syntax *S) {
   if (getCurrentScope()->getConcreteTerm() != S) {
     llvm::outs() << "Actual Expected term = ";
     getCurrentScope()->getConcreteTerm()->dump();
     llvm::outs() << "Given Expected term = ";
     S->dump();
   }
+  assert(getCurrentScope()->getConcreteTerm() == S);
+  // FIXME: Delete the scope. Note that we don't delete the scope in saveScope.
+  popScope();
+}
+
+Scope *Sema::saveScope(const Syntax *S) {
+
   assert(getCurrentScope()->getConcreteTerm() == S);
   // FIXME: Queue the scope for subsequent deletion?
   Scope *Scope = getCurrentScope();
@@ -285,13 +293,55 @@ void Sema::popDecl() {
     clang::Decl::castToDeclContext(CurrentDecl->Cxx) : nullptr;
 }
 
-bool Sema::lookupUnqualifiedName(clang::LookupResult &R) {
-  return lookupUnqualifiedName(R, getCurrentScope());
+void Sema::addDeclToDecl(clang::Decl *CDecl, gold::Declaration *GDecl) {
+  assert(CDecl && "Invalid clang declaration");
+  assert(GDecl && "Invalid gold declaration");
+
+  auto Ret = DeclToDecl.try_emplace(CDecl, GDecl);
+  if (!Ret.second)
+    llvm_unreachable("we should never add something to the decl map 2x.");
+}
+
+gold::Declaration *Sema::getDeclaration(clang::Decl *CDecl) {
+  assert(CDecl && "Invalid declaration.");
+  auto Iter = DeclToDecl.find(CDecl);
+  if (Iter == DeclToDecl.end()) {
+    if (!isa<clang::CXXRecordDecl>(CDecl)) {
+      llvm::StringRef Name = "";
+      if (auto *ND = dyn_cast<clang::NamedDecl>(CDecl)) {
+        Name = ND->getName();
+      }
+      Diags.Report(CDecl->getLocation(),
+                   clang::diag::err_unknown_template_declaration)
+                   << Name;
+      return nullptr;
+    }
+    ClangToGoldDeclRebuilder rebuilder(Context, *this);
+    Declaration *GDecl = rebuilder.rebuild(cast<clang::CXXRecordDecl>(CDecl));
+    if (!GDecl)
+      // Any error reporting will be handled the the rebuilder.
+      return nullptr;
+    return GDecl;
+  }
+  return Iter->second;
+}
+
+void Sema::setDeclForDeclaration(gold::Declaration *GDecl, clang::Decl *CDecl) {
+  assert(GDecl && "Invalid gold declaration");
+  GDecl->Cxx = CDecl;
+  if (CDecl)
+    addDeclToDecl(CDecl, GDecl);
+}
+
+bool Sema::lookupUnqualifiedName(clang::LookupResult &R,
+                                 Declaration *NotThisOne) {
+  return lookupUnqualifiedName(R, getCurrentScope(), NotThisOne);
 }
 
 
 
-bool Sema::lookupQualifiedName(clang::LookupResult &R) {
+bool Sema::lookupQualifiedName(clang::LookupResult &R,
+                               Declaration *NotThisOne) {
   gold::Scope *LookupScope = nullptr;
   switch (CurNNSKind) {
   case NNSK_Empty:
@@ -313,9 +363,14 @@ bool Sema::lookupQualifiedName(clang::LookupResult &R) {
       Diags.Report(Ns->getLocation(), clang::diag::err_expected_namespace);
       return false;
     }
+    break;
   }
+  case NNSK_Record:{
+    LookupScope = CurNNSLookupDecl.RebuiltClassScope;
   }
-  return lookupUnqualifiedName(R, LookupScope);
+  break;
+  }
+  return lookupUnqualifiedName(R, LookupScope, NotThisOne);
 }
 
 static bool findOrdinaryMember(clang::RecordDecl *BaseRecord, clang::CXXBasePath &Path,
@@ -489,7 +544,8 @@ static void addIfNotDuplicate(clang::LookupResult &R, clang::NamedDecl *ND) {
   R.addDecl(ND);
 }
 
-bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
+bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
+                                 Declaration *NotThisOne) {
   assert(S);
 
   clang::DeclarationName Name = R.getLookupName();
@@ -515,6 +571,10 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
     std::set<Declaration *> Found = S->findDecl(Id);
     if (!Found.empty()) {
       for (auto *FoundDecl : Found) {
+        // Skipping this particular declaration to avoid triggering
+        // double early elaboration.
+        if (FoundDecl == NotThisOne)
+          continue;
         // If we find a name that hasn't been elaborated,
         // then we actually need to elaborate it.
 
@@ -532,6 +592,9 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
           }
         }
 
+        // Skip early elaboration of declarations with nested name specifiers.
+        if (FoundDecl->hasNestedNameSpecifier())
+          continue;
 
         if (!FoundDecl->Cxx)
           Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
@@ -583,7 +646,6 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
             ND = cast<clang::NamedDecl>(RD->getCanonicalDecl());
           }
         }
-
         addIfNotDuplicate(R, ND);
       }
       break;
@@ -597,7 +659,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
       // Checking that if we are in side of a record and within that record has base classes.
       Declaration *DeclEntity = S->Entity;
       if (DeclEntity) {
-        if (DeclEntity->declaresTag()) {
+        if (DeclEntity->declaresTagDef()) {
           if (DeclEntity->Cxx) {
             clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(DeclEntity->Cxx);
             // We do this because if for whatever reason if this hasn't been initially
@@ -616,6 +678,17 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
     }
   }
   return !R.empty();
+}
+
+void Sema::lookupRedecls(Declaration *D, clang::LookupResult &Previous,
+                         Scope *Scope) {
+  // I may need to do something slightly different here so that
+  // We only seach the current scope? Because we don't want to get into
+  // conflict with any other functions that are in different namespaces?
+  if (D->hasNestedNameSpecifier())
+    lookupQualifiedName(Previous, D);
+  else
+    lookupUnqualifiedName(Previous, getCurrentScope(), D);
 }
 
 bool Sema::unqualifiedMemberAccessLookup(clang::LookupResult &R,
@@ -663,7 +736,7 @@ bool Sema::checkUnqualifiedNameIsDecl(const clang::DeclarationNameInfo& DNI,
       // Checking that if we are in side of a record and within that record has base classes.
       Declaration *DeclEntity = S->Entity;
       if (DeclEntity) {
-        if (DeclEntity->declaresTag()) {
+        if (DeclEntity->declaresTagDef()) {
           if (DeclEntity->Cxx) {
             clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(DeclEntity->Cxx);
             // We do this because if for whatever reason if this hasn't been initially
@@ -884,7 +957,7 @@ bool Sema::declNeedsDelayed(Declaration *D) {
   if (D->declaresTypeAlias())
     return false;
 
-  if (D->declaresTemplateType() || D->declaresTag())
+  if (D->declaresTemplateType() || D->declaresTagDef())
     return true;
 
   // I haven't found an reason that these would need to be delayed any more
@@ -1070,6 +1143,58 @@ clang::CppxNamespaceDecl *Sema::getNSDeclFromExpr(const clang::Expr *DeclExpr,
   }
   Diags.Report(Loc, clang::diag::err_expected_namespace);
   return nullptr;
+}
+
+Scope *Sema::duplicateScopeForNestedNameContext(Declaration *D) {
+  assert(D && "invalid declaration");
+  assert(D->Cxx && "Declaration hasn't been elaborated yet");
+  assert(D->SavedScope && "Declaration has no scope to duplicate");
+  // Entering a new scope that we can use for lookup.
+  enterScope(D->SavedScope->getKind(), D->SavedScope->getConcreteTerm());
+  Scope *NextScope = getCurrentScope();
+  for (const auto &DeclPair : D->SavedScope->DeclMap) {
+    NextScope->addDecl(DeclPair.second);
+  }
+  // Copying the current entity into the new scope.
+  NextScope->Entity = D->SavedScope->Entity;
+  return NextScope;
+}
+
+bool Sema::setLookupScope(clang::CXXRecordDecl *Record) {
+  assert(Record && "Invalid lookup context");
+  Declaration *D = getDeclaration(Record);
+  if (!D) {
+    return true;
+  }
+  CurNNSLookupDecl.RebuiltClassScope = duplicateScopeForNestedNameContext(D);
+  CurNNSKind = NNSK_Record;
+  return false;
+}
+
+Scope *Sema::getLookupScope() {
+  switch(CurNNSKind) {
+    case NNSK_Empty:
+      return nullptr;
+    case NNSK_Global:
+      return CurNNSLookupDecl.Global.Scope;
+    case NNSK_Namespace:
+      return CurNNSLookupDecl.NNS->getScopeRep();
+    case NNSK_NamespaceAlias:{
+      if (auto *NNS = dyn_cast<clang::CppxNamespaceDecl>(
+              CurNNSLookupDecl.Alias->getAliasedNamespace())) {
+        return NNS->getScopeRep();
+      } else {
+        // FIXME: The namespace alias doesn't contain a CppxNamespaceDecl
+        llvm_unreachable("Invalid namespace alias");
+      }
+      return nullptr;
+    }
+    case NNSK_Record:{
+      return CurNNSLookupDecl.RebuiltClassScope;
+    }
+    default:
+      llvm_unreachable("Invalid or unknown nested name specifier type");
+  }
 }
 
 bool Sema::isInDeepElaborationMode() const {

@@ -19,6 +19,7 @@
 #include "clang/AST/Stmt.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/TemplateBase.h"
+#include "clang/Sema/DeclSpec.h"
 
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/DenseMap.h"
@@ -164,8 +165,10 @@ public:
   bool isUnknown() const { return Kind == DK_Unknown; }
   bool isGlobalNameSpecifier() const { return Kind == DK_GlobalNamespecifier; }
   bool isNestedNameSpecifier() const { return Kind == DK_NestedNameSpecifier; }
-  bool isTemplateParameters() const { return Kind == DK_TemplateParams; }
   bool isImplicitTemplateParameters() const { return Kind == DK_ImplicitEmptyTemplateParams; }
+  bool isTemplateParameters() const {
+    return Kind == DK_TemplateParams || isImplicitTemplateParameters();
+  }
   bool isSpecialization() const { return Kind == DK_Specialization; }
   bool isError() const { return Kind == DK_Error; }
 
@@ -290,6 +293,10 @@ public:
 
 class NestedNameSpecifierDeclarator : public Declarator {
   const AtomSyntax *Name;
+  Scope *ReenteredScope = nullptr;
+  clang::Scope *CScope = nullptr;
+  bool EnteredScope = false;
+  clang::CXXScopeSpec CurScopeSpec;
 public:
   NestedNameSpecifierDeclarator(const AtomSyntax* NameNode, Declarator *Next)
     :Declarator(DK_NestedNameSpecifier, Next),
@@ -299,6 +306,19 @@ public:
   virtual std::string getString(bool IncludeKind = false) const override;
 
   const AtomSyntax *getNestedName() const { return Name; }
+
+  Scope *getScope() const { return ReenteredScope; }
+  void setScope(Scope *S) { ReenteredScope = S; }
+
+  clang::CXXScopeSpec &getScopeSpec() { return CurScopeSpec; }
+  const clang::CXXScopeSpec &getScopeSpec() const { return CurScopeSpec; }
+  void setScopeSpec(const clang::CXXScopeSpec & SS) { CurScopeSpec = SS; }
+
+  void setEnteredScope(bool DidEnter = true) { EnteredScope = DidEnter; }
+  bool didEnterScope() const { return EnteredScope; }
+
+  clang::Scope *getClangScope() const { return CScope; }
+  void setClangScope(clang::Scope *SC) { CScope = SC; }
 
   static bool classof(const Declarator *Dcl) {
     return Dcl->getKind() == DK_NestedNameSpecifier;
@@ -355,7 +375,7 @@ public:
 
 class TemplateParamsDeclarator : public Declarator {
   const ElemSyntax *Params;
-  gold::Scope *Scope;
+  gold::Scope *Scope = nullptr;
   clang::TemplateParameterList *ClangParamList;
 protected:
   TemplateParamsDeclarator(DeclaratorKind DK, const ElemSyntax *ParamsNode,
