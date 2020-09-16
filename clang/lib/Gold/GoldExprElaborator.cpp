@@ -255,7 +255,7 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
 
   // skip over any [0.] prefix
   llvm::StringRef Spelling = Base == 10 ? S->getSpelling() :
-    std::string(S->getSpelling().begin() + 2, S->getSpelling().end());
+    S->getSpelling().substr(2);
 
   llvm::APInt Value(Width, Spelling, Base);
   Value = Value.zextOrTrunc(Width);
