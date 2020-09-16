@@ -47,7 +47,7 @@ static void applyESIToFunctionType(SyntaxContext &Context, Sema &SemaRef,
                                    clang::FunctionDecl *FD,
                        const clang::FunctionProtoType::ExceptionSpecInfo &ESI);
 
-AttrFormat checkAttrFormatAndName(const Syntax *Attr, llvm::StringRef &Name) {
+AttrFormat checkAttrFormatAndName(const Syntax *Attr, std::string &Name) {
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
     Name = Atom->getSpelling();
     return AF_Name;
@@ -59,8 +59,6 @@ AttrFormat checkAttrFormatAndName(const Syntax *Attr, llvm::StringRef &Name) {
   }
   return AF_Invalid;
 }
-
-
 
 /// Overload for declaration processing.
 template<typename OnAttr, typename IsSameAttr, typename OnDuplicate>
@@ -81,7 +79,7 @@ static bool computeAccessSpecifier(Sema& SemaRef, Attributes& attrs,
   return locateValidAttribute(attrs,
     // OnAttr
     [&](const Syntax *Attr) -> bool {
-      llvm::StringRef ActualName;
+      std::string ActualName;
       switch(checkAttrFormatAndName(Attr, ActualName)) {
       case AF_Name:
         if (ActualName == "private") {
@@ -111,7 +109,7 @@ static bool computeAccessSpecifier(Sema& SemaRef, Attributes& attrs,
     },
     // CheckAttr
     [](const Syntax *Attr) -> bool{
-      llvm::StringRef ActualName;
+      std::string ActualName;
       checkAttrFormatAndName(Attr, ActualName);
       return (ActualName == "private"
               || ActualName == "protected"
@@ -132,7 +130,7 @@ static bool isVirtualBase(Sema& SemaRef, Attributes& attrs,
   return locateValidAttribute(attrs,
     // OnAttr
     [&](const Syntax *Attr) -> bool {
-      llvm::StringRef ActualName;
+      std::string ActualName;
       switch(checkAttrFormatAndName(Attr, ActualName)) {
       case AF_Name:
         if (ActualName == "virtual") {
@@ -156,7 +154,7 @@ static bool isVirtualBase(Sema& SemaRef, Attributes& attrs,
     },
     // CheckAttr
     [](const Syntax *Attr) -> bool{
-      llvm::StringRef ActualName;
+      std::string ActualName;
       checkAttrFormatAndName(Attr, ActualName);
       return ActualName == "virtual";
     },
@@ -174,7 +172,7 @@ bool isStaticMember(Sema& SemaRef, Declaration *D, bool &IsStatic) {
   return locateValidAttribute(D,
     // OnAttr
     [&](const Syntax *Attr) -> bool{
-      llvm::StringRef ActualName;
+      std::string ActualName;
       switch(checkAttrFormatAndName(Attr, ActualName)) {
       case AF_Name:
         if (ActualName == "static") {
@@ -220,7 +218,7 @@ bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
   return locateValidAttribute(D,
     // OnAttr
     [&](const Syntax *Attr) -> bool{
-      llvm::StringRef ActualName;
+      std::string ActualName;
       switch(checkAttrFormatAndName(Attr, ActualName)) {
       case AF_Name:
         if (ActualName == "mutable") {
@@ -244,7 +242,7 @@ bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
     },
     // CheckAttr
     [](const Syntax *Attr) -> bool{
-      llvm::StringRef ActualName;
+      std::string ActualName;
       checkAttrFormatAndName(Attr, ActualName);
       return ActualName == "mutable";
     },
@@ -3644,7 +3642,7 @@ void Elaborator::elaborateSystemAttribute(clang::Decl *D, const Syntax *S,
 
 void Elaborator::elaborateAttributeError(Declaration *D, const Syntax *S,
                                          AttrStatus &Status) {
-  llvm::StringRef AttrName;
+  std::string AttrName;
   checkAttrFormatAndName(S, AttrName);
   SemaRef.Diags.Report(S->getLoc(),
                        clang::diag::err_invalid_attribute_for_decl)

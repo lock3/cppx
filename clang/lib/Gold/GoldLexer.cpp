@@ -239,17 +239,30 @@ Token CharacterScanner::operator()() {
 }
 
 Token CharacterScanner::makeToken(TokenKind K, char const* F, char const* L) {
-  return makeToken(K, F, L - F);
+  return Fused ? makeFusedToken(F) : makeToken(K, F, L - F);
 }
 
 Token CharacterScanner::makeToken(TokenKind K, char const* F, char const* L,
                                   llvm::SmallVectorImpl<llvm::StringRef> &Suf) {
-  Token Tok = makeToken(K, F, L - F);
+  Token Tok = Fused ? makeFusedToken(F) : makeToken(K, F, L - F);
   Tok.setSuffixes(Suf);
   return Tok;
 }
 
+Token CharacterScanner::makeFusedToken(const char *S) {
+  assert(Fused);
+  clang::SourceLocation Loc = getSourceLocation(S);
+  Symbol Base = getSymbol(S, FusionStart - 1);
+  Symbol Data = getSymbol(FusionStart, FusionEnd);
+
+  FusionStart = FusionEnd = nullptr;
+  Fused = false;
+
+  return Token(tok::Identifier, Loc, Base, Data);
+}
+
 Token CharacterScanner::makeToken(TokenKind K, char const* S, std::size_t N) {
+  assert(!Fused);
   clang::SourceLocation Loc = getSourceLocation(S);
   Symbol Sym = getSymbol(S, N);
   Token Tok(K, Loc, Sym);
@@ -332,20 +345,32 @@ Token CharacterScanner::matchWord() {
   while (isIdentifierRest(getLookahead()))
     consume();
 
+  if (llvm::StringRef(Start, First - Start) == "conversion")
+    Fused = true;
+
   // Building fused identifiers.
   if (getLookahead() == '"') {
     consume();
+    FusionStart = First;
     while(getLookahead() != '"')
       consume();
+
     // Consume the remaining double quote.
+    FusionEnd = First;
     consume();
 
   } else if(getLookahead() == '\'') {
     consume();
+    FusionStart = First;
     while(getLookahead() != '\'')
       consume();
+
     // Consume the remaining single quote.
+    FusionEnd = First;
     consume();
+  } else {
+    if (Fused)
+      Fused = false;
   }
 
   // This might be a keyword.

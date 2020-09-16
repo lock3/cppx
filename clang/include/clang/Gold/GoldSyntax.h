@@ -135,7 +135,7 @@ public:
     return getToken().hasKind(K);
   }
 
-  llvm::StringRef getSpelling() const {
+  std::string getSpelling() const {
     return Tok.getSpelling();
   }
 

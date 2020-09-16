@@ -90,11 +90,23 @@ std::size_t getTokenLength(TokenKind K) {
   }
 }
 
-llvm::StringRef Token::getSpelling() const {
-  // FIXME: Generate a spelling for fused tokens? This would probably
-  // need to be a std::string instead of a character pointer.
-  assert(!isFused());
-  return Sym.data();
+bool Token::hasSpelling(char const *Str) const {
+  if (!isFused())
+    return this->getSymbol() == gold::getSymbol(Str);
+
+  return gold::getSymbol(getSpelling().data()) == gold::getSymbol(Str);
+}
+
+std::string Token::getSpelling() const {
+  if (!isFused())
+    return Sym.data();
+
+  // Reconstruct the spelling of the fused token.
+  std::string Spelling = std::string(FusionInfo.Base.data());
+  Spelling += "\"";
+  Spelling += std::string(FusionInfo.Data.data());
+  Spelling += "\"";
+  return Spelling;
 }
 
 bool Token::hasSuffix() const {

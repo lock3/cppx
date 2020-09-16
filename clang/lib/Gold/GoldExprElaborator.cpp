@@ -299,7 +299,7 @@ createFloatLiteral(clang::ASTContext &CxxAST, const LiteralSyntax *S) {
 static clang::FloatingLiteral *
 createExponentLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
                       const LiteralSyntax *S, clang::SourceLocation Loc) {
-  std::string Spelling = S->getSpelling().str();
+  std::string Spelling = S->getSpelling();
   assert((Spelling.find_first_of("E") != std::string::npos ||
          Spelling.find_first_of("e") != std::string::npos) &&
          "non-exponent");
@@ -498,7 +498,7 @@ static bool readCharacter(Sema &SemaRef, clang::SourceLocation Loc,
 static clang::CharacterLiteral *
 createCharLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
                   Token T, clang::SourceLocation Loc) {
-  std::string Spelling = T.getSpelling().str();
+  std::string Spelling = T.getSpelling();
   assert(Spelling[0] == '\'' && "atom is not a character");
 
   Spelling = Spelling.substr(1, Spelling.size());
@@ -537,7 +537,7 @@ createCharLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
 static clang::CharacterLiteral *
 createUTF8Literal(clang::ASTContext &CxxAST, Sema &SemaRef,
                   Token T, clang::SourceLocation Loc) {
-  std::string Spelling = T.getSpelling().str();
+  std::string Spelling = T.getSpelling();
   Spelling = Spelling.substr(Spelling.find_first_not_of("0c"), Spelling.size());
   unsigned Value = (unsigned)std::stoi(Spelling, 0, 16);
 
@@ -551,7 +551,7 @@ createUTF8Literal(clang::ASTContext &CxxAST, Sema &SemaRef,
 static clang::CharacterLiteral *
 createUnicodeLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
                      Token T, clang::SourceLocation Loc) {
-  std::string Spelling = T.getSpelling().str();
+  std::string Spelling = T.getSpelling();
   Spelling = Spelling.substr(Spelling.find_first_not_of("0u"), Spelling.size());
   unsigned Value = (unsigned)std::stoi(Spelling, 0, 16);
 

@@ -126,6 +126,7 @@ namespace gold {
     Token makeToken(TokenKind K, char const* S, std::size_t N);
     Token makeToken(TokenKind K, char const* F, char const* L,
                     llvm::SmallVectorImpl<llvm::StringRef> &Suffixes);
+    Token makeFusedToken(const char *S);
 
     Token matchEof();
     Token matchSpace();
@@ -197,6 +198,14 @@ namespace gold {
       /// The previous character.
       char const* Prev;
     };
+
+    /// Tracks whether or not we are creating a fused token.
+    bool Fused = false;
+
+    char const *FusionStart = nullptr;
+    char const *FusionEnd = nullptr;
+
+    clang::IdentifierInfo *ConversionII;
 
     /// The base location in the input file. Used to compute source locations
     /// as tokens are matched.
