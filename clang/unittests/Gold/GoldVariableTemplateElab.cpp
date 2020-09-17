@@ -57,3 +57,17 @@ foo() : void!
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+
+TEST(GoldVariableTemplate, Specialization) {
+  StringRef Code = R"(
+X[T:type] : const T = T(4)
+X[int] : const int = 12
+
+)";
+
+  DeclarationMatcher ToMatch = varTemplateDecl(hasName("X"),
+    has(varDecl(hasInitializer(hasType(asString("type-parameter-0-0")))))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
