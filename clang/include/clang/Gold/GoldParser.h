@@ -50,11 +50,14 @@ namespace gold
     }
 
     Token const& peekToken() const {
-      return Toks.front();
+      return FusionToks.empty() ? Toks.front() : FusionToks.front();
     }
 
     Token const& peekToken(std::size_t N)
     {
+      if (!FusionToks.empty() && N < FusionToks.size())
+          return FusionToks[N];
+
       // The token is in the lookahead buffer.
       if (N < Toks.size())
         return Toks[N];
@@ -120,6 +123,12 @@ namespace gold
 
     Token consumeToken() {
       // Take the front token.
+      if (!FusionToks.empty()) {
+        Token Tok = FusionToks.front();
+        FusionToks.pop_front();
+        return Tok;
+      }
+
       Token Tok = Toks.front();
       Toks.pop_front();
 
@@ -263,8 +272,10 @@ namespace gold
     Syntax *parseNum();
 
     // Semantic actions
-    Syntax *onAtom(const Token& tok);
+    Syntax *onAtom(const Token &Tok);
+    Syntax *onAtom(const Token &Tok, const tok::FusionKind K, Syntax *Data);
     Syntax *onLiteral(const Token& tok);
+    Syntax *onConversion(const Token &tok);
     Syntax *onArray(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
     Syntax *onList(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
     Syntax *onBinary(const Token& tok, Syntax *e1, Syntax *e2);
@@ -297,6 +308,9 @@ namespace gold
 
     // Keeps track of information and memory associated with our Gold AST.
     SyntaxContext &Context;
+
+    // Lookahead for a parse of fused token data.
+    std::deque<Token> FusionToks;
 
     std::size_t ParenCount = 0, BracketCount = 0,
       BraceCount = 0, IndentCount = 0;

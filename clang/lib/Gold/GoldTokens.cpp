@@ -90,6 +90,9 @@ std::size_t getTokenLength(TokenKind K) {
   }
 }
 
+Token::~Token() {
+}
+
 bool Token::hasSpelling(char const *Str) const {
   if (!isFused())
     return this->getSymbol() == gold::getSymbol(Str);
@@ -97,18 +100,28 @@ bool Token::hasSpelling(char const *Str) const {
   return gold::getSymbol(getSpelling().data()) == gold::getSymbol(Str);
 }
 
+static const char *getFusionBaseSpelling(tok::FusionKind K) {
+  switch (K) {
+  case tok::Operator:
+    return "operator";
+  case tok::Conversion:
+    return "conversion";
+  case tok::Literal:
+    return "literal";
+  }
+}
+
 std::string Token::getSpelling() const {
   if (!isFused())
     return Sym.data();
 
   // Reconstruct the spelling of the fused token.
-  std::string Spelling = std::string(FusionInfo.Base.data());
+  std::string Spelling = getFusionBaseSpelling(FusionInfo.Base);
   Spelling += "\"";
-  Spelling += std::string(FusionInfo.Data.data());
+  Spelling += FusionInfo.Inner.str();
   Spelling += "\"";
   return Spelling;
 }
-
 bool Token::hasSuffix() const {
   return isNumericConstant() && !Suffixes.empty();
 }

@@ -20,6 +20,7 @@
 #include "clang/Gold/GoldSymbol.h"
 
 #include <iosfwd>
+#include <memory>
 
 namespace gold {
 
@@ -31,6 +32,12 @@ enum TokenKind : unsigned short {
 #define def_keyword(K, S) \
   K ## Keyword,
 #include "clang/Gold/GoldTokens.def"
+};
+
+enum FusionKind {
+  Operator,
+  Conversion,
+  Literal,
 };
 } // namespace tok
 
@@ -99,9 +106,13 @@ struct Token
   { }
 
   /// Constructs a fused token.
-  Token(TokenKind K, clang::SourceLocation Loc, Symbol Base, Symbol Data)
-    : Kind(K), Flags(TF_Fused), Loc(Loc), FusionInfo({Base, Data})
+  Token(TokenKind K, clang::SourceLocation Loc,
+        tok::FusionKind Base, Token **Tokens, unsigned N,
+        llvm::StringRef Inner)
+    : Kind(K), Flags(TF_Fused), Loc(Loc), FusionInfo({Base, Tokens, N, Inner})
   { }
+
+  ~Token();
 
   /// True if the token is neither invalid nor end-of-file.
   explicit operator bool() const {
@@ -205,8 +216,12 @@ struct Token
 
     // For fused tokens, this is its associated data.
     struct {
-      Symbol Base;
-      Symbol Data;
+      tok::FusionKind Base;
+      Token **Tokens;
+      std::size_t NumTokens;
+
+      // We just use this for printing in AST serializations.
+      llvm::StringRef Inner;
     } FusionInfo;
   };
 
