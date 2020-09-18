@@ -45,7 +45,6 @@
 #include "clang/Gold/GoldSyntaxContext.h"
 #include "clang/Gold/GoldTokens.h"
 
-
 #include <cstring>
 
 namespace gold {
@@ -1720,11 +1719,15 @@ static clang::Expr *doDerefAndXOrLookUp(SyntaxContext &Context,
         R.addDecl(MD, MD->getAccess());
     }
   }
+
   if (R.empty()) {
-    // TODO: Create an error message for this.
-    llvm_unreachable("I need an look up failure here because I don't have an "
-                     "expected operator.");
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "expected operator but did not find it");
+    SemaRef.Diags.Report(OpSyntax->getLoc(), DiagID);
+    return nullptr;
   }
+
   clang::TemplateArgumentListInfo TemplateArgs;
   auto *UME = clang::UnresolvedMemberExpr::Create(Context.CxxAST,
                                                   false,

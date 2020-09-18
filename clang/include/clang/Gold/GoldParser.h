@@ -50,7 +50,8 @@ namespace gold
     }
 
     Token const& peekToken() const {
-      return FusionToks.empty() ? Toks.front() : FusionToks.front();
+      return FusionToks.empty() ?
+        Toks.front() : FusionToks.front();
     }
 
     Token const& peekToken(std::size_t N)
@@ -275,7 +276,6 @@ namespace gold
     Syntax *onAtom(const Token &Tok);
     Syntax *onAtom(const Token &Tok, const tok::FusionKind K, Syntax *Data);
     Syntax *onLiteral(const Token& tok);
-    Syntax *onConversion(const Token &tok);
     Syntax *onArray(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
     Syntax *onList(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
     Syntax *onBinary(const Token& tok, Syntax *e1, Syntax *e2);

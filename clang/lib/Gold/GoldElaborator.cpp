@@ -258,7 +258,8 @@ Elaborator::Elaborator(SyntaxContext &Context, Sema &SemaRef)
   : Context(Context), SemaRef(SemaRef) {}
 
 clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
-
+  if (!S)
+    return nullptr;
   assert(isa<FileSyntax>(S) && "S is not a file");
 
   startFile(S);
@@ -4018,12 +4019,9 @@ bool Elaborator::elaborateEnumMemberInit(const Syntax *S) {
 
 
 Declaration *Elaborator::identifyDecl(const Syntax *S) {
-  /// Moving the declaration/declarator construction into another class.
-  // This was created to prevent duplicate elaboration failure which could
-  // previously result in an error.
-  if (SemaRef.getCurrentScope()->hasDeclaration(S)) {
+  if (SemaRef.getCurrentScope()->hasDeclaration(S))
     return nullptr;
-  }
+
   return DeclarationBuilder(SemaRef).build(S);
 }
 

@@ -768,6 +768,10 @@ auto is_unary_operator = [](TokenKind k) -> bool
 //   returns pre
 Syntax *Parser::parsePre()
 {
+  // Nothing to parse for a fused operator.
+  if (PreviousToken.isFused() && PreviousToken.FusionInfo.Base == tok::Operator)
+    return FusionToks.clear(), nullptr;
+
   if (Token Op = matchTokenIf(is_unary_operator)) {
     Syntax *E = parsePre();
     return onUnary(Op, E);
@@ -1313,7 +1317,9 @@ Syntax *Parser::parseId() {
       FusionToks.push_back(*Id.FusionInfo.Tokens[I]);
 
     Syntax *Data = parsePre();
-    if (!Data)
+    if (Id.FusionInfo.Base != tok::Operator && !Data)
+      return onError();
+    else if (Id.FusionInfo.Base == tok::Operator && Data)
       return onError();
 
     return onAtom(Id, Id.FusionInfo.Base, Data);
@@ -1463,11 +1469,6 @@ Syntax *Parser::onAtom(const Token &Tok, const tok::FusionKind K,
   if (!InAttribute)
     attachPreattrs(Ret);
   return Ret;
-}
-
-Syntax *Parser::onConversion(const Token &Tok) {
-  Syntax *Callee = onAtom(Tok);
-  return nullptr;
 }
 
 static void parseSuffix(SyntaxContext &Context, clang::DiagnosticsEngine &Diags,

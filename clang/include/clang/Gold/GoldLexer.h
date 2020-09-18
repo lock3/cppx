@@ -140,6 +140,7 @@ namespace gold {
     Token matchBlockComment();
     Token matchToken(TokenKind K);
     Token matchWord();
+    Token matchFusionArg(Token Base);
     Token matchNumber();
     Token matchDecimalNumber();
     Token matchDecimalFraction();

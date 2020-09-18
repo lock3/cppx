@@ -275,6 +275,7 @@ Token CharacterScanner::makeFusedToken(Token Base, Token **Data,
   tok::FusionKind FK = It->getValue();
   llvm::StringRef Inner(FusionStart, FusionEnd - FusionStart);
   FusionStart = FusionEnd = nullptr;
+  Fused = false;
   return Token(tok::Identifier, Base.getLocation(), FK, Data, Count, Inner);
 }
 
@@ -356,56 +357,57 @@ Token CharacterScanner::matchToken(TokenKind K) {
   return makeToken(K, Start, Len);
 }
 
+Token CharacterScanner::matchFusionArg(Token Base) {
+  assert(getLookahead() == '"' || getLookahead() == '\'');
+  bool DoubleQuote = getLookahead() == '"';
+  consume();
+  FusionStart = First;
+
+  llvm::SmallVector<Token *, 4> Tokens;
+  unsigned TokenCount = 0;
+
+  auto insideQuote = [this](bool DoubleQuote) -> bool {
+    return (DoubleQuote && this->getLookahead() != '"') ||
+      (!DoubleQuote && this->getLookahead() != '\'');
+  };
+
+  while(insideQuote(DoubleQuote)) {
+    Fused = false;
+
+    Token T = operator()();
+    if (T.isSpace())
+      continue;
+
+    Tokens.push_back(
+      new (Ctx) Token(T.getKind(), T.getLocation(), T.getSymbol()));
+    ++TokenCount;
+
+    Fused = true;
+  }
+
+  // Consume the remaining quote.
+  FusionEnd = First;
+  consume();
+
+  Token **TokenArray = new (Ctx) Token *[Tokens.size()];
+  std::copy(Tokens.begin(), Tokens.end(), TokenArray);
+  return makeFusedToken(Base, TokenArray, TokenCount);
+}
+
 Token CharacterScanner::matchWord() {
   assert(isIdentifierStart(getLookahead()));
-  consume();
-  while (isIdentifierRest(getLookahead()))
-    consume();
+  do consume(); while (isIdentifierRest(getLookahead()));
 
-  if (llvm::StringRef(Start, First - Start) == "conversion") {
+  // Building fused identifiers.
+  auto It = FusionBases.find(llvm::StringRef(Start, First - Start));
+  if (It != FusionBases.end()) {
     Token Base = makeToken(tok::Identifier, Start, First);
     Fused = true;
 
-    // Building fused identifiers.
-    if (getLookahead() == '"') {
-      consume();
-      FusionStart = First;
-
-      llvm::SmallVector<Token *, 4> Tokens;
-      unsigned TokenCount = 0;
-      while(getLookahead() != '"') {
-        Fused = false;
-
-        Token T = operator()();
-        if (T.isSpace())
-          continue;
-
-        Tokens.push_back(
-          new (Ctx) Token(T.getKind(), T.getLocation(), T.getSymbol()));
-        ++TokenCount;
-
-        Fused = true;
-      }
-
-      // Consume the remaining double quote.
-      FusionEnd = First;
-      consume();
-
-      Token **TokenArray = new (Ctx) Token *[Tokens.size()];
-      std::copy(Tokens.begin(), Tokens.end(), TokenArray);
-      return makeFusedToken(Base, TokenArray, TokenCount);
-    } else if(getLookahead() == '\'') {
-      consume();
-      FusionStart = First;
-      while(getLookahead() != '\'')
-        consume();
-
-      // Consume the remaining single quote.
-      FusionEnd = First;
-      consume();
-    } else {
+    if (getLookahead() == '"' || getLookahead() == '\'')
+      return matchFusionArg(Base);
+    else
       Fused = false;
-    }
   }
 
   // This might be a keyword.
