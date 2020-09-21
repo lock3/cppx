@@ -1833,7 +1833,7 @@ static clang::StorageClass getSuspectedStorageClass(Sema &SemaRef,
   if (!D->IdDcl->UnprocessedAttributes)
     return getDefaultVariableStorageClass(SemaRef);
 
-  llvm::StringRef ActualName;
+  std::string ActualName;
   auto Iter = std::find_if(
       D->IdDcl->UnprocessedAttributes->begin(),
       D->IdDcl->UnprocessedAttributes->end(),
