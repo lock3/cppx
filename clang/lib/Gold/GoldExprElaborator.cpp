@@ -2453,29 +2453,6 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
 clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *Ty) {
   assert(D->isType());
   TypeDeclarator *TyDcl = D->getAsType();
-  if (const auto *Atom = dyn_cast<AtomSyntax>(TyDcl->getTyExpr())) {
-    clang::SourceLocation Loc = Atom->getLoc();
-    clang::IdentifierInfo *II = &CxxAST.Idents.get(Atom->getSpelling());
-    clang::DeclarationNameInfo DNI(II, Loc);
-    clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
-    if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope()))
-      return nullptr;
-
-    if (R.empty()) {
-      auto BuiltinMapIter = SemaRef.BuiltinTypes.find(Atom->getSpelling());
-      if (BuiltinMapIter == SemaRef.BuiltinTypes.end()) {
-        return nullptr;
-      }
-      return SemaRef.buildTypeExpr(BuiltinMapIter->second, Loc);
-    }
-
-    clang::TypeDecl *TD = R.getAsSingle<clang::TypeDecl>();
-    if (!TD)
-      return nullptr;
-    TD->setIsUsed();
-    return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
-  }
-
   return elaborateExpr(TyDcl->getTyExpr());
 }
 

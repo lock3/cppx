@@ -19,6 +19,11 @@
 namespace clang {
 namespace ast_matchers {
 extern const internal::VariadicDynCastAllOfMatcher<Decl, VarTemplateDecl> varTemplateDecl;
+extern const internal::VariadicDynCastAllOfMatcher<
+  Decl, VarTemplateSpecializationDecl> varTemplateSpecializationDecl;
+extern const internal::VariadicDynCastAllOfMatcher<
+  Decl, VarTemplatePartialSpecializationDecl> varTemplatePartialSpecializationDecl;
+
 // I created this because it didn't exist before this and I acutally needed it
 // for a particular test.
 AST_POLYMORPHIC_MATCHER(isExternStorageClass,

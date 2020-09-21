@@ -14,7 +14,10 @@
 #include "clang/Gold/GoldDeclaration.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSyntax.h"
+#include "clang/Gold/GoldOperatorInfo.h"
 
+#include "clang/AST/DeclTemplate.h"
+#include "clang/AST/TemplateBase.h"
 #include "llvm/Support/raw_ostream.h"
 namespace gold {
 
@@ -355,5 +358,195 @@ void Declaration::setPreviousDecl(Declaration *Prev) {
 
 bool Declaration::isDeclaredWithinClass() const {
   return ScopeForDecl->getKind() == SK_Class;
+}
+
+void Declaration::dump(llvm::raw_ostream &os) const {
+  os << "gold::Declaration" << this << "\n"
+     << "  Phase = " << phaseToStr(CurrentPhase) <<"\n"
+     << "  Declaration Context = " << Cxt << "\n"
+     << "  Declarators: ";
+  if (Decl)
+    Decl->printSequence(os);
+  else
+    os << "nullptr\n";
+
+  os << "Operator = ";
+  if (Op) {
+    os << "\n";
+    Op->dump();
+    os << "\n";
+  } else
+    os << "nullptr\n";
+
+  os << "Init = ";
+  if (Init) {
+    os << "\n";
+    Init->dump();
+    os << "\n";
+  } else
+    os << "nullptr\n";
+  os << "  Suspected kind = " << unevaluatedDeclKindToStr(SuspectedKind) << "\n";
+  os << "  Gold Saved Scope = " << SavedScope << "\n";
+  if (SavedScope) {
+    Scope *S = SavedScope;
+    do {
+      os << "=============\n";
+      S->dump();
+      S = S->getParent();
+    } while(S);
+    os << "=============\n";
+  }
+
+  os << "  Id (" << Id << ") = " << (Id?Id->getName() : "") << "\n";
+
+  if (OpInfo) {
+    os << "  OpInfo (" << OpInfo << ") = "
+       << OpInfo->getGoldDeclName()->getName() << "\n";
+  }
+  os << "  Cxx (" << Cxx << ")\n";
+  if (Cxx)
+    Cxx->dump(os);
+
+  // Declaration *First = this;
+  // Declaration *Next = this;
+
+  os << "  ClangDeclaringScope = " << ClangDeclaringScope << "\n";
+  os << "  Scope For decl = " << ScopeForDecl << "\n";
+  if (ScopeForDecl) {
+    Scope *S = ScopeForDecl;
+    do {
+      os << "=============\n";
+      S->dump();
+      S = S->getParent();
+    } while(S);
+    os << "=============\n";
+  }
+
+  os << "  Parent declaration = " << ParentDecl << "\n";
+  if (ParentDecl) {
+    os << "    Parent Decl Suspected kind = "
+        << unevaluatedDeclKindToStr(ParentDecl->SuspectedKind) << "\n";
+  }
+
+  os << "  Declaring Context = " << DeclaringContext << "\n";
+  if (DeclaringContext) {
+    os << "  Dump of Decl context = \n";
+    DeclaringContext->dumpDeclContext();
+    if (clang::Decl *ClangDecl = dyn_cast<clang::Decl>(DeclaringContext)) {
+      os << "  Decl context is a declaration.\n";
+      ClangDecl->dump(os);
+    }
+  }
+  // TODO: We may want to add these to the dump in the future.
+  // Currently it's only extra information.
+  // const CallSyntax *ES_Call = nullptr;
+  // const AtomSyntax *ES_Name = nullptr;
+
+  if (GlobalNsSpecifier) {
+    os << "  Global namespace specifier given (" << GlobalNsSpecifier
+       << ")= \n";
+    GlobalNsSpecifier->getGlobalNameSpecifier()->dump();
+  }
+
+  if (!NNSInfo.empty())
+    os << "  We have nested name specifiers\n";
+
+  os << "  Id declareator (" << IdDcl <<  ") = ";
+  if (IdDcl)
+    os << IdDcl->getIdentifier()->getSpelling() << "\n";
+  else
+    os << "\n";
+
+  if (Template) {
+    os << "  Template Parameters (" << Template << ") = \n";
+    Template->getParams()->dump();
+    if (Template->getScope()) {
+      os << "    Template Scope = " << Template->getScope() << "\n";
+      if (Template->getScope()) {
+        Scope *S = Template->getScope();
+        do {
+          os << "=============\n";
+          S->dump();
+          S = S->getParent();
+        } while(S);
+        os << "=============\n";
+      }
+    }
+    if (Template->getTemplateParameterList()) {
+      os << "    Template Parameter list = \n";
+      for (clang::NamedDecl *ND : *Template->getTemplateParameterList()) {
+        os << "      Template Paraemter = \n";
+        ND->dump(os);
+      }
+    }
+  }
+  if (SpecializationArgs) {
+    os << "  Specialization Args ("<< SpecializationArgs << ")= \n";
+    if (SpecializationArgs->HasArguments()) {
+      os << "    We have specialization arguments\n";
+    }
+    os << "    clang Specialization arguments\n";
+    for (clang::TemplateArgumentLoc TAL : SpecializationArgs->getArgList().arguments()) {
+      os << "      Template argument = \n";
+      TAL.getArgument().dump(os);
+    }
+  }
+
+  if (FunctionDcl) {
+    os << "  Function Declarator = \n";
+    if (FunctionDcl->getScope()) {
+      os << "    We have a scope\n";
+      Scope *S = FunctionDcl->getScope();
+      do {
+        os << "=============\n";
+        S->dump();
+        S = S->getParent();
+      } while (S);
+      os << "=============\n";
+    } else
+      os << "    Scope not assigned yet\n";
+
+    if (FunctionDcl->getParams()) {
+      os << "    FunctionDcl Parameters = \n";
+      FunctionDcl->getParams()->dump();
+    }
+  }
+  if (TypeDcl) {
+    os << "  Type Declarator = \n";
+    TypeDcl->getTyExpr()->dump();
+  }
+
+  if (!TemplateParamStorage.empty()) {
+    os << "  Template param storage = \n";
+    for(const auto *TemplateList : TemplateParamStorage) {
+      os << "==============================\n";
+      os << "   Template parameter List = \n";
+      for (clang::NamedDecl *ND : *TemplateList) {
+        os << "      Template Paraemter = \n";
+        ND->dump(os);
+      }
+    }
+    os << "==============================\n";
+  }
+
+  os << "  IsDeclOnly = " << IsDeclOnly << "\n";
+
+  if (ScopeSpec.isSet()) {
+    os << "  ScopeSpec = ";
+    if (ScopeSpec.isValid()) {
+      if (ScopeSpec.getScopeRep()) {
+        ScopeSpec.getScopeRep()->dump(os);
+        os << "\n";
+      } else {
+        os << "Failed to get scope rep\n";
+      }
+    } else {
+      os << "INVALID!\n";
+    }
+  }
+
+  os << "  IsRedeclaration = " << IsRedeclaration << "\n";
+  os << "  NeedToBeElaboratedByClangBeforeUse = "
+     << NeedToBeElaboratedByClangBeforeUse << "\n";
 }
 }

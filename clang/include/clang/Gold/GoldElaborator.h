@@ -116,8 +116,9 @@ public:
   // Typing elaboration (2nd pass)
   clang::Decl *elaborateDecl(Declaration *D);
   bool elaborateNestedNameForDecl(Declaration *D);
-  clang::Decl *elaborateDeclContent(clang::Scope *InitialScope, Declaration *D);
-  clang::Decl *elaborateDeclInContext(Declaration *D);
+  clang::Decl *elaborateDeclContent(clang::Scope *InitialScope,
+                                    Declaration *D);
+  // clang::Decl *elaborateDeclInContext(Declaration *D);
 
   clang::Decl *elaborateDeclType(const Syntax* D);
   clang::Decl *elaborateFunctionDecl(Declaration *D);
@@ -151,7 +152,7 @@ public:
 
   // class type body elaboration.
   clang::Decl *elaborateTypeBody(Declaration *D, clang::CXXRecordDecl *R);
-  clang::Decl *elaborateField(Declaration *D);
+  clang::Decl *elaborateField(Declaration *D, clang::TypeSourceInfo *TInfo);
   void elaborateFieldInit(Declaration *D);
 
   clang::Decl *elaborateEnumBody(Declaration* D, clang::Decl *EnumD);

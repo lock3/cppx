@@ -340,6 +340,12 @@ ClangToGoldDeclRebuilder::rebuildMember(clang::Decl *Member) {
     return rebuildMember(cast<EnumConstantDecl>(Member));
   }
   break;
+
+  // Basically these, are not needed for additional lookup, only the principal
+  // template is needed for lookup.
+  case clang::Decl::VarTemplateSpecialization:
+  case clang::Decl::VarTemplatePartialSpecialization:
+    return false;
   default:
     Member->dump();
     llvm_unreachable("I thought that this was impossible to occur within a class.");
