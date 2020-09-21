@@ -247,7 +247,7 @@ static bool isConstExprIf(Sema &SemaRef, Attributes &Attrs, bool &IsConstExpr) {
   return locateValidAttribute(Attrs,
     // OnAttr
     [&](const Syntax *Attr) -> bool{
-      llvm::StringRef ActualName;
+      std::string ActualName;
       switch(checkAttrFormatAndName(Attr, ActualName)) {
       case AF_Name:
         if (ActualName == "constexpr") {

@@ -121,6 +121,10 @@ struct AtomSyntax : Syntax
     : Syntax(SK_Atom), Tok(Tok)
   {}
 
+  AtomSyntax(Token Tok, tok::FusionKind Base, Syntax *Data)
+    : Syntax(SK_Atom), Tok(Tok), FusionInfo({Base, Data})
+  {}
+
 protected:
   AtomSyntax(SyntaxKind K, Token Tok)
     : Syntax(K), Tok(Tok)
@@ -135,7 +139,7 @@ public:
     return getToken().hasKind(K);
   }
 
-  llvm::StringRef getSpelling() const {
+  std::string getSpelling() const {
     return Tok.getSpelling();
   }
 
@@ -156,8 +160,28 @@ public:
     return Tok.Loc;
   }
 
+  bool isFused() const {
+    return Tok.isFused();
+  }
+
   /// The token for the atom.
   Token Tok;
+
+  tok::FusionKind getFusionBase() {
+    assert(isFused());
+    return FusionInfo.Base;
+  }
+
+  Syntax *getFusionArg() {
+    assert(isFused());
+    return FusionInfo.Data;
+  }
+
+private:
+  struct {
+    tok::FusionKind Base;
+    Syntax *Data;
+  } FusionInfo;
 };
 
 // Represents a suffix on a literal value, such as `64u64`
@@ -173,7 +197,7 @@ struct LiteralSuffix
 /// Represents literal values.
 struct LiteralSyntax : AtomSyntax
 {
-  LiteralSyntax(const Token &Tok)
+  LiteralSyntax(Token Tok)
     : AtomSyntax(SK_Literal, Tok)
   { }
 

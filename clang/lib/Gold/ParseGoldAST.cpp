@@ -41,6 +41,10 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
 
   Parser Parser(Context, SM, InputFile);
   Syntax *CST = Parser.parseFile();
+  // file was empty
+  if (!CST)
+    return;
+
   // FIXME: There's a -fdump-syntax flag that we should tie this too.
 
   // FIXME: We should handle -fsyntax-only here -- or maybe make a separate

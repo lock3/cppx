@@ -1,4 +1,4 @@
-//===- GoldLexer.cpp - Gold Language Lexer --------------------------------===//
+ //===- GoldLexer.cpp - Gold Language Lexer --------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -17,6 +17,7 @@
 #include "llvm/ADT/StringMap.h"
 
 #include "clang/Gold/GoldLexer.h"
+#include "clang/Gold/GoldSyntaxContext.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -71,13 +72,15 @@ char BOM[] = {'\xef', '\xbe', '\xbb'};
 
 } // namespace
 
-CharacterScanner::CharacterScanner(clang::SourceManager &SM, File const& F)
+CharacterScanner::CharacterScanner(clang::SourceManager &SM, File const &F,
+                                   SyntaxContext &Ctx)
   : Input(&F),
     First(F.getText().data()),
     Last(First + F.getText().size()),
     Line(1),
     Column(1),
-    SM(SM) {
+    SM(SM),
+    Ctx(Ctx) {
   // Bypass the byte order mark.
   if (std::equal(BOM, BOM + 3, First, Last))
     First += 3;
@@ -239,17 +242,45 @@ Token CharacterScanner::operator()() {
 }
 
 Token CharacterScanner::makeToken(TokenKind K, char const* F, char const* L) {
+  assert(!Fused);
   return makeToken(K, F, L - F);
 }
 
 Token CharacterScanner::makeToken(TokenKind K, char const* F, char const* L,
                                   llvm::SmallVectorImpl<llvm::StringRef> &Suf) {
+  assert(!Fused);
   Token Tok = makeToken(K, F, L - F);
   Tok.setSuffixes(Suf);
   return Tok;
 }
 
+static const llvm::StringMap<tok::FusionKind> FusionBases = {
+  {"operator", tok::Operator},
+  {"conversion", tok::Conversion},
+  {"literal", tok::Literal},
+};
+
+Token CharacterScanner::makeFusedToken(Token Base, Token **Data,
+                                       unsigned Count) {
+  assert(Fused);
+  auto It = FusionBases.find(Base.getSpelling());
+  if (It == FusionBases.end()) {
+    unsigned DiagID =
+      getDiagnostics().getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                       "invalid fused token base");
+    getDiagnostics().Report(Base.getLocation(), DiagID);
+    return Token();
+  }
+
+  tok::FusionKind FK = It->getValue();
+  llvm::StringRef Inner(FusionStart, FusionEnd - FusionStart);
+  FusionStart = FusionEnd = nullptr;
+  Fused = false;
+  return Token(tok::Identifier, Base.getLocation(), FK, Data, Count, Inner);
+}
+
 Token CharacterScanner::makeToken(TokenKind K, char const* S, std::size_t N) {
+  assert(!Fused);
   clang::SourceLocation Loc = getSourceLocation(S);
   Symbol Sym = getSymbol(S, N);
   Token Tok(K, Loc, Sym);
@@ -326,26 +357,57 @@ Token CharacterScanner::matchToken(TokenKind K) {
   return makeToken(K, Start, Len);
 }
 
+Token CharacterScanner::matchFusionArg(Token Base) {
+  assert(getLookahead() == '"' || getLookahead() == '\'');
+  bool DoubleQuote = getLookahead() == '"';
+  consume();
+  FusionStart = First;
+
+  llvm::SmallVector<Token *, 4> Tokens;
+  unsigned TokenCount = 0;
+
+  auto insideQuote = [this](bool DoubleQuote) -> bool {
+    return (DoubleQuote && this->getLookahead() != '"') ||
+      (!DoubleQuote && this->getLookahead() != '\'');
+  };
+
+  while(insideQuote(DoubleQuote)) {
+    Fused = false;
+
+    Token T = operator()();
+    if (T.isSpace())
+      continue;
+
+    Tokens.push_back(
+      new (Ctx) Token(T.getKind(), T.getLocation(), T.getSymbol()));
+    ++TokenCount;
+
+    Fused = true;
+  }
+
+  // Consume the remaining quote.
+  FusionEnd = First;
+  consume();
+
+  Token **TokenArray = new (Ctx) Token *[Tokens.size()];
+  std::copy(Tokens.begin(), Tokens.end(), TokenArray);
+  return makeFusedToken(Base, TokenArray, TokenCount);
+}
+
 Token CharacterScanner::matchWord() {
   assert(isIdentifierStart(getLookahead()));
-  consume();
-  while (isIdentifierRest(getLookahead()))
-    consume();
+  do consume(); while (isIdentifierRest(getLookahead()));
 
   // Building fused identifiers.
-  if (getLookahead() == '"') {
-    consume();
-    while(getLookahead() != '"')
-      consume();
-    // Consume the remaining double quote.
-    consume();
+  auto It = FusionBases.find(llvm::StringRef(Start, First - Start));
+  if (It != FusionBases.end()) {
+    Token Base = makeToken(tok::Identifier, Start, First);
+    Fused = true;
 
-  } else if(getLookahead() == '\'') {
-    consume();
-    while(getLookahead() != '\'')
-      consume();
-    // Consume the remaining single quote.
-    consume();
+    if (getLookahead() == '"' || getLookahead() == '\'')
+      return matchFusionArg(Base);
+    else
+      Fused = false;
   }
 
   // This might be a keyword.

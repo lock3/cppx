@@ -44,7 +44,8 @@ enum AttrFormat {
   AF_Call,
   AF_Name
 };
-AttrFormat checkAttrFormatAndName(const Syntax *Attr, llvm::StringRef &Name);
+
+AttrFormat checkAttrFormatAndName(const Syntax *Attr, std::string &Name);
 
 /// locateValidAttribute
 /// This is a privately used template function, basucally taking the place of me
