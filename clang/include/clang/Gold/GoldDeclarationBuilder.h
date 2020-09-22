@@ -48,6 +48,7 @@ public:
   /// did previously.
   Declaration *build(const Syntax *S);
 private:
+  std::string OriginalNameStorage;
   llvm::StringRef OriginalName;
   clang::IdentifierInfo *Id = nullptr;
   const OpInfoBase *OpInfo = nullptr;

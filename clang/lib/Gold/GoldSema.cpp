@@ -229,11 +229,6 @@ void Sema::enterScope(ScopeKind K, const Syntax *S, Declaration *D) {
   pushScope(new Scope(K, S, getCurrentScope(), D));
 }
 
-// Scope *Sema::enterScopeNNSContext() {
-//   assert(CurNNSContext.isSet() && "The current NNS set.");
-  
-// }
-
 void Sema::leaveScope(const Syntax *S) {
   if (getCurrentScope()->getConcreteTerm() != S) {
     llvm::outs() << "Actual Expected term = ";
@@ -645,6 +640,10 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
           if (auto *RD = dyn_cast<clang::CXXRecordDecl>(FoundDecl->Cxx)) {
             ND = cast<clang::NamedDecl>(RD->getCanonicalDecl());
           }
+        }
+        if (auto *VTSD = dyn_cast<clang::VarTemplateSpecializationDecl>(
+                                                               FoundDecl->Cxx)) {
+          ND = VTSD->getSpecializedTemplate();
         }
         addIfNotDuplicate(R, ND);
       }

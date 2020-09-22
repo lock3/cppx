@@ -41,6 +41,41 @@ x.foo():void!
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }
 
+TEST(GoldNestedNameDecl, NamespaceNameVarTempalteDeclDef) {
+  StringRef Code = R"(
+x : namespace = namespace:
+  VTD[T:type]<extern> : T
+
+x.VTD[T:type] : T = 34
+)";
+  auto Matcher = translationUnitDecl(
+    has(namespaceDecl(
+      hasName("x"),
+      has(varTemplateDecl(hasName("VTD")))
+    )),
+    has(varTemplateDecl(hasName("VTD")))
+  );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}
+
+
+TEST(GoldNestedNameDecl, NamespaceNameFunctionTempalteDeclDef) {
+  StringRef Code = R"(
+x : namespace = namespace:
+  Fn[T:type](x:T):void
+
+x.Fn[T:type](x:T):void!
+  ;
+)";
+  auto Matcher = translationUnitDecl(
+    has(namespaceDecl(
+      hasName("x"),
+      hasDescendant(functionDecl(hasName("Fn")))
+    )),
+    has(functionTemplateDecl(hasName("Fn")))
+  );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}
 
 TEST(GoldNestedNameDecl, NamespaceNameFunctionDefThroughNSAlias) {
   StringRef Code = R"(
@@ -723,7 +758,7 @@ c[int].bar() : Q.x!
 TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_VarTemplate) {
   StringRef Code = R"(
 c[T:type] : type = class:
-  TmpltVar[U:type] <static>: U = 12345
+  TmpltVar[U:type] <static>: const U = 12345
   bar() : bool
 
 c[int].bar() : bool!
@@ -735,21 +770,33 @@ c[int].bar() : bool!
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }
 
-// TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_VarTemplateSpecialization) {
-//   StringRef Code = R"(
-// c[T:type] : type = class:
-//   TmpltVar[U:type] : U
-//   TmpltVar[int] : int = 54321
-//   bar() : bool
+TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_VarTemplate_NonConstStaticMemberInitErr) {
+  StringRef Code = R"(
+c[T:type] : type = class:
+  TmpltVar[U:type] <static>: U = 12345
+  bar() : bool
 
-// c[int].bar() : bool!
-//   return TmpltVar[int]
-// )";
-//   auto Matcher = translationUnitDecl(
-//     hasDescendant(classTemplateSpecializationDecl())
-//   );
-//   ASSERT_TRUE(matches(Code.str(), Matcher));
-// }
+c[int].bar() : bool!
+  return TmpltVar[bool]
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_VarTemplateSpecialization) {
+  StringRef Code = R"(
+c[T:type] : type = class:
+  TmpltVar[U:type] : U
+  TmpltVar[int]<static> : const int = 54321
+  bar() : bool
+
+c[int].bar() : bool!
+  return TmpltVar[int]
+)";
+  auto Matcher = translationUnitDecl(
+    hasDescendant(classTemplateSpecializationDecl())
+  );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}
 
 TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_Enum) {
   StringRef Code = R"(

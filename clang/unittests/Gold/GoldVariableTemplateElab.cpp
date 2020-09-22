@@ -57,3 +57,97 @@ foo() : void!
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+
+TEST(GoldVariableTemplate, Specialization) {
+  StringRef Code = R"(
+X[T:type] : const T = T(4)
+X[int] : const int = 12
+
+)";
+
+  DeclarationMatcher ToMatch = translationUnitDecl(
+    hasDescendant(varTemplateDecl(hasName("X"),
+      has(varDecl(hasInitializer(hasType(asString("type-parameter-0-0")))))
+    )),
+    hasDescendant(varTemplateSpecializationDecl(hasName("X")))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldVariableTemplate, PartialSpecialization) {
+  StringRef Code = R"(
+X[T:type] : const T = T(4)
+X[T:type][^T] : const int = 12
+)";
+
+  DeclarationMatcher ToMatch = translationUnitDecl(
+    hasDescendant(varTemplateDecl(hasName("X"),
+      has(varDecl(hasInitializer(hasType(asString("type-parameter-0-0")))))
+    )),
+    hasDescendant(varTemplatePartialSpecializationDecl(hasName("X")))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldVariableTemplate, MultipleSpecializations) {
+  StringRef Code = R"(
+X[T:type] : const T = T(4)
+X[int] : const int = 12
+X[float64] : const int = 11
+)";
+
+  DeclarationMatcher ToMatch = translationUnitDecl(
+    hasDescendant(varTemplateDecl(hasName("X"),
+      has(varDecl(hasInitializer(hasType(asString("type-parameter-0-0")))))
+    )),
+    hasDescendant(varTemplateSpecializationDecl(hasName("X")))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldVariableTemplate, InvalidSpecialization) {
+  StringRef Code = R"(
+X : const float32 = 4
+X[int] : const int = 12
+)";
+  GoldFailureTest(Code);
+}
+
+
+
+TEST(GoldVariableTemplate, PartialSpecialization_Use) {
+  StringRef Code = R"(
+X[T:type] : const T = T(4)
+X[T:type][^T] : const int = 12
+
+main() : int!
+  return X[^int]
+)";
+
+  DeclarationMatcher ToMatch = translationUnitDecl(
+    hasDescendant(varTemplateDecl(hasName("X"),
+      has(varDecl(hasInitializer(hasType(asString("type-parameter-0-0")))))
+    )),
+    hasDescendant(varTemplatePartialSpecializationDecl(hasName("X")))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldVariableTemplate, Specialization_Use) {
+  StringRef Code = R"(
+X[T:type] : const T = T(4)
+X[int] : const int = 12
+
+main() : int!
+  return X[int]
+)";
+
+  DeclarationMatcher ToMatch = translationUnitDecl(
+    hasDescendant(varTemplateDecl(hasName("X"),
+      has(varDecl(hasInitializer(hasType(asString("type-parameter-0-0")))))
+    )),
+    hasDescendant(varTemplateSpecializationDecl(hasName("X")))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

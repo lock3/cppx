@@ -271,6 +271,8 @@ public:
 
   llvm::StringRef getSuspectedKindStr() const;
 
+  clang::DeclContext *getOwningDeclContext() const { return DeclaringContext; }
+
   template<typename T>
   bool defines() const {
     return Cxx && clang::isa<T>(Cxx);
@@ -306,6 +308,9 @@ public:
   /// This function checks to see if the current scope was declared within
   // the scope of another class body.
   bool isDeclaredWithinClass() const;
+
+  /// Dump the current implementation to a stream.
+  void dump(llvm::raw_ostream &os = llvm::outs()) const;
 
   /// The owning context.
   Declaration *Cxt = nullptr;
