@@ -1337,7 +1337,7 @@ DeclarationBuilder::handleNestedNameSpecifier(const AtomSyntax *S, Declarator *N
 IdentifierDeclarator *
 DeclarationBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
   // Translating the simple identifier.
-  OriginalName = llvm::StringRef(S->getSpelling());
+  OriginalName = OriginalNameStorage = S->getSpelling();
   Id = &Context.CxxAST.Idents.get(OriginalName);
   assert(OriginalName != "operator'.'");
   if (OriginalName.find('"') != llvm::StringRef::npos) {

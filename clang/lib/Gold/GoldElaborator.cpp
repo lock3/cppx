@@ -3675,7 +3675,6 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 
   // If we are inside of a variable template we need to re-enter the scope
   // for the variable.
-
   ExprElaborator ExprElab(Context, SemaRef);
   if (D->declaresInlineInitializedStaticVarDecl() && !NeedsConstEvaluation) {
     Sema::ExprEvalRAII EvalScope(SemaRef,

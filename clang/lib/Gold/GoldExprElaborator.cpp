@@ -254,7 +254,7 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
   }
 
   // skip over any [0.] prefix
-  llvm::StringRef Spelling = Base == 10 ? S->getSpelling() :
+  std::string Spelling = Base == 10 ? S->getSpelling() :
     S->getSpelling().substr(2);
 
   llvm::APInt Value(Width, Spelling, Base);
@@ -578,7 +578,7 @@ createUnicodeLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
 static clang::StringLiteral *
 createStringLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
                     Token T, const Syntax *StrNode) {
-  llvm::StringRef StrWithQuotes = T.getSpelling();
+  std::string StrWithQuotes = T.getSpelling();
   llvm::StringRef StrRef(StrWithQuotes.data() + 1, StrWithQuotes.size() - 2);
   unsigned StrSize = StrRef.size();
   clang::QualType StrTy =
@@ -1246,7 +1246,7 @@ static bool callIsCastOperator(const CallSyntax *S) {
   if (const ElemSyntax *Elem = dyn_cast<ElemSyntax>(S->getCallee())) {
     if (const AtomSyntax *Callee
         = clang::dyn_cast<AtomSyntax>(Elem->getObject())) {
-      clang::StringRef Name = Callee->getSpelling();
+      std::string Name = Callee->getSpelling();
       return Name == "static_cast" || Name == "dynamic_cast"
           || Name == "const_cast" || Name == "reinterpret_cast";
     }
@@ -1257,11 +1257,12 @@ static bool callIsCastOperator(const CallSyntax *S) {
 
 
 clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
+  if (callIsCastOperator(S))
+    return elaborateCastOp(S);
+
   if (clang::Expr *elaboratedCall = elaborateBuiltinOperator(S))
     return elaboratedCall;
 
-  if (callIsCastOperator(S))
-    return elaborateCastOp(S);
 
   // Determining the type of call associated with the given syntax.
   // There are multiple kinds of atoms for multiple types of calls
@@ -1313,7 +1314,8 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     break;
   }
 
-  llvm::StringRef Spelling = Callee->getSpelling();
+  std::string Temp = Callee->getSpelling();
+  llvm::StringRef Spelling = Temp;
   if (Spelling.startswith("operator'")) {
     if (S->getNumArguments() == 1) {
       clang::UnaryOperatorKind UnaryOpKind;
@@ -1549,11 +1551,11 @@ clang::Expr *ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
   }
   if (TypeArgumentList->getNumChildren() != 1) {
     SemaRef.Diags.Report(CastOp->getLoc(),
-        clang::diag::err_invalid_cast_type_arg_count);
+                         clang::diag::err_invalid_cast_type_arg_count);
     return nullptr;
   }
 
-  clang::StringRef Name = Callee->getSpelling();
+  std::string Name = Callee->getSpelling();
   clang::tok::TokenKind CastKind;
   if (Name == "static_cast") {
     CastKind = clang::tok::TokenKind::kw_static_cast;
