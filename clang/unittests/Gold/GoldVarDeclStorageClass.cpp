@@ -60,3 +60,34 @@ foo: int
     hasName("foo"), isExternStorageClass());
   ASSERT_TRUE(matches(Code.str(), ExternVar));
 }
+
+
+TEST(GoldVarDeclStorageClass, ExternC_VarDecl) {
+  StringRef Code = R"(
+foo<extern("C")>: int
+)";
+  DeclarationMatcher ExternVar = varDecl(hasName("foo"), isExternC());
+  ASSERT_TRUE(matches(Code.str(), ExternVar));
+}
+
+TEST(GoldVarDeclStorageClass, ExternC_FunctionDecl) {
+  StringRef Code = R"(
+foo()<extern("C")>: int
+)";
+  DeclarationMatcher ExternVar = functionDecl(hasName("foo"), isExternC());
+  ASSERT_TRUE(matches(Code.str(), ExternVar));
+}
+
+TEST(GoldVarDeclStorageClass, ExternC_VarTemplateDecl) {
+  StringRef Code = R"(
+foo[T:type]<extern("C")>: int
+)";
+  GoldFailureTest(Code);
+}
+
+// TEST(GoldVarDeclStorageClass, ExternC_VarTemplateDeclSpecialization) {
+//   StringRef Code = R"(
+// foo[T:type]<extern("C")>: int
+// )";
+//   GoldFailureTest(Code);
+// }

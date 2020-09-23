@@ -302,9 +302,9 @@ gold::Declaration *Sema::getDeclaration(clang::Decl *CDecl) {
   auto Iter = DeclToDecl.find(CDecl);
   if (Iter == DeclToDecl.end()) {
     if (!isa<clang::CXXRecordDecl>(CDecl)) {
-      llvm::StringRef Name = "";
+      std::string Name = "";
       if (auto *ND = dyn_cast<clang::NamedDecl>(CDecl)) {
-        Name = ND->getName();
+        Name = ND->getName().str();
       }
       Diags.Report(CDecl->getLocation(),
                    clang::diag::err_unknown_template_declaration)
