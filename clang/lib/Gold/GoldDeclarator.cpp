@@ -153,8 +153,8 @@ clang::SourceLocation IdentifierDeclarator::getLoc() const {
 
 std::string IdentifierDeclarator::getString(bool IncludeKind) const {
   if (IncludeKind)
-    return "[Name] " + Name->getSpelling().str();
-  return Name->getSpelling().str();
+    return "[Name] " + Name->getSpelling();
+  return Name->getSpelling();
 }
 
 // ------------------ NestedNameSpecifierDeclarator ----------------------------
@@ -164,8 +164,8 @@ clang::SourceLocation NestedNameSpecifierDeclarator::getLoc() const {
 
 std::string NestedNameSpecifierDeclarator::getString(bool IncludeKind) const {
   if (IncludeKind)
-    return "[Nested Name] " + Name->getSpelling().str();
-  return Name->getSpelling().str();
+    return "[Nested Name] " + Name->getSpelling();
+  return Name->getSpelling();
 }
 
 // ------------------ FunctionDeclarator ---------------------------------------
@@ -193,7 +193,7 @@ std::string TypeDeclarator::getString(bool IncludeKind) const {
   if (IncludeKind)
     Ret += "[Type] ";
   if (const AtomSyntax *Nm = dyn_cast<AtomSyntax>(TyExpr)) {
-    Ret += Nm->getSpelling().str();
+    Ret += Nm->getSpelling();
   } else {
     Ret += "complex-type-expression";
   }

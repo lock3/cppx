@@ -22,6 +22,7 @@
 
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/DiagnosticParse.h"
+#include "clang/Basic/TargetInfo.h"
 
 #include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/Lookup.h"
@@ -41,13 +42,11 @@
 
 namespace gold {
 
-
-
 static void applyESIToFunctionType(SyntaxContext &Context, Sema &SemaRef,
                                    clang::FunctionDecl *FD,
                        const clang::FunctionProtoType::ExceptionSpecInfo &ESI);
 
-AttrFormat checkAttrFormatAndName(const Syntax *Attr, llvm::StringRef &Name) {
+AttrFormat checkAttrFormatAndName(const Syntax *Attr, std::string &Name) {
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Attr)) {
     Name = Atom->getSpelling();
     return AF_Name;
@@ -59,8 +58,6 @@ AttrFormat checkAttrFormatAndName(const Syntax *Attr, llvm::StringRef &Name) {
   }
   return AF_Invalid;
 }
-
-
 
 /// Overload for declaration processing.
 template<typename OnAttr, typename IsSameAttr, typename OnDuplicate>
@@ -81,7 +78,7 @@ static bool computeAccessSpecifier(Sema& SemaRef, Attributes& attrs,
   return locateValidAttribute(attrs,
     // OnAttr
     [&](const Syntax *Attr) -> bool {
-      llvm::StringRef ActualName;
+      std::string ActualName;
       switch(checkAttrFormatAndName(Attr, ActualName)) {
       case AF_Name:
         if (ActualName == "private") {
@@ -111,7 +108,7 @@ static bool computeAccessSpecifier(Sema& SemaRef, Attributes& attrs,
     },
     // CheckAttr
     [](const Syntax *Attr) -> bool{
-      llvm::StringRef ActualName;
+      std::string ActualName;
       checkAttrFormatAndName(Attr, ActualName);
       return (ActualName == "private"
               || ActualName == "protected"
@@ -132,7 +129,7 @@ static bool isVirtualBase(Sema& SemaRef, Attributes& attrs,
   return locateValidAttribute(attrs,
     // OnAttr
     [&](const Syntax *Attr) -> bool {
-      llvm::StringRef ActualName;
+      std::string ActualName;
       switch(checkAttrFormatAndName(Attr, ActualName)) {
       case AF_Name:
         if (ActualName == "virtual") {
@@ -156,7 +153,7 @@ static bool isVirtualBase(Sema& SemaRef, Attributes& attrs,
     },
     // CheckAttr
     [](const Syntax *Attr) -> bool{
-      llvm::StringRef ActualName;
+      std::string ActualName;
       checkAttrFormatAndName(Attr, ActualName);
       return ActualName == "virtual";
     },
@@ -174,7 +171,7 @@ bool isStaticMember(Sema& SemaRef, Declaration *D, bool &IsStatic) {
   return locateValidAttribute(D,
     // OnAttr
     [&](const Syntax *Attr) -> bool{
-      llvm::StringRef ActualName;
+      std::string ActualName;
       switch(checkAttrFormatAndName(Attr, ActualName)) {
       case AF_Name:
         if (ActualName == "static") {
@@ -220,7 +217,7 @@ bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
   return locateValidAttribute(D,
     // OnAttr
     [&](const Syntax *Attr) -> bool{
-      llvm::StringRef ActualName;
+      std::string ActualName;
       switch(checkAttrFormatAndName(Attr, ActualName)) {
       case AF_Name:
         if (ActualName == "mutable") {
@@ -244,7 +241,7 @@ bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
     },
     // CheckAttr
     [](const Syntax *Attr) -> bool{
-      llvm::StringRef ActualName;
+      std::string ActualName;
       checkAttrFormatAndName(Attr, ActualName);
       return ActualName == "mutable";
     },
@@ -261,7 +258,8 @@ Elaborator::Elaborator(SyntaxContext &Context, Sema &SemaRef)
   : Context(Context), SemaRef(SemaRef) {}
 
 clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
-
+  if (!S)
+    return nullptr;
   assert(isa<FileSyntax>(S) && "S is not a file");
 
   startFile(S);
@@ -308,7 +306,8 @@ void Elaborator::startFile(const Syntax *S) {
   /// Build the declaration for the global namespace.
   Declaration *D = new Declaration(S);
   D->SavedScope = SemaRef.getCurrentScope();
-  D->Cxx = Context.CxxAST.getTranslationUnitDecl();
+  SemaRef.setDeclForDeclaration(D, Context.CxxAST.getTranslationUnitDecl());
+
   SemaRef.pushDecl(D);
 }
 
@@ -450,9 +449,8 @@ static clang::Decl *
 handleClassSpecialization(SyntaxContext &Context,
                           Sema &SemaRef, Declaration *D,
                           clang::TypeSpecifierType TST,
-                          clang::CXXScopeSpec &SS,
                           clang::MultiTemplateParamsArg &MTP) {
-  SpecializationDeclarator *SD = D->SpecializationArgs->getAsSpecialization();
+  SpecializationDeclarator *SD = D->SpecializationArgs;
   assert(SD->ElaboratedArgs && "failed to elaborate specialization");
 
   clang::Sema &CxxSema = SemaRef.getCxxSema();
@@ -541,7 +539,7 @@ handleClassSpecialization(SyntaxContext &Context,
       clang::TNK_Type_template, IdLoc, IdLoc, Args, false, TemplateIds);
   auto Res = SemaRef.getCxxSema().ActOnClassTemplateSpecialization(
     SemaRef.getCurClangScope(), TST, clang::Sema::TUK_Definition,
-    D->Init->getLoc(), /*ModulePrivLoc=*/SourceLocation(), SS,
+    D->Init->getLoc(), /*ModulePrivLoc=*/SourceLocation(), D->ScopeSpec,
     *TempId, clang::ParsedAttributesView(), MTP);
 
   if (Res.isInvalid()) {
@@ -567,7 +565,6 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
   using namespace clang;
   D->CurrentPhase = Phase::Typing;
 
-
   // Checking if we are a nested template decl/class.
   bool WithinClass = D->ScopeForDecl->getKind() == SK_Class;
   MultiTemplateParamsArg MTP = D->TemplateParamStorage;
@@ -579,42 +576,42 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
   AccessSpecifier AS = AS_none;
   if (WithinClass)
     AS = AS_public;
+
   clang::SourceLocation IdLoc = D->Decl->getLoc();
   clang::TypeSpecifierType TST = clang::DeclSpec::TST_struct;
   bool ScopeEnumUsesClassTag = false;
   clang::SourceLocation ScopedEnumClassKW;
-  const AtomSyntax *Name = nullptr;
   ScopeKind SK = SK_Class;
-  if (D->getTagName(Name)) {
-    if (Name->hasToken(tok::ClassKeyword)) {
-      TST = clang::DeclSpec::TST_struct;
-    } else if (Name->hasToken(tok::UnionKeyword)) {
-      TST = clang::DeclSpec::TST_union;
-    } else if (Name->hasToken(tok::EnumKeyword)) {
-      TST = clang::DeclSpec::TST_enum;
-      // I need to extract the underlying type for an enum.
-      ScopeEnumUsesClassTag = true;
-      if (const MacroSyntax *MS = dyn_cast<MacroSyntax>(D->Init)) {
-        UnderlyingType = getUnderlyingEnumType(Context, SemaRef, MS->getCall());
-      } else {
-        llvm_unreachable("Invalid tree syntax.");
-      }
-      ScopedEnumClassKW = Name->getLoc();
-      SK = SK_Enum;
+
+  switch(D->getKind()) {
+  case UDK_Class:
+    TST = clang::DeclSpec::TST_struct;
+    break;
+  case UDK_Union:
+    TST = clang::DeclSpec::TST_union;
+    break;
+  case UDK_Enum:
+    TST = clang::DeclSpec::TST_enum;
+    ScopeEnumUsesClassTag = true;
+    if (const MacroSyntax *MS = dyn_cast<MacroSyntax>(D->Init)) {
+      UnderlyingType = getUnderlyingEnumType(Context, SemaRef, MS->getCall());
     } else {
-      llvm_unreachable("Incorrectly identified tag type");
+      llvm_unreachable("Invalid tree syntax.");
     }
-  } else {
+    ScopedEnumClassKW = D->IdDcl->getLoc();
+    SK = SK_Enum;
+    break;
+  default:
     llvm_unreachable("Incorrectly identified tag type");
   }
 
   Decl *Declaration = nullptr;
   if (D->SpecializationArgs) {
-    Declaration = handleClassSpecialization(Context, SemaRef, D, TST, SS, MTP);
+    Declaration = handleClassSpecialization(Context, SemaRef, D, TST, MTP);
   } else {
     Declaration = SemaRef.getCxxSema().ActOnTag(
       SemaRef.getCurClangScope(), TST, /*Metafunction=*/nullptr,
-      clang::Sema::TUK_Definition, D->Init->getLoc(), SS, D->getId(), IdLoc,
+      clang::Sema::TUK_Definition, D->Init->getLoc(), D->ScopeSpec, D->getId(), IdLoc,
       clang::ParsedAttributesView(), AS, /*ModulePrivateLoc=*/SourceLocation(),
       MTP, IsOwned, IsDependent, ScopedEnumClassKW, ScopeEnumUsesClassTag,
       UnderlyingType, /*IsTypeSpecifier=*/false, /*IsTemplateParamOrArg=*/false);
@@ -628,12 +625,15 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
     Tag = cast<CXXRecordDecl>(Declaration);
   } else if (isa<ClassTemplateDecl>(Declaration)) {
     ClassTemplateDecl *TempTemplateDecl = cast<ClassTemplateDecl>(Declaration);
+    // First we need to save the declaration for later because we need to be able
+    // specifically locate the declaration at a later time
+    SemaRef.setDeclForDeclaration(D, TempTemplateDecl);
     Tag = cast<CXXRecordDecl>(TempTemplateDecl->getTemplatedDecl());
   } else if (isa<EnumDecl>(Declaration)) {
     Tag = cast<TagDecl>(Declaration);
   }
 
-  D->Cxx = Tag;
+  SemaRef.setDeclForDeclaration(D, Tag);
   Elab.elaborateAttributes(D);
 
   Sema::ScopeRAII ClassBodyScope(SemaRef, SK, D->Op, &D->SavedScope);
@@ -710,9 +710,6 @@ processCXXForwardRecordDecl(Elaborator& Elab, SyntaxContext& Context,
   using namespace clang;
   D->CurrentPhase = Phase::Typing;
 
-  // bool Template = D->declaresTemplateType();
-  // const ListSyntax *TemplParams;
-
   // Checking if we are a nested template decl/class.
   bool WithinClass = D->ScopeForDecl->getKind() == SK_Class;
   MultiTemplateParamsArg MTP = D->TemplateParamStorage;
@@ -728,46 +725,31 @@ processCXXForwardRecordDecl(Elaborator& Elab, SyntaxContext& Context,
     AS = AS_public;
   clang::SourceLocation IdLoc = D->Decl->getLoc();
   clang::TypeSpecifierType TST = clang::DeclSpec::TST_struct;
-  if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(D->Init)) {
-    if (Name->hasToken(tok::ClassKeyword)) {
-      TST = clang::DeclSpec::TST_struct;
-    } else if (Name->hasToken(tok::UnionKeyword)) {
-      TST = clang::DeclSpec::TST_union;
-    } else if (Name->hasToken(tok::EnumKeyword)) {
-      // This is here because it's used specifically to generate an error from
-      // Sema::ActOnTag
-      TST = clang::DeclSpec::TST_enum;
-      ScopeEnumUsesClassTag = true;
-      ScopedEnumClassKW = Name->getLoc();
-    } else {
-      llvm_unreachable("Incorrectly identified tag type");
+  switch(D->getKind()) {
+  case UDK_Class:
+    TST = clang::DeclSpec::TST_struct;
+    break;
+  case UDK_Union:
+    TST = clang::DeclSpec::TST_union;
+    break;
+  case UDK_Enum:
+    // This is here because it's used specifically to generate an error from
+    // Sema::ActOnTag
+    TST = clang::DeclSpec::TST_enum;
+    ScopeEnumUsesClassTag = true;
+    if (const CallSyntax *EnumCall = dyn_cast<CallSyntax>(D->Init)) {
+      UnderlyingType = getUnderlyingEnumType(Context, SemaRef, EnumCall);
     }
-  } else if (const CallSyntax *EnumCall = dyn_cast<CallSyntax>(D->Init)) {
-    if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(EnumCall->getCallee())) {
-      if (Name->hasToken(tok::EnumKeyword)) {
-        TST = clang::DeclSpec::TST_enum;
-        ScopeEnumUsesClassTag = true;
-        UnderlyingType = getUnderlyingEnumType(Context, SemaRef, EnumCall);
-        ScopedEnumClassKW = Name->getLoc();
-      } else {
-        SemaRef.Diags.Report(EnumCall->getLoc(),
-                            clang::diag::err_invalid_declaration);
-        return nullptr;
-      }
-    } else {
-      SemaRef.Diags.Report(EnumCall->getLoc(),
-                          clang::diag::err_invalid_declaration);
-      return nullptr;
-    }
-  } else {
+    ScopedEnumClassKW = D->IdDcl->getLoc();
+    break;
+  default:
     llvm_unreachable("Incorrectly identified tag type");
   }
 
-
   Decl *Declaration = SemaRef.getCxxSema().ActOnTag(SemaRef.getCurClangScope(),
       TST, /*Metafunction=*/nullptr,
-      clang::Sema::TUK_Declaration, D->Init->getLoc(), SS, D->getId(), IdLoc,
-      clang::ParsedAttributesView(), /*AccessSpecifier=*/AS,
+      clang::Sema::TUK_Declaration, D->Init->getLoc(), D->ScopeSpec, D->getId(),
+      IdLoc, clang::ParsedAttributesView(), /*AccessSpecifier=*/AS,
       /*ModulePrivateLoc=*/SourceLocation(),
       MTP, IsOwned, IsDependent,
       /*ScopedEnumKWLoc=*/ScopedEnumClassKW,
@@ -779,9 +761,12 @@ processCXXForwardRecordDecl(Elaborator& Elab, SyntaxContext& Context,
     ClsDecl = cast<CXXRecordDecl>(Declaration);
   } else if (isa<ClassTemplateDecl>(Declaration)) {
     ClassTemplateDecl *TempTemplateDecl = cast<ClassTemplateDecl>(Declaration);
+    // First we need to save the declaration for later because we need to be able
+    // to locate this later.
+    SemaRef.setDeclForDeclaration(D, TempTemplateDecl);
     ClsDecl = cast<CXXRecordDecl>(TempTemplateDecl->getTemplatedDecl());
   }
-  D->Cxx = ClsDecl;
+  SemaRef.setDeclForDeclaration(D, ClsDecl);
   Elab.elaborateAttributes(D);
   D->CurrentPhase = Phase::Initialization;
   return ClsDecl;
@@ -827,8 +812,7 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
   } else {
     ResumedScope.Init(NSDecl->Rep, NSDecl->Rep->Term, false);
   }
-
-  D->Cxx = NSDecl;
+  SemaRef.setDeclForDeclaration(D, NSDecl);
   Elab.elaborateAttributes(D);
 
   SemaRef.pushDecl(D);
@@ -856,34 +840,28 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
 static void handleTemplateParameters(Sema &SemaRef,
                                      Sema::OptionalScopeRAII &ScopeToInit,
                                      Sema::OptioanlClangScopeRAII &ClangScope,
-                                     Declaration *D, Declarator *Dcl) {
-  gold::Scope **ScopePtr = nullptr;
-  clang::SourceLocation Loc = Dcl->getLoc();
+                                     Declaration *D,
+                                     TemplateParamsDeclarator *TPD) {
   clang::TemplateParameterList *ParamList = nullptr;
-  const Syntax *Params = nullptr;
-  TemplateParamsDeclarator *TPD = Dcl->getAsTemplateParams();
-  ScopePtr = TPD->getScopePtrPtr();
-  Params = TPD->getSyntax();
 
   // Initializing the scopes we have to deal with.
-  ScopeToInit.Init(SK_Template, Params, ScopePtr);
-  ClangScope.Init(clang::Scope::TemplateParamScope, Loc);
+  ScopeToInit.Init(SK_Template, TPD->getSyntax(), TPD->getScopePtrPtr());
+  ClangScope.Init(clang::Scope::TemplateParamScope, TPD->getLoc());
 
   // Constructing actual parameters.
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
   if (!TPD->isImplicitlyEmpty())
-    BuildTemplateParams(SemaRef.getContext(), SemaRef, Params,
+    BuildTemplateParams(SemaRef.getContext(), SemaRef, TPD->getSyntax(),
                         TemplateParamDecls);
 
   ParamList = SemaRef.getCxxSema().ActOnTemplateParameterList(
                                /*unsigned Depth*/SemaRef.computeTemplateDepth(),
                                            /*ExportLoc*/clang::SourceLocation(),
-                                                            /*TemplateLoc*/Loc,
-                                                            /*LAngleLoc*/Loc,
-                                                            TemplateParamDecls,
-                                                            /*RAngleLoc*/Loc,
+                                                   /*TemplateLoc*/TPD->getLoc(),
+                                                     /*LAngleLoc*/TPD->getLoc(),
+                                                             TemplateParamDecls,
+                                                     /*RAngleLoc*/TPD->getLoc(),
                                                      /*RequiresClause*/nullptr);
-
   TPD->setTemplateParameterList(ParamList);
   // Recording template parameters for use during declaration construction.
   D->TemplateParamStorage.push_back(ParamList);
@@ -916,59 +894,421 @@ static bool handleSpecializationArgs(Sema &SemaRef, const Syntax *Args,
   return false;
 }
 
+static clang::TemplateParameterList *
+buildNNSTemplateParam(Sema &SemaRef, Declaration *D,
+                      TemplateParamsDeclarator *TemplateDcl) {
+  assert(TemplateDcl && "Invalid template declarator.");
+  // We may need to exit the clang scope? instead of saving it for later.
+  SemaRef.enterClangScope(clang::Scope::TemplateParamScope);
+  SemaRef.enterScope(SK_Template, TemplateDcl->getSyntax());
+  TemplateDcl->setScope(SemaRef.getCurrentScope());
+  // Constructing actual parameters.
+  llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
+  if (!TemplateDcl->isImplicitlyEmpty())
+    BuildTemplateParams(SemaRef.getContext(), SemaRef, TemplateDcl->getSyntax(),
+                        TemplateParamDecls);
+
+  auto ParamList = SemaRef.getCxxSema().ActOnTemplateParameterList(
+                               /*unsigned Depth*/SemaRef.computeTemplateDepth(),
+                                           /*ExportLoc*/clang::SourceLocation(),
+                                           /*TemplateLoc*/TemplateDcl->getLoc(),
+                                             /*LAngleLoc*/TemplateDcl->getLoc(),
+                                                             TemplateParamDecls,
+                                             /*RAngleLoc*/TemplateDcl->getLoc(),
+                                                     /*RequiresClause*/nullptr);
+  TemplateDcl->setTemplateParameterList(ParamList);
+  // Recording template parameters for use during declaration construction.
+  D->TemplateParamStorage.push_back(ParamList);
+  return ParamList;
+}
+
 static bool elaborateSpecializationArgs(Sema &SemaRef,
                                         Declaration *D) {
   SpecializationDeclarator *SD = D->SpecializationArgs->getAsSpecialization();
   assert(!SD->ElaboratedArgs && "specialization arguments already elaborated");
 
   SD->ElaboratedArgs = true;
-  if (handleSpecializationArgs(SemaRef, SD->getArgs(), SD->getArgList())){
+  if (handleSpecializationArgs(SemaRef, SD->getArgs(), SD->getArgList())) {
     SD->setDidError();
   }
   return SD->getDidError();
 }
 
+// used to generate list syntax for our elemenb.
+static Syntax **createArray(const SyntaxContext &Ctx,
+                            const llvm::SmallVectorImpl<Syntax *> &Vec) {
+  Syntax **Array = new (Ctx) Syntax *[Vec.size()];
+  std::copy(Vec.begin(), Vec.end(), Array);
+  return Array;
+}
+
+// Creating a fake token operator.
+static AtomSyntax *RebuildAtom(const SyntaxContext &Ctx,
+                               const AtomSyntax *Name) {
+  return new (Ctx) AtomSyntax(Name->getToken());
+}
+
+static const ListSyntax *buildImplicitTemplateElemSyntax(Sema &SemaRef,
+                                                     NNSDeclaratorInfo &DInfo) {
+  assert(DInfo.Template && "Missing template arguments");
+  SyntaxContext &Ctx = SemaRef.getContext();
+  llvm::SmallVector<Syntax *, 16> Args;
+  gold::Scope *TmpltScope = DInfo.Template->getScope();
+  for (const Syntax *ParamToArg : DInfo.Template->getParams()->children()) {
+    Declaration *D = TmpltScope->findDecl(ParamToArg);
+    if (!D) {
+      // FIXME: In the event we have a failed template parameter declaration
+      // then we need to emit the proper error message and return a nullptr,
+      llvm_unreachable("Fix invalid template parameter declaration.");
+    }
+    // Reusing the existing name in order to recreate implicit arguments.
+    Args.emplace_back(RebuildAtom(Ctx, D->IdDcl->getIdentifier()));
+  }
+  return new (Ctx) ListSyntax(createArray(Ctx, Args), Args.size());
+}
+
+static bool handleNestedName(Sema &SemaRef, Declaration *D,
+                             NNSDeclaratorInfo &DInfo) {
+  SyntaxContext &Context = SemaRef.getContext();
+  ExprElaborator ExprElab(Context, SemaRef);
+  clang::Expr *NestedName = nullptr;
+  // Attempting to elaborate a given expression context
+  NestedName = ExprElab.elaborateExpectedConstantExpr(
+                                                   DInfo.Name->getNestedName());
+  if (!NestedName) {
+    // FIXME: I need to see if this works without having an error message here.
+    return true;
+  }
+
+  // Handling template parameters.
+  clang::TemplateParameterList *TemplateParams = nullptr;
+  if (DInfo.Template) {
+    Sema::NewNameSpecifierRAII NestedNameStack(SemaRef);
+    // Enter a new template scope.
+    TemplateParams = buildNNSTemplateParam(SemaRef, D, DInfo.Template);
+    // Something went wrong here and we should try and exit?
+    if (!TemplateParams)
+      return true;
+  }
+
+  // Suspend the current qualified lookup because some of the template parameters
+  // may have a references to things that are within a different namespace.
+  bool EnteringContext = SemaRef.isQualifiedLookupContext();
+  clang::QualType ResultTy = NestedName->getType();
+  if (ResultTy->isTypeOfTypes()) {
+    if (DInfo.Template || DInfo.SpecializationArgs) {
+      SemaRef.Diags.Report(DInfo.Name->getLoc(), clang::diag::err_no_template)
+                          << DInfo.Name->getNestedName()->getSpelling();
+      return true;
+    }
+    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(NestedName,
+                                                          DInfo.Name->getLoc());
+    if (!TInfo)
+      return true;
+
+    clang::QualType Ty(TInfo->getType());
+    clang::IdentifierInfo *II = &Context.CxxAST.Idents.get({
+                                   DInfo.Name->getNestedName()->getSpelling()});
+    clang::SourceLocation BeginLoc = DInfo.Name->getLoc();
+    clang::SourceLocation CCLoc = DInfo.Name->getLoc();
+    if (const auto *TypeDef = dyn_cast<clang::TypedefType>(&*Ty)) {
+      // Resolving typedef to actual type.
+      clang::TypedefNameDecl* TND = TypeDef->getDecl();
+      Ty = TND->getUnderlyingType();
+    }
+
+    clang::QualType Qt;
+    clang::Sema::NestedNameSpecInfo IdInfo(II,BeginLoc, CCLoc, Qt);
+
+    if(SemaRef.getCxxSema().
+      ActOnCXXNestedNameSpecifier(SemaRef.getCurClangScope(), IdInfo,
+                                  EnteringContext, SemaRef.CurNNSContext,
+                                  /*RecoveryLookup=*/false,
+                                  /*IsCorrected=*/nullptr,
+                                  /*OnlyNamespace=*/false))
+      return true;
+
+    clang::CXXRecordDecl *RD = Ty->getAsCXXRecordDecl();
+    if (!RD) {
+      SemaRef.Diags.Report(DInfo.Name->getLoc(),
+                           clang::diag::err_invalid_decl_spec_combination)
+                          << DInfo.Name->getNestedName()->getSpelling();
+      return true;
+    }
+
+    Sema::DeclaratorScopeObj DclScope(SemaRef, SemaRef.CurNNSContext,
+                                      D->IdDcl->getLoc());
+    if (SemaRef.CurNNSContext.isValid() && SemaRef.CurNNSContext.isSet()) {
+      if (SemaRef.getCxxSema().ShouldEnterDeclaratorScope(
+                             SemaRef.getCurClangScope(), SemaRef.CurNNSContext))
+        DclScope.enterDeclaratorScope();
+    }
+    // Moving to a new declaration context to continue.
+    if (SemaRef.setLookupScope(RD)) {
+      // FIXME: this should never fail... I think.
+      llvm_unreachable("We failed to duplicate the new scope.");
+    }
+    DInfo.Name->setScope(SemaRef.getLookupScope());
+    return false;
+
+
+  } else if (ResultTy->isCppxNamespaceType()) {
+    if (DInfo.Template || DInfo.SpecializationArgs) {
+      SemaRef.Diags.Report(DInfo.Name->getLoc(), clang::diag::err_no_template)
+                          << DInfo.Name->getNestedName()->getSpelling();
+      return true;
+    }
+    clang::Decl *TempNs = SemaRef.getDeclFromExpr(NestedName,
+                                                  DInfo.Name->getLoc());
+    clang::CppxNamespaceDecl *NS;
+    // Setting the namespace alias for lookup.
+    if (auto *CppxNs = dyn_cast<clang::CppxNamespaceDecl>(TempNs)) {
+      SemaRef.setLookupScope(CppxNs);
+      NS = CppxNs;
+    } else if (auto *Alias = dyn_cast<clang::NamespaceAliasDecl>(TempNs)) {
+      // Switching to the aliased namespace.
+      SemaRef.setLookupScope(NS = cast<clang::CppxNamespaceDecl>(
+                                                 Alias->getAliasedNamespace()));
+    } else {
+      TempNs->dump();
+      llvm_unreachable("We hvae a new type of namespace specifier that we've "
+                       "never seen before.");
+    }
+
+    clang::Sema::NestedNameSpecInfo IdInfo(NS->getIdentifier(),
+                                           NS->getBeginLoc(),
+                                           DInfo.Name->getLoc(),
+                                           clang::QualType());
+    if(SemaRef.getCxxSema().
+      ActOnCXXNestedNameSpecifier(SemaRef.getCurClangScope(), IdInfo,
+                                  EnteringContext, SemaRef.CurNNSContext,
+                                  /*RecoveryLookup=*/false,
+                                  /*IsCorrected=*/nullptr,
+                                  /*OnlyNamespace=*/false))
+      return true;
+    Sema::DeclaratorScopeObj DclScope(SemaRef, SemaRef.CurNNSContext,
+                                      D->IdDcl->getLoc());
+    if (SemaRef.CurNNSContext.isValid() && SemaRef.CurNNSContext.isSet()) {
+      if (SemaRef.getCxxSema().ShouldEnterDeclaratorScope(
+                             SemaRef.getCurClangScope(), SemaRef.CurNNSContext))
+        DclScope.enterDeclaratorScope();
+    }
+    SemaRef.pushScope(SemaRef.getLookupScope());
+    DInfo.Name->setScope(SemaRef.getLookupScope());
+    return false;
+  } else if (ResultTy->isTemplateType()) {
+    clang::Decl *TmpltDecl = SemaRef.getDeclFromExpr(NestedName,
+                                                     DInfo.Name->getLoc());
+    clang::TemplateDecl *TemplateDeclaration
+                                     = dyn_cast<clang::TemplateDecl>(TmpltDecl);
+    clang::TemplateName TmpltName(TemplateDeclaration);
+    clang::Sema::TemplateTy TmpltTy = clang::Sema::TemplateTy::make(TmpltName);
+
+    const ListSyntax *ArgsList = nullptr;
+
+    // This is for when we have a specialization for our template parameters
+    // we don't handle this yet.
+    if (DInfo.SpecializationArgs) {
+      ArgsList = DInfo.SpecializationArgs->getArgs();
+    } else {
+      // This is the special case where the template parameter are directly
+      // translated into template arguments implicitly.
+      // DInfo.Template->getTemplateParameterList();
+      ArgsList = buildImplicitTemplateElemSyntax(SemaRef, DInfo);
+    }
+    clang::TemplateArgumentListInfo ArgInfo;
+    llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArgs;
+    if (!ArgsList) {
+      // FIXME: this needs an error message.
+      llvm_unreachable("Unable to create specialization for NNS.");
+    }
+
+    clang::ASTTemplateArgsPtr TemplateArgs;
+    {
+      // We need to temporarily ditch lookup stack so we don't
+      // include things that are not in scope.
+      Sema::NewNameSpecifierRAII NestedNameStack(SemaRef);
+      ExprElaborator ExprElab(SemaRef.getContext(), SemaRef);
+      if (ExprElab.elaborateTemplateArugments(ArgsList, ArgInfo, ParsedArgs)) {
+        llvm_unreachable("This needs an error message.");
+        // return true;
+      }
+      TemplateArgs = ParsedArgs;
+    }
+
+    // Filling template argument.
+    if (SemaRef.getCxxSema().ActOnCXXNestedNameSpecifier(
+                                                     SemaRef.getCurClangScope(),
+                                                         SemaRef.CurNNSContext,
+                                          /*TemplateKWLoc*/DInfo.Name->getLoc(),
+                                                         TmpltTy,
+                                        /*TemplateNameLoc*/DInfo.Name->getLoc(),
+                                          /*LAngleLoc*/DInfo.Template->getLoc(),
+                                                         TemplateArgs,
+                                          /*RAngleLoc*/DInfo.Template->getLoc(),
+                                              /*CCLoc*/DInfo.Template->getLoc(),
+                                                         EnteringContext))
+      return true;
+
+
+
+    Sema::DeclaratorScopeObj DclScope(SemaRef,
+                                     SemaRef.CurNNSContext, D->IdDcl->getLoc());
+    if (SemaRef.CurNNSContext.isValid() && SemaRef.CurNNSContext.isSet()) {
+      if (SemaRef.getCxxSema().ShouldEnterDeclaratorScope(
+                              SemaRef.getCurClangScope(), SemaRef.CurNNSContext))
+        DclScope.enterDeclaratorScope();
+    }
+    if (SemaRef.CurNNSContext.isSet()) {
+
+      // Computing the current context based on the current scope spec.
+      clang::DeclContext *NewDC = SemaRef.getCxxSema().computeDeclContext(
+                                                    SemaRef.CurNNSContext, true);
+
+      // FIXME: It may be possible for this to be a type alias, or a template
+      // aliase in which case we may need to change things slightly to check
+      // for that
+      if (auto *RD = dyn_cast<clang::CXXRecordDecl>(NewDC)) {
+        if (SemaRef.setLookupScope(RD)) {
+          // FIXME: this should never fail... I think.
+          llvm_unreachable("We failed to duplicate the new scope.");
+        }
+
+      } else {
+        // FIXME: This needs a valid error message.
+        llvm_unreachable("Invalid kind of template.");
+      }
+      DInfo.Name->setScope(SemaRef.getLookupScope());
+      return false;
+    }
+    return true;
+  }
+
+  SemaRef.Diags.Report(DInfo.Name->getLoc(),
+                       clang::diag::err_expected_class_or_namespace)
+                       << DInfo.Name->getNestedName()->getSpelling() << 0;
+  return true;
+}
+
+bool Elaborator::elaborateNestedNameForDecl(Declaration *D) {
+  Sema::OptionalInitScope<Sema::QualifiedLookupRAII> GlobalNNS(SemaRef);
+  if (D->GlobalNsSpecifier) {
+    if (SemaRef.getCxxSema().ActOnCXXGlobalScopeSpecifier(
+                         D->GlobalNsSpecifier->getLoc(), SemaRef.CurNNSContext))
+      return true;
+
+    // Gathering global namespace into our current scope.
+    gold::Scope *GlobalScope = SemaRef.getCurrentScope();
+    while (GlobalScope->getParent())
+      GlobalScope = GlobalScope->getParent();
+
+    // Initialzing the global namespace tracking for lookup.
+    GlobalNNS.Init(SemaRef.QualifiedLookupContext, GlobalScope,
+                   Context.CxxAST.getTranslationUnitDecl());
+  }
+
+  // For each nested name specifier
+  for(auto &NNS : D->NNSInfo)
+    if (handleNestedName(SemaRef, D, NNS))
+      return true;
+
+  // Copying the constructed scope into it's correct location.
+  D->ScopeSpec = SemaRef.CurNNSContext;
+  return false;
+}
+
+static void exitToCorrectScope(Sema &SemaRef, gold::Scope *ExpectedScope,
+                               Declaration *D) {
+  // We need to exit any previous template scopes we entered as part of the nested
+  // name specifier. Make sure to leave in revese order otherwise we won't have
+  // a valid terms during exit.
+  for (auto RIter = D->NNSInfo.rbegin(); RIter != D->NNSInfo.rend(); ++RIter) {
+    // Trying to restore the current clang scope spec.
+    if (RIter->Name->didEnterScope()) {
+      if (RIter->Name->getScopeSpec().isSet()) {
+        SemaRef.getCxxSema().ActOnCXXExitDeclaratorScope(
+                        SemaRef.getCurClangScope(), RIter->Name->getScopeSpec());
+      }
+    }
+    if (RIter->Name->getScope())
+      SemaRef.leaveScope(RIter->Name->getScope()->getConcreteTerm());
+
+    if (RIter->Template && RIter->Template->getScope())
+      SemaRef.leaveScope(RIter->Template->getScope()->getConcreteTerm());
+  }
+  assert(ExpectedScope == SemaRef.getCurrentScope() && "Scope imbalance.");
+}
+
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   if (phaseOf(D) != Phase::Identification)
     return D->Cxx;
-
+  clang::Scope *OriginalClangScope = SemaRef.getCurClangScope();
   Scope *Sc = SemaRef.getCurrentScope();
-  // Resume the current scope because that will allow us to modify the current
-  // scope during processing and restore when we pop this off the scope
-  // stack.
-  Sema::ResumeScopeRAII ScopeTracking(SemaRef, Sc, Sc->getConcreteTerm());
-  if (!D->NNSInfo.empty() || D->GlobalNsSpecifier)
-    llvm_unreachable("Nested name elaboration not implemented yet.");
 
-  Sema::OptionalScopeRAII TemplateParamScope(SemaRef);
-  Sema::OptioanlClangScopeRAII ClangTemplateScope(SemaRef);
-
-  // Checking to see if we are need to enter a name scope for a template
-  if (D->TemplateParameters)
-    handleTemplateParameters(SemaRef, TemplateParamScope, ClangTemplateScope,
-                             D, D->TemplateParameters);
-
-  if (D->SpecializationArgs)
-    elaborateSpecializationArgs(SemaRef, D);
-
-  clang::Decl *Ret = elaborateDeclContent(D);
-
-  // Checking the error from the specializaton and marking the decl as invalid.
-  if (D->SpecializationArgs) {
-    if (D->SpecializationArgs->getAsSpecialization()->getDidError()) {
-      Ret->setInvalidDecl();
+  // This clears any previous lookups and restores them once we reach the end.
+  // This might be useful for elaborating parameters with default values that
+  // are being assigned as a default value.
+  Sema::NewNameSpecifierRAII NestedNameStack(SemaRef);
+  if (!D->NNSInfo.empty() || D->GlobalNsSpecifier) {
+    if (elaborateNestedNameForDecl(D)) {
+      exitToCorrectScope(SemaRef, Sc, D);
+      return nullptr;
     }
   }
+
+  // In order to maintain correct entry and exit order we have to exit any
+  // other scopes before we attempt to leave the template scopes constructed
+  // as part of the nested name specifier. So they are destructed before we
+  // actually leave their parent scopes.
+  clang::Decl *Ret = nullptr;
+  {
+    Sema::OptionalResumeScopeRAII OriginalDeclScope(SemaRef);
+    if (D->ScopeSpec.isSet()) {
+      // Re-enter thre scope used to create the initial declaration.
+      Scope *DeclScope = SemaRef.getLookupScope();
+      if (DeclScope)
+        OriginalDeclScope.Init(DeclScope, DeclScope->getConcreteTerm());
+      else
+        // FIXME: this may need to be an internal compiler error.
+        llvm_unreachable("We have an invalid scope to resume!");
+    }
+
+    Sema::OptionalScopeRAII TemplateParamScope(SemaRef);
+    Sema::OptioanlClangScopeRAII ClangTemplateScope(SemaRef);
+
+    // Checking to see if we are need to enter a name scope for a template
+    if (D->Template) {
+      handleTemplateParameters(SemaRef, TemplateParamScope, ClangTemplateScope,
+                               D, D->Template);
+    }
+    if (D->SpecializationArgs) {
+      if (D->SpecializationArgs->ElaboratedArgs)
+        // This already failed somewhere else!
+        return nullptr;
+      elaborateSpecializationArgs(SemaRef, D);
+    }
+
+
+    Ret = elaborateDeclContent(OriginalClangScope, D);
+    // Checking the error from the specializaton and marking the decl as invalid.
+    if (D->SpecializationArgs) {
+      if (D->SpecializationArgs->getAsSpecialization()->getDidError()) {
+        Ret->setInvalidDecl();
+      }
+    }
+  }
+
+  exitToCorrectScope(SemaRef, Sc, D);
   return Ret;
-  // TODO: We should be able to elaborate definitions at this point too.
-  // We've already loaded salient identifier tables, so it shouldn't any
-  // forward references should be resolvable.
 }
-clang::Decl *Elaborator::elaborateDeclContent(Declaration *D) {
+
+clang::Decl *Elaborator::elaborateDeclContent(clang::Scope *InitialScope,
+                                              Declaration *D) {
+  assert(D && "missing declaration");
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
-  if (D->declaresTag())
+  if (D->declaresTagDef())
     return processCXXRecordDecl(*this, Context, SemaRef, D);
   if (D->declaresForwardRecordDecl())
     return processCXXForwardRecordDecl(*this, Context, SemaRef, D);
@@ -976,7 +1316,7 @@ clang::Decl *Elaborator::elaborateDeclContent(Declaration *D) {
     return processNamespaceDecl(*this, Context, SemaRef, D);
   if (D->declaresFunction())
     return elaborateFunctionDecl(D);
-  return elaborateVariableDecl(D);
+  return elaborateVariableDecl(InitialScope, D);
 }
 
 static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
@@ -1124,7 +1464,6 @@ void setSpecialFunctionName(SyntaxContext &Ctx, clang::CXXRecordDecl *RD,
     Name = Ctx.CxxAST.DeclarationNames.getCXXDestructorName(Ty);
   }
 }
-
 void lookupFunctionRedecls(Sema &SemaRef, clang::Scope *FoundScope,
                            clang::LookupResult &Previous) {
   while ((FoundScope->getFlags() & clang::Scope::DeclScope) == 0 ||
@@ -1133,7 +1472,6 @@ void lookupFunctionRedecls(Sema &SemaRef, clang::Scope *FoundScope,
 
   SemaRef.getCxxSema().LookupName(Previous, FoundScope, false);
 }
-
 bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
                  clang::DeclarationName const &Name, clang::FunctionDecl **FD,
                  clang::TypeSourceInfo *Ty, clang::CXXRecordDecl *RD) {
@@ -1150,7 +1488,7 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
   if (Constructor || Destructor) {
     if (FPT->getReturnType() == Context.CxxAST.getAutoDeductType()) {
       // double verifying function type.
-      if (!Fn->getFirstDeclarator(DK_Type)) {
+      if (!Fn->TypeDcl) {
         // The we set the default type to void instead because we are a
         // constructor.
         auto ParamTys = FPT->getParamTypes();
@@ -1185,12 +1523,12 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
     if (Constructor)
       *FD = Method =
         clang::CXXConstructorDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
-                                          clang::QualType(), nullptr, ES, false,
+                                          Ty->getType(), Ty, ES, false,
                               false, clang::ConstexprSpecKind::CSK_unspecified);
     else if (Destructor)
     *FD = Method =
       clang::CXXDestructorDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
-                                       clang::QualType(), nullptr, false, false,
+                                       Ty->getType(), Ty, false, false,
                                      clang::ConstexprSpecKind::CSK_unspecified);
 
 
@@ -1242,13 +1580,15 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
 
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::Sema &CxxSema = SemaRef.getCxxSema();
-
-  // Get the type of the entity.
-  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
-  FunctionDeclarator *FnDclPtr = D->FunctionDcl->getAsFunction();
+  clang::DeclContext *Owner = D->getOwningDeclContext();
+  clang::DeclContext *ResolvedCtx = Owner;
+  if (D->hasNestedNameSpecifier()) {
+    ResolvedCtx = SemaRef.getCxxSema().computeDeclContext(D->ScopeSpec, true);
+  }
+  FunctionDeclarator *FnDclPtr = D->FunctionDcl;
 
   // Get a reference to the containing class if there is one.
-  bool InClass = D->ScopeForDecl->getKind() == SK_Class;
+  bool InClass = isa<clang::TagDecl>(ResolvedCtx);
   clang::CXXRecordDecl *RD = nullptr;
   if (InClass) {
     clang::Decl *ScopesDecl = SemaRef.getDeclForScope();
@@ -1258,12 +1598,9 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   }
 
   // Create the template parameters if they exist.
-  bool Template = D->TemplateParameters;
-  TemplateParamsDeclarator *TPD = nullptr;
+  bool Template = D->Template;
+  TemplateParamsDeclarator *TPD = D->Template;
   bool Specialization = D->SpecializationArgs;
-  if (Template) {
-    TPD = D->TemplateParameters->getAsTemplateParams();
-  }
 
   // Elaborate the return type.
   ExprElaborator TypeElab(Context, SemaRef);
@@ -1297,13 +1634,24 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
                                clang::Sema::LookupOrdinaryName,
                                CxxSema.forRedeclarationInCurContext());
   clang::Scope *CxxScope = SemaRef.getCurClangScope();
-  lookupFunctionRedecls(SemaRef, CxxScope, Previous);
+  if (D->hasNestedNameSpecifier()) {
+    // Attempting to use the previously located decl context in order to
+    // correctly identify any previous declarations.
+    CxxSema.LookupQualifiedName(Previous, ResolvedCtx);
+  } else {
+    lookupFunctionRedecls(SemaRef, CxxScope, Previous);
+  }
 
   clang::SourceLocation Loc = D->Op->getLoc();
   clang::FunctionDecl *FD = nullptr;
   if(InClass) {
     if (!buildMethod(Context, SemaRef, D, Name, &FD, TInfo, RD))
       return nullptr;
+
+    // Fixing the lexical context, because this can change in the face of
+    // a nested name specifier.
+    FD->setLexicalDeclContext(Owner);
+
   } else {
     FD = clang::FunctionDecl::Create(Context.CxxAST, Owner, Loc, Loc, Name,
                                      TInfo->getType(), TInfo, clang::SC_None);
@@ -1314,10 +1662,12 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     }
   }
 
+
   // If this describes a primary template declaration, create it.
   if (Template && !Specialization) {
     clang::SourceLocation Loc = TPD->getLoc();
-    auto *FTD = clang::FunctionTemplateDecl::Create(Context.CxxAST, Owner, Loc,
+    auto *FTD = clang::FunctionTemplateDecl::Create(Context.CxxAST,
+                                                    Owner, Loc,
                                                     FD->getDeclName(),
                                                 TPD->getTemplateParameterList(),
                                                     FD);
@@ -1352,7 +1702,8 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
   getFunctionParameters(D, Params);
   FD->setParams(Params);
-  D->Cxx = FD;
+  D->CurrentPhase = Phase::Typing;
+  SemaRef.setDeclForDeclaration(D, FD);
   {
     // We have previously exited this scope that was created during type
     // elaboration.
@@ -1373,25 +1724,22 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     CxxSema.PushOnScopeChains(CtorDecl, CxxScope);
     CxxSema.CheckConstructor(CtorDecl);
   }
+  CxxSema.FilterLookupForScope(Previous, ResolvedCtx,
+                               CxxScope, !InClass, !InClass);
 
-  CxxSema.FilterLookupForScope(Previous, Owner, CxxScope,
-                                            !InClass, !InClass);
-  CxxSema.CheckFunctionDeclaration(CxxScope,
-                                                FD, Previous, true);
-
+  CxxSema.CheckFunctionDeclaration(CxxScope, FD, Previous, false);
+  bool IsMethod = false;
   if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(FD)) {
-
     checkCXXMethodDecl(MD);
     CxxSema.CheckOverrideControl(MD);
+    IsMethod = true;
   }
 
   // Handle function template specialization.
-  if (!FD->isInvalidDecl() && !Previous.empty() && Specialization) {
-    SpecializationDeclarator *SpDcl =
-      D->SpecializationArgs->getAsSpecialization();
+  if (!FD->isInvalidDecl() && !Previous.empty() && Specialization && !IsMethod) {
     clang::TemplateArgumentListInfo *Args =
-      SpDcl->HasArguments() ? &SpDcl->getArgList() : nullptr;
-
+      D->SpecializationArgs->HasArguments() ?
+           &D->SpecializationArgs->getArgList() : nullptr;
     if (CxxSema.CheckFunctionTemplateSpecialization(FD, Args, Previous))
       FD->setInvalidDecl();
   }
@@ -1399,8 +1747,9 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // FIXME: this is not necessarily what should happen.
   if (FD->isInvalidDecl())
     return nullptr;
-
-  D->CurrentPhase = Phase::Typing;
+  // Attempting to create an set nested name specifier as part of the declaration
+  if (D->ScopeSpec.isSet())
+    FD->setQualifierInfo(D->ScopeSpec.getWithLocInContext(Context.CxxAST));
   return FD;
 }
 
@@ -1471,15 +1820,760 @@ void Elaborator::checkCXXMethodDecl(clang::CXXMethodDecl *MD) {
                           << MD->getDeclName();
 }
 
-static clang::StorageClass getDefaultVariableStorageClass(Elaborator &Elab) {
-  return Elab.SemaRef.getCurrentScope()->isBlockScope() ||
-    Elab.SemaRef.getCurrentScope()->isControlScope()
+static clang::StorageClass getDefaultVariableStorageClass(Sema &SemaRef) {
+  return SemaRef.getCurrentScope()->isBlockScope() ||
+    SemaRef.getCurrentScope()->isControlScope()
     ? clang::SC_Auto
     : clang::SC_None;
 }
 
+/// This returns the suspected storage class by searching attributes and
+/// returning the first match. This function doesn't detect errors, its only
+/// used to help determine the DeclContext.
+static clang::StorageClass getSuspectedStorageClass(Sema &SemaRef,
+                                                    Declaration *D) {
+  if (!D->IdDcl->UnprocessedAttributes)
+    return getDefaultVariableStorageClass(SemaRef);
 
-clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
+  std::string ActualName;
+  auto Iter = std::find_if(
+      D->IdDcl->UnprocessedAttributes->begin(),
+      D->IdDcl->UnprocessedAttributes->end(),
+      [&](const Syntax *Attr) -> bool {
+        auto Ret = checkAttrFormatAndName(Attr, ActualName);
+        if (Ret == AF_Invalid) {
+          return false;
+        }
+        return ActualName == "extern" || ActualName == "static";
+      });
+  if (Iter != D->IdDcl->UnprocessedAttributes->end()) {
+    if (ActualName == "extern")
+      return clang::SC_Extern;
+    if (ActualName == "static")
+      return clang::SC_Static;
+    llvm_unreachable("Invalid attribute located.");
+  }
+  return getDefaultVariableStorageClass(SemaRef);
+}
+
+static bool shouldConsiderLinkage(const clang::VarDecl *VD) {
+  if (VD->isInFragment())
+    return false;
+
+  const clang::DeclContext *DC = VD->getDeclContext()->getRedeclContext();
+  if (DC->isFunctionOrMethod())
+    return VD->hasExternalStorage();
+  if (DC->isFileContext())
+    return true;
+  if (DC->isRecord())
+    return false;
+  if (isa<clang::RequiresExprBodyDecl>(DC))
+    return false;
+  llvm_unreachable("Unexpected context");
+}
+
+// static bool isMemberSpecialization(Declaration *D) {
+//   // We need to determine if the current variable declaration could be a member
+//   // specialization.
+//   for(const auto &Dcltr : D->NNSInfo)
+//       if (Dcltr.Template || Dcltr.SpecializationArgs)
+//         return true;
+//   return false;
+// }
+static bool isFunctionDefinitionDiscarded(Sema &S, clang::FunctionDecl *FD) {
+  // Try to avoid calling GetGVALinkageForFunction.
+
+  // All cases of this require the 'inline' keyword.
+  if (!FD->isInlined()) return false;
+
+  // This is only possible in C++ with the gnu_inline attribute.
+  if (!FD->hasAttr<clang::GNUInlineAttr>())
+    return false;
+
+  // Okay, go ahead and call the relatively-more-expensive function.
+  return S.getContext().CxxAST.GetGVALinkageForFunction(FD)
+        == clang::GVA_AvailableExternally;
+}
+
+/// Determine whether a variable is extern "C" prior to attaching
+/// an initializer. We can't just call isExternC() here, because that
+/// will also compute and cache whether the declaration is externally
+/// visible, which might change when we attach the initializer.
+///
+/// This can only be used if the declaration is known to not be a
+/// redeclaration of an internal linkage declaration.
+///
+/// For instance:
+///
+///   auto x = []{};
+///
+/// Attaching the initializer here makes this declaration not externally
+/// visible, because its type has internal linkage.
+///
+/// FIXME: This is a hack.
+template<typename T>
+static bool isIncompleteDeclExternC(Sema &S, const T *D) {
+  // In C++, the overloadable attribute negates the effects of extern "C".
+  if (!D->isInExternCContext() || D->template hasAttr<clang::OverloadableAttr>())
+    return false;
+
+  // So do CUDA's host/device attributes.
+  if (S.getCxxSema().getLangOpts().CUDA &&
+      (D->template hasAttr<clang::CUDADeviceAttr>() ||
+      D->template hasAttr<clang::CUDAHostAttr>()))
+    return false;
+
+  return D->isExternC();
+}
+
+static unsigned getMSManglingNumber(const clang::LangOptions &LO,
+                                    clang::Scope *S) {
+  return LO.isCompatibleWithMSVC(clang::LangOptions::MSVC2015)
+             ? S->getMSCurManglingNumber()
+             : S->getMSLastManglingNumber();
+}
+static void checkDLLAttributeRedeclaration(clang::Sema &S, clang::NamedDecl *OldDecl,
+                                           clang::NamedDecl *NewDecl,
+                                           bool IsSpecialization,
+                                           bool IsDefinition) {
+  using namespace clang;
+  if (OldDecl->isInvalidDecl() || NewDecl->isInvalidDecl())
+    return;
+
+  bool IsTemplate = false;
+  if (TemplateDecl *OldTD = dyn_cast<TemplateDecl>(OldDecl)) {
+    OldDecl = OldTD->getTemplatedDecl();
+    IsTemplate = true;
+    if (!IsSpecialization)
+      IsDefinition = false;
+  }
+  if (TemplateDecl *NewTD = dyn_cast<TemplateDecl>(NewDecl)) {
+    NewDecl = NewTD->getTemplatedDecl();
+    IsTemplate = true;
+  }
+
+  if (!OldDecl || !NewDecl)
+    return;
+
+  const DLLImportAttr *OldImportAttr = OldDecl->getAttr<DLLImportAttr>();
+  const DLLExportAttr *OldExportAttr = OldDecl->getAttr<DLLExportAttr>();
+  const DLLImportAttr *NewImportAttr = NewDecl->getAttr<DLLImportAttr>();
+  const DLLExportAttr *NewExportAttr = NewDecl->getAttr<DLLExportAttr>();
+
+  // dllimport and dllexport are inheritable attributes so we have to exclude
+  // inherited attribute instances.
+  bool HasNewAttr = (NewImportAttr && !NewImportAttr->isInherited()) ||
+                    (NewExportAttr && !NewExportAttr->isInherited());
+
+  // A redeclaration is not allowed to add a dllimport or dllexport attribute,
+  // the only exception being explicit specializations.
+  // Implicitly generated declarations are also excluded for now because there
+  // is no other way to switch these to use dllimport or dllexport.
+  bool AddsAttr = !(OldImportAttr || OldExportAttr) && HasNewAttr;
+
+  if (AddsAttr && !IsSpecialization && !OldDecl->isImplicit()) {
+    // Allow with a warning for free functions and global variables.
+    bool JustWarn = false;
+    if (!OldDecl->isCXXClassMember()) {
+      auto *VD = dyn_cast<VarDecl>(OldDecl);
+      if (VD && !VD->getDescribedVarTemplate())
+        JustWarn = true;
+      auto *FD = dyn_cast<FunctionDecl>(OldDecl);
+      if (FD && FD->getTemplatedKind() == FunctionDecl::TK_NonTemplate)
+        JustWarn = true;
+    }
+
+    // We cannot change a declaration that's been used because IR has already
+    // been emitted. Dllimported functions will still work though (modulo
+    // address equality) as they can use the thunk.
+    if (OldDecl->isUsed())
+      if (!isa<FunctionDecl>(OldDecl) || !NewImportAttr)
+        JustWarn = false;
+
+    unsigned DiagID = JustWarn ? diag::warn_attribute_dll_redeclaration
+                               : diag::err_attribute_dll_redeclaration;
+    S.Diag(NewDecl->getLocation(), DiagID)
+        << NewDecl
+        << (NewImportAttr ? (const Attr *)NewImportAttr : NewExportAttr);
+    S.Diag(OldDecl->getLocation(), diag::note_previous_declaration);
+    if (!JustWarn) {
+      NewDecl->setInvalidDecl();
+      return;
+    }
+  }
+
+  // A redeclaration is not allowed to drop a dllimport attribute, the only
+  // exceptions being inline function definitions (except for function
+  // templates), local extern declarations, qualified friend declarations or
+  // special MSVC extension: in the last case, the declaration is treated as if
+  // it were marked dllexport.
+  bool IsInline = false, IsStaticDataMember = false, IsQualifiedFriend = false;
+  bool IsMicrosoft = S.Context.getTargetInfo().getCXXABI().isMicrosoft();
+  if (const auto *VD = dyn_cast<VarDecl>(NewDecl)) {
+    // Ignore static data because out-of-line definitions are diagnosed
+    // separately.
+    IsStaticDataMember = VD->isStaticDataMember();
+    IsDefinition = VD->isThisDeclarationADefinition(S.Context) !=
+                   VarDecl::DeclarationOnly;
+  } else if (const auto *FD = dyn_cast<FunctionDecl>(NewDecl)) {
+    IsInline = FD->isInlined();
+    IsQualifiedFriend = FD->getQualifier() &&
+                        FD->getFriendObjectKind() == Decl::FOK_Declared;
+  }
+
+  if (OldImportAttr && !HasNewAttr &&
+      (!IsInline || (IsMicrosoft && IsTemplate)) && !IsStaticDataMember &&
+      !NewDecl->isLocalExternDecl() && !IsQualifiedFriend) {
+    if (IsMicrosoft && IsDefinition) {
+      S.Diag(NewDecl->getLocation(),
+             diag::warn_redeclaration_without_import_attribute)
+          << NewDecl;
+      S.Diag(OldDecl->getLocation(), diag::note_previous_declaration);
+      NewDecl->dropAttr<DLLImportAttr>();
+      NewDecl->addAttr(
+          DLLExportAttr::CreateImplicit(S.Context, NewImportAttr->getRange()));
+    } else {
+      S.Diag(NewDecl->getLocation(),
+             diag::warn_redeclaration_without_attribute_prev_attribute_ignored)
+          << NewDecl << OldImportAttr;
+      S.Diag(OldDecl->getLocation(), diag::note_previous_declaration);
+      S.Diag(OldImportAttr->getLocation(), diag::note_previous_attribute);
+      OldDecl->dropAttr<DLLImportAttr>();
+      NewDecl->dropAttr<DLLImportAttr>();
+    }
+  } else if (IsInline && OldImportAttr && !IsMicrosoft) {
+    // In MinGW, seeing a function declared inline drops the dllimport
+    // attribute.
+    OldDecl->dropAttr<DLLImportAttr>();
+    NewDecl->dropAttr<DLLImportAttr>();
+    S.Diag(NewDecl->getLocation(),
+           diag::warn_dllimport_dropped_from_inline_function)
+        << NewDecl << OldImportAttr;
+  }
+
+  // A specialization of a class template member function is processed here
+  // since it's a redeclaration. If the parent class is dllexport, the
+  // specialization inherits that attribute. This doesn't happen automatically
+  // since the parent class isn't instantiated until later.
+  if (const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(NewDecl)) {
+    if (MD->getTemplatedKind() == FunctionDecl::TK_MemberSpecialization &&
+        !NewImportAttr && !NewExportAttr) {
+      if (const DLLExportAttr *ParentExportAttr =
+              MD->getParent()->getAttr<DLLExportAttr>()) {
+        DLLExportAttr *NewAttr = ParentExportAttr->clone(S.Context);
+        NewAttr->setInherited(true);
+        NewDecl->addAttr(NewAttr);
+      }
+    }
+  }
+}
+
+static clang::TemplateIdAnnotation *buildTemplateIdAnnotation(SyntaxContext &Context,
+                                                       Sema &SemaRef,
+                                                       clang::LookupResult& R,
+                                                       clang::TemplateNameKind TNK,
+                                                       Declaration *D) {
+  if (!D->Template)
+    return nullptr;
+  SpecializationDeclarator *SD = D->SpecializationArgs;
+  if (!SD) {
+    return nullptr;
+  }
+  clang::SourceLocation IdLoc = D->Decl->getLoc();
+
+  if (!R.isSingleResult()) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "specialization of ambiguous template");
+    SemaRef.Diags.Report(IdLoc, DiagID);
+    return nullptr;
+  }
+
+  clang::TemplateDecl *Principal = R.getAsSingle<clang::TemplateDecl>();
+  if (!Principal) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "specialization of undeclared template");
+    SemaRef.Diags.Report(IdLoc, DiagID);
+    return nullptr;
+  }
+
+  clang::TemplateName Template(Principal);
+  clang::OpaquePtr<clang::TemplateName> TemplatePtr =
+    clang::OpaquePtr<clang::TemplateName>::make(Template);
+  clang::UnqualifiedId UnqualId;
+  UnqualId.setIdentifier(D->getId(), IdLoc);
+  llvm::SmallVector<clang::TemplateIdAnnotation *, 16> TemplateIds;
+  llvm::SmallVector<clang::ParsedTemplateArgument, 4> Args;
+  bool ArgsAreInvalid = false;
+  if (SD) {
+    const clang::TemplateArgumentLoc *ArgInfo =
+      SD->getArgList().getArgumentArray();
+    for (unsigned I = 0; I < SD->getArgList().size(); ++I) {
+      clang::TemplateArgument Arg = ArgInfo[I].getArgument();
+
+      bool BadArgument = false;
+      switch (Arg.getKind()) {
+      case clang::TemplateArgument::Type: {
+        clang::ParsedTemplateArgument NewArg(
+          clang::ParsedTemplateArgument::Type,
+          (void *)Arg.getAsType().getTypePtr(),
+          ArgInfo[I].getLocation());
+        Args.push_back(NewArg);
+        break;
+      }
+
+      case clang::TemplateArgument::Expression: {
+        // FIXME: this might be classified as an expression because it is
+        // dependent, but is actually something else.
+        clang::ParsedTemplateArgument NewArg(
+          clang::ParsedTemplateArgument::NonType, (void *)Arg.getAsExpr(),
+          ArgInfo[I].getLocation());
+        Args.push_back(NewArg);
+        break;
+      }
+
+      default: {
+        unsigned DiagID =
+          SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                        "invalid specialization argument");
+        SemaRef.Diags.Report(ArgInfo[I].getLocation(), DiagID);
+        BadArgument = true;
+      }
+      }
+
+      if (BadArgument) {
+        ArgsAreInvalid = true;
+        continue;
+      }
+    }
+  }
+  return clang::TemplateIdAnnotation::Create(
+      D->Op->getLoc(), IdLoc, D->getId(), /*NameSpliced=*/false,
+      clang::OO_None, TemplatePtr,
+      TNK, IdLoc, IdLoc, Args, /*ArgsInvalid*/ArgsAreInvalid,
+      TemplateIds);
+}
+
+
+static bool isTemplateArgumentTemplateParameter(
+    const clang::TemplateArgument &Arg, unsigned Depth, unsigned Index) {
+
+  using namespace clang;
+
+  switch (Arg.getKind()) {
+  case TemplateArgument::Null:
+  case TemplateArgument::NullPtr:
+  case TemplateArgument::Integral:
+  case TemplateArgument::Declaration:
+  case TemplateArgument::Pack:
+  case TemplateArgument::TemplateExpansion:
+    return false;
+
+  case TemplateArgument::Type: {
+    QualType Type = Arg.getAsType();
+    const TemplateTypeParmType *TPT =
+        Arg.getAsType()->getAs<TemplateTypeParmType>();
+    return TPT && !Type.hasQualifiers() &&
+           TPT->getDepth() == Depth && TPT->getIndex() == Index;
+  }
+
+  case TemplateArgument::Reflected:
+  case TemplateArgument::Expression: {
+    DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(Arg.getAsExpr());
+    if (!DRE || !DRE->getDecl())
+      return false;
+    const NonTypeTemplateParmDecl *NTTP =
+        dyn_cast<NonTypeTemplateParmDecl>(DRE->getDecl());
+    return NTTP && NTTP->getDepth() == Depth && NTTP->getIndex() == Index;
+  }
+
+  case TemplateArgument::Template:
+    const TemplateTemplateParmDecl *TTP =
+        dyn_cast_or_null<TemplateTemplateParmDecl>(
+            Arg.getAsTemplateOrTemplatePattern().getAsTemplateDecl());
+    return TTP && TTP->getDepth() == Depth && TTP->getIndex() == Index;
+  }
+  llvm_unreachable("unexpected kind of template argument");
+}
+
+static bool isSameAsPrimaryTemplate(clang::TemplateParameterList *Params,
+                                clang::ArrayRef<clang::TemplateArgument> Args) {
+  using namespace clang;
+  if (Params->size() != Args.size())
+    return false;
+
+  unsigned Depth = Params->getDepth();
+
+  for (unsigned I = 0, N = Args.size(); I != N; ++I) {
+    TemplateArgument Arg = Args[I];
+
+    // If the parameter is a pack expansion, the argument must be a pack
+    // whose only element is a pack expansion.
+    if (Params->getParam(I)->isParameterPack()) {
+      if (Arg.getKind() != TemplateArgument::Pack || Arg.pack_size() != 1 ||
+          !Arg.pack_begin()->isPackExpansion())
+        return false;
+      Arg = Arg.pack_begin()->getPackExpansionPattern();
+    }
+
+    if (!isTemplateArgumentTemplateParameter(Arg, Depth, I))
+      return false;
+  }
+  return true;
+}
+
+/// Convert the parser's template argument list representation into our form.
+static clang::TemplateArgumentListInfo
+makeTemplateArgumentListInfo(Sema &S, clang::TemplateIdAnnotation &TemplateId) {
+  clang::TemplateArgumentListInfo TemplateArgs(TemplateId.LAngleLoc,
+                                               TemplateId.RAngleLoc);
+  clang::ASTTemplateArgsPtr TemplateArgsPtr(TemplateId.getTemplateArgs(),
+                                            TemplateId.NumArgs);
+  S.getCxxSema().translateTemplateArguments(TemplateArgsPtr, TemplateArgs);
+  return TemplateArgs;
+}
+
+
+/// Check whether a specialization is well-formed in the current
+/// context.
+///
+/// This routine determines whether a template specialization can be declared
+/// in the current context (C++ [temp.expl.spec]p2).
+///
+/// \param S the semantic analysis object for which this check is being
+/// performed.
+///
+/// \param Specialized the entity being specialized or instantiated, which
+/// may be a kind of template (class template, function template, etc.) or
+/// a member of a class template (member function, static data member,
+/// member class).
+///
+/// \param PrevDecl the previous declaration of this entity, if any.
+///
+/// \param Loc the location of the explicit specialization or instantiation of
+/// this entity.
+///
+/// \param IsPartialSpecialization whether this is a partial specialization of
+/// a class template.
+///
+/// \returns true if there was an error that we cannot recover from, false
+/// otherwise.
+static bool checkTemplateSpecializationScope(clang::Sema &S,
+                                             clang::NamedDecl *Specialized,
+                                             clang::NamedDecl *PrevDecl,
+                                             clang::SourceLocation Loc,
+                                             bool IsPartialSpecialization) {
+  using namespace clang;
+  // Keep these "kind" numbers in sync with the %select statements in the
+  // various diagnostics emitted by this routine.
+  int EntityKind = 0;
+  if (isa<ClassTemplateDecl>(Specialized))
+    EntityKind = IsPartialSpecialization? 1 : 0;
+  else if (isa<VarTemplateDecl>(Specialized))
+    EntityKind = IsPartialSpecialization ? 3 : 2;
+  else if (isa<FunctionTemplateDecl>(Specialized))
+    EntityKind = 4;
+  else if (isa<CXXMethodDecl>(Specialized))
+    EntityKind = 5;
+  else if (isa<VarDecl>(Specialized))
+    EntityKind = 6;
+  else if (isa<RecordDecl>(Specialized))
+    EntityKind = 7;
+  else if (isa<EnumDecl>(Specialized) && S.getLangOpts().CPlusPlus11)
+    EntityKind = 8;
+  else {
+    S.Diag(Loc, diag::err_template_spec_unknown_kind)
+      << S.getLangOpts().CPlusPlus11;
+    S.Diag(Specialized->getLocation(), diag::note_specialized_entity);
+    return true;
+  }
+
+  // C++ [temp.expl.spec]p2:
+  //   An explicit specialization may be declared in any scope in which
+  //   the corresponding primary template may be defined.
+  if (S.CurContext->getRedeclContext()->isFunctionOrMethod()) {
+    S.Diag(Loc, diag::err_template_spec_decl_function_scope)
+      << Specialized;
+    return true;
+  }
+
+  // C++ [temp.class.spec]p6:
+  //   A class template partial specialization may be declared in any
+  //   scope in which the primary template may be defined.
+  DeclContext *SpecializedContext =
+      Specialized->getDeclContext()->getRedeclContext();
+  DeclContext *DC = S.CurContext->getRedeclContext();
+
+  // Make sure that this redeclaration (or definition) occurs in the same
+  // scope or an enclosing namespace.
+  if (!(DC->isFileContext() ? DC->Encloses(SpecializedContext)
+                            : DC->Equals(SpecializedContext))) {
+    if (isa<TranslationUnitDecl>(SpecializedContext))
+      S.Diag(Loc, diag::err_template_spec_redecl_global_scope)
+        << EntityKind << Specialized;
+    else {
+      auto *ND = cast<NamedDecl>(SpecializedContext);
+      int Diag = diag::err_template_spec_redecl_out_of_scope;
+      if (S.getLangOpts().MicrosoftExt && !DC->isRecord())
+        Diag = diag::ext_ms_template_spec_redecl_out_of_scope;
+      S.Diag(Loc, Diag) << EntityKind << Specialized
+                        << ND << isa<CXXRecordDecl>(ND);
+    }
+
+    S.Diag(Specialized->getLocation(), diag::note_specialized_entity);
+
+    // Don't allow specializing in the wrong class during error recovery.
+    // Otherwise, things can go horribly wrong.
+    if (DC->isRecord())
+      return true;
+  }
+
+  return false;
+}
+
+static clang::TemplateSpecializationKind
+getTemplateSpecializationKind(clang::Decl *D) {
+  using namespace clang;
+  if (!D)
+    return TSK_Undeclared;
+
+  if (CXXRecordDecl *Record = dyn_cast<CXXRecordDecl>(D))
+    return Record->getTemplateSpecializationKind();
+  if (FunctionDecl *Function = dyn_cast<FunctionDecl>(D))
+    return Function->getTemplateSpecializationKind();
+  if (VarDecl *Var = dyn_cast<VarDecl>(D))
+    return Var->getTemplateSpecializationKind();
+
+  return TSK_Undeclared;
+}
+
+static bool actOnVarTemplateSpecialziation(Sema &SemaRef,
+                                           clang::Scope *InitialScope,
+                                           Declaration *D,
+                                           clang::DeclContext *Owner,
+                                           clang::DeclContext *PreviousDC,
+                                        clang::TemplateIdAnnotation *TemplateId,
+                                           clang::TypeSourceInfo *TInfo,
+                                   clang::TemplateParameterList *TemplateParams,
+                                      clang::StorageClass SuspectedStorageClass,
+                                           bool IsPartialSpecialization,
+                                           bool IsClassMember) {
+  using namespace clang;
+  auto &CxxSema = SemaRef.getCxxSema();
+  SyntaxContext &Context = SemaRef.getContext();
+  auto &CxxAST = Context.CxxAST;
+
+  TemplateArgumentListInfo TemplateArgs =
+      makeTemplateArgumentListInfo(SemaRef, *TemplateId);
+  SourceLocation TemplateNameLoc = D->IdDcl->getLoc();
+  SourceLocation LAngleLoc = TemplateId->LAngleLoc;
+  SourceLocation RAngleLoc = TemplateId->RAngleLoc;
+  SourceLocation TemplateKWLoc = TemplateNameLoc;
+
+  TemplateName Name = TemplateId->Template.get();
+
+  // The template-id must name a variable template.
+  VarTemplateDecl *VarTemplate =
+      dyn_cast_or_null<VarTemplateDecl>(Name.getAsTemplateDecl());
+  if (!VarTemplate) {
+    NamedDecl *FnTemplate;
+    if (auto *OTS = Name.getAsOverloadedTemplate())
+      FnTemplate = *OTS->begin();
+    else
+      FnTemplate
+       = dyn_cast_or_null<FunctionTemplateDecl>(Name.getAsTemplateDecl());
+    if (FnTemplate)
+      return CxxSema.Diag(D->IdDcl->getLoc(),
+                          diag::err_var_spec_no_template_but_method)
+                          << FnTemplate->getDeclName();
+    return CxxSema.Diag(D->IdDcl->getLoc(),
+                        diag::err_var_spec_no_template)
+                        << IsPartialSpecialization;
+  }
+
+  // Check for unexpanded parameter packs in any of the template arguments.
+  for (unsigned I = 0, N = TemplateArgs.size(); I != N; ++I)
+    if (CxxSema.DiagnoseUnexpandedParameterPack(TemplateArgs[I],
+                                       clang::Sema::UPPC_PartialSpecialization))
+      return true;
+
+  // Check that the template argument list is well-formed for this
+  // template.
+  SmallVector<TemplateArgument, 4> Converted;
+  if (CxxSema.CheckTemplateArgumentList(VarTemplate, TemplateNameLoc, TemplateArgs,
+                                        false, Converted,
+                                        /*UpdateArgsWithConversion=*/true))
+    return true;
+
+  // Find the variable template (partial) specialization declaration that
+  // corresponds to these arguments.
+  if (IsPartialSpecialization) {
+    if (CxxSema.CheckTemplatePartialSpecializationArgs(TemplateNameLoc,
+                                                       VarTemplate,
+                                                       TemplateArgs.size(),
+                                                       Converted))
+      return true;
+
+    // FIXME: Move these checks to CheckTemplatePartialSpecializationArgs so we
+    // also do them during instantiation.
+    bool InstantiationDependent;
+    if (!Name.isDependent() &&
+        !TemplateSpecializationType::anyDependentTemplateArguments(
+            TemplateArgs.arguments(),
+            InstantiationDependent)) {
+      CxxSema.Diag(TemplateNameLoc,
+                   diag::err_partial_spec_fully_specialized)
+                   << VarTemplate->getDeclName();
+      IsPartialSpecialization = false;
+    }
+
+    if (isSameAsPrimaryTemplate(VarTemplate->getTemplateParameters(),
+                                Converted) &&
+        (!CxxAST.getLangOpts().CPlusPlus20 ||
+         !TemplateParams->hasAssociatedConstraints())) {
+      // C++ [temp.class.spec]p9b3:
+      //
+      //   -- The argument list of the specialization shall not be identical
+      //      to the implicit argument list of the primary template.
+      CxxSema.Diag(TemplateNameLoc,
+                   diag::err_partial_spec_args_match_primary_template)
+                   << /* variable template */1
+                   << /* is definition */
+                 (SuspectedStorageClass != SC_Extern && !PreviousDC->isRecord())
+                 << FixItHint::CreateRemoval(SourceRange(LAngleLoc, RAngleLoc));
+      // FIXME: Recover from this by treating the declaration as a redeclaration
+      // of the primary template.
+      return true;
+    }
+  }
+
+  void *InsertPos = nullptr;
+  VarTemplateSpecializationDecl *PrevDecl = nullptr;
+
+  if (IsPartialSpecialization)
+    PrevDecl = VarTemplate->findPartialSpecialization(Converted, TemplateParams,
+                                                      InsertPos);
+  else
+    PrevDecl = VarTemplate->findSpecialization(Converted, InsertPos);
+
+  VarTemplateSpecializationDecl *Specialization = nullptr;
+
+  // Check whether we can declare a variable template specialization in
+  // the current scope.
+  if (checkTemplateSpecializationScope(CxxSema, VarTemplate, PrevDecl,
+                                       TemplateNameLoc,
+                                       IsPartialSpecialization))
+    return true;
+
+  if (PrevDecl && PrevDecl->getSpecializationKind() == TSK_Undeclared) {
+    // Since the only prior variable template specialization with these
+    // arguments was referenced but not declared,  reuse that
+    // declaration node as our own, updating its source location and
+    // the list of outer template parameters to reflect our new declaration.
+    Specialization = PrevDecl;
+    Specialization->setLocation(TemplateNameLoc);
+    PrevDecl = nullptr;
+  } else if (IsPartialSpecialization) {
+    // Create a new class template partial specialization declaration node.
+    VarTemplatePartialSpecializationDecl *PrevPartial =
+        cast_or_null<VarTemplatePartialSpecializationDecl>(PrevDecl);
+    VarTemplatePartialSpecializationDecl *Partial =
+        VarTemplatePartialSpecializationDecl::Create(
+            CxxAST, VarTemplate->getDeclContext(), TemplateKWLoc,
+            TemplateNameLoc, TemplateParams, VarTemplate, TInfo->getType(),
+            TInfo, SuspectedStorageClass, Converted, TemplateArgs);
+    if (!PrevPartial)
+      VarTemplate->AddPartialSpecialization(Partial, InsertPos);
+    Specialization = Partial;
+
+    // If we are providing an explicit specialization of a member variable
+    // template specialization, make a note of that.
+    if (PrevPartial && PrevPartial->getInstantiatedFromMember())
+      PrevPartial->setMemberSpecialization();
+
+    CxxSema.CheckTemplatePartialSpecialization(Partial);
+  } else {
+    // Create a new class template specialization declaration node for
+    // this explicit specialization or friend declaration.
+    Specialization = VarTemplateSpecializationDecl::Create(
+        CxxAST, VarTemplate->getDeclContext(), TemplateKWLoc, TemplateNameLoc,
+        VarTemplate, TInfo->getType(), TInfo, SuspectedStorageClass,
+        Converted);
+    Specialization->setTemplateArgsInfo(TemplateArgs);
+    if (!PrevDecl)
+      VarTemplate->AddSpecialization(Specialization, InsertPos);
+  }
+
+  // C++ [temp.expl.spec]p6:
+  //   If a template, a member template or the member of a class template is
+  //   explicitly specialized then that specialization shall be declared
+  //   before the first use of that specialization that would cause an implicit
+  //   instantiation to take place, in every translation unit in which such a
+  //   use occurs; no diagnostic is required.
+  if (PrevDecl && PrevDecl->getPointOfInstantiation().isValid()) {
+    bool Okay = false;
+    for (Decl *Prev = PrevDecl; Prev; Prev = Prev->getPreviousDecl()) {
+      // Is there any previous explicit specialization declaration?
+      if (getTemplateSpecializationKind(Prev) == TSK_ExplicitSpecialization) {
+        Okay = true;
+        break;
+      }
+    }
+
+    if (!Okay) {
+      SourceRange Range(TemplateNameLoc, RAngleLoc);
+      CxxSema.Diag(TemplateNameLoc, diag::err_specialization_after_instantiation)
+                   << Name << Range;
+
+      CxxSema.Diag(PrevDecl->getPointOfInstantiation(),
+                   diag::note_instantiation_required_here)
+                   << (PrevDecl->getTemplateSpecializationKind() !=
+                  TSK_ImplicitInstantiation);
+      return true;
+    }
+  }
+
+  Specialization->setTemplateKeywordLoc(TemplateKWLoc);
+  Specialization->setLexicalDeclContext(Owner);
+
+  // Add the specialization into its lexical context, so that it can
+  // be seen when iterating through the list of declarations in that
+  // context. However, specializations are not found by name lookup.
+  if (IsClassMember)
+    Specialization->setAccess(clang::AS_public);
+
+
+  // Note that this is an explicit specialization.
+  Specialization->setSpecializationKind(TSK_ExplicitSpecialization);
+
+  if (PrevDecl) {
+    // Check that this isn't a redefinition of this specialization,
+    // merging with previous declarations.
+    clang::DeclarationName DName(D->getId());
+    clang::DeclarationNameInfo DNI;
+    DNI.setName(DName);
+    DNI.setLoc(D->IdDcl->getLoc());
+    LookupResult PrevSpec(CxxSema, DNI, clang::Sema::LookupOrdinaryName,
+                          CxxSema.forRedeclarationInCurContext());
+    PrevSpec.addDecl(PrevDecl);
+    D->IsRedeclaration
+                   = CxxSema.CheckVariableDeclaration(Specialization, PrevSpec);
+  } else if (Specialization->isStaticDataMember() &&
+             Specialization->isOutOfLine()) {
+    Specialization->setAccess(VarTemplate->getAccess());
+  }
+
+  Owner->addDecl(Specialization);
+  Specialization->setDeclContext(PreviousDC);
+  Specialization->setLexicalDeclContext(Owner);
+  SemaRef.setDeclForDeclaration(D, Specialization);
+  return false;
+}
+
+clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
+                                               Declaration *D) {
+  assert(InitialScope && "Invalid owning scope\n");
   D->SavedScope = SemaRef.getCurrentScope();
   if (D->ScopeForDecl->isParameterScope())
     return elaborateParameterDecl(D);
@@ -1487,70 +2581,562 @@ clang::Decl *Elaborator::elaborateVariableDecl(Declaration *D) {
   if (D->ScopeForDecl->isTemplateScope())
     return elaborateTemplateParamDecl(D);
 
-  // This is specifically for processing a special kind of declarator.
-  if (Declarator *TemplateDeclarator = D->TemplateParameters)
-    return elaborateTemplateAliasOrVariable(D, TemplateDeclarator);
-
   // We need to make sure that the type we are elaborating isn't infact a
   // a CppxKindType expression. If it is we may have an issue emitting this
   // as a valid type alias.
-  ExprElaborator TypeElab(Context, SemaRef);
-  clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
+  clang::Expr *TypeExpr = nullptr;
+  clang::SourceLocation TypeLocation;
+
+  if (D->TypeDcl) {
+    ExprElaborator TypeElab(Context, SemaRef);
+    TypeExpr = TypeElab.elaborateExplicitType(D->TypeDcl, nullptr);
+    TypeLocation = D->TypeDcl->getLoc();
+  } else {
+    TypeExpr = SemaRef.buildTypeExpr(Context.CxxAST.getAutoDeductType(),
+                                     D->Op->getLoc());
+    TypeLocation = D->Op->getLoc();
+  }
+
   if (!TypeExpr) {
-    SemaRef.Diags.Report(D->Op->getLoc(),
+    SemaRef.Diags.Report(TypeLocation,
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
 
-  if (!TypeExpr->getType()->isTypeOfTypes()) {
-    // TODO: template and namespace types need a variable implementation.
-
-    if (TypeExpr->getType()->isTemplateType()) {
-      llvm_unreachable("Template variables not implemented yet");
-    }
-    SemaRef.Diags.Report(D->Op->getLoc(),
-                         clang::diag::err_declaration_type_not_a_type);
-    return nullptr;
-  }
-
-  clang::CppxTypeLiteral *TyLitExpr = dyn_cast<clang::CppxTypeLiteral>(TypeExpr);
-  if (!TyLitExpr) {
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(TypeExpr,
+                                                                  TypeLocation);
+  if (!TInfo) {
     SemaRef.Diags.Report(D->Op->getLoc(),
                          clang::diag::err_unsupported_unknown_any_decl)
-                        << D->getId();
+                         << D->getId();
     return nullptr;
   }
-  if (TyLitExpr->getValue()->getType()->isTypeOfTypes()) {
-    // TODO: This will need to be handled using a CppxPartialDecl.
+  // This is where we differentiate between type alias template,
+  // variable template, namespace aliases, members, etc.
+  clang::QualType VarType = TInfo->getType();
+  if (VarType->isTypeOfTypes()) {
+    if (D->Template)
+      return elaborateTemplateAliasOrVariable(D);
     return elaborateTypeAlias(D);
   }
-  if (TyLitExpr->getValue()->getType()->isNamespaceType()) {
+
+  if (VarType->isNamespaceType()) {
     return elaborateNsAlias(D);
   }
 
-  if (D->ScopeForDecl->isClassScope()) {
-    return elaborateField(D);
+  bool IsClassMember = D->isDeclaredWithinClass();
+
+  // Templated variables cannot be a field
+  if (IsClassMember && !D->Template) {
+    return elaborateField(D, TInfo);
+  }
+  clang::Sema &CxxSema = SemaRef.getCxxSema();
+
+  clang::DeclarationName Name(D->getId());
+  clang::DeclarationNameInfo DNI;
+  DNI.setName(Name);
+  DNI.setLoc(D->IdDcl->getLoc());
+
+  clang::LookupResult Previous(CxxSema, DNI,
+                               clang::Sema::LookupOrdinaryName,
+                           CxxSema.forRedeclarationInCurContext());
+  clang::DeclContext *PreviousDC = SemaRef.getCurClangDeclContext();
+  clang::Scope *CxxScope = SemaRef.getCurClangScope();
+
+  if (D->ScopeSpec.isSet()) {
+    // bool EnteringContext = !D.getDeclSpec().isFriendSpecified();
+    PreviousDC = CxxSema.computeDeclContext(D->ScopeSpec, true);
+    if (!PreviousDC || isa<clang::EnumDecl>(PreviousDC)) {
+      // If we could not compute the declaration context, it's because the
+      // declaration context is dependent but does not refer to a class,
+      // class template, or class template partial specialization. Complain
+      // and return early, to avoid the coming semantic disaster.
+      CxxSema.Diag(D->IdDcl->getLoc(),
+            clang::diag::err_template_qualified_declarator_no_match)
+        << D->ScopeSpec.getScopeRep()
+        << D->ScopeSpec.getRange();
+      return nullptr;
+    }
+
+    bool IsDependentContext = PreviousDC->isDependentContext();
+
+    if (!IsDependentContext &&
+        CxxSema.RequireCompleteDeclContext(D->ScopeSpec, PreviousDC))
+      return nullptr;
+
+    // If a class is incomplete, do not parse entities inside it.
+    if (isa<clang::CXXRecordDecl>(PreviousDC)
+        && !cast<clang::CXXRecordDecl>(PreviousDC)->hasDefinition()) {
+      CxxSema.Diag(D->IdDcl->getLoc(),
+            clang::diag::err_member_def_undefined_record)
+        << Name << PreviousDC << D->ScopeSpec.getRange();
+      return nullptr;
+    }
+    // if (!D.getDeclSpec().isFriendSpecified()) {
+    //   if (diagnoseQualifiedDeclaration(
+    //           D.getCXXScopeSpec(), DC, Name, D.getIdentifierLoc(),
+    //           D.getName().getKind() == UnqualifiedIdKind::IK_TemplateId)) {
+    //     if (DC->isRecord())
+    //       return nullptr;
+
+    //     D.setInvalidType();
+    //   }
+    // }
+  }
+
+  if (D->hasNestedNameSpecifier()) {
+    // Attempting to use the previously located decl context in order to
+    // correctly identify any previous declarations.
+    CxxSema.LookupQualifiedName(Previous, PreviousDC);
+  } else
+    lookupFunctionRedecls(SemaRef, CxxScope, Previous);
+
+  clang::DeclContext *Owner = D->getOwningDeclContext();
+  if (CxxSema.DiagnoseClassNameShadow(Owner, DNI)) {
+    // Forget that the previous declaration is the injected-class-name.
+    Previous.clear();
   }
 
   // Get the type of the entity.
-  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
-  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(TyLitExpr,
-                                                             D->Decl->getLoc());
-  if (!TInfo) {
-    return nullptr;
-  }
   clang::IdentifierInfo *Id = D->getId();
   clang::SourceLocation Loc = D->Op->getLoc();
-  clang::StorageClass SC = getDefaultVariableStorageClass(*this);
+  clang::StorageClass SC = getSuspectedStorageClass(SemaRef, D);
 
-  // Create the variable and add it to it's owning context.
-  clang::VarDecl *VD = clang::VarDecl::Create(Context.CxxAST, Owner, Loc, Loc,
-                                              Id, TInfo->getType(), TInfo, SC);
-  Owner->addDecl(VD);
-  D->Cxx = VD;
+  // Adjusting context
+  clang::DeclContext *OriginalDC = Owner;
+  bool IsLocalExternDecl = SC == clang::SC_Extern &&
+                            clang::Sema::adjustContextForLocalExternDecl(Owner);
+
+  bool IsMemberSpecialization = false;
+  bool IsVariableTemplateSpecialization = false;
+  bool IsPartialSpecialization = false;
+  bool IsVariableTemplate = false;
+  clang::VarDecl *NewVD = nullptr;
+  clang::VarTemplateDecl *NewTemplate = nullptr;
+  clang::TemplateParameterList *TemplateParams = nullptr;
+  clang::TemplateIdAnnotation *TemplateId = nullptr;
+  // Attempting to detect an invalid specialization, or one that doesn't have
+  // a default template yet.
+  if (D->Template && D->SpecializationArgs && Previous.empty()) {
+    return nullptr;
+  }
+
+  if (D->Template)
+    TemplateId = buildTemplateIdAnnotation(Context, SemaRef, Previous,
+                                           clang::TNK_Var_template, D);
+
+  clang::MultiTemplateParamsArg TemplateParamLists = D->TemplateParamStorage;
+  bool Invalid = false;
+  // Match up the template parameter lists with the scope specifier, then
+  // determine whether we have a template or a template specialization.
+  bool InvalidScope = false;
+  TemplateParams = CxxSema.MatchTemplateParametersToScopeSpecifier(
+      D->IdDcl->getLoc(), D->IdDcl->getLoc(), D->ScopeSpec,
+      /*TemplateIdAnnotation *TemplateId=*/TemplateId,
+      TemplateParamLists,
+      /*never a friend*/false, IsMemberSpecialization, InvalidScope);
+  Invalid |= InvalidScope;
+
+  if (TemplateParams) {
+    if (!TemplateParams->size() && !TemplateId) {
+      // There is an extraneous 'template<>' for this variable. Complain
+      // about it, but allow the declaration of the variable.
+      SemaRef.getCxxSema().Diag(TemplateParams->getTemplateLoc(),
+            clang::diag::err_template_variable_noparams)
+        << Name.getAsIdentifierInfo()
+        << clang::SourceRange(TemplateParams->getTemplateLoc(),
+                        TemplateParams->getRAngleLoc());
+      TemplateParams = nullptr;
+    } else {
+      // Check that we can declare a template here.
+      if (CxxSema.CheckTemplateDeclScope(CxxScope, TemplateParams))
+        return nullptr;
+
+      if (D->SpecializationArgs) {
+        // This is an explicit specialization or a partial specialization.
+        IsVariableTemplateSpecialization = true;
+        IsPartialSpecialization = TemplateParams->size() > 0;
+      } else {
+        // This is a template declaration.
+        IsVariableTemplate = true;
+
+        // Only C++1y supports variable templates (N3651).
+        CxxSema.Diag(D->IdDcl->getLoc(),
+                     clang::diag::warn_cxx11_compat_variable_template);
+      }
+    }
+  } else {
+    // Check that we can declare a member specialization here.
+    if (!TemplateParamLists.empty() && IsMemberSpecialization &&
+        CxxSema.CheckTemplateDeclScope(CxxScope, TemplateParamLists.back()))
+      return nullptr;
+    assert((Invalid || !D->Template) && "should have a '[]' for this decl");
+  }
+
+  if (IsVariableTemplateSpecialization) {
+    if (actOnVarTemplateSpecialziation(SemaRef, InitialScope, D, Owner,
+                                       PreviousDC, TemplateId, TInfo,
+                                       TemplateParams, SC,
+                                       IsPartialSpecialization,
+                                       IsClassMember)) {
+      return nullptr;
+    }
+    NewVD = cast<clang::VarDecl>(D->Cxx);
+  // } else if (D.isDecompositionDeclarator()) {
+    // NewVD = DecompositionDecl::Create(Context, DC, D.getBeginLoc(),
+    //                                   D.getIdentifierLoc(), R, TInfo, SC,
+    //                                   Bindings);
+  } else {
+    NewVD = clang::VarDecl::Create(Context.CxxAST, Owner,
+                                    Loc, Loc, Id, TInfo->getType(),
+                                    TInfo,
+                                    getDefaultVariableStorageClass(SemaRef));
+    if (IsClassMember)
+      NewVD->setAccess(clang::AS_public);
+  }
+
+
+
+  // If this is supposed to be a variable template, create it as such.
+  if (IsVariableTemplate) {
+    NewTemplate =
+        clang::VarTemplateDecl::Create(Context.CxxAST, Owner, D->IdDcl->getLoc(),
+                                        Name, TemplateParams, NewVD);
+    if (IsClassMember) {
+      NewTemplate->setAccess(clang::AS_public);
+    }
+    Owner->addDecl(NewTemplate);
+    NewVD->setDescribedVarTemplate(NewTemplate);
+    NewTemplate->setDeclContext(PreviousDC);
+    NewTemplate->setLexicalDeclContext(Owner);
+    NewVD->setLexicalDeclContext(Owner);
+    SemaRef.setDeclForDeclaration(D, NewTemplate);
+  }
+  if (!IsVariableTemplateSpecialization) {
+    if (!NewTemplate){
+      SemaRef.setDeclForDeclaration(D, NewVD);
+      Owner->addDecl(NewVD);
+    }
+    NewVD->setDeclContext(PreviousDC);
+    NewVD->setLexicalDeclContext(Owner);
+  }
+
+  if (D->ScopeSpec.isSet())
+    NewVD->setQualifierInfo(
+        D->ScopeSpec.getWithLocInContext(Context.CxxAST));
+
   D->CurrentPhase = Phase::Typing;
   elaborateAttributes(D);
-  return VD;
+  SC = NewVD->getStorageClass();
+  if (Invalid) {
+    NewVD->setInvalidDecl();
+    if (NewTemplate)
+      NewTemplate->setInvalidDecl();
+  }
+
+  if (Owner->isRecord() && !SemaRef.getCurClangDeclContext()->isRecord()) {
+    // This is an out-of-line definition of a static data member.
+    switch (SC) {
+    case clang::SC_None:
+      break;
+    case clang::SC_Static:
+      SemaRef.getCxxSema().Diag(D->IdDcl->getLoc(),
+        clang::diag::err_static_out_of_line)
+        // FIXME: this may need a better error message here.
+        << clang::FixItHint::CreateRemoval(
+              clang::SourceRange(NewVD->getSourceRange()));
+      break;
+    case clang::SC_Auto:
+    case clang::SC_Register:
+    case clang::SC_Extern:
+      // [dcl.stc] p2: The auto or register specifiers shall be applied only
+      // to names of variables declared in a block or to function parameters.
+      // [dcl.stc] p6: The extern specifier cannot be used in the declaration
+      // of class members
+
+      SemaRef.getCxxSema().Diag(D->IdDcl->getLoc(),
+            clang::diag::err_storage_class_for_static_member)
+        << clang::FixItHint::CreateRemoval(NewVD->getSourceRange());
+      break;
+    case clang::SC_PrivateExtern:
+      llvm_unreachable("C storage class in gold!");
+    }
+  }
+
+  if (SC == clang::SC_Static && SemaRef.getCurClangDeclContext()->isRecord()) {
+    if (const clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(Owner)) {
+      // Walk up the enclosing DeclContexts to check for any that are
+      // incompatible with static data members.
+      const clang::DeclContext *FunctionOrMethod = nullptr;
+      const clang::CXXRecordDecl *AnonStruct = nullptr;
+
+      // Ignore these checks for fragments
+      // FIXME: Duplicated in SemaInject for CheckInjectedVarDecl
+      const clang::DeclContext *ImmediateParent = RD->getParent();
+      if (!ImmediateParent || !ImmediateParent->isFragment()) {
+        for (clang::DeclContext *Ctxt = Owner; Ctxt; Ctxt = Ctxt->getParent()) {
+          if (Ctxt->isFunctionOrMethod()) {
+            FunctionOrMethod = Ctxt;
+            break;
+          }
+          const clang::CXXRecordDecl *ParentDecl = dyn_cast<clang::CXXRecordDecl>(Ctxt);
+          if (ParentDecl && !ParentDecl->getDeclName()) {
+            AnonStruct = ParentDecl;
+            break;
+          }
+        }
+      }
+
+      if (FunctionOrMethod) {
+        // C++ [class.static.data]p5: A local class shall not have static data
+        // members.
+        SemaRef.getCxxSema().Diag(D->IdDcl->getLoc(),
+                 clang::diag::err_static_data_member_not_allowed_in_local_class)
+              << Name << RD->getDeclName() << RD->getTagKind();
+      } else if (AnonStruct) {
+        // C++ [class.static.data]p4: Unnamed classes and classes contained
+        // directly or indirectly within unnamed classes shall not contain
+        // static data members.
+        SemaRef.getCxxSema().Diag(D->IdDcl->getLoc(),
+                 clang::diag::err_static_data_member_not_allowed_in_anon_struct)
+          << Name << AnonStruct->getTagKind();
+        Invalid = true;
+      } else if (RD->isUnion()) {
+        // C++98 [class.union]p1: If a union contains a static data member,
+        // the program is ill-formed. C++11 drops this restriction.
+        SemaRef.getCxxSema().Diag(D->IdDcl->getLoc(),
+                     clang::diag::warn_cxx98_compat_static_data_member_in_union)
+                                  << Name;
+      }
+    }
+  }
+
+  if (IsLocalExternDecl)
+    NewVD->setLocalExternDecl();
+
+  // Checking Thread storage class specification.
+  auto TSCSpec = NewVD->getTSCSpec();
+  if (TSCSpec != clang::TSCS_unspecified) {
+    // C++11 [dcl.stc]p4:
+    //   When thread_local is applied to a variable of block scope the
+    //   storage-class-specifier static is implied if it does not appear
+    //   explicitly.
+    // Core issue: 'static' is not implied if the variable is declared
+    //   'extern'.
+    if (NewVD->hasLocalStorage() &&
+        !Owner->isFunctionOrMethod())
+      SemaRef.getCxxSema().Diag(D->IdDcl->getLoc(),
+           clang::diag::err_thread_non_global)
+        << "thread_local";
+    else if (!Context.CxxAST.getTargetInfo().isTLSSupported()) {
+      llvm_unreachable("Invalid context.");
+    }
+  }
+
+
+  // C99 6.7.4p3
+  //   An inline definition of a function with external linkage shall
+  //   not contain a definition of a modifiable object with static or
+  //   thread storage duration...
+  // We only apply this when the function is required to be defined
+  // elsewhere, i.e. when the function is not 'extern inline'.  Note
+  // that a local variable with thread storage duration still has to
+  // be marked 'static'.  Also note that it's possible to get these
+  // semantics in C++ using __attribute__((gnu_inline)).
+  if (SC == clang::SC_Static
+      && SemaRef.getCurClangScope()->getFnParent() != nullptr &&
+      !NewVD->getType().isConstQualified()) {
+    clang::FunctionDecl *CurFD = SemaRef.getCxxSema().getCurFunctionDecl();
+    if (CurFD && isFunctionDefinitionDiscarded(SemaRef, CurFD)) {
+      SemaRef.getCxxSema().Diag(D->IdDcl->getLoc(),
+                               clang::diag::warn_static_local_in_extern_inline);
+      SemaRef.getCxxSema().MaybeSuggestAddingStaticToDecl(CurFD);
+    }
+  }
+
+  // Doing additional verification.
+  if (!Owner->isRecord()
+       && CxxScope->getFnParent() == nullptr) {
+    // C99 6.9p2: The storage-class specifiers auto and register shall not
+    // appear in the declaration specifiers in an external declaration.
+    // Global Register+Asm is a GNU extension we support.
+    if (SC == clang::SC_Auto || (SC == clang::SC_Register)) {
+      SemaRef.getCxxSema().Diag(D->IdDcl->getLoc(),
+                                clang::diag::err_typecheck_sclass_fscope);
+      NewVD->setInvalidDecl();
+      return nullptr;
+    }
+  }
+
+  // Ensure that dllimport globals without explicit storage class are treated as
+  // extern. The storage class is set above using parsed attributes. Now we can
+  // check the VarDecl itself.
+  assert(!NewVD->hasAttr<clang::DLLImportAttr>() ||
+         NewVD->getAttr<clang::DLLImportAttr>()->isInherited() ||
+         NewVD->isStaticDataMember() ||
+         NewVD->getStorageClass() != clang::SC_None);
+
+  // Find the shadowed declaration before filtering for scope.
+  clang::NamedDecl *ShadowedDecl = D->ScopeSpec.isEmpty()
+                  ? SemaRef.getCxxSema().getShadowedDeclaration(NewVD, Previous)
+                  : nullptr;
+
+  // Adjusting scope for filter.
+  // while ((CxxScope->getFlags() & clang::Scope::DeclScope) == 0 ||
+  //       (CxxScope->getFlags() & clang::Scope::TemplateParamScope) != 0)
+  //   CxxScope = CxxScope->getParent();
+
+  CxxSema.FilterLookupForScope(Previous, PreviousDC, CxxScope,
+                               shouldConsiderLinkage(NewVD),
+                               D->ScopeSpec.isNotEmpty() ||
+                               IsMemberSpecialization ||
+                               IsVariableTemplateSpecialization);
+
+  // Check whether the previous declaration is in the same block scope. This
+  // affects whether we merge types with it, per C++11 [dcl.array]p3.
+  if (NewVD->isLocalVarDecl() && NewVD->hasExternalStorage())
+    NewVD->setPreviousDeclInSameBlockScope(
+        Previous.isSingleResult() && !Previous.isShadowed() &&
+        CxxSema.isDeclInScope(Previous.getFoundDecl(), OriginalDC,
+                              SemaRef.getCurClangScope(), false));
+
+  // If this is an explicit specialization of a static data member, check it.
+  if (IsMemberSpecialization && !NewVD->isInvalidDecl() &&
+      SemaRef.getCxxSema().CheckMemberSpecialization(NewVD, Previous))
+    NewVD->setInvalidDecl();
+
+  // Merge the decl with the existing one if appropriate.
+  if (!Previous.empty()) {
+    if (Previous.isSingleResult() &&
+        isa<clang::FieldDecl>(Previous.getFoundDecl()) &&
+        D->ScopeSpec.isSet()) {
+      // The user tried to define a non-static data member
+      // out-of-line (C++ [dcl.meaning]p1).
+      CxxSema.Diag(NewVD->getLocation(),
+                   clang::diag::err_nonstatic_member_out_of_line)
+                   << D->ScopeSpec.getRange();
+      Previous.clear();
+      NewVD->setInvalidDecl();
+    }
+  } else if (D->ScopeSpec.isSet()) {
+    // No previous declaration in the qualifying scope.
+    CxxSema.Diag(D->IdDcl->getLoc(), clang::diag::err_no_member)
+                 << Name
+                 << SemaRef.getCxxSema().computeDeclContext(D->ScopeSpec, true)
+                 << D->ScopeSpec.getRange();
+    NewVD->setInvalidDecl();
+  }
+
+  if (!IsVariableTemplateSpecialization)
+    D->IsRedeclaration = CxxSema.CheckVariableDeclaration(NewVD, Previous);
+
+  if (NewTemplate) {
+    clang::VarTemplateDecl *PrevVarTemplate =
+        NewVD->getPreviousDecl()
+            ? NewVD->getPreviousDecl()->getDescribedVarTemplate()
+            : nullptr;
+
+    // Check the template parameter list of this declaration, possibly
+    // merging in the template parameter list from the previous variable
+    // template declaration.
+    if (CxxSema.CheckTemplateParameterList(
+            TemplateParams,
+            PrevVarTemplate ? PrevVarTemplate->getTemplateParameters()
+                            : nullptr,
+            // TODO: Figure out if I'm usnig the right DC here.
+            (D->ScopeSpec.isSet() && PreviousDC && PreviousDC->isRecord() &&
+              PreviousDC->isDependentContext())
+                ? clang::Sema::TPC_ClassTemplateMember
+                : clang::Sema::TPC_VarTemplate))
+      NewVD->setInvalidDecl();
+
+    // If we are providing an explicit specialization of a static variable
+    // template, make a note of that.
+    if (PrevVarTemplate &&
+        PrevVarTemplate->getInstantiatedFromMemberTemplate())
+      PrevVarTemplate->setMemberSpecialization();
+  }
+
+  // Diagnose shadowed variables iff this isn't a redeclaration.
+  if (ShadowedDecl && !D->IsRedeclaration)
+    CxxSema.CheckShadow(NewVD, ShadowedDecl, Previous);
+
+  // If this is the first declaration of an extern C variable, update
+  // the map of such variables.
+  if (NewVD->isFirstDecl() && !NewVD->isInvalidDecl() &&
+      isIncompleteDeclExternC(SemaRef, NewVD))
+   CxxSema.RegisterLocallyScopedExternCDecl(NewVD, SemaRef.getCurClangScope());
+
+  if (NewVD->isStaticLocal()) {
+    clang::MangleNumberingContext *MCtx;
+    clang::Decl *ManglingContextDecl;
+    std::tie(MCtx, ManglingContextDecl) =
+                 CxxSema.getCurrentMangleNumberContext(NewVD->getDeclContext());
+    if (MCtx) {
+      Context.CxxAST.setManglingNumber(NewVD, MCtx->getManglingNumber(
+                     NewVD,
+                     getMSManglingNumber(CxxSema.getLangOpts(),
+                                         SemaRef.getCurClangScope())));
+      Context.CxxAST.setStaticLocalNumber(NewVD,
+                                          MCtx->getStaticLocalNumber(NewVD));
+    }
+  }
+
+  // Special handling of variable named 'main'.
+  if (Name.getAsIdentifierInfo() && Name.getAsIdentifierInfo()->isStr("main") &&
+      NewVD->getDeclContext()->getRedeclContext()->isTranslationUnit() &&
+      !CxxSema.getLangOpts().Freestanding
+      && !NewVD->getDescribedVarTemplate()) {
+
+    // C++ [basic.start.main]p3
+    // A program that declares a variable main at global scope is ill-formed.
+    CxxSema.Diag(D->IdDcl->getLoc(),
+                 clang::diag::err_main_global_variable);
+  }
+
+  if (Invalid) {
+    NewVD->setInvalidDecl();
+    if (NewTemplate)
+      NewTemplate->setInvalidDecl();
+  }
+
+
+  // If we have any template parameter lists that don't directly belong to
+  // the variable (matching the scope specifier), store them.
+  unsigned VDTemplateParamLists = TemplateParams ? 1 : 0;
+  if (TemplateParamLists.size() > VDTemplateParamLists)
+    NewVD->setTemplateParameterListsInfo(
+      Context.CxxAST, TemplateParamLists.drop_back(VDTemplateParamLists));
+
+  if (NewVD->isInlineSpecified()) {
+    if (SemaRef.getCurClangDeclContext()->isFunctionOrMethod()) {
+      // 'inline' is not allowed on block scope variable declaration.
+      SemaRef.getCxxSema().Diag(D->IdDcl->getLoc(),
+          clang::diag::err_inline_declaration_block_scope) << Name
+          << clang::FixItHint::CreateRemoval(NewVD->getSourceRange());
+    } else {
+      SemaRef.getCxxSema().Diag(D->IdDcl->getLoc(),
+                                clang::diag::warn_cxx14_compat_inline_variable);
+      NewVD->setInlineSpecified();
+    }
+  }
+
+
+  if (D->IsRedeclaration && !Previous.empty()) {
+    clang::NamedDecl *Prev = Previous.getRepresentativeDecl();
+    checkDLLAttributeRedeclaration(CxxSema, Prev, NewVD, IsMemberSpecialization,
+                                   D->declaresFunction() && !D->IsDeclOnly);
+  }
+
+  if (NewTemplate) {
+    if (NewVD->isInvalidDecl())
+      NewTemplate->setInvalidDecl();
+    CxxSema.ActOnDocumentableDecl(NewTemplate);
+  }
+
+  if (IsMemberSpecialization && !NewVD->isInvalidDecl())
+    CxxSema.CompleteMemberSpecialization(NewVD, Previous);
+  return NewVD;
 }
 
 static clang::Decl *buildTypeAlias(Elaborator &E, Sema &SemaRef,
@@ -1577,7 +3163,7 @@ static clang::Decl *buildTypeAlias(Elaborator &E, Sema &SemaRef,
       SemaRef.getCurClangScope(), clang::AS_public, MTP, Loc, Id,
       clang::ParsedAttributesView(), TR, nullptr);
 
-  D->Cxx = TypeAlias;
+  SemaRef.setDeclForDeclaration(D, TypeAlias);
   E.elaborateAttributes(D);
   return TypeAlias;
 }
@@ -1605,6 +3191,12 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
 static clang::NamespaceAliasDecl *buildNsAlias(clang::ASTContext &CxxAST,
                                                Sema &SemaRef, Declaration *D,
                                                clang::Expr *NsExpr) {
+  if (D->isDeclaredWithinClass()) {
+    SemaRef.Diags.Report(D->IdDcl->getLoc(),
+                         clang::diag::err_namespace_alias_within_class);
+    return nullptr;
+  }
+
   clang::Decl *PossibleNs = SemaRef.getDeclFromExpr(NsExpr, D->Init->getLoc());
   if (!PossibleNs)
     return nullptr;
@@ -1613,7 +3205,7 @@ static clang::NamespaceAliasDecl *buildNsAlias(clang::ASTContext &CxxAST,
   clang::NamedDecl *Ns
     = cast<clang::NamedDecl>(PossibleNs)->getUnderlyingDecl();
 
-  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  clang::DeclContext *Owner = D->getOwningDeclContext();
   clang::SourceLocation TypeDeclLoc = D->TypeDcl ?
     D->TypeDcl->getLoc() : clang::SourceLocation();
   clang::NamespaceAliasDecl *NsAD
@@ -1625,13 +3217,14 @@ static clang::NamespaceAliasDecl *buildNsAlias(clang::ASTContext &CxxAST,
                                         D->Init->getLoc(),
                                         Ns);
   Owner->addDecl(NsAD);
+  SemaRef.setDeclForDeclaration(D, NsAD);
 
   // Nested name specifiers are looked up by clang, so we need to convince
   // the clang lookup that this namespace actually exists.
   SemaRef.getCurClangScope()->AddDecl(NsAD);
   SemaRef.getCxxSema().IdResolver->AddDecl(NsAD);
-  D->Cxx = NsAD;
   D->CurrentPhase = Phase::Initialization;
+
   return NsAD;
 }
 
@@ -1657,11 +3250,8 @@ clang::Decl *Elaborator::elaborateNsAlias(Declaration *D) {
   return buildNsAlias(Context.CxxAST, SemaRef, D, NsExpr);
 }
 
-clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D,
-    Declarator *TemplateParams) {
-  bool InClass = D->ScopeForDecl->getKind();
-  // Attempting to elaborate template for scope.
-  // const ListSyntax *TemplParams;
+clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D) {
+  bool InClass = D->isDeclaredWithinClass();
 
   // Checking if we are a nested template decl/class.
   clang::MultiTemplateParamsArg MTP = D->TemplateParamStorage;
@@ -1669,7 +3259,6 @@ clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D,
   // This REQUIRES that we have specified type for now. But in order to do this
   // correctly we can't construct a templated type right off the bat we need
   // to figure out
-  // Attempting to get the
   ExprElaborator Elab(Context, SemaRef);
   if (!D->TypeDcl) {
     llvm_unreachable("Improperly identified template type alias, "
@@ -1731,16 +3320,21 @@ clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D,
                                                    Loc, Loc, IdInfo,
                                                    TypeExprInfo->getType(),
                                                    TypeExprInfo, TS);
+    VDecl->setImplicitlyInline();
     clang::DeclarationName DeclName = IdInfo;
     clang::VarTemplateDecl *VTD = clang::VarTemplateDecl::Create(
                                                       Context.CxxAST,
                                                       VDecl->getDeclContext(),
                                                       Loc, DeclName, MTP.back(),
                                                       VDecl);
+    if (InClass) {
+      VTD->setAccess(clang::AS_public);
+      VDecl->setAccess(clang::AS_public);
+    }
     SemaRef.getCxxSema().PushOnScopeChains(VTD, SemaRef.getCurClangScope(),
                                            true);
     D->CurrentPhase = Phase::Typing;
-    D->Cxx = VTD;
+    SemaRef.setDeclForDeclaration(D, VTD);
   } else {
     if (!D->Init) {
       SemaRef.Diags.Report(D->Op->getLoc(),
@@ -1761,10 +3355,16 @@ clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D,
     clang::Decl *TypeAlias = SemaRef.getCxxSema().ActOnAliasDeclaration(
         SemaRef.getCurClangScope(), clang::AS_public, MTP, Loc, Id,
         clang::ParsedAttributesView(), TR, nullptr);
-    D->Cxx = TypeAlias;
+
+    SemaRef.setDeclForDeclaration(D, TypeAlias);
     // Only the type alias is fully elaborated at this point in time.
+    if (InClass) {
+      D->Cxx->setAccess(clang::AS_public);
+    }
     D->CurrentPhase = Phase::Initialization;
   }
+  // Making sure that if we are in side of a class/record we explicitly set the
+  // current access to public.
   if (D->Cxx) {
     elaborateAttributes(D);
   }
@@ -1773,7 +3373,7 @@ clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D,
 
 clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
   // Get type information.
-  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  clang::DeclContext *Owner = D->getOwningDeclContext();
 
   ExprElaborator TypeElab(Context, SemaRef);
   clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
@@ -1801,14 +3401,14 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
                                                               TInfo->getType(),
                                                               TInfo,
                                                               clang::SC_None);
-  D->Cxx = P;
+  SemaRef.setDeclForDeclaration(D, P);
   D->CurrentPhase = Phase::Typing;
   elaborateAttributes(D);
   return P;
 }
 
 clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
-  clang::DeclContext *Owner = SemaRef.getCurrentCxxDeclContext();
+  clang::DeclContext *Owner = D->getOwningDeclContext();
 
   ExprElaborator TypeElab(Context, SemaRef);
   clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
@@ -1830,7 +3430,7 @@ clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
     using TemplateTemplate = clang::TemplateTemplateParmDecl;
     using TemplateType = clang::TemplateTypeParmDecl;
 
-    if (D->TemplateParameters)
+    if (D->Template)
       D->Cxx = TemplateTemplate::Create(Context.CxxAST, Owner, Loc, 0,
                                         0, /*Pack=*/false, Id,
                                         D->TemplateParamStorage.front());
@@ -1847,7 +3447,7 @@ clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
     clang::NonTypeTemplateParmDecl::Create(Context.CxxAST, Owner, Loc, Loc,
                                            0, 0, Id, TInfo->getType(),
                                            /*Pack=*/false, TInfo);
-  D->Cxx = NTTP;
+  SemaRef.setDeclForDeclaration(D, NTTP);
   D->CurrentPhase = Phase::Typing;
   return NTTP;
 }
@@ -1917,7 +3517,7 @@ void Elaborator::elaborateDeclInit(const Syntax *S) {
 void Elaborator::elaborateDef(Declaration *D) {
   if (phaseOf(D) != Phase::Typing)
     return;
-
+  // Sema::SaveAndRestoreClangDCAndScopeRAII DCAndScopeSaver(SemaRef);
   if (D->declaresFunction())
     return elaborateFunctionDef(D);
   if (D->ScopeForDecl->isTemplateScope())
@@ -1937,33 +3537,32 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
     return;
   if (SemaRef.checkForRedefinition<clang::FunctionDecl>(D))
     return;
+
   if (D->declaresConstructor()) {
     llvm::SmallVector<clang::CXXCtorInitializer*, 32> Initializers;
     SemaRef.getCxxSema().ActOnMemInitializers(D->Cxx, clang::SourceLocation(),
                                               Initializers, false);
   }
 
-  if (D->Op) {
-    if (D->declaresFunctionWithImplicitReturn()) {
-      // Checking to see if the declaration is actually what we are expected
-      // in order to be consider implicitly virtual or not.
-      if (clang::CXXMethodDecl *MD = D->getAs<clang::CXXMethodDecl>()) {
-        if (MD->isVirtual() && D->declaresPossiblePureVirtualFunction()
-            && !D->defines<clang::CXXConstructorDecl>()) {
-          // Declaring this as an abstract function declaration.
-          SemaRef.getCxxSema().ActOnPureSpecifier(D->Cxx, D->Init->getLoc());
-          return;
-        }
-      }
-      // Checking other kinds of functions.
-      if (D->declaresDefaultedFunction()) {
-        SemaRef.getCxxSema().SetDeclDefaulted(D->Cxx, D->Init->getLoc());
+  if (D->declaresFunctionWithImplicitReturn()) {
+    // Checking to see if the declaration is actually what we are expected
+    // in order to be consider implicitly virtual or not.
+    if (clang::CXXMethodDecl *MD = D->getAs<clang::CXXMethodDecl>()) {
+      if (MD->isVirtual() && D->declaresPossiblePureVirtualFunction()
+          && !D->defines<clang::CXXConstructorDecl>()) {
+        // Declaring this as an abstract function declaration.
+        SemaRef.getCxxSema().ActOnPureSpecifier(D->Cxx, D->Init->getLoc());
         return;
       }
-      if (D->declaresDeletedFunction()) {
-        SemaRef.getCxxSema().SetDeclDeleted(D->Cxx, D->Init->getLoc());
-        return;
-      }
+    }
+    // Checking other kinds of functions.
+    if (D->declaresDefaultedFunction()) {
+      SemaRef.getCxxSema().SetDeclDefaulted(D->Cxx, D->Init->getLoc());
+      return;
+    }
+    if (D->declaresDeletedFunction()) {
+      SemaRef.getCxxSema().SetDeclDeleted(D->Cxx, D->Init->getLoc());
+      return;
     }
   }
 
@@ -1971,18 +3570,17 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
 
   // We saved the parameter scope while elaborating this function's type,
   // so push it on before we enter the function scope.
-  FunctionDeclarator *FnDecl = D->FunctionDcl->getAsFunction();
+  FunctionDeclarator *FnDecl = D->FunctionDcl;
   Sema::ResumeScopeRAII FnDclScope(SemaRef, FnDecl->getScope(),
                                    FnDecl->getScope()->getConcreteTerm());
 
   Declaration *CurrentDeclaration = SemaRef.getCurrentDecl();
   // Entering clang scope. for function definition.
-  clang::Scope *FnClangScope = SemaRef.enterClangScope(clang::Scope::FnScope |
-                                                       clang::Scope::DeclScope |
-                                               clang::Scope::CompoundStmtScope);
+  SemaRef.enterClangScope(clang::Scope::FnScope |clang::Scope::DeclScope |
+                          clang::Scope::CompoundStmtScope);
 
   clang::Decl *FuncDecl = SemaRef.getCxxSema().ActOnStartOfFunctionDef(
-                                                          FnClangScope, D->Cxx);
+                                            SemaRef.getCurClangScope(), D->Cxx);
 
 
   SemaRef.enterScope(SK_Function, D->Init, D);
@@ -2036,8 +3634,10 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     return;
 
   Sema::OptionalInitScope<Sema::ResumeScopeRAII> OptResumeScope(SemaRef);
-  bool NeedsConstEvaluation = false;
+  clang::Expr *InitExpr = nullptr;
   clang::VarDecl *VD = nullptr;
+  Sema::DeclInitializationScope ClangInitScope(SemaRef, D);
+  bool NeedsConstEvaluation = false;
   if (D->defines<clang::VarTemplateDecl>()) {
     if (SemaRef.checkForRedefinition<clang::VarTemplateDecl>(D))
       return;
@@ -2077,7 +3677,6 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 
   // If we are inside of a variable template we need to re-enter the scope
   // for the variable.
-  clang::Expr *InitExpr = nullptr;
   ExprElaborator ExprElab(Context, SemaRef);
   if (D->declaresInlineInitializedStaticVarDecl() && !NeedsConstEvaluation) {
     Sema::ExprEvalRAII EvalScope(SemaRef,
@@ -2089,6 +3688,11 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     else
       InitExpr = ExprElab.elaborateExpr(D->Init);
   }
+  if (!InitExpr) {
+    SemaRef.Diags.Report(VD->getLocation(),
+                        clang::diag::err_failed_to_translate_expr);
+    return;
+  }
 
   // Perform auto deduction.
   if (VD->getType()->isUndeducedType()) {
@@ -2096,20 +3700,20 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 
     // Certain macros must be deduced manually.
     if (const MacroSyntax *InitM = dyn_cast<MacroSyntax>(D->Init)) {
-        assert (isa<AtomSyntax>(InitM->getCall()) && "Unexpected macro call");
-        assert (isa<clang::InitListExpr>(InitExpr) &&
-                "Invalid array macro init");
+      assert (isa<AtomSyntax>(InitM->getCall()) && "Unexpected macro call");
+      assert (isa<clang::InitListExpr>(InitExpr) &&
+              "Invalid array macro init");
 
-        const AtomSyntax *Call = cast<AtomSyntax>(InitM->getCall());
-        if (Call->getSpelling() == "array") {
-          Ty = buildImplicitArrayType(Context.CxxAST, SemaRef.getCxxSema(),
-                                      cast<clang::InitListExpr>(InitExpr));
+      const AtomSyntax *Call = cast<AtomSyntax>(InitM->getCall());
+      if (Call->getSpelling() == "array") {
+        Ty = buildImplicitArrayType(Context.CxxAST, SemaRef.getCxxSema(),
+                                    cast<clang::InitListExpr>(InitExpr));
 
-          if (Ty.isNull()) {
-            VD->setInvalidDecl();
-            return;
-          }
+        if (Ty.isNull()) {
+          VD->setInvalidDecl();
+          return;
         }
+      }
     } else {
       if (!InitExpr) {
         SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_no_init);
@@ -2149,6 +3753,14 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
     // the right thing to do in this case.
     VD->setInit(InitExpr);
   } else {
+    // FIXME: This needs to verify that if we are a static member that we don't
+    // have an initializer, unless we are a static constant, or inline.
+    if (D->isDeclaredWithinClass() && !VD->isInlineSpecified()
+        && (!VD->getType().isConstant(Context.CxxAST) && !VD->isConstexpr())) {
+      SemaRef.Diags.Report(D->IdDcl->getLoc(),
+                          clang::diag::err_in_class_initializer_non_const);
+      return;
+    }
     // Update the initializer.
     SemaRef.getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
   }
@@ -2209,25 +3821,14 @@ clang::Decl *Elaborator::elaborateTypeBody(Declaration* D, clang::CXXRecordDecl*
   return D->Cxx;
 }
 
-clang::Decl *Elaborator::elaborateField(Declaration *D) {
+clang::Decl *Elaborator::elaborateField(Declaration *D,
+                                        clang::TypeSourceInfo *TInfo) {
   clang::Decl *Ctxt = SemaRef.getCurrentDecl()->Cxx;
   clang::CXXRecordDecl *Owner = dyn_cast<clang::CXXRecordDecl>(Ctxt);
   // Get the type of the entity.
   if(!Owner) {
     llvm_unreachable("Invalid field declaration. Declaration is not within a class.");
   }
-  ExprElaborator TypeElab(Context, SemaRef);
-  clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
-
-  if (!TypeExpr) {
-    SemaRef.Diags.Report(D->Op->getLoc(),
-                         clang::diag::err_failed_to_translate_type);
-    return nullptr;
-  }
-  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(TypeExpr,
-                                                             D->Decl->getLoc());
-  if (!TInfo)
-    return nullptr;
 
   clang::SourceLocation Loc = D->Decl->getLoc();
   clang::SourceLocation LocEnd = D->getEndOfDecl();
@@ -2247,7 +3848,6 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
                                                   LocEnd, D->getId(),
                                                   TInfo->getType(), TInfo,
                                                   clang::SC_Static);
-    VDecl->setInlineSpecified();
     VDecl->setAccess(clang::AS_public);
     Field = VDecl;
   } else {
@@ -2262,7 +3862,7 @@ clang::Decl *Elaborator::elaborateField(Declaration *D) {
                                                 Loc, clang::AS_public, nullptr);
   }
   Owner->addDecl(Field);
-  D->Cxx = Field;
+  SemaRef.setDeclForDeclaration(D, Field);
   D->CurrentPhase = Phase::Typing;
   elaborateAttributes(D);
   return Field;
@@ -2363,8 +3963,7 @@ clang::Decl *Elaborator::elaborateEnumMemberDecl(const Syntax *S,
   clang::Decl *ECD = SemaRef.getCxxSema().ActOnEnumConstant(
       SemaRef.getCurClangScope(), EnumD, SemaRef.getCxxSema().LastEnumConstDecl,
       DNI, Attributes, clang::SourceLocation(), nullptr);
-
-  D->Cxx = ECD;
+  SemaRef.setDeclForDeclaration(D, ECD);
   D->CurrentPhase = Phase::Typing;
   elaborateAttributes(D);
   SemaRef.getCxxSema().LastEnumConstDecl
@@ -2402,12 +4001,9 @@ bool Elaborator::elaborateEnumMemberInit(const Syntax *S) {
 
 
 Declaration *Elaborator::identifyDecl(const Syntax *S) {
-  /// Moving the declaration/declarator construction into another class.
-  // This was created to prevent duplicate elaboration failure which could
-  // previously result in an error.
-  if (SemaRef.getCurrentScope()->hasDeclaration(S)) {
+  if (SemaRef.getCurrentScope()->hasDeclaration(S))
     return nullptr;
-  }
+
   return DeclarationBuilder(SemaRef).build(S);
 }
 
@@ -2426,7 +4022,7 @@ bool Elaborator::delayElaborateDeclType(clang::CXXRecordDecl *RD,
   // FIXME: This almost certainly needs its own elaboration context
   // because we can end up with recursive elaborations of declarations,
   // possibly having cyclic dependencies.
-  if (D->declaresTag()) {
+  if (D->declaresTagDef() || D->declaresForwardRecordDecl()) {
     delayElaborationClassBody(D);
     return true;
   }
@@ -2458,7 +4054,7 @@ bool Elaborator::delayElaborateDeclType(clang::CXXRecordDecl *RD,
 
   // The final portion of this handles field declaration processing.
   // I will need to check for initializers and if the thing is static or not.
-  elaborateVariableDecl(D);
+  elaborateDecl(D);
   if (!D->declaresMemberVariable()) {
     elaborateDeclEarly(D);
     return false;
@@ -2945,6 +4541,8 @@ void Elaborator::elaborateExternAttr(Declaration *D, const Syntax *S,
       FD->setStorageClass(clang::StorageClass::SC_Extern);
     } else if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(D->Cxx)) {
       VD->setStorageClass(clang::StorageClass::SC_Extern);
+    } else if (clang::VarTemplateDecl *VTD = dyn_cast<clang::VarTemplateDecl>(D->Cxx)) {
+      VTD->getTemplatedDecl()->setStorageClass(clang::StorageClass::SC_Extern);
     } else {
       SemaRef.Diags.Report(S->getLoc(),
                            clang::diag::err_invalid_attribute_for_decl)
@@ -2952,7 +4550,6 @@ void Elaborator::elaborateExternAttr(Declaration *D, const Syntax *S,
                            << "free function or non-member variable.";
       return;
     }
-
   } else {
     llvm_unreachable("Invalid attribute format");
   }
@@ -2984,6 +4581,7 @@ void Elaborator::elaborateAccessSpecifierAttr(Declaration *D, const Syntax *S,
   } else {
     llvm_unreachable("Unknown access specifier.");
   }
+
   if (clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(D->Cxx)) {
     if(RD->isTemplated()) {
       clang::ClassTemplateDecl *CTD= RD->getDescribedClassTemplate();
@@ -2992,7 +4590,10 @@ void Elaborator::elaborateAccessSpecifierAttr(Declaration *D, const Syntax *S,
   } else if (clang::FunctionDecl *FD = D->Cxx->getAsFunction()) {
     if (clang::FunctionTemplateDecl *FTD = FD->getDescribedFunctionTemplate())
       FTD->setAccess(AS);
-  }
+  } else if (auto *VTD = dyn_cast<clang::VarTemplateDecl>(D->Cxx)) {
+    VTD->getTemplatedDecl()->setAccess(AS);
+  } else if (auto *TATD = dyn_cast<clang::TypeAliasTemplateDecl>(D->Cxx))
+    TATD->getTemplatedDecl()->setAccess(AS);
   D->Cxx->setAccess(AS);
 }
 
@@ -3075,6 +4676,10 @@ void Elaborator::elaborateStaticAttr(Declaration *D, const Syntax *S,
         return;
       }
       MD->setStorageClass(clang::StorageClass::SC_Static);
+    } else if(auto *VTSD = dyn_cast<clang::VarTemplateSpecializationDecl>(D->Cxx)) {
+      VTSD->setStorageClass(clang::StorageClass::SC_Static);
+    } else if(auto *VD = dyn_cast<clang::VarTemplateDecl>(D->Cxx)) {
+      VD->getTemplatedDecl()->setStorageClass(clang::StorageClass::SC_Static);
     } else if (isa<clang::FieldDecl>(D->Cxx) || isa<clang::VarDecl>(D->Cxx)) {
       // This can only be reached in the even that static is provided 2x or more
       // times and an error should have already been given in that case.
@@ -3096,6 +4701,8 @@ void Elaborator::elaborateStaticAttr(Declaration *D, const Syntax *S,
       FD->setStorageClass(clang::StorageClass::SC_Static);
     } else if(clang::VarDecl *VD = dyn_cast<clang::VarDecl>(D->Cxx)) {
       VD->setStorageClass(clang::StorageClass::SC_Static);
+    } else if(auto *VD = dyn_cast<clang::VarTemplateDecl>(D->Cxx)) {
+      VD->getTemplatedDecl()->setStorageClass(clang::StorageClass::SC_Static);
     }
   }
   Status.HasStatic = true;
@@ -3646,7 +5253,7 @@ void Elaborator::elaborateSystemAttribute(clang::Decl *D, const Syntax *S,
 
 void Elaborator::elaborateAttributeError(Declaration *D, const Syntax *S,
                                          AttrStatus &Status) {
-  llvm::StringRef AttrName;
+  std::string AttrName;
   checkAttrFormatAndName(S, AttrName);
   SemaRef.Diags.Report(S->getLoc(),
                        clang::diag::err_invalid_attribute_for_decl)
@@ -3699,7 +5306,8 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
 }
 
 FusedOpKind getFusedOpKind(Sema &SemaRef, const CallSyntax *S) {
-  assert(isa<AtomSyntax>(S->getCallee()));
+  if (!isa<AtomSyntax>(S->getCallee()))
+    return FOK_Unknown;
   return getFusedOpKind(SemaRef, cast<AtomSyntax>(S->getCallee())->getSpelling());
 }
 

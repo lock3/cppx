@@ -139,7 +139,7 @@ static Syntax *makeList(const SyntaxContext &Ctx,
 static Attribute *makeAttr(const SyntaxContext &Ctx, Syntax *Arg);
 
 Parser::Parser(SyntaxContext &Context, clang::SourceManager &SM, File const& F)
-  : Lex(SM, F), Diags(SM.getDiagnostics()), Context(Context)
+  : Lex(SM, F, Context), Diags(SM.getDiagnostics()), Context(Context)
 {
   fetchToken();
 }
@@ -768,6 +768,10 @@ auto is_unary_operator = [](TokenKind k) -> bool
 //   returns pre
 Syntax *Parser::parsePre()
 {
+  // Nothing to parse for a fused operator.
+  if (PreviousToken.isFused() && PreviousToken.FusionInfo.Base == tok::Operator)
+    return FusionToks.clear(), nullptr;
+
   if (Token Op = matchTokenIf(is_unary_operator)) {
     Syntax *E = parsePre();
     return onUnary(Op, E);
@@ -1305,10 +1309,24 @@ Syntax *Parser::parsePrimary() {
 /// id:
 ///   identifier
 Syntax *Parser::parseId() {
-  Token id = expectToken(tok::Identifier);
-  if (!id)
+  Token Id = expectToken(tok::Identifier);
+  if (!Id)
     return onError();
-  return onAtom(id);
+
+  if (Id.isFused()) {
+    for (unsigned I = 0; I < Id.FusionInfo.NumTokens; ++I)
+      FusionToks.push_back(*Id.FusionInfo.Tokens[I]);
+
+    Syntax *Data = parsePre();
+    if (Id.FusionInfo.Base != tok::Operator && !Data)
+      return onError();
+    else if (Id.FusionInfo.Base == tok::Operator && Data)
+      return onError();
+
+    return onAtom(Id, Id.FusionInfo.Base, Data);
+  }
+
+  return onAtom(Id);
 }
 
 Syntax *Parser::parseParen() {
@@ -1439,8 +1457,16 @@ static Attribute *makeAttr(const SyntaxContext &Ctx, Syntax *Arg) {
   return new (Ctx) Attribute(Arg);
 }
 
-Syntax *Parser::onAtom(const Token& Tok) {
+Syntax *Parser::onAtom(const Token &Tok) {
   Syntax *Ret = new (Context) AtomSyntax(Tok);
+  if (!InAttribute)
+    attachPreattrs(Ret);
+  return Ret;
+}
+
+Syntax *Parser::onAtom(const Token &Tok, const tok::FusionKind K,
+                       Syntax *Data) {
+  Syntax *Ret = new (Context) AtomSyntax(Tok, K, Data);
   if (!InAttribute)
     attachPreattrs(Ret);
   return Ret;

@@ -18,7 +18,7 @@ using namespace gold;
 TEST(ClassParsing, Static_MemberVariable) {
   StringRef Code = R"(
 c : type = class:
-  x <static>: int = 4
+  x <static><inline>: int = 4
 )";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(
@@ -93,7 +93,7 @@ c : type = class:
 TEST(ClassParsing, Static_VariableUseTest) {
    StringRef Code = R"(
 c : type = class:
-  x <static>: int = 4
+  x <inline><static>: int = 4
   foo() : int!
     x = x + 1
     return x
@@ -134,6 +134,6 @@ DeclarationMatcher MainFnMatcher = functionDecl(hasName("main"), isMain(),
     hasDescendant(MainFnMatcher)
   );
   ASSERT_TRUE(matches(Code.str(), CompleteMatch));
-} 
+}
 
 

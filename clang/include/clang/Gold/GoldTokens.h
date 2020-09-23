@@ -20,6 +20,7 @@
 #include "clang/Gold/GoldSymbol.h"
 
 #include <iosfwd>
+#include <memory>
 
 namespace gold {
 
@@ -31,6 +32,12 @@ enum TokenKind : unsigned short {
 #define def_keyword(K, S) \
   K ## Keyword,
 #include "clang/Gold/GoldTokens.def"
+};
+
+enum FusionKind {
+  Operator,
+  Conversion,
+  Literal,
 };
 } // namespace tok
 
@@ -63,6 +70,9 @@ enum TokenFlags : unsigned short {
 
   /// Set if the token is the first token of a new line.
   TF_StartsLine = 0x02,
+
+  /// Token is a fused conversion
+  TF_FusedConversion = 0x04,
 };
 
 /// A token represents a symbol in the language, the end of file, or an
@@ -87,7 +97,7 @@ struct Token
 {
   /// Constructs an invalid token.
   Token()
-    : Kind(tok::Invalid), Flags(), Loc(), Ptr()
+    : Kind(tok::Invalid), Flags(), Loc()
   { }
 
   /// Constructs a normal token.
@@ -96,10 +106,13 @@ struct Token
   { }
 
   /// Constructs a fused token.
-  template<typename T>
-  Token(TokenKind K, clang::SourceLocation Loc, T* Data)
-    : Kind(K), Flags(TF_Fused), Loc(Loc), Ptr(Data)
+  Token(TokenKind K, clang::SourceLocation Loc,
+        tok::FusionKind Base, Token **Tokens, unsigned N,
+        llvm::StringRef Inner)
+    : Kind(K), Flags(TF_Fused), Loc(Loc), FusionInfo({Base, Tokens, N, Inner})
   { }
+
+  ~Token();
 
   /// True if the token is neither invalid nor end-of-file.
   explicit operator bool() const {
@@ -146,6 +159,10 @@ struct Token
     return Flags & TF_StartsLine;
   }
 
+  bool isFusedConversion() const {
+    return Flags & TF_FusedConversion;
+  }
+
   bool isNumericConstant() const {
     return Kind >= tok::BinaryInteger && Kind <= tok::DecimalExponent;
   }
@@ -159,12 +176,11 @@ struct Token
     return Sym;
   }
 
-  bool hasSpelling(char const* Str) const {
-    return getSymbol() == gold::getSymbol(Str);
-  }
+  /// True when the token has the specified spelling.
+  bool hasSpelling(char const* Str) const;
 
   /// Returns the spelling of the token.
-  llvm::StringRef getSpelling() const;
+  std::string getSpelling() const;
 
   /// Returns a human-readable name for the token. For simple tokens,
   /// this is simply its spelling. Otherwise, it is the grammatical name
@@ -198,8 +214,15 @@ struct Token
     // For non-fused tokens, this is its underlying spelling (or lexeme).
     Symbol Sym;
 
-    // For fused tokens, this is a pointer to its associated data.
-    void* Ptr;
+    // For fused tokens, this is its associated data.
+    struct {
+      tok::FusionKind Base;
+      Token **Tokens;
+      std::size_t NumTokens;
+
+      // We just use this for printing in AST serializations.
+      llvm::StringRef Inner;
+    } FusionInfo;
   };
 
 private:

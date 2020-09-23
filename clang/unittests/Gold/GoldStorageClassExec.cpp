@@ -52,7 +52,7 @@ main() : int!
 TEST(GoldStorageClassExec, Static_MemberOfAClass) {
   StringRef Code = R"(
 c : type = class:
-  x <static>: int = 4
+  x <static><inline>: int = 4
   foo() : int!
     x = x + 1
     return x

@@ -44,7 +44,8 @@ enum AttrFormat {
   AF_Call,
   AF_Name
 };
-AttrFormat checkAttrFormatAndName(const Syntax *Attr, llvm::StringRef &Name);
+
+AttrFormat checkAttrFormatAndName(const Syntax *Attr, std::string &Name);
 
 /// locateValidAttribute
 /// This is a privately used template function, basucally taking the place of me
@@ -115,17 +116,18 @@ public:
 
   // Typing elaboration (2nd pass)
   clang::Decl *elaborateDecl(Declaration *D);
-  clang::Decl *elaborateDeclContent(Declaration *D);
-  clang::Decl *elaborateDeclInContext(Declaration *D);
+  bool elaborateNestedNameForDecl(Declaration *D);
+  clang::Decl *elaborateDeclContent(clang::Scope *InitialScope,
+                                    Declaration *D);
+  // clang::Decl *elaborateDeclInContext(Declaration *D);
 
   clang::Decl *elaborateDeclType(const Syntax* D);
   clang::Decl *elaborateFunctionDecl(Declaration *D);
   void checkCXXMethodDecl(clang::CXXMethodDecl *MD);
-  clang::Decl *elaborateVariableDecl(Declaration *D);
+  clang::Decl *elaborateVariableDecl(clang::Scope *InitialScope, Declaration *D);
   clang::Decl *elaborateTypeAlias(Declaration *D);
   clang::Decl *elaborateNsAlias(Declaration *D);
-  clang::Decl *elaborateTemplateAliasOrVariable(Declaration *D,
-      Declarator *TemplateParams);
+  clang::Decl *elaborateTemplateAliasOrVariable(Declaration *D);
   clang::Decl *elaborateParameterDecl(Declaration *D);
   clang::Decl *elaborateTemplateParamDecl(Declaration *D);
 
@@ -151,7 +153,7 @@ public:
 
   // class type body elaboration.
   clang::Decl *elaborateTypeBody(Declaration *D, clang::CXXRecordDecl *R);
-  clang::Decl *elaborateField(Declaration *D);
+  clang::Decl *elaborateField(Declaration *D, clang::TypeSourceInfo *TInfo);
   void elaborateFieldInit(Declaration *D);
 
   clang::Decl *elaborateEnumBody(Declaration* D, clang::Decl *EnumD);

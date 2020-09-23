@@ -87,8 +87,6 @@ add_clang_unittest(GoldTests
   GoldFunctionTemplateSpec.cpp
   GoldFunctionTemplateSpecExec.cpp
   GoldFunctionType.cpp
-  GoldFusedIdentifierElab.cpp
-  GoldFusedIdentifierParse.cpp
   GoldGlobalParsing.cpp
   GoldIfStmtElab.cpp
   GoldImplicitCtorExplicitCallExec.cpp
@@ -100,6 +98,7 @@ add_clang_unittest(GoldTests
   GoldMethodRefQualifierElab.cpp
   GoldMutableAttributeElab.cpp
   GoldNamespaceAliasElab.cpp
+  GoldNestedNameSpecifierOnDeclElab.cpp
   GoldNNS.cpp
   GoldOperatorOverloadUseElab.cpp
   GoldOverrideAttributeElab.cpp

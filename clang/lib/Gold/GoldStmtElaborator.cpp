@@ -54,7 +54,15 @@ StmtElaborator::elaborateStmt(const Syntax *S) {
   // If the statement kind is unknown then simply punt to the expression
   // elaborator.
   ExprElaborator Elab(Context, SemaRef);
-  return Elab.elaborateExpr(S);
+  auto Res = Elab.elaborateExpr(S);
+  if (!Res)
+    return nullptr;
+  auto ExprStmt = SemaRef.getCxxSema().ActOnExprStmt(Res,
+                                                    /*discardedValue*/true);
+  if (ExprStmt.isInvalid()) {
+    return nullptr;
+  }
+  return ExprStmt.get();
 }
 
 clang::Stmt *
@@ -129,7 +137,14 @@ createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
 static clang::Stmt *
 elaborateDefaultCall(SyntaxContext &Context, Sema &SemaRef, const CallSyntax *S) {
   ExprElaborator ExprElab(Context, SemaRef);
-  return ExprElab.elaborateCall(S);
+  auto *Stmt = ExprElab.elaborateCall(S);
+  if (!Stmt) {
+    return nullptr;
+  }
+  clang::ExprResult Res(Stmt);
+  auto StmtResult = SemaRef.getCxxSema().ActOnExprStmt(Res,
+                                                      /*discardedValue*/true);
+  return StmtResult.get();
 }
 
 clang::Stmt *
@@ -196,11 +211,11 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
                                       NameExpr, InitExpr);
     if (BinOpResult.isInvalid())
       return nullptr;
-
+    auto CompletedBinOpRes = SemaRef.getCxxSema().ActOnExprStmt(BinOpResult);
     // We can readily assume anything here is getting used.
     ExprMarker(CxxAST, SemaRef).Visit(NameExpr);
     ExprMarker(CxxAST, SemaRef).Visit(InitExpr);
-    return BinOpResult.get();
+    return CompletedBinOpRes.get();
   }
 
   case FOK_Return: {
@@ -232,7 +247,7 @@ static bool isConstExprIf(Sema &SemaRef, Attributes &Attrs, bool &IsConstExpr) {
   return locateValidAttribute(Attrs,
     // OnAttr
     [&](const Syntax *Attr) -> bool{
-      llvm::StringRef ActualName;
+      std::string ActualName;
       switch(checkAttrFormatAndName(Attr, ActualName)) {
       case AF_Name:
         if (ActualName == "constexpr") {
@@ -418,7 +433,7 @@ createForRangeLoopVarDecl(SyntaxContext &Ctx, Sema &SemaRef,
 
   Elaborator(Ctx, SemaRef).identifyDecl(S);
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
-  D->Cxx = VD;
+  SemaRef.setDeclForDeclaration(D, VD);
 
   clang::DeclStmt *DS = new (CxxAST) clang::DeclStmt(
     SemaRef.getCxxSema().ConvertDeclToDeclGroup(VD).get(), Loc, Loc);

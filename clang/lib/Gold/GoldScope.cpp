@@ -54,6 +54,14 @@ llvm::StringRef Scope::getKindStr() const {
 }
 void Scope::dump(llvm::raw_ostream &os) const {
   os << getScopeKindName(getKind()) << '\n';
+  if (Entity) {
+    if (Entity->Cxx) {
+      os << "Entity->Cxx = \n";
+      Entity->Cxx->dump();
+    } else{
+      os << "Entity->Cxx isn't set yet\n";
+    }
+  }
   if (getKind() == SK_Template) {
     for(auto D : IdMap) {
       os << D.first->getName();

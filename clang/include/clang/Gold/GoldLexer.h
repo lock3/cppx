@@ -36,10 +36,13 @@ class SourceManager;
 // until later stages where we can discard them.
 
 namespace gold {
+  class SyntaxContext;
+
   /// Transforms characters into tokens.
   struct CharacterScanner
   {
-    CharacterScanner(clang::SourceManager &SM, File const& F);
+    CharacterScanner(clang::SourceManager &SM, File const &F,
+                     SyntaxContext &Ctx);
 
     Token operator()();
 
@@ -126,6 +129,9 @@ namespace gold {
     Token makeToken(TokenKind K, char const* S, std::size_t N);
     Token makeToken(TokenKind K, char const* F, char const* L,
                     llvm::SmallVectorImpl<llvm::StringRef> &Suffixes);
+    Token makeFusedToken(const char *S);
+    Token makeFusedToken2(const char *S);
+    Token makeFusedToken(Token Base, Token **Data, unsigned Count);
 
     Token matchEof();
     Token matchSpace();
@@ -134,6 +140,7 @@ namespace gold {
     Token matchBlockComment();
     Token matchToken(TokenKind K);
     Token matchWord();
+    Token matchFusionArg(Token Base);
     Token matchNumber();
     Token matchDecimalNumber();
     Token matchDecimalFraction();
@@ -198,6 +205,16 @@ namespace gold {
       char const* Prev;
     };
 
+    /// True when we are lexing a fused token.
+    bool Fused = false;
+
+    /// The beginning and end of the argument of a fused token,
+    /// for example, `int` in `conversion"int"`.
+    char const *FusionStart = nullptr;
+    char const *FusionEnd = nullptr;
+
+    clang::IdentifierInfo *ConversionII;
+
     /// The base location in the input file. Used to compute source locations
     /// as tokens are matched.
     clang::SourceLocation FileLoc;
@@ -208,14 +225,24 @@ namespace gold {
 
     /// Maps identifiers to keyword tokens.
     llvm::StringMap<TokenKind> Keywords;
+
+    /// The syntax context (for memory management).
+    SyntaxContext &Ctx;
   };
 
 
   /// Removes empty lines and comments from a translation unit.
   struct LineScanner {
-    LineScanner(clang::SourceManager &SM, File const& F)
-      : Scanner(SM, F)
-    { }
+    LineScanner(clang::SourceManager &SM, File const& F, SyntaxContext &Ctx)
+      : Scanner(SM, F, Ctx)
+      { }
+
+    // Construct a line scanner for a string literal
+    // Used for fused token data.
+    // the source manager and file must already be initialized
+    // LineScanner(clang::SourceManager &SM, File const &F, const char *Str)
+    //   : Scanner(SM, F, Str)
+    //   { }
 
     Token operator()();
 
@@ -237,8 +264,8 @@ namespace gold {
   /// separators. Note that there are no newlines in the translation unit
   /// returned from this scanner.
   struct BlockScanner {
-    BlockScanner(clang::SourceManager &SM, File const& F)
-      : Scanner(SM, F), Prefix() { }
+    BlockScanner(clang::SourceManager &SM, File const& F, SyntaxContext &Ctx)
+      : Scanner(SM, F, Ctx), Prefix() { }
 
     Token operator()();
 
@@ -304,8 +331,8 @@ namespace gold {
   /// input source. This is defined by a stack of scanners, each of
   /// which applies a phase of translation.
   struct Lexer {
-    Lexer(clang::SourceManager &SM, File const& F)
-      : Scanner(SM, F)
+    Lexer(clang::SourceManager &SM, File const& F, SyntaxContext &Ctx)
+      : Scanner(SM, F, Ctx)
     { }
 
     Token operator()()

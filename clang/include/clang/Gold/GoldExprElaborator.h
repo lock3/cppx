@@ -110,7 +110,14 @@ public:
   clang::Expr *elaborateClass(const MacroSyntax *Macro);
 
   clang::Expr *elaborateElementExpr(const ElemSyntax *Elem);
+
+  bool elaborateTemplateArugments(const ListSyntax *Args,
+                                  clang::TemplateArgumentListInfo &ArgInfo,
+              llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs);
+
   clang::Expr *elaborateCastOp(const CallSyntax *CastOp);
+
+
 
 private:
   clang::Expr *handleRawBaseSpecifier(const CallSyntax *Op);

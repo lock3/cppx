@@ -48,6 +48,7 @@ public:
   /// did previously.
   Declaration *build(const Syntax *S);
 private:
+  std::string OriginalNameStorage;
   llvm::StringRef OriginalName;
   clang::IdentifierInfo *Id = nullptr;
   const OpInfoBase *OpInfo = nullptr;
@@ -66,6 +67,7 @@ private:
   bool RequireAliasTypes = false;
   bool RequireTypeForFunctions = false;
   bool RequiresDeclOrError = false;
+  bool AllowShortCtorAndDtorSyntax = false;
   bool IsInsideEnum = false;
 
   /// This checks to make sure that the declarator chain conforms to a specific
