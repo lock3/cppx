@@ -5304,7 +5304,8 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
 }
 
 FusedOpKind getFusedOpKind(Sema &SemaRef, const CallSyntax *S) {
-  assert(isa<AtomSyntax>(S->getCallee()));
+  if (!isa<AtomSyntax>(S->getCallee()))
+    return FOK_Unknown;
   return getFusedOpKind(SemaRef, cast<AtomSyntax>(S->getCallee())->getSpelling());
 }
 

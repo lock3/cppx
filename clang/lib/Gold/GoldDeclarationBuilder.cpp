@@ -808,6 +808,7 @@ Declarator *DeclarationBuilder::handleNamespaceScope(const Syntax *S) {
   EnableNestedNameSpecifiers = true;
   RequireAliasTypes = false;
   RequireTypeForFunctions = false;
+  RequiresDeclOrError = true;
   return makeDeclarator(S);
 }
 

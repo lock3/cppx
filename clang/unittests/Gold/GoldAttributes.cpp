@@ -21,11 +21,7 @@ using namespace gold;
 TEST(Attributes, SimpleAttributes) {
   StringRef Code = R"(
 x<(i < 10)> = 10
-x<i> = 10
-x<(10 == 10)> = 10
-x < 20
-x<i> < 10
-x<z<10>><(i < 10)> < y<10>
+y<(10 == 10)> = 10
 )";
 
   SimpleGoldParseTest(Code);
