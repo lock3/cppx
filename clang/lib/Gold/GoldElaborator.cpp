@@ -33,6 +33,7 @@
 #include "clang/Sema/TypeLocUtil.h"
 #include "clang/Sema/CXXFieldCollector.h"
 
+#include "clang/Gold/ClangToGoldDeclBuilder.h"
 #include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldExprElaborator.h"
 #include "clang/Gold/GoldStmtElaborator.h"
@@ -777,7 +778,6 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
                                          Sema& SemaRef, Declaration *D) {
   D->CurrentPhase = Phase::Initialization;
   using namespace clang;
-
   // Create and enter a namespace scope.
   clang::CppxNamespaceDecl *NSDecl = nullptr;
   clang::Scope *NSScope = SemaRef.enterClangScope(clang::Scope::DeclScope);
@@ -1215,8 +1215,129 @@ bool Elaborator::elaborateNestedNameForDecl(Declaration *D) {
   return false;
 }
 
+
+/// Returns true in the event of an error. If located The Located node is set.
+static bool hasLinkageSpecDecl(Sema& SemaRef, Declaration *D,
+                               const Syntax **LocatedNode) {
+  if (!D->IdDcl->UnprocessedAttributes)
+    return false;
+  return locateValidAttribute(*D->IdDcl->UnprocessedAttributes,
+
+    // OnAttr
+    [&](const Syntax *Attr) -> bool {
+      std::string ActualName;
+      switch(checkAttrFormatAndName(Attr, ActualName)) {
+      case AF_Call:
+        if (ActualName == "extern") {
+          *LocatedNode = Attr;
+          return true;
+        }
+        return false;
+      default:
+        return false;
+      }
+    },
+
+    // CheckAttr
+    [](const Syntax *Attr) -> bool {
+      std::string ActualName;
+      checkAttrFormatAndName(Attr, ActualName);
+      return ActualName == "extern" || "static";
+    },
+
+    // OnDup
+    [&](const Syntax *FirstAttr, const Syntax *DuplicateAttr) {
+      std::string FirstAttrName;
+      checkAttrFormatAndName(FirstAttr, FirstAttrName);
+      std::string DupAttrName;
+      checkAttrFormatAndName(DuplicateAttr, DupAttrName);
+      SemaRef.Diags.Report(DuplicateAttr->getLoc(),
+                           clang::diag::err_duplicate_access_specifier)
+                           << FirstAttrName << DupAttrName;
+    });
+}
+
+static bool enterLinkageLanguageSpec(Sema &SemaRef,
+                                     Declaration *D,
+                                     const Syntax *S) {
+  assert(S && "Invalid syntax node");
+  SemaRef.enterClangScope(clang::Scope::DeclScope);
+  SyntaxContext &Context = SemaRef.getContext();
+  if (const auto *Call = dyn_cast<CallSyntax>(S)) {
+    if (Call->getNumArguments() != 1) {
+      SemaRef.Diags.Report(S->getLoc(),
+                          clang::diag::err_incorrect_number_of_arguments)
+                          << "extern";
+      return true;
+    }
+    ExprElaborator Elab(Context, SemaRef);
+    clang::Expr *Expr = Elab.elaborateExpectedConstantExpr(Call->getArgument(0));
+    if (!Expr) {
+      SemaRef.Diags.Report(S->getLoc(),
+                          clang::diag::err_failed_to_translate_expr);
+      return true;
+    }
+
+    clang::Decl *LinkageDecl = SemaRef.getCxxSema().ActOnStartLinkageSpecification(
+        SemaRef.getCurClangScope(), Call->getCallee()->getLoc(), Expr,
+        clang::SourceLocation()
+      );
+
+    // Assuming that we already got an error message for this.
+    if (!LinkageDecl)
+      return true;
+
+    // We do this because we are technically chaning decl contexts.
+    D->DeclaringContext = cast<clang::DeclContext>(LinkageDecl);
+    ClangToGoldDeclRebuilder rebuilder(Context, SemaRef);
+    Declaration *GDecl = rebuilder.generateDeclForDeclContext(
+                                                          D->DeclaringContext, S);
+    if (!GDecl)
+      // Any error reporting will be handled the the rebuilder.
+      return true;
+    // Changing owner ship to the new decl context.
+    D->ParentDecl = GDecl;
+    D->Cxt = GDecl;
+    SemaRef.pushDecl(GDecl);
+  } else {
+    llvm_unreachable("Invalid tree format");
+  }
+
+
+  return false;
+}
+
+static bool exitLinkageLanguageSpec(Sema &SemaRef,
+                                    Declaration *D) {
+  clang::Decl *CompleteDecl
+      = SemaRef.getCxxSema().ActOnFinishLinkageSpecification(
+        SemaRef.getCurClangScope(), cast<clang::Decl>(D->DeclaringContext),
+        clang::SourceLocation());
+
+  // Assuming that if we encounter an error that this will return nullptr.
+  if (!CompleteDecl)
+    return true;
+
+  // Leaving DeclScope
+  SemaRef.leaveClangScope(D->Op->getLoc());
+  SemaRef.popDecl();
+  SemaRef.verifyMatchingDeclarationAndDeclContext();
+  // SemaRef.popDecl
+  // FIXME:  I may need to add additional error checking and I may also need to
+  // handle outputting errors here also.
+
+  // // Setting storage class for declaration.
+  // if (clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(D->Cxx)) {
+  //   FD->setStorageClass(clang::StorageClass::SC_Extern);
+  // } else if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(D->Cxx)) {
+  //   VD->setStorageClass(clang::StorageClass::SC_Extern);
+  // }
+  return false;
+}
+
+
 static void exitToCorrectScope(Sema &SemaRef, gold::Scope *ExpectedScope,
-                               Declaration *D) {
+                               Declaration *D, const Syntax *LinkageAttr) {
   // We need to exit any previous template scopes we entered as part of the nested
   // name specifier. Make sure to leave in revese order otherwise we won't have
   // a valid terms during exit.
@@ -1235,6 +1356,9 @@ static void exitToCorrectScope(Sema &SemaRef, gold::Scope *ExpectedScope,
       SemaRef.leaveScope(RIter->Template->getScope()->getConcreteTerm());
   }
   assert(ExpectedScope == SemaRef.getCurrentScope() && "Scope imbalance.");
+  if (LinkageAttr) {
+    exitLinkageLanguageSpec(SemaRef, D);
+  }
 }
 
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
@@ -1243,13 +1367,28 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   clang::Scope *OriginalClangScope = SemaRef.getCurClangScope();
   Scope *Sc = SemaRef.getCurrentScope();
 
+  // Check for linkage!
+  const Syntax *LinkageAttr = nullptr;
+  if (hasLinkageSpecDecl(SemaRef, D, &LinkageAttr)) {
+    // TODO: Figure out if this needs an additional error message or should
+    // we just try and continue processing things?
+    return nullptr;
+  }
+  if (LinkageAttr) {
+    if (enterLinkageLanguageSpec(SemaRef, D, LinkageAttr)) {
+      // TODO: Figure out if this needs an additional error message or should
+      // we just try and continue processing things?
+      return nullptr;
+    }
+  }
+
   // This clears any previous lookups and restores them once we reach the end.
   // This might be useful for elaborating parameters with default values that
   // are being assigned as a default value.
   Sema::NewNameSpecifierRAII NestedNameStack(SemaRef);
   if (!D->NNSInfo.empty() || D->GlobalNsSpecifier) {
     if (elaborateNestedNameForDecl(D)) {
-      exitToCorrectScope(SemaRef, Sc, D);
+      exitToCorrectScope(SemaRef, Sc, D, LinkageAttr);
       return nullptr;
     }
   }
@@ -1296,7 +1435,7 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
     }
   }
 
-  exitToCorrectScope(SemaRef, Sc, D);
+  exitToCorrectScope(SemaRef, Sc, D, LinkageAttr);
   return Ret;
 }
 
@@ -1468,6 +1607,7 @@ void lookupFunctionRedecls(Sema &SemaRef, clang::Scope *FoundScope,
          (FoundScope->getFlags() & clang::Scope::TemplateParamScope) != 0)
     FoundScope = FoundScope->getParent();
 
+  assert(FoundScope && "Scope not found");
   SemaRef.getCxxSema().LookupName(Previous, FoundScope, false);
 }
 bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
@@ -1524,9 +1664,9 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
                                           Ty->getType(), Ty, ES, false,
                               false, clang::ConstexprSpecKind::CSK_unspecified);
     else if (Destructor)
-    *FD = Method =
-      clang::CXXDestructorDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
-                                       Ty->getType(), Ty, false, false,
+      *FD = Method =
+        clang::CXXDestructorDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
+                                        Ty->getType(), Ty, false, false,
                                      clang::ConstexprSpecKind::CSK_unspecified);
 
 
@@ -1579,6 +1719,14 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::Sema &CxxSema = SemaRef.getCxxSema();
   clang::DeclContext *Owner = D->getOwningDeclContext();
+  if (auto *Linkage = dyn_cast<clang::LinkageSpecDecl>(Owner)) {
+    if (Linkage->getParent()->isRecord()) {
+      SemaRef.Diags.Report(D->Op->getLoc(),
+                          clang::diag::err_invalid_extern_c)
+                          << 0;
+      return nullptr;
+    }
+  }
   clang::DeclContext *ResolvedCtx = Owner;
   if (D->hasNestedNameSpecifier()) {
     ResolvedCtx = SemaRef.getCxxSema().computeDeclContext(D->ScopeSpec, true);
@@ -1715,6 +1863,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Add the declaration and update bindings.
   if ((!Template || Specialization) && !D->declaresConstructor())
     Owner->addDecl(FD);
+
 
   if (D->declaresConstructor()) {
     clang::CXXConstructorDecl* CtorDecl =
@@ -2624,6 +2773,20 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
 
   bool IsClassMember = D->isDeclaredWithinClass();
 
+  // Cannot have a local extern variable with linkage?
+  if (auto *Linkage
+                = dyn_cast<clang::LinkageSpecDecl>(D->getOwningDeclContext())) {
+    clang::DeclContext *Cur = Linkage;
+    while(Cur) {
+      if (Cur->isFunctionOrMethod()) {
+        SemaRef.Diags.Report(D->Op->getLoc(),
+                              clang::diag::err_invalid_extern_c)
+                              << 3;
+        return nullptr;
+      }
+      Cur = Cur->getParent();
+    }
+  }
   // Templated variables cannot be a field
   if (IsClassMember && !D->Template) {
     return elaborateField(D, TInfo);
@@ -2810,21 +2973,25 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
     NewVD->setLexicalDeclContext(Owner);
     SemaRef.setDeclForDeclaration(D, NewTemplate);
   }
-  if (!IsVariableTemplateSpecialization) {
-    if (!NewTemplate){
-      SemaRef.setDeclForDeclaration(D, NewVD);
-      Owner->addDecl(NewVD);
-    }
-    NewVD->setDeclContext(PreviousDC);
-    NewVD->setLexicalDeclContext(Owner);
-  }
-
   if (D->ScopeSpec.isSet())
     NewVD->setQualifierInfo(
         D->ScopeSpec.getWithLocInContext(Context.CxxAST));
-
+  if (!NewTemplate && !IsVariableTemplateSpecialization) {
+    SemaRef.setDeclForDeclaration(D, NewVD);
+  }
   D->CurrentPhase = Phase::Typing;
   elaborateAttributes(D);
+
+  if (!IsVariableTemplateSpecialization) {
+    if (!isa<clang::LinkageSpecDecl>(D->Cxx)) {
+      if (!NewTemplate) {
+        Owner->addDecl(NewVD);
+      }
+      NewVD->setDeclContext(PreviousDC);
+      NewVD->setLexicalDeclContext(Owner);
+    }
+  }
+
   SC = NewVD->getStorageClass();
   if (Invalid) {
     NewVD->setInvalidDecl();
@@ -2978,11 +3145,6 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   clang::NamedDecl *ShadowedDecl = D->ScopeSpec.isEmpty()
                   ? SemaRef.getCxxSema().getShadowedDeclaration(NewVD, Previous)
                   : nullptr;
-
-  // Adjusting scope for filter.
-  // while ((CxxScope->getFlags() & clang::Scope::DeclScope) == 0 ||
-  //       (CxxScope->getFlags() & clang::Scope::TemplateParamScope) != 0)
-  //   CxxScope = CxxScope->getParent();
 
   CxxSema.FilterLookupForScope(Previous, PreviousDC, CxxScope,
                                shouldConsiderLinkage(NewVD),
@@ -3372,7 +3534,12 @@ clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D) {
 clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
   // Get type information.
   clang::DeclContext *Owner = D->getOwningDeclContext();
-
+  if (isa<clang::LinkageSpecDecl>(Owner)) {
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_invalid_extern_c)
+                         << /*a parameter*/1;
+    return nullptr;
+  }
   ExprElaborator TypeElab(Context, SemaRef);
   clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
   if (!TypeExpr) {
@@ -3407,6 +3574,12 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
 
 clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
   clang::DeclContext *Owner = D->getOwningDeclContext();
+  if (isa<clang::LinkageSpecDecl>(Owner)) {
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_invalid_extern_c)
+                         << /*a template parameter*/2;
+    return nullptr;
+  }
 
   ExprElaborator TypeElab(Context, SemaRef);
   clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
@@ -3825,7 +3998,11 @@ clang::Decl *Elaborator::elaborateField(Declaration *D,
   clang::CXXRecordDecl *Owner = dyn_cast<clang::CXXRecordDecl>(Ctxt);
   // Get the type of the entity.
   if(!Owner) {
-    llvm_unreachable("Invalid field declaration. Declaration is not within a class.");
+    // This occurs when we are within an extern "C" decl
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_invalid_extern_c)
+                         << /* a member */0;
+    return nullptr;
   }
 
   clang::SourceLocation Loc = D->Decl->getLoc();
@@ -4533,7 +4710,7 @@ void Elaborator::elaborateExternAttr(Declaration *D, const Syntax *S,
   }
   // Checking a few things.
   if (isa<CallSyntax>(S)) {
-    llvm_unreachable("extern(\"C\") not implemented yet");
+    llvm_unreachable("This should never occur.");
   } else if (isa<AtomSyntax>(S)) {
     if (clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(D->Cxx)) {
       FD->setStorageClass(clang::StorageClass::SC_Extern);

@@ -258,6 +258,21 @@ bool ClangToGoldDeclRebuilder::finishDecl(Declaration *D,
   return false;
 }
 
+Declaration *
+ClangToGoldDeclRebuilder::generateDeclForDeclContext(clang::DeclContext *DC,
+                                                     const Syntax *S)
+{
+  assert(DC && "Invalid decl context");
+  clang::Decl *Dcl = cast<clang::Decl>(DC);
+  auto *D = new Declaration(SemaRef.getCurrentDecl(), S, /*Declarator=*/nullptr,
+                            /*Init=*/nullptr, UDK_None);
+  D->Cxx = Dcl;
+  D->CurrentPhase = Phase::Initialization;
+  D->ScopeForDecl = SemaRef.getCurrentScope();
+  D->ParentDecl = SemaRef.getCurrentDecl();
+  return D;
+}
+
 gold::Scope *ClangToGoldDeclRebuilder::determineParentScope() {
   if (isa<clang::ClassTemplatePartialSpecializationDecl>(RD)) {
     // Logically this should never happen!.

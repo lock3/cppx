@@ -11364,6 +11364,10 @@ def err_unknown_template_declaration : Error<
 def err_namespace_alias_within_class : Error<
   "cannot declare a namespace alias within the body of a class">;
 
+def err_invalid_extern_c : Error<
+  "cannot apply linkage specifier to %select{a member|a parameter"
+  "|a template parameter|variable declarations inside a function}0">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

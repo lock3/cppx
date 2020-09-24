@@ -262,6 +262,28 @@ void Sema::setClangDeclContext(clang::DeclContext *DC) {
   CxxSema.CurContext = DC;
 }
 
+void Sema::verifyMatchingDeclarationAndDeclContext() const {
+#ifndef NDEBUG
+  assert(CurrentDecl && "gold decl context not set");
+  assert(CxxSema.CurContext && "clang decl context not set");
+  assert(CurrentDecl->Cxx && "Decl context not set.");
+  clang::DeclContext *GDC = dyn_cast<clang::DeclContext>(CurrentDecl->Cxx);
+  if (!GDC) {
+    llvm::errs() << "Non decl context declaration\n";
+    CurrentDecl->Cxx->dump();
+  }
+  assert(GDC && "declaration context cannot be a decl context");
+  if (CxxSema.CurContext != GDC) {
+    llvm::errs() << "Current clang Decl context = \n";
+    CxxSema.CurContext->dumpDeclContext();
+    llvm::errs() << "Current Gold Decl Context = \n";
+    GDC->dumpDeclContext();
+  }
+  assert((CxxSema.CurContext == GDC)
+         && "Declaration context doesn't match.");
+#endif
+}
+
 void Sema::restoreDeclContext(Declaration *D) {
   CurrentDecl = D;
   getCxxSema().CurContext = clang::Decl::castToDeclContext(D->Cxx);
@@ -302,9 +324,9 @@ gold::Declaration *Sema::getDeclaration(clang::Decl *CDecl) {
   auto Iter = DeclToDecl.find(CDecl);
   if (Iter == DeclToDecl.end()) {
     if (!isa<clang::CXXRecordDecl>(CDecl)) {
-      llvm::StringRef Name = "";
+      std::string Name = "";
       if (auto *ND = dyn_cast<clang::NamedDecl>(CDecl)) {
-        Name = ND->getName();
+        Name = ND->getName().str();
       }
       Diags.Report(CDecl->getLocation(),
                    clang::diag::err_unknown_template_declaration)
