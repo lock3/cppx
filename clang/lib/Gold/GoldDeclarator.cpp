@@ -241,7 +241,7 @@ const Syntax *ImplicitEmptyTemplateParamsDeclarator::getSyntax() const {
   return Owner;
 }
 
-// ------------------ SpecializationDeclarator ---------------------------------
+// ------------------ SpecializationDeclarator ------------------------------ //
 clang::SourceLocation SpecializationDeclarator::getLoc() const {
   return Args->getLoc();
 }
@@ -260,6 +260,24 @@ bool SpecializationDeclarator::HasArguments() const {
 
 const ListSyntax *SpecializationDeclarator::getArgs() const {
   return cast<ListSyntax>(Args->getArguments());
+}
+
+// ------------------ UsingDirectiveDeclarator ------------------------------ //
+const Syntax *UsingDirectiveDeclarator::getArgs() {
+  return Args;
+}
+
+clang::SourceLocation UsingDirectiveDeclarator::getLoc() const {
+  return UsingLoc;
+}
+
+// We always include the kind with a using declarator.
+std::string UsingDirectiveDeclarator::getString(bool IncludeKind) const {
+  unsigned I = 0;
+  for (auto *Child : Args->children())
+    ++I;
+
+  return "Using {" + std::to_string(I) + "}";
 }
 
 } // end namepsace gold

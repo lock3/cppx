@@ -288,6 +288,10 @@ bool Declaration::declaresFunctionDef() const {
   return declaresFunction() && Init;
 }
 
+bool Declaration::declaresUsingDirective() const {
+  return isa<UsingDirectiveDeclarator>(Decl);
+}
+
 bool Declaration::hasNestedNameSpecifier() const {
   return !NNSInfo.empty();
 }

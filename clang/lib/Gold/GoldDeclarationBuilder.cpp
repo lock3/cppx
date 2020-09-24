@@ -1157,6 +1157,11 @@ DeclarationBuilder::buildTemplateFunctionOrNameDeclarator(const Syntax *S,
   return buildTemplateOrNameDeclarator(S, Next);
 }
 
+Declarator *
+DeclarationBuilder::buildUsingDirectiveDeclarator(const MacroSyntax *S) {
+  return new UsingDirectiveDeclarator(S->getCall()->getLoc(), S);
+}
+
 Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
                                                        Declarator *Next) {
   // If we find an atom, then we're done.
@@ -1178,6 +1183,10 @@ Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
         return makeTopLevelDeclarator(Call->getArgument(0), Next);
       }
     }
+  } else if (const MacroSyntax *Macro = dyn_cast<MacroSyntax>(S)) {
+    if (const AtomSyntax *Call = dyn_cast<AtomSyntax>(Macro->getCall()))
+      if (Call->getToken().hasKind(tok::UsingKeyword))
+        return buildUsingDirectiveDeclarator(Macro);
   } else if(const ErrorSyntax *Err = dyn_cast<ErrorSyntax>(S)) {
     return handleErrorSyntax(Err, Next);
   }
@@ -1193,7 +1202,11 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
     if (const auto *Name = dyn_cast<AtomSyntax>(S))
       return handleIdentifier(Name, nullptr);
 
+  if (const auto *Macro = dyn_cast<MacroSyntax>(S))
+    return makeTopLevelDeclarator(S, nullptr);
+
   const auto *Call = dyn_cast<CallSyntax>(S);
+
   if (!Call) {
     if (RequiresDeclOrError)
       SemaRef.Diags.Report(S->getLoc(),

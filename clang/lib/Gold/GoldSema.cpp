@@ -568,14 +568,23 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
     // Look through any using directives, but only if we didn't already find
     // something acceptable.
     if (Found.empty()) {
+      bool FoundInNamespace = false;
       for (clang::UsingDirectiveDecl *UD : S->UsingDirectives) {
         assert(isa<clang::CppxNamespaceDecl>(UD->getNominatedNamespace()));
 
         clang::CppxNamespaceDecl *NS =
           cast<clang::CppxNamespaceDecl>(UD->getNominatedNamespace());
-        // FIXME: we could potentially find the same name in several namespaces.
-        // Respond accordingly to that situation.
-        Found = NS->Rep->findDecl(Id);
+        std::set<Declaration *> NSFound = NS->Rep->findDecl(Id);
+
+        // We found the name in more than one namespace.
+        if (FoundInNamespace && !NSFound.empty()) {
+          Diags.Report(R.getNameLoc(), clang::diag::err_ambiguous_reference)
+            << Name;
+          return false;
+        }
+
+        FoundInNamespace = !NSFound.empty();
+        Found = NSFound;
       }
     }
 

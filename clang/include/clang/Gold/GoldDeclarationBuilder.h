@@ -152,6 +152,7 @@ private:
   Declarator *makeTopLevelDeclarator(const Syntax *S, Declarator *Next);
   Declarator *buildTemplateFunctionOrNameDeclarator(const Syntax *S,
                                                     Declarator *Next);
+  Declarator *buildUsingDirectiveDeclarator(const MacroSyntax *S);
 
   Declarator *buildNestedNameSpec(const CallSyntax *S, Declarator *Next);
   Declarator *buildNestedTemplate(const ElemSyntax *S, Declarator *Next);

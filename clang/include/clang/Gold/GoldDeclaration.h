@@ -267,6 +267,9 @@ public:
   /// checks if a function has a body.
   bool declaresFunctionDef() const;
 
+  /// Checks if this is a using directive declaration.
+  bool declaresUsingDirective() const;
+
   bool hasNestedNameSpecifier() const;
 
   llvm::StringRef getSuspectedKindStr() const;

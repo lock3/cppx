@@ -414,6 +414,72 @@ clang::Stmt *StmtElaborator::elaborateArrayMacroStmt(const MacroSyntax *S) {
   return DS;
 }
 
+static void handleUsingBlockList(SyntaxContext &Ctx, Sema &SemaRef,
+                                 const ListSyntax *List,
+                                 clang::SourceLocation UsingLoc) {
+  for (const Syntax *Item : List->children()) {
+    clang::Expr *E = ExprElaborator(Ctx, SemaRef).elaborateExpr(Item);
+
+    if (clang::CppxDeclRefExpr *CDRE = dyn_cast<clang::CppxDeclRefExpr>(E)) {
+      // using namespace declaration
+      if (CDRE->getType()->isNamespaceType()) {
+        clang::CppxNamespaceDecl *NS =
+          cast<clang::CppxNamespaceDecl>(CDRE->getValue());
+
+        clang::Scope *CxxScope = SemaRef.getCurClangScope();
+        clang::CXXScopeSpec SS;
+        clang::ParsedAttributesView AttrView;
+        clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDirective(
+          CxxScope, UsingLoc, Item->getLoc(), SS, Item->getLoc(),
+          NS->getIdentifier(), AttrView);
+        SemaRef.getCurrentScope()->UsingDirectives.insert(
+          cast<clang::UsingDirectiveDecl>(UD));
+      }
+    }
+  }
+}
+
+static void handleUsingBlock(SyntaxContext &Ctx, Sema &SemaRef,
+                             const ArraySyntax *Block,
+                             clang::SourceLocation UsingLoc) {
+  for (const Syntax *Item : Block->children()) {
+    if (const ArraySyntax *II = dyn_cast<ArraySyntax>(Item))
+      handleUsingBlock(Ctx, SemaRef, II, UsingLoc);
+    else if (const ListSyntax *II = dyn_cast<ListSyntax>(Item))
+      handleUsingBlockList(Ctx, SemaRef, II, UsingLoc);
+    else {
+      clang::Expr *E = ExprElaborator(Ctx, SemaRef).elaborateExpr(Item);
+
+      if (clang::CppxDeclRefExpr *CDRE = dyn_cast<clang::CppxDeclRefExpr>(E)) {
+        // using namespace declaration
+        if (CDRE->getType()->isNamespaceType()) {
+          clang::CppxNamespaceDecl *NS =
+            cast<clang::CppxNamespaceDecl>(CDRE->getValue());
+
+          clang::Scope *CxxScope = SemaRef.getCurClangScope();
+          clang::CXXScopeSpec SS;
+          clang::ParsedAttributesView AttrView;
+          clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDirective(
+            CxxScope, UsingLoc, Item->getLoc(), SS, Item->getLoc(),
+            NS->getIdentifier(), AttrView);
+          SemaRef.getCurrentScope()->UsingDirectives.insert(
+            cast<clang::UsingDirectiveDecl>(UD));
+        }
+      }
+    }
+  }
+}
+
+clang::Stmt *StmtElaborator::elaborateUsingMacroStmt(const MacroSyntax *S) {
+  assert(isa<ArraySyntax>(S->getBlock()));
+  const ArraySyntax *Block = cast<ArraySyntax>(S->getBlock());
+
+  // We might have any amount of nesting of lists within the macro block.
+  llvm::SmallVector<clang::Stmt *, 4> Stmts;
+  handleUsingBlock(Context, SemaRef, Block, S->getCall()->getLoc(), Stmts);
+  return nullptr;
+}
+
 // An auto-deduced operator'in' call does not appear to be a declaration to our
 // elaborator, so we will have to fabricate something here.
 static clang::DeclStmt *
@@ -822,6 +888,8 @@ StmtElaborator::elaborateMacro(const MacroSyntax *S) {
 
   if (Callee->getSpelling() == "array")
     return elaborateArrayMacroStmt(S);
+  if (Callee->getSpelling() == "using")
+    return elaborateUsingMacroStmt(S);
 
   unsigned DiagID = Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
                                           "use of undefined macro");

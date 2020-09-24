@@ -1273,6 +1273,9 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
         llvm_unreachable("We have an invalid scope to resume!");
     }
 
+    if (D->declaresUsingDirective())
+      return handleUsingDirectiveDecl(SemaRef);
+
     Sema::OptionalScopeRAII TemplateParamScope(SemaRef);
     Sema::OptioanlClangScopeRAII ClangTemplateScope(SemaRef);
 

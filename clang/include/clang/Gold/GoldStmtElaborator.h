@@ -111,6 +111,7 @@ private:
   clang::Stmt *elaborateIfStmt(const MacroSyntax *S);
   clang::Stmt *elaborateElseStmt(const MacroSyntax *S);
   clang::Stmt *elaborateArrayMacroStmt(const MacroSyntax *S);
+  clang::Stmt *elaborateUsingMacroStmt(const MacroSyntax *S);
 
   clang::Stmt *elaborateForStmt(const MacroSyntax *S);
   clang::Stmt *elaborateBlockForStmt(const MacroSyntax *S);

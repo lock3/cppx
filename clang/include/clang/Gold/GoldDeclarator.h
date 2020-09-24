@@ -95,6 +95,11 @@ enum DeclaratorKind {
   /// This is for when we have x[^int] or x[T:type][^T]
   DK_Specialization,
 
+  /// A special declarator for using directives. Unique in that it is composed
+  /// of only a macro syntax rather than a call syntax, and will always be a
+  /// singleton sequence.
+  DK_UsingDirective,
+
   /// This declarator indicates that there was an error evaluating
   /// the declarator. This usually means that there is an ErrorSyntax node
   /// located within the tree.
@@ -482,6 +487,26 @@ public:
     return Dcl->getKind() == DK_Specialization;
   }
 };
-}
+
+class UsingDirectiveDeclarator : public Declarator {
+  clang::SourceLocation UsingLoc;
+  const Syntax *Args;
+
+public:
+  UsingDirectiveDeclarator(clang::SourceLocation UsingLoc, const Syntax *Args)
+    : Declarator(DK_UsingDirective, nullptr), UsingLoc(UsingLoc), Args(Args)
+    {}
+
+  const Syntax *getArgs();
+
+  virtual clang::SourceLocation getLoc() const override;
+  virtual std::string getString(bool IncludeKind = false) const override;
+
+  static bool classof(const Declarator *Dcl) {
+    return Dcl->getKind() == DK_UsingDirective;
+  }
+};
+
+} // namespace gold
 
 #endif
