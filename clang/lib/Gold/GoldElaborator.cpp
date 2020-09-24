@@ -33,6 +33,7 @@
 #include "clang/Sema/TypeLocUtil.h"
 #include "clang/Sema/CXXFieldCollector.h"
 
+#include "clang/Gold/ClangToGoldDeclBuilder.h"
 #include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldExprElaborator.h"
 #include "clang/Gold/GoldStmtElaborator.h"
@@ -777,7 +778,6 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
                                          Sema& SemaRef, Declaration *D) {
   D->CurrentPhase = Phase::Initialization;
   using namespace clang;
-
   // Create and enter a namespace scope.
   clang::CppxNamespaceDecl *NSDecl = nullptr;
   clang::Scope *NSScope = SemaRef.enterClangScope(clang::Scope::DeclScope);
@@ -1247,30 +1247,20 @@ static bool hasLinkageSpecDecl(Sema& SemaRef, Declaration *D,
 
     // OnDup
     [&](const Syntax *FirstAttr, const Syntax *DuplicateAttr) {
+      std::string FirstAttrName;
+      checkAttrFormatAndName(FirstAttr, FirstAttrName);
+      std::string DupAttrName;
+      checkAttrFormatAndName(DuplicateAttr, DupAttrName);
       SemaRef.Diags.Report(DuplicateAttr->getLoc(),
                            clang::diag::err_duplicate_access_specifier)
-                           << FirstAttr->getLoc() << DuplicateAttr->getLoc();
+                           << FirstAttrName << DupAttrName;
     });
 }
 
 static bool enterLinkageLanguageSpec(Sema &SemaRef,
                                      Declaration *D,
                                      const Syntax *S) {
-  llvm::outs() << "Attempting to locating and evaulate the extern \"C\"\n";
   assert(S && "Invalid syntax node");
-  // There was no error.
-  // if (!D->IdDcl->UnprocessedAttributes)
-  //   return false;
-
-// if ( (!isa<clang::FunctionDecl>(D->Cxx) && !dyn_cast<clang::VarDecl>(D->Cxx))
-//     || isa<clang::CXXMethodDecl>(D->Cxx)
-//     || isa<clang::VarTemplateSpecializationDecl>(D->Cxx)) {
-//   SemaRef.Diags.Report(S->getLoc(),
-//                        clang::diag::err_invalid_attribute_for_decl)
-//                        << "extern"
-//                        << "free function or non-member variable.";
-//   return;
-// }
   SemaRef.enterClangScope(clang::Scope::DeclScope);
   SyntaxContext &Context = SemaRef.getContext();
   if (const auto *Call = dyn_cast<CallSyntax>(S)) {
@@ -1299,15 +1289,26 @@ static bool enterLinkageLanguageSpec(Sema &SemaRef,
 
     // We do this because we are technically chaning decl contexts.
     D->DeclaringContext = cast<clang::DeclContext>(LinkageDecl);
+    ClangToGoldDeclRebuilder rebuilder(Context, SemaRef);
+    Declaration *GDecl = rebuilder.generateDeclForDeclContext(
+                                                          D->DeclaringContext, S);
+    if (!GDecl)
+      // Any error reporting will be handled the the rebuilder.
+      return true;
+    // Changing owner ship to the new decl context.
+    D->ParentDecl = GDecl;
+    D->Cxt = GDecl;
+    SemaRef.pushDecl(GDecl);
   } else {
     llvm_unreachable("Invalid tree format");
   }
+
+
   return false;
 }
 
 static bool exitLinkageLanguageSpec(Sema &SemaRef,
                                     Declaration *D) {
-  // D->DeclaringContext = cast<clang::DeclContext>(LinkageDecl);
   clang::Decl *CompleteDecl
       = SemaRef.getCxxSema().ActOnFinishLinkageSpecification(
         SemaRef.getCurClangScope(), cast<clang::Decl>(D->DeclaringContext),
@@ -1317,14 +1318,20 @@ static bool exitLinkageLanguageSpec(Sema &SemaRef,
   if (!CompleteDecl)
     return true;
 
-// Leaving DeclScope
-SemaRef.leaveClangScope(D->Op->getLoc());
-// // Setting storage class for declaration.
-// if (clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(D->Cxx)) {
-//   FD->setStorageClass(clang::StorageClass::SC_Extern);
-// } else if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(D->Cxx)) {
-//   VD->setStorageClass(clang::StorageClass::SC_Extern);
-// }
+  // Leaving DeclScope
+  SemaRef.leaveClangScope(D->Op->getLoc());
+  SemaRef.popDecl();
+  SemaRef.verifyMatchingDeclarationAndDeclContext();
+  // SemaRef.popDecl
+  // FIXME:  I may need to add additional error checking and I may also need to
+  // handle outputting errors here also.
+
+  // // Setting storage class for declaration.
+  // if (clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(D->Cxx)) {
+  //   FD->setStorageClass(clang::StorageClass::SC_Extern);
+  // } else if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(D->Cxx)) {
+  //   VD->setStorageClass(clang::StorageClass::SC_Extern);
+  // }
   return false;
 }
 
@@ -1657,9 +1664,9 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
                                           Ty->getType(), Ty, ES, false,
                               false, clang::ConstexprSpecKind::CSK_unspecified);
     else if (Destructor)
-    *FD = Method =
-      clang::CXXDestructorDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
-                                       Ty->getType(), Ty, false, false,
+      *FD = Method =
+        clang::CXXDestructorDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
+                                        Ty->getType(), Ty, false, false,
                                      clang::ConstexprSpecKind::CSK_unspecified);
 
 
@@ -1712,6 +1719,14 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::Sema &CxxSema = SemaRef.getCxxSema();
   clang::DeclContext *Owner = D->getOwningDeclContext();
+  if (auto *Linkage = dyn_cast<clang::LinkageSpecDecl>(Owner)) {
+    if (Linkage->getParent()->isRecord()) {
+      SemaRef.Diags.Report(D->Op->getLoc(),
+                          clang::diag::err_invalid_extern_c)
+                          << 0;
+      return nullptr;
+    }
+  }
   clang::DeclContext *ResolvedCtx = Owner;
   if (D->hasNestedNameSpecifier()) {
     ResolvedCtx = SemaRef.getCxxSema().computeDeclContext(D->ScopeSpec, true);
@@ -2758,6 +2773,20 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
 
   bool IsClassMember = D->isDeclaredWithinClass();
 
+  // Cannot have a local extern variable with linkage?
+  if (auto *Linkage
+                = dyn_cast<clang::LinkageSpecDecl>(D->getOwningDeclContext())) {
+    clang::DeclContext *Cur = Linkage;
+    while(Cur) {
+      if (Cur->isFunctionOrMethod()) {
+        SemaRef.Diags.Report(D->Op->getLoc(),
+                              clang::diag::err_invalid_extern_c)
+                              << 3;
+        return nullptr;
+      }
+      Cur = Cur->getParent();
+    }
+  }
   // Templated variables cannot be a field
   if (IsClassMember && !D->Template) {
     return elaborateField(D, TInfo);
@@ -3505,7 +3534,12 @@ clang::Decl *Elaborator::elaborateTemplateAliasOrVariable(Declaration *D) {
 clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
   // Get type information.
   clang::DeclContext *Owner = D->getOwningDeclContext();
-
+  if (isa<clang::LinkageSpecDecl>(Owner)) {
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_invalid_extern_c)
+                         << /*a parameter*/1;
+    return nullptr;
+  }
   ExprElaborator TypeElab(Context, SemaRef);
   clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
   if (!TypeExpr) {
@@ -3540,6 +3574,12 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
 
 clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
   clang::DeclContext *Owner = D->getOwningDeclContext();
+  if (isa<clang::LinkageSpecDecl>(Owner)) {
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_invalid_extern_c)
+                         << /*a template parameter*/2;
+    return nullptr;
+  }
 
   ExprElaborator TypeElab(Context, SemaRef);
   clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
@@ -3958,7 +3998,11 @@ clang::Decl *Elaborator::elaborateField(Declaration *D,
   clang::CXXRecordDecl *Owner = dyn_cast<clang::CXXRecordDecl>(Ctxt);
   // Get the type of the entity.
   if(!Owner) {
-    llvm_unreachable("Invalid field declaration. Declaration is not within a class.");
+    // This occurs when we are within an extern "C" decl
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                         clang::diag::err_invalid_extern_c)
+                         << /* a member */0;
+    return nullptr;
   }
 
   clang::SourceLocation Loc = D->Decl->getLoc();

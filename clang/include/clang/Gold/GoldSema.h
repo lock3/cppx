@@ -210,6 +210,10 @@ public:
   /// Restore previously exited DeclContext
   void restoreDeclContext(Declaration *D);
 
+  /// This is mainly for debugging, this function as provided so that we can
+  /// assure that we actually have set the declaration contexts.
+  void verifyMatchingDeclarationAndDeclContext() const;
+
   /// Make D the current declaration.
   void pushDecl(Declaration *D);
 

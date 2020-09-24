@@ -87,7 +87,6 @@ const SpecializationDeclarator *Declarator::getAsSpecialization() const {
 }
 
 void Declarator::printSequence(llvm::raw_ostream &os) const {
-
   const Declarator *D = this;
   do {
     os << D->getString(true);
@@ -98,6 +97,27 @@ void Declarator::printSequence(llvm::raw_ostream &os) const {
   }  while (D);
 
   os << '\n';
+}
+
+void Declarator::printSeqWithAttr(llvm::raw_ostream &os) const {
+  const Declarator *D = this;
+  do {
+    os << D->getString(true) << "\n";
+    if (D->UnprocessedAttributes) {
+      os << "Dumping current attributes!\n";
+      for(const Syntax *AttrSyn : *D->UnprocessedAttributes) {
+        os << "attribute\n";
+        AttrSyn->dump();
+      }
+    } else {
+      os << "No attributes\n";
+    }
+
+    D = D->Next;
+  }  while (D);
+
+  os << '\n';
+
 }
 
 void Declarator::recordAttributes(const Syntax* AttrNode) {
