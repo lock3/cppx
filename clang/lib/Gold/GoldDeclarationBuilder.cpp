@@ -160,6 +160,9 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
     return false;
   };
 
+  if (Cur->isUsingDirective())
+    return false;
+
   if (Cur->isGlobalNameSpecifier()) {
     TheDecl->GlobalNsSpecifier = Cur->getAsGlobalNameSpecifier();
     Cur = Cur->Next;
@@ -478,6 +481,7 @@ bool DeclarationBuilder::checkRequiresType(const Syntax *DeclExpr,
       }
     }
   }
+
   return false;
 }
 
@@ -771,6 +775,11 @@ bool DeclarationBuilder::classifyDecl(const Syntax *DeclExpr,
   // this is handled within checkEnumDeclaration
   if (TheDecl->SuspectedKind == UDK_EnumConstant)
     return false;
+
+  if (TheDecl->Decl->isUsingDirective()) {
+    TheDecl->SuspectedKind = UDK_UsingDirective;
+    return false;
+  }
 
   bool EncounteredError = false;
   if (isTagLikeDeclOrForwardDecl(SemaRef, TheDecl, EncounteredError)) {
@@ -1182,6 +1191,7 @@ DeclarationBuilder::buildTemplateFunctionOrNameDeclarator(const Syntax *S,
 
 Declarator *
 DeclarationBuilder::buildUsingDirectiveDeclarator(const MacroSyntax *S) {
+  InitExpr = S;
   return new UsingDirectiveDeclarator(S->getCall()->getLoc(), S);
 }
 

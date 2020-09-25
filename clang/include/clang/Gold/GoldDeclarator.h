@@ -54,6 +54,7 @@ class TypeDeclarator;
 class TemplateParamsDeclarator;
 class ImplicitEmptyTemplateParamsDeclarator;
 class SpecializationDeclarator;
+class UsingDirectiveDeclarator;
 
 /// Kinds of declarations.
 enum DeclaratorKind {
@@ -175,6 +176,7 @@ public:
     return Kind == DK_TemplateParams || isImplicitTemplateParameters();
   }
   bool isSpecialization() const { return Kind == DK_Specialization; }
+  bool isUsingDirective() const { return Kind == DK_UsingDirective; }
   bool isError() const { return Kind == DK_Error; }
 
   UnknownDeclarator *getAsUnknown();
@@ -197,6 +199,8 @@ public:
   const ImplicitEmptyTemplateParamsDeclarator *getAsImplicitEmptyTemplateParams() const;
   SpecializationDeclarator *getAsSpecialization();
   const SpecializationDeclarator *getAsSpecialization() const;
+  UsingDirectiveDeclarator *getAsUsingDirective();
+  const UsingDirectiveDeclarator *getAsUsingDirective() const;
 
   /// Get a SourceLocation representative of this declarator.
   virtual clang::SourceLocation getLoc() const = 0;

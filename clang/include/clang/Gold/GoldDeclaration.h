@@ -122,10 +122,11 @@ enum UnevaluatedDeclKind {
                               //    - Not a declaration, This fully depends
                               //      on where it's used.
 
+  UDK_UsingDirective,  // A using directive declaration.
+
   // Things we don't have syntax for yet.
   /*
   UDK_UsingDecl,
-  UDK_UsingDirective,
   UDK_UsingPackDecl,
   UDK_FriendClass,
   UDK_FriendUnion,

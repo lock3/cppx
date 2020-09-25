@@ -475,8 +475,7 @@ clang::Stmt *StmtElaborator::elaborateUsingMacroStmt(const MacroSyntax *S) {
   const ArraySyntax *Block = cast<ArraySyntax>(S->getBlock());
 
   // We might have any amount of nesting of lists within the macro block.
-  llvm::SmallVector<clang::Stmt *, 4> Stmts;
-  handleUsingBlock(Context, SemaRef, Block, S->getCall()->getLoc(), Stmts);
+  handleUsingBlock(Context, SemaRef, Block, S->getCall()->getLoc());
   return nullptr;
 }
 

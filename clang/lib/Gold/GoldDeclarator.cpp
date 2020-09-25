@@ -86,6 +86,14 @@ const SpecializationDeclarator *Declarator::getAsSpecialization() const {
   return cast<SpecializationDeclarator>(this);
 }
 
+UsingDirectiveDeclarator *Declarator::getAsUsingDirective() {
+  return cast<UsingDirectiveDeclarator>(this);
+}
+
+const UsingDirectiveDeclarator *Declarator::getAsUsingDirective() const {
+  return cast<UsingDirectiveDeclarator>(this);
+}
+
 void Declarator::printSequence(llvm::raw_ostream &os) const {
   const Declarator *D = this;
   do {
