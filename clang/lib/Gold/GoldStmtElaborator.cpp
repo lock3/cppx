@@ -448,7 +448,12 @@ static void handleUsingBlock(SyntaxContext &Ctx, Sema &SemaRef,
     else if (const ListSyntax *II = dyn_cast<ListSyntax>(Item))
       handleUsingBlockList(Ctx, SemaRef, II, UsingLoc);
     else {
+      Sema::ExtendQualifiedLookupRAII ExQual(SemaRef);
       clang::Expr *E = ExprElaborator(Ctx, SemaRef).elaborateExpr(Item);
+
+      clang::Scope *CxxScope = SemaRef.getCurClangScope();
+      clang::CXXScopeSpec SS;
+      clang::ParsedAttributesView AttrView;
 
       if (clang::CppxDeclRefExpr *CDRE = dyn_cast<clang::CppxDeclRefExpr>(E)) {
         // using namespace declaration
@@ -456,15 +461,23 @@ static void handleUsingBlock(SyntaxContext &Ctx, Sema &SemaRef,
           clang::CppxNamespaceDecl *NS =
             cast<clang::CppxNamespaceDecl>(CDRE->getValue());
 
-          clang::Scope *CxxScope = SemaRef.getCurClangScope();
-          clang::CXXScopeSpec SS;
-          clang::ParsedAttributesView AttrView;
           clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDirective(
             CxxScope, UsingLoc, Item->getLoc(), SS, Item->getLoc(),
             NS->getIdentifier(), AttrView);
           SemaRef.getCurrentScope()->UsingDirectives.insert(
             cast<clang::UsingDirectiveDecl>(UD));
         }
+      } else if (clang::DeclRefExpr *DRE = dyn_cast<clang::DeclRefExpr>(E)) {
+        // using directive of a declaration in a namespace or base class.
+        gold::Declaration *D = SemaRef.getDeclaration(DRE->getDecl());
+        clang::UnqualifiedId Name;
+        Name.setIdentifier(D->getId(), D->getEndOfDecl());
+
+        clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDeclaration(
+          CxxScope, clang::AS_none, UsingLoc, clang::SourceLocation(),
+          SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
+        // FIXME: if this comes from an operator'.', elaborate lhs to
+        // differentiate classes and namespaces.
       }
     }
   }

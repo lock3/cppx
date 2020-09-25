@@ -1942,7 +1942,8 @@ clang::Expr *ExprElaborator::elaborateNNS(clang::NamedDecl *NS,
     return RHSExpr;
 
   // We've finished lookup and can clear the NNS context.
-  SemaRef.CurNNSContext.clear();
+  if (!SemaRef.isExtendedQualifiedLookupContext())
+    SemaRef.CurNNSContext.clear();
   ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr);
   return RHSExpr;
 }
