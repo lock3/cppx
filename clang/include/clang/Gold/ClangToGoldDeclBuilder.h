@@ -49,6 +49,8 @@ public:
   /// Starts the rebuild process.
   Declaration *rebuild(clang::CXXRecordDecl *ToConvert);
   bool finishDecl(Declaration *D, clang::SourceRange Range);
+  Declaration *generateDeclForDeclContext(clang::DeclContext *DC,
+                                          const Syntax *AssociatedSyntax);
 private:
   gold::Scope *determineParentScope();
   bool rebuildMember(clang::Decl *Member);

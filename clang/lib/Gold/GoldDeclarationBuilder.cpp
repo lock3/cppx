@@ -12,8 +12,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Gold/GoldDeclarationBuilder.h"
+
 #include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldElaborator.h"
+
 #include "clang/Sema/Lookup.h"
 
 namespace gold {
@@ -90,6 +92,8 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
 
   SemaRef.getCurrentScope()->addDecl(TheDecl);
   TheDecl->CurrentPhase = Phase::Identification;
+  // llvm::outs() << "Dumping attribute sequence: \n";
+  // TheDecl->Decl->printSeqWithAttr();
   return TheDecl;
 }
 
@@ -194,6 +198,12 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
                           clang::diag::err_expected_declarator_chain_sequence)
                           << 2;
     return true;
+  }
+  // Recording additional attributes associated with the name.
+  // This is to handle the special case of the . member access operator
+  // picking up the attributes from a nested name declaration with attributes.
+  for(const Syntax *NodeWithAttr : AdditionalNodesWithAttrs) {
+    TheDecl->IdDcl->recordAttributes(NodeWithAttr);
   }
 
   // Jump to the very end and make sure that we can properly do deduction.
@@ -988,6 +998,7 @@ DeclarationBuilder::buildNestedNameSpec(const CallSyntax *Call, Declarator *Next
   FusedOpKind OpKind = getFusedOpKind(SemaRef, Call);
   if (OpKind == FOK_MemberAccess) {
     Declarator *ConstructedName = nullptr;
+    AdditionalNodesWithAttrs.insert(Call);
     ConstructedName = buildNestedOrRegularName(Call->getArgument(1), Next);
     // When this happens an error should have already been emitted.
     if (!ConstructedName)
@@ -1055,9 +1066,11 @@ DeclarationBuilder::buildNameDeclarator(const Syntax *S, Declarator *Next) {
     FusedOpKind OpKind = getFusedOpKind(SemaRef, dyn_cast<CallSyntax>(S));
     switch(OpKind) {
       case FOK_MemberAccess:{
-        if (const auto *IdName = dyn_cast<AtomSyntax>(Call->getArgument(1)))
+        if (const auto *IdName = dyn_cast<AtomSyntax>(Call->getArgument(1))){
+          AdditionalNodesWithAttrs.insert(Call);
           return buildNestedTemplateSpecializationOrName(Call->getArgument(0),
                                                 handleIdentifier(IdName, Next));
+        }
 
         if (const auto *Es = dyn_cast<ErrorSyntax>(Call->getArgument(1)))
           return handleErrorSyntax(Es, Next);
@@ -1143,12 +1156,22 @@ DeclarationBuilder::buildTemplateFunctionOrNameDeclarator(const Syntax *S,
 
       FusedOpKind OpKind = getFusedOpKind(SemaRef, Func);
       if (OpKind == FOK_MemberAccess) {
+        AdditionalNodesWithAttrs.insert(Func);
         return buildTemplateOrNameDeclarator(Func, Next);
       }
     }
-    Declarator *Temp = buildTemplateOrNameDeclarator(Func->getCallee(),
-                               handleFunction(Func, Next));
-    Temp->recordAttributes(Func);
+    Declarator *T1 = handleFunction(Func, Next);
+    Declarator *Temp = buildTemplateOrNameDeclarator(Func->getCallee(), T1);
+    Declarator *Cur = Temp;
+    while(Cur) {
+      if (isa<IdentifierDeclarator>(Cur)) {
+        break;
+      }
+      Cur = Cur->Next;
+    }
+    if (Cur)
+      Cur->recordAttributes(Func);
+
     return Temp;
   } else if (const ErrorSyntax *Es = dyn_cast<ErrorSyntax>(S)) {
     return handleErrorSyntax(Es, Next);

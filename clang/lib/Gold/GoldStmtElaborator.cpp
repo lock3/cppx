@@ -491,7 +491,7 @@ createForRangeLoopVarDecl(SyntaxContext &Ctx, Sema &SemaRef,
     CxxAST.CreateTypeSourceInfo(CxxAST.getAutoDeductType());
   clang::SourceLocation Loc = S->getArgument(0)->getLoc();
 
-  llvm::StringRef Name = cast<AtomSyntax>(S->getArgument(0))->getSpelling();
+  std::string Name = cast<AtomSyntax>(S->getArgument(0))->getSpelling();
   clang::IdentifierInfo *Id = &CxxAST.Idents.get(Name);
   clang::VarDecl *VD =
     clang::VarDecl::Create(CxxAST, Owner, Loc, Loc, Id, TInfo->getType(),

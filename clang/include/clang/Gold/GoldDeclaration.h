@@ -340,7 +340,6 @@ public:
   /// the operator name is a known valid operator. This operator name is only
   /// used by C++ iff there is a function declarator. This is the actual name
   /// used by the clang::Decl in CXX. This is to be consistent with C++.
-  // const clang::IdentifierInfo *OpId = nullptr;
   const OpInfoBase* OpInfo = nullptr;
 
 

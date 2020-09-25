@@ -22,6 +22,8 @@
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSyntax.h"
 
+#include "llvm/ADT/SmallSet.h"
+
 #include "clang/Gold/GoldSyntaxContext.h"
 
 namespace clang{
@@ -54,6 +56,7 @@ private:
   const OpInfoBase *OpInfo = nullptr;
   const Syntax *InitExpr = nullptr;
   InitKind InitOperatorUsed = IK_None;
+  llvm::SmallSet<const Syntax*, 6> AdditionalNodesWithAttrs;
 
   // Overridding setting, this is special because enums are so restructive
   // as to which declarations are actually allowed within them.

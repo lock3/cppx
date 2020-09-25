@@ -207,6 +207,8 @@ public:
   /// Prints the declarator sequence.
   void printSequence(llvm::raw_ostream &os) const;
 
+  void printSeqWithAttr(llvm::raw_ostream &os = llvm::outs()) const;
+
   /// This sets the attribute node and records all attributes into the
   /// UnprocessedAttributes member.
   void recordAttributes(const Syntax* AttributeNode);

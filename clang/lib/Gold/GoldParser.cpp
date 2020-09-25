@@ -1316,12 +1316,17 @@ Syntax *Parser::parseId() {
   if (Id.isFused()) {
     for (unsigned I = 0; I < Id.FusionInfo.NumTokens; ++I)
       FusionToks.push_back(*Id.FusionInfo.Tokens[I]);
+    if (Id.FusionInfo.Base != tok::Operator)
+      FusionToks.emplace_back(tok::EndOfFile, clang::SourceLocation(), Symbol());
 
     Syntax *Data = parsePre();
     if (Id.FusionInfo.Base != tok::Operator && !Data)
       return onError();
     else if (Id.FusionInfo.Base == tok::Operator && Data)
       return onError();
+
+    if (Id.FusionInfo.Base != tok::Operator)
+      expectToken(tok::EndOfFile);
 
     return onAtom(Id, Id.FusionInfo.Base, Data);
   }
