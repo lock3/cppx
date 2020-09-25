@@ -1242,7 +1242,7 @@ static bool hasLinkageSpecDecl(Sema& SemaRef, Declaration *D,
     [](const Syntax *Attr) -> bool {
       std::string ActualName;
       checkAttrFormatAndName(Attr, ActualName);
-      return ActualName == "extern" || "static";
+      return ActualName == "extern" || ActualName == "static";
     },
 
     // OnDup
@@ -4709,9 +4709,8 @@ void Elaborator::elaborateExternAttr(Declaration *D, const Syntax *S,
     return;
   }
   // Checking a few things.
-  if (isa<CallSyntax>(S)) {
-    llvm_unreachable("This should never occur.");
-  } else if (isa<AtomSyntax>(S)) {
+  assert(!isa<CallSyntax>(S) && "extern attribute in invalid syntax");
+  if (isa<AtomSyntax>(S)) {
     if (clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(D->Cxx)) {
       FD->setStorageClass(clang::StorageClass::SC_Extern);
     } else if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(D->Cxx)) {
@@ -4721,13 +4720,14 @@ void Elaborator::elaborateExternAttr(Declaration *D, const Syntax *S,
     } else {
       SemaRef.Diags.Report(S->getLoc(),
                            clang::diag::err_invalid_attribute_for_decl)
-                           << "extern"
-                           << "free function or non-member variable.";
+        << "extern"
+        << "free function or non-member variable.";
       return;
     }
   } else {
     llvm_unreachable("Invalid attribute format");
   }
+
   Status.HasExtern = true;
 }
 
