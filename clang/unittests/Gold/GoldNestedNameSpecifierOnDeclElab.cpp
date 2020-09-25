@@ -49,7 +49,7 @@ x : namespace = namespace:
     ;
   operator"=="(a:ref Y, b:ref Y):bool
 
-X.operator"=="(a:ref Y, b:ref Y):bool
+x.operator"=="(a:ref Y, b:ref Y):bool!
   return false
 )";
   auto Matcher = translationUnitDecl(
@@ -191,6 +191,29 @@ c.foo() : int!
       has(cxxMethodDecl(hasName("foo"), unless(isDefinition())))
     )),
     has(cxxMethodDecl(hasName("foo"),
+      has(nestedNameSpecifier(specifiesType(asString("struct c"))))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}
+
+
+TEST(GoldNestedNameDecl, OperatorDeclWithinClassDefOutside) {
+  StringRef Code = R"(
+c : type = class:
+  x : int
+  y : bool
+  operator"=="(other:c) : bool
+
+c.operator"=="(other:ref c) : bool!
+  return false
+)";
+  auto Matcher = translationUnitDecl(
+    has(cxxRecordDecl(
+      hasName("c"),
+      has(cxxMethodDecl(unless(isDefinition())))
+    )),
+    has(cxxMethodDecl(
       has(nestedNameSpecifier(specifiesType(asString("struct c"))))
     ))
   );
@@ -995,6 +1018,45 @@ X[int].foo() : int!
       hasDescendant(cxxMethodDecl(hasName("foo"), unless(isDefinition())))
     )),
     has(cxxMethodDecl(hasName("foo")))
+  );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}
+
+TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_NonDependentConversionOperator) {
+  StringRef Code = R"(
+c[T:type] : type = class:
+  bar() : bool
+  conversion"int"()!
+    return 5
+
+c[int].bar() : bool!
+  x : int =  ^this
+  return false
+)";
+  auto Matcher = translationUnitDecl(
+    hasDescendant(classTemplateSpecializationDecl())
+  );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}
+
+
+TEST(GoldNestedNameDecl, ImplicitSpecialization_CToG_DependentConversionOperator) {
+  StringRef Code = R"(
+X[T:type] : type = class:
+  a : int
+
+c[T:type] : type = class:
+  bar() : bool
+  conversion"X[T]"()!
+    return X[T]
+
+c[int].bar() : bool!
+  s : X[int]
+  s = ^this
+  return false
+)";
+  auto Matcher = translationUnitDecl(
+    hasDescendant(classTemplateSpecializationDecl())
   );
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }

@@ -11336,7 +11336,7 @@ def err_type_form_declarator_sequence : Error<
   "missing type for declaration">;
 
 def err_invalid_function_defintion_syntax : Error<
-  "invalid function defintion, operator ! used without function parameter">;
+  "invalid function defintion, operator ! used without function parameters">;
 
 def err_template_alias_missing_assignment : Error<
   "template type alias missing assignment">;
@@ -11367,6 +11367,15 @@ def err_namespace_alias_within_class : Error<
 def err_invalid_extern_c : Error<
   "cannot apply linkage specifier to %select{a member|a parameter"
   "|a template parameter|variable declarations inside a function}0">;
+
+def err_conversion_operator_with_return_type: Error<
+  "conversion operator cannot have a return type">;
+
+def err_conversion_operator_decl_without_parameters: Error<
+  "conversion operaror declaration must have function parameters">;
+
+def err_conversion_operator_bad_location: Error<
+  "conversion operaror declaration be within a class or union">;
 
 } // end of Gold category
 

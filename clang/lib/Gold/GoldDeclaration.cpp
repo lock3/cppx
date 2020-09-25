@@ -244,6 +244,10 @@ bool Declaration::declaresDestructor() const {
   return SuspectedKind == UDK_Destructor;
 }
 
+bool Declaration::declaresConversionOperator() const {
+  return SuspectedKind == UDK_ConversionOperator;
+}
+
 // A declarator declares a template if it's first non-id declarator is
 // declares template parameters.
 bool Declaration::declaresFunctionTemplate() const {

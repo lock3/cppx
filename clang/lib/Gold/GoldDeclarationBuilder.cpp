@@ -69,8 +69,6 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
   TheDecl->ClangDeclaringScope = SemaRef.getCurClangScope();
   TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
   TheDecl->ScopeForDecl = SemaRef.getCurrentScope();
-  llvm::outs() << "Declaration chain!\n";
-  TheDecl->Decl->printSequence(llvm::outs());
   if (checkDeclaration(S, TheDecl))
     return nullptr;
 
@@ -241,12 +239,16 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
   }
   if (Cur != nullptr) {
     if (RequiresDeclOrError) {
-      auto Loc = DeclExpr->getLoc();
-      Loc.dump(SemaRef.getCxxSema().getSourceManager());
-      SemaRef.Diags.Report(Cur->getLoc(), clang::diag::err_invalid_declaration);
+      if (ConversionTypeSyntax)
+        SemaRef.Diags.Report(Cur->getLoc(),
+                         clang::diag::err_conversion_operator_with_return_type);
+      else
+        SemaRef.Diags.Report(Cur->getLoc(),
+                             clang::diag::err_invalid_declaration);
     }
     return true;
   }
+
   return false;
 }
 
@@ -766,9 +768,47 @@ static bool deduceVariableSyntax(Sema &SemaRef, Declaration *TheDecl,
   return true;
 }
 
+bool DeclarationBuilder::checkClassifiedConversionOperator(
+                                 const Syntax *DeclExpr, Declaration *TheDecl) {
+  // Keep in mind that if we made it to this point the we MUST be a declaration
+  // or at the very least an invalid declaration.
+
+  if (!TheDecl->FunctionDcl){
+    SemaRef.Diags.Report(TheDecl->IdDcl->getLoc(),
+                clang::diag::err_conversion_operator_decl_without_parameters);
+    return true;
+  }
+
+  // If we reached here then we must be a conversion operator.
+  TheDecl->SuspectedKind = UDK_ConversionOperator;
+  bool DeclInTag = TheDecl->ScopeForDecl->getKind() == SK_Class;
+  if (TheDecl->InitOpUsed == IK_None) {
+    if (!DeclInTag) {
+      SemaRef.Diags.Report(TheDecl->IdDcl->getLoc(),
+                           clang::diag::err_conversion_operator_bad_location);
+      return true;
+    }
+  } else {
+    // In this case we have some kind of definition and we need are not
+    // inside the body of a class/union, then we must have a NNS, if not
+    // then we are an error.
+    if (!DeclInTag && TheDecl->NNSInfo.empty()) {
+        SemaRef.Diags.Report(TheDecl->IdDcl->getLoc(),
+                             clang::diag::err_conversion_operator_bad_location);
+      return true;
+    }
+  }
+
+  // There are only two cases where this can be defined, is inside the body
+  // of a class, the other is in a class but with a Nested name specifier
+  return false;
+}
+
 bool DeclarationBuilder::classifyDecl(const Syntax *DeclExpr,
                                       Declaration *TheDecl) {
-
+  if (ConversionTypeSyntax) {
+    return checkClassifiedConversionOperator(DeclExpr, TheDecl);
+  }
   // this is handled within checkEnumDeclaration
   if (TheDecl->SuspectedKind == UDK_EnumConstant)
     return false;
@@ -1033,7 +1073,8 @@ DeclarationBuilder::buildNestedName(const Syntax *S, Declarator *Next) {
   if (const auto *SimpleName = dyn_cast<AtomSyntax>(S)) {
     return handleNestedNameSpecifier(SimpleName, Next);
   }
-  if (RequiresDeclOrError){
+  if (RequiresDeclOrError) {
+    llvm::outs() << "buildNestedName\n";
     SemaRef.Diags.Report(S->getLoc(),
                          clang::diag::err_invalid_declaration_kind)
                          <<2;
@@ -1089,6 +1130,7 @@ DeclarationBuilder::buildNameDeclarator(const Syntax *S, Declarator *Next) {
     ErrorIndicator = 1;
   }
   if (RequiresDeclOrError) {
+    llvm::outs() << "buildNameDeclarator\n";
     SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_declaration_kind)
                          << ErrorIndicator;
   }
@@ -1163,13 +1205,6 @@ DeclarationBuilder::buildTemplateFunctionOrNameDeclarator(const Syntax *S,
     }
     Declarator *Fn = handleFunction(Func, Next);
     Declarator *Temp = buildTemplateOrNameDeclarator(Func->getCallee(), Fn);
-    if (ConversionTypeSyntax) {
-      llvm::outs() << "We are handling function syntax?! when we have conversion syntax\n";
-      // If we are the conversion operator the next thing to do is to update the
-      // declarator chain by inserting the type after the function in the chain.
-      TypeDeclarator *TD = handleType(ConversionTypeSyntax, Next);
-      Fn->Next = TD;
-    }
     Declarator *Cur = Temp;
     while(Cur) {
       if (isa<IdentifierDeclarator>(Cur)) {
@@ -1216,7 +1251,30 @@ Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
   return buildTemplateFunctionOrNameDeclarator(S, Next);
 }
 
+Declarator *
+DeclarationBuilder::appendConversionType(Declarator *CurDcl) {
+  if (!CurDcl)
+    return CurDcl;
+
+  if (ConversionTypeSyntax) {
+    Declarator *Temp = CurDcl;
+
+    // Going until we reach the end of the declarator chain.
+    while(Temp && Temp->Next) Temp = Temp->Next;
+
+    // If we are the conversion operator the next thing to do is to update the
+    // declarator chain by inserting the type after the function in the chain.
+    Temp->Next = handleType(ConversionTypeSyntax, nullptr);
+  }
+  return CurDcl;
+}
+
 Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
+  return appendConversionType(dispatchAndCreateDeclarator(S));
+}
+
+Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
+
   // Handling a special case of an invalid enum identifier .name
   // without an assignment operator. This need to to output
   // the correct error message.
@@ -1226,10 +1284,12 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
 
   const auto *Call = dyn_cast<CallSyntax>(S);
   if (!Call) {
-    if (RequiresDeclOrError)
+    if (RequiresDeclOrError){
+      llvm::outs() << "Call inside of dispatchAndCreateDeclarator 0\n";
       SemaRef.Diags.Report(S->getLoc(),
                            clang::diag::err_invalid_declaration_kind)
                            << 2;
+    }
     return nullptr;
   }
 
@@ -1282,7 +1342,7 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
       return nullptr;
 
     return handleGlobalNameSpecifier(Call,
-                                     makeDeclarator(Call->getArgument(0)));
+                              dispatchAndCreateDeclarator(Call->getArgument(0)));
     break;
   }
   case FOK_Colon:{
@@ -1296,15 +1356,7 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
     InitExpr = nullptr;
     break;
   }
-  case FOK_Exclaim:{
-    const auto *Args = cast<ListSyntax>(Call->getArguments());
-    Decl = Args->getChild(0);
-    InitExpr = Args->getChild(1);
-    InitOperatorUsed = IK_Exlaim;
-    break;
-  }
-
-  case FOK_Unknown:
+  case FOK_Exclaim:
   case FOK_Arrow:
   case FOK_If:
   case FOK_Else:
@@ -1316,16 +1368,23 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
   case FOK_Ref:
   case FOK_RRef:
   case FOK_Brackets:
-  case FOK_Parens:{
+  case FOK_Unknown:
+  case FOK_Parens:{ // TODO: Verify that this works as expected.
     // None of these operators can be the root of a declaration.
     if (RequiresDeclOrError) {
       if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
         if (AllowShortCtorAndDtorSyntax &&
               (Callee->getSpelling() == "constructor"
-              || Callee->getSpelling() == "destructor")) {
+              || Callee->getSpelling() == "destructor"
+              || (Callee->isFused()
+                  &&
+                  Callee->getFusionBase() == tok::Conversion
+                )
+            )) {
           return buildTemplateFunctionOrNameDeclarator(Call, nullptr);
         }
       }
+      llvm::outs() << "Call inside of dispatchAndCreateDeclarator 1\n";
       SemaRef.Diags.Report(S->getLoc(),
                            clang::diag::err_invalid_declaration_kind)
                            << 2;
@@ -1385,7 +1444,6 @@ DeclarationBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
       llvm_unreachable("User defined literal declarations not "
                         "imeplemented yet.");
     } else if (OriginalName.startswith("conversion\"")) {
-      llvm::outs() << "we have a conversion operator identifier!\n";
       ConversionTypeSyntax = S->getFusionArg();
       // All this does is get the type expression from the fused identifier
       // and create a TypeDeclarator for it. The error will be picked up later

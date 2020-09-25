@@ -21,12 +21,69 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-TEST(GoldConversionOperatorElab, InvalidConversionOperatorTwoTypes) {
+TEST(GoldConversionOperatorElab, InvalidConversionOperatorTwoTypesAsIdentifier) {
   StringRef Code = R"(
-conversion'int':int
+conversion'int':float32
 )";
   GoldFailureTest(Code);
 }
+
+TEST(GoldConversionOperatorElab, ConversionOperatorUsedAsNameForAssignment) {
+  StringRef Code = R"(
+conversion'int' = 4
+)";
+  GoldFailureTest(Code);
+}
+
+// TODO: File this as a bug report for the crash.
+// TEST(GoldConversionOperatorElab, ConversionOperatorUsedInsideOfEnum) {
+//   StringRef Code = R"(
+// x = enum:
+//   conversion'int'
+// )";
+//   GoldFailureTest(Code);
+// }
+
+// TEST(GoldConversionOperatorElab, ConversionUsedAsFieldNameInClass) {
+//   StringRef Code = R"(
+// x = class:
+//   conversion'int'
+// )";
+//   GoldFailureTest(Code);
+// }
+
+TEST(GoldConversionOperatorElab, ConversionOperatorAssignmentInsideFunction) {
+  StringRef Code = R"(
+foo() : void
+  conversion'int' = 1
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldConversionOperatorElab, ConversionOperatorDeclInsideFunction) {
+  StringRef Code = R"(
+foo() : void
+  conversion'int'():int
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldConversionOperatorElab, StaticConversionOperatorDecl) {
+  StringRef Code = R"(
+C = class:
+  conversion'int'()<static>:int!
+    return 3
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldConversionOperatorElab, InvalidConversionOperatorTwoTypesAsFunction) {
+  StringRef Code = R"(
+conversion'int'():float32
+)";
+  GoldFailureTest(Code);
+}
+
 
 TEST(GoldConversionOperatorElab, Decl_InvalidConversionOperatorDefinedOutsideOfClassNoNNS) {
   StringRef Code = R"(
@@ -44,6 +101,45 @@ conversion'int' ()
   GoldFailureTest(Code);
 }
 
+TEST(GoldConversionOperatorElab, ConversionOperatorWithParameter) {
+  StringRef Code = R"(
+C = class:
+  conversion'int' (i:int)!
+    return 5
+)";
+  GoldFailureTest(Code);
+}
+
+
+TEST(GoldConversionOperatorElab, ConversionOperatorArrayType) {
+  StringRef Code = R"(
+C = class:
+  conversion'[3]int' ()!
+    return 5
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldConversionOperatorElab, ConversionOperatorFunctionType) {
+  StringRef Code = R"(
+C = class:
+  conversion'int=>int' ()!
+    return 5
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldConversionOperatorElab, ConversionOperatorArrayTypeThroughTypedef) {
+  StringRef Code = R"(
+C = class:
+  x : type = [3] int
+  conversion'x' ()!
+    return 5
+)";
+  GoldFailureTest(Code);
+}
+
+
 TEST(GoldConversionOperatorElab, Decl_ConversionOperatorToInteger) {
   StringRef Code = R"(
 C = class:
@@ -51,7 +147,7 @@ C = class:
     return 5
 )";
   auto Matcher = cxxRecordDecl(hasDescendant(
-    cxxConversionDecl(hasType(asString("int")))
+    cxxConversionDecl(hasType(asString("int (void)")))
   ));
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }
@@ -64,7 +160,7 @@ C = class:
     return i
 )";
   auto Matcher = cxxRecordDecl(hasDescendant(
-    cxxConversionDecl(hasType(asString("int &")))
+    cxxConversionDecl(hasType(asString("int &(void)")))
   ));
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }
@@ -80,7 +176,7 @@ C = class:
 
 )";
   auto Matcher = cxxRecordDecl(hasDescendant(
-    cxxConversionDecl(hasType(asString("struct X")))
+    cxxConversionDecl(hasType(asString("struct X (void)")))
   ));
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }
@@ -97,9 +193,12 @@ C.conversion'X' ()!
   return X()
 
 )";
-  auto Matcher = cxxRecordDecl(hasDescendant(
-    cxxConversionDecl(hasType(asString("struct X")))
-  ));
+  auto Matcher = translationUnitDecl(
+    has(cxxRecordDecl(hasDescendant(
+      cxxConversionDecl(hasType(asString("struct X (void)")))
+    ))),
+    has( cxxConversionDecl(hasType(asString("struct X (void)"))))
+  );
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }
 
@@ -115,16 +214,29 @@ C = class:
 C.conversion'X' ()!
   return X()
 
-x.foo():void!
-  ;
-
 foo() : void!
   y : C = C()
   s : X = y
 )";
   // TODO: Figure out what an explicit conversion operator looks like in the AST.
+  auto Matcher = translationUnitDecl(has(
+    cxxRecordDecl(hasDescendant(
+      cxxConversionDecl(hasType(asString("struct X (void)")))
+    ))),
+    has( cxxConversionDecl(hasType(asString("struct X (void)"))))
+  );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}
+
+TEST(GoldConversionOperatorElab, Decl_ConversionOperatorTemplate) {
+  StringRef Code = R"(
+X = class:
+  conversion'T'[T:type]()!
+    return 4
+
+)";
   auto Matcher = cxxRecordDecl(hasDescendant(
-    cxxConversionDecl(hasType(asString("struct X")))
+    cxxConversionDecl(hasType(asString("type-parameter-0-0 (void)")))
   ));
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }

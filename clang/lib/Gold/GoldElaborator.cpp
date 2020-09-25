@@ -1592,13 +1592,17 @@ clang::DeclarationName getFunctionName(SyntaxContext &Ctx, Sema &SemaRef,
 }
 
 void setSpecialFunctionName(SyntaxContext &Ctx, clang::CXXRecordDecl *RD,
-                            Declaration *D, clang::DeclarationName &Name) {
+                            Declaration *D, clang::DeclarationName &Name,
+                            clang::QualType ConversionResultTy) {
   clang::QualType RecordTy = Ctx.CxxAST.getTypeDeclType(RD);
   clang::CanQualType Ty = Ctx.CxxAST.getCanonicalType(RecordTy);
   if (D->getId()->isStr("constructor")) {
     Name = Ctx.CxxAST.DeclarationNames.getCXXConstructorName(Ty);
   } else if (D->getId()->isStr("destructor")) {
     Name = Ctx.CxxAST.DeclarationNames.getCXXDestructorName(Ty);
+  } else if (D->getKind() == UDK_ConversionOperator) {
+    Name = Ctx.CxxAST.DeclarationNames.getCXXConversionFunctionName(
+                               Ctx.CxxAST.getCanonicalType(ConversionResultTy));
   }
 }
 void lookupFunctionRedecls(Sema &SemaRef, clang::Scope *FoundScope,
@@ -1669,7 +1673,6 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
                                         Ty->getType(), Ty, false, false,
                                      clang::ConstexprSpecKind::CSK_unspecified);
 
-
     Method->setImplicit(false);
     Method->setDefaulted(false);
     Method->setBody(nullptr);
@@ -1701,6 +1704,41 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
                                      FPT->getParamTypes() : clang::None,
                                      EPI);
     Method->setType(VoidFnTy);
+  } else if (Fn->declaresConversionOperator()) {
+    // TODO: Figure out what this is checking for and what things  I'll have
+    // to enfoce instead of sema ref.
+    // SemaRef.CheckConversionDeclarator(D, R, SC);
+    // if (D.isInvalidType())
+    //   return nullptr;
+    clang::ExplicitSpecifier
+      ES(nullptr, clang::ExplicitSpecKind::ResolvedFalse);
+    // IsVirtualOkay = true;
+    const auto *Proto = Ty->getType()->castAs<clang::FunctionProtoType>();
+    if (Proto->getNumParams() > 0) {
+      SemaRef.Diags.Report(Fn->IdDcl->getLoc(),
+                         clang::diag::err_conv_function_with_params);
+      return false;
+    }
+    clang::QualType ConvType = Proto->getReturnType();
+    // FIXME: I need to enforce this.
+    // C++ [class.conv.fct]p4:
+    //   The conversion-type-id shall not represent a function type nor
+    //   an array type.
+    if (ConvType->isArrayType()) {
+      SemaRef.Diags.Report(Fn->IdDcl->getLoc(),
+                           clang::diag::err_conv_function_to_array);
+      return false;
+    } else if (ConvType->isFunctionType()) {
+      SemaRef.Diags.Report(Fn->IdDcl->getLoc(),
+                           clang::diag::err_conv_function_to_function);
+      return false;
+    }
+
+    *FD = clang::CXXConversionDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
+                                          Ty->getType(), Ty,
+                                          /*isinline*/false, ES,
+                                      clang::ConstexprSpecKind::CSK_unspecified,
+                                          ExLoc);
   } else {
     clang::StorageClass SC = clang::SC_None;
     *FD = clang::CXXMethodDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
@@ -1774,7 +1812,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   DNI.setLoc(D->IdDcl->getLoc());
 
   if (InClass)
-    setSpecialFunctionName(Context, RD, D, Name);
+    setSpecialFunctionName(Context, RD, D, Name, TInfo->getType());
 
   clang::LookupResult Previous(CxxSema, DNI,
                                clang::Sema::LookupOrdinaryName,
@@ -4842,6 +4880,15 @@ void Elaborator::elaborateStaticAttr(Declaration *D, const Syntax *S,
   // If we are a record Decl then we know how to handle static.
   if (DC->isRecord()) {
     if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(D->Cxx)) {
+      if (isa<clang::CXXConversionDecl>(D->Cxx)) {
+        // TODO: Verify that this displays something meaningful
+        SemaRef.Diags.Report(S->getLoc(),
+                             clang::diag::err_conv_function_not_member)
+                            << clang::SourceRange(S->getLoc(), S->getLoc())
+                  << clang::SourceRange(D->IdDcl->getLoc(), D->IdDcl->getLoc());
+        D->Cxx->setInvalidDecl();
+        return;
+      }
       if (isa<clang::CXXConstructorDecl>(D->Cxx)
           || isa<clang::CXXDestructorDecl>(D->Cxx)) {
         SemaRef.Diags.Report(S->getLoc(),

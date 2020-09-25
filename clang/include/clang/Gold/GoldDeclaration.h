@@ -247,6 +247,9 @@ public:
   /// within a class.
   bool declaresDestructor() const;
 
+  /// Checks to see if SuspectedKind == UDK_ConversionOperator
+  bool declaresConversionOperator() const;
+
   /// True if this declares a template.
   bool declaresFunctionTemplate() const;
 

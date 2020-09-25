@@ -98,9 +98,19 @@ private:
   /// and RequireTypeForFunctions
   bool checkRequiresType(const Syntax *DeclExpr, Declaration *TheDecl);
 
+  /// checks to see if we are a conversion operator and if we
+  /// the we need to do some additional verification in order to assure that
+  /// we can be declared int the given context etc, we are a function,
+  /// and if we are not within a class we have a Nested name specifier.
+  /// Returns false if there was no error, and true if there was.
+  bool checkClassifiedConversionOperator(const Syntax *DeclExpr,
+                                         Declaration *TheDecl);
+
+
   /// Given the structure and context, attempt to classify what kind of
   /// declaration we have and in the current context how it could be used.
   bool classifyDecl(const Syntax *DeclExpr, Declaration *TheDecl);
+
 
   // Special requirements.
   // - Can have scoped name declarations.
@@ -150,10 +160,15 @@ private:
   // No declarations other then name = value, or name
   Declarator *handleEnumScope(const Syntax *S);
 
+  /// Attempts to reach the end of a declarator chain an append a new
+  /// declarator, specifically the type declarator, iff we are a conversion
+  /// operator declaration.
+  Declarator *appendConversionType(Declarator *CurDcl);
+
   /// This must be a call Either "operator'='", "operator':'", or "operator'in'"
   /// Operator in is a special case for us because it's just a ranged for loop.
   Declarator *makeDeclarator(const Syntax *S);
-
+  Declarator *dispatchAndCreateDeclarator(const Syntax *S);
   Declarator *makeTopLevelDeclarator(const Syntax *S, Declarator *Next);
   Declarator *buildTemplateFunctionOrNameDeclarator(const Syntax *S,
                                                     Declarator *Next);
