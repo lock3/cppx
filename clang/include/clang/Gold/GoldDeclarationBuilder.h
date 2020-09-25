@@ -58,6 +58,8 @@ private:
   InitKind InitOperatorUsed = IK_None;
   llvm::SmallSet<const Syntax*, 6> AdditionalNodesWithAttrs;
 
+  const Syntax *ConversionTypeSyntax = nullptr;
+
   // Overridding setting, this is special because enums are so restructive
   // as to which declarations are actually allowed within them.
   bool EnableFunctions = true;

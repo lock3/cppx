@@ -69,7 +69,8 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
   TheDecl->ClangDeclaringScope = SemaRef.getCurClangScope();
   TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
   TheDecl->ScopeForDecl = SemaRef.getCurrentScope();
-
+  llvm::outs() << "Declaration chain!\n";
+  TheDecl->Decl->printSequence(llvm::outs());
   if (checkDeclaration(S, TheDecl))
     return nullptr;
 
@@ -1160,8 +1161,15 @@ DeclarationBuilder::buildTemplateFunctionOrNameDeclarator(const Syntax *S,
         return buildTemplateOrNameDeclarator(Func, Next);
       }
     }
-    Declarator *T1 = handleFunction(Func, Next);
-    Declarator *Temp = buildTemplateOrNameDeclarator(Func->getCallee(), T1);
+    Declarator *Fn = handleFunction(Func, Next);
+    Declarator *Temp = buildTemplateOrNameDeclarator(Func->getCallee(), Fn);
+    if (ConversionTypeSyntax) {
+      llvm::outs() << "We are handling function syntax?! when we have conversion syntax\n";
+      // If we are the conversion operator the next thing to do is to update the
+      // declarator chain by inserting the type after the function in the chain.
+      TypeDeclarator *TD = handleType(ConversionTypeSyntax, Next);
+      Fn->Next = TD;
+    }
     Declarator *Cur = Temp;
     while(Cur) {
       if (isa<IdentifierDeclarator>(Cur)) {
@@ -1313,8 +1321,8 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
     if (RequiresDeclOrError) {
       if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
         if (AllowShortCtorAndDtorSyntax &&
-            (Callee->getSpelling() == "constructor"
-            || Callee->getSpelling() == "destructor")) {
+              (Callee->getSpelling() == "constructor"
+              || Callee->getSpelling() == "destructor")) {
           return buildTemplateFunctionOrNameDeclarator(Call, nullptr);
         }
       }
@@ -1377,8 +1385,12 @@ DeclarationBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
       llvm_unreachable("User defined literal declarations not "
                         "imeplemented yet.");
     } else if (OriginalName.startswith("conversion\"")) {
-      llvm_unreachable("User defined conversion declarations not "
-                        "imeplemented yet.");
+      llvm::outs() << "we have a conversion operator identifier!\n";
+      ConversionTypeSyntax = S->getFusionArg();
+      // All this does is get the type expression from the fused identifier
+      // and create a TypeDeclarator for it. The error will be picked up later
+      // if the user supplies a type.
+      // Next = handleType(, Next);
     }
   }
   auto *D = new IdentifierDeclarator(S, Next);

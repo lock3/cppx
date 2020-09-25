@@ -41,6 +41,29 @@ x.foo():void!
   ASSERT_TRUE(matches(Code.str(), Matcher));
 }
 
+
+TEST(GoldNestedNameDecl, NamespaceOperatorDeclDef) {
+  StringRef Code = R"(
+x : namespace = namespace:
+  Y = class:
+    ;
+  operator"=="(a:ref Y, b:ref Y):bool
+
+X.operator"=="(a:ref Y, b:ref Y):bool
+  return false
+)";
+  auto Matcher = translationUnitDecl(
+    has(namespaceDecl(
+      hasName("x"),
+      has(functionDecl(hasName("operator=="), unless(isDefinition())))
+    )),
+    has(functionDecl(hasName("operator=="),
+      has(nestedNameSpecifier(specifiesNamespace(hasName("x"))))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), Matcher));
+}
+
 TEST(GoldNestedNameDecl, NamespaceNameVarTempalteDeclDef) {
   StringRef Code = R"(
 x : namespace = namespace:

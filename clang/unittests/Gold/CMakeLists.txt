@@ -68,6 +68,7 @@ add_clang_unittest(GoldTests
   GoldConstExprIfStmtElab.cpp
   GoldConstructorCallParsingTest.cpp
   GoldContinueElab.cpp
+  GoldConversionOperatorElab.cpp
   GoldCXX11AttributeElab.cpp
   GoldDeclarationRevampTests.cpp
   GoldDeclaratorElab.cpp
