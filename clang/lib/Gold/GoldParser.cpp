@@ -1476,6 +1476,17 @@ Syntax *Parser::onAtom(const Token &Tok, const tok::FusionKind K,
   return Ret;
 }
 
+Syntax *Parser::onUserDefinedLiteral(Syntax *Base, const Token &Lit) {
+  // construct a `literal"Lit"` token.
+  Token *T = new (Context) Token(tok::Identifier, Lit.getLocation(),
+                                 getSymbol(Lit.getSpelling()));
+  Token **Ts = new (Context) Token *[1];
+  Ts[0] = T;
+  Token Fuse(tok::Identifier, Lit.getLocation(), tok::Literal,
+             Ts, 1, T->getSpelling());
+  return onCall(onAtom(Fuse, tok::Literal, onAtom(Lit)), Base);
+}
+
 static void parseSuffix(SyntaxContext &Context, clang::DiagnosticsEngine &Diags,
                         LiteralSyntax *Literal, llvm::StringRef Suffix) {
   const char *SuffixBegin = Suffix.begin();
@@ -1574,6 +1585,11 @@ Syntax *Parser::onLiteral(const Token& Tok) {
   if (Tok.hasSuffix())
     for (auto Suffix : Tok.getSuffixes())
       parseSuffix(Context, Diags, Literal, Suffix);
+
+  if (nextTokenIs(tok::Identifier) && peekToken().getSpelling()[0] == '_') {
+    Token LitSuffix = consumeToken();
+    return onUserDefinedLiteral(Literal, LitSuffix);
+  }
 
   return Literal;
 }
