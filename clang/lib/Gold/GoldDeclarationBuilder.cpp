@@ -1294,7 +1294,7 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
   }
 
   const Syntax *Decl = nullptr;
-  FusedOpKind OpKind = getFusedOpKind(SemaRef, dyn_cast<CallSyntax>(S));
+  FusedOpKind OpKind = getFusedOpKind(SemaRef, Call);
   switch(OpKind) {
 
   case FOK_Equals:{
@@ -1385,9 +1385,10 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
         }
       }
       llvm::outs() << "Call inside of dispatchAndCreateDeclarator 1\n";
-      SemaRef.Diags.Report(S->getLoc(),
+      S->dump();
+      SemaRef.Diags.Report(Call->getCallee()->getLoc(),
                            clang::diag::err_invalid_declaration_kind)
-                           << 2;
+                           << 1;
     }
     return nullptr;
   }
