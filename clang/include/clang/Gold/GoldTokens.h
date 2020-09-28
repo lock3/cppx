@@ -167,6 +167,10 @@ struct Token
     return Kind >= tok::BinaryInteger && Kind <= tok::DecimalExponent;
   }
 
+  bool isLiteral() const {
+    return Kind >= tok::BinaryInteger;
+  }
+
   clang::SourceLocation getLocation() const {
     return Loc;
   }

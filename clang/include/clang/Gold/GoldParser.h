@@ -31,6 +31,7 @@ namespace gold
 {
   struct Attribute;
   struct Syntax;
+  struct LiteralSyntax;
   class SyntaxContext;
 
   /// A pair of tokens.
@@ -277,6 +278,7 @@ namespace gold
     Syntax *onAtom(const Token &Tok);
     Syntax *onAtom(const Token &Tok, const tok::FusionKind K, Syntax *Data);
     Syntax *onLiteral(const Token& tok);
+    Syntax *onUserDefinedLiteral(Syntax *Base, const Token &Lit);
     Syntax *onArray(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
     Syntax *onList(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
     Syntax *onBinary(const Token& tok, Syntax *e1, Syntax *e2);
