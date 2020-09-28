@@ -39,7 +39,7 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
   File InputFile(SM, SM.getMainFileID());
   SyntaxContext Context(ClangContext);
 
-  Parser Parser(Context, SM, InputFile);
+  Parser Parser(Context, SM, InputFile, PP);
   Syntax *CST = Parser.parseFile();
   // file was empty
   if (!CST)

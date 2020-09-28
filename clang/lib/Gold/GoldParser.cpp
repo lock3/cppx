@@ -138,8 +138,9 @@ static Syntax *makeList(const SyntaxContext &Ctx,
                         std::initializer_list<Syntax *> List);
 static Attribute *makeAttr(const SyntaxContext &Ctx, Syntax *Arg);
 
-Parser::Parser(SyntaxContext &Context, clang::SourceManager &SM, File const& F)
-  : Lex(SM, F, Context), Diags(SM.getDiagnostics()), Context(Context)
+Parser::Parser(SyntaxContext &Context, clang::SourceManager &SM, File const& F,
+               clang::Preprocessor &PP)
+  : Lex(SM, F, Context, PP), Diags(SM.getDiagnostics()), Context(Context)
 {
   fetchToken();
 }

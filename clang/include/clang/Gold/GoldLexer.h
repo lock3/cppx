@@ -42,7 +42,7 @@ namespace gold {
   struct CharacterScanner
   {
     CharacterScanner(clang::SourceManager &SM, File const &F,
-                     SyntaxContext &Ctx);
+                     SyntaxContext &Ctx, clang::Preprocessor &PP);
 
     Token operator()();
 
@@ -228,13 +228,19 @@ namespace gold {
 
     /// The syntax context (for memory management).
     SyntaxContext &Ctx;
+
+    /// The clang pre-processor, nothing is actually run through this
+    /// but this is what's used to keep track of comments for tools such as
+    /// llvm-lit.
+    clang::Preprocessor &PP;
   };
 
 
   /// Removes empty lines and comments from a translation unit.
   struct LineScanner {
-    LineScanner(clang::SourceManager &SM, File const& F, SyntaxContext &Ctx)
-      : Scanner(SM, F, Ctx)
+    LineScanner(clang::SourceManager &SM, File const& F, SyntaxContext &Ctx,
+                clang::Preprocessor &PP)
+      : Scanner(SM, F, Ctx, PP)
       { }
 
     // Construct a line scanner for a string literal
@@ -264,8 +270,9 @@ namespace gold {
   /// separators. Note that there are no newlines in the translation unit
   /// returned from this scanner.
   struct BlockScanner {
-    BlockScanner(clang::SourceManager &SM, File const& F, SyntaxContext &Ctx)
-      : Scanner(SM, F, Ctx), Prefix() { }
+    BlockScanner(clang::SourceManager &SM, File const& F, SyntaxContext &Ctx,
+                clang::Preprocessor &PP)
+      : Scanner(SM, F, Ctx, PP), Prefix() { }
 
     Token operator()();
 
@@ -331,8 +338,9 @@ namespace gold {
   /// input source. This is defined by a stack of scanners, each of
   /// which applies a phase of translation.
   struct Lexer {
-    Lexer(clang::SourceManager &SM, File const& F, SyntaxContext &Ctx)
-      : Scanner(SM, F, Ctx)
+    Lexer(clang::SourceManager &SM, File const& F, SyntaxContext &Ctx,
+          clang::Preprocessor &PP)
+      : Scanner(SM, F, Ctx, PP)
     { }
 
     Token operator()()
