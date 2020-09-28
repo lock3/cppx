@@ -12,6 +12,7 @@ add_clang_library(gold
   GoldExprElaborator.cpp
   GoldFile.cpp
   GoldFrontend.cpp
+  GoldIdentifierResolver.cpp
   GoldLateElaboration.cpp
   GoldLexer.cpp
   GoldOperatorInfo.cpp
