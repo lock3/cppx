@@ -91,8 +91,6 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
   }
   SemaRef.getCurrentScope()->addDecl(TheDecl);
   TheDecl->CurrentPhase = Phase::Identification;
-  // llvm::outs() << "Dumping attribute sequence: \n";
-  // TheDecl->Decl->printSeqWithAttr();
   return TheDecl;
 }
 
@@ -1073,13 +1071,10 @@ DeclarationBuilder::buildNestedName(const Syntax *S, Declarator *Next) {
   if (const auto *SimpleName = dyn_cast<AtomSyntax>(S)) {
     return handleNestedNameSpecifier(SimpleName, Next);
   }
-  if (RequiresDeclOrError) {
-    llvm::outs() << "buildNestedName\n";
+  if (RequiresDeclOrError)
     SemaRef.Diags.Report(S->getLoc(),
                          clang::diag::err_invalid_declaration_kind)
-                         <<2;
-  }
-
+                         << 2;
   return nullptr;
 }
 
@@ -1129,11 +1124,9 @@ DeclarationBuilder::buildNameDeclarator(const Syntax *S, Declarator *Next) {
   } else {
     ErrorIndicator = 1;
   }
-  if (RequiresDeclOrError) {
-    llvm::outs() << "buildNameDeclarator\n";
+  if (RequiresDeclOrError)
     SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_declaration_kind)
                          << ErrorIndicator;
-  }
   return nullptr;
 }
 
@@ -1284,12 +1277,10 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
 
   const auto *Call = dyn_cast<CallSyntax>(S);
   if (!Call) {
-    if (RequiresDeclOrError){
-      llvm::outs() << "Call inside of dispatchAndCreateDeclarator 0\n";
+    if (RequiresDeclOrError)
       SemaRef.Diags.Report(S->getLoc(),
                            clang::diag::err_invalid_declaration_kind)
                            << 2;
-    }
     return nullptr;
   }
 
@@ -1356,7 +1347,14 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
     InitExpr = nullptr;
     break;
   }
-  case FOK_Exclaim:
+  case FOK_Exclaim:{
+    const auto *Args = cast<ListSyntax>(Call->getArguments());
+    Decl = Args->getChild(0);
+    InitExpr = Args->getChild(1);
+    InitOperatorUsed = IK_Exlaim;
+    break;
+  }
+  case FOK_Unknown:
   case FOK_Arrow:
   case FOK_If:
   case FOK_Else:
@@ -1368,9 +1366,9 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
   case FOK_Ref:
   case FOK_RRef:
   case FOK_Brackets:
-  case FOK_Unknown:
-  case FOK_Parens:{ // TODO: Verify that this works as expected.
-    // None of these operators can be the root of a declaration.
+  case FOK_Parens:{
+    // None of these operators can be the root of a declaration, with the exception
+    // of very specific contexts.
     if (RequiresDeclOrError) {
       if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
         if (AllowShortCtorAndDtorSyntax &&
@@ -1384,11 +1382,9 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
           return buildTemplateFunctionOrNameDeclarator(Call, nullptr);
         }
       }
-      llvm::outs() << "Call inside of dispatchAndCreateDeclarator 1\n";
-      S->dump();
       SemaRef.Diags.Report(Call->getCallee()->getLoc(),
                            clang::diag::err_invalid_declaration_kind)
-                           << 1;
+                           << 2;
     }
     return nullptr;
   }
