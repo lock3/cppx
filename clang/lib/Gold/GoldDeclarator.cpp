@@ -177,6 +177,22 @@ std::string IdentifierDeclarator::getString(bool IncludeKind) const {
   return Name->getSpelling();
 }
 
+bool IdentifierDeclarator::isUserDefinedLiteral() const {
+  if (Name->isFused()) {
+    return Name->getFusionBase() == tok::Literal;
+  }
+  return false;
+}
+
+void IdentifierDeclarator::setUserDefinedLiteralSuffix(
+                                                    const std::string &Suffix) {
+  UserDefinedLiteralSuffix = Suffix;
+}
+
+const std::string &IdentifierDeclarator::getUserDefinedLiteralSuffix() const {
+  return UserDefinedLiteralSuffix;
+}
+
 // ------------------ NestedNameSpecifierDeclarator ----------------------------
 clang::SourceLocation NestedNameSpecifierDeclarator::getLoc() const {
   return Name->getLoc();

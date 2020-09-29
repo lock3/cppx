@@ -118,7 +118,7 @@ std::string Token::getSpelling() const {
   // Reconstruct the spelling of the fused token.
   std::string Spelling = getFusionBaseSpelling(FusionInfo.Base);
   Spelling += "\"";
-  Spelling += FusionInfo.Inner.str();
+  Spelling += Inner;
   Spelling += "\"";
   return Spelling;
 }

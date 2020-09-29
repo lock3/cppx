@@ -278,6 +278,7 @@ public:
 
 class IdentifierDeclarator : public Declarator {
   const AtomSyntax *Name;
+  std::string UserDefinedLiteralSuffix;
 public:
   IdentifierDeclarator(const AtomSyntax *NameNode, Declarator *Next)
     :Declarator(DK_Identifier, Next),
@@ -287,6 +288,14 @@ public:
   virtual std::string getString(bool IncludeKind = false) const override;
 
   const AtomSyntax *getIdentifier() const { return Name; }
+
+  /// Checks the given name to see if we have a name that indicates that
+  /// we are a user defined literal.
+  bool isUserDefinedLiteral() const;
+  void setUserDefinedLiteralSuffix(const std::string &Suffix);
+
+  /// returns the suffix if the identifier is a user defined literal.
+  const std::string &getUserDefinedLiteralSuffix() const;
 
   static bool classof(const Declarator *Dcl) {
     return Dcl->getKind() == DK_Identifier;

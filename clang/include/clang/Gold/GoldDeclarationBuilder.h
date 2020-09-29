@@ -106,6 +106,10 @@ private:
   bool checkClassifiedConversionOperator(const Syntax *DeclExpr,
                                          Declaration *TheDecl);
 
+  /// This attempts to verify that we are infact a user defined literal function.
+  /// Returns true if there was an error and false if not.
+  bool checkClassifiyUserDefinedLiteralOperator(const Syntax *DeclExpr,
+                                                Declaration *TheDecl);
 
   /// Given the structure and context, attempt to classify what kind of
   /// declaration we have and in the current context how it could be used.

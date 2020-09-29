@@ -1584,6 +1584,9 @@ clang::DeclarationName getFunctionName(SyntaxContext &Ctx, Sema &SemaRef,
       // FIXME: Should this be an error or not?
       return clang::DeclarationName();
     }
+  } else if (D->declaresUserDefinedLiteral()) {
+    // Attempting to correctly get the literal operator name
+    Name = Ctx.CxxAST.DeclarationNames.getCXXLiteralOperatorName(D->UDLSuffixId);
   } else {
     Name = D->getId();
   }
@@ -1802,6 +1805,16 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Get name info for the AST.
   clang::DeclarationName Name =
     getFunctionName(Context, SemaRef, D, TInfo, InClass, RD);
+  // FIXME: Create make sure I can make this work some how.
+  if (D->declaresUserDefinedLiteral()) {
+    clang::UnqualifiedId UnqualId;
+    UnqualId.setLiteralOperatorId(D->UDLSuffixId,
+                                  D->IdDcl->getLoc(),
+                           D->IdDcl->getIdentifier()->getFusionArg()->getLoc());
+    if (SemaRef.getCxxSema().checkLiteralOperatorId(D->ScopeSpec, UnqualId)) {
+      return nullptr;
+    }
+  }
   if (Name.isEmpty())
     return nullptr;
 

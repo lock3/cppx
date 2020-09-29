@@ -155,36 +155,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     OpInfo(Context.CxxAST),
     AttrHandlerMap(buildAttributeMaping())
 {
-  // FIXME: what is this? get rid of it.
-  NullTTy = Context.CxxAST.NullPtrTy;
-  CharTy = Context.CxxAST.CharTy;
-  Char8Ty = Context.CxxAST.getIntTypeForBitwidth(8, true);
-  Char16Ty = Context.CxxAST.getIntTypeForBitwidth(16, true);
-  Char32Ty = Context.CxxAST.getIntTypeForBitwidth(32, true);
-
-  IntTy = Context.CxxAST.IntTy;
-  Int8Ty = Context.CxxAST.getIntTypeForBitwidth(8, true);
-  Int16Ty = Context.CxxAST.getIntTypeForBitwidth(16, true);
-  Int32Ty = Context.CxxAST.getIntTypeForBitwidth(32, true);
-  Int64Ty = Context.CxxAST.getIntTypeForBitwidth(64, true);
-  Int128Ty = Context.CxxAST.getIntTypeForBitwidth(128, true);
-
-  UIntTy = Context.CxxAST.UnsignedIntTy;
-  UInt8Ty = Context.CxxAST.getIntTypeForBitwidth(8, false);
-  UInt16Ty = Context.CxxAST.getIntTypeForBitwidth(16, false);
-  UInt32Ty = Context.CxxAST.getIntTypeForBitwidth(32, false);
-  UInt64Ty = Context.CxxAST.getIntTypeForBitwidth(64, false);
-  UInt128Ty = Context.CxxAST.getIntTypeForBitwidth(128, false);
-
-  Float16Ty = Context.CxxAST.HalfTy;
-  Float32Ty = Context.CxxAST.getRealTypeForBitwidth(32, false);
-  Float64Ty = Context.CxxAST.getRealTypeForBitwidth(64, false);
-  Float128Ty = Context.CxxAST.getRealTypeForBitwidth(128, true);
-
   CxxSema.CurScope = nullptr;
-
-  // All of the names of operators that we use.
-
 }
 
 Sema::~Sema() {

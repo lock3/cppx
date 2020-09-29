@@ -816,32 +816,6 @@ public:
   using OptionalResumeScopeRAII = OptionalInitScope<ResumeScopeRAII>;
   using OptioanlClangScopeRAII = OptionalInitScope<ClangScopeRAII>;
 
-  clang::QualType NullTTy;
-
-  clang::QualType CharTy;
-  clang::QualType Char8Ty;
-  clang::QualType Char16Ty;
-  clang::QualType Char32Ty;
-
-  clang::QualType IntTy;
-  clang::QualType Int8Ty;
-  clang::QualType Int16Ty;
-  clang::QualType Int32Ty;
-  clang::QualType Int64Ty;
-  clang::QualType Int128Ty;
-
-  clang::QualType UIntTy;
-  clang::QualType UInt8Ty;
-  clang::QualType UInt16Ty;
-  clang::QualType UInt32Ty;
-  clang::QualType UInt64Ty;
-  clang::QualType UInt128Ty;
-
-  clang::QualType Float16Ty;
-  clang::QualType Float32Ty;
-  clang::QualType Float64Ty;
-  clang::QualType Float128Ty;
-
   // Dictionary of built in types.
   const llvm::StringMap<clang::QualType> BuiltinTypes;
 

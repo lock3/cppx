@@ -1485,7 +1485,8 @@ Syntax *Parser::onUserDefinedLiteral(Syntax *Base, const Token &Lit) {
   Ts[0] = T;
   Token Fuse(tok::Identifier, Lit.getLocation(), tok::Literal,
              Ts, 1, T->getSpelling());
-  return onCall(onAtom(Fuse, tok::Literal, onAtom(Lit)), Base);
+  Syntax *Args = onList(ArgArray, llvm::SmallVector<Syntax *, 0>({Base}));
+  return onCall(onAtom(Fuse, tok::Literal, onAtom(Lit)), Args);
 }
 
 static void parseSuffix(SyntaxContext &Context, clang::DiagnosticsEngine &Diags,

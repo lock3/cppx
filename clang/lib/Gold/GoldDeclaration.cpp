@@ -248,6 +248,10 @@ bool Declaration::declaresConversionOperator() const {
   return SuspectedKind == UDK_ConversionOperator;
 }
 
+bool Declaration::declaresUserDefinedLiteral() const {
+  return SuspectedKind == UDK_LiteralOperator;
+}
+
 // A declarator declares a template if it's first non-id declarator is
 // declares template parameters.
 bool Declaration::declaresFunctionTemplate() const {

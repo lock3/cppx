@@ -109,7 +109,8 @@ struct Token
   Token(TokenKind K, clang::SourceLocation Loc,
         tok::FusionKind Base, Token **Tokens, unsigned N,
         llvm::StringRef Inner)
-    : Kind(K), Flags(TF_Fused), Loc(Loc), FusionInfo({Base, Tokens, N, Inner})
+    : Kind(K), Flags(TF_Fused), Loc(Loc), FusionInfo({Base, Tokens, N}),
+    Inner(Inner.str())
   { }
 
   ~Token();
@@ -225,13 +226,13 @@ struct Token
       std::size_t NumTokens;
 
       // We just use this for printing in AST serializations.
-      llvm::StringRef Inner;
     } FusionInfo;
   };
 
 private:
   /// A list of literal suffixes.
   llvm::SmallVector<llvm::StringRef, 4> Suffixes;
+  std::string Inner;
 };
 
 } // namespace gold

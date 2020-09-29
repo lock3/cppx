@@ -93,6 +93,7 @@ static clang::IntegerLiteral *
 createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
                      clang::QualType IntType, clang::SourceLocation Loc,
                      std::size_t Base = 10) {
+  llvm::outs() << "We are an integer literal!\n";
   llvm::APInt Value;
   unsigned Width = 0;
 
@@ -271,6 +272,7 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
 
 static clang::FloatingLiteral *
 createFloatLiteral(clang::ASTContext &CxxAST, const LiteralSyntax *S) {
+  llvm::outs() << "We are a floating point literal?!\n";
   // If we don't have a specified type, just create a default float.
   clang::QualType FloatType = CxxAST.FloatTy;
   if (S->Suffix.IsDouble)
@@ -956,8 +958,15 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
 
   if (SemaRef.isQualifiedLookupContext())
     SemaRef.lookupQualifiedName(R);
-  else
-    SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
+  else {
+
+    if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) {
+      SemaRef.Diags.Report(S->getLoc(),
+                          clang::diag::err_identifier_not_declared_in_scope)
+                          << S->getSpelling();
+      return nullptr;
+    }
+  }
 
   if (!R.empty()) {
     // This has to be done this way specifically because the loop up will resolve
@@ -1090,6 +1099,11 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
 
     if (auto *TD = R.getAsSingle<clang::TemplateDecl>())
       return SemaRef.buildTemplateType(TD, Loc);
+  } else {
+    // Check for builtin types
+    auto BuiltinMapIter = SemaRef.BuiltinTypes.find(S->getSpelling());
+    if (BuiltinMapIter != SemaRef.BuiltinTypes.end())
+      return SemaRef.buildTypeExpr(BuiltinMapIter->second, S->getLoc());
   }
   SemaRef.Diags.Report(S->getLoc(),
                        clang::diag::err_identifier_not_declared_in_scope)

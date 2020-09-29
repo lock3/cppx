@@ -457,7 +457,7 @@ bool DeclarationBuilder::checkRequiresType(const Syntax *DeclExpr,
   case UDK_PossibleConstructor:
   case UDK_PossibleDestructor:
   case UDK_PossibleMemberOperator:
-  case UDK_PossibleConversionOperator:{
+  case UDK_PossibleConversionOperator: {
     if (RequireTypeForFunctions) {
       if (!TheDecl->TypeDcl) {
         if (RequiresDeclOrError)
@@ -771,7 +771,7 @@ bool DeclarationBuilder::checkClassifiedConversionOperator(
   // Keep in mind that if we made it to this point the we MUST be a declaration
   // or at the very least an invalid declaration.
 
-  if (!TheDecl->FunctionDcl){
+  if (!TheDecl->FunctionDcl) {
     SemaRef.Diags.Report(TheDecl->IdDcl->getLoc(),
                 clang::diag::err_conversion_operator_decl_without_parameters);
     return true;
@@ -802,11 +802,52 @@ bool DeclarationBuilder::checkClassifiedConversionOperator(
   return false;
 }
 
+bool DeclarationBuilder::checkClassifiyUserDefinedLiteralOperator(
+                                 const Syntax *DeclExpr, Declaration *TheDecl) {
+  assert(TheDecl->IdDcl->isUserDefinedLiteral()
+         && "Not a user defined literal.");
+
+  if (!TheDecl->FunctionDcl) {
+    SemaRef.Diags.Report(TheDecl->IdDcl->getLoc(),
+                        clang::diag::err_expected_declarator_chain_sequence)
+                        << /*function*/3;
+    return true;
+  }
+  if (TheDecl->IdDcl->getUserDefinedLiteralSuffix() == "") {
+    SemaRef.Diags.Report(DeclExpr->getLoc(),
+                       clang::diag::err_user_defined_literal_invalid_identifier)
+                          << /*invalid suffix*/ 1 << 0;
+    return true;
+  }
+
+  // TODO: We may enforce this in the future because this is part of the C++
+  // standard's implementation. We may also need to enforce _ capital-letter
+  // as invalid as well, for the same reasons.
+
+  // if (TheDecl->IdDcl->getUserDefinedLiteralSuffix() != '_') {
+  //   SemaRef.Diags.Report(S->getLoc(),
+  //                  clang::diag::err_user_defined_literal_invalid_identifier)
+  //                        << /*invalid suffix*/ 1 << 1;
+  //   return nullptr;
+  // }
+  TheDecl->SuspectedKind = UDK_LiteralOperator;
+
+  // Recording the identifier that's used to look up this declaration, when
+  // used as an operator.
+  TheDecl->UDLSuffixId = &Context.CxxAST.Idents.get(
+                               {TheDecl->IdDcl->getUserDefinedLiteralSuffix()});
+
+  return false;
+}
+
 bool DeclarationBuilder::classifyDecl(const Syntax *DeclExpr,
                                       Declaration *TheDecl) {
-  if (ConversionTypeSyntax) {
+  if (ConversionTypeSyntax)
     return checkClassifiedConversionOperator(DeclExpr, TheDecl);
-  }
+
+  if (TheDecl->IdDcl->isUserDefinedLiteral())
+    return checkClassifiyUserDefinedLiteralOperator(DeclExpr, TheDecl);
+
   // this is handled within checkEnumDeclaration
   if (TheDecl->SuspectedKind == UDK_EnumConstant)
     return false;
@@ -1427,6 +1468,7 @@ DeclarationBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
   // Translating the simple identifier.
   OriginalName = OriginalNameStorage = S->getSpelling();
   Id = &Context.CxxAST.Idents.get(OriginalName);
+  std::string UDLSuffix;
   assert(OriginalName != "operator'.'");
   if (OriginalName.find('"') != llvm::StringRef::npos) {
     if (OriginalName.startswith("operator\"")) {
@@ -1438,18 +1480,23 @@ DeclarationBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
         return nullptr;
       }
     } else if (OriginalName.startswith("literal\"")) {
-      llvm_unreachable("User defined literal declarations not "
-                        "imeplemented yet.");
+      if (!S->getFusionArg()) {
+        SemaRef.Diags.Report(S->getLoc(),
+                       clang::diag::err_user_defined_literal_invalid_identifier)
+                             << /*invalid suffix*/ 0 << 0;
+        return nullptr;
+      }
+      if (const AtomSyntax *Suffix = dyn_cast<AtomSyntax>(S->getFusionArg())){
+        UDLSuffix = Suffix->getSpelling();
+      }
+
     } else if (OriginalName.startswith("conversion\"")) {
       ConversionTypeSyntax = S->getFusionArg();
-      // All this does is get the type expression from the fused identifier
-      // and create a TypeDeclarator for it. The error will be picked up later
-      // if the user supplies a type.
-      // Next = handleType(, Next);
     }
   }
   auto *D = new IdentifierDeclarator(S, Next);
   D->recordAttributes(S);
+  D->setUserDefinedLiteralSuffix(UDLSuffix);
   return D;
 }
 
