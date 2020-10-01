@@ -45,7 +45,6 @@ static void doIntegerBinaryTest(const std::string &TypeName,
 "  x %= y\n"
 "";
   DeclarationMatcher opMatches = translationUnitDecl(
-    
     hasDescendant(varDecl(
       hasName("add"),
       hasType(asString(ExpectedTypeName)),
@@ -195,19 +194,19 @@ TEST(ArithmeticOp, BuiltinType_uint128) {
 
 // Character types
 TEST(ArithmeticOp, BuiltinType_char) {
-  doIntegerBinaryTest("char", "char", "int", "5", "6");
+  doIntegerBinaryTest("char", "unsigned char", "int", "5", "6");
 }
 
 TEST(ArithmeticOp, BuiltinType_char8) {
-  doIntegerBinaryTest("char8", "signed char", "int", "5", "6");
+  doIntegerBinaryTest("char8", "unsigned char", "int", "5", "6");
 }
 
 TEST(ArithmeticOp, BuiltinType_char16) {
-  doIntegerBinaryTest("char16", "short", "int", "5", "6");
+  doIntegerBinaryTest("char16", "unsigned short", "int", "5", "6");
 }
 
 TEST(ArithmeticOp, BuiltinType_char32) {
-  doIntegerBinaryTest("char32", "int", "int", "5", "6");
+  doIntegerBinaryTest("char32", "unsigned int", "unsigned int", "5", "6");
 }
 
 static void doFloatingPointBinaryTest(const std::string &TypeName,

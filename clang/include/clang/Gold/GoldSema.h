@@ -816,6 +816,8 @@ public:
   using OptionalResumeScopeRAII = OptionalInitScope<ResumeScopeRAII>;
   using OptioanlClangScopeRAII = OptionalInitScope<ClangScopeRAII>;
 
+  clang::QualType DefaultCharTy;
+
   // Dictionary of built in types.
   const llvm::StringMap<clang::QualType> BuiltinTypes;
 
@@ -948,6 +950,35 @@ public:
           SemaRef.leaveClangScope(Dcl->Op->getLoc());
         Dcl = nullptr;
       }
+    }
+  };
+
+private:
+  bool InAttrExpr = false;
+public:
+  bool insideAttributeExpr() const { return InAttrExpr; }
+  void setInsideAttributeExpr(bool Status) {
+    InAttrExpr = Status;
+  }
+
+  struct AttrElabRAII {
+    Sema &SemaRef;
+    bool EnteredAttrExpr = false;
+    bool PreviousAttributeElabStatus;
+  public:
+    AttrElabRAII(Sema &S, bool EnterAttrProcessing)
+      :SemaRef(S),
+      EnteredAttrExpr(EnterAttrProcessing),
+      PreviousAttributeElabStatus(S.insideAttributeExpr())
+    {
+      if (EnteredAttrExpr) {
+        SemaRef.setInsideAttributeExpr(true);
+      } else {
+        SemaRef.setInsideAttributeExpr(false);
+      }
+    }
+    ~AttrElabRAII() {
+      SemaRef.setInsideAttributeExpr(PreviousAttributeElabStatus);
     }
   };
 };

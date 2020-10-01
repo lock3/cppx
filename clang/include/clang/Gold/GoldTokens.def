@@ -76,6 +76,7 @@ def_puncop(Ellipsis, "...")
 
 def_keyword(Void, "void")
 def_keyword(Bool, "bool")
+def_keyword(CChar, "cchar")
 def_keyword(Char, "char")
 def_keyword(Char8, "char8")
 def_keyword(Char16, "char16")

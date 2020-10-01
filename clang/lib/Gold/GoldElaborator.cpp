@@ -1086,11 +1086,11 @@ static bool handleNestedName(Sema &SemaRef, Declaration *D,
       return true;
     Sema::DeclaratorScopeObj DclScope(SemaRef, SemaRef.CurNNSContext,
                                       D->IdDcl->getLoc());
-    if (SemaRef.CurNNSContext.isValid() && SemaRef.CurNNSContext.isSet()) {
+    if (SemaRef.CurNNSContext.isValid() && SemaRef.CurNNSContext.isSet())
       if (SemaRef.getCxxSema().ShouldEnterDeclaratorScope(
-                             SemaRef.getCurClangScope(), SemaRef.CurNNSContext))
+                           SemaRef.getCurClangScope(), SemaRef.CurNNSContext))
         DclScope.enterDeclaratorScope();
-    }
+
     SemaRef.pushScope(SemaRef.getLookupScope());
     DInfo.Name->setScope(SemaRef.getLookupScope());
     return false;
@@ -1271,10 +1271,11 @@ static bool enterLinkageLanguageSpec(Sema &SemaRef,
       return true;
     }
     ExprElaborator Elab(Context, SemaRef);
-    clang::Expr *Expr = Elab.elaborateExpectedConstantExpr(Call->getArgument(0));
+    clang::Expr *Expr = Elab.elaborateConstexprAttrExpr(Call->getArgument(0));
     if (!Expr) {
       SemaRef.Diags.Report(S->getLoc(),
                           clang::diag::err_failed_to_translate_expr);
+      SemaRef.leaveClangScope(S->getLoc());
       return true;
     }
 
@@ -1284,14 +1285,16 @@ static bool enterLinkageLanguageSpec(Sema &SemaRef,
       );
 
     // Assuming that we already got an error message for this.
-    if (!LinkageDecl)
+    if (!LinkageDecl){
+      SemaRef.leaveClangScope(S->getLoc());
       return true;
+    }
 
     // We do this because we are technically chaning decl contexts.
     D->DeclaringContext = cast<clang::DeclContext>(LinkageDecl);
     ClangToGoldDeclRebuilder rebuilder(Context, SemaRef);
     Declaration *GDecl = rebuilder.generateDeclForDeclContext(
-                                                          D->DeclaringContext, S);
+                                                        D->DeclaringContext, S);
     if (!GDecl)
       // Any error reporting will be handled the the rebuilder.
       return true;
@@ -1302,8 +1305,6 @@ static bool enterLinkageLanguageSpec(Sema &SemaRef,
   } else {
     llvm_unreachable("Invalid tree format");
   }
-
-
   return false;
 }
 
@@ -1366,7 +1367,6 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
     return D->Cxx;
   clang::Scope *OriginalClangScope = SemaRef.getCurClangScope();
   Scope *Sc = SemaRef.getCurrentScope();
-
   // Check for linkage!
   const Syntax *LinkageAttr = nullptr;
   if (hasLinkageSpecDecl(SemaRef, D, &LinkageAttr)) {
@@ -1374,6 +1374,7 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
     // we just try and continue processing things?
     return nullptr;
   }
+
   if (LinkageAttr) {
     if (enterLinkageLanguageSpec(SemaRef, D, LinkageAttr)) {
       // TODO: Figure out if this needs an additional error message or should
@@ -4536,7 +4537,7 @@ static void applyCallExceptionSpecAttr(SyntaxContext &Context, Sema &SemaRef,
           SemaRef.getCxxSema(),
           clang::Sema::ExpressionEvaluationContext::Unevaluated);
       ExprElaborator ExprElab(Context, SemaRef);
-      ExceptionSpecExpr = ExprElab.elaborateExpr(Call->getArgument(0));
+      ExceptionSpecExpr = ExprElab.elaborateAttrExpr(Call->getArgument(0));
     }
     if (!ExceptionSpecExpr)
       return;
@@ -4568,7 +4569,7 @@ static void applyCallExceptionSpecAttr(SyntaxContext &Context, Sema &SemaRef,
     const ListSyntax *ExceptionList
                               = dyn_cast<ListSyntax>(Call->getArguments());
     for (const Syntax *TySyntax : ExceptionList->children()) {
-      clang::Expr *ExceptionSpecExpr = ExprElab.elaborateExpr(TySyntax);
+      clang::Expr *ExceptionSpecExpr = ExprElab.elaborateAttrExpr(TySyntax);
       if (!ExceptionSpecExpr)
         continue;
 
@@ -5180,7 +5181,7 @@ void Elaborator::elaborateBitsAttr(Declaration *D, const Syntax *S,
     return;
   }
   ExprElaborator Elab(Context, SemaRef);
-  clang::Expr *BitsExpr = Elab.elaborateExpectedConstantExpr(
+  clang::Expr *BitsExpr = Elab.elaborateConstexprAttrExpr(
                                                       BitsCall->getArgument(0));
 
   clang::FieldDecl *Field = cast<clang::FieldDecl>(D->Cxx);
@@ -5226,7 +5227,7 @@ void Elaborator::elaborateAlignAsAttr(Declaration *D, const Syntax *S,
       || isa<clang::FieldDecl>(D->Cxx)) {
     Status.HasAlignAs = true;
     ExprElaborator Elab(Context, SemaRef);
-    clang::Expr *AlignmentExpr = Elab.elaborateExpectedConstantExpr(
+    clang::Expr *AlignmentExpr = Elab.elaborateConstexprAttrExpr(
                                                    AlignAsCall->getArgument(0));
     clang::QualType AlignmentExprTy = AlignmentExpr->getType();
     if (AlignmentExprTy->isNamespaceType()
@@ -5405,7 +5406,7 @@ static bool processAttributeArgs(SyntaxContext &Context, Sema &SemaRef,
     }
 
     // Just going a head and assuming that we expect an expression here.
-    clang::Expr *Res = Elab.elaborateExpr(ArgOrId);
+    clang::Expr *Res = Elab.elaborateConstexprAttrExpr(ArgOrId);
     if (!Res)
       return true;
     if (Res->getType()->isTypeOfTypes()

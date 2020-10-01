@@ -44,10 +44,11 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
     {"null_t", Context.CxxAST.NullPtrTy},
 
     // character
-    {"char", Context.CxxAST.CharTy},
-    {"char8", Context.CxxAST.getIntTypeForBitwidth(8, true)},
-    {"char16", Context.CxxAST.getIntTypeForBitwidth(16, true)},
-    {"char32", Context.CxxAST.getIntTypeForBitwidth(32, true)},
+    {"cchar", Context.CxxAST.CharTy},
+    {"char", Context.CxxAST.getIntTypeForBitwidth(8, false)},
+    {"char8", Context.CxxAST.getIntTypeForBitwidth(8, false)},
+    {"char16", Context.CxxAST.getIntTypeForBitwidth(16, false)},
+    {"char32", Context.CxxAST.getIntTypeForBitwidth(32, false)},
 
     // Signed integers
     {"int", Context.CxxAST.IntTy},
@@ -151,6 +152,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     OperatorParensII(&Context.CxxAST.Idents.get("operator'()'")),
     ConstructorII(&Context.CxxAST.Idents.get("constructor")),
     DestructorII(&Context.CxxAST.Idents.get("destructor")),
+    DefaultCharTy(Context.CxxAST.getIntTypeForBitwidth(8, false)),
     BuiltinTypes(createBuiltinTypeList(Context)),
     OpInfo(Context.CxxAST),
     AttrHandlerMap(buildAttributeMaping())
@@ -576,6 +578,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
             // change the elaboration context back to PotentiallyEvaluated.
             clang::EnterExpressionEvaluationContext ConstantEvaluated(CxxSema,
                 clang::Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
+            AttrElabRAII Attr(*this, false);
             Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
           }
         }
@@ -584,8 +587,10 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
         if (FoundDecl->hasNestedNameSpecifier())
           continue;
 
-        if (!FoundDecl->Cxx)
+        if (!FoundDecl->Cxx) {
+          AttrElabRAII Attr(*this, false);
           Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
+        }
 
         if (!FoundDecl->Cxx)
           return false;

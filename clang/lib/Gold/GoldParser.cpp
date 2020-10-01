@@ -1256,6 +1256,7 @@ Syntax *Parser::parsePrimary() {
   case tok::Float32Keyword:
   case tok::Float64Keyword:
   case tok::Float128Keyword:
+  case tok::CCharKeyword:
   case tok::DoubleKeyword:
   case tok::TypeKeyword:
   case tok::ArgsKeyword:

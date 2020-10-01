@@ -62,20 +62,6 @@ c : type = class:
   GoldFailureTest(Code);
 }
 
-// TEST(ClassParsing, Static_StringLiteralVariable) {
-//   StringRef Code = R"(
-// c : type = class:
-//   x <static>: ^char = "something"
-// )";
-//   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
-//     hasDescendant(
-//       varDecl(hasName("x"), hasType(asString("char *")), isPublic(),
-//               isStaticStorageClass())
-//     )
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ClassC));
-// }
-
 TEST(ClassParsing, Static_MemberFunction) {
    StringRef Code = R"(
 c : type = class:
@@ -83,12 +69,12 @@ c : type = class:
 )";
   DeclarationMatcher ClassC = recordDecl( recordDecl(hasName("c")),
     hasDescendant(
-      cxxMethodDecl(hasName("x"), hasType(asString("char *(void)")),
+      cxxMethodDecl(hasName("x"), hasType(asString("unsigned char *(void)")),
                     isPublic(), isStaticStorageClass())
     )
   );
   ASSERT_TRUE(matches(Code.str(), ClassC));
-} 
+}
 
 TEST(ClassParsing, Static_VariableUseTest) {
    StringRef Code = R"(

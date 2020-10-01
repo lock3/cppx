@@ -65,7 +65,7 @@ main() : int!
     StatementMatcher
       EscapeMatcher(hasDescendant(
                       varDecl(hasName(Seq.first.str()),
-                          hasType(asString("char")),
+                          hasType(asString("unsigned char")),
                           hasDescendant(characterLiteral(equals(Seq.second)))
                       )
                    ));

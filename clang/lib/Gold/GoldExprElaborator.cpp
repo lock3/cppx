@@ -24,6 +24,7 @@
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/LexDiagnostic.h"
+#include "clang/Lex/LiteralSupport.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Ownership.h"
 #include "clang/Sema/ParsedTemplate.h"
@@ -36,6 +37,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Error.h"
 
+
 #include "clang/Gold/ClangToGoldDeclBuilder.h"
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
@@ -44,6 +46,9 @@
 #include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldSyntaxContext.h"
 #include "clang/Gold/GoldTokens.h"
+
+ // This is needed for handling string literal trigraphs and escape characters.
+#include "clang/Lex/Lexer.h"
 
 #include <cstring>
 
@@ -58,6 +63,11 @@ ExprElaborator::ExprElaborator(SyntaxContext &Context, Sema &SemaRef,
 { }
 
 clang::Expr *ExprElaborator::elaborateExpr(const Syntax *S) {
+  Sema::AttrElabRAII NonAttrContext(SemaRef, false);
+  return doElaborateExpr(S);
+}
+
+clang::Expr *ExprElaborator::doElaborateExpr(const Syntax *S) {
   if (isa<AtomSyntax>(S))
     return elaborateAtom(cast<AtomSyntax>(S), clang::QualType());
   if (isa<CallSyntax>(S))
@@ -68,12 +78,30 @@ clang::Expr *ExprElaborator::elaborateExpr(const Syntax *S) {
     return elaborateElementExpr(cast<ElemSyntax>(S));
   if (const ListSyntax *List = dyn_cast<ListSyntax>(S)) {
     if (List->getNumChildren() == 1)
-      return elaborateExpr(List->getChild(0));
+      return doElaborateExpr(List->getChild(0));
     SemaRef.Diags.Report(S->getLoc(),
                          clang::diag::err_failed_to_translate_expr);
   }
-
   return nullptr;
+}
+
+clang::Expr *ExprElaborator::elaborateConstexprAttrExpr(const Syntax *S) {
+  Sema::AttrElabRAII AttrContext(SemaRef, true);
+  clang::EnterExpressionEvaluationContext ConstantEvaluated(
+                                                           SemaRef.getCxxSema(),
+                   clang::Sema::ExpressionEvaluationContext::ConstantEvaluated);
+  clang::Expr *Res = doElaborateExpr(S);
+  if (!Res)
+    return Res;
+  auto ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(Res);
+  if (ConstExpr.isInvalid())
+    return nullptr;
+  return ConstExpr.get();
+}
+
+clang::Expr *ExprElaborator::elaborateAttrExpr(const Syntax *S) {
+  Sema::AttrElabRAII AttrContext(SemaRef, true);
+  return doElaborateExpr(S);
 }
 
 clang::Expr *ExprElaborator::elaborateExpectedConstantExpr(const Syntax* S) {
@@ -93,7 +121,6 @@ static clang::IntegerLiteral *
 createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
                      clang::QualType IntType, clang::SourceLocation Loc,
                      std::size_t Base = 10) {
-  llvm::outs() << "We are an integer literal!\n";
   llvm::APInt Value;
   unsigned Width = 0;
 
@@ -272,7 +299,6 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
 
 static clang::FloatingLiteral *
 createFloatLiteral(clang::ASTContext &CxxAST, const LiteralSyntax *S) {
-  llvm::outs() << "We are a floating point literal?!\n";
   // If we don't have a specified type, just create a default float.
   clang::QualType FloatType = CxxAST.FloatTy;
   if (S->Suffix.IsDouble)
@@ -532,8 +558,8 @@ createCharLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
   }
 
   return new (CxxAST) clang::CharacterLiteral(Character,
-                                              clang::CharacterLiteral::Ascii,
-                                              CxxAST.CharTy, Loc);
+                                              clang::CharacterLiteral::UTF8,
+                                              SemaRef.DefaultCharTy, Loc);
 }
 
 static clang::CharacterLiteral *
@@ -580,14 +606,29 @@ createUnicodeLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
 static clang::StringLiteral *
 createStringLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
                     Token T, const Syntax *StrNode) {
-  std::string StrWithQuotes = T.getSpelling();
-  llvm::StringRef StrRef(StrWithQuotes.data() + 1, StrWithQuotes.size() - 2);
-  unsigned StrSize = StrRef.size();
-  clang::QualType StrTy =
-                      CxxAST.getStringLiteralArrayType(CxxAST.Char8Ty, StrSize);
-  return clang::StringLiteral::Create(CxxAST, StrRef,
-                                      clang::StringLiteral::Ascii,
+
+  std::string Str = T.getSpelling();
+  clang::Token CTok;
+  CTok.startToken();
+  CTok.setKind(clang::tok::utf8_string_literal);
+  CTok.setLocation(StrNode->getLoc());
+  CTok.setLength(Str.size());
+  llvm::SmallVector<clang::Token, 1> StrTokens;
+  StrTokens.push_back(CTok);
+  clang::StringLiteralParser StrParser(StrTokens, CxxAST.getSourceManager(),
+                                       CxxAST.getLangOpts(),
+                                       CxxAST.getTargetInfo(), &SemaRef.Diags);
+
+  clang::QualType StrTy = CxxAST.getStringLiteralArrayType(
+                          SemaRef.DefaultCharTy, StrParser.GetNumStringChars());
+  auto EncodingKind = clang::StringLiteral::UTF8;
+  if (SemaRef.insideAttributeExpr()) {
+    EncodingKind = clang::StringLiteral::Ascii;
+  }
+  return clang::StringLiteral::Create(CxxAST, StrParser.GetString(),
+                                      EncodingKind,
                                       false, StrTy, StrNode->getLoc());
+
 }
 
 static clang::CXXBoolLiteralExpr *
@@ -692,7 +733,7 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
   if (!OverloadExpr) {
     llvm::SmallVector<clang::Expr *, 5> ArgExprs;
     for (const Syntax *SS : Elem->getArguments()->children()) {
-      clang::Expr *Res = Elab.elaborateExpr(SS);
+      clang::Expr *Res = Elab.doElaborateExpr(SS);
       if (!Res)
         return nullptr;
       ArgExprs.push_back(Res);
@@ -721,7 +762,7 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
   llvm::SmallVector<clang::TemplateArgument, 16> ActualArgs;
   for (const Syntax *SS : Elem->getArguments()->children()) {
     ExprElaborator ParamElaborator(Context, SemaRef);
-    clang::Expr *ParamExpression = ParamElaborator.elaborateExpr(SS);
+    clang::Expr *ParamExpression = ParamElaborator.doElaborateExpr(SS);
     if (!ParamExpression)
       return nullptr;
 
@@ -875,7 +916,7 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
 }
 
 clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
-  clang::Expr *IdExpr = elaborateExpr(Elem->getObject());
+  clang::Expr *IdExpr = doElaborateExpr(Elem->getObject());
   if (!IdExpr)
     return nullptr;
 
@@ -916,7 +957,7 @@ bool ExprElaborator::elaborateTemplateArugments(const ListSyntax *Args,
                                                               /*ExprContext=*/
           clang::Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
 
-    clang::Expr *ArgExpr = elaborateExpr(SyntaxArg);
+    clang::Expr *ArgExpr = doElaborateExpr(SyntaxArg);
     if (!ArgExpr) {
       SemaRef.Diags.Report(SyntaxArg->getLoc(),
                            clang::diag::err_failed_to_translate_expr);
@@ -1115,7 +1156,7 @@ static clang::Expr *createThisExpr(Sema &SemaRef, const AtomSyntax *S) {
 }
 
 clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
-                                         clang::QualType ExplicitType) {
+                                           clang::QualType ExplicitType) {
   Token T = S->Tok;
 
   // Check if we have a floating literal that looks like an int.
@@ -1183,7 +1224,7 @@ static bool buildFunctionCallAruments(Sema &SemaRef, SyntaxContext &Context,
     llvm::SmallVector<clang::Expr *, 8> &Args) {
   for (const Syntax *A : ArgList->children()) {
     ExprElaborator Elab(Context, SemaRef);
-    clang::Expr *Argument = Elab.elaborateExpr(A);
+    clang::Expr *Argument = Elab.doElaborateExpr(A);
 
     // FIXME: What kind of expression is the unary ':typename' expression?
     if (!Argument) {
@@ -1284,7 +1325,7 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   // that we have to process the sub expression as normal.
   clang::Expr *CalleeExpr;
   if (!isa<AtomSyntax>(S->getCallee())) {
-    CalleeExpr = elaborateExpr(S->getCallee());
+    CalleeExpr = doElaborateExpr(S->getCallee());
     llvm::SmallVector<clang::Expr *, 8> Args;
     const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
 
@@ -1346,7 +1387,7 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   }
 
   // Elaborating callee name expression.
-  CalleeExpr = elaborateExpr(S->getCallee());
+  CalleeExpr = doElaborateExpr(S->getCallee());
   llvm::SmallVector<clang::Expr *, 8> Args;
   const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
   if (buildFunctionCallAruments(SemaRef, Context, ArgList, Args)) {
@@ -1410,7 +1451,7 @@ ExprElaborator::elaborateTypeTraitsOp(const AtomSyntax *Name, const CallSyntax *
     clang::Sema::ReuseLambdaContextDecl);
 
   // Attempting to elaborate the given argument
-  clang::Expr *ResultExpr = elaborateExpr(S->getArgument(0));
+  clang::Expr *ResultExpr = doElaborateExpr(S->getArgument(0));
   if (!ResultExpr)
     return nullptr;
 
@@ -1461,7 +1502,7 @@ ExprElaborator::elaborateDeclTypeOp(const AtomSyntax *Name,
   clang::EnterExpressionEvaluationContext Unevaluated(SemaRef.getCxxSema(),
                  clang::Sema::ExpressionEvaluationContext::Unevaluated, nullptr,
                  clang::Sema::ExpressionEvaluationContextRecord::EK_Decltype);
-  clang::Expr *ArgEval = elaborateExpr(S->getArgument(0));
+  clang::Expr *ArgEval = doElaborateExpr(S->getArgument(0));
   if (!ArgEval)
     // TODO: Might an error message here. Although the error message
     /// SHOULD be coming from elaborateExpr.
@@ -1505,7 +1546,7 @@ ExprElaborator::elaborateNoExceptOp(const AtomSyntax *Name,
   clang::EnterExpressionEvaluationContext Unevaluated(SemaRef.getCxxSema(),
     clang::Sema::ExpressionEvaluationContext::Unevaluated);
 
-  clang::Expr *ArgEval = elaborateExpr(S->getArgument(0));
+  clang::Expr *ArgEval = doElaborateExpr(S->getArgument(0));
   if (!ArgEval)
     return nullptr;
 
@@ -1583,7 +1624,7 @@ clang::Expr *ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
     llvm_unreachable("Invalid cast name.");
   }
 
-  clang::Expr *DestinationTy = elaborateExpr(Elem->getArgument(0));
+  clang::Expr *DestinationTy = doElaborateExpr(Elem->getArgument(0));
   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
                                  DestinationTy, Elem->getArgument(0)->getLoc());
   if (!TInfo){
@@ -1592,7 +1633,7 @@ clang::Expr *ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
     return nullptr;
   }
 
-  clang::Expr *Source = elaborateExpr(CastOp->getArgument(0));
+  clang::Expr *Source = doElaborateExpr(CastOp->getArgument(0));
   if (!Source) {
     SemaRef.Diags.Report(CastOp->getArgument(0)->getLoc(),
                          clang::diag::err_expected_expression);
@@ -1780,7 +1821,7 @@ static unsigned getExprResultFromType(clang::QualType const &T) {
 clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
                                                    const CallSyntax *Op,
                                                    const Syntax *RHS) {
-  clang::Expr *ElaboratedLHS = elaborateExpr(LHS);
+  clang::Expr *ElaboratedLHS = doElaborateExpr(LHS);
 
   if (!ElaboratedLHS) {
     SemaRef.Diags.Report(LHS->getLoc(), clang::diag::err_expected_expression);
@@ -1852,8 +1893,7 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
 
   // A disambiguator of the form (a)b
   if (const CallSyntax *Disambig = dyn_cast<CallSyntax>(RHS)) {
-    clang::Expr *LHS =
-      ExprElaborator(Context, SemaRef).elaborateExpr(Disambig->getArgument(0));
+    clang::Expr *LHS = doElaborateExpr(Disambig->getArgument(0));
 
     if (!LHS)
       return nullptr;
@@ -1946,7 +1986,7 @@ clang::Expr *ExprElaborator::elaborateNNS(clang::NamedDecl *NS,
     llvm_unreachable("We hvae a new type of namespace specifier that we've "
                      "never seen before.");
   }
-  clang::Expr *RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
+  clang::Expr *RHSExpr = doElaborateExpr(RHS);
   if (!RHSExpr) {
     SemaRef.CurNNSContext.clear();
     return nullptr;
@@ -1979,8 +2019,7 @@ clang::Expr *ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
   Sema::QualifiedLookupRAII Qual(SemaRef, SemaRef.QualifiedLookupContext,
                                  GlobalScope,
                                  Context.CxxAST.getTranslationUnitDecl());
-  clang::Expr *RHSExpr = ExprElaborator(Context, SemaRef).elaborateExpr(RHS);
-
+  clang::Expr *RHSExpr = doElaborateExpr(RHS);
   if (!RHSExpr)
     return nullptr;
 
@@ -2155,7 +2194,7 @@ clang::Expr *ExprElaborator::elaborateNestedLookupAccess(
 clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
                                               clang::UnaryOperatorKind Op) {
   const Syntax *Operand = S->getArgument(0);
-  clang::Expr *OperandResult = elaborateExpr(Operand);
+  clang::Expr *OperandResult = doElaborateExpr(Operand);
 
   if (!OperandResult || OperandResult->getType()->isNamespaceType()) {
     SemaRef.Diags.Report(Operand->getLoc(),
@@ -2190,14 +2229,14 @@ clang::Expr *ExprElaborator::elaborateBinOp(const CallSyntax *S,
   const Syntax *LHSSyntax = S->getArgument(0);
   const Syntax *RHSSyntax = S->getArgument(1);
 
-  clang::Expr *LHS = elaborateExpr(LHSSyntax);
+  clang::Expr *LHS = doElaborateExpr(LHSSyntax);
   if (!LHS) {
     SemaRef.Diags.Report(LHSSyntax->getLoc(),
                          clang::diag::err_expected_expression);
     return nullptr;
   }
 
-  clang::Expr *RHS = elaborateExpr(RHSSyntax);
+  clang::Expr *RHS = doElaborateExpr(RHSSyntax);
   if (!RHS) {
     SemaRef.Diags.Report(RHSSyntax->getLoc(),
                          clang::diag::err_expected_expression);
@@ -2238,7 +2277,7 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions,
     if (IsConstExpr)
       return elaborateExpectedConstantExpr(Conditions->getChild(0));
     else
-      return elaborateExpr(Conditions->getChild(0));
+      return doElaborateExpr(Conditions->getChild(0));
   }
   clang::Expr *LHS = nullptr;
   clang::Expr *RHS = nullptr;
@@ -2248,7 +2287,7 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions,
     if (IsConstExpr)
       LHS = ExEl.elaborateExpectedConstantExpr(Conditions->getChild(0));
     else
-      LHS = ExEl.elaborateExpr(Conditions->getChild(0));
+      LHS = ExEl.doElaborateExpr(Conditions->getChild(0));
 
     if (!LHS) {
       SemaRef.Diags.Report(Conditions->getChild(0)->getLoc(),
@@ -2261,7 +2300,7 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions,
     if (IsConstExpr)
       RHS = ExEl.elaborateExpectedConstantExpr(Conditions->getChild(1));
     else
-      RHS = ExEl.elaborateExpr(Conditions->getChild(1));
+      RHS = ExEl.doElaborateExpr(Conditions->getChild(1));
 
     if (!RHS) {
       SemaRef.Diags.Report(Conditions->getChild(1)->getLoc(),
@@ -2286,7 +2325,7 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions,
     if (IsConstExpr)
       RHS = ExEl.elaborateExpectedConstantExpr(Conditions->getChild(I));
     else
-      RHS = ExEl.elaborateExpr(Conditions->getChild(I));
+      RHS = ExEl.doElaborateExpr(Conditions->getChild(I));
 
     BinOp =
       SemaRef.getCxxSema().ActOnBinOp(/*Scope=*/nullptr, clang::SourceLocation(),
@@ -2309,7 +2348,7 @@ static clang::Expr *handleArrayMacro(SyntaxContext &Context, Sema &SemaRef,
 
   llvm::SmallVector<clang::Expr *, 8> Elements;
   for (const Syntax *SI :  Init->children()) {
-    clang::Expr *Element = ExprElaborator(Context, SemaRef).elaborateExpr(SI);
+    clang::Expr *Element = ExprElaborator(Context, SemaRef).doElaborateExpr(SI);
 
     if (!Element)
       return nullptr;
@@ -2472,7 +2511,7 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
 clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *Ty) {
   assert(D->isType());
   TypeDeclarator *TyDcl = D->getAsType();
-  return elaborateExpr(TyDcl->getTyExpr());
+  return doElaborateExpr(TyDcl->getTyExpr());
 }
 
 
@@ -2480,21 +2519,21 @@ clang::Expr *
 ExprElaborator::handleOperatorConst(const CallSyntax *S) {
   assert(S->getNumArguments() == 1 && "Invalid number of arguments for "
       "const operator");
-  clang::Expr *innerTypeExpr = elaborateExpr(S->getArgument(0));
+  clang::Expr *innerTypeExpr = doElaborateExpr(S->getArgument(0));
   return makeConstType(innerTypeExpr, S);
 }
 
 clang::Expr *ExprElaborator::handleRefType(const CallSyntax *S) {
   assert(S->getNumArguments() == 1 && "Invalid number of arguments for "
       "ref operator");
-  clang::Expr *innerTypeExpr = elaborateExpr(S->getArgument(0));
+  clang::Expr *innerTypeExpr = doElaborateExpr(S->getArgument(0));
   return makeRefType(innerTypeExpr, S);
 }
 
 clang::Expr *ExprElaborator::handleRRefType(const CallSyntax *S) {
   assert(S->getNumArguments() == 1 && "Invalid number of arguments for "
       "rref operator");
-  clang::Expr *innerTypeExpr = elaborateExpr(S->getArgument(0));
+  clang::Expr *innerTypeExpr = doElaborateExpr(S->getArgument(0));
   return makeRRefType(innerTypeExpr, S);
 }
 
@@ -2542,7 +2581,7 @@ clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
       }
 
       ExprElaborator ParamElaborator(Context, SemaRef);
-      clang::Expr *Param = ParamElaborator.elaborateExpr(ParamSyntax);
+      clang::Expr *Param = ParamElaborator.doElaborateExpr(ParamSyntax);
 
       if (!Param || !Param->getType()->isTypeOfTypes())
         continue;
@@ -2570,7 +2609,7 @@ clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
 
   const Syntax *ReturnSyntax = S->getArgument(1);
   ExprElaborator ReturnElaborator(Context, SemaRef);
-  clang::Expr *Return = ReturnElaborator.elaborateExpr(ReturnSyntax);
+  clang::Expr *Return = ReturnElaborator.doElaborateExpr(ReturnSyntax);
 
   if (!Return->getType()->isTypeOfTypes()) {
     SemaRef.Diags.Report(ReturnSyntax->getLoc(),
@@ -2612,7 +2651,7 @@ clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
     return nullptr;
   }
 
-  clang::Expr *IdExpr = elaborateExpr(S->getArgument(1));
+  clang::Expr *IdExpr = doElaborateExpr(S->getArgument(1));
   if (!IdExpr) {
     return IdExpr;
   }
@@ -2623,7 +2662,7 @@ clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
     return nullptr;
 
 
-  clang::Expr *IndexExpr = elaborateExpr(S->getArgument(0));
+  clang::Expr *IndexExpr = doElaborateExpr(S->getArgument(0));
 
   // FIXME: what do we do for an empty array index, such as []int = {...}
   if (!IndexExpr) {

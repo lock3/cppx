@@ -233,16 +233,16 @@ TEST(LogicalOp, BuiltinType_uint128) {
 }
 
 TEST(LogicalOp, BuiltinType_char) {
-  doLogicalOperatorTest("char", "char", "'5'", "'6'", CK_IntegralToBoolean);
+  doLogicalOperatorTest("char", "unsigned char", "'5'", "'6'", CK_IntegralToBoolean);
 }
 TEST(LogicalOp, BuiltinType_char8) {
-  doLogicalOperatorTest("char8", "signed char", "'5'", "'6'", CK_IntegralToBoolean);
+  doLogicalOperatorTest("char8", "unsigned char", "'5'", "'6'", CK_IntegralToBoolean);
 }
 TEST(LogicalOp, BuiltinType_char16) {
-  doLogicalOperatorTest("char16", "short", "'5'", "'6'", CK_IntegralToBoolean);
+  doLogicalOperatorTest("char16", "unsigned short", "'5'", "'6'", CK_IntegralToBoolean);
 }
 TEST(LogicalOp, BuiltinType_char32) {
-  doLogicalOperatorTest("char32", "int", "'5'", "'6'", CK_IntegralToBoolean);
+  doLogicalOperatorTest("char32", "unsigned int", "'5'", "'6'", CK_IntegralToBoolean);
 }
 
 TEST(LogicalOp, BuiltinType_float16) {
