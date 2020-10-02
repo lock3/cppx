@@ -478,6 +478,21 @@ static void handleUsingBlock(SyntaxContext &Ctx, Sema &SemaRef,
           SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
         // FIXME: if this comes from an operator'.', elaborate lhs to
         // differentiate classes and namespaces.
+        for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
+          SemaRef.getCurrentScope()->Shadows.insert(Shadow);
+      } else if (auto *ULE = dyn_cast<clang::UnresolvedLookupExpr>(E)) {
+        // using directive of a declaration in a namespace or base class.
+        clang::UnqualifiedId Name;
+        Name.setIdentifier(ULE->getName().getAsIdentifierInfo(),
+                           ULE->getNameLoc());
+
+        clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDeclaration(
+          CxxScope, clang::AS_none, UsingLoc, clang::SourceLocation(),
+          SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
+        // FIXME: if this comes from an operator'.', elaborate lhs to
+        // differentiate classes and namespaces.
+        for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
+          SemaRef.getCurrentScope()->Shadows.insert(Shadow);
       }
     }
   }

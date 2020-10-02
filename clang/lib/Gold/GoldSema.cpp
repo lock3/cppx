@@ -28,8 +28,10 @@
 
 #include "clang/Gold/ClangToGoldDeclBuilder.h"
 #include "clang/Gold/GoldElaborator.h"
+#include "clang/Gold/GoldIdentifierResolver.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSyntax.h"
+
 namespace gold {
 
 using namespace llvm;
@@ -130,6 +132,7 @@ static Sema::StringToAttrHandlerMap buildAttributeMaping() {
 
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : CxxSema(CxxSema), CurrentDecl(), Context(Context),
+    IdResolver(new (Context) IdentifierResolver(*this)),
     Diags(Context.CxxAST.getSourceManager().getDiagnostics()),
     OperatorColonII(&Context.CxxAST.Idents.get("operator':'")),
     OperatorArrowII(&Context.CxxAST.Idents.get("operator'->'")),
@@ -579,17 +582,41 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
       return true;
   }
 
+  clang::IdentifierResolver::iterator
+    I = getCxxSema().IdResolver->begin(Name),
+    IEnd = getCxxSema().IdResolver->end();
+  auto hasShadow = [&R](Scope *S, clang::NamedDecl *D) -> bool {
+    clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D);
+    if (!UD)
+      return false;
+
+    for (auto *Shadow : S->Shadows) {
+      for (auto *S : UD->shadows())
+        if (S == Shadow) {
+          R.addDecl(S);
+          return true;
+        }
+    }
+
+    return false;
+  };
+
   // This is done based on how CppLookUpName is handled, with a few exceptions,
   // this will return uninstantiated template declarations, namespaces,
   // and other kinds of declarations. This also handles some early elaboration
   // of some types.
   bool FoundFirstClassScope = false;
-  for(;S; S = S->getParent()) {
+  for(; S; S = S->getParent()) {
     std::set<Declaration *> Found = S->findDecl(Id);
 
     // Look through any using directives, but only if we didn't already find
     // something acceptable.
     if (Found.empty()) {
+      // See if Clang has anything in the identifier resolver.
+      for (; I != IEnd; ++I)
+        if (hasShadow(S, *I))
+            return true;
+
       bool FoundInNamespace = false;
       for (clang::UsingDirectiveDecl *UD : S->UsingDirectives) {
         assert(isa<clang::CppxNamespaceDecl>(UD->getNominatedNamespace()));

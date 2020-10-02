@@ -49,12 +49,14 @@ class TypeSourceInfo;
 } // namespace clang
 
 namespace gold {
-class Declarator;
-class Declaration;
-struct Syntax;
 struct ArraySyntax;
-class SyntaxContext;
+class Declaration;
+class Declarator;
 class Elaborator;
+class IdentifierResolver;
+struct Syntax;
+class SyntaxContext;
+
 
 /// This contains the status for the elaboration of method attributes.
 /// Each flag is set to true/false depending on if that field has been
@@ -553,6 +555,9 @@ public:
 
   // The Clang diagnostics engine.
   clang::DiagnosticsEngine &Diags;
+
+  // The identifier resolver
+  IdentifierResolver *IdResolver;
 
   // Tokenizations of commonly compared-against strings.
   clang::IdentifierInfo *const OperatorColonII;
