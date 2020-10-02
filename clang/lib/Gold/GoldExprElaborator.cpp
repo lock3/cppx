@@ -1212,8 +1212,15 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
   }
 
   auto BuiltinMapIter = SemaRef.BuiltinTypes.find(S->getSpelling());
-  if (BuiltinMapIter != SemaRef.BuiltinTypes.end())
+  if (BuiltinMapIter != SemaRef.BuiltinTypes.end()) {
+    if (BuiltinMapIter->second.isNull()) {
+      SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_builtin_type)
+        << S->getSpelling();
+      return nullptr;
+    }
+
     return SemaRef.buildTypeExpr(BuiltinMapIter->second, S->getLoc());
+  }
 
   SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_identifier_type)
                        << S->getSpelling();

@@ -11393,6 +11393,9 @@ def err_namespace : Error<
 def err_namespace_no_body : Error<
   "namespace must have a body">;
 
+def err_invalid_builtin_type : Error<
+  "builtin type %0 not available on this system">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {
