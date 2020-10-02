@@ -108,7 +108,7 @@ private:
 
   /// This attempts to verify that we are infact a user defined literal function.
   /// Returns true if there was an error and false if not.
-  bool checkClassifiyUserDefinedLiteralOperator(const Syntax *DeclExpr,
+  bool checkClassifyUserDefinedLiteralOperator(const Syntax *DeclExpr,
                                                 Declaration *TheDecl);
 
   /// Given the structure and context, attempt to classify what kind of

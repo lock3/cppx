@@ -273,6 +273,21 @@ ClangToGoldDeclRebuilder::generateDeclForDeclContext(clang::DeclContext *DC,
   return D;
 }
 
+Declaration *ClangToGoldDeclRebuilder::generateDeclForNNS(
+                             clang::NamespaceDecl *NS, const AtomSyntax *Name) {
+  assert(NS && "Invalid namespace");
+  assert(Name && "Invalid name");
+  auto *D = new Declaration(SemaRef.getCurrentDecl(), Name,
+                            /*Declarator=*/nullptr, /*Init=*/nullptr,
+                            UDK_Namespace);
+  D->Cxx = NS;
+  D->CurrentPhase = Phase::Initialization;
+  D->Id = NS->getIdentifier();
+  D->ScopeForDecl = SemaRef.getCurrentScope();
+  D->ParentDecl = SemaRef.getCurrentDecl();
+  return D;
+}
+
 gold::Scope *ClangToGoldDeclRebuilder::determineParentScope() {
   if (isa<clang::ClassTemplatePartialSpecializationDecl>(RD)) {
     // Logically this should never happen!.

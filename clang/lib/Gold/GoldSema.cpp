@@ -1289,7 +1289,8 @@ Sema::ActOnStartNamespaceDef(clang::Scope *NamespcScope,
   CxxSema.CheckNamespaceDeclaration(II, StartLoc, Loc, IsInline, IsInvalid,
                                     IsStd, AddToKnown, PrevNS);
   gold::Scope *PrevScope = nullptr;
-  if (CppxNamespaceDecl *PrevCppxNsDecl = dyn_cast_or_null<CppxNamespaceDecl>(PrevNS)) {
+  if (CppxNamespaceDecl *PrevCppxNsDecl
+                                = dyn_cast_or_null<CppxNamespaceDecl>(PrevNS)) {
     PrevScope = PrevCppxNsDecl->Rep;
   }
   CppxNamespaceDecl *Namespc = CppxNamespaceDecl::Create(Context.CxxAST,
