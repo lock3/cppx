@@ -11381,6 +11381,9 @@ def err_user_defined_literal_invalid_identifier: Error<
     "%select{invalid suffix|missing suffix}0 for user defined literal "
     "%select{|suffix must begin with '_'}1">;
 
+def err_invalid_builtin_type : Error<
+  "builtin type %0 not available on this system">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {
