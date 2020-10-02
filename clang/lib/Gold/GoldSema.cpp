@@ -32,6 +32,8 @@
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSyntax.h"
 
+#include <algorithm>
+
 namespace gold {
 
 using namespace llvm;
@@ -133,8 +135,8 @@ static Sema::StringToAttrHandlerMap buildAttributeMapping() {
 
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : CxxSema(CxxSema), CurrentDecl(), Context(Context),
-    IdResolver(new (Context) IdentifierResolver(*this)),
     Diags(Context.CxxAST.getSourceManager().getDiagnostics()),
+    IdResolver(new (Context) IdentifierResolver(*this)),
     OperatorColonII(&Context.CxxAST.Idents.get("operator':'")),
     OperatorArrowII(&Context.CxxAST.Idents.get("operator'->'")),
     OperatorExclaimII(&Context.CxxAST.Idents.get("operator'!'")),
@@ -565,20 +567,21 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
   clang::IdentifierResolver::iterator
     I = getCxxSema().IdResolver->begin(Name),
     IEnd = getCxxSema().IdResolver->end();
-  auto hasShadow = [&R](Scope *S, clang::NamedDecl *D) -> bool {
+  auto addShadows = [&R](Scope *S, clang::NamedDecl *D) -> bool {
     clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D);
     if (!UD)
       return false;
 
-    for (auto *Shadow : S->Shadows) {
-      for (auto *S : UD->shadows())
-        if (S == Shadow) {
-          R.addDecl(S);
-          return true;
-        }
+    bool Shadowed = false;
+    for (auto *Shadow : UD->shadows()) {
+      auto It = std::find(std::begin(S->Shadows), std::end(S->Shadows), Shadow);
+      if (It != std::end(S->Shadows)) {
+        R.addDecl(Shadow);
+        Shadowed = true;
+      }
     }
 
-    return false;
+    return true;
   };
 
   // This is done based on how CppLookUpName is handled, with a few exceptions,
@@ -593,9 +596,11 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
     // something acceptable.
     if (Found.empty()) {
       // See if Clang has anything in the identifier resolver.
+      bool Shadowed = false;
       for (; I != IEnd; ++I)
-        if (hasShadow(S, *I))
-            return true;
+        Shadowed |= addShadows(S, *I);
+      if (Shadowed)
+        return true;
 
       bool FoundInNamespace = false;
       for (clang::UsingDirectiveDecl *UD : S->UsingDirectives) {
