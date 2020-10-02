@@ -1,4 +1,4 @@
-//=== GoldStringLiteralElab.cpp - ------------------------------------------==//
+//=== GoldStringLiteralElab.cpp --------------------------------------------==//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file implements some of the tests for the gold language elaborators.
+//  String literal tests.
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,16 +19,30 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
+TEST(GoldStringLiteral, EmptyStringLiteral) {
+  StringRef Code = R"(i:^ const char = "")";
+  DeclarationMatcher IntCmp = varDecl(
+    hasName("i"), hasType(asString("const unsigned char *")),
+    hasInitializer(hasDescendant(stringLiteral(stringHasValue(u8""))))
+  );
+  ASSERT_TRUE(matches(Code.str(), IntCmp));
+}
 
-// FIXME: We need hex, octal, UTF-8 implementation tests for this as well as a
-// possible wide char implementation.
+TEST(GoldStringLiteral, NotEmpty) {
+  StringRef Code = R"(i:^ const char ="value")";
+  DeclarationMatcher IntCmp = varDecl(
+    hasName("i"), hasType(asString("const unsigned char *")),
+    hasInitializer(hasDescendant(stringLiteral(stringHasValue(u8"value"))))
+  );
+  ASSERT_TRUE(matches(Code.str(), IntCmp));
+}
 
-// TEST(StringLiteral, EmptyStringLiteral) {
-//   StringRef Code = "i:^ char = \"\"";
-//   DeclarationMatcher IntCmp = varDecl(
-//     hasName("i"), hasType(asString("char const*")),
-//     hasInitializer(stringLiteral(stringHasValue("")))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), IntCmp));
-// }
+TEST(GoldStringLiteral, EscapedTabCharacter) {
+  StringRef Code = R"(i:^ const char ="value\t")";
+  DeclarationMatcher IntCmp = varDecl(
+    hasName("i"), hasType(asString("const unsigned char *")),
+    hasInitializer(hasDescendant(stringLiteral(stringHasValue("value\t"))))
+  );
+  ASSERT_TRUE(matches(Code.str(), IntCmp));
+}
 

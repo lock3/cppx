@@ -26,9 +26,8 @@ using namespace gold;
 TEST(CharLiteralElab, SimpleCharacter_LowerCase) {
   StringRef Code = "i:char = 'a'";
   DeclarationMatcher CharacterCmp = varDecl(
-    hasName("i"), hasType(asString("char")),
+    hasName("i"), hasType(asString("unsigned char")),
     hasInitializer(characterLiteral(equals(unsigned('a'))))
-  
   );
   ASSERT_TRUE(matches(Code.str(), CharacterCmp));
 }
@@ -36,9 +35,8 @@ TEST(CharLiteralElab, SimpleCharacter_LowerCase) {
 TEST(CharLiteralElab, SimpleCharacter_UpperCase) {
   StringRef Code = "i:char = 'A'";
   DeclarationMatcher CharacterCmp = varDecl(
-    hasName("i"), hasType(asString("char")),
+    hasName("i"), hasType(asString("unsigned char")),
     hasInitializer(characterLiteral(equals(65u)))
-  
   );
   ASSERT_TRUE(matches(Code.str(), CharacterCmp));
 }
@@ -47,10 +45,10 @@ static bool testEscapedCharacterConstant(const std::string& EscapedCharacterStr,
     char ExpectedValue) {
   std::string Code = "i:char = '" + EscapedCharacterStr + "'";
   DeclarationMatcher CharacterCmp = varDecl(
-    hasName("i"), hasType(asString("char")),
+    hasName("i"), hasType(asString("unsigned char")),
     hasInitializer(characterLiteral(equals(unsigned(ExpectedValue))))
   );
-  if (!matches(Code, CharacterCmp)) 
+  if (!matches(Code, CharacterCmp))
     return testing::AssertionFailure()
         << "Test failed for Escaped character sequence \""
         << EscapedCharacterStr << "\"";
@@ -74,7 +72,7 @@ TEST(CharLiteralElab, Character_EscapedCharacters) {
 TEST(CharLiteralElab, Character_Hex) {
   StringRef Code = "i:char = '\\x21'";
   DeclarationMatcher CharacterCmp = varDecl(
-    hasName("i"), hasType(asString("char")),
+    hasName("i"), hasType(asString("unsigned char")),
     hasInitializer(characterLiteral(equals(unsigned('!'))))
   );
   ASSERT_TRUE(matches(Code.str(), CharacterCmp));
@@ -84,7 +82,7 @@ TEST(CharLiteralElab, Character_Hex) {
 TEST(CharLiteralElab, Character_Octal) {
   StringRef Code = "i:char = '\\041'";
   DeclarationMatcher CharacterCmp = varDecl(
-    hasName("i"), hasType(asString("char")),
+    hasName("i"), hasType(asString("unsigned char")),
     hasInitializer(characterLiteral(equals(unsigned('!'))))
   );
   ASSERT_TRUE(matches(Code.str(), CharacterCmp));

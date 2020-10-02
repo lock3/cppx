@@ -248,6 +248,12 @@ public:
   /// within a class.
   bool declaresDestructor() const;
 
+  /// Checks to see if SuspectedKind == UDK_ConversionOperator
+  bool declaresConversionOperator() const;
+
+  /// Checks to see if SuspectedKind == UDK_LiteralOperator
+  bool declaresUserDefinedLiteral() const;
+
   /// True if this declares a template.
   bool declaresFunctionTemplate() const;
 
@@ -297,6 +303,8 @@ public:
   /// The identifier of the declaration, if any.
   clang::IdentifierInfo *getId() const { return Id; }
 
+  clang::IdentifierInfo *getLiteralId() const { return Id; }
+
   const IdentifierDeclarator *getIdDeclarator() const;
   IdentifierDeclarator *getIdDeclarator();
 
@@ -336,6 +344,9 @@ public:
 
   /// The identifier for the declaration.
   clang::IdentifierInfo *Id = nullptr;
+
+  /// User-Defined literal suffix identifier.
+  clang::IdentifierInfo *UDLSuffixId = nullptr;
 
   /// This name indicates if this declaration declares an operator name, and if
   /// the operator name is a known valid operator. This operator name is only

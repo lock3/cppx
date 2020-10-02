@@ -138,8 +138,9 @@ static Syntax *makeList(const SyntaxContext &Ctx,
                         std::initializer_list<Syntax *> List);
 static Attribute *makeAttr(const SyntaxContext &Ctx, Syntax *Arg);
 
-Parser::Parser(SyntaxContext &Context, clang::SourceManager &SM, File const& F)
-  : Lex(SM, F, Context), Diags(SM.getDiagnostics()), Context(Context)
+Parser::Parser(SyntaxContext &Context, clang::SourceManager &SM, File const& F,
+               clang::Preprocessor &PP)
+  : Lex(SM, F, Context, PP), Diags(SM.getDiagnostics()), Context(Context)
 {
   fetchToken();
 }
@@ -1255,6 +1256,7 @@ Syntax *Parser::parsePrimary() {
   case tok::Float32Keyword:
   case tok::Float64Keyword:
   case tok::Float128Keyword:
+  case tok::CCharKeyword:
   case tok::DoubleKeyword:
   case tok::TypeKeyword:
   case tok::ArgsKeyword:
@@ -1486,7 +1488,8 @@ Syntax *Parser::onUserDefinedLiteral(Syntax *Base, const Token &Lit) {
   Ts[0] = T;
   Token Fuse(tok::Identifier, Lit.getLocation(), tok::Literal,
              Ts, 1, T->getSpelling());
-  return onCall(onAtom(Fuse, tok::Literal, onAtom(Lit)), Base);
+  Syntax *Args = onList(ArgArray, llvm::SmallVector<Syntax *, 0>({Base}));
+  return onCall(onAtom(Fuse, tok::Literal, onAtom(Lit)), Args);
 }
 
 static void parseSuffix(SyntaxContext &Context, clang::DiagnosticsEngine &Diags,

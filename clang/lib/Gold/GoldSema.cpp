@@ -46,10 +46,11 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
     {"null_t", Context.CxxAST.NullPtrTy},
 
     // character
-    {"char", Context.CxxAST.CharTy},
-    {"char8", Context.CxxAST.getIntTypeForBitwidth(8, true)},
-    {"char16", Context.CxxAST.getIntTypeForBitwidth(16, true)},
-    {"char32", Context.CxxAST.getIntTypeForBitwidth(32, true)},
+    {"cchar", Context.CxxAST.CharTy},
+    {"char", Context.CxxAST.getIntTypeForBitwidth(8, false)},
+    {"char8", Context.CxxAST.getIntTypeForBitwidth(8, false)},
+    {"char16", Context.CxxAST.getIntTypeForBitwidth(16, false)},
+    {"char32", Context.CxxAST.getIntTypeForBitwidth(32, false)},
 
     // Signed integers
     {"int", Context.CxxAST.IntTy},
@@ -81,7 +82,7 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
   };
 }
 
-static Sema::StringToAttrHandlerMap buildAttributeMaping() {
+static Sema::StringToAttrHandlerMap buildAttributeMapping() {
 #define ATTR_HANDLER_LAMBDA(METHOD_NAME)\
     [](Elaborator &E, Declaration *D, const Syntax *Attr,\
        AttrStatus &Status) {\
@@ -154,40 +155,12 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     OperatorParensII(&Context.CxxAST.Idents.get("operator'()'")),
     ConstructorII(&Context.CxxAST.Idents.get("constructor")),
     DestructorII(&Context.CxxAST.Idents.get("destructor")),
+    DefaultCharTy(Context.CxxAST.getIntTypeForBitwidth(8, false)),
     BuiltinTypes(createBuiltinTypeList(Context)),
     OpInfo(Context.CxxAST),
-    AttrHandlerMap(buildAttributeMaping())
+    AttrHandlerMap(buildAttributeMapping())
 {
-  // FIXME: what is this? get rid of it.
-  NullTTy = Context.CxxAST.NullPtrTy;
-  CharTy = Context.CxxAST.CharTy;
-  Char8Ty = Context.CxxAST.getIntTypeForBitwidth(8, true);
-  Char16Ty = Context.CxxAST.getIntTypeForBitwidth(16, true);
-  Char32Ty = Context.CxxAST.getIntTypeForBitwidth(32, true);
-
-  IntTy = Context.CxxAST.IntTy;
-  Int8Ty = Context.CxxAST.getIntTypeForBitwidth(8, true);
-  Int16Ty = Context.CxxAST.getIntTypeForBitwidth(16, true);
-  Int32Ty = Context.CxxAST.getIntTypeForBitwidth(32, true);
-  Int64Ty = Context.CxxAST.getIntTypeForBitwidth(64, true);
-  Int128Ty = Context.CxxAST.getIntTypeForBitwidth(128, true);
-
-  UIntTy = Context.CxxAST.UnsignedIntTy;
-  UInt8Ty = Context.CxxAST.getIntTypeForBitwidth(8, false);
-  UInt16Ty = Context.CxxAST.getIntTypeForBitwidth(16, false);
-  UInt32Ty = Context.CxxAST.getIntTypeForBitwidth(32, false);
-  UInt64Ty = Context.CxxAST.getIntTypeForBitwidth(64, false);
-  UInt128Ty = Context.CxxAST.getIntTypeForBitwidth(128, false);
-
-  Float16Ty = Context.CxxAST.HalfTy;
-  Float32Ty = Context.CxxAST.getRealTypeForBitwidth(32, false);
-  Float64Ty = Context.CxxAST.getRealTypeForBitwidth(64, false);
-  Float128Ty = Context.CxxAST.getRealTypeForBitwidth(128, true);
-
   CxxSema.CurScope = nullptr;
-
-  // All of the names of operators that we use.
-
 }
 
 Sema::~Sema() {
@@ -578,8 +551,15 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
   if (LookupKind == clang::Sema::LookupTagName ||
       LookupKind == clang::Sema::LookupAnyName) {
     auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
-    if (BuiltinMapIter != BuiltinTypes.end())
+    if (BuiltinMapIter != BuiltinTypes.end()) {
+      if (BuiltinMapIter->second.isNull()) {
+        Diags.Report(clang::SourceLocation(),
+                     clang::diag::err_invalid_builtin_type) << Id;
+        return false;
+      }
+
       return true;
+    }
   }
 
   clang::IdentifierResolver::iterator
@@ -656,6 +636,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
             // change the elaboration context back to PotentiallyEvaluated.
             clang::EnterExpressionEvaluationContext ConstantEvaluated(CxxSema,
                 clang::Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
+            AttrElabRAII Attr(*this, false);
             Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
           }
         }
@@ -664,8 +645,10 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
         if (FoundDecl->hasNestedNameSpecifier())
           continue;
 
-        if (!FoundDecl->Cxx)
+        if (!FoundDecl->Cxx) {
+          AttrElabRAII Attr(*this, false);
           Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
+        }
 
         if (!FoundDecl->Cxx)
           return false;

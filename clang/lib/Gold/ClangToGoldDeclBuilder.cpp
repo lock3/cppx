@@ -416,8 +416,8 @@ ClangToGoldDeclRebuilder::rebuildMember(clang::CXXMethodDecl *Method) {
 
 bool
 ClangToGoldDeclRebuilder::rebuildMember(clang::CXXConversionDecl *Conversion) {
-  dumpScopeStructure(RootScope, RootDecl);
-  llvm_unreachable("Not implemented yet rebuildMember clang::CXXConversionDecl");
+  StateRAII FieldState(*this, UDK_ConversionOperator, Conversion);
+  return false;
 }
 
 bool

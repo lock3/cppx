@@ -69,7 +69,6 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
   TheDecl->ClangDeclaringScope = SemaRef.getCurClangScope();
   TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
   TheDecl->ScopeForDecl = SemaRef.getCurrentScope();
-
   if (checkDeclaration(S, TheDecl))
     return nullptr;
 
@@ -92,8 +91,6 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
 
   SemaRef.getCurrentScope()->addDecl(TheDecl);
   TheDecl->CurrentPhase = Phase::Identification;
-  // llvm::outs() << "Dumping attribute sequence: \n";
-  // TheDecl->Decl->printSeqWithAttr();
   return TheDecl;
 }
 
@@ -243,12 +240,16 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
   }
   if (Cur != nullptr) {
     if (RequiresDeclOrError) {
-      auto Loc = DeclExpr->getLoc();
-      Loc.dump(SemaRef.getCxxSema().getSourceManager());
-      SemaRef.Diags.Report(Cur->getLoc(), clang::diag::err_invalid_declaration);
+      if (ConversionTypeSyntax)
+        SemaRef.Diags.Report(Cur->getLoc(),
+                         clang::diag::err_conversion_operator_with_return_type);
+      else
+        SemaRef.Diags.Report(Cur->getLoc(),
+                             clang::diag::err_invalid_declaration);
     }
     return true;
   }
+
   return false;
 }
 
@@ -459,7 +460,7 @@ bool DeclarationBuilder::checkRequiresType(const Syntax *DeclExpr,
   case UDK_PossibleConstructor:
   case UDK_PossibleDestructor:
   case UDK_PossibleMemberOperator:
-  case UDK_PossibleConversionOperator:{
+  case UDK_PossibleConversionOperator: {
     if (RequireTypeForFunctions) {
       if (!TheDecl->TypeDcl) {
         if (RequiresDeclOrError)
@@ -769,8 +770,87 @@ static bool deduceVariableSyntax(Sema &SemaRef, Declaration *TheDecl,
   return true;
 }
 
+bool DeclarationBuilder::checkClassifiedConversionOperator(
+                                 const Syntax *DeclExpr, Declaration *TheDecl) {
+  // Keep in mind that if we made it to this point the we MUST be a declaration
+  // or at the very least an invalid declaration.
+
+  if (!TheDecl->FunctionDcl) {
+    SemaRef.Diags.Report(TheDecl->IdDcl->getLoc(),
+                clang::diag::err_conversion_operator_decl_without_parameters);
+    return true;
+  }
+
+  // If we reached here then we must be a conversion operator.
+  TheDecl->SuspectedKind = UDK_ConversionOperator;
+  bool DeclInTag = TheDecl->ScopeForDecl->getKind() == SK_Class;
+  if (TheDecl->InitOpUsed == IK_None) {
+    if (!DeclInTag) {
+      SemaRef.Diags.Report(TheDecl->IdDcl->getLoc(),
+                           clang::diag::err_conversion_operator_bad_location);
+      return true;
+    }
+  } else {
+    // In this case we have some kind of definition and we need are not
+    // inside the body of a class/union, then we must have a NNS, if not
+    // then we are an error.
+    if (!DeclInTag && TheDecl->NNSInfo.empty()) {
+        SemaRef.Diags.Report(TheDecl->IdDcl->getLoc(),
+                             clang::diag::err_conversion_operator_bad_location);
+      return true;
+    }
+  }
+
+  // There are only two cases where this can be defined, is inside the body
+  // of a class, the other is in a class but with a Nested name specifier
+  return false;
+}
+
+bool DeclarationBuilder::checkClassifiyUserDefinedLiteralOperator(
+                                 const Syntax *DeclExpr, Declaration *TheDecl) {
+  assert(TheDecl->IdDcl->isUserDefinedLiteral()
+         && "Not a user defined literal.");
+
+  if (!TheDecl->FunctionDcl) {
+    SemaRef.Diags.Report(TheDecl->IdDcl->getLoc(),
+                        clang::diag::err_expected_declarator_chain_sequence)
+                        << /*function*/3;
+    return true;
+  }
+  if (TheDecl->IdDcl->getUserDefinedLiteralSuffix() == "") {
+    SemaRef.Diags.Report(DeclExpr->getLoc(),
+                       clang::diag::err_user_defined_literal_invalid_identifier)
+                          << /*invalid suffix*/ 1 << 0;
+    return true;
+  }
+
+  // TODO: We may enforce this in the future because this is part of the C++
+  // standard's implementation. We may also need to enforce _ capital-letter
+  // as invalid as well, for the same reasons.
+
+  // if (TheDecl->IdDcl->getUserDefinedLiteralSuffix() != '_') {
+  //   SemaRef.Diags.Report(S->getLoc(),
+  //                  clang::diag::err_user_defined_literal_invalid_identifier)
+  //                        << /*invalid suffix*/ 1 << 1;
+  //   return nullptr;
+  // }
+  TheDecl->SuspectedKind = UDK_LiteralOperator;
+
+  // Recording the identifier that's used to look up this declaration, when
+  // used as an operator.
+  TheDecl->UDLSuffixId = &Context.CxxAST.Idents.get(
+                               {TheDecl->IdDcl->getUserDefinedLiteralSuffix()});
+
+  return false;
+}
+
 bool DeclarationBuilder::classifyDecl(const Syntax *DeclExpr,
                                       Declaration *TheDecl) {
+  if (ConversionTypeSyntax)
+    return checkClassifiedConversionOperator(DeclExpr, TheDecl);
+
+  if (TheDecl->IdDcl->isUserDefinedLiteral())
+    return checkClassifiyUserDefinedLiteralOperator(DeclExpr, TheDecl);
 
   // this is handled within checkEnumDeclaration
   if (TheDecl->SuspectedKind == UDK_EnumConstant)
@@ -1041,12 +1121,10 @@ DeclarationBuilder::buildNestedName(const Syntax *S, Declarator *Next) {
   if (const auto *SimpleName = dyn_cast<AtomSyntax>(S)) {
     return handleNestedNameSpecifier(SimpleName, Next);
   }
-  if (RequiresDeclOrError){
+  if (RequiresDeclOrError)
     SemaRef.Diags.Report(S->getLoc(),
                          clang::diag::err_invalid_declaration_kind)
-                         <<2;
-  }
-
+                         << 2;
   return nullptr;
 }
 
@@ -1096,10 +1174,9 @@ DeclarationBuilder::buildNameDeclarator(const Syntax *S, Declarator *Next) {
   } else {
     ErrorIndicator = 1;
   }
-  if (RequiresDeclOrError) {
+  if (RequiresDeclOrError)
     SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_declaration_kind)
                          << ErrorIndicator;
-  }
   return nullptr;
 }
 
@@ -1169,8 +1246,8 @@ DeclarationBuilder::buildTemplateFunctionOrNameDeclarator(const Syntax *S,
         return buildTemplateOrNameDeclarator(Func, Next);
       }
     }
-    Declarator *T1 = handleFunction(Func, Next);
-    Declarator *Temp = buildTemplateOrNameDeclarator(Func->getCallee(), T1);
+    Declarator *Fn = handleFunction(Func, Next);
+    Declarator *Temp = buildTemplateOrNameDeclarator(Func->getCallee(), Fn);
     Declarator *Cur = Temp;
     while(Cur) {
       if (isa<IdentifierDeclarator>(Cur)) {
@@ -1227,7 +1304,30 @@ Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
   return buildTemplateFunctionOrNameDeclarator(S, Next);
 }
 
+Declarator *
+DeclarationBuilder::appendConversionType(Declarator *CurDcl) {
+  if (!CurDcl)
+    return CurDcl;
+
+  if (ConversionTypeSyntax) {
+    Declarator *Temp = CurDcl;
+
+    // Going until we reach the end of the declarator chain.
+    while(Temp && Temp->Next) Temp = Temp->Next;
+
+    // If we are the conversion operator the next thing to do is to update the
+    // declarator chain by inserting the type after the function in the chain.
+    Temp->Next = handleType(ConversionTypeSyntax, nullptr);
+  }
+  return CurDcl;
+}
+
 Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
+  return appendConversionType(dispatchAndCreateDeclarator(S));
+}
+
+Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
+
   // Handling a special case of an invalid enum identifier .name
   // without an assignment operator. This need to to output
   // the correct error message.
@@ -1249,7 +1349,7 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
   }
 
   const Syntax *Decl = nullptr;
-  FusedOpKind OpKind = getFusedOpKind(SemaRef, dyn_cast<CallSyntax>(S));
+  FusedOpKind OpKind = getFusedOpKind(SemaRef, Call);
   switch(OpKind) {
 
   case FOK_Equals:{
@@ -1297,7 +1397,7 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
       return nullptr;
 
     return handleGlobalNameSpecifier(Call,
-                                     makeDeclarator(Call->getArgument(0)));
+                              dispatchAndCreateDeclarator(Call->getArgument(0)));
     break;
   }
   case FOK_Colon:{
@@ -1318,7 +1418,6 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
     InitOperatorUsed = IK_Exlaim;
     break;
   }
-
   case FOK_Unknown:
   case FOK_Arrow:
   case FOK_If:
@@ -1332,16 +1431,22 @@ Declarator *DeclarationBuilder::makeDeclarator(const Syntax *S) {
   case FOK_RRef:
   case FOK_Brackets:
   case FOK_Parens:{
-    // None of these operators can be the root of a declaration.
+    // None of these operators can be the root of a declaration, with the exception
+    // of very specific contexts.
     if (RequiresDeclOrError) {
       if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee())) {
         if (AllowShortCtorAndDtorSyntax &&
-            (Callee->getSpelling() == "constructor"
-            || Callee->getSpelling() == "destructor")) {
+              (Callee->getSpelling() == "constructor"
+              || Callee->getSpelling() == "destructor"
+              || (Callee->isFused()
+                  &&
+                  Callee->getFusionBase() == tok::Conversion
+                )
+            )) {
           return buildTemplateFunctionOrNameDeclarator(Call, nullptr);
         }
       }
-      SemaRef.Diags.Report(S->getLoc(),
+      SemaRef.Diags.Report(Call->getCallee()->getLoc(),
                            clang::diag::err_invalid_declaration_kind)
                            << 2;
     }
@@ -1393,6 +1498,7 @@ DeclarationBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
   // Translating the simple identifier.
   OriginalName = OriginalNameStorage = S->getSpelling();
   Id = &Context.CxxAST.Idents.get(OriginalName);
+  std::string UDLSuffix;
   assert(OriginalName != "operator'.'");
   if (OriginalName.find('"') != llvm::StringRef::npos) {
     if (OriginalName.startswith("operator\"")) {
@@ -1404,15 +1510,23 @@ DeclarationBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
         return nullptr;
       }
     } else if (OriginalName.startswith("literal\"")) {
-      llvm_unreachable("User defined literal declarations not "
-                        "imeplemented yet.");
+      if (!S->getFusionArg()) {
+        SemaRef.Diags.Report(S->getLoc(),
+                       clang::diag::err_user_defined_literal_invalid_identifier)
+                             << /*invalid suffix*/ 0 << 0;
+        return nullptr;
+      }
+      if (const AtomSyntax *Suffix = dyn_cast<AtomSyntax>(S->getFusionArg())){
+        UDLSuffix = Suffix->getSpelling();
+      }
+
     } else if (OriginalName.startswith("conversion\"")) {
-      llvm_unreachable("User defined conversion declarations not "
-                        "imeplemented yet.");
+      ConversionTypeSyntax = S->getFusionArg();
     }
   }
   auto *D = new IdentifierDeclarator(S, Next);
   D->recordAttributes(S);
+  D->setUserDefinedLiteralSuffix(UDLSuffix);
   return D;
 }
 

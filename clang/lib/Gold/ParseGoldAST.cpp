@@ -39,13 +39,13 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
   File InputFile(SM, SM.getMainFileID());
   SyntaxContext Context(ClangContext);
 
-  Parser Parser(Context, SM, InputFile);
+  Parser Parser(Context, SM, InputFile, PP);
   Syntax *CST = Parser.parseFile();
   // file was empty
   if (!CST)
     return;
   // FIXME: There's a -fdump-syntax flag that we should tie this too.
-  // CST->dump();
+
   // FIXME: We should handle -fsyntax-only here -- or maybe make a separate
   // front-end action that stops after parsing. Unfortunately, the flag
   // is in the FrontendOptions of the CompilerInstance, which doesn't seem

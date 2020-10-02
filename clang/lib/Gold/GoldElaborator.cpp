@@ -1088,11 +1088,11 @@ static bool handleNestedName(Sema &SemaRef, Declaration *D,
       return true;
     Sema::DeclaratorScopeObj DclScope(SemaRef, SemaRef.CurNNSContext,
                                       D->IdDcl->getLoc());
-    if (SemaRef.CurNNSContext.isValid() && SemaRef.CurNNSContext.isSet()) {
+    if (SemaRef.CurNNSContext.isValid() && SemaRef.CurNNSContext.isSet())
       if (SemaRef.getCxxSema().ShouldEnterDeclaratorScope(
-                             SemaRef.getCurClangScope(), SemaRef.CurNNSContext))
+                           SemaRef.getCurClangScope(), SemaRef.CurNNSContext))
         DclScope.enterDeclaratorScope();
-    }
+
     SemaRef.pushScope(SemaRef.getLookupScope());
     DInfo.Name->setScope(SemaRef.getLookupScope());
     return false;
@@ -1275,10 +1275,11 @@ static bool enterLinkageLanguageSpec(Sema &SemaRef,
       return true;
     }
     ExprElaborator Elab(Context, SemaRef);
-    clang::Expr *Expr = Elab.elaborateExpectedConstantExpr(Call->getArgument(0));
+    clang::Expr *Expr = Elab.elaborateConstexprAttrExpr(Call->getArgument(0));
     if (!Expr) {
       SemaRef.Diags.Report(S->getLoc(),
                           clang::diag::err_failed_to_translate_expr);
+      SemaRef.leaveClangScope(S->getLoc());
       return true;
     }
 
@@ -1288,14 +1289,16 @@ static bool enterLinkageLanguageSpec(Sema &SemaRef,
       );
 
     // Assuming that we already got an error message for this.
-    if (!LinkageDecl)
+    if (!LinkageDecl){
+      SemaRef.leaveClangScope(S->getLoc());
       return true;
+    }
 
     // We do this because we are technically chaning decl contexts.
     D->DeclaringContext = cast<clang::DeclContext>(LinkageDecl);
     ClangToGoldDeclRebuilder rebuilder(Context, SemaRef);
     Declaration *GDecl = rebuilder.generateDeclForDeclContext(
-                                                          D->DeclaringContext, S);
+                                                        D->DeclaringContext, S);
     if (!GDecl)
       // Any error reporting will be handled the the rebuilder.
       return true;
@@ -1306,8 +1309,6 @@ static bool enterLinkageLanguageSpec(Sema &SemaRef,
   } else {
     llvm_unreachable("Invalid tree format");
   }
-
-
   return false;
 }
 
@@ -1435,7 +1436,6 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
     return D->Cxx;
   clang::Scope *OriginalClangScope = SemaRef.getCurClangScope();
   Scope *Sc = SemaRef.getCurrentScope();
-
   // Check for linkage!
   const Syntax *LinkageAttr = nullptr;
   if (hasLinkageSpecDecl(SemaRef, D, &LinkageAttr)) {
@@ -1443,6 +1443,7 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
     // we just try and continue processing things?
     return nullptr;
   }
+
   if (LinkageAttr) {
     if (enterLinkageLanguageSpec(SemaRef, D, LinkageAttr)) {
       // TODO: Figure out if this needs an additional error message or should
@@ -1658,6 +1659,9 @@ clang::DeclarationName getFunctionName(SyntaxContext &Ctx, Sema &SemaRef,
       // FIXME: Should this be an error or not?
       return clang::DeclarationName();
     }
+  } else if (D->declaresUserDefinedLiteral()) {
+    // Attempting to correctly get the literal operator name
+    Name = Ctx.CxxAST.DeclarationNames.getCXXLiteralOperatorName(D->UDLSuffixId);
   } else {
     Name = D->getId();
   }
@@ -1666,13 +1670,17 @@ clang::DeclarationName getFunctionName(SyntaxContext &Ctx, Sema &SemaRef,
 }
 
 void setSpecialFunctionName(SyntaxContext &Ctx, clang::CXXRecordDecl *RD,
-                            Declaration *D, clang::DeclarationName &Name) {
+                            Declaration *D, clang::DeclarationName &Name,
+                            clang::QualType ConversionResultTy) {
   clang::QualType RecordTy = Ctx.CxxAST.getTypeDeclType(RD);
   clang::CanQualType Ty = Ctx.CxxAST.getCanonicalType(RecordTy);
   if (D->getId()->isStr("constructor")) {
     Name = Ctx.CxxAST.DeclarationNames.getCXXConstructorName(Ty);
   } else if (D->getId()->isStr("destructor")) {
     Name = Ctx.CxxAST.DeclarationNames.getCXXDestructorName(Ty);
+  } else if (D->getKind() == UDK_ConversionOperator) {
+    Name = Ctx.CxxAST.DeclarationNames.getCXXConversionFunctionName(
+                               Ctx.CxxAST.getCanonicalType(ConversionResultTy));
   }
 }
 void lookupFunctionRedecls(Sema &SemaRef, clang::Scope *FoundScope,
@@ -1743,7 +1751,6 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
                                         Ty->getType(), Ty, false, false,
                                      clang::ConstexprSpecKind::CSK_unspecified);
 
-
     Method->setImplicit(false);
     Method->setDefaulted(false);
     Method->setBody(nullptr);
@@ -1775,6 +1782,41 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
                                      FPT->getParamTypes() : clang::None,
                                      EPI);
     Method->setType(VoidFnTy);
+  } else if (Fn->declaresConversionOperator()) {
+    // TODO: Figure out what this is checking for and what things  I'll have
+    // to enfoce instead of sema ref.
+    // SemaRef.CheckConversionDeclarator(D, R, SC);
+    // if (D.isInvalidType())
+    //   return nullptr;
+    clang::ExplicitSpecifier
+      ES(nullptr, clang::ExplicitSpecKind::ResolvedFalse);
+    // IsVirtualOkay = true;
+    const auto *Proto = Ty->getType()->castAs<clang::FunctionProtoType>();
+    if (Proto->getNumParams() > 0) {
+      SemaRef.Diags.Report(Fn->IdDcl->getLoc(),
+                         clang::diag::err_conv_function_with_params);
+      return false;
+    }
+    clang::QualType ConvType = Proto->getReturnType();
+    // FIXME: I need to enforce this.
+    // C++ [class.conv.fct]p4:
+    //   The conversion-type-id shall not represent a function type nor
+    //   an array type.
+    if (ConvType->isArrayType()) {
+      SemaRef.Diags.Report(Fn->IdDcl->getLoc(),
+                           clang::diag::err_conv_function_to_array);
+      return false;
+    } else if (ConvType->isFunctionType()) {
+      SemaRef.Diags.Report(Fn->IdDcl->getLoc(),
+                           clang::diag::err_conv_function_to_function);
+      return false;
+    }
+
+    *FD = clang::CXXConversionDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
+                                          Ty->getType(), Ty,
+                                          /*isinline*/false, ES,
+                                      clang::ConstexprSpecKind::CSK_unspecified,
+                                          ExLoc);
   } else {
     clang::StorageClass SC = clang::SC_None;
     *FD = clang::CXXMethodDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
@@ -1838,6 +1880,16 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Get name info for the AST.
   clang::DeclarationName Name =
     getFunctionName(Context, SemaRef, D, TInfo, InClass, RD);
+  // FIXME: Create make sure I can make this work some how.
+  if (D->declaresUserDefinedLiteral()) {
+    clang::UnqualifiedId UnqualId;
+    UnqualId.setLiteralOperatorId(D->UDLSuffixId,
+                                  D->IdDcl->getLoc(),
+                           D->IdDcl->getIdentifier()->getFusionArg()->getLoc());
+    if (SemaRef.getCxxSema().checkLiteralOperatorId(D->ScopeSpec, UnqualId)) {
+      return nullptr;
+    }
+  }
   if (Name.isEmpty())
     return nullptr;
 
@@ -1848,7 +1900,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   DNI.setLoc(D->IdDcl->getLoc());
 
   if (InClass)
-    setSpecialFunctionName(Context, RD, D, Name);
+    setSpecialFunctionName(Context, RD, D, Name, TInfo->getType());
 
   clang::LookupResult Previous(CxxSema, DNI,
                                clang::Sema::LookupOrdinaryName,
@@ -4560,7 +4612,7 @@ static void applyCallExceptionSpecAttr(SyntaxContext &Context, Sema &SemaRef,
           SemaRef.getCxxSema(),
           clang::Sema::ExpressionEvaluationContext::Unevaluated);
       ExprElaborator ExprElab(Context, SemaRef);
-      ExceptionSpecExpr = ExprElab.elaborateExpr(Call->getArgument(0));
+      ExceptionSpecExpr = ExprElab.elaborateAttrExpr(Call->getArgument(0));
     }
     if (!ExceptionSpecExpr)
       return;
@@ -4592,7 +4644,7 @@ static void applyCallExceptionSpecAttr(SyntaxContext &Context, Sema &SemaRef,
     const ListSyntax *ExceptionList
                               = dyn_cast<ListSyntax>(Call->getArguments());
     for (const Syntax *TySyntax : ExceptionList->children()) {
-      clang::Expr *ExceptionSpecExpr = ExprElab.elaborateExpr(TySyntax);
+      clang::Expr *ExceptionSpecExpr = ExprElab.elaborateAttrExpr(TySyntax);
       if (!ExceptionSpecExpr)
         continue;
 
@@ -4917,6 +4969,15 @@ void Elaborator::elaborateStaticAttr(Declaration *D, const Syntax *S,
   // If we are a record Decl then we know how to handle static.
   if (DC->isRecord()) {
     if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(D->Cxx)) {
+      if (isa<clang::CXXConversionDecl>(D->Cxx)) {
+        // TODO: Verify that this displays something meaningful
+        SemaRef.Diags.Report(S->getLoc(),
+                             clang::diag::err_conv_function_not_member)
+                            << clang::SourceRange(S->getLoc(), S->getLoc())
+                  << clang::SourceRange(D->IdDcl->getLoc(), D->IdDcl->getLoc());
+        D->Cxx->setInvalidDecl();
+        return;
+      }
       if (isa<clang::CXXConstructorDecl>(D->Cxx)
           || isa<clang::CXXDestructorDecl>(D->Cxx)) {
         SemaRef.Diags.Report(S->getLoc(),
@@ -5195,7 +5256,7 @@ void Elaborator::elaborateBitsAttr(Declaration *D, const Syntax *S,
     return;
   }
   ExprElaborator Elab(Context, SemaRef);
-  clang::Expr *BitsExpr = Elab.elaborateExpectedConstantExpr(
+  clang::Expr *BitsExpr = Elab.elaborateConstexprAttrExpr(
                                                       BitsCall->getArgument(0));
 
   clang::FieldDecl *Field = cast<clang::FieldDecl>(D->Cxx);
@@ -5241,7 +5302,7 @@ void Elaborator::elaborateAlignAsAttr(Declaration *D, const Syntax *S,
       || isa<clang::FieldDecl>(D->Cxx)) {
     Status.HasAlignAs = true;
     ExprElaborator Elab(Context, SemaRef);
-    clang::Expr *AlignmentExpr = Elab.elaborateExpectedConstantExpr(
+    clang::Expr *AlignmentExpr = Elab.elaborateConstexprAttrExpr(
                                                    AlignAsCall->getArgument(0));
     clang::QualType AlignmentExprTy = AlignmentExpr->getType();
     if (AlignmentExprTy->isNamespaceType()
@@ -5420,7 +5481,7 @@ static bool processAttributeArgs(SyntaxContext &Context, Sema &SemaRef,
     }
 
     // Just going a head and assuming that we expect an expression here.
-    clang::Expr *Res = Elab.elaborateExpr(ArgOrId);
+    clang::Expr *Res = Elab.elaborateConstexprAttrExpr(ArgOrId);
     if (!Res)
       return true;
     if (Res->getType()->isTypeOfTypes()

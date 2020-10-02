@@ -43,7 +43,8 @@ namespace gold
   /// \todo Lift common parsing functions into a parameterized base class?
   struct Parser
   {
-    Parser(SyntaxContext &Context, clang::SourceManager &SM, File const& F);
+    Parser(SyntaxContext &Context, clang::SourceManager &SM, File const& F,
+          clang::Preprocessor &PP);
 
     void fetchToken()
     {

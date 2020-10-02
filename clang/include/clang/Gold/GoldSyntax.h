@@ -167,12 +167,12 @@ public:
   /// The token for the atom.
   Token Tok;
 
-  tok::FusionKind getFusionBase() {
+  tok::FusionKind getFusionBase() const {
     assert(isFused());
     return FusionInfo.Base;
   }
 
-  Syntax *getFusionArg() {
+  Syntax *getFusionArg() const {
     assert(isFused());
     return FusionInfo.Data;
   }

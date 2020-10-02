@@ -16,6 +16,9 @@
 #include "clang/Basic/SourceManager.h"
 #include "llvm/ADT/StringMap.h"
 
+#include "clang/Lex/Token.h"
+#include "clang/Lex/Preprocessor.h"
+
 #include "clang/Gold/GoldLexer.h"
 #include "clang/Gold/GoldSyntaxContext.h"
 
@@ -73,14 +76,16 @@ char BOM[] = {'\xef', '\xbe', '\xbb'};
 } // namespace
 
 CharacterScanner::CharacterScanner(clang::SourceManager &SM, File const &F,
-                                   SyntaxContext &Ctx)
+                                   SyntaxContext &Ctx, clang::Preprocessor &PP)
   : Input(&F),
     First(F.getText().data()),
     Last(First + F.getText().size()),
     Line(1),
     Column(1),
     SM(SM),
-    Ctx(Ctx) {
+    Ctx(Ctx),
+    PP(PP)
+  {
   // Bypass the byte order mark.
   if (std::equal(BOM, BOM + 3, First, Last))
     First += 3;
@@ -323,6 +328,17 @@ Token CharacterScanner::matchLineComment() {
   consume();
   while (!isDone() && !isNewline(getLookahead()))
     consume();
+
+  // Creating and dumping a clang token into the PP for things that interact
+  // with comments.
+  clang::Token CTok;
+  CTok.setKind(clang::tok::comment);
+  CTok.setLocation(getSourceLocation(Start));
+  const unsigned TokLen = First - Start;
+  CTok.setLength(TokLen);
+
+  PP.HandleComment(CTok, clang::SourceRange(getSourceLocation(Start),
+                                            getSourceLocation(First)));
   return makeToken(tok::LineComment, Start, First);
 }
 
@@ -346,6 +362,16 @@ Token CharacterScanner::matchBlockComment() {
   }
   consume(2); // '#>'
 
+  // Creating and dumping a clang token into the PP for things that interact
+  // with comments.
+  clang::Token CTok;
+  CTok.setKind(clang::tok::comment);
+  CTok.setLocation(getSourceLocation(Start));
+  const unsigned TokLen = First - Start;
+  CTok.setLength(TokLen);
+
+  PP.HandleComment(CTok, clang::SourceRange(getSourceLocation(Start),
+                                            getSourceLocation(First)));
   // Build the block comment.
   Symbol Sym = getSymbol(Start, First);
   return Token(tok::BlockComment, BeginLoc, Sym);

@@ -69,6 +69,11 @@ public:
   //                        Value Expression Elaboration                      //
   //===--------------------------------------------------------------------===//
   clang::Expr *elaborateExpr(const Syntax *S);
+  /// This function is for internal use only, and shouldn't be called outside of
+  /// this class or static functions associated with this function.
+  clang::Expr *doElaborateExpr(const Syntax *S);
+  clang::Expr *elaborateConstexprAttrExpr(const Syntax *S);
+  clang::Expr *elaborateAttrExpr(const Syntax *S);
   clang::Expr *elaborateExpectedConstantExpr(const Syntax* S);
   clang::Expr *elaborateAtom(const AtomSyntax *S, clang::QualType ExplicitType);
 
@@ -152,6 +157,8 @@ private:
   clang::Expr* makeRRefType(clang::Expr *Result,
                             const CallSyntax* RRefOpNode);
   ///}
+
+
 };
 
 } // namespace gold

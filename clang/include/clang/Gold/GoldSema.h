@@ -853,31 +853,7 @@ public:
   using OptionalResumeScopeRAII = OptionalInitScope<ResumeScopeRAII>;
   using OptioanlClangScopeRAII = OptionalInitScope<ClangScopeRAII>;
 
-  clang::QualType NullTTy;
-
-  clang::QualType CharTy;
-  clang::QualType Char8Ty;
-  clang::QualType Char16Ty;
-  clang::QualType Char32Ty;
-
-  clang::QualType IntTy;
-  clang::QualType Int8Ty;
-  clang::QualType Int16Ty;
-  clang::QualType Int32Ty;
-  clang::QualType Int64Ty;
-  clang::QualType Int128Ty;
-
-  clang::QualType UIntTy;
-  clang::QualType UInt8Ty;
-  clang::QualType UInt16Ty;
-  clang::QualType UInt32Ty;
-  clang::QualType UInt64Ty;
-  clang::QualType UInt128Ty;
-
-  clang::QualType Float16Ty;
-  clang::QualType Float32Ty;
-  clang::QualType Float64Ty;
-  clang::QualType Float128Ty;
+  clang::QualType DefaultCharTy;
 
   // Dictionary of built in types.
   const llvm::StringMap<clang::QualType> BuiltinTypes;
@@ -1011,6 +987,35 @@ public:
           SemaRef.leaveClangScope(Dcl->Op->getLoc());
         Dcl = nullptr;
       }
+    }
+  };
+
+private:
+  bool InAttrExpr = false;
+public:
+  bool insideAttributeExpr() const { return InAttrExpr; }
+  void setInsideAttributeExpr(bool Status) {
+    InAttrExpr = Status;
+  }
+
+  struct AttrElabRAII {
+    Sema &SemaRef;
+    bool EnteredAttrExpr = false;
+    bool PreviousAttributeElabStatus;
+  public:
+    AttrElabRAII(Sema &S, bool EnterAttrProcessing)
+      :SemaRef(S),
+      EnteredAttrExpr(EnterAttrProcessing),
+      PreviousAttributeElabStatus(S.insideAttributeExpr())
+    {
+      if (EnteredAttrExpr) {
+        SemaRef.setInsideAttributeExpr(true);
+      } else {
+        SemaRef.setInsideAttributeExpr(false);
+      }
+    }
+    ~AttrElabRAII() {
+      SemaRef.setInsideAttributeExpr(PreviousAttributeElabStatus);
     }
   };
 };

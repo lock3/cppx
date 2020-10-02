@@ -171,5 +171,5 @@ TEST(BitWiseOp, Builtin_char16) {
   doBitwiseOpTest("char16", "int", "5", "6");
 }
 TEST(BitWiseOp, Builtin_char32) {
-  doBitwiseOpTest("char32", "int", "5", "6");
+  doBitwiseOpTest("char32", "unsigned int", "5", "6");
 }

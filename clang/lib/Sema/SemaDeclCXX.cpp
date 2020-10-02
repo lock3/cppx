@@ -15753,7 +15753,21 @@ bool Sema::CheckLiteralOperatorDeclaration(FunctionDecl *FnDecl) {
         Context.hasSameType(ParamType, Context.WideCharTy) ||
         Context.hasSameType(ParamType, Context.Char8Ty) ||
         Context.hasSameType(ParamType, Context.Char16Ty) ||
-        Context.hasSameType(ParamType, Context.Char32Ty)) {
+        Context.hasSameType(ParamType, Context.Char32Ty) ||
+        (getLangOpts().Gold && (
+          Context.hasSameType(ParamType,
+            Context.getIntTypeForBitwidth(8, true)) ||
+          Context.hasSameType(ParamType,
+            Context.getIntTypeForBitwidth(16, true)) ||
+          Context.hasSameType(ParamType,
+            Context.getIntTypeForBitwidth(32, true)) ||
+          Context.hasSameType(ParamType,
+            Context.getIntTypeForBitwidth(64, false)) ||
+          (!Context.getRealTypeForBitwidth(128, true).isNull() &&
+           Context.hasSameType(ParamType,
+           Context.getRealTypeForBitwidth(128, /*IEEE=*/true)))
+          ))
+      ) {
     } else if (const PointerType *Ptr = ParamType->getAs<PointerType>()) {
       QualType InnerType = Ptr->getPointeeType();
 
