@@ -443,6 +443,8 @@ static bool isAssignmentOperator(TokenKind K) {
   case tok::CaretEqual:
   case tok::BarEqual:
   case tok::AmpersandEqual:
+  case tok::LessLessEqual:
+  case tok::GreaterGreaterEqual:
     return true;
   }
 }
@@ -536,19 +538,22 @@ static auto isAndOperator(Parser &P) {
 //    &&
 //    "and"
 Syntax *Parser::parseAnd() {
-  Syntax *E1 = parseCmp();
+  Syntax *E1 = parseBitShift();
   while (Token Op = matchTokens(isAndOperator, *this)) {
-    Syntax *E2 = parseCmp();
+    Syntax *E2 = parseBitShift();
     E1 = onBinary(Op, E1, E2);
   }
   return E1;
 }
 
+
+
 static bool isLogicalUnaryOperator(Parser& P) {
   return P.nextTokenIs(tok::Ampersand)
       || P.nextTokenIs(tok::DotDot)
       || P.nextTokenIs(tok::Bang)
-      || P.nextTokenIs("not");
+      || P.nextTokenIs("not")
+      || P.nextTokenIs(tok::Tilde);
 }
 
 static bool is_relational_operator(Parser& P) {
@@ -567,6 +572,24 @@ static bool is_relational_operator(Parser& P) {
   }
 }
 
+static bool isBitShiftOperator(Parser &P) {
+  switch (P.getLookahead()) {
+  default:
+    return false;
+  case tok::LessLess:
+  case tok::GreaterGreater:
+    return true;
+  }
+}
+
+Syntax *Parser::parseBitShift() {
+  Syntax *E1 = parseCmp();
+  while (Token Op = matchTokens(isBitShiftOperator, *this)) {
+    Syntax *E2 = parseCmp();
+    E1 = onBinary(Op, E1, E2);
+  }
+  return E1;
+}
 /// cmp:
 ///    to
 ///    cmp relational-operator to

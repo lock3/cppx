@@ -22,6 +22,10 @@ OperatorNameConstants::OperatorNameConstants(clang::ASTContext &Context)
                    OverloadStyle,OpOverloadName)            \
   init_names(Name, OpStr, OpStr)
 
+#define def_unary_op(Name, OpStr, ClangUnaryOpName, MemberOnly, OverloadStyle, \
+                     OpOverloadName)                                           \
+  init_names(Name, OpStr, OpStr)
+
 #define def_bin_op_second_name(Name, OpStr, SecondOpStr, ClangBinOpName,  \
                                MemberOnly, OverloadStyle, OpOverloadName) \
   init_second_names(Name, OpStr, SecondOpStr)
@@ -98,6 +102,12 @@ OperatorDataConstants::OperatorDataConstants(
             clang::BO_##ClangBinOpName, MemberOnly,                   \
             AOU_##OverloadStyle, clang::OO_##UnaryOpOverloadName,     \
             clang::OO_##BinaryOpOverloadName),
+
+#define def_unary_op(Name, OpStr, ClangUnaryOpName, MemberOnly, OverloadStyle, \
+                     OpOverloadName)                                           \
+  Name##Info(OpNames.CppOp_##Name, OpNames.GoldDecl_##Name,                    \
+             OpNames.GoldUse_##Name, clang::UO_##ClangUnaryOpName,             \
+             MemberOnly, AOU_##OverloadStyle, clang::OO_##OpOverloadName),
 
 #define def_unary_op_second_name(Name, OpStr, SecondName, ClangUnaryOpName, \
                                  MemberOnly, OverloadStyle, OpOverloadName) \

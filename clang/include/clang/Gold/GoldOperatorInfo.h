@@ -80,6 +80,11 @@ struct OperatorNameConstants {
   def_bin_op(Name, OpStr, ClangBinOpName, MemberOnly, OverloadStyle,  \
              UnaryOverloadName)
 
+#define def_unary_op(Name, OpStr, ClangUnaryOpName, MemberOnly, OverloadStyle, \
+                     OpOverloadName)                                           \
+  def_bin_op(Name, OpStr, ClangUnaryOpName, MemberOnly, OverloadStyle,         \
+             OpOverloadName)
+
 #define def_unary_op_second_name(Name, OpStr, SecondName,             \
                                 ClangUnaryOpName, MemberOnly,         \
                                 OverloadStyle, OpOverloadName)        \
@@ -336,6 +341,10 @@ struct OperatorDataConstants {
                                         UnaryOpOverloadName,              \
                                         BinaryOpOverloadName)             \
   DerefAndXOrComboOp const Name##Info;
+
+#define def_unary_op(Name, OpStr, ClangUnaryOpName, MemberOnly, OverloadStyle, \
+                     OpOverloadName)\
+  UnaryOpInfo Name##Info;
 
 #define def_unary_op_second_name(Name, OpStr, SecondName, ClangUnaryOpName, \
                                  MemberOnly, OverloadStyle, OpOverloadName) \

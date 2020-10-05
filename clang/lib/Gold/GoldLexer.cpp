@@ -190,11 +190,21 @@ Token CharacterScanner::operator()() {
         return matchToken(tok::LessEqual);
       else if (getLookahead(1) == '>')
         return matchToken(tok::LessGreater);
+      else if (getLookahead(1) == '<')
+        if (getLookahead(2) == '=')
+          return matchToken(tok::LessLessEqual);
+        else
+          return matchToken(tok::LessLess);
       return matchToken(tok::Less);
 
     case '>':
       if (getLookahead(1) == '=')
         return matchToken(tok::GreaterEqual);
+      else if (getLookahead(1) == '>')
+        if (getLookahead(2) == '=')
+          return matchToken(tok::GreaterGreaterEqual);
+        else
+          return matchToken(tok::GreaterGreater);
       return matchToken(tok::Greater);
 
     case '~':
@@ -805,6 +815,10 @@ static bool isInfix(Token Op) {
   case tok::LeftParen:
   case tok::LeftBracket:
   case tok::Comma:
+  case tok::LessLess:
+  case tok::GreaterGreater:
+  case tok::LessLessEqual:
+  case tok::GreaterGreaterEqual:
     return true;
   case tok::Identifier: {
     auto It = InfixKeywords.find(Op.getSymbol().data());

@@ -228,6 +228,7 @@ namespace gold
     Syntax *parseDef();
     Syntax *parseOr();
     Syntax *parseAnd();
+    Syntax *parseBitShift();
     Syntax *parseCmp();
     Syntax *parseTo();
     Syntax *parseAdd();
