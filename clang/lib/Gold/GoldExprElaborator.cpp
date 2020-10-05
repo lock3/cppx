@@ -997,10 +997,10 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
   clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
   R.setTemplateNameLookup(true);
 
-  if (SemaRef.isQualifiedLookupContext())
-    SemaRef.lookupQualifiedName(R);
-  else {
+  if (SemaRef.isQualifiedLookupContext()){
 
+    SemaRef.lookupQualifiedName(R);
+  } else {
     if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) {
       SemaRef.Diags.Report(S->getLoc(),
                           clang::diag::err_identifier_not_declared_in_scope)
@@ -1131,8 +1131,10 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
                                   = R.getAsSingle<clang::ClassTemplateDecl>())
       return SemaRef.buildTemplateType(CTD, Loc);
 
-    if (auto *NS = R.getAsSingle<clang::CppxNamespaceDecl>())
+    if (auto *NS = R.getAsSingle<clang::CppxNamespaceDecl>()) {
+
       return SemaRef.buildNSDeclRef(NS, Loc);
+    }
 
 
     if (auto *TD = R.getAsSingle<clang::TypeDecl>())

@@ -791,12 +791,12 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
 
   NSDecl = SemaRef.ActOnStartNamespaceDef(NSScope,
                                           SourceLocation(),
-                                          D->Decl->getLoc(),
-                                          D->Decl->getLoc(),
+                                          D->IdDcl->getLoc(),
+                                          D->IdDcl->getLoc(),
                                           D->getId(),
-                                          D->Decl->getLoc(),
+                                          D->IdDcl->getLoc(),
                                           ParsedAttrs, UD);
-  if (!NSDecl) {
+  if (NSDecl->isInvalidDecl()) {
     // Making sure that if something does go wrong that we properly recover
     // from it.
     SemaRef.leaveClangScope(clang::SourceLocation());
@@ -831,6 +831,7 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
   SemaRef.getCxxSema().ActOnFinishNamespaceDef(NSDecl, LastLoc);
   SemaRef.leaveClangScope(LastLoc);
   SemaRef.popDecl();
+
 
   // FIXME: We should be returning a DeclGroupPtr to the NSDecl grouped
   // with the implicit UsingDecl, UD.
@@ -967,8 +968,11 @@ static const ListSyntax *buildImplicitTemplateElemSyntax(Sema &SemaRef,
   return new (Ctx) ListSyntax(createArray(Ctx, Args), Args.size());
 }
 
+
+
 static bool handleNestedName(Sema &SemaRef, Declaration *D,
                              NNSDeclaratorInfo &DInfo) {
+
   SyntaxContext &Context = SemaRef.getContext();
   ExprElaborator ExprElab(Context, SemaRef);
   clang::Expr *NestedName = nullptr;
@@ -1327,16 +1331,6 @@ static bool exitLinkageLanguageSpec(Sema &SemaRef,
   SemaRef.leaveClangScope(D->Op->getLoc());
   SemaRef.popDecl();
   SemaRef.verifyMatchingDeclarationAndDeclContext();
-  // SemaRef.popDecl
-  // FIXME:  I may need to add additional error checking and I may also need to
-  // handle outputting errors here also.
-
-  // // Setting storage class for declaration.
-  // if (clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(D->Cxx)) {
-  //   FD->setStorageClass(clang::StorageClass::SC_Extern);
-  // } else if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(D->Cxx)) {
-  //   VD->setStorageClass(clang::StorageClass::SC_Extern);
-  // }
   return false;
 }
 
@@ -1431,26 +1425,134 @@ static void handleUsingDirectiveDecl(SyntaxContext &Ctx, Sema &SemaRef,
   D->CurrentPhase = Phase::Initialization;
 }
 
+static clang::Decl *handleNNSNamespaceElab(Elaborator &Elab, Sema &SemaRef,
+                                           std::size_t NNSIndex,
+                                           Declaration *D);
+
+static clang::Decl *handleBuildNNSNamespace(Elaborator &Elab, Sema &SemaRef,
+                                            std::size_t NNSIndex,
+                                            Declaration *D) {
+  assert(NNSIndex < D->NNSInfo.size() && "Invalid index");
+  SyntaxContext &Context = SemaRef.getContext();
+  gold::Scope *CurScope = SemaRef.getCurrentScope();
+
+  NNSDeclaratorInfo CurInfo = D->NNSInfo[NNSIndex];
+  assert(!CurInfo.Template && "Namespace cannot have template parameters");
+  const AtomSyntax *Name = CurInfo.Name->getNestedName();
+
+  clang::IdentifierInfo *NSId = &Context.CxxAST.Idents.get({Name->getSpelling()});
+
+  // Create and enter a namespace scope.
+  clang::CppxNamespaceDecl *NSDecl = nullptr;
+  Sema::ClangScopeRAII NewNSClangScope(SemaRef, clang::Scope::DeclScope,
+                                       Name->getLoc());
+  clang::Scope *NSScope = SemaRef.getCurClangScope();
+  gold::Sema::OptionalScopeRAII NewScope(SemaRef);
+  gold::Sema::OptionalResumeScopeRAII ResumedScope(SemaRef);
+  clang::UsingDirectiveDecl *UD = nullptr;
+  clang::AttributeFactory Attrs;
+  clang::ParsedAttributes ParsedAttrs(Attrs);
+  NSDecl = SemaRef.ActOnStartNamespaceDef(NSScope, clang::SourceLocation(),
+                                          Name->getLoc(), Name->getLoc(),
+                                          NSId, Name->getLoc(), ParsedAttrs,
+                                          UD);
+  if (!NSDecl)
+    return nullptr;
+
+  if (NSDecl->isInvalidDecl())
+    return nullptr;
+
+  // Resume or create a new scope for the current namespace.
+  // This is to allow the representations to all share the same scope.
+  // This makes it easier to handle lookup for those elements of the scope.
+  if (!NSDecl->Rep) {
+    NewScope.Init(SK_Namespace, D->Init, &NSDecl->Rep);
+    NSDecl->Rep = SemaRef.getCurrentScope();
+  } else {
+    ResumedScope.Init(NSDecl->Rep, NSDecl->Rep->Term, false);
+  }
+
+  // Reconstructing a namespace declaration
+  ClangToGoldDeclRebuilder Rebuilder(Context, SemaRef);
+  Declaration *NewDcl = Rebuilder.generateDeclForNNS(NSDecl, Name);
+  SemaRef.setDeclForDeclaration(NewDcl, NSDecl);
+  // Recording the declaration as part of the previous parent scope.
+  CurScope->addDecl(NewDcl);
+  SemaRef.pushDecl(NewDcl);
+
+
+  // Recursing to previous namespace handling.
+  clang::Decl *Ret = handleNNSNamespaceElab(Elab, SemaRef, NNSIndex + 1, D);
+
+  // even if there is an error that occurs here we must do this anyway.
+  SemaRef.getCxxSema().ActOnFinishNamespaceDef(NSDecl, Name->getLoc());
+  SemaRef.popDecl();
+  // We must return the inner most namespace.
+  return Ret;
+
+}
+
+static clang::Decl *handleNNSNamespaceElab(Elaborator &Elab, Sema &SemaRef,
+                                           std::size_t NNSIndex,
+                                           Declaration *D) {
+  bool ReachedFinalDeclaration = NNSIndex == D->NNSInfo.size();
+  if (ReachedFinalDeclaration) {
+    // Handling the inner most namespace's creation.
+    // The one that's meant by declaration D.
+    // Changing to corrected decl context, because technically we moved.
+    Declaration *NewDecl = new Declaration(*D);
+    NewDecl->Cxt = SemaRef.getCurrentDecl();
+    NewDecl->ScopeSpec.clear();
+    NewDecl->NNSInfo.clear();
+    SemaRef.getCurrentScope()->addDecl(NewDecl);
+    // Attempting to correctly apply linkage specification this.
+    const Syntax *LinkageAttr = nullptr;
+    if (hasLinkageSpecDecl(SemaRef, NewDecl, &LinkageAttr))
+      return nullptr;
+
+    if (LinkageAttr)
+      if (enterLinkageLanguageSpec(SemaRef, NewDecl, LinkageAttr))
+        return nullptr;
+
+    clang::Decl *Ret = processNamespaceDecl(Elab, SemaRef.getContext(),
+                                           SemaRef, NewDecl);
+    if (LinkageAttr) {
+      exitLinkageLanguageSpec(SemaRef, NewDecl);
+    }
+    return Ret;
+  } else {
+    return handleBuildNNSNamespace(Elab, SemaRef, NNSIndex, D);
+  }
+}
+
+clang::Decl *Elaborator::elaborateNestedNameNamespace(Declaration *D) {
+  if (D->GlobalNsSpecifier) {
+    llvm_unreachable("namespace with a globally qualified nns not valid.");
+  }
+
+  // Handling implicit namespace creation recursively
+  return handleNNSNamespaceElab(*this, SemaRef, 0, D);
+}
+
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   if (phaseOf(D) != Phase::Identification)
     return D->Cxx;
   clang::Scope *OriginalClangScope = SemaRef.getCurClangScope();
   Scope *Sc = SemaRef.getCurrentScope();
-  // Check for linkage!
-  const Syntax *LinkageAttr = nullptr;
-  if (hasLinkageSpecDecl(SemaRef, D, &LinkageAttr)) {
-    // TODO: Figure out if this needs an additional error message or should
-    // we just try and continue processing things?
-    return nullptr;
+
+  if (D->declaresNamespaceWithNestedName()) {
+    auto *Ret = elaborateNestedNameNamespace(D);
+    return Ret;
   }
 
-  if (LinkageAttr) {
-    if (enterLinkageLanguageSpec(SemaRef, D, LinkageAttr)) {
-      // TODO: Figure out if this needs an additional error message or should
-      // we just try and continue processing things?
+  const Syntax *LinkageAttr = nullptr;
+  if (hasLinkageSpecDecl(SemaRef, D, &LinkageAttr))
+    return nullptr;
+
+  if (LinkageAttr)
+    if (enterLinkageLanguageSpec(SemaRef, D, LinkageAttr))
       return nullptr;
-    }
-  }
+
 
   // This clears any previous lookups and restores them once we reach the end.
   // This might be useful for elaborating parameters with default values that

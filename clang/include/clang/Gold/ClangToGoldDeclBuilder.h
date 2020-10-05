@@ -51,6 +51,9 @@ public:
   bool finishDecl(Declaration *D, clang::SourceRange Range);
   Declaration *generateDeclForDeclContext(clang::DeclContext *DC,
                                           const Syntax *AssociatedSyntax);
+
+  Declaration *generateDeclForNNS(clang::NamespaceDecl *NS,
+                                  const AtomSyntax *Name);
 private:
   gold::Scope *determineParentScope();
   bool rebuildMember(clang::Decl *Member);

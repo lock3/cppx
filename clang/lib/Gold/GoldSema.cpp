@@ -1232,29 +1232,27 @@ bool Sema::setLookupScope(clang::CXXRecordDecl *Record) {
 }
 
 Scope *Sema::getLookupScope() {
-  switch(CurNNSKind) {
-    case NNSK_Empty:
-      return nullptr;
-    case NNSK_Global:
-      return CurNNSLookupDecl.Global.Scope;
-    case NNSK_Namespace:
-      return CurNNSLookupDecl.NNS->getScopeRep();
-    case NNSK_NamespaceAlias:{
-      if (auto *NNS = dyn_cast<clang::CppxNamespaceDecl>(
-              CurNNSLookupDecl.Alias->getAliasedNamespace())) {
-        return NNS->getScopeRep();
-      } else {
-        // FIXME: The namespace alias doesn't contain a CppxNamespaceDecl
-        llvm_unreachable("Invalid namespace alias");
-      }
-      return nullptr;
-    }
-    case NNSK_Record:{
-      return CurNNSLookupDecl.RebuiltClassScope;
-    }
-    default:
-      llvm_unreachable("Invalid or unknown nested name specifier type");
+  switch (CurNNSKind) {
+  case NNSK_Empty:
+    return nullptr;
+  case NNSK_Global:
+    return CurNNSLookupDecl.Global.Scope;
+  case NNSK_Namespace:
+    return CurNNSLookupDecl.NNS->getScopeRep();
+  case NNSK_NamespaceAlias: {
+    clang::Decl *AliasedNS = CurNNSLookupDecl.Alias->getAliasedNamespace();
+    if (auto *NNS = dyn_cast<clang::CppxNamespaceDecl>(AliasedNS))
+      return NNS->getScopeRep();
+    // FIXME: The namespace alias doesn't contain a CppxNamespaceDecl
+    llvm_unreachable("Invalid namespace alias");
   }
+
+  case NNSK_Record:{
+    return CurNNSLookupDecl.RebuiltClassScope;
+  }
+  } // switch (CurNNSKind)
+
+  llvm_unreachable("Invalid or unknown nested name specifier type");
 }
 
 bool Sema::isInDeepElaborationMode() const {
@@ -1354,6 +1352,7 @@ Sema::ActOnStartNamespaceDef(clang::Scope *NamespcScope,
   gold::Scope *PrevScope = nullptr;
   if (CppxNamespaceDecl *Prev = dyn_cast_or_null<CppxNamespaceDecl>(PrevNS))
     PrevScope = Prev->Rep;
+
 
   CppxNamespaceDecl *Namespc = CppxNamespaceDecl::Create(Context.CxxAST,
                                                          CxxSema.CurContext,
