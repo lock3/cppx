@@ -170,6 +170,10 @@ bool Declaration::declaresNamespace() const {
   return SuspectedKind == UDK_Namespace;
 }
 
+bool Declaration::declaresNamespaceWithNestedName() const {
+  return declaresNamespace() && (!NNSInfo.empty() || GlobalNsSpecifier);
+}
+
 bool Declaration::declaresTemplateType() const {
   return Template && !FunctionDcl;
 }

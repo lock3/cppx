@@ -80,7 +80,7 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
   };
 }
 
-static Sema::StringToAttrHandlerMap buildAttributeMaping() {
+static Sema::StringToAttrHandlerMap buildAttributeMapping() {
 #define ATTR_HANDLER_LAMBDA(METHOD_NAME)\
     [](Elaborator &E, Declaration *D, const Syntax *Attr,\
        AttrStatus &Status) {\
@@ -155,7 +155,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     DefaultCharTy(Context.CxxAST.getIntTypeForBitwidth(8, false)),
     BuiltinTypes(createBuiltinTypeList(Context)),
     OpInfo(Context.CxxAST),
-    AttrHandlerMap(buildAttributeMaping())
+    AttrHandlerMap(buildAttributeMapping())
 {
   CxxSema.CurScope = nullptr;
 }
@@ -548,8 +548,15 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
   if (LookupKind == clang::Sema::LookupTagName ||
       LookupKind == clang::Sema::LookupAnyName) {
     auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
-    if (BuiltinMapIter != BuiltinTypes.end())
+    if (BuiltinMapIter != BuiltinTypes.end()) {
+      if (BuiltinMapIter->second.isNull()) {
+        Diags.Report(clang::SourceLocation(),
+                     clang::diag::err_invalid_builtin_type) << Id;
+        return false;
+      }
+
       return true;
+    }
   }
 
   // This is done based on how CppLookUpName is handled, with a few exceptions,
@@ -1289,7 +1296,8 @@ Sema::ActOnStartNamespaceDef(clang::Scope *NamespcScope,
   CxxSema.CheckNamespaceDeclaration(II, StartLoc, Loc, IsInline, IsInvalid,
                                     IsStd, AddToKnown, PrevNS);
   gold::Scope *PrevScope = nullptr;
-  if (CppxNamespaceDecl *PrevCppxNsDecl = dyn_cast_or_null<CppxNamespaceDecl>(PrevNS)) {
+  if (CppxNamespaceDecl *PrevCppxNsDecl
+                                = dyn_cast_or_null<CppxNamespaceDecl>(PrevNS)) {
     PrevScope = PrevCppxNsDecl->Rep;
   }
   CppxNamespaceDecl *Namespc = CppxNamespaceDecl::Create(Context.CxxAST,

@@ -249,6 +249,48 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
 
   return false;
 }
+static bool checkNamespaceDecl(Sema &SemaRef, const Syntax *DeclExpr,
+                               Declaration *TheDecl) {
+  if (!TheDecl->declaresNamespace())
+    return false;
+
+  if (TheDecl->GlobalNsSpecifier) {
+    SemaRef.Diags.Report(TheDecl->GlobalNsSpecifier->getLoc(),
+                         clang::diag::err_invalid_declaration)
+                         << /*global name specifier*/2;
+    return true;
+  }
+  if (TheDecl->SpecializationArgs) {
+    SemaRef.Diags.Report(TheDecl->SpecializationArgs->getLoc(),
+                         clang::diag::err_invalid_declaration)
+                         << /*specialization arguments*/1;
+    return true;
+  }
+  if (TheDecl->Template) {
+    SemaRef.Diags.Report(TheDecl->Template->getLoc(),
+                         clang::diag::err_invalid_declaration)
+                         << /*template parameters*/0;
+    return true;
+  }
+
+  if (!TheDecl->NNSInfo.empty())
+    for (const auto &DInfo : TheDecl->NNSInfo) {
+      if (DInfo.SpecializationArgs) {
+        SemaRef.Diags.Report(DInfo.SpecializationArgs->getLoc(),
+                             clang::diag::err_invalid_declaration)
+                             << /*specialization arguments*/1;
+        return true;
+      }
+      if (DInfo.Template) {
+        SemaRef.Diags.Report(DInfo.Template->getLoc(),
+                             clang::diag::err_invalid_declaration)
+                             << /*template parameters*/0;
+        return true;
+      }
+    }
+
+  return false;
+}
 
 bool DeclarationBuilder::checkDeclaration(const Syntax *DeclExpr,
                                           Declaration *TheDecl) {
@@ -309,6 +351,9 @@ bool DeclarationBuilder::checkDeclaration(const Syntax *DeclExpr,
     return true;
 
   if (classifyDecl(DeclExpr, TheDecl))
+    return true;
+
+  if (checkNamespaceDecl(SemaRef, DeclExpr, TheDecl))
     return true;
 
   if (checkRequiresType(DeclExpr, TheDecl))
@@ -802,7 +847,7 @@ bool DeclarationBuilder::checkClassifiedConversionOperator(
   return false;
 }
 
-bool DeclarationBuilder::checkClassifiyUserDefinedLiteralOperator(
+bool DeclarationBuilder::checkClassifyUserDefinedLiteralOperator(
                                  const Syntax *DeclExpr, Declaration *TheDecl) {
   assert(TheDecl->IdDcl->isUserDefinedLiteral()
          && "Not a user defined literal.");
@@ -820,16 +865,6 @@ bool DeclarationBuilder::checkClassifiyUserDefinedLiteralOperator(
     return true;
   }
 
-  // TODO: We may enforce this in the future because this is part of the C++
-  // standard's implementation. We may also need to enforce _ capital-letter
-  // as invalid as well, for the same reasons.
-
-  // if (TheDecl->IdDcl->getUserDefinedLiteralSuffix() != '_') {
-  //   SemaRef.Diags.Report(S->getLoc(),
-  //                  clang::diag::err_user_defined_literal_invalid_identifier)
-  //                        << /*invalid suffix*/ 1 << 1;
-  //   return nullptr;
-  // }
   TheDecl->SuspectedKind = UDK_LiteralOperator;
 
   // Recording the identifier that's used to look up this declaration, when
@@ -846,7 +881,7 @@ bool DeclarationBuilder::classifyDecl(const Syntax *DeclExpr,
     return checkClassifiedConversionOperator(DeclExpr, TheDecl);
 
   if (TheDecl->IdDcl->isUserDefinedLiteral())
-    return checkClassifiyUserDefinedLiteralOperator(DeclExpr, TheDecl);
+    return checkClassifyUserDefinedLiteralOperator(DeclExpr, TheDecl);
 
   // this is handled within checkEnumDeclaration
   if (TheDecl->SuspectedKind == UDK_EnumConstant)

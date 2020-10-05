@@ -213,6 +213,9 @@ public:
   /// Checks if the type declaration is declaring a namespace.
   bool declaresNamespace() const;
 
+  /// Checks to see if we created a namespace with a nested name.
+  bool declaresNamespaceWithNestedName() const;
+
   /// Checks if the declarator declares a template type or not.
   bool declaresTemplateType() const;
 

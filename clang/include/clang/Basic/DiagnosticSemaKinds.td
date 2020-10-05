@@ -11378,8 +11378,23 @@ def err_conversion_operator_bad_location: Error<
   "conversion operaror declaration be within a class or union">;
 
 def err_user_defined_literal_invalid_identifier: Error<
-    "%select{invalid suffix|missing suffix}0 for user defined literal "
-    "%select{|suffix must begin with '_'}1">;
+  "%select{invalid suffix|missing suffix}0 for user defined literal "
+  "%select{|suffix must begin with '_'}1">;
+
+/*
+0 - template parameters
+1 - specialization arguments
+2 - global name specifier
+*/
+def err_namespace : Error<
+  "namespace cannot have %select{template parameters|specialization arguments"
+  "|global name specifier}0">;
+
+def err_namespace_no_body : Error<
+  "namespace must have a body">;
+
+def err_invalid_builtin_type : Error<
+  "builtin type %0 not available on this system">;
 
 } // end of Gold category
 
