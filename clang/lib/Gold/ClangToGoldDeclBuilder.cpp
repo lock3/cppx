@@ -389,24 +389,24 @@ ClangToGoldDeclRebuilder::rebuildMember(clang::CXXRecordDecl *RD) {
     return false;
   ScopeKind SK = SK_Class;
   UnevaluatedDeclKind UDK = UDK_Class;
-  switch(RD->getTagKind()) {
-    case clang::TTK_Union:
+  switch (RD->getTagKind()) {
+  case clang::TTK_Union:
     UDK = UDK_Union;
     SK = SK_Class;
     break;
-    case clang::TTK_Struct:
-    case clang::TTK_Class:
+  case clang::TTK_Struct:
+  case clang::TTK_Class:
     SK = SK_Class;
     UDK = UDK_Class;
     break;
-    case clang::TTK_Enum:
+  case clang::TTK_Enum:
     SK = SK_Enum;
     UDK = UDK_Enum;
     break;
-    case clang::TTK_Interface:
-    default:
-      llvm_unreachable("Unsupported tag declaration.");
-  }
+  case clang::TTK_Interface:
+    llvm_unreachable("Unsupported tag declaration.");
+  } // switch (RD->getTagKind())
+
   StateRAII RecordState(*this, UDK, RD, SK);
   return false;
 }
@@ -472,24 +472,23 @@ ClangToGoldDeclRebuilder::rebuildMember(clang::ClassTemplateDecl* CTD) {
   clang::CXXRecordDecl *RD = CTD->getTemplatedDecl();
   ScopeKind SK = SK_Class;
   UnevaluatedDeclKind UDK = UDK_Class;
-  switch(RD->getTagKind()) {
-    case clang::TTK_Union:
+  switch (RD->getTagKind()) {
+  case clang::TTK_Union:
     UDK = UDK_Union;
     SK = SK_Class;
     break;
-    case clang::TTK_Struct:
-    case clang::TTK_Class:
+  case clang::TTK_Struct:
+  case clang::TTK_Class:
     SK = SK_Class;
     UDK = UDK_Class;
     break;
-    case clang::TTK_Enum:
+  case clang::TTK_Enum:
     SK = SK_Enum;
     UDK = UDK_Enum;
     break;
-    case clang::TTK_Interface:
-    default:
-      llvm_unreachable("Unsupported tag declaration.");
-  }
+  case clang::TTK_Interface:
+    llvm_unreachable("Unsupported tag declaration.");
+  } // switch (RD->getTagKind())
 
   StateRAII ClsTmpltDclState(*this, UDK, CTD, SK);
   return false;
