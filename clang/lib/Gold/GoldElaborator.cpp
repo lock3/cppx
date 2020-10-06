@@ -788,6 +788,7 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
   clang::UsingDirectiveDecl *UD = nullptr;
   clang::AttributeFactory Attrs;
   clang::ParsedAttributes ParsedAttrs(Attrs);
+
   NSDecl = SemaRef.ActOnStartNamespaceDef(NSScope,
                                           SourceLocation(),
                                           D->IdDcl->getLoc(),
@@ -795,19 +796,13 @@ static clang::Decl *processNamespaceDecl(Elaborator& Elab,
                                           D->getId(),
                                           D->IdDcl->getLoc(),
                                           ParsedAttrs, UD);
-  if (!NSDecl) {
-    // Making sure that if something does go wrong that we properly recover
-    // from it.
-    SemaRef.leaveClangScope(clang::SourceLocation());
-    return nullptr;
-  }
-
   if (NSDecl->isInvalidDecl()) {
     // Making sure that if something does go wrong that we properly recover
     // from it.
     SemaRef.leaveClangScope(clang::SourceLocation());
     return nullptr;
   }
+
   // Resume or create a new scope for the current namespace.
   // This is to allow the representations to all share the same scope.
   // This makes it easier to handle lookup for those elements of the scope.
@@ -1230,6 +1225,8 @@ bool Elaborator::elaborateNestedNameForDecl(Declaration *D) {
 /// Returns true in the event of an error. If located The Located node is set.
 static bool hasLinkageSpecDecl(Sema& SemaRef, Declaration *D,
                                const Syntax **LocatedNode) {
+  if (!D->IdDcl)
+    return false;
   if (!D->IdDcl->UnprocessedAttributes)
     return false;
   return locateValidAttribute(*D->IdDcl->UnprocessedAttributes,
@@ -1363,6 +1360,71 @@ static void exitToCorrectScope(Sema &SemaRef, gold::Scope *ExpectedScope,
   }
 }
 
+static void handleUsingBlockList(SyntaxContext &Ctx, Sema &SemaRef,
+                                 const ListSyntax *List,
+                                 clang::SourceLocation UsingLoc) {
+  for (const Syntax *Item : List->children()) {
+    clang::Expr *E = ExprElaborator(Ctx, SemaRef).elaborateExpr(Item);
+
+    if (clang::CppxDeclRefExpr *CDRE = dyn_cast<clang::CppxDeclRefExpr>(E)) {
+      // using namespace declaration
+      if (CDRE->getType()->isNamespaceType()) {
+        clang::CppxNamespaceDecl *NS =
+          cast<clang::CppxNamespaceDecl>(CDRE->getValue());
+
+        clang::Scope *CxxScope = SemaRef.getCurClangScope();
+        clang::CXXScopeSpec SS;
+        clang::ParsedAttributesView AttrView;
+        clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDirective(
+          CxxScope, UsingLoc, Item->getLoc(), SS, Item->getLoc(),
+          NS->getIdentifier(), AttrView);
+        SemaRef.getCurrentScope()->UsingDirectives.insert(
+          cast<clang::UsingDirectiveDecl>(UD));
+      }
+    }
+  }
+}
+
+static void handleUsingBlock(SyntaxContext &Ctx, Sema &SemaRef,
+                             const ArraySyntax *Block,
+                             clang::SourceLocation UsingLoc) {
+  for (const Syntax *Item : Block->children()) {
+    if (const ArraySyntax *II = dyn_cast<ArraySyntax>(Item))
+      handleUsingBlock(Ctx, SemaRef, II, UsingLoc);
+    else if (const ListSyntax *II = dyn_cast<ListSyntax>(Item))
+      handleUsingBlockList(Ctx, SemaRef, II, UsingLoc);
+    else {
+      clang::Expr *E = ExprElaborator(Ctx, SemaRef).elaborateExpr(Item);
+
+      if (clang::CppxDeclRefExpr *CDRE = dyn_cast<clang::CppxDeclRefExpr>(E)) {
+        // using namespace declaration
+        if (CDRE->getType()->isNamespaceType()) {
+          clang::CppxNamespaceDecl *NS =
+            cast<clang::CppxNamespaceDecl>(CDRE->getValue());
+
+          clang::Scope *CxxScope = SemaRef.getCurClangScope();
+          clang::CXXScopeSpec SS;
+          clang::ParsedAttributesView AttrView;
+          clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDirective(
+            CxxScope, UsingLoc, Item->getLoc(), SS, Item->getLoc(),
+            NS->getIdentifier(), AttrView);
+          SemaRef.getCurrentScope()->UsingDirectives.insert(
+            cast<clang::UsingDirectiveDecl>(UD));
+        }
+      }
+    }
+  }
+}
+
+static void handleUsingDirectiveDecl(SyntaxContext &Ctx, Sema &SemaRef,
+                                     Declaration *D) {
+  assert(D->declaresUsingDirective());
+  const MacroSyntax *S = cast<MacroSyntax>(D->Init);
+  const ArraySyntax *Block = cast<ArraySyntax>(S->getBlock());
+  handleUsingBlock(Ctx, SemaRef, Block, S->getCall()->getLoc());
+  D->CurrentPhase = Phase::Initialization;
+}
+
 static clang::Decl *handleNNSNamespaceElab(Elaborator &Elab, Sema &SemaRef,
                                            std::size_t NNSIndex,
                                            Declaration *D);
@@ -1472,7 +1534,6 @@ clang::Decl *Elaborator::elaborateNestedNameNamespace(Declaration *D) {
   return handleNNSNamespaceElab(*this, SemaRef, 0, D);
 }
 
-
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   if (phaseOf(D) != Phase::Identification)
     return D->Cxx;
@@ -1519,6 +1580,11 @@ clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
       else
         // FIXME: this may need to be an internal compiler error.
         llvm_unreachable("We have an invalid scope to resume!");
+    }
+
+    if (D->declaresUsingDirective()) {
+      handleUsingDirectiveDecl(Context, SemaRef, D);
+      return nullptr;
     }
 
     Sema::OptionalScopeRAII TemplateParamScope(SemaRef);
@@ -3827,7 +3893,8 @@ clang::Decl *Elaborator::elaborateParmDeclSyntax(const Syntax *S) {
 }
 
 clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
-  assert(D && D->getId() && "Early elaboration of unidentified declaration");
+  assert(D && (D->getId() || D->declaresUsingDirective())
+         && "Early elaboration of unidentified declaration");
   Sema::OptionalInitScope<Sema::EnterNonNestedClassEarlyElaboration>
     ENNCEE(SemaRef);
   if (SemaRef.isElaboratingClass() && !D->isDeclaredWithinClass()) {

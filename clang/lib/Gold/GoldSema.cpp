@@ -28,8 +28,12 @@
 
 #include "clang/Gold/ClangToGoldDeclBuilder.h"
 #include "clang/Gold/GoldElaborator.h"
+#include "clang/Gold/GoldIdentifierResolver.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSyntax.h"
+
+#include <algorithm>
+
 namespace gold {
 
 using namespace llvm;
@@ -132,6 +136,7 @@ static Sema::StringToAttrHandlerMap buildAttributeMapping() {
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : CxxSema(CxxSema), CurrentDecl(), Context(Context),
     Diags(Context.CxxAST.getSourceManager().getDiagnostics()),
+    IdResolver(new (Context) IdentifierResolver(*this)),
     OperatorColonII(&Context.CxxAST.Idents.get("operator':'")),
     OperatorArrowII(&Context.CxxAST.Idents.get("operator'->'")),
     OperatorExclaimII(&Context.CxxAST.Idents.get("operator'!'")),
@@ -559,13 +564,64 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
     }
   }
 
+  clang::IdentifierResolver::iterator
+    I = getCxxSema().IdResolver->begin(Name),
+    IEnd = getCxxSema().IdResolver->end();
+  auto addShadows = [&R](Scope *S, clang::NamedDecl *D) -> bool {
+    clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D);
+    if (!UD)
+      return false;
+
+    bool Shadowed = false;
+    for (auto *Shadow : UD->shadows()) {
+      auto It = std::find(std::begin(S->Shadows), std::end(S->Shadows), Shadow);
+      if (It != std::end(S->Shadows)) {
+        R.addDecl(Shadow);
+        Shadowed = true;
+      }
+    }
+
+    return true;
+  };
+
   // This is done based on how CppLookUpName is handled, with a few exceptions,
   // this will return uninstantiated template declarations, namespaces,
   // and other kinds of declarations. This also handles some early elaboration
   // of some types.
   bool FoundFirstClassScope = false;
-  for(;S; S = S->getParent()) {
+  for(; S; S = S->getParent()) {
     std::set<Declaration *> Found = S->findDecl(Id);
+
+    // Look through any using directives, but only if we didn't already find
+    // something acceptable.
+    if (Found.empty()) {
+      // See if Clang has anything in the identifier resolver.
+      bool Shadowed = false;
+      for (; I != IEnd; ++I)
+        Shadowed |= addShadows(S, *I);
+      if (Shadowed)
+        return true;
+
+      bool FoundInNamespace = false;
+      for (clang::UsingDirectiveDecl *UD : S->UsingDirectives) {
+        assert(isa<clang::CppxNamespaceDecl>(UD->getNominatedNamespace()));
+
+        clang::CppxNamespaceDecl *NS =
+          cast<clang::CppxNamespaceDecl>(UD->getNominatedNamespace());
+        std::set<Declaration *> NSFound = NS->Rep->findDecl(Id);
+
+        // We found the name in more than one namespace.
+        if (FoundInNamespace && !NSFound.empty()) {
+          Diags.Report(R.getNameLoc(), clang::diag::err_ambiguous_reference)
+            << Name;
+          return false;
+        }
+
+        FoundInNamespace = !NSFound.empty();
+        Found = NSFound;
+      }
+    }
+
     if (!Found.empty()) {
       for (auto *FoundDecl : Found) {
         // Skipping this particular declaration to avoid triggering
@@ -1176,29 +1232,27 @@ bool Sema::setLookupScope(clang::CXXRecordDecl *Record) {
 }
 
 Scope *Sema::getLookupScope() {
-  switch(CurNNSKind) {
-    case NNSK_Empty:
-      return nullptr;
-    case NNSK_Global:
-      return CurNNSLookupDecl.Global.Scope;
-    case NNSK_Namespace:
-      return CurNNSLookupDecl.NNS->getScopeRep();
-    case NNSK_NamespaceAlias:{
-      if (auto *NNS = dyn_cast<clang::CppxNamespaceDecl>(
-              CurNNSLookupDecl.Alias->getAliasedNamespace())) {
-        return NNS->getScopeRep();
-      } else {
-        // FIXME: The namespace alias doesn't contain a CppxNamespaceDecl
-        llvm_unreachable("Invalid namespace alias");
-      }
-      return nullptr;
-    }
-    case NNSK_Record:{
-      return CurNNSLookupDecl.RebuiltClassScope;
-    }
-    default:
-      llvm_unreachable("Invalid or unknown nested name specifier type");
+  switch (CurNNSKind) {
+  case NNSK_Empty:
+    return nullptr;
+  case NNSK_Global:
+    return CurNNSLookupDecl.Global.Scope;
+  case NNSK_Namespace:
+    return CurNNSLookupDecl.NNS->getScopeRep();
+  case NNSK_NamespaceAlias: {
+    clang::Decl *AliasedNS = CurNNSLookupDecl.Alias->getAliasedNamespace();
+    if (auto *NNS = dyn_cast<clang::CppxNamespaceDecl>(AliasedNS))
+      return NNS->getScopeRep();
+    // FIXME: The namespace alias doesn't contain a CppxNamespaceDecl
+    llvm_unreachable("Invalid namespace alias");
   }
+
+  case NNSK_Record:{
+    return CurNNSLookupDecl.RebuiltClassScope;
+  }
+  } // switch (CurNNSKind)
+
+  llvm_unreachable("Invalid or unknown nested name specifier type");
 }
 
 bool Sema::isInDeepElaborationMode() const {
@@ -1296,10 +1350,10 @@ Sema::ActOnStartNamespaceDef(clang::Scope *NamespcScope,
   CxxSema.CheckNamespaceDeclaration(II, StartLoc, Loc, IsInline, IsInvalid,
                                     IsStd, AddToKnown, PrevNS);
   gold::Scope *PrevScope = nullptr;
-  if (CppxNamespaceDecl *PrevCppxNsDecl
-                                = dyn_cast_or_null<CppxNamespaceDecl>(PrevNS)) {
-    PrevScope = PrevCppxNsDecl->Rep;
-  }
+  if (CppxNamespaceDecl *Prev = dyn_cast_or_null<CppxNamespaceDecl>(PrevNS))
+    PrevScope = Prev->Rep;
+
+
   CppxNamespaceDecl *Namespc = CppxNamespaceDecl::Create(Context.CxxAST,
                                                          CxxSema.CurContext,
                                                          IsInline, StartLoc,
@@ -1350,7 +1404,6 @@ Sema::ActOnStartNamespaceDef(clang::Scope *NamespcScope,
     // CodeGen enforces the "universally unique" aspect by giving all
     // declarations semantically contained within an anonymous
     // namespace internal linkage.
-
     if (!PrevNS) {
       UD = UsingDirectiveDecl::Create(Context.CxxAST, Parent,
                                       /* 'using' */ LBrace,
@@ -1360,6 +1413,7 @@ Sema::ActOnStartNamespaceDef(clang::Scope *NamespcScope,
                                       Namespc, /* Ancestor */ Parent);
       UD->setImplicit();
       Parent->addDecl(UD);
+      getCurrentScope()->UsingDirectives.insert(UD);
     }
   }
 

@@ -49,12 +49,14 @@ class TypeSourceInfo;
 } // namespace clang
 
 namespace gold {
-class Declarator;
-class Declaration;
-struct Syntax;
 struct ArraySyntax;
-class SyntaxContext;
+class Declaration;
+class Declarator;
 class Elaborator;
+class IdentifierResolver;
+struct Syntax;
+class SyntaxContext;
+
 
 /// This contains the status for the elaboration of method attributes.
 /// Each flag is set to true/false depending on if that field has been
@@ -98,6 +100,7 @@ struct AttrStatus {
 /// translation unit in the Gold Language.
 class Sema {
   friend struct QualifiedLookupRAII;
+  friend struct ExtendQualifiedLookupRAII;
 
   // The clang semantic object, allows to create various syntax nodes
   // as well as perform important transformations on them.
@@ -513,6 +516,37 @@ public:
     NNSKind PreviousKind;
     NNSLookupDecl PreviousLookup;
   };
+
+  // Allows us to keep our nns context for a bit longer.
+  struct ExtendQualifiedLookupRAII {
+    ExtendQualifiedLookupRAII(Sema &SemaRef)
+      : ExtendQualifiedLookup(SemaRef.ExtendQualifiedLookup),
+        CurNNSContext(SemaRef.CurNNSContext)
+      {
+        SavedValue = ExtendQualifiedLookup;
+        ExtendQualifiedLookup = true;
+      }
+
+    ~ExtendQualifiedLookupRAII() {
+      ExtendQualifiedLookup = SavedValue;
+      CurNNSContext.clear();
+    }
+
+  private:
+    bool SavedValue;
+    bool &ExtendQualifiedLookup;
+    clang::CXXScopeSpec &CurNNSContext;
+  };
+
+  bool isExtendedQualifiedLookupContext() const {
+    return ExtendQualifiedLookup;
+  }
+
+private:
+  // True if we want to maintain the NNSContext after we are done with
+  // qualified lookup.
+  bool ExtendQualifiedLookup = false;
+
 public:
   // The context
   SyntaxContext &Context;
@@ -521,6 +555,9 @@ public:
 
   // The Clang diagnostics engine.
   clang::DiagnosticsEngine &Diags;
+
+  // The identifier resolver
+  IdentifierResolver *IdResolver;
 
   // Tokenizations of commonly compared-against strings.
   clang::IdentifierInfo *const OperatorColonII;

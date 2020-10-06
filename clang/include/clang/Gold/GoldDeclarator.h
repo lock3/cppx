@@ -54,6 +54,7 @@ class TypeDeclarator;
 class TemplateParamsDeclarator;
 class ImplicitEmptyTemplateParamsDeclarator;
 class SpecializationDeclarator;
+class UsingDirectiveDeclarator;
 
 /// Kinds of declarations.
 enum DeclaratorKind {
@@ -94,6 +95,11 @@ enum DeclaratorKind {
 
   /// This is for when we have x[^int] or x[T:type][^T]
   DK_Specialization,
+
+  /// A special declarator for using directives. Unique in that it is composed
+  /// of only a macro syntax rather than a call syntax, and will always be a
+  /// singleton sequence.
+  DK_UsingDirective,
 
   /// This declarator indicates that there was an error evaluating
   /// the declarator. This usually means that there is an ErrorSyntax node
@@ -170,6 +176,7 @@ public:
     return Kind == DK_TemplateParams || isImplicitTemplateParameters();
   }
   bool isSpecialization() const { return Kind == DK_Specialization; }
+  bool isUsingDirective() const { return Kind == DK_UsingDirective; }
   bool isError() const { return Kind == DK_Error; }
 
   UnknownDeclarator *getAsUnknown();
@@ -192,6 +199,8 @@ public:
   const ImplicitEmptyTemplateParamsDeclarator *getAsImplicitEmptyTemplateParams() const;
   SpecializationDeclarator *getAsSpecialization();
   const SpecializationDeclarator *getAsSpecialization() const;
+  UsingDirectiveDeclarator *getAsUsingDirective();
+  const UsingDirectiveDeclarator *getAsUsingDirective() const;
 
   /// Get a SourceLocation representative of this declarator.
   virtual clang::SourceLocation getLoc() const = 0;
@@ -493,6 +502,26 @@ public:
     return Dcl->getKind() == DK_Specialization;
   }
 };
-}
+
+class UsingDirectiveDeclarator : public Declarator {
+  clang::SourceLocation UsingLoc;
+  const Syntax *Args;
+
+public:
+  UsingDirectiveDeclarator(clang::SourceLocation UsingLoc, const Syntax *Args)
+    : Declarator(DK_UsingDirective, nullptr), UsingLoc(UsingLoc), Args(Args)
+    {}
+
+  const Syntax *getArgs();
+
+  virtual clang::SourceLocation getLoc() const override;
+  virtual std::string getString(bool IncludeKind = false) const override;
+
+  static bool classof(const Declarator *Dcl) {
+    return Dcl->getKind() == DK_UsingDirective;
+  }
+};
+
+} // namespace gold
 
 #endif

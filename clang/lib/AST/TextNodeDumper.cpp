@@ -382,6 +382,7 @@ static bool isSimpleAPValue(const APValue &Value) {
   case APValue::Struct:
   case APValue::Reflection:
   case APValue::Fragment:
+  case APValue::Type:
     return false;
   case APValue::Union:
     return isSimpleAPValue(Value.getUnionValue());
@@ -570,6 +571,9 @@ void TextNodeDumper::Visit(const APValue &Value, QualType Ty) {
     return;
   case APValue::Fragment:
     OS << "Fragment <todo>";
+    return;
+  case APValue::Type:
+    OS << "Type <todo>";
     return;
   }
   llvm_unreachable("Unknown APValue kind!");

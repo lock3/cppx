@@ -80,8 +80,7 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
   // TODO: distinguish between redefinition, redeclaration, and redeclaration
   // with different type.
   if ((CurScope->isNamespaceScope() || CurScope->isParameterScope()) &&
-      !TheDecl->declaresFunction() && !TheDecl->SpecializationArgs) {
-    // FIXME: rewrite this!!
+      !TheDecl->declaresFunction() && !TheDecl->SpecializationArgs && Id) {
     auto DeclSet = CurScope->findDecl(Id);
 
     if (!DeclSet.empty()) {
@@ -89,6 +88,7 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
       TheDecl->setPreviousDecl(*DeclSet.begin());
     }
   }
+
   SemaRef.getCurrentScope()->addDecl(TheDecl);
   TheDecl->CurrentPhase = Phase::Identification;
   return TheDecl;
@@ -156,6 +156,9 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
     }
     return false;
   };
+
+  if (Cur->isUsingDirective())
+    return false;
 
   if (Cur->isGlobalNameSpecifier()) {
     TheDecl->GlobalNsSpecifier = Cur->getAsGlobalNameSpecifier();
@@ -524,6 +527,7 @@ bool DeclarationBuilder::checkRequiresType(const Syntax *DeclExpr,
       }
     }
   }
+
   return false;
 }
 
@@ -886,6 +890,11 @@ bool DeclarationBuilder::classifyDecl(const Syntax *DeclExpr,
   // this is handled within checkEnumDeclaration
   if (TheDecl->SuspectedKind == UDK_EnumConstant)
     return false;
+
+  if (TheDecl->Decl->isUsingDirective()) {
+    TheDecl->SuspectedKind = UDK_UsingDirective;
+    return false;
+  }
 
   bool EncounteredError = false;
   if (isTagLikeDeclOrForwardDecl(SemaRef, TheDecl, EncounteredError)) {
@@ -1292,6 +1301,12 @@ DeclarationBuilder::buildTemplateFunctionOrNameDeclarator(const Syntax *S,
   return buildTemplateOrNameDeclarator(S, Next);
 }
 
+Declarator *
+DeclarationBuilder::buildUsingDirectiveDeclarator(const MacroSyntax *S) {
+  InitExpr = S;
+  return new UsingDirectiveDeclarator(S->getCall()->getLoc(), S);
+}
+
 Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
                                                        Declarator *Next) {
   // If we find an atom, then we're done.
@@ -1313,6 +1328,10 @@ Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
         return makeTopLevelDeclarator(Call->getArgument(0), Next);
       }
     }
+  } else if (const MacroSyntax *Macro = dyn_cast<MacroSyntax>(S)) {
+    if (const AtomSyntax *Call = dyn_cast<AtomSyntax>(Macro->getCall()))
+      if (Call->getToken().hasKind(tok::UsingKeyword))
+        return buildUsingDirectiveDeclarator(Macro);
   } else if(const ErrorSyntax *Err = dyn_cast<ErrorSyntax>(S)) {
     return handleErrorSyntax(Err, Next);
   }
@@ -1351,7 +1370,11 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
     if (const auto *Name = dyn_cast<AtomSyntax>(S))
       return handleIdentifier(Name, nullptr);
 
+  if (const auto *Macro = dyn_cast<MacroSyntax>(S))
+    return makeTopLevelDeclarator(S, nullptr);
+
   const auto *Call = dyn_cast<CallSyntax>(S);
+
   if (!Call) {
     if (RequiresDeclOrError)
       SemaRef.Diags.Report(S->getLoc(),
@@ -1500,6 +1523,13 @@ DeclarationBuilder::handleNestedNameSpecifier(const AtomSyntax *S, Declarator *N
 
 IdentifierDeclarator *
 DeclarationBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
+  // Don't bother with the unnamed name ("_")
+  if (S->getToken().hasKind(tok::AnonymousKeyword)) {
+    auto *D = new IdentifierDeclarator(S, Next);
+    D->recordAttributes(S);
+    return D;
+  }
+
   // Translating the simple identifier.
   OriginalName = OriginalNameStorage = S->getSpelling();
   Id = &Context.CxxAST.Idents.get(OriginalName);

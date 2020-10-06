@@ -57,37 +57,43 @@ StmtElaborator::elaborateStmt(const Syntax *S) {
   auto Res = Elab.elaborateExpr(S);
   if (!Res)
     return nullptr;
-  auto ExprStmt = SemaRef.getCxxSema().ActOnExprStmt(Res,
-                                                    /*discardedValue*/true);
-  if (ExprStmt.isInvalid()) {
+  auto CheckExpr = SemaRef.getCxxSema().CheckPlaceholderExpr(Res);
+  if (CheckExpr.isInvalid())
     return nullptr;
-  }
+  auto ExprStmt =
+    SemaRef.getCxxSema().ActOnExprStmt(CheckExpr.get(), /*discardedValue*/true);
+  if (ExprStmt.isInvalid())
+    return nullptr;
+
   return ExprStmt.get();
 }
 
 clang::Stmt *
 StmtElaborator::elaborateAtom(const AtomSyntax *S) {
   Token T = S->Tok;
-  // Grabbing some statement only identifiers
+  // Check if we have a statement-only identifier.
   switch (T.getKind()) {
-  case tok::ContinueKeyword:
-  {
+  case tok::ContinueKeyword: {
     auto StmtResult = SemaRef.getCxxSema().ActOnContinueStmt(S->getLoc(),
         SemaRef.getCurClangScope());
     return StmtResult.get();
   }
-  case tok::BreakKeyword:
-  {
+
+  case tok::BreakKeyword: {
     auto StmtResult = SemaRef.getCxxSema().ActOnBreakStmt(S->getLoc(),
         SemaRef.getCurClangScope());
     return StmtResult.get();
   }
-  default:
-  {
+
+  default: {
     ExprElaborator ExEl(Context, SemaRef);
-    return ExEl.elaborateExpr(S);
+    clang::Expr *Res = ExEl.elaborateExpr(S);
+    auto CheckExpr = SemaRef.getCxxSema().CheckPlaceholderExpr(Res);
+    if (CheckExpr.isInvalid())
+      return nullptr;
+    return CheckExpr.get();
   }
-  }
+  } // switch (T.getKind())
 }
 
 static clang::Stmt *
@@ -412,6 +418,89 @@ clang::Stmt *StmtElaborator::elaborateArrayMacroStmt(const MacroSyntax *S) {
     SemaRef.getCxxSema().ConvertDeclToDeclGroup(ArrayDecl).get(),
     S->getLoc(), S->getLoc());
   return DS;
+}
+
+static void handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
+                        const Syntax *Arg,
+                        clang::SourceLocation UsingLoc) {
+  Sema::ExtendQualifiedLookupRAII ExQual(SemaRef);
+  clang::Expr *E = ExprElaborator(Ctx, SemaRef).elaborateExpr(Arg);
+  if (!E)
+    return;
+
+  clang::Scope *CxxScope = SemaRef.getCurClangScope();
+  clang::CXXScopeSpec SS;
+  clang::ParsedAttributesView AttrView;
+
+  if (clang::CppxDeclRefExpr *CDRE = dyn_cast<clang::CppxDeclRefExpr>(E)) {
+    // using namespace declaration
+    if (CDRE->getType()->isNamespaceType()) {
+      clang::CppxNamespaceDecl *NS =
+        cast<clang::CppxNamespaceDecl>(CDRE->getValue());
+
+      clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDirective(
+        CxxScope, UsingLoc, Arg->getLoc(), SS, Arg->getLoc(),
+        NS->getIdentifier(), AttrView);
+      SemaRef.getCurrentScope()->UsingDirectives.insert(
+        cast<clang::UsingDirectiveDecl>(UD));
+    }
+  } else if (clang::DeclRefExpr *DRE = dyn_cast<clang::DeclRefExpr>(E)) {
+    // using directive of a declaration in a namespace or base class.
+    gold::Declaration *D = SemaRef.getDeclaration(DRE->getDecl());
+    clang::UnqualifiedId Name;
+    Name.setIdentifier(D->getId(), D->getEndOfDecl());
+
+    clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDeclaration(
+      CxxScope, clang::AS_none, UsingLoc, clang::SourceLocation(),
+      SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
+    // FIXME: if this comes from an operator'.', elaborate lhs to
+    // differentiate classes and namespaces.
+    for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
+      SemaRef.getCurrentScope()->Shadows.insert(Shadow);
+  } else if (auto *ULE = dyn_cast<clang::UnresolvedLookupExpr>(E)) {
+    // using directive of a declaration in a namespace or base class.
+    clang::UnqualifiedId Name;
+    Name.setIdentifier(ULE->getName().getAsIdentifierInfo(),
+                       ULE->getNameLoc());
+
+    clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDeclaration(
+      CxxScope, clang::AS_none, UsingLoc, clang::SourceLocation(),
+      SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
+    // FIXME: if this comes from an operator'.', elaborate lhs to
+    // differentiate classes and namespaces.
+    for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
+      SemaRef.getCurrentScope()->Shadows.insert(Shadow);
+  }
+}
+
+static void handleUsingBlockList(SyntaxContext &Ctx, Sema &SemaRef,
+                                 const ListSyntax *List,
+                                 clang::SourceLocation UsingLoc) {
+  for (const Syntax *Item : List->children())
+    handleUsing(Ctx, SemaRef, Item, UsingLoc);
+}
+
+static void handleUsingBlock(SyntaxContext &Ctx, Sema &SemaRef,
+                             const ArraySyntax *Block,
+                             clang::SourceLocation UsingLoc) {
+  for (const Syntax *Item : Block->children()) {
+    if (const ArraySyntax *II = dyn_cast<ArraySyntax>(Item))
+      handleUsingBlock(Ctx, SemaRef, II, UsingLoc);
+    else if (const ListSyntax *II = dyn_cast<ListSyntax>(Item))
+      handleUsingBlockList(Ctx, SemaRef, II, UsingLoc);
+    else
+      handleUsing(Ctx, SemaRef, Item, UsingLoc);
+  }
+}
+
+clang::Stmt *StmtElaborator::elaborateUsingMacroStmt(const MacroSyntax *S) {
+  if (!isa<ArraySyntax>(S->getBlock()))
+    return nullptr;
+  const ArraySyntax *Block = cast<ArraySyntax>(S->getBlock());
+
+  // We might have any amount of nesting of lists within the macro block.
+  handleUsingBlock(Context, SemaRef, Block, S->getCall()->getLoc());
+  return nullptr;
 }
 
 // An auto-deduced operator'in' call does not appear to be a declaration to our
@@ -822,6 +911,8 @@ StmtElaborator::elaborateMacro(const MacroSyntax *S) {
 
   if (Callee->getSpelling() == "array")
     return elaborateArrayMacroStmt(S);
+  if (Callee->getSpelling() == "using")
+    return elaborateUsingMacroStmt(S);
 
   unsigned DiagID = Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
                                           "use of undefined macro");

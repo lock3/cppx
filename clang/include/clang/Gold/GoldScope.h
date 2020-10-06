@@ -16,14 +16,13 @@
 
 #include "clang/Gold/GoldDeclaration.h"
 
+#include "llvm/ADT/SmallPtrSet.h"
+
 #include <map>
 #include <set>
 
 
 namespace gold {
-
-
-
 
 /// Different kinds of scope.
 enum ScopeKind {
@@ -220,6 +219,12 @@ public:
   bool hasDeclaration(const Syntax *Op) const {
     return DeclMap.count(Op) != 0;
   }
+
+  // Using Directives in this scope.
+  llvm::SmallPtrSet<clang::UsingDirectiveDecl *, 4> UsingDirectives;
+
+  // UsingDecls that get added to this scope.
+  llvm::SmallPtrSet<clang::UsingShadowDecl *, 4> Shadows;
 
   void dump(llvm::raw_ostream &os) const;
   void dump() const;

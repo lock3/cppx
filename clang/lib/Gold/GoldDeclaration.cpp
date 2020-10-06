@@ -79,6 +79,8 @@ llvm::StringRef unevaluatedDeclKindToStr(UnevaluatedDeclKind UDK) {
     return "UDK_VarTemplateOrTemplateAlias";
   case UDK_DeductionOnlyVariable  :
     return "UDK_DeductionOnlyVariable";
+  case UDK_UsingDirective:
+    return "UDK_UsingDirective";
   }
   llvm_unreachable("Invalid UnevaluatedDeclKind");
 }
@@ -298,6 +300,10 @@ bool Declaration::declaresFunctionDecl() const {
 
 bool Declaration::declaresFunctionDef() const {
   return declaresFunction() && Init;
+}
+
+bool Declaration::declaresUsingDirective() const {
+  return isa<UsingDirectiveDeclarator>(Decl);
 }
 
 bool Declaration::hasNestedNameSpecifier() const {
