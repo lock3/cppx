@@ -296,10 +296,18 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
     appendTerm(Vec, List);
   }
 
-  if (nextTokenIs("catch") && ExitBlock) {
-    Syntax *Catch = parseCatch();
-    appendTerm(Vec, Catch);
+  if (ExitBlock) {
+    if (nthTokenIs(1, tok::CatchKeyword)) {
+      // Consume the end of array, not sure what to do with it though...
+      consumeToken();
+      llvm::outs() << "The next token is the catch kw\n";
+      Syntax *Catch = parseCatch();
+      appendTerm(Vec, Catch);
+    } else {
+      llvm::outs() << "Exiting block that doesn't have a catch\n";
+    }
   }
+
 }
 
 // list:
@@ -1421,6 +1429,7 @@ Syntax *Parser::parseNestedArray() {
 ///   : nested-array  catch_opt
 /// FIXME: allow catch blocks to be parsed here
 Syntax *Parser::parseBlock() {
+  llvm::outs() << "We are parsing a block?!\n";
   if (nextTokenIs(tok::LeftBrace))
     return parseBracedArray();
 
@@ -1431,20 +1440,27 @@ Syntax *Parser::parseBlock() {
 /// catch:
 /// catch ( list ) block
 Syntax *Parser::parseCatch() {
-  Token KW = expectToken("catch");
+  llvm::outs() << "Called parse catch\n";
+  Token KW = expectToken(tok::CatchKeyword);
 
   EnclosingParens Parens(*this);
-  if (!Parens.expectOpen())
+  if (!Parens.expectOpen()) {
+    llvm::outs() << "Error on expect open?!\n";
     return onError();
+  }
 
   Syntax *Args = !nextTokenIs(tok::RightParen) ? parseList(ArgArray)
     : onList(ArgArray, llvm::SmallVector<Syntax *, 0>());
 
-  if (!Parens.expectClose())
+  if (!Parens.expectClose()) {
+    llvm::outs() << "Error on expect close?!\n";
     return onError();
+  }
 
   Syntax *Block = parseBlock();
-  return onCatch(KW, Args, Block);
+  auto *Ret = onCatch(KW, Args, Block);
+  llvm::outs() << "Finished call to parseCatch\n";
+  return Ret;
 }
 
 // Semantic actions

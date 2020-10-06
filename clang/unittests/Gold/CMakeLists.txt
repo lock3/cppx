@@ -77,6 +77,7 @@ add_clang_unittest(GoldTests
   GoldDeductExec.cpp
   GoldDefaultFunctionArgumentsElab.cpp
   GoldEnumElab.cpp
+  GoldExceptionCatchElab.cpp
   GoldExceptionSpecifierElab.cpp
   GoldExplicitAttributeElab.cpp
   GoldFinalAttributeElab.cpp
