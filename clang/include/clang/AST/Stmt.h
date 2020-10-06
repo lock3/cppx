@@ -1386,13 +1386,18 @@ class CompoundStmt final : public Stmt,
   /// The location of the closing "}". LBraceLoc is stored in CompoundStmtBits.
   SourceLocation RBraceLoc;
 
-  CompoundStmt(ArrayRef<Stmt *> Stmts, SourceLocation LB, SourceLocation RB);
+  CompoundStmt(ArrayRef<Stmt *> Stmts, SourceLocation LB, SourceLocation RB,
+               bool CppxVector);
   explicit CompoundStmt(EmptyShell Empty) : Stmt(CompoundStmtClass, Empty) {}
 
   void setStmts(ArrayRef<Stmt *> Stmts);
+
+  // True if this holds multiple statemnts for Cppx-Gold elaboration.
+  bool CppxVector = false;
 public:
   static CompoundStmt *Create(const ASTContext &C, ArrayRef<Stmt *> Stmts,
-                              SourceLocation LB, SourceLocation RB);
+                              SourceLocation LB, SourceLocation RB,
+                              bool CppxVector = false);
 
   // Build an empty compound statement with a location.
   explicit CompoundStmt(SourceLocation Loc)
@@ -1486,6 +1491,8 @@ public:
 
   SourceLocation getLBracLoc() const { return CompoundStmtBits.LBraceLoc; }
   SourceLocation getRBracLoc() const { return RBraceLoc; }
+
+  bool isCppxVector() const { return CppxVector; }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == CompoundStmtClass;
