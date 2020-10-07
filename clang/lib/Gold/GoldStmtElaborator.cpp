@@ -420,79 +420,19 @@ clang::Stmt *StmtElaborator::elaborateArrayMacroStmt(const MacroSyntax *S) {
   return DS;
 }
 
-static clang::Stmt *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
-                                const Syntax *Arg,
-                                clang::SourceLocation UsingLoc) {
-  Sema::ExtendQualifiedLookupRAII ExQual(SemaRef);
-  clang::SourceLocation ArgLoc = Arg->getLoc();
-  clang::ASTContext &CxxAST = Ctx.CxxAST;
-  clang::Expr *E = ExprElaborator(Ctx, SemaRef).elaborateExpr(Arg);
-  if (!E)
-    return nullptr;
-
-  clang::Scope *CxxScope = SemaRef.getCurClangScope();
-  clang::CXXScopeSpec SS;
-  clang::ParsedAttributesView AttrView;
-
-  if (clang::CppxDeclRefExpr *CDRE = dyn_cast<clang::CppxDeclRefExpr>(E)) {
-    // using namespace declaration
-    if (CDRE->getType()->isNamespaceType()) {
-      clang::CppxNamespaceDecl *NS =
-        cast<clang::CppxNamespaceDecl>(CDRE->getValue());
-
-      clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDirective(
-        CxxScope, UsingLoc, Arg->getLoc(), SS, Arg->getLoc(),
-        NS->getIdentifier(), AttrView);
-      SemaRef.getCurrentScope()->UsingDirectives.insert(
-        cast<clang::UsingDirectiveDecl>(UD));
-    return new (CxxAST) clang::DeclStmt(
-      SemaRef.getCxxSema().ConvertDeclToDeclGroup(UD).get(), UsingLoc, ArgLoc);
-    }
-  } else if (clang::DeclRefExpr *DRE = dyn_cast<clang::DeclRefExpr>(E)) {
-    // using directive of a declaration in a namespace or base class.
-    gold::Declaration *D = SemaRef.getDeclaration(DRE->getDecl());
-    clang::UnqualifiedId Name;
-    Name.setIdentifier(D->getId(), D->getEndOfDecl());
-
-    clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDeclaration(
-      CxxScope, clang::AS_none, UsingLoc, clang::SourceLocation(),
-      SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
-    // FIXME: if this comes from an operator'.', elaborate lhs to
-    // differentiate classes and namespaces.
-    for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
-      SemaRef.getCurrentScope()->Shadows.insert(Shadow);
-    return new (CxxAST) clang::DeclStmt(
-      SemaRef.getCxxSema().ConvertDeclToDeclGroup(UD).get(), UsingLoc, ArgLoc);
-  } else if (auto *ULE = dyn_cast<clang::UnresolvedLookupExpr>(E)) {
-    // using directive of a declaration in a namespace or base class.
-    clang::UnqualifiedId Name;
-    Name.setIdentifier(ULE->getName().getAsIdentifierInfo(),
-                       ULE->getNameLoc());
-
-    clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDeclaration(
-      CxxScope, clang::AS_none, UsingLoc, clang::SourceLocation(),
-      SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
-    // FIXME: if this comes from an operator'.', elaborate lhs to
-    // differentiate classes and namespaces.
-    for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
-      SemaRef.getCurrentScope()->Shadows.insert(Shadow);
-    return new (CxxAST) clang::DeclStmt(
-      SemaRef.getCxxSema().ConvertDeclToDeclGroup(UD).get(), UsingLoc, ArgLoc);
-  }
-
-  unsigned DiagID =
-    SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                  "invalid using macro");
-  SemaRef.Diags.Report(ArgLoc, DiagID);
-  return nullptr;
-}
-
 static void handleUsingBlockList(SyntaxContext &Ctx, Sema &SemaRef,
                                  const ListSyntax *List,
                                  clang::SourceLocation UsingLoc,
                                  llvm::SmallVectorImpl<clang::Stmt *> &Res) {
-  for (const Syntax *Item : List->children())
-    Res.push_back(handleUsing(Ctx, SemaRef, Item, UsingLoc));
+  for (const Syntax *Item : List->children()) {
+    clang::Decl *D = handleUsing(Ctx, SemaRef, Item, UsingLoc);
+    if (!D)
+      continue;
+    clang::SourceLocation Loc = Item->getLoc();
+    clang::DeclStmt *DS = new (Ctx.CxxAST) clang::DeclStmt(
+      SemaRef.getCxxSema().ConvertDeclToDeclGroup(D).get(), UsingLoc, Loc);
+    Res.push_back(DS);
+  }
 }
 
 static void handleUsingBlock(SyntaxContext &Ctx, Sema &SemaRef,
@@ -504,8 +444,15 @@ static void handleUsingBlock(SyntaxContext &Ctx, Sema &SemaRef,
       handleUsingBlock(Ctx, SemaRef, II, UsingLoc, Res);
     else if (const ListSyntax *II = dyn_cast<ListSyntax>(Item))
       handleUsingBlockList(Ctx, SemaRef, II, UsingLoc, Res);
-    else
-      Res.push_back(handleUsing(Ctx, SemaRef, Item, UsingLoc));
+    else {
+      clang::Decl *D = handleUsing(Ctx, SemaRef, Item, UsingLoc);
+      if (!D)
+        continue;
+      clang::SourceLocation Loc = Item->getLoc();
+      clang::DeclStmt *DS = new (Ctx.CxxAST) clang::DeclStmt(
+        SemaRef.getCxxSema().ConvertDeclToDeclGroup(D).get(), UsingLoc, Loc);
+      Res.push_back(DS);
+    }
   }
 }
 

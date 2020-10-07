@@ -94,3 +94,114 @@ main() : int! {
 
   GoldFailureTest(Code);
 }
+
+TEST(GoldUsingDeclaration, VarInClass) {
+  StringRef Code = R"(
+foo = class {
+  baz : int = 3
+}
+
+bar = class {
+  baz : char = 'a'
+}
+
+qux = class(foo, bar) {
+  using {bar.baz}
+}
+
+main() : int!
+  corge : qux
+  test = corge.baz
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("unsigned char")));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
+
+TEST(GoldUsingDeclaration, FnInClass) {
+  StringRef Code = R"(
+foo = class {
+  baz(f : int)!
+    return f
+}
+
+bar = class {
+  baz(f : int)!
+    return 'a'
+}
+
+qux = class(foo, bar) {
+  using {bar.baz}
+}
+
+main() : int!
+  corge : qux
+  test = corge.baz(4)
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("unsigned char")));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
+
+TEST(GoldUsingDeclaration, OverloadInClass) {
+  StringRef Code = R"(
+foo = class {
+  baz(f : int)!
+    return f
+  baz()!
+    return 10
+}
+
+bar = class {
+  baz()!
+    return 'a'
+  baz(f : int)!
+    return 'a'
+}
+
+qux = class(foo, bar) {
+  using {bar.baz}
+}
+
+main() : int!
+  corge : qux
+  test = corge.baz(4)
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("unsigned char")));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
+
+TEST(GoldUsingDeclaration, TypeInClass) {
+  StringRef Code = R"(
+foo = class {
+  baz : int = 3
+  quux = class {
+    x : int = 11
+  }
+}
+
+bar = class {
+  baz : int = 4
+  quux = class {
+    x : char = 'a'
+  }
+}
+
+qux = class(foo, bar) {
+  using {bar.quux}
+}
+
+main() : int!
+  corge : qux.quux
+  test = corge.x
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("unsigned char")));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
+

@@ -254,6 +254,11 @@ public:
   std::size_t ImplicitSemaDecls = 0;
 };
 
+// Handles a using macro, which represents several different kinds of entities
+// in several different contexts.
+clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
+                         const Syntax *Arg, clang::SourceLocation UsingLoc);
+
 /// Represents different kinds of fused operator strings, for example,
 /// `operator'='` or `operator'return'`.
 enum FusedOpKind {

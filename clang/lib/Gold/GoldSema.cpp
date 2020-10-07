@@ -269,13 +269,9 @@ void Sema::restoreDeclContext(Declaration *D) {
 
 void Sema::pushDecl(Declaration *D) {
   assert(D->getOwner() == CurrentDecl);
-
-  // FIXME: this might be an incorrect assertion.
-  assert(D->Cxx && isa<clang::DeclContext>(D->Cxx)
-         && "No Cxx declaration to push.");
-
   CurrentDecl = D;
-  getCxxSema().CurContext = clang::Decl::castToDeclContext(D->Cxx);
+  if (D->Cxx)
+    getCxxSema().CurContext = clang::Decl::castToDeclContext(D->Cxx);
 }
 
 void Sema::setCurrentDecl(Declaration *D) {
