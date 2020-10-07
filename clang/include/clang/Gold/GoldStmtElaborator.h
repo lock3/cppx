@@ -102,7 +102,8 @@ public:
                               llvm::SmallVectorImpl<clang::Stmt *> &Results);
   void elaborateBlockForList(const ListSyntax *S,
                              llvm::SmallVectorImpl<clang::Stmt *> &Results);
-
+  clang::Stmt *elaborateTryCatchBlock(const MacroSyntax *TCBlock);
+  clang::Stmt *elaborateCatch(const MacroSyntax *TCBlock);
   // Identify the C++ class of statement that this represents.
   void identifyStmt(const Syntax *S);
 

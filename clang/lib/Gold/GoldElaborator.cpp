@@ -3524,6 +3524,9 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
 
   if (IsMemberSpecialization && !NewVD->isInvalidDecl())
     CxxSema.CompleteMemberSpecialization(NewVD, Previous);
+  // Labeling our catch variable.
+  if (D->declaresCatchVariable())
+    NewVD->setExceptionVariable(true);
   return NewVD;
 }
 

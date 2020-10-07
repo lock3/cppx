@@ -11396,6 +11396,9 @@ def err_namespace_no_body : Error<
 def err_invalid_builtin_type : Error<
   "builtin type %0 not available on this system">;
 
+def err_invalid_catch_parameter : Error<
+  "invalid catch statement, to many parameters">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

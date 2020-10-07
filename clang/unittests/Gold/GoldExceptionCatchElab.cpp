@@ -20,166 +20,131 @@ using namespace clang;
 using namespace gold;
 
 
-TEST(GoldCatch, OnAFunction) {
-    StringRef Code = R"(
-foo():void!
-  i:int = 5
-catch(x:int):
-  ;
-catch(x:float64):
-  ;
-
-)";
-  auto ToMatch = namespaceDecl(
-    hasName("X"),
-    has(namespaceDecl(hasName("NS"))
-  ));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
-
-
-// TEST(GoldCatch, OnIf) {
-//     StringRef Code = R"(
-// foo():void!
-//   if true:
-//     ;
-//   catch(x:int):
-//     ;
-
-// )";
-//   auto ToMatch = namespaceDecl(hasName("X"), has(namespaceDecl(hasName("NS"))));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
-
-// TEST(GoldCatch, OnElse) {
-//     StringRef Code = R"(
-// foo():void!
-//   if true:
-//     ;
-//   else:
-//     ;
-//   catch(x:int):
-//     ;
-
-// )";
-//   auto ToMatch = namespaceDecl(hasName("X"), has(namespaceDecl(hasName("NS"))));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
-
-// TEST(GoldCatch, OnWhile) {
-//     StringRef Code = R"(
-// foo():void!
-//   while(true):
-//     ;
-//   catch(x:int):
-//     ;
-
-// )";
-//   auto ToMatch = namespaceDecl(hasName("X"), has(namespaceDecl(hasName("NS"))));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
-
-TEST(GoldCatch, OnBlock) {
+TEST(GoldCatch, UsingImplicitAnonymousArrayMacro) {
     StringRef Code = R"(
 foo():void!
   {
-    h:int = 4
-    {
-      i:int = 5
-    }
-    j:int = 3
+
+    i:int = 5
   } catch(x:int):
     ;
-  k:int = 2  
+  catch(x:float64):
+    ;
+
 )";
-  auto ToMatch = namespaceDecl(hasName("X"), has(namespaceDecl(hasName("NS"))));
+  auto ToMatch = compoundStmt(
+    has(cxxTryStmt(
+      has(cxxCatchStmt(
+        has(varDecl(hasName("x"), hasType(asString("int")), isExceptionVariable()))
+      )),
+      has(cxxCatchStmt(
+        has(varDecl(hasName("x"), hasType(asString("int")), isExceptionVariable()))
+      ))
+    ))
+  );
+
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// TEST(GoldCatch, WithFollowingExpr) {
-//     StringRef Code = R"(
-// foo():void!
-//   {
-//   } catch(x:int):
-//     ;
-//   x:int = 9
-// )";
-//   auto ToMatch = namespaceDecl(hasName("X"), has(namespaceDecl(hasName("NS"))));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+TEST(GoldCatch, UsingExplicitAnonymousArrayMacro) {
+    StringRef Code = R"(
+foo():void!
+  _{
 
-// TEST(GoldCatch, MultiCatch) {
-//     StringRef Code = R"(
-// foo():void!
-//   {
-//   } catch(x:int):
-//     ;
-//   catch(x:float64):
-//     ;
-//   catch:
-//     ;
+    i:int = 5
+  } catch(x:int):
+    ;
+  catch(x:float64):
+    ;
 
-//   x:int = 9
-// )";
-//   auto ToMatch = namespaceDecl(hasName("X"), has(namespaceDecl(hasName("NS"))));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+)";
+  auto ToMatch = compoundStmt(
+    has(cxxTryStmt(
+      has(cxxCatchStmt(
+        has(varDecl(hasName("x"), hasType(asString("int")), isExceptionVariable()))
+      )),
+      has(cxxCatchStmt(
+        has(varDecl(hasName("x"), hasType(asString("int")), isExceptionVariable()))
+      ))
+    ))
+  );
 
-// TEST(GoldCatch, InsideClassBodyOnMemberFunction) {
-//     StringRef Code = R"(
-// x = class:
-//   foo():void!
-//   catch(x:int):
-//     ;
-//   catch(x:float64):
-//     ;
-//   catch:
-//     ;
-// )";
-//   auto ToMatch = namespaceDecl(hasName("X"), has(namespaceDecl(hasName("NS"))));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
-
-// TEST(GoldCatch, InsideClassBodyOnConstructorFunction) {
-//     StringRef Code = R"(
-// x = class:
-//   constructor()!
-//   catch(x:int):
-//     ;
-//   catch(x:float64):
-//     ;
-//   catch:
-//     ;
-// )";
-//   auto ToMatch = namespaceDecl(hasName("X"), has(namespaceDecl(hasName("NS"))));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
 
-// TEST(GoldCatch, AttachedToAClassIndentation) {
-//     StringRef Code = R"(
-// x = class:
-//   constructor()!
-//     ;
-// catch(x:int):
-//   ;
-// catch(x:float64):
-//   ;
-// catch:
-//   ;
-// )";
-//   GoldFailureTest(Code);
-// }
+TEST(GoldCatch, UsingExplicitAnonymousIndent) {
+    StringRef Code = R"(
+foo():void!
+  _:
 
-// TEST(GoldCatch, AttachedToAnArray) {
-//     StringRef Code = R"(
-// foo():void!
-//   i:[3]int = array{
-//     1,
-//     2,
-//     3
-//   } catch(x:int):
-//       ;
-// )";
-//   GoldFailureTest(Code);
-// }
+    i:int = 5
+  catch(x:int):
+    ;
+  catch(x:float64):
+    ;
+
+)";
+  auto ToMatch = compoundStmt(
+    has(cxxTryStmt(
+      has(cxxCatchStmt(
+        has(varDecl(hasName("x"), hasType(asString("int")), isExceptionVariable()))
+      )),
+      has(cxxCatchStmt(
+        has(varDecl(hasName("x"), hasType(asString("int")), isExceptionVariable()))
+      ))
+    ))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldCatch, StrangeColonBlockWithoutName) {
+    StringRef Code = R"(
+foo():void!
+  :
+
+    i:int = 5
+  catch(x:int):
+    ;
+  catch(x:float64):
+    ;
+
+)";
+  auto ToMatch = compoundStmt(
+    has(cxxTryStmt(
+      has(cxxCatchStmt(
+        has(varDecl(hasName("x"), hasType(asString("int")), isExceptionVariable()))
+      )),
+      has(cxxCatchStmt(
+        has(varDecl(hasName("x"), hasType(asString("int")), isExceptionVariable()))
+      ))
+    ))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldCatch, CatchAllTest) {
+    StringRef Code = R"(
+foo():void!
+  {
+
+    i:int = 5
+  } catch(x:int):
+    ;
+  catch():
+    ;
+
+)";
+  auto ToMatch = compoundStmt(
+    has(cxxTryStmt(
+      has(cxxCatchStmt(
+        has(varDecl(hasName("x"), hasType(asString("int")), isExceptionVariable()))
+      )),
+      has(cxxCatchStmt(isCatchAll()))
+    ))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

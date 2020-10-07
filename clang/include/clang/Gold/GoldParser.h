@@ -262,6 +262,8 @@ namespace gold
     Syntax *parseBlock();
     Syntax *parseBracedArray();
     Syntax *parseNestedArray();
+    Syntax *parsePrimaryBlock();
+    Syntax *parseCatchSequence(Syntax *Contents);
     Syntax *parseCatch();
 
     bool parsePreAttr();

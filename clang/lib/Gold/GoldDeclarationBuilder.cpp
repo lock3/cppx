@@ -49,6 +49,9 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
     case SK_Control:
       Dcl = handleControlScope(S);
       break;
+    case SK_Catch:
+      Dcl = handleCatchScope(S);
+      break;
     case SK_Enum:
       Dcl = handleEnumScope(S);
       break;
@@ -719,6 +722,7 @@ static bool deduceFunctionSyntax(Sema &SemaRef, Declaration *TheDecl,
 /// Returns true if this is a valid variable declaration and false if not.
 static bool deduceVariableSyntax(Sema &SemaRef, Declaration *TheDecl,
                                  bool &HadError) {
+
   HadError = false;
   if (TheDecl->InitOpUsed == IK_Exlaim) {
     HadError = true;
@@ -729,7 +733,12 @@ static bool deduceVariableSyntax(Sema &SemaRef, Declaration *TheDecl,
 
   HadError = false;
   TheDecl->SuspectedKind = UDK_DeductionOnlyVariable;
-
+  // FIXME: We may need to verify that the catch variable doesn't
+  // have an assignment or something else attached to it.
+  if (TheDecl->ScopeForDecl->getKind() == SK_Catch) {
+    TheDecl->SuspectedKind = UDK_CatchVariable;
+    return false;
+  }
   // These are the remaining variable like declarations.
   if (TheDecl->Template) {
     TheDecl->SuspectedKind = UDK_VarTemplateOrTemplateAlias;
@@ -1053,6 +1062,20 @@ Declarator *DeclarationBuilder::handleEnumScope(const Syntax *S) {
   if (const auto *Name = dyn_cast<AtomSyntax>(S)) {
     return handleIdentifier(Name, nullptr);
   }
+  return makeDeclarator(S);
+}
+
+Declarator *DeclarationBuilder::handleCatchScope(const Syntax *S) {
+  EnableFunctions = false;
+  EnableNamespaceDecl = false;
+  EnableTags = false;
+  EnableAliases = false;
+  RequireTypeForVariable = true;
+  EnableTemplateParameters = false;
+  EnableNestedNameSpecifiers = false;
+  RequireAliasTypes = false;
+  RequireTypeForFunctions = false;
+  RequiresDeclOrError = true;
   return makeDeclarator(S);
 }
 

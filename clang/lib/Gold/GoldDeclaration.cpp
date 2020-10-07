@@ -81,6 +81,8 @@ llvm::StringRef unevaluatedDeclKindToStr(UnevaluatedDeclKind UDK) {
     return "UDK_DeductionOnlyVariable";
   case UDK_UsingDirective:
     return "UDK_UsingDirective";
+  case UDK_CatchVariable:
+    return "UDK_CatchVariable";
   }
   llvm_unreachable("Invalid UnevaluatedDeclKind");
 }
@@ -130,6 +132,7 @@ bool Declaration::declaresVariable() const {
   case UDK_TemplateParam:
   case UDK_VarTemplateOrTemplateAlias:
   case UDK_DeductionOnlyVariable:
+  case UDK_CatchVariable:
     return true;
   }
 }
@@ -328,6 +331,7 @@ llvm::StringRef Declaration::getSuspectedKindStr() const {
   GOLD_CASE_TO_STR(UDK_TemplateParam)
   GOLD_CASE_TO_STR(UDK_VarTemplateOrTemplateAlias)
   GOLD_CASE_TO_STR(UDK_DeductionOnlyVariable)
+  GOLD_CASE_TO_STR(UDK_CatchVariable)
   GOLD_CASE_TO_STR(UDK_MemberFunction)
   GOLD_CASE_TO_STR(UDK_Constructor)
   GOLD_CASE_TO_STR(UDK_Destructor)
