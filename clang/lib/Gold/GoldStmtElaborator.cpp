@@ -155,8 +155,9 @@ elaborateDefaultCall(SyntaxContext &Context, Sema &SemaRef, const CallSyntax *S)
 
 clang::Stmt *
 StmtElaborator::elaborateCall(const CallSyntax *S) {
-  if (!isa<AtomSyntax>(S->getCallee()))
+  if (!isa<AtomSyntax>(S->getCallee())) {
     return elaborateDefaultCall(Context, SemaRef, S);
+  }
 
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   FusedOpKind OpKind = getFusedOpKind(SemaRef, Callee->getSpelling());
@@ -176,6 +177,8 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   // Otherwise, this is just a regular statement-expression, so
   // try and elaborate it as such.
   switch (OpKind) {
+  case FOK_Throw:
+    return elaborateThrowStmt(S);
   case FOK_Colon: {
 
     // FIXME: fully elaborate the name expression.
@@ -1081,6 +1084,11 @@ StmtElaborator::elaborateCatch(const MacroSyntax *CatchBlock) {
   auto StmtResult = SemaRef.getCxxSema().ActOnCXXCatchBlock(
                            CatchBlock->getCallLoc(), CatchName, CatchBlockStmt);
   return StmtResult.get();
+}
+
+clang::Stmt *
+StmtElaborator::elaborateThrowStmt(const CallSyntax *S) {
+  return ExprElaborator(Context, SemaRef).elaborateThrowExpr(S);
 }
 
 } // namespace gold

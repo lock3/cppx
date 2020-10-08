@@ -155,6 +155,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     OperatorRRefII(&Context.CxxAST.Idents.get("operator'rref'")),
     OperatorBracketsII(&Context.CxxAST.Idents.get("operator'[]'")),
     OperatorParensII(&Context.CxxAST.Idents.get("operator'()'")),
+    OperatorThrowII(&Context.CxxAST.Idents.get("operator'throw'")),
     ConstructorII(&Context.CxxAST.Idents.get("constructor")),
     DestructorII(&Context.CxxAST.Idents.get("destructor")),
     DefaultCharTy(Context.CxxAST.getIntTypeForBitwidth(8, false)),

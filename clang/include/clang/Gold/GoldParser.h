@@ -240,6 +240,7 @@ namespace gold
     Syntax *parseFor();
     Syntax *parseBlockLoop(Token KWTok);
 
+    Syntax *parseThrow();
     Syntax *parsePre();
     Syntax *parsePost();
     Syntax *parseCall(Syntax *fn);

@@ -769,7 +769,25 @@ auto is_unary_operator = [](TokenKind k) -> bool
     return false;
   }
 };
+static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P, const Token& Tok);
+static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P,
+                        const Token& Tok, Syntax *Args);
 
+static bool isEndOfThrow(TokenKind K){
+  return K == tok::Separator || K == tok::Semicolon || K == tok::Dedent;
+}
+Syntax *Parser::parseThrow() {
+  Token ThrowKW = consumeToken();
+  if (InAttribute) {
+    return onAtom(ThrowKW);
+  }
+  Token NextTok = peekToken(0);
+  if (!isEndOfThrow(NextTok.getKind())) {
+    Syntax *E = parsePre();
+    return onUnary(ThrowKW, E);
+  }
+  return makeCall(Context, *this, ThrowKW);
+}
 
 // pre:
 //   macro
@@ -784,8 +802,7 @@ auto is_unary_operator = [](TokenKind k) -> bool
 //   const pre
 //   return pre
 //   returns pre
-Syntax *Parser::parsePre()
-{
+Syntax *Parser::parsePre() {
   // Nothing to parse for a fused operator.
   if (PreviousToken.isFused() && PreviousToken.FusionInfo.Base == tok::Operator)
     return FusionToks.clear(), nullptr;
@@ -1281,9 +1298,12 @@ Syntax *Parser::parsePrimary() {
   case tok::BreakKeyword:
   case tok::DefaultKeyword:
   case tok::DeleteKeyword:
-  case tok::ThrowKeyword:
+
   case tok::UsingKeyword:
     return onAtom(consumeToken());
+
+  case tok::ThrowKeyword:
+    return parseThrow();
 
   case tok::RefKeyword:
   case tok::RValueRefKeyword:
@@ -1530,11 +1550,11 @@ static Syntax *makeList(const SyntaxContext &Ctx,
   return new (Ctx) ListSyntax(createArray(Ctx, List), List.size());
 }
 
-static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P, const Token& Tok) {
+Syntax *makeCall(const SyntaxContext &Ctx, Parser &P, const Token& Tok) {
   return new (Ctx) CallSyntax(makeOperator(Ctx, P, Tok), makeList(Ctx, {}));
 }
 
-static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P,
+Syntax *makeCall(const SyntaxContext &Ctx, Parser &P,
                         const Token& Tok, Syntax *Args) {
   return new (Ctx) CallSyntax(makeOperator(Ctx, P, Tok), Args);
 }

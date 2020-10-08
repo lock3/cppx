@@ -1374,6 +1374,8 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     return handleArrayType(S);
   case FOK_Parens:
     return handleRawBaseSpecifier(S);
+  case FOK_Throw:
+    return elaborateThrowExpr(S);
   default:
     break;
   }
@@ -1588,6 +1590,18 @@ ExprElaborator::elaborateNoExceptOp(const AtomSyntax *Name,
     return nullptr;
 
   return Result.get();
+}
+
+clang::Expr *ExprElaborator::elaborateThrowExpr(const CallSyntax *S) {
+  assert(S && "Invalid statement");
+  clang::Expr *ThrowExpr = nullptr;
+  if (S->getNumArguments() == 1) {
+    ThrowExpr = ExprElaborator(Context, SemaRef).elaborateExpr(S->getArgument(0));
+  }
+  auto ExprRes = SemaRef.getCxxSema().ActOnCXXThrow(SemaRef.getCurClangScope(),
+    S->getCallee()->getLoc(), ThrowExpr);
+
+  return ExprRes.get();
 }
 
 clang::Expr *ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
