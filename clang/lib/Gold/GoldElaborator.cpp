@@ -3524,6 +3524,9 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
 
   if (IsMemberSpecialization && !NewVD->isInvalidDecl())
     CxxSema.CompleteMemberSpecialization(NewVD, Previous);
+  // Labeling our catch variable.
+  if (D->declaresCatchVariable())
+    NewVD->setExceptionVariable(true);
   return NewVD;
 }
 
@@ -5715,6 +5718,8 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
     return FOK_Brackets;
   if (Tokenization == SemaRef.OperatorParensII)
     return FOK_Parens;
+  if (Tokenization == SemaRef.OperatorThrowII)
+    return FOK_Throw;
   return FOK_Unknown;
 }
 

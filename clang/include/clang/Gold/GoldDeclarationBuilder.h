@@ -164,6 +164,9 @@ private:
   // No declarations other then name = value, or name
   Declarator *handleEnumScope(const Syntax *S);
 
+
+  Declarator *handleCatchScope(const Syntax *S);
+
   /// Attempts to reach the end of a declarator chain an append a new
   /// declarator, specifically the type declarator, iff we are a conversion
   /// operator declaration.

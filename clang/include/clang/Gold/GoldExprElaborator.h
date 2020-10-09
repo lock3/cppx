@@ -123,7 +123,7 @@ public:
   clang::Expr *elaborateCastOp(const CallSyntax *CastOp);
 
 
-
+  clang::Expr *elaborateThrowExpr(const CallSyntax *Call);
 private:
   clang::Expr *handleRawBaseSpecifier(const CallSyntax *Op);
 

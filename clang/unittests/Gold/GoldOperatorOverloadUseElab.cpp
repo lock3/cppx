@@ -285,7 +285,7 @@ MemberOperator (X:ref MemberBinTy):void!
               << "Failed to declare a valid operator overload";
 }
 
-TEST(GoldUserDefinedOp, Use_BitwiseAnd) {
+TEST(GoldUserDefinedOp, Use_BitWiseAnd) {
   std::string Code = R"Gold(
 OpTest : type = class:
   ;
@@ -405,6 +405,71 @@ MemberUnaryOp(X:ref UnaryOpTest2): void!
     hasDescendant(
       functionDecl( hasName("MemberUnaryOp"),
         hasDescendant( cxxOperatorCallExpr(hasOverloadedOperatorName("!")))))
+  );
+  ASSERT_TRUE(matches(Code, opMatches))
+              << "Failed to declare a valid operator overload";
+}
+
+
+TEST(GoldUserDefinedOp, Use_AddressOf) {
+  std::string Code = R"Gold(
+OpTest : type = class:
+  ;
+
+operator"&"(x:ref OpTest):OpTest!
+  return OpTest()
+
+foo (X:ref OpTest) : void!
+  Z :OpTest = &X
+
+MemberUnaryOp : type = class:
+  operator"&"(): MemberUnaryOp!
+    return ^this
+
+
+MemberOperator():void!
+  X:MemberUnaryOp
+  Y : MemberUnaryOp = &X
+)Gold";
+  DeclarationMatcher opMatches = translationUnitDecl(
+    hasDescendant(
+      functionDecl( hasName("foo"),
+      hasDescendant( cxxOperatorCallExpr(hasOverloadedOperatorName("&"))))),
+    hasDescendant(
+      functionDecl( hasName("MemberOperator"),
+        hasDescendant( cxxOperatorCallExpr(hasOverloadedOperatorName("&")))))
+  );
+  ASSERT_TRUE(matches(Code, opMatches))
+              << "Failed to declare a valid operator overload";
+}
+
+
+TEST(GoldUserDefinedOp, Use_BitwiseNot) {
+  std::string Code = R"Gold(
+UnaryOpTest1 : type = class:
+  ;
+
+operator"~"(X:ref UnaryOpTest1):UnaryOpTest1!
+  return UnaryOpTest1()
+
+FreeUnaryOp(X:ref UnaryOpTest1): void!
+  Z : UnaryOpTest1 = ~X
+
+UnaryOpTest2 : type = class:
+  operator"~"():UnaryOpTest2!
+    return UnaryOpTest2()
+
+
+MemberUnaryOp(X:ref UnaryOpTest2): void!
+  Z : UnaryOpTest2 = ~X
+)Gold";
+  DeclarationMatcher opMatches = translationUnitDecl(
+    hasDescendant(
+      functionDecl( hasName("FreeUnaryOp"),
+        hasDescendant( cxxOperatorCallExpr(hasOverloadedOperatorName("~"))))),
+    hasDescendant(
+      functionDecl( hasName("MemberUnaryOp"),
+        hasDescendant( cxxOperatorCallExpr(hasOverloadedOperatorName("~")))))
   );
   ASSERT_TRUE(matches(Code, opMatches))
               << "Failed to declare a valid operator overload";
@@ -606,7 +671,6 @@ OpTest : type = class:
   Arr:[3]int = array{ 1, 2, 3 }
   operator"[]"(Index:int):ref int!
     return Arr[Index]
-  
 
 foo (X:ref OpTest) : void!
   x:ref int = X[1]
@@ -721,29 +785,73 @@ foo (X:ref OpTest) : void!
               << "Failed to declare a valid operator overload";
 }
 
-// TEST(GoldUserDefinedOp, Use_BitWiseLeftShift) {
-//   ASSERT_FALSE(true) << "We need to decide on this operator within gold\n";
-// }
+TEST(GoldUserDefinedOp, Use_BitWiseLeftShift) {
+  std::string Code = R"Gold(
+OpTest : type = class:
+  ;
 
-// TEST(GoldUserDefinedOp, Use_BitWiseRightShfit) {
-//   ASSERT_FALSE(true) << "We need to decide on this operator within gold\n";
-// }
+operator"<<"(x:ref OpTest, Y:ref OpTest):OpTest!
+  return OpTest()
 
-// TEST(GoldUserDefinedOp, Use_BitWiseLeftShiftAssign) {
-//   ASSERT_FALSE(true) << "We need to decide on this operator within gold\n";
-// }
+foo (X:ref OpTest, Y:ref OpTest) : void!
+  Z :OpTest = X << Y
 
-// TEST(GoldUserDefinedOp, Use_BitWiseRightShfitAssign) {
-//   ASSERT_FALSE(true) << "We need to decide on this operator within gold\n";
-// }
+MemberBinTy : type = class:
+  operator"<<"(X:MemberBinTy): MemberBinTy!
+    return ^this
 
-// TEST(GoldUserDefinedOp, Use_BitWiseNot) {
-//   ASSERT_FALSE(true) << "We need to decide on this operator within gold\n";
-// }
+MemberOperator (X:ref MemberBinTy):void!
+  Y : MemberBinTy = X << X
+)Gold";
+  DeclarationMatcher opMatches = translationUnitDecl(
+    hasDescendant(
+      functionDecl( hasName("foo"),
+      hasDescendant( cxxOperatorCallExpr(hasOverloadedOperatorName("<<"))))),
+    hasDescendant(
+      functionDecl( hasName("MemberOperator"),
+        hasDescendant( cxxOperatorCallExpr(hasOverloadedOperatorName("<<")))))
+  );
+  ASSERT_TRUE(matches(Code, opMatches))
+              << "Failed to declare a valid operator overload";
+}
 
-// TEST(GoldUserDefinedOp, Use_AddressOfOperator) {
-//   ASSERT_FALSE(true) << "We need to decide on this operator within gold\n";
-// }
+TEST(GoldUserDefinedOp, Use_BitWiseRightShfit) {
+  std::string Code = R"Gold(
+OpTest : type = class:
+  ;
+
+operator">>"(x:ref OpTest, Y:ref OpTest):OpTest!
+  return OpTest()
+
+foo (X:ref OpTest, Y:ref OpTest) : void!
+  Z :OpTest = X >> Y
+
+MemberBinTy : type = class:
+  operator">>"(X:MemberBinTy): MemberBinTy!
+    return ^this
+
+MemberOperator (X:ref MemberBinTy):void!
+  Y : MemberBinTy = X >> X
+)Gold";
+  DeclarationMatcher opMatches = translationUnitDecl(
+    hasDescendant(
+      functionDecl( hasName("foo"),
+      hasDescendant( cxxOperatorCallExpr(hasOverloadedOperatorName(">>"))))),
+    hasDescendant(
+      functionDecl( hasName("MemberOperator"),
+        hasDescendant( cxxOperatorCallExpr(hasOverloadedOperatorName(">>")))))
+  );
+  ASSERT_TRUE(matches(Code, opMatches))
+              << "Failed to declare a valid operator overload";
+}
+
+TEST(GoldUserDefinedOp, Use_BitWiseLeftShiftAssign) {
+  EvalSpecialAssign("<<=");
+}
+
+TEST(GoldUserDefinedOp, Use_BitWiseRightShfitAssign) {
+  EvalSpecialAssign(">>=");
+}
 
 TEST(GoldUserDefinedOp, Use_OperatorDeclaredInNamespace_UsedOutsideOfIt) {
   std::string Code = R"Gold(

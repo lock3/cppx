@@ -251,17 +251,16 @@ Syntax *Parser::parseArray(ArraySemantic S) {
 void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
   Syntax *List = parseList(S);
   appendTerm(Vec, List);
-  bool ExitBlock = false;
+  // bool ExitBlock = false;
 
-  while (true)
-  {
+  while (true) {
     // Obviously, stop at the end of the file.
     if (atEndOfFile())
       break;
 
     // We're about to exit a nested block ...
     if (nextTokenIs(tok::Dedent) || nextTokenIs(tok::RightBrace)) {
-      ExitBlock = true;
+      // ExitBlock = true;
       break;
     }
 
@@ -284,7 +283,7 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
     // Check for an exit once again, as a semicolon might be followed
     // by a dedent.
     if (nextTokenIs(tok::Dedent) || nextTokenIs(tok::RightBrace)) {
-      ExitBlock = true;
+      // ExitBlock = true;
       break;
     }
 
@@ -294,11 +293,6 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
 
     List = parseList(S);
     appendTerm(Vec, List);
-  }
-
-  if (nextTokenIs("catch") && ExitBlock) {
-    Syntax *Catch = parseCatch();
-    appendTerm(Vec, Catch);
   }
 }
 
@@ -443,6 +437,8 @@ static bool isAssignmentOperator(TokenKind K) {
   case tok::CaretEqual:
   case tok::BarEqual:
   case tok::AmpersandEqual:
+  case tok::LessLessEqual:
+  case tok::GreaterGreaterEqual:
     return true;
   }
 }
@@ -536,19 +532,22 @@ static auto isAndOperator(Parser &P) {
 //    &&
 //    "and"
 Syntax *Parser::parseAnd() {
-  Syntax *E1 = parseCmp();
+  Syntax *E1 = parseBitShift();
   while (Token Op = matchTokens(isAndOperator, *this)) {
-    Syntax *E2 = parseCmp();
+    Syntax *E2 = parseBitShift();
     E1 = onBinary(Op, E1, E2);
   }
   return E1;
 }
 
+
+
 static bool isLogicalUnaryOperator(Parser& P) {
   return P.nextTokenIs(tok::Ampersand)
       || P.nextTokenIs(tok::DotDot)
       || P.nextTokenIs(tok::Bang)
-      || P.nextTokenIs("not");
+      || P.nextTokenIs("not")
+      || P.nextTokenIs(tok::Tilde);
 }
 
 static bool is_relational_operator(Parser& P) {
@@ -567,6 +566,24 @@ static bool is_relational_operator(Parser& P) {
   }
 }
 
+static bool isBitShiftOperator(Parser &P) {
+  switch (P.getLookahead()) {
+  default:
+    return false;
+  case tok::LessLess:
+  case tok::GreaterGreater:
+    return true;
+  }
+}
+
+Syntax *Parser::parseBitShift() {
+  Syntax *E1 = parseCmp();
+  while (Token Op = matchTokens(isBitShiftOperator, *this)) {
+    Syntax *E2 = parseCmp();
+    E1 = onBinary(Op, E1, E2);
+  }
+  return E1;
+}
 /// cmp:
 ///    to
 ///    cmp relational-operator to
@@ -752,7 +769,25 @@ auto is_unary_operator = [](TokenKind k) -> bool
     return false;
   }
 };
+static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P, const Token& Tok);
+static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P,
+                        const Token& Tok, Syntax *Args);
 
+static bool isEndOfThrow(TokenKind K){
+  return K == tok::Separator || K == tok::Semicolon || K == tok::Dedent;
+}
+Syntax *Parser::parseThrow() {
+  Token ThrowKW = consumeToken();
+  if (InAttribute) {
+    return onAtom(ThrowKW);
+  }
+  Token NextTok = peekToken(0);
+  if (!isEndOfThrow(NextTok.getKind())) {
+    Syntax *E = parsePre();
+    return onUnary(ThrowKW, E);
+  }
+  return makeCall(Context, *this, ThrowKW);
+}
 
 // pre:
 //   macro
@@ -767,8 +802,7 @@ auto is_unary_operator = [](TokenKind k) -> bool
 //   const pre
 //   return pre
 //   returns pre
-Syntax *Parser::parsePre()
-{
+Syntax *Parser::parsePre() {
   // Nothing to parse for a fused operator.
   if (PreviousToken.isFused() && PreviousToken.FusionInfo.Base == tok::Operator)
     return FusionToks.clear(), nullptr;
@@ -1263,11 +1297,13 @@ Syntax *Parser::parsePrimary() {
   case tok::ContinueKeyword:
   case tok::BreakKeyword:
   case tok::DefaultKeyword:
-  case tok::DeleteKeyword: // TODO: Refactor this, so it can work as an operator
-                           // and as = delete for a function body.
-  case tok::AnonymousKeyword:
+  case tok::DeleteKeyword:
+
   case tok::UsingKeyword:
     return onAtom(consumeToken());
+
+  case tok::ThrowKeyword:
+    return parseThrow();
 
   case tok::RefKeyword:
   case tok::RValueRefKeyword:
@@ -1279,6 +1315,22 @@ Syntax *Parser::parsePrimary() {
   case tok::LeftParen:
     return parseParen();
 
+  case tok::Colon:
+    // Report warning for missing _ before :
+    Diags.Report(getInputLocation(),
+                 clang::diag::warn_implict_anonymous_scope);
+   LLVM_FALLTHROUGH;
+  case tok::LeftBrace:
+    return parsePrimaryBlock();
+  case tok::AnonymousKeyword:{
+    if (nthTokenIs(1, tok::LeftBrace) || nthTokenIs(1, tok::Colon)) {
+      // Consume the anonymous token.
+      consumeToken();
+      return parsePrimaryBlock();
+    }
+    return onAtom(consumeToken());
+  }
+  
   case tok::TrueKeyword:
   case tok::FalseKeyword:
   case tok::NullKeyword:
@@ -1295,9 +1347,9 @@ Syntax *Parser::parsePrimary() {
   case tok::String:
     return onLiteral(consumeToken());
 
-  case tok::NewKeyword:
+  // case tok::NewKeyword:
     // FIXME: We need syntax for both new and delete operators.
-    llvm_unreachable("new Syntax in undefined.");
+    // llvm_unreachable("new Syntax in undefined.");
   default:
     break;
   }
@@ -1407,10 +1459,21 @@ Syntax *Parser::parseBlock() {
   return parseNestedArray();
 }
 
+Syntax *Parser::parsePrimaryBlock() {
+  Token AnonymousName(tok::AnonymousKeyword, getInputLocation(),
+                      getSymbol("__BLOCK__"));
+  Syntax *Name = onAtom(AnonymousName);
+  Syntax *BlockExp = parseBlock();
+  Syntax *BlockMacro = onMacro(Name, BlockExp);
+  if (nextTokenIs(tok::CatchKeyword))
+    return parseCatchSequence(BlockMacro);
+  return BlockMacro;
+}
+
 /// catch:
 /// catch ( list ) block
 Syntax *Parser::parseCatch() {
-  Token KW = expectToken("catch");
+  Token KW = expectToken(tok::CatchKeyword);
 
   EnclosingParens Parens(*this);
   if (!Parens.expectOpen())
@@ -1423,7 +1486,42 @@ Syntax *Parser::parseCatch() {
     return onError();
 
   Syntax *Block = parseBlock();
-  return onCatch(KW, Args, Block);
+  auto *Ret = onCatch(KW, Args, Block);
+  return Ret;
+}
+
+
+/// this stores the macro using the following sequence for the array body:
+///   array
+///     |-macro
+///     |  |-call
+///     |  |  |-Atom = __BLOCK__
+///     |  |  `-List
+///     |   `-Array # Body for the try catch block.
+///     |-macro - catch 1
+///     |-macro - catch 2
+///     `-macro - catch N
+///
+Syntax *Parser::parseCatchSequence(Syntax *Contents) {
+  const MacroSyntax *MS = cast<MacroSyntax>(Contents);
+  const AtomSyntax *NameNode = cast<AtomSyntax>(MS->getCall());
+  llvm::SmallVector<Syntax *, 16> TryCatchContents;
+  TryCatchContents.emplace_back(Contents);
+  Token TryBlockName(tok::TryBlock, NameNode->getLoc(), getSymbol("__TRY__"));
+  Syntax *Name = onAtom(TryBlockName);
+  // Syntax *TryCatchMacro = onCall(Name, onList(ArgArray,
+  //                                     llvm::SmallVector<Syntax *, 0>()));
+  // Reacing the sequence of catch statements and continue building up a
+  // chain of them
+  while(nextTokenIs(tok::CatchKeyword)) {
+    Syntax *S = parseCatch();
+    // I'm not sure how to recover from this.
+    if (!S)
+      return nullptr;
+    TryCatchContents.emplace_back(S);
+  }
+  Syntax *BodyAndCatch = onArray(BlockArray, TryCatchContents);
+  return onMacro(Name, BodyAndCatch);
 }
 
 // Semantic actions
@@ -1452,13 +1550,18 @@ static Syntax *makeList(const SyntaxContext &Ctx,
   return new (Ctx) ListSyntax(createArray(Ctx, List), List.size());
 }
 
-static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P, const Token& Tok) {
+Syntax *makeCall(const SyntaxContext &Ctx, Parser &P, const Token& Tok) {
   return new (Ctx) CallSyntax(makeOperator(Ctx, P, Tok), makeList(Ctx, {}));
 }
 
-static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P,
+Syntax *makeCall(const SyntaxContext &Ctx, Parser &P,
                         const Token& Tok, Syntax *Args) {
   return new (Ctx) CallSyntax(makeOperator(Ctx, P, Tok), Args);
+}
+
+static Syntax *makeSimpleCall(const SyntaxContext &Ctx, Parser &P,
+                              const Token& Tok, Syntax *Args) {
+  return new (Ctx) CallSyntax(P.onAtom(Tok), Args);
 }
 
 static Attribute *makeAttr(const SyntaxContext &Ctx, Syntax *Arg) {
@@ -1660,7 +1763,7 @@ Syntax *Parser::onMacro(Syntax *e1, Syntax *e2) {
 }
 
 Syntax *Parser::onCatch(const Token &Catch, Syntax *Args, Syntax *Block) {
-  return new (Context) MacroSyntax(makeCall(Context, *this, Catch, Args),
+  return new (Context) MacroSyntax(makeSimpleCall(Context, *this, Catch, Args),
                                    Block, nullptr);
 }
 

@@ -123,7 +123,7 @@ enum UnevaluatedDeclKind {
                               //      on where it's used.
 
   UDK_UsingDirective,  // A using directive declaration.
-
+  UDK_CatchVariable,   // the variable for a catch statement.
   // Things we don't have syntax for yet.
   /*
   UDK_UsingDecl,
@@ -256,6 +256,9 @@ public:
 
   /// Checks to see if SuspectedKind == UDK_LiteralOperator
   bool declaresUserDefinedLiteral() const;
+
+  /// Checks to see if SuspectedKind == UDK_CatchVariable
+  bool declaresCatchVariable() const { return SuspectedKind == UDK_CatchVariable; }
 
   /// True if this declares a template.
   bool declaresFunctionTemplate() const;

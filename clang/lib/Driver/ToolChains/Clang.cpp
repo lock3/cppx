@@ -433,7 +433,7 @@ static void addExceptionArgs(const ArgList &Args, types::ID InputType,
     EH |= shouldUseExceptionTablesForObjCExceptions(objcRuntime, Triple);
   }
 
-  if (types::isCXX(InputType)) {
+  if (types::isCXX(InputType) || types::isGold(InputType)) {
     // Disable C++ EH by default on XCore and PS4.
     bool CXXExceptionsEnabled =
         Triple.getArch() != llvm::Triple::xcore && !Triple.isPS4CPU();

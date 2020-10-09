@@ -1473,4 +1473,7 @@ def warn_max_tokens_total : Warning<
 
 def note_max_tokens_total_override : Note<"total token limit set here">;
 
+def warn_implict_anonymous_scope : Warning<
+  "implicitly anonymous nested array, add '_' to silence this warning">;
+
 } // end of Parser diagnostics

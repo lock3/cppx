@@ -578,6 +578,7 @@ public:
   clang::IdentifierInfo *const OperatorRRefII;
   clang::IdentifierInfo *const OperatorBracketsII;
   clang::IdentifierInfo *const OperatorParensII;
+  clang::IdentifierInfo *const OperatorThrowII;
 
   // Tokens used for constructor and destructor;
   clang::IdentifierInfo *const ConstructorII;

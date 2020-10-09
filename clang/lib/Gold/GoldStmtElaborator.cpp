@@ -155,8 +155,9 @@ elaborateDefaultCall(SyntaxContext &Context, Sema &SemaRef, const CallSyntax *S)
 
 clang::Stmt *
 StmtElaborator::elaborateCall(const CallSyntax *S) {
-  if (!isa<AtomSyntax>(S->getCallee()))
+  if (!isa<AtomSyntax>(S->getCallee())) {
     return elaborateDefaultCall(Context, SemaRef, S);
+  }
 
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
   FusedOpKind OpKind = getFusedOpKind(SemaRef, Callee->getSpelling());
@@ -176,6 +177,8 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   // Otherwise, this is just a regular statement-expression, so
   // try and elaborate it as such.
   switch (OpKind) {
+  case FOK_Throw:
+    return elaborateThrowStmt(S);
   case FOK_Colon: {
 
     // FIXME: fully elaborate the name expression.
@@ -909,10 +912,21 @@ StmtElaborator::elaborateMacro(const MacroSyntax *S) {
     break;
   }
 
+  // If we meet these 2 criteria then we know we are block that needs to be
+  // elaborated into a compound statement
+  if (Callee->hasToken(tok::AnonymousKeyword)
+      && Callee->getSpelling() == "__BLOCK__")
+    return elaborateBlock(S->getBlock());
+
+  if (Callee->hasToken(tok::TryBlock)
+      && Callee->getSpelling() == "__TRY__")
+    return elaborateTryCatchBlock(S);
+
   if (Callee->getSpelling() == "array")
     return elaborateArrayMacroStmt(S);
   if (Callee->getSpelling() == "using")
     return elaborateUsingMacroStmt(S);
+
 
   unsigned DiagID = Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
                                           "use of undefined macro");
@@ -1005,6 +1019,76 @@ StmtElaborator::elaborateBlockForList(const ListSyntax *S,
       continue;
     Results.push_back(NewStmt);
   }
+}
+
+
+clang::Stmt *
+StmtElaborator::elaborateTryCatchBlock(const MacroSyntax *TCBlock) {
+  // Keeping track of clang scope.
+  // Other scope will be entered later on.
+  Sema::ClangScopeRAII ClangScope(SemaRef, clang::Scope::DeclScope
+                                  | clang::Scope::TryScope
+                                  | clang::Scope::CompoundStmtScope,
+                                  TCBlock->getCallLoc());
+  assert(TCBlock && "Invalid block");
+  auto *TCArray = cast<ArraySyntax>(TCBlock->getBlock());
+  assert(TCArray->getNumChildren() >=1
+         && "Improperly formatted try catch block.");
+  auto *BlockMacro = cast<MacroSyntax>(TCArray->getChild(0));
+  clang::Stmt *InnerStmt = elaborateBlock(BlockMacro->getBlock());
+  llvm::SmallVector<clang::Stmt *, 16> CatchStmts;
+
+  // Even if this retuns a nullptr, still try and continue and figure out if we
+  // encountered an error or not.
+  for (std::size_t CatchIndex = 1;
+       CatchIndex < TCArray->getNumChildren();
+       ++CatchIndex)
+  {
+    if (const auto *CatchMacro
+                       = dyn_cast<MacroSyntax>(TCArray->getChild(CatchIndex))) {
+      clang::Stmt *CatchStmt = elaborateCatch(CatchMacro);
+      if (CatchStmt)
+        CatchStmts.emplace_back(CatchStmt);
+    } else {
+      llvm_unreachable("Unexpected AST expected catch macro.");
+    }
+  }
+  auto TryBlockStmt = SemaRef.getCxxSema().ActOnCXXTryBlock(
+                                  TCBlock->getCallLoc(), InnerStmt, CatchStmts);
+  return TryBlockStmt.get();
+}
+
+clang::Stmt *
+StmtElaborator::elaborateCatch(const MacroSyntax *CatchBlock) {
+  Sema::ClangScopeRAII ClangScope(SemaRef, clang::Scope::DeclScope
+                                  | clang::Scope::ControlScope
+                                  | clang::Scope::CatchScope,
+                                  CatchBlock->getCallLoc());
+  Sema::ScopeRAII GScope(SemaRef, SK_Catch, CatchBlock->getCall());
+  clang::Decl *CatchName = nullptr;
+  Elaborator DeclElab(SemaRef.getContext(), SemaRef);
+  if (const auto *Call = dyn_cast<CallSyntax>(CatchBlock->getCall())) {
+    if (const auto *ArgList = dyn_cast<ListSyntax>(Call->getArguments())) {
+      if (ArgList->getNumChildren() > 0)
+        CatchName = DeclElab.elaborateDeclSyntax(ArgList->getChild(0));
+
+      // This is a recoverable error state.
+      if (ArgList->getNumChildren() > 1)
+        SemaRef.Diags.Report(ArgList->getChild(1)->getLoc(),
+                             clang::diag::err_invalid_catch_parameter);
+    }
+  }
+
+  // Elaborating the variable declaration associated with catch.
+  clang::Stmt *CatchBlockStmt = elaborateBlock(CatchBlock->getBlock());
+  auto StmtResult = SemaRef.getCxxSema().ActOnCXXCatchBlock(
+                           CatchBlock->getCallLoc(), CatchName, CatchBlockStmt);
+  return StmtResult.get();
+}
+
+clang::Stmt *
+StmtElaborator::elaborateThrowStmt(const CallSyntax *S) {
+  return ExprElaborator(Context, SemaRef).elaborateThrowExpr(S);
 }
 
 } // namespace gold

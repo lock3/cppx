@@ -40,6 +40,7 @@ add_clang_unittest(GoldTests
   GoldAttributes.cpp
   GoldAuto.cpp
   GoldBitsElab.cpp
+  GoldBlockMacrosElab.cpp
   GoldBoolImplicitConversionInit.cpp
   GoldBreakElab.cpp
   GoldBuiltInArithmeticOpsElab.cpp
@@ -77,6 +78,8 @@ add_clang_unittest(GoldTests
   GoldDeductExec.cpp
   GoldDefaultFunctionArgumentsElab.cpp
   GoldEnumElab.cpp
+  GoldThrowOpElab.cpp
+  GoldExceptionCatchElab.cpp
   GoldExceptionSpecifierElab.cpp
   GoldExplicitAttributeElab.cpp
   GoldFinalAttributeElab.cpp

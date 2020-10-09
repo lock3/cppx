@@ -40,9 +40,12 @@
     def_op_name(Name)
 #endif
 
-// #ifndef def_unary_op
-// #  define def_unary_op(K, GT)
-// #endif
+#ifndef def_unary_op
+#  define def_unary_op(Name,OpStr,ClangUnaryOpName,MemberOnly,OverloadStyle,   \
+                       OpOverloadName)                                         \
+    def_op_name(Name)
+#endif
+
 #ifndef def_unary_and_binary_op
 #   define def_unary_and_binary_op(Name,OpStr,ClangUnaryOpName,ClangBinOpName,\
                                   MemberOnly,OverloadStyle,OpOverloadName)    \
@@ -93,10 +96,9 @@
 
 
 // Adding additional operator information.
-// TODO: I need to add additional operators that haven't been created here yet.
-// def_unary_op(Not, "~")
-// def_unary_and_binary_op(AddrOf, "&") // ?
-def_unary_and_binary_op(            PlusSign,  "+",         Plus,  Add, false,  GoldAndCpp, Plus)
+def_unary_op(                           BWNot, "~",         Not,        false,  GoldAndCpp,  Tilde)
+def_unary_and_binary_op(            Ampersand, "&",         AddrOf,And, false,  GoldAndCpp, Amp)
+def_unary_and_binary_op(             PlusSign,  "+",        Plus,  Add, false,  GoldAndCpp, Plus)
 def_unary_and_binary_op(            MinusSign, "-",         Minus, Sub, false,  GoldAndCpp, Minus)
 def_unary_and_binary_op_mismatch( Dereference, "^",   "*",  Deref, Xor, false,  CppOnly,    Star, Caret)
 def_unary_op_second_name(          LogicalNot, "!", "not",  LNot,       false,  GoldAndCpp, Exclaim)
@@ -105,7 +107,6 @@ def_bin_op(                       Division,   "/",          Div,        false,  
 def_bin_op(                        Modulus,   "%",          Rem,        false,  GoldAndCpp, Percent)
 def_bin_op(                       Multiply,   "*",          Mul,        false,  GoldAndCpp, Star)
 def_bin_op(                      BitWiseOr,   "|",          Or,         false,  GoldAndCpp, Pipe)
-def_bin_op(                     BitWiseAnd,   "&",          And,        false,  GoldAndCpp, Amp)
 def_bin_op(                      LeftShift,  "<<",          Shl,        false,  GoldAndCpp, LessLess)
 def_bin_op(                     RightShfit,  ">>",          Shr,        false,  GoldAndCpp, GreaterGreater)
 def_bin_op_second_name(          LogicalOr,  "||", "or",    LOr,        false,  GoldAndCpp, PipePipe)
@@ -136,6 +137,7 @@ def_bin_cpp_only_op(  MemberPtrAccessArrow, "->*",                      true,   
 def_inc_and_dec_cpp_only_op(      PlusPlus, "++",                       false,  CppOnly,    PlusPlus)
 def_inc_and_dec_cpp_only_op(    MinusMinus, "--",                       false,  CppOnly,    MinusMinus)
 
+#undef def_unary_op
 #undef def_bin_op
 #undef def_bin_op_second_name
 #undef def_bin_op_missmatch

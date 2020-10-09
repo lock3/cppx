@@ -228,6 +228,7 @@ namespace gold
     Syntax *parseDef();
     Syntax *parseOr();
     Syntax *parseAnd();
+    Syntax *parseBitShift();
     Syntax *parseCmp();
     Syntax *parseTo();
     Syntax *parseAdd();
@@ -239,6 +240,7 @@ namespace gold
     Syntax *parseFor();
     Syntax *parseBlockLoop(Token KWTok);
 
+    Syntax *parseThrow();
     Syntax *parsePre();
     Syntax *parsePost();
     Syntax *parseCall(Syntax *fn);
@@ -261,6 +263,8 @@ namespace gold
     Syntax *parseBlock();
     Syntax *parseBracedArray();
     Syntax *parseNestedArray();
+    Syntax *parsePrimaryBlock();
+    Syntax *parseCatchSequence(Syntax *Contents);
     Syntax *parseCatch();
 
     bool parsePreAttr();

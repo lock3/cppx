@@ -49,6 +49,9 @@ enum ScopeKind {
 
   /// This scope is used for enum declaration.
   SK_Enum,
+
+  /// This is for catch blocks.
+  SK_Catch
 };
 
 template<typename K, typename V>

@@ -44,6 +44,9 @@ static llvm::StringRef getScopeKindName(ScopeKind K) {
 
   case SK_Enum:
     return "Enum";
+
+  case SK_Catch:
+    return "Catch";
   }
 
   llvm_unreachable("invalid scope");
