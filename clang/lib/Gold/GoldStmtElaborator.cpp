@@ -102,31 +102,31 @@ createDeclStmt(clang::ASTContext &CxxAST, Sema &SemaRef,
                const CallSyntax *S) {
   // For now, since we don't know of any cases where this is not an identifier,
   // we reject any non-Atomic syntax. This could change in the future.
-  const AtomSyntax *Name = dyn_cast<AtomSyntax>(S->getArgument(0));
-  if (!Name)
-    return nullptr;
+  // const AtomSyntax *Name = dyn_cast<AtomSyntax>(S->getArgument(0));
+  // if (!Name)
+  //   return nullptr;
 
   clang::Sema &ClangSema = SemaRef.getCxxSema();
-  clang::IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
-  clang::DeclarationNameInfo DNI(II, Name->getLoc());
-  clang::LookupResult R(ClangSema, DNI, clang::Sema::LookupAnyName);
-  SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
+  // clang::IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
+  // clang::DeclarationNameInfo DNI(II, Name->getLoc());
+  // clang::LookupResult R(ClangSema, DNI, clang::Sema::LookupAnyName);
+  // SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
 
-  if (R.empty()) {
-    Elaborator DeclElab(SemaRef.getContext(), SemaRef);
-    clang::Decl *Declaration = DeclElab.elaborateDeclSyntax(S);
+  // if (R.empty()) {
+  Elaborator DeclElab(SemaRef.getContext(), SemaRef);
+  clang::Decl *Declaration = DeclElab.elaborateDeclSyntax(S);
 
-    clang::StmtResult Res =
-      ClangSema.ActOnDeclStmt(ClangSema.ConvertDeclToDeclGroup(Declaration),
-                              Name->getLoc(), S->getLoc());
-    if (!Res.isInvalid())
-      return Res.get();
-  } else {
-    // FIXME: if the name already exists in this scope, it's an obvious error.
-    // However, if the name exists in an outer scope, should we shadow it?
-    // We'll need lookup to understand the difference.
-    llvm::errs() << "This name already exists... what should I do?\n";
-  }
+  clang::StmtResult Res =
+    ClangSema.ActOnDeclStmt(ClangSema.ConvertDeclToDeclGroup(Declaration),
+                            S->getCallee()->getLoc(), S->getLoc());
+  if (!Res.isInvalid())
+    return Res.get();
+  // } else {
+  //   // FIXME: if the name already exists in this scope, it's an obvious error.
+  //   // However, if the name exists in an outer scope, should we shadow it?
+  //   // We'll need lookup to understand the difference.
+  //   llvm::errs() << "This name already exists... what should I do?\n";
+  // }
 
   return nullptr;
 }
@@ -181,20 +181,26 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   case FOK_Throw:
     return elaborateThrowStmt(S);
   case FOK_Colon: {
+    // Elaborator Elab(Context, SemaRef);
+    // clang::Decl *D = Elab.elaborateDeclSyntax(S);
+    // if (!D) {
+    //   llvm::outs() << "This might not be a declaration?\n";
+    //   break;
+    // }
     // FIXME: fully elaborate the name expression.
-    const AtomSyntax *Name = dyn_cast<AtomSyntax>(S->getArgument(0));
-    if (Name) {
-      // This is a simple epxression declaration.
-      clang::Sema &ClangSema = SemaRef.getCxxSema();
-      clang::IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
-      clang::DeclarationNameInfo DNI(II, S->getLoc());
-      clang::LookupResult R(ClangSema, DNI, clang::Sema::LookupAnyName);
-      SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
+    // const AtomSyntax *Name = dyn_cast<AtomSyntax>(S->getArgument(0));
+    // if (Name) {
+    //   // This is a simple epxression declaration.
+    //   clang::Sema &ClangSema = SemaRef.getCxxSema();
+    //   clang::IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
+    //   clang::DeclarationNameInfo DNI(II, S->getLoc());
+    //   clang::LookupResult R(ClangSema, DNI, clang::Sema::LookupAnyName);
+    //   SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
 
 
-      if (R.empty())
-        return createDeclStmt(CxxAST, SemaRef, S);
-    }
+    //   if (R.empty())
+    return createDeclStmt(CxxAST, SemaRef, S);
+    // }
     break;
   }
 
