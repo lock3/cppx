@@ -54,7 +54,7 @@ conversion'int' = 4
 
 TEST(GoldConversionOperatorElab, ConversionOperatorAssignmentInsideFunction) {
   StringRef Code = R"(
-foo() : void
+foo() : void!
   conversion'int' = 1
 )";
   GoldFailureTest(Code);
@@ -62,7 +62,7 @@ foo() : void
 
 TEST(GoldConversionOperatorElab, ConversionOperatorDeclInsideFunction) {
   StringRef Code = R"(
-foo() : void
+foo() : void!
   conversion'int'():int
 )";
   GoldFailureTest(Code);

@@ -44,6 +44,7 @@ StmtElaborator::StmtElaborator(SyntaxContext &Context, Sema &SemaRef)
 
 clang::Stmt *
 StmtElaborator::elaborateStmt(const Syntax *S) {
+  assert(S && "invalid statement elaboration");
   if (isa<AtomSyntax>(S))
     return elaborateAtom(cast<AtomSyntax>(S));
   if (isa<CallSyntax>(S))
@@ -180,18 +181,20 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
   case FOK_Throw:
     return elaborateThrowStmt(S);
   case FOK_Colon: {
-
     // FIXME: fully elaborate the name expression.
-    const AtomSyntax *Name = cast<AtomSyntax>(S->getArgument(0));
-    clang::Sema &ClangSema = SemaRef.getCxxSema();
-    clang::IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
-    clang::DeclarationNameInfo DNI(II, S->getLoc());
-    clang::LookupResult R(ClangSema, DNI, clang::Sema::LookupAnyName);
-    SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
+    const AtomSyntax *Name = dyn_cast<AtomSyntax>(S->getArgument(0));
+    if (Name) {
+      // This is a simple epxression declaration.
+      clang::Sema &ClangSema = SemaRef.getCxxSema();
+      clang::IdentifierInfo *II = &CxxAST.Idents.get(Name->Tok.getSpelling());
+      clang::DeclarationNameInfo DNI(II, S->getLoc());
+      clang::LookupResult R(ClangSema, DNI, clang::Sema::LookupAnyName);
+      SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope());
 
 
-    if (R.empty())
-      return createDeclStmt(CxxAST, SemaRef, S);
+      if (R.empty())
+        return createDeclStmt(CxxAST, SemaRef, S);
+    }
     break;
   }
 
