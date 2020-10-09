@@ -352,15 +352,35 @@ namespace gold
       struct Loc {
         clang::SourceLocation SourceLoc;
         std::size_t EnclosureCounts[EnclosureSize];
-      };
 
-      // True if two locations have the same depth in enclosing tokens.
-      inline bool hasSameDepth(const Loc &LHS, const Loc &RHS) const {
-        for (unsigned K = Parens; K < EnclosureSize; ++K)
-          if (LHS.EnclosureCounts[K] != RHS.EnclosureCounts[K])
-            return false;
-        return true;
-      }
+        // True when this location is shallower than RHS
+        inline bool operator<(const Loc &RHS) const {
+          for (unsigned K = Parens; K < EnclosureSize; ++K)
+            if (EnclosureCounts[K] < RHS.EnclosureCounts[K])
+              return true;
+          return false;
+        }
+
+        // True when this location is deeper than RHS
+        inline bool operator>(const Loc &RHS) const {
+          for (unsigned K = Parens; K < EnclosureSize; ++K)
+            if (EnclosureCounts[K] > RHS.EnclosureCounts[K])
+              return true;
+          return false;
+        }
+
+        // True when this location has the same depth as RHS in enclosure tokens
+        inline bool operator==(const Loc &RHS) const {
+          for (unsigned K = Parens; K < EnclosureSize; ++K)
+            if (EnclosureCounts[K] != RHS.EnclosureCounts[K])
+              return false;
+          return true;
+        }
+
+        inline bool operator!=(const Loc &RHS) const {
+          return !this->operator==(RHS);
+        }
+      };
 
       // True when we are "inside" a potential angle bracket.
       inline bool isOpen() const {
@@ -387,12 +407,16 @@ namespace gold
   private:
     AngleBracketTracker Angles;
 
-    /// Keep track of the depth of enclosure tokens when scanning for
-    /// attributes.
-    void trackEnclosureDepth(Token Enclosure);
     bool scanAngles(Syntax *Base);
     void startPotentialAngleBracket(const Token &OpToken);
     void finishPotentialAngleBracket(const Token &OpToken);
+
+  private:
+    AngleBracketTracker Folds;
+
+    bool scanFolds();
+    void startPotentialFold(const Token &EllipsisTok);
+    void finishPotentialFold(const Token &NextTok);
 
   public:
     void incrementEnclosureCount(unsigned Enclosure);

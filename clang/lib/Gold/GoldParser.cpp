@@ -321,6 +321,11 @@ Syntax *Parser::parseList(ArraySemantic S)
 // Parse the list and populate the vector.
 void Parser::parseList(llvm::SmallVectorImpl<Syntax *> &Vec)
 {
+  if (nextTokenIs(tok::LeftParen)) {
+    if (scanFolds())
+      llvm::outs() << "!! FOLD EXPRESSION DETECTED !!\n";
+  }
+
   Syntax *Expr = parseExpr();
   appendTerm(Vec, Expr);
   while (matchToken(tok::Comma)) {
@@ -927,7 +932,8 @@ static bool isNonAngleCloseEnclosure(TokenKind K) {
 
 /// Keep track of the depth of enclosure tokens when scanning for
 /// attributes.
-void Parser::trackEnclosureDepth(Token Enclosure) {
+static void trackEnclosureDepth(Token Enclosure,
+                                Parser::AngleBracketTracker &Track) {
   std::size_t K = 0;
   switch (Enclosure.getKind()) {
   case tok::LeftParen:
@@ -949,26 +955,26 @@ void Parser::trackEnclosureDepth(Token Enclosure) {
     llvm_unreachable("using non-enclosure as enclosure");
   }
 
-  AngleBracketTracker::Loc EncLoc{Enclosure.getLocation(),
-    {Angles.EnclosureCounts[0], Angles.EnclosureCounts[1],
-        Angles.EnclosureCounts[2], Angles.EnclosureCounts[3]}};
+  using Tracker_t = Parser::AngleBracketTracker;
+  Tracker_t::Loc EncLoc{Enclosure.getLocation(),
+    {Track.EnclosureCounts[0], Track.EnclosureCounts[1],
+        Track.EnclosureCounts[2], Track.EnclosureCounts[3]}};
 
   if (isNonAngleCloseEnclosure(Enclosure.getKind())) {
-    if (Angles.isOpen() &&
-        Angles.hasSameDepth(Angles.Angles.back(), EncLoc))
-      Angles.Angles.pop_back();
+    if (Track.isOpen() && (Track.Angles.back() == EncLoc))
+      Track.Angles.pop_back();
 
-    if (Angles.EnclosureCounts[K])
-      --Angles.EnclosureCounts[K];
-    if (!Angles.Enclosures.empty())
-      Angles.Enclosures.pop_back();
+    if (Track.EnclosureCounts[K])
+      --Track.EnclosureCounts[K];
+    if (!Track.Enclosures.empty())
+      Track.Enclosures.pop_back();
 
     return;
   }
 
-  ++Angles.EnclosureCounts[K];
+  ++Track.EnclosureCounts[K];
   ++EncLoc.EnclosureCounts[K];
-  Angles.Enclosures.push_back(EncLoc);
+  Track.Enclosures.push_back(EncLoc);
 }
 
 /// Scan through tokens starting from a '<' and determine whether or not this
@@ -997,7 +1003,6 @@ bool Parser::scanAngles(Syntax *Base) {
       return false;
 
     // Newlines might be recognized as separators rather than newline tokens.
-    // FIXME: Move this to Token::isNewline()
     if (Current.hasKind(tok::Separator))
       if (*(Current.getSymbol().data()) == '\n')
         return false;
@@ -1011,7 +1016,7 @@ bool Parser::scanAngles(Syntax *Base) {
                                         Angles.EnclosureCounts[1],
                                         Angles.EnclosureCounts[2],
                                         Angles.EnclosureCounts[3]}};
-      if (Angles.hasSameDepth(SemiLoc, PotentialBaseLoc))
+      if (SemiLoc == PotentialBaseLoc)
         return false;
       // We reached a semicolon in some sort of nested list (or typo). We
       // already know we don't care about this token so just skip ahead.
@@ -1019,7 +1024,7 @@ bool Parser::scanAngles(Syntax *Base) {
     }
 
     if (isNonAngleEnclosure(Current.getKind()))
-      trackEnclosureDepth(Current);
+      trackEnclosureDepth(Current, Angles);
 
     if (Current.hasKind(tok::Less))
       startPotentialAngleBracket(Current);
@@ -1032,6 +1037,84 @@ bool Parser::scanAngles(Syntax *Base) {
       if (!Angles.isOpen())
         return true;
     }
+  }
+}
+
+// Returns true if T is an operator that appears in a fold expression.
+static bool isFoldableOperator(const Token &T) {
+  if (T.isFused())
+    return false;
+  if (T.getKind() >= tok::Plus && T.getKind() <= tok::Caret)
+    return true;
+  if (T.getKind() >= tok::EqualEqual && T.getKind() <= tok::GreaterGreaterEqual)
+    return true;
+  return false;
+}
+
+bool Parser::scanFolds() {
+  // We can abuse the nesting tracker of the AngleBracketTracker, since
+  // attributes never appear in folds.
+  AngleBracketTracker::Loc StartLoc{PreviousToken.getLocation(),
+                                    {Folds.EnclosureCounts[0],
+                                     Folds.EnclosureCounts[1],
+                                     Folds.EnclosureCounts[2],
+                                     Folds.EnclosureCounts[3]}};
+  unsigned I = 0;
+  bool EllipsisFound = false;
+  bool OperatorFound = false;
+  while (true) {
+    Token Current = peekToken(I++);
+
+    // Quit at the end of the line, or end of file in the case of the
+    // rare one-line program.
+    if (Current.isNewline() || Current.isEndOfFile())
+      return false;
+
+    // Newlines might be recognized as separators rather than newline tokens.
+    if (Current.hasKind(tok::Separator))
+      if (*(Current.getSymbol().data()) == '\n')
+        return false;
+
+    // If the programmer has used semicolons instead of newlines, we need
+    // to be sure the semicolon is actually ending the line; in other words,
+    // at a shallower depth than the starting `(`.
+    if (Current.hasKind(tok::Semicolon)) {
+      AngleBracketTracker::Loc SemiLoc{Current.getLocation(),
+                                       {Folds.EnclosureCounts[0],
+                                        Folds.EnclosureCounts[1],
+                                        Folds.EnclosureCounts[2],
+                                        Folds.EnclosureCounts[3]}};
+      if (SemiLoc < StartLoc)
+        return false;
+
+      // If the semicolon came after an ellipsis, this isn't a fold.
+      if (EllipsisFound)
+        return false;
+
+      // We reached a semicolon in some sort of nested list (or typo). We
+      // already know we don't care about this token so just skip ahead.
+      continue;
+    }
+
+    if (isNonAngleEnclosure(Current.getKind()))
+      trackEnclosureDepth(Current, Folds);
+
+    if (EllipsisFound) {
+      // If a foldable operator follows an ellipsis, this is a fold.
+      if (isFoldableOperator(Current))
+        return true;
+      EllipsisFound = false;
+    } else if (OperatorFound) {
+      // If an ellipsis ffollows a foldable operator, this is a fold.
+      if (Current.hasKind(tok::Ellipsis))
+        return true;
+      OperatorFound = false;
+    }
+
+    if (Current.hasKind(tok::Ellipsis))
+      EllipsisFound = true;
+    else if (isFoldableOperator(Current))
+      OperatorFound = true;
   }
 }
 
@@ -1853,7 +1936,7 @@ void Parser::finishPotentialAngleBracket(const Token &OpToken) {
                                      Angles.EnclosureCounts[1],
                                      Angles.EnclosureCounts[2],
                                      Angles.EnclosureCounts[3]}};
-  if (Angles.hasSameDepth(Angles.Angles.back(), CloseLoc))
+  if (Angles.Angles.back() == CloseLoc)
     Angles.Angles.pop_back();
 }
 
