@@ -136,8 +136,11 @@ Token CharacterScanner::operator()() {
     case '.':
       if (isDecimalDigit(getLookahead(1)))
         return matchDecimalNumber();
-      else if (getLookahead(1) == '.')
+      else if (getLookahead(1) == '.') {
+        if (getLookahead(2) == '.')
+          return matchToken(tok::Ellipsis);
         return matchToken(tok::DotDot);
+      }
       return matchToken(tok::Dot);
 
     case '?':

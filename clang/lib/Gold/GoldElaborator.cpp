@@ -3772,7 +3772,7 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
     return nullptr;
   }
   ExprElaborator TypeElab(Context, SemaRef);
-  clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
+  clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->TypeDcl);
   if (!TypeExpr) {
     SemaRef.Diags.Report(D->Op->getLoc(),
                          clang::diag::err_failed_to_translate_type);
@@ -3804,6 +3804,7 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
 }
 
 clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
+
   clang::DeclContext *Owner = D->getOwningDeclContext();
   if (isa<clang::LinkageSpecDecl>(Owner)) {
     SemaRef.Diags.Report(D->Op->getLoc(),
@@ -3813,14 +3814,31 @@ clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
   }
 
   ExprElaborator TypeElab(Context, SemaRef);
-  clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->Decl);
+  const Syntax *TySyntax = D->TypeDcl->getTyExpr();
+  bool IsPack = false;
+
+  // Checking to see if we are a parameter pack
+  // This technically doesn't have a spot in the AST only as a boolean
+  // associated with template parameters.
+  if (auto Call = dyn_cast<CallSyntax>(TySyntax)) {
+    if (auto AtomName = dyn_cast<AtomSyntax>(Call->getCallee())) {
+      if (AtomName->hasToken(tok::Ellipsis)) {
+        assert(Call->getNumArguments() == 1
+               && "Invalid number of arguments to ellipsis within AST");
+        TySyntax = Call->getArgument(0);
+        IsPack = true;
+      }
+    }
+  }
+
+  clang::Expr *TypeExpr = TypeElab.elaborateExpr(TySyntax);
   if (!TypeExpr) {
     SemaRef.Diags.Report(D->IdDcl->getLoc(),
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(TypeExpr,
-                                                            D->IdDcl->getLoc());
+                                                          D->TypeDcl->getLoc());
   if (!TInfo)
     return nullptr;
 
@@ -3831,24 +3849,25 @@ clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
   if (TInfo->getType()->getAs<clang::CppxKindType>()) {
     using TemplateTemplate = clang::TemplateTemplateParmDecl;
     using TemplateType = clang::TemplateTypeParmDecl;
-
+    clang::Decl *ReturnedDecl = nullptr;
     if (D->Template)
-      D->Cxx = TemplateTemplate::Create(Context.CxxAST, Owner, Loc, 0,
-                                        0, /*Pack=*/false, Id,
+      ReturnedDecl = TemplateTemplate::Create(Context.CxxAST, Owner, Loc, 0,
+                                        0, /*Pack=*/IsPack, Id,
                                         D->TemplateParamStorage.front());
     else
-      D->Cxx = TemplateType::Create(Context.CxxAST, Owner, Loc, Loc, 0, 0,
-                                    Id, /*TypenameKW=*/true, /*Pack=*/false);
+      ReturnedDecl = TemplateType::Create(Context.CxxAST, Owner, Loc, Loc, 0, 0,
+                                    Id, /*TypenameKW=*/true, /*Pack=*/IsPack);
 
     D->CurrentPhase = Phase::Typing;
-    return D->Cxx;
+    SemaRef.setDeclForDeclaration(D, ReturnedDecl);
+    return ReturnedDecl;
   }
 
   // The depth and position of the parameter will be set later.
   auto *NTTP =
     clang::NonTypeTemplateParmDecl::Create(Context.CxxAST, Owner, Loc, Loc,
                                            0, 0, Id, TInfo->getType(),
-                                           /*Pack=*/false, TInfo);
+                                           /*Pack=*/IsPack, TInfo);
   SemaRef.setDeclForDeclaration(D, NTTP);
   D->CurrentPhase = Phase::Typing;
   return NTTP;

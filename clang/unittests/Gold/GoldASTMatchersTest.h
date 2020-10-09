@@ -15,6 +15,7 @@
 #include "clang/AST/Attr.h"
 #include "clang/Tooling/Tooling.h"
 #include "gtest/gtest.h"
+#include "clang/AST/DeclTemplate.h"
 
 namespace clang {
 namespace ast_matchers {
@@ -24,12 +25,25 @@ extern const internal::VariadicDynCastAllOfMatcher<
 extern const internal::VariadicDynCastAllOfMatcher<
   Decl, VarTemplatePartialSpecializationDecl> varTemplatePartialSpecializationDecl;
 
+extern const internal::VariadicDynCastAllOfMatcher<Decl, TemplateTemplateParmDecl>
+    templateTemplateParmDecl;
+
+extern const internal::VariadicDynCastAllOfMatcher<Stmt, PackExpansionExpr>
+    packExpansionExpr;
+
 // I created this because it didn't exist before this and I acutally needed it
 // for a particular test.
 AST_POLYMORPHIC_MATCHER(isExternStorageClass,
                         AST_POLYMORPHIC_SUPPORTED_TYPES(FunctionDecl,
                                                         VarDecl)) {
   return Node.getStorageClass() == SC_Extern;
+}
+
+AST_POLYMORPHIC_MATCHER(isParameterPack,
+                        AST_POLYMORPHIC_SUPPORTED_TYPES(TemplateTypeParmDecl,
+                                                        NonTypeTemplateParmDecl,
+                                                        TemplateTemplateParmDecl)) {
+  return Node.isParameterPack();
 }
 
 AST_POLYMORPHIC_MATCHER_P(stringHasValue,

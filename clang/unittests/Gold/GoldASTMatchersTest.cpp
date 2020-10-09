@@ -8,4 +8,10 @@ const internal::VariadicDynCastAllOfMatcher<
     Decl,
     VarTemplatePartialSpecializationDecl
   > varTemplatePartialSpecializationDecl;
+
+const internal::VariadicDynCastAllOfMatcher<Decl, TemplateTemplateParmDecl>
+    templateTemplateParmDecl;
+
+const internal::VariadicDynCastAllOfMatcher<Stmt, PackExpansionExpr>
+    packExpansionExpr;
 }}

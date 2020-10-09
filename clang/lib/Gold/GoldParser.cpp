@@ -251,7 +251,6 @@ Syntax *Parser::parseArray(ArraySemantic S) {
 void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
   Syntax *List = parseList(S);
   appendTerm(Vec, List);
-  // bool ExitBlock = false;
 
   while (true) {
     // Obviously, stop at the end of the file.
@@ -259,10 +258,8 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
       break;
 
     // We're about to exit a nested block ...
-    if (nextTokenIs(tok::Dedent) || nextTokenIs(tok::RightBrace)) {
-      // ExitBlock = true;
+    if (nextTokenIs(tok::Dedent) || nextTokenIs(tok::RightBrace))
       break;
-    }
 
     // ... or a paren-enclosed array ...
     if (nextTokenIs(tok::RightParen))
@@ -282,10 +279,8 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
 
     // Check for an exit once again, as a semicolon might be followed
     // by a dedent.
-    if (nextTokenIs(tok::Dedent) || nextTokenIs(tok::RightBrace)) {
-      // ExitBlock = true;
+    if (nextTokenIs(tok::Dedent) || nextTokenIs(tok::RightBrace))
       break;
-    }
 
     // The end-of-file is often after the last separator.
     if (atEndOfFile())
@@ -501,6 +496,20 @@ static bool isOrOperator(Parser& P) {
     || P.nextTokenIs(tok::Bar) || P.nextTokenIs(tok::Caret);
 }
 
+
+// this handles a trailing ... for an expression, this may be disabled
+// in some circumstances when we are parsing a fold expression.
+Syntax *Parser::parseExpansion() {
+  // Basically this sits just before the to operator and allows me to handle
+  // the ... operator as the last thing with the lowest precedence of
+  // all operators and it wraps the expression output.
+  Syntax *E1 = parseAdd();
+  if (getLookahead() == tok::Ellipsis) {
+    E1 = parseExpansionOperator(E1);
+  }
+  return E1;
+}
+
 // or:
 //    and
 //    or or-operator and
@@ -623,9 +632,9 @@ bool isToOperator(Parser& P) {
 // TODO: -> is at the wrong level of precedence and has the wrong
 // associativity. Also, what's the behavior.
 Syntax *Parser::parseTo() {
-  Syntax *E1 = parseAdd();
+  Syntax *E1 = parseExpansion();
   while (Token op = matchTokens(isToOperator, *this)) {
-    Syntax *E2 = parseAdd();
+    Syntax *E2 = parseExpansion();
     E1 = onBinary(op, E1, E2);
   }
   return E1;
@@ -1081,7 +1090,6 @@ Syntax *Parser::parsePost()
       llvm_unreachable("suffix operators not implemented");
       consumeToken();
       break;
-
     default:
       return e;
     }
@@ -1137,6 +1145,17 @@ Syntax *Parser::parseDot(Syntax *Obj)
   Syntax *Sub = nextTokenIs(tok::LeftParen) ? parsePre() : parseId();
 
   return onBinary(Op, Obj, Sub);
+}
+
+Syntax *Parser::parseExpansionOperator(Syntax *Obj) {
+  assert(Obj && "Invalid object");
+  Token EllipsisTok = consumeToken();
+  assert(EllipsisTok.getKind() == tok::Ellipsis && "Invalid token");
+  // std::string Name = "operator'" + std::string() + "'";
+  // Symbol Sym = getSymbol(Name);
+  // Token Tok(tok::Ellipsis, Tok.getLocation(), Tok.getSpelling());
+  return new (Context)
+    CallSyntax(onAtom(EllipsisTok), makeList(Context, {Obj}));
 }
 
 // Parse a call to operator'[]' of the form [a]b
@@ -1330,7 +1349,7 @@ Syntax *Parser::parsePrimary() {
     }
     return onAtom(consumeToken());
   }
-  
+
   case tok::TrueKeyword:
   case tok::FalseKeyword:
   case tok::NullKeyword:
@@ -1357,7 +1376,6 @@ Syntax *Parser::parsePrimary() {
   // Diagnose the error and consume the token so we don't see it again.
   Diags.Report(getInputLocation(), clang::diag::err_expected)
       << "primary-expression";
-  consumeToken();
   return onError();
 }
 

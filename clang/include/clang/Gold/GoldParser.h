@@ -226,6 +226,7 @@ namespace gold
     Syntax *parseExpr();
     bool parsePreattr();
     Syntax *parseDef();
+    Syntax *parseExpansion();
     Syntax *parseOr();
     Syntax *parseAnd();
     Syntax *parseBitShift();
@@ -249,6 +250,8 @@ namespace gold
     Syntax *parseArrayPrefix();
     Syntax *parseNNSPrefix();
     Syntax *parsePostAttr(Syntax *Pre);
+
+    Syntax *parseExpansionOperator(Syntax *Obj);
   private:
     Attribute *parsePostAttr();
 

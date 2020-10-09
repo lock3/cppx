@@ -143,6 +143,7 @@ private:
   clang::Expr *handleRRefType(const CallSyntax *S);
   clang::Expr *handleFunctionType(const CallSyntax *S);
   clang::Expr *handleArrayType(const CallSyntax *S);
+  clang::Expr *handleOpPackExpansion(const CallSyntax *S);
 
 private:
   /// Utility functions that handle operations assocated with type elaboration,
@@ -156,6 +157,8 @@ private:
                            const CallSyntax* RefOpNode);
   clang::Expr* makeRRefType(clang::Expr *Result,
                             const CallSyntax* RRefOpNode);
+  clang::Expr *makeOpPackExpansionType(clang::Expr *Result,
+                                       const CallSyntax *S);
   ///}
 
 

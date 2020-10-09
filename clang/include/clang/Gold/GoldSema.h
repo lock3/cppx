@@ -347,6 +347,7 @@ public:
                                                 clang::SourceRange ExceptionSpecRange,
                                                 clang::SourceLocation EndLoc,
                            llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
+
   clang::CppxTypeLiteral *buildTypeExprFromTypeDecl(
                       const clang::TypeDecl *TyDecl, clang::SourceLocation Loc);
 
