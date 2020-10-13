@@ -31,6 +31,10 @@ extern const internal::VariadicDynCastAllOfMatcher<Decl, TemplateTemplateParmDec
 extern const internal::VariadicDynCastAllOfMatcher<Stmt, PackExpansionExpr>
     packExpansionExpr;
 
+extern const internal::VariadicDynCastAllOfMatcher<Stmt, CXXFoldExpr>
+    cxxFoldExpr;
+
+
 // I created this because it didn't exist before this and I acutally needed it
 // for a particular test.
 AST_POLYMORPHIC_MATCHER(isExternStorageClass,

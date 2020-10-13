@@ -84,6 +84,7 @@ add_clang_unittest(GoldTests
   GoldExplicitAttributeElab.cpp
   GoldFinalAttributeElab.cpp
   GoldFloatingPointLiteralElab.cpp
+  GoldFoldExprElab.cpp
   GoldFor.cpp
   GoldFunctionAllSyntaxElab.cpp
   GoldFunctionOverloading.cpp

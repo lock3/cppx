@@ -14,4 +14,7 @@ const internal::VariadicDynCastAllOfMatcher<Decl, TemplateTemplateParmDecl>
 
 const internal::VariadicDynCastAllOfMatcher<Stmt, PackExpansionExpr>
     packExpansionExpr;
+
+const internal::VariadicDynCastAllOfMatcher<Stmt, CXXFoldExpr>
+    cxxFoldExpr;
 }}
