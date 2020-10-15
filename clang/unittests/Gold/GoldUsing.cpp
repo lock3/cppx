@@ -205,3 +205,32 @@ main() : int!
   ASSERT_TRUE(matches(Code.str(), Test));
 }
 
+TEST(GoldUsingDeclaration, UnresolvedInClass) {
+  StringRef Code = R"(
+foo[T : type] = class {
+  baz(f : T)!
+    return f
+  baz()!
+    return 10
+}
+
+bar[T : type] = class {
+  baz()!
+    return 'a'
+  baz(f : T)!
+    return f
+}
+
+qux[T : type, U : type] = class(foo[U], bar[T]) {
+  using {bar[T].baz}
+}
+
+main() : int !
+  q : qux[int, char]
+  test = q.baz()
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("unsigned char")));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
