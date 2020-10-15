@@ -25,30 +25,30 @@
 namespace gold {
 
 /// Different kinds of scope.
-enum ScopeKind {
+enum ScopeKind : unsigned {
   /// The scope associated with a namespace.
-  SK_Namespace,
+  SK_Namespace = 0x0,
 
   /// The scope associated with a function parameter list.
-  SK_Parameter,
+  SK_Parameter = 0x01,
 
   /// The scope associated with a template parameter list.
-  SK_Template,
+  SK_Template  = 0x02,
 
   /// The scope associated with a function definition.
-  SK_Function,
+  SK_Function  = 0x04,
 
   /// The scope associated with a compound statement.
-  SK_Block,
+  SK_Block     = 0x08,
 
   /// The scope associated with a class definition
-  SK_Class,
+  SK_Class     = 0x16,
 
   /// The scope associated with a control statement.
-  SK_Control,
+  SK_Control   = 0x32,
 
   /// This scope is used for enum declaration.
-  SK_Enum,
+  SK_Enum      = 0x64,
 };
 
 template<typename K, typename V>

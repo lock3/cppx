@@ -1430,6 +1430,8 @@ clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
   clang::Decl *D = SemaRef.getCxxSema().ActOnUsingDeclaration(
     CxxScope, AS, UsingLoc, clang::SourceLocation(),
     SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
+  if (!D)
+    return nullptr;
   // FIXME: if this comes from an operator'.', elaborate lhs to
   // differentiate classes and namespaces.
   if (clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D)) {

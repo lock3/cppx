@@ -232,5 +232,138 @@ main() : int !
 
   DeclarationMatcher Test =
     varDecl(hasName("test"), hasType(asString("unsigned char")));
+  ASSERT_TRUE(matches(Code.str(), Test)); 
+}
+
+
+TEST(GoldUsingDirective, Basic) {
+  StringRef Code = R"(
+ns = namespace {
+  x : int = 10
+}
+
+ys = namespace {
+  x = 'a'
+}
+
+main() : int!
+  using {ys}
+  test = x
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("unsigned char")));
+  ASSERT_TRUE(matches(Code.str(), Test)); 
+}
+
+TEST(GoldUsingDirective, DirectBasic) {
+  StringRef Code = R"(
+ns = namespace {
+  x : int = 10
+}
+
+ys = namespace {
+  x = 'a'
+}
+
+main() : int!
+  using {ys.x}
+  test = x
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("unsigned char")));
+  ASSERT_TRUE(matches(Code.str(), Test)); 
+}
+
+TEST(GoldUsingDirective, InClass) {
+  StringRef Code = R"(
+ns = namespace {
+  x : int = 10
+}
+
+s = class {
+  using {ns}
+})";
+
+  GoldFailureTest(Code.str());
+}
+
+TEST(GoldUsingDirective, DirectInClass) {
+  StringRef Code = R"(
+ns = namespace {
+  x : int = 10
+}
+
+s = class {
+  using {ns.x}
+})";
+
+  GoldFailureTest(Code.str());
+}
+
+TEST(GoldUsingDirective, Overload) {
+  StringRef Code = R"(
+ys : namespace = namespace {
+  y() : int!
+    return 10
+  y(p : char) :char!
+    return p
+  x()!
+    return 10
+}
+
+main() : int!
+  using {ys.y}
+  test = y('a')
+})";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("unsigned char")));
+  ASSERT_TRUE(matches(Code.str(), Test)); 
+}
+
+TEST(GoldUsingDirective, Ambiguous) {
+  StringRef Code = R"(
+ys : namespace = namespace {
+  y() : int!
+    return 10
+  y(p : int) :int!
+    return p
+  x()!
+    return 10
+}
+
+ns = namespace {
+  y() : int!
+    return 13
+}
+
+main() : int!
+  using {ys.y, ns.y}
+  return y()
+})";
+
+  GoldFailureTest(Code.str());
+}
+
+TEST(GoldAnonymousNamespace, Basic) {
+  StringRef Code = R"(
+_ = namespace {
+  y(x : char) : char!
+    return x
+  y() : int!
+    return 13
+}
+
+main() : int!
+  test = y('a');
+})";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("unsigned char")));
+  DeclarationMatcher Anon =
+    namespaceDecl(isAnonymous());
   ASSERT_TRUE(matches(Code.str(), Test));
+  ASSERT_TRUE(matches(Code.str(), Anon));
 }
