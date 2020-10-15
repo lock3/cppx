@@ -15,6 +15,7 @@
 #define LLVM_CLANG_TEMPLATE_INST_CALLBACK_H
 
 #include "clang/Sema/Sema.h"
+#include "clang/Gold/GoldSema.h"
 
 namespace clang {
 
@@ -29,6 +30,10 @@ public:
 
   /// Called after AST-parsing is completed.
   virtual void finalize(const Sema &TheSema) = 0;
+
+  /// Same as above except for Gold actions.
+  virtual void initialize(gold::Sema &GoldSema) {}
+  virtual void finalize(gold::Sema &GoldSema) {}
 
   /// Called when instantiation of a template just began.
   virtual void atTemplateBegin(const Sema &TheSema,
@@ -51,6 +56,24 @@ void initialize(TemplateInstantiationCallbackPtrs &Callbacks,
 template <class TemplateInstantiationCallbackPtrs>
 void finalize(TemplateInstantiationCallbackPtrs &Callbacks,
               const Sema &TheSema) {
+  for (auto &C : Callbacks) {
+    if (C)
+      C->finalize(TheSema);
+  }
+}
+
+template <class TemplateInstantiationCallbackPtrs>
+void initialize(TemplateInstantiationCallbackPtrs &Callbacks,
+                gold::Sema &TheSema) {
+  for (auto &C : Callbacks) {
+    if (C)
+      C->initialize(TheSema);
+  }
+}
+
+template <class TemplateInstantiationCallbackPtrs>
+void finalize(TemplateInstantiationCallbackPtrs &Callbacks,
+              gold::Sema &TheSema) {
   for (auto &C : Callbacks) {
     if (C)
       C->finalize(TheSema);

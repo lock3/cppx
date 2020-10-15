@@ -1360,28 +1360,97 @@ static void exitToCorrectScope(Sema &SemaRef, gold::Scope *ExpectedScope,
   }
 }
 
+clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
+                         const Syntax *Arg, clang::SourceLocation UsingLoc) {
+  Sema::ExtendQualifiedLookupRAII ExQual(SemaRef);
+  clang::SourceLocation ArgLoc = Arg->getLoc();
+  clang::Expr *E = ExprElaborator(Ctx, SemaRef).elaborateExpr(Arg);
+  if (!E)
+    return nullptr;
+
+  clang::Scope *CxxScope = SemaRef.getCurClangScope();
+  clang::CXXScopeSpec SS;
+  clang::ParsedAttributesView AttrView;
+  clang::UnqualifiedId Name;
+  clang::AccessSpecifier AS = SemaRef.scopeIsWithinClass() ?
+    clang::AS_public : clang::AS_none;
+
+  if (clang::CppxDeclRefExpr *CDRE = dyn_cast<clang::CppxDeclRefExpr>(E)) {
+    // using namespace declaration
+    if (CDRE->getType()->isNamespaceType()) {
+      if (SemaRef.scopeIsWithinClass()) {
+        SemaRef.Diags.Report(Arg->getLoc(),
+                             clang::diag::err_using_namespace_in_class);
+        return nullptr;
+      }
+
+      clang::CppxNamespaceDecl *NS =
+        cast<clang::CppxNamespaceDecl>(CDRE->getValue());
+
+      clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDirective(
+        CxxScope, UsingLoc, Arg->getLoc(), SS, Arg->getLoc(),
+        NS->getIdentifier(), AttrView);
+      if (!UD)
+        return nullptr;
+
+      SemaRef.getCurrentScope()->UsingDirectives.insert(
+        cast<clang::UsingDirectiveDecl>(UD));
+      return UD;
+    }
+  } else if (clang::DeclRefExpr *DRE = dyn_cast<clang::DeclRefExpr>(E)) {
+    // using directive of a declaration in a namespace or base class.
+    gold::Declaration *D = SemaRef.getDeclaration(DRE->getDecl());
+    Name.setIdentifier(D->getId(), D->getEndOfDecl());
+    Name.StartLocation = Name.EndLocation = Arg->getLoc();
+  } else if (auto *ULE = dyn_cast<clang::UnresolvedLookupExpr>(E)) {
+    // using directive of a declaration in a namespace or base class.
+    Name.setIdentifier(ULE->getName().getAsIdentifierInfo(),
+                       ULE->getNameLoc());
+    Name.StartLocation = Name.EndLocation = Arg->getLoc();
+  } else if (auto *UME = dyn_cast<clang::UnresolvedMemberExpr>(E)) {
+    // using directive of a declaration in a namespace or base class.
+    Name.setIdentifier(UME->getName().getAsIdentifierInfo(),
+                       UME->getNameLoc());
+    Name.StartLocation = Name.EndLocation = Arg->getLoc();
+  } else if (auto *TyLit = dyn_cast<clang::CppxTypeLiteral>(E)) {
+    clang::TypeSourceInfo *TInfo = TyLit->getValue();
+    if (!TInfo)
+      return nullptr;
+    Name.setIdentifier(TInfo->getType().getBaseTypeIdentifier(),
+                       TyLit->getExprLoc());
+    Name.StartLocation = Name.EndLocation = Arg->getLoc();
+  } else {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "invalid using macro");
+    SemaRef.Diags.Report(ArgLoc, DiagID);
+    return nullptr;
+  }
+
+  clang::Decl *D = SemaRef.getCxxSema().ActOnUsingDeclaration(
+    CxxScope, AS, UsingLoc, clang::SourceLocation(),
+    SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
+  if (!D)
+    return nullptr;
+  // FIXME: if this comes from an operator'.', elaborate lhs to
+  // differentiate classes and namespaces.
+  if (clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D)) {
+    for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
+      SemaRef.getCurrentScope()->Shadows.insert(Shadow);
+  } else if (auto *UUVD = dyn_cast<clang::UnresolvedUsingValueDecl>(D)) {
+    llvm::outs() << "funbaba\n";
+  }
+
+  return D;
+}
+
 static void handleUsingBlockList(SyntaxContext &Ctx, Sema &SemaRef,
                                  const ListSyntax *List,
                                  clang::SourceLocation UsingLoc) {
   for (const Syntax *Item : List->children()) {
-    clang::Expr *E = ExprElaborator(Ctx, SemaRef).elaborateExpr(Item);
-
-    if (clang::CppxDeclRefExpr *CDRE = dyn_cast<clang::CppxDeclRefExpr>(E)) {
-      // using namespace declaration
-      if (CDRE->getType()->isNamespaceType()) {
-        clang::CppxNamespaceDecl *NS =
-          cast<clang::CppxNamespaceDecl>(CDRE->getValue());
-
-        clang::Scope *CxxScope = SemaRef.getCurClangScope();
-        clang::CXXScopeSpec SS;
-        clang::ParsedAttributesView AttrView;
-        clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDirective(
-          CxxScope, UsingLoc, Item->getLoc(), SS, Item->getLoc(),
-          NS->getIdentifier(), AttrView);
-        SemaRef.getCurrentScope()->UsingDirectives.insert(
-          cast<clang::UsingDirectiveDecl>(UD));
-      }
-    }
+    clang::Decl *D = handleUsing(Ctx, SemaRef, Item, UsingLoc);
+    if (!D)
+      continue;
   }
 }
 
@@ -1394,24 +1463,9 @@ static void handleUsingBlock(SyntaxContext &Ctx, Sema &SemaRef,
     else if (const ListSyntax *II = dyn_cast<ListSyntax>(Item))
       handleUsingBlockList(Ctx, SemaRef, II, UsingLoc);
     else {
-      clang::Expr *E = ExprElaborator(Ctx, SemaRef).elaborateExpr(Item);
-
-      if (clang::CppxDeclRefExpr *CDRE = dyn_cast<clang::CppxDeclRefExpr>(E)) {
-        // using namespace declaration
-        if (CDRE->getType()->isNamespaceType()) {
-          clang::CppxNamespaceDecl *NS =
-            cast<clang::CppxNamespaceDecl>(CDRE->getValue());
-
-          clang::Scope *CxxScope = SemaRef.getCurClangScope();
-          clang::CXXScopeSpec SS;
-          clang::ParsedAttributesView AttrView;
-          clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDirective(
-            CxxScope, UsingLoc, Item->getLoc(), SS, Item->getLoc(),
-            NS->getIdentifier(), AttrView);
-          SemaRef.getCurrentScope()->UsingDirectives.insert(
-            cast<clang::UsingDirectiveDecl>(UD));
-        }
-      }
+      clang::Decl *D = handleUsing(Ctx, SemaRef, Item, UsingLoc);
+      if (!D)
+        continue;
     }
   }
 }
@@ -1419,6 +1473,7 @@ static void handleUsingBlock(SyntaxContext &Ctx, Sema &SemaRef,
 static void handleUsingDirectiveDecl(SyntaxContext &Ctx, Sema &SemaRef,
                                      Declaration *D) {
   assert(D->declaresUsingDirective());
+  Sema::DeclContextRAII CtxRAII(SemaRef, D);
   const MacroSyntax *S = cast<MacroSyntax>(D->Init);
   const ArraySyntax *Block = cast<ArraySyntax>(S->getBlock());
   handleUsingBlock(Ctx, SemaRef, Block, S->getCall()->getLoc());
@@ -1932,6 +1987,28 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
   return true;
 }
 
+// If we have an auto return type that is dependent, 'deduce' it as DependentTy.
+void deduceDependentAutoReturn(SyntaxContext &Context,
+                               Sema &SemaRef,
+                               clang::FunctionDecl *FD) {
+  if (FD->getReturnType()->isUndeducedAutoType()) {
+    clang::QualType OldTy = FD->getType();
+    const clang::FunctionProtoType *FPT =
+      OldTy->getAs<clang::FunctionProtoType>();
+    clang::ASTContext &CxxAST = Context.CxxAST;
+    clang::QualType NewRet =
+      SemaRef.getCxxSema().SubstAutoType(FD->getReturnType(),
+                                         CxxAST.DependentTy);
+    clang::QualType NewTy =
+      CxxAST.getFunctionType(NewRet, FPT->getParamTypes(),
+                             FPT->getExtProtoInfo());
+    if (OldTy.hasQualifiers())
+      NewTy = clang::QualType(NewTy.getTypePtr(),
+                              OldTy.getQualifiers().getAsOpaqueValue());
+    FD->setType(NewTy);
+  }
+}
+
 } // end anonymous namespace
 
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
@@ -2052,23 +2129,14 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       FTD->setAccess(clang::AS_public);
 
     // An auto return type here is always dependent.
-    if (FD->getReturnType()->isUndeducedAutoType()) {
-      clang::QualType OldTy = FD->getType();
-      const clang::FunctionProtoType *FPT =
-        OldTy->getAs<clang::FunctionProtoType>();
-      clang::ASTContext &CxxAST = Context.CxxAST;
-      clang::QualType NewRet =
-        SemaRef.getCxxSema().SubstAutoType(FD->getReturnType(),
-                                           CxxAST.DependentTy);
-      clang::QualType NewTy =
-        CxxAST.getFunctionType(NewRet, FPT->getParamTypes(),
-                               FPT->getExtProtoInfo());
-      if (OldTy.hasQualifiers())
-        NewTy = clang::QualType(NewTy.getTypePtr(),
-                                OldTy.getQualifiers().getAsOpaqueValue());
-      FD->setType(NewTy);
-    }
+    if (FD->getReturnType()->isUndeducedAutoType())
+      deduceDependentAutoReturn(Context, SemaRef, FD);
   }
+
+  // An auto return type here is always dependent.
+  if (InClass && SemaRef.getCurClangDeclContext()->isDependentContext())
+    deduceDependentAutoReturn(Context, SemaRef, FD);
+
 
   CxxSema.getImplicitCodeSegOrSectionAttrForFunction(FD, D->Init);
 

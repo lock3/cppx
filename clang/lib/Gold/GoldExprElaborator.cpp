@@ -2030,11 +2030,8 @@ clang::Expr *ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
   bool Failure = SemaRef.getCxxSema().ActOnCXXGlobalScopeSpecifier(Op->getLoc(),
                                                          SemaRef.CurNNSContext);
 
-  if (Failure) {
-    // FIXME: Create error message for this.
-    llvm::outs() << "failed to create nns\n";
+  if (Failure)
     return nullptr;
-  }
 
   gold::Scope *GlobalScope = SemaRef.getCurrentScope();
   while (GlobalScope->getParent())
@@ -2051,7 +2048,8 @@ clang::Expr *ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
     return RHSExpr;
 
   // TODO: should we account for an NNS that is returned from a function?
-  SemaRef.CurNNSContext.clear();
+  if (!SemaRef.isExtendedQualifiedLookupContext())  
+    SemaRef.CurNNSContext.clear();
   ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr);
   return RHSExpr;
 }
@@ -2072,6 +2070,22 @@ static bool isOpDot(Sema &SemaRef, const CallSyntax *Op) {
   return getFusedOpKind(SemaRef, S) == FOK_MemberAccess;
 }
 
+// True when we have an overload set while creating a Using Declaration
+// inside of a class.
+static bool usingClassLookupIsUnresolved(clang::DeclContextLookupResult const &R,
+                                         unsigned NumShadows) {
+  if (R.empty())
+    return false;
+
+  if (NumShadows > 1)
+    return true;
+
+  auto hasMethod = [](clang::NamedDecl const *D) -> bool {
+    return isa<clang::CXXMethodDecl>(D);
+  };
+  return std::find_if_not(std::begin(R), std::end(R), hasMethod) == std::end(R);
+}
+
 clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
                                     const CallSyntax *Op, const clang::Expr *Prev,
                                     const Syntax *RHS) {
@@ -2083,24 +2097,28 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
 
   clang::QualType QT = TInfo->getType();
   const clang::Type *T = QT.getTypePtr();
+  const auto *TST = T->getAs<clang::TemplateSpecializationType>();
+  // FIXME: perform some check on TST here?
   if (!(T->isStructureOrClassType() || T->isUnionType()
-      || T->isEnumeralType())) {
+        || T->isEnumeralType()) && !TST) {
     SemaRef.Diags.Report(Prev->getExprLoc(),
                          clang::diag::err_invalid_type_for_name_spec)
                          << QT;
     return nullptr;
   }
 
-
   clang::TagDecl *TD = T->getAsTagDecl();
+  if (SemaRef.elaboratingUsingInClassScope() && TST) {
+    TD = cast<clang::TagDecl>(TST->getTemplateName().getAsTemplateDecl()
+                              ->getTemplatedDecl());
+  }
 
   // Fetching declaration to ensure that we actually have the current scope
   // for lookup.
   // Attempthing to fetch the declaration now and popss
   Declaration *DeclForTy = SemaRef.getDeclaration(TD);
-  if (!DeclForTy) {
-    llvm_unreachable("This can never happen?");
-  }
+  assert(DeclForTy);
+
   ClangToGoldDeclRebuilder Rebuilder(SemaRef.getContext(), SemaRef);
   clang::SourceRange Range = clang::SourceRange(Op->getArgument(0)->getLoc(),
                                                 RHS->getLoc());
@@ -2117,6 +2135,7 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
 
     clang::NamedDecl *ND = nullptr;
     if (R.size() != 1u) {
+
       // This wasn't the name of a member, check if it is the name of a base.
       if (clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(TD)) {
         for (const auto &Base : RD->bases()) {
@@ -2126,6 +2145,60 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
         }
       }
 
+      auto hasUsing = [](clang::NamedDecl const *D) -> bool {
+        return isa<clang::UsingDecl>(D);
+      };
+      unsigned Shadows = 0;
+      clang::UnresolvedSet<4> USet;
+
+      // Check if we have any shadows single declarations.
+      if (std::find_if(std::begin(R), std::end(R), hasUsing) != std::end(R)) {
+        clang::UsingShadowDecl *S = nullptr;
+        for (clang::NamedDecl *D : R) {
+          if (auto *SD = dyn_cast<clang::UsingShadowDecl>(D)) {
+            S = SD;
+            ++Shadows;
+          }
+
+          USet.addDecl(D, D->getAccess());
+        }
+
+        if (Shadows == 1u) {
+          ND = S->getTargetDecl();
+        }
+      }
+
+      // Check for a shadowed overload set.
+      if (usingClassLookupIsUnresolved(R, Shadows)) {
+        // If we're not creating a UsingDecl, these need to be static.
+        if (!SemaRef.elaboratingUsingInClassScope()) {
+          SemaRef.Diags.Report(Prev->getExprLoc(),
+                               clang::diag::err_ref_non_value) << Prev;
+          return nullptr;
+        }
+
+        if (!Shadows)
+          for (clang::NamedDecl *D : R)
+            USet.addDecl(D, D->getAccess());
+        clang::Expr *Base = const_cast<clang::Expr *>(Prev);
+        clang::TemplateArgumentListInfo TemplateArgs;
+        auto *UME =
+          clang::UnresolvedMemberExpr::Create(CxxAST,
+                                              /*UnresolvedUsing=*/true,
+                                              Base,
+                                              Base->getType(),
+                                              Base->getType()->isPointerType(),
+                                              RHS->getLoc(),
+                                              clang::NestedNameSpecifierLoc(),
+                                              clang::SourceLocation(),
+                                              DNI,
+                                              &TemplateArgs,
+                                              USet.begin(),
+                                              USet.end());
+        return UME;
+      }
+
+      // This was neither a type nor a shadowed declaration.
       if (!ND) {
         SemaRef.Diags.Report(RHS->getLoc(), clang::diag::err_no_member)
           << Atom->getSpelling() << TD;
@@ -2155,12 +2228,12 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
     // FIXME: static methods should be handled here
 
     // otherwise, we have a FieldDecl from a nested name specifier lookup.
-    // In which case, the rhs should be static or called via operator'()'
-    // if the lhs was a record type.
+    // In which case, the rhs should be static, called via operator'()',
+    // or inside a using macro if the lhs was a record type.
     if (Prev->getType()->isTypeOfTypes() && isOpDot(SemaRef, Op)) {
       clang::QualType Ty =
         cast<clang::CppxTypeLiteral>(Prev)->getValue()->getType();
-      if (!Ty->isEnumeralType()) {
+      if (!SemaRef.elaboratingUsingInClassScope() && !Ty->isEnumeralType()) {
         SemaRef.Diags.Report(Prev->getExprLoc(),
                              clang::diag::err_ref_non_value) << Prev;
         return nullptr;
@@ -2189,7 +2262,21 @@ clang::Expr *ExprElaborator::elaborateNestedLookupAccess(
   clang::TypeLocBuilder TLB;
   TInfo = BuildAnyTypeLoc(Context.CxxAST, TLB, TInfo->getType(), Op->getLoc());
   clang::TypeLoc TL = TLB.getTypeLocInContext(Context.CxxAST, TInfo->getType());
-  clang::CXXRecordDecl *RD = TInfo->getType()->getAsCXXRecordDecl();
+  clang::QualType RecordType = TInfo->getType();
+  clang::CXXRecordDecl *RD = RecordType->getAsCXXRecordDecl();
+
+  auto *TST = RecordType->getAs<clang::TemplateSpecializationType>();
+  if (SemaRef.elaboratingUsingInClassScope() && TST) {
+    auto *CTD = dyn_cast_or_null<clang::ClassTemplateDecl>(
+      TST->getTemplateName().getAsTemplateDecl());
+    clang::QualType ContextType =
+      Context.CxxAST.getCanonicalType(clang::QualType(TST, 0));
+    clang::QualType Injected = CTD->getInjectedClassNameSpecialization();
+    if (Context.CxxAST.hasSameType(Injected, ContextType))
+      RD = CTD->getTemplatedDecl();
+    else
+      llvm_unreachable("partials not implemented");
+  }
 
   if (RD) {
     clang::Sema::NestedNameSpecInfo IdInfo(RD->getIdentifier(),
@@ -2205,14 +2292,19 @@ clang::Expr *ExprElaborator::elaborateNestedLookupAccess(
                                   /*RecoveryLookup=*/false,
                                   /*IsCorrected=*/nullptr,
                                   /*OnlyNamespace=*/false);
-
     if (Failure) {
       SemaRef.CurNNSContext.clear();
       return nullptr;
     }
+
+    SemaRef.CurNNSContext = SS;
   }
 
-  return handleLookupInsideType(SemaRef, Context.CxxAST, Op, Previous, RHS);
+  clang::Expr *Ret =
+    handleLookupInsideType(SemaRef, Context.CxxAST, Op, Previous, RHS);
+  if (!SemaRef.isExtendedQualifiedLookupContext())
+    SemaRef.CurNNSContext.clear();
+  return Ret;
 }
 
 clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,

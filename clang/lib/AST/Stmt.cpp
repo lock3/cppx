@@ -302,8 +302,8 @@ int64_t Stmt::getID(const ASTContext &Context) const {
 }
 
 CompoundStmt::CompoundStmt(ArrayRef<Stmt *> Stmts, SourceLocation LB,
-                           SourceLocation RB)
-    : Stmt(CompoundStmtClass), RBraceLoc(RB) {
+                           SourceLocation RB, bool CppxVector)
+    : Stmt(CompoundStmtClass), RBraceLoc(RB), CppxVector(CppxVector) {
   CompoundStmtBits.NumStmts = Stmts.size();
   setStmts(Stmts);
   CompoundStmtBits.LBraceLoc = LB;
@@ -317,10 +317,11 @@ void CompoundStmt::setStmts(ArrayRef<Stmt *> Stmts) {
 }
 
 CompoundStmt *CompoundStmt::Create(const ASTContext &C, ArrayRef<Stmt *> Stmts,
-                                   SourceLocation LB, SourceLocation RB) {
+                                   SourceLocation LB, SourceLocation RB,
+                                   bool CppxVector) {
   void *Mem =
       C.Allocate(totalSizeToAlloc<Stmt *>(Stmts.size()), alignof(CompoundStmt));
-  return new (Mem) CompoundStmt(Stmts, LB, RB);
+  return new (Mem) CompoundStmt(Stmts, LB, RB, CppxVector);
 }
 
 CompoundStmt *CompoundStmt::CreateEmpty(const ASTContext &C,
