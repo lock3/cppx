@@ -172,11 +172,11 @@ Sema::~Sema() {
   CxxSema.CurScope = nullptr;
 }
 
-bool Sema::accessSpecifierIsValidInScope() const {
+bool Sema::accessSpecifierIsValidInScope() {
   return ScopeStack.back() && ScopeStack.back()->getKind() == SK_Class;
 }
 
-Scope *Sema::getCurrentScope() {
+Scope *Sema::getCurrentScope() const {
   if (ScopeStack.empty())
     return nullptr;
   return ScopeStack.back();
@@ -814,11 +814,11 @@ bool Sema::checkUnqualifiedNameIsDecl(const clang::DeclarationNameInfo& DNI,
   return true;
 }
 
-bool Sema::scopeIsWithinClass() {
+bool Sema::scopeIsWithinClass() const {
   return getCurrentScope()->getKind() & SK_Class;
 }
 
-bool Sema::scopeIsWithinClass(Scope *S) {
+bool Sema::scopeIsWithinClass(Scope *S) const {
   assert(S && "Invalid scope.");
   return S->getKind() & SK_Class;
 }
@@ -1037,6 +1037,13 @@ unsigned Sema::computeTemplateDepth() const {
     Count += (*Iter)->TagOrTemplate->declaresTemplateType();
   }
   return Count;
+}
+
+// True when we are elaborating a using macro within a class.
+bool Sema::elaboratingUsingInClassScope() const {
+  if (!CurrentDecl->Decl)
+    return false;
+  return scopeIsWithinClass() && CurrentDecl->Decl->isUsingDirective();
 }
 
 clang::CppxTypeLiteral *Sema::buildTypeExpr(clang::QualType Ty,

@@ -2058,12 +2058,6 @@ static bool isOpDot(Sema &SemaRef, const CallSyntax *Op) {
   return getFusedOpKind(SemaRef, S) == FOK_MemberAccess;
 }
 
-// True when we are elaborating a using macro within a class.
-static bool elaboratingUsingInClassScope(Sema &SemaRef) {
-  return SemaRef.scopeIsWithinClass() &&
-    SemaRef.getCurrentDecl()->Decl->isUsingDirective();
-}
-
 // True when we have an overload set while creating a Using Declaration
 // inside of a class.
 static bool usingClassLookupIsUnresolved(clang::DeclContextLookupResult const &R,
@@ -2091,16 +2085,21 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
 
   clang::QualType QT = TInfo->getType();
   const clang::Type *T = QT.getTypePtr();
+  const auto *TST = T->getAs<clang::TemplateSpecializationType>();
+  // FIXME: perform some check on TST here?
   if (!(T->isStructureOrClassType() || T->isUnionType()
-      || T->isEnumeralType())) {
+        || T->isEnumeralType())) {
     SemaRef.Diags.Report(Prev->getExprLoc(),
                          clang::diag::err_invalid_type_for_name_spec)
                          << QT;
     return nullptr;
   }
 
-
   clang::TagDecl *TD = T->getAsTagDecl();
+  if (SemaRef.elaboratingUsingInClassScope() && TST) {
+    TD = cast<clang::TagDecl>(TST->getTemplateName().getAsTemplateDecl()
+                              ->getTemplatedDecl());
+  }
 
   // Fetching declaration to ensure that we actually have the current scope
   // for lookup.
@@ -2160,7 +2159,7 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
       // Check for a shadowed overload set.
       if (usingClassLookupIsUnresolved(R, Shadows)) {
         // If we're not creating a UsingDecl, these need to be static.
-        if (!elaboratingUsingInClassScope(SemaRef)) {
+        if (!SemaRef.elaboratingUsingInClassScope()) {
           SemaRef.Diags.Report(Prev->getExprLoc(),
                                clang::diag::err_ref_non_value) << Prev;
           return nullptr;
@@ -2222,7 +2221,7 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
     if (Prev->getType()->isTypeOfTypes() && isOpDot(SemaRef, Op)) {
       clang::QualType Ty =
         cast<clang::CppxTypeLiteral>(Prev)->getValue()->getType();
-      if (!elaboratingUsingInClassScope(SemaRef) && !Ty->isEnumeralType()) {
+      if (!SemaRef.elaboratingUsingInClassScope() && !Ty->isEnumeralType()) {
         SemaRef.Diags.Report(Prev->getExprLoc(),
                              clang::diag::err_ref_non_value) << Prev;
         return nullptr;
@@ -2251,7 +2250,21 @@ clang::Expr *ExprElaborator::elaborateNestedLookupAccess(
   clang::TypeLocBuilder TLB;
   TInfo = BuildAnyTypeLoc(Context.CxxAST, TLB, TInfo->getType(), Op->getLoc());
   clang::TypeLoc TL = TLB.getTypeLocInContext(Context.CxxAST, TInfo->getType());
-  clang::CXXRecordDecl *RD = TInfo->getType()->getAsCXXRecordDecl();
+  clang::QualType RecordType = TInfo->getType();
+  clang::CXXRecordDecl *RD = RecordType->getAsCXXRecordDecl();
+
+  auto *TST = RecordType->getAs<clang::TemplateSpecializationType>();
+  if (SemaRef.elaboratingUsingInClassScope() && TST) {
+    auto *CTD = dyn_cast_or_null<clang::ClassTemplateDecl>(
+      TST->getTemplateName().getAsTemplateDecl());
+    clang::QualType ContextType =
+      Context.CxxAST.getCanonicalType(clang::QualType(TST, 0));
+    clang::QualType Injected = CTD->getInjectedClassNameSpecialization();
+    if (Context.CxxAST.hasSameType(Injected, ContextType))
+      RD = CTD->getTemplatedDecl();
+    else
+      llvm_unreachable("partials not implemented");
+  }
 
   if (RD) {
     clang::Sema::NestedNameSpecInfo IdInfo(RD->getIdentifier(),

@@ -1389,6 +1389,9 @@ clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
       clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDirective(
         CxxScope, UsingLoc, Arg->getLoc(), SS, Arg->getLoc(),
         NS->getIdentifier(), AttrView);
+      if (!UD)
+        return nullptr;
+
       SemaRef.getCurrentScope()->UsingDirectives.insert(
         cast<clang::UsingDirectiveDecl>(UD));
       return UD;
@@ -2007,6 +2010,28 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
   return true;
 }
 
+// If we have an auto return type that is dependent, 'deduce' it as DependentTy.
+void deduceDependentAutoReturn(SyntaxContext &Context,
+                               Sema &SemaRef,
+                               clang::FunctionDecl *FD) {
+  if (FD->getReturnType()->isUndeducedAutoType()) {
+    clang::QualType OldTy = FD->getType();
+    const clang::FunctionProtoType *FPT =
+      OldTy->getAs<clang::FunctionProtoType>();
+    clang::ASTContext &CxxAST = Context.CxxAST;
+    clang::QualType NewRet =
+      SemaRef.getCxxSema().SubstAutoType(FD->getReturnType(),
+                                         CxxAST.DependentTy);
+    clang::QualType NewTy =
+      CxxAST.getFunctionType(NewRet, FPT->getParamTypes(),
+                             FPT->getExtProtoInfo());
+    if (OldTy.hasQualifiers())
+      NewTy = clang::QualType(NewTy.getTypePtr(),
+                              OldTy.getQualifiers().getAsOpaqueValue());
+    FD->setType(NewTy);
+  }
+}
+
 } // end anonymous namespace
 
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
@@ -2127,23 +2152,14 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       FTD->setAccess(clang::AS_public);
 
     // An auto return type here is always dependent.
-    if (FD->getReturnType()->isUndeducedAutoType()) {
-      clang::QualType OldTy = FD->getType();
-      const clang::FunctionProtoType *FPT =
-        OldTy->getAs<clang::FunctionProtoType>();
-      clang::ASTContext &CxxAST = Context.CxxAST;
-      clang::QualType NewRet =
-        SemaRef.getCxxSema().SubstAutoType(FD->getReturnType(),
-                                           CxxAST.DependentTy);
-      clang::QualType NewTy =
-        CxxAST.getFunctionType(NewRet, FPT->getParamTypes(),
-                               FPT->getExtProtoInfo());
-      if (OldTy.hasQualifiers())
-        NewTy = clang::QualType(NewTy.getTypePtr(),
-                                OldTy.getQualifiers().getAsOpaqueValue());
-      FD->setType(NewTy);
-    }
+    if (FD->getReturnType()->isUndeducedAutoType())
+      deduceDependentAutoReturn(Context, SemaRef, FD);
   }
+
+  // An auto return type here is always dependent.
+  if (InClass && SemaRef.getCurClangDeclContext()->isDependentContext())
+    deduceDependentAutoReturn(Context, SemaRef, FD);
+
 
   CxxSema.getImplicitCodeSegOrSectionAttrForFunction(FD, D->Init);
 
