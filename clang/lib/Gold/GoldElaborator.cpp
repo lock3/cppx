@@ -1371,6 +1371,7 @@ clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
   clang::Scope *CxxScope = SemaRef.getCurClangScope();
   clang::CXXScopeSpec SS;
   clang::ParsedAttributesView AttrView;
+  clang::UnqualifiedId Name;
   clang::AccessSpecifier AS = SemaRef.scopeIsWithinClass() ?
     clang::AS_public : clang::AS_none;
 
@@ -1399,72 +1400,46 @@ clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
   } else if (clang::DeclRefExpr *DRE = dyn_cast<clang::DeclRefExpr>(E)) {
     // using directive of a declaration in a namespace or base class.
     gold::Declaration *D = SemaRef.getDeclaration(DRE->getDecl());
-    clang::UnqualifiedId Name;
     Name.setIdentifier(D->getId(), D->getEndOfDecl());
     Name.StartLocation = Name.EndLocation = Arg->getLoc();
-
-    clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDeclaration(
-      CxxScope, AS, UsingLoc, clang::SourceLocation(),
-      SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
-    // FIXME: if this comes from an operator'.', elaborate lhs to
-    // differentiate classes and namespaces.
-    for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
-      SemaRef.getCurrentScope()->Shadows.insert(Shadow);
-    return UD;
   } else if (auto *ULE = dyn_cast<clang::UnresolvedLookupExpr>(E)) {
     // using directive of a declaration in a namespace or base class.
-    clang::UnqualifiedId Name;
     Name.setIdentifier(ULE->getName().getAsIdentifierInfo(),
                        ULE->getNameLoc());
     Name.StartLocation = Name.EndLocation = Arg->getLoc();
-
-    clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDeclaration(
-      CxxScope, AS, UsingLoc, clang::SourceLocation(),
-      SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
-    // FIXME: if this comes from an operator'.', elaborate lhs to
-    // differentiate classes and namespaces.
-    for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
-      SemaRef.getCurrentScope()->Shadows.insert(Shadow);
-    return UD;
   } else if (auto *UME = dyn_cast<clang::UnresolvedMemberExpr>(E)) {
     // using directive of a declaration in a namespace or base class.
-    clang::UnqualifiedId Name;
     Name.setIdentifier(UME->getName().getAsIdentifierInfo(),
                        UME->getNameLoc());
     Name.StartLocation = Name.EndLocation = Arg->getLoc();
-
-    clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDeclaration(
-      CxxScope, AS, UsingLoc, clang::SourceLocation(),
-      SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
-    // FIXME: if this comes from an operator'.', elaborate lhs to
-    // differentiate classes and namespaces.
-    for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
-      SemaRef.getCurrentScope()->Shadows.insert(Shadow);
-    return UD;
   } else if (auto *TyLit = dyn_cast<clang::CppxTypeLiteral>(E)) {
     clang::TypeSourceInfo *TInfo = TyLit->getValue();
     if (!TInfo)
       return nullptr;
-    clang::UnqualifiedId Name;
     Name.setIdentifier(TInfo->getType().getBaseTypeIdentifier(),
                        TyLit->getExprLoc());
     Name.StartLocation = Name.EndLocation = Arg->getLoc();
-
-    clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDeclaration(
-      CxxScope, AS, UsingLoc, clang::SourceLocation(),
-      SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
-    // FIXME: if this comes from an operator'.', elaborate lhs to
-    // differentiate classes and namespaces.
-    for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
-      SemaRef.getCurrentScope()->Shadows.insert(Shadow);
-    return UD;
+  } else {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "invalid using macro");
+    SemaRef.Diags.Report(ArgLoc, DiagID);
+    return nullptr;
   }
 
-  unsigned DiagID =
-    SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                  "invalid using macro");
-  SemaRef.Diags.Report(ArgLoc, DiagID);
-  return nullptr;
+  clang::Decl *D = SemaRef.getCxxSema().ActOnUsingDeclaration(
+    CxxScope, AS, UsingLoc, clang::SourceLocation(),
+    SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
+  // FIXME: if this comes from an operator'.', elaborate lhs to
+  // differentiate classes and namespaces.
+  if (clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D)) {
+    for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
+      SemaRef.getCurrentScope()->Shadows.insert(Shadow);
+  } else if (auto *UUVD = dyn_cast<clang::UnresolvedUsingValueDecl>(D)) {
+    llvm::outs() << "funbaba\n";
+  }
+
+  return D;
 }
 
 static void handleUsingBlockList(SyntaxContext &Ctx, Sema &SemaRef,

@@ -2088,7 +2088,7 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
   const auto *TST = T->getAs<clang::TemplateSpecializationType>();
   // FIXME: perform some check on TST here?
   if (!(T->isStructureOrClassType() || T->isUnionType()
-        || T->isEnumeralType())) {
+        || T->isEnumeralType()) && !TST) {
     SemaRef.Diags.Report(Prev->getExprLoc(),
                          clang::diag::err_invalid_type_for_name_spec)
                          << QT;
