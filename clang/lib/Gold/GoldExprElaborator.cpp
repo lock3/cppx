@@ -728,10 +728,11 @@ static clang::Expr *
 handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
                         SyntaxContext &Context, const ElemSyntax *Elem,
                         clang::Expr *E) {
-  // Attempting to correctly handle the result of an Id expression.
   clang::OverloadExpr *OverloadExpr = dyn_cast<clang::OverloadExpr>(E);
+
+  // Create a normal array access.
   if (!OverloadExpr) {
-    llvm::SmallVector<clang::Expr *, 5> ArgExprs;
+    llvm::SmallVector<clang::Expr *, 4> ArgExprs;
     for (const Syntax *SS : Elem->getArguments()->children()) {
       clang::Expr *Res = Elab.doElaborateExpr(SS);
       if (!Res)
@@ -744,20 +745,30 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
                            clang::diag::err_expected_expression);
       return nullptr;
     }
-    if (ArgExprs.size() != 1) {
-      // TODO: Implement multiple argument indexing here.
-      llvm_unreachable("Multi-index expressions not implemented yet.");
+
+    // Create the first subscript out of the base expression.
+    auto SubscriptExpr = SemaRef.getCxxSema().ActOnArraySubscriptExpr(
+      SemaRef.getCurClangScope(), E, ArgExprs[0]->getExprLoc(),
+      ArgExprs[0], ArgExprs[0]->getExprLoc());
+    if (SubscriptExpr.isInvalid())
+      return nullptr;
+
+    // Then use the previous subscripts as bases, recursively.
+    for (unsigned I = 1; I < ArgExprs.size(); ++I) {
+      SubscriptExpr = SemaRef.getCxxSema().ActOnArraySubscriptExpr(
+        SemaRef.getCurClangScope(), SubscriptExpr.get(),
+        ArgExprs[I]->getExprLoc(), ArgExprs[I], ArgExprs[I]->getExprLoc());
+
+      // We don't know what will happen if we try to recover, so just quit.
+      if (SubscriptExpr.isInvalid())
+        return nullptr;
     }
-    auto SubScriptExpr = SemaRef.getCxxSema().ActOnArraySubscriptExpr(
-                                                     SemaRef.getCurClangScope(),
-                                                     E, clang::SourceLocation(),
-                                                     ArgExprs[0],
-                                                     clang::SourceLocation());
-    return SubScriptExpr.get();
+
+    return SubscriptExpr.get();
   }
 
-  // At this point we are an overload set which means we must be some kind of
-  // templated function, or overloaded function.
+  // We have an overload set, meaning this must be some kind of
+  // overloaded function or function template.
   clang::TemplateArgumentListInfo TemplateArgs(Elem->getLoc(), Elem->getLoc());
   llvm::SmallVector<clang::TemplateArgument, 16> ActualArgs;
   for (const Syntax *SS : Elem->getArguments()->children()) {
@@ -2502,24 +2513,71 @@ ExprElaborator::elaborateBlockCondition(const ArraySyntax *Conditions,
 
 static clang::Expr *handleArrayMacro(SyntaxContext &Context, Sema &SemaRef,
                                      const MacroSyntax *S) {
-  const ArraySyntax *ArrayInit = cast<ArraySyntax>(S->getBlock());
-  const ListSyntax *Init = cast<ListSyntax>(ArrayInit->getChild(0));
+  assert(isa<ArraySyntax>(S->getBlock()) && "invalid array macro");
 
-  llvm::SmallVector<clang::Expr *, 8> Elements;
-  for (const Syntax *SI :  Init->children()) {
-    clang::Expr *Element = ExprElaborator(Context, SemaRef).doElaborateExpr(SI);
-
-    if (!Element)
+  unsigned DiagID =
+    SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                  "only array macros may appear in "
+                                  "array initializer");
+  if (const AtomSyntax *Call = dyn_cast<AtomSyntax>(S->getCall())) {
+    if (Call->getSpelling() != "array") {
+      SemaRef.Diags.Report(Call->getLoc(), DiagID);
       return nullptr;
-
-    Elements.push_back(Element);
+    }
+  } else {
+    SemaRef.Diags.Report(S->getLoc(), DiagID);
+    return nullptr;
   }
+
+  const ArraySyntax *Block = cast<ArraySyntax>(S->getBlock());
+  llvm::SmallVector<clang::Expr *, 2> Elements;
+  for (const Syntax *SS : Block->children()) {
+    if (const ListSyntax *LInit = dyn_cast<ListSyntax>(SS)) {
+      llvm::SmallVector<clang::Expr *, 8> Subelements;
+      for (const Syntax *SI :  LInit->children()) {
+        clang::Expr *Element =
+          ExprElaborator(Context, SemaRef).doElaborateExpr(SI);
+
+        if (!Element)
+          continue;
+
+        Subelements.push_back(Element);
+      }
+
+      clang::ExprResult InitList =
+        SemaRef.getCxxSema().ActOnInitList(S->getLoc(), Subelements, S->getLoc());
+      Elements.push_back(InitList.get());
+    }
+
+    else if (const MacroSyntax *MInit = dyn_cast<MacroSyntax>(SS)) {
+      clang::Expr *Sublist = handleArrayMacro(Context, SemaRef, MInit);
+      Elements.push_back(Sublist);
+    }
+
+    else if (isa<ArraySyntax>(SS)) {
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "cannot use array in array macro");
+      SemaRef.Diags.Report(SS->getLoc(), DiagID);
+      continue;
+    }
+
+    else {
+      clang::Expr *Element =
+        ExprElaborator(Context, SemaRef).doElaborateExpr(SS);
+
+      if (!Element)
+        continue;
+
+      Elements.push_back(Element);
+    }
+  }
+
+  if (Elements.size() == 1 && isa<clang::InitListExpr>(Elements[0]))
+    return Elements[0];
 
   clang::ExprResult InitList =
     SemaRef.getCxxSema().ActOnInitList(S->getLoc(), Elements, S->getLoc());
-  if (InitList.isInvalid())
-    return nullptr;
-
   return InitList.get();
 }
 
@@ -2802,47 +2860,68 @@ clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
 }
 
 clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
-  if (S->getNumArguments() == 0
-     || S->getNumArguments() == 1
-     || S->getNumArguments() > 2) {
+  if (S->getNumArguments() != 2) {
     SemaRef.Diags.Report(S->getLoc(),
                         clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
 
   clang::Expr *IdExpr = doElaborateExpr(S->getArgument(1));
-  if (!IdExpr) {
-    return IdExpr;
-  }
+  if (!IdExpr)
+    return nullptr;
+
   // Attempt to translate into type location.
   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(IdExpr,
                                                    S->getArgument(1)->getLoc());
   if (!TInfo)
     return nullptr;
 
-
-  clang::Expr *IndexExpr = doElaborateExpr(S->getArgument(0));
-
-  // FIXME: what do we do for an empty array index, such as []int = {...}
-  if (!IndexExpr) {
-    SemaRef.Diags.Report(S->getArgument(0)->getLoc(),
-                         clang::diag::err_failed_to_translate_type);
-    return nullptr;
+  llvm::SmallVector<clang::Expr *, 4> IndexExprs;
+  const ListSyntax *IndexList = dyn_cast<ListSyntax>(S->getArgument(0));
+  if (IndexList) {
+    for (const Syntax *SS : IndexList->children())
+      IndexExprs.push_back(doElaborateExpr(SS));
+  } else {
+    IndexExprs.push_back(doElaborateExpr(S->getArgument(0)));
   }
 
-  clang::QualType BaseType = TInfo->getType();
-  clang::Expr::EvalResult IdxResult;
-  clang::Expr::EvalContext
-    EvalCtx(Context.CxxAST, SemaRef.getCxxSema().GetReflectionCallbackObj());
+  // FIXME: what do we do for an empty array index, such as []int = {...}
+  unsigned I = 0;
+  for (clang::Expr *IndexExpr : IndexExprs) {
+    if (!IndexExpr) {
+      SemaRef.Diags.Report(S->getArgument(I)->getLoc(),
+                           clang::diag::err_failed_to_translate_type);
+      return nullptr;
+    }
 
-  if (!IndexExpr->EvaluateAsConstantExpr(IdxResult,
-                                         clang::Expr::EvaluateForCodeGen,
-                                         EvalCtx))
+    ++I;
+  }
+
+  clang::QualType ArrayType = TInfo->getType();;
+  bool Invalid = false;
+  for (auto It = IndexExprs.rbegin(); It != IndexExprs.rend(); ++It) {
+    clang::Expr *IndexExpr = *It;
+
+    clang::Expr::EvalResult IdxResult;
+    clang::Expr::EvalContext
+      EvalCtx(Context.CxxAST, SemaRef.getCxxSema().GetReflectionCallbackObj());
+
+    if (!IndexExpr->EvaluateAsConstantExpr(IdxResult,
+                                           clang::Expr::EvaluateForCodeGen,
+                                           EvalCtx)) {
+      Invalid = true;
+      continue;
+    }
+
+    clang::SourceRange Range(IndexExpr->getExprLoc(), IndexExpr->getExprLoc());
+    ArrayType = SemaRef.getCxxSema().BuildArrayType(
+      ArrayType, clang::ArrayType::Normal, IndexExpr, 0,
+      Range, clang::DeclarationName());
+  }
+
+  if (Invalid)
     return nullptr;
 
-  clang::QualType ArrayType =
-    Context.CxxAST.getConstantArrayType(BaseType, IdxResult.Val.getInt(),
-                                        IndexExpr, clang::ArrayType::Normal, 0);
   return SemaRef.buildTypeExpr(ArrayType, S->getLoc());
 }
 

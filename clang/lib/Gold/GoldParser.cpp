@@ -1229,7 +1229,8 @@ Syntax *Parser::parseArrayPrefix()
   if (!Brackets.expectOpen())
     return onError();
 
-  Syntax *Arg = parseExpr();
+  ArraySemantic S{};
+  Syntax *Arg = parseList(S);
 
   if (!Brackets.expectClose())
     return onError();

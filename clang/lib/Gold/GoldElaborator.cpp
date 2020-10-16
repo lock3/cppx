@@ -4092,9 +4092,15 @@ static clang::QualType buildImplicitArrayType(clang::ASTContext &Ctx,
     return clang::QualType();
   }
 
-  clang::QualType EltTy = List->getInit(0)->getType();
   llvm::APSInt Size = llvm::APSInt::get(List->getNumInits());
+  clang::Expr *Init = List->getInit(0);
+  if (clang::InitListExpr *Sublist = dyn_cast<clang::InitListExpr>(Init)) {
+    return Ctx.getConstantArrayType(
+      buildImplicitArrayType(Ctx, SemaRef, Sublist), Size, /*SizeExpr=*/nullptr,
+      clang::ArrayType::Normal, 0);
+  }
 
+  clang::QualType EltTy = Init->getType();
   return Ctx.getConstantArrayType(EltTy, Size, /*SizeExpr=*/nullptr,
                                   clang::ArrayType::Normal, 0);
 }
