@@ -92,6 +92,7 @@ public:
 
   clang::Expr *elaborateDeclTypeOp(const AtomSyntax *Name, const CallSyntax *S);
   clang::Expr *elaborateNoExceptOp(const AtomSyntax *Name, const CallSyntax *S);
+  clang::Expr *elaborateTypeidOp(const AtomSyntax *Name, const CallSyntax *S);
 
 
   clang::Expr *elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op,

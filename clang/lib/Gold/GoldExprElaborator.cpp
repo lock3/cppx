@@ -1408,26 +1408,27 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   return handleExpressionResultCall(SemaRef, S, CalleeExpr, Args);
 }
 
-/// This returns false if the keyword is a builtin function.
-static bool isBuitinOperator(const CallSyntax *S) {
+/// This returns true if the keyword is a builtin function.
+static bool isBuiltinOperator(const CallSyntax *S) {
   if (const auto *Atom = dyn_cast<AtomSyntax>(S->getCallee())) {
     switch (Atom->Tok.getKind()) {
       case tok::AlignOfKeyword:
       case tok::SizeOfKeyword:
       case tok::NoExceptKeyword:
       case tok::DeclTypeKeyword:
-        return false;
+      case tok::TypeidKeyword:
+        return true;
       default:
         break;
     }
   }
-  return true;
+  return false;
 }
 
 clang::Expr *ExprElaborator::elaborateBuiltinOperator(const CallSyntax *S) {
-  if (isBuitinOperator(S)) {
+  if (!isBuiltinOperator(S))
     return nullptr;
-  }
+
   const AtomSyntax *Atom = cast<AtomSyntax>(S->getCallee());
   switch (Atom->Tok.getKind()) {
   case tok::NoExceptKeyword:
@@ -1441,6 +1442,9 @@ clang::Expr *ExprElaborator::elaborateBuiltinOperator(const CallSyntax *S) {
 
   case tok::SizeOfKeyword:
     return elaborateTypeTraitsOp(Atom, S, clang::UETT_SizeOf);
+
+  case tok::TypeidKeyword:
+    return elaborateTypeidOp(Atom, S);
   default:
     llvm_unreachable("Invalid buildin function elaboration.");
   }
@@ -1547,6 +1551,45 @@ ExprElaborator::elaborateDeclTypeOp(const AtomSyntax *Name,
                                                    S->getArgument(0)->getLoc());
 
   return SemaRef.buildTypeExpr(Ty, S->getArgument(0)->getLoc());
+}
+
+clang::Expr *ExprElaborator::elaborateTypeidOp(const AtomSyntax *Name,
+                                               const CallSyntax *S) {
+  assert(Name->Tok.hasKind(tok::TypeidKeyword) && "invalid typeid syntax");
+  if (S->getNumArguments() != 1) {
+    SemaRef.Diags.Report(Name->getLoc(),
+                         clang::diag::err_incorrect_number_of_arguments)
+      << Name->getSpelling();
+    return nullptr;
+  }
+
+  // Entering decltype context for evaluation of subexpression.
+  clang::EnterExpressionEvaluationContext Unevaluated(SemaRef.getCxxSema(),
+                 clang::Sema::ExpressionEvaluationContext::Unevaluated, nullptr,
+                 clang::Sema::ExpressionEvaluationContextRecord::EK_Decltype);
+  const Syntax *ArgSyntax = S->getArgument(0);
+  clang::Expr *ArgEval = doElaborateExpr(ArgSyntax);
+  if (!ArgEval)
+    return nullptr;
+
+  if (ArgEval->getType()->isNamespaceType() ||
+      ArgEval->getType()->isTemplateType()  ||
+      isa<clang::CppxDeclRefExpr>(ArgEval)) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "operand to 'typeid' must have type of "
+                                    "types or value type");
+    SemaRef.Diags.Report(S->getLoc(), DiagID);
+    return nullptr;
+  }
+
+  clang::ExprResult Res =
+    SemaRef.getCxxSema().ActOnCXXTypeid(S->getLoc(), ArgSyntax->getLoc(),
+                                        ArgEval->getType()->isTypeOfTypes(),
+                                        ArgEval, ArgSyntax->getLoc());
+  if (Res.isInvalid())
+    return nullptr;
+  return Res.get();
 }
 
 clang::Expr *
