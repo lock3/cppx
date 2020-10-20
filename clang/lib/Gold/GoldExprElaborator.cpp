@@ -59,7 +59,8 @@ using TypeInfo = ExprElaborator::TypeInfo;
 ExprElaborator::ExprElaborator(SyntaxContext &Context, Sema &SemaRef,
       clang::DeclContext *DC, gold::Scope *GoldScope)
   : Context(Context), CxxAST(Context.CxxAST), SemaRef(SemaRef),
-  CurrentLookUpContext(DC), OwningScope(GoldScope)
+  ParenToListHelper(SemaRef, false), CurrentLookUpContext(DC),
+  OwningScope(GoldScope)
 { }
 
 clang::Expr *ExprElaborator::elaborateExpr(const Syntax *S) {
@@ -77,8 +78,16 @@ clang::Expr *ExprElaborator::doElaborateExpr(const Syntax *S) {
   if (isa<ElemSyntax>(S))
     return elaborateElementExpr(cast<ElemSyntax>(S));
   if (const ListSyntax *List = dyn_cast<ListSyntax>(S)) {
-    if (List->getNumChildren() == 1)
-      return doElaborateExpr(List->getChild(0));
+    if (List->getNumChildren() == 1) {
+      clang::Expr *E = doElaborateExpr(List->getChild(0));
+      if (SemaRef.getListIsParenExpr()) {
+        auto Ret = SemaRef.getCxxSema().ActOnParenExpr(
+                      List->getChild(0)->getLoc(), List->getChild(0)->getLoc(),
+                      E);
+        return Ret.get();
+      }
+      return E;
+    }
     SemaRef.Diags.Report(S->getLoc(),
                          clang::diag::err_failed_to_translate_expr);
   }
@@ -1327,7 +1336,6 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   if (clang::Expr *elaboratedCall = elaborateBuiltinOperator(S))
     return elaboratedCall;
 
-
   // Determining the type of call associated with the given syntax.
   // There are multiple kinds of atoms for multiple types of calls
   // but in the event that the callee object is not an Atom, it means
@@ -1419,6 +1427,9 @@ static bool isBuitinOperator(const CallSyntax *S) {
       case tok::SizeOfKeyword:
       case tok::NoExceptKeyword:
       case tok::DeclTypeKeyword:
+      case tok::UnaryRightFold:
+      case tok::UnaryLeftFold:
+      case tok::BinaryFold:
         return false;
       default:
         break;
@@ -1444,6 +1455,12 @@ clang::Expr *ExprElaborator::elaborateBuiltinOperator(const CallSyntax *S) {
 
   case tok::SizeOfKeyword:
     return elaborateTypeTraitsOp(Atom, S, clang::UETT_SizeOf);
+  case tok::UnaryRightFold:
+    return elaborateRightFoldExpr(Atom, S);
+  case tok::UnaryLeftFold:
+    return elaborateLeftFoldExpr(Atom, S);
+  case tok::BinaryFold:
+    return elaborateBinaryFoldExpr(Atom, S);
   default:
     llvm_unreachable("Invalid buildin function elaboration");
   }
@@ -1593,6 +1610,67 @@ ExprElaborator::elaborateNoExceptOp(const AtomSyntax *Name,
     return nullptr;
 
   return Result.get();
+}
+
+clang::Expr *ExprElaborator::elaborateRightFoldExpr(const AtomSyntax *Name,
+                                                    const CallSyntax *S) {
+  Sema::ParenExprRAII ParenExpr(SemaRef, true);
+  assert(Name && "Missing name");
+  assert(S && "Missing call syntax");
+  assert(Name->getToken().getKind() == tok::UnaryRightFold
+         && "Incorrect fold operator");
+  assert(S->getNumArguments() == 1 && "Incorrectly formatted AST");
+  const Syntax *OperandSyntax = S->getArgument(0);
+  clang::Expr *OperandExpr = elaborateExpr(OperandSyntax);
+  if (!OperandExpr)
+    return nullptr;
+  clang::Expr *Ret = SemaRef.actOnCxxFoldExpr(Name->getLoc(), OperandExpr,
+                                              Name->getToken(),
+                                              Name->getLoc(), nullptr,
+                                              OperandSyntax->getLoc());
+  return Ret;
+}
+
+clang::Expr *ExprElaborator::elaborateLeftFoldExpr(const AtomSyntax *Name,
+                                                   const CallSyntax *S) {
+  Sema::ParenExprRAII ParenExpr(SemaRef, true);
+  assert(Name && "Missing name");
+  assert(S && "Missing call syntax");
+  assert(Name->getToken().getKind() == tok::UnaryLeftFold
+         && "Incorrect fold operator");
+  assert(S->getNumArguments() == 1 && "Incorrectly formatted AST");
+  const Syntax *OperandSyntax = S->getArgument(0);
+  clang::Expr *OperandExpr = elaborateExpr(OperandSyntax);
+  if (!OperandExpr)
+    return nullptr;
+  clang::Expr *Ret = SemaRef.actOnCxxFoldExpr(Name->getLoc(), nullptr,
+                                              Name->getToken(),
+                                              Name->getLoc(), OperandExpr,
+                                              OperandSyntax->getLoc());
+  return Ret;
+}
+
+clang::Expr *ExprElaborator::elaborateBinaryFoldExpr(const AtomSyntax *Name,
+                                                     const CallSyntax *S) {
+  Sema::ParenExprRAII ParenExpr(SemaRef, true);
+  assert(Name && "Missing name");
+  assert(S && "Missing call syntax");
+  assert(Name->getToken().getKind() == tok::BinaryFold
+         && "Incorrect fold operator");
+  assert(S->getNumArguments() == 2 && "Incorrectly formatted AST");
+  const Syntax *LHSSyntax = S->getArgument(0);
+  clang::Expr *LHSExpr = elaborateExpr(LHSSyntax);
+  if (!LHSExpr)
+    return nullptr;
+  const Syntax *RHSSyntax = S->getArgument(1);
+  clang::Expr *RHSExpr = elaborateExpr(RHSSyntax);
+  if (!RHSExpr)
+    return nullptr;
+  clang::Expr *Ret = SemaRef.actOnCxxFoldExpr(LHSSyntax->getLoc(), LHSExpr,
+                                              Name->getToken(),
+                                              Name->getLoc(), RHSExpr,
+                                              RHSSyntax->getLoc());
+  return Ret;
 }
 
 clang::Expr *ExprElaborator::elaborateThrowExpr(const CallSyntax *S) {

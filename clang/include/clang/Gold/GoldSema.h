@@ -581,6 +581,12 @@ public:
   clang::IdentifierInfo *const OperatorParensII;
   clang::IdentifierInfo *const OperatorThrowII;
 
+  clang::IdentifierInfo *const OperatorRightFoldAnd;
+  clang::IdentifierInfo *const OperatorRightFoldOr;
+  clang::IdentifierInfo *const OperatorLeftFoldAnd;
+  clang::IdentifierInfo *const OperatorLeftFoldOr;
+
+
   // Tokens used for constructor and destructor;
   clang::IdentifierInfo *const ConstructorII;
   clang::IdentifierInfo *const DestructorII;
@@ -1018,6 +1024,36 @@ public:
     }
     ~AttrElabRAII() {
       SemaRef.setInsideAttributeExpr(PreviousAttributeElabStatus);
+    }
+  };
+private:
+  llvm::DenseMap<clang::IdentifierInfo *, clang::tok::TokenKind> FoldOpToClangKind;
+public:
+
+  clang::Expr *actOnCxxFoldExpr(clang::SourceLocation LParenLoc,
+                               clang::Expr *LHS, const Token &FoldTok,
+                               clang::SourceLocation EllipsisLoc,
+                               clang::Expr *RHS,
+                               clang::SourceLocation RParenLoc);
+private:
+  bool ListIsParenExpr = false;
+public:
+  bool getListIsParenExpr() const { return ListIsParenExpr; }
+  void setListIsParenExpr(bool Val) { ListIsParenExpr = Val; }
+
+  struct ParenExprRAII {
+    Sema &SemaRef;
+    bool PreviousValue;
+  public:
+    ParenExprRAII(Sema &S, bool IsParenExpr)
+      :SemaRef(S),
+      PreviousValue(S.getListIsParenExpr())
+    {
+      SemaRef.setListIsParenExpr(IsParenExpr);
+    }
+
+    ~ParenExprRAII() {
+      SemaRef.setListIsParenExpr(PreviousValue);
     }
   };
 };

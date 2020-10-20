@@ -1476,4 +1476,8 @@ def note_max_tokens_total_override : Note<"total token limit set here">;
 def warn_implict_anonymous_scope : Warning<
   "implicitly anonymous nested array, add '_' to silence this warning">;
 
+def err_invalid_fold : Error<
+  "%select{%1 ... %1|%1 ... |... %1}0 invalid fold "
+  "%select{operator|expression}2">;
+
 } // end of Parser diagnostics

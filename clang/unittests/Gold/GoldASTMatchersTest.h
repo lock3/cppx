@@ -147,6 +147,27 @@ AST_POLYMORPHIC_MATCHER(methodHasRefQualifier,
 }
 
 
+AST_POLYMORPHIC_MATCHER_P(hasLHSExpr,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(CXXFoldExpr),
+                          internal::Matcher<Expr>, InnerMatcher) {
+  const Expr *LeftHandSide = Node.getLHS();
+  return (LeftHandSide != nullptr &&
+          InnerMatcher.matches(*LeftHandSide, Finder, Builder));
+}
+
+AST_POLYMORPHIC_MATCHER_P(hasRHSExpr,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(CXXFoldExpr),
+                          internal::Matcher<Expr>, InnerMatcher) {
+  const Expr *RightHandSide = Node.getRHS();
+  return (RightHandSide != nullptr &&
+          InnerMatcher.matches(*RightHandSide, Finder, Builder));
+}
+
+AST_POLYMORPHIC_MATCHER_P(hasOperator,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(CXXFoldExpr),
+                          BinaryOperatorKind, OpKind) {
+  return Node.getOperator() == OpKind;
+}
 
 using clang::tooling::buildASTFromCodeWithArgs;
 using clang::tooling::newFrontendActionFactory;

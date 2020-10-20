@@ -20,6 +20,7 @@
 #include "llvm/ADT/PointerUnion.h"
 
 #include "clang/Gold/GoldSyntax.h"
+#include "clang/Gold/GoldSema.h"
 
 #include <unordered_map>
 #include <string>
@@ -49,7 +50,7 @@ class ExprElaborator {
   clang::ASTContext &CxxAST;
 
   Sema &SemaRef;
-
+  Sema::ParenExprRAII ParenToListHelper;
   /// This is only used when we have an explicitly specified name or explicit
   /// member access namespace look up.
   clang::DeclContext *CurrentLookUpContext = nullptr;
@@ -92,6 +93,9 @@ public:
 
   clang::Expr *elaborateDeclTypeOp(const AtomSyntax *Name, const CallSyntax *S);
   clang::Expr *elaborateNoExceptOp(const AtomSyntax *Name, const CallSyntax *S);
+  clang::Expr *elaborateRightFoldExpr(const AtomSyntax *Name, const CallSyntax *S);
+  clang::Expr *elaborateLeftFoldExpr(const AtomSyntax *Name, const CallSyntax *S);
+  clang::Expr *elaborateBinaryFoldExpr(const AtomSyntax *Name, const CallSyntax *S);
 
 
   clang::Expr *elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op,

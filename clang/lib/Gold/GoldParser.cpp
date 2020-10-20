@@ -134,8 +134,16 @@ static Syntax *makeOperator(const SyntaxContext &Ctx,
                             Parser &P,
                             clang::SourceLocation Loc,
                             llvm::StringRef Op);
+
+static Syntax *makeOperator(const SyntaxContext &Ctx,
+                            Parser &P,
+                            TokenKind TK,
+                            clang::SourceLocation Loc,
+                            llvm::StringRef Op);
+
 static Syntax *makeList(const SyntaxContext &Ctx,
                         std::initializer_list<Syntax *> List);
+
 static Attribute *makeAttr(const SyntaxContext &Ctx, Syntax *Arg);
 
 Parser::Parser(SyntaxContext &Context, clang::SourceManager &SM, File const& F,
@@ -314,12 +322,7 @@ Syntax *Parser::parseList(ArraySemantic S)
 }
 
 // Parse the list and populate the vector.
-void Parser::parseList(llvm::SmallVectorImpl<Syntax *> &Vec)
-{
-  if (nextTokenIs(tok::LeftParen)) {
-    if (scanFolds())
-      llvm::outs() << "!! FOLD EXPRESSION DETECTED !!\n";
-  }
+void Parser::parseList(llvm::SmallVectorImpl<Syntax *> &Vec) {
 
   Syntax *Expr = parseExpr();
   appendTerm(Vec, Expr);
@@ -443,6 +446,11 @@ static bool isAssignmentOperator(TokenKind K) {
   }
 }
 
+bool isAssignmentOperatorFromParser(Parser &P) {
+  return isAssignmentOperator(P.getLookahead());
+}
+
+// static Syntax *invalidBinary
 // def:
 //    or assignment-operator def
 //    or ! braced-array
@@ -466,6 +474,11 @@ static bool isAssignmentOperator(TokenKind K) {
 // uses of right recursion in the grammar.
 Syntax *Parser::parseDef() {
   Syntax *def = parseOr();
+  if (InsideKnownFoldExpr && !ParseFoldOp) {
+    def = parseDefFold(def);
+  } else if (InsideKnownFoldExpr && ParseFoldOp) {
+    return def;
+  }
 
   if (Token op = matchTokenIf(isAssignmentOperator)) {
     Syntax *val = parseDef();
@@ -494,6 +507,18 @@ Syntax *Parser::parseDef() {
   }
 
   return def;
+}
+
+Syntax *Parser::parseDefFold(Syntax *E1) {
+  if (nextOperatorIsFold(isAssignmentOperatorFromParser)) {
+    if (nextTokensMatchBinaryFoldOp()) {
+      Token Op = consumeToken();
+      Token Ellipsis = consumeToken();
+      Op = consumeToken();
+      return onBinaryFoldExpr(Op, Ellipsis, E1, parseOr());
+    }
+  }
+  return E1;
 }
 
 static bool isOrOperator(Parser& P) {
@@ -525,9 +550,27 @@ Syntax *Parser::parseExpansion() {
 //    "or"
 Syntax *Parser::parseOr() {
   Syntax *E1 = parseAnd();
+  if (InsideKnownFoldExpr && !ParseFoldOp) {
+    return parseOrFold(E1);
+  } else if (InsideKnownFoldExpr && ParseFoldOp) {
+    return E1;
+  }
+
   while (Token Op = matchTokens(isOrOperator, *this)) {
     Syntax *E2 = parseAnd();
     E1 = onBinary(Op, E1, E2);
+  }
+  return E1;
+}
+
+Syntax *Parser::parseOrFold(Syntax *E1) {
+  if (nextOperatorIsFold(isOrOperator)) {
+    if (nextTokensMatchBinaryFoldOp()) {
+      Token Op = consumeToken();
+      Token Ellipsis = consumeToken();
+      Op = consumeToken();
+      return onBinaryFoldExpr(Op, Ellipsis, E1, parseAnd());
+    }
   }
   return E1;
 }
@@ -536,6 +579,8 @@ static auto isAndOperator(Parser &P) {
   return P.nextTokenIs(tok::AmpersandAmpersand) || P.nextTokenIs("and")
     || P.nextTokenIs(tok::Ampersand);
 }
+
+
 // and:
 //    cmp
 //    and and-operator cmp
@@ -547,6 +592,11 @@ static auto isAndOperator(Parser &P) {
 //    "and"
 Syntax *Parser::parseAnd() {
   Syntax *E1 = parseBitShift();
+  if (InsideKnownFoldExpr && !ParseFoldOp) {
+    E1 = parseAndFold(E1);
+  } else if (InsideKnownFoldExpr && ParseFoldOp) {
+    return E1;
+  }
   while (Token Op = matchTokens(isAndOperator, *this)) {
     Syntax *E2 = parseBitShift();
     E1 = onBinary(Op, E1, E2);
@@ -554,6 +604,17 @@ Syntax *Parser::parseAnd() {
   return E1;
 }
 
+Syntax *Parser::parseAndFold(Syntax *E1) {
+  if (nextOperatorIsFold(isAndOperator)) {
+    if (nextTokensMatchBinaryFoldOp()) {
+      Token Op = consumeToken();
+      Token Ellipsis = consumeToken();
+      Op = consumeToken();
+      return onBinaryFoldExpr(Op, Ellipsis, E1, parseBitShift());
+    }
+  }
+  return E1;
+}
 
 
 static bool isLogicalUnaryOperator(Parser& P) {
@@ -592,12 +653,30 @@ static bool isBitShiftOperator(Parser &P) {
 
 Syntax *Parser::parseBitShift() {
   Syntax *E1 = parseCmp();
+  if (InsideKnownFoldExpr && !ParseFoldOp) {
+    E1 = parseBitShiftFold(E1);
+  } else if (InsideKnownFoldExpr && ParseFoldOp) {
+    return E1;
+  }
   while (Token Op = matchTokens(isBitShiftOperator, *this)) {
     Syntax *E2 = parseCmp();
     E1 = onBinary(Op, E1, E2);
   }
   return E1;
 }
+
+Syntax *Parser::parseBitShiftFold(Syntax *E1) {
+  if (nextOperatorIsFold(isBitShiftOperator)) {
+    if (nextTokensMatchBinaryFoldOp()) {
+      Token Op = consumeToken();
+      Token Ellipsis = consumeToken();
+      Op = consumeToken();
+      return onBinaryFoldExpr(Op, Ellipsis, E1, parseCmp());
+    }
+  }
+  return E1;
+}
+
 /// cmp:
 ///    to
 ///    cmp relational-operator to
@@ -610,14 +689,30 @@ Syntax *Parser::parseCmp() {
     return onUnary(op, e1);
   }
 
-  Syntax *e1 = parseTo();
-
-  while (Token op = matchTokens(is_relational_operator, *this)) {
-    Syntax *e2 = parseTo();
-    e1 = onBinary(op, e1, e2);
+  Syntax *E1 = parseTo();
+  if (InsideKnownFoldExpr && !ParseFoldOp) {
+    E1 = parseCmpFold(E1);
+  } else if (InsideKnownFoldExpr && ParseFoldOp) {
+    return E1;
+  }
+  while (Token Op = matchTokens(is_relational_operator, *this)) {
+    Syntax *E2 = parseTo();
+    E1 = onBinary(Op, E1, E2);
   }
 
-  return e1;
+  return E1;
+}
+
+Syntax *Parser::parseCmpFold(Syntax *E1) {
+  if (nextOperatorIsFold(is_relational_operator)) {
+    if (nextTokensMatchBinaryFoldOp()) {
+      Token Op = consumeToken();
+      Token Ellipsis = consumeToken();
+      Op = consumeToken();
+      return onBinaryFoldExpr(Op, Ellipsis, E1, parseTo());
+    }
+  }
+  return E1;
 }
 
 bool isToOperator(Parser& P) {
@@ -660,9 +755,26 @@ bool isAddOperator(Parser& P) {
 ///   ..
 Syntax *Parser::parseAdd() {
   Syntax *E1 = parseMul();
+  if (InsideKnownFoldExpr && !ParseFoldOp) {
+    E1 = parseAddFold(E1);
+  } else if (InsideKnownFoldExpr && ParseFoldOp) {
+    return E1;
+  }
   while (Token Op = matchTokens(isAddOperator, *this)) {
     Syntax *E2 = parseMul();
     E1 = onBinary(Op, E1, E2);
+  }
+  return E1;
+}
+
+Syntax *Parser::parseAddFold(Syntax *E1) {
+  if (nextOperatorIsFold(isAddOperator)) {
+    if (nextTokensMatchBinaryFoldOp()) {
+      Token Op = consumeToken();
+      Token Ellipsis = consumeToken();
+      Op = consumeToken();
+      return onBinaryFoldExpr(Op, Ellipsis, E1, parseMul());
+    }
   }
   return E1;
 }
@@ -677,11 +789,113 @@ static bool isMulOperator(Parser& P) {
 ///   pre mul-operator pre
 Syntax *Parser::parseMul() {
   Syntax *E1 = parsePre();
+  if (InsideKnownFoldExpr && !ParseFoldOp) {
+    E1 = parseMulFold(E1);
+  } else if (InsideKnownFoldExpr && ParseFoldOp) {
+    return E1;
+  }
   while (Token Op = matchTokens(isMulOperator, *this)) {
     Syntax *E2 = parsePre();
     E1 = onBinary(Op, E1, E2);
   }
   return E1;
+}
+
+Syntax *Parser::parseMulFold(Syntax *E1) {
+  if (nextOperatorIsFold(isMulOperator)) {
+    if (nextTokensMatchBinaryFoldOp()) {
+      Token Op = consumeToken();
+      Token Ellipsis = consumeToken();
+      Op = consumeToken();
+      return onBinaryFoldExpr(Op, Ellipsis, E1, parsePre());
+    }
+  }
+  return E1;
+}
+
+static bool isFoldableOperator(const Token &T);
+
+bool Parser::nextTokensMatchBinaryFoldOp(TokenKind TK) {
+  return nextTokenIs(TK) && nthTokenIs(1, tok::Ellipsis) &&
+         nthTokenIs(2, TK);
+}
+
+bool Parser::nextTokensMatchBinaryFoldOp() {
+  Token NextToken = peekToken();
+  return isFoldableOperator(NextToken) && nthTokenIs(1, tok::Ellipsis) &&
+         nthTokenIs(2, NextToken.getKind());
+}
+
+static bool isUnaryFoldOperator(Parser &P) {
+  auto Tok = P.peekToken();
+  switch(Tok.getKind()) {
+    case tok::Identifier:
+      return (Tok.getSpelling() == "or" || Tok.getSpelling() == "and");
+    case tok::AmpersandAmpersand:
+    case tok::BarBar:
+      return true;
+    default:
+      return false;
+  }
+}
+
+Syntax *Parser::parseFoldExpr(FoldKind FK) {
+  EnclosingParens parens(*this);
+  if (!parens.expectOpen())
+    return onError();
+  FoldSubExprRAII FoldRAII(*this, true);
+  GreaterThanIsOperatorScope GTIOS(GreaterThanIsOperator, true);
+  Syntax *E = nullptr;
+  switch(FK) {
+    case FK_Unary_Left:{
+      // Need to consume tokens.
+      Token EllipsisToken = matchToken(tok::Ellipsis);
+      Token OperatorToken = matchTokens(isUnaryFoldOperator, *this);
+      if (!OperatorToken) {
+        Token InvalidOpTok = consumeToken();
+        Diags.Report(InvalidOpTok.getLocation(), clang::diag::err_invalid_fold)
+            << /*left*/2 << InvalidOpTok.getSpelling() << /*operator*/0;
+        return onError();
+      }
+      // In the event we are a LHS fold expression, we skip all of the
+      // other expression stuff and skip right to parsePrimary, because none of
+      // the other operators are able to be used as part of the expression.
+      Syntax *FoldOperand = parsePre();
+      E = onUnaryFoldExpr(FD_Left, OperatorToken, EllipsisToken, FoldOperand);
+    }
+    break;
+    case FK_Unary_Right:{
+      // Parse primary expression.
+      Syntax *FoldOperand = parsePre();
+
+      // Need to consume tokens.
+      Token OperatorToken = matchTokens(isUnaryFoldOperator, *this);
+      Token EllipsisToken = matchToken(tok::Ellipsis);
+
+      if (!OperatorToken) {
+        Token InvalidOpTok = consumeToken();
+        Diags.Report(InvalidOpTok.getLocation(), clang::diag::err_invalid_fold)
+            << /*right*/1 << InvalidOpTok.getSpelling() << /*operator*/0;
+        return onError();
+      }
+
+      // Parsing the suffix version of the operator.
+      E = onUnaryFoldExpr(FD_Right, OperatorToken, EllipsisToken, FoldOperand);
+    }
+    break;
+    case FK_Binary:{
+      E = parseExpr();
+    }
+    break;
+    default:
+      llvm_unreachable("Invalid fold expression kind");
+  }
+
+  Syntax *Seq = onList(ArgArray, llvm::SmallVector<Syntax *, 1>({E}));
+  if (!parens.expectClose())
+    return onError();
+
+  return Seq;
 }
 
 Syntax *Parser::parseIf()
@@ -977,7 +1191,6 @@ static void trackEnclosureDepth(Token Enclosure,
       --Track.EnclosureCounts[K];
     if (!Track.Enclosures.empty())
       Track.Enclosures.pop_back();
-
     return;
   }
 
@@ -1050,17 +1263,46 @@ bool Parser::scanAngles(Syntax *Base) {
 }
 
 // Returns true if T is an operator that appears in a fold expression.
-static bool isFoldableOperator(const Token &T) {
+bool isFoldableOperator(const Token &T) {
   if (T.isFused())
     return false;
-  if (T.getKind() >= tok::Plus && T.getKind() <= tok::Caret)
-    return true;
-  if (T.getKind() >= tok::EqualEqual && T.getKind() <= tok::GreaterGreaterEqual)
-    return true;
-  return false;
+  switch(T.getKind()) {
+    case tok::Plus:
+    case tok::Minus:
+    case tok::Star:
+    case tok::Slash:
+    case tok::Percent:
+    case tok::Caret:
+    case tok::Ampersand:
+    case tok::Bar:
+    case tok::Equal:
+    case tok::Less:
+    case tok::Greater:
+    case tok::LessLess:
+    case tok::GreaterGreater:
+    case tok::PlusEqual:
+    case tok::MinusEqual:
+    case tok::StarEqual:
+    case tok::SlashEqual:
+    case tok::PercentEqual:
+    case tok::CaretEqual:
+    case tok::AmpersandEqual:
+    case tok::BarEqual:
+    case tok::LessLessEqual:
+    case tok::GreaterGreaterEqual:
+    case tok::EqualEqual:
+    case tok::LessGreater:
+    case tok::LessEqual:
+    case tok::GreaterEqual:
+    case tok::AmpersandAmpersand:
+    case tok::BarBar:
+      return true;
+    default:
+      return false;
+  }
 }
 
-bool Parser::scanFolds() {
+Parser::FoldKind Parser::scanForFoldExpr() {
   // We can abuse the nesting tracker of the AngleBracketTracker, since
   // attributes never appear in folds.
   AngleBracketTracker::Loc StartLoc{PreviousToken.getLocation(),
@@ -1068,64 +1310,81 @@ bool Parser::scanFolds() {
                                      Folds.EnclosureCounts[1],
                                      Folds.EnclosureCounts[2],
                                      Folds.EnclosureCounts[3]}};
-  unsigned I = 0;
-  bool EllipsisFound = false;
-  bool OperatorFound = false;
+  // Checking for simple Unary left fold
+  // This is also the only case where the ellipsis can preceed the operator.
+  if (peekToken(1).hasKind(tok::Ellipsis))
+    return FK_Unary_Left;
+
+  unsigned I = 1;
+  std::size_t ScanningDepth = 0;
   while (true) {
     Token Current = peekToken(I++);
-
-    // Quit at the end of the line, or end of file in the case of the
-    // rare one-line program.
-    if (Current.isNewline() || Current.isEndOfFile())
-      return false;
-
-    // Newlines might be recognized as separators rather than newline tokens.
-    if (Current.hasKind(tok::Separator))
-      if (*(Current.getSymbol().data()) == '\n')
-        return false;
-
-    // If the programmer has used semicolons instead of newlines, we need
-    // to be sure the semicolon is actually ending the line; in other words,
-    // at a shallower depth than the starting `(`.
-    if (Current.hasKind(tok::Semicolon)) {
-      AngleBracketTracker::Loc SemiLoc{Current.getLocation(),
-                                       {Folds.EnclosureCounts[0],
-                                        Folds.EnclosureCounts[1],
-                                        Folds.EnclosureCounts[2],
-                                        Folds.EnclosureCounts[3]}};
-      if (SemiLoc < StartLoc)
-        return false;
-
-      // If the semicolon came after an ellipsis, this isn't a fold.
-      if (EllipsisFound)
-        return false;
-
-      // We reached a semicolon in some sort of nested list (or typo). We
-      // already know we don't care about this token so just skip ahead.
+    if (Current.hasKind(tok::LeftParen)) {
+      ++ScanningDepth;
       continue;
     }
+    if (ScanningDepth) {
+      // Simply ignore sub-expressions because they will be scanned later on.
+      // all we are interested in is the current expression.
+      if (Current.hasKind(tok::RightParen)) {
+        --ScanningDepth;
+        continue;
+      }
+      if (Current.isEndOfFile())
+        return FK_None;
+    } else {
+      if (Current.hasKind(tok::LeftParen)) {
+        ++ScanningDepth;
+        continue;
+      }
+      // Quit at the end of the line, or end of file in the case of the
+      // rare one-line program.
+      if (Current.hasKind(tok::RightParen) || Current.isNewline()
+          || Current.isEndOfFile())
+        return FK_None;
 
-    if (isNonAngleEnclosure(Current.getKind()))
-      trackEnclosureDepth(Current, Folds);
+      // Newlines might be recognized as separators rather than newline tokens.
+      if (Current.hasKind(tok::Separator))
+        if (*(Current.getSymbol().data()) == '\n')
+          return FK_None;
 
-    if (EllipsisFound) {
-      // If a foldable operator follows an ellipsis, this is a fold.
-      if (isFoldableOperator(Current))
-        return true;
-      EllipsisFound = false;
-    } else if (OperatorFound) {
-      // If an ellipsis ffollows a foldable operator, this is a fold.
-      if (Current.hasKind(tok::Ellipsis))
-        return true;
-      OperatorFound = false;
+      // If the programmer has used semicolons instead of newlines, we need
+      // to be sure the semicolon is actually ending the line; in other words,
+      // at a shallower depth than the starting `(`.
+      if (Current.hasKind(tok::Semicolon)) {
+        AngleBracketTracker::Loc SemiLoc{Current.getLocation(),
+                                        {Folds.EnclosureCounts[0],
+                                          Folds.EnclosureCounts[1],
+                                          Folds.EnclosureCounts[2],
+                                          Folds.EnclosureCounts[3]}};
+        if (SemiLoc < StartLoc)
+          return FK_None;
+
+        // We reached a semicolon in some sort of nested list (or typo). We
+        // already know we don't care about this token so just skip ahead.
+        continue;
+      }
+
+      if (isNonAngleEnclosure(Current.getKind()))
+        trackEnclosureDepth(Current, Folds);
+
+      if (isFoldableOperator(Current)) {
+        Token NextPeekTok = peekToken(I);
+        if (NextPeekTok.hasKind(tok::Ellipsis)) {
+          Token PossibleBinaryOp = peekToken(I + 1);
+          // Minimally we are a unary right fold expression.
+          if (PossibleBinaryOp.getKind() == Current.getKind()) {
+            return FK_Binary;
+          } else {
+            return FK_Unary_Right;
+          }
+        }
+      }
     }
-
-    if (Current.hasKind(tok::Ellipsis))
-      EllipsisFound = true;
-    else if (isFoldableOperator(Current))
-      OperatorFound = true;
   }
 }
+
+
 
 /// postfix:
 ///   base
@@ -1414,8 +1673,13 @@ Syntax *Parser::parsePrimary() {
            "outside of attributes");
     return onAtom(consumeToken());
 
-  case tok::LeftParen:
+  case tok::LeftParen:{
+    FoldKind ScanResult = scanForFoldExpr();
+    if (ScanResult != FK_None)
+      return parseFoldExpr(ScanResult);
+
     return parseParen();
+  }
 
   case tok::Colon:
     // Report warning for missing _ before :
@@ -1491,6 +1755,7 @@ Syntax *Parser::parseId() {
 }
 
 Syntax *Parser::parseParen() {
+  FoldSubExprRAII FoldRAII(*this, false);
   EnclosingParens parens(*this);
   if (!parens.expectOpen())
     return onError();
@@ -1628,7 +1893,7 @@ Syntax *Parser::parseCatchSequence(Syntax *Contents) {
 // Semantic actions
 
 // Returns the identifier 'operator\'<op>\''.
-static Syntax *makeOperator(const SyntaxContext &Ctx,
+Syntax *makeOperator(const SyntaxContext &Ctx,
                             Parser &P,
                             clang::SourceLocation Loc,
                             llvm::StringRef Op)
@@ -1637,6 +1902,19 @@ static Syntax *makeOperator(const SyntaxContext &Ctx,
   std::string Name = "operator'" + std::string(Op) + "'";
   Symbol Sym = getSymbol(Name);
   Token Tok(tok::Identifier, Loc, Sym);
+  return P.onAtom(Tok);
+}
+
+Syntax *makeOperator(const SyntaxContext &Ctx,
+                            Parser &P,
+                            TokenKind TK,
+                            clang::SourceLocation Loc,
+                            llvm::StringRef Op)
+{
+  // FIXME: Make this a fused operator?
+  std::string Name = "operator'" + std::string(Op) + "'";
+  Symbol Sym = getSymbol(Name);
+  Token Tok(TK, Loc, Sym);
   return P.onAtom(Tok);
 }
 
@@ -1883,6 +2161,96 @@ Syntax *Parser::onLoop(Token const& Tok, Syntax *e1, Syntax *e2) {
 
 Syntax *Parser::onFile(const llvm::SmallVectorImpl<Syntax*> &Vec) {
   return new (Context) FileSyntax(createArray(Context, Vec), Vec.size());
+}
+
+Syntax *Parser::onUnaryFoldExpr(FoldDirection Dir, const Token &Operator,
+                                const Token &Ellipsis, Syntax *E) {
+  TokenKind TK;
+  std::string OperatorText;
+  std::string NormalizedSpelling;
+  switch(Operator.getKind()) {
+    case tok::AmpersandAmpersand:
+      NormalizedSpelling = "&&";
+      break;
+    case tok::Identifier:
+      if (Operator.getSpelling() == "or") {
+        NormalizedSpelling = "||";
+      } else if (Operator.getSpelling() == "and") {
+        NormalizedSpelling = "&&";
+      } else {
+        // FIXME: This may need a real error message.
+        llvm_unreachable("Invalid unary fold operator?!");
+      }
+      break;
+    case tok::BarBar:
+      NormalizedSpelling = "||";
+      break;
+    default:
+      assert("Invalid token identification.");
+  }
+  switch(Dir) {
+    case FD_Left:
+      TK = tok::UnaryLeftFold;
+      OperatorText = "... " + NormalizedSpelling;
+      break;
+    case FD_Right:
+      TK = tok::UnaryRightFold;
+      OperatorText = NormalizedSpelling + " ...";
+      break;
+    default:
+      llvm_unreachable("Invalid unary fold expression side.");
+  }
+  ParseFoldOp = true;
+  Syntax *CallOp = makeOperator(Context, *this, TK, Operator.getLocation(),
+                                OperatorText);
+  return onCall(CallOp, onList(ArgArray, llvm::SmallVector<Syntax *, 1>({E})));
+}
+
+Syntax *Parser::onBinaryFoldExpr(const Token &Operator,
+                                 const Token &Ellipsis,
+                                 Syntax *LHS, Syntax *RHS) {
+  std::string OperatorText;
+  std::string NormalizedSpelling;
+  switch(Operator.getKind()) {
+    case tok::AmpersandAmpersand:
+      NormalizedSpelling = "&&";
+      break;
+    case tok::Identifier:
+      if (Operator.getSpelling() == "or") {
+        NormalizedSpelling = "||";
+      } else if (Operator.getSpelling() == "and") {
+        NormalizedSpelling = "&&";
+      } else {
+        Diags.Report(getInputLocation(), clang::diag::err_invalid_fold)
+          << /*binary*/0 << Operator.getSpelling() << /*operator*/0;
+        NormalizedSpelling = Operator.getSpelling();
+      }
+      break;
+    case tok::BarBar:
+      NormalizedSpelling = "||";
+      break;
+
+    default:
+      // Handling all other operator names.
+      NormalizedSpelling = Operator.getSymbol().str();
+  }
+  OperatorText = NormalizedSpelling + " ... " + NormalizedSpelling;
+  ParseFoldOp = true;
+  Syntax *CallOp = makeOperator(Context, *this, tok::BinaryFold, Operator.getLocation(),
+                                OperatorText);
+  return onCall(CallOp, onList(ArgArray, llvm::SmallVector<Syntax *, 1>({LHS, RHS})));
+}
+
+Syntax *Parser::onInvalidRightUnaryFoldOperator() {
+  // Always consume both operator and ellipsis
+  Diags.Report(getInputLocation(), clang::diag::err_invalid_fold)
+      << /*right*/1 << peekToken().getSpelling() << /*operator*/0;
+  // Consume the operator and the ellipsis and return an error.
+  consumeToken();
+  consumeToken();
+  return onError();
+
+
 }
 
 Syntax *Parser::onError() const {
