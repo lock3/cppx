@@ -1441,7 +1441,6 @@ static bool isBuiltinOperator(const CallSyntax *S) {
       case tok::UnaryRightFold:
       case tok::UnaryLeftFold:
       case tok::BinaryFold:
-        return false;
       case tok::TypeidKeyword:
         return true;
       default:
