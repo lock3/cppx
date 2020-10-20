@@ -19,7 +19,7 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-TEST(ArrayMacro, ArrayIndexingOperatr) {
+TEST(ArrayMacro, ArrayIndexingOperator) {
   StringRef Code = R"(
 main() : int!
   a :[3]int = array{0, 1, 2}
@@ -27,4 +27,17 @@ main() : int!
 )";
 
   ASSERT_TRUE(matches(Code.str(), arraySubscriptExpr()));
+}
+
+TEST(ArrayType, MultidimensionalArray) {
+  StringRef Code = R"(
+main() : int!
+  x : [1, 1, 3]int
+  y = x[0, 0, 2]
+)";
+
+  auto YMatcher = arraySubscriptExpr(
+    hasBase(implicitCastExpr(hasSourceExpression(declRefExpr()))));
+
+  ASSERT_TRUE(matches(Code.str(), YMatcher));
 }

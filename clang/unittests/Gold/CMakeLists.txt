@@ -35,6 +35,7 @@ set(LLVM_LINK_COMPONENTS
 add_clang_unittest(GoldTests
   GoldAlignAsAttributeElab.cpp
   GoldArrayElab.cpp
+  GoldArrayExec.cpp
   GoldASTMatchersTest.cpp
   GoldAtom.cpp
   GoldAttributes.cpp
@@ -123,6 +124,7 @@ add_clang_unittest(GoldTests
   GoldUnionElab.cpp
   GoldUserDefinedLiteralElab.cpp
   GoldUserDefinedOperatorOverloadElab.cpp
+  GoldUsing.cpp
   GoldVarDeclStorageClass.cpp
   GoldVariableDeclElab.cpp
   GoldVariableTemplateElab.cpp

@@ -26,8 +26,8 @@
 #include "clang/Gold/ParseGoldAST.h"
 #include "clang/Gold/GoldSyntaxContext.h"
 #include "clang/Gold/GoldSyntax.h"
-
 #include "clang/Gold/GoldSyntaxVisitor.h"
+#include "clang/Gold/GoldTemplateCallback.h"
 
 namespace gold {
 
@@ -50,9 +50,15 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
   // front-end action that stops after parsing. Unfortunately, the flag
   // is in the FrontendOptions of the CompilerInstance, which doesn't seem
   // to be reachable from the arguments to this function.
+
   // Elaborate the resulting abstract syntax tree.
   Sema Sema(Context, ClangSema);
   Elaborator Elab(Context, Sema);
+
+  // Initialize the template instantiation observer chain.
+  ClangSema.TemplateInstCallbacks.push_back(
+    std::unique_ptr<GoldTemplateInstCallback>(new GoldTemplateInstCallback));
+  initialize(ClangSema.TemplateInstCallbacks, Sema);
 
   clang::TranslationUnitDecl *TU =
     cast<clang::TranslationUnitDecl>(Elab.elaborateFile(CST));
@@ -69,7 +75,7 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
   }
 
   Consumer->HandleTranslationUnit(ClangSema.getASTContext());
-  // finalize(ClangSema.TemplateInstCallbacks, ClangSema);
+  finalize(ClangSema.TemplateInstCallbacks, Sema);
 }
 
 } // namespace gold

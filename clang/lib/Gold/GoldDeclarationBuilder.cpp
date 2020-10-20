@@ -893,17 +893,17 @@ bool DeclarationBuilder::classifyDecl(const Syntax *DeclExpr,
   if (ConversionTypeSyntax)
     return checkClassifiedConversionOperator(DeclExpr, TheDecl);
 
-  if (TheDecl->IdDcl->isUserDefinedLiteral())
+  if (TheDecl->Decl->isUsingDirective()) {
+    TheDecl->SuspectedKind = UDK_UsingDirective;
+    return false;
+  }
+
+  if (TheDecl->IdDcl && TheDecl->IdDcl->isUserDefinedLiteral())
     return checkClassifyUserDefinedLiteralOperator(DeclExpr, TheDecl);
 
   // this is handled within checkEnumDeclaration
   if (TheDecl->SuspectedKind == UDK_EnumConstant)
     return false;
-
-  if (TheDecl->Decl->isUsingDirective()) {
-    TheDecl->SuspectedKind = UDK_UsingDirective;
-    return false;
-  }
 
   bool EncounteredError = false;
   if (isTagLikeDeclOrForwardDecl(SemaRef, TheDecl, EncounteredError)) {

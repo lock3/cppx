@@ -96,6 +96,8 @@ public:
   clang::Expr *elaborateRightFoldExpr(const AtomSyntax *Name, const CallSyntax *S);
   clang::Expr *elaborateLeftFoldExpr(const AtomSyntax *Name, const CallSyntax *S);
   clang::Expr *elaborateBinaryFoldExpr(const AtomSyntax *Name, const CallSyntax *S);
+  clang::Expr *elaborateTypeidOp(const AtomSyntax *Name, const CallSyntax *S);
+
 
 
   clang::Expr *elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op,

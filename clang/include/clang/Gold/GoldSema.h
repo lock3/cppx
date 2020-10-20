@@ -126,11 +126,11 @@ public:
   void IdentifyDecls(const ArraySyntax *S);
 
   /// Check if, within the current scope a access specifier is valid,
-  bool accessSpecifierIsValidInScope() const;
+  bool accessSpecifierIsValidInScope();
   // Scope management.
 
   /// Get the currently active Scope.
-  Scope *getCurrentScope();
+  Scope *getCurrentScope() const;
 
   /// Push a new scope.
   void pushScope(Scope *S);
@@ -189,8 +189,8 @@ public:
                                    Scope *S);
 
   /// This checks to see if we are within a class body scope currently.
-  bool scopeIsWithinClass();
-  bool scopeIsWithinClass(Scope *S);
+  bool scopeIsWithinClass() const;
+  bool scopeIsWithinClass(Scope *S) const;
 
   /// Gets a declaration for a scope, if available.
   clang::Decl *getDeclForScope();
@@ -323,6 +323,9 @@ public:
   /// scope stack for elaboration.
   ///
   unsigned computeTemplateDepth() const;
+
+// True when we are elaborating a using macro within a class.
+  bool elaboratingUsingInClassScope() const;
 
   /// ====================================================================== ///
   ///        Members that allow construction of the CppxLiteralType          ///
