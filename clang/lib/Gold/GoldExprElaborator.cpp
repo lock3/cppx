@@ -2879,7 +2879,7 @@ static bool isVarArgs(Sema &SemaRef, const Syntax *S) {
   return false;
 }
 
-// Handle a function type in the form of `() -> type`
+// Handle a function type of the form `() -> type`
 clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
   assert(S->getNumArguments() == 2 && "invalid operator'->' call");
 
@@ -2888,6 +2888,29 @@ clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
   bool IsVariadic = false;
 
   const Syntax *ParamBegin = S->getArgument(0);
+
+  // This might be a member function type.
+  clang::TypeSourceInfo *ClassType = nullptr;
+  if (const CallSyntax *MemPtr = dyn_cast<CallSyntax>(ParamBegin)) {
+    if (getFusedOpKind(SemaRef, MemPtr) != FOK_MemberAccess) {
+      SemaRef.Diags.Report(ParamBegin->getLoc(),
+                           clang::diag::err_invalid_param_list);
+      return nullptr;
+    }
+
+    clang::Expr *ClassTypeExpr =
+      ExprElaborator(Context, SemaRef).elaborateExpr(MemPtr->getArgument(0));
+    if (!ClassTypeExpr->getType()->isTypeOfTypes()) {
+      SemaRef.Diags.Report(ClassTypeExpr->getExprLoc(),
+                           clang::diag::err_invalid_type_for_name_spec)
+        << ClassTypeExpr->getType();
+      return nullptr;
+    }
+
+    ClassType = cast<clang::CppxTypeLiteral>(ClassTypeExpr)->getValue();
+    ParamBegin = MemPtr->getArgument(1);
+  }
+
   clang::SourceLocation EndLoc;
   if (const ListSyntax *ParamSyntaxes = dyn_cast<ListSyntax>(ParamBegin)) {
     Sema::ScopeRAII ParamScopeRAII(SemaRef, SK_Parameter, ParamBegin);
@@ -2954,6 +2977,16 @@ clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
     CxxAST.getFunctionType(ReturnType->getType(), Types, EPI);
   clang::QualType FnPtrTy = CxxAST.getPointerType(FnTy);
   FnPtrTy.addConst();
+
+  if (ClassType) {
+    clang::DeclarationName Name;
+    clang::QualType MemberTy =
+      SemaRef.getCxxSema().BuildMemberPointerType(FnTy, ClassType->getType(),
+                                                  S->getLoc(), Name);
+    clang::TypeSourceInfo *Ret =
+      BuildMemberPtrTypeLoc(CxxAST, MemberTy, Params, S->getLoc());
+    return SemaRef.buildTypeExpr(Ret);
+  }
 
   clang::TypeLocBuilder TLB;
   clang::TypeSourceInfo *FnTSI = BuildFunctionTypeLoc(Context.CxxAST, TLB, FnTy,

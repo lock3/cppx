@@ -154,7 +154,7 @@ template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::RValueReferenceT
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::MemberPointerTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  llvm_unreachable("use BuildMemberPointerType");
 }
 
 template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::MemberPointerTypeLoc>
@@ -785,7 +785,6 @@ TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context, QualType Ty,
                               ExceptionSpecRange, EndLoc, Params);
 }
 
-
 TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context,
     clang::TypeLocBuilder &TLB, QualType Ty, SourceLocation BeginLoc,
     SourceLocation LParenLoc, SourceLocation RParenLoc,
@@ -851,6 +850,35 @@ TypeSourceInfo *BuildFunctionPtrTypeLoc(clang::ASTContext &Context,
   FnPtrInstance.setStarLoc(Loc);
 
   return TLB.getTypeSourceInfo(Context, FnPtrTy);
+}
+
+TypeSourceInfo *BuildMemberPtrTypeLoc(clang::ASTContext &Context,
+                                      TypeLocBuilder &TLB,
+                                      clang::QualType Ty,
+                            llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params,
+                                      clang::SourceLocation Loc) {
+  assert(Ty->getAs<clang::MemberPointerType>());
+  const clang::MemberPointerType *MemTy = Ty->getAs<clang::MemberPointerType>();
+  clang::QualType InnerTy = MemTy->getPointeeType();
+  BuildFunctionTypeLoc(Context, TLB, InnerTy, Loc, Loc, Loc,
+                       clang::SourceRange(), Loc, Params);
+
+  clang::TypeLoc(InnerTy, nullptr).castAs<clang::FunctionTypeLoc>();
+
+  auto TypeLocInstance = TLB.push<clang::MemberPointerTypeLoc>(Ty);
+  TypeLocInstance.setStarLoc(Loc);
+  clang::TypeSourceInfo *ClassTInfo =
+    Context.getTrivialTypeSourceInfo(clang::QualType(MemTy->getClass(), 0));
+  TypeLocInstance.setClassTInfo(ClassTInfo);
+  return TLB.getTypeSourceInfo(Context, Ty);
+}
+
+TypeSourceInfo *BuildMemberPtrTypeLoc(clang::ASTContext &Context,
+                                      clang::QualType Ty,
+                            llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params,
+                                      clang::SourceLocation Loc) {
+  TypeLocBuilder TLB;
+  return BuildMemberPtrTypeLoc(Context, TLB, Ty, Params, Loc);
 }
 
 } // namespace gold
