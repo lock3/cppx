@@ -810,16 +810,19 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
       // We need to instantiate the template with parameters.
       if (clang::UnresolvedMemberExpr *MemAccess
               = dyn_cast<clang::UnresolvedMemberExpr>(OverloadExpr)) {
-        clang::FunctionTemplateDecl *FTD
-                                = dyn_cast<clang::FunctionTemplateDecl>(ND);
-        clang::FunctionDecl *FD
-            = SemaRef.getCxxSema().InstantiateFunctionDeclaration(FTD,
-              &TemplateArgList, Elem->getLoc());
+        auto *FTD = dyn_cast<clang::FunctionTemplateDecl>(ND);
+        clang::FunctionDecl *FD =
+          SemaRef.getCxxSema().InstantiateFunctionDeclaration(FTD,
+                                                              &TemplateArgList,
+                                                              Elem->getLoc());
         if (!FD) {
-          // TODO: Create error message for this.
-          llvm_unreachable("Function template instantiation failure Need to "
-                           "do SFINAE here");
+          unsigned DiagID =
+            SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                          "function template instantiation failure");
+          SemaRef.Diags.Report(Elem->getLoc(), DiagID);
+          return nullptr;
         }
+
         SemaRef.getCxxSema().InstantiateFunctionDefinition(Elem->getLoc(), FD,
                                                            true, true, false);
         return clang::MemberExpr::Create(Context.CxxAST, MemAccess->getBase(),
@@ -836,18 +839,27 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
       }
     } else if (clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(ND)) {
       if (FD->getTemplatedKind() == clang::FunctionDecl::TK_NonTemplate) {
-        // TODO: Create error message for here.
-        llvm_unreachable("Function is not a template unable to continue");
+        unsigned DiagID =
+          SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                        "function is not a template");
+        SemaRef.Diags.Report(Elem->getLoc(), DiagID);
+        return nullptr;
       }
+
       clang::FunctionTemplateDecl *FTD = FD->getDescribedFunctionTemplate();
       if (!FTD) {
-        // TODO: Create an error message for here.
-        llvm_unreachable("Function doesn't have any template parameters");
+        unsigned DiagID =
+          SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                        "function template does not have "
+                                        "template parameters");
+        SemaRef.Diags.Report(Elem->getLoc(), DiagID);
+        return nullptr;
       }
-      clang::FunctionDecl *InstantiatedFunc
-          = SemaRef.getCxxSema().InstantiateFunctionDeclaration(FTD,
-                                                               &TemplateArgList,
-                                                                Elem->getLoc());
+
+      clang::FunctionDecl *InstantiatedFunc =
+        SemaRef.getCxxSema().InstantiateFunctionDeclaration(FTD,
+                                                            &TemplateArgList,
+                                                            Elem->getLoc());
       SemaRef.getCxxSema().InstantiateFunctionDefinition(Elem->getLoc(),
                                                          InstantiatedFunc,
                                                          true, true, false);
@@ -880,9 +892,12 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
 
     ResultTemp.resolveKind();
     if (ResultTemp.empty()) {
-      // TODO: Create an error message for here. This should indicate that we
-      // don't have a valid template to instantiate.
-      llvm_unreachable("None of the given names were a template");
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "unresolved template resolves to "
+                                      "non-template");
+      SemaRef.Diags.Report(Elem->getLoc(), DiagID);
+      return nullptr;
     }
 
     return clang::UnresolvedLookupExpr::Create(Context.CxxAST,
@@ -913,9 +928,12 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
 
     ResultTemp.resolveKind();
     if (ResultTemp.empty()) {
-      // TODO: Create an error message for here. This should indicate that we
-      // don't have a valid template to instantiate.
-      llvm_unreachable("None of the given names were a template");
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "unresolved template resolves to "
+                                      "non-template");
+      SemaRef.Diags.Report(Elem->getLoc(), DiagID);
+      return nullptr;
     }
 
     return clang::UnresolvedMemberExpr::Create(Context.CxxAST,
@@ -932,7 +950,11 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
                                                ResultTemp.end());
   }
 
-  llvm_unreachable("Unhandled type of overload");
+  unsigned DiagID =
+    SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                  "cannot compile this type of overload yet");
+  SemaRef.Diags.Report(Elem->getLoc(), DiagID);
+  return nullptr;
 }
 
 clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
@@ -2001,17 +2023,6 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     }
     llvm_unreachable("Invalid namespace type returned.");
   }
-  // if (ElaboratedLHS->getType()->isPointerType()) {
-  //   if (const auto *Name = dyn_cast<AtomSyntax>(RHS)) {
-  //     // TODO: Treat this as a keyword or only in this contexts?
-  //     if (Name->getSpelling() == "construct") {
-  //       llvm::outs() << "We have a possible placement new call\n";
-  //     }
-  //     if (Name->getSpelling() == "destruct") {
-  //       llvm_unreachable("Explicit destructor call not implemented yet.");
-  //     }
-  //   }
-  // }
 
   if (isa<AtomSyntax>(RHS)) {
     const AtomSyntax *RHSAtom = cast<AtomSyntax>(RHS);
