@@ -102,6 +102,9 @@ public:
 
   clang::Expr *elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op,
                                      const Syntax *RHS);
+  clang::Expr *elaborateInPlaceNewCall(clang::Expr *LHSPtr,
+                                       const CallSyntax *Op,
+                                       const Syntax *RHS);
   clang::Expr *elaborateNestedLookupAccess(clang::Expr *Previous,
                                            const CallSyntax *Op,
                                            const Syntax *RHS);

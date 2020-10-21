@@ -584,12 +584,6 @@ public:
   clang::IdentifierInfo *const OperatorParensII;
   clang::IdentifierInfo *const OperatorThrowII;
 
-  clang::IdentifierInfo *const OperatorRightFoldAnd;
-  clang::IdentifierInfo *const OperatorRightFoldOr;
-  clang::IdentifierInfo *const OperatorLeftFoldAnd;
-  clang::IdentifierInfo *const OperatorLeftFoldOr;
-
-
   // Tokens used for constructor and destructor;
   clang::IdentifierInfo *const ConstructorII;
   clang::IdentifierInfo *const DestructorII;

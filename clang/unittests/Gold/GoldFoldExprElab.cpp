@@ -38,6 +38,15 @@ f[T:type...](x:rref T...): void!
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+TEST(GoldFoldExpr, UnaryRightFoldExpr_CommaOperator) {
+  StringRef Code = R"(
+f[T:type...](x:rref T...): void!
+  (x , ...)
+)";
+  auto ToMatch = cxxFoldExpr(hasLHSExpr(declRefExpr()));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
 
 TEST(GoldFoldExpr, NestedExpressionRightFoldExpr) {
   StringRef Code = R"(

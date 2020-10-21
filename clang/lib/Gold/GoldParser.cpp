@@ -831,6 +831,7 @@ static bool isUnaryFoldOperator(Parser &P) {
   switch(Tok.getKind()) {
     case tok::Identifier:
       return (Tok.getSpelling() == "or" || Tok.getSpelling() == "and");
+    case tok::Comma:
     case tok::AmpersandAmpersand:
     case tok::BarBar:
       return true;
@@ -1267,6 +1268,7 @@ bool isFoldableOperator(const Token &T) {
   if (T.isFused())
     return false;
   switch(T.getKind()) {
+    case tok::Comma:
     case tok::Plus:
     case tok::Minus:
     case tok::Star:
@@ -2172,6 +2174,9 @@ Syntax *Parser::onUnaryFoldExpr(FoldDirection Dir, const Token &Operator,
   switch(Operator.getKind()) {
     case tok::AmpersandAmpersand:
       NormalizedSpelling = "&&";
+      break;
+    case tok::Comma:
+      NormalizedSpelling = ",";
       break;
     case tok::Identifier:
       if (Operator.getSpelling() == "or") {

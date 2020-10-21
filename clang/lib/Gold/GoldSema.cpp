@@ -140,8 +140,10 @@ buildFoldOpLookup(clang::ASTContext &Ctx) {
   return {
     { makeOpII(Ctx, "&& ..."), clang::tok::ampamp },
     { makeOpII(Ctx, "... &&"), clang::tok::ampamp },
+    { makeOpII(Ctx, "... ,"),  clang::tok::comma },
     { makeOpII(Ctx, "|| ..."), clang::tok::pipepipe },
     { makeOpII(Ctx, "... ||"), clang::tok::pipepipe },
+    { makeOpII(Ctx, ", ..."),  clang::tok::comma },
 
     // Binary fold operators.
     { makeOpII(Ctx, "+ ... +"), clang::tok::plus },
@@ -203,10 +205,6 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     OperatorBracketsII(&Context.CxxAST.Idents.get("operator'[]'")),
     OperatorParensII(&Context.CxxAST.Idents.get("operator'()'")),
     OperatorThrowII(&Context.CxxAST.Idents.get("operator'throw'")),
-    OperatorRightFoldAnd(&Context.CxxAST.Idents.get("operator'... &&'")),
-    OperatorRightFoldOr(&Context.CxxAST.Idents.get("operator'... ||'")),
-    OperatorLeftFoldAnd(&Context.CxxAST.Idents.get("operator'&& ...'")),
-    OperatorLeftFoldOr(&Context.CxxAST.Idents.get("operator'|| ...'")),
     ConstructorII(&Context.CxxAST.Idents.get("constructor")),
     DestructorII(&Context.CxxAST.Idents.get("destructor")),
     DefaultCharTy(Context.CxxAST.getIntTypeForBitwidth(8, false)),

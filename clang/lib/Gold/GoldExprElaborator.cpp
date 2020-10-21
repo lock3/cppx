@@ -2001,6 +2001,17 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     }
     llvm_unreachable("Invalid namespace type returned.");
   }
+  if (ElaboratedLHS->getType()->isPointerType()) {
+    if (const auto *Name = dyn_cast<AtomSyntax>(RHS)) {
+      // TODO: Treat this as a keyword or only in this contexts?
+      if (Name->getSpelling() == "construct") {
+        llvm::outs() << "We have a possible placement new call\n";
+      }
+      if (Name->getSpelling() == "destruct") {
+        llvm_unreachable("Explicit destructor call not implemented yet.");
+      }
+    }
+  }
 
   if (isa<AtomSyntax>(RHS)) {
     const AtomSyntax *RHSAtom = cast<AtomSyntax>(RHS);
@@ -2009,10 +2020,8 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
       &Context.CxxAST.Idents.get(RHSAtom->getSpelling());
     OpInfoBase const *OpInfo = SemaRef.OpInfo.getOpInfo(IdInfo);
     if (OpInfo) {
-      clang::OverloadedOperatorKind UnaryOO
-                                               = OpInfo->getUnaryOverloadKind();
-      clang::OverloadedOperatorKind BinaryOO
-                                              = OpInfo->getBinaryOverloadKind();
+      clang::OverloadedOperatorKind UnaryOO = OpInfo->getUnaryOverloadKind();
+      clang::OverloadedOperatorKind BinaryOO = OpInfo->getBinaryOverloadKind();
       if (UnaryOO != BinaryOO) {
         clang::CXXScopeSpec TempSS;
         clang::Expr *LookedUpCandidates = doDerefAndXOrLookUp(Context, SemaRef,
@@ -2109,6 +2118,12 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
                                   "member access from non-object");
   SemaRef.Diags.Report(LHS->getLoc(), DiagID);
   return nullptr;
+}
+
+clang::Expr *ExprElaborator::elaborateInPlaceNewCall(clang::Expr *LHSPtr,
+                                                     const CallSyntax *Op,
+                                                     const Syntax *RHS) {
+  llvm_unreachable("Derp");
 }
 
 clang::Expr *ExprElaborator::elaborateNNS(clang::NamedDecl *NS,
