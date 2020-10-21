@@ -20,15 +20,15 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-TEST(GoldNew, PlacementNew) {
-  std::string Code = R"Gold(
-foo(x:^int):void!
-  x.construct(4)
-)Gold";
-  DeclarationMatcher ToMatch = translationUnitDecl(
-    hasDescendant(
-      functionDecl(hasName("foo"), isInline())
-    )
-  );
-  ASSERT_TRUE(matches(Code, ToMatch));
-}
+// TEST(GoldNew, PlacementNew) {
+//   std::string Code = R"Gold(
+// foo(x:^int):void!
+//   x.construct(4)
+// )Gold";
+//   DeclarationMatcher ToMatch = translationUnitDecl(
+//     hasDescendant(
+//       functionDecl(hasName("foo"), isInline())
+//     )
+//   );
+//   ASSERT_TRUE(matches(Code, ToMatch));
+// }
