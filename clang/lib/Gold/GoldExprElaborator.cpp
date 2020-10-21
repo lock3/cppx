@@ -2001,17 +2001,17 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     }
     llvm_unreachable("Invalid namespace type returned.");
   }
-  if (ElaboratedLHS->getType()->isPointerType()) {
-    if (const auto *Name = dyn_cast<AtomSyntax>(RHS)) {
-      // TODO: Treat this as a keyword or only in this contexts?
-      if (Name->getSpelling() == "construct") {
-        llvm::outs() << "We have a possible placement new call\n";
-      }
-      if (Name->getSpelling() == "destruct") {
-        llvm_unreachable("Explicit destructor call not implemented yet.");
-      }
-    }
-  }
+  // if (ElaboratedLHS->getType()->isPointerType()) {
+  //   if (const auto *Name = dyn_cast<AtomSyntax>(RHS)) {
+  //     // TODO: Treat this as a keyword or only in this contexts?
+  //     if (Name->getSpelling() == "construct") {
+  //       llvm::outs() << "We have a possible placement new call\n";
+  //     }
+  //     if (Name->getSpelling() == "destruct") {
+  //       llvm_unreachable("Explicit destructor call not implemented yet.");
+  //     }
+  //   }
+  // }
 
   if (isa<AtomSyntax>(RHS)) {
     const AtomSyntax *RHSAtom = cast<AtomSyntax>(RHS);
@@ -2123,7 +2123,7 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
 clang::Expr *ExprElaborator::elaborateInPlaceNewCall(clang::Expr *LHSPtr,
                                                      const CallSyntax *Op,
                                                      const Syntax *RHS) {
-  llvm_unreachable("Derp");
+  llvm_unreachable("not implemented yet");
 }
 
 clang::Expr *ExprElaborator::elaborateNNS(clang::NamedDecl *NS,
