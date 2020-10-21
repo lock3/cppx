@@ -186,6 +186,9 @@ StmtElaborator::elaborateCall(const CallSyntax *S) {
       return DS;
     }
 
+    if (!InitExpr)
+      return nullptr;
+
     clang::ExprResult BinOpResult =
       SemaRef.getCxxSema().ActOnBinOp(SemaRef.getCxxSema().getCurScope(),
                                       S->getLoc(), clang::tok::equal,

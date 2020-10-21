@@ -155,11 +155,13 @@ private:
   clang::Expr *handleOpPackExpansion(const CallSyntax *S);
 
 private:
-  /// Utility functions that handle operations assocated with type elaboration,
-  /// but not the actual elaboration. These functions also handle error
-  /// reporting so the result of any elaboration should be passed directly
-  /// to them without need to check the result.
-  ///{
+  /// ---------------------------------------------------------------------- ///
+  /// Utility functions that handle operations assocated with type           ///
+  /// elaboration, but not the actual elaboration. These functions also      ///
+  /// handle error reporting so the result of any elaboration should be      ///
+  /// passed directly to them without need to check the result.              ///
+  /// ---------------------------------------------------------------------- ///
+
   clang::Expr* makeConstType(clang::Expr *InnerType,
                              const CallSyntax* ConstOpNode);
   clang::Expr* makeRefType(clang::Expr *Result,
@@ -168,8 +170,30 @@ private:
                             const CallSyntax* RRefOpNode);
   clang::Expr *makeOpPackExpansionType(clang::Expr *Result,
                                        const CallSyntax *S);
-  ///}
 
+private:
+  bool ElaboratingAddressOfOp = false;
+
+public:
+  /// ---------------------------------------------------------------------- ///
+  ///                            RAII Objects                                ///
+  /// ---------------------------------------------------------------------- ///
+  struct BooleanRAII {
+    BooleanRAII(bool &Boolean, bool Value)
+      : Boolean(Boolean)
+    {
+      SavedValue = Boolean;
+      Boolean = Value;
+    }
+
+    ~BooleanRAII() {
+      Boolean = SavedValue;
+    }
+
+  private:
+    bool SavedValue;
+    bool &Boolean;
+  };
 
 };
 
