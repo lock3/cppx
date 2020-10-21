@@ -151,6 +151,13 @@ def_token(HexadecimalCharacter)
 def_token(UnicodeCharacter)
 def_token(String)
 
+// ... operator indicating tokens
+// def_puncop(Ellipsis, "...") this is used when we are NOT within a fold expression.
+def_token(UnaryRightFold)
+def_token(UnaryLeftFold)
+// this needs to be determined during elaboration
+def_token(BinaryFold)
+
 #undef def_keyword
 #undef def_puncop
 #undef def_token

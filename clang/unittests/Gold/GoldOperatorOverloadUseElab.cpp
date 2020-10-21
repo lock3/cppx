@@ -861,7 +861,6 @@ ns : namespace = namespace:
   
   operator"^"(x:ref OpTest):OpTest!
     return OpTest()
-  
 
 MemberOperator (X:ref ns.OpTest):void!
   Y : ns.OpTest = ^X

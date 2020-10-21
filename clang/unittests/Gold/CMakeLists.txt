@@ -85,6 +85,7 @@ add_clang_unittest(GoldTests
   GoldExplicitAttributeElab.cpp
   GoldFinalAttributeElab.cpp
   GoldFloatingPointLiteralElab.cpp
+  GoldFoldExprElab.cpp
   GoldFor.cpp
   GoldFunctionAllSyntaxElab.cpp
   GoldFunctionOverloading.cpp
@@ -98,6 +99,7 @@ add_clang_unittest(GoldTests
   GoldIfStmtElab.cpp
   GoldImplicitCtorExplicitCallExec.cpp
   GoldInlineAttributeElab.cpp
+  GoldInPlaceNewAndDeleteElab.cpp
   GoldIntegerLiteralElab.cpp
   GoldLiteralSuffix.cpp
   GoldMemberExecuteTest.cpp
@@ -127,6 +129,7 @@ add_clang_unittest(GoldTests
   GoldVarDeclStorageClass.cpp
   GoldVariableDeclElab.cpp
   GoldVariableTemplateElab.cpp
+  GoldVariadicTemplateParameterElab.cpp
   GoldVirtualFunctionElab.cpp
   GoldWhile.cpp
   )

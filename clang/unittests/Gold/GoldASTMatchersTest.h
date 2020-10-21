@@ -15,6 +15,7 @@
 #include "clang/AST/Attr.h"
 #include "clang/Tooling/Tooling.h"
 #include "gtest/gtest.h"
+#include "clang/AST/DeclTemplate.h"
 
 namespace clang {
 namespace ast_matchers {
@@ -24,12 +25,29 @@ extern const internal::VariadicDynCastAllOfMatcher<
 extern const internal::VariadicDynCastAllOfMatcher<
   Decl, VarTemplatePartialSpecializationDecl> varTemplatePartialSpecializationDecl;
 
+extern const internal::VariadicDynCastAllOfMatcher<Decl, TemplateTemplateParmDecl>
+    templateTemplateParmDecl;
+
+extern const internal::VariadicDynCastAllOfMatcher<Stmt, PackExpansionExpr>
+    packExpansionExpr;
+
+extern const internal::VariadicDynCastAllOfMatcher<Stmt, CXXFoldExpr>
+    cxxFoldExpr;
+
+
 // I created this because it didn't exist before this and I acutally needed it
 // for a particular test.
 AST_POLYMORPHIC_MATCHER(isExternStorageClass,
                         AST_POLYMORPHIC_SUPPORTED_TYPES(FunctionDecl,
                                                         VarDecl)) {
   return Node.getStorageClass() == SC_Extern;
+}
+
+AST_POLYMORPHIC_MATCHER(isParameterPack,
+                        AST_POLYMORPHIC_SUPPORTED_TYPES(TemplateTypeParmDecl,
+                                                        NonTypeTemplateParmDecl,
+                                                        TemplateTemplateParmDecl)) {
+  return Node.isParameterPack();
 }
 
 AST_POLYMORPHIC_MATCHER_P(stringHasValue,
@@ -129,6 +147,27 @@ AST_POLYMORPHIC_MATCHER(methodHasRefQualifier,
 }
 
 
+AST_POLYMORPHIC_MATCHER_P(hasLHSExpr,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(CXXFoldExpr),
+                          internal::Matcher<Expr>, InnerMatcher) {
+  const Expr *LeftHandSide = Node.getLHS();
+  return (LeftHandSide != nullptr &&
+          InnerMatcher.matches(*LeftHandSide, Finder, Builder));
+}
+
+AST_POLYMORPHIC_MATCHER_P(hasRHSExpr,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(CXXFoldExpr),
+                          internal::Matcher<Expr>, InnerMatcher) {
+  const Expr *RightHandSide = Node.getRHS();
+  return (RightHandSide != nullptr &&
+          InnerMatcher.matches(*RightHandSide, Finder, Builder));
+}
+
+AST_POLYMORPHIC_MATCHER_P(hasOperator,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES(CXXFoldExpr),
+                          BinaryOperatorKind, OpKind) {
+  return Node.getOperator() == OpKind;
+}
 
 using clang::tooling::buildASTFromCodeWithArgs;
 using clang::tooling::newFrontendActionFactory;

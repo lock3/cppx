@@ -350,6 +350,7 @@ public:
                                                 clang::SourceRange ExceptionSpecRange,
                                                 clang::SourceLocation EndLoc,
                            llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
+
   clang::CppxTypeLiteral *buildTypeExprFromTypeDecl(
                       const clang::TypeDecl *TyDecl, clang::SourceLocation Loc);
 
@@ -1020,6 +1021,36 @@ public:
     }
     ~AttrElabRAII() {
       SemaRef.setInsideAttributeExpr(PreviousAttributeElabStatus);
+    }
+  };
+private:
+  llvm::DenseMap<clang::IdentifierInfo *, clang::tok::TokenKind> FoldOpToClangKind;
+public:
+
+  clang::Expr *actOnCxxFoldExpr(clang::SourceLocation LParenLoc,
+                               clang::Expr *LHS, const Token &FoldTok,
+                               clang::SourceLocation EllipsisLoc,
+                               clang::Expr *RHS,
+                               clang::SourceLocation RParenLoc);
+private:
+  bool ListIsParenExpr = false;
+public:
+  bool getListIsParenExpr() const { return ListIsParenExpr; }
+  void setListIsParenExpr(bool Val) { ListIsParenExpr = Val; }
+
+  struct ParenExprRAII {
+    Sema &SemaRef;
+    bool PreviousValue;
+  public:
+    ParenExprRAII(Sema &S, bool IsParenExpr)
+      :SemaRef(S),
+      PreviousValue(S.getListIsParenExpr())
+    {
+      SemaRef.setListIsParenExpr(IsParenExpr);
+    }
+
+    ~ParenExprRAII() {
+      SemaRef.setListIsParenExpr(PreviousValue);
     }
   };
 };

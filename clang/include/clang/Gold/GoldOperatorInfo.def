@@ -134,6 +134,7 @@ def_nary_op(                  FunctionCall, "()",                       true,   
 
 def_unary_cpp_only_op(               Arrow, "->",                       false,  CppOnly,    Arrow)
 def_bin_cpp_only_op(  MemberPtrAccessArrow, "->*",                      true,   CppOnly,    ArrowStar)
+def_bin_cpp_only_op(                 Comma, ",",                        false,  CppOnly,    Comma)
 def_inc_and_dec_cpp_only_op(      PlusPlus, "++",                       false,  CppOnly,    PlusPlus)
 def_inc_and_dec_cpp_only_op(    MinusMinus, "--",                       false,  CppOnly,    MinusMinus)
 

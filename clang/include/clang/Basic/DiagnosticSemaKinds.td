@@ -11399,6 +11399,12 @@ def err_invalid_builtin_type : Error<
 def err_invalid_catch_parameter : Error<
   "invalid catch statement, to many parameters">;
 
+def err_double_pack_expansion : Error<
+  "'...' cannot be applyed to an already packed type">;
+
+def err_invalid_unpack_expr : Error<
+  "'...' cannot be appled to expression">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

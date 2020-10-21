@@ -20,6 +20,7 @@
 #include "llvm/ADT/PointerUnion.h"
 
 #include "clang/Gold/GoldSyntax.h"
+#include "clang/Gold/GoldSema.h"
 
 #include <unordered_map>
 #include <string>
@@ -49,7 +50,7 @@ class ExprElaborator {
   clang::ASTContext &CxxAST;
 
   Sema &SemaRef;
-
+  Sema::ParenExprRAII ParenToListHelper;
   /// This is only used when we have an explicitly specified name or explicit
   /// member access namespace look up.
   clang::DeclContext *CurrentLookUpContext = nullptr;
@@ -92,11 +93,18 @@ public:
 
   clang::Expr *elaborateDeclTypeOp(const AtomSyntax *Name, const CallSyntax *S);
   clang::Expr *elaborateNoExceptOp(const AtomSyntax *Name, const CallSyntax *S);
+  clang::Expr *elaborateRightFoldExpr(const AtomSyntax *Name, const CallSyntax *S);
+  clang::Expr *elaborateLeftFoldExpr(const AtomSyntax *Name, const CallSyntax *S);
+  clang::Expr *elaborateBinaryFoldExpr(const AtomSyntax *Name, const CallSyntax *S);
   clang::Expr *elaborateTypeidOp(const AtomSyntax *Name, const CallSyntax *S);
+
 
 
   clang::Expr *elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op,
                                      const Syntax *RHS);
+  clang::Expr *elaborateInPlaceNewCall(clang::Expr *LHSPtr,
+                                       const CallSyntax *Op,
+                                       const Syntax *RHS);
   clang::Expr *elaborateNestedLookupAccess(clang::Expr *Previous,
                                            const CallSyntax *Op,
                                            const Syntax *RHS);
@@ -144,6 +152,7 @@ private:
   clang::Expr *handleRRefType(const CallSyntax *S);
   clang::Expr *handleFunctionType(const CallSyntax *S);
   clang::Expr *handleArrayType(const CallSyntax *S);
+  clang::Expr *handleOpPackExpansion(const CallSyntax *S);
 
 private:
   /// Utility functions that handle operations assocated with type elaboration,
@@ -157,6 +166,8 @@ private:
                            const CallSyntax* RefOpNode);
   clang::Expr* makeRRefType(clang::Expr *Result,
                             const CallSyntax* RRefOpNode);
+  clang::Expr *makeOpPackExpansionType(clang::Expr *Result,
+                                       const CallSyntax *S);
   ///}
 
 

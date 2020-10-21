@@ -130,7 +130,56 @@ static Sema::StringToAttrHandlerMap buildAttributeMapping() {
     // NOTE: All other attributes are handled by elaborateSystemAttributes
   };
 #undef ATTR_HANDLER_LAMBDA
+}
 
+static clang::IdentifierInfo *makeOpII(clang::ASTContext &Ctx, const std::string &OpText) {
+  return &Ctx.Idents.get("operator'" + OpText + "'");
+}
+static llvm::DenseMap<clang::IdentifierInfo *, clang::tok::TokenKind>
+buildFoldOpLookup(clang::ASTContext &Ctx) {
+  return {
+    { makeOpII(Ctx, "&& ..."), clang::tok::ampamp },
+    { makeOpII(Ctx, "... &&"), clang::tok::ampamp },
+    { makeOpII(Ctx, "... ,"),  clang::tok::comma },
+    { makeOpII(Ctx, "|| ..."), clang::tok::pipepipe },
+    { makeOpII(Ctx, "... ||"), clang::tok::pipepipe },
+    { makeOpII(Ctx, ", ..."),  clang::tok::comma },
+
+    // Binary fold operators.
+    { makeOpII(Ctx, "+ ... +"), clang::tok::plus },
+    { makeOpII(Ctx, "- ... -"), clang::tok::minus },
+    { makeOpII(Ctx, "* ... *"), clang::tok::star },
+    { makeOpII(Ctx, "/ ... /"), clang::tok::slash },
+    { makeOpII(Ctx, "% ... %"), clang::tok::percent },
+    { makeOpII(Ctx, "^ ... ^"), clang::tok::caret },
+    { makeOpII(Ctx, "& ... &"), clang::tok::amp },
+    { makeOpII(Ctx, "| ... |"), clang::tok::pipe },
+    { makeOpII(Ctx, "= ... ="), clang::tok::equal },
+    { makeOpII(Ctx, "< ... <"), clang::tok::less },
+    { makeOpII(Ctx, "> ... >"), clang::tok::greater },
+    { makeOpII(Ctx, "<< ... <<"), clang::tok::lessless },
+    { makeOpII(Ctx, ">> ... >>"), clang::tok::greatergreater },
+
+    { makeOpII(Ctx, "+= ... +="), clang::tok::plusequal },
+    { makeOpII(Ctx, "-= ... -="), clang::tok::minusequal },
+    { makeOpII(Ctx, "*= ... *="), clang::tok::starequal },
+    { makeOpII(Ctx, "/= ... /="), clang::tok::slashequal },
+    { makeOpII(Ctx, "%= ... %="), clang::tok::percentequal },
+    { makeOpII(Ctx, "^= ... ^="), clang::tok::caretequal },
+    { makeOpII(Ctx, "&= ... &="), clang::tok::ampequal },
+    { makeOpII(Ctx, "|= ... |="), clang::tok::pipeequal },
+    { makeOpII(Ctx, "<= ... <="), clang::tok::lessequal },
+    { makeOpII(Ctx, ">= ... >="), clang::tok::greaterequal },
+    { makeOpII(Ctx, "<<= ... <<="), clang::tok::lesslessequal },
+    { makeOpII(Ctx, ">>= ... >>="), clang::tok::greatergreaterequal },
+    { makeOpII(Ctx, "== ... =="), clang::tok::equalequal },
+    { makeOpII(Ctx, "<> ... <>"), clang::tok::exclaimequal },
+    { makeOpII(Ctx, "&& ... &&"), clang::tok::ampamp },
+    { makeOpII(Ctx, "|| ... ||"), clang::tok::pipepipe },
+
+    // Things we don't support for fold operators.
+    // , .* ->*
+  };
 }
 
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
@@ -161,7 +210,8 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     DefaultCharTy(Context.CxxAST.getIntTypeForBitwidth(8, false)),
     BuiltinTypes(createBuiltinTypeList(Context)),
     OpInfo(Context.CxxAST),
-    AttrHandlerMap(buildAttributeMapping())
+    AttrHandlerMap(buildAttributeMapping()),
+    FoldOpToClangKind(buildFoldOpLookup(Context.CxxAST))
 {
   CxxSema.CurScope = nullptr;
 }
@@ -1150,6 +1200,7 @@ Sema::getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
 
     return Ty->getValue();
   }
+  TyExpr->dump();
   llvm_unreachable("Invaild type expression evaluates to type of types.");
 }
 
@@ -1430,6 +1481,22 @@ Sema::ActOnStartNamespaceDef(clang::Scope *NamespcScope,
   // namespace definition.
   CxxSema.PushDeclContext(NamespcScope, Namespc);
   return Namespc;
+}
+
+clang::Expr *Sema::actOnCxxFoldExpr(clang::SourceLocation LParenLoc,
+                                    clang::Expr *LHS, const Token &FoldTok,
+                                    clang::SourceLocation EllipsisLoc,
+                                    clang::Expr *RHS,
+                                    clang::SourceLocation RParenLoc) {
+  clang::IdentifierInfo *II = &Context.CxxAST.Idents.get(FoldTok.getSpelling());
+  auto Iter = FoldOpToClangKind.find(II);
+
+  // TODO: Should this be an error message or an assertion?
+  assert (Iter != FoldOpToClangKind.end() && "Invalid operator name");
+  clang::tok::TokenKind ClangTK = Iter->second;
+  // Convert given fold toke into the correct C++ fold token operator kind.
+  return CxxSema.ActOnCXXFoldExpr(getCurClangScope(), LParenLoc, LHS, ClangTK,
+                                  EllipsisLoc, RHS, RParenLoc).get();
 }
 
 } // namespace gold

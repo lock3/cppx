@@ -37,6 +37,11 @@ namespace gold
   /// A pair of tokens.
   using TokenPair = std::pair<Token, Token>;
 
+  enum FoldDirection {
+    FD_Right,
+    FD_Left
+  };
+
   /// The parser transforms sequences of tokens into uninterpreted syntax
   /// trees.
   ///
@@ -226,13 +231,31 @@ namespace gold
     Syntax *parseExpr();
     bool parsePreattr();
     Syntax *parseDef();
+    Syntax *parseDefFold(Syntax *E1);
+    Syntax *parseExpansion();
     Syntax *parseOr();
+    Syntax *parseOrFold(Syntax *E1);
     Syntax *parseAnd();
+    Syntax *parseAndFold(Syntax *E1);
     Syntax *parseBitShift();
+    Syntax *parseBitShiftFold(Syntax *E1);
     Syntax *parseCmp();
+    Syntax *parseCmpFold(Syntax *E1);
     Syntax *parseTo();
+    // Syntax *parseToFold(Syntax *E1);
     Syntax *parseAdd();
+    Syntax *parseAddFold(Syntax *E1);
     Syntax *parseMul();
+    Syntax *parseMulFold(Syntax *E1);
+
+    enum FoldKind {
+      FK_None, // Not found
+      FK_Unary_Left, // Unary left
+      FK_Unary_Right, // Unary right.
+      FK_Binary // Binary direction unknown
+    };
+
+    Syntax *parseFoldExpr(FoldKind ExprKind);
 
     Syntax *parseMacro();
     Syntax *parseIf();
@@ -249,6 +272,8 @@ namespace gold
     Syntax *parseArrayPrefix();
     Syntax *parseNNSPrefix();
     Syntax *parsePostAttr(Syntax *Pre);
+
+    Syntax *parseExpansionOperator(Syntax *Obj);
   private:
     Attribute *parsePostAttr();
 
@@ -297,6 +322,11 @@ namespace gold
     Syntax *onElse(const Token& tok, Syntax *e1);
     Syntax *onLoop(const Token& tok, Syntax *e1, Syntax *e2);
     Syntax *onFile(const llvm::SmallVectorImpl<Syntax*>& Vec);
+    Syntax *onUnaryFoldExpr(FoldDirection Dir, const Token &Operator,
+                            const Token &Ellipsis, Syntax *E);
+    Syntax *onBinaryFoldExpr(const Token &OperatorToken, const Token &Ellipsis,
+                             Syntax *LHS, Syntax *RHS);
+    Syntax *onInvalidRightUnaryFoldOperator();
     Syntax *onError() const;
 
     /// Whether the '>' token acts as an operator or not. This will be
@@ -414,9 +444,38 @@ namespace gold
   private:
     AngleBracketTracker Folds;
 
-    bool scanFolds();
-    void startPotentialFold(const Token &EllipsisTok);
-    void finishPotentialFold(const Token &NextTok);
+    FoldKind scanForFoldExpr();
+    bool InsideKnownFoldExpr = false;
+    bool ParseFoldOp = false;
+
+    struct FoldSubExprRAII {
+      Parser &P;
+      bool PreviousState;
+      bool PreviousParsedFoldOp;
+      FoldSubExprRAII(Parser &P, bool EnterFoldExpr)
+        :P(P),
+        PreviousState(P.InsideKnownFoldExpr),
+        PreviousParsedFoldOp(P.ParseFoldOp)
+      {
+        P.InsideKnownFoldExpr = EnterFoldExpr;
+      }
+
+      ~FoldSubExprRAII() {
+        P.ParseFoldOp = PreviousParsedFoldOp;
+        P.InsideKnownFoldExpr = PreviousState;
+      }
+    };
+
+    template<typename Pred>
+    bool nextOperatorIsFold(Pred Predicate) {
+      return Predicate(*this) && nthTokenIs(1, tok::Ellipsis);
+    }
+    bool nextTokensMatchBinaryFoldOp(TokenKind TK);
+    bool nextTokensMatchBinaryFoldOp();
+
+    // void startPotentialFold(const Token &EllipsisTok);
+    // void finishPotentialFold(const Token &NextTok);
+
 
   public:
     void incrementEnclosureCount(unsigned Enclosure);

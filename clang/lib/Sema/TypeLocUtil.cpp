@@ -632,7 +632,12 @@ template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DependentTemplat
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::PackExpansionTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  QualType InnerTy = Ty->getAs<clang::PackExpansionType>()->getPattern();
+  BuildAnyTypeLoc(Ctx, TLB, InnerTy, Loc);
+
+  auto ExpansionLoc = TLB.push<clang::PackExpansionTypeLoc>(Ty);
+  ExpansionLoc.setEllipsisLoc(Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::PackExpansionTypeLoc>
