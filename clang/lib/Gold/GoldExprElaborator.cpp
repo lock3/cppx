@@ -2072,9 +2072,9 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
   // A disambiguator of the form (a)b
   if (const CallSyntax *Disambig = dyn_cast<CallSyntax>(RHS)) {
     clang::Expr *LHS = doElaborateExpr(Disambig->getArgument(0));
-
     if (!LHS)
       return nullptr;
+
     if (!LHS->getType()->isTypeOfTypes()) {
       SemaRef.Diags.Report(LHS->getExprLoc(),
                            clang::diag::err_unexpected_expression_result)
@@ -2481,7 +2481,13 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
   BooleanRAII AddressOfRAII(ElaboratingAddressOfOp, Op == clang::UO_AddrOf);
 
   const Syntax *Operand = S->getArgument(0);
-  clang::Expr *OperandResult = doElaborateExpr(Operand);
+  clang::Expr *OperandResult = nullptr;
+  if (ElaboratingAddressOfOp) {
+    Sema::ExtendQualifiedLookupRAII ExQual(SemaRef);
+    OperandResult = doElaborateExpr(Operand);
+  } else {
+    OperandResult = doElaborateExpr(Operand);
+  }
 
   if (!OperandResult || OperandResult->getType()->isNamespaceType()) {
     SemaRef.Diags.Report(Operand->getLoc(),
@@ -2489,7 +2495,7 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
     return nullptr;
   }
 
-  // This is used to construct a pointer type because the carot has two
+  // This is used to construct a pointer type because the caret has two
   // meanings. Dereference and pointer declaration.
   if (Op == clang::UO_Deref) {
     if (OperandResult->getType()->isTypeOfTypes()) {
@@ -2502,10 +2508,7 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
     }
   }
   clang::ExprResult UnaryOpRes = SemaRef.getCxxSema().BuildUnaryOp(
-                                                              /*scope*/nullptr,
-                                                              S->getCalleeLoc(),
-                                                              Op,
-                                                              OperandResult);
+    /*scope*/nullptr, S->getCalleeLoc(), Op, OperandResult);
 
   ExprMarker(Context.CxxAST, SemaRef).Visit(OperandResult);
   return UnaryOpRes.get();

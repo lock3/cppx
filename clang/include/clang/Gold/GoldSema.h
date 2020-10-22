@@ -583,6 +583,8 @@ public:
   clang::IdentifierInfo *const OperatorBracketsII;
   clang::IdentifierInfo *const OperatorParensII;
   clang::IdentifierInfo *const OperatorThrowII;
+  clang::IdentifierInfo *const OperatorCaretII;
+  clang::IdentifierInfo *const OperatorDotCaretII;
 
   // Tokens used for constructor and destructor;
   clang::IdentifierInfo *const ConstructorII;
@@ -866,7 +868,6 @@ public:
   /// Contains a large amount of constant information about individual operators
   /// If it's not in here it cannot be overriden.
   const OperatorInfo OpInfo;
-
 
   using AttributeHandler = void(*)(Elaborator &, Declaration*,
                                          const Syntax*, AttrStatus &);

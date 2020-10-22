@@ -1489,7 +1489,8 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
   case FOK_RRef:
   case FOK_Brackets:
   case FOK_Throw:
-  case FOK_Parens:{
+  case FOK_Parens:
+  case FOK_DotCaret: {
     // None of these operators can be the root of a declaration, with the exception
     // of very specific contexts.
     if (RequiresDeclOrError) {

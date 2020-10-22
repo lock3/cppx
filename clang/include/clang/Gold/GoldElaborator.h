@@ -280,7 +280,9 @@ enum FusedOpKind {
   FOK_RRef,
   FOK_Brackets,
   FOK_Parens,
-  FOK_Throw
+  FOK_Throw,
+  FOK_Caret,
+  FOK_DotCaret,
 };
 
 /// Convert a fused operator string like `operator'='` into an enum

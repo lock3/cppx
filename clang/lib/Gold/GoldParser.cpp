@@ -1402,6 +1402,7 @@ Parser::FoldKind Parser::scanForFoldExpr() {
 ///   postfix < expr >
 ///   postfix . identifier
 ///   postfix . ( expr ) identifier
+///   postfix .* ( expr )
 ///   postfix suffix-operator
 ///
 /// suffix-operator:
@@ -1433,6 +1434,10 @@ Syntax *Parser::parsePost()
     }
     case tok::Dot:
       e = parseDot(e);
+      break;
+
+    case tok::DotCaret:
+      e = parseDotCaret(e);
       break;
 
     case tok::Question:
@@ -1487,14 +1492,19 @@ Syntax *Parser::parseElem(Syntax *Map)
   return onElem({Brackets.open, Brackets.close}, Map, Args);
 }
 
-Syntax *Parser::parseDot(Syntax *Obj)
-{
+Syntax *Parser::parseDot(Syntax *Obj) {
   Token Op = expectToken(tok::Dot);
 
   // FIXME: this is a qualified-id, which is not clearly defined.
   // Perhaps our disambiguating operator'()' is enough to meet the criteria?
   Syntax *Sub = nextTokenIs(tok::LeftParen) ? parsePre() : parseId();
+  return onBinary(Op, Obj, Sub);
+}
 
+Syntax *Parser::parseDotCaret(Syntax *Obj) {
+  Token Op = expectToken(tok::DotCaret);
+
+  Syntax *Sub = nextTokenIs(tok::LeftParen) ? parsePre() : parseId();
   return onBinary(Op, Obj, Sub);
 }
 
@@ -2176,36 +2186,38 @@ Syntax *Parser::onUnaryFoldExpr(FoldDirection Dir, const Token &Operator,
   std::string OperatorText;
   std::string NormalizedSpelling;
   switch(Operator.getKind()) {
-    case tok::AmpersandAmpersand:
-      NormalizedSpelling = "&&";
-      break;
-    case tok::Comma:
-      NormalizedSpelling = ",";
-      break;
-    case tok::Identifier:
-      if (Operator.getSpelling() == "or") {
-        NormalizedSpelling = "||";
-      } else if (Operator.getSpelling() == "and") {
-        NormalizedSpelling = "&&";
-      } else {
-        // FIXME: This may need a real error message.
-        llvm_unreachable("Invalid unary fold operator?!");
-      }
-      break;
-    case tok::BarBar:
+  case tok::AmpersandAmpersand:
+    NormalizedSpelling = "&&";
+    break;
+  case tok::Comma:
+    NormalizedSpelling = ",";
+    break;
+  case tok::Identifier:
+    if (Operator.getSpelling() == "or") {
       NormalizedSpelling = "||";
-      break;
+    } else if (Operator.getSpelling() == "and") {
+      NormalizedSpelling = "&&";
+    } else {
+      // FIXME: This may need a real error message.
+      llvm_unreachable("Invalid unary fold operator?!");
+    }
+    break;
+  case tok::BarBar:
+    NormalizedSpelling = "||";
+    break;
+  default:
+    llvm_unreachable("Invalid unary fold operator");
   }
 
   switch(Dir) {
-    case FD_Left:
-      TK = tok::UnaryLeftFold;
-      OperatorText = "... " + NormalizedSpelling;
-      break;
-    case FD_Right:
-      TK = tok::UnaryRightFold;
-      OperatorText = NormalizedSpelling + " ...";
-      break;
+  case FD_Left:
+    TK = tok::UnaryLeftFold;
+    OperatorText = "... " + NormalizedSpelling;
+    break;
+  case FD_Right:
+    TK = tok::UnaryRightFold;
+    OperatorText = NormalizedSpelling + " ...";
+    break;
   }
 
   ParseFoldOp = true;
