@@ -534,9 +534,9 @@ Syntax *Parser::parseExpansion() {
   // the ... operator as the last thing with the lowest precedence of
   // all operators and it wraps the expression output.
   Syntax *E1 = parseAdd();
-  if (getLookahead() == tok::Ellipsis) {
+  if (getLookahead() == tok::Ellipsis)
     E1 = parseExpansionOperator(E1);
-  }
+
   return E1;
 }
 
@@ -550,16 +550,16 @@ Syntax *Parser::parseExpansion() {
 //    "or"
 Syntax *Parser::parseOr() {
   Syntax *E1 = parseAnd();
-  if (InsideKnownFoldExpr && !ParseFoldOp) {
+  if (InsideKnownFoldExpr && !ParseFoldOp)
     return parseOrFold(E1);
-  } else if (InsideKnownFoldExpr && ParseFoldOp) {
+  else if (InsideKnownFoldExpr && ParseFoldOp)
     return E1;
-  }
 
   while (Token Op = matchTokens(isOrOperator, *this)) {
     Syntax *E2 = parseAnd();
     E1 = onBinary(Op, E1, E2);
   }
+
   return E1;
 }
 
@@ -572,6 +572,7 @@ Syntax *Parser::parseOrFold(Syntax *E1) {
       return onBinaryFoldExpr(Op, Ellipsis, E1, parseAnd());
     }
   }
+
   return E1;
 }
 
@@ -579,7 +580,6 @@ static auto isAndOperator(Parser &P) {
   return P.nextTokenIs(tok::AmpersandAmpersand) || P.nextTokenIs("and")
     || P.nextTokenIs(tok::Ampersand);
 }
-
 
 // and:
 //    cmp
@@ -592,15 +592,16 @@ static auto isAndOperator(Parser &P) {
 //    "and"
 Syntax *Parser::parseAnd() {
   Syntax *E1 = parseBitShift();
-  if (InsideKnownFoldExpr && !ParseFoldOp) {
+  if (InsideKnownFoldExpr && !ParseFoldOp)
     E1 = parseAndFold(E1);
-  } else if (InsideKnownFoldExpr && ParseFoldOp) {
+  else if (InsideKnownFoldExpr && ParseFoldOp)
     return E1;
-  }
+
   while (Token Op = matchTokens(isAndOperator, *this)) {
     Syntax *E2 = parseBitShift();
     E1 = onBinary(Op, E1, E2);
   }
+
   return E1;
 }
 
@@ -613,6 +614,7 @@ Syntax *Parser::parseAndFold(Syntax *E1) {
       return onBinaryFoldExpr(Op, Ellipsis, E1, parseBitShift());
     }
   }
+
   return E1;
 }
 
@@ -653,15 +655,16 @@ static bool isBitShiftOperator(Parser &P) {
 
 Syntax *Parser::parseBitShift() {
   Syntax *E1 = parseCmp();
-  if (InsideKnownFoldExpr && !ParseFoldOp) {
+  if (InsideKnownFoldExpr && !ParseFoldOp)
     E1 = parseBitShiftFold(E1);
-  } else if (InsideKnownFoldExpr && ParseFoldOp) {
+  else if (InsideKnownFoldExpr && ParseFoldOp)
     return E1;
-  }
+
   while (Token Op = matchTokens(isBitShiftOperator, *this)) {
     Syntax *E2 = parseCmp();
     E1 = onBinary(Op, E1, E2);
   }
+
   return E1;
 }
 
@@ -690,11 +693,11 @@ Syntax *Parser::parseCmp() {
   }
 
   Syntax *E1 = parseTo();
-  if (InsideKnownFoldExpr && !ParseFoldOp) {
+  if (InsideKnownFoldExpr && !ParseFoldOp)
     E1 = parseCmpFold(E1);
-  } else if (InsideKnownFoldExpr && ParseFoldOp) {
+  else if (InsideKnownFoldExpr && ParseFoldOp)
     return E1;
-  }
+
   while (Token Op = matchTokens(is_relational_operator, *this)) {
     Syntax *E2 = parseTo();
     E1 = onBinary(Op, E1, E2);
@@ -712,6 +715,7 @@ Syntax *Parser::parseCmpFold(Syntax *E1) {
       return onBinaryFoldExpr(Op, Ellipsis, E1, parseTo());
     }
   }
+
   return E1;
 }
 
@@ -755,15 +759,16 @@ bool isAddOperator(Parser& P) {
 ///   ..
 Syntax *Parser::parseAdd() {
   Syntax *E1 = parseMul();
-  if (InsideKnownFoldExpr && !ParseFoldOp) {
+  if (InsideKnownFoldExpr && !ParseFoldOp)
     E1 = parseAddFold(E1);
-  } else if (InsideKnownFoldExpr && ParseFoldOp) {
+  else if (InsideKnownFoldExpr && ParseFoldOp)
     return E1;
-  }
+
   while (Token Op = matchTokens(isAddOperator, *this)) {
     Syntax *E2 = parseMul();
     E1 = onBinary(Op, E1, E2);
   }
+
   return E1;
 }
 
@@ -1325,6 +1330,7 @@ Parser::FoldKind Parser::scanForFoldExpr() {
       ++ScanningDepth;
       continue;
     }
+
     if (ScanningDepth) {
       // Simply ignore sub-expressions because they will be scanned later on.
       // all we are interested in is the current expression.
@@ -1332,6 +1338,7 @@ Parser::FoldKind Parser::scanForFoldExpr() {
         --ScanningDepth;
         continue;
       }
+
       if (Current.isEndOfFile())
         return FK_None;
     } else {
@@ -1339,6 +1346,7 @@ Parser::FoldKind Parser::scanForFoldExpr() {
         ++ScanningDepth;
         continue;
       }
+
       // Quit at the end of the line, or end of file in the case of the
       // rare one-line program.
       if (Current.hasKind(tok::RightParen) || Current.isNewline()
@@ -1375,18 +1383,17 @@ Parser::FoldKind Parser::scanForFoldExpr() {
         if (NextPeekTok.hasKind(tok::Ellipsis)) {
           Token PossibleBinaryOp = peekToken(I + 1);
           // Minimally we are a unary right fold expression.
-          if (PossibleBinaryOp.getKind() == Current.getKind()) {
+          if (PossibleBinaryOp.getKind() == Current.getKind())
             return FK_Binary;
-          } else {
+          else
             return FK_Unary_Right;
-          }
         }
       }
     }
   }
+
+  return FK_None;
 }
-
-
 
 /// postfix:
 ///   base
@@ -1495,9 +1502,6 @@ Syntax *Parser::parseExpansionOperator(Syntax *Obj) {
   assert(Obj && "Invalid object");
   Token EllipsisTok = consumeToken();
   assert(EllipsisTok.getKind() == tok::Ellipsis && "Invalid token");
-  // std::string Name = "operator'" + std::string() + "'";
-  // Symbol Sym = getSymbol(Name);
-  // Token Tok(tok::Ellipsis, Tok.getLocation(), Tok.getSpelling());
   return new (Context)
     CallSyntax(onAtom(EllipsisTok), makeList(Context, {Obj}));
 }
@@ -2191,9 +2195,8 @@ Syntax *Parser::onUnaryFoldExpr(FoldDirection Dir, const Token &Operator,
     case tok::BarBar:
       NormalizedSpelling = "||";
       break;
-    default:
-      assert("Invalid token identification.");
   }
+
   switch(Dir) {
     case FD_Left:
       TK = tok::UnaryLeftFold;
@@ -2203,9 +2206,8 @@ Syntax *Parser::onUnaryFoldExpr(FoldDirection Dir, const Token &Operator,
       TK = tok::UnaryRightFold;
       OperatorText = NormalizedSpelling + " ...";
       break;
-    default:
-      llvm_unreachable("Invalid unary fold expression side.");
   }
+
   ParseFoldOp = true;
   Syntax *CallOp = makeOperator(Context, *this, TK, Operator.getLocation(),
                                 OperatorText);
