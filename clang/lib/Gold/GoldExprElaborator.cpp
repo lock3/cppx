@@ -70,13 +70,21 @@ clang::Expr *ExprElaborator::elaborateExpr(const Syntax *S) {
 
 clang::Expr *ExprElaborator::doElaborateExpr(const Syntax *S) {
   if (isa<AtomSyntax>(S))
-    return elaborateAtom(cast<AtomSyntax>(S), clang::QualType());
+    return completePartialExpr(
+      elaborateAtom(cast<AtomSyntax>(S), clang::QualType())
+    );
   if (isa<CallSyntax>(S))
-    return elaborateCall(cast<CallSyntax>(S));
+    return completePartialExpr(
+      elaborateCall(cast<CallSyntax>(S))
+    );
   if (isa<MacroSyntax>(S))
-    return elaborateMacro(cast<MacroSyntax>(S));
+    return completePartialExpr(
+      elaborateMacro(cast<MacroSyntax>(S))
+    );
   if (isa<ElemSyntax>(S))
-    return elaborateElementExpr(cast<ElemSyntax>(S));
+    return completePartialExpr(
+      elaborateElementExpr(cast<ElemSyntax>(S))
+    );
   if (const ListSyntax *List = dyn_cast<ListSyntax>(S)) {
     if (List->getNumChildren() == 1) {
       clang::Expr *E = doElaborateExpr(List->getChild(0));
@@ -939,6 +947,8 @@ clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
   clang::Expr *IdExpr = doElaborateExpr(Elem->getObject());
   if (!IdExpr)
     return nullptr;
+  if (isa<clang::CppxPartialEvalExpr>(IdExpr))
+    return elaboratePartialElementExpr(IdExpr, Elem);
 
   // If we got a template specialization from elaboration, this is probably
   // a nested-name-specifier, there's nothing left to do.
@@ -1270,6 +1280,7 @@ static bool buildFunctionCallAruments(Sema &SemaRef, SyntaxContext &Context,
 /// type of the CalleeExpr, which could be any of the types within the
 /// Expression union type.
 static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
+                                               ExprElaborator &Elab,
                                                const CallSyntax *S,
                                                clang::Expr *CalleeExpr,
                                     llvm::SmallVector<clang::Expr *, 8> &Args) {
@@ -1278,17 +1289,18 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
                          clang::diag::err_failed_to_translate_expr);
     return nullptr;
   }
+  if (isa<clang::CppxPartialEvalExpr>(CalleeExpr))
+    return Elab.elaboratePartialCallExpr(CalleeExpr, S, Args);
 
   if (CalleeExpr->getType()->isTypeOfTypes()) {
     // This means constructor call possibly, unless it's some how a function
     // call returning a type.
     clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
                                                  CalleeExpr, S->getLoc());
-    if (!TInfo) {
+    if (!TInfo)
       // If this isn't a CppxTypeLiteral then we can't get the type yet and it
       // might be a meta function.kind
-      llvm_unreachable("Meta function calls not implemented yet?");
-    }
+      return nullptr;
     clang::ExprResult ConstructorExpr =
         SemaRef.getCxxSema().BuildCXXTypeConstructExpr(TInfo, S->getLoc(),
                                                       Args, S->getLoc(), false);
@@ -1347,6 +1359,7 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   if (clang::Expr *elaboratedCall = elaborateBuiltinOperator(S))
     return elaboratedCall;
 
+
   // Determining the type of call associated with the given syntax.
   // There are multiple kinds of atoms for multiple types of calls
   // but in the event that the callee object is not an Atom, it means
@@ -1356,11 +1369,11 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     CalleeExpr = doElaborateExpr(S->getCallee());
     llvm::SmallVector<clang::Expr *, 8> Args;
     const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
-
+    // TODO: Add partial expr management here?
     if (buildFunctionCallAruments(SemaRef, Context, ArgList, Args))
       return nullptr;
 
-    return handleExpressionResultCall(SemaRef, S, CalleeExpr, Args);
+    return handleExpressionResultCall(SemaRef, *this, S, CalleeExpr, Args);
   }
 
 
@@ -1427,7 +1440,7 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     // TODO: Determine the correct message to output here.
     return nullptr;
   }
-  return handleExpressionResultCall(SemaRef, S, CalleeExpr, Args);
+  return handleExpressionResultCall(SemaRef, *this, S, CalleeExpr, Args);
 }
 
 /// This returns true if the keyword is a builtin function.
@@ -2001,17 +2014,18 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     }
     llvm_unreachable("Invalid namespace type returned.");
   }
-  // if (ElaboratedLHS->getType()->isPointerType()) {
-  //   if (const auto *Name = dyn_cast<AtomSyntax>(RHS)) {
-  //     // TODO: Treat this as a keyword or only in this contexts?
-  //     if (Name->getSpelling() == "construct") {
-  //       llvm::outs() << "We have a possible placement new call\n";
-  //     }
-  //     if (Name->getSpelling() == "destruct") {
-  //       llvm_unreachable("Explicit destructor call not implemented yet.");
-  //     }
-  //   }
-  // }
+
+  if (ElaboratedLHS->getType()->isPointerType()) {
+    if (const auto *Name = dyn_cast<AtomSyntax>(RHS)) {
+      // TODO: Treat this as a keyword or only in this contexts?
+      if (Name->getSpelling() == "construct") {
+        return elaborateInPlaceNewCall(ElaboratedLHS, Op, RHS);
+      }
+      if (Name->getSpelling() == "destruct") {
+        llvm_unreachable("Explicit destructor call not implemented yet.");
+      }
+    }
+  }
 
   if (isa<AtomSyntax>(RHS)) {
     const AtomSyntax *RHSAtom = cast<AtomSyntax>(RHS);
@@ -2123,7 +2137,7 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
 clang::Expr *ExprElaborator::elaborateInPlaceNewCall(clang::Expr *LHSPtr,
                                                      const CallSyntax *Op,
                                                      const Syntax *RHS) {
-  llvm_unreachable("not implemented yet");
+  return SemaRef.buildPartialInPlaceNewExpr(RHS, LHSPtr, Op->getLoc());
 }
 
 clang::Expr *ExprElaborator::elaborateNNS(clang::NamedDecl *NS,
@@ -3131,6 +3145,71 @@ clang::Expr *ExprElaborator::makeOpPackExpansionType(clang::Expr *Result,
         SemaRef.getCxxSema().CheckPackExpansion(TInfo, S->getCallee()->getLoc(),
                                                 llvm::None);
   return SemaRef.buildTypeExpr(PackInfo);
+}
+
+
+clang::Expr *ExprElaborator::elaboratePartialElementExpr(clang::Expr *E,
+                                                       const ElemSyntax *Elem) {
+  auto *PartialExpr = dyn_cast<clang::CppxPartialEvalExpr>(E);
+  assert(PartialExpr && "Invalid partial expression.");
+  // The assumption for this is that we are template because there are no other
+  // partial expressions other then the one that's used for calls to inplace
+  // new.
+  llvm::SmallVector<clang::Expr *, 32> TemplateArgExprs;
+  const auto *ArgListSyntax = cast<ListSyntax>(Elem->getArguments());
+  for(const auto *ArgSyntax : ArgListSyntax->children()) {
+    clang::EnterExpressionEvaluationContext EnterConstantEvaluated(
+                                                          SemaRef.getCxxSema(),
+                  clang::Sema::ExpressionEvaluationContext::ConstantEvaluated,
+                                                /*LambdaContextDecl=*/nullptr,
+                                                              /*ExprContext=*/
+          clang::Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
+
+    clang::Expr *ArgExpr = doElaborateExpr(ArgSyntax);
+    if (!ArgExpr) {
+      SemaRef.Diags.Report(ArgSyntax->getLoc(),
+                           clang::diag::err_failed_to_translate_expr);
+      continue;
+    }
+    TemplateArgExprs.emplace_back(ArgExpr);
+  }
+  // We just emit the error and still attempt to complete the remainder of the
+  // partial expression.
+  if (!PartialExpr->canAcceptElementArgs(TemplateArgExprs)) {
+    SemaRef.Diags.Report(Elem->getObject()->getLoc(),
+                         clang::diag::err_invalid_partial_expr_element_args);
+  } else {
+    PartialExpr->applyElementArgs(TemplateArgExprs);
+  }
+  return PartialExpr;
+}
+
+clang::Expr *ExprElaborator::elaboratePartialCallExpr(clang::Expr *E,
+                                                      const CallSyntax *S,
+                                    llvm::SmallVector<clang::Expr *, 8> &Args) {
+  auto *PartialExpr = dyn_cast<clang::CppxPartialEvalExpr>(E);
+  assert(PartialExpr && "Invalid partial expression.");
+
+  if (!PartialExpr->canAcceptFunctionArgs(Args)) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_invalid_partial_expr_call_args);
+  } else {
+    PartialExpr->applyFunctionArgs(Args);
+  }
+  return E;
+}
+
+clang::Expr *ExprElaborator::completePartialExpr(clang::Expr *E) {
+  if (auto *PartialExpr = dyn_cast<clang::CppxPartialEvalExpr>(E)) {
+    if (PartialExpr->isCompletable()) {
+      return PartialExpr->forceCompleteExpr();
+    }
+    // else {
+    //   SemaRef.Diags.Report(E->getExprLoc(),
+    //                        clang::diag::err_invalid_partial_expr_malformed);
+    // }
+  }
+  return E;
 }
 
 #undef VALUE

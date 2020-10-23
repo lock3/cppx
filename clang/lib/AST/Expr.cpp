@@ -3497,6 +3497,7 @@ bool Expr::HasSideEffects(const EvalContext &Ctx,
   case CXXSelectPackExprClass:
   case CppxTypeLiteralClass:
   case CppxDeclRefExprClass:
+  case CppxPartialEvalExprClass:
     // These never have a side-effect.
     return false;
 

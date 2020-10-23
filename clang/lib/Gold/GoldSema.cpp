@@ -31,6 +31,7 @@
 #include "clang/Gold/GoldIdentifierResolver.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSyntax.h"
+#include "clang/Gold/GoldPartialExpr.h"
 
 #include <algorithm>
 
@@ -1498,7 +1499,17 @@ clang::Expr *Sema::actOnCxxFoldExpr(clang::SourceLocation LParenLoc,
   return CxxSema.ActOnCXXFoldExpr(getCurClangScope(), LParenLoc, LHS, ClangTK,
                                   EllipsisLoc, RHS, RParenLoc).get();
 }
+clang::CppxPartialEvalExpr *
+Sema::buildPartialInPlaceNewExpr(const Syntax *ConstructKW,
+                                 clang::Expr *PtrExpr,
+                                 clang::SourceLocation Loc) {
+  return clang::CppxPartialEvalExpr::Create(Context.CxxAST,
+    // FIXME: I need to keep track of the allocated memory for this.
+                                            new PartialInPlaceNewExpr(
+                                              *this, ConstructKW, PtrExpr),
+                                            Loc);
 
+}
 } // namespace gold
 
 

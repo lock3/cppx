@@ -11405,6 +11405,18 @@ def err_double_pack_expansion : Error<
 def err_invalid_unpack_expr : Error<
   "'...' cannot be appled to expression">;
 
+def err_invalid_partial_expr_element_args : Error<
+  "invalid [] arguments">;
+
+def err_invalid_partial_expr_call_args : Error<
+  "invalid () arguments">;
+
+def err_invalid_partial_expr_malformed : Error<
+  "invalid expression">;
+
+def err_invalid_inplace_new_template_params : Error<
+  "invalid number of template parameters given to construct function">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

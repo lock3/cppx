@@ -39,6 +39,66 @@
 #include <cstdint>
 #include <memory>
 
+namespace gold {
+  /// Forward declaration
+  /// Add additional kinds of derived classes here.
+  enum class PartialExprKind : std::size_t;
+
+  using ExprList = llvm::SmallVectorImpl<clang::Expr *>;
+  /// This is a solution, it may not be the best solution but it's one that
+  /// will do what we need. It will hide the incomplete information
+  /// needed to construct the expression as part of the AST.
+  ///
+  /// The main problem is that clang doesn't really lend it self to this kind
+  /// of AST expression naturally, because it was never meant to do this.
+  /// So that being said we have to create a new way to collect and apply arguments
+  /// to an incomplete expression, in some way, while hiding what that expression
+  /// actually is and perfoming actions when possible to actually create a
+  /// partially evaluated expression.
+  ///
+  /// The draw back to using this is that we may have to create a hierarchy
+  /// so we can figure out what the thing being created actually is.
+  class CppxPartialExprBase {
+  private:
+    PartialExprKind Kind;
+  public:
+    CppxPartialExprBase(PartialExprKind PEK) :Kind(PEK) { }
+
+    virtual ~CppxPartialExprBase() = default;
+    clang::SourceLocation BeginLocation;
+    clang::SourceLocation EndLocation;
+
+    clang::SourceLocation beginLoc() const { return BeginLocation; }
+    clang::SourceLocation endLoc() const { return EndLocation; }
+
+    PartialExprKind getKind() const { return Kind; }
+
+    /// Return true if the given arguments can be handled applied to the
+    /// partial expression, this could be template parameters or array access.
+    virtual bool canAcceptElementArgs(const ExprList &Args) const = 0;
+    virtual void applyElementArgs(const ExprList &Args) = 0;
+
+    /// Returns true if the partial expression would accept function style
+    /// call next. meaning (args). Args can be empty.
+    virtual bool canAcceptFunctionArgs(const ExprList &Args) const = 0;
+    virtual void applyFunctionArgs(const ExprList &Args) = 0;
+
+    /// Check if the expression is completable
+    virtual bool isCompletable() const = 0;
+
+    /// This is used to generate the complete expression that is represented
+    /// by a derived version of this class.
+    virtual clang::Expr *completeExpr() const = 0;
+
+    /// Function for reporting errors in the event that an expression can not be
+    /// completed and it's needed.
+    virtual void diagnoseIncompleteReason() = 0;
+
+    /// This is always true.
+    static bool classof(const CppxPartialExprBase *) { return true; }
+  };
+}
+
 namespace clang {
 
 class ASTContext;
@@ -134,10 +194,96 @@ public:
     return T->getStmtClass() == CppxDeclRefExprClass;
   }
 
-  static CppxDeclRefExpr *Create(ASTContext &Context, QualType KindTy, 
+  static CppxDeclRefExpr *Create(ASTContext &Context, QualType KindTy,
                                  ValueType NsDecl, SourceLocation Loc);
 };
 
+
+/// This is a partial implementation class that provides an interface into
+/// the clang AST for partial gold expressions.
+class CppxPartialEvalExpr : public Expr {
+  /// The location associated with the expression being constructed.
+  // SourceLocation Loc;
+  gold::CppxPartialExprBase *Impl = nullptr;
+  SourceLocation Loc;
+
+  explicit CppxPartialEvalExpr(EmptyShell Empty)
+    : Expr(CppxPartialEvalExprClass, Empty)
+  { }
+
+public:
+  CppxPartialEvalExpr(QualType ResultTy, gold::CppxPartialExprBase *E,
+                      SourceLocation L)
+    :Expr(CppxPartialEvalExprClass, ResultTy, VK_RValue, OK_Ordinary),
+    Impl(E), Loc(L)
+  { }
+
+  SourceLocation getBeginLoc() const LLVM_READONLY {
+    assert(Impl && "Implementation not set.");
+    return Impl->beginLoc();
+  }
+
+  SourceLocation getEndLoc() const LLVM_READONLY {
+    assert(Impl && "Implementation not set.");
+    return Impl->endLoc();
+  }
+
+  /// Retrieve the location of the literal.
+  SourceLocation getLocation() const { return Loc;}
+  void setLocation(SourceLocation Location) { Loc = Location; }
+
+  gold::CppxPartialExprBase *getImpl() const { return Impl; }
+  void setImpl(gold::CppxPartialExprBase *Base) { Impl = Base; }
+
+  bool canAcceptElementArgs(const gold::ExprList &Args) const {
+    assert(Impl && "Implementation not set.");
+    return Impl->canAcceptElementArgs(Args);
+  }
+
+  bool canAcceptFunctionArgs(const gold::ExprList &Args) const {
+    assert(Impl && "Implementation not set.");
+    return Impl->canAcceptFunctionArgs(Args);
+  }
+
+  // Application functions.
+  void applyElementArgs(const gold::ExprList &Args) {
+    assert(Impl && "Implementation not set.");
+    Impl->applyElementArgs(Args);
+  }
+
+  void applyFunctionArgs(const gold::ExprList &Args) {
+    assert(Impl && "Implementation not set.");
+    Impl->applyFunctionArgs(Args);
+  }
+
+  bool isCompletable() {
+    assert(Impl && "Implementation not set.");
+    return Impl->isCompletable();
+  }
+  clang::Expr *forceCompleteExpr() {
+    assert(Impl && "Implementation not set.");
+    if (Impl->isCompletable()){
+      return Impl->completeExpr();
+    }
+    Impl->diagnoseIncompleteReason();
+    return nullptr;
+  }
+
+  child_range children() {
+    return child_range(child_iterator(), child_iterator());
+  }
+  const_child_range children() const {
+    return const_child_range(const_child_iterator(), const_child_iterator());
+  }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == CppxPartialEvalExprClass;
+  }
+
+  static CppxPartialEvalExpr *Create(ASTContext &Ctx,
+                                     gold::CppxPartialExprBase *E,
+                                     SourceLocation Loc);
+};
 
 } // namespace clang
 

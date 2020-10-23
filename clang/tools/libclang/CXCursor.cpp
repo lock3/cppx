@@ -361,6 +361,7 @@ CXCursor cxcursor::MakeCXCursor(const Stmt *S, const Decl *Parent,
   case Stmt::RecoveryExprClass:
   case Stmt::CXXCompilerErrorExprClass:
   case Stmt::CXXFragmentExprClass:
+  case Stmt::CppxPartialEvalExprClass:
   case Stmt::CppxTypeLiteralClass:
   case Stmt::CppxDeclRefExprClass:
   case Stmt::CXXFragmentCaptureExprClass:

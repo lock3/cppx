@@ -131,7 +131,6 @@ public:
 
   clang::Expr *elaborateCastOp(const CallSyntax *CastOp);
 
-
   clang::Expr *elaborateThrowExpr(const CallSyntax *Call);
 private:
   clang::Expr *handleRawBaseSpecifier(const CallSyntax *Op);
@@ -169,8 +168,16 @@ private:
   clang::Expr *makeOpPackExpansionType(clang::Expr *Result,
                                        const CallSyntax *S);
   ///}
-
-
+public:
+  /// Functions that help handle processing of incomplete expressions.
+  ///{
+  clang::Expr *elaboratePartialElementExpr(clang::Expr *PartialExpr,
+                                           const ElemSyntax *Elem);
+  clang::Expr *elaboratePartialCallExpr(clang::Expr *PartialExpr,
+                                        const CallSyntax *Call,
+                                     llvm::SmallVector<clang::Expr *, 8> &Args);
+  clang::Expr *completePartialExpr(clang::Expr *E);
+  ///}
 };
 
 } // namespace gold

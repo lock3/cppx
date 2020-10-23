@@ -3908,6 +3908,7 @@ recurse:
   case Expr::CXXCompilerErrorExprClass:
   case Expr::CppxTypeLiteralClass:
   case Expr::CppxDeclRefExprClass:
+  case Expr::CppxPartialEvalExprClass:
     llvm_unreachable("unexpected statement kind");
 
   case Expr::ConstantExprClass:

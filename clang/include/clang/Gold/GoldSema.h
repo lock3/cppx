@@ -1053,6 +1053,13 @@ public:
       SemaRef.setListIsParenExpr(PreviousValue);
     }
   };
+
+public:
+  /// This constructs a new in place new expression that will be completed
+  /// once all of it's arguments are available.
+  clang::CppxPartialEvalExpr *buildPartialInPlaceNewExpr(
+                                const Syntax *ConstructKW, clang::Expr *PtrExpr,
+                                clang::SourceLocation Loc);
 };
 
 } // namespace gold
