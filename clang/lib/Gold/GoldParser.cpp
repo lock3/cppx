@@ -1041,6 +1041,9 @@ Syntax *Parser::parsePre() {
   if (PreviousToken.isFused() && PreviousToken.FusionInfo.Base == tok::Operator)
     return FusionToks.clear(), nullptr;
 
+  // if (nextTokenIs(tok::LeftParen) && PreviousToken.hasKind(tok::Dot))
+  //   Toks.emplace_front(tok::Junk, PreviousToken.getLocation(), getSymbol(""));
+
   if (Token Op = matchTokenIf(is_unary_operator)) {
     Syntax *E = parsePre();
     return onUnary(Op, E);
@@ -1678,6 +1681,7 @@ Syntax *Parser::parsePrimary() {
   case tok::DefaultKeyword:
   case tok::DeleteKeyword:
   case tok::UsingKeyword:
+  case tok::Junk:
     return onAtom(consumeToken());
 
   case tok::ThrowKeyword:

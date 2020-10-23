@@ -73,8 +73,8 @@ static bool locateValidAttribute(Declaration *D, OnAttr OnAttribute,
 }
 
 
-static bool computeAccessSpecifier(Sema& SemaRef, Attributes& attrs,
-                                   clang::AccessSpecifier& AS) {
+static bool computeAccessSpecifier(Sema &SemaRef, Attributes &attrs,
+                                   clang::AccessSpecifier &AS) {
   AS = clang::AS_public;
   return locateValidAttribute(attrs,
     // OnAttr

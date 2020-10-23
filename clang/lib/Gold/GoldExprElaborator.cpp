@@ -2288,7 +2288,7 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
   }
 
 
-  // Processing if is a single name.
+  // Processing if we have a single name.
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(RHS)) {
     clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Atom->getSpelling())},
       Atom->getLoc());
@@ -2296,6 +2296,26 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
 
     clang::NamedDecl *ND = nullptr;
     if (R.size() != 1u) {
+      // This could be a template specialization of a member.
+      if (!R.empty()) {
+        clang::LookupResult Redecls(SemaRef.getCxxSema(), DNI,
+                                    clang::Sema::LookupOrdinaryName,
+                                    clang::Sema::ForVisibleRedeclaration);
+        for (clang::NamedDecl *ND : R)
+          Redecls.addDecl(ND);
+        ND = Redecls.getAcceptableDecl(R.front());
+        if (ND && isa<clang::ValueDecl>(ND)) {
+          clang::ValueDecl *VD = cast<clang::ValueDecl>(ND);
+          clang::NestedNameSpecifierLoc NNS(SemaRef.CurNNSContext.getScopeRep(),
+                                            SemaRef.CurNNSContext.location_data());
+          bool UseNNS = SemaRef.CurNNSContext.isSet();
+
+          return clang::DeclRefExpr::Create(
+            CxxAST, UseNNS ? NNS : clang::NestedNameSpecifierLoc(),
+            clang::SourceLocation(), VD, /*Capture=*/false, RHS->getLoc(),
+            VD->getType(), AddressOf ? clang::VK_RValue : clang::VK_LValue);
+        }
+      }
 
       // This wasn't the name of a member, check if it is the name of a base.
       if (clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(TD)) {
@@ -2332,7 +2352,7 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
       // Check for a shadowed overload set.
       if (usingClassLookupIsUnresolved(R, Shadows)) {
         // If we're not creating a UsingDecl, these need to be static.
-        if (!SemaRef.elaboratingUsingInClassScope()) {
+        if (!SemaRef.elaboratingUsingInClassScope() && !AddressOf) {
           SemaRef.Diags.Report(Prev->getExprLoc(),
                                clang::diag::err_ref_non_value) << Prev;
           return nullptr;
@@ -2985,6 +3005,22 @@ clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
   if (IsVariadic) {
     EPI.ExtInfo = Context.CxxAST.getDefaultCallingConvention(true, false);
     EPI.Variadic = true;
+  }
+
+  // Manually elaborate any attributes here.
+  for (const Attribute *Attr : ParamBegin->getAttributes()) {
+    std::string AttrName;
+    if (checkAttrFormatAndName(Attr->getArg(), AttrName) == AF_Name) {
+      if (AttrName == "const") {
+        if (!ClassType) {
+          SemaRef.Diags.Report(Attr->getArg()->getLoc(),
+                               clang::diag::err_invalid_attribute_for_decl)
+            << "const" << "member function";
+        }
+
+        EPI.TypeQuals.addConst();
+      }
+    }
   }
 
   clang::QualType FnTy =

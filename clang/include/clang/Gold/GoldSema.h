@@ -870,7 +870,7 @@ public:
   const OperatorInfo OpInfo;
 
   using AttributeHandler = void(*)(Elaborator &, Declaration*,
-                                         const Syntax*, AttrStatus &);
+                                   const Syntax*, AttrStatus &);
   using StringToAttrHandlerMap = llvm::StringMap<AttributeHandler>;
 
   /// MethodAttrHelper Contains mapings back to member functions that handle
