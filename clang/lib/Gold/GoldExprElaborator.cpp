@@ -2857,10 +2857,19 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
     Elaborator Elab(Context, SemaRef);
     clang::ValueDecl *VD =
       cast_or_null<clang::ValueDecl>(Elab.elaborateParmDeclSyntax(P));
-    if (!VD) {
-      SemaRef.leaveScope(FuncDcl->getParams());
-      return nullptr;
+    if (!VD)
+      continue;
+    if (VD->getType()->isVariadicType()) {
+      if (I < Args->getNumChildren() - 1) {
+        SemaRef.Diags.Report(Args->getChild(I)->getLoc(),
+                             clang::diag::err_expected) << clang::tok::r_paren;
+        continue;
+      }
+
+      FuncDcl->setIsVariadic();
+      continue;
     }
+
 
     Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
     assert(D && "Didn't find associated declaration");

@@ -305,6 +305,12 @@ bool Declaration::declaresFunctionDef() const {
   return declaresFunction() && Init;
 }
 
+bool Declaration::isVariadic() const {
+  if (!declaresFunctionDecl())
+    return false;
+  return IsVariadic;
+}
+
 bool Declaration::declaresUsingDirective() const {
   return isa<UsingDirectiveDeclarator>(Decl);
 }

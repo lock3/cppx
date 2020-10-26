@@ -207,8 +207,7 @@ private:
   NestedNameSpecifierDeclarator *handleNestedNameSpecifier(const AtomSyntax *S,
                                                            Declarator *Next);
   IdentifierDeclarator *handleIdentifier(const AtomSyntax *S, Declarator *Next);
-  FunctionDeclarator *handleFunction(const CallSyntax *S, Declarator *Next,
-                                     bool IsVariadic = false);
+  FunctionDeclarator *handleFunction(const CallSyntax *S, Declarator *Next);
   TypeDeclarator *handleType(const Syntax *S, Declarator *Next);
   TemplateParamsDeclarator *handleTemplateParams(const ElemSyntax *S,
                                                  Declarator *Next);

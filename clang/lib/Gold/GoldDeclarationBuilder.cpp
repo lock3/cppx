@@ -1492,7 +1492,8 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
   case FOK_Brackets:
   case FOK_Throw:
   case FOK_Parens:
-  case FOK_DotCaret: {
+  case FOK_DotCaret:
+  default: {
     // None of these operators can be the root of a declaration, with the exception
     // of very specific contexts.
     if (RequiresDeclOrError) {
@@ -1593,10 +1594,8 @@ DeclarationBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
 }
 
 FunctionDeclarator *
-DeclarationBuilder::handleFunction(const CallSyntax *S, Declarator *Next,
-                                   bool IsVariadic) {
-  // const auto *Args = cast<ListSyntax>(S->getArguments());
-  auto Ret = new FunctionDeclarator(S, Next, IsVariadic);
+DeclarationBuilder::handleFunction(const CallSyntax *S, Declarator *Next) {
+  auto Ret = new FunctionDeclarator(S, Next);
   Ret->recordAttributes(S);
   return Ret;
 }

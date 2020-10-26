@@ -1732,21 +1732,31 @@ static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
 namespace {
 
 // Get the Clang parameter declarations for D
-void getFunctionParameters(Declaration *D,
+void getFunctionParameters(Sema &SemaRef, Declaration *D,
                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
+  assert (D->declaresFunction() && "cannot get params for non-function");
   FunctionDeclarator *FnDecl = D->FunctionDcl->getAsFunction();
   const ListSyntax *ParamList = FnDecl->getParams();
   Scope *ParamScope = FnDecl->getScope();
-  bool Variadic = FnDecl->isVariadic();
 
   unsigned N = ParamList->getNumChildren();
   for (unsigned I = 0; I < N; ++I) {
-    if (I == N - 1 && Variadic)
-      break;
+    bool ArgsParam = false;
     const Syntax *P = ParamList->getChild(I);
     Declaration *PD = ParamScope->findDecl(P);
     assert(PD->Cxx && "No corresponding declaration");
-    Params.push_back(cast<clang::ParmVarDecl>(PD->Cxx));
+    if (cast<clang::ParmVarDecl>(PD->Cxx)->getType()->isVariadicType()) {
+      if (I != N - 1) {
+        SemaRef.Diags.Report(PD->getEndOfDecl(),
+                             clang::diag::err_expected) << clang::tok::r_paren;
+        continue;
+      }
+
+      ArgsParam = D->IsVariadic = true;
+    }
+
+    if (!ArgsParam)
+      Params.push_back(cast<clang::ParmVarDecl>(PD->Cxx));
   }
 }
 
@@ -2142,7 +2152,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
 
   // Update the function parameters.
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
-  getFunctionParameters(D, Params);
+  getFunctionParameters(SemaRef, D, Params);
   FD->setParams(Params);
   D->CurrentPhase = Phase::Typing;
   SemaRef.setDeclForDeclaration(D, FD);

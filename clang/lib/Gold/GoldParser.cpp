@@ -1007,9 +1007,23 @@ static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P, const Token& Tok);
 static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P,
                         const Token& Tok, Syntax *Args);
 
-static bool isEndOfThrow(TokenKind K){
+static inline bool isEndOfThrow(TokenKind K){
   return K == tok::Separator || K == tok::Semicolon || K == tok::Dedent;
 }
+
+// True when the lookahead is ends a line, block, or file. Used for void
+// return expressions.
+static inline bool isEnd(TokenKind Lookahead) {
+  switch (Lookahead) {
+  case tok::Dedent:
+  case tok::Separator:
+  case tok::EndOfFile:
+    return true;
+  default:
+    return false;
+  }
+}
+
 Syntax *Parser::parseThrow() {
   Token ThrowKW = consumeToken();
   if (InAttribute) {
@@ -1057,9 +1071,9 @@ Syntax *Parser::parsePre() {
   if (nextTokenIs("return") || nextTokenIs("returns")) {
     Token Op = consumeToken();
     Syntax *E = nullptr;
-    if (getLookahead() != tok::Dedent && getLookahead() != tok::Separator) {
+    if (!isEnd(getLookahead()))
       E = parseExpr();
-    }
+
     return onUnaryOrNull(Op, E);
   }
   // This might not be right, there is a chance that this could be a pre-attribute

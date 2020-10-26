@@ -280,6 +280,9 @@ public:
   /// checks if a function has a body.
   bool declaresFunctionDef() const;
 
+  /// Checks is a declaration is a variadic function.
+  bool isVariadic() const;
+
   /// Checks if this is a using directive declaration.
   bool declaresUsingDirective() const;
 
@@ -439,6 +442,8 @@ public:
   clang::CXXScopeSpec ScopeSpec;
   bool IsRedeclaration = false;
   bool NeedToBeElaboratedByClangBeforeUse = false;
+
+  bool IsVariadic = false;
 };
 
 Phase phaseOf(Declaration *D);
