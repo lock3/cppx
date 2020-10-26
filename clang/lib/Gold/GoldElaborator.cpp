@@ -1744,7 +1744,9 @@ void getFunctionParameters(Sema &SemaRef, Declaration *D,
     bool ArgsParam = false;
     const Syntax *P = ParamList->getChild(I);
     Declaration *PD = ParamScope->findDecl(P);
-    assert(PD->Cxx && "No corresponding declaration");
+    if (!PD->Cxx)
+      continue;
+
     if (cast<clang::ParmVarDecl>(PD->Cxx)->getType()->isVariadicType()) {
       if (I != N - 1) {
         SemaRef.Diags.Report(PD->getEndOfDecl(),
@@ -3248,11 +3250,8 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
                                        IsClassMember)) {
       return nullptr;
     }
+
     NewVD = cast<clang::VarDecl>(D->Cxx);
-  // } else if (D.isDecompositionDeclarator()) {
-    // NewVD = DecompositionDecl::Create(Context, DC, D.getBeginLoc(),
-    //                                   D.getIdentifierLoc(), R, TInfo, SC,
-    //                                   Bindings);
   } else {
     NewVD = clang::VarDecl::Create(Context.CxxAST, Owner,
                                     Loc, Loc, Id, TInfo->getType(),
@@ -3279,12 +3278,13 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
     NewVD->setLexicalDeclContext(Owner);
     SemaRef.setDeclForDeclaration(D, NewTemplate);
   }
+
   if (D->ScopeSpec.isSet())
     NewVD->setQualifierInfo(
         D->ScopeSpec.getWithLocInContext(Context.CxxAST));
-  if (!NewTemplate && !IsVariableTemplateSpecialization) {
+  if (!NewTemplate && !IsVariableTemplateSpecialization)
     SemaRef.setDeclForDeclaration(D, NewVD);
-  }
+
   D->CurrentPhase = Phase::Typing;
   elaborateAttributes(D);
 
@@ -3605,6 +3605,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   // Labeling our catch variable.
   if (D->declaresCatchVariable())
     NewVD->setExceptionVariable(true);
+
   return NewVD;
 }
 

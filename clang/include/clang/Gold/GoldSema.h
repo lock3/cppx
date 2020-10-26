@@ -15,6 +15,7 @@
 #ifndef CLANG_GOLD_GOLDSEMA_H
 #define CLANG_GOLD_GOLDSEMA_H
 
+#include "clang/AST/Type.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "llvm/ADT/APInt.h"
@@ -121,6 +122,11 @@ class Sema {
 public:
   Sema(SyntaxContext &Context, clang::Sema &S);
   ~Sema();
+
+  // Create the type of __builtin_va_list
+  clang::QualType createVaListType();
+  const llvm::StringMap<clang::QualType> createBuiltinTypeList();
+
   // Look through a translation unit and map the identifiers to Clang
   // constructs.
   void IdentifyDecls(const ArraySyntax *S);
@@ -589,6 +595,10 @@ public:
   // Tokens used for constructor and destructor;
   clang::IdentifierInfo *const ConstructorII;
   clang::IdentifierInfo *const DestructorII;
+
+  // Tokens for builtin functions
+  clang::IdentifierInfo *const VaStartII;
+  clang::IdentifierInfo *const VaEndII;
 
   // An RAII type for constructing scopes.
   struct ScopeRAII {
