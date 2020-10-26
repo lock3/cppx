@@ -976,6 +976,7 @@ DEF_TRAVERSE_TYPE(UnresolvedUsingType, {})
 DEF_TRAVERSE_TYPE(CXXRequiredTypeType, {})
 DEF_TRAVERSE_TYPE(CppxKindType, {})
 DEF_TRAVERSE_TYPE(CppxNamespaceType, {})
+DEF_TRAVERSE_TYPE(CppxArgsType, {})
 DEF_TRAVERSE_TYPE(CppxTemplateType, {
     // TODO: Finish implementing this? I will need to visit all child types I think.
                     })
@@ -1264,8 +1265,9 @@ DEF_TRAVERSE_TYPELOC(UnresolvedUsingType, {})
 DEF_TRAVERSE_TYPELOC(CXXRequiredTypeType, {})
 DEF_TRAVERSE_TYPELOC(CppxKindType, {})
 DEF_TRAVERSE_TYPELOC(CppxNamespaceType, {})
-DEF_TRAVERSE_TYPELOC(CppxTemplateType, {// TODO: Finish implementing this?
-                    })
+// TODO: Finish implementing this?
+DEF_TRAVERSE_TYPELOC(CppxTemplateType, {})
+DEF_TRAVERSE_TYPELOC(CppxArgsType, {})
 DEF_TRAVERSE_TYPELOC(TypedefType, {})
 
 DEF_TRAVERSE_TYPELOC(TypeOfExprType,

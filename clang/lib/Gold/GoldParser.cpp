@@ -1041,9 +1041,6 @@ Syntax *Parser::parsePre() {
   if (PreviousToken.isFused() && PreviousToken.FusionInfo.Base == tok::Operator)
     return FusionToks.clear(), nullptr;
 
-  // if (nextTokenIs(tok::LeftParen) && PreviousToken.hasKind(tok::Dot))
-  //   Toks.emplace_front(tok::Junk, PreviousToken.getLocation(), getSymbol(""));
-
   if (Token Op = matchTokenIf(is_unary_operator)) {
     Syntax *E = parsePre();
     return onUnary(Op, E);
@@ -1406,6 +1403,7 @@ Parser::FoldKind Parser::scanForFoldExpr() {
 ///   postfix . identifier
 ///   postfix . ( expr ) identifier
 ///   postfix .* ( expr )
+///   postfix of-macro
 ///   postfix suffix-operator
 ///
 /// suffix-operator:
@@ -1449,6 +1447,11 @@ Syntax *Parser::parsePost()
       llvm_unreachable("suffix operators not implemented");
       consumeToken();
       break;
+
+    case tok::OfKeyword:
+      e = parseMacro();
+      break;
+
     default:
       return e;
     }
@@ -1628,61 +1631,14 @@ Syntax *Parser::parsePostAttr(Syntax *Pre) {
   return Pre;
 }
 
+static inline bool isKeyword(TokenKind K) {
+  return K >= tok::VoidKeyword && K <= tok::AnonymousKeyword;
+}
+
 Syntax *Parser::parsePrimary() {
   switch (getLookahead()) {
   case tok::Identifier:
     return parseId();
-
-  case tok::ClassKeyword:
-  case tok::EnumKeyword:
-  case tok::UnionKeyword:
-  case tok::NamespaceKeyword:
-  case tok::StaticCastKeyword:
-  case tok::DynamicCastKeyword:
-  case tok::ReinterpretCastKeyword:
-  case tok::ConstCastKeyword:
-  case tok::ConstExprKeyword:
-  case tok::AlignOfKeyword:
-  case tok::SizeOfKeyword:
-  case tok::NoExceptKeyword:
-  case tok::DeclTypeKeyword:
-  case tok::TypeidKeyword:
-  case tok::ThisKeyword:
-  case tok::TypeIdKeyword:
-  case tok::VoidKeyword:
-  case tok::BoolKeyword:
-  case tok::CharKeyword:
-  case tok::Char8Keyword:
-  case tok::Char16Keyword:
-  case tok::Char32Keyword:
-  case tok::IntKeyword:
-  case tok::Int8Keyword:
-  case tok::Int16Keyword:
-  case tok::Int32Keyword:
-  case tok::Int64Keyword:
-  case tok::Int128Keyword:
-  case tok::UintKeyword:
-  case tok::Uint8Keyword:
-  case tok::Uint16Keyword:
-  case tok::Uint32Keyword:
-  case tok::Uint64Keyword:
-  case tok::Uint128Keyword:
-  case tok::FloatKeyword:
-  case tok::Float16Keyword:
-  case tok::Float32Keyword:
-  case tok::Float64Keyword:
-  case tok::Float128Keyword:
-  case tok::CCharKeyword:
-  case tok::DoubleKeyword:
-  case tok::TypeKeyword:
-  case tok::ArgsKeyword:
-  case tok::ContinueKeyword:
-  case tok::BreakKeyword:
-  case tok::DefaultKeyword:
-  case tok::DeleteKeyword:
-  case tok::UsingKeyword:
-  case tok::Junk:
-    return onAtom(consumeToken());
 
   case tok::ThrowKeyword:
     return parseThrow();
@@ -1740,6 +1696,9 @@ Syntax *Parser::parsePrimary() {
   default:
     break;
   }
+
+  if (isKeyword(getLookahead()))
+    return onAtom(consumeToken());
 
   // Diagnose the error and consume the token so we don't see it again.
   Diags.Report(getInputLocation(), clang::diag::err_expected)

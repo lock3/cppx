@@ -153,6 +153,9 @@ private:
   clang::Expr *handleFunctionType(const CallSyntax *S);
   clang::Expr *handleArrayType(const CallSyntax *S);
   clang::Expr *handleOpPackExpansion(const CallSyntax *S);
+  clang::Expr *handleVaStartCall(const CallSyntax *S);
+  clang::Expr *handleVaEndCall(const CallSyntax *S);
+  clang::Expr *handleVaListCall(const CallSyntax *S);
 
 private:
   /// ---------------------------------------------------------------------- ///

@@ -1827,6 +1827,10 @@ bool CursorVisitor::VisitCppxNamespaceTypeLoc(CppxNamespaceTypeLoc TL) {
   return false;
 }
 
+bool CursorVisitor::VisitCppxArgsTypeLoc(CppxArgsTypeLoc TL) {
+  return false;
+}
+
 bool CursorVisitor::VisitAtomicTypeLoc(AtomicTypeLoc TL) {
   return Visit(TL.getValueLoc());
 }

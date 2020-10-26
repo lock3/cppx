@@ -6067,6 +6067,10 @@ bool UnnamedLocalNoLinkageFinder::VisitCppxNamespaceType(
   return false;
 }
 
+bool UnnamedLocalNoLinkageFinder::VisitCppxArgsType(const CppxArgsType* T) {
+  return false;
+}
+
 bool UnnamedLocalNoLinkageFinder::VisitCppxTemplateType(const CppxTemplateType* T) {
   return false;
 }

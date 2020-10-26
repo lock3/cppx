@@ -137,6 +137,11 @@ def_keyword(Break, "break")
 def_keyword(Const, "const")
 def_keyword(Ref, "ref")
 def_keyword(RValueRef, "rref")
+def_keyword(Of, "of")
+def_keyword(VaList, "__builtin_va_list")
+def_keyword(VaStart, "__builtin_va_start")
+def_keyword(VaEnd, "__builtin_va_end")
+// This is the last keyword token, define any others above this:
 def_keyword(Anonymous, "_")
 
 def_token(TryBlock)
@@ -151,7 +156,6 @@ def_token(Character)
 def_token(HexadecimalCharacter)
 def_token(UnicodeCharacter)
 def_token(String)
-def_token(Junk)
 
 // ... operator indicating tokens
 // def_puncop(Ellipsis, "...") this is used when we are NOT within a fold expression.

@@ -476,6 +476,10 @@ void TypeLocWriter::VisitCppxTemplateTypeLoc(CppxTemplateTypeLoc TL) {
   Record.AddSourceLocation(TL.getLoc());
 }
 
+void TypeLocWriter::VisitCppxArgsTypeLoc(CppxArgsTypeLoc TL) {
+  Record.AddSourceLocation(TL.getNameLoc());
+}
+
 void TypeLocWriter::VisitDependentNameTypeLoc(DependentNameTypeLoc TL) {
   Record.AddSourceLocation(TL.getElaboratedKeywordLoc());
   Record.AddNestedNameSpecifierLoc(TL.getQualifierLoc());

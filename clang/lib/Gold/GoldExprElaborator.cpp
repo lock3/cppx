@@ -18,6 +18,7 @@
 #include "clang/AST/OperationKinds.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/ExprCppx.h"
+#include "clang/Basic/Builtins.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/DiagnosticParse.h"
 #include "clang/Basic/DiagnosticSema.h"
@@ -1270,7 +1271,7 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
   return nullptr;
 }
 
-static bool buildFunctionCallAruments(Sema &SemaRef, SyntaxContext &Context,
+static bool buildFunctionCallArguments(Sema &SemaRef, SyntaxContext &Context,
     const ListSyntax *ArgList,
     llvm::SmallVector<clang::Expr *, 8> &Args) {
   for (const Syntax *A : ArgList->children()) {
@@ -1360,8 +1361,6 @@ static bool callIsCastOperator(const CallSyntax *S) {
   return false;
 }
 
-
-
 clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   if (callIsCastOperator(S))
     return elaborateCastOp(S);
@@ -1379,7 +1378,7 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     llvm::SmallVector<clang::Expr *, 8> Args;
     const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
 
-    if (buildFunctionCallAruments(SemaRef, Context, ArgList, Args))
+    if (buildFunctionCallArguments(SemaRef, Context, ArgList, Args))
       return nullptr;
 
     return handleExpressionResultCall(SemaRef, S, CalleeExpr, Args);
@@ -1420,10 +1419,11 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   default:
     break;
   }
+
   // Handling special case for type
-  if (Callee->hasToken(tok::Ellipsis)) {
+  if (Callee->hasToken(tok::Ellipsis))
     return handleOpPackExpansion(S);
-  }
+
   std::string Temp = Callee->getSpelling();
   llvm::StringRef Spelling = Temp;
   if (Spelling.startswith("operator'")) {
@@ -1441,11 +1441,18 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     }
   }
 
+  if (Callee->hasToken(tok::VaStartKeyword))
+    return handleVaStartCall(S);
+  if (Callee->hasToken(tok::VaEndKeyword))
+    return handleVaEndCall(S);
+  if (Callee->hasToken(tok::VaListKeyword))
+    return handleVaListCall(S);
+
   // Elaborating callee name expression.
   CalleeExpr = doElaborateExpr(S->getCallee());
   llvm::SmallVector<clang::Expr *, 8> Args;
   const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
-  if (buildFunctionCallAruments(SemaRef, Context, ArgList, Args)) {
+  if (buildFunctionCallArguments(SemaRef, Context, ArgList, Args)) {
     // TODO: Determine the correct message to output here.
     return nullptr;
   }
@@ -2721,11 +2728,30 @@ static clang::Expr *handleArrayMacro(SyntaxContext &Context, Sema &SemaRef,
   return InitList.get();
 }
 
+static clang::Expr *handleOfMacro(SyntaxContext &Context, Sema &SemaRef,
+                                  const MacroSyntax *S) {
+  const ArraySyntax *Block = cast<ArraySyntax>(S->getBlock());
+
+  llvm::SmallVector<clang::Expr *, 4> Args;
+  for (const Syntax *SS : Block->children()) {
+    clang::Expr *E = ExprElaborator(Context, SemaRef).elaborateExpr(SS);
+    Args.push_back(E);
+  }
+
+  clang::ExprResult Res =
+    SemaRef.getCxxSema().ActOnParenListExpr(S->getLoc(), S->getLoc(), Args);
+  if (Res.isInvalid())
+    return nullptr;
+  Res.get()->dump();
+  return Res.get();
+}
+
 clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
   assert (isa<AtomSyntax>(S->getCall()) && "Unexpected macro call");
 
   const AtomSyntax *Call = cast<AtomSyntax>(S->getCall());
 
+  // TODO: string map
   if (Call->getSpelling() == "if")
     assert(false && "If expression processing not implemented yet.");
   else if (Call->getSpelling() == "while")
@@ -2734,6 +2760,8 @@ clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
     assert(false && "For loop processing not implemented yet.");
   else if (Call->getSpelling() == "array")
     return handleArrayMacro(Context, SemaRef, S);
+  else if (Call->getSpelling() == "of")
+    return handleOfMacro(Context, SemaRef, S);
 
   unsigned DiagID =
     SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
@@ -3142,6 +3170,31 @@ clang::Expr *ExprElaborator::handleOpPackExpansion(const CallSyntax *S) {
     return ExprRes.get();
   }
 }
+
+clang::Expr *ExprElaborator::handleVaStartCall(const CallSyntax *S) {
+  constexpr unsigned VaStart = clang::Builtin::BI__builtin_va_start;
+  clang::ASTContext::GetBuiltinTypeError Error;
+  clang::QualType VaStartType = CxxAST.GetBuiltinType(VaStart, Error);
+  VaStartType.dump();
+
+  llvm::SmallVector<clang::Expr *, 8> Args;
+  const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
+  if (buildFunctionCallArguments(SemaRef, Context, ArgList, Args))
+    return nullptr;
+
+  return nullptr;
+  // CxxSema.CheckBuiltinFunctionCall
+  // CxxSema.SemaBuiltinVAStart
+}
+
+clang::Expr *ExprElaborator::handleVaEndCall(const CallSyntax *S) {
+  return nullptr;
+}
+
+clang::Expr *ExprElaborator::handleVaListCall(const CallSyntax *S) {
+  return nullptr;
+}
+
 
 clang::Expr *ExprElaborator::makeConstType(clang::Expr *InnerTy,
                                            const CallSyntax* ConstOpNode) {

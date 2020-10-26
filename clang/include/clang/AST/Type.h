@@ -2149,6 +2149,7 @@ public:
                                                 // namespace type.
   bool isTypeOfTypes() const;                   // Returns true if the current
                                                 // type is a CppxKindType
+  bool isVariadicType() const;                  // type is a CppxArgsType
   bool isNullPtrType() const;                   // C++11 std::nullptr_t
   bool isNothrowT() const;                      // C++   std::nothrow_t
   bool isAlignValT() const;                     // C++17 std::align_val_t
@@ -2182,6 +2183,7 @@ public:
 
   bool isKindType() const;
   bool isCppxNamespaceType() const;
+  bool isCppxArgsType() const;
 
   /// Determines if this type, which must satisfy
   /// isObjCLifetimeType(), is implicitly __unsafe_unretained rather
@@ -6692,6 +6694,28 @@ public:
   }
 };
 
+class CppxArgsType : public Type {
+  /// ASTContext creates these.
+  friend class ASTContext;
+
+public:
+  CppxArgsType()
+    : Type(CppxArgs, QualType(), TypeDependence(), /*MetaType=*/false)
+    {}
+
+  bool isSugared() const {
+    return false;
+  }
+
+  QualType desugar() const {
+    return QualType(this, 0);
+  }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == CppxArgs;
+  }
+};
+
 // Type source info
 
 
@@ -7205,6 +7229,10 @@ inline bool Type::isCppxNamespaceType() const {
   return isa<CppxNamespaceType>(CanonicalType);
 }
 
+inline bool Type::isCppxArgsType() const {
+  return isa<CppxArgsType>(CanonicalType);
+}
+
 inline bool Type::isExtIntType() const {
   return isa<ExtIntType>(CanonicalType);
 }
@@ -7251,6 +7279,9 @@ inline bool Type::isTypeOfTypes() const {
   return isa<CppxKindType>(CanonicalType);
 }
 
+inline bool Type::isVariadicType() const {
+  return isa<CppxArgsType>(CanonicalType);
+}
 
 inline bool Type::isSpecificBuiltinType(unsigned K) const {
   if (const BuiltinType *BT = getAs<BuiltinType>()) {

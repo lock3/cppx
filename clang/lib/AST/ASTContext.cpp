@@ -1551,6 +1551,10 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target,
     auto *Ty = new (*this, TypeAlignment) CppxNamespaceType();
     CppxNamespaceTy = CanQualType::CreateUnsafe(QualType(Ty, 0));
   }
+  {
+    auto *Ty = new (*this, TypeAlignment) CppxArgsType();
+    CppxArgsTy = CanQualType::CreateUnsafe(QualType(Ty, 0));
+  }
 
   // MSVC predeclares struct _GUID, and we need it to create MSGuidDecls.
   if (LangOpts.MicrosoftExt || LangOpts.Borland) {
@@ -2468,6 +2472,7 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
   case Type::CppxTemplate:
   case Type::CppxKind:
   case Type::CppxNamespace:
+  case Type::CppxArgs:
     Width = 0; // Like void, you can't create objects.
     Align = 1; // Not a real value
     break;  
@@ -3602,6 +3607,7 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::CppxKind:
   case Type::CppxNamespace:
   case Type::CppxTemplate:
+  case Type::CppxArgs:
     llvm_unreachable("type should never be variably-modified");
 
   // These types can be variably-modified but should never need to
@@ -7730,6 +7736,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string &S,
   case Type::CppxKind:
   case Type::CppxTemplate:
   case Type::CppxNamespace:
+  case Type::CppxArgs:
   case Type::ExtInt:
 #define ABSTRACT_TYPE(KIND, BASE)
 #define TYPE(KIND, BASE)
@@ -9808,6 +9815,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   case Type::Builtin:
   case Type::CppxKind:
   case Type::CppxTemplate:
+  case Type::CppxArgs:
     // Only exactly equal builtin types are compatible, which is tested above.
     return {};
   case Type::Complex:

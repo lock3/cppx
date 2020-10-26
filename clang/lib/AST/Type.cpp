@@ -4021,10 +4021,9 @@ static CachedProperties computeCachedProperties(const Type *T) {
     return Cache::get(cast<PipeType>(T)->getElementType());
 
   case Type::CppxKind:
-    // Just return something for now.
-    return CachedProperties(ExternalLinkage, false);
   case Type::CppxTemplate:
-    // I don't know what's going on here but I'm mimicing cppxkind type.
+  case Type::CppxArgs:
+    // Just return something for now.
     return CachedProperties(ExternalLinkage, false);
   }
 
@@ -4116,12 +4115,9 @@ LinkageInfo LinkageComputer::computeTypeLinkageInfo(const Type *T) {
     return computeTypeLinkageInfo(cast<PipeType>(T)->getElementType());
 
   case Type::CppxKind:
-    return LinkageInfo::external();
-
+  case Type::CppxArgs:
   // This type shouldn't have linkage, should it?
   case Type::CppxTemplate:
-      return LinkageInfo::external();
-
   case Type::CppxNamespace:
     return LinkageInfo::external();
   }
@@ -4290,6 +4286,7 @@ bool Type::canHaveNullability(bool ResultIfUnknown) const {
   case Type::CppxKind:
   case Type::CppxTemplate:
   case Type::CppxNamespace:
+  case Type::CppxArgs:
   case Type::ExtInt:
   case Type::DependentExtInt:
     return false;

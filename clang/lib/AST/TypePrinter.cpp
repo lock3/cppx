@@ -271,6 +271,7 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::CXXDependentVariadicReifier:
     case Type::CppxKind:
     case Type::CppxTemplate:
+    case Type::CppxArgs:
       CanPrefixQualifiers = false;
       break;
 
@@ -1804,6 +1805,12 @@ void TypePrinter::printCppxKindBefore(const CppxKindType *T, raw_ostream &OS) {
 }
 
 void TypePrinter::printCppxKindAfter(const CppxKindType *T, raw_ostream &OS) {}
+
+void TypePrinter::printCppxArgsBefore(const CppxArgsType *T, raw_ostream &OS) {
+  OS << "args";
+}
+
+void TypePrinter::printCppxArgsAfter(const CppxArgsType *T, raw_ostream &OS) {}
 
 void TypePrinter::printCppxNamespaceBefore(const CppxNamespaceType *T,
                                            raw_ostream &OS) {

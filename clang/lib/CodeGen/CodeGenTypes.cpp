@@ -811,6 +811,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
   case Type::CppxKind:
   case Type::CppxTemplate:
   case Type::CppxNamespace:
+  case Type::CppxArgs:
     llvm_unreachable("Unexpected kind");
 
   case Type::ExtInt: {

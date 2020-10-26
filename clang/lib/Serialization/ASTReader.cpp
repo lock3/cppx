@@ -6740,6 +6740,10 @@ void TypeLocReader::VisitCppxTemplateTypeLoc(CppxTemplateTypeLoc TL) {
   TL.setLoc(readSourceLocation());
 }
 
+void TypeLocReader::VisitCppxArgsTypeLoc(CppxArgsTypeLoc TL) {
+  TL.setNameLoc(readSourceLocation());
+}
+
 void TypeLocReader::VisitDependentNameTypeLoc(DependentNameTypeLoc TL) {
   TL.setElaboratedKeywordLoc(readSourceLocation());
   TL.setQualifierLoc(ReadNestedNameSpecifierLoc());

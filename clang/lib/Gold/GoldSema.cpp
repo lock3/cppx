@@ -80,7 +80,8 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
 
     // type of a type.
     { "type", Context.CxxAST.CppxKindTy },
-    { "namespace", Context.CxxAST.CppxNamespaceTy }
+    { "namespace", Context.CxxAST.CppxNamespaceTy },
+    { "args", Context.CxxAST.CppxArgsTy },
   };
 }
 

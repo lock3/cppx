@@ -491,6 +491,20 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::CppxNamespaceTypeLoc>
   return TL;
 }
 
+template<> TypeSourceInfo *BuildTypeLoc<clang::CppxArgsTypeLoc>
+(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
+  auto TypeLocInstance = TLB.push<clang::CppxArgsTypeLoc>(Ty);
+  TypeLocInstance.initializeLocal(Ctx, Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::CppxArgsTypeLoc>
+(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
+  TypeLocBuilder TLB;
+  auto x = BuildTypeLoc<clang::CppxArgsTypeLoc>(Context, TLB, Ty, Loc);
+  return x;
+}
+
 template<> TypeSourceInfo *BuildTypeLoc<clang::EnumTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   clang::EnumTypeLoc EnumTL = TLB.push<clang::EnumTypeLoc>(Ty);

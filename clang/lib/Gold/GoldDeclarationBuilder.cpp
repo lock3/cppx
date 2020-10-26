@@ -1304,15 +1304,17 @@ DeclarationBuilder::buildTemplateFunctionOrNameDeclarator(const Syntax *S,
         return buildTemplateOrNameDeclarator(Func, Next);
       }
     }
+
     Declarator *Fn = handleFunction(Func, Next);
     Declarator *Temp = buildTemplateOrNameDeclarator(Func->getCallee(), Fn);
     Declarator *Cur = Temp;
     while(Cur) {
-      if (isa<IdentifierDeclarator>(Cur)) {
+      if (isa<IdentifierDeclarator>(Cur))
         break;
-      }
+
       Cur = Cur->Next;
     }
+
     if (Cur)
       Cur->recordAttributes(Func);
 
