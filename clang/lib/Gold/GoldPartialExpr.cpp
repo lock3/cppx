@@ -13,7 +13,9 @@
 #include "clang/Gold/GoldPartialExpr.h"
 #include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldExprElaborator.h"
-namespace gold{
+#include "clang/Sema/TypeLocUtil.h"
+
+namespace gold {
 
 PartialInPlaceNewExpr::PartialInPlaceNewExpr(Sema &SemaRef,
                                              const Syntax *ConstructKW,
@@ -72,33 +74,53 @@ clang::Expr *PartialInPlaceNewExpr::completeExpr() const {
                                                           TyExpr->getExprLoc());
   if (!TInfo)
     return nullptr;
+  clang::QualType InnerTy = TInfo->getType()->getPointeeType();
+  clang::TypeSourceInfo *TInfoAdjusted = BuildAnyTypeLoc(
+                    SemaRef.getContext().CxxAST, InnerTy, TyExpr->getExprLoc());
   clang::SourceLocation Loc = PlacementArg->getExprLoc();
   llvm::SmallVector<clang::Expr *, 16> Temp(CTorArgs.begin(), CTorArgs.end());
-  llvm::outs() << "Number of arguments given to constructor? = " << Temp.size() << "\n";
 
   auto CtorExpr = SemaRef.getCxxSema().ActOnCXXTypeConstructExpr(
-             SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo),
+             SemaRef.getCxxSema().CreateParsedType(TInfoAdjusted->getType(),
+                                                   TInfoAdjusted),
              Loc, Temp, Loc, false);
   // TODO: Figure out if this needs to emit an error message or not.
   if (CtorExpr.isInvalid())
     return nullptr;
-  llvm::outs() << "Number of aguments given to operator new?? = " << InPlaceArgs.size() << "\n";
-  auto NewExpr = SemaRef.getCxxSema().BuildCXXNew(
-    /*Range*/clang::SourceRange(Loc, Loc),
-    /*UseGlobal*/false,
-    /*PlacementLParen*/Loc,
-    /*PlacementArgs*/InPlaceArgs,
-    /*PlacementRParen*/Loc,
-    /*TypeIdParens*/clang::SourceRange(Loc, Loc),
-    /*AllocType*/TInfo->getType(),
-    /*AllocTypeInfo*/TInfo,
-    /*ArraySize*/llvm::Optional<clang::Expr *>(),
-    /*DirectInitRange*/Loc,
-    /*Initializer*/CtorExpr.get());
-  return NewExpr.get();
+  auto NewExpr = clang::CXXNewExpr::Create(
+      SemaRef.getContext().CxxAST,
+      /*IsGlobalNew*/false,
+      /*OperatorNew*/SemaRef.getInPlaceNew(),
+      /*OperatorDelete*/nullptr, //TODO: I need to figure out how to handle this.
+      /*ShouldPassAlignment*/false,
+      /*UsualArrayDeleteWantsSize*/false,
+      /*PlacementArgs*/InPlaceArgs,
+      /*TypeIdParens*/clang::SourceRange(Loc, Loc),
+      /*ArraySize*/llvm::Optional<clang::Expr *>(),
+      /*InitializationStyle*/clang::CXXNewExpr::CallInit,
+      /*Initializer*/CtorExpr.get(),
+      /*Ty*/TInfoAdjusted->getType(),
+      /*AllocatedTypeInfo*/TInfoAdjusted,
+      /*Range*/clang::SourceRange(Loc, Loc),
+      /*DirectInitRange*/clang::SourceRange(Loc, Loc)
+    );
+  // auto NewExpr = SemaRef.getCxxSema().BuildCXXNew(
+  //   /*Range*/clang::SourceRange(Loc, Loc),
+  //   /*UseGlobal*/false,
+  //   /*PlacementLParen*/Loc,
+  //   /*PlacementArgs*/InPlaceArgs,
+  //   /*PlacementRParen*/Loc,
+  //   /*TypeIdParens*/clang::SourceRange(Loc, Loc),
+  //   /*AllocType*/TInfo->getType(),
+  //   /*AllocTypeInfo*/TInfo,
+  //   /*ArraySize*/llvm::Optional<clang::Expr *>(),
+  //   /*DirectInitRange*/Loc,
+  //   /*Initializer*/CtorExpr.get());
+  return NewExpr;
 }
 
 void PartialInPlaceNewExpr::diagnoseIncompleteReason() {
   llvm_unreachable("Create error messages for incomplete expression.");
 }
+
 }

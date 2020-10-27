@@ -2039,12 +2039,11 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
 
   if (ElaboratedLHS->getType()->isPointerType()) {
     if (const auto *Name = dyn_cast<AtomSyntax>(RHS)) {
-      // TODO: Treat this as a keyword or only in this contexts?
       if (Name->getSpelling() == "construct") {
         return elaborateInPlaceNewCall(ElaboratedLHS, Op, RHS);
       }
       if (Name->getSpelling() == "destruct") {
-        llvm_unreachable("Explicit destructor call not implemented yet.");
+        return elaborateDestructCall(ElaboratedLHS, Op, RHS);
       }
     }
   }
@@ -2160,6 +2159,70 @@ clang::Expr *ExprElaborator::elaborateInPlaceNewCall(clang::Expr *LHSPtr,
                                                      const CallSyntax *Op,
                                                      const Syntax *RHS) {
   return SemaRef.buildPartialInPlaceNewExpr(RHS, LHSPtr, Op->getLoc());
+}
+
+clang::Expr *ExprElaborator::elaborateDestructCall(clang::Expr *LHSPtr,
+                                                   const CallSyntax *Op,
+                                                   const Syntax *RHS) {
+  clang::QualType ExprTy = LHSPtr->getType();
+  if (!ExprTy->isPointerType()) {
+    // TODO: This needs an error message
+    llvm_unreachable("FIXME: Create invalid destructor call error message.");
+    return nullptr;
+  } else {
+    ExprTy = ExprTy->getPointeeType();
+  }
+  // ExprTy->dump();
+  // Context.CxxAST.getTranslationUnitDecl()->dump();
+
+  // clang::CanQualType Ty = Context.CxxAST.getCanonicalType(ExprTy);
+  // I may need to create additional
+  // clang::DeclarationName Name
+  //                 = Context.CxxAST.DeclarationNames.getCXXDestructorName(Ty);
+  clang::CXXScopeSpec SS;
+  clang::SourceLocation Loc;
+  clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
+  if (LHSPtr->getType()->isPointerType())
+    AccessTokenKind = clang::tok::TokenKind::arrow;
+
+  clang::UnqualifiedId Id;
+  clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST, ExprTy,
+                                                 RHS->getLoc());
+  Id.setDestructorName(clang::SourceLocation(),
+      SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo),
+      clang::SourceLocation());
+  llvm::outs() << "What's going on here guys?!\n";
+
+  auto Ret =
+    SemaRef.getCxxSema().ActOnMemberAccessExpr(SemaRef.getCurClangScope(),
+                                               LHSPtr, Op->getLoc(),
+                                               AccessTokenKind, SS, Loc, Id,
+                                               nullptr);
+  // assert(false);
+  if (Ret.isInvalid()) {
+    llvm::outs() << "Invalid destrutor statement.\n";
+    return nullptr;
+  } else {
+    Ret.get()->dump();
+    return Ret.get();
+  }
+  // FIXME: This may need specail help for processing the current scope
+  // spec (I think).
+  // clang::CXXScopeSpec SS;
+  // clang::SourceLocation Loc;
+  // clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
+  // if (LHSPtr->getType()->isPointerType())
+  //   AccessTokenKind = clang::tok::TokenKind::arrow;
+
+  // clang::PseudoDestructorTypeStorage DestroyedType(Name.getAsIdentifierInfo(),
+  //                                                   RHS->getLoc());
+  // clang::CXXMemberCallExpr::Create(Context.CxxAST, )
+  // return
+  //   SemaRef.getCxxSema().BuildPseudoDestructorExpr(LHSPtr, Op->getLoc(),
+  //                                                  AccessTokenKind, SS, TInfo,
+  //                                                  clang::SourceLocation(),
+  //                                                  clang::SourceLocation(),
+  //                                                  DestroyedType).get();
 }
 
 clang::Expr *ExprElaborator::elaborateNNS(clang::NamedDecl *NS,
@@ -3222,6 +3285,9 @@ clang::Expr *ExprElaborator::elaboratePartialCallExpr(clang::Expr *E,
 }
 
 clang::Expr *ExprElaborator::completePartialExpr(clang::Expr *E) {
+  if (!E) {
+    return nullptr;
+  }
   if (auto *PartialExpr = dyn_cast<clang::CppxPartialEvalExpr>(E)) {
     if (PartialExpr->isCompletable()) {
       return PartialExpr->forceCompleteExpr();

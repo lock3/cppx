@@ -105,6 +105,10 @@ public:
   clang::Expr *elaborateInPlaceNewCall(clang::Expr *LHSPtr,
                                        const CallSyntax *Op,
                                        const Syntax *RHS);
+
+  clang::Expr *elaborateDestructCall(clang::Expr *LHSPtr,
+                                       const CallSyntax *Op,
+                                       const Syntax *RHS);
   clang::Expr *elaborateNestedLookupAccess(clang::Expr *Previous,
                                            const CallSyntax *Op,
                                            const Syntax *RHS);

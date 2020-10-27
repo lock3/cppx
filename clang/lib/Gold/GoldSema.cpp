@@ -1510,6 +1510,120 @@ Sema::buildPartialInPlaceNewExpr(const Syntax *ConstructKW,
                                             Loc);
 
 }
+
+void Sema::createInPlaceNew() {
+  // No scope needed here because we don't do lookup!
+  // Getting Translation unit scope
+  clang::Scope *TUScope = clang::Sema::getScopeForDeclContext(
+      getCurClangScope(), Context.CxxAST.getTranslationUnitDecl());
+  SaveAndRestoreClangDCAndScopeRAII ScopeAndDC(*this);
+  setClangDeclContext(Context.CxxAST.getTranslationUnitDecl());
+  reEnterClangScope(TUScope);
+
+  // Sort of resuming the translation unit scope so I can correctly create
+  // my do nothing new/delete functions.
+  llvm::SmallVector<clang::QualType, 4> Types;
+  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
+  clang::TranslationUnitDecl *TU = Context.CxxAST.getTranslationUnitDecl();
+  clang::DeclContext *Owner = TU;
+  {
+    // Create type before this?
+    clang::QualType NewReturnTy =
+               Context.CxxAST.getPointerType(BuiltinTypes.find("void")->second);
+    Types.push_back(BuiltinTypes.find("uint64")->second);
+    Types.push_back(NewReturnTy);
+
+    clang::FunctionProtoType::ExtProtoInfo EPI;
+    EPI.ExceptionSpec.Type = clang::EST_BasicNoexcept;
+    EPI.ExtInfo = Context.CxxAST.getDefaultCallingConvention(false, false);
+    EPI.Variadic = false;
+    clang::SourceLocation Loc = TU->getBeginLoc();
+    clang::QualType NewFnTy =
+                        Context.CxxAST.getFunctionType(NewReturnTy, Types, EPI);
+
+    ClangScopeRAII newFuncParams(*this, clang::Scope::DeclScope |
+                               clang::Scope::FunctionPrototypeScope |
+                               clang::Scope::FunctionDeclarationScope,
+                               clang::SourceLocation());
+
+    clang::TypeSourceInfo *FnTInfo = BuildFunctionTypeLoc(Context.CxxAST,
+                                                          NewFnTy,
+                                                          Loc, Loc, Loc,
+                                                          clang::SourceRange(),
+                                                          Loc, Params);
+    clang::IdentifierInfo *II = &Context.CxxAST.Idents.get("__GoldInplaceNew");
+    clang::DeclarationName FnName(II);
+    InPlaceNew = clang::FunctionDecl::Create(Context.CxxAST, Owner, Loc, Loc,
+                                            FnName, FnTInfo->getType(), FnTInfo,
+                                            clang::SC_None);
+    {
+      clang::TypeSourceInfo *P0SrcInfo = BuildAnyTypeLoc(Context.CxxAST, Types[0], Loc);
+      clang::IdentifierInfo *II = &Context.CxxAST.Idents.get("sz");
+      clang::DeclarationName Name(II);
+      clang::ParmVarDecl *P = clang::ParmVarDecl::Create(Context.CxxAST, InPlaceNew,
+                                                         Loc, Loc, Name,
+                  Context.CxxAST.getAdjustedParameterType(P0SrcInfo->getType()),
+                                            P0SrcInfo, clang::SC_None, nullptr);
+      Params.push_back(P);
+    }
+    // Creating parameter 1.
+    {
+      clang::TypeSourceInfo *P1SrcInfo = BuildAnyTypeLoc(Context.CxxAST, Types[1], Loc);
+      clang::IdentifierInfo *II = &Context.CxxAST.Idents.get("ptr");
+      clang::DeclarationName Name(II);
+      clang::ParmVarDecl *P = clang::ParmVarDecl::Create(Context.CxxAST, InPlaceNew,
+                                                         Loc, Loc, Name,
+                  Context.CxxAST.getAdjustedParameterType(P1SrcInfo->getType()),
+                                         P1SrcInfo, clang::SC_None, nullptr);
+      Params.push_back(P);
+    }
+    InPlaceNew->setParams(Params);
+    InPlaceNew->setInlineSpecified(true);
+    {
+      ClangScopeRAII FuncBody(*this, clang::Scope::FnScope |
+                              clang::Scope::DeclScope |
+                              clang::Scope::CompoundStmtScope,
+                              clang::SourceLocation());
+      clang::QualType ResultType = NewReturnTy;
+      clang::ExprValueKind ValueKind = getCxxSema()
+              .getValueKindForDeclReference(ResultType, Params[1], Loc);
+      clang::DeclarationNameInfo DNI({&Context.CxxAST.Idents.get("ptr")}, Loc);
+
+      auto RefExpr = clang::DeclRefExpr::Create(Context.CxxAST,
+                                                clang::NestedNameSpecifierLoc(),
+                                                clang::SourceLocation(),
+                                                Params[1],
+                                    /*RefersToEnclosingVariableOrCapture*/false,
+                                                /*NameLoc*/Loc,
+                                                ResultType,
+                                                ValueKind);
+      auto Cast = clang::ImplicitCastExpr::Create(Context.CxxAST,
+                                                  ResultType,
+                                                  clang::CK_LValueToRValue,
+                                                  RefExpr,
+                                                  nullptr,
+                                                  ValueKind);
+      clang::ReturnStmt *RetStmt = clang::ReturnStmt::Create(Context.CxxAST,
+                                                        Loc, Cast, nullptr);
+      llvm::SmallVector<clang::Stmt* , 1> BlockStmts({RetStmt});
+      clang::CompoundStmt *Block = clang::CompoundStmt::Create(Context.CxxAST,
+                                                                BlockStmts,
+                                                                Loc, Loc);
+      InPlaceNew->setBody(Block);
+    }
+  }
+  Owner->addDecl(InPlaceNew);
+}
+
+clang::FunctionDecl *Sema::getInPlaceNew() {
+  return InPlaceNew;
+}
+// Create a call to the destruct.
+clang::Expr *Sema::actOnDesturctorCall(clang::Expr *Ptr) {
+  // return InPlaceDelete;
+  llvm_unreachable("Working on implementing destructor call.");
+}
+
 } // namespace gold
 
 
