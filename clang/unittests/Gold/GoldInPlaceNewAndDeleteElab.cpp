@@ -71,3 +71,14 @@ foo(x:^ToDestroy):void!
   );
   ASSERT_TRUE(matches(Code, ToMatch));
 }
+
+TEST(GoldNew, DeletedDestructor) {
+  std::string Code = R"Gold(
+ToDestroy : type = class:
+  destructor() = delete
+
+foo(x:^ToDestroy):void!
+  x.destruct()
+)Gold";
+  GoldFailureTest(Code);
+}
