@@ -1586,6 +1586,14 @@ void Sema::createInPlaceNew() {
     }
     InPlaceNew->setParams(Params);
     InPlaceNew->setInlineSpecified(true);
+    // Rebuilding function type so we have parameters
+    FnTInfo = BuildFunctionTypeLoc(Context.CxxAST,
+                                   NewFnTy,
+                                   Loc, Loc, Loc,
+                                   clang::SourceRange(),
+                                   Loc, Params);
+    InPlaceNew->setType(FnTInfo->getType());
+    InPlaceNew->setTypeSourceInfo(FnTInfo);
     {
       ClangScopeRAII FuncBody(*this, clang::Scope::FnScope |
                               clang::Scope::DeclScope |

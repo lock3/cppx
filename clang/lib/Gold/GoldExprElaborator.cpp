@@ -1340,13 +1340,15 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
 
   // A call to a specialization without arguments has to be handled differently
   // than other call expressions, so figure out if this could be one.
+  // FIXME: What is this? It doesn't look like it actually does anything?!
   if (auto *ULE = dyn_cast<clang::UnresolvedLookupExpr>(CalleeExpr))
     if (!ULE->hasExplicitTemplateArgs())
       for (auto D : ULE->decls())
         if (auto *FD = dyn_cast<clang::FunctionDecl>(D))
           if (FD->getTemplatedKind() ==
-              clang::FunctionDecl::TK_FunctionTemplateSpecialization)
+              clang::FunctionDecl::TK_FunctionTemplateSpecialization) {
             ;
+          }
 
   // TODO: create a test for this were we call a namespace just to see what kind
   // of error actually occurs.
@@ -1391,7 +1393,7 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     llvm::SmallVector<clang::Expr *, 8> Args;
     const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
     // TODO: Add partial expr management here?
-    if (buildFunctionCallAruments(SemaRef, Context, ArgList, Args))
+    if (buildFunctionCallArguments(SemaRef, Context, ArgList, Args))
       return nullptr;
 
     return handleExpressionResultCall(SemaRef, *this, S, CalleeExpr, Args);
@@ -2172,19 +2174,15 @@ clang::Expr *ExprElaborator::elaborateDestructCall(clang::Expr *LHSPtr,
                                                    const Syntax *RHS) {
   clang::QualType ExprTy = LHSPtr->getType();
   if (!ExprTy->isPointerType()) {
-    // TODO: This needs an error message
-    llvm_unreachable("FIXME: Create invalid destructor call error message.");
+    // FIXME: I need to figure out how to ensure that we have the correct
+    // error message for our destructor.
+    SemaRef.Diags.Report(RHS->getLoc(),
+                         clang::diag::err_pseudo_dtor_base_not_scalar)
+                         << ExprTy;
     return nullptr;
   } else {
     ExprTy = ExprTy->getPointeeType();
   }
-  // ExprTy->dump();
-  // Context.CxxAST.getTranslationUnitDecl()->dump();
-
-  // clang::CanQualType Ty = Context.CxxAST.getCanonicalType(ExprTy);
-  // I may need to create additional
-  // clang::DeclarationName Name
-  //                 = Context.CxxAST.DeclarationNames.getCXXDestructorName(Ty);
   clang::CXXScopeSpec SS;
   clang::SourceLocation Loc;
   clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
@@ -2194,41 +2192,16 @@ clang::Expr *ExprElaborator::elaborateDestructCall(clang::Expr *LHSPtr,
   clang::UnqualifiedId Id;
   clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST, ExprTy,
                                                  RHS->getLoc());
-  Id.setDestructorName(clang::SourceLocation(),
-      SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo),
-      clang::SourceLocation());
-  llvm::outs() << "What's going on here guys?!\n";
-
+  auto PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
+  Id.setDestructorName(RHS->getLoc(), PT, RHS->getLoc());
   auto Ret =
     SemaRef.getCxxSema().ActOnMemberAccessExpr(SemaRef.getCurClangScope(),
                                                LHSPtr, Op->getLoc(),
-                                               AccessTokenKind, SS, Loc, Id,
-                                               nullptr);
-  // assert(false);
-  if (Ret.isInvalid()) {
-    llvm::outs() << "Invalid destrutor statement.\n";
+                                               AccessTokenKind, SS, Loc,
+                                               Id, nullptr);
+  if (Ret.isInvalid())
     return nullptr;
-  } else {
-    Ret.get()->dump();
-    return Ret.get();
-  }
-  // FIXME: This may need specail help for processing the current scope
-  // spec (I think).
-  // clang::CXXScopeSpec SS;
-  // clang::SourceLocation Loc;
-  // clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
-  // if (LHSPtr->getType()->isPointerType())
-  //   AccessTokenKind = clang::tok::TokenKind::arrow;
-
-  // clang::PseudoDestructorTypeStorage DestroyedType(Name.getAsIdentifierInfo(),
-  //                                                   RHS->getLoc());
-  // clang::CXXMemberCallExpr::Create(Context.CxxAST, )
-  // return
-  //   SemaRef.getCxxSema().BuildPseudoDestructorExpr(LHSPtr, Op->getLoc(),
-  //                                                  AccessTokenKind, SS, TInfo,
-  //                                                  clang::SourceLocation(),
-  //                                                  clang::SourceLocation(),
-  //                                                  DestroyedType).get();
+  return Ret.get();
 }
 
 clang::Expr *ExprElaborator::elaborateNNS(clang::NamedDecl *NS,
@@ -2828,7 +2801,6 @@ static clang::Expr *handleOfMacro(SyntaxContext &Context, Sema &SemaRef,
     SemaRef.getCxxSema().ActOnParenListExpr(S->getLoc(), S->getLoc(), Args);
   if (Res.isInvalid())
     return nullptr;
-  Res.get()->dump();
   return Res.get();
 }
 

@@ -34,14 +34,40 @@ foo(x:^int):void!
 
 TEST(GoldNew, DestructorCall) {
   std::string Code = R"Gold(
-ToDestory : type = class:
+ToDestroy : type = class:
   ;
-foo(x:^ToDestory):void!
+foo(x:^ToDestroy):void!
   x.destruct()
 )Gold";
   auto ToMatch = translationUnitDecl(
     has(functionDecl(hasName("__GoldInplaceNew"))),
     hasDescendant(cxxMemberCallExpr())
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+TEST(GoldNew, DtorCalledOnInteger) {
+  std::string Code = R"Gold(
+foo(x:^int):void!
+  x.destruct()
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldNew, UserDefinedDestructor) {
+  std::string Code = R"Gold(
+ToDestroy : type = class:
+  destructor()!
+    ;
+foo(x:^ToDestroy):void!
+  x.destruct()
+)Gold";
+  auto ToMatch =
+  translationUnitDecl(
+    hasDescendant(cxxMemberCallExpr(
+      on(hasType(asString("struct ToDestroy *"))),
+      has(memberExpr(member(hasName("~ToDestroy"))))
+    ))
   );
   ASSERT_TRUE(matches(Code, ToMatch));
 }
