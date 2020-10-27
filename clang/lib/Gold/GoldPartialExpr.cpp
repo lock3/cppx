@@ -84,14 +84,16 @@ clang::Expr *PartialInPlaceNewExpr::completeExpr() const {
              SemaRef.getCxxSema().CreateParsedType(TInfoAdjusted->getType(),
                                                    TInfoAdjusted),
              Loc, Temp, Loc, false);
-  // TODO: Figure out if this needs to emit an error message or not.
   if (CtorExpr.isInvalid())
     return nullptr;
   auto NewExpr = clang::CXXNewExpr::Create(
       SemaRef.getContext().CxxAST,
       /*IsGlobalNew*/false,
       /*OperatorNew*/SemaRef.getInPlaceNew(),
-      /*OperatorDelete*/nullptr, //TODO: I need to figure out how to handle this.
+
+      // No delete operator needed because technically there isn't one for
+      // placement new because it doesn't allocate memory.
+      /*OperatorDelete*/nullptr,
       /*ShouldPassAlignment*/false,
       /*UsualArrayDeleteWantsSize*/false,
       /*PlacementArgs*/InPlaceArgs,
@@ -104,23 +106,12 @@ clang::Expr *PartialInPlaceNewExpr::completeExpr() const {
       /*Range*/clang::SourceRange(Loc, Loc),
       /*DirectInitRange*/clang::SourceRange(Loc, Loc)
     );
-  // auto NewExpr = SemaRef.getCxxSema().BuildCXXNew(
-  //   /*Range*/clang::SourceRange(Loc, Loc),
-  //   /*UseGlobal*/false,
-  //   /*PlacementLParen*/Loc,
-  //   /*PlacementArgs*/InPlaceArgs,
-  //   /*PlacementRParen*/Loc,
-  //   /*TypeIdParens*/clang::SourceRange(Loc, Loc),
-  //   /*AllocType*/TInfo->getType(),
-  //   /*AllocTypeInfo*/TInfo,
-  //   /*ArraySize*/llvm::Optional<clang::Expr *>(),
-  //   /*DirectInitRange*/Loc,
-  //   /*Initializer*/CtorExpr.get());
   return NewExpr;
 }
 
 void PartialInPlaceNewExpr::diagnoseIncompleteReason() {
-  llvm_unreachable("Create error messages for incomplete expression.");
+  SemaRef.Diags.Report(Keyword->getLoc(),
+                       clang::diag::err_incomplete_placement_new_expression);
 }
 
 }

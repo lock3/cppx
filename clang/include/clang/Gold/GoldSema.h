@@ -1085,8 +1085,6 @@ public:
   /// on demand (if it hasn't already been created).
   clang::FunctionDecl *getInPlaceNew();
   ///}
-  /// Creates the destructor call for x.destruct().
-  clang::Expr *actOnDesturctorCall(clang::Expr *Ptr);
 };
 
 } // namespace gold

@@ -1633,11 +1633,6 @@ void Sema::createInPlaceNew() {
 clang::FunctionDecl *Sema::getInPlaceNew() {
   return InPlaceNew;
 }
-// Create a call to the destruct.
-clang::Expr *Sema::actOnDesturctorCall(clang::Expr *Ptr) {
-  // return InPlaceDelete;
-  llvm_unreachable("Working on implementing destructor call.");
-}
 
 } // namespace gold
 
