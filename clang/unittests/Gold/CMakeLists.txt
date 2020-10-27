@@ -129,6 +129,7 @@ add_clang_unittest(GoldTests
   GoldVarDeclStorageClass.cpp
   GoldVariableDeclElab.cpp
   GoldVariableTemplateElab.cpp
+  GoldVariadic.cpp
   GoldVariadicTemplateParameterElab.cpp
   GoldVirtualFunctionElab.cpp
   GoldWhile.cpp

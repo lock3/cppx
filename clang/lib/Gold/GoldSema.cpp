@@ -211,6 +211,8 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     DestructorII(&Context.CxxAST.Idents.get("destructor")),
     VaStartII(&Context.CxxAST.Idents.get("__builtin_va_start")),
     VaEndII(&Context.CxxAST.Idents.get("__builtin_va_end")),
+    VaCopyII(&Context.CxxAST.Idents.get("__builtin_va_copy")),
+    VaArgII(&Context.CxxAST.Idents.get("__builtin_va_arg")),
     DefaultCharTy(Context.CxxAST.getIntTypeForBitwidth(8, false)),
     BuiltinTypes(createBuiltinTypeList()),
     OpInfo(Context.CxxAST),
