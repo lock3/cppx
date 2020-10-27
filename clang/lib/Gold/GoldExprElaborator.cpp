@@ -38,7 +38,6 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Error.h"
 
-
 #include "clang/Gold/ClangToGoldDeclBuilder.h"
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
@@ -54,6 +53,13 @@
 #include <cstring>
 
 namespace gold {
+
+static const llvm::StringMap<unsigned> BuiltinFnMap = {
+#define BUILTIN(ID, TYPE, ATTRS) \
+  {#ID, clang::Builtin::BI ## ID},
+#include "clang/Basic/Builtins.def"
+#undef BUILTIN
+};
 
 using TypeInfo = ExprElaborator::TypeInfo;
 
@@ -1456,12 +1462,9 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     }
   }
 
-  if (Callee->hasToken(tok::VaStartKeyword))
-    return handleVaCall(S, clang::Builtin::BI__builtin_va_start);
-  if (Callee->hasToken(tok::VaEndKeyword))
-    return handleVaCall(S, clang::Builtin::BI__builtin_va_end);
-  if (Callee->hasToken(tok::VaCopyKeyword))
-    return handleVaCall(S, clang::Builtin::BI__builtin_va_copy);
+  auto BuiltinFnIt = BuiltinFnMap.find(Callee->getSpelling());
+  if (BuiltinFnIt != BuiltinFnMap.end())
+    return handleBuiltinCall(S, BuiltinFnIt->second);
   if (Callee->hasToken(tok::VaArgKeyword))
     return handleVaArg(S);
 
@@ -3242,32 +3245,21 @@ clang::Expr *ExprElaborator::handleOpPackExpansion(const CallSyntax *S) {
   }
 }
 
-clang::Expr *ExprElaborator::handleVaCall(const CallSyntax *S,
-                                          unsigned VaID) {
-  clang::SourceLocation Loc = S->getCallee()->getLoc();
+clang::Expr *ExprElaborator::handleBuiltinCall(const CallSyntax *S,
+                                               unsigned ID) {
+  assert(isa<AtomSyntax>(S->getCallee()) && "invalid builtin");
+  const AtomSyntax *Atom = cast<AtomSyntax>(S->getCallee());
+  clang::SourceLocation Loc = Atom->getLoc();
+
   clang::ASTContext::GetBuiltinTypeError Error;
-  clang::QualType VaType = CxxAST.GetBuiltinType(VaID, Error);
+  clang::QualType BuiltinType = CxxAST.GetBuiltinType(ID, Error);
 
   llvm::SmallVector<clang::Expr *, 8> Args;
   const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
   if (buildFunctionCallArguments(SemaRef, Context, ArgList, Args))
     return nullptr;
 
-  clang::IdentifierInfo *II = nullptr;
-  switch(VaID) {
-  case clang::Builtin::BI__builtin_va_start:
-    II = SemaRef.VaStartII;
-    break;
-  case clang::Builtin::BI__builtin_va_end:
-    II = SemaRef.VaEndII;
-    break;
-  case clang::Builtin::BI__builtin_va_copy:
-    II = SemaRef.VaCopyII;
-    break;
-  default:
-    llvm_unreachable("invalid builtin va call");
-  }
-
+  clang::IdentifierInfo *II = &Context.CxxAST.Idents.get(Atom->getSpelling());
   clang::LookupResult R(SemaRef.getCxxSema(), {{II}, Loc},
                         clang::Sema::LookupOrdinaryName);
   if (!SemaRef.getCxxSema().LookupName(R, SemaRef.getCurClangScope(), true)) {
@@ -3282,7 +3274,7 @@ clang::Expr *ExprElaborator::handleVaCall(const CallSyntax *S,
   clang::DeclRefExpr *Fn = clang::DeclRefExpr::Create(
     CxxAST, clang::NestedNameSpecifierLoc(),
     clang::SourceLocation(), VD, /*Capture=*/false, Loc,
-    VaType, clang::VK_RValue);
+    BuiltinType, clang::VK_RValue);
 
   clang::ExprResult Call = SemaRef.getCxxSema().ActOnCallExpr(
     SemaRef.getCxxSema().getCurScope(), Fn, S->getLoc(), Args, Loc);
