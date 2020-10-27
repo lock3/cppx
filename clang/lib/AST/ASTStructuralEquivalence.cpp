@@ -1028,6 +1028,10 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
       return false;
     break;
 
+  case Type::CppxArgs:
+    // All of these are the same.
+    return true;
+
   case Type::CppxKind:
     //llvm_un
     llvm_unreachable("IsStructurallyEquivalent. CppxKindType needs implemented!");

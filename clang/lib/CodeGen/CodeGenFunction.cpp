@@ -218,6 +218,11 @@ TypeEvaluationKind CodeGenFunction::getEvaluationKind(QualType type) {
     case Type::DeducedTemplateSpecialization:
       llvm_unreachable("undeduced type in IR-generation");
 
+    case Type::CppxKind:
+    case Type::CppxArgs:
+    case Type::CppxTemplate:
+      llvm_unreachable("CPPX elaboration type in IR-generation");
+
     // Various scalar types.
     case Type::Builtin:
     case Type::Pointer:
@@ -233,8 +238,6 @@ TypeEvaluationKind CodeGenFunction::getEvaluationKind(QualType type) {
     case Type::Enum:
     case Type::ObjCObjectPointer:
     case Type::Pipe:
-    case Type::CppxKind:
-    case Type::CppxTemplate:
     case Type::ExtInt:
       return TEK_Scalar;
 
@@ -1998,6 +2001,7 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
     case Type::ObjCInterface:
     case Type::ObjCObjectPointer:
     case Type::CppxKind:
+    case Type::CppxArgs:
     case Type::CppxTemplate:
     case Type::CppxNamespace:
     case Type::ExtInt:

@@ -77,6 +77,7 @@ def_puncop(LessLessEqual, "<<=")
 def_puncop(GreaterGreaterEqual, ">>=")
 
 def_puncop(Ellipsis, "...")
+def_puncop(DotCaret, ".^")
 
 def_keyword(Void, "void")
 def_keyword(Bool, "bool")
@@ -136,6 +137,11 @@ def_keyword(Break, "break")
 def_keyword(Const, "const")
 def_keyword(Ref, "ref")
 def_keyword(RValueRef, "rref")
+def_keyword(Of, "of")
+def_keyword(VaList, "__builtin_va_list")
+def_keyword(VaStart, "__builtin_va_start")
+def_keyword(VaEnd, "__builtin_va_end")
+// This is the last keyword token, define any others above this:
 def_keyword(Anonymous, "_")
 
 def_token(TryBlock)

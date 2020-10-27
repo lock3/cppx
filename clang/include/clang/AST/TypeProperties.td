@@ -952,6 +952,12 @@ let Class = CppxNamespaceType in {
   }]>;
 }
 
+let Class = CppxArgsType in {
+  def : Creator<[{
+    return ctx.CppxArgsTy;
+  }]>;
+}
+
 let Class = ExtIntType in {
   def : Property<"isUnsigned", Bool> {
     let Read = [{ node->isUnsigned() }];

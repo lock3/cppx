@@ -2107,6 +2107,7 @@ bool CXXNameMangler::mangleUnresolvedTypeOrSimpleId(QualType Ty,
   case Type::CppxKind:
   case Type::CppxNamespace:
   case Type::CppxTemplate:
+  case Type::CppxArgs:
   case Type::ExtInt:
   case Type::DependentExtInt:
     llvm_unreachable("type is illegal as a nested name specifier");
@@ -3496,6 +3497,10 @@ void CXXNameMangler::mangleType(const CppxTemplateType *T) {
 }
 
 void CXXNameMangler::mangleType(const CppxNamespaceType *T) {
+  llvm_unreachable("unexpected type");
+}
+
+void CXXNameMangler::mangleType(const CppxArgsType *T) {
   llvm_unreachable("unexpected type");
 }
 

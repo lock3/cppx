@@ -39,10 +39,7 @@ namespace gold {
 
 using namespace llvm;
 
-
-
-static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
-    SyntaxContext &Context) {
+const llvm::StringMap<clang::QualType> Sema::createBuiltinTypeList() {
   return {
     {"void", Context.CxxAST.VoidTy},
     {"bool", Context.CxxAST.BoolTy},
@@ -81,7 +78,9 @@ static const llvm::StringMap<clang::QualType> createBuiltinTypeList(
 
     // type of a type.
     { "type", Context.CxxAST.CppxKindTy },
-    { "namespace", Context.CxxAST.CppxNamespaceTy }
+    { "namespace", Context.CxxAST.CppxNamespaceTy },
+    { "args", Context.CxxAST.CppxArgsTy },
+    { "__builtin_va_list", createVaListType() },
   };
 }
 
@@ -206,10 +205,14 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     OperatorBracketsII(&Context.CxxAST.Idents.get("operator'[]'")),
     OperatorParensII(&Context.CxxAST.Idents.get("operator'()'")),
     OperatorThrowII(&Context.CxxAST.Idents.get("operator'throw'")),
+    OperatorCaretII(&Context.CxxAST.Idents.get("operator'^'")),
+    OperatorDotCaretII(&Context.CxxAST.Idents.get("operator'.^'")),
     ConstructorII(&Context.CxxAST.Idents.get("constructor")),
     DestructorII(&Context.CxxAST.Idents.get("destructor")),
+    VaStartII(&Context.CxxAST.Idents.get("__builtin_va_start")),
+    VaEndII(&Context.CxxAST.Idents.get("__builtin_va_end")),
     DefaultCharTy(Context.CxxAST.getIntTypeForBitwidth(8, false)),
-    BuiltinTypes(createBuiltinTypeList(Context)),
+    BuiltinTypes(createBuiltinTypeList()),
     OpInfo(Context.CxxAST),
     AttrHandlerMap(buildAttributeMapping()),
     FoldOpToClangKind(buildFoldOpLookup(Context.CxxAST))
@@ -222,6 +225,10 @@ Sema::~Sema() {
   assert(ScopeStack.empty() && "Scope stack is not empty.");
   delete getCurClangScope();
   CxxSema.CurScope = nullptr;
+}
+
+clang::QualType Sema::createVaListType() {
+  return Context.CxxAST.getBuiltinVaListType();
 }
 
 bool Sema::accessSpecifierIsValidInScope() {

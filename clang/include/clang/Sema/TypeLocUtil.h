@@ -68,6 +68,15 @@ clang::TypeSourceInfo *BuildFunctionPtrTypeLoc(clang::ASTContext &Context,
                                                clang::TypeLocBuilder &TLB,
                                                clang::TypeSourceInfo *FnTSI,
                                                clang::SourceLocation Loc);
+clang::TypeSourceInfo *BuildMemberPtrTypeLoc(clang::ASTContext &Context,
+                                             clang::TypeLocBuilder &TLB,
+                                             clang::QualType Ty,
+                            llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params,
+                                             clang::SourceLocation Loc);
+clang::TypeSourceInfo *BuildMemberPtrTypeLoc(clang::ASTContext &Context,
+                                             clang::QualType Ty,
+                            llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params,
+                                             clang::SourceLocation Loc);
 
 } // namespace gold
 

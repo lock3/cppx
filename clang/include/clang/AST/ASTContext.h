@@ -1246,6 +1246,8 @@ public:
   CanQualType CppxKindTy;
   /// Type for all namespaces
   CanQualType CppxNamespaceTy;
+  /// Type for variadic parameter
+  CanQualType CppxArgsTy;
 
   /// Get address space for OpenCL type.
   LangAS getOpenCLTypeAddrSpace(const Type *T) const;

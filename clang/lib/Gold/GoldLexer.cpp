@@ -140,7 +140,9 @@ Token CharacterScanner::operator()() {
         if (getLookahead(2) == '.')
           return matchToken(tok::Ellipsis);
         return matchToken(tok::DotDot);
-      }
+      } else if (getLookahead(1) == '^')
+        return matchToken(tok::DotCaret);
+
       return matchToken(tok::Dot);
 
     case '?':

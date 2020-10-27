@@ -268,7 +268,8 @@ namespace gold
     Syntax *parsePost();
     Syntax *parseCall(Syntax *fn);
     Syntax *parseElem(Syntax *map);
-    Syntax *parseDot(Syntax *obj);
+    Syntax *parseDot(Syntax *Obj);
+    Syntax *parseDotCaret(Syntax *Obj);
     Syntax *parseArrayPrefix();
     Syntax *parseNNSPrefix();
     Syntax *parsePostAttr(Syntax *Pre);

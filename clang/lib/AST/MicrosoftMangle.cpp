@@ -2845,7 +2845,7 @@ void MicrosoftCXXNameMangler::mangleType(const CppxKindType *T,
                                          Qualifiers, SourceRange Range) {
   DiagnosticsEngine &Diags = Context.getDiags();
   unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
-    "cannot mangle kind type yet");
+    "cannot mangle kind type");
   Diags.Report(Range.getBegin(), DiagID) << Range;
 }
 
@@ -2854,6 +2854,14 @@ void MicrosoftCXXNameMangler::mangleType(const CppxNamespaceType *T,
   DiagnosticsEngine &Diags = Context.getDiags();
   unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
     "cannot mangle namespace types");
+  Diags.Report(Range.getBegin(), DiagID) << Range;
+}
+
+void MicrosoftCXXNameMangler::mangleType(const CppxArgsType *T,
+                                         Qualifiers, SourceRange Range) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+    "cannot mangle args type");
   Diags.Report(Range.getBegin(), DiagID) << Range;
 }
 

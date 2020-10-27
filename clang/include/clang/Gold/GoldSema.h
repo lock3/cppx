@@ -15,6 +15,7 @@
 #ifndef CLANG_GOLD_GOLDSEMA_H
 #define CLANG_GOLD_GOLDSEMA_H
 
+#include "clang/AST/Type.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "llvm/ADT/APInt.h"
@@ -121,6 +122,11 @@ class Sema {
 public:
   Sema(SyntaxContext &Context, clang::Sema &S);
   ~Sema();
+
+  // Create the type of __builtin_va_list
+  clang::QualType createVaListType();
+  const llvm::StringMap<clang::QualType> createBuiltinTypeList();
+
   // Look through a translation unit and map the identifiers to Clang
   // constructs.
   void IdentifyDecls(const ArraySyntax *S);
@@ -583,10 +589,16 @@ public:
   clang::IdentifierInfo *const OperatorBracketsII;
   clang::IdentifierInfo *const OperatorParensII;
   clang::IdentifierInfo *const OperatorThrowII;
+  clang::IdentifierInfo *const OperatorCaretII;
+  clang::IdentifierInfo *const OperatorDotCaretII;
 
   // Tokens used for constructor and destructor;
   clang::IdentifierInfo *const ConstructorII;
   clang::IdentifierInfo *const DestructorII;
+
+  // Tokens for builtin functions
+  clang::IdentifierInfo *const VaStartII;
+  clang::IdentifierInfo *const VaEndII;
 
   // An RAII type for constructing scopes.
   struct ScopeRAII {
@@ -867,9 +879,8 @@ public:
   /// If it's not in here it cannot be overriden.
   const OperatorInfo OpInfo;
 
-
   using AttributeHandler = void(*)(Elaborator &, Declaration*,
-                                         const Syntax*, AttrStatus &);
+                                   const Syntax*, AttrStatus &);
   using StringToAttrHandlerMap = llvm::StringMap<AttributeHandler>;
 
   /// MethodAttrHelper Contains mapings back to member functions that handle

@@ -18,6 +18,7 @@
 #include "clang/AST/OperationKinds.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/ExprCppx.h"
+#include "clang/Basic/Builtins.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/DiagnosticParse.h"
 #include "clang/Basic/DiagnosticSema.h"
@@ -1280,7 +1281,7 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
   return nullptr;
 }
 
-static bool buildFunctionCallAruments(Sema &SemaRef, SyntaxContext &Context,
+static bool buildFunctionCallArguments(Sema &SemaRef, SyntaxContext &Context,
     const ListSyntax *ArgList,
     llvm::SmallVector<clang::Expr *, 8> &Args) {
   for (const Syntax *A : ArgList->children()) {
@@ -1352,9 +1353,9 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
 
   // For any thing else we simply try and make the call and see what happens.
   clang::ExprResult Call = SemaRef.getCxxSema().ActOnCallExpr(
-                                            SemaRef.getCxxSema().getCurScope(),
-                                            CalleeExpr, S->getCalleeLoc(), Args,
-                                            S->getCalleeLoc());
+    SemaRef.getCxxSema().getCurScope(), CalleeExpr, S->getCalleeLoc(),
+    Args, S->getCalleeLoc());
+
   if (Call.isInvalid())
     return nullptr;
   return Call.get();
@@ -1371,8 +1372,6 @@ static bool callIsCastOperator(const CallSyntax *S) {
   }
   return false;
 }
-
-
 
 clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   if (callIsCastOperator(S))
@@ -1433,10 +1432,11 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   default:
     break;
   }
+
   // Handling special case for type
-  if (Callee->hasToken(tok::Ellipsis)) {
+  if (Callee->hasToken(tok::Ellipsis))
     return handleOpPackExpansion(S);
-  }
+
   std::string Temp = Callee->getSpelling();
   llvm::StringRef Spelling = Temp;
   if (Spelling.startswith("operator'")) {
@@ -1454,11 +1454,16 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     }
   }
 
+  if (Callee->hasToken(tok::VaStartKeyword))
+    return handleVaStartCall(S);
+  if (Callee->hasToken(tok::VaEndKeyword))
+    return handleVaEndCall(S);
+
   // Elaborating callee name expression.
   CalleeExpr = doElaborateExpr(S->getCallee());
   llvm::SmallVector<clang::Expr *, 8> Args;
   const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
-  if (buildFunctionCallAruments(SemaRef, Context, ArgList, Args)) {
+  if (buildFunctionCallArguments(SemaRef, Context, ArgList, Args)) {
     // TODO: Determine the correct message to output here.
     return nullptr;
   }
@@ -1843,7 +1848,8 @@ static clang::Expr *handleLookupInsideType(Sema &SemaRef,
                                            clang::ASTContext &CxxAST,
                                            const CallSyntax *Op,
                                            const clang::Expr *Previous,
-                                           const Syntax *RHS);
+                                           const Syntax *RHS,
+                                           bool AddressOf);
 
 /// Elaborate a base specifier that is not part of a member access expression.
 /// For example:
@@ -2095,9 +2101,9 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
   // A disambiguator of the form (a)b
   if (const CallSyntax *Disambig = dyn_cast<CallSyntax>(RHS)) {
     clang::Expr *LHS = doElaborateExpr(Disambig->getArgument(0));
-
     if (!LHS)
       return nullptr;
+
     if (!LHS->getType()->isTypeOfTypes()) {
       SemaRef.Diags.Report(LHS->getExprLoc(),
                            clang::diag::err_unexpected_expression_result)
@@ -2336,7 +2342,7 @@ static bool usingClassLookupIsUnresolved(clang::DeclContextLookupResult const &R
 
 clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
                                     const CallSyntax *Op, const clang::Expr *Prev,
-                                    const Syntax *RHS) {
+                                    const Syntax *RHS, bool AddressOf) {
 
   clang::TypeSourceInfo *TInfo =
     SemaRef.getTypeSourceInfoFromExpr(Prev, Prev->getExprLoc());
@@ -2375,7 +2381,7 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
   }
 
 
-  // Processing if is a single name.
+  // Processing if we have a single name.
   if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(RHS)) {
     clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Atom->getSpelling())},
       Atom->getLoc());
@@ -2383,6 +2389,26 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
 
     clang::NamedDecl *ND = nullptr;
     if (R.size() != 1u) {
+      // This could be a template specialization of a member.
+      if (!R.empty()) {
+        clang::LookupResult Redecls(SemaRef.getCxxSema(), DNI,
+                                    clang::Sema::LookupOrdinaryName,
+                                    clang::Sema::ForVisibleRedeclaration);
+        for (clang::NamedDecl *ND : R)
+          Redecls.addDecl(ND);
+        ND = Redecls.getAcceptableDecl(R.front());
+        if (ND && isa<clang::ValueDecl>(ND)) {
+          clang::ValueDecl *VD = cast<clang::ValueDecl>(ND);
+          clang::NestedNameSpecifierLoc NNS(SemaRef.CurNNSContext.getScopeRep(),
+                                            SemaRef.CurNNSContext.location_data());
+          bool UseNNS = SemaRef.CurNNSContext.isSet();
+
+          return clang::DeclRefExpr::Create(
+            CxxAST, UseNNS ? NNS : clang::NestedNameSpecifierLoc(),
+            clang::SourceLocation(), VD, /*Capture=*/false, RHS->getLoc(),
+            VD->getType(), AddressOf ? clang::VK_RValue : clang::VK_LValue);
+        }
+      }
 
       // This wasn't the name of a member, check if it is the name of a base.
       if (clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(TD)) {
@@ -2419,7 +2445,7 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
       // Check for a shadowed overload set.
       if (usingClassLookupIsUnresolved(R, Shadows)) {
         // If we're not creating a UsingDecl, these need to be static.
-        if (!SemaRef.elaboratingUsingInClassScope()) {
+        if (!SemaRef.elaboratingUsingInClassScope() && !AddressOf) {
           SemaRef.Diags.Report(Prev->getExprLoc(),
                                clang::diag::err_ref_non_value) << Prev;
           return nullptr;
@@ -2477,11 +2503,13 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
 
     // otherwise, we have a FieldDecl from a nested name specifier lookup.
     // In which case, the rhs should be static, called via operator'()',
-    // or inside a using macro if the lhs was a record type.
+    // inside a using macro if the lhs was a record type, or as the operand
+    // of operator'&'.
     if (Prev->getType()->isTypeOfTypes() && isOpDot(SemaRef, Op)) {
       clang::QualType Ty =
         cast<clang::CppxTypeLiteral>(Prev)->getValue()->getType();
-      if (!SemaRef.elaboratingUsingInClassScope() && !Ty->isEnumeralType()) {
+      if (!SemaRef.elaboratingUsingInClassScope() && !Ty->isEnumeralType()
+          && !AddressOf) {
         SemaRef.Diags.Report(Prev->getExprLoc(),
                              clang::diag::err_ref_non_value) << Prev;
         return nullptr;
@@ -2489,11 +2517,16 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
     }
 
 
-    if (clang::ValueDecl *VD = dyn_cast<clang::ValueDecl>(ND))
-      return clang::DeclRefExpr::Create(CxxAST, clang::NestedNameSpecifierLoc(),
-                                        clang::SourceLocation(), VD,
-                                        /*Capture=*/false, RHS->getLoc(),
-                                        VD->getType(), clang::VK_LValue);
+    if (clang::ValueDecl *VD = dyn_cast<clang::ValueDecl>(ND)) {
+      clang::NestedNameSpecifierLoc NNS(SemaRef.CurNNSContext.getScopeRep(),
+                                        SemaRef.CurNNSContext.location_data());
+      bool UseNNS = SemaRef.CurNNSContext.isSet();
+
+      return clang::DeclRefExpr::Create(
+        CxxAST, UseNNS ? NNS : clang::NestedNameSpecifierLoc(),
+        clang::SourceLocation(), VD, /*Capture=*/false, RHS->getLoc(),
+        VD->getType(), AddressOf ? clang::VK_RValue : clang::VK_LValue);
+    }
   }
 
   llvm_unreachable("Unknown syntax encountered during nested member lookup.");
@@ -2549,7 +2582,8 @@ clang::Expr *ExprElaborator::elaborateNestedLookupAccess(
   }
 
   clang::Expr *Ret =
-    handleLookupInsideType(SemaRef, Context.CxxAST, Op, Previous, RHS);
+    handleLookupInsideType(SemaRef, Context.CxxAST, Op, Previous,
+                           RHS, ElaboratingAddressOfOp);
   if (!SemaRef.isExtendedQualifiedLookupContext())
     SemaRef.CurNNSContext.clear();
   return Ret;
@@ -2557,8 +2591,16 @@ clang::Expr *ExprElaborator::elaborateNestedLookupAccess(
 
 clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
                                               clang::UnaryOperatorKind Op) {
+  BooleanRAII AddressOfRAII(ElaboratingAddressOfOp, Op == clang::UO_AddrOf);
+
   const Syntax *Operand = S->getArgument(0);
-  clang::Expr *OperandResult = doElaborateExpr(Operand);
+  clang::Expr *OperandResult = nullptr;
+  if (ElaboratingAddressOfOp) {
+    Sema::ExtendQualifiedLookupRAII ExQual(SemaRef);
+    OperandResult = doElaborateExpr(Operand);
+  } else {
+    OperandResult = doElaborateExpr(Operand);
+  }
 
   if (!OperandResult || OperandResult->getType()->isNamespaceType()) {
     SemaRef.Diags.Report(Operand->getLoc(),
@@ -2566,7 +2608,7 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
     return nullptr;
   }
 
-  // This is used to construct a pointer type because the carot has two
+  // This is used to construct a pointer type because the caret has two
   // meanings. Dereference and pointer declaration.
   if (Op == clang::UO_Deref) {
     if (OperandResult->getType()->isTypeOfTypes()) {
@@ -2579,10 +2621,7 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
     }
   }
   clang::ExprResult UnaryOpRes = SemaRef.getCxxSema().BuildUnaryOp(
-                                                              /*scope*/nullptr,
-                                                              S->getCalleeLoc(),
-                                                              Op,
-                                                              OperandResult);
+    /*scope*/nullptr, S->getCalleeLoc(), Op, OperandResult);
 
   ExprMarker(Context.CxxAST, SemaRef).Visit(OperandResult);
   return UnaryOpRes.get();
@@ -2775,11 +2814,30 @@ static clang::Expr *handleArrayMacro(SyntaxContext &Context, Sema &SemaRef,
   return InitList.get();
 }
 
+static clang::Expr *handleOfMacro(SyntaxContext &Context, Sema &SemaRef,
+                                  const MacroSyntax *S) {
+  const ArraySyntax *Block = cast<ArraySyntax>(S->getBlock());
+
+  llvm::SmallVector<clang::Expr *, 4> Args;
+  for (const Syntax *SS : Block->children()) {
+    clang::Expr *E = ExprElaborator(Context, SemaRef).elaborateExpr(SS);
+    Args.push_back(E);
+  }
+
+  clang::ExprResult Res =
+    SemaRef.getCxxSema().ActOnParenListExpr(S->getLoc(), S->getLoc(), Args);
+  if (Res.isInvalid())
+    return nullptr;
+  Res.get()->dump();
+  return Res.get();
+}
+
 clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
   assert (isa<AtomSyntax>(S->getCall()) && "Unexpected macro call");
 
   const AtomSyntax *Call = cast<AtomSyntax>(S->getCall());
 
+  // TODO: string map
   if (Call->getSpelling() == "if")
     assert(false && "If expression processing not implemented yet.");
   else if (Call->getSpelling() == "while")
@@ -2788,6 +2846,8 @@ clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
     assert(false && "For loop processing not implemented yet.");
   else if (Call->getSpelling() == "array")
     return handleArrayMacro(Context, SemaRef, S);
+  else if (Call->getSpelling() == "of")
+    return handleOfMacro(Context, SemaRef, S);
 
   unsigned DiagID =
     SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
@@ -2883,10 +2943,19 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
     Elaborator Elab(Context, SemaRef);
     clang::ValueDecl *VD =
       cast_or_null<clang::ValueDecl>(Elab.elaborateParmDeclSyntax(P));
-    if (!VD) {
-      SemaRef.leaveScope(FuncDcl->getParams());
-      return nullptr;
+    if (!VD)
+      continue;
+    if (VD->getType()->isVariadicType()) {
+      if (I < Args->getNumChildren() - 1) {
+        SemaRef.Diags.Report(Args->getChild(I)->getLoc(),
+                             clang::diag::err_expected) << clang::tok::r_paren;
+        continue;
+      }
+
+      FuncDcl->setIsVariadic();
+      continue;
     }
+
 
     Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
     assert(D && "Didn't find associated declaration");
@@ -2967,7 +3036,7 @@ static bool isVarArgs(Sema &SemaRef, const Syntax *S) {
   return false;
 }
 
-// Handle a function type in the form of `() -> type`
+// Handle a function type of the form `() -> type`
 clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
   assert(S->getNumArguments() == 2 && "invalid operator'->' call");
 
@@ -2976,6 +3045,29 @@ clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
   bool IsVariadic = false;
 
   const Syntax *ParamBegin = S->getArgument(0);
+
+  // This might be a member function type.
+  clang::TypeSourceInfo *ClassType = nullptr;
+  if (const CallSyntax *MemPtr = dyn_cast<CallSyntax>(ParamBegin)) {
+    if (getFusedOpKind(SemaRef, MemPtr) != FOK_MemberAccess) {
+      SemaRef.Diags.Report(ParamBegin->getLoc(),
+                           clang::diag::err_invalid_param_list);
+      return nullptr;
+    }
+
+    clang::Expr *ClassTypeExpr =
+      ExprElaborator(Context, SemaRef).elaborateExpr(MemPtr->getArgument(0));
+    if (!ClassTypeExpr->getType()->isTypeOfTypes()) {
+      SemaRef.Diags.Report(ClassTypeExpr->getExprLoc(),
+                           clang::diag::err_invalid_type_for_name_spec)
+        << ClassTypeExpr->getType();
+      return nullptr;
+    }
+
+    ClassType = cast<clang::CppxTypeLiteral>(ClassTypeExpr)->getValue();
+    ParamBegin = MemPtr->getArgument(1);
+  }
+
   clang::SourceLocation EndLoc;
   if (const ListSyntax *ParamSyntaxes = dyn_cast<ListSyntax>(ParamBegin)) {
     Sema::ScopeRAII ParamScopeRAII(SemaRef, SK_Parameter, ParamBegin);
@@ -3038,10 +3130,36 @@ clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
     EPI.Variadic = true;
   }
 
+  // Manually elaborate any attributes here.
+  for (const Attribute *Attr : ParamBegin->getAttributes()) {
+    std::string AttrName;
+    if (checkAttrFormatAndName(Attr->getArg(), AttrName) == AF_Name) {
+      if (AttrName == "const") {
+        if (!ClassType) {
+          SemaRef.Diags.Report(Attr->getArg()->getLoc(),
+                               clang::diag::err_invalid_attribute_for_decl)
+            << "const" << "member function";
+        }
+
+        EPI.TypeQuals.addConst();
+      }
+    }
+  }
+
   clang::QualType FnTy =
     CxxAST.getFunctionType(ReturnType->getType(), Types, EPI);
   clang::QualType FnPtrTy = CxxAST.getPointerType(FnTy);
   FnPtrTy.addConst();
+
+  if (ClassType) {
+    clang::DeclarationName Name;
+    clang::QualType MemberTy =
+      SemaRef.getCxxSema().BuildMemberPointerType(FnTy, ClassType->getType(),
+                                                  S->getLoc(), Name);
+    clang::TypeSourceInfo *Ret =
+      BuildMemberPtrTypeLoc(CxxAST, MemberTy, Params, S->getLoc());
+    return SemaRef.buildTypeExpr(Ret);
+  }
 
   clang::TypeLocBuilder TLB;
   clang::TypeSourceInfo *FnTSI = BuildFunctionTypeLoc(Context.CxxAST, TLB, FnTy,
@@ -3146,6 +3264,82 @@ clang::Expr *ExprElaborator::handleOpPackExpansion(const CallSyntax *S) {
     // TODO: check if we need an error message here or not.
     return ExprRes.get();
   }
+}
+
+clang::Expr *ExprElaborator::handleVaStartCall(const CallSyntax *S) {
+  clang::SourceLocation Loc = S->getCallee()->getLoc();
+  constexpr unsigned VaStart = clang::Builtin::BI__builtin_va_start;
+  clang::ASTContext::GetBuiltinTypeError Error;
+  clang::QualType VaStartType = CxxAST.GetBuiltinType(VaStart, Error);
+
+  llvm::SmallVector<clang::Expr *, 8> Args;
+  const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
+  if (buildFunctionCallArguments(SemaRef, Context, ArgList, Args))
+    return nullptr;
+
+  clang::DeclarationNameInfo DNI({SemaRef.VaStartII}, Loc);
+  clang::LookupResult R(SemaRef.getCxxSema(), DNI,
+                        clang::Sema::LookupOrdinaryName);
+  if (!SemaRef.getCxxSema().LookupName(R, SemaRef.getCurClangScope(), true)) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "__builtin_va_start never created");
+    SemaRef.Diags.Report(Loc, DiagID);
+    return nullptr;
+  }
+
+  clang::NamedDecl *ND = R.getFoundDecl();
+  assert(isa<clang::ValueDecl>(ND));
+  clang::ValueDecl *VD = cast<clang::ValueDecl>(ND);
+  clang::DeclRefExpr *Fn = clang::DeclRefExpr::Create(
+    CxxAST, clang::NestedNameSpecifierLoc(),
+    clang::SourceLocation(), VD, /*Capture=*/false, Loc,
+    VaStartType, clang::VK_RValue);
+
+  clang::ExprResult Call = SemaRef.getCxxSema().ActOnCallExpr(
+    SemaRef.getCxxSema().getCurScope(), Fn, S->getLoc(), Args, Loc);
+  if (Call.isInvalid())
+    return nullptr;
+
+  return Call.get();
+}
+
+clang::Expr *ExprElaborator::handleVaEndCall(const CallSyntax *S) {
+  clang::SourceLocation Loc = S->getCallee()->getLoc();
+  constexpr unsigned VaEnd = clang::Builtin::BI__builtin_va_end;
+  clang::ASTContext::GetBuiltinTypeError Error;
+  clang::QualType VaEndType = CxxAST.GetBuiltinType(VaEnd, Error);
+
+  llvm::SmallVector<clang::Expr *, 8> Args;
+  const ListSyntax *ArgList = dyn_cast<ListSyntax>(S->getArguments());
+  if (buildFunctionCallArguments(SemaRef, Context, ArgList, Args))
+    return nullptr;
+
+  clang::DeclarationNameInfo DNI({SemaRef.VaEndII}, Loc);
+  clang::LookupResult R(SemaRef.getCxxSema(), DNI,
+                        clang::Sema::LookupOrdinaryName);
+  if (!SemaRef.getCxxSema().LookupName(R, SemaRef.getCurClangScope(), true)) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "__builtin_va_end never created");
+    SemaRef.Diags.Report(Loc, DiagID);
+    return nullptr;
+  }
+
+  clang::NamedDecl *ND = R.getFoundDecl();
+  assert(isa<clang::ValueDecl>(ND));
+  clang::ValueDecl *VD = cast<clang::ValueDecl>(ND);
+  clang::DeclRefExpr *Fn = clang::DeclRefExpr::Create(
+    CxxAST, clang::NestedNameSpecifierLoc(),
+    clang::SourceLocation(), VD, /*Capture=*/false, Loc,
+    VaEndType, clang::VK_RValue);
+
+  clang::ExprResult Call = SemaRef.getCxxSema().ActOnCallExpr(
+    SemaRef.getCxxSema().getCurScope(), Fn, S->getLoc(), Args, Loc);
+  if (Call.isInvalid())
+    return nullptr;
+
+  return Call.get();
 }
 
 clang::Expr *ExprElaborator::makeConstType(clang::Expr *InnerTy,

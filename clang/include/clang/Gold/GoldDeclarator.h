@@ -349,18 +349,17 @@ class FunctionDeclarator : public Declarator {
   const CallSyntax *Params;
   gold::Scope *Scope;
   bool HasVariadicParam = false;
+
 public:
   FunctionDeclarator(const CallSyntax *ParamsNode, gold::Scope *ParamScope,
-                     Declarator *Next, bool HasElipsis = false)
+                     Declarator *Next)
     :Declarator(DK_Function, Next),
     Params(ParamsNode),
-    Scope(ParamScope),
-    HasVariadicParam(HasElipsis)
+    Scope(ParamScope)
   { }
 
-  FunctionDeclarator(const CallSyntax *ParamsNode, Declarator *Next,
-                     bool HasElipsis = false)
-    :FunctionDeclarator(ParamsNode, nullptr, Next, HasElipsis)
+  FunctionDeclarator(const CallSyntax *ParamsNode, Declarator *Next)
+    :FunctionDeclarator(ParamsNode, nullptr, Next)
   { }
 
   virtual clang::SourceLocation getLoc() const override;
@@ -371,7 +370,7 @@ public:
   gold::Scope *&getScopePtrRef() { return Scope;}
   const ListSyntax *getParams() const;
   bool isVariadic() const { return HasVariadicParam; }
-  void setIsVariadic(bool Val) { HasVariadicParam = Val; }
+  void setIsVariadic(bool Val = true) { HasVariadicParam = Val; }
 
   static bool classof(const Declarator *Dcl) {
     return Dcl->getKind() == DK_Function;

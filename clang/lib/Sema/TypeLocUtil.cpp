@@ -76,7 +76,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::BuiltinTypeLoc>
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::BuiltinTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::BuiltinTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::BuiltinTypeLoc>(Context, TLB, Ty, Loc);
@@ -92,7 +92,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::PointerTypeLoc>
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::PointerTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::PointerTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::PointerTypeLoc>(Context, TLB, Ty, Loc);
@@ -103,7 +103,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::BlockPointerTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::BlockPointerTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::BlockPointerTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::BlockPointerTypeLoc>(Context, TLB, Ty, Loc);
@@ -114,7 +114,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::ReferenceTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::ReferenceTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::ReferenceTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::ReferenceTypeLoc>(Context, TLB, Ty, Loc);
@@ -130,7 +130,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::LValueReferenceTypeLoc>
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::LValueReferenceTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::LValueReferenceTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::LValueReferenceTypeLoc>(Context, TLB, Ty, Loc);
@@ -146,7 +146,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::RValueReferenceTypeLoc>
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::RValueReferenceTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::RValueReferenceTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::RValueReferenceTypeLoc>(Context, TLB, Ty, Loc);
@@ -154,10 +154,10 @@ template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::RValueReferenceT
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::MemberPointerTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  llvm_unreachable("use BuildMemberPointerType");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::MemberPointerTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::MemberPointerTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::MemberPointerTypeLoc>(Context, TLB, Ty, Loc);
@@ -168,7 +168,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::ArrayTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::ArrayTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::ArrayTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::ArrayTypeLoc>(Context, TLB, Ty, Loc);
@@ -187,7 +187,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::ConstantArrayTypeLoc>
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::ConstantArrayTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::ConstantArrayTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::ConstantArrayTypeLoc>(Context, TLB, Ty, Loc);
@@ -198,7 +198,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::IncompleteArrayTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::IncompleteArrayTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::IncompleteArrayTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::IncompleteArrayTypeLoc>(Context, TLB, Ty, Loc);
@@ -209,7 +209,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::VariableArrayTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::VariableArrayTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::VariableArrayTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::VariableArrayTypeLoc>(Context, TLB, Ty, Loc);
@@ -220,7 +220,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::DependentSizedArrayTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DependentSizedArrayTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::DependentSizedArrayTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::DependentSizedArrayTypeLoc>(Context, TLB, Ty, Loc);
@@ -231,7 +231,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::DependentSizedExtVectorTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DependentSizedExtVectorTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::DependentSizedExtVectorTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::DependentSizedExtVectorTypeLoc>(Context, TLB, Ty, Loc);
@@ -242,7 +242,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::DependentAddressSpaceTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DependentAddressSpaceTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::DependentAddressSpaceTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::DependentAddressSpaceTypeLoc>(Context, TLB, Ty, Loc);
@@ -253,7 +253,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::VectorTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::VectorTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::VectorTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::VectorTypeLoc>(Context, TLB, Ty, Loc);
@@ -264,7 +264,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::DependentVectorTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DependentVectorTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::DependentVectorTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::DependentVectorTypeLoc>(Context, TLB, Ty, Loc);
@@ -275,7 +275,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::ExtVectorTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::ExtVectorTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::ExtVectorTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::ExtVectorTypeLoc>(Context, TLB, Ty, Loc);
@@ -286,7 +286,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::FunctionTypeLoc>
   llvm_unreachable("Use BuildFunctionTypeLoc.");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::FunctionTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::FunctionTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::FunctionTypeLoc>(Context, TLB, Ty, Loc);
@@ -297,7 +297,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::FunctionProtoTypeLoc>
   llvm_unreachable("Use BuildFunctionTypeLoc.");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::FunctionProtoTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::FunctionProtoTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::FunctionProtoTypeLoc>(Context, TLB, Ty, Loc);
@@ -308,7 +308,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::FunctionNoProtoTypeLoc>
   llvm_unreachable("Use BuildFunctionTypeLoc.");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::FunctionNoProtoTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::FunctionNoProtoTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::FunctionNoProtoTypeLoc>(Context, TLB, Ty, Loc);
@@ -319,7 +319,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::UnresolvedUsingTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::UnresolvedUsingTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::UnresolvedUsingTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::UnresolvedUsingTypeLoc>(Context, TLB, Ty, Loc);
@@ -330,7 +330,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::ParenTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::ParenTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::ParenTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::ParenTypeLoc>(Context, TLB, Ty, Loc);
@@ -343,7 +343,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::TypedefTypeLoc>
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::TypedefTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::TypedefTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::TypedefTypeLoc>(Context, TLB, Ty, Loc);
@@ -354,7 +354,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::MacroQualifiedTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::MacroQualifiedTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::MacroQualifiedTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::MacroQualifiedTypeLoc>(Context, TLB, Ty, Loc);
@@ -365,7 +365,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::AdjustedTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::AdjustedTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::AdjustedTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::AdjustedTypeLoc>(Context, TLB, Ty, Loc);
@@ -376,7 +376,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::DecayedTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DecayedTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::DecayedTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::DecayedTypeLoc>(Context, TLB, Ty, Loc);
@@ -387,7 +387,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::TypeOfExprTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]]  TypeSourceInfo *BuildTypeLoc<clang::TypeOfExprTypeLoc>
+template<>  TypeSourceInfo *BuildTypeLoc<clang::TypeOfExprTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::TypeOfExprTypeLoc>(Context, TLB, Ty, Loc);
@@ -398,7 +398,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::TypeOfTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::TypeOfTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::TypeOfTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::TypeOfTypeLoc>(Context, TLB, Ty, Loc);
@@ -411,7 +411,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::DecltypeTypeLoc>
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]]  TypeSourceInfo *BuildTypeLoc<clang::DecltypeTypeLoc>
+template<>  TypeSourceInfo *BuildTypeLoc<clang::DecltypeTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::DecltypeTypeLoc>(Context, TLB, Ty, Loc);
@@ -422,7 +422,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::ReflectedTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]]  TypeSourceInfo *BuildTypeLoc<clang::ReflectedTypeLoc>
+template<>  TypeSourceInfo *BuildTypeLoc<clang::ReflectedTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::ReflectedTypeLoc>(Context, TLB, Ty, Loc);
@@ -433,7 +433,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::UnaryTransformTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::UnaryTransformTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::UnaryTransformTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::UnaryTransformTypeLoc>(Context, TLB, Ty, Loc);
@@ -444,7 +444,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::TagTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::TagTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::TagTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::TagTypeLoc>(Context, TLB, Ty, Loc);
@@ -457,7 +457,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::RecordTypeLoc>
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::RecordTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::RecordTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::RecordTypeLoc>(Context, TLB, Ty, Loc);
@@ -470,7 +470,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::CppxKindTypeLoc>
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::CppxKindTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::CppxKindTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   auto x = BuildTypeLoc<clang::CppxKindTypeLoc>(Context, TLB, Ty, Loc);
@@ -484,11 +484,25 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::CppxNamespaceTypeLoc>
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::CppxNamespaceTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::CppxNamespaceTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   auto TL = BuildTypeLoc<clang::CppxNamespaceTypeLoc>(Context, TLB, Ty, Loc);
   return TL;
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::CppxArgsTypeLoc>
+(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
+  auto TypeLocInstance = TLB.push<clang::CppxArgsTypeLoc>(Ty);
+  TypeLocInstance.initializeLocal(Ctx, Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::CppxArgsTypeLoc>
+(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
+  TypeLocBuilder TLB;
+  auto x = BuildTypeLoc<clang::CppxArgsTypeLoc>(Context, TLB, Ty, Loc);
+  return x;
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::EnumTypeLoc>
@@ -498,7 +512,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::EnumTypeLoc>
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::EnumTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::EnumTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::EnumTypeLoc>(Context, TLB, Ty, Loc);
@@ -509,7 +523,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::ElaboratedTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::ElaboratedTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::ElaboratedTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::ElaboratedTypeLoc>(Context, TLB, Ty, Loc);
@@ -520,7 +534,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::AttributedTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::AttributedTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::AttributedTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::AttributedTypeLoc>(Context, TLB, Ty, Loc);
@@ -531,7 +545,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::SubstTemplateTypeParmTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::SubstTemplateTypeParmTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::SubstTemplateTypeParmTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::SubstTemplateTypeParmTypeLoc>(Context, TLB, Ty, Loc);
@@ -542,7 +556,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::SubstTemplateTypeParmPackTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::SubstTemplateTypeParmPackTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::SubstTemplateTypeParmPackTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::SubstTemplateTypeParmPackTypeLoc>(Context, TLB, Ty, Loc);
@@ -552,10 +566,40 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateSpecializationTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   auto TypeLocInstance = TLB.push<clang::TemplateSpecializationTypeLoc>(Ty);
   TypeLocInstance.initializeLocal(Ctx, Loc);
+  TypeLocInstance.setTemplateNameLoc(Loc);
+  TypeLocInstance.setTemplateKeywordLoc(Loc);
+  TypeLocInstance.setLAngleLoc(Loc);
+  TypeLocInstance.setRAngleLoc(Loc);
+
+  auto *TST = TypeLocInstance.getTypePtr();
+  for (unsigned I = 0; I < TST->getNumArgs(); ++I) {
+    const auto Arg = TST->getArg(I);
+    switch (Arg.getKind()) {
+    case clang::TemplateArgument::Expression: {
+      clang::TemplateArgumentLocInfo A(Arg.getAsExpr());
+      TypeLocInstance.setArgLocInfo(I, A);
+      break;
+    }
+
+    case clang::TemplateArgument::Type: {
+      auto Param = BuildAnyTypeLoc(Ctx, Arg.getAsType(), Loc);
+      clang::TemplateArgumentLocInfo A(Param);
+      TypeLocInstance.setArgLocInfo(I, A);
+      break;
+    }
+
+    default: {
+      clang::TemplateArgumentLocInfo A;
+      TypeLocInstance.setArgLocInfo(I, A);
+      break;
+    }
+    } // switch (Arg->getKind())
+  }
+
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::TemplateSpecializationTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateSpecializationTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::TemplateSpecializationTypeLoc>(Context, TLB, Ty, Loc);
@@ -568,7 +612,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::CppxTemplateTypeLoc>
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::CppxTemplateTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::CppxTemplateTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::CppxTemplateTypeLoc>(Context, TLB, Ty, Loc);
@@ -579,7 +623,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::DeducedTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DeducedTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::DeducedTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::DeducedTypeLoc>(Context, TLB, Ty, Loc);
@@ -590,7 +634,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::DeducedTemplateSpecializationType
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DeducedTemplateSpecializationTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::DeducedTemplateSpecializationTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::DeducedTemplateSpecializationTypeLoc>(Context, TLB, Ty, Loc);
@@ -602,7 +646,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::InjectedClassNameTypeLoc>
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::InjectedClassNameTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::InjectedClassNameTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::InjectedClassNameTypeLoc>(Context, TLB, Ty, Loc);
@@ -613,7 +657,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::DependentNameTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DependentNameTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::DependentNameTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::DependentNameTypeLoc>(Context, TLB, Ty, Loc);
@@ -624,7 +668,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::DependentTemplateSpecializationTy
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DependentTemplateSpecializationTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::DependentTemplateSpecializationTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::DependentTemplateSpecializationTypeLoc>(Context, TLB, Ty, Loc);
@@ -640,7 +684,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::PackExpansionTypeLoc>
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::PackExpansionTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::PackExpansionTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::PackExpansionTypeLoc>(Context, TLB, Ty, Loc);
@@ -651,7 +695,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::CXXDependentVariadicReifierTypeLo
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::CXXDependentVariadicReifierTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::CXXDependentVariadicReifierTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::CXXDependentVariadicReifierTypeLoc>(Context, TLB, Ty, Loc);
@@ -662,7 +706,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::CXXRequiredTypeTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::CXXRequiredTypeTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::CXXRequiredTypeTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::CXXRequiredTypeTypeLoc>(Context, TLB, Ty, Loc);
@@ -673,7 +717,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::ObjCObjectTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::ObjCObjectTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::ObjCObjectTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::ObjCObjectTypeLoc>(Context, TLB, Ty, Loc);
@@ -684,7 +728,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::ObjCObjectPointerTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::ObjCObjectPointerTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::ObjCObjectPointerTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::ObjCObjectPointerTypeLoc>(Context, TLB, Ty, Loc);
@@ -695,7 +739,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::PipeTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::PipeTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::PipeTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::PipeTypeLoc>(Context, TLB, Ty, Loc);
@@ -706,38 +750,38 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::AtomicTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::AtomicTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::AtomicTypeLoc>
 (clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
   TypeLocBuilder TLB;
   return BuildTypeLoc<clang::AtomicTypeLoc>(Context, TLB, Ty, Loc);
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::ConstantMatrixTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::ConstantMatrixTypeLoc>
 (clang::ASTContext &Ctx, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::ConstantMatrixTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::ConstantMatrixTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DependentIdentifierSpliceTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::DependentIdentifierSpliceTypeLoc>
 (clang::ASTContext &Ctx, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DependentIdentifierSpliceTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::DependentIdentifierSpliceTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DependentSizedMatrixTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::DependentSizedMatrixTypeLoc>
 (clang::ASTContext &Ctx, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
 }
 
-template<> [[maybe_unused]] TypeSourceInfo *BuildTypeLoc<clang::DependentSizedMatrixTypeLoc>
+template<> TypeSourceInfo *BuildTypeLoc<clang::DependentSizedMatrixTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
 }
@@ -784,7 +828,6 @@ TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context, QualType Ty,
   return BuildFunctionTypeLoc(Context, TLB, Ty, BeginLoc, LParenLoc, RParenLoc,
                               ExceptionSpecRange, EndLoc, Params);
 }
-
 
 TypeSourceInfo *BuildFunctionTypeLoc(clang::ASTContext &Context,
     clang::TypeLocBuilder &TLB, QualType Ty, SourceLocation BeginLoc,
@@ -851,6 +894,35 @@ TypeSourceInfo *BuildFunctionPtrTypeLoc(clang::ASTContext &Context,
   FnPtrInstance.setStarLoc(Loc);
 
   return TLB.getTypeSourceInfo(Context, FnPtrTy);
+}
+
+TypeSourceInfo *BuildMemberPtrTypeLoc(clang::ASTContext &Context,
+                                      TypeLocBuilder &TLB,
+                                      clang::QualType Ty,
+                            llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params,
+                                      clang::SourceLocation Loc) {
+  assert(Ty->getAs<clang::MemberPointerType>());
+  const clang::MemberPointerType *MemTy = Ty->getAs<clang::MemberPointerType>();
+  clang::QualType InnerTy = MemTy->getPointeeType();
+  BuildFunctionTypeLoc(Context, TLB, InnerTy, Loc, Loc, Loc,
+                       clang::SourceRange(), Loc, Params);
+
+  clang::TypeLoc(InnerTy, nullptr).castAs<clang::FunctionTypeLoc>();
+
+  auto TypeLocInstance = TLB.push<clang::MemberPointerTypeLoc>(Ty);
+  TypeLocInstance.setStarLoc(Loc);
+  clang::TypeSourceInfo *ClassTInfo =
+    Context.getTrivialTypeSourceInfo(clang::QualType(MemTy->getClass(), 0));
+  TypeLocInstance.setClassTInfo(ClassTInfo);
+  return TLB.getTypeSourceInfo(Context, Ty);
+}
+
+TypeSourceInfo *BuildMemberPtrTypeLoc(clang::ASTContext &Context,
+                                      clang::QualType Ty,
+                            llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params,
+                                      clang::SourceLocation Loc) {
+  TypeLocBuilder TLB;
+  return BuildMemberPtrTypeLoc(Context, TLB, Ty, Params, Loc);
 }
 
 } // namespace gold

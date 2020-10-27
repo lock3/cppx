@@ -1007,9 +1007,23 @@ static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P, const Token& Tok);
 static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P,
                         const Token& Tok, Syntax *Args);
 
-static bool isEndOfThrow(TokenKind K){
+static inline bool isEndOfThrow(TokenKind K){
   return K == tok::Separator || K == tok::Semicolon || K == tok::Dedent;
 }
+
+// True when the lookahead is ends a line, block, or file. Used for void
+// return expressions.
+static inline bool isEnd(TokenKind Lookahead) {
+  switch (Lookahead) {
+  case tok::Dedent:
+  case tok::Separator:
+  case tok::EndOfFile:
+    return true;
+  default:
+    return false;
+  }
+}
+
 Syntax *Parser::parseThrow() {
   Token ThrowKW = consumeToken();
   if (InAttribute) {
@@ -1057,9 +1071,9 @@ Syntax *Parser::parsePre() {
   if (nextTokenIs("return") || nextTokenIs("returns")) {
     Token Op = consumeToken();
     Syntax *E = nullptr;
-    if (getLookahead() != tok::Dedent && getLookahead() != tok::Separator) {
+    if (!isEnd(getLookahead()))
       E = parseExpr();
-    }
+
     return onUnaryOrNull(Op, E);
   }
   // This might not be right, there is a chance that this could be a pre-attribute
@@ -1402,6 +1416,8 @@ Parser::FoldKind Parser::scanForFoldExpr() {
 ///   postfix < expr >
 ///   postfix . identifier
 ///   postfix . ( expr ) identifier
+///   postfix .* ( expr )
+///   postfix of-macro
 ///   postfix suffix-operator
 ///
 /// suffix-operator:
@@ -1435,12 +1451,21 @@ Syntax *Parser::parsePost()
       e = parseDot(e);
       break;
 
+    case tok::DotCaret:
+      e = parseDotCaret(e);
+      break;
+
     case tok::Question:
     // case tok::Caret:
     // case tok::At:
       llvm_unreachable("suffix operators not implemented");
       consumeToken();
       break;
+
+    case tok::OfKeyword:
+      e = parseMacro();
+      break;
+
     default:
       return e;
     }
@@ -1487,14 +1512,19 @@ Syntax *Parser::parseElem(Syntax *Map)
   return onElem({Brackets.open, Brackets.close}, Map, Args);
 }
 
-Syntax *Parser::parseDot(Syntax *Obj)
-{
+Syntax *Parser::parseDot(Syntax *Obj) {
   Token Op = expectToken(tok::Dot);
 
   // FIXME: this is a qualified-id, which is not clearly defined.
   // Perhaps our disambiguating operator'()' is enough to meet the criteria?
   Syntax *Sub = nextTokenIs(tok::LeftParen) ? parsePre() : parseId();
+  return onBinary(Op, Obj, Sub);
+}
 
+Syntax *Parser::parseDotCaret(Syntax *Obj) {
+  Token Op = expectToken(tok::DotCaret);
+
+  Syntax *Sub = nextTokenIs(tok::LeftParen) ? parsePre() : parseId();
   return onBinary(Op, Obj, Sub);
 }
 
@@ -1615,60 +1645,14 @@ Syntax *Parser::parsePostAttr(Syntax *Pre) {
   return Pre;
 }
 
+static inline bool isKeyword(TokenKind K) {
+  return K >= tok::VoidKeyword && K <= tok::AnonymousKeyword;
+}
+
 Syntax *Parser::parsePrimary() {
   switch (getLookahead()) {
   case tok::Identifier:
     return parseId();
-
-  case tok::ClassKeyword:
-  case tok::EnumKeyword:
-  case tok::UnionKeyword:
-  case tok::NamespaceKeyword:
-  case tok::StaticCastKeyword:
-  case tok::DynamicCastKeyword:
-  case tok::ReinterpretCastKeyword:
-  case tok::ConstCastKeyword:
-  case tok::ConstExprKeyword:
-  case tok::AlignOfKeyword:
-  case tok::SizeOfKeyword:
-  case tok::NoExceptKeyword:
-  case tok::DeclTypeKeyword:
-  case tok::TypeidKeyword:
-  case tok::ThisKeyword:
-  case tok::TypeIdKeyword:
-  case tok::VoidKeyword:
-  case tok::BoolKeyword:
-  case tok::CharKeyword:
-  case tok::Char8Keyword:
-  case tok::Char16Keyword:
-  case tok::Char32Keyword:
-  case tok::IntKeyword:
-  case tok::Int8Keyword:
-  case tok::Int16Keyword:
-  case tok::Int32Keyword:
-  case tok::Int64Keyword:
-  case tok::Int128Keyword:
-  case tok::UintKeyword:
-  case tok::Uint8Keyword:
-  case tok::Uint16Keyword:
-  case tok::Uint32Keyword:
-  case tok::Uint64Keyword:
-  case tok::Uint128Keyword:
-  case tok::FloatKeyword:
-  case tok::Float16Keyword:
-  case tok::Float32Keyword:
-  case tok::Float64Keyword:
-  case tok::Float128Keyword:
-  case tok::CCharKeyword:
-  case tok::DoubleKeyword:
-  case tok::TypeKeyword:
-  case tok::ArgsKeyword:
-  case tok::ContinueKeyword:
-  case tok::BreakKeyword:
-  case tok::DefaultKeyword:
-  case tok::DeleteKeyword:
-  case tok::UsingKeyword:
-    return onAtom(consumeToken());
 
   case tok::ThrowKeyword:
     return parseThrow();
@@ -1726,6 +1710,9 @@ Syntax *Parser::parsePrimary() {
   default:
     break;
   }
+
+  if (isKeyword(getLookahead()))
+    return onAtom(consumeToken());
 
   // Diagnose the error and consume the token so we don't see it again.
   Diags.Report(getInputLocation(), clang::diag::err_expected)
@@ -2176,36 +2163,38 @@ Syntax *Parser::onUnaryFoldExpr(FoldDirection Dir, const Token &Operator,
   std::string OperatorText;
   std::string NormalizedSpelling;
   switch(Operator.getKind()) {
-    case tok::AmpersandAmpersand:
-      NormalizedSpelling = "&&";
-      break;
-    case tok::Comma:
-      NormalizedSpelling = ",";
-      break;
-    case tok::Identifier:
-      if (Operator.getSpelling() == "or") {
-        NormalizedSpelling = "||";
-      } else if (Operator.getSpelling() == "and") {
-        NormalizedSpelling = "&&";
-      } else {
-        // FIXME: This may need a real error message.
-        llvm_unreachable("Invalid unary fold operator?!");
-      }
-      break;
-    case tok::BarBar:
+  case tok::AmpersandAmpersand:
+    NormalizedSpelling = "&&";
+    break;
+  case tok::Comma:
+    NormalizedSpelling = ",";
+    break;
+  case tok::Identifier:
+    if (Operator.getSpelling() == "or") {
       NormalizedSpelling = "||";
-      break;
+    } else if (Operator.getSpelling() == "and") {
+      NormalizedSpelling = "&&";
+    } else {
+      // FIXME: This may need a real error message.
+      llvm_unreachable("Invalid unary fold operator?!");
+    }
+    break;
+  case tok::BarBar:
+    NormalizedSpelling = "||";
+    break;
+  default:
+    llvm_unreachable("Invalid unary fold operator");
   }
 
   switch(Dir) {
-    case FD_Left:
-      TK = tok::UnaryLeftFold;
-      OperatorText = "... " + NormalizedSpelling;
-      break;
-    case FD_Right:
-      TK = tok::UnaryRightFold;
-      OperatorText = NormalizedSpelling + " ...";
-      break;
+  case FD_Left:
+    TK = tok::UnaryLeftFold;
+    OperatorText = "... " + NormalizedSpelling;
+    break;
+  case FD_Right:
+    TK = tok::UnaryRightFold;
+    OperatorText = NormalizedSpelling + " ...";
+    break;
   }
 
   ParseFoldOp = true;

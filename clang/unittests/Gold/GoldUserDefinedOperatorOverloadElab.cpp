@@ -151,7 +151,8 @@ static void TestUnaryFreeFunc(const std::string &OpStr,
 #define def_bin_op_member_only(Name,OpStr,ClangBinOpName,MemberOnly,        \
                                OverloadStyle,OpOverloadName)                \
 TEST(GoldUserDefinedOp, Member_BinOp_##Name) {                              \
-  TestBinMemberFunc(OpStr,OpStr);                                           \
+  if (OpStr != ".^")                                                        \
+    TestBinMemberFunc(OpStr,OpStr);                                         \
 }
 
 #define def_bin_op(Name, OpStr, ClangBinOpName, MemberOnly, OverloadStyle,  \
@@ -159,7 +160,8 @@ TEST(GoldUserDefinedOp, Member_BinOp_##Name) {                              \
 def_bin_op_member_only(Name, OpStr, ClangBinOpName, MemberOnly,             \
                        OverloadStyle, OpOverloadName)                       \
 TEST(GoldUserDefinedOp, Free_BinOp_##Name) {                                \
-  TestBinFreeFunc(OpStr, OpStr);                                            \
+  if (OpStr != ".^")                                                        \
+    TestBinFreeFunc(OpStr, OpStr);                                          \
 }
 
 #define def_bin_op_second_name(Name, OpStr, SecondOpStr,ClangBinOpName,     \
