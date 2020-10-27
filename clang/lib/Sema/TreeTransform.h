@@ -8862,6 +8862,14 @@ TreeTransform<Derived>::TransformCppxTypeLiteral(CppxTypeLiteral *E) {
   return new (SemaRef.Context) CppxTypeLiteral(K, T);
 }
 
+
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCppxPartialEvalExpr(CppxPartialEvalExpr *E) {
+  return new (SemaRef.Context) CppxPartialEvalExpr(E->getType(), E->getImpl(),
+                                                   E->getLocation());
+}
+
 // Objective-C Statements.
 
 template<typename Derived>

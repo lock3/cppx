@@ -105,6 +105,10 @@ public:
   clang::Expr *elaborateInPlaceNewCall(clang::Expr *LHSPtr,
                                        const CallSyntax *Op,
                                        const Syntax *RHS);
+
+  clang::Expr *elaborateDestructCall(clang::Expr *LHSPtr,
+                                       const CallSyntax *Op,
+                                       const Syntax *RHS);
   clang::Expr *elaborateNestedLookupAccess(clang::Expr *Previous,
                                            const CallSyntax *Op,
                                            const Syntax *RHS);
@@ -130,7 +134,6 @@ public:
               llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs);
 
   clang::Expr *elaborateCastOp(const CallSyntax *CastOp);
-
 
   clang::Expr *elaborateThrowExpr(const CallSyntax *Call);
 private:
@@ -173,6 +176,19 @@ private:
   clang::Expr *makeOpPackExpansionType(clang::Expr *Result,
                                        const CallSyntax *S);
 
+  ///}
+public:
+  /// Functions that help handle processing of incomplete expressions.
+  ///{
+  clang::Expr *elaboratePartialElementExpr(clang::Expr *PartialExpr,
+                                           const ElemSyntax *Elem);
+  clang::Expr *elaboratePartialCallExpr(clang::Expr *PartialExpr,
+                                        const CallSyntax *Call,
+                                     llvm::SmallVector<clang::Expr *, 8> &Args);
+  clang::Expr *completePartialExpr(clang::Expr *E);
+  ///}
+
+
 private:
   bool ElaboratingAddressOfOp = false;
 
@@ -196,7 +212,6 @@ public:
     bool SavedValue;
     bool &Boolean;
   };
-
 };
 
 } // namespace gold

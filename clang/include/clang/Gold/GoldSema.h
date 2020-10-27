@@ -1064,6 +1064,27 @@ public:
       SemaRef.setListIsParenExpr(PreviousValue);
     }
   };
+
+public:
+  /// This constructs a new in place new expression that will be completed
+  /// once all of it's arguments are available.
+  clang::CppxPartialEvalExpr *buildPartialInPlaceNewExpr(
+                                const Syntax *ConstructKW, clang::Expr *PtrExpr,
+                                clang::SourceLocation Loc);
+private:
+  clang::FunctionDecl *InPlaceNew = nullptr;
+public:
+
+  /// This returns a special builtin in place operators for handling in place
+  /// operator new/delete calls.
+  ///{
+  /// This attempts to create the in place new and delete.
+  void createInPlaceNew();
+
+  /// Functions that attempt to create a new/delete function inside of clang
+  /// on demand (if it hasn't already been created).
+  clang::FunctionDecl *getInPlaceNew();
+  ///}
 };
 
 } // namespace gold

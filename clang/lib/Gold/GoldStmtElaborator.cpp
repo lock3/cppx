@@ -128,8 +128,13 @@ static clang::Stmt *
 elaborateDefaultCall(SyntaxContext &Context, Sema &SemaRef, const CallSyntax *S) {
   ExprElaborator ExprElab(Context, SemaRef);
   auto *Stmt = ExprElab.elaborateCall(S);
-  if (!Stmt) {
+  if (!Stmt)
     return nullptr;
+
+  if (auto *PartialExpr = dyn_cast<clang::CppxPartialEvalExpr>(Stmt)) {
+    Stmt = PartialExpr->forceCompleteExpr();
+    if (!Stmt)
+      return nullptr;
   }
   clang::ExprResult Res(Stmt);
   auto StmtResult = SemaRef.getCxxSema().ActOnExprStmt(Res,

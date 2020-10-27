@@ -1320,6 +1320,7 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
       Engine.addAbortedBlock(node, currBldrCtx->getBlock());
       break;
     }
+    case Stmt::CppxPartialEvalExprClass:
     case Stmt::CppxTypeLiteralClass:
     case Stmt::CppxDeclRefExprClass:
       llvm_unreachable("Shouldn't be part of final AST analysis.");

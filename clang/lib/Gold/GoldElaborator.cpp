@@ -264,7 +264,7 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   assert(isa<FileSyntax>(S) && "S is not a file");
 
   startFile(S);
-
+  SemaRef.createInPlaceNew();
   const FileSyntax *File = cast<FileSyntax>(S);
 
   // Pass 1. identify declarations in scope.

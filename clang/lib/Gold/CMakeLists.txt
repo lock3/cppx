@@ -17,6 +17,7 @@ add_clang_library(gold
   GoldLexer.cpp
   GoldOperatorInfo.cpp
   GoldParser.cpp
+  GoldPartialExpr.cpp
   GoldScope.cpp
   GoldSema.cpp
   GoldStmtElaborator.cpp

@@ -520,6 +520,10 @@ public:
     Visit(E->getValue()->getType());
   }
 
+  void VisitCppxPartialEvalExpr(const CppxPartialEvalExpr *E) {
+    // Visit(E->getType());
+  }
+
   template <typename SpecializationDecl>
   void dumpTemplateDeclSpecialization(const SpecializationDecl *D) {
     for (const auto *RedeclWithBadType : D->redecls()) {

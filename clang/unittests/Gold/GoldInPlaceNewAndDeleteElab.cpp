@@ -20,15 +20,65 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-// TEST(GoldNew, PlacementNew) {
-//   std::string Code = R"Gold(
-// foo(x:^int):void!
-//   x.construct(4)
-// )Gold";
-//   DeclarationMatcher ToMatch = translationUnitDecl(
-//     hasDescendant(
-//       functionDecl(hasName("foo"), isInline())
-//     )
-//   );
-//   ASSERT_TRUE(matches(Code, ToMatch));
-// }
+TEST(GoldNew, PlacementNew) {
+  std::string Code = R"Gold(
+foo(x:^int):void!
+  x.construct(43)
+)Gold";
+  auto ToMatch = translationUnitDecl(
+    has(functionDecl(hasName("__GoldInplaceNew"))),
+    hasDescendant(cxxNewExpr())
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+TEST(GoldNew, DestructorCall) {
+  std::string Code = R"Gold(
+ToDestroy : type = class:
+  ;
+foo(x:^ToDestroy):void!
+  x.destruct()
+)Gold";
+  auto ToMatch = translationUnitDecl(
+    has(functionDecl(hasName("__GoldInplaceNew"))),
+    hasDescendant(cxxMemberCallExpr())
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+TEST(GoldNew, DtorCalledOnInteger) {
+  std::string Code = R"Gold(
+foo(x:^int):void!
+  x.destruct()
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldNew, UserDefinedDestructor) {
+  std::string Code = R"Gold(
+ToDestroy : type = class:
+  destructor()!
+    ;
+foo(x:^ToDestroy):void!
+  x.destruct()
+)Gold";
+  auto ToMatch =
+  translationUnitDecl(
+    hasDescendant(cxxMemberCallExpr(
+      on(hasType(asString("struct ToDestroy *"))),
+      has(memberExpr(member(hasName("~ToDestroy"))))
+    ))
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+TEST(GoldNew, DeletedDestructor) {
+  std::string Code = R"Gold(
+ToDestroy : type = class:
+  destructor() = delete
+
+foo(x:^ToDestroy):void!
+  x.destruct()
+)Gold";
+  GoldFailureTest(Code);
+}

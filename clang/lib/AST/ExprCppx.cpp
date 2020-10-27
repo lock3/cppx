@@ -35,10 +35,6 @@ SourceLocation CppxTypeLiteral::getEndLoc() const {
   return Value->getTypeLoc().getEndLoc();
 }
 
-// SourceLocation CppxTypeLiteral::getLocation() const {
-//   return Loc;
-// }
-
 CppxTypeLiteral*
 CppxTypeLiteral::create(ASTContext &Context, QualType KindTy, ValueType Ty) {
   return new (Context) CppxTypeLiteral(KindTy, Ty);
@@ -49,4 +45,11 @@ CppxDeclRefExpr::Create(ASTContext &Context, QualType KindTy, ValueType D,
                         SourceLocation Loc) {
   return new (Context) CppxDeclRefExpr(KindTy, D, Loc);
 }
+
+CppxPartialEvalExpr *CppxPartialEvalExpr::Create(ASTContext &Ctx,
+                                                 gold::CppxPartialExprBase *E,
+                                                 SourceLocation Loc) {
+  return new (Ctx) CppxPartialEvalExpr(Ctx.VoidTy, E, Loc);
+}
+
 } // namespace clang

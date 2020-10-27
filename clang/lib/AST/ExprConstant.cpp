@@ -14674,6 +14674,9 @@ public:
   bool VisitCppxTypeLiteral(const CppxTypeLiteral *E) {
     return Success(E->getValue()->getType());
   }
+  bool VisitCppxPartialEvalExpr(const CppxPartialEvalExpr *E) {
+    return Success(E->getType());
+  }
 };
 } // end anonymous namespace
 
@@ -15317,6 +15320,7 @@ static ICEDiag CheckICE(const Expr* E, const Expr::EvalContext &Ctx) {
   case Expr::CXXDependentVariadicReifierExprClass:
   case Expr::CXXFragmentExprClass:
   case Expr::CppxTypeLiteralClass:
+  case Expr::CppxPartialEvalExprClass:
   case Expr::CppxDeclRefExprClass:
   case Expr::CXXFragmentCaptureExprClass:
     return ICEDiag(IK_NotICE, E->getBeginLoc());

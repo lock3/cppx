@@ -550,6 +550,10 @@ void ASTStmtReader::VisitCppxTypeLiteral(CppxTypeLiteral *E) {
   llvm_unreachable("not implemented");
 }
 
+void ASTStmtReader::VisitCppxPartialEvalExpr(CppxPartialEvalExpr *E) {
+  llvm_unreachable("not implemented");
+}
+
 void ASTStmtReader::VisitCppxDeclRefExpr(CppxDeclRefExpr *E) {
   llvm_unreachable("not implemented");
 }

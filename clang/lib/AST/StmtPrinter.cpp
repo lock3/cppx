@@ -2640,6 +2640,12 @@ void StmtPrinter::VisitCppxTypeLiteral(CppxTypeLiteral *E) {
   T.print(OS, Policy);
 }
 
+
+void StmtPrinter::VisitCppxPartialEvalExpr(CppxPartialEvalExpr *E) {
+  QualType T = E->getType();
+  T.print(OS, Policy);
+}
+
 void StmtPrinter::VisitCppxDeclRefExpr(CppxDeclRefExpr *E) {
   Decl *D = E->getValue();
   D->print(OS, Policy);
