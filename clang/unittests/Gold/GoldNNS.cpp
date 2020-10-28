@@ -86,11 +86,54 @@ main() : int!
 
   StatementMatcher Matcher(hasDescendant(
                              varDecl(hasName("result"),
-                                     hasType(asString("int"))
+                                     hasType(asString("something"))
                                )
                              )
                    );
   ASSERT_TRUE(matches(Code.str(), Matcher));
+}
+
+
+TEST(NNS, PrefixBaseSpecifierThroughPointer) {
+  StringRef Code = R"(
+A : type = class:
+  i : int = 9
+
+B: type = class (A):
+  ;
+
+main() : int!
+  b : ^B
+  result = b.(A)i
+)";
+
+  ASSERT_TRUE(matches(Code.str(), memberExpr(member(hasName("i")))
+    ));
+}
+
+
+TEST(NNS, DoubleDisambiguation) {
+  StringRef Code = R"(
+D : type = class:
+  x : int
+C : type = class(D):
+  something : int
+
+A : type = class:
+  i : int = 9
+  x : C
+
+B: type = class (A):
+  ;
+
+main() : int!
+  b : ^B
+  result = b.(A)x.(D)x
+
+)";
+  // TODO: I need to fix this so it disambiguates as expected.
+  ASSERT_TRUE(matches(Code.str(), memberExpr(member(hasName("i")))
+    ));
 }
 
 TEST(NNS, PrefixBaseSpecifierTempl) {

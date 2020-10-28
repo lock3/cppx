@@ -19,6 +19,7 @@
 #include "clang/AST/Type.h"
 #include "llvm/ADT/PointerUnion.h"
 
+
 #include "clang/Gold/GoldSyntax.h"
 #include "clang/Gold/GoldSema.h"
 
@@ -33,6 +34,7 @@ class Expr;
 class NamespaceDecl;
 class Sema;
 class TypeSourceInfo;
+class NestedNameSpecifier;
 
 } // namespace clang
 
@@ -102,6 +104,26 @@ public:
 
   clang::Expr *elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op,
                                      const Syntax *RHS);
+
+  clang::Expr *elaborateMemberAccessRHS(clang::Expr *ElaboratedLHS,
+                                        const Syntax *LHS,
+                                        const CallSyntax *Op,
+                                        const Syntax *RHS);
+  clang::Expr *elaborateMemberAccessRHSAtom(clang::Expr *ElaboratedLHS,
+                                            const Syntax *LHS,
+                                            const CallSyntax *Op,
+                                            const AtomSyntax *RHS);
+
+  clang::Expr *elaborateDisambuationSyntax(clang::Expr *ElaboratedLHS,
+                                           const Syntax *LHS,
+                                           const CallSyntax *Op,
+                                           const CallSyntax *RHS);
+
+  clang::Expr *elaborateConstructDestructExpr(clang::Expr *ElaboratedLHS,
+                                              const Syntax *LHS,
+                                              const CallSyntax *Op,
+                                              const AtomSyntax *RHS);
+
   clang::Expr *elaborateInPlaceNewCall(clang::Expr *LHSPtr,
                                        const CallSyntax *Op,
                                        const Syntax *RHS);
@@ -212,7 +234,21 @@ public:
     bool SavedValue;
     bool &Boolean;
   };
+
+public:
+  //===--------------------------------------------------------------------===//
+  //                      Nested Name Specifier Elaboration                   //
+  //===--------------------------------------------------------------------===//
+  /// These functions are used to recursively build a corrected nested
+  /// name specifier for nested name expressions.
+  clang::NestedNameSpecifier *elaborateNameSpecifier(const Syntax *S);
+  clang::NestedNameSpecifier *elaborateNameSpecifierMemberExpr(
+                                                       const CallSyntax *DotOp);
+  clang::NestedNameSpecifier *elaborateNameSpecifierExpr(
+                         clang::NestedNameSpecifier *Prefix, const Syntax *RHS);
 };
+
+
 
 } // namespace gold
 

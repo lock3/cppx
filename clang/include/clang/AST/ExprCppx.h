@@ -88,7 +88,7 @@ namespace gold {
 
     /// This is used to generate the complete expression that is represented
     /// by a derived version of this class.
-    virtual clang::Expr *completeExpr() const = 0;
+    virtual clang::Expr *completeExpr() = 0;
 
     /// Function for reporting errors in the event that an expression can not be
     /// completed and it's needed.

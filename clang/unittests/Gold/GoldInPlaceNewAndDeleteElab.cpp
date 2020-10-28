@@ -82,3 +82,24 @@ foo(x:^ToDestroy):void!
 )Gold";
   GoldFailureTest(Code);
 }
+
+TEST(GoldNew, DestructorTypeGivenAsNameQualifier) {
+  std::string Code = R"Gold(
+ToDestroy : type = class:
+  destructor()<virtual>!
+    ;
+ToDestroy2 : type = class(ToDestroy):
+  destructor()!
+    ;
+foo(x:^ToDestroy2):void!
+  (x.(ToDestroy)destruct)()
+)Gold";
+  auto ToMatch =
+  translationUnitDecl(
+    hasDescendant(cxxMemberCallExpr(
+      on(hasType(asString("struct ToDestroy2 *"))),
+      has(memberExpr(member(hasName("~ToDestroy"))))
+    ))
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}

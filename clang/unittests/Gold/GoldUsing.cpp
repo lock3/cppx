@@ -231,8 +231,8 @@ main() : int !
 )";
 
   DeclarationMatcher Test =
-    varDecl(hasName("test"), hasType(asString("unsigned char")));
-  ASSERT_TRUE(matches(Code.str(), Test)); 
+    varDecl(hasName("test"), hasType(asString("int")));
+  ASSERT_TRUE(matches(Code.str(), Test));
 }
 
 

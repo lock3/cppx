@@ -21,7 +21,8 @@ namespace gold {
 class Sema;
 
 enum class PartialExprKind : std::size_t {
-  PEK_InPlaceNew
+  PEK_InPlaceNew,
+  PEK_InPlaceDestruct
 };
 
 class PartialInPlaceNewExpr : public CppxPartialExprBase {
@@ -39,7 +40,7 @@ public:
   };
   State ExprState;
 public:
-  PartialInPlaceNewExpr(Sema &SemaRef, const Syntax *ConstructKW,
+  PartialInPlaceNewExpr(Sema &SemaRef, const Syntax *DestructKW,
                         clang::Expr *PtrExprArg);
 
   virtual bool canAcceptElementArgs(const ExprList &Args) const;
@@ -49,7 +50,7 @@ public:
   virtual void applyFunctionArgs(const ExprList &Args);
 
   virtual bool isCompletable() const;
-  virtual clang::Expr *completeExpr() const;
+  virtual clang::Expr *completeExpr();
   virtual void diagnoseIncompleteReason();
 
   static bool classof(const CppxPartialExprBase *E) {

@@ -1563,6 +1563,7 @@ void Sema::createInPlaceNew() {
     InPlaceNew = clang::FunctionDecl::Create(Context.CxxAST, Owner, Loc, Loc,
                                             FnName, FnTInfo->getType(), FnTInfo,
                                             clang::SC_None);
+    // Setting the declaration to be implicit.
     {
       clang::TypeSourceInfo *P0SrcInfo = BuildAnyTypeLoc(Context.CxxAST, Types[0], Loc);
       clang::IdentifierInfo *II = &Context.CxxAST.Idents.get("sz");

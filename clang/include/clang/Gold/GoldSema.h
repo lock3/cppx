@@ -16,6 +16,7 @@
 #define CLANG_GOLD_GOLDSEMA_H
 
 #include "clang/AST/Type.h"
+#include "clang/AST/NestedNameSpecifier.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "llvm/ADT/APInt.h"
@@ -28,7 +29,6 @@
 #include "clang/Gold/GoldOperatorInfo.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSyntaxContext.h"
-
 #include <memory>
 #include <vector>
 
@@ -1071,6 +1071,8 @@ public:
   clang::CppxPartialEvalExpr *buildPartialInPlaceNewExpr(
                                 const Syntax *ConstructKW, clang::Expr *PtrExpr,
                                 clang::SourceLocation Loc);
+
+
 private:
   clang::FunctionDecl *InPlaceNew = nullptr;
 public:
@@ -1085,6 +1087,15 @@ public:
   /// on demand (if it hasn't already been created).
   clang::FunctionDecl *getInPlaceNew();
   ///}
+// private:
+//   llvm::SmallVector<clang::NestedNameSpecifierLocBuilder, 4> NNSLocBuilders;
+// public:
+//   /// Additional tools that help construct the correct nested name specifier.
+
+//   void pushNestedNameBuilder();
+//   void popNestedNameBuilder();
+//   clang::NestedNameSpecifierLoc getNNSLoc();
+//   bool IsInNNSStack();
 };
 
 } // namespace gold

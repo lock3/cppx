@@ -54,7 +54,7 @@ bool PartialInPlaceNewExpr::isCompletable() const {
   return ExprState == CanCreateExpr;
 }
 
-clang::Expr *PartialInPlaceNewExpr::completeExpr() const {
+clang::Expr *PartialInPlaceNewExpr::completeExpr() {
   assert(PlacementArg && "Invalid placement expression.");
   llvm::SmallVector<clang::Expr *, 1> InPlaceArgs({PlacementArg});
   clang::Expr *TyExpr = nullptr;
@@ -64,7 +64,8 @@ clang::Expr *PartialInPlaceNewExpr::completeExpr() const {
                                    PlacementArg->getExprLoc());
   } else if(TemplateArgs.size() != 1) {
     SemaRef.Diags.Report(PlacementArg->getExprLoc(),
-                         clang::diag::err_invalid_inplace_new_template_params);
+                         clang::diag::err_invalid_inplace_template_params)
+                         << /*construct*/0;
     return nullptr;
   } else {
     TyExpr = TemplateArgs[0];
@@ -111,7 +112,142 @@ clang::Expr *PartialInPlaceNewExpr::completeExpr() const {
 
 void PartialInPlaceNewExpr::diagnoseIncompleteReason() {
   SemaRef.Diags.Report(Keyword->getLoc(),
-                       clang::diag::err_incomplete_placement_new_expression);
+                       clang::diag::err_incomplete_placement_expression)
+                       << /*construct*/0;
 }
 
-}
+
+
+
+// // ====-------------------------------------------------------------------====//
+// //                        PartialInPlaceDestructExpr
+// // ====-------------------------------------------------------------------====//
+// PartialInPlaceDestructExpr::PartialInPlaceDestructExpr(Sema &SemaRef,
+//                                                       const Syntax *DestructKW,
+//                                                       clang::Expr *PtrExprArg,
+//                                                       clang::SourceLocation OpLoc)
+//   :CppxPartialExprBase(PartialExprKind::PEK_InPlaceNew),
+//   SemaRef(SemaRef),
+//   Keyword(DestructKW),
+//   PlacementArg(PtrExprArg),
+//   TemplateArgs(),
+//   DTorArgs(),
+//   ExprState(HasPlacementPtr),
+//   OperatorLocation(OpLoc)
+// {
+//   BeginLocation = PtrExprArg->getBeginLoc();
+//   EndLocation = DestructKW->getLoc();
+// }
+
+// bool PartialInPlaceDestructExpr::canAcceptElementArgs(const ExprList &Args) const {
+//   return ExprState == HasPlacementPtr;
+// }
+
+// void PartialInPlaceDestructExpr::applyElementArgs(const ExprList &Args) {
+//   // TemplateArgs.assign(Args.begin(), Args.end());
+//   // ExprState = HasTemplateTypeArgs;
+//   // ReceivedTemplateArgs = true;
+//   return true;
+// }
+
+// bool PartialInPlaceDestructExpr::canAcceptFunctionArgs(const ExprList &Args) const {
+//   return ExprState == HasPlacementPtr || ExprState == HasTemplateTypeArgs;
+// }
+
+// void PartialInPlaceDestructExpr::applyFunctionArgs(const ExprList &Args) {
+//   DTorArgs.assign(Args.begin(), Args.end());
+//   ExprState = CanCreateExpr;
+//   ReceivedDTorArgs = true;
+// }
+
+// bool PartialInPlaceDestructExpr::isCompletable() const {
+//   return ExprState == CanCreateExpr;
+// }
+
+// clang::Expr *PartialInPlaceDestructExpr::completeExpr() {
+//   // attempting to complete everything correctly here by using the template
+//   // type argument to determine the correct kind of expression that we would need
+//   // in order complete the name of the destructor and attempt
+//   // to construct the call.
+//   // ReceivedDTorArgs
+//   clang::QualType ExprTy = PlacementArg->getType();
+//   if (!ExprTy->isPointerType()) {
+//     // FIXME: I need to figure out how to ensure that we have the correct
+//     // error message for our destructor.
+//     SemaRef.Diags.Report(PlacementArg->getExprLoc(),
+//                          clang::diag::err_pseudo_dtor_base_not_scalar)
+//                          << ExprTy;
+//     return nullptr;
+//   } else {
+//     ExprTy = ExprTy->getPointeeType();
+//   }
+//   bool ShouldDoConversionCast = false;
+//   clang::TypeSourceInfo *TInfo = nullptr;
+//   if (ReceivedTemplateArgs) {
+//     if (TemplateArgs.size() != 1) {
+//       // This make for incorrect number of template arguments given to the
+//       // delete expr.
+//       SemaRef.Diags.Report(PlacementArg->getExprLoc(),
+//                           clang::diag::err_invalid_inplace_template_params)
+//                           << /*destruct*/1;
+//       return nullptr;
+//     }
+
+//     TInfo = SemaRef.getTypeSourceInfoFromExpr(TemplateArgs[0],
+//                                               TemplateArgs[0]->getExprLoc());
+//     if (!TInfo)
+//       return nullptr;
+//     ShouldDoConversionCast = true;
+//   } else {
+//     // Building type location
+//     TInfo = BuildAnyTypeLoc(SemaRef.getContext().CxxAST,
+//                             ExprTy, Keyword->getLoc());
+//   }
+
+//   if (!ReceivedDTorArgs) {
+//     SemaRef.Diags.Report(Keyword->getLoc(),
+//                          clang::diag::err_incomplete_placement_expression)
+//                          << /*destruct*/1;
+//     return nullptr;
+//   }
+//   // Building the remainder of the call expression over the given type.
+//   return makeDtorCallForType(TInfo, ShouldDoConversionCast);
+// }
+
+// void PartialInPlaceDestructExpr::diagnoseIncompleteReason() {
+//   SemaRef.Diags.Report(Keyword->getLoc(),
+//                        clang::diag::err_incomplete_placement_expression)
+//                        << /*destruct*/1;
+// }
+
+// clang::Expr *
+// PartialInPlaceDestructExpr::makeDtorCallForType(clang::TypeSourceInfo *TInfo,
+//                                                 bool ShouldDoConversionCast) {
+//   TInfo->getType()->dump();
+//   clang::CXXScopeSpec SS;
+//   clang::SourceLocation Loc;
+//   clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::arrow;
+
+//   clang::UnqualifiedId Id;
+
+//   auto PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
+//   Id.setDestructorName(Keyword->getLoc(), PT, Keyword->getLoc());
+//   auto Ret =
+//     SemaRef.getCxxSema().ActOnMemberAccessExpr(SemaRef.getCurClangScope(),
+//                                                PlacementArg, OperatorLocation,
+//                                                AccessTokenKind, SS, Loc,
+//                                                Id, nullptr);
+//   if (Ret.isInvalid())
+//     return nullptr;
+//   // Creating the actuall call to the destructor.
+//   clang::ExprResult Call = SemaRef.getCxxSema().ActOnCallExpr(
+//                SemaRef.getCxxSema().getCurScope(), Ret.get(), Keyword->getLoc(),
+//                DTorArgs, Keyword->getLoc());
+
+//   if (Call.isInvalid())
+//     return nullptr;
+
+//   return Call.get();
+// }
+
+} // end namespace gold
