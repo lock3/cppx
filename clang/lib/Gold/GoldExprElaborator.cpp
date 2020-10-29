@@ -2468,7 +2468,8 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
           case clang::LookupResult::NotFoundInCurrentInstantiation:
           case clang::LookupResult::Ambiguous:
             // FIXME: This may need a special error message.
-            return nullptr;
+            // return nullptr;
+            break;
           default:
             llvm_unreachable("Invalid lookup resolution.");
         }
