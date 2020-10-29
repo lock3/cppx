@@ -86,7 +86,7 @@ main() : int!
 
   StatementMatcher Matcher(hasDescendant(
                              varDecl(hasName("result"),
-                                     hasType(asString("something"))
+                                     hasType(asString("int"))
                                )
                              )
                    );
@@ -111,30 +111,75 @@ main() : int!
     ));
 }
 
-
-TEST(NNS, DoubleDisambiguation) {
+TEST(NNS, CallingAnExplicitBaseClassMethod) {
   StringRef Code = R"(
-D : type = class:
-  x : int
-C : type = class(D):
-  something : int
-
 A : type = class:
   i : int = 9
-  x : C
+  foo() : void!
+    ;
 
 B: type = class (A):
-  ;
+  foo() : void!
+    ;
 
 main() : int!
   b : ^B
-  result = b.(A)x.(D)x
-
+  result = b.(A)i
+  (b.(A)foo)()
 )";
-  // TODO: I need to fix this so it disambiguates as expected.
-  ASSERT_TRUE(matches(Code.str(), memberExpr(member(hasName("i")))
+
+  ASSERT_TRUE(matches(Code.str(), memberExpr(member(hasName("foo")))
     ));
 }
+
+TEST(NNS, CallingAnExplicitBaseClassMethodWithOverloadedFunction) {
+  StringRef Code = R"(
+A : type = class:
+  i : int = 9
+  foo() : void!
+    ;
+
+  foo(x:int) : void!
+    ;
+
+B: type = class (A):
+  foo() : void!
+    ;
+
+main() : int!
+  b : ^B
+  result = b.(A)i
+  (b.(A)foo)()
+)";
+
+  ASSERT_TRUE(matches(Code.str(), memberExpr(member(hasName("foo")))
+    ));
+}
+
+
+// TEST(NNS, DoubleDisambiguation) {
+//   StringRef Code = R"(
+// D : type = class:
+//   x : int
+// C : type = class(D):
+//   something : int
+
+// A : type = class:
+//   i : int = 9
+//   x : C
+
+// B: type = class (A):
+//   ;
+
+// main() : int!
+//   b : ^B
+//   result = b.(A)x.(D)x
+
+// )";
+//   // TODO: I need to fix this so it disambiguates as expected.
+//   ASSERT_TRUE(matches(Code.str(), memberExpr(member(hasName("i")))
+//     ));
+// }
 
 TEST(NNS, PrefixBaseSpecifierTempl) {
   StringRef Code = R"(

@@ -235,17 +235,6 @@ public:
     bool &Boolean;
   };
 
-public:
-  //===--------------------------------------------------------------------===//
-  //                      Nested Name Specifier Elaboration                   //
-  //===--------------------------------------------------------------------===//
-  /// These functions are used to recursively build a corrected nested
-  /// name specifier for nested name expressions.
-  clang::NestedNameSpecifier *elaborateNameSpecifier(const Syntax *S);
-  clang::NestedNameSpecifier *elaborateNameSpecifierMemberExpr(
-                                                       const CallSyntax *DotOp);
-  clang::NestedNameSpecifier *elaborateNameSpecifierExpr(
-                         clang::NestedNameSpecifier *Prefix, const Syntax *RHS);
 };
 
 

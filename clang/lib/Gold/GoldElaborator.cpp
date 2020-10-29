@@ -1438,7 +1438,7 @@ clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
     for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
       SemaRef.getCurrentScope()->Shadows.insert(Shadow);
   } else if (auto *UUVD = dyn_cast<clang::UnresolvedUsingValueDecl>(D)) {
-    llvm::outs() << "funbaba\n";
+    // llvm::outs() << "funbaba\n";
   }
 
   return D;

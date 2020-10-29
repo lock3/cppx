@@ -11421,6 +11421,9 @@ def err_invalid_inplace_template_params : Error<
 def err_incomplete_placement_expression : Error<
   "incomplete call to %select{construct|destruct}0">;
 
+def err_invalid_destructor_call : Error<
+  "invalid reference to destruct of type %0">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

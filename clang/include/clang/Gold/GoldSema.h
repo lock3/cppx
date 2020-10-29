@@ -1087,15 +1087,6 @@ public:
   /// on demand (if it hasn't already been created).
   clang::FunctionDecl *getInPlaceNew();
   ///}
-// private:
-//   llvm::SmallVector<clang::NestedNameSpecifierLocBuilder, 4> NNSLocBuilders;
-// public:
-//   /// Additional tools that help construct the correct nested name specifier.
-
-//   void pushNestedNameBuilder();
-//   void popNestedNameBuilder();
-//   clang::NestedNameSpecifierLoc getNNSLoc();
-//   bool IsInNNSStack();
 };
 
 } // namespace gold
