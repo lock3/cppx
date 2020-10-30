@@ -20,7 +20,7 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-TEST(GoldNew, PlacementNew) {
+TEST(GoldConstruct, PlacementNew) {
   std::string Code = R"Gold(
 foo(x:^int):void!
   x.construct(43)
@@ -32,7 +32,7 @@ foo(x:^int):void!
   ASSERT_TRUE(matches(Code, ToMatch));
 }
 
-TEST(GoldNew, DestructorCall) {
+TEST(GoldDestruct, DestructorCall) {
   std::string Code = R"Gold(
 ToDestroy : type = class:
   ;
@@ -46,7 +46,7 @@ foo(x:^ToDestroy):void!
   ASSERT_TRUE(matches(Code, ToMatch));
 }
 
-TEST(GoldNew, DtorCalledOnInteger) {
+TEST(GoldDestruct, DtorCalledOnInteger) {
   std::string Code = R"Gold(
 foo(x:^int):void!
   x.destruct()
@@ -54,7 +54,7 @@ foo(x:^int):void!
   GoldFailureTest(Code);
 }
 
-TEST(GoldNew, UserDefinedDestructor) {
+TEST(GoldDestruct, UserDefinedDestructor) {
   std::string Code = R"Gold(
 ToDestroy : type = class:
   destructor()!
@@ -72,7 +72,7 @@ foo(x:^ToDestroy):void!
   ASSERT_TRUE(matches(Code, ToMatch));
 }
 
-TEST(GoldNew, DeletedDestructor) {
+TEST(GoldDestruct, DeletedDestructor) {
   std::string Code = R"Gold(
 ToDestroy : type = class:
   destructor() = delete
@@ -83,7 +83,7 @@ foo(x:^ToDestroy):void!
   GoldFailureTest(Code);
 }
 
-TEST(GoldNew, DestructorTypeGivenAsNameQualifier) {
+TEST(GoldDestruct, DestructorTypeGivenAsNameQualifier) {
   std::string Code = R"Gold(
 ToDestroy : type = class:
   destructor()<virtual>!
