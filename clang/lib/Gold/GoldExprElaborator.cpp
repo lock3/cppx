@@ -2325,7 +2325,7 @@ clang::Expr *ExprElaborator::elaborateGlobalNNS(const CallSyntax *Op,
     return RHSExpr;
 
   // TODO: should we account for an NNS that is returned from a function?
-  if (!SemaRef.isExtendedQualifiedLookupContext())  
+  if (!SemaRef.isExtendedQualifiedLookupContext())
     SemaRef.CurNNSContext.clear();
   ExprMarker(Context.CxxAST, SemaRef).Visit(RHSExpr);
   return RHSExpr;
