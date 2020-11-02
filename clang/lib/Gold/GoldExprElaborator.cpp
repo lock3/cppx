@@ -2442,36 +2442,20 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
         for (clang::NamedDecl *ND : R)
           Redecls.addDecl(ND);
         Redecls.resolveKind();
-        switch(Redecls.getResultKind()) {
-          case clang::LookupResult::FoundOverloaded: {
-            clang::TemplateArgumentListInfo TemplateArgs;
-            if (clang::CXXRecordDecl* RD = dyn_cast<clang::CXXRecordDecl>(TD)) {
-              clang::CXXScopeSpec SS;
-              SS.Extend(CxxAST, TD->getIdentifier(), Prev->getExprLoc(),
-                        Op->getLoc());
-              return clang::UnresolvedLookupExpr::Create(CxxAST,
-                                                         RD,
-                                                         SS.getWithLocInContext(CxxAST),
-                                                         DNI, /*ADL=*/true,
-                                                         /*Overloaded*/true,
-                                              Redecls.asUnresolvedSet().begin(),
-                                               Redecls.asUnresolvedSet().end());
-            } else {
-              llvm_unreachable("Invalid type lookup not correctly avoided.");
-            }
-          }
-          case clang::LookupResult::FoundUnresolvedValue:
-            // TODO: Create an error message for this possibly.
-          case clang::LookupResult::Found:
-            break;
-          case clang::LookupResult::NotFound:
-          case clang::LookupResult::NotFoundInCurrentInstantiation:
-          case clang::LookupResult::Ambiguous:
-            // FIXME: This may need a special error message.
-            return nullptr;
-          default:
-            llvm_unreachable("Invalid lookup resolution.");
+        if (Redecls.getResultKind() == clang::LookupResult::FoundOverloaded) {
+          clang::TemplateArgumentListInfo TemplateArgs;
+          clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(TD);
+          assert (RD && "should have avoided this situation");
+
+          clang::CXXScopeSpec SS;
+          SS.Extend(CxxAST, TD->getIdentifier(), Prev->getExprLoc(),
+                    Op->getLoc());
+          return clang::UnresolvedLookupExpr::Create(
+            CxxAST, RD, SS.getWithLocInContext(CxxAST), DNI, /*ADL=*/true,
+            /*Overloaded*/true, Redecls.asUnresolvedSet().begin(),
+            Redecls.asUnresolvedSet().end());
         }
+
         ND = Redecls.getAcceptableDecl(R.front());
         if (ND && isa<clang::ValueDecl>(ND)) {
           clang::ValueDecl *VD = cast<clang::ValueDecl>(ND);
