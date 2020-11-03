@@ -215,7 +215,9 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     BuiltinTypes(createBuiltinTypeList()),
     OpInfo(Context.CxxAST),
     AttrHandlerMap(buildAttributeMapping()),
-    FoldOpToClangKind(buildFoldOpLookup(Context.CxxAST))
+    FoldOpToClangKind(buildFoldOpLookup(Context.CxxAST)),
+    NewStorageII(&Context.CxxAST.Idents.get(NewStorageStr)),
+    DeleteStorageII(&Context.CxxAST.Idents.get(DeleteStorageStr))
 {
   CxxSema.CurScope = nullptr;
 }
@@ -1635,6 +1637,52 @@ clang::FunctionDecl *Sema::getInPlaceNew() {
   return InPlaceNew;
 }
 
+
+/// This creates the operator new and delete then uses the rebuilder in order
+/// to create declarations so they can be looked up by gold's lookup.
+/// Without have to change the names of the functions in C++ land.
+void Sema::createBuiltinOperatorNewDeleteDecls() {
+  if (CxxSema.GlobalNewDeleteDeclared)
+    return;
+
+  CxxSema.DeclareGlobalNewDelete();
+  clang::DeclarationName OpNewName
+            = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_New);
+  clang::DeclarationName OpDeleteName
+         = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Delete);
+  Declaration *TUDeclaration = getTranslationUnit();
+  auto *TU = cast<clang::TranslationUnitDecl>(TUDeclaration->Cxx);
+  auto NewOperators = TU->lookup(OpNewName);
+
+  // Rebuilding operator new.
+  for (clang::Decl *D : NewOperators) {
+    ClangToGoldDeclRebuilder Rebuilder(Context, *this);
+    Rebuilder.rebuildDeclWithNewName(TUDeclaration, NewStorageStr, D,
+                                     getTranslationUnitScope());
+  }
+
+  auto DeleteOperators = TU->lookup(OpDeleteName);
+  for (clang::Decl *D : DeleteOperators) {
+    ClangToGoldDeclRebuilder Rebuilder(Context, *this);
+    Rebuilder.rebuildDeclWithNewName(TUDeclaration, DeleteStorageStr, D,
+                                     getTranslationUnitScope());
+  }
+}
+
+clang::DeclarationNameInfo
+Sema::rebuildDeclarationNameInfo(const clang::DeclarationNameInfo &DNI) {
+  if (DNI.getName().getNameKind() == clang::DeclarationName::Identifier) {
+    clang::DeclarationName Name = DNI.getName();
+    if (Name.getAsIdentifierInfo() == NewStorageII) {
+      Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_New);
+    } else if (Name.getAsIdentifierInfo() == DeleteStorageII) {
+      Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Delete);
+    }
+    return clang::DeclarationNameInfo(Name, DNI.getLoc());
+  } else {
+    // There are no conversion made for non-identifier names (yet).
+    return DNI;
+  }
+}
+
 } // namespace gold
-
-

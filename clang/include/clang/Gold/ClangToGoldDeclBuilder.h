@@ -54,6 +54,14 @@ public:
 
   Declaration *generateDeclForNNS(clang::NamespaceDecl *NS,
                                   const AtomSyntax *Name);
+
+  /// This takes the name given as a string converts it to an identifier
+  /// and sets the identifier to the name within the declaration
+  /// rather than just using the one provided by a given declaration.
+  Declaration *rebuildDeclWithNewName(Declaration *Parent,
+                                      llvm::StringRef NewName,
+                                      clang::Decl *D,
+                                      Scope *ScopeForDecl);
 private:
   gold::Scope *determineParentScope();
   bool rebuildMember(clang::Decl *Member);

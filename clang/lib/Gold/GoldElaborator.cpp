@@ -308,6 +308,9 @@ void Elaborator::startFile(const Syntax *S) {
   Declaration *D = new Declaration(S);
   D->SavedScope = SemaRef.getCurrentScope();
   SemaRef.setDeclForDeclaration(D, Context.CxxAST.getTranslationUnitDecl());
+  SemaRef.setGlobalClangScope(Scope);
+  SemaRef.setTranslationUnit(D);
+  SemaRef.setTranslationUnitScope(D->SavedScope);
 
   SemaRef.pushDecl(D);
 }
@@ -1831,6 +1834,12 @@ clang::DeclarationName getFunctionName(SyntaxContext &Ctx, Sema &SemaRef,
   } else if (D->declaresUserDefinedLiteral()) {
     // Attempting to correctly get the literal operator name
     Name = Ctx.CxxAST.DeclarationNames.getCXXLiteralOperatorName(D->UDLSuffixId);
+  } else if (D->getId() == SemaRef.NewStorageII) {
+    Name = Ctx.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_New);
+    SemaRef.createBuiltinOperatorNewDeleteDecls();
+  } else if (D->getId() == SemaRef.DeleteStorageII) {
+    Name = Ctx.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Delete);
+    SemaRef.createBuiltinOperatorNewDeleteDecls();
   } else {
     Name = D->getId();
   }

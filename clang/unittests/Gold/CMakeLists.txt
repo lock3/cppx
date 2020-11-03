@@ -109,6 +109,7 @@ add_clang_unittest(GoldTests
   GoldNamespaceAliasElab.cpp
   GoldNamespaceDeclElab.cpp
   GoldNestedNameSpecifierOnDeclElab.cpp
+  GoldNewAndDeleteElab.cpp
   GoldNNS.cpp
   GoldOperatorOverloadUseElab.cpp
   GoldOverrideAttributeElab.cpp

@@ -1045,12 +1045,18 @@ static clang::Expr *
 createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
                   clang::QualType Ty, clang::SourceLocation Loc) {
   clang::ASTContext &CxxAST = Context.CxxAST;
-  clang::IdentifierInfo &Id = CxxAST.Idents.get(S->getSpelling());
-  clang::DeclarationNameInfo DNI({&Id}, Loc);
+  clang::IdentifierInfo *Id = &CxxAST.Idents.get(S->getSpelling());
+  clang::DeclarationNameInfo DNI({Id}, Loc);
+
+  if (S->getSpelling() == Sema::NewStorageStr
+      || S->getSpelling() == Sema::DeleteStorageStr) {
+    SemaRef.createBuiltinOperatorNewDeleteDecls();
+  }
+
   clang::LookupResult R(SemaRef.getCxxSema(), DNI, clang::Sema::LookupAnyName);
   R.setTemplateNameLookup(true);
 
-  if (SemaRef.isQualifiedLookupContext()){
+  if (SemaRef.isQualifiedLookupContext()) {
 
     SemaRef.lookupQualifiedName(R);
   } else {
@@ -1081,12 +1087,15 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
         return nullptr;
       }
       if (R.isOverloadedResult()) {
+        // This is necessary because of an error when converting between DNI's
+        // with different DeclarationNameLoc types.
+        DNI = SemaRef.rebuildDeclarationNameInfo(DNI);
         // Need to figure out if the potential overload is a member function
         // or not.
         return clang::UnresolvedLookupExpr::Create(Context.CxxAST,
                                                    R.getNamingClass(),
                                                 clang::NestedNameSpecifierLoc(),
-                                                   R.getLookupNameInfo(),
+                                                   DNI,
                                                    /*ADL=*/true, true,
                                                    R.begin(), R.end());
       }
@@ -1153,10 +1162,12 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
       }
 
       if(isa<clang::FunctionDecl>(VD)) {
+        // Correctly rebuilding the declaration name info.
+        DNI = SemaRef.rebuildDeclarationNameInfo(DNI);
         return clang::UnresolvedLookupExpr::Create(Context.CxxAST,
                                                    R.getNamingClass(),
                                                 clang::NestedNameSpecifierLoc(),
-                                                   R.getLookupNameInfo(),
+                                                   DNI,
                                                    /*ADL=*/true, true,
                                                    R.begin(), R.end());
       }
@@ -1360,6 +1371,7 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
 
   if (Call.isInvalid())
     return nullptr;
+
   return Call.get();
 }
 

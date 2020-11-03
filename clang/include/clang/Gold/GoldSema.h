@@ -1087,6 +1087,37 @@ public:
   /// on demand (if it hasn't already been created).
   clang::FunctionDecl *getInPlaceNew();
   ///}
+
+public:
+  /// Utility functions for recording operator new/delete's implicit global
+  /// operators within gold.
+  void createBuiltinOperatorNewDeleteDecls();
+
+private:
+  Declaration *TUDecl = nullptr;
+  Scope *TUScope = nullptr;
+  clang::Scope *ClangFileLevelScope = nullptr;
+public:
+  /// Translation tracking members
+  //{
+  static constexpr char const *NewStorageStr = "new_storage";
+  static constexpr char const *DeleteStorageStr = "delete_storage";
+  clang::IdentifierInfo *const NewStorageII;
+  clang::IdentifierInfo *const DeleteStorageII;
+  Declaration *getTranslationUnit() const { return TUDecl; }
+  void setTranslationUnit(Declaration *TU) { TUDecl = TU; }
+
+  Scope *getTranslationUnitScope() const { return TUScope;}
+  void setTranslationUnitScope(Scope *GoldScope) { TUScope = GoldScope; }
+
+  clang::Scope *getGlobalClangScope() const { return ClangFileLevelScope; }
+  void setGlobalClangScope(clang::Scope *CScope) { ClangFileLevelScope = CScope; }
+  //}
+
+  /// This function handles the transition between declaration name info's
+  /// for things such as the explicit call to operator new.
+  clang::DeclarationNameInfo rebuildDeclarationNameInfo(
+                                         const clang::DeclarationNameInfo &DNI);
 };
 
 } // namespace gold
