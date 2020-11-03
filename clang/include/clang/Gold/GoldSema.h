@@ -599,6 +599,8 @@ public:
   // Tokens for builtin functions
   clang::IdentifierInfo *const VaStartII;
   clang::IdentifierInfo *const VaEndII;
+  clang::IdentifierInfo *const VaCopyII;
+  clang::IdentifierInfo *const VaArgII;
 
   // An RAII type for constructing scopes.
   struct ScopeRAII {

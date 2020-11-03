@@ -141,6 +141,8 @@ def_keyword(Of, "of")
 def_keyword(VaList, "__builtin_va_list")
 def_keyword(VaStart, "__builtin_va_start")
 def_keyword(VaEnd, "__builtin_va_end")
+def_keyword(VaCopy, "__builtin_va_copy")
+def_keyword(VaArg, "__builtin_va_arg")
 // This is the last keyword token, define any others above this:
 def_keyword(Anonymous, "_")
 
