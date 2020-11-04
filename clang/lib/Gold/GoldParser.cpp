@@ -789,6 +789,10 @@ static bool isMulOperator(Parser& P) {
          || P.nextTokenIs(tok::Percent);
 }
 
+static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P, const Token& Tok);
+static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P,
+                        const Token& Tok, Syntax *Args);
+
 /// mul:
 ///   pre
 ///   pre mul-operator pre
@@ -979,6 +983,16 @@ Syntax *Parser::parseFor()
   return onLoop(ForTok, Cond, Block);
 }
 
+Syntax *Parser::parseNew() {
+  Token Tok = expectToken("new");
+
+  Syntax *PlacementArgs = nextTokenIs(tok::LeftParen) ? parseParen() : nullptr;
+  Syntax *Call = makeCall(Context, *this, Tok, PlacementArgs);
+  Syntax *Block = parsePost();
+
+  return onMacro(Call, Block);
+}
+
 Syntax *Parser::parseBlockLoop(Token KWTok)
 {
   Syntax *CondBlock = parseBlock();
@@ -1003,9 +1017,6 @@ auto is_unary_operator = [](TokenKind k) -> bool
     return false;
   }
 };
-static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P, const Token& Tok);
-static Syntax *makeCall(const SyntaxContext &Ctx, Parser &P,
-                        const Token& Tok, Syntax *Args);
 
 static inline bool isEndOfThrow(TokenKind K){
   return K == tok::Separator || K == tok::Semicolon || K == tok::Dedent;
@@ -1128,6 +1139,9 @@ Syntax *Parser::parseMacro()
 
   if (nextTokenIs("for"))
     return parseFor();
+
+  if (nextTokenIs("new"))
+    return parseNew();
 
   Syntax *e1 = parsePost();
 
