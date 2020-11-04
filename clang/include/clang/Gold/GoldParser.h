@@ -282,6 +282,8 @@ namespace gold
     Syntax *parsePrimary();
     Syntax *parseId();
     Syntax *parseParen();
+    Syntax *parseNewExpr();
+    Syntax *parseDeleteOrKwExpr();
 
     Syntax *parseOf();
     Syntax *parseImm();

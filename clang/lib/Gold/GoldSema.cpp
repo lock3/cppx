@@ -353,8 +353,9 @@ void Sema::addDeclToDecl(clang::Decl *CDecl, gold::Declaration *GDecl) {
 
   auto Ret = DeclToDecl.try_emplace(CDecl, GDecl);
   if (!Ret.second) {
-    // llvm::errs() << "Declaration Id = " << GDecl->getId()->getName() <<"\n";
-    // llvm_unreachable("we should never add something to the decl map 2x.");
+    llvm::errs() << "Duplicate declaration Id = "
+                 << GDecl->getId()->getName() <<"\n";
+    llvm_unreachable("we should never add something to the decl map 2x.");
   }
 }
 

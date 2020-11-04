@@ -1704,7 +1704,10 @@ Syntax *Parser::parsePrimary() {
   case tok::String:
     return onLiteral(consumeToken());
 
-  // case tok::NewKeyword:
+  case tok::NewKeyword:
+    return parseNewExpr();
+  case tok::DeleteKeyword:
+    return parseDeleteOrKwExpr();
     // FIXME: We need syntax for both new and delete operators.
     // llvm_unreachable("new Syntax in undefined.");
   default:
@@ -1791,6 +1794,23 @@ Syntax *Parser::parseBracedArray() {
 
   return ret;
 }
+
+Syntax *Parser::parseNewExpr() {
+  llvm_unreachable("Working on operator new expression.");
+}
+
+Syntax *Parser::parseDeleteOrKwExpr() {
+  Token DeleteToken = consumeToken();
+  // In the event that the next token is the end of file, or some kind of seperator
+  // we can assume that the use of the kw delete is an atom and not a call.
+  // This is so we can label functions as delete.
+  TokenKind NextTok = getLookahead();
+  if (isSeparator(NextTok) || NextTok == tok::EndOfFile || NextTok == tok::Dedent)
+    return onAtom(DeleteToken);
+  llvm::outs() << "What did I miss? = " << getDisplayName(getLookahead()) << "\n";
+  llvm_unreachable("Working on operator delete expression.");
+}
+
 
 // nested-array:
 //    indent array dedent

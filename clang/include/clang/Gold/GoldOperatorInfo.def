@@ -140,8 +140,13 @@ def_bin_op(               RightShiftAssign, ">>=",          ShrAssign,  false,  
 
 def_non_onverloadable_binary(     DotCaret,  ".^",            PtrMemD,   true,     CppOnly,    ArrowStar)
 
+// This are the operators that take any number of arguments.
 def_nary_op(                     Subscript, "[]",                       true,   GoldAndCpp, Subscript)
 def_nary_op(                  FunctionCall, "()",                       true,   GoldAndCpp, Call)
+def_nary_op(                         OpNew, "new",                     false,   GoldAndCpp, New)
+def_nary_op(                      OpDelete, "delete",                  false,   GoldAndCpp, Delete)
+def_nary_op(                   OpArray_New, "new[]",                   false,   GoldAndCpp, Array_New)
+def_nary_op(                OpArray_Delete, "delete[]",                false,   GoldAndCpp, Array_Delete)
 
 def_unary_cpp_only_op(               Arrow, "->",                       false,  CppOnly,    Arrow)
 def_bin_cpp_only_op(  MemberPtrAccessArrow, "->*",                      true,   CppOnly,    ArrowStar)

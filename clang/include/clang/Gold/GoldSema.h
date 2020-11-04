@@ -1102,8 +1102,8 @@ private:
 public:
   /// Translation tracking members
   //{
-  static constexpr char const *NewStorageStr = "new_storage";
-  static constexpr char const *DeleteStorageStr = "delete_storage";
+  static constexpr char const *NewStorageStr = "operator\"new\"";
+  static constexpr char const *DeleteStorageStr = "operator\"delete\"";
   clang::IdentifierInfo *const NewStorageII;
   clang::IdentifierInfo *const DeleteStorageII;
   Declaration *getTranslationUnit() const { return TUDecl; }
