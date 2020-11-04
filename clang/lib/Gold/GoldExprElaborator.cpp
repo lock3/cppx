@@ -1054,8 +1054,10 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
   clang::IdentifierInfo *Id = &CxxAST.Idents.get(S->getSpelling());
   clang::DeclarationNameInfo DNI({Id}, Loc);
 
-  if (S->getSpelling() == Sema::NewStorageStr
-      || S->getSpelling() == Sema::DeleteStorageStr) {
+  if (S->getSpelling() == SemaRef.OpInfo.GoldDecl_OpNew->getName()
+      || S->getSpelling() == SemaRef.OpInfo.GoldDecl_OpDelete->getName()
+      || S->getSpelling() == SemaRef.OpInfo.GoldDecl_OpArray_New->getName()
+      || S->getSpelling() == SemaRef.OpInfo.GoldDecl_OpArray_Delete->getName()) {
     SemaRef.createBuiltinOperatorNewDeleteDecls();
   }
 

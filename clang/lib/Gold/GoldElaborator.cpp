@@ -1823,6 +1823,11 @@ clang::DeclarationName getFunctionName(SyntaxContext &Ctx, Sema &SemaRef,
   if (D->OpInfo) {
     const clang::FunctionProtoType *FPT = cast<clang::FunctionProtoType>(
                                                  TInfo->getType().getTypePtr());
+    if (D->getId() == SemaRef.OpInfo.GoldDecl_OpNew
+        || D->getId() == SemaRef.OpInfo.GoldDecl_OpDelete
+        || D->getId() == SemaRef.OpInfo.GoldDecl_OpArray_New
+        || D->getId() == SemaRef.OpInfo.GoldDecl_OpArray_Delete)
+      SemaRef.createBuiltinOperatorNewDeleteDecls();
     assert(FPT && "function does not have prototype");
     if (getOperatorDeclarationName(Ctx, SemaRef, D->OpInfo, InClass,
                                    FPT->getNumParams(),
@@ -1833,12 +1838,6 @@ clang::DeclarationName getFunctionName(SyntaxContext &Ctx, Sema &SemaRef,
   } else if (D->declaresUserDefinedLiteral()) {
     // Attempting to correctly get the literal operator name
     Name = Ctx.CxxAST.DeclarationNames.getCXXLiteralOperatorName(D->UDLSuffixId);
-  } else if (D->getId() == SemaRef.NewStorageII) {
-    Name = Ctx.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_New);
-    SemaRef.createBuiltinOperatorNewDeleteDecls();
-  } else if (D->getId() == SemaRef.DeleteStorageII) {
-    Name = Ctx.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Delete);
-    SemaRef.createBuiltinOperatorNewDeleteDecls();
   } else {
     Name = D->getId();
   }

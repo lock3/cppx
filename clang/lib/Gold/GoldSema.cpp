@@ -217,9 +217,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     BuiltinTypes(createBuiltinTypeList()),
     OpInfo(Context.CxxAST),
     AttrHandlerMap(buildAttributeMapping()),
-    FoldOpToClangKind(buildFoldOpLookup(Context.CxxAST)),
-    NewStorageII(&Context.CxxAST.Idents.get(NewStorageStr)),
-    DeleteStorageII(&Context.CxxAST.Idents.get(DeleteStorageStr))
+    FoldOpToClangKind(buildFoldOpLookup(Context.CxxAST))
 {
   CxxSema.CurScope = nullptr;
 }
@@ -1653,8 +1651,12 @@ void Sema::createBuiltinOperatorNewDeleteDecls() {
   CxxSema.DeclareGlobalNewDelete();
   clang::DeclarationName OpNewName
             = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_New);
+  clang::DeclarationName OpArrayNew
+      = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Array_New);
   clang::DeclarationName OpDeleteName
          = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Delete);
+  clang::DeclarationName OpArrayDelete
+      = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Array_Delete);
   Declaration *TUDeclaration = getTranslationUnit();
   auto *TU = cast<clang::TranslationUnitDecl>(TUDeclaration->Cxx);
   auto NewOperators = TU->lookup(OpNewName);
@@ -1662,15 +1664,33 @@ void Sema::createBuiltinOperatorNewDeleteDecls() {
   // Rebuilding operator new.
   for (clang::Decl *D : NewOperators) {
     ClangToGoldDeclRebuilder Rebuilder(Context, *this);
-    Rebuilder.rebuildDeclWithNewName(TUDeclaration, NewStorageStr, D,
+    Rebuilder.rebuildDeclWithNewName(TUDeclaration,
+                                     OpInfo.GoldDecl_OpNew->getName(), D,
                                      getTranslationUnitScope());
   }
 
   auto DeleteOperators = TU->lookup(OpDeleteName);
   for (clang::Decl *D : DeleteOperators) {
     ClangToGoldDeclRebuilder Rebuilder(Context, *this);
-    Rebuilder.rebuildDeclWithNewName(TUDeclaration, DeleteStorageStr, D,
+    Rebuilder.rebuildDeclWithNewName(TUDeclaration,
+                                     OpInfo.GoldDecl_OpDelete->getName(), D,
                                      getTranslationUnitScope());
+  }
+
+  auto NewArrayOps = TU->lookup(OpArrayNew);
+  for (clang::Decl *D : NewArrayOps) {
+    ClangToGoldDeclRebuilder Rebuilder(Context, *this);
+    Rebuilder.rebuildDeclWithNewName(TUDeclaration,
+                                     OpInfo.GoldDecl_OpArray_New->getName(), D,
+                                     getTranslationUnitScope());
+  }
+
+  auto ArrayDeleteOps = TU->lookup(OpArrayDelete);
+  for (clang::Decl *D : ArrayDeleteOps) {
+    ClangToGoldDeclRebuilder Rebuilder(Context, *this);
+    Rebuilder.rebuildDeclWithNewName(TUDeclaration,
+                                     OpInfo.GoldDecl_OpArray_Delete->getName(),
+                                     D, getTranslationUnitScope());
   }
 }
 
@@ -1678,10 +1698,14 @@ clang::DeclarationNameInfo
 Sema::rebuildDeclarationNameInfo(const clang::DeclarationNameInfo &DNI) {
   if (DNI.getName().getNameKind() == clang::DeclarationName::Identifier) {
     clang::DeclarationName Name = DNI.getName();
-    if (Name.getAsIdentifierInfo() == NewStorageII) {
+    if (Name.getAsIdentifierInfo() == OpInfo.GoldDecl_OpNew) {
       Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_New);
-    } else if (Name.getAsIdentifierInfo() == DeleteStorageII) {
+    } else if (Name.getAsIdentifierInfo() == OpInfo.GoldDecl_OpArray_New) {
+      Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Array_New);
+    } else if (Name.getAsIdentifierInfo() == OpInfo.GoldDecl_OpDelete) {
       Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Delete);
+    } else if (Name.getAsIdentifierInfo() == OpInfo.GoldDecl_OpArray_Delete) {
+      Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Array_Delete);
     }
     return clang::DeclarationNameInfo(Name, DNI.getLoc());
   } else {

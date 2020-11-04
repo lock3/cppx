@@ -1099,13 +1099,12 @@ private:
   Declaration *TUDecl = nullptr;
   Scope *TUScope = nullptr;
   clang::Scope *ClangFileLevelScope = nullptr;
+  bool DidCreateNewAndDeleteBuiltins = false;
 public:
   /// Translation tracking members
   //{
   static constexpr char const *NewStorageStr = "operator\"new\"";
   static constexpr char const *DeleteStorageStr = "operator\"delete\"";
-  clang::IdentifierInfo *const NewStorageII;
-  clang::IdentifierInfo *const DeleteStorageII;
   Declaration *getTranslationUnit() const { return TUDecl; }
   void setTranslationUnit(Declaration *TU) { TUDecl = TU; }
 
@@ -1116,8 +1115,6 @@ public:
   void setGlobalClangScope(clang::Scope *CScope) { ClangFileLevelScope = CScope; }
   //}
 
-  /// This function handles the transition between declaration name info's
-  /// for things such as the explicit call to operator new.
   clang::DeclarationNameInfo rebuildDeclarationNameInfo(
                                          const clang::DeclarationNameInfo &DNI);
 };

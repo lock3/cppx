@@ -33,6 +33,7 @@ operator"new"(sz:uint64, ptr:^void):^void!
   ASSERT_TRUE(matches(Code, ToMatch));
 }
 
+
 TEST(GoldNewDelete, DeleteOverload) {
   std::string Code = R"Gold(
 operator"delete"(ptr:^void)<noexcept>:void!
@@ -68,6 +69,156 @@ operator"delete[]"(ptr:^void):void!
     hasName("operator delete[]"),
     unless(isImplicit()),
     hasType(asString("void (void *) noexcept"))
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+
+
+TEST(GoldNewDelete, ExplicitCallNewAndDelete) {
+  std::string Code = R"Gold(
+operator"new"(sz:uint64, ptr:^void):^void!
+  return ptr
+
+foo():void!
+  x:^void = operator"new"(0, null)
+  operator"delete"(x)
+)Gold";
+  auto ToMatch = translationUnitDecl(
+    has(functionDecl(
+      hasName("operator new"),
+      unless(isImplicit()),
+      hasType(asString("void *(unsigned long, void *)"))
+    )),
+    has(functionDecl(
+      hasName("foo"),
+      hasDescendant(callExpr(
+        hasType(asString("void *")),
+        has(implicitCastExpr(
+          hasType(asString("void *(*)(unsigned long, void *)")),
+          has(declRefExpr(
+            hasDeclaration(functionDecl(hasName("operator new")))
+          ))
+        ))
+      )),
+      hasDescendant(callExpr(
+        hasType(asString("void")),
+        has(implicitCastExpr(
+          hasType(asString("void (*)(void *) noexcept")),
+          has(declRefExpr(
+            hasDeclaration(functionDecl(hasName("operator delete")))
+          ))
+        ))
+      ))
+    ))
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+
+TEST(GoldNewDelete, ExplicitCallArrayNewAndDelete) {
+  std::string Code = R"Gold(
+operator"new[]"(sz:uint64, ptr:^void):^void!
+  return ptr
+
+operator"delete[]"(ptr:^void)<noexcept>:void!
+  ;
+
+foo():void!
+  x:^void = operator"new[]"(0, null)
+  operator"delete[]"(x)
+)Gold";
+  auto ToMatch = translationUnitDecl(
+    has(functionDecl(
+      hasName("operator new[]"),
+      unless(isImplicit()),
+      hasType(asString("void *(unsigned long, void *)"))
+    )),
+    has(functionDecl(
+      hasName("foo"),
+      hasDescendant(callExpr(
+        hasType(asString("void *")),
+        has(implicitCastExpr(
+          hasType(asString("void *(*)(unsigned long, void *)")),
+          has(declRefExpr(
+            hasDeclaration(functionDecl(hasName("operator new[]")))
+          ))
+        ))
+      )),
+      hasDescendant(callExpr(
+        hasType(asString("void")),
+        has(implicitCastExpr(
+          hasType(asString("void (*)(void *) noexcept")),
+          has(declRefExpr(
+            hasDeclaration(functionDecl(hasName("operator delete[]")))
+          ))
+        ))
+      ))
+    ))
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+TEST(GoldNewDelete, ExplicitCallToBuiltInNewAndDelete) {
+  std::string Code = R"Gold(
+foo():void!
+  x:^void = operator"new"(0)
+  operator"delete"(x)
+)Gold";
+  auto ToMatch = translationUnitDecl(
+    has(functionDecl(
+      hasName("foo"),
+      hasDescendant(callExpr(
+        hasType(asString("void *")),
+        has(implicitCastExpr(
+          hasType(asString("void *(*)(unsigned long)")),
+          has(declRefExpr(
+            hasDeclaration(functionDecl(hasName("operator new")))
+          ))
+        ))
+      )),
+      hasDescendant(callExpr(
+        hasType(asString("void")),
+        has(implicitCastExpr(
+          hasType(asString("void (*)(void *) noexcept")),
+          has(declRefExpr(
+            hasDeclaration(functionDecl(hasName("operator delete")))
+          ))
+        ))
+      ))
+    ))
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+TEST(GoldNewDelete, ExplicitCallToBuiltInArrayNewAndDelete) {
+  std::string Code = R"Gold(
+foo():void!
+  x:^void = operator"new[]"(0)
+  operator"delete[]"(x)
+)Gold";
+  auto ToMatch = translationUnitDecl(
+    has(functionDecl(
+      hasName("foo"),
+      hasDescendant(callExpr(
+        hasType(asString("void *")),
+        has(implicitCastExpr(
+          hasType(asString("void *(*)(unsigned long)")),
+          has(declRefExpr(
+            hasDeclaration(functionDecl(hasName("operator new[]")))
+          ))
+        ))
+      )),
+      hasDescendant(callExpr(
+        hasType(asString("void")),
+        has(implicitCastExpr(
+          hasType(asString("void (*)(void *) noexcept")),
+          has(declRefExpr(
+            hasDeclaration(functionDecl(hasName("operator delete[]")))
+          ))
+        ))
+      ))
+    ))
   );
   ASSERT_TRUE(matches(Code, ToMatch));
 }
