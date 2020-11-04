@@ -352,8 +352,10 @@ void Sema::addDeclToDecl(clang::Decl *CDecl, gold::Declaration *GDecl) {
   assert(GDecl && "Invalid gold declaration");
 
   auto Ret = DeclToDecl.try_emplace(CDecl, GDecl);
-  if (!Ret.second)
-    llvm_unreachable("we should never add something to the decl map 2x.");
+  if (!Ret.second) {
+    // llvm::errs() << "Declaration Id = " << GDecl->getId()->getName() <<"\n";
+    // llvm_unreachable("we should never add something to the decl map 2x.");
+  }
 }
 
 gold::Declaration *Sema::getDeclaration(clang::Decl *CDecl) {

@@ -1533,7 +1533,6 @@ static clang::Decl *handleBuildNNSNamespace(Elaborator &Elab, Sema &SemaRef,
   // Reconstructing a namespace declaration
   ClangToGoldDeclRebuilder Rebuilder(Context, SemaRef);
   Declaration *NewDcl = Rebuilder.generateDeclForNNS(NSDecl, Name);
-  SemaRef.setDeclForDeclaration(NewDcl, NSDecl);
   // Recording the declaration as part of the previous parent scope.
   CurScope->addDecl(NewDcl);
   SemaRef.pushDecl(NewDcl);

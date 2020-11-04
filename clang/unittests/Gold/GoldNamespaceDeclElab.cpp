@@ -71,7 +71,7 @@ TEST(GoldNamespaceDecl, GloballyQualifiedNestedNamespace) {
   GoldFailureTest(Code);
 }
 
-TEST(GoldNamespaceDecl, ExistingNamespaceAlreadyExists) {
+TEST(GoldNamespaceDecl, ExistingNamespace) {
     StringRef Code = R"(
 X = namespace{ ; }
 X.NS : namespace = namespace { ; }
