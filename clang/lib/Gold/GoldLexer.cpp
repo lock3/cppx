@@ -762,6 +762,10 @@ void CharacterScanner::matchLiteralSuffixSeq(
     case 'F':
     case 'd':
     case 'D':
+    case 'h':
+    case 'H':
+    case 'q':
+    case 'Q':
       consume();
       SuffixFragEnd = First;
       break;

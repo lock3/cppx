@@ -2067,6 +2067,50 @@ static void parseSuffix(SyntaxContext &Context, clang::DiagnosticsEngine &Diags,
     Literal->Suffix.IsDouble = true;
     return;
 
+  case 'h':
+    if (Literal->Suffix.IsFloat) {
+      Diags.Report(Loc, clang::diag::err_incompatible_suffix) <<
+        "float" << "half";
+      return;
+    }
+
+    if (Literal->Suffix.IsDouble) {
+      Diags.Report(Loc, clang::diag::err_incompatible_suffix) <<
+        "double" << "half";
+      return;
+    }
+
+    if (Literal->Suffix.IsQuarter) {
+      Diags.Report(Loc, clang::diag::err_incompatible_suffix) <<
+        "quarter" << "half";
+      return;
+    }
+
+    Literal->Suffix.IsHalf = true;
+    return;
+
+  case 'q':
+    if (Literal->Suffix.IsFloat) {
+      Diags.Report(Loc, clang::diag::err_incompatible_suffix) <<
+        "float" << "quarter";
+      return;
+    }
+
+    if (Literal->Suffix.IsDouble) {
+      Diags.Report(Loc, clang::diag::err_incompatible_suffix) <<
+        "double" << "quarter";
+      return;
+    }
+
+    if (Literal->Suffix.IsHalf) {
+      Diags.Report(Loc, clang::diag::err_incompatible_suffix) <<
+        "half" << "quarter";
+      return;
+    }
+
+    Literal->Suffix.IsQuarter = true;
+    return;
+
   default:
     Diags.Report(Loc, clang::diag::err_unknown_suffix) <<
       std::string(1, *SuffixBegin);

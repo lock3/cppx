@@ -192,6 +192,8 @@ struct LiteralSuffix
   std::size_t BitWidth = 0;
   bool IsFloat = false;
   bool IsDouble = false;
+  bool IsHalf = false;
+  bool IsQuarter = false;
 };
 
 /// Represents literal values.
