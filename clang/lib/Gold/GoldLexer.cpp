@@ -718,8 +718,7 @@ void CharacterScanner::matchDecimalDigitSeq() {
   assert(isDecimalDigit(getLookahead()) || isDigitSeparator(getLookahead())
          && "invalid number");
 
-  // TODO: implement separators
-  while (matchIf(isDecimalDigit))
+  while (matchIf(isDecimalDigit) || matchIf(isDigitSeparator))
     ;
 }
 
@@ -729,16 +728,14 @@ void CharacterScanner::matchDecimalDigitSeqOpt() {
 }
 
 void CharacterScanner::matchHexadecimalDigitSeq() {
-  // FIXME: Allow digit separators?
   requireIf(isHexadecimalDigit);
-  while (matchIf(isHexadecimalDigit))
+  while (matchIf(isHexadecimalDigit) || matchIf(isDigitSeparator))
     ;
 }
 
 void CharacterScanner::matchBinaryDigitSeq() {
-  // FIXME: Allow digit separators?
   requireIf(isBinaryDigit);
-  while (matchIf(isBinaryDigit))
+  while (matchIf(isBinaryDigit) || matchIf(isDigitSeparator))
     ;
 }
 

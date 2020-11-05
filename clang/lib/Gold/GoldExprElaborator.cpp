@@ -309,6 +309,12 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
   std::string Spelling = Base == 10 ? S->getSpelling() :
     S->getSpelling().substr(2);
 
+  auto It = std::find(Spelling.begin(), Spelling.end(), '\'');
+  while(It != std::end(Spelling)) {
+    Spelling.erase(It);
+    It = std::find(Spelling.begin(), Spelling.end(), '\'');
+  }
+
   llvm::APInt Value(Width, Spelling, Base);
   Value = Value.zextOrTrunc(Width);
 
@@ -342,8 +348,15 @@ createFloatLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
   using llvm::APFloat;
   APFloat Val = llvm::APFloat(Format);
 
+  std::string Spelling = S->getSpelling();
+  auto It = std::find(Spelling.begin(), Spelling.end(), '\'');
+  while(It != std::end(Spelling)) {
+    Spelling.erase(It);
+    It = std::find(Spelling.begin(), Spelling.end(), '\'');
+  }
+
   auto StatusOrErr =
-    Val.convertFromString(S->getSpelling(), APFloat::rmNearestTiesToEven);
+    Val.convertFromString(Spelling, APFloat::rmNearestTiesToEven);
   assert(StatusOrErr && "Invalid floating point representation");
   return clang::FloatingLiteral::Create(CxxAST, Val, /*Exact=*/true,
                                         FloatType, S->getLoc());
@@ -356,6 +369,11 @@ createExponentLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
   assert((Spelling.find_first_of("E") != std::string::npos ||
          Spelling.find_first_of("e") != std::string::npos) &&
          "non-exponent");
+  auto It = std::find(Spelling.begin(), Spelling.end(), '\'');
+  while(It != std::end(Spelling)) {
+    Spelling.erase(It);
+    It = std::find(Spelling.begin(), Spelling.end(), '\'');
+  }
 
   const llvm::fltSemantics &Format =
     CxxAST.getFloatTypeSemantics(CxxAST.DoubleTy);
@@ -1236,14 +1254,8 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
     return createIntegerLiteral(CxxAST, SemaRef, cast<LiteralSyntax>(S));
   case tok::DecimalFloat:
     return createFloatLiteral(CxxAST, SemaRef, cast<LiteralSyntax>(S));
-  case tok::BinaryInteger: {
-    std::string TData = std::string(T.getSymbol().data());
-    TData =  TData.substr(TData.find_first_not_of("0b"), TData.size());
-    Token RawBin = Token(tok::BinaryInteger, T.getLocation(), Symbol(&TData));
-    return createIntegerLiteral(CxxAST, RawBin, ExplicitType,
-                                S->getLoc(), /*Base=*/2);
-  }
-
+  case tok::BinaryInteger: 
+    return createIntegerLiteral(CxxAST, SemaRef, cast<LiteralSyntax>(S), 2);
   case tok::HexadecimalInteger:
     return createIntegerLiteral(CxxAST, SemaRef,
                                 cast<LiteralSyntax>(S), /*Base=*/16);
