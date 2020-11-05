@@ -169,6 +169,15 @@ AST_POLYMORPHIC_MATCHER_P(hasOperator,
   return Node.getOperator() == OpKind;
 }
 
+AST_MATCHER_P(CXXDeleteExpr, deleteFunction, internal::Matcher<Decl>,
+              InnerMatcher) {
+  const FunctionDecl *OpDel = Node.getOperatorDelete();
+  return (OpDel != nullptr &&
+          InnerMatcher.matches(*OpDel, Finder, Builder));
+}
+
+
+
 using clang::tooling::buildASTFromCodeWithArgs;
 using clang::tooling::newFrontendActionFactory;
 using clang::tooling::runToolOnCodeWithArgs;
@@ -354,6 +363,7 @@ matchesConditionally(const std::string &Code, const T &AMatcher,
 
   return testing::AssertionSuccess();
 }
+
 
 template <typename T>
 testing::AssertionResult

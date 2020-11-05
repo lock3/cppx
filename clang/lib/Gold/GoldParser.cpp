@@ -984,13 +984,33 @@ Syntax *Parser::parseFor()
 }
 
 Syntax *Parser::parseNew() {
-  Token Tok = expectToken("new");
+  Token Tok = expectToken(tok::NewKeyword);
 
   Syntax *PlacementArgs = nextTokenIs(tok::LeftParen) ? parseParen() : nullptr;
   Syntax *Call = makeCall(Context, *this, Tok, PlacementArgs);
   Syntax *Block = parsePost();
 
   return onMacro(Call, Block);
+}
+
+Syntax *Parser::parseDelete() {
+  Token DeleteToken = expectToken(tok::DeleteKeyword);
+  bool ArrayDelete = false;
+  if (nextTokenIs(tok::LeftBracket) && nthTokenIs(1, tok::RightBracket)) {
+    ArrayDelete = true;
+    consumeToken();
+    consumeToken();
+  }
+  Syntax *Arg = parsePre();
+  Syntax *Seq = onList(ArgArray, llvm::SmallVector<Syntax *, 1>({Arg}));
+  Syntax *Name;
+  if (ArrayDelete) {
+    Name = makeOperator(Context, *this, DeleteToken.getLocation(), "delete[]");
+  } else {
+    Name = makeOperator(Context, *this, DeleteToken.getLocation(),
+                        DeleteToken.getSpelling());
+  }
+  return onCall(Name, Seq);
 }
 
 Syntax *Parser::parseBlockLoop(Token KWTok)
@@ -1140,8 +1160,21 @@ Syntax *Parser::parseMacro()
   if (nextTokenIs("for"))
     return parseFor();
 
-  if (nextTokenIs("new"))
+  if (nextTokenIs(tok::NewKeyword))
     return parseNew();
+
+  if (nextTokenIs(tok::DeleteKeyword)) {
+
+    TokenKind TokAfterDelete = getLookahead(1);
+    // If the next character after delete isn't some kind of separator, eof,
+    // or dedent, then this is the delete operator, and not the delete kw used
+    // for deleting functions.
+    if (!(isSeparator(TokAfterDelete)
+        || TokAfterDelete == tok::EndOfFile
+        || TokAfterDelete == tok::Dedent)) {
+      return parseDelete();
+    }
+  }
 
   Syntax *e1 = parsePost();
 
@@ -1718,12 +1751,6 @@ Syntax *Parser::parsePrimary() {
   case tok::String:
     return onLiteral(consumeToken());
 
-  case tok::NewKeyword:
-    return parseNewExpr();
-  case tok::DeleteKeyword:
-    return parseDeleteOrKwExpr();
-    // FIXME: We need syntax for both new and delete operators.
-    // llvm_unreachable("new Syntax in undefined.");
   default:
     break;
   }
@@ -1807,22 +1834,6 @@ Syntax *Parser::parseBracedArray() {
     return onError();
 
   return ret;
-}
-
-Syntax *Parser::parseNewExpr() {
-  llvm_unreachable("Working on operator new expression.");
-}
-
-Syntax *Parser::parseDeleteOrKwExpr() {
-  Token DeleteToken = consumeToken();
-  // In the event that the next token is the end of file, or some kind of seperator
-  // we can assume that the use of the kw delete is an atom and not a call.
-  // This is so we can label functions as delete.
-  TokenKind NextTok = getLookahead();
-  if (isSeparator(NextTok) || NextTok == tok::EndOfFile || NextTok == tok::Dedent)
-    return onAtom(DeleteToken);
-  llvm::outs() << "What did I miss? = " << getDisplayName(getLookahead()) << "\n";
-  llvm_unreachable("Working on operator delete expression.");
 }
 
 
