@@ -11424,6 +11424,9 @@ def err_incomplete_placement_expression : Error<
 def err_invalid_destructor_call : Error<
   "invalid reference to destruct of type %0">;
 
+def err_cannot_allocate_type : Error<
+  "cannot allocate type %0">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

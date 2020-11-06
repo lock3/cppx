@@ -1441,7 +1441,6 @@ clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
     for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
       SemaRef.getCurrentScope()->Shadows.insert(Shadow);
   } else if (auto *UUVD = dyn_cast<clang::UnresolvedUsingValueDecl>(D)) {
-    // llvm::outs() << "funbaba\n";
   }
 
   return D;
@@ -3049,14 +3048,18 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   clang::Expr *TypeExpr = nullptr;
   clang::SourceLocation TypeLocation;
 
+  TypeLocation = D->Op->getLoc();
   if (D->TypeDcl) {
+    llvm::outs() << "Dumping Declaration before failure = \n";
+    D->dump();
     ExprElaborator TypeElab(Context, SemaRef);
     TypeExpr = TypeElab.elaborateExplicitType(D->TypeDcl, nullptr);
-    TypeLocation = D->TypeDcl->getLoc();
+    llvm::outs() << "Gathering type decl's locations?\n";
+    // TypeLocation = D->TypeDcl->getLoc();
   } else {
     TypeExpr = SemaRef.buildTypeExpr(Context.CxxAST.getAutoDeductType(),
                                      D->Op->getLoc());
-    TypeLocation = D->Op->getLoc();
+    llvm::outs() << "Gathering from Op?\n";
   }
 
   if (!TypeExpr) {
@@ -4214,47 +4217,50 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 
     // Certain macros must be deduced manually.
     if (const MacroSyntax *InitM = dyn_cast<MacroSyntax>(D->Init)) {
-      assert (isa<AtomSyntax>(InitM->getCall()) && "Unexpected macro call");
-      assert (isa<clang::InitListExpr>(InitExpr) &&
-              "Invalid array macro init");
+      if (!isa<CallSyntax>(InitM->getCall())) {
 
-      const AtomSyntax *Call = cast<AtomSyntax>(InitM->getCall());
-      if (Call->getSpelling() == "array") {
-        Ty = buildImplicitArrayType(Context.CxxAST, SemaRef.getCxxSema(),
-                                    cast<clang::InitListExpr>(InitExpr));
+        assert (isa<AtomSyntax>(InitM->getCall()) && "Unexpected macro call");
+        assert (isa<clang::InitListExpr>(InitExpr) &&
+                "Invalid array macro init");
 
-        if (Ty.isNull()) {
-          VD->setInvalidDecl();
+        const AtomSyntax *Call = cast<AtomSyntax>(InitM->getCall());
+        if (Call->getSpelling() == "array") {
+          Ty = buildImplicitArrayType(Context.CxxAST, SemaRef.getCxxSema(),
+                                      cast<clang::InitListExpr>(InitExpr));
+
+          if (Ty.isNull()) {
+            VD->setInvalidDecl();
+            return;
+          }
+        }
+      } else {
+        if (!InitExpr) {
+          SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_no_init);
+          return;
+        }
+
+        if (InitExpr->getType()->isNamespaceType()) {
+          D->Cxx->getDeclContext()->removeDecl(D->Cxx);
+          D->Cxx = buildNsAlias(Context.CxxAST, SemaRef, D, InitExpr);
+          return;
+        }
+
+        if (InitExpr->getType()->isTypeOfTypes()) {
+          D->Cxx->getDeclContext()->removeDecl(D->Cxx);
+          D->Cxx = buildTypeAlias(*this, SemaRef, D, InitExpr);
+          return;
+        }
+
+        clang::Sema &CxxSema = SemaRef.getCxxSema();
+        auto Result = CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), InitExpr, Ty);
+        if (Result == clang::Sema::DAR_Failed) {
+          SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_failed);
           return;
         }
       }
-    } else {
-      if (!InitExpr) {
-        SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_no_init);
-        return;
-      }
 
-      if (InitExpr->getType()->isNamespaceType()) {
-        D->Cxx->getDeclContext()->removeDecl(D->Cxx);
-        D->Cxx = buildNsAlias(Context.CxxAST, SemaRef, D, InitExpr);
-        return;
-      }
-
-      if (InitExpr->getType()->isTypeOfTypes()) {
-        D->Cxx->getDeclContext()->removeDecl(D->Cxx);
-        D->Cxx = buildTypeAlias(*this, SemaRef, D, InitExpr);
-        return;
-      }
-
-      clang::Sema &CxxSema = SemaRef.getCxxSema();
-      auto Result = CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), InitExpr, Ty);
-      if (Result == clang::Sema::DAR_Failed) {
-        SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_failed);
-        return;
-      }
+      VD->setType(Ty);
     }
-
-    VD->setType(Ty);
   }
 
   if (D->Init && !InitExpr) {

@@ -54,6 +54,13 @@
 
 namespace gold {
 
+// possible expression results, used for diagnostics.
+#define VALUE 0
+#define NAMESPACE 1
+#define TYPE 2
+#define TEMPLATE 3
+static unsigned getExprResultFromType(clang::QualType const &T);
+
 static const llvm::StringMap<unsigned> BuiltinFnMap = {
 #define BUILTIN(ID, TYPE, ATTRS) \
   {#ID, clang::Builtin::BI ## ID},
@@ -738,7 +745,7 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
 
     if (Result.isInvalid()) {
       SemaRef.Diags.Report(Elem->getObject()->getLoc(),
-                          clang::diag::err_failed_to_translate_expr);
+                           clang::diag::err_failed_to_translate_expr);
       return nullptr;
     }
 
@@ -1354,7 +1361,6 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
       return nullptr;
     }
     return ConstructorExpr.get();
-
   }
 
   // A call to a specialization without arguments has to be handled differently
@@ -1423,6 +1429,13 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
   // In the event that we do have an atom for the call name we need to do
   // something slightly different before we can fully elaborate the entire call.
   const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
+  Token Tok = Callee->getToken();
+  if (Tok.getKind() == tok::ArrayDelete)
+    return elaborateDeleteExpr(true, S);
+
+  if (Tok.getKind() == tok::DeleteKeyword)
+    return elaborateDeleteExpr(false, S);
+
   FusedOpKind Op = getFusedOpKind(SemaRef, Callee->getSpelling());
 
   switch (Op) {
@@ -1451,6 +1464,7 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     return handleRawBaseSpecifier(S);
   case FOK_Throw:
     return elaborateThrowExpr(S);
+
   default:
     break;
   }
@@ -1801,6 +1815,34 @@ clang::Expr *ExprElaborator::elaborateThrowExpr(const CallSyntax *S) {
   return ExprRes.get();
 }
 
+clang::Expr *
+ExprElaborator::elaborateDeleteExpr(bool IsArrayDelete, const CallSyntax *Call) {
+  auto DelArgList = dyn_cast_or_null<ListSyntax>(Call->getArguments());
+  if (DelArgList->getNumChildren() != 1) {
+    SemaRef.Diags.Report(Call->getCallee()->getLoc(),
+                         clang::diag::warn_call_wrong_number_of_arguments)
+                         << (DelArgList->getNumChildren() >= 1)
+                         << (IsArrayDelete ? "delete[]" : "delete");
+    return nullptr;
+  }
+  clang::Expr *E = elaborateExpr(DelArgList->getChild(0));
+  if (!E)
+    return nullptr;
+  clang::QualType Ty = E->getType();
+
+  // Enfocing someone trying to delete a type, or namespace.
+  if (Ty->isTypeOfTypes() || Ty->isTemplateType() || Ty->isNamespaceType()) {
+    SemaRef.Diags.Report(E->getExprLoc(),
+                         clang::diag::err_unexpected_expression_result)
+                         << /*value*/0 << getExprResultFromType(Ty);
+    return nullptr;
+  }
+  auto DelExpr = SemaRef.getCxxSema().ActOnCXXDelete(Call->getLoc(),
+                                                     /*UseGlobal*/false,
+                                                     IsArrayDelete, E);
+  return DelExpr.get();
+}
+
 clang::Expr *ExprElaborator::elaborateCastOp(const CallSyntax *CastOp) {
   if (CastOp->getNumArguments() != 1) {
     SemaRef.Diags.Report(CastOp->getLoc(),
@@ -2022,11 +2064,7 @@ static clang::Expr *doDerefAndXOrLookUp(SyntaxContext &Context,
   return UME;
 }
 
-// possible expression results, used for diagnostics.
-#define VALUE 0
-#define NAMESPACE 1
-#define TYPE 2
-#define TEMPLATE 3
+
 
 static unsigned getExprResultFromType(clang::QualType const &T) {
   if (T->isCppxNamespaceType())
@@ -2698,8 +2736,7 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
   } else {
     OperandResult = doElaborateExpr(Operand);
   }
-  // llvm::outs() << "Dumping operand contents result!\n";
-  // OperandResult->dump();
+
   if (!OperandResult || OperandResult->getType()->isNamespaceType()) {
     SemaRef.Diags.Report(Operand->getLoc(),
                          clang::diag::err_expected_expression);
@@ -2930,6 +2967,11 @@ static clang::Expr *handleOfMacro(SyntaxContext &Context, Sema &SemaRef,
 }
 
 clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
+  // The only macro expression that's currently valid as a call is the
+  // new expression.
+  if (isa<CallSyntax>(S->getCall()))
+    return elaborateNewExpr(S);
+
   assert (isa<AtomSyntax>(S->getCall()) && "Unexpected macro call");
 
   const AtomSyntax *Call = cast<AtomSyntax>(S->getCall());
@@ -2954,7 +2996,211 @@ clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
 }
 
 
+clang::Expr *ExprElaborator::elaborateNewExpr(const MacroSyntax *Macro) {
+  auto OpNew = dyn_cast<CallSyntax>(Macro->getCall());
+  assert(OpNew && "Invalid AST for new expression.");
 
+  // I need to make sure that I force the loading of the global operator new
+  // functions just in case they don't already exist.
+  // This is done here because when using BuildCxxNew that will also
+  // load the new functions but gold wont know about it and there by skipping
+  // the creating of gold declarations.
+  SemaRef.createBuiltinOperatorNewDeleteDecls();
+  auto InplaceArgsNode = dyn_cast_or_null<ListSyntax>(OpNew->getArguments());
+
+  // All of these need to be filled out as we build our expression.
+  // clang::SourceRange ExprRange;
+  clang::SourceLocation ExprStartLoc = OpNew->getCallee()->getLoc();
+  clang::SourceLocation ExprEndLoc = ExprStartLoc;
+  llvm::SmallVector<clang::Expr *, 8> PlacementArgs;
+  clang::SourceLocation PlacementLParen;
+  clang::SourceLocation PlacementRParen;
+  if (InplaceArgsNode) {
+    if (buildFunctionCallArguments(SemaRef, Context, InplaceArgsNode,
+                                   PlacementArgs))
+      return nullptr;
+  }
+
+  // This is used for the constructor expression.
+  llvm::Optional<clang::Expr *> ArraySizeExpr;
+  clang::SourceLocation TypeParens;
+
+  // Initialization style is determined off of this argument.
+  clang::SourceRange DirectInitRange;
+  clang::TypeSourceInfo *TInfo = nullptr;
+  clang::Expr *InitializationExpr = nullptr;
+
+  // This is for if the type expression is inside ()
+  clang::SourceRange TypeIdParens;
+
+  auto TypeOrCtorExpr = Macro->getBlock();
+  assert(TypeOrCtorExpr && "Invalid AST structure for operator new");
+  const Syntax *TypeNode = nullptr;
+  llvm::SmallVector<clang::Expr *, 8> CtorArgs;
+  bool BuildCtorExpr = false;
+  auto CtorCall = dyn_cast<CallSyntax>(TypeOrCtorExpr);
+  if (CtorCall) {
+    FusedOpKind OpKind = getFusedOpKind(SemaRef, CtorCall);
+    if (OpKind != FOK_Unknown) {
+      TypeNode = CtorCall;
+    } else {
+      TypeNode = CtorCall->getCallee();
+      if (CtorCall->getArguments()) {
+        auto ArgList = cast<ListSyntax>(CtorCall->getArguments());
+        if (ArgList->getNumChildren() == 0)
+          DirectInitRange = clang::SourceRange(CtorCall->getLoc(),
+                                              CtorCall->getLoc());
+        else
+          DirectInitRange = clang::SourceRange(ArgList->getChild(0)->getLoc(),
+                        ArgList->getChild(ArgList->getNumChildren()-1)->getLoc());
+
+        ExprEndLoc = ArgList->getChild(ArgList->getNumChildren()-1)->getLoc();
+        if (buildFunctionCallArguments(SemaRef, Context, ArgList, CtorArgs))
+          return nullptr;
+        BuildCtorExpr = true;
+
+      } else {
+        Macro->dump();
+        llvm_unreachable("Invalid AST structure");
+      }
+    }
+  } else {
+    ExprEndLoc = TypeOrCtorExpr->getLoc();
+    TypeNode = TypeOrCtorExpr;
+  }
+  // Attempting to get the type expression.
+  clang::Expr *TyExpr = elaborateNewExpr_TypeNode(TypeNode, ArraySizeExpr);
+  // TODO: I need to figure out if this need an additional error message.
+  if (!TyExpr)
+    return nullptr;
+
+  TInfo = SemaRef.getTypeSourceInfoFromExpr(TyExpr, TypeNode->getLoc());
+  if (!TInfo)
+    return nullptr;
+  clang::QualType TyToNew = TInfo->getType();
+  if (TyToNew->isTypeOfTypes()
+      || TyToNew->isTemplateType()
+      || TyToNew->isNamespaceType()) {
+    // llvm_unreachable("Cannot create an instance of this type.");
+    SemaRef.Diags.Report(TypeNode->getLoc(),
+                         clang::diag::err_cannot_allocate_type)
+                         << TyToNew;
+    return nullptr;
+  }
+
+  if (BuildCtorExpr) {
+    auto PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
+    auto CtorExpr = SemaRef.getCxxSema().ActOnCXXTypeConstructExpr(PT,
+                  DirectInitRange.getBegin(), CtorArgs,DirectInitRange.getEnd(),
+                                                  /*ListInitialization=*/false);
+    if (CtorExpr.isInvalid())
+      return nullptr;
+    InitializationExpr = CtorExpr.get();
+  }
+  clang::ExprResult Res = SemaRef.getCxxSema().BuildCXXNew(
+      clang::SourceRange(ExprStartLoc, ExprEndLoc), /*UseGlobal*/false,
+      PlacementLParen, PlacementArgs, PlacementRParen, TypeIdParens,
+      TInfo->getType(), TInfo, ArraySizeExpr, DirectInitRange,
+      InitializationExpr);
+  if (Res.isInvalid())
+    return nullptr;
+  return Res.get();
+}
+
+clang::Expr *
+ExprElaborator::elaborateNewExpr_ArrayCall(const CallSyntax *S,
+                                  llvm::Optional<clang::Expr *> &DynArrayExpr) {
+  if (S->getNumArguments() != 2) {
+    SemaRef.Diags.Report(S->getLoc(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+  clang::Expr *IdExpr = nullptr;
+  bool IsInnerMostArray = true;
+  auto InnerTy = S->getArgument(1);
+  if (auto InnerTyCall = dyn_cast<CallSyntax>(InnerTy)) {
+    FusedOpKind OpKind = getFusedOpKind(SemaRef, InnerTyCall);
+    if (OpKind == FOK_Brackets) {
+      IsInnerMostArray = false;
+      IdExpr = elaborateNewExpr_ArrayCall(InnerTyCall, DynArrayExpr);
+    } else {
+      IdExpr = doElaborateExpr(InnerTy);
+    }
+  } else {
+    IdExpr = doElaborateExpr(InnerTy);
+  }
+
+  if (!IdExpr)
+    return nullptr;
+
+  // Attempt to translate into type location.
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(IdExpr,
+                                                   S->getArgument(1)->getLoc());
+  if (!TInfo)
+    return nullptr;
+
+  llvm::SmallVector<clang::Expr *, 4> IndexExprs;
+  const ListSyntax *IndexList = dyn_cast<ListSyntax>(S->getArgument(0));
+  if (IndexList) {
+    for (const Syntax *SS : IndexList->children())
+      IndexExprs.push_back(doElaborateExpr(SS));
+  } else {
+    IndexExprs.push_back(doElaborateExpr(S->getArgument(0)));
+  }
+
+  // FIXME: what do we do for an empty array index, such as []int = {...}
+  unsigned I = 0;
+  for (clang::Expr *IndexExpr : IndexExprs) {
+    if (!IndexExpr) {
+      SemaRef.Diags.Report(S->getArgument(I)->getLoc(),
+                           clang::diag::err_failed_to_translate_type);
+      return nullptr;
+    }
+
+    ++I;
+  }
+
+  clang::QualType ArrayType = TInfo->getType();
+  for (auto It = IndexExprs.rbegin(); It != IndexExprs.rend(); ++It) {
+    clang::Expr *IndexExpr = *It;
+
+    clang::Expr::EvalResult IdxResult;
+    clang::Expr::EvalContext
+      EvalCtx(Context.CxxAST, SemaRef.getCxxSema().GetReflectionCallbackObj());
+
+    if (IndexExpr->EvaluateAsConstantExpr(IdxResult,
+                                           clang::Expr::EvaluateForCodeGen,
+                                           EvalCtx)) {
+      clang::SourceRange Range(IndexExpr->getExprLoc(), IndexExpr->getExprLoc());
+      ArrayType = SemaRef.getCxxSema().BuildArrayType(
+        ArrayType, clang::ArrayType::Normal, IndexExpr, 0,
+        Range, clang::DeclarationName());
+    } else {
+      if (!IsInnerMostArray || It != IndexExprs.rbegin()) {
+        SemaRef.Diags.Report(IndexExpr->getExprLoc(),
+                             clang::diag::err_expr_not_cce)
+                             << /*array size*/3;
+      } else {
+        DynArrayExpr = IndexExpr;
+      }
+    }
+  }
+  return SemaRef.buildTypeExpr(ArrayType, S->getLoc());
+}
+
+clang::Expr *
+ExprElaborator::elaborateNewExpr_TypeNode(const Syntax *S,
+                                  llvm::Optional<clang::Expr *> &DynArrayExpr) {
+  if (auto Call = dyn_cast<CallSyntax>(S)) {
+    FusedOpKind OpKind = getFusedOpKind(SemaRef, Call);
+    if (OpKind == FOK_Brackets) {
+      return elaborateNewExpr_ArrayCall(Call, DynArrayExpr);
+    }
+  }
+
+  // Normal type.
+  return doElaborateExpr(S);
+}
 
 //===----------------------------------------------------------------------===//
 //                        Type Expression Elaboration                         //
@@ -3271,7 +3517,7 @@ clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
 clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
   if (S->getNumArguments() != 2) {
     SemaRef.Diags.Report(S->getLoc(),
-                        clang::diag::err_failed_to_translate_type);
+                         clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
 
@@ -3306,7 +3552,7 @@ clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
     ++I;
   }
 
-  clang::QualType ArrayType = TInfo->getType();;
+  clang::QualType ArrayType = TInfo->getType();
   bool Invalid = false;
   for (auto It = IndexExprs.rbegin(); It != IndexExprs.rend(); ++It) {
     clang::Expr *IndexExpr = *It;

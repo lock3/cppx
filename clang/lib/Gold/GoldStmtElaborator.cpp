@@ -873,6 +873,11 @@ StmtElaborator::elaborateMacro(const MacroSyntax *S) {
   if (Callee->getSpelling() == "using")
     return elaborateUsingMacroStmt(S);
 
+  // Checking to see if we have a new keyword token, because this could
+  // be a placement new.
+  Token Tok = Callee->getToken();
+  if (Tok.getKind() == tok::NewKeyword)
+    return ExprElaborator(Context, SemaRef).elaborateNewExpr(S);
 
   unsigned DiagID = Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
                                           "use of undefined macro");

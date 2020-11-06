@@ -206,7 +206,15 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::IncompleteArrayTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::VariableArrayTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  const clang::VariableArrayType *ArrayType =
+    clang::cast<clang::VariableArrayType>(Ty->getAsArrayTypeUnsafe());
+  QualType InnerType = ArrayType->getElementType();
+  BuildAnyTypeLoc(Ctx, TLB, InnerType, Loc);
+
+  auto TypeLocInstance = TLB.push<clang::VariableArrayTypeLoc>(Ty);
+  TypeLocInstance.initializeLocal(Ctx, Loc);
+  TypeLocInstance.setSizeExpr(const_cast<clang::Expr *>(ArrayType->getSizeExpr()));
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::VariableArrayTypeLoc>

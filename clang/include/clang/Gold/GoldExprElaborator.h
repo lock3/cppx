@@ -147,7 +147,14 @@ public:
                                       bool IsConstExpr = false);
 
   clang::Expr *elaborateMacro(const MacroSyntax *Macro);
-  clang::Expr *elaborateClass(const MacroSyntax *Macro);
+  clang::Expr *elaborateNewExpr(const MacroSyntax *Macro);
+  clang::Expr *elaborateNewExpr_ArrayCall(const CallSyntax *S,
+                                   llvm::Optional<clang::Expr *> &DynArrayExpr);
+  clang::Expr *elaborateNewExpr_TypeNode(const Syntax *S,
+                                   llvm::Optional<clang::Expr *> &DynArrayExpr);
+  // clang::Expr *elaborateNew_Atom(const CallSyntax *S);
+
+  // clang::Expr *elaborateClass(const MacroSyntax *Macro);
 
   clang::Expr *elaborateElementExpr(const ElemSyntax *Elem);
 
@@ -158,6 +165,7 @@ public:
   clang::Expr *elaborateCastOp(const CallSyntax *CastOp);
 
   clang::Expr *elaborateThrowExpr(const CallSyntax *Call);
+  clang::Expr *elaborateDeleteExpr(bool IsArrayDelete, const CallSyntax *Call);
 private:
   clang::Expr *handleRawBaseSpecifier(const CallSyntax *Op);
 

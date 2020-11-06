@@ -248,22 +248,19 @@ foo():void!
   delete x
 )Gold";
   auto ToMatch = functionDecl(
-    hasDescendant(callExpr(
-      hasType(asString("void *")),
-      has(implicitCastExpr(
-        hasType(asString("void *(*)(unsigned long)")),
-        has(declRefExpr(
-          hasDeclaration(functionDecl(hasName("operator new")))
-        ))
+    hasDescendant(cxxNewExpr(
+      unless(isArray()),
+      hasDeclaration(functionDecl(
+        hasName("operator new"),
+        isImplicit(),
+        hasType(asString("void *(unsigned long)"))
       ))
     )),
-    hasDescendant(callExpr(
-      hasType(asString("void")),
-      has(implicitCastExpr(
-        hasType(asString("void (*)(void *) noexcept")),
-        has(declRefExpr(
-          hasDeclaration(functionDecl(hasName("operator delete")))
-        ))
+    hasDescendant(cxxDeleteExpr(
+      deleteFunction(functionDecl(
+        hasName("operator delete"),
+        isImplicit(),
+        hasType(asString("void (void *) noexcept"))
       ))
     ))
   );
@@ -280,13 +277,12 @@ foo(x:^int):void!
 )Gold";
   auto ToMatch = functionDecl(
     hasName("foo"),
-    hasDescendant(callExpr(
-      hasType(asString("void *")),
-      has(implicitCastExpr(
-        hasType(asString("void *(*)(unsigned long, void *) noexcept")),
-        has(declRefExpr(
-          hasDeclaration(functionDecl(hasName("operator new")))
-        ))
+    hasDescendant(cxxNewExpr(
+      unless(isArray()),
+      hasDeclaration(functionDecl(
+        hasName("operator new"),
+        unless(isImplicit()),
+        hasType(asString("void *(unsigned long, void *) noexcept"))
       ))
     ))
   );
@@ -299,14 +295,11 @@ foo(x:^int):void!
   return delete x
 )Gold";
   auto ToMatch = functionDecl(
-    hasName("foor"),
-    hasDescendant(callExpr(
-      hasType(asString("void")),
-      has(implicitCastExpr(
-        hasType(asString("void (*)(void *) noexcept")),
-        has(declRefExpr(
-          hasDeclaration(functionDecl(hasName("operator delete")))
-        ))
+    hasName("foo"),
+    hasDescendant(cxxDeleteExpr(
+      deleteFunction(functionDecl(
+        hasName("operator delete"),
+        hasType(asString("void (void *) noexcept"))
       ))
     ))
   );
@@ -316,58 +309,65 @@ foo(x:^int):void!
 TEST(GoldNewDelete, BasicNewDeleteArray) {
   std::string Code = R"Gold(
 foo():void!
-  x:^int = new int[3]
+  x:^int = new [3]int
   delete [] x
 )Gold";
   auto ToMatch = functionDecl(
-    hasDescendant(callExpr(
-      hasType(asString("void *")),
-      has(implicitCastExpr(
-        hasType(asString("void *(*)(unsigned long)")),
-        has(declRefExpr(
-          hasDeclaration(functionDecl(hasName("operator new[]")))
-        ))
+    hasDescendant(cxxNewExpr(
+      hasDeclaration(functionDecl(
+        hasName("operator new[]"),
+        hasType(asString("void *(unsigned long)"))
       ))
     )),
-    hasDescendant(callExpr(
-      hasType(asString("void")),
-      has(implicitCastExpr(
-        hasType(asString("void (*)(void *) noexcept")),
-        has(declRefExpr(
-          hasDeclaration(functionDecl(hasName("operator delete[]")))
-        ))
+    hasDescendant(cxxDeleteExpr(
+      deleteFunction(functionDecl(
+        hasName("operator delete[]"),
+        hasType(asString("void (void *) noexcept"))
       ))
     ))
   );
   ASSERT_TRUE(matches(Code, ToMatch));
 }
 
+// TODO: FIXME: This doesn't really work.
+// TEST(GoldNewDelete, BasicNewDeleteArray_WithCall) {
+//   std::string Code = R"Gold(
+// foo():void!
+//   x:^int = new [3]int()
+//   delete [] x
+// )Gold";
+//   auto ToMatch = functionDecl(
+//     hasDescendant(cxxNewExpr(
+//       hasDeclaration(functionDecl(
+//         hasName("operator new[]"),
+//         hasType(asString("void *(unsigned long)"))
+//       ))
+//     )),
+//     hasDescendant(cxxDeleteExpr(
+//       deleteFunction(functionDecl(
+//         hasName("operator delete[]"),
+//         hasType(asString("void (void *) noexcept"))
+//       ))
+//     ))
+//   );
+//   ASSERT_TRUE(matches(Code, ToMatch));
+// }
+
+
 TEST(GoldNewDelete, ArrayNewPlacementArguments) {
   std::string Code = R"Gold(
 operator"new[]"(s:uint64, a:int, b:int, c:int)<noexcept>: ^void!
-  return nullptr
+  return null
 
 foo():void!
-  x:^int = new (1, 2, 3)int[3]
+  x:^int = new (1, 2, 3) [3]int
   delete [] x
 )Gold";
   auto ToMatch = functionDecl(
-    hasDescendant(callExpr(
-      hasType(asString("void *")),
-      has(implicitCastExpr(
-        hasType(asString("void *(*)(unsigned long, int, int, int) noexcept")),
-        has(declRefExpr(
-          hasDeclaration(functionDecl(hasName("operator new[]")))
-        ))
-      ))
-    )),
-    hasDescendant(callExpr(
-      hasType(asString("void")),
-      has(implicitCastExpr(
-        hasType(asString("void (*)(void *) noexcept")),
-        has(declRefExpr(
-          hasDeclaration(functionDecl(hasName("operator delete[]")))
-        ))
+    hasDescendant(cxxNewExpr(
+      hasDeclaration(functionDecl(
+        hasName("operator new[]"),
+        hasType(asString("void *(unsigned long, int, int, int) noexcept"))
       ))
     ))
   );
@@ -532,7 +532,7 @@ C = class:
     return null
 
 foo():void!
-  x:^C = new C;
+  x:^C = new [3]C;
 )Gold";
   auto ToMatch = cxxNewExpr(
     hasDeclaration(cxxMethodDecl(hasName("operator new[]"),
@@ -548,7 +548,7 @@ C = class:
   operator"delete[]"(ptr:^void)<noexcept>:void!
     ;
 foo(x:^C):void!
-   delete x
+   delete [] x
 )Gold";
   auto ToMatch = cxxDeleteExpr(
     deleteFunction(cxxMethodDecl(hasName("operator delete[]"),
@@ -606,7 +606,7 @@ B = class:
 C = class(B):
   ;
 foo():void!
-  x:^C = new C;
+  x:^C = new [3]C;
 )Gold";
   auto ToMatch = cxxNewExpr(
     hasDeclaration(cxxMethodDecl(hasName("operator new[]"),
@@ -624,7 +624,7 @@ B = class:
 C = class(B):
   ;
 foo(x:^C):void!
-   delete x
+   delete [] x
 )Gold";
   auto ToMatch = cxxDeleteExpr(
     deleteFunction(cxxMethodDecl(hasName("operator delete[]"),
@@ -649,7 +649,7 @@ B = class:
   auto ToMatch = cxxNewExpr(
     hasDeclaration(functionDecl(hasName("operator new"),
       isImplicit(),
-      hasType(asString("void *(unsigned long) noexcept"))
+      hasType(asString("void *(unsigned long)"))
     ))
   );
   ASSERT_TRUE(matches(Code, ToMatch));
@@ -675,16 +675,223 @@ B = class:
 TEST(GoldNewDelete, NewOverloadWithPlacementArgsUsedInsideType) {
   std::string Code = R"Gold(
 B = class:
-  operator"new"(sz:uint64)<noexcept>:^void!
+  operator"new"(sz:uint64, s:int)<noexcept>:^void!
     return null
   foo():void!
-    x:^int = new int;
+    x:^int = new (1) int;
 )Gold";
-  auto ToMatch = cxxNewExpr(
-    hasDeclaration(cxxMethodDecl(hasName("operator new"),
-      isImplicit(),
-      hasType(asString("void *(unsigned long) noexcept"))
+  GoldFailureTest(Code);
+}
+
+// TODO: Create an explicit Initialization argument
+// ===---------------------------------------------------------------------===//
+//                   Lookup of new from use inside of a type
+// ===---------------------------------------------------------------------===//
+TEST(GoldNewDelete, DynamicallySizedArray) {
+  std::string Code = R"Gold(
+foo():void!
+  y = 3
+  x:^int = new [y]int
+  delete [] x
+)Gold";
+  auto ToMatch = functionDecl(
+    hasDescendant(cxxNewExpr(
+      hasDeclaration(functionDecl(
+        hasName("operator new[]"),
+        hasType(asString("void *(unsigned long)"))
+      ))
+    )),
+    hasDescendant(cxxDeleteExpr(
+      deleteFunction(functionDecl(
+        hasName("operator delete[]"),
+        hasType(asString("void (void *) noexcept"))
+      ))
     ))
   );
   ASSERT_TRUE(matches(Code, ToMatch));
 }
+
+TEST(GoldNewDelete, NestedDynamicallySizedArray) {
+  std::string Code = R"Gold(
+foo():void!
+  y = 3
+  x = new [100][y]int
+  delete [] x
+)Gold";
+  auto ToMatch = functionDecl(
+    hasDescendant(varDecl(hasName("x"), hasType(asString("int (*)[100]")))),
+    hasDescendant(cxxNewExpr(
+      hasDeclaration(functionDecl(
+        hasName("operator new[]"),
+        hasType(asString("void *(unsigned long)"))
+      ))
+    )),
+    hasDescendant(cxxDeleteExpr(
+      deleteFunction(functionDecl(
+        hasName("operator delete[]"),
+        hasType(asString("void (void *) noexcept"))
+      ))
+    ))
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+TEST(GoldNewDelete, InvalidDynamicallySizedArray) {
+  std::string Code = R"Gold(
+foo():void!
+  y = 3
+  x = new [y][100]int
+  delete [] x
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldNewDelete, ArraySizeThroughUsing) {
+  std::string Code = R"Gold(
+Ty : type = [4]int
+foo():void!
+  x:^int = new Ty
+  delete [] x
+)Gold";
+  auto ToMatch = functionDecl(
+    hasDescendant(cxxNewExpr(
+      hasDeclaration(functionDecl(
+        hasName("operator new[]"),
+        hasType(asString("void *(unsigned long)"))
+      ))
+    )),
+    hasDescendant(cxxDeleteExpr(
+      deleteFunction(functionDecl(
+        hasName("operator delete[]"),
+        hasType(asString("void (void *) noexcept"))
+      ))
+    ))
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+// Create one for template, and member types.
+TEST(GoldNewDelete, ParenTypeExpr) {
+  std::string Code = R"Gold(
+foo():void!
+  x:^int = new () (int)
+  delete x
+)Gold";
+  auto ToMatch = functionDecl(
+    hasDescendant(cxxNewExpr(
+      unless(isArray()),
+      hasDeclaration(functionDecl(
+        hasName("operator new"),
+        isImplicit(),
+        hasType(asString("void *(unsigned long)"))
+      ))
+    )),
+    hasDescendant(cxxDeleteExpr(
+      deleteFunction(functionDecl(
+        hasName("operator delete"),
+        isImplicit(),
+        hasType(asString("void (void *) noexcept"))
+      ))
+    ))
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+TEST(GoldNewDelete, NewDeleteMemberTy) {
+  std::string Code = R"Gold(
+B = class:
+  C = class:
+    ;
+  foo() :void!
+    v:^C = new C
+    delete v
+)Gold";
+  auto ToMatch = functionDecl(
+    hasDescendant(cxxNewExpr(
+      unless(isArray()),
+      hasDeclaration(functionDecl(
+        hasName("operator new"),
+        isImplicit(),
+        hasType(asString("void *(unsigned long)"))
+      ))
+    )),
+    hasDescendant(cxxDeleteExpr(
+      deleteFunction(functionDecl(
+        hasName("operator delete"),
+        isImplicit(),
+        hasType(asString("void (void *) noexcept"))
+      ))
+    ))
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+TEST(GoldNewDelete, TemplateTypeExpr) {
+  std::string Code = R"Gold(
+Template[T:type] = class:
+  ;
+
+foo():void!
+  x = new Template[int]
+  delete x
+)Gold";
+  auto ToMatch = functionDecl(
+    hasDescendant(cxxNewExpr(
+      unless(isArray()),
+      hasDeclaration(functionDecl(
+        hasName("operator new"),
+        isImplicit(),
+        hasType(asString("void *(unsigned long)"))
+      ))
+    )),
+    hasDescendant(cxxDeleteExpr(
+      deleteFunction(functionDecl(
+        hasName("operator delete"),
+        isImplicit(),
+        hasType(asString("void (void *) noexcept"))
+      ))
+    ))
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+
+TEST(GoldNewDelete, TemplateTypeIncompleteExpr) {
+  std::string Code = R"Gold(
+Template[T:type] = class:
+  ;
+
+foo():void!
+  x = new Template
+  delete x
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldNewDelete, NamespaceType) {
+  std::string Code = R"Gold(
+foo():void!
+  x = new namespace
+  delete x
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldNewDelete, KindType) {
+  std::string Code = R"Gold(
+foo():void!
+  x  = new type
+  delete x
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldNewDelete, NewFunction) {
+  std::string Code = R"Gold(
+foo():void!
+  x = new (int)->void
+)Gold";
+  GoldFailureTest(Code);
+}
+// Also create a failing test for trying to new a function just in case.
+// Create a test for dynamically sized arrays.

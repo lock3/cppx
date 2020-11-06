@@ -987,8 +987,13 @@ Syntax *Parser::parseNew() {
   Token Tok = expectToken(tok::NewKeyword);
 
   Syntax *PlacementArgs = nextTokenIs(tok::LeftParen) ? parseParen() : nullptr;
-  Syntax *Call = makeCall(Context, *this, Tok, PlacementArgs);
-  Syntax *Block = parsePost();
+  // Syntax *Call = makeCall(Context, *this, Tok, PlacementArgs);
+  Syntax *Call = new (Context) CallSyntax(makeOperator(Context, *this,
+                                                       tok::NewKeyword,
+                                                       Tok.getLocation(),
+                                                       Tok.getSpelling()),
+                                      PlacementArgs);
+  Syntax *Block = parsePre();
 
   return onMacro(Call, Block);
 }
@@ -1005,10 +1010,11 @@ Syntax *Parser::parseDelete() {
   Syntax *Seq = onList(ArgArray, llvm::SmallVector<Syntax *, 1>({Arg}));
   Syntax *Name;
   if (ArrayDelete) {
-    Name = makeOperator(Context, *this, DeleteToken.getLocation(), "delete[]");
+    Name = makeOperator(Context, *this, tok::ArrayDelete,
+                        DeleteToken.getLocation(), "delete[]");
   } else {
-    Name = makeOperator(Context, *this, DeleteToken.getLocation(),
-                        DeleteToken.getSpelling());
+    Name = makeOperator(Context, *this, tok::DeleteKeyword,
+                        DeleteToken.getLocation(), DeleteToken.getSpelling());
   }
   return onCall(Name, Seq);
 }

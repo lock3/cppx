@@ -1205,7 +1205,7 @@ Sema::getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
     return nullptr;
   }
   if (!TyExpr->getType()->isTypeOfTypes()) {
-    Diags.Report(Loc, clang::diag::err_not_a_type);
+    Diags.Report(TyExpr->getExprLoc(), clang::diag::err_not_a_type);
     return nullptr;
   }
   if (const clang::CppxTypeLiteral *Ty

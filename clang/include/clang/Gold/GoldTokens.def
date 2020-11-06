@@ -158,6 +158,7 @@ def_token(Character)
 def_token(HexadecimalCharacter)
 def_token(UnicodeCharacter)
 def_token(String)
+def_token(ArrayDelete)
 
 // ... operator indicating tokens
 // def_puncop(Ellipsis, "...") this is used when we are NOT within a fold expression.
