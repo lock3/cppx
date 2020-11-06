@@ -3050,16 +3050,11 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
 
   TypeLocation = D->Op->getLoc();
   if (D->TypeDcl) {
-    llvm::outs() << "Dumping Declaration before failure = \n";
-    D->dump();
     ExprElaborator TypeElab(Context, SemaRef);
     TypeExpr = TypeElab.elaborateExplicitType(D->TypeDcl, nullptr);
-    llvm::outs() << "Gathering type decl's locations?\n";
-    // TypeLocation = D->TypeDcl->getLoc();
   } else {
     TypeExpr = SemaRef.buildTypeExpr(Context.CxxAST.getAutoDeductType(),
                                      D->Op->getLoc());
-    llvm::outs() << "Gathering from Op?\n";
   }
 
   if (!TypeExpr) {
