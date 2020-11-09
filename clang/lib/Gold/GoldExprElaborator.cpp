@@ -3047,14 +3047,16 @@ clang::Expr *ExprElaborator::elaborateNewExpr(const MacroSyntax *Macro) {
       TypeNode = CtorCall->getCallee();
       if (CtorCall->getArguments()) {
         auto ArgList = cast<ListSyntax>(CtorCall->getArguments());
-        if (ArgList->getNumChildren() == 0)
+        if (ArgList->getNumChildren() == 0) {
           DirectInitRange = clang::SourceRange(CtorCall->getLoc(),
                                               CtorCall->getLoc());
-        else
+          ExprEndLoc = CtorCall->getLoc();
+        } else {
           DirectInitRange = clang::SourceRange(ArgList->getChild(0)->getLoc(),
                         ArgList->getChild(ArgList->getNumChildren()-1)->getLoc());
+          ExprEndLoc = ArgList->getChild(ArgList->getNumChildren()-1)->getLoc();
+        }
 
-        ExprEndLoc = ArgList->getChild(ArgList->getNumChildren()-1)->getLoc();
         if (buildFunctionCallArguments(SemaRef, Context, ArgList, CtorArgs))
           return nullptr;
         BuildCtorExpr = true;
@@ -3089,13 +3091,23 @@ clang::Expr *ExprElaborator::elaborateNewExpr(const MacroSyntax *Macro) {
   }
 
   if (BuildCtorExpr) {
-    auto PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
-    auto CtorExpr = SemaRef.getCxxSema().ActOnCXXTypeConstructExpr(PT,
-                  DirectInitRange.getBegin(), CtorArgs,DirectInitRange.getEnd(),
-                                                  /*ListInitialization=*/false);
-    if (CtorExpr.isInvalid())
-      return nullptr;
-    InitializationExpr = CtorExpr.get();
+    if (TInfo->getType()->isUndeducedAutoType()) {
+      if (CtorArgs.size() != 1) {
+        SemaRef.Diags.Report(TypeNode->getLoc(),
+                             clang::diag::err_auto_new_ctor_multiple_expressions)
+                             << TInfo->getType();
+        return nullptr;
+      }
+      InitializationExpr = CtorArgs.front();
+    } else {
+      auto PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
+      auto CtorExpr = SemaRef.getCxxSema().ActOnCXXTypeConstructExpr(PT,
+                  DirectInitRange.getBegin(), CtorArgs, DirectInitRange.getEnd(),
+                                                    /*ListInitialization=*/false);
+      if (CtorExpr.isInvalid())
+        return nullptr;
+      InitializationExpr = CtorExpr.get();
+    }
   }
   clang::ExprResult Res = SemaRef.getCxxSema().BuildCXXNew(
       clang::SourceRange(ExprStartLoc, ExprEndLoc), /*UseGlobal*/false,

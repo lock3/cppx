@@ -44,6 +44,7 @@ const llvm::StringMap<clang::QualType> Sema::createBuiltinTypeList() {
     {"void", Context.CxxAST.VoidTy},
     {"bool", Context.CxxAST.BoolTy},
     {"null_t", Context.CxxAST.NullPtrTy},
+    { "auto", Context.CxxAST.getAutoDeductType()},
 
     // character
     {"cchar", Context.CxxAST.CharTy},

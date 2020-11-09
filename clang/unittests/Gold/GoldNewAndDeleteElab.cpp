@@ -329,29 +329,15 @@ foo():void!
   ASSERT_TRUE(matches(Code, ToMatch));
 }
 
-// TODO: FIXME: This doesn't really work.
-// TEST(GoldNewDelete, BasicNewDeleteArray_WithCall) {
-//   std::string Code = R"Gold(
-// foo():void!
-//   x:^int = new [3]int()
-//   delete [] x
-// )Gold";
-//   auto ToMatch = functionDecl(
-//     hasDescendant(cxxNewExpr(
-//       hasDeclaration(functionDecl(
-//         hasName("operator new[]"),
-//         hasType(asString("void *(unsigned long)"))
-//       ))
-//     )),
-//     hasDescendant(cxxDeleteExpr(
-//       deleteFunction(functionDecl(
-//         hasName("operator delete[]"),
-//         hasType(asString("void (void *) noexcept"))
-//       ))
-//     ))
-//   );
-//   ASSERT_TRUE(matches(Code, ToMatch));
-// }
+
+TEST(GoldNewDelete, BasicNewDeleteArray_WithCall) {
+  std::string Code = R"Gold(
+foo():void!
+  x:^int = new [[3]int]()
+  delete [] x
+)Gold";
+  GoldFailureTest(Code);
+}
 
 
 TEST(GoldNewDelete, ArrayNewPlacementArguments) {
@@ -893,5 +879,31 @@ foo():void!
 )Gold";
   GoldFailureTest(Code);
 }
-// Also create a failing test for trying to new a function just in case.
-// Create a test for dynamically sized arrays.
+
+
+
+TEST(GoldNewDelete, NewAuto) {
+  std::string Code = R"Gold(
+foo():void!
+  x = new [auto](4)
+  delete x
+)Gold";
+  auto ToMatch = functionDecl(
+    hasDescendant(cxxNewExpr(
+      unless(isArray()),
+      hasDeclaration(functionDecl(
+        hasName("operator new"),
+        isImplicit(),
+        hasType(asString("void *(unsigned long)"))
+      ))
+    )),
+    hasDescendant(cxxDeleteExpr(
+      deleteFunction(functionDecl(
+        hasName("operator delete"),
+        isImplicit(),
+        hasType(asString("void (void *) noexcept"))
+      ))
+    ))
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
