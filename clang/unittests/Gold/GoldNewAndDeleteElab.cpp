@@ -244,7 +244,7 @@ foo():void!
 TEST(GoldNewDelete, BasicNewDelete) {
   std::string Code = R"Gold(
 foo():void!
-  x:^int = new int(4)
+  x:^int = new [int](4)
   delete x
 )Gold";
   auto ToMatch = functionDecl(
@@ -273,7 +273,7 @@ operator"new"(s:uint64, ptr:^void)<noexcept>: ^void!
   return ptr
 
 foo(x:^int):void!
-  new (x) int(4)
+  new (x) [int](4)
 )Gold";
   auto ToMatch = functionDecl(
     hasName("foo"),
@@ -309,7 +309,7 @@ foo(x:^int):void!
 TEST(GoldNewDelete, BasicNewDeleteArray) {
   std::string Code = R"Gold(
 foo():void!
-  x:^int = new [3]int
+  x:^int = new [[3]int]
   delete [] x
 )Gold";
   auto ToMatch = functionDecl(
@@ -360,7 +360,7 @@ operator"new[]"(s:uint64, a:int, b:int, c:int)<noexcept>: ^void!
   return null
 
 foo():void!
-  x:^int = new (1, 2, 3) [3]int
+  x:^int = new (1, 2, 3) [[3]int]
   delete [] x
 )Gold";
   auto ToMatch = functionDecl(
@@ -497,7 +497,7 @@ C = class:
     return null
 
 foo():void!
-  x:^C = new C;
+  x:^C = new [C];
 )Gold";
   auto ToMatch = cxxNewExpr(
     hasDeclaration(cxxMethodDecl( hasName("operator new"),
@@ -532,7 +532,7 @@ C = class:
     return null
 
 foo():void!
-  x:^C = new [3]C;
+  x:^C = new [[3]C];
 )Gold";
   auto ToMatch = cxxNewExpr(
     hasDeclaration(cxxMethodDecl(hasName("operator new[]"),
@@ -569,7 +569,7 @@ B = class:
 C = class(B):
   ;
 foo():void!
-  x:^C = new C;
+  x:^C = new [C];
 )Gold";
   auto ToMatch = cxxNewExpr(
     hasDeclaration(cxxMethodDecl( hasName("operator new"),
@@ -606,7 +606,7 @@ B = class:
 C = class(B):
   ;
 foo():void!
-  x:^C = new [3]C;
+  x:^C = new [[3]C];
 )Gold";
   auto ToMatch = cxxNewExpr(
     hasDeclaration(cxxMethodDecl(hasName("operator new[]"),
@@ -644,7 +644,7 @@ B = class:
   operator"new"(sz:uint64)<noexcept>:^void!
     return null
   foo():void!
-    x:^int = new int;
+    x:^int = new [int];
 )Gold";
   auto ToMatch = cxxNewExpr(
     hasDeclaration(functionDecl(hasName("operator new"),
@@ -678,7 +678,7 @@ B = class:
   operator"new"(sz:uint64, s:int)<noexcept>:^void!
     return null
   foo():void!
-    x:^int = new (1) int;
+    x:^int = new (1) [int];
 )Gold";
   GoldFailureTest(Code);
 }
@@ -691,7 +691,7 @@ TEST(GoldNewDelete, DynamicallySizedArray) {
   std::string Code = R"Gold(
 foo():void!
   y = 3
-  x:^int = new [y]int
+  x:^int = new [[y]int]
   delete [] x
 )Gold";
   auto ToMatch = functionDecl(
@@ -715,7 +715,7 @@ TEST(GoldNewDelete, NestedDynamicallySizedArray) {
   std::string Code = R"Gold(
 foo():void!
   y = 3
-  x = new [100][y]int
+  x = new [[100, y]int]
   delete [] x
 )Gold";
   auto ToMatch = functionDecl(
@@ -740,7 +740,7 @@ TEST(GoldNewDelete, InvalidDynamicallySizedArray) {
   std::string Code = R"Gold(
 foo():void!
   y = 3
-  x = new [y][100]int
+  x = new [[y, 100]int]
   delete [] x
 )Gold";
   GoldFailureTest(Code);
@@ -750,7 +750,7 @@ TEST(GoldNewDelete, ArraySizeThroughUsing) {
   std::string Code = R"Gold(
 Ty : type = [4]int
 foo():void!
-  x:^int = new Ty
+  x:^int = new [Ty]
   delete [] x
 )Gold";
   auto ToMatch = functionDecl(
@@ -774,7 +774,7 @@ foo():void!
 TEST(GoldNewDelete, ParenTypeExpr) {
   std::string Code = R"Gold(
 foo():void!
-  x:^int = new () (int)
+  x:^int = new () [(int)]
   delete x
 )Gold";
   auto ToMatch = functionDecl(
@@ -803,7 +803,7 @@ B = class:
   C = class:
     ;
   foo() :void!
-    v:^C = new C
+    v:^C = new [C]
     delete v
 )Gold";
   auto ToMatch = functionDecl(
@@ -832,7 +832,7 @@ Template[T:type] = class:
   ;
 
 foo():void!
-  x = new Template[int]
+  x = new [Template[int]]
   delete x
 )Gold";
   auto ToMatch = functionDecl(
@@ -862,7 +862,7 @@ Template[T:type] = class:
   ;
 
 foo():void!
-  x = new Template
+  x = new [Template]
   delete x
 )Gold";
   GoldFailureTest(Code);
@@ -871,7 +871,7 @@ foo():void!
 TEST(GoldNewDelete, NamespaceType) {
   std::string Code = R"Gold(
 foo():void!
-  x = new namespace
+  x = new [namespace]
   delete x
 )Gold";
   GoldFailureTest(Code);
@@ -880,7 +880,7 @@ foo():void!
 TEST(GoldNewDelete, KindType) {
   std::string Code = R"Gold(
 foo():void!
-  x  = new type
+  x  = new [type]
   delete x
 )Gold";
   GoldFailureTest(Code);
@@ -889,7 +889,7 @@ foo():void!
 TEST(GoldNewDelete, NewFunction) {
   std::string Code = R"Gold(
 foo():void!
-  x = new (int)->void
+  x = new [(int)->void]
 )Gold";
   GoldFailureTest(Code);
 }

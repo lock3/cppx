@@ -3047,8 +3047,9 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   // as a valid type alias.
   clang::Expr *TypeExpr = nullptr;
   clang::SourceLocation TypeLocation;
+  // llvm::outs() << "Dumping AST for D->TypeDecl\n";
 
-  TypeLocation = D->Op->getLoc();
+  // TypeLocation = D->Op->getLoc();
   if (D->TypeDcl) {
     ExprElaborator TypeElab(Context, SemaRef);
     TypeExpr = TypeElab.elaborateExplicitType(D->TypeDcl, nullptr);
@@ -3062,7 +3063,6 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
-
   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(TypeExpr,
                                                                   TypeLocation);
   if (!TInfo) {

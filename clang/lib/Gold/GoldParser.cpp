@@ -992,10 +992,23 @@ Syntax *Parser::parseNew() {
                                                        tok::NewKeyword,
                                                        Tok.getLocation(),
                                                        Tok.getSpelling()),
-                                      PlacementArgs);
-  Syntax *Block = parsePre();
+                                          PlacementArgs);
+  EnclosingBrackets Brackets(*this);
+  if (!Brackets.expectOpen())
+    return onError();
 
-  return onMacro(Call, Block);
+  Syntax *TypeExpr = parsePre();
+
+  if (!Brackets.expectClose())
+    return onError();
+
+  Syntax *CtorArgs = nextTokenIs(tok::LeftParen) ? parseParen() : nullptr;
+
+  // Constructor arguments.
+  if (CtorArgs)
+    TypeExpr = onCall(TypeExpr, CtorArgs);
+
+  return onMacro(Call, TypeExpr);
 }
 
 Syntax *Parser::parseDelete() {
