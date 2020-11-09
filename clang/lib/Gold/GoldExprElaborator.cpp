@@ -316,6 +316,12 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
   std::string Spelling = Base == 10 ? S->getSpelling() :
     S->getSpelling().substr(2);
 
+  auto It = std::find(Spelling.begin(), Spelling.end(), '\'');
+  while(It != std::end(Spelling)) {
+    Spelling.erase(It);
+    It = std::find(Spelling.begin(), Spelling.end(), '\'');
+  }
+
   llvm::APInt Value(Width, Spelling, Base);
   Value = Value.zextOrTrunc(Width);
 
@@ -329,30 +335,38 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
 }
 
 static clang::FloatingLiteral *
-createFloatLiteral(clang::ASTContext &CxxAST, const LiteralSyntax *S) {
+createFloatLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
+                   const LiteralSyntax *S) {
   // If we don't have a specified type, just create a default float.
   clang::QualType FloatType = CxxAST.FloatTy;
   if (S->Suffix.IsDouble)
     FloatType = CxxAST.DoubleTy;
+  else if (S->Suffix.IsHalf)
+    FloatType = CxxAST.Float16Ty;
+  else if (S->Suffix.IsQuarter) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "minifloats not yet supported by Clang");
+    SemaRef.Diags.Report(S->getLoc(), DiagID);
+    return nullptr;
+  }
 
   const llvm::fltSemantics &Format = CxxAST.getFloatTypeSemantics(FloatType);
   using llvm::APFloat;
   APFloat Val = llvm::APFloat(Format);
 
-  // if (FloatType == CxxAST.FloatTy) {
+  std::string Spelling = S->getSpelling();
+  auto It = std::find(Spelling.begin(), Spelling.end(), '\'');
+  while(It != std::end(Spelling)) {
+    Spelling.erase(It);
+    It = std::find(Spelling.begin(), Spelling.end(), '\'');
+  }
+
   auto StatusOrErr =
-    Val.convertFromString(S->getSpelling(), APFloat::rmNearestTiesToEven);
+    Val.convertFromString(Spelling, APFloat::rmNearestTiesToEven);
   assert(StatusOrErr && "Invalid floating point representation");
   return clang::FloatingLiteral::Create(CxxAST, Val, /*Exact=*/true,
                                         FloatType, S->getLoc());
-  // } else if (FloatType == CxxAST.DoubleTy) {
-    // double Literal = atof(T.getSymbol().data());
-    // auto Value = llvm::APFloat(Literal);
-    // return clang::FloatingLiteral::Create(CxxAST, Value, /*Exact=*/true,
-    //                                       FloatType, S->getLoc());
-  // }
-
-
 }
 
 static clang::FloatingLiteral *
@@ -362,6 +376,11 @@ createExponentLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
   assert((Spelling.find_first_of("E") != std::string::npos ||
          Spelling.find_first_of("e") != std::string::npos) &&
          "non-exponent");
+  auto It = std::find(Spelling.begin(), Spelling.end(), '\'');
+  while(It != std::end(Spelling)) {
+    Spelling.erase(It);
+    It = std::find(Spelling.begin(), Spelling.end(), '\'');
+  }
 
   const llvm::fltSemantics &Format =
     CxxAST.getFloatTypeSemantics(CxxAST.DoubleTy);
@@ -1236,28 +1255,27 @@ static clang::Expr *createThisExpr(Sema &SemaRef, const AtomSyntax *S) {
   return SemaRef.getCxxSema().ActOnCXXThis(S->getLoc()).get();
 }
 
+static inline bool hasFloatingTypeSuffix(const LiteralSyntax *S) {
+  return S->Suffix.IsFloat || S->Suffix.IsDouble
+    || S->Suffix.IsHalf || S->Suffix.IsQuarter;
+}
+
 clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
                                            clang::QualType ExplicitType) {
   Token T = S->Tok;
 
   // Check if we have a floating literal that looks like an int.
   if (const LiteralSyntax *L = dyn_cast<LiteralSyntax>(S))
-    if (L->Suffix.IsFloat || L->Suffix.IsDouble)
-      return createFloatLiteral(CxxAST, L);
+    if (hasFloatingTypeSuffix(L))
+      return createFloatLiteral(CxxAST, SemaRef, L);
 
   switch (T.getKind()) {
   case tok::DecimalInteger:
     return createIntegerLiteral(CxxAST, SemaRef, cast<LiteralSyntax>(S));
   case tok::DecimalFloat:
-    return createFloatLiteral(CxxAST, cast<LiteralSyntax>(S));
-  case tok::BinaryInteger: {
-    std::string TData = std::string(T.getSymbol().data());
-    TData =  TData.substr(TData.find_first_not_of("0b"), TData.size());
-    Token RawBin = Token(tok::BinaryInteger, T.getLocation(), Symbol(&TData));
-    return createIntegerLiteral(CxxAST, RawBin, ExplicitType,
-                                S->getLoc(), /*Base=*/2);
-  }
-
+    return createFloatLiteral(CxxAST, SemaRef, cast<LiteralSyntax>(S));
+  case tok::BinaryInteger: 
+    return createIntegerLiteral(CxxAST, SemaRef, cast<LiteralSyntax>(S), 2);
   case tok::HexadecimalInteger:
     return createIntegerLiteral(CxxAST, SemaRef,
                                 cast<LiteralSyntax>(S), /*Base=*/16);

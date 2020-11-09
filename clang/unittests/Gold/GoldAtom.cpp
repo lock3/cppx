@@ -167,3 +167,45 @@ main() : int!
   SimpleGoldParseTest(Code.str());
 }
 
+TEST(Atom, Separators) {
+  StringRef Code = R"(
+main() : int!
+  x : int = 123'000
+  y : int = 0x1'000
+  z : int = 0b1'000
+  alpha   = 1'00.12'3
+  beta    = 1e1
+)";
+
+  static const pair<const char *, int> Integers[] = {
+    {"x", 123000},
+    {"y", 0x1000},
+    {"z", 0b1000},
+  };
+
+  static const pair<const char *, float> Floats[] = {
+    {"alpha", 100.123}
+  };
+
+  for (auto Var : Integers) {
+    StatementMatcher
+      VarMatcher(hasDescendant(
+                      varDecl(hasName(Var.first),
+                              hasDescendant(integerLiteral(equals(Var.second)))
+                        )
+                      ));
+
+    ASSERT_TRUE(matches(Code.str(), VarMatcher));
+  }
+
+  for (auto Var : Floats) {
+    StatementMatcher
+      VarMatcher(hasDescendant(
+                      varDecl(hasName(Var.first),
+                              hasDescendant(floatLiteral(equals(Var.second)))
+                        )
+                      ));
+
+    ASSERT_TRUE(matches(Code.str(), VarMatcher));
+  }
+}
