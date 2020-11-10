@@ -96,11 +96,14 @@ S1 : const int = sizeof(Ns)
   GoldFailureTest(Code);
 }
 
-// TODO: Create tests for alignof - (this is missing the alignas attribute)
-// TEST(GoldBuiltinFunctionElab, Alignof_Type) {
-//   ASSERT_TRUE(false) << "Need to implement alignas attribute\n";
-// }
-
+TEST(GoldBuiltinFunctionElab, SizeOf_ParameterPack) {
+  StringRef Code = R"(
+Cls [T:type...] = class:
+  S1 <static>: const int = sizeof...(T)
+)";
+  auto ToMatch = sizeOfPackExpr();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
 TEST(GoldBuiltinFunctionElab, decltype_TypeOfTypes) {
   StringRef Code = R"(

@@ -11427,6 +11427,13 @@ def err_invalid_destructor_call : Error<
 def err_cannot_allocate_type : Error<
   "cannot allocate type %0">;
 
+def err_invalid_sizeof_complex_arg : Error<
+  "argument provided does not refer to a parameter pack">;
+
+def err_invalid_call_to_sizeof_pack : Error<
+  "invalid use of 'sizeof...', sizeof expects a single argument which is the "
+  "name of a parameter pack.">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

@@ -92,6 +92,7 @@ public:
   /// alignof operator implementations.
   clang::Expr *elaborateTypeTraitsOp(const AtomSyntax *Name, const CallSyntax *S,
                                      clang::UnaryExprOrTypeTrait Trait);
+  clang::Expr *elaborateSizeOfPack(const AtomSyntax *Name, const CallSyntax *S);
 
   clang::Expr *elaborateDeclTypeOp(const AtomSyntax *Name, const CallSyntax *S);
   clang::Expr *elaborateNoExceptOp(const AtomSyntax *Name, const CallSyntax *S);

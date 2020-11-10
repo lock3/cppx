@@ -76,6 +76,7 @@ add_clang_unittest(GoldTests
   GoldCXX11AttributeElab.cpp
   GoldDeclarationRevampTests.cpp
   GoldDeclaratorElab.cpp
+  GoldDecltypeAutoElab.cpp
   GoldDeductExec.cpp
   GoldDefaultFunctionArgumentsElab.cpp
   GoldEnumElab.cpp

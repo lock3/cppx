@@ -1723,6 +1723,8 @@ Syntax *Parser::parsePrimary() {
   case tok::ThrowKeyword:
     return parseThrow();
 
+  case tok::SizeOfPack:
+    return onAtom(consumeToken());
   case tok::RefKeyword:
   case tok::RValueRefKeyword:
   case tok::ConstKeyword:

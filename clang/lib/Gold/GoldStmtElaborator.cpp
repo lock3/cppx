@@ -935,8 +935,7 @@ StmtElaborator::elaborateBlock(const Syntax *S) {
   }
 
   clang::Stmt *Block = SemaRef.getCxxSema().ActOnCompoundStmt(StartLoc, EndLoc,
-                                                              Results,
-                                                    /*isStmtExpr=*/false).get();
+                                          Results, /*isStmtExpr=*/false).get();
   SemaRef.leaveScope(S);
   return Block;
 }

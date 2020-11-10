@@ -25,6 +25,8 @@ extern const internal::VariadicDynCastAllOfMatcher<
 extern const internal::VariadicDynCastAllOfMatcher<
   Decl, VarTemplatePartialSpecializationDecl> varTemplatePartialSpecializationDecl;
 
+  
+
 extern const internal::VariadicDynCastAllOfMatcher<Decl, TemplateTemplateParmDecl>
     templateTemplateParmDecl;
 
@@ -34,6 +36,8 @@ extern const internal::VariadicDynCastAllOfMatcher<Stmt, PackExpansionExpr>
 extern const internal::VariadicDynCastAllOfMatcher<Stmt, CXXFoldExpr>
     cxxFoldExpr;
 
+extern const internal::VariadicDynCastAllOfMatcher<Stmt, SizeOfPackExpr>
+    sizeOfPackExpr;
 
 // I created this because it didn't exist before this and I acutally needed it
 // for a particular test.
@@ -175,8 +179,6 @@ AST_MATCHER_P(CXXDeleteExpr, deleteFunction, internal::Matcher<Decl>,
   return (OpDel != nullptr &&
           InnerMatcher.matches(*OpDel, Finder, Builder));
 }
-
-
 
 using clang::tooling::buildASTFromCodeWithArgs;
 using clang::tooling::newFrontendActionFactory;

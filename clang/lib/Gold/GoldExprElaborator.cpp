@@ -1531,6 +1531,7 @@ static bool isBuiltinOperator(const CallSyntax *S) {
     switch (Atom->Tok.getKind()) {
       case tok::AlignOfKeyword:
       case tok::SizeOfKeyword:
+      case tok::SizeOfPack:
       case tok::NoExceptKeyword:
       case tok::DeclTypeKeyword:
       case tok::UnaryRightFold:
@@ -1556,6 +1557,9 @@ clang::Expr *ExprElaborator::elaborateBuiltinOperator(const CallSyntax *S) {
 
   case tok::DeclTypeKeyword:
     return elaborateDeclTypeOp(Atom, S);
+
+  case tok::SizeOfPack:
+    return elaborateSizeOfPack(Atom, S);
 
   case tok::AlignOfKeyword:
     return elaborateTypeTraitsOp(Atom, S, clang::UETT_AlignOf);
@@ -1627,6 +1631,106 @@ ExprElaborator::elaborateTypeTraitsOp(const AtomSyntax *Name, const CallSyntax *
   return Result.get();
 }
 
+namespace {
+
+// Callback to only accept typo corrections that refer to parameter packs.
+class ParameterPackValidatorCCC final : public clang::CorrectionCandidateCallback {
+ public:
+  bool ValidateCandidate(const clang::TypoCorrection &candidate) override {
+    clang::NamedDecl *ND = candidate.getCorrectionDecl();
+    return ND && ND->isParameterPack();
+  }
+
+  std::unique_ptr<CorrectionCandidateCallback> clone() override {
+    return std::make_unique<ParameterPackValidatorCCC>(*this);
+  }
+};
+
+}
+
+clang::Expr *
+ExprElaborator::elaborateSizeOfPack(const AtomSyntax *Name,
+                                    const CallSyntax *S) {
+  if (S->getNumArguments() != 1) {
+    SemaRef.Diags.Report(Name->getLoc(),
+                         clang::diag::err_invalid_call_to_sizeof_pack);
+    return nullptr;
+  }
+
+  auto PackName = dyn_cast_or_null<AtomSyntax>(S->getArgument(0));
+  if (!PackName) {
+    SemaRef.Diags.Report(Name->getLoc(),
+                         clang::diag::err_invalid_sizeof_complex_arg);
+    return nullptr;
+  }
+  clang::IdentifierInfo &Id = Context.CxxAST.Idents.get(PackName->getSpelling());
+  // C++0x [expr.sizeof]p5:
+  //   The identifier in a sizeof... expression shall name a parameter pack.
+  clang::LookupResult R(SemaRef.getCxxSema(), &Id, Name->getLoc(),
+                        clang::Sema::LookupOrdinaryName);
+  if (!SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) {
+    SemaRef.Diags.Report(S->getLoc(),
+                        clang::diag::err_identifier_not_declared_in_scope)
+                        << Name->getSpelling();
+    return nullptr;
+  }
+
+  clang::NamedDecl *ParameterPack = nullptr;
+  switch (R.getResultKind()) {
+  case clang::LookupResult::Found:
+    ParameterPack = R.getFoundDecl();
+    break;
+
+  case clang::LookupResult::NotFound:
+  case clang::LookupResult::NotFoundInCurrentInstantiation: {
+    ParameterPackValidatorCCC CCC{};
+    if (clang::TypoCorrection Corrected =
+            SemaRef.getCxxSema().CorrectTypo(R.getLookupNameInfo(),
+                                             R.getLookupKind(),
+                                             SemaRef.getCurClangScope(),
+                                             nullptr,
+                                             CCC,
+                                             clang::Sema::CTK_ErrorRecovery)) {
+      SemaRef.getCxxSema().diagnoseTypo(Corrected,
+        SemaRef.getCxxSema().PDiag(
+          clang::diag::err_sizeof_pack_no_pack_name_suggest) << &Id,
+        SemaRef.getCxxSema().PDiag(clang::diag::note_parameter_pack_here));
+      ParameterPack = Corrected.getCorrectionDecl();
+    }
+    break;
+  }
+  case clang::LookupResult::FoundOverloaded:
+  case clang::LookupResult::FoundUnresolvedValue:
+    break;
+
+  case clang::LookupResult::Ambiguous:
+    SemaRef.getCxxSema().DiagnoseAmbiguousLookup(R);
+    // return ExprError();
+    return nullptr;
+  }
+
+  if (!ParameterPack || !ParameterPack->isParameterPack()) {
+    SemaRef.getCxxSema().Diag(Name->getLoc(),
+                              clang::diag::err_sizeof_pack_no_pack_name)
+                              << &Id;
+    return nullptr;
+  }
+
+  SemaRef.getCxxSema().MarkAnyDeclReferenced(Name->getLoc(), ParameterPack, true);
+
+  return clang::SizeOfPackExpr::Create(Context.CxxAST,
+                                       Name->getLoc(), ParameterPack,
+                                       Name->getLoc(),
+                                       PackName->getLoc());
+  // SemaRef.getCurClangScope()->dump();
+  // clang::IdentifierInfo &Id = Context.CxxAST.Idents.get(PackName->getSpelling());
+  // auto Res = SemaRef.getCxxSema().ActOnSizeofParameterPackExpr(
+  //   SemaRef.getCurClangScope(), Name->getLoc(), Id, S->getLoc(), S->getLoc());
+  // Res.get()->dump();
+  // // llvm_unreachable("Working on it.");
+  // return Res.get();
+}
+
 clang::Expr *
 ExprElaborator::elaborateDeclTypeOp(const AtomSyntax *Name,
                                     const CallSyntax *S) {
@@ -1654,8 +1758,11 @@ ExprElaborator::elaborateDeclTypeOp(const AtomSyntax *Name,
   // the SemaRef.getCxxSema().ActOnDecltypeExpression because they wouldn't make
   // any sense, it may be benifical to do the same for the kind type.
   if (ArgEval->getType()->isTypeOfTypes()) {
-    // TODO: We may need to check for auto here. although decltype(auto) doesn't
-    // have syntax yet.
+    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(ArgEval,
+                                                   S->getArgument(0)->getLoc());
+    if (TInfo->getType() == Context.CxxAST.getAutoDeductType())
+      return SemaRef.buildTypeExpr(TInfo->getType(), S->getLoc());
+
     return SemaRef.buildTypeExpr(Context.CxxAST.CppxKindTy, S->getLoc());
   }
 
