@@ -321,6 +321,7 @@ namespace gold
     Syntax *onCall(Syntax *e1, Syntax *e2);
     Syntax *onElem(const TokenPair& toks, Syntax *e1, Syntax *e2);
     Syntax *onMacro(Syntax *e1, Syntax *e2);
+    Syntax *onMacro(Syntax *e1, Syntax *e2, Syntax *e3);
     Syntax *onCatch(const Token &Catch, Syntax *Args, Syntax *Block);
     Syntax *onIf(const Token& tok, Syntax *e1, Syntax *e2, Syntax *e3);
     Syntax *onElse(const Token& tok, Syntax *e1);

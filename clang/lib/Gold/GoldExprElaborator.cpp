@@ -3216,6 +3216,7 @@ clang::Expr *ExprElaborator::elaborateNewExpr(const MacroSyntax *Macro) {
   const Syntax *TypeNode = nullptr;
   llvm::SmallVector<clang::Expr *, 8> CtorArgs;
   bool BuildCtorExpr = false;
+  bool BuildInitListExpr = false;
   auto CtorCall = dyn_cast<CallSyntax>(TypeOrCtorExpr);
   if (CtorCall) {
     FusedOpKind OpKind = getFusedOpKind(SemaRef, CtorCall);
@@ -3244,16 +3245,29 @@ clang::Expr *ExprElaborator::elaborateNewExpr(const MacroSyntax *Macro) {
         llvm_unreachable("Invalid AST structure");
       }
     }
+  } else if (auto MacroTypeNode = dyn_cast<MacroSyntax>(TypeOrCtorExpr)) {
+    ExprEndLoc = TypeOrCtorExpr->getLoc();
+    TypeNode = MacroTypeNode->getCall();
+    // if (auto TypeCallNode = dyn_cast<CallSyntax>(MacroTypeNode->getCall())) {
+    auto ArgList = cast<ArraySyntax>(MacroTypeNode->getBlock());
+    if (ArgList->getNumChildren() == 0)
+      ExprEndLoc = CtorCall->getLoc();
+    else
+      ExprEndLoc = ArgList->getChild(ArgList->getNumChildren()-1)->getLoc();
+    if (buildFunctionCallArguments(SemaRef, Context, ArgList, CtorArgs))
+      return nullptr;
+    BuildInitListExpr = true;
   } else {
     ExprEndLoc = TypeOrCtorExpr->getLoc();
     TypeNode = TypeOrCtorExpr;
   }
+
   // Attempting to get the type expression.
   clang::Expr *TyExpr = elaborateNewExpr_TypeNode(TypeNode, ArraySizeExpr);
   // TODO: I need to figure out if this need an additional error message.
   if (!TyExpr)
     return nullptr;
-
+  // if (!isa<clang::InitListExpr>(TyExpr)) {
   TInfo = SemaRef.getTypeSourceInfoFromExpr(TyExpr, TypeNode->getLoc());
   if (!TInfo)
     return nullptr;
@@ -3263,8 +3277,8 @@ clang::Expr *ExprElaborator::elaborateNewExpr(const MacroSyntax *Macro) {
       || TyToNew->isNamespaceType()) {
     // llvm_unreachable("Cannot create an instance of this type.");
     SemaRef.Diags.Report(TypeNode->getLoc(),
-                         clang::diag::err_cannot_allocate_type)
-                         << TyToNew;
+                        clang::diag::err_cannot_allocate_type)
+                        << TyToNew;
     return nullptr;
   }
 
@@ -3272,8 +3286,8 @@ clang::Expr *ExprElaborator::elaborateNewExpr(const MacroSyntax *Macro) {
     if (TInfo->getType()->isUndeducedAutoType()) {
       if (CtorArgs.size() != 1) {
         SemaRef.Diags.Report(TypeNode->getLoc(),
-                             clang::diag::err_auto_new_ctor_multiple_expressions)
-                             << TInfo->getType();
+                            clang::diag::err_auto_new_ctor_multiple_expressions)
+                            << TInfo->getType();
         return nullptr;
       }
       InitializationExpr = CtorArgs.front();
@@ -3287,6 +3301,15 @@ clang::Expr *ExprElaborator::elaborateNewExpr(const MacroSyntax *Macro) {
       InitializationExpr = CtorExpr.get();
     }
   }
+  if (BuildInitListExpr) {
+    clang::ExprResult InitList =
+      SemaRef.getCxxSema().ActOnInitList(TypeOrCtorExpr->getLoc(), CtorArgs,
+                                         TypeOrCtorExpr->getLoc());
+    InitializationExpr = InitList.get();
+  }
+  // } else {
+  //   InitializationExpr = TyExpr;
+  // }
   clang::ExprResult Res = SemaRef.getCxxSema().BuildCXXNew(
       clang::SourceRange(ExprStartLoc, ExprEndLoc), /*UseGlobal*/false,
       PlacementLParen, PlacementArgs, PlacementRParen, TypeIdParens,

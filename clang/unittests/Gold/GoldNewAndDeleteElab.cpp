@@ -907,3 +907,74 @@ foo():void!
   );
   ASSERT_TRUE(matches(Code, ToMatch));
 }
+
+
+
+// ===---------------------------------------------------------------------===//
+//                Universal init operator new
+// ===---------------------------------------------------------------------===//
+TEST(GoldNewDelete, InitList_NewDelete) {
+  std::string Code = R"Gold(
+foo():void!
+  x:^int = new [int]{4}
+  delete x
+)Gold";
+  auto ToMatch = functionDecl(
+    hasDescendant(cxxNewExpr(
+      unless(isArray()),
+      hasDeclaration(functionDecl(
+        hasName("operator new"),
+        isImplicit(),
+        hasType(asString("void *(unsigned long)"))
+      )),
+      hasDescendant(initListExpr())
+    ))
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+TEST(GoldNewDelete, InitList_PlacementNewExpr) {
+  std::string Code = R"Gold(
+operator"new"(s:uint64, ptr:^void)<noexcept>: ^void!
+  return ptr
+
+foo(x:^int):void!
+  new (x) [int]{ 4 }
+)Gold";
+  auto ToMatch = functionDecl(
+    hasName("foo"),
+    hasDescendant(cxxNewExpr(
+      unless(isArray()),
+      hasDeclaration(functionDecl(
+        hasName("operator new"),
+        unless(isImplicit()),
+        hasType(asString("void *(unsigned long, void *) noexcept"))
+      )),
+      hasDescendant(initListExpr())
+    ))
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+// TEST(GoldNewDelete, InitList_BasicNewDeleteArray) {
+//   std::string Code = R"Gold(
+// foo():void!
+//   x:^int = new [[3]int]
+//   delete [] x
+// )Gold";
+//   auto ToMatch = functionDecl(
+//     hasDescendant(cxxNewExpr(
+//       hasDeclaration(functionDecl(
+//         hasName("operator new[]"),
+//         hasType(asString("void *(unsigned long)"))
+//       ))
+//     )),
+//     hasDescendant(cxxDeleteExpr(
+//       deleteFunction(functionDecl(
+//         hasName("operator delete[]"),
+//         hasType(asString("void (void *) noexcept"))
+//       ))
+//     ))
+//   );
+//   ASSERT_TRUE(matches(Code, ToMatch));
+// }
