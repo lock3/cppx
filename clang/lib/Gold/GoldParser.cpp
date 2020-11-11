@@ -1843,9 +1843,16 @@ Syntax *Parser::parseBracedArray() {
   // They are not relevant.
   while (nextTokenIs(tok::Indent))
     consumeToken();
+  Syntax *ret = nullptr;
+  if (!nextTokenIs(tok::RightBrace)) {
 
-  // FIXME: How do we recover from errors?
-  Syntax *ret = parseArray(BlockArray);
+    // FIXME: How do we recover from errors?
+    ret = parseArray(BlockArray);
+  } else {
+    // Creating an empty block array
+    llvm::SmallVector<Syntax *, 0> Vec;
+    ret = onArray(BlockArray, Vec);
+  }
 
   // Ignore dedents as well.
   while (nextTokenIs(tok::Dedent))

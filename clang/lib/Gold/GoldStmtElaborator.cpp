@@ -835,6 +835,7 @@ StmtElaborator::elaborateWhileStmt(const MacroSyntax *S) {
   return While.get();
 }
 
+
 clang::Stmt *
 StmtElaborator::elaborateMacro(const MacroSyntax *S) {
   const AtomSyntax *Callee;
@@ -879,11 +880,7 @@ StmtElaborator::elaborateMacro(const MacroSyntax *S) {
   if (Tok.getKind() == tok::NewKeyword)
     return ExprElaborator(Context, SemaRef).elaborateNewExpr(S);
 
-  unsigned DiagID = Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                          "use of undefined macro");
-  Diags.Report(Callee->getLoc(), DiagID);
-
-  return nullptr;
+  return ExprElaborator(Context, SemaRef).elaborateInitListCall(S);
 }
 
 clang::Stmt *

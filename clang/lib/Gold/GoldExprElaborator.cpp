@@ -1325,23 +1325,39 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
   return nullptr;
 }
 
-static bool buildFunctionCallArguments(Sema &SemaRef, SyntaxContext &Context,
-    const ListSyntax *ArgList,
-    llvm::SmallVector<clang::Expr *, 8> &Args) {
-  for (const Syntax *A : ArgList->children()) {
+static bool buildAnyFunctionCallArguments(Sema &SemaRef, SyntaxContext &Context,
+    Syntax::child_range Children, llvm::SmallVector<clang::Expr *, 8> &Args) {
+  for (const Syntax *A : Children) {
     ExprElaborator Elab(Context, SemaRef);
     clang::Expr *Argument = Elab.doElaborateExpr(A);
-
-    // FIXME: What kind of expression is the unary ':typename' expression?
     if (!Argument) {
       SemaRef.Diags.Report(A->getLoc(), clang::diag::err_expected_expression);
       return true;
     }
-
     Args.push_back(Argument);
   }
   return false;
 }
+
+static bool buildFunctionCallArguments(Sema &SemaRef, SyntaxContext &Context,
+    const ListSyntax *ArgList,
+    llvm::SmallVector<clang::Expr *, 8> &Args) {
+  return buildAnyFunctionCallArguments(SemaRef, Context, ArgList->children(), Args);
+}
+
+static bool buildFunctionCallArguments(Sema &SemaRef, SyntaxContext &Context,
+    const ArraySyntax *ArgList,
+    llvm::SmallVector<clang::Expr *, 8> &Args) {
+
+  if (ArgList->getNumChildren() > 0)
+    if (auto LS = dyn_cast<ListSyntax>(ArgList->getChild(0)))
+      return buildAnyFunctionCallArguments(SemaRef, Context,
+                                          LS->children(), Args);
+
+  return buildAnyFunctionCallArguments(SemaRef, Context,
+                                       ArgList->children(), Args);
+}
+
 
 /// This function's job is to create the correct call based upon the result
 /// type of the CalleeExpr, which could be any of the types within the
@@ -1370,7 +1386,8 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
       return nullptr;
     clang::ExprResult ConstructorExpr =
         SemaRef.getCxxSema().BuildCXXTypeConstructExpr(TInfo, S->getLoc(),
-                                                      Args, S->getLoc(), false);
+                                                      Args, S->getLoc(),
+                                                   /*ListInitialization*/false);
 
     if (!ConstructorExpr.get()) {
       SemaRef.Diags.Report(S->getLoc(),
@@ -3091,11 +3108,22 @@ static clang::Expr *handleOfMacro(SyntaxContext &Context, Sema &SemaRef,
   return Res.get();
 }
 
+static bool isOpNewCall(const MacroSyntax *S) {
+  auto OpNew = dyn_cast<CallSyntax>(S->getCall());
+  if (OpNew)
+    if (auto Name = dyn_cast<AtomSyntax>(OpNew->getCallee()))
+      return Name->hasToken(tok::NewKeyword);
+  return false;
+}
+
 clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
-  // The only macro expression that's currently valid as a call is the
-  // new expression.
-  if (isa<CallSyntax>(S->getCall()))
+
+  // Checking if we are handling operator new parsing.
+  if (isOpNewCall(S))
     return elaborateNewExpr(S);
+
+  if (!isa<AtomSyntax>(S->getCall()))
+    return elaborateInitListCall(S);
 
   assert (isa<AtomSyntax>(S->getCall()) && "Unexpected macro call");
 
@@ -3112,14 +3140,39 @@ clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
     return handleArrayMacro(Context, SemaRef, S);
   else if (Call->getSpelling() == "of")
     return handleOfMacro(Context, SemaRef, S);
-
-  unsigned DiagID =
-    SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                  "unknown macro");
-  SemaRef.Diags.Report(S->getLoc(), DiagID);
-  return nullptr;
+  else
+    return elaborateInitListCall(S);
 }
 
+clang::Expr *
+ExprElaborator::elaborateInitListCall(const MacroSyntax *Macro) {
+  clang::Expr *IdExpr = elaborateExpr(Macro->getCall());
+  if (!IdExpr) {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "unknown macro");
+    SemaRef.Diags.Report(Macro->getLoc(), DiagID);
+    return nullptr;
+  }
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(IdExpr,
+                                                    Macro->getCall()->getLoc());
+  if (!TInfo)
+    return nullptr;
+
+  llvm::SmallVector<clang::Expr *, 8> Args;
+  auto Arr = cast<ArraySyntax>(Macro->getBlock());
+  if (buildFunctionCallArguments(SemaRef, Context, Arr, Args))
+    return nullptr;
+  auto InitList = SemaRef.getCxxSema().ActOnInitList(Macro->getLoc(),
+                                                     Args, Macro->getLoc());
+  llvm::SmallVector<clang::Expr *, 1> InitListArg { InitList.get() };
+  clang::ExprResult ConstructorExpr =
+        SemaRef.getCxxSema().BuildCXXTypeConstructExpr(TInfo, Macro->getLoc(),
+                                                       InitListArg,
+                                                       Macro->getLoc(),
+                                                    /*ListInitialization*/true);
+  return ConstructorExpr.get();
+}
 
 clang::Expr *ExprElaborator::elaborateNewExpr(const MacroSyntax *Macro) {
   auto OpNew = dyn_cast<CallSyntax>(Macro->getCall());

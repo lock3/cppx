@@ -148,6 +148,8 @@ public:
                                       bool IsConstExpr = false);
 
   clang::Expr *elaborateMacro(const MacroSyntax *Macro);
+
+  clang::Expr *elaborateInitListCall(const MacroSyntax *Macro);
   clang::Expr *elaborateNewExpr(const MacroSyntax *Macro);
   clang::Expr *elaborateNewExpr_ArrayCall(const CallSyntax *S,
                                    llvm::Optional<clang::Expr *> &DynArrayExpr);
