@@ -26,6 +26,7 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/LexDiagnostic.h"
 #include "clang/Lex/LiteralSupport.h"
+#include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Ownership.h"
 #include "clang/Sema/ParsedTemplate.h"
@@ -44,6 +45,7 @@
 #include "clang/Gold/GoldExprMarker.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSema.h"
+#include "clang/Gold/GoldStmtElaborator.h"
 #include "clang/Gold/GoldSyntaxContext.h"
 #include "clang/Gold/GoldTokens.h"
 
@@ -139,67 +141,6 @@ clang::Expr *ExprElaborator::elaborateExpectedConstantExpr(const Syntax* S) {
   if (ConstExpr.isInvalid())
     return nullptr;
   return ConstExpr.get();
-}
-
-static clang::IntegerLiteral *
-createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
-                     clang::QualType IntType, clang::SourceLocation Loc,
-                     std::size_t Base = 10) {
-  llvm::APInt Value;
-  unsigned Width = 0;
-
-  // If we don't have a specified type, just create a default int.
-  if (IntType.isNull() || IntType == CxxAST.AutoDeductTy)
-    IntType = CxxAST.IntTy;
-
-  // TODO: support all kinds of integer types.
-  if (IntType == CxxAST.IntTy) {
-    Width = CxxAST.getTargetInfo().getIntWidth();
-
-    int Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::get(Literal);
-  } else if (IntType == CxxAST.LongTy) {
-    Width = CxxAST.getTargetInfo().getLongWidth();
-
-    long int Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::get(Literal);
-  } else if (IntType == CxxAST.LongLongTy) {
-    Width = CxxAST.getTargetInfo().getLongLongWidth();
-
-    long long int Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::get(Literal);
-  } else if (IntType == CxxAST.ShortTy) {
-    Width = CxxAST.getTargetInfo().getShortWidth();
-
-    short int Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::get(Literal);
-  } else if (IntType == CxxAST.UnsignedShortTy) {
-    Width = CxxAST.getTargetInfo().getShortWidth();
-
-    unsigned short int Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::getUnsigned(Literal);
-  } else if (IntType == CxxAST.UnsignedIntTy) {
-    Width = CxxAST.getTargetInfo().getIntWidth();
-
-    unsigned int Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::getUnsigned(Literal);
-  } else if (IntType == CxxAST.UnsignedLongTy) {
-    Width = CxxAST.getTargetInfo().getLongWidth();
-
-    unsigned long Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::getUnsigned(Literal);
-  } else if (IntType == CxxAST.UnsignedLongLongTy) {
-    Width = CxxAST.getTargetInfo().getLongLongWidth();
-
-    unsigned long Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::getUnsigned(Literal);
-  } else {
-    assert(false && "Unsupported integer type.");
-  }
-
-  if (Value.getBitWidth() != Width)
-    Value = Value.trunc(Width);
-  return clang::IntegerLiteral::Create(CxxAST, Value, IntType, Loc);
 }
 
 static bool alwaysFitsInto64Bits(unsigned Radix, unsigned NumDigits) {
@@ -2829,10 +2770,68 @@ static clang::Expr *handleOfMacro(SyntaxContext &Context, Sema &SemaRef,
   return Res.get();
 }
 
-clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
-  assert (isa<AtomSyntax>(S->getCall()) && "Unexpected macro call");
+static inline bool isLocalLambdaScope(const Scope *S) {
+  if (!S || !S->Parent)
+    return true;
 
-  const AtomSyntax *Call = cast<AtomSyntax>(S->getCall());
+  do {
+    if (S->getKind() == SK_Class || S->getKind() == SK_Function)
+      return true;
+
+    S = S->getParent();
+  } while (S);
+
+  return false;
+}
+
+static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
+                                      const MacroSyntax *S) {
+  assert(isa<CallSyntax>(S->getCall()) && "invalid lambda");
+  const CallSyntax *Call = cast<CallSyntax>(S->getCall());
+
+  bool LocalLambda = isLocalLambdaScope(SemaRef.getCurrentScope());
+  Sema::ScopeRAII ParamScope(SemaRef, SK_Parameter, Call);
+  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
+  for (const Syntax *Arg : Call->getArguments()->children()) {
+    clang::Decl *D = Elaborator(Context, SemaRef).elaborateDeclSyntax(Arg);
+    Params.push_back(cast<clang::ParmVarDecl>(D));
+  }
+
+  // TODO: handle captures
+
+  Sema::ScopeRAII BlockScope(SemaRef, SK_Block, S->getBlock());
+  clang::Sema &CxxSema = SemaRef.getCxxSema();
+  CxxSema.PushLambdaScope();
+  clang::LambdaIntroducer Intro;
+  Intro.Range =
+    clang::SourceRange(S->getCall()->getLoc(), S->getNext()->getLoc());
+  Intro.DefaultLoc = S->getNext()->getLoc();
+
+  // The lambda default will always be by-value, but local lambdas have no
+  // default as per [expr.prim.lambda]
+  Intro.Default = LocalLambda ? clang::LCD_None : clang::LCD_ByCopy;
+  CxxSema.ActOnStartOfGoldLambdaDefinition(Intro, Params,
+                                           SemaRef.getCurClangScope());
+
+  clang::Stmt *Block =
+    StmtElaborator(Context, SemaRef).elaborateBlock(S->getBlock());
+  clang::ExprResult Lam =
+    CxxSema.ActOnLambdaExpr(S->getLoc(), Block, SemaRef.getCurClangScope());
+  return Lam.get();
+}
+
+clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
+  unsigned DiagID =
+    SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                  "unknown macro");
+
+  const AtomSyntax *Call = dyn_cast<AtomSyntax>(S->getCall());
+  if (!Call && isa<CallSyntax>(S->getCall()))
+    Call = dyn_cast<AtomSyntax>(cast<CallSyntax>(S->getCall())->getCallee());
+  if (!Call) {
+    SemaRef.Diags.Report(S->getLoc(), DiagID);
+    return nullptr;
+  }
 
   // TODO: string map
   if (Call->getSpelling() == "if")
@@ -2845,10 +2844,9 @@ clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
     return handleArrayMacro(Context, SemaRef, S);
   else if (Call->getSpelling() == "of")
     return handleOfMacro(Context, SemaRef, S);
+  else if (Call->getSpelling() == "lambda")
+    return handleLambdaMacro(Context, SemaRef, S);
 
-  unsigned DiagID =
-    SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                  "unknown macro");
   SemaRef.Diags.Report(S->getLoc(), DiagID);
   return nullptr;
 }

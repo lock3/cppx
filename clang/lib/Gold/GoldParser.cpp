@@ -993,6 +993,30 @@ Syntax *Parser::parseNew() {
   return onMacro(Call, Block);
 }
 
+Syntax *Parser::parseLambda() {
+  Token Tok = expectToken(tok::LambdaKeyword);
+  Syntax *Capture = nullptr, *Parms = nullptr, *Block = nullptr;
+
+  if (nextTokenIs(tok::LeftBrace))
+    Capture = parseBlock();
+  else if (nextTokenIs(tok::Colon))
+    Capture = parseNestedArray();
+
+  Parms = nextTokenIs(tok::RightParen) ?
+    onList(ArgArray, llvm::SmallVector<Syntax *, 1>()) : parseParen();
+  if (isa<ErrorSyntax>(Parms))
+    return onError();
+
+  if (nextTokenIs(tok::LeftBrace))
+    Block = parseBlock();
+  else if (nextTokenIs(tok::Colon))
+    Block = parseNestedArray();
+  else
+    return onError();
+
+  return onMacro(onCall(onAtom(Tok), Parms), Block, Capture);
+}
+
 Syntax *Parser::parseBlockLoop(Token KWTok)
 {
   Syntax *CondBlock = parseBlock();
@@ -1142,6 +1166,9 @@ Syntax *Parser::parseMacro()
 
   if (nextTokenIs("new"))
     return parseNew();
+
+  if (nextTokenIs(tok::LambdaKeyword))
+    return parseLambda();
 
   Syntax *e1 = parsePost();
 
@@ -1788,6 +1815,12 @@ Syntax *Parser::parseBracedArray() {
   if (!braces.expectOpen())
     return onError();
 
+  if (nextTokenIs(tok::RightBrace)) {
+    braces.expectClose();
+    llvm::SmallVector<Syntax *, 1> Vec;
+    return onArray(BlockArray, Vec);
+  }
+
   // There could be any number of indents here.
   // They are not relevant.
   while (nextTokenIs(tok::Indent))
@@ -1812,6 +1845,12 @@ Syntax *Parser::parseNestedArray() {
   EnclosingTabs Tabs(*this);
   if (!Tabs.expectOpen())
     return onError();
+
+  if (nextTokenIs(tok::Dedent)) {
+    Tabs.expectClose();
+    llvm::SmallVector<Syntax *, 1> Vec;
+    return onArray(BlockArray, Vec);
+  }
 
   Syntax *ret = parseArray(BlockArray);
 
@@ -2191,6 +2230,10 @@ Syntax *Parser::onElem(TokenPair const& tok, Syntax *e1, Syntax *e2) {
 
 Syntax *Parser::onMacro(Syntax *e1, Syntax *e2) {
   return new (Context) MacroSyntax(e1, e2, nullptr);
+}
+
+Syntax *Parser::onMacro(Syntax *e1, Syntax *e2, Syntax *e3) {
+  return new (Context) MacroSyntax(e1, e2, e3);
 }
 
 Syntax *Parser::onCatch(const Token &Catch, Syntax *Args, Syntax *Block) {

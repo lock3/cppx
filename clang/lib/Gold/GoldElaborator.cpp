@@ -2156,6 +2156,9 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
   getFunctionParameters(SemaRef, D, Params);
   FD->setParams(Params);
+  for (auto *D : Params)
+    D->setDeclContext(FD);
+
   D->CurrentPhase = Phase::Typing;
   SemaRef.setDeclForDeclaration(D, FD);
   {
@@ -4207,17 +4210,24 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 
     // Certain macros must be deduced manually.
     if (const MacroSyntax *InitM = dyn_cast<MacroSyntax>(D->Init)) {
-      assert (isa<AtomSyntax>(InitM->getCall()) && "Unexpected macro call");
-      assert (isa<clang::InitListExpr>(InitExpr) &&
-              "Invalid array macro init");
+      if (const AtomSyntax *Call = dyn_cast<AtomSyntax>(InitM->getCall())) {
+        if (Call->getSpelling() == "array") {
+          assert (isa<clang::InitListExpr>(InitExpr) &&
+                  "Invalid array macro init");
+          Ty = buildImplicitArrayType(Context.CxxAST, SemaRef.getCxxSema(),
+                                      cast<clang::InitListExpr>(InitExpr));
 
-      const AtomSyntax *Call = cast<AtomSyntax>(InitM->getCall());
-      if (Call->getSpelling() == "array") {
-        Ty = buildImplicitArrayType(Context.CxxAST, SemaRef.getCxxSema(),
-                                    cast<clang::InitListExpr>(InitExpr));
-
-        if (Ty.isNull()) {
-          VD->setInvalidDecl();
+          if (Ty.isNull()) {
+            VD->setInvalidDecl();
+            return;
+          }
+        }
+      } else {
+        clang::Sema &CxxSema = SemaRef.getCxxSema();
+        auto Result =
+          CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), InitExpr, Ty);
+        if (Result == clang::Sema::DAR_Failed) {
+          SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_failed);
           return;
         }
       }

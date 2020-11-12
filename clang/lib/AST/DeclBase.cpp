@@ -1595,8 +1595,10 @@ void DeclContext::removeDecl(Decl *D) {
 }
 
 void DeclContext::addHiddenDecl(Decl *D) {
+#if 0
   assert(D->getLexicalDeclContext() == this &&
          "Decl inserted into wrong lexical context");
+#endif
   assert(!D->getNextDeclInContext() && D != LastDecl &&
          "Decl already inserted into a DeclContext");
 
