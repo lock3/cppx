@@ -20,6 +20,9 @@
 
 namespace gold {
 
+static bool determineTagKind(const AtomSyntax *Name, Declaration *D);
+static bool isTagLikeDeclOrForwardDecl(Sema &SemaRef, Declaration *TheDecl,
+                                       bool &EncounteredError);
 DeclarationBuilder::DeclarationBuilder(Sema &S)
   :DeclarationBuilder(S.getContext(), S)
 { }
@@ -372,7 +375,13 @@ bool DeclarationBuilder::checkDeclaration(const Syntax *DeclExpr,
 bool DeclarationBuilder::checkEnumDeclaration(const Syntax *DeclExpr,
                                               Declaration *TheDecl) {
   TheDecl->SuspectedKind = UDK_EnumConstant;
-
+  bool EncounteredError = false;
+  if (isTagLikeDeclOrForwardDecl(SemaRef, TheDecl, EncounteredError)) {
+    SemaRef.Diags.Report(DeclExpr->getLoc(),
+                         clang::diag::err_invalid_declaration);
+    return true;
+    // return false;
+  }
   // Because we are inside of an enum we are 100% sure that this is an error.
   if (TheDecl->GlobalNsSpecifier) {
     SemaRef.Diags.Report(TheDecl->GlobalNsSpecifier->getLoc(),
@@ -535,7 +544,7 @@ bool DeclarationBuilder::checkRequiresType(const Syntax *DeclExpr,
 }
 
 
-static bool determineTagKind(const AtomSyntax *Name, Declaration *D) {
+bool determineTagKind(const AtomSyntax *Name, Declaration *D) {
   if (Name->hasToken(tok::ClassKeyword)) {
     D->SuspectedKind = UDK_Class;
   } else if (Name->hasToken(tok::UnionKeyword)) {
@@ -552,8 +561,8 @@ static bool determineTagKind(const AtomSyntax *Name, Declaration *D) {
 }
 
 // Returns false if this wasn't a tag like decl
-static bool isTagLikeDeclOrForwardDecl(Sema &SemaRef, Declaration *TheDecl,
-                                       bool &EncounteredError) {
+bool isTagLikeDeclOrForwardDecl(Sema &SemaRef, Declaration *TheDecl,
+                                bool &EncounteredError) {
   EncounteredError = false;
   if (!TheDecl->Init)
     return false;

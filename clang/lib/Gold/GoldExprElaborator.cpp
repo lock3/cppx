@@ -1739,13 +1739,6 @@ ExprElaborator::elaborateSizeOfPack(const AtomSyntax *Name,
                                        Name->getLoc(), ParameterPack,
                                        Name->getLoc(),
                                        PackName->getLoc());
-  // SemaRef.getCurClangScope()->dump();
-  // clang::IdentifierInfo &Id = Context.CxxAST.Idents.get(PackName->getSpelling());
-  // auto Res = SemaRef.getCxxSema().ActOnSizeofParameterPackExpr(
-  //   SemaRef.getCurClangScope(), Name->getLoc(), Id, S->getLoc(), S->getLoc());
-  // Res.get()->dump();
-  // // llvm_unreachable("Working on it.");
-  // return Res.get();
 }
 
 clang::Expr *
@@ -1777,8 +1770,12 @@ ExprElaborator::elaborateDeclTypeOp(const AtomSyntax *Name,
   if (ArgEval->getType()->isTypeOfTypes()) {
     clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(ArgEval,
                                                    S->getArgument(0)->getLoc());
-    if (TInfo->getType() == Context.CxxAST.getAutoDeductType())
-      return SemaRef.buildTypeExpr(TInfo->getType(), S->getLoc());
+    if (TInfo->getType() == Context.CxxAST.getAutoDeductType()) {
+      clang::QualType Ty = Context.CxxAST.getAutoType(clang::QualType(),
+                                           clang::AutoTypeKeyword::DecltypeAuto,
+                                                      /*IsPack-*/false);
+      return SemaRef.buildTypeExpr(Ty, S->getLoc());
+    }
 
     return SemaRef.buildTypeExpr(Context.CxxAST.CppxKindTy, S->getLoc());
   }

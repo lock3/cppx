@@ -2073,7 +2073,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
                                                       D->FunctionDcl->getLoc());
   if (!TInfo)
     return nullptr;
-
+    
   // Get name info for the AST.
   clang::DeclarationName Name =
     getFunctionName(Context, SemaRef, D, TInfo, InClass, RD);
@@ -3047,9 +3047,6 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   // as a valid type alias.
   clang::Expr *TypeExpr = nullptr;
   clang::SourceLocation TypeLocation;
-  // llvm::outs() << "Dumping AST for D->TypeDecl\n";
-
-  // TypeLocation = D->Op->getLoc();
   if (D->TypeDcl) {
     ExprElaborator TypeElab(Context, SemaRef);
     TypeExpr = TypeElab.elaborateExplicitType(D->TypeDcl, nullptr);
