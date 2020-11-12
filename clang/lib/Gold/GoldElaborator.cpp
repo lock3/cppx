@@ -2073,7 +2073,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
                                                       D->FunctionDcl->getLoc());
   if (!TInfo)
     return nullptr;
-    
+
   // Get name info for the AST.
   clang::DeclarationName Name =
     getFunctionName(Context, SemaRef, D, TInfo, InClass, RD);
