@@ -25,6 +25,7 @@
 #include "llvm/ADT/STLExtras.h"
 
 #include "clang/Gold/GoldDeclarator.h"
+#include "clang/Gold/GoldSema.h"
 
 #include <algorithm>
 
@@ -32,7 +33,8 @@ using namespace clang;
 using namespace sema;
 
 void Sema::ActOnStartOfGoldLambdaDefinition(
-  LambdaIntroducer &Intro, llvm::SmallVectorImpl<clang::ParmVarDecl *> &EParams,
+  gold::Sema &GoldSema, LambdaIntroducer &Intro,
+  llvm::SmallVectorImpl<clang::ParmVarDecl *> &EParams,
   Scope *CurScope) {
   LambdaScopeInfo *const LSI = getCurLambda();
   assert(LSI && "LambdaScopeInfo should be on stack!");
@@ -101,8 +103,12 @@ void Sema::ActOnStartOfGoldLambdaDefinition(
     // }
 
     // TODO: set up a qualified type based on any macro attributes
-    clang::SourceLocation Loc = EParams.front()->getBeginLoc();
-    EndLoc = EParams.back()->getBeginLoc();
+    clang::SourceLocation Loc;
+    if (!EParams.empty()) {
+      Loc = EParams.front()->getBeginLoc();
+      EndLoc = EParams.back()->getBeginLoc();
+    }
+
     llvm::SmallVector<QualType, 4> ParamTypes;
     std::transform(EParams.begin(), EParams.end(),
                    std::back_inserter(ParamTypes),
@@ -303,7 +309,7 @@ void Sema::ActOnStartOfGoldLambdaDefinition(
       //   rules for unqualified name lookup (3.4.1)
       DeclarationNameInfo Name(C->Id, C->Loc);
       LookupResult R(*this, Name, LookupOrdinaryName);
-      LookupName(R, CurScope);
+      GoldSema.lookupUnqualifiedName(R);
       if (R.isAmbiguous())
         continue;
       if (R.empty()) {

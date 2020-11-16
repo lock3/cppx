@@ -2784,6 +2784,48 @@ static inline bool isLocalLambdaScope(const Scope *S) {
   return false;
 }
 
+// Build and attach the captures for a lambda macro
+static void buildLambdaCaptures(SyntaxContext &Context, Sema &SemaRef,
+                                const MacroSyntax *S,
+                                clang::LambdaIntroducer &Intro) {
+  const Syntax *CaptureScope = S->getNext();
+  for (const Syntax *SS : CaptureScope->children()) {
+    clang::Expr *E = ExprElaborator(Context, SemaRef).elaborateExpr(SS);
+    // FIXME: include a case for this ptr
+    if (!isa<clang::DeclRefExpr>(E)) {
+      SemaRef.Diags.Report(SS->getLoc(),
+                           clang::diag::err_capture_does_not_name_variable);
+      continue;
+    }
+
+    clang::DeclRefExpr *DRE = cast<clang::DeclRefExpr>(E);
+    if (!isa<clang::VarDecl>(DRE->getDecl())) {
+      SemaRef.Diags.Report(SS->getLoc(),
+                           clang::diag::err_capture_does_not_name_variable);
+      continue;
+    }
+
+    clang::VarDecl *VD = cast<clang::VarDecl>(DRE->getDecl());
+    // FIXME: consider this or starthis
+    clang::LambdaCaptureKind Kind = clang::LCK_ByCopy;
+    // FIXME: consider init
+    clang::Expr *Init = nullptr;
+    clang::LambdaCaptureInitKind InitKind = clang::LambdaCaptureInitKind::NoInit;
+#if 0
+    clang::Sema &CxxSema = SemaRef.getCxxSema();
+    auto InitCaptureType = CxxSema.actOnLambdaInitCaptureInitialization(
+      SS->getLoc(), false, /*EllipsisLoc=*/clang::SourceLocation(),
+      VD->getIdentifier(), InitKind, Init);
+#endif
+
+    Intro.addCapture(Kind, SS->getLoc(), VD->getIdentifier(),
+                     /*EllipsisLoc=*/clang::SourceLocation(),
+                     InitKind, Init, clang::ParsedType(),
+                     clang::SourceRange(CaptureScope->getLoc(),
+                                        S->getBlock()->getLoc()));
+  }
+}
+
 static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
                                       const MacroSyntax *S) {
   assert(isa<CallSyntax>(S->getCall()) && "invalid lambda");
@@ -2797,11 +2839,11 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
     Params.push_back(cast<clang::ParmVarDecl>(D));
   }
 
-  // TODO: handle captures
-
   Sema::ScopeRAII BlockScope(SemaRef, SK_Block, S->getBlock());
   clang::Sema &CxxSema = SemaRef.getCxxSema();
   CxxSema.PushLambdaScope();
+
+  // Set up the captures and capture default.
   clang::LambdaIntroducer Intro;
   Intro.Range =
     clang::SourceRange(S->getCall()->getLoc(), S->getNext()->getLoc());
@@ -2810,9 +2852,11 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
   // The lambda default will always be by-value, but local lambdas have no
   // default as per [expr.prim.lambda]
   Intro.Default = LocalLambda ? clang::LCD_None : clang::LCD_ByCopy;
-  CxxSema.ActOnStartOfGoldLambdaDefinition(Intro, Params,
-                                           SemaRef.getCurClangScope());
+  buildLambdaCaptures(Context, SemaRef, S, Intro);
 
+  // Build the lambda
+  CxxSema.ActOnStartOfGoldLambdaDefinition(SemaRef, Intro, Params,
+                                           SemaRef.getCurClangScope());
   clang::Stmt *Block =
     StmtElaborator(Context, SemaRef).elaborateBlock(S->getBlock());
   clang::ExprResult Lam =

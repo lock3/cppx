@@ -6563,11 +6563,9 @@ public:
   /// parsing the body of a lambda; it analyzes the explicit captures and
   /// arguments, and sets up various data-structures for the body of the
   /// lambda.
-  // void ActOnStartOfGoldLambdaDefinition(LambdaIntroducer &Intro,
-  //                                       gold::Declarator *ParamInfo,
-  //                                       Scope *CurScope);
   void ActOnStartOfGoldLambdaDefinition(
-    LambdaIntroducer &Intro, llvm::SmallVectorImpl<clang::ParmVarDecl *> &EParams,
+    gold::Sema &GoldSema, LambdaIntroducer &Intro,
+    llvm::SmallVectorImpl<clang::ParmVarDecl *> &EParams,
     Scope *CurScope);
 
   /// ActOnLambdaError - If there is an error parsing a lambda, this callback

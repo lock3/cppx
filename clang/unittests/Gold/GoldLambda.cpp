@@ -32,5 +32,20 @@ main() : int! {
   DeclarationMatcher Test =
     varDecl(hasName("test"), hasType(asString("int")),
             hasDescendant(integerLiteral(equals(42))));
-  ASSERT_TRUE(matches(Code.str(), Test)); 
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
+
+TEST(GoldLambda, SimpleCapture) {
+  StringRef Code = R"(
+main() : int! {
+  y : int = 42
+  fn = lambda{ y  }(){ return y; }
+  test = fn();
+}
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("int")),
+            hasDescendant(integerLiteral(equals(42))));
+  ASSERT_TRUE(matches(Code.str(), Test));
 }
