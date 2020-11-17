@@ -4176,6 +4176,19 @@ recurse:
     break;
   }
 
+  case Expr::CppxDependentMemberAccessExprClass: {
+    llvm_unreachable("case Expr::CppxDependentMemberAccessExprClass: not implemented.");
+    // const CppxDependentMemberAccessExpr *ME
+    //   = cast<CppxDependentMemberAccessExpr>(E);
+    // mangleMemberExpr(ME->isImplicitAccess() ? nullptr : ME->getBase(),
+    //                  ME->isArrow(), NestedNameSpecifier(),
+    //                  nullptr,
+    //                  ME->getMember(),
+    //                  nullptr, 0,
+    //                  Arity);
+    break;
+  }
+
   case Expr::CXXDependentScopeMemberExprClass: {
     const CXXDependentScopeMemberExpr *ME
       = cast<CXXDependentScopeMemberExpr>(E);

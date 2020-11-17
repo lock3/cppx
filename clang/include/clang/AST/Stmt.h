@@ -290,6 +290,7 @@ protected:
     friend class CallExpr; // ctor
     friend class CXXConstructExpr; // ctor
     friend class CXXDependentScopeMemberExpr; // ctor
+    friend class CppxDependentMemberAccessExpr;
     friend class CXXNewExpr; // ctor
     friend class CXXUnresolvedConstructExpr; // ctor
     friend class DeclRefExpr; // computeDependence
@@ -853,6 +854,20 @@ protected:
     SourceLocation OperatorLoc;
   };
 
+  class CppxDependentMemberAccessExprBitFields {
+    friend class ASTStmtReader;
+    friend class CppxDependentMemberAccessExpr;
+
+    unsigned : NumExprBits;
+
+    /// Whether this member expression used the '->' operator or
+    /// the '.' operator.
+    unsigned HasNextArg : 1;
+
+    /// The location of the '->' or '.' operator.
+    SourceLocation OperatorLoc;
+  };
+
   class OverloadExprBitfields {
     friend class ASTStmtReader;
     friend class OverloadExpr;
@@ -1069,6 +1084,7 @@ protected:
     ExprWithCleanupsBitfields ExprWithCleanupsBits;
     CXXUnresolvedConstructExprBitfields CXXUnresolvedConstructExprBits;
     CXXDependentScopeMemberExprBitfields CXXDependentScopeMemberExprBits;
+    CppxDependentMemberAccessExprBitFields CppxDependentMemberAccessExprBits;
     OverloadExprBitfields OverloadExprBits;
     UnresolvedLookupExprBitfields UnresolvedLookupExprBits;
     UnresolvedMemberExprBitfields UnresolvedMemberExprBits;

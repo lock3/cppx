@@ -2005,6 +2005,20 @@ void StmtProfiler::VisitCXXDependentScopeMemberExpr(
     VisitTemplateArguments(S->getTemplateArgs(), S->getNumTemplateArgs());
 }
 
+void StmtProfiler::VisitCppxDependentMemberAccessExpr(
+    const CppxDependentMemberAccessExpr *S) {
+  ID.AddBoolean(S->isImplicitAccess());
+  if (!S->isImplicitAccess()) {
+    VisitExpr(S);
+  }
+  VisitName(S->getMember());
+  // ID.AddBoolean(S->hasExplicitTemplateArgs());
+  // if (S->hasExplicitTemplateArgs())
+  //   VisitTemplateArguments(S->getTemplateArgs(), S->getNumTemplateArgs());
+}
+
+
+
 void StmtProfiler::VisitUnresolvedMemberExpr(const UnresolvedMemberExpr *S) {
   ID.AddBoolean(S->isImplicitAccess());
   if (!S->isImplicitAccess()) {

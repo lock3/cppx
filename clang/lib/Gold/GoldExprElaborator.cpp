@@ -2561,6 +2561,14 @@ static bool usingClassLookupIsUnresolved(clang::DeclContextLookupResult const &R
   return std::find_if_not(std::begin(R), std::end(R), hasMethod) == std::end(R);
 }
 
+static clang::Expr *
+handleDependentTypeNameLookup(Sema &SemaRef, clang::ASTContext &CxxAST,
+                              const CallSyntax *Op, clang::Expr *Prev,
+                              const Syntax *RHS, bool AddressOf)
+{
+
+}
+
 clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
                                     const CallSyntax *Op, clang::Expr *Prev,
                                     const Syntax *RHS, bool AddressOf) {
@@ -2573,10 +2581,11 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
   clang::QualType QT = TInfo->getType();
   const clang::Type *T = QT.getTypePtr();
   const auto *TST = T->getAs<clang::TemplateSpecializationType>();
-
-  // FIXME: perform some check on TST here?
   if (!(T->isStructureOrClassType() || T->isUnionType()
         || T->isEnumeralType()) && !TST) {
+    if (T->isTemplateTypeParmType()) {
+
+    }
     SemaRef.Diags.Report(Prev->getExprLoc(),
                          clang::diag::err_invalid_type_for_name_spec)
                          << QT;
@@ -3610,6 +3619,8 @@ clang::Expr *ExprElaborator::handleFunctionType(const CallSyntax *S) {
 
     clang::Expr *ClassTypeExpr =
       ExprElaborator(Context, SemaRef).elaborateExpr(MemPtr->getArgument(0));
+    if (!ClassTypeExpr)
+      return nullptr;
     if (!ClassTypeExpr->getType()->isTypeOfTypes()) {
       SemaRef.Diags.Report(ClassTypeExpr->getExprLoc(),
                            clang::diag::err_invalid_type_for_name_spec)

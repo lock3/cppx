@@ -620,8 +620,8 @@ CXCursor cxcursor::MakeCXCursor(const Stmt *S, const Decl *Parent,
   case Stmt::TypoExprClass: // A typo could actually be a DeclRef or a MemberRef
     K = CXCursor_DeclRefExpr;
     break;
-
   case Stmt::CXXDependentScopeMemberExprClass:
+  case Stmt::CppxDependentMemberAccessExpr:
   case Stmt::CXXPseudoDestructorExprClass:
   case Stmt::MemberExprClass:
   case Stmt::MSPropertyRefExprClass:

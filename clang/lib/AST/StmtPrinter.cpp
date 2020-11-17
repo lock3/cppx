@@ -2305,6 +2305,14 @@ void StmtPrinter::VisitCXXDependentScopeMemberExpr(
     printTemplateArgumentList(OS, Node->template_arguments(), Policy);
 }
 
+void StmtPrinter::VisitCppxDependentMemberAccessExpr(
+                                         CppxDependentMemberAccessExpr *Node) {
+  if (!Node->isImplicitAccess()) {
+    PrintExpr(Node->getBase());
+    OS << ".";
+  }
+}
+
 void StmtPrinter::VisitUnresolvedMemberExpr(UnresolvedMemberExpr *Node) {
   if (!Node->isImplicitAccess()) {
     PrintExpr(Node->getBase());

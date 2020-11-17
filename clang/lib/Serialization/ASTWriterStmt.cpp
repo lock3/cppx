@@ -1987,6 +1987,11 @@ void ASTStmtWriter::VisitCXXDependentScopeMemberExpr(
   Record.AddDeclarationNameInfo(E->MemberNameInfo);
   Code = serialization::EXPR_CXX_DEPENDENT_SCOPE_MEMBER;
 }
+void ASTStmtWriter::VisitCppxDependentMemberAccessExpr(
+    CppxDependentMemberAccessExpr *E) {
+  llvm_unreachable("ASTStmtWriter::VisitCppxDependentScopeMemberExpr "
+                   "Not implemented.");
+}
 
 void
 ASTStmtWriter::VisitDependentScopeDeclRefExpr(DependentScopeDeclRefExpr *E) {

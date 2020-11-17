@@ -13,6 +13,7 @@
 #include "clang/AST/DependenceFlags.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprCppx.h"
 #include "clang/AST/ExprConcepts.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/ExprOpenMP.h"
@@ -870,6 +871,18 @@ ExprDependence clang::computeDependence(CXXDependentScopeMemberExpr *E) {
   D |= getDependenceInExpr(E->getMemberNameInfo());
   for (auto A : E->template_arguments())
     D |= toExprDependence(A.getArgument().getDependence());
+  return D;
+}
+
+ExprDependence clang::computeDependence(CppxDependentMemberAccessExpr *E) {
+  auto D = ExprDependence::TypeValueInstantiation;
+  if (!E->isImplicitAccess())
+    D |= E->getBase()->getDependence();
+  // if (auto *Q = E->getQualifier())
+  //   D |= toExprDependence(Q->getDependence());
+  D |= getDependenceInExpr(E->getMemberNameInfo());
+  // for (auto A : E->template_arguments())
+  //   D |= toExprDependence(A.getArgument().getDependence());
   return D;
 }
 

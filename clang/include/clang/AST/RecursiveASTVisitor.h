@@ -2343,6 +2343,10 @@ DEF_TRAVERSE_STMT(CXXDependentScopeMemberExpr, {
   }
 })
 
+DEF_TRAVERSE_STMT(CppxDependentMemberAccessExpr, {
+  TRY_TO(TraverseDeclarationNameInfo(S->getMemberNameInfo()));
+})
+
 DEF_TRAVERSE_STMT(DeclRefExpr, {
   TRY_TO(TraverseNestedNameSpecifierLoc(S->getQualifierLoc()));
   TRY_TO(TraverseDeclarationNameInfo(S->getNameInfo()));

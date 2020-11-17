@@ -304,3 +304,4 @@ def OMPTargetTeamsDistributeSimdDirective : StmtNode<OMPLoopDirective>;
 def CppxTypeLiteral : StmtNode<Expr>;
 def CppxDeclRefExpr : StmtNode<Expr>;
 def CppxPartialEvalExpr : StmtNode<Expr>;
+def CppxDependentMemberAccessExpr : StmtNode<Expr>;

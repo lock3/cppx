@@ -14112,6 +14112,108 @@ TreeTransform<Derived>::TransformCXXDependentScopeMemberExpr(
                                                      NameInfo,
                                                      &TransArgs);
 }
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCppxDependentMemberAccessExpr(
+                                             CppxDependentMemberAccessExpr *E) {
+  llvm_unreachable("TreeTransform<Derived>::TransformCppxDependentScopeMemberExpr Not implemented yet.");
+  // // Transform the base of the expression.
+  // ExprResult Base((Expr*) nullptr);
+  // Expr *OldBase;
+  // QualType BaseType;
+  // QualType ObjectType;
+  // if (!E->isImplicitAccess()) {
+  //   OldBase = E->getBase();
+  //   Base = getDerived().TransformExpr(OldBase);
+  //   if (Base.isInvalid())
+  //     return ExprError();
+
+  //   // Start the member reference and compute the object's type.
+  //   ParsedType ObjectTy;
+  //   bool MayBePseudoDestructor = false;
+  //   Base = SemaRef.ActOnStartCXXMemberReference(nullptr, Base.get(),
+  //                                               E->getOperatorLoc(),
+  //                                     E->isArrow()? tok::arrow : tok::period,
+  //                                               ObjectTy,
+  //                                               MayBePseudoDestructor);
+  //   if (Base.isInvalid())
+  //     return ExprError();
+
+  //   ObjectType = ObjectTy.get();
+  //   BaseType = ((Expr*) Base.get())->getType();
+  // } else {
+  //   OldBase = nullptr;
+  //   BaseType = getDerived().TransformType(E->getBaseType());
+  //   ObjectType = BaseType->castAs<PointerType>()->getPointeeType();
+  // }
+
+  // // Transform the first part of the nested-name-specifier that qualifies
+  // // the member name.
+  // NamedDecl *FirstQualifierInScope
+  //   = getDerived().TransformFirstQualifierInScope(
+  //                                           E->getFirstQualifierFoundInScope(),
+  //                                           E->getQualifierLoc().getBeginLoc());
+
+  // NestedNameSpecifierLoc QualifierLoc;
+  // if (E->getQualifier()) {
+  //   QualifierLoc
+  //     = getDerived().TransformNestedNameSpecifierLoc(E->getQualifierLoc(),
+  //                                                    ObjectType,
+  //                                                    FirstQualifierInScope);
+  //   if (!QualifierLoc)
+  //     return ExprError();
+  // }
+
+  // SourceLocation TemplateKWLoc = E->getTemplateKeywordLoc();
+
+  // // TODO: If this is a conversion-function-id, verify that the
+  // // destination type name (if present) resolves the same way after
+  // // instantiation as it did in the local scope.
+
+  // DeclarationNameInfo NameInfo
+  //   = getDerived().TransformDeclarationNameInfo(E->getMemberNameInfo());
+  // if (!NameInfo.getName())
+  //   return ExprError();
+
+  // if (!E->hasExplicitTemplateArgs()) {
+  //   // This is a reference to a member without an explicitly-specified
+  //   // template argument list. Optimize for this common case.
+  //   if (!getDerived().AlwaysRebuild() &&
+  //       Base.get() == OldBase &&
+  //       BaseType == E->getBaseType() &&
+  //       QualifierLoc == E->getQualifierLoc() &&
+  //       NameInfo.getName() == E->getMember() &&
+  //       FirstQualifierInScope == E->getFirstQualifierFoundInScope())
+  //     return E;
+
+  //   return getDerived().RebuildCXXDependentScopeMemberExpr(Base.get(),
+  //                                                      BaseType,
+  //                                                      E->isArrow(),
+  //                                                      E->getOperatorLoc(),
+  //                                                      QualifierLoc,
+  //                                                      TemplateKWLoc,
+  //                                                      FirstQualifierInScope,
+  //                                                      NameInfo,
+  //                                                      /*TemplateArgs*/nullptr);
+  // }
+
+  // TemplateArgumentListInfo TransArgs(E->getLAngleLoc(), E->getRAngleLoc());
+  // if (getDerived().TransformTemplateArguments(E->getTemplateArgs(),
+  //                                             E->getNumTemplateArgs(),
+  //                                             TransArgs))
+  //   return ExprError();
+
+  // return getDerived().RebuildCXXDependentScopeMemberExpr(Base.get(),
+  //                                                    BaseType,
+  //                                                    E->isArrow(),
+  //                                                    E->getOperatorLoc(),
+  //                                                    QualifierLoc,
+  //                                                    TemplateKWLoc,
+  //                                                    FirstQualifierInScope,
+  //                                                    NameInfo,
+  //                                                    &TransArgs);
+}
+
 
 template<typename Derived>
 ExprResult

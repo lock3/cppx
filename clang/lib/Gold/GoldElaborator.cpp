@@ -3649,6 +3649,13 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
   // Elaborating RHS
   ExprElaborator Elab(Context, SemaRef);
   clang::Expr *InitTyExpr = Elab.elaborateExpr(D->Init);
+  if (!InitTyExpr){
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "initializer of type alias is not a type");
+    SemaRef.Diags.Report(D->Init->getLoc(), DiagID);
+    return nullptr;
+  }
   if (!InitTyExpr->getType()->isTypeOfTypes()) {
     unsigned DiagID =
       SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
