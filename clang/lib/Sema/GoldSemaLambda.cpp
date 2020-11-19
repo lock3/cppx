@@ -281,8 +281,31 @@ void Sema::ActOnStartOfGoldLambdaDefinition(
       //   An init-capture behaves as if it declares and explicitly
       //   captures a variable [...] whose declarative region is the
       //   lambda-expression's compound-statement
-      if (Var)
+      if (Var) {
         PushOnScopeChains(Var, CurScope, false);
+
+        DeclarationNameInfo Name(C->Id, C->Loc);
+        LookupResult R(*this, Name, LookupOrdinaryName);
+        GoldSema.lookupUnqualifiedName(R);
+        if (R.isAmbiguous())
+          continue;
+        if (R.empty()) {
+          // FIXME: Disable corrections that would add qualification?
+          CXXScopeSpec ScopeSpec;
+          DeclFilterCCC<VarDecl> Validator{};
+          if (DiagnoseEmptyLookup(CurScope, ScopeSpec, R, Validator))
+            continue;
+        }
+
+        VarDecl *Prev = R.getAsSingle<VarDecl>();
+        SourceLocation Loc;
+        UsingDecl *Using =
+          UsingDecl::Create(Context, CurContext, Loc, NestedNameSpecifierLoc(),
+                            Name, false);
+        UsingShadowDecl *Shadow =
+          BuildUsingShadowDecl(CurScope, Using, Var, nullptr);
+        GoldSema.getCurrentScope()->Shadows.insert(Shadow);
+      }
     } else {
       assert(C->InitKind == LambdaCaptureInitKind::NoInit &&
              "init capture has valid but null init?");

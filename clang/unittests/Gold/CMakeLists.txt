@@ -101,6 +101,7 @@ add_clang_unittest(GoldTests
   GoldInlineAttributeElab.cpp
   GoldInPlaceNewAndDeleteElab.cpp
   GoldIntegerLiteralElab.cpp
+  GoldLambda.cpp
   GoldLiteralSuffix.cpp
   GoldMemberExecuteTest.cpp
   GoldMemberStorageClassElab.cpp

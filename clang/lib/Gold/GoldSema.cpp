@@ -625,11 +625,19 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
     I = getCxxSema().IdResolver->begin(Name),
     IEnd = getCxxSema().IdResolver->end();
   auto addShadows = [&R](Scope *S, clang::NamedDecl *D) -> bool {
-    clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D);
-    if (!UD)
-      return false;
-
     bool Shadowed = false;
+    clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D);
+    if (!UD) {
+      clang::UsingShadowDecl *Shadow = dyn_cast<clang::UsingShadowDecl>(D);
+      if (Shadow) {
+        R.addDecl(Shadow);
+        Shadowed = true;
+        return true;
+      }
+
+      return false;
+    }
+
     for (auto *Shadow : UD->shadows()) {
       auto It = std::find(std::begin(S->Shadows), std::end(S->Shadows), Shadow);
       if (It != std::end(S->Shadows)) {
@@ -650,8 +658,9 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
     std::set<Declaration *> Found = S->findDecl(Id);
 
     // Look through any using directives, but only if we didn't already find
-    // something acceptable.
-    if (Found.empty()) {
+    // something acceptable. However, we always check the shadows in a lambda
+    // block.
+    if (Found.empty() || S->isLambdaScope()) {
       // See if Clang has anything in the identifier resolver.
       bool Shadowed = false;
       for (; I != IEnd; ++I)

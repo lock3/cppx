@@ -76,5 +76,6 @@ add_clang_library(clangSema
   clangAnalysis
   clangBasic
   clangEdit
-  clangLex
+  clangGold
+  gold
   )

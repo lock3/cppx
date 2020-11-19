@@ -49,3 +49,18 @@ main() : int! {
             hasDescendant(integerLiteral(equals(42))));
   ASSERT_TRUE(matches(Code.str(), Test));
 }
+
+TEST(GoldLambda, InitCapture) {
+  StringRef Code = R"(
+main() : int! {
+  y : int = 42
+  fn = lambda{ y = 20 }(){ return y; }
+  test = fn();
+}
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("int")),
+            hasDescendant(integerLiteral(equals(20))));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
