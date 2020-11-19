@@ -47,6 +47,8 @@ class Type;
 class CppxTypeLiteral;
 class CppxDeclRefExpr;
 class TypeSourceInfo;
+class DeclContext;
+class CppxDependentMemberAccessExpr;
 } // namespace clang
 
 namespace gold {
@@ -345,6 +347,7 @@ public:
                                            clang::TypeSourceInfo *TInfo);
 
 
+
   clang::CppxTypeLiteral *buildAnyTypeExpr(clang::QualType KindTy,
                                            clang::QualType Ty,
                                            clang::SourceLocation Loc);
@@ -356,6 +359,9 @@ public:
                                                 clang::SourceRange ExceptionSpecRange,
                                                 clang::SourceLocation EndLoc,
                            llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
+
+  clang::CppxTypeLiteral *buildTypeExprTypeFromExpr(clang::Expr *E,
+                                                    clang::SourceLocation Loc);
 
   clang::CppxTypeLiteral *buildTypeExprFromTypeDecl(
                       const clang::TypeDecl *TyDecl, clang::SourceLocation Loc);
@@ -1117,6 +1123,12 @@ public:
 
   clang::DeclarationNameInfo rebuildDeclarationNameInfo(
                                          const clang::DeclarationNameInfo &DNI);
+
+public:
+    clang::QualType TransformCppxTypeExprType(clang::TypeLocBuilder &TLB,
+                                              clang::CppxTypeExprTypeLoc TL);
+    clang::Expr *TransformCppxDependentMemberAccessExpr(
+                            clang::CppxDependentMemberAccessExpr *E);
 };
 
 } // namespace gold

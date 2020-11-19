@@ -30,6 +30,7 @@
 #include "clang/Sema/TemplateDeduction.h"
 #include "clang/Sema/TemplateInstCallback.h"
 #include "llvm/Support/TimeProfiler.h"
+#include "clang/Gold/GoldSema.h"
 
 using namespace clang;
 using namespace sema;
@@ -1108,6 +1109,18 @@ namespace {
                                            SubstNonTypeTemplateParmExpr *E);
 
     ExprResult TransformCXXFragmentExpr(CXXFragmentExpr *E);
+
+    ExprResult TransformCppxDependentMemberAccessExpr(
+                                            CppxDependentMemberAccessExpr *E) {
+      assert(SemaRef.getGoldSema() && "invalid without gold language support");
+      return SemaRef.getGoldSema()->TransformCppxDependentMemberAccessExpr(E);
+    }
+
+    QualType TransformCppxTypeExprType(TypeLocBuilder &TLB,
+                                       CppxTypeExprTypeLoc TL) {
+      assert(SemaRef.getGoldSema() && "invalid without gold language support");
+      return SemaRef.getGoldSema()->TransformCppxTypeExprType(TLB, TL);
+    }
 
     /// Rebuild a DeclRefExpr for a VarDecl reference.
     ExprResult RebuildVarDeclRefExpr(VarDecl *PD, SourceLocation Loc);

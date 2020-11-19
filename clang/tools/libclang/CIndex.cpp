@@ -1831,6 +1831,10 @@ bool CursorVisitor::VisitCppxArgsTypeLoc(CppxArgsTypeLoc TL) {
   return false;
 }
 
+bool CursorVisitor::VisitCppxTypeExprTypeLoc(CppxTypeExprTypeLoc TL) {
+  return false;
+}
+
 bool CursorVisitor::VisitAtomicTypeLoc(AtomicTypeLoc TL) {
   return Visit(TL.getValueLoc());
 }

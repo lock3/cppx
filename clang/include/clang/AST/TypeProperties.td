@@ -958,6 +958,15 @@ let Class = CppxArgsType in {
   }]>;
 }
 
+let Class = CppxTypeExprType in {
+  def : Property<"tyExpr", ExprRef> {
+    let Read = [{ node->getTyExpr() }];
+  }
+  def : Creator<[{
+    return ctx.getCppxTypeExprTy(tyExpr);
+  }]>;
+}
+
 let Class = ExtIntType in {
   def : Property<"isUnsigned", Bool> {
     let Read = [{ node->isUnsigned() }];

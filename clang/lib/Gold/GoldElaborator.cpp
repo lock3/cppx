@@ -3656,7 +3656,9 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
     SemaRef.Diags.Report(D->Init->getLoc(), DiagID);
     return nullptr;
   }
-  if (!InitTyExpr->getType()->isTypeOfTypes()) {
+  if (isa<clang::CppxDependentMemberAccessExpr>(InitTyExpr)) {
+    InitTyExpr = SemaRef.buildTypeExprTypeFromExpr(InitTyExpr, D->Init->getLoc());
+  } else if (!InitTyExpr->getType()->isTypeOfTypes()) {
     unsigned DiagID =
       SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
                                     "initializer of type alias is not a type");

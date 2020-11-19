@@ -860,9 +860,9 @@ protected:
 
     unsigned : NumExprBits;
 
-    /// Whether this member expression used the '->' operator or
-    /// the '.' operator.
-    unsigned HasNextArg : 1;
+    // /// Whether this member expression used the '->' operator or
+    // /// the '.' operator.
+    // unsigned HasNextArg : 1;
 
     /// The location of the '->' or '.' operator.
     SourceLocation OperatorLoc;

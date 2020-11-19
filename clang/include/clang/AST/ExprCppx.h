@@ -310,63 +310,20 @@ class CppxDependentMemberAccessExpr final
 
   /// The member to which this member expression refers, which
   /// can be name, overloaded operator, or destructor.
-  ///
-  /// FIXME: could also be a template-id
   DeclarationNameInfo MemberNameInfo;
 
-  // CXXDependentScopeMemberExpr is followed by several trailing objects,
-  // some of which optional. They are in order:
-  //
-  // * An optional ASTTemplateKWAndArgsInfo for the explicitly specified
-  //   template keyword and arguments. Present if and only if
-  //   hasTemplateKWAndArgsInfo().
-  //
-  // * An array of getNumTemplateArgs() TemplateArgumentLoc containing location
-  //   information for the explicitly specified template arguments.
-  //
-  // * An optional NamedDecl *. In a qualified member access expression such
-  //   as t->Base::f, this member stores the resolves of name lookup in the
-  //   context of the member access expression, to be used at instantiation
-  //   time. Present if and only if hasFirstQualifierFoundInScope().
-
-  // bool hasTemplateKWAndArgsInfo() const {
-  //   return CXXDependentScopeMemberExprBits.HasTemplateKWAndArgsInfo;
-  // }
-
-  // bool hasFirstQualifierFoundInScope() const {
-  //   return CXXDependentScopeMemberExprBits.HasFirstQualifierFoundInScope;
-  // }
-
-  // unsigned numTrailingObjects(OverloadToken<ASTTemplateKWAndArgsInfo>) const {
-  //   return hasTemplateKWAndArgsInfo();
-  // }
-
-  // unsigned numTrailingObjects(OverloadToken<TemplateArgumentLoc>) const {
-  //   return getNumTemplateArgs();
-  // }
-
-  // unsigned numTrailingObjects(OverloadToken<NamedDecl *>) const {
-  //   return hasFirstQualifierFoundInScope();
-  // }
-
-  CppxDependentMemberAccessExpr(const ASTContext &Ctx, Expr *Base,
-                              QualType BaseType, bool IsArrow,
-                              SourceLocation OperatorLoc,
-                              NestedNameSpecifierLoc QualifierLoc,
-                              SourceLocation TemplateKWLoc,
-                              NamedDecl *FirstQualifierFoundInScope,
-                              DeclarationNameInfo MemberNameInfo,
-                              const TemplateArgumentListInfo *TemplateArgs);
+  CppxDependentMemberAccessExpr(const ASTContext &Ctx, Expr *Base, QualType BaseType,
+                                SourceLocation OperatorLoc,
+                                DeclarationNameInfo MemberNameInfo);
 
   CppxDependentMemberAccessExpr(EmptyShell Empty);
 
 public:
   static CppxDependentMemberAccessExpr *
-  Create(const ASTContext &Ctx, Expr *Base, QualType BaseType,
-         SourceLocation OperatorLoc, DeclarationNameInfo MemberNameInfo);
+    Create(const ASTContext &Ctx, Expr *Base, QualType BaseType,
+           SourceLocation OperatorLoc, DeclarationNameInfo MemberNameInfo);
 
-  static CppxDependentMemberAccessExpr *
-  CreateEmpty(const ASTContext &Ctx);
+  static CppxDependentMemberAccessExpr *CreateEmpty(const ASTContext &Ctx);
 
   /// True if this is an implicit access, i.e. one in which the
   /// member being accessed was not written in the source.  The source
@@ -386,40 +343,10 @@ public:
 
   QualType getBaseType() const { return BaseType; }
 
-  /// Determine whether this member expression used the '->'
-  /// operator; otherwise, it used the '.' operator.
-  // bool isArrow() const { return CXXDependentScopeMemberExprBits.IsArrow; }
-
   /// Retrieve the location of the '->' or '.' operator.
   SourceLocation getOperatorLoc() const {
     return CppxDependentMemberAccessExprBits.OperatorLoc;
   }
-
-  /// Retrieve the nested-name-specifier that qualifies the member name.
-  // NestedNameSpecifier *getQualifier() const {
-  //   return QualifierLoc.getNestedNameSpecifier();
-  // }
-
-  /// Retrieve the nested-name-specifier that qualifies the member
-  /// name, with source location information.
-  // NestedNameSpecifierLoc getQualifierLoc() const { return QualifierLoc; }
-
-  /// Retrieve the first part of the nested-name-specifier that was
-  /// found in the scope of the member access expression when the member access
-  /// was initially parsed.
-  ///
-  /// This function only returns a useful result when member access expression
-  /// uses a qualified member name, e.g., "x.Base::f". Here, the declaration
-  /// returned by this function describes what was found by unqualified name
-  /// lookup for the identifier "Base" within the scope of the member access
-  /// expression itself. At template instantiation time, this information is
-  /// combined with the results of name lookup into the type of the object
-  /// expression itself (the class type of x).
-  // NamedDecl *getFirstQualifierFoundInScope() const {
-  //   if (!hasFirstQualifierFoundInScope())
-  //     return nullptr;
-  //   return *getTrailingObjects<NamedDecl *>();
-  // }
 
   /// Retrieve the name of the member that this expression refers to.
   const DeclarationNameInfo &getMemberNameInfo() const {
@@ -432,67 +359,6 @@ public:
   // Retrieve the location of the name of the member that this
   // expression refers to.
   SourceLocation getMemberLoc() const { return MemberNameInfo.getLoc(); }
-
-  /// Retrieve the location of the template keyword preceding the
-  /// member name, if any.
-  // SourceLocation getTemplateKeywordLoc() const {
-  //   if (!hasTemplateKWAndArgsInfo())
-  //     return SourceLocation();
-  //   return getTrailingObjects<ASTTemplateKWAndArgsInfo>()->TemplateKWLoc;
-  // }
-
-  /// Retrieve the location of the left angle bracket starting the
-  /// explicit template argument list following the member name, if any.
-  // SourceLocation getLAngleLoc() const {
-  //   if (!hasTemplateKWAndArgsInfo())
-  //     return SourceLocation();
-  //   return getTrailingObjects<ASTTemplateKWAndArgsInfo>()->LAngleLoc;
-  // }
-
-  // /// Retrieve the location of the right angle bracket ending the
-  // /// explicit template argument list following the member name, if any.
-  // SourceLocation getRAngleLoc() const {
-  //   if (!hasTemplateKWAndArgsInfo())
-  //     return SourceLocation();
-  //   return getTrailingObjects<ASTTemplateKWAndArgsInfo>()->RAngleLoc;
-  // }
-
-  /// Determines whether the member name was preceded by the template keyword.
-  // bool hasTemplateKeyword() const { return getTemplateKeywordLoc().isValid(); }
-
-  /// Determines whether this member expression actually had a C++
-  /// template argument list explicitly specified, e.g., x.f<int>.
-  // bool hasExplicitTemplateArgs() const { return getLAngleLoc().isValid(); }
-
-  /// Copies the template arguments (if present) into the given
-  /// structure.
-  // void copyTemplateArgumentsInto(TemplateArgumentListInfo &List) const {
-  //   if (hasExplicitTemplateArgs())
-  //     getTrailingObjects<ASTTemplateKWAndArgsInfo>()->copyInto(
-  //         getTrailingObjects<TemplateArgumentLoc>(), List);
-  // }
-
-  /// Retrieve the template arguments provided as part of this
-  /// template-id.
-  // const TemplateArgumentLoc *getTemplateArgs() const {
-  //   if (!hasExplicitTemplateArgs())
-  //     return nullptr;
-
-  //   return getTrailingObjects<TemplateArgumentLoc>();
-  // }
-
-  /// Retrieve the number of template arguments provided as part of this
-  /// template-id.
-  // unsigned getNumTemplateArgs() const {
-  //   if (!hasExplicitTemplateArgs())
-  //     return 0;
-
-  //   return getTrailingObjects<ASTTemplateKWAndArgsInfo>()->NumTemplateArgs;
-  // }
-
-  // ArrayRef<TemplateArgumentLoc> template_arguments() const {
-  //   return {getTemplateArgs(), getNumTemplateArgs()};
-  // }
 
   SourceLocation getBeginLoc() const LLVM_READONLY {
     return MemberNameInfo.getBeginLoc();

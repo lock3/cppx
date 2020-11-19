@@ -52,4 +52,36 @@ CppxPartialEvalExpr *CppxPartialEvalExpr::Create(ASTContext &Ctx,
   return new (Ctx) CppxPartialEvalExpr(Ctx.VoidTy, E, Loc);
 }
 
+CppxDependentMemberAccessExpr::CppxDependentMemberAccessExpr(
+      const ASTContext &Ctx, Expr *Base, QualType BaseType,
+      SourceLocation OperatorLoc, DeclarationNameInfo MemberNameInfo)
+    : Expr(CppxDependentMemberAccessExprClass, Ctx.DependentTy, VK_LValue,
+           OK_Ordinary),
+      Base(Base), BaseType(BaseType), MemberNameInfo(MemberNameInfo)
+{
+  CppxDependentMemberAccessExprBits.OperatorLoc = OperatorLoc;
+  setDependence(computeDependence(this));
+}
+
+CppxDependentMemberAccessExpr::CppxDependentMemberAccessExpr(EmptyShell Empty)
+  : Expr(CppxDependentMemberAccessExprClass, Empty) { }
+
+CppxDependentMemberAccessExpr *
+CppxDependentMemberAccessExpr::Create(const ASTContext &Ctx, Expr *Base,
+                                      QualType BaseType,
+                                      SourceLocation OperatorLoc,
+                                      DeclarationNameInfo MemberNameInfo) {
+  void *Mem = Ctx.Allocate(sizeof(CppxDependentMemberAccessExpr),
+                           alignof(CppxDependentMemberAccessExpr));
+  return new (Mem) CppxDependentMemberAccessExpr(Ctx, Base, BaseType,
+                                                 OperatorLoc, MemberNameInfo);
+}
+
+CppxDependentMemberAccessExpr *
+CppxDependentMemberAccessExpr::CreateEmpty(const ASTContext &Ctx) {
+  void *Mem = Ctx.Allocate(sizeof(CppxDependentMemberAccessExpr),
+                           alignof(CppxDependentMemberAccessExpr));
+  return new (Mem) CppxDependentMemberAccessExpr(EmptyShell());
+}
+
 } // namespace clang

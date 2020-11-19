@@ -2743,6 +2743,7 @@ public:
   }
 };
 
+
 struct CppxArgsLocInfo {
   SourceLocation Loc;
 };
@@ -2768,6 +2769,38 @@ public:
     setNameLoc(Loc);
   }
 };
+
+
+struct CppxTypeExprLocInfo {
+  SourceLocation Loc;
+};
+
+/// Wrapper for source info for namespace types
+class CppxTypeExprTypeLoc : public ConcreteTypeLoc<UnqualTypeLoc,
+                                                    CppxTypeExprTypeLoc,
+                                                    CppxTypeExprType,
+                                                    CppxTypeExprLocInfo> {
+public:
+  Expr* getTyExpr() const {
+    return getTypePtr()->getTyExpr();
+  }
+  SourceLocation getNameLoc() const {
+    return getLocalData()->Loc;
+  }
+
+
+  void setNameLoc(SourceLocation Loc) {
+    getLocalData()->Loc = Loc;
+  }
+
+  SourceRange getLocalSourceRange() const {
+    return SourceRange(getLocalData()->Loc, getLocalData()->Loc);
+  }
+  void initializeLocal(ASTContext &Context, SourceLocation Loc) {
+    setNameLoc(Loc);
+  }
+};
+
 
 template <typename T>
 inline T TypeLoc::getAsAdjusted() const {

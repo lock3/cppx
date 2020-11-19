@@ -513,6 +513,20 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::CppxArgsTypeLoc>
   return x;
 }
 
+template<> TypeSourceInfo *BuildTypeLoc<clang::CppxTypeExprType>
+(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
+  auto TypeLocInstance = TLB.push<clang::CppxTypeExprTypeLoc>(Ty);
+  TypeLocInstance.setNameLoc(Loc);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::CppxTypeExprTypeLoc>
+(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
+  TypeLocBuilder TLB;
+  auto x = BuildTypeLoc<clang::CppxTypeExprTypeLoc>(Context, TLB, Ty, Loc);
+  return x;
+}
+
 template<> TypeSourceInfo *BuildTypeLoc<clang::EnumTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   clang::EnumTypeLoc EnumTL = TLB.push<clang::EnumTypeLoc>(Ty);

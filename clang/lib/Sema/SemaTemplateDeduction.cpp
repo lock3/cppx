@@ -1642,6 +1642,7 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
     case Type::CppxKind:
     case Type::CppxNamespace:
     case Type::CppxArgs:
+    case Type::CppxTypeExpr:
     case Type::ExtInt:
       if (TDF & TDF_SkipNonDependent)
         return Sema::TDK_Success;
@@ -6154,6 +6155,7 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
   case Type::CppxKind:
   case Type::CppxNamespace:
   case Type::CppxArgs:
+  case Type::CppxTypeExpr:
   case Type::CppxTemplate:
   // This type is a template I'm not sure what to do here. Because technically
   // the template parameters haven't been used yet.

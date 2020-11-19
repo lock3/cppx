@@ -2225,7 +2225,6 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
     SemaRef.Diags.Report(LHS->getLoc(), clang::diag::err_expected_expression);
     return nullptr;
   }
-
   if (ElaboratedLHS->getType()->isTypeOfTypes())
     return elaborateNestedLookupAccess(ElaboratedLHS, Op, RHS);
 
@@ -2272,8 +2271,10 @@ ExprElaborator::elaborateConstructDestructExpr(clang::Expr *ElaboratedLHS,
                                                const AtomSyntax *RHS) {
   if (RHS->getSpelling() == "construct")
     return elaborateInPlaceNewCall(ElaboratedLHS, Op, RHS);
+
   if (RHS->getSpelling() == "destruct")
     return elaborateDestructCall(ElaboratedLHS, Op, RHS);
+
   return nullptr;
 }
 
@@ -2350,9 +2351,9 @@ clang::Expr *ExprElaborator::elaborateDisambuationSyntax(clang::Expr *Elaborated
     elaborateNestedLookupAccess(LHS, Op, Disambig->getArgument(1));
   if (!Res)
     return nullptr;
-  if (ElaboratedLHS->getType()->isTypeOfTypes()) {
+
+  if (ElaboratedLHS->getType()->isTypeOfTypes())
     return Res;
-  }
 
   if (clang::DeclRefExpr *FieldRef = dyn_cast<clang::DeclRefExpr>(Res)) {
     if (!isa<clang::FieldDecl>(FieldRef->getDecl())) {
@@ -2562,11 +2563,15 @@ static bool usingClassLookupIsUnresolved(clang::DeclContextLookupResult const &R
 }
 
 static clang::Expr *
-handleDependentTypeNameLookup(Sema &SemaRef, clang::ASTContext &CxxAST,
-                              const CallSyntax *Op, clang::Expr *Prev,
-                              const Syntax *RHS, bool AddressOf)
-{
-
+handleDependentTypeNameLookup(Sema &SemaRef, const CallSyntax *Op,
+                              clang::Expr *Prev, const Syntax *RHS) {
+  auto Name = cast<AtomSyntax>(RHS);
+  clang::DeclarationNameInfo DNI({
+                  &SemaRef.getContext().CxxAST.Idents.get(Name->getSpelling())},
+                                RHS->getLoc());
+  return clang::CppxDependentMemberAccessExpr::Create(
+    SemaRef.getContext().CxxAST, Prev, SemaRef.getContext().CxxAST.DependentTy,
+    Op->getLoc(), DNI);
 }
 
 clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
@@ -2825,6 +2830,13 @@ clang::Expr *ExprElaborator::elaborateNestedLookupAccess(
   clang::TypeSourceInfo *TInfo = Literal->getValue();
   clang::TypeLocBuilder TLB;
   TInfo = BuildAnyTypeLoc(Context.CxxAST, TLB, TInfo->getType(), Op->getLoc());
+
+  // if (TInfo->getType()->isInstantiationDependent()) {
+  //   llvm_unreachable("TInfo->getType()->isInstantiationDependent()");
+  // }
+  if (TInfo->getType()->isDependentType())
+    return handleDependentTypeNameLookup(SemaRef, Op, Previous, RHS);
+
   clang::TypeLoc TL = TLB.getTypeLocInContext(Context.CxxAST, TInfo->getType());
   clang::QualType RecordType = TInfo->getType();
   clang::CXXRecordDecl *RD = RecordType->getAsCXXRecordDecl();

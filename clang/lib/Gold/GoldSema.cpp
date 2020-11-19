@@ -29,9 +29,10 @@
 #include "clang/Gold/ClangToGoldDeclBuilder.h"
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldIdentifierResolver.h"
+#include "clang/Gold/GoldPartialExpr.h"
+#include "clang/Gold/GoldTemplateCallback.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSyntax.h"
-#include "clang/Gold/GoldPartialExpr.h"
 
 #include <algorithm>
 
@@ -181,6 +182,13 @@ buildFoldOpLookup(clang::ASTContext &Ctx) {
     // Things we don't support for fold operators.
     // , .* ->*
   };
+}
+template<typename Derived, typename Base, typename Del>
+static std::unique_ptr<Derived, Del> 
+static_unique_ptr_cast(std::unique_ptr<Base, Del>&& p )
+{
+    auto d = static_cast<Derived *>(p.release());
+    return std::unique_ptr<Derived, Del>(d, std::move(p.get_deleter()));
 }
 
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
@@ -1136,7 +1144,13 @@ clang::CppxTypeLiteral *Sema::buildAnyTypeExpr(clang::QualType KindTy,
     clang::QualType Ty, clang::SourceLocation Loc) {
   return buildAnyTypeExpr(KindTy, BuildAnyTypeLoc(Context.CxxAST, Ty, Loc));
 }
-
+clang::CppxTypeLiteral *Sema::buildTypeExprTypeFromExpr(clang::Expr *E,
+                                                    clang::SourceLocation Loc) {
+  return buildAnyTypeExpr(Context.CxxAST.CppxKindTy,
+                          BuildAnyTypeLoc(Context.CxxAST,
+                                          Context.CxxAST.getCppxTypeExprTy(E),
+                                          Loc));
+}
 clang::CppxTypeLiteral *
 Sema::buildFunctionTypeExpr(clang::QualType FnTy, SourceLocation BeginLoc,
                             clang::SourceLocation LParenLoc,
@@ -1713,6 +1727,23 @@ Sema::rebuildDeclarationNameInfo(const clang::DeclarationNameInfo &DNI) {
     // There are no conversion made for non-identifier names (yet).
     return DNI;
   }
+}
+
+clang::QualType Sema::TransformCppxTypeExprType(clang::TypeLocBuilder &TLB,
+                                                clang::CppxTypeExprTypeLoc TL) {
+  const clang::CppxTypeExprType *TyPtr
+                               = TL.getType()->getAs<clang::CppxTypeExprType>();
+  if (!TyPtr) {
+    llvm_unreachable("Invalid type ptr");
+  }
+  assert(TyPtr->getTyExpr() && "Invalid type expression");
+  // TyPtr->getTyExpr()->dump();
+  llvm_unreachable("Derp");
+}
+
+clang::Expr *Sema::TransformCppxDependentMemberAccessExpr(
+                                      clang::CppxDependentMemberAccessExpr *E) {
+  llvm_unreachable("Also Derp");
 }
 
 } // namespace gold

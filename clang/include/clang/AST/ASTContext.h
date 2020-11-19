@@ -233,6 +233,7 @@ class ASTContext : public RefCountedBase<ASTContext> {
 
   /// The set of template types used by the system.
   mutable llvm::FoldingSet<CppxTemplateType> TemplateTypes;
+  mutable llvm::FoldingSet<CppxTypeExprType> TypeExprTypes;
 
   mutable llvm::FoldingSet<QualifiedTemplateName> QualifiedTemplateNames;
   mutable llvm::FoldingSet<DependentTemplateName> DependentTemplateNames;
@@ -2585,6 +2586,8 @@ public:
 
 public:
   QualType getTemplateType(TemplateDecl *Decl) const;
+
+  QualType getCppxTypeExprTy(Expr *E) const;
 private:
   // Helper for integer ordering
   unsigned getIntegerRank(const Type *T) const;

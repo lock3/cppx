@@ -24,6 +24,7 @@ TEST(GoldTemplateAmbiguity, DependentDotIsNestedName) {
   StringRef Code = R"(
 foo[T:type]():void!
   Y : type = T.X
+  var : Y
 
 T1 = class:
   X : type = int

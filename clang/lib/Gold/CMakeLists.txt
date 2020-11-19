@@ -23,6 +23,7 @@ add_clang_library(gold
   GoldStmtElaborator.cpp
   GoldSymbol.cpp
   GoldSyntax.cpp
+  GoldTemplateCallback.cpp
   GoldTokens.cpp
   ParseGoldAST.cpp
 
