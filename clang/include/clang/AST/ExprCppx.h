@@ -299,14 +299,11 @@ class CppxDependentMemberAccessExpr final
   /// e.g., the \c x in x.f.  Can be null in implicit accesses.
   Stmt *Base;
 
+  Expr *NameSpecifier;
+
   /// The type of the base expression.  Never null, even for
   /// implicit accesses.
   QualType BaseType;
-
-  /// The nested-name-specifier that precedes the member name, if any.
-  /// FIXME: This could be in principle store as a trailing object.
-  /// However the performance impact of doing so should be investigated first.
-  NestedNameSpecifierLoc QualifierLoc;
 
   /// The member to which this member expression refers, which
   /// can be name, overloaded operator, or destructor.
@@ -314,14 +311,16 @@ class CppxDependentMemberAccessExpr final
 
   CppxDependentMemberAccessExpr(const ASTContext &Ctx, Expr *Base, QualType BaseType,
                                 SourceLocation OperatorLoc,
-                                DeclarationNameInfo MemberNameInfo);
+                                DeclarationNameInfo MemberNameInfo,
+                                Expr *NameSpecExpr = nullptr);
 
   CppxDependentMemberAccessExpr(EmptyShell Empty);
 
 public:
   static CppxDependentMemberAccessExpr *
     Create(const ASTContext &Ctx, Expr *Base, QualType BaseType,
-           SourceLocation OperatorLoc, DeclarationNameInfo MemberNameInfo);
+           SourceLocation OperatorLoc, DeclarationNameInfo MemberNameInfo,
+           Expr *NameSpecExpr = nullptr);
 
   static CppxDependentMemberAccessExpr *CreateEmpty(const ASTContext &Ctx);
 
@@ -339,6 +338,10 @@ public:
   Expr *getBase() const {
     assert(!isImplicitAccess());
     return cast<Expr>(Base);
+  }
+
+  Expr *getNameQualifierExpr() const {
+    return NameSpecifier;
   }
 
   QualType getBaseType() const { return BaseType; }

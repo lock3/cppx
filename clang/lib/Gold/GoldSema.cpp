@@ -27,12 +27,14 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "clang/Gold/ClangToGoldDeclBuilder.h"
+#include "clang/Gold/GoldDependentExprTransformer.h"
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldIdentifierResolver.h"
 #include "clang/Gold/GoldPartialExpr.h"
-#include "clang/Gold/GoldTemplateCallback.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSyntax.h"
+#include "clang/Gold/GoldTemplateCallback.h"
+
 
 #include <algorithm>
 
@@ -1729,21 +1731,39 @@ Sema::rebuildDeclarationNameInfo(const clang::DeclarationNameInfo &DNI) {
   }
 }
 
-clang::QualType Sema::TransformCppxTypeExprType(clang::TypeLocBuilder &TLB,
-                                                clang::CppxTypeExprTypeLoc TL) {
-  const clang::CppxTypeExprType *TyPtr
-                               = TL.getType()->getAs<clang::CppxTypeExprType>();
-  if (!TyPtr) {
+clang::QualType Sema::TransformCppxTypeExprType(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::TypeLocBuilder &TLB, clang::CppxTypeExprTypeLoc TL) {
+  auto Ty = TL.getType()->getAs<clang::CppxTypeExprType>();
+  if (!Ty) {
     llvm_unreachable("Invalid type ptr");
   }
-  assert(TyPtr->getTyExpr() && "Invalid type expression");
-  // TyPtr->getTyExpr()->dump();
-  llvm_unreachable("Derp");
+  assert(Ty->getTyExpr() && "Invalid type expression");
+  DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
+  clang::Expr *Ret = rebuilder.transformDependentExpr(Ty->getTyExpr());
+  if (!Ret)
+    // Returning an empty type because this was an error.
+    return clang::QualType();
+
+  clang::TypeSourceInfo *TInfo = getTypeSourceInfoFromExpr(Ret,
+                                                           Ret->getExprLoc());
+  if (!TInfo)
+    return clang::QualType();
+  TInfo = BuildAnyTypeLoc(Context.CxxAST, TLB, TInfo->getType(),
+                          Ret->getExprLoc());
+  if (!TInfo)
+    return clang::QualType();
+
+  return TInfo->getType();
 }
 
 clang::Expr *Sema::TransformCppxDependentMemberAccessExpr(
-                                      clang::CppxDependentMemberAccessExpr *E) {
-  llvm_unreachable("Also Derp");
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxDependentMemberAccessExpr *E) {
+  DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
+  return rebuilder.transformDependentExpr(E);
 }
 
 } // namespace gold

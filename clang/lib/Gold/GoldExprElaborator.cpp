@@ -1274,7 +1274,7 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
     return createIntegerLiteral(CxxAST, SemaRef, cast<LiteralSyntax>(S));
   case tok::DecimalFloat:
     return createFloatLiteral(CxxAST, SemaRef, cast<LiteralSyntax>(S));
-  case tok::BinaryInteger: 
+  case tok::BinaryInteger:
     return createIntegerLiteral(CxxAST, SemaRef, cast<LiteralSyntax>(S), 2);
   case tok::HexadecimalInteger:
     return createIntegerLiteral(CxxAST, SemaRef,
@@ -2565,13 +2565,30 @@ static bool usingClassLookupIsUnresolved(clang::DeclContextLookupResult const &R
 static clang::Expr *
 handleDependentTypeNameLookup(Sema &SemaRef, const CallSyntax *Op,
                               clang::Expr *Prev, const Syntax *RHS) {
-  auto Name = cast<AtomSyntax>(RHS);
-  clang::DeclarationNameInfo DNI({
-                  &SemaRef.getContext().CxxAST.Idents.get(Name->getSpelling())},
-                                RHS->getLoc());
+  clang::IdentifierInfo *Id;
+  clang::Expr *NameSpec = nullptr;
+  if (auto Call = dyn_cast<CallSyntax>(RHS)) {
+    FusedOpKind Op = getFusedOpKind(SemaRef, Call);
+    if (Op != FOK_Parens) {
+      llvm_unreachable("as far as I know this can't happen.");
+    }
+    auto Name = cast<AtomSyntax>(Call->getArgument(1));
+    Id = &SemaRef.getContext().CxxAST.Idents.get(Name->getSpelling());
+    NameSpec = ExprElaborator(SemaRef.getContext(), SemaRef).elaborateExpr(
+                                                          Call->getArgument(0));
+
+  } else {
+    auto Name = cast<AtomSyntax>(RHS);
+    Id = &SemaRef.getContext().CxxAST.Idents.get(Name->getSpelling());
+  }
+  clang::DeclarationNameInfo DNI({Id}, RHS->getLoc());
+  // auto Name = cast<AtomSyntax>(RHS);
+  // clang::DeclarationNameInfo DNI({
+  //                 &SemaRef.getContext().CxxAST.Idents.get(Name->getSpelling())},
+  //                               RHS->getLoc());
   return clang::CppxDependentMemberAccessExpr::Create(
     SemaRef.getContext().CxxAST, Prev, SemaRef.getContext().CxxAST.DependentTy,
-    Op->getLoc(), DNI);
+    Op->getLoc(), DNI, NameSpec);
 }
 
 clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,

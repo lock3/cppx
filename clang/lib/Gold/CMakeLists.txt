@@ -8,6 +8,7 @@ add_clang_library(gold
   GoldDeclaration.cpp
   GoldDeclarationBuilder.cpp
   GoldDeclarator.cpp
+  GoldDependentExprTransformer.cpp
   GoldElaborator.cpp
   GoldExprElaborator.cpp
   GoldFile.cpp

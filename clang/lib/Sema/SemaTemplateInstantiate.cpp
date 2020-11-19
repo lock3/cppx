@@ -1113,13 +1113,15 @@ namespace {
     ExprResult TransformCppxDependentMemberAccessExpr(
                                             CppxDependentMemberAccessExpr *E) {
       assert(SemaRef.getGoldSema() && "invalid without gold language support");
-      return SemaRef.getGoldSema()->TransformCppxDependentMemberAccessExpr(E);
+      return SemaRef.getGoldSema()->TransformCppxDependentMemberAccessExpr(
+          TemplateArgs, Loc, Entity, E);
     }
 
     QualType TransformCppxTypeExprType(TypeLocBuilder &TLB,
                                        CppxTypeExprTypeLoc TL) {
       assert(SemaRef.getGoldSema() && "invalid without gold language support");
-      return SemaRef.getGoldSema()->TransformCppxTypeExprType(TLB, TL);
+      return SemaRef.getGoldSema()->TransformCppxTypeExprType(TemplateArgs, Loc,
+                                                              Entity,TLB, TL);
     }
 
     /// Rebuild a DeclRefExpr for a VarDecl reference.

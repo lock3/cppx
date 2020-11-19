@@ -11434,6 +11434,10 @@ def err_invalid_call_to_sizeof_pack : Error<
   "invalid use of 'sizeof...', sizeof expects a single argument which is the "
   "name of a parameter pack.">;
 
+def err_invalid_dependent_expr : Error<"invalid dependent expression">;
+def err_missing_member_dependent_expr : Error<
+  "failed to locate member %0 within dependent expression">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

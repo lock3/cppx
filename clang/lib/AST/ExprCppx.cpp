@@ -54,10 +54,12 @@ CppxPartialEvalExpr *CppxPartialEvalExpr::Create(ASTContext &Ctx,
 
 CppxDependentMemberAccessExpr::CppxDependentMemberAccessExpr(
       const ASTContext &Ctx, Expr *Base, QualType BaseType,
-      SourceLocation OperatorLoc, DeclarationNameInfo MemberNameInfo)
+      SourceLocation OperatorLoc, DeclarationNameInfo MemberNameInfo,
+      Expr *NameSpecExpr)
     : Expr(CppxDependentMemberAccessExprClass, Ctx.DependentTy, VK_LValue,
            OK_Ordinary),
-      Base(Base), BaseType(BaseType), MemberNameInfo(MemberNameInfo)
+      Base(Base), BaseType(BaseType), MemberNameInfo(MemberNameInfo),
+      NameSpecifier(NameSpecExpr)
 {
   CppxDependentMemberAccessExprBits.OperatorLoc = OperatorLoc;
   setDependence(computeDependence(this));
@@ -70,11 +72,13 @@ CppxDependentMemberAccessExpr *
 CppxDependentMemberAccessExpr::Create(const ASTContext &Ctx, Expr *Base,
                                       QualType BaseType,
                                       SourceLocation OperatorLoc,
-                                      DeclarationNameInfo MemberNameInfo) {
+                                      DeclarationNameInfo MemberNameInfo,
+                                      Expr *NameSpecExpr) {
   void *Mem = Ctx.Allocate(sizeof(CppxDependentMemberAccessExpr),
                            alignof(CppxDependentMemberAccessExpr));
   return new (Mem) CppxDependentMemberAccessExpr(Ctx, Base, BaseType,
-                                                 OperatorLoc, MemberNameInfo);
+                                                 OperatorLoc, MemberNameInfo,
+                                                 NameSpecExpr);
 }
 
 CppxDependentMemberAccessExpr *

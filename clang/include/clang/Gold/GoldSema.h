@@ -1125,10 +1125,16 @@ public:
                                          const clang::DeclarationNameInfo &DNI);
 
 public:
-    clang::QualType TransformCppxTypeExprType(clang::TypeLocBuilder &TLB,
-                                              clang::CppxTypeExprTypeLoc TL);
+    /// Transformation triggering expressions.
+    clang::QualType TransformCppxTypeExprType(
+      const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+      clang::SourceLocation Loc, clang::DeclarationName Entity,
+      clang::TypeLocBuilder &TLB, clang::CppxTypeExprTypeLoc TL);
+
     clang::Expr *TransformCppxDependentMemberAccessExpr(
-                            clang::CppxDependentMemberAccessExpr *E);
+      const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+      clang::SourceLocation Loc, clang::DeclarationName Entity,
+      clang::CppxDependentMemberAccessExpr *E);
 };
 
 } // namespace gold

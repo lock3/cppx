@@ -6671,10 +6671,10 @@ template<typename Derived>
 QualType TreeTransform<Derived>::TransformCppxTypeExprType(
                                          TypeLocBuilder &TLB,
                                          CppxTypeExprTypeLoc TL) {
-  // QualType T = TL.getType();
-  // TLB.pushTypeSpec(T).setNameLoc(TL.getNameLoc());
-  // return T;
-  llvm_unreachable("Working on type expression transformation.");
+  QualType T = TL.getType();
+  TLB.pushTypeSpec(T).setNameLoc(TL.getNameLoc());
+  return T;
+  // llvm_unreachable("Working on type expression transformation.");
 }
 
 
