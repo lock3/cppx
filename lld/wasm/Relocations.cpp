@@ -16,15 +16,27 @@ using namespace llvm::wasm;
 
 namespace lld {
 namespace wasm {
+
 static bool requiresGOTAccess(const Symbol *sym) {
-  return config->isPic && !sym->isHidden() && !sym->isLocal();
+  if (!config->isPic)
+    return false;
+  if (sym->isHidden() || sym->isLocal())
+    return false;
+  // With `-Bsymbolic` (or when building an executable) as don't need to use
+  // the GOT for symbols that are defined within the current module.
+  if (sym->isDefined() && (!config->shared || config->bsymbolic))
+    return false;
+  return true;
 }
 
 static bool allowUndefined(const Symbol* sym) {
-  // Undefined functions with explicit import name are allowed to be undefined
-  // at link time.
-  if (auto *F = dyn_cast<UndefinedFunction>(sym))
-    if (F->importName)
+  // Undefined functions and globals with explicit import name are allowed to be
+  // undefined at link time.
+  if (auto *f = dyn_cast<UndefinedFunction>(sym))
+    if (f->importName)
+      return true;
+  if (auto *g = dyn_cast<UndefinedGlobal>(sym))
+    if (g->importName)
       return true;
   return (config->allowUndefined ||
           config->allowUndefinedSymbols.count(sym->getName()) != 0);
@@ -38,17 +50,10 @@ static void reportUndefined(const Symbol* sym) {
 }
 
 static void addGOTEntry(Symbol *sym) {
-  // In PIC mode a GOT entry is an imported global that the dynamic linker
-  // will assign.
-  // In non-PIC mode (i.e. when code compiled as fPIC is linked into a static
-  // binary) we create an internal wasm global with a fixed value that takes the
-  // place of th GOT entry and effectivly acts as an i32 const. This can
-  // potentially be optimized away at runtime or with a post-link tool.
-  // TODO(sbc): Linker relaxation might also be able to optimize this away.
-  if (config->isPic)
+  if (requiresGOTAccess(sym))
     out.importSec->addGOTEntry(sym);
   else
-    out.globalSec->addStaticGOTEntry(sym);
+    out.globalSec->addInternalGOTEntry(sym);
 }
 
 void scanRelocations(InputChunk *chunk) {

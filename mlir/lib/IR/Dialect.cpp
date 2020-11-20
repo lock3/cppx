@@ -8,7 +8,6 @@
 
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Diagnostics.h"
-#include "mlir/IR/DialectHooks.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/MLIRContext.h"
@@ -23,43 +22,22 @@ using namespace detail;
 
 DialectAsmParser::~DialectAsmParser() {}
 
-//===----------------------------------------------------------------------===//
-// Dialect Registration
-//===----------------------------------------------------------------------===//
-
-/// Registry for all dialect allocation functions.
-static llvm::ManagedStatic<llvm::MapVector<TypeID, DialectAllocatorFunction>>
-    dialectRegistry;
-
-/// Registry for functions that set dialect hooks.
-static llvm::ManagedStatic<llvm::MapVector<TypeID, DialectHooksSetter>>
-    dialectHooksRegistry;
-
-void Dialect::registerDialectAllocator(
-    TypeID typeID, const DialectAllocatorFunction &function) {
-  assert(function &&
-         "Attempting to register an empty dialect initialize function");
-  dialectRegistry->insert({typeID, function});
+Dialect *DialectRegistry::loadByName(StringRef name, MLIRContext *context) {
+  auto it = registry.find(name.str());
+  if (it == registry.end())
+    return nullptr;
+  return it->second.second(context);
 }
 
-/// Registers a function to set specific hooks for a specific dialect, typically
-/// used through the DialectHooksRegistration template.
-void DialectHooks::registerDialectHooksSetter(
-    TypeID typeID, const DialectHooksSetter &function) {
-  assert(
-      function &&
-      "Attempting to register an empty dialect hooks initialization function");
-
-  dialectHooksRegistry->insert({typeID, function});
-}
-
-/// Registers all dialects and hooks from the global registries with the
-/// specified MLIRContext.
-void mlir::registerAllDialects(MLIRContext *context) {
-  for (const auto &it : *dialectRegistry)
-    it.second(context);
-  for (const auto &it : *dialectHooksRegistry)
-    it.second(context);
+void DialectRegistry::insert(TypeID typeID, StringRef name,
+                             DialectAllocatorFunction ctor) {
+  auto inserted = registry.insert(
+      std::make_pair(std::string(name), std::make_pair(typeID, ctor)));
+  if (!inserted.second && inserted.first->second.first != typeID) {
+    llvm::report_fatal_error(
+        "Trying to register different dialects for the same namespace: " +
+        name);
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -137,7 +115,7 @@ DialectInterface::~DialectInterface() {}
 
 DialectInterfaceCollectionBase::DialectInterfaceCollectionBase(
     MLIRContext *ctx, TypeID interfaceKind) {
-  for (auto *dialect : ctx->getRegisteredDialects()) {
+  for (auto *dialect : ctx->getLoadedDialects()) {
     if (auto *interface = dialect->getRegisteredInterface(interfaceKind)) {
       interfaces.insert(interface);
       orderedInterfaces.push_back(interface);

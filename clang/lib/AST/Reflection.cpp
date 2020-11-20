@@ -272,10 +272,11 @@ namespace clang {
     // Modifier updates
     query_set_access,
     query_set_storage,
-    query_set_add_constexpr,
+    query_set_constexpr,
     query_set_add_explicit,
     query_set_add_virtual,
     query_set_add_pure_virtual,
+    query_set_add_inline,
     query_set_new_name,
 
     // Labels for kinds of queries. These need to be updated when new
@@ -1121,6 +1122,8 @@ static bool isInline(ReflectionQueryEvaluator &Eval,
       return SuccessBool(Eval, Result, VD->isInline());
     if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(D))
       return SuccessBool(Eval, Result, FD->isInlined());
+    if (const NamespaceDecl *NS = dyn_cast<NamespaceDecl>(D))
+      return SuccessBool(Eval, Result, NS->isInline());
   }
   return SuccessFalse(Eval, Result);
 }
@@ -3114,22 +3117,23 @@ bool Reflection::GetAssociatedReflection(ReflectionQuery Q, APValue &Result) {
 //
 // This is morally equivalent to creating a global string.
 // During codegen, that's exactly how this is interpreted.
-static Expr *
-MakeConstCharPointer(ASTContext& Ctx, const std::string &Str, SourceLocation Loc) {
-  QualType StrLitTy = Ctx.getConstantArrayType(Ctx.CharTy.withConst(),
-                                               llvm::APInt(32, Str.size() + 1),
-                                               nullptr, ArrayType::Normal, 0);
+static Expr *MakeConstCharPointer(
+    ASTContext& Ctx, StringRef Str, SourceLocation Loc) {
+  QualType StrLitTy = Ctx.getConstantArrayType(
+      Ctx.CharTy.withConst(), llvm::APInt(32, Str.size() + 1), nullptr,
+      ArrayType::Normal, 0);
 
   // Create a string literal of type const char [L] where L
   // is the number of characters in the StringRef.
-  StringLiteral *StrLit = StringLiteral::Create(Ctx, Str, StringLiteral::Ascii,
-                                                false, StrLitTy, Loc);
+  StringLiteral *StrLit = StringLiteral::Create(
+      Ctx, Str, StringLiteral::Ascii, false, StrLitTy, Loc);
 
   // Create an implicit cast expr so that we convert our const char [L]
   // into an actual const char * for proper evaluation.
   QualType StrTy = Ctx.getPointerType(Ctx.getConstType(Ctx.CharTy));
-  return ImplicitCastExpr::Create(Ctx, StrTy, CK_ArrayToPointerDecay, StrLit,
-                                  /*BasePath=*/nullptr, VK_RValue);
+  return ImplicitCastExpr::Create(
+      Ctx, StrTy, CK_ArrayToPointerDecay, StrLit, /*BasePath=*/nullptr,
+      VK_RValue, FPOptionsOverride());
 }
 
 static bool getName(const Reflection R, APValue &Result) {
@@ -3138,8 +3142,7 @@ static bool getName(const Reflection R, APValue &Result) {
   if (const Expr *NewNameExpr = R.getModifiers().getNewName()) {
     Expr::EvalResult Eval;
     Expr::EvalContext EvalCtx(Ctx, nullptr);
-    if (!NewNameExpr->EvaluateAsConstantExpr(Eval, Expr::EvaluateForCodeGen,
-                                             EvalCtx))
+    if (!NewNameExpr->EvaluateAsConstantExpr(Eval, EvalCtx))
       return false;
     Result = Eval.Val;
     return true;
@@ -3156,7 +3159,7 @@ static bool getName(const Reflection R, APValue &Result) {
     // Generate the result value.
     Expr::EvalResult Eval;
     Expr::EvalContext EvalCtx(Ctx, nullptr);
-    if (!Str->EvaluateAsConstantExpr(Eval, Expr::EvaluateForCodeGen, EvalCtx))
+    if (!Str->EvaluateAsConstantExpr(Eval, EvalCtx))
       return false;
     Result = Eval.Val;
     return true;
@@ -3170,7 +3173,7 @@ static bool getName(const Reflection R, APValue &Result) {
     // Generate the result value.
     Expr::EvalResult Eval;
     Expr::EvalContext EvalCtx(Ctx, nullptr);
-    if (!Str->EvaluateAsConstantExpr(Eval, Expr::EvaluateForCodeGen, EvalCtx))
+    if (!Str->EvaluateAsConstantExpr(Eval, EvalCtx))
       return false;
     Result = Eval.Val;
     return true;
@@ -3227,16 +3230,16 @@ setStorageMod(const Reflection &R, const ArrayRef<APValue> &Args,
   return Error(R);
 }
 
-static ReflectionModifiers withConstexpr(const Reflection &R, bool AddConstexpr) {
+static ReflectionModifiers withConstexpr(const Reflection &R, std::uint64_t Val) {
   ReflectionModifiers M = R.getModifiers();
-  M.setAddConstexpr(AddConstexpr);
+  M.setConstexprModifier(static_cast<ConstexprModifier>(Val));
   return M;
 }
 
 static bool
-setAddConstexprMod(const Reflection &R, const ArrayRef<APValue> &Args,
-                   APValue &Result) {
-  if (OptionalBool V = getArgAsBool(Args, 0))
+setConstexprMod(const Reflection &R, const ArrayRef<APValue> &Args,
+                APValue &Result) {
+  if (OptionalUInt V = getArgAsUInt(Args, 0))
     return makeReflection(R, withConstexpr(R, *V), Result);
   return Error(R);
 }
@@ -3284,6 +3287,20 @@ setAddPureVirtualMod(const Reflection &R, const ArrayRef<APValue> &Args,
   return Error(R);
 }
 
+static ReflectionModifiers withInline(const Reflection &R, bool AddInline) {
+  ReflectionModifiers M = R.getModifiers();
+  M.setAddInline(AddInline);
+  return M;
+}
+
+static bool
+setAddInlineMod(const Reflection &R, const ArrayRef<APValue> &Args,
+                APValue &Result) {
+  if (OptionalBool V = getArgAsBool(Args, 0))
+    return makeReflection(R, withInline(R, *V), Result);
+  return Error(R);
+}
+
 static ReflectionModifiers withNewName(const Reflection &R, const Expr *NewName) {
   ReflectionModifiers M = R.getModifiers();
   M.setNewName(NewName);
@@ -3308,14 +3325,16 @@ bool Reflection::UpdateModifier(ReflectionQuery Q,
     return setAccessMod(*this, ContextualArgs, Result);
   case query_set_storage:
     return setStorageMod(*this, ContextualArgs, Result);
-  case query_set_add_constexpr:
-    return setAddConstexprMod(*this, ContextualArgs, Result);
+  case query_set_constexpr:
+    return setConstexprMod(*this, ContextualArgs, Result);
   case query_set_add_explicit:
     return setAddExplicitMod(*this, ContextualArgs, Result);
   case query_set_add_virtual:
     return setAddVirtualMod(*this, ContextualArgs, Result);
   case query_set_add_pure_virtual:
     return setAddPureVirtualMod(*this, ContextualArgs, Result);
+  case query_set_add_inline:
+    return setAddInlineMod(*this, ContextualArgs, Result);
   case query_set_new_name:
     return setNewNameMod(*this, ContextualArgs, Result);
   default:

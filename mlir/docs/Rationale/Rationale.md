@@ -214,7 +214,7 @@ operations.
 We allow `index` types in tensors and memrefs as a code generation strategy has
 to map `index` to an implementation type and hence needs to be able to
 materialize corresponding values. However, the target might lack support for
-`vector` values with the target specfic equivalent of the `index` type.
+`vector` values with the target specific equivalent of the `index` type.
 
 ### Bit width of a non-primitive type and `index` is undefined
 
@@ -427,43 +427,10 @@ arguments to explicitly break the use-def chains in the current proposal. This
 can be combined with an attribute-imposed semantic requirement disallowing the
 body of the region to refer to any value from outside it.
 
-### Quantized integer operations
-
-We haven't designed integer quantized operations in MLIR, but experience from
-TensorFlow suggests that it is better to put information about the quantization
-range/scale into the type itself, rather than have a single type like "qint8"
-and put these on attributes of the operation.
-
-There are a few ways to do this with MLIR, including at least:
-
-*   We could do the same thing TensorFlow does - and we will _have_ to support
-    that model to some extent for compatibility.
-*   We can encode the fp range of quantized integers directly into the types
-    when they are constants. The best practice on this seems to be to encode the
-    zero point as well as a scale factor. This ensures that 0.0 is always
-    exactly representable, e.g. `qi8<-1.42, 31.23x>`.
-*   We could theoretically encode dynamically determined ranges into the types
-    using something like `qi8<?,?>` with the bounds being determined through the
-    SSA dataflow graph dynamically - similar to how dynamic shapes are handled.
-
-We will definitely need to do #1 for compatibility, we probably want to do #2,
-and we should investigate #3 over time. That said, our short term plan is to get
-more implementation experience with the rest of the system first, then come back
-to re-examine the representation for quantized arithmetic when we have that
-experience. When we do, we should chat with benoitjacob@ and
-[read the paper](https://arxiv.org/abs/1712.05877).
-
 ### Dialect type extensions
 
 This section describes the design decisions that shaped the dialect extensible
 type system present in MLIR.
-
-#### Reserving dialect type kinds
-
-Dialects that wish to define type extensions must reserve a range of type kinds
-within a '.def' file within the core IR library. This means that every dialect
-wishing to define custom types must modify this file, but it guarantees that all
-type casting checkings are performed in O(1) time.
 
 #### Interactions between dialects
 

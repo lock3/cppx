@@ -15,6 +15,7 @@
 #ifndef LLVM_CLANG_BASIC_MODULE_H
 #define LLVM_CLANG_BASIC_MODULE_H
 
+#include "clang/Basic/FileEntry.h"
 #include "clang/Basic/SourceLocation.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
@@ -61,6 +62,15 @@ struct ASTFileSignature : std::array<uint8_t, 20> {
   ASTFileSignature(BaseT S = {{0}}) : BaseT(std::move(S)) {}
 
   explicit operator bool() const { return *this != BaseT({{0}}); }
+
+  /// Returns the value truncated to the size of an uint64_t.
+  uint64_t truncatedValue() const {
+    uint64_t Value = 0;
+    static_assert(sizeof(*this) >= sizeof(uint64_t), "No need to truncate.");
+    for (unsigned I = 0; I < sizeof(uint64_t); ++I)
+      Value |= static_cast<uint64_t>((*this)[I]) << (I * 8);
+    return Value;
+  }
 
   static ASTFileSignature create(StringRef Bytes) {
     return create(Bytes.bytes_begin(), Bytes.bytes_end());
@@ -151,7 +161,7 @@ private:
 
   /// The AST file if this is a top-level module which has a
   /// corresponding serialized AST file, or null otherwise.
-  const FileEntry *ASTFile = nullptr;
+  Optional<FileEntryRef> ASTFile;
 
   /// The top-level headers associated with this module.
   llvm::SmallSetVector<const FileEntry *, 2> TopHeaders;
@@ -520,14 +530,14 @@ public:
   }
 
   /// The serialized AST file for this module, if one was created.
-  const FileEntry *getASTFile() const {
+  OptionalFileEntryRefDegradesToFileEntryPtr getASTFile() const {
     return getTopLevelModule()->ASTFile;
   }
 
   /// Set the serialized AST file for the top-level module of this module.
-  void setASTFile(const FileEntry *File) {
-    assert((File == nullptr || getASTFile() == nullptr ||
-            getASTFile() == File) && "file path changed");
+  void setASTFile(Optional<FileEntryRef> File) {
+    assert((!File || !getASTFile() || getASTFile() == File) &&
+           "file path changed");
     getTopLevelModule()->ASTFile = File;
   }
 

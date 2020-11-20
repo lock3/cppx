@@ -899,10 +899,9 @@ bool Sema::LookupBuiltin(LookupResult &R) {
             Context.BuiltinInfo.isPredefinedLibFunction(BuiltinID))
           return false;
 
-        if (NamedDecl *D = LazilyCreateBuiltin((IdentifierInfo *)II,
-                                               BuiltinID, TUScope,
-                                               R.isForRedeclaration(),
-                                               R.getNameLoc())) {
+        if (NamedDecl *D =
+                LazilyCreateBuiltin(II, BuiltinID, TUScope,
+                                    R.isForRedeclaration(), R.getNameLoc())) {
           R.addDecl(D);
           return true;
         }
@@ -911,6 +910,24 @@ bool Sema::LookupBuiltin(LookupResult &R) {
   }
 
   return false;
+}
+
+/// Looks up the declaration of "struct objc_super" and
+/// saves it for later use in building builtin declaration of
+/// objc_msgSendSuper and objc_msgSendSuper_stret.
+static void LookupPredefedObjCSuperType(Sema &Sema, Scope *S) {
+  ASTContext &Context = Sema.Context;
+  LookupResult Result(Sema, &Context.Idents.get("objc_super"), SourceLocation(),
+                      Sema::LookupTagName);
+  Sema.LookupName(Result, S);
+  if (Result.getResultKind() == LookupResult::Found)
+    if (const TagDecl *TD = Result.getAsSingle<TagDecl>())
+      Context.setObjCSuperType(Context.getTagDeclType(TD));
+}
+
+void Sema::LookupNecessaryTypesForBuiltin(Scope *S, unsigned ID) {
+  if (ID == Builtin::BIobjc_msgSendSuper)
+    LookupPredefedObjCSuperType(*this, S);
 }
 
 /// Determine whether we can declare a special member function within
@@ -2894,6 +2911,14 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
       T = cast<ReferenceType>(T)->getPointeeType().getTypePtr();
       continue;
 
+    // Treat parameter types like references
+    case Type::InParameter:
+    case Type::OutParameter:
+    case Type::InOutParameter:
+    case Type::MoveParameter:
+      T = cast<ParameterType>(T)->getParameterType().getTypePtr();
+      break;
+
     // These are fundamental types.
     case Type::Vector:
     case Type::ExtVector:
@@ -3350,9 +3375,9 @@ CXXDestructorDecl *Sema::LookupDestructor(CXXRecordDecl *Class) {
 /// and filter the results to the appropriate set for the given argument types.
 Sema::LiteralOperatorLookupResult
 Sema::LookupLiteralOperator(Scope *S, LookupResult &R,
-                            ArrayRef<QualType> ArgTys,
-                            bool AllowRaw, bool AllowTemplate,
-                            bool AllowStringTemplate, bool DiagnoseMissing) {
+                            ArrayRef<QualType> ArgTys, bool AllowRaw,
+                            bool AllowTemplate, bool AllowStringTemplatePack,
+                            bool DiagnoseMissing, StringLiteral *StringLit) {
   LookupName(R, S);
   assert(R.getResultKind() != LookupResult::Ambiguous &&
          "literal operator lookup can't be ambiguous");
@@ -3360,10 +3385,11 @@ Sema::LookupLiteralOperator(Scope *S, LookupResult &R,
   // Filter the lookup results appropriately.
   LookupResult::Filter F = R.makeFilter();
 
+  bool AllowCooked = true;
   bool FoundRaw = false;
   bool FoundTemplate = false;
-  bool FoundStringTemplate = false;
-  bool FoundExactMatch = false;
+  bool FoundStringTemplatePack = false;
+  bool FoundCooked = false;
 
   while (F.hasNext()) {
     Decl *D = F.next();
@@ -3378,19 +3404,19 @@ Sema::LookupLiteralOperator(Scope *S, LookupResult &R,
 
     bool IsRaw = false;
     bool IsTemplate = false;
-    bool IsStringTemplate = false;
-    bool IsExactMatch = false;
+    bool IsStringTemplatePack = false;
+    bool IsCooked = false;
 
     if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
       if (FD->getNumParams() == 1 &&
           FD->getParamDecl(0)->getType()->getAs<PointerType>())
         IsRaw = true;
       else if (FD->getNumParams() == ArgTys.size()) {
-        IsExactMatch = true;
+        IsCooked = true;
         for (unsigned ArgIdx = 0; ArgIdx != ArgTys.size(); ++ArgIdx) {
           QualType ParamTy = FD->getParamDecl(ArgIdx)->getType();
           if (!Context.hasSameUnqualifiedType(ArgTys[ArgIdx], ParamTy)) {
-            IsExactMatch = false;
+            IsCooked = false;
             break;
           }
         }
@@ -3398,29 +3424,54 @@ Sema::LookupLiteralOperator(Scope *S, LookupResult &R,
     }
     if (FunctionTemplateDecl *FD = dyn_cast<FunctionTemplateDecl>(D)) {
       TemplateParameterList *Params = FD->getTemplateParameters();
-      if (Params->size() == 1)
+      if (Params->size() == 1) {
         IsTemplate = true;
-      else
-        IsStringTemplate = true;
+
+        // A string literal template is only considered if the string literal
+        // is a well-formed template argument for the template parameter.
+        if (StringLit) {
+          SFINAETrap Trap(*this);
+          SmallVector<TemplateArgument, 1> Checked;
+          TemplateArgumentLoc Arg(
+              TemplateArgument(StringLit, TemplateArgument::Expression),
+              StringLit);
+          if (CheckTemplateArgument(Params->getParam(0), Arg, FD,
+                                    R.getNameLoc(), R.getNameLoc(), 0,
+                                    Checked) ||
+              Trap.hasErrorOccurred())
+            IsTemplate = false;
+        }
+      } else {
+        IsStringTemplatePack = true;
+      }
     }
 
-    if (IsExactMatch) {
-      FoundExactMatch = true;
+    if (AllowTemplate && StringLit && IsTemplate) {
+      FoundTemplate = true;
       AllowRaw = false;
-      AllowTemplate = false;
-      AllowStringTemplate = false;
-      if (FoundRaw || FoundTemplate || FoundStringTemplate) {
+      AllowCooked = false;
+      AllowStringTemplatePack = false;
+      if (FoundRaw || FoundCooked || FoundStringTemplatePack) {
+        F.restart();
+        FoundRaw = FoundCooked = FoundStringTemplatePack = false;
+      }
+    } else if (AllowCooked && IsCooked) {
+      FoundCooked = true;
+      AllowRaw = false;
+      AllowTemplate = StringLit;
+      AllowStringTemplatePack = false;
+      if (FoundRaw || FoundTemplate || FoundStringTemplatePack) {
         // Go through again and remove the raw and template decls we've
         // already found.
         F.restart();
-        FoundRaw = FoundTemplate = FoundStringTemplate = false;
+        FoundRaw = FoundTemplate = FoundStringTemplatePack = false;
       }
     } else if (AllowRaw && IsRaw) {
       FoundRaw = true;
     } else if (AllowTemplate && IsTemplate) {
       FoundTemplate = true;
-    } else if (AllowStringTemplate && IsStringTemplate) {
-      FoundStringTemplate = true;
+    } else if (AllowStringTemplatePack && IsStringTemplatePack) {
+      FoundStringTemplatePack = true;
     } else {
       F.erase();
     }
@@ -3428,10 +3479,15 @@ Sema::LookupLiteralOperator(Scope *S, LookupResult &R,
 
   F.done();
 
+  // Per C++20 [lex.ext]p5, we prefer the template form over the non-template
+  // form for string literal operator templates.
+  if (StringLit && FoundTemplate)
+    return LOLR_Template;
+
   // C++11 [lex.ext]p3, p4: If S contains a literal operator with a matching
   // parameter type, that is used in preference to a raw literal operator
   // or literal operator template.
-  if (FoundExactMatch)
+  if (FoundCooked)
     return LOLR_Cooked;
 
   // C++11 [lex.ext]p3, p4: S shall contain a raw literal operator or a literal
@@ -3449,15 +3505,15 @@ Sema::LookupLiteralOperator(Scope *S, LookupResult &R,
   if (FoundTemplate)
     return LOLR_Template;
 
-  if (FoundStringTemplate)
-    return LOLR_StringTemplate;
+  if (FoundStringTemplatePack)
+    return LOLR_StringTemplatePack;
 
   // Didn't find anything we could use.
   if (DiagnoseMissing) {
     Diag(R.getNameLoc(), diag::err_ovl_no_viable_literal_operator)
         << R.getLookupName() << (int)ArgTys.size() << ArgTys[0]
         << (ArgTys.size() == 2 ? ArgTys[1] : QualType()) << AllowRaw
-        << (AllowTemplate || AllowStringTemplate);
+        << (AllowTemplate || AllowStringTemplatePack);
     return LOLR_Error;
   }
 

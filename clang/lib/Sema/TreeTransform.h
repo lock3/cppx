@@ -29,6 +29,7 @@
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/AST/StmtOpenMP.h"
+#include "clang/Basic/DiagnosticParse.h"
 #include "clang/Basic/OpenMPKinds.h"
 #include "clang/Sema/Designator.h"
 #include "clang/Sema/Lookup.h"
@@ -1361,7 +1362,7 @@ public:
     return SemaRef.ActOnLabelStmt(IdentLoc, L, ColonLoc, SubStmt);
   }
 
-  /// Build a new label statement.
+  /// Build a new attributed statement.
   ///
   /// By default, performs semantic analysis to build the new statement.
   /// Subclasses may override this routine to provide different behavior.
@@ -1376,19 +1377,23 @@ public:
   /// By default, performs semantic analysis to build the new statement.
   /// Subclasses may override this routine to provide different behavior.
   StmtResult RebuildIfStmt(SourceLocation IfLoc, bool IsConstexpr,
-                           Sema::ConditionResult Cond, Stmt *Init, Stmt *Then,
+                           SourceLocation LParenLoc, Sema::ConditionResult Cond,
+                           SourceLocation RParenLoc, Stmt *Init, Stmt *Then,
                            SourceLocation ElseLoc, Stmt *Else) {
-    return getSema().ActOnIfStmt(IfLoc, IsConstexpr, Init, Cond, Then,
-                                 ElseLoc, Else);
+    return getSema().ActOnIfStmt(IfLoc, IsConstexpr, LParenLoc, Init, Cond,
+                                 RParenLoc, Then, ElseLoc, Else);
   }
 
   /// Start building a new switch statement.
   ///
   /// By default, performs semantic analysis to build the new statement.
   /// Subclasses may override this routine to provide different behavior.
-  StmtResult RebuildSwitchStmtStart(SourceLocation SwitchLoc, Stmt *Init,
-                                    Sema::ConditionResult Cond) {
-    return getSema().ActOnStartOfSwitchStmt(SwitchLoc, Init, Cond);
+  StmtResult RebuildSwitchStmtStart(SourceLocation SwitchLoc,
+                                    SourceLocation LParenLoc, Stmt *Init,
+                                    Sema::ConditionResult Cond,
+                                    SourceLocation RParenLoc) {
+    return getSema().ActOnStartOfSwitchStmt(SwitchLoc, LParenLoc, Init, Cond,
+                                            RParenLoc);
   }
 
   /// Attach the body to the switch statement.
@@ -3806,12 +3811,12 @@ public:
     }
 
     case TemplateArgument::Template:
-      return TemplateArgumentLoc(TemplateArgument(
-                                          Pattern.getArgument().getAsTemplate(),
-                                                  NumExpansions),
-                                 Pattern.getTemplateQualifierLoc(),
-                                 Pattern.getTemplateNameLoc(),
-                                 EllipsisLoc);
+      return TemplateArgumentLoc(
+          SemaRef.Context,
+          TemplateArgument(Pattern.getArgument().getAsTemplate(),
+                           NumExpansions),
+          Pattern.getTemplateQualifierLoc(), Pattern.getTemplateNameLoc(),
+          EllipsisLoc);
 
     case TemplateArgument::Null:
     case TemplateArgument::Integral:
@@ -4588,8 +4593,8 @@ bool TreeTransform<Derived>::TransformTemplateArgument(
     if (Template.isNull())
       return true;
 
-    Output = TemplateArgumentLoc(TemplateArgument(Template), QualifierLoc,
-                                 Input.getTemplateNameLoc());
+    Output = TemplateArgumentLoc(SemaRef.Context, TemplateArgument(Template),
+                                 QualifierLoc, Input.getTemplateNameLoc());
     return false;
   }
 
@@ -5820,6 +5825,7 @@ ParmVarDecl *TreeTransform<Derived>::TransformFunctionTypeParam(
                                              /* DefArg */ nullptr);
   newParm->setScopeInfo(OldParm->getFunctionScopeDepth(),
                         OldParm->getFunctionScopeIndex() + indexAdjustment);
+  getDerived().transformedLocalDecl(OldParm, {newParm});
   return newParm;
 }
 
@@ -6847,6 +6853,75 @@ QualType TreeTransform<Derived>::TransformDependentExtIntType(
   return Result;
 }
 
+template<typename Derived>
+QualType TreeTransform<Derived>::TransformInParameterType(TypeLocBuilder &TLB,
+                                                        InParameterTypeLoc TL) {
+  // Substitute through the inner type.
+  QualType ParmType = getDerived().TransformType(TLB, TL.getParameterTypeLoc());
+  if (ParmType.isNull())
+    return QualType();
+
+  // Rebuild the type.
+  QualType Result = getSema().getASTContext().getInParameterType(ParmType);
+
+  InParameterTypeLoc NewTL = TLB.push<InParameterTypeLoc>(Result);
+  NewTL.setModeLoc(TL.getModeLoc());
+
+  return Result;
+}
+
+template <typename Derived>
+QualType TreeTransform<Derived>::TransformOutParameterType(TypeLocBuilder &TLB,
+                                                       OutParameterTypeLoc TL) {
+  // Substitute through the inner type.
+  QualType ParmType = getDerived().TransformType(TLB, TL.getParameterTypeLoc());
+  if (ParmType.isNull())
+    return QualType();
+
+  // Rebuild the type.
+  QualType Result = getSema().getASTContext().getOutParameterType(ParmType);
+
+  InParameterTypeLoc NewTL = TLB.push<InParameterTypeLoc>(Result);
+  NewTL.setModeLoc(TL.getModeLoc());
+
+  return Result;
+}
+
+template <typename Derived>
+QualType TreeTransform<Derived>::TransformInOutParameterType(
+                                                            TypeLocBuilder &TLB,
+                                                     InOutParameterTypeLoc TL) {
+  // Substitute through the inner type.
+  QualType ParmType = getDerived().TransformType(TLB, TL.getParameterTypeLoc());
+  if (ParmType.isNull())
+    return QualType();
+
+  // Rebuild the type.
+  QualType Result = getSema().getASTContext().getInOutParameterType(ParmType);
+
+  InParameterTypeLoc NewTL = TLB.push<InParameterTypeLoc>(Result);
+  NewTL.setModeLoc(TL.getModeLoc());
+
+  return Result;
+}
+
+template <typename Derived>
+QualType TreeTransform<Derived>::TransformMoveParameterType(TypeLocBuilder &TLB,
+                                                      MoveParameterTypeLoc TL) {
+  // Substitute through the inner type.
+  QualType ParmType = getDerived().TransformType(TLB, TL.getParameterTypeLoc());
+  if (ParmType.isNull())
+    return QualType();
+
+  // Rebuild the type.
+  QualType Result = getSema().getASTContext().getMoveParameterType(ParmType);
+
+  InParameterTypeLoc NewTL = TLB.push<InParameterTypeLoc>(Result);
+  NewTL.setModeLoc(TL.getModeLoc());
+
+  return Result;
+}
+
   /// Simple iterator that traverses the template arguments in a
   /// container that provides a \c getArgLoc() member function.
   ///
@@ -7862,9 +7937,9 @@ TreeTransform<Derived>::TransformIfStmt(IfStmt *S) {
       Else.get() == S->getElse())
     return S;
 
-  return getDerived().RebuildIfStmt(S->getIfLoc(), S->isConstexpr(), Cond,
-                                    Init.get(), Then.get(), S->getElseLoc(),
-                                    Else.get());
+  return getDerived().RebuildIfStmt(
+      S->getIfLoc(), S->isConstexpr(), S->getLParenLoc(), Cond,
+      S->getRParenLoc(), Init.get(), Then.get(), S->getElseLoc(), Else.get());
 }
 
 template<typename Derived>
@@ -7883,8 +7958,9 @@ TreeTransform<Derived>::TransformSwitchStmt(SwitchStmt *S) {
     return StmtError();
 
   // Rebuild the switch statement.
-  StmtResult Switch
-    = getDerived().RebuildSwitchStmtStart(S->getSwitchLoc(), Init.get(), Cond);
+  StmtResult Switch =
+      getDerived().RebuildSwitchStmtStart(S->getSwitchLoc(), S->getLParenLoc(),
+                                          Init.get(), Cond, S->getRParenLoc());
   if (Switch.isInvalid())
     return StmtError();
 
@@ -8383,8 +8459,6 @@ TreeTransform<Derived>::TransformCXXReflectExpr(CXXReflectExpr *E) {
     QualType New  = getDerived().TransformType(Old);
     if (New.isNull())
       return ExprError();
-    // llvm::outs() << "SUBST TYPE\n";
-    // New->dump();
     return getSema().BuildCXXReflectExpr(E->getKeywordLoc(), New,
                                          E->getLParenLoc(),
                                          E->getRParenLoc());
@@ -8399,8 +8473,6 @@ TreeTransform<Derived>::TransformCXXReflectExpr(CXXReflectExpr *E) {
     TemplateName New = getDerived().TransformTemplateName(SS, Old, Loc);
     if (New.isNull())
       return ExprError();
-    // llvm::outs() << "SUBST TEMPLATE\n";
-    // New.getAsTemplateDecl()->dump();
     return getSema().BuildCXXReflectExpr(E->getKeywordLoc(), New,
                                          E->getLParenLoc(),
                                          E->getRParenLoc());
@@ -8415,8 +8487,6 @@ TreeTransform<Derived>::TransformCXXReflectExpr(CXXReflectExpr *E) {
     ExprResult New = getDerived().TransformExpr(Old);
     if (New.isInvalid())
       return ExprError();
-    // llvm::outs() << "SUBST EXPR\n";
-    // New.get()->dump();
     return getSema().BuildCXXReflectExpr(E->getKeywordLoc(), New.get(),
                                          E->getLParenLoc(),
                                          E->getRParenLoc());
@@ -8868,6 +8938,14 @@ ExprResult
 TreeTransform<Derived>::TransformCppxPartialEvalExpr(CppxPartialEvalExpr *E) {
   return new (SemaRef.Context) CppxPartialEvalExpr(E->getType(), E->getImpl(),
                                                    E->getLocation());
+}
+
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCXXInjectedValueExpr(
+    CXXInjectedValueExpr *E) {
+  return CXXInjectedValueExpr::Create(
+      SemaRef.Context, E->getInitializer(), E->getAPValueResult());
 }
 
 // Objective-C Statements.
@@ -11745,7 +11823,7 @@ TreeTransform<Derived>::TransformCallExpr(CallExpr *E) {
     FPOptionsOverride NewOverrides = E->getFPFeatures();
     getSema().CurFPFeatures =
         NewOverrides.applyOverrides(getSema().getLangOpts());
-    getSema().FpPragmaStack.CurrentValue = NewOverrides.getAsOpaqueInt();
+    getSema().FpPragmaStack.CurrentValue = NewOverrides;
   }
 
   return getDerived().RebuildCallExpr(Callee.get(), FakeLParenLoc,
@@ -11862,7 +11940,7 @@ TreeTransform<Derived>::TransformBinaryOperator(BinaryOperator *E) {
   FPOptionsOverride NewOverrides(E->getFPFeatures(getSema().getLangOpts()));
   getSema().CurFPFeatures =
       NewOverrides.applyOverrides(getSema().getLangOpts());
-  getSema().FpPragmaStack.CurrentValue = NewOverrides.getAsOpaqueInt();
+  getSema().FpPragmaStack.CurrentValue = NewOverrides;
   return getDerived().RebuildBinaryOperator(E->getOperatorLoc(), E->getOpcode(),
                                             LHS.get(), RHS.get());
 }
@@ -11919,7 +11997,7 @@ TreeTransform<Derived>::TransformCompoundAssignOperator(
   FPOptionsOverride NewOverrides(E->getFPFeatures(getSema().getLangOpts()));
   getSema().CurFPFeatures =
       NewOverrides.applyOverrides(getSema().getLangOpts());
-  getSema().FpPragmaStack.CurrentValue = NewOverrides.getAsOpaqueInt();
+  getSema().FpPragmaStack.CurrentValue = NewOverrides;
   return getDerived().TransformBinaryOperator(E);
 }
 
@@ -12397,7 +12475,7 @@ TreeTransform<Derived>::TransformCXXOperatorCallExpr(CXXOperatorCallExpr *E) {
   FPOptionsOverride NewOverrides(E->getFPFeatures());
   getSema().CurFPFeatures =
       NewOverrides.applyOverrides(getSema().getLangOpts());
-  getSema().FpPragmaStack.CurrentValue = NewOverrides.getAsOpaqueInt();
+  getSema().FpPragmaStack.CurrentValue = NewOverrides;
 
   return getDerived().RebuildCXXOperatorCallExpr(E->getOperator(),
                                                  E->getOperatorLoc(),
@@ -12634,6 +12712,17 @@ ExprResult
 TreeTransform<Derived>::TransformCXXNullPtrLiteralExpr(
                                                      CXXNullPtrLiteralExpr *E) {
   return E;
+}
+
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCXXParameterInfoExpr(CXXParameterInfoExpr *E) {
+  auto *D = cast<ValueDecl>(TransformDecl(E->getLocation(), E->getDecl()));
+  if (!getDerived().AlwaysRebuild() && D == E->getDecl())
+    return E;
+
+  ASTContext &Ctx = getSema().getASTContext();
+  return new (Ctx) CXXParameterInfoExpr(D, Ctx.BoolTy, E->getLocation());
 }
 
 template<typename Derived>
@@ -13992,12 +14081,12 @@ TreeTransform<Derived>::TransformCXXUnresolvedConstructExpr(
 
   bool ArgumentChanged = false;
   SmallVector<Expr*, 8> Args;
-  Args.reserve(E->arg_size());
+  Args.reserve(E->getNumArgs());
   {
     EnterExpressionEvaluationContext Context(
         getSema(), EnterExpressionEvaluationContext::InitList,
         E->isListInitialization());
-    if (getDerived().TransformExprs(E->arg_begin(), E->arg_size(), true, Args,
+    if (getDerived().TransformExprs(E->arg_begin(), E->getNumArgs(), true, Args,
                                     &ArgumentChanged))
       return ExprError();
   }
@@ -14443,6 +14532,18 @@ TreeTransform<Derived>::TransformCXXFoldExpr(CXXFoldExpr *E) {
     return getDerived().RebuildCXXFoldExpr(
         Callee, E->getBeginLoc(), LHS.get(), E->getOperator(),
         E->getEllipsisLoc(), RHS.get(), E->getEndLoc(), NumExpansions);
+  }
+
+  // Formally a fold expression expands to nested parenthesized expressions.
+  // Enforce this limit to avoid creating trees so deep we can't safely traverse
+  // them.
+  if (NumExpansions && SemaRef.getLangOpts().BracketDepth < NumExpansions) {
+    SemaRef.Diag(E->getEllipsisLoc(),
+                 clang::diag::err_fold_expression_limit_exceeded)
+        << *NumExpansions << SemaRef.getLangOpts().BracketDepth
+        << E->getSourceRange();
+    SemaRef.Diag(E->getEllipsisLoc(), diag::note_bracket_depth);
+    return ExprError();
   }
 
   // The transform has determined that we should perform an elementwise

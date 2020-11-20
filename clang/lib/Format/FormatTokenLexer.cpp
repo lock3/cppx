@@ -33,12 +33,14 @@ FormatTokenLexer::FormatTokenLexer(
       Encoding(Encoding), Allocator(Allocator), FirstInLineIndex(0),
       FormattingDisabled(false), MacroBlockBeginRegex(Style.MacroBlockBegin),
       MacroBlockEndRegex(Style.MacroBlockEnd) {
-  Lex.reset(new Lexer(ID, SourceMgr.getBuffer(ID), SourceMgr,
+  Lex.reset(new Lexer(ID, SourceMgr.getBufferOrFake(ID), SourceMgr,
                       getFormattingLangOpts(Style)));
   Lex->SetKeepWhitespaceMode(true);
 
   for (const std::string &ForEachMacro : Style.ForEachMacros)
     Macros.insert({&IdentTable.get(ForEachMacro), TT_ForEachMacro});
+  for (const std::string &AttributeMacro : Style.AttributeMacros)
+    Macros.insert({&IdentTable.get(AttributeMacro), TT_AttributeMacro});
   for (const std::string &StatementMacro : Style.StatementMacros)
     Macros.insert({&IdentTable.get(StatementMacro), TT_StatementMacro});
   for (const std::string &TypenameMacro : Style.TypenameMacros)
@@ -399,7 +401,7 @@ bool FormatTokenLexer::tryTransformTryUsageForC() {
   if (!Try->is(tok::kw_try))
     return false;
   auto &Next = *(Tokens.end() - 1);
-  if (Next->isOneOf(tok::l_brace, tok::colon))
+  if (Next->isOneOf(tok::l_brace, tok::colon, tok::hash, tok::comment))
     return false;
 
   if (Tokens.size() > 2) {
@@ -761,7 +763,7 @@ bool FormatTokenLexer::tryMergeConflictMarkers() {
   unsigned FirstInLineOffset;
   std::tie(ID, FirstInLineOffset) = SourceMgr.getDecomposedLoc(
       Tokens[FirstInLineIndex]->getStartOfNonWhitespace());
-  StringRef Buffer = SourceMgr.getBuffer(ID)->getBuffer();
+  StringRef Buffer = SourceMgr.getBufferOrFake(ID).getBuffer();
   // Calculate the offset of the start of the current line.
   auto LineOffset = Buffer.rfind('\n', FirstInLineOffset);
   if (LineOffset == StringRef::npos) {

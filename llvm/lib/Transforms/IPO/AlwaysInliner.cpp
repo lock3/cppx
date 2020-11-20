@@ -13,8 +13,10 @@
 
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/InlineCost.h"
+#include "llvm/Analysis/ProfileSummaryInfo.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/DataLayout.h"
@@ -39,7 +41,7 @@ PreservedAnalyses AlwaysInlinerPass::run(Module &M,
   auto GetAssumptionCache = [&](Function &F) -> AssumptionCache & {
     return FAM.getResult<AssumptionAnalysis>(F);
   };
-  InlineFunctionInfo IFI(/*cg=*/nullptr, GetAssumptionCache);
+  auto &PSI = MAM.getResult<ProfileSummaryAnalysis>(M);
 
   SmallSetVector<CallBase *, 16> Calls;
   bool Changed = false;
@@ -54,12 +56,30 @@ PreservedAnalyses AlwaysInlinerPass::run(Module &M,
           if (CB->getCalledFunction() == &F)
             Calls.insert(CB);
 
-      for (CallBase *CB : Calls)
-        // FIXME: We really shouldn't be able to fail to inline at this point!
-        // We should do something to log or check the inline failures here.
-        Changed |=
-            InlineFunction(*CB, IFI, /*CalleeAAR=*/nullptr, InsertLifetime)
-                .isSuccess();
+      for (CallBase *CB : Calls) {
+        Function *Caller = CB->getCaller();
+        OptimizationRemarkEmitter ORE(Caller);
+        auto OIC = shouldInline(
+            *CB,
+            [&](CallBase &CB) {
+              return InlineCost::getAlways("always inline attribute");
+            },
+            ORE);
+        assert(OIC);
+        emitInlinedInto(ORE, CB->getDebugLoc(), CB->getParent(), F, *Caller,
+                        *OIC, false, DEBUG_TYPE);
+
+        InlineFunctionInfo IFI(
+            /*cg=*/nullptr, GetAssumptionCache, &PSI,
+            &FAM.getResult<BlockFrequencyAnalysis>(*(CB->getCaller())),
+            &FAM.getResult<BlockFrequencyAnalysis>(F));
+
+        InlineResult Res = InlineFunction(
+            *CB, IFI, &FAM.getResult<AAManager>(F), InsertLifetime);
+        assert(Res.isSuccess() && "unexpected failure to inline");
+        (void)Res;
+        Changed = true;
+      }
 
       // Remember to try and delete this function afterward. This both avoids
       // re-walking the rest of the module and avoids dealing with any iterator

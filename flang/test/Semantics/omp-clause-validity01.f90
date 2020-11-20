@@ -9,7 +9,7 @@ use omp_lib
 ! TODO: all the internal errors
 
   integer :: b = 128
-  integer :: c = 32
+  integer :: z, c = 32
   integer, parameter :: num = 16
   real(8) :: arrayA(256), arrayB(512)
 
@@ -39,29 +39,54 @@ use omp_lib
   enddo
   !$omp end parallel
 
-  !$omp parallel allocate(b)
+  !$omp parallel private(b) allocate(b)
   do i = 1, N
      a = 3.14
   enddo
   !$omp end parallel
 
-  !$omp parallel allocate(omp_default_mem_space : b, c)
+  !$omp parallel private(c, b) allocate(omp_default_mem_space : b, c)
   do i = 1, N
      a = 3.14
   enddo
   !$omp end parallel
 
-  !$omp parallel allocate(b) allocate(c)
+  !$omp parallel allocate(b) allocate(c) private(b, c)
   do i = 1, N
      a = 3.14
   enddo
   !$omp end parallel
 
-  !$omp parallel allocate(xy_alloc :b) 
+  !$omp parallel allocate(xy_alloc :b) private(b)
   do i = 1, N
      a = 3.14
   enddo
   !$omp end parallel
+  
+  !$omp task private(b) allocate(b)
+  do i = 1, N
+     z = 2
+  end do
+  !$omp end task
+
+  !$omp teams private(b) allocate(b)
+  do i = 1, N
+     z = 2
+  end do
+  !$omp end teams
+
+  !$omp target private(b) allocate(b)
+  do i = 1, N
+     z = 2
+  end do
+  !$omp end target
+ 
+  !ERROR: ALLOCATE clause is not allowed on the TARGET DATA directive
+  !$omp target data map(from: b) allocate(b)
+  do i = 1, N
+     z = 2
+  enddo
+   !$omp end target data
 
   !ERROR: SCHEDULE clause is not allowed on the PARALLEL directive
   !$omp parallel schedule(static)
@@ -137,6 +162,22 @@ use omp_lib
   enddo
   !ERROR: Unmatched END TARGET directive
   !$omp end target
+
+  ! OMP 5.0 - 2.6 Restriction point 1
+  outofparallel: do k =1, 10
+  !$omp parallel
+  !$omp do
+  outer: do i=0, 10
+    inner: do j=1, 10
+      exit
+      exit outer
+      !ERROR: EXIT to construct 'outofparallel' outside of PARALLEL construct is not allowed
+      exit outofparallel
+    end do inner
+  end do outer
+  !$end omp do
+  !$omp end parallel
+  end do outofparallel
 
 ! 2.7.1  do-clause -> private-clause |
 !                     firstprivate-clause |
@@ -236,6 +277,17 @@ use omp_lib
   d = 2
   !ERROR: NUM_THREADS clause is not allowed on the END SECTIONS directive
   !$omp end sections num_threads(4)
+
+  !$omp parallel
+  !$omp sections
+    b = 1
+  !$omp section
+    c = 1
+    d = 2
+  !ERROR: At most one NOWAIT clause can appear on the END SECTIONS directive
+  !$omp end sections nowait nowait
+  !$omp end parallel
+
   !$omp end parallel
 
 ! 2.11.2 parallel-sections-clause -> parallel-clause |

@@ -126,7 +126,8 @@ public:
   int getIntImmCost(const APInt &Imm, Type *Ty, TTI::TargetCostKind CostKind);
 
   int getIntImmCostInst(unsigned Opcode, unsigned Idx, const APInt &Imm,
-                        Type *Ty, TTI::TargetCostKind CostKind);
+                        Type *Ty, TTI::TargetCostKind CostKind,
+                        Instruction *Inst = nullptr);
 
   /// @}
 
@@ -180,29 +181,25 @@ public:
 
   int getMemcpyCost(const Instruction *I);
 
+  int getNumMemOps(const IntrinsicInst *I) const;
+
   int getShuffleCost(TTI::ShuffleKind Kind, VectorType *Tp, int Index,
                      VectorType *SubTp);
 
   bool useReductionIntrinsic(unsigned Opcode, Type *Ty,
                              TTI::ReductionFlags Flags) const;
 
+  bool preferInLoopReduction(unsigned Opcode, Type *Ty,
+                             TTI::ReductionFlags Flags) const;
+
+  bool preferPredicatedReductionSelect(unsigned Opcode, Type *Ty,
+                                       TTI::ReductionFlags Flags) const;
+
   bool shouldExpandReduction(const IntrinsicInst *II) const {
     switch (II->getIntrinsicID()) {
-    case Intrinsic::experimental_vector_reduce_v2_fadd:
-    case Intrinsic::experimental_vector_reduce_v2_fmul:
-      // We don't have legalization support for ordered FP reductions.
-      if (!II->getFastMathFlags().allowReassoc())
-        return true;
-      // Can't legalize reductions with soft floats.
-      return TLI->useSoftFloat() || !TLI->getSubtarget()->hasFPRegs();
-
-    case Intrinsic::experimental_vector_reduce_fmin:
-    case Intrinsic::experimental_vector_reduce_fmax:
-      // Can't legalize reductions with soft floats, and NoNan will create
-      // fminimum which we do not know how to lower.
-      return TLI->useSoftFloat() || !TLI->getSubtarget()->hasFPRegs() ||
-             !II->getFastMathFlags().noNaNs();
-
+    case Intrinsic::vector_reduce_fmul:
+      // We don't have legalization support for ordered FMUL reductions.
+      return !II->getFastMathFlags().allowReassoc();
     default:
       // Don't expand anything else, let legalization deal with it.
       return false;
@@ -217,6 +214,7 @@ public:
                        const Instruction *I = nullptr);
 
   int getCmpSelInstrCost(unsigned Opcode, Type *ValTy, Type *CondTy,
+                         CmpInst::Predicate VecPred,
                          TTI::TargetCostKind CostKind,
                          const Instruction *I = nullptr);
 
@@ -251,6 +249,14 @@ public:
                                   Align Alignment, TTI::TargetCostKind CostKind,
                                   const Instruction *I = nullptr);
 
+  int getArithmeticReductionCost(unsigned Opcode, VectorType *ValTy,
+                                 bool IsPairwiseForm,
+                                 TTI::TargetCostKind CostKind);
+
+  int getIntrinsicInstrCost(const IntrinsicCostAttributes &ICA,
+                            TTI::TargetCostKind CostKind);
+
+  bool maybeLoweredToCall(Instruction &I);
   bool isLoweredToCall(const Function *F);
   bool isHardwareLoopProfitable(Loop *L, ScalarEvolution &SE,
                                 AssumptionCache &AC,

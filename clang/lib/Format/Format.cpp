@@ -348,6 +348,17 @@ template <> struct ScalarEnumerationTraits<FormatStyle::PointerAlignmentStyle> {
 };
 
 template <>
+struct ScalarEnumerationTraits<FormatStyle::SpaceAroundPointerQualifiersStyle> {
+  static void
+  enumeration(IO &IO, FormatStyle::SpaceAroundPointerQualifiersStyle &Value) {
+    IO.enumCase(Value, "Default", FormatStyle::SAPQ_Default);
+    IO.enumCase(Value, "Before", FormatStyle::SAPQ_Before);
+    IO.enumCase(Value, "After", FormatStyle::SAPQ_After);
+    IO.enumCase(Value, "Both", FormatStyle::SAPQ_Both);
+  }
+};
+
+template <>
 struct ScalarEnumerationTraits<FormatStyle::SpaceBeforeParensOptions> {
   static void enumeration(IO &IO,
                           FormatStyle::SpaceBeforeParensOptions &Value) {
@@ -374,6 +385,15 @@ struct ScalarEnumerationTraits<FormatStyle::BitFieldColonSpacingStyle> {
     IO.enumCase(Value, "None", FormatStyle::BFCS_None);
     IO.enumCase(Value, "Before", FormatStyle::BFCS_Before);
     IO.enumCase(Value, "After", FormatStyle::BFCS_After);
+  }
+};
+
+template <>
+struct ScalarEnumerationTraits<FormatStyle::SortJavaStaticImportOptions> {
+  static void enumeration(IO &IO,
+                          FormatStyle::SortJavaStaticImportOptions &Value) {
+    IO.enumCase(Value, "Before", FormatStyle::SJSIO_Before);
+    IO.enumCase(Value, "After", FormatStyle::SJSIO_After);
   }
 };
 
@@ -475,6 +495,7 @@ template <> struct MappingTraits<FormatStyle> {
                    Style.AlwaysBreakBeforeMultilineStrings);
     IO.mapOptional("AlwaysBreakTemplateDeclarations",
                    Style.AlwaysBreakTemplateDeclarations);
+    IO.mapOptional("AttributeMacros", Style.AttributeMacros);
     IO.mapOptional("BinPackArguments", Style.BinPackArguments);
     IO.mapOptional("BinPackParameters", Style.BinPackParameters);
     IO.mapOptional("BraceWrapping", Style.BraceWrapping);
@@ -573,6 +594,7 @@ template <> struct MappingTraits<FormatStyle> {
     IO.mapOptional("RawStringFormats", Style.RawStringFormats);
     IO.mapOptional("ReflowComments", Style.ReflowComments);
     IO.mapOptional("SortIncludes", Style.SortIncludes);
+    IO.mapOptional("SortJavaStaticImport", Style.SortJavaStaticImport);
     IO.mapOptional("SortUsingDeclarations", Style.SortUsingDeclarations);
     IO.mapOptional("SpaceAfterCStyleCast", Style.SpaceAfterCStyleCast);
     IO.mapOptional("SpaceAfterLogicalNot", Style.SpaceAfterLogicalNot);
@@ -587,6 +609,8 @@ template <> struct MappingTraits<FormatStyle> {
     IO.mapOptional("SpaceBeforeInheritanceColon",
                    Style.SpaceBeforeInheritanceColon);
     IO.mapOptional("SpaceBeforeParens", Style.SpaceBeforeParens);
+    IO.mapOptional("SpaceAroundPointerQualifiers",
+                   Style.SpaceAroundPointerQualifiers);
     IO.mapOptional("SpaceBeforeRangeBasedForLoopColon",
                    Style.SpaceBeforeRangeBasedForLoopColon);
     IO.mapOptional("SpaceInEmptyBlock", Style.SpaceInEmptyBlock);
@@ -842,6 +866,7 @@ FormatStyle getLLVMStyle(FormatStyle::LanguageKind Language) {
   LLVMStyle.AlwaysBreakAfterDefinitionReturnType = FormatStyle::DRTBS_None;
   LLVMStyle.AlwaysBreakBeforeMultilineStrings = false;
   LLVMStyle.AlwaysBreakTemplateDeclarations = FormatStyle::BTDS_MultiLine;
+  LLVMStyle.AttributeMacros.push_back("__capability");
   LLVMStyle.BinPackArguments = true;
   LLVMStyle.BinPackParameters = true;
   LLVMStyle.BreakBeforeBinaryOperators = FormatStyle::BOS_None;
@@ -923,6 +948,7 @@ FormatStyle getLLVMStyle(FormatStyle::LanguageKind Language) {
   LLVMStyle.SpaceAfterCStyleCast = false;
   LLVMStyle.SpaceAfterLogicalNot = false;
   LLVMStyle.SpaceAfterTemplateKeyword = true;
+  LLVMStyle.SpaceAroundPointerQualifiers = FormatStyle::SAPQ_Default;
   LLVMStyle.SpaceBeforeCtorInitializerColon = true;
   LLVMStyle.SpaceBeforeInheritanceColon = true;
   LLVMStyle.SpaceBeforeParens = FormatStyle::SBPO_ControlStatements;
@@ -945,12 +971,15 @@ FormatStyle getLLVMStyle(FormatStyle::LanguageKind Language) {
 
   LLVMStyle.DisableFormat = false;
   LLVMStyle.SortIncludes = true;
+  LLVMStyle.SortJavaStaticImport = FormatStyle::SJSIO_Before;
   LLVMStyle.SortUsingDeclarations = true;
   LLVMStyle.StatementMacros.push_back("Q_UNUSED");
   LLVMStyle.StatementMacros.push_back("QT_REQUIRE_VERSION");
   LLVMStyle.WhitespaceSensitiveMacros.push_back("STRINGIZE");
   LLVMStyle.WhitespaceSensitiveMacros.push_back("PP_STRINGIZE");
   LLVMStyle.WhitespaceSensitiveMacros.push_back("BOOST_PP_STRINGIZE");
+  LLVMStyle.WhitespaceSensitiveMacros.push_back("NS_SWIFT_NAME");
+  LLVMStyle.WhitespaceSensitiveMacros.push_back("CF_SWIFT_NAME");
 
   // Defaults that differ when not C++.
   if (Language == FormatStyle::LK_TableGen) {
@@ -1288,7 +1317,8 @@ bool getPredefinedStyle(StringRef Name, FormatStyle::LanguageKind Language,
   return true;
 }
 
-std::error_code parseConfiguration(StringRef Text, FormatStyle *Style) {
+std::error_code parseConfiguration(StringRef Text, FormatStyle *Style,
+                                   bool AllowUnknownOptions) {
   assert(Style);
   FormatStyle::LanguageKind Language = Style->Language;
   assert(Language != FormatStyle::LK_None);
@@ -1302,6 +1332,7 @@ std::error_code parseConfiguration(StringRef Text, FormatStyle *Style) {
   // Mapping also uses the context to get the language to find the correct
   // base style.
   Input.setContext(Style);
+  Input.setAllowUnknownKeys(AllowUnknownOptions);
   Input >> Styles;
   if (Input.error())
     return Input.error();
@@ -2310,12 +2341,16 @@ static void sortJavaImports(const FormatStyle &Style,
     JavaImportGroups.push_back(
         findJavaImportGroup(Style, Imports[i].Identifier));
   }
+  bool StaticImportAfterNormalImport =
+      Style.SortJavaStaticImport == FormatStyle::SJSIO_After;
   llvm::sort(Indices, [&](unsigned LHSI, unsigned RHSI) {
     // Negating IsStatic to push static imports above non-static imports.
-    return std::make_tuple(!Imports[LHSI].IsStatic, JavaImportGroups[LHSI],
-                           Imports[LHSI].Identifier) <
-           std::make_tuple(!Imports[RHSI].IsStatic, JavaImportGroups[RHSI],
-                           Imports[RHSI].Identifier);
+    return std::make_tuple(!Imports[LHSI].IsStatic ^
+                               StaticImportAfterNormalImport,
+                           JavaImportGroups[LHSI], Imports[LHSI].Identifier) <
+           std::make_tuple(!Imports[RHSI].IsStatic ^
+                               StaticImportAfterNormalImport,
+                           JavaImportGroups[RHSI], Imports[RHSI].Identifier);
   });
 
   // Deduplicate imports.
@@ -2739,6 +2774,7 @@ LangOptions getFormattingLangOpts(const FormatStyle &Style) {
   LangOpts.ObjC = 1;
   LangOpts.MicrosoftExt = 1;    // To get kw___try, kw___finally.
   LangOpts.DeclSpecKeyword = 1; // To get __declspec.
+  LangOpts.C99 = 1; // To get kw_restrict for non-underscore-prefixed restrict.
   return LangOpts;
 }
 
@@ -2800,8 +2836,8 @@ const char *DefaultFallbackStyle = "LLVM";
 
 llvm::Expected<FormatStyle> getStyle(StringRef StyleName, StringRef FileName,
                                      StringRef FallbackStyleName,
-                                     StringRef Code,
-                                     llvm::vfs::FileSystem *FS) {
+                                     StringRef Code, llvm::vfs::FileSystem *FS,
+                                     bool AllowUnknownOptions) {
   if (!FS) {
     FS = llvm::vfs::getRealFileSystem().get();
   }
@@ -2813,7 +2849,8 @@ llvm::Expected<FormatStyle> getStyle(StringRef StyleName, StringRef FileName,
 
   if (StyleName.startswith("{")) {
     // Parse YAML/JSON style from the command line.
-    if (std::error_code ec = parseConfiguration(StyleName, &Style))
+    if (std::error_code ec =
+            parseConfiguration(StyleName, &Style, AllowUnknownOptions))
       return make_string_error("Error parsing -style: " + ec.message());
     return Style;
   }
@@ -2857,8 +2894,8 @@ llvm::Expected<FormatStyle> getStyle(StringRef StyleName, StringRef FileName,
             FS->getBufferForFile(ConfigFile.str());
         if (std::error_code EC = Text.getError())
           return make_string_error(EC.message());
-        if (std::error_code ec =
-                parseConfiguration(Text.get()->getBuffer(), &Style)) {
+        if (std::error_code ec = parseConfiguration(
+                Text.get()->getBuffer(), &Style, AllowUnknownOptions)) {
           if (ec == ParseError::Unsuitable) {
             if (!UnsuitableConfigFiles.empty())
               UnsuitableConfigFiles.append(", ");

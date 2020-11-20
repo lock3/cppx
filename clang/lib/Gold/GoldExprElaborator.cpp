@@ -3198,7 +3198,6 @@ clang::Expr *ExprElaborator::elaborateNewExpr(const MacroSyntax *Macro) {
 
   // This is used for the constructor expression.
   llvm::Optional<clang::Expr *> ArraySizeExpr;
-  clang::SourceLocation TypeParens;
 
   // Initialization style is determined off of this argument.
   clang::SourceRange DirectInitRange;
@@ -3378,9 +3377,7 @@ ExprElaborator::elaborateNewExpr_ArrayCall(const CallSyntax *S,
     clang::Expr::EvalContext
       EvalCtx(Context.CxxAST, SemaRef.getCxxSema().GetReflectionCallbackObj());
 
-    if (IndexExpr->EvaluateAsConstantExpr(IdxResult,
-                                           clang::Expr::EvaluateForCodeGen,
-                                           EvalCtx)) {
+    if (IndexExpr->EvaluateAsConstantExpr(IdxResult, EvalCtx)) {
       clang::SourceRange Range(IndexExpr->getExprLoc(), IndexExpr->getExprLoc());
       ArrayType = SemaRef.getCxxSema().BuildArrayType(
         ArrayType, clang::ArrayType::Normal, IndexExpr, 0,
@@ -3771,9 +3768,7 @@ clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
     clang::Expr::EvalContext
       EvalCtx(Context.CxxAST, SemaRef.getCxxSema().GetReflectionCallbackObj());
 
-    if (!IndexExpr->EvaluateAsConstantExpr(IdxResult,
-                                           clang::Expr::EvaluateForCodeGen,
-                                           EvalCtx)) {
+    if (!IndexExpr->EvaluateAsConstantExpr(IdxResult, EvalCtx)) {
       Invalid = true;
       continue;
     }

@@ -152,9 +152,9 @@ void MarkLive<ELFT>::scanEhFrameSection(EhInputSection &eh,
     // a LSDA. We only need to keep the LSDA alive, so ignore anything that
     // points to executable sections.
     uint64_t pieceEnd = piece.inputOff + piece.size;
-    for (size_t j = firstRelI, end2 = rels.size(); j < end2; ++j)
-      if (rels[j].r_offset < pieceEnd)
-        resolveReloc(eh, rels[j], true);
+    for (size_t j = firstRelI, end2 = rels.size();
+         j < end2 && rels[j].r_offset < pieceEnd; ++j)
+      resolveReloc(eh, rels[j], true);
   }
 }
 
@@ -339,16 +339,16 @@ template <class ELFT> void elf::markLive() {
 
   // Otherwise, do mark-sweep GC.
   //
-  // The -gc-sections option works only for SHF_ALLOC sections
-  // (sections that are memory-mapped at runtime). So we can
-  // unconditionally make non-SHF_ALLOC sections alive except
-  // SHF_LINK_ORDER and SHT_REL/SHT_RELA sections.
+  // The -gc-sections option works only for SHF_ALLOC sections (sections that
+  // are memory-mapped at runtime). So we can unconditionally make non-SHF_ALLOC
+  // sections alive except SHF_LINK_ORDER, SHT_REL/SHT_RELA sections, and
+  // sections in a group.
   //
   // Usually, non-SHF_ALLOC sections are not removed even if they are
-  // unreachable through relocations because reachability is not
-  // a good signal whether they are garbage or not (e.g. there is
-  // usually no section referring to a .comment section, but we
-  // want to keep it.).
+  // unreachable through relocations because reachability is not a good signal
+  // whether they are garbage or not (e.g. there is usually no section referring
+  // to a .comment section, but we want to keep it.) When a non-SHF_ALLOC
+  // section is retained, we also retain sections dependent on it.
   //
   // Note on SHF_LINK_ORDER: Such sections contain metadata and they
   // have a reverse dependency on the InputSection they are linked with.
@@ -370,8 +370,11 @@ template <class ELFT> void elf::markLive() {
     bool isLinkOrder = (sec->flags & SHF_LINK_ORDER);
     bool isRel = (sec->type == SHT_REL || sec->type == SHT_RELA);
 
-    if (!isAlloc && !isLinkOrder && !isRel && !sec->nextInSectionGroup)
+    if (!isAlloc && !isLinkOrder && !isRel && !sec->nextInSectionGroup) {
       sec->markLive();
+      for (InputSection *isec : sec->dependentSections)
+        isec->markLive();
+    }
   }
 
   // Follow the graph to mark all live sections.

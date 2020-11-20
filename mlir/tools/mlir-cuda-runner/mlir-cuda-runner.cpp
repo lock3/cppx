@@ -118,16 +118,13 @@ static LogicalResult runMLIRPasses(ModuleOp m) {
   kernelPm.addPass(createConvertGPUKernelToBlobPass(
       translateModuleToNVVMIR, compilePtxToCubin, "nvptx64-nvidia-cuda",
       "sm_35", "+ptx60", gpuBinaryAnnotation));
-  pm.addPass(createLowerToLLVMPass());
-  pm.addPass(
-      createConvertGpuLaunchFuncToGpuRuntimeCallsPass(gpuBinaryAnnotation));
+  pm.addPass(createGpuToLLVMConversionPass(gpuBinaryAnnotation));
 
   return pm.run(m);
 }
 
 int main(int argc, char **argv) {
   registerPassManagerCLOptions();
-  mlir::registerAllDialects();
   llvm::InitLLVM y(argc, argv);
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
@@ -139,5 +136,9 @@ int main(int argc, char **argv) {
   LLVMInitializeNVPTXAsmPrinter();
 
   mlir::initializeLLVMPasses();
-  return mlir::JitRunnerMain(argc, argv, &runMLIRPasses);
+
+  mlir::JitRunnerConfig jitRunnerConfig;
+  jitRunnerConfig.mlirTransformer = runMLIRPasses;
+
+  return mlir::JitRunnerMain(argc, argv, jitRunnerConfig);
 }

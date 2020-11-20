@@ -375,6 +375,13 @@ public:
   EVT getShiftAmountTy(EVT LHSTy, const DataLayout &DL,
                        bool LegalTypes = true) const;
 
+  /// Return the preferred type to use for a shift opcode, given the shifted
+  /// amount type is \p ShiftValueTy.
+  LLVM_READONLY
+  virtual LLT getPreferredShiftAmountTy(LLT ShiftValueTy) const {
+    return ShiftValueTy;
+  }
+
   /// Returns the type to be used for the index operand of:
   /// ISD::INSERT_VECTOR_ELT, ISD::EXTRACT_VECTOR_ELT,
   /// ISD::INSERT_SUBVECTOR, and ISD::EXTRACT_SUBVECTOR
@@ -420,7 +427,7 @@ public:
   virtual TargetLoweringBase::LegalizeTypeAction
   getPreferredVectorAction(MVT VT) const {
     // The default action for one element vectors is to scalarize
-    if (VT.getVectorElementCount() == 1)
+    if (VT.getVectorElementCount().isScalar())
       return TypeScalarizeVector;
     // The default action for an odd-width vector is to widen.
     if (!VT.isPow2VectorType())
@@ -1086,8 +1093,13 @@ public:
 
   /// Return true if the specified operation is legal on this target or can be
   /// made legal with custom lowering. This is used to help guide high-level
-  /// lowering decisions.
-  bool isOperationLegalOrCustom(unsigned Op, EVT VT) const {
+  /// lowering decisions. LegalOnly is an optional convenience for code paths
+  /// traversed pre and post legalisation.
+  bool isOperationLegalOrCustom(unsigned Op, EVT VT,
+                                bool LegalOnly = false) const {
+    if (LegalOnly)
+      return isOperationLegal(Op, VT);
+
     return (VT == MVT::Other || isTypeLegal(VT)) &&
       (getOperationAction(Op, VT) == Legal ||
        getOperationAction(Op, VT) == Custom);
@@ -1095,8 +1107,13 @@ public:
 
   /// Return true if the specified operation is legal on this target or can be
   /// made legal using promotion. This is used to help guide high-level lowering
-  /// decisions.
-  bool isOperationLegalOrPromote(unsigned Op, EVT VT) const {
+  /// decisions. LegalOnly is an optional convenience for code paths traversed
+  /// pre and post legalisation.
+  bool isOperationLegalOrPromote(unsigned Op, EVT VT,
+                                 bool LegalOnly = false) const {
+    if (LegalOnly)
+      return isOperationLegal(Op, VT);
+
     return (VT == MVT::Other || isTypeLegal(VT)) &&
       (getOperationAction(Op, VT) == Legal ||
        getOperationAction(Op, VT) == Promote);
@@ -1104,8 +1121,13 @@ public:
 
   /// Return true if the specified operation is legal on this target or can be
   /// made legal with custom lowering or using promotion. This is used to help
-  /// guide high-level lowering decisions.
-  bool isOperationLegalOrCustomOrPromote(unsigned Op, EVT VT) const {
+  /// guide high-level lowering decisions. LegalOnly is an optional convenience
+  /// for code paths traversed pre and post legalisation.
+  bool isOperationLegalOrCustomOrPromote(unsigned Op, EVT VT,
+                                         bool LegalOnly = false) const {
+    if (LegalOnly)
+      return isOperationLegal(Op, VT);
+
     return (VT == MVT::Other || isTypeLegal(VT)) &&
       (getOperationAction(Op, VT) == Legal ||
        getOperationAction(Op, VT) == Custom ||
@@ -1664,13 +1686,9 @@ public:
 
   virtual bool isJumpTableRelative() const;
 
-  /// Return true if a mulh[s|u] node for a specific type is cheaper than
-  /// a multiply followed by a shift. This is false by default.
-  virtual bool isMulhCheaperThanMulShift(EVT Type) const { return false; }
-
   /// If a physical register, this specifies the register that
   /// llvm.savestack/llvm.restorestack should save and restore.
-  unsigned getStackPointerRegisterToSaveRestore() const {
+  Register getStackPointerRegisterToSaveRestore() const {
     return StackPointerRegisterToSaveRestore;
   }
 
@@ -4291,9 +4309,12 @@ public:
 
   /// Expand rotations.
   /// \param N Node to expand
+  /// \param AllowVectorOps expand vector rotate, this should only be performed
+  ///        if the legalization is happening outside of LegalizeVectorOps
   /// \param Result output after conversion
   /// \returns True, if the expansion was successful, false otherwise
-  bool expandROT(SDNode *N, SDValue &Result, SelectionDAG &DAG) const;
+  bool expandROT(SDNode *N, bool AllowVectorOps, SDValue &Result,
+                 SelectionDAG &DAG) const;
 
   /// Expand float(f32) to SINT(i64) conversion
   /// \param N Node to expand
@@ -4425,6 +4446,9 @@ public:
   /// Expand a VECREDUCE_* into an explicit calculation. If Count is specified,
   /// only the first Count elements of the vector are used.
   SDValue expandVecReduce(SDNode *Node, SelectionDAG &DAG) const;
+
+  /// Expand a VECREDUCE_SEQ_* into an explicit ordered calculation.
+  SDValue expandVecReduceSeq(SDNode *Node, SelectionDAG &DAG) const;
 
   /// Expand an SREM or UREM using SDIV/UDIV or SDIVREM/UDIVREM, if legal.
   /// Returns true if the expansion was successful.

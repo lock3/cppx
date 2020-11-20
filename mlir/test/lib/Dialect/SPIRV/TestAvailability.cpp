@@ -30,7 +30,7 @@ void PrintOpAvailability::runOnFunction() {
   auto f = getFunction();
   llvm::outs() << f.getName() << "\n";
 
-  Dialect *spvDialect = getContext().getRegisteredDialect("spv");
+  Dialect *spvDialect = getContext().getLoadedDialect("spv");
 
   f.getOperation()->walk([&](Operation *op) {
     if (op->getDialect() != spvDialect)
@@ -144,7 +144,7 @@ void ConvertToTargetEnv::runOnFunction() {
                   ConvertToGroupNonUniformBallot, ConvertToModule,
                   ConvertToSubgroupBallot>(context);
 
-  if (failed(applyPartialConversion(fn, *target, patterns)))
+  if (failed(applyPartialConversion(fn, *target, std::move(patterns))))
     return signalPassFailure();
 }
 

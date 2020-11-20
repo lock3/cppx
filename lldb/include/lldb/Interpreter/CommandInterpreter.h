@@ -256,7 +256,7 @@ public:
   }
 
   void SourceInitFileCwd(CommandReturnObject &result);
-  void SourceInitFileHome(CommandReturnObject &result);
+  void SourceInitFileHome(CommandReturnObject &result, bool is_repl = false);
 
   bool AddCommand(llvm::StringRef name, const lldb::CommandObjectSP &cmd_sp,
                   bool can_replace);
@@ -350,6 +350,10 @@ public:
                               CommandReturnObject &result);
 
   CommandObject *GetCommandObjectForCommand(llvm::StringRef &command_line);
+
+  /// Returns the auto-suggestion string that should be added to the given
+  /// command line.
+  llvm::Optional<std::string> GetAutoSuggestionForCommand(llvm::StringRef line);
 
   // This handles command line completion.
   void HandleCompletion(CompletionRequest &request);
@@ -501,6 +505,12 @@ public:
     return m_user_dict;
   }
 
+  const CommandObject::CommandMap &GetCommands() const {
+    return m_command_dict;
+  }
+
+  const CommandObject::CommandMap &GetAliases() const { return m_alias_dict; }
+
   /// Specify if the command interpreter should allow that the user can
   /// specify a custom exit code when calling 'quit'.
   void AllowExitCodeOnQuit(bool allow);
@@ -540,6 +550,8 @@ public:
   /// disk, \b false otherwise.
   bool SaveTranscript(CommandReturnObject &result,
                       llvm::Optional<std::string> output_file = llvm::None);
+
+  FileSpec GetCurrentSourceDir();
 
 protected:
   friend class Debugger;
@@ -627,7 +639,13 @@ private:
   ChildrenTruncatedWarningStatus m_truncation_warning; // Whether we truncated
                                                        // children and whether
                                                        // the user has been told
+
+  // FIXME: Stop using this to control adding to the history and then replace
+  // this with m_command_source_dirs.size().
   uint32_t m_command_source_depth;
+  /// A stack of directory paths. When not empty, the last one is the directory
+  /// of the file that's currently sourced.
+  std::vector<FileSpec> m_command_source_dirs;
   std::vector<uint32_t> m_command_source_flags;
   CommandInterpreterRunResult m_result;
 

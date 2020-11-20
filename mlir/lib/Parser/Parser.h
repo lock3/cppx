@@ -36,13 +36,12 @@ public:
   /// Parse a comma-separated list of elements up until the specified end token.
   ParseResult
   parseCommaSeparatedListUntil(Token::Kind rightToken,
-                               const std::function<ParseResult()> &parseElement,
+                               function_ref<ParseResult()> parseElement,
                                bool allowEmptyList = true);
 
   /// Parse a comma separated list of elements that must have at least one entry
   /// in it.
-  ParseResult
-  parseCommaSeparatedList(const std::function<ParseResult()> &parseElement);
+  ParseResult parseCommaSeparatedList(function_ref<ParseResult()> parseElement);
 
   ParseResult parsePrettyDialectSymbolName(StringRef &prettyName);
 
@@ -187,6 +186,23 @@ public:
   /// Parse an optional attribute with the provided type.
   OptionalParseResult parseOptionalAttribute(Attribute &attribute,
                                              Type type = {});
+  OptionalParseResult parseOptionalAttribute(ArrayAttr &attribute, Type type);
+  OptionalParseResult parseOptionalAttribute(StringAttr &attribute, Type type);
+
+  /// Parse an optional attribute that is demarcated by a specific token.
+  template <typename AttributeT>
+  OptionalParseResult parseOptionalAttributeWithToken(Token::Kind kind,
+                                                      AttributeT &attr,
+                                                      Type type = {}) {
+    if (getToken().isNot(kind))
+      return llvm::None;
+
+    if (Attribute parsedAttr = parseAttribute(type)) {
+      attr = parsedAttr.cast<AttributeT>();
+      return success();
+    }
+    return failure();
+  }
 
   /// Parse an attribute dictionary.
   ParseResult parseAttributeDict(NamedAttrList &attributes);

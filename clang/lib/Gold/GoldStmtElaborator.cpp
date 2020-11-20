@@ -337,8 +337,8 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
   }
 
   clang::StmtResult If = SemaRef.getCxxSema().ActOnIfStmt(
-    S->getLoc(), /*Constexpr=*/false, /*InitStmt=*/nullptr,
-    Condition, Then, ElseLoc, Else);
+    S->getLoc(), /*Constexpr=*/false, ConditionExpr->getExprLoc(),
+    /*InitStmt=*/nullptr, Condition, ElseLoc, Then, ElseLoc, Else);
 
   if (If.isInvalid())
     return nullptr;

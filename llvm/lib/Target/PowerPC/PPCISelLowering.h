@@ -265,11 +265,11 @@ namespace llvm {
     /// is VCMPGTSH.
     VCMP,
 
-    /// RESVEC, OUTFLAG = VCMPo(LHS, RHS, OPC) - Represents one of the
-    /// altivec VCMP*o instructions.  For lack of better number, we use the
+    /// RESVEC, OUTFLAG = VCMP_rec(LHS, RHS, OPC) - Represents one of the
+    /// altivec VCMP*_rec instructions.  For lack of better number, we use the
     /// opcode number encoding for the OPC field to identify the compare.  For
     /// example, 838 is VCMPGTSH.
-    VCMPo,
+    VCMP_rec,
 
     /// CHAIN = COND_BRANCH CHAIN, CRRC, OPC, DESTBB [, INFLAG] - This
     /// corresponds to the COND_BRANCH pseudo instruction.  CRRC is the
@@ -381,6 +381,10 @@ namespace llvm {
     /// sym\@got\@dtprel\@l.
     ADDI_DTPREL_L,
 
+    /// G8RC = PADDI_DTPREL %x3, Symbol - For the pc-rel based local-dynamic TLS
+    /// model, produces a PADDI8 instruction that adds X3 to sym\@dtprel.
+    PADDI_DTPREL,
+
     /// VRRC = VADD_SPLAT Elt, EltSize - Temporary node to be expanded
     /// during instruction selection to optimize a BUILD_VECTOR into
     /// operations on splats.  This is necessary to avoid losing these
@@ -436,6 +440,46 @@ namespace llvm {
     /// PLD.
     MAT_PCREL_ADDR,
 
+    /// TLS_DYNAMIC_MAT_PCREL_ADDR = Materialize a PC Relative address for
+    /// TLS global address when using dynamic access models. This can be done
+    /// through an add like PADDI.
+    TLS_DYNAMIC_MAT_PCREL_ADDR,
+
+    /// TLS_LOCAL_EXEC_MAT_ADDR = Materialize an address for TLS global address
+    /// when using local exec access models, and when prefixed instructions are
+    /// available. This is used with ADD_TLS to produce an add like PADDI.
+    TLS_LOCAL_EXEC_MAT_ADDR,
+
+    /// ACC_BUILD = Build an accumulator register from 4 VSX registers.
+    ACC_BUILD,
+
+    /// PAIR_BUILD = Build a vector pair register from 2 VSX registers.
+    PAIR_BUILD,
+
+    /// EXTRACT_VSX_REG = Extract one of the underlying vsx registers of
+    /// an accumulator or pair register. This node is needed because
+    /// EXTRACT_SUBVECTOR expects the input and output vectors to have the same
+    /// element type.
+    EXTRACT_VSX_REG,
+
+    /// XXMFACC = This corresponds to the xxmfacc instruction.
+    XXMFACC,
+
+    // Constrained conversion from floating point to int
+    STRICT_FCTIDZ = ISD::FIRST_TARGET_STRICTFP_OPCODE,
+    STRICT_FCTIWZ,
+    STRICT_FCTIDUZ,
+    STRICT_FCTIWUZ,
+
+    /// Constrained integer-to-floating-point conversion instructions.
+    STRICT_FCFID,
+    STRICT_FCFIDU,
+    STRICT_FCFIDS,
+    STRICT_FCFIDUS,
+
+    /// Constrained floating point add in round-to-zero mode.
+    STRICT_FADDRTZ,
+
     /// CHAIN = STBRX CHAIN, GPRC, Ptr, Type - This is a
     /// byte-swapping store instruction.  It byte-swaps the low "Type" bits of
     /// the GPRC input, then stores it through Ptr.  Type can be either i16 or
@@ -476,6 +520,12 @@ namespace llvm {
     /// Maps directly to an lxvd2x instruction that will be followed by
     /// an xxswapd.
     LXVD2X,
+
+    /// LXVRZX - Load VSX Vector Rightmost and Zero Extend
+    /// This node represents v1i128 BUILD_VECTOR of a zero extending load
+    /// instruction from <byte, halfword, word, or doubleword> to i128.
+    /// Allows utilization of the Load VSX Vector Rightmost Instructions.
+    LXVRZX,
 
     /// VSRC, CHAIN = LOAD_VEC_BE CHAIN, Ptr - Occurs only for little endian.
     /// Maps directly to one of lxvd2x/lxvw4x/lxvh8x/lxvb16x depending on
@@ -736,6 +786,12 @@ namespace llvm {
     ///
     SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
 
+    /// LowerOperationWrapper - Place custom new result values for node in
+    /// Results.
+    void LowerOperationWrapper(SDNode *N,
+                               SmallVectorImpl<SDValue> &Results,
+                               SelectionDAG &DAG) const override;
+
     /// ReplaceNodeResults - Replace the results of node with an illegal result
     /// type with new values built out of custom code.
     ///
@@ -875,6 +931,9 @@ namespace llvm {
       return true;
     }
 
+    bool decomposeMulByConstant(LLVMContext &Context, EVT VT,
+                                SDValue C) const override;
+
     bool isDesirableToTransformToIntegerOp(unsigned Opc,
                                            EVT VT) const override {
       // Only handle float load/store pair because float(fpr) load/store
@@ -959,11 +1018,6 @@ namespace llvm {
     /// exception typeid on entry to a landing pad.
     Register
     getExceptionSelectorRegister(const Constant *PersonalityFn) const override;
-
-    /// isMulhCheaperThanMulShift - Return true if a mulh[s|u] node for a
-    /// specific type is cheaper than a multiply followed by a shift.
-    /// This is true for words and doublewords on 64-bit PowerPC.
-    bool isMulhCheaperThanMulShift(EVT Type) const override;
 
     /// Override to support customized stack guard loading.
     bool useLoadStackGuardNode() const override;

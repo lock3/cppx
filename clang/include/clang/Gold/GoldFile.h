@@ -40,7 +40,7 @@ public:
   }
 
   llvm::StringRef getText() const {
-    return SM.getBuffer(ID)->getBufferStart();
+    return SM.getBufferData(ID);
   }
 
 private:

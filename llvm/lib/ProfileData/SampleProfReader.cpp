@@ -470,7 +470,7 @@ std::error_code SampleProfileReaderBinary::readImpl() {
   return sampleprof_error::success;
 }
 
-std::error_code SampleProfileReaderExtBinary::readOneSection(
+std::error_code SampleProfileReaderExtBinaryBase::readOneSection(
     const uint8_t *Start, uint64_t Size, const SecHdrTableEntry &Entry) {
   Data = Start;
   End = Start + Size;
@@ -490,28 +490,30 @@ std::error_code SampleProfileReaderExtBinary::readOneSection(
     if (std::error_code EC = readFuncProfiles())
       return EC;
     break;
-  case SecProfileSymbolList:
-    if (std::error_code EC = readProfileSymbolList())
-      return EC;
-    break;
   case SecFuncOffsetTable:
     if (std::error_code EC = readFuncOffsetTable())
       return EC;
     break;
+  case SecProfileSymbolList:
+    if (std::error_code EC = readProfileSymbolList())
+      return EC;
+    break;
   default:
+    if (std::error_code EC = readCustomSection(Entry))
+      return EC;
     break;
   }
   return sampleprof_error::success;
 }
 
-void SampleProfileReaderExtBinary::collectFuncsFrom(const Module &M) {
+void SampleProfileReaderExtBinaryBase::collectFuncsFrom(const Module &M) {
   UseAllFuncs = false;
   FuncsToUse.clear();
   for (auto &F : M)
     FuncsToUse.insert(FunctionSamples::getCanonicalFnName(F));
 }
 
-std::error_code SampleProfileReaderExtBinary::readFuncOffsetTable() {
+std::error_code SampleProfileReaderExtBinaryBase::readFuncOffsetTable() {
   auto Size = readNumber<uint64_t>();
   if (std::error_code EC = Size.getError())
     return EC;
@@ -531,7 +533,7 @@ std::error_code SampleProfileReaderExtBinary::readFuncOffsetTable() {
   return sampleprof_error::success;
 }
 
-std::error_code SampleProfileReaderExtBinary::readFuncProfiles() {
+std::error_code SampleProfileReaderExtBinaryBase::readFuncProfiles() {
   const uint8_t *Start = Data;
   if (UseAllFuncs) {
     while (Data < End) {
@@ -576,7 +578,7 @@ std::error_code SampleProfileReaderExtBinary::readFuncProfiles() {
   return sampleprof_error::success;
 }
 
-std::error_code SampleProfileReaderExtBinary::readProfileSymbolList() {
+std::error_code SampleProfileReaderExtBinaryBase::readProfileSymbolList() {
   if (!ProfSymList)
     ProfSymList = std::make_unique<ProfileSymbolList>();
 
@@ -720,7 +722,7 @@ std::error_code SampleProfileReaderBinary::readNameTable() {
   return sampleprof_error::success;
 }
 
-std::error_code SampleProfileReaderExtBinary::readMD5NameTable() {
+std::error_code SampleProfileReaderExtBinaryBase::readMD5NameTable() {
   auto Size = readNumber<uint64_t>();
   if (std::error_code EC = Size.getError())
     return EC;
@@ -739,7 +741,7 @@ std::error_code SampleProfileReaderExtBinary::readMD5NameTable() {
   return sampleprof_error::success;
 }
 
-std::error_code SampleProfileReaderExtBinary::readNameTableSec(bool IsMD5) {
+std::error_code SampleProfileReaderExtBinaryBase::readNameTableSec(bool IsMD5) {
   if (IsMD5)
     return readMD5NameTable();
   return SampleProfileReaderBinary::readNameTable();
@@ -1291,18 +1293,22 @@ void SampleProfileReaderItaniumRemapper::applyRemapping(LLVMContext &Ctx) {
   }
 
   assert(Remappings && "should be initialized while creating remapper");
-  for (auto &Sample : Reader.getProfiles())
-    if (auto Key = Remappings->insert(Sample.first()))
-      SampleMap.insert({Key, &Sample.second});
+  for (auto &Sample : Reader.getProfiles()) {
+    DenseSet<StringRef> NamesInSample;
+    Sample.second.findAllNames(NamesInSample);
+    for (auto &Name : NamesInSample)
+      if (auto Key = Remappings->insert(Name))
+        NameMap.insert({Key, Name});
+  }
 
   RemappingApplied = true;
 }
 
-FunctionSamples *
-SampleProfileReaderItaniumRemapper::getSamplesFor(StringRef Fname) {
+Optional<StringRef>
+SampleProfileReaderItaniumRemapper::lookUpNameInProfile(StringRef Fname) {
   if (auto Key = Remappings->lookup(Fname))
-    return SampleMap.lookup(Key);
-  return nullptr;
+    return NameMap.lookup(Key);
+  return None;
 }
 
 /// Prepare a memory buffer for the contents of \p Filename.

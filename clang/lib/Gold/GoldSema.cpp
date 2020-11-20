@@ -1611,20 +1611,17 @@ void Sema::createInPlaceNew() {
               .getValueKindForDeclReference(ResultType, Params[1], Loc);
       clang::DeclarationNameInfo DNI({&Context.CxxAST.Idents.get("ptr")}, Loc);
 
-      auto RefExpr = clang::DeclRefExpr::Create(Context.CxxAST,
-                                                clang::NestedNameSpecifierLoc(),
-                                                clang::SourceLocation(),
-                                                Params[1],
-                                    /*RefersToEnclosingVariableOrCapture*/false,
-                                                /*NameLoc*/Loc,
-                                                ResultType,
-                                                ValueKind);
-      auto Cast = clang::ImplicitCastExpr::Create(Context.CxxAST,
-                                                  ResultType,
-                                                  clang::CK_LValueToRValue,
-                                                  RefExpr,
-                                                  nullptr,
-                                                  ValueKind);
+      auto RefExpr =
+        clang::DeclRefExpr::Create(Context.CxxAST,
+                                   clang::NestedNameSpecifierLoc(),
+                                   clang::SourceLocation(), Params[1],
+                                   /*RefersToEnclosingVariableOrCapture*/false,
+                                   /*NameLoc*/Loc, ResultType, ValueKind);
+      auto Cast =
+        clang::ImplicitCastExpr::Create(Context.CxxAST, ResultType,
+                                        clang::CK_LValueToRValue, RefExpr,
+                                        nullptr, ValueKind,
+                                        clang::FPOptionsOverride());
       clang::ReturnStmt *RetStmt = clang::ReturnStmt::Create(Context.CxxAST,
                                                         Loc, Cast, nullptr);
       llvm::SmallVector<clang::Stmt* , 1> BlockStmts({RetStmt});

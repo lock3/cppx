@@ -51,8 +51,8 @@ template <typename T> struct Located {
       : Range(Range), Value(std::move(Value)) {}
 
   llvm::SMRange Range;
-  T &operator->() { return Value; }
-  const T &operator->() const { return Value; }
+  T *operator->() { return &Value; }
+  const T *operator->() const { return &Value; }
   T &operator*() { return Value; }
   const T &operator*() const { return Value; }
 
@@ -91,6 +91,9 @@ struct Fragment {
     /// The start of the original source for this fragment.
     /// Only valid if SourceManager is set.
     llvm::SMLoc Location;
+    /// Absolute path to directory the fragment is associated with. Relative
+    /// paths mentioned in the fragment are resolved against this.
+    std::string Directory;
   };
   SourceInfo Source;
 
@@ -161,6 +164,16 @@ struct Fragment {
     llvm::Optional<Located<std::string>> Background;
   };
   IndexBlock Index;
+
+  // Describes the style of the codebase, beyond formatting.
+  struct StyleBlock {
+    // Namespaces that should always be fully qualified, meaning no "using"
+    // declarations, always spell out the whole name (with or without leading
+    // ::). All nested namespaces are affected as well.
+    // Affects availability of the AddUsing tweak.
+    std::vector<Located<std::string>> FullyQualifiedNamespaces;
+  };
+  StyleBlock Style;
 };
 
 } // namespace config

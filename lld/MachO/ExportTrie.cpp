@@ -59,11 +59,22 @@ struct Edge {
 
 struct ExportInfo {
   uint64_t address;
-  uint8_t flags;
-  explicit ExportInfo(const Symbol &sym)
-      : address(sym.getVA()),
-        flags(sym.isWeakDef() ? EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION : 0) {}
-  // TODO: Add proper support for re-exports & stub-and-resolver flags.
+  uint8_t flags = 0;
+  ExportInfo(const Symbol &sym, uint64_t imageBase)
+      : address(sym.getVA() - imageBase) {
+    // Set the symbol type.
+    if (sym.isWeakDef())
+      flags |= EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION;
+    // TODO: Add proper support for re-exports & stub-and-resolver flags.
+
+    // Set the symbol kind.
+    if (sym.isTlv()) {
+      flags |= EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL;
+    } else if (auto *defined = dyn_cast<Defined>(&sym)) {
+      if (defined->isAbsolute())
+        flags |= EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE;
+    }
+  }
 };
 
 } // namespace
@@ -196,7 +207,7 @@ tailcall:
 
   if (isTerminal) {
     assert(j - i == 1); // no duplicate symbols
-    node->info = ExportInfo(*pivotSymbol);
+    node->info = ExportInfo(*pivotSymbol, imageBase);
   } else {
     // This is the tail-call-optimized version of the following:
     // sortAndBuild(vec.slice(i, j - i), node, lastPos, pos + 1);

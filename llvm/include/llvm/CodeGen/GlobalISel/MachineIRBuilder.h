@@ -18,6 +18,7 @@
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/TargetOpcodes.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/Module.h"
@@ -223,6 +224,7 @@ class MachineIRBuilder {
 protected:
   void validateTruncExt(const LLT Dst, const LLT Src, bool IsExtend);
 
+  void validateUnaryOp(const LLT Res, const LLT Op0);
   void validateBinaryOp(const LLT Res, const LLT Op0, const LLT Op1);
   void validateShiftOp(const LLT Res, const LLT Op0, const LLT Op1);
 
@@ -729,7 +731,7 @@ public:
   ///      depend on bit 0 (for now).
   ///
   /// \return The newly created instruction.
-  MachineInstrBuilder buildBrCond(Register Tst, MachineBasicBlock &Dest);
+  MachineInstrBuilder buildBrCond(const SrcOp &Tst, MachineBasicBlock &Dest);
 
   /// Build and insert G_BRINDIRECT \p Tgt
   ///
@@ -1665,6 +1667,11 @@ public:
     return buildInstr(TargetOpcode::G_UMAX, {Dst}, {Src0, Src1});
   }
 
+  /// Build and insert \p Dst = G_ABS \p Src
+  MachineInstrBuilder buildAbs(const DstOp &Dst, const SrcOp &Src) {
+    return buildInstr(TargetOpcode::G_ABS, {Dst}, {Src});
+  }
+
   /// Build and insert \p Res = G_JUMP_TABLE \p JTI
   ///
   /// G_JUMP_TABLE sets \p Res to the address of the jump table specified by
@@ -1673,6 +1680,101 @@ public:
   /// \return a MachineInstrBuilder for the newly created instruction.
   MachineInstrBuilder buildJumpTable(const LLT PtrTy, unsigned JTI);
 
+  /// Build and insert \p Res = G_VECREDUCE_SEQ_FADD \p ScalarIn, \p VecIn
+  ///
+  /// \p ScalarIn is the scalar accumulator input to start the sequential
+  /// reduction operation of \p VecIn.
+  MachineInstrBuilder buildVecReduceSeqFAdd(const DstOp &Dst,
+                                            const SrcOp &ScalarIn,
+                                            const SrcOp &VecIn) {
+    return buildInstr(TargetOpcode::G_VECREDUCE_SEQ_FADD, {Dst},
+                      {ScalarIn, {VecIn}});
+  }
+
+  /// Build and insert \p Res = G_VECREDUCE_SEQ_FMUL \p ScalarIn, \p VecIn
+  ///
+  /// \p ScalarIn is the scalar accumulator input to start the sequential
+  /// reduction operation of \p VecIn.
+  MachineInstrBuilder buildVecReduceSeqFMul(const DstOp &Dst,
+                                            const SrcOp &ScalarIn,
+                                            const SrcOp &VecIn) {
+    return buildInstr(TargetOpcode::G_VECREDUCE_SEQ_FMUL, {Dst},
+                      {ScalarIn, {VecIn}});
+  }
+
+  /// Build and insert \p Res = G_VECREDUCE_FADD \p Src
+  ///
+  /// \p ScalarIn is the scalar accumulator input to the reduction operation of
+  /// \p VecIn.
+  MachineInstrBuilder buildVecReduceFAdd(const DstOp &Dst,
+                                         const SrcOp &ScalarIn,
+                                         const SrcOp &VecIn) {
+    return buildInstr(TargetOpcode::G_VECREDUCE_FADD, {Dst}, {ScalarIn, VecIn});
+  }
+
+  /// Build and insert \p Res = G_VECREDUCE_FMUL \p Src
+  ///
+  /// \p ScalarIn is the scalar accumulator input to the reduction operation of
+  /// \p VecIn.
+  MachineInstrBuilder buildVecReduceFMul(const DstOp &Dst,
+                                         const SrcOp &ScalarIn,
+                                         const SrcOp &VecIn) {
+    return buildInstr(TargetOpcode::G_VECREDUCE_FMUL, {Dst}, {ScalarIn, VecIn});
+  }
+
+  /// Build and insert \p Res = G_VECREDUCE_FMAX \p Src
+  MachineInstrBuilder buildVecReduceFMax(const DstOp &Dst, const SrcOp &Src) {
+    return buildInstr(TargetOpcode::G_VECREDUCE_FMAX, {Dst}, {Src});
+  }
+
+  /// Build and insert \p Res = G_VECREDUCE_FMIN \p Src
+  MachineInstrBuilder buildVecReduceFMin(const DstOp &Dst, const SrcOp &Src) {
+    return buildInstr(TargetOpcode::G_VECREDUCE_FMIN, {Dst}, {Src});
+  }
+  /// Build and insert \p Res = G_VECREDUCE_ADD \p Src
+  MachineInstrBuilder buildVecReduceAdd(const DstOp &Dst, const SrcOp &Src) {
+    return buildInstr(TargetOpcode::G_VECREDUCE_ADD, {Dst}, {Src});
+  }
+
+  /// Build and insert \p Res = G_VECREDUCE_MUL \p Src
+  MachineInstrBuilder buildVecReduceMul(const DstOp &Dst, const SrcOp &Src) {
+    return buildInstr(TargetOpcode::G_VECREDUCE_MUL, {Dst}, {Src});
+  }
+
+  /// Build and insert \p Res = G_VECREDUCE_AND \p Src
+  MachineInstrBuilder buildVecReduceAnd(const DstOp &Dst, const SrcOp &Src) {
+    return buildInstr(TargetOpcode::G_VECREDUCE_AND, {Dst}, {Src});
+  }
+
+  /// Build and insert \p Res = G_VECREDUCE_OR \p Src
+  MachineInstrBuilder buildVecReduceOr(const DstOp &Dst, const SrcOp &Src) {
+    return buildInstr(TargetOpcode::G_VECREDUCE_OR, {Dst}, {Src});
+  }
+
+  /// Build and insert \p Res = G_VECREDUCE_XOR \p Src
+  MachineInstrBuilder buildVecReduceXor(const DstOp &Dst, const SrcOp &Src) {
+    return buildInstr(TargetOpcode::G_VECREDUCE_XOR, {Dst}, {Src});
+  }
+
+  /// Build and insert \p Res = G_VECREDUCE_SMAX \p Src
+  MachineInstrBuilder buildVecReduceSMax(const DstOp &Dst, const SrcOp &Src) {
+    return buildInstr(TargetOpcode::G_VECREDUCE_SMAX, {Dst}, {Src});
+  }
+
+  /// Build and insert \p Res = G_VECREDUCE_SMIN \p Src
+  MachineInstrBuilder buildVecReduceSMin(const DstOp &Dst, const SrcOp &Src) {
+    return buildInstr(TargetOpcode::G_VECREDUCE_SMIN, {Dst}, {Src});
+  }
+
+  /// Build and insert \p Res = G_VECREDUCE_UMAX \p Src
+  MachineInstrBuilder buildVecReduceUMax(const DstOp &Dst, const SrcOp &Src) {
+    return buildInstr(TargetOpcode::G_VECREDUCE_UMAX, {Dst}, {Src});
+  }
+
+  /// Build and insert \p Res = G_VECREDUCE_UMIN \p Src
+  MachineInstrBuilder buildVecReduceUMin(const DstOp &Dst, const SrcOp &Src) {
+    return buildInstr(TargetOpcode::G_VECREDUCE_UMIN, {Dst}, {Src});
+  }
   virtual MachineInstrBuilder buildInstr(unsigned Opc, ArrayRef<DstOp> DstOps,
                                          ArrayRef<SrcOp> SrcOps,
                                          Optional<unsigned> Flags = None);

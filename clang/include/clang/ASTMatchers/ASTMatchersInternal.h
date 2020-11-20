@@ -586,6 +586,10 @@ public:
       return this->InnerMatcher.matches(DynTypedNode::create(*Node), Finder,
                                         Builder);
     }
+
+    llvm::Optional<clang::TraversalKind> TraversalKind() const override {
+      return this->InnerMatcher.getTraversalKind();
+    }
   };
 
 private:
@@ -1055,6 +1059,8 @@ public:
   }
 
   virtual ASTContext &getASTContext() const = 0;
+
+  virtual bool isMatchingInImplicitTemplateInstantiation() const = 0;
 
 protected:
   virtual bool matchesChildOf(const DynTypedNode &Node, ASTContext &Ctx,
@@ -1835,17 +1841,17 @@ struct NotEqualsBoundNodePredicate {
   DynTypedNode Node;
 };
 
-template <typename Ty>
-struct GetBodyMatcher {
-  static const Stmt *get(const Ty &Node) {
-    return Node.getBody();
-  }
+template <typename Ty, typename Enable = void> struct GetBodyMatcher {
+  static const Stmt *get(const Ty &Node) { return Node.getBody(); }
 };
 
-template <>
-inline const Stmt *GetBodyMatcher<FunctionDecl>::get(const FunctionDecl &Node) {
-  return Node.doesThisDeclarationHaveABody() ? Node.getBody() : nullptr;
-}
+template <typename Ty>
+struct GetBodyMatcher<Ty, typename std::enable_if<
+                              std::is_base_of<FunctionDecl, Ty>::value>::type> {
+  static const Stmt *get(const Ty &Node) {
+    return Node.doesThisDeclarationHaveABody() ? Node.getBody() : nullptr;
+  }
+};
 
 template <typename Ty>
 struct HasSizeMatcher {

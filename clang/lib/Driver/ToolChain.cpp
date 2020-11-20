@@ -392,6 +392,8 @@ StringRef ToolChain::getOSLibName() const {
     return "openbsd";
   case llvm::Triple::Solaris:
     return "sunos";
+  case llvm::Triple::AIX:
+    return "aix";
   default:
     return getOS();
   }
@@ -569,15 +571,20 @@ std::string ToolChain::GetLinkerPath() const {
   }
   // If we're passed -fuse-ld= with no argument, or with the argument ld,
   // then use whatever the default system linker is.
-  if (UseLinker.empty() || UseLinker == "ld")
-    return GetProgramPath(getDefaultLinker());
+  if (UseLinker.empty() || UseLinker == "ld") {
+    const char *DefaultLinker = getDefaultLinker();
+    if (llvm::sys::path::is_absolute(DefaultLinker))
+      return std::string(DefaultLinker);
+    else
+      return GetProgramPath(DefaultLinker);
+  }
 
   // Extending -fuse-ld= to an absolute or relative path is unexpected. Checking
   // for the linker flavor is brittle. In addition, prepending "ld." or "ld64."
   // to a relative path is surprising. This is more complex due to priorities
   // among -B, COMPILER_PATH and PATH. --ld-path= should be used instead.
   if (UseLinker.find('/') != StringRef::npos)
-    getDriver().Diag(diag::warn_drv_use_ld_non_word);
+    getDriver().Diag(diag::warn_drv_fuse_ld_path);
 
   if (llvm::sys::path::is_absolute(UseLinker)) {
     // If we're passed what looks like an absolute path, don't attempt to
@@ -780,6 +787,37 @@ std::string ToolChain::ComputeLLVMTriple(const ArgList &Args,
         ArchName = "thumb";
     }
     Triple.setArchName(ArchName + Suffix.str());
+
+    bool isHardFloat =
+        (arm::getARMFloatABI(getDriver(), Triple, Args) == arm::FloatABI::Hard);
+    switch (Triple.getEnvironment()) {
+    case Triple::GNUEABI:
+    case Triple::GNUEABIHF:
+      Triple.setEnvironment(isHardFloat ? Triple::GNUEABIHF : Triple::GNUEABI);
+      break;
+    case Triple::EABI:
+    case Triple::EABIHF:
+      Triple.setEnvironment(isHardFloat ? Triple::EABIHF : Triple::EABI);
+      break;
+    case Triple::MuslEABI:
+    case Triple::MuslEABIHF:
+      Triple.setEnvironment(isHardFloat ? Triple::MuslEABIHF
+                                        : Triple::MuslEABI);
+      break;
+    default: {
+      arm::FloatABI DefaultABI = arm::getDefaultFloatABI(Triple);
+      if (DefaultABI != arm::FloatABI::Invalid &&
+          isHardFloat != (DefaultABI == arm::FloatABI::Hard)) {
+        Arg *ABIArg =
+            Args.getLastArg(options::OPT_msoft_float, options::OPT_mhard_float,
+                            options::OPT_mfloat_abi_EQ);
+        assert(ABIArg && "Non-default float abi expected to be from arg");
+        D.Diag(diag::err_drv_unsupported_opt_for_target)
+            << ABIArg->getAsString(Args) << Triple.getTriple();
+      }
+      break;
+    }
+    }
 
     return Triple.getTriple();
   }
@@ -1012,20 +1050,21 @@ SanitizerMask ToolChain::getSupportedSanitizers() const {
   // Return sanitizers which don't require runtime support and are not
   // platform dependent.
 
-  SanitizerMask Res = (SanitizerKind::Undefined & ~SanitizerKind::Vptr &
-                       ~SanitizerKind::Function) |
-                      (SanitizerKind::CFI & ~SanitizerKind::CFIICall) |
-                      SanitizerKind::CFICastStrict |
-                      SanitizerKind::FloatDivideByZero |
-                      SanitizerKind::UnsignedIntegerOverflow |
-                      SanitizerKind::ImplicitConversion |
-                      SanitizerKind::Nullability | SanitizerKind::LocalBounds;
+  SanitizerMask Res =
+      (SanitizerKind::Undefined & ~SanitizerKind::Vptr &
+       ~SanitizerKind::Function) |
+      (SanitizerKind::CFI & ~SanitizerKind::CFIICall) |
+      SanitizerKind::CFICastStrict | SanitizerKind::FloatDivideByZero |
+      SanitizerKind::UnsignedIntegerOverflow |
+      SanitizerKind::UnsignedShiftBase | SanitizerKind::ImplicitConversion |
+      SanitizerKind::Nullability | SanitizerKind::LocalBounds;
   if (getTriple().getArch() == llvm::Triple::x86 ||
       getTriple().getArch() == llvm::Triple::x86_64 ||
       getTriple().getArch() == llvm::Triple::arm || getTriple().isWasm() ||
       getTriple().isAArch64())
     Res |= SanitizerKind::CFIICall;
-  if (getTriple().getArch() == llvm::Triple::x86_64 || getTriple().isAArch64())
+  if (getTriple().getArch() == llvm::Triple::x86_64 ||
+      getTriple().isAArch64() || getTriple().isRISCV())
     Res |= SanitizerKind::ShadowCallStack;
   if (getTriple().isAArch64())
     Res |= SanitizerKind::MemTag;
@@ -1185,15 +1224,18 @@ void ToolChain::TranslateXarchArgs(
   //
   // We also want to disallow any options which would alter the
   // driver behavior; that isn't going to work in our model. We
-  // use isDriverOption() as an approximation, although things
-  // like -O4 are going to slip through.
+  // use options::NoXarchOption to control this.
   if (!XarchArg || Index > Prev + 1) {
     getDriver().Diag(diag::err_drv_invalid_Xarch_argument_with_args)
         << A->getAsString(Args);
     return;
-  } else if (XarchArg->getOption().hasFlag(options::DriverOption)) {
-    getDriver().Diag(diag::err_drv_invalid_Xarch_argument_isdriver)
-        << A->getAsString(Args);
+  } else if (XarchArg->getOption().hasFlag(options::NoXarchOption)) {
+    auto &Diags = getDriver().getDiags();
+    unsigned DiagID =
+        Diags.getCustomDiagID(DiagnosticsEngine::Error,
+                              "invalid Xarch argument: '%0', not all driver "
+                              "options can be forwared via Xarch argument");
+    Diags.Report(DiagID) << A->getAsString(Args);
     return;
   }
   XarchArg->setBaseArg(A);

@@ -53,11 +53,6 @@ function(add_libc_benchmark_unittest target_name)
     EXCLUDE_FROM_ALL
     ${LIBC_BENCHMARKS_UNITTEST_SRCS}
   )
-  target_include_directories(${target_name}
-    PRIVATE
-    ${LLVM_MAIN_SRC_DIR}/utils/unittest/googletest/include
-    ${LLVM_MAIN_SRC_DIR}/utils/unittest/googlemock/include
-  )
   target_link_libraries(${target_name}
     PRIVATE
     gtest_main
@@ -93,7 +88,7 @@ add_library(libc-benchmark
 )
 add_dependencies(libc-benchmark google-benchmark)
 target_include_directories(libc-benchmark
-    PUBLIC
+    SYSTEM PUBLIC
     "${GOOGLE_BENCHMARK_LIBC_INSTALL}/include"
 )
 target_link_libraries(libc-benchmark
@@ -116,6 +111,8 @@ add_library(libc-memory-benchmark
     EXCLUDE_FROM_ALL
     LibcMemoryBenchmark.cpp
     LibcMemoryBenchmark.h
+    MemorySizeDistributions.cpp
+    MemorySizeDistributions.h
 )
 target_link_libraries(libc-memory-benchmark PUBLIC libc-benchmark)
 fix_rtti(libc-memory-benchmark)

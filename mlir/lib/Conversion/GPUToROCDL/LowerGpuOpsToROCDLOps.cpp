@@ -22,6 +22,7 @@
 #include "mlir/Dialect/Vector/VectorOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/Support/FormatVariadic.h"
 
 #include "../GPUCommon/GPUOpsLowering.h"
@@ -58,25 +59,25 @@ struct LowerGpuOpsToROCDLOpsPass
                                   /*useAlignedAlloc =*/false};
     LLVMTypeConverter converter(m.getContext(), options);
 
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns, llvmPatterns;
 
     populateGpuRewritePatterns(m.getContext(), patterns);
-    applyPatternsAndFoldGreedily(m, patterns);
-    patterns.clear();
+    applyPatternsAndFoldGreedily(m, std::move(patterns));
 
-    populateVectorToLLVMConversionPatterns(converter, patterns);
-    populateVectorToROCDLConversionPatterns(converter, patterns);
-    populateStdToLLVMConversionPatterns(converter, patterns);
-    populateGpuToROCDLConversionPatterns(converter, patterns);
+    populateVectorToLLVMConversionPatterns(converter, llvmPatterns);
+    populateVectorToROCDLConversionPatterns(converter, llvmPatterns);
+    populateStdToLLVMConversionPatterns(converter, llvmPatterns);
+    populateGpuToROCDLConversionPatterns(converter, llvmPatterns);
     LLVMConversionTarget target(getContext());
     target.addIllegalDialect<gpu::GPUDialect>();
     target.addIllegalOp<LLVM::CosOp, LLVM::ExpOp, LLVM::FAbsOp, LLVM::FCeilOp,
-                        LLVM::LogOp, LLVM::Log10Op, LLVM::Log2Op>();
+                        LLVM::FFloorOp, LLVM::LogOp, LLVM::Log10Op,
+                        LLVM::Log2Op>();
     target.addIllegalOp<FuncOp>();
     target.addLegalDialect<ROCDL::ROCDLDialect>();
     // TODO: Remove once we support replacing non-root ops.
     target.addLegalOp<gpu::YieldOp, gpu::GPUModuleOp, gpu::ModuleEndOp>();
-    if (failed(applyPartialConversion(m, target, patterns)))
+    if (failed(applyPartialConversion(m, target, std::move(llvmPatterns))))
       signalPassFailure();
   }
 };
@@ -85,7 +86,7 @@ struct LowerGpuOpsToROCDLOpsPass
 
 void mlir::populateGpuToROCDLConversionPatterns(
     LLVMTypeConverter &converter, OwningRewritePatternList &patterns) {
-  populateWithGenerated(converter.getDialect()->getContext(), &patterns);
+  populateWithGenerated(converter.getDialect()->getContext(), patterns);
   patterns.insert<
       GPUIndexIntrinsicOpLowering<gpu::ThreadIdOp, ROCDL::ThreadIdXOp,
                                   ROCDL::ThreadIdYOp, ROCDL::ThreadIdZOp>,
@@ -104,6 +105,8 @@ void mlir::populateGpuToROCDLConversionPatterns(
                                                "__ocml_cos_f64");
   patterns.insert<OpToFuncCallLowering<ExpOp>>(converter, "__ocml_exp_f32",
                                                "__ocml_exp_f64");
+  patterns.insert<OpToFuncCallLowering<FloorFOp>>(converter, "__ocml_floor_f32",
+                                                  "__ocml_floor_f64");
   patterns.insert<OpToFuncCallLowering<LogOp>>(converter, "__ocml_log_f32",
                                                "__ocml_log_f64");
   patterns.insert<OpToFuncCallLowering<Log10Op>>(converter, "__ocml_log10_f32",

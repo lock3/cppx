@@ -2568,6 +2568,10 @@ bool X86InstrInfo::findCommutedOpIndices(const MachineInstr &MI,
   case X86::VPTERNLOGQZ256rmbikz:
   case X86::VPTERNLOGQZrmbikz:
     return findThreeSrcCommutedOpIndices(MI, SrcOpIdx1, SrcOpIdx2);
+  case X86::VPDPWSSDYrr:
+  case X86::VPDPWSSDrr:
+  case X86::VPDPWSSDSYrr:
+  case X86::VPDPWSSDSrr:
   case X86::VPDPWSSDZ128r:
   case X86::VPDPWSSDZ128rk:
   case X86::VPDPWSSDZ128rkz:
@@ -3661,6 +3665,73 @@ static unsigned getLoadStoreRegOpcode(unsigned Reg,
     else
       return load ? X86::VMOVUPSZrm : X86::VMOVUPSZmr;
   }
+}
+
+Optional<ExtAddrMode>
+X86InstrInfo::getAddrModeFromMemoryOp(const MachineInstr &MemI,
+                                      const TargetRegisterInfo *TRI) const {
+  const MCInstrDesc &Desc = MemI.getDesc();
+  int MemRefBegin = X86II::getMemoryOperandNo(Desc.TSFlags);
+  if (MemRefBegin < 0)
+    return None;
+
+  MemRefBegin += X86II::getOperandBias(Desc);
+
+  auto &BaseOp = MemI.getOperand(MemRefBegin + X86::AddrBaseReg);
+  if (!BaseOp.isReg()) // Can be an MO_FrameIndex
+    return None;
+
+  const MachineOperand &DispMO = MemI.getOperand(MemRefBegin + X86::AddrDisp);
+  // Displacement can be symbolic
+  if (!DispMO.isImm())
+    return None;
+
+  ExtAddrMode AM;
+  AM.BaseReg = BaseOp.getReg();
+  AM.ScaledReg = MemI.getOperand(MemRefBegin + X86::AddrIndexReg).getReg();
+  AM.Scale = MemI.getOperand(MemRefBegin + X86::AddrScaleAmt).getImm();
+  AM.Displacement = DispMO.getImm();
+  return AM;
+}
+
+bool X86InstrInfo::getConstValDefinedInReg(const MachineInstr &MI,
+                                           const Register Reg,
+                                           int64_t &ImmVal) const {
+  if (MI.getOpcode() != X86::MOV32ri && MI.getOpcode() != X86::MOV64ri)
+    return false;
+  // Mov Src can be a global address.
+  if (!MI.getOperand(1).isImm() || MI.getOperand(0).getReg() != Reg)
+    return false;
+  ImmVal = MI.getOperand(1).getImm();
+  return true;
+}
+
+bool X86InstrInfo::preservesZeroValueInReg(
+    const MachineInstr *MI, const Register NullValueReg,
+    const TargetRegisterInfo *TRI) const {
+  if (!MI->modifiesRegister(NullValueReg, TRI))
+    return true;
+  switch (MI->getOpcode()) {
+  // Shift right/left of a null unto itself is still a null, i.e. rax = shl rax
+  // X.
+  case X86::SHR64ri:
+  case X86::SHR32ri:
+  case X86::SHL64ri:
+  case X86::SHL32ri:
+    assert(MI->getOperand(0).isDef() && MI->getOperand(1).isUse() &&
+           "expected for shift opcode!");
+    return MI->getOperand(0).getReg() == NullValueReg &&
+           MI->getOperand(1).getReg() == NullValueReg;
+  // Zero extend of a sub-reg of NullValueReg into itself does not change the
+  // null value.
+  case X86::MOV32rr:
+    return llvm::all_of(MI->operands(), [&](const MachineOperand &MO) {
+      return TRI->isSubRegisterEq(NullValueReg, MO.getReg());
+    });
+  default:
+    return false;
+  }
+  llvm_unreachable("Should be handled above!");
 }
 
 bool X86InstrInfo::getMemOperandsWithOffsetWidth(
@@ -5121,18 +5192,12 @@ static bool hasUndefRegUpdate(unsigned Opcode, unsigned OpNum,
 /// Like getPartialRegUpdateClearance, this makes a strong assumption that the
 /// high bits that are passed-through are not live.
 unsigned
-X86InstrInfo::getUndefRegClearance(const MachineInstr &MI, unsigned &OpNum,
+X86InstrInfo::getUndefRegClearance(const MachineInstr &MI, unsigned OpNum,
                                    const TargetRegisterInfo *TRI) const {
-  for (unsigned i = MI.getNumExplicitDefs(), e = MI.getNumExplicitOperands();
-         i != e; ++i) {
-    const MachineOperand &MO = MI.getOperand(i);
-    if (MO.isReg() && MO.isUndef() &&
-        Register::isPhysicalRegister(MO.getReg()) &&
-        hasUndefRegUpdate(MI.getOpcode(), i)) {
-      OpNum = i;
-      return UndefRegClearance;
-    }
-  }
+  const MachineOperand &MO = MI.getOperand(OpNum);
+  if (Register::isPhysicalRegister(MO.getReg()) &&
+      hasUndefRegUpdate(MI.getOpcode(), OpNum))
+    return UndefRegClearance;
 
   return 0;
 }
@@ -5465,6 +5530,10 @@ MachineInstr *X86InstrInfo::foldMemoryOperandImpl(
 
   if (I != nullptr) {
     unsigned Opcode = I->DstOp;
+    bool FoldedLoad =
+        isTwoAddrFold || (OpNum == 0 && I->Flags & TB_FOLDED_LOAD) || OpNum > 0;
+    bool FoldedStore =
+        isTwoAddrFold || (OpNum == 0 && I->Flags & TB_FOLDED_STORE);
     MaybeAlign MinAlign =
         decodeMaybeAlign((I->Flags & TB_ALIGN_MASK) >> TB_ALIGN_SHIFT);
     if (MinAlign && Alignment < *MinAlign)
@@ -5475,20 +5544,25 @@ MachineInstr *X86InstrInfo::foldMemoryOperandImpl(
       const TargetRegisterClass *RC = getRegClass(MI.getDesc(), OpNum,
                                                   &RI, MF);
       unsigned RCSize = TRI.getRegSizeInBits(*RC) / 8;
-      if (Size < RCSize) {
-        // FIXME: Allow scalar intrinsic instructions like ADDSSrm_Int.
-        // Check if it's safe to fold the load. If the size of the object is
-        // narrower than the load width, then it's not.
-        if (Opcode != X86::MOV64rm || RCSize != 8 || Size != 4)
-          return nullptr;
+      // Check if it's safe to fold the load. If the size of the object is
+      // narrower than the load width, then it's not.
+      // FIXME: Allow scalar intrinsic instructions like ADDSSrm_Int.
+      if (FoldedLoad && Size < RCSize) {
         // If this is a 64-bit load, but the spill slot is 32, then we can do
         // a 32-bit load which is implicitly zero-extended. This likely is
         // due to live interval analysis remat'ing a load from stack slot.
+        if (Opcode != X86::MOV64rm || RCSize != 8 || Size != 4)
+          return nullptr;
         if (MI.getOperand(0).getSubReg() || MI.getOperand(1).getSubReg())
           return nullptr;
         Opcode = X86::MOV32rm;
         NarrowToMOV32rm = true;
       }
+      // For stores, make sure the size of the object is equal to the size of
+      // the store. If the object is larger, the extra bits would be garbage. If
+      // the object is smaller we might overwrite another object or fault.
+      if (FoldedStore && Size != RCSize)
+        return nullptr;
     }
 
     if (isTwoAddrFold)
@@ -6718,7 +6792,7 @@ unsigned X86InstrInfo::getGlobalBaseReg(MachineFunction *MF) const {
          "X86-64 PIC uses RIP relative addressing");
 
   X86MachineFunctionInfo *X86FI = MF->getInfo<X86MachineFunctionInfo>();
-  unsigned GlobalBaseReg = X86FI->getGlobalBaseReg();
+  Register GlobalBaseReg = X86FI->getGlobalBaseReg();
   if (GlobalBaseReg != 0)
     return GlobalBaseReg;
 
@@ -8274,7 +8348,7 @@ describeMOVrrLoadedValue(const MachineInstr &MI, Register DescribedReg,
   // If the described register is a sub-register of the destination register,
   // then pick out the source register's corresponding sub-register.
   if (unsigned SubRegIdx = TRI->getSubRegIndex(DestReg, DescribedReg)) {
-    unsigned SrcSubReg = TRI->getSubReg(SrcReg, SubRegIdx);
+    Register SrcSubReg = TRI->getSubReg(SrcReg, SubRegIdx);
     return ParamLoadedValue(MachineOperand::CreateReg(SrcSubReg, false), Expr);
   }
 
@@ -8538,7 +8612,7 @@ namespace {
         return false;
 
       X86MachineFunctionInfo *X86FI = MF.getInfo<X86MachineFunctionInfo>();
-      unsigned GlobalBaseReg = X86FI->getGlobalBaseReg();
+      Register GlobalBaseReg = X86FI->getGlobalBaseReg();
 
       // If we didn't need a GlobalBaseReg, don't insert code.
       if (GlobalBaseReg == 0)
@@ -8551,7 +8625,7 @@ namespace {
       MachineRegisterInfo &RegInfo = MF.getRegInfo();
       const X86InstrInfo *TII = STI.getInstrInfo();
 
-      unsigned PC;
+      Register PC;
       if (STI.isPICStyleGOT())
         PC = RegInfo.createVirtualRegister(&X86::GR32RegClass);
       else
@@ -8621,7 +8695,7 @@ namespace {
       MachineFunctionPass::getAnalysisUsage(AU);
     }
   };
-}
+} // namespace
 
 char CGBR::ID = 0;
 FunctionPass*

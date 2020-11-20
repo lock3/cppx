@@ -273,10 +273,11 @@ enum reflection_query : unsigned {
   // Modifier updates
   query_set_access,
   query_set_storage,
-  query_set_add_constexpr,
+  query_set_constexpr,
   query_set_add_explicit,
   query_set_add_virtual,
   query_set_add_pure_virtual,
+  query_set_add_inline,
   query_set_new_name
 };
 
@@ -437,7 +438,7 @@ public:
 };
 
 template<typename F, typename N, typename P>
-constexpr std::ptrdiff_t distance(iterator<F, N, P> first, iterator<F, N, P> last)
+consteval std::ptrdiff_t distance(iterator<F, N, P> first, iterator<F, N, P> last)
 {
   std::ptrdiff_t n = 0;
   for (; first != last; ++first)
@@ -460,6 +461,14 @@ enum storage_modifier : unsigned {
   sm_static,
   sm_automatic,
   sm_thread_local
+};
+
+// Kinds of constexpr modifiers.
+enum constexpr_modifier : unsigned {
+  cm_not_modified,
+  cm_constexpr,
+  cm_consteval,
+  cm_constinit
 };
 
 } // end internal namespace detail
@@ -3384,12 +3393,46 @@ consteval void clear_access_modifier(info& base_or_mem) {
 
 // Constexpr
 
+// Updates the value of reflection removing any constexpr modifier.
+// When injected via declaration cloning, the original constexpr
+// specifier shall be used.
+consteval void clear_constexpr_modifier(info& reflection) {
+  __reflect_mod(detail::query_set_constexpr, reflection, detail::cm_not_modified);
+}
+
+// Updates the value of reflection adding a constexpr modifier.
+// When injected via declaration cloning, a constexpr modifier will result
+// in the injected declaration being constexpr.
+consteval void make_constexpr(info& reflection) {
+  __reflect_mod(detail::query_set_constexpr, reflection, detail::cm_constexpr);
+}
+
 // Updates the value of reflection adding a constexpr modifier if true,
 // removing any constexpr modifier if false.
 // When injected via declaration cloning, a constexpr modifier will result
 // in the injected declaration being constexpr.
-consteval void make_constexpr(info& reflection, bool mark_constexpr = true) {
-  __reflect_mod(detail::query_set_add_constexpr, reflection, mark_constexpr);
+//
+// Deprecated in favor of make_constexpr(info& reflection).
+[[deprecated]] consteval void make_constexpr(info& reflection, bool mark_constexpr) {
+  if (mark_constexpr) {
+    make_constexpr(reflection);
+  } else {
+    clear_constexpr_modifier(reflection);
+  }
+}
+
+// Updates the value of reflection adding a consteval modifier.
+// When injected via declaration cloning, a consteval modifier will result
+// in the injected declaration being consteval.
+consteval void make_consteval(info& reflection) {
+  __reflect_mod(detail::query_set_constexpr, reflection, detail::cm_consteval);
+}
+
+// Updates the value of reflection adding a constinit modifier.
+// When injected via declaration cloning, a constinit modifier will result
+// in the injected declaration being constinit.
+consteval void make_constinit(info& reflection) {
+  __reflect_mod(detail::query_set_constexpr, reflection, detail::cm_constinit);
 }
 
 // Explicit
@@ -3428,6 +3471,18 @@ consteval void make_virtual(info& mem_function, bool mark_virtual = true) {
 consteval void make_pure_virtual(info& mem_function, bool mark_pure_virtual = true) {
   detail::require_mem_function(mem_function);
   __reflect_mod(detail::query_set_add_pure_virtual, mem_function, mark_pure_virtual);
+}
+
+// Inline
+
+// Requires: is_function(reflection)
+//
+// Updates the value of reflection adding an inline modifier if true,
+// removing any inline modifier if false.
+// When injected via declaration cloning, an inline modifier
+// will result in the injected declaration being inline.
+consteval void make_inline(info& reflection, bool mark_inline = true) {
+  __reflect_mod(detail::query_set_add_inline, reflection, mark_inline);
 }
 
 // Names

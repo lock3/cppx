@@ -14,10 +14,11 @@
 #include "../PassDetail.h"
 #include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.h"
 #include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRVPass.h"
+#include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Vector/VectorOps.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 using namespace mlir;
 
@@ -66,7 +67,8 @@ void LoadOpOfSubViewFolder<vector::TransferReadOp>::replaceOp(
     vector::TransferReadOp loadOp, SubViewOp subViewOp,
     ArrayRef<Value> sourceIndices, PatternRewriter &rewriter) const {
   rewriter.replaceOpWithNewOp<vector::TransferReadOp>(
-      loadOp, loadOp.getVectorType(), subViewOp.source(), sourceIndices);
+      loadOp, loadOp.getVectorType(), subViewOp.source(), sourceIndices,
+      loadOp.permutation_map(), loadOp.padding(), loadOp.maskedAttr());
 }
 
 template <>
@@ -83,7 +85,8 @@ void StoreOpOfSubViewFolder<vector::TransferWriteOp>::replaceOp(
     ArrayRef<Value> sourceIndices, PatternRewriter &rewriter) const {
   rewriter.replaceOpWithNewOp<vector::TransferWriteOp>(
       tranferWriteOp, tranferWriteOp.vector(), subViewOp.source(),
-      sourceIndices);
+      sourceIndices, tranferWriteOp.permutation_map(),
+      tranferWriteOp.maskedAttr());
 }
 } // namespace
 
@@ -200,7 +203,8 @@ void SPIRVLegalization::runOnOperation() {
   OwningRewritePatternList patterns;
   auto *context = &getContext();
   populateStdLegalizationPatternsForSPIRVLowering(context, patterns);
-  applyPatternsAndFoldGreedily(getOperation()->getRegions(), patterns);
+  applyPatternsAndFoldGreedily(getOperation()->getRegions(),
+                               std::move(patterns));
 }
 
 std::unique_ptr<Pass> mlir::createLegalizeStdOpsForSPIRVLoweringPass() {

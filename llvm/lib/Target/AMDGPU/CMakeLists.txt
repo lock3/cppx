@@ -58,6 +58,7 @@ add_llvm_target(AMDGPUCodeGen
   AMDGPUISelDAGToDAG.cpp
   AMDGPUISelLowering.cpp
   AMDGPUGlobalISelUtils.cpp
+  AMDGPULateCodeGenPrepare.cpp
   AMDGPULegalizerInfo.cpp
   AMDGPULibCalls.cpp
   AMDGPULibFunc.cpp
@@ -109,7 +110,6 @@ add_llvm_target(AMDGPUCodeGen
   SIAddIMGInit.cpp
   SIAnnotateControlFlow.cpp
   SIFixSGPRCopies.cpp
-  SIFixupVectorISel.cpp
   SIFixVGPRCopies.cpp
   SIPreAllocateWWMRegs.cpp
   SIFoldOperands.cpp
@@ -132,6 +132,7 @@ add_llvm_target(AMDGPUCodeGen
   SIPeepholeSDWA.cpp
   SIPostRABundler.cpp
   SIPreEmitPeephole.cpp
+  SIProgramInfo.cpp
   SIRegisterInfo.cpp
   SIRemoveShortExecBranches.cpp
   SIShrinkInstructions.cpp

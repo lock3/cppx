@@ -31,10 +31,23 @@
     llvm::errs() << "'" << #expr << "' failed with '" << name << "'\n";        \
   }(expr)
 
+// Static initialization of HIP context for device ordinal 0.
+static auto InitializeCtx = [] {
+  hipDevice_t device;
+  HIP_REPORT_IF_ERROR(hipDeviceGet(&device, /*ordinal=*/0));
+  hipContext_t context;
+  HIP_REPORT_IF_ERROR(hipCtxCreate(&context, /*flags=*/0, device));
+  return 0;
+}();
+
 extern "C" hipModule_t mgpuModuleLoad(void *data) {
   hipModule_t module = nullptr;
   HIP_REPORT_IF_ERROR(hipModuleLoadData(&module, data));
   return module;
+}
+
+extern "C" void mgpuModuleUnload(hipModule_t module) {
+  HIP_REPORT_IF_ERROR(hipModuleUnload(module));
 }
 
 extern "C" hipFunction_t mgpuModuleGetFunction(hipModule_t module,
@@ -58,14 +71,40 @@ extern "C" void mgpuLaunchKernel(hipFunction_t function, intptr_t gridX,
                                             stream, params, extra));
 }
 
-extern "C" void *mgpuStreamCreate() {
+extern "C" hipStream_t mgpuStreamCreate() {
   hipStream_t stream = nullptr;
   HIP_REPORT_IF_ERROR(hipStreamCreate(&stream));
   return stream;
 }
 
+extern "C" void mgpuStreamDestroy(hipStream_t stream) {
+  HIP_REPORT_IF_ERROR(hipStreamDestroy(stream));
+}
+
 extern "C" void mgpuStreamSynchronize(hipStream_t stream) {
   return HIP_REPORT_IF_ERROR(hipStreamSynchronize(stream));
+}
+
+extern "C" void mgpuStreamWaitEvent(hipStream_t stream, hipEvent_t event) {
+  HIP_REPORT_IF_ERROR(hipStreamWaitEvent(stream, event, /*flags=*/0));
+}
+
+extern "C" hipEvent_t mgpuEventCreate() {
+  hipEvent_t event = nullptr;
+  HIP_REPORT_IF_ERROR(hipEventCreateWithFlags(&event, hipEventDisableTiming));
+  return event;
+}
+
+extern "C" void mgpuEventDestroy(hipEvent_t event) {
+  HIP_REPORT_IF_ERROR(hipEventDestroy(event));
+}
+
+extern "C" void mgpuEventSynchronize(hipEvent_t event) {
+  HIP_REPORT_IF_ERROR(hipEventSynchronize(event));
+}
+
+extern "C" void mgpuEventRecord(hipEvent_t event, hipStream_t stream) {
+  HIP_REPORT_IF_ERROR(hipEventRecord(event, stream));
 }
 
 /// Helper functions for writing mlir example code
@@ -76,17 +115,19 @@ extern "C" void mgpuMemHostRegister(void *ptr, uint64_t sizeBytes) {
   HIP_REPORT_IF_ERROR(hipHostRegister(ptr, sizeBytes, /*flags=*/0));
 }
 
-// Allows to register a MemRef with the ROCM runtime. Initializes array with
-// value. Helpful until we have transfer functions implemented.
-template <typename T>
-void mgpuMemHostRegisterMemRef(T *pointer, llvm::ArrayRef<int64_t> sizes,
-                               llvm::ArrayRef<int64_t> strides, T value) {
-  assert(sizes.size() == strides.size());
-  llvm::SmallVector<int64_t, 4> denseStrides(strides.size());
+// Allows to register a MemRef with the ROCm runtime. Helpful until we have
+// transfer functions implemented.
+extern "C" void
+mgpuMemHostRegisterMemRef(int64_t rank, StridedMemRefType<char, 1> *descriptor,
+                          int64_t elementSizeBytes) {
+
+  llvm::SmallVector<int64_t, 4> denseStrides(rank);
+  llvm::ArrayRef<int64_t> sizes(descriptor->sizes, rank);
+  llvm::ArrayRef<int64_t> strides(sizes.end(), rank);
 
   std::partial_sum(sizes.rbegin(), sizes.rend(), denseStrides.rbegin(),
                    std::multiplies<int64_t>());
-  auto count = denseStrides.front();
+  auto sizeBytes = denseStrides.front() * elementSizeBytes;
 
   // Only densely packed tensors are currently supported.
   std::rotate(denseStrides.begin(), denseStrides.begin() + 1,
@@ -94,22 +135,8 @@ void mgpuMemHostRegisterMemRef(T *pointer, llvm::ArrayRef<int64_t> sizes,
   denseStrides.back() = 1;
   assert(strides == llvm::makeArrayRef(denseStrides));
 
-  std::fill_n(pointer, count, value);
-  mgpuMemHostRegister(pointer, count * sizeof(T));
-}
-
-extern "C" void mgpuMemHostRegisterFloat(int64_t rank, void *ptr) {
-  auto *desc = static_cast<StridedMemRefType<float, 1> *>(ptr);
-  auto sizes = llvm::ArrayRef<int64_t>(desc->sizes, rank);
-  auto strides = llvm::ArrayRef<int64_t>(desc->sizes + rank, rank);
-  mgpuMemHostRegisterMemRef(desc->data + desc->offset, sizes, strides, 1.23f);
-}
-
-extern "C" void mgpuMemHostRegisterInt32(int64_t rank, void *ptr) {
-  auto *desc = static_cast<StridedMemRefType<int32_t, 1> *>(ptr);
-  auto sizes = llvm::ArrayRef<int64_t>(desc->sizes, rank);
-  auto strides = llvm::ArrayRef<int64_t>(desc->sizes + rank, rank);
-  mgpuMemHostRegisterMemRef(desc->data + desc->offset, sizes, strides, 123);
+  auto ptr = descriptor->data + descriptor->offset * elementSizeBytes;
+  mgpuMemHostRegister(ptr, sizeBytes);
 }
 
 template <typename T>

@@ -80,6 +80,27 @@ bool elf::link(ArrayRef<const char *> args, bool canExitEarly,
   lld::stdoutOS = &stdoutOS;
   lld::stderrOS = &stderrOS;
 
+  errorHandler().cleanupCallback = []() {
+    freeArena();
+
+    inputSections.clear();
+    outputSections.clear();
+    archiveFiles.clear();
+    binaryFiles.clear();
+    bitcodeFiles.clear();
+    lazyObjFiles.clear();
+    objectFiles.clear();
+    sharedFiles.clear();
+    backwardReferences.clear();
+
+    tar = nullptr;
+    memset(&in, 0, sizeof(in));
+
+    partitions = {Partition()};
+
+    SharedFile::vernauxNum = 0;
+  };
+
   errorHandler().logName = args::getFilenameWithoutExe(args[0]);
   errorHandler().errorLimitExceededMsg =
       "too many errors emitted, stopping now (use "
@@ -87,27 +108,12 @@ bool elf::link(ArrayRef<const char *> args, bool canExitEarly,
   errorHandler().exitEarly = canExitEarly;
   stderrOS.enable_colors(stderrOS.has_colors());
 
-  inputSections.clear();
-  outputSections.clear();
-  archiveFiles.clear();
-  binaryFiles.clear();
-  bitcodeFiles.clear();
-  lazyObjFiles.clear();
-  objectFiles.clear();
-  sharedFiles.clear();
-  backwardReferences.clear();
-
   config = make<Configuration>();
   driver = make<LinkerDriver>();
   script = make<LinkerScript>();
   symtab = make<SymbolTable>();
 
-  tar = nullptr;
-  memset(&in, 0, sizeof(in));
-
   partitions = {Partition()};
-
-  SharedFile::vernauxNum = 0;
 
   config->progName = args[0];
 
@@ -119,8 +125,10 @@ bool elf::link(ArrayRef<const char *> args, bool canExitEarly,
   if (canExitEarly)
     exitLld(errorCount() ? 1 : 0);
 
-  freeArena();
-  return !errorCount();
+  bool ret = errorCount() == 0;
+  if (!canExitEarly)
+    errorHandler().reset();
+  return ret;
 }
 
 // Parses a linker -m option.
@@ -278,7 +286,7 @@ void LinkerDriver::addLibrary(StringRef name) {
   if (Optional<std::string> path = searchLibrary(name))
     addFile(*path, /*withLOption=*/true);
   else
-    error("unable to find library -l" + name);
+    error("unable to find library -l" + name, ErrorTag::LibNotFound, {name});
 }
 
 // This function is called on startup. We need this for LTO since
@@ -308,6 +316,9 @@ static void checkOptions() {
 
   if (config->tocOptimize && config->emachine != EM_PPC64)
     error("--toc-optimize is only supported on the PowerPC64 target");
+
+  if (config->pcRelOptimize && config->emachine != EM_PPC64)
+    error("--pcrel--optimize is only supported on the PowerPC64 target");
 
   if (config->pie && config->shared)
     error("-shared and -pie may not be used together");
@@ -933,6 +944,10 @@ static void readConfigs(opt::InputArgList &args) {
   config->enableNewDtags =
       args.hasFlag(OPT_enable_new_dtags, OPT_disable_new_dtags, true);
   config->entry = args.getLastArgValue(OPT_entry);
+
+  errorHandler().errorHandlingScript =
+      args.getLastArgValue(OPT_error_handling_script);
+
   config->executeOnly =
       args.hasFlag(OPT_execute_only, OPT_no_execute_only, false);
   config->exportDynamic =
@@ -1092,6 +1107,8 @@ static void readConfigs(opt::InputArgList &args) {
     else
       error(errPrefix + toString(pat.takeError()));
   }
+
+  cl::ResetAllOptionOccurrences();
 
   // Parse LTO options.
   if (auto *arg = args.getLastArg(OPT_plugin_opt_mcpu_eq))
@@ -1288,6 +1305,8 @@ static void setConfigs(opt::InputArgList &args) {
 
   config->tocOptimize =
       args.hasFlag(OPT_toc_optimize, OPT_no_toc_optimize, m == EM_PPC64);
+  config->pcRelOptimize =
+      args.hasFlag(OPT_pcrel_optimize, OPT_no_pcrel_optimize, m == EM_PPC64);
 }
 
 // Returns a value of "-format" option.
@@ -1306,6 +1325,7 @@ void LinkerDriver::createFiles(opt::InputArgList &args) {
   std::vector<std::tuple<bool, bool, bool>> stack;
 
   // Iterate over argv to process input files and positional arguments.
+  InputFile::isInGroup = false;
   for (auto *arg : args) {
     switch (arg->getOption().getID()) {
     case OPT_library:
@@ -1713,7 +1733,7 @@ static void findKeepUniqueSections(opt::InputArgList &args) {
     ArrayRef<Symbol *> syms = obj->getSymbols();
     if (obj->addrsigSec) {
       ArrayRef<uint8_t> contents =
-          check(obj->getObj().getSectionContents(obj->addrsigSec));
+          check(obj->getObj().getSectionContents(*obj->addrsigSec));
       const uint8_t *cur = contents.begin();
       while (cur != contents.end()) {
         unsigned size;
@@ -1821,9 +1841,9 @@ template <class ELFT> void LinkerDriver::compileBitcodeFiles() {
 
 // The --wrap option is a feature to rename symbols so that you can write
 // wrappers for existing functions. If you pass `-wrap=foo`, all
-// occurrences of symbol `foo` are resolved to `wrap_foo` (so, you are
-// expected to write `wrap_foo` function as a wrapper). The original
-// symbol becomes accessible as `real_foo`, so you can call that from your
+// occurrences of symbol `foo` are resolved to `__wrap_foo` (so, you are
+// expected to write `__wrap_foo` function as a wrapper). The original
+// symbol becomes accessible as `__real_foo`, so you can call that from your
 // wrapper.
 //
 // This data structure is instantiated for each -wrap option.
@@ -1851,7 +1871,7 @@ static std::vector<WrappedSymbol> addWrappedSymbols(opt::InputArgList &args) {
     if (!sym)
       continue;
 
-    Symbol *real = addUndefined(saver.save("__real_" + name));
+    Symbol *real = addUnusedUndefined(saver.save("__real_" + name));
     Symbol *wrap = addUnusedUndefined(saver.save("__wrap_" + name));
     v.push_back({sym, real, wrap});
 
@@ -1976,7 +1996,7 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
   // Handle -u/--undefined before input files. If both a.a and b.so define foo,
   // -u foo a.a b.so will fetch a.a.
   for (StringRef name : config->undefined)
-    addUnusedUndefined(name);
+    addUnusedUndefined(name)->referenced = true;
 
   // Add all files to the symbol table. This will add almost all
   // symbols that we need to the symbol table. This process might

@@ -85,11 +85,13 @@ class CXXFragmentCaptureExpr;
 class CppxTypeLiteral;
 class CppxPartialEvalExpr;
 class CppxDeclRefExpr;
+class CXXInjectedValueExpr;
 class CXXNewExpr;
 class CXXPseudoDestructorExpr;
 class OverloadExpr;
 class DependentScopeDeclRefExpr;
 class CXXConstructExpr;
+class CXXDefaultInitExpr;
 class LambdaExpr;
 class CXXUnresolvedConstructExpr;
 class CXXDependentScopeMemberExpr;
@@ -186,6 +188,7 @@ ExprDependence computeDependence(CXXFragmentCaptureExpr *E);
 ExprDependence computeDependence(CppxTypeLiteral *E);
 ExprDependence computeDependence(CppxPartialEvalExpr *E);
 ExprDependence computeDependence(CppxDeclRefExpr *E);
+ExprDependence computeDependence(CXXInjectedValueExpr *E);
 ExprDependence computeDependence(CXXNewExpr *E);
 ExprDependence computeDependence(CXXPseudoDestructorExpr *E);
 ExprDependence computeDependence(OverloadExpr *E, bool KnownDependent,
@@ -193,6 +196,7 @@ ExprDependence computeDependence(OverloadExpr *E, bool KnownDependent,
                                  bool KnownContainsUnexpandedParameterPack);
 ExprDependence computeDependence(DependentScopeDeclRefExpr *E);
 ExprDependence computeDependence(CXXConstructExpr *E);
+ExprDependence computeDependence(CXXDefaultInitExpr *E);
 ExprDependence computeDependence(LambdaExpr *E,
                                  bool ContainsUnexpandedParameterPack);
 ExprDependence computeDependence(CXXUnresolvedConstructExpr *E);

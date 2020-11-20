@@ -60,6 +60,62 @@ using namespace clang::driver::tools;
 using namespace clang;
 using namespace llvm::opt;
 
+static void renderRpassOptions(const ArgList &Args, ArgStringList &CmdArgs) {
+  if (const Arg *A = Args.getLastArg(options::OPT_Rpass_EQ))
+    CmdArgs.push_back(Args.MakeArgString(Twine("--plugin-opt=-pass-remarks=") +
+                                         A->getValue()));
+
+  if (const Arg *A = Args.getLastArg(options::OPT_Rpass_missed_EQ))
+    CmdArgs.push_back(Args.MakeArgString(
+        Twine("--plugin-opt=-pass-remarks-missed=") + A->getValue()));
+
+  if (const Arg *A = Args.getLastArg(options::OPT_Rpass_analysis_EQ))
+    CmdArgs.push_back(Args.MakeArgString(
+        Twine("--plugin-opt=-pass-remarks-analysis=") + A->getValue()));
+}
+
+static void renderRemarksOptions(const ArgList &Args, ArgStringList &CmdArgs,
+                                 const llvm::Triple &Triple,
+                                 const InputInfo &Input,
+                                 const InputInfo &Output) {
+  StringRef Format = "yaml";
+  if (const Arg *A = Args.getLastArg(options::OPT_fsave_optimization_record_EQ))
+    Format = A->getValue();
+
+  SmallString<128> F;
+  const Arg *A = Args.getLastArg(options::OPT_foptimization_record_file_EQ);
+  if (A)
+    F = A->getValue();
+  else if (Output.isFilename())
+    F = Output.getFilename();
+
+  assert(!F.empty() && "Cannot determine remarks output name.");
+  // Append "opt.ld.<format>" to the end of the file name.
+  CmdArgs.push_back(
+      Args.MakeArgString(Twine("--plugin-opt=opt-remarks-filename=") + F +
+                         Twine(".opt.ld.") + Format));
+
+  if (const Arg *A =
+          Args.getLastArg(options::OPT_foptimization_record_passes_EQ))
+    CmdArgs.push_back(Args.MakeArgString(
+        Twine("--plugin-opt=opt-remarks-passes=") + A->getValue()));
+
+  CmdArgs.push_back(Args.MakeArgString(
+      Twine("--plugin-opt=opt-remarks-format=") + Format.data()));
+}
+
+static void renderRemarksHotnessOptions(const ArgList &Args,
+                                        ArgStringList &CmdArgs) {
+  if (Args.hasFlag(options::OPT_fdiagnostics_show_hotness,
+                   options::OPT_fno_diagnostics_show_hotness, false))
+    CmdArgs.push_back("--plugin-opt=opt-remarks-with-hotness");
+
+  if (const Arg *A =
+          Args.getLastArg(options::OPT_fdiagnostics_hotness_threshold_EQ))
+    CmdArgs.push_back(Args.MakeArgString(
+        Twine("--plugin-opt=opt-remarks-hotness-threshold=") + A->getValue()));
+}
+
 void tools::addPathIfExists(const Driver &D, const Twine &Path,
                             ToolChain::path_list &Paths) {
   if (D.getVFS().exists(Path))
@@ -214,6 +270,24 @@ void tools::AddLinkerInputs(const ToolChain &TC, const InputInfoList &Inputs,
   }
 }
 
+void tools::addLinkerCompressDebugSectionsOption(
+    const ToolChain &TC, const llvm::opt::ArgList &Args,
+    llvm::opt::ArgStringList &CmdArgs) {
+  // GNU ld supports --compress-debug-sections=none|zlib|zlib-gnu|zlib-gabi
+  // whereas zlib is an alias to zlib-gabi. Therefore -gz=none|zlib|zlib-gnu
+  // are translated to --compress-debug-sections=none|zlib|zlib-gnu.
+  // -gz is not translated since ld --compress-debug-sections option requires an
+  // argument.
+  if (const Arg *A = Args.getLastArg(options::OPT_gz_EQ)) {
+    StringRef V = A->getValue();
+    if (V == "none" || V == "zlib" || V == "zlib-gnu")
+      CmdArgs.push_back(Args.MakeArgString("--compress-debug-sections=" + V));
+    else
+      TC.getDriver().Diag(diag::err_drv_unsupported_option_argument)
+          << A->getOption().getName() << V;
+  }
+}
+
 void tools::AddTargetFeature(const ArgList &Args,
                              std::vector<StringRef> &Features,
                              OptSpecifier OnOpt, OptSpecifier OffOpt,
@@ -226,11 +300,12 @@ void tools::AddTargetFeature(const ArgList &Args,
   }
 }
 
-/// Get the (LLVM) name of the R600 gpu we are targeting.
-static std::string getR600TargetGPU(const ArgList &Args) {
+/// Get the (LLVM) name of the AMDGPU gpu we are targeting.
+static std::string getAMDGPUTargetGPU(const llvm::Triple &T,
+                                      const ArgList &Args) {
   if (Arg *A = Args.getLastArg(options::OPT_mcpu_EQ)) {
-    const char *GPUName = A->getValue();
-    return llvm::StringSwitch<const char *>(GPUName)
+    auto GPUName = getProcessorFromTargetID(T, A->getValue());
+    return llvm::StringSwitch<std::string>(GPUName)
         .Cases("rv630", "rv635", "r600")
         .Cases("rv610", "rv620", "rs780", "rs880")
         .Case("rv740", "rv770")
@@ -238,7 +313,7 @@ static std::string getR600TargetGPU(const ArgList &Args) {
         .Cases("sumo", "sumo2", "sumo")
         .Case("hemlock", "cypress")
         .Case("aruba", "cayman")
-        .Default(GPUName);
+        .Default(GPUName.str());
   }
   return "";
 }
@@ -346,6 +421,8 @@ std::string tools::getCPUName(const ArgList &Args, const llvm::Triple &T,
   case llvm::Triple::sparcv9:
     if (const Arg *A = Args.getLastArg(options::OPT_mcpu_EQ))
       return A->getValue();
+    if (T.getArch() == llvm::Triple::sparc && T.isOSSolaris())
+      return "v9";
     return "";
 
   case llvm::Triple::x86:
@@ -364,7 +441,7 @@ std::string tools::getCPUName(const ArgList &Args, const llvm::Triple &T,
 
   case llvm::Triple::r600:
   case llvm::Triple::amdgcn:
-    return getR600TargetGPU(Args);
+    return getAMDGPUTargetGPU(T, Args);
 
   case llvm::Triple::wasm32:
   case llvm::Triple::wasm64:
@@ -531,6 +608,18 @@ void tools::addLTOOptions(const ToolChain &ToolChain, const ArgList &Args,
         Args.MakeArgString(Twine("-plugin-opt=stats-file=") + StatsFile));
 
   addX86AlignBranchArgs(D, Args, CmdArgs, /*IsLTO=*/true);
+
+  // Handle remark diagnostics on screen options: '-Rpass-*'.
+  renderRpassOptions(Args, CmdArgs);
+
+  // Handle serialized remarks options: '-fsave-optimization-record'
+  // and '-foptimization-record-*'.
+  if (willEmitRemarks(Args))
+    renderRemarksOptions(Args, CmdArgs, ToolChain.getEffectiveTriple(), Input,
+                         Output);
+
+  // Handle remarks hotness/threshold related options.
+  renderRemarksHotnessOptions(Args, CmdArgs);
 }
 
 void tools::addArchSpecificRPath(const ToolChain &TC, const ArgList &Args,
@@ -685,6 +774,11 @@ collectSanitizerRuntimes(const ToolChain &TC, const ArgList &Args,
       if (!Args.hasArg(options::OPT_shared) && !TC.getTriple().isAndroid())
         HelperStaticRuntimes.push_back("asan-preinit");
     }
+    if (SanArgs.needsMemProfRt() && SanArgs.linkRuntimes()) {
+      SharedRuntimes.push_back("memprof");
+      if (!Args.hasArg(options::OPT_shared) && !TC.getTriple().isAndroid())
+        HelperStaticRuntimes.push_back("memprof-preinit");
+    }
     if (SanArgs.needsUbsanRt() && SanArgs.linkRuntimes()) {
       if (SanArgs.requiresMinimalRuntime())
         SharedRuntimes.push_back("ubsan_minimal");
@@ -697,6 +791,8 @@ collectSanitizerRuntimes(const ToolChain &TC, const ArgList &Args,
       else
         SharedRuntimes.push_back("scudo");
     }
+    if (SanArgs.needsTsanRt() && SanArgs.linkRuntimes())
+      SharedRuntimes.push_back("tsan");
     if (SanArgs.needsHwasanRt() && SanArgs.linkRuntimes())
       SharedRuntimes.push_back("hwasan");
   }
@@ -720,6 +816,13 @@ collectSanitizerRuntimes(const ToolChain &TC, const ArgList &Args,
       StaticRuntimes.push_back("asan_cxx");
   }
 
+  if (!SanArgs.needsSharedRt() && SanArgs.needsMemProfRt() &&
+      SanArgs.linkRuntimes()) {
+    StaticRuntimes.push_back("memprof");
+    if (SanArgs.linkCXXRuntimes())
+      StaticRuntimes.push_back("memprof_cxx");
+  }
+
   if (!SanArgs.needsSharedRt() && SanArgs.needsHwasanRt() && SanArgs.linkRuntimes()) {
     StaticRuntimes.push_back("hwasan");
     if (SanArgs.linkCXXRuntimes())
@@ -734,7 +837,8 @@ collectSanitizerRuntimes(const ToolChain &TC, const ArgList &Args,
     if (SanArgs.linkCXXRuntimes())
       StaticRuntimes.push_back("msan_cxx");
   }
-  if (SanArgs.needsTsanRt() && SanArgs.linkRuntimes()) {
+  if (!SanArgs.needsSharedRt() && SanArgs.needsTsanRt() &&
+      SanArgs.linkRuntimes()) {
     StaticRuntimes.push_back("tsan");
     if (SanArgs.linkCXXRuntimes())
       StaticRuntimes.push_back("tsan_cxx");
@@ -797,8 +901,15 @@ bool tools::addSanitizerRuntimes(const ToolChain &TC, const ArgList &Args,
     if (SanArgs.needsFuzzerInterceptors())
       addSanitizerRuntime(TC, Args, CmdArgs, "fuzzer_interceptors", false,
                           true);
-    if (!Args.hasArg(clang::driver::options::OPT_nostdlibxx))
+    if (!Args.hasArg(clang::driver::options::OPT_nostdlibxx)) {
+      bool OnlyLibstdcxxStatic = Args.hasArg(options::OPT_static_libstdcxx) &&
+                                 !Args.hasArg(options::OPT_static);
+      if (OnlyLibstdcxxStatic)
+        CmdArgs.push_back("-Bstatic");
       TC.AddCXXStdlibLibArgs(Args, CmdArgs);
+      if (OnlyLibstdcxxStatic)
+        CmdArgs.push_back("-Bdynamic");
+    }
   }
 
   for (auto RT : SharedRuntimes)
@@ -866,8 +977,14 @@ bool tools::areOptimizationsEnabled(const ArgList &Args) {
   return false;
 }
 
-const char *tools::SplitDebugName(const ArgList &Args, const InputInfo &Input,
+const char *tools::SplitDebugName(const JobAction &JA, const ArgList &Args,
+                                  const InputInfo &Input,
                                   const InputInfo &Output) {
+  auto AddPostfix = [JA](auto &F) {
+    if (JA.getOffloadingDeviceKind() == Action::OFK_HIP)
+      F += (Twine("_") + JA.getOffloadingArch()).str();
+    F += ".dwo";
+  };
   if (Arg *A = Args.getLastArg(options::OPT_gsplit_dwarf_EQ))
     if (StringRef(A->getValue()) == "single")
       return Args.MakeArgString(Output.getFilename());
@@ -875,14 +992,16 @@ const char *tools::SplitDebugName(const ArgList &Args, const InputInfo &Input,
   Arg *FinalOutput = Args.getLastArg(options::OPT_o);
   if (FinalOutput && Args.hasArg(options::OPT_c)) {
     SmallString<128> T(FinalOutput->getValue());
-    llvm::sys::path::replace_extension(T, "dwo");
+    llvm::sys::path::remove_filename(T);
+    llvm::sys::path::append(T, llvm::sys::path::stem(FinalOutput->getValue()));
+    AddPostfix(T);
     return Args.MakeArgString(T);
   } else {
     // Use the compilation dir.
     SmallString<128> T(
         Args.getLastArgValue(options::OPT_fdebug_compilation_dir));
     SmallString<128> F(llvm::sys::path::stem(Input.getBaseInput()));
-    llvm::sys::path::replace_extension(F, "dwo");
+    AddPostfix(F);
     T += F;
     return Args.MakeArgString(F);
   }
@@ -907,12 +1026,13 @@ void tools::SplitDebugInfo(const ToolChain &TC, Compilation &C, const Tool &T,
   InputInfo II(types::TY_Object, Output.getFilename(), Output.getFilename());
 
   // First extract the dwo sections.
-  C.addCommand(std::make_unique<Command>(
-      JA, T, ResponseFileSupport::AtFileCurCP(), Exec, ExtractArgs, II));
+  C.addCommand(std::make_unique<Command>(JA, T,
+                                         ResponseFileSupport::AtFileCurCP(),
+                                         Exec, ExtractArgs, II, Output));
 
   // Then remove them from the original .o file.
   C.addCommand(std::make_unique<Command>(
-      JA, T, ResponseFileSupport::AtFileCurCP(), Exec, StripArgs, II));
+      JA, T, ResponseFileSupport::AtFileCurCP(), Exec, StripArgs, II, Output));
 }
 
 // Claim options we don't want to warn if they are unused. We do this for
@@ -1013,8 +1133,6 @@ tools::ParsePICArgs(const ToolChain &ToolChain, const ArgList &Args) {
       break;
 
     case llvm::Triple::ppc:
-    case llvm::Triple::sparc:
-    case llvm::Triple::sparcel:
     case llvm::Triple::sparcv9:
       IsPICLevelTwo = true; // "-fPIE"
       break;

@@ -478,6 +478,9 @@ ExprDependence clang::computeDependence(CppxDeclRefExpr *E) {
   return ExprDependence::TypeValue;
 }
 
+ExprDependence clang::computeDependence(CXXInjectedValueExpr *E) {
+  return ExprDependence::None;
+}
 
 ExprDependence clang::computeDependence(ObjCBoxedExpr *E) {
   return E->getSubExpr()->getDependence();
@@ -614,10 +617,12 @@ ExprDependence clang::computeDependence(DeclRefExpr *E, const ASTContext &Ctx) {
              : Var->getType()->isIntegralOrEnumerationType()) &&
         (Var->getType().isConstQualified() ||
          Var->getType()->isReferenceType())) {
-      if (const Expr *Init = Var->getAnyInitializer())
-        if (Init->isValueDependent()) {
+      if (const Expr *Init = Var->getAnyInitializer()) {
+        if (Init->isValueDependent())
           Deps |= ExprDependence::ValueInstantiation;
-        }
+        if (Init->containsErrors())
+          Deps |= ExprDependence::Error;
+      }
     }
 
     // (VD) - FIXME: Missing from the standard:
@@ -842,6 +847,10 @@ ExprDependence clang::computeDependence(CXXConstructExpr *E) {
   return D;
 }
 
+ExprDependence clang::computeDependence(CXXDefaultInitExpr *E) {
+  return E->getExpr()->getDependence();
+}
+
 ExprDependence clang::computeDependence(LambdaExpr *E,
                                         bool ContainsUnexpandedParameterPack) {
   auto D = toExprDependence(E->getType()->getDependence());
@@ -853,8 +862,6 @@ ExprDependence clang::computeDependence(LambdaExpr *E,
 ExprDependence clang::computeDependence(CXXUnresolvedConstructExpr *E) {
   auto D = ExprDependence::ValueInstantiation;
   D |= toExprDependence(E->getType()->getDependence());
-  if (E->getType()->getContainedDeducedType())
-    D |= ExprDependence::Type;
   for (auto *A : E->arguments())
     D |= A->getDependence() &
          (ExprDependence::UnexpandedPack | ExprDependence::Error);

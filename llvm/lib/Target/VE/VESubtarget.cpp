@@ -27,20 +27,23 @@ void VESubtarget::anchor() {}
 
 VESubtarget &VESubtarget::initializeSubtargetDependencies(StringRef CPU,
                                                           StringRef FS) {
+  // Default feature settings
+  EnableVPU = false;
+
   // Determine default and user specified characteristics
   std::string CPUName = std::string(CPU);
   if (CPUName.empty())
     CPUName = "ve";
 
   // Parse features string.
-  ParseSubtargetFeatures(CPUName, FS);
+  ParseSubtargetFeatures(CPUName, /*TuneCPU=*/CPU, FS);
 
   return *this;
 }
 
 VESubtarget::VESubtarget(const Triple &TT, const std::string &CPU,
                          const std::string &FS, const TargetMachine &TM)
-    : VEGenSubtargetInfo(TT, CPU, FS), TargetTriple(TT),
+    : VEGenSubtargetInfo(TT, CPU, /*TuneCPU=*/CPU, FS), TargetTriple(TT),
       InstrInfo(initializeSubtargetDependencies(CPU, FS)), TLInfo(TM, *this),
       FrameLowering(*this) {}
 

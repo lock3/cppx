@@ -69,6 +69,15 @@ void TargetInstrInfo::insertNoop(MachineBasicBlock &MBB,
   llvm_unreachable("Target didn't implement insertNoop!");
 }
 
+/// insertNoops - Insert noops into the instruction stream at the specified
+/// point.
+void TargetInstrInfo::insertNoops(MachineBasicBlock &MBB,
+                                  MachineBasicBlock::iterator MI,
+                                  unsigned Quantity) const {
+  for (unsigned i = 0; i < Quantity; ++i)
+    insertNoop(MBB, MI);
+}
+
 static bool isAsmComment(const char *Str, const MCAsmInfo &MAI) {
   return strncmp(Str, MAI.getCommentString().data(),
                  MAI.getCommentString().size()) == 0;
@@ -505,11 +514,6 @@ static MachineInstr *foldPatchpoint(MachineFunction &MF, MachineInstr &MI,
     } else if (Op < StartIdx) {
       return nullptr;
     }
-    // When called from regalloc (InlineSpiller), operands must be untied,
-    // and regalloc will take care of (re)loading operand from memory.
-    // But when called from other places (e.g. peephole pass),
-    // we cannot fold operand which are tied - callers are unaware they
-    // need to reload destination register.
     if (MI.getOperand(Op).isTied())
       return nullptr;
   }

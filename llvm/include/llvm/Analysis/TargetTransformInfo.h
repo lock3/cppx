@@ -21,6 +21,7 @@
 #ifndef LLVM_ANALYSIS_TARGETTRANSFORMINFO_H
 #define LLVM_ANALYSIS_TARGETTRANSFORMINFO_H
 
+#include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Pass.h"
@@ -128,6 +129,11 @@ public:
 
   IntrinsicCostAttributes(Intrinsic::ID Id, const CallBase &CI,
                           unsigned Factor);
+  IntrinsicCostAttributes(Intrinsic::ID Id, const CallBase &CI,
+                          ElementCount Factor)
+      : IntrinsicCostAttributes(Id, CI, Factor.getKnownMinValue()) {
+    assert(!Factor.isScalable());
+  }
 
   IntrinsicCostAttributes(Intrinsic::ID Id, const CallBase &CI,
                           unsigned Factor, unsigned ScalarCost);
@@ -608,6 +614,11 @@ public:
   bool isLSRCostLess(TargetTransformInfo::LSRCost &C1,
                      TargetTransformInfo::LSRCost &C2) const;
 
+  /// Return true if LSR major cost is number of registers. Targets which
+  /// implement their own isLSRCostLess and unset number of registers as major
+  /// cost should return false, otherwise return true.
+  bool isNumRegsMajorCostOfLSR() const;
+
   /// \returns true if LSR should not optimize a chain that includes \p I.
   bool isProfitableLSRChainElement(Instruction *I) const;
 
@@ -805,8 +816,9 @@ public:
   /// Return the expected cost of materialization for the given integer
   /// immediate of the specified type for a given instruction. The cost can be
   /// zero if the immediate can be folded into the specified instruction.
-  int getIntImmCostInst(unsigned Opc, unsigned Idx, const APInt &Imm,
-                        Type *Ty, TargetCostKind CostKind) const;
+  int getIntImmCostInst(unsigned Opc, unsigned Idx, const APInt &Imm, Type *Ty,
+                        TargetCostKind CostKind,
+                        Instruction *Inst = nullptr) const;
   int getIntImmCostIntrin(Intrinsic::ID IID, unsigned Idx, const APInt &Imm,
                           Type *Ty, TargetCostKind CostKind) const;
 
@@ -869,6 +881,10 @@ public:
 
   static ReductionKind matchVectorSplittingReduction(
     const ExtractElementInst *ReduxRoot, unsigned &Opcode, VectorType *&Ty);
+
+  static ReductionKind matchVectorReduction(const ExtractElementInst *ReduxRoot,
+                                            unsigned &Opcode, VectorType *&Ty,
+                                            bool &IsPairwise);
 
   /// Additional information about an operand's possible values.
   enum OperandValueKind {
@@ -1077,10 +1093,14 @@ public:
 
   /// \returns The expected cost of compare and select instructions. If there
   /// is an existing instruction that holds Opcode, it may be passed in the
-  /// 'I' parameter.
-  int getCmpSelInstrCost(unsigned Opcode, Type *ValTy, Type *CondTy = nullptr,
-                         TTI::TargetCostKind CostKind = TTI::TCK_RecipThroughput,
-                         const Instruction *I = nullptr) const;
+  /// 'I' parameter. The \p VecPred parameter can be used to indicate the select
+  /// is using a compare with the specified predicate as condition. When vector
+  /// types are passed, \p VecPred must be used for all lanes.
+  int getCmpSelInstrCost(
+      unsigned Opcode, Type *ValTy, Type *CondTy = nullptr,
+      CmpInst::Predicate VecPred = CmpInst::BAD_ICMP_PREDICATE,
+      TTI::TargetCostKind CostKind = TTI::TCK_RecipThroughput,
+      const Instruction *I = nullptr) const;
 
   /// \return The expected cost of vector Insert and Extract.
   /// Use -1 to indicate that there is no information on the index value.
@@ -1283,6 +1303,24 @@ public:
   bool useReductionIntrinsic(unsigned Opcode, Type *Ty,
                              ReductionFlags Flags) const;
 
+  /// \returns True if the target prefers reductions in loop.
+  bool preferInLoopReduction(unsigned Opcode, Type *Ty,
+                             ReductionFlags Flags) const;
+
+  /// \returns True if the target prefers reductions select kept in the loop
+  /// when tail folding. i.e.
+  /// loop:
+  ///   p = phi (0, s)
+  ///   a = add (p, x)
+  ///   s = select (mask, a, p)
+  /// vecreduce.add(s)
+  ///
+  /// As opposed to the normal scheme of p = phi (0, a) which allows the select
+  /// to be pulled out of the loop. If the select(.., add, ..) can be predicated
+  /// by the target, this can lead to cleaner code generation.
+  bool preferPredicatedReductionSelect(unsigned Opcode, Type *Ty,
+                                       ReductionFlags Flags) const;
+
   /// \returns True if the target wants to expand the given reduction intrinsic
   /// into a shuffle sequence.
   bool shouldExpandReduction(const IntrinsicInst *II) const;
@@ -1382,6 +1420,7 @@ public:
                                      Instruction *I) = 0;
   virtual bool isLSRCostLess(TargetTransformInfo::LSRCost &C1,
                              TargetTransformInfo::LSRCost &C2) = 0;
+  virtual bool isNumRegsMajorCostOfLSR() = 0;
   virtual bool isProfitableLSRChainElement(Instruction *I) = 0;
   virtual bool canMacroFuseCmp() = 0;
   virtual bool canSaveCmp(Loop *L, BranchInst **BI, ScalarEvolution *SE,
@@ -1438,7 +1477,8 @@ public:
   virtual int getIntImmCost(const APInt &Imm, Type *Ty,
                             TargetCostKind CostKind) = 0;
   virtual int getIntImmCostInst(unsigned Opc, unsigned Idx, const APInt &Imm,
-                                Type *Ty, TargetCostKind CostKind) = 0;
+                                Type *Ty, TargetCostKind CostKind,
+                                Instruction *Inst = nullptr) = 0;
   virtual int getIntImmCostIntrin(Intrinsic::ID IID, unsigned Idx,
                                   const APInt &Imm, Type *Ty,
                                   TargetCostKind CostKind) = 0;
@@ -1499,6 +1539,7 @@ public:
   virtual int getCFInstrCost(unsigned Opcode,
                              TTI::TargetCostKind CostKind) = 0;
   virtual int getCmpSelInstrCost(unsigned Opcode, Type *ValTy, Type *CondTy,
+                                 CmpInst::Predicate VecPred,
                                  TTI::TargetCostKind CostKind,
                                  const Instruction *I) = 0;
   virtual int getVectorInstrCost(unsigned Opcode, Type *Val,
@@ -1573,6 +1614,10 @@ public:
                                         VectorType *VecTy) const = 0;
   virtual bool useReductionIntrinsic(unsigned Opcode, Type *Ty,
                                      ReductionFlags) const = 0;
+  virtual bool preferInLoopReduction(unsigned Opcode, Type *Ty,
+                                     ReductionFlags) const = 0;
+  virtual bool preferPredicatedReductionSelect(unsigned Opcode, Type *Ty,
+                                               ReductionFlags) const = 0;
   virtual bool shouldExpandReduction(const IntrinsicInst *II) const = 0;
   virtual unsigned getGISelRematGlobalCost() const = 0;
   virtual bool hasActiveVectorLength() const = 0;
@@ -1697,6 +1742,9 @@ public:
   bool isLSRCostLess(TargetTransformInfo::LSRCost &C1,
                      TargetTransformInfo::LSRCost &C2) override {
     return Impl.isLSRCostLess(C1, C2);
+  }
+  bool isNumRegsMajorCostOfLSR() override {
+    return Impl.isNumRegsMajorCostOfLSR();
   }
   bool isProfitableLSRChainElement(Instruction *I) override {
     return Impl.isProfitableLSRChainElement(I);
@@ -1823,9 +1871,10 @@ public:
                     TargetCostKind CostKind) override {
     return Impl.getIntImmCost(Imm, Ty, CostKind);
   }
-  int getIntImmCostInst(unsigned Opc, unsigned Idx, const APInt &Imm,
-                        Type *Ty, TargetCostKind CostKind) override {
-    return Impl.getIntImmCostInst(Opc, Idx, Imm, Ty, CostKind);
+  int getIntImmCostInst(unsigned Opc, unsigned Idx, const APInt &Imm, Type *Ty,
+                        TargetCostKind CostKind,
+                        Instruction *Inst = nullptr) override {
+    return Impl.getIntImmCostInst(Opc, Idx, Imm, Ty, CostKind, Inst);
   }
   int getIntImmCostIntrin(Intrinsic::ID IID, unsigned Idx, const APInt &Imm,
                           Type *Ty, TargetCostKind CostKind) override {
@@ -1932,9 +1981,10 @@ public:
     return Impl.getCFInstrCost(Opcode, CostKind);
   }
   int getCmpSelInstrCost(unsigned Opcode, Type *ValTy, Type *CondTy,
+                         CmpInst::Predicate VecPred,
                          TTI::TargetCostKind CostKind,
                          const Instruction *I) override {
-    return Impl.getCmpSelInstrCost(Opcode, ValTy, CondTy, CostKind, I);
+    return Impl.getCmpSelInstrCost(Opcode, ValTy, CondTy, VecPred, CostKind, I);
   }
   int getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index) override {
     return Impl.getVectorInstrCost(Opcode, Val, Index);
@@ -2072,6 +2122,14 @@ public:
   bool useReductionIntrinsic(unsigned Opcode, Type *Ty,
                              ReductionFlags Flags) const override {
     return Impl.useReductionIntrinsic(Opcode, Ty, Flags);
+  }
+  bool preferInLoopReduction(unsigned Opcode, Type *Ty,
+                             ReductionFlags Flags) const override {
+    return Impl.preferInLoopReduction(Opcode, Ty, Flags);
+  }
+  bool preferPredicatedReductionSelect(unsigned Opcode, Type *Ty,
+                                       ReductionFlags Flags) const override {
+    return Impl.preferPredicatedReductionSelect(Opcode, Ty, Flags);
   }
   bool shouldExpandReduction(const IntrinsicInst *II) const override {
     return Impl.shouldExpandReduction(II);

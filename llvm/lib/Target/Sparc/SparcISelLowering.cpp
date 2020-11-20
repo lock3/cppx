@@ -2139,7 +2139,7 @@ SDValue SparcTargetLowering::LowerF128_LibCallArg(SDValue Chain,
     int FI = MFI.CreateStackObject(16, Align(8), false);
     SDValue FIPtr = DAG.getFrameIndex(FI, getPointerTy(DAG.getDataLayout()));
     Chain = DAG.getStore(Chain, DL, Entry.Node, FIPtr, MachinePointerInfo(),
-                         /* Alignment = */ 8);
+                         Align(8));
 
     Entry.Node = FIPtr;
     Entry.Ty   = PointerType::getUnqual(ArgTy);
@@ -2198,7 +2198,7 @@ SparcTargetLowering::LowerF128Op(SDValue Op, SelectionDAG &DAG,
 
   // Load RetPtr to get the return value.
   return DAG.getLoad(Op.getValueType(), SDLoc(Op), Chain, RetPtr,
-                     MachinePointerInfo(), /* Alignment = */ 8);
+                     MachinePointerInfo(), Align(8));
 }
 
 SDValue SparcTargetLowering::LowerF128Compare(SDValue LHS, SDValue RHS,
@@ -2541,8 +2541,9 @@ static SDValue LowerVAARG(SDValue Op, SelectionDAG &DAG) {
                          MachinePointerInfo(SV));
   // Load the actual argument out of the pointer VAList.
   // We can't count on greater alignment than the word size.
-  return DAG.getLoad(VT, DL, InChain, VAList, MachinePointerInfo(),
-                     std::min(PtrVT.getSizeInBits(), VT.getSizeInBits()) / 8);
+  return DAG.getLoad(
+      VT, DL, InChain, VAList, MachinePointerInfo(),
+      std::min(PtrVT.getFixedSizeInBits(), VT.getFixedSizeInBits()) / 8);
 }
 
 static SDValue LowerDYNAMIC_STACKALLOC(SDValue Op, SelectionDAG &DAG,

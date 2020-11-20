@@ -462,6 +462,13 @@ public:
 
   bool canIgnoreChildDeclWhileTraversingDeclContext(const Decl *Child);
 
+#define DEF_TRAVERSE_TMPL_INST(TMPLDECLKIND)                                   \
+  bool TraverseTemplateInstantiations(TMPLDECLKIND##TemplateDecl *D);
+  DEF_TRAVERSE_TMPL_INST(Class)
+  DEF_TRAVERSE_TMPL_INST(Var)
+  DEF_TRAVERSE_TMPL_INST(Function)
+#undef DEF_TRAVERSE_TMPL_INST
+
 private:
   // These are helper methods used by more than one Traverse* method.
   bool TraverseTemplateParameterListHelper(TemplateParameterList *TPL);
@@ -470,12 +477,6 @@ private:
   template <typename T>
   bool TraverseDeclTemplateParameterLists(T *D);
 
-#define DEF_TRAVERSE_TMPL_INST(TMPLDECLKIND)                                   \
-  bool TraverseTemplateInstantiations(TMPLDECLKIND##TemplateDecl *D);
-  DEF_TRAVERSE_TMPL_INST(Class)
-  DEF_TRAVERSE_TMPL_INST(Var)
-  DEF_TRAVERSE_TMPL_INST(Function)
-#undef DEF_TRAVERSE_TMPL_INST
   bool TraverseTemplateArgumentLocsHelper(const TemplateArgumentLoc *TAL,
                                           unsigned Count);
   bool TraverseArrayTypeLocHelper(ArrayTypeLoc TL);
@@ -1085,6 +1086,15 @@ DEF_TRAVERSE_TYPE(ExtIntType, {})
 DEF_TRAVERSE_TYPE(DependentExtIntType,
                   { TRY_TO(TraverseStmt(T->getNumBitsExpr())); })
 
+DEF_TRAVERSE_TYPE(InParameterType,
+                  { TRY_TO(TraverseType(T->getParameterType())); })
+DEF_TRAVERSE_TYPE(OutParameterType,
+                  { TRY_TO(TraverseType(T->getParameterType())); })
+DEF_TRAVERSE_TYPE(InOutParameterType,
+                  { TRY_TO(TraverseType(T->getParameterType())); })
+DEF_TRAVERSE_TYPE(MoveParameterType,
+                  { TRY_TO(TraverseType(T->getParameterType())); })
+
 #undef DEF_TRAVERSE_TYPE
 
 // ----------------- TypeLoc traversal -----------------
@@ -1391,6 +1401,15 @@ DEF_TRAVERSE_TYPELOC(ExtIntType, {})
 DEF_TRAVERSE_TYPELOC(DependentExtIntType, {
   TRY_TO(TraverseStmt(TL.getTypePtr()->getNumBitsExpr()));
 })
+
+DEF_TRAVERSE_TYPELOC(InParameterType,
+                     { TRY_TO(TraverseTypeLoc(TL.getParameterTypeLoc())); })
+DEF_TRAVERSE_TYPELOC(OutParameterType,
+                     { TRY_TO(TraverseTypeLoc(TL.getParameterTypeLoc())); })
+DEF_TRAVERSE_TYPELOC(InOutParameterType,
+                     { TRY_TO(TraverseTypeLoc(TL.getParameterTypeLoc())); })
+DEF_TRAVERSE_TYPELOC(MoveParameterType,
+                     { TRY_TO(TraverseTypeLoc(TL.getParameterTypeLoc())); })
 
 #undef DEF_TRAVERSE_TYPELOC
 
@@ -1821,8 +1840,17 @@ DEF_TRAVERSE_DECL(TemplateTypeParmDecl, {
   // D is the "T" in something like "template<typename T> class vector;"
   if (D->getTypeForDecl())
     TRY_TO(TraverseType(QualType(D->getTypeForDecl(), 0)));
-  if (const auto *TC = D->getTypeConstraint())
-    TRY_TO(TraverseConceptReference(*TC));
+  if (const auto *TC = D->getTypeConstraint()) {
+    if (Expr *IDC = TC->getImmediatelyDeclaredConstraint()) {
+      TRY_TO(TraverseStmt(IDC));
+    } else {
+      // Avoid traversing the ConceptReference in the TypeCosntraint
+      // if we have an immediately-declared-constraint, otherwise
+      // we'll end up visiting the concept and the arguments in
+      // the TC twice.
+      TRY_TO(TraverseConceptReference(*TC));
+    }
+  }
   if (D->hasDefaultArgument() && !D->defaultArgumentWasInherited())
     TRY_TO(TraverseTypeLoc(D->getDefaultArgumentInfo()->getTypeLoc()));
 })
@@ -2004,6 +2032,8 @@ DEF_TRAVERSE_DECL(BindingDecl, {
 DEF_TRAVERSE_DECL(MSPropertyDecl, { TRY_TO(TraverseDeclaratorHelper(D)); })
 
 DEF_TRAVERSE_DECL(MSGuidDecl, {})
+
+DEF_TRAVERSE_DECL(TemplateParamObjectDecl, {})
 
 DEF_TRAVERSE_DECL(CXXMetaprogramDecl, {
   // FIXME: Not sure if we can do anything useful here.
@@ -2635,6 +2665,8 @@ DEF_TRAVERSE_STMT(CompoundLiteralExpr, {
 DEF_TRAVERSE_STMT(CXXBindTemporaryExpr, {})
 DEF_TRAVERSE_STMT(CXXBoolLiteralExpr, {})
 
+DEF_TRAVERSE_STMT(CXXParameterInfoExpr, {})
+
 DEF_TRAVERSE_STMT(CXXDefaultArgExpr, {
   if (getDerived().shouldVisitImplicitCode())
     TRY_TO(TraverseStmt(S->getExpr()));
@@ -2776,6 +2808,7 @@ DEF_TRAVERSE_STMT(CXXFragmentCaptureExpr, {})
 DEF_TRAVERSE_STMT(CppxTypeLiteral, {})
 DEF_TRAVERSE_STMT(CppxPartialEvalExpr, {})
 DEF_TRAVERSE_STMT(CppxDeclRefExpr, {})
+DEF_TRAVERSE_STMT(CXXInjectedValueExpr, {})
 
 DEF_TRAVERSE_STMT(MaterializeTemporaryExpr, {
   if (S->getLifetimeExtendedTemporaryDecl()) {

@@ -594,13 +594,13 @@ public:
   PragmaStack<StringLiteral *> CodeSegStack;
 
   // This stack tracks the current state of Sema.CurFPFeatures.
-  PragmaStack<FPOptionsOverride::storage_type> FpPragmaStack;
+  PragmaStack<FPOptionsOverride> FpPragmaStack;
   FPOptionsOverride CurFPFeatureOverrides() {
     FPOptionsOverride result;
     if (!FpPragmaStack.hasValue()) {
       result = FPOptionsOverride();
     } else {
-      result = FPOptionsOverride(FpPragmaStack.CurrentValue);
+      result = FpPragmaStack.CurrentValue;
     }
     return result;
   }
@@ -1468,12 +1468,12 @@ public:
       S.CurFPFeatures = OldFPFeaturesState;
       S.FpPragmaStack.CurrentValue = OldOverrides;
     }
-    FPOptionsOverride::storage_type getOverrides() { return OldOverrides; }
+    FPOptionsOverride getOverrides() { return OldOverrides; }
 
   private:
     Sema& S;
     FPOptions OldFPFeaturesState;
-    FPOptionsOverride::storage_type OldOverrides;
+    FPOptionsOverride OldOverrides;
   };
 
   void addImplicitTypedef(StringRef Name, QualType T);
@@ -1525,41 +1525,41 @@ public:
   /// template instantiation stacks.
   ///
   /// This class provides a wrapper around the basic DiagnosticBuilder
-  /// class that emits diagnostics. SemaDiagnosticBuilder is
+  /// class that emits diagnostics. ImmediateDiagBuilder is
   /// responsible for emitting the diagnostic (as DiagnosticBuilder
   /// does) and, if the diagnostic comes from inside a template
   /// instantiation, printing the template instantiation stack as
   /// well.
-  class SemaDiagnosticBuilder : public DiagnosticBuilder {
+  class ImmediateDiagBuilder : public DiagnosticBuilder {
     Sema &SemaRef;
     unsigned DiagID;
 
   public:
-    SemaDiagnosticBuilder(DiagnosticBuilder &DB, Sema &SemaRef, unsigned DiagID)
-      : DiagnosticBuilder(DB), SemaRef(SemaRef), DiagID(DiagID) { }
+    ImmediateDiagBuilder(DiagnosticBuilder &DB, Sema &SemaRef, unsigned DiagID)
+        : DiagnosticBuilder(DB), SemaRef(SemaRef), DiagID(DiagID) {}
+    ImmediateDiagBuilder(DiagnosticBuilder &&DB, Sema &SemaRef, unsigned DiagID)
+        : DiagnosticBuilder(DB), SemaRef(SemaRef), DiagID(DiagID) {}
 
     // This is a cunning lie. DiagnosticBuilder actually performs move
     // construction in its copy constructor (but due to varied uses, it's not
     // possible to conveniently express this as actual move construction). So
     // the default copy ctor here is fine, because the base class disables the
-    // source anyway, so the user-defined ~SemaDiagnosticBuilder is a safe no-op
+    // source anyway, so the user-defined ~ImmediateDiagBuilder is a safe no-op
     // in that case anwyay.
-    SemaDiagnosticBuilder(const SemaDiagnosticBuilder&) = default;
+    ImmediateDiagBuilder(const ImmediateDiagBuilder &) = default;
 
-    ~SemaDiagnosticBuilder() {
+    ~ImmediateDiagBuilder() {
       // If we aren't active, there is nothing to do.
       if (!isActive()) return;
 
-      // Otherwise, we need to emit the diagnostic. First flush the underlying
-      // DiagnosticBuilder data, and clear the diagnostic builder itself so it
-      // won't emit the diagnostic in its own destructor.
+      // Otherwise, we need to emit the diagnostic. First clear the diagnostic
+      // builder itself so it won't emit the diagnostic in its own destructor.
       //
       // This seems wasteful, in that as written the DiagnosticBuilder dtor will
       // do its own needless checks to see if the diagnostic needs to be
       // emitted. However, because we take care to ensure that the builder
       // objects never escape, a sufficiently smart compiler will be able to
       // eliminate that code.
-      FlushCounts();
       Clear();
 
       // Dispatch to Sema to emit the diagnostic.
@@ -1567,26 +1567,161 @@ public:
     }
 
     /// Teach operator<< to produce an object of the correct type.
-    template<typename T>
-    friend const SemaDiagnosticBuilder &operator<<(
-        const SemaDiagnosticBuilder &Diag, const T &Value) {
+    template <typename T>
+    friend const ImmediateDiagBuilder &
+    operator<<(const ImmediateDiagBuilder &Diag, const T &Value) {
       const DiagnosticBuilder &BaseDiag = Diag;
       BaseDiag << Value;
       return Diag;
     }
+
+    // It is necessary to limit this to rvalue reference to avoid calling this
+    // function with a bitfield lvalue argument since non-const reference to
+    // bitfield is not allowed.
+    template <typename T, typename = typename std::enable_if<
+                              !std::is_lvalue_reference<T>::value>::type>
+    const ImmediateDiagBuilder &operator<<(T &&V) const {
+      const DiagnosticBuilder &BaseDiag = *this;
+      BaseDiag << std::move(V);
+      return *this;
+    }
   };
 
+  /// A generic diagnostic builder for errors which may or may not be deferred.
+  ///
+  /// In CUDA, there exist constructs (e.g. variable-length arrays, try/catch)
+  /// which are not allowed to appear inside __device__ functions and are
+  /// allowed to appear in __host__ __device__ functions only if the host+device
+  /// function is never codegen'ed.
+  ///
+  /// To handle this, we use the notion of "deferred diagnostics", where we
+  /// attach a diagnostic to a FunctionDecl that's emitted iff it's codegen'ed.
+  ///
+  /// This class lets you emit either a regular diagnostic, a deferred
+  /// diagnostic, or no diagnostic at all, according to an argument you pass to
+  /// its constructor, thus simplifying the process of creating these "maybe
+  /// deferred" diagnostics.
+  class SemaDiagnosticBuilder {
+  public:
+    enum Kind {
+      /// Emit no diagnostics.
+      K_Nop,
+      /// Emit the diagnostic immediately (i.e., behave like Sema::Diag()).
+      K_Immediate,
+      /// Emit the diagnostic immediately, and, if it's a warning or error, also
+      /// emit a call stack showing how this function can be reached by an a
+      /// priori known-emitted function.
+      K_ImmediateWithCallStack,
+      /// Create a deferred diagnostic, which is emitted only if the function
+      /// it's attached to is codegen'ed.  Also emit a call stack as with
+      /// K_ImmediateWithCallStack.
+      K_Deferred
+    };
+
+    SemaDiagnosticBuilder(Kind K, SourceLocation Loc, unsigned DiagID,
+                          FunctionDecl *Fn, Sema &S);
+    SemaDiagnosticBuilder(SemaDiagnosticBuilder &&D);
+    SemaDiagnosticBuilder(const SemaDiagnosticBuilder &) = default;
+    ~SemaDiagnosticBuilder();
+
+    bool isImmediate() const { return ImmediateDiag.hasValue(); }
+
+    /// Convertible to bool: True if we immediately emitted an error, false if
+    /// we didn't emit an error or we created a deferred error.
+    ///
+    /// Example usage:
+    ///
+    ///   if (SemaDiagnosticBuilder(...) << foo << bar)
+    ///     return ExprError();
+    ///
+    /// But see CUDADiagIfDeviceCode() and CUDADiagIfHostCode() -- you probably
+    /// want to use these instead of creating a SemaDiagnosticBuilder yourself.
+    operator bool() const { return isImmediate(); }
+
+    template <typename T>
+    friend const SemaDiagnosticBuilder &
+    operator<<(const SemaDiagnosticBuilder &Diag, const T &Value) {
+      if (Diag.ImmediateDiag.hasValue())
+        *Diag.ImmediateDiag << Value;
+      else if (Diag.PartialDiagId.hasValue())
+        Diag.S.DeviceDeferredDiags[Diag.Fn][*Diag.PartialDiagId].second
+            << Value;
+      return Diag;
+    }
+
+    // It is necessary to limit this to rvalue reference to avoid calling this
+    // function with a bitfield lvalue argument since non-const reference to
+    // bitfield is not allowed.
+    template <typename T, typename = typename std::enable_if<
+                              !std::is_lvalue_reference<T>::value>::type>
+    const SemaDiagnosticBuilder &operator<<(T &&V) const {
+      if (ImmediateDiag.hasValue())
+        *ImmediateDiag << std::move(V);
+      else if (PartialDiagId.hasValue())
+        S.DeviceDeferredDiags[Fn][*PartialDiagId].second << std::move(V);
+      return *this;
+    }
+
+    friend const SemaDiagnosticBuilder &
+    operator<<(const SemaDiagnosticBuilder &Diag, const PartialDiagnostic &PD) {
+      if (Diag.ImmediateDiag.hasValue())
+        PD.Emit(*Diag.ImmediateDiag);
+      else if (Diag.PartialDiagId.hasValue())
+        Diag.S.DeviceDeferredDiags[Diag.Fn][*Diag.PartialDiagId].second = PD;
+      return Diag;
+    }
+
+    void AddFixItHint(const FixItHint &Hint) const {
+      if (ImmediateDiag.hasValue())
+        ImmediateDiag->AddFixItHint(Hint);
+      else if (PartialDiagId.hasValue())
+        S.DeviceDeferredDiags[Fn][*PartialDiagId].second.AddFixItHint(Hint);
+    }
+
+    friend ExprResult ExprError(const SemaDiagnosticBuilder &) {
+      return ExprError();
+    }
+    friend StmtResult StmtError(const SemaDiagnosticBuilder &) {
+      return StmtError();
+    }
+    operator ExprResult() const { return ExprError(); }
+    operator StmtResult() const { return StmtError(); }
+    operator TypeResult() const { return TypeError(); }
+    operator DeclResult() const { return DeclResult(true); }
+    operator MemInitResult() const { return MemInitResult(true); }
+
+  private:
+    Sema &S;
+    SourceLocation Loc;
+    unsigned DiagID;
+    FunctionDecl *Fn;
+    bool ShowCallStack;
+
+    // Invariant: At most one of these Optionals has a value.
+    // FIXME: Switch these to a Variant once that exists.
+    llvm::Optional<ImmediateDiagBuilder> ImmediateDiag;
+    llvm::Optional<unsigned> PartialDiagId;
+  };
+  using DiagBuilderT = SemaDiagnosticBuilder;
+
+  /// Is the last error level diagnostic immediate. This is used to determined
+  /// whether the next info diagnostic should be immediate.
+  bool IsLastErrorImmediate = true;
+
   /// Emit a diagnostic.
-  SemaDiagnosticBuilder Diag(SourceLocation Loc, unsigned DiagID) {
-    DiagnosticBuilder DB = Diags.Report(Loc, DiagID);
-    return SemaDiagnosticBuilder(DB, *this, DiagID);
-  }
+  SemaDiagnosticBuilder Diag(SourceLocation Loc, unsigned DiagID,
+                             bool DeferHint = false);
 
   /// Emit a partial diagnostic.
-  SemaDiagnosticBuilder Diag(SourceLocation Loc, const PartialDiagnostic& PD);
+  SemaDiagnosticBuilder Diag(SourceLocation Loc, const PartialDiagnostic &PD,
+                             bool DeferHint = false);
 
   /// Build a partial diagnostic.
   PartialDiagnostic PDiag(unsigned DiagID = 0); // in SemaInternal.h
+
+  /// Whether uncompilable error has occurred. This includes error happens
+  /// in deferred diagnostics.
+  bool hasUncompilableErrorOccurred() const;
 
   bool findMacroSpelling(SourceLocation &loc, StringRef name);
 
@@ -1900,6 +2035,16 @@ public:
     }
   };
 
+  /// Do a check to make sure \p Name looks like a legal argument for the
+  /// swift_name attribute applied to decl \p D.  Raise a diagnostic if the name
+  /// is invalid for the given declaration.
+  ///
+  /// \p AL is used to provide caret diagnostics in case of a malformed name.
+  ///
+  /// \returns true if the name is a valid swift name for \p D, false otherwise.
+  bool DiagnoseSwiftName(Decl *D, StringRef Name, SourceLocation Loc,
+                         const ParsedAttr &AL);
+
   /// A derivative of BoundTypeDiagnoser for which the diagnostic's type
   /// parameter is preceded by a 0/1 enum that is 1 if the type is sizeless.
   /// For example, a diagnostic with no other parameters would generally have
@@ -1977,6 +2122,12 @@ public:
   void makeMergedDefinitionVisible(NamedDecl *ND);
 
   bool isModuleVisible(const Module *M, bool ModulePrivate = false);
+
+  // When loading a non-modular PCH files, this is used to restore module
+  // visibility.
+  void makeModuleVisible(Module *Mod, SourceLocation ImportLoc) {
+    VisibleModules.setVisible(Mod, ImportLoc);
+  }
 
   /// Determine whether a declaration is visible to name lookup.
   bool isVisible(const NamedDecl *D) {
@@ -2063,10 +2214,7 @@ public:
   bool RequireCompleteSizedType(SourceLocation Loc, QualType T, unsigned DiagID,
                                 const Ts &... Args) {
     SizelessTypeDiagnoser<Ts...> Diagnoser(DiagID, Args...);
-    CompleteTypeKind Kind = CompleteTypeKind::Normal;
-    if (T->isVLST())
-      Kind = CompleteTypeKind::AcceptSizeless;
-    return RequireCompleteType(Loc, T, Kind, Diagnoser);
+    return RequireCompleteType(Loc, T, CompleteTypeKind::Normal, Diagnoser);
   }
 
   void completeExprArrayBound(Expr *E);
@@ -2084,10 +2232,7 @@ public:
   bool RequireCompleteSizedExprType(Expr *E, unsigned DiagID,
                                     const Ts &... Args) {
     SizelessTypeDiagnoser<Ts...> Diagnoser(DiagID, Args...);
-    CompleteTypeKind Kind = CompleteTypeKind::Normal;
-    if (E->getType()->isVLST())
-      Kind = CompleteTypeKind::AcceptSizeless;
-    return RequireCompleteExprType(E, Kind, Diagnoser);
+    return RequireCompleteExprType(E, CompleteTypeKind::Normal, Diagnoser);
   }
 
   bool RequireLiteralType(SourceLocation Loc, QualType T,
@@ -2625,6 +2770,13 @@ public:
   Decl *ActOnSkippedFunctionBody(Decl *Decl);
   void ActOnFinishInlineFunctionDef(FunctionDecl *D);
 
+  /// For functions with movable inputs, this computes the definite last
+  /// use of input parameters and rewrites that as a move.
+  void computeMoveOnLastUse(FunctionDecl *D);
+
+  /// Returns true if D is a parameter that can be moved on last use.
+  bool isMovableParameter(const ParmVarDecl *D);
+
   /// ActOnFinishDelayedAttribute - Invoked when we have finished parsing an
   /// attribute for which parsing is delayed.
   void ActOnFinishDelayedAttribute(Scope *S, Decl *D, ParsedAttributes &Attrs);
@@ -3130,6 +3282,8 @@ public:
   SpeculativeLoadHardeningAttr *
   mergeSpeculativeLoadHardeningAttr(Decl *D,
                                     const SpeculativeLoadHardeningAttr &AL);
+  SwiftNameAttr *mergeSwiftNameAttr(Decl *D, const SwiftNameAttr &SNA,
+                                    StringRef Name);
   OptimizeNoneAttr *mergeOptimizeNoneAttr(Decl *D,
                                           const AttributeCommonInfo &CI);
   InternalLinkageAttr *mergeInternalLinkageAttr(Decl *D, const ParsedAttr &AL);
@@ -3259,6 +3413,8 @@ public:
   bool CanPerformAggregateInitializationForOverloadResolution(
       const InitializedEntity &Entity, InitListExpr *From);
 
+  bool IsStringInit(Expr *Init, const ArrayType *AT);
+
   bool CanPerformCopyInitialization(const InitializedEntity &Entity,
                                     ExprResult Init);
   ExprResult PerformCopyInitialization(const InitializedEntity &Entity,
@@ -3284,14 +3440,15 @@ public:
     CCEK_CaseValue,   ///< Expression in a case label.
     CCEK_Enumerator,  ///< Enumerator value with fixed underlying type.
     CCEK_TemplateArg, ///< Value of a non-type template parameter.
-    CCEK_NewExpr,     ///< Constant expression in a noptr-new-declarator.
+    CCEK_ArrayBound,  ///< Array bound in array declarator or new-expression.
     CCEK_ConstexprIf, ///< Condition in a constexpr if statement.
     CCEK_ExplicitBool ///< Condition in an explicit(bool) specifier.
   };
   ExprResult CheckConvertedConstantExpression(Expr *From, QualType T,
                                               llvm::APSInt &Value, CCEKind CCE);
   ExprResult CheckConvertedConstantExpression(Expr *From, QualType T,
-                                              APValue &Value, CCEKind CCE);
+                                              APValue &Value, CCEKind CCE,
+                                              NamedDecl *Dest = nullptr);
 
   /// Abstract base class used to perform a contextual implicit
   /// conversion from an expression to any type passing a filter.
@@ -3819,7 +3976,7 @@ public:
     /// The lookup found an overload set of literal operator templates,
     /// which expect the character type and characters of the spelling of the
     /// string literal token to be passed as template arguments.
-    LOLR_StringTemplate
+    LOLR_StringTemplatePack,
   };
 
   SpecialMemberOverloadResult LookupSpecialMember(CXXRecordDecl *D,
@@ -3893,6 +4050,7 @@ public:
                               RedeclarationKind Redecl
                                 = NotForRedeclaration);
   bool LookupBuiltin(LookupResult &R);
+  void LookupNecessaryTypesForBuiltin(Scope *S, unsigned ID);
   bool LookupName(LookupResult &R, Scope *S,
                   bool AllowBuiltinCreation = false);
   bool LookupQualifiedName(LookupResult &R, DeclContext *LookupCtx,
@@ -3926,12 +4084,11 @@ public:
   CXXDestructorDecl *LookupDestructor(CXXRecordDecl *Class);
 
   bool checkLiteralOperatorId(const CXXScopeSpec &SS, const UnqualifiedId &Id);
-  LiteralOperatorLookupResult LookupLiteralOperator(Scope *S, LookupResult &R,
-                                                    ArrayRef<QualType> ArgTys,
-                                                    bool AllowRaw,
-                                                    bool AllowTemplate,
-                                                    bool AllowStringTemplate,
-                                                    bool DiagnoseMissing);
+  LiteralOperatorLookupResult
+  LookupLiteralOperator(Scope *S, LookupResult &R, ArrayRef<QualType> ArgTys,
+                        bool AllowRaw, bool AllowTemplate,
+                        bool AllowStringTemplate, bool DiagnoseMissing,
+                        StringLiteral *StringLit = nullptr);
   bool isKnownName(StringRef name);
 
   /// Status of the function emission on the CUDA/HIP/OpenMP host/device attrs.
@@ -4052,6 +4209,8 @@ public:
   ObjCInterfaceDecl *getObjCInterfaceDecl(IdentifierInfo *&Id,
                                           SourceLocation IdLoc,
                                           bool TypoCorrection = false);
+  FunctionDecl *CreateBuiltin(IdentifierInfo *II, QualType Type, unsigned ID,
+                              SourceLocation Loc);
   NamedDecl *LazilyCreateBuiltin(IdentifierInfo *II, unsigned ID,
                                  Scope *S, bool ForRedeclaration,
                                  SourceLocation Loc);
@@ -4406,6 +4565,7 @@ public:
                            bool HasLeadingEmptyMacro = false);
 
   void ActOnStartOfCompoundStmt(bool IsStmtExpr);
+  void ActOnAfterCompoundStatementLeadingPragmas();
   void ActOnFinishOfCompoundStmt();
   StmtResult ActOnCompoundStmt(SourceLocation L, SourceLocation R,
                                ArrayRef<Stmt *> Elts, bool isStmtExpr);
@@ -4460,16 +4620,17 @@ public:
 
   class ConditionResult;
   StmtResult ActOnIfStmt(SourceLocation IfLoc, bool IsConstexpr,
-                         Stmt *InitStmt,
-                         ConditionResult Cond, Stmt *ThenVal,
-                         SourceLocation ElseLoc, Stmt *ElseVal);
+                         SourceLocation LParenLoc, Stmt *InitStmt,
+                         ConditionResult Cond, SourceLocation RParenLoc,
+                         Stmt *ThenVal, SourceLocation ElseLoc, Stmt *ElseVal);
   StmtResult BuildIfStmt(SourceLocation IfLoc, bool IsConstexpr,
-                         Stmt *InitStmt,
-                         ConditionResult Cond, Stmt *ThenVal,
-                         SourceLocation ElseLoc, Stmt *ElseVal);
+                         SourceLocation LParenLoc, Stmt *InitStmt,
+                         ConditionResult Cond, SourceLocation RParenLoc,
+                         Stmt *ThenVal, SourceLocation ElseLoc, Stmt *ElseVal);
   StmtResult ActOnStartOfSwitchStmt(SourceLocation SwitchLoc,
-                                    Stmt *InitStmt,
-                                    ConditionResult Cond);
+                                    SourceLocation LParenLoc, Stmt *InitStmt,
+                                    ConditionResult Cond,
+                                    SourceLocation RParenLoc);
   StmtResult ActOnFinishSwitchStmt(SourceLocation SwitchLoc,
                                            Stmt *Switch, Stmt *Body);
   StmtResult ActOnWhileStmt(SourceLocation WhileLoc, SourceLocation LParenLoc,
@@ -5013,15 +5174,6 @@ public:
                                  PredefinedExpr::IdentKind IK);
   ExprResult ActOnPredefinedExpr(SourceLocation Loc, tok::TokenKind Kind);
   ExprResult ActOnIntegerConstant(SourceLocation Loc, uint64_t Val);
-
-  ExprResult BuildUniqueStableName(SourceLocation Loc, TypeSourceInfo *Operand);
-  ExprResult BuildUniqueStableName(SourceLocation Loc, Expr *E);
-  ExprResult ActOnUniqueStableNameExpr(SourceLocation OpLoc,
-                                       SourceLocation LParen,
-                                       SourceLocation RParen, ParsedType Ty);
-  ExprResult ActOnUniqueStableNameExpr(SourceLocation OpLoc,
-                                       SourceLocation LParen,
-                                       SourceLocation RParen, Expr *E);
 
   bool CheckLoopHintExpr(Expr *E, SourceLocation Loc);
 
@@ -6592,7 +6744,8 @@ public:
   /// Get the return type to use for a lambda's conversion function(s) to
   /// function pointer type, given the type of the call operator.
   QualType
-  getLambdaConversionFunctionResultType(const FunctionProtoType *CallOpType);
+  getLambdaConversionFunctionResultType(const FunctionProtoType *CallOpType,
+                                        CallingConv CC);
 
   /// Define the "body" of the conversion from a lambda object to a
   /// function pointer.
@@ -7417,6 +7570,8 @@ public:
   bool AttachTypeConstraint(AutoTypeLoc TL,
                             NonTypeTemplateParmDecl *ConstrainedParameter,
                             SourceLocation EllipsisLoc);
+
+  bool RequireStructuralType(QualType T, SourceLocation Loc);
 
   QualType CheckNonTypeTemplateParameterType(TypeSourceInfo *&TSI,
                                              SourceLocation Loc);
@@ -8308,6 +8463,8 @@ public:
     /// The deduced arguments did not satisfy the constraints associated
     /// with the template.
     TDK_ConstraintsNotSatisfied,
+    /// A deduced argument did not satisfy an expected decuction constraint.
+    TDK_UnexpectedDeduction,
     /// Deduction failed; that's all we know.
     TDK_MiscellaneousDeductionFailure,
     /// CUDA Target attributes do not match.
@@ -9367,7 +9524,7 @@ public:
       const TemplateArgumentList &TemplateArgList,
       const TemplateArgumentListInfo &TemplateArgsInfo,
       SmallVectorImpl<TemplateArgument> &Converted,
-      SourceLocation PointOfInstantiation, void *InsertPos,
+      SourceLocation PointOfInstantiation,
       LateInstantiatedAttrVec *LateAttrs = nullptr,
       LocalInstantiationScope *StartingScope = nullptr);
   VarTemplateSpecializationDecl *CompleteVarTemplateSpecializationDecl(
@@ -9955,7 +10112,11 @@ public:
   /// \#pragma STDC FENV_ACCESS
   void ActOnPragmaFEnvAccess(SourceLocation Loc, bool IsEnabled);
 
-  /// Called to set rounding mode for floating point operations.
+  /// Called on well formed '\#pragma clang fp' that has option 'exceptions'.
+  void ActOnPragmaFPExceptions(SourceLocation Loc,
+                               LangOptions::FPExceptionModeKind);
+
+  /// Called to set constant rounding mode for floating point operations.
   void setRoundingMode(SourceLocation Loc, llvm::RoundingMode);
 
   /// Called to set exception behavior for floating point operations.
@@ -10046,6 +10207,10 @@ public:
   /// AddAlignValueAttr - Adds an align_value attribute to a particular
   /// declaration.
   void AddAlignValueAttr(Decl *D, const AttributeCommonInfo &CI, Expr *E);
+
+  /// AddAnnotationAttr - Adds an annotation Annot with Args arguments to D.
+  void AddAnnotationAttr(Decl *D, const AttributeCommonInfo &CI,
+                         StringRef Annot, MutableArrayRef<Expr *> Args);
 
   /// AddLaunchBoundsAttr - Adds a launch_bounds attribute to a particular
   /// declaration.
@@ -10607,7 +10772,7 @@ public:
 private:
   void *VarDataSharingAttributesStack;
   /// Number of nested '#pragma omp declare target' directives.
-  unsigned DeclareTargetNestingLevel = 0;
+  SmallVector<SourceLocation, 4> DeclareTargetNesting;
   /// Initialization of data-sharing attributes stack.
   void InitDataSharingAttributesStack();
   void DestroyDataSharingAttributesStack();
@@ -10658,21 +10823,27 @@ private:
     OMPDeclareVariantScope(OMPTraitInfo &TI);
   };
 
+  /// Return the OMPTraitInfo for the surrounding scope, if any.
+  OMPTraitInfo *getOMPTraitInfoForSurroundingScope() {
+    return OMPDeclareVariantScopes.empty() ? nullptr
+                                           : OMPDeclareVariantScopes.back().TI;
+  }
+
   /// The current `omp begin/end declare variant` scopes.
   SmallVector<OMPDeclareVariantScope, 4> OMPDeclareVariantScopes;
 
   /// The declarator \p D defines a function in the scope \p S which is nested
   /// in an `omp begin/end declare variant` scope. In this method we create a
   /// declaration for \p D and rename \p D according to the OpenMP context
-  /// selector of the surrounding scope.
-  FunctionDecl *
-  ActOnStartOfFunctionDefinitionInOpenMPDeclareVariantScope(Scope *S,
-                                                            Declarator &D);
+  /// selector of the surrounding scope. Return all base functions in \p Bases.
+  void ActOnStartOfFunctionDefinitionInOpenMPDeclareVariantScope(
+      Scope *S, Declarator &D, MultiTemplateParamsArg TemplateParameterLists,
+      SmallVectorImpl<FunctionDecl *> &Bases);
 
-  /// Register \p FD as specialization of \p BaseFD in the current `omp
-  /// begin/end declare variant` scope.
+  /// Register \p D as specialization of all base functions in \p Bases in the
+  /// current `omp begin/end declare variant` scope.
   void ActOnFinishedFunctionDefinitionInOpenMPDeclareVariantScope(
-      FunctionDecl *FD, FunctionDecl *BaseFD);
+      Decl *D, SmallVectorImpl<FunctionDecl *> &Bases);
 
 public:
 
@@ -10867,7 +11038,7 @@ public:
                                      SourceLocation Loc);
   /// Return true inside OpenMP declare target region.
   bool isInOpenMPDeclareTargetContext() const {
-    return DeclareTargetNestingLevel > 0;
+    return !DeclareTargetNesting.empty();
   }
   /// Return true inside OpenMP target region.
   bool isInOpenMPTargetExecutionDirective() const;
@@ -11864,10 +12035,6 @@ public:
                                        AssignmentAction Action,
                                        bool AllowExplicit = false);
   ExprResult PerformImplicitConversion(Expr *From, QualType ToType,
-                                       AssignmentAction Action,
-                                       bool AllowExplicit,
-                                       ImplicitConversionSequence& ICS);
-  ExprResult PerformImplicitConversion(Expr *From, QualType ToType,
                                        const ImplicitConversionSequence& ICS,
                                        AssignmentAction Action,
                                        CheckedConversionKind CCK
@@ -12321,9 +12488,17 @@ public:
 
     VerifyICEDiagnoser(bool Suppress = false) : Suppress(Suppress) { }
 
-    virtual void diagnoseNotICE(Sema &S, SourceLocation Loc, SourceRange SR) =0;
-    virtual void diagnoseFold(Sema &S, SourceLocation Loc, SourceRange SR);
-    virtual ~VerifyICEDiagnoser() { }
+    virtual SemaDiagnosticBuilder
+    diagnoseNotICEType(Sema &S, SourceLocation Loc, QualType T);
+    virtual SemaDiagnosticBuilder diagnoseNotICE(Sema &S,
+                                                 SourceLocation Loc) = 0;
+    virtual SemaDiagnosticBuilder diagnoseFold(Sema &S, SourceLocation Loc);
+    virtual ~VerifyICEDiagnoser() {}
+  };
+
+  enum AllowFoldKind {
+    NoFold,
+    AllowFold,
   };
 
   /// VerifyIntegerConstantExpression - Verifies that an expression is an ICE,
@@ -12331,12 +12506,17 @@ public:
   /// Can optionally return the value of the expression.
   ExprResult VerifyIntegerConstantExpression(Expr *E, llvm::APSInt *Result,
                                              VerifyICEDiagnoser &Diagnoser,
-                                             bool AllowFold = true);
+                                             AllowFoldKind CanFold = NoFold);
   ExprResult VerifyIntegerConstantExpression(Expr *E, llvm::APSInt *Result,
                                              unsigned DiagID,
-                                             bool AllowFold = true);
+                                             AllowFoldKind CanFold = NoFold);
   ExprResult VerifyIntegerConstantExpression(Expr *E,
-                                             llvm::APSInt *Result = nullptr);
+                                             llvm::APSInt *Result = nullptr,
+                                             AllowFoldKind CanFold = NoFold);
+  ExprResult VerifyIntegerConstantExpression(Expr *E,
+                                             AllowFoldKind CanFold = NoFold) {
+    return VerifyIntegerConstantExpression(E, nullptr, CanFold);
+  }
 
   /// VerifyBitField - verifies that a bit field expression is an ICE and has
   /// the correct width, and that the field type is valid.
@@ -12388,84 +12568,11 @@ public:
                  /* Caller = */ FunctionDeclAndLoc>
       DeviceKnownEmittedFns;
 
-  /// Diagnostic builder for CUDA/OpenMP devices errors which may or may not be
-  /// deferred.
+  /// Creates a SemaDiagnosticBuilder that emits the diagnostic if the current
+  /// context is "used as device code".
   ///
-  /// In CUDA, there exist constructs (e.g. variable-length arrays, try/catch)
-  /// which are not allowed to appear inside __device__ functions and are
-  /// allowed to appear in __host__ __device__ functions only if the host+device
-  /// function is never codegen'ed.
-  ///
-  /// To handle this, we use the notion of "deferred diagnostics", where we
-  /// attach a diagnostic to a FunctionDecl that's emitted iff it's codegen'ed.
-  ///
-  /// This class lets you emit either a regular diagnostic, a deferred
-  /// diagnostic, or no diagnostic at all, according to an argument you pass to
-  /// its constructor, thus simplifying the process of creating these "maybe
-  /// deferred" diagnostics.
-  class DeviceDiagBuilder {
-  public:
-    enum Kind {
-      /// Emit no diagnostics.
-      K_Nop,
-      /// Emit the diagnostic immediately (i.e., behave like Sema::Diag()).
-      K_Immediate,
-      /// Emit the diagnostic immediately, and, if it's a warning or error, also
-      /// emit a call stack showing how this function can be reached by an a
-      /// priori known-emitted function.
-      K_ImmediateWithCallStack,
-      /// Create a deferred diagnostic, which is emitted only if the function
-      /// it's attached to is codegen'ed.  Also emit a call stack as with
-      /// K_ImmediateWithCallStack.
-      K_Deferred
-    };
-
-    DeviceDiagBuilder(Kind K, SourceLocation Loc, unsigned DiagID,
-                      FunctionDecl *Fn, Sema &S);
-    DeviceDiagBuilder(DeviceDiagBuilder &&D);
-    DeviceDiagBuilder(const DeviceDiagBuilder &) = default;
-    ~DeviceDiagBuilder();
-
-    /// Convertible to bool: True if we immediately emitted an error, false if
-    /// we didn't emit an error or we created a deferred error.
-    ///
-    /// Example usage:
-    ///
-    ///   if (DeviceDiagBuilder(...) << foo << bar)
-    ///     return ExprError();
-    ///
-    /// But see CUDADiagIfDeviceCode() and CUDADiagIfHostCode() -- you probably
-    /// want to use these instead of creating a DeviceDiagBuilder yourself.
-    operator bool() const { return ImmediateDiag.hasValue(); }
-
-    template <typename T>
-    friend const DeviceDiagBuilder &operator<<(const DeviceDiagBuilder &Diag,
-                                               const T &Value) {
-      if (Diag.ImmediateDiag.hasValue())
-        *Diag.ImmediateDiag << Value;
-      else if (Diag.PartialDiagId.hasValue())
-        Diag.S.DeviceDeferredDiags[Diag.Fn][*Diag.PartialDiagId].second
-            << Value;
-      return Diag;
-    }
-
-  private:
-    Sema &S;
-    SourceLocation Loc;
-    unsigned DiagID;
-    FunctionDecl *Fn;
-    bool ShowCallStack;
-
-    // Invariant: At most one of these Optionals has a value.
-    // FIXME: Switch these to a Variant once that exists.
-    llvm::Optional<SemaDiagnosticBuilder> ImmediateDiag;
-    llvm::Optional<unsigned> PartialDiagId;
-  };
-
-  /// Creates a DeviceDiagBuilder that emits the diagnostic if the current context
-  /// is "used as device code".
-  ///
-  /// - If CurContext is a __host__ function, does not emit any diagnostics.
+  /// - If CurContext is a __host__ function, does not emit any diagnostics
+  ///   unless \p EmitOnBothSides is true.
   /// - If CurContext is a __device__ or __global__ function, emits the
   ///   diagnostics immediately.
   /// - If CurContext is a __host__ __device__ function and we are compiling for
@@ -12478,15 +12585,16 @@ public:
   ///  if (CUDADiagIfDeviceCode(Loc, diag::err_cuda_vla) << CurrentCUDATarget())
   ///    return ExprError();
   ///  // Otherwise, continue parsing as normal.
-  DeviceDiagBuilder CUDADiagIfDeviceCode(SourceLocation Loc, unsigned DiagID);
+  SemaDiagnosticBuilder CUDADiagIfDeviceCode(SourceLocation Loc,
+                                             unsigned DiagID);
 
-  /// Creates a DeviceDiagBuilder that emits the diagnostic if the current context
-  /// is "used as host code".
+  /// Creates a SemaDiagnosticBuilder that emits the diagnostic if the current
+  /// context is "used as host code".
   ///
   /// Same as CUDADiagIfDeviceCode, with "host" and "device" switched.
-  DeviceDiagBuilder CUDADiagIfHostCode(SourceLocation Loc, unsigned DiagID);
+  SemaDiagnosticBuilder CUDADiagIfHostCode(SourceLocation Loc, unsigned DiagID);
 
-  /// Creates a DeviceDiagBuilder that emits the diagnostic if the current
+  /// Creates a SemaDiagnosticBuilder that emits the diagnostic if the current
   /// context is "used as device code".
   ///
   /// - If CurContext is a `declare target` function or it is known that the
@@ -12501,9 +12609,10 @@ public:
   ///  if (diagIfOpenMPDeviceCode(Loc, diag::err_vla_unsupported))
   ///    return ExprError();
   ///  // Otherwise, continue parsing as normal.
-  DeviceDiagBuilder diagIfOpenMPDeviceCode(SourceLocation Loc, unsigned DiagID);
+  SemaDiagnosticBuilder diagIfOpenMPDeviceCode(SourceLocation Loc,
+                                               unsigned DiagID);
 
-  /// Creates a DeviceDiagBuilder that emits the diagnostic if the current
+  /// Creates a SemaDiagnosticBuilder that emits the diagnostic if the current
   /// context is "used as host code".
   ///
   /// - If CurContext is a `declare target` function or it is known that the
@@ -12516,9 +12625,14 @@ public:
   ///  if (diagIfOpenMPHostode(Loc, diag::err_vla_unsupported))
   ///    return ExprError();
   ///  // Otherwise, continue parsing as normal.
-  DeviceDiagBuilder diagIfOpenMPHostCode(SourceLocation Loc, unsigned DiagID);
+  SemaDiagnosticBuilder diagIfOpenMPHostCode(SourceLocation Loc,
+                                             unsigned DiagID);
 
-  DeviceDiagBuilder targetDiag(SourceLocation Loc, unsigned DiagID);
+  SemaDiagnosticBuilder targetDiag(SourceLocation Loc, unsigned DiagID);
+  SemaDiagnosticBuilder targetDiag(SourceLocation Loc,
+                                   const PartialDiagnostic &PD) {
+    return targetDiag(Loc, PD.getDiagID()) << PD;
+  }
 
   /// Check if the expression is allowed to be used in expressions for the
   /// offloading devices.
@@ -12925,7 +13039,6 @@ private:
   bool CheckX86BuiltinTileArguments(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckX86BuiltinTileArgumentsRange(CallExpr *TheCall,
                                          ArrayRef<int> ArgNums);
-  bool CheckX86BuiltinTileArgumentsRange(CallExpr *TheCall, int ArgNum);
   bool CheckX86BuiltinTileDuplicate(CallExpr *TheCall, ArrayRef<int> ArgNums);
   bool CheckX86BuiltinTileRangeAndDuplicate(CallExpr *TheCall,
                                             ArrayRef<int> ArgNums);
@@ -12978,6 +13091,7 @@ private:
                                 int ArgNum, unsigned ExpectedFieldNum,
                                 bool AllowName);
   bool SemaBuiltinARMMemoryTaggingCall(unsigned BuiltinID, CallExpr *TheCall);
+  bool SemaBuiltinPPCMMACall(CallExpr *TheCall, const char *TypeDesc);
 
   // Matrix builtin handling.
   ExprResult SemaBuiltinMatrixTranspose(CallExpr *TheCall,
@@ -13034,6 +13148,8 @@ private:
 
   void CheckStrncatArguments(const CallExpr *Call,
                              IdentifierInfo *FnName);
+
+  void CheckFreeArguments(const CallExpr *E);
 
   void CheckReturnValExpr(Expr *RetValExp, QualType lhsType,
                           SourceLocation ReturnLoc,
@@ -13173,6 +13289,7 @@ public:
 
   /// The struct behind the CFErrorRef pointer.
   RecordDecl *CFError = nullptr;
+  bool isCFError(RecordDecl *D);
 
   /// Retrieve the identifier "NSError".
   IdentifierInfo *getNSErrorIdent();
@@ -13314,7 +13431,7 @@ public:
     ConstructorDestructor,
     BuiltinFunction
   };
-  /// Creates a DeviceDiagBuilder that emits the diagnostic if the current
+  /// Creates a SemaDiagnosticBuilder that emits the diagnostic if the current
   /// context is "used as device code".
   ///
   /// - If CurLexicalContext is a kernel function or it is known that the
@@ -13332,7 +13449,8 @@ public:
   /// if (!S.Context.getTargetInfo().hasFloat128Type() &&
   ///     S.getLangOpts().SYCLIsDevice)
   ///   SYCLDiagIfDeviceCode(Loc, diag::err_type_unsupported) << "__float128";
-  DeviceDiagBuilder SYCLDiagIfDeviceCode(SourceLocation Loc, unsigned DiagID);
+  SemaDiagnosticBuilder SYCLDiagIfDeviceCode(SourceLocation Loc,
+                                             unsigned DiagID);
 
   /// Check whether we're allowed to call Callee from the current context.
   ///
@@ -13429,7 +13547,7 @@ template <> struct DenseMapInfo<clang::Sema::FunctionDeclAndLoc> {
 
   static unsigned getHashValue(const FunctionDeclAndLoc &FDL) {
     return hash_combine(FDBaseInfo::getHashValue(FDL.FD),
-                        FDL.Loc.getRawEncoding());
+                        FDL.Loc.getHashValue());
   }
 
   static bool isEqual(const FunctionDeclAndLoc &LHS,

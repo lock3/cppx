@@ -1,4 +1,4 @@
-; RUN: opt -O3 -enable-matrix -debug-pass=Structure < %s -o /dev/null 2>&1 | FileCheck %s
+; RUN: opt -enable-new-pm=0 -O3 -enable-matrix -debug-pass=Structure < %s -o /dev/null 2>&1 | FileCheck %s
 
 ; REQUIRES: asserts
 
@@ -116,6 +116,8 @@
 ; CHECK-NEXT:         Loop Pass Manager
 ; CHECK-NEXT:           Rotate Loops
 ; CHECK-NEXT:         Memory SSA
+; CHECK-NEXT:         Lazy Branch Probability Analysis
+; CHECK-NEXT:         Lazy Block Frequency Analysis
 ; CHECK-NEXT:         Loop Pass Manager
 ; CHECK-NEXT:           Loop Invariant Code Motion
 ; CHECK-NEXT:           Unswitch loops
@@ -137,6 +139,8 @@
 ; CHECK-NEXT:           Recognize loop idioms
 ; CHECK-NEXT:           Delete dead loops
 ; CHECK-NEXT:           Unroll loops
+; CHECK-NEXT:         SROA
+; CHECK-NEXT:         Function Alias Analysis Results
 ; CHECK-NEXT:         MergedLoadStoreMotion
 ; CHECK-NEXT:         Phi Values Analysis
 ; CHECK-NEXT:         Function Alias Analysis Results
@@ -161,22 +165,22 @@
 ; CHECK-NEXT:         Lazy Value Information Analysis
 ; CHECK-NEXT:         Jump Threading
 ; CHECK-NEXT:         Value Propagation
+; CHECK-NEXT:         Post-Dominator Tree Construction
+; CHECK-NEXT:         Aggressive Dead Code Elimination
 ; CHECK-NEXT:         Basic Alias Analysis (stateless AA impl)
 ; CHECK-NEXT:         Function Alias Analysis Results
-; CHECK-NEXT:         Phi Values Analysis
-; CHECK-NEXT:         Memory Dependence Analysis
-; CHECK-NEXT:         Dead Store Elimination
-; CHECK-NEXT:         Function Alias Analysis Results
 ; CHECK-NEXT:         Memory SSA
+; CHECK-NEXT:         Dead Store Elimination
 ; CHECK-NEXT:         Natural Loop Information
 ; CHECK-NEXT:         Canonicalize natural loops
 ; CHECK-NEXT:         LCSSA Verifier
 ; CHECK-NEXT:         Loop-Closed SSA Form Pass
+; CHECK-NEXT:         Function Alias Analysis Results
 ; CHECK-NEXT:         Scalar Evolution Analysis
+; CHECK-NEXT:         Lazy Branch Probability Analysis
+; CHECK-NEXT:         Lazy Block Frequency Analysis
 ; CHECK-NEXT:         Loop Pass Manager
 ; CHECK-NEXT:           Loop Invariant Code Motion
-; CHECK-NEXT:         Post-Dominator Tree Construction
-; CHECK-NEXT:         Aggressive Dead Code Elimination
 ; CHECK-NEXT:         Simplify the CFG
 ; CHECK-NEXT:         Dominator Tree Construction
 ; CHECK-NEXT:         Basic Alias Analysis (stateless AA impl)
@@ -282,10 +286,10 @@
 ; CHECK-NEXT:       LCSSA Verifier
 ; CHECK-NEXT:       Loop-Closed SSA Form Pass
 ; CHECK-NEXT:       Scalar Evolution Analysis
-; CHECK-NEXT:       Loop Pass Manager
-; CHECK-NEXT:         Loop Invariant Code Motion
 ; CHECK-NEXT:       Lazy Branch Probability Analysis
 ; CHECK-NEXT:       Lazy Block Frequency Analysis
+; CHECK-NEXT:       Loop Pass Manager
+; CHECK-NEXT:         Loop Invariant Code Motion
 ; CHECK-NEXT:       Optimization Remark Emitter
 ; CHECK-NEXT:       Warn about non-applied transformations
 ; CHECK-NEXT:       Alignment from assumptions

@@ -20,7 +20,7 @@ include "mlir/IR/OpBase.td"
 // Resource Bindings
 //===----------------------------------------------------------------------===//
 
-// A generic resource that can be attachted to a general base side effect.
+// A generic resource that can be attached to a general base side effect.
 class Resource<string resourceName> {
   /// The resource that the associated effect is being applied to.
   string name = resourceName;
@@ -51,43 +51,16 @@ class EffectOpInterfaceBase<string name, string baseEffect>
         Collects all of the operation's effects into `effects`.
       }],
       "void", "getEffects",
-         (ins "SmallVectorImpl<SideEffects::EffectInstance<"
+         (ins "SmallVectorImpl<::mlir::SideEffects::EffectInstance<"
               # baseEffect # ">> &":$effects)
     >,
-    InterfaceMethod<[{
-        Collects all of the operation's effects into `effects`.
-      }],
-      "void", "getEffectsOnValue",
-         (ins "Value":$value,
-              "SmallVectorImpl<SideEffects::EffectInstance<"
-              # baseEffect # ">> &":$effects), [{
-          $_op.getEffects(effects);
-          llvm::erase_if(effects, [&](auto &it) {
-            return it.getValue() != value;
-          });
-       }]
-    >,
-    InterfaceMethod<[{
-        Collects all of the effects that are exhibited by this operation on the
-        given resource and place them in 'effects'.
-      }],
-      "void", "getEffectsOnResource",
-         (ins "SideEffects::Resource *":$resource,
-              "SmallVectorImpl<SideEffects::EffectInstance<"
-              # baseEffect # ">> &":$effects), [{
-          $_op.getEffects(effects);
-          llvm::erase_if(effects, [&](auto &it) {
-            return it.getResource() != resource;
-          });
-       }]
-    >
   ];
 
   let extraClassDeclaration = [{
     /// Collect all of the effect instances that correspond to the given
     /// `Effect` and place them in 'effects'.
     template <typename Effect> void getEffects(
-      SmallVectorImpl<SideEffects::EffectInstance<
+      SmallVectorImpl<::mlir::SideEffects::EffectInstance<
                                               }] # baseEffect # [{>> &effects) {
       getEffects(effects);
       llvm::erase_if(effects, [&](auto &it) {
@@ -104,7 +77,7 @@ class EffectOpInterfaceBase<string name, string baseEffect>
       });
     }
 
-    /// Returns if this operation only has the given effect.
+    /// Returns true if this operation only has the given effect.
     template <typename Effect> bool onlyHasEffect() {
       SmallVector<SideEffects::EffectInstance<}] # baseEffect # [{>, 4> effects;
       getEffects(effects);
@@ -113,18 +86,38 @@ class EffectOpInterfaceBase<string name, string baseEffect>
       });
     }
 
-    /// Returns if this operation has no effects.
+    /// Returns true if this operation has no effects.
     bool hasNoEffect() {
-      SmallVector<SideEffects::EffectInstance<}] # baseEffect # [{>, 4> effects;
+      SmallVector<::mlir::SideEffects::EffectInstance<}] # baseEffect # [{>, 4> effects;
       getEffects(effects);
       return effects.empty();
     }
 
-    /// Returns if the given operation has no effects for this interface.
+    /// Returns true if the given operation has no effects for this interface.
     static bool hasNoEffect(Operation *op) {
       if (auto interface = dyn_cast<}] # name # [{>(op))
         return interface.hasNoEffect();
-      return op->hasTrait<OpTrait::HasRecursiveSideEffects>();
+      return op->hasTrait<::mlir::OpTrait::HasRecursiveSideEffects>();
+    }
+
+    /// Collect all of the effect instances that operate on the provided value
+    /// and place them in 'effects'.
+    void getEffectsOnValue(::mlir::Value value,
+              llvm::SmallVectorImpl<::mlir::SideEffects::EffectInstance<
+              }] # baseEffect # [{>> & effects) {
+      getEffects(effects);
+      llvm::erase_if(effects, [&](auto &it) { return it.getValue() != value; });
+    }
+
+    /// Collect all of the effect instances that operate on the provided
+    /// resource and place them in 'effects'.
+    void getEffectsOnValue(::mlir::SideEffects::Resource *resource,
+              llvm::SmallVectorImpl<::mlir::SideEffects::EffectInstance<
+              }] # baseEffect # [{>> & effects) {
+      getEffects(effects);
+      llvm::erase_if(effects, [&](auto &it) {
+        return it.getResource() != resource;
+      });
     }
   }];
 
@@ -178,7 +171,7 @@ class SideEffectsTraitBase<EffectOpInterfaceBase parentInterface,
 // `MemoryEffects`.
 def MemoryEffectsOpInterface
     : EffectOpInterfaceBase<"MemoryEffectOpInterface",
-                            "MemoryEffects::Effect"> {
+                            "::mlir::MemoryEffects::Effect"> {
   let description = [{
     An interface used to query information about the memory effects applied by
     an operation.
