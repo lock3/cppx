@@ -19,6 +19,7 @@
 #include "clang/AST/Type.h"
 #include "llvm/ADT/PointerUnion.h"
 
+
 #include "clang/Gold/GoldSyntax.h"
 #include "clang/Gold/GoldSema.h"
 
@@ -33,6 +34,7 @@ class Expr;
 class NamespaceDecl;
 class Sema;
 class TypeSourceInfo;
+class NestedNameSpecifier;
 
 } // namespace clang
 
@@ -90,6 +92,7 @@ public:
   /// alignof operator implementations.
   clang::Expr *elaborateTypeTraitsOp(const AtomSyntax *Name, const CallSyntax *S,
                                      clang::UnaryExprOrTypeTrait Trait);
+  clang::Expr *elaborateSizeOfPack(const AtomSyntax *Name, const CallSyntax *S);
 
   clang::Expr *elaborateDeclTypeOp(const AtomSyntax *Name, const CallSyntax *S);
   clang::Expr *elaborateNoExceptOp(const AtomSyntax *Name, const CallSyntax *S);
@@ -102,6 +105,26 @@ public:
 
   clang::Expr *elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op,
                                      const Syntax *RHS);
+
+  clang::Expr *elaborateMemberAccessRHS(clang::Expr *ElaboratedLHS,
+                                        const Syntax *LHS,
+                                        const CallSyntax *Op,
+                                        const Syntax *RHS);
+  clang::Expr *elaborateMemberAccessRHSAtom(clang::Expr *ElaboratedLHS,
+                                            const Syntax *LHS,
+                                            const CallSyntax *Op,
+                                            const AtomSyntax *RHS);
+
+  clang::Expr *elaborateDisambuationSyntax(clang::Expr *ElaboratedLHS,
+                                           const Syntax *LHS,
+                                           const CallSyntax *Op,
+                                           const CallSyntax *RHS);
+
+  clang::Expr *elaborateConstructDestructExpr(clang::Expr *ElaboratedLHS,
+                                              const Syntax *LHS,
+                                              const CallSyntax *Op,
+                                              const AtomSyntax *RHS);
+
   clang::Expr *elaborateInPlaceNewCall(clang::Expr *LHSPtr,
                                        const CallSyntax *Op,
                                        const Syntax *RHS);
@@ -125,7 +148,16 @@ public:
                                       bool IsConstExpr = false);
 
   clang::Expr *elaborateMacro(const MacroSyntax *Macro);
-  clang::Expr *elaborateClass(const MacroSyntax *Macro);
+
+  clang::Expr *elaborateInitListCall(const MacroSyntax *Macro);
+  clang::Expr *elaborateNewExpr(const MacroSyntax *Macro);
+  clang::Expr *elaborateNewExpr_ArrayCall(const CallSyntax *S,
+                                   llvm::Optional<clang::Expr *> &DynArrayExpr);
+  clang::Expr *elaborateNewExpr_TypeNode(const Syntax *S,
+                                   llvm::Optional<clang::Expr *> &DynArrayExpr);
+  // clang::Expr *elaborateNew_Atom(const CallSyntax *S);
+
+  // clang::Expr *elaborateClass(const MacroSyntax *Macro);
 
   clang::Expr *elaborateElementExpr(const ElemSyntax *Elem);
 
@@ -136,6 +168,7 @@ public:
   clang::Expr *elaborateCastOp(const CallSyntax *CastOp);
 
   clang::Expr *elaborateThrowExpr(const CallSyntax *Call);
+  clang::Expr *elaborateDeleteExpr(bool IsArrayDelete, const CallSyntax *Call);
 private:
   clang::Expr *handleRawBaseSpecifier(const CallSyntax *Op);
 
@@ -212,7 +245,10 @@ public:
     bool SavedValue;
     bool &Boolean;
   };
+
 };
+
+
 
 } // namespace gold
 

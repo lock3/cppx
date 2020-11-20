@@ -262,6 +262,7 @@ namespace gold
     Syntax *parseWhile();
     Syntax *parseFor();
     Syntax *parseNew();
+    Syntax *parseDelete();
     Syntax *parseBlockLoop(Token KWTok);
 
     Syntax *parseThrow();
@@ -283,6 +284,7 @@ namespace gold
     Syntax *parsePrimary();
     Syntax *parseId();
     Syntax *parseParen();
+
 
     Syntax *parseOf();
     Syntax *parseImm();
@@ -319,6 +321,7 @@ namespace gold
     Syntax *onCall(Syntax *e1, Syntax *e2);
     Syntax *onElem(const TokenPair& toks, Syntax *e1, Syntax *e2);
     Syntax *onMacro(Syntax *e1, Syntax *e2);
+    Syntax *onMacro(Syntax *e1, Syntax *e2, Syntax *e3);
     Syntax *onCatch(const Token &Catch, Syntax *Args, Syntax *Block);
     Syntax *onIf(const Token& tok, Syntax *e1, Syntax *e2, Syntax *e3);
     Syntax *onElse(const Token& tok, Syntax *e1);

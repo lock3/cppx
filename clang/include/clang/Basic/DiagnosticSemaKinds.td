@@ -11414,11 +11414,25 @@ def err_invalid_partial_expr_call_args : Error<
 def err_invalid_partial_expr_malformed : Error<
   "invalid expression">;
 
-def err_invalid_inplace_new_template_params : Error<
-  "invalid number of template parameters given to construct function">;
+def err_invalid_inplace_template_params : Error<
+  "invalid number of template parameters given to "
+  "%select{construct|destruct}0">;
 
-def err_incomplete_placement_new_expression : Error<
-  "incomplete call to construct">;
+def err_incomplete_placement_expression : Error<
+  "incomplete call to %select{construct|destruct}0">;
+
+def err_invalid_destructor_call : Error<
+  "invalid reference to destruct of type %0">;
+
+def err_cannot_allocate_type : Error<
+  "cannot allocate type %0">;
+
+def err_invalid_sizeof_complex_arg : Error<
+  "argument provided does not refer to a parameter pack">;
+
+def err_invalid_call_to_sizeof_pack : Error<
+  "invalid use of 'sizeof...', sizeof expects a single argument which is the "
+  "name of a parameter pack.">;
 
 } // end of Gold category
 
