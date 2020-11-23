@@ -3453,11 +3453,13 @@ public:
   ExprResult RebuildCppxDependentMemberAccessExpr(Expr *BaseE,
                                                 QualType BaseType,
                                                 SourceLocation OperatorLoc,
-                                   const DeclarationNameInfo &MemberNameInfo) {
+                                   const DeclarationNameInfo &MemberNameInfo,
+                                                Expr *NameExpr = nullptr) {
     return clang::CppxDependentMemberAccessExpr::Create(SemaRef.getASTContext(),
                                                         BaseE, BaseType,
                                                         OperatorLoc,
-                                                        MemberNameInfo);
+                                                        MemberNameInfo,
+                                                        NameExpr);
   }
 
   /// Build a new member reference expression.
@@ -14180,9 +14182,13 @@ TreeTransform<Derived>::TransformCppxDependentMemberAccessExpr(
     BaseType = getDerived().TransformType(E->getBaseType());
     // ObjectType = BaseType->castAs<PointerType>()->getPointeeType();
   }
+
+  // QualType NameQualifierTy = E->getNameQualifierTy();
+  // if (!NameQualifierTy.isNull()) {
+  //   NameQualifierTy = getDerived().TransformType(E->getNameQualifierTy());
+  // }
   // FIXME: I may need to attempt to construct a new/special kind scope spec.
   // using a name.
-
   // // Transform the first part of the nested-name-specifier that qualifies
   // // the member name.
   // NamedDecl *FirstQualifierInScope
@@ -14251,7 +14257,8 @@ TreeTransform<Derived>::TransformCppxDependentMemberAccessExpr(
   return getDerived().RebuildCppxDependentMemberAccessExpr(Base.get(),
                                                            BaseType,
                                                            E->getOperatorLoc(),
-                                                           NameInfo);
+                                                           NameInfo,
+                                                           E->getNameQualifierExpr());
 }
 
 

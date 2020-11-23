@@ -1110,12 +1110,24 @@ namespace {
 
     ExprResult TransformCXXFragmentExpr(CXXFragmentExpr *E);
 
-    ExprResult TransformCppxDependentMemberAccessExpr(
-                                            CppxDependentMemberAccessExpr *E) {
+    ExprResult RebuildCppxDependentMemberAccessExpr(Expr *BaseE,
+                                                  QualType BaseType,
+                                                  SourceLocation OperatorLoc,
+                                    const DeclarationNameInfo &MemberNameInfo,
+                                                  Expr *NameExpr = nullptr) {
+      auto E = clang::CppxDependentMemberAccessExpr::Create(
+        SemaRef.getASTContext(), BaseE, BaseType, OperatorLoc, MemberNameInfo,
+        NameExpr);
       assert(SemaRef.getGoldSema() && "invalid without gold language support");
       return SemaRef.getGoldSema()->TransformCppxDependentMemberAccessExpr(
           TemplateArgs, Loc, Entity, E);
     }
+    // ExprResult TransformCppxDependentMemberAccessExpr(
+    //                                         CppxDependentMemberAccessExpr *E) {
+    //   assert(SemaRef.getGoldSema() && "invalid without gold language support");
+    //   return SemaRef.getGoldSema()->TransformCppxDependentMemberAccessExpr(
+    //       TemplateArgs, Loc, Entity, E);
+    // }
 
     QualType TransformCppxTypeExprType(TypeLocBuilder &TLB,
                                        CppxTypeExprTypeLoc TL) {

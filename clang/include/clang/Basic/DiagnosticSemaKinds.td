@@ -11437,6 +11437,11 @@ def err_invalid_call_to_sizeof_pack : Error<
 def err_invalid_dependent_expr : Error<"invalid dependent expression">;
 def err_missing_member_dependent_expr : Error<
   "failed to locate member %0 within dependent expression">;
+def err_nested_namespecifier_not_a_class : Error<
+  "type %0 does not name a class">;
+
+def err_nested_namespecifier_not_base : Error<
+  "type %0 is not derived from %1">;
 
 } // end of Gold category
 

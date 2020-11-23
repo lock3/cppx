@@ -86,31 +86,56 @@ T1 = class:
 
 bar():void!
   v : T2[T1]
+  v.foo()
 )";
-  auto ToMatch = functionDecl(
+  auto ToMatch = cxxMethodDecl(
     hasName("foo"),
-    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
+    hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldTemplateAmbiguity, DependentNameWithDependentNestedNameSpecifierExpr) {
+  StringRef Code = R"(
+T2[T:type] = class (T.X):
+  X : int
+  foo() : void!
+    Q : type = T2[T].(T.X)X
+
+T3:type = class:
+  X : type = int
+T1 = class:
+  X : type = T3
+
+bar():void!
+  v : T2[T1]
+  v.foo()
+)";
+  auto ToMatch = cxxMethodDecl(
+    hasName("foo"),
+    hasDescendant(typeAliasDecl(hasType(asString("T3::X"))))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
 
-TEST(GoldTemplateAmbiguity, MemberExprWithNestedNameSpecifierNonTemplateClasss) {
+TEST(GoldTemplateAmbiguity, MemberExprWithNestedNameSpecifierNonTemplateClass) {
   StringRef Code = R"(
 T2 = class (T1):
   X : int
-  foo()[T:type]: void!
+  foo[T:type](): void!
     Q : type = T2.(T)X
 
 T1 = class:
   X : type = int
 
 bar():void!
-  v : T2[T1]
+  v : T2
+  v.foo[T1]()
 )";
-  auto ToMatch = functionDecl(
+  auto ToMatch = functionTemplateDecl(
     hasName("foo"),
-    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
+    has(cxxMethodDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -166,11 +191,13 @@ foo[T:type]():void!
   T.T2.foo()
 
 bar():void!
-  foo[T2]()
+  foo[T1]()
 )";
-  auto ToMatch = functionDecl(
+  auto ToMatch = functionTemplateDecl(
     hasName("foo"),
-    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
+    has(functionDecl(
+      hasName("foo"), hasDescendant(callExpr())
+    ))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -186,11 +213,13 @@ foo[T:type]():void!
   x = T.T2.foo()
 
 bar():void!
-  foo[T2]()
+  foo[T1]()
 )";
-  auto ToMatch = functionDecl(
+  auto ToMatch = functionTemplateDecl(
     hasName("foo"),
-    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
+    has(functionDecl(
+      hasName("foo"), hasDescendant(callExpr())
+    ))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

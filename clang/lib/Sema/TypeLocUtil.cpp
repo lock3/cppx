@@ -564,7 +564,9 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::AttributedTypeLoc>
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::SubstTemplateTypeParmTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
+  clang::SubstTemplateTypeParmTypeLoc TL
+                            = TLB.push<clang::SubstTemplateTypeParmTypeLoc>(Ty);
+  return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::SubstTemplateTypeParmTypeLoc>

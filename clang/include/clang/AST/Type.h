@@ -6724,7 +6724,8 @@ class CppxTypeExprType : public Type, public llvm::FoldingSetNode {
   Expr *TyExpr;
 public:
   CppxTypeExprType(Expr *E)
-    : Type(CppxTypeExpr, QualType(), TypeDependence::Instantiation,
+    : Type(CppxTypeExpr, QualType(),
+      TypeDependence::DependentInstantiation,
       /*MetaType=*/false),
       TyExpr(E)
   { }

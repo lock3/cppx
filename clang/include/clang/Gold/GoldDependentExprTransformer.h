@@ -40,10 +40,41 @@ public:
   clang::Expr *transformCppxDependentMemberAccessExpr(
                                        clang::CppxDependentMemberAccessExpr *E);
   clang::Expr *transformCppxLiteralType(clang::CppxTypeLiteral *E);
-
+  clang::QualType transformType(clang::QualType Ty);
   clang::QualType transformSubstTemplateTypeParmType(
                                  const clang::SubstTemplateTypeParmType *STTPT);
+  clang::QualType transformTemplateSpecializationType(
+               const clang::TemplateSpecializationType* TemplateSpecialization);
+  clang::QualType transformTypeExprType(const clang::CppxTypeExprType *Ty);
   clang::Expr *buildDeclRefExpr(clang::VarDecl *VD, clang::SourceLocation Loc);
+  clang::Expr *buildUnresolvedCall(clang::Expr *LHS,
+                                   clang::CXXRecordDecl *RD,
+                                   clang::DeclContext::lookup_result &Overloads,
+                                   const clang::DeclarationNameInfo &DNI,
+                                   clang::SourceLocation Loc);
+  clang::Expr *lookupIncontext(clang::DeclContext *PreviousContext,
+                               clang::Expr *Expr);
+private:
+  clang::DeclContext *LookupContext = nullptr;
+  struct LookupContextRAII {
+    DependentExprTransformer &Transformer;
+    clang::DeclContext *PreviousDC = nullptr;
+    LookupContextRAII(DependentExprTransformer &T,
+                      clang::DeclContext *NextDC = nullptr)
+      :Transformer(T), PreviousDC(T.LookupContext)
+    {
+      Transformer.LookupContext = NextDC;
+    }
+
+    void init(clang::DeclContext *DC) {
+      Transformer.LookupContext = DC;
+    }
+
+    ~LookupContextRAII() {
+      Transformer.LookupContext = PreviousDC;
+    }
+  };
+
 };
 }
 

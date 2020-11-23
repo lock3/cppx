@@ -394,7 +394,13 @@ static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
         return;
       }
     }
-
+    if ((BaseExpr->isTypeDependent() || BaseExpr->isValueDependent()
+        || BaseExpr->getType()->isDependentType())
+        && !isa<clang::CppxTypeLiteral>(BaseExpr)) {
+      // Updating a dependent expression that may or may not have a result type.
+      BaseExpr = SemaRef.buildTypeExprTypeFromExpr(BaseExpr,
+                                                   BaseExpr->getExprLoc());
+    }
     clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
                                                       BaseExpr, Base->getLoc());
     if (!TInfo)
@@ -3060,12 +3066,25 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
-  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(TypeExpr,
-                                                                  TypeLocation);
+  clang::TypeSourceInfo *TInfo = nullptr;
+  if (isa<clang::CppxTypeLiteral>(TypeExpr)) {
+    TInfo = SemaRef.getTypeSourceInfoFromExpr(TypeExpr, TypeLocation);
+  } else if (TypeExpr->getType()->isDependentType()) {
+    // Then this is a very special dependent type variable, that I need
+    // to figure out.
+    auto TyLiteral = SemaRef.buildTypeExprTypeFromExpr(TypeExpr, TypeLocation);
+    TInfo = TyLiteral->getValue();
+  } else {
+    // Basically if we don't know what the type of the expression actually
+    // is, if it's not a type then we emit an error message about it.
+    SemaRef.Diags.Report(D->Op->getLoc(),
+                        clang::diag::err_unsupported_unknown_any_decl)
+                        << D->getId();
+  }
   if (!TInfo) {
     SemaRef.Diags.Report(D->Op->getLoc(),
-                         clang::diag::err_unsupported_unknown_any_decl)
-                         << D->getId();
+                        clang::diag::err_unsupported_unknown_any_decl)
+                        << D->getId();
     return nullptr;
   }
   // This is where we differentiate between type alias template,
@@ -3649,15 +3668,17 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
   // Elaborating RHS
   ExprElaborator Elab(Context, SemaRef);
   clang::Expr *InitTyExpr = Elab.elaborateExpr(D->Init);
-  if (!InitTyExpr){
+  if (!InitTyExpr) {
     unsigned DiagID =
       SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
                                     "initializer of type alias is not a type");
     SemaRef.Diags.Report(D->Init->getLoc(), DiagID);
     return nullptr;
   }
+
   if (isa<clang::CppxDependentMemberAccessExpr>(InitTyExpr)) {
     InitTyExpr = SemaRef.buildTypeExprTypeFromExpr(InitTyExpr, D->Init->getLoc());
+
   } else if (!InitTyExpr->getType()->isTypeOfTypes()) {
     unsigned DiagID =
       SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
@@ -4036,8 +4057,9 @@ void Elaborator::elaborateDef(Declaration *D) {
     return elaborateTemplateParamInit(D);
   if (D->declaresMemberVariable())
     return;
-  if (D->declaresTypeAlias())
+  if (D->declaresTypeAlias()){
     return;
+  }
   return elaborateVariableInit(D);
 }
 

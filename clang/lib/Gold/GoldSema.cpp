@@ -1116,8 +1116,9 @@ unsigned Sema::computeTemplateDepth() const {
 
 // True when we are elaborating a using macro within a class.
 bool Sema::elaboratingUsingInClassScope() const {
-  if (!CurrentDecl->Decl)
-    return false;
+  if(CurrentDecl)
+    if (!CurrentDecl->Decl)
+      return false;
   return scopeIsWithinClass() && CurrentDecl->Decl->isUsingDirective();
 }
 
@@ -1146,6 +1147,7 @@ clang::CppxTypeLiteral *Sema::buildAnyTypeExpr(clang::QualType KindTy,
     clang::QualType Ty, clang::SourceLocation Loc) {
   return buildAnyTypeExpr(KindTy, BuildAnyTypeLoc(Context.CxxAST, Ty, Loc));
 }
+
 clang::CppxTypeLiteral *Sema::buildTypeExprTypeFromExpr(clang::Expr *E,
                                                     clang::SourceLocation Loc) {
   return buildAnyTypeExpr(Context.CxxAST.CppxKindTy,
@@ -1153,6 +1155,14 @@ clang::CppxTypeLiteral *Sema::buildTypeExprTypeFromExpr(clang::Expr *E,
                                           Context.CxxAST.getCppxTypeExprTy(E),
                                           Loc));
 }
+
+clang::QualType Sema::buildQualTypeExprTypeFromExpr(clang::Expr *E,
+                                              clang::SourceLocation Loc) {
+  clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST,
+                  Context.CxxAST.getCppxTypeExprTy(E), Loc);
+  return TInfo->getType();
+}
+
 clang::CppxTypeLiteral *
 Sema::buildFunctionTypeExpr(clang::QualType FnTy, SourceLocation BeginLoc,
                             clang::SourceLocation LParenLoc,

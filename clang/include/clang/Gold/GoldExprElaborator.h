@@ -101,7 +101,10 @@ public:
   clang::Expr *elaborateBinaryFoldExpr(const AtomSyntax *Name, const CallSyntax *S);
   clang::Expr *elaborateTypeidOp(const AtomSyntax *Name, const CallSyntax *S);
 
-
+  clang::Expr *elaborateDependentExpr(clang::Expr *ElaboratedLHS,
+                                      const Syntax *LHS,
+                                      const CallSyntax *Op,
+                                      const Syntax *RHS);
 
   clang::Expr *elaborateMemberAccess(const Syntax *LHS, const CallSyntax *Op,
                                      const Syntax *RHS);

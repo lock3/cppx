@@ -58,8 +58,8 @@ CppxDependentMemberAccessExpr::CppxDependentMemberAccessExpr(
       Expr *NameSpecExpr)
     : Expr(CppxDependentMemberAccessExprClass, Ctx.DependentTy, VK_LValue,
            OK_Ordinary),
-      Base(Base), BaseType(BaseType), MemberNameInfo(MemberNameInfo),
-      NameSpecifier(NameSpecExpr)
+      Base(Base), NameSpecifier(NameSpecExpr), BaseType(BaseType),
+      MemberNameInfo(MemberNameInfo)
 {
   CppxDependentMemberAccessExprBits.OperatorLoc = OperatorLoc;
   setDependence(computeDependence(this));

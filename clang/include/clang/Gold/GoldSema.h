@@ -363,6 +363,9 @@ public:
   clang::CppxTypeLiteral *buildTypeExprTypeFromExpr(clang::Expr *E,
                                                     clang::SourceLocation Loc);
 
+  clang::QualType buildQualTypeExprTypeFromExpr(clang::Expr *E,
+                                                clang::SourceLocation Loc);
+
   clang::CppxTypeLiteral *buildTypeExprFromTypeDecl(
                       const clang::TypeDecl *TyDecl, clang::SourceLocation Loc);
 
