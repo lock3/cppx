@@ -3146,16 +3146,6 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
         << Name << PreviousDC << D->ScopeSpec.getRange();
       return nullptr;
     }
-    // if (!D.getDeclSpec().isFriendSpecified()) {
-    //   if (diagnoseQualifiedDeclaration(
-    //           D.getCXXScopeSpec(), DC, Name, D.getIdentifierLoc(),
-    //           D.getName().getKind() == UnqualifiedIdKind::IK_TemplateId)) {
-    //     if (DC->isRecord())
-    //       return nullptr;
-
-    //     D.setInvalidType();
-    //   }
-    // }
   }
 
   if (D->hasNestedNameSpecifier()) {
@@ -4229,14 +4219,6 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
           }
         }
       } else {
-        clang::Sema &CxxSema = SemaRef.getCxxSema();
-        auto Result =
-          CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), InitExpr, Ty);
-        if (Result == clang::Sema::DAR_Failed) {
-          SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_failed);
-          return;
-        }
-
         if (InitExpr->getType()->isNamespaceType()) {
           D->Cxx->getDeclContext()->removeDecl(D->Cxx);
           D->Cxx = buildNsAlias(Context.CxxAST, SemaRef, D, InitExpr);

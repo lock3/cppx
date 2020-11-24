@@ -2291,9 +2291,6 @@ Syntax *Parser::onElem(TokenPair const& tok, Syntax *e1, Syntax *e2) {
 Syntax *Parser::onMacro(Syntax *e1, Syntax *e2) {
   return new (Context) MacroSyntax(e1, e2, nullptr);
 }
-Syntax *Parser::onMacro(Syntax *e1, Syntax *e2, Syntax *e3) {
-  return new (Context) MacroSyntax(e1, e2, e3);
-}
 
 Syntax *Parser::onMacro(Syntax *e1, Syntax *e2, Syntax *e3) {
   return new (Context) MacroSyntax(e1, e2, e3);
