@@ -984,13 +984,54 @@ Syntax *Parser::parseFor()
 }
 
 Syntax *Parser::parseNew() {
-  Token Tok = expectToken("new");
+  Token Tok = expectToken(tok::NewKeyword);
 
   Syntax *PlacementArgs = nextTokenIs(tok::LeftParen) ? parseParen() : nullptr;
-  Syntax *Call = makeCall(Context, *this, Tok, PlacementArgs);
-  Syntax *Block = parsePost();
+  // Syntax *Call = makeCall(Context, *this, Tok, PlacementArgs);
+  Syntax *Call = new (Context) CallSyntax(makeOperator(Context, *this,
+                                                       tok::NewKeyword,
+                                                       Tok.getLocation(),
+                                                       Tok.getSpelling()),
+                                          PlacementArgs);
+  EnclosingBrackets Brackets(*this);
+  if (!Brackets.expectOpen())
+    return onError();
 
-  return onMacro(Call, Block);
+  Syntax *TypeExpr = parsePre();
+
+  if (!Brackets.expectClose())
+    return onError();
+
+  if (nextTokenIs(tok::LeftParen)) {
+    Syntax *CtorArgs = parseParen();
+    TypeExpr = onCall(TypeExpr, CtorArgs);
+    // This allows for universal initialization syntax.
+  } else if (nextTokenIs(tok::LeftBrace)) {
+    Syntax *e2 = parseBlock();
+    TypeExpr = onMacro(TypeExpr, e2);
+  }
+  return onMacro(Call, TypeExpr);
+}
+
+Syntax *Parser::parseDelete() {
+  Token DeleteToken = expectToken(tok::DeleteKeyword);
+  bool ArrayDelete = false;
+  if (nextTokenIs(tok::LeftBracket) && nthTokenIs(1, tok::RightBracket)) {
+    ArrayDelete = true;
+    consumeToken();
+    consumeToken();
+  }
+  Syntax *Arg = parsePre();
+  Syntax *Seq = onList(ArgArray, llvm::SmallVector<Syntax *, 1>({Arg}));
+  Syntax *Name;
+  if (ArrayDelete) {
+    Name = makeOperator(Context, *this, tok::ArrayDelete,
+                        DeleteToken.getLocation(), "delete[]");
+  } else {
+    Name = makeOperator(Context, *this, tok::DeleteKeyword,
+                        DeleteToken.getLocation(), DeleteToken.getSpelling());
+  }
+  return onCall(Name, Seq);
 }
 
 Syntax *Parser::parseLambda() {
@@ -1164,11 +1205,23 @@ Syntax *Parser::parseMacro()
   if (nextTokenIs("for"))
     return parseFor();
 
-  if (nextTokenIs("new"))
+  if (nextTokenIs(tok::NewKeyword))
     return parseNew();
 
   if (nextTokenIs(tok::LambdaKeyword))
     return parseLambda();
+
+  if (nextTokenIs(tok::DeleteKeyword)) {
+    TokenKind TokAfterDelete = getLookahead(1);
+    // If the next character after delete isn't some kind of separator, eof,
+    // or dedent, then this is the delete operator, and not the delete kw used
+    // for deleting functions.
+    if (!(isSeparator(TokAfterDelete)
+        || TokAfterDelete == tok::EndOfFile
+        || TokAfterDelete == tok::Dedent)) {
+      return parseDelete();
+    }
+  }
 
   Syntax *e1 = parsePost();
 
@@ -1698,6 +1751,8 @@ Syntax *Parser::parsePrimary() {
   case tok::ThrowKeyword:
     return parseThrow();
 
+  case tok::SizeOfPack:
+    return onAtom(consumeToken());
   case tok::RefKeyword:
   case tok::RValueRefKeyword:
   case tok::ConstKeyword:
@@ -1745,9 +1800,6 @@ Syntax *Parser::parsePrimary() {
   case tok::String:
     return onLiteral(consumeToken());
 
-  // case tok::NewKeyword:
-    // FIXME: We need syntax for both new and delete operators.
-    // llvm_unreachable("new Syntax in undefined.");
   default:
     break;
   }
@@ -1825,9 +1877,16 @@ Syntax *Parser::parseBracedArray() {
   // They are not relevant.
   while (nextTokenIs(tok::Indent))
     consumeToken();
+  Syntax *ret = nullptr;
+  if (!nextTokenIs(tok::RightBrace)) {
 
-  // FIXME: How do we recover from errors?
-  Syntax *ret = parseArray(BlockArray);
+    // FIXME: How do we recover from errors?
+    ret = parseArray(BlockArray);
+  } else {
+    // Creating an empty block array
+    llvm::SmallVector<Syntax *, 0> Vec;
+    ret = onArray(BlockArray, Vec);
+  }
 
   // Ignore dedents as well.
   while (nextTokenIs(tok::Dedent))
@@ -1838,6 +1897,7 @@ Syntax *Parser::parseBracedArray() {
 
   return ret;
 }
+
 
 // nested-array:
 //    indent array dedent
@@ -2230,6 +2290,9 @@ Syntax *Parser::onElem(TokenPair const& tok, Syntax *e1, Syntax *e2) {
 
 Syntax *Parser::onMacro(Syntax *e1, Syntax *e2) {
   return new (Context) MacroSyntax(e1, e2, nullptr);
+}
+Syntax *Parser::onMacro(Syntax *e1, Syntax *e2, Syntax *e3) {
+  return new (Context) MacroSyntax(e1, e2, e3);
 }
 
 Syntax *Parser::onMacro(Syntax *e1, Syntax *e2, Syntax *e3) {

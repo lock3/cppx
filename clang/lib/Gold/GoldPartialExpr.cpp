@@ -54,7 +54,7 @@ bool PartialInPlaceNewExpr::isCompletable() const {
   return ExprState == CanCreateExpr;
 }
 
-clang::Expr *PartialInPlaceNewExpr::completeExpr() const {
+clang::Expr *PartialInPlaceNewExpr::completeExpr() {
   assert(PlacementArg && "Invalid placement expression.");
   llvm::SmallVector<clang::Expr *, 1> InPlaceArgs({PlacementArg});
   clang::Expr *TyExpr = nullptr;
@@ -64,7 +64,8 @@ clang::Expr *PartialInPlaceNewExpr::completeExpr() const {
                                    PlacementArg->getExprLoc());
   } else if(TemplateArgs.size() != 1) {
     SemaRef.Diags.Report(PlacementArg->getExprLoc(),
-                         clang::diag::err_invalid_inplace_new_template_params);
+                         clang::diag::err_invalid_inplace_template_params)
+                         << /*construct*/0;
     return nullptr;
   } else {
     TyExpr = TemplateArgs[0];
@@ -111,7 +112,8 @@ clang::Expr *PartialInPlaceNewExpr::completeExpr() const {
 
 void PartialInPlaceNewExpr::diagnoseIncompleteReason() {
   SemaRef.Diags.Report(Keyword->getLoc(),
-                       clang::diag::err_incomplete_placement_new_expression);
+                       clang::diag::err_incomplete_placement_expression)
+                       << /*construct*/0;
 }
 
-}
+} // end namespace gold

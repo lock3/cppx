@@ -161,7 +161,6 @@ tgtok::TokKind TGLexer::LexToken(bool FileOrLineStart) {
 
   case ':': return tgtok::colon;
   case ';': return tgtok::semi;
-  case '.': return tgtok::period;
   case ',': return tgtok::comma;
   case '<': return tgtok::less;
   case '>': return tgtok::greater;
@@ -180,6 +179,19 @@ tgtok::TokKind TGLexer::LexToken(bool FileOrLineStart) {
     }
 
     return tgtok::paste;
+
+  // The period is a separate case so we can recognize the "..."
+  // range punctuator.
+  case '.':
+    if (peekNextChar(0) == '.') {
+      ++CurPtr; // Eat second dot.
+      if (peekNextChar(0) == '.') {
+        ++CurPtr; // Eat third dot.
+        return tgtok::dotdotdot;
+      }
+      return ReturnError(TokStart, "Invalid '..' punctuation");
+    }
+    return tgtok::dot;
 
   case '\r':
     PrintFatalError("getNextChar() must never return '\r'");
@@ -550,9 +562,12 @@ tgtok::TokKind TGLexer::LexExclaim() {
     .Case("con", tgtok::XConcat)
     .Case("dag", tgtok::XDag)
     .Case("add", tgtok::XADD)
+    .Case("sub", tgtok::XSUB)
     .Case("mul", tgtok::XMUL)
+    .Case("not", tgtok::XNOT)
     .Case("and", tgtok::XAND)
     .Case("or", tgtok::XOR)
+    .Case("xor", tgtok::XXOR)
     .Case("shl", tgtok::XSHL)
     .Case("sra", tgtok::XSRA)
     .Case("srl", tgtok::XSRL)
@@ -564,8 +579,9 @@ tgtok::TokKind TGLexer::LexExclaim() {
     .Case("listconcat", tgtok::XListConcat)
     .Case("listsplat", tgtok::XListSplat)
     .Case("strconcat", tgtok::XStrConcat)
-    .Case("setop", tgtok::XSetOp)
-    .Case("getop", tgtok::XGetOp)
+    .Case("interleave", tgtok::XInterleave)
+    .Cases("setdagop", "setop", tgtok::XSetDagOp) // !setop is deprecated.
+    .Cases("getdagop", "getop", tgtok::XGetDagOp) // !getop is deprecated.
     .Default(tgtok::Error);
 
   return Kind != tgtok::Error ? Kind : ReturnError(Start-1, "Unknown operator");

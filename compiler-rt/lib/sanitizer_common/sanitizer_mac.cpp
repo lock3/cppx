@@ -137,6 +137,10 @@ int internal_mprotect(void *addr, uptr length, int prot) {
   return mprotect(addr, length, prot);
 }
 
+int internal_madvise(uptr addr, uptr length, int advice) {
+  return madvise((void *)addr, length, advice);
+}
+
 uptr internal_close(fd_t fd) {
   return close(fd);
 }
@@ -1296,7 +1300,7 @@ void FormatUUID(char *out, uptr size, const u8 *uuid) {
                     uuid[12], uuid[13], uuid[14], uuid[15]);
 }
 
-void PrintModuleMap() {
+void DumpProcessMap() {
   Printf("Process module map:\n");
   MemoryMappingLayout memory_mapping(false);
   InternalMmapVector<LoadedModule> modules;

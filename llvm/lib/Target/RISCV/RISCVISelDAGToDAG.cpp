@@ -124,21 +124,19 @@ void RISCVDAGToDAGISel::Select(SDNode *Node) {
   case ISD::SRL: {
     if (!Subtarget->is64Bit())
       break;
-    SDValue Op0 = Node->getOperand(0);
-    SDValue Op1 = Node->getOperand(1);
+    SDNode *Op0 = Node->getOperand(0).getNode();
     uint64_t Mask;
     // Match (srl (and val, mask), imm) where the result would be a
     // zero-extended 32-bit integer. i.e. the mask is 0xffffffff or the result
     // is equivalent to this (SimplifyDemandedBits may have removed lower bits
     // from the mask that aren't necessary due to the right-shifting).
-    if (Op1.getOpcode() == ISD::Constant &&
-        isConstantMask(Op0.getNode(), Mask)) {
-      uint64_t ShAmt = cast<ConstantSDNode>(Op1.getNode())->getZExtValue();
+    if (isa<ConstantSDNode>(Node->getOperand(1)) && isConstantMask(Op0, Mask)) {
+      uint64_t ShAmt = Node->getConstantOperandVal(1);
 
       if ((Mask | maskTrailingOnes<uint64_t>(ShAmt)) == 0xffffffff) {
         SDValue ShAmtVal =
             CurDAG->getTargetConstant(ShAmt, SDLoc(Node), XLenVT);
-        CurDAG->SelectNodeTo(Node, RISCV::SRLIW, XLenVT, Op0.getOperand(0),
+        CurDAG->SelectNodeTo(Node, RISCV::SRLIW, XLenVT, Op0->getOperand(0),
                              ShAmtVal);
         return;
       }
@@ -272,44 +270,6 @@ bool RISCVDAGToDAGISel::SelectSROI(SDValue N, SDValue &RS1, SDValue &Shamt) {
   return false;
 }
 
-// Check that it is a RORI (Rotate Right Immediate). We first check that
-// it is the right node tree:
-//
-//  (ROTL RS1, VC)
-//
-// The compiler translates immediate rotations to the right given by the call
-// to the rotateright32/rotateright64 intrinsics as rotations to the left.
-// Since the rotation to the left can be easily emulated as a rotation to the
-// right by negating the constant, there is no encoding for ROLI.
-// We then select the immediate left rotations as RORI by the complementary
-// constant:
-//
-//  Shamt == XLen - VC
-
-bool RISCVDAGToDAGISel::SelectRORI(SDValue N, SDValue &RS1, SDValue &Shamt) {
-  MVT XLenVT = Subtarget->getXLenVT();
-  if (N.getOpcode() == ISD::ROTL) {
-    if (isa<ConstantSDNode>(N.getOperand(1))) {
-      if (XLenVT == MVT::i64) {
-        uint64_t VC = N.getConstantOperandVal(1);
-        Shamt = CurDAG->getTargetConstant((64 - VC), SDLoc(N),
-                                          N.getOperand(1).getValueType());
-        RS1 = N.getOperand(0);
-        return true;
-      }
-      if (XLenVT == MVT::i32) {
-        uint32_t VC = N.getConstantOperandVal(1);
-        Shamt = CurDAG->getTargetConstant((32 - VC), SDLoc(N),
-                                          N.getOperand(1).getValueType());
-        RS1 = N.getOperand(0);
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-
 // Check that it is a SLLIUW (Shift Logical Left Immediate Unsigned i32
 // on RV64).
 // SLLIUW is the same as SLLI except for the fact that it clears the bits
@@ -415,16 +375,17 @@ bool RISCVDAGToDAGISel::SelectSROIW(SDValue N, SDValue &RS1, SDValue &Shamt) {
 // Check that it is a RORIW (i32 Right Rotate Immediate on RV64).
 // We first check that it is the right node tree:
 //
-//  (SIGN_EXTEND_INREG (OR (SHL (AsserSext RS1, i32), VC2),
-//                         (SRL (AND (AssertSext RS2, i32), VC3), VC1)))
+//  (SIGN_EXTEND_INREG (OR (SHL RS1, VC2),
+//                         (SRL (AND RS1, VC3), VC1)))
 //
 // Then we check that the constant operands respect these constraints:
 //
 // VC2 == 32 - VC1
-// VC3 == maskLeadingOnes<uint32_t>(VC2)
+// VC3 | maskTrailingOnes<uint64_t>(VC1) == 0xffffffff
 //
 // being VC1 the Shamt we need, VC2 the complementary of Shamt over 32
-// and VC3 a 32 bit mask of (32 - VC1) leading ones.
+// and VC3 being 0xffffffff after accounting for SimplifyDemandedBits removing
+// some bits due to the right shift.
 
 bool RISCVDAGToDAGISel::SelectRORIW(SDValue N, SDValue &RS1, SDValue &Shamt) {
   if (N.getOpcode() == ISD::SIGN_EXTEND_INREG &&
@@ -432,70 +393,29 @@ bool RISCVDAGToDAGISel::SelectRORIW(SDValue N, SDValue &RS1, SDValue &Shamt) {
       cast<VTSDNode>(N.getOperand(1))->getVT() == MVT::i32) {
     if (N.getOperand(0).getOpcode() == ISD::OR) {
       SDValue Or = N.getOperand(0);
-      if (Or.getOperand(0).getOpcode() == ISD::SHL &&
-          Or.getOperand(1).getOpcode() == ISD::SRL) {
-        SDValue Shl = Or.getOperand(0);
-        SDValue Srl = Or.getOperand(1);
+      SDValue Shl = Or.getOperand(0);
+      SDValue Srl = Or.getOperand(1);
+
+      // OR is commutable so canonicalize SHL to LHS.
+      if (Srl.getOpcode() == ISD::SHL)
+        std::swap(Shl, Srl);
+
+      if (Shl.getOpcode() == ISD::SHL && Srl.getOpcode() == ISD::SRL) {
         if (Srl.getOperand(0).getOpcode() == ISD::AND) {
           SDValue And = Srl.getOperand(0);
-          if (isa<ConstantSDNode>(Srl.getOperand(1)) &&
+          if (And.getOperand(0) == Shl.getOperand(0) &&
+              isa<ConstantSDNode>(Srl.getOperand(1)) &&
               isa<ConstantSDNode>(Shl.getOperand(1)) &&
               isa<ConstantSDNode>(And.getOperand(1))) {
-            uint32_t VC1 = Srl.getConstantOperandVal(1);
-            uint32_t VC2 = Shl.getConstantOperandVal(1);
-            uint32_t VC3 = And.getConstantOperandVal(1);
+            uint64_t VC1 = Srl.getConstantOperandVal(1);
+            uint64_t VC2 = Shl.getConstantOperandVal(1);
+            uint64_t VC3 = And.getConstantOperandVal(1);
+            // The mask needs to be 0xffffffff, but SimplifyDemandedBits may
+            // have removed lower bits that aren't necessary due to the right
+            // shift.
             if (VC2 == (32 - VC1) &&
-                VC3 == maskLeadingOnes<uint32_t>(VC2)) {
+                (VC3 | maskTrailingOnes<uint64_t>(VC1)) == 0xffffffff) {
               RS1 = Shl.getOperand(0);
-              Shamt = CurDAG->getTargetConstant(VC1, SDLoc(N),
-                                              Srl.getOperand(1).getValueType());
-              return true;
-            }
-          }
-        }
-      }
-    }
-  }
-  return false;
-}
-
-// Check that it is a FSRIW (i32 Funnel Shift Right Immediate on RV64).
-// We first check that it is the right node tree:
-//
-//  (SIGN_EXTEND_INREG (OR (SHL (AsserSext RS1, i32), VC2),
-//                         (SRL (AND (AssertSext RS2, i32), VC3), VC1)))
-//
-// Then we check that the constant operands respect these constraints:
-//
-// VC2 == 32 - VC1
-// VC3 == maskLeadingOnes<uint32_t>(VC2)
-//
-// being VC1 the Shamt we need, VC2 the complementary of Shamt over 32
-// and VC3 a 32 bit mask of (32 - VC1) leading ones.
-
-bool RISCVDAGToDAGISel::SelectFSRIW(SDValue N, SDValue &RS1, SDValue &RS2,
-                                    SDValue &Shamt) {
-  if (N.getOpcode() == ISD::SIGN_EXTEND_INREG &&
-      Subtarget->getXLenVT() == MVT::i64 &&
-      cast<VTSDNode>(N.getOperand(1))->getVT() == MVT::i32) {
-    if (N.getOperand(0).getOpcode() == ISD::OR) {
-      SDValue Or = N.getOperand(0);
-      if (Or.getOperand(0).getOpcode() == ISD::SHL &&
-          Or.getOperand(1).getOpcode() == ISD::SRL) {
-        SDValue Shl = Or.getOperand(0);
-        SDValue Srl = Or.getOperand(1);
-        if (Srl.getOperand(0).getOpcode() == ISD::AND) {
-          SDValue And = Srl.getOperand(0);
-          if (isa<ConstantSDNode>(Srl.getOperand(1)) &&
-              isa<ConstantSDNode>(Shl.getOperand(1)) &&
-              isa<ConstantSDNode>(And.getOperand(1))) {
-            uint32_t VC1 = Srl.getConstantOperandVal(1);
-            uint32_t VC2 = Shl.getConstantOperandVal(1);
-            uint32_t VC3 = And.getConstantOperandVal(1);
-            if (VC2 == (32 - VC1) &&
-                VC3 == maskLeadingOnes<uint32_t>(VC2)) {
-              RS1 = Shl.getOperand(0);
-              RS2 = And.getOperand(0);
               Shamt = CurDAG->getTargetConstant(VC1, SDLoc(N),
                                               Srl.getOperand(1).getValueType());
               return true;

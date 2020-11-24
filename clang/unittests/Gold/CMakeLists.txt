@@ -76,6 +76,7 @@ add_clang_unittest(GoldTests
   GoldCXX11AttributeElab.cpp
   GoldDeclarationRevampTests.cpp
   GoldDeclaratorElab.cpp
+  GoldDecltypeAutoElab.cpp
   GoldDeductExec.cpp
   GoldDefaultFunctionArgumentsElab.cpp
   GoldEnumElab.cpp
@@ -102,6 +103,7 @@ add_clang_unittest(GoldTests
   GoldInPlaceNewAndDeleteElab.cpp
   GoldIntegerLiteralElab.cpp
   GoldLambda.cpp
+  GoldListInitElab.cpp
   GoldLiteralSuffix.cpp
   GoldMemberExecuteTest.cpp
   GoldMemberStorageClassElab.cpp
@@ -110,6 +112,7 @@ add_clang_unittest(GoldTests
   GoldNamespaceAliasElab.cpp
   GoldNamespaceDeclElab.cpp
   GoldNestedNameSpecifierOnDeclElab.cpp
+  GoldNewAndDeleteElab.cpp
   GoldNNS.cpp
   GoldOperatorOverloadUseElab.cpp
   GoldOverrideAttributeElab.cpp

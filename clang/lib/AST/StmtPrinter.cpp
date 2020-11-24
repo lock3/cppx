@@ -1050,6 +1050,10 @@ void StmtPrinter::VisitDeclRefExpr(DeclRefExpr *Node) {
     OCED->getInit()->IgnoreImpCasts()->printPretty(OS, nullptr, Policy);
     return;
   }
+  if (const auto *TPOD = dyn_cast<TemplateParamObjectDecl>(Node->getDecl())) {
+    TPOD->printAsExpr(OS);
+    return;
+  }
   if (NestedNameSpecifier *Qualifier = Node->getQualifier())
     Qualifier->print(OS, Policy);
   if (Node->hasTemplateKeyword())
@@ -1986,6 +1990,10 @@ void StmtPrinter::VisitCXXNullPtrLiteralExpr(CXXNullPtrLiteralExpr *Node) {
   OS << "nullptr";
 }
 
+void StmtPrinter::VisitCXXParameterInfoExpr(CXXParameterInfoExpr *Node) {
+  OS << "<parameter info for " << Node->getDecl()->getName() << ">";
+}
+
 void StmtPrinter::VisitCXXThisExpr(CXXThisExpr *Node) {
   OS << "this";
 }
@@ -2649,6 +2657,10 @@ void StmtPrinter::VisitCppxPartialEvalExpr(CppxPartialEvalExpr *E) {
 void StmtPrinter::VisitCppxDeclRefExpr(CppxDeclRefExpr *E) {
   Decl *D = E->getValue();
   D->print(OS, Policy);
+}
+
+void StmtPrinter::VisitCXXInjectedValueExpr(CXXInjectedValueExpr *Node) {
+ Visit(Node->getInitializer());
 }
 
 // Obj-C

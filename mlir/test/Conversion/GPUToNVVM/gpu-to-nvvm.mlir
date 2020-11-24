@@ -173,6 +173,21 @@ gpu.module @test_module {
 // -----
 
 gpu.module @test_module {
+  // CHECK: llvm.func @__nv_floorf(!llvm.float) -> !llvm.float
+  // CHECK: llvm.func @__nv_floor(!llvm.double) -> !llvm.double
+  // CHECK-LABEL: func @gpu_floor
+  func @gpu_floor(%arg_f32 : f32, %arg_f64 : f64) -> (f32, f64) {
+    %result32 = std.floorf %arg_f32 : f32
+    // CHECK: llvm.call @__nv_floorf(%{{.*}}) : (!llvm.float) -> !llvm.float
+    %result64 = std.floorf %arg_f64 : f64
+    // CHECK: llvm.call @__nv_floor(%{{.*}}) : (!llvm.double) -> !llvm.double
+    std.return %result32, %result64 : f32, f64
+  }
+}
+
+// -----
+
+gpu.module @test_module {
   // CHECK: llvm.func @__nv_cosf(!llvm.float) -> !llvm.float
   // CHECK: llvm.func @__nv_cos(!llvm.double) -> !llvm.double
   // CHECK-LABEL: func @gpu_cos
@@ -240,6 +255,21 @@ gpu.module @test_module {
     // CHECK: llvm.call @__nv_log2f(%{{.*}}) : (!llvm.float) -> !llvm.float
     %result64 = std.log2 %arg_f64 : f64
     // CHECK: llvm.call @__nv_log2(%{{.*}}) : (!llvm.double) -> !llvm.double
+    std.return %result32, %result64 : f32, f64
+  }
+}
+
+// -----
+
+gpu.module @test_module {
+  // CHECK: llvm.func @__nv_sinf(!llvm.float) -> !llvm.float
+  // CHECK: llvm.func @__nv_sin(!llvm.double) -> !llvm.double
+  // CHECK-LABEL: func @gpu_sin
+  func @gpu_sin(%arg_f32 : f32, %arg_f64 : f64) -> (f32, f64) {
+    %result32 = std.sin %arg_f32 : f32
+    // CHECK: llvm.call @__nv_sinf(%{{.*}}) : (!llvm.float) -> !llvm.float
+    %result64 = std.sin %arg_f64 : f64
+    // CHECK: llvm.call @__nv_sin(%{{.*}}) : (!llvm.double) -> !llvm.double
     std.return %result32, %result64 : f32, f64
   }
 }

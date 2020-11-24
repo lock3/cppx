@@ -308,6 +308,9 @@ void Elaborator::startFile(const Syntax *S) {
   Declaration *D = new Declaration(S);
   D->SavedScope = SemaRef.getCurrentScope();
   SemaRef.setDeclForDeclaration(D, Context.CxxAST.getTranslationUnitDecl());
+  SemaRef.setGlobalClangScope(Scope);
+  SemaRef.setTranslationUnit(D);
+  SemaRef.setTranslationUnitScope(D->SavedScope);
 
   SemaRef.pushDecl(D);
 }
@@ -1438,7 +1441,6 @@ clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
     for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
       SemaRef.getCurrentScope()->Shadows.insert(Shadow);
   } else if (auto *UUVD = dyn_cast<clang::UnresolvedUsingValueDecl>(D)) {
-    llvm::outs() << "funbaba\n";
   }
 
   return D;
@@ -1530,7 +1532,6 @@ static clang::Decl *handleBuildNNSNamespace(Elaborator &Elab, Sema &SemaRef,
   // Reconstructing a namespace declaration
   ClangToGoldDeclRebuilder Rebuilder(Context, SemaRef);
   Declaration *NewDcl = Rebuilder.generateDeclForNNS(NSDecl, Name);
-  SemaRef.setDeclForDeclaration(NewDcl, NSDecl);
   // Recording the declaration as part of the previous parent scope.
   CurScope->addDecl(NewDcl);
   SemaRef.pushDecl(NewDcl);
@@ -1821,6 +1822,11 @@ clang::DeclarationName getFunctionName(SyntaxContext &Ctx, Sema &SemaRef,
   if (D->OpInfo) {
     const clang::FunctionProtoType *FPT = cast<clang::FunctionProtoType>(
                                                  TInfo->getType().getTypePtr());
+    if (D->getId() == SemaRef.OpInfo.GoldDecl_OpNew
+        || D->getId() == SemaRef.OpInfo.GoldDecl_OpDelete
+        || D->getId() == SemaRef.OpInfo.GoldDecl_OpArray_New
+        || D->getId() == SemaRef.OpInfo.GoldDecl_OpArray_Delete)
+      SemaRef.createBuiltinOperatorNewDeleteDecls();
     assert(FPT && "function does not have prototype");
     if (getOperatorDeclarationName(Ctx, SemaRef, D->OpInfo, InClass,
                                    FPT->getNumParams(),
@@ -2067,7 +2073,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
                                                       D->FunctionDcl->getLoc());
   if (!TInfo)
     return nullptr;
-
+    
   // Get name info for the AST.
   clang::DeclarationName Name =
     getFunctionName(Context, SemaRef, D, TInfo, InClass, RD);
@@ -3044,15 +3050,12 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   // as a valid type alias.
   clang::Expr *TypeExpr = nullptr;
   clang::SourceLocation TypeLocation;
-
   if (D->TypeDcl) {
     ExprElaborator TypeElab(Context, SemaRef);
     TypeExpr = TypeElab.elaborateExplicitType(D->TypeDcl, nullptr);
-    TypeLocation = D->TypeDcl->getLoc();
   } else {
     TypeExpr = SemaRef.buildTypeExpr(Context.CxxAST.getAutoDeductType(),
                                      D->Op->getLoc());
-    TypeLocation = D->Op->getLoc();
   }
 
   if (!TypeExpr) {
@@ -3060,7 +3063,6 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
-
   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(TypeExpr,
                                                                   TypeLocation);
   if (!TInfo) {
@@ -4210,10 +4212,14 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 
     // Certain macros must be deduced manually.
     if (const MacroSyntax *InitM = dyn_cast<MacroSyntax>(D->Init)) {
-      if (const AtomSyntax *Call = dyn_cast<AtomSyntax>(InitM->getCall())) {
+      if (!isa<CallSyntax>(InitM->getCall())) {
+
+        assert (isa<AtomSyntax>(InitM->getCall()) && "Unexpected macro call");
+        assert (isa<clang::InitListExpr>(InitExpr) &&
+                "Invalid array macro init");
+
+        const AtomSyntax *Call = cast<AtomSyntax>(InitM->getCall());
         if (Call->getSpelling() == "array") {
-          assert (isa<clang::InitListExpr>(InitExpr) &&
-                  "Invalid array macro init");
           Ty = buildImplicitArrayType(Context.CxxAST, SemaRef.getCxxSema(),
                                       cast<clang::InitListExpr>(InitExpr));
 
@@ -4230,34 +4236,29 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
           SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_failed);
           return;
         }
-      }
-    } else {
-      if (!InitExpr) {
-        SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_no_init);
-        return;
+
+        if (InitExpr->getType()->isNamespaceType()) {
+          D->Cxx->getDeclContext()->removeDecl(D->Cxx);
+          D->Cxx = buildNsAlias(Context.CxxAST, SemaRef, D, InitExpr);
+          return;
+        }
+
+        if (InitExpr->getType()->isTypeOfTypes()) {
+          D->Cxx->getDeclContext()->removeDecl(D->Cxx);
+          D->Cxx = buildTypeAlias(*this, SemaRef, D, InitExpr);
+          return;
+        }
+
+        clang::Sema &CxxSema = SemaRef.getCxxSema();
+        auto Result = CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), InitExpr, Ty);
+        if (Result == clang::Sema::DAR_Failed) {
+          SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_failed);
+          return;
+        }
       }
 
-      if (InitExpr->getType()->isNamespaceType()) {
-        D->Cxx->getDeclContext()->removeDecl(D->Cxx);
-        D->Cxx = buildNsAlias(Context.CxxAST, SemaRef, D, InitExpr);
-        return;
-      }
-
-      if (InitExpr->getType()->isTypeOfTypes()) {
-        D->Cxx->getDeclContext()->removeDecl(D->Cxx);
-        D->Cxx = buildTypeAlias(*this, SemaRef, D, InitExpr);
-        return;
-      }
-
-      clang::Sema &CxxSema = SemaRef.getCxxSema();
-      auto Result = CxxSema.DeduceAutoType(VD->getTypeSourceInfo(), InitExpr, Ty);
-      if (Result == clang::Sema::DAR_Failed) {
-        SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_failed);
-        return;
-      }
+      VD->setType(Ty);
     }
-
-    VD->setType(Ty);
   }
 
   if (D->Init && !InitExpr) {

@@ -12,6 +12,7 @@
 
 #include "Parser.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Dialect.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Parser.h"
@@ -34,8 +35,8 @@ using llvm::SourceMgr;
 
 /// Parse a comma separated list of elements that must have at least one entry
 /// in it.
-ParseResult Parser::parseCommaSeparatedList(
-    const std::function<ParseResult()> &parseElement) {
+ParseResult
+Parser::parseCommaSeparatedList(function_ref<ParseResult()> parseElement) {
   // Non-empty case starts with an element.
   if (parseElement())
     return failure();
@@ -54,9 +55,10 @@ ParseResult Parser::parseCommaSeparatedList(
 ///   abstract-list ::= rightToken                  // if allowEmptyList == true
 ///   abstract-list ::= element (',' element)* rightToken
 ///
-ParseResult Parser::parseCommaSeparatedListUntil(
-    Token::Kind rightToken, const std::function<ParseResult()> &parseElement,
-    bool allowEmptyList) {
+ParseResult
+Parser::parseCommaSeparatedListUntil(Token::Kind rightToken,
+                                     function_ref<ParseResult()> parseElement,
+                                     bool allowEmptyList) {
   // Handle the empty case.
   if (getToken().is(rightToken)) {
     if (!allowEmptyList)
@@ -144,8 +146,8 @@ public:
   /// returns null on failure.
   Value resolveSSAUse(SSAUseInfo useInfo, Type type);
 
-  ParseResult parseSSADefOrUseAndType(
-      const std::function<ParseResult(SSAUseInfo, Type)> &action);
+  ParseResult
+  parseSSADefOrUseAndType(function_ref<ParseResult(SSAUseInfo, Type)> action);
 
   ParseResult parseOptionalSSAUseAndTypeList(SmallVectorImpl<Value> &results);
 
@@ -505,7 +507,7 @@ Value OperationParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
 ///
 ///   ssa-use-and-type ::= ssa-use `:` type
 ParseResult OperationParser::parseSSADefOrUseAndType(
-    const std::function<ParseResult(SSAUseInfo, Type)> &action) {
+    function_ref<ParseResult(SSAUseInfo, Type)> action) {
   SSAUseInfo useInfo;
   if (parseSSAUse(useInfo) ||
       parseToken(Token::colon, "expected ':' and type for SSA operand"))
@@ -727,7 +729,7 @@ Operation *OperationParser::parseGenericOperation() {
   // Get location information for the operation.
   auto srcLocation = getEncodedSourceLocation(getToken().getLoc());
 
-  auto name = getToken().getStringValue();
+  std::string name = getToken().getStringValue();
   if (name.empty())
     return (emitError("empty operation name is invalid"), nullptr);
   if (name.find('\0') != StringRef::npos)
@@ -736,6 +738,15 @@ Operation *OperationParser::parseGenericOperation() {
   consumeToken(Token::string);
 
   OperationState result(srcLocation, name);
+
+  // Lazy load dialects in the context as needed.
+  if (!result.name.getAbstractOperation()) {
+    StringRef dialectName = StringRef(name).split('.').first;
+    if (!getContext()->getLoadedDialect(dialectName) &&
+        getContext()->getOrLoadDialect(dialectName)) {
+      result.name = OperationName(name, getContext());
+    }
+  }
 
   // Parse the operand list.
   SmallVector<SSAUseInfo, 8> operandInfos;
@@ -835,6 +846,15 @@ public:
   ParseResult parseOperation(OperationState &opState) {
     if (opDefinition->parseAssembly(*this, opState))
       return failure();
+    // Verify that the parsed attributes does not have duplicate attributes.
+    // This can happen if an attribute set during parsing is also specified in
+    // the attribute dictionary in the assembly, or the attribute is set
+    // multiple during parsing.
+    Optional<NamedAttribute> duplicate = opState.attributes.findDuplicate();
+    if (duplicate)
+      return emitError(getNameLoc(), "attribute '")
+             << duplicate->first
+             << "' occurs more than once in the attribute list";
     return success();
   }
 
@@ -853,8 +873,8 @@ public:
   /// Emit a diagnostic at the specified location and return failure.
   InFlightDiagnostic emitError(llvm::SMLoc loc, const Twine &message) override {
     emittedError = true;
-    return parser.emitError(loc, "custom op '" + opDefinition->name + "' " +
-                                     message);
+    return parser.emitError(loc, "custom op '" + opDefinition->name.strref() +
+                                     "' " + message);
   }
 
   llvm::SMLoc getCurrentLocation() override {
@@ -914,6 +934,26 @@ public:
     return success(parser.consumeIf(Token::arrow));
   }
 
+  /// Parse a '{' token.
+  ParseResult parseLBrace() override {
+    return parser.parseToken(Token::l_brace, "expected '{'");
+  }
+
+  /// Parse a '{' token if present
+  ParseResult parseOptionalLBrace() override {
+    return success(parser.consumeIf(Token::l_brace));
+  }
+
+  /// Parse a `}` token.
+  ParseResult parseRBrace() override {
+    return parser.parseToken(Token::r_brace, "expected '}'");
+  }
+
+  /// Parse a `}` token if present
+  ParseResult parseOptionalRBrace() override {
+    return success(parser.consumeIf(Token::r_brace));
+  }
+
   /// Parse a `:` token.
   ParseResult parseColon() override {
     return parser.parseToken(Token::colon, "expected ':'");
@@ -942,6 +982,11 @@ public:
   /// Parse a `=` token.
   ParseResult parseEqual() override {
     return parser.parseToken(Token::equal, "expected '='");
+  }
+
+  /// Parse a `=` token if present.
+  ParseResult parseOptionalEqual() override {
+    return success(parser.consumeIf(Token::equal));
   }
 
   /// Parse a '<' token.
@@ -974,6 +1019,11 @@ public:
     return success(parser.consumeIf(Token::r_paren));
   }
 
+  /// Parses a '?' if present.
+  ParseResult parseOptionalQuestion() override {
+    return success(parser.consumeIf(Token::question));
+  }
+
   /// Parse a `[` token.
   ParseResult parseLSquare() override {
     return parser.parseToken(Token::l_square, "expected '['");
@@ -998,28 +1048,37 @@ public:
   // Attribute Parsing
   //===--------------------------------------------------------------------===//
 
-  /// Parse an arbitrary attribute of a given type and return it in result. This
-  /// also adds the attribute to the specified attribute list with the specified
-  /// name.
-  ParseResult parseAttribute(Attribute &result, Type type, StringRef attrName,
-                             NamedAttrList &attrs) override {
+  /// Parse an arbitrary attribute of a given type and return it in result.
+  ParseResult parseAttribute(Attribute &result, Type type) override {
     result = parser.parseAttribute(type);
-    if (!result)
-      return failure();
-
-    attrs.push_back(parser.builder.getNamedAttr(attrName, result));
-    return success();
+    return success(static_cast<bool>(result));
   }
 
   /// Parse an optional attribute.
-  OptionalParseResult parseOptionalAttribute(Attribute &result, Type type,
-                                             StringRef attrName,
-                                             NamedAttrList &attrs) override {
+  template <typename AttrT>
+  OptionalParseResult
+  parseOptionalAttributeAndAddToList(AttrT &result, Type type,
+                                     StringRef attrName, NamedAttrList &attrs) {
     OptionalParseResult parseResult =
         parser.parseOptionalAttribute(result, type);
     if (parseResult.hasValue() && succeeded(*parseResult))
       attrs.push_back(parser.builder.getNamedAttr(attrName, result));
     return parseResult;
+  }
+  OptionalParseResult parseOptionalAttribute(Attribute &result, Type type,
+                                             StringRef attrName,
+                                             NamedAttrList &attrs) override {
+    return parseOptionalAttributeAndAddToList(result, type, attrName, attrs);
+  }
+  OptionalParseResult parseOptionalAttribute(ArrayAttr &result, Type type,
+                                             StringRef attrName,
+                                             NamedAttrList &attrs) override {
+    return parseOptionalAttributeAndAddToList(result, type, attrName, attrs);
+  }
+  OptionalParseResult parseOptionalAttribute(StringAttr &result, Type type,
+                                             StringRef attrName,
+                                             NamedAttrList &attrs) override {
+    return parseOptionalAttributeAndAddToList(result, type, attrName, attrs);
   }
 
   /// Parse a named dictionary into 'result' if it is present.
@@ -1051,7 +1110,7 @@ public:
   // Identifier Parsing
   //===--------------------------------------------------------------------===//
 
-  /// Returns if the current token corresponds to a keyword.
+  /// Returns true if the current token corresponds to a keyword.
   bool isCurrentTokenAKeyword() const {
     return parser.getToken().is(Token::bare_identifier) ||
            parser.getToken().isKeyword();
@@ -1300,6 +1359,23 @@ public:
     return parseRegion(region, arguments, argTypes, enableNameShadowing);
   }
 
+  /// Parses a region if present. If the region is present, a new region is
+  /// allocated and placed in `region`. If no region is present, `region`
+  /// remains untouched.
+  OptionalParseResult
+  parseOptionalRegion(std::unique_ptr<Region> &region,
+                      ArrayRef<OperandType> arguments, ArrayRef<Type> argTypes,
+                      bool enableNameShadowing = false) override {
+    if (parser.getToken().isNot(Token::l_brace))
+      return llvm::None;
+    std::unique_ptr<Region> newRegion = std::make_unique<Region>();
+    if (parseRegion(*newRegion, arguments, argTypes, enableNameShadowing))
+      return failure();
+
+    region = std::move(newRegion);
+    return success();
+  }
+
   /// Parse a region argument. The type of the argument will be resolved later
   /// by a call to `parseRegion`.
   ParseResult parseRegionArgument(OperandType &argument) override {
@@ -1404,10 +1480,13 @@ public:
   }
 
   /// Parse a list of assignments of the form
-  /// (%x1 = %y1 : type1, %x2 = %y2 : type2, ...).
-  /// The list must contain at least one entry
-  ParseResult parseAssignmentList(SmallVectorImpl<OperandType> &lhs,
-                                  SmallVectorImpl<OperandType> &rhs) override {
+  ///   (%x1 = %y1, %x2 = %y2, ...).
+  OptionalParseResult
+  parseOptionalAssignmentList(SmallVectorImpl<OperandType> &lhs,
+                              SmallVectorImpl<OperandType> &rhs) override {
+    if (failed(parseOptionalLParen()))
+      return llvm::None;
+
     auto parseElt = [&]() -> ParseResult {
       OperandType regionArg, operand;
       if (parseRegionArgument(regionArg) || parseEqual() ||
@@ -1417,8 +1496,6 @@ public:
       rhs.push_back(operand);
       return success();
     };
-    if (parseLParen())
-      return failure();
     return parser.parseCommaSeparatedListUntil(Token::r_paren, parseElt);
   }
 
@@ -1442,17 +1519,28 @@ private:
 
 Operation *
 OperationParser::parseCustomOperation(ArrayRef<ResultRecord> resultIDs) {
-  auto opLoc = getToken().getLoc();
-  auto opName = getTokenSpelling();
+  llvm::SMLoc opLoc = getToken().getLoc();
+  StringRef opName = getTokenSpelling();
 
   auto *opDefinition = AbstractOperation::lookup(opName, getContext());
-  if (!opDefinition && !opName.contains('.')) {
-    // If the operation name has no namespace prefix we treat it as a standard
-    // operation and prefix it with "std".
-    // TODO: Would it be better to just build a mapping of the registered
-    // operations in the standard dialect?
-    opDefinition =
-        AbstractOperation::lookup(Twine("std." + opName).str(), getContext());
+  if (!opDefinition) {
+    if (opName.contains('.')) {
+      // This op has a dialect, we try to check if we can register it in the
+      // context on the fly.
+      StringRef dialectName = opName.split('.').first;
+      if (!getContext()->getLoadedDialect(dialectName) &&
+          getContext()->getOrLoadDialect(dialectName)) {
+        opDefinition = AbstractOperation::lookup(opName, getContext());
+      }
+    } else {
+      // If the operation name has no namespace prefix we treat it as a standard
+      // operation and prefix it with "std".
+      // TODO: Would it be better to just build a mapping of the registered
+      // operations in the standard dialect?
+      if (getContext()->getOrLoadDialect("std"))
+        opDefinition = AbstractOperation::lookup(Twine("std." + opName).str(),
+                                                 getContext());
+    }
   }
 
   if (!opDefinition) {

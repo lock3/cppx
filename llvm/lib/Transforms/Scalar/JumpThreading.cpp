@@ -104,6 +104,11 @@ static cl::opt<bool> PrintLVIAfterJumpThreading(
     cl::desc("Print the LazyValueInfo cache after JumpThreading"), cl::init(false),
     cl::Hidden);
 
+static cl::opt<bool> JumpThreadingFreezeSelectCond(
+    "jump-threading-freeze-select-cond",
+    cl::desc("Freeze the condition when unfolding select"), cl::init(false),
+    cl::Hidden);
+
 static cl::opt<bool> ThreadAcrossLoopHeaders(
     "jump-threading-across-loop-headers",
     cl::desc("Allow JumpThreading to thread across loop headers, for testing"),
@@ -133,7 +138,8 @@ namespace {
   public:
     static char ID; // Pass identification
 
-    JumpThreading(int T = -1) : FunctionPass(ID), Impl(T) {
+    JumpThreading(bool InsertFreezeWhenUnfoldingSelect = false, int T = -1)
+        : FunctionPass(ID), Impl(InsertFreezeWhenUnfoldingSelect, T) {
       initializeJumpThreadingPass(*PassRegistry::getPassRegistry());
     }
 
@@ -166,11 +172,12 @@ INITIALIZE_PASS_END(JumpThreading, "jump-threading",
                 "Jump Threading", false, false)
 
 // Public interface to the Jump Threading pass
-FunctionPass *llvm::createJumpThreadingPass(int Threshold) {
-  return new JumpThreading(Threshold);
+FunctionPass *llvm::createJumpThreadingPass(bool InsertFr, int Threshold) {
+  return new JumpThreading(InsertFr, Threshold);
 }
 
-JumpThreadingPass::JumpThreadingPass(int T) {
+JumpThreadingPass::JumpThreadingPass(bool InsertFr, int T) {
+  InsertFreezeWhenUnfoldingSelect = JumpThreadingFreezeSelectCond | InsertFr;
   DefaultBBDupThreshold = (T == -1) ? BBDuplicateThreshold : unsigned(T);
 }
 
@@ -953,7 +960,8 @@ bool JumpThreadingPass::ComputeValueKnownInPredecessorsImpl(
   }
 
   // If all else fails, see if LVI can figure out a constant value for us.
-  Constant *CI = LVI->getConstant(V, BB, CxtI);
+  assert(CxtI->getParent() == BB && "CxtI should be in BB");
+  Constant *CI = LVI->getConstant(V, CxtI);
   if (Constant *KC = getKnownConstant(CI, Preference)) {
     for (BasicBlock *Pred : predecessors(BB))
       Result.emplace_back(KC, Pred);
@@ -1040,6 +1048,9 @@ bool JumpThreadingPass::ProcessBlock(BasicBlock *BB) {
     return false; // Must be an invoke or callbr.
   }
 
+  // Keep track if we constant folded the condition in this invocation.
+  bool ConstantFolded = false;
+
   // Run constant folding to see if we can reduce the condition to a simple
   // constant.
   if (Instruction *I = dyn_cast<Instruction>(Condition)) {
@@ -1050,6 +1061,7 @@ bool JumpThreadingPass::ProcessBlock(BasicBlock *BB) {
       if (isInstructionTriviallyDead(I, TLI))
         I->eraseFromParent();
       Condition = SimpleVal;
+      ConstantFolded = true;
     }
   }
 
@@ -1100,7 +1112,7 @@ bool JumpThreadingPass::ProcessBlock(BasicBlock *BB) {
     // FIXME: Unify this with code below.
     if (ProcessThreadableEdges(Condition, BB, Preference, Terminator))
       return true;
-    return false;
+    return ConstantFolded;
   }
 
   if (CmpInst *CondCmp = dyn_cast<CmpInst>(CondInst)) {
@@ -2224,6 +2236,14 @@ void JumpThreadingPass::ThreadThroughTwoBasicBlocks(BasicBlock *PredPredBB,
   DenseMap<Instruction *, Value *> ValueMapping =
       CloneInstructions(PredBB->begin(), PredBB->end(), NewBB, PredPredBB);
 
+  // Copy the edge probabilities from PredBB to NewBB.
+  if (HasProfileData) {
+    SmallVector<BranchProbability, 4> Probs;
+    for (BasicBlock *Succ : successors(PredBB))
+      Probs.push_back(BPI->getEdgeProbability(PredBB, Succ));
+    BPI->setEdgeProbability(NewBB, Probs);
+  }
+
   // Update the terminator of PredPredBB to jump to NewBB instead of PredBB.
   // This eliminates predecessors from PredPredBB, which requires us to simplify
   // any PHI nodes in PredBB.
@@ -2798,13 +2818,8 @@ bool JumpThreadingPass::TryToUnfoldSelect(CmpInst *CondCmp, BasicBlock *BB) {
 /// select is not jump-threaded, it will be folded again in the later
 /// optimizations.
 bool JumpThreadingPass::TryToUnfoldSelectInCurrBB(BasicBlock *BB) {
-  // This transform can introduce a UB (a conditional branch that depends on a
-  // poison value) that was not present in the original program. See
-  // @TryToUnfoldSelectInCurrBB test in test/Transforms/JumpThreading/select.ll.
+  // This transform would reduce the quality of msan diagnostics.
   // Disable this transform under MemorySanitizer.
-  // FIXME: either delete it or replace with a valid transform. This issue is
-  // not limited to MemorySanitizer (but has only been observed as an MSan false
-  // positive in practice so far).
   if (BB->getParent()->hasFnAttribute(Attribute::SanitizeMemory))
     return false;
 
@@ -2852,8 +2867,12 @@ bool JumpThreadingPass::TryToUnfoldSelectInCurrBB(BasicBlock *BB) {
     if (!SI)
       continue;
     // Expand the select.
-    Instruction *Term =
-        SplitBlockAndInsertIfThen(SI->getCondition(), SI, false);
+    Value *Cond = SI->getCondition();
+    if (InsertFreezeWhenUnfoldingSelect &&
+        !isGuaranteedNotToBeUndefOrPoison(Cond, nullptr, SI,
+                                          &DTU->getDomTree()))
+      Cond = new FreezeInst(Cond, "cond.fr", SI);
+    Instruction *Term = SplitBlockAndInsertIfThen(Cond, SI, false);
     BasicBlock *SplitBB = SI->getParent();
     BasicBlock *NewBB = Term->getParent();
     PHINode *NewPN = PHINode::Create(SI->getType(), 2, "", SI);

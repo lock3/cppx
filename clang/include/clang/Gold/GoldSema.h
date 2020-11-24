@@ -16,6 +16,7 @@
 #define CLANG_GOLD_GOLDSEMA_H
 
 #include "clang/AST/Type.h"
+#include "clang/AST/NestedNameSpecifier.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "llvm/ADT/APInt.h"
@@ -28,7 +29,6 @@
 #include "clang/Gold/GoldOperatorInfo.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSyntaxContext.h"
-
 #include <memory>
 #include <vector>
 
@@ -1073,6 +1073,8 @@ public:
   clang::CppxPartialEvalExpr *buildPartialInPlaceNewExpr(
                                 const Syntax *ConstructKW, clang::Expr *PtrExpr,
                                 clang::SourceLocation Loc);
+
+
 private:
   clang::FunctionDecl *InPlaceNew = nullptr;
 public:
@@ -1087,6 +1089,34 @@ public:
   /// on demand (if it hasn't already been created).
   clang::FunctionDecl *getInPlaceNew();
   ///}
+
+public:
+  /// Utility functions for recording operator new/delete's implicit global
+  /// operators within gold.
+  void createBuiltinOperatorNewDeleteDecls();
+
+private:
+  Declaration *TUDecl = nullptr;
+  Scope *TUScope = nullptr;
+  clang::Scope *ClangFileLevelScope = nullptr;
+  bool DidCreateNewAndDeleteBuiltins = false;
+public:
+  /// Translation tracking members
+  //{
+  static constexpr char const *NewStorageStr = "operator\"new\"";
+  static constexpr char const *DeleteStorageStr = "operator\"delete\"";
+  Declaration *getTranslationUnit() const { return TUDecl; }
+  void setTranslationUnit(Declaration *TU) { TUDecl = TU; }
+
+  Scope *getTranslationUnitScope() const { return TUScope;}
+  void setTranslationUnitScope(Scope *GoldScope) { TUScope = GoldScope; }
+
+  clang::Scope *getGlobalClangScope() const { return ClangFileLevelScope; }
+  void setGlobalClangScope(clang::Scope *CScope) { ClangFileLevelScope = CScope; }
+  //}
+
+  clang::DeclarationNameInfo rebuildDeclarationNameInfo(
+                                         const clang::DeclarationNameInfo &DNI);
 };
 
 } // namespace gold

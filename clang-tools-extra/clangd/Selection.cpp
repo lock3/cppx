@@ -479,6 +479,10 @@ public:
   bool TraverseTypeLoc(TypeLoc X) {
     return traverseNode(&X, [&] { return Base::TraverseTypeLoc(X); });
   }
+  bool TraverseTemplateArgumentLoc(const TemplateArgumentLoc &X) {
+    return traverseNode(&X,
+                        [&] { return Base::TraverseTemplateArgumentLoc(X); });
+  }
   bool TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc X) {
     return traverseNode(
         &X, [&] { return Base::TraverseNestedNameSpecifierLoc(X); });
@@ -601,6 +605,10 @@ private:
   bool canSafelySkipNode(const DynTypedNode &N) {
     SourceRange S = N.getSourceRange();
     if (auto *TL = N.get<TypeLoc>()) {
+      // FIXME: TypeLoc::getBeginLoc()/getEndLoc() are pretty fragile
+      // heuristics. We should consider only pruning critical TypeLoc nodes, to
+      // be more robust.
+
       // DeclTypeTypeLoc::getSourceRange() is incomplete, which would lead to
       // failing
       // to descend into the child expression.
@@ -612,6 +620,10 @@ private:
       // rid of this patch.
       if (auto DT = TL->getAs<DecltypeTypeLoc>())
         S.setEnd(DT.getUnderlyingExpr()->getEndLoc());
+      // AttributedTypeLoc may point to the attribute's range, NOT the modified
+      // type's range.
+      if (auto AT = TL->getAs<AttributedTypeLoc>())
+        S = AT.getModifiedLoc().getSourceRange();
     }
     if (!SelChecker.mayHit(S)) {
       dlog("{1}skip: {0}", printNodeToString(N, PrintPolicy), indent());

@@ -15,10 +15,11 @@
 #define OPENMP_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Dialect/OpenMP/OmpCommon.td"
 
 def OpenMP_Dialect : Dialect {
   let name = "omp";
-  let cppNamespace = "omp";
+  let cppNamespace = "::mlir::omp";
 }
 
 class OpenMP_Op<string mnemonic, list<OpTrait> traits = []> :
@@ -42,18 +43,6 @@ def ClauseDefault : StrEnumAttr<
   let cppNamespace = "::mlir::omp";
 }
 
-// Possible values for the proc_bind clause
-def ClauseProcMaster : StrEnumAttrCase<"master">;
-def ClauseProcClose : StrEnumAttrCase<"close">;
-def ClauseProcSpread : StrEnumAttrCase<"spread">;
-
-def ClauseProcBind : StrEnumAttr<
-    "ClauseProcBind",
-    "procbind clause",
-    [ClauseProcMaster, ClauseProcClose, ClauseProcSpread]> {
-  let cppNamespace = "::mlir::omp";
-}
-
 def ParallelOp : OpenMP_Op<"parallel", [AttrSizedOperandSegments]> {
   let summary = "parallel construct";
   let description = [{
@@ -69,12 +58,15 @@ def ParallelOp : OpenMP_Op<"parallel", [AttrSizedOperandSegments]> {
     should be used to execute the parallel region.
 
     The optional $default_val attribute specifies the default data sharing attribute
-    of variables used in the parallel region that are not passed explicitly as parameters
+    of values used in the parallel region that are not passed explicitly as parameters
     to the operation.
 
     The $private_vars, $firstprivate_vars, $shared_vars and $copyin_vars parameters
-    are a variadic list of variables that specify the data sharing attribute of
-    those variables.
+    are a variadic list of values that specify the data sharing attribute of
+    those values.
+
+    The $allocators_vars and $allocate_vars parameters are a variadic list of values
+    that specify the memory allocator to be used to obtain storage for private values.
 
     The optional $proc_bind_val attribute controls the thread affinity for the execution
     of the parallel region.
@@ -87,12 +79,15 @@ def ParallelOp : OpenMP_Op<"parallel", [AttrSizedOperandSegments]> {
              Variadic<AnyType>:$firstprivate_vars,
              Variadic<AnyType>:$shared_vars,
              Variadic<AnyType>:$copyin_vars,
-             OptionalAttr<ClauseProcBind>:$proc_bind_val);
+             Variadic<AnyType>:$allocate_vars,
+             Variadic<AnyType>:$allocators_vars,
+             OptionalAttr<ProcBindKind>:$proc_bind_val);
 
   let regions = (region AnyRegion:$region);
 
   let parser = [{ return parseParallelOp(parser, result); }];
   let printer = [{ return printParallelOp(p, *this); }];
+  let verifier = [{ return ::verifyParallelOp(*this); }];
 }
 
 def TerminatorOp : OpenMP_Op<"terminator", [Terminator]> {
@@ -135,7 +130,7 @@ def FlushOp : OpenMP_Op<"flush"> {
 
   let arguments = (ins Variadic<AnyType>:$varList);
 
-  let assemblyFormat = "attr-dict ($varList^ `:` type($varList))?";
+  let assemblyFormat = [{ ( `(` $varList^ `:` type($varList) `)` )? attr-dict}];
 }
 
 //===----------------------------------------------------------------------===//
@@ -149,6 +144,8 @@ def MasterOp : OpenMP_Op<"master"> {
   }];
 
   let regions = (region AnyRegion:$region);
+
+  let assemblyFormat = "$region attr-dict";
 }
 
 //===----------------------------------------------------------------------===//

@@ -172,6 +172,10 @@ Attribute Attribute::getWithByValType(LLVMContext &Context, Type *Ty) {
   return get(Context, ByVal, Ty);
 }
 
+Attribute Attribute::getWithStructRetType(LLVMContext &Context, Type *Ty) {
+  return get(Context, StructRet, Ty);
+}
+
 Attribute Attribute::getWithByRefType(LLVMContext &Context, Type *Ty) {
   return get(Context, ByRef, Ty);
 }
@@ -421,6 +425,8 @@ std::string Attribute::getAsString(bool InAttrGrp) const {
     return "speculative_load_hardening";
   if (hasAttribute(Attribute::Speculatable))
     return "speculatable";
+  if (hasAttribute(Attribute::NoStackProtect))
+    return "nossp";
   if (hasAttribute(Attribute::StackProtect))
     return "ssp";
   if (hasAttribute(Attribute::StackProtectReq))
@@ -433,8 +439,6 @@ std::string Attribute::getAsString(bool InAttrGrp) const {
     return "shadowcallstack";
   if (hasAttribute(Attribute::StrictFP))
     return "strictfp";
-  if (hasAttribute(Attribute::StructRet))
-    return "sret";
   if (hasAttribute(Attribute::SanitizeThread))
     return "sanitize_thread";
   if (hasAttribute(Attribute::SanitizeMemory))
@@ -449,10 +453,13 @@ std::string Attribute::getAsString(bool InAttrGrp) const {
     return "immarg";
   if (hasAttribute(Attribute::NoUndef))
     return "noundef";
+  if (hasAttribute(Attribute::MustProgress))
+    return "mustprogress";
 
-  if (hasAttribute(Attribute::ByVal)) {
+  const bool IsByVal = hasAttribute(Attribute::ByVal);
+  if (IsByVal || hasAttribute(Attribute::StructRet)) {
     std::string Result;
-    Result += "byval";
+    Result += IsByVal ? "byval" : "sret";
     if (Type *Ty = getValueAsType()) {
       raw_string_ostream OS(Result);
       Result += '(';
@@ -754,6 +761,10 @@ Type *AttributeSet::getByValType() const {
   return SetNode ? SetNode->getByValType() : nullptr;
 }
 
+Type *AttributeSet::getStructRetType() const {
+  return SetNode ? SetNode->getStructRetType() : nullptr;
+}
+
 Type *AttributeSet::getPreallocatedType() const {
   return SetNode ? SetNode->getPreallocatedType() : nullptr;
 }
@@ -850,6 +861,9 @@ AttributeSetNode *AttributeSetNode::get(LLVMContext &C, const AttrBuilder &B) {
     case Attribute::ByVal:
       Attr = Attribute::getWithByValType(C, B.getByValType());
       break;
+    case Attribute::StructRet:
+      Attr = Attribute::getWithStructRetType(C, B.getStructRetType());
+      break;
     case Attribute::ByRef:
       Attr = Attribute::getWithByRefType(C, B.getByRefType());
       break;
@@ -935,6 +949,12 @@ MaybeAlign AttributeSetNode::getStackAlignment() const {
 
 Type *AttributeSetNode::getByValType() const {
   if (auto A = findEnumAttribute(Attribute::ByVal))
+    return A->getValueAsType();
+  return nullptr;
+}
+
+Type *AttributeSetNode::getStructRetType() const {
+  if (auto A = findEnumAttribute(Attribute::StructRet))
     return A->getValueAsType();
   return nullptr;
 }
@@ -1087,10 +1107,10 @@ AttributeList::get(LLVMContext &C,
                            return LHS.first < RHS.first;
                          }) &&
          "Misordered Attributes list!");
-  assert(llvm::none_of(Attrs,
-                       [](const std::pair<unsigned, Attribute> &Pair) {
-                         return Pair.second.hasAttribute(Attribute::None);
-                       }) &&
+  assert(llvm::all_of(Attrs,
+                      [](const std::pair<unsigned, Attribute> &Pair) {
+                        return Pair.second.isValid();
+                      }) &&
          "Pointless attribute!");
 
   // Create a vector if (unsigned, AttributeSetNode*) pairs from the attributes
@@ -1466,6 +1486,10 @@ Type *AttributeList::getParamByValType(unsigned Index) const {
   return getAttributes(Index+FirstArgIndex).getByValType();
 }
 
+Type *AttributeList::getParamStructRetType(unsigned Index) const {
+  return getAttributes(Index + FirstArgIndex).getStructRetType();
+}
+
 Type *AttributeList::getParamByRefType(unsigned Index) const {
   return getAttributes(Index + FirstArgIndex).getByRefType();
 }
@@ -1555,16 +1579,9 @@ void AttrBuilder::clear() {
   DerefBytes = DerefOrNullBytes = 0;
   AllocSizeArgs = 0;
   ByValType = nullptr;
+  StructRetType = nullptr;
   ByRefType = nullptr;
   PreallocatedType = nullptr;
-}
-
-AttrBuilder &AttrBuilder::addAttribute(Attribute::AttrKind Val) {
-  assert((unsigned)Val < Attribute::EndAttrKinds && "Attribute out of range!");
-  assert(!Attribute::doesAttrKindHaveArgument(Val) &&
-         "Adding integer attribute without adding a value!");
-  Attrs[Val] = true;
-  return *this;
 }
 
 AttrBuilder &AttrBuilder::addAttribute(Attribute Attr) {
@@ -1582,6 +1599,8 @@ AttrBuilder &AttrBuilder::addAttribute(Attribute Attr) {
     StackAlignment = Attr.getStackAlignment();
   else if (Kind == Attribute::ByVal)
     ByValType = Attr.getValueAsType();
+  else if (Kind == Attribute::StructRet)
+    StructRetType = Attr.getValueAsType();
   else if (Kind == Attribute::ByRef)
     ByRefType = Attr.getValueAsType();
   else if (Kind == Attribute::Preallocated)
@@ -1610,6 +1629,8 @@ AttrBuilder &AttrBuilder::removeAttribute(Attribute::AttrKind Val) {
     StackAlignment.reset();
   else if (Val == Attribute::ByVal)
     ByValType = nullptr;
+  else if (Val == Attribute::StructRet)
+    StructRetType = nullptr;
   else if (Val == Attribute::ByRef)
     ByRefType = nullptr;
   else if (Val == Attribute::Preallocated)
@@ -1702,6 +1723,12 @@ AttrBuilder &AttrBuilder::addByValAttr(Type *Ty) {
   return *this;
 }
 
+AttrBuilder &AttrBuilder::addStructRetAttr(Type *Ty) {
+  Attrs[Attribute::StructRet] = true;
+  StructRetType = Ty;
+  return *this;
+}
+
 AttrBuilder &AttrBuilder::addByRefAttr(Type *Ty) {
   Attrs[Attribute::ByRef] = true;
   ByRefType = Ty;
@@ -1733,6 +1760,9 @@ AttrBuilder &AttrBuilder::merge(const AttrBuilder &B) {
 
   if (!ByValType)
     ByValType = B.ByValType;
+
+  if (!StructRetType)
+    StructRetType = B.StructRetType;
 
   if (!ByRefType)
     ByRefType = B.ByRefType;
@@ -1767,6 +1797,9 @@ AttrBuilder &AttrBuilder::remove(const AttrBuilder &B) {
 
   if (B.ByValType)
     ByValType = nullptr;
+
+  if (B.StructRetType)
+    StructRetType = nullptr;
 
   if (B.ByRefType)
     ByRefType = nullptr;
@@ -1834,7 +1867,8 @@ bool AttrBuilder::operator==(const AttrBuilder &B) {
 
   return Alignment == B.Alignment && StackAlignment == B.StackAlignment &&
          DerefBytes == B.DerefBytes && ByValType == B.ByValType &&
-         ByRefType == B.ByRefType && PreallocatedType == B.PreallocatedType;
+         StructRetType == B.StructRetType && ByRefType == B.ByRefType &&
+         PreallocatedType == B.PreallocatedType;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1856,15 +1890,20 @@ AttrBuilder AttributeFuncs::typeIncompatible(Type *Ty) {
         .addAttribute(Attribute::NoAlias)
         .addAttribute(Attribute::NoCapture)
         .addAttribute(Attribute::NonNull)
+        .addAlignmentAttr(1)             // the int here is ignored
         .addDereferenceableAttr(1)       // the int here is ignored
         .addDereferenceableOrNullAttr(1) // the int here is ignored
         .addAttribute(Attribute::ReadNone)
         .addAttribute(Attribute::ReadOnly)
-        .addAttribute(Attribute::StructRet)
         .addAttribute(Attribute::InAlloca)
         .addPreallocatedAttr(Ty)
         .addByValAttr(Ty)
+        .addStructRetAttr(Ty)
         .addByRefAttr(Ty);
+
+  // Some attributes can apply to all "values" but there are no `void` values.
+  if (Ty->isVoidTy())
+    Incompatible.addAttribute(Attribute::NoUndef);
 
   return Incompatible;
 }
@@ -1902,9 +1941,17 @@ static void setOR(Function &Caller, const Function &Callee) {
 /// If the inlined function had a higher stack protection level than the
 /// calling function, then bump up the caller's stack protection level.
 static void adjustCallerSSPLevel(Function &Caller, const Function &Callee) {
+  assert(!(Callee.hasFnAttribute(Attribute::NoStackProtect) &&
+           (Caller.hasFnAttribute(Attribute::StackProtect) ||
+            Caller.hasFnAttribute(Attribute::StackProtectStrong) ||
+            Caller.hasFnAttribute(Attribute::StackProtectReq))) &&
+         "stack protected caller but callee requested no stack protector");
+  assert(!(Caller.hasFnAttribute(Attribute::NoStackProtect) &&
+           (Callee.hasFnAttribute(Attribute::StackProtect) ||
+            Callee.hasFnAttribute(Attribute::StackProtectStrong) ||
+            Callee.hasFnAttribute(Attribute::StackProtectReq))) &&
+         "stack protected callee but caller requested no stack protector");
   // If upgrading the SSP attribute, clear out the old SSP Attributes first.
-  // Having multiple SSP attributes doesn't actually hurt, but it adds useless
-  // clutter to the IR.
   AttrBuilder OldSSPAttr;
   OldSSPAttr.addAttribute(Attribute::StackProtect)
       .addAttribute(Attribute::StackProtectStrong)
@@ -1937,21 +1984,19 @@ static void adjustCallerStackProbes(Function &Caller, const Function &Callee) {
 /// that is no larger.
 static void
 adjustCallerStackProbeSize(Function &Caller, const Function &Callee) {
-  if (Callee.hasFnAttribute("stack-probe-size")) {
-    uint64_t CalleeStackProbeSize;
-    Callee.getFnAttribute("stack-probe-size")
-          .getValueAsString()
-          .getAsInteger(0, CalleeStackProbeSize);
-    if (Caller.hasFnAttribute("stack-probe-size")) {
-      uint64_t CallerStackProbeSize;
-      Caller.getFnAttribute("stack-probe-size")
-            .getValueAsString()
-            .getAsInteger(0, CallerStackProbeSize);
+  Attribute CalleeAttr = Callee.getFnAttribute("stack-probe-size");
+  if (CalleeAttr.isValid()) {
+    Attribute CallerAttr = Caller.getFnAttribute("stack-probe-size");
+    if (CallerAttr.isValid()) {
+      uint64_t CallerStackProbeSize, CalleeStackProbeSize;
+      CallerAttr.getValueAsString().getAsInteger(0, CallerStackProbeSize);
+      CalleeAttr.getValueAsString().getAsInteger(0, CalleeStackProbeSize);
+
       if (CallerStackProbeSize > CalleeStackProbeSize) {
-        Caller.addFnAttr(Callee.getFnAttribute("stack-probe-size"));
+        Caller.addFnAttr(CalleeAttr);
       }
     } else {
-      Caller.addFnAttr(Callee.getFnAttribute("stack-probe-size"));
+      Caller.addFnAttr(CalleeAttr);
     }
   }
 }
@@ -1967,18 +2012,15 @@ adjustCallerStackProbeSize(Function &Caller, const Function &Callee) {
 /// handled as part of inline cost analysis.
 static void
 adjustMinLegalVectorWidth(Function &Caller, const Function &Callee) {
-  if (Caller.hasFnAttribute("min-legal-vector-width")) {
-    if (Callee.hasFnAttribute("min-legal-vector-width")) {
-      uint64_t CallerVectorWidth;
-      Caller.getFnAttribute("min-legal-vector-width")
-            .getValueAsString()
-            .getAsInteger(0, CallerVectorWidth);
-      uint64_t CalleeVectorWidth;
-      Callee.getFnAttribute("min-legal-vector-width")
-            .getValueAsString()
-            .getAsInteger(0, CalleeVectorWidth);
+  Attribute CallerAttr = Caller.getFnAttribute("min-legal-vector-width");
+  if (CallerAttr.isValid()) {
+    Attribute CalleeAttr = Callee.getFnAttribute("min-legal-vector-width");
+    if (CalleeAttr.isValid()) {
+      uint64_t CallerVectorWidth, CalleeVectorWidth;
+      CallerAttr.getValueAsString().getAsInteger(0, CallerVectorWidth);
+      CalleeAttr.getValueAsString().getAsInteger(0, CalleeVectorWidth);
       if (CallerVectorWidth < CalleeVectorWidth)
-        Caller.addFnAttr(Callee.getFnAttribute("min-legal-vector-width"));
+        Caller.addFnAttr(CalleeAttr);
     } else {
       // If the callee doesn't have the attribute then we don't know anything
       // and must drop the attribute from the caller.

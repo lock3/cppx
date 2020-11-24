@@ -124,7 +124,7 @@ static void printAllocaOp(OpAsmPrinter &p, AllocaOp &op) {
                                   op.getContext());
 
   p << op.getOperationName() << ' ' << op.arraySize() << " x " << elemTy;
-  if (op.alignment().hasValue() && op.alignment()->getSExtValue() != 0)
+  if (op.alignment().hasValue() && *op.alignment() != 0)
     p.printOptionalAttrDict(op.getAttrs());
   else
     p.printOptionalAttrDict(op.getAttrs(), {"alignment"});
@@ -142,6 +142,17 @@ static ParseResult parseAllocaOp(OpAsmParser &parser, OperationState &result) {
       parser.parseOptionalAttrDict(result.attributes) || parser.parseColon() ||
       parser.getCurrentLocation(&trailingTypeLoc) || parser.parseType(type))
     return failure();
+
+  Optional<NamedAttribute> alignmentAttr =
+      result.attributes.getNamed("alignment");
+  if (alignmentAttr.hasValue()) {
+    auto alignmentInt = alignmentAttr.getValue().second.dyn_cast<IntegerAttr>();
+    if (!alignmentInt)
+      return parser.emitError(parser.getNameLoc(),
+                              "expected integer alignment");
+    if (alignmentInt.getValue().isNullValue())
+      result.attributes.erase("alignment");
+  }
 
   // Extract the result type from the trailing function type.
   auto funcType = type.dyn_cast<FunctionType>();
@@ -247,7 +258,7 @@ void StoreOp::build(OpBuilder &builder, OperationState &result, Value value,
                     Value addr, unsigned alignment, bool isVolatile,
                     bool isNonTemporal) {
   result.addOperands({value, addr});
-  result.addTypes(ArrayRef<Type>{});
+  result.addTypes({});
   if (isVolatile)
     result.addAttribute(kVolatileAttrName, builder.getUnitAttr());
   if (isNonTemporal)
@@ -531,8 +542,82 @@ static ParseResult parseLandingpadOp(OpAsmParser &parser,
 }
 
 //===----------------------------------------------------------------------===//
-// Printing/parsing for LLVM::CallOp.
+// Verifying/Printing/parsing for LLVM::CallOp.
 //===----------------------------------------------------------------------===//
+
+static LogicalResult verify(CallOp &op) {
+  if (op.getNumResults() > 1)
+    return op.emitOpError("must have 0 or 1 result");
+
+  // Type for the callee, we'll get it differently depending if it is a direct
+  // or indirect call.
+  LLVMType fnType;
+
+  bool isIndirect = false;
+
+  // If this is an indirect call, the callee attribute is missing.
+  Optional<StringRef> calleeName = op.callee();
+  if (!calleeName) {
+    isIndirect = true;
+    if (!op.getNumOperands())
+      return op.emitOpError(
+          "must have either a `callee` attribute or at least an operand");
+    fnType = op.getOperand(0).getType().dyn_cast<LLVMType>();
+    if (!fnType)
+      return op.emitOpError("indirect call to a non-llvm type: ")
+             << op.getOperand(0).getType();
+    auto ptrType = fnType.dyn_cast<LLVMPointerType>();
+    if (!ptrType)
+      return op.emitOpError("indirect call expects a pointer as callee: ")
+             << fnType;
+    fnType = ptrType.getElementType();
+  } else {
+    Operation *callee = SymbolTable::lookupNearestSymbolFrom(op, *calleeName);
+    if (!callee)
+      return op.emitOpError()
+             << "'" << *calleeName
+             << "' does not reference a symbol in the current scope";
+    auto fn = dyn_cast<LLVMFuncOp>(callee);
+    if (!fn)
+      return op.emitOpError() << "'" << *calleeName
+                              << "' does not reference a valid LLVM function";
+
+    fnType = fn.getType();
+  }
+  if (!fnType.isFunctionTy())
+    return op.emitOpError("callee does not have a functional type: ") << fnType;
+
+  // Verify that the operand and result types match the callee.
+
+  if (!fnType.isFunctionVarArg() &&
+      fnType.getFunctionNumParams() != (op.getNumOperands() - isIndirect))
+    return op.emitOpError()
+           << "incorrect number of operands ("
+           << (op.getNumOperands() - isIndirect)
+           << ") for callee (expecting: " << fnType.getFunctionNumParams()
+           << ")";
+
+  if (fnType.getFunctionNumParams() > (op.getNumOperands() - isIndirect))
+    return op.emitOpError() << "incorrect number of operands ("
+                            << (op.getNumOperands() - isIndirect)
+                            << ") for varargs callee (expecting at least: "
+                            << fnType.getFunctionNumParams() << ")";
+
+  for (unsigned i = 0, e = fnType.getFunctionNumParams(); i != e; ++i)
+    if (op.getOperand(i + isIndirect).getType() !=
+        fnType.getFunctionParamType(i))
+      return op.emitOpError() << "operand type mismatch for operand " << i
+                              << ": " << op.getOperand(i + isIndirect).getType()
+                              << " != " << fnType.getFunctionParamType(i);
+
+  if (op.getNumResults() &&
+      op.getResult(0).getType() != fnType.getFunctionResultType())
+    return op.emitOpError()
+           << "result type mismatch: " << op.getResult(0).getType()
+           << " != " << fnType.getFunctionResultType();
+
+  return success();
+}
 
 static void printCallOp(OpAsmPrinter &p, CallOp &op) {
   auto callee = op.callee();
@@ -914,9 +999,8 @@ static LogicalResult verify(AddressOfOp op) {
     return op.emitOpError(
         "must reference a global defined by 'llvm.mlir.global' or 'llvm.func'");
 
-  if (global &&
-      global.getType().getPointerTo(global.addr_space().getZExtValue()) !=
-          op.getResult().getType())
+  if (global && global.getType().getPointerTo(global.addr_space()) !=
+                    op.getResult().getType())
     return op.emitOpError(
         "the type must be a pointer to the type of the referenced global");
 
@@ -1113,7 +1197,7 @@ static ParseResult parseGlobalOp(OpAsmParser &parser, OperationState &result) {
 }
 
 static LogicalResult verify(GlobalOp op) {
-  if (!LLVMType::isValidPointerElementType(op.getType()))
+  if (!LLVMPointerType::isValidElementType(op.getType()))
     return op.emitOpError(
         "expects type to be a valid element type for an LLVM pointer");
   if (op.getParentOp() && !satisfiesLLVMModule(op.getParentOp()))
@@ -1534,8 +1618,6 @@ static ParseResult parseAtomicRMWOp(OpAsmParser &parser,
 
 static LogicalResult verify(AtomicRMWOp op) {
   auto ptrType = op.ptr().getType().cast<LLVM::LLVMType>();
-  if (!ptrType.isPointerTy())
-    return op.emitOpError("expected LLVM IR pointer type for operand #0");
   auto valType = op.val().getType().cast<LLVM::LLVMType>();
   if (valType != ptrType.getPointerElementTy())
     return op.emitOpError("expected LLVM IR element type for operand #0 to "
@@ -1668,23 +1750,7 @@ static LogicalResult verify(FenceOp &op) {
 // LLVMDialect initialization, type parsing, and registration.
 //===----------------------------------------------------------------------===//
 
-namespace mlir {
-namespace LLVM {
-namespace detail {
-struct LLVMDialectImpl {
-  LLVMDialectImpl() : layout("") {}
-
-  /// Default data layout to use.
-  // TODO: this should be moved to some Op equivalent to LLVM module and
-  // eventually replaced with a proper MLIR data layout.
-  llvm::DataLayout layout;
-};
-} // end namespace detail
-} // end namespace LLVM
-} // end namespace mlir
-
 void LLVMDialect::initialize() {
-  impl = new detail::LLVMDialectImpl();
   // clang-format off
   addTypes<LLVMVoidType,
            LLVMHalfType,
@@ -1715,12 +1781,8 @@ void LLVMDialect::initialize() {
   allowUnknownOperations();
 }
 
-LLVMDialect::~LLVMDialect() { delete impl; }
-
 #define GET_OP_CLASSES
 #include "mlir/Dialect/LLVMIR/LLVMOps.cpp.inc"
-
-const llvm::DataLayout &LLVMDialect::getDataLayout() { return impl->layout; }
 
 /// Parse a type registered to this dialect.
 Type LLVMDialect::parseType(DialectAsmParser &parser) const {
@@ -1730,6 +1792,39 @@ Type LLVMDialect::parseType(DialectAsmParser &parser) const {
 /// Print a type registered to this dialect.
 void LLVMDialect::printType(Type type, DialectAsmPrinter &os) const {
   return detail::printType(type.cast<LLVMType>(), os);
+}
+
+LogicalResult LLVMDialect::verifyDataLayoutString(
+    StringRef descr, llvm::function_ref<void(const Twine &)> reportError) {
+  llvm::Expected<llvm::DataLayout> maybeDataLayout =
+      llvm::DataLayout::parse(descr);
+  if (maybeDataLayout)
+    return success();
+
+  std::string message;
+  llvm::raw_string_ostream messageStream(message);
+  llvm::logAllUnhandledErrors(maybeDataLayout.takeError(), messageStream);
+  reportError("invalid data layout descriptor: " + messageStream.str());
+  return failure();
+}
+
+/// Verify LLVM dialect attributes.
+LogicalResult LLVMDialect::verifyOperationAttribute(Operation *op,
+                                                    NamedAttribute attr) {
+  // If the data layout attribute is present, it must use the LLVM data layout
+  // syntax. Try parsing it and report errors in case of failure. Users of this
+  // attribute may assume it is well-formed and can pass it to the (asserting)
+  // llvm::DataLayout constructor.
+  if (attr.first.strref() != LLVM::LLVMDialect::getDataLayoutAttrName())
+    return success();
+  if (auto stringAttr = attr.second.dyn_cast<StringAttr>())
+    return verifyDataLayoutString(
+        stringAttr.getValue(),
+        [op](const Twine &message) { op->emitOpError() << message.str(); });
+
+  return op->emitOpError() << "expected '"
+                           << LLVM::LLVMDialect::getDataLayoutAttrName()
+                           << "' to be a string attribute";
 }
 
 /// Verify LLVMIR function argument attributes.
@@ -1777,7 +1872,7 @@ Value mlir::LLVM::createGlobalString(Location loc, OpBuilder &builder,
       loc, LLVM::LLVMType::getInt64Ty(ctx),
       builder.getIntegerAttr(builder.getIndexType(), 0));
   return builder.create<LLVM::GEPOp>(loc, LLVM::LLVMType::getInt8PtrTy(ctx),
-                                     globalPtr, ArrayRef<Value>({cst0, cst0}));
+                                     globalPtr, ValueRange{cst0, cst0});
 }
 
 bool mlir::LLVM::satisfiesLLVMModule(Operation *op) {

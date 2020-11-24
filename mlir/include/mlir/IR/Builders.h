@@ -139,6 +139,7 @@ public:
   ArrayAttr getF32ArrayAttr(ArrayRef<float> values);
   ArrayAttr getF64ArrayAttr(ArrayRef<double> values);
   ArrayAttr getStrArrayAttr(ArrayRef<StringRef> values);
+  ArrayAttr getTypeArrayAttr(TypeRange values);
 
   // Affine expressions and affine maps.
   AffineExpr getAffineDimExpr(unsigned position);
@@ -327,6 +328,20 @@ public:
     setInsertionPoint(op->getBlock(), ++Block::iterator(op));
   }
 
+  /// Sets the insertion point to the node after the specified value. If value
+  /// has a defining operation, sets the insertion point to the node after such
+  /// defining operation. This will cause subsequent insertions to go right
+  /// after it. Otherwise, value is a BlockArgumen. Sets the insertion point to
+  /// the start of its block.
+  void setInsertionPointAfterValue(Value val) {
+    if (Operation *op = val.getDefiningOp()) {
+      setInsertionPointAfter(op);
+    } else {
+      auto blockArg = val.cast<BlockArgument>();
+      setInsertionPointToStart(blockArg.getOwner());
+    }
+  }
+
   /// Sets the insertion point to the start of the specified block.
   void setInsertionPointToStart(Block *block) {
     setInsertionPoint(block, block->begin());
@@ -443,10 +458,8 @@ public:
   /// ( leaving them alone if no entry is present).  Replaces references to
   /// cloned sub-operations to the corresponding operation that is copied,
   /// and adds those mappings to the map.
-  Operation *clone(Operation &op, BlockAndValueMapping &mapper) {
-    return insert(op.clone(mapper));
-  }
-  Operation *clone(Operation &op) { return insert(op.clone()); }
+  Operation *clone(Operation &op, BlockAndValueMapping &mapper);
+  Operation *clone(Operation &op);
 
   /// Creates a deep copy of this operation but keep the operation regions
   /// empty. Operands are remapped using `mapper` (if present), and `mapper` is

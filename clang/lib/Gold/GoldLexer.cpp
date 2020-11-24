@@ -455,10 +455,22 @@ Token CharacterScanner::matchWord() {
 
   // This might be a keyword.
   llvm::StringRef Str(Start, First - Start);
+  // Adding special handling for a Character that doesn't conform to
+  // typical matching, and doesn't fit into our AST structure very well.
+  if (Str == "sizeof") {
+    // Reading the size of pack token.
+    if (getLookahead() == '.'
+        && getLookahead(1) == '.'
+        && getLookahead(2) == '.') {
+      consume();
+      consume();
+      consume();
+      return makeToken(tok::SizeOfPack, Start, First);
+    }
+  }
   auto Iter = Keywords.find(Str);
   if (Iter != Keywords.end())
     return makeToken(Iter->second, Start, First);
-
   return makeToken(tok::Identifier, Start, First);
 }
 

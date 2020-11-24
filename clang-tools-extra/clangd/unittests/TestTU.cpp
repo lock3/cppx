@@ -16,6 +16,7 @@
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Frontend/CompilerInvocation.h"
 #include "clang/Frontend/Utils.h"
+#include "llvm/ADT/ScopeExit.h"
 
 namespace clang {
 namespace clangd {
@@ -58,8 +59,6 @@ ParseInputs TestTU::inputs(MockFS &FS) const {
     FS.OverlayRealFileSystemForModules = true;
   Inputs.TFS = &FS;
   Inputs.Opts = ParseOptions();
-  Inputs.Opts.BuildRecoveryAST = true;
-  Inputs.Opts.PreserveRecoveryASTType = true;
   Inputs.Opts.ClangTidyOpts.Checks = ClangTidyChecks;
   Inputs.Opts.ClangTidyOpts.WarningsAsErrors = ClangTidyWarningsAsErrors;
   Inputs.Index = ExternalIndex;
@@ -68,15 +67,32 @@ ParseInputs TestTU::inputs(MockFS &FS) const {
   return Inputs;
 }
 
-std::shared_ptr<const PreambleData> TestTU::preamble() const {
+void initializeModuleCache(CompilerInvocation &CI) {
+  llvm::SmallString<128> ModuleCachePath;
+  ASSERT_FALSE(
+      llvm::sys::fs::createUniqueDirectory("module-cache", ModuleCachePath));
+  CI.getHeaderSearchOpts().ModuleCachePath = ModuleCachePath.c_str();
+}
+
+void deleteModuleCache(const std::string ModuleCachePath) {
+  if (!ModuleCachePath.empty()) {
+    ASSERT_FALSE(llvm::sys::fs::remove_directories(ModuleCachePath));
+  }
+}
+
+std::shared_ptr<const PreambleData>
+TestTU::preamble(PreambleParsedCallback PreambleCallback) const {
   MockFS FS;
   auto Inputs = inputs(FS);
   IgnoreDiagnostics Diags;
   auto CI = buildCompilerInvocation(Inputs, Diags);
   assert(CI && "Failed to build compilation invocation.");
+  if (OverlayRealFileSystemForModules)
+    initializeModuleCache(*CI);
+  auto ModuleCacheDeleter = llvm::make_scope_exit(
+      std::bind(deleteModuleCache, CI->getHeaderSearchOpts().ModuleCachePath));
   return clang::clangd::buildPreamble(testPath(Filename), *CI, Inputs,
-                                      /*StoreInMemory=*/true,
-                                      /*PreambleCallback=*/nullptr);
+                                      /*StoreInMemory=*/true, PreambleCallback);
 }
 
 ParsedAST TestTU::build() const {
@@ -85,6 +101,11 @@ ParsedAST TestTU::build() const {
   StoreDiags Diags;
   auto CI = buildCompilerInvocation(Inputs, Diags);
   assert(CI && "Failed to build compilation invocation.");
+  if (OverlayRealFileSystemForModules)
+    initializeModuleCache(*CI);
+  auto ModuleCacheDeleter = llvm::make_scope_exit(
+      std::bind(deleteModuleCache, CI->getHeaderSearchOpts().ModuleCachePath));
+
   auto Preamble = clang::clangd::buildPreamble(testPath(Filename), *CI, Inputs,
                                                /*StoreInMemory=*/true,
                                                /*PreambleCallback=*/nullptr);

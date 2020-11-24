@@ -1,7 +1,9 @@
 set(LLVM_LINK_COMPONENTS
   BinaryFormat
+  Core
   Object
   Support
+  TextAPI
   )
 
 add_llvm_tool(llvm-libtool-darwin

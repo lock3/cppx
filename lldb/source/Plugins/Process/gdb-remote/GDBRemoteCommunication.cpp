@@ -50,7 +50,7 @@
 #include <compression.h>
 #endif
 
-#if defined(HAVE_LIBZ)
+#if LLVM_ENABLE_ZLIB
 #include <zlib.h>
 #endif
 
@@ -582,7 +582,7 @@ bool GDBRemoteCommunication::DecompressPacket() {
   }
 #endif
 
-#if defined(HAVE_LIBZ)
+#if LLVM_ENABLE_ZLIB
   if (decompressed_bytes == 0 && decompressed_bufsize != ULONG_MAX &&
       decompressed_buffer != nullptr &&
       m_compression_type == CompressionType::ZlibDeflate) {
@@ -1234,7 +1234,7 @@ GDBRemoteCommunication::ConnectLocally(GDBRemoteCommunication &client,
   const int backlog = 5;
   TCPSocket listen_socket(true, child_processes_inherit);
   if (llvm::Error error =
-          listen_socket.Listen("127.0.0.1:0", backlog).ToError())
+          listen_socket.Listen("localhost:0", backlog).ToError())
     return error;
 
   Socket *accept_socket;
@@ -1243,7 +1243,7 @@ GDBRemoteCommunication::ConnectLocally(GDBRemoteCommunication &client,
 
   llvm::SmallString<32> remote_addr;
   llvm::raw_svector_ostream(remote_addr)
-      << "connect://127.0.0.1:" << listen_socket.GetLocalPortNumber();
+      << "connect://localhost:" << listen_socket.GetLocalPortNumber();
 
   std::unique_ptr<ConnectionFileDescriptor> conn_up(
       new ConnectionFileDescriptor());

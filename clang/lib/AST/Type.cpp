@@ -2347,11 +2347,17 @@ bool Type::isVLSTBuiltinType() const {
   return false;
 }
 
-bool Type::isVLST() const {
-  if (!isVLSTBuiltinType())
-    return false;
+QualType Type::getSveEltType(const ASTContext &Ctx) const {
+  assert(isVLSTBuiltinType() && "unsupported type!");
 
-  return hasAttr(attr::ArmSveVectorBits);
+  const BuiltinType *BTy = getAs<BuiltinType>();
+  if (BTy->getKind() == BuiltinType::SveBool)
+    // Represent predicates as i8 rather than i1 to avoid any layout issues.
+    // The type is bitcasted to a scalable predicate type when casting between
+    // scalable and fixed-length vectors.
+    return Ctx.UnsignedCharTy;
+  else
+    return Ctx.getBuiltinVectorTypeInfo(BTy).ElementType;
 }
 
 bool QualType::isPODType(const ASTContext &Context) const {
@@ -2630,6 +2636,22 @@ bool Type::isLiteralType(const ASTContext &Ctx) const {
   if (isKindType())
     return true;
 
+  return false;
+}
+
+bool Type::isStructuralType() const {
+  // C++20 [temp.param]p6:
+  //   A structural type is one of the following:
+  //   -- a scalar type; or
+  //   -- a vector type [Clang extension]; or
+  if (isScalarType() || isVectorType())
+    return true;
+  //   -- an lvalue reference type; or
+  if (isLValueReferenceType())
+    return true;
+  //  -- a literal class type [...under some conditions]
+  if (const CXXRecordDecl *RD = getAsCXXRecordDecl())
+    return RD->isStructural();
   return false;
 }
 
@@ -3140,6 +3162,10 @@ StringRef BuiltinType::getName(const PrintingPolicy &Policy) const {
   case Id: \
     return Name;
 #include "clang/Basic/AArch64SVEACLETypes.def"
+#define PPC_MMA_VECTOR_TYPE(Name, Id, Size) \
+  case Id: \
+    return #Name;
+#include "clang/Basic/PPCTypes.def"
   }
 
   llvm_unreachable("Invalid builtin type.");
@@ -4025,6 +4051,12 @@ static CachedProperties computeCachedProperties(const Type *T) {
   case Type::CppxArgs:
     // Just return something for now.
     return CachedProperties(ExternalLinkage, false);
+
+  case Type::InParameter:
+  case Type::OutParameter:
+  case Type::InOutParameter:
+  case Type::MoveParameter:
+    return Cache::get(cast<ParameterType>(T)->getParameterType());
   }
 
   llvm_unreachable("unhandled type class");
@@ -4120,6 +4152,12 @@ LinkageInfo LinkageComputer::computeTypeLinkageInfo(const Type *T) {
   case Type::CppxTemplate:
   case Type::CppxNamespace:
     return LinkageInfo::external();
+
+  case Type::InParameter:
+  case Type::OutParameter:
+  case Type::InOutParameter:
+  case Type::MoveParameter:
+    return computeTypeLinkageInfo(cast<ParameterType>(T)->getParameterType());
   }
 
   llvm_unreachable("unhandled type class");
@@ -4245,6 +4283,9 @@ bool Type::canHaveNullability(bool ResultIfUnknown) const {
 #define SVE_TYPE(Name, Id, SingletonId) \
     case BuiltinType::Id:
 #include "clang/Basic/AArch64SVEACLETypes.def"
+#define PPC_MMA_VECTOR_TYPE(Name, Id, Size) \
+    case BuiltinType::Id:
+#include "clang/Basic/PPCTypes.def"
     case BuiltinType::BuiltinFn:
     case BuiltinType::NullPtr:
     case BuiltinType::MetaInfo:
@@ -4289,6 +4330,15 @@ bool Type::canHaveNullability(bool ResultIfUnknown) const {
   case Type::CppxArgs:
   case Type::ExtInt:
   case Type::DependentExtInt:
+    return false;
+
+  case Type::InParameter:
+  case Type::OutParameter:
+  case Type::InOutParameter:
+  case Type::MoveParameter:
+    // TODO: This could be wrong. It seems like these may be nullable
+    // if their underlying type is nullable. But maybe that's not what
+    // this function computes.
     return false;
   }
   llvm_unreachable("bad type kind!");
@@ -4509,10 +4559,10 @@ CXXRecordDecl *MemberPointerType::getMostRecentCXXRecordDecl() const {
 
 void clang::FixedPointValueToString(SmallVectorImpl<char> &Str,
                                     llvm::APSInt Val, unsigned Scale) {
-  FixedPointSemantics FXSema(Val.getBitWidth(), Scale, Val.isSigned(),
-                             /*IsSaturated=*/false,
-                             /*HasUnsignedPadding=*/false);
-  APFixedPoint(Val, FXSema).toString(Str);
+  llvm::FixedPointSemantics FXSema(Val.getBitWidth(), Scale, Val.isSigned(),
+                                   /*IsSaturated=*/false,
+                                   /*HasUnsignedPadding=*/false);
+  llvm::APFixedPoint(Val, FXSema).toString(Str);
 }
 
 AutoType::AutoType(QualType DeducedAsType, AutoTypeKeyword Keyword,
@@ -4534,6 +4584,15 @@ AutoType::AutoType(QualType DeducedAsType, AutoTypeKeyword Keyword,
   }
 }
 
+AutoType::AutoType(QualType Expected)
+    : DeducedType(Auto, QualType(), TypeDependence::None) {
+  AutoTypeBits.Keyword = (unsigned)AutoTypeKeyword::Auto;
+  AutoTypeBits.NumArgs = 0;
+  TypeConstraintConcept = nullptr;
+  ExpectedDeduction = Expected;
+}
+
+
 void AutoType::Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
                       QualType Deduced, AutoTypeKeyword Keyword,
                       bool IsDependent, ConceptDecl *CD,
@@ -4550,3 +4609,67 @@ CppxTemplateType::CppxTemplateType(TemplateDecl *TemplateD)
   : Type(CppxTemplate, QualType{ }, TypeDependence(), /*MetaType=*/false),
     TD(TemplateD)
 { }
+
+void AutoType::Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
+                      QualType Expected) {
+  Expected.Profile(ID);
+}
+
+QualType ParameterType::getAdjustedType(const ASTContext &Ctx)  const {
+  // Use the canonical type for forming the adjusted type. Otherwise, we might
+  // have sugar affecting the results of analyses.
+  QualType T = Ctx.getCanonicalType(getParameterType());
+  switch (getParameterPassingMode()) {
+  case PPK_in:
+    if (InParameterType::isPassByReference(Ctx, T))
+      T = Ctx.getLValueReferenceType(Ctx.getConstType(T));
+    return T;
+
+  case PPK_out:
+  case PPK_inout:
+    return Ctx.getLValueReferenceType(T);
+
+  case PPK_move:
+    if (InParameterType::isPassByReference(Ctx, T))
+      T = Ctx.getRValueReferenceType(T);
+    return T;
+
+  default:
+    break;
+  }
+  llvm_unreachable("Invalid parameter passing mode");
+}
+
+static bool shouldPassByValue(const ASTContext &Ctx, QualType T) {
+  assert(!T->isParameterType());
+
+  // Scalar types are always passed by value.
+  if (T->isScalarType())
+    return true;
+
+  // Function and array types decay to pointers, so those are also passed
+  // by value (presumably).
+  if (T->isFunctionType() || T->isArrayType())
+    return true;
+
+  // Trivially copyable class types whose size is less or equal to that of a
+  // pointer are passed by value.
+  //
+  // TODO: Some ABIs allow certain types to be coerced into multiple integer
+  // registers. By comparing against just the size of a pointer, we might
+  // actually be inhibiting some optimizations in those cases.
+  if (const CXXRecordDecl *Class = T->getAsCXXRecordDecl())
+    if (Class->isTriviallyCopyable())
+      if (Ctx.getTypeSize(T) <= Ctx.getTypeSize(Ctx.VoidPtrTy))
+        return true;
+  
+  return false;
+}
+
+bool InParameterType::isPassByValue(const ASTContext &Ctx, QualType T) {
+  return shouldPassByValue(Ctx, T);
+}
+
+bool MoveParameterType::isPassByValue(const ASTContext &Ctx, QualType T) {
+  return shouldPassByValue(Ctx, T);
+}

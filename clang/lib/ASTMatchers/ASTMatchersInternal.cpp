@@ -284,6 +284,11 @@ bool DynTypedMatcher::matches(const DynTypedNode &DynNode,
   TraversalKindScope RAII(Finder->getASTContext(),
                           Implementation->TraversalKind());
 
+  if (Finder->getASTContext().getParentMapContext().getTraversalKind() ==
+          TK_IgnoreUnlessSpelledInSource &&
+      Finder->isMatchingInImplicitTemplateInstantiation())
+    return false;
+
   auto N =
       Finder->getASTContext().getParentMapContext().traverseIgnored(DynNode);
 
@@ -303,6 +308,11 @@ bool DynTypedMatcher::matchesNoKindCheck(const DynTypedNode &DynNode,
                                          BoundNodesTreeBuilder *Builder) const {
   TraversalKindScope raii(Finder->getASTContext(),
                           Implementation->TraversalKind());
+
+  if (Finder->getASTContext().getParentMapContext().getTraversalKind() ==
+          TK_IgnoreUnlessSpelledInSource &&
+      Finder->isMatchingInImplicitTemplateInstantiation())
+    return false;
 
   auto N =
       Finder->getASTContext().getParentMapContext().traverseIgnored(DynNode);
@@ -710,6 +720,7 @@ const internal::VariadicDynCastAllOfMatcher<Decl, TypeAliasDecl> typeAliasDecl;
 const internal::VariadicDynCastAllOfMatcher<Decl, TypeAliasTemplateDecl>
     typeAliasTemplateDecl;
 const internal::VariadicAllOfMatcher<Decl> decl;
+const internal::VariadicAllOfMatcher<DecompositionDecl> decompositionDecl;
 const internal::VariadicDynCastAllOfMatcher<Decl, LinkageSpecDecl>
     linkageSpecDecl;
 const internal::VariadicDynCastAllOfMatcher<Decl, NamedDecl> namedDecl;
@@ -740,6 +751,9 @@ const internal::VariadicDynCastAllOfMatcher<Decl, NonTypeTemplateParmDecl>
     nonTypeTemplateParmDecl;
 const internal::VariadicDynCastAllOfMatcher<Decl, TemplateTypeParmDecl>
     templateTypeParmDecl;
+const internal::VariadicDynCastAllOfMatcher<Decl, TemplateTemplateParmDecl>
+    templateTemplateParmDecl;
+
 const internal::VariadicAllOfMatcher<QualType> qualType;
 const internal::VariadicAllOfMatcher<Type> type;
 const internal::VariadicAllOfMatcher<TypeLoc> typeLoc;

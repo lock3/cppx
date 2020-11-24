@@ -44,6 +44,7 @@ const llvm::StringMap<clang::QualType> Sema::createBuiltinTypeList() {
     {"void", Context.CxxAST.VoidTy},
     {"bool", Context.CxxAST.BoolTy},
     {"null_t", Context.CxxAST.NullPtrTy},
+    { "auto", Context.CxxAST.getAutoDeductType()},
 
     // character
     {"cchar", Context.CxxAST.CharTy},
@@ -350,8 +351,11 @@ void Sema::addDeclToDecl(clang::Decl *CDecl, gold::Declaration *GDecl) {
   assert(GDecl && "Invalid gold declaration");
 
   auto Ret = DeclToDecl.try_emplace(CDecl, GDecl);
-  if (!Ret.second)
+  if (!Ret.second) {
+    llvm::errs() << "Duplicate declaration Id = "
+                 << GDecl->getId()->getName() <<"\n";
     llvm_unreachable("we should never add something to the decl map 2x.");
+  }
 }
 
 gold::Declaration *Sema::getDeclaration(clang::Decl *CDecl) {
@@ -1574,6 +1578,7 @@ void Sema::createInPlaceNew() {
     InPlaceNew = clang::FunctionDecl::Create(Context.CxxAST, Owner, Loc, Loc,
                                             FnName, FnTInfo->getType(), FnTInfo,
                                             clang::SC_None);
+    // Setting the declaration to be implicit.
     {
       clang::TypeSourceInfo *P0SrcInfo = BuildAnyTypeLoc(Context.CxxAST, Types[0], Loc);
       clang::IdentifierInfo *II = &Context.CxxAST.Idents.get("sz");
@@ -1615,20 +1620,17 @@ void Sema::createInPlaceNew() {
               .getValueKindForDeclReference(ResultType, Params[1], Loc);
       clang::DeclarationNameInfo DNI({&Context.CxxAST.Idents.get("ptr")}, Loc);
 
-      auto RefExpr = clang::DeclRefExpr::Create(Context.CxxAST,
-                                                clang::NestedNameSpecifierLoc(),
-                                                clang::SourceLocation(),
-                                                Params[1],
-                                    /*RefersToEnclosingVariableOrCapture*/false,
-                                                /*NameLoc*/Loc,
-                                                ResultType,
-                                                ValueKind);
-      auto Cast = clang::ImplicitCastExpr::Create(Context.CxxAST,
-                                                  ResultType,
-                                                  clang::CK_LValueToRValue,
-                                                  RefExpr,
-                                                  nullptr,
-                                                  ValueKind);
+      auto RefExpr =
+        clang::DeclRefExpr::Create(Context.CxxAST,
+                                   clang::NestedNameSpecifierLoc(),
+                                   clang::SourceLocation(), Params[1],
+                                   /*RefersToEnclosingVariableOrCapture*/false,
+                                   /*NameLoc*/Loc, ResultType, ValueKind);
+      auto Cast =
+        clang::ImplicitCastExpr::Create(Context.CxxAST, ResultType,
+                                        clang::CK_LValueToRValue, RefExpr,
+                                        nullptr, ValueKind,
+                                        clang::FPOptionsOverride());
       clang::ReturnStmt *RetStmt = clang::ReturnStmt::Create(Context.CxxAST,
                                                         Loc, Cast, nullptr);
       llvm::SmallVector<clang::Stmt* , 1> BlockStmts({RetStmt});
@@ -1645,6 +1647,78 @@ clang::FunctionDecl *Sema::getInPlaceNew() {
   return InPlaceNew;
 }
 
+
+/// This creates the operator new and delete then uses the rebuilder in order
+/// to create declarations so they can be looked up by gold's lookup.
+/// Without have to change the names of the functions in C++ land.
+void Sema::createBuiltinOperatorNewDeleteDecls() {
+  if (CxxSema.GlobalNewDeleteDeclared)
+    return;
+
+  CxxSema.DeclareGlobalNewDelete();
+  clang::DeclarationName OpNewName
+            = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_New);
+  clang::DeclarationName OpArrayNew
+      = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Array_New);
+  clang::DeclarationName OpDeleteName
+         = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Delete);
+  clang::DeclarationName OpArrayDelete
+      = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Array_Delete);
+  Declaration *TUDeclaration = getTranslationUnit();
+  auto *TU = cast<clang::TranslationUnitDecl>(TUDeclaration->Cxx);
+  auto NewOperators = TU->lookup(OpNewName);
+
+  // Rebuilding operator new.
+  for (clang::Decl *D : NewOperators) {
+    ClangToGoldDeclRebuilder Rebuilder(Context, *this);
+    Rebuilder.rebuildDeclWithNewName(TUDeclaration,
+                                     OpInfo.GoldDecl_OpNew->getName(), D,
+                                     getTranslationUnitScope());
+  }
+
+  auto DeleteOperators = TU->lookup(OpDeleteName);
+  for (clang::Decl *D : DeleteOperators) {
+    ClangToGoldDeclRebuilder Rebuilder(Context, *this);
+    Rebuilder.rebuildDeclWithNewName(TUDeclaration,
+                                     OpInfo.GoldDecl_OpDelete->getName(), D,
+                                     getTranslationUnitScope());
+  }
+
+  auto NewArrayOps = TU->lookup(OpArrayNew);
+  for (clang::Decl *D : NewArrayOps) {
+    ClangToGoldDeclRebuilder Rebuilder(Context, *this);
+    Rebuilder.rebuildDeclWithNewName(TUDeclaration,
+                                     OpInfo.GoldDecl_OpArray_New->getName(), D,
+                                     getTranslationUnitScope());
+  }
+
+  auto ArrayDeleteOps = TU->lookup(OpArrayDelete);
+  for (clang::Decl *D : ArrayDeleteOps) {
+    ClangToGoldDeclRebuilder Rebuilder(Context, *this);
+    Rebuilder.rebuildDeclWithNewName(TUDeclaration,
+                                     OpInfo.GoldDecl_OpArray_Delete->getName(),
+                                     D, getTranslationUnitScope());
+  }
+}
+
+clang::DeclarationNameInfo
+Sema::rebuildDeclarationNameInfo(const clang::DeclarationNameInfo &DNI) {
+  if (DNI.getName().getNameKind() == clang::DeclarationName::Identifier) {
+    clang::DeclarationName Name = DNI.getName();
+    if (Name.getAsIdentifierInfo() == OpInfo.GoldDecl_OpNew) {
+      Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_New);
+    } else if (Name.getAsIdentifierInfo() == OpInfo.GoldDecl_OpArray_New) {
+      Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Array_New);
+    } else if (Name.getAsIdentifierInfo() == OpInfo.GoldDecl_OpDelete) {
+      Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Delete);
+    } else if (Name.getAsIdentifierInfo() == OpInfo.GoldDecl_OpArray_Delete) {
+      Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(clang::OO_Array_Delete);
+    }
+    return clang::DeclarationNameInfo(Name, DNI.getLoc());
+  } else {
+    // There are no conversion made for non-identifier names (yet).
+    return DNI;
+  }
+}
+
 } // namespace gold
-
-

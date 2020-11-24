@@ -90,6 +90,8 @@ function(add_llvm_symbol_exports target_name export_file)
     set_property(TARGET ${target_name} APPEND_STRING PROPERTY
                  LINK_FLAGS " -Wl,-exported_symbols_list,\"${CMAKE_CURRENT_BINARY_DIR}/${native_export_file}\"")
   elseif(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+    # FIXME: `-Wl,-bE:` bypasses whatever handling there is in the build
+    # compiler driver to defer to the specified export list.
     set(native_export_file "${export_file}")
     set_property(TARGET ${target_name} APPEND_STRING PROPERTY
                  LINK_FLAGS " -Wl,-bE:${export_file}")
@@ -221,7 +223,7 @@ function(add_link_opts target_name)
 
     # Pass -O3 to the linker. This enabled different optimizations on different
     # linkers.
-    if(NOT (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|SunOS|AIX" OR WIN32))
+    if(NOT (CMAKE_SYSTEM_NAME MATCHES "Darwin|SunOS|AIX|OS390" OR WIN32))
       set_property(TARGET ${target_name} APPEND_STRING PROPERTY
                    LINK_FLAGS " -Wl,-O3")
     endif()
@@ -249,11 +251,12 @@ function(add_link_opts target_name)
                        LINK_FLAGS " -Wl,-z,discard-unused=sections")
         endif()
       elseif(NOT WIN32 AND NOT LLVM_LINKER_IS_GOLD AND
-             NOT ${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD|AIX")
+             NOT CMAKE_SYSTEM_NAME MATCHES "OpenBSD|AIX|OS390")
         # Object files are compiled with -ffunction-data-sections.
         # Versions of bfd ld < 2.23.1 have a bug in --gc-sections that breaks
         # tools that use plugins. Always pass --gc-sections once we require
         # a newer linker.
+        # TODO Revisit this later on z/OS.
         set_property(TARGET ${target_name} APPEND_STRING PROPERTY
                      LINK_FLAGS " -Wl,--gc-sections")
       endif()
@@ -566,7 +569,7 @@ function(llvm_add_library name)
   endif()
 
   if(ARG_SHARED)
-    if(WIN32)
+    if(MSVC)
       set_target_properties(${name} PROPERTIES
         PREFIX ""
         )
@@ -1226,7 +1229,7 @@ macro(add_llvm_utility name)
 
   add_llvm_executable(${name} DISABLE_LLVM_LINK_LLVM_DYLIB ${ARGN})
   set_target_properties(${name} PROPERTIES FOLDER "Utils")
-  if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
+  if ( ${name} IN_LIST LLVM_TOOLCHAIN_UTILITIES OR NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
     if (LLVM_INSTALL_UTILS AND LLVM_BUILD_UTILS)
       set(export_to_llvmexports)
       if (${name} IN_LIST LLVM_DISTRIBUTION_COMPONENTS OR
@@ -1400,16 +1403,6 @@ function(add_unittest test_suite test_name)
     set(EXCLUDE_FROM_ALL ON)
   endif()
 
-  # Our current version of gtest uses tr1/tuple which is deprecated on MSVC.
-  # Since LLVM itself requires C++14, we can safely force it off.
-  add_definitions(-DGTEST_HAS_TR1_TUPLE=0)
-
-  include_directories(${LLVM_MAIN_SRC_DIR}/utils/unittest/googletest/include)
-  include_directories(${LLVM_MAIN_SRC_DIR}/utils/unittest/googlemock/include)
-  if (NOT LLVM_ENABLE_THREADS)
-    list(APPEND LLVM_COMPILE_DEFINITIONS GTEST_HAS_PTHREAD=0)
-  endif ()
-
   if (SUPPORTS_VARIADIC_MACROS_FLAG)
     list(APPEND LLVM_COMPILE_FLAGS "-Wno-variadic-macros")
   endif ()
@@ -1503,10 +1496,16 @@ def relpath(p):\n
     if os.path.splitdrive(p)[0] != os.path.splitdrive(base)[0]: return p\n
     if haslink(p) or haslink(base): return p\n
     return os.path.relpath(p, base)\n
+if len(sys.argv) < 3: sys.exit(0)\n
 sys.stdout.write(';'.join(relpath(p) for p in sys.argv[2].split(';')))"
     ${basedir}
     ${pathlist_escaped}
-    OUTPUT_VARIABLE pathlist_relative)
+    OUTPUT_VARIABLE pathlist_relative
+    ERROR_VARIABLE error
+    RESULT_VARIABLE result)
+  if (NOT result EQUAL 0)
+    message(FATAL_ERROR "make_paths_relative() failed due to error '${result}', with stderr\n${error}")
+  endif()
   set(${out_pathlist} "${pathlist_relative}" PARENT_SCOPE)
 endfunction()
 
@@ -1666,8 +1665,9 @@ function(get_llvm_lit_path base_dir file_name)
         set(${file_name} ${LIT_FILE_NAME} PARENT_SCOPE)
         set(${base_dir} ${LIT_BASE_DIR} PARENT_SCOPE)
         return()
-      else()
+      elseif (NOT DEFINED CACHE{LLVM_EXTERNAL_LIT_MISSING_WARNED_ONCE})
         message(WARNING "LLVM_EXTERNAL_LIT set to ${LLVM_EXTERNAL_LIT}, but the path does not exist.")
+        set(LLVM_EXTERNAL_LIT_MISSING_WARNED_ONCE YES CACHE INTERNAL "")
       endif()
     endif()
   endif()
@@ -2034,9 +2034,10 @@ function(llvm_codesign name)
       set(ARG_BUNDLE_PATH $<TARGET_FILE:${name}>)
     endif()
 
-    if(ARG_FORCE)
-      set(force_flag "-f")
-    endif()
+    # ld64 now always codesigns the binaries it creates. Apply the force arg
+    # unconditionally so that we can - for example - add entitlements to the
+    # targets that need it.
+    set(force_flag "-f")
 
     add_custom_command(
       TARGET ${name} POST_BUILD

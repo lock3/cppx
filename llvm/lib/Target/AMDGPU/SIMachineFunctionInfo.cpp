@@ -167,11 +167,12 @@ SIMachineFunctionInfo::SIMachineFunctionInfo(const MachineFunction &MF)
   if (UseFixedABI || F.hasFnAttribute("amdgpu-kernarg-segment-ptr"))
     KernargSegmentPtr = true;
 
-  if (ST.hasFlatAddressSpace() && isEntryFunction() && isAmdHsaOrMesa) {
+  if (ST.hasFlatAddressSpace() && isEntryFunction() &&
+      (isAmdHsaOrMesa || ST.enableFlatScratch())) {
     // TODO: This could be refined a lot. The attribute is a poor way of
     // detecting calls or stack objects that may require it before argument
     // lowering.
-    if (HasCalls || HasStackObjects)
+    if (HasCalls || HasStackObjects || ST.enableFlatScratch())
       FlatScratchInit = true;
   }
 
@@ -352,6 +353,8 @@ bool SIMachineFunctionInfo::reserveVGPRforSGPRSpills(MachineFunction &MF) {
 
   Register LaneVGPR = TRI->findUnusedRegister(
       MF.getRegInfo(), &AMDGPU::VGPR_32RegClass, MF, true);
+  if (LaneVGPR == Register())
+    return false;
   SpillVGPRs.push_back(SGPRSpillVGPRCSR(LaneVGPR, None));
   FuncInfo->VGPRReservedForSGPRSpill = LaneVGPR;
   return true;
@@ -537,23 +540,20 @@ convertArgumentInfo(const AMDGPUFunctionArgInfo &ArgInfo,
 }
 
 yaml::SIMachineFunctionInfo::SIMachineFunctionInfo(
-  const llvm::SIMachineFunctionInfo& MFI,
-  const TargetRegisterInfo &TRI)
-  : ExplicitKernArgSize(MFI.getExplicitKernArgSize()),
-    MaxKernArgAlign(MFI.getMaxKernArgAlign()),
-    LDSSize(MFI.getLDSSize()),
-    IsEntryFunction(MFI.isEntryFunction()),
-    NoSignedZerosFPMath(MFI.hasNoSignedZerosFPMath()),
-    MemoryBound(MFI.isMemoryBound()),
-    WaveLimiter(MFI.needsWaveLimiter()),
-    HasSpilledSGPRs(MFI.hasSpilledSGPRs()),
-    HasSpilledVGPRs(MFI.hasSpilledVGPRs()),
-    HighBitsOf32BitAddress(MFI.get32BitAddressHighBits()),
-    ScratchRSrcReg(regToString(MFI.getScratchRSrcReg(), TRI)),
-    FrameOffsetReg(regToString(MFI.getFrameOffsetReg(), TRI)),
-    StackPtrOffsetReg(regToString(MFI.getStackPtrOffsetReg(), TRI)),
-    ArgInfo(convertArgumentInfo(MFI.getArgInfo(), TRI)),
-    Mode(MFI.getMode()) {}
+    const llvm::SIMachineFunctionInfo &MFI, const TargetRegisterInfo &TRI)
+    : ExplicitKernArgSize(MFI.getExplicitKernArgSize()),
+      MaxKernArgAlign(MFI.getMaxKernArgAlign()), LDSSize(MFI.getLDSSize()),
+      DynLDSAlign(MFI.getDynLDSAlign()), IsEntryFunction(MFI.isEntryFunction()),
+      NoSignedZerosFPMath(MFI.hasNoSignedZerosFPMath()),
+      MemoryBound(MFI.isMemoryBound()), WaveLimiter(MFI.needsWaveLimiter()),
+      HasSpilledSGPRs(MFI.hasSpilledSGPRs()),
+      HasSpilledVGPRs(MFI.hasSpilledVGPRs()),
+      HighBitsOf32BitAddress(MFI.get32BitAddressHighBits()),
+      ScratchRSrcReg(regToString(MFI.getScratchRSrcReg(), TRI)),
+      FrameOffsetReg(regToString(MFI.getFrameOffsetReg(), TRI)),
+      StackPtrOffsetReg(regToString(MFI.getStackPtrOffsetReg(), TRI)),
+      ArgInfo(convertArgumentInfo(MFI.getArgInfo(), TRI)), Mode(MFI.getMode()) {
+}
 
 void yaml::SIMachineFunctionInfo::mappingImpl(yaml::IO &YamlIO) {
   MappingTraits<SIMachineFunctionInfo>::mapping(YamlIO, *this);
@@ -564,6 +564,7 @@ bool SIMachineFunctionInfo::initializeBaseYamlFields(
   ExplicitKernArgSize = YamlMFI.ExplicitKernArgSize;
   MaxKernArgAlign = assumeAligned(YamlMFI.MaxKernArgAlign);
   LDSSize = YamlMFI.LDSSize;
+  DynLDSAlign = YamlMFI.DynLDSAlign;
   HighBitsOf32BitAddress = YamlMFI.HighBitsOf32BitAddress;
   IsEntryFunction = YamlMFI.IsEntryFunction;
   NoSignedZerosFPMath = YamlMFI.NoSignedZerosFPMath;

@@ -54,14 +54,6 @@ struct SparseElementsAttributeStorage;
 /// passed by value.
 class Attribute {
 public:
-  /// Integer identifier for all the concrete attribute kinds.
-  enum Kind {
-  // Reserve attribute kinds for dialect specific extensions.
-#define DEFINE_SYM_KIND_RANGE(Dialect)                                         \
-  FIRST_##Dialect##_ATTR, LAST_##Dialect##_ATTR = FIRST_##Dialect##_ATTR + 0xff,
-#include "DialectSymbolRegistry.def"
-  };
-
   /// Utility class for implementing attributes.
   template <typename ConcreteType, typename BaseType, typename StorageType,
             template <typename T> class... Traits>
@@ -93,9 +85,6 @@ public:
 
   // Support dyn_cast'ing Attribute to itself.
   static bool classof(Attribute) { return true; }
-
-  /// Return the classification for this attribute.
-  unsigned getKind() const { return impl->getKind(); }
 
   /// Return a unique identifier for the concrete attribute type. This is used
   /// to support dynamic type casting.
@@ -159,8 +148,8 @@ class AttributeInterface
                                AttributeTrait::TraitBase> {
 public:
   using Base = AttributeInterface<ConcreteType, Traits>;
-  using InterfaceBase = detail::Interface<ConcreteType, Type, Traits, Type,
-                                          AttributeTrait::TraitBase>;
+  using InterfaceBase = detail::Interface<ConcreteType, Attribute, Traits,
+                                          Attribute, AttributeTrait::TraitBase>;
   using InterfaceBase::InterfaceBase;
 
 private:
@@ -172,54 +161,6 @@ private:
   /// Allow access to 'getInterfaceFor'.
   friend InterfaceBase;
 };
-
-//===----------------------------------------------------------------------===//
-// StandardAttributes
-//===----------------------------------------------------------------------===//
-
-namespace StandardAttributes {
-enum Kind {
-  AffineMap = Attribute::FIRST_STANDARD_ATTR,
-  Array,
-  Dictionary,
-  Float,
-  Integer,
-  IntegerSet,
-  Opaque,
-  String,
-  SymbolRef,
-  Type,
-  Unit,
-
-  /// Elements Attributes.
-  DenseIntOrFPElements,
-  DenseStringElements,
-  OpaqueElements,
-  SparseElements,
-  FIRST_ELEMENTS_ATTR = DenseIntOrFPElements,
-  LAST_ELEMENTS_ATTR = SparseElements,
-
-  /// Locations.
-  CallSiteLocation,
-  FileLineColLocation,
-  FusedLocation,
-  NameLocation,
-  OpaqueLocation,
-  UnknownLocation,
-
-  // Represents a location as a 'void*' pointer to a front-end's opaque
-  // location information, which must live longer than the MLIR objects that
-  // refer to it.  OpaqueLocation's are never serialized.
-  //
-  // TODO: OpaqueLocation,
-
-  // Represents a value inlined through a function call.
-  // TODO: InlinedLocation,
-
-  FIRST_LOCATION_ATTR = CallSiteLocation,
-  LAST_LOCATION_ATTR = UnknownLocation,
-};
-} // namespace StandardAttributes
 
 //===----------------------------------------------------------------------===//
 // AffineMapAttr
@@ -276,12 +217,12 @@ private:
 
 public:
   template <typename AttrTy>
-  llvm::iterator_range<attr_value_iterator<AttrTy>> getAsRange() {
+  iterator_range<attr_value_iterator<AttrTy>> getAsRange() {
     return llvm::make_range(attr_value_iterator<AttrTy>(begin()),
                             attr_value_iterator<AttrTy>(end()));
   }
-  template <typename AttrTy, typename UnderlyingTy>
-  auto getAsRange() {
+  template <typename AttrTy, typename UnderlyingTy = typename AttrTy::ValueType>
+  auto getAsValueRange() {
     return llvm::map_range(getAsRange<AttrTy>(), [](AttrTy attr) {
       return static_cast<UnderlyingTy>(attr.getValue());
     });
@@ -350,6 +291,12 @@ public:
   /// to be sorted.
   /// Requires: uniquely named attributes.
   static bool sortInPlace(SmallVectorImpl<NamedAttribute> &array);
+
+  /// Returns an entry with a duplicate name in `array`, if it exists, else
+  /// returns llvm::None. If `isSorted` is true, the array is assumed to be
+  /// sorted else it will be sorted in place before finding the duplicate entry.
+  static Optional<NamedAttribute>
+  findDuplicate(SmallVectorImpl<NamedAttribute> &array, bool isSorted);
 
 private:
   /// Return empty dictionary.
@@ -648,6 +595,9 @@ public:
   /// Returns the number of elements held by this attribute.
   int64_t getNumElements() const;
 
+  /// Returns the number of elements held by this attribute.
+  int64_t size() const { return getNumElements(); }
+
   /// Generates a new ElementsAttr by mapping each int value to a new
   /// underlying APInt. The new values can represent either an integer or float.
   /// This ElementsAttr should contain integers.
@@ -688,7 +638,7 @@ using DenseIterPtrAndSplat =
     llvm::PointerIntPair<const char *, 1, bool,
                          DenseElementDataPointerTypeTraits>;
 
-/// Impl iterator for indexed DenseElementAttr iterators that records a data
+/// Impl iterator for indexed DenseElementsAttr iterators that records a data
 /// pointer and data index that is adjusted for the case of a splat attribute.
 template <typename ConcreteT, typename T, typename PointerT = T *,
           typename ReferenceT = T &>
@@ -955,7 +905,7 @@ public:
   // Value Querying
   //===--------------------------------------------------------------------===//
 
-  /// Returns if this attribute corresponds to a splat, i.e. if all element
+  /// Returns true if this attribute corresponds to a splat, i.e. if all element
   /// values are the same.
   bool isSplat() const;
 
@@ -1195,6 +1145,25 @@ class DenseIntOrFPElementsAttr
 
 public:
   using Base::Base;
+
+  /// Convert endianess of input ArrayRef for big-endian(BE) machines. All of
+  /// the elements of `inRawData` has `type`. If `inRawData` is little endian
+  /// (LE), it is converted to big endian (BE). Conversely, if `inRawData` is
+  /// BE, converted to LE.
+  static void
+  convertEndianOfArrayRefForBEmachine(ArrayRef<char> inRawData,
+                                      MutableArrayRef<char> outRawData,
+                                      ShapedType type);
+
+  /// Convert endianess of input for big-endian(BE) machines. The number of
+  /// elements of `inRawData` is `numElements`, and each element has
+  /// `elementBitWidth` bits. If `inRawData` is little endian (LE), it is
+  /// converted to big endian (BE) and saved in `outRawData`. Conversely, if
+  /// `inRawData` is BE, converted to LE.
+  static void convertEndianOfCharForBEmachine(const char *inRawData,
+                                              char *outRawData,
+                                              size_t elementBitWidth,
+                                              size_t numElements);
 
 protected:
   friend DenseElementsAttr;
@@ -1657,6 +1626,10 @@ public:
 
   /// Return the underlying dictionary attribute.
   DictionaryAttr getDictionary(MLIRContext *context) const;
+
+  /// Return the underlying dictionary attribute or null if there are no
+  /// attributes within this dictionary.
+  DictionaryAttr getDictionaryOrNull() const { return attrs; }
 
   /// Return all of the attributes on this operation.
   ArrayRef<NamedAttribute> getAttrs() const;

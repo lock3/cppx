@@ -1096,6 +1096,7 @@ public:
     case CK_NonAtomicToAtomic:
     case CK_NoOp:
     case CK_ConstructorConversion:
+    case CK_ParameterQualification:
       return Visit(subExpr, destType);
 
     case CK_IntToOCLSampler:
@@ -1163,12 +1164,15 @@ public:
     case CK_FloatingToIntegral:
     case CK_FloatingToBoolean:
     case CK_FloatingCast:
+    case CK_FloatingToFixedPoint:
+    case CK_FixedPointToFloating:
     case CK_FixedPointCast:
     case CK_FixedPointToBoolean:
     case CK_FixedPointToIntegral:
     case CK_IntegralToFixedPoint:
     case CK_ZeroToOCLOpaqueType:
       return nullptr;
+
     case CK_ReflectionToBoolean:
       llvm_unreachable("reflection emitted as runtime value");
     }
@@ -1362,17 +1366,39 @@ ConstantEmitter::tryEmitAbstract(const APValue &value, QualType destType) {
   return validateAndPopAbstract(C, state);
 }
 
+static QualType extractQualTypeForConstantExpr(
+    CodeGenFunction *CGF, const Expr *E, bool AllowCaptures) {
+  const Expr *Inner = E->IgnoreImplicit();
+
+  if (auto *Call = dyn_cast<CallExpr>(Inner))
+    return Call->getCallReturnType(CGF->getContext());
+  if (auto *Ctor = dyn_cast<CXXConstructExpr>(Inner))
+    return Ctor->getType();
+
+  if (AllowCaptures) {
+    if (auto *Frag = dyn_cast<CXXFragmentCaptureExpr>(Inner))
+      return Frag->getType();
+  }
+
+  return {};
+}
+
 llvm::Constant *ConstantEmitter::tryEmitConstantExpr(const ConstantExpr *CE) {
   if (!CE->hasAPValueResult())
     return nullptr;
-  const Expr *Inner = CE->getSubExpr()->IgnoreImplicit();
-  QualType RetType;
-  if (auto *Call = dyn_cast<CallExpr>(Inner))
-    RetType = Call->getCallReturnType(CGF->getContext());
-  else if (auto *Ctor = dyn_cast<CXXConstructExpr>(Inner))
-    RetType = Ctor->getType();
+  QualType RetType = extractQualTypeForConstantExpr(
+      CGF, CE->getSubExpr(), /*AllowCaptures=*/false);
   llvm::Constant *Res =
       emitAbstract(CE->getBeginLoc(), CE->getAPValueResult(), RetType);
+  return Res;
+}
+
+llvm::Constant *ConstantEmitter::tryEmitInjectedValueExpr(
+    const CXXInjectedValueExpr *IVE) {
+  QualType RetType = extractQualTypeForConstantExpr(
+      CGF, IVE->getInitializer(), /*AllowCaptures=*/true);
+  llvm::Constant *Res =
+      emitAbstract(IVE->getBeginLoc(), IVE->getAPValueResult(), RetType);
   return Res;
 }
 
@@ -1622,8 +1648,8 @@ llvm::Constant *ConstantEmitter::tryEmitPrivateForVarInit(const VarDecl &D) {
         if (CD->isTrivial() && CD->isDefaultConstructor())
           return CGM.EmitNullConstant(D.getType());
       }
-    InConstantContext = true;
   }
+  InConstantContext = D.hasConstantInitialization();
 
   QualType destType = D.getType();
 
@@ -1879,6 +1905,10 @@ ConstantLValue
 ConstantLValueEmitter::tryEmitBase(const APValue::LValueBase &base) {
   // Handle values.
   if (const ValueDecl *D = base.dyn_cast<const ValueDecl*>()) {
+    // The constant always points to the canonical declaration. We want to look
+    // at properties of the most recent declaration at the point of emission.
+    D = cast<ValueDecl>(D->getMostRecentDecl());
+
     if (D->hasAttr<WeakRefAttr>())
       return CGM.GetWeakRefReference(D).getPointer();
 
@@ -1900,6 +1930,9 @@ ConstantLValueEmitter::tryEmitBase(const APValue::LValueBase &base) {
 
     if (auto *GD = dyn_cast<MSGuidDecl>(D))
       return CGM.GetAddrOfMSGuidDecl(GD);
+
+    if (auto *TPO = dyn_cast<TemplateParamObjectDecl>(D))
+      return CGM.GetAddrOfTemplateParamObject(TPO);
 
     return nullptr;
   }
@@ -2043,8 +2076,12 @@ llvm::Constant *ConstantEmitter::tryEmitPrivate(const APValue &Value,
                                   Value.getFixedPoint().getValue());
   case APValue::Reflection:
   case APValue::Fragment:
-    // FIXME: Could this branch be reached?
-    llvm_unreachable("Reflections should not be codegened.");
+    // FIXME: This emits an unused garbage value, but there's not much
+    // meaningful we can emit here; This seems to be okay, and the
+    // value seems to be only used by debug builds... But perhaps we
+    // can do better?
+    return llvm::ConstantInt::get(CGM.getLLVMContext(),
+                                  llvm::APInt(/*numBits=*/1, /*val=*/1));
   case APValue::ComplexInt: {
     llvm::Constant *Complex[2];
 
@@ -2118,8 +2155,7 @@ llvm::Constant *ConstantEmitter::tryEmitPrivate(const APValue &Value,
   case APValue::Union:
     return ConstStructBuilder::BuildStruct(*this, Value, DestType);
   case APValue::Array: {
-    const ConstantArrayType *CAT =
-        CGM.getContext().getAsConstantArrayType(DestType);
+    const ArrayType *ArrayTy = CGM.getContext().getAsArrayType(DestType);
     unsigned NumElements = Value.getArraySize();
     unsigned NumInitElts = Value.getArrayInitializedElts();
 
@@ -2127,7 +2163,7 @@ llvm::Constant *ConstantEmitter::tryEmitPrivate(const APValue &Value,
     llvm::Constant *Filler = nullptr;
     if (Value.hasArrayFiller()) {
       Filler = tryEmitAbstractForMemory(Value.getArrayFiller(),
-                                        CAT->getElementType());
+                                        ArrayTy->getElementType());
       if (!Filler)
         return nullptr;
     }
@@ -2142,7 +2178,7 @@ llvm::Constant *ConstantEmitter::tryEmitPrivate(const APValue &Value,
     llvm::Type *CommonElementType = nullptr;
     for (unsigned I = 0; I < NumInitElts; ++I) {
       llvm::Constant *C = tryEmitPrivateForMemory(
-          Value.getArrayInitializedElt(I), CAT->getElementType());
+          Value.getArrayInitializedElt(I), ArrayTy->getElementType());
       if (!C) return nullptr;
 
       if (I == 0)
@@ -2150,16 +2186,6 @@ llvm::Constant *ConstantEmitter::tryEmitPrivate(const APValue &Value,
       else if (C->getType() != CommonElementType)
         CommonElementType = nullptr;
       Elts.push_back(C);
-    }
-
-    // This means that the array type is probably "IncompleteType" or some
-    // type that is not ConstantArray.
-    if (CAT == nullptr && CommonElementType == nullptr && !NumInitElts) {
-      const ArrayType *AT = CGM.getContext().getAsArrayType(DestType);
-      CommonElementType = CGM.getTypes().ConvertType(AT->getElementType());
-      llvm::ArrayType *AType = llvm::ArrayType::get(CommonElementType,
-                                                    NumElements);
-      return llvm::ConstantAggregateZero::get(AType);
     }
 
     llvm::ArrayType *Desired =

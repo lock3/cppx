@@ -104,3 +104,13 @@ Cls : type = class:
 )";
   GoldFailureTest(Code);
 }
+
+TEST(GoldAlignAsAttribute, AlignAsParameterPack) {
+  StringRef Code = R"(
+Cls[T:type...]<alignas(T...)> : type = class:
+  ;
+)";
+  DeclarationMatcher ToMatch = cxxRecordDecl(hasName("Cls"),
+                                             isAligned());
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

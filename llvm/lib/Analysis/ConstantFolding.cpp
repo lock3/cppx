@@ -18,6 +18,7 @@
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -42,6 +43,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsAMDGPU.h"
 #include "llvm/IR/IntrinsicsARM.h"
+#include "llvm/IR/IntrinsicsWebAssembly.h"
 #include "llvm/IR/IntrinsicsX86.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/Type.h"
@@ -1455,20 +1457,25 @@ bool llvm::canConstantFoldCallTo(const CallBase *Call, const Function *F) {
   case Intrinsic::smul_fix_sat:
   case Intrinsic::bitreverse:
   case Intrinsic::is_constant:
-  case Intrinsic::experimental_vector_reduce_add:
-  case Intrinsic::experimental_vector_reduce_mul:
-  case Intrinsic::experimental_vector_reduce_and:
-  case Intrinsic::experimental_vector_reduce_or:
-  case Intrinsic::experimental_vector_reduce_xor:
-  case Intrinsic::experimental_vector_reduce_smin:
-  case Intrinsic::experimental_vector_reduce_smax:
-  case Intrinsic::experimental_vector_reduce_umin:
-  case Intrinsic::experimental_vector_reduce_umax:
+  case Intrinsic::vector_reduce_add:
+  case Intrinsic::vector_reduce_mul:
+  case Intrinsic::vector_reduce_and:
+  case Intrinsic::vector_reduce_or:
+  case Intrinsic::vector_reduce_xor:
+  case Intrinsic::vector_reduce_smin:
+  case Intrinsic::vector_reduce_smax:
+  case Intrinsic::vector_reduce_umin:
+  case Intrinsic::vector_reduce_umax:
   // Target intrinsics
   case Intrinsic::arm_mve_vctp8:
   case Intrinsic::arm_mve_vctp16:
   case Intrinsic::arm_mve_vctp32:
   case Intrinsic::arm_mve_vctp64:
+  // WebAssembly float semantics are always known
+  case Intrinsic::wasm_trunc_signed:
+  case Intrinsic::wasm_trunc_unsigned:
+  case Intrinsic::wasm_trunc_saturate_signed:
+  case Intrinsic::wasm_trunc_saturate_unsigned:
     return true;
 
   // Floating point operations cannot be folded in strictfp functions in
@@ -1497,6 +1504,7 @@ bool llvm::canConstantFoldCallTo(const CallBase *Call, const Function *F) {
   case Intrinsic::amdgcn_cubesc:
   case Intrinsic::amdgcn_cubetc:
   case Intrinsic::amdgcn_fmul_legacy:
+  case Intrinsic::amdgcn_fma_legacy:
   case Intrinsic::amdgcn_fract:
   case Intrinsic::amdgcn_ldexp:
   case Intrinsic::amdgcn_sin:
@@ -1704,31 +1712,31 @@ Constant *ConstantFoldVectorReduce(Intrinsic::ID IID, Constant *Op) {
       return nullptr;
     const APInt &X = CI->getValue();
     switch (IID) {
-    case Intrinsic::experimental_vector_reduce_add:
+    case Intrinsic::vector_reduce_add:
       Acc = Acc + X;
       break;
-    case Intrinsic::experimental_vector_reduce_mul:
+    case Intrinsic::vector_reduce_mul:
       Acc = Acc * X;
       break;
-    case Intrinsic::experimental_vector_reduce_and:
+    case Intrinsic::vector_reduce_and:
       Acc = Acc & X;
       break;
-    case Intrinsic::experimental_vector_reduce_or:
+    case Intrinsic::vector_reduce_or:
       Acc = Acc | X;
       break;
-    case Intrinsic::experimental_vector_reduce_xor:
+    case Intrinsic::vector_reduce_xor:
       Acc = Acc ^ X;
       break;
-    case Intrinsic::experimental_vector_reduce_smin:
+    case Intrinsic::vector_reduce_smin:
       Acc = APIntOps::smin(Acc, X);
       break;
-    case Intrinsic::experimental_vector_reduce_smax:
+    case Intrinsic::vector_reduce_smax:
       Acc = APIntOps::smax(Acc, X);
       break;
-    case Intrinsic::experimental_vector_reduce_umin:
+    case Intrinsic::vector_reduce_umin:
       Acc = APIntOps::umin(Acc, X);
       break;
-    case Intrinsic::experimental_vector_reduce_umax:
+    case Intrinsic::vector_reduce_umax:
       Acc = APIntOps::umax(Acc, X);
       break;
     }
@@ -1861,11 +1869,45 @@ static Constant *ConstantFoldScalarCall1(StringRef Name,
       return ConstantInt::get(Ty->getContext(), Val.bitcastToAPInt());
     }
 
+    APFloat U = Op->getValueAPF();
+
+    if (IntrinsicID == Intrinsic::wasm_trunc_signed ||
+        IntrinsicID == Intrinsic::wasm_trunc_unsigned ||
+        IntrinsicID == Intrinsic::wasm_trunc_saturate_signed ||
+        IntrinsicID == Intrinsic::wasm_trunc_saturate_unsigned) {
+
+      bool Saturating = IntrinsicID == Intrinsic::wasm_trunc_saturate_signed ||
+                        IntrinsicID == Intrinsic::wasm_trunc_saturate_unsigned;
+      bool Signed = IntrinsicID == Intrinsic::wasm_trunc_signed ||
+                    IntrinsicID == Intrinsic::wasm_trunc_saturate_signed;
+
+      if (U.isNaN())
+        return Saturating ? ConstantInt::get(Ty, 0) : nullptr;
+
+      unsigned Width = Ty->getIntegerBitWidth();
+      APSInt Int(Width, !Signed);
+      bool IsExact = false;
+      APFloat::opStatus Status =
+          U.convertToInteger(Int, APFloat::rmTowardZero, &IsExact);
+
+      if (Status == APFloat::opOK || Status == APFloat::opInexact)
+        return ConstantInt::get(Ty, Int);
+
+      if (!Saturating)
+        return nullptr;
+
+      if (U.isNegative())
+        return Signed ? ConstantInt::get(Ty, APInt::getSignedMinValue(Width))
+                      : ConstantInt::get(Ty, APInt::getMinValue(Width));
+      else
+        return Signed ? ConstantInt::get(Ty, APInt::getSignedMaxValue(Width))
+                      : ConstantInt::get(Ty, APInt::getMaxValue(Width));
+    }
+
     if (!Ty->isHalfTy() && !Ty->isFloatTy() && !Ty->isDoubleTy())
       return nullptr;
 
     // Use internal versions of these intrinsics.
-    APFloat U = Op->getValueAPF();
 
     if (IntrinsicID == Intrinsic::nearbyint || IntrinsicID == Intrinsic::rint) {
       U.roundToIntegral(APFloat::rmNearestTiesToEven);
@@ -2199,15 +2241,15 @@ static Constant *ConstantFoldScalarCall1(StringRef Name,
   if (isa<ConstantAggregateZero>(Operands[0])) {
     switch (IntrinsicID) {
     default: break;
-    case Intrinsic::experimental_vector_reduce_add:
-    case Intrinsic::experimental_vector_reduce_mul:
-    case Intrinsic::experimental_vector_reduce_and:
-    case Intrinsic::experimental_vector_reduce_or:
-    case Intrinsic::experimental_vector_reduce_xor:
-    case Intrinsic::experimental_vector_reduce_smin:
-    case Intrinsic::experimental_vector_reduce_smax:
-    case Intrinsic::experimental_vector_reduce_umin:
-    case Intrinsic::experimental_vector_reduce_umax:
+    case Intrinsic::vector_reduce_add:
+    case Intrinsic::vector_reduce_mul:
+    case Intrinsic::vector_reduce_and:
+    case Intrinsic::vector_reduce_or:
+    case Intrinsic::vector_reduce_xor:
+    case Intrinsic::vector_reduce_smin:
+    case Intrinsic::vector_reduce_smax:
+    case Intrinsic::vector_reduce_umin:
+    case Intrinsic::vector_reduce_umax:
       return ConstantInt::get(Ty, 0);
     }
   }
@@ -2218,15 +2260,15 @@ static Constant *ConstantFoldScalarCall1(StringRef Name,
     auto *Op = cast<Constant>(Operands[0]);
     switch (IntrinsicID) {
     default: break;
-    case Intrinsic::experimental_vector_reduce_add:
-    case Intrinsic::experimental_vector_reduce_mul:
-    case Intrinsic::experimental_vector_reduce_and:
-    case Intrinsic::experimental_vector_reduce_or:
-    case Intrinsic::experimental_vector_reduce_xor:
-    case Intrinsic::experimental_vector_reduce_smin:
-    case Intrinsic::experimental_vector_reduce_smax:
-    case Intrinsic::experimental_vector_reduce_umin:
-    case Intrinsic::experimental_vector_reduce_umax:
+    case Intrinsic::vector_reduce_add:
+    case Intrinsic::vector_reduce_mul:
+    case Intrinsic::vector_reduce_and:
+    case Intrinsic::vector_reduce_or:
+    case Intrinsic::vector_reduce_xor:
+    case Intrinsic::vector_reduce_smin:
+    case Intrinsic::vector_reduce_smax:
+    case Intrinsic::vector_reduce_umin:
+    case Intrinsic::vector_reduce_umax:
       if (Constant *C = ConstantFoldVectorReduce(IntrinsicID, Op))
         return C;
       break;
@@ -2263,6 +2305,25 @@ static Constant *ConstantFoldScalarCall2(StringRef Name,
                                          const TargetLibraryInfo *TLI,
                                          const CallBase *Call) {
   assert(Operands.size() == 2 && "Wrong number of operands.");
+
+  if (Ty->isFloatingPointTy()) {
+    // TODO: We should have undef handling for all of the FP intrinsics that
+    //       are attempted to be folded in this function.
+    bool IsOp0Undef = isa<UndefValue>(Operands[0]);
+    bool IsOp1Undef = isa<UndefValue>(Operands[1]);
+    switch (IntrinsicID) {
+    case Intrinsic::maxnum:
+    case Intrinsic::minnum:
+    case Intrinsic::maximum:
+    case Intrinsic::minimum:
+      // If one argument is undef, return the other argument.
+      if (IsOp0Undef)
+        return Operands[1];
+      if (IsOp1Undef)
+        return Operands[0];
+      break;
+    }
+  }
 
   if (auto *Op1 = dyn_cast<ConstantFP>(Operands[0])) {
     if (!Ty->isHalfTy() && !Ty->isFloatTy() && !Ty->isDoubleTy())
@@ -2311,8 +2372,8 @@ static Constant *ConstantFoldScalarCall2(StringRef Name,
       if (IntrinsicID == Intrinsic::amdgcn_fmul_legacy) {
         const APFloat &C1 = Op1->getValueAPF();
         const APFloat &C2 = Op2->getValueAPF();
-        // The legacy behaviour is that multiplying zero by anything, even NaN
-        // or infinity, gives +0.0.
+        // The legacy behaviour is that multiplying +/- 0.0 by anything, even
+        // NaN or infinity, gives +0.0.
         if (C1.isZero() || C2.isZero())
           return ConstantFP::getNullValue(Ty);
         return ConstantFP::get(Ty->getContext(), C1 * C2);
@@ -2646,6 +2707,19 @@ static Constant *ConstantFoldScalarCall3(StringRef Name,
       if (const auto *Op3 = dyn_cast<ConstantFP>(Operands[2])) {
         switch (IntrinsicID) {
         default: break;
+        case Intrinsic::amdgcn_fma_legacy: {
+          const APFloat &C1 = Op1->getValueAPF();
+          const APFloat &C2 = Op2->getValueAPF();
+          // The legacy behaviour is that multiplying +/- 0.0 by anything, even
+          // NaN or infinity, gives +0.0.
+          if (C1.isZero() || C2.isZero()) {
+            const APFloat &C3 = Op3->getValueAPF();
+            // It's tempting to just return C3 here, but that would give the
+            // wrong result if C3 was -0.0.
+            return ConstantFP::get(Ty->getContext(), APFloat(0.0f) + C3);
+          }
+          LLVM_FALLTHROUGH;
+        }
         case Intrinsic::fma:
         case Intrinsic::fmuladd: {
           APFloat V = Op1->getValueAPF();

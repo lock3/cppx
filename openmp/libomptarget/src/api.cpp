@@ -10,8 +10,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <omptarget.h>
-
 #include "device.h"
 #include "private.h"
 #include "rtl.h"
@@ -21,18 +19,19 @@
 #include <cstdlib>
 
 EXTERN int omp_get_num_devices(void) {
-  RTLsMtx->lock();
-  size_t Devices_size = Devices.size();
-  RTLsMtx->unlock();
+  PM->RTLsMtx.lock();
+  size_t DevicesSize = PM->Devices.size();
+  PM->RTLsMtx.unlock();
 
-  DP("Call to omp_get_num_devices returning %zd\n", Devices_size);
+  DP("Call to omp_get_num_devices returning %zd\n", DevicesSize);
 
-  return Devices_size;
+  return DevicesSize;
 }
 
 EXTERN int omp_get_initial_device(void) {
-  DP("Call to omp_get_initial_device returning %d\n", HOST_DEVICE);
-  return HOST_DEVICE;
+  int hostDevice = omp_get_num_devices();
+  DP("Call to omp_get_initial_device returning %d\n", hostDevice);
+  return hostDevice;
 }
 
 EXTERN void *omp_target_alloc(size_t size, int device_num) {
@@ -57,7 +56,7 @@ EXTERN void *omp_target_alloc(size_t size, int device_num) {
     return NULL;
   }
 
-  rc = Devices[device_num].allocData(size);
+  rc = PM->Devices[device_num].allocData(size);
   DP("omp_target_alloc returns device ptr " DPxMOD "\n", DPxPTR(rc));
   return rc;
 }
@@ -82,7 +81,7 @@ EXTERN void omp_target_free(void *device_ptr, int device_num) {
     return;
   }
 
-  Devices[device_num].deleteData(device_ptr);
+  PM->Devices[device_num].deleteData(device_ptr);
   DP("omp_target_free deallocated device ptr\n");
 }
 
@@ -100,16 +99,16 @@ EXTERN int omp_target_is_present(void *ptr, int device_num) {
     return true;
   }
 
-  RTLsMtx->lock();
-  size_t Devices_size = Devices.size();
-  RTLsMtx->unlock();
-  if (Devices_size <= (size_t)device_num) {
+  PM->RTLsMtx.lock();
+  size_t DevicesSize = PM->Devices.size();
+  PM->RTLsMtx.unlock();
+  if (DevicesSize <= (size_t)device_num) {
     DP("Call to omp_target_is_present with invalid device ID, returning "
         "false\n");
     return false;
   }
 
-  DeviceTy& Device = Devices[device_num];
+  DeviceTy &Device = PM->Devices[device_num];
   bool IsLast; // not used
   bool IsHostPtr;
   void *TgtPtr = Device.getTgtPtrBegin(ptr, 0, IsLast, false, IsHostPtr);
@@ -118,7 +117,7 @@ EXTERN int omp_target_is_present(void *ptr, int device_num) {
   // getTgtPtrBegin() function which means that there is no device
   // corresponding point for ptr. This function should return false
   // in that situation.
-  if (RTLs->RequiresFlags & OMP_REQ_UNIFIED_SHARED_MEMORY)
+  if (PM->RTLs.RequiresFlags & OMP_REQ_UNIFIED_SHARED_MEMORY)
     rc = !IsHostPtr;
   DP("Call to omp_target_is_present returns %d\n", rc);
   return rc;
@@ -132,18 +131,18 @@ EXTERN int omp_target_memcpy(void *dst, void *src, size_t length,
       DPxPTR(src), dst_offset, src_offset, length);
 
   if (!dst || !src || length <= 0) {
-    DP("Call to omp_target_memcpy with invalid arguments\n");
+    REPORT("Call to omp_target_memcpy with invalid arguments\n");
     return OFFLOAD_FAIL;
   }
 
   if (src_device != omp_get_initial_device() && !device_is_ready(src_device)) {
-      DP("omp_target_memcpy returns OFFLOAD_FAIL\n");
-      return OFFLOAD_FAIL;
+    REPORT("omp_target_memcpy returns OFFLOAD_FAIL\n");
+    return OFFLOAD_FAIL;
   }
 
   if (dst_device != omp_get_initial_device() && !device_is_ready(dst_device)) {
-      DP("omp_target_memcpy returns OFFLOAD_FAIL\n");
-      return OFFLOAD_FAIL;
+    REPORT("omp_target_memcpy returns OFFLOAD_FAIL\n");
+    return OFFLOAD_FAIL;
   }
 
   int rc = OFFLOAD_SUCCESS;
@@ -158,20 +157,20 @@ EXTERN int omp_target_memcpy(void *dst, void *src, size_t length,
       rc = OFFLOAD_FAIL;
   } else if (src_device == omp_get_initial_device()) {
     DP("copy from host to device\n");
-    DeviceTy& DstDev = Devices[dst_device];
+    DeviceTy &DstDev = PM->Devices[dst_device];
     rc = DstDev.submitData(dstAddr, srcAddr, length, nullptr);
   } else if (dst_device == omp_get_initial_device()) {
     DP("copy from device to host\n");
-    DeviceTy& SrcDev = Devices[src_device];
+    DeviceTy &SrcDev = PM->Devices[src_device];
     rc = SrcDev.retrieveData(dstAddr, srcAddr, length, nullptr);
   } else {
     DP("copy from device to device\n");
-    DeviceTy &SrcDev = Devices[src_device];
-    DeviceTy &DstDev = Devices[dst_device];
+    DeviceTy &SrcDev = PM->Devices[src_device];
+    DeviceTy &DstDev = PM->Devices[dst_device];
     // First try to use D2D memcpy which is more efficient. If fails, fall back
     // to unefficient way.
     if (SrcDev.isDataExchangable(DstDev)) {
-      rc = SrcDev.data_exchange(srcAddr, DstDev, dstAddr, length, nullptr);
+      rc = SrcDev.dataExchange(srcAddr, DstDev, dstAddr, length, nullptr);
       if (rc == OFFLOAD_SUCCESS)
         return OFFLOAD_SUCCESS;
     }
@@ -207,7 +206,7 @@ EXTERN int omp_target_memcpy_rect(void *dst, void *src, size_t element_size,
 
   if (!dst || !src || element_size < 1 || num_dims < 1 || !volume ||
       !dst_offsets || !src_offsets || !dst_dimensions || !src_dimensions) {
-    DP("Call to omp_target_memcpy_rect with invalid arguments\n");
+    REPORT("Call to omp_target_memcpy_rect with invalid arguments\n");
     return OFFLOAD_FAIL;
   }
 
@@ -250,21 +249,21 @@ EXTERN int omp_target_associate_ptr(void *host_ptr, void *device_ptr,
       DPxPTR(host_ptr), DPxPTR(device_ptr), size, device_offset, device_num);
 
   if (!host_ptr || !device_ptr || size <= 0) {
-    DP("Call to omp_target_associate_ptr with invalid arguments\n");
+    REPORT("Call to omp_target_associate_ptr with invalid arguments\n");
     return OFFLOAD_FAIL;
   }
 
   if (device_num == omp_get_initial_device()) {
-    DP("omp_target_associate_ptr: no association possible on the host\n");
+    REPORT("omp_target_associate_ptr: no association possible on the host\n");
     return OFFLOAD_FAIL;
   }
 
   if (!device_is_ready(device_num)) {
-    DP("omp_target_associate_ptr returns OFFLOAD_FAIL\n");
+    REPORT("omp_target_associate_ptr returns OFFLOAD_FAIL\n");
     return OFFLOAD_FAIL;
   }
 
-  DeviceTy& Device = Devices[device_num];
+  DeviceTy &Device = PM->Devices[device_num];
   void *device_addr = (void *)((uint64_t)device_ptr + (uint64_t)device_offset);
   int rc = Device.associatePtr(host_ptr, device_addr, size);
   DP("omp_target_associate_ptr returns %d\n", rc);
@@ -276,21 +275,22 @@ EXTERN int omp_target_disassociate_ptr(void *host_ptr, int device_num) {
       "device_num %d\n", DPxPTR(host_ptr), device_num);
 
   if (!host_ptr) {
-    DP("Call to omp_target_associate_ptr with invalid host_ptr\n");
+    REPORT("Call to omp_target_associate_ptr with invalid host_ptr\n");
     return OFFLOAD_FAIL;
   }
 
   if (device_num == omp_get_initial_device()) {
-    DP("omp_target_disassociate_ptr: no association possible on the host\n");
+    REPORT(
+        "omp_target_disassociate_ptr: no association possible on the host\n");
     return OFFLOAD_FAIL;
   }
 
   if (!device_is_ready(device_num)) {
-    DP("omp_target_disassociate_ptr returns OFFLOAD_FAIL\n");
+    REPORT("omp_target_disassociate_ptr returns OFFLOAD_FAIL\n");
     return OFFLOAD_FAIL;
   }
 
-  DeviceTy& Device = Devices[device_num];
+  DeviceTy &Device = PM->Devices[device_num];
   int rc = Device.disassociatePtr(host_ptr);
   DP("omp_target_disassociate_ptr returns %d\n", rc);
   return rc;

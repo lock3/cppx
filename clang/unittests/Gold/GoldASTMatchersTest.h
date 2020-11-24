@@ -25,6 +25,8 @@ extern const internal::VariadicDynCastAllOfMatcher<
 extern const internal::VariadicDynCastAllOfMatcher<
   Decl, VarTemplatePartialSpecializationDecl> varTemplatePartialSpecializationDecl;
 
+  
+
 extern const internal::VariadicDynCastAllOfMatcher<Decl, TemplateTemplateParmDecl>
     templateTemplateParmDecl;
 
@@ -34,6 +36,8 @@ extern const internal::VariadicDynCastAllOfMatcher<Stmt, PackExpansionExpr>
 extern const internal::VariadicDynCastAllOfMatcher<Stmt, CXXFoldExpr>
     cxxFoldExpr;
 
+extern const internal::VariadicDynCastAllOfMatcher<Stmt, SizeOfPackExpr>
+    sizeOfPackExpr;
 
 // I created this because it didn't exist before this and I acutally needed it
 // for a particular test.
@@ -167,6 +171,13 @@ AST_POLYMORPHIC_MATCHER_P(hasOperator,
                           AST_POLYMORPHIC_SUPPORTED_TYPES(CXXFoldExpr),
                           BinaryOperatorKind, OpKind) {
   return Node.getOperator() == OpKind;
+}
+
+AST_MATCHER_P(CXXDeleteExpr, deleteFunction, internal::Matcher<Decl>,
+              InnerMatcher) {
+  const FunctionDecl *OpDel = Node.getOperatorDelete();
+  return (OpDel != nullptr &&
+          InnerMatcher.matches(*OpDel, Finder, Builder));
 }
 
 using clang::tooling::buildASTFromCodeWithArgs;
@@ -354,6 +365,7 @@ matchesConditionally(const std::string &Code, const T &AMatcher,
 
   return testing::AssertionSuccess();
 }
+
 
 template <typename T>
 testing::AssertionResult

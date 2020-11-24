@@ -10,6 +10,8 @@
 #include "TypeDetail.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/Support/LLVM.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/Twine.h"
 
 using namespace mlir;
@@ -18,8 +20,6 @@ using namespace mlir::detail;
 //===----------------------------------------------------------------------===//
 // Type
 //===----------------------------------------------------------------------===//
-
-unsigned Type::getKind() const { return impl->getKind(); }
 
 Dialect &Type::getDialect() const {
   return impl->getAbstractType().getDialect();
@@ -33,7 +33,7 @@ MLIRContext *Type::getContext() const { return getDialect().getContext(); }
 
 FunctionType FunctionType::get(TypeRange inputs, TypeRange results,
                                MLIRContext *context) {
-  return Base::get(context, Type::Kind::Function, inputs, results);
+  return Base::get(context, inputs, results);
 }
 
 unsigned FunctionType::getNumInputs() const { return getImpl()->numInputs; }
@@ -48,18 +48,60 @@ ArrayRef<Type> FunctionType::getResults() const {
   return getImpl()->getResults();
 }
 
+/// Helper to call a callback once on each index in the range
+/// [0, `totalIndices`), *except* for the indices given in `indices`.
+/// `indices` is allowed to have duplicates and can be in any order.
+inline void iterateIndicesExcept(unsigned totalIndices,
+                                 ArrayRef<unsigned> indices,
+                                 function_ref<void(unsigned)> callback) {
+  llvm::BitVector skipIndices(totalIndices);
+  for (unsigned i : indices)
+    skipIndices.set(i);
+
+  for (unsigned i = 0; i < totalIndices; ++i)
+    if (!skipIndices.test(i))
+      callback(i);
+}
+
+/// Returns a new function type without the specified arguments and results.
+FunctionType
+FunctionType::getWithoutArgsAndResults(ArrayRef<unsigned> argIndices,
+                                       ArrayRef<unsigned> resultIndices) {
+  ArrayRef<Type> newInputTypes = getInputs();
+  SmallVector<Type, 4> newInputTypesBuffer;
+  if (!argIndices.empty()) {
+    unsigned originalNumArgs = getNumInputs();
+    iterateIndicesExcept(originalNumArgs, argIndices, [&](unsigned i) {
+      newInputTypesBuffer.emplace_back(getInput(i));
+    });
+    newInputTypes = newInputTypesBuffer;
+  }
+
+  ArrayRef<Type> newResultTypes = getResults();
+  SmallVector<Type, 4> newResultTypesBuffer;
+  if (!resultIndices.empty()) {
+    unsigned originalNumResults = getNumResults();
+    iterateIndicesExcept(originalNumResults, resultIndices, [&](unsigned i) {
+      newResultTypesBuffer.emplace_back(getResult(i));
+    });
+    newResultTypes = newResultTypesBuffer;
+  }
+
+  return get(newInputTypes, newResultTypes, getContext());
+}
+
 //===----------------------------------------------------------------------===//
 // OpaqueType
 //===----------------------------------------------------------------------===//
 
 OpaqueType OpaqueType::get(Identifier dialect, StringRef typeData,
                            MLIRContext *context) {
-  return Base::get(context, Type::Kind::Opaque, dialect, typeData);
+  return Base::get(context, dialect, typeData);
 }
 
 OpaqueType OpaqueType::getChecked(Identifier dialect, StringRef typeData,
                                   MLIRContext *context, Location location) {
-  return Base::getChecked(location, Kind::Opaque, dialect, typeData);
+  return Base::getChecked(location, dialect, typeData);
 }
 
 /// Returns the dialect namespace of the opaque type.

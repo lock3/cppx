@@ -12,7 +12,6 @@
 #include "character.h"
 #include "host.h"
 #include "int-power.h"
-#include "intrinsics-library-templates.h"
 #include "flang/Common/indirection.h"
 #include "flang/Common/template.h"
 #include "flang/Common/unwrap.h"
@@ -22,6 +21,7 @@
 #include "flang/Evaluate/expression.h"
 #include "flang/Evaluate/fold.h"
 #include "flang/Evaluate/formatting.h"
+#include "flang/Evaluate/intrinsics-library.h"
 #include "flang/Evaluate/intrinsics.h"
 #include "flang/Evaluate/shape.h"
 #include "flang/Evaluate/tools.h"
@@ -70,6 +70,24 @@ private:
 std::optional<Constant<SubscriptInteger>> GetConstantSubscript(
     FoldingContext &, Subscript &, const NamedEntity &, int dim);
 
+// Helper to use host runtime on scalars for folding.
+template <typename TR, typename... TA>
+std::optional<std::function<Scalar<TR>(FoldingContext &, Scalar<TA>...)>>
+GetHostRuntimeWrapper(const std::string &name) {
+  std::vector<DynamicType> argTypes{TA{}.GetType()...};
+  if (auto hostWrapper{GetHostRuntimeWrapper(name, TR{}.GetType(), argTypes)}) {
+    return [hostWrapper](
+               FoldingContext &context, Scalar<TA>... args) -> Scalar<TR> {
+      std::vector<Expr<SomeType>> genericArgs{
+          AsGenericExpr(Constant<TA>{args})...};
+      return GetScalarConstantValue<TR>(
+          (*hostWrapper)(context, std::move(genericArgs)))
+          .value();
+    };
+  }
+  return std::nullopt;
+}
+
 // FoldOperation() rewrites expression tree nodes.
 // If there is any possibility that the rewritten node will
 // not have the same representation type, the result of
@@ -115,9 +133,8 @@ Expr<T> FoldOperation(FoldingContext &context, Designator<T> &&designator) {
   return Folder<T>{context}.Folding(std::move(designator));
 }
 
-template <int KIND>
-Expr<Type<TypeCategory::Integer, KIND>> FoldOperation(
-    FoldingContext &, TypeParamInquiry<KIND> &&);
+Expr<TypeParamInquiry::Result> FoldOperation(
+    FoldingContext &, TypeParamInquiry &&);
 Expr<ImpliedDoIndex::Result> FoldOperation(
     FoldingContext &context, ImpliedDoIndex &&);
 template <typename T>
@@ -297,8 +314,8 @@ std::optional<Constant<T>> Folder<T>::ApplyComponent(
     Constant<SomeDerived> &&structures, const Symbol &component,
     const std::vector<Constant<SubscriptInteger>> *subscripts) {
   if (auto scalar{structures.GetScalarValue()}) {
-    if (auto *expr{scalar->Find(component)}) {
-      if (const Constant<T> *value{UnwrapConstantValue<T>(*expr)}) {
+    if (std::optional<Expr<SomeType>> expr{scalar->Find(component)}) {
+      if (const Constant<T> *value{UnwrapConstantValue<T>(expr.value())}) {
         if (!subscripts) {
           return std::move(*value);
         } else {
@@ -315,12 +332,12 @@ std::optional<Constant<T>> Folder<T>::ApplyComponent(
     ConstantSubscripts at{structures.lbounds()};
     do {
       StructureConstructor scalar{structures.At(at)};
-      if (auto *expr{scalar.Find(component)}) {
-        if (const Constant<T> *value{UnwrapConstantValue<T>(*expr)}) {
+      if (std::optional<Expr<SomeType>> expr{scalar.Find(component)}) {
+        if (const Constant<T> *value{UnwrapConstantValue<T>(expr.value())}) {
           if (!array.get()) {
             // This technique ensures that character length or derived type
             // information is propagated to the array constructor.
-            auto *typedExpr{UnwrapExpr<Expr<T>>(*expr)};
+            auto *typedExpr{UnwrapExpr<Expr<T>>(expr.value())};
             CHECK(typedExpr);
             array = std::make_unique<ArrayConstructor<T>>(*typedExpr);
           }
@@ -1155,16 +1172,25 @@ Expr<TO> FoldOperation(
   if (auto array{ApplyElementwise(context, convert)}) {
     return *array;
   }
+  struct {
+    FoldingContext &context;
+    Convert<TO, FROMCAT> &convert;
+  } msvcWorkaround{context, convert};
   return std::visit(
-      [&](auto &kindExpr) -> Expr<TO> {
+      [&msvcWorkaround](auto &kindExpr) -> Expr<TO> {
         using Operand = ResultType<decltype(kindExpr)>;
+        // This variable is a workaround for msvc which emits an error when
+        // using the FROMCAT template parameter below.
+        TypeCategory constexpr FromCat{FROMCAT};
+        auto &convert{msvcWorkaround.convert};
         char buffer[64];
         if (auto value{GetScalarConstantValue<Operand>(kindExpr)}) {
+          FoldingContext &ctx{msvcWorkaround.context};
           if constexpr (TO::category == TypeCategory::Integer) {
             if constexpr (Operand::category == TypeCategory::Integer) {
               auto converted{Scalar<TO>::ConvertSigned(*value)};
               if (converted.overflow) {
-                context.messages().Say(
+                ctx.messages().Say(
                     "INTEGER(%d) to INTEGER(%d) conversion overflowed"_en_US,
                     Operand::kind, TO::kind);
               }
@@ -1172,11 +1198,11 @@ Expr<TO> FoldOperation(
             } else if constexpr (Operand::category == TypeCategory::Real) {
               auto converted{value->template ToInteger<Scalar<TO>>()};
               if (converted.flags.test(RealFlag::InvalidArgument)) {
-                context.messages().Say(
+                ctx.messages().Say(
                     "REAL(%d) to INTEGER(%d) conversion: invalid argument"_en_US,
                     Operand::kind, TO::kind);
               } else if (converted.flags.test(RealFlag::Overflow)) {
-                context.messages().Say(
+                ctx.messages().Say(
                     "REAL(%d) to INTEGER(%d) conversion overflowed"_en_US,
                     Operand::kind, TO::kind);
               }
@@ -1189,7 +1215,7 @@ Expr<TO> FoldOperation(
                 std::snprintf(buffer, sizeof buffer,
                     "INTEGER(%d) to REAL(%d) conversion", Operand::kind,
                     TO::kind);
-                RealFlagWarnings(context, converted.flags, buffer);
+                RealFlagWarnings(ctx, converted.flags, buffer);
               }
               return ScalarConstantToExpr(std::move(converted.value));
             } else if constexpr (Operand::category == TypeCategory::Real) {
@@ -1197,9 +1223,9 @@ Expr<TO> FoldOperation(
               if (!converted.flags.empty()) {
                 std::snprintf(buffer, sizeof buffer,
                     "REAL(%d) to REAL(%d) conversion", Operand::kind, TO::kind);
-                RealFlagWarnings(context, converted.flags, buffer);
+                RealFlagWarnings(ctx, converted.flags, buffer);
               }
-              if (context.flushSubnormalsToZero()) {
+              if (ctx.flushSubnormalsToZero()) {
                 converted.value = converted.value.FlushSubnormalToZero();
               }
               return ScalarConstantToExpr(std::move(converted.value));
@@ -1214,7 +1240,7 @@ Expr<TO> FoldOperation(
             return Expr<TO>{value->IsTrue()};
           }
         } else if constexpr (std::is_same_v<Operand, TO> &&
-            FROMCAT != TypeCategory::Character) {
+            FromCat != TypeCategory::Character) {
           return std::move(kindExpr); // remove needless conversion
         }
         return Expr<TO>{std::move(convert)};
@@ -1402,8 +1428,7 @@ Expr<T> FoldOperation(FoldingContext &context, Power<T> &&x) {
       }
       return Expr<T>{Constant<T>{power.power}};
     } else {
-      if (auto callable{context.hostIntrinsicsLibrary()
-                            .GetHostProcedureWrapper<Scalar, T, T, T>("pow")}) {
+      if (auto callable{GetHostRuntimeWrapper<T, T, T>("pow")}) {
         return Expr<T>{
             Constant<T>{(*callable)(context, folded->first, folded->second)}};
       } else {

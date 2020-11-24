@@ -230,10 +230,10 @@ TEST(GoldUserDefinedOp, Free_Unary_##Name##_SecondName) {                   \
   TestUnaryFreeFunc(SecondName, OpStr);                                     \
 }
 
-#define def_nary_op(Name, OpStr, MemberOnly, OverloadStyle, OpOverloadName) \
-TEST(GoldUserDefinedOp, Member_NAry_##Name) {                               \
-  TestBinMemberFunc(OpStr, OpStr);                                          \
-}
+// #define def_nary_op(Name, OpStr, MemberOnly, OverloadStyle, OpOverloadName) \
+// TEST(GoldUserDefinedOp, Member_NAry_##Name) {                               \
+//   TestBinMemberFunc(OpStr, OpStr);                                          \
+// }
 
 
 #define def_unary_cpp_only_op(Name, OpStr, MemberOnly, OverloadStyle,      \

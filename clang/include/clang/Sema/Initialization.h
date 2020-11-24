@@ -55,6 +55,9 @@ public:
     /// The entity being initialized is a function parameter.
     EK_Parameter,
 
+    /// The entity being initialized is a non-type template parameter.
+    EK_TemplateParameter,
+
     /// The entity being initialized is the result of a function call.
     EK_Result,
 
@@ -175,7 +178,8 @@ private:
   };
 
   union {
-    /// When Kind == EK_Variable, EK_Member or EK_Binding, the variable.
+    /// When Kind == EK_Variable, EK_Member, EK_Binding, or
+    /// EK_TemplateParameter, the variable, binding, or template parameter.
     VD Variable;
 
     /// When Kind == EK_RelatedResult, the ObjectiveC method where
@@ -278,6 +282,17 @@ public:
     Entity.Type = Context.getVariableArrayDecayedType(Type);
     Entity.Parent = nullptr;
     Entity.Parameter = (Consumed);
+    return Entity;
+  }
+
+  /// Create the initialization entity for a template parameter.
+  static InitializedEntity
+  InitializeTemplateParameter(QualType T, NonTypeTemplateParmDecl *Param) {
+    InitializedEntity Entity;
+    Entity.Kind = EK_TemplateParameter;
+    Entity.Type = T;
+    Entity.Parent = nullptr;
+    Entity.Variable = {Param, false, false};
     return Entity;
   }
 
@@ -439,6 +454,10 @@ public:
   bool isParameterKind() const {
     return (getKind() == EK_Parameter  ||
             getKind() == EK_Parameter_CF_Audited);
+  }
+
+  bool isParamOrTemplateParamKind() const {
+    return isParameterKind() || getKind() == EK_TemplateParameter;
   }
 
   /// Determine whether this initialization consumes the
@@ -895,7 +914,10 @@ public:
     SK_OCLSamplerInit,
 
     /// Initialize an opaque OpenCL type (event_t, queue_t, etc.) with zero
-    SK_OCLZeroOpaqueType
+    SK_OCLZeroOpaqueType,
+
+    /// Initialize a parameter with a passing mode.
+    SK_ParameterModeInit,
   };
 
   /// A single step in the initialization sequence.
@@ -1339,6 +1361,9 @@ public:
   /// Add a step to initialize by zero types defined in the
   /// cl_intel_device_side_avc_motion_estimation OpenCL extension
   void AddOCLIntelSubgroupAVCZeroInitStep(QualType T);
+
+  /// Add a step to passing an argument to an in/out/etc. paraemter.
+  void AddParameterAdjustmentStep(QualType T);
 
   /// Add steps to unwrap a initializer list for a reference around a
   /// single element and rewrap it at the end.

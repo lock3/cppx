@@ -10,12 +10,10 @@ const internal::VariadicDynCastAllOfMatcher<
     VarTemplatePartialSpecializationDecl
   > varTemplatePartialSpecializationDecl;
 
-const internal::VariadicDynCastAllOfMatcher<Decl, TemplateTemplateParmDecl>
-    templateTemplateParmDecl;
-
 const internal::VariadicDynCastAllOfMatcher<Stmt, PackExpansionExpr>
     packExpansionExpr;
 
 const internal::VariadicDynCastAllOfMatcher<Stmt, CXXFoldExpr>
     cxxFoldExpr;
+const internal::VariadicDynCastAllOfMatcher<Stmt, SizeOfPackExpr> sizeOfPackExpr;
 }}

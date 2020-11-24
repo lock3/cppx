@@ -128,7 +128,7 @@ def_keyword(True, "true")
 def_keyword(False, "false")
 def_keyword(Null, "null")
 def_keyword(NullT, "null_t")
-// def_keyword(New, "new")
+def_keyword(New, "new")
 def_keyword(Default, "default")
 def_keyword(Delete, "delete")
 def_keyword(This, "this")
@@ -159,6 +159,8 @@ def_token(Character)
 def_token(HexadecimalCharacter)
 def_token(UnicodeCharacter)
 def_token(String)
+def_token(ArrayDelete)
+def_token(SizeOfPack)
 
 // ... operator indicating tokens
 // def_puncop(Ellipsis, "...") this is used when we are NOT within a fold expression.

@@ -28,8 +28,16 @@ static const Syntax *buildIdentifierNode(SyntaxContext &Ctx,
   return new (Ctx) AtomSyntax(Tok);
 }
 
-static const Syntax *buildDummyASTNode(SyntaxContext &Ctx,
+static const Syntax *buildIdentifierNode(SyntaxContext &Ctx,
+                                         llvm::StringRef Text,
                                          clang::SourceLocation Loc) {
+  Symbol Sym = getSymbol(Text.str());
+  Token Tok(tok::Identifier, Loc, Sym);
+  return new (Ctx) AtomSyntax(Tok);
+}
+
+static const Syntax *buildDummyASTNode(SyntaxContext &Ctx,
+                                       clang::SourceLocation Loc) {
   return buildIdentifierNode(Ctx, "Dummy", Loc);
 }
 
@@ -266,7 +274,7 @@ ClangToGoldDeclRebuilder::generateDeclForDeclContext(clang::DeclContext *DC,
   clang::Decl *Dcl = cast<clang::Decl>(DC);
   auto *D = new Declaration(SemaRef.getCurrentDecl(), S, /*Declarator=*/nullptr,
                             /*Init=*/nullptr, UDK_None);
-  D->Cxx = Dcl;
+  SemaRef.setDeclForDeclaration(D, Dcl);
   D->CurrentPhase = Phase::Initialization;
   D->ScopeForDecl = SemaRef.getCurrentScope();
   D->ParentDecl = SemaRef.getCurrentDecl();
@@ -280,11 +288,30 @@ Declaration *ClangToGoldDeclRebuilder::generateDeclForNNS(
   auto *D = new Declaration(SemaRef.getCurrentDecl(), Name,
                             /*Declarator=*/nullptr, /*Init=*/nullptr,
                             UDK_Namespace);
-  D->Cxx = NS;
+  SemaRef.setDeclForDeclaration(D, NS);
   D->CurrentPhase = Phase::Initialization;
   D->Id = NS->getIdentifier();
   D->ScopeForDecl = SemaRef.getCurrentScope();
   D->ParentDecl = SemaRef.getCurrentDecl();
+  return D;
+}
+
+Declaration *
+ClangToGoldDeclRebuilder::rebuildDeclWithNewName(Declaration *Parent,
+                                                 llvm::StringRef NewName,
+                                                 clang::Decl *Dcl,
+                                                 Scope *ScopeForDecl){
+  const Syntax *Name = buildIdentifierNode(Context, NewName, Dcl->getLocation());
+  auto *D = new Declaration(Parent, Name, /*Declarator=*/nullptr,
+                            /*Init=*/nullptr, UDK_OperatorOverload);
+  SemaRef.setDeclForDeclaration(D, Dcl);
+  D->CurrentPhase = Phase::Initialization;
+  D->Id = &Context.CxxAST.Idents.get(NewName);
+  D->ScopeForDecl = ScopeForDecl;
+  D->ParentDecl = Parent;
+
+  // Recording this declaration inside of it's given scope.
+  ScopeForDecl->addDecl(D);
   return D;
 }
 

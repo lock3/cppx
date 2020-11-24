@@ -1795,6 +1795,11 @@ void StmtProfiler::VisitCXXNullPtrLiteralExpr(const CXXNullPtrLiteralExpr *S) {
   VisitExpr(S);
 }
 
+void StmtProfiler::VisitCXXParameterInfoExpr(const CXXParameterInfoExpr *S) {
+  VisitExpr(S);
+  VisitDecl(S->getDecl());
+}
+
 void StmtProfiler::VisitCXXStdInitializerListExpr(
     const CXXStdInitializerListExpr *S) {
   VisitExpr(S);
@@ -2165,6 +2170,10 @@ void StmtProfiler::VisitCXXFragmentExpr(const CXXFragmentExpr *E) {
 }
 
 void StmtProfiler::VisitCXXFragmentCaptureExpr(const CXXFragmentCaptureExpr *E) {
+  VisitExpr(E);
+}
+
+void StmtProfiler::VisitCXXInjectedValueExpr(const CXXInjectedValueExpr *E) {
   VisitExpr(E);
 }
 
