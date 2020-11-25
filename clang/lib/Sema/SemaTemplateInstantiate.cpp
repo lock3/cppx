@@ -1110,6 +1110,10 @@ namespace {
 
     ExprResult TransformCXXFragmentExpr(CXXFragmentExpr *E);
 
+
+    ExprResult RebuildCppxTemplateOrArrayExpr(Expr *Base, ArrayRef<Expr *> Args) {
+      llvm_unreachable("Not implemented yet");
+    }
     ExprResult RebuildCppxDependentMemberAccessExpr(Expr *BaseE,
                                                   QualType BaseType,
                                                   SourceLocation OperatorLoc,
@@ -1119,14 +1123,22 @@ namespace {
         SemaRef.getASTContext(), BaseE, BaseType, OperatorLoc, MemberNameInfo,
         NameExpr);
       assert(SemaRef.getGoldSema() && "invalid without gold language support");
-      return SemaRef.getGoldSema()->TransformCppxDependentMemberAccessExpr(
+      auto Ret = SemaRef.getGoldSema()->TransformCppxDependentMemberAccessExpr(
           TemplateArgs, Loc, Entity, E);
+      if (!Ret) {
+        return ExprError();
+      }
+      return Ret;
     }
     // ExprResult TransformCppxDependentMemberAccessExpr(
     //                                         CppxDependentMemberAccessExpr *E) {
     //   assert(SemaRef.getGoldSema() && "invalid without gold language support");
-    //   return SemaRef.getGoldSema()->TransformCppxDependentMemberAccessExpr(
+    //   auto Ret = SemaRef.getGoldSema()->TransformCppxDependentMemberAccessExpr(
     //       TemplateArgs, Loc, Entity, E);
+    //   if (!Ret) {
+    //     return ExprError();
+    //   }
+    //   return Ret;
     // }
 
     QualType TransformCppxTypeExprType(TypeLocBuilder &TLB,

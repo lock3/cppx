@@ -853,6 +853,10 @@ bool Sema::checkUnqualifiedNameIsDecl(const clang::DeclarationNameInfo& DNI,
   // and other kinds of declarations. This also handles some early elaboration
   // of some types.
   bool FoundFirstClassScope = false;
+  // if (S->getKind() == SK_Class) {
+  //   // Don't go into the base classes for this because this could just be
+  //   // overrides.
+  // }
   for(;S; S = S->getParent()) {
     std::set<Declaration *> Found = S->findDecl(Id);
     if (!Found.empty()) {
@@ -1774,6 +1778,13 @@ clang::Expr *Sema::TransformCppxDependentMemberAccessExpr(
     clang::CppxDependentMemberAccessExpr *E) {
   DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
   return rebuilder.transformDependentExpr(E);
+}
+
+clang::Expr *Sema::TransformCppxTemplateOrArrayExpr(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxTemplateOrArrayExpr *E) {
+  llvm_unreachable("Working on it.");
 }
 
 } // namespace gold

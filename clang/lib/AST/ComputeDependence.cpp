@@ -886,6 +886,16 @@ ExprDependence clang::computeDependence(CppxDependentMemberAccessExpr *E) {
   return D;
 }
 
+ExprDependence clang::computeDependence(CppxTemplateOrArrayExpr *E) {
+  auto D = ExprDependence::TypeValueInstantiation;
+  D |= E->getBase()->getDependence();
+  for (auto *A : llvm::makeArrayRef(E->getArgs(), E->getNumArgs())) {
+    if (A)
+      D |= A->getDependence();
+  }
+  return D;
+}
+
 ExprDependence clang::computeDependence(MaterializeTemporaryExpr *E) {
   return E->getSubExpr()->getDependence();
 }

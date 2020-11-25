@@ -621,7 +621,8 @@ CXCursor cxcursor::MakeCXCursor(const Stmt *S, const Decl *Parent,
     K = CXCursor_DeclRefExpr;
     break;
   case Stmt::CXXDependentScopeMemberExprClass:
-  case Stmt::CppxDependentMemberAccessExpr:
+  case Stmt::CppxDependentMemberAccessExprClass:
+  case Stmt::CppxTemplateOrArrayExprClass
   case Stmt::CXXPseudoDestructorExprClass:
   case Stmt::MemberExprClass:
   case Stmt::MSPropertyRefExprClass:

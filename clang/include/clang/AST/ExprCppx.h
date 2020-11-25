@@ -297,9 +297,9 @@ class CppxDependentMemberAccessExpr final
 
   /// The expression for the base pointer or class reference,
   /// e.g., the \c x in x.f.  Can be null in implicit accesses.
-  Stmt *Base;
+  Stmt *Base = nullptr;
 
-  Expr *NameSpecifier;
+  Expr *NameSpecifier = nullptr;
 
   /// The type of the base expression.  Never null, even for
   /// implicit accesses.
@@ -386,6 +386,137 @@ public:
     if (isImplicitAccess())
       return const_child_range(const_child_iterator(), const_child_iterator());
     return const_child_range(&Base, &Base + 1);
+  }
+};
+
+class CppxTemplateOrArrayExpr final
+    : public Expr {
+  friend class ASTStmtReader;
+  friend class ASTStmtWriter;
+  Stmt *Base = nullptr;
+  unsigned NumArgs = 0;
+
+  Stmt **getTrailingStmts() {
+    return reinterpret_cast<Stmt **>(reinterpret_cast<char *>(this) +
+                                   TemplateOrArrayBits.OffsetToTrailingObjects);
+  }
+
+  Stmt *const *getTrailingStmts() const {
+    return const_cast<CppxTemplateOrArrayExpr *>(this)->getTrailingStmts();
+  }
+
+  unsigned getSizeOfTrailingStmts() const {
+    return (NumArgs) * sizeof(Stmt *);
+  }
+
+protected:
+  // Name of associated bitfields.
+  // CppxTemplateOrArrayExprBitFields TemplateOrArrayBits;
+  CppxTemplateOrArrayExpr(const ASTContext &Ctx, Stmt *Base,
+                          ArrayRef<Expr *> Args);
+
+  /// Build an empty call expression, for deserialization.
+  CppxTemplateOrArrayExpr(const ASTContext &Ctx, unsigned ArgCount,
+                          EmptyShell Empty);
+
+  /// Return the size in bytes needed for the trailing objects.
+  /// Used by the derived classes to allocate the right amount of storage.
+  static unsigned sizeOfTrailingObjects(unsigned NumPreArgs, unsigned NumArgs,
+                                        bool HasFPFeatures) {
+    return NumArgs * sizeof(Stmt *);
+  }
+
+public:
+  static CppxTemplateOrArrayExpr *
+    Create(const ASTContext &Ctx, Expr *BaseExpr, ArrayRef<Expr *> Args);
+
+  /// Create an empty call expression, for deserialization.
+  static CppxTemplateOrArrayExpr *
+    CreateEmpty(const ASTContext &Ctx, unsigned NumArgs,
+                EmptyShell Empty);
+
+  Expr *getBase() { return cast<Expr>(Base); }
+  const Expr *getBase() const { return cast<Expr>(Base); }
+  void setBase(Expr *E) { Base = E; }
+
+  /// getNumArgs - Return the number of actual arguments to this call.
+  unsigned getNumArgs() const { return NumArgs; }
+
+  /// Retrieve the call arguments.
+  Expr **getArgs() {
+    return reinterpret_cast<Expr **>(getTrailingStmts());
+  }
+
+  Expr *const *getArgs() const {
+    return reinterpret_cast<Expr *const *>(getTrailingStmts());
+  }
+
+  /// getArg - Return the specified argument.
+  Expr *getArg(unsigned Arg) {
+    assert(Arg < getNumArgs() && "Arg access out of range!");
+    return getArgs()[Arg];
+  }
+  const Expr *getArg(unsigned Arg) const {
+    assert(Arg < getNumArgs() && "Arg access out of range!");
+    return getArgs()[Arg];
+  }
+
+  /// setArg - Set the specified argument.
+  void setArg(unsigned Arg, Expr *ArgExpr) {
+    assert(Arg < getNumArgs() && "Arg access out of range!");
+    getArgs()[Arg] = ArgExpr;
+  }
+
+  typedef ExprIterator arg_iterator;
+  typedef ConstExprIterator const_arg_iterator;
+  typedef llvm::iterator_range<arg_iterator> arg_range;
+  typedef llvm::iterator_range<const_arg_iterator> const_arg_range;
+
+  arg_range arguments() { return arg_range(arg_begin(), arg_end()); }
+  const_arg_range arguments() const {
+    return const_arg_range(arg_begin(), arg_end());
+  }
+
+  arg_iterator arg_begin() {
+    return getTrailingStmts();
+  }
+  arg_iterator arg_end() { return arg_begin() + getNumArgs(); }
+
+  const_arg_iterator arg_begin() const {
+    return getTrailingStmts();
+  }
+  const_arg_iterator arg_end() const { return arg_begin() + getNumArgs(); }
+
+  /// This method provides fast access to all the subexpressions of
+  /// a CallExpr without going through the slower virtual child_iterator
+  /// interface.  This provides efficient reverse iteration of the
+  /// subexpressions.  This is currently used for CFG construction.
+  ArrayRef<Stmt *> getRawSubExprs() {
+    return llvm::makeArrayRef(getTrailingStmts(), getNumArgs());
+  }
+
+  SourceLocation getBeginLoc() const LLVM_READONLY {
+    return Base->getBeginLoc();
+  }
+  SourceLocation getEndLoc() const LLVM_READONLY {
+    if (getNumArgs()) {
+      return getArg(getNumArgs()-1)->getEndLoc();
+    }
+    return Base->getBeginLoc();
+  }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == CppxTemplateOrArrayExprClass;
+  }
+
+  // Iterators
+  child_range children() {
+    return child_range(getTrailingStmts(), getTrailingStmts() + getNumArgs());
+  }
+
+  const_child_range children() const {
+    return const_child_range(getTrailingStmts(),
+                             getTrailingStmts() + getNumArgs());
   }
 };
 

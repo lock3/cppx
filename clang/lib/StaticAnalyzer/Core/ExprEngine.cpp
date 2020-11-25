@@ -1212,6 +1212,7 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     // C++, OpenMP and ARC stuff we don't support yet.
     case Stmt::CXXDependentScopeMemberExprClass:
     case Stmt::CppxDependentMemberAccessExprClass:
+    case Stmt::CppxTemplateOrArrayExprClass:
     case Stmt::CXXTryStmtClass:
     case Stmt::CXXTypeidExprClass:
     case Stmt::CXXUuidofExprClass:

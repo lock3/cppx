@@ -76,6 +76,7 @@ CppxDependentMemberAccessExpr::Create(const ASTContext &Ctx, Expr *Base,
                                       Expr *NameSpecExpr) {
   void *Mem = Ctx.Allocate(sizeof(CppxDependentMemberAccessExpr),
                            alignof(CppxDependentMemberAccessExpr));
+  assert(Base);
   return new (Mem) CppxDependentMemberAccessExpr(Ctx, Base, BaseType,
                                                  OperatorLoc, MemberNameInfo,
                                                  NameSpecExpr);
@@ -88,4 +89,38 @@ CppxDependentMemberAccessExpr::CreateEmpty(const ASTContext &Ctx) {
   return new (Mem) CppxDependentMemberAccessExpr(EmptyShell());
 }
 
+
+CppxTemplateOrArrayExpr::CppxTemplateOrArrayExpr(const ASTContext &Ctx,
+                                                 Stmt *E,
+                                                 ArrayRef<Expr *> Args)
+  :Expr(CppxTemplateOrArrayExprClass, Ctx.DependentTy, VK_LValue, OK_Ordinary),
+  Base(E),
+  NumArgs(Args.size())
+{
+  TemplateOrArrayBits.OffsetToTrailingObjects = sizeof(CppxTemplateOrArrayExpr);
+  setDependence( clang::ExprDependenceScope::ExprDependence::TypeValue
+                |  clang::ExprDependenceScope::ExprDependence::TypeInstantiation
+                |  clang::ExprDependenceScope::ExprDependence::ValueInstantiation
+                |  clang::ExprDependenceScope::ExprDependence::TypeValueInstantiation);
+  // Copying everything into the trailing arguments.
+  for (unsigned I = 0; I != Args.size(); ++I)
+    setArg(I, Args[I]);
+}
+
+CppxTemplateOrArrayExpr::CppxTemplateOrArrayExpr(const ASTContext &Ctx, unsigned ArgCount, EmptyShell Empty)
+    : Expr(CppxTemplateOrArrayExprClass, Empty) { }
+
+
+CppxTemplateOrArrayExpr *
+CppxTemplateOrArrayExpr::Create(const ASTContext &Ctx, Expr *BaseExpr,
+                                ArrayRef<Expr *> Args) {
+  llvm_unreachable("Working on it.");
+}
+
+/// Create an empty call expression, for deserialization.
+CppxTemplateOrArrayExpr *
+CppxTemplateOrArrayExpr::CreateEmpty(const ASTContext &Ctx, unsigned NumArgs,
+                                     EmptyShell Empty) {
+  llvm_unreachable("Working on it.");
+}
 } // namespace clang

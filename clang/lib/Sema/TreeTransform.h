@@ -3450,6 +3450,12 @@ public:
                                             TemplateArgs, /*S*/nullptr);
   }
 
+  ExprResult RebuildCppxTemplateOrArrayExpr(Expr *Base, ArrayRef<Expr *> Args) {
+    return clang::CppxTemplateOrArrayExpr::Create(SemaRef.getASTContext(),
+                                                  Base, Args);
+  }
+
+
   ExprResult RebuildCppxDependentMemberAccessExpr(Expr *BaseE,
                                                 QualType BaseType,
                                                 SourceLocation OperatorLoc,
@@ -14144,43 +14150,29 @@ TreeTransform<Derived>::TransformCppxDependentMemberAccessExpr(
   Expr *OldBase;
   QualType BaseType;
   QualType ObjectType;
-  // const ASTContext &Ctx = SemaRef.getASTContext();
+
   if (!E->isImplicitAccess()) {
     OldBase = E->getBase();
+
     Base = getDerived().TransformExpr(OldBase);
+    assert(Base.get() && "We haave an invalid base expression?\n");
     if (Base.isInvalid())
       return ExprError();
-    // if (Base.get()->getType().isTypeOfTypes()) {
-    //   // TODO: I may need to include a special expression that constructs
-    //   // a NNS scope, or something like it.
-    //   // llvm_unreachable("Derp!");
-    //   if (auto TyExpr = dyn_cast<clang::CppxTypeLiteral>(Base.get())) {
-    //     BaseType = TyExpr->getValue()->getType();
-    //   } else {
-    //     llvm_unreachable("Non-CppxTypeLiteral based type expression "
-    //                      "not implemented yet.");
-    //   }
-    // } else {
-    //   llvm_unreachable("Non-type of types dependent expression not implemented yet.");
-    // }
-    // llvm_unreachable("Non-implicit member access expression not implemented yet.");
-  //   // Start the member reference and compute the object's type.
-  //   ParsedType ObjectTy;
-  //   bool MayBePseudoDestructor = false;
-  //   Base = SemaRef.ActOnStartCXXMemberReference(nullptr, Base.get(),
-  //                                               E->getOperatorLoc(),
-  //                                     E->isArrow()? tok::arrow : tok::period,
-  //                                               ObjectTy,
-  //                                               MayBePseudoDestructor);
-  //   if (Base.isInvalid())
-  //     return ExprError();
-
-  //   ObjectType = ObjectTy.get();
-  //   BaseType = ((Expr*) Base.get())->getType();
+    if (Base.get()->getType()->isTypeOfTypes()) {
+      // TODO: I may need to include a special expression that constructs
+      // a NNS scope, or something like it.
+      if (auto TyExpr = dyn_cast<clang::CppxTypeLiteral>(Base.get())) {
+        BaseType = TyExpr->getValue()->getType();
+      } else {
+        llvm_unreachable("Non-CppxTypeLiteral based type expression "
+                         "not implemented yet.");
+      }
+    } else {
+      BaseType = Base.get()->getType();
+    }
   } else {
     OldBase = nullptr;
     BaseType = getDerived().TransformType(E->getBaseType());
-    // ObjectType = BaseType->castAs<PointerType>()->getPointeeType();
   }
 
   // QualType NameQualifierTy = E->getNameQualifierTy();
@@ -14216,44 +14208,6 @@ TreeTransform<Derived>::TransformCppxDependentMemberAccessExpr(
     = getDerived().TransformDeclarationNameInfo(E->getMemberNameInfo());
   if (!NameInfo.getName())
     return ExprError();
-
-  // if (!E->hasExplicitTemplateArgs()) {
-  //   // This is a reference to a member without an explicitly-specified
-  //   // template argument list. Optimize for this common case.
-  //   if (!getDerived().AlwaysRebuild() &&
-  //       Base.get() == OldBase &&
-  //       BaseType == E->getBaseType() &&
-  //       QualifierLoc == E->getQualifierLoc() &&
-  //       NameInfo.getName() == E->getMember() &&
-  //       FirstQualifierInScope == E->getFirstQualifierFoundInScope())
-  //     return E;
-
-  //   return getDerived().RebuildCXXDependentScopeMemberExpr(Base.get(),
-  //                                                      BaseType,
-  //                                                      E->isArrow(),
-  //                                                      E->getOperatorLoc(),
-  //                                                      QualifierLoc,
-  //                                                      TemplateKWLoc,
-  //                                                      FirstQualifierInScope,
-  //                                                      NameInfo,
-  //                                                      /*TemplateArgs*/nullptr);
-  // }
-
-  // TemplateArgumentListInfo TransArgs(E->getLAngleLoc(), E->getRAngleLoc());
-  // if (getDerived().TransformTemplateArguments(E->getTemplateArgs(),
-  //                                             E->getNumTemplateArgs(),
-  //                                             TransArgs))
-  //   return ExprError();
-
-  // return getDerived().RebuildCXXDependentScopeMemberExpr(Base.get(),
-  //                                                    BaseType,
-  //                                                    E->isArrow(),
-  //                                                    E->getOperatorLoc(),
-  //                                                    QualifierLoc,
-  //                                                    TemplateKWLoc,
-  //                                                    FirstQualifierInScope,
-  //                                                    NameInfo,
-  //                                                    &TransArgs);
   return getDerived().RebuildCppxDependentMemberAccessExpr(Base.get(),
                                                            BaseType,
                                                            E->getOperatorLoc(),
@@ -14261,6 +14215,16 @@ TreeTransform<Derived>::TransformCppxDependentMemberAccessExpr(
                                                            E->getNameQualifierExpr());
 }
 
+
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCppxTemplateOrArrayExpr(
+                                                   CppxTemplateOrArrayExpr *E) {
+  // Transform the base of the expression.
+  // ExprResult Base((Expr*) nullptr);
+  // Expr *BaseExpr = getDerived().transformExpr;
+  llvm_unreachable("Working on it!");
+}
 
 template<typename Derived>
 ExprResult
@@ -15463,7 +15427,6 @@ QualType TreeTransform<Derived>::RebuildFunctionNoProtoType(QualType T) {
 template<typename Derived>
 QualType TreeTransform<Derived>::RebuildUnresolvedUsingType(SourceLocation Loc,
                                                             Decl *D) {
-  llvm::outs() << "Unresolved using type?!\n";
   assert(D && "no decl found");
   if (D->isInvalidDecl()) return QualType();
 

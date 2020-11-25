@@ -1992,6 +1992,10 @@ void ASTStmtWriter::VisitCppxDependentMemberAccessExpr(
   llvm_unreachable("ASTStmtWriter::VisitCppxDependentScopeMemberExpr "
                    "Not implemented.");
 }
+void ASTStmtWriter::VisitCppxTemplateOrArrayExpr(CppxTemplateOrArrayExpr *E) {
+  llvm_unreachable("ASTStmtWriter::VisitCppxTemplateOrArrayExpr "
+                   "Not implemented.");
+}
 
 void
 ASTStmtWriter::VisitDependentScopeDeclRefExpr(DependentScopeDeclRefExpr *E) {

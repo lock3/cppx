@@ -562,6 +562,9 @@ void ASTStmtReader::VisitCppxDependentMemberAccessExpr
 (CppxDependentMemberAccessExpr *E) {
   llvm_unreachable("not implemented");
 }
+void ASTStmtReader::VisitCppxTemplateOrArrayExpr(CppxTemplateOrArrayExpr *E) {
+  llvm_unreachable("not implemented");
+}
 
 void ASTStmtReader::VisitCXXFragmentCaptureExpr(CXXFragmentCaptureExpr *E) {
   llvm_unreachable("not implemented");

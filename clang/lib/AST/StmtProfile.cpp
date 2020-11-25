@@ -2017,6 +2017,19 @@ void StmtProfiler::VisitCppxDependentMemberAccessExpr(
   //   VisitTemplateArguments(S->getTemplateArgs(), S->getNumTemplateArgs());
 }
 
+void StmtProfiler::VisitCppxTemplateOrArrayExpr(
+    const CppxTemplateOrArrayExpr *S) {
+  llvm_unreachable("Not sure what this is for.");
+  // ID.AddBoolean(S->isImplicitAccess());
+  // if (!S->isImplicitAccess()) {
+  //   VisitExpr(S);
+  // }
+  // VisitName(S->getMember());
+  // ID.AddBoolean(S->hasExplicitTemplateArgs());
+  // if (S->hasExplicitTemplateArgs())
+  //   VisitTemplateArguments(S->getTemplateArgs(), S->getNumTemplateArgs());
+}
+
 
 
 void StmtProfiler::VisitUnresolvedMemberExpr(const UnresolvedMemberExpr *S) {

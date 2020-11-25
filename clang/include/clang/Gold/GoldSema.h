@@ -1138,6 +1138,11 @@ public:
       const clang::MultiLevelTemplateArgumentList &TemplateArgs,
       clang::SourceLocation Loc, clang::DeclarationName Entity,
       clang::CppxDependentMemberAccessExpr *E);
+
+    clang::Expr *TransformCppxTemplateOrArrayExpr(
+      const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+      clang::SourceLocation Loc, clang::DeclarationName Entity,
+      clang::CppxTemplateOrArrayExpr *E);
 };
 
 } // namespace gold

@@ -668,7 +668,7 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
       return Tag;
     }
   } else {
-    // THis handles processing for class, struct, and union bodies.
+    // This handles processing for class, struct, and union bodies.
     // This keeps track of class nesting.
     Sema::ElaboratingClassDefRAII ClsElabState(SemaRef, D,
                                               !SemaRef.isElaboratingClass());

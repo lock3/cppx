@@ -4181,6 +4181,8 @@ recurse:
     break;
   }
 
+  case Expr::CppxTemplateOrArrayExprClass:
+    llvm_unreachable("case Expr::CppxTemplateOrArrayExprClass: not implemented.");
   case Expr::CppxDependentMemberAccessExprClass: {
     llvm_unreachable("case Expr::CppxDependentMemberAccessExprClass: not implemented.");
     // const CppxDependentMemberAccessExpr *ME

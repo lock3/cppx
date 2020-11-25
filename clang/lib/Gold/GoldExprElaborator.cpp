@@ -2349,6 +2349,13 @@ ExprElaborator::elaborateMemberAccessRHSAtom(clang::Expr *ElaboratedLHS,
   } else {
     Id.setIdentifier(IdInfo, RHS->getLoc());
   }
+  // If this expression is a dependent expression, that is dependent on something
+  // then we need to make sure we generate the corrected generic expression
+  // for it.
+  if (ElaboratedLHS->getDependence() != clang::ExprDependence::None)
+    // Checking to make sure this works as expected.
+    return elaborateDependentExpr(ElaboratedLHS, LHS, Op, RHS);
+
   clang::CXXScopeSpec SS;
   clang::SourceLocation Loc;
   clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;

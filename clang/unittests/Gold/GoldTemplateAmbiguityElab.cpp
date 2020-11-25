@@ -204,16 +204,19 @@ bar():void!
 
 TEST(GoldTemplateAmbiguity, DependentConstructorCall) {
   StringRef Code = R"(
-T1 = class:
-  T2 = class:
-    foo = class:
-      ;
 
 foo[T:type]():void!
   x = T.T2.foo()
 
 bar():void!
   foo[T1]()
+
+T1 = class:
+  T2 = class:
+    foo = class:
+      bar = class:
+        ;
+
 )";
   auto ToMatch = functionTemplateDecl(
     hasName("foo"),
@@ -229,9 +232,11 @@ TEST(GoldTemplateAmbiguity, StaticMemberThatSupportsFunctionCallOperator) {
 Callable = class:
   operator"()"():void!
     ;
+
 T1 = class:
   T2 = class:
     foo<static> <inline> : Callable
+    ;
 
 foo[T:type]():void!
   T.T2.foo()
@@ -260,11 +265,12 @@ foo[T:type](v:T):void!
   v.t2.t3
 
 bar():void!
-  foo[T2]()
+  x:T1
+  foo(x)
 )Gold";
-  auto ToMatch = functionDecl(
+  auto ToMatch = functionTemplateDecl(
     hasName("foo"),
-    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
+    has(functionDecl(hasName("foo"), hasDescendant(declRefExpr())))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -282,11 +288,12 @@ foo[T:type](v:^T):void!
   v.t2.t3
 
 bar():void!
-  foo[T2]()
+  v:T1
+  foo(&v)
 )Gold";
-  auto ToMatch = functionDecl(
+  auto ToMatch = functionTemplateDecl(
     hasName("foo"),
-    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
+    has(functionDecl(hasName("foo"), hasDescendant(declRefExpr())))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -415,3 +422,13 @@ bar():void!
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+// TODO: Add a template value with overloads test.
+// add a dependent function template, and something with an array of
+// callable objets. This will also need to be done for member variable access.
+// Add test for consturct destruct test.
+// Add test for operator new.
+// Add tests for operator lookup/handling. Especially dereference and xor.
+// Add test for nested name specifier access, with everything but the
+//  name specifier dependent, and one with only the LHS is dependent.
+// Add a test for possible arrat
