@@ -337,10 +337,6 @@ clang::Decl *Elaborator::elaborateDeclType(const Syntax *S) {
   return elaborateDecl(D);
 }
 
-static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
-                                const Syntax *Params,
-                                llvm::SmallVectorImpl<clang::NamedDecl *> &Res);
-
 static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
                                   SyntaxContext& Context, Declaration *D,
                                   clang::CXXRecordDecl *R,
@@ -854,9 +850,10 @@ static void handleTemplateParameters(Sema &SemaRef,
 
   // Constructing actual parameters.
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
-  if (!TPD->isImplicitlyEmpty())
-    BuildTemplateParams(SemaRef.getContext(), SemaRef, TPD->getSyntax(),
-                        TemplateParamDecls);
+  if (!TPD->isImplicitlyEmpty()) {
+    Elaborator El(SemaRef.getContext(), SemaRef);
+    El.buildTemplateParams(TPD->getSyntax(), TemplateParamDecls);
+  }
 
   ParamList = SemaRef.getCxxSema().ActOnTemplateParameterList(
                                /*unsigned Depth*/SemaRef.computeTemplateDepth(),
@@ -908,9 +905,10 @@ buildNNSTemplateParam(Sema &SemaRef, Declaration *D,
   TemplateDcl->setScope(SemaRef.getCurrentScope());
   // Constructing actual parameters.
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
-  if (!TemplateDcl->isImplicitlyEmpty())
-    BuildTemplateParams(SemaRef.getContext(), SemaRef, TemplateDcl->getSyntax(),
-                        TemplateParamDecls);
+  if (!TemplateDcl->isImplicitlyEmpty()) {
+    Elaborator El(SemaRef.getContext(), SemaRef);
+    El.buildTemplateParams(TemplateDcl->getSyntax(), TemplateParamDecls);
+  }
 
   auto ParamList = SemaRef.getCxxSema().ActOnTemplateParameterList(
                                /*unsigned Depth*/SemaRef.computeTemplateDepth(),
@@ -1689,13 +1687,11 @@ clang::Decl *Elaborator::elaborateDeclContent(clang::Scope *InitialScope,
   return elaborateVariableDecl(InitialScope, D);
 }
 
-static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
-                                const Syntax *Params,
-                                llvm::SmallVectorImpl<clang::NamedDecl *> &Res)
-{
+void Elaborator::buildTemplateParams(const Syntax *Params,
+                               llvm::SmallVectorImpl<clang::NamedDecl *> &Res) {
   std::size_t I = 0;
   for (const Syntax *P : Params->children()) {
-    Elaborator Elab(Ctx, SemaRef);
+    Elaborator Elab(Context, SemaRef);
     clang::NamedDecl *ND =
       cast_or_null<clang::NamedDecl>(Elab.elaborateDeclSyntax(P));
     // Just skip this on error.
@@ -1713,9 +1709,9 @@ static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
       // Set the index.
       auto *Ty = TP->getTypeForDecl()->castAs<clang::TemplateTypeParmType>();
       clang::QualType NewTy =
-        Ctx.CxxAST.getTemplateTypeParmType(Depth, I,
-                                           Ty->isParameterPack(),
-                                           Ty->getDecl());
+        Context.CxxAST.getTemplateTypeParmType(Depth, I,
+                                               Ty->isParameterPack(),
+                                               Ty->getDecl());
       TP->setTypeForDecl(NewTy.getTypePtr());
     } else {
       llvm_unreachable("Invalid template parameter");

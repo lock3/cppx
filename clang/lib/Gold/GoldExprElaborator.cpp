@@ -30,6 +30,7 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Ownership.h"
 #include "clang/Sema/ParsedTemplate.h"
+#include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/Template.h"
 #include "clang/Sema/TypeLocBuilder.h"
@@ -715,10 +716,50 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
   }
 }
 
+static void constructTemplateArgList(SyntaxContext &Context, Sema &SemaRef,
+                                     const ElemSyntax *Elem,
+                                  clang::TemplateArgumentListInfo &TemplateArgs,
+                   llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs) {
+  for (const Syntax *SS : Elem->getArguments()->children()) {
+    ExprElaborator ParamElaborator(Context, SemaRef);
+    clang::Expr *ParamExpression = ParamElaborator.doElaborateExpr(SS);
+    if (!ParamExpression)
+      continue;
+
+    if (ParamExpression->getType()->isTypeOfTypes()) {
+      clang::TypeSourceInfo *ParamTInfo
+        = SemaRef.getTypeSourceInfoFromExpr(ParamExpression, Elem->getLoc());
+      if (!ParamTInfo)
+        continue;
+      clang::TemplateArgument Arg(ParamTInfo->getType());
+      TemplateArgs.addArgument({Arg, ParamTInfo});
+      ActualArgs.emplace_back(Arg);
+    } else {
+      clang::TemplateArgument Arg(ParamExpression,
+                                  clang::TemplateArgument::Expression);
+      TemplateArgs.addArgument({Arg, ParamExpression});
+      ActualArgs.emplace_back(Arg);
+    }
+  }
+}
+
 static clang::Expr *
 handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
                         SyntaxContext &Context, const ElemSyntax *Elem,
                         clang::Expr *E) {
+  // This could be an attemped lambda instantiation.
+  if (clang::DeclRefExpr *DRE = dyn_cast<clang::DeclRefExpr>(E)) {
+    if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(DRE->getDecl())) {
+      if (VD->getInit() && isa<clang::LambdaExpr>(VD->getInit())) {
+        unsigned DiagID =
+          SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                        "cannot explicitly instantiate lambda");
+        SemaRef.Diags.Report(Elem->getLoc(), DiagID);
+        return nullptr;
+      }
+    }
+  }
+
   clang::OverloadExpr *OverloadExpr = dyn_cast<clang::OverloadExpr>(E);
 
   // Create a normal array access.
@@ -762,30 +803,10 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
   // overloaded function or function template.
   clang::TemplateArgumentListInfo TemplateArgs(Elem->getLoc(), Elem->getLoc());
   llvm::SmallVector<clang::TemplateArgument, 16> ActualArgs;
-  for (const Syntax *SS : Elem->getArguments()->children()) {
-    ExprElaborator ParamElaborator(Context, SemaRef);
-    clang::Expr *ParamExpression = ParamElaborator.doElaborateExpr(SS);
-    if (!ParamExpression)
-      return nullptr;
+  constructTemplateArgList(Context, SemaRef, Elem, TemplateArgs, ActualArgs);
+  clang::TemplateArgumentList
+    TemplateArgList(clang::TemplateArgumentList::OnStack, ActualArgs);
 
-    if (ParamExpression->getType()->isTypeOfTypes()) {
-      clang::TypeSourceInfo *ParamTInfo = SemaRef.getTypeSourceInfoFromExpr(
-                                            ParamExpression, Elem->getLoc());
-      if (!ParamTInfo)
-        return nullptr;
-      clang::TemplateArgument Arg(ParamTInfo->getType());
-      TemplateArgs.addArgument({Arg, ParamTInfo});
-      ActualArgs.emplace_back(Arg);
-    } else {
-      clang::TemplateArgument Arg(ParamExpression,
-                                           clang::TemplateArgument::Expression);
-      TemplateArgs.addArgument({Arg, ParamExpression});
-      ActualArgs.emplace_back(Arg);
-    }
-  }
-
-  clang::TemplateArgumentList TemplateArgList(
-                              clang::TemplateArgumentList::OnStack, ActualArgs);
   if (OverloadExpr->getNumDecls() == 1) {
     clang::NamedDecl *ND = *OverloadExpr->decls_begin();
     if (isa<clang::TemplateDecl>(ND)) {
@@ -1152,8 +1173,9 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
         ResultType = ResultType.getTypePtr()->getPointeeType();
       }
 
-      clang::ExprValueKind ValueKind = SemaRef.getCxxSema()
-                     .getValueKindForDeclReference(ResultType, VD, S->getLoc());
+      clang::ExprValueKind ValueKind =
+        SemaRef.getCxxSema().getValueKindForDeclReference(ResultType,
+                                                          VD, S->getLoc());
       clang::DeclRefExpr *DRE =
         SemaRef.getCxxSema().BuildDeclRefExpr(VD, ResultType, ValueKind, DNI,
                                               clang::NestedNameSpecifierLoc(),
@@ -3140,20 +3162,39 @@ static void buildLambdaCaptures(SyntaxContext &Context, Sema &SemaRef,
 static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
                                       const MacroSyntax *S) {
   assert(isa<CallSyntax>(S->getCall()) && "invalid lambda");
+  clang::Sema &CxxSema = SemaRef.getCxxSema();
+  bool LocalLambda = isLocalLambdaScope(SemaRef.getCurrentScope());
   const CallSyntax *Call = cast<CallSyntax>(S->getCall());
 
-  bool LocalLambda = isLocalLambdaScope(SemaRef.getCurrentScope());
+  // Elaborate any explicit template parameters first.
+  llvm::SmallVector<clang::NamedDecl *, 4> TemplateParams;
+  const ElemSyntax *Templ = dyn_cast<ElemSyntax>(Call->getCallee());
+  Sema::ScopeRAII TemplateScope(SemaRef, SK_Template, Templ);
+  if (Templ) {
+    Elaborator El(Context, SemaRef);
+    El.buildTemplateParams(Templ->getArguments(), TemplateParams);
+  }
+
   Sema::ScopeRAII ParamScope(SemaRef, SK_Parameter, Call);
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
+  unsigned GenericLambdaDepth = 0;
   for (const Syntax *Arg : Call->getArguments()->children()) {
     clang::Decl *D = Elaborator(Context, SemaRef).elaborateDeclSyntax(Arg);
-    Params.push_back(cast<clang::ParmVarDecl>(D));
+    if (!D)
+      continue;
+
+    clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(D);
+    if (PVD->getType()->isUndeducedAutoType()) {
+      CxxSema.RecordParsingTemplateParameterDepth(++GenericLambdaDepth);
+    }
+    Params.push_back(PVD);
   }
 
   Sema::ScopeRAII BlockScope(SemaRef, SK_Block, S->getBlock());
   SemaRef.getCurrentScope()->Lambda = true;
-  clang::Sema &CxxSema = SemaRef.getCxxSema();
   CxxSema.PushLambdaScope();
+  std::copy(TemplateParams.begin(), TemplateParams.end(),
+            std::back_inserter(CxxSema.getCurLambda()->TemplateParams));
   unsigned ScopeFlags = clang::Scope::BlockScope |
     clang::Scope::FnScope | clang::Scope::DeclScope |
     clang::Scope::CompoundStmtScope;
@@ -3206,21 +3247,23 @@ clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
 
 
   const AtomSyntax *Call = dyn_cast<AtomSyntax>(S->getCall());
-  if (!Call && isa<CallSyntax>(S->getCall()))
-    Call = dyn_cast<AtomSyntax>(cast<CallSyntax>(S->getCall())->getCallee());
+  if (!Call && isa<CallSyntax>(S->getCall())) {
+    const CallSyntax *C = cast<CallSyntax>(S->getCall());
+    // In all cases but one, this should be an atom.
+    if (isa<AtomSyntax>(C->getCallee()))
+      Call = cast<AtomSyntax>(C->getCallee());
+    // The other case mentioned above; generic lambdas may have an element call.
+    else if (isa<ElemSyntax>(C->getCallee()))
+      return handleLambdaMacro(Context, SemaRef, S);
+  }
+
   if (!Call) {
     SemaRef.Diags.Report(S->getLoc(), DiagID);
     return nullptr;
   }
 
   // TODO: string map
-  if (Call->getSpelling() == "if")
-    assert(false && "If expression processing not implemented yet.");
-  else if (Call->getSpelling() == "while")
-    assert(false && "while loop processing not implemented yet.");
-  else if(Call->getSpelling() == "for")
-    assert(false && "For loop processing not implemented yet.");
-  else if (Call->getSpelling() == "array")
+  if (Call->getSpelling() == "array")
     return handleArrayMacro(Context, SemaRef, S);
   else if (Call->getSpelling() == "of")
     return handleOfMacro(Context, SemaRef, S);

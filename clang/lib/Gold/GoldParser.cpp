@@ -1038,6 +1038,10 @@ Syntax *Parser::parseLambda() {
   Token Tok = expectToken(tok::LambdaKeyword);
   Syntax *Capture = nullptr, *Parms = nullptr, *Block = nullptr;
 
+  Syntax *Templ = nullptr;
+  if (nextTokenIs(tok::LeftBracket))
+    Templ = parseElem(onAtom(Tok));
+
   if (nextTokenIs(tok::LeftBrace))
     Capture = parseBlock();
   else if (nextTokenIs(tok::Colon))
@@ -1055,7 +1059,8 @@ Syntax *Parser::parseLambda() {
   else
     return onError();
 
-  return onMacro(onCall(onAtom(Tok), Parms), Block, Capture);
+
+  return onMacro(onCall(Templ ? Templ : onAtom(Tok), Parms), Block, Capture);
 }
 
 Syntax *Parser::parseBlockLoop(Token KWTok)

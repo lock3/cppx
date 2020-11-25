@@ -62,3 +62,27 @@ main() : int! {
     varDecl(hasName("test"), hasType(asString("int")));
   ASSERT_TRUE(matches(Code.str(), Test));
 }
+
+TEST(GoldLambda, ExplicitGeneric) {
+  StringRef Code = R"(
+main() : int! {
+  fn = lambda[T : type]{}(m : T){ return m; }
+  test = fn(10)
+}
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("int")));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
+
+TEST(GoldLambda, ExplicitGenericFailure) {
+  StringRef Code = R"(
+main() : int! {
+  fn = lambda[T : type]{}(m : T){ return m; }
+  test = fn[int](10)
+}
+)";
+
+  GoldFailureTest(Code.str());
+}

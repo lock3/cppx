@@ -26,6 +26,7 @@
 
 namespace clang
 {
+class NamedDecl;
 class Preprocessor;
 class Stmt;
 class CXXRecordDecl;
@@ -120,6 +121,8 @@ public:
   clang::Decl *elaborateNestedNameNamespace(Declaration *D);
   clang::Decl *elaborateDeclContent(clang::Scope *InitialScope,
                                     Declaration *D);
+  void buildTemplateParams(const Syntax *Params,
+                           llvm::SmallVectorImpl<clang::NamedDecl *> &Res);
 
   clang::Decl *elaborateDeclType(const Syntax* D);
   clang::Decl *elaborateFunctionDecl(Declaration *D);
