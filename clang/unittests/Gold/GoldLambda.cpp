@@ -45,8 +45,7 @@ main() : int! {
 )";
 
   DeclarationMatcher Test =
-    varDecl(hasName("test"), hasType(asString("int")),
-            hasDescendant(integerLiteral(equals(42))));
+    varDecl(hasName("test"), hasType(asString("int")));
   ASSERT_TRUE(matches(Code.str(), Test));
 }
 
@@ -60,7 +59,6 @@ main() : int! {
 )";
 
   DeclarationMatcher Test =
-    varDecl(hasName("test"), hasType(asString("int")),
-            hasDescendant(integerLiteral(equals(20))));
+    varDecl(hasName("test"), hasType(asString("int")));
   ASSERT_TRUE(matches(Code.str(), Test));
 }
