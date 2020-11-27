@@ -393,7 +393,6 @@ class CppxTemplateOrArrayExpr final
     : public Expr {
   friend class ASTStmtReader;
   friend class ASTStmtWriter;
-  Stmt *Base = nullptr;
   unsigned NumArgs = 0;
 
   Stmt **getTrailingStmts() {
@@ -406,7 +405,7 @@ class CppxTemplateOrArrayExpr final
   }
 
   unsigned getSizeOfTrailingStmts() const {
-    return (NumArgs) * sizeof(Stmt *);
+    return (NumArgs + 1) * sizeof(Stmt *);
   }
 
 protected:
@@ -421,9 +420,8 @@ protected:
 
   /// Return the size in bytes needed for the trailing objects.
   /// Used by the derived classes to allocate the right amount of storage.
-  static unsigned sizeOfTrailingObjects(unsigned NumPreArgs, unsigned NumArgs,
-                                        bool HasFPFeatures) {
-    return NumArgs * sizeof(Stmt *);
+  static unsigned sizeOfTrailingObjects(unsigned ArgsCount) {
+    return (ArgsCount + 1) * sizeof(Stmt *);
   }
 
 public:
@@ -435,20 +433,20 @@ public:
     CreateEmpty(const ASTContext &Ctx, unsigned NumArgs,
                 EmptyShell Empty);
 
-  Expr *getBase() { return cast<Expr>(Base); }
-  const Expr *getBase() const { return cast<Expr>(Base); }
-  void setBase(Expr *E) { Base = E; }
+  Expr *getBase() { return cast<Expr>(*getTrailingStmts()); }
+  const Expr *getBase() const { return cast<Expr>(*getTrailingStmts()); }
+  void setBase(Expr *E) { *getTrailingStmts() = E; }
 
   /// getNumArgs - Return the number of actual arguments to this call.
   unsigned getNumArgs() const { return NumArgs; }
 
   /// Retrieve the call arguments.
   Expr **getArgs() {
-    return reinterpret_cast<Expr **>(getTrailingStmts());
+    return reinterpret_cast<Expr **>(getTrailingStmts() + 1);
   }
 
   Expr *const *getArgs() const {
-    return reinterpret_cast<Expr *const *>(getTrailingStmts());
+    return reinterpret_cast<Expr *const *>(getTrailingStmts() + 1);
   }
 
   /// getArg - Return the specified argument.
@@ -478,7 +476,7 @@ public:
   }
 
   arg_iterator arg_begin() {
-    return getTrailingStmts();
+    return getTrailingStmts() + 1;
   }
   arg_iterator arg_end() { return arg_begin() + getNumArgs(); }
 
@@ -492,17 +490,17 @@ public:
   /// interface.  This provides efficient reverse iteration of the
   /// subexpressions.  This is currently used for CFG construction.
   ArrayRef<Stmt *> getRawSubExprs() {
-    return llvm::makeArrayRef(getTrailingStmts(), getNumArgs());
+    return llvm::makeArrayRef(getTrailingStmts(), 1 + getNumArgs());
   }
 
   SourceLocation getBeginLoc() const LLVM_READONLY {
-    return Base->getBeginLoc();
+    return getBase()->getBeginLoc();
   }
   SourceLocation getEndLoc() const LLVM_READONLY {
     if (getNumArgs()) {
       return getArg(getNumArgs()-1)->getEndLoc();
     }
-    return Base->getBeginLoc();
+    return getBase()->getBeginLoc();
   }
 
   static bool classof(const Stmt *T) {
@@ -511,12 +509,12 @@ public:
 
   // Iterators
   child_range children() {
-    return child_range(getTrailingStmts(), getTrailingStmts() + getNumArgs());
+    return child_range(getTrailingStmts(), getTrailingStmts() + 1 + getNumArgs());
   }
 
   const_child_range children() const {
     return const_child_range(getTrailingStmts(),
-                             getTrailingStmts() + getNumArgs());
+                             getTrailingStmts() + 1 + getNumArgs());
   }
 };
 

@@ -94,15 +94,15 @@ CppxTemplateOrArrayExpr::CppxTemplateOrArrayExpr(const ASTContext &Ctx,
                                                  Stmt *E,
                                                  ArrayRef<Expr *> Args)
   :Expr(CppxTemplateOrArrayExprClass, Ctx.DependentTy, VK_LValue, OK_Ordinary),
-  Base(E),
   NumArgs(Args.size())
 {
   TemplateOrArrayBits.OffsetToTrailingObjects = sizeof(CppxTemplateOrArrayExpr);
-  setDependence( clang::ExprDependenceScope::ExprDependence::TypeValue
+  setDependence(clang::ExprDependenceScope::ExprDependence::TypeValue
                 |  clang::ExprDependenceScope::ExprDependence::TypeInstantiation
                 |  clang::ExprDependenceScope::ExprDependence::ValueInstantiation
                 |  clang::ExprDependenceScope::ExprDependence::TypeValueInstantiation);
   // Copying everything into the trailing arguments.
+  getTrailingStmts()[0] = E;
   for (unsigned I = 0; I != Args.size(); ++I)
     setArg(I, Args[I]);
 }
@@ -114,13 +114,19 @@ CppxTemplateOrArrayExpr::CppxTemplateOrArrayExpr(const ASTContext &Ctx, unsigned
 CppxTemplateOrArrayExpr *
 CppxTemplateOrArrayExpr::Create(const ASTContext &Ctx, Expr *BaseExpr,
                                 ArrayRef<Expr *> Args) {
-  llvm_unreachable("Working on it.");
+  void *Mem = Ctx.Allocate(sizeof(CppxTemplateOrArrayExpr)
+                           + sizeOfTrailingObjects(Args.size()),
+                           alignof(CppxTemplateOrArrayExpr));
+  auto R =  new (Mem) CppxTemplateOrArrayExpr(Ctx, BaseExpr, Args);
+  return R;
 }
 
-/// Create an empty call expression, for deserialization.
 CppxTemplateOrArrayExpr *
 CppxTemplateOrArrayExpr::CreateEmpty(const ASTContext &Ctx, unsigned NumArgs,
                                      EmptyShell Empty) {
-  llvm_unreachable("Working on it.");
+  void *Mem = Ctx.Allocate(sizeof(CppxTemplateOrArrayExpr)
+                           + sizeOfTrailingObjects(NumArgs),
+                           alignof(CppxTemplateOrArrayExpr));
+  return new (Mem) CppxTemplateOrArrayExpr(Ctx, NumArgs, Empty);
 }
 } // namespace clang

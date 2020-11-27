@@ -693,35 +693,6 @@ createNullLiteral(clang::ASTContext &CxxAST, clang::SourceLocation Loc) {
   return new (CxxAST) clang::CXXNullPtrLiteralExpr(CxxAST.NullPtrTy, Loc);
 }
 
-static clang::ParsedTemplateArgument
-convertExprToTemplateArg(Sema &SemaRef, clang::Expr *E) {
-  // Type parameters start here.
-  if (E->getType()->isTypeOfTypes()) {
-    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
-                                          E, E->getExprLoc());
-    if (!TInfo)
-      return clang::ParsedTemplateArgument();
-
-    return SemaRef.getCxxSema().ActOnTemplateTypeArgument(
-               SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo));
-  }
-
-  if (E->getType()->isTemplateType()) {
-    clang::TemplateDecl *TD =
-      E->getType()->getAs<clang::CppxTemplateType>()->getTemplateDecl();
-
-    return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::Template,
-                                         (void *)TD, E->getExprLoc());
-  }
-
-  // Anything else is a constant expression?
-  clang::ExprResult ConstExpr(E);
-  ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(ConstExpr);
-  return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::NonType,
-      ConstExpr.get(), E->getExprLoc());
-}
-
-
 static clang::Expr*
 handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
     SyntaxContext& Context, clang::Expr* IdExpr, const ElemSyntax *Elem) {
@@ -998,6 +969,11 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
   return nullptr;
 }
 
+static bool isACppxDependentExpr(clang::Expr *E) {
+  return isa<clang::CppxTemplateOrArrayExpr>(E)
+         || isa<clang::CppxDependentMemberAccessExpr>(E);
+}
+
 clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
   clang::Expr *IdExpr = doElaborateExpr(Elem->getObject());
   if (!IdExpr)
@@ -1005,6 +981,9 @@ clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
   if (isa<clang::CppxPartialEvalExpr>(IdExpr))
     return elaboratePartialElementExpr(IdExpr, Elem);
 
+  if (isACppxDependentExpr(IdExpr)) {
+    return elaborateDependentTemplateOrArray(Elem, IdExpr);
+  }
   // If we got a template specialization from elaboration, this is probably
   // a nested-name-specifier, there's nothing left to do.
   if (IdExpr->getType()->isTypeOfTypes()) {
@@ -1030,6 +1009,23 @@ clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
   return handleElementExpression(*this, SemaRef, Context, Elem, IdExpr);
 }
 
+clang::Expr *ExprElaborator::elaborateDependentTemplateOrArray(
+                                  const ElemSyntax *Elem, clang::Expr *IdExpr) {
+  llvm::SmallVector<clang::Expr *, 16> ArgExprs;
+  auto Args = cast<ListSyntax>(Elem->getArguments());
+  for(const Syntax *SyntaxArg : Args->children()) {
+    clang::Expr *ArgExpr = elaborateExpr(SyntaxArg);
+    if (!ArgExpr) {
+      SemaRef.Diags.Report(SyntaxArg->getLoc(),
+                           clang::diag::err_failed_to_translate_expr);
+      continue;
+    }
+    ArgExprs.emplace_back(ArgExpr);
+  }
+  return clang::CppxTemplateOrArrayExpr::Create(Context.CxxAST, IdExpr,
+                                                ArgExprs);
+}
+
 bool ExprElaborator::elaborateTemplateArugments(const ListSyntax *Args,
                                     clang::TemplateArgumentListInfo &ArgInfo,
             llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs) {
@@ -1049,7 +1045,7 @@ bool ExprElaborator::elaborateTemplateArugments(const ListSyntax *Args,
       continue;
     }
 
-    auto TemplateArg = convertExprToTemplateArg(SemaRef, ArgExpr);
+    auto TemplateArg = SemaRef.convertExprToTemplateArg(ArgExpr);
     if (TemplateArg.isInvalid())
       // TODO: Figure out if this needs an error message or not.
       // I assume that the errore message should be delivered prior to this.

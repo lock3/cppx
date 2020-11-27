@@ -36,12 +36,15 @@ DependentExprTransformer::DependentExprTransformer(Sema &S, SyntaxContext &Ctx,
 { }
 
 clang::Expr *DependentExprTransformer::transformDependentExpr(clang::Expr *E) {
-  if (auto DMAE = dyn_cast<clang::CppxDependentMemberAccessExpr>(E)) {
+  if (auto DMAE = dyn_cast<clang::CppxDependentMemberAccessExpr>(E))
     return transformCppxDependentMemberAccessExpr(DMAE);
-  }
-  if (auto LT = dyn_cast<clang::CppxTypeLiteral>(E)) {
+
+  if (auto TOAE = dyn_cast<clang::CppxTemplateOrArrayExpr>(E))
+    return transformCppxTemplateOrArrayExpr(TOAE);
+
+  if (auto LT = dyn_cast<clang::CppxTypeLiteral>(E))
     return transformCppxLiteralType(LT);
-  }
+
   return SemaRef.getCxxSema().SubstExpr(E, TemplateArgs).get();
 }
 
@@ -104,14 +107,18 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
     // Context.CxxAST.getTranslationUnitDecl()->dump();
     llvm_unreachable("Implicit access not handled yet?");
   }
-
+  // llvm::outs() << "Processing member expression = " << E->getMember().getAsString() << "\n";
+  // E->dump();
+  // llvm::outs() << "===================================================\n";
+  // E->getBase()->dump();
   clang::Expr *Ret = transformDependentExpr(E->getBase());
   if (!Ret) {
     SemaRef.Diags.Report(E->getBase()->getExprLoc(),
                          clang::diag::err_invalid_dependent_expr);
     return nullptr;
   }
-
+  // llvm::outs() << "Processing member expression = " << E->getMember().getAsString() << "\n";
+  // Ret->dump();
   if (Ret->getType()->isNamespaceType() || Ret->getType()->isTemplateType()) {
     // TODO: It might be best to split the || and figure out what the expression
     // is resulting in and display a corresponding error message.
@@ -166,11 +173,11 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
   if (!TD) {
     llvm_unreachable("failed to get type as tag?!\n");
   }
+
   clang::TagDecl *NextTD = handleNestedNameQualifier(*this, SemaRef, E, Ty,
                                                      TD);
-  if (!NextTD) {
+  if (!NextTD)
     return nullptr;
-  }
 
   if (!Ret->getType()->isTypeOfTypes()) {
     clang::CXXScopeSpec SS;
@@ -179,8 +186,6 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
     if (NeedsArrow)
       AccessTokenKind = clang::tok::TokenKind::arrow;
 
-    // clang::UnqualifiedId Id;
-    // Id.setIdentifier(E->getMember().getAsIdentifierInfo(), E->getExprLoc());
     bool MayBePseudoDestructor = false;
     clang::ParsedType ObjectTy;
     Ret = SemaRef.getCxxSema().ActOnStartCXXMemberReference(nullptr, Ret, Loc,
@@ -188,7 +193,7 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
                                                             ObjectTy,
                                                    MayBePseudoDestructor).get();
     if (!Ret)
-      llvm_unreachable("Invalid member access expression?\n");
+      return nullptr;
   }
 
   TD = NextTD;
@@ -228,16 +233,138 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
     break;
 
   case clang::LookupResult::Ambiguous:
-    llvm_unreachable("Ambigious?");
-    // SemaRef.getCxxSema().DiagnoseAmbiguousLookup(R);
+    SemaRef.getCxxSema().DiagnoseAmbiguousLookup(R);
     return nullptr;
   }
 
-  // TODO: Implement the non-inside type functionality.
-  // Handle the DeclRefExpr loading expression from here?
-  // Ret->dump();
   llvm_unreachable("shouldn't have reached here!.");
+}
 
+clang::Expr *DependentExprTransformer::transformCppxTemplateOrArrayExpr(
+      clang::CppxTemplateOrArrayExpr *E) {
+  assert(E->getBase() && "Missing base id expression");
+  // if ()
+  clang::Expr *IdExpr = E->getBase();
+  IdExpr = transformDependentExpr(IdExpr);
+  if (!IdExpr)
+    return nullptr;
+  clang::QualType IdExprTy = IdExpr->getType();
+  if (IdExprTy->isTypeOfTypes() || IdExprTy->isNamespaceType()) {
+    // FIXME: This needs an error message.
+    llvm_unreachable("Cannot use [] on a completed type or namespace.");
+  }
+
+  if (IdExprTy->isTemplateType()) {
+    // Handling class (and possible variable?) template transformation
+    clang::Decl *Decl = SemaRef.getDeclFromExpr(IdExpr, IdExpr->getExprLoc());
+    if (auto TmplClsDcl = dyn_cast<clang::ClassTemplateDecl>(Decl)) {
+      return transformToClassTemplateInstantiation(E, TmplClsDcl);
+    }
+    llvm_unreachable("Unknown kind of template instantiation.");
+  }
+  // Checking if we are an overload expression.
+  // clang::OverloadExpr *OverloadExpr = dyn_cast<clang::OverloadExpr>(E);
+  // FIXME: This needs to create an error message.
+  llvm_unreachable("Unhandled type for template expression.");
+  // Handling possible function templates?
+  // Handling array expression?
+}
+
+clang::Expr *
+DependentExprTransformer::transformToClassTemplateInstantiation(
+               clang::CppxTemplateOrArrayExpr *E, clang::TemplateDecl *Decl) {
+
+  clang::TemplateArgumentListInfo TemplateArgs(E->getBeginLoc(), E->getEndLoc());
+  llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
+
+  if (transformTemplateArguments(E, TemplateArgs, ParsedArguments))
+    return nullptr;
+
+  clang::TemplateDecl *CTD = dyn_cast<clang::TemplateDecl>(Decl);
+  assert(CTD && "Invalid CppxDeclRefExpr");
+
+  clang::CXXScopeSpec SS;
+  clang::TemplateName TName(CTD);
+  clang::Sema::TemplateTy TemplateTyName = clang::Sema::TemplateTy::make(TName);
+  clang::IdentifierInfo *II = CTD->getIdentifier();
+  clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
+  clang::SourceLocation Loc = E->getBase()->getExprLoc();
+  if (clang::VarTemplateDecl *VTD = dyn_cast<clang::VarTemplateDecl>(CTD)) {
+    clang::DeclarationNameInfo DNI(VTD->getDeclName(), Loc);
+    clang::LookupResult R(SemaRef.getCxxSema(), DNI,
+                          clang::Sema::LookupAnyName);
+    R.addDecl(VTD);
+    clang::ExprResult ER = SemaRef.getCxxSema().BuildTemplateIdExpr(
+          SS, Loc, R, false, &TemplateArgs);
+    if (ER.isInvalid())
+      return nullptr;
+    return ER.get();
+  } else {
+    clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
+      SemaRef.getCurClangScope(), SS,
+      // TemplateKWLoc
+      Loc,
+      TemplateTyName, II, Loc,
+      //LAngleLoc
+      Loc, InArgs,
+      //RAngleLoc
+      Loc, false, false);
+
+    if (Result.isInvalid()) {
+      SemaRef.Diags.Report(Loc, clang::diag::err_failed_to_translate_expr);
+      return nullptr;
+    }
+
+    clang::QualType Ty(Result.get().get());
+    clang::SourceRange Range(Loc, Loc);
+    auto LocInfoTy = Ty->getAs<clang::LocInfoType>();
+    if (SemaRef.getCxxSema().RequireCompleteType(Loc, LocInfoTy->getType(),
+                                    clang::diag::err_incomplete_nested_name_spec,
+                                                Range))
+      return nullptr;
+    return SemaRef.buildTypeExpr(LocInfoTy->getTypeSourceInfo());
+  }
+}
+
+
+/// This takes the given arguments and attempts to transform them
+/// into something that we could use for our template instantiation.
+bool DependentExprTransformer::transformTemplateArguments(
+    clang::CppxTemplateOrArrayExpr *E, clang::TemplateArgumentListInfo &ArgInfo,
+    llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs) {
+
+  for (auto A : E->arguments()) {
+    clang::EnterExpressionEvaluationContext EnterConstantEvaluated(
+      SemaRef.getCxxSema(),
+                  clang::Sema::ExpressionEvaluationContext::ConstantEvaluated,
+    /*LambdaContextDecl=*/nullptr,
+          clang::Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
+    clang::Expr *TArg = transformDependentExpr(A);
+    if (!TArg) {
+      SemaRef.Diags.Report(A->getExprLoc(),
+                           clang::diag::err_failed_to_translate_expr);
+      continue;
+    }
+
+    auto TemplateArg = SemaRef.convertExprToTemplateArg(TArg);
+    if (TemplateArg.isInvalid())
+      return true;
+
+    ParsedArgs.emplace_back(TemplateArg);
+    // Also building template Argument Info.
+    if (TArg->getType()->isTypeOfTypes()) {
+      clang::TypeSourceInfo *ArgTInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                                  TArg, A->getExprLoc());
+      if (!ArgTInfo)
+        return true;
+      clang::TemplateArgument Arg(ArgTInfo->getType());
+      ArgInfo.addArgument({Arg, ArgTInfo});
+    } else {
+      clang::TemplateArgument Arg(TArg, clang::TemplateArgument::Expression);
+      ArgInfo.addArgument({Arg, TArg});
+    }
+  }
+  return false;
 }
 
 clang::Expr *DependentExprTransformer::transformCppxLiteralType(
@@ -353,9 +480,8 @@ clang::Expr *DependentExprTransformer::buildMemberAccessExpr(
     // This is to handle type lookup.
     if (auto InnerTy = dyn_cast<clang::TypeDecl>(Dcl)) {
       return SemaRef.buildTypeExprFromTypeDecl(InnerTy, Loc);
-    } else if (isa<clang::TemplateDecl>(Dcl)) {
-      // return SemaRef.buildTypeExprFromTypeDecl(InnerTy, E->getExprLoc());
-      llvm_unreachable("Template members not implemented yet.");
+    } else if (auto TemplateDcl = dyn_cast<clang::TemplateDecl>(Dcl)) {
+        return SemaRef.buildTemplateType(TemplateDcl, Loc);
     } else if (isa<clang::FieldDecl>(Dcl)) {
       Dcl->dump();
       llvm_unreachable("Field declaration not handled yet.");

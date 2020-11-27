@@ -164,6 +164,9 @@ public:
 
   clang::Expr *elaborateElementExpr(const ElemSyntax *Elem);
 
+  clang::Expr *elaborateDependentTemplateOrArray(const ElemSyntax *Elem,
+                                                 clang::Expr *IdExpr);
+
   bool elaborateTemplateArugments(const ListSyntax *Args,
                                   clang::TemplateArgumentListInfo &ArgInfo,
               llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs);

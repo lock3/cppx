@@ -39,6 +39,16 @@ public:
 
   clang::Expr *transformCppxDependentMemberAccessExpr(
                                        clang::CppxDependentMemberAccessExpr *E);
+  clang::Expr *transformCppxTemplateOrArrayExpr(clang::CppxTemplateOrArrayExpr *E);
+
+  clang::Expr *transformToClassTemplateInstantiation(
+      clang::CppxTemplateOrArrayExpr *E, clang::TemplateDecl *D);
+  /// This takes the given arguments and attempts to transform them
+  /// into something that we could use for our template instantiation.
+  bool transformTemplateArguments(clang::CppxTemplateOrArrayExpr *E,
+                                  clang::TemplateArgumentListInfo &ArgInfo,
+              llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs);
+
   clang::Expr *transformCppxLiteralType(clang::CppxTypeLiteral *E);
   clang::QualType transformType(clang::QualType Ty);
   clang::QualType transformSubstTemplateTypeParmType(

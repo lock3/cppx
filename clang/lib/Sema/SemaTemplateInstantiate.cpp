@@ -1112,8 +1112,17 @@ namespace {
 
 
     ExprResult RebuildCppxTemplateOrArrayExpr(Expr *Base, ArrayRef<Expr *> Args) {
-      llvm_unreachable("Not implemented yet");
+      auto E = clang::CppxTemplateOrArrayExpr::Create(SemaRef.getASTContext(),
+                                                       Base, Args);
+      assert(SemaRef.getGoldSema() && "invalid without gold language support");
+      auto Ret = SemaRef.getGoldSema()->TransformCppxTemplateOrArrayExpr(
+          TemplateArgs, Loc, Entity, E);
+      if (!Ret) {
+        return ExprError();
+      }
+      return Ret;
     }
+
     ExprResult RebuildCppxDependentMemberAccessExpr(Expr *BaseE,
                                                   QualType BaseType,
                                                   SourceLocation OperatorLoc,

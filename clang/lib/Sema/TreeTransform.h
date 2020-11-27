@@ -14155,7 +14155,6 @@ TreeTransform<Derived>::TransformCppxDependentMemberAccessExpr(
     OldBase = E->getBase();
 
     Base = getDerived().TransformExpr(OldBase);
-    assert(Base.get() && "We haave an invalid base expression?\n");
     if (Base.isInvalid())
       return ExprError();
     if (Base.get()->getType()->isTypeOfTypes()) {
@@ -14175,34 +14174,10 @@ TreeTransform<Derived>::TransformCppxDependentMemberAccessExpr(
     BaseType = getDerived().TransformType(E->getBaseType());
   }
 
-  // QualType NameQualifierTy = E->getNameQualifierTy();
-  // if (!NameQualifierTy.isNull()) {
-  //   NameQualifierTy = getDerived().TransformType(E->getNameQualifierTy());
-  // }
-  // FIXME: I may need to attempt to construct a new/special kind scope spec.
-  // using a name.
-  // // Transform the first part of the nested-name-specifier that qualifies
-  // // the member name.
-  // NamedDecl *FirstQualifierInScope
-  //   = getDerived().TransformFirstQualifierInScope(
-  //                                           E->getFirstQualifierFoundInScope(),
-  //                                           E->getQualifierLoc().getBeginLoc());
-
-  // NestedNameSpecifierLoc QualifierLoc;
-  // if (E->getQualifier()) {
-  //   QualifierLoc
-  //     = getDerived().TransformNestedNameSpecifierLoc(E->getQualifierLoc(),
-  //                                                    ObjectType,
-  //                                                    FirstQualifierInScope);
-  //   if (!QualifierLoc)
-  //     return ExprError();
-  // }
-
-  // SourceLocation TemplateKWLoc = E->getTemplateKeywordLoc();
-
-  // // TODO: If this is a conversion-function-id, verify that the
-  // // destination type name (if present) resolves the same way after
-  // // instantiation as it did in the local scope.
+  ExprResult NameQualifierExpr = E->getNameQualifierExpr();
+  if (!NameQualifierExpr.isInvalid()) {
+    NameQualifierExpr = getDerived().TransformExpr(E->getNameQualifierExpr());
+  }
 
   DeclarationNameInfo NameInfo
     = getDerived().TransformDeclarationNameInfo(E->getMemberNameInfo());
@@ -14212,7 +14187,7 @@ TreeTransform<Derived>::TransformCppxDependentMemberAccessExpr(
                                                            BaseType,
                                                            E->getOperatorLoc(),
                                                            NameInfo,
-                                                           E->getNameQualifierExpr());
+                                                           NameQualifierExpr.get());
 }
 
 
@@ -14223,7 +14198,25 @@ TreeTransform<Derived>::TransformCppxTemplateOrArrayExpr(
   // Transform the base of the expression.
   // ExprResult Base((Expr*) nullptr);
   // Expr *BaseExpr = getDerived().transformExpr;
-  llvm_unreachable("Working on it!");
+  // llvm_unreachable("Working on it!");
+// Transform the base of the expression.
+  ExprResult Base((Expr*) nullptr);
+  Expr *OldBase;
+  OldBase = E->getBase();
+  Base = getDerived().TransformExpr(OldBase);
+  if (Base.isInvalid())
+    return ExprError();
+
+  // Transforming the arguments
+  bool ArgsChanged = false;
+  llvm::SmallVector<Expr *, 16> TransformedAguments;
+  if (getDerived().TransformExprs(E->getArgs(), E->getNumArgs(),
+                                  /*IsCall*/false, TransformedAguments,
+                                  &ArgsChanged))
+    return ExprError();
+
+  return getDerived().RebuildCppxTemplateOrArrayExpr(Base.get(),
+                                                     TransformedAguments);
 }
 
 template<typename Derived>

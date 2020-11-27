@@ -152,9 +152,12 @@ foo[T:type]():void!
 bar():void!
   foo[T2]()
 )";
-  auto ToMatch = functionDecl(
+  auto ToMatch = functionTemplateDecl(
     hasName("foo"),
-    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
+    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(
+      hasName("Y"),
+      hasType(asString("T2::T3<int>::x"))
+    ))))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -431,4 +434,7 @@ bar():void!
 // Add tests for operator lookup/handling. Especially dereference and xor.
 // Add test for nested name specifier access, with everything but the
 //  name specifier dependent, and one with only the LHS is dependent.
-// Add a test for possible arrat
+// Add a test for possible array
+// Add a test for when we attempt to instanciate an array type with template
+// parameters. Basically, in the event that you give an invalid argument to
+// an array.

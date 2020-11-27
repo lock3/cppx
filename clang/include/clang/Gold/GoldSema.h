@@ -1143,6 +1143,35 @@ public:
       const clang::MultiLevelTemplateArgumentList &TemplateArgs,
       clang::SourceLocation Loc, clang::DeclarationName Entity,
       clang::CppxTemplateOrArrayExpr *E);
+
+
+  clang::ParsedTemplateArgument convertExprToTemplateArg(clang::Expr *E);
+//   // Type parameters start here.
+//   if (E->getType()->isTypeOfTypes()) {
+//     clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
+//                                           E, E->getExprLoc());
+//     if (!TInfo)
+//       return clang::ParsedTemplateArgument();
+
+//     return SemaRef.getCxxSema().ActOnTemplateTypeArgument(
+//                SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo));
+//   }
+
+//   if (E->getType()->isTemplateType()) {
+//     clang::TemplateDecl *TD =
+//       E->getType()->getAs<clang::CppxTemplateType>()->getTemplateDecl();
+
+//     return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::Template,
+//                                          (void *)TD, E->getExprLoc());
+//   }
+
+//   // Anything else is a constant expression?
+//   clang::ExprResult ConstExpr(E);
+//   ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(ConstExpr);
+//   return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::NonType,
+//       ConstExpr.get(), E->getExprLoc());
+// }
+
 };
 
 } // namespace gold

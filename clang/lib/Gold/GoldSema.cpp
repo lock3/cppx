@@ -23,6 +23,7 @@
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Sema/Lookup.h"
+#include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/TypeLocUtil.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -1784,7 +1785,35 @@ clang::Expr *Sema::TransformCppxTemplateOrArrayExpr(
     const clang::MultiLevelTemplateArgumentList &TemplateArgs,
     clang::SourceLocation Loc, clang::DeclarationName Entity,
     clang::CppxTemplateOrArrayExpr *E) {
-  llvm_unreachable("Working on it.");
+  DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
+  return rebuilder.transformDependentExpr(E);
+}
+
+clang::ParsedTemplateArgument Sema::convertExprToTemplateArg(clang::Expr *E) {
+  // Type parameters start here.
+  if (E->getType()->isTypeOfTypes()) {
+    clang::TypeSourceInfo *TInfo = getTypeSourceInfoFromExpr(
+                                          E, E->getExprLoc());
+    if (!TInfo)
+      return clang::ParsedTemplateArgument();
+
+    return getCxxSema().ActOnTemplateTypeArgument(
+               getCxxSema().CreateParsedType(TInfo->getType(), TInfo));
+  }
+
+  if (E->getType()->isTemplateType()) {
+    clang::TemplateDecl *TD =
+      E->getType()->getAs<clang::CppxTemplateType>()->getTemplateDecl();
+
+    return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::Template,
+                                         (void *)TD, E->getExprLoc());
+  }
+
+  // Anything else is a constant expression?
+  clang::ExprResult ConstExpr(E);
+  ConstExpr = getCxxSema().ActOnConstantExpression(ConstExpr);
+  return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::NonType,
+      ConstExpr.get(), E->getExprLoc());
 }
 
 } // namespace gold
