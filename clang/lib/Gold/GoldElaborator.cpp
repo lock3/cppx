@@ -3897,6 +3897,7 @@ clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
                && "Invalid number of arguments to ellipsis within AST");
         TySyntax = Call->getArgument(0);
         IsPack = true;
+        D->EllipsisLoc = AtomName->getLoc();
       }
     }
   }

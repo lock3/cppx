@@ -78,6 +78,7 @@ namespace llvm {
 }
 
 namespace gold {
+  class Declaration;
   class Declarator;
   class Sema;
 }
@@ -203,6 +204,7 @@ namespace clang {
   class TypedefNameDecl;
   class TypeLoc;
   class TypeLocBuilder;
+  class TypeProcessingState;
   class TypoCorrectionConsumer;
   class UnqualifiedId;
   class UnresolvedLookupExpr;
@@ -2559,6 +2561,15 @@ public:
                             SourceLocation RestrictQualLoc = SourceLocation(),
                             SourceLocation AtomicQualLoc = SourceLocation(),
                             SourceLocation UnalignedQualLoc = SourceLocation());
+
+  std::pair<QualType, TypeSourceInfo *>
+  InventTemplateParameter(TypeProcessingState &state, QualType T,
+                          TypeSourceInfo *TrailingTSI, AutoType *Auto,
+                          InventedTemplateParameterInfo &Info);
+  std::pair<QualType, TypeSourceInfo *>
+  InventTemplateParameter(gold::Declaration *D, QualType T,
+                          TypeSourceInfo *TrailingTSI, const AutoType *Auto,
+                          InventedTemplateParameterInfo &Info);
 
   static bool adjustContextForLocalExternDecl(DeclContext *&DC);
   void DiagnoseFunctionSpecifiers(const DeclSpec &DS);

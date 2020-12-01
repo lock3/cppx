@@ -39,6 +39,8 @@
 #include "llvm/Support/ErrorHandling.h"
 #include <bitset>
 
+#include "clang/Gold/GoldDeclaration.h"
+
 using namespace clang;
 
 enum TypeDiagSelector {
@@ -149,7 +151,8 @@ static void diagnoseBadTypeAttribute(Sema &S, const ParsedAttr &attr,
   case ParsedAttr::AT_TypeNullable:                                            \
   case ParsedAttr::AT_TypeNullUnspecified
 
-namespace {
+
+namespace clang {
   /// An object which stores processing state for the entire
   /// GetTypeForDeclarator process.
   class TypeProcessingState {
@@ -196,9 +199,9 @@ namespace {
 
   public:
     TypeProcessingState(Sema &sema, Declarator &declarator)
-        : sema(sema), declarator(declarator),
-          chunkIndex(declarator.getNumTypeObjects()), trivial(true),
-          hasSavedAttrs(false), parsedNoDeref(false) {}
+      : sema(sema), declarator(declarator),
+        chunkIndex(declarator.getNumTypeObjects()), trivial(true),
+        hasSavedAttrs(false), parsedNoDeref(false) {}
 
     Sema &getSema() const {
       return sema;
@@ -257,7 +260,7 @@ namespace {
     QualType getAttributedType(Attr *A, QualType ModifiedType,
                                QualType EquivType) {
       QualType T =
-          sema.Context.getAttributedType(A->getKind(), ModifiedType, EquivType);
+        sema.Context.getAttributedType(A->getKind(), ModifiedType, EquivType);
       AttrsForTypes.push_back({cast<AttributedType>(T.getTypePtr()), A});
       AttrsForTypesSorted = false;
       return T;
@@ -290,8 +293,8 @@ namespace {
       // FIXME: This is quadratic if we have lots of reuses of the same
       // attributed type.
       for (auto It = std::partition_point(
-               AttrsForTypes.begin(), AttrsForTypes.end(),
-               [=](const TypeAttrPair &A) { return A.first < AT; });
+             AttrsForTypes.begin(), AttrsForTypes.end(),
+             [=](const TypeAttrPair &A) { return A.first < AT; });
            It != AttrsForTypes.end() && It->first == AT; ++It) {
         if (It->second) {
           const Attr *Result = It->second;
@@ -339,7 +342,7 @@ namespace {
         getMutableDeclSpec().getAttributes().addAtEnd(AL);
     }
   };
-} // end anonymous namespace
+} // namespace clang
 
 static void moveAttrFromListToList(ParsedAttr &attr,
                                    ParsedAttributesView &fromList,
@@ -358,22 +361,22 @@ enum TypeAttrLocation {
   TAL_DeclName
 };
 
-static void processTypeAttrs(TypeProcessingState &state, QualType &type,
+static void processTypeAttrs(clang::TypeProcessingState &state, QualType &type,
                              TypeAttrLocation TAL, ParsedAttributesView &attrs);
 
-static bool handleFunctionTypeAttr(TypeProcessingState &state, ParsedAttr &attr,
+static bool handleFunctionTypeAttr(clang::TypeProcessingState &state, ParsedAttr &attr,
                                    QualType &type);
 
-static bool handleMSPointerTypeQualifierAttr(TypeProcessingState &state,
+static bool handleMSPointerTypeQualifierAttr(clang::TypeProcessingState &state,
                                              ParsedAttr &attr, QualType &type);
 
-static bool handleObjCGCTypeAttr(TypeProcessingState &state, ParsedAttr &attr,
+static bool handleObjCGCTypeAttr(clang::TypeProcessingState &state, ParsedAttr &attr,
                                  QualType &type);
 
-static bool handleObjCOwnershipTypeAttr(TypeProcessingState &state,
+static bool handleObjCOwnershipTypeAttr(clang::TypeProcessingState &state,
                                         ParsedAttr &attr, QualType &type);
 
-static bool handleObjCPointerTypeAttr(TypeProcessingState &state,
+static bool handleObjCPointerTypeAttr(clang::TypeProcessingState &state,
                                       ParsedAttr &attr, QualType &type) {
   if (attr.getKind() == ParsedAttr::AT_ObjCGC)
     return handleObjCGCTypeAttr(state, attr, type);
@@ -458,7 +461,7 @@ static DeclaratorChunk *maybeMovePastReturnType(Declarator &declarator,
 /// distributeObjCPointerTypeAttrFromDeclarator), and given that it
 /// didn't apply in whatever position it was written in, try to move
 /// it to a more appropriate position.
-static void distributeObjCPointerTypeAttr(TypeProcessingState &state,
+static void distributeObjCPointerTypeAttr(clang::TypeProcessingState &state,
                                           ParsedAttr &attr, QualType type) {
   Declarator &declarator = state.getDeclarator();
 
@@ -515,7 +518,7 @@ static void distributeObjCPointerTypeAttr(TypeProcessingState &state,
 /// Distribute an objc_gc type attribute that was written on the
 /// declarator.
 static void distributeObjCPointerTypeAttrFromDeclarator(
-    TypeProcessingState &state, ParsedAttr &attr, QualType &declSpecType) {
+    clang::TypeProcessingState &state, ParsedAttr &attr, QualType &declSpecType) {
   Declarator &declarator = state.getDeclarator();
 
   // objc_gc goes on the innermost pointer to something that's not a
@@ -575,7 +578,7 @@ static void distributeObjCPointerTypeAttrFromDeclarator(
 /// *other* than on the declarator itself or in the decl spec.  Given
 /// that it didn't apply in whatever position it was written in, try
 /// to move it to a more appropriate position.
-static void distributeFunctionTypeAttr(TypeProcessingState &state,
+static void distributeFunctionTypeAttr(clang::TypeProcessingState &state,
                                        ParsedAttr &attr, QualType type) {
   Declarator &declarator = state.getDeclarator();
 
@@ -607,7 +610,7 @@ static void distributeFunctionTypeAttr(TypeProcessingState &state,
 /// function chunk or type.  Returns true if the attribute was
 /// distributed, false if no location was found.
 static bool distributeFunctionTypeAttrToInnermost(
-    TypeProcessingState &state, ParsedAttr &attr,
+    clang::TypeProcessingState &state, ParsedAttr &attr,
     ParsedAttributesView &attrList, QualType &declSpecType) {
   Declarator &declarator = state.getDeclarator();
 
@@ -625,7 +628,7 @@ static bool distributeFunctionTypeAttrToInnermost(
 
 /// A function type attribute was written in the decl spec.  Try to
 /// apply it somewhere.
-static void distributeFunctionTypeAttrFromDeclSpec(TypeProcessingState &state,
+static void distributeFunctionTypeAttrFromDeclSpec(clang::TypeProcessingState &state,
                                                    ParsedAttr &attr,
                                                    QualType &declSpecType) {
   state.saveDeclSpecAttrs();
@@ -651,7 +654,7 @@ static void distributeFunctionTypeAttrFromDeclSpec(TypeProcessingState &state,
 
 /// A function type attribute was written on the declarator.  Try to
 /// apply it somewhere.
-static void distributeFunctionTypeAttrFromDeclarator(TypeProcessingState &state,
+static void distributeFunctionTypeAttrFromDeclarator(clang::TypeProcessingState &state,
                                                      ParsedAttr &attr,
                                                      QualType &declSpecType) {
   Declarator &declarator = state.getDeclarator();
@@ -676,7 +679,7 @@ static void distributeFunctionTypeAttrFromDeclarator(TypeProcessingState &state,
 ///   int (f ATTR)();
 /// but not necessarily this:
 ///   int f() ATTR;
-static void distributeTypeAttrsFromDeclarator(TypeProcessingState &state,
+static void distributeTypeAttrsFromDeclarator(clang::TypeProcessingState &state,
                                               QualType &declSpecType) {
   // Collect all the type attributes from the declarator itself.
   assert(!state.getDeclarator().getAttributes().empty() &&
@@ -719,7 +722,7 @@ static void distributeTypeAttrsFromDeclarator(TypeProcessingState &state,
 
 /// Add a synthetic '()' to a block-literal declarator if it is
 /// required, given the return type.
-static void maybeSynthesizeBlockSignature(TypeProcessingState &state,
+static void maybeSynthesizeBlockSignature(clang::TypeProcessingState &state,
                                           QualType declSpecType) {
   Declarator &declarator = state.getDeclarator();
 
@@ -1281,7 +1284,7 @@ static QualType ConvertConstrainedAutoDeclSpecToType(Sema &S, DeclSpec &DS,
 /// to be converted, along with other associated processing state.
 /// \returns The type described by the declaration specifiers.  This function
 /// never returns null.
-static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
+static QualType ConvertDeclSpecToType(clang::TypeProcessingState &state) {
   // FIXME: Should move the logic from DeclSpec::Finish to here for validity
   // checking.
 
@@ -2942,14 +2945,14 @@ QualType Sema::GetTypeFromParser(ParsedType Ty, TypeSourceInfo **TInfo) {
   return QT;
 }
 
-static void transferARCOwnershipToDeclaratorChunk(TypeProcessingState &state,
+static void transferARCOwnershipToDeclaratorChunk(clang::TypeProcessingState &state,
                                             Qualifiers::ObjCLifetime ownership,
                                             unsigned chunkIndex);
 
 /// Given that this is the declaration of a parameter under ARC,
 /// attempt to infer attributes and such for pointer-to-whatever
 /// types.
-static void inferARCWriteback(TypeProcessingState &state,
+static void inferARCWriteback(clang::TypeProcessingState &state,
                               QualType &declSpecType) {
   Sema &S = state.getSema();
   Declarator &declarator = state.getDeclarator();
@@ -3166,10 +3169,10 @@ static void diagnoseRedundantReturnTypeQualifiers(Sema &S, QualType RetTy,
                               D.getDeclSpec().getUnalignedSpecLoc());
 }
 
-static std::pair<QualType, TypeSourceInfo *>
-InventTemplateParameter(TypeProcessingState &state, QualType T,
-                        TypeSourceInfo *TrailingTSI, AutoType *Auto,
-                        InventedTemplateParameterInfo &Info) {
+std::pair<QualType, TypeSourceInfo *>
+Sema::InventTemplateParameter(clang::TypeProcessingState &state, QualType T,
+                              TypeSourceInfo *TrailingTSI, AutoType *Auto,
+                              InventedTemplateParameterInfo &Info) {
   Sema &S = state.getSema();
   Declarator &D = state.getDeclarator();
 
@@ -3245,11 +3248,104 @@ InventTemplateParameter(TypeProcessingState &state, QualType T,
   return {NewT, NewTSI};
 }
 
+std::pair<QualType, TypeSourceInfo *>
+Sema::InventTemplateParameter(gold::Declaration *D, QualType T,
+                              TypeSourceInfo *TrailingTSI, const AutoType *Auto,
+                              InventedTemplateParameterInfo &Info) {
+  const unsigned TemplateParameterDepth = Info.AutoTemplateParameterDepth;
+  const unsigned AutoParameterPosition = Info.TemplateParams.size();
+  const bool IsParameterPack = D->EllipsisLoc.isValid();
+
+  // If auto is mentioned in a lambda parameter or abbreviated function
+  // template context, convert it to a template parameter type.
+
+  // Create the TemplateTypeParmDecl here to retrieve the corresponding
+  // template parameter type. Template parameters are temporarily added
+  // to the TU until the associated TemplateDecl is created.
+  TemplateTypeParmDecl *InventedTemplateParam =
+      TemplateTypeParmDecl::Create(
+          Context, Context.getTranslationUnitDecl(),
+          /*KeyLoc=*/D->TypeDcl->getLoc(),
+          /*NameLoc=*/D->getIdDeclarator()->getLoc(),
+          TemplateParameterDepth, AutoParameterPosition,
+          InventAbbreviatedTemplateParameterTypeName(
+            D->getId(), AutoParameterPosition), false,
+          IsParameterPack, /*HasTypeConstraint=*/Auto->isConstrained());
+  InventedTemplateParam->setImplicit();
+  Info.TemplateParams.push_back(InventedTemplateParam);
+
+  // Attach type constraints to the new parameter.
+  // TODO: concepts are a C++2a feature
+#if 0
+  if (Auto->isConstrained()) {
+    if (TrailingTSI) {
+      // The 'auto' appears in a trailing return type we've already built;
+      // extract its type constraints to attach to the template parameter.
+      AutoTypeLoc AutoLoc = TrailingTSI->getTypeLoc().getContainedAutoTypeLoc();
+      TemplateArgumentListInfo TAL(AutoLoc.getLAngleLoc(), AutoLoc.getRAngleLoc());
+      for (unsigned Idx = 0; Idx < AutoLoc.getNumArgs(); ++Idx)
+        TAL.addArgument(AutoLoc.getArgLoc(Idx));
+
+      AttachTypeConstraint(AutoLoc.getNestedNameSpecifierLoc(),
+                             AutoLoc.getConceptNameInfo(),
+                             AutoLoc.getNamedConcept(),
+                             AutoLoc.hasExplicitTemplateArgs() ? &TAL : nullptr,
+                             InventedTemplateParam, D->EllipsisLoc);
+    } else {
+      // The 'auto' appears in the decl-specifiers; we've not finished forming
+      // TypeSourceInfo for it yet.
+      TemplateIdAnnotation *TemplateId = D.getDeclSpec().getRepAsTemplateId();
+      TemplateArgumentListInfo TemplateArgsInfo;
+      if (TemplateId->LAngleLoc.isValid()) {
+        ASTTemplateArgsPtr TemplateArgsPtr(TemplateId->getTemplateArgs(),
+                                           TemplateId->NumArgs);
+        translateTemplateArguments(TemplateArgsPtr, TemplateArgsInfo);
+      }
+      AttachTypeConstraint(
+          D.getDeclSpec().getTypeSpecScope().getWithLocInContext(Context),
+          DeclarationNameInfo(DeclarationName(TemplateId->Name),
+                              TemplateId->TemplateNameLoc),
+          cast<ConceptDecl>(TemplateId->Template.get().getAsTemplateDecl()),
+          TemplateId->LAngleLoc.isValid() ? &TemplateArgsInfo : nullptr,
+          InventedTemplateParam, D.getEllipsisLoc());
+    }
+  } else
+#endif
+  if (Auto->hasExpectedDeduction()) {
+    // Attach the expected deduction to the template parameter.
+    InventedTemplateParam->setExpectedDeduction(Auto->getExpectedDeduction());
+  }
+
+  // Replace the 'auto' in the function parameter with this invented
+  // template type parameter.
+  // FIXME: Retain some type sugar to indicate that this was written
+  //  as 'auto'?
+  QualType Replacement(InventedTemplateParam->getTypeForDecl(), 0);
+  QualType NewT = ReplaceAutoType(T, Replacement);
+  if (auto *AttrTy = T->getAs<AttributedType>()) {
+
+    // FIXME: make this work for our attributes
+    #if 0
+    // Attributed type still should be an attributed type after replacement.
+    auto *NewAttrTy = cast<AttributedType>(NewT.getTypePtr());
+    for (TypeAttrPair &A : AttrsForTypes) {
+      if (A.first == AttrTy)
+        A.first = NewAttrTy;
+    }
+    #endif 
+  }
+
+  TypeSourceInfo *NewTSI =
+      TrailingTSI ? ReplaceAutoTypeSourceInfo(TrailingTSI, Replacement)
+                  : nullptr;
+  return {NewT, NewTSI};
+}
+
 static TypeSourceInfo *
-GetTypeSourceInfoForDeclarator(TypeProcessingState &State,
+GetTypeSourceInfoForDeclarator(clang::TypeProcessingState &State,
                                QualType T, TypeSourceInfo *ReturnTypeInfo);
 
-static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
+static QualType GetDeclSpecTypeForDeclarator(clang::TypeProcessingState &state,
                                              TypeSourceInfo *&ReturnTypeInfo) {
   Sema &SemaRef = state.getSema();
   Declarator &D = state.getDeclarator();
@@ -3365,7 +3461,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
       // return types when we pick up the trailing return type when processing
       // the function chunk.
       if (!DeducedIsTrailingReturnType)
-        T = InventTemplateParameter(state, T, nullptr, Auto, *Info).first;
+        T = SemaRef.InventTemplateParameter(state, T, nullptr, Auto, *Info).first;
       break;
     }
     case DeclaratorContext::MemberContext: {
@@ -4362,7 +4458,7 @@ static bool DiagnoseMultipleAddrSpaceAttributes(Sema &S, LangAS ASOld,
   return false;
 }
 
-static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
+static TypeSourceInfo *GetFullTypeForDeclarator(clang::TypeProcessingState &state,
                                                 QualType declSpecType,
                                                 TypeSourceInfo *TInfo) {
   // The TypeSourceInfo that this function returns will not be a null type.
@@ -4960,7 +5056,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
                      DeclaratorContext::LambdaExprParameterContext)
               InventedParamInfo = S.getCurLambda();
             if (InventedParamInfo) {
-              std::tie(T, TInfo) = InventTemplateParameter(
+              std::tie(T, TInfo) = S.InventTemplateParameter(
                   state, T, TInfo, Auto, *InventedParamInfo);
             }
           }
@@ -5666,7 +5762,7 @@ TypeSourceInfo *Sema::GetTypeForDeclarator(Declarator &D, Scope *S) {
   // Determine the type of the declarator. Not all forms of declarator
   // have a type.
 
-  TypeProcessingState state(*this, D);
+  clang::TypeProcessingState state(*this, D);
 
   TypeSourceInfo *ReturnTypeInfo = nullptr;
   QualType T = GetDeclSpecTypeForDeclarator(state, ReturnTypeInfo);
@@ -5687,7 +5783,7 @@ static void transferARCOwnershipToDeclSpec(Sema &S,
   }
 }
 
-static void transferARCOwnershipToDeclaratorChunk(TypeProcessingState &state,
+static void transferARCOwnershipToDeclaratorChunk(clang::TypeProcessingState &state,
                                             Qualifiers::ObjCLifetime ownership,
                                             unsigned chunkIndex) {
   Sema &S = state.getSema();
@@ -5724,7 +5820,7 @@ static void transferARCOwnershipToDeclaratorChunk(TypeProcessingState &state,
 }
 
 /// Used for transferring ownership in casts resulting in l-values.
-static void transferARCOwnership(TypeProcessingState &state,
+static void transferARCOwnership(clang::TypeProcessingState &state,
                                  QualType &declSpecTy,
                                  Qualifiers::ObjCLifetime ownership) {
   Sema &S = state.getSema();
@@ -5776,7 +5872,7 @@ static void transferARCOwnership(TypeProcessingState &state,
 }
 
 TypeSourceInfo *Sema::GetTypeForDeclaratorCast(Declarator &D, QualType FromTy) {
-  TypeProcessingState state(*this, D);
+  clang::TypeProcessingState state(*this, D);
 
   TypeSourceInfo *ReturnTypeInfo = nullptr;
   QualType declSpecTy = GetDeclSpecTypeForDeclarator(state, ReturnTypeInfo);
@@ -5791,7 +5887,7 @@ TypeSourceInfo *Sema::GetTypeForDeclaratorCast(Declarator &D, QualType FromTy) {
 }
 
 static void fillAttributedTypeLoc(AttributedTypeLoc TL,
-                                  TypeProcessingState &State) {
+                                  clang::TypeProcessingState &State) {
   TL.setAttr(State.takeAttrForAttributedType(TL.getTypePtr()));
 }
 
@@ -5799,11 +5895,11 @@ namespace {
   class TypeSpecLocFiller : public TypeLocVisitor<TypeSpecLocFiller> {
     Sema &SemaRef;
     ASTContext &Context;
-    TypeProcessingState &State;
+    clang::TypeProcessingState &State;
     const DeclSpec &DS;
 
   public:
-    TypeSpecLocFiller(Sema &S, ASTContext &Context, TypeProcessingState &State,
+    TypeSpecLocFiller(Sema &S, ASTContext &Context, clang::TypeProcessingState &State,
                       const DeclSpec &DS)
         : SemaRef(S), Context(Context), State(State), DS(DS) {}
 
@@ -6007,11 +6103,11 @@ namespace {
 
   class DeclaratorLocFiller : public TypeLocVisitor<DeclaratorLocFiller> {
     ASTContext &Context;
-    TypeProcessingState &State;
+    clang::TypeProcessingState &State;
     const DeclaratorChunk &Chunk;
 
   public:
-    DeclaratorLocFiller(ASTContext &Context, TypeProcessingState &State,
+    DeclaratorLocFiller(ASTContext &Context, clang::TypeProcessingState &State,
                         const DeclaratorChunk &Chunk)
         : Context(Context), State(State), Chunk(Chunk) {}
 
@@ -6202,7 +6298,7 @@ static void fillMatrixTypeLoc(MatrixTypeLoc MTL,
 /// conversion function), this pointer will refer to a type source information
 /// for that return type.
 static TypeSourceInfo *
-GetTypeSourceInfoForDeclarator(TypeProcessingState &State,
+GetTypeSourceInfoForDeclarator(clang::TypeProcessingState &State,
                                QualType T, TypeSourceInfo *ReturnTypeInfo) {
   Sema &S = State.getSema();
   Declarator &D = State.getDeclarator();
@@ -6411,7 +6507,7 @@ QualType Sema::BuildAddressSpaceAttr(QualType &T, Expr *AddrSpace,
 /// space for the type.
 static void HandleAddressSpaceTypeAttribute(QualType &Type,
                                             const ParsedAttr &Attr,
-                                            TypeProcessingState &State) {
+                                            clang::TypeProcessingState &State) {
   Sema &S = State.getSema();
 
   // ISO/IEC TR 18037 S5.3 (amending C99 6.7.3): "A function type shall not be
@@ -6506,7 +6602,7 @@ static void HandleAddressSpaceTypeAttribute(QualType &Type,
 /// attribute on the specified type.
 ///
 /// Returns 'true' if the attribute was handled.
-static bool handleObjCOwnershipTypeAttr(TypeProcessingState &state,
+static bool handleObjCOwnershipTypeAttr(clang::TypeProcessingState &state,
                                         ParsedAttr &attr, QualType &type) {
   bool NonObjCPointer = false;
 
@@ -6693,7 +6789,7 @@ static bool handleObjCOwnershipTypeAttr(TypeProcessingState &state,
 /// attribute on the specified type.  Returns true to indicate that
 /// the attribute was handled, false to indicate that the type does
 /// not permit the attribute.
-static bool handleObjCGCTypeAttr(TypeProcessingState &state, ParsedAttr &attr,
+static bool handleObjCGCTypeAttr(clang::TypeProcessingState &state, ParsedAttr &attr,
                                  QualType &type) {
   Sema &S = state.getSema();
 
@@ -6917,7 +7013,7 @@ namespace {
   };
 } // end anonymous namespace
 
-static bool handleMSPointerTypeQualifierAttr(TypeProcessingState &State,
+static bool handleMSPointerTypeQualifierAttr(clang::TypeProcessingState &State,
                                              ParsedAttr &PAttr, QualType &Type) {
   Sema &S = State.getSema();
 
@@ -7038,7 +7134,7 @@ static NullabilityKind mapNullabilityAttrKind(ParsedAttr::Kind kind) {
 /// array type (e.g., because it will decay to a pointer).
 ///
 /// \returns true if a problem has been diagnosed, false on success.
-static bool checkNullabilityTypeSpecifier(TypeProcessingState &state,
+static bool checkNullabilityTypeSpecifier(clang::TypeProcessingState &state,
                                           QualType &type,
                                           ParsedAttr &attr,
                                           bool allowOnArrayType) {
@@ -7142,7 +7238,7 @@ static bool checkNullabilityTypeSpecifier(TypeProcessingState &state,
 
 /// Check the application of the Objective-C '__kindof' qualifier to
 /// the given type.
-static bool checkObjCKindOfType(TypeProcessingState &state, QualType &type,
+static bool checkObjCKindOfType(clang::TypeProcessingState &state, QualType &type,
                                 ParsedAttr &attr) {
   Sema &S = state.getSema();
 
@@ -7200,7 +7296,7 @@ static bool checkObjCKindOfType(TypeProcessingState &state, QualType &type,
 ///
 /// \returns true if the nullability annotation was distributed, false
 /// otherwise.
-static bool distributeNullabilityTypeAttr(TypeProcessingState &state,
+static bool distributeNullabilityTypeAttr(clang::TypeProcessingState &state,
                                           QualType type, ParsedAttr &attr) {
   Declarator &declarator = state.getDeclarator();
 
@@ -7334,7 +7430,7 @@ static Attr *getCCTypeAttr(ASTContext &Ctx, ParsedAttr &Attr) {
 
 /// Process an individual function attribute.  Returns true to
 /// indicate that the attribute was handled, false if it wasn't.
-static bool handleFunctionTypeAttr(TypeProcessingState &state, ParsedAttr &attr,
+static bool handleFunctionTypeAttr(clang::TypeProcessingState &state, ParsedAttr &attr,
                                    QualType &type) {
   Sema &S = state.getSema();
 
@@ -7898,7 +7994,7 @@ static void HandleArmSveVectorBitsTypeAttr(QualType &CurType, ParsedAttr &Attr,
   CurType = S.Context.getVectorType(EltType, VecSize, VecKind);
 }
 
-static void HandleArmMveStrictPolymorphismAttr(TypeProcessingState &State,
+static void HandleArmMveStrictPolymorphismAttr(clang::TypeProcessingState &State,
                                                QualType &CurType,
                                                ParsedAttr &Attr) {
   const VectorType *VT = dyn_cast<VectorType>(CurType);
@@ -8033,7 +8129,7 @@ static void HandleMatrixTypeAttr(QualType &CurType, const ParsedAttr &Attr,
     CurType = T;
 }
 
-static void HandleLifetimeBoundAttr(TypeProcessingState &State,
+static void HandleLifetimeBoundAttr(clang::TypeProcessingState &State,
                                     QualType &CurType,
                                     ParsedAttr &Attr) {
   if (State.getDeclarator().isDeclarationOfFunction()) {
@@ -8058,7 +8154,7 @@ static bool isAddressSpaceKind(const ParsedAttr &attr) {
          attrKind == ParsedAttr::AT_OpenCLGenericAddressSpace;
 }
 
-static void processTypeAttrs(TypeProcessingState &state, QualType &type,
+static void processTypeAttrs(clang::TypeProcessingState &state, QualType &type,
                              TypeAttrLocation TAL,
                              ParsedAttributesView &attrs) {
   // Scan through and apply attributes to this type where it makes sense.  Some

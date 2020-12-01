@@ -3175,6 +3175,7 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
     El.buildTemplateParams(Templ->getArguments(), TemplateParams);
   }
 
+  CxxSema.PushLambdaScope();
   Sema::ScopeRAII ParamScope(SemaRef, SK_Parameter, Call);
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
   unsigned GenericLambdaDepth = 0;
@@ -3185,16 +3186,27 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
 
     clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(D);
     if (PVD->getType()->isUndeducedAutoType()) {
-      CxxSema.RecordParsingTemplateParameterDepth(++GenericLambdaDepth);
+      // FIXME: what is the lambda depth?
+      // CxxSema.RecordParsingTemplateParameterDepth(GenericLambdaDepth++);
+      auto Invented = CxxSema.InventTemplateParameter(
+        SemaRef.getDeclaration(PVD), PVD->getType(), nullptr,
+        PVD->getType()->getAs<clang::AutoType>(), *CxxSema.getCurLambda());
+      clang::TypeSourceInfo *TSI =
+        BuildAnyTypeLoc(Context.CxxAST, Invented.first, PVD->getBeginLoc());
+      PVD->setType(TSI->getType());
+      PVD->setTypeSourceInfo(TSI);
+      const clang::TemplateTypeParmType *TempTy =
+        PVD->getType()->getAs<clang::TemplateTypeParmType>();
+      PVD->setScopeInfo(TempTy->getDepth(), TempTy->getIndex());
     }
+
     Params.push_back(PVD);
   }
 
   Sema::ScopeRAII BlockScope(SemaRef, SK_Block, S->getBlock());
-  SemaRef.getCurrentScope()->Lambda = true;
-  CxxSema.PushLambdaScope();
   std::copy(TemplateParams.begin(), TemplateParams.end(),
             std::back_inserter(CxxSema.getCurLambda()->TemplateParams));
+  SemaRef.getCurrentScope()->Lambda = true;
   unsigned ScopeFlags = clang::Scope::BlockScope |
     clang::Scope::FnScope | clang::Scope::DeclScope |
     clang::Scope::CompoundStmtScope;
@@ -3202,9 +3214,11 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
 
   // Set up the captures and capture default.
   clang::LambdaIntroducer Intro;
+  clang::SourceLocation NextLoc =
+    S->getNext() ? S->getNext()->getLoc() : S->getLoc();
   Intro.Range =
-    clang::SourceRange(S->getCall()->getLoc(), S->getNext()->getLoc());
-  Intro.DefaultLoc = S->getNext()->getLoc();
+    clang::SourceRange(S->getCall()->getLoc(), NextLoc);
+  Intro.DefaultLoc = NextLoc;
 
   // The lambda default will always be by-value, but local lambdas have no
   // default as per [expr.prim.lambda]

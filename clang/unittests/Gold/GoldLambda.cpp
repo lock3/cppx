@@ -86,3 +86,16 @@ main() : int! {
 
   GoldFailureTest(Code.str());
 }
+
+TEST(GoldLambda, AutoParam) {
+  StringRef Code = R"(
+main() : int! {
+  fn = lambda{}(m : auto, n : auto){ return m + n; }
+  test = fn(10, 10)
+}
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("int")));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
