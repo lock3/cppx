@@ -3170,15 +3170,18 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParams;
   const ElemSyntax *Templ = dyn_cast<ElemSyntax>(Call->getCallee());
   Sema::ScopeRAII TemplateScope(SemaRef, SK_Template, Templ);
+  bool GenericLambda = false;
   if (Templ) {
     Elaborator El(Context, SemaRef);
     El.buildTemplateParams(Templ->getArguments(), TemplateParams);
+    GenericLambda = true;
   }
 
   CxxSema.PushLambdaScope();
+  std::copy(TemplateParams.begin(), TemplateParams.end(),
+            std::back_inserter(CxxSema.getCurLambda()->TemplateParams));
   Sema::ScopeRAII ParamScope(SemaRef, SK_Parameter, Call);
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
-  unsigned GenericLambdaDepth = 0;
   for (const Syntax *Arg : Call->getArguments()->children()) {
     clang::Decl *D = Elaborator(Context, SemaRef).elaborateDeclSyntax(Arg);
     if (!D)
@@ -3186,8 +3189,8 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
 
     clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(D);
     if (PVD->getType()->isUndeducedAutoType()) {
-      // FIXME: what is the lambda depth?
-      // CxxSema.RecordParsingTemplateParameterDepth(GenericLambdaDepth++);
+      GenericLambda = true;
+      CxxSema.RecordParsingTemplateParameterDepth(SemaRef.LambdaTemplateDepth);
       auto Invented = CxxSema.InventTemplateParameter(
         SemaRef.getDeclaration(PVD), PVD->getType(), nullptr,
         PVD->getType()->getAs<clang::AutoType>(), *CxxSema.getCurLambda());
@@ -3203,9 +3206,10 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
     Params.push_back(PVD);
   }
 
+  if (GenericLambda)
+    ++SemaRef.LambdaTemplateDepth;
+
   Sema::ScopeRAII BlockScope(SemaRef, SK_Block, S->getBlock());
-  std::copy(TemplateParams.begin(), TemplateParams.end(),
-            std::back_inserter(CxxSema.getCurLambda()->TemplateParams));
   SemaRef.getCurrentScope()->Lambda = true;
   unsigned ScopeFlags = clang::Scope::BlockScope |
     clang::Scope::FnScope | clang::Scope::DeclScope |
@@ -3233,6 +3237,7 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
   clang::ExprResult Lam =
     CxxSema.ActOnLambdaExpr(S->getLoc(), Block, SemaRef.getCurClangScope());
   SemaRef.leaveClangScope(S->getLoc());
+  SemaRef.LambdaTemplateDepth = 0;
   return Lam.get();
 }
 

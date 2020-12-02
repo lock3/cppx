@@ -99,3 +99,24 @@ main() : int! {
     varDecl(hasName("test"), hasType(asString("int")));
   ASSERT_TRUE(matches(Code.str(), Test));
 }
+
+TEST(GoldLambda, AutoDepth) {
+  StringRef Code = R"(
+main() : int! {
+  fn = lambda{}(m : auto, n : auto){
+    yn = lambda{}(m : auto, n : auto) {
+      return m + n;
+    }
+
+    return yn(m, n);
+  }
+  test = fn(10, 10)
+}
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("int")));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
+
+
