@@ -35,7 +35,7 @@ using namespace sema;
 void Sema::ActOnStartOfGoldLambdaDefinition(
   gold::Sema &GoldSema, LambdaIntroducer &Intro,
   llvm::SmallVectorImpl<clang::ParmVarDecl *> &EParams,
-  Scope *CurScope) {
+  Scope *CurScope, bool IsMutable) {
   LambdaScopeInfo *const LSI = getCurLambda();
   assert(LSI && "LambdaScopeInfo should be on stack!");
 
@@ -92,16 +92,6 @@ void Sema::ActOnStartOfGoldLambdaDefinition(
     ExplicitResultType = false;
     EndLoc = Intro.Range.getEnd();
   } else {
-    // C++11 [expr.prim.lambda]p5:
-    //   This function call operator is declared const (9.3.1) if and only if
-    //   the lambda-expression's parameter-declaration-clause is not followed
-    //   by mutable. It is neither virtual nor declared volatile. [...]
-    // TODO: see if this is mutable
-    // if (!FTI.hasMutableQualifier()) {
-    //   FTI.getOrCreateMethodQualifiers().SetTypeQual(DeclSpec::TQ_const,
-    //                                                 SourceLocation());
-    // }
-
     // TODO: set up a qualified type based on any macro attributes
     clang::SourceLocation Loc;
     if (!EParams.empty()) {
@@ -115,12 +105,18 @@ void Sema::ActOnStartOfGoldLambdaDefinition(
                    [](clang::ParmVarDecl *D) { return D->getType(); });
     QualType MethodTy = Context.getFunctionType(
       Context.getAutoDeductType(), ParamTypes, EPI);
-
     MethodTyInfo =
       gold::BuildFunctionTypeLoc(Context, MethodTy, Loc, Loc,
                            EndLoc, clang::SourceRange(Loc, Loc),
                            EndLoc, EParams);
     assert(MethodTyInfo && "no type from lambda-declarator");
+
+    // C++11 [expr.prim.lambda]p5:
+    //   This function call operator is declared const (9.3.1) if and only if
+    //   the lambda-expression's parameter-declaration-clause is not followed
+    //   by mutable. It is neither virtual nor declared volatile. [...]
+    if (!IsMutable)
+      MethodTyInfo->getType().addConst();
 
     // TODO: include the return type
     // ExplicitResultType = FTI.hasTrailingReturnType();
@@ -297,7 +293,6 @@ void Sema::ActOnStartOfGoldLambdaDefinition(
             continue;
         }
 
-        VarDecl *Prev = R.getAsSingle<VarDecl>();
         SourceLocation Loc;
         UsingDecl *Using =
           UsingDecl::Create(Context, CurContext, Loc, NestedNameSpecifierLoc(),

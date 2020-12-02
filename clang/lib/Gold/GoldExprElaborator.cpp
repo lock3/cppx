@@ -3159,12 +3159,37 @@ static void buildLambdaCaptures(SyntaxContext &Context, Sema &SemaRef,
   }
 }
 
+static inline bool isMutable(Sema &SemaRef, Attribute *A) {
+  std::string Name;
+  switch (checkAttrFormatAndName(A->getArg(), Name)) {
+  case AF_Name:
+  case AF_Call:
+    return Name == "mutable";
+  default:
+    return false;
+  }
+}
+
 static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
                                       const MacroSyntax *S) {
   assert(isa<CallSyntax>(S->getCall()) && "invalid lambda");
   clang::Sema &CxxSema = SemaRef.getCxxSema();
   bool LocalLambda = isLocalLambdaScope(SemaRef.getCurrentScope());
   const CallSyntax *Call = cast<CallSyntax>(S->getCall());
+
+  Syntax::AttrVec Attributes = Call->getAttributes();
+  bool Mutable = false;
+  for (Attribute *A : Attributes) {
+    if (isMutable(SemaRef, A)) {
+      Mutable = true;
+    } else {
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "lambdas may only have the "
+                                      "'mutable' attribute");
+      SemaRef.Diags.Report(A->getArg()->getLoc(), DiagID);
+    }
+  }
 
   // Elaborate any explicit template parameters first.
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParams;
@@ -3231,7 +3256,8 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
 
   // Build the lambda
   CxxSema.ActOnStartOfGoldLambdaDefinition(SemaRef, Intro, Params,
-                                           SemaRef.getCurClangScope());
+                                           SemaRef.getCurClangScope(),
+                                           Mutable);
   clang::Stmt *Block =
     StmtElaborator(Context, SemaRef).elaborateBlock(S->getBlock());
   clang::ExprResult Lam =

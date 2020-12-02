@@ -213,7 +213,7 @@ bool isStaticMember(Sema& SemaRef, Declaration *D, bool &IsStatic) {
 }
 
 /// This should ONLY be used with member variables
-bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
+static inline bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
   IsMutable = false;
   return locateValidAttribute(D,
     // OnAttr
@@ -221,11 +221,8 @@ bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
       std::string ActualName;
       switch(checkAttrFormatAndName(Attr, ActualName)) {
       case AF_Name:
-        if (ActualName == "mutable") {
-          IsMutable = true;
-          return true;
-        }
-        return false;
+        IsMutable = ActualName == "mutable";
+        return IsMutable;
       case AF_Invalid:
         return false;
       case AF_Call:
@@ -234,11 +231,11 @@ bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
                                clang::diag::err_attribute_not_valid_as_call)
                                << ActualName;
           IsMutable = true;
-          return true;
+          return IsMutable;
         }
+
         return false;
       }
-      return false;
     },
     // CheckAttr
     [](const Syntax *Attr) -> bool{

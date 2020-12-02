@@ -6729,7 +6729,7 @@ public:
   void ActOnStartOfGoldLambdaDefinition(
     gold::Sema &GoldSema, LambdaIntroducer &Intro,
     llvm::SmallVectorImpl<clang::ParmVarDecl *> &EParams,
-    Scope *CurScope);
+    Scope *CurScope, bool IsMutable);
 
   /// ActOnLambdaError - If there is an error parsing a lambda, this callback
   /// is invoked to pop the information about the lambda.
