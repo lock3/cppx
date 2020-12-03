@@ -3113,105 +3113,116 @@ static inline bool isLocalLambdaScope(const Scope *S) {
   return false;
 }
 
-// Build and attach the captures for a lambda macro
-static void buildLambdaCaptures(SyntaxContext &Context, Sema &SemaRef,
-                                const MacroSyntax *S,
-                                clang::LambdaIntroducer &Intro) {
-  const Syntax *CaptureScope = S->getNext();
+static void buildLambdaCaptureInternal(SyntaxContext &Context, Sema &SemaRef,
+                                       clang::LambdaIntroducer &Intro,
+                                       const Syntax *Capture,
+                                       clang::SourceRange const &Range) {
+  clang::Expr *Ref = nullptr;
+  clang::Expr *Init = nullptr;
+  clang::IdentifierInfo *II = nullptr;
+  // True when the current syntax is a this pointer, or operation on one.
+  bool This = false;
 
-  for (const Syntax *SS : CaptureScope->children()) {
-    clang::Expr *Ref = nullptr;
-    clang::Expr *Init = nullptr;
-    clang::IdentifierInfo *II = nullptr;
-    // True when the current syntax is a this pointer, or operation on one.
-    bool This = false;
-
-    if (const CallSyntax *Call = dyn_cast<CallSyntax>(SS)) {
-      FusedOpKind FOK = getFusedOpKind(SemaRef, Call);
-      if (FOK != FOK_Equals && FOK != FOK_Caret) {
-        unsigned DiagID =
-          SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                        "expected ',', '}', or dedent in "
-                                        "lambda capture list");
-        SemaRef.Diags.Report(SS->getLoc(), DiagID);
-        continue;
-      }
-
-      auto *Elab = ExprElaborator(Context, SemaRef).elaborateExpr(Call);
-      if (auto *Bin = dyn_cast<clang::BinaryOperator>(Elab)) {
-        // This might be more complex than a declaration.
-        Ref = Bin->getLHS();
-        Init = Bin->getRHS();
-      } else if (auto *Un = dyn_cast<clang::UnaryOperator>(Elab)) {
-        Ref = Un;
-        This = isa<clang::CXXThisExpr>(Un->getSubExpr());
-      }
-    } else if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(SS)) {
-      Ref = ExprElaborator(Context, SemaRef).elaborateExpr(Atom);
-      This = Atom->getSpelling() == "this";
-    } else {
+  if (const CallSyntax *Call = dyn_cast<CallSyntax>(Capture)) {
+    FusedOpKind FOK = getFusedOpKind(SemaRef, Call);
+    if (FOK != FOK_Equals && FOK != FOK_Caret) {
       unsigned DiagID =
         SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                      "expected declaration name in "
+                                      "expected ',', '}', or dedent in "
                                       "lambda capture list");
-      SemaRef.Diags.Report(SS->getLoc(), DiagID);
-      continue;
+      SemaRef.Diags.Report(Capture->getLoc(), DiagID);
+      return;
     }
 
-    // Handle this or ^this
-    if (This) {
-      clang::LambdaCaptureKind Kind = clang::LCK_StarThis;
-      clang::LambdaCaptureInitKind InitKind =
-        clang::LambdaCaptureInitKind::NoInit;
-      clang::ParsedType InitCaptureType;
+    auto *Elab = ExprElaborator(Context, SemaRef).elaborateExpr(Call);
+    if (!Elab)
+      return;
 
-      Intro.addCapture(Kind, SS->getLoc(), II,
-                       /*EllipsisLoc=*/clang::SourceLocation(),
-                       InitKind, Init, InitCaptureType,
-                       clang::SourceRange(CaptureScope->getLoc(),
-                                          S->getBlock()->getLoc()));
-      continue;
+    if (auto *Bin = dyn_cast<clang::BinaryOperator>(Elab)) {
+      // This might be more complex than a declaration.
+      Ref = Bin->getLHS();
+      Init = Bin->getRHS();
+    } else if (auto *Un = dyn_cast<clang::UnaryOperator>(Elab)) {
+      Ref = Un;
+      This = isa<clang::CXXThisExpr>(Un->getSubExpr());
     }
-
-    // FIXME: what about a dereferenced pointer?
-    if (!isa<clang::DeclRefExpr>(Ref)) {
-      SemaRef.Diags.Report(SS->getLoc(),
-                           clang::diag::err_capture_does_not_name_variable)
-        << Ref;
-      continue;
-    }
-
-    clang::DeclRefExpr *DRE = cast<clang::DeclRefExpr>(Ref);
-    if (!isa<clang::VarDecl>(DRE->getDecl())) {
-      SemaRef.Diags.Report(SS->getLoc(),
-                           clang::diag::err_capture_does_not_name_variable)
-        << DRE->getDecl();
-      continue;
-    }
-
-    clang::VarDecl *VD = cast<clang::VarDecl>(DRE->getDecl());
-    II = VD->getIdentifier();
-
-    // FIXME: consider this or starthis
-    clang::LambdaCaptureKind Kind = clang::LCK_ByCopy;
-    clang::LambdaCaptureInitKind InitKind = clang::LambdaCaptureInitKind::NoInit;
-    clang::ParsedType InitCaptureType;
-    if (Init) {
-      // FIXME: could be direct or list init
-      InitKind = clang::LambdaCaptureInitKind::CopyInit;
-      clang::Sema &CxxSema = SemaRef.getCxxSema();
-      InitCaptureType = CxxSema.actOnLambdaInitCaptureInitialization(
-        SS->getLoc(), false, /*EllipsisLoc=*/clang::SourceLocation(),
-        II, InitKind, Init);
-    }
-
-
-    Intro.addCapture(Kind, SS->getLoc(), II,
-                     /*EllipsisLoc=*/clang::SourceLocation(),
-                     InitKind, Init, InitCaptureType,
-                     clang::SourceRange(CaptureScope->getLoc(),
-                                        S->getBlock()->getLoc()));
+  } else if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Capture)) {
+    Ref = ExprElaborator(Context, SemaRef).elaborateExpr(Atom);
+    This = Atom->getSpelling() == "this";
+  } else if (const ListSyntax *List = dyn_cast<ListSyntax>(Capture)) {
+    // Recurse if this parameter is a list.
+    for (const Syntax *Item : List->children())
+      buildLambdaCaptureInternal(Context, SemaRef, Intro, Item, Range);
+    return;
+  } else {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "expected declaration name in "
+                                    "lambda capture list");
+    SemaRef.Diags.Report(Capture->getLoc(), DiagID);
+    return;
   }
+
+  // Handle this or ^this
+  if (This) {
+    clang::LambdaCaptureKind Kind = clang::LCK_StarThis;
+    clang::LambdaCaptureInitKind InitKind =
+      clang::LambdaCaptureInitKind::NoInit;
+    clang::ParsedType InitCaptureType;
+
+    Intro.addCapture(Kind, Capture->getLoc(), II,
+                     /*EllipsisLoc=*/clang::SourceLocation(),
+                     InitKind, Init, InitCaptureType, Range);
+    return;
+  }
+
+  // FIXME: what about a dereferenced pointer?
+  if (!isa<clang::DeclRefExpr>(Ref)) {
+    SemaRef.Diags.Report(Capture->getLoc(),
+                         clang::diag::err_capture_does_not_name_variable)
+      << Ref;
+    return;
+  }
+
+  clang::DeclRefExpr *DRE = cast<clang::DeclRefExpr>(Ref);
+  if (!isa<clang::VarDecl>(DRE->getDecl())) {
+    SemaRef.Diags.Report(Capture->getLoc(),
+                         clang::diag::err_capture_does_not_name_variable)
+      << DRE->getDecl();
+    return;
+  }
+
+  clang::VarDecl *VD = cast<clang::VarDecl>(DRE->getDecl());
+  II = VD->getIdentifier();
+
+  // FIXME: consider this or starthis
+  clang::LambdaCaptureKind Kind = clang::LCK_ByCopy;
+  clang::LambdaCaptureInitKind InitKind = clang::LambdaCaptureInitKind::NoInit;
+  clang::ParsedType InitCaptureType;
+  if (Init) {
+    // FIXME: could be direct or list init
+    InitKind = clang::LambdaCaptureInitKind::CopyInit;
+    clang::Sema &CxxSema = SemaRef.getCxxSema();
+    InitCaptureType = CxxSema.actOnLambdaInitCaptureInitialization(
+      Capture->getLoc(), false, /*EllipsisLoc=*/clang::SourceLocation(),
+      II, InitKind, Init);
+  }
+
+  Intro.addCapture(Kind, Capture->getLoc(), II,
+                   /*EllipsisLoc=*/clang::SourceLocation(),
+                   InitKind, Init, InitCaptureType, Range);
+}
+
+// Build and attach the captures for a lambda macro
+static inline void buildLambdaCaptures(SyntaxContext &Context, Sema &SemaRef,
+                                       const MacroSyntax *S,
+                                       clang::LambdaIntroducer &Intro) {
+  const Syntax *CaptureScope = S->getNext();
+  clang::SourceLocation BeginLoc = CaptureScope->getLoc();
+  clang::SourceLocation EndLoc = S->getBlock()->getLoc();
+  clang::SourceRange Range(BeginLoc, EndLoc);
+  for (const Syntax *SS : CaptureScope->children())
+    buildLambdaCaptureInternal(Context, SemaRef, Intro, SS, Range);
 }
 
 static inline bool isMutable(Sema &SemaRef, Attribute *A) {

@@ -158,3 +158,55 @@ main() : int! {
     varDecl(hasName("test"), hasType(asString("int")));
   ASSERT_TRUE(matches(Code.str(), Test));
 }
+
+TEST(GoldLambda, DoubleThisCapture) {
+  StringRef Code = R"(
+T = class:
+  x : int = 42
+
+  fn()!
+    yn = lambda{this, this}(){ return x; }
+    return yn()
+
+main() : int! {
+  t : T
+  return t.fn()
+}
+)";
+
+  GoldFailureTest(Code.str());
+}
+
+TEST(GoldLambda, DoubleThisCaptureWithCaret) {
+  StringRef Code = R"(
+T = class:
+  x : int = 42
+
+  fn()!
+    yn = lambda{this, ^this}(){ return x; }
+    return yn()
+
+main() : int! {
+  t : T
+  return t.fn()
+}
+)";
+
+  GoldFailureTest(Code.str());
+}
+
+TEST(GoldLambda, ListCapture) {
+  StringRef Code = R"(
+main() : int! {
+  x : int = 10
+  y : int = 10
+  z : int = 10
+  yn = lambda{x, (y, z)}(){ return x + y + z; }
+  test = yn()
+}
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("int")));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
