@@ -161,6 +161,11 @@ public:
     return Kind == SK_Block && Lambda;
   }
 
+  // True when a scope is the capture block of a lambda expression.
+  bool isLambdaCaptureScope() const {
+    return LambdaCaptureScope;
+  }
+
   /// The parent of this scope.
   Scope *getParent() const {
     return Parent;
@@ -235,6 +240,9 @@ public:
 
   // True when this is the block of a lambda scope.
   bool Lambda = false;
+
+  // True when this is the capture block of a lambda.
+  bool LambdaCaptureScope = false;
 
   void dump(llvm::raw_ostream &os) const;
   void dump() const;

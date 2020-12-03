@@ -195,17 +195,6 @@ void Sema::ActOnStartOfGoldLambdaDefinition(
                              ? diag::ext_star_this_lambda_capture_cxx17
                              : diag::warn_cxx14_compat_star_this_lambda_capture);
 
-      // C++11 [expr.prim.lambda]p8:
-      //   An identifier or this shall not appear more than once in a
-      //   lambda-capture.
-      if (LSI->isCXXThisCaptured()) {
-        Diag(C->Loc, diag::err_capture_more_than_once)
-            << "'this'" << SourceRange(LSI->getCXXThisCapture().getLocation())
-            << FixItHint::CreateRemoval(
-                   SourceRange(getLocForEndOfToken(PrevCaptureLoc), C->Loc));
-        continue;
-      }
-
       // C++2a [expr.prim.lambda]p8:
       //  If a lambda-capture includes a capture-default that is =,
       //  each simple-capture of that lambda-capture shall be of the form

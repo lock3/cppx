@@ -119,4 +119,42 @@ main() : int! {
   ASSERT_TRUE(matches(Code.str(), Test));
 }
 
+TEST(GoldLambda, StarThisCapture) {
+  StringRef Code = R"(
+T = class:
+  x : int = 42
 
+  fn()!
+    yn = lambda{^this}(){ return x; }
+    return yn()
+
+main() : int! {
+  t : T
+  test = t.fn()
+}
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("int")));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
+
+TEST(GoldLambda, ThisCapture) {
+  StringRef Code = R"(
+T = class:
+  x : int = 42
+
+  fn()!
+    yn = lambda{this}(){ return x; }
+    return yn()
+
+main() : int! {
+  t : T
+  test = t.fn()
+}
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("int")));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}

@@ -1214,8 +1214,38 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
                        << S->getSpelling();
   return nullptr;
 }
+
 static clang::Expr *createThisExpr(Sema &SemaRef, const AtomSyntax *S) {
   return SemaRef.getCxxSema().ActOnCXXThis(S->getLoc()).get();
+}
+
+static clang::CXXThisExpr *createThisCapture(clang::ASTContext &CxxAST,
+                                             Sema &SemaRef,
+                                             const AtomSyntax *S) {
+  clang::Sema &CxxSema = SemaRef.getCxxSema();
+  clang::SourceLocation Loc = S->getLoc();
+
+  clang::sema::LambdaScopeInfo *LSI = CxxSema.getCurLambda();
+  // C++11 [expr.prim.lambda]p8:
+  //   An identifier or this shall not appear more than once in a
+  //   lambda-capture.
+  if (LSI->isCXXThisCaptured()) {
+    SemaRef.Diags.Report(Loc, clang::diag::err_capture_more_than_once)
+      << "'this'" << clang::SourceRange(LSI->getCXXThisCapture().getLocation())
+      << clang::FixItHint::CreateRemoval(clang::SourceRange(Loc, Loc));
+    return nullptr;
+  }
+
+  clang::QualType ThisTy = CxxSema.getCurrentThisType();
+  if (ThisTy.isNull()) {
+    SemaRef.Diags.Report(Loc, clang::diag::err_invalid_this_use);
+    return nullptr;
+  }
+
+  auto *This = new (CxxAST) clang::CXXThisExpr(Loc, ThisTy, /*Implicit=*/false);
+  CxxSema.CheckCXXThisCapture(Loc, /*Explicit=*/true, /*Diagnose=*/true,
+                              /*StopAt=*/nullptr, /*ByCopy=*/true);
+  return This;
 }
 
 static inline bool hasFloatingTypeSuffix(const LiteralSyntax *S) {
@@ -1266,7 +1296,8 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
   case tok::NullKeyword:
     return createNullLiteral(CxxAST, S->getLoc());
   case tok::ThisKeyword:
-    return createThisExpr(SemaRef, S);
+    return SemaRef.getCurrentScope()->isLambdaCaptureScope() ?
+      createThisCapture(CxxAST, SemaRef, S) : createThisExpr(SemaRef, S);
   default:
     break;
   }
@@ -3087,13 +3118,17 @@ static void buildLambdaCaptures(SyntaxContext &Context, Sema &SemaRef,
                                 const MacroSyntax *S,
                                 clang::LambdaIntroducer &Intro) {
   const Syntax *CaptureScope = S->getNext();
+
   for (const Syntax *SS : CaptureScope->children()) {
     clang::Expr *Ref = nullptr;
     clang::Expr *Init = nullptr;
     clang::IdentifierInfo *II = nullptr;
+    // True when the current syntax is a this pointer, or operation on one.
+    bool This = false;
 
     if (const CallSyntax *Call = dyn_cast<CallSyntax>(SS)) {
-      if (getFusedOpKind(SemaRef, Call) != FOK_Equals) {
+      FusedOpKind FOK = getFusedOpKind(SemaRef, Call);
+      if (FOK != FOK_Equals && FOK != FOK_Caret) {
         unsigned DiagID =
           SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
                                         "expected ',', '}', or dedent in "
@@ -3102,13 +3137,18 @@ static void buildLambdaCaptures(SyntaxContext &Context, Sema &SemaRef,
         continue;
       }
 
-      auto *Dingus = ExprElaborator(Context, SemaRef).elaborateExpr(Call);
-      clang::BinaryOperator *Bin = cast<clang::BinaryOperator>(Dingus);
-      // This might be more complex than a declaration.
-      Ref = Bin->getLHS();
-      Init = Bin->getRHS();
+      auto *Elab = ExprElaborator(Context, SemaRef).elaborateExpr(Call);
+      if (auto *Bin = dyn_cast<clang::BinaryOperator>(Elab)) {
+        // This might be more complex than a declaration.
+        Ref = Bin->getLHS();
+        Init = Bin->getRHS();
+      } else if (auto *Un = dyn_cast<clang::UnaryOperator>(Elab)) {
+        Ref = Un;
+        This = isa<clang::CXXThisExpr>(Un->getSubExpr());
+      }
     } else if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(SS)) {
       Ref = ExprElaborator(Context, SemaRef).elaborateExpr(Atom);
+      This = Atom->getSpelling() == "this";
     } else {
       unsigned DiagID =
         SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
@@ -3118,7 +3158,22 @@ static void buildLambdaCaptures(SyntaxContext &Context, Sema &SemaRef,
       continue;
     }
 
-    // FIXME: include a case for this ptr
+    // Handle this or ^this
+    if (This) {
+      clang::LambdaCaptureKind Kind = clang::LCK_StarThis;
+      clang::LambdaCaptureInitKind InitKind =
+        clang::LambdaCaptureInitKind::NoInit;
+      clang::ParsedType InitCaptureType;
+
+      Intro.addCapture(Kind, SS->getLoc(), II,
+                       /*EllipsisLoc=*/clang::SourceLocation(),
+                       InitKind, Init, InitCaptureType,
+                       clang::SourceRange(CaptureScope->getLoc(),
+                                          S->getBlock()->getLoc()));
+      continue;
+    }
+
+    // FIXME: what about a dereferenced pointer?
     if (!isa<clang::DeclRefExpr>(Ref)) {
       SemaRef.Diags.Report(SS->getLoc(),
                            clang::diag::err_capture_does_not_name_variable)
@@ -3252,6 +3307,8 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
   // The lambda default will always be by-value, but local lambdas have no
   // default as per [expr.prim.lambda]
   Intro.Default = LocalLambda ? clang::LCD_None : clang::LCD_ByCopy;
+  Sema::ScopeRAII LambdaCaptureScope(SemaRef, SK_Block, S->getNext());
+  SemaRef.getCurrentScope()->LambdaCaptureScope = true;
   buildLambdaCaptures(Context, SemaRef, S, Intro);
 
   // Build the lambda
