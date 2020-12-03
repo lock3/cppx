@@ -11,6 +11,7 @@
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Gold/GoldOperatorInfo.h"
 #include "clang/Lex/LexDiagnostic.h"
 #include "clang/Lex/LiteralSupport.h"
 #include "clang/Sema/Lookup.h"
@@ -92,7 +93,14 @@ static clang::TagDecl *handleNestedNameQualifier(DependentExprTransformer &T,
   }
   return TD;
 }
-
+static void addIfNotDuplicate(clang::LookupResult &R, clang::NamedDecl *ND) {
+  for (clang::Decl *D : R) {
+    if (D == ND) {
+      return;
+    }
+  }
+  R.addDecl(ND, ND->getAccess());
+}
 clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
                                       clang::CppxDependentMemberAccessExpr *E) {
   // llvm::outs() << "Called DMAE for = " << E->getMember().getAsString() << "\n";
@@ -107,18 +115,14 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
     // Context.CxxAST.getTranslationUnitDecl()->dump();
     llvm_unreachable("Implicit access not handled yet?");
   }
-  // llvm::outs() << "Processing member expression = " << E->getMember().getAsString() << "\n";
-  // E->dump();
-  // llvm::outs() << "===================================================\n";
-  // E->getBase()->dump();
+
   clang::Expr *Ret = transformDependentExpr(E->getBase());
   if (!Ret) {
     SemaRef.Diags.Report(E->getBase()->getExprLoc(),
                          clang::diag::err_invalid_dependent_expr);
     return nullptr;
   }
-  // llvm::outs() << "Processing member expression = " << E->getMember().getAsString() << "\n";
-  // Ret->dump();
+
   if (Ret->getType()->isNamespaceType() || Ret->getType()->isTemplateType()) {
     // TODO: It might be best to split the || and figure out what the expression
     // is resulting in and display a corresponding error message.
@@ -163,17 +167,21 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
   }
 
   if (!isa<clang::TagType>(Ty)) {
-    // FIXME: This needs an error message.
-    Ty->dump();
-    llvm_unreachable("Emit error message because type is not a tag that "
-                     "could use the member access expression.");
+    SemaRef.Diags.Report(Ret->getExprLoc(),
+                       clang::diag::err_typecheck_member_reference_struct_union)
+                         << Ty;
+    return nullptr;
   }
 
   clang::TagDecl *TD = Ty->getAsTagDecl();
-  if (!TD) {
-    llvm_unreachable("failed to get type as tag?!\n");
+  clang::SourceLocation Loc(E->getExprLoc());
+  clang::SourceRange Range(Loc, Loc);
+  if (isa<clang::ClassTemplateSpecializationDecl>(TD)) {
+    if (SemaRef.getCxxSema().RequireCompleteType(Loc, Ty,
+                                    clang::diag::err_incomplete_nested_name_spec,
+                                                Range))
+      return nullptr;
   }
-
   clang::TagDecl *NextTD = handleNestedNameQualifier(*this, SemaRef, E, Ty,
                                                      TD);
   if (!NextTD)
@@ -198,18 +206,83 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
 
   TD = NextTD;
 
-  auto Members = TD->lookup(E->getMember());
-  clang::DeclarationNameInfo DNI(E->getMember(), Ret->getExprLoc());
+  clang::DeclarationName MemberName = E->getMember();
+  const OpInfoBase *OpInfo = SemaRef.OpInfo.getOpInfo(MemberName.getAsString());
+  clang::DeclarationNameInfo DNI(MemberName, Ret->getExprLoc());
   clang::LookupResult R(SemaRef.getCxxSema(), DNI,
-                        clang::Sema::LookupOrdinaryName);
-  for(auto D : Members) {
-    R.addDecl(D, D->getAccess());
+                        clang::Sema::LookupOrdinaryName,
+                        clang::Sema::NotForRedeclaration);
+  if (OpInfo) {
+    clang::OverloadedOperatorKind UnaryOpKind = OpInfo->getUnaryOverloadKind();
+    clang::OverloadedOperatorKind BinaryOpKind = OpInfo->getBinaryOverloadKind();
+
+    clang::DeclarationName DN = Context.CxxAST.DeclarationNames
+                                               .getCXXOperatorName(UnaryOpKind);
+    auto UnaryOps = TD->lookup(DN);
+    clang::DeclarationName DN2 = Context.CxxAST.DeclarationNames
+                                              .getCXXOperatorName(BinaryOpKind);
+    auto BinaryOps = TD->lookup(DN2);
+    R.setLookupNameInfo(clang::DeclarationNameInfo(DN, Ret->getExprLoc()));
+    for (clang::NamedDecl *ND : UnaryOps) {
+      if (!ND->isCXXClassMember())
+        continue;
+
+      if (clang::CXXMethodDecl *MD
+                  = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
+        if (!MD->isOverloadedOperator())
+          continue;
+        if (MD->getOverloadedOperator() == UnaryOpKind) {
+          if (OpInfo->isUnary()) {
+            if (MD->getNumParams() == 0)
+              addIfNotDuplicate(R, MD);
+          } else {
+            addIfNotDuplicate(R, MD);
+          }
+        }
+      }
+
+    }
+    for (clang::NamedDecl *ND : BinaryOps) {
+      if (!ND->isCXXClassMember())
+        continue;
+
+      if (clang::CXXMethodDecl *MD
+                  = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
+        if (!MD->isOverloadedOperator())
+          continue;
+        if (MD->getOverloadedOperator() == BinaryOpKind)
+          if (OpInfo->isBinary()) {
+            if (MD->getNumParams() == 1) {
+            addIfNotDuplicate(R, MD);
+          }
+        }
+      }
+    }
+
+    if (R.empty()) {
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "expected operator but did not find it");
+      SemaRef.Diags.Report(E->getExprLoc(), DiagID);
+      return nullptr;
+    }
+  }
+  // If we didnt't find any operators then default to searching within
+  // the current TagDecl context.
+  if (R.empty()) {
+
+    auto Members = TD->lookup(MemberName);
+
+    for(auto D : Members) {
+      R.addDecl(D, D->getAccess());
+    }
   }
 
   R.resolveKind();
   switch (R.getResultKind()) {
   case clang::LookupResult::FoundOverloaded: {
-    llvm_unreachable("Overloaded function candidate not implemented.");
+    clang::SourceLocation Loc = Ret->getExprLoc();
+    return buildUnresolvedCall(Ret, cast<clang::CXXRecordDecl>(TD), R, Loc);
   }
   break;
   case clang::LookupResult::Found:{
@@ -243,7 +316,6 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
 clang::Expr *DependentExprTransformer::transformCppxTemplateOrArrayExpr(
       clang::CppxTemplateOrArrayExpr *E) {
   assert(E->getBase() && "Missing base id expression");
-  // if ()
   clang::Expr *IdExpr = E->getBase();
   IdExpr = transformDependentExpr(IdExpr);
   if (!IdExpr)
@@ -257,21 +329,108 @@ clang::Expr *DependentExprTransformer::transformCppxTemplateOrArrayExpr(
   if (IdExprTy->isTemplateType()) {
     // Handling class (and possible variable?) template transformation
     clang::Decl *Decl = SemaRef.getDeclFromExpr(IdExpr, IdExpr->getExprLoc());
-    if (auto TmplClsDcl = dyn_cast<clang::ClassTemplateDecl>(Decl)) {
-      return transformToClassTemplateInstantiation(E, TmplClsDcl);
-    }
-    llvm_unreachable("Unknown kind of template instantiation.");
+    if (auto TmpltDcl = dyn_cast<clang::TemplateDecl>(Decl))
+      return transformTemplateInstantiation(E, TmpltDcl);
+    llvm_unreachable("unknown type of template expression");
   }
-  // Checking if we are an overload expression.
-  // clang::OverloadExpr *OverloadExpr = dyn_cast<clang::OverloadExpr>(E);
-  // FIXME: This needs to create an error message.
-  llvm_unreachable("Unhandled type for template expression.");
-  // Handling possible function templates?
-  // Handling array expression?
+
+  clang::OverloadExpr *OverloadExpr = dyn_cast<clang::OverloadExpr>(IdExpr);
+
+  // Create a normal array access.
+  if (!OverloadExpr) {
+    llvm::SmallVector<clang::Expr *, 4> ArgExprs;
+
+    for (auto A : E->arguments()) {
+      clang::Expr *TArg = transformDependentExpr(A);
+      if (!TArg) {
+        SemaRef.Diags.Report(A->getExprLoc(),
+                             clang::diag::err_failed_to_translate_expr);
+        continue;
+      }
+      clang::QualType ArgTy = TArg->getType();
+      if (ArgTy->isNamespaceType()
+          || ArgTy->isTemplateType()
+          || ArgTy->isTypeOfTypes()) {
+        SemaRef.Diags.Report(A->getExprLoc(),
+                             clang::diag::err_invalid_result_type);
+        continue;
+      }
+      ArgExprs.emplace_back(TArg);
+    }
+
+    if (ArgExprs.size() == 0) {
+      SemaRef.Diags.Report(E->getExprLoc(),
+                           clang::diag::err_expected_expression);
+      return nullptr;
+    }
+
+    // Create the first subscript out of the base expression.
+    auto SubscriptExpr = SemaRef.getCxxSema().ActOnArraySubscriptExpr(
+      /*Scope=*/nullptr, IdExpr, ArgExprs[0]->getExprLoc(), ArgExprs[0],
+      ArgExprs[0]->getExprLoc());
+
+    if (SubscriptExpr.isInvalid())
+      return nullptr;
+
+    // Then use the previous subscripts as bases, recursively.
+    for (unsigned I = 1; I < ArgExprs.size(); ++I) {
+      SubscriptExpr = SemaRef.getCxxSema().ActOnArraySubscriptExpr(
+        /*Scope=*/nullptr, SubscriptExpr.get(), ArgExprs[I]->getExprLoc(),
+        ArgExprs[I], ArgExprs[I]->getExprLoc());
+
+      // We don't know what will happen if we try to recover, so just quit.
+      if (SubscriptExpr.isInvalid())
+        return nullptr;
+    }
+
+    return SubscriptExpr.get();
+  }
+  // llvm_unreachable("Non-array subscripting operator not implemented?");
+  // We have an overload set, meaning this must be some kind of
+  // overloaded function or function template.
+  clang::SourceLocation Loc = IdExpr->getExprLoc();
+  llvm::SmallVector<clang::TemplateArgument, 16> ActualArgs;
+  clang::TemplateArgumentListInfo ArgInfo(Loc, Loc);
+  llvm::SmallVector<clang::ParsedTemplateArgument, 32> ParsedArgs;
+  if (transformTemplateArguments(E, ArgInfo, ParsedArgs))
+    return nullptr;
+
+  // Converting into a new kind of collection.
+  for (clang::TemplateArgumentLoc A : ArgInfo.arguments())
+    ActualArgs.push_back(A.getArgument());
+
+  clang::TemplateArgumentList TAL(clang::TemplateArgumentList::OnStack,
+                                  ActualArgs);
+  if (auto UME = dyn_cast<clang::UnresolvedMemberExpr>(OverloadExpr)) {
+    return clang::UnresolvedMemberExpr::Create(Context.CxxAST,
+                                               UME->hasUnresolvedUsing(),
+                                               UME->getBase(),
+                                               UME->getBaseType(),
+                                               UME->isArrow(),
+                                               UME->getOperatorLoc(),
+                                               UME->getQualifierLoc(),
+                                               UME->getTemplateKeywordLoc(),
+                                               UME->getNameInfo(),
+                                               &ArgInfo,
+                                               UME->decls_begin(),
+                                               UME->decls_end());
+  }
+  if (auto ULE = dyn_cast<clang::UnresolvedLookupExpr>(OverloadExpr)) {
+    return clang::UnresolvedLookupExpr::Create(Context.CxxAST,
+                                               ULE->getNamingClass(),
+                                               ULE->getQualifierLoc(),
+                                               clang::SourceLocation(),
+                                               ULE->getNameInfo(),
+                                               /* ADL=*/ false,
+                                               &ArgInfo,
+                                               ULE->decls_begin(),
+                                               ULE->decls_end());
+  }
+  llvm_unreachable("Should never reach here!");
 }
 
 clang::Expr *
-DependentExprTransformer::transformToClassTemplateInstantiation(
+DependentExprTransformer::transformTemplateInstantiation(
                clang::CppxTemplateOrArrayExpr *E, clang::TemplateDecl *Decl) {
 
   clang::TemplateArgumentListInfo TemplateArgs(E->getBeginLoc(), E->getEndLoc());
@@ -319,7 +478,7 @@ DependentExprTransformer::transformToClassTemplateInstantiation(
     clang::SourceRange Range(Loc, Loc);
     auto LocInfoTy = Ty->getAs<clang::LocInfoType>();
     if (SemaRef.getCxxSema().RequireCompleteType(Loc, LocInfoTy->getType(),
-                                    clang::diag::err_incomplete_nested_name_spec,
+                                   clang::diag::err_incomplete_nested_name_spec,
                                                 Range))
       return nullptr;
     return SemaRef.buildTypeExpr(LocInfoTy->getTypeSourceInfo());
@@ -359,6 +518,20 @@ bool DependentExprTransformer::transformTemplateArguments(
         return true;
       clang::TemplateArgument Arg(ArgTInfo->getType());
       ArgInfo.addArgument({Arg, ArgTInfo});
+    } else if (TArg->getType()->isTemplateType()) {
+      clang::Decl *D = SemaRef.getDeclFromExpr(TArg, TArg->getExprLoc());
+      if (!D)
+        llvm_unreachable("Invalid template declaration reference.");
+
+      clang::TemplateDecl *TD = cast<clang::TemplateDecl>(D);
+      clang::TemplateName Template(TD);
+      if (Template.isNull())
+        return true;
+      clang::TemplateArgument Arg(Template);
+      clang::TemplateArgumentLocInfo TALoc(clang::NestedNameSpecifierLoc(),
+                                           TArg->getExprLoc(),
+                                           clang::SourceLocation());
+      ArgInfo.addArgument({Arg, TALoc});
     } else {
       clang::TemplateArgument Arg(TArg, clang::TemplateArgument::Expression);
       ArgInfo.addArgument({Arg, TArg});
@@ -427,6 +600,9 @@ DependentExprTransformer::transformTypeExprType(const clang::CppxTypeExprType *T
   if (!TInfo)
     return clang::QualType();
 
+  if (Ty->isForConstruct()) {
+    llvm_unreachable("We haven't implemented the constructor type extraction yet.");
+  }
   return TInfo->getType();
 }
 
@@ -441,15 +617,28 @@ clang::Expr *DependentExprTransformer::buildDeclRefExpr(clang::VarDecl *VD,
 clang::Expr *DependentExprTransformer::buildUnresolvedCall(clang::Expr *LHS,
                                                        clang::CXXRecordDecl *RD,
                                                  clang::LookupResult &Overloads,
-                                                    clang::SourceLocation Loc) {
+                                                    clang::SourceLocation Loc,
+                                                    bool UnresolvedUsing) {
+  clang::CXXScopeSpec SS;
+  clang::TypeSourceInfo *TInfo
+         = BuildAnyTypeLoc(Context.CxxAST, Context.CxxAST.getTypeDeclType(RD),
+                           LHS->getExprLoc());
+  SS.Extend(Context.CxxAST, clang::SourceLocation(), TInfo->getTypeLoc(),
+            LHS->getExprLoc());
+  auto NNSWithLoc = SS.getWithLocInContext(Context.CxxAST);
   if (LHS->getType()->isTypeOfTypes()) {
     return clang::UnresolvedLookupExpr::Create(
-          Context.CxxAST, RD, clang::NestedNameSpecifierLoc(),
+          Context.CxxAST, RD, NNSWithLoc,
           Overloads.getLookupNameInfo(), /*ADL=*/false,
           /*Overloaded*/true, Overloads.asUnresolvedSet().begin(),
           Overloads.asUnresolvedSet().end());
   }
-  llvm_unreachable("Member access version of call expression not implemented yet.");
+
+  clang::TemplateArgumentListInfo TemplateArgs;
+  return clang::UnresolvedMemberExpr::Create(Context.CxxAST,
+      UnresolvedUsing, LHS, LHS->getType(), LHS->getType()->isPointerType(),
+      Loc, NNSWithLoc, clang::SourceLocation(), clang::DeclarationNameInfo(),
+      &TemplateArgs, Overloads.begin(), Overloads.end());
 }
 
 static clang::Expr *buildMemberExpr(Sema &SemaRef, clang::Expr *Base,
@@ -473,8 +662,7 @@ static clang::Expr *buildMemberExpr(Sema &SemaRef, clang::Expr *Base,
 clang::Expr *DependentExprTransformer::buildMemberAccessExpr(
     clang::Expr *LHS, clang::QualType Ty, clang::NamedDecl *Dcl,
     clang::CXXRecordDecl *RD, clang::LookupResult &Overloads,
-    clang::SourceLocation Loc, bool IsArrow) {
-
+    clang::SourceLocation Loc, bool IsArrow, bool UnresolvedUsing) {
   // If we are a type literal.
   if (isa<clang::CppxTypeLiteral>(LHS)) {
     // This is to handle type lookup.
@@ -482,9 +670,17 @@ clang::Expr *DependentExprTransformer::buildMemberAccessExpr(
       return SemaRef.buildTypeExprFromTypeDecl(InnerTy, Loc);
     } else if (auto TemplateDcl = dyn_cast<clang::TemplateDecl>(Dcl)) {
         return SemaRef.buildTemplateType(TemplateDcl, Loc);
-    } else if (isa<clang::FieldDecl>(Dcl)) {
-      Dcl->dump();
-      llvm_unreachable("Field declaration not handled yet.");
+    } else if (auto FieldDcl = dyn_cast<clang::FieldDecl>(Dcl)) {
+      clang::QualType ResultType = FieldDcl->getType();
+      clang::ExprValueKind ValueKind = SemaRef.getCxxSema()
+              .getValueKindForDeclReference(ResultType, FieldDcl, Loc);
+      clang::DeclRefExpr *DRE =
+        SemaRef.getCxxSema().BuildDeclRefExpr(FieldDcl, ResultType, ValueKind,
+                                              Overloads.getLookupNameInfo(),
+                                              clang::NestedNameSpecifierLoc(),
+                                              FieldDcl, clang::SourceLocation(),
+                                              nullptr);
+      return DRE;
     } else if (auto VarDcl = dyn_cast<clang::VarDecl>(Dcl)) {
       return buildDeclRefExpr(VarDcl, Loc);
     } else if (isa<clang::CXXMethodDecl>(Dcl)) {

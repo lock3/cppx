@@ -2587,7 +2587,7 @@ public:
 public:
   QualType getTemplateType(TemplateDecl *Decl) const;
 
-  QualType getCppxTypeExprTy(Expr *E) const;
+  QualType getCppxTypeExprTy(Expr *E, bool IsConstruct = false) const;
 private:
   // Helper for integer ordering
   unsigned getIntegerRank(const Type *T) const;

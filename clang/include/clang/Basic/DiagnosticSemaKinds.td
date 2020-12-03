@@ -11443,6 +11443,12 @@ def err_nested_namespecifier_not_a_class : Error<
 def err_nested_namespecifier_not_base : Error<
   "type %0 is not derived from %1">;
 
+def err_namespace_as_template_argument_type : Error<
+  "namespace may not be used as a template argument">;
+
+def err_construct_on_non_pointer_ty : Error<
+  "construct must be called only on a pointer type or a dependent name that "
+  "evaluates to a pointer">;
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

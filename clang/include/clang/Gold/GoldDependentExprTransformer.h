@@ -41,7 +41,7 @@ public:
                                        clang::CppxDependentMemberAccessExpr *E);
   clang::Expr *transformCppxTemplateOrArrayExpr(clang::CppxTemplateOrArrayExpr *E);
 
-  clang::Expr *transformToClassTemplateInstantiation(
+  clang::Expr *transformTemplateInstantiation(
       clang::CppxTemplateOrArrayExpr *E, clang::TemplateDecl *D);
   /// This takes the given arguments and attempts to transform them
   /// into something that we could use for our template instantiation.
@@ -60,14 +60,16 @@ public:
   clang::Expr *buildUnresolvedCall(clang::Expr *LHS,
                                    clang::CXXRecordDecl *RD,
                                    clang::LookupResult &Overloads,
-                                   clang::SourceLocation Loc);
+                                   clang::SourceLocation Loc,
+                                   bool UnresolvedUsing = false);
 
   clang::Expr *buildMemberAccessExpr(clang::Expr *LHS, clang::QualType Ty,
                                      clang::NamedDecl *Dcl,
                                      clang::CXXRecordDecl *RD,
                                      clang::LookupResult &Overloads,
                                      clang::SourceLocation Loc,
-                                     bool IsArrow);
+                                     bool IsArrow,
+                                     bool UnresolvedUsing = false);
 
 };
 }

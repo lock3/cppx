@@ -1237,6 +1237,11 @@ void TextNodeDumper::VisitCXXDependentScopeMemberExpr(
   OS << " " << (Node->isArrow() ? "->" : ".") << Node->getMember();
 }
 
+void TextNodeDumper::VisitCppxDependentMemberAccessExpr(
+    const CppxDependentMemberAccessExpr *Node) {
+  OS << " " << "." << Node->getMember();
+}
+
 void TextNodeDumper::VisitObjCMessageExpr(const ObjCMessageExpr *Node) {
   OS << " selector=";
   Node->getSelector().print(OS);

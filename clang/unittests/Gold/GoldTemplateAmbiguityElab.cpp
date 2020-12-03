@@ -170,14 +170,16 @@ T2 = class:
   T3 <static>: [2]T1
 
 foo[T:type]():void!
-  Y : int = T.T3[2].x
+  Y : int = T.T3[1].x
 
 bar():void!
   foo[T2]()
 )";
-  auto ToMatch = functionDecl(
+  auto ToMatch = functionTemplateDecl(
     hasName("foo"),
-    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
+    has(functionDecl(hasName("foo"),
+      hasDescendant(arraySubscriptExpr())
+    ))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -239,17 +241,19 @@ Callable = class:
 T1 = class:
   T2 = class:
     foo<static> <inline> : Callable
-    ;
 
 foo[T:type]():void!
   T.T2.foo()
 
 bar():void!
-  foo[T2]()
+  foo[T1]()
 )Gold";
-  auto ToMatch = functionDecl(
+  auto ToMatch = functionTemplateDecl(
     hasName("foo"),
-    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
+    has(functionDecl(
+      hasName("foo"),
+      hasDescendant(cxxOperatorCallExpr(hasOverloadedOperatorName("()")))
+    ))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -316,9 +320,9 @@ foo[T:type, U:type]():void!
 bar():void!
   foo[T2, T4]()
 )";
-  auto ToMatch = functionDecl(
+  auto ToMatch = functionTemplateDecl(
     hasName("foo"),
-    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
+    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T2::T3<int>::x"))))))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -329,18 +333,18 @@ T2 = class:
   T3[T:type] = class:
     x : type = T
 
-foo2[T:[:type]=>type]:void!
+foo2[T[x:type] : type]():void!
   Y : type = T[int].x
 
 foo[T:type]():void!
-  foo2[T.T3]
+  foo2[T.T3]()
 
 bar():void!
   foo[T2]()
 )";
-  auto ToMatch = functionDecl(
-    hasName("foo"),
-    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
+  auto ToMatch = functionTemplateDecl(
+    hasName("foo2"),
+    has(functionDecl(hasName("foo2"), hasDescendant(typeAliasDecl(hasType(asString("T2::T3<int>::x"))))))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -354,12 +358,13 @@ T1[T:type] = class:
     return i
 
 bar():void!
-  x = T1[int]
+  x = T1[int]()
   x.foo()
 )";
-  auto ToMatch = functionDecl(
+  auto ToMatch = cxxMethodDecl(
     hasName("foo"),
-    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
+    hasDescendant(memberExpr(member(hasName("i")),
+                  has(cxxThisExpr())))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -373,12 +378,13 @@ T1[T:type] = class:
     return this.i
 
 bar():void!
-  x = T1[int]
+  x = T1[int]()
   x.foo()
 )";
-  auto ToMatch = functionDecl(
+  auto ToMatch = cxxMethodDecl(
     hasName("foo"),
-    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
+    hasDescendant(memberExpr(member(hasName("i")),
+                  has(cxxThisExpr())))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -387,17 +393,17 @@ TEST(GoldTemplateAmbiguity, MemberFunctionPtr) {
   StringRef Code = R"(
 T1[T:type] = class:
   bar():void!
-    x = &T1[T].foo
+    x: T1[T].() -> void = &T1[T].foo
   foo():void!
     ;
 
 bar():void!
-  x = T1[int]
+  x = T1[int]()
   x.bar()
 )";
-  auto ToMatch = functionDecl(
-    hasName("foo"),
-    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
+  auto ToMatch = cxxMethodDecl(
+      hasName("bar"),
+      hasDescendant(varDecl())
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -405,7 +411,7 @@ bar():void!
 
 TEST(GoldTemplateAmbiguity, MemberFunctionLookup) {
   StringRef Code = R"(
-T1[T:type] = class:
+T1 = class:
   bar(i:int):void!
     ;
   bar(f:float64):void!
@@ -421,20 +427,441 @@ bar():void!
 )";
   auto ToMatch = functionDecl(
     hasName("foo"),
+    hasDescendant(cxxMemberCallExpr(
+      callee(cxxMethodDecl(
+        hasName("bar"),
+        hasType(asString("void (int)"))
+      )),
+      on(declRefExpr(to(varDecl(hasName("x")))))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+TEST(GoldTemplateAmbiguity, MemberFunctionTemplateLookup) {
+  StringRef Code = R"(
+T1 = class:
+  bar(i:int):void!
+    ;
+  bar[T:type](f:^T):void!
+    ;
+
+foo[T:type]():void!
+  x : T
+  x.bar(1)
+
+bar():void!
+  foo[T1]()
+
+)";
+  auto ToMatch = functionDecl(
+    hasName("foo"),
+    hasDescendant(cxxMemberCallExpr(
+      callee(cxxMethodDecl(
+        hasName("bar"),
+        hasType(asString("void (int)"))
+      )),
+      on(declRefExpr(to(varDecl(hasName("x")))))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldTemplateAmbiguity, MemberFunctionTemplateLookup_MultipleTemplateLookup) {
+  StringRef Code = R"(
+T1 = class:
+  bar[T:type](i:T):void!
+    ;
+
+  bar[T:type](f:^T):void!
+    ;
+
+foo[T:type]():void!
+  x : T
+  x.bar(1)
+
+bar():void!
+  foo[T1]()
+
+)";
+  auto ToMatch = functionDecl(
+    hasName("foo"),
+    hasDescendant(cxxMemberCallExpr(
+      callee(cxxMethodDecl(
+        hasName("bar"),
+        hasType(asString("void (int)"))
+      )),
+      on(declRefExpr(to(varDecl(hasName("x")))))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+TEST(GoldTemplateAmbiguity, MemberFunctionTemplateLookup_ExplicitTemplateArgs) {
+  StringRef Code = R"(
+T1 = class:
+  bar[T:type](i:T):void!
+    ;
+
+  bar[T:type](f:^T):void!
+    ;
+
+foo[T:type]():void!
+  x : T
+  x.bar[int](1)
+
+bar():void!
+  foo[T1]()
+
+)";
+  auto ToMatch = functionDecl(
+    hasName("foo"),
+    hasDescendant(cxxMemberCallExpr(
+      callee(cxxMethodDecl(
+        hasName("bar"),
+        hasType(asString("void (int)"))
+      )),
+      on(declRefExpr(to(varDecl(hasName("x")))))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+TEST(GoldTemplateAmbiguity, StaticMemberFunctionTemplateLookup_MultipleTemplateLookup) {
+  StringRef Code = R"(
+T1 = class:
+  [static]
+  bar[T:type](i:T):void!
+    ;
+
+  [static]
+  bar[T:type](f:^T):void!
+    ;
+
+foo[T:type]():void!
+  T.bar[int](1)
+
+bar():void!
+  foo[T1]()
+
+)";
+  auto ToMatch = functionDecl(
+    hasName("foo"),
+    hasDescendant(callExpr(
+      callee(cxxMethodDecl(
+        hasName("bar"),
+        hasType(asString("void (int)"))
+      ))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+TEST(GoldTemplateAmbiguity, StaticMemberFunctionTemplateLookup_ExplicitTemplateArgs) {
+  StringRef Code = R"(
+T1 = class:
+  [static]
+  bar[T:type](i:T):void!
+    ;
+
+  [static]
+  bar[T:type](f:^T):void!
+    ;
+
+foo[T:type]():void!
+  T.bar[int](1)
+
+bar():void!
+  foo[T1]()
+
+)";
+  auto ToMatch = functionDecl(
+    hasName("foo"),
+    hasDescendant(callExpr(
+      callee(cxxMethodDecl(
+        hasName("bar"),
+        hasType(asString("void (int)"))
+      ))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldTemplateAmbiguity, Error_MemberAccessToType) {
+  StringRef Code = R"(
+T2 = class:
+  x:int
+
+T1 = class:
+  var : type = T2
+
+foo[T:type](x:T):void!
+  x.var
+
+bar():void!
+  foo[T1]()
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldTemplateAmbiguity, DependentStaticArrayToFunctionCallOperator) {
+  StringRef Code = R"Gold(
+Callable = class:
+  operator"()"():void!
+    ;
+
+T1 = class:
+  T2 = class:
+    foo<static> <inline> : [3]Callable
+
+foo[T:type]():void!
+  T.T2.foo[1]()
+
+bar():void!
+  foo[T1]()
+)Gold";
+  auto ToMatch = functionTemplateDecl(
+    hasName("foo"),
+    has(functionDecl(
+      hasName("foo"),
+      hasDescendant(cxxOperatorCallExpr(hasOverloadedOperatorName("()")))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldTemplateAmbiguity, DependentTemplateToConstructorCall) {
+  StringRef Code = R"Gold(
+T1 = class:
+  T2 = class:
+    foo [T:type]= class:
+      ;
+
+foo[T:type]():void!
+  T.T2.foo[int]()
+
+bar():void!
+  foo[T1]()
+)Gold";
+  auto ToMatch = functionDecl(
+    hasName("foo"),
     has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// TODO: Add a template value with overloads test.
-// add a dependent function template, and something with an array of
-// callable objets. This will also need to be done for member variable access.
-// Add test for consturct destruct test.
-// Add test for operator new.
-// Add tests for operator lookup/handling. Especially dereference and xor.
-// Add test for nested name specifier access, with everything but the
-//  name specifier dependent, and one with only the LHS is dependent.
-// Add a test for possible array
-// Add a test for when we attempt to instanciate an array type with template
-// parameters. Basically, in the event that you give an invalid argument to
-// an array.
+TEST(GoldTemplateAmbiguity, DependentMemberAccess_ToConstruct) {
+  StringRef Code = R"Gold(
+
+T3 = class:
+  ;
+T1 = class:
+  T2[T:type] = class:
+    x <static> <inline> : ^T = null
+
+foo[T:type, U:type]():void!
+  T.T2[U].x.construct()
+
+bar():void!
+  foo[T1, T3]()
+)Gold";
+  auto ToMatch = functionTemplateDecl(
+    hasName("foo"),
+    has(functionDecl(
+      hasName("foo"),
+      hasDescendant(cxxNewExpr(hasAnyPlacementArg(anything()))
+      )
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldTemplateAmbiguity, DependentMemberAccess_ToDestruct) {
+  StringRef Code = R"Gold(
+
+T3 = class:
+  ;
+T1 = class:
+  T2[T:type] = class:
+    x <static> <inline> : ^T = null
+
+foo[T:type, U:type]():void!
+  T.T2[U].x.destruct()
+
+bar():void!
+  foo[T1, T3]()
+)Gold";
+  auto ToMatch = functionTemplateDecl(
+    hasName("foo"),
+    has(functionDecl(hasName("foo"), hasDescendant(
+      memberExpr(member(cxxDestructorDecl()))
+    )))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+// Add construct/destruct with explicit type arguments?
+
+TEST(GoldTemplateAmbiguity, Error_ExpectedTemplateGivenArray) {
+  StringRef Code = R"Gold(
+Callable = class:
+  operator"()"():void!
+    ;
+
+T1 = class:
+  T2 = class:
+    foo<static> <inline> : [3]Callable
+
+foo[T:type]():void!
+  T.T2.foo[int]()
+
+bar():void!
+  foo[T1]()
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldTemplateAmbiguity, Error_InstanciatedTypeIsNotATag) {
+  StringRef Code = R"Gold(
+Callable = class:
+  operator"()"():void!
+    ;
+
+T1 = class:
+  T2 = class:
+    foo : int
+
+foo[T:type]():void!
+  T.T2.foo.x
+
+bar():void!
+  foo[T1]()
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldTemplateAmbiguity, Error_InstanciatedExpressionIsNotATemplateOrArray) {
+  StringRef Code = R"Gold(
+Callable = class:
+  operator"()"():void!
+    ;
+
+T1 = class:
+  T2 = class:
+    foo : int
+
+foo[T:type]():void!
+  T.T2.foo.x
+
+bar():void!
+  foo[T1]()
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldTemplateAmbiguity, PassingTemplateTemplateParameterToDependentName) {
+  StringRef Code = R"Gold(
+Callable = class:
+  operator"()"():void!
+    ;
+
+T1 = class:
+  T2[T:type] = class:
+    ;
+  T3[Container[T : type] : type] = class:
+    T : type = Container[int]
+
+foo[T:type]():void!
+  x : T.T3[T.T2].T
+
+bar():void!
+  foo[T1]()
+)Gold";
+  auto ToMatch = functionTemplateDecl(
+    hasName("foo"),
+    has(functionDecl(
+      hasName("foo"),
+      hasDescendant(varDecl(
+        hasType(asString("T1::T3<T2>::T")))
+      ))
+    )
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldTemplateAmbiguity, DependentMemberExpressionInsideOfNewType) {
+  StringRef Code = R"Gold(
+T1 = class:
+  T2 = class:
+    ;
+
+foo[T:type]():void!
+  x = new [T.T2]()
+  delete x
+bar():void!
+  foo[T1]()
+)Gold";
+  auto ToMatch = functionDecl(
+    hasDescendant(cxxNewExpr(
+      unless(isArray()),
+      hasDeclaration(functionDecl(
+        hasName("operator new"),
+        isImplicit(),
+        hasType(asString("void *(unsigned long)"))
+      ))
+    )),
+    hasDescendant(cxxDeleteExpr(
+      deleteFunction(functionDecl(
+        hasName("operator delete"),
+        isImplicit(),
+        hasType(asString("void (void *) noexcept"))
+      ))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldTemplateAmbiguity, DependentExplicitOperatorCall) {
+  StringRef Code = R"Gold(
+T1 = class:
+  operator"+"(Y:ref T1):T1!
+    return T1()
+
+foo[T:type](var:T):void!
+  x : T1
+  var.operator"+"(x)
+
+bar():void!
+  x : T1
+  foo(x)
+)Gold";
+  auto ToMatch = functionDecl(
+    hasName("foo"),
+    hasDescendant(cxxMemberCallExpr(
+      callee(cxxMethodDecl(
+        hasName("operator+")
+      ))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldTemplateAmbiguity, DependentVariableTemplateAccesExpr) {
+  StringRef Code = R"Gold(
+T1 = class:
+  X[T:type] <constexpr> <static> : const T = T(4)
+  X[int] <constexpr> <static> : const int = 4
+
+foo[T:type]():void!
+  x = T.X[int]
+
+bar():void!
+  foo[T1]()
+)Gold";
+  auto ToMatch = declRefExpr();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

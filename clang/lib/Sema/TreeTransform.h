@@ -42,6 +42,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <algorithm>
+#include "clang/Gold/GoldSema.h"
 
 using namespace llvm::omp;
 
@@ -4636,8 +4637,58 @@ bool TreeTransform<Derived>::TransformTemplateArgument(
 
     Expr *InputExpr = Input.getSourceExpression();
     if (!InputExpr) InputExpr = Input.getArgument().getAsExpr();
-
     ExprResult E = getDerived().TransformExpr(InputExpr);
+    if (SemaRef.getLangOpts().Gold)
+      if (!E.isInvalid()) {
+        if (auto CppxDRE = dyn_cast<CppxDeclRefExpr>(E.get())) {
+          clang::Decl *D = CppxDRE->getValue();
+          if (CppxDRE->getType()->isTemplateType()) {
+            NestedNameSpecifierLoc QualifierLoc = Input.getTemplateQualifierLoc();
+            if (QualifierLoc) {
+              QualifierLoc = getDerived().TransformNestedNameSpecifierLoc(QualifierLoc);
+              if (!QualifierLoc)
+                return true;
+            }
+
+            CXXScopeSpec SS;
+            SS.Adopt(QualifierLoc);
+            clang::TemplateName TN(cast<clang::TemplateDecl>(D));
+            TemplateName Template = getDerived().TransformTemplateName(SS, TN,
+                                                         CppxDRE->getExprLoc());
+            if (Template.isNull())
+              return true;
+
+            Output = TemplateArgumentLoc(TemplateArgument(Template), QualifierLoc,
+                                        Input.getTemplateNameLoc());
+            return false;
+          } else if (CppxDRE->getType()->isNamespaceType()) {
+            SemaRef.Diag(CppxDRE->getExprLoc(),
+                         diag::err_namespace_as_template_argument_type);
+            return true;
+          } else {
+            // All of the above cases are handled this way.
+            llvm_unreachable("invalid CppxDeclRefExpr");
+          }
+
+        } else if (auto CppxTL = dyn_cast<CppxTypeLiteral>(E.get())) {
+          clang::TypeSourceInfo *DI = CppxTL->getValue();
+          if (CppxTL->getType()->isTypeOfTypes()) {
+            DI = getDerived().TransformType(DI);
+            if (!DI) return true;
+
+            Output = TemplateArgumentLoc(TemplateArgument(DI->getType()), DI);
+            return false;
+          } else if (CppxTL->getType()->isNamespaceType()) {
+            SemaRef.Diag(CppxTL->getExprLoc(),
+                         diag::err_namespace_as_template_argument_type);
+            return true;
+          } else {
+            // All of the above cases should already handle this.
+            llvm_unreachable("invalid CppxTypeLiteral");
+          }
+        }
+      }
+
     E = SemaRef.ActOnConstantExpression(E);
     if (E.isInvalid()) return true;
     Output = TemplateArgumentLoc(
@@ -12849,6 +12900,16 @@ TreeTransform<Derived>::TransformCXXNewExpr(CXXNewExpr *E) {
     }
   }
 
+  if (SemaRef.getLangOpts().Gold) {
+    if (OperatorNew == SemaRef.getGoldSema()->getInPlaceNew()) {
+      // Doing a special rebuild that make this works like it's supposed to.
+      return SemaRef.getGoldSema()->BuildCXXNew( E->getBeginLoc(), E->isGlobalNew(),
+          /*FIXME:*/ E->getBeginLoc(), PlacementArgs,
+          /*FIXME:*/ E->getBeginLoc(), E->getTypeIdParens(), AllocType,
+          AllocTypeInfo, ArraySize, E->getDirectInitRange(), NewInit.get(),
+          true);
+    }
+  }
   return getDerived().RebuildCXXNewExpr(
       E->getBeginLoc(), E->isGlobalNew(),
       /*FIXME:*/ E->getBeginLoc(), PlacementArgs,

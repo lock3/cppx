@@ -361,10 +361,12 @@ public:
                            llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
 
   clang::CppxTypeLiteral *buildTypeExprTypeFromExpr(clang::Expr *E,
-                                                    clang::SourceLocation Loc);
+                                                    clang::SourceLocation Loc,
+                                                  bool IsConstructExpr = false);
 
   clang::QualType buildQualTypeExprTypeFromExpr(clang::Expr *E,
-                                                clang::SourceLocation Loc);
+                                                clang::SourceLocation Loc,
+                                                bool IsConstructExpr = false);
 
   clang::CppxTypeLiteral *buildTypeExprFromTypeDecl(
                       const clang::TypeDecl *TyDecl, clang::SourceLocation Loc);
@@ -1146,32 +1148,20 @@ public:
 
 
   clang::ParsedTemplateArgument convertExprToTemplateArg(clang::Expr *E);
-//   // Type parameters start here.
-//   if (E->getType()->isTypeOfTypes()) {
-//     clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
-//                                           E, E->getExprLoc());
-//     if (!TInfo)
-//       return clang::ParsedTemplateArgument();
 
-//     return SemaRef.getCxxSema().ActOnTemplateTypeArgument(
-//                SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo));
-//   }
-
-//   if (E->getType()->isTemplateType()) {
-//     clang::TemplateDecl *TD =
-//       E->getType()->getAs<clang::CppxTemplateType>()->getTemplateDecl();
-
-//     return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::Template,
-//                                          (void *)TD, E->getExprLoc());
-//   }
-
-//   // Anything else is a constant expression?
-//   clang::ExprResult ConstExpr(E);
-//   ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(ConstExpr);
-//   return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::NonType,
-//       ConstExpr.get(), E->getExprLoc());
-// }
-
+public:
+  clang::ExprResult
+  BuildCXXNew(clang::SourceRange Range, bool UseGlobal,
+              clang::SourceLocation PlacementLParen,
+              clang::MultiExprArg PlacementArgs,
+              clang::SourceLocation PlacementRParen,
+              clang::SourceRange TypeIdParens,
+              clang::QualType AllocType,
+              clang::TypeSourceInfo *AllocTypeInfo,
+              llvm::Optional<clang::Expr *> ArraySize,
+              clang::SourceRange DirectInitRange,
+              clang::Expr *Initializer,
+              bool UseGoldInplaceNew = false);
 };
 
 } // namespace gold

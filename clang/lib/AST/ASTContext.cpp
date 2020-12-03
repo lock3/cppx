@@ -960,8 +960,10 @@ void CppxTemplateType::Profile(llvm::FoldingSetNodeID &ID, TemplateDecl *D) {
   }
 }
 
-void CppxTypeExprType::Profile(llvm::FoldingSetNodeID &ID, Expr *E) {
+void CppxTypeExprType::Profile(llvm::FoldingSetNodeID &ID, Expr *E,
+                               bool IsConstructExpr) {
   ID.AddPointer(E);
+  ID.AddBoolean(IsConstructExpr);
 }
 
 
@@ -6338,14 +6340,14 @@ QualType ASTContext::getTemplateType(TemplateDecl *Decl) const {
   return QualType(TT, 0);
 }
 
-QualType ASTContext::getCppxTypeExprTy(Expr *E) const {
+QualType ASTContext::getCppxTypeExprTy(Expr *E, bool IsConstruct) const {
   llvm::FoldingSetNodeID ID;
-  CppxTypeExprType::Profile(ID, E);
+  CppxTypeExprType::Profile(ID, E, IsConstruct);
 
   void *InsertPos = nullptr;
   CppxTypeExprType *TT = TypeExprTypes.FindNodeOrInsertPos(ID, InsertPos);
   if (!TT) {
-    TT = new (*this, TypeAlignment) CppxTypeExprType(E);
+    TT = new (*this, TypeAlignment) CppxTypeExprType(E, IsConstruct);
     TypeExprTypes.InsertNode(TT, InsertPos);
   }
 

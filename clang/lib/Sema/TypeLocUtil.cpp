@@ -566,6 +566,7 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::SubstTemplateTypeParmTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   clang::SubstTemplateTypeParmTypeLoc TL
                             = TLB.push<clang::SubstTemplateTypeParmTypeLoc>(Ty);
+  TL.initializeLocal(Ctx, Loc);
   return TLB.getTypeSourceInfo(Ctx, Ty);
 }
 

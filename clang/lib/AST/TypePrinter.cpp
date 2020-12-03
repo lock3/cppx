@@ -1815,6 +1815,8 @@ void TypePrinter::printCppxArgsAfter(const CppxArgsType *T, raw_ostream &OS) {}
 
 void TypePrinter::printCppxTypeExprBefore(const CppxTypeExprType *T, raw_ostream &OS) {
   OS << "Type Expression";
+  if (T->isForConstruct())
+    OS << " Is For construct call";
 }
 
 void TypePrinter::printCppxTypeExprAfter(const CppxTypeExprType *T, raw_ostream &OS) { }

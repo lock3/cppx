@@ -5024,6 +5024,8 @@ void Elaborator::elaborateConstExprAttr(Declaration *D, const Syntax *S,
     FD->setConstexprKind(clang::ConstexprSpecKind::CSK_constexpr);
   } else if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(D->Cxx)) {
     VD->setConstexpr(true);
+  } else if (auto *VTD = dyn_cast<clang::VarTemplateDecl>(D->Cxx)) {
+    VTD->getTemplatedDecl()->setConstexpr(true);
   } else {
     SemaRef.Diags.Report(S->getLoc(),
                          clang::diag::err_invalid_attribute_for_decl)

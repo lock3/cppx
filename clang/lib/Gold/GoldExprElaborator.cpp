@@ -1061,6 +1061,20 @@ bool ExprElaborator::elaborateTemplateArugments(const ListSyntax *Args,
         return true;
       clang::TemplateArgument Arg(ArgTInfo->getType());
       ArgInfo.addArgument({Arg, ArgTInfo});
+    } else if (ArgExpr->getType()->isTemplateType()) {
+      clang::Decl *D = SemaRef.getDeclFromExpr(ArgExpr, SyntaxArg->getLoc());
+      if (!D)
+        llvm_unreachable("Invalid template declaration reference.");
+
+      clang::TemplateDecl *TD = cast<clang::TemplateDecl>(D);
+      clang::TemplateName Template(TD);
+      if (Template.isNull())
+        return true;
+      clang::TemplateArgument Arg(Template);
+      clang::TemplateArgumentLocInfo TALoc(clang::NestedNameSpecifierLoc(),
+                                           SyntaxArg->getLoc(),
+                                           clang::SourceLocation());
+      ArgInfo.addArgument({Arg, TALoc});
     } else {
       clang::TemplateArgument Arg(ArgExpr, clang::TemplateArgument::Expression);
       ArgInfo.addArgument({Arg, ArgExpr});
@@ -2223,7 +2237,7 @@ clang::Expr *ExprElaborator::elaborateMemberAccess(const Syntax *LHS,
   if (ElaboratedLHS->getType()->isTypeOfTypes())
     return elaborateNestedLookupAccess(ElaboratedLHS, Op, RHS);
 
-  if (isa<clang::CppxDependentMemberAccessExpr>(ElaboratedLHS))
+  if (isACppxDependentExpr(ElaboratedLHS))
     return elaborateDependentExpr(ElaboratedLHS, LHS, Op, RHS);
 
   if (ElaboratedLHS->getType()->isNamespaceType()) {
@@ -2267,6 +2281,7 @@ clang::Expr *ExprElaborator::elaborateDependentExpr(clang::Expr *ElaboratedLHS,
         SemaRef.Diags.Report(Loc, clang::diag::err_not_a_type);
         return nullptr;
       }
+
       // Handling special case for nested name specifier being a dependent
       // expression
       clang::DeclarationNameInfo DNI({
@@ -2276,6 +2291,10 @@ clang::Expr *ExprElaborator::elaborateDependentExpr(clang::Expr *ElaboratedLHS,
         SemaRef.getContext().CxxAST, ElaboratedLHS,
         SemaRef.getContext().CxxAST.DependentTy, Atom->getLoc(), DNI, InnerTy);
     }
+  } else {
+    auto Ret = elaborateConstructDestructExpr(ElaboratedLHS, LHS, Op, Atom);
+    if (Ret)
+      return Ret;
   }
   return handleDependentTypeNameLookup(SemaRef, Op, ElaboratedLHS, RHS);
 }
@@ -2466,12 +2485,15 @@ clang::Expr *ExprElaborator::elaborateDestructCall(clang::Expr *LHSPtr,
                                                    const Syntax *RHS) {
   clang::QualType ExprTy = LHSPtr->getType();
   if (!ExprTy->isPointerType()) {
-    // FIXME: I need to figure out how to ensure that we have the correct
-    // error message for our destructor.
-    SemaRef.Diags.Report(RHS->getLoc(),
-                         clang::diag::err_pseudo_dtor_base_not_scalar)
-                         << ExprTy;
-    return nullptr;
+    if (ExprTy->isDependentType()) {
+      ExprTy = SemaRef.buildQualTypeExprTypeFromExpr(LHSPtr, LHSPtr->getExprLoc(),
+                                                     true);
+    } else {
+      SemaRef.Diags.Report(RHS->getLoc(),
+                           clang::diag::err_pseudo_dtor_base_not_scalar)
+                           << ExprTy;
+      return nullptr;
+    }
   } else {
     ExprTy = ExprTy->getPointeeType();
   }
@@ -2950,11 +2972,6 @@ clang::Expr *ExprElaborator::elaborateNestedLookupAccess(
   clang::TypeLoc TL = TLB.getTypeLocInContext(Context.CxxAST, TInfo->getType());
   clang::QualType RecordType = TInfo->getType();
   clang::CXXRecordDecl *RD = RecordType->getAsCXXRecordDecl();
-  if (!RD) {
-    // FIXME: Working on something else that isn't related but this needs
-    // an actual error message.
-    llvm_unreachable("Make an error message for me.");
-  }
 
   auto *TST = RecordType->getAs<clang::TemplateSpecializationType>();
   if (SemaRef.elaboratingUsingInClassScope() && TST) {
@@ -3380,7 +3397,6 @@ clang::Expr *ExprElaborator::elaborateNewExpr(const MacroSyntax *Macro) {
   } else if (auto MacroTypeNode = dyn_cast<MacroSyntax>(TypeOrCtorExpr)) {
     ExprEndLoc = TypeOrCtorExpr->getLoc();
     TypeNode = MacroTypeNode->getCall();
-    // if (auto TypeCallNode = dyn_cast<CallSyntax>(MacroTypeNode->getCall())) {
     auto ArgList = cast<ArraySyntax>(MacroTypeNode->getBlock());
     if (ArgList->getNumChildren() == 0)
       ExprEndLoc = CtorCall->getLoc();
@@ -3399,7 +3415,13 @@ clang::Expr *ExprElaborator::elaborateNewExpr(const MacroSyntax *Macro) {
   // TODO: I need to figure out if this need an additional error message.
   if (!TyExpr)
     return nullptr;
-  // if (!isa<clang::InitListExpr>(TyExpr)) {
+
+  // If we are a instantiation dependent expression that changes meaning
+  // we need to build the CppxTypeExprType which forces us to be a type.
+  if (isACppxDependentExpr(TyExpr)) {
+    TyExpr = SemaRef.buildTypeExprTypeFromExpr(TyExpr, TypeNode->getLoc());
+  }
+
   TInfo = SemaRef.getTypeSourceInfoFromExpr(TyExpr, TypeNode->getLoc());
   if (!TInfo)
     return nullptr;
