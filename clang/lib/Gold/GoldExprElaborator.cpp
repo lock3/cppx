@@ -3343,21 +3343,22 @@ static bool isOpNewCall(const MacroSyntax *S) {
   return false;
 }
 
+using SyntaxHandler =
+  clang::Expr *(*)(SyntaxContext &, Sema &, const MacroSyntax *);
+static const llvm::StringMap<SyntaxHandler> SyntaxHandlers = {
+  {"array",  &handleArrayMacro},
+  {"of",     &handleOfMacro},
+  {"lambda", &handleLambdaMacro},
+};
+
 clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
   unsigned DiagID =
     SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
                                   "unknown macro");
 
-#if 0
   // Checking if we are handling operator new parsing.
   if (isOpNewCall(S))
     return elaborateNewExpr(S);
-
-  if (!isa<AtomSyntax>(S->getCall()))
-    return elaborateInitListCall(S);
-
-#endif
-
 
   const AtomSyntax *Call = dyn_cast<AtomSyntax>(S->getCall());
   if (!Call && isa<CallSyntax>(S->getCall())) {
@@ -3368,6 +3369,9 @@ clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
     // The other case mentioned above; generic lambdas may have an element call.
     else if (isa<ElemSyntax>(C->getCallee()))
       return handleLambdaMacro(Context, SemaRef, S);
+    // Not a lambda
+    else
+      return elaborateInitListCall(S);
   }
 
   if (!Call) {
@@ -3375,18 +3379,12 @@ clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
     return nullptr;
   }
 
-  // TODO: string map
-  if (Call->getSpelling() == "array")
-    return handleArrayMacro(Context, SemaRef, S);
-  else if (Call->getSpelling() == "of")
-    return handleOfMacro(Context, SemaRef, S);
-  else if (Call->getSpelling() == "lambda")
-    return handleLambdaMacro(Context, SemaRef, S);
-  else // FIXME: this should not be an unguarded else
-    return elaborateInitListCall(S);
+  // Handle any builtin macros
+  auto HandlerIt = SyntaxHandlers.find(Call->getSpelling());
+  if (HandlerIt != SyntaxHandlers.end())
+    return (HandlerIt->second)(Context, SemaRef, S);
 
-  SemaRef.Diags.Report(S->getLoc(), DiagID);
-  return nullptr;
+  return elaborateInitListCall(S);
 }
 
 clang::Expr *
