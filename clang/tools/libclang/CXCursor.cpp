@@ -633,6 +633,7 @@ CXCursor cxcursor::MakeCXCursor(const Stmt *S, const Decl *Parent,
     K = CXCursor_MemberRefExpr;
     break;
 
+  case Stmt::CppxCallOrConstructorExprClass:
   case Stmt::CallExprClass:
   case Stmt::CXXOperatorCallExprClass:
   case Stmt::CXXMemberCallExprClass:

@@ -4180,7 +4180,8 @@ recurse:
                      Arity);
     break;
   }
-
+  case Expr::CppxCallOrConstructorExprClass:
+  llvm_unreachable("case Expr::CppxCallOrConstructorExprClass: not implemented.");
   case Expr::CppxTemplateOrArrayExprClass:
     llvm_unreachable("case Expr::CppxTemplateOrArrayExprClass: not implemented.");
   case Expr::CppxDependentMemberAccessExprClass: {

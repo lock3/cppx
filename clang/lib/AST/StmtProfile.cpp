@@ -2017,6 +2017,14 @@ void StmtProfiler::VisitCppxDependentMemberAccessExpr(
   //   VisitTemplateArguments(S->getTemplateArgs(), S->getNumTemplateArgs());
 }
 
+
+void StmtProfiler::VisitCppxCallOrConstructorExpr(
+    const CppxCallOrConstructorExpr *S) {
+  ID.AddInteger(S->getNumArgs());
+  VisitExpr(S->getExpr());
+  for(auto A : S->arguments())
+    Visit(A);
+}
 void StmtProfiler::VisitCppxTemplateOrArrayExpr(
     const CppxTemplateOrArrayExpr *S) {
   llvm_unreachable("Not sure what this is for.");

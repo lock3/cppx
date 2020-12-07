@@ -1809,6 +1809,14 @@ clang::Expr *Sema::TransformCppxTemplateOrArrayExpr(
   return rebuilder.transformDependentExpr(E);
 }
 
+clang::Expr *Sema::TransformCppxCallOrConstructorExpr(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxCallOrConstructorExpr *E) {
+  DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
+  return rebuilder.transformDependentExpr(E);
+}
+
 clang::ParsedTemplateArgument Sema::convertExprToTemplateArg(clang::Expr *E) {
   // Type parameters start here.
   if (E->getType()->isTypeOfTypes()) {

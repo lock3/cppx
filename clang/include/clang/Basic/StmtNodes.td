@@ -306,3 +306,4 @@ def CppxDeclRefExpr : StmtNode<Expr>;
 def CppxPartialEvalExpr : StmtNode<Expr>;
 def CppxDependentMemberAccessExpr : StmtNode<Expr>;
 def CppxTemplateOrArrayExpr : StmtNode<Expr>;
+def CppxCallOrConstructorExpr : StmtNode<Expr>;

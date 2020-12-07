@@ -1384,6 +1384,9 @@ static clang::Expr *handleExpressionResultCall(Sema &SemaRef,
   }
   if (isa<clang::CppxPartialEvalExpr>(CalleeExpr))
     return Elab.elaboratePartialCallExpr(CalleeExpr, S, Args);
+  if (isACppxDependentExpr(CalleeExpr))
+    return clang::CppxCallOrConstructorExpr::Create(SemaRef.getContext().CxxAST,
+                                                    CalleeExpr, Args);
 
   if (CalleeExpr->getType()->isTypeOfTypes()) {
     // This means constructor call possibly, unless it's some how a function

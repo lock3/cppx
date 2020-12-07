@@ -3451,22 +3451,29 @@ public:
                                             TemplateArgs, /*S*/nullptr);
   }
 
+  ExprResult RebuildCppxDependentMemberAccessExpr(Expr *BaseE,
+                                                  QualType BaseType,
+                                                  SourceLocation OperatorLoc,
+                                    const DeclarationNameInfo &MemberNameInfo,
+                                                  Expr *NameExpr = nullptr) {
+    return clang::CppxDependentMemberAccessExpr::Create(SemaRef.getASTContext(),
+                                                        BaseE, BaseType,
+                                                        OperatorLoc,
+                                                        MemberNameInfo,
+                                                        NameExpr);
+  }
+
+
   ExprResult RebuildCppxTemplateOrArrayExpr(Expr *Base, ArrayRef<Expr *> Args) {
     return clang::CppxTemplateOrArrayExpr::Create(SemaRef.getASTContext(),
                                                   Base, Args);
   }
 
 
-  ExprResult RebuildCppxDependentMemberAccessExpr(Expr *BaseE,
-                                                QualType BaseType,
-                                                SourceLocation OperatorLoc,
-                                   const DeclarationNameInfo &MemberNameInfo,
-                                                Expr *NameExpr = nullptr) {
-    return clang::CppxDependentMemberAccessExpr::Create(SemaRef.getASTContext(),
-                                                        BaseE, BaseType,
-                                                        OperatorLoc,
-                                                        MemberNameInfo,
-                                                        NameExpr);
+  ExprResult RebuildCppxCallOrConstructorExpr(Expr *Base,
+                                              ArrayRef<Expr *> Args) {
+    return clang::CppxCallOrConstructorExpr::Create(SemaRef.getASTContext(),
+                                                    Base, Args);
   }
 
   /// Build a new member reference expression.
@@ -4007,6 +4014,21 @@ ExprResult TreeTransform<Derived>::TransformInitializer(Expr *Init,
   // layers are stripped.
   if (!Init)
     return Init;
+
+  if (SemaRef.getLangOpts().Gold) {
+    // This will force the rebuild prior to handling anything else. This is so
+    // we can decide if we are a constructor or a function call before completing
+    // the initializer.
+    if (isa<CppxCallOrConstructorExpr>(Init)) {
+      auto InitExpr = getDerived().TransformExpr(Init);
+      if (InitExpr.isInvalid()) {
+        SemaRef.Diag(Init->getExprLoc(),
+                     diag::err_var_init_instantiation_failure);
+        return ExprError();
+      }
+      Init = InitExpr.get();
+    }
+  }
 
   if (auto *FE = dyn_cast<FullExpr>(Init))
     Init = FE->getSubExpr();
@@ -14256,11 +14278,6 @@ template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformCppxTemplateOrArrayExpr(
                                                    CppxTemplateOrArrayExpr *E) {
-  // Transform the base of the expression.
-  // ExprResult Base((Expr*) nullptr);
-  // Expr *BaseExpr = getDerived().transformExpr;
-  // llvm_unreachable("Working on it!");
-// Transform the base of the expression.
   ExprResult Base((Expr*) nullptr);
   Expr *OldBase;
   OldBase = E->getBase();
@@ -14278,6 +14295,30 @@ TreeTransform<Derived>::TransformCppxTemplateOrArrayExpr(
 
   return getDerived().RebuildCppxTemplateOrArrayExpr(Base.get(),
                                                      TransformedAguments);
+}
+
+
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCppxCallOrConstructorExpr(
+                                                   CppxCallOrConstructorExpr *E) {
+  ExprResult Base((Expr*) nullptr);
+  Expr *OldBase;
+  OldBase = E->getExpr();
+  Base = getDerived().TransformExpr(OldBase);
+  if (Base.isInvalid())
+    return ExprError();
+
+  // Transforming the arguments
+  bool ArgsChanged = false;
+  llvm::SmallVector<Expr *, 16> TransformedAguments;
+  if (getDerived().TransformExprs(E->getArgs(), E->getNumArgs(),
+                                  /*IsCall*/false, TransformedAguments,
+                                  &ArgsChanged))
+    return ExprError();
+
+  return getDerived().RebuildCppxCallOrConstructorExpr(Base.get(),
+                                                       TransformedAguments);
 }
 
 template<typename Derived>

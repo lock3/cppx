@@ -226,7 +226,33 @@ T1 = class:
   auto ToMatch = functionTemplateDecl(
     hasName("foo"),
     has(functionDecl(
-      hasName("foo"), hasDescendant(callExpr())
+      hasName("foo"), hasDescendant(cxxConstructExpr())
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldTemplateAmbiguity, DependentConstructorCall_InAssignment) {
+  StringRef Code = R"(
+
+foo[T:type]():void!
+  x :T.T2.foo
+  x = T.T2.foo()
+
+bar():void!
+  foo[T1]()
+
+T1 = class:
+  T2 = class:
+    foo = class:
+      bar = class:
+        ;
+
+)";
+  auto ToMatch = functionTemplateDecl(
+    hasName("foo"),
+    has(functionDecl(
+      hasName("foo"), hasDescendant(cxxConstructExpr())
     ))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -647,9 +673,9 @@ foo[T:type]():void!
 bar():void!
   foo[T1]()
 )Gold";
-  auto ToMatch = functionDecl(
+  auto ToMatch = functionTemplateDecl(
     hasName("foo"),
-    has(functionDecl(hasName("foo"), hasDescendant(typeAliasDecl(hasType(asString("T1::X"))))))
+    has(functionDecl(hasName("foo"), hasDescendant(cxxConstructExpr())))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

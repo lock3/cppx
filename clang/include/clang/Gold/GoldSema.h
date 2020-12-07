@@ -1146,6 +1146,11 @@ public:
       clang::SourceLocation Loc, clang::DeclarationName Entity,
       clang::CppxTemplateOrArrayExpr *E);
 
+    clang::Expr *TransformCppxCallOrConstructorExpr(
+      const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+      clang::SourceLocation Loc, clang::DeclarationName Entity,
+      clang::CppxCallOrConstructorExpr *E);
+
 
   clang::ParsedTemplateArgument convertExprToTemplateArg(clang::Expr *E);
 

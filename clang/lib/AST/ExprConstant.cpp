@@ -15285,6 +15285,7 @@ static ICEDiag CheckICE(const Expr* E, const Expr::EvalContext &Ctx) {
   case Expr::CXXUnresolvedConstructExprClass:
   case Expr::CXXDependentScopeMemberExprClass:
   case Expr::CppxDependentMemberAccessExprClass:
+  case Expr::CppxCallOrConstructorExprClass:
   case Expr::CppxTemplateOrArrayExprClass:
   case Expr::UnresolvedMemberExprClass:
   case Expr::ObjCStringLiteralClass:

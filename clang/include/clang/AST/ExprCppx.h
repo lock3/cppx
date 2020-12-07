@@ -493,6 +493,10 @@ public:
     return llvm::makeArrayRef(getTrailingStmts(), 1 + getNumArgs());
   }
 
+  ArrayRef<Expr *> getRawArgs() {
+    return llvm::makeArrayRef(getArgs(), getNumArgs());
+  }
+
   SourceLocation getBeginLoc() const LLVM_READONLY {
     return getBase()->getBeginLoc();
   }
@@ -517,6 +521,143 @@ public:
                              getTrailingStmts() + 1 + getNumArgs());
   }
 };
+
+
+class CppxCallOrConstructorExpr final
+    : public Expr {
+  friend class ASTStmtReader;
+  friend class ASTStmtWriter;
+  unsigned NumArgs = 0;
+
+  Stmt **getTrailingStmts() {
+    return reinterpret_cast<Stmt **>(reinterpret_cast<char *>(this) +
+                                 CallOrConstructorBits.OffsetToTrailingObjects);
+  }
+
+  Stmt *const *getTrailingStmts() const {
+    return const_cast<CppxCallOrConstructorExpr *>(this)->getTrailingStmts();
+  }
+
+  unsigned getSizeOfTrailingStmts() const {
+    return (NumArgs + 1) * sizeof(Stmt *);
+  }
+
+protected:
+  // Name of associated bitfields.
+  // CppxCallOrConstructorExprBitFields CallOrConstructorBits
+  CppxCallOrConstructorExpr(const ASTContext &Ctx, Stmt *Base,
+                          ArrayRef<Expr *> Args);
+
+  /// Build an empty call expression, for deserialization.
+  CppxCallOrConstructorExpr(const ASTContext &Ctx, unsigned ArgCount,
+                          EmptyShell Empty);
+
+  /// Return the size in bytes needed for the trailing objects.
+  /// Used by the derived classes to allocate the right amount of storage.
+  static unsigned sizeOfTrailingObjects(unsigned ArgsCount) {
+    return (ArgsCount + 1) * sizeof(Stmt *);
+  }
+
+public:
+  static CppxCallOrConstructorExpr *
+    Create(const ASTContext &Ctx, Expr *BaseExpr, ArrayRef<Expr *> Args);
+
+  /// Create an empty call expression, for deserialization.
+  static CppxCallOrConstructorExpr *
+    CreateEmpty(const ASTContext &Ctx, unsigned NumArgs,
+                EmptyShell Empty);
+
+  Expr *getExpr() { return cast<Expr>(*getTrailingStmts()); }
+  const Expr *getExpr() const { return cast<Expr>(*getTrailingStmts()); }
+  void setExpr(Expr *E) { *getTrailingStmts() = E; }
+
+  /// getNumArgs - Return the number of actual arguments to this call.
+  unsigned getNumArgs() const { return NumArgs; }
+
+  /// Retrieve the call arguments.
+  Expr **getArgs() {
+    return reinterpret_cast<Expr **>(getTrailingStmts() + 1);
+  }
+
+  Expr *const *getArgs() const {
+    return reinterpret_cast<Expr *const *>(getTrailingStmts() + 1);
+  }
+
+  /// getArg - Return the specified argument.
+  Expr *getArg(unsigned Arg) {
+    assert(Arg < getNumArgs() && "Arg access out of range!");
+    return getArgs()[Arg];
+  }
+  const Expr *getArg(unsigned Arg) const {
+    assert(Arg < getNumArgs() && "Arg access out of range!");
+    return getArgs()[Arg];
+  }
+
+  /// setArg - Set the specified argument.
+  void setArg(unsigned Arg, Expr *ArgExpr) {
+    assert(Arg < getNumArgs() && "Arg access out of range!");
+    getArgs()[Arg] = ArgExpr;
+  }
+
+  typedef ExprIterator arg_iterator;
+  typedef ConstExprIterator const_arg_iterator;
+  typedef llvm::iterator_range<arg_iterator> arg_range;
+  typedef llvm::iterator_range<const_arg_iterator> const_arg_range;
+
+  arg_range arguments() { return arg_range(arg_begin(), arg_end()); }
+  const_arg_range arguments() const {
+    return const_arg_range(arg_begin(), arg_end());
+  }
+
+  arg_iterator arg_begin() {
+    return getTrailingStmts() + 1;
+  }
+  arg_iterator arg_end() { return arg_begin() + getNumArgs(); }
+
+  const_arg_iterator arg_begin() const {
+    return getTrailingStmts();
+  }
+  const_arg_iterator arg_end() const { return arg_begin() + getNumArgs(); }
+
+  /// This method provides fast access to all the subexpressions of
+  /// a CallExpr without going through the slower virtual child_iterator
+  /// interface.  This provides efficient reverse iteration of the
+  /// subexpressions.  This is currently used for CFG construction.
+  ArrayRef<Stmt *> getRawSubExprs() {
+    return llvm::makeArrayRef(getTrailingStmts(), 1 + getNumArgs());
+  }
+
+  ArrayRef<Expr *> getRawArgs() {
+    return llvm::makeArrayRef(getArgs(), getNumArgs());
+  }
+
+  SourceLocation getBeginLoc() const LLVM_READONLY {
+    return getExpr()->getBeginLoc();
+  }
+  SourceLocation getEndLoc() const LLVM_READONLY {
+    if (getNumArgs()) {
+      return getArg(getNumArgs()-1)->getEndLoc();
+    }
+    return getExpr()->getBeginLoc();
+  }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == CppxCallOrConstructorExprClass;
+  }
+
+  // Iterators
+  child_range children() {
+    return child_range(getTrailingStmts(), getTrailingStmts() + 1 + getNumArgs());
+  }
+
+  const_child_range children() const {
+    return const_child_range(getTrailingStmts(),
+                             getTrailingStmts() + 1 + getNumArgs());
+  }
+};
+
+
+
 
 } // namespace clang
 

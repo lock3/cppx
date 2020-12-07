@@ -11449,6 +11449,13 @@ def err_namespace_as_template_argument_type : Error<
 def err_construct_on_non_pointer_ty : Error<
   "construct must be called only on a pointer type or a dependent name that "
   "evaluates to a pointer">;
+
+def err_var_init_instantiation_failure : Error<
+    "template instantiation failure during variable initialization">;
+
+def err_expression_does_not_eval_to_value : Error<
+    "expression doesn't evaluate to a value, it evaluates to type, namespace, "
+    "or template">;
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

@@ -43,6 +43,9 @@ clang::Expr *DependentExprTransformer::transformDependentExpr(clang::Expr *E) {
   if (auto TOAE = dyn_cast<clang::CppxTemplateOrArrayExpr>(E))
     return transformCppxTemplateOrArrayExpr(TOAE);
 
+  if (auto Call = dyn_cast<clang::CppxCallOrConstructorExpr>(E))
+    return transformCppxCallOrConstructorExpr(Call);
+
   if (auto LT = dyn_cast<clang::CppxTypeLiteral>(E))
     return transformCppxLiteralType(LT);
 
@@ -311,6 +314,61 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
   }
 
   llvm_unreachable("shouldn't have reached here!.");
+}
+
+clang::Expr *DependentExprTransformer::transformCppxCallOrConstructorExpr(
+    clang::CppxCallOrConstructorExpr *E) {
+  // llvm_unreachable("Working on it!");
+  clang::Expr *Base = transformDependentExpr(E->getExpr());
+  if (!Base)
+    return nullptr;
+  llvm::outs() << "Dumping Base expression post transformation?\n";
+  Base->dump();
+  llvm::outs() << "Pre-transformation base =\n";
+  E->getExpr()->dump();
+  if (Base->getType()->isTemplateType() || Base->getType()->isNamespaceType()) {
+    SemaRef.Diags.Report(Base->getExprLoc(),
+                         clang::diag::err_expression_does_not_eval_to_value);
+    return nullptr;
+  }
+
+  llvm::SmallVector<clang::Expr *, 16> Args;
+  for (auto A : E->arguments()) {
+    clang::Expr *TArg = transformDependentExpr(A);
+    if (!TArg) {
+      SemaRef.Diags.Report(A->getExprLoc(),
+                           clang::diag::err_failed_to_translate_expr);
+      continue;
+    }
+
+    clang::QualType ArgTy = TArg->getType();
+    if (ArgTy->isNamespaceType()
+        || ArgTy->isTemplateType()
+        || ArgTy->isTypeOfTypes()) {
+      SemaRef.Diags.Report(A->getExprLoc(),
+                           clang::diag::err_invalid_result_type);
+      continue;
+    }
+    Args.emplace_back(TArg);
+  }
+
+  clang::SourceLocation Loc = Base->getExprLoc();
+  if (Base->getType()->isTypeOfTypes()) {
+    // We are a constructor call.
+    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(Base,
+                                                            Base->getExprLoc());
+    if (!TInfo)
+      return nullptr;
+    // return clang::CXXUnresolvedConstructExpr::Create(Context.CxxAST, TInfo,
+    //                                                 Loc, Args, Loc);
+    return SemaRef.getCxxSema().BuildCXXTypeConstructExpr(TInfo, Loc, Args, Loc,
+                                             /*ListInitialization*/false).get();
+  } else {
+    // We are a function call.
+    return SemaRef.getCxxSema().ActOnCallExpr(
+      /*Scope=*/nullptr, Base, clang::SourceLocation(), Args,
+      clang::SourceLocation()).get();
+  }
 }
 
 clang::Expr *DependentExprTransformer::transformCppxTemplateOrArrayExpr(

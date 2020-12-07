@@ -290,8 +290,9 @@ protected:
     friend class CallExpr; // ctor
     friend class CXXConstructExpr; // ctor
     friend class CXXDependentScopeMemberExpr; // ctor
-    friend class CppxDependentMemberAccessExpr;
-    friend class CppxTemplateOrArrayExpr; // Ctor
+    friend class CppxDependentMemberAccessExpr; // ctor
+    friend class CppxCallOrConstructorExpr; // ctor
+    friend class CppxTemplateOrArrayExpr; // ctor
     friend class CXXNewExpr; // ctor
     friend class CXXUnresolvedConstructExpr; // ctor
     friend class DeclRefExpr; // computeDependence
@@ -481,6 +482,21 @@ protected:
 
 class CppxTemplateOrArrayExprBitFields {
     friend class CppxTemplateOrArrayExpr;
+
+    unsigned : NumExprBits;
+
+    /// Padding used to align OffsetToTrailingObjects to a byte multiple.
+    unsigned : 24 - NumExprBits;
+
+    /// The offset in bytes from the this pointer to the start of the
+    /// trailing objects belonging to my strange template or possible array
+    /// expression.
+    /// Intentionally byte sized for faster access.
+    unsigned OffsetToTrailingObjects : 8;
+  };
+
+  class CppxCallOrConstructorExprBitFields {
+    friend class CppxCallOrConstructorExpr;
 
     unsigned : NumExprBits;
 
@@ -1072,6 +1088,7 @@ class CppxTemplateOrArrayExprBitFields {
     ArrayOrMatrixSubscriptExprBitfields ArrayOrMatrixSubscriptExprBits;
     CallExprBitfields CallExprBits;
     CppxTemplateOrArrayExprBitFields TemplateOrArrayBits;
+    CppxCallOrConstructorExprBitFields CallOrConstructorBits;
     MemberExprBitfields MemberExprBits;
     CastExprBitfields CastExprBits;
     BinaryOperatorBitfields BinaryOperatorBits;

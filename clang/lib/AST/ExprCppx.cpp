@@ -129,4 +129,45 @@ CppxTemplateOrArrayExpr::CreateEmpty(const ASTContext &Ctx, unsigned NumArgs,
                            alignof(CppxTemplateOrArrayExpr));
   return new (Mem) CppxTemplateOrArrayExpr(Ctx, NumArgs, Empty);
 }
+
+
+CppxCallOrConstructorExpr::CppxCallOrConstructorExpr(const ASTContext &Ctx,
+                                                 Stmt *E,
+                                                 ArrayRef<Expr *> Args)
+  :Expr(CppxCallOrConstructorExprClass, Ctx.DependentTy, VK_LValue, OK_Ordinary),
+  NumArgs(Args.size())
+{
+  CallOrConstructorBits.OffsetToTrailingObjects = sizeof(CppxCallOrConstructorExpr);
+  setDependence(clang::ExprDependenceScope::ExprDependence::TypeValue
+                |  clang::ExprDependenceScope::ExprDependence::TypeInstantiation
+                |  clang::ExprDependenceScope::ExprDependence::ValueInstantiation
+                |  clang::ExprDependenceScope::ExprDependence::TypeValueInstantiation);
+  // Copying everything into the trailing arguments.
+  getTrailingStmts()[0] = E;
+  for (unsigned I = 0; I != Args.size(); ++I)
+    setArg(I, Args[I]);
+}
+
+CppxCallOrConstructorExpr::CppxCallOrConstructorExpr(const ASTContext &Ctx, unsigned ArgCount, EmptyShell Empty)
+    : Expr(CppxCallOrConstructorExprClass, Empty) { }
+
+
+CppxCallOrConstructorExpr *
+CppxCallOrConstructorExpr::Create(const ASTContext &Ctx, Expr *BaseExpr,
+                                ArrayRef<Expr *> Args) {
+  void *Mem = Ctx.Allocate(sizeof(CppxCallOrConstructorExpr)
+                           + sizeOfTrailingObjects(Args.size()),
+                           alignof(CppxCallOrConstructorExpr));
+  auto R =  new (Mem) CppxCallOrConstructorExpr(Ctx, BaseExpr, Args);
+  return R;
+}
+
+CppxCallOrConstructorExpr *
+CppxCallOrConstructorExpr::CreateEmpty(const ASTContext &Ctx, unsigned NumArgs,
+                                     EmptyShell Empty) {
+  void *Mem = Ctx.Allocate(sizeof(CppxCallOrConstructorExpr)
+                           + sizeOfTrailingObjects(NumArgs),
+                           alignof(CppxCallOrConstructorExpr));
+  return new (Mem) CppxCallOrConstructorExpr(Ctx, NumArgs, Empty);
+}
 } // namespace clang

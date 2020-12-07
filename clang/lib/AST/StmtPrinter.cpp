@@ -2313,6 +2313,19 @@ void StmtPrinter::VisitCppxDependentMemberAccessExpr(
     OS << ".";
   }
 }
+
+void StmtPrinter::VisitCppxCallOrConstructorExpr(
+                                         CppxCallOrConstructorExpr *Node) {
+  PrintExpr(Node->getExpr());
+  OS << "(";
+  for (unsigned i = 0, e = Node->getNumArgs(); i != e; ++i) {
+
+    if (i) OS << ", ";
+    PrintExpr(Node->getArg(i));
+  }
+  OS << ")";
+}
+
 void StmtPrinter::VisitCppxTemplateOrArrayExpr(
                                          CppxTemplateOrArrayExpr *Node) {
   PrintExpr(Node->getBase());
