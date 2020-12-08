@@ -3752,13 +3752,15 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
       continue;
     }
 
-
     Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
     assert(D && "Didn't find associated declaration");
     assert(isa<clang::ParmVarDecl>(VD) && "Parameter is not a ParmVarDecl");
+    clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(VD);
 
+    Context.CxxAST.setParameterIndex(PVD, I);
+    PVD->setScopeInfo(0, I);
     Types.push_back(VD->getType());
-    Params.push_back(cast<clang::ParmVarDecl>(VD));
+    Params.push_back(PVD);
   }
   FuncDcl->setScope(SemaRef.saveScope(FuncDcl->getParams()));
 

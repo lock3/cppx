@@ -2024,6 +2024,7 @@ void deduceDependentAutoReturn(SyntaxContext &Context,
 
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::Sema &CxxSema = SemaRef.getCxxSema();
+  // CxxSema.PushFunctionScope();
   clang::DeclContext *Owner = D->getOwningDeclContext();
   if (auto *Linkage = dyn_cast<clang::LinkageSpecDecl>(Owner)) {
     if (Linkage->getParent()->isRecord()) {
