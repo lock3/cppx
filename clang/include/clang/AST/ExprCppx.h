@@ -144,7 +144,7 @@ public:
 
 };
 
-/// This represents a reference to a namespace expression.
+/// This represents a reference to a template or namespace expression.
 class CppxDeclRefExpr : public Expr {
 public:
   /// The actual type denoted by the literal.
@@ -657,7 +657,53 @@ public:
 };
 
 
+/// This expression could be a dereference or pointer type.
+class CppxDerefOrPtrExpr : public Expr {
+  Stmt *Value;
 
+  /// The location of the namespace.
+  SourceLocation Loc;
+
+  explicit CppxDerefOrPtrExpr(EmptyShell Empty)
+    : Expr(CppxDerefOrPtrExprClass, Empty) { }
+
+  CppxDerefOrPtrExpr(const ASTContext &Ctx, Expr *E, SourceLocation L);
+public:
+
+  Expr *getValue() const LLVM_READONLY {
+    return cast<Expr>(Value);
+  }
+
+  SourceLocation getBeginLoc() const LLVM_READONLY {
+    return Loc;
+  }
+
+  SourceLocation getEndLoc() const LLVM_READONLY {
+    return Loc;
+  }
+
+  /// Retrieve the location of the literal.
+  SourceLocation getLocation() const { return Loc; }
+
+  void setLocation(SourceLocation Location) { Loc = Location; }
+
+  // Iterators
+  child_range children() {
+    return child_range(&Value,
+                       &Value + 1);
+  }
+  const_child_range children() const {
+    return const_child_range(&Value,
+                             &Value + 1);
+  }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == CppxDerefOrPtrExprClass;
+  }
+
+  static CppxDerefOrPtrExpr *Create(const ASTContext &Ctx, Expr *E,
+                                    SourceLocation L);
+};
 
 } // namespace clang
 

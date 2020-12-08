@@ -634,6 +634,7 @@ CXCursor cxcursor::MakeCXCursor(const Stmt *S, const Decl *Parent,
     break;
 
   case Stmt::CppxCallOrConstructorExprClass:
+  case Stmt::CppxDerefOrPtrExprClass:
   case Stmt::CallExprClass:
   case Stmt::CXXOperatorCallExprClass:
   case Stmt::CXXMemberCallExprClass:

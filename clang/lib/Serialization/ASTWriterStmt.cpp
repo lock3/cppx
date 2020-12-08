@@ -1996,8 +1996,13 @@ void ASTStmtWriter::VisitCppxTemplateOrArrayExpr(CppxTemplateOrArrayExpr *E) {
   llvm_unreachable("ASTStmtWriter::VisitCppxTemplateOrArrayExpr "
                    "Not implemented.");
 }
+
 void ASTStmtWriter::VisitCppxCallOrConstructorExpr(CppxCallOrConstructorExpr *E) {
   llvm_unreachable("ASTStmtWriter::VisitCppxCallOrConstructorExpr "
+                   "Not implemented.");
+}
+void ASTStmtWriter::VisitCppxDerefOrPtrExpr(CppxDerefOrPtrExpr *E) {
+  llvm_unreachable("ASTStmtWriter::VisitCppxDerefOrPtrExpr "
                    "Not implemented.");
 }
 

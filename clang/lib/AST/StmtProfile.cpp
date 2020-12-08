@@ -2025,6 +2025,13 @@ void StmtProfiler::VisitCppxCallOrConstructorExpr(
   for(auto A : S->arguments())
     Visit(A);
 }
+
+void StmtProfiler::VisitCppxDerefOrPtrExpr(
+    const CppxDerefOrPtrExpr *S){
+  ID.AddInteger(int(UO_Deref));
+  VisitExpr(S->getValue());
+}
+
 void StmtProfiler::VisitCppxTemplateOrArrayExpr(
     const CppxTemplateOrArrayExpr *S) {
   llvm_unreachable("Not sure what this is for.");

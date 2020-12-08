@@ -15325,6 +15325,7 @@ static ICEDiag CheckICE(const Expr* E, const Expr::EvalContext &Ctx) {
   case Expr::CppxTypeLiteralClass:
   case Expr::CppxPartialEvalExprClass:
   case Expr::CppxDeclRefExprClass:
+  case Expr::CppxDerefOrPtrExprClass:
   case Expr::CXXFragmentCaptureExprClass:
     return ICEDiag(IK_NotICE, E->getBeginLoc());
 

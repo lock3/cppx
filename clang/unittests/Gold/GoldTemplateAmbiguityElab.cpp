@@ -875,28 +875,6 @@ bar():void!
 }
 
 
-// TEST(GoldTemplateAmbiguity, NonDependentConstructor) {
-//   StringRef Code = R"Gold(
-// T1 = class:
-//   T2 = class:
-//     operator"+"(Y:ref const T2)<const>:bool!
-//       return false
-      
-// foo():void!
-//   T1.T2() + T1.T2()
-
-// )Gold";
-//   auto ToMatch = functionDecl(
-//     hasName("foo"),
-//     hasDescendant(cxxMemberCallExpr(
-//       callee(cxxMethodDecl(
-//         hasName("operator+")
-//       ))
-//     ))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
-
 TEST(GoldTemplateAmbiguity, OperarandsAreDependentConstructorCalls) {
   StringRef Code = R"Gold(
 T1 = class:
@@ -956,15 +934,11 @@ foo[T:type](var : ^T.T2, var2 : ^T.T2):void!
 bar():void!
   x :^T1.T2
   y :^T1.T2
-  foo(x, y)
+  foo[T1](x, y)
 )Gold";
-  auto ToMatch = functionDecl(
+  auto ToMatch = functionTemplateDecl(
     hasName("foo"),
-    hasDescendant(cxxMemberCallExpr(
-      callee(cxxMethodDecl(
-        hasName("operator+")
-      ))
-    ))
+    has(functionDecl(hasType(asString("void (struct T1::T2 *, struct T1::T2 *)"))))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -1023,4 +997,74 @@ bar():void!
 
 
 // I need tests for const/ref/rref dependent type that doesn't evaluate to a type.
-// I need tests for dereference/pointer decl type
+TEST(GoldTemplateAmbiguity, ConstDependentExpression) {
+  StringRef Code = R"Gold(
+T1 = class:
+  T2 = class:
+    ;
+foo[T:type]():void!
+  x :type = const T.T2
+
+bar():void!
+  foo[T1]()
+)Gold";
+  auto ToMatch = functionTemplateDecl(
+    hasName("foo"),
+    has(functionDecl(
+      hasName("foo"),
+      hasDescendant(typeAliasDecl(
+        hasName("x"),
+        hasType(asString("const struct T1::T2"))
+        ))
+      ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldTemplateAmbiguity, RefDependentExpression) {
+  StringRef Code = R"Gold(
+T1 = class:
+  T2 = class:
+    ;
+foo[T:type]():void!
+  x :type = ref T.T2
+
+bar():void!
+  foo[T1]()
+)Gold";
+  auto ToMatch = functionTemplateDecl(
+    hasName("foo"),
+    has(functionDecl(
+      hasName("foo"),
+      hasDescendant(typeAliasDecl(
+        hasName("x"),
+        hasType(asString("struct T1::T2 &"))
+        ))
+      ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldTemplateAmbiguity, RRefDependentExpression) {
+  StringRef Code = R"Gold(
+T1 = class:
+  T2 = class:
+    ;
+foo[T:type]():void!
+  x :type = rref T.T2
+
+bar():void!
+  foo[T1]()
+)Gold";
+  auto ToMatch = functionTemplateDecl(
+    hasName("foo"),
+    has(functionDecl(
+      hasName("foo"),
+      hasDescendant(typeAliasDecl(
+        hasName("x"),
+        hasType(asString("struct T1::T2 &&"))
+        ))
+      ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

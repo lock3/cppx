@@ -40,7 +40,7 @@ public:
   clang::Expr *transformCppxDependentMemberAccessExpr(
                                        clang::CppxDependentMemberAccessExpr *E);
   clang::Expr *transformCppxTemplateOrArrayExpr(clang::CppxTemplateOrArrayExpr *E);
-
+  clang::Expr *transformCppxDerefOrPtrExpr(clang::CppxDerefOrPtrExpr* E);
   clang::Expr *transformTemplateInstantiation(
       clang::CppxTemplateOrArrayExpr *E, clang::TemplateDecl *D);
   /// This takes the given arguments and attempts to transform them

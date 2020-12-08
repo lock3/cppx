@@ -896,6 +896,12 @@ ExprDependence clang::computeDependence(CppxCallOrConstructorExpr *E) {
   return D;
 }
 
+ExprDependence clang::computeDependence(CppxDerefOrPtrExpr *E) {
+  auto D = ExprDependence::TypeValueInstantiation;
+  D |= E->getValue()->getDependence();
+  return D;
+}
+
 ExprDependence clang::computeDependence(CppxTemplateOrArrayExpr *E) {
   auto D = ExprDependence::TypeValueInstantiation;
   D |= E->getBase()->getDependence();

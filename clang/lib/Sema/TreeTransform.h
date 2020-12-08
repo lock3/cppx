@@ -14324,6 +14324,12 @@ TreeTransform<Derived>::TransformCppxTemplateOrArrayExpr(
                                                      TransformedAguments);
 }
 
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCppxDerefOrPtrExpr(
+    CppxDerefOrPtrExpr *E) {
+  llvm_unreachable("CppxDerefOrPtrExpr instantiation not implemented yet");
+}
 
 template<typename Derived>
 ExprResult

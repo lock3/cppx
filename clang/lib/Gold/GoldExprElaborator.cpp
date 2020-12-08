@@ -971,7 +971,8 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
 
 static bool isACppxDependentExpr(clang::Expr *E) {
   return isa<clang::CppxTemplateOrArrayExpr>(E)
-         || isa<clang::CppxDependentMemberAccessExpr>(E);
+         || isa<clang::CppxDependentMemberAccessExpr>(E)
+         || isa<clang::CppxDerefOrPtrExpr>(E);
 }
 
 clang::Expr *ExprElaborator::elaborateElementExpr(const ElemSyntax *Elem) {
@@ -3040,6 +3041,13 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
   // This is used to construct a pointer type because the caret has two
   // meanings. Dereference and pointer declaration.
   if (Op == clang::UO_Deref) {
+    if (isACppxDependentExpr(OperandResult)) {
+      // Because we are a dependent expression we then need to make sure that if
+      // we are an expression of an undetermined type then we create an expression
+      // that is both.
+      return clang::CppxDerefOrPtrExpr::Create(Context.CxxAST, OperandResult,
+                                               S->getLoc());
+    }
     if (OperandResult->getType()->isTypeOfTypes()) {
       clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
                                                     OperandResult, S->getLoc());
@@ -4064,6 +4072,9 @@ clang::Expr *ExprElaborator::makeConstType(clang::Expr *InnerTy,
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
+  if (isACppxDependentExpr(InnerTy)) {
+    InnerTy = SemaRef.buildTypeExprTypeFromExpr(InnerTy, ConstOpNode->getLoc());
+  }
   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InnerTy,
                                                         ConstOpNode->getLoc());
   if (!TInfo)
@@ -4087,6 +4098,9 @@ clang::Expr *ExprElaborator::makeRefType(clang::Expr *InnerTy,
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
+  if (isACppxDependentExpr(InnerTy)) {
+    InnerTy = SemaRef.buildTypeExprTypeFromExpr(InnerTy, RefOpNode->getLoc());
+  }
   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InnerTy,
                                                            RefOpNode->getLoc());
   if (!TInfo)
@@ -4109,6 +4123,9 @@ clang::Expr *ExprElaborator::makeRRefType(clang::Expr *InnerTy,
     SemaRef.Diags.Report(RRefOpNode->getLoc(),
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
+  }
+  if (isACppxDependentExpr(InnerTy)) {
+    InnerTy = SemaRef.buildTypeExprTypeFromExpr(InnerTy, RRefOpNode->getLoc());
   }
   clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InnerTy,
                                                           RRefOpNode->getLoc());

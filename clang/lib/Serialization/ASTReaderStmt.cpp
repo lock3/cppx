@@ -570,6 +570,10 @@ void ASTStmtReader::VisitCppxCallOrConstructorExpr(CppxCallOrConstructorExpr *E)
   llvm_unreachable("not implemented");
 }
 
+void ASTStmtReader::VisitCppxDerefOrPtrExpr(CppxDerefOrPtrExpr *E) {
+  llvm_unreachable("not implemented");
+}
+
 void ASTStmtReader::VisitCXXFragmentCaptureExpr(CXXFragmentCaptureExpr *E) {
   llvm_unreachable("not implemented");
 }

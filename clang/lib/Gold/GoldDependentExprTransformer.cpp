@@ -12,6 +12,7 @@
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Gold/GoldOperatorInfo.h"
+#include "clang/Gold/GoldExprMarker.h"
 #include "clang/Lex/LexDiagnostic.h"
 #include "clang/Lex/LiteralSupport.h"
 #include "clang/Sema/Lookup.h"
@@ -25,6 +26,8 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Error.h"
+
+
 
 namespace gold {
 
@@ -46,6 +49,8 @@ clang::Expr *DependentExprTransformer::transformDependentExpr(clang::Expr *E) {
   if (auto LT = dyn_cast<clang::CppxTypeLiteral>(E))
     return transformCppxLiteralType(LT);
 
+  if (auto DerefOrPtr = dyn_cast<clang::CppxDerefOrPtrExpr>(E))
+    return transformCppxDerefOrPtrExpr(DerefOrPtr);
   return SemaRef.getCxxSema().SubstExpr(E, TemplateArgs).get();
 }
 
@@ -374,7 +379,7 @@ clang::Expr *DependentExprTransformer::transformCppxTemplateOrArrayExpr(
 
     return SubscriptExpr.get();
   }
-  
+
   // We have an overload set, meaning this must be some kind of
   // overloaded function or function template.
   clang::SourceLocation Loc = IdExpr->getExprLoc();
@@ -416,6 +421,35 @@ clang::Expr *DependentExprTransformer::transformCppxTemplateOrArrayExpr(
                                                ULE->decls_end());
   }
   llvm_unreachable("Unknown overload expression.");
+}
+
+clang::Expr *
+DependentExprTransformer::transformCppxDerefOrPtrExpr(
+    clang::CppxDerefOrPtrExpr* E) {
+  clang::Expr *InnerExpr = transformDependentExpr(E->getValue());
+  if (!InnerExpr)
+    return nullptr;
+  clang::QualType Ty = InnerExpr->getType();
+  if (Ty->isNamespaceType() || Ty->isTemplateType()) {
+    SemaRef.Diags.Report(E->getExprLoc(),
+                         clang::diag::err_deref_or_ptr_for_invalid_type);
+    return nullptr;
+  }
+  if (Ty->isTypeOfTypes()) {
+    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InnerExpr,
+                                                               E->getExprLoc());
+    if (!TInfo)
+      return nullptr;
+    clang::QualType RetType = Context.CxxAST.getPointerType(TInfo->getType());
+    return SemaRef.buildTypeExpr(RetType, E->getExprLoc());
+  }
+
+  // Creating a dereference expression.
+  clang::ExprResult UnaryOpRes = SemaRef.getCxxSema().BuildUnaryOp(
+    /*scope*/nullptr, E->getExprLoc(), clang::UO_Deref, InnerExpr);
+
+  ExprMarker(Context.CxxAST, SemaRef).Visit(InnerExpr);
+  return UnaryOpRes.get();
 }
 
 clang::Expr *

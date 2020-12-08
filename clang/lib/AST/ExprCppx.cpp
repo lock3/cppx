@@ -170,4 +170,21 @@ CppxCallOrConstructorExpr::CreateEmpty(const ASTContext &Ctx, unsigned NumArgs,
                            alignof(CppxCallOrConstructorExpr));
   return new (Mem) CppxCallOrConstructorExpr(Ctx, NumArgs, Empty);
 }
+
+
+CppxDerefOrPtrExpr::CppxDerefOrPtrExpr(const ASTContext &Ctx, Expr *E, SourceLocation L)
+    : Expr(CppxDerefOrPtrExprClass, Ctx.DependentTy, VK_LValue, OK_Ordinary),
+      Value(E), Loc(L) {
+  setDependence(ExprDependenceScope::ExprDependence::TypeValue
+              | ExprDependenceScope::ExprDependence::TypeInstantiation
+              | ExprDependenceScope::ExprDependence::ValueInstantiation
+              | ExprDependenceScope::ExprDependence::TypeValueInstantiation);
+}
+CppxDerefOrPtrExpr *CppxDerefOrPtrExpr::Create(const ASTContext &Ctx, Expr *E,
+                                               SourceLocation L) {
+  void *Mem = Ctx.Allocate(sizeof(CppxDerefOrPtrExpr),
+                           alignof(CppxDerefOrPtrExpr));
+  return new (Mem) CppxDerefOrPtrExpr(Ctx, E, L);
+
+}
 } // namespace clang

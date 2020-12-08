@@ -1764,8 +1764,11 @@ void getFunctionParameters(Sema &SemaRef, Declaration *D,
       ArgsParam = D->IsVariadic = true;
     }
 
-    if (!ArgsParam)
-      Params.push_back(cast<clang::ParmVarDecl>(PD->Cxx));
+    if (!ArgsParam) {
+      clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(PD->Cxx);
+      Params.push_back(PVD);
+      PVD->setScopeInfo(SemaRef.getCurClangScope()->getDepth(), I);
+    }
   }
 }
 

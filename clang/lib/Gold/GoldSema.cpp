@@ -1823,6 +1823,13 @@ clang::Expr *Sema::TransformCppxCallOrConstructorExpr(
   DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
   return rebuilder.transformDependentExpr(E);
 }
+clang::Expr *Sema::TransformCppxDerefOrPtrExpr(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxDerefOrPtrExpr *E) {
+  DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
+  return rebuilder.transformDependentExpr(E);
+}
 
 clang::ParsedTemplateArgument Sema::convertExprToTemplateArg(clang::Expr *E) {
   // Type parameters start here.

@@ -1140,6 +1140,16 @@ namespace {
       return Ret;
     }
 
+    ExprResult TransformCppxDerefOrPtrExpr(CppxDerefOrPtrExpr *E) {
+      assert(SemaRef.getGoldSema() && "invalid without gold language support");
+      auto Ret = SemaRef.getGoldSema()->TransformCppxDerefOrPtrExpr(
+          TemplateArgs, Loc, Entity, E);
+      if (!Ret) {
+        return ExprError();
+      }
+      return Ret;
+    }
+
     // Handling this specially because I have to evaluate the inner type twice,
     // sort of.
     ExprResult TransformCppxCallOrConstructorExpr(CppxCallOrConstructorExpr *E) {
