@@ -3713,6 +3713,8 @@ clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *T
   assert(D->isType());
   TypeDeclarator *TyDcl = D->getAsType();
   clang::Expr *Ret = doElaborateExpr(TyDcl->getTyExpr());
+  if (!Ret)
+    return nullptr;
   if (isACppxDependentExpr(Ret)) {
     Ret = SemaRef.buildTypeExprTypeFromExprLiteral(Ret, D->getLoc());
   }
