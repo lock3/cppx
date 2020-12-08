@@ -1410,7 +1410,7 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
       return handleIdentifier(Name, nullptr);
 
   if (const auto *Macro = dyn_cast<MacroSyntax>(S))
-    return makeTopLevelDeclarator(S, nullptr);
+    return makeTopLevelDeclarator(Macro, nullptr);
 
   const auto *Call = dyn_cast<CallSyntax>(S);
   if (!Call) {

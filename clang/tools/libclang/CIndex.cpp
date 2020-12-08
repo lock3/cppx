@@ -2057,7 +2057,7 @@ public:
   }
   void VisitMSDependentExistsStmt(const MSDependentExistsStmt *S);
   void VisitCXXDependentScopeMemberExpr(const CXXDependentScopeMemberExpr *E);
-  void VisitCppxDependentScopeMemberExpr(const CppxDependentScopeMemberExpr *E);
+  void VisitCppxDependentMemberAccessExpr(const CppxDependentMemberAccessExpr *E);
   void VisitCXXNewExpr(const CXXNewExpr *E);
   void VisitCXXScalarValueInitExpr(const CXXScalarValueInitExpr *E);
   void VisitCXXOperatorCallExpr(const CXXOperatorCallExpr *E);
@@ -2640,8 +2640,8 @@ void EnqueueVisitor::VisitCXXDependentScopeMemberExpr(
     AddStmt(E->getBase());
 }
 
-void EnqueueVisitor::VisitCppxDependentScopeMemberExpr(
-    const CppxDependentScopeMemberExpr *E) {
+void EnqueueVisitor::VisitCppxDependentMemberAccessExpr(
+    const CppxDependentMemberAccessExpr *E) {
   AddDeclarationNameInfo(E);
   if (!E->isImplicitAccess())
     AddStmt(E->getBase());

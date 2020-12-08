@@ -2614,6 +2614,13 @@ public:
   ExprResult RebuildUnaryOperator(SourceLocation OpLoc,
                                         UnaryOperatorKind Opc,
                                         Expr *SubExpr) {
+    if (getSema().getLangOpts().Gold) {
+      QualType Ty = SubExpr->getType();
+      if (Ty->isTypeOfTypes() || Ty->isTemplateType() || Ty->isNamespaceType()) {
+        getSema().Diag(OpLoc, diag::err_invalid_operand_type);
+        return ExprError();
+      }
+    }
     return getSema().BuildUnaryOp(/*Scope=*/nullptr, OpLoc, Opc, SubExpr);
   }
 
@@ -2745,6 +2752,16 @@ public:
                                    MultiExprArg Args,
                                    SourceLocation RParenLoc,
                                    Expr *ExecConfig = nullptr) {
+    if (getSema().getLangOpts().Gold) {
+      for (auto E : Args) {
+        QualType Ty = E->getType();
+        if (Ty->isTypeOfTypes() || Ty->isTemplateType()
+            || Ty->isNamespaceType()) {
+          getSema().Diag(E->getExprLoc(), diag::err_invalid_function_argument);
+          return ExprError();
+        }
+      }
+    }
     return getSema().ActOnCallExpr(
         /*Scope=*/nullptr, Callee, LParenLoc, Args, RParenLoc, ExecConfig);
   }
@@ -2814,6 +2831,16 @@ public:
   ExprResult RebuildBinaryOperator(SourceLocation OpLoc,
                                          BinaryOperatorKind Opc,
                                          Expr *LHS, Expr *RHS) {
+    if (getSema().getLangOpts().Gold) {
+      QualType LTy = LHS->getType();
+      QualType RTy = RHS->getType();
+      if (LTy->isTypeOfTypes() || LTy->isTemplateType() ||
+          LTy->isNamespaceType() || RTy->isTypeOfTypes() || RTy->isTemplateType() ||
+          RTy->isNamespaceType()) {
+        getSema().Diag(OpLoc, diag::err_invalid_operand_type);
+        return ExprError();
+      }
+    }
     return getSema().BuildBinOp(/*Scope=*/nullptr, OpLoc, Opc, LHS, RHS);
   }
 

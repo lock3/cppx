@@ -1161,8 +1161,6 @@ namespace {
       if (Base.get()->getType()->isTypeOfTypes()) {
         // We have a constructor call here.
         SourceLocation Loc = OldBase->getExprLoc();
-        // auto TyLiteral = SemaRef.getGoldSema()->buildTypeExprTypeFromExpr(
-        //   OldBase, OldBase->getExprLoc());
         auto TInfo = cast<clang::CppxTypeLiteral>(Base.get())->getValue();
         clang::ParsedType ParsedTy = SemaRef.CreateParsedType(TInfo->getType(),
                                                               TInfo);
@@ -1172,23 +1170,32 @@ namespace {
                                                           ArgsArr, Loc, false);
         if (CtorExpr.isInvalid())
           return CtorExpr;
+        // ExprResult Ret = CtorExpr;
+        // ExprResult Ret = SemaRef.CreateMaterializeTemporaryExpr(
+        //   TInfo->getType(), CtorExpr.get(), false);
+        // if (Ret.isInvalid())
+        //   return ExprError();
+        // ExprResult Ret = SemaRef.TemporaryMaterializationConversion(Ret.get());
+        // if (Ret.isInvalid())
+        //   return ExprError();
+        // llvm::outs() << "Dumping CtorExpr\n";
+        // CtorExpr.get()->dump();
+        // if (auto CXXTempObj = dyn_cast<CXXTemporaryObjectExpr>(CtorExpr.get())) {
+        //   llvm::SmallVector<Expr *, 32> ConvertedArgs;
+        //   if (SemaRef.CompleteConstructorCall(CXXTempObj->getConstructor(),
+        //                                       ArgsArr, Loc, ConvertedArgs,
+        //                                       true, false))
+        //     return ExprError();
+        //   // Ret = SemaRef.BuildCXXConstructExpr(Loc, TInfo->getType(),
+        //   //                                TInfo->getType()->getAsCXXRecordDecl(),
+        //   //                                     CXXTempObj->getConstructor(),
+        //   //                                     ConvertedArgs, true, false, false,
+        //   //                                     false,
+        //   //                                     CXXConstructExpr::CK_Complete,
+        //   //                                     SourceRange(Loc, Loc));
+        // }
 
-        ExprResult Ret = CtorExpr;
-        if (auto CXXTempObj = dyn_cast<CXXTemporaryObjectExpr>(CtorExpr.get())) {
-          llvm::SmallVector<Expr *, 32> ConvertedArgs;
-          if (SemaRef.CompleteConstructorCall(CXXTempObj->getConstructor(),
-                                              ArgsArr, Loc, ConvertedArgs,
-                                              true, false))
-            return ExprError();
-          Ret = SemaRef.BuildCXXConstructExpr(Loc, TInfo->getType(),
-                                              TInfo->getType()->getAsCXXRecordDecl(),
-                                              CXXTempObj->getConstructor(),
-                                              ConvertedArgs, true, false, false, false,
-                                              CXXConstructExpr::CK_Complete,
-                                              SourceRange(Loc, Loc));
-        }
-
-        return Ret;
+        return CtorExpr;
       }
 
       // Transforming the arguments
@@ -1210,46 +1217,7 @@ namespace {
       return SemaRef.ActOnCallExpr(/*Scope=*/nullptr, Base.get(),
                                    clang::SourceLocation(), TransformedAguments,
                                    clang::SourceLocation());
-
-      // return getDerived().RebuildCppxCallOrConstructorExpr(Base.get(),
-      //                                                     TransformedAguments);
     }
-
-    ExprResult RebuildCppxCallOrConstructorExpr(Expr *Base,
-                                                ArrayRef<Expr *> Args) {
-      auto E = clang::CppxCallOrConstructorExpr::Create(SemaRef.getASTContext(),
-                                                        Base, Args);
-      assert(SemaRef.getGoldSema() && "invalid without gold language support");
-      auto Ret = SemaRef.getGoldSema()->TransformCppxCallOrConstructorExpr(
-          TemplateArgs, Loc, Entity, E);
-      if (!Ret) {
-        return ExprError();
-      }
-      // if (isa<>(Ret)) {
-      //   return getDerived().TransformCXXUnresolvedConstructExpr(
-      //       cast<CXXUnresolvedConstructExpr>(Ret));
-      // }
-      return Ret;
-    }
-
-
-    // ExprResult RebuildCppxCallOr(Expr *BaseE,
-    //                                               QualType BaseType,
-    //                                               SourceLocation OperatorLoc,
-    //                                 const DeclarationNameInfo &MemberNameInfo,
-    //                                               Expr *NameExpr = nullptr) {
-    //   auto E = clang::CppxDependentMemberAccessExpr::Create(
-    //     SemaRef.getASTContext(), BaseE, BaseType, OperatorLoc, MemberNameInfo,
-    //     NameExpr);
-    //   assert(SemaRef.getGoldSema() && "invalid without gold language support");
-    //   auto Ret = SemaRef.getGoldSema()->TransformCppxDependentMemberAccessExpr(
-    //       TemplateArgs, Loc, Entity, E);
-    //   if (!Ret) {
-    //     return ExprError();
-    //   }
-    //   return Ret;
-    // }
-
 
     QualType TransformCppxTypeExprType(TypeLocBuilder &TLB,
                                        CppxTypeExprTypeLoc TL) {

@@ -11451,11 +11451,24 @@ def err_construct_on_non_pointer_ty : Error<
   "evaluates to a pointer">;
 
 def err_var_init_instantiation_failure : Error<
-    "template instantiation failure during variable initialization">;
+  "template instantiation failure during variable initialization">;
 
 def err_expression_does_not_eval_to_value : Error<
-    "expression doesn't evaluate to a value, it evaluates to type, namespace, "
-    "or template">;
+  "expression doesn't evaluate to a value, it evaluates to type, namespace, "
+  "or template">;
+
+def err_non_array_or_template_with_sqr_brackets : Error<
+  "invalid expression does not evaluate to a template, array, or pointer">;
+
+def err_qualified_name_no_a_type : Error<
+  "qualifid name expression doesn't name a type">;
+
+def err_invalid_operand_type : Error <
+    "types, namespace, and templates cannot be operands to an operator">;
+
+def err_invalid_function_argument : Error <
+    "types, namespace, and templates cannot be arguments to a function">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

@@ -3704,7 +3704,11 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
 clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *Ty) {
   assert(D->isType());
   TypeDeclarator *TyDcl = D->getAsType();
-  return doElaborateExpr(TyDcl->getTyExpr());
+  clang::Expr *Ret = doElaborateExpr(TyDcl->getTyExpr());
+  if (isACppxDependentExpr(Ret)) {
+    Ret = SemaRef.buildTypeExprTypeFromExprLiteral(Ret, D->getLoc());
+  }
+  return Ret;
 }
 
 

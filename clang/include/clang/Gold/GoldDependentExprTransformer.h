@@ -39,7 +39,6 @@ public:
 
   clang::Expr *transformCppxDependentMemberAccessExpr(
                                        clang::CppxDependentMemberAccessExpr *E);
-  clang::Expr *transformCppxCallOrConstructorExpr(clang::CppxCallOrConstructorExpr *E);
   clang::Expr *transformCppxTemplateOrArrayExpr(clang::CppxTemplateOrArrayExpr *E);
 
   clang::Expr *transformTemplateInstantiation(

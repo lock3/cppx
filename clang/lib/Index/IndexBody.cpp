@@ -189,7 +189,7 @@ public:
         [](const NamedDecl *D) { return D->isCXXInstanceMember(); });
   }
 
-  bool VisitCppxDependentScopeMemberExpr(CppxDependentScopeMemberExpr *E) {
+  bool VisitCppxDependentMemberAccessExpr(CppxDependentMemberAccessExpr *E) {
     const DeclarationNameInfo &Info = E->getMemberNameInfo();
     return indexDependentReference(
         E, E->getBaseType().getTypePtrOrNull(), Info,

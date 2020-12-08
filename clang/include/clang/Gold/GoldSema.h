@@ -364,6 +364,10 @@ public:
                                                     clang::SourceLocation Loc,
                                                   bool IsConstructExpr = false);
 
+  clang::CppxTypeLiteral *buildTypeExprTypeFromExprLiteral(clang::Expr *E,
+                                                    clang::SourceLocation Loc,
+                                                  bool IsConstructExpr = false);
+
   clang::QualType buildQualTypeExprTypeFromExpr(clang::Expr *E,
                                                 clang::SourceLocation Loc,
                                                 bool IsConstructExpr = false);
@@ -1155,6 +1159,10 @@ public:
   clang::ParsedTemplateArgument convertExprToTemplateArg(clang::Expr *E);
 
 public:
+  /// This was created to fix a single issue when transforming calls to operator
+  /// new. In order to correctly call new in the case of a .construct call
+  /// I need to force the operator new call back to an internal version
+  /// inplace new.
   clang::ExprResult
   BuildCXXNew(clang::SourceRange Range, bool UseGlobal,
               clang::SourceLocation PlacementLParen,

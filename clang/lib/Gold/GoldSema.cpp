@@ -1163,6 +1163,13 @@ clang::CppxTypeLiteral *Sema::buildTypeExprTypeFromExpr(clang::Expr *E,
                                             E, IsConstruct),
                                           Loc));
 }
+clang::CppxTypeLiteral *Sema::buildTypeExprTypeFromExprLiteral(clang::Expr *E,
+                                                    clang::SourceLocation Loc,
+                                                         bool IsConstructExpr){
+  clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST,
+                  Context.CxxAST.getCppxTypeExprTy(E, IsConstructExpr), Loc);
+  return buildTypeExpr(TInfo);
+}
 
 clang::QualType Sema::buildQualTypeExprTypeFromExpr(clang::Expr *E,
                                                     clang::SourceLocation Loc,
@@ -1844,6 +1851,8 @@ clang::ParsedTemplateArgument Sema::convertExprToTemplateArg(clang::Expr *E) {
       ConstExpr.get(), E->getExprLoc());
 }
 
+// BuildCXXNew - added to help with inplace __GoldInplaceNew/.construct
+// when used with a dependent expression.
 namespace {
   struct UsualDeallocFnInfo {
     UsualDeallocFnInfo() : Found(), FD(nullptr) {}

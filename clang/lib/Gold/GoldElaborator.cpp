@@ -4307,10 +4307,6 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 
     // Update the initializer.
     SemaRef.getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
-    // llvm::outs() << "Dumping variable initializer.\n";
-    // VD->dump();
-    // llvm::outs() << "Dumping initialization expression.\n";
-    // InitExpr->dump();
   }
 }
 

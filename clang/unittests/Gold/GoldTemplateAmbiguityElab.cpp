@@ -730,8 +730,6 @@ bar():void!
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// Add construct/destruct with explicit type arguments?
-
 TEST(GoldTemplateAmbiguity, Error_ExpectedTemplateGivenArray) {
   StringRef Code = R"Gold(
 Callable = class:
@@ -876,6 +874,101 @@ bar():void!
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+
+// TEST(GoldTemplateAmbiguity, NonDependentConstructor) {
+//   StringRef Code = R"Gold(
+// T1 = class:
+//   T2 = class:
+//     operator"+"(Y:ref const T2)<const>:bool!
+//       return false
+      
+// foo():void!
+//   T1.T2() + T1.T2()
+
+// )Gold";
+//   auto ToMatch = functionDecl(
+//     hasName("foo"),
+//     hasDescendant(cxxMemberCallExpr(
+//       callee(cxxMethodDecl(
+//         hasName("operator+")
+//       ))
+//     ))
+//   );
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
+
+TEST(GoldTemplateAmbiguity, OperarandsAreDependentConstructorCalls) {
+  StringRef Code = R"Gold(
+T1 = class:
+  T2 = class:
+    operator"+"(Y:ref const T2)<const>:bool!
+      return false
+
+
+foo[T:type](var:T):void!
+  T.T2() + T.T2()
+
+bar():void!
+  x : T1
+  foo(x)
+)Gold";
+  auto ToMatch = functionTemplateDecl(
+    hasName("foo"),
+    hasDescendant(cxxOperatorCallExpr(
+      hasOverloadedOperatorName("+")
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldTemplateAmbiguity, OperandsAreTypes) {
+  StringRef Code = R"Gold(
+T1 = class:
+  T2 = class:
+    operator"+"(Y:ref T2):T2!
+      return T2()
+
+foo[T:type](var:T):void!
+  x : T1
+  T.T2 + T.T2
+
+bar():void!
+  x : T1
+  foo(x)
+)Gold";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldTemplateAmbiguity, PossibleConflictingOperatorOverloads) {
+  StringRef Code = R"Gold(
+T1 = class:
+  T2 = class:
+    operator"^"():ref T2!
+      return ^this
+    operator"*"(other:T2):int32!
+      return 1
+    operator"^"(other:T2):bool!
+      return false
+
+foo[T:type](var : ^T.T2, var2 : ^T.T2):void!
+  ^var
+
+bar():void!
+  x :^T1.T2
+  y :^T1.T2
+  foo(x, y)
+)Gold";
+  auto ToMatch = functionDecl(
+    hasName("foo"),
+    hasDescendant(cxxMemberCallExpr(
+      callee(cxxMethodDecl(
+        hasName("operator+")
+      ))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
 TEST(GoldTemplateAmbiguity, DependentVariableTemplateAccesExpr) {
   StringRef Code = R"Gold(
 T1 = class:
@@ -891,3 +984,43 @@ bar():void!
   auto ToMatch = declRefExpr();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+TEST(GoldTemplateAmbiguity, EnumPassedAsAType) {
+  StringRef Code = R"Gold(
+E1 = enum:
+  x
+  y
+  z
+
+foo[T:type]():void!
+  x = T.z
+
+bar():void!
+  foo[E1]()
+)Gold";
+  auto ToMatch = declRefExpr();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+TEST(GoldTemplateAmbiguity, LookupUpEnumInsideClassScope) {
+  StringRef Code = R"Gold(
+T1 = class:
+  E1 = enum:
+    x
+    y
+    z
+
+foo[T:type]():void!
+  x = T.E1.x
+
+bar():void!
+  foo[T1]()
+)Gold";
+  auto ToMatch = declRefExpr();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+// I need tests for const/ref/rref dependent type that doesn't evaluate to a type.
+// I need tests for dereference/pointer decl type
