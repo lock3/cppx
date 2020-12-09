@@ -207,6 +207,28 @@ bar():void!
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+TEST(GoldTemplateAmbiguity, DependentFunctionCallExpression_WithParensOnId) {
+  StringRef Code = R"(
+T1 = class:
+  T2 = class:
+    foo()<static>:void!
+      ;
+
+foo[T:type]():void!
+  (T.T2.foo)()
+
+bar():void!
+  foo[T1]()
+)";
+  auto ToMatch = functionTemplateDecl(
+    hasName("foo"),
+    has(functionDecl(
+      hasName("foo"), hasDescendant(callExpr())
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
 TEST(GoldTemplateAmbiguity, DependentConstructorCall) {
   StringRef Code = R"(
 
@@ -680,6 +702,27 @@ bar():void!
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+
+TEST(GoldTemplateAmbiguity, DependentTemplateToConstructorCallWithParensAroundType) {
+  StringRef Code = R"Gold(
+T1 = class:
+  T2 = class:
+    foo [T:type]= class:
+      ;
+
+foo[T:type]():void!
+  (T.T2.foo[int])()
+
+bar():void!
+  foo[T1]()
+)Gold";
+  auto ToMatch = functionTemplateDecl(
+    hasName("foo"),
+    has(functionDecl(hasName("foo"), hasDescendant(cxxConstructExpr())))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
 TEST(GoldTemplateAmbiguity, DependentMemberAccess_ToConstruct) {
   StringRef Code = R"Gold(
 
@@ -1067,4 +1110,21 @@ bar():void!
       ))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldTemplateAmbiguity, PassingDependentTypeExpressionAsFunctionArgument) {
+  StringRef Code = R"(
+T1 = class:
+  T2 = class:
+    ;
+
+s[T:type](x:T):void!
+  ;
+foo[T:type]():void!
+  s(T.T2)
+
+bar():void!
+  foo[T1]()
+)";
+  GoldFailureTest(Code);
 }
