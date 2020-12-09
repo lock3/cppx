@@ -26,9 +26,11 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/LexDiagnostic.h"
 #include "clang/Lex/LiteralSupport.h"
+#include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Ownership.h"
 #include "clang/Sema/ParsedTemplate.h"
+#include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/Template.h"
 #include "clang/Sema/TypeLocBuilder.h"
@@ -44,6 +46,7 @@
 #include "clang/Gold/GoldExprMarker.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSema.h"
+#include "clang/Gold/GoldStmtElaborator.h"
 #include "clang/Gold/GoldSyntaxContext.h"
 #include "clang/Gold/GoldTokens.h"
 
@@ -146,67 +149,6 @@ clang::Expr *ExprElaborator::elaborateExpectedConstantExpr(const Syntax* S) {
   if (ConstExpr.isInvalid())
     return nullptr;
   return ConstExpr.get();
-}
-
-static clang::IntegerLiteral *
-createIntegerLiteral(clang::ASTContext &CxxAST, Token T,
-                     clang::QualType IntType, clang::SourceLocation Loc,
-                     std::size_t Base = 10) {
-  llvm::APInt Value;
-  unsigned Width = 0;
-
-  // If we don't have a specified type, just create a default int.
-  if (IntType.isNull() || IntType == CxxAST.AutoDeductTy)
-    IntType = CxxAST.IntTy;
-
-  // TODO: support all kinds of integer types.
-  if (IntType == CxxAST.IntTy) {
-    Width = CxxAST.getTargetInfo().getIntWidth();
-
-    int Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::get(Literal);
-  } else if (IntType == CxxAST.LongTy) {
-    Width = CxxAST.getTargetInfo().getLongWidth();
-
-    long int Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::get(Literal);
-  } else if (IntType == CxxAST.LongLongTy) {
-    Width = CxxAST.getTargetInfo().getLongLongWidth();
-
-    long long int Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::get(Literal);
-  } else if (IntType == CxxAST.ShortTy) {
-    Width = CxxAST.getTargetInfo().getShortWidth();
-
-    short int Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::get(Literal);
-  } else if (IntType == CxxAST.UnsignedShortTy) {
-    Width = CxxAST.getTargetInfo().getShortWidth();
-
-    unsigned short int Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::getUnsigned(Literal);
-  } else if (IntType == CxxAST.UnsignedIntTy) {
-    Width = CxxAST.getTargetInfo().getIntWidth();
-
-    unsigned int Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::getUnsigned(Literal);
-  } else if (IntType == CxxAST.UnsignedLongTy) {
-    Width = CxxAST.getTargetInfo().getLongWidth();
-
-    unsigned long Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::getUnsigned(Literal);
-  } else if (IntType == CxxAST.UnsignedLongLongTy) {
-    Width = CxxAST.getTargetInfo().getLongLongWidth();
-
-    unsigned long Literal = std::stoi(T.getSymbol().data(), 0, Base);
-    Value = llvm::APSInt::getUnsigned(Literal);
-  } else {
-    assert(false && "Unsupported integer type.");
-  }
-
-  if (Value.getBitWidth() != Width)
-    Value = Value.trunc(Width);
-  return clang::IntegerLiteral::Create(CxxAST, Value, IntType, Loc);
 }
 
 static bool alwaysFitsInto64Bits(unsigned Radix, unsigned NumDigits) {
@@ -745,10 +687,50 @@ handleClassTemplateSelection(ExprElaborator& Elab, Sema &SemaRef,
   }
 }
 
+static void constructTemplateArgList(SyntaxContext &Context, Sema &SemaRef,
+                                     const ElemSyntax *Elem,
+                                  clang::TemplateArgumentListInfo &TemplateArgs,
+                   llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs) {
+  for (const Syntax *SS : Elem->getArguments()->children()) {
+    ExprElaborator ParamElaborator(Context, SemaRef);
+    clang::Expr *ParamExpression = ParamElaborator.doElaborateExpr(SS);
+    if (!ParamExpression)
+      continue;
+
+    if (ParamExpression->getType()->isTypeOfTypes()) {
+      clang::TypeSourceInfo *ParamTInfo
+        = SemaRef.getTypeSourceInfoFromExpr(ParamExpression, Elem->getLoc());
+      if (!ParamTInfo)
+        continue;
+      clang::TemplateArgument Arg(ParamTInfo->getType());
+      TemplateArgs.addArgument({Arg, ParamTInfo});
+      ActualArgs.emplace_back(Arg);
+    } else {
+      clang::TemplateArgument Arg(ParamExpression,
+                                  clang::TemplateArgument::Expression);
+      TemplateArgs.addArgument({Arg, ParamExpression});
+      ActualArgs.emplace_back(Arg);
+    }
+  }
+}
+
 static clang::Expr *
 handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
                         SyntaxContext &Context, const ElemSyntax *Elem,
                         clang::Expr *E) {
+  // This could be an attemped lambda instantiation.
+  if (clang::DeclRefExpr *DRE = dyn_cast<clang::DeclRefExpr>(E)) {
+    if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(DRE->getDecl())) {
+      if (VD->getInit() && isa<clang::LambdaExpr>(VD->getInit())) {
+        unsigned DiagID =
+          SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                        "cannot explicitly instantiate lambda");
+        SemaRef.Diags.Report(Elem->getLoc(), DiagID);
+        return nullptr;
+      }
+    }
+  }
+
   clang::OverloadExpr *OverloadExpr = dyn_cast<clang::OverloadExpr>(E);
 
   // Create a normal array access.
@@ -792,30 +774,10 @@ handleElementExpression(ExprElaborator &Elab, Sema &SemaRef,
   // overloaded function or function template.
   clang::TemplateArgumentListInfo TemplateArgs(Elem->getLoc(), Elem->getLoc());
   llvm::SmallVector<clang::TemplateArgument, 16> ActualArgs;
-  for (const Syntax *SS : Elem->getArguments()->children()) {
-    ExprElaborator ParamElaborator(Context, SemaRef);
-    clang::Expr *ParamExpression = ParamElaborator.doElaborateExpr(SS);
-    if (!ParamExpression)
-      return nullptr;
+  constructTemplateArgList(Context, SemaRef, Elem, TemplateArgs, ActualArgs);
+  clang::TemplateArgumentList
+    TemplateArgList(clang::TemplateArgumentList::OnStack, ActualArgs);
 
-    if (ParamExpression->getType()->isTypeOfTypes()) {
-      clang::TypeSourceInfo *ParamTInfo = SemaRef.getTypeSourceInfoFromExpr(
-                                            ParamExpression, Elem->getLoc());
-      if (!ParamTInfo)
-        return nullptr;
-      clang::TemplateArgument Arg(ParamTInfo->getType());
-      TemplateArgs.addArgument({Arg, ParamTInfo});
-      ActualArgs.emplace_back(Arg);
-    } else {
-      clang::TemplateArgument Arg(ParamExpression,
-                                           clang::TemplateArgument::Expression);
-      TemplateArgs.addArgument({Arg, ParamExpression});
-      ActualArgs.emplace_back(Arg);
-    }
-  }
-
-  clang::TemplateArgumentList TemplateArgList(
-                              clang::TemplateArgumentList::OnStack, ActualArgs);
   if (OverloadExpr->getNumDecls() == 1) {
     clang::NamedDecl *ND = *OverloadExpr->decls_begin();
     if (isa<clang::TemplateDecl>(ND)) {
@@ -1072,7 +1034,8 @@ bool ExprElaborator::elaborateTemplateArugments(const ListSyntax *Args,
       if (Template.isNull())
         return true;
       clang::TemplateArgument Arg(Template);
-      clang::TemplateArgumentLocInfo TALoc(clang::NestedNameSpecifierLoc(),
+      clang::TemplateArgumentLocInfo TALoc(Context.CxxAST,
+                                           clang::NestedNameSpecifierLoc(),
                                            SyntaxArg->getLoc(),
                                            clang::SourceLocation());
       ArgInfo.addArgument({Arg, TALoc});
@@ -1222,8 +1185,9 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
         ResultType = ResultType.getTypePtr()->getPointeeType();
       }
 
-      clang::ExprValueKind ValueKind = SemaRef.getCxxSema()
-                     .getValueKindForDeclReference(ResultType, VD, S->getLoc());
+      clang::ExprValueKind ValueKind =
+        SemaRef.getCxxSema().getValueKindForDeclReference(ResultType,
+                                                          VD, S->getLoc());
       clang::DeclRefExpr *DRE =
         SemaRef.getCxxSema().BuildDeclRefExpr(VD, ResultType, ValueKind, DNI,
                                               clang::NestedNameSpecifierLoc(),
@@ -1262,8 +1226,38 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
                        << S->getSpelling();
   return nullptr;
 }
+
 static clang::Expr *createThisExpr(Sema &SemaRef, const AtomSyntax *S) {
   return SemaRef.getCxxSema().ActOnCXXThis(S->getLoc()).get();
+}
+
+static clang::CXXThisExpr *createThisCapture(clang::ASTContext &CxxAST,
+                                             Sema &SemaRef,
+                                             const AtomSyntax *S) {
+  clang::Sema &CxxSema = SemaRef.getCxxSema();
+  clang::SourceLocation Loc = S->getLoc();
+
+  clang::sema::LambdaScopeInfo *LSI = CxxSema.getCurLambda();
+  // C++11 [expr.prim.lambda]p8:
+  //   An identifier or this shall not appear more than once in a
+  //   lambda-capture.
+  if (LSI->isCXXThisCaptured()) {
+    SemaRef.Diags.Report(Loc, clang::diag::err_capture_more_than_once)
+      << "'this'" << clang::SourceRange(LSI->getCXXThisCapture().getLocation())
+      << clang::FixItHint::CreateRemoval(clang::SourceRange(Loc, Loc));
+    return nullptr;
+  }
+
+  clang::QualType ThisTy = CxxSema.getCurrentThisType();
+  if (ThisTy.isNull()) {
+    SemaRef.Diags.Report(Loc, clang::diag::err_invalid_this_use);
+    return nullptr;
+  }
+
+  auto *This = new (CxxAST) clang::CXXThisExpr(Loc, ThisTy, /*Implicit=*/false);
+  CxxSema.CheckCXXThisCapture(Loc, /*Explicit=*/true, /*Diagnose=*/true,
+                              /*StopAt=*/nullptr, /*ByCopy=*/true);
+  return This;
 }
 
 static inline bool hasFloatingTypeSuffix(const LiteralSyntax *S) {
@@ -1314,7 +1308,8 @@ clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
   case tok::NullKeyword:
     return createNullLiteral(CxxAST, S->getLoc());
   case tok::ThisKeyword:
-    return createThisExpr(SemaRef, S);
+    return SemaRef.getCurrentScope()->isLambdaCaptureScope() ?
+      createThisCapture(CxxAST, SemaRef, S) : createThisExpr(SemaRef, S);
   default:
     break;
   }
@@ -3268,6 +3263,242 @@ static clang::Expr *handleOfMacro(SyntaxContext &Context, Sema &SemaRef,
   return Res.get();
 }
 
+static inline bool isLocalLambdaScope(const Scope *S) {
+  if (!S || !S->Parent)
+    return true;
+
+  do {
+    if (S->getKind() == SK_Class || S->getKind() == SK_Function)
+      return true;
+
+    S = S->getParent();
+  } while (S);
+
+  return false;
+}
+
+static void buildLambdaCaptureInternal(SyntaxContext &Context, Sema &SemaRef,
+                                       clang::LambdaIntroducer &Intro,
+                                       const Syntax *Capture,
+                                       clang::SourceRange const &Range) {
+  clang::Expr *Ref = nullptr;
+  clang::Expr *Init = nullptr;
+  clang::IdentifierInfo *II = nullptr;
+  // True when the current syntax is a this pointer, or operation on one.
+  bool This = false;
+
+  if (const CallSyntax *Call = dyn_cast<CallSyntax>(Capture)) {
+    FusedOpKind FOK = getFusedOpKind(SemaRef, Call);
+    if (FOK != FOK_Equals && FOK != FOK_Caret) {
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "expected ',', '}', or dedent in "
+                                      "lambda capture list");
+      SemaRef.Diags.Report(Capture->getLoc(), DiagID);
+      return;
+    }
+
+    auto *Elab = ExprElaborator(Context, SemaRef).elaborateExpr(Call);
+    if (!Elab)
+      return;
+
+    if (auto *Bin = dyn_cast<clang::BinaryOperator>(Elab)) {
+      // This might be more complex than a declaration.
+      Ref = Bin->getLHS();
+      Init = Bin->getRHS();
+    } else if (auto *Un = dyn_cast<clang::UnaryOperator>(Elab)) {
+      Ref = Un;
+      This = isa<clang::CXXThisExpr>(Un->getSubExpr());
+    }
+  } else if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(Capture)) {
+    Ref = ExprElaborator(Context, SemaRef).elaborateExpr(Atom);
+    This = Atom->getSpelling() == "this";
+  } else if (const ListSyntax *List = dyn_cast<ListSyntax>(Capture)) {
+    // Recurse if this parameter is a list.
+    for (const Syntax *Item : List->children())
+      buildLambdaCaptureInternal(Context, SemaRef, Intro, Item, Range);
+    return;
+  } else {
+    unsigned DiagID =
+      SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                    "expected declaration name in "
+                                    "lambda capture list");
+    SemaRef.Diags.Report(Capture->getLoc(), DiagID);
+    return;
+  }
+
+  // Handle this or ^this
+  if (This) {
+    clang::LambdaCaptureKind Kind = clang::LCK_StarThis;
+    clang::LambdaCaptureInitKind InitKind =
+      clang::LambdaCaptureInitKind::NoInit;
+    clang::ParsedType InitCaptureType;
+
+    Intro.addCapture(Kind, Capture->getLoc(), II,
+                     /*EllipsisLoc=*/clang::SourceLocation(),
+                     InitKind, Init, InitCaptureType, Range);
+    return;
+  }
+
+  // FIXME: what about a dereferenced pointer?
+  if (!isa<clang::DeclRefExpr>(Ref)) {
+    SemaRef.Diags.Report(Capture->getLoc(),
+                         clang::diag::err_capture_does_not_name_variable)
+      << Ref;
+    return;
+  }
+
+  clang::DeclRefExpr *DRE = cast<clang::DeclRefExpr>(Ref);
+  if (!isa<clang::VarDecl>(DRE->getDecl())) {
+    SemaRef.Diags.Report(Capture->getLoc(),
+                         clang::diag::err_capture_does_not_name_variable)
+      << DRE->getDecl();
+    return;
+  }
+
+  clang::VarDecl *VD = cast<clang::VarDecl>(DRE->getDecl());
+  II = VD->getIdentifier();
+
+  // FIXME: consider this or starthis
+  clang::LambdaCaptureKind Kind = clang::LCK_ByCopy;
+  clang::LambdaCaptureInitKind InitKind = clang::LambdaCaptureInitKind::NoInit;
+  clang::ParsedType InitCaptureType;
+  if (Init) {
+    // FIXME: could be direct or list init
+    InitKind = clang::LambdaCaptureInitKind::CopyInit;
+    clang::Sema &CxxSema = SemaRef.getCxxSema();
+    InitCaptureType = CxxSema.actOnLambdaInitCaptureInitialization(
+      Capture->getLoc(), false, /*EllipsisLoc=*/clang::SourceLocation(),
+      II, InitKind, Init);
+  }
+
+  Intro.addCapture(Kind, Capture->getLoc(), II,
+                   /*EllipsisLoc=*/clang::SourceLocation(),
+                   InitKind, Init, InitCaptureType, Range);
+}
+
+// Build and attach the captures for a lambda macro
+static inline void buildLambdaCaptures(SyntaxContext &Context, Sema &SemaRef,
+                                       const MacroSyntax *S,
+                                       clang::LambdaIntroducer &Intro) {
+  const Syntax *CaptureScope = S->getNext();
+  clang::SourceLocation BeginLoc = CaptureScope->getLoc();
+  clang::SourceLocation EndLoc = S->getBlock()->getLoc();
+  clang::SourceRange Range(BeginLoc, EndLoc);
+  for (const Syntax *SS : CaptureScope->children())
+    buildLambdaCaptureInternal(Context, SemaRef, Intro, SS, Range);
+}
+
+static inline bool isMutable(Sema &SemaRef, Attribute *A) {
+  std::string Name;
+  switch (checkAttrFormatAndName(A->getArg(), Name)) {
+  case AF_Name:
+  case AF_Call:
+    return Name == "mutable";
+  default:
+    return false;
+  }
+}
+
+static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
+                                      const MacroSyntax *S) {
+  assert(isa<CallSyntax>(S->getCall()) && "invalid lambda");
+  clang::Sema &CxxSema = SemaRef.getCxxSema();
+  bool LocalLambda = isLocalLambdaScope(SemaRef.getCurrentScope());
+  const CallSyntax *Call = cast<CallSyntax>(S->getCall());
+
+  Syntax::AttrVec Attributes = Call->getAttributes();
+  bool Mutable = false;
+  for (Attribute *A : Attributes) {
+    if (isMutable(SemaRef, A)) {
+      Mutable = true;
+    } else {
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "lambdas may only have the "
+                                      "'mutable' attribute");
+      SemaRef.Diags.Report(A->getArg()->getLoc(), DiagID);
+    }
+  }
+
+  // Elaborate any explicit template parameters first.
+  llvm::SmallVector<clang::NamedDecl *, 4> TemplateParams;
+  const ElemSyntax *Templ = dyn_cast<ElemSyntax>(Call->getCallee());
+  Sema::ScopeRAII TemplateScope(SemaRef, SK_Template, Templ);
+  bool GenericLambda = false;
+  if (Templ) {
+    Elaborator El(Context, SemaRef);
+    El.buildTemplateParams(Templ->getArguments(), TemplateParams);
+    GenericLambda = true;
+  }
+
+  CxxSema.PushLambdaScope();
+  std::copy(TemplateParams.begin(), TemplateParams.end(),
+            std::back_inserter(CxxSema.getCurLambda()->TemplateParams));
+  Sema::ScopeRAII ParamScope(SemaRef, SK_Parameter, Call);
+  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
+  for (const Syntax *Arg : Call->getArguments()->children()) {
+    clang::Decl *D = Elaborator(Context, SemaRef).elaborateDeclSyntax(Arg);
+    if (!D)
+      continue;
+
+    clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(D);
+    if (PVD->getType()->isUndeducedAutoType()) {
+      GenericLambda = true;
+      CxxSema.RecordParsingTemplateParameterDepth(SemaRef.LambdaTemplateDepth);
+      auto Invented = CxxSema.InventTemplateParameter(
+        SemaRef.getDeclaration(PVD), PVD->getType(), nullptr,
+        PVD->getType()->getAs<clang::AutoType>(), *CxxSema.getCurLambda());
+      clang::TypeSourceInfo *TSI =
+        BuildAnyTypeLoc(Context.CxxAST, Invented.first, PVD->getBeginLoc());
+      PVD->setType(TSI->getType());
+      PVD->setTypeSourceInfo(TSI);
+      const clang::TemplateTypeParmType *TempTy =
+        PVD->getType()->getAs<clang::TemplateTypeParmType>();
+      PVD->setScopeInfo(TempTy->getDepth(), TempTy->getIndex());
+    }
+
+    Params.push_back(PVD);
+  }
+
+  if (GenericLambda)
+    ++SemaRef.LambdaTemplateDepth;
+
+  Sema::ScopeRAII BlockScope(SemaRef, SK_Block, S->getBlock());
+  SemaRef.getCurrentScope()->Lambda = true;
+  unsigned ScopeFlags = clang::Scope::BlockScope |
+    clang::Scope::FnScope | clang::Scope::DeclScope |
+    clang::Scope::CompoundStmtScope;
+  SemaRef.enterClangScope(ScopeFlags);
+
+  // Set up the captures and capture default.
+  clang::LambdaIntroducer Intro;
+  clang::SourceLocation NextLoc =
+    S->getNext() ? S->getNext()->getLoc() : S->getLoc();
+  Intro.Range =
+    clang::SourceRange(S->getCall()->getLoc(), NextLoc);
+  Intro.DefaultLoc = NextLoc;
+
+  // The lambda default will always be by-value, but local lambdas have no
+  // default as per [expr.prim.lambda]
+  Intro.Default = LocalLambda ? clang::LCD_None : clang::LCD_ByCopy;
+  Sema::ScopeRAII LambdaCaptureScope(SemaRef, SK_Block, S->getNext());
+  SemaRef.getCurrentScope()->LambdaCaptureScope = true;
+  buildLambdaCaptures(Context, SemaRef, S, Intro);
+
+  // Build the lambda
+  CxxSema.ActOnStartOfGoldLambdaDefinition(SemaRef, Intro, Params,
+                                           SemaRef.getCurClangScope(),
+                                           Mutable);
+  clang::Stmt *Block =
+    StmtElaborator(Context, SemaRef).elaborateBlock(S->getBlock());
+  clang::ExprResult Lam =
+    CxxSema.ActOnLambdaExpr(S->getLoc(), Block, SemaRef.getCurClangScope());
+  SemaRef.leaveClangScope(S->getLoc());
+  SemaRef.LambdaTemplateDepth = 0;
+  return Lam.get();
+}
+
 static bool isOpNewCall(const MacroSyntax *S) {
   auto OpNew = dyn_cast<CallSyntax>(S->getCall());
   if (OpNew)
@@ -3276,32 +3507,48 @@ static bool isOpNewCall(const MacroSyntax *S) {
   return false;
 }
 
+using SyntaxHandler =
+  clang::Expr *(*)(SyntaxContext &, Sema &, const MacroSyntax *);
+static const llvm::StringMap<SyntaxHandler> SyntaxHandlers = {
+  {"array",  &handleArrayMacro},
+  {"of",     &handleOfMacro},
+  {"lambda", &handleLambdaMacro},
+};
+
 clang::Expr *ExprElaborator::elaborateMacro(const MacroSyntax *S) {
+  unsigned DiagID =
+    SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                  "unknown macro");
 
   // Checking if we are handling operator new parsing.
   if (isOpNewCall(S))
     return elaborateNewExpr(S);
 
-  if (!isa<AtomSyntax>(S->getCall()))
-    return elaborateInitListCall(S);
+  const AtomSyntax *Call = dyn_cast<AtomSyntax>(S->getCall());
+  if (!Call && isa<CallSyntax>(S->getCall())) {
+    const CallSyntax *C = cast<CallSyntax>(S->getCall());
+    // In all cases but one, this should be an atom.
+    if (isa<AtomSyntax>(C->getCallee()))
+      Call = cast<AtomSyntax>(C->getCallee());
+    // The other case mentioned above; generic lambdas may have an element call.
+    else if (isa<ElemSyntax>(C->getCallee()))
+      return handleLambdaMacro(Context, SemaRef, S);
+    // Not a lambda
+    else
+      return elaborateInitListCall(S);
+  }
 
-  assert (isa<AtomSyntax>(S->getCall()) && "Unexpected macro call");
+  if (!Call) {
+    SemaRef.Diags.Report(S->getLoc(), DiagID);
+    return nullptr;
+  }
 
-  const AtomSyntax *Call = cast<AtomSyntax>(S->getCall());
+  // Handle any builtin macros
+  auto HandlerIt = SyntaxHandlers.find(Call->getSpelling());
+  if (HandlerIt != SyntaxHandlers.end())
+    return (HandlerIt->second)(Context, SemaRef, S);
 
-  // TODO: string map
-  if (Call->getSpelling() == "if")
-    assert(false && "If expression processing not implemented yet.");
-  else if (Call->getSpelling() == "while")
-    assert(false && "while loop processing not implemented yet.");
-  else if(Call->getSpelling() == "for")
-    assert(false && "For loop processing not implemented yet.");
-  else if (Call->getSpelling() == "array")
-    return handleArrayMacro(Context, SemaRef, S);
-  else if (Call->getSpelling() == "of")
-    return handleOfMacro(Context, SemaRef, S);
-  else
-    return elaborateInitListCall(S);
+  return elaborateInitListCall(S);
 }
 
 clang::Expr *
@@ -3361,7 +3608,6 @@ clang::Expr *ExprElaborator::elaborateNewExpr(const MacroSyntax *Macro) {
 
   // This is used for the constructor expression.
   llvm::Optional<clang::Expr *> ArraySizeExpr;
-  clang::SourceLocation TypeParens;
 
   // Initialization style is determined off of this argument.
   clang::SourceRange DirectInitRange;
@@ -3546,9 +3792,7 @@ ExprElaborator::elaborateNewExpr_ArrayCall(const CallSyntax *S,
     clang::Expr::EvalContext
       EvalCtx(Context.CxxAST, SemaRef.getCxxSema().GetReflectionCallbackObj());
 
-    if (IndexExpr->EvaluateAsConstantExpr(IdxResult,
-                                           clang::Expr::EvaluateForCodeGen,
-                                           EvalCtx)) {
+    if (IndexExpr->EvaluateAsConstantExpr(IdxResult, EvalCtx)) {
       clang::SourceRange Range(IndexExpr->getExprLoc(), IndexExpr->getExprLoc());
       ArrayType = SemaRef.getCxxSema().BuildArrayType(
         ArrayType, clang::ArrayType::Normal, IndexExpr, 0,
@@ -3947,9 +4191,7 @@ clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
     clang::Expr::EvalContext
       EvalCtx(Context.CxxAST, SemaRef.getCxxSema().GetReflectionCallbackObj());
 
-    if (!IndexExpr->EvaluateAsConstantExpr(IdxResult,
-                                           clang::Expr::EvaluateForCodeGen,
-                                           EvalCtx)) {
+    if (!IndexExpr->EvaluateAsConstantExpr(IdxResult, EvalCtx)) {
       Invalid = true;
       continue;
     }

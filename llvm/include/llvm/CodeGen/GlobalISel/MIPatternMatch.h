@@ -234,6 +234,12 @@ m_GAnd(const LHS &L, const RHS &R) {
 }
 
 template <typename LHS, typename RHS>
+inline BinaryOp_match<LHS, RHS, TargetOpcode::G_XOR, true>
+m_GXor(const LHS &L, const RHS &R) {
+  return BinaryOp_match<LHS, RHS, TargetOpcode::G_XOR, true>(L, R);
+}
+
+template <typename LHS, typename RHS>
 inline BinaryOp_match<LHS, RHS, TargetOpcode::G_OR, true> m_GOr(const LHS &L,
                                                                 const RHS &R) {
   return BinaryOp_match<LHS, RHS, TargetOpcode::G_OR, true>(L, R);
@@ -249,6 +255,12 @@ template <typename LHS, typename RHS>
 inline BinaryOp_match<LHS, RHS, TargetOpcode::G_LSHR, false>
 m_GLShr(const LHS &L, const RHS &R) {
   return BinaryOp_match<LHS, RHS, TargetOpcode::G_LSHR, false>(L, R);
+}
+
+template <typename LHS, typename RHS>
+inline BinaryOp_match<LHS, RHS, TargetOpcode::G_ASHR, false>
+m_GAShr(const LHS &L, const RHS &R) {
+  return BinaryOp_match<LHS, RHS, TargetOpcode::G_ASHR, false>(L, R);
 }
 
 // Helper for unary instructions (G_[ZSA]EXT/G_TRUNC) etc
@@ -383,6 +395,35 @@ struct CheckType {
 };
 
 inline CheckType m_SpecificType(LLT Ty) { return Ty; }
+
+template <typename Src0Ty, typename Src1Ty, typename Src2Ty, unsigned Opcode>
+struct TernaryOp_match {
+  Src0Ty Src0;
+  Src1Ty Src1;
+  Src2Ty Src2;
+
+  TernaryOp_match(const Src0Ty &Src0, const Src1Ty &Src1, const Src2Ty &Src2)
+      : Src0(Src0), Src1(Src1), Src2(Src2) {}
+  template <typename OpTy>
+  bool match(const MachineRegisterInfo &MRI, OpTy &&Op) {
+    MachineInstr *TmpMI;
+    if (mi_match(Op, MRI, m_MInstr(TmpMI))) {
+      if (TmpMI->getOpcode() == Opcode && TmpMI->getNumOperands() == 4) {
+        return (Src0.match(MRI, TmpMI->getOperand(1).getReg()) &&
+                Src1.match(MRI, TmpMI->getOperand(2).getReg()) &&
+                Src2.match(MRI, TmpMI->getOperand(3).getReg()));
+      }
+    }
+    return false;
+  }
+};
+template <typename Src0Ty, typename Src1Ty, typename Src2Ty>
+inline TernaryOp_match<Src0Ty, Src1Ty, Src2Ty,
+                       TargetOpcode::G_INSERT_VECTOR_ELT>
+m_GInsertVecElt(const Src0Ty &Src0, const Src1Ty &Src1, const Src2Ty &Src2) {
+  return TernaryOp_match<Src0Ty, Src1Ty, Src2Ty,
+                         TargetOpcode::G_INSERT_VECTOR_ELT>(Src0, Src1, Src2);
+}
 
 } // namespace GMIPatternMatch
 } // namespace llvm

@@ -263,6 +263,7 @@ namespace gold
     Syntax *parseFor();
     Syntax *parseNew();
     Syntax *parseDelete();
+    Syntax *parseLambda();
     Syntax *parseBlockLoop(Token KWTok);
 
     Syntax *parseThrow();

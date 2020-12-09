@@ -18,11 +18,13 @@
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Module.h"
+#include "mlir/IR/RegionGraphTraits.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Target/LLVMIR/TypeTranslation.h"
 #include "llvm/ADT/TypeSwitch.h"
 
+#include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Frontend/OpenMP/OMPIRBuilder.h"
 #include "llvm/IR/BasicBlock.h"
@@ -141,7 +143,7 @@ llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
       return nullptr;
     if (llvmType->isVectorTy())
       return llvm::ConstantVector::getSplat(
-          llvm::ElementCount(numElements, /*Scalable=*/false), child);
+          llvm::ElementCount::get(numElements, /*Scalable=*/false), child);
     if (llvmType->isArrayTy()) {
       auto *arrayType = llvm::ArrayType::get(elementType, numElements);
       SmallVector<llvm::Constant *, 8> constants(numElements, child);
@@ -302,8 +304,7 @@ ModuleTranslation::ModuleTranslation(Operation *module,
     : mlirModule(module), llvmModule(std::move(llvmModule)),
       debugTranslation(
           std::make_unique<DebugTranslation>(module, *this->llvmModule)),
-      ompDialect(
-          module->getContext()->getRegisteredDialect<omp::OpenMPDialect>()),
+      ompDialect(module->getContext()->getLoadedDialect("omp")),
       typeTranslator(this->llvmModule->getContext()) {
   assert(satisfiesLLVMModule(mlirModule) &&
          "mlirModule should honor LLVM's module semantics.");
@@ -361,25 +362,17 @@ connectPHINodes(T &func, const DenseMap<Value, llvm::Value *> &valueMapping,
   }
 }
 
-// TODO: implement an iterative version
-static void topologicalSortImpl(llvm::SetVector<Block *> &blocks, Block *b) {
-  blocks.insert(b);
-  for (Block *bb : b->getSuccessors()) {
-    if (blocks.count(bb) == 0)
-      topologicalSortImpl(blocks, bb);
-  }
-}
-
 /// Sort function blocks topologically.
 template <typename T>
 static llvm::SetVector<Block *> topologicalSort(T &f) {
-  // For each blocks that has not been visited yet (i.e. that has no
-  // predecessors), add it to the list and traverse its successors in DFS
-  // preorder.
+  // For each block that has not been visited yet (i.e. that has no
+  // predecessors), add it to the list as well as its successors.
   llvm::SetVector<Block *> blocks;
   for (Block &b : f) {
-    if (blocks.count(&b) == 0)
-      topologicalSortImpl(blocks, &b);
+    if (blocks.count(&b) == 0) {
+      llvm::ReversePostOrderTraversal<Block *> traversal(&b);
+      blocks.insert(traversal.begin(), traversal.end());
+    }
   }
   assert(blocks.size() == f.getBlocks().size() && "some blocks are not sorted");
 
@@ -398,8 +391,8 @@ ModuleTranslation::convertOmpParallel(Operation &opInst,
 
     llvm::BasicBlock *codeGenIPBB = codeGenIP.getBlock();
     llvm::Instruction *codeGenIPBBTI = codeGenIPBB->getTerminator();
+    ompContinuationIPStack.push_back(&continuationIP);
 
-    builder.SetInsertPoint(codeGenIPBB);
     // ParallelOp has only `1` region associated with it.
     auto &region = cast<omp::ParallelOp>(opInst).getRegion();
     for (auto &bb : region) {
@@ -408,32 +401,31 @@ ModuleTranslation::convertOmpParallel(Operation &opInst,
       blockMapping[&bb] = llvmBB;
     }
 
-      // Then, convert blocks one by one in topological order to ensure
-      // defs are converted before uses.
-      llvm::SetVector<Block *> blocks = topologicalSort(region);
-      for (auto indexedBB : llvm::enumerate(blocks)) {
-        Block *bb = indexedBB.value();
-        llvm::BasicBlock *curLLVMBB = blockMapping[bb];
-        if (bb->isEntryBlock())
-          codeGenIPBBTI->setSuccessor(0, curLLVMBB);
-
-        // TODO: Error not returned up the hierarchy
-        if (failed(
-                convertBlock(*bb, /*ignoreArguments=*/indexedBB.index() == 0)))
-          return;
-
-        // If this block has the terminator then add a jump to
-        // continuation bb
-        for (auto &op : *bb) {
-          if (isa<omp::TerminatorOp>(op)) {
-            builder.SetInsertPoint(curLLVMBB);
-            builder.CreateBr(&continuationIP);
-          }
-        }
+    // Then, convert blocks one by one in topological order to ensure
+    // defs are converted before uses.
+    llvm::SetVector<Block *> blocks = topologicalSort(region);
+    for (auto indexedBB : llvm::enumerate(blocks)) {
+      Block *bb = indexedBB.value();
+      llvm::BasicBlock *curLLVMBB = blockMapping[bb];
+      if (bb->isEntryBlock()) {
+        assert(codeGenIPBBTI->getNumSuccessors() == 1 &&
+               "OpenMPIRBuilder provided entry block has multiple successors");
+        assert(codeGenIPBBTI->getSuccessor(0) == &continuationIP &&
+               "ContinuationIP is not the successor of OpenMPIRBuilder "
+               "provided entry block");
+        codeGenIPBBTI->setSuccessor(0, curLLVMBB);
       }
-      // Finally, after all blocks have been traversed and values mapped,
-      // connect the PHI nodes to the results of preceding blocks.
-      connectPHINodes(region, valueMapping, blockMapping);
+
+      // TODO: Error not returned up the hierarchy
+      if (failed(convertBlock(*bb, /*ignoreArguments=*/indexedBB.index() == 0)))
+        return;
+    }
+
+    ompContinuationIPStack.pop_back();
+
+    // Finally, after all blocks have been traversed and values mapped,
+    // connect the PHI nodes to the results of preceding blocks.
+    connectPHINodes(region, valueMapping, blockMapping);
   };
 
   // TODO: Perform appropriate actions according to the data-sharing
@@ -451,23 +443,24 @@ ModuleTranslation::convertOmpParallel(Operation &opInst,
   // called for variables which have destructors/finalizers.
   auto finiCB = [&](InsertPointTy codeGenIP) {};
 
-  // TODO: The various operands of parallel operation are not handled.
-  // Parallel operation is created with some default options for now.
   llvm::Value *ifCond = nullptr;
   if (auto ifExprVar = cast<omp::ParallelOp>(opInst).if_expr_var())
     ifCond = valueMapping.lookup(ifExprVar);
   llvm::Value *numThreads = nullptr;
   if (auto numThreadsVar = cast<omp::ParallelOp>(opInst).num_threads_var())
     numThreads = valueMapping.lookup(numThreadsVar);
+  llvm::omp::ProcBindKind pbKind = llvm::omp::OMP_PROC_BIND_default;
+  if (auto bind = cast<omp::ParallelOp>(opInst).proc_bind_val())
+    pbKind = llvm::omp::getProcBindKind(bind.getValue());
   // TODO: Is the Parallel construct cancellable?
   bool isCancellable = false;
   // TODO: Determine the actual alloca insertion point, e.g., the function
   // entry or the alloca insertion point as provided by the body callback
   // above.
   llvm::OpenMPIRBuilder::InsertPointTy allocaIP(builder.saveIP());
-  builder.restoreIP(ompBuilder->CreateParallel(
-      builder, allocaIP, bodyGenCB, privCB, finiCB, ifCond, numThreads,
-      llvm::omp::OMP_PROC_BIND_default, isCancellable));
+  builder.restoreIP(
+      ompBuilder->CreateParallel(builder, allocaIP, bodyGenCB, privCB, finiCB,
+                                 ifCond, numThreads, pbKind, isCancellable));
   return success();
 }
 
@@ -494,7 +487,7 @@ ModuleTranslation::convertOmpOperation(Operation &opInst,
         return success();
       })
       .Case([&](omp::FlushOp) {
-        // No support in Openmp runtime funciton (__kmpc_flush) to accept
+        // No support in Openmp runtime function (__kmpc_flush) to accept
         // the argument list.
         // OpenMP standard states the following:
         //  "An implementation may implement a flush with a list by ignoring
@@ -505,7 +498,10 @@ ModuleTranslation::convertOmpOperation(Operation &opInst,
         ompBuilder->CreateFlush(builder.saveIP());
         return success();
       })
-      .Case([&](omp::TerminatorOp) { return success(); })
+      .Case([&](omp::TerminatorOp) {
+        builder.CreateBr(ompContinuationIPStack.back());
+        return success();
+      })
       .Case(
           [&](omp::ParallelOp) { return convertOmpParallel(opInst, builder); })
       .Default([&](Operation *inst) {
@@ -640,9 +636,8 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
     return success();
   }
 
-  if (opInst.getDialect() == ompDialect) {
+  if (ompDialect && opInst.getDialect() == ompDialect)
     return convertOmpOperation(opInst, builder);
-  }
 
   return opInst.emitError("unsupported or non-LLVM operation: ")
          << opInst.getName();
@@ -722,7 +717,7 @@ LogicalResult ModuleTranslation::convertGlobals() {
         ((linkage == llvm::GlobalVariable::ExternalLinkage &&
           isa<llvm::UndefValue>(cst)) ||
          linkage == llvm::GlobalVariable::ExternalWeakLinkage);
-    auto addrSpace = op.addr_space().getLimitedValue();
+    auto addrSpace = op.addr_space();
     auto *var = new llvm::GlobalVariable(
         *llvmModule, type, op.constant(), linkage,
         anyExternalLinkage ? nullptr : cst, op.sym_name(),
@@ -944,11 +939,11 @@ ModuleTranslation::lookupValues(ValueRange values) {
 
 std::unique_ptr<llvm::Module> ModuleTranslation::prepareLLVMModule(
     Operation *m, llvm::LLVMContext &llvmContext, StringRef name) {
-  auto *dialect = m->getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
-  assert(dialect && "LLVM dialect must be registered");
-
+  m->getContext()->getOrLoadDialect<LLVM::LLVMDialect>();
   auto llvmModule = std::make_unique<llvm::Module>(name, llvmContext);
-  llvmModule->setDataLayout(dialect->getDataLayout());
+  if (auto dataLayoutAttr =
+          m->getAttr(LLVM::LLVMDialect::getDataLayoutAttrName()))
+    llvmModule->setDataLayout(dataLayoutAttr.cast<StringAttr>().getValue());
 
   // Inject declarations for `malloc` and `free` functions that can be used in
   // memref allocation/deallocation coming from standard ops lowering.

@@ -1034,6 +1034,41 @@ Syntax *Parser::parseDelete() {
   return onCall(Name, Seq);
 }
 
+Syntax *Parser::parseLambda() {
+  Token Tok = expectToken(tok::LambdaKeyword);
+  Syntax *Capture = nullptr, *Parms = nullptr, *Block = nullptr;
+
+  llvm::SmallVector<Attribute *, 4> Attrs;
+  while (nextTokenIs(tok::Less))
+    Attrs.push_back(parsePostAttr());
+
+  Syntax *Templ = nullptr;
+  if (nextTokenIs(tok::LeftBracket))
+    Templ = parseElem(onAtom(Tok));
+
+  if (nextTokenIs(tok::LeftBrace))
+    Capture = parseBlock();
+  else if (nextTokenIs(tok::Colon))
+    Capture = parseNestedArray();
+
+  Parms = nextTokenIs(tok::RightParen) ?
+    onList(ArgArray, llvm::SmallVector<Syntax *, 1>()) : parseParen();
+  if (isa<ErrorSyntax>(Parms))
+    return onError();
+
+  if (nextTokenIs(tok::LeftBrace))
+    Block = parseBlock();
+  else if (nextTokenIs(tok::Colon))
+    Block = parseNestedArray();
+  else
+    return onError();
+
+  Syntax *Call = onCall(Templ ? Templ : onAtom(Tok), Parms);
+  std::for_each(Attrs.begin(), Attrs.end(),
+                [Call](Attribute *A) { Call->addAttribute(A); });
+  return onMacro(Call, Block, Capture);
+}
+
 Syntax *Parser::parseBlockLoop(Token KWTok)
 {
   Syntax *CondBlock = parseBlock();
@@ -1184,8 +1219,10 @@ Syntax *Parser::parseMacro()
   if (nextTokenIs(tok::NewKeyword))
     return parseNew();
 
-  if (nextTokenIs(tok::DeleteKeyword)) {
+  if (nextTokenIs(tok::LambdaKeyword))
+    return parseLambda();
 
+  if (nextTokenIs(tok::DeleteKeyword)) {
     TokenKind TokAfterDelete = getLookahead(1);
     // If the next character after delete isn't some kind of separator, eof,
     // or dedent, then this is the delete operator, and not the delete kw used
@@ -1841,6 +1878,12 @@ Syntax *Parser::parseBracedArray() {
   if (!braces.expectOpen())
     return onError();
 
+  if (nextTokenIs(tok::RightBrace)) {
+    braces.expectClose();
+    llvm::SmallVector<Syntax *, 1> Vec;
+    return onArray(BlockArray, Vec);
+  }
+
   // There could be any number of indents here.
   // They are not relevant.
   while (nextTokenIs(tok::Indent))
@@ -1873,6 +1916,12 @@ Syntax *Parser::parseNestedArray() {
   EnclosingTabs Tabs(*this);
   if (!Tabs.expectOpen())
     return onError();
+
+  if (nextTokenIs(tok::Dedent)) {
+    Tabs.expectClose();
+    llvm::SmallVector<Syntax *, 1> Vec;
+    return onArray(BlockArray, Vec);
+  }
 
   Syntax *ret = parseArray(BlockArray);
 
@@ -2253,6 +2302,7 @@ Syntax *Parser::onElem(TokenPair const& tok, Syntax *e1, Syntax *e2) {
 Syntax *Parser::onMacro(Syntax *e1, Syntax *e2) {
   return new (Context) MacroSyntax(e1, e2, nullptr);
 }
+
 Syntax *Parser::onMacro(Syntax *e1, Syntax *e2, Syntax *e3) {
   return new (Context) MacroSyntax(e1, e2, e3);
 }

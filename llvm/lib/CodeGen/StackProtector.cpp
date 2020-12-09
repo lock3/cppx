@@ -170,7 +170,8 @@ bool StackProtector::HasAddressTaken(const Instruction *AI,
     // If this instruction accesses memory make sure it doesn't access beyond
     // the bounds of the allocated object.
     Optional<MemoryLocation> MemLoc = MemoryLocation::getOrNone(I);
-    if (MemLoc.hasValue() && MemLoc->Size.getValue() > AllocSize)
+    if (MemLoc.hasValue() && MemLoc->Size.hasValue() &&
+        MemLoc->Size.getValue() > AllocSize)
       return true;
     switch (I->getOpcode()) {
     case Instruction::Store:
@@ -269,13 +270,15 @@ static const CallInst *findStackProtectorIntrinsic(Function &F) {
 /// regardless of size, functions with any buffer regardless of type and size,
 /// functions with aggregates that contain any buffer regardless of type and
 /// size, and functions that contain stack-based variables that have had their
-/// address taken.
+/// address taken. The heuristic will be disregarded for functions explicitly
+/// marked nossp.
 bool StackProtector::RequiresStackProtector() {
   bool Strong = false;
   bool NeedsProtector = false;
   HasPrologue = findStackProtectorIntrinsic(*F);
 
-  if (F->hasFnAttribute(Attribute::SafeStack))
+  if (F->hasFnAttribute(Attribute::SafeStack) ||
+      F->hasFnAttribute(Attribute::NoStackProtect))
     return false;
 
   // We are constructing the OptimizationRemarkEmitter on the fly rather than
@@ -380,7 +383,10 @@ bool StackProtector::RequiresStackProtector() {
 static Value *getStackGuard(const TargetLoweringBase *TLI, Module *M,
                             IRBuilder<> &B,
                             bool *SupportsSelectionDAGSP = nullptr) {
-  if (Value *Guard = TLI->getIRStackGuard(B))
+  Value *Guard = TLI->getIRStackGuard(B);
+  auto GuardMode = TLI->getTargetMachine().Options.StackProtectorGuard;
+  if ((GuardMode == llvm::StackProtectorGuards::TLS ||
+       GuardMode == llvm::StackProtectorGuards::None) && Guard)
     return B.CreateLoad(B.getInt8PtrTy(), Guard, true, "StackGuard");
 
   // Use SelectionDAG SSP handling, since there isn't an IR guard.

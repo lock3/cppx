@@ -32,25 +32,25 @@ class Operation final
 public:
   /// Create a new Operation with the specific fields.
   static Operation *create(Location location, OperationName name,
-                           ArrayRef<Type> resultTypes, ArrayRef<Value> operands,
+                           TypeRange resultTypes, ValueRange operands,
                            ArrayRef<NamedAttribute> attributes,
-                           ArrayRef<Block *> successors, unsigned numRegions);
+                           BlockRange successors, unsigned numRegions);
 
   /// Overload of create that takes an existing MutableDictionaryAttr to avoid
   /// unnecessarily uniquing a list of attributes.
   static Operation *create(Location location, OperationName name,
-                           ArrayRef<Type> resultTypes, ArrayRef<Value> operands,
+                           TypeRange resultTypes, ValueRange operands,
                            MutableDictionaryAttr attributes,
-                           ArrayRef<Block *> successors, unsigned numRegions);
+                           BlockRange successors, unsigned numRegions);
 
   /// Create a new Operation from the fields stored in `state`.
   static Operation *create(const OperationState &state);
 
   /// Create a new Operation with the specific fields.
   static Operation *create(Location location, OperationName name,
-                           ArrayRef<Type> resultTypes, ArrayRef<Value> operands,
+                           TypeRange resultTypes, ValueRange operands,
                            MutableDictionaryAttr attributes,
-                           ArrayRef<Block *> successors = {},
+                           BlockRange successors = {},
                            RegionRange regions = {});
 
   /// The name of an operation is the key identifier for it.
@@ -323,9 +323,18 @@ public:
   template <typename AttrClass> AttrClass getAttrOfType(Identifier name) {
     return getAttr(name).dyn_cast_or_null<AttrClass>();
   }
-
   template <typename AttrClass> AttrClass getAttrOfType(StringRef name) {
     return getAttr(name).dyn_cast_or_null<AttrClass>();
+  }
+
+  /// Return true if the operation has an attribute with the provided name,
+  /// false otherwise.
+  bool hasAttr(Identifier name) { return static_cast<bool>(getAttr(name)); }
+  bool hasAttr(StringRef name) { return static_cast<bool>(getAttr(name)); }
+  template <typename AttrClass, typename NameT>
+  bool hasAttrOfType(NameT &&name) {
+    return static_cast<bool>(
+        getAttrOfType<AttrClass>(std::forward<NameT>(name)));
   }
 
   /// If the an attribute exists with the specified name, change it to the new
@@ -457,12 +466,12 @@ public:
     return TerminatorStatus::Unknown;
   }
 
-  /// Returns if the operation is known to be a terminator.
+  /// Returns true if the operation is known to be a terminator.
   bool isKnownTerminator() {
     return getTerminatorStatus() == TerminatorStatus::Terminator;
   }
 
-  /// Returns if the operation is known to *not* be a terminator.
+  /// Returns true if the operation is known to *not* be a terminator.
   bool isKnownNonTerminator() {
     return getTerminatorStatus() == TerminatorStatus::NonTerminator;
   }
@@ -483,7 +492,7 @@ public:
   LogicalResult fold(ArrayRef<Attribute> operands,
                      SmallVectorImpl<OpFoldResult> &results);
 
-  /// Returns if the operation was registered with a particular trait, e.g.
+  /// Returns true if the operation was registered with a particular trait, e.g.
   /// hasTrait<OperandsAreSignlessIntegerLike>().
   template <template <typename T> class Trait> bool hasTrait() {
     auto *absOp = getAbstractOperation();
@@ -511,7 +520,7 @@ public:
   ///       });
   template <typename FnT, typename RetT = detail::walkResultType<FnT>>
   RetT walk(FnT &&callback) {
-    return detail::walkOperations(this, std::forward<FnT>(callback));
+    return detail::walk(this, std::forward<FnT>(callback));
   }
 
   //===--------------------------------------------------------------------===//
@@ -633,7 +642,7 @@ private:
   bool hasValidOrder() { return orderIndex != kInvalidOrderIdx; }
 
 private:
-  Operation(Location location, OperationName name, ArrayRef<Type> resultTypes,
+  Operation(Location location, OperationName name, TypeRange resultTypes,
             unsigned numSuccessors, unsigned numRegions,
             const MutableDictionaryAttr &attributes, bool hasOperandStorage);
 

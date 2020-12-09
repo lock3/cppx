@@ -119,6 +119,7 @@ namespace Test {
 extern "C" int printf(const char *format, ...);
 // CHECK: FunctionDecl{{.*}}printf
 // CHECK-NEXT: ParmVarDecl{{.*}}format{{.*}}'const char *'
+// CHECK-NEXT: BuiltinAttr{{.*}}Implicit
 // CHECK-NEXT: FormatAttr{{.*}}Implicit printf 1 2
 
 alignas(8) extern int x;
@@ -251,10 +252,12 @@ int mergeAttrTest() __attribute__((unused,no_thread_safety_analysis));
 // CHECK-NEXT: DeprecatedAttr{{.*}} Inherited
 // CHECK-NEXT: WarnUnusedResultAttr{{.*}} Inherited
 // CHECK-NEXT: AnnotateAttr{{.*}}
+// CHECK-NEXT: StringLiteral
 
 // CHECK: FunctionDecl{{.*}} mergeAttrTest
 // CHECK-NEXT: DeprecatedAttr{{.*}} Inherited
 // CHECK-NEXT: WarnUnusedResultAttr{{.*}} Inherited
 // CHECK-NEXT: AnnotateAttr{{.*}} Inherited
+// CHECK-NEXT: StringLiteral
 // CHECK-NEXT: UnusedAttr
 // CHECK-NEXT: NoThreadSafetyAnalysisAttr

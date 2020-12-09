@@ -19,6 +19,7 @@ namespace macho {
 
 class ArchiveFile;
 class DylibFile;
+class InputFile;
 class InputSection;
 class MachHeaderSection;
 class Symbol;
@@ -36,7 +37,9 @@ public:
 
   Symbol *addUndefined(StringRef name);
 
-  Symbol *addDylib(StringRef name, DylibFile *file, bool isWeakDef);
+  Symbol *addCommon(StringRef name, InputFile *, uint64_t size, uint32_t align);
+
+  Symbol *addDylib(StringRef name, DylibFile *file, bool isWeakDef, bool isTlv);
 
   Symbol *addLazy(StringRef name, ArchiveFile *file,
                   const llvm::object::Archive::Symbol &sym);

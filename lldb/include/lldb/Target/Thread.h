@@ -19,6 +19,7 @@
 #include "lldb/Target/RegisterCheckpoint.h"
 #include "lldb/Target/StackFrameList.h"
 #include "lldb/Utility/Broadcaster.h"
+#include "lldb/Utility/CompletionRequest.h"
 #include "lldb/Utility/Event.h"
 #include "lldb/Utility/StructuredData.h"
 #include "lldb/Utility/UserID.h"
@@ -468,6 +469,24 @@ public:
     // the backing thread for all memory threads each time we stop.
   }
 
+  /// Dump \a count instructions of the thread's \a Trace starting at the \a
+  /// start_position position in reverse order.
+  ///
+  /// The instructions are indexed in reverse order, which means that the \a
+  /// start_position 0 represents the last instruction of the trace
+  /// chronologically.
+  ///
+  /// \param[in] s
+  ///   The stream object where the instructions are printed.
+  ///
+  /// \param[in] count
+  ///     The number of instructions to print.
+  ///
+  /// \param[in] start_position
+  ///     The position of the first instruction to print.
+  void DumpTraceInstructions(Stream &s, size_t count,
+                             size_t start_position = 0) const;
+
   // If stop_format is true, this will be the form used when we print stop
   // info. If false, it will be the form we use for thread list and co.
   void DumpUsingSettingsFormat(Stream &strm, uint32_t frame_idx,
@@ -910,6 +929,12 @@ public:
                                  bool stop_other_threads, Status &status);
 
   // Thread Plan accessors:
+
+  /// Format the thread plan information for auto completion.
+  ///
+  /// \param[in] request
+  ///     The reference to the completion handler.
+  void AutoCompleteThreadPlans(CompletionRequest &request) const;
 
   /// Gets the plan which will execute next on the plan stack.
   ///

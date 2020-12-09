@@ -37,6 +37,7 @@
 #include "llvm/IR/LLVMRemarkStreamer.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
+#include "llvm/LTO/LTOBackend.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -247,8 +248,13 @@ namespace clang {
     bool LinkInModules() {
       for (auto &LM : LinkModules) {
         if (LM.PropagateAttrs)
-          for (Function &F : *LM.Module)
+          for (Function &F : *LM.Module) {
+            // Skip intrinsics. Keep consistent with how intrinsics are created
+            // in LLVM IR.
+            if (F.isIntrinsic())
+              continue;
             Gen->CGM().addDefaultFunctionDefinitionAttributes(F);
+          }
 
         CurLinkModule = LM.Module.get();
 
@@ -1063,7 +1069,7 @@ CodeGenAction::loadModule(MemoryBufferRef MBRef) {
     Expected<std::vector<BitcodeModule>> BMsOrErr = getBitcodeModuleList(MBRef);
     if (!BMsOrErr)
       return DiagErrors(BMsOrErr.takeError());
-    BitcodeModule *Bm = FindThinLTOModule(*BMsOrErr);
+    BitcodeModule *Bm = llvm::lto::findThinLTOModule(*BMsOrErr);
     // We have nothing to do if the file contains no ThinLTO module. This is
     // possible if ThinLTO compilation was not able to split module. Content of
     // the file was already processed by indexing and will be passed to the
@@ -1106,82 +1112,77 @@ CodeGenAction::loadModule(MemoryBufferRef MBRef) {
   return {};
 }
 
-void CodeGenAction::HandleIRFile() {
-  BackendAction BA = static_cast<BackendAction>(Act);
-  CompilerInstance &CI = getCompilerInstance();
-  auto &CodeGenOpts = CI.getCodeGenOpts();
-  auto &Diagnostics = CI.getDiagnostics();
-  std::unique_ptr<raw_pwrite_stream> OS =
-    GetOutputStream(CI, getCurrentFile(), BA);
-  if (BA != Backend_EmitNothing && !OS)
-    return;
-
-  bool Invalid;
-  SourceManager &SM = CI.getSourceManager();
-  FileID FID = SM.getMainFileID();
-  const llvm::MemoryBuffer *MainFile = SM.getBuffer(FID, &Invalid);
-  if (Invalid)
-    return;
-
-  TheModule = loadModule(*MainFile);
-  if (!TheModule)
-    return;
-
-  const TargetOptions &TargetOpts = CI.getTargetOpts();
-  if (TheModule->getTargetTriple() != TargetOpts.Triple) {
-    Diagnostics.Report(SourceLocation(),
-                       diag::warn_fe_override_module)
-      << TargetOpts.Triple;
-    TheModule->setTargetTriple(TargetOpts.Triple);
-  }
-
-  EmbedBitcode(TheModule.get(), CodeGenOpts,
-               MainFile->getMemBufferRef());
-
-  LLVMContext &Ctx = TheModule->getContext();
-  Ctx.setInlineAsmDiagnosticHandler(BitcodeInlineAsmDiagHandler,
-                                    &Diagnostics);
-
-
-  // Set clang diagnostic handler. To do this we need to create a fake
-  // BackendConsumer.
-  BackendConsumer Result(BA, CI.getDiagnostics(), CI.getHeaderSearchOpts(),
-                         CI.getPreprocessorOpts(), CI.getCodeGenOpts(),
-                         CI.getTargetOpts(), CI.getLangOpts(),
-                         CI.getFrontendOpts().ShowTimers,
-                         std::move(LinkModules), *VMContext, nullptr);
-  // PR44896: Force DiscardValueNames as false. DiscardValueNames cannot be
-  // true here because the valued names are needed for reading textual IR.
-  Ctx.setDiscardValueNames(false);
-  Ctx.setDiagnosticHandler(
-    std::make_unique<ClangDiagnosticHandler>(CodeGenOpts, &Result));
-
-  Expected<std::unique_ptr<llvm::ToolOutputFile>> OptRecordFileOrErr =
-    setupLLVMOptimizationRemarks(
-      Ctx, CodeGenOpts.OptRecordFile, CodeGenOpts.OptRecordPasses,
-      CodeGenOpts.OptRecordFormat, CodeGenOpts.DiagnosticsWithHotness,
-      CodeGenOpts.DiagnosticsHotnessThreshold);
-
-  if (Error E = OptRecordFileOrErr.takeError()) {
-    reportOptRecordError(std::move(E), Diagnostics, CodeGenOpts);
-    return;
-  }
-  std::unique_ptr<llvm::ToolOutputFile> OptRecordFile =
-    std::move(*OptRecordFileOrErr);
-
-  EmitBackendOutput(Diagnostics, CI.getHeaderSearchOpts(),
-                    CodeGenOpts, TargetOpts, CI.getLangOpts(),
-                    CI.getTarget().getDataLayout(), TheModule.get(), BA,
-                    std::move(OS));
-
-  if (OptRecordFile)
-    OptRecordFile->keep();
-}
-
 void CodeGenAction::ExecuteAction() {
   // If this is an IR file, we have to treat it specially.
-  if (getCurrentFileKind().getLanguage() == Language::LLVM_IR)
-    HandleIRFile();
+  if (getCurrentFileKind().getLanguage() == Language::LLVM_IR) {
+    BackendAction BA = static_cast<BackendAction>(Act);
+    CompilerInstance &CI = getCompilerInstance();
+    auto &CodeGenOpts = CI.getCodeGenOpts();
+    auto &Diagnostics = CI.getDiagnostics();
+    std::unique_ptr<raw_pwrite_stream> OS =
+        GetOutputStream(CI, getCurrentFile(), BA);
+    if (BA != Backend_EmitNothing && !OS)
+      return;
+
+    SourceManager &SM = CI.getSourceManager();
+    FileID FID = SM.getMainFileID();
+    Optional<MemoryBufferRef> MainFile = SM.getBufferOrNone(FID);
+    if (!MainFile)
+      return;
+
+    TheModule = loadModule(*MainFile);
+    if (!TheModule)
+      return;
+
+    const TargetOptions &TargetOpts = CI.getTargetOpts();
+    if (TheModule->getTargetTriple() != TargetOpts.Triple) {
+      Diagnostics.Report(SourceLocation(),
+                         diag::warn_fe_override_module)
+          << TargetOpts.Triple;
+      TheModule->setTargetTriple(TargetOpts.Triple);
+    }
+
+    EmbedBitcode(TheModule.get(), CodeGenOpts, *MainFile);
+
+    LLVMContext &Ctx = TheModule->getContext();
+    Ctx.setInlineAsmDiagnosticHandler(BitcodeInlineAsmDiagHandler,
+                                      &Diagnostics);
+
+    // Set clang diagnostic handler. To do this we need to create a fake
+    // BackendConsumer.
+    BackendConsumer Result(BA, CI.getDiagnostics(), CI.getHeaderSearchOpts(),
+                           CI.getPreprocessorOpts(), CI.getCodeGenOpts(),
+                           CI.getTargetOpts(), CI.getLangOpts(),
+                           CI.getFrontendOpts().ShowTimers,
+                           std::move(LinkModules), *VMContext, nullptr);
+    // PR44896: Force DiscardValueNames as false. DiscardValueNames cannot be
+    // true here because the valued names are needed for reading textual IR.
+    Ctx.setDiscardValueNames(false);
+    Ctx.setDiagnosticHandler(
+        std::make_unique<ClangDiagnosticHandler>(CodeGenOpts, &Result));
+
+    Expected<std::unique_ptr<llvm::ToolOutputFile>> OptRecordFileOrErr =
+        setupLLVMOptimizationRemarks(
+            Ctx, CodeGenOpts.OptRecordFile, CodeGenOpts.OptRecordPasses,
+            CodeGenOpts.OptRecordFormat, CodeGenOpts.DiagnosticsWithHotness,
+            CodeGenOpts.DiagnosticsHotnessThreshold);
+
+    if (Error E = OptRecordFileOrErr.takeError()) {
+      reportOptRecordError(std::move(E), Diagnostics, CodeGenOpts);
+      return;
+    }
+    std::unique_ptr<llvm::ToolOutputFile> OptRecordFile =
+        std::move(*OptRecordFileOrErr);
+
+    EmitBackendOutput(Diagnostics, CI.getHeaderSearchOpts(), CodeGenOpts,
+                      TargetOpts, CI.getLangOpts(),
+                      CI.getTarget().getDataLayout(), TheModule.get(), BA,
+                      std::move(OS));
+
+    if (OptRecordFile)
+      OptRecordFile->keep();
+    return;
+  }
 
   // Otherwise follow the normal AST path.
   this->ASTFrontendAction::ExecuteAction();

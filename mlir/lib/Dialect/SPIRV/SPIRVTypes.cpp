@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
+#include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/StandardTypes.h"
@@ -123,15 +124,14 @@ struct spirv::detail::ArrayTypeStorage : public TypeStorage {
 
 ArrayType ArrayType::get(Type elementType, unsigned elementCount) {
   assert(elementCount && "ArrayType needs at least one element");
-  return Base::get(elementType.getContext(), TypeKind::Array, elementType,
-                   elementCount, /*stride=*/0);
+  return Base::get(elementType.getContext(), elementType, elementCount,
+                   /*stride=*/0);
 }
 
 ArrayType ArrayType::get(Type elementType, unsigned elementCount,
                          unsigned stride) {
   assert(elementCount && "ArrayType needs at least one element");
-  return Base::get(elementType.getContext(), TypeKind::Array, elementType,
-                   elementCount, stride);
+  return Base::get(elementType.getContext(), elementType, elementCount, stride);
 }
 
 unsigned ArrayType::getNumElements() const { return getImpl()->elementCount; }
@@ -188,108 +188,70 @@ Type CompositeType::getElementType(unsigned index) const {
 }
 
 unsigned CompositeType::getNumElements() const {
-  switch (getKind()) {
-  case spirv::TypeKind::Array:
-    return cast<ArrayType>().getNumElements();
-  case spirv::TypeKind::CooperativeMatrix:
+  if (auto arrayType = dyn_cast<ArrayType>())
+    return arrayType.getNumElements();
+  if (auto matrixType = dyn_cast<MatrixType>())
+    return matrixType.getNumColumns();
+  if (auto structType = dyn_cast<StructType>())
+    return structType.getNumElements();
+  if (auto vectorType = dyn_cast<VectorType>())
+    return vectorType.getNumElements();
+  if (isa<CooperativeMatrixNVType>()) {
     llvm_unreachable(
         "invalid to query number of elements of spirv::CooperativeMatrix type");
-  case spirv::TypeKind::Matrix:
-    return cast<MatrixType>().getNumColumns();
-  case spirv::TypeKind::RuntimeArray:
+  }
+  if (isa<RuntimeArrayType>()) {
     llvm_unreachable(
         "invalid to query number of elements of spirv::RuntimeArray type");
-  case spirv::TypeKind::Struct:
-    return cast<StructType>().getNumElements();
-  case StandardTypes::Vector:
-    return cast<VectorType>().getNumElements();
-  default:
-    llvm_unreachable("invalid composite type");
   }
+  llvm_unreachable("invalid composite type");
 }
 
 bool CompositeType::hasCompileTimeKnownNumElements() const {
-  switch (getKind()) {
-  case TypeKind::CooperativeMatrix:
-  case TypeKind::RuntimeArray:
-    return false;
-  default:
-    return true;
-  }
+  return !isa<CooperativeMatrixNVType, RuntimeArrayType>();
 }
 
 void CompositeType::getExtensions(
     SPIRVType::ExtensionArrayRefVector &extensions,
     Optional<StorageClass> storage) {
-  switch (getKind()) {
-  case spirv::TypeKind::Array:
-    cast<ArrayType>().getExtensions(extensions, storage);
-    break;
-  case spirv::TypeKind::CooperativeMatrix:
-    cast<CooperativeMatrixNVType>().getExtensions(extensions, storage);
-    break;
-  case spirv::TypeKind::Matrix:
-    cast<MatrixType>().getExtensions(extensions, storage);
-    break;
-  case spirv::TypeKind::RuntimeArray:
-    cast<RuntimeArrayType>().getExtensions(extensions, storage);
-    break;
-  case spirv::TypeKind::Struct:
-    cast<StructType>().getExtensions(extensions, storage);
-    break;
-  case StandardTypes::Vector:
-    cast<VectorType>().getElementType().cast<ScalarType>().getExtensions(
-        extensions, storage);
-    break;
-  default:
-    llvm_unreachable("invalid composite type");
-  }
+  TypeSwitch<Type>(*this)
+      .Case<ArrayType, CooperativeMatrixNVType, MatrixType, RuntimeArrayType,
+            StructType>(
+          [&](auto type) { type.getExtensions(extensions, storage); })
+      .Case<VectorType>([&](VectorType type) {
+        return type.getElementType().cast<ScalarType>().getExtensions(
+            extensions, storage);
+      })
+      .Default([](Type) { llvm_unreachable("invalid composite type"); });
 }
 
 void CompositeType::getCapabilities(
     SPIRVType::CapabilityArrayRefVector &capabilities,
     Optional<StorageClass> storage) {
-  switch (getKind()) {
-  case spirv::TypeKind::Array:
-    cast<ArrayType>().getCapabilities(capabilities, storage);
-    break;
-  case spirv::TypeKind::CooperativeMatrix:
-    cast<CooperativeMatrixNVType>().getCapabilities(capabilities, storage);
-    break;
-  case spirv::TypeKind::Matrix:
-    cast<MatrixType>().getCapabilities(capabilities, storage);
-    break;
-  case spirv::TypeKind::RuntimeArray:
-    cast<RuntimeArrayType>().getCapabilities(capabilities, storage);
-    break;
-  case spirv::TypeKind::Struct:
-    cast<StructType>().getCapabilities(capabilities, storage);
-    break;
-  case StandardTypes::Vector:
-    cast<VectorType>().getElementType().cast<ScalarType>().getCapabilities(
-        capabilities, storage);
-    break;
-  default:
-    llvm_unreachable("invalid composite type");
-  }
+  TypeSwitch<Type>(*this)
+      .Case<ArrayType, CooperativeMatrixNVType, MatrixType, RuntimeArrayType,
+            StructType>(
+          [&](auto type) { type.getCapabilities(capabilities, storage); })
+      .Case<VectorType>([&](VectorType type) {
+        return type.getElementType().cast<ScalarType>().getCapabilities(
+            capabilities, storage);
+      })
+      .Default([](Type) { llvm_unreachable("invalid composite type"); });
 }
 
 Optional<int64_t> CompositeType::getSizeInBytes() {
-  switch (getKind()) {
-  case spirv::TypeKind::Array:
-    return cast<ArrayType>().getSizeInBytes();
-  case spirv::TypeKind::Struct:
-    return cast<StructType>().getSizeInBytes();
-  case StandardTypes::Vector: {
-    auto elementSize =
-        cast<VectorType>().getElementType().cast<ScalarType>().getSizeInBytes();
+  if (auto arrayType = dyn_cast<ArrayType>())
+    return arrayType.getSizeInBytes();
+  if (auto structType = dyn_cast<StructType>())
+    return structType.getSizeInBytes();
+  if (auto vectorType = dyn_cast<VectorType>()) {
+    Optional<int64_t> elementSize =
+        vectorType.getElementType().cast<ScalarType>().getSizeInBytes();
     if (!elementSize)
       return llvm::None;
-    return *elementSize * cast<VectorType>().getNumElements();
+    return *elementSize * vectorType.getNumElements();
   }
-  default:
-    return llvm::None;
-  }
+  return llvm::None;
 }
 
 //===----------------------------------------------------------------------===//
@@ -322,8 +284,7 @@ struct spirv::detail::CooperativeMatrixTypeStorage : public TypeStorage {
 CooperativeMatrixNVType CooperativeMatrixNVType::get(Type elementType,
                                                      Scope scope, unsigned rows,
                                                      unsigned columns) {
-  return Base::get(elementType.getContext(), TypeKind::CooperativeMatrix,
-                   elementType, scope, rows, columns);
+  return Base::get(elementType.getContext(), elementType, scope, rows, columns);
 }
 
 Type CooperativeMatrixNVType::getElementType() const {
@@ -426,7 +387,7 @@ ImageType
 ImageType::get(std::tuple<Type, Dim, ImageDepthInfo, ImageArrayedInfo,
                           ImageSamplingInfo, ImageSamplerUseInfo, ImageFormat>
                    value) {
-  return Base::get(std::get<0>(value).getContext(), TypeKind::Image, value);
+  return Base::get(std::get<0>(value).getContext(), value);
 }
 
 Type ImageType::getElementType() const { return getImpl()->elementType; }
@@ -490,8 +451,7 @@ struct spirv::detail::PointerTypeStorage : public TypeStorage {
 };
 
 PointerType PointerType::get(Type pointeeType, StorageClass storageClass) {
-  return Base::get(pointeeType.getContext(), TypeKind::Pointer, pointeeType,
-                   storageClass);
+  return Base::get(pointeeType.getContext(), pointeeType, storageClass);
 }
 
 Type PointerType::getPointeeType() const { return getImpl()->pointeeType; }
@@ -548,13 +508,11 @@ struct spirv::detail::RuntimeArrayTypeStorage : public TypeStorage {
 };
 
 RuntimeArrayType RuntimeArrayType::get(Type elementType) {
-  return Base::get(elementType.getContext(), TypeKind::RuntimeArray,
-                   elementType, /*stride=*/0);
+  return Base::get(elementType.getContext(), elementType, /*stride=*/0);
 }
 
 RuntimeArrayType RuntimeArrayType::get(Type elementType, unsigned stride) {
-  return Base::get(elementType.getContext(), TypeKind::RuntimeArray,
-                   elementType, stride);
+  return Base::get(elementType.getContext(), elementType, stride);
 }
 
 Type RuntimeArrayType::getElementType() const { return getImpl()->elementType; }
@@ -741,8 +699,7 @@ Optional<int64_t> ScalarType::getSizeInBytes() {
 
 bool SPIRVType::classof(Type type) {
   // Allow SPIR-V dialect types
-  if (type.getKind() >= Type::FIRST_SPIRV_TYPE &&
-      type.getKind() <= TypeKind::LAST_SPIRV_TYPE)
+  if (llvm::isa<SPIRVDialect>(type.getDialect()))
     return true;
   if (type.isa<ScalarType>())
     return true;
@@ -802,25 +759,92 @@ Optional<int64_t> SPIRVType::getSizeInBytes() {
 // StructType
 //===----------------------------------------------------------------------===//
 
+/// Type storage for SPIR-V structure types:
+///
+/// Structures are uniqued using:
+/// - for identified structs:
+///   - a string identifier;
+/// - for literal structs:
+///   - a list of member types;
+///   - a list of member offset info;
+///   - a list of member decoration info.
+///
+/// Identified structures only have a mutable component consisting of:
+/// - a list of member types;
+/// - a list of member offset info;
+/// - a list of member decoration info.
 struct spirv::detail::StructTypeStorage : public TypeStorage {
+  /// Construct a storage object for an identified struct type. A struct type
+  /// associated with such storage must call StructType::trySetBody(...) later
+  /// in order to mutate the storage object providing the actual content.
+  StructTypeStorage(StringRef identifier)
+      : memberTypesAndIsBodySet(nullptr, false), offsetInfo(nullptr),
+        numMemberDecorations(0), memberDecorationsInfo(nullptr),
+        identifier(identifier) {}
+
+  /// Construct a storage object for a literal struct type. A struct type
+  /// associated with such storage is immutable.
   StructTypeStorage(
       unsigned numMembers, Type const *memberTypes,
       StructType::OffsetInfo const *layoutInfo, unsigned numMemberDecorations,
       StructType::MemberDecorationInfo const *memberDecorationsInfo)
-      : memberTypes(memberTypes), offsetInfo(layoutInfo),
+      : memberTypesAndIsBodySet(memberTypes, false), offsetInfo(layoutInfo),
         numMembers(numMembers), numMemberDecorations(numMemberDecorations),
-        memberDecorationsInfo(memberDecorationsInfo) {}
+        memberDecorationsInfo(memberDecorationsInfo), identifier(StringRef()) {}
 
-  using KeyTy = std::tuple<ArrayRef<Type>, ArrayRef<StructType::OffsetInfo>,
-                           ArrayRef<StructType::MemberDecorationInfo>>;
+  /// A storage key is divided into 2 parts:
+  /// - for identified structs:
+  ///   - a StringRef representing the struct identifier;
+  /// - for literal structs:
+  ///   - an ArrayRef<Type> for member types;
+  ///   - an ArrayRef<StructType::OffsetInfo> for member offset info;
+  ///   - an ArrayRef<StructType::MemberDecorationInfo> for member decoration
+  ///     info.
+  ///
+  /// An identified struct type is uniqued only by the first part (field 0)
+  /// of the key.
+  ///
+  /// A literal struct type is unqiued only by the second part (fields 1, 2, and
+  /// 3) of the key. The identifier field (field 0) must be empty.
+  using KeyTy =
+      std::tuple<StringRef, ArrayRef<Type>, ArrayRef<StructType::OffsetInfo>,
+                 ArrayRef<StructType::MemberDecorationInfo>>;
+
+  /// For identified structs, return true if the given key contains the same
+  /// identifier.
+  ///
+  /// For literal structs, return true if the given key contains a matching list
+  /// of member types + offset info + decoration info.
   bool operator==(const KeyTy &key) const {
-    return key ==
-           KeyTy(getMemberTypes(), getOffsetInfo(), getMemberDecorationsInfo());
+    if (isIdentified()) {
+      // Identified types are uniqued by their identifier.
+      return getIdentifier() == std::get<0>(key);
+    }
+
+    return key == KeyTy(StringRef(), getMemberTypes(), getOffsetInfo(),
+                        getMemberDecorationsInfo());
   }
 
+  /// If the given key contains a non-empty identifier, this method constructs
+  /// an identified struct and leaves the rest of the struct type data to be set
+  /// through a later call to StructType::trySetBody(...).
+  ///
+  /// If, on the other hand, the key contains an empty identifier, a literal
+  /// struct is constructed using the other fields of the key.
   static StructTypeStorage *construct(TypeStorageAllocator &allocator,
                                       const KeyTy &key) {
-    ArrayRef<Type> keyTypes = std::get<0>(key);
+    StringRef keyIdentifier = std::get<0>(key);
+
+    if (!keyIdentifier.empty()) {
+      StringRef identifier = allocator.copyInto(keyIdentifier);
+
+      // Identified StructType body/members will be set through trySetBody(...)
+      // later.
+      return new (allocator.allocate<StructTypeStorage>())
+          StructTypeStorage(identifier);
+    }
+
+    ArrayRef<Type> keyTypes = std::get<1>(key);
 
     // Copy the member type and layout information into the bump pointer
     const Type *typesList = nullptr;
@@ -829,8 +853,8 @@ struct spirv::detail::StructTypeStorage : public TypeStorage {
     }
 
     const StructType::OffsetInfo *offsetInfoList = nullptr;
-    if (!std::get<1>(key).empty()) {
-      ArrayRef<StructType::OffsetInfo> keyOffsetInfo = std::get<1>(key);
+    if (!std::get<2>(key).empty()) {
+      ArrayRef<StructType::OffsetInfo> keyOffsetInfo = std::get<2>(key);
       assert(keyOffsetInfo.size() == keyTypes.size() &&
              "size of offset information must be same as the size of number of "
              "elements");
@@ -839,18 +863,19 @@ struct spirv::detail::StructTypeStorage : public TypeStorage {
 
     const StructType::MemberDecorationInfo *memberDecorationList = nullptr;
     unsigned numMemberDecorations = 0;
-    if (!std::get<2>(key).empty()) {
-      auto keyMemberDecorations = std::get<2>(key);
+    if (!std::get<3>(key).empty()) {
+      auto keyMemberDecorations = std::get<3>(key);
       numMemberDecorations = keyMemberDecorations.size();
       memberDecorationList = allocator.copyInto(keyMemberDecorations).data();
     }
+
     return new (allocator.allocate<StructTypeStorage>())
         StructTypeStorage(keyTypes.size(), typesList, offsetInfoList,
                           numMemberDecorations, memberDecorationList);
   }
 
   ArrayRef<Type> getMemberTypes() const {
-    return ArrayRef<Type>(memberTypes, numMembers);
+    return ArrayRef<Type>(memberTypesAndIsBodySet.getPointer(), numMembers);
   }
 
   ArrayRef<StructType::OffsetInfo> getOffsetInfo() const {
@@ -868,11 +893,61 @@ struct spirv::detail::StructTypeStorage : public TypeStorage {
     return {};
   }
 
-  Type const *memberTypes;
+  StringRef getIdentifier() const { return identifier; }
+
+  bool isIdentified() const { return !identifier.empty(); }
+
+  /// Sets the struct type content for identified structs. Calling this method
+  /// is only valid for identified structs.
+  ///
+  /// Fails under the following conditions:
+  /// - If called for a literal struct;
+  /// - If called for an identified struct whose body was set before (through a
+  /// call to this method) but with different contents from the passed
+  /// arguments.
+  LogicalResult mutate(
+      TypeStorageAllocator &allocator, ArrayRef<Type> structMemberTypes,
+      ArrayRef<StructType::OffsetInfo> structOffsetInfo,
+      ArrayRef<StructType::MemberDecorationInfo> structMemberDecorationInfo) {
+    if (!isIdentified())
+      return failure();
+
+    if (memberTypesAndIsBodySet.getInt() &&
+        (getMemberTypes() != structMemberTypes ||
+         getOffsetInfo() != structOffsetInfo ||
+         getMemberDecorationsInfo() != structMemberDecorationInfo))
+      return failure();
+
+    memberTypesAndIsBodySet.setInt(true);
+    numMembers = structMemberTypes.size();
+
+    // Copy the member type and layout information into the bump pointer.
+    if (!structMemberTypes.empty())
+      memberTypesAndIsBodySet.setPointer(
+          allocator.copyInto(structMemberTypes).data());
+
+    if (!structOffsetInfo.empty()) {
+      assert(structOffsetInfo.size() == structMemberTypes.size() &&
+             "size of offset information must be same as the size of number of "
+             "elements");
+      offsetInfo = allocator.copyInto(structOffsetInfo).data();
+    }
+
+    if (!structMemberDecorationInfo.empty()) {
+      numMemberDecorations = structMemberDecorationInfo.size();
+      memberDecorationsInfo =
+          allocator.copyInto(structMemberDecorationInfo).data();
+    }
+
+    return success();
+  }
+
+  llvm::PointerIntPair<Type const *, 1, bool> memberTypesAndIsBodySet;
   StructType::OffsetInfo const *offsetInfo;
   unsigned numMembers;
   unsigned numMemberDecorations;
   StructType::MemberDecorationInfo const *memberDecorationsInfo;
+  StringRef identifier;
 };
 
 StructType
@@ -884,25 +959,49 @@ StructType::get(ArrayRef<Type> memberTypes,
   SmallVector<StructType::MemberDecorationInfo, 4> sortedDecorations(
       memberDecorations.begin(), memberDecorations.end());
   llvm::array_pod_sort(sortedDecorations.begin(), sortedDecorations.end());
-  return Base::get(memberTypes.vec().front().getContext(), TypeKind::Struct,
-                   memberTypes, offsetInfo, sortedDecorations);
+  return Base::get(memberTypes.vec().front().getContext(),
+                   /*identifier=*/StringRef(), memberTypes, offsetInfo,
+                   sortedDecorations);
 }
 
-StructType StructType::getEmpty(MLIRContext *context) {
-  return Base::get(context, TypeKind::Struct, ArrayRef<Type>(),
+StructType StructType::getIdentified(MLIRContext *context,
+                                     StringRef identifier) {
+  assert(!identifier.empty() &&
+         "StructType identifier must be non-empty string");
+
+  return Base::get(context, identifier, ArrayRef<Type>(),
                    ArrayRef<StructType::OffsetInfo>(),
                    ArrayRef<StructType::MemberDecorationInfo>());
 }
+
+StructType StructType::getEmpty(MLIRContext *context, StringRef identifier) {
+  StructType newStructType = Base::get(
+      context, identifier, ArrayRef<Type>(), ArrayRef<StructType::OffsetInfo>(),
+      ArrayRef<StructType::MemberDecorationInfo>());
+  // Set an empty body in case this is a identified struct.
+  if (newStructType.isIdentified() &&
+      failed(newStructType.trySetBody(
+          ArrayRef<Type>(), ArrayRef<StructType::OffsetInfo>(),
+          ArrayRef<StructType::MemberDecorationInfo>())))
+    return StructType();
+
+  return newStructType;
+}
+
+StringRef StructType::getIdentifier() const { return getImpl()->identifier; }
+
+bool StructType::isIdentified() const { return getImpl()->isIdentified(); }
 
 unsigned StructType::getNumElements() const { return getImpl()->numMembers; }
 
 Type StructType::getElementType(unsigned index) const {
   assert(getNumElements() > index && "member index out of range");
-  return getImpl()->memberTypes[index];
+  return getImpl()->memberTypesAndIsBodySet.getPointer()[index];
 }
 
 StructType::ElementTypeRange StructType::getElementTypes() const {
-  return ElementTypeRange(getImpl()->memberTypes, getNumElements());
+  return ElementTypeRange(getImpl()->memberTypesAndIsBodySet.getPointer(),
+                          getNumElements());
 }
 
 bool StructType::hasOffset() const { return getImpl()->offsetInfo; }
@@ -936,6 +1035,13 @@ void StructType::getMemberDecorations(
       return;
     }
   }
+}
+
+LogicalResult
+StructType::trySetBody(ArrayRef<Type> memberTypes,
+                       ArrayRef<OffsetInfo> offsetInfo,
+                       ArrayRef<MemberDecorationInfo> memberDecorations) {
+  return Base::mutate(memberTypes, offsetInfo, memberDecorations);
 }
 
 void StructType::getExtensions(SPIRVType::ExtensionArrayRefVector &extensions,
@@ -984,13 +1090,12 @@ struct spirv::detail::MatrixTypeStorage : public TypeStorage {
 };
 
 MatrixType MatrixType::get(Type columnType, uint32_t columnCount) {
-  return Base::get(columnType.getContext(), TypeKind::Matrix, columnType,
-                   columnCount);
+  return Base::get(columnType.getContext(), columnType, columnCount);
 }
 
 MatrixType MatrixType::getChecked(Type columnType, uint32_t columnCount,
                                   Location location) {
-  return Base::getChecked(location, TypeKind::Matrix, columnType, columnCount);
+  return Base::getChecked(location, columnType, columnCount);
 }
 
 LogicalResult MatrixType::verifyConstructionInvariants(Location loc,

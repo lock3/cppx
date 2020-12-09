@@ -811,6 +811,46 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::DependentSizedMatrixTypeLoc>
   llvm_unreachable("unimplemented");
 }
 
+template<> TypeSourceInfo *BuildTypeLoc<clang::InParameterTypeLoc>
+(clang::ASTContext &Ctx, QualType Ty, SourceLocation Loc) {
+  llvm_unreachable("unimplemented");
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::InParameterTypeLoc>
+(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
+  llvm_unreachable("unimplemented");
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::OutParameterTypeLoc>
+(clang::ASTContext &Ctx, QualType Ty, SourceLocation Loc) {
+  llvm_unreachable("unimplemented");
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::OutParameterTypeLoc>
+(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
+  llvm_unreachable("unimplemented");
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::InOutParameterTypeLoc>
+(clang::ASTContext &Ctx, QualType Ty, SourceLocation Loc) {
+  llvm_unreachable("unimplemented");
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::InOutParameterTypeLoc>
+(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
+  llvm_unreachable("unimplemented");
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::MoveParameterTypeLoc>
+(clang::ASTContext &Ctx, QualType Ty, SourceLocation Loc) {
+  llvm_unreachable("unimplemented");
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::MoveParameterTypeLoc>
+(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
+  llvm_unreachable("unimplemented");
+}
+
 TypeSourceInfo *BuildAnyTypeLoc(clang::ASTContext &Context,
                                 TypeLocBuilder &TLB, QualType T,
                                 SourceLocation Loc) {

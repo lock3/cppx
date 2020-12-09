@@ -23,7 +23,7 @@ if (libcxx_needs_site_config) {
       values += [ "_LIBCPP_ABI_NAMESPACE=$libcxx_abi_namespace" ]
     }
     if (libcxx_abi_unstable) {
-      values += [ "_LIBCPP_ABI_UNSTABLE=" ]
+      values += [ "_LIBCPP_ABI_UNSTABLE=1" ]
     }
   }
 
@@ -80,6 +80,7 @@ copy("include") {
     "any",
     "array",
     "atomic",
+    "barrier",
     "bit",
     "bitset",
     "cassert",
@@ -157,6 +158,7 @@ copy("include") {
     "iostream",
     "istream",
     "iterator",
+    "latch",
     "limits",
     "limits.h",
     "list",
@@ -176,6 +178,7 @@ copy("include") {
     "ratio",
     "regex",
     "scoped_allocator",
+    "semaphore",
     "set",
     "setjmp.h",
     "shared_mutex",

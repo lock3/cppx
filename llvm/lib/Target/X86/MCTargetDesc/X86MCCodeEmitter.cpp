@@ -161,13 +161,11 @@ static bool is16BitMemOperand(const MCInst &MI, unsigned Op,
                               const MCSubtargetInfo &STI) {
   const MCOperand &Base = MI.getOperand(Op + X86::AddrBaseReg);
   const MCOperand &Index = MI.getOperand(Op + X86::AddrIndexReg);
-  const MCOperand &Disp = MI.getOperand(Op + X86::AddrDisp);
 
   unsigned BaseReg = Base.getReg();
   unsigned IndexReg = Index.getReg();
 
-  if (STI.hasFeature(X86::Mode16Bit) && BaseReg == 0 && IndexReg == 0 &&
-      Disp.isImm() && Disp.getImm() < 0x10000)
+  if (STI.hasFeature(X86::Mode16Bit) && BaseReg == 0 && IndexReg == 0)
     return true;
   if ((BaseReg != 0 &&
        X86MCRegisterClasses[X86::GR16RegClassID].contains(BaseReg)) ||
@@ -406,6 +404,17 @@ void X86MCCodeEmitter::emitMemModRMByte(const MCInst &MI, unsigned Op,
       switch (Opcode) {
       default:
         return X86::reloc_riprel_4byte;
+      case X86::ADC32rm:
+      case X86::ADD32rm:
+      case X86::AND32rm:
+      case X86::CMP32rm:
+      case X86::MOV32rm:
+      case X86::OR32rm:
+      case X86::SBB32rm:
+      case X86::SUB32rm:
+      case X86::TEST32mr:
+      case X86::XOR32rm:
+        return X86::reloc_riprel_4byte_relax;
       case X86::MOV64rm:
         assert(HasREX);
         return X86::reloc_riprel_4byte_movq_load;

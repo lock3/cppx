@@ -127,9 +127,8 @@ class ItaniumMangleContextImpl : public ItaniumMangleContext {
 
 public:
   explicit ItaniumMangleContextImpl(ASTContext &Context,
-                                    DiagnosticsEngine &Diags,
-                                    bool IsUniqueNameMangler)
-      : ItaniumMangleContext(Context, Diags, IsUniqueNameMangler) {}
+                                    DiagnosticsEngine &Diags)
+      : ItaniumMangleContext(Context, Diags) {}
 
   /// @name Mangler Entry Points
   /// @{
@@ -532,6 +531,8 @@ private:
   void mangleNeonVectorType(const DependentVectorType *T);
   void mangleAArch64NeonVectorType(const VectorType *T);
   void mangleAArch64NeonVectorType(const DependentVectorType *T);
+  void mangleAArch64FixedSveVectorType(const VectorType *T);
+  void mangleAArch64FixedSveVectorType(const DependentVectorType *T);
 
   void mangleIntegerLiteral(QualType T, const llvm::APSInt &Value);
   void mangleMemberExprBase(const Expr *base, bool isArrow);
@@ -659,7 +660,14 @@ void CXXNameMangler::mangle(GlobalDecl GD) {
     mangleName(FD);
   else if (const MSGuidDecl *GuidD = dyn_cast<MSGuidDecl>(GD.getDecl()))
     mangleName(GuidD);
-  else
+  else if (const BindingDecl *BD = dyn_cast<BindingDecl>(GD.getDecl()))
+    mangleName(BD);
+  else if (isa<TemplateParamObjectDecl>(GD.getDecl())) {
+    DiagnosticsEngine &Diags = Context.getDiags();
+    unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+      "cannot mangle template parameter objects yet");
+    Diags.Report(SourceLocation(), DiagID);
+  } else
     llvm_unreachable("unexpected kind of global decl");
 }
 
@@ -1411,8 +1419,7 @@ void CXXNameMangler::mangleUnqualifiedName(GlobalDecl GD,
     // <lambda-sig> ::= <template-param-decl>* <parameter-type>+
     //     # Parameter types or 'v' for 'void'.
     if (const CXXRecordDecl *Record = dyn_cast<CXXRecordDecl>(TD)) {
-      if (Record->isLambda() && (Record->getLambdaManglingNumber() ||
-                                 Context.isUniqueNameMangler())) {
+      if (Record->isLambda() && Record->getLambdaManglingNumber()) {
         assert(!AdditionalAbiTags &&
                "Lambda type cannot have additional abi tags");
         mangleLambda(Record);
@@ -1787,37 +1794,6 @@ void CXXNameMangler::mangleTemplateParamDecl(const NamedDecl *Decl) {
   }
 }
 
-// Handles the __builtin_unique_stable_name feature for lambdas.  Instead of the
-// ordinal of the lambda in its mangling, this does line/column to uniquely and
-// reliably identify the lambda.  Additionally, macro expansions are expressed
-// as well to prevent macros causing duplicates.
-static void mangleUniqueNameLambda(CXXNameMangler &Mangler, SourceManager &SM,
-                                   raw_ostream &Out,
-                                   const CXXRecordDecl *Lambda) {
-  SourceLocation Loc = Lambda->getLocation();
-
-  PresumedLoc PLoc = SM.getPresumedLoc(Loc);
-  Mangler.mangleNumber(PLoc.getLine());
-  Out << "_";
-  Mangler.mangleNumber(PLoc.getColumn());
-
-  while(Loc.isMacroID()) {
-    SourceLocation SLToPrint = Loc;
-    if (SM.isMacroArgExpansion(Loc))
-      SLToPrint = SM.getImmediateExpansionRange(Loc).getBegin();
-
-    PLoc = SM.getPresumedLoc(SM.getSpellingLoc(SLToPrint));
-    Out << "m";
-    Mangler.mangleNumber(PLoc.getLine());
-    Out << "_";
-    Mangler.mangleNumber(PLoc.getColumn());
-
-    Loc = SM.getImmediateMacroCallerLoc(Loc);
-    if (Loc.isFileID())
-      Loc = SM.getImmediateMacroCallerLoc(SLToPrint);
-  }
-}
-
 void CXXNameMangler::mangleLambda(const CXXRecordDecl *Lambda) {
   // If the context of a closure type is an initializer for a class member
   // (static or nonstatic), it is encoded in a qualified name with a final
@@ -1847,12 +1823,6 @@ void CXXNameMangler::mangleLambda(const CXXRecordDecl *Lambda) {
   Out << "Ul";
   mangleLambdaSig(Lambda);
   Out << "E";
-
-  if (Context.isUniqueNameMangler()) {
-    mangleUniqueNameLambda(
-        *this, Context.getASTContext().getSourceManager(), Out, Lambda);
-    return;
-  }
 
   // The number is omitted for the first closure type with a given
   // <lambda-sig> in a given context; it is n-2 for the nth closure type
@@ -2111,6 +2081,10 @@ bool CXXNameMangler::mangleUnresolvedTypeOrSimpleId(QualType Ty,
   case Type::CppxTypeExpr:
   case Type::ExtInt:
   case Type::DependentExtInt:
+  case Type::InParameter:
+  case Type::OutParameter:
+  case Type::InOutParameter:
+  case Type::MoveParameter:
     llvm_unreachable("type is illegal as a nested name specifier");
 
   case Type::SubstTemplateTypeParmPack:
@@ -2526,7 +2500,7 @@ void CXXNameMangler::mangleRefQualifier(RefQualifierKind RefQualifier) {
 }
 
 void CXXNameMangler::mangleObjCMethodName(const ObjCMethodDecl *MD) {
-  Context.mangleObjCMethodName(MD, Out);
+  Context.mangleObjCMethodNameAsSourceName(MD, Out);
 }
 
 static bool isTypeSubstitutable(Qualifiers Quals, const Type *Ty,
@@ -2880,6 +2854,12 @@ void CXXNameMangler::mangleType(const BuiltinType *T) {
         << type_name;                                                          \
     break;
 #include "clang/Basic/AArch64SVEACLETypes.def"
+#define PPC_MMA_VECTOR_TYPE(Name, Id, Size) \
+  case BuiltinType::Id: \
+    type_name = #Name; \
+    Out << 'u' << type_name.size() << type_name; \
+    break;
+#include "clang/Basic/PPCTypes.def"
   }
 }
 
@@ -3293,7 +3273,7 @@ static StringRef mangleAArch64VectorBase(const BuiltinType *EltType) {
   case BuiltinType::Double:
     return "Float64";
   case BuiltinType::BFloat16:
-    return "BFloat16";
+    return "Bfloat16";
   default:
     llvm_unreachable("Unexpected vector element base type");
   }
@@ -3343,6 +3323,103 @@ void CXXNameMangler::mangleAArch64NeonVectorType(const DependentVectorType *T) {
   Diags.Report(T->getAttributeLoc(), DiagID);
 }
 
+// The AArch64 ACLE specifies that fixed-length SVE vector and predicate types
+// defined with the 'arm_sve_vector_bits' attribute map to the same AAPCS64
+// type as the sizeless variants.
+//
+// The mangling scheme for VLS types is implemented as a "pseudo" template:
+//
+//   '__SVE_VLS<<type>, <vector length>>'
+//
+// Combining the existing SVE type and a specific vector length (in bits).
+// For example:
+//
+//   typedef __SVInt32_t foo __attribute__((arm_sve_vector_bits(512)));
+//
+// is described as '__SVE_VLS<__SVInt32_t, 512u>' and mangled as:
+//
+//   "9__SVE_VLSI" + base type mangling + "Lj" + __ARM_FEATURE_SVE_BITS + "EE"
+//
+//   i.e. 9__SVE_VLSIu11__SVInt32_tLj512EE
+//
+// The latest ACLE specification (00bet5) does not contain details of this
+// mangling scheme, it will be specified in the next revision. The mangling
+// scheme is otherwise defined in the appendices to the Procedure Call Standard
+// for the Arm Architecture, see
+// https://github.com/ARM-software/abi-aa/blob/master/aapcs64/aapcs64.rst#appendix-c-mangling
+void CXXNameMangler::mangleAArch64FixedSveVectorType(const VectorType *T) {
+  assert((T->getVectorKind() == VectorType::SveFixedLengthDataVector ||
+          T->getVectorKind() == VectorType::SveFixedLengthPredicateVector) &&
+         "expected fixed-length SVE vector!");
+
+  QualType EltType = T->getElementType();
+  assert(EltType->isBuiltinType() &&
+         "expected builtin type for fixed-length SVE vector!");
+
+  StringRef TypeName;
+  switch (cast<BuiltinType>(EltType)->getKind()) {
+  case BuiltinType::SChar:
+    TypeName = "__SVInt8_t";
+    break;
+  case BuiltinType::UChar: {
+    if (T->getVectorKind() == VectorType::SveFixedLengthDataVector)
+      TypeName = "__SVUint8_t";
+    else
+      TypeName = "__SVBool_t";
+    break;
+  }
+  case BuiltinType::Short:
+    TypeName = "__SVInt16_t";
+    break;
+  case BuiltinType::UShort:
+    TypeName = "__SVUint16_t";
+    break;
+  case BuiltinType::Int:
+    TypeName = "__SVInt32_t";
+    break;
+  case BuiltinType::UInt:
+    TypeName = "__SVUint32_t";
+    break;
+  case BuiltinType::Long:
+    TypeName = "__SVInt64_t";
+    break;
+  case BuiltinType::ULong:
+    TypeName = "__SVUint64_t";
+    break;
+  case BuiltinType::Half:
+    TypeName = "__SVFloat16_t";
+    break;
+  case BuiltinType::Float:
+    TypeName = "__SVFloat32_t";
+    break;
+  case BuiltinType::Double:
+    TypeName = "__SVFloat64_t";
+    break;
+  case BuiltinType::BFloat16:
+    TypeName = "__SVBfloat16_t";
+    break;
+  default:
+    llvm_unreachable("unexpected element type for fixed-length SVE vector!");
+  }
+
+  unsigned VecSizeInBits = getASTContext().getTypeInfo(T).Width;
+
+  if (T->getVectorKind() == VectorType::SveFixedLengthPredicateVector)
+    VecSizeInBits *= 8;
+
+  Out << "9__SVE_VLSI" << 'u' << TypeName.size() << TypeName << "Lj"
+      << VecSizeInBits << "EE";
+}
+
+void CXXNameMangler::mangleAArch64FixedSveVectorType(
+    const DependentVectorType *T) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(
+      DiagnosticsEngine::Error,
+      "cannot mangle this dependent fixed-length SVE vector type yet");
+  Diags.Report(T->getAttributeLoc(), DiagID);
+}
+
 // GNU extension: vector types
 // <type>                  ::= <vector-type>
 // <vector-type>           ::= Dv <positive dimension number> _
@@ -3362,6 +3439,10 @@ void CXXNameMangler::mangleType(const VectorType *T) {
       mangleAArch64NeonVectorType(T);
     else
       mangleNeonVectorType(T);
+    return;
+  } else if (T->getVectorKind() == VectorType::SveFixedLengthDataVector ||
+             T->getVectorKind() == VectorType::SveFixedLengthPredicateVector) {
+    mangleAArch64FixedSveVectorType(T);
     return;
   }
   Out << "Dv" << T->getNumElements() << '_';
@@ -3384,6 +3465,10 @@ void CXXNameMangler::mangleType(const DependentVectorType *T) {
       mangleAArch64NeonVectorType(T);
     else
       mangleNeonVectorType(T);
+    return;
+  } else if (T->getVectorKind() == VectorType::SveFixedLengthDataVector ||
+             T->getVectorKind() == VectorType::SveFixedLengthPredicateVector) {
+    mangleAArch64FixedSveVectorType(T);
     return;
   }
 
@@ -3614,7 +3699,7 @@ void CXXNameMangler::mangleType(const DecltypeType *T) {
 }
 
 void CXXNameMangler::mangleType(const ReflectedType *T) {
-  // <type> ::= RT <expression> E  # decltype of an expression
+  // <type> ::= RT <expression> E  # typename of an expression
   Out << "RT";
   mangleExpression(T->getReflection());
   Out << 'E';
@@ -3647,13 +3732,18 @@ void CXXNameMangler::mangleType(const AutoType *T) {
 }
 
 void CXXNameMangler::mangleType(const DeducedTemplateSpecializationType *T) {
-  // FIXME: This is not the right mangling. We also need to include a scope
-  // here in some cases.
-  QualType D = T->getDeducedType();
-  if (D.isNull())
-    mangleUnscopedTemplateName(T->getTemplateName(), nullptr);
-  else
-    mangleType(D);
+  QualType Deduced = T->getDeducedType();
+  if (!Deduced.isNull())
+    mangleType(Deduced);
+  else if (TemplateDecl *TD = T->getTemplateName().getAsTemplateDecl())
+    mangleName(GlobalDecl(TD));
+  else {
+    // For an unresolved template-name, mangle it as if it were a template
+    // specialization but leave off the template arguments.
+    Out << 'N';
+    mangleTemplatePrefix(T->getTemplateName());
+    Out << 'E';
+  }
 }
 
 void CXXNameMangler::mangleType(const AtomicType *T) {
@@ -3690,6 +3780,28 @@ void CXXNameMangler::mangleType(const DependentExtIntType *T) {
     Out << "j";
   else
     Out << "i";
+}
+
+// <type> ::= ???
+
+void CXXNameMangler::mangleType(const InParameterType *T) {
+  Out << "U1i";
+  return mangleType(T->getParameterType());
+}
+
+void CXXNameMangler::mangleType(const OutParameterType *T) {
+  Out << "U1o";
+  return mangleType(T->getParameterType());
+}
+
+void CXXNameMangler::mangleType(const InOutParameterType *T) {
+  Out << "U2io";
+  return mangleType(T->getParameterType());
+}
+
+void CXXNameMangler::mangleType(const MoveParameterType *T) {
+  Out << "U1m";
+  return mangleType(T->getParameterType());
 }
 
 void CXXNameMangler::mangleIntegerLiteral(QualType T,
@@ -3822,7 +3934,7 @@ void CXXNameMangler::mangleReflectionOp(const ReflectionOperand &Op) {
   switch (Op.getKind()) {
   case ReflectionOperand::Type: {
     Out << "Ty";
-    mangleType(Op.getAsType());
+    mangleType(Op.getAsType().getCanonicalType());
     return;
   }
   case ReflectionOperand::Template: {
@@ -3839,17 +3951,18 @@ void CXXNameMangler::mangleReflectionOp(const ReflectionOperand &Op) {
     }
     return;
   }
-  case ReflectionOperand::Declaration: {
-    NamedDecl *ND = cast<NamedDecl>(Op.getAsDeclaration());
-    mangleName(ND);
-    return;
-  }
-  case ReflectionOperand::Invalid:
-  case ReflectionOperand::Expression:
-  case ReflectionOperand::BaseSpecifier: {
+  case ReflectionOperand::Expression: {
     Out << reinterpret_cast<std::uintmax_t>(Op.getOpaqueReflectionValue());
     return;
   }
+  case ReflectionOperand::Invalid:
+  case ReflectionOperand::Declaration:
+  case ReflectionOperand::BaseSpecifier: {
+    // These reflections should never show up in the mangler, as there
+    // isn't a way to directly reflect them.
+    llvm_unreachable("invalid reflection kind");
+  }
+
   }
 
   llvm_unreachable("unhandled reflection kind");
@@ -3919,6 +4032,7 @@ recurse:
   case Expr::CppxTypeLiteralClass:
   case Expr::CppxDeclRefExprClass:
   case Expr::CppxPartialEvalExprClass:
+  case Expr::CXXParameterInfoExprClass:
     llvm_unreachable("unexpected statement kind");
 
   case Expr::ConstantExprClass:
@@ -3968,8 +4082,8 @@ recurse:
   case Expr::CXXReflectDumpReflectionExprClass:
   case Expr::FixedPointLiteralClass:
   case Expr::BuiltinBitCastExprClass:
-  case Expr::CXXFragmentExprClass:
   case Expr::CXXFragmentCaptureExprClass:
+  case Expr::CXXInjectedValueExprClass:
   {
     if (!NullOut) {
       // As bad as this diagnostic is, it's better than crashing.
@@ -3983,14 +4097,25 @@ recurse:
   }
 
   case Expr::CXXReflectExprClass: {
-    Out << "Re";
-
-    const CXXReflectExpr *RE = cast<CXXReflectExpr>(E);
+    const auto *RE = cast<CXXReflectExpr>(E);
     const ReflectionOperand &Op = RE->getOperand();
 
+    Out << "Re";
     mangleReflectionOp(Op);
     break;
- }
+  }
+
+  case Expr::CXXFragmentExprClass: {
+    const auto *FE = cast<CXXFragmentExpr>(E);
+
+    Out << "ReF";
+    Out << reinterpret_cast<std::uintmax_t>(FE);
+    for (Expr *E : FE->captures()) {
+      Out << "C";
+      mangleExpression(E);
+    }
+    break;
+  }
 
   case Expr::CXXUuidofExprClass: {
     const CXXUuidofExpr *UE = cast<CXXUuidofExpr>(E);
@@ -4221,7 +4346,7 @@ recurse:
 
   case Expr::CXXUnresolvedConstructExprClass: {
     const CXXUnresolvedConstructExpr *CE = cast<CXXUnresolvedConstructExpr>(E);
-    unsigned N = CE->arg_size();
+    unsigned N = CE->getNumArgs();
 
     if (CE->isListInitialization()) {
       assert(N == 1 && "unexpected form for list initialization");
@@ -5520,8 +5645,7 @@ void ItaniumMangleContextImpl::mangleLambdaSig(const CXXRecordDecl *Lambda,
   Mangler.mangleLambdaSig(Lambda);
 }
 
-ItaniumMangleContext *ItaniumMangleContext::create(ASTContext &Context,
-                                                   DiagnosticsEngine &Diags,
-                                                   bool IsUniqueNameMangler) {
-  return new ItaniumMangleContextImpl(Context, Diags, IsUniqueNameMangler);
+ItaniumMangleContext *
+ItaniumMangleContext::create(ASTContext &Context, DiagnosticsEngine &Diags) {
+  return new ItaniumMangleContextImpl(Context, Diags);
 }

@@ -16,6 +16,7 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
@@ -71,7 +72,7 @@ struct ShapeInlinerInterface : public DialectInlinerInterface {
 
   // Returns true if the given region 'src' can be inlined into the region
   // 'dest' that is attached to an operation registered to the current dialect.
-  bool isLegalToInline(Region *dest, Region *src,
+  bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
                        BlockAndValueMapping &) const final {
     return true;
   }
@@ -79,7 +80,7 @@ struct ShapeInlinerInterface : public DialectInlinerInterface {
   // Returns true if the given operation 'op', that is registered to this
   // dialect, can be inlined into the region 'dest' that is attached to an
   // operation registered to the current dialect.
-  bool isLegalToInline(Operation *op, Region *dest,
+  bool isLegalToInline(Operation *op, Region *dest, bool wouldBeCloned,
                        BlockAndValueMapping &) const final {
     return true;
   }
@@ -141,28 +142,14 @@ Type ShapeDialect::parseType(DialectAsmParser &parser) const {
 
 /// Print a type registered to this dialect.
 void ShapeDialect::printType(Type type, DialectAsmPrinter &os) const {
-  switch (type.getKind()) {
-  case ShapeTypes::Component:
-    os << "component";
-    return;
-  case ShapeTypes::Element:
-    os << "element";
-    return;
-  case ShapeTypes::Size:
-    os << "size";
-    return;
-  case ShapeTypes::Shape:
-    os << "shape";
-    return;
-  case ShapeTypes::ValueShape:
-    os << "value_shape";
-    return;
-  case ShapeTypes::Witness:
-    os << "witness";
-    return;
-  default:
-    llvm_unreachable("unexpected 'shape' type kind");
-  }
+  TypeSwitch<Type>(type)
+      .Case<ComponentType>([&](Type) { os << "component"; })
+      .Case<ElementType>([&](Type) { os << "element"; })
+      .Case<ShapeType>([&](Type) { os << "shape"; })
+      .Case<SizeType>([&](Type) { os << "size"; })
+      .Case<ValueShapeType>([&](Type) { os << "value_shape"; })
+      .Case<WitnessType>([&](Type) { os << "witness"; })
+      .Default([](Type) { llvm_unreachable("unexpected 'shape' type kind"); });
 }
 
 //===----------------------------------------------------------------------===//
@@ -244,6 +231,21 @@ void AssumingOp::getCanonicalizationPatterns(OwningRewritePatternList &patterns,
                                              MLIRContext *context) {
   // If taking a passing witness, inline region.
   patterns.insert<AssumingWithTrue>(context);
+}
+
+// See RegionBranchOpInterface in Interfaces/ControlFlowInterfaces.td
+void AssumingOp::getSuccessorRegions(
+    Optional<unsigned> index, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor> &regions) {
+  // AssumingOp has unconditional control flow into the region and back to the
+  // parent, so return the correct RegionSuccessor purely based on the index
+  // being None or 0.
+  if (index.hasValue()) {
+    regions.push_back(RegionSuccessor(getResults()));
+    return;
+  }
+
+  regions.push_back(RegionSuccessor(&doRegion()));
 }
 
 void AssumingOp::inlineRegionIntoParent(AssumingOp &op,
@@ -412,46 +414,6 @@ LogicalResult getShapeVec(Value input, SmallVectorImpl<int64_t> &shapeValues) {
     return failure();
   }
 }
-
-// For shapes that were created by some operations, we can obtain partial
-// information on the shapes and sometimes determine if they will be
-// broadcastable with that.
-struct CstrBroadcastablePartialInfo
-    : public OpRewritePattern<CstrBroadcastableOp> {
-  using OpRewritePattern<CstrBroadcastableOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(CstrBroadcastableOp op,
-                                PatternRewriter &rewriter) const override {
-    SmallVector<int64_t, 6> lhsShape, rhsShape;
-    if (failed(getShapeVec(op.lhs(), lhsShape)))
-      return failure();
-    if (failed(getShapeVec(op.rhs(), rhsShape)))
-      return failure();
-    if (!OpTrait::util::staticallyKnownBroadcastable(lhsShape, rhsShape))
-      return failure();
-
-    rewriter.replaceOpWithNewOp<ConstWitnessOp>(op.getOperation(), true);
-    return success();
-  }
-};
-
-// Scalars are always broadcastable.
-struct CstrBroadcastableScalar : public OpRewritePattern<CstrBroadcastableOp> {
-  using OpRewritePattern<CstrBroadcastableOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(CstrBroadcastableOp op,
-                                PatternRewriter &rewriter) const override {
-    SmallVector<int64_t, 6> shape;
-    if (failed(getShapeVec(op.lhs(), shape)) || shape.size() > 0)
-      return failure();
-    if (failed(getShapeVec(op.rhs(), shape)) || shape.size() > 0)
-      return failure();
-
-    rewriter.replaceOpWithNewOp<ConstWitnessOp>(op.getOperation(), true);
-    return success();
-  }
-};
-
 } // namespace
 
 void CstrBroadcastableOp::getCanonicalizationPatterns(
@@ -459,8 +421,7 @@ void CstrBroadcastableOp::getCanonicalizationPatterns(
   // Canonicalization patterns have overlap with the considerations during
   // folding in case additional shape information is inferred at some point that
   // does not result in folding.
-  patterns.insert<CstrBroadcastableEqOps, CstrBroadcastablePartialInfo,
-                  CstrBroadcastableScalar>(context);
+  patterns.insert<CstrBroadcastableEqOps>(context);
 }
 
 OpFoldResult CstrBroadcastableOp::fold(ArrayRef<Attribute> operands) {
@@ -543,6 +504,14 @@ void ConstSizeOp::getAsmResultNames(
 //===----------------------------------------------------------------------===//
 
 OpFoldResult ConstWitnessOp::fold(ArrayRef<Attribute>) { return passingAttr(); }
+
+//===----------------------------------------------------------------------===//
+// CstrRequireOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult CstrRequireOp::fold(ArrayRef<Attribute> operands) {
+  return operands[0];
+}
 
 //===----------------------------------------------------------------------===//
 // ShapeEqOp
@@ -792,7 +761,7 @@ void SizeToIndexOp::getCanonicalizationPatterns(
 // YieldOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult verify(YieldOp op) {
+static LogicalResult verify(shape::YieldOp op) {
   auto *parentOp = op.getParentOp();
   auto results = parentOp->getResults();
   auto operands = op.getOperands();
@@ -951,11 +920,5 @@ static void print(OpAsmPrinter &p, ReduceOp op) {
   p.printOptionalAttrDict(op.getAttrs());
 }
 
-namespace mlir {
-namespace shape {
-
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Shape/IR/ShapeOps.cpp.inc"
-
-} // namespace shape
-} // namespace mlir

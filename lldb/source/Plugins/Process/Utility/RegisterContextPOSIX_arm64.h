@@ -14,8 +14,6 @@
 #include "lldb/Target/RegisterContext.h"
 #include "lldb/Utility/Log.h"
 
-class ProcessMonitor;
-
 class RegisterContextPOSIX_arm64 : public lldb_private::RegisterContext {
 public:
   RegisterContextPOSIX_arm64(
@@ -66,7 +64,9 @@ protected:
   uint32_t GetRegNumSVEZ0() const {
     return m_register_info_up->GetRegNumSVEZ0();
   }
-
+  uint32_t GetRegNumSVEFFR() const {
+    return m_register_info_up->GetRegNumSVEFFR();
+  }
   uint32_t GetRegNumFPCR() const { return m_register_info_up->GetRegNumFPCR(); }
   uint32_t GetRegNumFPSR() const { return m_register_info_up->GetRegNumFPSR(); }
 

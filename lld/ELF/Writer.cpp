@@ -131,9 +131,14 @@ StringRef elf::getOutputSectionName(const InputSectionBase *s) {
   // SampleFDO is used, if a function doesn't have sample, it could be very
   // cold or it could be a new function never being sampled. Those functions
   // will be kept in the ".text.unknown" section.
+  // ".text.split." holds symbols which are split out from functions in other
+  // input sections. For example, with -fsplit-machine-functions, placing the
+  // cold parts in .text.split instead of .text.unlikely mitigates against poor
+  // profile inaccuracy. Techniques such as hugepage remapping can make
+  // conservative decisions at the section granularity.
   if (config->zKeepTextSectionPrefix)
     for (StringRef v : {".text.hot.", ".text.unknown.", ".text.unlikely.",
-                        ".text.startup.", ".text.exit."})
+                        ".text.startup.", ".text.exit.", ".text.split."})
       if (isSectionPrefix(v, s->name))
         return v.drop_back();
 
@@ -806,9 +811,12 @@ template <class ELFT> void Writer<ELFT>::addSectionSymbols() {
     if (isa<SyntheticSection>(isec) && !(isec->flags & SHF_MERGE))
       continue;
 
+    // Set the symbol to be relative to the output section so that its st_value
+    // equals the output section address. Note, there may be a gap between the
+    // start of the output section and isec.
     auto *sym =
         make<Defined>(isec->file, "", STB_LOCAL, /*stOther=*/0, STT_SECTION,
-                      /*value=*/0, /*size=*/0, isec);
+                      /*value=*/0, /*size=*/0, isec->getOutputSection());
     in.symTab->addSymbol(sym);
   }
 }
@@ -1234,13 +1242,7 @@ static bool shouldSkip(BaseCommand *cmd) {
 static std::vector<BaseCommand *>::iterator
 findOrphanPos(std::vector<BaseCommand *>::iterator b,
               std::vector<BaseCommand *>::iterator e) {
-  // OutputSections without the SHF_ALLOC flag are not part of the memory image
-  // and their addresses usually don't matter. Place any orphan sections without
-  // the SHF_ALLOC flag at the end so that these do not affect the address
-  // assignment of OutputSections with the SHF_ALLOC flag.
   OutputSection *sec = cast<OutputSection>(*e);
-  if (!(sec->flags & SHF_ALLOC))
-    return e;
 
   // Find the first element that has as close a rank as possible.
   auto i = std::max_element(b, e, [=](BaseCommand *a, BaseCommand *b) {
@@ -1352,9 +1354,11 @@ static DenseMap<const InputSectionBase *, int> buildSectionOrder() {
       addSym(*sym);
 
   for (InputFile *file : objectFiles)
-    for (Symbol *sym : file->getSymbols())
-      if (sym->isLocal())
-        addSym(*sym);
+    for (Symbol *sym : file->getSymbols()) {
+      if (!sym->isLocal())
+        break;
+      addSym(*sym);
+    }
 
   if (config->warnSymbolOrdering)
     for (auto orderEntry : symbolOrder)
@@ -1435,6 +1439,14 @@ static void sortSection(OutputSection *sec,
 
   // Never sort these.
   if (name == ".init" || name == ".fini")
+    return;
+
+  // IRelative relocations that usually live in the .rel[a].dyn section should
+  // be proccessed last by the dynamic loader. To achieve that we add synthetic
+  // sections in the required order from the begining so that the in.relaIplt
+  // section is placed last in an output section. Here we just do not apply
+  // sorting for an output section which holds the in.relaIplt section.
+  if (in.relaIplt->getParent() == sec)
     return;
 
   // Sort input sections by priority using the list provided by
@@ -1610,9 +1622,10 @@ template <class ELFT> void Writer<ELFT>::sortSections() {
 }
 
 static bool compareByFilePosition(InputSection *a, InputSection *b) {
-  InputSection *la = a->getLinkOrderDep();
-  InputSection *lb = b->getLinkOrderDep();
-  // SHF_LINK_ORDER sections with non-zero sh_link are ordered before others.
+  InputSection *la = a->flags & SHF_LINK_ORDER ? a->getLinkOrderDep() : nullptr;
+  InputSection *lb = b->flags & SHF_LINK_ORDER ? b->getLinkOrderDep() : nullptr;
+  // SHF_LINK_ORDER sections with non-zero sh_link are ordered before
+  // non-SHF_LINK_ORDER sections and SHF_LINK_ORDER sections with zero sh_link.
   if (!la || !lb)
     return la && !lb;
   OutputSection *aOut = la->getParent();
@@ -1634,44 +1647,34 @@ template <class ELFT> void Writer<ELFT>::resolveShfLinkOrder() {
         sec->type == SHT_ARM_EXIDX)
       continue;
 
-    // Link order may be distributed across several InputSectionDescriptions
-    // but sort must consider them all at once.
+    // Link order may be distributed across several InputSectionDescriptions.
+    // Sorting is performed separately.
     std::vector<InputSection **> scriptSections;
     std::vector<InputSection *> sections;
-    bool started = false, stopped = false;
     for (BaseCommand *base : sec->sectionCommands) {
-      if (auto *isd = dyn_cast<InputSectionDescription>(base)) {
-        for (InputSection *&isec : isd->sections) {
-          if (!(isec->flags & SHF_LINK_ORDER)) {
-            if (started)
-              stopped = true;
-          } else if (stopped) {
-            error(toString(isec) + ": SHF_LINK_ORDER sections in " + sec->name +
-                  " are not contiguous");
-          } else {
-            started = true;
-
-            scriptSections.push_back(&isec);
-            sections.push_back(isec);
-
-            InputSection *link = isec->getLinkOrderDep();
-            if (link && !link->getParent())
-              error(toString(isec) + ": sh_link points to discarded section " +
-                    toString(link));
-          }
+      auto *isd = dyn_cast<InputSectionDescription>(base);
+      if (!isd)
+        continue;
+      bool hasLinkOrder = false;
+      scriptSections.clear();
+      sections.clear();
+      for (InputSection *&isec : isd->sections) {
+        if (isec->flags & SHF_LINK_ORDER) {
+          InputSection *link = isec->getLinkOrderDep();
+          if (link && !link->getParent())
+            error(toString(isec) + ": sh_link points to discarded section " +
+                  toString(link));
+          hasLinkOrder = true;
         }
-      } else if (started) {
-        stopped = true;
+        scriptSections.push_back(&isec);
+        sections.push_back(isec);
+      }
+      if (hasLinkOrder && errorCount() == 0) {
+        llvm::stable_sort(sections, compareByFilePosition);
+        for (int i = 0, n = sections.size(); i != n; ++i)
+          *scriptSections[i] = sections[i];
       }
     }
-
-    if (errorCount())
-      continue;
-
-    llvm::stable_sort(sections, compareByFilePosition);
-
-    for (int i = 0, n = sections.size(); i < n; ++i)
-      *scriptSections[i] = sections[i];
   }
 }
 
@@ -1706,8 +1709,8 @@ template <class ELFT> void Writer<ELFT>::finalizeAddressDependentContent() {
     bool changed = target->needsThunks && tc.createThunks(outputSections);
 
     // With Thunk Size much smaller than branch range we expect to
-    // converge quickly; if we get to 10 something has gone wrong.
-    if (changed && tc.pass >= 10) {
+    // converge quickly; if we get to 15 something has gone wrong.
+    if (changed && tc.pass >= 15) {
       error("thunk creation not converged");
       break;
     }
@@ -2590,7 +2593,11 @@ template <class ELFT> void Writer<ELFT>::assignFileOffsets() {
       if (p->p_type == PT_LOAD && (p->p_flags & PF_X))
         lastRX = p;
 
+  // Layout SHF_ALLOC sections before non-SHF_ALLOC sections. A non-SHF_ALLOC
+  // will not occupy file offsets contained by a PT_LOAD.
   for (OutputSection *sec : outputSections) {
+    if (!(sec->flags & SHF_ALLOC))
+      continue;
     off = setFileOffset(sec, off);
 
     // If this is a last section of the last executable segment and that
@@ -2600,6 +2607,9 @@ template <class ELFT> void Writer<ELFT>::assignFileOffsets() {
         lastRX->lastSec == sec)
       off = alignTo(off, config->commonPageSize);
   }
+  for (OutputSection *sec : outputSections)
+    if (!(sec->flags & SHF_ALLOC))
+      off = setFileOffset(sec, off);
 
   sectionHeaderOff = alignTo(off, config->wordsize);
   fileSize = sectionHeaderOff + (outputSections.size() + 1) * sizeof(Elf_Shdr);

@@ -30,8 +30,8 @@ TEST(DialectDeathTest, MultipleDialectsWithSameNamespace) {
 
   // Registering a dialect with the same namespace twice should result in a
   // failure.
-  context.getOrCreateDialect<TestDialect>();
-  ASSERT_DEATH(context.getOrCreateDialect<AnotherTestDialect>(), "");
+  context.loadDialect<TestDialect>();
+  ASSERT_DEATH(context.loadDialect<AnotherTestDialect>(), "");
 }
 
 } // end namespace

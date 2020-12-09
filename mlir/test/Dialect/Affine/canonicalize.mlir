@@ -423,7 +423,7 @@ func @fold_empty_loop() {
 
 // -----
 
-// CHECK-DAG: [[$SET:#set[0-9]+]] = affine_set<(d0, d1)[s0] : (d0 >= 0, -d0 + 1022 >= 0, d1 >= 0, -d1 + s0 - 2 >= 0)>
+// CHECK-DAG: [[$SET:#set[0-9]*]] = affine_set<(d0, d1)[s0] : (d0 >= 0, -d0 + 1022 >= 0, d1 >= 0, -d1 + s0 - 2 >= 0)>
 
 // CHECK-LABEL: func @canonicalize_affine_if
 // CHECK-SAME: [[M:%.*]]: index,
@@ -601,6 +601,29 @@ func @drop_duplicate_bounds(%N : index) {
   // affine.for %i = max #lb(%arg0) to min #ub(%arg0)
   affine.for %i = max affine_map<(d0) -> (d0, d0)>(%N) to min affine_map<(d0) -> (d0 + 2, d0 + 2)>(%N) {
     "foo"() : () -> ()
+  }
+  return
+}
+
+// -----
+
+// Ensure affine.parallel bounds expressions are canonicalized.
+
+#map3 = affine_map<(d0) -> (d0 * 5)>
+
+// CHECK-LABEL: func @affine_parallel_const_bounds
+func @affine_parallel_const_bounds() {
+  %cst = constant 1.0 : f32
+  %c0 = constant 0 : index
+  %c4 = constant 4 : index
+  %0 = alloc() : memref<4xf32>
+  // CHECK: affine.parallel (%{{.*}}) = (0) to (4)
+  affine.parallel (%i) = (%c0) to (%c0 + %c4) {
+    %1 = affine.apply #map3(%i)
+    // CHECK: affine.parallel (%{{.*}}) = (0) to (%{{.*}} * 5)
+    affine.parallel (%j) = (%c0) to (%1) {
+      affine.store %cst, %0[%j] : memref<4xf32>
+    }
   }
   return
 }

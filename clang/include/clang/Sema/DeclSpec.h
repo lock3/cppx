@@ -196,6 +196,9 @@ private:
   // constexpr-specifier
   unsigned ConstexprSpecifier : 2;
 
+  // parameter-passing-specifier
+  unsigned ParameterPassingSpecifier : 3;
+
   union {
     UnionParsedType TypeRep;
     Decl *DeclRep;
@@ -231,6 +234,7 @@ private:
   SourceLocation FS_explicitCloseParenLoc;
   SourceLocation FS_forceinlineLoc;
   SourceLocation FriendLoc, ModulePrivateLoc, ConstexprLoc;
+  SourceLocation ParameterPassingLoc;
   SourceLocation TQ_pipeLoc;
 
   WrittenBuiltinSpecs writtenBS;
@@ -270,6 +274,7 @@ public:
         FS_inline_specified(false), FS_forceinline_specified(false),
         FS_virtual_specified(false), FS_noreturn_specified(false),
         Friend_specified(false), ConstexprSpecifier(CSK_unspecified),
+        ParameterPassingSpecifier(PPK_unspecified),
         FS_explicit_specifier(), Attrs(attrFactory), writtenBS(),
         ObjCQualifiers(nullptr) {}
 
@@ -373,6 +378,7 @@ public:
   static const char *getSpecifierName(DeclSpec::SCS S);
   static const char *getSpecifierName(DeclSpec::TSCS S);
   static const char *getSpecifierName(ConstexprSpecKind C);
+  static const char *getSpecifierName(ParameterPassingKind K);
 
   // type-qualifiers
 
@@ -577,6 +583,13 @@ public:
   bool SetConstexprSpec(ConstexprSpecKind ConstexprKind, SourceLocation Loc,
                         const char *&PrevSpec, unsigned &DiagID);
 
+  void SetParameterPassingSpecifier(ParameterPassingKind K,
+                                    SourceLocation Loc) {
+    assert(ParameterPassingSpecifier == PPK_unspecified);
+    ParameterPassingSpecifier = K;
+    ParameterPassingLoc = Loc;
+  }
+
   bool isFriendSpecified() const { return Friend_specified; }
   SourceLocation getFriendSpecLoc() const { return FriendLoc; }
 
@@ -587,14 +600,31 @@ public:
     return ConstexprSpecKind(ConstexprSpecifier);
   }
 
+  ParameterPassingKind getParameterPassingSpecifier() const {
+    return ParameterPassingKind(ParameterPassingSpecifier);
+  }
+
   SourceLocation getConstexprSpecLoc() const { return ConstexprLoc; }
   bool hasConstexprSpecifier() const {
     return ConstexprSpecifier != CSK_unspecified;
   }
 
+  SourceLocation getParameterPassingLoc() const {
+    return ParameterPassingLoc; 
+  }
+
+  bool hasParameterPassingSpecifier() const {
+    return ParameterPassingSpecifier != PPK_unspecified;
+  }
+
   void ClearConstexprSpec() {
     ConstexprSpecifier = CSK_unspecified;
     ConstexprLoc = SourceLocation();
+  }
+
+  void ClearParameterPassingSpecifier() {
+    ParameterPassingSpecifier = PPK_unspecified;
+    ParameterPassingLoc = SourceLocation();
   }
 
   AttributePool &getAttributePool() const {
@@ -1190,6 +1220,10 @@ struct DeclaratorChunk {
     /// type specified.
     UnionParsedType TrailingReturnType;
 
+    /// If HasTrailingReturnType is true, this is the location of the trailing
+    /// return type.
+    unsigned TrailingReturnTypeLoc;
+
     /// Reset the parameter list to having zero parameters.
     ///
     /// This is used in various places for error recovery.
@@ -1325,7 +1359,16 @@ struct DeclaratorChunk {
     bool hasTrailingReturnType() const { return HasTrailingReturnType; }
 
     /// Get the trailing-return-type for this function declarator.
-    ParsedType getTrailingReturnType() const { return TrailingReturnType; }
+    ParsedType getTrailingReturnType() const {
+      assert(HasTrailingReturnType);
+      return TrailingReturnType;
+    }
+
+    /// Get the trailing-return-type location for this function declarator.
+    SourceLocation getTrailingReturnTypeLoc() const {
+      assert(HasTrailingReturnType);
+      return SourceLocation::getFromRawEncoding(TrailingReturnTypeLoc);
+    }
   };
 
   struct BlockPointerTypeInfo {
@@ -1460,6 +1503,8 @@ struct DeclaratorChunk {
                                      Declarator &TheDeclarator,
                                      TypeResult TrailingReturnType =
                                                     TypeResult(),
+                                     SourceLocation TrailingReturnTypeLoc =
+                                                    SourceLocation(),
                                      DeclSpec *MethodQualifiers = nullptr);
 
   /// Return a DeclaratorChunk for a block.

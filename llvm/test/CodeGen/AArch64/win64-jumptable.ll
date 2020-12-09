@@ -37,13 +37,13 @@ declare void @g(i32, i32)
 ; CHECK:    f:
 ; CHECK:    .seh_proc f
 ; CHECK:    b g
+; CHECK-NEXT:  .seh_endfunclet
 ; CHECK-NEXT: .p2align  2
 ; CHECK-NEXT: .LJTI0_0:
-; CHECK:    .word .LBB0_2-.LJTI0_0
-; CHECK:    .word .LBB0_3-.LJTI0_0
-; CHECK:    .word .LBB0_4-.LJTI0_0
-; CHECK:    .word .LBB0_5-.LJTI0_0
-; CHECK:    .section  .xdata,"dr"
+; CHECK:    .word .LBB0_2-.Ltmp0
+; CHECK:    .word .LBB0_3-.Ltmp0
+; CHECK:    .word .LBB0_4-.Ltmp0
+; CHECK:    .word .LBB0_5-.Ltmp0
 ; CHECK:    .seh_handlerdata
 ; CHECK:    .text
 ; CHECK:    .seh_endproc

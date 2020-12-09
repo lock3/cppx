@@ -32,6 +32,7 @@
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 #include <algorithm>
@@ -47,6 +48,10 @@
 #include "AMDGPUGenInstrInfo.inc"
 #undef GET_INSTRMAP_INFO
 #undef GET_INSTRINFO_NAMED_OPS
+
+static llvm::cl::opt<unsigned> AmdhsaCodeObjectVersion(
+  "amdhsa-code-object-version", llvm::cl::Hidden,
+  llvm::cl::desc("AMDHSA Code Object Version"), llvm::cl::init(3));
 
 namespace {
 
@@ -102,6 +107,32 @@ unsigned getVmcntBitWidthHi() { return 2; }
 namespace llvm {
 
 namespace AMDGPU {
+
+Optional<uint8_t> getHsaAbiVersion(const MCSubtargetInfo *STI) {
+  if (STI && STI->getTargetTriple().getOS() != Triple::AMDHSA)
+    return None;
+
+  switch (AmdhsaCodeObjectVersion) {
+  case 2:
+    return ELF::ELFABIVERSION_AMDGPU_HSA_V2;
+  case 3:
+    return ELF::ELFABIVERSION_AMDGPU_HSA_V3;
+  default:
+    return ELF::ELFABIVERSION_AMDGPU_HSA_V3;
+  }
+}
+
+bool isHsaAbiVersion2(const MCSubtargetInfo *STI) {
+  if (const auto &&HsaAbiVer = getHsaAbiVersion(STI))
+    return HsaAbiVer.getValue() == ELF::ELFABIVERSION_AMDGPU_HSA_V2;
+  return false;
+}
+
+bool isHsaAbiVersion3(const MCSubtargetInfo *STI) {
+  if (const auto &&HsaAbiVer = getHsaAbiVersion(STI))
+    return HsaAbiVer.getValue() == ELF::ELFABIVERSION_AMDGPU_HSA_V3;
+  return false;
+}
 
 #define GET_MIMGBaseOpcodesTable_IMPL
 #define GET_MIMGDimInfoTable_IMPL
@@ -255,11 +286,6 @@ void streamIsaVersion(const MCSubtargetInfo *STI, raw_ostream &Stream) {
     Stream << "+sram-ecc";
 
   Stream.flush();
-}
-
-bool hasCodeObjectV3(const MCSubtargetInfo *STI) {
-  return STI->getTargetTriple().getOS() == Triple::AMDHSA &&
-             STI->getFeatureBits().test(FeatureCodeObjectV3);
 }
 
 unsigned getWavefrontSize(const MCSubtargetInfo *STI) {
@@ -578,7 +604,7 @@ bool isReadOnlySegment(const GlobalValue *GV) {
 }
 
 bool shouldEmitConstantsToTextSection(const Triple &TT) {
-  return TT.getOS() == Triple::AMDPAL || TT.getArch() == Triple::r600;
+  return TT.getArch() == Triple::r600;
 }
 
 int getIntegerAttribute(const Function &F, StringRef Name, int Default) {
@@ -1078,6 +1104,10 @@ bool isGFX9(const MCSubtargetInfo &STI) {
   return STI.getFeatureBits()[AMDGPU::FeatureGFX9];
 }
 
+bool isGFX9Plus(const MCSubtargetInfo &STI) {
+  return isGFX9(STI) || isGFX10(STI);
+}
+
 bool isGFX10(const MCSubtargetInfo &STI) {
   return STI.getFeatureBits()[AMDGPU::FeatureGFX10];
 }
@@ -1378,6 +1408,19 @@ bool isInlinableIntLiteralV216(int32_t Literal) {
   if (!(Literal & 0xffff))
     return isInlinableIntLiteral(Hi16);
   return Lo16 == Hi16 && isInlinableIntLiteral(Lo16);
+}
+
+bool isFoldableLiteralV216(int32_t Literal, bool HasInv2Pi) {
+  assert(HasInv2Pi);
+
+  int16_t Lo16 = static_cast<int16_t>(Literal);
+  if (isInt<16>(Literal) || isUInt<16>(Literal))
+    return true;
+
+  int16_t Hi16 = static_cast<int16_t>(Literal >> 16);
+  if (!(Literal & 0xffff))
+    return true;
+  return Lo16 == Hi16;
 }
 
 bool isArgPassedInSGPR(const Argument *A) {

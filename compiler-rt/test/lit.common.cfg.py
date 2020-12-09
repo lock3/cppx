@@ -57,18 +57,8 @@ config.available_features.add(compiler_id)
 # If needed, add cflag for shadow scale.
 if config.asan_shadow_scale != '':
   config.target_cflags += " -mllvm -asan-mapping-scale=" + config.asan_shadow_scale
-
-# BFD linker in 64-bit android toolchains fails to find libc++_shared.so, which
-# is a transitive shared library dependency (via asan runtime).
-if config.android:
-  # Prepend the flag so that it can be overridden.
-  config.target_cflags = "-pie -fuse-ld=gold " + config.target_cflags
-  if config.android_ndk_version < 19:
-    # With a new compiler and NDK < r19 this flag ends up meaning "link against
-    # libc++", but NDK r19 makes this mean "link against the stub libstdc++ that
-    # just contains a handful of ABI functions", which makes most C++ code fail
-    # to link. In r19 and later we just use the default which is libc++.
-    config.cxx_mode_flags.append('-stdlib=libstdc++')
+if config.memprof_shadow_scale != '':
+  config.target_cflags += " -mllvm -memprof-mapping-scale=" + config.memprof_shadow_scale
 
 config.environment = dict(os.environ)
 
@@ -132,9 +122,21 @@ if config.host_os == 'NetBSD':
 else:
   config.substitutions.append( ('%run_nomprotect', '%run') )
 
+# Copied from libcxx's config.py
+def get_lit_conf(name, default=None):
+    # Allow overriding on the command line using --param=<name>=<val>
+    val = lit_config.params.get(name, None)
+    if val is None:
+        val = getattr(config, name, None)
+        if val is None:
+            val = default
+    return val
+
+emulator = get_lit_conf('emulator', None)
+
 # Allow tests to be executed on a simulator or remotely.
-if config.emulator:
-  config.substitutions.append( ('%run', config.emulator) )
+if emulator:
+  config.substitutions.append( ('%run', emulator) )
   config.substitutions.append( ('%env ', "env ") )
   # TODO: Implement `%device_rm` to perform removal of files in the emulator.
   # For now just make it a no-op.
@@ -264,54 +266,14 @@ if config.gwp_asan:
 
 lit.util.usePlatformSdkOnDarwin(config, lit_config)
 
-# Maps a lit substitution name for the minimum target OS flag
-# to the macOS version that first contained the relevant feature.
-darwin_min_deployment_target_substitutions = {
-  '%macos_min_target_10_11': '10.11',
-  # rdar://problem/22207160
-  '%darwin_min_target_with_full_runtime_arc_support': '10.11',
-  '%darwin_min_target_with_tls_support': '10.12',
-}
+min_macos_deployment_target_substitutions = [
+  (10, 11),
+  (10, 12),
+]
+# TLS requires watchOS 3+
+config.substitutions.append( ('%darwin_min_target_with_tls_support', '%min_macos_deployment_target=10.12') )
 
 if config.host_os == 'Darwin':
-  def get_apple_platform_version_aligned_with(macos_version, apple_platform):
-    """
-      Given a macOS version (`macos_version`) returns the corresponding version for
-      the specified Apple platform if it exists.
-
-      `macos_version` - The macOS version as a string.
-      `apple_platform` - The Apple platform name as a string.
-
-      Returns the corresponding version as a string if it exists, otherwise
-      `None` is returned.
-    """
-    m = re.match(r'^10\.(?P<min>\d+)(\.(?P<patch>\d+))?$', macos_version)
-    if not m:
-      raise Exception('Could not parse macOS version: "{}"'.format(macos_version))
-    ver_min = int(m.group('min'))
-    ver_patch = m.group('patch')
-    if ver_patch:
-      ver_patch = int(ver_patch)
-    else:
-      ver_patch = 0
-    result_str = ''
-    if apple_platform == 'osx':
-      # Drop patch for now.
-      result_str = '10.{}'.format(ver_min)
-    elif apple_platform.startswith('ios') or apple_platform.startswith('tvos'):
-      result_maj = ver_min - 2
-      if result_maj < 1:
-        return None
-      result_str = '{}.{}'.format(result_maj, ver_patch)
-    elif apple_platform.startswith('watch'):
-      result_maj = ver_min - 9
-      if result_maj < 1:
-        return None
-      result_str = '{}.{}'.format(result_maj, ver_patch)
-    else:
-      raise Exception('Unsuported apple platform "{}"'.format(apple_platform))
-    return result_str
-
   osx_version = (10, 0, 0)
   try:
     osx_version = subprocess.check_output(["sw_vers", "-productVersion"],
@@ -321,12 +283,6 @@ if config.host_os == 'Darwin':
     if osx_version >= (10, 11):
       config.available_features.add('osx-autointerception')
       config.available_features.add('osx-ld64-live_support')
-    else:
-      # The ASAN initialization-bug.cpp test should XFAIL on OS X systems
-      # older than El Capitan. By marking the test as being unsupported with
-      # this "feature", we can pass the test on newer OS X versions and other
-      # platforms.
-      config.available_features.add('osx-no-ld64-live_support')
   except subprocess.CalledProcessError:
     pass
 
@@ -343,29 +299,44 @@ if config.host_os == 'Darwin':
   except:
     pass
 
-  def get_apple_min_deploy_target_flag_aligned_with_osx(version):
-    min_os_aligned_with_osx_v = get_apple_platform_version_aligned_with(version, config.apple_platform)
-    min_os_aligned_with_osx_v_flag = ''
-    if min_os_aligned_with_osx_v:
-      min_os_aligned_with_osx_v_flag = '{flag}={version}'.format(
-        flag=config.apple_platform_min_deployment_target_flag,
-        version=min_os_aligned_with_osx_v)
-    else:
-      lit_config.warning('Could not find a version of {} that corresponds with macOS {}'.format(
-        config.apple_platform,
-        version))
-    return min_os_aligned_with_osx_v_flag
-
-  for substitution, osx_version in darwin_min_deployment_target_substitutions.items():
-    config.substitutions.append( (substitution, get_apple_min_deploy_target_flag_aligned_with_osx(osx_version)) )
-
   # 32-bit iOS simulator is deprecated and removed in latest Xcode.
   if config.apple_platform == "iossim":
     if config.target_arch == "i386":
       config.unsupported = True
+
+  def get_macos_aligned_version(macos_vers):
+    platform = config.apple_platform
+    if platform == 'osx':
+      return macos_vers
+
+    macos_major, macos_minor = macos_vers
+    assert macos_major >= 10
+
+    if macos_major == 10:  # macOS 10.x
+      major = macos_minor
+      minor = 0
+    else:                  # macOS 11+
+      major = macos_major + 5
+      minor = macos_minor
+
+    assert major >= 11
+
+    if platform.startswith('ios') or platform.startswith('tvos'):
+      major -= 2
+    elif platform.startswith('watch'):
+      major -= 9
+    else:
+      lit_config.fatal("Unsupported apple platform '{}'".format(platform))
+
+    return (major, minor)
+
+  for vers in min_macos_deployment_target_substitutions:
+    flag = config.apple_platform_min_deployment_target_flag
+    major, minor = get_macos_aligned_version(vers)
+    config.substitutions.append( ('%%min_macos_deployment_target=%s.%s' % vers, '{}={}.{}'.format(flag, major, minor)) )
 else:
-  for substitution in darwin_min_deployment_target_substitutions.keys():
-    config.substitutions.append( (substitution, "") )
+  for vers in min_macos_deployment_target_substitutions:
+    config.substitutions.append( ('%%min_macos_deployment_target=%s.%s' % vers, '') )
 
 if config.android:
   env = os.environ.copy()
@@ -374,8 +345,17 @@ if config.android:
     config.environment['ANDROID_SERIAL'] = config.android_serial
 
   adb = os.environ.get('ADB', 'adb')
+
+  # These are needed for tests to upload/download temp files, such as
+  # suppression-files, to device.
+  config.substitutions.append( ('%device_rundir', "/data/local/tmp/Output") )
+  config.substitutions.append( ('%push_to_device', "%s -s '%s' push " % (adb, env['ANDROID_SERIAL']) ) )
+  config.substitutions.append( ('%pull_from_device', "%s -s '%s' pull " % (adb, env['ANDROID_SERIAL']) ) )
+  config.substitutions.append( ('%adb_shell ', "%s -s '%s' shell " % (adb, env['ANDROID_SERIAL']) ) )
+
   try:
     android_api_level_str = subprocess.check_output([adb, "shell", "getprop", "ro.build.version.sdk"], env=env).rstrip()
+    android_api_codename = subprocess.check_output([adb, "shell", "getprop", "ro.build.version.codename"], env=env).rstrip().decode("utf-8")
   except (subprocess.CalledProcessError, OSError):
     lit_config.fatal("Failed to read ro.build.version.sdk (using '%s' as adb)" % adb)
   try:
@@ -386,12 +366,19 @@ if config.android:
     config.available_features.add('android-26')
   if android_api_level >= 28:
     config.available_features.add('android-28')
+  if android_api_level >= 31 or android_api_codename == 'S':
+    config.available_features.add('android-thread-properties-api')
 
   # Prepare the device.
   android_tmpdir = '/data/local/tmp/Output'
   subprocess.check_call([adb, "shell", "mkdir", "-p", android_tmpdir], env=env)
   for file in config.android_files_to_push:
     subprocess.check_call([adb, "push", file, android_tmpdir], env=env)
+else:
+  config.substitutions.append( ('%device_rundir', "") )
+  config.substitutions.append( ('%push_to_device', "echo ") )
+  config.substitutions.append( ('%pull_from_device', "echo ") )
+  config.substitutions.append( ('%adb_shell', "echo ") )
 
 if config.host_os == 'Linux':
   # detect whether we are using glibc, and which version
@@ -401,7 +388,7 @@ if config.host_os == 'Linux':
                                  env={'LANG': 'C'})
   sout, _ = ldd_ver_cmd.communicate()
   ver_line = sout.splitlines()[0]
-  if ver_line.startswith(b"ldd "):
+  if not config.android and ver_line.startswith(b"ldd "):
     from distutils.version import LooseVersion
     ver = LooseVersion(ver_line.split()[-1].decode())
     # 2.27 introduced some incompatibilities
@@ -572,6 +559,11 @@ if config.asan_shadow_scale:
   config.available_features.add("shadow-scale-%s" % config.asan_shadow_scale)
 else:
   config.available_features.add("shadow-scale-3")
+
+if config.memprof_shadow_scale:
+  config.available_features.add("memprof-shadow-scale-%s" % config.memprof_shadow_scale)
+else:
+  config.available_features.add("memprof-shadow-scale-3")
 
 if config.expensive_checks:
   config.available_features.add("expensive_checks")

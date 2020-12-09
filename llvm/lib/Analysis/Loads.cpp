@@ -199,7 +199,7 @@ bool llvm::isDereferenceableAndAlignedInLoop(LoadInst *LI, Loop *L,
   Value *Ptr = LI->getPointerOperand();
 
   APInt EltSize(DL.getIndexTypeSizeInBits(Ptr->getType()),
-                DL.getTypeStoreSize(LI->getType()));
+                DL.getTypeStoreSize(LI->getType()).getFixedSize());
   const Align Alignment = LI->getAlign();
 
   Instruction *HeaderFirstNonPHI = L->getHeader()->getFirstNonPHI();
@@ -222,9 +222,7 @@ bool llvm::isDereferenceableAndAlignedInLoop(LoadInst *LI, Loop *L,
   if (Step->getAPInt() != EltSize)
     return false;
 
-  // TODO: If the symbolic trip count has a small bound (max count), we might
-  // be able to prove safety.
-  auto TC = SE.getSmallConstantTripCount(L);
+  auto TC = SE.getSmallConstantMaxTripCount(L);
   if (!TC)
     return false;
 
@@ -502,4 +500,24 @@ Value *llvm::FindAvailablePtrLoadStore(Value *Ptr, Type *AccessTy,
   // Got to the start of the block, we didn't find it, but are done for this
   // block.
   return nullptr;
+}
+
+bool llvm::canReplacePointersIfEqual(Value *A, Value *B, const DataLayout &DL,
+                                     Instruction *CtxI) {
+  Type *Ty = A->getType();
+  assert(Ty == B->getType() && Ty->isPointerTy() &&
+         "values must have matching pointer types");
+
+  // NOTE: The checks in the function are incomplete and currently miss illegal
+  // cases! The current implementation is a starting point and the
+  // implementation should be made stricter over time.
+  if (auto *C = dyn_cast<Constant>(B)) {
+    // Do not allow replacing a pointer with a constant pointer, unless it is
+    // either null or at least one byte is dereferenceable.
+    APInt OneByte(DL.getPointerTypeSizeInBits(Ty), 1);
+    return C->isNullValue() ||
+           isDereferenceableAndAlignedPointer(B, Align(1), OneByte, DL, CtxI);
+  }
+
+  return true;
 }

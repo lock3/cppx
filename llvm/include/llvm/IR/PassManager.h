@@ -519,7 +519,7 @@ public:
 
       // Call onto PassInstrumentation's AfterPass callbacks immediately after
       // running the pass.
-      PI.runAfterPass<IRUnitT>(*P, IR);
+      PI.runAfterPass<IRUnitT>(*P, IR, PassPA);
 
       // Update the analysis manager as each pass runs and potentially
       // invalidates analyses.
@@ -548,12 +548,26 @@ public:
     return PA;
   }
 
-  template <typename PassT> void addPass(PassT Pass) {
+  template <typename PassT>
+  std::enable_if_t<!std::is_same<PassT, PassManager>::value>
+  addPass(PassT Pass) {
     using PassModelT =
         detail::PassModel<IRUnitT, PassT, PreservedAnalyses, AnalysisManagerT,
                           ExtraArgTs...>;
 
     Passes.emplace_back(new PassModelT(std::move(Pass)));
+  }
+
+  /// When adding a pass manager pass that has the same type as this pass
+  /// manager, simply move the passes over. This is because we don't have use
+  /// cases rely on executing nested pass managers. Doing this could reduce
+  /// implementation complexity and avoid potential invalidation issues that may
+  /// happen with nested pass managers of the same type.
+  template <typename PassT>
+  std::enable_if_t<std::is_same<PassT, PassManager>::value>
+  addPass(PassT &&Pass) {
+    for (auto &P : Pass.Passes)
+      Passes.emplace_back(std::move(P));
   }
 
   static bool isRequired() { return true; }
@@ -1244,7 +1258,7 @@ public:
         PassPA = Pass.run(F, FAM);
       }
 
-      PI.runAfterPass(Pass, F);
+      PI.runAfterPass(Pass, F, PassPA);
 
       // We know that the function pass couldn't have invalidated any other
       // function's analyses (that's the contract of a function pass), so
@@ -1308,6 +1322,7 @@ struct RequireAnalysisPass
 
     return PreservedAnalyses::all();
   }
+  static bool isRequired() { return true; }
 };
 
 /// A no-op pass template which simply forces a specific analysis result
@@ -1368,8 +1383,9 @@ public:
       // false).
       if (!PI.runBeforePass<IRUnitT>(P, IR))
         continue;
-      PA.intersect(P.run(IR, AM, std::forward<Ts>(Args)...));
-      PI.runAfterPass(P, IR);
+      PreservedAnalyses IterPA = P.run(IR, AM, std::forward<Ts>(Args)...);
+      PA.intersect(IterPA);
+      PI.runAfterPass(P, IR, IterPA);
     }
     return PA;
   }

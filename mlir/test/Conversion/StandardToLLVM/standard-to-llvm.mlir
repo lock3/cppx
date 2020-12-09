@@ -40,6 +40,27 @@ func @sine(%arg0 : f32) {
 
 // -----
 
+// CHECK-LABEL: func @ceilf(
+// CHECK-SAME: !llvm.float
+func @ceilf(%arg0 : f32) {
+  // CHECK: "llvm.intr.ceil"(%arg0) : (!llvm.float) -> !llvm.float
+  %0 = ceilf %arg0 : f32
+  std.return
+}
+
+// -----
+
+// CHECK-LABEL: func @floorf(
+// CHECK-SAME: !llvm.float
+func @floorf(%arg0 : f32) {
+  // CHECK: "llvm.intr.floor"(%arg0) : (!llvm.float) -> !llvm.float
+  %0 = floorf %arg0 : f32
+  std.return
+}
+
+// -----
+
+
 // CHECK-LABEL: func @rsqrt_double(
 // CHECK-SAME: !llvm.double
 func @rsqrt_double(%arg0 : f64) {
@@ -93,3 +114,20 @@ func @assert_test_function(%arg : i1) {
   return
 }
 
+// -----
+
+// CHECK-LABEL: func @transpose
+//       CHECK:   llvm.mlir.undef : !llvm.struct<(ptr<float>, ptr<float>, i64, array<3 x i64>, array<3 x i64>)>
+//       CHECK:   llvm.insertvalue {{.*}}[0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<3 x i64>, array<3 x i64>)>
+//       CHECK:    llvm.insertvalue {{.*}}[1] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<3 x i64>, array<3 x i64>)>
+//       CHECK:    llvm.insertvalue {{.*}}[2] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<3 x i64>, array<3 x i64>)>
+//       CHECK:   llvm.extractvalue {{.*}}[3, 0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<3 x i64>, array<3 x i64>)>
+//       CHECK:    llvm.insertvalue {{.*}}[3, 2] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<3 x i64>, array<3 x i64>)>
+//       CHECK:   llvm.extractvalue {{.*}}[3, 1] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<3 x i64>, array<3 x i64>)>
+//       CHECK:    llvm.insertvalue {{.*}}[3, 0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<3 x i64>, array<3 x i64>)>
+//       CHECK:   llvm.extractvalue {{.*}}[3, 2] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<3 x i64>, array<3 x i64>)>
+//       CHECK:    llvm.insertvalue {{.*}}[3, 1] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<3 x i64>, array<3 x i64>)>
+func @transpose(%arg0: memref<?x?x?xf32, offset: ?, strides: [?, ?, 1]>) {
+  %0 = transpose %arg0 (i, j, k) -> (k, i, j) : memref<?x?x?xf32, offset: ?, strides: [?, ?, 1]> to memref<?x?x?xf32, affine_map<(d0, d1, d2)[s0, s1, s2] -> (d2 * s1 + s0 + d0 * s2 + d1)>>
+  return
+}

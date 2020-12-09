@@ -15,7 +15,6 @@
 
 #include "AArch64.h"
 #include "AArch64RegisterInfo.h"
-#include "AArch64StackOffset.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/CodeGen/MachineCombinerPattern.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
@@ -113,6 +112,10 @@ public:
   /// Hint that pairing the given load or store is unprofitable.
   static void suppressLdStPair(MachineInstr &MI);
 
+  Optional<ExtAddrMode>
+  getAddrModeFromMemoryOp(const MachineInstr &MemI,
+                          const TargetRegisterInfo *TRI) const override;
+
   bool getMemOperandsWithOffsetWidth(
       const MachineInstr &MI, SmallVectorImpl<const MachineOperand *> &BaseOps,
       int64_t &Offset, bool &OffsetIsScalable, unsigned &Width,
@@ -188,6 +191,9 @@ public:
                      MachineBasicBlock *&FBB,
                      SmallVectorImpl<MachineOperand> &Cond,
                      bool AllowModify = false) const override;
+  bool analyzeBranchPredicate(MachineBasicBlock &MBB,
+                              MachineBranchPredicate &MBP,
+                              bool AllowModify) const override;
   unsigned removeBranch(MachineBasicBlock &MBB,
                         int *BytesRemoved = nullptr) const override;
   unsigned insertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
@@ -286,6 +292,13 @@ public:
   Optional<ParamLoadedValue> describeLoadedValue(const MachineInstr &MI,
                                                  Register Reg) const override;
 
+  static void decomposeStackOffsetForFrameOffsets(const StackOffset &Offset,
+                                                  int64_t &NumBytes,
+                                                  int64_t &NumPredicateVectors,
+                                                  int64_t &NumDataVectors);
+  static void decomposeStackOffsetForDwarfOffsets(const StackOffset &Offset,
+                                                  int64_t &ByteSized,
+                                                  int64_t &VGSized);
 #define GET_INSTRINFO_HELPER_DECLS
 #include "AArch64GenInstrInfo.inc"
 

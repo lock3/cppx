@@ -332,8 +332,12 @@ public:
   ///
   unsigned computeTemplateDepth() const;
 
-// True when we are elaborating a using macro within a class.
+  // True when we are elaborating a using macro within a class.
   bool elaboratingUsingInClassScope() const;
+
+  // Counts the depth of the current generic lambda. Will be zero whenever we
+  // are not currently elaborating a lambda expression.
+  unsigned LambdaTemplateDepth = 0;
 
   /// ====================================================================== ///
   ///        Members that allow construction of the CppxLiteralType          ///

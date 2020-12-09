@@ -5,7 +5,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
 #include "check-acc-structure.h"
 #include "flang/Parser/parse-tree.h"
 #include "flang/Semantics/tools.h"
@@ -45,43 +44,18 @@ static constexpr inline AccClauseSet routineOnlyAllowedAfterDeviceTypeClauses{
     llvm::acc::Clause::ACCC_bind, llvm::acc::Clause::ACCC_gang,
     llvm::acc::Clause::ACCC_vector, llvm::acc::Clause::ACCC_worker};
 
-class NoBranchingEnforce {
-public:
-  NoBranchingEnforce(SemanticsContext &context,
-      parser::CharBlock sourcePosition, llvm::acc::Directive directive)
-      : context_{context}, sourcePosition_{sourcePosition}, currentDirective_{
-                                                                directive} {}
-  template <typename T> bool Pre(const T &) { return true; }
-  template <typename T> void Post(const T &) {}
-
-  template <typename T> bool Pre(const parser::Statement<T> &statement) {
-    currentStatementSourcePosition_ = statement.source;
+bool AccStructureChecker::CheckAllowedModifier(llvm::acc::Clause clause) {
+  if (GetContext().directive == llvm::acc::ACCD_enter_data ||
+      GetContext().directive == llvm::acc::ACCD_exit_data) {
+    context_.Say(GetContext().clauseSource,
+        "Modifier is not allowed for the %s clause "
+        "on the %s directive"_err_en_US,
+        parser::ToUpperCaseLetters(getClauseName(clause).str()),
+        ContextDirectiveAsFortran());
     return true;
   }
-
-  void Post(const parser::ReturnStmt &) { emitBranchOutError("RETURN"); }
-  void Post(const parser::ExitStmt &) { emitBranchOutError("EXIT"); }
-  void Post(const parser::StopStmt &) { emitBranchOutError("STOP"); }
-
-private:
-  parser::MessageFixedText GetEnclosingMsg() {
-    return "Enclosing block construct"_en_US;
-  }
-
-  void emitBranchOutError(const char *stmt) {
-    context_
-        .Say(currentStatementSourcePosition_,
-            "%s statement is not allowed in a %s construct"_err_en_US, stmt,
-            parser::ToUpperCaseLetters(
-                llvm::acc::getOpenACCDirectiveName(currentDirective_).str()))
-        .Attach(sourcePosition_, GetEnclosingMsg());
-  }
-
-  SemanticsContext &context_;
-  parser::CharBlock currentStatementSourcePosition_;
-  parser::CharBlock sourcePosition_;
-  llvm::acc::Directive currentDirective_;
-};
+  return false;
+}
 
 void AccStructureChecker::Enter(const parser::AccClause &x) {
   SetContextClause(x);
@@ -135,13 +109,6 @@ void AccStructureChecker::Leave(const parser::OpenACCBlockConstruct &x) {
   dirContext_.pop_back();
 }
 
-void AccStructureChecker::CheckNoBranching(const parser::Block &block,
-    const llvm::acc::Directive directive,
-    const parser::CharBlock &directiveSource) const {
-  NoBranchingEnforce noBranchingEnforce{context_, directiveSource, directive};
-  parser::Walk(block, noBranchingEnforce);
-}
-
 void AccStructureChecker::Enter(
     const parser::OpenACCStandaloneDeclarativeConstruct &x) {
   const auto &declarativeDir{std::get<parser::AccDeclarativeDirective>(x.t)};
@@ -156,9 +123,17 @@ void AccStructureChecker::Leave(
 }
 
 void AccStructureChecker::Enter(const parser::OpenACCCombinedConstruct &x) {
-  const auto &beginBlockDir{std::get<parser::AccBeginCombinedDirective>(x.t)};
+  const auto &beginCombinedDir{
+      std::get<parser::AccBeginCombinedDirective>(x.t)};
   const auto &combinedDir{
-      std::get<parser::AccCombinedDirective>(beginBlockDir.t)};
+      std::get<parser::AccCombinedDirective>(beginCombinedDir.t)};
+
+  // check matching, End directive is optional
+  if (const auto &endCombinedDir{
+          std::get<std::optional<parser::AccEndCombinedDirective>>(x.t)}) {
+    CheckMatching<parser::AccCombinedDirective>(combinedDir, endCombinedDir->v);
+  }
+
   PushContextAndClauseSets(combinedDir.source, combinedDir.v);
 }
 
@@ -248,6 +223,21 @@ void AccStructureChecker::Leave(const parser::OpenACCRoutineConstruct &) {
   dirContext_.pop_back();
 }
 
+void AccStructureChecker::Enter(const parser::OpenACCWaitConstruct &x) {
+  const auto &verbatim{std::get<parser::Verbatim>(x.t)};
+  PushContextAndClauseSets(verbatim.source, llvm::acc::Directive::ACCD_wait);
+}
+void AccStructureChecker::Leave(const parser::OpenACCWaitConstruct &x) {
+  dirContext_.pop_back();
+}
+
+void AccStructureChecker::Enter(const parser::OpenACCAtomicConstruct &x) {
+  PushContextAndClauseSets(x.source, llvm::acc::Directive::ACCD_atomic);
+}
+void AccStructureChecker::Leave(const parser::OpenACCAtomicConstruct &x) {
+  dirContext_.pop_back();
+}
+
 // Clause checkers
 CHECK_REQ_SCALAR_INT_CONSTANT_CLAUSE(Collapse, ACCC_collapse)
 
@@ -263,11 +253,11 @@ CHECK_SIMPLE_CLAUSE(Delete, ACCC_delete)
 CHECK_SIMPLE_CLAUSE(Detach, ACCC_detach)
 CHECK_SIMPLE_CLAUSE(Device, ACCC_device)
 CHECK_SIMPLE_CLAUSE(DeviceNum, ACCC_device_num)
-CHECK_SIMPLE_CLAUSE(DevicePtr, ACCC_deviceptr)
+CHECK_SIMPLE_CLAUSE(Deviceptr, ACCC_deviceptr)
 CHECK_SIMPLE_CLAUSE(DeviceResident, ACCC_device_resident)
 CHECK_SIMPLE_CLAUSE(DeviceType, ACCC_device_type)
 CHECK_SIMPLE_CLAUSE(Finalize, ACCC_finalize)
-CHECK_SIMPLE_CLAUSE(FirstPrivate, ACCC_firstprivate)
+CHECK_SIMPLE_CLAUSE(Firstprivate, ACCC_firstprivate)
 CHECK_SIMPLE_CLAUSE(Gang, ACCC_gang)
 CHECK_SIMPLE_CLAUSE(Host, ACCC_host)
 CHECK_SIMPLE_CLAUSE(If, ACCC_if)
@@ -275,7 +265,7 @@ CHECK_SIMPLE_CLAUSE(IfPresent, ACCC_if_present)
 CHECK_SIMPLE_CLAUSE(Independent, ACCC_independent)
 CHECK_SIMPLE_CLAUSE(Link, ACCC_link)
 CHECK_SIMPLE_CLAUSE(NoCreate, ACCC_no_create)
-CHECK_SIMPLE_CLAUSE(NoHost, ACCC_nohost)
+CHECK_SIMPLE_CLAUSE(Nohost, ACCC_nohost)
 CHECK_SIMPLE_CLAUSE(NumGangs, ACCC_num_gangs)
 CHECK_SIMPLE_CLAUSE(NumWorkers, ACCC_num_workers)
 CHECK_SIMPLE_CLAUSE(Present, ACCC_present)
@@ -314,6 +304,8 @@ void AccStructureChecker::Enter(const parser::AccClause::Copyin &c) {
   const auto &modifierClause{c.v};
   if (const auto &modifier{
           std::get<std::optional<parser::AccDataModifier>>(modifierClause.t)}) {
+    if (CheckAllowedModifier(llvm::acc::Clause::ACCC_copyin))
+      return;
     if (modifier->v != parser::AccDataModifier::Modifier::ReadOnly) {
       context_.Say(GetContext().clauseSource,
           "Only the READONLY modifier is allowed for the %s clause "
@@ -331,6 +323,8 @@ void AccStructureChecker::Enter(const parser::AccClause::Copyout &c) {
   const auto &modifierClause{c.v};
   if (const auto &modifier{
           std::get<std::optional<parser::AccDataModifier>>(modifierClause.t)}) {
+    if (CheckAllowedModifier(llvm::acc::Clause::ACCC_copyout))
+      return;
     if (modifier->v != parser::AccDataModifier::Modifier::Zero) {
       context_.Say(GetContext().clauseSource,
           "Only the ZERO modifier is allowed for the %s clause "

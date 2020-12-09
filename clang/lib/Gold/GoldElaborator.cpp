@@ -213,7 +213,7 @@ bool isStaticMember(Sema& SemaRef, Declaration *D, bool &IsStatic) {
 }
 
 /// This should ONLY be used with member variables
-bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
+static inline bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
   IsMutable = false;
   return locateValidAttribute(D,
     // OnAttr
@@ -221,11 +221,8 @@ bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
       std::string ActualName;
       switch(checkAttrFormatAndName(Attr, ActualName)) {
       case AF_Name:
-        if (ActualName == "mutable") {
-          IsMutable = true;
-          return true;
-        }
-        return false;
+        IsMutable = ActualName == "mutable";
+        return IsMutable;
       case AF_Invalid:
         return false;
       case AF_Call:
@@ -234,11 +231,11 @@ bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
                                clang::diag::err_attribute_not_valid_as_call)
                                << ActualName;
           IsMutable = true;
-          return true;
+          return IsMutable;
         }
+
         return false;
       }
-      return false;
     },
     // CheckAttr
     [](const Syntax *Attr) -> bool{
@@ -336,10 +333,6 @@ clang::Decl *Elaborator::elaborateDeclType(const Syntax *S) {
   }
   return elaborateDecl(D);
 }
-
-static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
-                                const Syntax *Params,
-                                llvm::SmallVectorImpl<clang::NamedDecl *> &Res);
 
 static void processBaseSpecifiers(Elaborator& Elab, Sema& SemaRef,
                                   SyntaxContext& Context, Declaration *D,
@@ -860,9 +853,10 @@ static void handleTemplateParameters(Sema &SemaRef,
 
   // Constructing actual parameters.
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
-  if (!TPD->isImplicitlyEmpty())
-    BuildTemplateParams(SemaRef.getContext(), SemaRef, TPD->getSyntax(),
-                        TemplateParamDecls);
+  if (!TPD->isImplicitlyEmpty()) {
+    Elaborator El(SemaRef.getContext(), SemaRef);
+    El.buildTemplateParams(TPD->getSyntax(), TemplateParamDecls);
+  }
 
   ParamList = SemaRef.getCxxSema().ActOnTemplateParameterList(
                                /*unsigned Depth*/SemaRef.computeTemplateDepth(),
@@ -914,9 +908,10 @@ buildNNSTemplateParam(Sema &SemaRef, Declaration *D,
   TemplateDcl->setScope(SemaRef.getCurrentScope());
   // Constructing actual parameters.
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
-  if (!TemplateDcl->isImplicitlyEmpty())
-    BuildTemplateParams(SemaRef.getContext(), SemaRef, TemplateDcl->getSyntax(),
-                        TemplateParamDecls);
+  if (!TemplateDcl->isImplicitlyEmpty()) {
+    Elaborator El(SemaRef.getContext(), SemaRef);
+    El.buildTemplateParams(TemplateDcl->getSyntax(), TemplateParamDecls);
+  }
 
   auto ParamList = SemaRef.getCxxSema().ActOnTemplateParameterList(
                                /*unsigned Depth*/SemaRef.computeTemplateDepth(),
@@ -1695,13 +1690,11 @@ clang::Decl *Elaborator::elaborateDeclContent(clang::Scope *InitialScope,
   return elaborateVariableDecl(InitialScope, D);
 }
 
-static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
-                                const Syntax *Params,
-                                llvm::SmallVectorImpl<clang::NamedDecl *> &Res)
-{
+void Elaborator::buildTemplateParams(const Syntax *Params,
+                               llvm::SmallVectorImpl<clang::NamedDecl *> &Res) {
   std::size_t I = 0;
   for (const Syntax *P : Params->children()) {
-    Elaborator Elab(Ctx, SemaRef);
+    Elaborator Elab(Context, SemaRef);
     clang::NamedDecl *ND =
       cast_or_null<clang::NamedDecl>(Elab.elaborateDeclSyntax(P));
     // Just skip this on error.
@@ -1719,9 +1712,9 @@ static void BuildTemplateParams(SyntaxContext &Ctx, Sema &SemaRef,
       // Set the index.
       auto *Ty = TP->getTypeForDecl()->castAs<clang::TemplateTypeParmType>();
       clang::QualType NewTy =
-        Ctx.CxxAST.getTemplateTypeParmType(Depth, I,
-                                           Ty->isParameterPack(),
-                                           Ty->getDecl());
+        Context.CxxAST.getTemplateTypeParmType(Depth, I,
+                                               Ty->isParameterPack(),
+                                               Ty->getDecl());
       TP->setTypeForDecl(NewTy.getTypePtr());
     } else {
       llvm_unreachable("Invalid template parameter");
@@ -2171,6 +2164,9 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
   getFunctionParameters(SemaRef, D, Params);
   FD->setParams(Params);
+  for (auto *D : Params)
+    D->setDeclContext(FD);
+
   D->CurrentPhase = Phase::Typing;
   SemaRef.setDeclForDeclaration(D, FD);
   {
@@ -3165,16 +3161,6 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
         << Name << PreviousDC << D->ScopeSpec.getRange();
       return nullptr;
     }
-    // if (!D.getDeclSpec().isFriendSpecified()) {
-    //   if (diagnoseQualifiedDeclaration(
-    //           D.getCXXScopeSpec(), DC, Name, D.getIdentifierLoc(),
-    //           D.getName().getKind() == UnqualifiedIdKind::IK_TemplateId)) {
-    //     if (DC->isRecord())
-    //       return nullptr;
-
-    //     D.setInvalidType();
-    //   }
-    // }
   }
 
   if (D->hasNestedNameSpecifier()) {
@@ -3941,6 +3927,7 @@ clang::Decl *Elaborator::elaborateTemplateParamDecl(Declaration *D) {
                && "Invalid number of arguments to ellipsis within AST");
         TySyntax = Call->getArgument(0);
         IsPack = true;
+        D->EllipsisLoc = AtomName->getLoc();
       }
     }
   }
@@ -4260,11 +4247,6 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
           }
         }
       } else {
-        if (!InitExpr) {
-          SemaRef.Diags.Report(VD->getLocation(), clang::diag::err_auto_no_init);
-          return;
-        }
-
         if (InitExpr->getType()->isNamespaceType()) {
           D->Cxx->getDeclContext()->removeDecl(D->Cxx);
           D->Cxx = buildNsAlias(Context.CxxAST, SemaRef, D, InitExpr);

@@ -1368,9 +1368,10 @@ Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
       }
     }
   } else if (const MacroSyntax *Macro = dyn_cast<MacroSyntax>(S)) {
-    if (const AtomSyntax *Call = dyn_cast<AtomSyntax>(Macro->getCall()))
+    if (const AtomSyntax *Call = dyn_cast<AtomSyntax>(Macro->getCall())) {
       if (Call->getToken().hasKind(tok::UsingKeyword))
         return buildUsingDirectiveDeclarator(Macro);
+    }
   } else if(const ErrorSyntax *Err = dyn_cast<ErrorSyntax>(S)) {
     return handleErrorSyntax(Err, Next);
   }

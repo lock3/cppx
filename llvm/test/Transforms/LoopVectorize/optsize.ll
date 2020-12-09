@@ -1,9 +1,12 @@
 ; This test verifies that the loop vectorizer will NOT produce a tail
 ; loop with the optimize for size or the minimize size attributes.
 ; REQUIRES: asserts
-; RUN: opt < %s -loop-vectorize -S | FileCheck %s
-; RUN: opt < %s -loop-vectorize -pgso -S | FileCheck %s -check-prefix=PGSO
-; RUN: opt < %s -loop-vectorize -pgso=false -S | FileCheck %s -check-prefix=NPGSO
+; RUN: opt < %s -enable-new-pm=0 -loop-vectorize -S | FileCheck %s
+; RUN: opt < %s -enable-new-pm=0 -loop-vectorize -pgso -S | FileCheck %s -check-prefix=PGSO
+; RUN: opt < %s -enable-new-pm=0 -loop-vectorize -pgso=false -S | FileCheck %s -check-prefix=NPGSO
+; RUN: opt < %s -passes='require<profile-summary>,loop-vectorize' -S | FileCheck %s
+; RUN: opt < %s -passes='require<profile-summary>,loop-vectorize' -pgso -S | FileCheck %s -check-prefix=PGSO
+; RUN: opt < %s -passes='require<profile-summary>,loop-vectorize' -pgso=false -S | FileCheck %s -check-prefix=NPGSO
 
 target datalayout = "E-m:e-p:32:32-i64:32-f64:32:64-a:0:32-n32-S128"
 
@@ -232,8 +235,8 @@ define void @stride1(i16* noalias %B, i32 %BStride) optsize {
 ; CHECK:       vector.body:
 ; CHECK-NEXT:    [[INDEX:%.*]] = phi i32 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[PRED_STORE_CONTINUE2:%.*]] ]
 ; CHECK-NEXT:    [[VEC_IND:%.*]] = phi <2 x i32> [ <i32 0, i32 1>, [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[PRED_STORE_CONTINUE2]] ]
-; CHECK-NEXT:    [[TMP0:%.*]] = mul nsw <2 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
 ; CHECK-NEXT:    [[TMP1:%.*]] = icmp ule <2 x i32> [[VEC_IND]], <i32 1024, i32 1024>
+; CHECK-NEXT:    [[TMP0:%.*]] = mul nsw <2 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
 ; CHECK-NEXT:    [[TMP2:%.*]] = extractelement <2 x i1> [[TMP1]], i32 0
 ; CHECK-NEXT:    br i1 [[TMP2]], label [[PRED_STORE_IF:%.*]], label [[PRED_STORE_CONTINUE:%.*]]
 ; CHECK:       pred.store.if:
@@ -267,6 +270,34 @@ define void @stride1(i16* noalias %B, i32 %BStride) optsize {
 ; NPGSO-LABEL: @stride1(
 ; NPGSO-NEXT:  entry:
 ; NPGSO-NEXT:    br i1 false, label %scalar.ph, label %vector.ph
+
+entry:
+  br label %for.body
+
+for.body:
+  %iv = phi i32 [ %iv.next, %for.body ], [ 0, %entry ]
+  %mulB = mul nsw i32 %iv, %BStride
+  %gepOfB = getelementptr inbounds i16, i16* %B, i32 %mulB
+  store i16 42, i16* %gepOfB, align 4
+  %iv.next = add nuw nsw i32 %iv, 1
+  %exitcond = icmp eq i32 %iv.next, 1025
+  br i1 %exitcond, label %for.end, label %for.body, !llvm.loop !15
+
+for.end:
+  ret void
+}
+
+; Vectorize with versioning for unit stride for PGSO and enabled vectorization.
+;
+define void @stride1_pgso(i16* noalias %B, i32 %BStride) !prof !14 {
+; CHECK-LABEL: @stride1_pgso(
+; CHECK: vector.body
+;
+; PGSO-LABEL: @stride1_pgso(
+; PGSO: vector.body
+;
+; NPGSO-LABEL: @stride1_pgso(
+; NPGSO: vector.body
 
 entry:
   br label %for.body

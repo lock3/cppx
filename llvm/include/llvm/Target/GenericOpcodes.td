@@ -414,6 +414,13 @@ def G_UMAX : GenericInstruction {
   let isCommutable = 1;
 }
 
+// Generic integer absolute value.
+def G_ABS : GenericInstruction {
+  let OutOperandList = (outs type0:$dst);
+  let InOperandList = (ins type0:$src);
+  let hasSideEffects = 0;
+}
+
 //------------------------------------------------------------------------------
 // Overflow ops
 //------------------------------------------------------------------------------
@@ -1255,6 +1262,44 @@ def G_SHUFFLE_VECTOR: GenericInstruction {
 }
 
 //------------------------------------------------------------------------------
+// Vector reductions
+//------------------------------------------------------------------------------
+
+class VectorReduction : GenericInstruction {
+  let OutOperandList = (outs type0:$dst);
+  let InOperandList = (ins type1:$v);
+  let hasSideEffects = 0;
+}
+
+def G_VECREDUCE_SEQ_FADD : GenericInstruction {
+  let OutOperandList = (outs type0:$dst);
+  let InOperandList = (ins type1:$acc, type2:$v);
+  let hasSideEffects = 0;
+}
+
+def G_VECREDUCE_SEQ_FMUL : GenericInstruction {
+  let OutOperandList = (outs type0:$dst);
+  let InOperandList = (ins type1:$acc, type2:$v);
+  let hasSideEffects = 0;
+}
+
+def G_VECREDUCE_FADD : VectorReduction;
+def G_VECREDUCE_FMUL : VectorReduction;
+
+def G_VECREDUCE_FMAX : VectorReduction;
+def G_VECREDUCE_FMIN : VectorReduction;
+
+def G_VECREDUCE_ADD : VectorReduction;
+def G_VECREDUCE_MUL : VectorReduction;
+def G_VECREDUCE_AND : VectorReduction;
+def G_VECREDUCE_OR : VectorReduction;
+def G_VECREDUCE_XOR : VectorReduction;
+def G_VECREDUCE_SMAX : VectorReduction;
+def G_VECREDUCE_SMIN : VectorReduction;
+def G_VECREDUCE_UMAX : VectorReduction;
+def G_VECREDUCE_UMIN : VectorReduction;
+
+//------------------------------------------------------------------------------
 // Constrained floating point ops
 //------------------------------------------------------------------------------
 
@@ -1265,3 +1310,30 @@ def G_STRICT_FDIV : ConstrainedIntruction<G_FDIV>;
 def G_STRICT_FREM : ConstrainedIntruction<G_FREM>;
 def G_STRICT_FMA : ConstrainedIntruction<G_FMA>;
 def G_STRICT_FSQRT : ConstrainedIntruction<G_FSQRT>;
+
+//------------------------------------------------------------------------------
+// Memory intrinsics
+//------------------------------------------------------------------------------
+
+def G_MEMCPY : GenericInstruction {
+  let OutOperandList = (outs);
+  let InOperandList = (ins ptype0:$dst_addr, ptype1:$src_addr, type2:$size, untyped_imm_0:$tailcall);
+  let hasSideEffects = 0;
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
+def G_MEMMOVE : GenericInstruction {
+  let OutOperandList = (outs);
+  let InOperandList = (ins ptype0:$dst_addr, ptype1:$src_addr, type2:$size, untyped_imm_0:$tailcall);
+  let hasSideEffects = 0;
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
+def G_MEMSET : GenericInstruction {
+  let OutOperandList = (outs);
+  let InOperandList = (ins ptype0:$dst_addr, type1:$value, type2:$size, untyped_imm_0:$tailcall);
+  let hasSideEffects = 0;
+  let mayStore = 1;
+}

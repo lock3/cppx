@@ -2313,9 +2313,9 @@ template <typename Derived, typename Alloc> struct AbstractManglingParser {
     TemplateParamList Params;
 
   public:
-    ScopedTemplateParamList(AbstractManglingParser *Parser)
-        : Parser(Parser),
-          OldNumTemplateParamLists(Parser->TemplateParams.size()) {
+    ScopedTemplateParamList(AbstractManglingParser *TheParser)
+        : Parser(TheParser),
+          OldNumTemplateParamLists(TheParser->TemplateParams.size()) {
       Parser->TemplateParams.push_back(&Params);
     }
     ~ScopedTemplateParamList() {
@@ -5103,7 +5103,7 @@ Node *AbstractManglingParser<Derived, Alloc>::parseEncoding() {
     decltype(TemplateParams) OldParams;
 
   public:
-    SaveTemplateParams(AbstractManglingParser *Parser) : Parser(Parser) {
+    SaveTemplateParams(AbstractManglingParser *TheParser) : Parser(TheParser) {
       OldParams = std::move(Parser->TemplateParams);
       Parser->TemplateParams.clear();
     }
@@ -5203,7 +5203,12 @@ struct FloatData<long double>
 #else
     static const size_t mangled_size = 20;  // May need to be adjusted to 16 or 24 on other platforms
 #endif
-    static const size_t max_demangled_size = 40;
+    // `-0x1.ffffffffffffffffffffffffffffp+16383` + 'L' + '\0' == 42 bytes.
+    // 28 'f's * 4 bits == 112 bits, which is the number of mantissa bits.
+    // Negatives are one character longer than positives.
+    // `0x1.` and `p` are constant, and exponents `+16383` and `-16382` are the
+    // same length. 1 sign bit, 112 mantissa bits, and 15 exponent bits == 128.
+    static const size_t max_demangled_size = 42;
     static constexpr const char *spec = "%LaL";
 };
 

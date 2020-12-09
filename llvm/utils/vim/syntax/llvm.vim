@@ -55,6 +55,7 @@ syn keyword llvmKeyword
       \ available_externally
       \ blockaddress
       \ builtin
+      \ byref
       \ byval
       \ c
       \ catch
@@ -106,6 +107,7 @@ syn keyword llvmKeyword
       \ module
       \ monotonic
       \ msp430_intrcc
+      \ mustprogress
       \ musttail
       \ naked
       \ nest
@@ -146,6 +148,7 @@ syn keyword llvmKeyword
       \ spir_func
       \ spir_kernel
       \ sret
+      \ nossp
       \ ssp
       \ sspreq
       \ sspstrong

@@ -152,6 +152,8 @@ void ASTStmtWriter::VisitIfStmt(IfStmt *S) {
     Record.AddStmt(S->getInit());
 
   Record.AddSourceLocation(S->getIfLoc());
+  Record.AddSourceLocation(S->getLParenLoc());
+  Record.AddSourceLocation(S->getRParenLoc());
   if (HasElse)
     Record.AddSourceLocation(S->getElseLoc());
 
@@ -175,6 +177,8 @@ void ASTStmtWriter::VisitSwitchStmt(SwitchStmt *S) {
     Record.AddDeclRef(S->getConditionVariable());
 
   Record.AddSourceLocation(S->getSwitchLoc());
+  Record.AddSourceLocation(S->getLParenLoc());
+  Record.AddSourceLocation(S->getRParenLoc());
 
   for (SwitchCase *SC = S->getSwitchCaseList(); SC;
        SC = SC->getNextSwitchCase())
@@ -462,6 +466,10 @@ void ASTStmtWriter::VisitCppxDeclRefExpr(CppxDeclRefExpr *E) {
 }
 
 void ASTStmtWriter::VisitCXXFragmentCaptureExpr(CXXFragmentCaptureExpr *E) {
+  llvm_unreachable("not implemented");
+}
+
+void ASTStmtWriter::VisitCXXInjectedValueExpr(CXXInjectedValueExpr *E) {
   llvm_unreachable("not implemented");
 }
 
@@ -1037,12 +1045,16 @@ void ASTStmtWriter::VisitObjCBridgedCastExpr(ObjCBridgedCastExpr *E) {
 void ASTStmtWriter::VisitCastExpr(CastExpr *E) {
   VisitExpr(E);
   Record.push_back(E->path_size());
+  Record.push_back(E->hasStoredFPFeatures());
   Record.AddStmt(E->getSubExpr());
   Record.push_back(E->getCastKind()); // FIXME: stable encoding
 
   for (CastExpr::path_iterator
          PI = E->path_begin(), PE = E->path_end(); PI != PE; ++PI)
     Record.AddCXXBaseSpecifier(**PI);
+
+  if (E->hasStoredFPFeatures())
+    Record.push_back(E->getFPFeatures().getAsOpaqueInt());
 }
 
 void ASTStmtWriter::VisitBinaryOperator(BinaryOperator *E) {
@@ -1094,7 +1106,7 @@ void ASTStmtWriter::VisitImplicitCastExpr(ImplicitCastExpr *E) {
   VisitCastExpr(E);
   Record.push_back(E->isPartOfExplicitCast());
 
-  if (E->path_size() == 0)
+  if (E->path_size() == 0 && !E->hasStoredFPFeatures())
     AbbrevToUse = Writer.getExprImplicitCastAbbrev();
 
   Code = serialization::EXPR_IMPLICIT_CAST;
@@ -1817,6 +1829,13 @@ void ASTStmtWriter::VisitCXXNullPtrLiteralExpr(CXXNullPtrLiteralExpr *E) {
   Code = serialization::EXPR_CXX_NULL_PTR_LITERAL;
 }
 
+void ASTStmtWriter::VisitCXXParameterInfoExpr(CXXParameterInfoExpr *E) {
+  VisitExpr(E);
+  Record.AddDeclRef(E->getDecl());
+  Record.AddSourceLocation(E->getLocation());
+  Code = serialization::EXPR_CXX_PARAMETER_INFO;
+}
+
 void ASTStmtWriter::VisitCXXTypeidExpr(CXXTypeidExpr *E) {
   VisitExpr(E);
   Record.AddSourceRange(E->getSourceRange());
@@ -2030,7 +2049,7 @@ ASTStmtWriter::VisitDependentScopeDeclRefExpr(DependentScopeDeclRefExpr *E) {
 void
 ASTStmtWriter::VisitCXXUnresolvedConstructExpr(CXXUnresolvedConstructExpr *E) {
   VisitExpr(E);
-  Record.push_back(E->arg_size());
+  Record.push_back(E->getNumArgs());
   for (CXXUnresolvedConstructExpr::arg_iterator
          ArgI = E->arg_begin(), ArgE = E->arg_end(); ArgI != ArgE; ++ArgI)
     Record.AddStmt(*ArgI);
@@ -2148,6 +2167,7 @@ void ASTStmtWriter::VisitSubstNonTypeTemplateParmExpr(
                                               SubstNonTypeTemplateParmExpr *E) {
   VisitExpr(E);
   Record.AddDeclRef(E->getParameter());
+  Record.push_back(E->isReferenceParameter());
   Record.AddSourceLocation(E->getNameLoc());
   Record.AddStmt(E->getReplacement());
   Code = serialization::EXPR_SUBST_NON_TYPE_TEMPLATE_PARM;

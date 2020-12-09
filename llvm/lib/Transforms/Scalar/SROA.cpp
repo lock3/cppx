@@ -268,6 +268,11 @@ public:
   /// Access the dead users for this alloca.
   ArrayRef<Instruction *> getDeadUsers() const { return DeadUsers; }
 
+  /// Access Uses that should be dropped if the alloca is promotable.
+  ArrayRef<Use *> getDeadUsesIfPromotable() const {
+    return DeadUseIfPromotable;
+  }
+
   /// Access the dead operands referring to this alloca.
   ///
   /// These are operands which have cannot actually be used to refer to the
@@ -321,6 +326,9 @@ private:
   /// all these instructions can simply be removed and replaced with undef as
   /// they come from outside of the allocated space.
   SmallVector<Instruction *, 8> DeadUsers;
+
+  /// Uses which will become dead if can promote the alloca.
+  SmallVector<Use *, 8> DeadUseIfPromotable;
 
   /// Operands which will become dead if we rewrite the alloca.
   ///
@@ -780,6 +788,9 @@ private:
         LI.getPointerAddressSpace() != DL.getAllocaAddrSpace())
       return PI.setAborted(&LI);
 
+    if (isa<ScalableVectorType>(LI.getType()))
+      return PI.setAborted(&LI);
+
     uint64_t Size = DL.getTypeStoreSize(LI.getType()).getFixedSize();
     return handleLoadOrStore(LI.getType(), LI, Offset, Size, LI.isVolatile());
   }
@@ -793,6 +804,9 @@ private:
 
     if (SI.isVolatile() &&
         SI.getPointerAddressSpace() != DL.getAllocaAddrSpace())
+      return PI.setAborted(&SI);
+
+    if (isa<ScalableVectorType>(ValOp->getType()))
       return PI.setAborted(&SI);
 
     uint64_t Size = DL.getTypeStoreSize(ValOp->getType()).getFixedSize();
@@ -920,8 +934,10 @@ private:
   // FIXME: What about debug intrinsics? This matches old behavior, but
   // doesn't make sense.
   void visitIntrinsicInst(IntrinsicInst &II) {
-    if (II.isDroppable())
+    if (II.isDroppable()) {
+      AS.DeadUseIfPromotable.push_back(U);
       return;
+    }
 
     if (!IsOffsetKnown)
       return PI.setAborted(&II);
@@ -1112,9 +1128,9 @@ LLVM_DUMP_METHOD void AllocaSlices::dump() const { print(dbgs()); }
 
 /// Walk the range of a partitioning looking for a common type to cover this
 /// sequence of slices.
-static Type *findCommonType(AllocaSlices::const_iterator B,
-                            AllocaSlices::const_iterator E,
-                            uint64_t EndOffset) {
+static std::pair<Type *, IntegerType *>
+findCommonType(AllocaSlices::const_iterator B, AllocaSlices::const_iterator E,
+               uint64_t EndOffset) {
   Type *Ty = nullptr;
   bool TyIsCommon = true;
   IntegerType *ITy = nullptr;
@@ -1158,7 +1174,7 @@ static Type *findCommonType(AllocaSlices::const_iterator B,
       Ty = UserTy;
   }
 
-  return TyIsCommon ? Ty : ITy;
+  return {TyIsCommon ? Ty : nullptr, ITy};
 }
 
 /// PHI instructions that use an alloca and are subsequently loaded can be
@@ -1382,7 +1398,8 @@ static void speculateSelectInstLoads(SelectInst &SI) {
 /// This will return the BasePtr if that is valid, or build a new GEP
 /// instruction using the IRBuilder if GEP-ing is needed.
 static Value *buildGEP(IRBuilderTy &IRB, Value *BasePtr,
-                       SmallVectorImpl<Value *> &Indices, Twine NamePrefix) {
+                       SmallVectorImpl<Value *> &Indices,
+                       const Twine &NamePrefix) {
   if (Indices.empty())
     return BasePtr;
 
@@ -1407,7 +1424,7 @@ static Value *buildGEP(IRBuilderTy &IRB, Value *BasePtr,
 static Value *getNaturalGEPWithType(IRBuilderTy &IRB, const DataLayout &DL,
                                     Value *BasePtr, Type *Ty, Type *TargetTy,
                                     SmallVectorImpl<Value *> &Indices,
-                                    Twine NamePrefix) {
+                                    const Twine &NamePrefix) {
   if (Ty == TargetTy)
     return buildGEP(IRB, BasePtr, Indices, NamePrefix);
 
@@ -1452,7 +1469,7 @@ static Value *getNaturalGEPRecursively(IRBuilderTy &IRB, const DataLayout &DL,
                                        Value *Ptr, Type *Ty, APInt &Offset,
                                        Type *TargetTy,
                                        SmallVectorImpl<Value *> &Indices,
-                                       Twine NamePrefix) {
+                                       const Twine &NamePrefix) {
   if (Offset == 0)
     return getNaturalGEPWithType(IRB, DL, Ptr, Ty, TargetTy, Indices,
                                  NamePrefix);
@@ -1527,7 +1544,7 @@ static Value *getNaturalGEPRecursively(IRBuilderTy &IRB, const DataLayout &DL,
 static Value *getNaturalGEPWithOffset(IRBuilderTy &IRB, const DataLayout &DL,
                                       Value *Ptr, APInt Offset, Type *TargetTy,
                                       SmallVectorImpl<Value *> &Indices,
-                                      Twine NamePrefix) {
+                                      const Twine &NamePrefix) {
   PointerType *Ty = cast<PointerType>(Ptr->getType());
 
   // Don't consider any GEPs through an i8* as natural unless the TargetTy is
@@ -1538,6 +1555,8 @@ static Value *getNaturalGEPWithOffset(IRBuilderTy &IRB, const DataLayout &DL,
   Type *ElementTy = Ty->getElementType();
   if (!ElementTy->isSized())
     return nullptr; // We can't GEP through an unsized element.
+  if (isa<ScalableVectorType>(ElementTy))
+    return nullptr;
   APInt ElementSize(Offset.getBitWidth(),
                     DL.getTypeAllocSize(ElementTy).getFixedSize());
   if (ElementSize == 0)
@@ -1566,7 +1585,8 @@ static Value *getNaturalGEPWithOffset(IRBuilderTy &IRB, const DataLayout &DL,
 /// a single GEP as possible, thus making each GEP more independent of the
 /// surrounding code.
 static Value *getAdjustedPtr(IRBuilderTy &IRB, const DataLayout &DL, Value *Ptr,
-                             APInt Offset, Type *PointerTy, Twine NamePrefix) {
+                             APInt Offset, Type *PointerTy,
+                             const Twine &NamePrefix) {
   // Even though we don't look through PHI nodes, we could be called on an
   // instruction in an unreachable block, which may be on a cycle.
   SmallPtrSet<Value *, 4> Visited;
@@ -3527,13 +3547,20 @@ private:
                                           PHI->getNumIncomingValues(),
                                           PHI->getName() + ".sroa.phi");
     for (unsigned I = 0, E = PHI->getNumIncomingValues(); I != E; ++I) {
-      Instruction *In = cast<Instruction>(PHI->getIncomingValue(I));
+      BasicBlock *B = PHI->getIncomingBlock(I);
+      Value *NewVal = nullptr;
+      int Idx = NewPN->getBasicBlockIndex(B);
+      if (Idx >= 0) {
+        NewVal = NewPN->getIncomingValue(Idx);
+      } else {
+        Instruction *In = cast<Instruction>(PHI->getIncomingValue(I));
 
-      IRBuilderTy B(In->getParent(), std::next(In->getIterator()));
-      Value *NewVal = IsInBounds
-          ? B.CreateInBoundsGEP(In, Index, In->getName() + ".sroa.gep")
-          : B.CreateGEP(In, Index, In->getName() + ".sroa.gep");
-      NewPN->addIncoming(NewVal, PHI->getIncomingBlock(I));
+        IRBuilderTy B(In->getParent(), std::next(In->getIterator()));
+        NewVal = IsInBounds
+            ? B.CreateInBoundsGEP(In, Index, In->getName() + ".sroa.gep")
+            : B.CreateGEP(In, Index, In->getName() + ".sroa.gep");
+      }
+      NewPN->addIncoming(NewVal, B);
     }
 
     Visited.erase(&GEPI);
@@ -4246,13 +4273,21 @@ AllocaInst *SROA::rewritePartition(AllocaInst &AI, AllocaSlices &AS,
   // or an i8 array of an appropriate size.
   Type *SliceTy = nullptr;
   const DataLayout &DL = AI.getModule()->getDataLayout();
-  if (Type *CommonUseTy = findCommonType(P.begin(), P.end(), P.endOffset()))
-    if (DL.getTypeAllocSize(CommonUseTy).getFixedSize() >= P.size())
-      SliceTy = CommonUseTy;
+  std::pair<Type *, IntegerType *> CommonUseTy =
+      findCommonType(P.begin(), P.end(), P.endOffset());
+  // Do all uses operate on the same type?
+  if (CommonUseTy.first)
+    if (DL.getTypeAllocSize(CommonUseTy.first).getFixedSize() >= P.size())
+      SliceTy = CommonUseTy.first;
+  // If not, can we find an appropriate subtype in the original allocated type?
   if (!SliceTy)
     if (Type *TypePartitionTy = getTypePartition(DL, AI.getAllocatedType(),
                                                  P.beginOffset(), P.size()))
       SliceTy = TypePartitionTy;
+  // If still not, can we use the largest bitwidth integer type used?
+  if (!SliceTy && CommonUseTy.second)
+    if (DL.getTypeAllocSize(CommonUseTy.second).getFixedSize() >= P.size())
+      SliceTy = CommonUseTy.second;
   if ((!SliceTy || (SliceTy->isArrayTy() &&
                     SliceTy->getArrayElementType()->isIntegerTy())) &&
       DL.isLegalInteger(P.size() * 8))
@@ -4342,6 +4377,13 @@ AllocaInst *SROA::rewritePartition(AllocaInst &AI, AllocaSlices &AS,
     }
 
   if (Promotable) {
+    for (Use *U : AS.getDeadUsesIfPromotable()) {
+      auto *OldInst = dyn_cast<Instruction>(U->get());
+      Value::dropDroppableUse(*U);
+      if (OldInst)
+        if (isInstructionTriviallyDead(OldInst))
+          DeadInsts.insert(OldInst);
+    }
     if (PHIUsers.empty() && SelectUsers.empty()) {
       // Promote the alloca.
       PromotableAllocas.push_back(NewAI);

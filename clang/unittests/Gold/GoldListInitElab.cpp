@@ -21,6 +21,7 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
+#if 0
 // I need to test this for templates also?
 TEST(GoldListInit, Array_DefaultCtorCall_UDT_NotAsPartOfConstruction) {
   StringRef Code = R"(
@@ -154,3 +155,4 @@ foo(): void!
 //   );
 //   ASSERT_TRUE(matches(Code.str(), ToMatch));
 // }
+#endif

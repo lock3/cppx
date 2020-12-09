@@ -56,6 +56,7 @@
 #include "support/Cancellation.h"
 #include "support/Context.h"
 #include "support/Logger.h"
+#include "support/MemoryTree.h"
 #include "support/Path.h"
 #include "support/Threading.h"
 #include "support/Trace.h"
@@ -717,8 +718,7 @@ void ASTWorker::runWithAST(
         [&AST, this]() { IdleASTs.put(this, std::move(*AST)); });
     // Run the user-provided action.
     if (!*AST)
-      return Action(llvm::make_error<llvm::StringError>(
-          "invalid AST", llvm::errc::invalid_argument));
+      return Action(error(llvm::errc::invalid_argument, "invalid AST"));
     vlog("ASTWorker running {0} on version {2} of {1}", Name, FileName,
          FileInputs.Version);
     Action(InputsAndAST{FileInputs, **AST});
@@ -933,9 +933,9 @@ TUScheduler::FileStats ASTWorker::stats() const {
   // Note that we don't report the size of ASTs currently used for processing
   // the in-flight requests. We used this information for debugging purposes
   // only, so this should be fine.
-  Result.UsedBytes = IdleASTs.getUsedBytes(this);
+  Result.UsedBytesAST = IdleASTs.getUsedBytes(this);
   if (auto Preamble = getPossiblyStalePreamble())
-    Result.UsedBytes += Preamble->Preamble.getSize();
+    Result.UsedBytesPreamble = Preamble->Preamble.getSize();
   return Result;
 }
 
@@ -1430,5 +1430,14 @@ DebouncePolicy DebouncePolicy::fixed(clock::duration T) {
   return P;
 }
 
+void TUScheduler::profile(MemoryTree &MT) const {
+  for (const auto &Elem : fileStats()) {
+    MT.detail(Elem.first())
+        .child("preamble")
+        .addUsage(Opts.StorePreamblesInMemory ? Elem.second.UsedBytesPreamble
+                                              : 0);
+    MT.detail(Elem.first()).child("ast").addUsage(Elem.second.UsedBytesAST);
+  }
+}
 } // namespace clangd
 } // namespace clang

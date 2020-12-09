@@ -111,6 +111,18 @@ def G_EXT: AArch64GenericInstruction {
   let InOperandList = (ins type0:$v1, type0:$v2, untyped_imm_0:$imm);
 }
 
+// Represents a vector G_ASHR with an immediate.
+def G_VASHR : AArch64GenericInstruction {
+  let OutOperandList = (outs type0:$dst);
+  let InOperandList = (ins type0:$src1, untyped_imm_0:$imm);
+}
+
+// Represents a vector G_LSHR with an immediate.
+def G_VLSHR : AArch64GenericInstruction {
+  let OutOperandList = (outs type0:$dst);
+  let InOperandList = (ins type0:$src1, untyped_imm_0:$imm);
+}
+
 def : GINodeEquiv<G_REV16, AArch64rev16>;
 def : GINodeEquiv<G_REV32, AArch64rev32>;
 def : GINodeEquiv<G_REV64, AArch64rev64>;
@@ -122,3 +134,10 @@ def : GINodeEquiv<G_DUP, AArch64dup>;
 def : GINodeEquiv<G_TRN1, AArch64trn1>;
 def : GINodeEquiv<G_TRN2, AArch64trn2>;
 def : GINodeEquiv<G_EXT, AArch64ext>;
+def : GINodeEquiv<G_VASHR, AArch64vashr>;
+def : GINodeEquiv<G_VLSHR, AArch64vlshr>;
+
+// These are patterns that we only use for GlobalISel via the importer.
+def : Pat<(f32 (fadd (vector_extract (v2f32 FPR64:$Rn), (i64 0)),
+                     (vector_extract (v2f32 FPR64:$Rn), (i64 1)))),
+           (f32 (FADDPv2i32p (v2f32 FPR64:$Rn)))>;

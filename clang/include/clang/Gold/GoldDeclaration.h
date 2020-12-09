@@ -444,6 +444,9 @@ public:
   bool NeedToBeElaboratedByClangBeforeUse = false;
 
   bool IsVariadic = false;
+
+  /// An ellipsis for a parameter pack.
+  clang::SourceLocation EllipsisLoc;
 };
 
 Phase phaseOf(Declaration *D);

@@ -821,6 +821,10 @@ let Class = BuiltinType in {
       case BuiltinType::ID: return ctx.SINGLETON_ID;
 #include "clang/Basic/AArch64SVEACLETypes.def"
 
+#define PPC_MMA_VECTOR_TYPE(NAME, ID, SIZE) \
+      case BuiltinType::ID: return ctx.ID##Ty;
+#include "clang/Basic/PPCTypes.def"
+
 #define BUILTIN_TYPE(ID, SINGLETON_ID) \
       case BuiltinType::ID: return ctx.SINGLETON_ID;
 #include "clang/AST/BuiltinTypes.def"
@@ -989,5 +993,51 @@ let Class = DependentExtIntType in {
   }
   def : Creator<[{
     return ctx.getDependentExtIntType(isUnsigned, numBitsExpr);
+  }]>;
+}
+
+let Class = ParameterType in {
+  def : Property<"parameterType", QualType> {
+    let Read = [{ node->getParameterType() }];
+  }
+}
+
+let Class = InParameterType in {
+  def : Property<"parameterType", QualType> {
+    let Read = [{ node->getParameterType() }];
+  }
+
+  def : Creator<[{
+    return ctx.getInParameterType(parameterType);
+  }]>;
+}
+
+let Class = OutParameterType in {
+  def : Property<"parameterType", QualType> {
+    let Read = [{ node->getParameterType() }];
+  }
+
+  def : Creator<[{
+    return ctx.getOutParameterType(parameterType);
+  }]>;
+}
+
+let Class = InOutParameterType in {
+  def : Property<"parameterType", QualType> {
+    let Read = [{ node->getParameterType() }];
+  }
+
+  def : Creator<[{
+    return ctx.getInOutParameterType(parameterType);
+  }]>;
+}
+
+let Class = MoveParameterType in {
+  def : Property<"parameterType", QualType> {
+    let Read = [{ node->getParameterType() }];
+  }
+
+  def : Creator<[{
+    return ctx.getMoveParameterType(parameterType);
   }]>;
 }

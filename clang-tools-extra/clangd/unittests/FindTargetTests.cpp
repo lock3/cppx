@@ -148,6 +148,17 @@ TEST_F(TargetDeclTest, Exprs) {
   EXPECT_DECLS("LabelStmt", "label:");
 }
 
+TEST_F(TargetDeclTest, RecoveryForC) {
+  Flags = {"-xc", "-Xclang", "-frecovery-ast"};
+  Code = R"cpp(
+    // error-ok: testing behavior on broken code
+    // int f();
+    int f(int);
+    int x = [[f]]();
+  )cpp";
+  EXPECT_DECLS("DeclRefExpr", "int f(int)");
+}
+
 TEST_F(TargetDeclTest, Recovery) {
   Code = R"cpp(
     // error-ok: testing behavior on broken code
@@ -181,8 +192,7 @@ TEST_F(TargetDeclTest, UsingDecl) {
     int x = [[f]](42);
   )cpp";
   // f(char) is not referenced!
-  EXPECT_DECLS("DeclRefExpr", {"using foo::f", Rel::Alias},
-               {"int f(int)", Rel::Underlying});
+  EXPECT_DECLS("DeclRefExpr", {"using foo::f", Rel::Alias}, {"int f(int)"});
 
   Code = R"cpp(
     namespace foo {
@@ -192,9 +202,8 @@ TEST_F(TargetDeclTest, UsingDecl) {
     [[using foo::f]];
   )cpp";
   // All overloads are referenced.
-  EXPECT_DECLS("UsingDecl", {"using foo::f", Rel::Alias},
-               {"int f(int)", Rel::Underlying},
-               {"int f(char)", Rel::Underlying});
+  EXPECT_DECLS("UsingDecl", {"using foo::f", Rel::Alias}, {"int f(int)"},
+               {"int f(char)"});
 
   Code = R"cpp(
     struct X {
@@ -205,8 +214,20 @@ TEST_F(TargetDeclTest, UsingDecl) {
     };
     int x = Y().[[foo]]();
   )cpp";
-  EXPECT_DECLS("MemberExpr", {"using X::foo", Rel::Alias},
-               {"int foo()", Rel::Underlying});
+  EXPECT_DECLS("MemberExpr", {"using X::foo", Rel::Alias}, {"int foo()"});
+
+  Code = R"cpp(
+      template <typename T>
+      struct Base {
+        void waldo() {}
+      };
+      template <typename T>
+      struct Derived : Base<T> {
+        using Base<T>::[[waldo]];
+      };
+    )cpp";
+  EXPECT_DECLS("UnresolvedUsingValueDecl", {"using Base<T>::waldo", Rel::Alias},
+               {"void waldo()"});
 }
 
 TEST_F(TargetDeclTest, ConstructorInitList) {
@@ -376,6 +397,15 @@ TEST_F(TargetDeclTest, ClassTemplate) {
                {"template<> class Foo<int *>", Rel::TemplateInstantiation},
                {"template <typename T> class Foo<T *>", Rel::TemplatePattern});
 
+  Code = R"cpp(
+    // Template template argument.
+    template<typename T> struct Vector {};
+    template <template <typename> class Container>
+    struct A {};
+    A<[[Vector]]> a;
+  )cpp";
+  EXPECT_DECLS("TemplateArgumentLoc", {"template <typename T> struct Vector"});
+
   Flags.push_back("-std=c++17"); // for CTAD tests
 
   Code = R"cpp(
@@ -433,6 +463,28 @@ TEST_F(TargetDeclTest, Concept) {
   )cpp";
   EXPECT_DECLS("ConceptSpecializationExpr",
                {"template <typename T> concept Fooable = true;"});
+
+  // constrained-parameter
+  Code = R"cpp(
+    template <typename T>
+    concept Fooable = true;
+
+    template <[[Fooable]] T>
+    void bar(T t);
+  )cpp";
+  EXPECT_DECLS("ConceptSpecializationExpr",
+               {"template <typename T> concept Fooable = true;"});
+
+  // partial-concept-id
+  Code = R"cpp(
+    template <typename T, typename U>
+    concept Fooable = true;
+
+    template <[[Fooable]]<int> T>
+    void bar(T t);
+  )cpp";
+  EXPECT_DECLS("ConceptSpecializationExpr",
+               {"template <typename T, typename U> concept Fooable = true;"});
 }
 
 TEST_F(TargetDeclTest, FunctionTemplate) {
@@ -687,6 +739,54 @@ TEST_F(TargetDeclTest, DependentExprs) {
                "template <typename T> T convert() const");
 }
 
+TEST_F(TargetDeclTest, DependentTypes) {
+  Flags = {"-fno-delayed-template-parsing"};
+
+  // Heuristic resolution of dependent type name
+  Code = R"cpp(
+        template <typename>
+        struct A { struct B {}; };
+
+        template <typename T>
+        void foo(typename A<T>::[[B]]);
+      )cpp";
+  EXPECT_DECLS("DependentNameTypeLoc", "struct B");
+
+  // Heuristic resolution of dependent type name which doesn't get a TypeLoc
+  Code = R"cpp(
+        template <typename>
+        struct A { struct B { struct C {}; }; };
+
+        template <typename T>
+        void foo(typename A<T>::[[B]]::C);
+      )cpp";
+  EXPECT_DECLS("NestedNameSpecifierLoc", "struct B");
+
+  // Heuristic resolution of dependent type name whose qualifier is also
+  // dependent
+  Code = R"cpp(
+        template <typename>
+        struct A { struct B { struct C {}; }; };
+
+        template <typename T>
+        void foo(typename A<T>::B::[[C]]);
+      )cpp";
+  EXPECT_DECLS("DependentNameTypeLoc", "struct C");
+
+  // Heuristic resolution of dependent template name
+  Code = R"cpp(
+        template <typename>
+        struct A {
+          template <typename> struct B {};
+        };
+
+        template <typename T>
+        void foo(typename A<T>::template [[B]]<int>);
+      )cpp";
+  EXPECT_DECLS("DependentTemplateSpecializationTypeLoc",
+               "template <typename> struct B");
+}
+
 TEST_F(TargetDeclTest, ObjC) {
   Flags = {"-xobjective-c"};
   Code = R"cpp(
@@ -732,6 +832,24 @@ TEST_F(TargetDeclTest, ObjC) {
                "@property(atomic, retain, readwrite) I *x");
 
   Code = R"cpp(
+    @interface MYObject
+    @end
+    @interface Interface
+    @property(retain) [[MYObject]] *x;
+    @end
+  )cpp";
+  EXPECT_DECLS("ObjCInterfaceTypeLoc", "@interface MYObject");
+
+  Code = R"cpp(
+    @interface MYObject2
+    @end
+    @interface Interface
+    @property(retain, nonnull) [[MYObject2]] *x;
+    @end
+  )cpp";
+  EXPECT_DECLS("ObjCInterfaceTypeLoc", "@interface MYObject2");
+
+  Code = R"cpp(
     @protocol Foo
     @end
     id test() {
@@ -746,6 +864,30 @@ TEST_F(TargetDeclTest, ObjC) {
     void test([[Foo]] *p);
   )cpp";
   EXPECT_DECLS("ObjCInterfaceTypeLoc", "@interface Foo");
+
+  Code = R"cpp(// Don't consider implicit interface as the target.
+    @implementation [[Implicit]]
+    @end
+  )cpp";
+  EXPECT_DECLS("ObjCImplementationDecl", "@implementation Implicit");
+
+  Code = R"cpp(
+    @interface Foo
+    @end
+    @implementation [[Foo]]
+    @end
+  )cpp";
+  EXPECT_DECLS("ObjCImplementationDecl", "@interface Foo");
+
+  Code = R"cpp(
+    @interface Foo
+    @end
+    @interface Foo (Ext)
+    @end
+    @implementation [[Foo]] (Ext)
+    @end
+  )cpp";
+  EXPECT_DECLS("ObjCCategoryImplDecl", "@interface Foo(Ext)");
 
   Code = R"cpp(
     @protocol Foo

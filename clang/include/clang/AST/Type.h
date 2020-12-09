@@ -944,6 +944,8 @@ public:
 
   QualType getNonReferenceType() const;
 
+  QualType getParameterType() const;
+
   /// Determine the type of a (typically non-lvalue) expression with the
   /// specified result type.
   ///
@@ -1786,6 +1788,15 @@ protected:
     unsigned NumTemplateArgs;
   };
 
+  class ParameterTypeBitfields {
+    friend class ParameterType;
+
+    unsigned : NumTypeBits;
+
+    /// The parameter passing mode of the type.
+    unsigned PassingMode : 1;
+  };
+
   class CXXDependentVariadicReifierTypeBitfields {
     friend class CXXDependentVariadicReifierType;
 
@@ -1811,6 +1822,7 @@ protected:
       DependentTemplateSpecializationTypeBits;
     PackExpansionTypeBitfields PackExpansionTypeBits;
     DependentIdentifierSpliceTypeBitfields DependentIdentifierSpliceTypeBits;
+    ParameterTypeBitfields ParameterTypeBits;
 
     static_assert(sizeof(TypeBitfields) <= 8,
                   "TypeBitfields is larger than 8 bytes!");
@@ -1847,6 +1859,8 @@ protected:
                   "PackExpansionTypeBitfields is larger than 8 bytes");
     static_assert(sizeof(DependentIdentifierSpliceTypeBitfields) <= 8,
                   "DependentIdentifierSpliceTypeBitfields is larger than 8 bytes");
+    static_assert(sizeof(ParameterTypeBitfields) <= 8,
+                  "ParameterTypeBitfields is larger than 8 bytes");
   };
 
 private:
@@ -1946,13 +1960,15 @@ public:
   bool isSizelessType() const;
   bool isSizelessBuiltinType() const;
 
-  /// Determines if this is a vector-length-specific type (VLST), i.e. a
-  /// sizeless type with the 'arm_sve_vector_bits' attribute applied.
-  bool isVLST() const;
   /// Determines if this is a sizeless type supported by the
   /// 'arm_sve_vector_bits' type attribute, which can be applied to a single
   /// SVE vector or predicate, excluding tuple types such as svint32x4_t.
   bool isVLSTBuiltinType() const;
+
+  /// Returns the representative type for the element of an SVE builtin type.
+  /// This is used to represent fixed-length SVE vectors created with the
+  /// 'arm_sve_vector_bits' type attribute as VectorType.
+  QualType getSveEltType(const ASTContext &Ctx) const;
 
   /// Types are partitioned into 3 broad categories (C99 6.2.5p1):
   /// object types, function types, and incomplete types.
@@ -1984,6 +2000,9 @@ public:
   /// Return true if this is a literal type
   /// (C++11 [basic.types]p10)
   bool isLiteralType(const ASTContext &Ctx) const;
+
+  /// Determine if this type is a structural type, per C++20 [temp.param]p7.
+  bool isStructuralType() const;
 
   /// Test if this type is a standard-layout type.
   /// (C++0x [basic.type]p9)
@@ -2184,6 +2203,8 @@ public:
   bool isKindType() const;
   bool isCppxNamespaceType() const;
   bool isCppxArgsType() const;
+
+  bool isParameterType() const;                 // In, out, etc.
 
   /// Determines if this type, which must satisfy
   /// isObjCLifetimeType(), is implicitly __unsafe_unretained rather
@@ -2556,6 +2577,9 @@ public:
 // SVE Types
 #define SVE_TYPE(Name, Id, SingletonId) Id,
 #include "clang/Basic/AArch64SVEACLETypes.def"
+// PPC MMA Types
+#define PPC_MMA_VECTOR_TYPE(Name, Id, Size) Id,
+#include "clang/Basic/PPCTypes.def"
 // All other builtin types
 #define BUILTIN_TYPE(Id, SingletonId) Id,
 #define LAST_BUILTIN_TYPE(Id) LastKind = Id
@@ -3300,7 +3324,13 @@ public:
     NeonVector,
 
     /// is ARM Neon polynomial vector
-    NeonPolyVector
+    NeonPolyVector,
+
+    /// is AArch64 SVE fixed-length data vector
+    SveFixedLengthDataVector,
+
+    /// is AArch64 SVE fixed-length predicate vector
+    SveFixedLengthPredicateVector
   };
 
 protected:
@@ -5184,11 +5214,17 @@ public:
 class alignas(8) AutoType : public DeducedType, public llvm::FoldingSetNode {
   friend class ASTContext; // ASTContext creates these
 
+  /// TODO: Put this into a union with the matched type.
   ConceptDecl *TypeConstraintConcept;
+
+  /// Implicitly equivalent to std::same_as<T>.
+  QualType ExpectedDeduction;
 
   AutoType(QualType DeducedAsType, AutoTypeKeyword Keyword,
            TypeDependence ExtraDependence, ConceptDecl *CD,
            ArrayRef<TemplateArgument> TypeConstraintArgs);
+
+  AutoType(QualType Expected);
 
   const TemplateArgument *getArgBuffer() const {
     return reinterpret_cast<const TemplateArgument*>(this+1);
@@ -5231,6 +5267,15 @@ public:
     return (AutoTypeKeyword)AutoTypeBits.Keyword;
   }
 
+  bool hasExpectedDeduction() const {
+    return !ExpectedDeduction.isNull();
+  }
+
+  QualType getExpectedDeduction() const {
+    assert(hasExpectedDeduction());
+    return ExpectedDeduction;
+  }
+
   void Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context) {
     Profile(ID, Context, getDeducedType(), getKeyword(), isDependentType(),
             getTypeConstraintConcept(), getTypeConstraintArguments());
@@ -5240,6 +5285,9 @@ public:
                       QualType Deduced, AutoTypeKeyword Keyword,
                       bool IsDependent, ConceptDecl *CD,
                       ArrayRef<TemplateArgument> Arguments);
+
+  static void Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
+                      QualType Expected);
 
   static bool classof(const Type *T) {
     return T->getTypeClass() == Auto;
@@ -6588,6 +6636,144 @@ public:
   }
 };
 
+/// Base for LValueReferenceType and RValueReferenceType
+class ParameterType : public Type, public llvm::FoldingSetNode {
+  /// The underlying parameter type.
+  QualType ParmType;
+
+  /// The parameter passing mode.
+  ParameterPassingKind PassingMode;
+
+protected:
+  ParameterType(TypeClass tc, QualType Parm, QualType CanonicalParm,
+                ParameterPassingKind PPK)
+      : Type(tc, CanonicalParm, Parm->getDependence(), false),
+        ParmType(Parm), PassingMode(PPK) {
+    ParameterTypeBits.PassingMode = PPK;
+  }
+
+public:
+  ParameterPassingKind getParameterPassingMode() const { return PassingMode; }
+  bool isInParameter() const { return PassingMode == PPK_in; }
+  bool isOutParameter() const { return PassingMode == PPK_out; }
+  bool isInOutParameter() const { return PassingMode == PPK_inout; }
+  bool isMoveParameter() const { return PassingMode == PPK_move; }
+
+  /// Returns the underlying type of the parameter.
+  QualType getParameterType() const { return ParmType; }
+
+  /// Returns the adjusted parameter type used for overloading, initialization,
+  /// and code generation.
+  QualType getAdjustedType(const ASTContext &Ctx) const;
+
+  void Profile(llvm::FoldingSetNodeID &ID) {
+    Profile(ID, ParmType, PassingMode);
+  }
+
+  static void Profile(llvm::FoldingSetNodeID &ID,
+                      QualType Parm,
+                      ParameterPassingKind PPK) {
+    ID.AddPointer(Parm.getAsOpaquePtr());
+    ID.AddInteger(PPK);
+  }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == InParameter ||
+           T->getTypeClass() == OutParameter ||
+           T->getTypeClass() == InOutParameter ||
+           T->getTypeClass() == MoveParameter;
+  }
+};
+
+/// An input parameter type.
+class InParameterType : public ParameterType {
+  friend class ASTContext; // ASTContext creates these
+
+  InParameterType(QualType Parm, QualType Canonical)
+    : ParameterType(InParameter, Parm, Canonical, PassingMode) {}
+
+public:
+  static constexpr ParameterPassingKind PassingMode = PPK_in;
+
+  /// Returns true if `T` should be passed by value.
+  static bool isPassByValue(const ASTContext &Cxt, QualType T);
+
+  /// Returns true if `T` should be passed by reference.
+  static bool isPassByReference(const ASTContext &Cxt, QualType T) {
+    return !isPassByValue(Cxt, T);
+  }
+
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == InParameter;
+  }
+};
+
+/// An output parameter type.
+class OutParameterType : public ParameterType {
+  friend class ASTContext; // ASTContext creates these
+
+  OutParameterType(QualType Parm, QualType Canonical)
+    : ParameterType(OutParameter, Parm, Canonical, PassingMode) {}
+
+public:
+  static constexpr ParameterPassingKind PassingMode = PPK_out;
+
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == OutParameter;
+  }
+};
+
+/// An input parameter type.
+class InOutParameterType : public ParameterType {
+  friend class ASTContext; // ASTContext creates these
+
+  InOutParameterType(QualType Parm, QualType Canonical)
+    : ParameterType(InOutParameter, Parm, Canonical, PassingMode) {}
+
+public:
+  static constexpr ParameterPassingKind PassingMode = PPK_inout;
+
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == InOutParameter;
+  }
+};
+
+/// An input parameter type.
+class MoveParameterType : public ParameterType {
+  friend class ASTContext; // ASTContext creates these
+
+  MoveParameterType(QualType Parm, QualType Canonical)
+    : ParameterType(MoveParameter, Parm, Canonical, PassingMode) {}
+
+public:
+  static constexpr ParameterPassingKind PassingMode = PPK_move;
+
+  /// Returns true if `T` should be passed by value, presumably in registers.
+  /// If false, arguments are passed by reference.
+  static bool isPassByValue(const ASTContext &Cxt, QualType T);
+
+  /// Returns true if `T` should be passed by reference.
+  static bool isPassByReference(const ASTContext &Cxt, QualType T) {
+    return !isPassByValue(Cxt, T);
+  }
+
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == MoveParameter;
+  }
+};
+
 /// A qualifier set is used to build a set of qualifiers.
 class QualifierCollector : public Qualifiers {
 public:
@@ -6997,6 +7183,14 @@ inline QualType QualType::getNonReferenceType() const {
     return *this;
 }
 
+/// If Type is a parameter type (e.g., in int), returns the underlying
+/// type of the parameter (i.e., int).
+inline QualType QualType::getParameterType() const {
+  if (const auto *ParmType = (*this)->getAs<ParameterType>())
+    return ParmType->getParameterType();
+  return *this;
+}
+
 inline bool QualType::isCForbiddenLValueType() const {
   return ((getTypePtr()->isVoidType() && !hasQualifiers()) ||
           getTypePtr()->isFunctionType());
@@ -7276,6 +7470,10 @@ inline bool Type::isExtIntType() const {
   return isa<ExtIntType>(CanonicalType);
 }
 
+inline bool Type::isParameterType() const {
+  return isa<ParameterType>(CanonicalType);
+}
+
 #define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
   inline bool Type::is##Id##Type() const { \
     return isSpecificBuiltinType(BuiltinType::Id); \
@@ -7517,55 +7715,28 @@ inline const Type *Type::getPointeeOrArrayElementType() const {
     return type->getBaseElementTypeUnsafe();
   return type;
 }
-/// Insertion operator for diagnostics. This allows sending address spaces into
-/// a diagnostic with <<.
-inline const DiagnosticBuilder &operator<<(const DiagnosticBuilder &DB,
-                                           LangAS AS) {
-  DB.AddTaggedVal(static_cast<std::underlying_type_t<LangAS>>(AS),
-                  DiagnosticsEngine::ArgumentKind::ak_addrspace);
-  return DB;
-}
-
 /// Insertion operator for partial diagnostics. This allows sending adress
 /// spaces into a diagnostic with <<.
-inline const PartialDiagnostic &operator<<(const PartialDiagnostic &PD,
-                                           LangAS AS) {
+inline const StreamingDiagnostic &operator<<(const StreamingDiagnostic &PD,
+                                             LangAS AS) {
   PD.AddTaggedVal(static_cast<std::underlying_type_t<LangAS>>(AS),
                   DiagnosticsEngine::ArgumentKind::ak_addrspace);
   return PD;
 }
 
-/// Insertion operator for diagnostics. This allows sending Qualifiers into a
-/// diagnostic with <<.
-inline const DiagnosticBuilder &operator<<(const DiagnosticBuilder &DB,
-                                           Qualifiers Q) {
-  DB.AddTaggedVal(Q.getAsOpaqueValue(),
-                  DiagnosticsEngine::ArgumentKind::ak_qual);
-  return DB;
-}
-
 /// Insertion operator for partial diagnostics. This allows sending Qualifiers
 /// into a diagnostic with <<.
-inline const PartialDiagnostic &operator<<(const PartialDiagnostic &PD,
-                                           Qualifiers Q) {
+inline const StreamingDiagnostic &operator<<(const StreamingDiagnostic &PD,
+                                             Qualifiers Q) {
   PD.AddTaggedVal(Q.getAsOpaqueValue(),
                   DiagnosticsEngine::ArgumentKind::ak_qual);
   return PD;
 }
 
-/// Insertion operator for diagnostics.  This allows sending QualType's into a
-/// diagnostic with <<.
-inline const DiagnosticBuilder &operator<<(const DiagnosticBuilder &DB,
-                                           QualType T) {
-  DB.AddTaggedVal(reinterpret_cast<intptr_t>(T.getAsOpaquePtr()),
-                  DiagnosticsEngine::ak_qualtype);
-  return DB;
-}
-
 /// Insertion operator for partial diagnostics.  This allows sending QualType's
 /// into a diagnostic with <<.
-inline const PartialDiagnostic &operator<<(const PartialDiagnostic &PD,
-                                           QualType T) {
+inline const StreamingDiagnostic &operator<<(const StreamingDiagnostic &PD,
+                                             QualType T) {
   PD.AddTaggedVal(reinterpret_cast<intptr_t>(T.getAsOpaquePtr()),
                   DiagnosticsEngine::ak_qualtype);
   return PD;

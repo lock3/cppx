@@ -13,6 +13,7 @@ add_clang_library(clangSema
   CodeCompleteConsumer.cpp
   DeclSpec.cpp
   DelayedDiagnostic.cpp
+  GoldSemaLambda.cpp
   IdentifierResolver.cpp
   JumpDiagnostics.cpp
   MultiplexExternalSemaSource.cpp
@@ -51,6 +52,7 @@ add_clang_library(clangSema
   SemaObjCProperty.cpp
   SemaOpenMP.cpp
   SemaOverload.cpp
+  SemaParameter.cpp
   SemaPseudoObject.cpp
   SemaReflect.cpp
   SemaStmt.cpp
@@ -75,5 +77,5 @@ add_clang_library(clangSema
   clangAnalysis
   clangBasic
   clangEdit
-  clangLex
+  gold
   )

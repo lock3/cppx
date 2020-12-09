@@ -117,6 +117,12 @@ def AtomicType : TypeNode<Type>;
 def ExtIntType : TypeNode<Type>;
 def DependentExtIntType : TypeNode<Type>, AlwaysDependent;
 
+def ParameterType : TypeNode<Type, 1>;
+def InParameterType : TypeNode<Type>;
+def OutParameterType : TypeNode<Type>;
+def InOutParameterType : TypeNode<Type>;
+def MoveParameterType : TypeNode<Type>;
+
 // Cppx Types
 def CppxKindType : TypeNode<Type>, LeafType;
 def CppxNamespaceType : TypeNode<Type>, LeafType;

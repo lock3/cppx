@@ -459,23 +459,7 @@ public:
       const TypedValue &TV = Iter->second;
       Expr *Opaque = new (getContext()) OpaqueValueExpr(
           E->getLocation(), TV.Type, VK_RValue, OK_Ordinary, E);
-      auto *CE = ConstantExpr::Create(getContext(), Opaque, TV.Value);
-
-      // Override dependence.
-      //
-      // By passing the DeclRefExpr onto OpaqueValueExpr we inherit
-      // its dependence flags, and that is then inherited by the ConstantExpr.
-      // Rather than causing conflict with upstream and changing
-      // semantics of OpaqueValueExpr
-      // (to allow us to traffic the DeclRefExpr for diagnostics),
-      // override this behavior for the ConstantExpr.
-      //
-      // This is fine as we should only be using the ConstantExpr's value
-      // rather than the expression which created it.
-
-      CE->setDependence(ExprDependence::None);
-
-      return CE;
+      return CXXInjectedValueExpr::Create(getContext(), Opaque, TV.Value);
     } else {
       return nullptr;
     }
@@ -496,7 +480,7 @@ public:
 
     // Apply the captured value via a ConstantExpr.
     APValue &CapturedVal = CurInjection->CapturedValues[E->getOffset()];
-    return ConstantExpr::Create(getContext(), E, CapturedVal);
+    return CXXInjectedValueExpr::Create(getContext(), E, CapturedVal);
   }
 
   QualType GetRequiredType(const CXXRequiredTypeDecl *D) {
@@ -750,19 +734,6 @@ public:
     return QualType();
   }
 
-  ParmVarDecl *TransformFunctionTypeParam(
-      ParmVarDecl *OldParm, int indexAdjustment,
-      Optional<unsigned> NumExpansions, bool ExpectParameterPack) {
-    ParmVarDecl *NewParm =
-        TreeTransform<InjectionContext>::TransformFunctionTypeParam(
-            OldParm, indexAdjustment, NumExpansions, ExpectParameterPack);
-
-    if (NewParm)
-      AddDeclSubstitution(OldParm, NewParm);
-
-    return NewParm;
-  }
-
   bool ExpandInjectedParameter(const CXXInjectedParmsInfo &Injected,
                                SmallVectorImpl<ParmVarDecl *> &Parms);
 
@@ -832,6 +803,7 @@ public:
   void UpdateFunctionParms(FunctionDecl* Old, FunctionDecl* New);
 
   Decl *InjectNamespaceDecl(NamespaceDecl *D);
+  Decl *InjectUsingDirectiveDecl(UsingDirectiveDecl *D);
   Decl *InjectTypedefNameDecl(TypedefNameDecl *D);
   Decl *InjectFunctionDecl(FunctionDecl *D);
   Decl *InjectVarDecl(VarDecl *D);
@@ -1203,7 +1175,7 @@ Decl* InjectionContext::InjectNamespaceDecl(NamespaceDecl *D) {
   SourceLocation &&NamespaceLoc = D->getBeginLoc();
   SourceLocation &&Loc = D->getLocation();
 
-  bool IsInline = D->isInline();
+  bool IsInline = D->isInline() || GetModifiers().addInline();
   bool IsInvalid = false;
   bool IsStd = false;
   bool AddToKnown = false;
@@ -1229,6 +1201,36 @@ Decl* InjectionContext::InjectNamespaceDecl(NamespaceDecl *D) {
   }
 
   return Ns;
+}
+
+Decl *InjectionContext::InjectUsingDirectiveDecl(UsingDirectiveDecl *D) {
+  DeclContext *Owner = getSema().CurContext;
+
+  // Transform the parts to rebuild the UsingDirectiveDecl
+  NestedNameSpecifierLoc QualifierLoc = TransformNestedNameSpecifierLoc(
+      D->getQualifierLoc());
+
+  NamedDecl *NewNS = dyn_cast_or_null<NamedDecl>(
+      TransformDecl(D->getLocation(), D->getNominatedNamespace()));
+  if (!NewNS)
+    return nullptr;
+
+  Decl *NewAncestor = TransformDecl(
+      D->getLocation(), Decl::castFromDeclContext(D->getCommonAncestor()));
+  if (!NewAncestor)
+    return nullptr;
+
+  // Build the new UsingDirectiveDecl
+  auto *UD = UsingDirectiveDecl::Create(
+      getContext(), Owner, D->getUsingLoc(), D->getNamespaceKeyLocation(),
+      QualifierLoc, D->getIdentLocation(), NewNS,
+      Decl::castToDeclContext(NewAncestor));
+
+  // Always add to the context, we shouldn't be instantiating anything
+  // at this point, so a straight copy should be correct.
+  Owner->addDecl(UD);
+
+  return UD;
 }
 
 Decl* InjectionContext::InjectTypedefNameDecl(TypedefNameDecl *D) {
@@ -1352,6 +1354,19 @@ static void InjectFunctionDefinition(InjectionContext *Ctx,
                             /*IsInstantiation=*/true);
 }
 
+static ConstexprSpecKind Transform(ConstexprModifier Modifier) {
+  switch(Modifier) {
+  case ConstexprModifier::Constexpr:
+    return CSK_constexpr;
+  case ConstexprModifier::Consteval:
+    return CSK_consteval;
+  case ConstexprModifier::Constinit:
+    return CSK_constinit;
+  default:
+    llvm_unreachable("Invalid constexpr modifier transformation");
+  }
+}
+
 Decl *InjectionContext::InjectFunctionDecl(FunctionDecl *D) {
   DeclContext *Owner = getSema().CurContext;
 
@@ -1367,16 +1382,28 @@ Decl *InjectionContext::InjectFunctionDecl(FunctionDecl *D) {
   UpdateFunctionParms(D, Fn);
 
   // Update the constexpr specifier.
-  if (GetModifiers().addConstexpr()) {
-    Fn->setConstexprKind(CSK_constexpr);
+  if (GetModifiers().modifyConstexpr()) {
     Fn->setType(Fn->getType().withConst());
+
+    ConstexprModifier Modifier = GetModifiers().getConstexprModifier();
+    if (Modifier == ConstexprModifier::Constinit) {
+      SemaRef.Diag(Fn->getLocation(), diag::err_modify_constinit_function);
+      Fn->setInvalidDecl(true);
+    } else {
+      Fn->setConstexprKind(Transform(Modifier));
+    }
   } else {
     Fn->setConstexprKind(D->getConstexprKind());
   }
 
   // Set properties.
-  Fn->setInlineSpecified(D->isInlineSpecified());
-  Fn->setInvalidDecl(Invalid);
+  if (D->isInlineSpecified()) {
+    Fn->setInlineSpecified();
+  } else if (D->isInlined() || GetModifiers().addInline()) {
+    Fn->setImplicitlyInline();
+  }
+
+  Fn->setInvalidDecl(Fn->isInvalidDecl() || Invalid);
   if (D->getFriendObjectKind() != Decl::FOK_None)
     Fn->setObjectOfFriendDecl();
 
@@ -1424,8 +1451,8 @@ static void CheckInjectedVarDecl(Sema &SemaRef, VarDecl *VD,
       return;
 
     SemaRef.Diag(VD->getLocation(),
-                   diag::err_static_data_member_not_allowed_in_anon_struct)
-      << VD->getDeclName() << RD->getTagKind();
+                 diag::err_static_data_member_not_allowed_in_anon_struct)
+        << VD->getDeclName() << RD->getTagKind();
   }
 }
 
@@ -1465,9 +1492,24 @@ Decl *InjectionContext::InjectVarDecl(VarDecl *D) {
   Var->setInitStyle(D->getInitStyle());
   Var->setCXXForRangeDecl(D->isCXXForRangeDecl());
 
-  if (GetModifiers().addConstexpr()) {
-    Var->setConstexpr(true);
+  if (GetModifiers().modifyConstexpr()) {
     Var->setType(Var->getType().withConst());
+    switch (GetModifiers().getConstexprModifier()) {
+    case ConstexprModifier::Constexpr:
+      Var->setConstexpr(true);
+      break;
+    case ConstexprModifier::Consteval:
+      SemaRef.Diag(Var->getLocation(), diag::err_modify_consteval_variable);
+      Var->setInvalidDecl(true);
+      break;
+    case ConstexprModifier::Constinit:
+      Var->addAttr(ConstInitAttr::Create(
+          SemaRef.Context, Var->getLocation(),
+          AttributeCommonInfo::AS_Keyword, ConstInitAttr::Keyword_constinit));
+      break;
+    default:
+      llvm_unreachable("invalid constexpr modifier transformation");
+    }
   } else {
     Var->setConstexpr(D->isConstexpr());
   }
@@ -1499,7 +1541,7 @@ Decl *InjectionContext::InjectVarDecl(VarDecl *D) {
 
   if (D->isInlineSpecified())
     Var->setInlineSpecified();
-  else if (D->isInline())
+  else if (D->isInline() || GetModifiers().addInline())
     Var->setImplicitlyInline();
 
   InjectVariableInitializer(*this, D, Var);
@@ -1807,8 +1849,9 @@ Decl *InjectionContext::InjectFieldDecl(FieldDecl *D) {
   // There are some interesting cases we probably need to handle.
 
   // Can't make
-  if (GetModifiers().addConstexpr()) {
-    SemaRef.Diag(D->getLocation(), diag::err_modify_constexpr_field);
+  if (GetModifiers().modifyConstexpr()) {
+    SemaRef.Diag(D->getLocation(), diag::err_modify_constexpr_field) <<
+        Transform(GetModifiers().getConstexprModifier());
     Field->setInvalidDecl(true);
   }
 
@@ -1896,17 +1939,28 @@ Decl *InjectionContext::InjectCXXMethodDecl(CXXMethodDecl *D, F FinishBody) {
   }
 
   // Propagate semantic properties.
+  if (D->isInlined())
+    Method->setImplicitlyInline();
+
   Method->setImplicit(D->isImplicit());
   ApplyAccess(GetModifiers(), Method, D);
 
   // Update the constexpr specifier.
-  if (GetModifiers().addConstexpr()) {
-    if (isa<CXXDestructorDecl>(Method)) {
-      SemaRef.Diag(D->getLocation(), diag::err_constexpr_dtor) << CSK_constexpr;
-      Method->setInvalidDecl(true);
-    }
-    Method->setConstexprKind(CSK_constexpr);
+  if (GetModifiers().modifyConstexpr()) {
     Method->setType(Method->getType().withConst());
+
+    ConstexprModifier Modifier = GetModifiers().getConstexprModifier();
+    if (Modifier == ConstexprModifier::Constinit) {
+      SemaRef.Diag(Method->getLocation(), diag::err_modify_constinit_function);
+      Method->setInvalidDecl(true);
+    } else {
+      ConstexprSpecKind SpecKind = Transform(Modifier);
+      if (isa<CXXDestructorDecl>(Method)) {
+        SemaRef.Diag(D->getLocation(), diag::err_constexpr_dtor) << SpecKind;
+        Method->setInvalidDecl(true);
+      }
+      Method->setConstexprKind(SpecKind);
+    }
   } else {
     Method->setConstexprKind(D->getConstexprKind());
   }
@@ -1985,6 +2039,8 @@ Decl *InjectionContext::InjectDeclImpl(Decl *D) {
   case Decl::CppxNamespace:
   case Decl::Namespace:
     return InjectNamespaceDecl(cast<NamespaceDecl>(D));
+  case Decl::UsingDirective:
+    return InjectUsingDirectiveDecl(cast<UsingDirectiveDecl>(D));
   case Decl::Typedef:
   case Decl::TypeAlias:
     return InjectTypedefNameDecl(cast<TypedefNameDecl>(D));
@@ -2544,7 +2600,7 @@ Decl *InjectionContext::InjectTemplateTemplateParmDecl(
     if (!TName.isNull())
       Parm->setDefaultArgument(
           getSema().Context,
-          TemplateArgumentLoc(TemplateArgument(TName),
+          TemplateArgumentLoc(getSema().Context, TemplateArgument(TName),
                               QualifierLoc,
                               D->getDefaultArgument().getTemplateNameLoc()));
   }
@@ -3481,6 +3537,8 @@ static void PerformInjection(InjectionContext *Ctx, Decl *Injectee, Decl *Inject
   // The logic for block fragments is different, since everything in the fragment
   // is stored in a CompoundStmt.
   if (isa<CXXStmtFragmentDecl>(Injection)) {
+    Sema::SynthesizedFunctionScope Scope(Ctx->getSema(), cast<FunctionDecl>(Injectee));
+
     CXXStmtFragmentDecl *InjectionSFD = cast<CXXStmtFragmentDecl>(Injection);
     CompoundStmt *FragmentBlock = cast<CompoundStmt>(InjectionSFD->getBody());
     for (Stmt *S : FragmentBlock->body()) {
@@ -3665,14 +3723,18 @@ static bool isInjectingIntoNamespace(const Decl *Injectee) {
   return Decl::castToDeclContext(Injectee)->isFileContext();
 }
 
-static CXXInjectionContextSpecifier
-GetDelayedNamespaceContext(const CXXInjectionContextSpecifier &CurSpecifier) {
+static CXXInjectionContextSpecifier GetDelayedNamespaceContext(
+    const CXXInjectionContextSpecifier &CurSpecifier, Decl *NSDecl) {
   switch (CurSpecifier.getContextKind()) {
   case CXXInjectionContextSpecifier::CurrentContext:
     llvm_unreachable("injection should not be delayed");
 
   case CXXInjectionContextSpecifier::ParentNamespace: {
-    return CXXInjectionContextSpecifier();
+    // Rewrite this to explicit target the correct namespace.  This is
+    // particularly important for templates which may be instantiated
+    // from many different locations.
+    return CXXInjectionContextSpecifier(
+        CurSpecifier.getBeginLoc(), NSDecl, CurSpecifier.getEndLoc());
   }
 
   case CXXInjectionContextSpecifier::SpecifiedNamespace:
@@ -3797,7 +3859,8 @@ bool Sema::ApplyInjection(CXXInjectorDecl *MD, InjectionEffect &IE) {
   if (isInsideRecord(CurContext) && isInjectingIntoNamespace(Injectee)) {
     // Push a modified injection effect with an adjusted context for replay
     // after completion of the current record.
-    auto &&NewSpecifier = GetDelayedNamespaceContext(IE.ContextSpecifier);
+    auto &&NewSpecifier = GetDelayedNamespaceContext(
+        IE.ContextSpecifier, Injectee);
     InjectionEffect NewEffect(IE, NewSpecifier);
     PendingNamespaceInjections.push_back({MD, NewEffect});
     return true;
@@ -4000,7 +4063,6 @@ static void InjectPendingDefinition(InjectionContext *Ctx,
   S.ActOnStartOfFunctionDef(nullptr, NewMethod);
 
   Sema::SynthesizedFunctionScope Scope(S, NewMethod);
-  Sema::ContextRAII MethodCtx(S, NewMethod);
 
   StmtResult NewBody = Ctx->TransformStmt(OldMethod->getBody());
   if (NewBody.isInvalid())
@@ -4102,7 +4164,6 @@ static void InjectPendingDefinition(InjectionContext *Ctx,
   S.ActOnStartOfFunctionDef(nullptr, NewMethod);
 
   Sema::SynthesizedFunctionScope Scope(S, NewMethod);
-  Sema::ContextRAII MethodCtx(S, NewMethod);
 
   StmtResult NewBody = Pattern;
   if (D->getInstantiatedFromMemberTemplate()) {
@@ -4309,7 +4370,7 @@ EvaluateMetaDeclCall(Sema &Sema, MetaType *MD, CallExpr *Call) {
       Sema, Sema::ExpressionEvaluationContext::ConstantEvaluated);
 
   Expr::EvalContext EvalCtx(Context, Sema.GetReflectionCallbackObj());
-  bool Folded = Call->EvaluateAsRValue(Result, EvalCtx);
+  bool Folded = Call->EvaluateAsConstantExpr(Result, EvalCtx);
   if (!Folded) {
     // If the only error is that we didn't initialize a (void) value, that's
     // actually okay. APValue doesn't know how to do this anyway.
@@ -4353,7 +4414,7 @@ EvaluateMetaDecl(Sema &Sema, MetaType *MD, FunctionDecl *D) {
   QualType PtrTy = Context.getPointerType(FunctionTy);
   ImplicitCastExpr *Cast = ImplicitCastExpr::Create(
       Context, PtrTy, CK_FunctionToPointerDecay, Ref, /*BasePath=*/nullptr,
-      VK_RValue);
+      VK_RValue, Sema.CurFPFeatureOverrides());
 
   CallExpr *Call = CallExpr::Create(
       Context, Cast, ArrayRef<Expr *>(), Context.VoidTy, VK_RValue,

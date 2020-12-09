@@ -641,11 +641,19 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
     I = getCxxSema().IdResolver->begin(Name),
     IEnd = getCxxSema().IdResolver->end();
   auto addShadows = [&R](Scope *S, clang::NamedDecl *D) -> bool {
-    clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D);
-    if (!UD)
-      return false;
-
     bool Shadowed = false;
+    clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D);
+    if (!UD) {
+      clang::UsingShadowDecl *Shadow = dyn_cast<clang::UsingShadowDecl>(D);
+      if (Shadow) {
+        R.addDecl(Shadow);
+        Shadowed = true;
+        return true;
+      }
+
+      return false;
+    }
+
     for (auto *Shadow : UD->shadows()) {
       auto It = std::find(std::begin(S->Shadows), std::end(S->Shadows), Shadow);
       if (It != std::end(S->Shadows)) {
@@ -666,8 +674,9 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
     std::set<Declaration *> Found = S->findDecl(Id);
 
     // Look through any using directives, but only if we didn't already find
-    // something acceptable.
-    if (Found.empty()) {
+    // something acceptable. However, we always check the shadows in a lambda
+    // block.
+    if (Found.empty() || S->isLambdaScope()) {
       // See if Clang has anything in the identifier resolver.
       bool Shadowed = false;
       for (; I != IEnd; ++I)
@@ -1653,20 +1662,17 @@ void Sema::createInPlaceNew() {
               .getValueKindForDeclReference(ResultType, Params[1], Loc);
       clang::DeclarationNameInfo DNI({&Context.CxxAST.Idents.get("ptr")}, Loc);
 
-      auto RefExpr = clang::DeclRefExpr::Create(Context.CxxAST,
-                                                clang::NestedNameSpecifierLoc(),
-                                                clang::SourceLocation(),
-                                                Params[1],
-                                    /*RefersToEnclosingVariableOrCapture*/false,
-                                                /*NameLoc*/Loc,
-                                                ResultType,
-                                                ValueKind);
-      auto Cast = clang::ImplicitCastExpr::Create(Context.CxxAST,
-                                                  ResultType,
-                                                  clang::CK_LValueToRValue,
-                                                  RefExpr,
-                                                  nullptr,
-                                                  ValueKind);
+      auto RefExpr =
+        clang::DeclRefExpr::Create(Context.CxxAST,
+                                   clang::NestedNameSpecifierLoc(),
+                                   clang::SourceLocation(), Params[1],
+                                   /*RefersToEnclosingVariableOrCapture*/false,
+                                   /*NameLoc*/Loc, ResultType, ValueKind);
+      auto Cast =
+        clang::ImplicitCastExpr::Create(Context.CxxAST, ResultType,
+                                        clang::CK_LValueToRValue, RefExpr,
+                                        nullptr, ValueKind,
+                                        clang::FPOptionsOverride());
       clang::ReturnStmt *RetStmt = clang::ReturnStmt::Create(Context.CxxAST,
                                                         Loc, Cast, nullptr);
       llvm::SmallVector<clang::Stmt* , 1> BlockStmts({RetStmt});
@@ -1757,6 +1763,7 @@ Sema::rebuildDeclarationNameInfo(const clang::DeclarationNameInfo &DNI) {
     return DNI;
   }
 }
+
 
 clang::QualType Sema::TransformCppxTypeExprType(
     const clang::MultiLevelTemplateArgumentList &TemplateArgs,
@@ -2429,7 +2436,7 @@ Sema::BuildCXXNew(clang::SourceRange Range, bool UseGlobal,
         SizeTy, SourceLocation());
     ImplicitCastExpr DesiredAlignment(ImplicitCastExpr::OnStack, AlignValT,
                                       CK_IntegralCast, &AlignmentLiteral,
-                                      VK_RValue);
+                                      VK_RValue, FPOptionsOverride());
 
     // Adjust placement args by prepending conjured size and alignment exprs.
     llvm::SmallVector<Expr *, 8> CallArgs;

@@ -813,6 +813,7 @@ template <typename A> bool IsAllocatableOrPointer(const A &x) {
 
 // Procedure and pointer detection predicates
 bool IsProcedure(const Expr<SomeType> &);
+bool IsFunction(const Expr<SomeType> &);
 bool IsProcedurePointer(const Expr<SomeType> &);
 bool IsNullPointer(const Expr<SomeType> &);
 
@@ -890,6 +891,13 @@ struct UnexpandabilityFindingVisitor
 template <typename T> bool IsExpandableScalar(const Expr<T> &expr) {
   return !UnexpandabilityFindingVisitor{}(expr);
 }
+
+// Common handling for procedure pointer compatibility of left- and right-hand
+// sides.  Returns nullopt if they're compatible.  Otherwise, it returns a
+// message that needs to be augmented by the names of the left and right sides
+std::optional<parser::MessageFixedText> CheckProcCompatibility(bool isCall,
+    const std::optional<characteristics::Procedure> &lhsProcedure,
+    const characteristics::Procedure *rhsProcedure);
 
 } // namespace Fortran::evaluate
 

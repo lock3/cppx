@@ -551,7 +551,8 @@ bool DependentExprTransformer::transformTemplateArguments(
       if (Template.isNull())
         return true;
       clang::TemplateArgument Arg(Template);
-      clang::TemplateArgumentLocInfo TALoc(clang::NestedNameSpecifierLoc(),
+      clang::TemplateArgumentLocInfo TALoc(Context.CxxAST,
+                                           clang::NestedNameSpecifierLoc(),
                                            TArg->getExprLoc(),
                                            clang::SourceLocation());
       ArgInfo.addArgument({Arg, TALoc});

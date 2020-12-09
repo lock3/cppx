@@ -99,9 +99,7 @@ ExprResult Sema::ActOnNoexceptSpec(SourceLocation NoexceptLoc,
 
   llvm::APSInt Result;
   Converted = VerifyIntegerConstantExpression(
-      Converted.get(), &Result,
-      diag::err_noexcept_needs_constant_expression,
-      /*AllowFold*/ false);
+      Converted.get(), &Result, diag::err_noexcept_needs_constant_expression);
   if (!Converted.isInvalid())
     EST = !Result ? EST_NoexceptFalse : EST_NoexceptTrue;
   return Converted;
@@ -1376,6 +1374,7 @@ CanThrowResult Sema::canThrow(const Stmt *S) {
   case Expr::CppxPartialEvalExprClass:
   case Expr::CppxDeclRefExprClass:
   case Expr::CXXFragmentCaptureExprClass:
+  case Expr::CXXInjectedValueExprClass:
     // FIXME: Many of the above can throw.
     return CT_Cannot;
 
@@ -1424,6 +1423,7 @@ CanThrowResult Sema::canThrow(const Stmt *S) {
   case Expr::CXXValueOfExprClass:
   case Expr::CXXConcatenateExprClass:
   case Expr::CXXDependentVariadicReifierExprClass:
+  case Expr::CXXParameterInfoExprClass:
     // These expressions can never throw.
     return CT_Cannot;
 

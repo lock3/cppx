@@ -3066,7 +3066,7 @@ rnb_err_t RNBRemote::HandlePacket_last_signal(const char *unused) {
                  WEXITSTATUS(pid_status));
       else if (WIFSIGNALED(pid_status))
         snprintf(pid_exited_packet, sizeof(pid_exited_packet), "X%02x",
-                 WEXITSTATUS(pid_status));
+                 WTERMSIG(pid_status));
       else if (WIFSTOPPED(pid_status))
         snprintf(pid_exited_packet, sizeof(pid_exited_packet), "S%02x",
                  WSTOPSIG(pid_status));
@@ -4052,8 +4052,8 @@ rnb_err_t RNBRemote::HandlePacket_v(const char *p) {
         if (strcmp (err_str, "unable to start the exception thread") == 0) {
           snprintf (err_str, sizeof (err_str) - 1,
                     "Not allowed to attach to process.  Look in the console "
-                    "messages (Console.app), near the debugserver entries "
-                    "when the attached failed.  The subsystem that denied "
+                    "messages (Console.app), near the debugserver entries, "
+                    "when the attach failed.  The subsystem that denied "
                     "the attach permission will likely have logged an "
                     "informative message about why it was denied.");
           err_str[sizeof (err_str) - 1] = '\0';

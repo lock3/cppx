@@ -273,6 +273,10 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::CppxTemplate:
     case Type::CppxArgs:
     case Type::CppxTypeExpr:
+    case Type::InParameter:
+    case Type::OutParameter:
+    case Type::InOutParameter:
+    case Type::MoveParameter:
       CanPrefixQualifiers = false;
       break;
 
@@ -664,6 +668,24 @@ void TypePrinter::printVectorBefore(const VectorType *T, raw_ostream &OS) {
     printBefore(T->getElementType(), OS);
     break;
   }
+  case VectorType::SveFixedLengthDataVector:
+  case VectorType::SveFixedLengthPredicateVector:
+    // FIXME: We prefer to print the size directly here, but have no way
+    // to get the size of the type.
+    OS << "__attribute__((__arm_sve_vector_bits__(";
+
+    if (T->getVectorKind() == VectorType::SveFixedLengthPredicateVector)
+      // Predicates take a bit per byte of the vector size, multiply by 8 to
+      // get the number of bits passed to the attribute.
+      OS << T->getNumElements() * 8;
+    else
+      OS << T->getNumElements();
+
+    OS << " * sizeof(";
+    print(T->getElementType(), OS, StringRef());
+    // Multiply by 8 for the number of bits.
+    OS << ") * 8))) ";
+    printBefore(T->getElementType(), OS);
   }
 }
 
@@ -711,6 +733,24 @@ void TypePrinter::printDependentVectorBefore(
     printBefore(T->getElementType(), OS);
     break;
   }
+  case VectorType::SveFixedLengthDataVector:
+  case VectorType::SveFixedLengthPredicateVector:
+    // FIXME: We prefer to print the size directly here, but have no way
+    // to get the size of the type.
+    OS << "__attribute__((__arm_sve_vector_bits__(";
+    if (T->getSizeExpr()) {
+      T->getSizeExpr()->printPretty(OS, nullptr, Policy);
+      if (T->getVectorKind() == VectorType::SveFixedLengthPredicateVector)
+        // Predicates take a bit per byte of the vector size, multiply by 8 to
+        // get the number of bits passed to the attribute.
+        OS << " * 8";
+      OS << " * sizeof(";
+      print(T->getElementType(), OS, StringRef());
+      // Multiply by 8 for the number of bits.
+      OS << ") * 8";
+    }
+    OS << "))) ";
+    printBefore(T->getElementType(), OS);
   }
 }
 
@@ -1223,6 +1263,50 @@ void TypePrinter::printDependentExtIntBefore(const DependentExtIntType *T,
 void TypePrinter::printDependentExtIntAfter(const DependentExtIntType *T,
                                             raw_ostream &OS) {}
 
+namespace
+{
+  void printParameterType(TypePrinter &TP, const char *Mode,
+                          const ParameterType *T, raw_ostream &OS) {
+
+    OS << Mode << ' ';
+    TP.print(T->getParameterType(), OS, StringRef());
+  }
+}
+
+void TypePrinter::printInParameterBefore(const InParameterType *T,
+                                         raw_ostream &OS) {
+  printParameterType(*this, "in", T, OS);
+}
+
+void TypePrinter::printInParameterAfter(const InParameterType *T,
+                                        raw_ostream &OS) {}
+
+void TypePrinter::printOutParameterBefore(const OutParameterType *T,
+                                          raw_ostream &OS) {
+  printParameterType(*this, "out", T, OS);
+}
+
+void TypePrinter::printOutParameterAfter(const OutParameterType *T,
+                                         raw_ostream &OS) {}
+
+
+void TypePrinter::printInOutParameterBefore(const InOutParameterType *T,
+                                            raw_ostream &OS) {
+  printParameterType(*this, "inout", T, OS);
+}
+
+void TypePrinter::printInOutParameterAfter(const InOutParameterType *T,
+                                           raw_ostream &OS) {}
+
+
+void TypePrinter::printMoveParameterBefore(const MoveParameterType *T,
+                                           raw_ostream &OS) {
+  printParameterType(*this, "move", T, OS);
+}
+
+void TypePrinter::printMoveParameterAfter(const MoveParameterType *T,
+                                          raw_ostream &OS) {}
+
 /// Appends the given scope to the end of a string.
 void TypePrinter::AppendScope(DeclContext *DC, raw_ostream &OS) {
   if (DC->isTranslationUnit()) return;
@@ -1698,9 +1782,6 @@ void TypePrinter::printAttributedAfter(const AttributedType *T,
     break;
   case attr::ArmMveStrictPolymorphism:
     OS << "__clang_arm_mve_strict_polymorphism";
-    break;
-  case attr::ArmSveVectorBits:
-    OS << "arm_sve_vector_bits";
     break;
   }
   OS << "))";

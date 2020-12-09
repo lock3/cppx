@@ -181,6 +181,8 @@ DeclaratorChunk DeclaratorChunk::getFunction(bool hasProto,
                                              SourceLocation LocalRangeEnd,
                                              Declarator &TheDeclarator,
                                              TypeResult TrailingReturnType,
+                                             SourceLocation
+                                                 TrailingReturnTypeLoc,
                                              DeclSpec *MethodQualifiers) {
   assert(!(MethodQualifiers && MethodQualifiers->getTypeQualifiers() & DeclSpec::TQ_atomic) &&
          "function cannot have _Atomic qualifier");
@@ -210,6 +212,7 @@ DeclaratorChunk DeclaratorChunk::getFunction(bool hasProto,
   I.Fun.HasTrailingReturnType   = TrailingReturnType.isUsable() ||
                                   TrailingReturnType.isInvalid();
   I.Fun.TrailingReturnType      = TrailingReturnType.get();
+  I.Fun.TrailingReturnTypeLoc   = TrailingReturnTypeLoc.getRawEncoding();
   I.Fun.MethodQualifiers        = nullptr;
   I.Fun.QualAttrFactory         = nullptr;
 
@@ -585,6 +588,18 @@ const char *DeclSpec::getSpecifierName(ConstexprSpecKind C) {
   case CSK_constinit:   return "constinit";
   }
   llvm_unreachable("Unknown ConstexprSpecKind");
+}
+
+const char *DeclSpec::getSpecifierName(ParameterPassingKind K) {
+  switch (K) {
+  case PPK_unspecified: return "unspecified";
+  case PPK_in:      return "in";
+  case PPK_out:     return "out";
+  case PPK_inout:   return "inout";
+  case PPK_forward: return "forward";
+  case PPK_move:    return "move";
+  }
+  llvm_unreachable("Unknown ParamterPassingKind");
 }
 
 const char *DeclSpec::getSpecifierName(TQ T) {
@@ -1014,9 +1029,6 @@ bool DeclSpec::setFunctionSpecExplicit(SourceLocation Loc,
                                        const char *&PrevSpec, unsigned &DiagID,
                                        ExplicitSpecifier ExplicitSpec,
                                        SourceLocation CloseParenLoc) {
-  assert((ExplicitSpec.getKind() == ExplicitSpecKind::ResolvedTrue ||
-          ExplicitSpec.getExpr()) &&
-         "invalid ExplicitSpecifier");
   // 'explicit explicit' is ok, but warn as this is likely not what the user
   // intended.
   if (hasExplicitSpecifier()) {
@@ -1199,7 +1211,13 @@ void DeclSpec::Finish(Sema &S, const PrintingPolicy &Policy) {
         S.Diag(TSTLoc, diag::err_invalid_vector_float_decl_spec);
     } else if (TypeSpecWidth == TSW_long) {
       // vector long is unsupported for ZVector and deprecated for AltiVec.
-      if (S.getLangOpts().ZVector)
+      // It has also been historically deprecated on AIX (as an alias for
+      // "vector int" in both 32-bit and 64-bit modes). It was then made
+      // unsupported in the Clang-based XL compiler since the deprecated type
+      // has a number of conflicting semantics and continuing to support it
+      // is a disservice to users.
+      if (S.getLangOpts().ZVector ||
+          S.Context.getTargetInfo().getTriple().isOSAIX())
         S.Diag(TSWRange.getBegin(), diag::err_invalid_vector_long_decl_spec);
       else
         S.Diag(TSWRange.getBegin(),

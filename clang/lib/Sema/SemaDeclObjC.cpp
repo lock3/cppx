@@ -1066,6 +1066,11 @@ Decl *Sema::ActOnStartClassInterface(
 
   ProcessDeclAttributeList(TUScope, IDecl, AttrList);
   AddPragmaAttributes(TUScope, IDecl);
+
+  // Merge attributes from previous declarations.
+  if (PrevIDecl)
+    mergeDeclAttributes(IDecl, PrevIDecl);
+
   PushOnScopeChains(IDecl, TUScope);
 
   // Start the definition of this class. If we're in a redefinition case, there
@@ -2122,7 +2127,12 @@ void Sema::CheckImplementationIvars(ObjCImplementationDecl *ImpDecl,
     // Add ivar's to class's DeclContext.
     for (unsigned i = 0, e = numIvars; i != e; ++i) {
       ivars[i]->setLexicalDeclContext(ImpDecl);
-      IDecl->makeDeclVisibleInContext(ivars[i]);
+      // In a 'fragile' runtime the ivar was added to the implicit
+      // ObjCInterfaceDecl while in a 'non-fragile' runtime the ivar is
+      // only in the ObjCImplementationDecl. In the non-fragile case the ivar
+      // therefore also needs to be propagated to the ObjCInterfaceDecl.
+      if (!LangOpts.ObjCRuntime.isFragile())
+        IDecl->makeDeclVisibleInContext(ivars[i]);
       ImpDecl->addDecl(ivars[i]);
     }
 
@@ -3120,6 +3130,9 @@ Sema::ActOnForwardClassDeclaration(SourceLocation AtClassLoc,
                                   IdentLocs[i]);
     IDecl->setAtEndRange(IdentLocs[i]);
 
+    if (PrevIDecl)
+      mergeDeclAttributes(IDecl, PrevIDecl);
+
     PushOnScopeChains(IDecl, TUScope);
     CheckObjCDeclScope(IDecl);
     DeclsInGroup.push_back(IDecl);
@@ -3922,15 +3935,11 @@ Decl *Sema::ActOnAtEnd(Scope *S, SourceRange AtEnd, ArrayRef<Decl *> allMethods,
   if (auto *OID = dyn_cast<ObjCImplementationDecl>(CurContext)) {
     for (auto PropImpl : OID->property_impls()) {
       if (auto *Getter = PropImpl->getGetterMethodDecl())
-        if (Getter->isSynthesizedAccessorStub()) {
-          OID->makeDeclVisibleInContext(Getter);
+        if (Getter->isSynthesizedAccessorStub())
           OID->addDecl(Getter);
-        }
       if (auto *Setter = PropImpl->getSetterMethodDecl())
-        if (Setter->isSynthesizedAccessorStub()) {
-          OID->makeDeclVisibleInContext(Setter);
+        if (Setter->isSynthesizedAccessorStub())
           OID->addDecl(Setter);
-        }
     }
   }
 

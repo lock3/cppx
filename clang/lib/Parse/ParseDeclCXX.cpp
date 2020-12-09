@@ -2400,17 +2400,20 @@ void Parser::HandleMemberFunctionDeclDelays(Declarator& DeclaratorInfo,
     auto LateMethod = new LateParsedMethodDeclaration(this, ThisDecl);
     getCurrentClass().LateParsedDeclarations.push_back(LateMethod);
 
-    // Stash the exception-specification tokens in the late-pased method.
-    LateMethod->ExceptionSpecTokens = FTI.ExceptionSpecTokens;
-    FTI.ExceptionSpecTokens = nullptr;
-
-    // Push tokens for each parameter.  Those that do not have
-    // defaults will be NULL.
+    // Push tokens for each parameter. Those that do not have defaults will be
+    // NULL. We need to track all the parameters so that we can push them into
+    // scope for later parameters and perhaps for the exception specification.
     LateMethod->DefaultArgs.reserve(FTI.NumParams);
     for (unsigned ParamIdx = 0; ParamIdx < FTI.NumParams; ++ParamIdx)
       LateMethod->DefaultArgs.push_back(LateParsedDefaultArgument(
           FTI.Params[ParamIdx].Param,
           std::move(FTI.Params[ParamIdx].DefaultArgTokens)));
+
+    // Stash the exception-specification tokens in the late-pased method.
+    if (FTI.getExceptionSpecType() == EST_Unparsed) {
+      LateMethod->ExceptionSpecTokens = FTI.ExceptionSpecTokens;
+      FTI.ExceptionSpecTokens = nullptr;
+    }
   }
 }
 
@@ -2516,10 +2519,15 @@ bool Parser::ParseCXXMemberDeclaratorBeforeInitializer(
     Declarator &DeclaratorInfo, VirtSpecifiers &VS, ExprResult &BitfieldSize,
     LateParsedAttrList &LateParsedAttrs) {
   // member-declarator:
-  //   declarator pure-specifier[opt]
+  //   declarator virt-specifier-seq[opt] pure-specifier[opt]
   //   declarator requires-clause
   //   declarator brace-or-equal-initializer[opt]
-  //   identifier[opt] ':' constant-expression
+  //   identifier attribute-specifier-seq[opt] ':' constant-expression
+  //       brace-or-equal-initializer[opt]
+  //   ':' constant-expression
+  //
+  // NOTE: the latter two productions are a proposed bugfix rather than the
+  // current grammar rules as of C++20.
   if (Tok.isNot(tok::colon))
     ParseDeclarator(DeclaratorInfo);
   else
@@ -2553,7 +2561,11 @@ bool Parser::ParseCXXMemberDeclaratorBeforeInitializer(
   }
 
   // If attributes exist after the declarator, but before an '{', parse them.
+  // However, this does not apply for [[]] attributes (which could show up
+  // before or after the __attribute__ attributes).
+  DiagnoseAndSkipCXX11Attributes();
   MaybeParseGNUAttributes(DeclaratorInfo, &LateParsedAttrs);
+  DiagnoseAndSkipCXX11Attributes();
 
   // For compatibility with code written to older Clang, also accept a
   // virt-specifier *after* the GNU attributes.
@@ -3011,7 +3023,12 @@ Parser::ParseCXXClassMemberDeclaration(AccessSpecifier AS,
     InClassInitStyle HasInClassInit = ICIS_NoInit;
     bool HasStaticInitializer = false;
     if (Tok.isOneOf(tok::equal, tok::l_brace) && PureSpecLoc.isInvalid()) {
-      if (DeclaratorInfo.isDeclarationOfFunction()) {
+      // DRXXXX: Anonymous bit-fields cannot have a brace-or-equal-initializer.
+      if (BitfieldSize.isUsable() && !DeclaratorInfo.hasName()) {
+        // Diagnose the error and pretend there is no in-class initializer.
+        Diag(Tok, diag::err_anon_bitfield_member_init);
+        SkipUntil(tok::comma, StopAtSemi | StopBeforeMatch);
+      } else if (DeclaratorInfo.isDeclarationOfFunction()) {
         // It's a pure-specifier.
         if (!TryConsumePureSpecifier(/*AllowFunctionDefinition*/ false))
           // Parse it as an expression so that Sema can diagnose it.
@@ -3160,7 +3177,11 @@ Parser::ParseCXXClassMemberDeclaration(AccessSpecifier AS,
     DeclaratorInfo.setCommaLoc(CommaLoc);
 
     // GNU attributes are allowed before the second and subsequent declarator.
+    // However, this does not apply for [[]] attributes (which could show up
+    // before or after the __attribute__ attributes).
+    DiagnoseAndSkipCXX11Attributes();
     MaybeParseGNUAttributes(DeclaratorInfo);
+    DiagnoseAndSkipCXX11Attributes();
 
     if (ParseCXXMemberDeclaratorBeforeInitializer(
             DeclaratorInfo, VS, BitfieldSize, LateParsedAttrs))
@@ -3618,7 +3639,7 @@ void Parser::ParseCXXMemberSpecification(SourceLocation RecordLoc,
       FPOptionsOverride NewOverrides;
       Actions.CurFPFeatures = NewOverrides.applyOverrides(getLangOpts());
       Actions.FpPragmaStack.Act(Tok.getLocation(), Sema::PSK_Reset, StringRef(),
-                                0 /*unused*/);
+                                {} /*unused*/);
 
       SourceLocation SavedPrevTokLocation = PrevTokLocation;
       ParseLexedPragmas(getCurrentClass());
@@ -4193,6 +4214,7 @@ void Parser::ParseTrailingRequiresClause(Declarator &D) {
       auto &FunctionChunk = D.getFunctionTypeInfo();
       FunctionChunk.HasTrailingReturnType = TrailingReturnType.isUsable();
       FunctionChunk.TrailingReturnType = TrailingReturnType.get();
+      FunctionChunk.TrailingReturnTypeLoc = Range.getBegin().getRawEncoding();
     } else
       SkipUntil({tok::equal, tok::l_brace, tok::arrow, tok::kw_try, tok::comma},
                 StopAtSemi | StopBeforeMatch);
@@ -4334,6 +4356,8 @@ static bool IsBuiltInOrStandardCXX11Attribute(IdentifierInfo *AttrName,
   case ParsedAttr::AT_FallThrough:
   case ParsedAttr::AT_CXX11NoReturn:
   case ParsedAttr::AT_NoUniqueAddress:
+  case ParsedAttr::AT_Likely:
+  case ParsedAttr::AT_Unlikely:
     return true;
   case ParsedAttr::AT_WarnUnusedResult:
     return !ScopeName && AttrName->getName().equals("nodiscard");
@@ -4458,9 +4482,11 @@ void Parser::ParseCXX11AttributeSpecifier(ParsedAttributes &attrs,
   assert(Tok.is(tok::l_square) && NextToken().is(tok::l_square) &&
          "Not a double square bracket attribute list");
 
-  Diag(Tok.getLocation(), diag::warn_cxx98_compat_attribute);
+  SourceLocation OpenLoc = Tok.getLocation();
+  Diag(OpenLoc, diag::warn_cxx98_compat_attribute);
 
   ConsumeBracket();
+  checkCompoundToken(OpenLoc, tok::l_square, CompoundToken::AttrBegin);
   ConsumeBracket();
 
   SourceLocation CommonScopeLoc;
@@ -4555,8 +4581,11 @@ void Parser::ParseCXX11AttributeSpecifier(ParsedAttributes &attrs,
         << AttrName;
   }
 
+  SourceLocation CloseLoc = Tok.getLocation();
   if (ExpectAndConsume(tok::r_square))
     SkipUntil(tok::r_square);
+  else if (Tok.is(tok::r_square))
+    checkCompoundToken(CloseLoc, tok::r_square, CompoundToken::AttrEnd);
   if (endLoc)
     *endLoc = Tok.getLocation();
   if (ExpectAndConsume(tok::r_square))

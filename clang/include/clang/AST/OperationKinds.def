@@ -201,6 +201,14 @@ CAST_OPERATION(IntegralToBoolean)
 ///    float f = i;
 CAST_OPERATION(IntegralToFloating)
 
+/// CK_FloatingToFixedPoint - Floating to fixed point.
+///    _Accum a = f;
+CAST_OPERATION(FloatingToFixedPoint)
+
+/// CK_FixedPointToFloating - Fixed point to floating.
+///    (float) 2.5k
+CAST_OPERATION(FixedPointToFloating)
+
 /// CK_FixedPointCast - Fixed point to fixed point.
 ///    (_Accum) 0.5r
 CAST_OPERATION(FixedPointCast)
@@ -351,6 +359,9 @@ CAST_OPERATION(AddressSpaceConversion)
 
 // Convert an integer initializer to an OpenCL sampler.
 CAST_OPERATION(IntToOCLSampler)
+
+// Converts a parameter initalizer to a qualified parameter type.
+CAST_OPERATION(ParameterQualification)
 
 //===- Binary Operations  -------------------------------------------------===//
 // Operators listed in order of precedence.
