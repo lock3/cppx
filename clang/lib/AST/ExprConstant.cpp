@@ -15825,6 +15825,9 @@ static ICEDiag CheckICE(const Expr* E, const Expr::EvalContext &Ctx) {
   case Expr::CXXTemporaryObjectExprClass:
   case Expr::CXXUnresolvedConstructExprClass:
   case Expr::CXXDependentScopeMemberExprClass:
+  case Expr::CppxDependentMemberAccessExprClass:
+  case Expr::CppxCallOrConstructorExprClass:
+  case Expr::CppxTemplateOrArrayExprClass:
   case Expr::UnresolvedMemberExprClass:
   case Expr::ObjCStringLiteralClass:
   case Expr::ObjCBoxedExprClass:
@@ -15863,6 +15866,7 @@ static ICEDiag CheckICE(const Expr* E, const Expr::EvalContext &Ctx) {
   case Expr::CppxTypeLiteralClass:
   case Expr::CppxPartialEvalExprClass:
   case Expr::CppxDeclRefExprClass:
+  case Expr::CppxDerefOrPtrExprClass:
   case Expr::CXXFragmentCaptureExprClass:
   case Expr::CXXInjectedValueExprClass:
     return ICEDiag(IK_NotICE, E->getBeginLoc());

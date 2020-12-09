@@ -47,6 +47,8 @@ class Type;
 class CppxTypeLiteral;
 class CppxDeclRefExpr;
 class TypeSourceInfo;
+class DeclContext;
+class CppxDependentMemberAccessExpr;
 } // namespace clang
 
 namespace gold {
@@ -349,6 +351,7 @@ public:
                                            clang::TypeSourceInfo *TInfo);
 
 
+
   clang::CppxTypeLiteral *buildAnyTypeExpr(clang::QualType KindTy,
                                            clang::QualType Ty,
                                            clang::SourceLocation Loc);
@@ -360,6 +363,18 @@ public:
                                                 clang::SourceRange ExceptionSpecRange,
                                                 clang::SourceLocation EndLoc,
                            llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
+
+  clang::CppxTypeLiteral *buildTypeExprTypeFromExpr(clang::Expr *E,
+                                                    clang::SourceLocation Loc,
+                                                  bool IsConstructExpr = false);
+
+  clang::CppxTypeLiteral *buildTypeExprTypeFromExprLiteral(clang::Expr *E,
+                                                    clang::SourceLocation Loc,
+                                                  bool IsConstructExpr = false);
+
+  clang::QualType buildQualTypeExprTypeFromExpr(clang::Expr *E,
+                                                clang::SourceLocation Loc,
+                                                bool IsConstructExpr = false);
 
   clang::CppxTypeLiteral *buildTypeExprFromTypeDecl(
                       const clang::TypeDecl *TyDecl, clang::SourceLocation Loc);
@@ -1121,6 +1136,54 @@ public:
 
   clang::DeclarationNameInfo rebuildDeclarationNameInfo(
                                          const clang::DeclarationNameInfo &DNI);
+
+public:
+    /// Transformation triggering expressions.
+    clang::QualType TransformCppxTypeExprType(
+      const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+      clang::SourceLocation Loc, clang::DeclarationName Entity,
+      clang::TypeLocBuilder &TLB, clang::CppxTypeExprTypeLoc TL);
+
+    clang::Expr *TransformCppxDependentMemberAccessExpr(
+      const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+      clang::SourceLocation Loc, clang::DeclarationName Entity,
+      clang::CppxDependentMemberAccessExpr *E);
+
+    clang::Expr *TransformCppxTemplateOrArrayExpr(
+      const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+      clang::SourceLocation Loc, clang::DeclarationName Entity,
+      clang::CppxTemplateOrArrayExpr *E);
+
+    clang::Expr *TransformCppxCallOrConstructorExpr(
+      const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+      clang::SourceLocation Loc, clang::DeclarationName Entity,
+      clang::CppxCallOrConstructorExpr *E);
+
+    clang::Expr *TransformCppxDerefOrPtrExpr(
+      const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+      clang::SourceLocation Loc, clang::DeclarationName Entity,
+      clang::CppxDerefOrPtrExpr *E);
+
+
+  clang::ParsedTemplateArgument convertExprToTemplateArg(clang::Expr *E);
+
+public:
+  /// This was created to fix a single issue when transforming calls to operator
+  /// new. In order to correctly call new in the case of a .construct call
+  /// I need to force the operator new call back to an internal version
+  /// inplace new.
+  clang::ExprResult
+  BuildCXXNew(clang::SourceRange Range, bool UseGlobal,
+              clang::SourceLocation PlacementLParen,
+              clang::MultiExprArg PlacementArgs,
+              clang::SourceLocation PlacementRParen,
+              clang::SourceRange TypeIdParens,
+              clang::QualType AllocType,
+              clang::TypeSourceInfo *AllocTypeInfo,
+              llvm::Optional<clang::Expr *> ArraySize,
+              clang::SourceRange DirectInitRange,
+              clang::Expr *Initializer,
+              bool UseGoldInplaceNew = false);
 };
 
 } // namespace gold

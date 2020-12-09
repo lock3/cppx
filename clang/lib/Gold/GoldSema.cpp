@@ -22,16 +22,21 @@
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/SourceManager.h"
+#include "clang/Basic/TargetInfo.h"
+#include "clang/Sema/Initialization.h"
 #include "clang/Sema/Lookup.h"
+#include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/TypeLocUtil.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "clang/Gold/ClangToGoldDeclBuilder.h"
+#include "clang/Gold/GoldDependentExprTransformer.h"
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldIdentifierResolver.h"
+#include "clang/Gold/GoldPartialExpr.h"
 #include "clang/Gold/GoldScope.h"
 #include "clang/Gold/GoldSyntax.h"
-#include "clang/Gold/GoldPartialExpr.h"
+#include "clang/Gold/GoldTemplateCallback.h"
 
 #include <algorithm>
 
@@ -181,6 +186,13 @@ buildFoldOpLookup(clang::ASTContext &Ctx) {
     // Things we don't support for fold operators.
     // , .* ->*
   };
+}
+template<typename Derived, typename Base, typename Del>
+static std::unique_ptr<Derived, Del> 
+static_unique_ptr_cast(std::unique_ptr<Base, Del>&& p )
+{
+    auto d = static_cast<Derived *>(p.release());
+    return std::unique_ptr<Derived, Del>(d, std::move(p.get_deleter()));
 }
 
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
@@ -852,6 +864,10 @@ bool Sema::checkUnqualifiedNameIsDecl(const clang::DeclarationNameInfo& DNI,
   // and other kinds of declarations. This also handles some early elaboration
   // of some types.
   bool FoundFirstClassScope = false;
+  // if (S->getKind() == SK_Class) {
+  //   // Don't go into the base classes for this because this could just be
+  //   // overrides.
+  // }
   for(;S; S = S->getParent()) {
     std::set<Declaration *> Found = S->findDecl(Id);
     if (!Found.empty()) {
@@ -1115,8 +1131,9 @@ unsigned Sema::computeTemplateDepth() const {
 
 // True when we are elaborating a using macro within a class.
 bool Sema::elaboratingUsingInClassScope() const {
-  if (!CurrentDecl->Decl)
-    return false;
+  if(CurrentDecl)
+    if (!CurrentDecl->Decl)
+      return false;
   return scopeIsWithinClass() && CurrentDecl->Decl->isUsingDirective();
 }
 
@@ -1144,6 +1161,31 @@ clang::CppxTypeLiteral *Sema::buildAnyTypeExpr(clang::QualType KindTy,
 clang::CppxTypeLiteral *Sema::buildAnyTypeExpr(clang::QualType KindTy,
     clang::QualType Ty, clang::SourceLocation Loc) {
   return buildAnyTypeExpr(KindTy, BuildAnyTypeLoc(Context.CxxAST, Ty, Loc));
+}
+
+clang::CppxTypeLiteral *Sema::buildTypeExprTypeFromExpr(clang::Expr *E,
+                                                    clang::SourceLocation Loc,
+                                                    bool IsConstruct) {
+  return buildAnyTypeExpr(Context.CxxAST.CppxKindTy,
+                          BuildAnyTypeLoc(Context.CxxAST,
+                                          Context.CxxAST.getCppxTypeExprTy(
+                                            E, IsConstruct),
+                                          Loc));
+}
+clang::CppxTypeLiteral *Sema::buildTypeExprTypeFromExprLiteral(clang::Expr *E,
+                                                    clang::SourceLocation Loc,
+                                                         bool IsConstructExpr){
+  clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST,
+                  Context.CxxAST.getCppxTypeExprTy(E, IsConstructExpr), Loc);
+  return buildTypeExpr(TInfo);
+}
+
+clang::QualType Sema::buildQualTypeExprTypeFromExpr(clang::Expr *E,
+                                                    clang::SourceLocation Loc,
+                                                    bool IsConstruct) {
+  clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST,
+                  Context.CxxAST.getCppxTypeExprTy(E, IsConstruct), Loc);
+  return TInfo->getType();
 }
 
 clang::CppxTypeLiteral *
@@ -1640,6 +1682,7 @@ void Sema::createInPlaceNew() {
       InPlaceNew->setBody(Block);
     }
   }
+  InPlaceNew->setImplicit();
   Owner->addDecl(InPlaceNew);
 }
 
@@ -1719,6 +1762,794 @@ Sema::rebuildDeclarationNameInfo(const clang::DeclarationNameInfo &DNI) {
     // There are no conversion made for non-identifier names (yet).
     return DNI;
   }
+}
+
+
+clang::QualType Sema::TransformCppxTypeExprType(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::TypeLocBuilder &TLB, clang::CppxTypeExprTypeLoc TL) {
+  auto Ty = TL.getType()->getAs<clang::CppxTypeExprType>();
+  if (!Ty) {
+    llvm_unreachable("Invalid type ptr");
+  }
+  assert(Ty->getTyExpr() && "Invalid type expression");
+  DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
+  clang::Expr *Ret = rebuilder.transformDependentExpr(Ty->getTyExpr());
+  if (!Ret)
+    // Returning an empty type because this was an error.
+    return clang::QualType();
+  clang::QualType OutTy;
+  clang::TypeSourceInfo *TInfo = nullptr;
+  if (Ty->isForConstruct()) {
+    OutTy = Ret->getType();
+    if (OutTy->isDependentType()) {
+      // This should never happen unless we have an impossible/invalid
+      // AST structure, that we failed to account for.
+      llvm_unreachable("Invalid type transformation");
+    }
+    if (OutTy->isPointerType()) {
+      OutTy = OutTy->getPointeeType();
+    } else {
+      Diags.Report(Ret->getExprLoc(),
+                   clang::diag::err_construct_on_non_pointer_ty);
+      return clang::QualType();
+    }
+  } else {
+    TInfo = getTypeSourceInfoFromExpr(Ret, Ret->getExprLoc());
+    if (!TInfo)
+      return clang::QualType();
+
+    OutTy = TInfo->getType();
+  }
+  TInfo = BuildAnyTypeLoc(Context.CxxAST, TLB, OutTy,
+                          Ty->getTyExpr()->getExprLoc());
+  return TInfo->getType();
+}
+
+clang::Expr *Sema::TransformCppxDependentMemberAccessExpr(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxDependentMemberAccessExpr *E) {
+  DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
+  return rebuilder.transformDependentExpr(E);
+}
+
+clang::Expr *Sema::TransformCppxTemplateOrArrayExpr(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxTemplateOrArrayExpr *E) {
+  DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
+  return rebuilder.transformDependentExpr(E);
+}
+
+clang::Expr *Sema::TransformCppxCallOrConstructorExpr(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxCallOrConstructorExpr *E) {
+  DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
+  return rebuilder.transformDependentExpr(E);
+}
+clang::Expr *Sema::TransformCppxDerefOrPtrExpr(
+    const clang::MultiLevelTemplateArgumentList &TemplateArgs,
+    clang::SourceLocation Loc, clang::DeclarationName Entity,
+    clang::CppxDerefOrPtrExpr *E) {
+  DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
+  return rebuilder.transformDependentExpr(E);
+}
+
+clang::ParsedTemplateArgument Sema::convertExprToTemplateArg(clang::Expr *E) {
+  // Type parameters start here.
+  if (E->getType()->isTypeOfTypes()) {
+    clang::TypeSourceInfo *TInfo = getTypeSourceInfoFromExpr(
+                                          E, E->getExprLoc());
+    if (!TInfo)
+      return clang::ParsedTemplateArgument();
+
+    return getCxxSema().ActOnTemplateTypeArgument(
+               getCxxSema().CreateParsedType(TInfo->getType(), TInfo));
+  }
+
+  if (E->getType()->isTemplateType()) {
+    clang::TemplateDecl *TD =
+      E->getType()->getAs<clang::CppxTemplateType>()->getTemplateDecl();
+
+    return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::Template,
+                                         (void *)TD, E->getExprLoc());
+  }
+
+  // Anything else is a constant expression?
+  clang::ExprResult ConstExpr(E);
+  ConstExpr = getCxxSema().ActOnConstantExpression(ConstExpr);
+  return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::NonType,
+      ConstExpr.get(), E->getExprLoc());
+}
+
+// BuildCXXNew - added to help with inplace __GoldInplaceNew/.construct
+// when used with a dependent expression.
+namespace {
+  struct UsualDeallocFnInfo {
+    UsualDeallocFnInfo() : Found(), FD(nullptr) {}
+    UsualDeallocFnInfo(clang::Sema &S, clang::DeclAccessPair Found)
+        : Found(Found), FD(dyn_cast<clang::FunctionDecl>(Found->getUnderlyingDecl())),
+          Destroying(false), HasSizeT(false), HasAlignValT(false),
+          CUDAPref(clang::Sema::CFP_Native) {
+      using namespace clang;
+      // A function template declaration is never a usual deallocation function.
+      if (!FD)
+        return;
+      unsigned NumBaseParams = 1;
+      if (FD->isDestroyingOperatorDelete()) {
+        Destroying = true;
+        ++NumBaseParams;
+      }
+
+      if (NumBaseParams < FD->getNumParams() &&
+          S.Context.hasSameUnqualifiedType(
+              FD->getParamDecl(NumBaseParams)->getType(),
+              S.Context.getSizeType())) {
+        ++NumBaseParams;
+        HasSizeT = true;
+      }
+
+      if (NumBaseParams < FD->getNumParams() &&
+          FD->getParamDecl(NumBaseParams)->getType()->isAlignValT()) {
+        ++NumBaseParams;
+        HasAlignValT = true;
+      }
+
+      // In CUDA, determine how much we'd like / dislike to call this.
+      if (S.getLangOpts().CUDA)
+        if (auto *Caller = dyn_cast<FunctionDecl>(S.CurContext))
+          CUDAPref = S.IdentifyCUDAPreference(Caller, FD);
+    }
+
+    explicit operator bool() const { return FD; }
+
+    bool isBetterThan(const UsualDeallocFnInfo &Other, bool WantSize,
+                      bool WantAlign) const {
+      // C++ P0722:
+      //   A destroying operator delete is preferred over a non-destroying
+      //   operator delete.
+      if (Destroying != Other.Destroying)
+        return Destroying;
+
+      // C++17 [expr.delete]p10:
+      //   If the type has new-extended alignment, a function with a parameter
+      //   of type std::align_val_t is preferred; otherwise a function without
+      //   such a parameter is preferred
+      if (HasAlignValT != Other.HasAlignValT)
+        return HasAlignValT == WantAlign;
+
+      if (HasSizeT != Other.HasSizeT)
+        return HasSizeT == WantSize;
+
+      // Use CUDA call preference as a tiebreaker.
+      return CUDAPref > Other.CUDAPref;
+    }
+
+    clang::DeclAccessPair Found;
+    clang::FunctionDecl *FD;
+    bool Destroying, HasSizeT, HasAlignValT;
+    clang::Sema::CUDAFunctionPreference CUDAPref;
+  };
+}
+
+
+/// Determine whether the given function is a non-placement
+/// deallocation function.
+static bool isNonPlacementDeallocationFunction(clang::Sema &S, clang::FunctionDecl *FD) {
+  using namespace clang;
+  if (CXXMethodDecl *Method = dyn_cast<CXXMethodDecl>(FD))
+    return S.isUsualDeallocationFunction(Method);
+
+  if (FD->getOverloadedOperator() != OO_Delete &&
+      FD->getOverloadedOperator() != OO_Array_Delete)
+    return false;
+
+  unsigned UsualParams = 1;
+
+  if (S.getLangOpts().SizedDeallocation && UsualParams < FD->getNumParams() &&
+      S.Context.hasSameUnqualifiedType(
+          FD->getParamDecl(UsualParams)->getType(),
+          S.Context.getSizeType()))
+    ++UsualParams;
+
+  if (S.getLangOpts().AlignedAllocation && UsualParams < FD->getNumParams() &&
+      S.Context.hasSameUnqualifiedType(
+          FD->getParamDecl(UsualParams)->getType(),
+          S.Context.getTypeDeclType(S.getStdAlignValT())))
+    ++UsualParams;
+
+  return UsualParams == FD->getNumParams();
+}
+
+/// Select the correct "usual" deallocation function to use from a selection of
+/// deallocation functions (either global or class-scope).
+static UsualDeallocFnInfo resolveDeallocationOverload(
+    clang::Sema &S, clang::LookupResult &R, bool WantSize, bool WantAlign,
+    llvm::SmallVectorImpl<UsualDeallocFnInfo> *BestFns = nullptr) {
+  using namespace clang;
+  UsualDeallocFnInfo Best;
+
+  for (auto I = R.begin(), E = R.end(); I != E; ++I) {
+    UsualDeallocFnInfo Info(S, I.getPair());
+    if (!Info || !isNonPlacementDeallocationFunction(S, Info.FD) ||
+        Info.CUDAPref == clang::Sema::CFP_Never)
+      continue;
+
+    if (!Best) {
+      Best = Info;
+      if (BestFns)
+        BestFns->push_back(Info);
+      continue;
+    }
+
+    if (Best.isBetterThan(Info, WantSize, WantAlign))
+      continue;
+
+    //   If more than one preferred function is found, all non-preferred
+    //   functions are eliminated from further consideration.
+    if (BestFns && Info.isBetterThan(Best, WantSize, WantAlign))
+      BestFns->clear();
+
+    Best = Info;
+    if (BestFns)
+      BestFns->push_back(Info);
+  }
+
+  return Best;
+}
+
+static bool hasNewExtendedAlignment(clang::Sema &S, clang::QualType AllocType) {
+  return S.getLangOpts().AlignedAllocation &&
+         S.getASTContext().getTypeAlignIfKnown(AllocType) >
+             S.getASTContext().getTargetInfo().getNewAlign();
+}
+
+/// Determine whether a given type is a class for which 'delete[]' would call
+/// a member 'operator delete[]' with a 'size_t' parameter. This implies that
+/// we need to store the array size (even if the type is
+/// trivially-destructible).
+static bool doesUsualArrayDeleteWantSize(clang::Sema &S, clang::SourceLocation loc,
+                                         clang::QualType allocType) {
+  using namespace clang;
+  const RecordType *record =
+    allocType->getBaseElementTypeUnsafe()->getAs<RecordType>();
+  if (!record) return false;
+
+  // Try to find an operator delete[] in class scope.
+
+  DeclarationName deleteName =
+    S.Context.DeclarationNames.getCXXOperatorName(OO_Array_Delete);
+  LookupResult ops(S, deleteName, loc, clang::Sema::LookupOrdinaryName);
+  S.LookupQualifiedName(ops, record->getDecl());
+
+  // We're just doing this for information.
+  ops.suppressDiagnostics();
+
+  // Very likely: there's no operator delete[].
+  if (ops.empty()) return false;
+
+  // If it's ambiguous, it should be illegal to call operator delete[]
+  // on this thing, so it doesn't matter if we allocate extra space or not.
+  if (ops.isAmbiguous()) return false;
+
+  // C++17 [expr.delete]p10:
+  //   If the deallocation functions have class scope, the one without a
+  //   parameter of type std::size_t is selected.
+  auto Best = resolveDeallocationOverload(
+      S, ops, /*WantSize*/false,
+      /*WantAlign*/hasNewExtendedAlignment(S, allocType));
+  return Best && Best.HasSizeT;
+}
+
+static bool isLegalArrayNewInitializer(clang::CXXNewExpr::InitializationStyle Style,
+                                       clang::Expr *Init) {
+  using namespace clang;
+  if (!Init)
+    return true;
+  if (ParenListExpr *PLE = dyn_cast<ParenListExpr>(Init))
+    return PLE->getNumExprs() == 0;
+  if (isa<ImplicitValueInitExpr>(Init))
+    return true;
+  else if (CXXConstructExpr *CCE = dyn_cast<CXXConstructExpr>(Init))
+    return !CCE->isListInitialization() &&
+           CCE->getConstructor()->isDefaultConstructor();
+  else if (Style == CXXNewExpr::ListInit) {
+    assert(isa<InitListExpr>(Init) &&
+           "Shouldn't create list CXXConstructExprs for arrays.");
+    return true;
+  }
+  return false;
+}
+
+clang::ExprResult
+Sema::BuildCXXNew(clang::SourceRange Range, bool UseGlobal,
+                  clang::SourceLocation PlacementLParen,
+                  clang::MultiExprArg PlacementArgs,
+                  clang::SourceLocation PlacementRParen,
+                  clang::SourceRange TypeIdParens,
+                  clang::QualType AllocType,
+                  clang::TypeSourceInfo *AllocTypeInfo,
+                  llvm::Optional<clang::Expr *> ArraySize,
+                  clang::SourceRange DirectInitRange,
+                  clang::Expr *Initializer,
+                  bool UseGoldInplaceNew) {
+  using namespace clang;
+  SourceRange TypeRange = AllocTypeInfo->getTypeLoc().getSourceRange();
+  SourceLocation StartLoc = Range.getBegin();
+
+  CXXNewExpr::InitializationStyle initStyle;
+  if (DirectInitRange.isValid()) {
+    assert(Initializer && "Have parens but no initializer.");
+    initStyle = CXXNewExpr::CallInit;
+  } else if (Initializer && isa<InitListExpr>(Initializer))
+    initStyle = CXXNewExpr::ListInit;
+  else {
+    assert((!Initializer || isa<ImplicitValueInitExpr>(Initializer) ||
+            isa<CXXConstructExpr>(Initializer)) &&
+           "Initializer expression that cannot have been implicitly created.");
+    initStyle = CXXNewExpr::NoInit;
+  }
+
+  Expr **Inits = &Initializer;
+  unsigned NumInits = Initializer ? 1 : 0;
+  if (ParenListExpr *List = dyn_cast_or_null<ParenListExpr>(Initializer)) {
+    assert(initStyle == CXXNewExpr::CallInit && "paren init for non-call init");
+    Inits = List->getExprs();
+    NumInits = List->getNumExprs();
+  }
+
+  // C++11 [expr.new]p15:
+  //   A new-expression that creates an object of type T initializes that
+  //   object as follows:
+  InitializationKind Kind
+      //     - If the new-initializer is omitted, the object is default-
+      //       initialized (8.5); if no initialization is performed,
+      //       the object has indeterminate value
+      = initStyle == CXXNewExpr::NoInit
+            ? InitializationKind::CreateDefault(TypeRange.getBegin())
+            //     - Otherwise, the new-initializer is interpreted according to
+            //     the
+            //       initialization rules of 8.5 for direct-initialization.
+            : initStyle == CXXNewExpr::ListInit
+                  ? InitializationKind::CreateDirectList(
+                        TypeRange.getBegin(), Initializer->getBeginLoc(),
+                        Initializer->getEndLoc())
+                  : InitializationKind::CreateDirect(TypeRange.getBegin(),
+                                                     DirectInitRange.getBegin(),
+                                                     DirectInitRange.getEnd());
+
+  // C++11 [dcl.spec.auto]p6. Deduce the type which 'auto' stands in for.
+  auto *Deduced = AllocType->getContainedDeducedType();
+  if (Deduced && isa<DeducedTemplateSpecializationType>(Deduced)) {
+    if (ArraySize)
+      return ExprError(
+          getCxxSema().Diag(ArraySize ? (*ArraySize)->getExprLoc() : TypeRange.getBegin(),
+               diag::err_deduced_class_template_compound_type)
+          << /*array*/ 2
+          << (ArraySize ? (*ArraySize)->getSourceRange() : TypeRange));
+
+    InitializedEntity Entity
+      = InitializedEntity::InitializeNew(StartLoc, AllocType);
+    AllocType = getCxxSema().DeduceTemplateSpecializationFromInitializer(
+        AllocTypeInfo, Entity, Kind, MultiExprArg(Inits, NumInits));
+    if (AllocType.isNull())
+      return ExprError();
+  } else if (Deduced) {
+    bool Braced = (initStyle == CXXNewExpr::ListInit);
+    if (NumInits == 1) {
+      if (auto p = dyn_cast_or_null<InitListExpr>(Inits[0])) {
+        Inits = p->getInits();
+        NumInits = p->getNumInits();
+        Braced = true;
+      }
+    }
+
+    if (initStyle == CXXNewExpr::NoInit || NumInits == 0)
+      return ExprError(getCxxSema().Diag(StartLoc, diag::err_auto_new_requires_ctor_arg)
+                       << AllocType << TypeRange);
+    if (NumInits > 1) {
+      Expr *FirstBad = Inits[1];
+      return ExprError(getCxxSema().Diag(FirstBad->getBeginLoc(),
+                            diag::err_auto_new_ctor_multiple_expressions)
+                       << AllocType << TypeRange);
+    }
+    if (Braced && !getCxxSema().getLangOpts().CPlusPlus17)
+      getCxxSema().Diag(Initializer->getBeginLoc(), diag::ext_auto_new_list_init)
+          << AllocType << TypeRange;
+    Expr *Deduce = Inits[0];
+    QualType DeducedType;
+    if (getCxxSema().DeduceAutoType(AllocTypeInfo, Deduce, DeducedType) == clang::Sema::DAR_Failed)
+      return ExprError(getCxxSema().Diag(StartLoc, diag::err_auto_new_deduction_failure)
+                       << AllocType << Deduce->getType()
+                       << TypeRange << Deduce->getSourceRange());
+    if (DeducedType.isNull())
+      return ExprError();
+    AllocType = DeducedType;
+  }
+
+  // Per C++0x [expr.new]p5, the type being constructed may be a
+  // typedef of an array type.
+  if (!ArraySize) {
+    if (const ConstantArrayType *Array
+                              = Context.CxxAST.getAsConstantArrayType(AllocType)) {
+      ArraySize = IntegerLiteral::Create(Context.CxxAST, Array->getSize(),
+                                         Context.CxxAST.getSizeType(),
+                                         TypeRange.getEnd());
+      AllocType = Array->getElementType();
+    }
+  }
+
+  if (getCxxSema().CheckAllocatedType(AllocType, TypeRange.getBegin(), TypeRange))
+    return ExprError();
+
+  // In ARC, infer 'retaining' for the allocated
+  if (getCxxSema().getLangOpts().ObjCAutoRefCount &&
+      AllocType.getObjCLifetime() == Qualifiers::OCL_None &&
+      AllocType->isObjCLifetimeType()) {
+    AllocType = Context.CxxAST.getLifetimeQualifiedType(AllocType,
+                                    AllocType->getObjCARCImplicitLifetime());
+  }
+
+  QualType ResultType = Context.CxxAST.getPointerType(AllocType);
+
+  if (ArraySize && *ArraySize &&
+      (*ArraySize)->getType()->isNonOverloadPlaceholderType()) {
+    ExprResult result = getCxxSema().CheckPlaceholderExpr(*ArraySize);
+    if (result.isInvalid()) return ExprError();
+    ArraySize = result.get();
+  }
+  // C++98 5.3.4p6: "The expression in a direct-new-declarator shall have
+  //   integral or enumeration type with a non-negative value."
+  // C++11 [expr.new]p6: The expression [...] shall be of integral or unscoped
+  //   enumeration type, or a class type for which a single non-explicit
+  //   conversion function to integral or unscoped enumeration type exists.
+  // C++1y [expr.new]p6: The expression [...] is implicitly converted to
+  //   std::size_t.
+  llvm::Optional<uint64_t> KnownArraySize;
+  if (ArraySize && *ArraySize && !(*ArraySize)->isTypeDependent()) {
+    ExprResult ConvertedSize;
+    if (getCxxSema().getLangOpts().CPlusPlus14) {
+      assert(Context.CxxAST.getTargetInfo().getIntWidth()
+             && "Builtin type of size 0?");
+
+      ConvertedSize = getCxxSema().PerformImplicitConversion(*ArraySize,
+                                                   Context.CxxAST.getSizeType(),
+                                                    clang::Sema::AA_Converting);
+
+      if (!ConvertedSize.isInvalid() &&
+          (*ArraySize)->getType()->getAs<RecordType>())
+        // Diagnose the compatibility of this conversion.
+        getCxxSema().Diag(StartLoc, diag::warn_cxx98_compat_array_size_conversion)
+          << (*ArraySize)->getType() << 0 << "'size_t'";
+    } else {
+      class SizeConvertDiagnoser : public clang::Sema::ICEConvertDiagnoser {
+      protected:
+        Expr *ArraySize;
+
+      public:
+        SizeConvertDiagnoser(Expr *ArraySize)
+            : ICEConvertDiagnoser(/*AllowScopedEnumerations*/false, false, false),
+              ArraySize(ArraySize) {}
+
+        clang::Sema::SemaDiagnosticBuilder diagnoseNotInt(clang::Sema &S, SourceLocation Loc,
+                                             QualType T) override {
+          return S.Diag(Loc, diag::err_array_size_not_integral)
+                   << S.getLangOpts().CPlusPlus11 << T;
+        }
+
+        clang::Sema::SemaDiagnosticBuilder diagnoseIncomplete(
+            clang::Sema &S, SourceLocation Loc, QualType T) override {
+          return S.Diag(Loc, diag::err_array_size_incomplete_type)
+                   << T << ArraySize->getSourceRange();
+        }
+
+        clang::Sema::SemaDiagnosticBuilder diagnoseExplicitConv(
+            clang::Sema &S, SourceLocation Loc, QualType T, QualType ConvTy) override {
+          return S.Diag(Loc, diag::err_array_size_explicit_conversion) << T << ConvTy;
+        }
+
+        clang::Sema::SemaDiagnosticBuilder noteExplicitConv(
+            clang::Sema &S, CXXConversionDecl *Conv, QualType ConvTy) override {
+          return S.Diag(Conv->getLocation(), diag::note_array_size_conversion)
+                   << ConvTy->isEnumeralType() << ConvTy;
+        }
+
+        clang::Sema::SemaDiagnosticBuilder diagnoseAmbiguous(
+            clang::Sema &S, SourceLocation Loc, QualType T) override {
+          return S.Diag(Loc, diag::err_array_size_ambiguous_conversion) << T;
+        }
+
+        clang::Sema::SemaDiagnosticBuilder noteAmbiguous(
+            clang::Sema &S, CXXConversionDecl *Conv, QualType ConvTy) override {
+          return S.Diag(Conv->getLocation(), diag::note_array_size_conversion)
+                   << ConvTy->isEnumeralType() << ConvTy;
+        }
+
+        clang::Sema::SemaDiagnosticBuilder diagnoseConversion(clang::Sema &S, SourceLocation Loc,
+                                                 QualType T,
+                                                 QualType ConvTy) override {
+          return S.Diag(Loc,
+                        S.getLangOpts().CPlusPlus11
+                          ? diag::warn_cxx98_compat_array_size_conversion
+                          : diag::ext_array_size_conversion)
+                   << T << ConvTy->isEnumeralType() << ConvTy;
+        }
+      } SizeDiagnoser(*ArraySize);
+
+      ConvertedSize = getCxxSema().PerformContextualImplicitConversion(StartLoc,
+                                                                     *ArraySize,
+                                                                 SizeDiagnoser);
+    }
+    if (ConvertedSize.isInvalid())
+      return ExprError();
+
+    ArraySize = ConvertedSize.get();
+    QualType SizeType = (*ArraySize)->getType();
+
+    if (!SizeType->isIntegralOrUnscopedEnumerationType())
+      return ExprError();
+
+    // C++98 [expr.new]p7:
+    //   The expression in a direct-new-declarator shall have integral type
+    //   with a non-negative value.
+    //
+    // Let's see if this is a constant < 0. If so, we reject it out of hand,
+    // per CWG1464. Otherwise, if it's not a constant, we must have an
+    // unparenthesized array type.
+    if (!(*ArraySize)->isValueDependent()) {
+      // We've already performed any required implicit conversion to integer or
+      // unscoped enumeration type.
+      // FIXME: Per CWG1464, we are required to check the value prior to
+      // converting to size_t. This will never find a negative array size in
+      // C++14 onwards, because Value is always unsigned here!
+      Expr::EvalContext EvalCtx(Context.CxxAST, getCxxSema().GetReflectionCallbackObj());
+      if (Optional<llvm::APSInt> Value =
+              (*ArraySize)->getIntegerConstantExpr(EvalCtx)) {
+        if (Value->isSigned() && Value->isNegative()) {
+          return ExprError(getCxxSema().Diag((*ArraySize)->getBeginLoc(),
+                                diag::err_typecheck_negative_array_size)
+                           << (*ArraySize)->getSourceRange());
+        }
+
+        if (!AllocType->isDependentType()) {
+          unsigned ActiveSizeBits = ConstantArrayType::getNumAddressingBits(
+              Context.CxxAST, AllocType, *Value);
+          if (ActiveSizeBits > ConstantArrayType::getMaxSizeBits(Context.CxxAST))
+            return ExprError(
+                getCxxSema().Diag((*ArraySize)->getBeginLoc(), diag::err_array_too_large)
+                << Value->toString(10) << (*ArraySize)->getSourceRange());
+        }
+
+        KnownArraySize = Value->getZExtValue();
+      } else if (TypeIdParens.isValid()) {
+        // Can't have dynamic array size when the type-id is in parentheses.
+        getCxxSema().Diag((*ArraySize)->getBeginLoc(), diag::ext_new_paren_array_nonconst)
+            << (*ArraySize)->getSourceRange()
+            << FixItHint::CreateRemoval(TypeIdParens.getBegin())
+            << FixItHint::CreateRemoval(TypeIdParens.getEnd());
+
+        TypeIdParens = SourceRange();
+      }
+    }
+
+    // Note that we do *not* convert the argument in any way.  It can
+    // be signed, larger than size_t, whatever.
+  }
+
+  FunctionDecl *OperatorNew = nullptr;
+  FunctionDecl *OperatorDelete = nullptr;
+  unsigned Alignment =
+      AllocType->isDependentType() ? 0 : Context.CxxAST.getTypeAlign(AllocType);
+  unsigned NewAlignment = Context.CxxAST.getTargetInfo().getNewAlign();
+  bool PassAlignment = getCxxSema().getLangOpts().AlignedAllocation &&
+                       Alignment > NewAlignment;
+  if (UseGoldInplaceNew) {
+    OperatorNew = getInPlaceNew();
+  } else {
+    clang::Sema::AllocationFunctionScope Scope = UseGlobal ?
+                                                clang::Sema::AFS_Global :
+                                                clang::Sema::AFS_Both;
+    if (!AllocType->isDependentType() &&
+        !Expr::hasAnyTypeDependentArguments(PlacementArgs) &&
+        getCxxSema().FindAllocationFunctions(
+            StartLoc, SourceRange(PlacementLParen, PlacementRParen), Scope, Scope,
+            AllocType, ArraySize.hasValue(), PassAlignment, PlacementArgs,
+            OperatorNew, OperatorDelete))
+      return ExprError();
+
+  }
+  // If this is an array allocation, compute whether the usual array
+  // deallocation function for the type has a size_t parameter.
+  bool UsualArrayDeleteWantsSize = false;
+  if (ArraySize && !AllocType->isDependentType())
+    UsualArrayDeleteWantsSize =
+        doesUsualArrayDeleteWantSize(getCxxSema(), StartLoc, AllocType);
+
+  SmallVector<Expr *, 8> AllPlaceArgs;
+  if (OperatorNew) {
+    auto *Proto = OperatorNew->getType()->castAs<FunctionProtoType>();
+    clang::Sema::VariadicCallType CallType = Proto->isVariadic() ? clang::Sema::VariadicFunction
+                                                    : clang::Sema::VariadicDoesNotApply;
+
+    // We've already converted the placement args, just fill in any default
+    // arguments. Skip the first parameter because we don't have a corresponding
+    // argument. Skip the second parameter too if we're passing in the
+    // alignment; we've already filled it in.
+    unsigned NumImplicitArgs = PassAlignment ? 2 : 1;
+    if (getCxxSema().GatherArgumentsForCall(PlacementLParen, OperatorNew, Proto,
+                               NumImplicitArgs, PlacementArgs, AllPlaceArgs,
+                               CallType))
+      return ExprError();
+
+    if (!AllPlaceArgs.empty())
+      PlacementArgs = AllPlaceArgs;
+
+    // We would like to perform some checking on the given `operator new` call,
+    // but the PlacementArgs does not contain the implicit arguments,
+    // namely allocation size and maybe allocation alignment,
+    // so we need to conjure them.
+
+    QualType SizeTy = Context.CxxAST.getSizeType();
+    unsigned SizeTyWidth = Context.CxxAST.getTypeSize(SizeTy);
+
+    llvm::APInt SingleEltSize(
+        SizeTyWidth, Context.CxxAST.getTypeSizeInChars(AllocType).getQuantity());
+
+    // How many bytes do we want to allocate here?
+    llvm::Optional<llvm::APInt> AllocationSize;
+    if (!ArraySize.hasValue() && !AllocType->isDependentType()) {
+      // For non-array operator new, we only want to allocate one element.
+      AllocationSize = SingleEltSize;
+    } else if (KnownArraySize.hasValue() && !AllocType->isDependentType()) {
+      // For array operator new, only deal with static array size case.
+      bool Overflow;
+      AllocationSize = llvm::APInt(SizeTyWidth, *KnownArraySize)
+                           .umul_ov(SingleEltSize, Overflow);
+      (void)Overflow;
+      assert(
+          !Overflow &&
+          "Expected that all the overflows would have been handled already.");
+    }
+
+    IntegerLiteral AllocationSizeLiteral(
+        Context.CxxAST,
+        AllocationSize.getValueOr(llvm::APInt::getNullValue(SizeTyWidth)),
+        SizeTy, SourceLocation());
+    // Otherwise, if we failed to constant-fold the allocation size, we'll
+    // just give up and pass-in something opaque, that isn't a null pointer.
+    OpaqueValueExpr OpaqueAllocationSize(SourceLocation(), SizeTy, VK_RValue,
+                                         OK_Ordinary, /*SourceExpr=*/nullptr);
+
+    // Let's synthesize the alignment argument in case we will need it.
+    // Since we *really* want to allocate these on stack, this is slightly ugly
+    // because there might not be a `std::align_val_t` type.
+    EnumDecl *StdAlignValT = getCxxSema().getStdAlignValT();
+    QualType AlignValT =
+        StdAlignValT ? Context.CxxAST.getTypeDeclType(StdAlignValT) : SizeTy;
+    IntegerLiteral AlignmentLiteral(
+        Context.CxxAST,
+        llvm::APInt(Context.CxxAST.getTypeSize(SizeTy),
+                    Alignment / Context.CxxAST.getCharWidth()),
+        SizeTy, SourceLocation());
+    ImplicitCastExpr DesiredAlignment(ImplicitCastExpr::OnStack, AlignValT,
+                                      CK_IntegralCast, &AlignmentLiteral,
+                                      VK_RValue, FPOptionsOverride());
+
+    // Adjust placement args by prepending conjured size and alignment exprs.
+    llvm::SmallVector<Expr *, 8> CallArgs;
+    CallArgs.reserve(NumImplicitArgs + PlacementArgs.size());
+    CallArgs.emplace_back(AllocationSize.hasValue()
+                              ? static_cast<Expr *>(&AllocationSizeLiteral)
+                              : &OpaqueAllocationSize);
+    if (PassAlignment)
+      CallArgs.emplace_back(&DesiredAlignment);
+    CallArgs.insert(CallArgs.end(), PlacementArgs.begin(), PlacementArgs.end());
+
+    getCxxSema().DiagnoseSentinelCalls(OperatorNew, PlacementLParen, CallArgs);
+
+    getCxxSema().checkCall(OperatorNew, Proto, /*ThisArg=*/nullptr, CallArgs,
+              /*IsMemberFunction=*/false, StartLoc, Range, CallType);
+
+    // Warn if the type is over-aligned and is being allocated by (unaligned)
+    // global operator new.
+    if (PlacementArgs.empty() && !PassAlignment &&
+        (OperatorNew->isImplicit() ||
+         (OperatorNew->getBeginLoc().isValid() &&
+          getCxxSema().getSourceManager().isInSystemHeader(OperatorNew->getBeginLoc())))) {
+      if (Alignment > NewAlignment)
+        getCxxSema().Diag(StartLoc, diag::warn_overaligned_type)
+            << AllocType
+            << unsigned(Alignment / Context.CxxAST.getCharWidth())
+            << unsigned(NewAlignment / Context.CxxAST.getCharWidth());
+    }
+  }
+
+  // Array 'new' can't have any initializers except empty parentheses.
+  // Initializer lists are also allowed, in C++11. Rely on the parser for the
+  // dialect distinction.
+  if (ArraySize && !isLegalArrayNewInitializer(initStyle, Initializer)) {
+    SourceRange InitRange(Inits[0]->getBeginLoc(),
+                          Inits[NumInits - 1]->getEndLoc());
+    getCxxSema().Diag(StartLoc, diag::err_new_array_init_args) << InitRange;
+    return ExprError();
+  }
+
+  // If we can perform the initialization, and we've not already done so,
+  // do it now.
+  if (!AllocType->isDependentType() &&
+      !Expr::hasAnyTypeDependentArguments(
+          llvm::makeArrayRef(Inits, NumInits))) {
+    // The type we initialize is the complete type, including the array bound.
+    QualType InitType;
+    if (KnownArraySize)
+      InitType = Context.CxxAST.getConstantArrayType(
+          AllocType,
+          llvm::APInt(Context.CxxAST.getTypeSize(Context.CxxAST.getSizeType()),
+                      *KnownArraySize),
+          *ArraySize, clang::ArrayType::Normal, 0);
+    else if (ArraySize)
+      InitType =
+          Context.CxxAST.getIncompleteArrayType(AllocType,
+                                                clang::ArrayType::Normal,
+                                                0);
+    else
+      InitType = AllocType;
+
+    InitializedEntity Entity
+      = InitializedEntity::InitializeNew(StartLoc, InitType);
+    InitializationSequence InitSeq(getCxxSema(), Entity, Kind,
+                                   MultiExprArg(Inits, NumInits));
+    ExprResult FullInit = InitSeq.Perform(getCxxSema(), Entity, Kind,
+                                          MultiExprArg(Inits, NumInits));
+    if (FullInit.isInvalid())
+      return ExprError();
+
+    // FullInit is our initializer; strip off CXXBindTemporaryExprs, because
+    // we don't want the initialized object to be destructed.
+    // FIXME: We should not create these in the first place.
+    if (CXXBindTemporaryExpr *Binder =
+            dyn_cast_or_null<CXXBindTemporaryExpr>(FullInit.get()))
+      FullInit = Binder->getSubExpr();
+
+    Initializer = FullInit.get();
+
+    // FIXME: If we have a KnownArraySize, check that the array bound of the
+    // initializer is no greater than that constant value.
+
+    if (ArraySize && !*ArraySize) {
+      auto *CAT = Context.CxxAST.getAsConstantArrayType(Initializer->getType());
+      if (CAT) {
+        // FIXME: Track that the array size was inferred rather than explicitly
+        // specified.
+        ArraySize = IntegerLiteral::Create(
+            Context.CxxAST, CAT->getSize(), Context.CxxAST.getSizeType(), TypeRange.getEnd());
+      } else {
+        getCxxSema().Diag(TypeRange.getEnd(), diag::err_new_array_size_unknown_from_init)
+            << Initializer->getSourceRange();
+      }
+    }
+  }
+
+  // Mark the new and delete operators as referenced.
+  if (OperatorNew) {
+    if (getCxxSema().DiagnoseUseOfDecl(OperatorNew, StartLoc))
+      return ExprError();
+    getCxxSema().MarkFunctionReferenced(StartLoc, OperatorNew);
+  }
+  if (OperatorDelete) {
+    if (getCxxSema().DiagnoseUseOfDecl(OperatorDelete, StartLoc))
+      return ExprError();
+    getCxxSema().MarkFunctionReferenced(StartLoc, OperatorDelete);
+  }
+
+  return CXXNewExpr::Create(Context.CxxAST, UseGlobal, OperatorNew, OperatorDelete,
+                            PassAlignment, UsualArrayDeleteWantsSize,
+                            PlacementArgs, TypeIdParens, ArraySize, initStyle,
+                            Initializer, ResultType, AllocTypeInfo, Range,
+                            DirectInitRange);
 }
 
 } // namespace gold

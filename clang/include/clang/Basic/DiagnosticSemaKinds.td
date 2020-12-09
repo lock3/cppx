@@ -11571,6 +11571,45 @@ def err_invalid_call_to_sizeof_pack : Error<
   "invalid use of 'sizeof...', sizeof expects a single argument which is the "
   "name of a parameter pack.">;
 
+def err_invalid_dependent_expr : Error<"invalid dependent expression">;
+def err_missing_member_dependent_expr : Error<
+  "failed to locate member %0 within dependent expression">;
+def err_nested_namespecifier_not_a_class : Error<
+  "type %0 does not name a class">;
+
+def err_nested_namespecifier_not_base : Error<
+  "type %0 is not derived from %1">;
+
+def err_namespace_as_template_argument_type : Error<
+  "namespace may not be used as a template argument">;
+
+def err_construct_on_non_pointer_ty : Error<
+  "construct must be called only on a pointer type or a dependent name that "
+  "evaluates to a pointer">;
+
+def err_var_init_instantiation_failure : Error<
+  "template instantiation failure during variable initialization">;
+
+def err_expression_does_not_eval_to_value : Error<
+  "expression doesn't evaluate to a value, it evaluates to type, namespace, "
+  "or template">;
+
+def err_non_array_or_template_with_sqr_brackets : Error<
+  "invalid expression does not evaluate to a template, array, or pointer">;
+
+def err_qualified_name_no_a_type : Error<
+  "qualifid name expression doesn't name a type">;
+
+def err_invalid_operand_type : Error <
+    "types, namespace, and templates cannot be operands to an operator">;
+
+def err_invalid_function_argument : Error <
+    "types, namespace, and templates cannot be arguments to a function">;
+
+def err_deref_or_ptr_for_invalid_type : Error <
+    "cannot dereference or make a pointer to a namespace or an incomplete "
+    "template">;
+
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

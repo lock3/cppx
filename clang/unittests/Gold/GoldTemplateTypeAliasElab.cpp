@@ -66,7 +66,7 @@ c[T : type] = class {
 }
 
 main() : int!
-  int_type = c[int].j
+  int_type : type = c[int].j
   x : int_type = int_type(73)
 )";
 

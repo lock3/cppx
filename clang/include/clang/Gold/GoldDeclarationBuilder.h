@@ -74,6 +74,7 @@ private:
   bool RequiresDeclOrError = false;
   bool AllowShortCtorAndDtorSyntax = false;
   bool IsInsideEnum = false;
+  bool ContextDeclaresNewName = false;
 
   /// This checks to make sure that the declarator chain conforms to a specific
   /// structure. This only fails if the declarator chain doesn't satisfy

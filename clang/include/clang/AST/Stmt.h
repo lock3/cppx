@@ -290,6 +290,9 @@ protected:
     friend class CallExpr; // ctor
     friend class CXXConstructExpr; // ctor
     friend class CXXDependentScopeMemberExpr; // ctor
+    friend class CppxDependentMemberAccessExpr; // ctor
+    friend class CppxCallOrConstructorExpr; // ctor
+    friend class CppxTemplateOrArrayExpr; // ctor
     friend class CXXNewExpr; // ctor
     friend class CXXUnresolvedConstructExpr; // ctor
     friend class DeclRefExpr; // computeDependence
@@ -473,6 +476,37 @@ protected:
     /// The offset in bytes from the this pointer to the start of the
     /// trailing objects belonging to CallExpr. Intentionally byte sized
     /// for faster access.
+    unsigned OffsetToTrailingObjects : 8;
+  };
+
+
+class CppxTemplateOrArrayExprBitFields {
+    friend class CppxTemplateOrArrayExpr;
+
+    unsigned : NumExprBits;
+
+    /// Padding used to align OffsetToTrailingObjects to a byte multiple.
+    unsigned : 24 - NumExprBits;
+
+    /// The offset in bytes from the this pointer to the start of the
+    /// trailing objects belonging to my strange template or possible array
+    /// expression.
+    /// Intentionally byte sized for faster access.
+    unsigned OffsetToTrailingObjects : 8;
+  };
+
+  class CppxCallOrConstructorExprBitFields {
+    friend class CppxCallOrConstructorExpr;
+
+    unsigned : NumExprBits;
+
+    /// Padding used to align OffsetToTrailingObjects to a byte multiple.
+    unsigned : 24 - NumExprBits;
+
+    /// The offset in bytes from the this pointer to the start of the
+    /// trailing objects belonging to my strange template or possible array
+    /// expression.
+    /// Intentionally byte sized for faster access.
     unsigned OffsetToTrailingObjects : 8;
   };
   enum { NumCallExprBits = 32 };
@@ -856,6 +890,20 @@ protected:
     SourceLocation OperatorLoc;
   };
 
+  class CppxDependentMemberAccessExprBitFields {
+    friend class ASTStmtReader;
+    friend class CppxDependentMemberAccessExpr;
+
+    unsigned : NumExprBits;
+
+    // /// Whether this member expression used the '->' operator or
+    // /// the '.' operator.
+    // unsigned HasNextArg : 1;
+
+    /// The location of the '->' or '.' operator.
+    SourceLocation OperatorLoc;
+  };
+
   class OverloadExprBitfields {
     friend class ASTStmtReader;
     friend class OverloadExpr;
@@ -1042,6 +1090,8 @@ protected:
     UnaryExprOrTypeTraitExprBitfields UnaryExprOrTypeTraitExprBits;
     ArrayOrMatrixSubscriptExprBitfields ArrayOrMatrixSubscriptExprBits;
     CallExprBitfields CallExprBits;
+    CppxTemplateOrArrayExprBitFields TemplateOrArrayBits;
+    CppxCallOrConstructorExprBitFields CallOrConstructorBits;
     MemberExprBitfields MemberExprBits;
     CastExprBitfields CastExprBits;
     BinaryOperatorBitfields BinaryOperatorBits;
@@ -1072,6 +1122,7 @@ protected:
     ExprWithCleanupsBitfields ExprWithCleanupsBits;
     CXXUnresolvedConstructExprBitfields CXXUnresolvedConstructExprBits;
     CXXDependentScopeMemberExprBitfields CXXDependentScopeMemberExprBits;
+    CppxDependentMemberAccessExprBitFields CppxDependentMemberAccessExprBits;
     OverloadExprBitfields OverloadExprBits;
     UnresolvedLookupExprBitfields UnresolvedLookupExprBits;
     UnresolvedMemberExprBitfields UnresolvedMemberExprBits;

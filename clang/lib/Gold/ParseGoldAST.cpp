@@ -59,6 +59,7 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
   ClangSema.TemplateInstCallbacks.push_back(
     std::unique_ptr<GoldTemplateInstCallback>(new GoldTemplateInstCallback));
   initialize(ClangSema.TemplateInstCallbacks, Sema);
+  ClangSema.setGoldSema(&Sema);
 
   clang::TranslationUnitDecl *TU =
     cast<clang::TranslationUnitDecl>(Elab.elaborateFile(CST));

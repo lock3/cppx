@@ -6902,6 +6902,45 @@ public:
   }
 };
 
+class Expr;
+/// This represents an expression that contextually must result in a type.
+/// if it doesn't then it's an error.
+class CppxTypeExprType : public Type, public llvm::FoldingSetNode {
+  friend class ASTContext;
+  Expr *TyExpr;
+  bool IsTypeForConstructExpr = false;
+public:
+  CppxTypeExprType(Expr *E, bool ConstructExpr = false)
+    : Type(CppxTypeExpr, QualType(),
+      TypeDependence::DependentInstantiation,
+      /*MetaType=*/false),
+      TyExpr(E),
+      IsTypeForConstructExpr(ConstructExpr)
+  { }
+
+  bool isSugared() const { return false; }
+
+  QualType desugar() const { return QualType(this, 0); }
+
+  Expr *getTyExpr() const { return TyExpr; }
+
+  bool isForConstruct() const { return IsTypeForConstructExpr; };
+
+  void Profile(llvm::FoldingSetNodeID &ID) {
+    Profile(ID, TyExpr, IsTypeForConstructExpr);
+  }
+
+  // This is defined within the ASTContext.cpp because it needs additional
+  // access to types not visible within this file. That and, that's where
+  // many some of the other profile functions are defined.
+  static void Profile(llvm::FoldingSetNodeID &ID, Expr *E,
+                      bool IsConstructOrDestruct);
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == CppxTypeExpr;
+  }
+};
+
 // Type source info
 
 

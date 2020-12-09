@@ -40,12 +40,10 @@ public:
   void finalize(Sema &S) override {}
 
   void atTemplateBegin(const clang::Sema &TheSema,
-                       const CodeSynthesisContext &Inst) override {
-  }
+                       const CodeSynthesisContext &Inst) override;
 
   void atTemplateEnd(const clang::Sema &TheSema,
-                     const CodeSynthesisContext &Inst) override {
-  }
+                     const CodeSynthesisContext &Inst) override;
 
 
 private:

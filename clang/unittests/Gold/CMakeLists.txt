@@ -122,6 +122,7 @@ add_clang_unittest(GoldTests
   GoldRefAndRValueRefTypeElab.cpp
   GoldStorageClassExec.cpp
   GoldStringLiteralElab.cpp
+  GoldTemplateAmbiguityElab.cpp
   GoldThreadLocalAttributeElab.cpp
   GoldTypeExpressionsTest.cpp
   GoldTemplateDefaultParamsExec.cpp

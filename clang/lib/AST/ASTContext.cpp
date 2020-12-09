@@ -960,6 +960,12 @@ void CppxTemplateType::Profile(llvm::FoldingSetNodeID &ID, TemplateDecl *D) {
   }
 }
 
+void CppxTypeExprType::Profile(llvm::FoldingSetNodeID &ID, Expr *E,
+                               bool IsConstructExpr) {
+  ID.AddPointer(E);
+  ID.AddBoolean(IsConstructExpr);
+}
+
 
 
 CXXABI *ASTContext::createCXXABI(const TargetInfo &T) {
@@ -2444,6 +2450,7 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
   case Type::CppxKind:
   case Type::CppxNamespace:
   case Type::CppxArgs:
+  // case Type::CppxTypeExpr:
     Width = 0; // Like void, you can't create objects.
     Align = 1; // Not a real value
     break;
@@ -2453,6 +2460,7 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
   case Type::InOutParameter:
   case Type::MoveParameter:
     return getTypeInfo(cast<ParameterType>(T)->getParameterType().getTypePtr());
+
   }
 
   assert(llvm::isPowerOf2_32(Align) && "Alignment must be power of 2");
@@ -3731,6 +3739,7 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::CppxNamespace:
   case Type::CppxTemplate:
   case Type::CppxArgs:
+  case Type::CppxTypeExpr:
   case Type::InParameter:
   case Type::OutParameter:
   case Type::InOutParameter:
@@ -6594,6 +6603,21 @@ QualType ASTContext::getTemplateType(TemplateDecl *Decl) const {
 
   return QualType(TT, 0);
 }
+
+QualType ASTContext::getCppxTypeExprTy(Expr *E, bool IsConstruct) const {
+  llvm::FoldingSetNodeID ID;
+  CppxTypeExprType::Profile(ID, E, IsConstruct);
+
+  void *InsertPos = nullptr;
+  CppxTypeExprType *TT = TypeExprTypes.FindNodeOrInsertPos(ID, InsertPos);
+  if (!TT) {
+    TT = new (*this, TypeAlignment) CppxTypeExprType(E, IsConstruct);
+    TypeExprTypes.InsertNode(TT, InsertPos);
+  }
+
+  return QualType(TT, 0);
+}
+
 
 /// getIntegerRank - Return an integer conversion rank (C99 6.3.1.1p1). This
 /// routine will assert if passed a built-in type that isn't an integer or enum,
@@ -10125,6 +10149,12 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   case Type::CppxArgs:
     // Only exactly equal builtin types are compatible, which is tested above.
     return {};
+  // case Type::CppxTypeExpr:
+  //   if (LHSCan->castAs<CppxTypeExprType>()->getTyExpr() ==
+  //         RHSCan->castAs<CppxTypeExprType>()->getTyExpr()) {
+  //       return LHS;
+  //     }
+      return {};
   case Type::Complex:
     // Distinct complex types are incompatible.
     return {};

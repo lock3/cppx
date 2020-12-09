@@ -2006,6 +2006,24 @@ void ASTStmtWriter::VisitCXXDependentScopeMemberExpr(
   Record.AddDeclarationNameInfo(E->MemberNameInfo);
   Code = serialization::EXPR_CXX_DEPENDENT_SCOPE_MEMBER;
 }
+void ASTStmtWriter::VisitCppxDependentMemberAccessExpr(
+    CppxDependentMemberAccessExpr *E) {
+  llvm_unreachable("ASTStmtWriter::VisitCppxDependentScopeMemberExpr "
+                   "Not implemented.");
+}
+void ASTStmtWriter::VisitCppxTemplateOrArrayExpr(CppxTemplateOrArrayExpr *E) {
+  llvm_unreachable("ASTStmtWriter::VisitCppxTemplateOrArrayExpr "
+                   "Not implemented.");
+}
+
+void ASTStmtWriter::VisitCppxCallOrConstructorExpr(CppxCallOrConstructorExpr *E) {
+  llvm_unreachable("ASTStmtWriter::VisitCppxCallOrConstructorExpr "
+                   "Not implemented.");
+}
+void ASTStmtWriter::VisitCppxDerefOrPtrExpr(CppxDerefOrPtrExpr *E) {
+  llvm_unreachable("ASTStmtWriter::VisitCppxDerefOrPtrExpr "
+                   "Not implemented.");
+}
 
 void
 ASTStmtWriter::VisitDependentScopeDeclRefExpr(DependentScopeDeclRefExpr *E) {
