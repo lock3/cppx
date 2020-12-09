@@ -1227,6 +1227,7 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   case Type::CppxKind:
     llvm_unreachable("IsStructurallyEquivalent. CppxKindType needs implemented!");
     break;
+  case Type::CppxTypeExpr:
   case Type::CppxTemplate:
     // FIXME: This needs to work eventually?
     llvm_unreachable("IsStructurallyEquivalent. TemplateType needs implemented!");

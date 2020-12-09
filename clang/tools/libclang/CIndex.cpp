@@ -1839,6 +1839,10 @@ bool CursorVisitor::VisitCppxArgsTypeLoc(CppxArgsTypeLoc TL) {
   return false;
 }
 
+bool CursorVisitor::VisitCppxTypeExprTypeLoc(CppxTypeExprTypeLoc TL) {
+  return false;
+}
+
 bool CursorVisitor::VisitAtomicTypeLoc(AtomicTypeLoc TL) {
   return Visit(TL.getValueLoc());
 }
@@ -2034,6 +2038,8 @@ public:
       llvm_unreachable("Unhandled Stmt");
     case clang::Stmt::MSDependentExistsStmtClass:
       return cast<MSDependentExistsStmt>(S)->getNameInfo();
+    case Stmt::CppxDependentMemberAccessExprClass:
+      return cast<CppxDependentMemberAccessExpr>(S)->getMemberNameInfo();
     case Stmt::CXXDependentScopeMemberExprClass:
       return cast<CXXDependentScopeMemberExpr>(S)->getMemberNameInfo();
     case Stmt::DependentScopeDeclRefExprClass:
@@ -2075,6 +2081,7 @@ public:
   }
   void VisitMSDependentExistsStmt(const MSDependentExistsStmt *S);
   void VisitCXXDependentScopeMemberExpr(const CXXDependentScopeMemberExpr *E);
+  void VisitCppxDependentMemberAccessExpr(const CppxDependentMemberAccessExpr *E);
   void VisitCXXNewExpr(const CXXNewExpr *E);
   void VisitCXXScalarValueInitExpr(const CXXScalarValueInitExpr *E);
   void VisitCXXOperatorCallExpr(const CXXOperatorCallExpr *E);
@@ -2656,6 +2663,14 @@ void EnqueueVisitor::VisitCXXDependentScopeMemberExpr(
   if (!E->isImplicitAccess())
     AddStmt(E->getBase());
 }
+
+void EnqueueVisitor::VisitCppxDependentMemberAccessExpr(
+    const CppxDependentMemberAccessExpr *E) {
+  AddDeclarationNameInfo(E);
+  if (!E->isImplicitAccess())
+    AddStmt(E->getBase());
+}
+
 void EnqueueVisitor::VisitCXXNewExpr(const CXXNewExpr *E) {
   // Enqueue the initializer , if any.
   AddStmt(E->getInitializer());

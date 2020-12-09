@@ -978,6 +978,8 @@ DEF_TRAVERSE_TYPE(CXXRequiredTypeType, {})
 DEF_TRAVERSE_TYPE(CppxKindType, {})
 DEF_TRAVERSE_TYPE(CppxNamespaceType, {})
 DEF_TRAVERSE_TYPE(CppxArgsType, {})
+DEF_TRAVERSE_TYPE(CppxTypeExprType,
+                  { TRY_TO(TraverseStmt(T->getTyExpr())); })
 DEF_TRAVERSE_TYPE(CppxTemplateType, {
     // TODO: Finish implementing this? I will need to visit all child types I think.
                     })
@@ -1278,6 +1280,8 @@ DEF_TRAVERSE_TYPELOC(CppxNamespaceType, {})
 // TODO: Finish implementing this?
 DEF_TRAVERSE_TYPELOC(CppxTemplateType, {})
 DEF_TRAVERSE_TYPELOC(CppxArgsType, {})
+DEF_TRAVERSE_TYPELOC(CppxTypeExprType,
+                     { TRY_TO(TraverseStmt(TL.getTyExpr())); })
 DEF_TRAVERSE_TYPELOC(TypedefType, {})
 
 DEF_TRAVERSE_TYPELOC(TypeOfExprType,
@@ -2372,6 +2376,14 @@ DEF_TRAVERSE_STMT(CXXDependentScopeMemberExpr, {
                                               S->getNumTemplateArgs()));
   }
 })
+
+DEF_TRAVERSE_STMT(CppxDependentMemberAccessExpr, {
+  TRY_TO(TraverseDeclarationNameInfo(S->getMemberNameInfo()));
+})
+
+DEF_TRAVERSE_STMT(CppxTemplateOrArrayExpr, { })
+DEF_TRAVERSE_STMT(CppxCallOrConstructorExpr, { })
+DEF_TRAVERSE_STMT(CppxDerefOrPtrExpr, { })
 
 DEF_TRAVERSE_STMT(DeclRefExpr, {
   TRY_TO(TraverseNestedNameSpecifierLoc(S->getQualifierLoc()));

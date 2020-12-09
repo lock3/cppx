@@ -2078,6 +2078,7 @@ bool CXXNameMangler::mangleUnresolvedTypeOrSimpleId(QualType Ty,
   case Type::CppxNamespace:
   case Type::CppxTemplate:
   case Type::CppxArgs:
+  case Type::CppxTypeExpr:
   case Type::ExtInt:
   case Type::DependentExtInt:
   case Type::InParameter:
@@ -3589,6 +3590,10 @@ void CXXNameMangler::mangleType(const CppxArgsType *T) {
   llvm_unreachable("unexpected type");
 }
 
+void CXXNameMangler::mangleType(const CppxTypeExprType *T) {
+  llvm_unreachable("unexpected type");
+}
+
 void CXXNameMangler::mangleType(const TemplateSpecializationType *T) {
   if (TemplateDecl *TD = T->getTemplateName().getAsTemplateDecl()) {
     mangleTemplateName(TD, T->getArgs(), T->getNumArgs());
@@ -4298,6 +4303,24 @@ recurse:
                      ME->getMemberName(),
                      ME->getTemplateArgs(), ME->getNumTemplateArgs(),
                      Arity);
+    break;
+  }
+  case Expr::CppxDerefOrPtrExprClass:
+  llvm_unreachable("case Expr::CppxDerefOrPtrExprClass: not implemented.");
+  case Expr::CppxCallOrConstructorExprClass:
+  llvm_unreachable("case Expr::CppxCallOrConstructorExprClass: not implemented.");
+  case Expr::CppxTemplateOrArrayExprClass:
+    llvm_unreachable("case Expr::CppxTemplateOrArrayExprClass: not implemented.");
+  case Expr::CppxDependentMemberAccessExprClass: {
+    llvm_unreachable("case Expr::CppxDependentMemberAccessExprClass: not implemented.");
+    // const CppxDependentMemberAccessExpr *ME
+    //   = cast<CppxDependentMemberAccessExpr>(E);
+    // mangleMemberExpr(ME->isImplicitAccess() ? nullptr : ME->getBase(),
+    //                  ME->isArrow(), NestedNameSpecifier(),
+    //                  nullptr,
+    //                  ME->getMember(),
+    //                  nullptr, 0,
+    //                  Arity);
     break;
   }
 

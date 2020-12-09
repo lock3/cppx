@@ -2010,6 +2010,48 @@ void StmtProfiler::VisitCXXDependentScopeMemberExpr(
     VisitTemplateArguments(S->getTemplateArgs(), S->getNumTemplateArgs());
 }
 
+void StmtProfiler::VisitCppxDependentMemberAccessExpr(
+    const CppxDependentMemberAccessExpr *S) {
+  ID.AddBoolean(S->isImplicitAccess());
+  if (!S->isImplicitAccess()) {
+    VisitExpr(S);
+  }
+  VisitName(S->getMember());
+  // ID.AddBoolean(S->hasExplicitTemplateArgs());
+  // if (S->hasExplicitTemplateArgs())
+  //   VisitTemplateArguments(S->getTemplateArgs(), S->getNumTemplateArgs());
+}
+
+
+void StmtProfiler::VisitCppxCallOrConstructorExpr(
+    const CppxCallOrConstructorExpr *S) {
+  ID.AddInteger(S->getNumArgs());
+  VisitExpr(S->getExpr());
+  for(auto A : S->arguments())
+    Visit(A);
+}
+
+void StmtProfiler::VisitCppxDerefOrPtrExpr(
+    const CppxDerefOrPtrExpr *S){
+  ID.AddInteger(int(UO_Deref));
+  VisitExpr(S->getValue());
+}
+
+void StmtProfiler::VisitCppxTemplateOrArrayExpr(
+    const CppxTemplateOrArrayExpr *S) {
+  llvm_unreachable("Not sure what this is for.");
+  // ID.AddBoolean(S->isImplicitAccess());
+  // if (!S->isImplicitAccess()) {
+  //   VisitExpr(S);
+  // }
+  // VisitName(S->getMember());
+  // ID.AddBoolean(S->hasExplicitTemplateArgs());
+  // if (S->hasExplicitTemplateArgs())
+  //   VisitTemplateArguments(S->getTemplateArgs(), S->getNumTemplateArgs());
+}
+
+
+
 void StmtProfiler::VisitUnresolvedMemberExpr(const UnresolvedMemberExpr *S) {
   ID.AddBoolean(S->isImplicitAccess());
   if (!S->isImplicitAccess()) {

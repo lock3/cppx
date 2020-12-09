@@ -13487,6 +13487,11 @@ public:
   /// Adds Callee to DeviceCallGraph if we don't know if its caller will be
   /// codegen'ed yet.
   bool checkSYCLDeviceFunction(SourceLocation Loc, FunctionDecl *Callee);
+private:
+  gold::Sema *GSema = nullptr;
+public:
+  void setGoldSema(gold::Sema *Sm) { GSema = Sm; }
+  gold::Sema *getGoldSema() const { return GSema; }
 };
 
 /// RAII object that enters a new expression evaluation context.

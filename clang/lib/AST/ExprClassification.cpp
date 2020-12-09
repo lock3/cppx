@@ -132,6 +132,9 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
   case Expr::TypoExprClass:
   case Expr::DependentCoawaitExprClass:
   case Expr::CXXDependentScopeMemberExprClass:
+  case Expr::CppxDependentMemberAccessExprClass:
+  case Expr::CppxCallOrConstructorExprClass:
+  case Expr::CppxTemplateOrArrayExprClass:
   case Expr::DependentScopeDeclRefExprClass:
     // ObjC instance variables are lvalues
     // FIXME: ObjC++0x might have different rules
@@ -216,6 +219,7 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
   case Expr::CXXFragmentExprClass:
   case Expr::CppxTypeLiteralClass:
   case Expr::CppxDeclRefExprClass:
+  case Expr::CppxDerefOrPtrExprClass:
   case Expr::CppxPartialEvalExprClass:
   case Expr::CXXFragmentCaptureExprClass:
   case Expr::CXXInjectedValueExprClass:

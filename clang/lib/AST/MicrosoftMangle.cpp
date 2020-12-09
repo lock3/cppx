@@ -2900,6 +2900,14 @@ void MicrosoftCXXNameMangler::mangleType(const CppxArgsType *T,
   Diags.Report(Range.getBegin(), DiagID) << Range;
 }
 
+void MicrosoftCXXNameMangler::mangleType(const CppxTypeExprType *T,
+                                         Qualifiers, SourceRange Range) {
+  DiagnosticsEngine &Diags = Context.getDiags();
+  unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+    "cannot mangle type expr type");
+  Diags.Report(Range.getBegin(), DiagID) << Range;
+}
+
 void MicrosoftCXXNameMangler::mangleType(const NamespaceDecl *ND) {
   Out << "NS";
   mangleName(ND);

@@ -1206,3 +1206,129 @@ c : type = class:
 
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+
+TEST(ClassParsing, FiveDeepNestedClassDecl) {
+  StringRef Code = R"(
+T1 = class:
+  T2 = class:
+    T3 = class:
+      T4 = class:
+        T5 = class:
+          ;
+)";
+
+  auto ToMatch = cxxRecordDecl(hasName("T1"),
+    has(cxxRecordDecl(hasName("T2"),
+      has(cxxRecordDecl(hasName("T3"),
+        has(cxxRecordDecl(hasName("T4"),
+          has(cxxRecordDecl(hasName("T5")))
+        ))
+      ))
+    ))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(ClassParsing, FiveDeepNestedClassDecl_WithFunction) {
+  StringRef Code = R"(
+T1 = class:
+  T2 = class:
+    T3 = class:
+      T4 = class:
+        T5 = class:
+          foo()<static>:void!
+            ;
+)";
+
+  auto ToMatch = cxxRecordDecl(hasName("T1"),
+    has(cxxRecordDecl(hasName("T2"),
+      has(cxxRecordDecl(hasName("T3"),
+        has(cxxRecordDecl(hasName("T4"),
+          has(cxxRecordDecl(hasName("T5"),
+            has(cxxMethodDecl(hasName("foo")))
+          ))
+        ))
+      ))
+    ))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(ClassParsing, FiveDeepNestedClassDecl_WithFunctionTemplate) {
+  StringRef Code = R"(
+T1 = class:
+  T2 = class:
+    T3 = class:
+      T4 = class:
+        T5 = class:
+          foo[T:type]()<static>:void!
+            ;
+)";
+
+  auto ToMatch = cxxRecordDecl(hasName("T1"),
+    has(cxxRecordDecl(hasName("T2"),
+      has(cxxRecordDecl(hasName("T3"),
+        has(cxxRecordDecl(hasName("T4"),
+          has(cxxRecordDecl(hasName("T5"),
+            has(functionTemplateDecl(
+              has(cxxMethodDecl(hasName("foo")))
+            ))
+          ))
+        ))
+      ))
+    ))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(ClassParsing, FiveDeepNestedClassDecl_WithCallableInlineSataticVar) {
+  StringRef Code = R"Gold(
+Callable = class:
+  operator"()"():void!
+    ;
+T1 = class:
+  T2 = class:
+    T3 = class:
+      T4 = class:
+        T5 = class:
+          foo<static> <inline> : Callable
+)Gold";
+
+  auto ToMatch = cxxRecordDecl(hasName("T1"),
+    has(cxxRecordDecl(hasName("T2"),
+      has(cxxRecordDecl(hasName("T3"),
+        has(cxxRecordDecl(hasName("T4"),
+          has(cxxRecordDecl(hasName("T5"),
+            has(varDecl(hasName("foo")))
+          ))
+        ))
+      ))
+    ))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(ClassParsing, NestedStaticMemberVariableDecl) {
+  StringRef Code = R"Gold(
+Callable = class:
+  operator"()"():void!
+    ;
+T1 = class:
+  T2 = class:
+    foo<static> <inline> : Callable
+
+)Gold";
+
+  auto ToMatch = cxxRecordDecl(hasName("T1"),
+    has(cxxRecordDecl(hasName("T2"),
+        has(varDecl(hasName("foo")))
+    ))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

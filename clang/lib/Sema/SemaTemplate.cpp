@@ -6188,6 +6188,10 @@ bool UnnamedLocalNoLinkageFinder::VisitCppxArgsType(const CppxArgsType* T) {
   return false;
 }
 
+bool UnnamedLocalNoLinkageFinder::VisitCppxTypeExprType(const CppxTypeExprType* T) {
+  return false;
+}
+
 bool UnnamedLocalNoLinkageFinder::VisitCppxTemplateType(const CppxTemplateType* T) {
   return false;
 }

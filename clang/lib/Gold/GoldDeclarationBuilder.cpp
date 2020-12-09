@@ -312,7 +312,7 @@ bool DeclarationBuilder::checkDeclaration(const Syntax *DeclExpr,
   // expression from a previous Scope.
   // Attempting to verify lookup.
 
-  // Doing simple blook lookup.
+  // Doing simple block lookup.
   clang::IdentifierInfo* Id = TheDecl->getId();
   Scope *CurScope = SemaRef.getCurrentScope();
   if (CurScope->isBlockScope()) {
@@ -961,6 +961,7 @@ Declarator *DeclarationBuilder::handleNamespaceScope(const Syntax *S) {
   RequireAliasTypes = false;
   RequireTypeForFunctions = false;
   RequiresDeclOrError = true;
+  ContextDeclaresNewName = true;
   return makeDeclarator(S);
 }
 
@@ -977,6 +978,7 @@ Declarator *DeclarationBuilder::handleParameterScope(const Syntax *S) {
   RequireAliasTypes = false;
   RequireTypeForFunctions = false;
   RequiresDeclOrError = true;
+  ContextDeclaresNewName = true;
   return makeDeclarator(S);
 }
 
@@ -1009,6 +1011,7 @@ Declarator *DeclarationBuilder::handleFunctionScope(const Syntax *S) {
   RequireAliasTypes = true;
   RequireTypeForFunctions = true;
   RequiresDeclOrError = false;
+  ContextDeclaresNewName = true;
   return makeDeclarator(S);
 }
 
@@ -1038,6 +1041,7 @@ Declarator *DeclarationBuilder::handleClassScope(const Syntax *S) {
   RequireTypeForFunctions = false;
   RequiresDeclOrError = true;
   AllowShortCtorAndDtorSyntax = true;
+  ContextDeclaresNewName = true;
   return makeDeclarator(S);
 }
 
@@ -1067,6 +1071,7 @@ Declarator *DeclarationBuilder::handleEnumScope(const Syntax *S) {
   RequireTypeForFunctions = false;
   RequiresDeclOrError = true;
   IsInsideEnum = true;
+  ContextDeclaresNewName = true;
   // Special case where enum values are allowed to just be names.
   if (const auto *Name = dyn_cast<AtomSyntax>(S)) {
     return handleIdentifier(Name, nullptr);
@@ -1406,10 +1411,9 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
       return handleIdentifier(Name, nullptr);
 
   if (const auto *Macro = dyn_cast<MacroSyntax>(S))
-    return makeTopLevelDeclarator(S, nullptr);
+    return makeTopLevelDeclarator(Macro, nullptr);
 
   const auto *Call = dyn_cast<CallSyntax>(S);
-
   if (!Call) {
     if (RequiresDeclOrError)
       SemaRef.Diags.Report(S->getLoc(),
@@ -1426,14 +1430,13 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
     const auto *Args = cast<ListSyntax>(Call->getArguments());
     Decl = Args->getChild(0);
 
-    // This is to reject t.x as a declaration.
     // This checks if a declaration already exists in a parent scope.
     // For example, we are in a member function and are accessing a member.
     if (const AtomSyntax *LHS = dyn_cast<AtomSyntax>(Decl)) {
       clang::DeclarationNameInfo DNI({
           &Context.CxxAST.Idents.get(LHS->getSpelling())
         }, S->getLoc());
-      if (!SemaRef.checkUnqualifiedNameIsDecl(DNI)) {
+      if (!ContextDeclaresNewName && !SemaRef.checkUnqualifiedNameIsDecl(DNI)) {
         // this may need an error message depending on context.
         return nullptr;
       }
@@ -1447,12 +1450,6 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
           // FIXME: This needs an diagnostic message here.
           return nullptr;
         }
-    // TODO: Remove me.
-    // // Attempting to verify if this is an ElemSyntax.
-    // if (isa<ElemSyntax>(Decl))
-    //   // This can't be a declaration, because would need to say":type" after
-    //   // the name to be considered a template type.
-    //   return nullptr;
 
     InitExpr = Args->getChild(1);
     InitOperatorUsed = IK_Equals;
