@@ -210,3 +210,16 @@ main() : int! {
     varDecl(hasName("test"), hasType(asString("int")));
   ASSERT_TRUE(matches(Code.str(), Test));
 }
+
+TEST(GoldLambda, TerseSyntax) {
+  StringRef Code = R"(
+x = lambda(m : auto) => m
+
+main() : int!
+  test = x(42)
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("int")));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}

@@ -1060,8 +1060,10 @@ Syntax *Parser::parseLambda() {
     Block = parseBlock();
   else if (nextTokenIs(tok::Colon))
     Block = parseNestedArray();
-  else
-    return onError();
+  else if (nextTokenIs(tok::EqualGreater)) {
+    consumeToken();
+    Block = parseExpr();
+  }
 
   Syntax *Call = onCall(Templ ? Templ : onAtom(Tok), Parms);
   std::for_each(Attrs.begin(), Attrs.end(),
