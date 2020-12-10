@@ -1046,10 +1046,17 @@ Syntax *Parser::parseLambda() {
   if (nextTokenIs(tok::LeftBracket))
     Templ = parseElem(onAtom(Tok));
 
-  if (nextTokenIs(tok::LeftBrace))
+  if (nextTokenIs(tok::LeftBrace)) {
+    BooleanRAII LCS(LambdaCaptureScope, true);
     Capture = parseBlock();
-  else if (nextTokenIs(tok::Colon))
+  } else if (nextTokenIs(tok::Colon)) {
+    BooleanRAII LCS(LambdaCaptureScope, true);
     Capture = parseNestedArray();
+  }
+
+  // Note if we parsed a capture default and reset the parser's variable.
+  bool Default = LambdaCaptureDefault;
+  LambdaCaptureDefault = false;
 
   Parms = nextTokenIs(tok::RightParen) ?
     onList(ArgArray, llvm::SmallVector<Syntax *, 1>()) : parseParen();
@@ -1068,7 +1075,7 @@ Syntax *Parser::parseLambda() {
   Syntax *Call = onCall(Templ ? Templ : onAtom(Tok), Parms);
   std::for_each(Attrs.begin(), Attrs.end(),
                 [Call](Attribute *A) { Call->addAttribute(A); });
-  return onMacro(Call, Block, Capture);
+  return onLambdaMacro(Call, Block, Capture, Default);
 }
 
 Syntax *Parser::parseBlockLoop(Token KWTok)
@@ -1886,6 +1893,13 @@ Syntax *Parser::parseBracedArray() {
     return onArray(BlockArray, Vec);
   }
 
+  if (LambdaCaptureScope && nextTokenIs(tok::Equal)) {
+    consumeToken();
+    if (!nextTokenIs(tok::RightBrace))
+      expectToken(tok::Comma);
+    LambdaCaptureDefault = true;
+  };
+
   // There could be any number of indents here.
   // They are not relevant.
   while (nextTokenIs(tok::Indent))
@@ -1918,6 +1932,13 @@ Syntax *Parser::parseNestedArray() {
   EnclosingTabs Tabs(*this);
   if (!Tabs.expectOpen())
     return onError();
+
+  if (LambdaCaptureScope && nextTokenIs(tok::Equal)) {
+    consumeToken();
+    if (!nextTokenIs(tok::Dedent))
+      expectToken(tok::Comma);
+    LambdaCaptureDefault = true;
+  }
 
   if (nextTokenIs(tok::Dedent)) {
     Tabs.expectClose();
@@ -2307,6 +2328,10 @@ Syntax *Parser::onMacro(Syntax *e1, Syntax *e2) {
 
 Syntax *Parser::onMacro(Syntax *e1, Syntax *e2, Syntax *e3) {
   return new (Context) MacroSyntax(e1, e2, e3);
+}
+
+Syntax *Parser::onLambdaMacro(Syntax *e1, Syntax *e2, Syntax *e3, bool Default) {
+  return new (Context) LambdaMacroSyntax(e1, e2, e3, Default);
 }
 
 Syntax *Parser::onCatch(const Token &Catch, Syntax *Args, Syntax *Block) {

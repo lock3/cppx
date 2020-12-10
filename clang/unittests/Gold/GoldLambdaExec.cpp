@@ -20,11 +20,11 @@ using namespace gold;
 TEST(GoldLambdaExec, Variadic) {
   StringRef Code = R"(
 list = lambda{}(xs : auto...) {
-  return lambda{}(access : auto) { return access(xs...); };
+  return lambda{=}(access : auto) { return access(xs...); };
 }
 
 length = lambda{}(xs : auto) {
-  return xs(lambda{}(z : auto...) { return sizeof...(z); });
+  return xs(lambda{=}(z : auto...) { return sizeof...(z); });
 }
 
 main() : int!

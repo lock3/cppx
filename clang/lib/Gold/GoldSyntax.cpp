@@ -55,6 +55,7 @@ clang::SourceLocation Syntax::getLoc() const {
   case SK_Elem:
     return cast<ElemSyntax>(this)->getObjectLoc();
   case SK_Macro:
+  case SK_LambdaMacro:
     return cast<MacroSyntax>(this)->getCallLoc();
   case SK_File:
     return SourceLocation();

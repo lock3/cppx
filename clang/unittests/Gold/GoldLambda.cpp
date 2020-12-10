@@ -223,3 +223,24 @@ main() : int!
     varDecl(hasName("test"), hasType(asString("int")));
   ASSERT_TRUE(matches(Code.str(), Test));
 }
+
+TEST(GoldLambda, CaptureDefault) {
+  StringRef Code = R"(
+main() : int!
+  y : int = 41
+  x = lambda{=}(){ return y }
+  test = x()
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("int")));
+  ASSERT_TRUE(matches(Code.str(), Test));
+}
+
+TEST(GoldLambda, DefaultGlobal) {
+  StringRef Code = R"(
+x = lambda{=}(){}
+)";
+
+  GoldFailureTest(Code.str());
+}

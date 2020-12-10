@@ -3504,9 +3504,9 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
 
   // The lambda default will always be by-value, but local lambdas have no
   // default as per [expr.prim.lambda]
-  Intro.Default = LocalLambda ? clang::LCD_None : clang::LCD_ByCopy;
-  if (!S->getNext())
-    Intro.Default = clang::LCD_None;
+  assert(isa<LambdaMacroSyntax>(S) && "non-lambda");
+  bool Default = cast<LambdaMacroSyntax>(S)->HasDefault;
+  Intro.Default = Default ? clang::LCD_ByCopy : clang::LCD_None;
   Sema::ScopeRAII LambdaCaptureScope(SemaRef, SK_Block, S->getNext());
   SemaRef.getCurrentScope()->LambdaCaptureScope = true;
   buildLambdaCaptures(Context, SemaRef, S, Intro);

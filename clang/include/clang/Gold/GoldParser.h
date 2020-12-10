@@ -323,6 +323,7 @@ namespace gold
     Syntax *onElem(const TokenPair& toks, Syntax *e1, Syntax *e2);
     Syntax *onMacro(Syntax *e1, Syntax *e2);
     Syntax *onMacro(Syntax *e1, Syntax *e2, Syntax *e3);
+    Syntax *onLambdaMacro(Syntax *e1, Syntax *e2, Syntax *e3, bool Default);
     Syntax *onCatch(const Token &Catch, Syntax *Args, Syntax *Block);
     Syntax *onIf(const Token& tok, Syntax *e1, Syntax *e2, Syntax *e3);
     Syntax *onElse(const Token& tok, Syntax *e1);
@@ -510,6 +511,12 @@ namespace gold
     private:
       bool &InAttribute;
     };
+
+    // True when we are parsing a lambda capture block
+    bool LambdaCaptureScope = false;
+
+    // True when we parse a lambda capture default in a capture scope
+    bool LambdaCaptureDefault = false;
   };
 
   /// RAII object that makes '>' behave either as an operator
@@ -527,6 +534,22 @@ namespace gold
     ~GreaterThanIsOperatorScope() {
       GreaterThanIsOperator = OldGreaterThanIsOperator;
     }
+  };
+
+  // RAII for a simple boolean value
+  struct BooleanRAII {
+    BooleanRAII(bool &Boolean, bool Val)
+      : Boolean(Boolean), SavedValue(Boolean) {
+      Boolean = Val;
+    }
+
+    ~BooleanRAII() {
+      Boolean = SavedValue;
+    }
+
+  private:
+    bool &Boolean;
+    bool SavedValue;
   };
 } // namespace gold
 
