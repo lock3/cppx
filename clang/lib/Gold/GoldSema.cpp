@@ -741,7 +741,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
 
         if (!FoundDecl->Cxx) {
           AttrElabRAII Attr(*this, false);
-          Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
+          Elaborator(Context, *this).elaborateDeclTypeEarly(FoundDecl);
         }
 
         if (!FoundDecl->Cxx)

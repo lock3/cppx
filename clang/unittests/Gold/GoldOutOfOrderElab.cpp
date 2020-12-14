@@ -29,6 +29,27 @@ a = b
   GoldFailureTest(Code);
 }
 
+// FIXME: Reduce depth of default elaboration.
+// Test local classes
+// constexpr class members defined outside of a class.
+TEST(GoldOutOfOrder, CyclicalDependantVariableDeclWithNoDependentType) {
+  StringRef Code = R"(
+b = a
+a : int = b
+)";
+  auto ToMatch = translationUnitDecl(
+    has(varDecl(
+      hasName("a"),
+      hasType(asString("int"))
+    )),
+    has(varDecl(
+      hasName("b"),
+      hasType(asString("int"))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
 TEST(GoldOutOfOrder, MemberCorssReferenceThroughPtrs) {
   StringRef Code = R"(
 T1 = class:
@@ -37,7 +58,7 @@ T1 = class:
 T2 = class:
   x :^T1
 )";
-auto ToMatch = translationUnitDecl(
+  auto ToMatch = translationUnitDecl(
     has(cxxRecordDecl( hasName("T1"),
       hasDescendant(fieldDecl(
         hasName("x"),
@@ -52,6 +73,17 @@ auto ToMatch = translationUnitDecl(
     ))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldOutOfOrder, NonPtrMembers) {
+  StringRef Code = R"(
+T1 = class:
+  x :T2
+
+T2 = class:
+  x :T1
+)";
+  GoldFailureTest(Code);
 }
 
 TEST(GoldOutOfOrder, InvalidMemberReferencing) {

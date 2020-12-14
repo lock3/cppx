@@ -156,6 +156,9 @@ public:
   /// identified. This is used when lookup finds an unelaborated declaration.
   clang::Decl *elaborateDeclEarly(Declaration *D);
 
+  /// Only elaborates upto phase 2.
+  clang::Decl *elaborateDeclTypeEarly(Declaration *D);
+
   // class type body elaboration.
   clang::Decl *elaborateTypeBody(Declaration *D, clang::CXXRecordDecl *R);
   clang::Decl *elaborateField(Declaration *D, clang::TypeSourceInfo *TInfo);

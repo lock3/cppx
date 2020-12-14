@@ -4087,6 +4087,19 @@ clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
   return D->Cxx;
 }
 
+clang::Decl *Elaborator::elaborateDeclTypeEarly(Declaration *D) {
+  assert(D && (D->getId() || D->declaresUsingDirective())
+         && "Early elaboration of unidentified declaration");
+  Sema::OptionalInitScope<Sema::EnterNonNestedClassEarlyElaboration>
+    ENNCEE(SemaRef);
+  if (SemaRef.isElaboratingClass() && !D->isDeclaredWithinClass()) {
+    ENNCEE.Init(D);
+  }
+
+  elaborateDecl(D);
+  return D->Cxx;
+}
+
 void Elaborator::elaborateDeclInit(const Syntax *S) {
   // TODO: See elaborateDeclType. We have the same kinds of concerns.
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
