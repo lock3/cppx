@@ -115,6 +115,7 @@ add_clang_unittest(GoldTests
   GoldNewAndDeleteElab.cpp
   GoldNNS.cpp
   GoldOperatorOverloadUseElab.cpp
+  GoldOutOfOrderElab.cpp
   GoldOverrideAttributeElab.cpp
   GoldParsing.cpp
   GoldPointerDerefElab.cpp

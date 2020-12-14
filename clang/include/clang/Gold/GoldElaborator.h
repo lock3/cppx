@@ -128,6 +128,8 @@ public:
   clang::Decl *elaborateFunctionDecl(Declaration *D);
   void checkCXXMethodDecl(clang::CXXMethodDecl *MD);
   clang::Decl *elaborateVariableDecl(clang::Scope *InitialScope, Declaration *D);
+  clang::Expr *elaborateDeducedVariableDecl(clang::Scope *InitialScope,
+                                            Declaration *D);
   clang::Decl *elaborateTypeAlias(Declaration *D);
   clang::Decl *elaborateNsAlias(Declaration *D);
   clang::Decl *elaborateTemplateAliasOrVariable(Declaration *D);
@@ -138,7 +140,7 @@ public:
   void elaborateDeclInit(const Syntax *S);
   void elaborateDef(Declaration *D);
   void elaborateFunctionDef(Declaration *D);
-  void elaborateVariableInit(Declaration *D);
+  void elaborateVariableInit(Declaration *D, bool IsEarly = false);
   void elaborateTemplateParamInit(Declaration *D);
 
   /// Perform all three passes on a single declaration in one shot.

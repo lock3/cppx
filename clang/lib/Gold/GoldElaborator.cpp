@@ -236,6 +236,7 @@ static inline bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
 
         return false;
       }
+      return false;
     },
     // CheckAttr
     [](const Syntax *Attr) -> bool{
@@ -677,6 +678,10 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
                           = dyn_cast<CallSyntax>(MacroRoot->getCall())) {
       processBaseSpecifiers(Elab, SemaRef, Context, D, ClsDecl, ClsKwCall);
     }
+    // We turn this off here because technically we have already created the
+    // most basic declaration that's required to use this type.
+    D->IsElaborating = false;
+    // This is really the only time we could possible allow this to occur.
 
     SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(
                                                      SemaRef.getCurClangScope(),
@@ -1594,6 +1599,8 @@ clang::Decl *Elaborator::elaborateNestedNameNamespace(Declaration *D) {
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   if (phaseOf(D) != Phase::Identification)
     return D->Cxx;
+  Sema::DeclarationElaborationRAII ElabTracker(SemaRef, D);
+
   clang::Scope *OriginalClangScope = SemaRef.getCurClangScope();
   Scope *Sc = SemaRef.getCurrentScope();
 
@@ -3056,6 +3063,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
     ExprElaborator TypeElab(Context, SemaRef);
     TypeExpr = TypeElab.elaborateExplicitType(D->TypeDcl, nullptr);
   } else {
+    // This needs to be handled right away.
     TypeExpr = SemaRef.buildTypeExpr(Context.CxxAST.getAutoDeductType(),
                                      D->Op->getLoc());
   }
@@ -3086,10 +3094,23 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
                         << D->getId();
     return nullptr;
   }
+
+
   // This is where we differentiate between type alias template,
   // variable template, namespace aliases, members, etc.
   clang::QualType VarType = TInfo->getType();
-  if (VarType->isTypeOfTypes()) {
+  clang::Expr *ComputedInitializer = nullptr;
+  if (VarType == Context.CxxAST.getAutoDeductType()) {
+    ComputedInitializer = elaborateDeducedVariableDecl(InitialScope, D);
+    if (!ComputedInitializer)
+      return nullptr;
+    if (D->Cxx)
+      // This covers all using declarations
+      if (isa<clang::TypedefDecl>(D->Cxx)
+          || isa<clang::TypeAliasDecl>(D->Cxx)
+          || isa<clang::NamespaceAliasDecl>(D->Cxx))
+        return D->Cxx;
+  } else if (VarType->isTypeOfTypes()) {
     if (D->Template)
       return elaborateTemplateAliasOrVariable(D);
     return elaborateTypeAlias(D);
@@ -3616,11 +3637,48 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   if (D->declaresCatchVariable())
     NewVD->setExceptionVariable(true);
 
+  if (ComputedInitializer && !isa<clang::ParmVarDecl>(NewVD))
+    // We have to redo some of the evaluation because it could be within a
+    // const expr expression.
+    elaborateVariableInit(D, true);
+
   return NewVD;
 }
 
 static clang::Decl *buildTypeAlias(Elaborator &E, Sema &SemaRef,
-                                   Declaration *D, clang::Expr *TyExpr) {
+                                   Declaration *D, clang::Expr *TyExpr);
+
+static clang::NamespaceAliasDecl *buildNsAlias(clang::ASTContext &CxxAST,
+                                               Sema &SemaRef, Declaration *D,
+                                               clang::Expr *NsExpr);
+
+clang::Expr *Elaborator::elaborateDeducedVariableDecl(clang::Scope *Sc,
+                                                      Declaration *D) {
+  ExprElaborator ExprElab(Context, SemaRef);
+  auto E = ExprElab.elaborateExpr(D->Init);
+  if (!E) {
+    return E;
+  }
+  if (E->getType()->isNamespaceType()) {
+    buildNsAlias(Context.CxxAST, SemaRef, D, E);
+    return E;
+  }
+
+  if (E->getType()->isTemplateType()) {
+    // TODO: FIXME: This will need a temporary error message as well as
+    // eventaully a possible new kind of declaration.
+    llvm_unreachable("Create a new declaration here that is valid.");
+  }
+
+  if (E->getType()->isTypeOfTypes()) {
+    buildTypeAlias(*this, SemaRef, D, E);
+    return E;
+  }
+  return E;
+}
+
+clang::Decl *buildTypeAlias(Elaborator &E, Sema &SemaRef,
+                            Declaration *D, clang::Expr *TyExpr) {
   clang::ParsedType PT;
   clang::TypeSourceInfo *TInfo =
     SemaRef.getTypeSourceInfoFromExpr(TyExpr, D->Init->getLoc());
@@ -3679,9 +3737,9 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
   return buildTypeAlias(*this, SemaRef, D, InitTyExpr);
 }
 
-static clang::NamespaceAliasDecl *buildNsAlias(clang::ASTContext &CxxAST,
-                                               Sema &SemaRef, Declaration *D,
-                                               clang::Expr *NsExpr) {
+clang::NamespaceAliasDecl *buildNsAlias(clang::ASTContext &CxxAST,
+                                        Sema &SemaRef, Declaration *D,
+                                        clang::Expr *NsExpr) {
   if (D->isDeclaredWithinClass()) {
     SemaRef.Diags.Report(D->IdDcl->getLoc(),
                          clang::diag::err_namespace_alias_within_class);
@@ -4158,10 +4216,15 @@ static clang::QualType buildImplicitArrayType(clang::ASTContext &Ctx,
                                   clang::ArrayType::Normal, 0);
 }
 
-void Elaborator::elaborateVariableInit(Declaration *D) {
+void Elaborator::elaborateVariableInit(Declaration *D, bool IsEarly) {
+  Sema::DeclarationElaborationRAII ElabTracker(SemaRef);
   D->CurrentPhase = Phase::Initialization;
   if (!D->Cxx)
     return;
+
+  // If this isn't early elaboration then we have to actually track it.
+  if (!IsEarly)
+    ElabTracker.init(D);
 
   Sema::OptionalInitScope<Sema::ResumeScopeRAII> OptResumeScope(SemaRef);
   clang::Expr *InitExpr = nullptr;
@@ -4226,6 +4289,9 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 
   // Perform auto deduction.
   if (VD->getType()->isUndeducedType()) {
+    if (!IsEarly)
+      llvm_unreachable("Invalid undeduced type inside of non-early phase 3 "
+                       "elaboration.");
     clang::QualType Ty;
 
     // Certain macros must be deduced manually.
@@ -5203,7 +5269,6 @@ void Elaborator::elaborateStaticAttr(Declaration *D, const Syntax *S,
   if (DC->isRecord()) {
     if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(D->Cxx)) {
       if (isa<clang::CXXConversionDecl>(D->Cxx)) {
-        // TODO: Verify that this displays something meaningful
         SemaRef.Diags.Report(S->getLoc(),
                              clang::diag::err_conv_function_not_member)
                             << clang::SourceRange(S->getLoc(), S->getLoc())

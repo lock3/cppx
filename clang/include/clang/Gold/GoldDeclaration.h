@@ -386,6 +386,10 @@ public:
   /// is elaborated and 3 is the definition is complete.
   Phase CurrentPhase = Phase::Unprocessed;
 
+  /// Flag to prevent cyclic elaboration from happening.
+  /// This is really only useful during phase 1 & 2
+  bool IsElaborating = false;
+
   /// This information is to aid with early elaboration. This allows the
   /// elabrotor to restore the state in which something was declared.
   ///

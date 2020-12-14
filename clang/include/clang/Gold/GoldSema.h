@@ -1086,6 +1086,42 @@ public:
     }
   };
 
+private:
+  llvm::SmallVector<Declaration *, 64> DeclsBeingElaborated;
+public:
+  struct DeclarationElaborationRAII {
+    Sema &SemaRef;
+    bool DidRecordDecl = false;
+
+    DeclarationElaborationRAII(Sema &S, Declaration *NewDecl)
+      :SemaRef(S)
+    {
+      assert(NewDecl && "Invalid declaration given.");
+      assert(!NewDecl->IsElaborating && "Declaration already being elaborated");
+      DidRecordDecl = true;
+      SemaRef.DeclsBeingElaborated.push_back(NewDecl);
+      SemaRef.DeclsBeingElaborated.back()->IsElaborating = true;
+    }
+
+    DeclarationElaborationRAII(Sema &S) :SemaRef(S) { }
+
+    void init(Declaration *NewDecl) {
+      assert(NewDecl && "Invalid declaration given.");
+      assert(!NewDecl->IsElaborating && "Declaration already being elaborated");
+      DidRecordDecl = true;
+      SemaRef.DeclsBeingElaborated.push_back(NewDecl);
+      SemaRef.DeclsBeingElaborated.back()->IsElaborating = true;
+    }
+
+    ~DeclarationElaborationRAII()  {
+      if (DidRecordDecl) {
+        SemaRef.DeclsBeingElaborated.back()->IsElaborating = false;
+        SemaRef.DeclsBeingElaborated.pop_back();
+      }
+    }
+  };
+  void diagnoseElabCycleError(Declaration *CycleTerminalDecl);
+
 public:
   /// This constructs a new in place new expression that will be completed
   /// once all of it's arguments are available.

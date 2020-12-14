@@ -1523,14 +1523,17 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     if (S->getNumArguments() == 1) {
       clang::UnaryOperatorKind UnaryOpKind;
       if (!SemaRef.OpInfo.getUnaryOperatorUseKind(Spelling, UnaryOpKind))
-        return elaborateUnaryOp(S, UnaryOpKind);
+        return elaborateUnaryOp(S, SemaRef.OpInfo.getOpInfo(Spelling),
+                                UnaryOpKind);
     }
 
     if (S->getNumArguments() == 2) {
+      // getOpInfo
       // Check if this is a binary operator.
       clang::BinaryOperatorKind BinaryOpKind;
       if (!SemaRef.OpInfo.getBinaryOperatorUseKind(Spelling, BinaryOpKind))
-        return elaborateBinOp(S, BinaryOpKind);
+        return elaborateBinOp(S, SemaRef.OpInfo.getOpInfo(Spelling),
+                              BinaryOpKind);
     }
   }
 
@@ -3015,6 +3018,7 @@ clang::Expr *ExprElaborator::elaborateNestedLookupAccess(
 }
 
 clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
+                                              const OpInfoBase *OpInfo,
                                               clang::UnaryOperatorKind Op) {
   BooleanRAII AddressOfRAII(ElaboratingAddressOfOp, Op == clang::UO_AddrOf);
 
@@ -3032,6 +3036,8 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
                          clang::diag::err_expected_expression);
     return nullptr;
   }
+
+
 
   // This is used to construct a pointer type because the caret has two
   // meanings. Dereference and pointer declaration.
@@ -3052,6 +3058,38 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
       return SemaRef.buildTypeExpr(RetType, S->getLoc());
     }
   }
+  // This has to be done here because if the operand is a type this has different
+  // meaning and it will cause a cycle inside of of elaboration.
+
+  // Doing actual ADL lookup for operators.
+
+  // We need to pull all of the matching operators in from within the
+  // entire system. We only need to look up free functions, the members
+  // already exists because they would have bee elaborated as part of the type.
+  clang::LookupResult R(SemaRef.getCxxSema(),
+                        { { OpInfo->getGoldDeclName() }, Operand->getLoc() },
+                        clang::Sema::LookupOrdinaryName);
+  clang::QualType Ty = OperandResult->getType();
+  gold::Scope *ArgScope = nullptr;
+  if (Ty->isRecordType()) {
+    gold::Declaration *D = SemaRef.getDeclaration(Ty->getAsRecordDecl());
+    if (!D) {
+      // Moving the scope to the first namespace scope it finds.
+      ArgScope = D->ScopeForDecl;
+      assert(ArgScope && "D->ScopeForDecl not set for declaration");
+      while(ArgScope && !ArgScope->isNamespaceScope()) {
+        ArgScope = ArgScope->getParent();
+      }
+      SemaRef.lookupUnqualifiedName(R, ArgScope);
+    }
+  }
+
+  // This should make sure that any/all of the operators are in scope ahead of
+  // Clang operator ADL.
+  SemaRef.lookupUnqualifiedName(R);
+  R.clear();
+
+
   clang::ExprResult UnaryOpRes = SemaRef.getCxxSema().BuildUnaryOp(
     /*scope*/nullptr, S->getCalleeLoc(), Op, OperandResult);
 
@@ -3060,6 +3098,7 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
 }
 
 clang::Expr *ExprElaborator::elaborateBinOp(const CallSyntax *S,
+                                            const OpInfoBase *OpInfo,
                                             clang::BinaryOperatorKind Op) {
   const Syntax *LHSSyntax = S->getArgument(0);
   const Syntax *RHSSyntax = S->getArgument(1);
@@ -3077,6 +3116,49 @@ clang::Expr *ExprElaborator::elaborateBinOp(const CallSyntax *S,
                          clang::diag::err_expected_expression);
     return nullptr;
   }
+
+  clang::LookupResult R(SemaRef.getCxxSema(),
+                        { { OpInfo->getGoldDeclName() }, S->getCalleeLoc() },
+                        clang::Sema::LookupOrdinaryName);
+  clang::QualType LTy = LHS->getType();
+  gold::Scope *LHSScope = nullptr;
+  if (LTy->isRecordType()) {
+    gold::Declaration *D = SemaRef.getDeclaration(LTy->getAsRecordDecl());
+    if (D) {
+      // Moving the scope to the first namespace scope it finds.
+      LHSScope = D->ScopeForDecl;
+      assert(LHSScope && "LHS->ScopeForDecl not set for declaration");
+      while(LHSScope && !LHSScope->isNamespaceScope()) {
+        LHSScope = LHSScope->getParent();
+      }
+      SemaRef.lookupUnqualifiedName(R, LHSScope);
+    }
+  }
+
+  clang::QualType RTy = LHS->getType();
+  gold::Scope *RHSScope = nullptr;
+  if (RTy->isRecordType()) {
+    gold::Declaration *D = SemaRef.getDeclaration(RTy->getAsRecordDecl());
+    if (D) {
+      // Moving the scope to the first namespace scope it finds.
+      RHSScope = D->ScopeForDecl;
+      assert(RHSScope && "LHS->ScopeForDecl not set for declaration");
+      while(RHSScope && !RHSScope->isNamespaceScope()) {
+        RHSScope = RHSScope->getParent();
+      }
+      // Don't do lookup if these are the same.
+      if (RHSScope)
+        if (LHSScope != RHSScope)
+          SemaRef.lookupUnqualifiedName(R, RHSScope);
+    }
+  }
+
+
+  // This should make sure that any/all of the operators are in scope ahead of
+  // Clang operator ADL.
+  SemaRef.lookupUnqualifiedName(R);
+  R.clear();
+
 
   // FIXME: Replace with ActOnBinOp so precedence issues get warnings.
   clang::ExprResult Res = SemaRef.getCxxSema().BuildBinOp(/*Scope=*/nullptr,

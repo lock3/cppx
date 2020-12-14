@@ -359,12 +359,11 @@ OpTest : type = class:
   X:^ Other = null
   operator"^"():ref Other!
     return ^X
-  
 
 foo(X:ref OpTest):void!
   X.operator"^"()
 )Gold";
-  DeclarationMatcher opMatches = translationUnitDecl(
+  auto opMatches = translationUnitDecl(
     has(recordDecl(
       hasName("OpTest"),
       has(cxxMethodDecl(hasAnyOverloadedOperatorName("*")))
@@ -383,7 +382,7 @@ TEST(GoldUserDefinedOp, ExplicitMemberOperatorXOr) {
 OpTest : type = class:
   operator"^"(RHS:ref OpTest):bool!
     return false
-  
+
 
 foo(X:ref OpTest, Y:ref OpTest):void!
   X.operator"^"(Y)

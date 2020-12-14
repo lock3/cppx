@@ -718,7 +718,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
         // use.
         if (CxxSema.isConstantEvaluated() || isInDeepElaborationMode()) {
           // If we aren't 100% completed then do complete elaboration.
-          if (phaseOf(FoundDecl) < Phase::Initialization) {
+          if ((phaseOf(FoundDecl) < Phase::Initialization)) {
             EnterDeepElabRAII DeepElab(*this);
             // change the elaboration context back to PotentiallyEvaluated.
             clang::EnterExpressionEvaluationContext ConstantEvaluated(CxxSema,
@@ -726,6 +726,13 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
             AttrElabRAII Attr(*this, false);
             Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
           }
+        }
+
+        if (FoundDecl->IsElaborating && !FoundDecl->declaresNamespace()) {
+          // This might be allowed in some scenarios Specifically when we
+          // reference a class type within
+          diagnoseElabCycleError(FoundDecl);
+          return false;
         }
 
         // Skip early elaboration of declarations with nested name specifiers.
@@ -1573,6 +1580,22 @@ Sema::buildPartialInPlaceNewExpr(const Syntax *ConstructKW,
                                               *this, ConstructKW, PtrExpr),
                                             Loc);
 
+}
+
+void Sema::diagnoseElabCycleError(Declaration *CycleTerminalDecl) {
+  assert(CycleTerminalDecl && "Invalid terminal cycle");
+  assert(!DeclsBeingElaborated.empty() && "We cannot have an empty stack and a "
+         "declaration cycle.");
+  assert(CycleTerminalDecl->IdDcl);
+  Diags.Report(CycleTerminalDecl->IdDcl->getLoc(),
+               clang::diag::err_decl_use_cycle);
+  for (auto *CycleNote : DeclsBeingElaborated){
+    if (CycleNote == CycleTerminalDecl)
+      continue;
+
+    Diags.Report(CycleNote->IdDcl->getLoc(),
+                 clang::diag::note_cycle_entry);
+  }
 }
 
 void Sema::createInPlaceNew() {
