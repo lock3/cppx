@@ -1332,3 +1332,29 @@ T1 = class:
 
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+
+TEST(ClassParsing, LocalClassTest) {
+  StringRef Code = R"Gold(
+
+foo():void!
+  Callable = class:
+    operator"()"():void!
+      ;
+  T1 = class:
+    T2 = class:
+      foo<static> <inline> : Callable
+
+)Gold";
+
+  auto ToMatch =functionDecl(hasName("foo"),
+    hasDescendant( cxxRecordDecl(
+      hasName("T1"),
+      has(cxxRecordDecl(hasName("T2"),
+          has(varDecl(hasName("foo")))
+      ))
+    ))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
