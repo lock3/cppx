@@ -1128,3 +1128,14 @@ bar():void!
 )";
   GoldFailureTest(Code);
 }
+
+TEST(GoldTemplateAmbiguity, CyclicDecltypeFunction) {
+  StringRef Code = R"(
+foo():int!
+  return 0
+
+foo(x:decltype(foo())):void!
+  ;
+)";
+  GoldFailureTest(Code);
+}

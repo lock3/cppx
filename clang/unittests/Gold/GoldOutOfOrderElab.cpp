@@ -29,9 +29,6 @@ a = b
   GoldFailureTest(Code);
 }
 
-// FIXME: Reduce depth of default elaboration.
-// Test local classes
-// constexpr class members defined outside of a class.
 TEST(GoldOutOfOrder, CyclicalDependantVariableDeclWithNoDependentType) {
   StringRef Code = R"(
 b = a
@@ -243,7 +240,7 @@ T2 = class:
   Y : type = int
   v:T1.X
 )";
-auto ToMatch = translationUnitDecl(
+  auto ToMatch = translationUnitDecl(
     has(cxxRecordDecl( hasName("T1"),
       hasDescendant(fieldDecl(
         hasName("v"), hasType(asString("T2::Y"))
@@ -273,7 +270,7 @@ N = namespace:
   foo(p1:int32):void
   foo(p1:int64):void
 )";
-auto ToMatch = translationUnitDecl(
+  auto ToMatch = translationUnitDecl(
     has(varDecl(
         hasName("V"), hasType(asString("int"))
       ))
@@ -299,7 +296,7 @@ N = class:
   foo(p1:int32):void
   foo(p1:int64):void
 )";
-auto ToMatch = translationUnitDecl(
+  auto ToMatch = translationUnitDecl(
     has(cxxRecordDecl( hasName("N"),
       hasDescendant(cxxMethodDecl(
         hasName("foo"), hasType(asString("int (void)"))
@@ -313,4 +310,21 @@ auto ToMatch = translationUnitDecl(
     ))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+TEST(GoldOutOfOrder, Constexpr_cyclicDependency) {
+  StringRef Code = R"(
+a<constexpr>:float64 = b;
+b<constexpr>:float64 = a;
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldOutOfOrder, Constexpr_ConstExprObjUsedInConstexpr) {
+  StringRef Code = R"(
+a<constexpr>:float64 = b;
+b<constexpr>:float64 = a;
+)";
+  GoldFailureTest(Code);
 }

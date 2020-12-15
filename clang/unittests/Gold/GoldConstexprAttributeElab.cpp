@@ -130,3 +130,25 @@ foo[T:type]()<constexpr>:int!
   DeclarationMatcher ToMatch = functionDecl(hasName("foo"), isConstexpr());
   ASSERT_TRUE(matches(Code, ToMatch));
 }
+
+// TEST(GoldConstexprAttr, MultipleReturnStmts) {
+//   std::string Code = R"Gold(
+// foo(x:int)<constexpr>:int!
+//   if (x):
+//     return 5
+//   else:
+//     return 3
+// )Gold";
+//   GoldFailureTest(Code);
+// }
+
+TEST(GoldConstexprAttr, VirtualBaseClass) {
+  std::string Code = R"Gold(
+T1 = class:
+  ;
+T2 = class(T1<virtual>):
+  construct()<constexpr>!
+    ;
+)Gold";
+  GoldFailureTest(Code);
+}
