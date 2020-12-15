@@ -320,11 +320,3 @@ b<constexpr>:float64 = a;
 )";
   GoldFailureTest(Code);
 }
-
-TEST(GoldOutOfOrder, Constexpr_ConstExprObjUsedInConstexpr) {
-  StringRef Code = R"(
-a<constexpr>:float64 = b;
-b<constexpr>:float64 = a;
-)";
-  GoldFailureTest(Code);
-}

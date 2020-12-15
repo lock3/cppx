@@ -3876,9 +3876,19 @@ ExprElaborator::elaborateNewExpr_ArrayCall(const CallSyntax *S,
 
     if (IndexExpr->EvaluateAsConstantExpr(IdxResult, EvalCtx)) {
       clang::SourceRange Range(IndexExpr->getExprLoc(), IndexExpr->getExprLoc());
-      ArrayType = SemaRef.getCxxSema().BuildArrayType(
-        ArrayType, clang::ArrayType::Normal, IndexExpr, 0,
-        Range, clang::DeclarationName());
+      if (IdxResult.Val.isInt()) {
+        ArrayType = SemaRef.getCxxSema().BuildArrayType(
+          ArrayType, clang::ArrayType::Normal,
+          clang::IntegerLiteral::Create(CxxAST, IdxResult.Val.getInt(),
+                                        IndexExpr->getType(),
+                                        IndexExpr->getExprLoc()),
+          /*quals*/0,
+          Range, clang::DeclarationName());
+      } else {
+        ArrayType = SemaRef.getCxxSema().BuildArrayType(
+          ArrayType, clang::ArrayType::Normal, IndexExpr, /*quals*/0,
+          Range, clang::DeclarationName());
+      }
     } else {
       if (!IsInnerMostArray || It != IndexExprs.rbegin()) {
         SemaRef.Diags.Report(IndexExpr->getExprLoc(),
@@ -4263,7 +4273,6 @@ clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
 
     ++I;
   }
-
   clang::QualType ArrayType = TInfo->getType();
   bool Invalid = false;
   for (auto It = IndexExprs.rbegin(); It != IndexExprs.rend(); ++It) {
@@ -4277,16 +4286,28 @@ clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
       Invalid = true;
       continue;
     }
-
     clang::SourceRange Range(IndexExpr->getExprLoc(), IndexExpr->getExprLoc());
-    ArrayType = SemaRef.getCxxSema().BuildArrayType(
-      ArrayType, clang::ArrayType::Normal, IndexExpr, 0,
-      Range, clang::DeclarationName());
+    if (IdxResult.Val.isInt()) {
+      ArrayType = SemaRef.getCxxSema().BuildArrayType(
+        ArrayType, clang::ArrayType::Normal,
+        clang::IntegerLiteral::Create(CxxAST, IdxResult.Val.getInt(),
+                                      IndexExpr->getType(),
+                                      IndexExpr->getExprLoc()),
+        /*quals*/0,
+        Range, clang::DeclarationName());
+    } else {
+      ArrayType = SemaRef.getCxxSema().BuildArrayType(
+        ArrayType, clang::ArrayType::Normal, IndexExpr, /*quals*/0,
+        Range, clang::DeclarationName());
+    }
+
+    // ArrayType = SemaRef.getCxxSema().BuildArrayType(
+    //   ArrayType, clang::ArrayType::Normal, IndexExpr, /*quals*/0,
+    //   Range, clang::DeclarationName());
   }
 
   if (Invalid)
     return nullptr;
-
   return SemaRef.buildTypeExpr(ArrayType, S->getLoc());
 }
 

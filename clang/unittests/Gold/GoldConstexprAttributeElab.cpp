@@ -108,7 +108,7 @@ TEST(GoldConstexprAttr, FreeVariable) {
   std::string Code = R"Gold(
 x<constexpr>:int = 5
 )Gold";
-  DeclarationMatcher ToMatch = varDecl(hasName("x"), hasType(asString("int")),
+  DeclarationMatcher ToMatch = varDecl(hasName("x"), hasType(asString("const int")),
                                        isConstexpr());
   ASSERT_TRUE(matches(Code, ToMatch));
 }
@@ -147,8 +147,46 @@ TEST(GoldConstexprAttr, VirtualBaseClass) {
 T1 = class:
   ;
 T2 = class(T1<virtual>):
-  construct()<constexpr>!
+  constructor()<constexpr>!
     ;
 )Gold";
   GoldFailureTest(Code);
+}
+
+TEST(GoldOutOfOrder, Constexpr_ConstructorForcedEvaluation_ThroughTemplate) {
+  StringRef Code = R"(
+T1 = class:
+  x :int
+  y : float64
+  constructor()<constexpr>!
+    x = 5
+    y = 57.0
+
+X<constexpr>:int = T1().x
+
+T2[V:int] = class:
+  ;
+y : T2[X]
+)";
+  auto ToMatch = varDecl(hasName("y"), hasType(asString("T2<X>")));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldOutOfOrder, Constexpr_ConstructorForcedEvaluation_ThroughArray) {
+  StringRef Code = R"(
+T1 = class:
+  x :int
+  y : float64
+  constructor()<constexpr>!
+    x = 5
+    y = 57.0
+
+X<constexpr>:int = T1().x
+
+T2 = class:
+  ;
+y : [X]T2
+)";
+  auto ToMatch = varDecl(hasName("y"), hasType(asString("struct T2 [5]")));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

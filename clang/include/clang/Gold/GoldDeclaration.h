@@ -274,6 +274,10 @@ public:
   /// Checks if a declaration is static.
   bool declIsStatic() const;
 
+  /// Checks available attributes to see if the constexpr attribute is within the
+  /// list of attributes.
+  bool declIsConstexpr() const;
+
   /// Checks if a decl is a declaration and it doesn't have a body.
   bool declaresFunctionDecl() const;
 

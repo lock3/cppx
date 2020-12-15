@@ -3073,6 +3073,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
+  bool IsConstExprDecl = D->declIsConstexpr();
   clang::TypeSourceInfo *TInfo = nullptr;
   if (isa<clang::CppxTypeLiteral>(TypeExpr)) {
     TInfo = SemaRef.getTypeSourceInfoFromExpr(TypeExpr, TypeLocation);
@@ -3087,12 +3088,20 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
     SemaRef.Diags.Report(D->Op->getLoc(),
                         clang::diag::err_unsupported_unknown_any_decl)
                         << D->getId();
+    return nullptr;
   }
   if (!TInfo) {
     SemaRef.Diags.Report(D->Op->getLoc(),
                         clang::diag::err_unsupported_unknown_any_decl)
                         << D->getId();
     return nullptr;
+  }
+  if (IsConstExprDecl) {
+    clang::CppxTypeLiteral* LitTy
+          = SemaRef.buildTypeExpr(
+                                Context.CxxAST.getConstType(TInfo->getType()),
+                                TypeExpr->getExprLoc());
+    TInfo = LitTy->getValue();
   }
 
 
@@ -3106,9 +3115,9 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
       return nullptr;
     if (D->Cxx)
       // This covers all using declarations
-      if (isa<clang::TypedefDecl>(D->Cxx)
+      if (!IsConstExprDecl && (isa<clang::TypedefDecl>(D->Cxx)
           || isa<clang::TypeAliasDecl>(D->Cxx)
-          || isa<clang::NamespaceAliasDecl>(D->Cxx))
+          || isa<clang::NamespaceAliasDecl>(D->Cxx)))
         return D->Cxx;
   } else if (VarType->isTypeOfTypes()) {
     if (D->Template)
@@ -3637,7 +3646,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   if (D->declaresCatchVariable())
     NewVD->setExceptionVariable(true);
 
-  if (ComputedInitializer && !isa<clang::ParmVarDecl>(NewVD))
+  if ((ComputedInitializer || IsConstExprDecl) && !isa<clang::ParmVarDecl>(NewVD))
     // We have to redo some of the evaluation because it could be within a
     // const expr expression.
     elaborateVariableInit(D, true);
@@ -3656,9 +3665,9 @@ clang::Expr *Elaborator::elaborateDeducedVariableDecl(clang::Scope *Sc,
                                                       Declaration *D) {
   ExprElaborator ExprElab(Context, SemaRef);
   auto E = ExprElab.elaborateExpr(D->Init);
-  if (!E) {
+  if (!E)
     return E;
-  }
+
   if (E->getType()->isNamespaceType()) {
     buildNsAlias(Context.CxxAST, SemaRef, D, E);
     return E;
