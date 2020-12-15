@@ -3359,6 +3359,10 @@ static inline bool isLocalLambdaScope(const Scope *S) {
   return false;
 }
 
+static inline bool isValidCaptureCall(const FusedOpKind FOK) {
+  return FOK == FOK_Equals || FOK_Caret || FOK_Ampersand;
+}
+
 static void buildLambdaCaptureInternal(SyntaxContext &Context, Sema &SemaRef,
                                        clang::LambdaIntroducer &Intro,
                                        const Syntax *Capture,
@@ -3371,7 +3375,7 @@ static void buildLambdaCaptureInternal(SyntaxContext &Context, Sema &SemaRef,
 
   if (const CallSyntax *Call = dyn_cast<CallSyntax>(Capture)) {
     FusedOpKind FOK = getFusedOpKind(SemaRef, Call);
-    if (FOK != FOK_Equals && FOK != FOK_Caret) {
+    if (!isValidCaptureCall(FOK)) {
       unsigned DiagID =
         SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
                                       "expected ',', '}', or dedent in "
@@ -3441,7 +3445,6 @@ static void buildLambdaCaptureInternal(SyntaxContext &Context, Sema &SemaRef,
   clang::VarDecl *VD = cast<clang::VarDecl>(DRE->getDecl());
   II = VD->getIdentifier();
 
-  // FIXME: consider this or starthis
   clang::LambdaCaptureKind Kind = clang::LCK_ByCopy;
   clang::LambdaCaptureInitKind InitKind = clang::LambdaCaptureInitKind::NoInit;
   clang::ParsedType InitCaptureType;
@@ -3464,6 +3467,9 @@ static inline void buildLambdaCaptures(SyntaxContext &Context, Sema &SemaRef,
                                        const MacroSyntax *S,
                                        clang::LambdaIntroducer &Intro) {
   const Syntax *CaptureScope = S->getNext();
+  if (!CaptureScope)
+    return;
+
   clang::SourceLocation BeginLoc = CaptureScope->getLoc();
   clang::SourceLocation EndLoc = S->getBlock()->getLoc();
   clang::SourceRange Range(BeginLoc, EndLoc);
@@ -3525,19 +3531,36 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
       continue;
 
     clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(D);
-    if (PVD->getType()->isUndeducedAutoType()) {
+    if (PVD->getType()->isUndeducedAutoType() || PVD->isParameterPack()) {
       GenericLambda = true;
       CxxSema.RecordParsingTemplateParameterDepth(SemaRef.LambdaTemplateDepth);
+
+      const clang::AutoType *Auto = nullptr;
+      if (PVD->getType()->isUndeducedAutoType())
+        Auto = PVD->getType()->getAs<clang::AutoType>();
+      else if (PVD->isParameterPack()) {
+        auto *Pack = PVD->getType()->getAs<clang::PackExpansionType>();
+        Auto = Pack->getPattern()->getAs<clang::AutoType>();
+      }
+
       auto Invented = CxxSema.InventTemplateParameter(
         SemaRef.getDeclaration(PVD), PVD->getType(), nullptr,
-        PVD->getType()->getAs<clang::AutoType>(), *CxxSema.getCurLambda());
+        Auto, *CxxSema.getCurLambda());
+
       clang::TypeSourceInfo *TSI =
         BuildAnyTypeLoc(Context.CxxAST, Invented.first, PVD->getBeginLoc());
       PVD->setType(TSI->getType());
       PVD->setTypeSourceInfo(TSI);
-      const clang::TemplateTypeParmType *TempTy =
-        PVD->getType()->getAs<clang::TemplateTypeParmType>();
-      PVD->setScopeInfo(TempTy->getDepth(), TempTy->getIndex());
+
+      const clang::TemplateTypeParmType *Ty = nullptr;
+      if (isa<clang::TemplateTypeParmType>(*PVD->getType())) {
+        Ty = PVD->getType()->getAs<clang::TemplateTypeParmType>();
+      } else if (isa<clang::PackExpansionType>(*PVD->getType())) {
+        const auto *Pack = PVD->getType()->getAs<clang::PackExpansionType>();
+        Ty = Pack->getPattern()->getAs<clang::TemplateTypeParmType>();
+      }
+
+      PVD->setScopeInfo(Ty->getDepth(), Ty->getIndex());
     }
 
     Params.push_back(PVD);
@@ -3563,7 +3586,9 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
 
   // The lambda default will always be by-value, but local lambdas have no
   // default as per [expr.prim.lambda]
-  Intro.Default = LocalLambda ? clang::LCD_None : clang::LCD_ByCopy;
+  assert(isa<LambdaMacroSyntax>(S) && "non-lambda");
+  bool Default = cast<LambdaMacroSyntax>(S)->HasDefault;
+  Intro.Default = Default ? clang::LCD_ByCopy : clang::LCD_None;
   Sema::ScopeRAII LambdaCaptureScope(SemaRef, SK_Block, S->getNext());
   SemaRef.getCurrentScope()->LambdaCaptureScope = true;
   buildLambdaCaptures(Context, SemaRef, S, Intro);
@@ -4013,13 +4038,15 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
       continue;
     }
 
-
     Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
     assert(D && "Didn't find associated declaration");
     assert(isa<clang::ParmVarDecl>(VD) && "Parameter is not a ParmVarDecl");
+    clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(VD);
 
+    Context.CxxAST.setParameterIndex(PVD, I);
+    PVD->setScopeInfo(0, I);
     Types.push_back(VD->getType());
-    Params.push_back(cast<clang::ParmVarDecl>(VD));
+    Params.push_back(PVD);
   }
   FuncDcl->setScope(SemaRef.saveScope(FuncDcl->getParams()));
 

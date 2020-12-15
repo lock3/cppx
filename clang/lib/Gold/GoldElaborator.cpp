@@ -2040,6 +2040,7 @@ void deduceDependentAutoReturn(SyntaxContext &Context,
 
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::Sema &CxxSema = SemaRef.getCxxSema();
+  // CxxSema.PushFunctionScope();
   clang::DeclContext *Owner = D->getOwningDeclContext();
   if (auto *Linkage = dyn_cast<clang::LinkageSpecDecl>(Owner)) {
     if (Linkage->getParent()->isRecord()) {
@@ -2070,7 +2071,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   TemplateParamsDeclarator *TPD = D->Template;
   bool Specialization = D->SpecializationArgs;
 
-  // Elaborate the return type.
+  // Elaborate the function type.
   ExprElaborator TypeElab(Context, SemaRef);
   clang::Expr *TypeExpr = TypeElab.elaborateTypeExpr(D->FunctionDcl);
   if (!TypeExpr) {
@@ -3966,6 +3967,21 @@ clang::Decl *Elaborator::elaborateParameterDecl(Declaration *D) {
                                                               clang::SC_None);
   SemaRef.setDeclForDeclaration(D, P);
   D->CurrentPhase = Phase::Typing;
+
+  if (P->isParameterPack()) {
+    if (const CallSyntax *OpCall = dyn_cast<CallSyntax>(D->Op)) {
+      D->EllipsisLoc = OpCall->getArgument(1)->getLoc();
+    } else  {
+      // This is an error but is technically completely recoverable,
+      // if it is even possible to execute.
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "unknown pack expansion syntax");
+      SemaRef.Diags.Report(D->Op->getLoc(), DiagID);
+      D->EllipsisLoc = D->Op->getLoc();
+    }
+  }
+
   elaborateAttributes(D);
   return P;
 }
@@ -5939,6 +5955,8 @@ FusedOpKind getFusedOpKind(Sema &SemaRef, llvm::StringRef Spelling) {
     return FOK_Caret;
   if (Tokenization == SemaRef.OperatorDotCaretII)
     return FOK_DotCaret;
+  if (Tokenization == SemaRef.OperatorAmpersandII)
+    return FOK_Ampersand;
   return FOK_Unknown;
 }
 

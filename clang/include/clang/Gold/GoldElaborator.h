@@ -291,6 +291,7 @@ enum FusedOpKind {
   FOK_Throw,
   FOK_Caret,
   FOK_DotCaret,
+  FOK_Ampersand,
 };
 
 /// Convert a fused operator string like `operator'='` into an enum

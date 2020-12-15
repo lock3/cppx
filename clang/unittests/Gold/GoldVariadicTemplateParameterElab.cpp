@@ -21,7 +21,7 @@ using namespace gold;
 
 
 TEST(GoldVariadicTemplateParam, Class_TypeParameterPack) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 x[T:type...] = class:
   ;
 )";
@@ -34,7 +34,7 @@ x[T:type...] = class:
 }
 
 TEST(GoldVariadicTemplateParam, Class_NonTypeTemplateParamPack) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 x[T:int...] = class:
   ;
 )";
@@ -46,7 +46,7 @@ x[T:int...] = class:
 }
 
 TEST(GoldVariadicTemplateParam, Class_TemplateTemplateParmPack) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 x[T[Z : type] : type...] = class:
   ;
 )";
@@ -58,7 +58,7 @@ x[T[Z : type] : type...] = class:
 }
 
 TEST(GoldVariadicTemplateParam, Function) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 x[T:type...](Parm:rref T...) : void!
   ;
 )";
@@ -75,7 +75,7 @@ x[T:type...](Parm:rref T...) : void!
 }
 
 TEST(GoldVariadicTemplateParam, ExpansionExpression) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 foo[T:type, U:type](A:rref T, B:rref U) : void!
   ;
 
@@ -95,7 +95,7 @@ x[T:type...](Parm:rref T...) : void!
 }
 
 TEST(GoldVariadicTemplateParam, ExpressionExpansion) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 bar[T:type](A:rref T) : void!
   ;
 
@@ -116,7 +116,7 @@ x[T:type...](Parm:rref T...) : void!
 }
 
 TEST(GoldVariadicTemplateParam, InvalidUnexpandibleType_InExpr) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 bar[T:type](A:rref T) : void!
   ;
 
@@ -127,7 +127,7 @@ x[T:type](Parm:rref T) : void!
 }
 
 TEST(GoldVariadicTemplateParam, InvalidUnexpandibleType_OnParameter) {
-    StringRef Code = R"(
+  StringRef Code = R"(
 bar[T:type](A:rref T) : void!
   ;
 
@@ -135,4 +135,22 @@ x[T:type](Parm:rref T) : void!
   bar(Parm...)
 )";
   GoldFailureTest(Code);
+}
+
+TEST(GoldVariadicTemplateParam, RecursiveExpansion) {
+  StringRef Code = R"(
+adder[T : type](v : T) : T!
+  return v
+
+adder[T : type, Args:type...](first : T, a : Args...) : T!
+  return first + adder(a...)
+
+main() : int! {
+  test = adder(1, 2, 3)
+}
+)";
+
+  DeclarationMatcher Test =
+    varDecl(hasName("test"), hasType(asString("int")));
+  ASSERT_TRUE(matches(Code.str(), Test));
 }

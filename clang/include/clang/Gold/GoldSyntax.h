@@ -90,7 +90,7 @@ struct Syntax
     updateAttributes(Attrs);
   }
 
-private:
+protected:
   SyntaxKind Kind;
   AttrVec Attributes;
 };
@@ -152,8 +152,7 @@ public:
   }
 
   static bool classof(const Syntax *S) {
-    return S->getKind() == SK_Atom ||
-      S->getKind() == SK_Literal;
+    return S->getKind() == SK_Atom || S->getKind() == SK_Literal;
   }
 
   clang::SourceLocation getTokenLoc() const {
@@ -435,7 +434,7 @@ struct MacroSyntax : Syntax
   }
 
   static bool classof(const Syntax *S) {
-    return S->getKind() == SK_Macro;
+    return S->getKind() == SK_Macro || S->getKind() == SK_LambdaMacro;
   }
 
   clang::SourceLocation getCallLoc() const {
@@ -451,6 +450,22 @@ struct MacroSyntax : Syntax
   }
 
   std::array<Syntax *, 3> Elems;
+};
+
+
+// FIXME: this can be deleted once we infer lambda captures
+struct LambdaMacroSyntax : MacroSyntax {
+  LambdaMacroSyntax(Syntax *Call, Syntax *Block, Syntax *Next, bool Default)
+    : MacroSyntax(Call, Block, Next), HasDefault(Default)
+  {
+    Kind = SK_LambdaMacro;
+  }
+
+  bool HasDefault = false;
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == SK_LambdaMacro;
+  }
 };
 
 struct FileSyntax : Syntax, VectorNode<Syntax>
