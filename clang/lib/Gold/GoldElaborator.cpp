@@ -695,14 +695,29 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
       Elab.delayElaborateDeclType(ClsDecl, SS);
     }
 
-    SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
-      SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
-      SourceLocation(), ParsedAttributesView());
+
     D->CurrentPhase = Phase::Initialization;
     if (!WithinClass) {
       ElaboratingClass &LateElabClass = SemaRef.getCurrentElaboratingClass();
-      Elab.finishDelayedElaboration(LateElabClass);
+      // Elab.finishDelayedElaboration(LateElabClass);
+      Elab.lateElaborateAttributes(LateElabClass);
+      Elab.lateElaborateMethodDecls(LateElabClass);
+      Elab.lateElaborateDefaultParams(LateElabClass);
+      // We call this because no new declarations can be added after this point.
+      // This is only called for the top level class.
+      SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
+
+      SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
+        SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
+        SourceLocation(), ParsedAttributesView());
+
+      Elab.lateElaborateMemberInitializers(LateElabClass);
+      Elab.lateElaborateMethodDefs(LateElabClass);
       SemaRef.getCxxSema().ActOnFinishCXXNonNestedClass(ClsDecl);
+    } else {
+      SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
+        SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
+        SourceLocation(), ParsedAttributesView());
     }
   }
 
@@ -1867,6 +1882,7 @@ void setSpecialFunctionName(SyntaxContext &Ctx, clang::CXXRecordDecl *RD,
                                Ctx.CxxAST.getCanonicalType(ConversionResultTy));
   }
 }
+
 void lookupFunctionRedecls(Sema &SemaRef, clang::Scope *FoundScope,
                            clang::LookupResult &Previous) {
   while ((FoundScope->getFlags() & clang::Scope::DeclScope) == 0 ||
@@ -1876,6 +1892,7 @@ void lookupFunctionRedecls(Sema &SemaRef, clang::Scope *FoundScope,
   assert(FoundScope && "Scope not found");
   SemaRef.getCxxSema().LookupName(Previous, FoundScope, false);
 }
+
 bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
                  clang::DeclarationName const &Name, clang::FunctionDecl **FD,
                  clang::TypeSourceInfo *Ty, clang::CXXRecordDecl *RD) {
@@ -1890,7 +1907,7 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
   bool Constructor = Fn->getId()->isStr("constructor");
   bool Destructor = Fn->getId()->isStr("destructor");
   if (Constructor || Destructor) {
-    if (FPT->getReturnType() == Context.CxxAST.getAutoDeductType()) {
+    if (FPT->getReturnType()->isUndeducedType()) {
       // double verifying function type.
       if (!Fn->TypeDcl) {
         // The we set the default type to void instead because we are a
@@ -1899,12 +1916,23 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
         llvm::SmallVector<clang::QualType, 10> ParamTypes(ParamTys.begin(),
                                                           ParamTys.end());
         clang::QualType FnTy = SemaRef.getCxxSema().BuildFunctionType(
-          Context.CxxAST.VoidTy,
-          ParamTypes, FnLoc,
-          clang::DeclarationName(),
+          Context.CxxAST.VoidTy, ParamTypes, FnLoc, clang::DeclarationName(),
           FPT->getExtProtoInfo());
         if (FnTy->isFunctionProtoType()) {
           FPT = FnTy->getAs<clang::FunctionProtoType>();
+
+          // We have to do this to switch to the correct return type for a
+          // constructor/destructor
+          auto FnTyLoc = Ty->getTypeLoc().getAs<clang::FunctionTypeLoc>();
+          auto P = FnTyLoc.getParams();
+          clang::SmallVector<clang::ParmVarDecl *, 16> Parms(P.begin(), P.end());
+          Ty = BuildFunctionTypeLoc(Context.CxxAST, FnTy,
+                                    FnTyLoc.getLocalRangeBegin(),
+                                    FnTyLoc.getLParenLoc(),
+                                    FnTyLoc.getRParenLoc(),
+                                    FnTyLoc.getExceptionSpecRange(),
+                                    FnTyLoc.getLocalRangeEnd(),
+                                    Parms);
         } else {
           SemaRef.Diags.Report(FnLoc,
                     clang::diag::err_invalid_return_type_for_ctor_or_dtor) << 0;
@@ -2051,9 +2079,9 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     }
   }
   clang::DeclContext *ResolvedCtx = Owner;
-  if (D->hasNestedNameSpecifier()) {
+  if (D->hasNestedNameSpecifier())
     ResolvedCtx = SemaRef.getCxxSema().computeDeclContext(D->ScopeSpec, true);
-  }
+
   FunctionDeclarator *FnDclPtr = D->FunctionDcl;
 
   // Get a reference to the containing class if there is one.
@@ -2087,7 +2115,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Get name info for the AST.
   clang::DeclarationName Name =
     getFunctionName(Context, SemaRef, D, TInfo, InClass, RD);
-  // FIXME: Create make sure I can make this work some how.
+
   if (D->declaresUserDefinedLiteral()) {
     clang::UnqualifiedId UnqualId;
     UnqualId.setLiteralOperatorId(D->UDLSuffixId,
@@ -2100,14 +2128,15 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   if (Name.isEmpty())
     return nullptr;
 
+  // Man I hope this doesn't break anything.
+  if (InClass)
+    setSpecialFunctionName(Context, RD, D, Name, TInfo->getType());
+
   // Set the declaration info here to help determine if this should have
   // a C++ special name.
   clang::DeclarationNameInfo DNI;
   DNI.setName(Name);
   DNI.setLoc(D->IdDcl->getLoc());
-
-  if (InClass)
-    setSpecialFunctionName(Context, RD, D, Name, TInfo->getType());
 
   clang::LookupResult Previous(CxxSema, DNI,
                                clang::Sema::LookupOrdinaryName,
@@ -2187,6 +2216,27 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     elaborateAttributes(D);
   } // end anonymous scope
 
+  // Check if we are a destructor and if that is infact the case then we need to
+  // check if we don't have an exception specifier, if we don't then create a
+  // noexcept exception specifier.
+    // This means we are not inside of a class
+  if (isa<clang::CXXDestructorDecl>(FD)) {
+    auto FPT = FD->getType()->castAs<clang::FunctionProtoType>();
+    if(FPT->getExceptionSpecType() == clang::EST_None) {
+      clang::FunctionProtoType::ExceptionSpecInfo ESI;
+      ESI.Type = clang::EST_BasicNoexcept;
+      applyESIToFunctionType(Context, SemaRef,FD, ESI);
+    }
+  }
+
+  // if ( != EST_Unevaluated)
+  //   return;
+  // // Evaluate the exception specification.
+  // auto IES = computeImplicitExceptionSpec(*this, Loc, FD);
+  // auto ESI = IES.getExceptionSpec();
+  // // Update the type of the special member to use it.
+  // UpdateExceptionSpec(FD, ESI);
+
   // Add the declaration and update bindings.
   if ((!Template || Specialization) && !D->declaresConstructor())
     Owner->addDecl(FD);
@@ -2196,8 +2246,8 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     clang::CXXConstructorDecl* CtorDecl =
       cast<clang::CXXConstructorDecl>(D->Cxx);
     CxxSema.PushOnScopeChains(CtorDecl, CxxScope);
-    CxxSema.CheckConstructor(CtorDecl);
   }
+
   CxxSema.FilterLookupForScope(Previous, ResolvedCtx,
                                CxxScope, !InClass, !InClass);
 

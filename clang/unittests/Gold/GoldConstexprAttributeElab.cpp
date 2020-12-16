@@ -131,17 +131,6 @@ foo[T:type]()<constexpr>:int!
   ASSERT_TRUE(matches(Code, ToMatch));
 }
 
-// TEST(GoldConstexprAttr, MultipleReturnStmts) {
-//   std::string Code = R"Gold(
-// foo(x:int)<constexpr>:int!
-//   if (x):
-//     return 5
-//   else:
-//     return 3
-// )Gold";
-//   GoldFailureTest(Code);
-// }
-
 TEST(GoldConstexprAttr, VirtualBaseClass) {
   std::string Code = R"Gold(
 T1 = class:
@@ -190,3 +179,15 @@ y : [X]T2
   auto ToMatch = varDecl(hasName("y"), hasType(asString("struct T2 [5]")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+// TEST(GoldConstexprAttr, MultipleReturnStmts) {
+//   std::string Code = R"Gold(
+// foo(x:int)<constexpr>:int!
+//   if (x):
+//     return 5
+//   else:
+//     return 3
+// x<constexpr>:int = foo(0)
+// )Gold";
+//   GoldFailureTest(Code);
+// }

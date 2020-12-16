@@ -1358,3 +1358,27 @@ foo():void!
 
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+TEST(ClassParsing, ConstructorDefinedOutsideOfClass) {
+  StringRef Code = R"Gold(
+
+T1 = class:
+  constructor()
+
+T1.constructor()!
+  ;
+
+foo():void!
+  x = T1()
+)Gold";
+
+  auto ToMatch = translationUnitDecl(
+    has(cxxRecordDecl(
+      hasName("T1"),
+      hasDescendant(cxxConstructorDecl(isDefaultConstructor(), unless(isDefinition())))
+    )),
+    has(cxxConstructorDecl(isDefaultConstructor(), isDefinition()))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

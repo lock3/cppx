@@ -320,3 +320,55 @@ b<constexpr>:float64 = a;
 )";
   GoldFailureTest(Code);
 }
+
+TEST(GoldOutOfOrder, ConstexprAuto_cyclicDependency) {
+  StringRef Code = R"(
+a<constexpr> = b;
+b<constexpr> = a;
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldOutOfOrder, Constexpr_DeclDefBeforeUse) {
+  StringRef Code = R"(
+T1 = class:
+  x :int
+  y : float64
+  constructor():void
+
+
+T1.constructor():void!
+  x = 5
+  y = 57.0
+
+X<constexpr>:int = T1().x
+
+T2 = class:
+  ;
+y : [X]T2
+)";
+  auto ToMatch = varDecl(hasName("y"), hasType(asString("struct T2 [5]")));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldOutOfOrder, Constexpr_DeclBefore_DefAfter) {
+  StringRef Code = R"(
+T1 = class:
+  x :int
+  y : float64
+  constructor()<constexpr>:void
+
+
+X<constexpr>:int = T1().x
+
+T1.constructor():void!
+  x = 5
+  y = 57.0
+
+T2 = class:
+  ;
+y : [X]T2
+)";
+  auto ToMatch = varDecl(hasName("y"), hasType(asString("struct T2 [5]")));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
