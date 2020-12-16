@@ -2216,10 +2216,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     elaborateAttributes(D);
   } // end anonymous scope
 
-  // Check if we are a destructor and if that is infact the case then we need to
-  // check if we don't have an exception specifier, if we don't then create a
-  // noexcept exception specifier.
-    // This means we are not inside of a class
+  // Handling special case for destructors without an exception spec
   if (isa<clang::CXXDestructorDecl>(FD)) {
     auto FPT = FD->getType()->castAs<clang::FunctionProtoType>();
     if(FPT->getExceptionSpecType() == clang::EST_None) {
@@ -2228,14 +2225,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
       applyESIToFunctionType(Context, SemaRef,FD, ESI);
     }
   }
-
-  // if ( != EST_Unevaluated)
-  //   return;
-  // // Evaluate the exception specification.
-  // auto IES = computeImplicitExceptionSpec(*this, Loc, FD);
-  // auto ESI = IES.getExceptionSpec();
-  // // Update the type of the special member to use it.
-  // UpdateExceptionSpec(FD, ESI);
 
   // Add the declaration and update bindings.
   if ((!Template || Specialization) && !D->declaresConstructor())
