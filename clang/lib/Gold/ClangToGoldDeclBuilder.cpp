@@ -183,8 +183,11 @@ Declaration *ClangToGoldDeclRebuilder::rebuild(clang::CXXRecordDecl *ToConvert) 
   // of the body of the actual declaration.
   for(clang::Decl *ChildDecl : ToConvert->decls()) {
     if (rebuildMember(ChildDecl)){
-      dumpScopeStructure(RootScope, RootDecl);
-      llvm_unreachable("Create an error message for this that makes sense.");
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "invalid class member");
+      SemaRef.Diags.Report(ChildDecl->getBeginLoc(), DiagID);
+      return nullptr;
     }
   }
   // llvm::outs() << "Complete declaration structure.\n";
@@ -336,76 +339,54 @@ bool
 ClangToGoldDeclRebuilder::rebuildMember(clang::Decl *Member) {
   using namespace clang;
   switch(Member->getKind()) {
-  case clang::Decl::CXXRecord:{
+  case clang::Decl::CXXRecord:
     return rebuildMember(cast<CXXRecordDecl>(Member));
-  }
-  break;
-  case clang::Decl::Field:{
+  case clang::Decl::Field:
     return rebuildMember(cast<FieldDecl>(Member));
-  }
-  break;
-  case clang::Decl::Var:{
+  case clang::Decl::Var:
     return rebuildMember(cast<VarDecl>(Member));
-  }
-  break;
-  case clang::Decl::CXXMethod:{
+  case clang::Decl::CXXMethod:
     return rebuildMember(cast<CXXMethodDecl>(Member));
-  }
-  break;
-  case clang::Decl::CXXConversion:{
+  case clang::Decl::CXXConversion:
     return rebuildMember(cast<CXXConversionDecl>(Member));
-  }
-  break;
-  case clang::Decl::CXXDestructor:{
+  case clang::Decl::CXXDestructor:
     return rebuildMember(cast<CXXDestructorDecl>(Member));
-  }
-  break;
-  case clang::Decl::CXXConstructor:{
+  case clang::Decl::CXXConstructor:
     return rebuildMember(cast<CXXConstructorDecl>(Member));
-  }
-  break;
-  case clang::Decl::VarTemplate:{
+  case clang::Decl::VarTemplate:
     return rebuildMember(cast<VarTemplateDecl>(Member));
-  }
-  break;
-  case clang::Decl::TypeAliasTemplate:{
+  case clang::Decl::TypeAliasTemplate:
     return rebuildMember(cast<TypeAliasTemplateDecl>(Member));
-  }
-  break;
-  case clang::Decl::TypeAlias:{
+  case clang::Decl::TypeAlias:
     return rebuildMember(cast<TypeAliasDecl>(Member));
-  }
-  break;
-  case clang::Decl::ClassTemplate:{
+  case clang::Decl::ClassTemplate:
     return rebuildMember(cast<ClassTemplateDecl>(Member));
-  }
-  break;
   case clang::Decl::ClassTemplateSpecialization:
     return rebuildMember(cast<clang::ClassTemplateSpecializationDecl>(Member));
   case clang::Decl::ClassTemplatePartialSpecialization:
     return rebuildMember(
         cast<clang::ClassTemplatePartialSpecializationDecl>(Member));
-  break;
-  case clang::Decl::FunctionTemplate:{
+  case clang::Decl::FunctionTemplate:
     return rebuildMember(cast<FunctionTemplateDecl>(Member));
-  }
-  case clang::Decl::Enum:{
+  case clang::Decl::Enum:
     return rebuildMember(cast<EnumDecl>(Member));
-  }
-  break;
-  case clang::Decl::EnumConstant:{
+  case clang::Decl::EnumConstant:
     return rebuildMember(cast<EnumConstantDecl>(Member));
-  }
-  break;
+  case clang::Decl::Using:
+    return rebuildMember(cast<UsingDecl>(Member));
 
   // Basically these, are not needed for additional lookup, only the principal
   // template is needed for lookup.
   case clang::Decl::VarTemplateSpecialization:
   case clang::Decl::VarTemplatePartialSpecialization:
     return false;
+
+  // Everything is handled by the top level UsingDecl
+  case clang::Decl::UsingShadow:
+    return false;
+
   default:
-    Member->dump();
-    llvm_unreachable("I thought that this was impossible to occur within a class.");
+    return true;
   }
 }
 
@@ -549,6 +530,12 @@ bool ClangToGoldDeclRebuilder::rebuildMember(clang::EnumDecl* ED) {
 
 bool ClangToGoldDeclRebuilder::rebuildMember(clang::EnumConstantDecl* ECD) {
   StateRAII EnumState(*this, UDK_EnumConstant, ECD, SK_Enum);
+  return false;
+}
+
+bool ClangToGoldDeclRebuilder::rebuildMember(clang::UsingDecl *UD) {
+  for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
+    SemaRef.getCurrentScope()->Shadows.insert(Shadow);
   return false;
 }
 

@@ -79,8 +79,9 @@ private:
   bool rebuildMember(clang::ClassTemplateSpecializationDecl *Tmplt);
   bool rebuildMember(clang::ClassTemplatePartialSpecializationDecl *Tmplt);
   bool rebuildMember(clang::FunctionTemplateDecl* CTD);
-  bool rebuildMember(clang::EnumDecl* ED);
+  bool rebuildMember(clang::EnumDecl *ED);
   bool rebuildMember(clang::EnumConstantDecl* ECD);
+  bool rebuildMember(clang::UsingDecl *UD);
   // We may need clang::ClassScopeFunctionSpecializationDecl eventually.
 
   /// Saves the previous declaration, creates a new declaration, sets the
