@@ -296,6 +296,21 @@ bool Declaration::declIsStatic() const {
       });
   return Iter != IdDcl->UnprocessedAttributes->end();
 }
+bool Declaration::declIsConstexpr() const {
+  if (!IdDcl->UnprocessedAttributes)
+    return false;
+
+  auto Iter = std::find_if(IdDcl->UnprocessedAttributes->begin(),
+      IdDcl->UnprocessedAttributes->end(), [](const Syntax *S) -> bool {
+        if (const AtomSyntax *Atom = dyn_cast<AtomSyntax>(S)) {
+          if (Atom->getSpelling() == "constexpr") {
+            return true;
+          }
+        }
+        return false;
+      });
+  return Iter != IdDcl->UnprocessedAttributes->end();
+}
 
 bool Declaration::declaresFunctionDecl() const {
   return declaresFunction() && !Init;

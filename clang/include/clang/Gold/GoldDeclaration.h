@@ -274,6 +274,10 @@ public:
   /// Checks if a declaration is static.
   bool declIsStatic() const;
 
+  /// Checks available attributes to see if the constexpr attribute is within the
+  /// list of attributes.
+  bool declIsConstexpr() const;
+
   /// Checks if a decl is a declaration and it doesn't have a body.
   bool declaresFunctionDecl() const;
 
@@ -385,6 +389,10 @@ public:
   /// 0 is unprocessed (the default value), 1 is identified, 2 is the declaration
   /// is elaborated and 3 is the definition is complete.
   Phase CurrentPhase = Phase::Unprocessed;
+
+  /// Flag to prevent cyclic elaboration from happening.
+  /// This is really only useful during phase 1 & 2
+  bool IsElaborating = false;
 
   /// This information is to aid with early elaboration. This allows the
   /// elabrotor to restore the state in which something was declared.

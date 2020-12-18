@@ -446,14 +446,14 @@ bool DeclarationBuilder::checkNestedNameSpecifiers(const Syntax *DeclExpr,
   if (!EnableNestedNameSpecifiers) {
     if (!TheDecl->NNSInfo.empty()) {
       if (RequiresDeclOrError)
-        SemaRef.Diags.Report(TheDecl->FunctionDcl->getLoc(),
+        SemaRef.Diags.Report(TheDecl->IdDcl->getLoc(),
                             clang::diag::err_invalid_declarator_sequence)
                             << 3;
       return true;
     }
     if (TheDecl->GlobalNsSpecifier) {
       if (RequiresDeclOrError)
-        SemaRef.Diags.Report(TheDecl->FunctionDcl->getLoc(),
+        SemaRef.Diags.Report(TheDecl->IdDcl->getLoc(),
                             clang::diag::err_invalid_declarator_sequence)
                             << 4;
       return true;

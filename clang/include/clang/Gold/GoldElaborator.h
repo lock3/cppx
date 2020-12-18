@@ -128,6 +128,8 @@ public:
   clang::Decl *elaborateFunctionDecl(Declaration *D);
   void checkCXXMethodDecl(clang::CXXMethodDecl *MD);
   clang::Decl *elaborateVariableDecl(clang::Scope *InitialScope, Declaration *D);
+  clang::Expr *elaborateDeducedVariableDecl(clang::Scope *InitialScope,
+                                            Declaration *D);
   clang::Decl *elaborateTypeAlias(Declaration *D);
   clang::Decl *elaborateNsAlias(Declaration *D);
   clang::Decl *elaborateTemplateAliasOrVariable(Declaration *D);
@@ -138,7 +140,7 @@ public:
   void elaborateDeclInit(const Syntax *S);
   void elaborateDef(Declaration *D);
   void elaborateFunctionDef(Declaration *D);
-  void elaborateVariableInit(Declaration *D);
+  void elaborateVariableInit(Declaration *D, bool IsEarly = false);
   void elaborateTemplateParamInit(Declaration *D);
 
   /// Perform all three passes on a single declaration in one shot.
@@ -153,6 +155,9 @@ public:
   /// Perform the latter two passes on a Declaration that was previously
   /// identified. This is used when lookup finds an unelaborated declaration.
   clang::Decl *elaborateDeclEarly(Declaration *D);
+
+  /// Only elaborates upto phase 2.
+  clang::Decl *elaborateDeclTypeEarly(Declaration *D);
 
   // class type body elaboration.
   clang::Decl *elaborateTypeBody(Declaration *D, clang::CXXRecordDecl *R);

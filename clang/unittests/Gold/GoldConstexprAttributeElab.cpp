@@ -108,7 +108,7 @@ TEST(GoldConstexprAttr, FreeVariable) {
   std::string Code = R"Gold(
 x<constexpr>:int = 5
 )Gold";
-  DeclarationMatcher ToMatch = varDecl(hasName("x"), hasType(asString("int")),
+  DeclarationMatcher ToMatch = varDecl(hasName("x"), hasType(asString("const int")),
                                        isConstexpr());
   ASSERT_TRUE(matches(Code, ToMatch));
 }
@@ -129,4 +129,15 @@ foo[T:type]()<constexpr>:int!
 )Gold";
   DeclarationMatcher ToMatch = functionDecl(hasName("foo"), isConstexpr());
   ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+TEST(GoldConstexprAttr, VirtualBaseClass) {
+  std::string Code = R"Gold(
+T1 = class:
+  ;
+T2 = class(T1<virtual>):
+  constructor()<constexpr>!
+    ;
+)Gold";
+  GoldFailureTest(Code);
 }

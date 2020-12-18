@@ -56,24 +56,33 @@ ns = namespace {
     y : int = 16
 }
 
-f[T : type]()! {
+f()! {
   ys = ns
   y = ys.t
   yy : y
   return yy.y
 }
 
-main() : int! {
-  return f[int]();
+)";
+  // FIXME: This needs to be written to correctly match what's expected of it.
+  auto ToMatch = functionDecl(
+    hasName("f"),
+    hasDescendant(namespaceAliasDecl(hasName("ys"))),
+    hasDescendant(typeAliasDecl(hasName("y")))
+  );
+  ASSERT_TRUE(matches(Code, ToMatch));
+}
+
+
+TEST(GoldDeduct, VariableDeduction) {
+  std::string Code = R"(
+ns = namespace {
+  x = 10
 }
 )";
-  auto ToMatch = functionDecl(
-    hasDescendant(cxxNewExpr(
-      hasDeclaration(functionDecl(
-        hasName("operator new[]"),
-        hasType(asString("void *(unsigned long, int, int, int) noexcept"))
-      ))
-    ))
+  // FIXME: This needs to be written to correctly match what's expected of it.
+  auto ToMatch = namespaceDecl(
+    has(varDecl(hasName("x")))
   );
   ASSERT_TRUE(matches(Code, ToMatch));
 }
