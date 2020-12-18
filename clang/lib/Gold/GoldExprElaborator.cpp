@@ -127,9 +127,16 @@ clang::Expr *ExprElaborator::elaborateConstexprAttrExpr(const Syntax *S) {
   clang::Expr *Res = doElaborateExpr(S);
   if (!Res)
     return Res;
+
+  // This attempts to make sure that all referenced functions are actually
+  // in scope, and completely elaborated.
+  SemaRef.elaborateConstexpr(Res);
+
   auto ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(Res);
   if (ConstExpr.isInvalid())
     return nullptr;
+
+
   return ConstExpr.get();
 }
 
@@ -145,6 +152,11 @@ clang::Expr *ExprElaborator::elaborateExpectedConstantExpr(const Syntax* S) {
   clang::Expr *Res = elaborateExpr(S);
   if (!Res)
     return Res;
+
+  // This attempts to make sure that all referenced functions are actually
+  // in scope, and completely elaborated.
+  SemaRef.elaborateConstexpr(Res);
+
   auto ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(Res);
   if (ConstExpr.isInvalid())
     return nullptr;
@@ -1041,6 +1053,11 @@ bool ExprElaborator::elaborateTemplateArugments(const ListSyntax *Args,
       ArgInfo.addArgument({Arg, TALoc});
     } else {
       clang::TemplateArgument Arg(ArgExpr, clang::TemplateArgument::Expression);
+
+      // This attempts to make sure that all referenced functions are actually
+      // in scope, and completely elaborated.
+      SemaRef.elaborateConstexpr(ArgExpr);
+
       ArgInfo.addArgument({Arg, ArgExpr});
     }
   }
@@ -4283,10 +4300,24 @@ clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
   llvm::SmallVector<clang::Expr *, 4> IndexExprs;
   const ListSyntax *IndexList = dyn_cast<ListSyntax>(S->getArgument(0));
   if (IndexList) {
-    for (const Syntax *SS : IndexList->children())
-      IndexExprs.push_back(doElaborateExpr(SS));
+    for (const Syntax *SS : IndexList->children()){
+      clang::Expr *E = doElaborateExpr(SS);
+      if (!E)
+        continue;
+
+      // This attempts to make sure that all referenced functions are actually
+      // in scope, and completely elaborated.
+      SemaRef.elaborateConstexpr(E);
+      IndexExprs.push_back(E);
+    }
   } else {
-    IndexExprs.push_back(doElaborateExpr(S->getArgument(0)));
+    clang::Expr *E = doElaborateExpr(S->getArgument(0));
+    if (!E)
+      return nullptr;
+    // This attempts to make sure that all referenced functions are actually
+    // in scope, and completely elaborated.
+    SemaRef.elaborateConstexpr(E);
+    IndexExprs.push_back(E);
   }
 
   // FIXME: what do we do for an empty array index, such as []int = {...}

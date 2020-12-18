@@ -3686,7 +3686,8 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   if (D->declaresCatchVariable())
     NewVD->setExceptionVariable(true);
 
-  if ((ComputedInitializer || IsConstExprDecl) && !isa<clang::ParmVarDecl>(NewVD))
+  if ((ComputedInitializer || IsConstExprDecl)
+      && !isa<clang::ParmVarDecl>(NewVD))
     // We have to redo some of the evaluation because it could be within a
     // const expr expression.
     elaborateVariableInit(D, true);
@@ -4251,6 +4252,8 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   // Elaborate the function body.
   StmtElaborator BodyElaborator(Context, SemaRef);
   clang::Stmt *Body = BodyElaborator.elaborateBlock(D->Init);
+  // SemaRef.setCurrentDecl(D);
+  SemaRef.setClangDeclContext(cast<clang::FunctionDecl>(D->Cxx));
   SemaRef.getCxxSema().ActOnFinishFunctionBody(FuncDecl, Body);
 
   // Leave the function scope.
@@ -4321,9 +4324,10 @@ void Elaborator::elaborateVariableInit(Declaration *D, bool IsEarly) {
       return;
     VD = cast<clang::VarDecl>(D->Cxx);
   }
-  if (VD->isConstexpr()) {
+
+  if (VD->isConstexpr())
     NeedsConstEvaluation = true;
-  }
+
   if (!D->Init) {
     if (isa<clang::ParmVarDecl>(VD))
       return;
@@ -4419,6 +4423,12 @@ void Elaborator::elaborateVariableInit(Declaration *D, bool IsEarly) {
                          clang::diag::err_failed_to_translate_expr);
     return;
   }
+  // In this case we will need to visit any of a possible constant expression
+  // and verify that the constant expression is properly evaluated.
+  if (NeedsConstEvaluation) {
+    SemaRef.elaborateConstexpr(InitExpr);
+  }
+
   if (D->defines<clang::VarTemplateDecl>()) {
     // I may need to revisit this in the furture becaus this might not be
     // the right thing to do in this case.

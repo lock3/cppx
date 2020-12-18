@@ -329,15 +329,15 @@ b<constexpr> = a;
   GoldFailureTest(Code);
 }
 
-TEST(GoldOutOfOrder, Constexpr_DeclDefBeforeUse) {
+TEST(GoldOutOfOrder, Constexpr_Constructor_Type_DeclDefBeforeUse) {
   StringRef Code = R"(
 T1 = class:
   x :int
   y : float64
-  constructor():void
+  constructor()<constexpr>:void
 
 
-T1.constructor():void!
+T1.constructor()<constexpr>:void!
   x = 5
   y = 57.0
 
@@ -351,6 +351,40 @@ y : [X]T2
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+TEST(GoldOutOfOrder, Constexpr_FunctionDeclBeforeDefAfter) {
+  StringRef Code = R"(
+foo()<constexpr>: int
+b <constexpr> :int = foo()
+
+foo()<constexpr>:int!
+  return 4
+
+)";
+  auto ToMatch = varDecl(hasName("b"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldOutOfOrder, Constexpr_FuncInNamespaceDeclDefOutside) {
+  StringRef Code = R"(
+x = namespace:
+  foo()<constexpr>: int
+b <constexpr> :int = x.foo()
+
+foo(x:int64) :void!
+  ;
+foo(x:float32) :void!
+  ;
+
+foo(x:int) :void!
+  ;
+x.foo()<constexpr>:int!
+  return 4
+
+)";
+  auto ToMatch = varDecl(hasName("b"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
 TEST(GoldOutOfOrder, Constexpr_DeclBefore_DefAfter) {
   StringRef Code = R"(
 T1 = class:
@@ -361,7 +395,7 @@ T1 = class:
 
 X<constexpr>:int = T1().x
 
-T1.constructor():void!
+T1.constructor()<constexpr>:void!
   x = 5
   y = 57.0
 
@@ -370,5 +404,99 @@ T2 = class:
 y : [X]T2
 )";
   auto ToMatch = varDecl(hasName("y"), hasType(asString("struct T2 [5]")));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+TEST(GoldOutOfOrder, Constexpr_ConstructorForcedEvaluation_ThroughTemplate) {
+  StringRef Code = R"(
+T1 = class:
+  x :int
+  y : float64
+  constructor()<constexpr>!
+    x = 5
+    y = 57.0
+
+X<constexpr>:int = T1().x
+
+T2[V:int] = class:
+  ;
+
+y : T2[X]
+)";
+  auto ToMatch = varDecl(hasName("y"), hasType(asString("T2<X>")));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldOutOfOrder, Constexpr_ConstructorForcedEvaluation_ThroughArray) {
+  StringRef Code = R"(
+T1 = class:
+  x :int
+  y : float64
+  constructor()<constexpr>!
+    x = 5
+    y = 57.0
+
+X<constexpr>:int = T1().x
+
+T2 = class:
+  ;
+y : [X]T2
+)";
+  auto ToMatch = varDecl(hasName("y"), hasType(asString("struct T2 [5]")));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(GoldOutOfOrder, Constexpr_DeclInNamespace_DifferentDeclSameNameOutsideNamespace) {
+  StringRef Code = R"(
+ns = namespace:
+  T1 = class:
+    x : int
+    constructor()<constexpr>
+    y : float64
+
+X<constexpr>:int = ns.T1().x
+
+T1 : int = 5
+
+ns.T1.constructor()<constexpr>!
+  x = 5
+  y = 57.0
+
+T2 = class:
+  ;
+y : [X]T2
+)";
+  auto ToMatch = varDecl(hasName("y"), hasType(asString("struct T2 [5]")));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+// Create a test for a class declared inside of a namespace but defined outside
+// of that namespace.
+TEST(GoldOutOfOrder, Constexpr_CallChain_OutOfOrderDecl) {
+  StringRef Code = R"(
+foo<constexpr>():int
+
+ns = namespace:
+  T1 = class:
+    x : int
+    constructor()<constexpr>
+    y : float64
+
+X<constexpr>:int = ns.T1().x
+
+T1 : int = 5
+
+foo<constexpr>():int!
+  return 3
+
+ns.T1.constructor()<constexpr>!
+  x = foo()
+  y = 57.0
+T2 = class:
+  ;
+y : [X]T2
+)";
+  auto ToMatch = varDecl(hasName("y"), hasType(asString("struct T2 [3]")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

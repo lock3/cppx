@@ -30,6 +30,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "clang/Gold/ClangToGoldDeclBuilder.h"
+#include "clang/Gold/GoldConstexprASTElaborator.h"
 #include "clang/Gold/GoldDependentExprTransformer.h"
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldIdentifierResolver.h"
@@ -945,6 +946,10 @@ clang::Scope *Sema::getCurClangScope() {
 
 clang::Scope *Sema::enterClangScope(unsigned int ScopeFlags) {
   CxxSema.CurScope = new clang::Scope(getCurClangScope(), ScopeFlags, Diags);
+  // Only do this if we are not a template scope to avoid an assertion inside
+  // of setEntity.
+  if (!CxxSema.CurScope->isTemplateParamScope())
+    CxxSema.CurScope->setEntity(nullptr);
   return CxxSema.CurScope;
 }
 
@@ -2576,4 +2581,9 @@ Sema::BuildCXXNew(clang::SourceRange Range, bool UseGlobal,
                             DirectInitRange);
 }
 
+
+bool Sema::elaborateConstexpr(clang::Stmt *E) {
+  GoldConstexprASTElaborator ConstExprElaborator(*this);
+  return ConstExprElaborator.TraverseStmt(E);
+}
 } // namespace gold

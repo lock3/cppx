@@ -1221,6 +1221,8 @@ public:
               clang::SourceRange DirectInitRange,
               clang::Expr *Initializer,
               bool UseGoldInplaceNew = false);
+public:
+  bool elaborateConstexpr(clang::Stmt *E);
 };
 
 } // namespace gold
