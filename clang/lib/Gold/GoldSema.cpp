@@ -1269,16 +1269,18 @@ Sema::getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
   if (!TyExpr) {
     return nullptr;
   }
+
   if (!TyExpr->getType()->isTypeOfTypes()) {
     Diags.Report(Loc, clang::diag::err_not_a_type);
     return nullptr;
   }
+
   if (const clang::CppxTypeLiteral *Ty
                                    = dyn_cast<clang::CppxTypeLiteral>(TyExpr)) {
 
     return Ty->getValue();
   }
-  TyExpr->dump();
+
   llvm_unreachable("Invaild type expression evaluates to type of types.");
 }
 
@@ -1799,9 +1801,8 @@ clang::QualType Sema::TransformCppxTypeExprType(
     clang::SourceLocation Loc, clang::DeclarationName Entity,
     clang::TypeLocBuilder &TLB, clang::CppxTypeExprTypeLoc TL) {
   auto Ty = TL.getType()->getAs<clang::CppxTypeExprType>();
-  if (!Ty) {
-    llvm_unreachable("Invalid type ptr");
-  }
+
+  assert(Ty && "invalid type pointer");
   assert(Ty->getTyExpr() && "Invalid type expression");
   DependentExprTransformer rebuilder(*this, Context, TemplateArgs, Loc, Entity);
   clang::Expr *Ret = rebuilder.transformDependentExpr(Ty->getTyExpr());

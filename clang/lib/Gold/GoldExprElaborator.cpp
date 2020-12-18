@@ -2701,6 +2701,11 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
   // for lookup.
   // Attempthing to fetch the declaration now and popss
   Declaration *DeclForTy = SemaRef.getDeclaration(TD);
+  if (!DeclForTy && isa<clang::ClassTemplateSpecializationDecl>(TD)) {
+    auto *CTSD = cast<clang::ClassTemplateSpecializationDecl>(TD);
+    auto *Primary = CTSD->getSpecializedTemplate();
+    DeclForTy = SemaRef.getDeclaration(Primary);
+  }
   assert(DeclForTy);
 
   ClangToGoldDeclRebuilder Rebuilder(SemaRef.getContext(), SemaRef);
@@ -2974,8 +2979,14 @@ clang::Expr *handleLookupInsideType(Sema &SemaRef, clang::ASTContext &CxxAST,
   llvm_unreachable("Unknown syntax encountered during nested member lookup.");
 }
 
-clang::Expr *ExprElaborator::elaborateNestedLookupAccess(
-               clang::Expr *Previous, const CallSyntax *Op, const Syntax *RHS) {
+static inline bool inUsing(Sema &S) {
+  return S.getCurrentDecl() && S.getCurrentDecl()->Decl &&
+    S.getCurrentDecl()->Decl->isUsingDirective();
+}
+
+clang::Expr *ExprElaborator::elaborateNestedLookupAccess(clang::Expr *Previous,
+                                                         const CallSyntax *Op,
+                                                         const Syntax *RHS) {
   assert(Previous && isa<clang::CppxTypeLiteral>(Previous)
          && "Expression scoping.");
 
@@ -2985,7 +2996,7 @@ clang::Expr *ExprElaborator::elaborateNestedLookupAccess(
   clang::TypeLocBuilder TLB;
   TInfo = BuildAnyTypeLoc(Context.CxxAST, TLB, TInfo->getType(), Op->getLoc());
 
-  if (TInfo->getType()->isDependentType())
+  if (!inUsing(SemaRef) && TInfo->getType()->isDependentType())
     return handleDependentTypeNameLookup(SemaRef, Op, Previous, RHS);
 
   clang::TypeLoc TL = TLB.getTypeLocInContext(Context.CxxAST, TInfo->getType());
@@ -3509,7 +3520,6 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
                                       const MacroSyntax *S) {
   assert(isa<CallSyntax>(S->getCall()) && "invalid lambda");
   clang::Sema &CxxSema = SemaRef.getCxxSema();
-  bool LocalLambda = isLocalLambdaScope(SemaRef.getCurrentScope());
   const CallSyntax *Call = cast<CallSyntax>(S->getCall());
 
   Syntax::AttrVec Attributes = Call->getAttributes();

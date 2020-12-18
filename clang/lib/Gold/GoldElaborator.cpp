@@ -1396,6 +1396,7 @@ clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
   clang::CXXScopeSpec SS;
   clang::ParsedAttributesView AttrView;
   clang::UnqualifiedId Name;
+  clang::SourceLocation TypenameLoc;
   clang::AccessSpecifier AS = SemaRef.scopeIsWithinClass() ?
     clang::AS_public : clang::AS_none;
 
@@ -1443,6 +1444,13 @@ clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
     Name.setIdentifier(TInfo->getType().getBaseTypeIdentifier(),
                        TyLit->getExprLoc());
     Name.StartLocation = Name.EndLocation = Arg->getLoc();
+
+    if (TInfo->getType()->isDependentType())
+      TypenameLoc = Arg->getLoc();
+  } else if (auto *DME = dyn_cast<clang::CppxDependentMemberAccessExpr>(E)) {
+    Name.setIdentifier(DME->getMemberNameInfo().getName().getAsIdentifierInfo(),
+                       DME->getExprLoc());
+    Name.StartLocation = Name.EndLocation = Arg->getLoc();
   } else {
     unsigned DiagID =
       SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
@@ -1452,7 +1460,7 @@ clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
   }
 
   clang::Decl *D = SemaRef.getCxxSema().ActOnUsingDeclaration(
-    CxxScope, AS, UsingLoc, clang::SourceLocation(),
+    CxxScope, AS, UsingLoc, TypenameLoc,
     SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
   if (!D)
     return nullptr;
@@ -1461,7 +1469,6 @@ clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
   if (clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D)) {
     for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
       SemaRef.getCurrentScope()->Shadows.insert(Shadow);
-  } else if (auto *UUVD = dyn_cast<clang::UnresolvedUsingValueDecl>(D)) {
   }
 
   return D;

@@ -14349,7 +14349,6 @@ TreeTransform<Derived>::TransformCppxDependentMemberAccessExpr(
   ExprResult Base((Expr*) nullptr);
   Expr *OldBase;
   QualType BaseType;
-  QualType ObjectType;
 
   if (!E->isImplicitAccess()) {
     OldBase = E->getBase();
