@@ -239,8 +239,8 @@ namespace gold {
   /// Removes empty lines and comments from a translation unit.
   struct LineScanner {
     LineScanner(clang::SourceManager &SM, File const& F, SyntaxContext &Ctx,
-                clang::Preprocessor &PP)
-      : Scanner(SM, F, Ctx, PP)
+                clang::Preprocessor &PP, bool &GTIO)
+      : Scanner(SM, F, Ctx, PP), GreaterThanIsOperator(GTIO)
       { }
 
     // Construct a line scanner for a string literal
@@ -263,6 +263,9 @@ namespace gold {
 
     /// The underlying scanner.
     CharacterScanner Scanner;
+
+    /// True when tok::Greater is an operator and not an enclosure
+    bool &GreaterThanIsOperator;
   };
 
 
@@ -271,8 +274,8 @@ namespace gold {
   /// returned from this scanner.
   struct BlockScanner {
     BlockScanner(clang::SourceManager &SM, File const& F, SyntaxContext &Ctx,
-                clang::Preprocessor &PP)
-      : Scanner(SM, F, Ctx, PP), Prefix() { }
+                 clang::Preprocessor &PP, bool &GTIO)
+      : Scanner(SM, F, Ctx, PP, GTIO), Prefix() { }
 
     Token operator()();
 
@@ -339,8 +342,8 @@ namespace gold {
   /// which applies a phase of translation.
   struct Lexer {
     Lexer(clang::SourceManager &SM, File const& F, SyntaxContext &Ctx,
-          clang::Preprocessor &PP)
-      : Scanner(SM, F, Ctx, PP)
+          clang::Preprocessor &PP, bool &GTIO)
+      : Scanner(SM, F, Ctx, PP, GTIO)
     { }
 
     Token operator()()

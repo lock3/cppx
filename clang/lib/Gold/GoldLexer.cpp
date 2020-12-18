@@ -807,7 +807,7 @@ static llvm::StringMap<bool> InfixKeywords {
   {"catch", true}
 };
 
-static bool isInfix(Token Op) {
+static bool isInfix(Token Op, bool GTIO) {
   switch (Op.getKind()) {
   case tok::Plus:
   case tok::Minus:
@@ -817,7 +817,6 @@ static bool isInfix(Token Op) {
   case tok::Ampersand:
   case tok::Bar:
   case tok::Less:
-  case tok::Greater:
   case tok::Equal:
   case tok::EqualEqual:
   case tok::LessEqual:
@@ -848,6 +847,9 @@ static bool isInfix(Token Op) {
     return true;
   }
 
+  case tok::Greater:
+    return GTIO;
+
   default:
     return false;
   }
@@ -863,7 +865,8 @@ Token LineScanner::operator()() {
       Current = Tok;
 
     // Space at the beginning of a line cannot be discarded here.
-    if (Tok.isSpace() && Tok.isAtStartOfLine() && !isInfix(Current))
+    if (Tok.isSpace() && Tok.isAtStartOfLine() &&
+        !isInfix(Current, GreaterThanIsOperator))
       break;
 
     // Propagate a previous line-start flag to this next token.
@@ -889,7 +892,8 @@ Token LineScanner::operator()() {
     //   x = 2 + 2 *
     //       2 + 2
     // \endcode
-    if ((Tok.isSpace() || Tok.isNewline()) && isInfix(Current)) {
+    if ((Tok.isSpace() || Tok.isNewline()) &&
+        isInfix(Current, GreaterThanIsOperator)) {
       continue;
     }
 

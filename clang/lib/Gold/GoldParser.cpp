@@ -148,7 +148,8 @@ static Attribute *makeAttr(const SyntaxContext &Ctx, Syntax *Arg);
 
 Parser::Parser(SyntaxContext &Context, clang::SourceManager &SM, File const& F,
                clang::Preprocessor &PP)
-  : Lex(SM, F, Context, PP), Diags(SM.getDiagnostics()), Context(Context)
+  : Lex(SM, F, Context, PP, GreaterThanIsOperator),
+    Diags(SM.getDiagnostics()), Context(Context)
 {
   fetchToken();
 }
