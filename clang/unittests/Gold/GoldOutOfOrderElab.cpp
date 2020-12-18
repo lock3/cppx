@@ -471,8 +471,7 @@ y : [X]T2
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// Create a test for a class declared inside of a namespace but defined outside
-// of that namespace.
+
 TEST(GoldOutOfOrder, Constexpr_CallChain_OutOfOrderDecl) {
   StringRef Code = R"(
 foo<constexpr>():int
@@ -500,3 +499,43 @@ y : [X]T2
   auto ToMatch = varDecl(hasName("y"), hasType(asString("struct T2 [3]")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+
+TEST(GoldOutOfOrder, Constexpr_InsideATemplate_Instantiated_ThenUsed) {
+  StringRef Code = R"(
+T1[T:type] = class:
+  x : T
+  constructor()<constexpr>!
+    x = 4
+
+X<constexpr>:int = T1[int]().x
+
+T2 = class:
+  ;
+y : [X]T2
+)";
+  auto ToMatch = varDecl(hasName("y"), hasType(asString("struct T2 [4]")));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+// Create a constexpr constructor then define it outside of the class.
+// For templated class.
+// FIXME: This is broken and I'm still working on it.
+// TEST(GoldOutOfOrder, Constexpr_InsideATemplate_Instantiated_ThenUsed_SeperateCtorDef) {
+//   StringRef Code = R"(
+// T1[T:type] = class:
+//   constructor()<constexpr>
+//   x : T
+
+// X<constexpr>:int = T1[int]().x
+
+// T1[T:type].constructor()<constexpr>!
+//   x = 4
+
+// T2 = class:
+//   ;
+// y : [X]T2
+// )";
+//   auto ToMatch = varDecl(hasName("y"), hasType(asString("struct T2 [4]")));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }

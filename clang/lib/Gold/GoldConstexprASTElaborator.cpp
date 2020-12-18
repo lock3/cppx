@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Gold/GoldConstexprASTElaborator.h"
+#include "clang/Gold/ClangToGoldDeclBuilder.h"
 #include "clang/Gold/GoldElaborator.h"
 
 namespace gold {
@@ -15,7 +16,6 @@ namespace gold {
 template<typename DclTy>
 static bool handleConstExprLookupAndElaboration(Sema &SemaRef, DclTy *FD) {
   Declaration *D = SemaRef.getDeclaration(FD);
-
   // This means we have a cycle and we can't continue,
   // because we have a loop.
   if (D->IsElaborating)
@@ -118,18 +118,43 @@ bool GoldConstexprASTElaborator::TraverseCXXRecordDecl(
 
 bool GoldConstexprASTElaborator::TraverseCXXConstructorDecl(
     clang::CXXConstructorDecl *CD) {
+
+  clang::CXXRecordDecl *Parent = cast<clang::CXXRecordDecl>(CD->getDeclContext());
+  if (isa<clang::ClassTemplateSpecializationDecl>(Parent)) {
+    ClangToGoldDeclRebuilder Rebuilder(SemaRef.getContext(), SemaRef);
+    clang::SourceRange Range(Parent->getSourceRange());
+    Declaration *D = SemaRef.getDeclaration(Parent);
+    if (!D)
+      Rebuilder.rebuild(Parent);
+  }
   handleConstExprLookupAndElaboration(SemaRef, CD);
   return Base::TraverseCXXConstructorDecl(CD);
 }
 
 bool GoldConstexprASTElaborator::TraverseCXXDestructorDecl(
     clang::CXXDestructorDecl *DD) {
+  clang::CXXRecordDecl *Parent = cast<clang::CXXRecordDecl>(DD->getDeclContext());
+  if (isa<clang::ClassTemplateSpecializationDecl>(Parent)) {
+    ClangToGoldDeclRebuilder Rebuilder(SemaRef.getContext(), SemaRef);
+    clang::SourceRange Range(Parent->getSourceRange());
+    Declaration *D = SemaRef.getDeclaration(Parent);
+    if (!D)
+      Rebuilder.rebuild(Parent);
+  }
   handleConstExprLookupAndElaboration(SemaRef, DD);
   return Base::TraverseCXXDestructorDecl(DD);
 }
 
 bool GoldConstexprASTElaborator::TraverseCXXMethodDecl(
     clang::CXXMethodDecl *MD) {
+  clang::CXXRecordDecl *Parent = cast<clang::CXXRecordDecl>(MD->getDeclContext());
+  if (isa<clang::ClassTemplateSpecializationDecl>(Parent)) {
+    ClangToGoldDeclRebuilder Rebuilder(SemaRef.getContext(), SemaRef);
+    clang::SourceRange Range(Parent->getSourceRange());
+    Declaration *D = SemaRef.getDeclaration(Parent);
+    if (!D)
+      Rebuilder.rebuild(Parent);
+  }
   handleConstExprLookupAndElaboration(SemaRef, MD);
   return Base::TraverseCXXMethodDecl(MD);
 }

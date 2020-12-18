@@ -379,11 +379,13 @@ gold::Declaration *Sema::getDeclaration(clang::Decl *CDecl) {
     if (!isa<clang::CXXRecordDecl>(CDecl)) {
       std::string Name = "";
       if (auto *ND = dyn_cast<clang::NamedDecl>(CDecl)) {
-        Name = ND->getName().str();
+        // CDecl->dump();
+        Diags.Report(CDecl->getLocation(),
+                    clang::diag::err_unknown_template_declaration)
+                    << ND;
+      } else {
+        llvm_unreachable("This should never happen.");
       }
-      Diags.Report(CDecl->getLocation(),
-                   clang::diag::err_unknown_template_declaration)
-                   << Name;
       return nullptr;
     }
     ClangToGoldDeclRebuilder rebuilder(Context, *this);
