@@ -62,9 +62,4 @@ Syntax::const_child_range Syntax::children() const {
   return const_child_range(Children.begin(), Children.end());
 }
 
-LLVM_DUMP_METHOD void Syntax::dump() const {
-  clang::ASTDumper D(llvm::errs(), /*ShowColors=*/true);
-  D.Visit(this);
-}
-
 } // namespace blue

@@ -2411,10 +2411,10 @@ void TextNodeDumper::VisitIdentifierSyntax(const blue::IdentifierSyntax *S) {
   OS << ' ' << S->getToken().getSpelling();
 }
 
-void TextNodeDumper::VisitTupleSyntax(const blue::ListSyntax *S) {
+void TextNodeDumper::VisitListSyntax(const blue::ListSyntax *S) {
 }
 
-void TextNodeDumper::VisitTupleSyntax(const blue::SeqSyntax *S) {
+void TextNodeDumper::VisitSeqSyntax(const blue::SeqSyntax *S) {
 }
 
 void TextNodeDumper::VisitUnarySyntax(const blue::UnarySyntax *S) {

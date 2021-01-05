@@ -19,7 +19,6 @@
 #include "clang/Frontend/LayoutOverrideSource.h"
 #include "clang/Frontend/MultiplexConsumer.h"
 #include "clang/Frontend/Utils.h"
-#include "clang/Gold/ParseGoldAST.h"
 #include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/LiteralSupport.h"
 #include "clang/Lex/Preprocessor.h"
@@ -35,6 +34,10 @@
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 #include <system_error>
+
+#include "clang/Blue/ParseBlueAST.h"
+#include "clang/Gold/ParseGoldAST.h"
+
 using namespace clang;
 
 LLVM_INSTANTIATE_REGISTRY(FrontendPluginRegistry)
@@ -1063,6 +1066,13 @@ void ASTFrontendAction::ExecuteAction() {
     CI.getLangOpts().CPlusPlus14 = true;
     CI.getLangOpts().CPlusPlus17 = true;
     gold::ParseGoldAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
+    break;
+  case clang::Language::Blue:
+    CI.getLangOpts().CPlusPlus = true;
+    CI.getLangOpts().CPlusPlus11 = true;
+    CI.getLangOpts().CPlusPlus14 = true;
+    CI.getLangOpts().CPlusPlus17 = true;
+    blue::ParseBlueAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
     break;
   default:
     clang::ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
