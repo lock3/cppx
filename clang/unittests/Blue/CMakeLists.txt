@@ -1,0 +1,53 @@
+set(LLVM_LINK_COMPONENTS
+  Analysis
+  BitReader
+  BitWriter
+  Core
+  Coroutines
+  Coverage
+  ExecutionEngine
+  FrontendOpenMP
+  IPO
+  IRReader
+  AggressiveInstCombine
+  InstCombine
+  Instrumentation
+  LTO
+  Linker
+  MC
+  ObjCARCOpts
+  Object
+  Passes
+  ProfileData
+  Remarks
+  ScalarOpts
+  Support
+  Target
+  TransformUtils
+  MCJIT
+  OrcJit
+  Option
+  RuntimeDyld
+  native
+  mcdisassembler
+  )
+
+add_clang_unittest(BlueTests
+  BlueASTMatchersTest.cpp
+  BlueVariableElab.cpp
+  )
+
+clang_target_link_libraries(BlueTests
+  PRIVATE
+  clangAST
+  clangCodeGen
+  clangASTMatchers
+  clangBasic
+  clangFrontend
+  clangParse
+  clangSema
+  clangSerialization
+  clangTooling
+  clangDriver
+  blue
+  )

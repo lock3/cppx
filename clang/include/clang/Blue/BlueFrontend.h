@@ -16,6 +16,7 @@
 #define CLANG_BLUE_BLUEFRONT_BLUEFRONTEND_H
 
 #include "clang/Frontend/FrontendAction.h"
+#include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include <memory>
@@ -24,19 +25,67 @@ using namespace clang;
 
 namespace blue {
 
-class BlueSyntaxAction : public FrontendAction {
+class BlueSyntaxAction : public clang::ASTFrontendAction {
 protected:
   void ExecuteAction() override;
 
 public:
   BlueSyntaxAction() {}
+  BlueSyntaxAction(clang::ast_matchers::MatchFinder* Finder)
+    :Matcher(Finder)
+  { }
 
-  std::unique_ptr<ASTConsumer>
-  CreateASTConsumer(CompilerInstance &CI, StringRef InFile) override {
-    return std::make_unique<ASTConsumer>();
+  std::unique_ptr<clang::ASTConsumer>
+  CreateASTConsumer(clang::CompilerInstance &CI,
+                    llvm::StringRef InFile) override {
+    if(Matcher) {
+      return Matcher->newASTConsumer();
+    } else {
+      return std::make_unique<clang::ASTConsumer>();
+    }
+  }
+
+  bool usesPreprocessorOnly() const override { return false; }
+  bool hasCodeCompletionSupport() const override { return false; }
+
+  bool BeginSourceFileAction(clang::CompilerInstance &CI) override {
+    if (!clang::ASTFrontendAction::BeginSourceFileAction(CI))
+      return false;
+    return true;
+  }
+
+  void EndSourceFileAction() override {
+    clang::ASTFrontendAction::EndSourceFileAction();
+  }
+
+private:
+  clang::ast_matchers::MatchFinder *Matcher = nullptr;
+};
+
+class BlueSyntaxActionDumper : public clang::ASTFrontendAction {
+protected:
+  void ExecuteAction() override;
+
+public:
+  BlueSyntaxActionDumper() {}
+
+  std::unique_ptr<clang::ASTConsumer>
+  CreateASTConsumer(clang::CompilerInstance &CI,
+                    llvm::StringRef InFile) override {
+    return std::make_unique<clang::ASTConsumer>();
   }
   bool usesPreprocessorOnly() const override { return false; }
   bool hasCodeCompletionSupport() const override { return false; }
+
+  bool BeginSourceFileAction(clang::CompilerInstance &CI) override {
+    if (!clang::ASTFrontendAction::BeginSourceFileAction(CI))
+      return false;
+    return true;
+  }
+
+  void EndSourceFileAction() override {
+    clang::ASTFrontendAction::EndSourceFileAction();
+  }
 };
 
 } // namespace blue

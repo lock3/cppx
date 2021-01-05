@@ -33,6 +33,10 @@ void BlueSyntaxAction::ExecuteAction() {
 
   switch (getCurrentFileKind().getLanguage()) {
   case clang::Language::Blue:
+    CI.getLangOpts().CPlusPlus = true;
+    CI.getLangOpts().CPlusPlus11 = true;
+    CI.getLangOpts().CPlusPlus14 = true;
+    CI.getLangOpts().CPlusPlus17 = true;
     ParseBlueAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
     break;
 
@@ -43,6 +47,36 @@ void BlueSyntaxAction::ExecuteAction() {
     break;
   }
 }
+
+void BlueSyntaxActionDumper::ExecuteAction() {
+  clang::CompilerInstance &CI = getCompilerInstance();
+  if (!CI.hasPreprocessor())
+    return;
+
+  if (!CI.hasASTContext())
+    return;
+
+  if (!CI.hasSema())
+    CI.createSema(getTranslationUnitKind(), nullptr);
+
+  switch (getCurrentFileKind().getLanguage()) {
+  case clang::Language::Gold:
+    CI.getLangOpts().CPlusPlus = true;
+    CI.getLangOpts().CPlusPlus11 = true;
+    CI.getLangOpts().CPlusPlus14 = true;
+    CI.getLangOpts().CPlusPlus17 = true;
+    ParseBlueAST(CI.getASTContext(), CI.getPreprocessor(), CI.getSema());
+    CI.getASTContext().getTranslationUnitDecl()->dump();
+    break;
+
+  default:
+    // FIXME: Why is the default to parse C++? This should be an error.
+    clang::ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
+                    CI.getFrontendOpts().SkipFunctionBodies);
+    break;
+  }
+}
+
 
 
 } // namespace blue
