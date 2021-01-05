@@ -284,12 +284,6 @@ void Sema::enterScope(ScopeKind K, const Syntax *S, Declaration *D) {
 }
 
 void Sema::leaveScope(const Syntax *S) {
-  if (getCurrentScope()->getConcreteTerm() != S) {
-    llvm::outs() << "Actual Expected term = ";
-    getCurrentScope()->getConcreteTerm()->dump();
-    llvm::outs() << "Given Expected term = ";
-    S->dump();
-  }
   assert(getCurrentScope()->getConcreteTerm() == S);
   // FIXME: Delete the scope. Note that we don't delete the scope in saveScope.
   popScope();
@@ -409,8 +403,6 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R,
                                  Declaration *NotThisOne) {
   return lookupUnqualifiedName(R, getCurrentScope(), NotThisOne);
 }
-
-
 
 bool Sema::lookupQualifiedName(clang::LookupResult &R,
                                Declaration *NotThisOne) {
