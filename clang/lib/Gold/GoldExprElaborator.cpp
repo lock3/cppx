@@ -127,9 +127,16 @@ clang::Expr *ExprElaborator::elaborateConstexprAttrExpr(const Syntax *S) {
   clang::Expr *Res = doElaborateExpr(S);
   if (!Res)
     return Res;
+
+  // This attempts to make sure that all referenced functions are actually
+  // in scope, and completely elaborated.
+  SemaRef.elaborateConstexpr(Res);
+
   auto ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(Res);
   if (ConstExpr.isInvalid())
     return nullptr;
+
+
   return ConstExpr.get();
 }
 
@@ -145,6 +152,11 @@ clang::Expr *ExprElaborator::elaborateExpectedConstantExpr(const Syntax* S) {
   clang::Expr *Res = elaborateExpr(S);
   if (!Res)
     return Res;
+
+  // This attempts to make sure that all referenced functions are actually
+  // in scope, and completely elaborated.
+  SemaRef.elaborateConstexpr(Res);
+
   auto ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(Res);
   if (ConstExpr.isInvalid())
     return nullptr;
@@ -1041,6 +1053,11 @@ bool ExprElaborator::elaborateTemplateArugments(const ListSyntax *Args,
       ArgInfo.addArgument({Arg, TALoc});
     } else {
       clang::TemplateArgument Arg(ArgExpr, clang::TemplateArgument::Expression);
+
+      // This attempts to make sure that all referenced functions are actually
+      // in scope, and completely elaborated.
+      SemaRef.elaborateConstexpr(ArgExpr);
+
       ArgInfo.addArgument({Arg, ArgExpr});
     }
   }
@@ -1523,14 +1540,17 @@ clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
     if (S->getNumArguments() == 1) {
       clang::UnaryOperatorKind UnaryOpKind;
       if (!SemaRef.OpInfo.getUnaryOperatorUseKind(Spelling, UnaryOpKind))
-        return elaborateUnaryOp(S, UnaryOpKind);
+        return elaborateUnaryOp(S, SemaRef.OpInfo.getOpInfo(Spelling),
+                                UnaryOpKind);
     }
 
     if (S->getNumArguments() == 2) {
+      // getOpInfo
       // Check if this is a binary operator.
       clang::BinaryOperatorKind BinaryOpKind;
       if (!SemaRef.OpInfo.getBinaryOperatorUseKind(Spelling, BinaryOpKind))
-        return elaborateBinOp(S, BinaryOpKind);
+        return elaborateBinOp(S, SemaRef.OpInfo.getOpInfo(Spelling),
+                              BinaryOpKind);
     }
   }
 
@@ -3026,6 +3046,7 @@ clang::Expr *ExprElaborator::elaborateNestedLookupAccess(clang::Expr *Previous,
 }
 
 clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
+                                              const OpInfoBase *OpInfo,
                                               clang::UnaryOperatorKind Op) {
   BooleanRAII AddressOfRAII(ElaboratingAddressOfOp, Op == clang::UO_AddrOf);
 
@@ -3043,6 +3064,8 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
                          clang::diag::err_expected_expression);
     return nullptr;
   }
+
+
 
   // This is used to construct a pointer type because the caret has two
   // meanings. Dereference and pointer declaration.
@@ -3063,6 +3086,38 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
       return SemaRef.buildTypeExpr(RetType, S->getLoc());
     }
   }
+  // This has to be done here because if the operand is a type this has different
+  // meaning and it will cause a cycle inside of of elaboration.
+
+  // Doing actual ADL lookup for operators.
+
+  // We need to pull all of the matching operators in from within the
+  // entire system. We only need to look up free functions, the members
+  // already exists because they would have bee elaborated as part of the type.
+  clang::LookupResult R(SemaRef.getCxxSema(),
+                        { { OpInfo->getGoldDeclName() }, Operand->getLoc() },
+                        clang::Sema::LookupOrdinaryName);
+  clang::QualType Ty = OperandResult->getType();
+  gold::Scope *ArgScope = nullptr;
+  if (Ty->isRecordType()) {
+    gold::Declaration *D = SemaRef.getDeclaration(Ty->getAsRecordDecl());
+    if (!D) {
+      // Moving the scope to the first namespace scope it finds.
+      ArgScope = D->ScopeForDecl;
+      assert(ArgScope && "D->ScopeForDecl not set for declaration");
+      while(ArgScope && !ArgScope->isNamespaceScope()) {
+        ArgScope = ArgScope->getParent();
+      }
+      SemaRef.lookupUnqualifiedName(R, ArgScope);
+    }
+  }
+
+  // This should make sure that any/all of the operators are in scope ahead of
+  // Clang operator ADL.
+  SemaRef.lookupUnqualifiedName(R);
+  R.clear();
+
+
   clang::ExprResult UnaryOpRes = SemaRef.getCxxSema().BuildUnaryOp(
     /*scope*/nullptr, S->getCalleeLoc(), Op, OperandResult);
 
@@ -3071,6 +3126,7 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
 }
 
 clang::Expr *ExprElaborator::elaborateBinOp(const CallSyntax *S,
+                                            const OpInfoBase *OpInfo,
                                             clang::BinaryOperatorKind Op) {
   const Syntax *LHSSyntax = S->getArgument(0);
   const Syntax *RHSSyntax = S->getArgument(1);
@@ -3088,6 +3144,49 @@ clang::Expr *ExprElaborator::elaborateBinOp(const CallSyntax *S,
                          clang::diag::err_expected_expression);
     return nullptr;
   }
+
+  clang::LookupResult R(SemaRef.getCxxSema(),
+                        { { OpInfo->getGoldDeclName() }, S->getCalleeLoc() },
+                        clang::Sema::LookupOrdinaryName);
+  clang::QualType LTy = LHS->getType();
+  gold::Scope *LHSScope = nullptr;
+  if (LTy->isRecordType()) {
+    gold::Declaration *D = SemaRef.getDeclaration(LTy->getAsRecordDecl());
+    if (D) {
+      // Moving the scope to the first namespace scope it finds.
+      LHSScope = D->ScopeForDecl;
+      assert(LHSScope && "LHS->ScopeForDecl not set for declaration");
+      while(LHSScope && !LHSScope->isNamespaceScope()) {
+        LHSScope = LHSScope->getParent();
+      }
+      SemaRef.lookupUnqualifiedName(R, LHSScope);
+    }
+  }
+
+  clang::QualType RTy = LHS->getType();
+  gold::Scope *RHSScope = nullptr;
+  if (RTy->isRecordType()) {
+    gold::Declaration *D = SemaRef.getDeclaration(RTy->getAsRecordDecl());
+    if (D) {
+      // Moving the scope to the first namespace scope it finds.
+      RHSScope = D->ScopeForDecl;
+      assert(RHSScope && "LHS->ScopeForDecl not set for declaration");
+      while(RHSScope && !RHSScope->isNamespaceScope()) {
+        RHSScope = RHSScope->getParent();
+      }
+      // Don't do lookup if these are the same.
+      if (RHSScope)
+        if (LHSScope != RHSScope)
+          SemaRef.lookupUnqualifiedName(R, RHSScope);
+    }
+  }
+
+
+  // This should make sure that any/all of the operators are in scope ahead of
+  // Clang operator ADL.
+  SemaRef.lookupUnqualifiedName(R);
+  R.clear();
+
 
   // FIXME: Replace with ActOnBinOp so precedence issues get warnings.
   clang::ExprResult Res = SemaRef.getCxxSema().BuildBinOp(/*Scope=*/nullptr,
@@ -3829,9 +3928,19 @@ ExprElaborator::elaborateNewExpr_ArrayCall(const CallSyntax *S,
 
     if (IndexExpr->EvaluateAsConstantExpr(IdxResult, EvalCtx)) {
       clang::SourceRange Range(IndexExpr->getExprLoc(), IndexExpr->getExprLoc());
-      ArrayType = SemaRef.getCxxSema().BuildArrayType(
-        ArrayType, clang::ArrayType::Normal, IndexExpr, 0,
-        Range, clang::DeclarationName());
+      if (IdxResult.Val.isInt()) {
+        ArrayType = SemaRef.getCxxSema().BuildArrayType(
+          ArrayType, clang::ArrayType::Normal,
+          clang::IntegerLiteral::Create(CxxAST, IdxResult.Val.getInt(),
+                                        IndexExpr->getType(),
+                                        IndexExpr->getExprLoc()),
+          /*quals*/0,
+          Range, clang::DeclarationName());
+      } else {
+        ArrayType = SemaRef.getCxxSema().BuildArrayType(
+          ArrayType, clang::ArrayType::Normal, IndexExpr, /*quals*/0,
+          Range, clang::DeclarationName());
+      }
     } else {
       if (!IsInnerMostArray || It != IndexExprs.rbegin()) {
         SemaRef.Diags.Report(IndexExpr->getExprLoc(),
@@ -4201,10 +4310,24 @@ clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
   llvm::SmallVector<clang::Expr *, 4> IndexExprs;
   const ListSyntax *IndexList = dyn_cast<ListSyntax>(S->getArgument(0));
   if (IndexList) {
-    for (const Syntax *SS : IndexList->children())
-      IndexExprs.push_back(doElaborateExpr(SS));
+    for (const Syntax *SS : IndexList->children()){
+      clang::Expr *E = doElaborateExpr(SS);
+      if (!E)
+        continue;
+
+      // This attempts to make sure that all referenced functions are actually
+      // in scope, and completely elaborated.
+      SemaRef.elaborateConstexpr(E);
+      IndexExprs.push_back(E);
+    }
   } else {
-    IndexExprs.push_back(doElaborateExpr(S->getArgument(0)));
+    clang::Expr *E = doElaborateExpr(S->getArgument(0));
+    if (!E)
+      return nullptr;
+    // This attempts to make sure that all referenced functions are actually
+    // in scope, and completely elaborated.
+    SemaRef.elaborateConstexpr(E);
+    IndexExprs.push_back(E);
   }
 
   // FIXME: what do we do for an empty array index, such as []int = {...}
@@ -4218,7 +4341,6 @@ clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
 
     ++I;
   }
-
   clang::QualType ArrayType = TInfo->getType();
   bool Invalid = false;
   for (auto It = IndexExprs.rbegin(); It != IndexExprs.rend(); ++It) {
@@ -4232,16 +4354,28 @@ clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
       Invalid = true;
       continue;
     }
-
     clang::SourceRange Range(IndexExpr->getExprLoc(), IndexExpr->getExprLoc());
-    ArrayType = SemaRef.getCxxSema().BuildArrayType(
-      ArrayType, clang::ArrayType::Normal, IndexExpr, 0,
-      Range, clang::DeclarationName());
+    if (IdxResult.Val.isInt()) {
+      ArrayType = SemaRef.getCxxSema().BuildArrayType(
+        ArrayType, clang::ArrayType::Normal,
+        clang::IntegerLiteral::Create(CxxAST, IdxResult.Val.getInt(),
+                                      IndexExpr->getType(),
+                                      IndexExpr->getExprLoc()),
+        /*quals*/0,
+        Range, clang::DeclarationName());
+    } else {
+      ArrayType = SemaRef.getCxxSema().BuildArrayType(
+        ArrayType, clang::ArrayType::Normal, IndexExpr, /*quals*/0,
+        Range, clang::DeclarationName());
+    }
+
+    // ArrayType = SemaRef.getCxxSema().BuildArrayType(
+    //   ArrayType, clang::ArrayType::Normal, IndexExpr, /*quals*/0,
+    //   Range, clang::DeclarationName());
   }
 
   if (Invalid)
     return nullptr;
-
   return SemaRef.buildTypeExpr(ArrayType, S->getLoc());
 }
 

@@ -21,6 +21,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "clang/Gold/GoldSyntax.h"
+#include "clang/Blue/BlueSyntax.h"
 using namespace clang;
 using namespace clang::comments;
 
@@ -296,6 +297,15 @@ LLVM_DUMP_METHOD void APValue::dump(raw_ostream &OS,
 //===----------------------------------------------------------------------===//
 
 LLVM_DUMP_METHOD void gold::Syntax::dump() const {
+  ASTDumper D(llvm::errs(), /*ShowColors=*/true);
+  D.Visit(this);
+}
+
+//===----------------------------------------------------------------------===//
+// Blue method implementations
+//===----------------------------------------------------------------------===//
+
+LLVM_DUMP_METHOD void blue::Syntax::dump() const {
   ASTDumper D(llvm::errs(), /*ShowColors=*/true);
   D.Visit(this);
 }

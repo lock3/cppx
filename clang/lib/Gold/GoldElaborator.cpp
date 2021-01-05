@@ -236,6 +236,7 @@ static inline bool isMutable(Sema& SemaRef, Declaration *D, bool &IsMutable) {
 
         return false;
       }
+      return false;
     },
     // CheckAttr
     [](const Syntax *Attr) -> bool{
@@ -677,6 +678,10 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
                           = dyn_cast<CallSyntax>(MacroRoot->getCall())) {
       processBaseSpecifiers(Elab, SemaRef, Context, D, ClsDecl, ClsKwCall);
     }
+    // We turn this off here because technically we have already created the
+    // most basic declaration that's required to use this type.
+    D->IsElaborating = false;
+    // This is really the only time we could possible allow this to occur.
 
     SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(
                                                      SemaRef.getCurClangScope(),
@@ -690,14 +695,29 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
       Elab.delayElaborateDeclType(ClsDecl, SS);
     }
 
-    SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
-      SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
-      SourceLocation(), ParsedAttributesView());
+
     D->CurrentPhase = Phase::Initialization;
     if (!WithinClass) {
       ElaboratingClass &LateElabClass = SemaRef.getCurrentElaboratingClass();
-      Elab.finishDelayedElaboration(LateElabClass);
+      // Elab.finishDelayedElaboration(LateElabClass);
+      Elab.lateElaborateAttributes(LateElabClass);
+      Elab.lateElaborateMethodDecls(LateElabClass);
+      Elab.lateElaborateDefaultParams(LateElabClass);
+      // We call this because no new declarations can be added after this point.
+      // This is only called for the top level class.
+      SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
+
+      SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
+        SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
+        SourceLocation(), ParsedAttributesView());
+
+      Elab.lateElaborateMemberInitializers(LateElabClass);
+      Elab.lateElaborateMethodDefs(LateElabClass);
       SemaRef.getCxxSema().ActOnFinishCXXNonNestedClass(ClsDecl);
+    } else {
+      SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
+        SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
+        SourceLocation(), ParsedAttributesView());
     }
   }
 
@@ -1601,6 +1621,8 @@ clang::Decl *Elaborator::elaborateNestedNameNamespace(Declaration *D) {
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   if (phaseOf(D) != Phase::Identification)
     return D->Cxx;
+  Sema::DeclarationElaborationRAII ElabTracker(SemaRef, D);
+
   clang::Scope *OriginalClangScope = SemaRef.getCurClangScope();
   Scope *Sc = SemaRef.getCurrentScope();
 
@@ -1867,6 +1889,7 @@ void setSpecialFunctionName(SyntaxContext &Ctx, clang::CXXRecordDecl *RD,
                                Ctx.CxxAST.getCanonicalType(ConversionResultTy));
   }
 }
+
 void lookupFunctionRedecls(Sema &SemaRef, clang::Scope *FoundScope,
                            clang::LookupResult &Previous) {
   while ((FoundScope->getFlags() & clang::Scope::DeclScope) == 0 ||
@@ -1876,6 +1899,7 @@ void lookupFunctionRedecls(Sema &SemaRef, clang::Scope *FoundScope,
   assert(FoundScope && "Scope not found");
   SemaRef.getCxxSema().LookupName(Previous, FoundScope, false);
 }
+
 bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
                  clang::DeclarationName const &Name, clang::FunctionDecl **FD,
                  clang::TypeSourceInfo *Ty, clang::CXXRecordDecl *RD) {
@@ -1890,7 +1914,7 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
   bool Constructor = Fn->getId()->isStr("constructor");
   bool Destructor = Fn->getId()->isStr("destructor");
   if (Constructor || Destructor) {
-    if (FPT->getReturnType() == Context.CxxAST.getAutoDeductType()) {
+    if (FPT->getReturnType()->isUndeducedType()) {
       // double verifying function type.
       if (!Fn->TypeDcl) {
         // The we set the default type to void instead because we are a
@@ -1899,12 +1923,23 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
         llvm::SmallVector<clang::QualType, 10> ParamTypes(ParamTys.begin(),
                                                           ParamTys.end());
         clang::QualType FnTy = SemaRef.getCxxSema().BuildFunctionType(
-          Context.CxxAST.VoidTy,
-          ParamTypes, FnLoc,
-          clang::DeclarationName(),
+          Context.CxxAST.VoidTy, ParamTypes, FnLoc, clang::DeclarationName(),
           FPT->getExtProtoInfo());
         if (FnTy->isFunctionProtoType()) {
           FPT = FnTy->getAs<clang::FunctionProtoType>();
+
+          // We have to do this to switch to the correct return type for a
+          // constructor/destructor
+          auto FnTyLoc = Ty->getTypeLoc().getAs<clang::FunctionTypeLoc>();
+          auto P = FnTyLoc.getParams();
+          clang::SmallVector<clang::ParmVarDecl *, 16> Parms(P.begin(), P.end());
+          Ty = BuildFunctionTypeLoc(Context.CxxAST, FnTy,
+                                    FnTyLoc.getLocalRangeBegin(),
+                                    FnTyLoc.getLParenLoc(),
+                                    FnTyLoc.getRParenLoc(),
+                                    FnTyLoc.getExceptionSpecRange(),
+                                    FnTyLoc.getLocalRangeEnd(),
+                                    Parms);
         } else {
           SemaRef.Diags.Report(FnLoc,
                     clang::diag::err_invalid_return_type_for_ctor_or_dtor) << 0;
@@ -2051,9 +2086,9 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     }
   }
   clang::DeclContext *ResolvedCtx = Owner;
-  if (D->hasNestedNameSpecifier()) {
+  if (D->hasNestedNameSpecifier())
     ResolvedCtx = SemaRef.getCxxSema().computeDeclContext(D->ScopeSpec, true);
-  }
+
   FunctionDeclarator *FnDclPtr = D->FunctionDcl;
 
   // Get a reference to the containing class if there is one.
@@ -2087,7 +2122,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   // Get name info for the AST.
   clang::DeclarationName Name =
     getFunctionName(Context, SemaRef, D, TInfo, InClass, RD);
-  // FIXME: Create make sure I can make this work some how.
+
   if (D->declaresUserDefinedLiteral()) {
     clang::UnqualifiedId UnqualId;
     UnqualId.setLiteralOperatorId(D->UDLSuffixId,
@@ -2100,14 +2135,15 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   if (Name.isEmpty())
     return nullptr;
 
+  // Man I hope this doesn't break anything.
+  if (InClass)
+    setSpecialFunctionName(Context, RD, D, Name, TInfo->getType());
+
   // Set the declaration info here to help determine if this should have
   // a C++ special name.
   clang::DeclarationNameInfo DNI;
   DNI.setName(Name);
   DNI.setLoc(D->IdDcl->getLoc());
-
-  if (InClass)
-    setSpecialFunctionName(Context, RD, D, Name, TInfo->getType());
 
   clang::LookupResult Previous(CxxSema, DNI,
                                clang::Sema::LookupOrdinaryName,
@@ -2187,6 +2223,16 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     elaborateAttributes(D);
   } // end anonymous scope
 
+  // Handling special case for destructors without an exception spec
+  if (isa<clang::CXXDestructorDecl>(FD)) {
+    auto FPT = FD->getType()->castAs<clang::FunctionProtoType>();
+    if(FPT->getExceptionSpecType() == clang::EST_None) {
+      clang::FunctionProtoType::ExceptionSpecInfo ESI;
+      ESI.Type = clang::EST_BasicNoexcept;
+      applyESIToFunctionType(Context, SemaRef,FD, ESI);
+    }
+  }
+
   // Add the declaration and update bindings.
   if ((!Template || Specialization) && !D->declaresConstructor())
     Owner->addDecl(FD);
@@ -2196,8 +2242,8 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     clang::CXXConstructorDecl* CtorDecl =
       cast<clang::CXXConstructorDecl>(D->Cxx);
     CxxSema.PushOnScopeChains(CtorDecl, CxxScope);
-    CxxSema.CheckConstructor(CtorDecl);
   }
+
   CxxSema.FilterLookupForScope(Previous, ResolvedCtx,
                                CxxScope, !InClass, !InClass);
 
@@ -3064,6 +3110,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
     ExprElaborator TypeElab(Context, SemaRef);
     TypeExpr = TypeElab.elaborateExplicitType(D->TypeDcl, nullptr);
   } else {
+    // This needs to be handled right away.
     TypeExpr = SemaRef.buildTypeExpr(Context.CxxAST.getAutoDeductType(),
                                      D->Op->getLoc());
   }
@@ -3073,6 +3120,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
                          clang::diag::err_failed_to_translate_type);
     return nullptr;
   }
+  bool IsConstExprDecl = D->declIsConstexpr();
   clang::TypeSourceInfo *TInfo = nullptr;
   if (isa<clang::CppxTypeLiteral>(TypeExpr)) {
     TInfo = SemaRef.getTypeSourceInfoFromExpr(TypeExpr, TypeLocation);
@@ -3087,6 +3135,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
     SemaRef.Diags.Report(D->Op->getLoc(),
                         clang::diag::err_unsupported_unknown_any_decl)
                         << D->getId();
+    return nullptr;
   }
   if (!TInfo) {
     SemaRef.Diags.Report(D->Op->getLoc(),
@@ -3094,10 +3143,30 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
                         << D->getId();
     return nullptr;
   }
+  if (IsConstExprDecl) {
+    clang::CppxTypeLiteral* LitTy
+          = SemaRef.buildTypeExpr(
+                                Context.CxxAST.getConstType(TInfo->getType()),
+                                TypeExpr->getExprLoc());
+    TInfo = LitTy->getValue();
+  }
+
+
   // This is where we differentiate between type alias template,
   // variable template, namespace aliases, members, etc.
   clang::QualType VarType = TInfo->getType();
-  if (VarType->isTypeOfTypes()) {
+  clang::Expr *ComputedInitializer = nullptr;
+  if (VarType == Context.CxxAST.getAutoDeductType()) {
+    ComputedInitializer = elaborateDeducedVariableDecl(InitialScope, D);
+    if (!ComputedInitializer)
+      return nullptr;
+    if (D->Cxx)
+      // This covers all using declarations
+      if (!IsConstExprDecl && (isa<clang::TypedefDecl>(D->Cxx)
+          || isa<clang::TypeAliasDecl>(D->Cxx)
+          || isa<clang::NamespaceAliasDecl>(D->Cxx)))
+        return D->Cxx;
+  } else if (VarType->isTypeOfTypes()) {
     if (D->Template)
       return elaborateTemplateAliasOrVariable(D);
     return elaborateTypeAlias(D);
@@ -3624,11 +3693,49 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   if (D->declaresCatchVariable())
     NewVD->setExceptionVariable(true);
 
+  if ((ComputedInitializer || IsConstExprDecl)
+      && !isa<clang::ParmVarDecl>(NewVD))
+    // We have to redo some of the evaluation because it could be within a
+    // const expr expression.
+    elaborateVariableInit(D, true);
+
   return NewVD;
 }
 
 static clang::Decl *buildTypeAlias(Elaborator &E, Sema &SemaRef,
-                                   Declaration *D, clang::Expr *TyExpr) {
+                                   Declaration *D, clang::Expr *TyExpr);
+
+static clang::NamespaceAliasDecl *buildNsAlias(clang::ASTContext &CxxAST,
+                                               Sema &SemaRef, Declaration *D,
+                                               clang::Expr *NsExpr);
+
+clang::Expr *Elaborator::elaborateDeducedVariableDecl(clang::Scope *Sc,
+                                                      Declaration *D) {
+  ExprElaborator ExprElab(Context, SemaRef);
+  auto E = ExprElab.elaborateExpr(D->Init);
+  if (!E)
+    return E;
+
+  if (E->getType()->isNamespaceType()) {
+    buildNsAlias(Context.CxxAST, SemaRef, D, E);
+    return E;
+  }
+
+  if (E->getType()->isTemplateType()) {
+    // TODO: FIXME: This will need a temporary error message as well as
+    // eventaully a possible new kind of declaration.
+    llvm_unreachable("Create a new declaration here that is valid.");
+  }
+
+  if (E->getType()->isTypeOfTypes()) {
+    buildTypeAlias(*this, SemaRef, D, E);
+    return E;
+  }
+  return E;
+}
+
+clang::Decl *buildTypeAlias(Elaborator &E, Sema &SemaRef,
+                            Declaration *D, clang::Expr *TyExpr) {
   clang::ParsedType PT;
   clang::TypeSourceInfo *TInfo =
     SemaRef.getTypeSourceInfoFromExpr(TyExpr, D->Init->getLoc());
@@ -3687,9 +3794,9 @@ clang::Decl *Elaborator::elaborateTypeAlias(Declaration *D) {
   return buildTypeAlias(*this, SemaRef, D, InitTyExpr);
 }
 
-static clang::NamespaceAliasDecl *buildNsAlias(clang::ASTContext &CxxAST,
-                                               Sema &SemaRef, Declaration *D,
-                                               clang::Expr *NsExpr) {
+clang::NamespaceAliasDecl *buildNsAlias(clang::ASTContext &CxxAST,
+                                        Sema &SemaRef, Declaration *D,
+                                        clang::Expr *NsExpr) {
   if (D->isDeclaredWithinClass()) {
     SemaRef.Diags.Report(D->IdDcl->getLoc(),
                          clang::diag::err_namespace_alias_within_class);
@@ -4052,6 +4159,19 @@ clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
   return D->Cxx;
 }
 
+clang::Decl *Elaborator::elaborateDeclTypeEarly(Declaration *D) {
+  assert(D && (D->getId() || D->declaresUsingDirective())
+         && "Early elaboration of unidentified declaration");
+  Sema::OptionalInitScope<Sema::EnterNonNestedClassEarlyElaboration>
+    ENNCEE(SemaRef);
+  if (SemaRef.isElaboratingClass() && !D->isDeclaredWithinClass()) {
+    ENNCEE.Init(D);
+  }
+
+  elaborateDecl(D);
+  return D->Cxx;
+}
+
 void Elaborator::elaborateDeclInit(const Syntax *S) {
   // TODO: See elaborateDeclType. We have the same kinds of concerns.
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
@@ -4139,6 +4259,8 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   // Elaborate the function body.
   StmtElaborator BodyElaborator(Context, SemaRef);
   clang::Stmt *Body = BodyElaborator.elaborateBlock(D->Init);
+  // SemaRef.setCurrentDecl(D);
+  SemaRef.setClangDeclContext(cast<clang::FunctionDecl>(D->Cxx));
   SemaRef.getCxxSema().ActOnFinishFunctionBody(FuncDecl, Body);
 
   // Leave the function scope.
@@ -4181,10 +4303,15 @@ static clang::QualType buildImplicitArrayType(clang::ASTContext &Ctx,
                                   clang::ArrayType::Normal, 0);
 }
 
-void Elaborator::elaborateVariableInit(Declaration *D) {
+void Elaborator::elaborateVariableInit(Declaration *D, bool IsEarly) {
+  Sema::DeclarationElaborationRAII ElabTracker(SemaRef);
   D->CurrentPhase = Phase::Initialization;
   if (!D->Cxx)
     return;
+
+  // If this isn't early elaboration then we have to actually track it.
+  if (!IsEarly)
+    ElabTracker.init(D);
 
   Sema::OptionalInitScope<Sema::ResumeScopeRAII> OptResumeScope(SemaRef);
   clang::Expr *InitExpr = nullptr;
@@ -4204,9 +4331,10 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
       return;
     VD = cast<clang::VarDecl>(D->Cxx);
   }
-  if (VD->isConstexpr()) {
+
+  if (VD->isConstexpr())
     NeedsConstEvaluation = true;
-  }
+
   if (!D->Init) {
     if (isa<clang::ParmVarDecl>(VD))
       return;
@@ -4249,6 +4377,9 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
 
   // Perform auto deduction.
   if (VD->getType()->isUndeducedType()) {
+    if (!IsEarly)
+      llvm_unreachable("Invalid undeduced type inside of non-early phase 3 "
+                       "elaboration.");
     clang::QualType Ty;
 
     // Certain macros must be deduced manually.
@@ -4299,6 +4430,12 @@ void Elaborator::elaborateVariableInit(Declaration *D) {
                          clang::diag::err_failed_to_translate_expr);
     return;
   }
+  // In this case we will need to visit any of a possible constant expression
+  // and verify that the constant expression is properly evaluated.
+  if (NeedsConstEvaluation) {
+    SemaRef.elaborateConstexpr(InitExpr);
+  }
+
   if (D->defines<clang::VarTemplateDecl>()) {
     // I may need to revisit this in the furture becaus this might not be
     // the right thing to do in this case.
@@ -5226,7 +5363,6 @@ void Elaborator::elaborateStaticAttr(Declaration *D, const Syntax *S,
   if (DC->isRecord()) {
     if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(D->Cxx)) {
       if (isa<clang::CXXConversionDecl>(D->Cxx)) {
-        // TODO: Verify that this displays something meaningful
         SemaRef.Diags.Report(S->getLoc(),
                              clang::diag::err_conv_function_not_member)
                             << clang::SourceRange(S->getLoc(), S->getLoc())

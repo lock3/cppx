@@ -30,6 +30,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "clang/Gold/ClangToGoldDeclBuilder.h"
+#include "clang/Gold/GoldConstexprASTElaborator.h"
 #include "clang/Gold/GoldDependentExprTransformer.h"
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldIdentifierResolver.h"
@@ -378,11 +379,13 @@ gold::Declaration *Sema::getDeclaration(clang::Decl *CDecl) {
     if (!isa<clang::CXXRecordDecl>(CDecl)) {
       std::string Name = "";
       if (auto *ND = dyn_cast<clang::NamedDecl>(CDecl)) {
-        Name = ND->getName().str();
+        // CDecl->dump();
+        Diags.Report(CDecl->getLocation(),
+                    clang::diag::err_unknown_template_declaration)
+                    << ND;
+      } else {
+        llvm_unreachable("This should never happen.");
       }
-      Diags.Report(CDecl->getLocation(),
-                   clang::diag::err_unknown_template_declaration)
-                   << Name;
       return nullptr;
     }
     ClangToGoldDeclRebuilder rebuilder(Context, *this);
@@ -719,7 +722,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
         // use.
         if (CxxSema.isConstantEvaluated() || isInDeepElaborationMode()) {
           // If we aren't 100% completed then do complete elaboration.
-          if (phaseOf(FoundDecl) < Phase::Initialization) {
+          if ((phaseOf(FoundDecl) < Phase::Initialization)) {
             EnterDeepElabRAII DeepElab(*this);
             // change the elaboration context back to PotentiallyEvaluated.
             clang::EnterExpressionEvaluationContext ConstantEvaluated(CxxSema,
@@ -729,13 +732,20 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
           }
         }
 
+        if (FoundDecl->IsElaborating && !FoundDecl->declaresNamespace()) {
+          // This might be allowed in some scenarios Specifically when we
+          // reference a class type within
+          diagnoseElabCycleError(FoundDecl);
+          return false;
+        }
+
         // Skip early elaboration of declarations with nested name specifiers.
         if (FoundDecl->hasNestedNameSpecifier())
           continue;
 
         if (!FoundDecl->Cxx) {
           AttrElabRAII Attr(*this, false);
-          Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
+          Elaborator(Context, *this).elaborateDeclTypeEarly(FoundDecl);
         }
 
         if (!FoundDecl->Cxx)
@@ -938,6 +948,10 @@ clang::Scope *Sema::getCurClangScope() {
 
 clang::Scope *Sema::enterClangScope(unsigned int ScopeFlags) {
   CxxSema.CurScope = new clang::Scope(getCurClangScope(), ScopeFlags, Diags);
+  // Only do this if we are not a template scope to avoid an assertion inside
+  // of setEntity.
+  if (!CxxSema.CurScope->isTemplateParamScope())
+    CxxSema.CurScope->setEntity(nullptr);
   return CxxSema.CurScope;
 }
 
@@ -1576,6 +1590,22 @@ Sema::buildPartialInPlaceNewExpr(const Syntax *ConstructKW,
                                               *this, ConstructKW, PtrExpr),
                                             Loc);
 
+}
+
+void Sema::diagnoseElabCycleError(Declaration *CycleTerminalDecl) {
+  assert(CycleTerminalDecl && "Invalid terminal cycle");
+  assert(!DeclsBeingElaborated.empty() && "We cannot have an empty stack and a "
+         "declaration cycle.");
+  assert(CycleTerminalDecl->IdDcl);
+  Diags.Report(CycleTerminalDecl->IdDcl->getLoc(),
+               clang::diag::err_decl_use_cycle);
+  for (auto *CycleNote : DeclsBeingElaborated){
+    if (CycleNote == CycleTerminalDecl)
+      continue;
+
+    Diags.Report(CycleNote->IdDcl->getLoc(),
+                 clang::diag::note_cycle_entry);
+  }
 }
 
 void Sema::createInPlaceNew() {
@@ -2554,4 +2584,9 @@ Sema::BuildCXXNew(clang::SourceRange Range, bool UseGlobal,
                             DirectInitRange);
 }
 
+
+bool Sema::elaborateConstexpr(clang::Stmt *E) {
+  GoldConstexprASTElaborator ConstExprElaborator(*this);
+  return ConstExprElaborator.TraverseStmt(E);
+}
 } // namespace gold

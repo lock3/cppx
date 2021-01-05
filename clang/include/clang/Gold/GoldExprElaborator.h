@@ -144,8 +144,10 @@ public:
                                          const CallSyntax *Op,
                                          const Syntax *RHS);
   clang::Expr *elaborateGlobalNNS(const CallSyntax *Op, const Syntax *RHS);
-  clang::Expr *elaborateUnaryOp(const CallSyntax *S, clang::UnaryOperatorKind Op);
-  clang::Expr *elaborateBinOp(const CallSyntax *S, clang::BinaryOperatorKind Op);
+  clang::Expr *elaborateUnaryOp(const CallSyntax *S, const OpInfoBase *OpInfo,
+                                clang::UnaryOperatorKind Op);
+  clang::Expr *elaborateBinOp(const CallSyntax *S, const OpInfoBase *OpInfo,
+                              clang::BinaryOperatorKind Op);
 
   clang::Expr *elaborateBlockCondition(const ArraySyntax *Conditions,
                                       bool IsConstExpr = false);

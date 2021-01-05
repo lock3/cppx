@@ -406,8 +406,8 @@ public:
   void VisitErrorSyntax(const blue::ErrorSyntax *S);
   void VisitLiteralSyntax(const blue::LiteralSyntax *S);
   void VisitIdentifierSyntax(const blue::IdentifierSyntax *S);
-  void VisitTupleSyntax(const blue::ListSyntax *S);
-  void VisitTupleSyntax(const blue::SeqSyntax *S);
+  void VisitListSyntax(const blue::ListSyntax *S);
+  void VisitSeqSyntax(const blue::SeqSyntax *S);
   void VisitUnarySyntax(const blue::UnarySyntax *S);
   void VisitBinarySyntax(const blue::BinarySyntax *S);
   void VisitDefSyntax(const blue::DefSyntax *S);

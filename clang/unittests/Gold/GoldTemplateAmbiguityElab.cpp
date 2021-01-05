@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  Errors associated with declarator elaboration.
+//  Testing special instantiation situatutions.
 //
 //===----------------------------------------------------------------------===//
 
@@ -1125,6 +1125,17 @@ foo[T:type]():void!
 
 bar():void!
   foo[T1]()
+)";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldTemplateAmbiguity, CyclicDecltypeFunction) {
+  StringRef Code = R"(
+foo():int!
+  return 0
+
+foo(x:decltype(foo())):void!
+  ;
 )";
   GoldFailureTest(Code);
 }

@@ -11610,6 +11610,12 @@ def err_deref_or_ptr_for_invalid_type : Error <
     "cannot dereference or make a pointer to a namespace or an incomplete "
     "template">;
 
+def err_decl_use_cycle : Error<
+  "encountered a depency cycle while elaborating declaration">;
+
+def note_cycle_entry : Note<
+  "during elaboration of declaration"
+  >;
 } // end of Gold category
 
 let CategoryName = "Blue Elaboration Issues" in {

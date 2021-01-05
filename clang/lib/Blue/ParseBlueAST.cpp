@@ -37,12 +37,13 @@ void ParseBlueAST(clang::ASTContext &CxxContext,
   clang::SourceManager &SM = PP.getSourceManager();
   File InputFile(SM, SM.getMainFileID());
   Parser Parser(SM, InputFile);
-  Syntax *AST = Parser.parseFile();
+  Syntax *CST = Parser.parseFile();
+  CST->dump();
 
   // Elaborate the resulting abstract syntax tree.
   Elaborator Elab(CxxSema);
   clang::TranslationUnitDecl *TU =
-    cast<clang::TranslationUnitDecl>(Elab.elaborateTop(AST));
+    cast<clang::TranslationUnitDecl>(Elab.elaborateTop(CST));
   clang::ASTConsumer *Consumer = &CxxSema.getASTConsumer();
 
   for (auto *D : TU->decls()) {
