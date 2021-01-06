@@ -365,11 +365,11 @@ public:
   /// the operator name is a known valid operator. This operator name is only
   /// used by C++ iff there is a function declarator. This is the actual name
   /// used by the clang::Decl in CXX. This is to be consistent with C++.
-  const OpInfoBase* OpInfo = nullptr;
+  const OpInfoBase *OpInfo = nullptr;
 
 
   /// The corresponding C++ declaration.
-  clang::Decl* Cxx = nullptr;
+  clang::Decl *Cxx = nullptr;
 
   /// ====================================================================== ///
   /// Below are declarations pertaining to the redeclaration chain, which
@@ -405,7 +405,7 @@ public:
   gold::Scope *ScopeForDecl = nullptr;
 
   /// This is the gold DeclContext for a declaration.
-  Declaration* ParentDecl = nullptr;
+  Declaration *ParentDecl = nullptr;
 
   /// This is the current DeclContext when the declaration was encountered.
   clang::DeclContext *DeclaringContext = nullptr;

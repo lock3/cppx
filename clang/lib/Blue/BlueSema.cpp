@@ -46,7 +46,7 @@ const llvm::StringMap<clang::QualType> Sema::createBuiltinTypeList() {
 }
 
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
-  : CxxSema(CxxSema), Context(Context),
+  : Context(Context), CxxSema(CxxSema),
     CxxAST(Context.CxxAST),
     BuiltinTypes(createBuiltinTypeList())
 { }
@@ -91,6 +91,27 @@ Scope *Sema::popScope() {
   Scope *R = ScopeStack.back();
   ScopeStack.pop_back();
   return R;
+}
+
+clang::DeclContext *Sema::getCurClangDeclContext() const {
+  return CxxSema.CurContext;
+}
+
+void Sema::pushDecl(Declaration *D) {
+  assert(D->getOwner() == CurrentDecl);
+  CurrentDecl = D;
+  if (D->getCxx())
+    getCxxSema().CurContext = clang::Decl::castToDeclContext(D->getCxx());
+}
+
+void Sema::setCurrentDecl(Declaration *D) {
+  CurrentDecl = D;
+}
+
+void Sema::popDecl() {
+  CurrentDecl = CurrentDecl->getOwner();
+  getCxxSema().CurContext = CurrentDecl ?
+    clang::Decl::castToDeclContext(CurrentDecl->getCxx()) : nullptr;
 }
 
 bool Sema::lookupUnqualifiedName(clang::LookupResult &R) {
@@ -142,6 +163,22 @@ clang::CppxTypeLiteral *Sema::buildAnyTypeExpr(clang::QualType KindTy,
 clang::CppxTypeLiteral *Sema::buildAnyTypeExpr(clang::QualType KindTy,
     clang::QualType Ty, clang::SourceLocation Loc) {
   return buildAnyTypeExpr(KindTy, gold::BuildAnyTypeLoc(Context.CxxAST, Ty, Loc));
+}
+
+void Sema::addDeclToDecl(clang::Decl *Cxx, Declaration *Blue) {
+  assert(Cxx && "Invalid clang declaration");
+  assert(Blue && "Invalid blue declaration");
+
+  DeclToDecl.insert({Cxx, Blue});
+}
+
+Declaration *Sema::getDeclaration(clang::Decl *Cxx) {
+  assert(Cxx && "Invalid declaration.");
+  auto Iter = DeclToDecl.find(Cxx);
+  if (Iter == DeclToDecl.end())
+    return nullptr;
+
+  return Iter->second;
 }
 
 } // end namespace Blue

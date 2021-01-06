@@ -24,14 +24,37 @@
 
 namespace blue {
 
+Declaration *Elaborator::createDeclaration(const DefSyntax *Def,
+                                           Declarator *Dcl,
+                                           const Syntax *Init) {
+  Declaration *TheDecl =
+    new Declaration(SemaRef.getCurrentDecl(), Def, Dcl, Init);
+  TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Def->getIdentifierSpelling()});
+  TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
+  Scope *CurScope = SemaRef.getCurrentScope();
+  CurScope->addDecl(TheDecl);
+
+  return TheDecl;
+}
+
 clang::Decl *Elaborator::elaborateTop(const Syntax *S)
 {
+  if (!S)
+    return nullptr;
+
+  clang::TranslationUnitDecl *TU = getCxxContext().getTranslationUnitDecl();
+  Declaration *D = new Declaration(S);
+  D->setCxx(SemaRef, TU);
+  SemaRef.pushDecl(D);
+
   const TopSyntax *Top = cast<TopSyntax>(S);
-  SemaRef.CurContext = getCxxContext().getTranslationUnitDecl();
   Sema::ScopeRAII NamespaceScope(SemaRef, Scope::Namespace, S);
 
   for (const Syntax *S : Top->children())
     elaborateDecl(S);
+
+  SemaRef.getCxxSema().ActOnEndOfTranslationUnit();
+  SemaRef.popDecl();
 
   return getCxxContext().getTranslationUnitDecl();
 }
@@ -228,21 +251,26 @@ clang::Decl *Elaborator::makeObjectDecl(const Syntax *S, Declarator *Dcl, clang:
   llvm::outs() << "OBJECT!\n";
   // FIXME: possibly invalid assertion
   assert(isa<DefSyntax>(S) && "not a definition");
-  clang::ASTContext &CxxAST = SemaRef.getCxxAST();
   const DefSyntax *Def = cast<DefSyntax>(S);
-  clang::IdentifierInfo *Id =
-    &CxxAST.Idents.get({Def->getIdentifierSpelling()});
+
+  // Create the Blue Declaration
+  Declaration *TheDecl = createDeclaration(Def, Dcl, Def->getInitializer());
+
+  // Create the Clang Decl Node
+  clang::ASTContext &CxxAST = SemaRef.getCxxAST();
+  clang::IdentifierInfo *Id = TheDecl->Id;
   clang::DeclarationName Name(Id);
   clang::SourceLocation Loc = S->getLocation();
 
-  assert(Ty->getType()->isTypeOfTypes() && "type of decalration is not a type");
+  assert(Ty->getType()->isTypeOfTypes() && "type of declaration is not a type");
   clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(Ty)->getValue();
 
-  clang::DeclContext *Owner = SemaRef.CurContext;
+  clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
   clang::VarDecl *VD =
     clang::VarDecl::Create(CxxAST, Owner, Loc, Loc, Id, T->getType(), T,
                            getDefaultVariableStorageClass(SemaRef));
   Owner->addDecl(VD);
+  TheDecl->setCxx(SemaRef, VD);
 
   return VD;
 }
