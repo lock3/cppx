@@ -23,6 +23,10 @@ TEST(BlueVariableDecl, ImplicitAuto){
 X := 4
   )BLUE";
 
-  auto ToMatch = varDecl(hasName("x"), hasType(asString("int")));
+  auto ToMatch = varDecl(
+    hasName("x"),
+    hasType(asString("int")),
+    hasInitializer(integerLiteral(equals(4)))
+  );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
