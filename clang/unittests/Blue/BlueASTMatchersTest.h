@@ -236,7 +236,7 @@ testing::AssertionResult matchesConditionally(
     const std::string &Code, const T &AMatcher, bool ExpectMatch,
     llvm::ArrayRef<llvm::StringRef> CompileArgs,
     const FileContentMappings &VirtualMappedFiles = FileContentMappings(),
-    const std::string &Filename = "temp.usyntax") {
+    const std::string &Filename = "temp.blue") {
   bool Found = false, DynamicFound = false;
   MatchFinder Finder;
   VerifyMatch VerifyFound(nullptr, &Found);
@@ -306,7 +306,7 @@ testing::AssertionResult matchesConditionally(
     const std::string &Code, const T &AMatcher, bool ExpectMatch,
     llvm::StringRef CompileArg,
     const FileContentMappings &VirtualMappedFiles = FileContentMappings(),
-    const std::string &Filename = "temp.usyntax") {
+    const std::string &Filename = "temp.blue") {
   return matchesConditionally(Code, AMatcher, ExpectMatch,
                               llvm::makeArrayRef(CompileArg),
                               VirtualMappedFiles, Filename);
@@ -412,7 +412,7 @@ matchAndVerifyResultConditionally(const std::string &Code, const T &AMatcher,
   // unknown-unknown triple is good for a large speedup, because it lets us
   // avoid constructing a full system triple.
   std::vector<std::string> Args = {"blue"};
-  if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "blue", "-c"}, "temp.usyntax")) {
+  if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "blue", "-c"}, "temp.blue")) {
     return testing::AssertionFailure() << "Parsing error in \"" << Code << "\"";
   }
   if (!VerifiedResult && ExpectResult) {
@@ -424,7 +424,7 @@ matchAndVerifyResultConditionally(const std::string &Code, const T &AMatcher,
   }
 
   VerifiedResult = false;
-  std::unique_ptr<ASTUnit> AST(buildASTFromCodeWithArgs(Code, Args, "temp.usyntax"));
+  std::unique_ptr<ASTUnit> AST(buildASTFromCodeWithArgs(Code, Args, "temp.blue"));
   if (!AST.get())
     return testing::AssertionFailure() << "Parsing error in \"" << Code
                                        << "\" while building AST";

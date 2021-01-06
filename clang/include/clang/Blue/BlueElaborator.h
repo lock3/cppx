@@ -75,6 +75,7 @@ public:
   Declarator *getUnaryDeclarator(const UnarySyntax *S);
   Declarator *getBinaryDeclarator(const BinarySyntax *S);
   Declarator *getLeafDeclarator(const Syntax *S);
+  Declarator *getImplicitAutoDeclarator();
 
   clang::Expr *elaborateDeclarator(const Declarator *Dcl);
   clang::Expr *elaborateTypeDeclarator(const Declarator *Dcl);
@@ -82,12 +83,15 @@ public:
   clang::Expr *elaborateArrayDeclarator(const Declarator *Dcl);
   clang::Expr *elaborateFunctionDeclarator(const Declarator *Dcl);
   clang::Expr *elaborateTemplateDeclarator(const Declarator *Dcl);
+  clang::Expr *elaborateImplicitTypeDeclarator(const Declarator *Dcl);
 
   clang::Decl *makeValueDecl(const Syntax *S, Declarator *Dcl);
   clang::Decl *makeObjectDecl(const Syntax *S, Declarator *Dcl, clang::Expr *Ty);
   clang::Decl *makeTypeDecl(const Syntax *S, Declarator *Dcl, clang::QualType T);
   clang::Decl *makeFunctionDecl(const Syntax *S, Declarator *Dcl);
   clang::Decl *makeTemplateDecl(const Syntax *S, Declarator *Dcl);
+
+  void elaborateDefinition(const Syntax *S);
 
   clang::Expr *elaborateExpression(const Syntax *S);
   clang::Expr *elaborateLiteralExpression(const LiteralSyntax *S);

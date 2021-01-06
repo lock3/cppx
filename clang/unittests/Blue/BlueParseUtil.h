@@ -47,7 +47,7 @@ inline void SimpleBlueParseTest(llvm::StringRef Code) {
   std::unique_ptr<FrontendActionFactory> Factory(
       newFrontendActionFactory<BlueSyntaxAction>());
   if (!runToolOnCodeWithArgs(Factory->create(), Code, {"-x", "blue", "-c"},
-                            "temp.usyntax")) {
+                            "temp.blue")) {
     ASSERT_FALSE(true) << "Parsing error in \"" << Code.str() << "\"";
   }
 }
@@ -60,7 +60,7 @@ inline void BlueFailureTest(llvm::StringRef Code) {
       newFrontendActionFactory<BlueSyntaxAction>());
   if (runToolOnCodeWithArgs(Factory->create(), Code,
                             {"-x", "blue", "-c", "-Wall", "-Werror"},
-                            "temp.usyntax")) {
+                            "temp.blue")) {
     ASSERT_FALSE(true) << "Unexpected success \"" << Code.str() << "\"";
   }
 }
