@@ -30,8 +30,11 @@ clang::Decl *Elaborator::elaborateTop(const Syntax *S)
   SemaRef.CurContext = getCxxContext().getTranslationUnitDecl();
   Sema::ScopeRAII NamespaceScope(SemaRef, Scope::Namespace, S);
 
-  for (const Syntax *S : Top->children())
-    elaborateDecl(S);
+  for (const Syntax *SS : Top->children())
+    elaborateDecl(SS);
+
+  for (const Syntax *SS : Top->children())
+    elaborateDefinition(SS);
 
   return getCxxContext().getTranslationUnitDecl();
 }
@@ -119,6 +122,9 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
 // The first term in the list is always an identifier, which is established
 // by the function above.
 Declarator *Elaborator::getDeclarator(const Syntax *S) {
+  if (!S)
+    return getImplicitAutoDeclarator();
+
   if (const auto *U = dyn_cast<UnarySyntax>(S))
     return getUnaryDeclarator(U);
   if (const auto* B = dyn_cast<BinarySyntax>(S))
@@ -195,6 +201,10 @@ Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   llvm_unreachable("Invalid type expression");
 }
 
+Declarator *Elaborator::getImplicitAutoDeclarator() {
+  return new Declarator(Declarator::ImplicitType, nullptr);
+}
+
 // Declaration construction
 
 clang::Decl *Elaborator::makeValueDecl(const Syntax *S, Declarator* Dcl)
@@ -225,7 +235,7 @@ static inline clang::StorageClass getDefaultVariableStorageClass(Sema &SemaRef) 
 }
 
 clang::Decl *Elaborator::makeObjectDecl(const Syntax *S, Declarator *Dcl, clang::Expr *Ty) {
-  llvm::outs() << "OBJECT!\n";
+  // llvm::outs() << "OBJECT!\n";
   // FIXME: possibly invalid assertion
   assert(isa<DefSyntax>(S) && "not a definition");
   clang::ASTContext &CxxAST = SemaRef.getCxxAST();
@@ -281,7 +291,10 @@ clang::Expr *Elaborator::elaborateDeclarator(const Declarator *Dcl) {
     return elaborateFunctionDeclarator(Dcl);
   case Declarator::Template:
     return elaborateTemplateDeclarator(Dcl);
+  case Declarator::ImplicitType:
+    return elaborateImplicitTypeDeclarator(Dcl);
   }
+  llvm_unreachable("Unhandled kind of declarator.");
 }
 
 /// Elaborate declarations of the form 'T' as an expression.
@@ -326,6 +339,11 @@ clang::Expr *Elaborator::elaborateFunctionDeclarator(const Declarator *Dcl) {
 /// Elaborate declarations of the form '[parms] T'.
 clang::Expr *Elaborator::elaborateTemplateDeclarator(const Declarator *Dcl) {
   llvm_unreachable("Not implemented");
+}
+
+clang::Expr *Elaborator::elaborateImplicitTypeDeclarator(const Declarator *Dcl) {
+  clang::QualType Ty = getCxxContext().getAutoDeductType();
+  return SemaRef.buildTypeExpr(Ty, clang::SourceLocation());
 }
 
 
@@ -405,6 +423,10 @@ clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
   }
 
   llvm_unreachable("Not implemented");
+}
+
+void Elaborator::elaborateDefinition(const Syntax *S) {
+  
 }
 
 clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S) {

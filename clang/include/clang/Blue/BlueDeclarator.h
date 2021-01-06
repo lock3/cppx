@@ -30,6 +30,7 @@ class Declarator {
 public:
   enum Kind {
     Type,
+    ImplicitType,
     Pointer,
     Array,
     Function,
@@ -47,7 +48,8 @@ public:
   }
 
   bool declaresValue() const {
-    return getKind() == Type || getKind() == Pointer || getKind() == Array;
+    return getKind() == Type || getKind() == Pointer || getKind() == Array
+          || getKind() == ImplicitType;
   }
 
   bool declaresFunction() const {

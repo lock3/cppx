@@ -46,7 +46,7 @@ const llvm::StringMap<clang::QualType> Sema::createBuiltinTypeList() {
 }
 
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
-  : CxxSema(CxxSema), Context(Context),
+  : Context(Context), CxxSema(CxxSema),
     CxxAST(Context.CxxAST),
     BuiltinTypes(createBuiltinTypeList())
 { }

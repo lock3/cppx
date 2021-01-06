@@ -60,7 +60,7 @@ void BlueSyntaxActionDumper::ExecuteAction() {
     CI.createSema(getTranslationUnitKind(), nullptr);
 
   switch (getCurrentFileKind().getLanguage()) {
-  case clang::Language::Gold:
+  case clang::Language::Blue:
     CI.getLangOpts().CPlusPlus = true;
     CI.getLangOpts().CPlusPlus11 = true;
     CI.getLangOpts().CPlusPlus14 = true;

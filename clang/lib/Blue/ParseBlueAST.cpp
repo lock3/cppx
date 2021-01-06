@@ -31,7 +31,7 @@ namespace blue {
 void ParseBlueAST(clang::ASTContext &CxxContext,
                   clang::Preprocessor &PP,
                   clang::Sema &CxxSema) {
-  llvm::outs() << "Parse blue ast\n";
+  // llvm::outs() << "Parse blue ast\n";
 
   // Parse the input file.
   clang::SourceManager &SM = PP.getSourceManager();
@@ -39,7 +39,7 @@ void ParseBlueAST(clang::ASTContext &CxxContext,
   SyntaxContext Context(CxxContext);
   Parser Parser(SM, InputFile);
   Syntax *CST = Parser.parseFile();
-
+  CST->dump();
   // Elaborate the resulting abstract syntax tree.
   Sema Sema(Context, CxxSema);
   Elaborator Elab(Sema);
