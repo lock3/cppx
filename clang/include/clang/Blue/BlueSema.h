@@ -14,8 +14,9 @@
 #ifndef CLANG_BLUE_BLUE_SEMA_H
 #define CLANG_BLUE_BLUE_SEMA_H
 
-#include "clang/AST/Type.h"
+#include "clang/AST/ExprCppx.h"
 #include "clang/AST/NestedNameSpecifier.h"
+#include "clang/AST/Type.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "llvm/ADT/APInt.h"
@@ -56,12 +57,15 @@ class CppxDependentMemberAccessExpr;
 namespace blue {
 
 class Sema {
+  // Syntactic context
+  blue::SyntaxContext &Context;
+
   // The clang semantic object, allows to create various syntax nodes
   // as well as perform important transformations on them.
   clang::Sema &CxxSema;
 
-  // Syntactic context
-  blue::SyntaxContext &CxxContext;
+  clang::ASTContext &CxxAST;
+
   // Stack of active Scopes.
   llvm::SmallVector<Scope *, 4> ScopeStack;
 
@@ -69,7 +73,66 @@ class Sema {
 public:
   Sema(SyntaxContext &Context, clang::Sema &S);
   ~Sema();
+
+  clang::DeclContext *CurContext = nullptr;
+
+  clang::Sema &getCxxSema();
+  clang::ASTContext &getCxxAST();
+
+  // Perform unqualified lookup of a name in the current scope.
+  bool lookupUnqualifiedName(clang::LookupResult &R);
+
+  // Perform unqualified lookup of a name starting in S.
+  bool lookupUnqualifiedName(clang::LookupResult &R, Scope *S);
+
+  Scope *getCurrentScope();
+
+  /// Enter a new scope corresponding to the syntax S.
+  void enterScope(Scope::Kind K, const Syntax *S);
+
+  /// Leave the current scope. The syntax S must match the syntax for
+  /// which the scope was initially pushed.
+  void leaveScope(const Syntax *S);
+
+  /// Push a new scope.
+  void pushScope(Scope *S);
+
+  /// Pop the current scope, returning it.
+  Scope *popScope();
+
+  // Dictionary of built in types.
+  const llvm::StringMap<clang::QualType> BuiltinTypes;
+  const llvm::StringMap<clang::QualType> createBuiltinTypeList();
+
+  clang::CppxTypeLiteral *buildTypeExpr(clang::QualType Ty,
+                                        clang::SourceLocation Loc);
+  clang::CppxTypeLiteral *buildAnyTypeExpr(clang::QualType KindTy,
+                                           clang::TypeSourceInfo *TInfo);
+  clang::CppxTypeLiteral *buildAnyTypeExpr(clang::QualType KindTy,
+                                           clang::QualType Ty,
+                                           clang::SourceLocation Loc);
+
+//===----------------------------------------------------------------------===//
+//                               RAII Objects                                 //
+//===----------------------------------------------------------------------===//
+
+  // An RAII type for constructing scopes.
+  struct ScopeRAII {
+    ScopeRAII(Sema &S, Scope::Kind K, const Syntax *ConcreteTerm)
+      : S(S), ConcreteTerm(ConcreteTerm) {
+      S.enterScope(K, ConcreteTerm);
+    }
+
+    ~ScopeRAII() {
+      S.leaveScope(ConcreteTerm);
+    }
+
+  private:
+    Sema &S;
+    const Syntax *ConcreteTerm;
+  };
 };
-}
+
+} // end namespace blue
 
 #endif

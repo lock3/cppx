@@ -17,6 +17,8 @@
 namespace blue
 {
 
+class Syntax;
+
 /// A region or program text in which all declared names have the same scope.
 class Scope {
 public:
@@ -26,13 +28,22 @@ public:
     Function,
     Block,
     Class,
+    Control,
   };
 
-  Scope(Kind K, Scope *P)
-    : Which(K), Parent(P) {}
+  Scope(Kind K, const Syntax *S, Scope *P)
+    : Which(K), ConcreteTerm(S), Parent(P) {}
 
   Kind getKind() const {
     return Which;
+  }
+
+  bool isBlockScope() const {
+    return getKind() == Block;
+  }
+
+  bool isControlScope() const {
+    return getKind() == Control;
   }
 
   const Scope *getParent() const {
@@ -43,8 +54,13 @@ public:
     return Parent;
   }
 
+  const Syntax *getTerm() const {
+    return ConcreteTerm;
+  }
+
 private:
   Kind Which;
+  const Syntax *ConcreteTerm;
   Scope *Parent;
 };
 

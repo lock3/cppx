@@ -14,9 +14,9 @@
 #ifndef CLANG_BLUE_BLUEELABORATOR_H
 #define CLANG_BLUE_BLUEELABORATOR_H
 
+#include "clang/Blue/BlueSema.h"
 #include "clang/Blue/BlueSyntax.h"
 #include "clang/Sema/Sema.h"
-
 
 namespace clang {
 
@@ -36,13 +36,13 @@ class Declarator;
 class Elaborator
 {
 public:
-  Elaborator(clang::Sema &S)
-    : SemaRef(S)
+  Elaborator(Sema &S)
+    : SemaRef(S), CxxSema(S.getCxxSema())
   { }
 
   /// Returns the current state of C++ translation.
   clang::Sema &getCxxSema() {
-    return SemaRef;
+    return CxxSema;
   }
 
   /// Returns the C++ AST context.
@@ -67,33 +67,35 @@ public:
   Declarator *getBinaryDeclarator(const BinarySyntax *S);
   Declarator *getLeafDeclarator(const Syntax *S);
 
-  clang::ExprResult elaborateDeclarator(const Declarator *Dcl);
-  clang::ExprResult elaborateTypeDeclarator(const Declarator *Dcl);
-  clang::ExprResult elaboratePointerDeclarator(const Declarator *Dcl);
-  clang::ExprResult elaborateArrayDeclarator(const Declarator *Dcl);
-  clang::ExprResult elaborateFunctionDeclarator(const Declarator *Dcl);
-  clang::ExprResult elaborateTemplateDeclarator(const Declarator *Dcl);
+  clang::Expr *elaborateDeclarator(const Declarator *Dcl);
+  clang::Expr *elaborateTypeDeclarator(const Declarator *Dcl);
+  clang::Expr *elaboratePointerDeclarator(const Declarator *Dcl);
+  clang::Expr *elaborateArrayDeclarator(const Declarator *Dcl);
+  clang::Expr *elaborateFunctionDeclarator(const Declarator *Dcl);
+  clang::Expr *elaborateTemplateDeclarator(const Declarator *Dcl);
 
   clang::Decl *makeValueDecl(const Syntax *S, Declarator *Dcl);
-  clang::Decl *makeObjectDecl(const Syntax *S, Declarator *Dcl, clang::QualType T);
+  clang::Decl *makeObjectDecl(const Syntax *S, Declarator *Dcl, clang::Expr *Ty);
   clang::Decl *makeTypeDecl(const Syntax *S, Declarator *Dcl, clang::QualType T);
   clang::Decl *makeFunctionDecl(const Syntax *S, Declarator *Dcl);
   clang::Decl *makeTemplateDecl(const Syntax *S, Declarator *Dcl);
 
-  clang::ExprResult elaborateExpression(const Syntax *S);
-  clang::ExprResult elaborateLiteralExpression(const LiteralSyntax *S);
-  clang::ExprResult elaborateIdentifierExpression(const IdentifierSyntax *S);
-  clang::ExprResult elaborateListExpression(const ListSyntax *S);
-  clang::ExprResult elaborateSeqExpression(const SeqSyntax *S);
-  clang::ExprResult elaborateUnaryExpression(const UnarySyntax *S);
-  clang::ExprResult elaborateBinaryExpression(const BinarySyntax *S);
+  clang::Expr *elaborateExpression(const Syntax *S);
+  clang::Expr *elaborateLiteralExpression(const LiteralSyntax *S);
+  clang::Expr *elaborateIdentifierExpression(const IdentifierSyntax *S);
+  clang::Expr *elaborateListExpression(const ListSyntax *S);
+  clang::Expr *elaborateSeqExpression(const SeqSyntax *S);
+  clang::Expr *elaborateUnaryExpression(const UnarySyntax *S);
+  clang::Expr *elaborateBinaryExpression(const BinarySyntax *S);
 
   // Diagnostics
 
   void Error(clang::SourceLocation Loc, llvm::StringRef Msg);
 
 private:
-  clang::Sema &SemaRef;
+  Sema &SemaRef;
+
+  clang::Sema &CxxSema;
 };
 
 } // namespace blue

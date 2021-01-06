@@ -27,6 +27,9 @@ namespace blue {
 clang::Decl *Elaborator::elaborateTop(const Syntax *S)
 {
   const TopSyntax *Top = cast<TopSyntax>(S);
+  SemaRef.CurContext = getCxxContext().getTranslationUnitDecl();
+  Sema::ScopeRAII NamespaceScope(SemaRef, Scope::Namespace, S);
+
   for (const Syntax *S : Top->children())
     elaborateDecl(S);
 
@@ -200,36 +203,48 @@ clang::Decl *Elaborator::makeValueDecl(const Syntax *S, Declarator* Dcl)
   //
   // FIXME: An ill-typed declaration isn't the end of the world. Can we
   // poison the declaration and move on?
-  clang::ExprResult E = elaborateDeclarator(Dcl);
-  if (E.isInvalid())
+  clang::Expr *E = elaborateDeclarator(Dcl);
+  if (!E)
     return nullptr;
 
-  // Evaluate the type expression.
-  //
-  // FIXME: See above for recovery question.
-  //
-  // FIXME: Add partial diagnostics to the result so we can diagnose
-  // evaluation errors.
-  //
-  // FIXME: Define EvaluateAsType for Expr classes.
-  clang::Expr::EvalContext Cxt(getCxxContext(), nullptr);
-  clang::Expr::EvalResult Result;
-  if (!E.get()->EvaluateAsRValue(Result, Cxt, true)) {
-    Error(E.get()->getExprLoc(), "invalid type");
-    return nullptr;
-  }
+  clang::QualType T;
+  if (E->getType()->isTypeOfTypes())
+    T = cast<clang::CppxTypeLiteral>(E)->getValue()->getType();
 
-  // Build the declaration.
-  clang::QualType T = Result.Val.getType();
   if (T->isKindType())
     return makeTypeDecl(S, Dcl, T);
   else
-    return makeObjectDecl(S, Dcl, T);
+    return makeObjectDecl(S, Dcl, E);
 }
 
-clang::Decl *Elaborator::makeObjectDecl(const Syntax *S, Declarator *Dcl, clang::QualType T) {
+static inline clang::StorageClass getDefaultVariableStorageClass(Sema &SemaRef) {
+  return SemaRef.getCurrentScope()->isBlockScope() ||
+    SemaRef.getCurrentScope()->isControlScope()
+    ? clang::SC_Auto
+    : clang::SC_None;
+}
+
+clang::Decl *Elaborator::makeObjectDecl(const Syntax *S, Declarator *Dcl, clang::Expr *Ty) {
   llvm::outs() << "OBJECT!\n";
-  return nullptr;
+  // FIXME: possibly invalid assertion
+  assert(isa<DefSyntax>(S) && "not a definition");
+  clang::ASTContext &CxxAST = SemaRef.getCxxAST();
+  const DefSyntax *Def = cast<DefSyntax>(S);
+  clang::IdentifierInfo *Id =
+    &CxxAST.Idents.get({Def->getIdentifierSpelling()});
+  clang::DeclarationName Name(Id);
+  clang::SourceLocation Loc = S->getLocation();
+
+  assert(Ty->getType()->isTypeOfTypes() && "type of decalration is not a type");
+  clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(Ty)->getValue();
+
+  clang::DeclContext *Owner = SemaRef.CurContext;
+  clang::VarDecl *VD =
+    clang::VarDecl::Create(CxxAST, Owner, Loc, Loc, Id, T->getType(), T,
+                           getDefaultVariableStorageClass(SemaRef));
+  Owner->addDecl(VD);
+
+  return VD;
 }
 
 clang::Decl *Elaborator::makeTypeDecl(const Syntax *S, Declarator *Dcl, clang::QualType T) {
@@ -254,7 +269,7 @@ clang::Decl *Elaborator::makeTemplateDecl(const Syntax *S, Declarator* Dcl) {
 
 /// Return the type of entity declared by Dcl and establish any semantic
 /// state needed to process the declaration and its initializer.
-clang::ExprResult Elaborator::elaborateDeclarator(const Declarator *Dcl) {
+clang::Expr *Elaborator::elaborateDeclarator(const Declarator *Dcl) {
   switch (Dcl->getKind()) {
   case Declarator::Type:
     return elaborateTypeDeclarator(Dcl);
@@ -270,23 +285,23 @@ clang::ExprResult Elaborator::elaborateDeclarator(const Declarator *Dcl) {
 }
 
 /// Elaborate declarations of the form 'T' as an expression.
-clang::ExprResult Elaborator::elaborateTypeDeclarator(const Declarator *Dcl) {
-  clang::ExprResult E = elaborateExpression(Dcl->getInfo());
-  if (E.isInvalid())
-    return clang::ExprError();
-  clang::QualType T = E.get()->getType();
+clang::Expr *Elaborator::elaborateTypeDeclarator(const Declarator *Dcl) {
+  clang::Expr *E = elaborateExpression(Dcl->getInfo());
+  if (!E)
+    return nullptr;
+  clang::QualType T = E->getType();
   if (!T->isKindType()) {
     Error(Dcl->getLocation(), "invalid type");
-    return clang::ExprError();
+    return nullptr;
   }
   return E;
 }
 
 /// Elaborate declarations of the form '^E'.
-clang::ExprResult Elaborator::elaboratePointerDeclarator(const Declarator *Dcl) {
-  clang::ExprResult E = elaborateDeclarator(Dcl->getNext());
-  if (E.isInvalid())
-    return clang::ExprError();
+clang::Expr *Elaborator::elaboratePointerDeclarator(const Declarator *Dcl) {
+  clang::Expr *E = elaborateDeclarator(Dcl->getNext());
+  if (!E)
+    return nullptr;
 
   // FIXME: Build an address-of expression for the type...
   // clang::Expression *E = Dcl->getNext()->getExpression();
@@ -299,24 +314,24 @@ clang::ExprResult Elaborator::elaboratePointerDeclarator(const Declarator *Dcl) 
 }
 
 /// Elaborate declarations of the form '[E] T'.
-clang::ExprResult Elaborator::elaborateArrayDeclarator(const Declarator *Dcl) {
+clang::Expr *Elaborator::elaborateArrayDeclarator(const Declarator *Dcl) {
   llvm_unreachable("Not implemented");
 }
 
 /// Elaborate declarations of the form '(parms) T'.
-clang::ExprResult Elaborator::elaborateFunctionDeclarator(const Declarator *Dcl) {
+clang::Expr *Elaborator::elaborateFunctionDeclarator(const Declarator *Dcl) {
   llvm_unreachable("Not implemented");
 }
 
 /// Elaborate declarations of the form '[parms] T'.
-clang::ExprResult Elaborator::elaborateTemplateDeclarator(const Declarator *Dcl) {
+clang::Expr *Elaborator::elaborateTemplateDeclarator(const Declarator *Dcl) {
   llvm_unreachable("Not implemented");
 }
 
 
 // Expression elaboration
 
-clang::ExprResult Elaborator::elaborateExpression(const Syntax *S) {
+clang::Expr *Elaborator::elaborateExpression(const Syntax *S) {
   switch (S->getKind()) {
   case Syntax::Literal:
     return elaborateLiteralExpression(cast<LiteralSyntax>(S));
@@ -336,13 +351,13 @@ clang::ExprResult Elaborator::elaborateExpression(const Syntax *S) {
   llvm_unreachable("Unexpected syntax tree");
 }
 
-static clang::ExprResult makeIntegerLiteral(Elaborator &Elab, const Token &Tok) {
+static clang::Expr *makeIntegerLiteral(Elaborator &Elab, const Token &Tok) {
   // FIXME: Implement me.
   return {};
 }
 
 // The type of a type literal is always `type` even when declaring a type.
-static clang::ExprResult makeTypeLiteral(Elaborator &Elab, clang::QualType T, Token const& Tok) {
+static clang::Expr *makeTypeLiteral(Elaborator &Elab, clang::QualType T, Token const& Tok) {
   clang::ASTContext &Cxt = Elab.getCxxContext();
   clang::QualType K = Cxt.CppxKindTy;
   llvm_unreachable("Brian broke this during refactoring from QualType to "
@@ -350,7 +365,7 @@ static clang::ExprResult makeTypeLiteral(Elaborator &Elab, clang::QualType T, To
   // return new (Cxt) clang::CppxTypeLiteral(K, T, Tok.getLocation());
 }
 
-clang::ExprResult Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
+clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
   const Token& Tok = S->getToken();
   switch (Tok.getKind()) {
   case tok::DecimalInteger:
@@ -392,23 +407,29 @@ clang::ExprResult Elaborator::elaborateLiteralExpression(const LiteralSyntax *S)
   llvm_unreachable("Not implemented");
 }
 
-clang::ExprResult Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S) {
+clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S) {
+  // Check for builtin types
+  auto BuiltinMapIter = SemaRef.BuiltinTypes.find(S->getSpelling());
+  if (BuiltinMapIter != SemaRef.BuiltinTypes.end())
+    return SemaRef.buildTypeExpr(BuiltinMapIter->second, S->getLocation());
+
+  llvm::outs() << "ELABORATING NON-TYPE EXPR\n";
+  return nullptr;
+}
+
+clang::Expr *Elaborator::elaborateListExpression(const ListSyntax *S) {
   llvm_unreachable("Not implemented");
 }
 
-clang::ExprResult Elaborator::elaborateListExpression(const ListSyntax *S) {
+clang::Expr *Elaborator::elaborateSeqExpression(const SeqSyntax *S) {
   llvm_unreachable("Not implemented");
 }
 
-clang::ExprResult Elaborator::elaborateSeqExpression(const SeqSyntax *S) {
+clang::Expr *Elaborator::elaborateUnaryExpression(const UnarySyntax *S) {
   llvm_unreachable("Not implemented");
 }
 
-clang::ExprResult Elaborator::elaborateUnaryExpression(const UnarySyntax *S) {
-  llvm_unreachable("Not implemented");
-}
-
-clang::ExprResult Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
+clang::Expr *Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
   llvm_unreachable("Not implemented");
 }
 
@@ -416,7 +437,7 @@ clang::ExprResult Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
 // Diagnostics
 
 void Elaborator::Error(clang::SourceLocation Loc, llvm::StringRef Msg) {
-    SemaRef.Diags.Report(Loc, clang::diag::err_blue_elaboration) << Msg;
+  CxxSema.Diags.Report(Loc, clang::diag::err_blue_elaboration) << Msg;
 }
 
 
