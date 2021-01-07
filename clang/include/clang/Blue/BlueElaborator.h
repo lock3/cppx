@@ -50,7 +50,17 @@ public:
     return getCxxSema().Context;
   }
 
-  // Elaboration
+  //===--------------------------------------------------------------------===//
+  //                                  Identification                          //
+  //===--------------------------------------------------------------------===//
+
+  Declaration *createDeclaration(const DefSyntax *Def, Declarator *Dcl,
+                                 const Syntax *Init);
+
+  //===--------------------------------------------------------------------===//
+  //                                  Elaboration                             //
+  //===--------------------------------------------------------------------===//
+
   clang::Decl *elaborateTop(const Syntax *S);
 
   clang::Decl *elaborateDecl(const Syntax *S);

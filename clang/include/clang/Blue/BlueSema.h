@@ -57,18 +57,23 @@ class CppxDependentMemberAccessExpr;
 namespace blue {
 
 class Sema {
-  // Syntactic context
+  /// Syntactic context
   blue::SyntaxContext &Context;
 
-  // The clang semantic object, allows to create various syntax nodes
-  // as well as perform important transformations on them.
+  /// The clang semantic object, allows to create various syntax nodes
+  /// as well as perform important transformations on them.
   clang::Sema &CxxSema;
 
   clang::ASTContext &CxxAST;
 
-  // Stack of active Scopes.
+  /// Stack of active Scopes.
   llvm::SmallVector<Scope *, 4> ScopeStack;
 
+  /// The declaration context.
+  Declaration *CurrentDecl = nullptr;
+
+  /// A mapping of clang Decl nodes to Blue declarations.
+  std::unordered_map<clang::Decl *, Declaration *> DeclToDecl;
 
 public:
   Sema(SyntaxContext &Context, clang::Sema &S);
@@ -103,6 +108,25 @@ public:
   /// Pop the current scope, returning it.
   Scope *popScope();
 
+  /// Returns the current DeclContext that's set within the clang::Sema.
+  /// It's worth noting that getCurrentCxxDeclContext doesn't always equal
+  /// getCurClangDeclContext.
+  clang::DeclContext *getCurClangDeclContext() const;
+
+  /// The current declaration.
+  Declaration *getCurrentDecl() {
+    return CurrentDecl;
+  }
+
+  /// Make D the current declaration.
+  void pushDecl(Declaration *D);
+
+  /// Sets the decl context without modifying the clang::Sema class
+  void setCurrentDecl(Declaration *D);
+
+  /// Make the owner of CurrentDecl current.
+  void popDecl();
+
   // Dictionary of built in types.
   const llvm::StringMap<clang::QualType> BuiltinTypes;
   const llvm::StringMap<clang::QualType> createBuiltinTypeList();
@@ -115,10 +139,16 @@ public:
                                            clang::QualType Ty,
                                            clang::SourceLocation Loc);
 
+private:
+  friend struct Declaration;
+  void addDeclToDecl(clang::Decl *Cxx, Declaration *Blue);
+  Declaration *getDeclaration(clang::Decl *Cxx);
+
 //===----------------------------------------------------------------------===//
 //                               RAII Objects                                 //
 //===----------------------------------------------------------------------===//
 
+public:
   // An RAII type for constructing scopes.
   struct ScopeRAII {
     ScopeRAII(Sema &S, Scope::Kind K, const Syntax *ConcreteTerm)
