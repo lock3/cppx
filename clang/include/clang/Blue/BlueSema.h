@@ -74,6 +74,9 @@ public:
   Sema(SyntaxContext &Context, clang::Sema &S);
   ~Sema();
 
+  llvm::StringMap<clang::BinaryOperatorKind> BinOpMap;
+  llvm::StringMap<clang::UnaryOperatorKind> UnaryOpMap;
+
   clang::DeclContext *CurContext = nullptr;
 
   clang::Sema &getCxxSema();

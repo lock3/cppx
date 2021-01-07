@@ -30,8 +30,17 @@ clang::Decl *Elaborator::elaborateTop(const Syntax *S)
   SemaRef.CurContext = getCxxContext().getTranslationUnitDecl();
   Sema::ScopeRAII NamespaceScope(SemaRef, Scope::Namespace, S);
 
-  for (const Syntax *SS : Top->children())
-    elaborateDecl(SS);
+  for (const Syntax *SS : Top->children()){
+    auto D = elaborateDecl(SS);
+    // If it's not a declaration then try expression?
+    if (!D) {
+
+      auto E = elaborateExpression(SS);
+      if (!E)
+        return nullptr;
+      auto ExprStmt = getCxxSema().ActOnExprStmt(E, /*discardedValue*/true);
+    }
+  }
 
   for (const Syntax *SS : Top->children())
     elaborateDefinition(SS);
@@ -47,7 +56,11 @@ clang::Decl* Elaborator::elaborateDecl(const Syntax *S)
   default:
     break;
   }
-  llvm_unreachable("invalid declaration");
+  // TODO: Remove this eventaully, when we are not doing elaboration.
+  // This will allow us to pretend to evaluate expressions inside the global
+  // scope of a probram.
+  return nullptr;
+  // llvm_unreachable("invalid declaration");
 }
 
 clang::Decl *Elaborator::elaborateDefDecl(const DefSyntax *S) {
@@ -350,6 +363,7 @@ clang::Expr *Elaborator::elaborateImplicitTypeDeclarator(const Declarator *Dcl) 
 // Expression elaboration
 
 clang::Expr *Elaborator::elaborateExpression(const Syntax *S) {
+  assert(S && "");
   switch (S->getKind()) {
   case Syntax::Literal:
     return elaborateLiteralExpression(cast<LiteralSyntax>(S));
@@ -366,6 +380,7 @@ clang::Expr *Elaborator::elaborateExpression(const Syntax *S) {
   default:
     break;
   }
+  S->dump();
   llvm_unreachable("Unexpected syntax tree");
 }
 
@@ -426,7 +441,7 @@ clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
 }
 
 void Elaborator::elaborateDefinition(const Syntax *S) {
-  
+
 }
 
 clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S) {
@@ -452,7 +467,26 @@ clang::Expr *Elaborator::elaborateUnaryExpression(const UnarySyntax *S) {
 }
 
 clang::Expr *Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
-  llvm_unreachable("Not implemented");
+  // llvm_unreachable("Not implemented");
+
+  // BinOpMap
+  // UnaryOpMap
+  auto LHS = elaborateExpression(S->getLeftOperand());
+  if (!LHS)
+    return nullptr;
+
+  auto RHS = elaborateExpression(S->getRightOperand());
+  if (!RHS)
+    return nullptr;
+
+  auto OpIter = SemaRef.BinOpMap.find(S->getOperatorSpelling());
+  if (OpIter == SemaRef.BinOpMap.end())
+    llvm_unreachable("Operator not implemented yet!");
+  clang::ExprResult Res = SemaRef.getCxxSema().BuildBinOp(/*Scope=*/nullptr,
+                                                          S->getLocation(),
+                                                          OpIter->second, LHS,
+                                                          RHS);
+  return Res.get();
 }
 
 
