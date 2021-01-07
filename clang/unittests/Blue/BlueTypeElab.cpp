@@ -47,7 +47,7 @@ BLUE_BUILTIN_TYPE_TEST("uint128", uint128, "unsigned __int128")
 
 BLUE_BUILTIN_TYPE_TEST("char", char, "char")
 BLUE_BUILTIN_TYPE_TEST("char8", char8, "char8_t")
-BLUE_BUILTIN_TYPE_TEST("char16", char16, "char16_t")
+BLUE_BUILTIN_TYPE_TEST("char16", char16, "unsigned short")
 BLUE_BUILTIN_TYPE_TEST("char32", char32, "unsigned int")
 
 //BLUE_BUILTIN_TYPE_TEST("float16", float16, "__fp16")

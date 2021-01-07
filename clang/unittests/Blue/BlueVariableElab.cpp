@@ -20,11 +20,11 @@ using namespace gold;
 
 TEST(BlueVariableDecl, ImplicitAuto){
   StringRef Code = R"BLUE(
-X := 4
+X := 4;
   )BLUE";
 
   auto ToMatch = varDecl(
-    hasName("x"),
+    hasName("X"),
     hasType(asString("int")),
     hasInitializer(integerLiteral(equals(4)))
   );
