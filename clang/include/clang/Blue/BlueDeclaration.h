@@ -23,9 +23,20 @@ namespace clang {
   class IdentifierInfo;
 } // end namespace clang
 
+
 namespace blue {
 
 class Sema;
+
+enum class Phase : std::size_t
+{
+  Unprocessed,
+  Identification,
+  Typing,
+  Initialization
+};
+
+llvm::StringRef phaseToStr(Phase p);
 
 struct Declaration {
   /// Use to create the initial file/global namespace.
@@ -55,6 +66,8 @@ struct Declaration {
 
   clang::DeclContext *DeclaringContext = nullptr;
 
+  Phase CurrentPhase = Phase::Unprocessed;
+
   clang::Decl *getCxx() {
     return Cxx;
   }
@@ -66,10 +79,13 @@ struct Declaration {
     return Ctx;
   }
 
+  bool IsVariableDecl() const;
+
 private:
   /// The corresponding C++ declaration.
   clang::Decl *Cxx = nullptr;
 };
+Phase phaseOf(Declaration *D);
 
 } // end namespace blue
 

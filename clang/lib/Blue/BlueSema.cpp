@@ -39,15 +39,91 @@ const llvm::StringMap<clang::QualType> Sema::createBuiltinTypeList() {
 
     // character
     {"char", CxxAST.CharTy},
+    {"char8", CxxAST.Char8Ty},
+    {"char16", CxxAST.Char16Ty},
+    {"char32", CxxAST.Char32Ty},
 
     // signed integers.
     {"int", CxxAST.IntTy},
+    {"int8", CxxAST.SignedCharTy},
+    {"int16", CxxAST.ShortTy},
+    {"int32", CxxAST.IntTy},
+    {"int64", CxxAST.LongTy},
+    {"int128", CxxAST.Int128Ty},
+
+    // unsigned integers.
+    {"uint", CxxAST.UnsignedIntTy},
+    {"uint8", CxxAST.UnsignedCharTy},
+    {"uint16", CxxAST.UnsignedShortTy},
+    {"uint32", CxxAST.UnsignedIntTy},
+    {"uint64", CxxAST.UnsignedLongTy},
+    {"uint128", CxxAST.UnsignedInt128Ty},
+
+    // floating point types.
+    {"float", CxxAST.DoubleTy},
+    {"float32", CxxAST.FloatTy},
+    {"float64", CxxAST.DoubleTy},
+    {"float128", CxxAST.Float128Ty}
+  };
+}
+
+static llvm::StringMap<clang::BinaryOperatorKind> getBinOpMapping() {
+  return llvm::StringMap<clang::BinaryOperatorKind>{
+    {"+", clang::BO_Add},
+    {"-", clang::BO_Sub},
+    {"^", clang::BO_Xor},
+    {"/", clang::BO_Div},
+    {"%", clang::BO_Rem},
+    {"*", clang::BO_Mul},
+    {"|", clang::BO_Or},
+    {"<<", clang::BO_Shl},
+    {">>", clang::BO_Shr},
+    {"||", clang::BO_LOr},
+    {"&&", clang::BO_LAnd},
+    {"<", clang::BO_LT},
+    {">", clang::BO_GT},
+    {"<=", clang::BO_LE},
+    {">=", clang::BO_GE},
+    {"==", clang::BO_EQ},
+    {"!=", clang::BO_NE},
+    {"=", clang::BO_Assign},
+    {"+=", clang::BO_AddAssign},
+    {"-=", clang::BO_SubAssign},
+    {"*=", clang::BO_MulAssign},
+    {"/=", clang::BO_DivAssign},
+    {"%=", clang::BO_RemAssign},
+    {"^=", clang::BO_XorAssign},
+    {"|=", clang::BO_OrAssign},
+    {"&=", clang::BO_AndAssign},
+    {"<<=", clang::BO_ShlAssign},
+    {">>=", clang::BO_ShrAssign}
+  };
+}
+
+static llvm::StringMap<clang::UnaryOperatorKind> getUnaryOperatorMapping() {
+  return llvm::StringMap<clang::UnaryOperatorKind>{
+    // TODO: Figure out if this is pre or post inc/dec
+    // {"++", clang::},
+    // PreInc
+    // PostInc
+    // {"++", clang::},
+    // PreDec
+    // PostDec
+    {"~", clang::UO_Not},
+    {"!", clang::UO_LNot},
+    {"^", clang::UO_Deref},
+    {"&", clang::UO_AddrOf},
+    {"+", clang::UO_Plus},
+    {"-", clang::UO_Minus}
   };
 }
 
 Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : Context(Context), CxxSema(CxxSema),
     CxxAST(Context.CxxAST),
+    BinOpMap(getBinOpMapping()),
+    UnaryOpMap(getUnaryOperatorMapping()),
+    DefaultCharTy(CxxAST.CharTy),
     BuiltinTypes(createBuiltinTypeList())
 { }
 

@@ -168,6 +168,19 @@ private:
   Token Tok;
 };
 
+
+// Represents a suffix on a literal value, such as `64u64`
+struct LiteralSuffix
+{
+  bool IsSigned = false;
+  bool IsUnsigned = false;
+  std::size_t BitWidth = 0;
+  bool IsFloat = false;
+  bool IsDouble = false;
+  bool IsHalf = false;
+  bool IsQuarter = false;
+};
+
 /// Represents literal values.
 class LiteralSyntax : public AtomSyntax {
 public:
@@ -178,6 +191,7 @@ public:
   static bool classof(const Syntax *S) {
     return S->getKind() == Literal;
   }
+  LiteralSuffix Suffix;
 };
 
 /// Represents identifiers.

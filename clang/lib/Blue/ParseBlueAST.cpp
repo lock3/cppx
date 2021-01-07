@@ -43,8 +43,10 @@ void ParseBlueAST(clang::ASTContext &CxxContext,
   // Elaborate the resulting abstract syntax tree.
   Sema Sema(Context, CxxSema);
   Elaborator Elab(Sema);
-  clang::TranslationUnitDecl *TU =
-    cast<clang::TranslationUnitDecl>(Elab.elaborateTop(CST));
+  clang::Decl *PossibleTU = Elab.elaborateTop(CST);
+  if (!PossibleTU)
+    return;
+  clang::TranslationUnitDecl *TU = cast<clang::TranslationUnitDecl>(PossibleTU);
   clang::ASTConsumer *Consumer = &CxxSema.getASTConsumer();
 
   for (auto *D : TU->decls()) {
