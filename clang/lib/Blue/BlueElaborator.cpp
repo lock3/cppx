@@ -316,6 +316,7 @@ clang::Decl *Elaborator::makeObjectDecl(const Syntax *S, Declarator *Dcl, clang:
                            getDefaultVariableStorageClass(SemaRef));
   Owner->addDecl(VD);
   TheDecl->setCxx(SemaRef, VD);
+  TheDecl->CurrentPhase = Phase::Typing;
 
   return VD;
 }
@@ -981,8 +982,92 @@ clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
 }
 
 void Elaborator::elaborateDefinition(const Syntax *S) {
+  auto Decl = SemaRef.getCurrentScope()->findDecl(S);
+  if (!Decl)
+    return;
+
+  // If the current phase isn't typing then bail.
+  if (phaseOf(Decl) != Phase::Typing)
+    return;
+
+  if (Decl->IsVariableDecl())
+    return elaborateVarDef(Decl);
+
+  llvm_unreachable("Elaboration for this kind of declaration isn't "
+                   "implemented yet.");
 
 }
+void Elaborator::elaborateVarDef(Declaration *D) {
+  D->CurrentPhase = Phase::Initialization;
+  // if (!D->Cxx)
+  //   return;
+
+  // If this isn't early elaboration then we have to actually track it.
+  // if (!IsEarly)
+  //   ElabTracker.init(D);
+
+  // Sema::OptionalInitScope<Sema::ResumeScopeRAII> OptResumeScope(SemaRef);
+  // clang::Expr *InitExpr = nullptr;
+  // clang::VarDecl *VD = nullptr;
+  // Sema::DeclInitializationScope ClangInitScope(SemaRef, D);
+  // bool NeedsConstEvaluation = false;
+  // if (D->defines<clang::VarTemplateDecl>()) {
+  //   if (SemaRef.checkForRedefinition<clang::VarTemplateDecl>(D))
+  //     return;
+
+  //   // We need to attempt to re-enter the template context for this variable.
+  //   OptResumeScope.Init(D->SavedScope, D->Op);
+  //   clang::VarTemplateDecl *VTD = cast<clang::VarTemplateDecl>(D->Cxx);
+  //   VD = VTD->getTemplatedDecl();
+  // } else {
+  //   if (SemaRef.checkForRedefinition<clang::VarDecl>(D))
+  //     return;
+  //   VD = cast<clang::VarDecl>(D->Cxx);
+  // }
+
+  // if (VD->isConstexpr())
+  //   NeedsConstEvaluation = true;
+  clang::VarDecl *VD = cast<clang::VarDecl>(D->getCxx());
+  if (!D->Def->hasInitializer()) {
+    // if (isa<clang::ParmVarDecl>(VD))
+    //   return;
+    // FIXME: We probably want to synthesize some kind of initializer here.
+    // Not quite sure how we want to do this.
+    //
+    // FIXME: What if D has type auto? Surely this is an error. For example:
+    //
+    //    x : auto
+    //
+    // declares an undeduced-type variable with no initializer. Presumably
+    // this should be an error.
+
+    // This handles implcit initialization/constructor calls for variables
+    // that don't have a = sign on first use, but have a type.
+    // That includes complex types.
+    getCxxSema().ActOnUninitializedDecl(VD);
+    getCxxSema().FinalizeDeclaration(VD);
+    return;
+  }
+  // if (D->defines<clang::VarTemplateDecl>()) {
+  //   // I may need to revisit this in the furture becaus this might not be
+  //   // the right thing to do in this case.
+  //   VD->setInit(InitExpr);
+  // } else {
+
+  // if (D->isDeclaredWithinClass() && !VD->isInlineSpecified()
+  //     && (!VD->getType().isConstant(Context.CxxAST) && !VD->isConstexpr())) {
+  //   SemaRef.Diags.Report(D->IdDcl->getLoc(),
+  //                       clang::diag::err_in_class_initializer_non_const);
+  //   return;
+  // }
+  auto InitExpr = elaborateExpression(D->Def->getInitializer());
+  if (!InitExpr)
+    return;
+  // Update the initializer.
+  SemaRef.getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
+
+}
+
 
 clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S) {
   // Check for builtin types

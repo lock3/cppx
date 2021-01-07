@@ -92,6 +92,7 @@ public:
   clang::Decl *makeTemplateDecl(const Syntax *S, Declarator *Dcl);
 
   void elaborateDefinition(const Syntax *S);
+  void elaborateVarDef(Declaration *D);
 
   clang::Expr *elaborateExpression(const Syntax *S);
   clang::Expr *elaborateLiteralExpression(const LiteralSyntax *S);

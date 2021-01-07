@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueComparisonOp, Less) {
   StringRef Code = R"BLUE(
-4 < 5
+x:=4 < 5
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("<"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -28,15 +28,15 @@ TEST(BlueComparisonOp, Less) {
 
 TEST(BlueComparisonOp, Greater) {
   StringRef Code = R"BLUE(
-4 > 5
+x:=4 > 5
   )BLUE";
-  auto ToMatch = binaryOperator(hasOperatorName("|"));
+  auto ToMatch = binaryOperator(hasOperatorName(">"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
 TEST(BlueComparisonOp, Equal) {
   StringRef Code = R"BLUE(
-4 == 5
+x:=4 == 5
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("=="));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -44,7 +44,7 @@ TEST(BlueComparisonOp, Equal) {
 
 TEST(BlueComparisonOp, NotEqual) {
   StringRef Code = R"BLUE(
-4 != 5
+x:=4 != 5
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("!="));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -52,7 +52,7 @@ TEST(BlueComparisonOp, NotEqual) {
 
 TEST(BlueComparisonOp, LessEqual) {
   StringRef Code = R"BLUE(
-4 <= 5
+x:=4 <= 5
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("<="));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -60,7 +60,7 @@ TEST(BlueComparisonOp, LessEqual) {
 
 TEST(BlueComparisonOp, GreaterEqual) {
   StringRef Code = R"BLUE(
-4 >= 5
+x:=4 >= 5
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName(">="));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
