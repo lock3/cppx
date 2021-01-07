@@ -21,7 +21,7 @@ using namespace blue;
 
 #define BLUE_BUILTIN_TYPE_TEST(TYPE_STRING, TEST_SUFFIX, EXPECTED_TYPE_STR)\
 TEST(BlueType, BuiltInType_##TEST_SUFFIX) {\
-  StringRef Code = "i:" TYPE_STRING ;\
+  StringRef Code = "i:" TYPE_STRING ";";\
   DeclarationMatcher VarIMatcher = varDecl(\
     hasName("i"), hasType(asString(EXPECTED_TYPE_STR))\
   );\
@@ -45,12 +45,12 @@ BLUE_BUILTIN_TYPE_TEST("uint32", uint32, "unsigned int")
 BLUE_BUILTIN_TYPE_TEST("uint64", uint64, "unsigned long")
 BLUE_BUILTIN_TYPE_TEST("uint128", uint128, "unsigned __int128")
 
-BLUE_BUILTIN_TYPE_TEST("char", char, "unsigned char")
-BLUE_BUILTIN_TYPE_TEST("char8", char8, "unsigned char")
-BLUE_BUILTIN_TYPE_TEST("char16", char16, "unsigned short")
+BLUE_BUILTIN_TYPE_TEST("char", char, "char")
+BLUE_BUILTIN_TYPE_TEST("char8", char8, "char8_t")
+BLUE_BUILTIN_TYPE_TEST("char16", char16, "char16_t")
 BLUE_BUILTIN_TYPE_TEST("char32", char32, "unsigned int")
 
-BLUE_BUILTIN_TYPE_TEST("float16", float16, "__fp16")
+//BLUE_BUILTIN_TYPE_TEST("float16", float16, "__fp16")
 BLUE_BUILTIN_TYPE_TEST("float32", float32, "float")
 BLUE_BUILTIN_TYPE_TEST("float64", float64, "double")
 BLUE_BUILTIN_TYPE_TEST("float", float, "double")
@@ -60,6 +60,7 @@ BLUE_BUILTIN_TYPE_TEST("float128", float128, "__float128")
 #endif
 
 #undef BLUE_BUILTIN_TYPE_TEST
+
 // TODO: Uncomment these tests once we have the parsing for this fixed.
 // TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed) {
 //   StringRef Code = "i:integer[1, signed]";

@@ -968,7 +968,7 @@ clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
                                  Tok.getLocation());
   case tok::FloatKeyword:
     // FIXME: Support arbitrary length floating point types vie the lexer.
-    return SemaRef.buildTypeExpr(getCxxContext().FloatTy,
+    return SemaRef.buildTypeExpr(getCxxContext().DoubleTy,
                                  Tok.getLocation());
   case tok::TypeKeyword:
     return SemaRef.buildTypeExpr(getCxxContext().CppxKindTy,
