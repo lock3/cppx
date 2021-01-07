@@ -39,11 +39,34 @@ const llvm::StringMap<clang::QualType> Sema::createBuiltinTypeList() {
 
     // character
     {"char", CxxAST.CharTy},
+    {"char8", CxxAST.Char8Ty},
+    {"char16", CxxAST.Char16Ty},
+    {"char32", CxxAST.Char32Ty},
 
     // signed integers.
     {"int", CxxAST.IntTy},
+    {"int8", CxxAST.SignedCharTy},
+    {"int16", CxxAST.ShortTy},
+    {"int32", CxxAST.IntTy},
+    {"int64", CxxAST.LongTy},
+    {"int128", CxxAST.Int128Ty},
+
+    // unsigned integers.
+    {"uint", CxxAST.UnsignedIntTy},
+    {"uint8", CxxAST.UnsignedCharTy},
+    {"uint16", CxxAST.UnsignedShortTy},
+    {"uint32", CxxAST.UnsignedIntTy},
+    {"uint64", CxxAST.UnsignedLongTy},
+    {"uint128", CxxAST.UnsignedInt128Ty},
+
+    // floating point types.
+    {"float", CxxAST.DoubleTy},
+    {"float32", CxxAST.FloatTy},
+    {"float64", CxxAST.DoubleTy},
+    {"float128", CxxAST.Float128Ty}
   };
 }
+
 static llvm::StringMap<clang::BinaryOperatorKind> getBinOpMapping() {
   return llvm::StringMap<clang::BinaryOperatorKind>{
     {"+", clang::BO_Add},
@@ -100,6 +123,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     CxxAST(Context.CxxAST),
     BinOpMap(getBinOpMapping()),
     UnaryOpMap(getUnaryOperatorMapping()),
+    DefaultCharTy(CxxAST.CharTy),
     BuiltinTypes(createBuiltinTypeList())
 { }
 

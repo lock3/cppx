@@ -82,6 +82,8 @@ public:
   llvm::StringMap<clang::BinaryOperatorKind> BinOpMap;
   llvm::StringMap<clang::UnaryOperatorKind> UnaryOpMap;
 
+  clang::QualType DefaultCharTy;
+
   clang::DeclContext *CurContext = nullptr;
 
   clang::Sema &getCxxSema();

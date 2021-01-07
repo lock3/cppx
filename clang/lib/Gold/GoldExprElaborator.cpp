@@ -3388,7 +3388,7 @@ static inline bool isLocalLambdaScope(const Scope *S) {
 }
 
 static inline bool isValidCaptureCall(const FusedOpKind FOK) {
-  return FOK == FOK_Equals || FOK_Caret || FOK_Ampersand;
+  return FOK == FOK_Equals || FOK == FOK_Caret || FOK == FOK_Ampersand;
 }
 
 static void buildLambdaCaptureInternal(SyntaxContext &Context, Sema &SemaRef,

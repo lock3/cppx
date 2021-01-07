@@ -23,6 +23,7 @@ const char *Syntax::getKindName() const {
     case K: return # K;
 #include "clang/Blue/BlueSyntax.def"
   }
+  llvm_unreachable("Invalid syntax kind");
 }
 
 clang::SourceLocation Syntax::getLocation() const {
@@ -31,6 +32,7 @@ clang::SourceLocation Syntax::getLocation() const {
     case K: return static_cast<const K ## Syntax *>(this)->getLocation();
 #include "clang/Blue/BlueSyntax.def"
   }
+  llvm_unreachable("Invalid syntax location");
 }
 
 clang::SourceLocation Syntax::getBeginLocation() const {
@@ -39,6 +41,7 @@ clang::SourceLocation Syntax::getBeginLocation() const {
     case K: return static_cast<const K ## Syntax *>(this)->getBeginLocation();
 #include "clang/Blue/BlueSyntax.def"
   }
+  llvm_unreachable("Invalid syntax beginning location");
 }
 
 clang::SourceLocation Syntax::getEndLocation() const {
@@ -47,6 +50,7 @@ clang::SourceLocation Syntax::getEndLocation() const {
     case K: return static_cast<const K ## Syntax *>(this)->getEndLocation();
 #include "clang/Blue/BlueSyntax.def"
   }
+  llvm_unreachable("Invalid syntax ending location");
 }
 
 Syntax::child_range Syntax::children() {
@@ -55,6 +59,7 @@ Syntax::child_range Syntax::children() {
     case K: return static_cast<K ## Syntax *>(this)->children();
 #include "clang/Blue/BlueSyntax.def"
   }
+  llvm_unreachable("Invalid syntax children");
 }
 
 Syntax::const_child_range Syntax::children() const {
