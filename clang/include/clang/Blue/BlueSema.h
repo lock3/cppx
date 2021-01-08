@@ -93,6 +93,11 @@ public:
   bool lookupUnqualifiedName(clang::LookupResult &R);
 
   // Perform unqualified lookup of a name starting in S.
+  // Returns true if there's an error, and false if not.
+  // In the event that it returns false but doesn't have any results
+  // it means that the id looked up was a built in type that doesn't have
+  // a declaration, and a 2nd level of access should get the type from
+  // within the BuiltinTypes map.
   bool lookupUnqualifiedName(clang::LookupResult &R, Scope *S);
 
   Scope *getCurrentScope();
