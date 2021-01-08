@@ -55,7 +55,7 @@ public:
   //                                  Identification                          //
   //===--------------------------------------------------------------------===//
 
-  Declaration *createDeclaration(const DefSyntax *Def, Declarator *Dcl,
+  Declaration *createDeclaration(const Syntax *Def, Declarator *Dcl,
                                  const Syntax *Init);
 
   //===--------------------------------------------------------------------===//

@@ -47,12 +47,17 @@
 
 namespace blue {
 
-Declaration *Elaborator::createDeclaration(const DefSyntax *Def,
+Declaration *Elaborator::createDeclaration(const Syntax *Def,
                                            Declarator *Dcl,
                                            const Syntax *Init) {
   Declaration *TheDecl =
     new Declaration(SemaRef.getCurrentDecl(), Def, Dcl, Init);
-  TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Def->getIdentifierSpelling()});
+
+  if (const DefSyntax *Id = dyn_cast<DefSyntax>(Def))
+    TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getIdentifierSpelling()});
+  else if (const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(Def))
+    TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
+
   TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
   Scope *CurScope = SemaRef.getCurrentScope();
   CurScope->addDecl(TheDecl);
@@ -154,6 +159,27 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
     return nullptr;
   }
 
+  clang::ASTContext &CxxAST = SemaRef.getCxxAST();
+  clang::SourceLocation Loc = S->getLocation();
+
+  if (const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(S)) {
+    // FIXME: create context for auto parameters to keep track of their
+    // index and depth.
+    // Declaration *TheDecl = createDeclaration(S, nullptr, nullptr);
+
+    // clang::IdentifierInfo *TypeII =
+    //   CxxSema.InventAbbreviatedTemplateParameterTypeName(Name, Index);
+
+    // // We add the template parm to the TU temporarily, until we create the
+    // // template. We'll set the depth and index later.
+    // TemplateTypeParmDecl *TheType =
+    //   TemplateTypeParmDecl::Create(ClangContext, TUDecl, SourceLocation(),
+    //                                SourceLocation(), /*Depth=*/0, /*Index=*/0,
+    //                                /*Identifier=*/nullptr, /*Typename=*/false,
+    //                                /*ParameterPack=*/false);
+    // TheType->setImplicit();
+  }
+
   // FIXME: There is a lot of duplication with makeObjectDecl here.
   // In Gold it's just one function.
   const auto *Def = cast<DefSyntax>(S);
@@ -166,10 +192,8 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
   Declaration *TheDecl = createDeclaration(Def, Dcl, Def->getInitializer());
 
   // Create the Clang Decl Node
-  clang::ASTContext &CxxAST = SemaRef.getCxxAST();
   clang::IdentifierInfo *Id = TheDecl->Id;
   clang::DeclarationName Name(Id);
-  clang::SourceLocation Loc = S->getLocation();
 
   if(!Ty->getType()->isTypeOfTypes()) {
     Error(Ty->getExprLoc(), "expected type");
@@ -1108,7 +1132,10 @@ void Elaborator::elaborateVarDef(Declaration *D) {
   // if (VD->isConstexpr())
   //   NeedsConstEvaluation = true;
   clang::VarDecl *VD = cast<clang::VarDecl>(D->getCxx());
-  if (!D->Def->hasInitializer()) {
+  const DefSyntax *Def = D->asDef();
+  if (!Def)
+    return;
+  if (!Def->hasInitializer()) {
     // if (isa<clang::ParmVarDecl>(VD))
     //   return;
     // FIXME: We probably want to synthesize some kind of initializer here.
@@ -1140,7 +1167,7 @@ void Elaborator::elaborateVarDef(Declaration *D) {
   //                       clang::diag::err_in_class_initializer_non_const);
   //   return;
   // }
-  auto InitExpr = elaborateExpression(D->Def->getInitializer());
+  auto InitExpr = elaborateExpression(Def->getInitializer());
   if (!InitExpr)
     return;
   // Update the initializer.

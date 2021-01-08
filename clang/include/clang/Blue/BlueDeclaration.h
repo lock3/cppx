@@ -44,7 +44,7 @@ struct Declaration {
     : Ctx(nullptr), Def(nullptr), Decl(nullptr), Init(File)
   {}
 
-  Declaration(Declaration *Ctx, const DefSyntax *Def, Declarator *Decl,
+  Declaration(Declaration *Ctx, const Syntax *Def, Declarator *Decl,
               const Syntax *Init)
     : Ctx(Ctx), Def(Def), Decl(Decl), Init(Init)
     {}
@@ -53,7 +53,7 @@ struct Declaration {
   Declaration *Ctx = nullptr;
 
   // The syntax where this declaration is declared.
-  const DefSyntax *Def = nullptr;
+  const Syntax *Def = nullptr;
 
   // The identifier for this decl.
   clang::IdentifierInfo *Id = nullptr;
@@ -80,6 +80,12 @@ struct Declaration {
   }
 
   bool IsVariableDecl() const;
+
+  /// Get the def as an IdentifierSyntax.
+  const IdentifierSyntax *asId() const;
+
+  /// Get the def as a DefSyntax.
+  const DefSyntax *asDef() const;
 
 private:
   /// The corresponding C++ declaration.

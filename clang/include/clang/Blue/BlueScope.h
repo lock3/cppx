@@ -154,7 +154,7 @@ private:
   Scope *Parent;
 
   /// The mapping of original syntax to its construction.
-  using DeclMapType = llvm::DenseMap<const DefSyntax *, Declaration *>;
+  using DeclMapType = llvm::DenseMap<const Syntax *, Declaration *>;
   DeclMapType DeclMap;
 
   /// Mapping of an identifier to a set of Declarations.

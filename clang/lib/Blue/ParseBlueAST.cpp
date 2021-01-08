@@ -40,6 +40,7 @@ void ParseBlueAST(clang::ASTContext &CxxContext,
   Parser Parser(SM, InputFile);
   Syntax *CST = Parser.parseFile();
   CST->dump();
+
   // Elaborate the resulting abstract syntax tree.
   Sema Sema(Context, CxxSema);
   Elaborator Elab(Sema);

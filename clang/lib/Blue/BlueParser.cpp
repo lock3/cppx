@@ -733,7 +733,14 @@ Syntax *Parser::parseArrayExpression() {
 
   if (!Brackets.expectClose())
     return nullptr;
-  return onArray(Brackets.getEnclosingTokens(), SS);
+
+  Syntax *Array = onArray(Brackets.getEnclosingTokens(), SS);
+  if (nextTokenIs(tok::EqualGreater)) {
+    Token Op = consumeToken();
+    Syntax *RHS = parsePrimaryExpression();
+    return onBinary(Op, Array, RHS);
+  }
+  return Array;
 }
 
 Syntax *Parser::parseBlockExpression() {

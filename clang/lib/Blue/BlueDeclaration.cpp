@@ -2,6 +2,7 @@
 
 #include "clang/Blue/BlueDeclaration.h"
 #include "clang/Blue/BlueSema.h"
+#include "clang/Blue/BlueSyntax.h"
 
 namespace blue {
 
@@ -27,6 +28,16 @@ void Declaration::setCxx(Sema &SemaRef, clang::Decl *Cxx) {
 
 bool Declaration::IsVariableDecl() const {
   return Cxx && isa<clang::VarDecl>(Cxx);
+}
+
+const DefSyntax *Declaration::asDef() const {
+  assert(isa<DefSyntax>(Def));
+  return cast<DefSyntax>(Def);
+}
+
+const IdentifierSyntax *Declaration::asId() const {
+  assert(isa<IdentifierSyntax>(Def));
+  return cast<IdentifierSyntax>(Def);
 }
 
 Phase phaseOf(Declaration *D) {
