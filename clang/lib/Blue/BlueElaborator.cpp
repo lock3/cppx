@@ -71,17 +71,12 @@ clang::Decl *Elaborator::elaborateTop(const Syntax *S) {
 
   const TopSyntax *Top = cast<TopSyntax>(S);
   Sema::ScopeRAII NamespaceScope(SemaRef, Scope::Namespace, S);
-
-  for (const Syntax *SS : Top->children()){
-    if (isa<DefSyntax>(SS))
-      elaborateDecl(SS);
-    else {
-      auto E = elaborateExpression(SS);
-      if (!E)
-        return nullptr;
-      getCxxSema().ActOnExprStmt(E, /*discardedValue*/true);
-    }
+  for (const Syntax *SS : Top->children()) {
+      identifyDeclaration(SS);
   }
+
+  for (const Syntax *SS : Top->children())
+      elaborateDecl(SS);
 
   for (const Syntax *SS : Top->children()) {
     elaborateDefinition(SS);
@@ -91,6 +86,21 @@ clang::Decl *Elaborator::elaborateTop(const Syntax *S) {
   SemaRef.popDecl();
 
   return TU;
+}
+
+void Elaborator::buildDeclaration(const DefSyntax *S) {
+  Declarator *Dcl = getDeclarator(S->getDeclarator());
+  createDeclaration(S, Dcl, S->getInitializer());
+}
+
+void Elaborator::identifyDeclaration(const Syntax *S) {
+  switch (S->getKind()) {
+  case Syntax::Def:
+    return buildDeclaration(cast<DefSyntax>(S));
+  default:
+    break;
+  }
+
 }
 
 clang::Decl* Elaborator::elaborateDecl(const Syntax *S) {
@@ -109,17 +119,18 @@ clang::Decl* Elaborator::elaborateDecl(const Syntax *S) {
 
 
 clang::Decl *Elaborator::elaborateDefDecl(const DefSyntax *S) {
-  // Build the declarator.
-  Declarator *Dcl = getDeclarator(S->getDeclarator());
+  Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
+  if (!D)
+    return nullptr;
 
-  if (Dcl->declaresValue())
-    return makeValueDecl(S, Dcl);
+  if (D->Decl->declaresValue())
+    return makeValueDecl(D);
 
-  if (Dcl->declaresFunction())
-    return makeFunctionDecl(S, Dcl);
+  if (D->Decl->declaresFunction())
+    return makeFunctionDecl(D);
 
-  if (Dcl->declaresTemplate())
-    return makeTemplateDecl(S, Dcl);
+  if (D->Decl->declaresTemplate())
+    return makeTemplateDecl(D);
 
   llvm_unreachable("Invalid declarator");
 }
@@ -265,13 +276,14 @@ Declarator *Elaborator::getImplicitAutoDeclarator() {
 
 // Declaration construction
 
-clang::Decl *Elaborator::makeValueDecl(const Syntax *S, Declarator* Dcl)
-{
+clang::Decl *Elaborator::makeValueDecl(Declaration *D) {
+
+
   // Elaborate the declarator.
   //
   // FIXME: An ill-typed declaration isn't the end of the world. Can we
   // poison the declaration and move on?
-  clang::Expr *E = elaborateDeclarator(Dcl);
+  clang::Expr *E = elaborateDeclarator(D->Decl);
   if (!E)
     return nullptr;
 
@@ -280,9 +292,9 @@ clang::Decl *Elaborator::makeValueDecl(const Syntax *S, Declarator* Dcl)
     T = cast<clang::CppxTypeLiteral>(E)->getValue()->getType();
 
   if (T->isKindType())
-    return makeTypeDecl(S, Dcl, T);
+    return makeTypeDecl(D, T);
   else
-    return makeObjectDecl(S, Dcl, E);
+    return makeObjectDecl(D, E);
 }
 
 static inline clang::StorageClass getDefaultVariableStorageClass(Sema &SemaRef) {
@@ -292,20 +304,14 @@ static inline clang::StorageClass getDefaultVariableStorageClass(Sema &SemaRef) 
     : clang::SC_None;
 }
 
-clang::Decl *Elaborator::makeObjectDecl(const Syntax *S, Declarator *Dcl, clang::Expr *Ty) {
-  // llvm::outs() << "OBJECT!\n";
-  // FIXME: possibly invalid assertion
-  assert(isa<DefSyntax>(S) && "not a definition");
-  const DefSyntax *Def = cast<DefSyntax>(S);
-
-  // Create the Blue Declaration
-  Declaration *TheDecl = createDeclaration(Def, Dcl, Def->getInitializer());
+clang::Decl *Elaborator::makeObjectDecl(Declaration *D, clang::Expr *Ty) {
+  const DefSyntax *Def = D->Def;
 
   // Create the Clang Decl Node
   clang::ASTContext &CxxAST = SemaRef.getCxxAST();
-  clang::IdentifierInfo *Id = TheDecl->Id;
+  clang::IdentifierInfo *Id = D->Id;
   clang::DeclarationName Name(Id);
-  clang::SourceLocation Loc = S->getLocation();
+  clang::SourceLocation Loc = D->Def->getLocation();
 
   assert(Ty->getType()->isTypeOfTypes() && "type of declaration is not a type");
   clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(Ty)->getValue();
@@ -315,22 +321,22 @@ clang::Decl *Elaborator::makeObjectDecl(const Syntax *S, Declarator *Dcl, clang:
     clang::VarDecl::Create(CxxAST, Owner, Loc, Loc, Id, T->getType(), T,
                            getDefaultVariableStorageClass(SemaRef));
   Owner->addDecl(VD);
-  TheDecl->setCxx(SemaRef, VD);
-  TheDecl->CurrentPhase = Phase::Typing;
+  D->setCxx(SemaRef, VD);
+  D->CurrentPhase = Phase::Typing;
 
   return VD;
 }
 
-clang::Decl *Elaborator::makeTypeDecl(const Syntax *S, Declarator *Dcl, clang::QualType T) {
+clang::Decl *Elaborator::makeTypeDecl(Declaration *D, clang::QualType T) {
   llvm::outs() << "TYPE!\n";
   return nullptr;
 }
 
-clang::Decl *Elaborator::makeFunctionDecl(const Syntax *S, Declarator* Dcl) {
+clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   llvm_unreachable("Not implemented");
 }
 
-clang::Decl *Elaborator::makeTemplateDecl(const Syntax *S, Declarator* Dcl) {
+clang::Decl *Elaborator::makeTemplateDecl(Declaration *D) {
   llvm_unreachable("Not implemented");
 }
 
@@ -999,8 +1005,8 @@ void Elaborator::elaborateDefinition(const Syntax *S) {
 }
 void Elaborator::elaborateVarDef(Declaration *D) {
   D->CurrentPhase = Phase::Initialization;
-  // if (!D->Cxx)
-  //   return;
+  if (!D->getCxx())
+    return;
 
   // If this isn't early elaboration then we have to actually track it.
   // if (!IsEarly)
