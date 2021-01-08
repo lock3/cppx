@@ -311,7 +311,7 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
           // to slightly change how we are doing elaboration. We will need an
           // identification phase. Without it, matching the declarations to their
           // identifiers becomes much more difficult.
-          llvm_unreachable("Out of order elaboration not implemented yet.");
+          Elaborator(*this).elaborateDeclEarly(FoundDecl);
         }
 
         // Attempting to add special processing of declarations being elaborated

@@ -78,9 +78,8 @@ clang::Decl *Elaborator::elaborateTop(const Syntax *S) {
   for (const Syntax *SS : Top->children())
       elaborateDecl(SS);
 
-  for (const Syntax *SS : Top->children()) {
+  for (const Syntax *SS : Top->children())
     elaborateDefinition(SS);
-  }
 
   SemaRef.getCxxSema().ActOnEndOfTranslationUnit();
   SemaRef.popDecl();
@@ -122,6 +121,13 @@ clang::Decl *Elaborator::elaborateDefDecl(const DefSyntax *S) {
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
   if (!D)
     return nullptr;
+
+  return elaborateDeclarationTyping(D);
+}
+
+clang::Decl *Elaborator::elaborateDeclarationTyping(Declaration *D) {
+  if (phaseOf(D) >= Phase::Typing)
+    return D->getCxx();
 
   if (D->Decl->declaresValue())
     return makeValueDecl(D);
@@ -274,11 +280,15 @@ Declarator *Elaborator::getImplicitAutoDeclarator() {
   return new Declarator(Declarator::ImplicitType, nullptr);
 }
 
+clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
+  elaborateDeclarationTyping(D);
+  if (SemaRef.DeepElaborationMode)
+    elaborateDefinitionInitialization(D);
+}
+
 // Declaration construction
 
 clang::Decl *Elaborator::makeValueDecl(Declaration *D) {
-
-
   // Elaborate the declarator.
   //
   // FIXME: An ill-typed declaration isn't the end of the world. Can we
@@ -293,8 +303,14 @@ clang::Decl *Elaborator::makeValueDecl(Declaration *D) {
 
   if (T->isKindType())
     return makeTypeDecl(D, T);
-  else
+  else {
+    Sema::DeepElaborationModeRAII ElabMode(SemaRef, false);
+    if (T->isUndeducedType())
+      ElabMode.setMode(true);
+    // Need to check if the declaration is auto because if that's the
+    // case we need to force early elaboration instead of letting it go.
     return makeObjectDecl(D, E);
+  }
 }
 
 static inline clang::StorageClass getDefaultVariableStorageClass(Sema &SemaRef) {
@@ -323,7 +339,9 @@ clang::Decl *Elaborator::makeObjectDecl(Declaration *D, clang::Expr *Ty) {
   Owner->addDecl(VD);
   D->setCxx(SemaRef, VD);
   D->CurrentPhase = Phase::Typing;
-
+  if (SemaRef.DeepElaborationMode) {
+    elaborateDefinitionInitialization(D);
+  }
   return VD;
 }
 
@@ -992,17 +1010,21 @@ void Elaborator::elaborateDefinition(const Syntax *S) {
   if (!Decl)
     return;
 
+  elaborateDefinitionInitialization(Decl);
+}
+
+void Elaborator::elaborateDefinitionInitialization(Declaration *D) {
   // If the current phase isn't typing then bail.
-  if (phaseOf(Decl) != Phase::Typing)
+  if (phaseOf(D) != Phase::Typing)
     return;
 
-  if (Decl->IsVariableDecl())
-    return elaborateVarDef(Decl);
+  if (D->IsVariableDecl())
+    return elaborateVarDef(D);
 
   llvm_unreachable("Elaboration for this kind of declaration isn't "
                    "implemented yet.");
-
 }
+
 void Elaborator::elaborateVarDef(Declaration *D) {
   D->CurrentPhase = Phase::Initialization;
   if (!D->getCxx())
@@ -1097,7 +1119,7 @@ clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S
   R.resolveKind();
   switch (R.getResultKind()) {
   case clang::LookupResult::FoundOverloaded: {
-    llvm_unreachable("Overloaded functions not implemented here.");
+    llvm_unreachable("Overloaded functions not implemented yet.");
   }
   case clang::LookupResult::Found:
     return BuildReferenceToDecl(SemaRef, S->getLocation(), R, false);

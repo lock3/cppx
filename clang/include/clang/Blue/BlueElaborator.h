@@ -67,6 +67,7 @@ public:
   void buildDeclaration(const DefSyntax *S);
   clang::Decl *elaborateDecl(const Syntax *S);
   clang::Decl *elaborateDefDecl(const DefSyntax *S);
+  clang::Decl *elaborateDeclarationTyping(Declaration *D);
 
   void elaborateParameters(const ListSyntax *S);
   void elaborateParameterGroup(const ListSyntax *S);
@@ -78,6 +79,8 @@ public:
   Declarator *getBinaryDeclarator(const BinarySyntax *S);
   Declarator *getLeafDeclarator(const Syntax *S);
   Declarator *getImplicitAutoDeclarator();
+
+  clang::Decl *elaborateDeclEarly(Declaration *D);
 
   clang::Expr *elaborateDeclarator(const Declarator *Dcl);
   clang::Expr *elaborateTypeDeclarator(const Declarator *Dcl);
@@ -94,6 +97,7 @@ public:
   clang::Decl *makeTemplateDecl(Declaration *D);
 
   void elaborateDefinition(const Syntax *S);
+  void elaborateDefinitionInitialization(Declaration *D);
   void elaborateVarDef(Declaration *D);
 
   clang::Expr *elaborateExpression(const Syntax *S);

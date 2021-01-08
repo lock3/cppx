@@ -65,7 +65,7 @@ Z:= 3;
 
   auto ToMatch = varDecl(
     hasName("Y"),
-    hasType(asString("auto")),
+    hasType(asString("int")),
     hasInitializer(hasDescendant(declRefExpr(to(varDecl(hasName("Z"))))))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));

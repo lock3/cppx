@@ -146,6 +146,7 @@ public:
                                            clang::QualType Ty,
                                            clang::SourceLocation Loc);
 
+  
 private:
   friend struct Declaration;
   void addDeclToDecl(clang::Decl *Cxx, Declaration *Blue);
@@ -170,6 +171,29 @@ public:
   private:
     Sema &S;
     const Syntax *ConcreteTerm;
+  };
+
+  bool DeepElaborationMode = false;
+
+  struct DeepElaborationModeRAII {
+    Sema &SemaRef;
+    bool PreviousState = false;
+
+    DeepElaborationModeRAII(Sema &S, bool Enable = true)
+      :SemaRef(S),
+      PreviousState(S.DeepElaborationMode)
+    {
+      if (Enable) {
+        SemaRef.DeepElaborationMode = true;
+      }
+    }
+
+    void setMode(bool Mode) {
+      SemaRef.DeepElaborationMode = Mode;
+    }
+    ~DeepElaborationModeRAII() {
+      SemaRef.DeepElaborationMode = PreviousState;
+    }
   };
 };
 
