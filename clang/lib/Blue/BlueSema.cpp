@@ -28,6 +28,7 @@
 #include "clang/Blue/BlueScope.h"
 #include "clang/Blue/BlueSema.h"
 #include "clang/Blue/BlueSyntax.h"
+#include "clang/Blue/BlueElaborator.h"
 
 namespace blue {
 
@@ -194,6 +195,16 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R) {
   return lookupUnqualifiedName(R, getCurrentScope());
 }
 
+static void addIfNotDuplicate(clang::LookupResult &R, clang::NamedDecl *ND) {
+  for (clang::Decl *D : R) {
+    if (D == ND) {
+      return;
+    }
+  }
+  R.addDecl(ND);
+}
+
+
 bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   assert(S && "lookup in non-existent scope");
 
@@ -208,21 +219,223 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
     auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
     if (BuiltinMapIter != BuiltinTypes.end()) {
       if (BuiltinMapIter->second.isNull()) {
-        // Diags.Report(clang::SourceLocation(),
-        //              clang::diag::err_invalid_builtin_type) << Id;
-        return false;
+        getCxxSema().Diags.Report(clang::SourceLocation(),
+                                  clang::diag::err_invalid_builtin_type) << Id;
+        return true;
       }
-
-      return true;
+      // This is a special case where the token is a built in type and
+      // therefore can't return anything because that it doesn't
+      // have a declaration. But it's not an error.
+      return false;
     }
   }
 
-  // Iterate through all scopes and stop if we find something.
-  for(; S; S = S->getParent()) {
-    // FIXME: implement
-  }
+  // clang::IdentifierResolver::iterator
+  //   I = getCxxSema().IdResolver->begin(Name),
+  //   IEnd = getCxxSema().IdResolver->end();
+  // auto addShadows = [&R](Scope *S, clang::NamedDecl *D) -> bool {
+  //   bool Shadowed = false;
+  //   clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D);
+  //   if (!UD) {
+  //     clang::UsingShadowDecl *Shadow = dyn_cast<clang::UsingShadowDecl>(D);
+  //     if (Shadow) {
+  //       R.addDecl(Shadow);
+  //       Shadowed = true;
+  //       return true;
+  //     }
 
-  return true;
+  //     return false;
+  //   }
+
+  //   for (auto *Shadow : UD->shadows()) {
+  //     auto It = std::find(std::begin(S->Shadows), std::end(S->Shadows), Shadow);
+  //     if (It != std::end(S->Shadows)) {
+  //       R.addDecl(Shadow);
+  //       Shadowed = true;
+  //     }
+  //   }
+
+  //   return true;
+  // };
+
+  // This is done based on how CppLookUpName is handled, with a few exceptions,
+  // this will return uninstantiated template declarations, namespaces,
+  // and other kinds of declarations. This also handles some early elaboration
+  // of some types.
+  // bool FoundFirstClassScope = false;
+  for(; S; S = S->getParent()) {
+    std::set<Declaration *> Found = S->findDecl(Id);
+    if (Found.empty())
+      continue;
+    // // Look through any using directives, but only if we didn't already find
+    // // something acceptable. However, we always check the shadows in a lambda
+    // // block.
+    // if (Found.empty() || S->isLambdaScope()) {
+    //   // See if Clang has anything in the identifier resolver.
+    //   // bool Shadowed = false;
+    //   // for (; I != IEnd; ++I)
+    //   //   Shadowed |= addShadows(S, *I);
+    //   if (Shadowed)
+    //     return true;
+
+    //   bool FoundInNamespace = false;
+    //   for (clang::UsingDirectiveDecl *UD : S->UsingDirectives) {
+    //     assert(isa<clang::CppxNamespaceDecl>(UD->getNominatedNamespace()));
+
+    //     clang::CppxNamespaceDecl *NS =
+    //       cast<clang::CppxNamespaceDecl>(UD->getNominatedNamespace());
+    //     std::set<Declaration *> NSFound = NS->Rep->findDecl(Id);
+
+    //     // We found the name in more than one namespace.
+    //     if (FoundInNamespace && !NSFound.empty()) {
+    //       Diags.Report(R.getNameLoc(), clang::diag::err_ambiguous_reference)
+    //         << Name;
+    //       return false;
+    //     }
+
+    //     FoundInNamespace = !NSFound.empty();
+    //     Found = NSFound;
+    //   }
+    // }
+
+    if (!Found.empty()) {
+      for (auto *FoundDecl : Found) {
+        // Skipping this particular declaration to avoid triggering
+        // double early elaboration.
+        // if (FoundDecl == NotThisOne)
+        //   continue;
+        // If we find a name that hasn't been elaborated,
+        // then we actually need to elaborate it.
+        if (phaseOf(FoundDecl) < Phase::Typing) {
+          // TODO: In order to implement out of order elaboration we will need
+          // to slightly change how we are doing elaboration. We will need an
+          // identification phase. Without it, matching the declarations to their
+          // identifiers becomes much more difficult.
+          Elaborator(*this).elaborateDeclEarly(FoundDecl);
+        }
+
+        // Attempting to add special processing of declarations being elaborated
+        // during a constant expression, and require full elaboration before
+        // use.
+        // if (CxxSema.isConstantEvaluated() || isInDeepElaborationMode()) {
+        //   // If we aren't 100% completed then do complete elaboration.
+        //   if ((phaseOf(FoundDecl) < Phase::Initialization)) {
+        //     EnterDeepElabRAII DeepElab(*this);
+        //     // change the elaboration context back to PotentiallyEvaluated.
+        //     clang::EnterExpressionEvaluationContext ConstantEvaluated(CxxSema,
+        //         clang::Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
+        //     AttrElabRAII Attr(*this, false);
+        //     Elaborator(Context, *this).elaborateDeclEarly(FoundDecl);
+        //   }
+        // }
+
+        // if (FoundDecl->IsElaborating && !FoundDecl->declaresNamespace()) {
+        //   // This might be allowed in some scenarios Specifically when we
+        //   // reference a class type within
+        //   diagnoseElabCycleError(FoundDecl);
+        //   return false;
+        // }
+
+        // Skip early elaboration of declarations with nested name specifiers.
+        // if (FoundDecl->hasNestedNameSpecifier())
+        //   continue;
+
+        // if (!FoundDecl->Cxx) {
+        //   AttrElabRAII Attr(*this, false);
+        //   Elaborator(Context, *this).elaborateDeclTypeEarly(FoundDecl);
+        // }
+
+        if (!FoundDecl->getCxx()) {
+          llvm_unreachable("referenced a declaration that contains an error.");
+          // return true;
+        }
+
+        clang::NamedDecl *ND = cast<clang::NamedDecl>(FoundDecl->getCxx());
+
+        // FIXME: check if this is a tag decl, not a type decl!
+        if (LookupKind == clang::Sema::LookupTagName &&
+            !isa<clang::TypeDecl>(ND)) {
+          // FIXME: Give a proper diagnostic once we implement hiding.
+          // unsigned DiagID = Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+          //                                         "Tag is hidden.");
+          // Diags.Report(clang::SourceLocation(), DiagID);
+          return true;
+        }
+
+        // If there is a described template, add that to the result instead
+        // of the bare declaration.
+        // if (FoundDecl->declaresFunctionTemplate()) {
+        //   if (auto *FD = dyn_cast<clang::FunctionDecl>(ND))
+        //     ND = FD->isFunctionTemplateSpecialization() ?
+        //       FD->getPrimaryTemplate() : FD->getDescribedFunctionTemplate();
+        //   else if (auto *VD = dyn_cast<clang::VarDecl>(ND))
+        //     ND = VD->getDescribedVarTemplate();
+        //   else
+        //     llvm_unreachable("Unknown template function type");
+        // } else if (FoundDecl->declaresTemplateType()) {
+        //   // We want the canonical declaration of a template unless it is
+        //   // a specialization.
+        //   using Specialization = clang::ClassTemplateSpecializationDecl;
+        //   using Record = clang::CXXRecordDecl;
+        //   if (auto *CD = dyn_cast<Specialization>(FoundDecl->Cxx)) {
+        //     ND = CD->getSpecializedTemplate();
+        //   } else if (auto *RD = dyn_cast<Record>(FoundDecl->Cxx)) {
+        //     ND = RD->getDescribedClassTemplate();
+        //     // FIXME: if ND is null, this is not recoverable.
+        //     if (ND)
+        //       ND = cast<clang::NamedDecl>(ND->getCanonicalDecl());
+        //     else
+        //       ND = RD;
+        //   }
+        // } else {
+        //   // Getting the cannonical declaration so hopefully this will prevent
+        //   // us from returning the same thing more then once.
+        //   if (auto *RD = dyn_cast<clang::CXXRecordDecl>(FoundDecl->Cxx)) {
+        //     ND = cast<clang::NamedDecl>(RD->getCanonicalDecl());
+        //   }
+        // }
+        // if (auto *VTSD = dyn_cast<clang::VarTemplateSpecializationDecl>(
+        //                                                        FoundDecl->Cxx)) {
+        //   ND = VTSD->getSpecializedTemplate();
+        // }
+        addIfNotDuplicate(R, ND);
+      }
+      break;
+    }
+
+  //   // This only triggers one time because it's difficult to figure out what kind
+  //   // of scope we are actually processing when we run into these issues.
+  //   // There will be more problems like this. That's because scopes are confusing.
+  //   if (S->getKind() == SK_Class && !FoundFirstClassScope) {
+  //     FoundFirstClassScope = true;
+  //     // Checking that if we are in side of a record and within that record has base classes.
+  //     Declaration *DeclEntity = S->Entity;
+  //     if (DeclEntity) {
+  //       if (DeclEntity->declaresTagDef()) {
+  //         if (DeclEntity->Cxx) {
+  //           clang::CXXRecordDecl *RD = dyn_cast<clang::CXXRecordDecl>(DeclEntity->Cxx);
+  //           // We do this because if for whatever reason if this hasn't been initially
+  //           // elaborated yet but if we are some how in side of it then there is a
+  //           // really big problem
+  //           if (!RD)
+  //             llvm_unreachable("Cyclic depdency detected unable to continue.");
+  //           // Basically, if this is true we found something then exit the loop.
+  //           if (lookupInSideOfRecordBases(*this, getCxxSema().getASTContext(),
+  //               R, RD, Name)) {
+  //             break;
+  //           }
+  //         }
+  //       }
+  //     }
+  //   }
+  }
+  return R.empty();
+  // // Iterate through all scopes and stop if we find something.
+  // for(; S; S = S->getParent()) {
+  //   // FIXME: implement
+  // }
+
+  // return true;
 }
 
 clang::CppxTypeLiteral *Sema::buildTypeExpr(clang::QualType Ty,

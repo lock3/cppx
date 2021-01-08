@@ -93,6 +93,11 @@ public:
   bool lookupUnqualifiedName(clang::LookupResult &R);
 
   // Perform unqualified lookup of a name starting in S.
+  // Returns true if there's an error, and false if not.
+  // In the event that it returns false but doesn't have any results
+  // it means that the id looked up was a built in type that doesn't have
+  // a declaration, and a 2nd level of access should get the type from
+  // within the BuiltinTypes map.
   bool lookupUnqualifiedName(clang::LookupResult &R, Scope *S);
 
   Scope *getCurrentScope();
@@ -149,6 +154,7 @@ public:
                                                 clang::SourceLocation EndLoc,
                            llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
 
+  
 private:
   friend struct Declaration;
   void addDeclToDecl(clang::Decl *Cxx, Declaration *Blue);
@@ -173,6 +179,29 @@ public:
   private:
     Sema &S;
     const Syntax *ConcreteTerm;
+  };
+
+  bool DeepElaborationMode = false;
+
+  struct DeepElaborationModeRAII {
+    Sema &SemaRef;
+    bool PreviousState = false;
+
+    DeepElaborationModeRAII(Sema &S, bool Enable = true)
+      :SemaRef(S),
+      PreviousState(S.DeepElaborationMode)
+    {
+      if (Enable) {
+        SemaRef.DeepElaborationMode = true;
+      }
+    }
+
+    void setMode(bool Mode) {
+      SemaRef.DeepElaborationMode = Mode;
+    }
+    ~DeepElaborationModeRAII() {
+      SemaRef.DeepElaborationMode = PreviousState;
+    }
   };
 };
 

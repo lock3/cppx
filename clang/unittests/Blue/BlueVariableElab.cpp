@@ -16,17 +16,57 @@
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
 using namespace clang;
-using namespace gold;
+using namespace blue;
 
-TEST(BlueVariableDecl, ImplicitAuto){
+TEST(BlueVariableDecl, ImplicitAuto) {
   StringRef Code = R"BLUE(
-X := 4
+X := 4;
   )BLUE";
 
   auto ToMatch = varDecl(
-    hasName("x"),
+    hasName("X"),
     hasType(asString("int")),
     hasInitializer(integerLiteral(equals(4)))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueVariableDecl, VariableDeclAndUse){
+  StringRef Code = R"BLUE(
+X : int = 4;
+Y := X;
+
+)BLUE";
+
+  auto ToMatch = varDecl(
+    hasName("Y"),
+    hasType(asString("int")),
+    hasInitializer(hasDescendant(declRefExpr(to(varDecl(hasName("X"))))))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueVariableDecl, UndeclaredIdentifier){
+  StringRef Code = R"BLUE(
+Y := Z;
+
+)BLUE";
+  BlueFailureTest(Code);
+}
+
+
+// FIXME: do forced phase 2 elaboration of variable declarations.
+TEST(BlueVariableDecl, OutOfOrderVariableUse){
+  StringRef Code = R"BLUE(
+Y := Z;
+Z:= 3;
+
+)BLUE";
+
+  auto ToMatch = varDecl(
+    hasName("Y"),
+    hasType(asString("int")),
+    hasInitializer(hasDescendant(declRefExpr(to(varDecl(hasName("Z"))))))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

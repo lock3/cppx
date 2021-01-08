@@ -76,21 +76,15 @@ clang::Decl *Elaborator::elaborateTop(const Syntax *S) {
 
   const TopSyntax *Top = cast<TopSyntax>(S);
   Sema::ScopeRAII NamespaceScope(SemaRef, Scope::Namespace, S);
-
-  for (const Syntax *SS : Top->children()){
-    if (isa<DefSyntax>(SS))
-      elaborateDecl(SS);
-    else {
-      auto E = elaborateExpression(SS);
-      if (!E)
-        return nullptr;
-      getCxxSema().ActOnExprStmt(E, /*discardedValue*/true);
-    }
-  }
-
   for (const Syntax *SS : Top->children()) {
-    elaborateDefinition(SS);
+      identifyDeclaration(SS);
   }
+
+  for (const Syntax *SS : Top->children())
+      elaborateDecl(SS);
+
+  for (const Syntax *SS : Top->children())
+    elaborateDefinition(SS);
 
   SemaRef.getCxxSema().ActOnEndOfTranslationUnit();
   SemaRef.popDecl();
@@ -98,8 +92,22 @@ clang::Decl *Elaborator::elaborateTop(const Syntax *S) {
   return TU;
 }
 
-clang::Decl* Elaborator::elaborateDecl(const Syntax *S)
-{
+void Elaborator::buildDeclaration(const DefSyntax *S) {
+  Declarator *Dcl = getDeclarator(S->getDeclarator());
+  createDeclaration(S, Dcl, S->getInitializer());
+}
+
+void Elaborator::identifyDeclaration(const Syntax *S) {
+  switch (S->getKind()) {
+  case Syntax::Def:
+    return buildDeclaration(cast<DefSyntax>(S));
+  default:
+    break;
+  }
+
+}
+
+clang::Decl* Elaborator::elaborateDecl(const Syntax *S) {
   switch (S->getKind()) {
   case Syntax::Def:
     return elaborateDefDecl(static_cast<const DefSyntax *>(S));
@@ -113,18 +121,27 @@ clang::Decl* Elaborator::elaborateDecl(const Syntax *S)
   // llvm_unreachable("invalid declaration");
 }
 
+
 clang::Decl *Elaborator::elaborateDefDecl(const DefSyntax *S) {
-  // Build the declarator.
-  Declarator *Dcl = getDeclarator(S->getDeclarator());
+  Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
+  if (!D)
+    return nullptr;
 
-  if (Dcl->declaresValue())
-    return makeValueDecl(S, Dcl);
+  return elaborateDeclarationTyping(D);
+}
 
-  if (Dcl->declaresFunction())
-    return makeFunctionDecl(S, Dcl);
+clang::Decl *Elaborator::elaborateDeclarationTyping(Declaration *D) {
+  if (phaseOf(D) >= Phase::Typing)
+    return D->getCxx();
 
-  if (Dcl->declaresTemplate())
-    return makeTemplateDecl(S, Dcl);
+  if (D->Decl->declaresValue())
+    return makeValueDecl(D);
+
+  if (D->Decl->declaresFunction())
+    return makeFunctionDecl(D);
+
+  if (D->Decl->declaresTemplate())
+    return makeTemplateDecl(D);
 
   llvm_unreachable("Invalid declarator");
 }
@@ -316,15 +333,20 @@ Declarator *Elaborator::getImplicitAutoDeclarator() {
   return new Declarator(Declarator::ImplicitType, nullptr);
 }
 
+clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
+  elaborateDeclarationTyping(D);
+  if (SemaRef.DeepElaborationMode)
+    elaborateDefinitionInitialization(D);
+}
+
 // Declaration construction
 
-clang::Decl *Elaborator::makeValueDecl(const Syntax *S, Declarator* Dcl)
-{
+clang::Decl *Elaborator::makeValueDecl(Declaration *D) {
   // Elaborate the declarator.
   //
   // FIXME: An ill-typed declaration isn't the end of the world. Can we
   // poison the declaration and move on?
-  clang::Expr *E = elaborateDeclarator(Dcl);
+  clang::Expr *E = elaborateDeclarator(D->Decl);
   if (!E)
     return nullptr;
 
@@ -333,9 +355,15 @@ clang::Decl *Elaborator::makeValueDecl(const Syntax *S, Declarator* Dcl)
     T = cast<clang::CppxTypeLiteral>(E)->getValue()->getType();
 
   if (T->isKindType())
-    return makeTypeDecl(S, Dcl, T);
-  else
-    return makeObjectDecl(S, Dcl, E);
+    return makeTypeDecl(D, T);
+  else {
+    Sema::DeepElaborationModeRAII ElabMode(SemaRef, false);
+    if (T->isUndeducedType())
+      ElabMode.setMode(true);
+    // Need to check if the declaration is auto because if that's the
+    // case we need to force early elaboration instead of letting it go.
+    return makeObjectDecl(D, E);
+  }
 }
 
 static inline clang::StorageClass getDefaultVariableStorageClass(Sema &SemaRef) {
@@ -345,18 +373,16 @@ static inline clang::StorageClass getDefaultVariableStorageClass(Sema &SemaRef) 
     : clang::SC_None;
 }
 
-clang::Decl *Elaborator::makeObjectDecl(const Syntax *S, Declarator *Dcl, clang::Expr *Ty) {
-  assert(isa<DefSyntax>(S) && "not a definition");
-  const DefSyntax *Def = cast<DefSyntax>(S);
-
-  // Create the Blue Declaration
-  Declaration *TheDecl = createDeclaration(Def, Dcl, Def->getInitializer());
+clang::Decl *Elaborator::makeObjectDecl(Declaration *D, clang::Expr *Ty) {
+  const DefSyntax *Def = D->asDef();
+  if (!Def)
+    return nullptr;
 
   // Create the Clang Decl Node
   clang::ASTContext &CxxAST = SemaRef.getCxxAST();
-  clang::IdentifierInfo *Id = TheDecl->Id;
+  clang::IdentifierInfo *Id = D->Id;
   clang::DeclarationName Name(Id);
-  clang::SourceLocation Loc = S->getLocation();
+  clang::SourceLocation Loc = D->Def->getLocation();
 
   assert(Ty->getType()->isTypeOfTypes() && "type of declaration is not a type");
   clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(Ty)->getValue();
@@ -366,13 +392,15 @@ clang::Decl *Elaborator::makeObjectDecl(const Syntax *S, Declarator *Dcl, clang:
     clang::VarDecl::Create(CxxAST, Owner, Loc, Loc, Id, T->getType(), T,
                            getDefaultVariableStorageClass(SemaRef));
   Owner->addDecl(VD);
-  TheDecl->setCxx(SemaRef, VD);
-  TheDecl->CurrentPhase = Phase::Typing;
-
+  D->setCxx(SemaRef, VD);
+  D->CurrentPhase = Phase::Typing;
+  if (SemaRef.DeepElaborationMode) {
+    elaborateDefinitionInitialization(D);
+  }
   return VD;
 }
 
-clang::Decl *Elaborator::makeTypeDecl(const Syntax *S, Declarator *Dcl, clang::QualType T) {
+clang::Decl *Elaborator::makeTypeDecl(Declaration *D, clang::QualType T) {
   llvm::outs() << "TYPE!\n";
   return nullptr;
 }
@@ -1072,7 +1100,7 @@ clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
                                  Tok.getLocation());
   case tok::FloatKeyword:
     // FIXME: Support arbitrary length floating point types vie the lexer.
-    return SemaRef.buildTypeExpr(getCxxContext().FloatTy,
+    return SemaRef.buildTypeExpr(getCxxContext().DoubleTy,
                                  Tok.getLocation());
   case tok::TypeKeyword:
     return SemaRef.buildTypeExpr(getCxxContext().CppxKindTy,
@@ -1090,21 +1118,25 @@ void Elaborator::elaborateDefinition(const Syntax *S) {
   if (!Decl)
     return;
 
+  elaborateDefinitionInitialization(Decl);
+}
+
+void Elaborator::elaborateDefinitionInitialization(Declaration *D) {
   // If the current phase isn't typing then bail.
-  if (phaseOf(Decl) != Phase::Typing)
+  if (phaseOf(D) != Phase::Typing)
     return;
 
-  if (Decl->IsVariableDecl())
-    return elaborateVarDef(Decl);
+  if (D->IsVariableDecl())
+    return elaborateVarDef(D);
 
   llvm_unreachable("Elaboration for this kind of declaration isn't "
                    "implemented yet.");
-
 }
+
 void Elaborator::elaborateVarDef(Declaration *D) {
   D->CurrentPhase = Phase::Initialization;
-  // if (!D->Cxx)
-  //   return;
+  if (!D->getCxx())
+    return;
 
   // If this isn't early elaboration then we have to actually track it.
   // if (!IsEarly)
@@ -1175,16 +1207,171 @@ void Elaborator::elaborateVarDef(Declaration *D) {
 
 }
 
+/// This creates the correct expression in order to correctly reference
+/// a type, variable, single function, or any thing else that may
+/// be returned from by the look up.
+static clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
+                                         clang::SourceLocation Loc,
+                                         clang::LookupResult &R,
+                                         bool IsKnownOverload = false);
 
 clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S) {
-  // Check for builtin types
+  // Check for builtin types.
   auto BuiltinMapIter = SemaRef.BuiltinTypes.find(S->getSpelling());
   if (BuiltinMapIter != SemaRef.BuiltinTypes.end())
     return SemaRef.buildTypeExpr(BuiltinMapIter->second, S->getLocation());
 
-  llvm::outs() << "ELABORATING NON-TYPE EXPR\n";
+  // llvm::outs() << "ELABORATING NON-TYPE EXPR\n";
+  // Doing variable lookup.
+  clang::IdentifierInfo *II = &getCxxContext().Idents.get(S->getSpelling());
+  clang::LookupResult R(getCxxSema(), {{II}, S->getLocation()},
+                        clang::Sema::LookupOrdinaryName);
+  SemaRef.lookupUnqualifiedName(R);
+  R.resolveKind();
+  switch (R.getResultKind()) {
+  case clang::LookupResult::FoundOverloaded: {
+    llvm_unreachable("Overloaded functions not implemented yet.");
+  }
+  case clang::LookupResult::Found:
+    return BuildReferenceToDecl(SemaRef, S->getLocation(), R, false);
+  case clang::LookupResult::NotFoundInCurrentInstantiation: {
+  case clang::LookupResult::NotFound:
+    getCxxSema().Diags.Report(S->getLocation(),
+                              clang::diag::err_undeclared_var_use)
+                              << S->getSpelling();
+    return nullptr;
+  }
+  case clang::LookupResult::FoundUnresolvedValue:
+    // FIXME: I need to figure out when this can occur, then create
+    // that situiation wihtin a test and build appropriate error message.
+    // I suspect that this may have something to do with variable template
+    // declarations.
+    llvm_unreachable("Not sure how handle unresolved values.");
+  case clang::LookupResult::Ambiguous:
+    getCxxSema().DiagnoseAmbiguousLookup(R);
+    return nullptr;
+  }
+
   return nullptr;
 }
+
+clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
+                                  clang::SourceLocation Loc,
+                                  clang::LookupResult &R,
+                                  bool IsKnownOverload) {
+  std::string Name = R.getLookupName().getAsString();
+  if (IsKnownOverload) {
+    llvm_unreachable("We haven't implemented overload references yet.");
+  }
+  // assert(FoundDecl && "Incorrectly set found declaration.");
+  if (clang::ValueDecl *VD = R.getAsSingle<clang::ValueDecl>()) {
+    // clang::QualType FoundTy = VD->getType();
+    // If the user annotated the DeclRefExpr with an incorrect type.
+    // if (!Ty.isNull() && Ty != FoundTy) {
+    //   SemaRef.getCxxSema().Diags.Report(Loc,
+    //     clang::diag::err_type_annotation_mismatch) << FoundTy << Ty;
+    //   return nullptr;
+    // }
+
+    if (isa<clang::FieldDecl>(VD)) {
+      // Building this access.
+      // clang::FieldDecl* Field = cast<clang::FieldDecl>(VD);
+      // clang::RecordDecl* RD = Field->getParent();
+      // clang::QualType ThisTy(RD->getTypeForDecl(), 0);
+      // clang::QualType ThisPtrTy = SemaRef.getContext().CxxAST.getPointerType(
+      //                                                                 ThisTy);
+      // clang::Expr* This = SemaRef.getCxxSema().BuildCXXThisExpr(Loc,
+      //                                                           ThisPtrTy,
+      //                                                           true);
+
+      // clang::DeclAccessPair FoundDecl = clang::DeclAccessPair::make(Field,
+      //                                                     Field->getAccess());
+      // clang::CXXScopeSpec SS;
+      // clang::ExprResult MemberExpr
+      //     = SemaRef.getCxxSema().BuildFieldReferenceExpr(This, true,
+      //                                                 clang::SourceLocation(),
+      //                                                     SS, Field, FoundDecl,
+      //                                                     DNI);
+      // clang::Expr *Ret = MemberExpr.get();
+      // if (!Ret) {
+      //   SemaRef.Diags.Report(Loc, clang::diag::err_no_member)
+      //       << Field << ThisTy;
+      // }
+      // ExprMarker(Context.CxxAST, SemaRef).Visit(Ret);
+      // return Ret;
+      llvm_unreachable("Reference to a Field decl not implemented yet.");
+    }
+    // Need to check if the result is a CXXMethodDecl because that's a
+    // ValueDecl.
+    if(isa<clang::CXXMethodDecl>(VD)) {
+      // clang::CXXScopeSpec SS;
+      // clang::SourceLocation Loc;
+      // // This may need to change into a different type of function call
+      // // base on given arguments, because this could be an issue.
+      // return SemaRef.getCxxSema().BuildPossibleImplicitMemberExpr(SS, Loc, R,
+      //                                                             nullptr,
+      //                                       SemaRef.getCurClangScope()).get();
+      llvm_unreachable("Reference to a CXX Method decl not implemented yet.");
+    }
+
+    if(isa<clang::FunctionDecl>(VD)) {
+      // // Correctly rebuilding the declaration name info.
+      // DNI = SemaRef.rebuildDeclarationNameInfo(DNI);
+      // return clang::UnresolvedLookupExpr::Create(Context.CxxAST,
+      //                                             R.getNamingClass(),
+      //                                         clang::NestedNameSpecifierLoc(),
+      //                                             DNI,
+      //                                             /*ADL=*/true, true,
+      //                                             R.begin(), R.end());
+      llvm_unreachable("Reference to a function decl not implemented yet.");
+    }
+    // Simply assuming that this is a variable declaration.
+    clang::QualType ResultType = VD->getType();
+    if (ResultType.getTypePtr()->isReferenceType())
+      ResultType = ResultType.getTypePtr()->getPointeeType();
+
+    clang::ExprValueKind ValueKind =
+      SemaRef.getCxxSema().getValueKindForDeclReference(ResultType,
+                                                        VD, Loc);
+    clang::DeclRefExpr *DRE =
+      SemaRef.getCxxSema().BuildDeclRefExpr(VD, ResultType, ValueKind,
+                                            R.getLookupNameInfo(),
+                                            clang::NestedNameSpecifierLoc(),
+                                            VD, clang::SourceLocation(),
+                                            nullptr);
+    return DRE;
+  }
+
+  // Processing the case when the returned result is a type.
+  if (const clang::TagDecl *TD = R.getAsSingle<clang::TagDecl>())
+    llvm_unreachable("Reference to tag decl not implemented yet.");
+    // return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
+
+  if (clang::ClassTemplateDecl *CTD
+                                = R.getAsSingle<clang::ClassTemplateDecl>())
+    llvm_unreachable("Reference to class template decl not implemented yet.");
+    // return SemaRef.buildTemplateType(CTD, Loc);
+
+  if (auto *NS = R.getAsSingle<clang::CppxNamespaceDecl>())
+    llvm_unreachable("Reference to cppx namespace decl not implemented yet.");
+    // return SemaRef.buildNSDeclRef(NS, Loc);
+
+
+  if (auto *TD = R.getAsSingle<clang::TypeDecl>())
+    llvm_unreachable("Reference to type decl not implemented yet.");
+    // return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
+
+  if (auto *TD = R.getAsSingle<clang::TemplateDecl>())
+    // return SemaRef.buildTemplateType(TD, Loc);
+    llvm_unreachable("Reference to template decl not implemented yet.");
+
+  SemaRef.getCxxSema().Diags.Report(Loc,
+                              clang::diag::err_identifier_not_declared_in_scope)
+                                   << Name;
+  return nullptr;
+}
+
+
 
 clang::Expr *Elaborator::elaborateListExpression(const ListSyntax *S) {
   llvm_unreachable("Not implemented");

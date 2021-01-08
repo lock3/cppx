@@ -671,6 +671,9 @@ Syntax *Parser::parsePrimaryExpression() {
     // FIXME: Parse out the integer spec.
   case tok::FloatKeyword:
     // FIXME: Parse out the fixed-point spec.
+  case tok::NullKeyword:
+  case tok::TrueKeyword:
+  case tok::FalseKeyword:
   case tok::TypeKeyword:
     return onLiteral(consumeToken());
 

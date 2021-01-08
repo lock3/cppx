@@ -64,8 +64,11 @@ public:
 
   clang::Decl *elaborateTop(const Syntax *S);
 
+  void identifyDeclaration(const Syntax *S);
+  void buildDeclaration(const DefSyntax *S);
   clang::Decl *elaborateDecl(const Syntax *S);
   clang::Decl *elaborateDefDecl(const DefSyntax *S);
+  clang::Decl *elaborateDeclarationTyping(Declaration *D);
 
   void elaborateParameters(const ListSyntax *S);
   void elaborateParameterGroup(const ListSyntax *S);
@@ -78,6 +81,8 @@ public:
   Declarator *getLeafDeclarator(const Syntax *S);
   Declarator *getImplicitAutoDeclarator();
 
+  clang::Decl *elaborateDeclEarly(Declaration *D);
+
   clang::Expr *elaborateDeclarator(const Declarator *Dcl);
   clang::Expr *elaborateTypeDeclarator(const Declarator *Dcl);
   clang::Expr *elaboratePointerDeclarator(const Declarator *Dcl);
@@ -86,15 +91,16 @@ public:
   clang::Expr *elaborateTemplateDeclarator(const Declarator *Dcl);
   clang::Expr *elaborateImplicitTypeDeclarator(const Declarator *Dcl);
 
-  clang::Decl *makeValueDecl(const Syntax *S, Declarator *Dcl);
-  clang::Decl *makeObjectDecl(const Syntax *S, Declarator *Dcl, clang::Expr *Ty);
-  clang::Decl *makeTypeDecl(const Syntax *S, Declarator *Dcl, clang::QualType T);
-  clang::Decl *makeFunctionDecl(const Syntax *S, Declarator *Dcl);
-  clang::Decl *makeTemplateDecl(const Syntax *S, Declarator *Dcl);
+  clang::Decl *makeValueDecl(Declaration *D);
+  clang::Decl *makeObjectDecl(Declaration *D, clang::Expr *Ty);
+  clang::Decl *makeTypeDecl(Declaration *D, clang::QualType T);
+  clang::Decl *makeFunctionDecl(Declaration *D);
+  clang::Decl *makeTemplateDecl(Declaration *D);
 
   clang::CppxTypeLiteral *createFunctionType(Declarator *Dcl);
 
   void elaborateDefinition(const Syntax *S);
+  void elaborateDefinitionInitialization(Declaration *D);
   void elaborateVarDef(Declaration *D);
 
   clang::Expr *elaborateExpression(const Syntax *S);
