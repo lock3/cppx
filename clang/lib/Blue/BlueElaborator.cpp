@@ -149,16 +149,44 @@ void Elaborator::elaborateParameterList(const ListSyntax *S) {
 }
 
 clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
-  if (!isa<DefSyntax>(S)) {
+  if (!isa<DefSyntax>(S) && !isa<IdentifierSyntax>(S)) {
     Error(S->getLocation(), "invalid parameter syntax");
     return nullptr;
   }
 
-  // FIXME: Implement me.
+  // FIXME: There is a lot of duplication with makeObjectDecl here.
+  // In Gold it's just one function.
   const auto *Def = cast<DefSyntax>(S);
   Declarator *Dcl = getDeclarator(Def->getDeclarator());
-  (void)Dcl;
-  return nullptr;
+  clang::Expr *Ty = elaborateDeclarator(Dcl);
+  if (!Ty)
+    return nullptr;
+
+  // Create the Blue Declaration
+  Declaration *TheDecl = createDeclaration(Def, Dcl, Def->getInitializer());
+
+  // Create the Clang Decl Node
+  clang::ASTContext &CxxAST = SemaRef.getCxxAST();
+  clang::IdentifierInfo *Id = TheDecl->Id;
+  clang::DeclarationName Name(Id);
+  clang::SourceLocation Loc = S->getLocation();
+
+  if(!Ty->getType()->isTypeOfTypes()) {
+    Error(Ty->getExprLoc(), "expected type");
+    return nullptr;
+  }
+
+  clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(Ty)->getValue();
+  // Create the parameters in the translation unit decl for now, we'll
+  // move them into the function later.
+  // FIXME: replace this with TU
+  clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
+  clang::ParmVarDecl *PVD =
+    clang::ParmVarDecl::Create(CxxAST, Owner, Loc, Loc,
+                               Name, T->getType(), T,
+                               clang::SC_Auto, /*def=*/nullptr);
+  TheDecl->setCxx(SemaRef, PVD);
+  return PVD;
 }
 
 
@@ -251,8 +279,9 @@ Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   switch (S->getKind()) {
   case Syntax::Literal:
   case Syntax::Identifier:
-  case Syntax::List:
     return new Declarator(Declarator::Type, S);
+  case Syntax::List:
+    return new Declarator(Declarator::Function, S);
   default:
     break;
   }
@@ -293,8 +322,6 @@ static inline clang::StorageClass getDefaultVariableStorageClass(Sema &SemaRef) 
 }
 
 clang::Decl *Elaborator::makeObjectDecl(const Syntax *S, Declarator *Dcl, clang::Expr *Ty) {
-  // llvm::outs() << "OBJECT!\n";
-  // FIXME: possibly invalid assertion
   assert(isa<DefSyntax>(S) && "not a definition");
   const DefSyntax *Def = cast<DefSyntax>(S);
 
@@ -326,12 +353,62 @@ clang::Decl *Elaborator::makeTypeDecl(const Syntax *S, Declarator *Dcl, clang::Q
   return nullptr;
 }
 
-clang::Decl *Elaborator::makeFunctionDecl(const Syntax *S, Declarator* Dcl) {
-  llvm_unreachable("Not implemented");
+clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
+  const ListSyntax *ParamList = dyn_cast<ListSyntax>(Dcl->getInfo());
+  if (!ParamList)
+    return nullptr;
+  clang::SourceLocation Loc = ParamList->getLocation();
+  clang::ASTContext &CxxAST = SemaRef.getCxxAST();
+  Sema::ScopeRAII ParamScope(SemaRef, Scope::Parameter, ParamList);
+
+  elaborateParameters(ParamList);
+
+  unsigned N = ParamList->getNumChildren();
+  llvm::SmallVector<clang::QualType, 4> Types;
+  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
+  for (unsigned I = 0; I < N; ++I) {
+    const Syntax *P = ParamList->getChild(I);
+    Declaration *BluePD = SemaRef.getCurrentScope()->findDecl(P);
+    assert(BluePD && "associated declaration never found");
+    assert(isa<clang::ParmVarDecl>(BluePD->getCxx()) &&
+           "Parameter is not a ParmVarDecl");
+    clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(BluePD->getCxx());
+
+    CxxAST.setParameterIndex(PVD, I);
+    PVD->setScopeInfo(0, I);
+    Types.push_back(PVD->getType());
+    Params.push_back(PVD);
+  }
+
+  // FIXME: We need to configure parts of the prototype (e.g., noexcept).
+  clang::FunctionProtoType::ExtProtoInfo EPI;
+  clang::QualType ReturnType = CxxAST.getAutoDeductType();
+  clang::QualType FnTy = CxxAST.getFunctionType(ReturnType, Types, EPI);
+  return SemaRef.buildFunctionTypeExpr(FnTy, Loc, Loc, Loc,
+                                       clang::SourceRange(Loc, Loc),
+                                       Loc, Params);
+}
+
+clang::Decl *Elaborator::makeFunctionDecl(const Syntax *S, Declarator *Dcl) {
+  assert(Dcl->declaresFunction() && "not a function declarator");
+  assert(isa<DefSyntax>(S) && "not a definition");
+  const DefSyntax *Def = cast<DefSyntax>(S);
+
+  Declaration *BlueDecl = createDeclaration(Def, Dcl, Def->getInitializer());
+
+  clang::ASTContext &CxxAST = SemaRef.getCxxAST();
+  clang::QualType ReturnType = CxxAST.getAutoDeductType();
+  clang::DeclarationName Name(BlueDecl->Id);
+
+  clang::CppxTypeLiteral *FnTy = createFunctionType(Dcl);
+  if (!FnTy)
+    return nullptr;
+  return nullptr;
 }
 
 clang::Decl *Elaborator::makeTemplateDecl(const Syntax *S, Declarator* Dcl) {
-  llvm_unreachable("Not implemented");
+  llvm::outs() << "TEMPLATE!\n";
+  return nullptr;
 }
 
 // Type elaboration
@@ -396,8 +473,11 @@ clang::Expr *Elaborator::elaborateArrayDeclarator(const Declarator *Dcl) {
 }
 
 /// Elaborate declarations of the form '(parms) T'.
+/// This returns a type expression of the form `(parms) -> T`.
 clang::Expr *Elaborator::elaborateFunctionDeclarator(const Declarator *Dcl) {
-  llvm_unreachable("Not implemented");
+
+
+  
 }
 
 /// Elaborate declarations of the form '[parms] T'.

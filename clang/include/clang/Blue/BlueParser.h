@@ -111,6 +111,7 @@ namespace blue
     Token consumeToken() {
       // Take the front token.
       Token Tok = Toks.front();
+      PreviousToken = Tok;
       Toks.pop_front();
 
       // Refresh the queue.
@@ -256,6 +257,9 @@ namespace blue
 
     /// Diagnostics.
     clang::DiagnosticsEngine &Diags;
+
+  private:
+    Token PreviousToken;
   };
 
 } // namespace blue

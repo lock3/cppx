@@ -230,6 +230,11 @@ clang::CppxTypeLiteral *Sema::buildTypeExpr(clang::QualType Ty,
   return buildAnyTypeExpr(CxxAST.CppxKindTy, Ty, Loc);
 }
 
+clang::CppxTypeLiteral *Sema::buildTypeExpr(clang::TypeSourceInfo *TInfo) {
+  assert(TInfo && "Invalid type information.");
+  return buildAnyTypeExpr(Context.CxxAST.CppxKindTy, TInfo);
+}
+
 clang::CppxTypeLiteral *Sema::buildAnyTypeExpr(clang::QualType KindTy,
     clang::TypeSourceInfo *TInfo) {
   assert(TInfo && "Invalid type information.");
@@ -239,6 +244,20 @@ clang::CppxTypeLiteral *Sema::buildAnyTypeExpr(clang::QualType KindTy,
 clang::CppxTypeLiteral *Sema::buildAnyTypeExpr(clang::QualType KindTy,
     clang::QualType Ty, clang::SourceLocation Loc) {
   return buildAnyTypeExpr(KindTy, gold::BuildAnyTypeLoc(Context.CxxAST, Ty, Loc));
+}
+
+clang::CppxTypeLiteral *
+Sema::buildFunctionTypeExpr(clang::QualType FnTy,
+                            clang::SourceLocation BeginLoc,
+                            clang::SourceLocation LParenLoc,
+                            clang::SourceLocation RParenLoc,
+                            clang::SourceRange ExceptionSpecRange,
+                            clang::SourceLocation EndLoc,
+                          llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
+  return buildTypeExpr(gold::BuildFunctionTypeLoc(CxxAST, FnTy,
+                                                  BeginLoc, LParenLoc, RParenLoc,
+                                                  ExceptionSpecRange, EndLoc,
+                                                  Params));
 }
 
 void Sema::addDeclToDecl(clang::Decl *Cxx, Declaration *Blue) {

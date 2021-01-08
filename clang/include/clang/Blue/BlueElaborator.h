@@ -20,6 +20,7 @@
 
 namespace clang {
 
+class CppxTypeLiteral;
 class Decl;
 class DiagnosticsEngine;
 class Expr;
@@ -90,6 +91,8 @@ public:
   clang::Decl *makeTypeDecl(const Syntax *S, Declarator *Dcl, clang::QualType T);
   clang::Decl *makeFunctionDecl(const Syntax *S, Declarator *Dcl);
   clang::Decl *makeTemplateDecl(const Syntax *S, Declarator *Dcl);
+
+  clang::CppxTypeLiteral *createFunctionType(Declarator *Dcl);
 
   void elaborateDefinition(const Syntax *S);
   void elaborateVarDef(Declaration *D);

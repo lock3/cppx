@@ -583,14 +583,12 @@ Syntax *Parser::parsePostfixExpression() {
       E = parseIndexExpression(E);
       break;
 
-    case tok::LeftBrace:
-      E = parseBraceExpression(E);
-      break;
-
+    // FIXME: remove this, it should be a primary.
     case tok::Identifier:
       E = parseApplicationExpression(E);
       break;
 
+    // FIXME: move to prefix
     case tok::Caret:
       E = parsePointerExpression(E);
       break;
@@ -712,7 +710,16 @@ Syntax *Parser::parseTupleExpression() {
 
   if (!Parens.expectClose())
     return nullptr;
-  return onTuple(Parens.getEnclosingTokens(), SS);
+
+  Syntax *Tup = onTuple(Parens.getEnclosingTokens(), SS);
+
+  if (nextTokenIs(tok::MinusGreater)) {
+    Token Op = consumeToken();
+    Syntax *RHS = parseIdExpression();
+    return onBinary(Op, Tup, RHS);
+  }
+
+  return Tup;
 }
 
 Syntax *Parser::parseArrayExpression() {
@@ -735,7 +742,7 @@ Syntax *Parser::parseBlockExpression() {
     return nullptr;
 
   llvm::SmallVector<Syntax *, 4> SS;
-  if (nextTokenIsNot(tok::RightBracket))
+  if (nextTokenIsNot(tok::RightBrace))
     parseParameterGroup(SS);
 
   if (!Braces.expectClose())
@@ -810,6 +817,7 @@ Syntax *Parser::onError(char const* Msg) {
   llvm::errs() << "error: " << Msg << '\n';
 
   // FIXME: Maybe make this a singleton?
+
   return new ErrorSyntax();
 }
 

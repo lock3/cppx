@@ -135,11 +135,19 @@ public:
 
   clang::CppxTypeLiteral *buildTypeExpr(clang::QualType Ty,
                                         clang::SourceLocation Loc);
+  clang::CppxTypeLiteral *buildTypeExpr(clang::TypeSourceInfo *TInfo);
   clang::CppxTypeLiteral *buildAnyTypeExpr(clang::QualType KindTy,
                                            clang::TypeSourceInfo *TInfo);
   clang::CppxTypeLiteral *buildAnyTypeExpr(clang::QualType KindTy,
                                            clang::QualType Ty,
                                            clang::SourceLocation Loc);
+  clang::CppxTypeLiteral *buildFunctionTypeExpr(clang::QualType FnTy,
+                                                clang::SourceLocation BeginLoc,
+                                                clang::SourceLocation LParenLoc,
+                                                clang::SourceLocation RParenLoc,
+                                                clang::SourceRange ExceptionSpecRange,
+                                                clang::SourceLocation EndLoc,
+                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
 
 private:
   friend struct Declaration;

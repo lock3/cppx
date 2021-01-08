@@ -260,10 +260,6 @@ Scope *Sema::getCurrentScope() const {
 
 void Sema::pushScope(Scope *S) {
   assert(S && "Invalid scope");
-  // FIXME: The scope should self-describe itself. We can't rely on
-  // the existence of Clang structures at the time we push a scope.
-  // if (S->isDeclarationScope())
-  //   CxxSema.PushFunctionScope();
   ScopeStack.push_back(S);
 }
 
@@ -1202,7 +1198,7 @@ Sema::buildFunctionTypeExpr(clang::QualType FnTy, SourceLocation BeginLoc,
                             clang::SourceRange ExceptionSpecRange,
                             clang::SourceLocation EndLoc,
                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
-  return buildTypeExpr(BuildFunctionTypeLoc(Context.CxxAST, FnTy,
+  return buildTypeExpr(gold::BuildFunctionTypeLoc(Context.CxxAST, FnTy,
                                             BeginLoc, LParenLoc, RParenLoc,
                                             ExceptionSpecRange, EndLoc,
                                             Params));
