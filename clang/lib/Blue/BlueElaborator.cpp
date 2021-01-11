@@ -441,24 +441,20 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
                                        Loc, Params);
 }
 
-clang::Decl *Elaborator::makeFunctionDecl(const Syntax *S, Declarator *Dcl) {
-  assert(Dcl->declaresFunction() && "not a function declarator");
-  assert(isa<DefSyntax>(S) && "not a definition");
-  const DefSyntax *Def = cast<DefSyntax>(S);
-
-  Declaration *BlueDecl = createDeclaration(Def, Dcl, Def->getInitializer());
+clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
+  assert(D->Decl->declaresFunction() && "not a function declarator");
 
   clang::ASTContext &CxxAST = SemaRef.getCxxAST();
   clang::QualType ReturnType = CxxAST.getAutoDeductType();
-  clang::DeclarationName Name(BlueDecl->Id);
+  clang::DeclarationName Name(D->Id);
 
-  clang::CppxTypeLiteral *FnTy = createFunctionType(Dcl);
+  clang::CppxTypeLiteral *FnTy = createFunctionType(D->Decl);
   if (!FnTy)
     return nullptr;
   return nullptr;
 }
 
-clang::Decl *Elaborator::makeTemplateDecl(const Syntax *S, Declarator* Dcl) {
+clang::Decl *Elaborator::makeTemplateDecl(Declaration *D) {
   llvm::outs() << "TEMPLATE!\n";
   return nullptr;
 }
