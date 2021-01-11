@@ -66,7 +66,12 @@ struct Declaration {
 
   clang::DeclContext *DeclaringContext = nullptr;
 
+  /// The current phase of elaboration that this declaration has been elaborated
+  /// to.
   Phase CurrentPhase = Phase::Unprocessed;
+
+  /// If this declaration is currently being processed.
+  bool IsElaborating = false;
 
   clang::Decl *getCxx() {
     return Cxx;

@@ -329,12 +329,13 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         //   }
         // }
 
-        // if (FoundDecl->IsElaborating && !FoundDecl->declaresNamespace()) {
-        //   // This might be allowed in some scenarios Specifically when we
-        //   // reference a class type within
-        //   diagnoseElabCycleError(FoundDecl);
-        //   return false;
-        // }
+        // TODO: Add this back when we have namespaces elaborating && !FoundDecl->declaresNamespace()
+        if (FoundDecl->IsElaborating ) {
+          // This might be allowed in some scenarios Specifically when we
+          // reference a class type within
+          diagnoseElabCycleError(FoundDecl);
+          return false;
+        }
 
         // Skip early elaboration of declarations with nested name specifiers.
         // if (FoundDecl->hasNestedNameSpecifier())
@@ -473,6 +474,128 @@ Sema::buildFunctionTypeExpr(clang::QualType FnTy,
                                                   Params));
 }
 
+static bool checkVarDeclRedecl(Sema &SemaRef, Declaration *D) {
+  auto otherPossibleDecls = SemaRef.getCurrentScope()->findDecl(D->Id);
+  otherPossibleDecls.erase(D);
+  if (!otherPossibleDecls.empty()) {
+    clang::SourceLocation Loc = D->Def->getLocation();
+    SemaRef.getCxxSema().Diags.Report(Loc, clang::diag::err_redefinition)
+                                      << D->Id->getName();
+    for (Declaration *OtherDecl : otherPossibleDecls) {
+      if (OtherDecl->getCxx()) {
+        SemaRef.getCxxSema().notePreviousDefinition(
+                              cast<clang::NamedDecl>(OtherDecl->getCxx()), Loc);
+      } else {
+        SemaRef.getCxxSema().Diags.Report(OtherDecl->Def->getLocation(),
+                                          clang::diag::note_use_ifdef_guards);
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+bool Sema::checkForRedeclaration(Declaration *D) {
+  assert(D->getCxx() && "Invalid declaration");
+  switch(D->getCxx()->getKind()) {
+  case clang::Decl::Var:
+    return checkVarDeclRedecl(*this, D);
+  case clang::Decl::Function:
+    llvm_unreachable("FunctionDecl redeclaration not implemented.");
+  case clang::Decl::TranslationUnit:
+  case clang::Decl::ExternCContext:
+  case clang::Decl::CppxNamespace:
+  case clang::Decl::Namespace:
+  case clang::Decl::NamespaceAlias:
+  case clang::Decl::Typedef:
+  case clang::Decl::TypeAlias:
+  case clang::Decl::Enum:
+  case clang::Decl::Record:
+  case clang::Decl::CXXRecord:
+  case clang::Decl::ClassTemplateSpecialization:
+  case clang::Decl::ClassTemplatePartialSpecialization:
+  case clang::Decl::VarTemplateSpecialization:
+  case clang::Decl::VarTemplatePartialSpecialization:
+  case clang::Decl::CXXDeductionGuide:
+  case clang::Decl::CXXMethod:
+  case clang::Decl::CXXConstructor:
+  case clang::Decl::CXXDestructor:
+  case clang::Decl::CXXConversion:
+  case clang::Decl::UsingShadow:
+  case clang::Decl::ConstructorUsingShadow:
+  case clang::Decl::FunctionTemplate:
+  case clang::Decl::ClassTemplate:
+  case clang::Decl::VarTemplate:
+  case clang::Decl::TypeAliasTemplate:
+  case clang::Decl::ObjCProtocol:
+  case clang::Decl::ObjCInterface:
+  case clang::Decl::Empty:
+  case clang::Decl::UsingDirective:
+  case clang::Decl::Label:
+  case clang::Decl::UnresolvedUsingTypename:
+  case clang::Decl::TemplateTypeParm:
+  case clang::Decl::EnumConstant:
+  case clang::Decl::UnresolvedUsingValue:
+  case clang::Decl::IndirectField:
+  case clang::Decl::Field:
+  case clang::Decl::MSProperty:
+  case clang::Decl::MSGuid:
+  case clang::Decl::TemplateParamObject:
+  case clang::Decl::ObjCIvar:
+  case clang::Decl::ObjCAtDefsField:
+  case clang::Decl::NonTypeTemplateParm:
+  case clang::Decl::TemplateTemplateParm:
+  case clang::Decl::Using:
+  case clang::Decl::UsingPack:
+  case clang::Decl::ObjCMethod:
+  case clang::Decl::ObjCCategory:
+  case clang::Decl::ObjCCategoryImpl:
+  case clang::Decl::ObjCImplementation:
+  case clang::Decl::ObjCProperty:
+  case clang::Decl::ObjCCompatibleAlias:
+  case clang::Decl::LinkageSpec:
+  case clang::Decl::Export:
+  case clang::Decl::ObjCPropertyImpl:
+  case clang::Decl::PragmaComment:
+  case clang::Decl::PragmaDetectMismatch:
+  case clang::Decl::FileScopeAsm:
+  case clang::Decl::AccessSpec:
+  case clang::Decl::Friend:
+  case clang::Decl::FriendTemplate:
+  case clang::Decl::StaticAssert:
+  case clang::Decl::Block:
+  case clang::Decl::Captured:
+  case clang::Decl::ClassScopeFunctionSpecialization:
+  case clang::Decl::Import:
+  case clang::Decl::OMPThreadPrivate:
+  case clang::Decl::OMPAllocate:
+  case clang::Decl::OMPRequires:
+  case clang::Decl::OMPCapturedExpr:
+  case clang::Decl::OMPDeclareReduction:
+  case clang::Decl::OMPDeclareMapper:
+  case clang::Decl::BuiltinTemplate:
+  case clang::Decl::Decomposition:
+  case clang::Decl::Binding:
+  case clang::Decl::Concept:
+  case clang::Decl::LifetimeExtendedTemporary:
+  case clang::Decl::RequiresExprBody:
+  case clang::Decl::CXXFragment:
+  case clang::Decl::CXXMetaprogram:
+  case clang::Decl::CXXInjection:
+  case clang::Decl::CXXStmtFragment:
+  case clang::Decl::CXXRequiredType:
+  case clang::Decl::CXXRequiredDeclarator:
+  case clang::Decl::CppxPartial:
+  case clang::Decl::ImplicitParam:
+  case clang::Decl::ParmVar:
+  case clang::Decl::ObjCTypeParam:
+  default:
+    llvm::errs() << "Invalid type of declaration, unable to continue.\n";
+    D->getCxx()->dump();
+    llvm_unreachable("Invalid declararation to process.");
+  }
+}
+
 void Sema::addDeclToDecl(clang::Decl *Cxx, Declaration *Blue) {
   assert(Cxx && "Invalid clang declaration");
   assert(Blue && "Invalid blue declaration");
@@ -487,6 +610,21 @@ Declaration *Sema::getDeclaration(clang::Decl *Cxx) {
     return nullptr;
 
   return Iter->second;
+}
+
+void Sema::diagnoseElabCycleError(Declaration *CycleTerminalDecl) {
+  assert(CycleTerminalDecl && "Invalid terminal cycle");
+  assert(!DeclsBeingElaborated.empty() && "We cannot have an empty stack and a "
+         "declaration cycle.");
+  // assert(CycleTerminalDecl->IdDcl);
+  getCxxSema().Diags.Report(CycleTerminalDecl->Def->getLocation(),
+                            clang::diag::err_decl_use_cycle);
+  for (auto *CycleNote : DeclsBeingElaborated){
+    if (CycleNote == CycleTerminalDecl)
+      continue;
+    getCxxSema().Diags.Report(CycleNote->Def->getLocation(),
+                              clang::diag::note_cycle_entry);
+  }
 }
 
 } // end namespace Blue

@@ -352,6 +352,7 @@ clang::Decl *Elaborator::makeValueDecl(Declaration *D) {
   if (!E)
     return nullptr;
 
+  Sema::DeclarationElaborationRAII DeclElab(SemaRef, D);
   clang::QualType T;
   if (E->getType()->isTypeOfTypes())
     T = cast<clang::CppxTypeLiteral>(E)->getValue()->getType();
@@ -396,9 +397,12 @@ clang::Decl *Elaborator::makeObjectDecl(Declaration *D, clang::Expr *Ty) {
   Owner->addDecl(VD);
   D->setCxx(SemaRef, VD);
   D->CurrentPhase = Phase::Typing;
-  if (SemaRef.DeepElaborationMode) {
+  // Checking for redeclaration, this will emit an error message if this is a
+  // duplicate variable within the same current scope.
+  SemaRef.checkForRedeclaration(D);
+
+  if (SemaRef.DeepElaborationMode)
     elaborateDefinitionInitialization(D);
-  }
   return VD;
 }
 
@@ -1117,7 +1121,8 @@ void Elaborator::elaborateDefinition(const Syntax *S) {
   auto Decl = SemaRef.getCurrentScope()->findDecl(S);
   if (!Decl)
     return;
-
+  // Attempt to process the current declaration again.
+  Sema::DeclarationElaborationRAII DeclElab(SemaRef, Decl);
   elaborateDefinitionInitialization(Decl);
 }
 

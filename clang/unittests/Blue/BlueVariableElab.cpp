@@ -73,15 +73,16 @@ Z:= 3;
 
 TEST(BlueVariableDecl, ConflictingVariableDecls) {
   StringRef Code = R"BLUE(
-Y := Z;
-Z:= 3;
-
+Y := 5;
+Y := 3;
 )BLUE";
+  BlueFailureTest(Code);
+}
 
-  auto ToMatch = varDecl(
-    hasName("Y"),
-    hasType(asString("int")),
-    hasInitializer(hasDescendant(declRefExpr(to(varDecl(hasName("Z"))))))
-  );
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
+TEST(BlueVariableDecl, DeclarationCyclicLoopDeclReference) {
+  StringRef Code = R"BLUE(
+x := z;
+z := x;
+)BLUE";
+  BlueFailureTest(Code);
 }
