@@ -460,7 +460,6 @@ clang::Decl *Elaborator::makeTypeDecl(Declaration *D, clang::QualType T) {
   clang::SourceLocation Loc = Init->getLocation();
   clang::MultiTemplateParamsArg MTP;
 
-  SemaRef.checkForRedeclaration(D);
 
   // Constructing the type alias on the way out because we need to correctly
   // construct its internal type before continuing.
@@ -470,6 +469,7 @@ clang::Decl *Elaborator::makeTypeDecl(Declaration *D, clang::QualType T) {
       clang::ParsedAttributesView(), TR, nullptr);
   D->setCxx(SemaRef, TypeAlias);
   // SemaRef.addDeclToDecl(TypeAlias, D);
+  SemaRef.checkForRedeclaration(D);
   return TypeAlias;
 }
 
