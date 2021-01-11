@@ -17,15 +17,17 @@
 #include "clang/Blue/BlueDeclarator.h"
 #include "clang/Blue/BlueSyntax.h"
 
+
 namespace clang {
   class Decl;
   class DeclContext;
   class IdentifierInfo;
+  class Scope;
 } // end namespace clang
 
 
 namespace blue {
-
+class Scope;
 class Sema;
 
 enum class Phase : std::size_t
@@ -66,7 +68,26 @@ struct Declaration {
 
   clang::DeclContext *DeclaringContext = nullptr;
 
+  /// The current phase of elaboration that this declaration has been elaborated
+  /// to.
   Phase CurrentPhase = Phase::Unprocessed;
+
+  /// If this declaration is currently being processed.
+  bool IsElaborating = false;
+
+  /// The list of members associated with this declaration.
+  Scope *SavedScope = nullptr;
+
+  /// This information is to aid with early elaboration. This allows the
+  /// elabrotor to restore the state in which something was declared.
+  ///
+  /// This is the current clang scope that the clang declaration is part of.
+  clang::Scope *ClangDeclaringScope = nullptr;
+
+  /// This is the scope that this declaration is a member of.
+  /// This is also the parent scope to the SavedScope, if set.
+  Scope *ScopeForDecl = nullptr;
+
 
   clang::Decl *getCxx() {
     return Cxx;
@@ -80,6 +101,10 @@ struct Declaration {
   }
 
   bool IsVariableDecl() const;
+
+  bool hasInitializer() const;
+
+  const Syntax *getInitializer() const;
 
   /// Get the def as an IdentifierSyntax.
   const IdentifierSyntax *asId() const;

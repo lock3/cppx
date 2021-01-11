@@ -71,6 +71,6 @@ TEST(BlueLiteral, Char) {
   StringRef Code = R"BLUE(
 x:='x';
 )BLUE";
-  auto ToMatch = 	characterLiteral(equals('x'));
+  auto ToMatch = 	characterLiteral(equals(120u));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

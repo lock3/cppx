@@ -54,9 +54,7 @@ Y := Z;
   BlueFailureTest(Code);
 }
 
-
-// FIXME: do forced phase 2 elaboration of variable declarations.
-TEST(BlueVariableDecl, OutOfOrderVariableUse){
+TEST(BlueVariableDecl, OutOfOrderVariableUse) {
   StringRef Code = R"BLUE(
 Y := Z;
 Z:= 3;
@@ -70,3 +68,20 @@ Z:= 3;
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+TEST(BlueVariableDecl, ConflictingVariableDecls) {
+  StringRef Code = R"BLUE(
+Y := 5;
+Y := 3;
+)BLUE";
+  BlueFailureTest(Code);
+}
+
+TEST(BlueVariableDecl, DeclarationCyclicLoopDeclReference) {
+  StringRef Code = R"BLUE(
+x := z;
+z := x;
+)BLUE";
+  BlueFailureTest(Code);
+}
+
