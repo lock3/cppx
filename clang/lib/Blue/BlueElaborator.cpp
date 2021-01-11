@@ -205,6 +205,7 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
   if (!Ty)
     return nullptr;
 
+  // FIXME: This needs to be refactored so it's created during phase identification.
   // Create the Blue Declaration
   Declaration *TheDecl = createDeclaration(Def, Dcl, Def->getInitializer());
 
@@ -334,9 +335,10 @@ Declarator *Elaborator::getImplicitAutoDeclarator() {
 }
 
 clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
-  elaborateDeclarationTyping(D);
+  auto *Ret = elaborateDeclarationTyping(D);
   if (SemaRef.DeepElaborationMode)
     elaborateDefinitionInitialization(D);
+  return Ret;
 }
 
 // Declaration construction
@@ -441,24 +443,24 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
                                        Loc, Params);
 }
 
-clang::Decl *Elaborator::makeFunctionDecl(const Syntax *S, Declarator *Dcl) {
-  assert(Dcl->declaresFunction() && "not a function declarator");
-  assert(isa<DefSyntax>(S) && "not a definition");
-  const DefSyntax *Def = cast<DefSyntax>(S);
+clang::Decl *Elaborator::makeFunctionDecl(Declaration *BlueDecl) {
+  assert(BlueDecl->Decl->declaresFunction() && "not a function declarator");
+  // assert(isa<DefSyntax>(S) && "not a definition");
+  // const DefSyntax *Def = D->Def;
 
-  Declaration *BlueDecl = createDeclaration(Def, Dcl, Def->getInitializer());
+  // Declaration *BlueDecl = createDeclaration(Def, Dcl, Def->getInitializer());
 
   clang::ASTContext &CxxAST = SemaRef.getCxxAST();
   clang::QualType ReturnType = CxxAST.getAutoDeductType();
   clang::DeclarationName Name(BlueDecl->Id);
 
-  clang::CppxTypeLiteral *FnTy = createFunctionType(Dcl);
+  clang::CppxTypeLiteral *FnTy = createFunctionType(BlueDecl->Decl);
   if (!FnTy)
     return nullptr;
   return nullptr;
 }
 
-clang::Decl *Elaborator::makeTemplateDecl(const Syntax *S, Declarator* Dcl) {
+clang::Decl *Elaborator::makeTemplateDecl(Declaration *D) {
   llvm::outs() << "TEMPLATE!\n";
   return nullptr;
 }
@@ -527,9 +529,7 @@ clang::Expr *Elaborator::elaborateArrayDeclarator(const Declarator *Dcl) {
 /// Elaborate declarations of the form '(parms) T'.
 /// This returns a type expression of the form `(parms) -> T`.
 clang::Expr *Elaborator::elaborateFunctionDeclarator(const Declarator *Dcl) {
-
-
-  
+  llvm_unreachable("Not implemented yet");
 }
 
 /// Elaborate declarations of the form '[parms] T'.
