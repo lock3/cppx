@@ -83,6 +83,12 @@ namespace gold {
   class Sema;
 }
 
+namespace blue {
+  class Declaration;
+  class Declarator;
+  class Sema;
+}
+
 namespace clang {
   class ADLResult;
   class ASTConsumer;
@@ -13303,6 +13309,7 @@ protected:
   friend class ASTDeclReader;
   friend class ASTWriter;
   friend class gold::Sema;
+  friend class blue::Sema;
 
 public:
   /// Retrieve the keyword associated

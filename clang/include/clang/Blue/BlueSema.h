@@ -154,10 +154,25 @@ public:
                                                 clang::SourceLocation EndLoc,
                            llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
 
+  clang::TypeSourceInfo *getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
+                             clang::SourceLocation Loc=clang::SourceLocation());
+
   /// This function dispatches to other functions to handle other declarations
   /// It is the job of this function to determine of the declaration should be
   /// merged with other declarations or is in conflict with other declarations.
   bool checkForRedeclaration(Declaration *D);
+
+
+public:
+  /// Clang scope management functions.
+  ///@{
+  clang::Scope *getCurClangScope();
+  clang::Scope *enterClangScope(unsigned int ScopeFlags);
+  clang::Scope *moveToParentScopeNoPop();
+  void reEnterClangScope(clang::Scope* Scope);
+  void leaveClangScope(clang::SourceLocation Loc);
+  clang::Scope* saveCurrentClangScope();
+  //@}
 
 private:
   friend struct Declaration;

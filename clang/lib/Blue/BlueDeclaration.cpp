@@ -30,6 +30,20 @@ bool Declaration::IsVariableDecl() const {
   return Cxx && isa<clang::VarDecl>(Cxx);
 }
 
+bool Declaration::hasInitializer() const {
+  if (auto DS = dyn_cast_or_null<DefSyntax>(Def)) {
+    return DS->hasInitializer();
+  }
+  return false;
+}
+
+const Syntax *Declaration::getInitializer() const {
+  if (auto DS = dyn_cast_or_null<DefSyntax>(Def)) {
+    return DS->getInitializer();
+  }
+  return nullptr;
+}
+
 const DefSyntax *Declaration::asDef() const {
   assert(isa<DefSyntax>(Def));
   return cast<DefSyntax>(Def);

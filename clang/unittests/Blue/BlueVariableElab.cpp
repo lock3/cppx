@@ -54,8 +54,6 @@ Y := Z;
   BlueFailureTest(Code);
 }
 
-
-// FIXME: do forced phase 2 elaboration of variable declarations.
 TEST(BlueVariableDecl, OutOfOrderVariableUse) {
   StringRef Code = R"BLUE(
 Y := Z;
@@ -86,3 +84,4 @@ z := x;
 )BLUE";
   BlueFailureTest(Code);
 }
+

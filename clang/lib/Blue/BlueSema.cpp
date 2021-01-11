@@ -474,7 +474,28 @@ Sema::buildFunctionTypeExpr(clang::QualType FnTy,
                                                   Params));
 }
 
-static bool checkVarDeclRedecl(Sema &SemaRef, Declaration *D) {
+clang::TypeSourceInfo *
+Sema::getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
+                                clang::SourceLocation Loc) {
+  if (!TyExpr) {
+    return nullptr;
+  }
+
+  if (!TyExpr->getType()->isTypeOfTypes()) {
+    getCxxSema().Diags.Report(Loc, clang::diag::err_not_a_type);
+    return nullptr;
+  }
+
+  if (const clang::CppxTypeLiteral *Ty
+                                   = dyn_cast<clang::CppxTypeLiteral>(TyExpr)) {
+
+    return Ty->getValue();
+  }
+
+  llvm_unreachable("Invaild type expression evaluates to type of types.");
+}
+
+static bool checkSimplNameMatchRedecl(Sema &SemaRef, Declaration *D) {
   auto otherPossibleDecls = SemaRef.getCurrentScope()->findDecl(D->Id);
   otherPossibleDecls.erase(D);
   if (!otherPossibleDecls.empty()) {
@@ -498,17 +519,19 @@ static bool checkVarDeclRedecl(Sema &SemaRef, Declaration *D) {
 bool Sema::checkForRedeclaration(Declaration *D) {
   assert(D->getCxx() && "Invalid declaration");
   switch(D->getCxx()->getKind()) {
+  case clang::Decl::Typedef:
+  case clang::Decl::TypeAlias:
   case clang::Decl::Var:
-    return checkVarDeclRedecl(*this, D);
+  case clang::Decl::Field:
+    return checkSimplNameMatchRedecl(*this, D);
   case clang::Decl::Function:
+    // This requeires more infor.
     llvm_unreachable("FunctionDecl redeclaration not implemented.");
-  case clang::Decl::TranslationUnit:
-  case clang::Decl::ExternCContext:
+  // case clang::Decl::TranslationUnit:
+  // case clang::Decl::ExternCContext:
   case clang::Decl::CppxNamespace:
   case clang::Decl::Namespace:
   case clang::Decl::NamespaceAlias:
-  case clang::Decl::Typedef:
-  case clang::Decl::TypeAlias:
   case clang::Decl::Enum:
   case clang::Decl::Record:
   case clang::Decl::CXXRecord:
@@ -527,17 +550,16 @@ bool Sema::checkForRedeclaration(Declaration *D) {
   case clang::Decl::ClassTemplate:
   case clang::Decl::VarTemplate:
   case clang::Decl::TypeAliasTemplate:
-  case clang::Decl::ObjCProtocol:
-  case clang::Decl::ObjCInterface:
-  case clang::Decl::Empty:
+  // case clang::Decl::ObjCProtocol:
+  // case clang::Decl::ObjCInterface:
+  // case clang::Decl::Empty:
   case clang::Decl::UsingDirective:
-  case clang::Decl::Label:
+  // case clang::Decl::Label:
   case clang::Decl::UnresolvedUsingTypename:
   case clang::Decl::TemplateTypeParm:
   case clang::Decl::EnumConstant:
   case clang::Decl::UnresolvedUsingValue:
   case clang::Decl::IndirectField:
-  case clang::Decl::Field:
   case clang::Decl::MSProperty:
   case clang::Decl::MSGuid:
   case clang::Decl::TemplateParamObject:
@@ -594,6 +616,51 @@ bool Sema::checkForRedeclaration(Declaration *D) {
     D->getCxx()->dump();
     llvm_unreachable("Invalid declararation to process.");
   }
+}
+
+clang::Scope *Sema::getCurClangScope() {
+  return CxxSema.CurScope;
+}
+
+clang::Scope *Sema::enterClangScope(unsigned int ScopeFlags) {
+  CxxSema.CurScope = new clang::Scope(getCurClangScope(), ScopeFlags,
+                                      getCxxSema().Diags);
+  // Only do this if we are not a template scope to avoid an assertion inside
+  // of setEntity.
+  if (!CxxSema.CurScope->isTemplateParamScope())
+    CxxSema.CurScope->setEntity(nullptr);
+  return CxxSema.CurScope;
+}
+
+clang::Scope *Sema::moveToParentScopeNoPop() {
+  clang::Scope* S = CxxSema.CurScope;
+  CxxSema.CurScope = CxxSema.CurScope->getParent();
+  return S;
+}
+
+void Sema::reEnterClangScope(clang::Scope* Scope) {
+  assert(Scope && "Invalid scope.");
+  CxxSema.CurScope = Scope;
+}
+
+void Sema::leaveClangScope(clang::SourceLocation Loc) {
+  assert(getCurClangScope() && "Clang scope imbalance!");
+
+  // Inform the actions module that this scope is going away if there are any
+  // decls in it.
+  CxxSema.ActOnPopScope(Loc, getCurClangScope());
+
+  clang::Scope *OldScope = getCurClangScope();
+  CxxSema.CurScope = OldScope->getParent();
+
+  delete OldScope;
+}
+
+clang::Scope* Sema::saveCurrentClangScope() {
+  assert(getCurClangScope() && "Clang scope imbalance!");
+  clang::Scope *OldScope = getCurClangScope();
+  CxxSema.CurScope = OldScope->getParent();
+  return OldScope;
 }
 
 void Sema::addDeclToDecl(clang::Decl *Cxx, Declaration *Blue) {
