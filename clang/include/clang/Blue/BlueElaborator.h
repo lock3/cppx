@@ -61,7 +61,6 @@ public:
   //===--------------------------------------------------------------------===//
   //                                  Elaboration                             //
   //===--------------------------------------------------------------------===//
-
   clang::Decl *elaborateTop(const Syntax *S);
 
   void identifyDeclaration(const Syntax *S);
@@ -115,6 +114,8 @@ public:
 
   void Error(clang::SourceLocation Loc, llvm::StringRef Msg);
 
+private:
+  std::size_t ImplicitSemaDecls = 0;
 private:
   Sema &SemaRef;
 

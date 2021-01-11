@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueFunction, SimpleFunctionDecl){
   StringRef Code = R"BLUE(
-foo:() -> void{
+foo:() -> void {
 }
 )BLUE";
 

@@ -154,7 +154,26 @@ public:
                                                 clang::SourceLocation EndLoc,
                            llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
 
-  
+  clang::TypeSourceInfo *getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
+                             clang::SourceLocation Loc=clang::SourceLocation());
+
+  /// This function dispatches to other functions to handle other declarations
+  /// It is the job of this function to determine of the declaration should be
+  /// merged with other declarations or is in conflict with other declarations.
+  bool checkForRedeclaration(Declaration *D);
+
+
+public:
+  /// Clang scope management functions.
+  ///@{
+  clang::Scope *getCurClangScope();
+  clang::Scope *enterClangScope(unsigned int ScopeFlags);
+  clang::Scope *moveToParentScopeNoPop();
+  void reEnterClangScope(clang::Scope* Scope);
+  void leaveClangScope(clang::SourceLocation Loc);
+  clang::Scope* saveCurrentClangScope();
+  //@}
+
 private:
   friend struct Declaration;
   void addDeclToDecl(clang::Decl *Cxx, Declaration *Blue);
@@ -203,6 +222,44 @@ public:
       SemaRef.DeepElaborationMode = PreviousState;
     }
   };
+private:
+  llvm::SmallVector<Declaration *, 64> DeclsBeingElaborated;
+public:
+  struct DeclarationElaborationRAII {
+    Sema &SemaRef;
+    bool DidRecordDecl = false;
+
+    DeclarationElaborationRAII(Sema &S, Declaration *NewDecl)
+      :SemaRef(S)
+    {
+      assert(NewDecl && "Invalid declaration given.");
+      assert(!NewDecl->IsElaborating && "Declaration already being elaborated");
+      DidRecordDecl = true;
+      SemaRef.DeclsBeingElaborated.push_back(NewDecl);
+      SemaRef.DeclsBeingElaborated.back()->IsElaborating = true;
+    }
+
+    DeclarationElaborationRAII(Sema &S) :SemaRef(S) { }
+
+    void init(Declaration *NewDecl) {
+      assert(NewDecl && "Invalid declaration given.");
+      assert(!NewDecl->IsElaborating && "Declaration already being elaborated");
+      DidRecordDecl = true;
+      SemaRef.DeclsBeingElaborated.push_back(NewDecl);
+      SemaRef.DeclsBeingElaborated.back()->IsElaborating = true;
+    }
+
+    ~DeclarationElaborationRAII()  {
+      if (DidRecordDecl) {
+        SemaRef.DeclsBeingElaborated.back()->IsElaborating = false;
+        SemaRef.DeclsBeingElaborated.pop_back();
+      }
+    }
+  };
+  void diagnoseElabCycleError(Declaration *CycleTerminalDecl);
+
+public:
+
 };
 
 } // end namespace blue
