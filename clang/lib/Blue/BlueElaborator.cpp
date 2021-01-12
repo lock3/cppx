@@ -473,18 +473,14 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
                                        Loc, Params);
 }
 
-clang::Decl *Elaborator::makeFunctionDecl(Declaration *BlueDecl) {
-  assert(BlueDecl->Decl->declaresFunction() && "not a function declarator");
-  // assert(isa<DefSyntax>(S) && "not a definition");
-  // const DefSyntax *Def = D->Def;
-
-  // Declaration *BlueDecl = createDeclaration(Def, Dcl, Def->getInitializer());
+clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
+  assert(D->Decl->declaresFunction() && "not a function declarator");
 
   clang::ASTContext &CxxAST = SemaRef.getCxxAST();
   clang::QualType ReturnType = CxxAST.getAutoDeductType();
-  clang::DeclarationName Name(BlueDecl->Id);
+  clang::DeclarationName Name(D->Id);
 
-  clang::CppxTypeLiteral *FnTy = createFunctionType(BlueDecl->Decl);
+  clang::CppxTypeLiteral *FnTy = createFunctionType(D->Decl);
   if (!FnTy)
     return nullptr;
   return nullptr;
