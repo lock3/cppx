@@ -676,6 +676,10 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::TrueKeyword:
   case tok::FalseKeyword:
   case tok::TypeKeyword:
+  case tok::StaticCastKeyword:
+  case tok::DynamicCastKeyword:
+  case tok::ReinterpretCastKeyword:
+  case tok::ConstCastKeyword:
     return onLiteral(consumeToken());
 
   case tok::Identifier:

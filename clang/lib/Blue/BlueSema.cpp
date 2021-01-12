@@ -307,6 +307,9 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         // If we find a name that hasn't been elaborated,
         // then we actually need to elaborate it.
         if (phaseOf(FoundDecl) < Phase::Typing) {
+          if (FoundDecl->IsElaborating) {
+            continue;
+          }
           // TODO: In order to implement out of order elaboration we will need
           // to slightly change how we are doing elaboration. We will need an
           // identification phase. Without it, matching the declarations to their
@@ -347,8 +350,8 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
         // }
 
         if (!FoundDecl->getCxx()) {
-          llvm_unreachable("referenced a declaration that contains an error.");
-          // return true;
+          // llvm_unreachable("referenced a declaration that contains an error.");
+          return true;
         }
 
         clang::NamedDecl *ND = cast<clang::NamedDecl>(FoundDecl->getCxx());

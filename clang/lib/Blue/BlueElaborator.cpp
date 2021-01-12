@@ -1629,6 +1629,7 @@ clang::Expr *Elaborator::elaborateCharacterMetaFunction(const BinarySyntax *S) {
     } else {
       return reportInvalidUse(SecondArgLoc, 4);
     }
+    
     // Now creating the type expression.
     clang::QualType RetTy;
     if(IsUTF) {
