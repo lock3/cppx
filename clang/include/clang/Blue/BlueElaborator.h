@@ -50,6 +50,8 @@ public:
   clang::ASTContext &getCxxContext() {
     return getCxxSema().Context;
   }
+  /// Returns the current blue sema instance.
+  Sema &getBlueSema() { return SemaRef; }
 
   //===--------------------------------------------------------------------===//
   //                                  Identification                          //
@@ -90,6 +92,7 @@ public:
   clang::Expr *elaborateTemplateDeclarator(const Declarator *Dcl);
   clang::Expr *elaborateImplicitTypeDeclarator(const Declarator *Dcl);
 
+
   clang::Decl *makeValueDecl(Declaration *D);
   clang::Decl *makeObjectDecl(Declaration *D, clang::Expr *Ty);
   clang::Decl *makeTypeDecl(Declaration *D, clang::QualType T);
@@ -102,7 +105,11 @@ public:
   void elaborateDefinitionInitialization(Declaration *D);
   void elaborateVarDef(Declaration *D);
 
+
   clang::Expr *elaborateExpression(const Syntax *S);
+  clang::Expr *elaborateConstantExpression(const Syntax *S);
+  clang::Expr *doElaborateExpression(const Syntax *S);
+
   clang::Expr *elaborateLiteralExpression(const LiteralSyntax *S);
   clang::Expr *elaborateIdentifierExpression(const IdentifierSyntax *S);
   clang::Expr *elaborateListExpression(const ListSyntax *S);

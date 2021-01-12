@@ -62,7 +62,12 @@ BLUE_BUILTIN_TYPE_TEST("float128", float128, "__float128")
 #undef BLUE_BUILTIN_TYPE_TEST
 
 // TODO: Uncomment these tests once we have the parsing for this fixed.
-TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed) {
+// TODO: Create tests for all of the error scenarios, such as invalid number of bytes,
+//      incorrect 2nd argument, and incorrect numbher of arguments.
+//      Also need to verify that we correctly support expected types and they
+//      are what was expected as per the spec & it matches what we use
+//      internally.
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed_1) {
   StringRef Code = "i:integer[1, signed];";
   DeclarationMatcher VarIMatcher = varDecl(
     hasName("i"), hasType(asString("signed char"))
@@ -70,44 +75,166 @@ TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed) {
   ASSERT_TRUE(matches(Code.str(), VarIMatcher));
 }
 
-// TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned) {
-//   StringRef Code = "i:integer[1, unsigned]";
-//   DeclarationMatcher VarIMatcher = varDecl(
-//     hasName("i"), hasType(asString("unsigned char"))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), VarIMatcher));
-// }
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed_2) {
+  StringRef Code = "i:integer[2, signed];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("short"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
 
-// TEST(BlueType, BuiltInType_CharacterCompilerFunction_ASCII) {
-//   StringRef Code = "i:character[1, ascii]";
-//   DeclarationMatcher VarIMatcher = varDecl(
-//     hasName("i"), hasType(asString("signed char"))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), VarIMatcher));
-// }
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed_4) {
+  StringRef Code = "i:integer[4, signed];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("int"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
 
-// // FIXME: I need to double check this.
-// TEST(BlueType, BuiltInType_CharacterCompilerFunction_UTF8) {
-//   StringRef Code = "i:character[1, utf8]";
-//   DeclarationMatcher VarIMatcher = varDecl(
-//     // TODO: Double check this to double check the actual type of char8_t
-//     hasName("i"), hasType(asString("char8_t"))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), VarIMatcher));
-// }
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed_8) {
+  StringRef Code = "i:integer[8, signed];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("long"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
 
-// TEST(BlueType, BuiltInType_FloatCompilerFunction_Binary_Float) {
-//   StringRef Code = "i:float[4, binary]";
-//   DeclarationMatcher VarIMatcher = varDecl(
-//     hasName("i"), hasType(asString("float"))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), VarIMatcher));
-// }
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed_16) {
+  StringRef Code = "i:integer[16, signed];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("__int128"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
 
-// TEST(BlueType, BuiltInType_FloatCompilerFunction_Binary_Double) {
-//   StringRef Code = "i:float[8, binary]";
-//   DeclarationMatcher VarIMatcher = varDecl(
-//     hasName("i"), hasType(asString("double"))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), VarIMatcher));
-// }
+
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned_1) {
+  StringRef Code = "i:integer[1, unsigned];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("unsigned char"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
+
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned_2) {
+  StringRef Code = "i:integer[2, unsigned];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("unsigned short"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
+
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned_4) {
+  StringRef Code = "i:integer[4, unsigned];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("unsigned int"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
+
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned_8) {
+  StringRef Code = "i:integer[8, unsigned];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("unsigned long"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
+
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned_16) {
+  StringRef Code = "i:integer[16, unsigned];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("unsigned __int128"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
+
+
+
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_NonMultipleOf2ByteCount) {
+  BlueFailureTest("i:integer[3, signed];");
+}
+
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_InvalidSecondArg) {
+  BlueFailureTest("i:integer[2, 2];");
+}
+
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_TwoFewArgs) {
+  BlueFailureTest("i:integer[2];");
+}
+
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_ToManyArgs) {
+  BlueFailureTest("i:integer[3, signed, 4];");
+}
+
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_UnexpectedLiteralType) {
+  BlueFailureTest("i:integer['x', signed];");
+}
+
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_StringLiteral) {
+  BlueFailureTest(R"BLUE(i:integer["x", signed];)BLUE");
+}
+
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_CharacterLiteral) {
+  BlueFailureTest(R"BLUE(i:integer['x', signed];)BLUE");
+}
+
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_NegativeValue) {
+  BlueFailureTest("i:integer[-3, signed];");
+}
+
+TEST(BlueType, BuiltInType_CharacterCompilerFunction_ASCII) {
+  StringRef Code = "i:character[1, ascii];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("char"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
+
+TEST(BlueType, BuiltInType_CharacterCompilerFunction_UTF8) {
+  StringRef Code = "i:character[1, utf];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("char8_t"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
+
+TEST(BlueType, BuiltInType_CharacterCompilerFunction_UTF16) {
+  StringRef Code = "i:character[2, utf];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("unsigned short"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
+
+TEST(BlueType, BuiltInType_CharacterCompilerFunction_UTF32) {
+  StringRef Code = "i:character[4, utf];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("unsigned int"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
+
+
+TEST(BlueType, BuiltInType_RealCompilerFunction_Binary_Float) {
+  StringRef Code = "i:real[4, binary];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("float"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
+
+TEST(BlueType, BuiltInType_RealCompilerFunction_Binary_Double) {
+  StringRef Code = "i:real[8, binary];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("double"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
+
+TEST(BlueType, BuiltInType_RealCompilerFunction_Binary_Invalid_1) {
+  BlueFailureTest("i:real[1, binary];");
+}
+
+TEST(BlueType, BuiltInType_RealCompilerFunction_Binary_Invalid_2) {
+  BlueFailureTest("i:real[2, binary];");
+}

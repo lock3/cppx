@@ -670,6 +670,7 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::IntegerKeyword:
     // FIXME: Parse out the integer spec.
   case tok::FloatKeyword:
+  case tok::RealKeyword:
     // FIXME: Parse out the fixed-point spec.
   case tok::NullKeyword:
   case tok::TrueKeyword:

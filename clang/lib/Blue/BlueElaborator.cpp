@@ -572,6 +572,31 @@ clang::Expr *Elaborator::elaborateImplicitTypeDeclarator(const Declarator *Dcl) 
 // Expression elaboration
 
 clang::Expr *Elaborator::elaborateExpression(const Syntax *S) {
+  return doElaborateExpression(S);
+}
+
+clang::Expr *Elaborator::elaborateConstantExpression(const Syntax *S) {
+  clang::EnterExpressionEvaluationContext ConstantEvaluated(getCxxSema(),
+                   clang::Sema::ExpressionEvaluationContext::ConstantEvaluated);
+  Sema::DeepElaborationModeRAII ElabMode(SemaRef, true);
+  clang::Expr *Res = doElaborateExpression(S);
+  if (!Res)
+    return Res;
+
+  // This attempts to make sure that all referenced functions are actually
+  // in scope, and completely elaborated.
+
+  // TODO: I may need to re-implement the constant expression triggering
+  // elaboration from gold.
+  // SemaRef.elaborateConstexpr(Res);
+
+  auto ConstExpr = SemaRef.getCxxSema().ActOnConstantExpression(Res);
+  if (ConstExpr.isInvalid())
+    return nullptr;
+  return ConstExpr.get();
+}
+
+clang::Expr *Elaborator::doElaborateExpression(const Syntax *S) {
   assert(S && "invalid expression");
   switch (S->getKind()) {
   case Syntax::Literal:
@@ -1443,9 +1468,8 @@ clang::Expr *Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
   auto LHS = elaborateExpression(S->getLeftOperand());
   if (!LHS)
     return nullptr;
-  if (S->isApplication()) {
+  if (S->isApplication())
     return elaborateApplyExpression(LHS, S);
-  }
 
   auto RHS = elaborateExpression(S->getRightOperand());
   if (!RHS)
@@ -1466,19 +1490,222 @@ clang::Expr *Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
 
 clang::Expr *Elaborator::elaborateApplyExpression(clang::Expr *LHS,
                                                   const BinarySyntax *S) {
-  llvm_unreachable("Not implemented yet!?\n");
+  // TODO: I need to figure out and dispatch all of the different possible
+  // situations that could occur here.
+  // 1. Template instantiation
+  // 2. Function Call - Needs verifications
+  // 3. Array declaration - Needs verifications
+  // 4. Template declarations - Needs verifications
+  // 5. Block attached to something possibly? - Needs verifications
+  S->dump();
+  llvm_unreachable("apply expression Not implemented yet!?\n");
+}
+
+/// This function extracts the number of bytes argument from integer, character,
+/// and real, and evaluates the integer within the constant expression in order
+/// to make sure that it's a valid value.
+/// @returns true in the event there was an error.
+static bool handleBuiltInByteCountEval(Elaborator &Elab, const Syntax *BytesArg,
+                                       const char *FnName,
+                                       const char *ArgOneText,
+                                       const char* ArgTwoErrorText,
+                                       int64_t MaxBytesAllowed,
+                                       int64_t &ByteCount) {
+  auto reportInvalidUse = [&](clang::SourceLocation L, int MsgIdx = 0) -> bool {
+    Elab.getCxxSema().Diags.Report(
+      L, clang::diag::err_invalid_use_of_built_in_type_function)
+      << FnName << ArgOneText << ArgTwoErrorText << MsgIdx;
+    return true;
+  };
+  clang::SourceLocation BytesLoc = BytesArg->getLocation();
+  auto ByteCountExpr = Elab.elaborateConstantExpression(BytesArg);
+  if (!ByteCountExpr)
+    return reportInvalidUse(BytesLoc);
+  clang::Expr::EvalResult BCResult;
+  clang::Expr::EvalContext EvalCtx(Elab.getCxxContext(),
+                               Elab.getCxxSema().GetReflectionCallbackObj());
+  if (ByteCountExpr->EvaluateAsConstantExpr(BCResult, EvalCtx)) {
+    if (BCResult.Val.isInt()) {
+      if (!BCResult.Val.getInt().isPowerOf2())
+        return reportInvalidUse(BytesLoc, 1);
+
+      // Max number of bytes allowed.
+      ByteCount = BCResult.Val.getInt().getExtValue();
+      if (ByteCount > MaxBytesAllowed)
+        return reportInvalidUse(BytesLoc, 1);
+      return false;
+    } else
+      return reportInvalidUse(BytesLoc, 2);
+  } else
+    return reportInvalidUse(BytesLoc, 3);
 }
 
 clang::Expr *Elaborator::elaborateIntegerMetaFunction(const BinarySyntax *S) {
-  llvm_unreachable("ELaborate integer not implemented yet\n");
+  auto LHSSyntax = dyn_cast<LiteralSyntax>(S->getLeftOperand());
+  clang::SourceLocation Loc = LHSSyntax->getLocation();
+  auto RHSSyntax = S->getRightOperand();
+  auto reportInvalidUse = [&](clang::SourceLocation L, int MsgIdx =0) -> clang::Expr * {
+    getCxxSema().Diags.Report(L,
+                         clang::diag::err_invalid_use_of_built_in_type_function)
+                              << "integer" << "number-of-bytes"
+                              << "signed-or-unsigned"
+                              << MsgIdx;
+    return nullptr;
+  };
+  if (auto RHSList = dyn_cast<ListSyntax>(RHSSyntax)) {
+    if (RHSList->getNumChildren() != 2)
+      return reportInvalidUse(RHSList->getLocation());
+
+    if (!RHSList->getChild(0))
+      return reportInvalidUse(Loc);
+    int64_t ByteCount = 0;
+    if(handleBuiltInByteCountEval(*this, RHSList->getChild(0), "integer",
+                                  "number-of-bytes", "signed-or-unsigned",
+                                  16, ByteCount))
+      return nullptr;
+
+    // Checking for signedness.
+    if (!RHSList->getChild(1))
+      return reportInvalidUse(Loc);
+    bool IsSigned = false;
+    clang::SourceLocation SignednessLoc = RHSList->getChild(1)->getLocation();
+    if (auto SignnessSyntax = dyn_cast<IdentifierSyntax>(RHSList->getChild(1))) {
+      if (SignnessSyntax->getSpelling() == "signed") {
+        IsSigned = true;
+      } else if(SignnessSyntax->getSpelling() == "unsigned") {
+        IsSigned = false;
+      } else {
+        return reportInvalidUse(SignednessLoc, 4);
+      }
+    } else {
+      return reportInvalidUse(SignednessLoc, 4);
+    }
+    // Now creating the type expression.
+    auto Ty = getCxxContext().getIntTypeForBitwidth(8*ByteCount, IsSigned);
+    return SemaRef.buildTypeExpr(Ty, Loc);
+
+  } else {
+    return reportInvalidUse(Loc);
+  }
 }
 
 clang::Expr *Elaborator::elaborateCharacterMetaFunction(const BinarySyntax *S) {
+  auto LHSSyntax = dyn_cast<LiteralSyntax>(S->getLeftOperand());
+  clang::SourceLocation Loc = LHSSyntax->getLocation();
+  auto RHSSyntax = S->getRightOperand();
+  auto reportInvalidUse = [&](clang::SourceLocation L, int MsgIdx = 0) -> clang::Expr * {
+    getCxxSema().Diags.Report(L,
+                         clang::diag::err_invalid_use_of_built_in_type_function)
+                              << "character" << "number-of-bytes"
+                              << "ascii-or-utf"
+                              << MsgIdx;
+    return nullptr;
+  };
+  if (auto RHSList = dyn_cast<ListSyntax>(RHSSyntax)) {
+    if (RHSList->getNumChildren() != 2)
+      return reportInvalidUse(RHSList->getLocation());
 
+    if (!RHSList->getChild(0))
+      return reportInvalidUse(Loc);
+    int64_t ByteCount = 0;
+    if(handleBuiltInByteCountEval(*this, RHSList->getChild(0), "character",
+                                  "number-of-bytes", "ascii-or-utf",
+                                  4, ByteCount))
+      return nullptr;
+
+    // Checking for signedness.
+    if (!RHSList->getChild(1))
+      return reportInvalidUse(Loc);
+    bool IsUTF = false;
+    clang::SourceLocation SecondArgLoc = RHSList->getChild(1)->getLocation();
+    if (auto SecondArg = dyn_cast<IdentifierSyntax>(RHSList->getChild(1))) {
+      if (SecondArg->getSpelling() == "ascii") {
+        IsUTF = false;
+      } else if(SecondArg->getSpelling() == "utf") {
+        IsUTF = true;
+      } else {
+        return reportInvalidUse(SecondArgLoc, 8);
+      }
+    } else {
+      return reportInvalidUse(SecondArgLoc, 4);
+    }
+    // Now creating the type expression.
+    clang::QualType RetTy;
+    if(IsUTF) {
+      switch(ByteCount) {
+      case 1:
+        RetTy = getCxxContext().Char8Ty;
+        break;
+      case 2:
+        RetTy = getCxxContext().Char16Ty;
+        break;
+      case 4:
+        RetTy = getCxxContext().Char32Ty;
+        break;
+      default:
+        return reportInvalidUse(SecondArgLoc, 9);
+      }
+    } else {
+      switch(ByteCount) {
+      case 1:
+        RetTy = getCxxContext().CharTy;
+        break;
+      default:
+        return reportInvalidUse(SecondArgLoc, 8);
+      }
+    }
+    return SemaRef.buildTypeExpr(RetTy, Loc);
+
+  } else {
+    return reportInvalidUse(Loc);
+  }
 }
 
 clang::Expr *Elaborator::elaborateRealMetaFunction(const BinarySyntax *S) {
+  auto LHSSyntax = dyn_cast<LiteralSyntax>(S->getLeftOperand());
+  clang::SourceLocation Loc = LHSSyntax->getLocation();
+  auto RHSSyntax = S->getRightOperand();
+  auto reportInvalidUse = [&](clang::SourceLocation L, int MsgIdx =0) -> clang::Expr * {
+    getCxxSema().Diags.Report(L,
+                         clang::diag::err_invalid_use_of_built_in_type_function)
+                              << "real" << "number-of-bytes"
+                              << "binary-or-decimal"
+                              << MsgIdx;
+    return nullptr;
+  };
+  if (auto RHSList = dyn_cast<ListSyntax>(RHSSyntax)) {
+    if (RHSList->getNumChildren() != 2)
+      return reportInvalidUse(RHSList->getLocation());
 
+    if (!RHSList->getChild(0))
+      return reportInvalidUse(Loc);
+    int64_t ByteCount = 0;
+    if (handleBuiltInByteCountEval(*this, RHSList->getChild(0), "real",
+                                   "number-of-bytes", "binary-or-decimal",
+                                   16, ByteCount))
+      return nullptr;
+    if (ByteCount <= 2)
+      return reportInvalidUse(RHSList->getChild(0)->getLocation(), 7);
+
+    // Checking for signedness.
+    if (!RHSList->getChild(1))
+      return reportInvalidUse(Loc);
+    // bool IsSigned = false;
+    clang::SourceLocation SignednessLoc = RHSList->getChild(1)->getLocation();
+    if (auto SignnessSyntax = dyn_cast<IdentifierSyntax>(RHSList->getChild(1))) {
+      if (SignnessSyntax->getSpelling() == "binary") {
+        auto Ty = getCxxContext().getRealTypeForBitwidth(8*ByteCount, true);
+        return SemaRef.buildTypeExpr(Ty, Loc);
+      } else if(SignnessSyntax->getSpelling() == "decimal")
+        return reportInvalidUse(SignednessLoc, 6);
+      else
+        return reportInvalidUse(SignednessLoc, 5);
+    } else {
+      return reportInvalidUse(SignednessLoc, 4);
+    }
+  } else {
+    return reportInvalidUse(Loc);
+  }
 }
 
 
