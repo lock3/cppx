@@ -185,6 +185,10 @@ void Sema::setCurrentDecl(Declaration *D) {
   CurrentDecl = D;
 }
 
+void Sema::setClangDeclContext(clang::DeclContext *DC) {
+  CxxSema.CurContext = DC;
+}
+
 void Sema::popDecl() {
   CurrentDecl = CurrentDecl->getOwner();
   getCxxSema().CurContext = CurrentDecl ?

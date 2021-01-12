@@ -131,6 +131,9 @@ public:
   /// Sets the decl context without modifying the clang::Sema class
   void setCurrentDecl(Declaration *D);
 
+  /// Sets only the clang DeclContext.
+  void setClangDeclContext(clang::DeclContext *DC);
+
   /// Make the owner of CurrentDecl current.
   void popDecl();
 
@@ -260,6 +263,27 @@ public:
 
 public:
 
+};
+
+struct ResumeScopeRAII {
+  ResumeScopeRAII(Sema &S, Scope *Sc, const Syntax *ConcreteTerm,
+                  bool PopOnExit = true)
+    :SemaRef(S), ExitTerm(ConcreteTerm), PopOnExit(PopOnExit)
+    {
+      SemaRef.pushScope(Sc);
+    }
+
+  ~ResumeScopeRAII() {
+    if (PopOnExit) {
+      SemaRef.popScope();
+    } else {
+      SemaRef.leaveScope(ExitTerm);
+    }
+  }
+private:
+  Sema &SemaRef;
+  const Syntax *ExitTerm;
+  bool PopOnExit;
 };
 
 } // end namespace blue

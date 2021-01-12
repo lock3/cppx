@@ -26,6 +26,7 @@ class DiagnosticsEngine;
 class Expr;
 class QualType;
 class Sema;
+class Stmt;
 
 } // namespace clang
 
@@ -101,6 +102,7 @@ public:
   void elaborateDefinition(const Syntax *S);
   void elaborateDefinitionInitialization(Declaration *D);
   void elaborateVarDef(Declaration *D);
+  void elaborateFunctionDef(Declaration *D);
 
   clang::Expr *elaborateExpression(const Syntax *S);
   clang::Expr *elaborateLiteralExpression(const LiteralSyntax *S);
@@ -109,6 +111,9 @@ public:
   clang::Expr *elaborateSeqExpression(const SeqSyntax *S);
   clang::Expr *elaborateUnaryExpression(const UnarySyntax *S);
   clang::Expr *elaborateBinaryExpression(const BinarySyntax *S);
+
+  clang::Stmt *elaborateSeq(const SeqSyntax *S);
+  clang::Stmt *elaborateStatement(const Syntax *S);
 
   //===--------------------------------------------------------------------===//
   //                                Miscellaneous                             //

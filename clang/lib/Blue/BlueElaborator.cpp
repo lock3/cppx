@@ -20,6 +20,7 @@
 #include "clang/AST/ExprCppx.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/OperationKinds.h"
+#include "clang/AST/Stmt.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/CharInfo.h"
@@ -606,6 +607,7 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
 
   Owner->addDecl(FD);
   D->setCxx(SemaRef, FD);
+  D->CurrentPhase = Phase::Typing;
   return FD;
 }
 
@@ -1276,8 +1278,10 @@ void Elaborator::elaborateDefinitionInitialization(Declaration *D) {
   if (phaseOf(D) != Phase::Typing)
     return;
 
-  if (D->IsVariableDecl())
+  if (D->isVariableDecl())
     return elaborateVarDef(D);
+  if (D->isFunctionDecl())
+    return elaborateFunctionDef(D);
 
   llvm_unreachable("Elaboration for this kind of declaration isn't "
                    "implemented yet.");
@@ -1355,6 +1359,40 @@ void Elaborator::elaborateVarDef(Declaration *D) {
   // Update the initializer.
   SemaRef.getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
 
+}
+
+void Elaborator::elaborateFunctionDef(Declaration *D) {
+  D->CurrentPhase = Phase::Initialization;
+
+  if (!D->getCxx())
+    return;
+  if (!D->Init)
+    return;
+
+  // We saved the parameter scope while elaborating this function's type,
+  // so push it on before we enter the function scope.
+  assert(D->Decl->declaresFunction());
+  Scope *ParamScope = D->Decl->DeclInfo.ParamScope;
+  ResumeScopeRAII FnDclScope(SemaRef, ParamScope, ParamScope->getTerm());
+
+  Declaration *CurrentDeclaration = SemaRef.getCurrentDecl();
+  // Entering clang scope. for function definition.
+  SemaRef.enterClangScope(clang::Scope::FnScope |clang::Scope::DeclScope |
+                          clang::Scope::CompoundStmtScope);
+  clang::Decl *FuncDecl =
+    SemaRef.getCxxSema().ActOnStartOfFunctionDef(SemaRef.getCurClangScope(),
+                                                 D->getCxx());
+
+
+  Sema::ScopeRAII FnScope(SemaRef, Scope::Function, D->Init);
+  SemaRef.setCurrentDecl(D);
+
+  clang::Stmt *Body = elaborateSeq(cast<SeqSyntax>(D->Init));
+  SemaRef.setClangDeclContext(cast<clang::FunctionDecl>(D->getCxx()));
+  SemaRef.getCxxSema().ActOnFinishFunctionBody(FuncDecl, Body);
+
+  // Return the current decl to whatever it was before.
+  SemaRef.setCurrentDecl(CurrentDeclaration);
 }
 
 /// This creates the correct expression in order to correctly reference
@@ -1571,6 +1609,44 @@ clang::Expr *Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
   return Res.get();
 }
 
+clang::Stmt *Elaborator::elaborateSeq(const SeqSyntax *S) {
+  SemaRef.getCxxSema().ActOnStartOfCompoundStmt(false);
+  Sema::ScopeRAII BlockScope(SemaRef, Scope::Block, S);
+
+  llvm::SmallVector<clang::Stmt *, 16> Results;
+  clang::SourceLocation StartLoc = S->getBeginLocation();
+  clang::SourceLocation EndLoc = S->getEndLocation();
+  StartLoc = EndLoc = S->getLocation();
+  for (const Syntax *Child : S->children()) {
+    clang::Stmt *Statement = elaborateStatement(Child);
+    if (!Statement)
+      continue;
+    Results.push_back(Statement);
+  }
+
+  clang::Stmt *Block = SemaRef.getCxxSema().ActOnCompoundStmt(StartLoc, EndLoc,
+                                          Results, /*isStmtExpr=*/false).get();
+  return Block;
+}
+
+clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
+  // TODO: elaborate by syntax type: i.e. atom, etc. See GoldStmtElaborator
+
+  // If the statement kind is unknown then simply punt and
+  // elaborate an expression.
+  clang::Expr *E = elaborateExpression(S);
+  if (E)
+    return nullptr;
+  auto CheckExpr = SemaRef.getCxxSema().CheckPlaceholderExpr(E);
+  if (CheckExpr.isInvalid())
+    return nullptr;
+  auto ExprStmt =
+    SemaRef.getCxxSema().ActOnExprStmt(CheckExpr.get(), /*discardedValue*/true);
+  if (ExprStmt.isInvalid())
+    return nullptr;
+
+  return ExprStmt.get();
+}
 
 // Diagnostics
 

@@ -26,8 +26,12 @@ void Declaration::setCxx(Sema &SemaRef, clang::Decl *Cxx) {
   this->Cxx = Cxx;
 }
 
-bool Declaration::IsVariableDecl() const {
+bool Declaration::isVariableDecl() const {
   return Cxx && isa<clang::VarDecl>(Cxx);
+}
+
+bool Declaration::isFunctionDecl() const {
+  return Cxx && isa<clang::FunctionDecl>(Cxx);
 }
 
 bool Declaration::hasInitializer() const {
