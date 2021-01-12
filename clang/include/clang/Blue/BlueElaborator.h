@@ -110,12 +110,42 @@ public:
   clang::Expr *elaborateUnaryExpression(const UnarySyntax *S);
   clang::Expr *elaborateBinaryExpression(const BinarySyntax *S);
 
+  //===--------------------------------------------------------------------===//
+  //                                Miscellaneous                             //
+  //===--------------------------------------------------------------------===//
+  void getParameters(Declaration *D,
+                     llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
+
   // Diagnostics
 
   void Error(clang::SourceLocation Loc, llvm::StringRef Msg);
 
 private:
   std::size_t ImplicitSemaDecls = 0;
+
+  /// Context for the depth and index of template or auto parameters.
+  struct SavedTemplateParamContext {
+    unsigned Index = 0;
+    unsigned Depth = 0;
+  };
+
+  SavedTemplateParamContext TempCtx;
+
+  struct TemplateParamRAII {
+    TemplateParamRAII(SavedTemplateParamContext &Ctx)
+      : Ctx(Ctx), Old({Ctx.Index, Ctx.Depth})
+      {}
+
+    ~TemplateParamRAII() {
+      Ctx.Index = Old.Index;
+      Ctx.Depth = Old.Depth;
+    }
+
+  private:
+    SavedTemplateParamContext &Ctx;
+    SavedTemplateParamContext Old;
+  };
+
 private:
   Sema &SemaRef;
 

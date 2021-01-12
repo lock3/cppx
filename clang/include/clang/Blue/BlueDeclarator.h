@@ -16,12 +16,14 @@
 
 #include "clang/Basic/SourceLocation.h"
 
+
 namespace clang {
 class Expr;
 } // namespace clang
 
 namespace blue {
 
+class Scope;
 class Syntax;
 
 /// A declarator is a linked list of structures that provide information
@@ -84,6 +86,12 @@ public:
   }
 
   void dump() const;
+
+  union {
+    // For Function type, the scope of the parameters
+    Scope *ParamScope;
+
+  } DeclInfo;
 
 private:
   Kind Which;

@@ -54,14 +54,15 @@ Declaration *Elaborator::createDeclaration(const Syntax *Def,
   Declaration *TheDecl =
     new Declaration(SemaRef.getCurrentDecl(), Def, Dcl, Init);
 
+
   if (const DefSyntax *Id = dyn_cast<DefSyntax>(Def))
     TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getIdentifierSpelling()});
   else if (const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(Def))
     TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
 
-  TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
   Scope *CurScope = SemaRef.getCurrentScope();
   CurScope->addDecl(TheDecl);
+  TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
 
   return TheDecl;
 }
@@ -168,6 +169,28 @@ void Elaborator::elaborateParameters(const ListSyntax *S) {
     return elaborateParameterList(S);
 }
 
+void Elaborator::getParameters(Declaration *D,
+                          llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
+  assert(D->Decl->declaresFunction());
+  const ListSyntax *ParamList = dyn_cast<ListSyntax>(D->Decl->getInfo());
+  if (!ParamList)
+    return;
+
+  // FIXME: implement me
+  if (ParamList->isSemicolonSeparated())
+    return;
+
+  Scope *S = D->Decl->DeclInfo.ParamScope;
+  for (const Syntax *SS : ParamList->children()) {
+    Declaration *Param = S->findDecl(SS);
+    // FIXME: elaborate the entire function type if this happens?
+    if (!Param)
+      continue;
+    assert(isa<clang::ParmVarDecl>(Param->getCxx()));
+    Params.push_back(cast<clang::ParmVarDecl>(Param->getCxx()));
+  }
+}
+
 void Elaborator::elaborateParameterGroup(const ListSyntax *S) {
   for (const Syntax *SS : S->children())
     elaborateParameterList(cast<ListSyntax>(SS));
@@ -197,20 +220,35 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
   if (const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(S)) {
     // FIXME: create context for auto parameters to keep track of their
     // index and depth.
-    // Declaration *TheDecl = createDeclaration(S, nullptr, nullptr);
+    Declaration *TheDecl = createDeclaration(S, nullptr, nullptr);
 
-    // clang::IdentifierInfo *TypeII =
-    //   CxxSema.InventAbbreviatedTemplateParameterTypeName(Name, Index);
+    clang::IdentifierInfo *II = &CxxAST.Idents.get({Id->getSpelling()});
+    clang::IdentifierInfo *TypeName =
+      CxxSema.InventAbbreviatedTemplateParameterTypeName(II, TempCtx.Index);
 
-    // // We add the template parm to the TU temporarily, until we create the
-    // // template. We'll set the depth and index later.
-    // TemplateTypeParmDecl *TheType =
-    //   TemplateTypeParmDecl::Create(ClangContext, TUDecl, SourceLocation(),
-    //                                SourceLocation(), /*Depth=*/0, /*Index=*/0,
-    //                                /*Identifier=*/nullptr, /*Typename=*/false,
-    //                                /*ParameterPack=*/false);
-    // TheType->setImplicit();
-  }
+    using clang::TemplateTypeParmDecl;
+    TemplateTypeParmDecl *TheType =
+      TemplateTypeParmDecl::Create(CxxAST, CxxAST.getTranslationUnitDecl(),
+                                   clang::SourceLocation(),
+                                   Id->getLocation(), TempCtx.Depth,
+                                   TempCtx.Index, TypeName, /*Typename=*/false,
+                                   /*ParameterPack=*/false);
+    TheType->setImplicit();
+    ++TempCtx.Index;
+
+    clang::CppxTypeLiteral *TyLit =
+      SemaRef.buildTypeExpr(clang::QualType(TheType->getTypeForDecl(), 0),
+                            Id->getLocation());
+    clang::DeclarationName Name(II);
+    clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(TyLit)->getValue();
+    clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
+    clang::ParmVarDecl *PVD =
+      clang::ParmVarDecl::Create(CxxAST, Owner, Loc, Loc,
+                                 Name, T->getType(), T,
+                                 clang::SC_Auto, /*def=*/nullptr);
+    TheDecl->setCxx(SemaRef, PVD);
+    return PVD;
+  } 
 
   // FIXME: There is a lot of duplication with makeObjectDecl here.
   // In Gold it's just one function.
@@ -322,6 +360,11 @@ Declarator *Elaborator::getBinaryDeclarator(const BinarySyntax *S) {
     // not an assertion.
     Error(List->getLocation(), "invalid list in declarator");
     return nullptr;
+  }
+
+  if (S->getOperator().hasKind(tok::MinusGreater)) {
+    Declarator *Ret = getDeclarator(S->getRightOperand());
+    return new Declarator(Declarator::Function, S->getLeftOperand(), Ret);
   }
 
   // TODO: We could support binary type composition (e.g., T1 * T2) as
@@ -480,6 +523,7 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
   clang::SourceLocation Loc = ParamList->getLocation();
   clang::ASTContext &CxxAST = SemaRef.getCxxAST();
   Sema::ScopeRAII ParamScope(SemaRef, Scope::Parameter, ParamList);
+  Dcl->DeclInfo.ParamScope = SemaRef.getCurrentScope();
 
   elaborateParameters(ParamList);
 
@@ -503,6 +547,19 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
   // FIXME: We need to configure parts of the prototype (e.g., noexcept).
   clang::FunctionProtoType::ExtProtoInfo EPI;
   clang::QualType ReturnType = CxxAST.getAutoDeductType();
+  if (Dcl->getNext()) {
+    clang::Expr *RetExpr = elaborateDeclarator(Dcl->getNext());
+    if (!RetExpr)
+      return nullptr;
+    if (!RetExpr->getType()->isTypeOfTypes()) {
+      Error(RetExpr->getExprLoc(), "expected type in function return");
+      return nullptr;
+    }
+
+    clang::CppxTypeLiteral *RetTyLit = cast<clang::CppxTypeLiteral>(RetExpr);
+    ReturnType = RetTyLit->getValue()->getType();
+  }
+
   clang::QualType FnTy = CxxAST.getFunctionType(ReturnType, Types, EPI);
   return SemaRef.buildFunctionTypeExpr(FnTy, Loc, Loc, Loc,
                                        clang::SourceRange(Loc, Loc),
@@ -515,11 +572,41 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   clang::ASTContext &CxxAST = SemaRef.getCxxAST();
   clang::QualType ReturnType = CxxAST.getAutoDeductType();
   clang::DeclarationName Name(D->Id);
+  clang::SourceLocation Loc = D->Def->getLocation();
 
+  TemplateParamRAII TempParamContextGuard(TempCtx);
   clang::CppxTypeLiteral *FnTy = createFunctionType(D->Decl);
   if (!FnTy)
     return nullptr;
-  return nullptr;
+  clang::TypeSourceInfo *TInfo = FnTy->getValue();
+
+  clang::FunctionDecl *FD;
+  clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
+  FD = clang::FunctionDecl::Create(CxxAST, Owner, Loc, Loc, Name,
+                                   TInfo->getType(), TInfo, clang::SC_None);
+  if (FD->isMain()) {
+    clang::AttributeFactory Attrs;
+    clang::DeclSpec DS(Attrs);
+    CxxSema.CheckMain(FD, DS);
+  }
+
+  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
+  getParameters(D, Params);
+  FD->setParams(Params);
+  // Move parameters into this declaration context.
+  for (auto *PD : Params) {
+    PD->setDeclContext(FD);
+    PD->setOwningFunction(FD);
+  }
+
+  // CxxSema.CheckFunctionDeclaration(CxxScope, FD, Previous, false);
+  // FIXME: this is not necessarily what should happen.
+  if (FD->isInvalidDecl())
+    return nullptr;
+
+  Owner->addDecl(FD);
+  D->setCxx(SemaRef, FD);
+  return FD;
 }
 
 clang::Decl *Elaborator::makeTemplateDecl(Declaration *D) {
@@ -1297,8 +1384,8 @@ clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S
   }
   case clang::LookupResult::Found:
     return BuildReferenceToDecl(SemaRef, S->getLocation(), R, false);
-  case clang::LookupResult::NotFoundInCurrentInstantiation: {
-  case clang::LookupResult::NotFound:
+  case clang::LookupResult::NotFoundInCurrentInstantiation:
+  case clang::LookupResult::NotFound: {
     getCxxSema().Diags.Report(S->getLocation(),
                               clang::diag::err_undeclared_var_use)
                               << S->getSpelling();
