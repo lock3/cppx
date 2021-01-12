@@ -109,8 +109,12 @@ public:
   clang::Expr *elaborateSeqExpression(const SeqSyntax *S);
   clang::Expr *elaborateUnaryExpression(const UnarySyntax *S);
   clang::Expr *elaborateBinaryExpression(const BinarySyntax *S);
+  clang::Expr *elaborateApplyExpression(clang::Expr *LHS,
+                                        const BinarySyntax *S);
 
-  // Diagnostics
+  clang::Expr *elaborateIntegerMetaFunction(const BinarySyntax *S);
+  clang::Expr *elaborateCharacterMetaFunction(const BinarySyntax *S);
+  clang::Expr *elaborateRealMetaFunction(const BinarySyntax *S);
 
   void Error(clang::SourceLocation Loc, llvm::StringRef Msg);
 

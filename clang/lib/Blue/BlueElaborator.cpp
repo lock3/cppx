@@ -286,43 +286,8 @@ Declarator *Elaborator::getUnaryDeclarator(const UnarySyntax *S) {
 }
 
 Declarator *Elaborator::getBinaryDeclarator(const BinarySyntax *S) {
-  if (S->isApplication()) {
-    Declarator *Dcl = getDeclarator(S->getRightOperand());
-
-    // FIXME: This should be an error, not an assertion.
-    //
-    // TODO: Can the S be anything other than a list?
-    //
-    // TODO: Can we limit the way in which mappings compose? For example,
-    // what is this declaring?
-    //
-    //    x : (a) [t : type] int;
-    //
-    // It appears to be a function returning a variable template. I don't
-    // know if there's any way to write a metafunction that returns a
-    // template.
-    //
-    // This should be disallowed.
-    const auto *List = cast<ListSyntax>(S);
-
-    // Elaborate function parameters.
-    // enterScope(Scope::Parameter);
-    elaborateParameters(List);
-    // leaveScope();
-
-    if (List->isParenList())
-      return new Declarator(Declarator::Function, S, Dcl);
-
-    // FIXME: This is only a template declarator if there are template
-    // parameters in the list.
-    if (List->isBracketList())
-      return new Declarator(Declarator::Template, S, Dcl);
-
-    // FIXME: Braces are possible, but invalid. This should be an error,
-    // not an assertion.
-    Error(List->getLocation(), "invalid list in declarator");
-    return nullptr;
-  }
+  if (S->isApplication())
+    return new Declarator(Declarator::Type, S);
 
   // TODO: We could support binary type composition (e.g., T1 * T2) as
   // an alternative spelling of product types. However, this most likely
@@ -374,7 +339,6 @@ clang::Decl *Elaborator::makeValueDecl(Declaration *D) {
 
   Sema::DeepElaborationModeRAII ElabMode(SemaRef, false);
   if (T->isUndeducedType()) {
-
     ElabMode.setMode(true);
     // Doing a quick check to see if the RHS is a type expression.
     if (D->hasInitializer()) {
@@ -1468,9 +1432,24 @@ clang::Expr *Elaborator::elaborateUnaryExpression(const UnarySyntax *S) {
 }
 
 clang::Expr *Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
+  if (S->isApplication()) {
+    const Syntax *LHSSyntax = S->getLeftOperand();
+    auto LS = dyn_cast<LiteralSyntax>(LHSSyntax);
+    if (LS) {
+      if (LS->getSpelling() == "integer")
+        return elaborateIntegerMetaFunction(S);
+      if (LS->getSpelling() == "real")
+        return elaborateRealMetaFunction(S);
+      if (LS->getSpelling() == "character")
+        return elaborateCharacterMetaFunction(S);
+    }
+  }
   auto LHS = elaborateExpression(S->getLeftOperand());
   if (!LHS)
     return nullptr;
+  if (S->isApplication()) {
+    return elaborateApplyExpression(LHS, S);
+  }
 
   auto RHS = elaborateExpression(S->getRightOperand());
   if (!RHS)
@@ -1489,8 +1468,25 @@ clang::Expr *Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
 }
 
 
-// Diagnostics
+clang::Expr *Elaborator::elaborateApplyExpression(clang::Expr *LHS,
+                                                  const BinarySyntax *S) {
+  llvm_unreachable("Not implemented yet!?\n");
+}
 
+clang::Expr *Elaborator::elaborateIntegerMetaFunction(const BinarySyntax *S) {
+  llvm_unreachable("ELaborate integer not implemented yet\n");
+}
+
+clang::Expr *Elaborator::elaborateCharacterMetaFunction(const BinarySyntax *S) {
+
+}
+
+clang::Expr *Elaborator::elaborateRealMetaFunction(const BinarySyntax *S) {
+
+}
+
+
+// Diagnostics
 void Elaborator::Error(clang::SourceLocation Loc, llvm::StringRef Msg) {
   CxxSema.Diags.Report(Loc, clang::diag::err_blue_elaboration) << Msg;
 }

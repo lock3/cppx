@@ -62,13 +62,13 @@ BLUE_BUILTIN_TYPE_TEST("float128", float128, "__float128")
 #undef BLUE_BUILTIN_TYPE_TEST
 
 // TODO: Uncomment these tests once we have the parsing for this fixed.
-// TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed) {
-//   StringRef Code = "i:integer[1, signed]";
-//   DeclarationMatcher VarIMatcher = varDecl(
-//     hasName("i"), hasType(asString("signed char"))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), VarIMatcher));
-// }
+TEST(BlueType, BuiltInType_IntegerCompilerFunction_Signed) {
+  StringRef Code = "i:integer[1, signed];";
+  DeclarationMatcher VarIMatcher = varDecl(
+    hasName("i"), hasType(asString("signed char"))
+  );
+  ASSERT_TRUE(matches(Code.str(), VarIMatcher));
+}
 
 // TEST(BlueType, BuiltInType_IntegerCompilerFunction_Unsigned) {
 //   StringRef Code = "i:integer[1, unsigned]";
