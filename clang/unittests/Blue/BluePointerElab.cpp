@@ -67,3 +67,26 @@ X :type = ^int;
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+
+TEST(BluePointer, InvalidPtrDecl) {
+  StringRef Code = R"BLUE(
+x : ^3;
+)BLUE";
+  BlueFailureTest(Code);
+}
+
+TEST(BluePointer, InvalidTypeAliasPtrDecl) {
+  StringRef Code = R"BLUE(
+x := '3'^;
+)BLUE";
+  BlueFailureTest(Code);
+}
+
+TEST(BluePointer, InvalidDereference) {
+  StringRef Code = R"BLUE(
+X :int = 3;
+Y := X^;
+)BLUE";
+  BlueFailureTest(Code);
+}

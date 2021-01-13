@@ -1575,7 +1575,13 @@ clang::Expr *Elaborator::elaborateUnaryExpression(const UnarySyntax *S) {
     getCxxSema().Diags.Report(S->getOperand()->getLocation(),
                               clang::diag::err_invalid_type_operand)
                               << 0/*unary*/;
-      return nullptr;
+    return nullptr;
+  }
+  if (S->getOperator().hasKind(tok::Caret)) {
+    // llvm_unreachable("Make an error message for this.");
+    getCxxSema().Diags.Report(S->getLocation(),
+                              clang::diag::err_prefix_caret_on_non_type);
+    return nullptr;
   }
   auto OpIter = SemaRef.UnaryOpMap.find(S->getOperatorSpelling());
   if (OpIter == SemaRef.UnaryOpMap.end()) {
