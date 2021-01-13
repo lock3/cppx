@@ -86,6 +86,7 @@ def_keyword(While, "while")
 def_keyword(StaticCast, "static_cast")
 def_keyword(DynamicCast, "dynamic_cast")
 def_keyword(ReinterpretCast, "reinterpret_cast")
+// This is the last keyword, define any others above this:
 def_keyword(ConstCast, "const_cast")
 
 def_token(Identifier)

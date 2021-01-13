@@ -660,6 +660,10 @@ Syntax *Parser::parsePointerExpression() {
   return parsePrimaryExpression();
 }
 
+static inline bool isKeyword(TokenKind K) {
+  return K >= tok::AsKeyword && K <= tok::ConstCastKeyword;
+}
+
 /// Parse a primary expression:
 ///
 ///   primary-expression:
@@ -677,9 +681,8 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::HexadecimalFloat:
   case tok::Character:
   case tok::String:
+
   // Type literals
-  case tok::VoidKeyword:
-  case tok::BoolKeyword:
   case tok::ByteKeyword:
   case tok::CharacterKeyword:
     // FIXME: Parse out the character spec.
@@ -688,15 +691,7 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::FloatKeyword:
   case tok::RealKeyword:
     // FIXME: Parse out the fixed-point spec.
-  case tok::NullKeyword:
-  case tok::TrueKeyword:
-  case tok::FalseKeyword:
-  case tok::TypeKeyword:
-  case tok::StaticCastKeyword:
-  case tok::DynamicCastKeyword:
-  case tok::ReinterpretCastKeyword:
-  case tok::ConstCastKeyword:
-    return onLiteral(consumeToken());
+    return nullptr;
 
   case tok::Identifier:
     return parseIdExpression();
@@ -707,14 +702,18 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::LeftBracket:
     return parseArrayExpression();
 
-  default: {
-    // TODO: Add "but got..." to the error.
-    Syntax *Err = onError("expected primary-expression");
-    consumeToken();
-    return Err;
+  default:
+    break;
   }
-  }
-  return nullptr;
+
+  if (isKeyword(getLookahead()))
+    // FIXME: should be onIdentifier
+    return onLiteral(consumeToken());
+
+  // TODO: Add "but got..." to the error.
+  Syntax *Err = onError("expected primary-expression");
+  consumeToken();
+  return Err;
 }
 
 Syntax *Parser::parseIdExpression() {
