@@ -362,9 +362,10 @@ Syntax *Parser::parseExpression() {
 ///     parameter-group ; parameter-list
 void Parser::parseParameterGroup(llvm::SmallVectorImpl<Syntax *> &SS) {
   auto Parse = [this]() { return parseParameterList(); };
-  parseIntoVector(SS, Parse);
-  while (matchToken(tok::Semicolon))
+
+  do
     parseIntoVector(SS, Parse);
+  while (matchToken(tok::Semicolon) && !nextTokenIs(tok::RightBrace));
 }
 
 /// Parse an parameter list.
@@ -376,7 +377,7 @@ Syntax *Parser::parseParameterList()
 {
   llvm::SmallVector<Syntax *, 4> SS;
   parseParameterList(SS);
-  return onList(tok::Comma, SS);
+  return SS.size() > 1 ? onList(tok::Comma, SS) : SS.front();
 }
 
 void Parser::parseParameterList(llvm::SmallVectorImpl<Syntax *> &SS) {

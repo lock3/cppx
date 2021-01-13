@@ -4252,14 +4252,10 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
 
   SemaRef.enterScope(SK_Function, D->Init, D);
   SemaRef.setCurrentDecl(D);
-  // FIXME: is this necessary for Gold? It enables some more semantic
-  // checking, but not all of it is necessarily meaningful to us.
-  // clang::Scope *Scope = SemaRef.enterClangScope(clang::Scope::ClassScope
-  //                                               | clang::Scope::DeclScope);
+
   // Elaborate the function body.
   StmtElaborator BodyElaborator(Context, SemaRef);
   clang::Stmt *Body = BodyElaborator.elaborateBlock(D->Init);
-  // SemaRef.setCurrentDecl(D);
   SemaRef.setClangDeclContext(cast<clang::FunctionDecl>(D->Cxx));
   SemaRef.getCxxSema().ActOnFinishFunctionBody(FuncDecl, Body);
 

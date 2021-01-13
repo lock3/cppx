@@ -134,11 +134,7 @@ public:
   /// Finds the declaration corresponding to the given syntax or null if
   /// the syntax does not form a declaration.
   Declaration *findDecl(const Syntax *S) const {
-    const DefSyntax *Def = dyn_cast<DefSyntax>(S);
-    if (!Def)
-      return nullptr;
-
-    auto Iter = DeclMap.find(Def);
+    auto Iter = DeclMap.find(S);
     if (Iter == DeclMap.end())
       return nullptr;
     return Iter->second;

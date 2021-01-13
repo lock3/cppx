@@ -26,6 +26,7 @@ class DiagnosticsEngine;
 class Expr;
 class QualType;
 class Sema;
+class Stmt;
 
 } // namespace clang
 
@@ -104,6 +105,7 @@ public:
   void elaborateDefinition(const Syntax *S);
   void elaborateDefinitionInitialization(Declaration *D);
   void elaborateVarDef(Declaration *D);
+  void elaborateFunctionDef(Declaration *D);
 
 
   clang::Expr *elaborateExpression(const Syntax *S);
@@ -119,14 +121,48 @@ public:
   clang::Expr *elaborateApplyExpression(clang::Expr *LHS,
                                         const BinarySyntax *S);
 
+
   clang::Expr *elaborateIntegerMetaFunction(const BinarySyntax *S);
   clang::Expr *elaborateCharacterMetaFunction(const BinarySyntax *S);
   clang::Expr *elaborateRealMetaFunction(const BinarySyntax *S);
+  clang::Stmt *elaborateSeq(const SeqSyntax *S);
+  clang::Stmt *elaborateStatement(const Syntax *S);
 
+  //===--------------------------------------------------------------------===//
+  //                                Miscellaneous                             //
+  //===--------------------------------------------------------------------===//
+  void getParameters(Declaration *D,
+                     llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
+
+  // Diagnostics
   void Error(clang::SourceLocation Loc, llvm::StringRef Msg);
 
 private:
   std::size_t ImplicitSemaDecls = 0;
+
+  /// Context for the depth and index of template or auto parameters.
+  struct SavedTemplateParamContext {
+    unsigned Index = 0;
+    unsigned Depth = 0;
+  };
+
+  SavedTemplateParamContext TempCtx;
+
+  struct TemplateParamRAII {
+    TemplateParamRAII(SavedTemplateParamContext &Ctx)
+      : Ctx(Ctx), Old({Ctx.Index, Ctx.Depth})
+      {}
+
+    ~TemplateParamRAII() {
+      Ctx.Index = Old.Index;
+      Ctx.Depth = Old.Depth;
+    }
+
+  private:
+    SavedTemplateParamContext &Ctx;
+    SavedTemplateParamContext Old;
+  };
+
 private:
   Sema &SemaRef;
 

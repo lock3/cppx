@@ -342,6 +342,18 @@ public:
     return S->getKind() == Seq;
   }
 
+  clang::SourceLocation getLocation() const {
+    return Enc.first.getLocation();
+  }
+
+  clang::SourceLocation getBeginLocation() const {
+    return getLocation();
+  }
+
+  clang::SourceLocation getEndLocation() const {
+    return Enc.second.getLocation();
+  }
+
 private:
   TokenPair Enc;
 };

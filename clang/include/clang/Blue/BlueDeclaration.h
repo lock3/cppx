@@ -100,7 +100,8 @@ struct Declaration {
     return Ctx;
   }
 
-  bool IsVariableDecl() const;
+  bool isVariableDecl() const;
+  bool isFunctionDecl() const;
 
   bool hasInitializer() const;
 
