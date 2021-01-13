@@ -544,6 +544,7 @@ static bool isPrefixOperator(TokenKind K) {
   case tok::Plus:
   case tok::Minus:
   case tok::Caret:
+  case tok::ReturnKeyword:
     return true;
   default:
     return false;
@@ -555,6 +556,7 @@ Syntax *Parser::parsePrefixExpression() {
     Syntax *Arg = parsePrefixExpression();
     return onUnary(Op, Arg);
   }
+
   return parsePostfixExpression();
 }
 
@@ -691,7 +693,7 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::FloatKeyword:
   case tok::RealKeyword:
     // FIXME: Parse out the fixed-point spec.
-    return nullptr;
+    return onLiteral(consumeToken());
 
   case tok::Identifier:
     return parseIdExpression();
