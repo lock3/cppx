@@ -626,14 +626,12 @@ clang::Expr *Elaborator::elaboratePointerDeclarator(const Declarator *Dcl) {
   if (!E)
     return nullptr;
 
-  // FIXME: Build an address-of expression for the type...
-  // clang::Expression *E = Dcl->getNext()->getExpression();
-
-  // if (T.isNull())
-  //   return {};
-  // return getCxxContext().getPointerType(T);
-
-  return E;
+  // If this apears within a declarator then it must be a type.
+  auto TInfo = SemaRef.getTypeSourceInfoFromExpr(E, E->getExprLoc());
+  if (!TInfo)
+    return nullptr;
+  clang::QualType RetType = getCxxContext().getPointerType(TInfo->getType());
+  return SemaRef.buildTypeExpr(RetType, Dcl->getLocation());
 }
 
 /// Elaborate declarations of the form '[E] T'.
@@ -1564,8 +1562,20 @@ clang::Expr *Elaborator::elaborateUnaryExpression(const UnarySyntax *S) {
     return nullptr;
   clang::QualType Ty = Operand->getType();
   if (Ty->isTypeOfTypes()) {
-    // TODO: Implementation for creating pointers goes here.
-    llvm_unreachable("Unary operator on type expression not implemented yet.");
+    if (S->getOperator().hasKind(tok::Caret)) {
+      // If this apears within a declarator then it must be a type.
+      auto TInfo = SemaRef.getTypeSourceInfoFromExpr(Operand,
+                                                     Operand->getExprLoc());
+      if (!TInfo)
+        return nullptr;
+
+      clang::QualType RetType = getCxxContext().getPointerType(TInfo->getType());
+      return SemaRef.buildTypeExpr(RetType, S->getLocation());
+    }
+    getCxxSema().Diags.Report(S->getOperand()->getLocation(),
+                              clang::diag::err_invalid_type_operand)
+                              << 0/*unary*/;
+      return nullptr;
   }
   auto OpIter = SemaRef.UnaryOpMap.find(S->getOperatorSpelling());
   if (OpIter == SemaRef.UnaryOpMap.end()) {

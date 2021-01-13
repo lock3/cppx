@@ -495,7 +495,6 @@ Sema::getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
 
   if (const clang::CppxTypeLiteral *Ty
                                    = dyn_cast<clang::CppxTypeLiteral>(TyExpr)) {
-
     return Ty->getValue();
   }
 

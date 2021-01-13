@@ -11629,5 +11629,8 @@ def err_invalid_use_of_built_in_type_function : Error<
   "'signed' or 'unsigned'|. Must be 'binary' or 'decimal'|. 'decimal' not "
   "implemented yet|. Invalid size for floating point number of bytes|. Must be "
   "'ascii' or 'utf'|. Invalid bytes for number of characters}3">;
+
+def err_invalid_type_operand : Error<
+  "operand of %select{unary | binary}0 operator cannot be a type">;
 } // end of Blue category
 } // end of sema component.
