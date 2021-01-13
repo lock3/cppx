@@ -37,6 +37,7 @@ add_clang_unittest(BlueTests
   BlueASTMatchersTest.cpp
   BlueTypeElab.cpp
   BlueBitwiseOpElab.cpp
+  BlueClassElab.cpp
   BlueComparisonOp.cpp
   BlueFunctionElab.cpp
   BlueLiteralElab.cpp
