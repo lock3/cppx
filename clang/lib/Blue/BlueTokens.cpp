@@ -61,6 +61,7 @@ const char* getSpelling(TokenKind K) {
   case tok::Character: return "quoted-character";
   case tok::String: return "quoted-string";
   case tok::Invalid: return "invalid";
+  case tok::Deref: return "suffix-^";
   }
   llvm_unreachable("Invalid token kind");
 }

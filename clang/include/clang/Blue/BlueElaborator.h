@@ -51,6 +51,8 @@ public:
   clang::ASTContext &getCxxContext() {
     return getCxxSema().Context;
   }
+  /// Returns the current blue sema instance.
+  Sema &getBlueSema() { return SemaRef; }
 
   //===--------------------------------------------------------------------===//
   //                                  Identification                          //
@@ -91,6 +93,7 @@ public:
   clang::Expr *elaborateTemplateDeclarator(const Declarator *Dcl);
   clang::Expr *elaborateImplicitTypeDeclarator(const Declarator *Dcl);
 
+
   clang::Decl *makeValueDecl(Declaration *D);
   clang::Decl *makeObjectDecl(Declaration *D, clang::Expr *Ty);
   clang::Decl *makeTypeDecl(Declaration *D, clang::QualType T);
@@ -104,14 +107,24 @@ public:
   void elaborateVarDef(Declaration *D);
   void elaborateFunctionDef(Declaration *D);
 
+
   clang::Expr *elaborateExpression(const Syntax *S);
+  clang::Expr *elaborateConstantExpression(const Syntax *S);
+  clang::Expr *doElaborateExpression(const Syntax *S);
+
   clang::Expr *elaborateLiteralExpression(const LiteralSyntax *S);
   clang::Expr *elaborateIdentifierExpression(const IdentifierSyntax *S);
   clang::Expr *elaborateListExpression(const ListSyntax *S);
   clang::Expr *elaborateSeqExpression(const SeqSyntax *S);
   clang::Expr *elaborateUnaryExpression(const UnarySyntax *S);
   clang::Expr *elaborateBinaryExpression(const BinarySyntax *S);
+  clang::Expr *elaborateApplyExpression(clang::Expr *LHS,
+                                        const BinarySyntax *S);
 
+
+  clang::Expr *elaborateIntegerMetaFunction(const BinarySyntax *S);
+  clang::Expr *elaborateCharacterMetaFunction(const BinarySyntax *S);
+  clang::Expr *elaborateRealMetaFunction(const BinarySyntax *S);
   clang::Stmt *elaborateSeq(const SeqSyntax *S);
   clang::Stmt *elaborateStatement(const Syntax *S);
 
@@ -122,7 +135,6 @@ public:
                      llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
 
   // Diagnostics
-
   void Error(clang::SourceLocation Loc, llvm::StringRef Msg);
 
 private:

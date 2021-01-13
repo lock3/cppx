@@ -11621,5 +11621,19 @@ def note_cycle_entry : Note<
 let CategoryName = "Blue Elaboration Issues" in {
 def err_blue_elaboration : Error<"%0">;
 def note_blue_elaboration : Note<"%0">;
+def err_invalid_use_of_built_in_type_function : Error<
+  "invalid use of built in function %0. expected use is '%0[%1, %2]'"
+  "%select{|. Invalid number of bytes, must be a multiple of the power of 2,"
+  " have the value 1, and be less then 16.|. Didn't evalutate to an integer|. "
+  "number of bytes is not a constant expression|. Second argument must be "
+  "'signed' or 'unsigned'|. Must be 'binary' or 'decimal'|. 'decimal' not "
+  "implemented yet|. Invalid size for floating point number of bytes|. Must be "
+  "'ascii' or 'utf'|. Invalid bytes for number of characters}3">;
+
+def err_invalid_type_operand : Error<
+  "operand of %select{unary | binary}0 operator cannot be a type">;
+
+def err_prefix_caret_on_non_type : Error<
+  "invalid use of '^ expr' expr does not evaluate to a type">;
 } // end of Blue category
 } // end of sema component.

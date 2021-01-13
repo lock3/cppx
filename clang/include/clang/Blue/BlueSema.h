@@ -203,6 +203,10 @@ public:
     const Syntax *ConcreteTerm;
   };
 
+  /// Deep epaboation is mainly used for constexpr, whenever we need to fully
+  /// elaborate a declaration before it's used. If something is used within
+  // a constant expression it must be fully defined and intialized before you
+  /// can use it and evaluate the constant expression.
   bool DeepElaborationMode = false;
 
   struct DeepElaborationModeRAII {

@@ -93,6 +93,14 @@ struct Token
     return getKind() == K;
   }
 
+
+  /// Changes a caret to a dereference token instead.
+  void switchToSuffixDeref() {
+    assert(hasKind(tok::Caret) && "Cannot switch token to deref token.");
+    Kind = tok::Deref;
+  }
+
+
   bool isEndOfFile() const {
     return hasKind(tok::EndOfFile);
   }

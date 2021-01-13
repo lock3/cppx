@@ -628,7 +628,22 @@ Syntax *Parser::parseApplicationExpression(Syntax *LHS) {
 
 Syntax *Parser::parsePointerExpression(Syntax *LHS) {
   Syntax *RHS = parsePointerExpression();
-  RHS->dump();
+  // Checking to see if we have a unary expression with an error.
+  if (!RHS)
+    return onError("invalid dereference syntax");
+
+  if (auto US = dyn_cast<UnarySyntax>(RHS)) {
+    // Basically this means we don't have a valid operand, because what
+    // was located wasn't an operand.
+    if (isa<ErrorSyntax>(US->getOperand())) {
+      // Then we kind of know we are unary suffix operator.
+      Token Op = US->getOperator();
+      Op.switchToSuffixDeref();
+      return onUnary(Op, LHS);
+    }
+  }
+  // RHS->dump();
+  // Checking to see if we have a dereference operator or not.
   return onBinary(Token(), LHS, RHS);
 }
 
@@ -671,11 +686,16 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::IntegerKeyword:
     // FIXME: Parse out the integer spec.
   case tok::FloatKeyword:
+  case tok::RealKeyword:
     // FIXME: Parse out the fixed-point spec.
   case tok::NullKeyword:
   case tok::TrueKeyword:
   case tok::FalseKeyword:
   case tok::TypeKeyword:
+  case tok::StaticCastKeyword:
+  case tok::DynamicCastKeyword:
+  case tok::ReinterpretCastKeyword:
+  case tok::ConstCastKeyword:
     return onLiteral(consumeToken());
 
   case tok::Identifier:
