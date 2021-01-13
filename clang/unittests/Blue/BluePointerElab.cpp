@@ -43,18 +43,18 @@ X :^int;
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// TEST(BluePointer, DereferenceExpression) {
-//   StringRef Code = R"BLUE(
-// X :^int = nullptr;
-// Y := X^;
-// )BLUE";
-//   auto ToMatch = varDecl(
-//     hasName("Y"),
-//     hasType(asString("int")),
-//     hasInitializer(hasDescendant(unaryOperator(hasOperatorName("*"))))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+TEST(BluePointer, DereferenceExpression) {
+  StringRef Code = R"BLUE(
+X :^int = null;
+Y := X^;
+)BLUE";
+  auto ToMatch = varDecl(
+    hasName("Y"),
+    hasType(asString("int")),
+    hasInitializer(hasDescendant(unaryOperator(hasOperatorName("*"))))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
 
 TEST(BluePointer, PointerTypeAlias) {

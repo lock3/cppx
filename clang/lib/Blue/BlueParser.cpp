@@ -628,7 +628,22 @@ Syntax *Parser::parseApplicationExpression(Syntax *LHS) {
 
 Syntax *Parser::parsePointerExpression(Syntax *LHS) {
   Syntax *RHS = parsePointerExpression();
-  RHS->dump();
+  // Checking to see if we have a unary expression with an error.
+  if (!RHS)
+    return onError("invalid dereference syntax");
+
+  if (auto US = dyn_cast<UnarySyntax>(RHS)) {
+    // Basically this means we don't have a valid operand, because what
+    // was located wasn't an operand.
+    if (isa<ErrorSyntax>(US->getOperand())) {
+      // Then we kind of know we are unary suffix operator.
+      Token Op = US->getOperator();
+      Op.switchToSuffixDeref();
+      return onUnary(Op, LHS);
+    }
+  }
+  // RHS->dump();
+  // Checking to see if we have a dereference operator or not.
   return onBinary(Token(), LHS, RHS);
 }
 

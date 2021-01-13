@@ -96,6 +96,7 @@ def_token(DecimalFloat)
 def_token(HexadecimalFloat)
 def_token(Character)
 def_token(String)
+def_token(Deref)
 
 #undef def_keyword
 #undef def_puncop
