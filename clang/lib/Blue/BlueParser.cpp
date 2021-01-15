@@ -158,9 +158,9 @@ static Syntax *parseIntoVector(Sequence &Seq, Parse Fn) {
 }
 
 void Parser::parseStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
-  parseIntoVector(SS, [this]() { return parseStatement(); });
-  while (!atEndOfFile() && nextTokenIsNot(tok::RightBrace))
+  do
     parseIntoVector(SS, [this]() { return parseStatement(); });
+  while (!atEndOfFile() && nextTokenIsNot(tok::RightBrace));
 }
 
 // True if the next tokens would start a declaration. That is, we would
@@ -175,7 +175,7 @@ static bool startsDeclaration(Parser& P) {
 }
 
 Syntax *Parser::parseStatement() {
-    switch (getLookahead()) {
+  switch (getLookahead()) {
     case tok::LeftBrace:
       return parseBlockStatement();
     case tok::IfKeyword:
@@ -249,11 +249,11 @@ Syntax *Parser::parseContinueStatement() {
 }
 
 Syntax *Parser::parseReturnStatement() {
-  requireToken(tok::ReturnKeyword);
+  Token Key = requireToken(tok::ReturnKeyword);
+  Syntax *Val = nullptr;
   if (nextTokenIsNot(tok::Semicolon))
-    parseExpression();
-  matchToken(tok::Semicolon);
-  return nullptr;
+    Val = parseExpression();
+  return onUnary(Key, Val);
 }
 
 /// Parse a declaration statement:
@@ -544,7 +544,6 @@ static bool isPrefixOperator(TokenKind K) {
   case tok::Plus:
   case tok::Minus:
   case tok::Caret:
-  case tok::ReturnKeyword:
     return true;
   default:
     return false;
@@ -740,7 +739,7 @@ Syntax *Parser::parseTupleExpression() {
 
   if (nextTokenIs(tok::MinusGreater)) {
     Token Op = consumeToken();
-    Syntax *RHS = parseIdExpression();
+    Syntax *RHS = parsePrimaryExpression();
     return onBinary(Op, Tup, RHS);
   }
 
@@ -775,7 +774,7 @@ Syntax *Parser::parseBlockExpression() {
 
   llvm::SmallVector<Syntax *, 4> SS;
   if (nextTokenIsNot(tok::RightBrace))
-    parseParameterGroup(SS);
+    parseStatementSeq(SS);
 
   if (!Braces.expectClose())
     return nullptr;

@@ -61,11 +61,13 @@ foo:(x:int) -> void { }
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+#if 0
 TEST(BlueFunction, NoBody) {
   // TODO: I'm not sure if this is an error or not.
 
   StringRef Code = R"BLUE(
-foo:(x:int, y:int) -> void
+foo:(x:int, y:int) -> void;
 )BLUE";
   BlueFailureTest(Code);
 }
+#endif
