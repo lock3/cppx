@@ -192,6 +192,7 @@ namespace blue
     Syntax *parseDeclarationStatement();
     Syntax *parseExpressionStatement();
     void parseStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS);
+    void parseDeclStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS);
 
     // Declarations
     Syntax *parseDeclaration();
@@ -260,6 +261,10 @@ namespace blue
 
   private:
     Token PreviousToken;
+
+    // True when we are parsing the initializer of a tag decl
+    // FIXME: get rid of this
+    bool ParsingTag = false;
   };
 
 } // namespace blue

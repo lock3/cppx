@@ -144,7 +144,7 @@ Token Parser::expectToken(char const* Id) {
 Syntax *Parser::parseFile() {
   llvm::SmallVector<Syntax *, 16> SS;
   if (!atEndOfFile())
-    parseStatementSeq(SS);
+    parseDeclStatementSeq(SS);
   return onTop(SS);
 }
 
@@ -157,10 +157,17 @@ static Syntax *parseIntoVector(Sequence &Seq, Parse Fn) {
   return S;
 }
 
-void Parser::parseStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
+void Parser::parseDeclStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
   do
     parseIntoVector(SS, [this]() { return parseStatement(); });
   while (!atEndOfFile() && nextTokenIsNot(tok::RightBrace));
+}
+
+void Parser::parseStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
+  do
+    parseIntoVector(SS, [this]() { return parseStatement(); });
+  while (matchToken(tok::Semicolon)
+         && !atEndOfFile() && nextTokenIsNot(tok::RightBrace));
 }
 
 // True if the next tokens would start a declaration. That is, we would
@@ -295,6 +302,12 @@ Syntax *Parser::parseDeclaration() {
 
   // Match 'identifier : signature ...'.
   Syntax * Sig = parseSignature();
+  // FIXME: this is a hack to get around the fact that
+  // semicolons only seem to be grammatically part of declaration statements.
+  // We should fix this in the grammar.
+  if (AtomSyntax *Type = dyn_cast<LiteralSyntax>(Sig))
+    if (Type->getSpelling() == "class")
+      ParsingTag = true;
 
   // Match 'identifier : signature ;'.
   if (matchToken(tok::Semicolon))
@@ -302,6 +315,7 @@ Syntax *Parser::parseDeclaration() {
 
   // Match 'identifier : signature initializer'.
   Syntax *Init = parseInitializer();
+  ParsingTag = false;
   return onDef(Id, Sig, Init);
 }
 
@@ -774,7 +788,7 @@ Syntax *Parser::parseBlockExpression() {
 
   llvm::SmallVector<Syntax *, 4> SS;
   if (nextTokenIsNot(tok::RightBrace))
-    parseStatementSeq(SS);
+    ParsingTag ? parseDeclStatementSeq(SS) : parseStatementSeq(SS);
 
   if (!Braces.expectClose())
     return nullptr;
