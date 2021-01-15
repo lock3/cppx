@@ -432,6 +432,10 @@ public:
     return Op.isInvalid();
   }
 
+  bool isMemberAccess() const {
+    return Op.hasKind(tok::Dot);
+  }
+
   Syntax *getLeftOperand() {
     return Args[0];
   }

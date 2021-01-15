@@ -45,6 +45,8 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Error.h"
 
+#include "clang/Blue/BlueExprMarker.h"
+
 #include <iostream>
 
 namespace blue {
@@ -1893,8 +1895,12 @@ clang::Expr *Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
   auto LHS = elaborateExpression(S->getLeftOperand());
   if (!LHS)
     return nullptr;
+
   if (S->isApplication())
     return elaborateApplyExpression(LHS, S);
+
+  if (S->isMemberAccess())
+    return elaborateMemberAccess(LHS, S);
 
   auto RHS = elaborateExpression(S->getRightOperand());
   if (!RHS)
@@ -1902,6 +1908,8 @@ clang::Expr *Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
 
   auto OpIter = SemaRef.BinOpMap.find(S->getOperatorSpelling());
   if (OpIter == SemaRef.BinOpMap.end()) {
+
+    llvm::outs() << "Missing binary op spelling = " <<S->getOperatorSpelling() << "\n";
     Error(S->getLocation(), "invalid binary operator");
     return nullptr;
   }
@@ -1990,6 +1998,83 @@ clang::Expr *Elaborator::elaborateApplyExpression(clang::Expr *LHS,
   // 5. Block attached to something possibly? - Needs verifications
   S->dump();
   llvm_unreachable("apply expression Not implemented yet!?\n");
+}
+
+clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,
+                                               const BinarySyntax *S) {
+  clang::QualType Ty = LHS->getType();
+  if (Ty->isKindType())
+    return elaborateTypeNameAccess(LHS, S);
+  if (Ty->isCppxNamespaceType())
+    return elaborateNestedNamespaceAccess(LHS, S);
+
+  return elaborateMemberAccessOp(LHS, S);
+  
+}
+
+clang::Expr *Elaborator::elaborateTypeNameAccess(clang::Expr *LHS,
+                                                 const BinarySyntax *S) {
+  llvm_unreachable("type name access not implemented yet.");
+}
+
+clang::Expr *Elaborator::elaborateNestedNamespaceAccess(clang::Expr *LHS,
+                                                        const BinarySyntax *S) {
+  llvm_unreachable("Namespace acceess not implemented yet!");
+}
+
+clang::Expr *Elaborator::elaborateMemberAccessOp(clang::Expr *LHS,
+                                                 const BinarySyntax *S) {
+  if (auto IdSyntax = dyn_cast<IdentifierSyntax>(S->getRightOperand())) {
+    clang::UnqualifiedId Id;
+    clang::IdentifierInfo *IdInfo =
+      &getCxxContext().Idents.get(IdSyntax->getSpelling());
+    // TODO: Implement operator lookup.
+    // OpInfoBase const *OpInfo = SemaRef.OpInfo.getOpInfo(IdInfo);
+    // if (OpInfo) {
+      // clang::OverloadedOperatorKind UnaryOO = OpInfo->getUnaryOverloadKind();
+      // clang::OverloadedOperatorKind BinaryOO = OpInfo->getBinaryOverloadKind();
+      // if (UnaryOO != BinaryOO) {
+      //   clang::CXXScopeSpec TempSS;
+      //   clang::Expr *LookedUpCandidates = doDerefAndXOrLookUp(Context, SemaRef,
+      //                                                         UnaryOO, BinaryOO,
+      //                                                         TempSS,
+      //                                                         ElaboratedLHS,
+      //                                                         Op, RHS->getLoc(),
+      //                                                         OpInfo);
+      //   return LookedUpCandidates;
+      // }
+      // clang::SourceLocation RHSLoc = IdSyntax->getLocation();
+      // clang::SourceLocation SymbolLocations[3] = {RHSLoc, RHSLoc, RHSLoc};
+      // Id.setOperatorFunctionId(RHSLoc, OpInfo->getUnaryOverloadKind(),
+      //                           SymbolLocations);
+    // } else {
+    Id.setIdentifier(IdInfo, IdSyntax->getLocation());
+    // }
+
+
+    if (LHS->getDependence() != clang::ExprDependence::None) {
+      llvm_unreachable("dependent access expression not implemented yet.");
+    }
+
+    clang::CXXScopeSpec SS;
+    clang::SourceLocation Loc;
+    clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
+    if (LHS->getType()->isPointerType())
+      AccessTokenKind = clang::tok::TokenKind::arrow;
+
+    clang::ExprResult RHSExpr =
+      SemaRef.getCxxSema().ActOnMemberAccessExpr(SemaRef.getCurClangScope(),
+                                                LHS, S->getLocation(),
+                                                AccessTokenKind, SS, Loc, Id,
+                                                  nullptr);
+    if (RHSExpr.isInvalid())
+      return nullptr;
+
+    ExprMarker(getCxxContext(), SemaRef).Visit(RHSExpr.get());
+    return RHSExpr.get();
+  } else {
+    llvm_unreachable("Qualified member access not implemented yet.");
+  }
 }
 
 /// This function extracts the number of bytes argument from integer, character,
