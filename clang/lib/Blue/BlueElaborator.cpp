@@ -1844,6 +1844,7 @@ clang::Expr *Elaborator::elaborateUnaryExpression(const UnarySyntax *S) {
   clang::QualType Ty = Operand->getType();
   if (Ty->isTypeOfTypes()) {
     if (S->getOperator().hasKind(tok::Caret)) {
+      // FIXME: how can we assert that this is a declarator?
       // If this apears within a declarator then it must be a type.
       auto TInfo = SemaRef.getTypeSourceInfoFromExpr(Operand,
                                                      Operand->getExprLoc());
@@ -1858,12 +1859,14 @@ clang::Expr *Elaborator::elaborateUnaryExpression(const UnarySyntax *S) {
                               << 0/*unary*/;
     return nullptr;
   }
+
   if (S->getOperator().hasKind(tok::Caret)) {
     // llvm_unreachable("Make an error message for this.");
     getCxxSema().Diags.Report(S->getLocation(),
                               clang::diag::err_prefix_caret_on_non_type);
     return nullptr;
   }
+
   auto OpIter = SemaRef.UnaryOpMap.find(S->getOperatorSpelling());
   if (OpIter == SemaRef.UnaryOpMap.end()) {
     Error(S->getLocation(), "invalid unary operator");
@@ -1930,6 +1933,9 @@ clang::Stmt *Elaborator::elaborateSeq(const SeqSyntax *S) {
 }
 
 clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
+  if (const UnarySyntax *U = dyn_cast<UnarySyntax>(S))
+    return elaborateUnaryStmt(U);
+
   // TODO: elaborate by syntax type: i.e. atom, etc. See GoldStmtElaborator
 
   // If the statement kind is unknown then simply punt and
@@ -1946,6 +1952,31 @@ clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
     return nullptr;
 
   return ExprStmt.get();
+}
+
+clang::Stmt *Elaborator::elaborateUnaryStmt(const UnarySyntax *S) {
+  switch (S->getOperator().getKind()) {
+  case tok::ReturnKeyword:
+    return elaborateReturnStmt(S);
+
+  default:
+    break;
+  } // switch (S->getOperator())->getKind()
+
+  return elaborateUnaryExpression(S);
+}
+
+clang::Stmt *Elaborator::elaborateReturnStmt(const UnarySyntax *S) {
+  clang::Expr *Val = nullptr;
+
+  if (S->getOperand())
+    // if this elaborates to null, we'll just let clang::Sema handle the error
+    Val = elaborateExpression(S->getOperand());
+
+  auto ReturnResult = SemaRef.getCxxSema().ActOnReturnStmt(
+    S->getOperator().getLocation(), Val, SemaRef.getCurClangScope());
+
+  return ReturnResult.get();
 }
 
 clang::Expr *Elaborator::elaborateApplyExpression(clang::Expr *LHS,

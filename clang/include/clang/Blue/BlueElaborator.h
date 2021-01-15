@@ -133,8 +133,12 @@ public:
   clang::Expr *elaborateIntegerMetaFunction(const BinarySyntax *S);
   clang::Expr *elaborateCharacterMetaFunction(const BinarySyntax *S);
   clang::Expr *elaborateRealMetaFunction(const BinarySyntax *S);
+
+  /// Stmts
   clang::Stmt *elaborateSeq(const SeqSyntax *S);
   clang::Stmt *elaborateStatement(const Syntax *S);
+  clang::Stmt *elaborateUnaryStmt(const UnarySyntax *S);
+  clang::Stmt *elaborateReturnStmt(const UnarySyntax *S);
 
   //===--------------------------------------------------------------------===//
   //                                Miscellaneous                             //
