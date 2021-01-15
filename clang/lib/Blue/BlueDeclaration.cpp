@@ -26,12 +26,64 @@ void Declaration::setCxx(Sema &SemaRef, clang::Decl *Cxx) {
   this->Cxx = Cxx;
 }
 
+bool Declaration::declaratorContains(Declarator::Kind DeclKind) const {
+  Declarator *D = Decl;
+  while(D) {
+    if (D->getKind() == DeclKind)
+      return true;
+    D = D->getNext();
+  }
+  return false;
+}
+
+bool Declaration::declaratorContainsClass() const {
+  return declaratorContains(Declarator::Class);
+}
+
+bool Declaration::declaratorContainsFunction() const {
+  return declaratorContains(Declarator::Function);
+}
+
+bool Declaration::declaratorContainsTemplate() const {
+  return declaratorContains(Declarator::Template);
+}
+
+bool Declaration::declaratorContainsTag() const {
+  return declaratorContains(Declarator::Class);
+}
+
+bool Declaration::declaratorContainsClassTemplate() const {
+  return declaratorContainsClass() && declaratorContainsTemplate();
+}
+
+bool Declaration::declaredWithinClassBody() const {
+  assert(ScopeForDecl && "Invalid scope for declaration.");
+  return ScopeForDecl->isClassScope();
+}
+
 bool Declaration::isVariableDecl() const {
   return Cxx && isa<clang::VarDecl>(Cxx);
 }
 
 bool Declaration::isFunctionDecl() const {
   return Cxx && isa<clang::FunctionDecl>(Cxx);
+}
+
+bool Declaration::isClassDecl() const {
+  return isDecl<clang::CXXRecordDecl>();
+}
+
+bool Declaration::isTypeAliasDecl() const {
+  return isDecl<clang::TypeAliasDecl>();
+}
+
+bool Declaration::isFieldDecl() const {
+  return isDecl<clang::FieldDecl>();
+}
+
+bool Declaration::declaresInitializedVariable() const {
+  return (isDecl<clang::VarDecl>() || isDecl<clang::FieldDecl>())
+      && hasInitializer();
 }
 
 bool Declaration::hasInitializer() const {

@@ -37,6 +37,7 @@ public:
     Array,
     Function,
     Template,
+    Class,
   };
 
   Declarator(Kind K, const Syntax *S)
@@ -60,6 +61,10 @@ public:
 
   bool declaresTemplate() const {
     return getKind() == Template;
+  }
+
+  bool declaresClass() const {
+    return getKind() == Class;
   }
 
   const Syntax *getInfo() const {

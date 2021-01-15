@@ -91,20 +91,28 @@ public:
   clang::Expr *elaborateArrayDeclarator(const Declarator *Dcl);
   clang::Expr *elaborateFunctionDeclarator(const Declarator *Dcl);
   clang::Expr *elaborateTemplateDeclarator(const Declarator *Dcl);
+  clang::Expr *elaborateClassDeclarator(const Declarator *Dcl);
   clang::Expr *elaborateImplicitTypeDeclarator(const Declarator *Dcl);
-
 
   clang::Decl *makeValueDecl(Declaration *D);
   clang::Decl *makeObjectDecl(Declaration *D, clang::Expr *Ty);
   clang::Decl *makeTypeDecl(Declaration *D, clang::QualType T);
   clang::Decl *makeFunctionDecl(Declaration *D);
+  clang::Decl *makeClass(Declaration *D);
   clang::Decl *makeTemplateDecl(Declaration *D);
+  clang::Decl *makeFieldDecl(Declaration *D, clang::Expr *Ty);
+
+
+  // class type body elaboration.
+  clang::Decl *identifyDeclsInClassBody(Declaration *D, clang::CXXRecordDecl *R);
+  clang::Decl *elaborateField(Declaration *D, clang::TypeSourceInfo *TInfo);
 
   clang::CppxTypeLiteral *createFunctionType(Declarator *Dcl);
 
   void elaborateDefinition(const Syntax *S);
   void elaborateDefinitionInitialization(Declaration *D);
   void elaborateVarDef(Declaration *D);
+  void elaborateFieldInit(Declaration *D);
   void elaborateFunctionDef(Declaration *D);
 
 
@@ -163,11 +171,49 @@ private:
     SavedTemplateParamContext Old;
   };
 
+public:
+  //===--------------------------------------------------------------------===//
+  //                    Complete class parsing/elaboration                    //
+  //===--------------------------------------------------------------------===//
+  ///{
+  /// This returns true if part of the declaration was delayed.
+  bool delayElaborateDeclType(clang::CXXRecordDecl *RD, const Syntax *S);
+
+  /// Functionality associated with late elaboration and are used to either
+  /// elaborate the full class or elaborate everything if they are able to.
+  void delayElaborateMemberInitializer(Declaration *D);
+  void delayElaborateMethodDecl(Declaration *D);
+  void delayElaborateMethodDef(Declaration *D);
+  void delayElaborationClassBody(Declaration *D);
+  void delayElaborateDefaultParam(Declaration *D);
+
+
+  /// Functions used for late elaboration processing.
+  /// This only occur within a class.
+  void finishDelayedElaboration(ElaboratingClass &Class);
+  void lateElaborateAttributes(ElaboratingClass &Class);
+  void lateElaborateMethodDecls(ElaboratingClass &Class);
+  void lateElaborateDefaultParams(ElaboratingClass &Class);
+  void lateElaborateMemberInitializers(ElaboratingClass &Class);
+  void lateElaborateMethodDefs(ElaboratingClass &Class);
+
+  /// Special callbacks used in order to interact a lateElaborated class.
+  void lateElaborateAttribute(LateElaboratedAttributeDecl &Field);
+  void lateElaborateMethodDef(LateElaboratedMethodDef &Method);
+  void lateElaborateDefaultParams(LateElaboratedMethodDeclaration &MethodDecl);
+  void lateElaborateDefaultParam(LateElaboratedDefaultArgument &DefaultParam);
+  void lateElaborateMethodDecl(LateElaboratedMethodDeclaration &Method);
+  void lateElaborateMemberInitializer(
+      LateElaborateMemberInitializer &MemberInit);
+  ///}
+
 private:
   Sema &SemaRef;
 
   clang::Sema &CxxSema;
 };
+
+
 
 } // namespace blue
 

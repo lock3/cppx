@@ -25,6 +25,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "clang/Sema/Sema.h"
 
+#include "clang/Blue/BlueLateElaboration.h"
 #include "clang/Blue/BlueSyntaxContext.h"
 #include "clang/Blue/BlueScope.h"
 #include <memory>
@@ -108,6 +109,7 @@ public:
   /// Leave the current scope. The syntax S must match the syntax for
   /// which the scope was initially pushed.
   void leaveScope(const Syntax *S);
+  Scope *saveScope(const Syntax *S);
 
   /// Push a new scope.
   void pushScope(Scope *S);
@@ -157,8 +159,53 @@ public:
                                                 clang::SourceLocation EndLoc,
                            llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
 
+  clang::CppxTypeLiteral *buildTypeExprTypeFromExpr(clang::Expr *E,
+                                                    clang::SourceLocation Loc,
+                                                  bool IsConstructExpr = false);
+
+  clang::CppxTypeLiteral *buildTypeExprTypeFromExprLiteral(clang::Expr *E,
+                                                    clang::SourceLocation Loc,
+                                                  bool IsConstructExpr = false);
+
+  clang::QualType buildQualTypeExprTypeFromExpr(clang::Expr *E,
+                                                clang::SourceLocation Loc,
+                                                bool IsConstructExpr = false);
+
+  clang::CppxTypeLiteral *buildTypeExprFromTypeDecl(
+                      const clang::TypeDecl *TyDecl, clang::SourceLocation Loc);
+
+  clang::CppxDeclRefExpr *buildTemplateType(clang::TemplateDecl *TD,
+                                            clang::SourceLocation Loc);
+
+  /// This functions will be responsible for converting an expression into
+  /// a TInfo and reporting if it fails, it shall return nullptr in the
+  /// event it fails.
   clang::TypeSourceInfo *getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
                              clang::SourceLocation Loc=clang::SourceLocation());
+
+  /// This simply checks and extracts the QualType from a type expression.
+  /// This can return a QualType where .isNull() is true,
+  clang::QualType getQualTypeFromTypeExpr(const clang::Expr *TyExpr);
+
+
+  clang::ParsedType getParsedTypeFromExpr(const clang::Expr *TyExpr,
+                             clang::SourceLocation Loc=clang::SourceLocation());
+
+  clang::CppxDeclRefExpr *buildNSDeclRef(clang::CppxNamespaceDecl *D,
+                                         clang::SourceLocation Loc);
+
+  clang::CppxDeclRefExpr *buildNSDeclRef(clang::NamespaceAliasDecl *D,
+                                         clang::SourceLocation Loc);
+  clang::CppxDeclRefExpr *buildAnyDeclRef(clang::QualType KindTy,
+                                          clang::Decl *D,
+                                          clang::SourceLocation Loc);
+
+  clang::Decl *getDeclFromExpr(const clang::Expr *DeclExpr,
+                               clang::SourceLocation Loc);
+  /// This function extracts a namespace from an expression and returns the
+  /// resulting namespace or nullptr if invalid
+  clang::CppxNamespaceDecl *getNSDeclFromExpr(const clang::Expr *DeclExpr,
+                                              clang::SourceLocation Loc);
 
   /// This function dispatches to other functions to handle other declarations
   /// It is the job of this function to determine of the declaration should be
@@ -187,19 +234,30 @@ private:
 //===----------------------------------------------------------------------===//
 
 public:
-  // An RAII type for constructing scopes.
+// An RAII type for constructing scopes.
   struct ScopeRAII {
-    ScopeRAII(Sema &S, Scope::Kind K, const Syntax *ConcreteTerm)
-      : S(S), ConcreteTerm(ConcreteTerm) {
+    ScopeRAII(Sema &S, Scope::Kind K, const Syntax *ConcreteTerm,
+              Scope **SavedScope = nullptr)
+      : S(S), SavedScope(SavedScope), ConcreteTerm(ConcreteTerm) {
       S.enterScope(K, ConcreteTerm);
+      if (SavedScope) {
+        *SavedScope = S.getCurrentScope();
+      }
     }
 
     ~ScopeRAII() {
-      S.leaveScope(ConcreteTerm);
+      if (SavedScope)
+        *SavedScope = S.saveScope(ConcreteTerm);
+      else
+        S.leaveScope(ConcreteTerm);
     }
 
   private:
     Sema &S;
+
+    /// Optionally save this scope to be stored in the Declaration.
+    Scope **SavedScope;
+
     const Syntax *ConcreteTerm;
   };
 
@@ -267,7 +325,182 @@ public:
 
 public:
 
+  //===--------------------------------------------------------------------===//
+  //                    Complete class parsing/elaboration                    //
+  //===--------------------------------------------------------------------===//
+  ///{
+  /// This is a stack of classes currently being elaborated.
+  llvm::SmallVector<ElaboratingClass *, 6> ClassStack;
+
+  /// Returns the top of the stack for a class currently being elaborated.
+  ElaboratingClass &getCurrentElaboratingClass() {
+    assert(!ClassStack.empty() && "No classes on stack!");
+    return *ClassStack.back();
+  }
+  using ClassElaborationState = clang::Sema::DelayedDiagnosticsState;
+  bool isElaboratingClass() const;
+  ClassElaborationState pushElaboratingClass(Declaration *D,
+                                             bool TopLevelClass);
+  void deallocateElaboratingClass(ElaboratingClass *D);
+  void popElaboratingClass(ClassElaborationState State);
+
+  LateElaboratedMethodDeclaration *CurrentLateMethodDecl = nullptr;
+
+  class LateMethodRAII {
+    Sema &SemaRef;
+    LateElaboratedMethodDeclaration *Previous;
+  public:
+    LateMethodRAII(Sema &S, LateElaboratedMethodDeclaration *NextDecl)
+      :SemaRef(S),
+      Previous(SemaRef.CurrentLateMethodDecl)
+    {
+      SemaRef.CurrentLateMethodDecl = NextDecl;
+    }
+    ~LateMethodRAII() {
+      SemaRef.CurrentLateMethodDecl = Previous;
+    }
+  };
+  ///}
+
+
+  struct ClangScopeRAII {
+    ClangScopeRAII(Sema &S, unsigned ScopeKind, clang::SourceLocation ExitLoc,
+        bool EnteringScope = true, bool BeforeCompoundStmt = false)
+      : SemaPtr(&S), ExitingLocation(ExitLoc)
+    {
+      if (EnteringScope && !BeforeCompoundStmt)
+        SemaPtr->enterClangScope(ScopeKind);
+      else {
+        if (BeforeCompoundStmt)
+          SemaPtr->getCxxSema().incrementMSManglingNumber();
+
+        SemaPtr = nullptr;
+      }
+    }
+
+    ~ClangScopeRAII() {
+      Exit();
+    }
+
+    void Exit() {
+      if (SemaPtr) {
+        SemaPtr->leaveClangScope(ExitingLocation);
+        SemaPtr = nullptr;
+      }
+    }
+
+  private:
+    Sema *SemaPtr;
+    clang::SourceLocation ExitingLocation;
+  };
+
+
+  /// This class provides RAII for keeping track of DeclContexts, even if
+  /// the DeclContext isn't set by us for clang::Sema.
+  class DeclContextRAII {
+    Sema &SemaRef;
+    Declaration *OriginalDecl;
+    bool DoSetAndReset;
+  public:
+    DeclContextRAII(Sema &S, Declaration *D,
+        bool SetAndResetDeclarationsOnly = false)
+      :SemaRef(S), OriginalDecl(SemaRef.CurrentDecl),
+      DoSetAndReset(SetAndResetDeclarationsOnly)
+    {
+      if (DoSetAndReset)
+        SemaRef.CurrentDecl = D;
+      else
+        SemaRef.pushDecl(D);
+    }
+    ~DeclContextRAII() {
+      if (DoSetAndReset){
+        SemaRef.setCurrentDecl(OriginalDecl);
+      } else
+        SemaRef.popDecl();
+    }
+  };
+
+
+  /// This class is an RAII that tracks the classes scope and current status
+  /// during processing. This allows for us to more easily keep track of
+  /// the class currently being elaborated and how we hande that particular
+  /// classes elaboration.
+  /// This helps keep track of classes that are currently being elaborated.
+  class ElaboratingClassDefRAII {
+    Sema &SemaRef;
+    bool WasPopped;
+    ClassElaborationState State;
+  public:
+    ElaboratingClassDefRAII(Sema &S, Declaration *D, bool IsTopLevelClass,
+        bool IsTemplate = false)
+      :SemaRef(S), WasPopped(false),
+      State(SemaRef.pushElaboratingClass(D, IsTopLevelClass)) { }
+
+    ~ElaboratingClassDefRAII() {
+      if (!WasPopped)
+        pop();
+    }
+
+    void pop() {
+      assert(!WasPopped && "Attempting to double exit class. "
+          "Class already popped");
+      WasPopped = true;
+      SemaRef.popElaboratingClass(State);
+    }
+  };
+  struct SaveAndRestoreClangDCAndScopeRAII {
+    Sema &SemaRef;
+    clang::Scope *ScopeOnEntry = nullptr;
+    clang::DeclContext *DCOnEntry = nullptr;
+    SaveAndRestoreClangDCAndScopeRAII(Sema &S)
+      :SemaRef(S),
+      ScopeOnEntry(S.getCxxSema().CurScope),
+      DCOnEntry(S.getCxxSema().CurContext)
+    { }
+    ~SaveAndRestoreClangDCAndScopeRAII() {
+      SemaRef.getCxxSema().CurScope = ScopeOnEntry;
+      SemaRef.getCxxSema().CurContext = DCOnEntry;
+    }
+  };
+
+
+  
+
+  struct ExprEvalRAII {
+    ExprEvalRAII(Sema& S, clang::Sema::ExpressionEvaluationContext NewContext)
+      :SemaRef(S)
+    {
+      SemaRef.getCxxSema().PushExpressionEvaluationContext(NewContext);
+    }
+    ~ExprEvalRAII() {
+      SemaRef.getCxxSema().PopExpressionEvaluationContext();
+    }
+  private:
+    Sema& SemaRef;
+  };
 };
+
+
+template<typename T>
+class OptionalInitScope {
+  Sema &SemaRef;
+  llvm::Optional<T> Opt;
+public:
+  OptionalInitScope(Sema &S) :SemaRef(S) { }
+  template<typename... Args>
+  OptionalInitScope(Sema &S, Args&&... Arguments)
+      :SemaRef(S), Opt()
+  {
+    Init(std::forward<Args>(Arguments)...);
+  }
+
+  template<typename... Args>
+  void Init(Args&&... Arguments) {
+    assert(!Opt && "Error attempting to enter scope twice.");
+    Opt.emplace(SemaRef, std::forward<Args>(Arguments)...);
+  }
+};
+
 
 struct ResumeScopeRAII {
   ResumeScopeRAII(Sema &S, Scope *Sc, const Syntax *ConcreteTerm,
@@ -288,6 +521,39 @@ private:
   Sema &SemaRef;
   const Syntax *ExitTerm;
   bool PopOnExit;
+};
+
+struct EnterNonNestedClassEarlyElaboration {
+  EnterNonNestedClassEarlyElaboration(Sema& S, Declaration* Decl)
+    :SemaRef(S),
+    PrevClassStack(std::move(SemaRef.ClassStack)),
+    D(Decl),
+    ScopeResumer(SemaRef, Decl->ScopeForDecl, D->Def),
+    PrevContext(SemaRef.getCurClangDeclContext()),
+    PrevDeclaration(SemaRef.getCurrentDecl()),
+    PrevClangScope(SemaRef.getCurClangScope())
+  {
+    SemaRef.reEnterClangScope(D->ClangDeclaringScope);
+    SemaRef.setClangDeclContext(D->DeclaringContext);
+    SemaRef.setCurrentDecl(D->Ctx);
+  }
+
+  ~EnterNonNestedClassEarlyElaboration() {
+    // Moving the previous information back onto the stack.
+    SemaRef.ClassStack = std::move(PrevClassStack);
+
+    SemaRef.setCurrentDecl(PrevDeclaration);
+    SemaRef.reEnterClangScope(PrevClangScope);
+    SemaRef.setClangDeclContext(PrevContext);
+  }
+private:
+  Sema &SemaRef;
+  llvm::SmallVector<ElaboratingClass *, 6> PrevClassStack;
+  Declaration* D;
+  ResumeScopeRAII ScopeResumer;
+  clang::DeclContext* PrevContext = nullptr;
+  Declaration* PrevDeclaration = nullptr;
+  clang::Scope *PrevClangScope = nullptr;
 };
 
 } // end namespace blue

@@ -64,6 +64,8 @@ Declaration *Elaborator::createDeclaration(const Syntax *Def,
   Scope *CurScope = SemaRef.getCurrentScope();
   CurScope->addDecl(TheDecl);
   TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
+  TheDecl->ScopeForDecl = CurScope;
+  TheDecl->ClangDeclaringScope = SemaRef.getCurClangScope();
 
   return TheDecl;
 }
@@ -157,8 +159,13 @@ clang::Decl *Elaborator::elaborateDeclarationTyping(Declaration *D) {
   if (D->Decl->declaresFunction())
     return makeFunctionDecl(D);
 
-  if (D->Decl->declaresTemplate())
-    return makeTemplateDecl(D);
+  if (D->declaratorContainsClass())
+    return makeClass(D);
+
+  // Not sure if this is the right way to handle this or not?
+  // if (D->Decl->declaresTemplate())
+  //   return makeTemplateDecl(D);
+
 
   llvm_unreachable("Invalid declarator");
 }
@@ -249,7 +256,7 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
                                  clang::SC_Auto, /*def=*/nullptr);
     TheDecl->setCxx(SemaRef, PVD);
     return PVD;
-  } 
+  }
 
   // FIXME: There is a lot of duplication with makeObjectDecl here.
   // In Gold it's just one function.
@@ -343,7 +350,13 @@ Declarator *Elaborator::getBinaryDeclarator(const BinarySyntax *S) {
 
 Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   switch (S->getKind()) {
-  case Syntax::Literal:
+  case Syntax::Literal: {
+    auto Lit = dyn_cast<LiteralSyntax>(S);
+    if (Lit->getToken().hasKind(tok::ClassKeyword)) {
+      return new Declarator(Declarator::Class, S);
+    }
+  }
+  LLVM_FALLTHROUGH;
   case Syntax::Identifier:
     return new Declarator(Declarator::Type, S);
   case Syntax::List:
@@ -400,6 +413,9 @@ clang::Decl *Elaborator::makeValueDecl(Declaration *D) {
     ElabMode.setMode(true);
     return makeTypeDecl(D, T);
   } else {
+    // Handling field declarations slightly different then variable declarations.
+    if (D->declaredWithinClassBody())
+      return makeFieldDecl(D, E);
     // Need to check if the declaration is auto because if that's the
     // case we need to force early elaboration instead of letting it go.
     return makeObjectDecl(D, E);
@@ -575,9 +591,230 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   return FD;
 }
 
+clang::Decl *Elaborator::makeClass(Declaration *D) {
+  using namespace clang;
+  D->CurrentPhase = Phase::Typing;
+
+  // Checking if we are a nested template decl/class.
+  bool WithinClass = D->ScopeForDecl->getKind() == blue::Scope::Class;
+  MultiTemplateParamsArg MTP = D->TemplateParamStorage;
+
+  bool IsOwned = false;
+  bool IsDependent = false;
+  CXXScopeSpec SS;
+  TypeResult UnderlyingType;
+  AccessSpecifier AS = AS_none;
+  if (WithinClass)
+    AS = AS_public;
+
+  clang::SourceLocation IdLoc = D->Def->getLocation();
+  clang::TypeSpecifierType TST = clang::DeclSpec::TST_struct;
+  bool ScopeEnumUsesClassTag = false;
+  clang::SourceLocation ScopedEnumClassKW;
+  blue::Scope::Kind SK = blue::Scope::Class;
+  // TODO: Refactor this so that we actually check the TST kind against
+  // the class/enum/union identifier.
+  // switch(D->getKind()) {
+  // case UDK_Class:
+  //   TST = clang::DeclSpec::TST_struct;
+  //   break;
+  // case UDK_Union:
+  //   TST = clang::DeclSpec::TST_union;
+  //   break;
+  // case UDK_Enum:
+  //   llvm_unreachable("");
+  //   // TST = clang::DeclSpec::TST_enum;
+  //   // ScopeEnumUsesClassTag = true;
+  //   // if (const MacroSyntax *MS = dyn_cast<MacroSyntax>(D->Init)) {
+  //   //   UnderlyingType = getUnderlyingEnumType(Context, SemaRef, MS->getCall());
+  //   // } else {
+  //   //   llvm_unreachable("Invalid tree syntax.");
+  //   // }
+  //   // ScopedEnumClassKW = D->IdDcl->getLoc();
+  //   // SK = SK_Enum;
+  //   break;
+  // default:
+  //   llvm_unreachable("Incorrectly identified tag type");
+  // }
+
+  Decl *Declaration = nullptr;
+  // if (D->SpecializationArgs) {
+  //   Declaration = handleClassSpecialization(Context, SemaRef, D, TST, MTP);
+  // } else {
+  Declaration = SemaRef.getCxxSema().ActOnTag(
+    SemaRef.getCurClangScope(), TST, /*Metafunction=*/nullptr,
+    clang::Sema::TUK_Definition, D->getInitializer()->getLocation(), SS, D->Id,
+    IdLoc, clang::ParsedAttributesView(), AS,
+    /*ModulePrivateLoc=*/SourceLocation(),
+    MTP, IsOwned, IsDependent, ScopedEnumClassKW, ScopeEnumUsesClassTag,
+    UnderlyingType, /*IsTypeSpecifier=*/false, /*IsTemplateParamOrArg=*/false);
+  // }
+
+  TagDecl *Tag = nullptr;
+  if (!Declaration) {
+    return nullptr;
+  }
+  if(isa<CXXRecordDecl>(Declaration)) {
+    Tag = cast<CXXRecordDecl>(Declaration);
+  } else if (isa<ClassTemplateDecl>(Declaration)) {
+    ClassTemplateDecl *TempTemplateDecl = cast<ClassTemplateDecl>(Declaration);
+    D->setCxx(SemaRef, TempTemplateDecl);
+    Tag = cast<CXXRecordDecl>(TempTemplateDecl->getTemplatedDecl());
+  } else if (isa<EnumDecl>(Declaration)) {
+    Tag = cast<TagDecl>(Declaration);
+  }
+
+  D->setCxx(SemaRef, Tag);
+  // Elab.elaborateAttributes(D);
+
+  Sema::ScopeRAII ClassBodyScope(SemaRef, SK, D->Def, &D->SavedScope);
+  SemaRef.getCurrentScope()->Entity = D;
+
+  Sema::ClangScopeRAII ClangClassScopeBody(SemaRef,
+            (Tag->isEnum() ? clang::Scope::EnumScope : clang::Scope::ClassScope)
+                                           | clang::Scope::DeclScope,
+                                           D->getInitializer()->getLocation());
+
+
+  // Need to do this before the next step because this is actually pushed on to
+  // the stack a by the next function called.
+  SemaRef.getCxxSema().ActOnTagStartDefinition(SemaRef.getCurClangScope(), Tag);
+
+  // This keeps the declContext working correctly.
+  Sema::DeclContextRAII DCTracking(SemaRef, D, true);
+  if (TST == clang::DeclSpec::TST_enum) {
+    llvm_unreachable("Enum body not implemented yet.");
+    // Elab.elaborateEnumBody(D, Tag);
+    // if (Tag->isInvalidDecl()) {
+    //   // Need to make sure that this isn't elaborated as a variable later on.
+    //   D->CurrentPhase = Phase::Initialization;
+    //   return Tag;
+    // }
+  } else {
+    // This handles processing for class, struct, and union bodies.
+    // This keeps track of class nesting.
+    Sema::ElaboratingClassDefRAII ClsElabState(SemaRef, D,
+                                              !SemaRef.isElaboratingClass());
+    CXXRecordDecl *ClsDecl = cast<CXXRecordDecl>(Tag);
+    identifyDeclsInClassBody(D, ClsDecl);
+    // Attempt to figure out if any nested elaboration is actually required.
+    // If not then we can proceed as normal.
+    // auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
+    // auto const* BodyArray = MacroRoot->getBlock();
+
+    // Handling possible base classes.
+    // if (const CallSyntax *ClsKwCall
+    //                       = dyn_cast<CallSyntax>(MacroRoot->getCall())) {
+    //   processBaseSpecifiers(Elab, SemaRef, Context, D, ClsDecl, ClsKwCall);
+    // }
+    // We turn this off here because technically we have already created the
+    // most basic declaration that's required to use this type.
+    D->IsElaborating = false;
+
+    // This is really the only time we could possible allow this to occur.
+    SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(
+                                                     SemaRef.getCurClangScope(),
+                                                         ClsDecl,
+                                                         SourceLocation(), true,
+                                                         SourceLocation());
+    auto ClsDef = cast<DefSyntax>(D->Def);
+
+    // Since all declarations have already been added, we don't need to do another
+    // Reordering scan.
+    // Doing possible delaying of member declaration/initialziation.
+    for (const Syntax *SS : cast<SeqSyntax>(ClsDef->getInitializer())->children())
+      delayElaborateDeclType(ClsDecl, SS);
+
+    D->CurrentPhase = Phase::Initialization;
+    if (!WithinClass) {
+      ElaboratingClass &LateElabClass = SemaRef.getCurrentElaboratingClass();
+      // Elab.finishDelayedElaboration(LateElabClass);
+      lateElaborateAttributes(LateElabClass);
+      lateElaborateMethodDecls(LateElabClass);
+      lateElaborateDefaultParams(LateElabClass);
+      // We call this because no new declarations can be added after this point.
+      // This is only called for the top level class.
+      SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
+
+      SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
+        SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
+        SourceLocation(), ParsedAttributesView());
+
+      lateElaborateMemberInitializers(LateElabClass);
+      lateElaborateMethodDefs(LateElabClass);
+      SemaRef.getCxxSema().ActOnFinishCXXNonNestedClass(ClsDecl);
+    } else {
+      SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
+        SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
+        SourceLocation(), ParsedAttributesView());
+    }
+  }
+
+  clang::Decl *TempDeclPtr = Tag;
+  SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCurClangScope(),
+                                                TempDeclPtr, SourceRange());
+  return Tag;
+}
+
 clang::Decl *Elaborator::makeTemplateDecl(Declaration *D) {
   llvm::outs() << "TEMPLATE!\n";
   return nullptr;
+}
+
+clang::Decl *Elaborator::makeFieldDecl(Declaration *D, clang::Expr *Ty) {
+  auto TInfo = SemaRef.getTypeSourceInfoFromExpr(Ty, Ty->getExprLoc());
+  if (!TInfo)
+    return nullptr;
+  clang::Decl *Ctxt = SemaRef.getCurrentDecl()->getCxx();
+  clang::CXXRecordDecl *Owner = dyn_cast<clang::CXXRecordDecl>(Ctxt);
+  // Get the type of the entity.
+  if(!Owner) {
+    // This occurs when we are within an extern "C" decl
+    getCxxSema().Diags.Report(D->Def->getLocation(),
+                              clang::diag::err_invalid_extern_c)
+                              << /* a member */0;
+    return nullptr;
+  }
+
+  clang::SourceLocation Loc = D->Def->getLocation();
+  // clang::SourceLocation LocEnd = D->getEndOfDecl();
+  clang::DeclarationName DN = D->Id;
+  clang::InClassInitStyle InitStyle = clang::InClassInitStyle::ICIS_NoInit;
+  if (D->hasInitializer())
+    InitStyle = clang::InClassInitStyle::ICIS_ListInit;
+
+  // TODO: implement static
+  // bool DeclIsStatic = false;
+  // if (isStaticMember(SemaRef, D, DeclIsStatic)) {
+  //   return nullptr;
+  // }
+  clang::Decl *Field = nullptr;
+  // if (DeclIsStatic) {
+  //   // In this case we are creating a static member variable.
+  //   clang::VarDecl *VDecl= clang::VarDecl::Create(Context.CxxAST, Owner, Loc,
+  //                                                 LocEnd, D->getId(),
+  //                                                 TInfo->getType(), TInfo,
+  //                                                 clang::SC_Static);
+  //   VDecl->setAccess(clang::AS_public);
+  //   Field = VDecl;
+  // } else {
+    bool Mutable = false;
+    // TODO: implement Mutability
+    // if (isMutable(SemaRef, D, Mutable))
+    //   return nullptr;
+    // We are create field within a class.
+    Field = SemaRef.getCxxSema().CheckFieldDecl(DN, TInfo->getType(),
+                                                TInfo, /*RecordDecl=*/Owner,
+                                                Loc, Mutable,
+                                                /*BitWidth=*/nullptr, InitStyle,
+                                                Loc, clang::AS_public, nullptr);
+  // }
+  Owner->addDecl(Field);
+  D->setCxx(SemaRef, Field);
+  // SemaRef.setDeclForDeclaration(D, Field);
+  D->CurrentPhase = Phase::Typing;
+  // elaborateAttributes(D);
+  return Field;
 }
 
 // Type elaboration
@@ -601,6 +838,8 @@ clang::Expr *Elaborator::elaborateDeclarator(const Declarator *Dcl) {
     return elaborateFunctionDeclarator(Dcl);
   case Declarator::Template:
     return elaborateTemplateDeclarator(Dcl);
+  case Declarator::Class:
+    return elaborateClassDeclarator(Dcl);
   case Declarator::ImplicitType:
     return elaborateImplicitTypeDeclarator(Dcl);
   }
@@ -645,6 +884,10 @@ clang::Expr *Elaborator::elaborateFunctionDeclarator(const Declarator *Dcl) {
   llvm_unreachable("Not implemented yet");
 }
 
+clang::Expr *Elaborator::elaborateClassDeclarator(const Declarator *Dcl) {
+  llvm_unreachable("Class Declaration not implemented.");
+}
+
 /// Elaborate declarations of the form '[parms] T'.
 clang::Expr *Elaborator::elaborateTemplateDeclarator(const Declarator *Dcl) {
   llvm_unreachable("Not implemented");
@@ -655,9 +898,26 @@ clang::Expr *Elaborator::elaborateImplicitTypeDeclarator(const Declarator *Dcl) 
   return SemaRef.buildTypeExpr(Ty, clang::SourceLocation());
 }
 
+clang::Decl *Elaborator::identifyDeclsInClassBody(Declaration *D,
+                                                  clang::CXXRecordDecl *R) {
+  if(!D->hasInitializer()) {
+    // FIXME: Handle forward declarations here? I think.
+    llvm_unreachable("Type forward declarations are not implemented yet.");
+    return nullptr;
+  }
+
+  // auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
+  // assert(MacroRoot && "Invalid AST structure.");
+  // auto const* BodyArray = MacroRoot->getBlock();
+  D->CurrentPhase = Phase::Typing;
+
+  // for (auto const* ChildDecl : BodyArray->children()) {
+  for (const Syntax *SS : cast<SeqSyntax>(D->getInitializer())->children())
+    identifyDeclaration(SS);
+  return D->getCxx();
+}
 
 // Expression elaboration
-
 clang::Expr *Elaborator::elaborateExpression(const Syntax *S) {
   return doElaborateExpression(S);
 }
@@ -1264,7 +1524,8 @@ void Elaborator::elaborateDefinitionInitialization(Declaration *D) {
   // If the current phase isn't typing then bail.
   if (phaseOf(D) != Phase::Typing)
     return;
-
+  if (D->isFieldDecl())
+    return elaborateFieldInit(D);
   if (D->isVariableDecl())
     return elaborateVarDef(D);
   if (D->isFunctionDecl())
@@ -1278,6 +1539,7 @@ void Elaborator::elaborateVarDef(Declaration *D) {
   D->CurrentPhase = Phase::Initialization;
   if (!D->getCxx())
     return;
+
 
   // If this isn't early elaboration then we have to actually track it.
   // if (!IsEarly)
@@ -1344,8 +1606,28 @@ void Elaborator::elaborateVarDef(Declaration *D) {
   if (!InitExpr)
     return;
   // Update the initializer.
-  SemaRef.getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
+  getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
+}
 
+void Elaborator::elaborateFieldInit(Declaration *D) {
+  assert(D && "Missing Declaration.");
+  if (!D->hasInitializer())
+    return;
+  D->CurrentPhase = Phase::Initialization;
+  getCxxSema().ActOnStartCXXInClassMemberInitializer();
+
+  using EEC = clang::Sema::ExpressionEvaluationContext;
+  clang::EnterExpressionEvaluationContext EEContext(getCxxSema(),
+                                                    EEC::PotentiallyEvaluated,
+                                                    D->getCxx());
+  clang::Expr *InitExpr = elaborateExpression(D->getInitializer());
+  if (!InitExpr) {
+    return;
+  }
+
+  getCxxSema().ActOnFinishCXXInClassMemberInitializer(D->getCxx(),
+                                                      D->Def->getLocation(),
+                                                      InitExpr);
 }
 
 void Elaborator::elaborateFunctionDef(Declaration *D) {
@@ -1519,8 +1801,7 @@ clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
 
   // Processing the case when the returned result is a type.
   if (const clang::TagDecl *TD = R.getAsSingle<clang::TagDecl>())
-    llvm_unreachable("Reference to tag decl not implemented yet.");
-    // return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
+    return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
 
   if (clang::ClassTemplateDecl *CTD
                                 = R.getAsSingle<clang::ClassTemplateDecl>())
@@ -1894,5 +2175,313 @@ void Elaborator::Error(clang::SourceLocation Loc, llvm::StringRef Msg) {
   CxxSema.Diags.Report(Loc, clang::diag::err_blue_elaboration) << Msg;
 }
 
+
+
+
+
+
+bool Elaborator::delayElaborateDeclType(clang::CXXRecordDecl *RD,
+                                        const Syntax *S) {
+  Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
+  if (!D) {
+    return false;
+  }
+
+  // Handling a check for possible late elaboration on each declaration.
+  if (phaseOf(D) > Phase::Identification)
+    return false;
+
+
+  // FIXME: This almost certainly needs its own elaboration context
+  // because we can end up with recursive elaborations of declarations,
+  // possibly having cyclic dependencies.
+  // || D->declaresForwardRecordDecl()
+  if (D->declaratorContainsTag()) {
+    delayElaborationClassBody(D);
+    return true;
+  }
+  bool WasDelayed = false;
+  if (D->declaratorContainsFunction()) {
+    llvm_unreachable("Member function elaboration not implemented yet");
+    // if (D->declIsStatic()) {
+    //   // TODO: If this reaches across class then we may need to change how look up
+    //   // is handled in this set of circumstances. Because this could
+    //   // reach into the scope of another class and get data from there
+    //   // but the late elaboration from there might not exist yet.
+    //   // So we might need to do partial elaboration of a few things in order to
+    //   // correctly define them.
+    //   elaborateDecl(D);
+    // } else {
+    //   if (RD->isUnion()) {
+    //     elaborateDecl(D);
+    //   } else {
+    //     // Attempting to delay method decl/def combos
+    //     delayElaborateMethodDecl(D);
+    //     WasDelayed = true;
+    //   }
+    // }
+    if (D->hasInitializer()) {
+      delayElaborateMethodDef(D);
+      WasDelayed = true;
+    }
+    return WasDelayed;
+  }
+  elaborateDeclarationTyping(D);
+  if (!D->isFieldDecl()) {
+    elaborateDefinitionInitialization(D);
+    return false;
+  }
+
+  if (D->declaresInitializedVariable()) {
+    delayElaborateMemberInitializer(D);
+    return true;
+  }
+  return false;
+}
+
+
+void Elaborator::delayElaborateMemberInitializer(Declaration *D) {
+  SemaRef.getCurrentElaboratingClass().LateElaborations.push_back(
+    new LateElaborateMemberInitializer(SemaRef, D)
+  );
+}
+
+void Elaborator::delayElaborateMethodDecl(Declaration *D) {
+  SemaRef.getCurrentElaboratingClass().LateElaborations.push_back(
+    new LateElaboratedMethodDeclaration(SemaRef, D)
+  );
+}
+
+void Elaborator::delayElaborateMethodDef(Declaration *D) {
+  SemaRef.getCurrentElaboratingClass().LateElaborations.push_back(
+    new LateElaboratedMethodDef(SemaRef, D)
+  );
+}
+
+void Elaborator::delayElaborationClassBody(Declaration *D) {
+  elaborateDeclarationTyping(D);
+}
+
+void Elaborator::delayElaborateDefaultParam(Declaration *ParamDecl) {
+  assert(SemaRef.CurrentLateMethodDecl && "Late method decl not set");
+  SemaRef.CurrentLateMethodDecl->DefaultArgs.emplace_back(ParamDecl);
+}
+
+
+
+void Elaborator::finishDelayedElaboration(ElaboratingClass &Class) {
+  lateElaborateAttributes(Class);
+  lateElaborateMethodDecls(Class);
+  lateElaborateDefaultParams(Class);
+  // We call this because no new declarations can be added after this point.
+  // This is only called for the top level class.
+  SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
+
+  lateElaborateMemberInitializers(Class);
+  lateElaborateMethodDefs(Class);
+}
+
+void Elaborator::lateElaborateAttributes(ElaboratingClass &Class) {
+  bool CurrentlyNested = !Class.IsTopLevelClass;
+  Sema::ClangScopeRAII AttributeDelayedScope(SemaRef, clang::Scope::DeclScope |
+    clang::Scope::ClassScope, clang::SourceLocation(), CurrentlyNested);
+
+
+  OptionalInitScope<ResumeScopeRAII> OptResumeScope(SemaRef);
+
+  // This may need to be moved to somewhere else.
+  if (CurrentlyNested) {
+    OptResumeScope.Init(Class.TagOrTemplate->SavedScope,
+                        Class.TagOrTemplate->Def);
+    SemaRef.getCxxSema().ActOnStartDelayedMemberDeclarations(
+      SemaRef.getCurClangScope(), Class.TagOrTemplate->getCxx());
+  }
+
+  for (size_t i = 0; i < Class.LateElaborations.size(); ++i) {
+    Class.LateElaborations[i]->ElaborateAttributes();
+  }
+  if (CurrentlyNested)
+    SemaRef.getCxxSema().ActOnFinishDelayedMemberDeclarations(
+      SemaRef.getCurClangScope(), Class.TagOrTemplate->getCxx());
+}
+
+void Elaborator::lateElaborateMethodDecls(ElaboratingClass &Class) {
+  // If the current class is a template re-enter the template before we continue.
+  bool HasTemplateScope = !Class.IsTopLevelClass && Class.TemplateScope;
+  Sema::ClangScopeRAII ClassTemplateScope(SemaRef,
+    clang::Scope::TemplateParamScope, clang::SourceLocation(), HasTemplateScope);
+
+  if (HasTemplateScope)
+    SemaRef.getCxxSema().ActOnReenterTemplateScope(Class.TagOrTemplate->getCxx(),
+                                                   [&] {
+      return SemaRef.getCurClangScope();
+    });
+
+  bool CurrentlyNested = !Class.IsTopLevelClass;
+  Sema::ClangScopeRAII FunctionDeclScope(SemaRef, clang::Scope::DeclScope |
+    clang::Scope::ClassScope, clang::SourceLocation(), CurrentlyNested);
+
+  OptionalInitScope<Sema::DeclContextRAII> DCTracking(SemaRef);
+  OptionalInitScope<ResumeScopeRAII> OptResumeScope(SemaRef);
+
+  // This may need to be moved to somewhere else.
+  if (CurrentlyNested) {
+    OptResumeScope.Init(Class.TagOrTemplate->SavedScope,
+      Class.TagOrTemplate->Def, false);
+    SemaRef.getCxxSema().ActOnStartDelayedMemberDeclarations(
+      SemaRef.getCurClangScope(), Class.TagOrTemplate->getCxx());
+    DCTracking.Init(Class.TagOrTemplate, true);
+  }
+
+  for (size_t i = 0; i < Class.LateElaborations.size(); ++i) {
+    Class.LateElaborations[i]->ElaborateMethodDeclarations();
+  }
+
+  if (CurrentlyNested)
+    SemaRef.getCxxSema().ActOnFinishDelayedMemberDeclarations(
+      SemaRef.getCurClangScope(), Class.TagOrTemplate->getCxx());
+}
+
+void Elaborator::lateElaborateDefaultParams(ElaboratingClass &Class) {
+  for (size_t i = 0; i < Class.LateElaborations.size(); ++i) {
+    Class.LateElaborations[i]->ElaborateDefaultParams();
+  }
+}
+
+void Elaborator::lateElaborateMemberInitializers(ElaboratingClass &Class) {
+  bool CurrentlyNested = !Class.IsTopLevelClass;
+
+  Sema::ClangScopeRAII MemberInitScope(SemaRef, clang::Scope::DeclScope |
+    clang::Scope::ClassScope, clang::SourceLocation(), CurrentlyNested);
+
+  OptionalInitScope<ResumeScopeRAII> OptResumeScope(SemaRef);
+  OptionalInitScope<Sema::DeclContextRAII> DCTracking(SemaRef);
+
+  // This may need to be moved to somewhere else.
+  if (CurrentlyNested) {
+    OptResumeScope.Init(Class.TagOrTemplate->SavedScope,
+      Class.TagOrTemplate->Def, false);
+    SemaRef.getCxxSema().ActOnStartDelayedMemberDeclarations(
+      SemaRef.getCurClangScope(), Class.TagOrTemplate->getCxx());
+    DCTracking.Init(Class.TagOrTemplate, true);
+  }
+
+  clang::Sema::CXXThisScopeRAII PushThisIntoScope(SemaRef.getCxxSema(),
+      Class.TagOrTemplate->getCxx(), clang::Qualifiers());
+
+  for (size_t i = 0; i < Class.LateElaborations.size(); ++i) {
+    Class.LateElaborations[i]->ElaborateMemberInitializers();
+  }
+
+  if (CurrentlyNested)
+    SemaRef.getCxxSema().ActOnFinishDelayedMemberDeclarations(
+      SemaRef.getCurClangScope(), Class.TagOrTemplate->getCxx());
+
+  SemaRef.getCxxSema().ActOnFinishDelayedMemberInitializers(
+    Class.TagOrTemplate->getCxx());
+}
+
+void Elaborator::lateElaborateMethodDefs(ElaboratingClass &Class) {
+  bool CurrentlyNested = !Class.IsTopLevelClass;
+  Sema::ClangScopeRAII MethodDefScope(SemaRef, clang::Scope::DeclScope |
+    clang::Scope::ClassScope, clang::SourceLocation(), CurrentlyNested);
+
+  OptionalInitScope<ResumeScopeRAII> OptResumeScope(SemaRef);
+
+  // This may need to be moved to somewhere else.
+  if (CurrentlyNested)
+    OptResumeScope.Init(Class.TagOrTemplate->SavedScope,
+      Class.TagOrTemplate->Def, false);
+
+  for (size_t i = 0; i < Class.LateElaborations.size(); ++i) {
+    Class.LateElaborations[i]->ElaborateMethodDefs();
+  }
+}
+
+void Elaborator::lateElaborateAttribute(LateElaboratedAttributeDecl &Field) {
+  // TODO: find a valid example of how this actually works/when this is used.
+  llvm_unreachable("We currently don't have late binding attributes? I don't "
+      "really know.");
+}
+
+void Elaborator::lateElaborateMethodDef(LateElaboratedMethodDef &Method) {
+  // if (!Method.D->Cxx)
+  //   return;
+  // // Finish exception spec before method body?
+  // {
+  //   if (!Method.D->FunctionDcl)
+  //     return;
+  //   FunctionDeclarator *FnDecl = Method.D->FunctionDcl->getAsFunction();
+  //   // Attempting to push the scope for the current function onto the stack
+  //   // This helps with lookup during evaluation exception specification.
+  //   ResumeScopeRAII TempScope(SemaRef,
+  //                                   FnDecl->getScope(),
+  //                                   FnDecl->getScope()->getConcreteTerm(),
+  //                                   /*PopOnExit=*/false);
+  //   OptionalInitClangRAII<clang::Sema::CXXThisScopeRAII> ThisScope(
+  //                                                                      SemaRef);
+  //   if (clang::CXXMethodDecl *MD
+  //                             = dyn_cast<clang::CXXMethodDecl>(Method.D->Cxx)) {
+  //     ThisScope.Init(MD->getParent(), MD->getMethodQualifiers(), true);
+  //   }
+  //   finishExceptionSpecAttr(Context, SemaRef, Method.D);
+  // }
+  // elaborateFunctionDef(Method.D);
+  // if (!Method.D->Cxx)
+  //   return;
+  // SemaRef.getCxxSema().ActOnFinishInlineFunctionDef(
+  //   cast<clang::FunctionDecl>(Method.D->Cxx));
+  llvm_unreachable("Late elaborate method def not implemented yet.");
+}
+
+
+void Elaborator::lateElaborateMemberInitializer(
+    LateElaborateMemberInitializer &MemberInit) {
+  assert(MemberInit.D && "Invalid declaration detected.");
+  assert(MemberInit.D->isFieldDecl()
+         && "Declaration doesn't declare a field.\n");
+
+  // Start delayed member This occurs for each member initializer within a
+  // given class.
+  elaborateDefinitionInitialization(MemberInit.D);
+}
+
+void Elaborator::lateElaborateMethodDecl(
+    LateElaboratedMethodDeclaration &Method) {
+  // Sema::ClangScopeRAII FunctionDeclScope(SemaRef, clang::Scope::DeclScope |
+  //     clang::Scope::FunctionPrototypeScope |
+  //     clang::Scope::FunctionDeclarationScope,
+  //     clang::SourceLocation());
+  // Sema::LateMethodRAII MethodTracking(SemaRef, &Method);
+  // elaborateDecl(Method.D);
+  // // This is to check if the method delcaration was a success and in the event
+  // // that it is we need to finish the exception specifier after the end of the
+  // // class.
+  // if (Method.D->Cxx) {
+  //   if (clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(Method.D->Cxx)) {
+  //     if (FD->getExceptionSpecType() == clang::EST_Unparsed) {
+  //       if (!Method.D->Init) {
+  //         SemaRef.getCurrentElaboratingClass().LateElaborations.push_back(
+  //           new LateElaboratedMethodDef(SemaRef, Context, Method.D)
+  //         );
+  //       }
+  //     }
+  //   }
+  // }
+  // SemaRef.getCxxSema().ActOnFinishDelayedCXXMethodDeclaration(
+  //     SemaRef.getCurClangScope(), Method.D->Cxx);
+  llvm_unreachable("Late method declaration not implemented yet.");
+}
+
+void Elaborator::lateElaborateDefaultParams(
+    LateElaboratedMethodDeclaration &MethodDecl) {
+  for(LateElaboratedDefaultArgument &Arg : MethodDecl.DefaultArgs)
+    lateElaborateDefaultParam(Arg);
+}
+
+void Elaborator::lateElaborateDefaultParam(
+    LateElaboratedDefaultArgument &DefaultParam) {
+  elaborateDefinitionInitialization(DefaultParam.Param);
+}
 
 } // namespace blue

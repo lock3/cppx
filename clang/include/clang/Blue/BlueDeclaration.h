@@ -16,7 +16,7 @@
 
 #include "clang/Blue/BlueDeclarator.h"
 #include "clang/Blue/BlueSyntax.h"
-
+#include "clang/AST/DeclTemplate.h"
 
 namespace clang {
   class Decl;
@@ -88,6 +88,8 @@ struct Declaration {
   /// This is also the parent scope to the SavedScope, if set.
   Scope *ScopeForDecl = nullptr;
 
+  /// Template parameter storage, this is used when building classes.
+  llvm::SmallVector<clang::TemplateParameterList *, 4> TemplateParamStorage;
 
   clang::Decl *getCxx() {
     return Cxx;
@@ -100,8 +102,31 @@ struct Declaration {
     return Ctx;
   }
 
+  bool declaratorContains(Declarator::Kind DeclKind) const;
+  bool declaratorContainsClass() const;
+  bool declaratorContainsFunction() const;
+  bool declaratorContainsTemplate() const;
+  // TODO: Add enum to this eventually.
+  bool declaratorContainsTag() const;
+  bool declaratorContainsClassTemplate() const;
+
+  bool declaredWithinClassBody() const;
+
+  /// Use to determine if the partially elaborated declaration is of type T.
+  template<typename T>
+  bool isDecl() const {
+    return Cxx && isa<T>(Cxx);
+  }
+
   bool isVariableDecl() const;
   bool isFunctionDecl() const;
+  bool isClassDecl() const;
+  bool isTypeAliasDecl() const;
+  bool isFieldDecl() const;
+
+
+  /// This is used for handling delated class elaboration.
+  bool declaresInitializedVariable() const;
 
   bool hasInitializer() const;
 
@@ -113,6 +138,19 @@ struct Declaration {
   /// Get the def as a DefSyntax.
   const DefSyntax *asDef() const;
 
+  clang::SourceLocation getEndOfDecl() const {
+    const Declarator *D = Decl;
+    if (!D)
+      return clang::SourceLocation();
+
+    if (Init)
+      return Init->getLocation();
+
+    while(D->getNext()) {
+      D = D->getNext();
+    }
+    return D->getLocation();
+  }
 private:
   /// The corresponding C++ declaration.
   clang::Decl *Cxx = nullptr;

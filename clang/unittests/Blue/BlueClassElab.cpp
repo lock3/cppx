@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueClass, SimpleClassDecl) {
   StringRef Code = R"BLUE(
-C : class = { }
+C : class { };
 )BLUE";
   auto ToMatch = cxxRecordDecl(hasName("C"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -28,7 +28,7 @@ C : class = { }
 
 TEST(BlueClass, ClassWithMemberDecl) {
   StringRef Code = R"BLUE(
-C : class = {
+C : class {
   x:int;
 }
 )BLUE";
@@ -41,8 +41,7 @@ C : class = {
 
 TEST(BlueClass, ClassDeclUse_DefaultInit) {
   StringRef Code = R"BLUE(
-C : class = {
-  x:int;
+C : class {
 }
 x:C;
 
@@ -55,28 +54,29 @@ x:C;
       isDefaulted(), isNoThrow())),
     hasDescendant(cxxConstructorDecl(isMoveConstructor(), isImplicit()))
     )),
-    varDecl(hasName("x"), hasType(asString("struct C")))
+    has(varDecl(hasName("x"), hasType(asString("struct C"))))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-TEST(BlueClass, ClassDeclUse_DefaultCtor) {
-  StringRef Code = R"BLUE(
-C : class = {
-  x:int;
-}
-x:C = ();
+// TODO: IMplement me eventually.
+// TEST(BlueClass, ClassDeclUse_DefaultCtor) {
+//   StringRef Code = R"BLUE(
+// C : class {
+//   x:int;
+// }
+// x:C = ();
 
-)BLUE";
-  auto ToMatch = translationUnitDecl(has(cxxRecordDecl(
-    hasName("C"),
-    hasDescendant(cxxConstructorDecl(isDefaultConstructor(), isImplicit(),
-      isDefaulted(), isNoThrow())),
-    hasDescendant(cxxConstructorDecl(isCopyConstructor(), isImplicit(),
-      isDefaulted(), isNoThrow())),
-    hasDescendant(cxxConstructorDecl(isMoveConstructor(), isImplicit()))
-    )),
-    varDecl(hasName("x"), hasType(asString("struct C")))
-  );
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// )BLUE";
+//   auto ToMatch = translationUnitDecl(has(cxxRecordDecl(
+//     hasName("C"),
+//     hasDescendant(cxxConstructorDecl(isDefaultConstructor(), isImplicit(),
+//       isDefaulted(), isNoThrow())),
+//     hasDescendant(cxxConstructorDecl(isCopyConstructor(), isImplicit(),
+//       isDefaulted(), isNoThrow())),
+//     hasDescendant(cxxConstructorDecl(isMoveConstructor(), isImplicit()))
+//     )),
+//     varDecl(hasName("x"), hasType(asString("struct C")))
+//   );
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }

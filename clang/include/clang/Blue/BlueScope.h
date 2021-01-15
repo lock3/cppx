@@ -24,7 +24,7 @@
 
 namespace blue
 {
-
+struct Declaration;
 class Syntax;
 
 template<typename K, typename V>
@@ -80,6 +80,10 @@ public:
 
   Kind getKind() const {
     return Which;
+  }
+
+  bool isClassScope() const {
+    return getKind() == Class;
   }
 
   bool isBlockScope() const {
@@ -143,6 +147,8 @@ public:
   bool hasDeclaration(const DefSyntax *Def) const {
     return DeclMap.count(Def) != 0;
   }
+
+  Declaration *Entity = nullptr;
 
 private:
   Kind Which;

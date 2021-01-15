@@ -159,6 +159,14 @@ void Sema::leaveScope(const Syntax *S) {
   popScope();
 }
 
+Scope *Sema::saveScope(const Syntax *S) {
+  assert(getCurrentScope()->getTerm() == S);
+  // FIXME: Queue the scope for subsequent deletion?
+  Scope *Scope = getCurrentScope();
+  popScope();
+  return Scope;
+}
+
 void Sema::pushScope(Scope *S) {
   assert(S && "Invalid scope");
   ScopeStack.push_back(S);
@@ -467,20 +475,6 @@ clang::CppxTypeLiteral *Sema::buildAnyTypeExpr(clang::QualType KindTy,
   return buildAnyTypeExpr(KindTy, gold::BuildAnyTypeLoc(Context.CxxAST, Ty, Loc));
 }
 
-clang::CppxTypeLiteral *
-Sema::buildFunctionTypeExpr(clang::QualType FnTy,
-                            clang::SourceLocation BeginLoc,
-                            clang::SourceLocation LParenLoc,
-                            clang::SourceLocation RParenLoc,
-                            clang::SourceRange ExceptionSpecRange,
-                            clang::SourceLocation EndLoc,
-                          llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
-  return buildTypeExpr(gold::BuildFunctionTypeLoc(CxxAST, FnTy,
-                                                  BeginLoc, LParenLoc, RParenLoc,
-                                                  ExceptionSpecRange, EndLoc,
-                                                  Params));
-}
-
 clang::TypeSourceInfo *
 Sema::getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
                                 clang::SourceLocation Loc) {
@@ -499,6 +493,129 @@ Sema::getTypeSourceInfoFromExpr(const clang::Expr *TyExpr,
   }
 
   llvm_unreachable("Invaild type expression evaluates to type of types.");
+}
+
+clang::CppxTypeLiteral *Sema::buildTypeExprTypeFromExpr(clang::Expr *E,
+                                                    clang::SourceLocation Loc,
+                                                    bool IsConstruct) {
+  return buildAnyTypeExpr(Context.CxxAST.CppxKindTy,
+                          gold::BuildAnyTypeLoc(Context.CxxAST,
+                                          Context.CxxAST.getCppxTypeExprTy(
+                                            E, IsConstruct),
+                                          Loc));
+}
+clang::CppxTypeLiteral *Sema::buildTypeExprTypeFromExprLiteral(clang::Expr *E,
+                                                    clang::SourceLocation Loc,
+                                                         bool IsConstructExpr){
+  clang::TypeSourceInfo *TInfo = gold::BuildAnyTypeLoc(Context.CxxAST,
+                  Context.CxxAST.getCppxTypeExprTy(E, IsConstructExpr), Loc);
+  return buildTypeExpr(TInfo);
+}
+
+clang::QualType Sema::buildQualTypeExprTypeFromExpr(clang::Expr *E,
+                                                    clang::SourceLocation Loc,
+                                                    bool IsConstruct) {
+  clang::TypeSourceInfo *TInfo = gold::BuildAnyTypeLoc(Context.CxxAST,
+                  Context.CxxAST.getCppxTypeExprTy(E, IsConstruct), Loc);
+  return TInfo->getType();
+}
+
+clang::CppxTypeLiteral *
+Sema::buildFunctionTypeExpr(clang::QualType FnTy, clang::SourceLocation BeginLoc,
+                            clang::SourceLocation LParenLoc,
+                            clang::SourceLocation RParenLoc,
+                            clang::SourceRange ExceptionSpecRange,
+                            clang::SourceLocation EndLoc,
+                          llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
+  return buildTypeExpr(gold::BuildFunctionTypeLoc(Context.CxxAST, FnTy,
+                                            BeginLoc, LParenLoc, RParenLoc,
+                                            ExceptionSpecRange, EndLoc,
+                                            Params));
+}
+
+clang::CppxTypeLiteral *
+Sema::buildTypeExprFromTypeDecl(const clang::TypeDecl *TyDecl,
+                                clang::SourceLocation Loc) {
+  // FIXME: May need to handle template types differently in the future.
+  return buildTypeExpr(Context.CxxAST.getTypeDeclType(TyDecl), Loc);
+}
+
+clang::CppxDeclRefExpr *Sema::buildTemplateType(clang::TemplateDecl *TD,
+                                                clang::SourceLocation Loc) {
+  clang::QualType TT = Context.CxxAST.getTemplateType(TD);
+  return buildAnyDeclRef(TT, TD, Loc);
+}
+
+clang::QualType Sema::getQualTypeFromTypeExpr(const clang::Expr *TyExpr) {
+  if (!TyExpr) {
+    return clang::QualType();
+  }
+  if (!TyExpr->getType()->isTypeOfTypes()) {
+    getCxxSema().Diags.Report(TyExpr->getExprLoc(), clang::diag::err_not_a_type);
+    return clang::QualType();
+  }
+  if (const clang::CppxTypeLiteral *Ty
+                                   = dyn_cast<clang::CppxTypeLiteral>(TyExpr)) {
+
+    return Ty->getValue()->getType();
+  }
+  llvm_unreachable("Invaild type expression evaluates to type of types.");
+
+}
+
+clang::ParsedType Sema::getParsedTypeFromExpr(const clang::Expr *TyExpr,
+                                              clang::SourceLocation Loc) {
+  clang::TypeSourceInfo *TInfo = getTypeSourceInfoFromExpr(TyExpr, Loc);
+  if(!TInfo)
+    return nullptr;
+
+  return CxxSema.CreateParsedType(TInfo->getType(), TInfo);
+}
+
+clang::CppxDeclRefExpr *Sema::buildNSDeclRef(clang::CppxNamespaceDecl *D,
+                                             clang::SourceLocation Loc) {
+  return buildAnyDeclRef(Context.CxxAST.CppxNamespaceTy, D, Loc);
+}
+
+clang::CppxDeclRefExpr *Sema::buildNSDeclRef(clang::NamespaceAliasDecl *D,
+                                             clang::SourceLocation Loc) {
+  return buildAnyDeclRef(Context.CxxAST.CppxNamespaceTy, D, Loc);
+}
+
+clang::CppxDeclRefExpr *
+Sema::buildAnyDeclRef(clang::QualType KindTy, clang::Decl *D,
+                      clang::SourceLocation Loc) {
+  assert(D && "Invalid declaration to reference.");
+  return clang::CppxDeclRefExpr::Create(Context.CxxAST, KindTy, D, Loc);
+}
+
+clang::Decl *Sema::getDeclFromExpr(const clang::Expr *DeclExpr,
+                                   clang::SourceLocation Loc) {
+  assert(DeclExpr && "Invalid expression");
+
+  if (const clang::CppxDeclRefExpr *DecRef
+                          = dyn_cast<clang::CppxDeclRefExpr>(DeclExpr)) {
+    return DecRef->getValue();
+  }
+  llvm_unreachable("Unable to get declaration from expression.");
+  // TODO: Change this error message to say that the expression doesn't contain
+  // a declaration or something like that.
+}
+
+clang::CppxNamespaceDecl *Sema::getNSDeclFromExpr(const clang::Expr *DeclExpr,
+                                                  clang::SourceLocation Loc) {
+  assert(DeclExpr && "Invalid expression");
+  if (const clang::CppxDeclRefExpr *DecRef
+                                 = dyn_cast<clang::CppxDeclRefExpr>(DeclExpr)) {
+    if (clang::CppxNamespaceDecl *NsDecl
+                     = dyn_cast<clang::CppxNamespaceDecl>(DecRef->getValue())) {
+      return NsDecl;
+    }
+    getCxxSema().Diags.Report(Loc, clang::diag::err_expected_namespace);
+    return nullptr;
+  }
+  getCxxSema().Diags.Report(Loc, clang::diag::err_expected_namespace);
+  return nullptr;
 }
 
 static bool checkSimplNameMatchRedecl(Sema &SemaRef, Declaration *D) {
@@ -683,6 +800,60 @@ Declaration *Sema::getDeclaration(clang::Decl *Cxx) {
     return nullptr;
 
   return Iter->second;
+}
+
+
+bool Sema::isElaboratingClass() const {
+  return !ClassStack.empty();
+}
+
+Sema::ClassElaborationState
+Sema::pushElaboratingClass(Declaration *D, bool TopLevelClass) {
+  assert((TopLevelClass || !ClassStack.empty())
+      && "Nestd class without outer class.");
+  ClassStack.push_back(new ElaboratingClass(D, TopLevelClass));
+  return CxxSema.PushParsingClass();
+}
+
+void Sema::deallocateElaboratingClass(ElaboratingClass *D) {
+  for (unsigned I = 0, N = D->LateElaborations.size(); I != N; ++I)
+    delete D->LateElaborations[I];
+  delete D;
+}
+
+void Sema::popElaboratingClass(ClassElaborationState State) {
+  assert(!ClassStack.empty() && "Mismatched push/pop for class parsing");
+
+  CxxSema.PopParsingClass(State);
+
+  ElaboratingClass *Victim = ClassStack.back();
+  ClassStack.pop_back();
+  if (Victim->IsTopLevelClass) {
+    // Deallocate all of the nested classes of this class,
+    // recursively: we don't need to keep any of this information.
+    deallocateElaboratingClass(Victim);
+    return;
+  }
+  assert(!ClassStack.empty() && "Missing top-level class?");
+
+  if (Victim->LateElaborations.empty()) {
+    // The victim is a nested class, but we will not need to perform
+    // any processing after the definition of this class since it has
+    // no members whose handling was delayed. Therefore, we can just
+    // remove this nested class.
+    deallocateElaboratingClass(Victim);
+    return;
+  }
+
+  // This nested class has some members that will need to be processed
+  // after the top-level class is completely defined. Therefore, add
+  // it to the list of nested classes within its parent.
+  assert(CxxSema.getCurScope()->isClassScope()
+      && "Nested class outside of class scope?");
+  ClassStack.back()->LateElaborations.push_back(
+      new LateElaboratedClass(*this, Victim));
+  Victim->TemplateScope
+                   = CxxSema.getCurScope()->getParent()->isTemplateParamScope();
 }
 
 void Sema::diagnoseElabCycleError(Declaration *CycleTerminalDecl) {
