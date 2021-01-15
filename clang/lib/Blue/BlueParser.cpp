@@ -216,16 +216,26 @@ Syntax *Parser::parseBlockStatement() {
 }
 
 Syntax *Parser::parseIfStatement() {
-  requireToken(tok::IfKeyword);
-  parseParenEnclosed(*this, [this]() -> Syntax * {
+  Token KW = requireToken(tok::IfKeyword);
+  Syntax *Sig = parseParenEnclosed(*this, [this]() -> Syntax * {
     return parseExpression();
   });
-  parseStatement();
 
+  auto parseBlock = [this]() -> Syntax * {
+    if (this->nextTokenIs(tok::LeftBrace))
+      return this->parseBlockStatement();
+    Syntax *Ret = this->parseStatement();
+    this->expectToken(tok::Semicolon);
+    return Ret;
+  };
+
+  Syntax *Then = parseBlock();
+  Syntax *Else = nullptr;
   if (matchToken(tok::ElseKeyword))
-    parseStatement();
+    Else = parseBlock();
 
-  return nullptr;
+  Syntax *Block = onBinary(Token(), Then, Else);
+  return onControl(KW, Sig, Block);
 }
 
 Syntax *Parser::parseWhileStatement() {
@@ -245,13 +255,13 @@ Syntax *Parser::parseForStatement() {
 
 Syntax *Parser::parseBreakStatement() {
   requireToken(tok::BreakKeyword);
-  matchToken(tok::Semicolon);
+  // matchToken(tok::Semicolon);
   return nullptr;
 }
 
 Syntax *Parser::parseContinueStatement() {
   requireToken(tok::ContinueKeyword);
-  matchToken(tok::Semicolon);
+  // matchToken(tok::Semicolon);
   return nullptr;
 }
 
@@ -277,7 +287,7 @@ Syntax *Parser::parseDeclarationStatement() {
 ///     expression ;
 Syntax *Parser::parseExpressionStatement() {
   Syntax* e = parseExpression();
-  matchToken(tok::Semicolon);
+  // matchToken(tok::Semicolon);
   return e;
 }
 
@@ -851,6 +861,10 @@ Syntax *Parser::onBlock(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &S
 
 Syntax *Parser::onDef(const Token &Tok, Syntax *Sig, Syntax *Init) {
   return new DefSyntax(Tok, Sig, Init);
+}
+
+Syntax *Parser::onControl(const Token &Tok, Syntax *Sig, Syntax *Block) {
+  return new ControlSyntax(Tok, Sig, Block);
 }
 
 Syntax *Parser::onTop(llvm::SmallVectorImpl<Syntax *> &SS) {

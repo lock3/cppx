@@ -547,6 +547,63 @@ private:
   Syntax *Args[2];
 };
 
+/// Represents a control structure
+class ControlSyntax : public Syntax {
+public:
+  ControlSyntax(Token KW, Syntax *Sig, Syntax *Block)
+    : Syntax(Control), Keyword(KW), Args{Sig, Block} {}
+
+  const Token& getKeyword() const {
+    return Keyword;
+  }
+
+  Syntax *getSignature() {
+    return Args[0];
+  }
+
+  const Syntax *getSignature() const {
+    return Args[0];
+  }
+
+  Syntax *getBlock() {
+    return Args[1];
+  }
+
+  const Syntax *getBlock() const {
+    return Args[1];
+  }
+
+  /// The location of a declaration is that of its keyword.
+  clang::SourceLocation getLocation() const {
+    return Keyword.getLocation();
+  }
+
+  clang::SourceLocation getBeginLocation() const {
+    return getLocation();
+  }
+
+  clang::SourceLocation getEndLocation() const {
+    return Args[1]->getEndLocation();
+  }
+
+
+  child_range children() {
+    return child_range(Args, Args + 2);
+  }
+
+  const child_range children() const {
+    return child_range(Args, Args + 2);
+  }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == Control;
+  }
+
+private:
+  Token Keyword;
+  Syntax *Args[2];
+};
+
 /// Represents the top-level sequence of statements.
 class TopSyntax : public VectorSyntax {
 public:

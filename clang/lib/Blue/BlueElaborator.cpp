@@ -659,6 +659,9 @@ clang::Expr *Elaborator::elaborateImplicitTypeDeclarator(const Declarator *Dcl) 
 // Expression elaboration
 
 clang::Expr *Elaborator::elaborateExpression(const Syntax *S) {
+  if (isa<ErrorSyntax>(S))
+    return nullptr;
+
   return doElaborateExpression(S);
 }
 
@@ -1654,6 +1657,12 @@ clang::Stmt *Elaborator::elaborateSeq(const SeqSyntax *S) {
 clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
   if (const UnarySyntax *U = dyn_cast<UnarySyntax>(S))
     return elaborateUnaryStmt(U);
+  else if (const ControlSyntax *C = dyn_cast<ControlSyntax>(S))
+    return elaborateControlStmt(C);
+  else if (const SeqSyntax *Q = dyn_cast<SeqSyntax>(S))
+    return elaborateSeq(Q);
+  else if (isa<ErrorSyntax>(S))
+    return nullptr;
 
   // TODO: elaborate by syntax type: i.e. atom, etc. See GoldStmtElaborator
 
@@ -1683,6 +1692,66 @@ clang::Stmt *Elaborator::elaborateUnaryStmt(const UnarySyntax *S) {
   } // switch (S->getOperator())->getKind()
 
   return elaborateUnaryExpression(S);
+}
+
+clang::Stmt *Elaborator::elaborateControlStmt(const ControlSyntax *S) {
+  switch (S->getKeyword().getKind()) {
+  case tok::IfKeyword:
+    return elaborateIfStmt(S);
+
+  default:
+    break;
+  }
+
+  llvm_unreachable("invalid or unimplemented control structure");
+}
+
+clang::Stmt *Elaborator::elaborateIfStmt(const ControlSyntax *S) {
+  assert(S->getKeyword().hasKind(tok::IfKeyword) && "invalid if syntax");
+
+  // TODO: implement constexpr if
+  bool IsConstExprIfStmt = false;
+
+  // Elaborate the condition
+  clang::Expr *ConditionExpr = elaborateExpression(S->getSignature());
+  if (!ConditionExpr)
+    return nullptr;
+  clang::Sema::ConditionResult Condition =
+    SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr,
+                                        S->getLocation(), ConditionExpr,
+                                        IsConstExprIfStmt ?
+                                        clang::Sema::ConditionKind::ConstexprIf:
+                                        clang::Sema::ConditionKind::Boolean);
+
+  // Get the block, this *must* be a binary application.
+  if (isa<ErrorSyntax>(S->getBlock()))
+    return nullptr;
+  const BinarySyntax *Block = cast<BinarySyntax>(S->getBlock());
+  const Syntax *ThenBlock = Block->getLeftOperand();
+  const Syntax *ElseBlock = Block->getRightOperand();
+
+  // Elaborate the then block
+  SemaRef.enterScope(Scope::Block, ThenBlock);
+  clang::Stmt *Then = elaborateStatement(ThenBlock);
+  SemaRef.leaveScope(ThenBlock);
+  if (!Then)
+    return nullptr;
+
+  // Elaborate the else block
+  clang::Stmt *Else = nullptr;
+  if (ElseBlock) {
+    SemaRef.enterScope(Scope::Block, ElseBlock);
+    Else = elaborateStatement(ElseBlock);
+    SemaRef.leaveScope(ElseBlock);
+  }
+  clang::SourceLocation ElseLoc = Else ?
+    Else->getBeginLoc() : clang::SourceLocation();
+
+  // Create the statement and return
+  clang::StmtResult If = CxxSema.ActOnIfStmt(
+    S->getLocation(), /*Constexpr=*/false, ConditionExpr->getExprLoc(),
+    /*InitStmt=*/nullptr, Condition, ElseLoc, Then, ElseLoc, Else);
+  return If.get();
 }
 
 clang::Stmt *Elaborator::elaborateReturnStmt(const UnarySyntax *S) {

@@ -130,6 +130,8 @@ public:
   clang::Stmt *elaborateSeq(const SeqSyntax *S);
   clang::Stmt *elaborateStatement(const Syntax *S);
   clang::Stmt *elaborateUnaryStmt(const UnarySyntax *S);
+  clang::Stmt *elaborateControlStmt(const ControlSyntax *S);
+  clang::Stmt *elaborateIfStmt(const ControlSyntax *S);
   clang::Stmt *elaborateReturnStmt(const UnarySyntax *S);
 
   //===--------------------------------------------------------------------===//
