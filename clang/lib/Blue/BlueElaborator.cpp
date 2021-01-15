@@ -113,15 +113,16 @@ clang::Decl *Elaborator::elaborateTop(const Syntax *S) {
   return TU;
 }
 
-void Elaborator::buildDeclaration(const DefSyntax *S) {
+Declaration *Elaborator::buildDeclaration(const DefSyntax *S) {
   Declarator *Dcl = getDeclarator(S->getDeclarator());
-  createDeclaration(S, Dcl, S->getInitializer());
+  return createDeclaration(S, Dcl, S->getInitializer());
 }
 
 void Elaborator::identifyDeclaration(const Syntax *S) {
   switch (S->getKind()) {
   case Syntax::Def:
-    return buildDeclaration(cast<DefSyntax>(S));
+    buildDeclaration(cast<DefSyntax>(S));
+    return;
   default:
     break;
   }
@@ -965,7 +966,7 @@ clang::Expr *Elaborator::doElaborateExpression(const Syntax *S) {
     return nullptr;
   default:
     break;
-  }
+}
   S->dump();
   llvm_unreachable("Unexpected syntax tree");
 }
@@ -1941,6 +1942,9 @@ clang::Stmt *Elaborator::elaborateSeq(const SeqSyntax *S) {
 }
 
 clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
+  if (auto DS = dyn_cast<DefSyntax>(S)) {
+    return elaborateDeclStmt(DS);
+  }
   if (const UnarySyntax *U = dyn_cast<UnarySyntax>(S))
     return elaborateUnaryStmt(U);
 
@@ -1960,6 +1964,24 @@ clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
     return nullptr;
 
   return ExprStmt.get();
+}
+
+clang::Stmt *Elaborator::elaborateDeclStmt(const DefSyntax *S) {
+  auto D = buildDeclaration(S);
+  if (!D) {
+    Error(S->getLocation(), "invalid vairable declaration");
+    return nullptr;
+  }
+
+  // This should already emit an error.
+  auto TypedDecl = elaborateDeclarationTyping(D);
+  if (!TypedDecl)
+    return nullptr;
+  elaborateDefinitionInitialization(D);
+  auto DclGrp = SemaRef.getCxxSema().ConvertDeclToDeclGroup(D->getCxx());
+  auto DclStmt = getCxxSema().ActOnDeclStmt(DclGrp, D->Def->getLocation(),
+                                            D->Def->getLocation());
+  return DclStmt.get();
 }
 
 clang::Stmt *Elaborator::elaborateUnaryStmt(const UnarySyntax *S) {

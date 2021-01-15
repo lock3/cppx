@@ -74,3 +74,68 @@ x:=-5
   auto ToMatch = unaryOperator(hasOperatorName("-"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+
+
+
+
+
+TEST(BlueArithmeticOp, PlusEqual) {
+  StringRef Code = R"BLUE(
+foo:()->void {
+  x:int;
+  y:int;
+  x += y;
+}
+  )BLUE";
+  auto ToMatch = binaryOperator(hasOperatorName("+="));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueArithmeticOp, MinusEqual) {
+  StringRef Code = R"BLUE(
+foo:()->void {
+  x:int;
+  y:int;
+  x -= y;
+}
+  )BLUE";
+  auto ToMatch = binaryOperator(hasOperatorName("-="));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueArithmeticOp, MultiplicationEqual) {
+  StringRef Code = R"BLUE(
+foo:()->void {
+  x:int;
+  y:int;
+  x *= y;
+}
+  )BLUE";
+  auto ToMatch = binaryOperator(hasOperatorName("*="));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueArithmeticOp, DivEqual) {
+  StringRef Code = R"BLUE(
+foo:()->void {
+  x:int;
+  y:int;
+  x /= y;
+}
+  )BLUE";
+  auto ToMatch = binaryOperator(hasOperatorName("/="));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueArithmeticOp, ModEqual) {
+  StringRef Code = R"BLUE(
+foo:()->void {
+  x:int;
+  y:int;
+  x %= y;
+}
+  )BLUE";
+  auto ToMatch = binaryOperator(hasOperatorName("%="));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

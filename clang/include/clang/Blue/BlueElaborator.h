@@ -67,7 +67,7 @@ public:
   clang::Decl *elaborateTop(const Syntax *S);
 
   void identifyDeclaration(const Syntax *S);
-  void buildDeclaration(const DefSyntax *S);
+  Declaration * buildDeclaration(const DefSyntax *S);
   clang::Decl *elaborateDecl(const Syntax *S);
   clang::Decl *elaborateDefDecl(const DefSyntax *S);
   clang::Decl *elaborateDeclarationTyping(Declaration *D);
@@ -144,6 +144,7 @@ public:
   /// Stmts
   clang::Stmt *elaborateSeq(const SeqSyntax *S);
   clang::Stmt *elaborateStatement(const Syntax *S);
+  clang::Stmt *elaborateDeclStmt(const DefSyntax *S);
   clang::Stmt *elaborateUnaryStmt(const UnarySyntax *S);
   clang::Stmt *elaborateReturnStmt(const UnarySyntax *S);
 

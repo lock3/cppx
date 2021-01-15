@@ -18,50 +18,123 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace blue;
 
-// TODO: FIX me when I have VarDeclRef working.
-// TEST(BlueBitwiseOp, BWAnd) {
+TEST(BlueBitwiseOp, BWAnd) {
+  StringRef Code = R"BLUE(
+foo:()->void{
+  x:int;
+  y := x & 5;
+})BLUE";
+  auto ToMatch = binaryOperator(hasOperatorName("&"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueBitwiseOp, BWOr) {
+  StringRef Code = R"BLUE(
+foo:()->void{
+  x:int;
+  y := x | 5;
+}
+  )BLUE";
+  auto ToMatch = binaryOperator(hasOperatorName("|"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueBitwiseOp, BWXOr) {
+  StringRef Code = R"BLUE(
+foo:()->void{
+  x:int;
+  y:=x ^ 5;
+}
+  )BLUE";
+  auto ToMatch = binaryOperator(hasOperatorName("^"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueBitwiseOp, LeftShift) {
+  StringRef Code = R"BLUE(
+foo:()->void{
+  x:int;
+  y:= x << 5;
+}
+  )BLUE";
+  auto ToMatch = binaryOperator(hasOperatorName("<<"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueBitwiseOp, BWRightShift) {
+  StringRef Code = R"BLUE(
+foo:()->void{
+  x:int;
+  y:=x >> 5;
+}
+  )BLUE";
+  auto ToMatch = binaryOperator(hasOperatorName(">>"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+// TEST(BlueBitwiseOp, BWComposite) {
 //   StringRef Code = R"BLUE(
-// x:=4 & 5
+// foo:()->void{
+//   x:int;
+//   x = ~x;
+// }
 //   )BLUE";
-//   auto ToMatch = binaryOperator(hasOperatorName("&"));
+//   auto ToMatch = unaryOperator(hasOperatorName("~"));
 //   ASSERT_TRUE(matches(Code.str(), ToMatch));
 // }
-// TEST(BlueBitwiseOp, BWOr) {
+
+
+// TEST(BlueBitwiseOp, BWAndEqual) {
 //   StringRef Code = R"BLUE(
-// x:=4 | 5
+// foo:()->void{
+//   x:int;
+//   x &= 5;
+// }
+//   )BLUE";
+//   auto ToMatch = binaryOperator(hasOperatorName("&="));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
+
+// TEST(BlueBitwiseOp, BWOrEqual) {
+//   StringRef Code = R"BLUE(
+// foo:()->void{
+//   x:int;
+//   x |=5;
+// }
 //   )BLUE";
 //   auto ToMatch = binaryOperator(hasOperatorName("|"));
 //   ASSERT_TRUE(matches(Code.str(), ToMatch));
 // }
 
-// TEST(BlueBitwiseOp, BWXOr) {
+// TEST(BlueBitwiseOp, BWXOrEqual) {
 //   StringRef Code = R"BLUE(
-// x:=4 ^ 5
+// foo:()->void{
+//   x:int;
+//   x ^= 5;
+// }
 //   )BLUE";
-//   auto ToMatch = binaryOperator(hasOperatorName("^"));
+//   auto ToMatch = binaryOperator(hasOperatorName("^="));
 //   ASSERT_TRUE(matches(Code.str(), ToMatch));
 // }
 
-// TEST(BlueBitwiseOp, LeftShift) {
+// TEST(BlueBitwiseOp, LeftShiftEqual) {
 //   StringRef Code = R"BLUE(
-// x:=4 << 5
+// foo:()->void{
+//   x:int;
+//   x <<= 5;
+// }
 //   )BLUE";
-//   auto ToMatch = binaryOperator(hasOperatorName("<<"));
+//   auto ToMatch = binaryOperator(hasOperatorName("<<="));
 //   ASSERT_TRUE(matches(Code.str(), ToMatch));
 // }
 
-// TEST(BlueBitwiseOp, BWRightShift) {
+// TEST(BlueBitwiseOp, BWRightShiftEqual) {
 //   StringRef Code = R"BLUE(
-// x:=4 >> 5
-//   )BLUE";
-//   auto ToMatch = binaryOperator(hasOperatorName(">>"));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// foo:()->void{
+//   x:int;
+//   x >>= 5;
 // }
-
-// TEST(BlueBitwiseOp, BWComposite) {
-//   StringRef Code = R"BLUE(
-// x:=~4
 //   )BLUE";
-//   auto ToMatch = unaryOperator(hasOperatorName("~"));
+//   auto ToMatch = binaryOperator(hasOperatorName(">>="));
 //   ASSERT_TRUE(matches(Code.str(), ToMatch));
 // }

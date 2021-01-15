@@ -34,6 +34,7 @@ set(LLVM_LINK_COMPONENTS
 
 add_clang_unittest(BlueTests
   BlueArithmeticOpElab.cpp
+  BlueAssignmentOpElab.cpp
   BlueASTMatchersTest.cpp
   BlueTypeElab.cpp
   BlueBitwiseOpElab.cpp

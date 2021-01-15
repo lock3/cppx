@@ -432,13 +432,27 @@ Syntax *Parser::parseFormalParameter() {
 Syntax *Parser::parseActualParameter() {
   return parseExpression();
 }
-
+static TokenKind AssignmentOps[] = {
+  tok::Equal,
+  tok::AmpersandEqual,
+  tok::BarEqual,
+  tok::CaretEqual,
+  tok::GreaterGreaterEqual,
+  tok::LessLessEqual,
+  tok::PlusEqual,
+  tok::MinusEqual,
+  tok::StarEqual,
+  tok::SlashEqual,
+  tok::PercentEqual,
+};
 Syntax *Parser::parseAssignmentExpression() {
   Syntax *LHS = parseLogicalOrExpression();
   // FIXME: Support compound assignment operators.
-  if (Token Op = matchToken(tok::Equal)) {
-    Syntax *RHS = parseAssignmentExpression();
-    return onBinary(Op, LHS, RHS);
+  for (TokenKind TK : AssignmentOps) {
+    if (Token Op = matchToken(TK)) {
+      Syntax *RHS = parseAssignmentExpression();
+      return onBinary(Op, LHS, RHS);
+    }
   }
   return LHS;
 }
@@ -642,6 +656,7 @@ Syntax *Parser::parsePointerExpression(Syntax *LHS) {
       Op.switchToSuffixDeref();
       return onUnary(Op, LHS);
     }
+    return onBinary(US->getOperator(), LHS, US->getOperand());
   }
   // RHS->dump();
   // Checking to see if we have a dereference operator or not.
