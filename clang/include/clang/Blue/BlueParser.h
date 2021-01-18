@@ -246,7 +246,8 @@ namespace blue
     Syntax *onTuple(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS);
     Syntax *onArray(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS);
     Syntax *onBlock(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS);
-    Syntax* onDef(const Token &Tok, Syntax *Sig, Syntax *Init);
+    Syntax *onDef(const Token &Tok, Syntax *Sig, Syntax *Init);
+    Syntax *onControl(const Token &Tok, Syntax *Sig, Syntax *Block);
     Syntax *onTop(llvm::SmallVectorImpl<Syntax *> &SS);
     Syntax* onError(char const* Msg);
 

@@ -320,7 +320,8 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
     SemaRef.Diags.Report(S->getBlock()->getLoc(), clang::diag::err_in_ast);
     return nullptr;
   }
-  SemaRef.enterScope(SK_Block, S);
+
+  SemaRef.enterScope(SK_Block, S->getBlock());
   if (isa<ArraySyntax>(S->getBlock()) || isa<ListSyntax>(S->getBlock()))
     Then = elaborateBlock(S->getBlock());
   else
@@ -332,8 +333,10 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
   clang::Stmt *Else = nullptr;
   clang::SourceLocation ElseLoc;
   if (S->getNext()) {
+    SemaRef.enterScope(SK_Block, S->getNext());
     Else = elaborateMacro(cast<MacroSyntax>(S->getNext()));
     ElseLoc = S->getNext()->getLoc();
+    SemaRef.leaveScope(S->getNext());
   }
 
   clang::StmtResult If = SemaRef.getCxxSema().ActOnIfStmt(

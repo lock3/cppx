@@ -9,6 +9,7 @@ def_syntax(List)
 def_syntax(Seq)
 def_syntax(Unary)
 def_syntax(Binary)
+def_syntax(Control)
 def_syntax(Def)
 def_syntax(Top)
 
