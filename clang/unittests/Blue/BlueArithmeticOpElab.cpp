@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueArithmeticOp, Plus) {
   StringRef Code = R"BLUE(
-x:=4 + 5
+x:=4 + 5;
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("+"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -28,7 +28,7 @@ x:=4 + 5
 
 TEST(BlueArithmeticOp, Minus) {
   StringRef Code = R"BLUE(
-x:=4 - 5
+x:=4 - 5;
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("-"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -36,7 +36,7 @@ x:=4 - 5
 
 TEST(BlueArithmeticOp, Multiplication) {
   StringRef Code = R"BLUE(
-x:=4 * 5
+x:=4 * 5;
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("*"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -44,7 +44,7 @@ x:=4 * 5
 
 TEST(BlueArithmeticOp, Division) {
   StringRef Code = R"BLUE(
-x:=4 / 5
+x:=4 / 5;
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("/"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -52,7 +52,7 @@ x:=4 / 5
 
 TEST(BlueArithmeticOp, Modulus) {
   StringRef Code = R"BLUE(
-x:=4 % 5
+x:=4 % 5;
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("%"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -61,7 +61,7 @@ x:=4 % 5
 
 TEST(BlueArithmeticOp, UnaryPlus) {
   StringRef Code = R"BLUE(
-x:=+5
+x:=+5;
   )BLUE";
   auto ToMatch = unaryOperator(hasOperatorName("+"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -69,7 +69,7 @@ x:=+5
 
 TEST(BlueArithmeticOp, UnaryMinus) {
   StringRef Code = R"BLUE(
-x:=-5
+x:=-5;
   )BLUE";
   auto ToMatch = unaryOperator(hasOperatorName("-"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));

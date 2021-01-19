@@ -183,6 +183,7 @@ namespace blue
     // Statements
     Syntax *parseStatement();
     Syntax *parseBlockStatement();
+    Syntax *parseInlineableBlock();
     Syntax *parseIfStatement();
     Syntax *parseWhileStatement();
     Syntax *parseForStatement();
@@ -241,6 +242,7 @@ namespace blue
     Syntax *onLiteral(const Token &Tok);
     Syntax *onIdentifier(const Token &Tok);
     Syntax *onUnary(const Token &Op, Syntax *Arg);
+    Syntax *onPostfixUnary(const Token &Op, Syntax *Arg);
     Syntax *onBinary(const Token &Op, Syntax *LHS, Syntax *RHS);
     Syntax *onList(TokenKind K, llvm::SmallVectorImpl<Syntax *> &SS);
     Syntax *onTuple(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS);

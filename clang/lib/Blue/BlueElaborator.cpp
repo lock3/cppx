@@ -1561,6 +1561,8 @@ clang::Expr *Elaborator::elaborateSeqExpression(const SeqSyntax *S) {
 
 clang::Expr *Elaborator::elaborateUnaryExpression(const UnarySyntax *S) {
   auto Operand = elaborateExpression(S->getOperand());
+  clang::SourceLocation Loc = S->getLocation();
+
   if (!Operand)
     return nullptr;
   clang::QualType Ty = Operand->getType();
@@ -1574,29 +1576,34 @@ clang::Expr *Elaborator::elaborateUnaryExpression(const UnarySyntax *S) {
         return nullptr;
 
       clang::QualType RetType = getCxxContext().getPointerType(TInfo->getType());
-      return SemaRef.buildTypeExpr(RetType, S->getLocation());
+      return SemaRef.buildTypeExpr(RetType, Loc);
     }
-    getCxxSema().Diags.Report(S->getOperand()->getLocation(),
-                              clang::diag::err_invalid_type_operand)
+    getCxxSema().Diags.Report(Loc, clang::diag::err_invalid_type_operand)
                               << 0/*unary*/;
     return nullptr;
   }
 
   if (S->getOperator().hasKind(tok::Caret)) {
-    // llvm_unreachable("Make an error message for this.");
-    getCxxSema().Diags.Report(S->getLocation(),
-                              clang::diag::err_prefix_caret_on_non_type);
+    getCxxSema().Diags.Report(Loc, clang::diag::err_prefix_caret_on_non_type);
     return nullptr;
   }
 
   auto OpIter = SemaRef.UnaryOpMap.find(S->getOperatorSpelling());
+  clang::UnaryOperatorKind Op;
   if (OpIter == SemaRef.UnaryOpMap.end()) {
-    Error(S->getLocation(), "invalid unary operator");
-    return nullptr;
+    if (S->getOperator().hasKind(tok::PlusPlus))
+      Op = S->isPostfix() ? clang::UO_PostInc : clang::UO_PreInc;
+    else if (S->getOperator().hasKind(tok::MinusMinus))
+      Op = S->isPostfix() ? clang::UO_PostDec : clang::UO_PreDec;
+    else {
+      Error(Loc, "invalid unary operator");
+      return nullptr;
+    }
+  } else {
+    Op = OpIter->second;
   }
-  auto Res = SemaRef.getCxxSema().BuildUnaryOp(
-    /*scope*/nullptr, S->getLocation(), OpIter->second, Operand);
-  return Res.get();
+
+  return CxxSema.BuildUnaryOp(/*scope*/nullptr, Loc, Op, Operand).get();
 }
 
 clang::Expr *Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
@@ -1669,7 +1676,7 @@ clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
   // If the statement kind is unknown then simply punt and
   // elaborate an expression.
   clang::Expr *E = elaborateExpression(S);
-  if (E)
+  if (!E)
     return nullptr;
   auto CheckExpr = SemaRef.getCxxSema().CheckPlaceholderExpr(E);
   if (CheckExpr.isInvalid())
@@ -1698,6 +1705,8 @@ clang::Stmt *Elaborator::elaborateControlStmt(const ControlSyntax *S) {
   switch (S->getKeyword().getKind()) {
   case tok::IfKeyword:
     return elaborateIfStmt(S);
+  case tok::WhileKeyword:
+    return elaborateWhileStmt(S);
 
   default:
     break;
@@ -1752,6 +1761,37 @@ clang::Stmt *Elaborator::elaborateIfStmt(const ControlSyntax *S) {
     S->getLocation(), /*Constexpr=*/false, ConditionExpr->getExprLoc(),
     /*InitStmt=*/nullptr, Condition, ElseLoc, Then, ElseLoc, Else);
   return If.get();
+}
+
+clang::Stmt *Elaborator::elaborateWhileStmt(const ControlSyntax *S) {
+  assert(S->getKeyword().hasKind(tok::WhileKeyword) && "invalid while syntax");
+  Sema::ScopeRAII WhileScope(SemaRef, Scope::Control, S);
+
+  // Elaborate the condition
+  clang::Expr *CondExpr =
+    elaborateExpression(S->getSignature());
+  if (!CondExpr)
+    return nullptr;
+  clang::Sema::ConditionResult Condition =
+    SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr, S->getLocation(),
+                                        CondExpr,
+                                        clang::Sema::ConditionKind::Boolean);
+
+  // Elaborate the block
+  const Syntax *BlockSyntax = S->getBlock();
+  SemaRef.enterScope(Scope::Block, BlockSyntax);
+  clang::Stmt *Block = elaborateStatement(BlockSyntax);
+  SemaRef.leaveScope(BlockSyntax);
+  if (!Block)
+    return nullptr;
+
+  clang::StmtResult While =
+    SemaRef.getCxxSema().ActOnWhileStmt(S->getLocation(),
+                                        S->getSignature()->getLocation(),
+                                        Condition,
+                                        S->getSignature()->getEndLocation(),
+                                        Block);
+  return While.get();
 }
 
 clang::Stmt *Elaborator::elaborateReturnStmt(const UnarySyntax *S) {

@@ -103,13 +103,8 @@ static llvm::StringMap<clang::BinaryOperatorKind> getBinOpMapping() {
 
 static llvm::StringMap<clang::UnaryOperatorKind> getUnaryOperatorMapping() {
   return llvm::StringMap<clang::UnaryOperatorKind>{
-    // TODO: Figure out if this is pre or post inc/dec
-    // {"++", clang::},
-    // PreInc
-    // PostInc
-    // {"++", clang::},
-    // PreDec
-    // PostDec
+    // ++ and -- have locational context and thus are not in this map,
+    // see Elaborator::elaborateUnaryExpression(const UnarySyntax *).
     {"~", clang::UO_Not},
     {"!", clang::UO_LNot},
     {"^", clang::UO_Deref},
