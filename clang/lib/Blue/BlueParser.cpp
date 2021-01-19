@@ -13,6 +13,7 @@
 
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticParse.h"
+#include "llvm/ADT/StringSwitch.h"
 
 #include "clang/Blue/BlueParser.h"
 #include "clang/Blue/BlueSyntax.h"
@@ -291,6 +292,14 @@ Syntax *Parser::parseExpressionStatement() {
   return e;
 }
 
+static inline bool isTagKeyword(const AtomSyntax *A) {
+  return llvm::StringSwitch<bool>(A->getSpelling())
+    .Case("class", true)
+    .Case("union", true)
+    .Case("enum", true)
+    .Default(false);
+}
+
 /// Parse a declaration, which has one of the following forms:
 ///
 ///   declaration:
@@ -307,6 +316,7 @@ Syntax *Parser::parseDeclaration() {
   if (nextTokenIs(tok::Equal))
   {
     Syntax *Init = parseEqualInitializer();
+    expectToken(tok::Semicolon);
     return onDef(Id, nullptr, Init);
   }
 
@@ -316,7 +326,7 @@ Syntax *Parser::parseDeclaration() {
   // semicolons only seem to be grammatically part of declaration statements.
   // We should fix this in the grammar.
   if (AtomSyntax *Type = dyn_cast<LiteralSyntax>(Sig))
-    if (Type->getSpelling() == "class")
+    if (isTagKeyword(Type))
       ParsingTag = true;
 
   // Match 'identifier : signature ;'.
