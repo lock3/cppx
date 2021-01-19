@@ -12,15 +12,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CLANG_GOLD_LATE_ELABORATION_H
-#define CLANG_GOLD_LATE_ELABORATION_H
+#ifndef CLANG_BLUE_LATE_ELABORATION_H
+#define CLANG_BLUE_LATE_ELABORATION_H
 
 #include "clang/AST/Type.h"
 #include "clang/AST/Decl.h"
 
-#include "clang/Gold/GoldScope.h"
-#include "clang/Gold/GoldSyntax.h"
-#include "clang/Gold/GoldSyntaxContext.h"
+#include "clang/Blue/BlueScope.h"
+#include "clang/Blue/BlueSyntax.h"
+#include "clang/Blue/BlueSyntaxContext.h"
 
 namespace clang {
 class Stmt;
@@ -28,7 +28,7 @@ class CXXRecordDecl;
 class Decl;
 } // namespace clang
 
-namespace gold {
+namespace blue {
 
 class Declarator;
 class Declaration;
@@ -56,7 +56,7 @@ public:
 /// recursively.
 class LateElaboratedClass : public LateElaboratedDecl {
 public:
-  LateElaboratedClass(Sema &S, SyntaxContext &Ctxt, ElaboratingClass *C);
+  LateElaboratedClass(Sema &S, ElaboratingClass *C);
   ~LateElaboratedClass() override;
 
   void ElaborateMemberInitializers() override;
@@ -67,7 +67,6 @@ public:
 
 private:
   Sema &SemaRef;
-  SyntaxContext &Context;
   ElaboratingClass *Class;
 };
 
@@ -75,7 +74,6 @@ private:
 /// body that may have not been processed yet.
 struct LateElaboratedAttributeDecl : public LateElaboratedDecl {
   Sema &SemaRef;
-  SyntaxContext &Context;
   Declaration *Decl;
   clang::IdentifierInfo &Id;
   clang::SourceLocation NameLoc;
@@ -83,10 +81,10 @@ struct LateElaboratedAttributeDecl : public LateElaboratedDecl {
   // IdentifierInfo *MacroII = nullptr;
   llvm::SmallVector<Declaration *, 2> Decls;
 
-  explicit LateElaboratedAttributeDecl(Sema &S, SyntaxContext &Ctxt,
-                                   clang::IdentifierInfo &Name,
-                                   clang::SourceLocation Loc)
-    : SemaRef(S), Context(Ctxt), Id(Name), NameLoc(Loc) { }
+  explicit LateElaboratedAttributeDecl(Sema &S,
+                                      clang::IdentifierInfo &Name,
+                                      clang::SourceLocation Loc)
+    : SemaRef(S),Id(Name), NameLoc(Loc) { }
 
   void ElaborateAttributes() override;
 
@@ -99,7 +97,6 @@ struct LateElaboratedAttributeDecl : public LateElaboratedDecl {
 /// end of the class after parsing all other member declarations.
 struct LateElaboratedMethodDef : public LateElaboratedDecl {
   Sema &SemaRef;
-  SyntaxContext &Context;
   Declaration *D;
 
   /// Whether this member function had an associated template scope. When true,
@@ -107,9 +104,8 @@ struct LateElaboratedMethodDef : public LateElaboratedDecl {
   /// declaration.
   bool TemplateScope;
 
-  explicit LateElaboratedMethodDef(Sema &S, SyntaxContext &Ctxt,
-      Declaration *MD)
-    : SemaRef(S), Context(Ctxt), D(MD), TemplateScope(false) { }
+  explicit LateElaboratedMethodDef(Sema &S, Declaration *MD)
+    : SemaRef(S), D(MD), TemplateScope(false) { }
 
   void ElaborateMethodDefs() override;
 };
@@ -131,14 +127,12 @@ struct LateElaboratedDefaultArgument {
 /// until the class itself is completely-defined, such as a default
 /// argument (C++ [class.mem]p2).
 struct LateElaboratedMethodDeclaration : public LateElaboratedDecl {
-  explicit LateElaboratedMethodDeclaration(Sema &S, SyntaxContext &Ctxt,
-      Declaration *MD)
-    : SemaRef(S), Context(Ctxt), D(MD), TemplateScope(false) { }
+  explicit LateElaboratedMethodDeclaration(Sema &S, Declaration *MD)
+    : SemaRef(S), D(MD), TemplateScope(false) { }
 
   void ElaborateMethodDeclarations() override;
   void ElaborateDefaultParams() override;
   Sema &SemaRef;
-  SyntaxContext &Context;
 
   /// Method - The method declaration.
   Declaration *D;
@@ -160,14 +154,12 @@ struct LateElaboratedMethodDeclaration : public LateElaboratedDecl {
 /// member whose parsing must to be delayed until the class is completely
 /// defined (C++11 [class.mem]p2).
 struct LateElaborateMemberInitializer : public LateElaboratedDecl {
-  LateElaborateMemberInitializer(Sema &S, SyntaxContext &Ctxt,
-      Declaration *FD)
-    : SemaRef(S), Context(Ctxt), D(FD) { }
+  LateElaborateMemberInitializer(Sema &S, Declaration *FD)
+    : SemaRef(S), D(FD) { }
 
   void ElaborateMemberInitializers() override;
 
   Sema &SemaRef;
-  SyntaxContext &Context;
 
   /// Field - The field declaration.
   Declaration *D;
@@ -212,5 +204,5 @@ public:
   LateElaboratedDecls LateElaborations;
 };
 
-} // namespace gold
+} // namespace blue
 #endif

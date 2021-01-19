@@ -969,7 +969,7 @@ void CppxTypeExprType::Profile(llvm::FoldingSetNodeID &ID, Expr *E,
 
 
 CXXABI *ASTContext::createCXXABI(const TargetInfo &T) {
-  if (!LangOpts.CPlusPlus && !LangOpts.Gold) return nullptr;
+  if (!LangOpts.CPlusPlus && !(LangOpts.Gold || LangOpts.Blue)) return nullptr;
 
   switch (T.getCXXABI().getKind()) {
   case TargetCXXABI::Fuchsia:

@@ -7,6 +7,7 @@ add_clang_library(blue
   BlueSymbol.cpp
   BlueFile.cpp
   BlueFrontend.cpp
+  BlueLateElaboration.cpp
   BlueTokens.cpp
   BlueLexer.cpp
   BlueParser.cpp
