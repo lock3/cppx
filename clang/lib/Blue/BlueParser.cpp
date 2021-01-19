@@ -165,10 +165,12 @@ void Parser::parseDeclStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
 }
 
 void Parser::parseStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
+  ParsingBlock = true;
   do
     parseIntoVector(SS, [this]() { return parseStatement(); });
   while (matchToken(tok::Semicolon)
          && !atEndOfFile() && nextTokenIsNot(tok::RightBrace));
+  ParsingBlock = false;
 }
 
 // True if the next tokens would start a declaration. That is, we would
@@ -323,7 +325,8 @@ Syntax *Parser::parseDeclaration() {
   if (nextTokenIs(tok::Equal))
   {
     Syntax *Init = parseEqualInitializer();
-    expectToken(tok::Semicolon);
+    if (!ParsingBlock)
+      expectToken(tok::Semicolon);
     return onDef(Id, nullptr, Init);
   }
 
@@ -337,12 +340,16 @@ Syntax *Parser::parseDeclaration() {
       ParsingTag = true;
 
   // Match 'identifier : signature ;'.
-  if (matchToken(tok::Semicolon))
+  if (nextTokenIs(tok::Semicolon)) {
+    if (!ParsingBlock)
+      consumeToken();
     return onDef(Id, Sig, nullptr);
+  }
 
   // Match 'identifier : signature initializer'.
   Syntax *Init = parseInitializer();
-  matchToken(tok::Semicolon);
+  if (!ParsingBlock)
+    matchToken(tok::Semicolon);
   ParsingTag = false;
   return onDef(Id, Sig, Init);
 }

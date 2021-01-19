@@ -268,6 +268,10 @@ namespace blue
     // True when we are parsing the initializer of a tag decl
     // FIXME: get rid of this
     bool ParsingTag = false;
+
+    // True when we are parsing a function body
+    // FIXME: get rid of this
+    bool ParsingBlock = false;
   };
 
 } // namespace blue
