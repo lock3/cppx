@@ -59,11 +59,17 @@ struct EnclosingTokens
 
   bool expectOpen() {
     Open = P.requireToken(OpenTokens[K]);
+    if constexpr (K == enc::Braces)
+      ++P.BraceDepth;
+
     return true;
   }
 
   bool expectClose() {
     Close = P.expectToken(CloseTokens[K]);
+    if constexpr (K == enc::Braces)
+      P.BraceDepth -= P.BraceDepth ? 1 : 0;
+
     if (!Close) {
       // FIXME: Emit a diagnostic.
     }
@@ -145,7 +151,7 @@ Token Parser::expectToken(char const* Id) {
 Syntax *Parser::parseFile() {
   llvm::SmallVector<Syntax *, 16> SS;
   if (!atEndOfFile())
-    parseDeclStatementSeq(SS);
+    parseStatementSeq(SS);
   return onTop(SS);
 }
 
@@ -164,15 +170,22 @@ void Parser::parseDeclStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
   while (!atEndOfFile() && nextTokenIsNot(tok::RightBrace));
 }
 
+static inline bool atClosedBrace(Parser &P, unsigned BeginningBraceDepth) {
+  return P.BraceDepth == BeginningBraceDepth &&
+    P.PreviousToken.hasKind(tok::RightBrace);
+}
+
+static inline bool atClosingBrace(Parser &P, unsigned BeginningBraceDepth) {
+  return P.BraceDepth == BeginningBraceDepth &&
+    P.nextTokenIs(tok::RightBrace);
+}
+
 void Parser::parseStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
-  ParsingBlock = true;
-  do {
-    BraceDelimitedStatement = false;
+  unsigned BeginningBraceDepth = BraceDepth;
+  do
     parseIntoVector(SS, [this]() { return parseStatement(); });
-  } while ((matchToken(tok::Semicolon) ||
-            (BraceDelimitedStatement && matchToken(tok::RightBrace)))
-           && !atEndOfFile() && nextTokenIsNot(tok::RightBrace));
-  ParsingBlock = false;
+  while ((matchToken(tok::Semicolon) || atClosedBrace(*this, BeginningBraceDepth))
+         && !atEndOfFile() && !atClosingBrace(*this, BeginningBraceDepth));
 }
 
 // True if the next tokens would start a declaration. That is, we would
@@ -241,7 +254,9 @@ Syntax *Parser::parseIfStatement() {
   Syntax *Then = parseInlineableBlock();
   // semis are usually consumed at the top level, an inlined block
   // followed by an else is a unique case where that can't happen.
-  matchToken(tok::Semicolon);
+  if (nthTokenIs(1, tok::ElseKeyword))
+    matchToken(tok::Semicolon);
+
   Syntax *Else = nullptr;
   if (matchToken(tok::ElseKeyword))
     Else = parseInlineableBlock();
@@ -334,8 +349,6 @@ Syntax *Parser::parseDeclaration() {
   if (nextTokenIs(tok::Equal))
   {
     Syntax *Init = parseEqualInitializer();
-    if (!ParsingBlock)
-      expectToken(tok::Semicolon);
     return onDef(Id, nullptr, Init);
   }
 
@@ -350,15 +363,11 @@ Syntax *Parser::parseDeclaration() {
 
   // Match 'identifier : signature ;'.
   if (nextTokenIs(tok::Semicolon)) {
-    if (!ParsingBlock)
-      consumeToken();
     return onDef(Id, Sig, nullptr);
   }
 
   // Match 'identifier : signature initializer'.
   Syntax *Init = parseInitializer();
-  if (!ParsingBlock)
-    matchToken(tok::Semicolon);
   ParsingTag = false;
   return onDef(Id, Sig, Init);
 }
@@ -852,7 +861,7 @@ Syntax *Parser::parseBlockExpression() {
 
   llvm::SmallVector<Syntax *, 4> SS;
   if (nextTokenIsNot(tok::RightBrace))
-    ParsingTag ? parseDeclStatementSeq(SS) : parseStatementSeq(SS);
+    parseStatementSeq(SS);
 
   if (!Braces.expectClose())
     return nullptr;

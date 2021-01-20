@@ -263,7 +263,7 @@ namespace blue
     clang::DiagnosticsEngine &Diags;
 
   private:
-    Token PreviousToken;
+
 
     // True when we are parsing the initializer of a tag decl
     // FIXME: get rid of this
@@ -275,6 +275,12 @@ namespace blue
 
     // True when parsing a statement that ends with '}', like a for statement.
     bool BraceDelimitedStatement = false;
+
+  public:
+    Token PreviousToken;
+
+    // How deep into nested {}'s are we?
+    unsigned BraceDepth = 0;
   };
 
 } // namespace blue
