@@ -1472,6 +1472,13 @@ clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
   // UnicodeCharacter
   const Token& Tok = S->getToken();
   switch (Tok.getKind()) {
+  case tok::BitAndKeyword:
+  case tok::BitOrKeyword:
+  case tok::BitXOrKeyword:
+  case tok::BitShlKeyword:
+  case tok::BitShrKeyword:
+  case tok::BitNotKeyword:
+    llvm_unreachable("Special functions not implemented yet.");
   case tok::DecimalInteger:
     return createIntegerLiteral(getCxxContext(), SemaRef, S);
   case tok::DecimalFloat:
@@ -1697,7 +1704,15 @@ clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S
   R.resolveKind();
   switch (R.getResultKind()) {
   case clang::LookupResult::FoundOverloaded: {
-    llvm_unreachable("Overloaded functions not implemented yet.");
+      // Need to figure out if the potential overload is a member function
+      // or not.
+      return clang::UnresolvedLookupExpr::Create(getCxxContext(),
+                                                 R.getNamingClass(),
+                                              clang::NestedNameSpecifierLoc(),
+                                                 R.getLookupNameInfo(),
+                                                 /*ADL=*/true, true,
+                                                 R.begin(),
+                                                 R.end());
   }
   case clang::LookupResult::Found:
     return BuildReferenceToDecl(SemaRef, S->getLocation(), R, false);
@@ -2130,8 +2145,47 @@ clang::Expr *Elaborator::elaborateApplyExpression(clang::Expr *LHS,
   // 3. Array declaration - Needs verifications
   // 4. Template declarations - Needs verifications
   // 5. Block attached to something possibly? - Needs verifications
+  if (LHS->getType()->isKindType())
+    llvm_unreachable("Constructor not implemented yet");
+
+  if (auto L = dyn_cast<ListSyntax>(S->getRightOperand())) {
+    return elaborateFunctionCallElab(LHS, S, L);
+  }
+
   S->dump();
   llvm_unreachable("apply expression Not implemented yet!?\n");
+}
+
+static bool buildAnyFunctionCallArguments(Sema &SemaRef, 
+    Syntax::child_range Children, llvm::SmallVectorImpl<clang::Expr *> &Args) {
+  for (const Syntax *A : Children) {
+    Elaborator Elab(SemaRef);
+    clang::Expr *Argument = Elab.elaborateExpression(A);
+    if (!Argument) {
+      SemaRef.getCxxSema().Diags.Report(A->getLocation(),
+                                clang::diag::err_expected_expression);
+      return true;
+    }
+    Args.push_back(Argument);
+  }
+  return false;
+}
+
+clang::Expr *Elaborator::elaborateFunctionCallElab(clang::Expr *LHS,
+                                                   const BinarySyntax *S,
+                                                   const ListSyntax *L) {
+  llvm::SmallVector<clang::Expr *, 16> Args;
+  if (buildAnyFunctionCallArguments(SemaRef, L->children(), Args))
+    return nullptr;
+
+  clang::ExprResult Call = SemaRef.getCxxSema().ActOnCallExpr(
+    getCxxSema().getCurScope(), LHS, LHS->getExprLoc(), Args,
+    LHS->getExprLoc());
+
+  if (Call.isInvalid())
+    return nullptr;
+
+  return Call.get();
 }
 
 clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,

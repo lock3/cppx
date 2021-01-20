@@ -143,6 +143,17 @@ public:
   const llvm::StringMap<clang::QualType> BuiltinTypes;
   const llvm::StringMap<clang::QualType> createBuiltinTypeList();
 
+  /// This is a helper function that dumps ALL of the functions into the
+  /// translation unit at once.
+  ///{
+  void createBitwiseBuiltinFunctions();
+  void buildBitAnd();
+  void buildBitOr();
+  void buildBitShr();
+  void buildBitShl();
+  void buildBitNot();
+  ///}
+
   clang::CppxTypeLiteral *buildTypeExpr(clang::QualType Ty,
                                         clang::SourceLocation Loc);
   clang::CppxTypeLiteral *buildTypeExpr(clang::TypeSourceInfo *TInfo);

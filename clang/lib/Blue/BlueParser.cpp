@@ -484,11 +484,11 @@ Syntax *Parser::parseActualParameter() {
 }
 static TokenKind AssignmentOps[] = {
   tok::Equal,
-  tok::AmpersandEqual,
-  tok::BarEqual,
-  tok::CaretEqual,
-  tok::GreaterGreaterEqual,
-  tok::LessLessEqual,
+  // tok::AmpersandEqual,
+  // tok::BarEqual,
+  // tok::CaretEqual,
+  // tok::GreaterGreaterEqual,
+  // tok::LessLessEqual,
   tok::PlusEqual,
   tok::MinusEqual,
   tok::StarEqual,
@@ -546,26 +546,26 @@ static bool isRelationalOperator(TokenKind K) {
 }
 
 Syntax *Parser::parseRelationalExpression() {
-  Syntax *LHS = parseShiftExpression();
-  while (Token Op = matchTokenIf(isRelationalOperator)) {
-    Syntax *RHS = parseShiftExpression();
-    LHS = onBinary(Op, LHS, RHS);
-  }
-  return LHS;
-}
-
-static bool isShiftOperator(TokenKind K) {
-  return K == tok::LessLess || K == tok::GreaterGreater;
-}
-
-Syntax *Parser::parseShiftExpression() {
   Syntax *LHS = parseAdditiveExpression();
-  while (Token Op = matchTokenIf(isShiftOperator)) {
+  while (Token Op = matchTokenIf(isRelationalOperator)) {
     Syntax *RHS = parseAdditiveExpression();
     LHS = onBinary(Op, LHS, RHS);
   }
   return LHS;
 }
+
+// static bool isShiftOperator(TokenKind K) {
+//   return K == tok::LessLess || K == tok::GreaterGreater;
+// }
+
+// Syntax *Parser::parseShiftExpression() {
+//   Syntax *LHS = parseAdditiveExpression();
+//   while (Token Op = matchTokenIf(isShiftOperator)) {
+//     Syntax *RHS = parseAdditiveExpression();
+//     LHS = onBinary(Op, LHS, RHS);
+//   }
+//   return LHS;
+// }
 
 static bool isAdditiveOperator(TokenKind K) {
   return K == tok::Plus || K == tok::Minus;
@@ -751,6 +751,14 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::Character:
   case tok::String:
 
+  // Bitwise functions
+  case tok::BitAndKeyword:
+  case tok::BitOrKeyword:
+  case tok::BitXOrKeyword:
+  case tok::BitShlKeyword:
+  case tok::BitShrKeyword:
+  case tok::BitNotKeyword:
+
   // Type literals
   case tok::ByteKeyword:
   case tok::CharacterKeyword:
@@ -901,7 +909,7 @@ Syntax *Parser::onTuple(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &S
   return FlattenGroup(Enc, SS);
 }
 
-Syntax *Parser::onArray(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS) {
+Syntax *Parser::onArray(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS) {\
   return FlattenGroup(Enc, SS);
 }
 

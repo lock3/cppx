@@ -61,6 +61,30 @@ foo:(x:int) -> void { }
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+TEST(BlueFunction, CallExpression) {
+  StringRef Code = R"BLUE(
+foo:(x:int, y:int) -> void{ }
+foo:(x:int) -> void { }
+
+bar:()->void {
+  foo(4);
+}
+)BLUE";
+
+  auto ToMatch =
+    callExpr(
+        callee(
+          functionDecl(
+            hasName("foo"),
+            hasType(
+              asString("void (int)")
+            )
+          )
+        )
+    );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
 #if 0
 TEST(BlueFunction, NoBody) {
   // TODO: I'm not sure if this is an error or not.

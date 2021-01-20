@@ -128,6 +128,9 @@ public:
   clang::Expr *elaborateBinaryExpression(const BinarySyntax *S);
   clang::Expr *elaborateApplyExpression(clang::Expr *LHS,
                                         const BinarySyntax *S);
+  clang::Expr *elaborateFunctionCallElab(clang::Expr *LHS,
+                                         const BinarySyntax *S,
+                                         const ListSyntax *L);
   /// Dispatching function, that determines based on the LHS's type how to
   /// process the RHS of the expression.
   clang::Expr *elaborateMemberAccess(clang::Expr *LHS, const BinarySyntax *S);
