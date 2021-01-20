@@ -59,7 +59,7 @@ struct EnclosingTokens
 
   bool expectOpen() {
     Open = P.requireToken(OpenTokens[K]);
-    if constexpr (K == enc::Braces)
+    if (K == enc::Braces)
       ++P.BraceDepth;
 
     return true;
@@ -67,7 +67,7 @@ struct EnclosingTokens
 
   bool expectClose() {
     Close = P.expectToken(CloseTokens[K]);
-    if constexpr (K == enc::Braces)
+    if (K == enc::Braces)
       P.BraceDepth -= P.BraceDepth ? 1 : 0;
 
     if (!Close) {
@@ -325,14 +325,6 @@ Syntax *Parser::parseExpressionStatement() {
   return e;
 }
 
-static inline bool isTagKeyword(const AtomSyntax *A) {
-  return llvm::StringSwitch<bool>(A->getSpelling())
-    .Case("class", true)
-    .Case("union", true)
-    .Case("enum", true)
-    .Default(false);
-}
-
 /// Parse a declaration, which has one of the following forms:
 ///
 ///   declaration:
@@ -354,12 +346,6 @@ Syntax *Parser::parseDeclaration() {
 
   // Match 'identifier : signature ...'.
   Syntax * Sig = parseSignature();
-  // FIXME: this is a hack to get around the fact that
-  // semicolons only seem to be grammatically part of declaration statements.
-  // We should fix this in the grammar.
-  if (AtomSyntax *Type = dyn_cast<LiteralSyntax>(Sig))
-    if (isTagKeyword(Type))
-      ParsingTag = true;
 
   // Match 'identifier : signature ;'.
   if (nextTokenIs(tok::Semicolon)) {
@@ -368,7 +354,6 @@ Syntax *Parser::parseDeclaration() {
 
   // Match 'identifier : signature initializer'.
   Syntax *Init = parseInitializer();
-  ParsingTag = false;
   return onDef(Id, Sig, Init);
 }
 
@@ -857,7 +842,6 @@ Syntax *Parser::parseBlockExpression() {
   EnclosingBraces Braces(*this);
   if (!Braces.expectOpen())
     return nullptr;
-  BraceDelimitedStatement = ParsingBlock;
 
   llvm::SmallVector<Syntax *, 4> SS;
   if (nextTokenIsNot(tok::RightBrace))
