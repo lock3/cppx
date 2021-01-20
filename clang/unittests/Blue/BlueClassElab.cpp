@@ -262,8 +262,7 @@ u : c.nested.nested2;
     )),
     has(varDecl(
       hasType(asString("struct c::nested::nested2")),
-      hasName("u"),
-      hasInitializer(hasDescendant(cxxConstructExpr()))
+      hasName("u")
     ))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
