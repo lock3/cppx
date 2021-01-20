@@ -922,7 +922,7 @@ clang::Decl *Elaborator::identifyDeclsInClassBody(Declaration *D,
 
 // Expression elaboration
 clang::Expr *Elaborator::elaborateExpression(const Syntax *S) {
-  if (isa<ErrorSyntax>(S))
+  if (!S || isa<ErrorSyntax>(S))
     return nullptr;
 
   return doElaborateExpression(S);
@@ -2117,6 +2117,11 @@ clang::Stmt *Elaborator::elaborateForStmt(const ControlSyntax *S) {
     clang::Scope::ContinueScope |
     clang::Scope::DeclScope     |
     clang::Scope::ControlScope);
+
+  if (!S->getSignature() || isa<ErrorSyntax>(S->getSignature())) {
+    Error(S->getLocation(), "failed to translate statement");
+    return nullptr;
+  }
 
   // Elaborate the conditions
   unsigned I = 0;
