@@ -136,6 +136,8 @@ Token Lexer::operator()() {
     case '+':
       if (nthCharacterIs(1, '='))
         return matchToken(tok::PlusEqual);
+      else if (nthCharacterIs(1, '+'))
+        return matchToken(tok::PlusPlus);
       return matchToken(tok::Plus);
 
     case '-':

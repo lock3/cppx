@@ -393,6 +393,14 @@ public:
     return Arg->getEndLocation();
   }
 
+  bool isPostfix() const {
+    return Postfix;
+  }
+
+  void setPostfix(bool Val = true) {
+    Postfix = Val;
+  }
+
   child_range children() {
     return child_range(&Arg, &Arg + 1);
   }
@@ -408,6 +416,7 @@ public:
 private:
   Token Op;
   Syntax *Arg;
+  bool Postfix = false;
 };
 
 /// Represents binary operators. If the operator token is unspecified, this

@@ -13,6 +13,7 @@
 
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticParse.h"
+#include "llvm/ADT/StringSwitch.h"
 
 #include "clang/Blue/BlueParser.h"
 #include "clang/Blue/BlueSyntax.h"
@@ -164,10 +165,12 @@ void Parser::parseDeclStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
 }
 
 void Parser::parseStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
+  ParsingBlock = true;
   do
     parseIntoVector(SS, [this]() { return parseStatement(); });
   while (matchToken(tok::Semicolon)
          && !atEndOfFile() && nextTokenIsNot(tok::RightBrace));
+  ParsingBlock = false;
 }
 
 // True if the next tokens would start a declaration. That is, we would
@@ -215,37 +218,44 @@ Syntax *Parser::parseBlockStatement() {
   return parseBlockExpression();
 }
 
+/// Parse a block-statement that might be inlined, e.g.,
+/// \code
+///   if (true)
+///     stmt;
+/// \endcode
+Syntax *Parser::parseInlineableBlock() {
+  if (nextTokenIs(tok::LeftBrace))
+    return parseBlockStatement();
+  Syntax *Ret = parseStatement();
+  return Ret;
+}
+
 Syntax *Parser::parseIfStatement() {
   Token KW = requireToken(tok::IfKeyword);
   Syntax *Sig = parseParenEnclosed(*this, [this]() -> Syntax * {
     return parseExpression();
   });
 
-  auto parseBlock = [this]() -> Syntax * {
-    if (this->nextTokenIs(tok::LeftBrace))
-      return this->parseBlockStatement();
-    Syntax *Ret = this->parseStatement();
-    this->expectToken(tok::Semicolon);
-    return Ret;
-  };
-
-  Syntax *Then = parseBlock();
+  Syntax *Then = parseInlineableBlock();
+  // semis are usually consumed at the top level, an inlined block
+  // followed by an else is a unique case where that can't happen.
+  matchToken(tok::Semicolon);
   Syntax *Else = nullptr;
   if (matchToken(tok::ElseKeyword))
-    Else = parseBlock();
+    Else = parseInlineableBlock();
 
   Syntax *Block = onBinary(Token(), Then, Else);
   return onControl(KW, Sig, Block);
 }
 
 Syntax *Parser::parseWhileStatement() {
-  requireToken(tok::WhileKeyword);
-  parseParenEnclosed(*this, [this]() -> Syntax * {
+  Token KW = requireToken(tok::WhileKeyword);
+  Syntax *Sig = parseParenEnclosed(*this, [this]() -> Syntax * {
     return parseExpression();
   });
-  parseStatement();
 
-  return nullptr;
+  Syntax *Block = parseInlineableBlock();
+  return onControl(KW, Sig, Block);
 }
 
 Syntax *Parser::parseForStatement() {
@@ -291,6 +301,14 @@ Syntax *Parser::parseExpressionStatement() {
   return e;
 }
 
+static inline bool isTagKeyword(const AtomSyntax *A) {
+  return llvm::StringSwitch<bool>(A->getSpelling())
+    .Case("class", true)
+    .Case("union", true)
+    .Case("enum", true)
+    .Default(false);
+}
+
 /// Parse a declaration, which has one of the following forms:
 ///
 ///   declaration:
@@ -307,6 +325,8 @@ Syntax *Parser::parseDeclaration() {
   if (nextTokenIs(tok::Equal))
   {
     Syntax *Init = parseEqualInitializer();
+    if (!ParsingBlock)
+      expectToken(tok::Semicolon);
     return onDef(Id, nullptr, Init);
   }
 
@@ -316,15 +336,20 @@ Syntax *Parser::parseDeclaration() {
   // semicolons only seem to be grammatically part of declaration statements.
   // We should fix this in the grammar.
   if (AtomSyntax *Type = dyn_cast<LiteralSyntax>(Sig))
-    if (Type->getSpelling() == "class")
+    if (isTagKeyword(Type))
       ParsingTag = true;
 
   // Match 'identifier : signature ;'.
-  if (matchToken(tok::Semicolon))
+  if (nextTokenIs(tok::Semicolon)) {
+    if (!ParsingBlock)
+      consumeToken();
     return onDef(Id, Sig, nullptr);
+  }
 
   // Match 'identifier : signature initializer'.
   Syntax *Init = parseInitializer();
+  if (!ParsingBlock)
+    matchToken(tok::Semicolon);
   ParsingTag = false;
   return onDef(Id, Sig, Init);
 }
@@ -401,7 +426,8 @@ Syntax *Parser::parseParameterList()
 {
   llvm::SmallVector<Syntax *, 4> SS;
   parseParameterList(SS);
-  return SS.size() > 1 ? onList(tok::Comma, SS) : SS.front();
+  bool Singleton = SS.size() == 1 && nextTokenIsNot(tok::RightParen);
+  return Singleton ? SS.front() : onList(tok::Comma, SS);
 }
 
 void Parser::parseParameterList(llvm::SmallVectorImpl<Syntax *> &SS) {
@@ -633,6 +659,9 @@ Syntax *Parser::parsePostfixExpression() {
       E = parsePointerExpression(E);
       break;
 
+    case tok::PlusPlus:
+      return onUnary(consumeToken(), E);
+
     default:
       return E;
     }
@@ -839,6 +868,12 @@ Syntax *Parser::onIdentifier(const Token &Tok) {
 
 Syntax *Parser::onUnary(const Token &Op, Syntax *Arg) {
   return new UnarySyntax(Op, Arg);
+}
+
+Syntax *Parser::onPostfixUnary(const Token &Op, Syntax *Arg) {
+  UnarySyntax *Ret = new UnarySyntax(Op, Arg);
+  Ret->setPostfix();
+  return Ret;
 }
 
 Syntax *Parser::onBinary(const Token &Op, Syntax *LHS, Syntax *RHS) {
