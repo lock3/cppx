@@ -678,7 +678,7 @@ Syntax *Parser::parsePostfixExpression() {
       break;
 
     case tok::PlusPlus:
-      return onUnary(consumeToken(), E);
+      return onPostfixUnary(consumeToken(), E);
 
     default:
       return E;
@@ -725,7 +725,7 @@ Syntax *Parser::parsePointerExpression(Syntax *LHS) {
       // Then we kind of know we are unary suffix operator.
       Token Op = US->getOperator();
       Op.switchToSuffixDeref();
-      return onUnary(Op, LHS);
+      return onPostfixUnary(Op, LHS);
     }
     return onBinary(US->getOperator(), LHS, US->getOperand());
   }
