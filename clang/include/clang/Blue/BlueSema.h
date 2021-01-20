@@ -227,6 +227,7 @@ public:
 private:
   friend struct Declaration;
   void addDeclToDecl(clang::Decl *Cxx, Declaration *Blue);
+public:
   Declaration *getDeclaration(clang::Decl *Cxx);
 
 //===----------------------------------------------------------------------===//
