@@ -1824,8 +1824,7 @@ clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
 
 
   if (auto *TD = R.getAsSingle<clang::TypeDecl>())
-    llvm_unreachable("Reference to type decl not implemented yet.");
-    // return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
+    return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
 
   if (auto *TD = R.getAsSingle<clang::TemplateDecl>())
     // return SemaRef.buildTemplateType(TD, Loc);

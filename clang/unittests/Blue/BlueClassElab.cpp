@@ -34,7 +34,7 @@ C : class {
 )BLUE";
   auto ToMatch = cxxRecordDecl(hasName("C"),
     hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
-    isPublic()))
+      isPublic()))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -265,6 +265,38 @@ u : c.nested.nested2;
       hasName("u")
     ))
   );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClass, TypeAliasDecl) {
+  StringRef Code = R"BLUE(
+outer : class{
+  x : type = int;
+}
+)BLUE";
+
+  auto ToMatch = cxxRecordDecl(
+    hasName("outer"),
+    has(typeAliasDecl(hasName("x"), hasType(asString("int"))))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClass, TypeAliasDecl_OutOfOrderUse) {
+  StringRef Code = R"BLUE(
+outer : class{
+  y : x;
+  x : type = int;
+}
+)BLUE";
+
+  auto ToMatch = cxxRecordDecl(
+    hasName("outer"),
+    has(typeAliasDecl(hasName("x"), hasType(asString("int")), isPublic())),
+    has(fieldDecl(hasName("y"), hasType(asString("outer::x")), isPublic()))
+  );
+
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 

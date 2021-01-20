@@ -47,3 +47,15 @@ x : type;
 )BLUE";
   BlueFailureTest(Code);
 }
+
+TEST(BlueTypeAlias, TypeAliasOfAClass) {
+  StringRef Code = R"BLUE(
+Y : class{ }
+x : = Y;
+)BLUE";
+  auto ToMatch = typeAliasDecl(
+    hasName("x"),
+    hasType(asString("struct Y"))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
