@@ -149,6 +149,7 @@ public:
   clang::Stmt *elaborateControlStmt(const ControlSyntax *S);
   clang::Stmt *elaborateIfStmt(const ControlSyntax *S);
   clang::Stmt *elaborateWhileStmt(const ControlSyntax *S);
+  clang::Stmt *elaborateForStmt(const ControlSyntax *S);
   clang::Stmt *elaborateReturnStmt(const UnarySyntax *S);
 
   //===--------------------------------------------------------------------===//

@@ -166,10 +166,12 @@ void Parser::parseDeclStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
 
 void Parser::parseStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
   ParsingBlock = true;
-  do
+  do {
+    BraceDelimitedStatement = false;
     parseIntoVector(SS, [this]() { return parseStatement(); });
-  while (matchToken(tok::Semicolon)
-         && !atEndOfFile() && nextTokenIsNot(tok::RightBrace));
+  } while ((matchToken(tok::Semicolon) ||
+            (BraceDelimitedStatement && matchToken(tok::RightBrace)))
+           && !atEndOfFile() && nextTokenIsNot(tok::RightBrace));
   ParsingBlock = false;
 }
 
@@ -259,8 +261,15 @@ Syntax *Parser::parseWhileStatement() {
 }
 
 Syntax *Parser::parseForStatement() {
-  assert(false && "Not implemented");
-  return nullptr;
+  Token KW = requireToken(tok::ForKeyword);
+  Syntax *Sig = parseParenEnclosed(*this, [this]() -> Syntax * {
+    llvm::SmallVector<Syntax *, 4> SS;
+    parseStatementSeq(SS);
+    return onBlock(TokenPair(), SS);
+  });
+
+  Syntax *Block = parseInlineableBlock();
+  return onControl(KW, Sig, Block);
 }
 
 Syntax *Parser::parseBreakStatement() {
@@ -839,6 +848,7 @@ Syntax *Parser::parseBlockExpression() {
   EnclosingBraces Braces(*this);
   if (!Braces.expectOpen())
     return nullptr;
+  BraceDelimitedStatement = ParsingBlock;
 
   llvm::SmallVector<Syntax *, 4> SS;
   if (nextTokenIsNot(tok::RightBrace))
@@ -846,6 +856,7 @@ Syntax *Parser::parseBlockExpression() {
 
   if (!Braces.expectClose())
     return nullptr;
+
   return onBlock(Braces.getEnclosingTokens(), SS);
 }
 

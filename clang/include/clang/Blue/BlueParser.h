@@ -272,6 +272,9 @@ namespace blue
     // True when we are parsing a function body
     // FIXME: get rid of this
     bool ParsingBlock = false;
+
+    // True when parsing a statement that ends with '}', like a for statement.
+    bool BraceDelimitedStatement = false;
   };
 
 } // namespace blue
