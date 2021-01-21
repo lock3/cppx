@@ -51,6 +51,9 @@
 
 namespace blue {
 
+static clang::Expr *buildIdExpr(Sema &SemaRef, llvm::StringRef Id,
+                                clang::SourceLocation Loc);
+
 Declaration *Elaborator::createDeclaration(const Syntax *Def,
                                            Declarator *Dcl,
                                            const Syntax *Init) {
@@ -91,11 +94,11 @@ clang::Decl *Elaborator::elaborateTop(const Syntax *S) {
 
   Declaration *D = new Declaration(S);
   D->setCxx(SemaRef, TU);
-  D->SavedScope = SemaRef.getCurrentScope();
 
-
+  SemaRef.setTUDecl(D);
   const TopSyntax *Top = cast<TopSyntax>(S);
   Sema::ScopeRAII NamespaceScope(SemaRef, Scope::Namespace, S);
+  D->SavedScope = SemaRef.getCurrentScope();
   SemaRef.pushDecl(D);
   for (const Syntax *SS : Top->children()) {
       identifyDeclaration(SS);
@@ -1474,33 +1477,33 @@ clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
   switch (Tok.getKind()) {
   case tok::BitAndKeyword:{
     SemaRef.buildBitAnd();
+    return buildIdExpr(SemaRef, S->getSpelling(), S->getLocation());
   }
-  llvm_unreachable("BW AND. Not implemented");
   break;
   case tok::BitOrKeyword:{
     SemaRef.buildBitOr();
+    return buildIdExpr(SemaRef, S->getSpelling(), S->getLocation());
   }
-  llvm_unreachable("BW OR. Not implemented");
   break;
   case tok::BitXOrKeyword:{
     SemaRef.buildBitXOr();
+    return buildIdExpr(SemaRef, S->getSpelling(), S->getLocation());
   }
-  llvm_unreachable("BW XOR. Not implemented");
   break;
   case tok::BitShlKeyword:{
     SemaRef.buildBitShl();
+    return buildIdExpr(SemaRef, S->getSpelling(), S->getLocation());
   }
-  llvm_unreachable("BW SHL. Not implemented");
   break;
   case tok::BitShrKeyword:{
     SemaRef.buildBitShr();
+    return buildIdExpr(SemaRef, S->getSpelling(), S->getLocation());
   }
-  llvm_unreachable("BW SHR. Not implemented");
   break;
   case tok::BitNotKeyword:{
     SemaRef.buildBitNot();
+    return buildIdExpr(SemaRef, S->getSpelling(), S->getLocation());
   }
-  llvm_unreachable("BW NIR. Not implemented");
   break;
 
   case tok::DecimalInteger:
@@ -1713,16 +1716,18 @@ static clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
                                          clang::LookupResult &R,
                                          bool IsKnownOverload = false);
 
-clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S) {
+clang::Expr *buildIdExpr(Sema &SemaRef,
+    llvm::StringRef Id,
+    clang::SourceLocation Loc) {
   // Check for builtin types.
-  auto BuiltinMapIter = SemaRef.BuiltinTypes.find(S->getSpelling());
+  auto BuiltinMapIter = SemaRef.BuiltinTypes.find(Id);
   if (BuiltinMapIter != SemaRef.BuiltinTypes.end())
-    return SemaRef.buildTypeExpr(BuiltinMapIter->second, S->getLocation());
+    return SemaRef.buildTypeExpr(BuiltinMapIter->second, Loc);
 
   // llvm::outs() << "ELABORATING NON-TYPE EXPR\n";
   // Doing variable lookup.
-  clang::IdentifierInfo *II = &getCxxContext().Idents.get(S->getSpelling());
-  clang::LookupResult R(getCxxSema(), {{II}, S->getLocation()},
+  clang::IdentifierInfo *II = &SemaRef.getCxxAST().Idents.get(Id);
+  clang::LookupResult R(SemaRef.getCxxSema(), {{II}, Loc},
                         clang::Sema::LookupOrdinaryName);
   SemaRef.lookupUnqualifiedName(R);
   R.resolveKind();
@@ -1730,7 +1735,7 @@ clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S
   case clang::LookupResult::FoundOverloaded: {
       // Need to figure out if the potential overload is a member function
       // or not.
-      return clang::UnresolvedLookupExpr::Create(getCxxContext(),
+      return clang::UnresolvedLookupExpr::Create(SemaRef.getCxxAST(),
                                                  R.getNamingClass(),
                                               clang::NestedNameSpecifierLoc(),
                                                  R.getLookupNameInfo(),
@@ -1739,12 +1744,12 @@ clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S
                                                  R.end());
   }
   case clang::LookupResult::Found:
-    return BuildReferenceToDecl(SemaRef, S->getLocation(), R, false);
+    return BuildReferenceToDecl(SemaRef, Loc, R, false);
   case clang::LookupResult::NotFoundInCurrentInstantiation:
   case clang::LookupResult::NotFound: {
-    getCxxSema().Diags.Report(S->getLocation(),
+    SemaRef.getCxxSema().Diags.Report(Loc,
                               clang::diag::err_undeclared_var_use)
-                              << S->getSpelling();
+                              << Id;
     return nullptr;
   }
   case clang::LookupResult::FoundUnresolvedValue:
@@ -1754,11 +1759,14 @@ clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S
     // declarations.
     llvm_unreachable("Not sure how handle unresolved values.");
   case clang::LookupResult::Ambiguous:
-    getCxxSema().DiagnoseAmbiguousLookup(R);
+    SemaRef.getCxxSema().DiagnoseAmbiguousLookup(R);
     return nullptr;
   }
-
   return nullptr;
+}
+
+clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S) {
+  return buildIdExpr(SemaRef, S->getSpelling(), S->getLocation());
 }
 
 clang::Expr *BuildReferenceToDecl(Sema &SemaRef,

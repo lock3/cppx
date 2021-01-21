@@ -75,10 +75,15 @@ class Sema {
 
   /// A mapping of clang Decl nodes to Blue declarations.
   std::unordered_map<clang::Decl *, Declaration *> DeclToDecl;
-
+  
+  /// Translation unit decl.
+  Declaration *TUDecl = nullptr;
 public:
   Sema(SyntaxContext &Context, clang::Sema &S);
   ~Sema();
+
+  void setTUDecl(Declaration *TU) { TUDecl = TU; }
+  Declaration *getTUDecl() const { return TUDecl; }
 
   llvm::StringMap<clang::BinaryOperatorKind> BinOpMap;
   llvm::StringMap<clang::UnaryOperatorKind> UnaryOpMap;
@@ -148,13 +153,14 @@ public:
   /// This is a helper function that dumps ALL of the functions into the
   /// translation unit at once.
   void createBitwiseBuiltinFunctions();
-// private:
-  // llvm::SmallVector<clang::FunctionDecl *, 16> BWAndOverloads;
-  // llvm::SmallVector<clang::FunctionDecl *, 16> BWOrOverloads;
-  // llvm::SmallVector<clang::FunctionDecl *, 16> BWXOrOverloads;
-  // llvm::SmallVector<clang::FunctionDecl *, 16> BWShlOverloads;
-  // llvm::SmallVector<clang::FunctionDecl *, 16> BWShrOverloads;
-// public:
+private:
+  bool DidLoadBWAnd = false;
+  bool DidLoadBWOr = false;
+  bool DidLoadBWXOr = false;
+  bool DidLoadBWShl = false;
+  bool DidLoadBWShr = false;
+  bool DidLoadBWNot = false;
+public:
   void buildBitAnd();
   void buildBitOr();
   void buildBitXOr();

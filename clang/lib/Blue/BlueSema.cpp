@@ -458,28 +458,290 @@ void Sema::createBitwiseBuiltinFunctions() {
   buildBitNot();
 }
 
-void Sema::buildBitAnd() {
+static clang::QualType getBuiltinTypeOrFail(Sema& SemaRef,
+                                            llvm::StringRef TyName) {
+  auto It = SemaRef.BuiltinTypes.find(TyName);
+  assert(It != SemaRef.BuiltinTypes.end() && "Invalid type name");
+  return It->second;
+}
+static clang::FunctionDecl *createBinaryBW(Sema& SemaRef,
+                                           clang::BinaryOperatorKind Op,
+                                           llvm::StringRef FnName,
+                                           llvm::StringRef Parm1,
+                                           llvm::StringRef Parm2) {
+  // Attempting to re-set up the translation unit's global scope.
+  // The declare and define a function.
+  Declaration *TUDecl = SemaRef.getTUDecl();
+  auto TU = cast<clang::TranslationUnitDecl>(TUDecl->getCxx());
+  // auto TUDC = cast<clang::DeclContext>(TUDecl->getCxx());
+  clang::Sema::ContextRAII TUContext(SemaRef.getCxxSema(), TU);
+  ResumeScopeRAII BlueScope(SemaRef, TUDecl->SavedScope, nullptr);
+  llvm::SmallVector<clang::QualType, 3> Types;
 
+  clang::ASTContext &Ctx = SemaRef.getCxxAST();
+  clang::QualType ReturnType = Ctx.getAutoDeductType();
+  clang::SourceLocation Loc = TU->getBeginLoc();
+  // clang::CppxTypeLiteral *CTL = SemaRef.buildTypeExpr(Ctx.getAutoDeductType(), Loc);
+  Types.emplace_back(getBuiltinTypeOrFail(SemaRef, Parm1));
+  Types.emplace_back(getBuiltinTypeOrFail(SemaRef, Parm2));
+
+  clang::FunctionProtoType::ExtProtoInfo EPI;
+  EPI.ExceptionSpec.Type = clang::EST_BasicNoexcept;
+  EPI.ExtInfo = Ctx.getDefaultCallingConvention(false, false);
+  EPI.Variadic = false;
+  clang::IdentifierInfo *II = &Ctx.Idents.get(FnName);
+  clang::DeclarationName Name(II);
+  clang::DeclarationNameInfo NameInfo(Name, Loc);
+  clang::FunctionDecl *FnDecl = clang::FunctionDecl::Create(
+    Ctx, TU, Loc, Loc, Name, clang::QualType(), /*TInfo*/nullptr, clang::SC_None,
+    /*isInlineSpecified*/true, /*hasWrittenPrototype*/false,
+    clang::ConstexprSpecKind::CSK_constexpr, /*TrailingRequiresClause*/nullptr);
+  clang::QualType FnTy = Ctx.getFunctionType(ReturnType, Types, EPI);
+
+  clang::IdentifierInfo *xParmName = &Ctx.Idents.get("x");
+  clang::IdentifierInfo *yParmName = &Ctx.Idents.get("y");
+  // Creating parameter
+  // Add the parameter to the constructor.
+  llvm::SmallVector<clang::ParmVarDecl *, 3> Params;
+  clang::ParmVarDecl *LHS = clang::ParmVarDecl::Create(
+      Ctx, FnDecl, Loc, Loc,xParmName, Types[0], /*TInfo=*/nullptr,
+      clang::SC_None, nullptr);
+  Params.emplace_back(LHS);
+
+  clang::ParmVarDecl *RHS = clang::ParmVarDecl::Create(
+      Ctx, FnDecl, Loc, Loc, yParmName, Types[1], /*TInfo=*/nullptr,
+      clang::SC_None, nullptr);
+  Params.emplace_back(RHS);
+
+  FnDecl->setType(FnTy);
+  FnDecl->setParams(Params);
+  auto FnTyInfo = gold::BuildFunctionTypeLoc(Ctx, FnTy,
+                                             Loc, Loc, Loc,
+                                             clang::SourceRange(Loc, Loc), Loc,
+                                             Params);
+  FnDecl->setTypeSourceInfo(FnTyInfo);
+  {
+    // SemaRef.getCxxSema().ActOnStartOfFunctionDef(nullptr, FnDecl);
+    clang::Sema::SynthesizedFunctionScope Scope(SemaRef.getCxxSema(), FnDecl);
+    clang::Sema::ContextRAII FnCtx(SemaRef.getCxxSema(), FnDecl);
+    clang::Sema::CompoundScopeRAII CompoundScope(SemaRef.getCxxSema());
+    clang::NestedNameSpecifierLoc NNSLoc;
+    clang::SourceLocation BadLoc;
+    clang::Expr *LHSRef = clang::DeclRefExpr::Create(Ctx, NNSLoc,
+      /*TemplateKWLoc*/BadLoc, LHS, /*RefersToEnclosingVariableOrCapture*/false,
+      Loc, LHS->getType(), clang::ExprValueKind::VK_LValue, LHS);
+
+    clang::Expr *RHSRef = clang::DeclRefExpr::Create(Ctx, NNSLoc,
+      /*TemplateKWLoc*/BadLoc, RHS, /*RefersToEnclosingVariableOrCapture*/false,
+      Loc, RHS->getType(), clang::ExprValueKind::VK_LValue, RHS);
+    clang::ExprResult BinOp = SemaRef.getCxxSema().BuildBinOp(
+      /*Scope=*/nullptr, Loc, Op, LHSRef, RHSRef);
+
+    auto RetStmt = SemaRef.getCxxSema().BuildReturnStmt(Loc, BinOp.get());
+    llvm::SmallVector<clang::Stmt *, 1> RetArray;
+    RetArray.emplace_back(RetStmt.get());
+    auto NewBody = SemaRef.getCxxSema().ActOnCompoundStmt(Loc, Loc,
+                                                          RetArray,
+                                                          /*isStmtExpr=*/false);
+    // clang::Stmt *NewBody = clang::CompoundStmt::Create(Ctx, RetArray, Loc, Loc);
+    // SemaRef.getCxxSema().ActOnFinishFunctionBody(FnDecl, NewBody,
+    //                                             /*IsInstantiation=*/true);
+    FnDecl->setBody(NewBody.get());
+
+  }
+  SemaRef.getCxxSema().PushOnScopeChains(FnDecl, SemaRef.getCurClangScope(),
+                                        /*AddToContext*/false);
+  TU->addDecl(FnDecl);
+  Declaration *BD = new Declaration(TUDecl, nullptr, nullptr, nullptr);
+  BD->CurrentPhase = Phase::Initialization;
+  BD->setCxx(SemaRef, FnDecl);
+  BD->Id = II;
+  TUDecl->SavedScope->addDeclLookup(BD);
+  return FnDecl;
+}
+
+void Sema::buildBitAnd() {
+  if (DidLoadBWAnd)
+    return;
+  // Creating the basic overloads.
+  createBinaryBW(*this, clang::BO_And, "bit_and", "int", "int");
+  createBinaryBW(*this, clang::BO_And, "bit_and", "int8", "int8");
+  createBinaryBW(*this, clang::BO_And, "bit_and", "int16", "int16");
+  createBinaryBW(*this, clang::BO_And, "bit_and", "int64", "int64");
+  createBinaryBW(*this, clang::BO_And, "bit_and", "int128", "int128");
+  createBinaryBW(*this, clang::BO_And, "bit_and", "uint", "uint");
+  createBinaryBW(*this, clang::BO_And, "bit_and", "uint8", "uint8");
+  createBinaryBW(*this, clang::BO_And, "bit_and", "uint16", "uint16");
+  createBinaryBW(*this, clang::BO_And, "bit_and", "uint64", "uint64");
+  createBinaryBW(*this, clang::BO_And, "bit_and", "uint128", "uint128");
+  DidLoadBWAnd = true;
 }
 
 void Sema::buildBitOr() {
-
+  if (DidLoadBWOr)
+    return;
+  // Creating the basic overloads.
+  createBinaryBW(*this, clang::BO_Or, "bit_or", "int", "int");
+  createBinaryBW(*this, clang::BO_Or, "bit_or", "int8", "int8");
+  createBinaryBW(*this, clang::BO_Or, "bit_or", "int16", "int16");
+  createBinaryBW(*this, clang::BO_Or, "bit_or", "int64", "int64");
+  createBinaryBW(*this, clang::BO_Or, "bit_or", "int128", "int128");
+  createBinaryBW(*this, clang::BO_Or, "bit_or", "uint", "uint");
+  createBinaryBW(*this, clang::BO_Or, "bit_or", "uint8", "uint8");
+  createBinaryBW(*this, clang::BO_Or, "bit_or", "uint16", "uint16");
+  createBinaryBW(*this, clang::BO_Or, "bit_or", "uint64", "uint64");
+  createBinaryBW(*this, clang::BO_Or, "bit_or", "uint128", "uint128");
+  DidLoadBWOr = true;
 }
 
 void Sema::buildBitXOr() {
-
+  if (DidLoadBWXOr)
+    return;
+  // Creating the basic overloads.
+  createBinaryBW(*this, clang::BO_Xor, "bit_xor", "int", "int");
+  createBinaryBW(*this, clang::BO_Xor, "bit_xor", "int8", "int8");
+  createBinaryBW(*this, clang::BO_Xor, "bit_xor", "int16", "int16");
+  createBinaryBW(*this, clang::BO_Xor, "bit_xor", "int64", "int64");
+  createBinaryBW(*this, clang::BO_Xor, "bit_xor", "int128", "int128");
+  createBinaryBW(*this, clang::BO_Xor, "bit_xor", "uint", "uint");
+  createBinaryBW(*this, clang::BO_Xor, "bit_xor", "uint8", "uint8");
+  createBinaryBW(*this, clang::BO_Xor, "bit_xor", "uint16", "uint16");
+  createBinaryBW(*this, clang::BO_Xor, "bit_xor", "uint64", "uint64");
+  createBinaryBW(*this, clang::BO_Xor, "bit_xor", "uint128", "uint128");
+  DidLoadBWXOr = true;
 }
 
 void Sema::buildBitShr() {
-
+  if (DidLoadBWShr)
+    return;
+  // Creating the basic overloads.
+  createBinaryBW(*this, clang::BO_Shr, "bit_shr", "int", "int");
+  createBinaryBW(*this, clang::BO_Shr, "bit_shr", "int8", "int8");
+  createBinaryBW(*this, clang::BO_Shr, "bit_shr", "int16", "int16");
+  createBinaryBW(*this, clang::BO_Shr, "bit_shr", "int64", "int64");
+  createBinaryBW(*this, clang::BO_Shr, "bit_shr", "int128", "int128");
+  createBinaryBW(*this, clang::BO_Shr, "bit_shr", "uint", "uint");
+  createBinaryBW(*this, clang::BO_Shr, "bit_shr", "uint8", "uint8");
+  createBinaryBW(*this, clang::BO_Shr, "bit_shr", "uint16", "uint16");
+  createBinaryBW(*this, clang::BO_Shr, "bit_shr", "uint64", "uint64");
+  createBinaryBW(*this, clang::BO_Shr, "bit_shr", "uint128", "uint128");
+  DidLoadBWShr = true;
 }
 
 void Sema::buildBitShl() {
+  if (DidLoadBWShl)
+    return;
+  // Creating the basic overloads.
+  createBinaryBW(*this, clang::BO_Shl, "bit_shl", "int", "int");
+  createBinaryBW(*this, clang::BO_Shl, "bit_shl", "int8", "int8");
+  createBinaryBW(*this, clang::BO_Shl, "bit_shl", "int16", "int16");
+  createBinaryBW(*this, clang::BO_Shl, "bit_shl", "int64", "int64");
+  createBinaryBW(*this, clang::BO_Shl, "bit_shl", "int128", "int128");
+  createBinaryBW(*this, clang::BO_Shl, "bit_shl", "uint", "uint");
+  createBinaryBW(*this, clang::BO_Shl, "bit_shl", "uint8", "uint8");
+  createBinaryBW(*this, clang::BO_Shl, "bit_shl", "uint16", "uint16");
+  createBinaryBW(*this, clang::BO_Shl, "bit_shl", "uint64", "uint64");
+  createBinaryBW(*this, clang::BO_Shl, "bit_shl", "uint128", "uint128");
+  DidLoadBWShl = true;
+}
 
+
+static clang::FunctionDecl *createUnaryBW(Sema& SemaRef,
+                                           clang::UnaryOperatorKind Op,
+                                           llvm::StringRef FnName,
+                                           llvm::StringRef Parm1) {
+  // Attempting to re-set up the translation unit's global scope.
+  // The declare and define a function.
+  Declaration *TUDecl = SemaRef.getTUDecl();
+  auto TU = cast<clang::TranslationUnitDecl>(TUDecl->getCxx());
+  // auto TUDC = cast<clang::DeclContext>(TUDecl->getCxx());
+  clang::Sema::ContextRAII TUContext(SemaRef.getCxxSema(), TU);
+  ResumeScopeRAII BlueScope(SemaRef, TUDecl->SavedScope, nullptr);
+  llvm::SmallVector<clang::QualType, 3> Types;
+
+  clang::ASTContext &Ctx = SemaRef.getCxxAST();
+  clang::QualType ReturnType = Ctx.getAutoDeductType();
+  clang::SourceLocation Loc = TU->getBeginLoc();
+  Types.emplace_back(getBuiltinTypeOrFail(SemaRef, Parm1));
+
+  clang::FunctionProtoType::ExtProtoInfo EPI;
+  EPI.ExceptionSpec.Type = clang::EST_BasicNoexcept;
+  EPI.ExtInfo = Ctx.getDefaultCallingConvention(false, false);
+  EPI.Variadic = false;
+  clang::IdentifierInfo *II = &Ctx.Idents.get(FnName);
+  clang::DeclarationName Name(II);
+  clang::DeclarationNameInfo NameInfo(Name, Loc);
+  clang::FunctionDecl *FnDecl = clang::FunctionDecl::Create(
+    Ctx, TU, Loc, Loc, Name, clang::QualType(), /*TInfo*/nullptr, clang::SC_None,
+    /*isInlineSpecified*/true, /*hasWrittenPrototype*/false,
+    clang::ConstexprSpecKind::CSK_constexpr, /*TrailingRequiresClause*/nullptr);
+  clang::QualType FnTy = Ctx.getFunctionType(ReturnType, Types, EPI);
+
+  clang::IdentifierInfo *xParmName = &Ctx.Idents.get("x");
+  // Creating parameter
+  // Add the parameter to the constructor.
+  llvm::SmallVector<clang::ParmVarDecl *, 3> Params;
+  clang::ParmVarDecl *LHS = clang::ParmVarDecl::Create(
+      Ctx, FnDecl, Loc, Loc,xParmName, Types[0], /*TInfo=*/nullptr,
+      clang::SC_None, nullptr);
+  Params.emplace_back(LHS);
+
+  FnDecl->setType(FnTy);
+  FnDecl->setParams(Params);
+  auto FnTyInfo = gold::BuildFunctionTypeLoc(Ctx, FnTy,
+                                             Loc, Loc, Loc,
+                                             clang::SourceRange(Loc, Loc), Loc,
+                                             Params);
+  FnDecl->setTypeSourceInfo(FnTyInfo);
+  {
+    // SemaRef.getCxxSema().ActOnStartOfFunctionDef(nullptr, FnDecl);
+    clang::Sema::SynthesizedFunctionScope Scope(SemaRef.getCxxSema(), FnDecl);
+    clang::Sema::ContextRAII FnCtx(SemaRef.getCxxSema(), FnDecl);
+    clang::Sema::CompoundScopeRAII CompoundScope(SemaRef.getCxxSema());
+    clang::NestedNameSpecifierLoc NNSLoc;
+    clang::SourceLocation BadLoc;
+    clang::Expr *LHSRef = clang::DeclRefExpr::Create(Ctx, NNSLoc,
+      /*TemplateKWLoc*/BadLoc, LHS, /*RefersToEnclosingVariableOrCapture*/false,
+      Loc, LHS->getType(), clang::ExprValueKind::VK_LValue, LHS);
+
+    clang::ExprResult BinOp = SemaRef.getCxxSema().BuildUnaryOp(
+      /*Scope=*/nullptr, Loc, Op, LHSRef);
+
+    auto RetStmt = SemaRef.getCxxSema().BuildReturnStmt(Loc, BinOp.get());
+    llvm::SmallVector<clang::Stmt *, 1> RetArray;
+    RetArray.emplace_back(RetStmt.get());
+    auto NewBody = SemaRef.getCxxSema().ActOnCompoundStmt(Loc, Loc,
+                                                          RetArray,
+                                                          /*isStmtExpr=*/false);
+    FnDecl->setBody(NewBody.get());
+
+  }
+  SemaRef.getCxxSema().PushOnScopeChains(FnDecl, SemaRef.getCurClangScope(),
+                                        /*AddToContext*/false);
+  TU->addDecl(FnDecl);
+  Declaration *BD = new Declaration(TUDecl, nullptr, nullptr, nullptr);
+  BD->CurrentPhase = Phase::Initialization;
+  BD->setCxx(SemaRef, FnDecl);
+  BD->Id = II;
+  TUDecl->SavedScope->addDeclLookup(BD);
+  return FnDecl;
 }
 
 void Sema::buildBitNot() {
-
+  if (DidLoadBWNot)
+    return;
+  // Creating the basic overloads.
+  createUnaryBW(*this, clang::UO_Not, "bit_not", "int");
+  createUnaryBW(*this, clang::UO_Not, "bit_not", "int8");
+  createUnaryBW(*this, clang::UO_Not, "bit_not", "int16");
+  createUnaryBW(*this, clang::UO_Not, "bit_not", "int64");
+  createUnaryBW(*this, clang::UO_Not, "bit_not", "int128");
+  createUnaryBW(*this, clang::UO_Not, "bit_not", "uint");
+  createUnaryBW(*this, clang::UO_Not, "bit_not", "uint8");
+  createUnaryBW(*this, clang::UO_Not, "bit_not", "uint16");
+  createUnaryBW(*this, clang::UO_Not, "bit_not", "uint64");
+  createUnaryBW(*this, clang::UO_Not, "bit_not", "uint128");
+  DidLoadBWNot = true;
 }
 
 
