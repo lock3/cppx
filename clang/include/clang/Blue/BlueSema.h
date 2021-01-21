@@ -143,12 +143,21 @@ public:
   const llvm::StringMap<clang::QualType> BuiltinTypes;
   const llvm::StringMap<clang::QualType> createBuiltinTypeList();
 
+  /// Bitwise built-ins
+  ///{
   /// This is a helper function that dumps ALL of the functions into the
   /// translation unit at once.
-  ///{
   void createBitwiseBuiltinFunctions();
+// private:
+  // llvm::SmallVector<clang::FunctionDecl *, 16> BWAndOverloads;
+  // llvm::SmallVector<clang::FunctionDecl *, 16> BWOrOverloads;
+  // llvm::SmallVector<clang::FunctionDecl *, 16> BWXOrOverloads;
+  // llvm::SmallVector<clang::FunctionDecl *, 16> BWShlOverloads;
+  // llvm::SmallVector<clang::FunctionDecl *, 16> BWShrOverloads;
+// public:
   void buildBitAnd();
   void buildBitOr();
+  void buildBitXOr();
   void buildBitShr();
   void buildBitShl();
   void buildBitNot();

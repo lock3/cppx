@@ -1472,13 +1472,37 @@ clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
   // UnicodeCharacter
   const Token& Tok = S->getToken();
   switch (Tok.getKind()) {
-  case tok::BitAndKeyword:
-  case tok::BitOrKeyword:
-  case tok::BitXOrKeyword:
-  case tok::BitShlKeyword:
-  case tok::BitShrKeyword:
-  case tok::BitNotKeyword:
-    llvm_unreachable("Special functions not implemented yet.");
+  case tok::BitAndKeyword:{
+    SemaRef.buildBitAnd();
+  }
+  llvm_unreachable("BW AND. Not implemented");
+  break;
+  case tok::BitOrKeyword:{
+    SemaRef.buildBitOr();
+  }
+  llvm_unreachable("BW OR. Not implemented");
+  break;
+  case tok::BitXOrKeyword:{
+    SemaRef.buildBitXOr();
+  }
+  llvm_unreachable("BW XOR. Not implemented");
+  break;
+  case tok::BitShlKeyword:{
+    SemaRef.buildBitShl();
+  }
+  llvm_unreachable("BW SHL. Not implemented");
+  break;
+  case tok::BitShrKeyword:{
+    SemaRef.buildBitShr();
+  }
+  llvm_unreachable("BW SHR. Not implemented");
+  break;
+  case tok::BitNotKeyword:{
+    SemaRef.buildBitNot();
+  }
+  llvm_unreachable("BW NIR. Not implemented");
+  break;
+
   case tok::DecimalInteger:
     return createIntegerLiteral(getCxxContext(), SemaRef, S);
   case tok::DecimalFloat:

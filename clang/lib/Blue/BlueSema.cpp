@@ -449,6 +449,41 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   // return true;
 }
 
+void Sema::createBitwiseBuiltinFunctions() {
+  buildBitAnd();
+  buildBitOr();
+  buildBitXOr();
+  buildBitShr();
+  buildBitShl();
+  buildBitNot();
+}
+
+void Sema::buildBitAnd() {
+
+}
+
+void Sema::buildBitOr() {
+
+}
+
+void Sema::buildBitXOr() {
+
+}
+
+void Sema::buildBitShr() {
+
+}
+
+void Sema::buildBitShl() {
+
+}
+
+void Sema::buildBitNot() {
+
+}
+
+
+
 clang::CppxTypeLiteral *Sema::buildTypeExpr(clang::QualType Ty,
                                             clang::SourceLocation Loc) {
   return buildAnyTypeExpr(CxxAST.CppxKindTy, Ty, Loc);
