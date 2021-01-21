@@ -40,6 +40,7 @@ add_clang_unittest(BlueTests
   BlueBitwiseOpElab.cpp
   BlueClassElab.cpp
   BlueComparisonOp.cpp
+  BlueForElab.cpp
   BlueFunctionElab.cpp
   BlueIfElab.cpp
   BlueLiteralElab.cpp
@@ -47,6 +48,7 @@ add_clang_unittest(BlueTests
   BluePointerElab.cpp
   BlueTypeAliasElab.cpp
   BlueVariableElab.cpp
+  BlueWhileElab.cpp
   )
 
 clang_target_link_libraries(BlueTests

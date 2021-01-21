@@ -262,16 +262,10 @@ namespace blue
     /// Diagnostics.
     clang::DiagnosticsEngine &Diags;
 
-  private:
     Token PreviousToken;
 
-    // True when we are parsing the initializer of a tag decl
-    // FIXME: get rid of this
-    bool ParsingTag = false;
-
-    // True when we are parsing a function body
-    // FIXME: get rid of this
-    bool ParsingBlock = false;
+    // How deep into nested {}'s are we?
+    unsigned BraceDepth = 0;
   };
 
 } // namespace blue

@@ -926,7 +926,7 @@ clang::Decl *Elaborator::identifyDeclsInClassBody(Declaration *D,
 
 // Expression elaboration
 clang::Expr *Elaborator::elaborateExpression(const Syntax *S) {
-  if (isa<ErrorSyntax>(S))
+  if (!S || isa<ErrorSyntax>(S))
     return nullptr;
 
   return doElaborateExpression(S);
@@ -2060,6 +2060,8 @@ clang::Stmt *Elaborator::elaborateControlStmt(const ControlSyntax *S) {
     return elaborateIfStmt(S);
   case tok::WhileKeyword:
     return elaborateWhileStmt(S);
+  case tok::ForKeyword:
+    return elaborateForStmt(S);
 
   default:
     break;
@@ -2145,6 +2147,59 @@ clang::Stmt *Elaborator::elaborateWhileStmt(const ControlSyntax *S) {
                                         S->getSignature()->getEndLocation(),
                                         Block);
   return While.get();
+}
+
+clang::Stmt *Elaborator::elaborateForStmt(const ControlSyntax *S) {
+  assert(S->getKeyword().hasKind(tok::ForKeyword) && "invalid while syntax");
+  clang::SourceLocation ForLoc = S->getKeyword().getLocation();
+  Sema::ScopeRAII ForScope(SemaRef, Scope::Control, S);
+  clang::Sema::GoldElaborationScopeRAII CxxScope(
+    CxxSema,
+    clang::Scope::BreakScope    |
+    clang::Scope::ContinueScope |
+    clang::Scope::DeclScope     |
+    clang::Scope::ControlScope);
+
+  if (!S->getSignature() || isa<ErrorSyntax>(S->getSignature())) {
+    Error(S->getLocation(), "failed to translate statement");
+    return nullptr;
+  }
+
+  // Elaborate the conditions
+  unsigned I = 0;
+  const Syntax *Conditions[3] = {nullptr, nullptr, nullptr};
+  for (const Syntax *C : S->getSignature()->children()) {
+    if (I > 2) {
+      // Conceivably, if we got to this point, C cannot be null.
+      Error(C->getLocation(), "too many arguments in for-loop signature");
+      return nullptr;
+    }
+
+    Conditions[I++] = C;
+  }
+
+  clang::Stmt *TheDeclStmt = elaborateStatement(Conditions[0]);
+  clang::Expr *CondExpr = elaborateExpression(Conditions[1]);
+  clang::SourceLocation CondLoc = Conditions[1] ?
+    Conditions[1]->getLocation() : S->getLocation();
+  clang::Sema::ConditionResult Condition =
+    CxxSema.ActOnCondition(CxxSema.getCurScope(), CondLoc, CondExpr,
+                           clang::Sema::ConditionKind::Boolean);
+  clang::Expr *IncExpr = elaborateExpression(Conditions[2]);
+  clang::Sema::FullExprArg FullIncExpr =
+    CxxSema.MakeFullDiscardedValueExpr(IncExpr);
+
+  // Elaborate the block
+  const Syntax *BlockSyntax = S->getBlock();
+  SemaRef.enterScope(Scope::Block, BlockSyntax);
+  clang::Stmt *Block = elaborateStatement(BlockSyntax);
+  SemaRef.leaveScope(BlockSyntax);
+  if (!Block)
+    return nullptr;
+
+  return CxxSema.ActOnForStmt(ForLoc, clang::SourceLocation(),
+                              TheDeclStmt, Condition, FullIncExpr,
+                              clang::SourceLocation(), Block).get();
 }
 
 clang::Stmt *Elaborator::elaborateReturnStmt(const UnarySyntax *S) {

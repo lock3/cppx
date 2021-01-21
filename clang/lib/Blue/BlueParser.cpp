@@ -59,11 +59,17 @@ struct EnclosingTokens
 
   bool expectOpen() {
     Open = P.requireToken(OpenTokens[K]);
+    if (K == enc::Braces)
+      ++P.BraceDepth;
+
     return true;
   }
 
   bool expectClose() {
     Close = P.expectToken(CloseTokens[K]);
+    if (K == enc::Braces)
+      P.BraceDepth -= P.BraceDepth ? 1 : 0;
+
     if (!Close) {
       // FIXME: Emit a diagnostic.
     }
@@ -145,7 +151,7 @@ Token Parser::expectToken(char const* Id) {
 Syntax *Parser::parseFile() {
   llvm::SmallVector<Syntax *, 16> SS;
   if (!atEndOfFile())
-    parseDeclStatementSeq(SS);
+    parseStatementSeq(SS);
   return onTop(SS);
 }
 
@@ -164,13 +170,22 @@ void Parser::parseDeclStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
   while (!atEndOfFile() && nextTokenIsNot(tok::RightBrace));
 }
 
+static inline bool atClosedBrace(Parser &P, unsigned BeginningBraceDepth) {
+  return P.BraceDepth == BeginningBraceDepth &&
+    P.PreviousToken.hasKind(tok::RightBrace);
+}
+
+static inline bool atClosingBrace(Parser &P, unsigned BeginningBraceDepth) {
+  return P.BraceDepth == BeginningBraceDepth &&
+    P.nextTokenIs(tok::RightBrace);
+}
+
 void Parser::parseStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS) {
-  ParsingBlock = true;
+  unsigned BeginningBraceDepth = BraceDepth;
   do
     parseIntoVector(SS, [this]() { return parseStatement(); });
-  while (matchToken(tok::Semicolon)
-         && !atEndOfFile() && nextTokenIsNot(tok::RightBrace));
-  ParsingBlock = false;
+  while ((matchToken(tok::Semicolon) || atClosedBrace(*this, BeginningBraceDepth))
+         && !atEndOfFile() && !atClosingBrace(*this, BeginningBraceDepth));
 }
 
 // True if the next tokens would start a declaration. That is, we would
@@ -239,7 +254,9 @@ Syntax *Parser::parseIfStatement() {
   Syntax *Then = parseInlineableBlock();
   // semis are usually consumed at the top level, an inlined block
   // followed by an else is a unique case where that can't happen.
-  matchToken(tok::Semicolon);
+  if (nthTokenIs(1, tok::ElseKeyword))
+    matchToken(tok::Semicolon);
+
   Syntax *Else = nullptr;
   if (matchToken(tok::ElseKeyword))
     Else = parseInlineableBlock();
@@ -259,8 +276,15 @@ Syntax *Parser::parseWhileStatement() {
 }
 
 Syntax *Parser::parseForStatement() {
-  assert(false && "Not implemented");
-  return nullptr;
+  Token KW = requireToken(tok::ForKeyword);
+  Syntax *Sig = parseParenEnclosed(*this, [this]() -> Syntax * {
+    llvm::SmallVector<Syntax *, 4> SS;
+    parseStatementSeq(SS);
+    return onBlock(TokenPair(), SS);
+  });
+
+  Syntax *Block = parseInlineableBlock();
+  return onControl(KW, Sig, Block);
 }
 
 Syntax *Parser::parseBreakStatement() {
@@ -301,14 +325,6 @@ Syntax *Parser::parseExpressionStatement() {
   return e;
 }
 
-static inline bool isTagKeyword(const AtomSyntax *A) {
-  return llvm::StringSwitch<bool>(A->getSpelling())
-    .Case("class", true)
-    .Case("union", true)
-    .Case("enum", true)
-    .Default(false);
-}
-
 /// Parse a declaration, which has one of the following forms:
 ///
 ///   declaration:
@@ -325,32 +341,19 @@ Syntax *Parser::parseDeclaration() {
   if (nextTokenIs(tok::Equal))
   {
     Syntax *Init = parseEqualInitializer();
-    if (!ParsingBlock)
-      expectToken(tok::Semicolon);
     return onDef(Id, nullptr, Init);
   }
 
   // Match 'identifier : signature ...'.
   Syntax * Sig = parseSignature();
-  // FIXME: this is a hack to get around the fact that
-  // semicolons only seem to be grammatically part of declaration statements.
-  // We should fix this in the grammar.
-  if (AtomSyntax *Type = dyn_cast<LiteralSyntax>(Sig))
-    if (isTagKeyword(Type))
-      ParsingTag = true;
 
   // Match 'identifier : signature ;'.
   if (nextTokenIs(tok::Semicolon)) {
-    if (!ParsingBlock)
-      consumeToken();
     return onDef(Id, Sig, nullptr);
   }
 
   // Match 'identifier : signature initializer'.
   Syntax *Init = parseInitializer();
-  if (!ParsingBlock)
-    matchToken(tok::Semicolon);
-  ParsingTag = false;
   return onDef(Id, Sig, Init);
 }
 
@@ -660,7 +663,7 @@ Syntax *Parser::parsePostfixExpression() {
       break;
 
     case tok::PlusPlus:
-      return onUnary(consumeToken(), E);
+      return onPostfixUnary(consumeToken(), E);
 
     default:
       return E;
@@ -707,7 +710,7 @@ Syntax *Parser::parsePointerExpression(Syntax *LHS) {
       // Then we kind of know we are unary suffix operator.
       Token Op = US->getOperator();
       Op.switchToSuffixDeref();
-      return onUnary(Op, LHS);
+      return onPostfixUnary(Op, LHS);
     }
     return onBinary(US->getOperator(), LHS, US->getOperand());
   }
@@ -850,10 +853,11 @@ Syntax *Parser::parseBlockExpression() {
 
   llvm::SmallVector<Syntax *, 4> SS;
   if (nextTokenIsNot(tok::RightBrace))
-    ParsingTag ? parseDeclStatementSeq(SS) : parseStatementSeq(SS);
+    parseStatementSeq(SS);
 
   if (!Braces.expectClose())
     return nullptr;
+
   return onBlock(Braces.getEnclosingTokens(), SS);
 }
 
