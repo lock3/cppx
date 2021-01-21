@@ -1,0 +1,802 @@
+================================================================================
+USYNTAX Proposal
+================================================================================
+
+We specify:
+1) an unambiguous EBNF grammar
+2) a total mapping from grammar productions into abstract syntax or errors
+3) a partial mapping from abstract syntax into constant data suitable as an
+   interchange format
+
+--------------------------------------------------------------------------------
+Proposed Syntax in unambiguous 63-line EBNF grammar, given input UTF-8 or ASCII
+--------------------------------------------------------------------------------
+
+alpha     = 'A'-'Z' | 'a'-'z'
+digit     = '0'-'9'
+hex       = '0'-'9' | 'A'-'F' | 'a'-'f'
+
+newline   = 0x0D [0x0A] | 0x0A
+ux        = 0x80-0xBF
+printable = 0x09                 | !'<#' !'#>' 0x20-0x7E | blockcmt | '<#>'
+          | 0xC2-0xDF ux         | 0xE0 0xA0-0xBF ux     | 0xE1-0xEC ux ux
+          | 0xED 0x80-0x9F ux    | 0xEE-0xEF ux ux       | 0xF0 0x90-0xBF ux ux
+          | 0xF1-0xF3 ux ux ux    | 0xF4 0x80-0x8F ux ux
+
+space     = {0x09 | 0x20 | comment}
+blockcmt  = '<#' !'>' {printable|newline} '#>
+comment   = '#'  !'>' {printable} ending
+            | '<#>' {printable} ind {printable|line} ded
+            | blockcmt
+
+ending    = lookahead(newline|end)
+ind       = space ending push top=0 blockind=lineind lineprefix=''
+ded       = ending pop
+line      = newline i={0x09|0x20} space (ending | (top | i>blockind) lineind=i
+            | i<=blockind)
+scan      = space {line}
+scankey   = space [line {line} lineprefix space]
+
+num       = ('0x' hex {hex}
+            | !(('0x'|'0u'|'0c') hex) [{digit} '.'] digit {digit} [units]) !(alpha|digit|'_')
+units     = 'e' ['+'|'-'] digit {digit} ('h'|'f'|'d'|'q')
+            | !('e' digit) (alpha|'_') {alpha|digit|'_'} | '%'
+
+qualident = ['(' list ')' space] !reserved ident
+ident     = (alpha|'_') {alpha|digit|'_'} !(alpha|digit|'_') ["'" {!('''|'"'|'\'|'{'|'}'|'#') 0x20-0x7E} "'"]
+path      = ['/' label] '@' label {'/' ['(' path ')'] ident} !('/'|'&')
+label     = (alpha|digit|'_') {alpha|digit|'_'|'-'|'.'} !(alpha|digit|'_'|'-'|'.')
+
+char      = ''' {charconst | !('\'|'{'|'}'|''') printable} ''' | charcode
+string    = '"' {special   | !('\'|'{'|'}'|'"') printable} '"'
+charcode  = ('0c' hex [hex] | '0u' ('10' | hex) [hex] [hex] [hex] [hex]) !(alpha|digit|'_')
+charconst = '{' scan [charcode scan] '}'
+            | '\' !'<#' !'#>' ('r'|'n'|'t'|'''|'"'|'\'|'{'|'}'|'#'|'<'|'>'|'&'|'~')
+special   = charconst | !charconst ('{' list '}' | '\' (alpha|'_'))
+
+markup    = '<' space tags (':>' ind content ded
+            | ':' content '>' | '>' content '<' {'/' ident space} '>')
+escape    = '&' push lineprefix='&' space expr (';'|ending) pop
+element   = special
+            | markup
+            | escape
+            | comment
+            | line
+            | !('\'|'{'|'}'|'#'|'<'|'>'|'&'|'~') printable
+content   = space {line} ('~' {element} {'~' {element}} | {element})
+
+word      = !(alpha|digit|'_') space !('=' !'=' !'>'
+            | '.' !'.' !digit)
+key       = scankey ('do'|'in'|'otherwise'|'returns'|'then'|'until'   ) word
+reserved  = key
+            | ('and'|'catch'|'else'|'if'|'not'|'of'|'or'|'where') word
+catch     = scankey ('catch') word
+docattr   = '<|' !'>' {element} '>'
+preattr   = '[' space expr ']' space ending
+
+brace     = scan '{' list '}' space
+block     = brace
+            | ':' ind list ded
+imm       = def lookahead(ending|')'|']'|'}'|','|';'|'where'|'=>'|'<|')
+of        = 'of' word (block|imm)
+
+prefix    = ('?' | '^' | '+' | '-' | '*'                            | '[' space [expr] ']') space
+postfix   = ('?' | '^' | '@' | calls !macro                         | '.' scan qualident  ) space
+base      = ('(' list ')' | num | char | charcode | string | markup |          qualident  ) space
+calls     = ('(' list ')' | '[' list ']' | '<' space base {postfix | {calls} brace} '>'   ) space
+
+tags      = [base {postfix | {calls} brace} '.' scan] qualident space [brace] [',' scan tags]
+if        = 'if' word macro (scankey 'else' word (block | if | !('if' word) imm) | !(scankey 'else'))
+macro     = {calls} (key imm | [key] block {key block} [key imm]) [catch macro] !key !catch
+
+call      = (base|path|if) {postfix|macro|of | ('&') scan  call }
+            | prefix (brace | char | !char call)
+mul       = call { ('*' | '/'                      ) scan  call }
+add       = mul  { ('+' | '-'                      ) scan  mul  }
+to        = add  { ('..') scan add |          ('->') scan  to   }
+            | (':') space to
+cmp       = to   { (':')      space to} {('>='|'>' ) space to   }
+                 { ('<='|'<') space to} {('=='|'<>') space to   }
+            | ('&'|'..'|'!' | 'not' word) space cmp
+and       = cmp  { ('and' word | '&&'              ) scan  cmp  }
+or        = and  { ('or'  word | '||' | '|'        ) scan  or   }
+def       = or   { ('='|':='|'+='|'-='|'*='|'/='   ) scan  def  | '!'  space [brace | ind list ded ]     }
+expr      = def  { docattr space                                | '=>' space (brace | ind list ded | expr)
+            | scankey 'where' word (block | def {',' scan def} !',')}
+            | (docattr|preattr) scan expr
+
+commas    = lookahead(';')
+            | expr {',' scan expr}
+list      = push lineprefix='' scan [commas {(';'|ending) scan commas}] pop
+file      = [0xEF 0xBB 0xBF] top=1 blockind='' lineind='' list end
+
+--------------------------------------------------------------------------------
+Formal Syntax Explanation
+--------------------------------------------------------------------------------
+
+Single-Level Grammar
+
+        Most languages are expressed as a token grammar followed by a syntax
+        grammar. However, we specify a single-level grammar mapping text
+        directly to abstract syntax. This accomodates arbitrary nesting of code,
+        strings, and markup.
+
+LL(1) Language
+
+        The subset of the language which excludes significant whitespace and
+        implicit semicolons belongs to the context-free language class LL(1),
+        meaning: it can be parsed left-to-right, making irreversible parsing
+        decisions based on only one character of lookahead. However, the EBNF
+        grammar above is not written in LL(1) form.
+
+        To support significant whitespace and implicit semicolons, the syntax is
+        augmented with context representing textual block indentation,
+        line indentation, and line prefix.
+
+Typing Neutrality
+
+        The syntax makes type definitions optional (though particular languages
+        may require them) hence it's compatible with strongly typed, dynamically
+        typed, and gradually typed languages.
+
+Single Syntax for Types and Values
+
+        There is a single syntax spanning value expessions and type expressions,
+        though languages utilizing the syntax may distinguish them contextually
+        as they require.
+
+Definitions, Types, Values
+
+        A rich type language and scalable definitions and require moving away
+        from the C "int x=3" definition style. We adopt the Pascal/Typescript
+        style "x:int=3".
+
+Flexible Macro Syntax
+
+        Rather than providing numerous special syntactic forms based on leading
+        keywords such as "if" and "for", the syntax allows arbitrary
+        user-defined macro identifiers, and only reserves trailing keywords
+        such as "in", "or", and "where".
+
+--------------------------------------------------------------------------------
+Abstract Syntax Tree Generation
+--------------------------------------------------------------------------------
+
+We specify an exact translation from the syntax's grammar productions into an
+abstract syntax tree or error.
+
+The Abstract Syntax Tree nodes comprise:
+
+        atom       # An atomic value: an integer, rational number, floating
+                   # point number, path, unicode character, or unicode code unit.
+        identifier # An identifier consisting of an optional qualifier
+                   # and a string.
+        attribute  # An attribute e<a> attached to an expression.
+        call       # A function call f(a) or f[a] taking a list of parameters.
+                   # A call may either be potentially failing using f[a] syntax,
+                   # or not failing using f(a) syntax.
+                   # f(1,2) takes two parameters, f((1,2)) takes one.
+        macro      # A macro invocation    m{a}, m(a){b}, etc, containing one or
+                   # more macro clauses.
+        escape     # A syntactic escape (unquote) from a macro's definition's
+                   # quasiquoted syntax.
+
+Code Production Rules:
+
+        Production  Example         Resulting Abstract Syntax
+        ----------  --------------  -------------------------
+
+        num         3, -7.5         atom (rational number)
+        num         12.5f,1e-10d    atom (floating point number)
+        num         1.5cm           call (numeric units), e.g. units'cm'(1.5)
+        ident       abc             identifier (no qualifier and empty quoted
+                                                string)
+        ident       operator'+'     identifier (no qualifier and specified
+                                                quoted string)
+        path        @iso.org/spec   atom (path)
+        char        0cFE            atom (UTF-8 code unit)
+        char        0u12AB          atom (unicode code point)
+        char        'c'             atom (unicode character), if it contains a
+                                         single constant unicode code point
+        char        'A-Za-z_'       macro :charset{'A-Za-z_'}
+        string      "Hi"            macro  array{'H','i'}, containing UTF-8 code
+                                           units, if string is constant
+        string      "Hi, {name}."   macro  (@P)concat("Hi",stringify(name),".")
+        string      "Hi, &expr;."   macro, (@P)concat("Hi",expr,".")
+        markup      <B:Hello>       macro, markup'B'{content="Hello"}.
+        markup      <B{a=b}:Hello>  macro, markup'B'{a=b,content="Hello"}.
+        markup      <B,I:Hello>     macro, markup'B'{content=markup'I'{
+                                                             content="Hello"}}.
+
+        macro       for(a){bs}      macro. See below.
+        macro       for(a) do b     macro. See below.
+        postfix     f[as]           element;   with function f and parameters as
+        postfix     f(as)           call;      with function f and parameters as
+        postfix     e<a>            attribute; with expression e and single
+                                               attribute a
+        postfix     a?              macro operator'?'{a}
+        postfix     a^              macro operator'^'{a}
+        postfix     a@              macro operator'@'{a}
+        postfix     a.ident         macro operator'.'{a,ident}
+
+        prefix      []a             call  prefix'[]'(a)
+        prefix      [a]b            call  operator'[]'(a,b)
+
+                                    The following rules hold if a doesn't match
+                                    the "brace" or "char" production:
+                                    prefix      ?a            call  prefix'?'(a)
+
+        prefix      ^a              call  prefix'^'(a)
+        prefix      +a              call  prefix'+'(a)
+        prefix      -a              call  prefix'-'(a)
+        prefix      *a              call  prefix'*'(a)
+
+                                    Else, the following rules hold when a
+                                    matches the "brace" or "char" production:
+                                    prefix  ?a      macro :prefix'?'(typedef{a})
+        prefix      ^a              macro :prefix'^'(typedef{a})
+        prefix      +a              macro :prefix'+'(typedef{a})
+        prefix      -a              macro :prefix'-'(typedef{a})
+        prefix      *a              macro :prefix'*'(typedef{a})
+
+        mul         a*b, a/b        call  operator'*'(a,b), operator'/'[a,b]
+        add         a+b, a-b        call  operator'+'(a,b), operator'-'(a,b)
+        to          a..b            call  operator'..'[a,b]
+        fn          a->b            macro operator'->'{a,b}
+        fn          :a              macro operator':'{a}
+
+        cmp         a:b             macro a=:b
+        cmp         a>=b, a>b       call  operator'>='[a,b], operator'>'[a,b]
+        cmp         a<=b, a<b       call  operator'<='[a,b], operator'<'[a,b]
+        cmp         a==b, a<>b      call  operator'=='[a,b], operator'<>'[a,b]
+        cmp         ..a             call  operator'..' {a}
+        cmp         !a              call  operator'!'  {a}
+        cmp         not a           call  operator'not'{a}
+        cmp         &a              escape
+
+        and         a and b, a&&b  macro operator'and'{a,b}, operator'&&'{a,b}
+
+        or          a or  b, a||b  macro operator'or' {a,b}, operator'||'{a,b}
+
+        def         a=b            macro operator'=' {a,b}
+        def         a|b            macro operator'|' {a,b}
+        def         a:=b           macro operator':='{a,b}
+        def         a+=b, a-=b     macro operator'+='{a,b}, (@P)operator'-='{a,b}
+        def         a*=b, a/=b     macro operator'*='{a,b}, (@P)operator'/='{a,b}
+        def         a! {bs}        macro operator'!' (a){bs}
+
+        expr        a=>b           macro operator'=>'(a){b}
+        expr        a where b      macro operator'where'(a){b}
+        expr        a <|doc>       a<<Doc:cmt>>
+        expr        <|doc> a       a<<Doc:cmt>>
+
+        commas      1              atom 1
+        commas      1,2            macro array{1,2}
+        commas      a,..bs,c       call  array{a}+bs+array{c}
+
+        list        1              atom 1
+        list        1;             macro array{1}
+        list        1; 2; 3        macro array{1,2,3}
+
+The "string", "char", and "elements" productio produce a constant array if their
+contents consist of only the productions "text", "comment", "blockcmt", "line".
+Otherwise they produce a non-constant array array concatenating constant
+sub-arrays and the following non-constant productions:
+
+        '\' followed by a letter other than 'r', 'n', and 't', such as "\w"
+              produces: backslash'w'{}
+
+        '{' list '}' not matching the "text" production
+              produces: stringify(list)
+
+        The "escape" production, such as &expr;
+              produces: expr
+
+The "markup" production works as follows:
+        Markup like <B,I:Hello> nests as if it were <B:<I:Hello>>.
+        <B:Hello> is equivalent to markup'B'{content="Hello"}.
+        <B{weight=3}:Hello> is equivalent to markup'B'{weight=3,content="Hello"}.
+
+The "content" production for markup has two cases, depending on
+the presence of '~':
+        - If '~' is absent,  the markup content is an array concatenating its
+          contents, starting from the beginning.
+        - If '~' is present, the markup content is an array of arrays
+          concatenating the contents of each "~" item, discarding spaces and
+          lines before the first '~'.
+
+In "elements" production, all text consumed by the "printable" production is
+captured literally, except:
+        - Empty lines (meaning: lines that contain only spaces, tabs, and line
+          or block comments are captured as blank lines.
+        - If markup initiates a significant indentation or exists inside of a
+          prior indented construct (e.g. top=0 according to the state of the
+          parser), the first non-blank line following the line where the markup
+          begins is analyzed to determine its leading indent (consisting of tabs
+          and spaces). This leading indent is removed from the first and all
+          subsequent lines that are at least as indented. For subsequent lines
+          that are less indented, all leading spaces and tabs are removed.
+
+The "commas" and "list" productions
+
+        !! means one thing in macros
+        !! means another thing in parenthesis,calls,other contexts
+        !! what about "..xs"?
+
+The "macro" production generates a macro invocation.
+
+        A macro consists of an expression identifying a macro, followed by a
+        list of macro clauses whose contents are defined by the "macro"
+        production. Each clause contains a type, attributes, and a body.
+        Macros may support any of the following clause types:
+
+                res_of         - a (parenthesized) list of zero or more items
+                                 separated by only commas or newlines
+                res_of_special - a (parenthesized) list of items separated by
+                                 one or more semicolons
+                res_at         - a [braced] list of zero or more items separated
+                                 by only commas or newlines
+                res_at_special - a [braced] list of items separated by one or
+                                 more semicolons
+
+                res_else,
+                res_catch,
+                res_do,
+                res_in,
+                res_otherwise,
+                res_returns,
+                res_then,
+                res_until      - clauses initiated by reserved word
+
+                res_none       - a {bracketed} list of items
+
+Line Numbers
+
+        For error message consistency between implementations, line numbers are
+        counted starting at 1 and advancing with each consumption of grammar's
+        "newline" construct.
+
+--------------------------------------------------------------------------------
+What Does It All Mean?
+--------------------------------------------------------------------------------
+
+        # We support line comments
+        <# Block comments #>
+        <# Block comments nest <# like this #> #>
+
+        # Constants
+        123         # integer
+        0xAB12      # hex integer
+        123.45      # rational
+        123.45f     # floating point (h, f, d, q)
+        'x'         # character
+        "ABC"       # string
+        "Hello\r\n" # string with backslashes
+
+        # Identifiers
+        cos,Actor                  # Ordinary identifier, may be value or type
+        MyString.length            # Field access
+        (Actor)Health              # Disambiguate multiple-inheritance field
+
+        # Numeric operators
+        (2*a+3*b)/5
+
+        # Functions
+        f(x:int,y:int)=x*x+y*y     # value only
+        f(x&y:int)=x*x+y*y         # same as the above
+        f(x:int,y:int):int=x*x+y*y # type only
+        f(x:int,y:int):int         # abstract
+        f(:int,:int):int           # names are optional
+
+        # Conditionals
+        if(x<10) then print(x)
+        if(x<10) {print(x)}
+        if(x<10):
+                print(x)
+        if:
+                x<10
+        then:
+                print(x)
+
+        # Arrays
+        sum(xs:[2]int)=xs[0]+xs[1]
+        sum(xs:[]int)=if(x=xs[0],ys=xs.slice[1]) then x+sum(ys) else 0
+        downto(n:int)=if(n==0) then array{0} else array{n}+downto(n-1)
+
+        # Macros
+        for(x:0..99) do print(x)       # Composition style
+        for(x:0..99) {y=x*x,print(y)}  # Braced style
+        for(x:0..99)                   # Multi-line braced style
+        {
+                y=x*x
+                print(y)
+        }
+        for(x:0..99):                  # Significant indent style.
+                 y=x*x
+                 print(y)
+        for:                           # 
+                 x:0..99
+                 y=x*x
+        do:
+                print(y)
+
+        # Advanced strings
+        let(name="Tim") in "Hello, {name}."   # String interpolation
+        "Hello, "+name+"."                    # String concatenation
+        s.length                              # String length
+        s.slice[2,10]                         # String slice (may fail)
+
+        # String interpolation can contain arbitrary expressions.
+        print("Hello, {name}. You have {Twitter.count+Email.count} messages.")
+        print("You have {n} message{"s" where n!=1}")
+
+        # Attributes
+        Health<private>:int=3
+        f(x:int)<pure>=x+1
+
+        # Line Attributes
+        [private]
+        [editable_slider(0.0f,1.0f)]
+        Health:float
+
+        # Documentation attributes
+        <| Sum two numbers>
+        add=function:
+                x:int <| First number>
+                y:int <| Second number>
+        returns:
+                x+y
+
+        # Markup
+        <Markup>Feeling <B>bold</B>?</Markup> # HTML style.
+        <Markup:Feeling <B:bold>?>            # Markdown style.
+        <List: ~Apples ~Oranges>              # List.
+        <Markup:>                             # Significant indent.
+               Indented style markup.
+               Healthy foods include<List:>
+                       ~Apples
+                       ~Oranges
+        <https://www.epicgames.com>           # Markup syntax assists to construct URLs.
+        <Markup:>
+                Markup supports arbitrary injection of code
+                via string interpolation like {name} or {0u1234}
+                and also PHP style code injection.
+        &for(i->m:messages) do <M:>
+            Message {i}: {m.subject}
+        And Unicode characters like .
+
+        # Paths (required for open-world module interoperability)
+        @UnrealEngine/Actor/Name   # Globally unambiguous field name
+        (@UnrealEngine/Actor)Name  # Globally disambiguate a symbol
+
+        # Units
+        distance=3.5m
+        speed=3.5{m/s}
+        velocity=vec3d{1,2,3}{m/s}
+
+--------------------------------------------------------------------------------
+Principles of Programming Language Syntax
+--------------------------------------------------------------------------------
+
+We summarize some of the principles which guided this syntax.
+
+- Precedent
+  Syntax should respect the most suitable synactic precedents available, drawing
+  from human language, mathematics, and generally accepted programming notation.
+
+- Niklaus Wirth principle:
+      "Power through simplicity, simplicity through generality"
+  A syntax should provide a small but powerful set of primitives which
+  programmers may compose it into arbitrary large programs with a minimum of
+  duplication.
+
+- Abstraction
+  Morrison's abstraction principle states: wherever a language provides a
+  feature, it should provide an abstraction facility enabling users to modularly
+  compose and extend that feature. Much of the history of programming languages
+  is the history of filling in the abstraction gaps:
+
+    Feature               Abstraction Facility
+    --------------------  ----------------------------------------
+    values                variable definitions
+    expressions           functions
+    types                 generics, templates
+    programs              modules
+    effects               effects types
+    syntactic constructs  hygienic macros on abstract syntax trees
+    text                  string interpolation, markup templating
+    language semantics    correctness proofs
+
+  A common syntax should expose abstraction constructs suitable for each domain.
+
+- Unity of design
+  A syntax should be holistic and not aim to please everyone by combining
+  disparate ideas and notations.
+
+- Aesthetics
+  A syntax should be visually pleasing in its structure at the expression level
+  and page level.
+
+- Just text
+  A syntax should not rely on special tooling. While most programming is done in
+  modern IDEs, they widely vary and a syntax should demand nothing from its
+  environment beyond a plain text editor.
+
+- Simple grammar class
+  Understanding the syntax of a program should not require looking arbitrarily
+  far ahead. The rules for parsing a program should not depend on the contents
+  of the program.
+
+- Optimize for universal reading and writing
+  With the exception of text strings, code should be ASCII, so that anyone can
+  readily write code that interfaces to code written by others.
+
+- Multi-paradigm
+  A common syntax must be suitable for all text-based programming language
+  paradigms, and provide succinct patterns of syntax for expressing the major
+  constructs across all. Examples:
+
+                Python, C#, Java, JavaScript (scripting)
+                C, C++, Rust, Go             (systems programming)
+                BASIC                        (education)
+                JSON, XML                    (data)
+                HTML, TeX                    (markup)
+                PHP, ASP.net, React          (markup templating / UI)
+                CSS                          (style)
+                DTD, XSD, RELAX NG           (schema)
+                URI, URL, URN, GUID          (naming)
+                perl, sed, grep              (regular expressions)
+                sh, bash, PowerShell         (shell scripting and text processing)
+                lex, yacc, ANTLR             (parser specification)
+                SQL, Ethereum                (persistent transactions)
+                Mathematica, MATLAB          (symbolic analysis)
+                Prolog, Mozard/Oz            (logic / functional logic)
+                Common LISP                  (macro meta-programming)
+                CoQ, NuPRL                   (theorem proving)
+
+- Naming in-the-large
+  Support for naming things must scale to open-world languages for large
+  codebases built from numerous modules, in which the same name may be defined
+  in many different scopes, requiring disambiguation.
+
+- Type flexibility
+  A syntax must support robust expression of data types, while supporting
+  language paradigms that are statically typed, dynamically typed,
+  type inference-based, and untyped.
+
+--------------------------------------------------------------------------------
+Principles of Definitions
+--------------------------------------------------------------------------------
+
+Abstractive power arises from the ability to define things and then reuse and
+compose them in many ways. A modern language must define many kinds of things,
+such as values, types, functions, markup elements, and persistent elements
+residing in many address spaces.
+
+Across languages, definition styles have fragmented more than other feature, due
+to a long evolutionary history of adding new kinds of things which may be
+defined, each with distinct syntax. Hence the core challenge of a common syntax
+is to reign in the fragmented styles.
+
+Our guiding principles for definitions are:
+
+- Definitions of all things should be uniformly expressible, whether defining a
+  value, function, type, or other construct. For example, consider the
+  difficulty of a new programmer identifying what is being
+  defined among the 5 different syntax forms in this C++ code:
+
+    // Define s, f, x, y, and z in C++.
+    template<class t> struct s {f(t x) {u y(x+z); int z{y+1}; return y+y;}}; 
+
+- We must treat definitions not only as a programming construct, but also an
+  expression of author intent  and user documentation on the entity being
+  defined, by providing an expressive and flexible definition style.
+
+- A definition should always begin with the symbol that's being defined, as that
+  is the most important detail. Many languages place defined symbols in the
+  midst of potentially complex expressions:
+
+    int x=3;       // Defining x in C++.
+    a(b)c(d(e));   // Defining c in C++.
+
+- We must support definition syntax that matches use.
+
+  A mathematician might say "The square of a real number x is the product of
+  multiplying x by itself", or write the equation "square(x:int)=x*x". Here, we
+  are defining by use, as the equals sign doesn't directly follow the defined
+  symbol. Thus when we write "square(5)" left-to-right, we can read the
+  definition "square(x:int)", substitute 5 for x, and read the right-hand side
+  "x*x" as "5*5".
+
+- Definition syntax that matches use must be expressed in a uniform direction
+  (left-to-right) at consistent precedence. C++ confuses this, mixing postfix
+  function calling and element access with prefix pointer reads:
+
+  vector<int>* f(int x) {return p;}
+  (*f(p))[a]
+
+  With a different syntax and precedence we'd have left-to-right definitions and
+  uses:
+  f(x:int):^vector<int>=p
+  f(p)^[a]
+
+- We must also allow any definition to be expressed as the simple definition of
+  a symbol.
+
+  A mathematician might say "square is a a function transforming a real number x
+  into the the product of x and itself" or write "square=function(x:int){x*x}".
+
+- No dummy definitions
+  A definition should never be required where the user solely wished to provide
+  a value.
+
+- Support definitions anywhere.
+  The syntax should support definitions anywhere in code, leaving it up to
+  supporting languages to determine in which scopes they are supported.
+
+--------------------------------------------------------------------------------
+Semicolons Optional (safely)
+--------------------------------------------------------------------------------
+
+    An expression only continues to the next line if it ends with an infix
+    operator or the next line begins with
+    "{", "where", "else", "catch", "do", "in", "otherwise", "returns", "then",
+    "until", "using".
+
+    Otherwise, in a block of expressions, the next line is interpreted as the
+    next expresson.
+
+        # This continues due to trailing "+".
+        x = a*b +
+            c*d
+
+        # This also continues due to trailing "+"; indentation is not relevant.
+        x=a*b+
+        c*d
+
+        # This does not continue, and is interpreted as two expressions,
+        # "x=a*b" and "+c*d".
+        x=a*b
+            +c*d
+
+    To see how this works, review the grammar and look for:
+        "expr"  denotes a single expression
+        "list"  denotes a block of expressions
+        "space" supports only spaces and tabs
+        "scan"  allows spaces and tabs, and also newlines but only if the next
+                line is adequately indented
+
+    This approach is safer than the JavaScript semicolon elision rule, which
+    interprets the next line as a continuation of the current line iff its
+    leading character is a valid postfix or infix operator.
+
+--------------------------------------------------------------------------------
+Significant Whitespace
+--------------------------------------------------------------------------------
+
+    Significant whitespace gives programmers the option of writing less noisy
+    code which is easier to merge:
+
+        if(x==1) {                  if(x==1):
+            success=1;                  success=1
+        }                           else:
+        else {                          print("Bad")
+            println("Bad");             return 0
+            return 0;
+        }
+
+                <Markup>                                        <Markup:>
+			Please eat healthy                      Please eat healthy <List:>
+			<List>                                             ~Apples
+				~Apples						~Oranges
+				~Oranges				Thanks!
+			</List>
+			Thanks!
+		</Markup>
+
+    An indented block is initiated by a line that ends in ":", "!", "<Markup:>",
+        or a line containing "<#>". The indented block contains all subsequent
+        more-indented lines, ignoring the contents of blank lines. A line is
+        more-indented if it contains the same prefix of spaces and tabs as its
+        parent. It's an error to mismatch spaces and tabs between a non-blank
+        indented line and its parent. Thus we don't mandate any particular
+        tabs-to-spaces equivalent but only mandate "sameness".
+
+    Unlike Python, significant indent is completely optional, as an alternative
+    to the {..} block syntax.
+
+        Code merging is simplified by the elimination of lines containing just
+        '{' and '}'. Further, all constructs that support comma-separated lists
+        also support semicolon-delimiated and line-delimited lists, which are
+        preferable for multi-line expressions since any item addition, removal,
+        or reordering requires only merging only the affected lines, rather than
+        maintaining commas on adjoining lines.
+
+        The form "f of x" exists as an alternative to "f(x)" to support multi-
+        line function calls:
+
+               Hits=MyActor.Trace of:
+                        Location
+                        Enemy.Location
+                        ?Radius=1m
+
+        The indented comment form "<#>" enables commenting or uncommenting an
+        entire indented block by preceding it with "<#>", rather than having to
+        wrap its entire extent in a leading "<#" and trailing "#>".
+
+        Keywords such as "then", "in", and "do" are designed to reduce
+        unnecessary nesting of braced expressions, indented expressions, and
+        markup. This increases code density and supports a natural command-line
+        style.
+
+                # Overly braced.
+                if(x<10) {for(a:as) {if(a<x) {n=calculate(a); print(n);}}}
+
+                # Overly indented.
+                if(x<10):
+                        for(a:as):
+                                 if(a<x):
+                                        n=calculate(a)
+                                        print(n)
+
+                # Keywords to the rescue.
+                if(x<10) then for(a:as) do if(a<x):
+                        n=calculate(a)
+                        print(n)
+
+                # Code leading into function call taking markup:
+                for(x:xs) do print of <Markup:>
+                        Here is some markup referencing {x}.
+
+--------------------------------------------------------------------------------
+Data Interchange Format
+--------------------------------------------------------------------------------
+
+        The subset of the syntax which purely expresses constants is suitable as
+        a data interchange format, with a special importer which only allows
+        this subset and rejects other code.
+
+        Containers
+                array{3,5,7}
+                dict{2=>3,4=>5,6}
+                set{4,5,7}
+                option{123}
+                true
+                false
+                package{x=3,y=7}
+                @DukeEngine/Actor {@UnrealEngine/Actor/Health=0.3f,Steriods=7}
+
+        Units
+                123m
+                # ns,us,ms,s,min,hr,yr
+                # nm,um,m,dm,cm,mm,km; in,ft,mi
+                # ng,ug,mg,g,kg; lb
+                # mL,L
+                # nN,uN,mN,N,kN
+                # nJ,uJ,mJ,J,kJ,MJ,GJ
+                # nW,uW,mW,W,kW,mW,GW
+                # ac,ha
+
+--------------------------------------------------------------------------------
+References
+--------------------------------------------------------------------------------
+
+Importations
+    x:t, x:t=v, x:=x+1        Niklaus Wirth, Pascal
+    x:t=v                     OCaml
+    # comment                 Shell, Python
+    <# comment #>             PowerShell
+    significant whitespace    Python
+    f(x), a+b, ..             Math
+    int->string               Haskell, Mathematics
+    x:int where x<10          Haskell
+    7*[3]10 = 7000            Combinatorics
+    a+=b                      C
+    a and b, a or b, not a    Pascal
+      a|b                       EBNF
+    "Hello, {name}"           C#
+       <B>bold</B>               HTML
+    x<constexpr>=123          C++, C#, Java generics
+    my_macro{1,&x,3}          LISP, MetaOCaml
+
+================================================================================
