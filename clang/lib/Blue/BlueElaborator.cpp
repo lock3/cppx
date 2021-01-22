@@ -906,9 +906,78 @@ clang::Expr *Elaborator::elaboratePointerDeclarator(const Declarator *Dcl) {
   return SemaRef.buildTypeExpr(RetType, Dcl->getLocation());
 }
 
-/// Elaborate declarations of the form '[E] T'.
+/// Elaborate declarations of the form "[E]+ T".
 clang::Expr *Elaborator::elaborateArrayDeclarator(const Declarator *Dcl) {
-  llvm_unreachable("Not implemented");
+  assert(Dcl->getKind() == Declarator::Array && isa<ListSyntax>(Dcl->getInfo()));
+
+  const Declarator *Cur = Dcl;
+  llvm::SmallVector<clang::Expr *, 4> IndexExprs;
+  while (Cur && Cur->declaresArray()) {
+    if (!Cur->getInfo() || !isa<ListSyntax>(Cur->getInfo())) {
+      Error(Cur->getLocation(), "expected bracketed list");
+      return nullptr;
+    }
+
+    const ListSyntax *IndexList = cast<ListSyntax>(Cur->getInfo());
+    if (IndexList->getNumChildren() != 1) {
+      Error(IndexList->getLocation(),
+            "unexpected number of arguments in array declarator");
+      return nullptr;
+    }
+
+    clang::Expr *IndexExpr = elaborateExpression(IndexList->getChild(0));
+    if (!IndexExpr)
+      return nullptr;
+    IndexExprs.push_back(IndexExpr);
+
+    Cur = Cur->Next;
+  }
+
+  if (!Cur || !Cur->declaresType() || !Cur->getInfo()) {
+    clang::SourceLocation Loc;
+    if (Cur && Cur->getInfo())
+      Loc = Cur->getInfo()->getLocation();
+    Error(Loc, "expected type for array declarator");
+    return nullptr;
+  }
+
+  clang::Expr *TypeExpr = elaborateExpression(Cur->getInfo());
+  if (!TypeExpr || !TypeExpr->getType()->isTypeOfTypes()) {
+    Error(Cur->getInfo()->getLocation(), "expected type for array declarator");
+    return nullptr;
+  }
+
+  clang::QualType ArrayType =
+    cast<clang::CppxTypeLiteral>(TypeExpr)->getValue()->getType();
+  for (auto It = IndexExprs.rbegin(); It != IndexExprs.rend(); ++It) {
+    clang::Expr *IndexExpr = *It;
+    clang::Expr::EvalResult IdxResult;
+    clang::Expr::EvalContext
+      EvalCtx(CxxAST, CxxSema.GetReflectionCallbackObj());
+    if (!IndexExpr->EvaluateAsConstantExpr(IdxResult, EvalCtx)) {
+      CxxSema.Diags.Report(IndexExpr->getExprLoc(),
+                           clang::diag::err_expr_not_cce)
+        << /*array size*/3;
+      return nullptr;
+    }
+
+    clang::SourceRange Range(IndexExpr->getExprLoc(), IndexExpr->getExprLoc());
+    if (IdxResult.Val.isInt()) {
+      ArrayType = CxxSema.BuildArrayType(
+        ArrayType, clang::ArrayType::Normal,
+        clang::IntegerLiteral::Create(CxxAST, IdxResult.Val.getInt(),
+                                      IndexExpr->getType(),
+                                      IndexExpr->getExprLoc()),
+        /*quals*/0,
+        Range, clang::DeclarationName());
+    } else {
+      ArrayType = CxxSema.BuildArrayType(ArrayType, clang::ArrayType::Normal,
+                                         IndexExpr, /*quals*/0,
+                                         Range, clang::DeclarationName());
+    }
+  }
+
+  return SemaRef.buildTypeExpr(ArrayType, Dcl->getLocation());
 }
 
 /// Elaborate declarations of the form '(parms) T'.
@@ -1932,58 +2001,8 @@ clang::Expr *Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
       if (LS->getSpelling() == "character")
         return elaborateCharacterMetaFunction(S);
     }
-
-    if (const ListSyntax *ListLHS = dyn_cast<ListSyntax>(LHSSyntax)) {
-      if (!ListLHS->isBracketList()) {
-        Error(ListLHS->getLocation(), "invalid application");
-        return nullptr;
-      }
-
-      if (ListLHS->getNumChildren() != 1) {
-        Error(ListLHS->getChild(1)->getLocation(),
-              "too many arguments in array declarator");
-        return nullptr;
-      }
-
-
-      clang::Expr::EvalResult IdxResult;
-      clang::Expr::EvalContext
-        EvalCtx(CxxAST, CxxSema.GetReflectionCallbackObj());
-      clang::Expr *IndexExpr = elaborateExpression(ListLHS->getChild(0));
-      if (!IndexExpr)
-        return nullptr;
-
-      if (!IndexExpr->EvaluateAsConstantExpr(IdxResult, EvalCtx)) {
-        CxxSema.Diags.Report(IndexExpr->getExprLoc(),
-                             clang::diag::err_expr_not_cce)
-                             << /*array size*/3;
-        return nullptr;
-      }
-
-      clang::Expr *RHSExpr = elaborateExpression(S->getRightOperand());
-      if (!RHSExpr || !RHSExpr->getType()->isTypeOfTypes())
-        return nullptr;
-
-      clang::QualType ArrayType =
-        cast<clang::CppxTypeLiteral>(RHSExpr)->getValue()->getType();
-      clang::SourceRange Range(IndexExpr->getExprLoc(), IndexExpr->getExprLoc());
-      if (IdxResult.Val.isInt()) {
-        ArrayType = CxxSema.BuildArrayType(
-          ArrayType, clang::ArrayType::Normal,
-          clang::IntegerLiteral::Create(CxxAST, IdxResult.Val.getInt(),
-                                        IndexExpr->getType(),
-                                        IndexExpr->getExprLoc()),
-          /*quals*/0,
-          Range, clang::DeclarationName());
-      } else {
-        ArrayType = CxxSema.BuildArrayType(ArrayType, clang::ArrayType::Normal,
-                                           IndexExpr, /*quals*/0,
-                                           Range, clang::DeclarationName());
-      }
-
-      return SemaRef.buildTypeExpr(ArrayType, RHSExpr->getExprLoc());
-    }
   }
+
   auto LHS = elaborateExpression(S->getLeftOperand());
   if (!LHS)
     return nullptr;

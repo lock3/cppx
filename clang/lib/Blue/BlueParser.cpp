@@ -896,8 +896,8 @@ static Syntax *FlattenGroup(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *
     return new ListSyntax(Enc, tok::Comma, llvm::None);
 
   // Replace singleton groups with their first list.
-  // if (SS.size() == 1)
-  //   return SS.front();
+  if (SS.size() == 1)
+    return SS.front();
 
   // Return a new group.
   return new ListSyntax(Enc, tok::Semicolon, makeArray(SS));

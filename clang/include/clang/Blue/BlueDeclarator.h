@@ -69,6 +69,14 @@ public:
     return getKind() == Class;
   }
 
+  bool declaresArray() const {
+    return getKind() == Array;
+  }
+
+  bool declaresType() const {
+    return getKind() == Type;
+  }
+
   const Syntax *getInfo() const {
     return Info;
   }
