@@ -429,7 +429,9 @@ Syntax *Parser::parseParameterList()
 {
   llvm::SmallVector<Syntax *, 4> SS;
   parseParameterList(SS);
-  bool Singleton = SS.size() == 1 && nextTokenIsNot(tok::RightParen);
+  bool Singleton = SS.size() == 1 &&
+    (nextTokenIsNot(tok::RightParen));
+
   return Singleton ? SS.front() : onList(tok::Comma, SS);
 }
 
@@ -894,8 +896,8 @@ static Syntax *FlattenGroup(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *
     return new ListSyntax(Enc, tok::Comma, llvm::None);
 
   // Replace singleton groups with their first list.
-  if (SS.size() == 1)
-    return SS.front();
+  // if (SS.size() == 1)
+  //   return SS.front();
 
   // Return a new group.
   return new ListSyntax(Enc, tok::Semicolon, makeArray(SS));
@@ -906,7 +908,8 @@ Syntax *Parser::onTuple(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &S
 }
 
 Syntax *Parser::onArray(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS) {
-  return FlattenGroup(Enc, SS);
+  // return FlattenGroup(Enc, SS);
+  return new ListSyntax(Enc, tok::Comma, makeArray(SS));
 }
 
 Syntax *Parser::onBlock(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS) {

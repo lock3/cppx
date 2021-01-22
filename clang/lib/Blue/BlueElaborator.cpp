@@ -129,7 +129,7 @@ void Elaborator::identifyDeclaration(const Syntax *S) {
 
 }
 
-clang::Decl* Elaborator::elaborateDecl(const Syntax *S) {
+clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
   switch (S->getKind()) {
   case Syntax::Def:
     return elaborateDefDecl(static_cast<const DefSyntax *>(S));
@@ -335,8 +335,35 @@ Declarator *Elaborator::getUnaryDeclarator(const UnarySyntax *S) {
 }
 
 Declarator *Elaborator::getBinaryDeclarator(const BinarySyntax *S) {
-  if (S->isApplication())
+  if (S->isApplication()) {
+    if (!S->getLeftOperand() || isa<ErrorSyntax>(S->getLeftOperand())) {
+      Error(S->getLocation(), "invalid declaration");
+      return nullptr;
+    }
+
+    if (const BinarySyntax *L = dyn_cast<BinarySyntax>(S->getLeftOperand())) {
+      // auto *Dcl = new Declarator(Declarator::Array, L->getLeftOperand(),
+      //                             getBinaryDeclarator(L));
+      Declarator *Dcl = getBinaryDeclarator(L);
+      Declarator *Last = Dcl;
+      while (Last->getNext())
+        Last = Last->getNext();
+
+      Last->Next = getDeclarator(S->getRightOperand());
+      return Dcl;
+    }
+
+    if (const ListSyntax *L = dyn_cast<ListSyntax>(S->getLeftOperand())) {
+      // if (!isa<ListSyntax>(S->getRightOperand()))
+      //   return new Declarator(Declarator::Array, S)
+
+      if (L->isBracketList())
+        return new Declarator(Declarator::Array, S->getLeftOperand(),
+                              getDeclarator(S->getRightOperand()));
+    }
+
     return new Declarator(Declarator::Type, S);
+  }
 
   if (S->getOperator().hasKind(tok::MinusGreater)) {
     Declarator *Ret = getDeclarator(S->getRightOperand());
@@ -363,6 +390,9 @@ Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   case Syntax::Identifier:
     return new Declarator(Declarator::Type, S);
   case Syntax::List:
+    if (cast<ListSyntax>(S)->isBracketList())
+      return new Declarator(Declarator::Array, S);
+
     return new Declarator(Declarator::Function, S);
   default:
     break;
@@ -1901,6 +1931,57 @@ clang::Expr *Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
         return elaborateRealMetaFunction(S);
       if (LS->getSpelling() == "character")
         return elaborateCharacterMetaFunction(S);
+    }
+
+    if (const ListSyntax *ListLHS = dyn_cast<ListSyntax>(LHSSyntax)) {
+      if (!ListLHS->isBracketList()) {
+        Error(ListLHS->getLocation(), "invalid application");
+        return nullptr;
+      }
+
+      if (ListLHS->getNumChildren() != 1) {
+        Error(ListLHS->getChild(1)->getLocation(),
+              "too many arguments in array declarator");
+        return nullptr;
+      }
+
+
+      clang::Expr::EvalResult IdxResult;
+      clang::Expr::EvalContext
+        EvalCtx(CxxAST, CxxSema.GetReflectionCallbackObj());
+      clang::Expr *IndexExpr = elaborateExpression(ListLHS->getChild(0));
+      if (!IndexExpr)
+        return nullptr;
+
+      if (!IndexExpr->EvaluateAsConstantExpr(IdxResult, EvalCtx)) {
+        CxxSema.Diags.Report(IndexExpr->getExprLoc(),
+                             clang::diag::err_expr_not_cce)
+                             << /*array size*/3;
+        return nullptr;
+      }
+
+      clang::Expr *RHSExpr = elaborateExpression(S->getRightOperand());
+      if (!RHSExpr || !RHSExpr->getType()->isTypeOfTypes())
+        return nullptr;
+
+      clang::QualType ArrayType =
+        cast<clang::CppxTypeLiteral>(RHSExpr)->getValue()->getType();
+      clang::SourceRange Range(IndexExpr->getExprLoc(), IndexExpr->getExprLoc());
+      if (IdxResult.Val.isInt()) {
+        ArrayType = CxxSema.BuildArrayType(
+          ArrayType, clang::ArrayType::Normal,
+          clang::IntegerLiteral::Create(CxxAST, IdxResult.Val.getInt(),
+                                        IndexExpr->getType(),
+                                        IndexExpr->getExprLoc()),
+          /*quals*/0,
+          Range, clang::DeclarationName());
+      } else {
+        ArrayType = CxxSema.BuildArrayType(ArrayType, clang::ArrayType::Normal,
+                                           IndexExpr, /*quals*/0,
+                                           Range, clang::DeclarationName());
+      }
+
+      return SemaRef.buildTypeExpr(ArrayType, RHSExpr->getExprLoc());
     }
   }
   auto LHS = elaborateExpression(S->getLeftOperand());

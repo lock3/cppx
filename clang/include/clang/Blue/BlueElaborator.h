@@ -39,7 +39,7 @@ class Elaborator
 {
 public:
   Elaborator(Sema &S)
-    : SemaRef(S), CxxSema(S.getCxxSema())
+    : SemaRef(S), CxxSema(S.getCxxSema()), CxxAST(CxxSema.Context)
   { }
 
   /// Returns the current state of C++ translation.
@@ -227,6 +227,8 @@ private:
   Sema &SemaRef;
 
   clang::Sema &CxxSema;
+
+  clang::ASTContext &CxxAST;
 };
 
 
