@@ -345,7 +345,8 @@ Syntax *Parser::parseDeclaration() {
   }
 
   // Match 'identifier : signature ...'.
-  Syntax * Sig = parseSignature();
+  // Syntax * Sig = parseSignature();
+  Syntax *Sig = parseArrowExpression();
 
   // Match 'identifier : signature ;'.
   if (nextTokenIs(tok::Semicolon)) {
@@ -522,16 +523,27 @@ Syntax *Parser::parseLogicalOrExpression() {
 }
 
 Syntax *Parser::parseLogicalAndExpression() {
-  Syntax *LHS = parseEqualityExpression();
+  Syntax *LHS = parseArrowExpression();
   while (Token Op = matchToken(tok::AmpersandAmpersand)) {
-    Syntax *RHS = parseEqualityExpression();
+    Syntax *RHS = parseArrowExpression();
     LHS = onBinary(Op, LHS, RHS);
   }
+
   return LHS;
 }
 
 static bool isEqualityOperator(TokenKind K) {
   return K == tok::EqualEqual || K == tok::BangEqual;
+}
+
+Syntax *Parser::parseArrowExpression() {
+  Syntax *LHS = parseEqualityExpression();
+  while (Token Op = matchToken(tok::MinusGreater)) {
+    Syntax *RHS = parseEqualityExpression();
+    LHS = onBinary(Op, LHS, RHS);
+  }
+
+  return LHS;
 }
 
 Syntax *Parser::parseEqualityExpression() {
@@ -810,11 +822,11 @@ Syntax *Parser::parseTupleExpression() {
 
   Syntax *Tup = onTuple(Parens.getEnclosingTokens(), SS);
 
-  if (nextTokenIs(tok::MinusGreater)) {
-    Token Op = consumeToken();
-    Syntax *RHS = parsePrimaryExpression();
-    return onBinary(Op, Tup, RHS);
-  }
+  // if (nextTokenIs(tok::MinusGreater)) {
+  //   Token Op = consumeToken();
+  //   Syntax *RHS = parsePrimaryExpression();
+  //   return onBinary(Op, Tup, RHS);
+  // }
 
   return Tup;
 }
