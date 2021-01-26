@@ -1817,7 +1817,7 @@ clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S
   return nullptr;
 }
 
-clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
+static clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
                                   clang::SourceLocation Loc,
                                   clang::LookupResult &R,
                                   bool IsKnownOverload) {
@@ -1878,14 +1878,13 @@ clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
 
     if(isa<clang::FunctionDecl>(VD)) {
       // // Correctly rebuilding the declaration name info.
-      // DNI = SemaRef.rebuildDeclarationNameInfo(DNI);
-      // return clang::UnresolvedLookupExpr::Create(Context.CxxAST,
-      //                                             R.getNamingClass(),
-      //                                         clang::NestedNameSpecifierLoc(),
-      //                                             DNI,
-      //                                             /*ADL=*/true, true,
-      //                                             R.begin(), R.end());
-      llvm_unreachable("Reference to a function decl not implemented yet.");
+      const clang::DeclarationNameInfo &DNI = R.getLookupNameInfo();
+      return clang::UnresolvedLookupExpr::Create(SemaRef.getCxxAST(),
+                                                  R.getNamingClass(),
+                                              clang::NestedNameSpecifierLoc(),
+                                                  DNI,
+                                                  /*ADL=*/true, true,
+                                                  R.begin(), R.end());
     }
     // Simply assuming that this is a variable declaration.
     clang::QualType ResultType = VD->getType();
@@ -2280,6 +2279,10 @@ clang::Expr *Elaborator::elaborateApplyExpression(clang::Expr *LHS,
       return elaborateArraySubscriptExpr(LHS, S);
   }
 
+  if (auto *ULE = dyn_cast<clang::UnresolvedLookupExpr>(LHS)) {
+    return elaborateFunctionCall(ULE, S);
+  }
+
   if (const auto *ASE = dyn_cast<clang::ArraySubscriptExpr>(LHS)) {
     return elaborateArraySubscriptExpr(LHS, S);
   }
@@ -2330,6 +2333,45 @@ clang::Expr *Elaborator::elaborateArraySubscriptExpr(clang::Expr *Base,
   if (SubscriptExpr.isInvalid())
     return nullptr;
   return SubscriptExpr.get();
+}
+
+clang::Expr *Elaborator::elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
+                                               const BinarySyntax *Op) {
+  if (!Op->getRightOperand() || isa<ErrorSyntax>(Op->getRightOperand()))
+    return nullptr;
+  const ListSyntax *Args = dyn_cast<ListSyntax>(Op->getRightOperand());
+  if (!Args) {
+    Error(Op->getRightOperand()->getLocation(), "expected function arguments");
+    return nullptr;
+  }
+
+  llvm::SmallVector<clang::Expr *, 4> ArgExprs;
+  for (const Syntax *A : Args->children()) {
+    clang::Expr *Argument = elaborateExpression(A);
+    if (!A)
+      continue;
+
+    ArgExprs.push_back(Argument);
+  }
+
+  // FIXME: what needs to happen here?
+  if (!Base->hasExplicitTemplateArgs()) {
+    for (auto D : Base->decls()) {
+      if (auto *FD = dyn_cast<clang::FunctionDecl>(D)) {
+          if (FD->getTemplatedKind() ==
+              clang::FunctionDecl::TK_FunctionTemplateSpecialization) {
+            ;
+          }
+      }
+    }
+  }
+
+  // try and make the call and see what happens.
+  clang::ExprResult Call = CxxSema.ActOnCallExpr(
+    CxxSema.getCurScope(), Base, Args->getLocation(),
+    ArgExprs, Args->getEndLocation());
+
+  return Call.get();
 }
 
 clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,

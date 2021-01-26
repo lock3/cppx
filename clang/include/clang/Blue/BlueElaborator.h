@@ -130,6 +130,8 @@ public:
                                         const BinarySyntax *S);
   clang::Expr *elaborateArraySubscriptExpr(clang::Expr *Base,
                                            const BinarySyntax *Op);
+  clang::Expr *elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
+                                     const BinarySyntax *Op);
 
   /// Dispatching function, that determines based on the LHS's type how to
   /// process the RHS of the expression.
