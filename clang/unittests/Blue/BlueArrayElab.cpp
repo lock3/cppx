@@ -32,3 +32,18 @@ z : [2][4][8]int;
   ASSERT_TRUE(matches(Code.str(), YMatch));
   ASSERT_TRUE(matches(Code.str(), ZMatch));
 }
+
+TEST(BlueArray, MultidimensionalAccess) {
+  StringRef Code = R"BLUE(
+x : [2]int;
+y : [2][4]int;
+z : [2][4][8]int;
+
+x[0] = 3;
+y[0][1] = 3;
+z[0][1][2] = 3;
+)BLUE";
+
+  // TODO: how to properly test this?
+  SimpleBlueParseTest(Code);
+}

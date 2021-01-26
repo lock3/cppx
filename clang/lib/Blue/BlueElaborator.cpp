@@ -2275,6 +2275,15 @@ clang::Stmt *Elaborator::elaborateReturnStmt(const UnarySyntax *S) {
 
 clang::Expr *Elaborator::elaborateApplyExpression(clang::Expr *LHS,
                                                   const BinarySyntax *S) {
+  if (const auto *DRE = dyn_cast<clang::DeclRefExpr>(LHS)) {
+    if (DRE->getType()->isArrayType())
+      return elaborateArraySubscriptExpr(LHS, S);
+  }
+
+  if (const auto *ASE = dyn_cast<clang::ArraySubscriptExpr>(LHS)) {
+    return elaborateArraySubscriptExpr(LHS, S);
+  }
+
   // TODO: I need to figure out and dispatch all of the different possible
   // situations that could occur here.
   // 1. Template instantiation
@@ -2284,6 +2293,43 @@ clang::Expr *Elaborator::elaborateApplyExpression(clang::Expr *LHS,
   // 5. Block attached to something possibly? - Needs verifications
   S->dump();
   llvm_unreachable("apply expression Not implemented yet!?\n");
+}
+
+clang::Expr *Elaborator::elaborateArraySubscriptExpr(clang::Expr *Base,
+                                                     const BinarySyntax *Op) {
+  assert(Base->getType()->isArrayType() && "non-array");
+
+  const Syntax *RHS = Op->getRightOperand();
+  if (!RHS || isa<ErrorSyntax>(RHS))
+    return nullptr;
+
+  const ListSyntax *List = dyn_cast<ListSyntax>(RHS);
+  if (!List) {
+    Error(RHS->getLocation(), "expected bracketed list");
+    return nullptr;
+  }
+
+  // this was called with function-call syntax?
+  if (!List->isBracketList()) {
+    Error(List->getLocation(), "expected '['");
+    return nullptr;
+  }
+
+  if (List->getNumChildren() != 1) {
+    Error(List->getLocation(), "too many arguments in array subscript");
+    return nullptr;
+  }
+
+  clang::Expr *IndexExpr = elaborateExpression(List->getChild(0));
+  if (!IndexExpr)
+    return nullptr;
+
+  auto SubscriptExpr = CxxSema.ActOnArraySubscriptExpr(
+    SemaRef.getCurClangScope(), Base, IndexExpr->getExprLoc(),
+    IndexExpr, IndexExpr->getExprLoc());
+  if (SubscriptExpr.isInvalid())
+    return nullptr;
+  return SubscriptExpr.get();
 }
 
 clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,
