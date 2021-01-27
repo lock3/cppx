@@ -1872,7 +1872,6 @@ clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S
 }
 
 clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
-static clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
                                   clang::SourceLocation Loc,
                                   clang::LookupResult &R,
                                   bool IsKnownOverload) {
@@ -2044,9 +2043,14 @@ clang::Expr *Elaborator::elaborateUnaryExpression(const UnarySyntax *S) {
 
 clang::Expr *Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
   if (S->isApplication()) {
+    llvm::outs() << "Attempting to elaborate binary expression. Is appliciation?\n";
     const Syntax *LHSSyntax = S->getLeftOperand();
+    llvm::outs() << "Dumping LHS!\n";
+    LHSSyntax->dump();
     auto LS = dyn_cast<LiteralSyntax>(LHSSyntax);
     if (LS) {
+      llvm::outs()<< "We have literal syntax?!\n";
+      llvm::outs() << "Spelling \"" << LS->getSpelling() << "\"\n";
       if (LS->getSpelling() == "integer")
         return elaborateIntegerMetaFunction(S);
       if (LS->getSpelling() == "real")
@@ -2351,42 +2355,11 @@ clang::Expr *Elaborator::elaborateApplyExpression(clang::Expr *LHS,
   if (LHS->getType()->isKindType())
     llvm_unreachable("Constructor not implemented yet");
 
-  // if (auto L = dyn_cast<ListSyntax>(S->getRightOperand())) {
-  //   return elaborateFunctionCallElab(LHS, S, L);
-  // }
 
   S->dump();
   llvm_unreachable("apply expression Not implemented yet!?\n");
 }
 
-// static bool buildAnyFunctionCallArguments(Sema &SemaRef, 
-//     Syntax::child_range Children, llvm::SmallVectorImpl<clang::Expr *> &Args) {
-//   for (const Syntax *A : Children) {
-//     Elaborator Elab(SemaRef);
-//     clang::Expr *Argument = Elab.elaborateExpression(A);
-//     if (!Argument) {
-//       SemaRef.getCxxSema().Diags.Report(A->getLocation(),
-//                                 clang::diag::err_expected_expression);
-//       return true;
-//     }
-//     Args.push_back(Argument);
-//   }
-//   return false;
-// }
-
-// clang::Expr *Elaborator::elaborateFunctionCallElab(clang::Expr *LHS,
-//                                                    const BinarySyntax *S,
-//                                                    const ListSyntax *L) {
-//   llvm::SmallVector<clang::Expr *, 16> Args;
-//   if (buildAnyFunctionCallArguments(SemaRef, L->children(), Args))
-//     return nullptr;
-
-//   clang::ExprResult Call = SemaRef.getCxxSema().ActOnCallExpr(
-//     getCxxSema().getCurScope(), LHS, LHS->getExprLoc(), Args,
-//     LHS->getExprLoc());
-
-//   if (Call.isInvalid())
-//     return nullptr;
 clang::Expr *Elaborator::elaborateArraySubscriptExpr(clang::Expr *Base,
                                                      const BinarySyntax *Op) {
   assert(Base->getType()->isArrayType() && "non-array");
