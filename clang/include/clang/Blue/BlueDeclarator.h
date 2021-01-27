@@ -15,7 +15,9 @@
 #define CLANG_BLUE_BLUEDECLARATOR_H
 
 #include "clang/Basic/SourceLocation.h"
+#include "llvm/Support/raw_ostream.h"
 
+#include <string>
 
 namespace clang {
 class Expr;
@@ -67,6 +69,14 @@ public:
     return getKind() == Class;
   }
 
+  bool declaresArray() const {
+    return getKind() == Array;
+  }
+
+  bool declaresType() const {
+    return getKind() == Type;
+  }
+
   const Syntax *getInfo() const {
     return Info;
   }
@@ -91,6 +101,8 @@ public:
   }
 
   void dump() const;
+  void printSequence(llvm::raw_ostream &os);
+  std::string getString() const;
 
   union {
     // For Function type, the scope of the parameters
@@ -101,8 +113,11 @@ public:
 private:
   Kind Which;
   const Syntax *Info;
+
+public:
   Declarator *Next;
 
+private:
   /// The expression that computes the value/type of the declarator. This
   /// is built up during elaboration and cached with the declarator fragment.
   const clang::Expr* Val;

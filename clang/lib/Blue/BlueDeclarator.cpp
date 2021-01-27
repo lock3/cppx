@@ -25,4 +25,70 @@ void Declarator::dump() const {
   Info->dump();
 }
 
+void Declarator::printSequence(llvm::raw_ostream &os) {
+  const Declarator *D = this;
+  do {
+    os << D->getString();
+    if (D->Next)
+      os << " -> ";
+
+    D = D->Next;
+  }  while (D);
+
+  os << '\n';
+}
+
+std::string Declarator::getString() const {
+  switch(getKind()) {
+  case Type: {
+    std::string Ret = "[type] ";
+    if (const AtomSyntax *A = dyn_cast<AtomSyntax>(getInfo()))
+      Ret += A->getSpelling();
+    else
+      Ret += "complex";
+    return Ret;
+  }
+
+  case ImplicitType:
+    return "[implicit_type]";
+  case Pointer:
+    return "^";
+  case Array: {
+    std::string Ret = "[";
+
+    if (const AtomSyntax *A = dyn_cast<AtomSyntax>(getInfo()))
+      Ret += A->getSpelling();
+    else if (const ListSyntax *L = dyn_cast<ListSyntax>(getInfo())) {
+      if (L->getNumChildren() == 1) {
+        if (const AtomSyntax *B = dyn_cast<AtomSyntax>(L->getChild(0)))
+          Ret += B->getSpelling();
+        else
+          Ret += "expr";
+      } else {
+        Ret += "expr";
+      }
+    } else
+      return "expr";
+
+    Ret += "]";
+    return Ret;
+  }
+
+  case Function: {
+    // TODO: implement me
+    std::string Ret = "[function] ()";
+    return Ret;
+  }
+
+  case Template:
+    // TODO: implement me
+    return "[template]";
+
+  case Class:
+    // TODO: implement me
+    return "[class]";
+
+  }
+}
+
 } // namespace blue

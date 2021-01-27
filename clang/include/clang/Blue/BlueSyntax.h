@@ -164,6 +164,10 @@ public:
     return Tok.getSpelling();
   }
 
+  static bool classof(const Syntax *S) {
+    return S->getKind() == Literal || S->getKind() == Identifier;
+  }
+
 private:
   Token Tok;
 };

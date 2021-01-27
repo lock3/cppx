@@ -85,6 +85,22 @@ bar:()->void {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+
+TEST(BlueFunction, Call){
+  StringRef Code = R"BLUE(
+f : () -> int {
+  return 5;
+}
+
+main : () -> int {
+  x := f();
+}
+)BLUE";
+
+  auto ToMatch = varDecl(hasName("x"), hasType(asString("int")));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
 #if 0
 TEST(BlueFunction, NoBody) {
   // TODO: I'm not sure if this is an error or not.

@@ -208,6 +208,7 @@ namespace blue
     Syntax *parseExpression();
     Syntax *parseAssignmentExpression();
     Syntax *parseLogicalOrExpression();
+    Syntax *parseArrowExpression();
     Syntax *parseLogicalAndExpression();
     Syntax *parseEqualityExpression();
     Syntax *parseRelationalExpression();
