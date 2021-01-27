@@ -1646,6 +1646,9 @@ void Elaborator::elaborateVarDef(Declaration *D) {
   //                       clang::diag::err_in_class_initializer_non_const);
   //   return;
   // }
+  // if (auto LS = dyn_cast<ListSyntax>(Def->getInitializer())) {
+    
+  // }
   auto InitExpr = elaborateExpression(Def->getInitializer());
   if (!InitExpr)
     return;

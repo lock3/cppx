@@ -87,7 +87,7 @@ c : type = class:
     return 4 + i
   foo(a:float64) :int!
     return 5
-  
+
 
 main() : int!
   b:c
