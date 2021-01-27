@@ -928,6 +928,10 @@ Syntax *Parser::onTuple(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &S
 }
 
 Syntax *Parser::onArray(const TokenPair &Enc, llvm::SmallVectorImpl<Syntax *> &SS) {
+  // return FlattenGroup(Enc, SS);
+  if (SS.size() == 1 && isa<ListSyntax>(SS.front()))
+    return SS.front();
+
   return new ListSyntax(Enc, tok::Comma, makeArray(SS));
 }
 

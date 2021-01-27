@@ -2043,14 +2043,9 @@ clang::Expr *Elaborator::elaborateUnaryExpression(const UnarySyntax *S) {
 
 clang::Expr *Elaborator::elaborateBinaryExpression(const BinarySyntax *S) {
   if (S->isApplication()) {
-    llvm::outs() << "Attempting to elaborate binary expression. Is appliciation?\n";
     const Syntax *LHSSyntax = S->getLeftOperand();
-    llvm::outs() << "Dumping LHS!\n";
-    LHSSyntax->dump();
     auto LS = dyn_cast<LiteralSyntax>(LHSSyntax);
     if (LS) {
-      llvm::outs()<< "We have literal syntax?!\n";
-      llvm::outs() << "Spelling \"" << LS->getSpelling() << "\"\n";
       if (LS->getSpelling() == "integer")
         return elaborateIntegerMetaFunction(S);
       if (LS->getSpelling() == "real")
