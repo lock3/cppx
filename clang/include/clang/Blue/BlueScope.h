@@ -73,6 +73,7 @@ public:
     Block,
     Class,
     Control,
+    Template,
   };
 
   Scope(Kind K, const Syntax *S, Scope *P)
@@ -91,6 +92,10 @@ public:
   }
 
   bool isControlScope() const {
+    return getKind() == Control;
+  }
+
+  bool isTemplateScope() const {
     return getKind() == Control;
   }
 

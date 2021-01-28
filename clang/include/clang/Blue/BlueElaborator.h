@@ -27,6 +27,7 @@ class Expr;
 class QualType;
 class Sema;
 class Stmt;
+class NamedDecl;
 
 } // namespace clang
 
@@ -66,12 +67,20 @@ public:
   //===--------------------------------------------------------------------===//
   clang::Decl *elaborateTop(const Syntax *S);
 
-  void identifyDeclaration(const Syntax *S);
-  Declaration * buildDeclaration(const DefSyntax *S);
+  Declaration *identifyDeclaration(const Syntax *S);
+  Declaration *buildDeclaration(const DefSyntax *S);
   clang::Decl *elaborateDecl(const Syntax *S);
   clang::Decl *elaborateDefDecl(const DefSyntax *S);
   clang::Decl *elaborateDeclarationTyping(Declaration *D);
+  void elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,
+                                   OptioanlClangScopeRAII &ClangTemplateScope,
+                                   Declaration *D, Declarator *Dcl);
+  void buildTemplateParams(const Syntax *Params,
+                           llvm::SmallVectorImpl<clang::NamedDecl *> &Res);
 
+  clang::Decl *doElaborateDeclarationTyping(Declaration *D);
+
+  Declaration *elaborateTemplateParameter(const Syntax *Parm);
   void elaborateParameters(const ListSyntax *S);
   void elaborateParameterGroup(const ListSyntax *S);
   void elaborateParameterList(const ListSyntax *S);
@@ -162,6 +171,7 @@ public:
   //                                Miscellaneous                             //
   //===--------------------------------------------------------------------===//
   void getParameters(Declaration *D,
+                     Declarator *FuncDeclarator,
                      llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
 
   // Diagnostics

@@ -1033,6 +1033,21 @@ bool Sema::checkForRedeclaration(Declaration *D) {
   }
 }
 
+unsigned Sema::computeTemplateDepth() const {
+  unsigned Count = 0;
+  Scope *Cur = ScopeStack.back();
+  while(Cur != TUDecl->SavedScope) {
+    if (Cur->isTemplateScope()) {
+      ++Count;
+    }
+    Cur = Cur->getParent();
+  }
+  // for(auto Iter = ClassStack.rbegin(); Iter != ClassStack.rend(); ++Iter) {
+  //   Count += (*Iter)->isTemplateScope();
+  // }
+  return Count;
+}
+
 clang::Scope *Sema::getCurClangScope() {
   return CxxSema.CurScope;
 }

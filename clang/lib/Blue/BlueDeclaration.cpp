@@ -26,6 +26,16 @@ void Declaration::setCxx(Sema &SemaRef, clang::Decl *Cxx) {
   this->Cxx = Cxx;
 }
 
+Declarator *Declaration::getFirstDeclarator(Declarator::Kind DeclKind) const {
+  Declarator *D = Decl;
+  while(D) {
+    if (D->getKind() == DeclKind)
+      return D;
+    D = D->getNext();
+  }
+  return nullptr;  
+}
+
 bool Declaration::declaratorContains(Declarator::Kind DeclKind) const {
   Declarator *D = Decl;
   while(D) {

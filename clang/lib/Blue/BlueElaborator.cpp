@@ -121,15 +121,14 @@ Declaration *Elaborator::buildDeclaration(const DefSyntax *S) {
   return createDeclaration(S, Dcl, S->getInitializer());
 }
 
-void Elaborator::identifyDeclaration(const Syntax *S) {
+Declaration *Elaborator::identifyDeclaration(const Syntax *S) {
   switch (S->getKind()) {
   case Syntax::Def:
-    buildDeclaration(cast<DefSyntax>(S));
-    return;
+    return buildDeclaration(cast<DefSyntax>(S));
   default:
     break;
   }
-
+  return nullptr;
 }
 
 clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
@@ -159,21 +158,176 @@ clang::Decl *Elaborator::elaborateDeclarationTyping(Declaration *D) {
   if (phaseOf(D) >= Phase::Typing)
     return D->getCxx();
 
-  if (D->Decl->declaresValue())
-    return makeValueDecl(D);
+  // This are optionally created for template parameters.
+  OptionalScopeRAII TemplateParamScope(SemaRef);
+  OptioanlClangScopeRAII ClangTemplateScope(SemaRef);
 
-  if (D->Decl->declaresFunction())
+  // Handling template declarations.
+  if (D->Decl->declaresTemplate())
+    elaborateTemplateParameters(TemplateParamScope, ClangTemplateScope, D,
+                                D->Decl);
+
+  return doElaborateDeclarationTyping(D);
+  // llvm_unreachable("Invalid declarator");
+}
+
+void Elaborator::elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,
+                                             OptioanlClangScopeRAII &ClangTemplateScope,
+                                             Declaration *D, Declarator *Dcl) {
+
+  clang::TemplateParameterList *ParamList = nullptr;
+
+  // Initializing the scopes we have to deal with.
+  TemplateScope.Init(Scope::Template, Dcl->getInfo(),
+                   &Dcl->DeclInfo.ParamScope);
+  ClangTemplateScope.Init(clang::Scope::TemplateParamScope, Dcl->getLocation());
+
+  // Constructing actual parameters.
+  llvm::SmallVector<clang::NamedDecl *, 4> TemplateParamDecls;
+  // if (!TPD->isImplicitlyEmpty()) {
+    // Elaborator El(SemaRef.getContext(), SemaRef);
+  buildTemplateParams(Dcl->getInfo(), TemplateParamDecls);
+  // }
+
+  ParamList = getCxxSema().ActOnTemplateParameterList(
+                               /*unsigned Depth*/SemaRef.computeTemplateDepth(),
+                                           /*ExportLoc*/clang::SourceLocation(),
+                                              /*TemplateLoc*/Dcl->getLocation(),
+                                                /*LAngleLoc*/Dcl->getLocation(),
+                                                             TemplateParamDecls,
+                                                /*RAngleLoc*/Dcl->getLocation(),
+                                                     /*RequiresClause*/nullptr);
+  Dcl->ClangParamList = ParamList;
+
+  // Recording template parameters for use during declaration construction.
+  D->TemplateParamStorage.push_back(ParamList);
+}
+
+void Elaborator::buildTemplateParams(const Syntax *Params,
+                               llvm::SmallVectorImpl<clang::NamedDecl *> &Res) {
+  std::size_t I = 0;
+  for (const Syntax *P : Params->children()) {
+    // Elaborator Elab(Context, SemaRef);
+    Declaration *D = elaborateTemplateParameter(P);
+    if (!D)
+      continue;
+    clang::Decl *CxxDecl = D->getCxx();
+    clang::NamedDecl *ND = cast_or_null<clang::NamedDecl>(CxxDecl);
+    // Just skip this on error.
+    if (!ND)
+      continue;
+
+    unsigned Depth = SemaRef.computeTemplateDepth();
+    if (auto *TP = dyn_cast<clang::NonTypeTemplateParmDecl>(ND)) {
+      TP->setPosition(I);
+      TP->setDepth(I);
+    } else if (auto *TP = dyn_cast<clang::TemplateTemplateParmDecl>(ND)) {
+      TP->setDepth(Depth);
+      TP->setPosition(I);
+    } else if (auto *TP = dyn_cast<clang::TemplateTypeParmDecl>(ND)) {
+      // Set the index.
+      auto *Ty = TP->getTypeForDecl()->castAs<clang::TemplateTypeParmType>();
+      clang::QualType NewTy = getCxxContext().getTemplateTypeParmType(Depth, I,
+                                                          Ty->isParameterPack(),
+                                                                 Ty->getDecl());
+
+      TP->setTypeForDecl(NewTy.getTypePtr());
+    } else {
+      llvm_unreachable("Invalid template parameter");
+    }
+
+    // Declaration *D = SemaRef.getCurrentScope()->findDecl(P);
+    // assert(D && "Didn't find associated declaration");
+    Res.push_back(ND);
+
+    ++I;
+  }
+}
+
+clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
+  if (D->declaratorContainsFunction())
     return makeFunctionDecl(D);
 
   if (D->declaratorContainsClass())
     return makeClass(D);
 
-  // Not sure if this is the right way to handle this or not?
-  // if (D->Decl->declaresTemplate())
-  //   return makeTemplateDecl(D);
+  // if (D->Decl->declaresValue())
+  // I guess if it's not a function/class it must be a value declaration
+  return makeValueDecl(D);
+}
 
+Declaration *Elaborator::elaborateTemplateParameter(const Syntax *Parm) {
+  Declaration *D = identifyDeclaration(Parm);
+  if (!D) {
+    // TODO: Create an error message for this.
+    llvm_unreachable("Invalid parameter");
+  }
+  // clang::DeclContext *Owner = D->getOwningDeclContext();
+//   if (isa<clang::LinkageSpecDecl>(Owner)) {
+//     SemaRef.Diags.Report(D->Op->getLoc(),
+//                          clang::diag::err_invalid_extern_c)
+//                          << /*a template parameter*/2;
+//     return nullptr;
+//   }
 
-  llvm_unreachable("Invalid declarator");
+//   ExprElaborator TypeElab(Context, SemaRef);
+  clang::Expr *TyExpr = elaborateDeclarator(D->Decl);
+  if (!TyExpr){
+    getCxxSema().Diags.Report(D->Decl->getLocation(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+  bool IsPack = false;
+
+//   // Checking to see if we are a parameter pack
+//   // This technically doesn't have a spot in the AST only as a boolean
+//   // associated with template parameters.
+//   if (auto Call = dyn_cast<CallSyntax>(TySyntax)) {
+//     if (auto AtomName = dyn_cast<AtomSyntax>(Call->getCallee())) {
+//       if (AtomName->hasToken(tok::Ellipsis)) {
+//         assert(Call->getNumArguments() == 1
+//                && "Invalid number of arguments to ellipsis within AST");
+//         TySyntax = Call->getArgument(0);
+//         IsPack = true;
+//         D->EllipsisLoc = AtomName->getLoc();
+//       }
+//     }
+//   }
+
+  clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(TyExpr,
+                                                        D->Decl->getLocation());
+  if (!TInfo)
+    return nullptr;
+  clang::DeclContext *Owner = D->DeclaringContext;
+  clang::IdentifierInfo *Id = D->Id;
+  clang::SourceLocation Loc = D->Def->getLocation();
+
+  // This is a template type or template template parameter decl.
+  if (TInfo->getType()->getAs<clang::CppxKindType>()) {
+    using TemplateTemplate = clang::TemplateTemplateParmDecl;
+    using TemplateType = clang::TemplateTypeParmDecl;
+    clang::Decl *ReturnedDecl = nullptr;
+    if (D->Decl->declaresTemplate())
+      ReturnedDecl = TemplateTemplate::Create(getCxxContext(), Owner, Loc, 0,
+                                        0, /*Pack=*/IsPack, Id,
+                                        D->TemplateParamStorage.front());
+    else
+      ReturnedDecl = TemplateType::Create(getCxxContext(), Owner, Loc, Loc, 0, 0,
+                                    Id, /*TypenameKW=*/true, /*Pack=*/IsPack);
+
+    D->CurrentPhase = Phase::Typing;
+    D->setCxx(SemaRef, ReturnedDecl);
+    return D;
+  }
+
+  // The depth and position of the parameter will be set later.
+  auto *NTTP =
+    clang::NonTypeTemplateParmDecl::Create(getCxxContext(), Owner, Loc, Loc,
+                                           0, 0, Id, TInfo->getType(),
+                                           /*Pack=*/IsPack, TInfo);
+  D->setCxx(SemaRef, NTTP);
+  D->CurrentPhase = Phase::Typing;
+  return D;
 }
 
 void Elaborator::elaborateParameters(const ListSyntax *S) {
@@ -184,9 +338,10 @@ void Elaborator::elaborateParameters(const ListSyntax *S) {
 }
 
 void Elaborator::getParameters(Declaration *D,
+                               Declarator *FuncDeclarator,
                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
-  assert(D->Decl->declaresFunction());
-  const ListSyntax *ParamList = dyn_cast<ListSyntax>(D->Decl->getInfo());
+  // assert(D->Decl->declaresFunction());
+  const ListSyntax *ParamList = dyn_cast<ListSyntax>(FuncDeclarator->getInfo());
   if (!ParamList)
     return;
 
@@ -194,7 +349,7 @@ void Elaborator::getParameters(Declaration *D,
   if (ParamList->isSemicolonSeparated())
     return;
 
-  Scope *S = D->Decl->DeclInfo.ParamScope;
+  Scope *S = FuncDeclarator->DeclInfo.ParamScope;
   for (const Syntax *SS : ParamList->children()) {
     Declaration *Param = S->findDecl(SS);
     // FIXME: elaborate the entire function type if this happens?
@@ -369,8 +524,42 @@ Declarator *Elaborator::getBinaryDeclarator(const BinarySyntax *S) {
   }
 
   if (S->getOperator().hasKind(tok::MinusGreater)) {
-    Declarator *Ret = getDeclarator(S->getRightOperand());
-    return new Declarator(Declarator::Function, S->getLeftOperand(), Ret);
+    // TODO: Rewrite this so that it works as we'd expect it to.
+    // At the time of writing this the parsing was handled incorrectly and the
+    // template binary operator was ending up as part of the function binary operator
+    // rather then as it's parent.
+    /*
+  // Currently parsed as (before rebuilding the parser).
+  Top 0x7ffff220ef70
+  `-Def 0x7ffff220ef20 foo
+    |-Binary 0x7ffff220ee90 ->
+    | |-Binary 0x7ffff220ee60 =>
+    | | |-List 0x7ffff220ed80
+    | | | `-Def 0x7ffff220e9d0 T
+    | | |   |-Literal 0x7ffff224bf50 type
+    | | |   `-<<<NULL>>>
+    | | `-List 0x7ffff220ee10
+    | |   `-Identifier 0x7ffff220edd0 x
+    | `-Literal 0x7ffff220ed20 void
+    `-Seq 0x7ffff220eec0
+    */
+    if (isa<ListSyntax>(S->getLeftOperand())) {
+      Declarator *Ret = getDeclarator(S->getRightOperand());
+      return new Declarator(Declarator::Function, S->getLeftOperand(), Ret);
+    }
+
+    // This is where the special function template declaration is handled.
+    if (auto Templ = dyn_cast<BinarySyntax>(S->getLeftOperand())) {
+      if (Templ->getOperator().hasKind(tok::EqualGreater)) {
+        Declarator *TyDcl = getDeclarator(S->getRightOperand());
+        Declarator *FnDcl = new Declarator(Declarator::Function,
+                                          Templ->getRightOperand(),
+                                          TyDcl);
+        return new Declarator(Declarator::Template, Templ->getLeftOperand(),
+                              FnDcl);
+      }
+    }
+    llvm_unreachable("Unknown function syntax.");
   }
   // Qualified type name using . in expression.
   if (S->getOperator().hasKind(tok::Dot))
@@ -586,8 +775,29 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
                                        Loc, Params);
 }
 
+static void deduceDependentAutoReturn(Sema &SemaRef,
+                                      clang::FunctionDecl *FD) {
+  if (FD->getReturnType()->isUndeducedAutoType()) {
+    clang::QualType OldTy = FD->getType();
+    const clang::FunctionProtoType *FPT =
+      OldTy->getAs<clang::FunctionProtoType>();
+    clang::ASTContext &CxxAST = SemaRef.getCxxAST();
+    clang::QualType NewRet =
+      SemaRef.getCxxSema().SubstAutoType(FD->getReturnType(),
+                                         CxxAST.DependentTy);
+    clang::QualType NewTy =
+      CxxAST.getFunctionType(NewRet, FPT->getParamTypes(),
+                             FPT->getExtProtoInfo());
+    if (OldTy.hasQualifiers())
+      NewTy = clang::QualType(NewTy.getTypePtr(),
+                              OldTy.getQualifiers().getAsOpaqueValue());
+    FD->setType(NewTy);
+  }
+}
+
 clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
-  assert(D->Decl->declaresFunction() && "not a function declarator");
+  // assert(D->Decl->declaresFunction() && "not a function declarator");
+  Declarator *Dclrtr = D->getFirstDeclarator(Declarator::Function);
 
   clang::ASTContext &CxxAST = SemaRef.getCxxAST();
   clang::QualType ReturnType = CxxAST.getAutoDeductType();
@@ -595,7 +805,7 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   clang::SourceLocation Loc = D->Def->getLocation();
 
   TemplateParamRAII TempParamContextGuard(TempCtx);
-  clang::CppxTypeLiteral *FnTy = createFunctionType(D->Decl);
+  clang::CppxTypeLiteral *FnTy = createFunctionType(Dclrtr);
   if (!FnTy)
     return nullptr;
   clang::TypeSourceInfo *TInfo = FnTy->getValue();
@@ -604,6 +814,25 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
   FD = clang::FunctionDecl::Create(CxxAST, Owner, Loc, Loc, Name,
                                    TInfo->getType(), TInfo, clang::SC_None);
+  bool Template = D->declaratorContainsTemplate();
+  if (Template) {
+    Declarator *TmpltDclrtr = D->Decl;
+    clang::SourceLocation Loc = TmpltDclrtr->getLocation();
+    auto *FTD = clang::FunctionTemplateDecl::Create(getCxxContext(),
+                                                    Owner, Loc,
+                                                    FD->getDeclName(),
+                                                    TmpltDclrtr->ClangParamList,
+                                                    FD);
+    FTD->setLexicalDeclContext(Owner);
+    FD->setDescribedFunctionTemplate(FTD);
+    Owner->addDecl(FTD);
+    // if (InClass)
+    //   FTD->setAccess(clang::AS_public);
+
+    // An auto return type here is always dependent.
+    if (FD->getReturnType()->isUndeducedAutoType())
+      deduceDependentAutoReturn(SemaRef, FD);
+  }
   if (FD->isMain()) {
     clang::AttributeFactory Attrs;
     clang::DeclSpec DS(Attrs);
@@ -611,7 +840,7 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   }
 
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
-  getParameters(D, Params);
+  getParameters(D, Dclrtr, Params);
   FD->setParams(Params);
   // Move parameters into this declaration context.
   for (auto *PD : Params) {
@@ -624,7 +853,10 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   if (FD->isInvalidDecl())
     return nullptr;
 
-  Owner->addDecl(FD);
+  if (!Template)
+    Owner->addDecl(FD);
+
+  // Owner->addDecl(FD);
   D->setCxx(SemaRef, FD);
   D->CurrentPhase = Phase::Typing;
   return FD;
@@ -1786,8 +2018,9 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
 
   // We saved the parameter scope while elaborating this function's type,
   // so push it on before we enter the function scope.
-  assert(D->Decl->declaresFunction());
-  Scope *ParamScope = D->Decl->DeclInfo.ParamScope;
+  // assert(D->Decl->declaresFunction());
+  Declarator *FnDclrtr = D->getFirstDeclarator(Declarator::Function);
+  Scope *ParamScope = FnDclrtr->DeclInfo.ParamScope;
   ResumeScopeRAII FnDclScope(SemaRef, ParamScope, ParamScope->getTerm());
 
   Declaration *CurrentDeclaration = SemaRef.getCurrentDecl();

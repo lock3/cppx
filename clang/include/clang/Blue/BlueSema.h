@@ -75,7 +75,7 @@ class Sema {
 
   /// A mapping of clang Decl nodes to Blue declarations.
   std::unordered_map<clang::Decl *, Declaration *> DeclToDecl;
-  
+
   /// Translation unit decl.
   Declaration *TUDecl = nullptr;
 public:
@@ -238,6 +238,14 @@ public:
   /// merged with other declarations or is in conflict with other declarations.
   bool checkForRedeclaration(Declaration *D);
 
+
+  /// Based on the current elaboration state read from class stack we compute
+  /// the current depth of a template.
+  ///
+  /// \note This could be changed in the future in order to include ths current
+  /// scope stack for elaboration.
+  ///
+  unsigned computeTemplateDepth() const;
 
 public:
   /// Clang scope management functions.
@@ -583,6 +591,11 @@ private:
   clang::Scope *PrevClangScope = nullptr;
 };
 
+
+// using OptionalScopeRAII = OptionalInitScope<Sema::
+using OptionalScopeRAII = OptionalInitScope<Sema::ScopeRAII>;
+using OptionalResumeScopeRAII = OptionalInitScope<ResumeScopeRAII>;
+using OptioanlClangScopeRAII = OptionalInitScope<Sema::ClangScopeRAII>;
 } // end namespace blue
 
 #endif

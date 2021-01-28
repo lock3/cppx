@@ -23,6 +23,7 @@ namespace clang {
   class DeclContext;
   class IdentifierInfo;
   class Scope;
+  class TemplateParameterList;
 } // end namespace clang
 
 
@@ -101,6 +102,8 @@ struct Declaration {
   Declaration *getOwner() const {
     return Ctx;
   }
+
+  Declarator *getFirstDeclarator(Declarator::Kind DeclKind) const;
 
   bool declaratorContains(Declarator::Kind DeclKind) const;
   bool declaratorContainsClass() const;
