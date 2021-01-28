@@ -127,6 +127,8 @@ struct Declaration {
   bool isTypeAliasDecl() const;
   bool isFieldDecl() const;
 
+  bool isFunctionTemplate() const;
+
 
   /// This is used for handling delated class elaboration.
   bool declaresInitializedVariable() const;

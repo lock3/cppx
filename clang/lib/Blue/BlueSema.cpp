@@ -375,15 +375,16 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 
         // If there is a described template, add that to the result instead
         // of the bare declaration.
-        // if (FoundDecl->declaresFunctionTemplate()) {
-        //   if (auto *FD = dyn_cast<clang::FunctionDecl>(ND))
-        //     ND = FD->isFunctionTemplateSpecialization() ?
-        //       FD->getPrimaryTemplate() : FD->getDescribedFunctionTemplate();
-        //   else if (auto *VD = dyn_cast<clang::VarDecl>(ND))
-        //     ND = VD->getDescribedVarTemplate();
-        //   else
-        //     llvm_unreachable("Unknown template function type");
-        // } else if (FoundDecl->declaresTemplateType()) {
+        if (FoundDecl->isFunctionTemplate()) {
+          if (auto *FD = dyn_cast<clang::FunctionDecl>(ND))
+            ND = FD->isFunctionTemplateSpecialization() ?
+              FD->getPrimaryTemplate() : FD->getDescribedFunctionTemplate();
+          else if (auto *VD = dyn_cast<clang::VarDecl>(ND))
+            ND = VD->getDescribedVarTemplate();
+          else
+            llvm_unreachable("Unknown template function type");
+        }
+        // else if (FoundDecl->declaresTemplateType()) {
         //   // We want the canonical declaration of a template unless it is
         //   // a specialization.
         //   using Specialization = clang::ClassTemplateSpecializationDecl;
@@ -1042,9 +1043,6 @@ unsigned Sema::computeTemplateDepth() const {
     }
     Cur = Cur->getParent();
   }
-  // for(auto Iter = ClassStack.rbegin(); Iter != ClassStack.rend(); ++Iter) {
-  //   Count += (*Iter)->isTemplateScope();
-  // }
   return Count;
 }
 

@@ -91,6 +91,15 @@ bool Declaration::isFieldDecl() const {
   return isDecl<clang::FieldDecl>();
 }
 
+bool Declaration::isFunctionTemplate() const {
+  if (!Cxx)
+    return false;
+  if (auto Fn = dyn_cast<clang::FunctionDecl>(Cxx)) {
+    return Fn->getDescribedFunctionTemplate();
+  }
+  return false;
+}
+
 bool Declaration::declaresInitializedVariable() const {
   return (isDecl<clang::VarDecl>() || isDecl<clang::FieldDecl>())
       && hasInitializer();
