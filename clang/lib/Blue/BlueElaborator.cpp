@@ -2566,7 +2566,13 @@ clang::Expr *Elaborator::elaborateApplyExpression(clang::Expr *LHS,
   }
 
   if (auto *ULE = dyn_cast<clang::UnresolvedLookupExpr>(LHS)) {
-    return elaborateFunctionCall(ULE, S);
+    if (auto LS = dyn_cast<ListSyntax>(S->getRightOperand())) {
+      if (LS->isBracketList())
+        return elabotateTemplateInstantiationWithArgs(ULE, LS);
+      return elaborateFunctionCall(ULE, S);
+    } else {
+      llvm_unreachable("This is a VERY strange kind of function call!");
+    }
   }
 
   if (const auto *ASE = dyn_cast<clang::ArraySubscriptExpr>(LHS)) {
@@ -2583,8 +2589,10 @@ clang::Expr *Elaborator::elaborateApplyExpression(clang::Expr *LHS,
   if (LHS->getType()->isKindType())
     llvm_unreachable("Constructor not implemented yet");
 
-
+  llvm::errs() << "---------------------------------------------------------\n";
   S->dump();
+  llvm::errs() << "---------------------------------------------------------\n";
+  LHS->dump();
   llvm_unreachable("apply expression Not implemented yet!?\n");
 }
 
@@ -2663,6 +2671,231 @@ clang::Expr *Elaborator::elaborateFunctionCall(clang::UnresolvedLookupExpr *Base
 
   return Call.get();
 }
+
+
+void Elaborator::elaborateTemplateArgs(const ListSyntax *ArgList,
+                                  clang::TemplateArgumentListInfo &TemplateArgs,
+                   llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs) {
+  for (const Syntax *SS : ArgList->children()) {
+    clang::Expr *ParamExpression = elaborateConstantExpression(SS);
+    if (!ParamExpression)
+      continue;
+
+    if (ParamExpression->getType()->isTypeOfTypes()) {
+      clang::TypeSourceInfo *ParamTInfo
+        = SemaRef.getTypeSourceInfoFromExpr(ParamExpression,
+                                            ArgList->getLocation());
+      if (!ParamTInfo)
+        continue;
+      clang::TemplateArgument Arg(ParamTInfo->getType());
+      TemplateArgs.addArgument({Arg, ParamTInfo});
+      ActualArgs.emplace_back(Arg);
+    } else {
+      clang::TemplateArgument Arg(ParamExpression,
+                                  clang::TemplateArgument::Expression);
+      TemplateArgs.addArgument({Arg, ParamExpression});
+      ActualArgs.emplace_back(Arg);
+    }
+  }
+}
+
+clang::Expr *
+Elaborator::elabotateTemplateInstantiationWithArgs(clang::Expr *E,
+                                                   const ListSyntax *ArgList) {
+
+//   // This could be an attemped lambda instantiation.
+//   if (clang::DeclRefExpr *DRE = dyn_cast<clang::DeclRefExpr>(E)) {
+//     if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(DRE->getDecl())) {
+//       if (VD->getInit() && isa<clang::LambdaExpr>(VD->getInit())) {
+//         unsigned DiagID =
+//           SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+//                                         "cannot explicitly instantiate lambda");
+//         SemaRef.Diags.Report(Elem->getLoc(), DiagID);
+//         return nullptr;
+//       }
+//     }
+//   }
+
+  clang::OverloadExpr *OverloadExpr = dyn_cast<clang::OverloadExpr>(E);
+
+  // Create a normal array access.
+  if (!OverloadExpr) {
+    llvm_unreachable("Array is handled in another branch of the code.");
+    // llvm::SmallVector<clang::Expr *, 4> ArgExprs;
+    // for (const Syntax *SS : Elem->getArguments()->children()) {
+    //   clang::Expr *Res = elaborateExpression(SS);
+    //   if (!Res)
+    //     return nullptr;
+    //   ArgExprs.push_back(Res);
+    // }
+
+    // if (ArgExprs.size() == 0) {
+    //   SemaRef.Diags.Report(Elem->getArguments()->getLoc(),
+    //                        clang::diag::err_expected_expression);
+    //   return nullptr;
+    // }
+
+    // // Create the first subscript out of the base expression.
+    // auto SubscriptExpr = SemaRef.getCxxSema().ActOnArraySubscriptExpr(
+    //   SemaRef.getCurClangScope(), E, ArgExprs[0]->getExprLoc(),
+    //   ArgExprs[0], ArgExprs[0]->getExprLoc());
+    // if (SubscriptExpr.isInvalid())
+    //   return nullptr;
+
+    // // Then use the previous subscripts as bases, recursively.
+    // for (unsigned I = 1; I < ArgExprs.size(); ++I) {
+    //   SubscriptExpr = SemaRef.getCxxSema().ActOnArraySubscriptExpr(
+    //     SemaRef.getCurClangScope(), SubscriptExpr.get(),
+    //     ArgExprs[I]->getExprLoc(), ArgExprs[I], ArgExprs[I]->getExprLoc());
+
+    //   // We don't know what will happen if we try to recover, so just quit.
+    //   if (SubscriptExpr.isInvalid())
+    //     return nullptr;
+    // }
+
+    // return SubscriptExpr.get();
+  }
+
+  clang::SourceLocation LocStart = ArgList->getEnclosingTokens().first.getLocation();
+  clang::SourceLocation LocEnd = ArgList->getEnclosingTokens().second.getLocation();
+
+  // We have an overload set, meaning this must be some kind of
+  // overloaded function or function template.
+  clang::TemplateArgumentListInfo TemplateArgs(LocStart, LocEnd);
+  llvm::SmallVector<clang::TemplateArgument, 16> ActualArgs;
+  elaborateTemplateArgs(ArgList, TemplateArgs, ActualArgs);
+  clang::TemplateArgumentList
+    TemplateArgList(clang::TemplateArgumentList::OnStack, ActualArgs);
+
+  if (OverloadExpr->getNumDecls() == 1) {
+    clang::NamedDecl *ND = *OverloadExpr->decls_begin();
+    if (isa<clang::TemplateDecl>(ND)) {
+      // We need to instantiate the template with parameters.
+      if (clang::UnresolvedMemberExpr *MemAccess
+              = dyn_cast<clang::UnresolvedMemberExpr>(OverloadExpr)) {
+        auto *FTD = dyn_cast<clang::FunctionTemplateDecl>(ND);
+        clang::FunctionDecl *FD =
+          getCxxSema().InstantiateFunctionDeclaration(FTD, &TemplateArgList,
+                                                      LocStart);
+        if (!FD) {
+          Error(LocStart, "function template instantiation failure");
+          return nullptr;
+        }
+
+        getCxxSema().InstantiateFunctionDefinition(LocStart, FD,
+                                                   true, true, false);
+        return clang::MemberExpr::Create(getCxxContext(), MemAccess->getBase(),
+                                         MemAccess->isArrow(),
+                                         MemAccess->getOperatorLoc(),
+                                         MemAccess->getQualifierLoc(),
+                                         clang::SourceLocation(), FD,
+                               clang::DeclAccessPair::make(FD, ND->getAccess()),
+                                         MemAccess->getMemberNameInfo(),
+                                         &TemplateArgs, E->getType(),
+                                         MemAccess->getValueKind(),
+                                         MemAccess->getObjectKind(),
+                                         clang::NonOdrUseReason::NOUR_None);
+      }
+    } else if (clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(ND)) {
+      if (FD->getTemplatedKind() == clang::FunctionDecl::TK_NonTemplate) {
+        Error(LocStart, "function is not a template");
+        return nullptr;
+      }
+
+      clang::FunctionTemplateDecl *FTD = FD->getDescribedFunctionTemplate();
+      if (!FTD) {
+        Error(LocStart,  "function template does not have template parameters");
+        return nullptr;
+      }
+
+      clang::FunctionDecl *InstantiatedFunc =
+        getCxxSema().InstantiateFunctionDeclaration(FTD,
+                                                    &TemplateArgList,
+                                                    LocStart);
+      getCxxSema().InstantiateFunctionDefinition(LocStart, InstantiatedFunc,
+                                                 true, true, false);
+      clang::LookupResult ResultTemp(getCxxSema(), OverloadExpr->getNameInfo(),
+                                     clang::Sema::LookupAnyName);
+      ResultTemp.addDecl(InstantiatedFunc);
+      return clang::UnresolvedLookupExpr::Create(getCxxContext(),
+                                                 OverloadExpr->getNamingClass(),
+                                                OverloadExpr->getQualifierLoc(),
+                                                 OverloadExpr->getNameInfo(),
+                                                 /*ADL=*/true, false,
+                                                 ResultTemp.begin(),
+                                                 ResultTemp.end());
+    }
+  }
+
+
+  if (isa<clang::UnresolvedLookupExpr>(OverloadExpr)) {
+    clang::LookupResult ResultTemp(SemaRef.getCxxSema(),
+                                   OverloadExpr->getNameInfo(),
+                                   clang::Sema::LookupAnyName);
+    ResultTemp.setTemplateNameLookup(true);
+    for (clang::NamedDecl *ND : OverloadExpr->decls()) {
+      if(clang::FunctionDecl *FD = ND->getAsFunction()){
+        if(clang::FunctionTemplateDecl *FTD = FD->getDescribedFunctionTemplate()) {
+          ResultTemp.addDecl(FTD);
+        }
+      }
+    }
+
+    ResultTemp.resolveKind();
+    if (ResultTemp.empty()) {
+      Error(LocStart, "unresolved template resolves to non-template");
+      return nullptr;
+    }
+
+    return clang::UnresolvedLookupExpr::Create(getCxxContext(),
+                                               OverloadExpr->getNamingClass(),
+                                               OverloadExpr->getQualifierLoc(),
+                                               OverloadExpr->getNameLoc(),
+                                               OverloadExpr->getNameInfo(),
+                                               /*ADL=*/true, &TemplateArgs,
+                                               ResultTemp.begin(),
+                                               ResultTemp.end());
+  }
+
+  if (clang::UnresolvedMemberExpr *UME =
+     dyn_cast<clang::UnresolvedMemberExpr>(OverloadExpr)) {
+    clang::LookupResult ResultTemp(getCxxSema(), OverloadExpr->getNameInfo(),
+                                   clang::Sema::LookupAnyName);
+    ResultTemp.setTemplateNameLookup(true);
+    for (clang::NamedDecl *ND : OverloadExpr->decls()) {
+      ND = getCxxSema().getAsTemplateNameDecl(ND, true, true);
+      if(ND)
+        if(clang::FunctionDecl *FD = ND->getAsFunction())
+          if(clang::FunctionTemplateDecl *FTD
+             = FD->getDescribedFunctionTemplate()) {
+            ResultTemp.addDecl(FTD);
+          }
+    }
+
+    ResultTemp.resolveKind();
+    if (ResultTemp.empty()) {
+      Error(LocStart, "unresolved template resolves to non-template");
+      return nullptr;
+    }
+
+    return clang::UnresolvedMemberExpr::Create(getCxxContext(),
+                                               UME->hasUnresolvedUsing(),
+                                               UME->getBase(),
+                                               UME->getBaseType(),
+                                               UME->isArrow(),
+                                               UME->getOperatorLoc(),
+                                               UME->getQualifierLoc(),
+                                               UME->getTemplateKeywordLoc(),
+                                               UME->getNameInfo(),
+                                               &TemplateArgs,
+                                               ResultTemp.begin(),
+                                               ResultTemp.end());
+  }
+
+  Error(LocStart, "cannot compile this type of overload yet");
+  return nullptr;
+}
+
 
 clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,
                                                const BinarySyntax *S) {

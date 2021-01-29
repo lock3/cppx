@@ -18,6 +18,8 @@
 #include "clang/Blue/BlueSyntax.h"
 #include "clang/Sema/Sema.h"
 
+#include "clang/AST/TemplateBase.h"
+
 namespace clang {
 
 class CppxTypeLiteral;
@@ -142,6 +144,12 @@ public:
                                            const BinarySyntax *Op);
   clang::Expr *elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
                                      const BinarySyntax *Op);
+
+  void elaborateTemplateArgs(const ListSyntax *ArgList,
+                             clang::TemplateArgumentListInfo &TemplateArgs,
+                   llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs);
+  clang::Expr *elabotateTemplateInstantiationWithArgs(clang::Expr *Base,
+                                                      const ListSyntax *ArgList);
 
   /// Dispatching function, that determines based on the LHS's type how to
   /// process the RHS of the expression.

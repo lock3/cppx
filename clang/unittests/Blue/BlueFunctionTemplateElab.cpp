@@ -50,3 +50,21 @@ bar:() {
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+TEST(BlueFunctionTemplate, UseProvidingTemplateArguments) {
+  StringRef Code = R"BLUE(
+foo:[T:type] => (x:T) -> void {
+}
+bar:() {
+  foo[int](34);
+}
+)BLUE";
+
+  auto ToMatch = functionTemplateDecl(
+    has(functionDecl(
+      hasName("foo"),
+      hasType(asString("void (type-parameter-0-0)"))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
