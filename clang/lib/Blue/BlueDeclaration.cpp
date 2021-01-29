@@ -100,6 +100,10 @@ bool Declaration::isFunctionTemplate() const {
   return false;
 }
 
+bool Declaration::isTypeTemplate() const {
+  return Cxx && Cxx->getDescribedTemplate() && isa<clang::TypeDecl>(Cxx);
+}
+
 bool Declaration::declaresInitializedVariable() const {
   return (isDecl<clang::VarDecl>() || isDecl<clang::FieldDecl>())
       && hasInitializer();

@@ -565,6 +565,12 @@ Declarator *Elaborator::getBinaryDeclarator(const BinarySyntax *S) {
   if (S->getOperator().hasKind(tok::Dot))
     return new Declarator(Declarator::Type, S);
 
+  // This is to support class templates.
+  if (S->getOperator().hasKind(tok::EqualGreater)) {
+    Declarator *TyDcl = getDeclarator(S->getRightOperand());
+    return new Declarator(Declarator::Template, S->getLeftOperand(), TyDcl);
+  }
+
   // TODO: We could support binary type composition (e.g., T1 * T2) as
   // an alternative spelling of product types. However, this most likely
   // needs to be wrapped in parens, so it should end up as a leaf. Maybe
@@ -2196,20 +2202,17 @@ clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
 
   if (clang::ClassTemplateDecl *CTD
                                 = R.getAsSingle<clang::ClassTemplateDecl>())
-    llvm_unreachable("Reference to class template decl not implemented yet.");
-    // return SemaRef.buildTemplateType(CTD, Loc);
+    return SemaRef.buildTemplateType(CTD, Loc);
 
   if (auto *NS = R.getAsSingle<clang::CppxNamespaceDecl>())
-    llvm_unreachable("Reference to cppx namespace decl not implemented yet.");
-    // return SemaRef.buildNSDeclRef(NS, Loc);
+    return SemaRef.buildNSDeclRef(NS, Loc);
 
 
   if (auto *TD = R.getAsSingle<clang::TypeDecl>())
     return SemaRef.buildTypeExprFromTypeDecl(TD, Loc);
 
   if (auto *TD = R.getAsSingle<clang::TemplateDecl>())
-    // return SemaRef.buildTemplateType(TD, Loc);
-    llvm_unreachable("Reference to template decl not implemented yet.");
+    return SemaRef.buildTemplateType(TD, Loc);
 
   SemaRef.getCxxSema().Diags.Report(Loc,
                               clang::diag::err_identifier_not_declared_in_scope)
@@ -2586,8 +2589,22 @@ clang::Expr *Elaborator::elaborateApplyExpression(clang::Expr *LHS,
   // 3. Array declaration - Needs verifications
   // 4. Template declarations - Needs verifications
   // 5. Block attached to something possibly? - Needs verifications
-  if (LHS->getType()->isKindType())
+  if (LHS->getType()->isKindType()) {
+
+    // This could also be template instantiation.
     llvm_unreachable("Constructor not implemented yet");
+  }
+  if (LHS->getType()->isTemplateType()) {
+    if (auto LS = dyn_cast<ListSyntax>(S->getRightOperand())) {
+      // Handle class template instantiation.
+      if (LS->isBracketList()) {
+          return elaborateClassTemplateSelection(LHS, LS);
+      }
+    }
+    // I need to mark this an error!.
+    Error(LHS->getExprLoc(), "invalid use of a template.");
+    return nullptr;
+  }
 
   llvm::errs() << "---------------------------------------------------------\n";
   S->dump();
@@ -2595,6 +2612,7 @@ clang::Expr *Elaborator::elaborateApplyExpression(clang::Expr *LHS,
   LHS->dump();
   llvm_unreachable("apply expression Not implemented yet!?\n");
 }
+
 
 clang::Expr *Elaborator::elaborateArraySubscriptExpr(clang::Expr *Base,
                                                      const BinarySyntax *Op) {
@@ -2896,6 +2914,117 @@ Elaborator::elabotateTemplateInstantiationWithArgs(clang::Expr *E,
   return nullptr;
 }
 
+
+
+clang::Expr *
+Elaborator::elaborateClassTemplateSelection(clang::Expr *IdExpr,
+                                            const ListSyntax *ArgList) {
+
+  clang::SourceLocation LocStart = ArgList->getEnclosingTokens().first.getLocation();
+  clang::SourceLocation LocEnd = ArgList->getEnclosingTokens().second.getLocation();
+  clang::TemplateArgumentListInfo TemplateArgs(LocEnd, LocStart);
+  llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
+
+  if (elaborateClassTemplateArguments(ArgList, TemplateArgs, ParsedArguments))
+    return nullptr;
+
+  clang::Decl *Decl = SemaRef.getDeclFromExpr(IdExpr, IdExpr->getExprLoc());
+  if (!Decl)
+    return nullptr;
+
+  clang::TemplateDecl *CTD = dyn_cast<clang::TemplateDecl>(Decl);
+  assert(CTD && "Invalid CppxDeclRefExpr");
+
+  clang::CXXScopeSpec SS;
+  clang::TemplateName TName(CTD);
+  clang::Sema::TemplateTy TemplateTyName = clang::Sema::TemplateTy::make(TName);
+  clang::IdentifierInfo *II = CTD->getIdentifier();
+  clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
+  clang::SourceLocation Loc = ArgList->getLocation();
+  if (clang::VarTemplateDecl *VTD = dyn_cast<clang::VarTemplateDecl>(CTD)) {
+    clang::DeclarationNameInfo DNI(VTD->getDeclName(), Loc);
+    clang::LookupResult R(getCxxSema(), DNI, clang::Sema::LookupAnyName);
+    R.addDecl(VTD);
+    clang::ExprResult ER = getCxxSema().BuildTemplateIdExpr(SS, Loc, R, false,
+                                                            &TemplateArgs);
+    if (ER.isInvalid())
+      return nullptr;
+    return ER.get();
+  } else {
+    clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
+      SemaRef.getCurClangScope(), SS, /*TemplateKWLoc*/ Loc,
+      TemplateTyName, II, IdExpr->getExprLoc(),
+      /*LAngleLoc*/Loc, InArgs, /*RAngleLoc*/ Loc, false, false);
+
+    if (Result.isInvalid()) {
+      getCxxSema().Diags.Report(IdExpr->getExprLoc(),
+                                clang::diag::err_failed_to_translate_expr);
+      return nullptr;
+    }
+
+    clang::QualType Ty(Result.get().get());
+    const clang::LocInfoType *TL = cast<clang::LocInfoType>(Ty.getTypePtr());
+    return SemaRef.buildTypeExpr(TL->getType(), ArgList->getLocation());
+  }
+
+}
+bool Elaborator::elaborateClassTemplateArguments(
+    const ListSyntax *Args, clang::TemplateArgumentListInfo &ArgInfo,
+    llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs) {
+
+  for(const Syntax *SyntaxArg : Args->children()) {
+
+    clang::Expr *ArgExpr = elaborateConstantExpression(SyntaxArg);
+    if (!ArgExpr) {
+      getCxxSema().Diags.Report(SyntaxArg->getLocation(),
+                                clang::diag::err_failed_to_translate_expr);
+      continue;
+    }
+
+    auto TemplateArg = SemaRef.convertExprToTemplateArg(ArgExpr);
+    if (TemplateArg.isInvalid())
+      // TODO: Figure out if this needs an error message or not.
+      // I assume that the errore message should be delivered prior to this.
+      return true;
+
+    ParsedArgs.emplace_back(TemplateArg);
+
+    // Also building template Argument Info.
+    if (ArgExpr->getType()->isTypeOfTypes()) {
+      clang::TypeSourceInfo *ArgTInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                             ArgExpr, SyntaxArg->getLocation());
+      if (!ArgTInfo)
+        return true;
+      clang::TemplateArgument Arg(ArgTInfo->getType());
+      ArgInfo.addArgument({Arg, ArgTInfo});
+    } else if (ArgExpr->getType()->isTemplateType()) {
+      clang::Decl *D = SemaRef.getDeclFromExpr(ArgExpr, SyntaxArg->getLocation());
+      if (!D)
+        llvm_unreachable("Invalid template declaration reference.");
+
+      clang::TemplateDecl *TD = cast<clang::TemplateDecl>(D);
+      clang::TemplateName Template(TD);
+      if (Template.isNull())
+        return true;
+      clang::TemplateArgument Arg(Template);
+      clang::TemplateArgumentLocInfo TALoc(getCxxContext(),
+                                           clang::NestedNameSpecifierLoc(),
+                                           SyntaxArg->getLocation(),
+                                           clang::SourceLocation());
+      ArgInfo.addArgument({Arg, TALoc});
+    } else {
+      clang::TemplateArgument Arg(ArgExpr, clang::TemplateArgument::Expression);
+
+      // TODO: I will need to migrate the const elaboration
+      // This attempts to make sure that all referenced functions are actually
+      // in scope, and completely elaborated.
+      // SemaRef.elaborateConstexpr(ArgExpr);
+
+      ArgInfo.addArgument({Arg, ArgExpr});
+    }
+  }
+  return false;
+}
 
 clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,
                                                const BinarySyntax *S) {

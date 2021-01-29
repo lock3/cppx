@@ -23,6 +23,7 @@
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Sema/Lookup.h"
+#include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/TypeLocUtil.h"
 
 #include "clang/Blue/BlueScope.h"
@@ -383,33 +384,32 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
             ND = VD->getDescribedVarTemplate();
           else
             llvm_unreachable("Unknown template function type");
+        } else if (FoundDecl->isTypeTemplate()) {
+          // We want the canonical declaration of a template unless it is
+          // a specialization.
+          using Specialization = clang::ClassTemplateSpecializationDecl;
+          using Record = clang::CXXRecordDecl;
+          if (auto *CD = dyn_cast<Specialization>(FoundDecl->getCxx())) {
+            ND = CD->getSpecializedTemplate();
+          } else if (auto *RD = dyn_cast<Record>(FoundDecl->getCxx())) {
+            ND = RD->getDescribedClassTemplate();
+            // FIXME: if ND is null, this is not recoverable.
+            if (ND)
+              ND = cast<clang::NamedDecl>(ND->getCanonicalDecl());
+            else
+              ND = RD;
+          }
+        } else {
+          // Getting the cannonical declaration so hopefully this will prevent
+          // us from returning the same thing more then once.
+          if (auto *RD = dyn_cast<clang::CXXRecordDecl>(FoundDecl->getCxx())) {
+            ND = cast<clang::NamedDecl>(RD->getCanonicalDecl());
+          }
         }
-        // else if (FoundDecl->declaresTemplateType()) {
-        //   // We want the canonical declaration of a template unless it is
-        //   // a specialization.
-        //   using Specialization = clang::ClassTemplateSpecializationDecl;
-        //   using Record = clang::CXXRecordDecl;
-        //   if (auto *CD = dyn_cast<Specialization>(FoundDecl->Cxx)) {
-        //     ND = CD->getSpecializedTemplate();
-        //   } else if (auto *RD = dyn_cast<Record>(FoundDecl->Cxx)) {
-        //     ND = RD->getDescribedClassTemplate();
-        //     // FIXME: if ND is null, this is not recoverable.
-        //     if (ND)
-        //       ND = cast<clang::NamedDecl>(ND->getCanonicalDecl());
-        //     else
-        //       ND = RD;
-        //   }
-        // } else {
-        //   // Getting the cannonical declaration so hopefully this will prevent
-        //   // us from returning the same thing more then once.
-        //   if (auto *RD = dyn_cast<clang::CXXRecordDecl>(FoundDecl->Cxx)) {
-        //     ND = cast<clang::NamedDecl>(RD->getCanonicalDecl());
-        //   }
-        // }
-        // if (auto *VTSD = dyn_cast<clang::VarTemplateSpecializationDecl>(
-        //                                                        FoundDecl->Cxx)) {
-        //   ND = VTSD->getSpecializedTemplate();
-        // }
+        if (auto *VTSD = dyn_cast<clang::VarTemplateSpecializationDecl>(
+                                                               FoundDecl->getCxx())) {
+          ND = VTSD->getSpecializedTemplate();
+        }
         addIfNotDuplicate(R, ND);
       }
       break;
@@ -1174,6 +1174,33 @@ void Sema::diagnoseElabCycleError(Declaration *CycleTerminalDecl) {
     getCxxSema().Diags.Report(CycleNote->Def->getLocation(),
                               clang::diag::note_cycle_entry);
   }
+}
+
+clang::ParsedTemplateArgument Sema::convertExprToTemplateArg(clang::Expr *E) {
+  // Type parameters start here.
+  if (E->getType()->isTypeOfTypes()) {
+    clang::TypeSourceInfo *TInfo = getTypeSourceInfoFromExpr(
+                                          E, E->getExprLoc());
+    if (!TInfo)
+      return clang::ParsedTemplateArgument();
+
+    return getCxxSema().ActOnTemplateTypeArgument(
+               getCxxSema().CreateParsedType(TInfo->getType(), TInfo));
+  }
+
+  if (E->getType()->isTemplateType()) {
+    clang::TemplateDecl *TD =
+      E->getType()->getAs<clang::CppxTemplateType>()->getTemplateDecl();
+
+    return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::Template,
+                                         (void *)TD, E->getExprLoc());
+  }
+
+  // Anything else is a constant expression?
+  clang::ExprResult ConstExpr(E);
+  ConstExpr = getCxxSema().ActOnConstantExpression(ConstExpr);
+  return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::NonType,
+      ConstExpr.get(), E->getExprLoc());
 }
 
 } // end namespace Blue

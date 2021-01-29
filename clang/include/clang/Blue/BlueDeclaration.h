@@ -128,6 +128,7 @@ struct Declaration {
   bool isFieldDecl() const;
 
   bool isFunctionTemplate() const;
+  bool isTypeTemplate() const;
 
 
   /// This is used for handling delated class elaboration.

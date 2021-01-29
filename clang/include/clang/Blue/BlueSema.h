@@ -513,6 +513,9 @@ public:
   private:
     Sema& SemaRef;
   };
+
+public:
+  clang::ParsedTemplateArgument convertExprToTemplateArg(clang::Expr *E);
 };
 
 
