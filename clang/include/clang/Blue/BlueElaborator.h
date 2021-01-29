@@ -81,6 +81,8 @@ public:
                            llvm::SmallVectorImpl<clang::NamedDecl *> &Res);
 
   clang::Decl *doElaborateDeclarationTyping(Declaration *D);
+  clang::Decl *elaborateTypeAliasOrVariableTemplate(Declaration *D);
+
 
   Declaration *elaborateTemplateParameter(const Syntax *Parm);
   void elaborateParameters(const ListSyntax *S);

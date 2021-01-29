@@ -252,8 +252,141 @@ clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
     return makeClass(D);
 
   // if (D->Decl->declaresValue())
-  // I guess if it's not a function/class it must be a value declaration
+  if (D->Decl->declaresTemplate()) {
+    // we know this is a special case where we have either a variable template or
+    // type alias template.
+    // llvm_unreachable("type alias and variable templates not implemented yet");
+    return elaborateTypeAliasOrVariableTemplate(D);
+  }
+  // I guess if it's not a function/class it must be a value declaration.
   return makeValueDecl(D);
+}
+
+clang::Decl *Elaborator::elaborateTypeAliasOrVariableTemplate(Declaration *D) {
+  bool InClass = D->isDeclaredInClass();
+
+  // Checking if we are a nested template decl/class.
+  clang::MultiTemplateParamsArg MTP = D->TemplateParamStorage;
+
+  // This REQUIRES that we have specified type for now. But in order to do this
+  // correctly we can't construct a templated type right off the bat we need
+  // to figure out
+  // ExprElaborator Elab(Context, SemaRef);
+  Declarator *TyDcl = D->Decl->Next;
+  if (!TyDcl) {
+    Error(D->Def->getLocation(),"Deduced alias types not supported.");
+    return nullptr;
+  }
+
+  // Elaborating what I suspect will be a type portion of the declarator.
+  clang::Expr *TypeExpr = elaborateDeclarator(TyDcl);
+  if (!TypeExpr) {
+    getCxxSema().Diags.Report(TyDcl->getLocation(),
+                         clang::diag::err_failed_to_translate_type);
+    return nullptr;
+  }
+
+  if (!TypeExpr->getType()->isTypeOfTypes()) {
+    if (TypeExpr->getType()->isNamespaceType()) {
+      getCxxSema().Diags.Report(TyDcl->getLocation(),
+                           clang::diag::err_templated_namespace_type);
+      return nullptr;
+    }
+    if (TypeExpr->getType()->isTemplateType()) {
+      llvm_unreachable("Template variables not implemented yet");
+    }
+    getCxxSema().Diags.Report(TyDcl->getLocation(),
+                         clang::diag::err_declaration_type_not_a_type);
+    return nullptr;
+  }
+  clang::TypeSourceInfo *TypeExprInfo
+               = SemaRef.getTypeSourceInfoFromExpr(TypeExpr,
+                                                   TyDcl->getLocation());
+  if (!TypeExprInfo)
+    return nullptr;
+
+  // Constructing the elaboration name.
+  clang::IdentifierInfo *IdInfo = D->Id;
+  clang::UnqualifiedId Id;
+  // assert(D->IdDcl && "We are some how missing an identifier declarator?!\n");
+  Id.setIdentifier(IdInfo, D->Def->getLocation());
+  clang::SourceLocation Loc = D->Def->getLocation();
+
+  auto Init = D->getInitializer();
+  if (!TypeExprInfo->getType()->isTypeOfTypes()) {
+    // bool DeclIsStatic = false;
+    // if (isStaticMember(SemaRef, D, DeclIsStatic)) {
+    //   return nullptr;
+    // }
+
+    // Emit an error message here.
+    // if (InClass && !DeclIsStatic) {
+    //   SemaRef.Diags.Report(D->IdDcl->getLoc(),
+    //                        clang::diag::err_template_member)
+    //                        << D->getId()->getName();
+    //   return nullptr;
+    // }
+    clang::StorageClass TS = clang::SC_None;
+    // if (DeclIsStatic) {
+    //   TS = clang::SC_Static;
+    // }
+    clang::VarDecl *VDecl = clang::VarDecl::Create(getCxxContext(),
+                                               SemaRef.getCurClangDeclContext(),
+                                                   Loc, Loc, IdInfo,
+                                                   TypeExprInfo->getType(),
+                                                   TypeExprInfo, TS);
+    VDecl->setImplicitlyInline();
+    clang::DeclarationName DeclName = IdInfo;
+    clang::VarTemplateDecl *VTD = clang::VarTemplateDecl::Create(
+                                                      getCxxContext(),
+                                                      VDecl->getDeclContext(),
+                                                      Loc, DeclName, MTP.back(),
+                                                      VDecl);
+    if (InClass) {
+      VTD->setAccess(clang::AS_public);
+      VDecl->setAccess(clang::AS_public);
+    }
+    SemaRef.getCxxSema().PushOnScopeChains(VTD, SemaRef.getCurClangScope(),
+                                           true);
+    D->CurrentPhase = Phase::Typing;
+    // SemaRef.setDeclForDeclaration(D, VTD);
+    D->setCxx(SemaRef, VTD);
+  } else {
+    if (!Init) {
+      getCxxSema().Diags.Report(Loc, clang::diag::err_templated_namespace_type);
+      return nullptr;
+    }
+
+    // Attempting to elaborate the type expression.
+    clang::Expr *InitTyExpr = elaborateExpression(Init);
+    if (!InitTyExpr)
+      return nullptr;
+    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(InitTyExpr,
+                                                           Init->getLocation());
+    if (!TInfo)
+      return nullptr;
+    clang::ParsedType PT;
+    PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
+    clang::TypeResult TR(PT);
+    clang::Decl *TypeAlias = SemaRef.getCxxSema().ActOnAliasDeclaration(
+        SemaRef.getCurClangScope(), clang::AS_public, MTP, Loc, Id,
+        clang::ParsedAttributesView(), TR, nullptr);
+
+    // SemaRef.setDeclForDeclaration(D, TypeAlias);
+    D->setCxx(SemaRef, TypeAlias);
+    // Only the type alias is fully elaborated at this point in time.
+    // if (InClass) {
+    //   D->Cxx->setAccess(clang::AS_public);
+    // }
+    D->CurrentPhase = Phase::Initialization;
+  }
+
+  // Making sure that if we are in side of a class/record we explicitly set the
+  // current access to public.
+  // if (D->Cxx) {
+  //   elaborateAttributes(D);
+  // }
+  return D->getCxx();
 }
 
 Declaration *Elaborator::elaborateTemplateParameter(const Syntax *Parm) {
@@ -1313,7 +1446,7 @@ clang::Expr *Elaborator::doElaborateExpression(const Syntax *S) {
     return nullptr;
   default:
     break;
-}
+  }
   S->dump();
   llvm_unreachable("Unexpected syntax tree");
 }

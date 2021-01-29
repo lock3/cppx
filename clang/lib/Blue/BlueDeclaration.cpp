@@ -104,6 +104,10 @@ bool Declaration::isTypeTemplate() const {
   return Cxx && Cxx->getDescribedTemplate() && isa<clang::TypeDecl>(Cxx);
 }
 
+bool Declaration::isDeclaredInClass() const {
+  return ScopeForDecl->isClassScope();
+}
+
 bool Declaration::declaresInitializedVariable() const {
   return (isDecl<clang::VarDecl>() || isDecl<clang::FieldDecl>())
       && hasInitializer();

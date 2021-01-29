@@ -130,7 +130,7 @@ struct Declaration {
   bool isFunctionTemplate() const;
   bool isTypeTemplate() const;
 
-
+  bool isDeclaredInClass() const;
   /// This is used for handling delated class elaboration.
   bool declaresInitializedVariable() const;
 
