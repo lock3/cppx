@@ -17,6 +17,7 @@ using namespace clang::ast_matchers;
 using namespace clang::tooling;
 using namespace clang;
 using namespace blue;
+// TODO: Make all functions implicit no except.
 
 TEST(BlueFunctionTemplate, SimpleFunctionDecl) {
   StringRef Code = R"BLUE(

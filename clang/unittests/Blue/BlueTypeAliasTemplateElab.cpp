@@ -30,33 +30,3 @@ x : [T:type] => type = C[T];
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
-
-// TEST(BlueTypeAlias, ImplicitTypeAlias) {
-//   StringRef Code = R"BLUE(
-// x : = int;
-// )BLUE";
-//   auto ToMatch = typeAliasDecl(
-//     hasName("x"),
-//     hasType(asString("int"))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
-
-// TEST(BlueTypeAlias, TypeAliasMissingInitializer) {
-//   StringRef Code = R"BLUE(
-// x : type;
-// )BLUE";
-//   BlueFailureTest(Code);
-// }
-
-// TEST(BlueTypeAlias, TypeAliasOfAClass) {
-//   StringRef Code = R"BLUE(
-// Y : class{ }
-// x : = Y;
-// )BLUE";
-//   auto ToMatch = typeAliasDecl(
-//     hasName("x"),
-//     hasType(asString("struct Y"))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
