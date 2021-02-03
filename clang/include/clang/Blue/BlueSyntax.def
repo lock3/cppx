@@ -1,16 +1,67 @@
+// Nodes
+//
+// A node is basically a pair of a class name and its variable name. To add
+// a new node, define the pair here, and undef it at the end of the file.
+
+// def_syntax(T, B)
+// def_abstract(T, B)
+//
+// The two parameters are the class name and its base class name.
+
 #ifndef def_syntax
-#  define def_syntax(T)
+#  define def_syntax(T, B)
 #endif
 
-def_syntax(Error)
-def_syntax(Literal)
-def_syntax(Identifier)
-def_syntax(List)
-def_syntax(Seq)
-def_syntax(Unary)
-def_syntax(Binary)
-def_syntax(Control)
-def_syntax(Def)
-def_syntax(Top)
+#ifndef def_abstract
+#  define def_abstract(T, B)
+#endif
+
+def_abstract(Unary, Syntax)
+def_abstract(Binary, Syntax)
+def_abstract(Ternary, Syntax)
+def_abstract(Quaternary, Syntax)
+def_abstract(Multiary, Syntax)
+
+// Atomic nodes
+def_abstract(Atom, Syntax)
+def_syntax(Literal, Atom)
+def_syntax(Identifier, Atom)
+
+// Lists, sequences, and enclosures
+def_syntax(List, Multiary)
+def_syntax(Sequence, Multiary)
+def_syntax(Enclosure, Unary)
+def_syntax(Pair, Binary)
+def_syntax(Triple, Ternary)
+
+// Unary prefix operators (e.g., ^t)
+def_syntax(Prefix, Unary)
+
+// Compound type constructors
+def_abstract(Constructor, Binary)
+def_syntax(Array, Constructor)
+def_syntax(Function, Constructor)
+def_syntax(Template, Constructor)
+
+// Unary postfix operators (e.g., e^)
+def_syntax(Postfix, Unary)
+
+// Compound application operators
+def_abstract(Application, Binary)
+def_syntax(Call, Application)
+def_syntax(Index, Application)
+
+// Infix binary operators (e.g., x + y).
+def_syntax(Infix, Binary)
+
+// Control structures
+def_syntax(Control, Binary)
+
+// Named declarations
+def_syntax(Declaration, Quaternary)
+
+// Top-level
+def_syntax(File, Unary)
 
 #undef def_syntax
+#undef def_abstract

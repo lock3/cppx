@@ -14,8 +14,9 @@
 #include "clang/Blue/ParseBlueAST.h"
 #include "clang/Blue/BlueFile.h"
 #include "clang/Blue/BlueParser.h"
-#include "clang/Blue/BlueElaborator.h"
+// #include "clang/Blue/BlueElaborator.h"
 #include "clang/Blue/BlueSyntax.h"
+#include "clang/Blue/BlueSyntaxContext.h"
 
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
@@ -39,8 +40,8 @@ void ParseBlueAST(clang::ASTContext &CxxContext,
   SyntaxContext Context(CxxContext);
   Parser Parser(SM, InputFile);
   Syntax *CST = Parser.parseFile();
-  CST->dump();
 
+#if 0
   // Elaborate the resulting abstract syntax tree.
   Sema Sema(Context, CxxSema);
   Elaborator Elab(Sema);
@@ -57,6 +58,7 @@ void ParseBlueAST(clang::ASTContext &CxxContext,
   }
 
   Consumer->HandleTranslationUnit(CxxSema.getASTContext());
+#endif
 }
 
 } // namespace blue

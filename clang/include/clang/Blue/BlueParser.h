@@ -18,6 +18,8 @@
 #include "clang/Basic/SourceManager.h"
 
 #include "clang/Blue/BlueLexer.h"
+#include "clang/Blue/BlueSyntax.h"
+#include "clang/Blue/BlueTokens.h"
 
 namespace clang {
 
@@ -28,6 +30,7 @@ class DiagnosticsEngine;
 namespace blue
 {
   class Syntax;
+  using SyntaxSeq = llvm::SmallVectorImpl<Syntax *>;
 
   /// The parser transforms sequences of tokens into uninterpreted syntax
   /// trees.
@@ -181,34 +184,27 @@ namespace blue
     Syntax *parseFile();
 
     // Statements
-    Syntax *parseStatement();
     Syntax *parseBlockStatement();
-    Syntax *parseInlineableBlock();
-    Syntax *parseIfStatement();
-    Syntax *parseWhileStatement();
-    Syntax *parseForStatement();
-    Syntax *parseBreakStatement();
-    Syntax *parseContinueStatement();
-    Syntax *parseReturnStatement();
     Syntax *parseDeclarationStatement();
     Syntax *parseExpressionStatement();
-    void parseStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS);
-    void parseDeclStatementSeq(llvm::SmallVectorImpl<Syntax *> &SS);
 
     // Declarations
     Syntax *parseDeclaration();
 
     // Signatures and initializers
-    Syntax *parseSignature();
-    Syntax *parseInitializer();
     Syntax *parseEqualInitializer();
     Syntax *parseBraceInitializer();
+
+    // Parameters
+    Syntax *parseParameterGroup();
+    Syntax *parseParameterList();
+    Syntax *parseParameter();
 
     // Expressions
     Syntax *parseExpression();
     Syntax *parseAssignmentExpression();
+    Syntax *parseImplicationExpression();
     Syntax *parseLogicalOrExpression();
-    Syntax *parseArrowExpression();
     Syntax *parseLogicalAndExpression();
     Syntax *parseEqualityExpression();
     Syntax *parseRelationalExpression();
@@ -231,14 +227,6 @@ namespace blue
     Syntax *parseArrayExpression();
     Syntax *parseBlockExpression();
 
-    // Parameters
-    Syntax *parseParameterList();
-    void parseParameterGroup(llvm::SmallVectorImpl<Syntax *> &SS);
-    void parseParameterList(llvm::SmallVectorImpl<Syntax *> &SS);
-    Syntax *parseParameter();
-    Syntax *parseFormalParameter();
-    Syntax *parseActualParameter();
-
     // Semantic actions
     Syntax *onLiteral(const Token &Tok);
     Syntax *onIdentifier(const Token &Tok);
@@ -253,6 +241,107 @@ namespace blue
     Syntax *onControl(const Token &Tok, Syntax *Sig, Syntax *Block);
     Syntax *onTop(llvm::SmallVectorImpl<Syntax *> &SS);
     Syntax* onError(char const* Msg);
+
+    // BLUEL3 PARSING
+    Syntax *parseDeclSequence(SyntaxSeq &SS);
+    Syntax *parseDefinition();
+    Syntax *parseConstraint();
+    Syntax *parsePattern();
+    Syntax *parsePatternList();
+    Syntax *parseDescriptor();
+    Syntax *parseDeclaratorList();
+    Syntax *parseDeclarator();
+    Syntax *parseMappingDescriptor();
+    Syntax *parseLeaveExpression();
+    Syntax *parseControlExpression();
+    Syntax *parseConditionalExpression();
+    Syntax *parseStatementSeq();
+    Syntax *parseStatement();
+    Syntax *parseExpressionList();
+    Syntax *parseBlock();
+    Syntax *parseMatchExpression();
+    Syntax *parseCaseList();
+    Syntax *parseCase();
+    Syntax *parseLoopExpression();
+    Syntax *parseForExpression();
+    Syntax *parseWhileExpression();
+    Syntax *parseDoExpression();
+
+    Syntax *parseTemplateConstructor();
+    Syntax *parseArrayConstructor();
+    Syntax *parseFunctionConstructor();
+
+    // Generic Parse Utilites
+    enum class Enclosure
+    {
+      Parens,
+      Brackets,
+      Braces,
+    };
+
+    struct EnclosingTokens
+    {
+      tok::TokenKind Open;
+      tok::TokenKind Close;
+    };
+
+    EnclosingTokens EnclosingToks[3] = {
+      { tok::LeftParen,   tok::RightParen   },
+      { tok::LeftBracket, tok::RightBracket },
+      { tok::LeftBrace,   tok::RightBrace   },
+    };
+
+    tok::TokenKind openToken(Enclosure E) {
+      return EnclosingToks[(int)E].Open;
+    }
+
+    tok::TokenKind closeToken(Enclosure E) {
+      return EnclosingToks[(int)E].Close;
+    }
+
+    /// Parse a list enclosed by the tokens of E. Note that a list
+    /// is comprised of groups, so that's allowed.
+    template<Enclosure E, typename F>
+    Syntax* parseEnclosed(F fn)
+    {
+      Token Open = requireToken(openToken(E));
+      Syntax *T = nullptr;
+      if (nextTokenIsNot(closeToken(E)))
+        T = (this->*fn)();
+      Token Close = expectToken(closeToken(E));
+      return new EnclosureSyntax(Open, Close, T);
+    }
+
+    template<typename F>
+    Syntax* parseParenEnclosed(F fn)
+    {
+      return parseEnclosed<Enclosure::Parens>(fn);
+    }
+
+    template<typename F>
+    Syntax* parseBracketEnclosed(F fn)
+    {
+      return parseEnclosed<Enclosure::Brackets>(fn);
+    }
+
+    template<typename F>
+    Syntax* parseBraceEnclosed(F fn)
+    {
+      return parseEnclosed<Enclosure::Braces>(fn);
+    }
+
+    /// A helper function for parsing items in a list or sequence.
+    /// Accumulates the result in `ss`.
+    template<typename P, typename F>
+    static Syntax* parseItem(P &parser, F fn, SyntaxSeq &ss)
+    {
+      // TODO: If we represent syntax errors explicitly, then
+      // the parser will always return a non-null pointer.
+      Syntax *S = (parser.*fn)();
+      if (S)
+        ss.push_back(S);
+      return S;
+    }
 
     /// The lexer.
     Lexer Lex;

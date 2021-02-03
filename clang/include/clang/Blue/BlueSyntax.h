@@ -39,7 +39,7 @@ namespace blue {
 class Syntax {
 public:
   enum KindType {
-#define def_syntax(K) \
+#define def_syntax(K, B)                          \
   K,
 #include "clang/Blue/BlueSyntax.def"
   };
@@ -53,9 +53,9 @@ public:
     return Kind;
   }
 
-  bool isError() const {
-    return getKind() == Error;
-  }
+  // bool isError() const {
+  //   return getKind() == Error;
+  // }
 
   /// The name of the syntax's node kind. Used for debugging.
   const char *getKindName() const;
@@ -93,554 +93,516 @@ private:
   KindType Kind;
 };
 
-/// Supports the implementation of leaf nodes in the grammar.
-class LeafSyntax : public Syntax {
-protected:
-  LeafSyntax(KindType K)
-    : Syntax(K)
-  {}
+using Syntax_span = Syntax *;
+using ConstSyntax_span = const Syntax *;
+using Syntax_seq = llvm::SmallVector<Syntax *, 4>;
 
-public:
-  clang::SourceLocation getLocation() const {
-    return {};
-  }
+// Term structure
+//
+// The following classes provided basic structure for specific terms. The
+// intent is to simplify some algorithms that can be largely defined in
+// terms of the tree's structure, and not its interpretation.
 
-  clang::SourceLocation getBeginLocation() const {
-    return {};
-  }
-
-  clang::SourceLocation getEndLocation() const {
-    return {};
-  }
-
-  child_range children() {
-    return child_range(child_iterator(), child_iterator());
-  }
-
-  const child_range children() const {
-    return const_child_range(const_child_iterator(), const_child_iterator());
-  }
-};
-
-/// Represents an error.
-class ErrorSyntax : public LeafSyntax {
-public:
-  ErrorSyntax()
-    : LeafSyntax(Error)
-  {}
-
-  static bool classof(const Syntax *S) {
-    return S->getKind() == Error;
-  }
-};
-
-/// Supports the implementation of leaf nodes defined by a single token. This is
-/// a base class and is used to share the implementation between literals and
-/// identifiers.
-class AtomSyntax : public LeafSyntax {
-protected:
-  AtomSyntax(KindType K, Token Tok)
-    : LeafSyntax(K), Tok(Tok)
-  {}
-
-public:
-  clang::SourceLocation getLocation() const {
-    return Tok.getLocation();
-  }
-
-  clang::SourceLocation getBeginLocation() const {
-    return Tok.getLocation();
-  }
-
-  clang::SourceLocation getEndLocation() const {
-    return Tok.getLocation();
-  }
-
-  const Token& getToken() const {
-    return Tok;
-  }
-
-  llvm::StringRef getSpelling() const {
-    return Tok.getSpelling();
-  }
-
-  static bool classof(const Syntax *S) {
-    return S->getKind() == Literal || S->getKind() == Identifier;
-  }
-
-private:
-  Token Tok;
-};
-
-
-// Represents a suffix on a literal value, such as `64u64`
-struct LiteralSuffix
+/// A node with a fixed number of operands.
+template<std::size_t N>
+struct KarySyntax : Syntax
 {
-  bool IsSigned = false;
-  bool IsUnsigned = false;
-  std::size_t BitWidth = 0;
-  bool IsFloat = false;
-  bool IsDouble = false;
-  bool IsHalf = false;
-  bool IsQuarter = false;
+  template<typename... Ts>
+  KarySyntax(KindType k, Ts*... ts)
+    : Syntax(k), m_terms{ts...}
+  {
+  }
+
+  /// Returns the nth operand.
+  Syntax* operand(std::size_t n) const
+  {
+    return m_terms[n];
+  }
+
+  /// Returns the operands.
+  const Syntax *operands() const
+  {
+    return m_terms;
+  }
+
+  /// Returns the operands.
+  Syntax *operands()
+  {
+    return m_terms;
+  }
+
+  Syntax* m_terms[N];
+};
+
+/// Specialization for unary nodes.
+template<>
+struct KarySyntax<1> : Syntax
+{
+  KarySyntax(KindType k, Syntax* s)
+    : Syntax(k), m_term(s)
+  { }
+
+  /// Returns the operand.
+  Syntax* operand() const
+  {
+    return m_term;
+  }
+
+  /// Returns the operands.
+  const Syntax *operands() const
+  {
+    return m_term;
+  }
+
+  /// Returns the operands.
+  Syntax *operands()
+  {
+    return m_term;
+  }
+
+  Syntax *m_term;
+};
+
+/// A unary expression has a single operand.
+struct UnarySyntax : KarySyntax<1>
+{
+  UnarySyntax(KindType k, Syntax* s)
+    : KarySyntax<1>(k, s)
+  { }
+};
+
+/// A binary expression with two operands.
+struct BinarySyntax : KarySyntax<2>
+{
+  BinarySyntax(KindType k, Syntax* s0, Syntax* s1)
+    : KarySyntax<2>(k, s0, s1)
+  { }
+};
+
+/// A ternary expression.
+struct TernarySyntax : KarySyntax<3>
+{
+  TernarySyntax(KindType k, Syntax* s0, Syntax* s1, Syntax* s2)
+    : KarySyntax<3>(k, s0, s1, s2)
+  { }
+};
+
+/// A quaternary expression.
+struct QuaternarySyntax : KarySyntax<4>
+{
+  QuaternarySyntax(KindType k, Syntax* s0, Syntax* s1, Syntax* s2, Syntax* s3)
+    : KarySyntax<4>(k, s0, s1, s2, s3)
+  { }
+};
+
+/// A term with an unspecified number of operands.
+struct MultiarySyntax : Syntax
+{
+  MultiarySyntax(KindType k, Syntax **s)
+    : Syntax(k), m_terms(s)
+  { }
+
+  /// Returns the nth operand.
+  Syntax* operand(std::size_t n) const
+  {
+    return m_terms[n];
+  }
+
+  /// Returns the operands.
+  Syntax **operands()
+  {
+    return m_terms;
+  }
+
+  Syntax **m_terms;
+  unsigned num_terms;
+};
+
+// Specific trees
+
+/// Any tree represented by a single token.
+struct AtomSyntax : Syntax
+{
+  AtomSyntax(KindType k, Token tok)
+    : Syntax(k), m_tok(tok)
+  { }
+
+  /// Returns the token of the atom.
+  Token token() const
+  {
+    return m_tok;
+  }
+
+  /// Returns the spelling of the atom.
+  std::string const& spelling() const
+  {
+    return m_tok.getSpelling().str();
+  }
+
+  Token m_tok;
 };
 
 /// Represents literal values.
-class LiteralSyntax : public AtomSyntax {
-public:
-  LiteralSyntax(const Token &Tok)
-    : AtomSyntax(Literal, Tok)
-  { }
-
-  static bool classof(const Syntax *S) {
-    return S->getKind() == Literal;
-  }
-  LiteralSuffix Suffix;
-};
-
-/// Represents identifiers.
-class IdentifierSyntax : public AtomSyntax {
-public:
-  IdentifierSyntax(const Token &Tok)
-    : AtomSyntax(Identifier, Tok)
-  { }
-
-  static bool classof(const Syntax *S) {
-    return S->getKind() == Identifier;
-  }
-};
-
-/// Supports the implementation of variadic (interior) nodes of dynamic size
-/// (e.g., lists and and sequences).
-class VectorSyntax : public Syntax
+struct LiteralSyntax : AtomSyntax
 {
-protected:
-  VectorSyntax(KindType K, llvm::ArrayRef<Syntax *> A)
-    : Syntax(K), Elems(A)
+  static constexpr KindType this_kind = Literal;
+
+  LiteralSyntax(Token tok)
+    : AtomSyntax(this_kind, tok)
   { }
-
-public:
-  bool hasChildren() const {
-    return !Elems.empty();
-  }
-
-  std::size_t getNumChildren() const {
-    return Elems.size();
-  }
-
-  Syntax* getChild(std::size_t N) {
-    return Elems[N];
-  }
-
-  const Syntax* getChild(std::size_t N) const {
-    return Elems[N];
-  }
-
-  child_range children() {
-    return child_range(Elems.data(), Elems.data() + Elems.size());
-  }
-
-  const child_range children() const {
-    return child_range(Elems.data(), Elems.data() + Elems.size());
-  }
-
-protected:
-  llvm::ArrayRef<Syntax *> Elems;
 };
 
-/// Represents a possibly enclosed, token-separated list of terms. Note that
-/// the separator token is symbolic.
-class ListSyntax : public VectorSyntax {
-public:
-  /// Construct an unenclosed list of terms.
-  ListSyntax(TokenKind K, llvm::ArrayRef<Syntax *> A)
-    : VectorSyntax(List, A), Enc(), Sep(K)
+/// Represents user-defined names.
+struct IdentifierSyntax : AtomSyntax
+{
+  static constexpr KindType this_kind = Identifier;
+
+  IdentifierSyntax(Token tok)
+    : AtomSyntax(this_kind, tok)
   { }
-
-  /// Construct an enclosed list of terms.
-  ListSyntax(const TokenPair Enc, TokenKind K, llvm::ArrayRef<Syntax *> A)
-    : VectorSyntax(List, A), Enc(Enc), Sep(K)
-  { }
-
-  const TokenPair &getEnclosingTokens() const {
-    return Enc;
-  }
-
-  bool isUnenclosedList() {
-    return Enc.first.isInvalid();
-  }
-
-  bool isParenList() const {
-    return Enc.first.hasKind(tok::LeftParen);
-  }
-
-  bool isBracketList() const {
-    return Enc.first.hasKind(tok::LeftBracket);
-  }
-
-  TokenKind getSeparatorKind() {
-    return Sep;
-  }
-
-  bool isCommaSeparated() const {
-    return Sep == tok::Comma;
-  }
-
-  bool isSemicolonSeparated() const {
-    return Sep == tok::Semicolon;
-  }
-
-  clang::SourceLocation getLocation() const {
-    if (Enc.first.isValid())
-      return Enc.first.getLocation();
-    if (Elems.empty())
-      return {};
-    return Elems.front()->getLocation();
-  }
-
-  clang::SourceLocation getBeginLocation() const {
-    return getLocation();
-  }
-
-  clang::SourceLocation getEndLocation() const {
-    if (Enc.first.isValid())
-      return Enc.second.getLocation();
-    if (Elems.empty())
-      return {};
-    return Elems.back()->getLocation();
-  }
-
-  static bool classof(const Syntax *S) {
-    return S->getKind() == List;
-  }
-
-private:
-  TokenPair Enc;
-  TokenKind Sep;
 };
 
-/// Represents an enclosed sequence of terms.
+/// A sequence of delimited terms.
 ///
-/// TODO: TopSyntax is an unclosed sequence. Maybe we should merge those
-/// nodes, or are there sufficiently distinct things in Top that would
-/// make it inadvisable. Probably.
-class SeqSyntax : public VectorSyntax {
-public:
-  SeqSyntax(const TokenPair &Enc, llvm::ArrayRef<Syntax *> A)
-    : VectorSyntax(Seq, A), Enc(Enc)
+/// TODO: This doesn't store the delimiters. I'm not sure if that's
+/// actually important.
+struct ListSyntax : MultiarySyntax
+{
+  static constexpr KindType this_kind = List;
+
+  ListSyntax(Syntax **s)
+    : MultiarySyntax(this_kind, s)
+  { }
+};
+
+/// A sequence of terms.
+struct SequenceSyntax : MultiarySyntax
+{
+  static constexpr KindType this_kind = Sequence;
+
+  SequenceSyntax(Syntax **s)
+    : MultiarySyntax(this_kind, s)
+  { }
+};
+
+/// A term enclosed by a pair of tokens.
+struct EnclosureSyntax : UnarySyntax
+{
+  static constexpr KindType this_kind = Enclosure;
+
+  EnclosureSyntax(Token o, Token c, Syntax* t)
+    : UnarySyntax(this_kind, t), m_open(o), m_close(c)
   { }
 
-  const TokenPair &getEnclosingTokens() const {
-    return Enc;
+  /// Returns the opening token.
+  Token open() const
+  {
+    return m_open;
   }
 
-  bool isUnenclosedList() {
-    return Enc.first.isInvalid();
+  /// Returns the closing token.
+  Token close() const
+  {
+    return m_close;
   }
 
-  bool isBraceList() const {
-    return Enc.first.hasKind(tok::LeftBrace);
+  /// Returns the inner term.
+  Syntax* term() const
+  {
+    return m_term;
   }
 
-  static bool classof(const Syntax *S) {
-    return S->getKind() == Seq;
-  }
-
-  clang::SourceLocation getLocation() const {
-    return Enc.first.getLocation();
-  }
-
-  clang::SourceLocation getBeginLocation() const {
-    return getLocation();
-  }
-
-  clang::SourceLocation getEndLocation() const {
-    return Enc.second.getLocation();
-  }
-
-private:
-  TokenPair Enc;
+  Token m_open;
+  Token m_close;
 };
 
-/// Represents unary operators.
-class UnarySyntax : public Syntax {
-public:
-  UnarySyntax(const Token &Op, Syntax *Arg)
-    : Syntax(Unary), Op(Op), Arg(Arg)
+/// A pair of terms.
+struct PairSyntax : BinarySyntax
+{
+  static constexpr KindType this_kind = Pair;
+
+  PairSyntax(Syntax* s0, Syntax* s1)
+    : BinarySyntax(this_kind, s0, s1)
+  { }
+};
+
+/// A triple of terms.
+struct TripleSyntax : TernarySyntax
+{
+  static constexpr KindType this_kind = Triple;
+
+  TripleSyntax(Syntax* s0, Syntax* s1, Syntax* s2)
+    : TernarySyntax(this_kind, s0, s1, s2)
+  { }
+};
+
+/// A unary prefix operator expression.
+struct PrefixSyntax : UnarySyntax
+{
+  static constexpr KindType this_kind = Prefix;
+
+  PrefixSyntax(Token tok, Syntax* s)
+    : UnarySyntax(this_kind, s), m_op(tok)
   { }
 
-  const Token &getOperator() const {
-    return Op;
-  }
-
-  llvm::StringRef getOperatorSpelling() const {
-    return Op.getSpelling();
-  }
-
-  Syntax *getOperand() {
-    return Arg;
-  }
-
-  const Syntax *getOperand() const {
-    return Arg;
-  }
-
-  clang::SourceLocation getLocation() const {
-    return Op.getLocation();
-  }
-
-  clang::SourceLocation getBeginLocation() const {
-    return getLocation();
-  }
-
-  clang::SourceLocation getEndLocation() const {
-    return Arg->getEndLocation();
-  }
-
-  bool isPostfix() const {
-    return Postfix;
-  }
-
-  void setPostfix(bool Val = true) {
-    Postfix = Val;
-  }
-
-  child_range children() {
-    return child_range(&Arg, &Arg + 1);
-  }
-
-  const child_range children() const {
-    return child_range(&Arg, &Arg + 1);
-  }
-
-  static bool classof(const Syntax *S) {
-    return S->getKind() == Unary;
-  }
-
-private:
-  Token Op;
-  Syntax *Arg;
-  bool Postfix = false;
-};
-
-/// Represents binary operators. If the operator token is unspecified, this
-/// represents the application of one term to another.
-class BinarySyntax : public Syntax {
-public:
-  BinarySyntax(Syntax *LHS, Syntax *RHS)
-    : Syntax(Binary), Op(), Args{LHS, RHS} { }
-
-  BinarySyntax(const Token &Op, Syntax *LHS, Syntax *RHS)
-    : Syntax(Binary), Op(Op), Args{LHS, RHS} { }
-
-  const Token &getOperator() const {
-    return Op;
-  }
-
-  llvm::StringRef getOperatorSpelling() const {
-    return Op.getSpelling();
-  }
-
-  bool isApplication() const {
-    return Op.isInvalid();
-  }
-
-  bool isMemberAccess() const {
-    return Op.hasKind(tok::Dot);
-  }
-
-  Syntax *getLeftOperand() {
-    return Args[0];
-  }
-
-  const Syntax *getLeftOperand() const {
-    return Args[0];
-  }
-
-  Syntax *getRightOperand() {
-    return Args[1];
-  }
-
-  const Syntax *getRightOperand() const {
-    return Args[1];
-  }
-
-  clang::SourceLocation getLocation() const {
-    return Op.getLocation();
-  }
-
-  clang::SourceLocation getBeginLocation() const {
-    return Args[0]->getBeginLocation();
-  }
-
-  clang::SourceLocation getEndLocation() const {
-    return Args[1]->getEndLocation();
-  }
-
-  child_range children() {
-    return child_range(Args, Args + 2);
-  }
-
-  const child_range children() const {
-    return child_range(Args, Args + 2);
-  }
-
-  static bool classof(const Syntax *S) {
-    return S->getKind() == Binary;
-  }
-
-private:
-  Token Op;
-  Syntax *Args[2];
-};
-
-/// A declaration with a definition.
-class DefSyntax : public Syntax {
-public:
-  DefSyntax(Token Id, Syntax *Sig, Syntax *Init)
-    : Syntax(Def), Id(Id), Args{Sig, Init} {}
-
-  const Token& getIdentifier() const {
-    return Id;
-  }
-
-  llvm::StringRef getIdentifierSpelling() const {
-    return Id.getSpelling();
-  }
-
-  bool hasDeclarator() const
+  /// Returns the prefix operation (operator).
+  Token operation() const
   {
-    return getDeclarator();
+    return m_op;
   }
 
-  const Syntax *getDeclarator() const {
-    return Args[0];
-  }
+  Token m_op;
+};
 
-  Syntax *getDeclarator() {
-    return Args[0];
-  }
+/// Compound type constructors for arrays, templates, and functions.
+struct ConstructorSyntax : BinarySyntax
+{
+  ConstructorSyntax(KindType k, Syntax* s, Syntax* r)
+    : BinarySyntax(k, s, r)
+  { }
 
-  bool hasInitializer() const
+  /// Returns the "constructor" of a constructor. Either an array bound
+  /// or a parameter list.
+  Syntax *constructor() const
   {
-    return getInitializer();
+    return operand(0);
   }
 
-  const Syntax *getInitializer() const {
-    return Args[1];
+  /// Returns the result type of the constructor.
+  Syntax *result() const
+  {
+    return operand(1);
   }
-
-  Syntax *getInitializer() {
-    return Args[1];
-  }
-
-  /// The location of a declaration is that of its identifier.
-  clang::SourceLocation getLocation() const {
-    return Id.getLocation();
-  }
-
-  clang::SourceLocation getBeginLocation() const {
-    return getLocation();
-  }
-
-  clang::SourceLocation getEndLocation() const {
-    return Args[1]->getEndLocation();
-  }
-
-  child_range children() {
-    return child_range(Args, Args + 2);
-  }
-
-  const child_range children() const {
-    return child_range(Args, Args + 2);
-  }
-
-  static bool classof(const Syntax *S) {
-    return S->getKind() == Def;
-  }
-
-private:
-  Token Id;
-  Syntax *Args[2];
 };
 
-/// Represents a control structure
-class ControlSyntax : public Syntax {
-public:
-  ControlSyntax(Token KW, Syntax *Sig, Syntax *Block)
-    : Syntax(Control), Keyword(KW), Args{Sig, Block} {}
+/// Array type constructor.
+struct ArraySyntax : ConstructorSyntax
+{
+  static constexpr KindType this_kind = Array;
 
-  const Token& getKeyword() const {
-    return Keyword;
+  ArraySyntax(Syntax* s, Syntax* t)
+    : ConstructorSyntax(this_kind, s, t)
+  { }
+
+  /// Returns the array bound.
+  Syntax* bounds() const
+  {
+    return constructor();
   }
 
-  Syntax *getSignature() {
-    return Args[0];
-  }
-
-  const Syntax *getSignature() const {
-    return Args[0];
-  }
-
-  Syntax *getBlock() {
-    return Args[1];
-  }
-
-  const Syntax *getBlock() const {
-    return Args[1];
-  }
-
-  /// The location of a declaration is that of its keyword.
-  clang::SourceLocation getLocation() const {
-    return Keyword.getLocation();
-  }
-
-  clang::SourceLocation getBeginLocation() const {
-    return getLocation();
-  }
-
-  clang::SourceLocation getEndLocation() const {
-    return Args[1]->getEndLocation();
-  }
-
-
-  child_range children() {
-    return child_range(Args, Args + 2);
-  }
-
-  const child_range children() const {
-    return child_range(Args, Args + 2);
-  }
-
-  static bool classof(const Syntax *S) {
-    return S->getKind() == Control;
-  }
-
-private:
-  Token Keyword;
-  Syntax *Args[2];
+  using ConstructorSyntax::ConstructorSyntax;
 };
 
-/// Represents the top-level sequence of statements.
-class TopSyntax : public VectorSyntax {
-public:
-  TopSyntax(llvm::ArrayRef<Syntax *> A)
-    : VectorSyntax(Top, A) {}
+/// Mapping type constructors (templates and functions).
+struct MappingSyntax : ConstructorSyntax
+{
+  MappingSyntax(KindType k, Syntax* p, Syntax* r)
+    : ConstructorSyntax(k, p, r)
+  { }
 
-  clang::SourceLocation getLocation() const {
-    return {};
+  /// Returns the parameters.
+  Syntax *parameters() const
+  {
+    return constructor();
+  }
+};
+
+/// Function type constructor.
+struct FunctionSyntax : MappingSyntax
+{
+  static constexpr KindType this_kind = Function;
+
+  FunctionSyntax(Syntax* p, Syntax* r)
+    : MappingSyntax(this_kind, p, r)
+  { }
+};
+
+/// Template type constructor.
+struct TemplateSyntax : MappingSyntax
+{
+  static constexpr KindType this_kind = Template;
+
+  TemplateSyntax(Syntax* p, Syntax* r)
+    : MappingSyntax(this_kind, p, r)
+  { }
+};
+
+/// Unary postfix operators.
+struct PostfixSyntax : UnarySyntax
+{
+  static constexpr KindType this_kind = Postfix;
+
+  PostfixSyntax(Token tok, Syntax* s)
+    : UnarySyntax(this_kind, s), m_op(tok)
+  { }
+
+  /// Returns the prefix operation (operator).
+  Token operation() const
+  {
+    return m_op;
   }
 
-  clang::SourceLocation getBeginLocation() const {
-    return {};
+  Token m_op;
+};
+
+/// Applies arguments to a function, template, or array.
+struct ApplicationSyntax : BinarySyntax
+{
+  ApplicationSyntax(KindType k, Syntax* e, Syntax* a)
+    : BinarySyntax(k, e, a)
+  { }
+
+  /// Returns term being applied to arguments.
+  Syntax* applicant() const
+  {
+    return m_terms[0];
   }
 
-  clang::SourceLocation getEndLocation() const {
-    return {};
+  /// Returns the arguments of the call.
+  Syntax* arguments() const
+  {
+    return m_terms[1];
+  }
+};
+
+/// Represents a function call.
+struct CallSyntax : ApplicationSyntax
+{
+  static constexpr KindType this_kind = Call;
+
+  CallSyntax(Syntax* s0, Syntax* s1)
+    : ApplicationSyntax(this_kind, s0, s1)
+  { }
+};
+
+/// Represents indexing into a table.
+struct IndexSyntax : ApplicationSyntax
+{
+  static constexpr KindType this_kind = Index;
+
+  IndexSyntax(Syntax* s0, Syntax* s1)
+    : ApplicationSyntax(this_kind, s0, s1)
+  { }
+};
+
+/// Infix binary operators.
+struct InfixSyntax : BinarySyntax
+{
+  static constexpr KindType this_kind = Infix;
+
+  InfixSyntax(Token t, Syntax* l, Syntax* r)
+    : BinarySyntax(this_kind, l, r), m_op(t)
+  { }
+
+  /// Returns the infix operation (operator).
+  Token operation() const
+  {
+    return m_op;
   }
 
-  static bool classof(const Syntax *S) {
-    return S->getKind() == Top;
+  /// Returns the left-hand operand.
+  Syntax* lhs() const
+  {
+    return m_terms[0];
+  }
+
+  /// Returns the right-hand operand.
+  Syntax* rhs() const
+  {
+    return m_terms[1];
+  }
+
+  Token m_op;
+};
+
+/// Control structures. Control structures are primarily defined by two
+/// syntactic structures: head and body. The "head" part introduces variables,
+/// defines conditons, etc. The "body" is the main sub-expression.
+///
+/// TODO: We might need to expand this for specific kinds of control
+/// structures. Lambda expressions don't readily fit the pattern unless we
+/// encode them cleverly using pairs.
+struct ControlSyntax : BinarySyntax
+{
+  static constexpr KindType this_kind = Control;
+
+  ControlSyntax(Token t, Syntax* c, Syntax* b)
+    : BinarySyntax(this_kind, c, b), m_ctrl(t)
+  { }
+
+  /// Returns the infix operation (operator).
+  Token control() const
+  {
+    return m_ctrl;
+  }
+
+  /// Returns the head of the control.
+  Syntax* head() const
+  {
+    return m_terms[0];
+  }
+
+  /// Returns the body of the control.
+  Syntax* body() const
+  {
+    return m_terms[1];
+  }
+
+  Token m_ctrl;
+};
+
+
+/// A definition or parameter. It has:
+///
+///   - a declarator (either identifier or list thereof)
+///   - a type
+///   - a constraint
+///   - an initializer
+struct DeclarationSyntax : QuaternarySyntax
+{
+  static constexpr KindType this_kind = Declaration;
+
+  DeclarationSyntax(Syntax* d, Syntax* t, Syntax* c, Syntax* i)
+    : QuaternarySyntax(this_kind, d, t, c, i)
+  { }
+
+  /// Returns the declarator.
+  Syntax* declarator() const
+  {
+    return operand(0);
+  }
+
+  /// Returns the type.
+  Syntax* type() const
+  {
+    return operand(1);
+  }
+
+  Syntax* constraint() const
+  {
+    return operand(2);
+  }
+
+  /// Returns the initializer.
+  Syntax* initializer() const
+  {
+    return operand(3);
+  }
+};
+
+/// The top-level container of terms.
+struct FileSyntax : UnarySyntax
+{
+  static constexpr KindType this_kind = File;
+
+  FileSyntax(Syntax* ds)
+    : UnarySyntax(this_kind, ds)
+  { }
+
+  /// Returns the sequence of declarations in the file.
+  Syntax* declarations() const
+  {
+    return operand();
   }
 };
 

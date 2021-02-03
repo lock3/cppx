@@ -1,3 +1,5 @@
+#if 0
+
 //===- BlueDeclarator.cpp - Information about declarations ----------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -92,3 +94,5 @@ std::string Declarator::getString() const {
 }
 
 } // namespace blue
+
+#endif

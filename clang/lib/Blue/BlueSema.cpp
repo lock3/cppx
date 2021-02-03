@@ -1,3 +1,4 @@
+#if 0
 //===- BlueSema.cpp - Semantic Analysis of Blue ASTs ----------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -867,3 +868,4 @@ void Sema::diagnoseElabCycleError(Declaration *CycleTerminalDecl) {
 }
 
 } // end namespace Blue
+#endif

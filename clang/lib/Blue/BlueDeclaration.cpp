@@ -1,3 +1,5 @@
+#if 0
+
 #include "clang/AST/Decl.h"
 
 #include "clang/Blue/BlueDeclaration.h"
@@ -115,3 +117,5 @@ Phase phaseOf(Declaration *D) {
 }
 
 } // end namespace blue
+
+#endif
