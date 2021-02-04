@@ -1,3 +1,4 @@
+#if 0
 //===- BlueElaborator.cpp - Scope Constructs ------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -12,3 +13,4 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Blue/BlueScope.h"
+#endif

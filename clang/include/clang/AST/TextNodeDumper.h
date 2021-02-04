@@ -403,15 +403,33 @@ public:
   void VisitGoldMacroSyntax(const gold::MacroSyntax *S);
   void VisitGoldFileSyntax(const gold::FileSyntax *S);
 
-  void VisitErrorSyntax(const blue::ErrorSyntax *S);
-  void VisitLiteralSyntax(const blue::LiteralSyntax *S);
-  void VisitIdentifierSyntax(const blue::IdentifierSyntax *S);
-  void VisitListSyntax(const blue::ListSyntax *S);
-  void VisitSeqSyntax(const blue::SeqSyntax *S);
-  void VisitUnarySyntax(const blue::UnarySyntax *S);
-  void VisitBinarySyntax(const blue::BinarySyntax *S);
-  void VisitDefSyntax(const blue::DefSyntax *S);
-  void VisitTopSyntax(const blue::TopSyntax *S);
+  // void VisitUnarySyntax(const blue::UnarySyntax *S) {}
+  // void VisitBinarySyntax(const blue::BinarySyntax *S) {}
+  // void VisitTernarySyntax(const blue::TernarySyntax *S) {}
+  // void VisitQuaternarySyntax(const blue::QuaternarySyntax *S) {}
+  // void VisitMultiarySyntax(const blue::MultiarySyntax *S) {}
+  // void VisitAtomSyntax(const blue::AtomSyntax *S) {}
+  // void VisitLiteralSyntax(const blue::LiteralSyntax *S) {}
+  // void VisitIdentifierSyntax(const blue::IdentifierSyntax *S) {}
+  // void VisitListSyntax(const blue::ListSyntax *S) {}
+  // void VisitSequenceSyntax(const blue::SequenceSyntax *S) {}
+  // void VisitEnclosureSyntax(const blue::EnclosureSyntax *S) {}
+  // void VisitPairSyntax(const blue::PairSyntax *S) {}
+  // void VisitTripleSyntax(const blue::TripleSyntax *S) {}
+  // void VisitPrefixSyntax(const blue::PrefixSyntax *S) {}
+  // void VisitConstructorSyntax(const blue::ConstructorSyntax *S) {}
+  // void VisitArraySyntax(const blue::ArraySyntax *S) {}
+  // void VisitMappingSyntax(const blue::MappingSyntax *S) {}
+  // void VisitFunctionSyntax(const blue::FunctionSyntax *S) {}
+  // void VisitTemplateSyntax(const blue::TemplateSyntax *S) {}
+  // void VisitPostfixSyntax(const blue::PostfixSyntax *S) {}
+  // void VisitApplicationSyntax(const blue::ApplicationSyntax *S) {}
+  // void VisitCallSyntax(const blue::CallSyntax *S) {}
+  // void VisitIndexSyntax(const blue::IndexSyntax *S) {}
+  // void VisitInfixSyntax(const blue::InfixSyntax *S) {}
+  // void VisitControlSyntax(const blue::ControlSyntax *S) {}
+  // void VisitDeclarationSyntax(const blue::DeclarationSyntax *S) {}
+  // void VisitFileSyntax(const blue::FileSyntax *S) {}
 };
 
 } // namespace clang

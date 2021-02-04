@@ -31,7 +31,7 @@ public:
 
   RetTy Visit(PTR(Syntax) S) {
     switch (S->getKind()) {
-#define def_syntax(K) \
+#define def_syntax(K, B)                                          \
       case Syntax::K: DISPATCH(K ## Syntax, K ## Syntax);
 #include "clang/Blue/BlueSyntax.def"
     }
@@ -42,7 +42,7 @@ public:
 
   // Derived visitors definitions. By default, these dispatch to the
   // generic visitor.
-#define def_syntax(K) \
+#define def_syntax(K, B)                                                  \
   RetTy Visit ## K ## Syntax(PTR(K ## Syntax) S) { DISPATCH(Syntax, Syntax); }
 #include "clang/Blue/BlueSyntax.def"
 

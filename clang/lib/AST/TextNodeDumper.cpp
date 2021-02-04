@@ -2398,39 +2398,40 @@ void TextNodeDumper::Visit(const blue::Syntax *S) {
   blue::ConstSyntaxVisitor<TextNodeDumper>::Visit(S);
 }
 
-void TextNodeDumper::VisitErrorSyntax(const blue::ErrorSyntax *S) {
-  ColorScope Color(OS, ShowColors, CastColor);
-  OS << "<<<ERROR>>>";
-}
+// void TextNodeDumper::VisitErrorSyntax(const blue::ErrorSyntax *S) {
+//   ColorScope Color(OS, ShowColors, CastColor);
+//   OS << "<<<ERROR>>>";
+// }
 
-void TextNodeDumper::VisitLiteralSyntax(const blue::LiteralSyntax *S) {
-  OS << ' ' << S->getToken().getSpelling();
-}
+// void TextNodeDumper::VisitLiteralSyntax(const blue::LiteralSyntax *S) {
+//   OS << ' ' << S->getToken().getSpelling();
+// }
 
-void TextNodeDumper::VisitIdentifierSyntax(const blue::IdentifierSyntax *S) {
-  OS << ' ' << S->getToken().getSpelling();
-}
+// void TextNodeDumper::VisitIdentifierSyntax(const blue::IdentifierSyntax *S) {
+//   OS << ' ' << S->getToken().getSpelling();
+// }
 
-void TextNodeDumper::VisitListSyntax(const blue::ListSyntax *S) {
-}
+// void TextNodeDumper::VisitListSyntax(const blue::ListSyntax *S) {
+  
+// }
 
-void TextNodeDumper::VisitSeqSyntax(const blue::SeqSyntax *S) {
-}
+// void TextNodeDumper::VisitSeqSyntax(const blue::SeqSyntax *S) {
+// }
 
-void TextNodeDumper::VisitUnarySyntax(const blue::UnarySyntax *S) {
-  OS << ' ' << S->getOperatorSpelling();
-}
+// void TextNodeDumper::VisitUnarySyntax(const blue::UnarySyntax *S) {
+//   OS << ' ' << S->getOperatorSpelling();
+// }
 
-void TextNodeDumper::VisitBinarySyntax(const blue::BinarySyntax *S) {
-  if (!S->getOperator().isInvalid())
-    OS << ' ' << S->getOperatorSpelling();
-  else
-    OS << ' ' << "<apply>";
-}
+// void TextNodeDumper::VisitBinarySyntax(const blue::BinarySyntax *S) {
+//   if (!S->getOperator().isInvalid())
+//     OS << ' ' << S->getOperatorSpelling();
+//   else
+//     OS << ' ' << "<apply>";
+// }
 
-void TextNodeDumper::VisitDefSyntax(const blue::DefSyntax *S) {
-  OS << ' ' << S->getIdentifierSpelling();
-}
+// void TextNodeDumper::VisitDefSyntax(const blue::DefSyntax *S) {
+//   OS << ' ' << S->getIdentifierSpelling();
+// }
 
-void TextNodeDumper::VisitTopSyntax(const blue::TopSyntax *S) {
-}
+// void TextNodeDumper::VisitTopSyntax(const blue::TopSyntax *S) {
+// }

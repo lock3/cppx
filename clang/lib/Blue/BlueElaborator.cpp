@@ -1,3 +1,5 @@
+#if 0
+
 //===- BlueElaborator.cpp - Blue Language Elaborator ----------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -2326,6 +2328,7 @@ clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
                                             clang::NestedNameSpecifierLoc(),
                                             VD, clang::SourceLocation(),
                                             nullptr);
+    ExprMarker(SemaRef.getCxxAST(), SemaRef).Visit(DRE);
     return DRE;
   }
 
@@ -4083,3 +4086,4 @@ void Elaborator::lateElaborateDefaultParam(
 }
 
 } // namespace blue
+#endif
