@@ -1,4 +1,3 @@
-#if 0
 //===- BlueSema.cpp - Semantic Analysis of Blue ASTs ----------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -200,9 +199,11 @@ void Sema::popDecl() {
     clang::Decl::castToDeclContext(CurrentDecl->getCxx()) : nullptr;
 }
 
+#if 0
 bool Sema::lookupUnqualifiedName(clang::LookupResult &R) {
   return lookupUnqualifiedName(R, getCurrentScope());
 }
+#endif
 
 static void addIfNotDuplicate(clang::LookupResult &R, clang::NamedDecl *ND) {
   for (clang::Decl *D : R) {
@@ -214,6 +215,7 @@ static void addIfNotDuplicate(clang::LookupResult &R, clang::NamedDecl *ND) {
 }
 
 
+#if 0
 bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   assert(S && "lookup in non-existent scope");
 
@@ -450,7 +452,9 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
 
   // return true;
 }
+#endif
 
+#if 0
 void Sema::createBitwiseBuiltinFunctions() {
   buildBitAnd();
   buildBitOr();
@@ -459,6 +463,7 @@ void Sema::createBitwiseBuiltinFunctions() {
   buildBitShl();
   buildBitNot();
 }
+#endif
 
 static clang::QualType getBuiltinTypeOrFail(Sema& SemaRef,
                                             llvm::StringRef TyName) {
@@ -466,6 +471,8 @@ static clang::QualType getBuiltinTypeOrFail(Sema& SemaRef,
   assert(It != SemaRef.BuiltinTypes.end() && "Invalid type name");
   return It->second;
 }
+
+#if 0
 static clang::FunctionDecl *createBinaryBW(Sema& SemaRef,
                                            clang::BinaryOperatorKind Op,
                                            llvm::StringRef FnName,
@@ -746,7 +753,7 @@ void Sema::buildBitNot() {
   DidLoadBWNot = true;
 }
 
-
+#endif
 
 clang::CppxTypeLiteral *Sema::buildTypeExpr(clang::QualType Ty,
                                             clang::SourceLocation Loc) {
@@ -1113,6 +1120,7 @@ bool Sema::isElaboratingClass() const {
   return !ClassStack.empty();
 }
 
+#if 0
 Sema::ClassElaborationState
 Sema::pushElaboratingClass(Declaration *D, bool TopLevelClass) {
   assert((TopLevelClass || !ClassStack.empty())
@@ -1176,6 +1184,7 @@ void Sema::diagnoseElabCycleError(Declaration *CycleTerminalDecl) {
                               clang::diag::note_cycle_entry);
   }
 }
+#endif
 
 clang::ParsedTemplateArgument Sema::convertExprToTemplateArg(clang::Expr *E) {
   // Type parameters start here.
@@ -1205,4 +1214,3 @@ clang::ParsedTemplateArgument Sema::convertExprToTemplateArg(clang::Expr *E) {
 }
 
 } // end namespace Blue
-#endif

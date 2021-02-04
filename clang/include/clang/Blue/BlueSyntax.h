@@ -192,8 +192,8 @@ struct UnarySyntax : KarySyntax<1>
   UnarySyntax(KindType k, Syntax* s)
     : KarySyntax<1>(k, s)
   { }
-  static bool classof(KindType k) {
-    return k >= UnaryStart && k < UnaryEnd;
+  static bool classof(const Syntax *S) {
+    return S->getKind() >= UnaryStart && S->getKind() < UnaryEnd;
   }
 };
 
@@ -203,8 +203,8 @@ struct BinarySyntax : KarySyntax<2>
   BinarySyntax(KindType k, Syntax* s0, Syntax* s1)
     : KarySyntax<2>(k, s0, s1)
   { }
-  static bool classof(KindType k) {
-    return k >= BinaryStart && k < BinaryEnd;
+  static bool classof(const Syntax *S) {
+    return S->getKind() >= BinaryStart && S->getKind() < BinaryEnd;
   }
 };
 
@@ -214,8 +214,8 @@ struct TernarySyntax : KarySyntax<3>
   TernarySyntax(KindType k, Syntax* s0, Syntax* s1, Syntax* s2)
     : KarySyntax<3>(k, s0, s1, s2)
   { }
-  static bool classof(KindType k) {
-    return k >= TernaryStart && k < TernaryEnd;
+  static bool classof(const Syntax *S) {
+    return S->getKind() >= TernaryStart && S->getKind() < TernaryEnd;
   }
 };
 
@@ -225,8 +225,8 @@ struct QuaternarySyntax : KarySyntax<4>
   QuaternarySyntax(KindType k, Syntax* s0, Syntax* s1, Syntax* s2, Syntax* s3)
     : KarySyntax<4>(k, s0, s1, s2, s3)
   { }
-  static bool classof(KindType k) {
-    return k >= QuaternaryStart && k < QuaternaryEnd;
+  static bool classof(const Syntax *S) {
+    return S->getKind() >= QuaternaryStart && S->getKind() < QuaternaryEnd;
   }
 };
 
@@ -257,8 +257,8 @@ struct MultiarySyntax : Syntax
     return const_child_range(m_terms, m_terms + num_terms);
   }
 
-  static bool classof(KindType k) {
-    return k >= MultiaryStart && k < MultiaryEnd;
+  static bool classof(const Syntax *S) {
+    return S->getKind() >= MultiaryStart && S->getKind() < MultiaryEnd;
   }
 
   Syntax **m_terms;
@@ -294,8 +294,8 @@ struct AtomSyntax : Syntax
     return const_child_range(const_child_iterator(), const_child_iterator());
   }
 
-  static bool classof(KindType k) {
-    return k >= AtomStart && k < AtomEnd;
+  static bool classof(const Syntax *S) {
+    return S->getKind() >= AtomStart && S->getKind() < AtomEnd;
   }
 
   Token m_tok;
@@ -310,8 +310,8 @@ struct LiteralSyntax : AtomSyntax
     : AtomSyntax(this_kind, tok)
   { }
 
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 };
 
@@ -324,8 +324,8 @@ struct IdentifierSyntax : AtomSyntax
     : AtomSyntax(this_kind, tok)
   { }
 
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 };
 
@@ -341,8 +341,8 @@ struct ListSyntax : MultiarySyntax
     : MultiarySyntax(this_kind, s, size)
   { }
 
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 };
 
@@ -355,8 +355,8 @@ struct SequenceSyntax : MultiarySyntax
     : MultiarySyntax(this_kind, s, size)
   { }
 
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 };
 
@@ -390,8 +390,8 @@ struct EnclosureSyntax : UnarySyntax
   Token m_open;
   Token m_close;
 
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 };
 
@@ -404,8 +404,8 @@ struct PairSyntax : BinarySyntax
     : BinarySyntax(this_kind, s0, s1)
   { }
 
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 };
 
@@ -418,8 +418,8 @@ struct TripleSyntax : TernarySyntax
     : TernarySyntax(this_kind, s0, s1, s2)
   { }
 
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 };
 
@@ -438,8 +438,8 @@ struct PrefixSyntax : UnarySyntax
     return m_op;
   }
 
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 
   Token m_op;
@@ -465,8 +465,8 @@ struct ConstructorSyntax : BinarySyntax
     return operand(1);
   }
 
-  static bool classof(KindType k) {
-    return k >= ConstructorStart && k < ConstructorEnd;
+  static bool classof(const Syntax *S) {
+    return S->getKind() >= ConstructorStart && S->getKind() < ConstructorEnd;
   }
 };
 
@@ -486,8 +486,8 @@ struct ArraySyntax : ConstructorSyntax
   }
 
   using ConstructorSyntax::ConstructorSyntax;
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 };
 
@@ -503,8 +503,8 @@ struct MappingSyntax : ConstructorSyntax
   {
     return constructor();
   }
-  static bool classof(KindType k) {
-    return k >= MappingStart && k < MappingEnd;
+  static bool classof(const Syntax *S) {
+    return S->getKind() >= MappingStart && S->getKind() < MappingEnd;
   }
 };
 
@@ -517,8 +517,8 @@ struct FunctionSyntax : MappingSyntax
     : MappingSyntax(this_kind, p, r)
   { }
 
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 };
 
@@ -530,8 +530,8 @@ struct TemplateSyntax : MappingSyntax
   TemplateSyntax(Syntax* p, Syntax* r)
     : MappingSyntax(this_kind, p, r)
   { }
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 };
 
@@ -549,8 +549,8 @@ struct PostfixSyntax : UnarySyntax
   {
     return m_op;
   }
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 
   Token m_op;
@@ -574,8 +574,8 @@ struct ApplicationSyntax : BinarySyntax
   {
     return m_terms[1];
   }
-  static bool classof(KindType k) {
-    return k >= ApplicationStart && k < ApplicationEnd;
+  static bool classof(const Syntax *S) {
+    return S->getKind() >= ApplicationStart && S->getKind() < ApplicationEnd;
   }
 };
 
@@ -587,8 +587,8 @@ struct CallSyntax : ApplicationSyntax
   CallSyntax(Syntax* s0, Syntax* s1)
     : ApplicationSyntax(this_kind, s0, s1)
   { }
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 };
 
@@ -600,8 +600,8 @@ struct IndexSyntax : ApplicationSyntax
   IndexSyntax(Syntax* s0, Syntax* s1)
     : ApplicationSyntax(this_kind, s0, s1)
   { }
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 };
 
@@ -632,8 +632,8 @@ struct InfixSyntax : BinarySyntax
     return m_terms[1];
   }
 
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
   Token m_op;
 };
@@ -670,8 +670,8 @@ struct ControlSyntax : BinarySyntax
   {
     return m_terms[1];
   }
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
   Token m_ctrl;
 };
@@ -714,8 +714,8 @@ struct DeclarationSyntax : QuaternarySyntax
     return operand(3);
   }
 
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 };
 
@@ -734,8 +734,8 @@ struct FileSyntax : UnarySyntax
     return operand();
   }
 
-  static bool classof(KindType k) {
-    return k == this_kind;
+  static bool classof(const Syntax *S) {
+    return S->getKind() == this_kind;
   }
 };
 

@@ -56,7 +56,7 @@ public:
   }
   /// Returns the current blue sema instance.
   Sema &getBlueSema() { return SemaRef; }
-#if 0
+
   //===--------------------------------------------------------------------===//
   //                                  Identification                          //
   //===--------------------------------------------------------------------===//
@@ -64,15 +64,16 @@ public:
   Declaration *createDeclaration(const Syntax *Def, Declarator *Dcl,
                                  const Syntax *Init);
 
+#if 0
   //===--------------------------------------------------------------------===//
   //                                  Elaboration                             //
   //===--------------------------------------------------------------------===//
   clang::Decl *elaborateTop(const Syntax *S);
 
   Declaration *identifyDeclaration(const Syntax *S);
-  Declaration *buildDeclaration(const DefSyntax *S);
+  Declaration *buildDeclaration(const DeclarationSyntax *S);
   clang::Decl *elaborateDecl(const Syntax *S);
-  clang::Decl *elaborateDefDecl(const DefSyntax *S);
+  clang::Decl *elaborateDefDecl(const DeclarationSyntax *S);
   clang::Decl *elaborateDeclarationTyping(Declaration *D);
   void elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,
                                    OptioanlClangScopeRAII &ClangTemplateScope,
@@ -175,7 +176,7 @@ public:
   /// Stmts
   clang::Stmt *elaborateSeq(const SeqSyntax *S);
   clang::Stmt *elaborateStatement(const Syntax *S);
-  clang::Stmt *elaborateDeclStmt(const DefSyntax *S);
+  clang::Stmt *elaborateDeclStmt(const DeclarationSyntax *S);
   clang::Stmt *elaborateUnaryStmt(const UnarySyntax *S);
   clang::Stmt *elaborateControlStmt(const ControlSyntax *S);
   clang::Stmt *elaborateIfStmt(const ControlSyntax *S);
