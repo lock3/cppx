@@ -1,5 +1,3 @@
-#if 0
-
 //===- BlueElaborator.cpp - Blue Language Elaborator ----------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -62,10 +60,12 @@ Declaration *Elaborator::createDeclaration(const Syntax *Def,
     new Declaration(SemaRef.getCurrentDecl(), Def, Dcl, Init);
 
 
-  if (const DefSyntax *Id = dyn_cast<DefSyntax>(Def))
-    TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getIdentifierSpelling()});
-  else if (const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(Def))
-    TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
+  if (const DeclarationSyntax *Name = dyn_cast<DeclarationSyntax>(Def)) {
+    const IdentifierSyntax *Id = cast<IdentifierSyntax>(Name);
+    TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->spelling()});
+  } else if (const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(Def)) {
+    TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->spelling()});
+  }
 
   Scope *CurScope = SemaRef.getCurrentScope();
   CurScope->addDecl(TheDecl);
@@ -76,6 +76,8 @@ Declaration *Elaborator::createDeclaration(const Syntax *Def,
   return TheDecl;
 }
 
+
+#if 0
 clang::Decl *Elaborator::elaborateTop(const Syntax *S) {
   if (!S)
     return nullptr;
@@ -4083,6 +4085,7 @@ void Elaborator::lateElaborateDefaultParam(
     LateElaboratedDefaultArgument &DefaultParam) {
   elaborateDefinitionInitialization(DefaultParam.Param);
 }
+#endif
 
 } // namespace blue
-#endif
+
