@@ -1169,6 +1169,14 @@ Syntax *Parser::parsePointerExpression() {
 
 Syntax *Parser::parsePrimaryExpression() {
   switch (getLookahead()) {
+  case tok::BinaryInteger:
+  case tok::DecimalInteger:
+  case tok::HexadecimalInteger:
+  case tok::DecimalFloat:
+  case tok::HexadecimalFloat:
+  case tok::Character:
+  case tok::String:
+
     // Value literals
   case tok::TrueKeyword:
   case tok::FalseKeyword:
