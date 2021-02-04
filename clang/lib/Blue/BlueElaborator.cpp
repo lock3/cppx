@@ -76,9 +76,7 @@ Declaration *Elaborator::createDeclaration(const Syntax *Def,
   return TheDecl;
 }
 
-
-#if 0
-clang::Decl *Elaborator::elaborateTop(const Syntax *S) {
+clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   if (!S)
     return nullptr;
 
@@ -99,7 +97,7 @@ clang::Decl *Elaborator::elaborateTop(const Syntax *S) {
   D->setCxx(SemaRef, TU);
 
   SemaRef.setTUDecl(D);
-  const TopSyntax *Top = cast<TopSyntax>(S);
+  const FileSyntax *Top = cast<FileSyntax>(S);
   Sema::ScopeRAII NamespaceScope(SemaRef, Scope::Namespace, S);
   D->SavedScope = SemaRef.getCurrentScope();
   SemaRef.pushDecl(D);
@@ -111,7 +109,8 @@ clang::Decl *Elaborator::elaborateTop(const Syntax *S) {
       elaborateDecl(SS);
 
   for (const Syntax *SS : Top->children())
-    elaborateDefinition(SS);
+    // elaborateDefinition(SS);
+    ;
 
   SemaRef.getCxxSema().ActOnEndOfTranslationUnit();
   SemaRef.popDecl();
@@ -119,15 +118,15 @@ clang::Decl *Elaborator::elaborateTop(const Syntax *S) {
   return TU;
 }
 
-Declaration *Elaborator::buildDeclaration(const DefSyntax *S) {
-  Declarator *Dcl = getDeclarator(S->getDeclarator());
-  return createDeclaration(S, Dcl, S->getInitializer());
+Declaration *Elaborator::buildDeclaration(const DeclarationSyntax *S) {
+  Declarator *Dcl = getDeclarator(S->type());
+  return createDeclaration(S, Dcl, S->initializer());
 }
 
 Declaration *Elaborator::identifyDeclaration(const Syntax *S) {
   switch (S->getKind()) {
-  case Syntax::Def:
-    return buildDeclaration(cast<DefSyntax>(S));
+  case Syntax::Declaration:
+    return buildDeclaration(cast<DeclarationSyntax>(S));
   default:
     break;
   }
@@ -136,8 +135,8 @@ Declaration *Elaborator::identifyDeclaration(const Syntax *S) {
 
 clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
   switch (S->getKind()) {
-  case Syntax::Def:
-    return elaborateDefDecl(static_cast<const DefSyntax *>(S));
+  case Syntax::Declaration:
+    return elaborateDefDecl(static_cast<const DeclarationSyntax *>(S));
   default:
     break;
   }
@@ -149,14 +148,16 @@ clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
 }
 
 
-clang::Decl *Elaborator::elaborateDefDecl(const DefSyntax *S) {
+clang::Decl *Elaborator::elaborateDefDecl(const DeclarationSyntax *S) {
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
   if (!D)
     return nullptr;
 
-  return elaborateDeclarationTyping(D);
+  // return elaborateDeclarationTyping(D);
+  return nullptr;
 }
 
+#if 0
 clang::Decl *Elaborator::elaborateDeclarationTyping(Declaration *D) {
   if (phaseOf(D) >= Phase::Typing)
     return D->getCxx();
@@ -588,7 +589,7 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
   TheDecl->setCxx(SemaRef, PVD);
   return PVD;
 }
-
+#endif
 
 // Declarator construction
 
@@ -609,15 +610,20 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
 // by the function above.
 Declarator *Elaborator::getDeclarator(const Syntax *S) {
   if (!S)
-    return getImplicitAutoDeclarator();
+    return nullptr;
+    // return getImplicitAutoDeclarator();
 
   if (const auto *U = dyn_cast<UnarySyntax>(S))
-    return getUnaryDeclarator(U);
+    // return getUnaryDeclarator(U);
+    return nullptr;
   if (const auto* B = dyn_cast<BinarySyntax>(S))
-    return getBinaryDeclarator(B);
-  return getLeafDeclarator(S);
+    // return getBinaryDeclarator(B);
+    return nullptr;
+  // return getLeafDeclarator(S);
+  return nullptr;
 }
 
+#if 0
 Declarator *Elaborator::getUnaryDeclarator(const UnarySyntax *S) {
   if (S->getOperator().hasKind(tok::Caret)) {
     Declarator *Dcl = getDeclarator(S->getOperand());

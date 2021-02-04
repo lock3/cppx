@@ -1,5 +1,3 @@
-#if 0
-
 #include "clang/AST/Decl.h"
 
 #include "clang/Blue/BlueDeclaration.h"
@@ -116,15 +114,15 @@ bool Declaration::declaresInitializedVariable() const {
 }
 
 bool Declaration::hasInitializer() const {
-  if (auto DS = dyn_cast_or_null<DefSyntax>(Def)) {
-    return DS->hasInitializer();
+  if (auto DS = dyn_cast_or_null<DeclarationSyntax>(Def)) {
+    return DS->initializer();
   }
   return false;
 }
 
 const Syntax *Declaration::getInitializer() const {
-  if (auto DS = dyn_cast_or_null<DefSyntax>(Def)) {
-    return DS->getInitializer();
+  if (auto DS = dyn_cast_or_null<DeclarationSyntax>(Def)) {
+    return DS->initializer();
   }
   return nullptr;
 }
@@ -144,5 +142,3 @@ Phase phaseOf(Declaration *D) {
 }
 
 } // end namespace blue
-
-#endif
