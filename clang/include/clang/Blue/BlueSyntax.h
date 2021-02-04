@@ -38,11 +38,22 @@ namespace blue {
 /// This is the base class of derived syntax nodes.
 class Syntax {
 public:
+  // TODO: FIXME: This may have to handled using table gen because of how the
+  // derived structures are used, and the fact that it allows for generation of
+  // start and ending classes.
   enum KindType {
-#define def_syntax(K, B)                          \
+#define def_syntax(K, B) \
   K,
 #include "clang/Blue/BlueSyntax.def"
   };
+
+// Defining ranges for abstract types.
+#define def_non_leaf_start(T, First)\
+  static constexpr std::size_t T##Start = First;
+
+#define def_non_leaf_end(T, Last)\
+  static constexpr std::size_t T##End = Last + 1;
+#include "clang/Blue/BlueSyntax.def"
 
 protected:
   Syntax(KindType K) noexcept
@@ -52,10 +63,6 @@ public:
   KindType getKind() const {
     return Kind;
   }
-
-  // bool isError() const {
-  //   return getKind() == Error;
-  // }
 
   /// The name of the syntax's node kind. Used for debugging.
   const char *getKindName() const;
@@ -77,7 +84,6 @@ public:
   }
 
   // Children
-
   using child_iterator = llvm::ArrayRef<Syntax *>::iterator;
   using const_child_iterator = llvm::ArrayRef<Syntax *>::const_iterator;
   using child_range = llvm::iterator_range<child_iterator>;
@@ -88,7 +94,6 @@ public:
 
   /// Emit debugging information about this node.
   void dump() const;
-
 private:
   KindType Kind;
 };
@@ -104,6 +109,8 @@ using Syntax_seq = llvm::SmallVector<Syntax *, 4>;
 // terms of the tree's structure, and not its interpretation.
 
 /// A node with a fixed number of operands.
+/// @NOTE: You can't dyn_cast to this because of the template, instead use one
+/// of it's K indicating derived classes Unary, Binary, Ternary, and Quaternary.
 template<std::size_t N>
 struct KarySyntax : Syntax
 {
@@ -129,6 +136,14 @@ struct KarySyntax : Syntax
   Syntax *operands()
   {
     return m_terms;
+  }
+
+  child_range children() {
+    return child_range(m_terms, m_terms + N);
+  }
+
+  const child_range children() const {
+    return const_child_range(m_terms, m_terms + N);
   }
 
   Syntax* m_terms[N];
@@ -160,6 +175,14 @@ struct KarySyntax<1> : Syntax
     return m_term;
   }
 
+  child_range children() {
+    return child_range(&m_term, &m_term + 1);
+  }
+
+  const child_range children() const {
+    return const_child_range(&m_term, &m_term + 1);
+  }
+
   Syntax *m_term;
 };
 
@@ -169,6 +192,9 @@ struct UnarySyntax : KarySyntax<1>
   UnarySyntax(KindType k, Syntax* s)
     : KarySyntax<1>(k, s)
   { }
+  static bool classof(KindType k) {
+    return k >= UnaryStart && k < UnaryEnd;
+  }
 };
 
 /// A binary expression with two operands.
@@ -177,6 +203,9 @@ struct BinarySyntax : KarySyntax<2>
   BinarySyntax(KindType k, Syntax* s0, Syntax* s1)
     : KarySyntax<2>(k, s0, s1)
   { }
+  static bool classof(KindType k) {
+    return k >= BinaryStart && k < BinaryEnd;
+  }
 };
 
 /// A ternary expression.
@@ -185,6 +214,9 @@ struct TernarySyntax : KarySyntax<3>
   TernarySyntax(KindType k, Syntax* s0, Syntax* s1, Syntax* s2)
     : KarySyntax<3>(k, s0, s1, s2)
   { }
+  static bool classof(KindType k) {
+    return k >= TernaryStart && k < TernaryEnd;
+  }
 };
 
 /// A quaternary expression.
@@ -193,13 +225,16 @@ struct QuaternarySyntax : KarySyntax<4>
   QuaternarySyntax(KindType k, Syntax* s0, Syntax* s1, Syntax* s2, Syntax* s3)
     : KarySyntax<4>(k, s0, s1, s2, s3)
   { }
+  static bool classof(KindType k) {
+    return k >= QuaternaryStart && k < QuaternaryEnd;
+  }
 };
 
 /// A term with an unspecified number of operands.
 struct MultiarySyntax : Syntax
 {
-  MultiarySyntax(KindType k, Syntax **s)
-    : Syntax(k), m_terms(s)
+  MultiarySyntax(KindType k, Syntax **s, unsigned size)
+    : Syntax(k), m_terms(s), num_terms(size)
   { }
 
   /// Returns the nth operand.
@@ -212,6 +247,18 @@ struct MultiarySyntax : Syntax
   Syntax **operands()
   {
     return m_terms;
+  }
+
+  child_range children() {
+    return child_range(m_terms, m_terms + num_terms);
+  }
+
+  const child_range children() const {
+    return const_child_range(m_terms, m_terms + num_terms);
+  }
+
+  static bool classof(KindType k) {
+    return k >= MultiaryStart && k < MultiaryEnd;
   }
 
   Syntax **m_terms;
@@ -234,9 +281,21 @@ struct AtomSyntax : Syntax
   }
 
   /// Returns the spelling of the atom.
-  std::string const& spelling() const
+  std::string spelling() const
   {
     return m_tok.getSpelling().str();
+  }
+
+  child_range children() {
+    return child_range(child_iterator(), child_iterator());
+  }
+
+  const child_range children() const {
+    return const_child_range(const_child_iterator(), const_child_iterator());
+  }
+
+  static bool classof(KindType k) {
+    return k >= AtomStart && k < AtomEnd;
   }
 
   Token m_tok;
@@ -250,6 +309,10 @@ struct LiteralSyntax : AtomSyntax
   LiteralSyntax(Token tok)
     : AtomSyntax(this_kind, tok)
   { }
+
+  static bool classof(KindType k) {
+    return k == this_kind;
+  }
 };
 
 /// Represents user-defined names.
@@ -260,6 +323,10 @@ struct IdentifierSyntax : AtomSyntax
   IdentifierSyntax(Token tok)
     : AtomSyntax(this_kind, tok)
   { }
+
+  static bool classof(KindType k) {
+    return k == this_kind;
+  }
 };
 
 /// A sequence of delimited terms.
@@ -270,9 +337,13 @@ struct ListSyntax : MultiarySyntax
 {
   static constexpr KindType this_kind = List;
 
-  ListSyntax(Syntax **s)
-    : MultiarySyntax(this_kind, s)
+  ListSyntax(Syntax **s, unsigned size)
+    : MultiarySyntax(this_kind, s, size)
   { }
+
+  static bool classof(KindType k) {
+    return k == this_kind;
+  }
 };
 
 /// A sequence of terms.
@@ -280,9 +351,13 @@ struct SequenceSyntax : MultiarySyntax
 {
   static constexpr KindType this_kind = Sequence;
 
-  SequenceSyntax(Syntax **s)
-    : MultiarySyntax(this_kind, s)
+  SequenceSyntax(Syntax **s, unsigned size)
+    : MultiarySyntax(this_kind, s, size)
   { }
+
+  static bool classof(KindType k) {
+    return k == this_kind;
+  }
 };
 
 /// A term enclosed by a pair of tokens.
@@ -314,6 +389,10 @@ struct EnclosureSyntax : UnarySyntax
 
   Token m_open;
   Token m_close;
+
+  static bool classof(KindType k) {
+    return k == this_kind;
+  }
 };
 
 /// A pair of terms.
@@ -324,6 +403,10 @@ struct PairSyntax : BinarySyntax
   PairSyntax(Syntax* s0, Syntax* s1)
     : BinarySyntax(this_kind, s0, s1)
   { }
+
+  static bool classof(KindType k) {
+    return k == this_kind;
+  }
 };
 
 /// A triple of terms.
@@ -334,6 +417,10 @@ struct TripleSyntax : TernarySyntax
   TripleSyntax(Syntax* s0, Syntax* s1, Syntax* s2)
     : TernarySyntax(this_kind, s0, s1, s2)
   { }
+
+  static bool classof(KindType k) {
+    return k == this_kind;
+  }
 };
 
 /// A unary prefix operator expression.
@@ -349,6 +436,10 @@ struct PrefixSyntax : UnarySyntax
   Token operation() const
   {
     return m_op;
+  }
+
+  static bool classof(KindType k) {
+    return k == this_kind;
   }
 
   Token m_op;
@@ -373,6 +464,10 @@ struct ConstructorSyntax : BinarySyntax
   {
     return operand(1);
   }
+
+  static bool classof(KindType k) {
+    return k >= ConstructorStart && k < ConstructorEnd;
+  }
 };
 
 /// Array type constructor.
@@ -391,6 +486,9 @@ struct ArraySyntax : ConstructorSyntax
   }
 
   using ConstructorSyntax::ConstructorSyntax;
+  static bool classof(KindType k) {
+    return k == this_kind;
+  }
 };
 
 /// Mapping type constructors (templates and functions).
@@ -405,6 +503,9 @@ struct MappingSyntax : ConstructorSyntax
   {
     return constructor();
   }
+  static bool classof(KindType k) {
+    return k >= MappingStart && k < MappingEnd;
+  }
 };
 
 /// Function type constructor.
@@ -415,6 +516,10 @@ struct FunctionSyntax : MappingSyntax
   FunctionSyntax(Syntax* p, Syntax* r)
     : MappingSyntax(this_kind, p, r)
   { }
+
+  static bool classof(KindType k) {
+    return k == this_kind;
+  }
 };
 
 /// Template type constructor.
@@ -425,6 +530,9 @@ struct TemplateSyntax : MappingSyntax
   TemplateSyntax(Syntax* p, Syntax* r)
     : MappingSyntax(this_kind, p, r)
   { }
+  static bool classof(KindType k) {
+    return k == this_kind;
+  }
 };
 
 /// Unary postfix operators.
@@ -440,6 +548,9 @@ struct PostfixSyntax : UnarySyntax
   Token operation() const
   {
     return m_op;
+  }
+  static bool classof(KindType k) {
+    return k == this_kind;
   }
 
   Token m_op;
@@ -463,6 +574,9 @@ struct ApplicationSyntax : BinarySyntax
   {
     return m_terms[1];
   }
+  static bool classof(KindType k) {
+    return k >= ApplicationStart && k < ApplicationEnd;
+  }
 };
 
 /// Represents a function call.
@@ -473,6 +587,9 @@ struct CallSyntax : ApplicationSyntax
   CallSyntax(Syntax* s0, Syntax* s1)
     : ApplicationSyntax(this_kind, s0, s1)
   { }
+  static bool classof(KindType k) {
+    return k == this_kind;
+  }
 };
 
 /// Represents indexing into a table.
@@ -483,6 +600,9 @@ struct IndexSyntax : ApplicationSyntax
   IndexSyntax(Syntax* s0, Syntax* s1)
     : ApplicationSyntax(this_kind, s0, s1)
   { }
+  static bool classof(KindType k) {
+    return k == this_kind;
+  }
 };
 
 /// Infix binary operators.
@@ -512,6 +632,9 @@ struct InfixSyntax : BinarySyntax
     return m_terms[1];
   }
 
+  static bool classof(KindType k) {
+    return k == this_kind;
+  }
   Token m_op;
 };
 
@@ -547,7 +670,9 @@ struct ControlSyntax : BinarySyntax
   {
     return m_terms[1];
   }
-
+  static bool classof(KindType k) {
+    return k == this_kind;
+  }
   Token m_ctrl;
 };
 
@@ -588,6 +713,10 @@ struct DeclarationSyntax : QuaternarySyntax
   {
     return operand(3);
   }
+
+  static bool classof(KindType k) {
+    return k == this_kind;
+  }
 };
 
 /// The top-level container of terms.
@@ -603,6 +732,10 @@ struct FileSyntax : UnarySyntax
   Syntax* declarations() const
   {
     return operand();
+  }
+
+  static bool classof(KindType k) {
+    return k == this_kind;
   }
 };
 

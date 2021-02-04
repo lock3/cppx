@@ -40,14 +40,17 @@ add_clang_unittest(BlueTests
   BlueTypeElab.cpp
   BlueBitwiseOpElab.cpp
   BlueClassElab.cpp
+  BlueClassTemplateElab.cpp
   BlueComparisonOp.cpp
   BlueForElab.cpp
   BlueFunctionElab.cpp
+  BlueFunctionTemplateElab.cpp
   BlueIfElab.cpp
   BlueLiteralElab.cpp
   BlueLogicalOpElab.cpp
   BluePointerElab.cpp
   BlueTypeAliasElab.cpp
+  BlueTypeAliasTemplateElab.cpp
   BlueVariableElab.cpp
   BlueWhileElab.cpp
   )

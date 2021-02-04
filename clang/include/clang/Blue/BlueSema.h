@@ -76,9 +76,14 @@ class Sema {
   /// A mapping of clang Decl nodes to Blue declarations.
   std::unordered_map<clang::Decl *, Declaration *> DeclToDecl;
 
+  /// Translation unit decl.
+  Declaration *TUDecl = nullptr;
 public:
   Sema(SyntaxContext &Context, clang::Sema &S);
   ~Sema();
+
+  void setTUDecl(Declaration *TU) { TUDecl = TU; }
+  Declaration *getTUDecl() const { return TUDecl; }
 
   llvm::StringMap<clang::BinaryOperatorKind> BinOpMap;
   llvm::StringMap<clang::UnaryOperatorKind> UnaryOpMap;
@@ -142,6 +147,27 @@ public:
   // Dictionary of built in types.
   const llvm::StringMap<clang::QualType> BuiltinTypes;
   const llvm::StringMap<clang::QualType> createBuiltinTypeList();
+
+  /// Bitwise built-ins
+  ///{
+  /// This is a helper function that dumps ALL of the functions into the
+  /// translation unit at once.
+  void createBitwiseBuiltinFunctions();
+private:
+  bool DidLoadBWAnd = false;
+  bool DidLoadBWOr = false;
+  bool DidLoadBWXOr = false;
+  bool DidLoadBWShl = false;
+  bool DidLoadBWShr = false;
+  bool DidLoadBWNot = false;
+public:
+  void buildBitAnd();
+  void buildBitOr();
+  void buildBitXOr();
+  void buildBitShr();
+  void buildBitShl();
+  void buildBitNot();
+  ///}
 
   clang::CppxTypeLiteral *buildTypeExpr(clang::QualType Ty,
                                         clang::SourceLocation Loc);
@@ -213,6 +239,14 @@ public:
   bool checkForRedeclaration(Declaration *D);
 
 
+  /// Based on the current elaboration state read from class stack we compute
+  /// the current depth of a template.
+  ///
+  /// \note This could be changed in the future in order to include ths current
+  /// scope stack for elaboration.
+  ///
+  unsigned computeTemplateDepth() const;
+
 public:
   /// Clang scope management functions.
   ///@{
@@ -227,6 +261,7 @@ public:
 private:
   friend struct Declaration;
   void addDeclToDecl(clang::Decl *Cxx, Declaration *Blue);
+public:
   Declaration *getDeclaration(clang::Decl *Cxx);
 
 //===----------------------------------------------------------------------===//
@@ -478,6 +513,9 @@ public:
   private:
     Sema& SemaRef;
   };
+
+public:
+  clang::ParsedTemplateArgument convertExprToTemplateArg(clang::Expr *E);
 };
 
 
@@ -556,6 +594,11 @@ private:
   clang::Scope *PrevClangScope = nullptr;
 };
 
+
+// using OptionalScopeRAII = OptionalInitScope<Sema::
+using OptionalScopeRAII = OptionalInitScope<Sema::ScopeRAII>;
+using OptionalResumeScopeRAII = OptionalInitScope<ResumeScopeRAII>;
+using OptioanlClangScopeRAII = OptionalInitScope<Sema::ClangScopeRAII>;
 } // end namespace blue
 
 #endif

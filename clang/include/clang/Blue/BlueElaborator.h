@@ -18,6 +18,8 @@
 #include "clang/Blue/BlueSyntax.h"
 #include "clang/Sema/Sema.h"
 
+#include "clang/AST/TemplateBase.h"
+
 namespace clang {
 
 class CppxTypeLiteral;
@@ -27,6 +29,7 @@ class Expr;
 class QualType;
 class Sema;
 class Stmt;
+class NamedDecl;
 
 } // namespace clang
 
@@ -53,7 +56,7 @@ public:
   }
   /// Returns the current blue sema instance.
   Sema &getBlueSema() { return SemaRef; }
-
+#if 0
   //===--------------------------------------------------------------------===//
   //                                  Identification                          //
   //===--------------------------------------------------------------------===//
@@ -66,12 +69,22 @@ public:
   //===--------------------------------------------------------------------===//
   clang::Decl *elaborateTop(const Syntax *S);
 
-  void identifyDeclaration(const Syntax *S);
-  Declaration * buildDeclaration(const DefSyntax *S);
+  Declaration *identifyDeclaration(const Syntax *S);
+  Declaration *buildDeclaration(const DefSyntax *S);
   clang::Decl *elaborateDecl(const Syntax *S);
   clang::Decl *elaborateDefDecl(const DefSyntax *S);
   clang::Decl *elaborateDeclarationTyping(Declaration *D);
+  void elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,
+                                   OptioanlClangScopeRAII &ClangTemplateScope,
+                                   Declaration *D, Declarator *Dcl);
+  void buildTemplateParams(const Syntax *Params,
+                           llvm::SmallVectorImpl<clang::NamedDecl *> &Res);
 
+  clang::Decl *doElaborateDeclarationTyping(Declaration *D);
+  clang::Decl *elaborateTypeAliasOrVariableTemplate(Declaration *D);
+
+
+  Declaration *elaborateTemplateParameter(const Syntax *Parm);
   void elaborateParameters(const ListSyntax *S);
   void elaborateParameterGroup(const ListSyntax *S);
   void elaborateParameterList(const ListSyntax *S);
@@ -128,10 +141,23 @@ public:
   clang::Expr *elaborateBinaryExpression(const BinarySyntax *S);
   clang::Expr *elaborateApplyExpression(clang::Expr *LHS,
                                         const BinarySyntax *S);
+
   clang::Expr *elaborateArraySubscriptExpr(clang::Expr *Base,
                                            const BinarySyntax *Op);
   clang::Expr *elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
                                      const BinarySyntax *Op);
+
+  void elaborateTemplateArgs(const ListSyntax *ArgList,
+                             clang::TemplateArgumentListInfo &TemplateArgs,
+                   llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs);
+  clang::Expr *elabotateTemplateInstantiationWithArgs(clang::Expr *Base,
+                                                    const ListSyntax *ArgList);
+  clang::Expr *elaborateClassTemplateSelection(clang::Expr *IdExpr,
+                                               const ListSyntax *ArgList);
+
+  bool elaborateClassTemplateArguments(const ListSyntax *Args,
+                                       clang::TemplateArgumentListInfo &ArgInfo,
+              llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs);
 
   /// Dispatching function, that determines based on the LHS's type how to
   /// process the RHS of the expression.
@@ -161,6 +187,7 @@ public:
   //                                Miscellaneous                             //
   //===--------------------------------------------------------------------===//
   void getParameters(Declaration *D,
+                     Declarator *FuncDeclarator,
                      llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params);
 
   // Diagnostics
@@ -227,7 +254,7 @@ public:
   void lateElaborateMemberInitializer(
       LateElaborateMemberInitializer &MemberInit);
   ///}
-
+#endif
 private:
   Sema &SemaRef;
 

@@ -28,6 +28,16 @@ void Declaration::setCxx(Sema &SemaRef, clang::Decl *Cxx) {
   this->Cxx = Cxx;
 }
 
+Declarator *Declaration::getFirstDeclarator(Declarator::Kind DeclKind) const {
+  Declarator *D = Decl;
+  while(D) {
+    if (D->getKind() == DeclKind)
+      return D;
+    D = D->getNext();
+  }
+  return nullptr;  
+}
+
 bool Declaration::declaratorContains(Declarator::Kind DeclKind) const {
   Declarator *D = Decl;
   while(D) {
@@ -83,6 +93,23 @@ bool Declaration::isFieldDecl() const {
   return isDecl<clang::FieldDecl>();
 }
 
+bool Declaration::isFunctionTemplate() const {
+  if (!Cxx)
+    return false;
+  if (auto Fn = dyn_cast<clang::FunctionDecl>(Cxx)) {
+    return Fn->getDescribedFunctionTemplate();
+  }
+  return false;
+}
+
+bool Declaration::isTypeTemplate() const {
+  return Cxx && Cxx->getDescribedTemplate() && isa<clang::TypeDecl>(Cxx);
+}
+
+bool Declaration::isDeclaredInClass() const {
+  return ScopeForDecl->isClassScope();
+}
+
 bool Declaration::declaresInitializedVariable() const {
   return (isDecl<clang::VarDecl>() || isDecl<clang::FieldDecl>())
       && hasInitializer();
@@ -102,10 +129,10 @@ const Syntax *Declaration::getInitializer() const {
   return nullptr;
 }
 
-const DefSyntax *Declaration::asDef() const {
-  assert(isa<DefSyntax>(Def));
-  return cast<DefSyntax>(Def);
-}
+// const DefSyntax *Declaration::asDef() const {
+//   assert(isa<DefSyntax>(Def));
+//   return cast<DefSyntax>(Def);
+// }
 
 const IdentifierSyntax *Declaration::asId() const {
   assert(isa<IdentifierSyntax>(Def));

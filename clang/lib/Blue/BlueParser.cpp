@@ -64,7 +64,7 @@ Syntax *Parser::parseFile() {
 Syntax *Parser::parseDeclSequence(SyntaxSeq &SS) {
   while (!atEndOfFile())
     parseItem(*this, &Parser::parseDeclaration, SS);
-  return new SequenceSyntax(AllocateSeq(SS));
+  return new SequenceSyntax(AllocateSeq(SS), SS.size());
 }
 
 template<typename Parse, typename Sequence>
@@ -270,7 +270,7 @@ static Syntax *makeDeclaratorList(SyntaxSeq &SS)
     return SS[0];
 
   // FIXME: find a way to maintain the token kind?
-  return new ListSyntax(AllocateSeq(SS));
+  return new ListSyntax(AllocateSeq(SS), SS.size());
 }
 
 Syntax *Parser::parseStatementSeq() {
@@ -338,7 +338,7 @@ Syntax *Parser::parseExpressionList()
   parseItem(*this, &Parser::parseExpression, SS);
   while (matchToken(tok::Comma))
     parseItem(*this, &Parser::parseExpression, SS);
-  return new ListSyntax(AllocateSeq(SS));
+  return new ListSyntax(AllocateSeq(SS), SS.size());
 }
 
 /// Parse a declarator-list.
@@ -562,7 +562,7 @@ Syntax *Parser::parseCaseList()
   parseItem(*this, &Parser::parseCase, CS);
   while (matchToken(tok::ElseKeyword))
     parseItem(*this, &Parser::parseCase, CS);
-  return new ListSyntax(AllocateSeq(CS));
+  return new ListSyntax(AllocateSeq(CS), CS.size());
 }
 
 /// Parse a case in a match-expression:
@@ -590,7 +590,7 @@ Syntax *Parser::parsePatternList()
   parseItem(*this, &Parser::parsePattern, PS);
   while (matchToken(tok::Comma))
     parseItem(*this, &Parser::parsePattern, PS);
-  return new ListSyntax(AllocateSeq(PS));
+  return new ListSyntax(AllocateSeq(PS), PS.size());
 }
 
 /// Parse a pattern.
@@ -717,7 +717,7 @@ static Syntax *makeParameterGroup(Parser &P, SyntaxSeq &SS)
   if (SS.size() == 1)
     return SS[0];
 
-  return new ListSyntax(AllocateSeq(SS));
+  return new ListSyntax(AllocateSeq(SS), SS.size());
 }
 
 /// Parse an expression-group.
@@ -743,7 +743,7 @@ static Syntax *makeParameterList(Parser &P, SyntaxSeq &SS)
   if (SS.empty())
     return nullptr;
 
-  return new ListSyntax(AllocateSeq(SS));
+  return new ListSyntax(AllocateSeq(SS), SS.size());
 }
 
 /// Parse an parameter-list.

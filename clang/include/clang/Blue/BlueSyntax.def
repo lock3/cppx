@@ -16,52 +16,91 @@
 #  define def_abstract(T, B)
 #endif
 
+/// First must be the FIRST concrete derived class that's given with def_syntax
+/// after any number of uses of def_non_leaf_start.
+#ifndef def_non_leaf_start
+#  define def_non_leaf_start(T, First)
+#endif
+
+
+/// Last is the last concrete derived class enumeration specified by def_syntax
+/// before def_non_leaf_end is used.
+#ifndef def_non_leaf_end
+#  define def_non_leaf_end(T, Last)
+#endif
+
+
+// The order that this is specified in matters, this is used to signify the
+// inheritance structure of the syntax classes, in order for this to work
+// to HAVE TO MIRROR the inheritance structure within this file.
+
+
+// The def_non_leaf_start and  def_non_leaf_end macros are specifically used
+// to keep track of the range that is specified concrete derived classes
+// that are avaiable.
+
 def_abstract(Unary, Syntax)
+def_non_leaf_start(Unary, Enclosure)
+  def_syntax(Enclosure, Unary)
+  def_syntax(Prefix, Unary)
+  def_syntax(Postfix, Unary)
+  def_syntax(File, Unary)
+def_non_leaf_end(Unary, File)
+
+// Binary syntax.
 def_abstract(Binary, Syntax)
+def_non_leaf_start(Binary, Pair)
+
+  def_syntax(Pair, Binary)
+  def_abstract(Constructor, Binary)
+  def_non_leaf_start(Constructor, Array)
+    def_syntax(Array, Constructor)
+
+    def_abstract(Mapping, Syntax)
+    def_non_leaf_start(Mapping, Function)
+      def_syntax(Function, Constructor)
+      def_syntax(Template, Constructor)
+    def_non_leaf_end(Mapping, Template)
+  def_non_leaf_end(Constructor, Template)
+
+  def_abstract(Application, Binary)
+  def_non_leaf_start(Application, Call)
+    def_syntax(Call, Application)
+    def_syntax(Index, Application)
+  def_non_leaf_end(Application, Index)
+
+  def_syntax(Infix, Binary)
+  def_syntax(Control, Binary)
+def_non_leaf_end(Binary, Control)
+
 def_abstract(Ternary, Syntax)
+def_non_leaf_start(Ternary, Triple)
+  def_syntax(Triple, Ternary)
+def_non_leaf_end(Ternary, Triple)
+
+// KarySyntax<4>
 def_abstract(Quaternary, Syntax)
+def_non_leaf_start(Quaternary, Declaration)
+  def_syntax(Declaration, Syntax)
+def_non_leaf_end(Quaternary, Declaration)
+
+// Dynamic structures
 def_abstract(Multiary, Syntax)
+def_non_leaf_start(Multiary, List)
+  // Lists, sequences, and enclosures
+  def_syntax(List, Multiary)
+  def_syntax(Sequence, Multiary)
+def_non_leaf_end(Multiary, Sequence)
 
 // Atomic nodes
 def_abstract(Atom, Syntax)
-def_syntax(Literal, Atom)
-def_syntax(Identifier, Atom)
+def_non_leaf_start(Atom, Literal)
+  def_syntax(Literal, Atom)
+  def_syntax(Identifier, Atom)
+def_non_leaf_end(Atom, Identifier)
 
-// Lists, sequences, and enclosures
-def_syntax(List, Multiary)
-def_syntax(Sequence, Multiary)
-def_syntax(Enclosure, Unary)
-def_syntax(Pair, Binary)
-def_syntax(Triple, Ternary)
-
-// Unary prefix operators (e.g., ^t)
-def_syntax(Prefix, Unary)
-
-// Compound type constructors
-def_abstract(Constructor, Binary)
-def_syntax(Array, Constructor)
-def_syntax(Function, Constructor)
-def_syntax(Template, Constructor)
-
-// Unary postfix operators (e.g., e^)
-def_syntax(Postfix, Unary)
-
-// Compound application operators
-def_abstract(Application, Binary)
-def_syntax(Call, Application)
-def_syntax(Index, Application)
-
-// Infix binary operators (e.g., x + y).
-def_syntax(Infix, Binary)
-
-// Control structures
-def_syntax(Control, Binary)
-
-// Named declarations
-def_syntax(Declaration, Quaternary)
-
-// Top-level
-def_syntax(File, Unary)
 
 #undef def_syntax
 #undef def_abstract
+#undef def_non_leaf_start
+#undef def_non_leaf_end

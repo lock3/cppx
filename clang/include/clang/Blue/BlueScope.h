@@ -73,6 +73,7 @@ public:
     Block,
     Class,
     Control,
+    Template,
   };
 
   Scope(Kind K, const Syntax *S, Scope *P)
@@ -91,6 +92,10 @@ public:
   }
 
   bool isControlScope() const {
+    return getKind() == Control;
+  }
+
+  bool isTemplateScope() const {
     return getKind() == Control;
   }
 
@@ -144,9 +149,9 @@ public:
     return Iter->second;
   }
 
-  bool hasDeclaration(const DefSyntax *Def) const {
-    return DeclMap.count(Def) != 0;
-  }
+  // bool hasDeclaration(const DefSyntax *Def) const {
+  //   return DeclMap.count(Def) != 0;
+  // }
 
   Declaration *Entity = nullptr;
 

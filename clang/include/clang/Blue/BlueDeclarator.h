@@ -21,6 +21,7 @@
 
 namespace clang {
 class Expr;
+class TemplateParameterList;
 } // namespace clang
 
 namespace blue {
@@ -109,6 +110,8 @@ public:
     Scope *ParamScope;
 
   } DeclInfo;
+
+  clang::TemplateParameterList *ClangParamList = nullptr;
 
 private:
   Kind Which;

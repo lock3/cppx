@@ -34,7 +34,7 @@ C : class {
 )BLUE";
   auto ToMatch = cxxRecordDecl(hasName("C"),
     hasDescendant(fieldDecl(hasName("x"), hasType(asString("int")),
-    isPublic()))
+      isPublic()))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
@@ -62,8 +62,8 @@ x:C;
 TEST(BlueClass, InclassMemberInitializers)  {
   StringRef Code = R"BLUE(
 C : class{
-  x : int = 4;
   y : bool = 1;
+  x : int = 4;
 }
 x:C;
   )BLUE";
@@ -204,70 +204,101 @@ z:=x.x;
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// TEST(BlueClass, NestedTypeDefinition) {
-//   StringRef Code = R"BLUE(
-// outer : class{
-//   nested : class{
-//     a : int;
-//     b : float32;
-//   }
-// }
-// u : outer.nested;
-// )BLUE";
+TEST(BlueClass, NestedTypeDefinition) {
+  StringRef Code = R"BLUE(
+outer : class{
+  nested : class{
+    a : int;
+    b : float32;
+  }
+}
+u : outer.nested;
+)BLUE";
 
-//   auto ToMatch = translationUnitDecl(
-//     has(cxxRecordDecl(
-//       hasName("outer"),
-//       has(recordDecl(hasName("nested"),
-//         hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
-//           isPublic())),
-//         hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
-//           isPublic()))
-//       ))
-//     )),
-//     has(varDecl(
-//       hasType(asString("struct outer::nested")),
-//       hasName("u")
-//     ))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+  auto ToMatch = translationUnitDecl(
+    has(cxxRecordDecl(
+      hasName("outer"),
+      has(recordDecl(hasName("nested"),
+        hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
+          isPublic())),
+        hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
+          isPublic()))
+      ))
+    )),
+    has(varDecl(
+      hasType(asString("struct outer::nested")),
+      hasName("u")
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
-// TEST(BlueClass, MultipleNestedTypeDefinition) {
-//   StringRef Code = R"(
-// c : class{
-//   nested : class{
-//     nested2 : class{
-//       a : int;
-//       b : float32;
-//     }
-//   }
-// }
+TEST(BlueClass, MultipleNestedTypeDefinition) {
+  StringRef Code = R"(
+c : class{
+  nested : class{
+    nested2 : class{
+      a : int;
+      b : float32;
+    }
+  }
+}
 
-// u : c.nested.nested2;
+u : c.nested.nested2;
 
-// )";
+)";
 
-//   auto ToMatch = translationUnitDecl(
-//     has(cxxRecordDecl(
-//       hasName("c"),
-//       has(recordDecl(hasName("nested"),
-//         has(recordDecl(hasName("nested2"),
-//           hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
-//             isPublic())),
-//           hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
-//             isPublic()))
-//         ))
-//       ))
-//     )),
-//     has(varDecl(
-//       hasType(asString("struct c::nested::nested2")),
-//       hasName("u"),
-//       hasInitializer(hasDescendant(cxxConstructExpr()))
-//     ))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+  auto ToMatch = translationUnitDecl(
+    has(cxxRecordDecl(
+      hasName("c"),
+      has(recordDecl(hasName("nested"),
+        has(recordDecl(hasName("nested2"),
+          hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
+            isPublic())),
+          hasDescendant(fieldDecl(hasName("b"), hasType(asString("float")),
+            isPublic()))
+        ))
+      ))
+    )),
+    has(varDecl(
+      hasType(asString("struct c::nested::nested2")),
+      hasName("u")
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClass, TypeAliasDecl) {
+  StringRef Code = R"BLUE(
+outer : class{
+  x : type = int;
+}
+)BLUE";
+
+  auto ToMatch = cxxRecordDecl(
+    hasName("outer"),
+    has(typeAliasDecl(hasName("x"), hasType(asString("int"))))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClass, TypeAliasDecl_OutOfOrderUse) {
+  StringRef Code = R"BLUE(
+outer : class{
+  y : x;
+  x : type = int;
+}
+)BLUE";
+
+  auto ToMatch = cxxRecordDecl(
+    hasName("outer"),
+    has(typeAliasDecl(hasName("x"), hasType(asString("int")), isPublic())),
+    has(fieldDecl(hasName("y"), hasType(asString("outer::x")), isPublic()))
+  );
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
 // TODO: IMplement me eventually.
 // TEST(BlueClass, ClassDeclUse_DefaultCtor) {

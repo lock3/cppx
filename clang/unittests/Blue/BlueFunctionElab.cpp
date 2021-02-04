@@ -61,6 +61,31 @@ foo:(x:int) -> void { }
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+TEST(BlueFunction, CallExpression) {
+  StringRef Code = R"BLUE(
+foo:(x:int, y:int) -> void{ }
+foo:(x:int) -> void { }
+
+bar:()->void {
+  foo(4);
+}
+)BLUE";
+
+  auto ToMatch =
+    callExpr(
+        callee(
+          functionDecl(
+            hasName("foo"),
+            hasType(
+              asString("void (int)")
+            )
+          )
+        )
+    );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
 TEST(BlueFunction, Call){
   StringRef Code = R"BLUE(
 f : () -> int {
@@ -75,7 +100,6 @@ main : () -> int {
   auto ToMatch = varDecl(hasName("x"), hasType(asString("int")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
-
 
 #if 0
 TEST(BlueFunction, NoBody) {

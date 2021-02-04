@@ -11635,5 +11635,6 @@ def err_invalid_type_operand : Error<
 
 def err_prefix_caret_on_non_type : Error<
   "invalid use of '^ expr' expr does not evaluate to a type">;
+
 } // end of Blue category
 } // end of sema component.

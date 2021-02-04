@@ -22,7 +22,7 @@ TEST(BlueBitwiseOp, BWAnd) {
   StringRef Code = R"BLUE(
 foo:()->void{
   x:int;
-  y := x & 5;
+  y := bit_and(4, 5);
 })BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("&"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -32,7 +32,7 @@ TEST(BlueBitwiseOp, BWOr) {
   StringRef Code = R"BLUE(
 foo:()->void{
   x:int;
-  y := x | 5;
+  y := bit_or(x, 5);
 }
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("|"));
@@ -43,18 +43,18 @@ TEST(BlueBitwiseOp, BWXOr) {
   StringRef Code = R"BLUE(
 foo:()->void{
   x:int;
-  y:=x ^ 5;
+  y:=bit_xor(x, 5);
 }
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("^"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-TEST(BlueBitwiseOp, LeftShift) {
+TEST(BlueBitwiseOp, BWLeftShift) {
   StringRef Code = R"BLUE(
 foo:()->void{
   x:int;
-  y:= x << 5;
+  y:= bit_shl(x, 5);
 }
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName("<<"));
@@ -65,76 +65,20 @@ TEST(BlueBitwiseOp, BWRightShift) {
   StringRef Code = R"BLUE(
 foo:()->void{
   x:int;
-  y:=x >> 5;
+  y:=bit_shr(x, 5);
 }
   )BLUE";
   auto ToMatch = binaryOperator(hasOperatorName(">>"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// TEST(BlueBitwiseOp, BWComposite) {
-//   StringRef Code = R"BLUE(
-// foo:()->void{
-//   x:int;
-//   x = ~x;
-// }
-//   )BLUE";
-//   auto ToMatch = unaryOperator(hasOperatorName("~"));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
-
-
-// TEST(BlueBitwiseOp, BWAndEqual) {
-//   StringRef Code = R"BLUE(
-// foo:()->void{
-//   x:int;
-//   x &= 5;
-// }
-//   )BLUE";
-//   auto ToMatch = binaryOperator(hasOperatorName("&="));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
-
-// TEST(BlueBitwiseOp, BWOrEqual) {
-//   StringRef Code = R"BLUE(
-// foo:()->void{
-//   x:int;
-//   x |=5;
-// }
-//   )BLUE";
-//   auto ToMatch = binaryOperator(hasOperatorName("|"));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
-
-// TEST(BlueBitwiseOp, BWXOrEqual) {
-//   StringRef Code = R"BLUE(
-// foo:()->void{
-//   x:int;
-//   x ^= 5;
-// }
-//   )BLUE";
-//   auto ToMatch = binaryOperator(hasOperatorName("^="));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
-
-// TEST(BlueBitwiseOp, LeftShiftEqual) {
-//   StringRef Code = R"BLUE(
-// foo:()->void{
-//   x:int;
-//   x <<= 5;
-// }
-//   )BLUE";
-//   auto ToMatch = binaryOperator(hasOperatorName("<<="));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
-
-// TEST(BlueBitwiseOp, BWRightShiftEqual) {
-//   StringRef Code = R"BLUE(
-// foo:()->void{
-//   x:int;
-//   x >>= 5;
-// }
-//   )BLUE";
-//   auto ToMatch = binaryOperator(hasOperatorName(">>="));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+TEST(BlueBitwiseOp, BWComposite) {
+  StringRef Code = R"BLUE(
+foo:()->void{
+  x:int;
+  x = bit_not(x);
+}
+  )BLUE";
+  auto ToMatch = unaryOperator(hasOperatorName("~"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

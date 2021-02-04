@@ -1,4 +1,4 @@
-//=== BlueTypeAliasElab.cpp ------------------------------------------------===//
+//=== BlueClassTemplateElab.cpp -------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  Testing the elaboration of type aliases
+//  Testing class template declaration and use.
 //
 //===----------------------------------------------------------------------===//
 #include "BlueParseUtil.h"
@@ -18,44 +18,62 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace blue;
 
-
-TEST(BlueTypeAlias, ExplicitTypeAlias) {
+TEST(BlueClassTemplate, SimpleClassTemplateDecl) {
   StringRef Code = R"BLUE(
-x : type = int;
+C:[T:type] => class {
+}
 )BLUE";
-  auto ToMatch = typeAliasDecl(
-    hasName("x"),
-    hasType(asString("int"))
+
+  auto ToMatch = classTemplateDecl(
+    has(cxxRecordDecl(
+      hasName("C")
+    ))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-TEST(BlueTypeAlias, ImplicitTypeAlias) {
+TEST(BlueClassTemplate, ClassTemplateWithDependentMember) {
   StringRef Code = R"BLUE(
-x : = int;
+C:[T:type] => class {
+  x:T;
+}
 )BLUE";
-  auto ToMatch = typeAliasDecl(
-    hasName("x"),
-    hasType(asString("int"))
+
+  auto ToMatch = classTemplateDecl(
+    has(cxxRecordDecl(
+      hasName("C"),
+      has(fieldDecl(hasName("x")))
+    ))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-TEST(BlueTypeAlias, TypeAliasMissingInitializer) {
+TEST(BlueClassTemplate, UseInTypeAlias) {
   StringRef Code = R"BLUE(
-x : type;
-)BLUE";
-  BlueFailureTest(Code);
+C:[T:type] => class {
+  x:T;
 }
-
-TEST(BlueTypeAlias, TypeAliasOfAClass) {
-  StringRef Code = R"BLUE(
-Y : class{ }
-x : = Y;
+x:type = C[int];
 )BLUE";
+
   auto ToMatch = typeAliasDecl(
     hasName("x"),
-    hasType(asString("struct Y"))
+    hasType(asString("C<int>"))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClassTemplate, UseAsVariableType) {
+  StringRef Code = R"BLUE(
+C:[T:type] => class {
+  x:T;
+}
+x:C[int];
+)BLUE";
+
+  auto ToMatch = varDecl(
+    hasName("x"),
+    hasType(asString("C<int>"))
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

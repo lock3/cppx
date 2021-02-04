@@ -839,5 +839,11 @@ def err_invalid_indentation : Error<
   "invalid indentation">;
 
 }
+let CategoryName = "Blue Lexical Issue" in {
+
+def err_expected_token : Error<
+  "unexpected token %0">;
+
+}
 
 }

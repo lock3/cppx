@@ -23,6 +23,7 @@ namespace clang {
   class DeclContext;
   class IdentifierInfo;
   class Scope;
+  class TemplateParameterList;
 } // end namespace clang
 
 
@@ -102,6 +103,8 @@ struct Declaration {
     return Ctx;
   }
 
+  Declarator *getFirstDeclarator(Declarator::Kind DeclKind) const;
+
   bool declaratorContains(Declarator::Kind DeclKind) const;
   bool declaratorContainsClass() const;
   bool declaratorContainsFunction() const;
@@ -124,7 +127,10 @@ struct Declaration {
   bool isTypeAliasDecl() const;
   bool isFieldDecl() const;
 
+  bool isFunctionTemplate() const;
+  bool isTypeTemplate() const;
 
+  bool isDeclaredInClass() const;
   /// This is used for handling delated class elaboration.
   bool declaresInitializedVariable() const;
 
@@ -136,7 +142,7 @@ struct Declaration {
   const IdentifierSyntax *asId() const;
 
   /// Get the def as a DefSyntax.
-  const DefSyntax *asDef() const;
+  // const DefSyntax *asDef() const;
 
   clang::SourceLocation getEndOfDecl() const {
     const Declarator *D = Decl;

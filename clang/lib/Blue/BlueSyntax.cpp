@@ -23,6 +23,7 @@ const char *Syntax::getKindName() const {
     case K: return # K;
 #include "clang/Blue/BlueSyntax.def"
   }
+  llvm_unreachable("invalid syntax kind.");
 }
 
 clang::SourceLocation Syntax::getLocation() const {
@@ -31,7 +32,6 @@ clang::SourceLocation Syntax::getLocation() const {
     case K: return static_cast<const K ## Syntax *>(this)->getLocation();
 #include "clang/Blue/BlueSyntax.def"
   }
-
   llvm_unreachable("Invalid syntax location");
 }
 
@@ -41,7 +41,6 @@ clang::SourceLocation Syntax::getBeginLocation() const {
     case K: return static_cast<const K ## Syntax *>(this)->getBeginLocation();
 #include "clang/Blue/BlueSyntax.def"
   }
-
   llvm_unreachable("Invalid syntax beginning location");
 }
 
@@ -51,7 +50,6 @@ clang::SourceLocation Syntax::getEndLocation() const {
     case K: return static_cast<const K ## Syntax *>(this)->getEndLocation();
 #include "clang/Blue/BlueSyntax.def"
   }
-
   llvm_unreachable("Invalid syntax ending location");
 }
 

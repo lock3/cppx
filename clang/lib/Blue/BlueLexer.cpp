@@ -178,7 +178,10 @@ Token Lexer::operator()() {
     case '|':
       if (nthCharacterIs(1, '|'))
         return matchToken(tok::BarBar);
-      return matchToken(tok::Bar);
+      getDiagnostics().Report(getInputLocation(),
+                              clang::diag::err_expected_token)
+                              << "|";
+      return matchToken(tok::Unknown);
 
     case '^':
       return matchToken(tok::Caret);
@@ -186,15 +189,19 @@ Token Lexer::operator()() {
     case '<':
       if (nthCharacterIs(1, '='))
         return matchToken(tok::LessEqual);
-      if (nthCharacterIs(1, '<'))
-        return matchToken(tok::LessLess);
+      // Removed from lexer because this was replaced with bit_right_shift
+      // if (nthCharacterIs(1, '>'))
+      //   // return matchToken(tok::GreaterGreater);
+      // if (nthCharacterIs(1, '<'))
+      //   return matchToken(tok::LessLess);
       return matchToken(tok::Less);
 
     case '>':
       if (nthCharacterIs(1, '='))
         return matchToken(tok::GreaterEqual);
-      if (nthCharacterIs(1, '>'))
-        return matchToken(tok::GreaterGreater);
+      // Removed from lexer because this was replaced with bit_right_shift
+      // if (nthCharacterIs(1, '>'))
+      //   // return matchToken(tok::GreaterGreater);
       return matchToken(tok::Greater);
 
     case '~':
