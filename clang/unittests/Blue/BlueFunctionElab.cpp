@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueFunction, SimpleFunctionDecl){
   StringRef Code = R"BLUE(
-foo:(x) -> void {
+foo:(x) void {
 }
 )BLUE";
 
@@ -30,7 +30,7 @@ foo:(x) -> void {
 
 TEST(BlueFunction, WithParameter){
   StringRef Code = R"BLUE(
-foo:(x:int) -> void{
+foo:(x:int) void{
 }
 )BLUE";
 
@@ -40,7 +40,7 @@ foo:(x:int) -> void{
 
 TEST(BlueFunction, WithParameters){
   StringRef Code = R"BLUE(
-foo:(x:int, y:int) -> void{
+foo:(x:int, y:int) void{
 }
 )BLUE";
 
@@ -50,8 +50,8 @@ foo:(x:int, y:int) -> void{
 
 TEST(BlueFunction, Overloaded){
   StringRef Code = R"BLUE(
-foo:(x:int, y:int) -> void{ }
-foo:(x:int) -> void { }
+foo:(x:int, y:int) void{ }
+foo:(x:int) void { }
 )BLUE";
 
   auto ToMatch = translationUnitDecl(
@@ -63,10 +63,10 @@ foo:(x:int) -> void { }
 
 TEST(BlueFunction, CallExpression) {
   StringRef Code = R"BLUE(
-foo:(x:int, y:int) -> void{ }
-foo:(x:int) -> void { }
+foo:(x:int, y:int) void{ }
+foo:(x:int) void { }
 
-bar:()->void {
+bar:(void {
   foo(4);
 }
 )BLUE";
@@ -88,11 +88,11 @@ bar:()->void {
 
 TEST(BlueFunction, Call){
   StringRef Code = R"BLUE(
-f : () -> int {
+f : () int {
   return 5;
 }
 
-main : () -> int {
+main : () int {
   x := f();
 }
 )BLUE";
@@ -106,7 +106,7 @@ TEST(BlueFunction, NoBody) {
   // TODO: I'm not sure if this is an error or not.
 
   StringRef Code = R"BLUE(
-foo:(x:int, y:int) -> void;
+foo:(x:int, y:int) void;
 )BLUE";
   BlueFailureTest(Code);
 }
