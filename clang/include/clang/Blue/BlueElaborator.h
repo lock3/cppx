@@ -64,16 +64,17 @@ public:
   Declaration *createDeclaration(const Syntax *Def, Declarator *Dcl,
                                  const Syntax *Init);
 
-#if 0
   //===--------------------------------------------------------------------===//
   //                                  Elaboration                             //
   //===--------------------------------------------------------------------===//
-  clang::Decl *elaborateTop(const Syntax *S);
+  clang::Decl *elaborateFile(const Syntax *S);
 
   Declaration *identifyDeclaration(const Syntax *S);
   Declaration *buildDeclaration(const DeclarationSyntax *S);
   clang::Decl *elaborateDecl(const Syntax *S);
   clang::Decl *elaborateDefDecl(const DeclarationSyntax *S);
+
+#if 0
   clang::Decl *elaborateDeclarationTyping(Declaration *D);
   void elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,
                                    OptioanlClangScopeRAII &ClangTemplateScope,
@@ -90,11 +91,13 @@ public:
   void elaborateParameterGroup(const ListSyntax *S);
   void elaborateParameterList(const ListSyntax *S);
   clang::Decl *elaborateParameter(const Syntax *S);
+#endif
 
   Declarator *getDeclarator(const Syntax *S);
   Declarator *getUnaryDeclarator(const UnarySyntax *S);
   Declarator *getBinaryDeclarator(const BinarySyntax *S);
   Declarator *getLeafDeclarator(const Syntax *S);
+#if 0
   Declarator *getImplicitAutoDeclarator();
 
   clang::Decl *elaborateDeclEarly(Declaration *D);
@@ -193,7 +196,7 @@ public:
 
   // Diagnostics
   void Error(clang::SourceLocation Loc, llvm::StringRef Msg);
-
+#endif
 private:
   std::size_t ImplicitSemaDecls = 0;
 
@@ -255,7 +258,6 @@ public:
   void lateElaborateMemberInitializer(
       LateElaborateMemberInitializer &MemberInit);
   ///}
-#endif
 private:
   Sema &SemaRef;
 
