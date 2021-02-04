@@ -61,7 +61,7 @@ Declaration *Elaborator::createDeclaration(const Syntax *Def,
 
 
   if (const DeclarationSyntax *Name = dyn_cast<DeclarationSyntax>(Def)) {
-    const IdentifierSyntax *Id = cast<IdentifierSyntax>(Name);
+    const IdentifierSyntax *Id = cast<IdentifierSyntax>(Name->declarator());
     TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->spelling()});
   } else if (const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(Def)) {
     TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->spelling()});
@@ -101,14 +101,18 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   Sema::ScopeRAII NamespaceScope(SemaRef, Scope::Namespace, S);
   D->SavedScope = SemaRef.getCurrentScope();
   SemaRef.pushDecl(D);
-  for (const Syntax *SS : Top->children()) {
+
+  assert(isa<SequenceSyntax>(Top->declarations()) && "invalid file");
+  const SequenceSyntax *Declarations = cast<SequenceSyntax>(Top->declarations());
+
+  for (const Syntax *SS : Declarations->children()) {
       identifyDeclaration(SS);
   }
 
-  for (const Syntax *SS : Top->children())
+  for (const Syntax *SS : Declarations->children())
       elaborateDecl(SS);
 
-  for (const Syntax *SS : Top->children())
+  for (const Syntax *SS : Declarations->children())
     // elaborateDefinition(SS);
     ;
 
@@ -157,7 +161,6 @@ clang::Decl *Elaborator::elaborateDefDecl(const DeclarationSyntax *S) {
   return nullptr;
 }
 
-#if 0
 clang::Decl *Elaborator::elaborateDeclarationTyping(Declaration *D) {
   if (phaseOf(D) >= Phase::Typing)
     return D->getCxx();
@@ -168,13 +171,14 @@ clang::Decl *Elaborator::elaborateDeclarationTyping(Declaration *D) {
 
   // Handling template declarations.
   if (D->Decl->declaresTemplate())
-    elaborateTemplateParameters(TemplateParamScope, ClangTemplateScope, D,
-                                D->Decl);
+    llvm_unreachable("template types unimplemented");
+    // elaborateTemplateParameters(TemplateParamScope, ClangTemplateScope, D,
+    //                             D->Decl);
 
   return doElaborateDeclarationTyping(D);
-  // llvm_unreachable("Invalid declarator");
 }
 
+#if 0
 void Elaborator::elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,
                                              OptioanlClangScopeRAII &ClangTemplateScope,
                                              Declaration *D, Declarator *Dcl) {
@@ -247,25 +251,31 @@ void Elaborator::buildTemplateParams(const Syntax *Params,
     ++I;
   }
 }
+#endif
 
 clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
   if (D->declaratorContainsFunction())
-    return makeFunctionDecl(D);
+    llvm_unreachable("functions unimplemented");
+    // return makeFunctionDecl(D);
 
   if (D->declaratorContainsClass())
-    return makeClass(D);
+    llvm_unreachable("classes unimplemented");
+    // return makeClass(D);
 
   // if (D->Decl->declaresValue())
   if (D->Decl->declaresTemplate()) {
     // we know this is a special case where we have either a variable template or
     // type alias template.
-    // llvm_unreachable("type alias and variable templates not implemented yet");
-    return elaborateTypeAliasOrVariableTemplate(D);
+    llvm_unreachable("type alias and variable templates not implemented yet");
+    // return elaborateTypeAliasOrVariableTemplate(D);
   }
-  // I guess if it's not a function/class it must be a value declaration.
-  return makeValueDecl(D);
+
+  // If it's not a function/class it must be a value declaration.
+  // return makeValueDecl(D);
+  llvm_unreachable("value decls unimplemented");
 }
 
+#if 0
 clang::Decl *Elaborator::elaborateTypeAliasOrVariableTemplate(Declaration *D) {
   bool InClass = D->isDeclaredInClass();
 
@@ -610,17 +620,26 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
 // by the function above.
 Declarator *Elaborator::getDeclarator(const Syntax *S) {
   if (!S)
-    return nullptr;
-    // return getImplicitAutoDeclarator();
+    return getImplicitAutoDeclarator();
 
-  if (const auto *U = dyn_cast<UnarySyntax>(S))
-    // return getUnaryDeclarator(U);
-    return nullptr;
-  if (const auto* B = dyn_cast<BinarySyntax>(S))
-    // return getBinaryDeclarator(B);
-    return nullptr;
-  // return getLeafDeclarator(S);
-  return nullptr;
+  if (const FunctionSyntax *Fn = dyn_cast<FunctionSyntax>(S)) {
+    // FIXME: do something here
+  }
+
+  if (const EnclosureSyntax *E = dyn_cast<EnclosureSyntax>(S)) {
+    if (E->isParenEnclosure())
+      ; // TODO: this is a function with no return.
+    if (E->isBraceEnclosure())
+      ; // FIXME: what is this?
+    else {
+      // A brace enclosed list could appear at the end of a function-type,
+      // but probably not on its own.
+      Error(S->getLocation(), "brace-enclosed list is not a type");
+      return nullptr;
+    }
+  }
+
+  return getLeafDeclarator(S);
 }
 
 #if 0
@@ -720,23 +739,22 @@ Declarator *Elaborator::getBinaryDeclarator(const BinarySyntax *S) {
   Error(S->getLocation(), "invalid operator in declarator");
   return nullptr;
 }
+#endif
 
 Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   switch (S->getKind()) {
   case Syntax::Literal: {
     auto Lit = dyn_cast<LiteralSyntax>(S);
-    if (Lit->getToken().hasKind(tok::ClassKeyword)) {
+    if (Lit->token().hasKind(tok::ClassKeyword)) {
       return new Declarator(Declarator::Class, S);
     }
   }
+
   LLVM_FALLTHROUGH;
   case Syntax::Identifier:
     return new Declarator(Declarator::Type, S);
-  case Syntax::List:
-    if (cast<ListSyntax>(S)->isBracketList())
-      return new Declarator(Declarator::Array, S);
-
-    return new Declarator(Declarator::Function, S);
+  case Syntax::Array:
+    return new Declarator(Declarator::Array, S);
   default:
     break;
   }
@@ -747,6 +765,7 @@ Declarator *Elaborator::getImplicitAutoDeclarator() {
   return new Declarator(Declarator::ImplicitType, nullptr);
 }
 
+#if 0
 clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
   auto *Ret = elaborateDeclarationTyping(D);
   if (SemaRef.DeepElaborationMode)
@@ -3776,6 +3795,7 @@ clang::Expr *Elaborator::elaborateRealMetaFunction(const BinarySyntax *S) {
     return reportInvalidUse(Loc);
   }
 }
+#endif
 
 
 // Diagnostics
@@ -3784,10 +3804,7 @@ void Elaborator::Error(clang::SourceLocation Loc, llvm::StringRef Msg) {
 }
 
 
-
-
-
-
+#if 0
 bool Elaborator::delayElaborateDeclType(clang::CXXRecordDecl *RD,
                                         const Syntax *S) {
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);

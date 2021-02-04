@@ -1101,8 +1101,7 @@ Syntax* Parser::parseFunctionConstructor()
 {
   Syntax *Op = parseParenEnclosed(&Parser::parseParameterGroup);
   Syntax *Type = parsePrefixExpression();
-  // FIXME: should this be functionSyntax?
-  return new TemplateSyntax(Op, Type);
+  return new FunctionSyntax(Op, Type);
 }
 
 /// Parse a postfix-expression.

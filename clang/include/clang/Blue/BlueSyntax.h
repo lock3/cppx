@@ -387,6 +387,18 @@ struct EnclosureSyntax : UnarySyntax
     return m_term;
   }
 
+  bool isParenEnclosure() const {
+    return m_open.hasKind(tok::LeftParen);
+  }
+
+  bool isBracketEnclosure() const {
+    return m_open.hasKind(tok::LeftBracket);
+  }
+
+  bool isBraceEnclosure() const {
+    return m_open.hasKind(tok::LeftBrace);
+  }
+
   Token m_open;
   Token m_close;
 
