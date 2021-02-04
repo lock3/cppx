@@ -234,7 +234,7 @@ struct AtomSyntax : Syntax
   }
 
   /// Returns the spelling of the atom.
-  std::string const& spelling() const
+  std::string spelling() const
   {
     return m_tok.getSpelling().str();
   }

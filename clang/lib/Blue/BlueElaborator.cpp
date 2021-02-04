@@ -52,7 +52,6 @@
 #include <iostream>
 
 namespace blue {
-
 static clang::Expr *buildIdExpr(Sema &SemaRef, llvm::StringRef Id,
                                 clang::SourceLocation Loc);
 

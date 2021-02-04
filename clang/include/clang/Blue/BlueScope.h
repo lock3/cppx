@@ -149,9 +149,9 @@ public:
     return Iter->second;
   }
 
-  bool hasDeclaration(const DefSyntax *Def) const {
-    return DeclMap.count(Def) != 0;
-  }
+  // bool hasDeclaration(const DefSyntax *Def) const {
+  //   return DeclMap.count(Def) != 0;
+  // }
 
   Declaration *Entity = nullptr;
 

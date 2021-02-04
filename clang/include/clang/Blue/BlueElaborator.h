@@ -56,7 +56,7 @@ public:
   }
   /// Returns the current blue sema instance.
   Sema &getBlueSema() { return SemaRef; }
-
+#if 0
   //===--------------------------------------------------------------------===//
   //                                  Identification                          //
   //===--------------------------------------------------------------------===//
@@ -254,7 +254,7 @@ public:
   void lateElaborateMemberInitializer(
       LateElaborateMemberInitializer &MemberInit);
   ///}
-
+#endif
 private:
   Sema &SemaRef;
 

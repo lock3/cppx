@@ -142,7 +142,7 @@ struct Declaration {
   const IdentifierSyntax *asId() const;
 
   /// Get the def as a DefSyntax.
-  const DefSyntax *asDef() const;
+  // const DefSyntax *asDef() const;
 
   clang::SourceLocation getEndOfDecl() const {
     const Declarator *D = Decl;
