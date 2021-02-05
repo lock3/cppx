@@ -18,13 +18,23 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace blue;
 
-TEST(BlueFunction, SimpleFunctionDecl){
+TEST(BlueFunction, SimpleFunctionDeclNoType){
   StringRef Code = R"BLUE(
-foo:() int = {
+foo:() = {
 }
 )BLUE";
 
-  auto ToMatch = functionDecl(hasName("foo"), hasType(asString("void (auto)")));
+  auto ToMatch = functionDecl(hasName("foo"), hasType(asString("void ()")));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueFunction, SimpleFunctionDecl_VoidReturnTypr) {
+  StringRef Code = R"BLUE(
+foo:() void = {
+}
+)BLUE";
+
+  auto ToMatch = functionDecl(hasName("foo"), hasType(asString("void ()")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 

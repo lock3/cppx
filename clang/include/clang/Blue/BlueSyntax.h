@@ -146,6 +146,21 @@ struct KarySyntax : Syntax
     return const_child_range(m_terms, m_terms + N);
   }
 
+  /// The location that best indicates the best position of the term.
+  clang::SourceLocation getLocation() const {
+    return m_terms[0]->getLocation();
+  }
+
+  /// The location of the beginning of the term.
+  clang::SourceLocation getBeginLocation() const {
+    return m_terms[0]->getLocation();
+  }
+
+  /// The location of the end of the term.
+  clang::SourceLocation getEndLocation() const {
+    return m_terms[N-1]->getLocation();
+  }
+
   Syntax* m_terms[N];
 };
 
@@ -181,6 +196,21 @@ struct KarySyntax<1> : Syntax
 
   const child_range children() const {
     return const_child_range(&m_term, &m_term + 1);
+  }
+
+  /// The location that best indicates the best position of the term.
+  clang::SourceLocation getLocation() const {
+    return m_term->getLocation();
+  }
+
+  /// The location of the beginning of the term.
+  clang::SourceLocation getBeginLocation() const {
+    return m_term->getLocation();
+  }
+
+  /// The location of the end of the term.
+  clang::SourceLocation getEndLocation() const {
+    return m_term->getLocation();
   }
 
   Syntax *m_term;
@@ -257,6 +287,32 @@ struct MultiarySyntax : Syntax
     return const_child_range(m_terms, m_terms + num_terms);
   }
 
+  unsigned getNumChildren() const { return num_terms; }
+
+  /// The location that best indicates the best position of the term.
+  clang::SourceLocation getLocation() const {
+    if (num_terms == 0) {
+      return clang::SourceLocation();
+    }
+    return m_terms[0]->getLocation();
+  }
+
+  /// The location of the beginning of the term.
+  clang::SourceLocation getBeginLocation() const {
+    if (num_terms == 0) {
+      return clang::SourceLocation();
+    }
+    return m_terms[0]->getLocation();
+  }
+
+  /// The location of the end of the term.
+  clang::SourceLocation getEndLocation() const {
+    if (num_terms == 0) {
+      return clang::SourceLocation();
+    }
+    return m_terms[num_terms - 1]->getLocation();
+  }
+
   static bool classof(const Syntax *S) {
     return S->getKind() >= MultiaryStart && S->getKind() < MultiaryEnd;
   }
@@ -281,9 +337,9 @@ struct AtomSyntax : Syntax
   }
 
   /// Returns the spelling of the atom.
-  std::string spelling() const
+  llvm::StringRef spelling() const
   {
-    return m_tok.getSpelling().str();
+    return m_tok.getSpelling();
   }
 
   child_range children() {
@@ -296,6 +352,21 @@ struct AtomSyntax : Syntax
 
   static bool classof(const Syntax *S) {
     return S->getKind() >= AtomStart && S->getKind() < AtomEnd;
+  }
+
+  /// The location that best indicates the best position of the term.
+  clang::SourceLocation getLocation() const {
+    return m_tok.getLocation();
+  }
+
+  /// The location of the beginning of the term.
+  clang::SourceLocation getBeginLocation() const {
+    return m_tok.getLocation();
+  }
+
+  /// The location of the end of the term.
+  clang::SourceLocation getEndLocation() const {
+    return m_tok.getLocation();
   }
 
   Token m_tok;

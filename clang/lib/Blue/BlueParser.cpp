@@ -1218,6 +1218,7 @@ Syntax *Parser::parsePrimaryExpression() {
 
 Syntax *Parser::parseIdExpression() {
   Token Id = expectToken(tok::Identifier);
+  // llvm::outs() << "Parsed token = " << Id.getSpelling() << "\n";
   return new IdentifierSyntax(Id);
 }
 

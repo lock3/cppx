@@ -34,6 +34,7 @@ public:
   }
 
   char const* data() const {
+    assert(Ptr && "Invalid symbol.");
     return Ptr->data();
   }
 
@@ -55,7 +56,7 @@ public:
 
 private:
   /// A pointer to a unique string.
-  std::string const* Ptr;
+  std::string const* Ptr = nullptr;
 };
 
 /// Returns a symbol for `str`.

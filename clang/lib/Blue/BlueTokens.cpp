@@ -88,7 +88,7 @@ llvm::StringRef Token::getSpelling() const {
   // FIXME: Generate a spelling for fused tokens? This would probably
   // need to be a std::string instead of a character pointer.
   assert(!isFused());
-  return Sym.data();
+  return llvm::StringRef(Sym.data());
 }
 
 void Token::dump() const {

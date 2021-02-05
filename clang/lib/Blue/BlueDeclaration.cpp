@@ -127,10 +127,10 @@ const Syntax *Declaration::getInitializer() const {
   return nullptr;
 }
 
-// const DefSyntax *Declaration::asDef() const {
-//   assert(isa<DefSyntax>(Def));
-//   return cast<DefSyntax>(Def);
-// }
+const DeclarationSyntax *Declaration::asDef() const {
+  assert(isa<DeclarationSyntax>(Def));
+  return cast<DeclarationSyntax>(Def);
+}
 
 const IdentifierSyntax *Declaration::asId() const {
   assert(isa<IdentifierSyntax>(Def));
