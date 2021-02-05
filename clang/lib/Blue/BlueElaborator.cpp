@@ -493,11 +493,7 @@ clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
 // }
 
 void Elaborator::elaborateParameters(const ListSyntax *S) {
-  llvm_unreachable("Working on it.");
-  // if (S->isSemicolonSeparated())
-  //   return elaborateParameterGroup(S);
-  // else
-  //   return elaborateParameterList(S);
+  return elaborateParameterList(S);
 }
 
 void Elaborator::getParameters(Declaration *D,
@@ -529,93 +525,93 @@ void Elaborator::getParameters(Declaration *D,
 //     elaborateParameterList(cast<ListSyntax>(SS));
 // }
 
-// void Elaborator::elaborateParameterList(const ListSyntax *S) {
-//   for (const Syntax *SS : S->children())
-//     elaborateParameter(SS);
+void Elaborator::elaborateParameterList(const ListSyntax *S) {
+  for (const Syntax *SS : S->children())
+    elaborateParameter(SS);
 
-//   // FIXME: Examine the parameters we just created. We might be able
-//   // to back-propagate types to some of them. For example, if we have;
-//   //
-//   //    a, b : int
-//   //
-//   // Then this should be equivalent to a : int, b: int.
-// }
+  // FIXME: Examine the parameters we just created. We might be able
+  // to back-propagate types to some of them. For example, if we have;
+  //
+  //    a, b : int
+  //
+  // Then this should be equivalent to a : int, b: int.
+}
 
-// clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
-//   if (!isa<DefSyntax>(S) && !isa<IdentifierSyntax>(S)) {
-//     Error(S->getLocation(), "invalid parameter syntax");
-//     return nullptr;
-//   }
+clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
+  if (!isa<DeclarationSyntax>(S) && !isa<IdentifierSyntax>(S)) {
+    Error(S->getLocation(), "invalid parameter syntax");
+    return nullptr;
+  }
 
-//   clang::ASTContext &CxxAST = SemaRef.getCxxAST();
-//   clang::SourceLocation Loc = S->getLocation();
+  clang::ASTContext &CxxAST = SemaRef.getCxxAST();
+  clang::SourceLocation Loc = S->getLocation();
 
-//   if (const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(S)) {
-//     // FIXME: create context for auto parameters to keep track of their
-//     // index and depth.
-//     Declaration *TheDecl = createDeclaration(S, nullptr, nullptr);
+  if (const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(S)) {
+    // FIXME: create context for auto parameters to keep track of their
+    // index and depth.
+    Declaration *TheDecl = createDeclaration(S, nullptr, nullptr);
 
-//     clang::IdentifierInfo *II = &CxxAST.Idents.get({Id->getSpelling()});
-//     clang::IdentifierInfo *TypeName =
-//       CxxSema.InventAbbreviatedTemplateParameterTypeName(II, TempCtx.Index);
+    clang::IdentifierInfo *II = &CxxAST.Idents.get({Id->spelling()});
+    clang::IdentifierInfo *TypeName =
+      CxxSema.InventAbbreviatedTemplateParameterTypeName(II, TempCtx.Index);
 
-//     using clang::TemplateTypeParmDecl;
-//     TemplateTypeParmDecl *TheType =
-//       TemplateTypeParmDecl::Create(CxxAST, CxxAST.getTranslationUnitDecl(),
-//                                    clang::SourceLocation(),
-//                                    Id->getLocation(), TempCtx.Depth,
-//                                    TempCtx.Index, TypeName, /*Typename=*/false,
-//                                    /*ParameterPack=*/false);
-//     TheType->setImplicit();
-//     ++TempCtx.Index;
+    using clang::TemplateTypeParmDecl;
+    TemplateTypeParmDecl *TheType =
+      TemplateTypeParmDecl::Create(CxxAST, CxxAST.getTranslationUnitDecl(),
+                                   clang::SourceLocation(),
+                                   Id->getLocation(), TempCtx.Depth,
+                                   TempCtx.Index, TypeName, /*Typename=*/false,
+                                   /*ParameterPack=*/false);
+    TheType->setImplicit();
+    ++TempCtx.Index;
 
-//     clang::CppxTypeLiteral *TyLit =
-//       SemaRef.buildTypeExpr(clang::QualType(TheType->getTypeForDecl(), 0),
-//                             Id->getLocation());
-//     clang::DeclarationName Name(II);
-//     clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(TyLit)->getValue();
-//     clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
-//     clang::ParmVarDecl *PVD =
-//       clang::ParmVarDecl::Create(CxxAST, Owner, Loc, Loc,
-//                                  Name, T->getType(), T,
-//                                  clang::SC_Auto, /*def=*/nullptr);
-//     TheDecl->setCxx(SemaRef, PVD);
-//     return PVD;
-//   }
+    clang::CppxTypeLiteral *TyLit =
+      SemaRef.buildTypeExpr(clang::QualType(TheType->getTypeForDecl(), 0),
+                            Id->getLocation());
+    clang::DeclarationName Name(II);
+    clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(TyLit)->getValue();
+    clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
+    clang::ParmVarDecl *PVD =
+      clang::ParmVarDecl::Create(CxxAST, Owner, Loc, Loc,
+                                 Name, T->getType(), T,
+                                 clang::SC_Auto, /*def=*/nullptr);
+    TheDecl->setCxx(SemaRef, PVD);
+    return PVD;
+  }
 
-//   // FIXME: There is a lot of duplication with makeObjectDecl here.
-//   // In Gold it's just one function.
-//   const auto *Def = cast<DefSyntax>(S);
-//   Declarator *Dcl = getDeclarator(Def->getDeclarator());
-//   clang::Expr *Ty = elaborateDeclarator(Dcl);
-//   if (!Ty)
-//     return nullptr;
+  // FIXME: There is a lot of duplication with makeObjectDecl here.
+  // In Gold it's just one function.
+  const auto *Def = cast<DeclarationSyntax>(S);
+  Declarator *Dcl = getDeclarator(Def->type());
+  clang::Expr *Ty = elaborateDeclarator(Dcl);
+  if (!Ty)
+    return nullptr;
 
-//   // FIXME: This needs to be refactored so it's created during phase identification.
-//   // Create the Blue Declaration
-//   Declaration *TheDecl = createDeclaration(Def, Dcl, Def->getInitializer());
+  // FIXME: This needs to be refactored so it's created during phase identification.
+  // Create the Blue Declaration
+  Declaration *TheDecl = createDeclaration(Def, Dcl, Def->initializer());
 
-//   // Create the Clang Decl Node
-//   clang::IdentifierInfo *Id = TheDecl->Id;
-//   clang::DeclarationName Name(Id);
+  // Create the Clang Decl Node
+  clang::IdentifierInfo *Id = TheDecl->Id;
+  clang::DeclarationName Name(Id);
 
-//   if(!Ty->getType()->isTypeOfTypes()) {
-//     Error(Ty->getExprLoc(), "expected type");
-//     return nullptr;
-//   }
+  if(!Ty->getType()->isTypeOfTypes()) {
+    Error(Ty->getExprLoc(), "expected type");
+    return nullptr;
+  }
 
-//   clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(Ty)->getValue();
-//   // Create the parameters in the translation unit decl for now, we'll
-//   // move them into the function later.
-//   // FIXME: replace this with TU
-//   clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
-//   clang::ParmVarDecl *PVD =
-//     clang::ParmVarDecl::Create(CxxAST, Owner, Loc, Loc,
-//                                Name, T->getType(), T,
-//                                clang::SC_Auto, /*def=*/nullptr);
-//   TheDecl->setCxx(SemaRef, PVD);
-//   return PVD;
-// }
+  clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(Ty)->getValue();
+  // Create the parameters in the translation unit decl for now, we'll
+  // move them into the function later.
+  // FIXME: replace this with TU
+  clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
+  clang::ParmVarDecl *PVD =
+    clang::ParmVarDecl::Create(CxxAST, Owner, Loc, Loc,
+                               Name, T->getType(), T,
+                               clang::SC_Auto, /*def=*/nullptr);
+  TheDecl->setCxx(SemaRef, PVD);
+  return PVD;
+}
 
 
 // Declarator construction
@@ -652,9 +648,6 @@ Declarator *Elaborator::getDeclarator(const Syntax *S) {
     if (E->isParenEnclosure()) {
       return new Declarator(Declarator::Function, S,
                             getImplicitAutoDeclarator());
-    } else if (E->isBraceEnclosure()) {
-      // ; // FIXME: what is this?
-      llvm_unreachable("unknown brace enclosure");
     } else if (E->isBracketEnclosure()) {
       llvm_unreachable("unhandled bracked enclosure");
     } else {
@@ -924,10 +917,18 @@ clang::Decl *Elaborator::makeTypeDecl(Declaration *D, clang::QualType T) {
 }
 
 clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
-  const ListSyntax *ParamList = dyn_cast<ListSyntax>(Dcl->getInfo());
-  if (!ParamList)
+  const EnclosureSyntax *ParamTerm = dyn_cast<EnclosureSyntax>(Dcl->getInfo());
+  if (!ParamTerm)
     return nullptr;
-  clang::SourceLocation Loc = ParamList->getLocation();
+
+  const ListSyntax *ParamList = nullptr;
+  if (ParamTerm->term()) {
+    ParamList = dyn_cast<ListSyntax>(ParamTerm->term());
+    if (!ParamList)
+      return nullptr;
+  }
+
+  clang::SourceLocation Loc = ParamTerm->getLocation();
   clang::ASTContext &CxxAST = SemaRef.getCxxAST();
   Sema::ScopeRAII ParamScope(SemaRef, Scope::Parameter, ParamList);
   Dcl->DeclInfo.ParamScope = SemaRef.getCurrentScope();
