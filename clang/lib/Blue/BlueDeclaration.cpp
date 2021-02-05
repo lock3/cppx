@@ -33,7 +33,7 @@ Declarator *Declaration::getFirstDeclarator(Declarator::Kind DeclKind) const {
       return D;
     D = D->getNext();
   }
-  return nullptr;  
+  return nullptr;
 }
 
 bool Declaration::declaratorContains(Declarator::Kind DeclKind) const {

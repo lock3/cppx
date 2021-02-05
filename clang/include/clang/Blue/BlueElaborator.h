@@ -84,21 +84,20 @@ public:
   clang::Decl *doElaborateDeclarationTyping(Declaration *D);
   clang::Decl *elaborateTypeAliasOrVariableTemplate(Declaration *D);
 
-#if 0
   Declaration *elaborateTemplateParameter(const Syntax *Parm);
+
   void elaborateParameters(const ListSyntax *S);
+
   void elaborateParameterGroup(const ListSyntax *S);
   void elaborateParameterList(const ListSyntax *S);
   clang::Decl *elaborateParameter(const Syntax *S);
-#endif
+
 
   Declarator *getDeclarator(const Syntax *S);
-  Declarator *getUnaryDeclarator(const UnarySyntax *S);
-  Declarator *getBinaryDeclarator(const BinarySyntax *S);
+  // Declarator *getUnaryDeclarator(const UnarySyntax *S);
+  // Declarator *getBinaryDeclarator(const BinarySyntax *S);
   Declarator *getLeafDeclarator(const Syntax *S);
   Declarator *getImplicitAutoDeclarator();
-
-#if 0
   clang::Decl *elaborateDeclEarly(Declaration *D);
 
   clang::Expr *elaborateDeclarator(const Declarator *Dcl);
@@ -119,9 +118,11 @@ public:
   clang::Decl *makeFieldDecl(Declaration *D, clang::Expr *Ty);
 
 
+
   // class type body elaboration.
   clang::Decl *identifyDeclsInClassBody(Declaration *D, clang::CXXRecordDecl *R);
   clang::Decl *elaborateField(Declaration *D, clang::TypeSourceInfo *TInfo);
+
 
   clang::CppxTypeLiteral *createFunctionType(Declarator *Dcl);
 
@@ -131,7 +132,6 @@ public:
   void elaborateFieldInit(Declaration *D);
   void elaborateFunctionDef(Declaration *D);
 
-
   clang::Expr *elaborateExpression(const Syntax *S);
   clang::Expr *elaborateConstantExpression(const Syntax *S);
   clang::Expr *doElaborateExpression(const Syntax *S);
@@ -139,32 +139,32 @@ public:
   clang::Expr *elaborateLiteralExpression(const LiteralSyntax *S);
   clang::Expr *elaborateIdentifierExpression(const IdentifierSyntax *S);
   clang::Expr *elaborateListExpression(const ListSyntax *S);
-  clang::Expr *elaborateSeqExpression(const SeqSyntax *S);
-  clang::Expr *elaborateUnaryExpression(const UnarySyntax *S);
-  clang::Expr *elaborateBinaryExpression(const BinarySyntax *S);
-  clang::Expr *elaborateApplyExpression(clang::Expr *LHS,
-                                        const BinarySyntax *S);
+  // clang::Expr *elaborateSeqExpression(const SeqSyntax *S);
+  // clang::Expr *elaborateUnaryExpression(const UnarySyntax *S);
+  // clang::Expr *elaborateBinaryExpression(const BinarySyntax *S);
+  // clang::Expr *elaborateApplyExpression(clang::Expr *LHS,
+  //                                       const BinarySyntax *S);
 
-  clang::Expr *elaborateArraySubscriptExpr(clang::Expr *Base,
-                                           const BinarySyntax *Op);
-  clang::Expr *elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
-                                     const BinarySyntax *Op);
+  // clang::Expr *elaborateArraySubscriptExpr(clang::Expr *Base,
+  //                                          const BinarySyntax *Op);
+  // clang::Expr *elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
+  //                                    const BinarySyntax *Op);
 
-  void elaborateTemplateArgs(const ListSyntax *ArgList,
-                             clang::TemplateArgumentListInfo &TemplateArgs,
-                   llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs);
-  clang::Expr *elabotateTemplateInstantiationWithArgs(clang::Expr *Base,
-                                                    const ListSyntax *ArgList);
-  clang::Expr *elaborateClassTemplateSelection(clang::Expr *IdExpr,
-                                               const ListSyntax *ArgList);
+  // void elaborateTemplateArgs(const ListSyntax *ArgList,
+  //                            clang::TemplateArgumentListInfo &TemplateArgs,
+  //                  llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs);
+  // clang::Expr *elabotateTemplateInstantiationWithArgs(clang::Expr *Base,
+  //                                                   const ListSyntax *ArgList);
+  // clang::Expr *elaborateClassTemplateSelection(clang::Expr *IdExpr,
+  //                                              const ListSyntax *ArgList);
 
-  bool elaborateClassTemplateArguments(const ListSyntax *Args,
-                                       clang::TemplateArgumentListInfo &ArgInfo,
-              llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs);
+  // bool elaborateClassTemplateArguments(const ListSyntax *Args,
+  //                                      clang::TemplateArgumentListInfo &ArgInfo,
+  //             llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs);
 
   /// Dispatching function, that determines based on the LHS's type how to
   /// process the RHS of the expression.
-  clang::Expr *elaborateMemberAccess(clang::Expr *LHS, const BinarySyntax *S);
+  // clang::Expr *elaborateMemberAccess(clang::Expr *LHS, const BinarySyntax *S);
 
   clang::Expr *elaborateTypeNameAccess(clang::Expr *LHS, const BinarySyntax *S);
   clang::Expr *elaborateNestedNamespaceAccess(clang::Expr *LHS, const BinarySyntax *S);
@@ -176,16 +176,16 @@ public:
   clang::Expr *elaborateRealMetaFunction(const BinarySyntax *S);
 
   /// Stmts
-  clang::Stmt *elaborateSeq(const SeqSyntax *S);
-  clang::Stmt *elaborateStatement(const Syntax *S);
-  clang::Stmt *elaborateDeclStmt(const DeclarationSyntax *S);
-  clang::Stmt *elaborateUnaryStmt(const UnarySyntax *S);
-  clang::Stmt *elaborateControlStmt(const ControlSyntax *S);
-  clang::Stmt *elaborateIfStmt(const ControlSyntax *S);
-  clang::Stmt *elaborateWhileStmt(const ControlSyntax *S);
-  clang::Stmt *elaborateForStmt(const ControlSyntax *S);
-  clang::Stmt *elaborateReturnStmt(const UnarySyntax *S);
-#endif
+  // clang::Stmt *elaborateSeq(const SeqSyntax *S);
+  // clang::Stmt *elaborateStatement(const Syntax *S);
+  // clang::Stmt *elaborateDeclStmt(const DeclarationSyntax *S);
+  // clang::Stmt *elaborateUnaryStmt(const UnarySyntax *S);
+  // clang::Stmt *elaborateControlStmt(const ControlSyntax *S);
+  // clang::Stmt *elaborateIfStmt(const ControlSyntax *S);
+  // clang::Stmt *elaborateWhileStmt(const ControlSyntax *S);
+  // clang::Stmt *elaborateForStmt(const ControlSyntax *S);
+  // clang::Stmt *elaborateReturnStmt(const UnarySyntax *S);
+
 
   //===--------------------------------------------------------------------===//
   //                                Miscellaneous                             //

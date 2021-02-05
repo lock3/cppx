@@ -7,17 +7,17 @@ add_clang_library(blue
   BlueSymbol.cpp
   BlueFile.cpp
   BlueFrontend.cpp
-  BlueLateElaboration.cpp # disabled
+  BlueLateElaboration.cpp
   BlueTokens.cpp
   BlueLexer.cpp
-  BlueParser.cpp          # disabled
-  BlueScope.cpp           # disabled
-  BlueSema.cpp            # disabled
+  BlueParser.cpp
+  BlueScope.cpp
+  BlueSema.cpp
   BlueSyntax.cpp
   BlueSyntaxVisitor.cpp
-  BlueDeclarator.cpp      # disabled
-  BlueDeclaration.cpp     # disabled
-  BlueElaborator.cpp      # disabled
+  BlueDeclarator.cpp
+  BlueDeclaration.cpp
+  BlueElaborator.cpp
   ParseBlueAST.cpp
 
   LINK_LIBS
