@@ -1489,10 +1489,10 @@ clang::Expr *Elaborator::elaborateConstantExpression(const Syntax *S) {
 clang::Expr *Elaborator::doElaborateExpression(const Syntax *S) {
   assert(S && "invalid expression");
   switch (S->getKind()) {
-  // case Syntax::Literal:
-  //   return elaborateLiteralExpression(cast<LiteralSyntax>(S));
-  // case Syntax::Identifier:
-  //   return elaborateIdentifierExpression(cast<IdentifierSyntax>(S));
+  case Syntax::Literal:
+    return elaborateLiteralExpression(cast<LiteralSyntax>(S));
+  case Syntax::Identifier:
+    return elaborateIdentifierExpression(cast<IdentifierSyntax>(S));
   // case Syntax::List:
   //   return elaborateListExpression(cast<ListSyntax>(S));
   // case Syntax::Seq:
@@ -2070,6 +2070,7 @@ clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
     return SemaRef.buildTypeExpr(getCxxContext().CharTy,
                                  Tok.getLocation());
   case tok::IntegerKeyword:
+  case tok::IntKeyword:
     // FIXME: Support arbitrary length integer types via the lexer.
     return SemaRef.buildTypeExpr(getCxxContext().IntTy,
                                  Tok.getLocation());
@@ -2080,11 +2081,10 @@ clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
   case tok::TypeKeyword:
     return SemaRef.buildTypeExpr(getCxxContext().CppxKindTy,
                                  Tok.getLocation());
-
   default:
     break;
   }
-
+  S->dump();
   llvm_unreachable("Not implemented");
 }
 
