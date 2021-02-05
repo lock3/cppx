@@ -1181,9 +1181,10 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::TrueKeyword:
   case tok::FalseKeyword:
     // Type literals
+  case tok::VoidKeyword:
   case tok::IntKeyword:
   case tok::BoolKeyword:
-  case tok::TypeKeyword: 
+  case tok::TypeKeyword:
     // Control primitives
   case tok::ContinueKeyword:
   case tok::BreakKeyword: {
