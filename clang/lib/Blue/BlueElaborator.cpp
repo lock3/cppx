@@ -61,8 +61,12 @@ Declaration *Elaborator::createDeclaration(const Syntax *Def,
 
 
   if (const DeclarationSyntax *Name = dyn_cast<DeclarationSyntax>(Def)) {
-    const IdentifierSyntax *Id = cast<IdentifierSyntax>(Name->declarator());
-    TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->spelling()});
+    if (const IdentifierSyntax *Id
+        = dyn_cast_or_null<IdentifierSyntax>(Name->declarator())) {
+        TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->spelling()});
+    } else {
+      llvm_unreachable("SOme how we have an invalid identifier.");
+    }
   } else if (const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(Def)) {
     TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->spelling()});
   }
@@ -123,6 +127,19 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
 }
 
 Declaration *Elaborator::buildDeclaration(const DeclarationSyntax *S) {
+  // Special case function identification.
+  //   name: () = { }
+  // This isn't identified as a possible function by the parser.
+  // Other kinds of functions are handle by create declarations.
+  // if (auto body = dyn_cast_or_null<EnclosureSyntax>(S->initializer())) {
+  //   if (body->open().hasKind(tok::LeftBrace)) {
+  //     if (auto params = dyn_cast_or_null<EnclosureSyntax>(S->declarator())) {
+  //       if (params->open().hasKind(tok::LeftParen)) {
+  //         // 
+  //       }
+  //     }
+  //   }
+  // }
   Declarator *Dcl = getDeclarator(S->type());
   return createDeclaration(S, Dcl, S->initializer());
 }
@@ -623,15 +640,25 @@ Declarator *Elaborator::getDeclarator(const Syntax *S) {
     return getImplicitAutoDeclarator();
 
   if (const FunctionSyntax *Fn = dyn_cast<FunctionSyntax>(S)) {
-    // FIXME: do something here
+
+    // TODO: We may need to handle the multi-return slightly different then
+    // a typical return statement, not sure yet.
+    Declarator *RetTy = nullptr;
+    if (Fn->result())
+      RetTy = getDeclarator(Fn->result());
+    return new Declarator(Declarator::Function, Fn->parameters(), RetTy);
+
   }
 
   if (const EnclosureSyntax *E = dyn_cast<EnclosureSyntax>(S)) {
-    if (E->isParenEnclosure())
-      ; // TODO: this is a function with no return.
-    if (E->isBraceEnclosure())
-      ; // FIXME: what is this?
-    else {
+    if (E->isParenEnclosure()) {
+      return new Declarator(Declarator::Function, S, nullptr);
+    } else if (E->isBraceEnclosure()) {
+      // ; // FIXME: what is this?
+      llvm_unreachable("unknown brace enclosure");
+    } else if (E->isBracketEnclosure()) {
+      llvm_unreachable("unhandled bracked enclosure");
+    } else {
       // A brace enclosed list could appear at the end of a function-type,
       // but probably not on its own.
       Error(S->getLocation(), "brace-enclosed list is not a type");
@@ -758,6 +785,8 @@ Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   default:
     break;
   }
+  llvm::errs() << "Dumping unrecognized syntax.\n";
+  S->dump();
   llvm_unreachable("Invalid type expression");
 }
 

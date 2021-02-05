@@ -2398,40 +2398,61 @@ void TextNodeDumper::Visit(const blue::Syntax *S) {
   blue::ConstSyntaxVisitor<TextNodeDumper>::Visit(S);
 }
 
-// void TextNodeDumper::VisitErrorSyntax(const blue::ErrorSyntax *S) {
-//   ColorScope Color(OS, ShowColors, CastColor);
-//   OS << "<<<ERROR>>>";
-// }
+void TextNodeDumper::VisitEnclosureSyntax(const blue::EnclosureSyntax *S) {
+  OS << " '" << S->open().getSpelling() << S->close().getSpelling() << "' ";
+}
 
-// void TextNodeDumper::VisitLiteralSyntax(const blue::LiteralSyntax *S) {
-//   OS << ' ' << S->getToken().getSpelling();
-// }
+void TextNodeDumper::VisitPrefixSyntax(const blue::PrefixSyntax *S) {
+}
 
-// void TextNodeDumper::VisitIdentifierSyntax(const blue::IdentifierSyntax *S) {
-//   OS << ' ' << S->getToken().getSpelling();
-// }
+void TextNodeDumper::VisitPostfixSyntax(const blue::PostfixSyntax *S) {
+}
 
-// void TextNodeDumper::VisitListSyntax(const blue::ListSyntax *S) {
-  
-// }
+void TextNodeDumper::VisitFileSyntax(const blue::FileSyntax *S) {
+}
 
-// void TextNodeDumper::VisitSeqSyntax(const blue::SeqSyntax *S) {
-// }
+void TextNodeDumper::VisitPairSyntax(const blue::PairSyntax *S) {
+}
 
-// void TextNodeDumper::VisitUnarySyntax(const blue::UnarySyntax *S) {
-//   OS << ' ' << S->getOperatorSpelling();
-// }
+void TextNodeDumper::VisitArraySyntax(const blue::ArraySyntax *S) {
+}
 
-// void TextNodeDumper::VisitBinarySyntax(const blue::BinarySyntax *S) {
-//   if (!S->getOperator().isInvalid())
-//     OS << ' ' << S->getOperatorSpelling();
-//   else
-//     OS << ' ' << "<apply>";
-// }
+void TextNodeDumper::VisitFunctionSyntax(const blue::FunctionSyntax *S) {
+}
 
-// void TextNodeDumper::VisitDefSyntax(const blue::DefSyntax *S) {
-//   OS << ' ' << S->getIdentifierSpelling();
-// }
+void TextNodeDumper::VisitTemplateSyntax(const blue::TemplateSyntax *S) {
+}
 
-// void TextNodeDumper::VisitTopSyntax(const blue::TopSyntax *S) {
-// }
+void TextNodeDumper::VisitCallSyntax(const blue::CallSyntax *S) {
+}
+
+void TextNodeDumper::VisitIndexSyntax(const blue::IndexSyntax *S) {
+}
+
+void TextNodeDumper::VisitInfixSyntax(const blue::InfixSyntax *S) {
+}
+
+void TextNodeDumper::VisitControlSyntax(const blue::ControlSyntax *S) {
+}
+
+void TextNodeDumper::VisitTripleSyntax(const blue::TripleSyntax *S) {
+}
+
+void TextNodeDumper::VisitDeclarationSyntax(const blue::DeclarationSyntax *S) {
+}
+
+void TextNodeDumper::VisitListSyntax(const blue::ListSyntax *S) {
+}
+
+void TextNodeDumper::VisitSequenceSyntax(const blue::SequenceSyntax *S) {
+}
+
+void TextNodeDumper::VisitLiteralSyntax(const blue::LiteralSyntax *S) {
+  OS << " '" << S->spelling() << "'";
+}
+
+void TextNodeDumper::VisitIdentifierSyntax(const blue::IdentifierSyntax *S) {
+  OS << " '" << S->spelling() << "'";
+}
+
+

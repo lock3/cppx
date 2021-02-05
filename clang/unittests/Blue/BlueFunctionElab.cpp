@@ -18,19 +18,29 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace blue;
 
-TEST(BlueFunction, SimpleFunctionDecl){
+TEST(BlueFunction, SimpleFunctionDeclNoType){
   StringRef Code = R"BLUE(
-foo:(x) -> void {
+foo:() = {
 }
 )BLUE";
 
-  auto ToMatch = functionDecl(hasName("foo"), hasType(asString("void (auto)")));
+  auto ToMatch = functionDecl(hasName("foo"), hasType(asString("void ()")));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueFunction, SimpleFunctionDecl_VoidReturnTypr) {
+  StringRef Code = R"BLUE(
+foo:() void = {
+}
+)BLUE";
+
+  auto ToMatch = functionDecl(hasName("foo"), hasType(asString("void ()")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
 TEST(BlueFunction, WithParameter){
   StringRef Code = R"BLUE(
-foo:(x:int) -> void{
+foo:(x:int) void = {
 }
 )BLUE";
 
@@ -40,7 +50,7 @@ foo:(x:int) -> void{
 
 TEST(BlueFunction, WithParameters){
   StringRef Code = R"BLUE(
-foo:(x:int, y:int) -> void{
+foo:(x:int, y:int) void = {
 }
 )BLUE";
 
@@ -50,8 +60,8 @@ foo:(x:int, y:int) -> void{
 
 TEST(BlueFunction, Overloaded){
   StringRef Code = R"BLUE(
-foo:(x:int, y:int) -> void{ }
-foo:(x:int) -> void { }
+foo:(x:int, y:int) void = { }
+foo:(x:int) void = { }
 )BLUE";
 
   auto ToMatch = translationUnitDecl(
@@ -63,10 +73,10 @@ foo:(x:int) -> void { }
 
 TEST(BlueFunction, CallExpression) {
   StringRef Code = R"BLUE(
-foo:(x:int, y:int) -> void{ }
-foo:(x:int) -> void { }
+foo:(x:int, y:int) void = { }
+foo:(x:int) void = { }
 
-bar:()->void {
+bar:() void = {
   foo(4);
 }
 )BLUE";
@@ -88,11 +98,11 @@ bar:()->void {
 
 TEST(BlueFunction, Call){
   StringRef Code = R"BLUE(
-f : () -> int {
+f : () int = {
   return 5;
 }
 
-main : () -> int {
+main : () int = {
   x := f();
 }
 )BLUE";
@@ -100,14 +110,3 @@ main : () -> int {
   auto ToMatch = varDecl(hasName("x"), hasType(asString("int")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
-
-#if 0
-TEST(BlueFunction, NoBody) {
-  // TODO: I'm not sure if this is an error or not.
-
-  StringRef Code = R"BLUE(
-foo:(x:int, y:int) -> void;
-)BLUE";
-  BlueFailureTest(Code);
-}
-#endif
