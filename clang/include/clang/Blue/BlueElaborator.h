@@ -74,7 +74,6 @@ public:
   clang::Decl *elaborateDecl(const Syntax *S);
   clang::Decl *elaborateDefDecl(const DeclarationSyntax *S);
 
-#if 0
   clang::Decl *elaborateDeclarationTyping(Declaration *D);
   void elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,
                                    OptioanlClangScopeRAII &ClangTemplateScope,
@@ -85,7 +84,7 @@ public:
   clang::Decl *doElaborateDeclarationTyping(Declaration *D);
   clang::Decl *elaborateTypeAliasOrVariableTemplate(Declaration *D);
 
-
+#if 0
   Declaration *elaborateTemplateParameter(const Syntax *Parm);
   void elaborateParameters(const ListSyntax *S);
   void elaborateParameterGroup(const ListSyntax *S);
@@ -97,9 +96,9 @@ public:
   Declarator *getUnaryDeclarator(const UnarySyntax *S);
   Declarator *getBinaryDeclarator(const BinarySyntax *S);
   Declarator *getLeafDeclarator(const Syntax *S);
-#if 0
   Declarator *getImplicitAutoDeclarator();
 
+#if 0
   clang::Decl *elaborateDeclEarly(Declaration *D);
 
   clang::Expr *elaborateDeclarator(const Declarator *Dcl);
@@ -186,6 +185,7 @@ public:
   clang::Stmt *elaborateWhileStmt(const ControlSyntax *S);
   clang::Stmt *elaborateForStmt(const ControlSyntax *S);
   clang::Stmt *elaborateReturnStmt(const UnarySyntax *S);
+#endif
 
   //===--------------------------------------------------------------------===//
   //                                Miscellaneous                             //
@@ -196,7 +196,7 @@ public:
 
   // Diagnostics
   void Error(clang::SourceLocation Loc, llvm::StringRef Msg);
-#endif
+
 private:
   std::size_t ImplicitSemaDecls = 0;
 
