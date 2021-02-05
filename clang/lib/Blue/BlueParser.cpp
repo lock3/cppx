@@ -253,7 +253,11 @@ Syntax *Parser::parseDefinition() {
     Decl = parseDeclaratorList();
 
   DescriptorClause DC = parseDescriptorClause(*this);
-  InitializerClause IC = parseInitializerClause(*this);
+  InitializerClause IC;
+  if (nextTokenIsNot(tok::Semicolon))
+      IC = parseInitializerClause(*this);
+  else
+    expectToken(tok::Semicolon);
 
   return new DeclarationSyntax(Decl, DC.Type, DC.Cons, IC.Init);
 }
