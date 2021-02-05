@@ -286,8 +286,8 @@ clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
   }
 
   // If it's not a function/class it must be a value declaration.
-  // return makeValueDecl(D);
-  llvm_unreachable("value decls unimplemented");
+  return makeValueDecl(D);
+  // llvm_unreachable("value decls unimplemented");
 }
 
 
@@ -855,34 +855,34 @@ static inline clang::StorageClass getDefaultVariableStorageClass(Sema &SemaRef) 
 }
 
 clang::Decl *Elaborator::makeObjectDecl(Declaration *D, clang::Expr *Ty) {
-  // auto *Def = D->asDef();
-  // if (!Def)
-  //   return nullptr;
+  auto *Def = D->asDef();
+  if (!Def)
+    return nullptr;
 
-  // // Create the Clang Decl Node
-  // clang::ASTContext &CxxAST = SemaRef.getCxxAST();
-  // clang::IdentifierInfo *Id = D->Id;
-  // clang::DeclarationName Name(Id);
-  // clang::SourceLocation Loc = D->Def->getLocation();
+  // Create the Clang Decl Node
+  clang::ASTContext &CxxAST = SemaRef.getCxxAST();
+  clang::IdentifierInfo *Id = D->Id;
+  clang::DeclarationName Name(Id);
+  clang::SourceLocation Loc = D->Def->getLocation();
 
-  // assert(Ty->getType()->isTypeOfTypes() && "type of declaration is not a type");
-  // clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(Ty)->getValue();
+  assert(Ty->getType()->isTypeOfTypes() && "type of declaration is not a type");
+  clang::TypeSourceInfo *T = cast<clang::CppxTypeLiteral>(Ty)->getValue();
 
-  // clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
-  // clang::VarDecl *VD =
-  //   clang::VarDecl::Create(CxxAST, Owner, Loc, Loc, Id, T->getType(), T,
-  //                          getDefaultVariableStorageClass(SemaRef));
-  // Owner->addDecl(VD);
-  // D->setCxx(SemaRef, VD);
-  // D->CurrentPhase = Phase::Typing;
-  // // Checking for redeclaration, this will emit an error message if this is a
-  // // duplicate variable within the same current scope.
-  // SemaRef.checkForRedeclaration(D);
+  clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
+  clang::VarDecl *VD =
+    clang::VarDecl::Create(CxxAST, Owner, Loc, Loc, Id, T->getType(), T,
+                           getDefaultVariableStorageClass(SemaRef));
+  Owner->addDecl(VD);
+  D->setCxx(SemaRef, VD);
+  D->CurrentPhase = Phase::Typing;
+  // Checking for redeclaration, this will emit an error message if this is a
+  // duplicate variable within the same current scope.
+  SemaRef.checkForRedeclaration(D);
 
-  // if (SemaRef.DeepElaborationMode)
-  //   elaborateDefinitionInitialization(D);
-  // return VD;
-  llvm_unreachable("make object declaration not implemented yet.");
+  if (SemaRef.DeepElaborationMode)
+    elaborateDefinitionInitialization(D);
+  return VD;
+
 }
 
 clang::Decl *Elaborator::makeTypeDecl(Declaration *D, clang::QualType T) {
@@ -1490,10 +1490,10 @@ clang::Expr *Elaborator::elaborateConstantExpression(const Syntax *S) {
 clang::Expr *Elaborator::doElaborateExpression(const Syntax *S) {
   assert(S && "invalid expression");
   switch (S->getKind()) {
-  // case Syntax::Literal:
-  //   return elaborateLiteralExpression(cast<LiteralSyntax>(S));
-  // case Syntax::Identifier:
-  //   return elaborateIdentifierExpression(cast<IdentifierSyntax>(S));
+  case Syntax::Literal:
+    return elaborateLiteralExpression(cast<LiteralSyntax>(S));
+  case Syntax::Identifier:
+    return elaborateIdentifierExpression(cast<IdentifierSyntax>(S));
   // case Syntax::List:
   //   return elaborateListExpression(cast<ListSyntax>(S));
   // case Syntax::Seq:
