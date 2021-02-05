@@ -963,6 +963,7 @@ static bool isPrefixOperator(Parser &P, tok::TokenKind Open,
   case tok::IntKeyword:
   case tok::BoolKeyword:
   case tok::TypeKeyword:
+  case tok::VoidKeyword:
   case tok::Identifier:
   // Both prefix and primary.
   case tok::LeftParen:
