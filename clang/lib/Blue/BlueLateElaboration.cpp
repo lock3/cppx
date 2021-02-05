@@ -1,4 +1,3 @@
-#if 0
 //=== BlueLateElaboration.cpp - Late elaboration for Gold Nodes ------------==//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -106,4 +105,3 @@ ElaboratingClass::ElaboratingClass(
 
 } // namespace blue
 
-#endif

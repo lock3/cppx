@@ -21,6 +21,7 @@ using namespace blue;
 TEST(BlueFunction, SimpleFunctionDeclNoType){
   StringRef Code = R"BLUE(
 foo:() = {
+  return 4;
 }
 )BLUE";
 

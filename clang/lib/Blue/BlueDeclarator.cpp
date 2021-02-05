@@ -1,5 +1,3 @@
-#if 0
-
 //===- BlueDeclarator.cpp - Information about declarations ----------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -45,7 +43,7 @@ std::string Declarator::getString() const {
   case Type: {
     std::string Ret = "[type] ";
     if (const AtomSyntax *A = dyn_cast<AtomSyntax>(getInfo()))
-      Ret += A->getSpelling();
+      Ret += A->spelling();
     else
       Ret += "complex";
     return Ret;
@@ -59,16 +57,17 @@ std::string Declarator::getString() const {
     std::string Ret = "[";
 
     if (const AtomSyntax *A = dyn_cast<AtomSyntax>(getInfo()))
-      Ret += A->getSpelling();
+      Ret += A->spelling();
     else if (const ListSyntax *L = dyn_cast<ListSyntax>(getInfo())) {
-      if (L->getNumChildren() == 1) {
-        if (const AtomSyntax *B = dyn_cast<AtomSyntax>(L->getChild(0)))
-          Ret += B->getSpelling();
-        else
-          Ret += "expr";
-      } else {
-        Ret += "expr";
-      }
+      // if (L->getNumChildren() == 1) {
+      //   if (const AtomSyntax *B = dyn_cast<AtomSyntax>(L->getChild(0)))
+      //     Ret += B->spelling();
+      //   else
+      //     Ret += "expr";
+      // } else {
+      //   Ret += "expr";
+      // }
+      Ret += "expr";
     } else
       return "expr";
 
@@ -95,4 +94,3 @@ std::string Declarator::getString() const {
 
 } // namespace blue
 
-#endif
