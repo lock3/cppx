@@ -2430,6 +2430,7 @@ void TextNodeDumper::VisitIndexSyntax(const blue::IndexSyntax *S) {
 }
 
 void TextNodeDumper::VisitInfixSyntax(const blue::InfixSyntax *S) {
+  OS << " '" << S->operation().getSpelling() << "'";
 }
 
 void TextNodeDumper::VisitControlSyntax(const blue::ControlSyntax *S) {

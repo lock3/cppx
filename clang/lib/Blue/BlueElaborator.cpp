@@ -817,15 +817,14 @@ clang::Decl *Elaborator::makeValueDecl(Declaration *D) {
     ElabMode.setMode(true);
     // Doing a quick check to see if the RHS is a type expression.
     if (D->hasInitializer()) {
-      llvm_unreachable("Initializer not implemented yet");
-    //   auto E = elaborateExpression(D->getInitializer());
-    //   if (!E)
-    //     // TODO: May want an invalid declaration error here.
-    //     return nullptr;
+      auto E = elaborateExpression(D->getInitializer());
+      if (!E)
+        // TODO: May want an invalid declaration error here.
+        return nullptr;
 
-    //   if (E->getType()->isKindType()) {
-    //     return makeTypeDecl(D, T);
-    //   }
+      if (E->getType()->isKindType()) {
+        return makeTypeDecl(D, T);
+      }
     }
   }
   if (T->isKindType()) {
@@ -2123,81 +2122,80 @@ void Elaborator::elaborateDefinitionInitialization(Declaration *D) {
 }
 
 void Elaborator::elaborateVarDef(Declaration *D) {
-  // D->CurrentPhase = Phase::Initialization;
-  // if (!D->getCxx())
-  //   return;
+  D->CurrentPhase = Phase::Initialization;
+  if (!D->getCxx())
+    return;
 
 
-  // // If this isn't early elaboration then we have to actually track it.
-  // // if (!IsEarly)
-  // //   ElabTracker.init(D);
+  // If this isn't early elaboration then we have to actually track it.
+  // if (!IsEarly)
+  //   ElabTracker.init(D);
 
-  // // Sema::OptionalInitScope<Sema::ResumeScopeRAII> OptResumeScope(SemaRef);
-  // // clang::Expr *InitExpr = nullptr;
-  // // clang::VarDecl *VD = nullptr;
-  // // Sema::DeclInitializationScope ClangInitScope(SemaRef, D);
-  // // bool NeedsConstEvaluation = false;
-  // // if (D->defines<clang::VarTemplateDecl>()) {
-  // //   if (SemaRef.checkForRedefinition<clang::VarTemplateDecl>(D))
-  // //     return;
+  // Sema::OptionalInitScope<Sema::ResumeScopeRAII> OptResumeScope(SemaRef);
+  // clang::Expr *InitExpr = nullptr;
+  // clang::VarDecl *VD = nullptr;
+  // Sema::DeclInitializationScope ClangInitScope(SemaRef, D);
+  // bool NeedsConstEvaluation = false;
+  // if (D->defines<clang::VarTemplateDecl>()) {
+  //   if (SemaRef.checkForRedefinition<clang::VarTemplateDecl>(D))
+  //     return;
 
-  // //   // We need to attempt to re-enter the template context for this variable.
-  // //   OptResumeScope.Init(D->SavedScope, D->Op);
-  // //   clang::VarTemplateDecl *VTD = cast<clang::VarTemplateDecl>(D->Cxx);
-  // //   VD = VTD->getTemplatedDecl();
-  // // } else {
-  // //   if (SemaRef.checkForRedefinition<clang::VarDecl>(D))
-  // //     return;
-  // //   VD = cast<clang::VarDecl>(D->Cxx);
-  // // }
+  //   // We need to attempt to re-enter the template context for this variable.
+  //   OptResumeScope.Init(D->SavedScope, D->Op);
+  //   clang::VarTemplateDecl *VTD = cast<clang::VarTemplateDecl>(D->Cxx);
+  //   VD = VTD->getTemplatedDecl();
+  // } else {
+  //   if (SemaRef.checkForRedefinition<clang::VarDecl>(D))
+  //     return;
+  //   VD = cast<clang::VarDecl>(D->Cxx);
+  // }
 
-  // // if (VD->isConstexpr())
-  // //   NeedsConstEvaluation = true;
-  // clang::VarDecl *VD = cast<clang::VarDecl>(D->getCxx());
-  // const DefSyntax *Def = D->asDef();
-  // if (!Def)
-  //   return;
-  // if (!Def->hasInitializer()) {
-  //   // if (isa<clang::ParmVarDecl>(VD))
-  //   //   return;
-  //   // FIXME: We probably want to synthesize some kind of initializer here.
-  //   // Not quite sure how we want to do this.
-  //   //
-  //   // FIXME: What if D has type auto? Surely this is an error. For example:
-  //   //
-  //   //    x : auto
-  //   //
-  //   // declares an undeduced-type variable with no initializer. Presumably
-  //   // this should be an error.
+  // if (VD->isConstexpr())
+  //   NeedsConstEvaluation = true;
+  clang::VarDecl *VD = cast<clang::VarDecl>(D->getCxx());
+  auto *Def = D->asDef();
+  if (!Def)
+    return;
+  if (!Def->initializer()) {
+    // if (isa<clang::ParmVarDecl>(VD))
+    //   return;
+    // FIXME: We probably want to synthesize some kind of initializer here.
+    // Not quite sure how we want to do this.
+    //
+    // FIXME: What if D has type auto? Surely this is an error. For example:
+    //
+    //    x : auto
+    //
+    // declares an undeduced-type variable with no initializer. Presumably
+    // this should be an error.
 
-  //   // This handles implcit initialization/constructor calls for variables
-  //   // that don't have a = sign on first use, but have a type.
-  //   // That includes complex types.
-  //   getCxxSema().ActOnUninitializedDecl(VD);
-  //   getCxxSema().FinalizeDeclaration(VD);
+    // This handles implcit initialization/constructor calls for variables
+    // that don't have a = sign on first use, but have a type.
+    // That includes complex types.
+    getCxxSema().ActOnUninitializedDecl(VD);
+    getCxxSema().FinalizeDeclaration(VD);
+    return;
+  }
+  // if (D->defines<clang::VarTemplateDecl>()) {
+  //   // I may need to revisit this in the furture becaus this might not be
+  //   // the right thing to do in this case.
+  //   VD->setInit(InitExpr);
+  // } else {
+
+  // if (D->isDeclaredWithinClass() && !VD->isInlineSpecified()
+  //     && (!VD->getType().isConstant(Context.CxxAST) && !VD->isConstexpr())) {
+  //   SemaRef.Diags.Report(D->IdDcl->getLoc(),
+  //                       clang::diag::err_in_class_initializer_non_const);
   //   return;
   // }
-  // // if (D->defines<clang::VarTemplateDecl>()) {
-  // //   // I may need to revisit this in the furture becaus this might not be
-  // //   // the right thing to do in this case.
-  // //   VD->setInit(InitExpr);
-  // // } else {
-
-  // // if (D->isDeclaredWithinClass() && !VD->isInlineSpecified()
-  // //     && (!VD->getType().isConstant(Context.CxxAST) && !VD->isConstexpr())) {
-  // //   SemaRef.Diags.Report(D->IdDcl->getLoc(),
-  // //                       clang::diag::err_in_class_initializer_non_const);
-  // //   return;
-  // // }
-  // // if (auto LS = dyn_cast<ListSyntax>(Def->getInitializer())) {
+  // if (auto LS = dyn_cast<ListSyntax>(Def->getInitializer())) {
     
-  // // }
-  // auto InitExpr = elaborateExpression(Def->getInitializer());
-  // if (!InitExpr)
-  //   return;
-  // // Update the initializer.
-  // getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
-  llvm_unreachable("variable declaration not implemented yet");
+  // }
+  auto InitExpr = elaborateExpression(Def->initializer());
+  if (!InitExpr)
+    return;
+  // Update the initializer.
+  getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
 }
 
 void Elaborator::elaborateFieldInit(Declaration *D) {
@@ -2455,7 +2453,27 @@ clang::Expr *Elaborator::elaboratePostfixExpression(const PostfixSyntax *S) {
 }
 
 clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
-  llvm_unreachable("elaborateInfixExpression not implemented yet");
+  auto LHS = elaborateExpression(S->operand(0));
+  if (!LHS)
+    return nullptr;
+
+  if (S->operation().hasKind(tok::Dot))
+    return elaborateMemberAccess(LHS, S);
+
+  auto RHS = elaborateExpression(S->operand(1));
+  if (!RHS)
+    return nullptr;
+
+  auto OpIter = SemaRef.BinOpMap.find(S->operation().getSpelling());
+  if (OpIter == SemaRef.BinOpMap.end()) {
+    Error(S->getLocation(), "invalid binary operator");
+    return nullptr;
+  }
+  clang::ExprResult Res = SemaRef.getCxxSema().BuildBinOp(/*Scope=*/nullptr,
+                                                          S->getLocation(),
+                                                          OpIter->second, LHS,
+                                                          RHS);
+  return Res.get();
 }
 
 clang::Expr *Elaborator::elaborateControlExpression(const ControlSyntax *S) {
@@ -3399,17 +3417,17 @@ clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
 //   return false;
 // }
 
-// clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,
-//                                                const BinarySyntax *S) {
-//   // clang::QualType Ty = LHS->getType();
-//   // if (Ty->isKindType())
-//   //   return elaborateTypeNameAccess(LHS, S);
-//   // if (Ty->isCppxNamespaceType())
-//   //   return elaborateNestedNamespaceAccess(LHS, S);
+clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,
+                                               const InfixSyntax *S) {
+  // clang::QualType Ty = LHS->getType();
+  // if (Ty->isKindType())
+  //   return elaborateTypeNameAccess(LHS, S);
+  // if (Ty->isCppxNamespaceType())
+  //   return elaborateNestedNamespaceAccess(LHS, S);
 
-//   // return elaborateMemberAccessOp(LHS, S);
-//   llvm_unreachable("Elaborator::elaborateMemberAccess on it.");
-// }
+  // return elaborateMemberAccessOp(LHS, S);
+  llvm_unreachable("Elaborator::elaborateMemberAccess on it.");
+}
 
 
 static clang::Expr *handleLookupInsideType(Sema &SemaRef,

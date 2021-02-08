@@ -176,7 +176,7 @@ public:
 
   /// Dispatching function, that determines based on the LHS's type how to
   /// process the RHS of the expression.
-  // clang::Expr *elaborateMemberAccess(clang::Expr *LHS, const BinarySyntax *S);
+  clang::Expr *elaborateMemberAccess(clang::Expr *LHS, const InfixSyntax *S);
 
   clang::Expr *elaborateTypeNameAccess(clang::Expr *LHS, const BinarySyntax *S);
   clang::Expr *elaborateNestedNamespaceAccess(clang::Expr *LHS, const BinarySyntax *S);

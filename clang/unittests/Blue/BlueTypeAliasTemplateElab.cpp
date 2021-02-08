@@ -21,9 +21,9 @@ using namespace blue;
 
 TEST(BlueTypeAliasTemplate, ExplicitTypeAlias) {
   StringRef Code = R"BLUE(
-C:[T:type] => class {
+C:[T:type] class = {
 }
-x : [T:type] => type = C[T];
+x : [T:type] type = C[T];
 )BLUE";
   auto ToMatch = typeAliasTemplateDecl(
     hasName("x"), has(typeAliasDecl(has(templateSpecializationType())))
