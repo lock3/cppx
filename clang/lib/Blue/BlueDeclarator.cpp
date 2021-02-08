@@ -90,6 +90,7 @@ std::string Declarator::getString() const {
     return "[class]";
 
   }
+  llvm_unreachable("Unimplemented kind of declarator.");
 }
 
 } // namespace blue

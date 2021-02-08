@@ -498,25 +498,24 @@ void Elaborator::elaborateParameters(const ListSyntax *S) {
 void Elaborator::getParameters(Declaration *D,
                                Declarator *FuncDeclarator,
                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
-  // // assert(D->Decl->declaresFunction());
-  // const ListSyntax *ParamList = dyn_cast<ListSyntax>(FuncDeclarator->getInfo());
-  // if (!ParamList)
-  //   return;
+  // assert(D->Decl->declaresFunction());
+  const ListSyntax *ParamList = dyn_cast<ListSyntax>(FuncDeclarator->getInfo());
+  if (!ParamList)
+    return;
 
-  // // FIXME: implement me
+  // FIXME: implement me
   // if (ParamList->isSemicolonSeparated())
   //   return;
 
-  // Scope *S = FuncDeclarator->DeclInfo.ParamScope;
-  // for (const Syntax *SS : ParamList->children()) {
-  //   Declaration *Param = S->findDecl(SS);
-  //   // FIXME: elaborate the entire function type if this happens?
-  //   if (!Param)
-  //     continue;
-  //   assert(isa<clang::ParmVarDecl>(Param->getCxx()));
-  //   Params.push_back(cast<clang::ParmVarDecl>(Param->getCxx()));
-  // }
-  llvm_unreachable("Working on it.");
+  Scope *S = FuncDeclarator->DeclInfo.ParamScope;
+  for (const Syntax *SS : ParamList->children()) {
+    Declaration *Param = S->findDecl(SS);
+    // FIXME: elaborate the entire function type if this happens?
+    if (!Param)
+      continue;
+    assert(isa<clang::ParmVarDecl>(Param->getCxx()));
+    Params.push_back(cast<clang::ParmVarDecl>(Param->getCxx()));
+  }
 }
 
 // void Elaborator::elaborateParameterGroup(const ListSyntax *S) {
@@ -525,6 +524,8 @@ void Elaborator::getParameters(Declaration *D,
 // }
 
 void Elaborator::elaborateParameterList(const ListSyntax *S) {
+  if (!S)
+    return;
   for (const Syntax *SS : S->children())
     elaborateParameter(SS);
 
@@ -919,7 +920,7 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
   const EnclosureSyntax *ParamTerm = dyn_cast<EnclosureSyntax>(Dcl->getInfo());
   if (!ParamTerm)
     return nullptr;
-
+  
   const ListSyntax *ParamList = nullptr;
   if (ParamTerm->term()) {
     ParamList = dyn_cast<ListSyntax>(ParamTerm->term());
@@ -927,28 +928,32 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
       return nullptr;
   }
 
-  clang::SourceLocation Loc = ParamTerm->getLocation();
+  clang::SourceLocation Loc = ParamTerm->open().getLocation();
   clang::ASTContext &CxxAST = SemaRef.getCxxAST();
-  Sema::ScopeRAII ParamScope(SemaRef, Scope::Parameter, ParamList);
+  Sema::ScopeRAII ParamScope(SemaRef, Scope::Parameter, ParamTerm);
   Dcl->DeclInfo.ParamScope = SemaRef.getCurrentScope();
-
-  elaborateParameters(ParamList);
-
-  unsigned N = ParamList->getNumChildren();
   llvm::SmallVector<clang::QualType, 4> Types;
   llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
-  for (unsigned I = 0; I < N; ++I) {
-    const Syntax *P = ParamList->operand(I);
-    Declaration *BluePD = SemaRef.getCurrentScope()->findDecl(P);
-    assert(BluePD && "associated declaration never found");
-    assert(isa<clang::ParmVarDecl>(BluePD->getCxx()) &&
-           "Parameter is not a ParmVarDecl");
-    clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(BluePD->getCxx());
+  unsigned N = 0;
+  if (!ParamList) {
+    N = 0;
 
-    CxxAST.setParameterIndex(PVD, I);
-    PVD->setScopeInfo(0, I);
-    Types.push_back(PVD->getType());
-    Params.push_back(PVD);
+  } else {
+    N = ParamList->getNumChildren();
+    elaborateParameters(ParamList);
+    for (unsigned I = 0; I < N; ++I) {
+      const Syntax *P = ParamList->operand(I);
+      Declaration *BluePD = SemaRef.getCurrentScope()->findDecl(P);
+      assert(BluePD && "associated declaration never found");
+      assert(isa<clang::ParmVarDecl>(BluePD->getCxx()) &&
+            "Parameter is not a ParmVarDecl");
+      clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(BluePD->getCxx());
+
+      CxxAST.setParameterIndex(PVD, I);
+      PVD->setScopeInfo(0, I);
+      Types.push_back(PVD->getType());
+      Params.push_back(PVD);
+    }
   }
 
   // FIXME: We need to configure parts of the prototype (e.g., noexcept).
