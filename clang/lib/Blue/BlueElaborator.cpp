@@ -126,19 +126,6 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
 }
 
 Declaration *Elaborator::buildDeclaration(const DeclarationSyntax *S) {
-  // Special case function identification.
-  //   name: () = { }
-  // This isn't identified as a possible function by the parser.
-  // Other kinds of functions are handle by create declarations.
-  // if (auto body = dyn_cast_or_null<EnclosureSyntax>(S->initializer())) {
-  //   if (body->open().hasKind(tok::LeftBrace)) {
-  //     if (auto params = dyn_cast_or_null<EnclosureSyntax>(S->declarator())) {
-  //       if (params->open().hasKind(tok::LeftParen)) {
-  //         // 
-  //       }
-  //     }
-  //   }
-  // }
   Declarator *Dcl = getDeclarator(S->type());
   return createDeclaration(S, Dcl, S->initializer());
 }
@@ -2350,7 +2337,11 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
     llvm_unreachable("Invalid enclosure syntax");
   }
   if (ArgEnclosure->isParenEnclosure()) {
-    llvm_unreachable("Function call syntax not implemented yet.");
+    if (auto ULE = dyn_cast<clang::UnresolvedLookupExpr>(IdExpr)) {
+      return elaborateFunctionCall(ULE, S);
+    } else {
+      llvm_unreachable("Function call syntax not implemented yet.");
+    }
   } else if (ArgEnclosure->isBracketEnclosure()) {
     // return 
     llvm_unreachable("Template instantation not implemented yet.");
@@ -2757,7 +2748,7 @@ clang::Stmt *Elaborator::elaborateEnclosureStmt(const EnclosureSyntax *S) {
   return elaborateListSyntaxStmt(Body);
 }
 
-clang::Stmt *Elaborator::elaborateListSyntaxStmt(const ListSyntax *S) { 
+clang::Stmt *Elaborator::elaborateListSyntaxStmt(const ListSyntax *S) {
   getCxxSema().ActOnStartOfCompoundStmt(false);
   Sema::ScopeRAII BlockScope(SemaRef, Scope::Block, S);
 
@@ -2782,11 +2773,13 @@ clang::Stmt *Elaborator::elaborateSequenceStmt(const SequenceSyntax *S) {
 }
 
 clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
-  // if (auto DS = dyn_cast<DefSyntax>(S)) {
-  //   return elaborateDeclStmt(DS);
-  // }
-  // if (const UnarySyntax *U = dyn_cast<UnarySyntax>(S))
-  //   return elaborateUnaryStmt(U);
+  if (auto DS = dyn_cast<DeclarationSyntax>(S))
+    return elaborateDeclStmt(DS);
+
+  if (auto U = dyn_cast<PrefixSyntax>(S)) {
+    if (U->operation().hasKind(tok::ReturnKeyword))
+      return elaborateReturnStmt(U);
+  }
   // else if (const ControlSyntax *C = dyn_cast<ControlSyntax>(S))
   //   return elaborateControlStmt(C);
   // else if (const SeqSyntax *Q = dyn_cast<SeqSyntax>(S))
@@ -2812,24 +2805,38 @@ clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
   return ExprStmt.get();
 }
 
-// clang::Stmt *Elaborator::elaborateDeclStmt(const DefSyntax *S) {
-//   auto D = buildDeclaration(S);
-//   if (!D) {
-//     Error(S->getLocation(), "invalid vairable declaration");
-//     return nullptr;
-//   }
+clang::Stmt *Elaborator::elaborateDeclStmt(const DeclarationSyntax *S) {
+  auto D = buildDeclaration(S);
+  if (!D) {
+    Error(S->getLocation(), "invalid vairable declaration");
+    return nullptr;
+  }
 
-//   // This should already emit an error.
-//   auto TypedDecl = elaborateDeclarationTyping(D);
-//   if (!TypedDecl)
-//     return nullptr;
-//   elaborateDefinitionInitialization(D);
-//   auto DclGrp = SemaRef.getCxxSema().ConvertDeclToDeclGroup(D->getCxx());
-//   auto DclStmt = getCxxSema().ActOnDeclStmt(DclGrp, D->Def->getLocation(),
-//                                             D->Def->getLocation());
-//   return DclStmt.get();
-// }
+  // This should already emit an error.
+  auto TypedDecl = elaborateDeclarationTyping(D);
+  if (!TypedDecl)
+    return nullptr;
+  elaborateDefinitionInitialization(D);
+  auto DclGrp = SemaRef.getCxxSema().ConvertDeclToDeclGroup(D->getCxx());
+  auto DclStmt = getCxxSema().ActOnDeclStmt(DclGrp, D->Def->getLocation(),
+                                            D->Def->getLocation());
+  return DclStmt.get();
+}
 
+clang::Stmt *Elaborator::elaborateReturnStmt(const PrefixSyntax *S) {
+  assert(S->operation().hasKind(tok::ReturnKeyword)
+         && "Invalid return statement");
+  clang::Expr *Val = nullptr;
+
+  if (S->operand())
+    // if this elaborates to null, we'll just let clang::Sema handle the error
+    Val = elaborateExpression(S->operand());
+
+  auto ReturnResult = SemaRef.getCxxSema().ActOnReturnStmt(
+    S->operation().getLocation(), Val, SemaRef.getCurClangScope());
+
+  return ReturnResult.get();
+}
 // clang::Stmt *Elaborator::elaborateUnaryStmt(const UnarySyntax *S) {
 //   switch (S->getOperator().getKind()) {
 //   case tok::ReturnKeyword:
@@ -2990,18 +2997,6 @@ clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
 //                               clang::SourceLocation(), Block).get();
 // }
 
-// clang::Stmt *Elaborator::elaborateReturnStmt(const UnarySyntax *S) {
-//   clang::Expr *Val = nullptr;
-
-//   if (S->getOperand())
-//     // if this elaborates to null, we'll just let clang::Sema handle the error
-//     Val = elaborateExpression(S->getOperand());
-
-//   auto ReturnResult = SemaRef.getCxxSema().ActOnReturnStmt(
-//     S->getOperator().getLocation(), Val, SemaRef.getCurClangScope());
-
-//   return ReturnResult.get();
-// }
 
 // clang::Expr *Elaborator::elaborateApplyExpression(clang::Expr *LHS,
 //                                                   const BinarySyntax *S) {
@@ -3093,44 +3088,48 @@ clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
 //   return SubscriptExpr.get();
 // }
 
-// clang::Expr *Elaborator::elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
-//                                                const BinarySyntax *Op) {
-//   if (!Op->getRightOperand() || isa<ErrorSyntax>(Op->getRightOperand()))
-//     return nullptr;
-//   const ListSyntax *Args = dyn_cast<ListSyntax>(Op->getRightOperand());
-//   if (!Args) {
-//     Error(Op->getRightOperand()->getLocation(), "expected function arguments");
-//     return nullptr;
-//   }
+clang::Expr *Elaborator::elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
+                                               const CallSyntax *Op) {
+  auto Enc = dyn_cast<EnclosureSyntax>(Op->operand(1));
+  if (!Enc)
+    llvm_unreachable("invalid syntax");
 
-//   llvm::SmallVector<clang::Expr *, 4> ArgExprs;
-//   for (const Syntax *A : Args->children()) {
-//     clang::Expr *Argument = elaborateExpression(A);
-//     if (!A)
-//       continue;
+  llvm::SmallVector<clang::Expr *, 4> ArgExprs;
+  if (Enc->operand()) {
+    const ListSyntax *Args = dyn_cast<ListSyntax>(Enc->operand());
+    if (!Args) {
+      Error(Enc->operand()->getLocation(), "expected function arguments");
+      return nullptr;
+    }
 
-//     ArgExprs.push_back(Argument);
-//   }
+    for (const Syntax *A : Args->children()) {
+      clang::Expr *Argument = elaborateExpression(A);
+      if (!A)
+        continue;
 
-//   // FIXME: what needs to happen here?
-//   if (!Base->hasExplicitTemplateArgs()) {
-//     for (auto D : Base->decls()) {
-//       if (auto *FD = dyn_cast<clang::FunctionDecl>(D)) {
-//           if (FD->getTemplatedKind() ==
-//               clang::FunctionDecl::TK_FunctionTemplateSpecialization) {
-//             ;
-//           }
-//       }
-//     }
-//   }
+      ArgExprs.push_back(Argument);
+    }
 
-//   // try and make the call and see what happens.
-//   clang::ExprResult Call = CxxSema.ActOnCallExpr(
-//     CxxSema.getCurScope(), Base, Args->getLocation(),
-//     ArgExprs, Args->getEndLocation());
+  }
+  // FIXME: what needs to happen here?
+  if (!Base->hasExplicitTemplateArgs()) {
+    for (auto D : Base->decls()) {
+      if (auto *FD = dyn_cast<clang::FunctionDecl>(D)) {
+        if (FD->getTemplatedKind() ==
+            clang::FunctionDecl::TK_FunctionTemplateSpecialization) {
+          ;
+        }
+      }
+    }
+  }
 
-//   return Call.get();
-// }
+  // try and make the call and see what happens.
+  clang::ExprResult Call = CxxSema.ActOnCallExpr(
+    CxxSema.getCurScope(), Base, Enc->open().getLocation(),
+    ArgExprs, Enc->close().getLocation());
+
+  return Call.get();
+}
 
 
 // void Elaborator::elaborateTemplateArgs(const ListSyntax *ArgList,
