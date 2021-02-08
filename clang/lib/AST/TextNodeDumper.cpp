@@ -2403,6 +2403,7 @@ void TextNodeDumper::VisitEnclosureSyntax(const blue::EnclosureSyntax *S) {
 }
 
 void TextNodeDumper::VisitPrefixSyntax(const blue::PrefixSyntax *S) {
+  OS << " '" << S->operation().getSpelling() << "' ";
 }
 
 void TextNodeDumper::VisitPostfixSyntax(const blue::PostfixSyntax *S) {

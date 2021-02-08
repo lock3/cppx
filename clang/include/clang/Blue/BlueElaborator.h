@@ -151,6 +151,8 @@ public:
   clang::Expr *elaborateListExpression(const ListSyntax *S);
   clang::Expr *elaborateSequenceExpression(const SequenceSyntax *S);
 
+
+  
   // clang::Expr *elaborateSeqExpression(const SeqSyntax *S);
   // clang::Expr *elaborateUnaryExpression(const UnarySyntax *S);
   // clang::Expr *elaborateBinaryExpression(const BinarySyntax *S);
@@ -188,8 +190,10 @@ public:
   clang::Expr *elaborateRealMetaFunction(const BinarySyntax *S);
 
   /// Stmts
-  // clang::Stmt *elaborateSeq(const SeqSyntax *S);
-  // clang::Stmt *elaborateStatement(const Syntax *S);
+  clang::Stmt *elaborateEnclosureStmt(const EnclosureSyntax *S);
+  clang::Stmt *elaborateListSyntaxStmt(const ListSyntax *S);
+  clang::Stmt *elaborateSequenceStmt(const SequenceSyntax *S);
+  clang::Stmt *elaborateStatement(const Syntax *S);
   // clang::Stmt *elaborateDeclStmt(const DeclarationSyntax *S);
   // clang::Stmt *elaborateUnaryStmt(const UnarySyntax *S);
   // clang::Stmt *elaborateControlStmt(const ControlSyntax *S);
