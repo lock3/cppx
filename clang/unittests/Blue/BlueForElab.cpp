@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueFor, NoBraces) {
   StringRef Code = R"BLUE(
-main : () -> int {
+main : () int = {
   y : int = 0;
   for (x : int = 0; x < 10; x++)
     x = y;
@@ -34,7 +34,7 @@ main : () -> int {
 
 TEST(BlueFor, Braces) {
   StringRef Code = R"BLUE(
-main : () -> int {
+main : () int = {
   y : int = 0;
   for (x : int = 0; x < 10; x++) {
     y++;
@@ -50,7 +50,7 @@ main : () -> int {
 
 TEST(BlueFor, NoVar) {
   StringRef Code = R"BLUE(
-main : () -> int {
+main : () int = {
   y : int = 0;
   for (;y < 10; y++) {
     y++;
@@ -65,7 +65,7 @@ main : () -> int {
 
 TEST(BlueFor, NoInc) {
   StringRef Code = R"BLUE(
-main : () -> int {
+main : () int = {
   y : int = 0;
   for (x : int = 0; x < 10; ) {
     x++;
@@ -80,7 +80,7 @@ main : () -> int {
 
 TEST(BlueFor, Infinite) {
   StringRef Code = R"BLUE(
-main : () -> int {
+main : () int = {
   y : int = 0;
   for (;;) {
     x++;

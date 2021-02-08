@@ -138,7 +138,19 @@ public:
 
   clang::Expr *elaborateLiteralExpression(const LiteralSyntax *S);
   clang::Expr *elaborateIdentifierExpression(const IdentifierSyntax *S);
+  // clang::Expr *elaborateListExpression(const ListSyntax *S);
+
+  clang::Expr *elaborateCallExpression(const CallSyntax *S);
+  clang::Expr *elaboratePrefixExpression(const PrefixSyntax *S);
+  clang::Expr *elaboratePostfixExpression(const PostfixSyntax *S);
+  clang::Expr *elaborateInfixExpression(const InfixSyntax *S);
+  clang::Expr *elaborateControlExpression(const ControlSyntax *S);
+  clang::Expr *elaborateIndexExpression(const IndexSyntax *S);
+  clang::Expr *elaboratePairExpression(const PairSyntax *S);
+  clang::Expr *elaborateTripleExpression(const TripleSyntax *S);
   clang::Expr *elaborateListExpression(const ListSyntax *S);
+  clang::Expr *elaborateSequenceExpression(const SequenceSyntax *S);
+
   // clang::Expr *elaborateSeqExpression(const SeqSyntax *S);
   // clang::Expr *elaborateUnaryExpression(const UnarySyntax *S);
   // clang::Expr *elaborateBinaryExpression(const BinarySyntax *S);
@@ -164,7 +176,7 @@ public:
 
   /// Dispatching function, that determines based on the LHS's type how to
   /// process the RHS of the expression.
-  // clang::Expr *elaborateMemberAccess(clang::Expr *LHS, const BinarySyntax *S);
+  clang::Expr *elaborateMemberAccess(clang::Expr *LHS, const InfixSyntax *S);
 
   clang::Expr *elaborateTypeNameAccess(clang::Expr *LHS, const BinarySyntax *S);
   clang::Expr *elaborateNestedNamespaceAccess(clang::Expr *LHS, const BinarySyntax *S);
