@@ -499,7 +499,10 @@ void Elaborator::getParameters(Declaration *D,
                                Declarator *FuncDeclarator,
                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
   // assert(D->Decl->declaresFunction());
-  const ListSyntax *ParamList = dyn_cast<ListSyntax>(FuncDeclarator->getInfo());
+  FuncDeclarator->getInfo()->dump();
+  auto ParamEnclosure = dyn_cast<EnclosureSyntax>(FuncDeclarator->getInfo());
+  assert(ParamEnclosure && "Invalid function declarator info node.");
+  auto ParamList = dyn_cast_or_null<ListSyntax>(ParamEnclosure->operand());
   if (!ParamList)
     return;
 
