@@ -809,13 +809,21 @@ Syntax *Parser::parseParameter()
   return new DeclarationSyntax(Id, Type, nullptr, Init);
 }
 
+
+static bool isAssignmentOp(tok::TokenKind K)
+{
+  return K == tok::PlusEqual || K == tok::MinusEqual
+        || K == tok::StarEqual || K == tok::SlashEqual
+        || K == tok::PercentEqual;
+}
+
+
 Syntax *Parser::parseAssignmentExpression() {
   Syntax *E0 = parseImplicationExpression();
-  if (Token Op = matchToken(tok::Equal)) {
+  while (Token Op = matchTokenIf(isAssignmentOp)) {
     Syntax *E1 = parseAssignmentExpression();
-    return new InfixSyntax(Op, E0, E1);
+    E0 = new InfixSyntax(Op, E0, E1);
   }
-
   return E0;
 }
 
