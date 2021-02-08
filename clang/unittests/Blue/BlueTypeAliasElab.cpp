@@ -50,7 +50,7 @@ x : type;
 
 TEST(BlueTypeAlias, TypeAliasOfAClass) {
   StringRef Code = R"BLUE(
-Y : class{ }
+Y : class = { }
 x : = Y;
 )BLUE";
   auto ToMatch = typeAliasDecl(

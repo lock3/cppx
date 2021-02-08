@@ -156,8 +156,7 @@ namespace
     P.expectToken(tok::Colon);
     if (P.nextTokenIs(tok::IsKeyword)) {
       DC.Cons = P.parseConstraint();
-    }
-    else {
+    } else {
       DC.Type = P.parseDescriptor();
       if (P.nextTokenIs(tok::IsKeyword))
         DC.Cons = P.parseConstraint();
@@ -177,12 +176,17 @@ namespace
   InitializerClause parseInitializerClause(Parser &P)
   {
     InitializerClause Clause;
-    P.expectToken(tok::Equal);
+    if (P.nextTokenIs(tok::Equal)) {
 
-    if (P.nextTokenIs(tok::LeftBrace)) {
-      Clause.Init = P.parseBlockStatement();
+      P.expectToken(tok::Equal);
+
+      if (P.nextTokenIs(tok::LeftBrace)) {
+        Clause.Init = P.parseBlockStatement();
+      } else {
+        Clause.Init = P.parseExpression();
+        P.expectToken(tok::Semicolon);
+      }
     } else {
-      Clause.Init = P.parseExpression();
       P.expectToken(tok::Semicolon);
     }
 
@@ -1186,9 +1190,14 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::FalseKeyword:
     // Type literals
   case tok::VoidKeyword:
+  case tok::FloatKeyword:
   case tok::IntKeyword:
   case tok::BoolKeyword:
   case tok::TypeKeyword:
+    // Built in type functions.
+  case tok::IntegerKeyword:
+  case tok::RealKeyword:
+  case tok::CharacterKeyword:
     // Control primitives
   case tok::ContinueKeyword:
   case tok::BreakKeyword: {
@@ -1223,8 +1232,9 @@ Syntax *Parser::parsePrimaryExpression() {
 
 Syntax *Parser::parseIdExpression() {
   Token Id = expectToken(tok::Identifier);
-  // llvm::outs() << "Parsed token = " << Id.getSpelling() << "\n";
-  return new IdentifierSyntax(Id);
+  if (Id)
+    return new IdentifierSyntax(Id);
+  return nullptr;
 }
 
 Syntax *Parser::parseTupleExpression() {

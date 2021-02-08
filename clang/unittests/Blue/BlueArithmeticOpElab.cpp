@@ -77,7 +77,7 @@ x:=-5;
 
 TEST(BlueArithmeticOp, PlusEqual) {
   StringRef Code = R"BLUE(
-foo:()->void {
+foo:() void = {
   x:int;
   y:int;
   x += y;
@@ -89,7 +89,7 @@ foo:()->void {
 
 TEST(BlueArithmeticOp, MinusEqual) {
   StringRef Code = R"BLUE(
-foo:()->void {
+foo:() void = {
   x:int;
   y:int;
   x -= y;
@@ -101,7 +101,7 @@ foo:()->void {
 
 TEST(BlueArithmeticOp, MultiplicationEqual) {
   StringRef Code = R"BLUE(
-foo:()->void {
+foo:() void = {
   x:int;
   y:int;
   x *= y;
@@ -113,7 +113,7 @@ foo:()->void {
 
 TEST(BlueArithmeticOp, DivEqual) {
   StringRef Code = R"BLUE(
-foo:()->void {
+foo:() void = {
   x:int;
   y:int;
   x /= y;
@@ -125,7 +125,7 @@ foo:()->void {
 
 TEST(BlueArithmeticOp, ModEqual) {
   StringRef Code = R"BLUE(
-foo:()->void {
+foo:() void = {
   x:int;
   y:int;
   x %= y;

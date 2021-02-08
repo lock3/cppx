@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueWhile, NoBraces) {
   StringRef Code = R"BLUE(
-main : () -> int {
+main : () int = {
   y : int = 0;
   while (y < 10)
     y++;
@@ -34,7 +34,7 @@ main : () -> int {
 
 TEST(BlueWhile, Braces) {
   StringRef Code = R"BLUE(
-main : () -> int {
+main : () int = {
   y : int = 0;
   while (y < 10) {
     y++;

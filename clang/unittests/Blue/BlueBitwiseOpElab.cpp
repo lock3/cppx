@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueBitwiseOp, BWAnd) {
   StringRef Code = R"BLUE(
-foo:()->void{
+foo:() void = {
   x:int;
   y := bit_and(4, 5);
 })BLUE";
@@ -30,7 +30,7 @@ foo:()->void{
 
 TEST(BlueBitwiseOp, BWOr) {
   StringRef Code = R"BLUE(
-foo:()->void{
+foo:() void = {
   x:int;
   y := bit_or(x, 5);
 }
@@ -41,7 +41,7 @@ foo:()->void{
 
 TEST(BlueBitwiseOp, BWXOr) {
   StringRef Code = R"BLUE(
-foo:()->void{
+foo:() void = {
   x:int;
   y:=bit_xor(x, 5);
 }
@@ -52,7 +52,7 @@ foo:()->void{
 
 TEST(BlueBitwiseOp, BWLeftShift) {
   StringRef Code = R"BLUE(
-foo:()->void{
+foo:() void = {
   x:int;
   y:= bit_shl(x, 5);
 }
@@ -63,7 +63,7 @@ foo:()->void{
 
 TEST(BlueBitwiseOp, BWRightShift) {
   StringRef Code = R"BLUE(
-foo:()->void{
+foo:() void = {
   x:int;
   y:=bit_shr(x, 5);
 }
@@ -74,7 +74,7 @@ foo:()->void{
 
 TEST(BlueBitwiseOp, BWComposite) {
   StringRef Code = R"BLUE(
-foo:()->void{
+foo:() void = {
   x:int;
   x = bit_not(x);
 }
