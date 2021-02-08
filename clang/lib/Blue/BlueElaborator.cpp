@@ -116,8 +116,8 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   for (const Syntax *SS : Declarations->children())
       elaborateDecl(SS);
 
-  // for (const Syntax *SS : Declarations->children())
-  //   elaborateDefinition(SS);
+  for (const Syntax *SS : Declarations->children())
+    elaborateDefinition(SS);
 
   SemaRef.getCxxSema().ActOnEndOfTranslationUnit();
   SemaRef.popDecl();
@@ -920,7 +920,7 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
   const EnclosureSyntax *ParamTerm = dyn_cast<EnclosureSyntax>(Dcl->getInfo());
   if (!ParamTerm)
     return nullptr;
-  
+
   const ListSyntax *ParamList = nullptr;
   if (ParamTerm->term()) {
     ParamList = dyn_cast<ListSyntax>(ParamTerm->term());
@@ -2225,39 +2225,38 @@ void Elaborator::elaborateFieldInit(Declaration *D) {
 }
 
 void Elaborator::elaborateFunctionDef(Declaration *D) {
-  // D->CurrentPhase = Phase::Initialization;
+  D->CurrentPhase = Phase::Initialization;
 
-  // if (!D->getCxx())
-  //   return;
-  // if (!D->Init)
-  //   return;
+  if (!D->getCxx())
+    return;
+  if (!D->Init)
+    return;
 
-  // // We saved the parameter scope while elaborating this function's type,
-  // // so push it on before we enter the function scope.
-  // // assert(D->Decl->declaresFunction());
-  // Declarator *FnDclrtr = D->getFirstDeclarator(Declarator::Function);
-  // Scope *ParamScope = FnDclrtr->DeclInfo.ParamScope;
-  // ResumeScopeRAII FnDclScope(SemaRef, ParamScope, ParamScope->getTerm());
+  // We saved the parameter scope while elaborating this function's type,
+  // so push it on before we enter the function scope.
+  // assert(D->Decl->declaresFunction());
+  Declarator *FnDclrtr = D->getFirstDeclarator(Declarator::Function);
+  Scope *ParamScope = FnDclrtr->DeclInfo.ParamScope;
+  ResumeScopeRAII FnDclScope(SemaRef, ParamScope, ParamScope->getTerm());
 
-  // Declaration *CurrentDeclaration = SemaRef.getCurrentDecl();
-  // // Entering clang scope. for function definition.
-  // SemaRef.enterClangScope(clang::Scope::FnScope |clang::Scope::DeclScope |
-  //                         clang::Scope::CompoundStmtScope);
-  // clang::Decl *FuncDecl =
-  //   SemaRef.getCxxSema().ActOnStartOfFunctionDef(SemaRef.getCurClangScope(),
-  //                                                D->getCxx());
+  Declaration *CurrentDeclaration = SemaRef.getCurrentDecl();
+  // Entering clang scope. for function definition.
+  SemaRef.enterClangScope(clang::Scope::FnScope |clang::Scope::DeclScope |
+                          clang::Scope::CompoundStmtScope);
+  clang::Decl *FuncDecl =
+    SemaRef.getCxxSema().ActOnStartOfFunctionDef(SemaRef.getCurClangScope(),
+                                                 D->getCxx());
 
 
-  // Sema::ScopeRAII FnScope(SemaRef, Scope::Function, D->Init);
-  // SemaRef.setCurrentDecl(D);
+  Sema::ScopeRAII FnScope(SemaRef, Scope::Function, D->Init);
+  SemaRef.setCurrentDecl(D);
+  auto Enclosure = dyn_cast<EnclosureSyntax>(D->Init);
+  clang::Stmt *Body = elaborateEnclosureStmt(Enclosure);
+  SemaRef.setClangDeclContext(cast<clang::FunctionDecl>(D->getCxx()));
+  SemaRef.getCxxSema().ActOnFinishFunctionBody(FuncDecl, Body);
 
-  // clang::Stmt *Body = elaborateSeq(cast<SeqSyntax>(D->Init));
-  // SemaRef.setClangDeclContext(cast<clang::FunctionDecl>(D->getCxx()));
-  // SemaRef.getCxxSema().ActOnFinishFunctionBody(FuncDecl, Body);
-
-  // // Return the current decl to whatever it was before.
-  // SemaRef.setCurrentDecl(CurrentDeclaration);
-  llvm_unreachable("Function body implementation not implemented yet");
+  // Return the current decl to whatever it was before.
+  SemaRef.setCurrentDecl(CurrentDeclaration);
 }
 
 /// This creates the correct expression in order to correctly reference
@@ -2505,6 +2504,8 @@ clang::Expr *Elaborator::elaborateSequenceExpression(const SequenceSyntax *S) {
   llvm_unreachable("elaborateSequenceExpression not implemented yet");
 }
 
+
+
 clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
                                   clang::SourceLocation Loc,
                                   clang::LookupResult &R,
@@ -2735,36 +2736,78 @@ clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
 //   return Block;
 // }
 
-// clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
-//   if (auto DS = dyn_cast<DefSyntax>(S)) {
-//     return elaborateDeclStmt(DS);
-//   }
-//   if (const UnarySyntax *U = dyn_cast<UnarySyntax>(S))
-//     return elaborateUnaryStmt(U);
-//   else if (const ControlSyntax *C = dyn_cast<ControlSyntax>(S))
-//     return elaborateControlStmt(C);
-//   else if (const SeqSyntax *Q = dyn_cast<SeqSyntax>(S))
-//     return elaborateSeq(Q);
-//   else if (isa<ErrorSyntax>(S))
-//     return nullptr;
+clang::Stmt *Elaborator::elaborateEnclosureStmt(const EnclosureSyntax *S) {
+  if (!S->operand()) {
+    // llvm_unreachable("Invalid block block doesn't have operand.");
+    getCxxSema().ActOnStartOfCompoundStmt(false);
+    Sema::ScopeRAII BlockScope(SemaRef, Scope::Block, S);
+    clang::Stmt *Block = getCxxSema().ActOnCompoundStmt(S->open().getLocation(),
+                                                        S->close().getLocation(),
+                                          nullptr, /*isStmtExpr=*/false).get();
+    return Block;
+  }
+  auto Body = dyn_cast<ListSyntax>(S->operand());
+  if (!Body) {
+    S->operand()->dump();
+    llvm_unreachable("Not sure if this is valid syntax or not.");
+  }
+  return elaborateListSyntaxStmt(Body);
+}
 
-//   // TODO: elaborate by syntax type: i.e. atom, etc. See GoldStmtElaborator
+clang::Stmt *Elaborator::elaborateListSyntaxStmt(const ListSyntax *S) { 
+  getCxxSema().ActOnStartOfCompoundStmt(false);
+  Sema::ScopeRAII BlockScope(SemaRef, Scope::Block, S);
 
-//   // If the statement kind is unknown then simply punt and
-//   // elaborate an expression.
-//   clang::Expr *E = elaborateExpression(S);
-//   if (!E)
-//     return nullptr;
-//   auto CheckExpr = SemaRef.getCxxSema().CheckPlaceholderExpr(E);
-//   if (CheckExpr.isInvalid())
-//     return nullptr;
-//   auto ExprStmt =
-//     SemaRef.getCxxSema().ActOnExprStmt(CheckExpr.get(), /*discardedValue*/true);
-//   if (ExprStmt.isInvalid())
-//     return nullptr;
+  llvm::SmallVector<clang::Stmt *, 16> Results;
+  clang::SourceLocation StartLoc = S->getBeginLocation();
+  clang::SourceLocation EndLoc = S->getEndLocation();
+  StartLoc = EndLoc = S->getLocation();
+  for (const Syntax *Child : S->children()) {
+    clang::Stmt *Statement = elaborateStatement(Child);
+    if (!Statement)
+      continue;
+    Results.push_back(Statement);
+  }
 
-//   return ExprStmt.get();
-// }
+  clang::Stmt *Block = getCxxSema().ActOnCompoundStmt(StartLoc, EndLoc,
+                                          Results, /*isStmtExpr=*/false).get();
+  return Block;
+}
+
+clang::Stmt *Elaborator::elaborateSequenceStmt(const SequenceSyntax *S) {
+  llvm_unreachable("Working on it.");
+}
+
+clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
+  // if (auto DS = dyn_cast<DefSyntax>(S)) {
+  //   return elaborateDeclStmt(DS);
+  // }
+  // if (const UnarySyntax *U = dyn_cast<UnarySyntax>(S))
+  //   return elaborateUnaryStmt(U);
+  // else if (const ControlSyntax *C = dyn_cast<ControlSyntax>(S))
+  //   return elaborateControlStmt(C);
+  // else if (const SeqSyntax *Q = dyn_cast<SeqSyntax>(S))
+  //   return elaborateSeq(Q);
+  // else if (isa<ErrorSyntax>(S))
+  //   return nullptr;
+
+  // TODO: elaborate by syntax type: i.e. atom, etc. See GoldStmtElaborator
+  // CUrrently only Handling expressions.
+  // If the statement kind is unknown then simply punt and
+  // elaborate an expression.
+  clang::Expr *E = elaborateExpression(S);
+  if (!E)
+    return nullptr;
+  auto CheckExpr = SemaRef.getCxxSema().CheckPlaceholderExpr(E);
+  if (CheckExpr.isInvalid())
+    return nullptr;
+  auto ExprStmt =
+    SemaRef.getCxxSema().ActOnExprStmt(CheckExpr.get(), /*discardedValue*/true);
+  if (ExprStmt.isInvalid())
+    return nullptr;
+
+  return ExprStmt.get();
+}
 
 // clang::Stmt *Elaborator::elaborateDeclStmt(const DefSyntax *S) {
 //   auto D = buildDeclaration(S);
