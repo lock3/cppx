@@ -1513,8 +1513,6 @@ clang::Expr *Elaborator::doElaborateExpression(const Syntax *S) {
       return elaboratePostfixExpression(cast<PostfixSyntax>(S));
   case Syntax::Infix:
       return elaborateInfixExpression(cast<InfixSyntax>(S));
-  case Syntax::Control:
-      return elaborateControlExpression(cast<ControlSyntax>(S));
   case Syntax::Index:
       return elaborateIndexExpression(cast<IndexSyntax>(S));
   case Syntax::Pair:
@@ -2483,10 +2481,6 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
   return Res.get();
 }
 
-clang::Expr *Elaborator::elaborateControlExpression(const ControlSyntax *S) {
-  llvm_unreachable("elaborateControlExpression not implemented yet");
-}
-
 clang::Expr *Elaborator::elaborateIndexExpression(const IndexSyntax *S) {
   llvm_unreachable("elaborateIndexExpression not implemented yet");
 }
@@ -2741,7 +2735,6 @@ clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
 
 clang::Stmt *Elaborator::elaborateEnclosureStmt(const EnclosureSyntax *S) {
   if (!S->operand()) {
-    // llvm_unreachable("Invalid block block doesn't have operand.");
     getCxxSema().ActOnStartOfCompoundStmt(false);
     Sema::ScopeRAII BlockScope(SemaRef, Scope::Block, S);
     clang::Stmt *Block = getCxxSema().ActOnCompoundStmt(S->open().getLocation(),
@@ -2749,6 +2742,7 @@ clang::Stmt *Elaborator::elaborateEnclosureStmt(const EnclosureSyntax *S) {
                                           nullptr, /*isStmtExpr=*/false).get();
     return Block;
   }
+
   auto Body = dyn_cast<ListSyntax>(S->operand());
   if (!Body) {
     S->operand()->dump();
@@ -2791,6 +2785,10 @@ clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
   //   return elaborateControlStmt(C);
   // else if (const SeqSyntax *Q = dyn_cast<SeqSyntax>(S))
   //   return elaborateSeq(Q);
+  if (const ControlSyntax *C = dyn_cast<ControlSyntax>(S))
+    return elaborateControlStmt(C);
+  if (const EnclosureSyntax *E = dyn_cast<EnclosureSyntax>(S))
+    return elaborateEnclosureStmt(E);
   // else if (isa<ErrorSyntax>(S))
   //   return nullptr;
 
@@ -2842,71 +2840,73 @@ clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
 //   return elaborateUnaryExpression(S);
 // }
 
-// clang::Stmt *Elaborator::elaborateControlStmt(const ControlSyntax *S) {
-//   switch (S->getKeyword().getKind()) {
-//   case tok::IfKeyword:
-//     return elaborateIfStmt(S);
-//   case tok::WhileKeyword:
-//     return elaborateWhileStmt(S);
-//   case tok::ForKeyword:
-//     return elaborateForStmt(S);
+clang::Stmt *Elaborator::elaborateControlStmt(const ControlSyntax *S) {
+  switch (S->control().getKind()) {
+  case tok::IfKeyword:
+    return elaborateIfStmt(S);
+  case tok::WhileKeyword:
+    return elaborateWhileStmt(S);
+  case tok::ForKeyword:
+    return elaborateForStmt(S);
 
-//   default:
-//     break;
-//   }
+  default:
+    break;
+  }
 
-//   llvm_unreachable("invalid or unimplemented control structure");
-// }
+  llvm_unreachable("invalid or unimplemented control structure");
+}
 
-// clang::Stmt *Elaborator::elaborateIfStmt(const ControlSyntax *S) {
-//   assert(S->getKeyword().hasKind(tok::IfKeyword) && "invalid if syntax");
+clang::Stmt *Elaborator::elaborateIfStmt(const ControlSyntax *S) {
+  assert(S->control().hasKind(tok::IfKeyword) && "invalid if syntax");
 
-//   // TODO: implement constexpr if
-//   bool IsConstExprIfStmt = false;
+  // TODO: implement constexpr if
+  bool IsConstExprIfStmt = false;
 
-//   // Elaborate the condition
-//   clang::Expr *ConditionExpr = elaborateExpression(S->getSignature());
-//   if (!ConditionExpr)
-//     return nullptr;
-//   clang::Sema::ConditionResult Condition =
-//     SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr,
-//                                         S->getLocation(), ConditionExpr,
-//                                         IsConstExprIfStmt ?
-//                                         clang::Sema::ConditionKind::ConstexprIf:
-//                                         clang::Sema::ConditionKind::Boolean);
+  // Elaborate the condition
+  clang::Expr *ConditionExpr = elaborateExpression(S->head());
+  if (!ConditionExpr)
+    return nullptr;
+  clang::Sema::ConditionResult Condition =
+    SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr,
+                                        S->getLocation(), ConditionExpr,
+                                        IsConstExprIfStmt ?
+                                        clang::Sema::ConditionKind::ConstexprIf:
+                                        clang::Sema::ConditionKind::Boolean);
 
-//   // Get the block, this *must* be a binary application.
-//   if (isa<ErrorSyntax>(S->getBlock()))
-//     return nullptr;
-//   const BinarySyntax *Block = cast<BinarySyntax>(S->getBlock());
-//   const Syntax *ThenBlock = Block->getLeftOperand();
-//   const Syntax *ElseBlock = Block->getRightOperand();
+  // Get the block, this *must* be a pair.
+  // if (isa<ErrorSyntax>(S->getBlock()))
+    // return nullptr;
+  const PairSyntax *Block = cast<PairSyntax>(S->body());
+  const Syntax *ThenBlock = Block->m_terms[0];
+  const Syntax *ElseBlock = Block->m_terms[1];
 
-//   // Elaborate the then block
-//   SemaRef.enterScope(Scope::Block, ThenBlock);
-//   clang::Stmt *Then = elaborateStatement(ThenBlock);
-//   SemaRef.leaveScope(ThenBlock);
-//   if (!Then)
-//     return nullptr;
+  // Elaborate the then block
+  SemaRef.enterScope(Scope::Block, ThenBlock);
+  clang::Stmt *Then = elaborateStatement(ThenBlock);
+  SemaRef.leaveScope(ThenBlock);
+  if (!Then)
+    return nullptr;
 
-//   // Elaborate the else block
-//   clang::Stmt *Else = nullptr;
-//   if (ElseBlock) {
-//     SemaRef.enterScope(Scope::Block, ElseBlock);
-//     Else = elaborateStatement(ElseBlock);
-//     SemaRef.leaveScope(ElseBlock);
-//   }
-//   clang::SourceLocation ElseLoc = Else ?
-//     Else->getBeginLoc() : clang::SourceLocation();
+  // Elaborate the else block
+  clang::Stmt *Else = nullptr;
+  if (ElseBlock) {
+    SemaRef.enterScope(Scope::Block, ElseBlock);
+    Else = elaborateStatement(ElseBlock);
+    SemaRef.leaveScope(ElseBlock);
+  }
+  clang::SourceLocation ElseLoc = Else ?
+    Else->getBeginLoc() : clang::SourceLocation();
 
-//   // Create the statement and return
-//   clang::StmtResult If = CxxSema.ActOnIfStmt(
-//     S->getLocation(), /*Constexpr=*/false, ConditionExpr->getExprLoc(),
-//     /*InitStmt=*/nullptr, Condition, ElseLoc, Then, ElseLoc, Else);
-//   return If.get();
-// }
+  // Create the statement and return
+  clang::StmtResult If = CxxSema.ActOnIfStmt(
+    S->getLocation(), /*Constexpr=*/false, ConditionExpr->getExprLoc(),
+    /*InitStmt=*/nullptr, Condition, ElseLoc, Then, ElseLoc, Else);
+  return If.get();
+}
 
-// clang::Stmt *Elaborator::elaborateWhileStmt(const ControlSyntax *S) {
+clang::Stmt *Elaborator::elaborateWhileStmt(const ControlSyntax *S) {
+  return nullptr;
+}
 //   assert(S->getKeyword().hasKind(tok::WhileKeyword) && "invalid while syntax");
 //   Sema::ScopeRAII WhileScope(SemaRef, Scope::Control, S);
 
@@ -2937,7 +2937,9 @@ clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
 //   return While.get();
 // }
 
-// clang::Stmt *Elaborator::elaborateForStmt(const ControlSyntax *S) {
+clang::Stmt *Elaborator::elaborateForStmt(const ControlSyntax *S) {
+  return nullptr;
+}
 //   assert(S->getKeyword().hasKind(tok::ForKeyword) && "invalid while syntax");
 //   clang::SourceLocation ForLoc = S->getKeyword().getLocation();
 //   Sema::ScopeRAII ForScope(SemaRef, Scope::Control, S);

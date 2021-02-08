@@ -196,10 +196,10 @@ public:
   clang::Stmt *elaborateStatement(const Syntax *S);
   // clang::Stmt *elaborateDeclStmt(const DeclarationSyntax *S);
   // clang::Stmt *elaborateUnaryStmt(const UnarySyntax *S);
-  // clang::Stmt *elaborateControlStmt(const ControlSyntax *S);
-  // clang::Stmt *elaborateIfStmt(const ControlSyntax *S);
-  // clang::Stmt *elaborateWhileStmt(const ControlSyntax *S);
-  // clang::Stmt *elaborateForStmt(const ControlSyntax *S);
+  clang::Stmt *elaborateControlStmt(const ControlSyntax *S);
+  clang::Stmt *elaborateIfStmt(const ControlSyntax *S);
+  clang::Stmt *elaborateWhileStmt(const ControlSyntax *S);
+  clang::Stmt *elaborateForStmt(const ControlSyntax *S);
   // clang::Stmt *elaborateReturnStmt(const UnarySyntax *S);
 
 
