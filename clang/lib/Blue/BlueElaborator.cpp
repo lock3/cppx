@@ -499,10 +499,13 @@ void Elaborator::getParameters(Declaration *D,
                                Declarator *FuncDeclarator,
                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
   // assert(D->Decl->declaresFunction());
-  FuncDeclarator->getInfo()->dump();
-  auto ParamEnclosure = dyn_cast<EnclosureSyntax>(FuncDeclarator->getInfo());
-  assert(ParamEnclosure && "Invalid function declarator info node.");
-  auto ParamList = dyn_cast_or_null<ListSyntax>(ParamEnclosure->operand());
+
+  const auto *Enc = dyn_cast<EnclosureSyntax>(FuncDeclarator->getInfo());
+  if (!Enc)
+    return;
+  if (!Enc->term())
+    return;
+  const ListSyntax *ParamList = dyn_cast<ListSyntax>(Enc->term());
   if (!ParamList)
     return;
 
@@ -1525,6 +1528,7 @@ clang::Expr *Elaborator::doElaborateExpression(const Syntax *S) {
   default:
     break;
   }
+
   S->dump();
   llvm_unreachable("Unexpected syntax tree");
 }
@@ -2083,10 +2087,6 @@ clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
   case tok::ByteKeyword:
     return SemaRef.buildTypeExpr(getCxxContext().UnsignedCharTy,
                                  Tok.getLocation());
-  // case tok::CharacterKeyword:
-  //   return SemaRef.buildTypeExpr(getCxxContext().CharTy,
-  //                                Tok.getLocation());
-  // case tok::IntegerKeyword:
   case tok::IntKeyword:
     // FIXME: Support arbitrary length integer types via the lexer.
     return SemaRef.buildTypeExpr(getCxxContext().IntTy,
