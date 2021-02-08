@@ -177,12 +177,17 @@ namespace
   InitializerClause parseInitializerClause(Parser &P)
   {
     InitializerClause Clause;
-    P.expectToken(tok::Equal);
+    if (P.nextTokenIs(tok::Equal)) {
 
-    if (P.nextTokenIs(tok::LeftBrace)) {
-      Clause.Init = P.parseBlockStatement();
+      P.expectToken(tok::Equal);
+
+      if (P.nextTokenIs(tok::LeftBrace)) {
+        Clause.Init = P.parseBlockStatement();
+      } else {
+        Clause.Init = P.parseExpression();
+        P.expectToken(tok::Semicolon);
+      }
     } else {
-      Clause.Init = P.parseExpression();
       P.expectToken(tok::Semicolon);
     }
 
@@ -1182,6 +1187,7 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::FalseKeyword:
     // Type literals
   case tok::VoidKeyword:
+  case tok::FloatKeyword:
   case tok::IntKeyword:
   case tok::BoolKeyword:
   case tok::TypeKeyword:
