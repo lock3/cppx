@@ -194,13 +194,13 @@ public:
   clang::Stmt *elaborateListSyntaxStmt(const ListSyntax *S);
   clang::Stmt *elaborateSequenceStmt(const SequenceSyntax *S);
   clang::Stmt *elaborateStatement(const Syntax *S);
+
   clang::Stmt *elaborateDeclStmt(const DeclarationSyntax *S);
   clang::Stmt *elaborateReturnStmt(const PrefixSyntax *S);
-  // clang::Stmt *elaborateControlStmt(const ControlSyntax *S);
-  // clang::Stmt *elaborateIfStmt(const ControlSyntax *S);
-  // clang::Stmt *elaborateWhileStmt(const ControlSyntax *S);
-  // clang::Stmt *elaborateForStmt(const ControlSyntax *S);
-  // clang::Stmt *elaborateReturnStmt(const UnarySyntax *S);
+  clang::Stmt *elaborateControlStmt(const ControlSyntax *S);
+  clang::Stmt *elaborateIfStmt(const ControlSyntax *S);
+  clang::Stmt *elaborateWhileStmt(const ControlSyntax *S);
+  clang::Stmt *elaborateForStmt(const ControlSyntax *S);
 
 
   //===--------------------------------------------------------------------===//

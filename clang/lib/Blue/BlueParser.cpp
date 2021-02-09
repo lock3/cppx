@@ -328,7 +328,8 @@ Syntax *Parser::parseDeclarationStatement()
 Syntax *Parser::parseExpressionStatement()
 {
   Syntax *E = parseExpressionList();
-  expectToken(tok::Semicolon);
+  if (!PreviousToken.hasKind(tok::RightBrace))
+    expectToken(tok::Semicolon);
   return E;
 }
 
@@ -538,6 +539,8 @@ Syntax *Parser::parseConditionalExpression()
   if (matchToken(tok::ElseKeyword)) {
     Syntax *S2 = parseBlockExpression();
     S1 = new PairSyntax(S1, S2);
+  } else {
+    S1 = new PairSyntax(S1, nullptr);
   }
 
   return new ControlSyntax(Ctrl, S0, S1);
@@ -1235,6 +1238,9 @@ Syntax *Parser::parsePrimaryExpression() {
   // etc.). To do that, we'd have to maintain a stack of recovery strategies
   // that we can use to skip tokens.
   // diagnose_expected("primary-expression");
+  Diags.Report(getInputLocation(), clang::diag::err_expected) <<
+    getSpelling(getLookahead());
+  consumeToken();
   return nullptr;
 }
 

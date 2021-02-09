@@ -356,6 +356,9 @@ namespace blue
 
     // How deep into nested {}'s are we?
     unsigned BraceDepth = 0;
+
+    // How deep into nested {}'s were we when we started tracking?
+    unsigned BeginningBraceDepth = 0;
   };
 
 } // namespace blue
