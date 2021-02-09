@@ -161,8 +161,8 @@ public:
 
   // clang::Expr *elaborateArraySubscriptExpr(clang::Expr *Base,
   //                                          const BinarySyntax *Op);
-  // clang::Expr *elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
-  //                                    const BinarySyntax *Op);
+  clang::Expr *elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
+                                     const CallSyntax *Op);
 
   // void elaborateTemplateArgs(const ListSyntax *ArgList,
   //                            clang::TemplateArgumentListInfo &TemplateArgs,
@@ -194,13 +194,13 @@ public:
   clang::Stmt *elaborateListSyntaxStmt(const ListSyntax *S);
   clang::Stmt *elaborateSequenceStmt(const SequenceSyntax *S);
   clang::Stmt *elaborateStatement(const Syntax *S);
-  // clang::Stmt *elaborateDeclStmt(const DeclarationSyntax *S);
-  // clang::Stmt *elaborateUnaryStmt(const UnarySyntax *S);
+
+  clang::Stmt *elaborateDeclStmt(const DeclarationSyntax *S);
+  clang::Stmt *elaborateReturnStmt(const PrefixSyntax *S);
   clang::Stmt *elaborateControlStmt(const ControlSyntax *S);
   clang::Stmt *elaborateIfStmt(const ControlSyntax *S);
   clang::Stmt *elaborateWhileStmt(const ControlSyntax *S);
   clang::Stmt *elaborateForStmt(const ControlSyntax *S);
-  // clang::Stmt *elaborateReturnStmt(const UnarySyntax *S);
 
 
   //===--------------------------------------------------------------------===//

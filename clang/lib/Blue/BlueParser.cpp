@@ -156,7 +156,7 @@ namespace
     P.expectToken(tok::Colon);
     if (P.nextTokenIs(tok::IsKeyword)) {
       DC.Cons = P.parseConstraint();
-    } else {
+    } else if(P.nextTokenIsNot(tok::Equal)) {
       DC.Type = P.parseDescriptor();
       if (P.nextTokenIs(tok::IsKeyword))
         DC.Cons = P.parseConstraint();
@@ -364,7 +364,6 @@ Syntax *Parser::parseDeclaratorList()
   do
     parseItem(*this, &Parser::parseDeclarator, SS);
   while (matchToken(tok::Comma));
-
   return makeDeclaratorList(SS);
 }
 
