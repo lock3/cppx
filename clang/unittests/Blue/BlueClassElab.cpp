@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueClass, SimpleClassDecl) {
   StringRef Code = R"BLUE(
-C : class = { };
+C : type = { }
 )BLUE";
   auto ToMatch = cxxRecordDecl(hasName("C"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -28,7 +28,7 @@ C : class = { };
 
 TEST(BlueClass, ClassWithMemberDecl) {
   StringRef Code = R"BLUE(
-C : class = {
+C : type = {
   x:int;
 }
 )BLUE";
@@ -41,7 +41,7 @@ C : class = {
 
 TEST(BlueClass, ClassDeclUse_DefaultInit) {
   StringRef Code = R"BLUE(
-C : class = {
+C : type = {
 }
 x:C;
 
@@ -61,7 +61,7 @@ x:C;
 
 TEST(BlueClass, InclassMemberInitializers)  {
   StringRef Code = R"BLUE(
-C : class = {
+C : type = {
   y : bool = 1;
   x : int = 4;
 }
@@ -92,7 +92,7 @@ x:C;
 
 TEST(BlueClass, ReferenceToSelfAsPtr)  {
   StringRef Code = R"BLUE(
-C : class = {
+C : type = {
   x : ^C = null;
 }
 x:C;
@@ -118,7 +118,7 @@ x:C;
 
 TEST(BlueClass, MemberUse)  {
   StringRef Code = R"BLUE(
-C : class = {
+C : type = {
   x : int = 4;
   y : bool = 1;
 }
@@ -167,7 +167,7 @@ z:=x.x;
 
 TEST(BlueClass, MemberUse_ThroughPtr)  {
   StringRef Code = R"BLUE(
-C : class = {
+C : type = {
   x : int = 4;
   y : bool = 1;
 }
@@ -206,8 +206,8 @@ z:=x.x;
 
 TEST(BlueClass, NestedTypeDefinition) {
   StringRef Code = R"BLUE(
-outer : class = {
-  nested : class = {
+outer : type = {
+  nested : type = {
     a : int;
     b : float32;
   }
@@ -235,9 +235,9 @@ u : outer.nested;
 
 TEST(BlueClass, MultipleNestedTypeDefinition) {
   StringRef Code = R"(
-c : class = {
-  nested : class = {
-    nested2 : class = {
+c : type = {
+  nested : type = {
+    nested2 : type = {
       a : int;
       b : float32;
     }
@@ -270,7 +270,7 @@ u : c.nested.nested2;
 
 TEST(BlueClass, TypeAliasDecl) {
   StringRef Code = R"BLUE(
-outer : class = {
+outer : type = {
   x : type = int;
 }
 )BLUE";
@@ -285,7 +285,7 @@ outer : class = {
 
 TEST(BlueClass, TypeAliasDecl_OutOfOrderUse) {
   StringRef Code = R"BLUE(
-outer : class = {
+outer : type = {
   y : x;
   x : type = int;
 }
@@ -303,7 +303,7 @@ outer : class = {
 // TODO: IMplement me eventually.
 // TEST(BlueClass, ClassDeclUse_DefaultCtor) {
 //   StringRef Code = R"BLUE(
-// C : class {
+// C : type {
 //   x:int;
 // }
 // x:C = ();

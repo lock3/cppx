@@ -2399,7 +2399,11 @@ void TextNodeDumper::Visit(const blue::Syntax *S) {
 }
 
 void TextNodeDumper::VisitEnclosureSyntax(const blue::EnclosureSyntax *S) {
-  OS << " '" << S->open().getSpelling() << S->close().getSpelling() << "' ";
+  if (S->open()) {
+    OS << " '" << S->open().getSpelling() << S->close().getSpelling() << "' ";
+  } else {
+    OS << " '<invalid>' ";
+  }
 }
 
 void TextNodeDumper::VisitPrefixSyntax(const blue::PrefixSyntax *S) {
