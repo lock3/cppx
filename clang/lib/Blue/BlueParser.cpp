@@ -344,10 +344,11 @@ Syntax *Parser::parseExpressionStatement()
 Syntax *Parser::parseExpressionList()
 {
   llvm::SmallVector<Syntax *, 4> SS;
-  parseItem(*this, &Parser::parseExpression, SS);
-  while (matchToken(tok::Comma))
+  do
     parseItem(*this, &Parser::parseExpression, SS);
-  return new ListSyntax(AllocateSeq(SS), SS.size());
+  while (matchToken(tok::Comma));
+  // return new ListSyntax(AllocateSeq(SS), SS.size());
+  return makeDeclaratorList(SS, getLookahead());
 }
 
 /// Parse a declarator-list.
