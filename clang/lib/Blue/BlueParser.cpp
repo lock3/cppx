@@ -267,14 +267,14 @@ Syntax *Parser::parseDefinition() {
 }
 
 /// Builds the declarator list.
-static Syntax *makeDeclaratorList(SyntaxSeq &SS)
+static Syntax *makeDeclaratorList(SyntaxSeq &SS, tok::TokenKind La)
 {
   // TODO: What if `SS` is empty? Recovery means skipping the entire
   // declaration, probably.
   assert(!SS.empty());
 
   // Collapse singleton lists into simple declarators.
-  if (SS.size() == 1)
+  if (La != tok::RightBrace && SS.size() == 1)
     return SS[0];
 
   // FIXME: find a way to maintain the token kind?
@@ -287,7 +287,7 @@ Syntax *Parser::parseStatementSeq() {
     parseItem(*this, &Parser::parseStatement, SS);
   while (nextTokenIsNot(tok::RightBrace));
 
-  return makeDeclaratorList(SS);
+  return makeDeclaratorList(SS, getLookahead());
 }
 
 /// Parse a statement.
@@ -364,7 +364,7 @@ Syntax *Parser::parseDeclaratorList()
   do
     parseItem(*this, &Parser::parseDeclarator, SS);
   while (matchToken(tok::Comma));
-  return makeDeclaratorList(SS);
+  return makeDeclaratorList(SS, getLookahead());
 }
 
 /// Parse a declarator.
