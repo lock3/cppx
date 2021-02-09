@@ -25,7 +25,7 @@ foo:() = {
 }
 )BLUE";
 
-  auto ToMatch = functionDecl(hasName("foo"), hasType(asString("void (void)")));
+  auto ToMatch = functionDecl(hasName("foo"), hasType(asString("int (void)")));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
