@@ -266,6 +266,17 @@ Syntax *Parser::parseDefinition() {
   return new DeclarationSyntax(Decl, DC.Type, DC.Cons, IC.Init);
 }
 
+static inline bool isCloseEnclosure(tok::TokenKind K) {
+  switch(K) {
+  case tok::RightParen:
+  case tok::RightBracket:
+  case tok::RightBrace:
+    return true;
+  default:
+    return false;
+  }
+}
+
 /// Builds the declarator list.
 static Syntax *makeDeclaratorList(SyntaxSeq &SS, tok::TokenKind La)
 {
@@ -274,7 +285,7 @@ static Syntax *makeDeclaratorList(SyntaxSeq &SS, tok::TokenKind La)
   assert(!SS.empty());
 
   // Collapse singleton lists into simple declarators.
-  if (La != tok::RightBrace && SS.size() == 1)
+  if (!isCloseEnclosure(La) && SS.size() == 1)
     return SS[0];
 
   // FIXME: find a way to maintain the token kind?
