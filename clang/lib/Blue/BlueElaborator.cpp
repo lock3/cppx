@@ -783,11 +783,10 @@ Declarator *Elaborator::getImplicitAutoDeclarator() {
 
 
 clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
-//   auto *Ret = elaborateDeclarationTyping(D);
-//   if (SemaRef.DeepElaborationMode)
-//     elaborateDefinitionInitialization(D);
-//   return Ret;
-  llvm_unreachable("Early elab not implemented yet");
+  auto *Ret = elaborateDeclarationTyping(D);
+  if (SemaRef.DeepElaborationMode)
+    elaborateDefinitionInitialization(D);
+  return Ret;
 }
 
 // Declaration construction
