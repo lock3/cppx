@@ -1342,7 +1342,9 @@ clang::Expr *Elaborator::elaboratePointerDeclarator(const Declarator *Dcl) {
 
 /// Elaborate declarations of the form "[E]+ T".
 clang::Expr *Elaborator::elaborateArrayDeclarator(const Declarator *Dcl) {
-  assert(Dcl->getKind() == Declarator::Array && isa<ListSyntax>(Dcl->getInfo()));
+  llvm::outs() << "Dumping "
+  // assert(Dcl->getKind() == Declarator::Array
+  //        && isa<EnclosureSyntax>(Dcl->getInfo()));
 
   // const Declarator *Cur = Dcl;
   // llvm::SmallVector<clang::Expr *, 4> IndexExprs;
