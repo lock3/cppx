@@ -22,10 +22,11 @@ clang::SourceLocation Declarator::getLocation() const {
 
 void Declarator::dump() const {
   // FIXME: It would be nice to print something useful here.
-  Info->dump();
+  // Info->dump();
+  printSequence(llvm::errs());
 }
 
-void Declarator::printSequence(llvm::raw_ostream &os) {
+void Declarator::printSequence(llvm::raw_ostream &os) const {
   const Declarator *D = this;
   do {
     os << D->getString();
@@ -54,25 +55,26 @@ std::string Declarator::getString() const {
   case Pointer:
     return "^";
   case Array: {
-    std::string Ret = "[";
+    return "[array]";
+    // std::string Ret = "[";
 
-    if (const AtomSyntax *A = dyn_cast<AtomSyntax>(getInfo()))
-      Ret += A->spelling();
-    else if (const ListSyntax *L = dyn_cast<ListSyntax>(getInfo())) {
-      // if (L->getNumChildren() == 1) {
-      //   if (const AtomSyntax *B = dyn_cast<AtomSyntax>(L->getChild(0)))
-      //     Ret += B->spelling();
-      //   else
-      //     Ret += "expr";
-      // } else {
-      //   Ret += "expr";
-      // }
-      Ret += "expr";
-    } else
-      return "expr";
+    // if (const AtomSyntax *A = dyn_cast<AtomSyntax>(getInfo()))
+    //   Ret += A->spelling();
+    // else if (const ListSyntax *L = dyn_cast<ListSyntax>(getInfo())) {
+    //   // if (L->getNumChildren() == 1) {
+    //   //   if (const AtomSyntax *B = dyn_cast<AtomSyntax>(L->getChild(0)))
+    //   //     Ret += B->spelling();
+    //   //   else
+    //   //     Ret += "expr";
+    //   // } else {
+    //   //   Ret += "expr";
+    //   // }
+    //   Ret += "LIST";
+    // } else
+    //   return "expr";
 
-    Ret += "]";
-    return Ret;
+    // Ret += "]";
+    // return Ret;
   }
 
   case Function: {

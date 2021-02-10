@@ -86,12 +86,14 @@ public:
   // Children
   using child_iterator = llvm::ArrayRef<Syntax *>::iterator;
   using const_child_iterator = llvm::ArrayRef<Syntax *>::const_iterator;
+  using reverse_child_iterator = llvm::ArrayRef<Syntax *>::reverse_iterator;
   using child_range = llvm::iterator_range<child_iterator>;
   using const_child_range = llvm::iterator_range<const_child_iterator>;
+  using reverse_child_range = llvm::iterator_range<reverse_child_iterator>;
 
   child_range children();
   const_child_range children() const;
-
+  reverse_child_range reverseChildren() const;
   /// Emit debugging information about this node.
   void dump() const;
 private:

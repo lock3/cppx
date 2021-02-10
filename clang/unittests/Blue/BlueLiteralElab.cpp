@@ -27,13 +27,13 @@ x:=4;
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-TEST(BlueLiteral, FloatingPoint) {
-  StringRef Code = R"BLUE(
-x:=4.5;
-)BLUE";
-  auto ToMatch = floatLiteral(equals(4.5));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(BlueLiteral, FloatingPoint) {
+//   StringRef Code = R"BLUE(
+// x:=4.5;
+// )BLUE";
+//   auto ToMatch = floatLiteral(equals(4.5));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
 TEST(BlueLiteral, TrueKw) {
   StringRef Code = R"BLUE(

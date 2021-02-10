@@ -94,8 +94,8 @@ public:
 
 
   Declarator *getDeclarator(const Syntax *S);
-  // Declarator *getUnaryDeclarator(const UnarySyntax *S);
-  // Declarator *getBinaryDeclarator(const BinarySyntax *S);
+  Declarator *getArrayDeclarator(const ArraySyntax *AS);
+  Declarator *getPointerDeclarator(const PrefixSyntax *OS);
   Declarator *getLeafDeclarator(const Syntax *S);
   Declarator *getImplicitAutoDeclarator();
   clang::Decl *elaborateDeclEarly(Declaration *D);
@@ -120,7 +120,8 @@ public:
 
 
   // class type body elaboration.
-  clang::Decl *identifyDeclsInClassBody(Declaration *D, clang::CXXRecordDecl *R);
+  clang::Decl *identifyDeclsInClassBody(Declaration *D, const ListSyntax *L,
+                                        clang::CXXRecordDecl *R);
   clang::Decl *elaborateField(Declaration *D, clang::TypeSourceInfo *TInfo);
 
 
@@ -180,9 +181,9 @@ public:
   /// process the RHS of the expression.
   clang::Expr *elaborateMemberAccess(clang::Expr *LHS, const InfixSyntax *S);
 
-  clang::Expr *elaborateTypeNameAccess(clang::Expr *LHS, const BinarySyntax *S);
-  clang::Expr *elaborateNestedNamespaceAccess(clang::Expr *LHS, const BinarySyntax *S);
-  clang::Expr *elaborateMemberAccessOp(clang::Expr *LHS, const BinarySyntax *S);
+  clang::Expr *elaborateTypeNameAccess(clang::Expr *LHS, const InfixSyntax *S);
+  clang::Expr *elaborateNestedNamespaceAccess(clang::Expr *LHS, const InfixSyntax *S);
+  clang::Expr *elaborateMemberAccessOp(clang::Expr *LHS, const InfixSyntax *S);
 
 
   clang::Expr *elaborateIntegerMetaFunction(const BinarySyntax *S);

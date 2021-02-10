@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueClass, SimpleClassDecl) {
   StringRef Code = R"BLUE(
-C : class = { };
+C : class = { }
 )BLUE";
   auto ToMatch = cxxRecordDecl(hasName("C"));
   ASSERT_TRUE(matches(Code.str(), ToMatch));

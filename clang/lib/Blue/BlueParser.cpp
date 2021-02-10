@@ -868,7 +868,7 @@ static bool isAssignmentOp(tok::TokenKind K)
 {
   return K == tok::PlusEqual || K == tok::MinusEqual
         || K == tok::StarEqual || K == tok::SlashEqual
-        || K == tok::PercentEqual;
+        || K == tok::PercentEqual || K == tok::Equal;
 }
 
 
@@ -1250,16 +1250,26 @@ Syntax *Parser::parsePrimaryExpression() {
     // Value literals
   case tok::TrueKeyword:
   case tok::FalseKeyword:
+  case tok::NullKeyword:
     // Type literals
   case tok::VoidKeyword:
   case tok::FloatKeyword:
   case tok::IntKeyword:
   case tok::BoolKeyword:
   case tok::TypeKeyword:
-    // Built in type functions.
+    // Class keyword
+  case tok::ClassKeyword:
+    // Built in type functions
   case tok::IntegerKeyword:
   case tok::RealKeyword:
   case tok::CharacterKeyword:
+  // Bitwise function Keywords
+  case tok::BitAndKeyword:
+  case tok::BitOrKeyword:
+  case tok::BitXOrKeyword:
+  case tok::BitShlKeyword:
+  case tok::BitShrKeyword:
+  case tok::BitNotKeyword:
     // Control primitives
   case tok::ContinueKeyword:
   case tok::BreakKeyword: {
