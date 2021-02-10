@@ -94,8 +94,7 @@ public:
 
 
   Declarator *getDeclarator(const Syntax *S);
-  // Declarator *getUnaryDeclarator(const UnarySyntax *S);
-  // Declarator *getBinaryDeclarator(const BinarySyntax *S);
+  Declarator *getArrayDeclarator(const ArraySyntax *AS);
   Declarator *getLeafDeclarator(const Syntax *S);
   Declarator *getImplicitAutoDeclarator();
   clang::Decl *elaborateDeclEarly(Declaration *D);

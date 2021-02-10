@@ -67,4 +67,10 @@ Syntax::const_child_range Syntax::children() const {
   return const_child_range(Children.begin(), Children.end());
 }
 
+Syntax::reverse_child_range Syntax::reverseChildren() const {
+  auto Children = const_cast<Syntax *>(this)->children();
+  return reverse_child_range(reverse_child_iterator(Children.end()),
+                             reverse_child_iterator(Children.begin()));
+}
+
 } // namespace blue

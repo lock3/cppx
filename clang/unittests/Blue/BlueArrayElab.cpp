@@ -39,11 +39,12 @@ x : [2]int;
 y : [2][4]int;
 z : [2][4][8]int;
 
-x[0] = 3;
-y[0][1] = 3;
-z[0][1][2] = 3;
+f:() = {
+  x[0] = 3;
+  y[0][1] = 3;
+  z[0][1][2] = 3;
+}
 )BLUE";
-
   // TODO: how to properly test this?
   SimpleBlueParseTest(Code);
 }

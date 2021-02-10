@@ -102,7 +102,7 @@ public:
   }
 
   void dump() const;
-  void printSequence(llvm::raw_ostream &os);
+  void printSequence(llvm::raw_ostream &os) const;
   std::string getString() const;
 
   union {

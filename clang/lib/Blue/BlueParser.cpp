@@ -1220,6 +1220,13 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::IntegerKeyword:
   case tok::RealKeyword:
   case tok::CharacterKeyword:
+  // Bitwise function Keywords
+  case tok::BitAndKeyword:
+  case tok::BitOrKeyword:
+  case tok::BitXOrKeyword:
+  case tok::BitShlKeyword:
+  case tok::BitShrKeyword:
+  case tok::BitNotKeyword:
     // Control primitives
   case tok::ContinueKeyword:
   case tok::BreakKeyword: {
