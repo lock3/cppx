@@ -271,7 +271,7 @@ u : c.nested.nested2;
 TEST(BlueClass, TypeAliasDecl) {
   StringRef Code = R"BLUE(
 outer : class = {
-  x : class = int;
+  x : type = int;
 }
 )BLUE";
 
@@ -287,7 +287,7 @@ TEST(BlueClass, TypeAliasDecl_OutOfOrderUse) {
   StringRef Code = R"BLUE(
 outer : class = {
   y : x;
-  x : class = int;
+  x : type = int;
 }
 )BLUE";
 

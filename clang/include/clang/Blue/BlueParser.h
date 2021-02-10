@@ -338,8 +338,8 @@ namespace blue
       // TODO: If we represent syntax errors explicitly, then
       // the parser will always return a non-null pointer.
       Syntax *S = (parser.*fn)();
-      if (S)
-        ss.push_back(S);
+      // if (S)
+      ss.push_back(S);
       return S;
     }
 

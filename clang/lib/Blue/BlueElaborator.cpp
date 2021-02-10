@@ -261,8 +261,7 @@ clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
     return makeFunctionDecl(D);
 
   if (D->declaratorContainsClass())
-    llvm_unreachable("classes unimplemented");
-    // return makeClass(D);
+    return makeClass(D);
 
   // if (D->Decl->declaresValue())
   if (D->Decl->declaresTemplate()) {
@@ -652,6 +651,10 @@ Declarator *Elaborator::getDeclarator(const Syntax *S) {
   }
   if (auto AS = dyn_cast<ArraySyntax>(S))
     return getArrayDeclarator(AS);
+  if (auto PS = dyn_cast<PrefixSyntax>(S)) {
+    if (PS->operation().hasKind(tok::Caret))
+      return getPointerDeclarator(PS);
+  }
 
   return getLeafDeclarator(S);
 }
@@ -763,6 +766,11 @@ Declarator *Elaborator::getArrayDeclarator(const ArraySyntax *AS) {
   return new Declarator(Declarator::Array, AS, getDeclarator(AS->result()));
 }
 
+Declarator *Elaborator::getPointerDeclarator(const PrefixSyntax *PS) {
+  assert(PS->operation().hasKind(tok::Caret) && "Invalid pointer declarator.");
+  return new Declarator(Declarator::Pointer, PS, getDeclarator(PS->operand()));
+}
+
 Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   switch (S->getKind()) {
   case Syntax::Literal: {
@@ -775,6 +783,7 @@ Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   LLVM_FALLTHROUGH;
   case Syntax::Identifier:
     return new Declarator(Declarator::Type, S);
+  case Syntax::Infix:
   case Syntax::Call:
     return new Declarator(Declarator::Type, S);
   default:
@@ -1066,169 +1075,174 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
 }
 
 clang::Decl *Elaborator::makeClass(Declaration *D) {
-  // using namespace clang;
-  // D->CurrentPhase = Phase::Typing;
+  using namespace clang;
+  D->CurrentPhase = Phase::Typing;
 
-  // // Checking if we are a nested template decl/class.
-  // bool WithinClass = D->ScopeForDecl->getKind() == blue::Scope::Class;
-  // MultiTemplateParamsArg MTP = D->TemplateParamStorage;
+  // Checking if we are a nested template decl/class.
+  bool WithinClass = D->ScopeForDecl->getKind() == blue::Scope::Class;
+  MultiTemplateParamsArg MTP = D->TemplateParamStorage;
 
-  // bool IsOwned = false;
-  // bool IsDependent = false;
-  // CXXScopeSpec SS;
-  // TypeResult UnderlyingType;
-  // AccessSpecifier AS = AS_none;
-  // if (WithinClass)
-  //   AS = AS_public;
+  bool IsOwned = false;
+  bool IsDependent = false;
+  CXXScopeSpec SS;
+  TypeResult UnderlyingType;
+  AccessSpecifier AS = AS_none;
+  if (WithinClass)
+    AS = AS_public;
 
-  // clang::SourceLocation IdLoc = D->Def->getLocation();
-  // clang::TypeSpecifierType TST = clang::DeclSpec::TST_struct;
-  // bool ScopeEnumUsesClassTag = false;
-  // clang::SourceLocation ScopedEnumClassKW;
-  // blue::Scope::Kind SK = blue::Scope::Class;
-  // // TODO: Refactor this so that we actually check the TST kind against
-  // // the class/enum/union identifier.
-  // // switch(D->getKind()) {
-  // // case UDK_Class:
-  // //   TST = clang::DeclSpec::TST_struct;
-  // //   break;
-  // // case UDK_Union:
-  // //   TST = clang::DeclSpec::TST_union;
-  // //   break;
-  // // case UDK_Enum:
-  // //   llvm_unreachable("");
-  // //   // TST = clang::DeclSpec::TST_enum;
-  // //   // ScopeEnumUsesClassTag = true;
-  // //   // if (const MacroSyntax *MS = dyn_cast<MacroSyntax>(D->Init)) {
-  // //   //   UnderlyingType = getUnderlyingEnumType(Context, SemaRef, MS->getCall());
-  // //   // } else {
-  // //   //   llvm_unreachable("Invalid tree syntax.");
-  // //   // }
-  // //   // ScopedEnumClassKW = D->IdDcl->getLoc();
-  // //   // SK = SK_Enum;
-  // //   break;
-  // // default:
-  // //   llvm_unreachable("Incorrectly identified tag type");
-  // // }
-
-  // Decl *Declaration = nullptr;
-  // // if (D->SpecializationArgs) {
-  // //   Declaration = handleClassSpecialization(Context, SemaRef, D, TST, MTP);
-  // // } else {
-  // Declaration = SemaRef.getCxxSema().ActOnTag(
-  //   SemaRef.getCurClangScope(), TST, /*Metafunction=*/nullptr,
-  //   clang::Sema::TUK_Definition, D->getInitializer()->getLocation(), SS, D->Id,
-  //   IdLoc, clang::ParsedAttributesView(), AS,
-  //   /*ModulePrivateLoc=*/SourceLocation(),
-  //   MTP, IsOwned, IsDependent, ScopedEnumClassKW, ScopeEnumUsesClassTag,
-  //   UnderlyingType, /*IsTypeSpecifier=*/false, /*IsTemplateParamOrArg=*/false);
-  // // }
-
-  // TagDecl *Tag = nullptr;
-  // if (!Declaration) {
-  //   return nullptr;
-  // }
-  // if(isa<CXXRecordDecl>(Declaration)) {
-  //   Tag = cast<CXXRecordDecl>(Declaration);
-  // } else if (isa<ClassTemplateDecl>(Declaration)) {
-  //   ClassTemplateDecl *TempTemplateDecl = cast<ClassTemplateDecl>(Declaration);
-  //   D->setCxx(SemaRef, TempTemplateDecl);
-  //   Tag = cast<CXXRecordDecl>(TempTemplateDecl->getTemplatedDecl());
-  // } else if (isa<EnumDecl>(Declaration)) {
-  //   Tag = cast<TagDecl>(Declaration);
-  // }
-
-  // D->setCxx(SemaRef, Tag);
-  // // Elab.elaborateAttributes(D);
-
-  // Sema::ScopeRAII ClassBodyScope(SemaRef, SK, D->Def, &D->SavedScope);
-  // SemaRef.getCurrentScope()->Entity = D;
-
-  // Sema::ClangScopeRAII ClangClassScopeBody(SemaRef,
-  //           (Tag->isEnum() ? clang::Scope::EnumScope : clang::Scope::ClassScope)
-  //                                          | clang::Scope::DeclScope,
-  //                                          D->getInitializer()->getLocation());
-
-
-  // // Need to do this before the next step because this is actually pushed on to
-  // // the stack a by the next function called.
-  // SemaRef.getCxxSema().ActOnTagStartDefinition(SemaRef.getCurClangScope(), Tag);
-
-  // // This keeps the declContext working correctly.
-  // Sema::DeclContextRAII DCTracking(SemaRef, D, true);
-  // if (TST == clang::DeclSpec::TST_enum) {
-  //   llvm_unreachable("Enum body not implemented yet.");
-  //   // Elab.elaborateEnumBody(D, Tag);
-  //   // if (Tag->isInvalidDecl()) {
-  //   //   // Need to make sure that this isn't elaborated as a variable later on.
-  //   //   D->CurrentPhase = Phase::Initialization;
-  //   //   return Tag;
+  clang::SourceLocation IdLoc = D->Def->getLocation();
+  clang::TypeSpecifierType TST = clang::DeclSpec::TST_struct;
+  bool ScopeEnumUsesClassTag = false;
+  clang::SourceLocation ScopedEnumClassKW;
+  blue::Scope::Kind SK = blue::Scope::Class;
+  // TODO: Refactor this so that we actually check the TST kind against
+  // the class/enum/union identifier.
+  // switch(D->getKind()) {
+  // case UDK_Class:
+  //   TST = clang::DeclSpec::TST_struct;
+  //   break;
+  // case UDK_Union:
+  //   TST = clang::DeclSpec::TST_union;
+  //   break;
+  // case UDK_Enum:
+  //   llvm_unreachable("");
+  //   // TST = clang::DeclSpec::TST_enum;
+  //   // ScopeEnumUsesClassTag = true;
+  //   // if (const MacroSyntax *MS = dyn_cast<MacroSyntax>(D->Init)) {
+  //   //   UnderlyingType = getUnderlyingEnumType(Context, SemaRef, MS->getCall());
+  //   // } else {
+  //   //   llvm_unreachable("Invalid tree syntax.");
   //   // }
+  //   // ScopedEnumClassKW = D->IdDcl->getLoc();
+  //   // SK = SK_Enum;
+  //   break;
+  // default:
+  //   llvm_unreachable("Incorrectly identified tag type");
+  // }
+  auto ClsDef = cast<DeclarationSyntax>(D->Def);
+  auto ClsEnc = cast<EnclosureSyntax>(ClsDef->initializer());
+  auto ClsBody  = dyn_cast_or_null<ListSyntax>(ClsEnc->operand());
+  Decl *Declaration = nullptr;
+  // if (D->SpecializationArgs) {
+  //   Declaration = handleClassSpecialization(Context, SemaRef, D, TST, MTP);
   // } else {
-  //   // This handles processing for class, struct, and union bodies.
-  //   // This keeps track of class nesting.
-  //   Sema::ElaboratingClassDefRAII ClsElabState(SemaRef, D,
-  //                                             !SemaRef.isElaboratingClass());
-  //   CXXRecordDecl *ClsDecl = cast<CXXRecordDecl>(Tag);
-  //   identifyDeclsInClassBody(D, ClsDecl);
-  //   // Attempt to figure out if any nested elaboration is actually required.
-  //   // If not then we can proceed as normal.
-  //   // auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
-  //   // auto const* BodyArray = MacroRoot->getBlock();
-
-  //   // Handling possible base classes.
-  //   // if (const CallSyntax *ClsKwCall
-  //   //                       = dyn_cast<CallSyntax>(MacroRoot->getCall())) {
-  //   //   processBaseSpecifiers(Elab, SemaRef, Context, D, ClsDecl, ClsKwCall);
-  //   // }
-  //   // We turn this off here because technically we have already created the
-  //   // most basic declaration that's required to use this type.
-  //   D->IsElaborating = false;
-
-  //   // This is really the only time we could possible allow this to occur.
-  //   SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(
-  //                                                    SemaRef.getCurClangScope(),
-  //                                                        ClsDecl,
-  //                                                        SourceLocation(), true,
-  //                                                        SourceLocation());
-  //   auto ClsDef = cast<DefSyntax>(D->Def);
-
-  //   // Since all declarations have already been added, we don't need to do another
-  //   // Reordering scan.
-  //   // Doing possible delaying of member declaration/initialziation.
-  //   for (const Syntax *SS : cast<SeqSyntax>(ClsDef->getInitializer())->children())
-  //     delayElaborateDeclType(ClsDecl, SS);
-
-  //   D->CurrentPhase = Phase::Initialization;
-  //   if (!WithinClass) {
-  //     ElaboratingClass &LateElabClass = SemaRef.getCurrentElaboratingClass();
-  //     // Elab.finishDelayedElaboration(LateElabClass);
-  //     lateElaborateAttributes(LateElabClass);
-  //     lateElaborateMethodDecls(LateElabClass);
-  //     lateElaborateDefaultParams(LateElabClass);
-  //     // We call this because no new declarations can be added after this point.
-  //     // This is only called for the top level class.
-  //     SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
-
-  //     SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
-  //       SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
-  //       SourceLocation(), ParsedAttributesView());
-
-  //     lateElaborateMemberInitializers(LateElabClass);
-  //     lateElaborateMethodDefs(LateElabClass);
-  //     SemaRef.getCxxSema().ActOnFinishCXXNonNestedClass(ClsDecl);
-  //   } else {
-  //     SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
-  //       SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
-  //       SourceLocation(), ParsedAttributesView());
-  //   }
+  Declaration = SemaRef.getCxxSema().ActOnTag(
+    SemaRef.getCurClangScope(), TST, /*Metafunction=*/nullptr,
+    clang::Sema::TUK_Definition, ClsEnc->open().getLocation(), SS, D->Id,
+    IdLoc, clang::ParsedAttributesView(), AS,
+    /*ModulePrivateLoc=*/SourceLocation(),
+    MTP, IsOwned, IsDependent, ScopedEnumClassKW, ScopeEnumUsesClassTag,
+    UnderlyingType, /*IsTypeSpecifier=*/false, /*IsTemplateParamOrArg=*/false);
   // }
 
-  // clang::Decl *TempDeclPtr = Tag;
-  // SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCurClangScope(),
-  //                                               TempDeclPtr, SourceRange());
-  // return Tag;
-  llvm_unreachable("Working on class implementation.");
+  TagDecl *Tag = nullptr;
+  if (!Declaration) {
+    return nullptr;
+  }
+  if(isa<CXXRecordDecl>(Declaration)) {
+    Tag = cast<CXXRecordDecl>(Declaration);
+  } else if (isa<ClassTemplateDecl>(Declaration)) {
+    ClassTemplateDecl *TempTemplateDecl = cast<ClassTemplateDecl>(Declaration);
+    D->setCxx(SemaRef, TempTemplateDecl);
+    Tag = cast<CXXRecordDecl>(TempTemplateDecl->getTemplatedDecl());
+  } else if (isa<EnumDecl>(Declaration)) {
+    Tag = cast<TagDecl>(Declaration);
+  }
+
+  D->setCxx(SemaRef, Tag);
+  // Elab.elaborateAttributes(D);
+
+  Sema::ScopeRAII ClassBodyScope(SemaRef, SK, D->Def, &D->SavedScope);
+  SemaRef.getCurrentScope()->Entity = D;
+
+  Sema::ClangScopeRAII ClangClassScopeBody(SemaRef,
+            (Tag->isEnum() ? clang::Scope::EnumScope : clang::Scope::ClassScope)
+                                           | clang::Scope::DeclScope,
+                                     ClsEnc->open().getLocation());
+
+
+  // Need to do this before the next step because this is actually pushed on to
+  // the stack a by the next function called.
+  SemaRef.getCxxSema().ActOnTagStartDefinition(SemaRef.getCurClangScope(), Tag);
+
+  // This keeps the declContext working correctly.
+  Sema::DeclContextRAII DCTracking(SemaRef, D, true);
+  if (TST == clang::DeclSpec::TST_enum) {
+    llvm_unreachable("Enum body not implemented yet.");
+    // Elab.elaborateEnumBody(D, Tag);
+    // if (Tag->isInvalidDecl()) {
+    //   // Need to make sure that this isn't elaborated as a variable later on.
+    //   D->CurrentPhase = Phase::Initialization;
+    //   return Tag;
+    // }
+  } else {
+    // This handles processing for class, struct, and union bodies.
+    // This keeps track of class nesting.
+    Sema::ElaboratingClassDefRAII ClsElabState(SemaRef, D,
+                                              !SemaRef.isElaboratingClass());
+    CXXRecordDecl *ClsDecl = cast<CXXRecordDecl>(Tag);
+
+    if (ClsEnc->operand())
+      identifyDeclsInClassBody(D, ClsBody, ClsDecl);
+    // Attempt to figure out if any nested elaboration is actually required.
+    // If not then we can proceed as normal.
+    // auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
+    // auto const* BodyArray = MacroRoot->getBlock();
+
+    // Handling possible base classes.
+    // if (const CallSyntax *ClsKwCall
+    //                       = dyn_cast<CallSyntax>(MacroRoot->getCall())) {
+    //   processBaseSpecifiers(Elab, SemaRef, Context, D, ClsDecl, ClsKwCall);
+    // }
+    // We turn this off here because technically we have already created the
+    // most basic declaration that's required to use this type.
+    D->IsElaborating = false;
+
+    // This is really the only time we could possible allow this to occur.
+    SemaRef.getCxxSema().ActOnStartCXXMemberDeclarations(
+                                                     SemaRef.getCurClangScope(),
+                                                         ClsDecl,
+                                                         SourceLocation(), true,
+                                                         SourceLocation());
+    if (ClsEnc->operand()) {
+      // auto List = dyn_cast<ListSyntax>(ClsEnc->operand());
+      // assert(List && "invalid class tree.");
+      // Since all declarations have already been added, we don't need to do another
+      // Reordering scan.
+      // Doing possible delaying of member declaration/initialziation.
+      for (const Syntax *SS : ClsBody->children())
+        delayElaborateDeclType(ClsDecl, SS);
+    }
+
+    D->CurrentPhase = Phase::Initialization;
+    if (!WithinClass) {
+      ElaboratingClass &LateElabClass = SemaRef.getCurrentElaboratingClass();
+      // Elab.finishDelayedElaboration(LateElabClass);
+      lateElaborateAttributes(LateElabClass);
+      lateElaborateMethodDecls(LateElabClass);
+      lateElaborateDefaultParams(LateElabClass);
+      // We call this because no new declarations can be added after this point.
+      // This is only called for the top level class.
+      SemaRef.getCxxSema().ActOnFinishCXXMemberDecls();
+
+      SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
+        SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
+        SourceLocation(), ParsedAttributesView());
+
+      lateElaborateMemberInitializers(LateElabClass);
+      lateElaborateMethodDefs(LateElabClass);
+      SemaRef.getCxxSema().ActOnFinishCXXNonNestedClass(ClsDecl);
+    } else {
+      SemaRef.getCxxSema().ActOnFinishCXXMemberSpecification(
+        SemaRef.getCurClangScope(), SourceLocation(), ClsDecl, SourceLocation(),
+        SourceLocation(), ParsedAttributesView());
+    }
+  }
+
+  clang::Decl *TempDeclPtr = Tag;
+  SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCurClangScope(),
+                                                TempDeclPtr, SourceRange());
+  return Tag;
 }
 
 clang::Decl *Elaborator::makeTemplateDecl(Declaration *D) {
@@ -1435,6 +1449,7 @@ clang::Expr *Elaborator::elaborateImplicitTypeDeclarator(const Declarator *Dcl) 
 }
 
 clang::Decl *Elaborator::identifyDeclsInClassBody(Declaration *D,
+                                                  const ListSyntax *L,
                                                   clang::CXXRecordDecl *R) {
   if(!D->hasInitializer()) {
     // FIXME: Handle forward declarations here? I think.
@@ -1448,9 +1463,9 @@ clang::Decl *Elaborator::identifyDeclsInClassBody(Declaration *D,
   D->CurrentPhase = Phase::Typing;
 
   // for (auto const* ChildDecl : BodyArray->children()) {
-  for (const Syntax *SS : cast<SequenceSyntax>(D->getInitializer())->children()) {
+  for (const Syntax *SS : L->children())
     identifyDeclaration(SS);
-  }
+
   return D->getCxx();
 }
 
@@ -3468,14 +3483,14 @@ clang::Expr *Elaborator::elaborateFunctionCall(clang::UnresolvedLookupExpr *Base
 
 clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,
                                                const InfixSyntax *S) {
-  // clang::QualType Ty = LHS->getType();
-  // if (Ty->isKindType())
-  //   return elaborateTypeNameAccess(LHS, S);
-  // if (Ty->isCppxNamespaceType())
-  //   return elaborateNestedNamespaceAccess(LHS, S);
+  clang::QualType Ty = LHS->getType();
+  if (Ty->isKindType())
+    return elaborateTypeNameAccess(LHS, S);
+  if (Ty->isCppxNamespaceType())
+    return elaborateNestedNamespaceAccess(LHS, S);
 
-  // return elaborateMemberAccessOp(LHS, S);
-  llvm_unreachable("Elaborator::elaborateMemberAccess on it.");
+  return elaborateMemberAccessOp(LHS, S);
+  // llvm_unreachable("Elaborator::elaborateMemberAccess on it.");
 }
 
 
@@ -3802,71 +3817,69 @@ static clang::Expr *handleLookupInsideType(Sema &SemaRef,
 }
 
 clang::Expr *Elaborator::elaborateTypeNameAccess(clang::Expr *LHS,
-                                                 const BinarySyntax *S) {
-  llvm_unreachable("Elaborator::elaborateTypeNameAccess not implemented.");
-    // return handleLookupInsideType(SemaRef, getCxxContext(), LHS, S,
-    //                               S->getRightOperand(), false);
+                                                 const InfixSyntax *S) {
+    return handleLookupInsideType(SemaRef, getCxxContext(), LHS, S,
+                                  S->operand(1), false);
 }
 
 clang::Expr *Elaborator::elaborateNestedNamespaceAccess(clang::Expr *LHS,
-                                                        const BinarySyntax *S) {
+                                                        const InfixSyntax *S) {
   llvm_unreachable("Namespace acceess not implemented yet!");
 }
 
 clang::Expr *Elaborator::elaborateMemberAccessOp(clang::Expr *LHS,
-                                                 const BinarySyntax *S) {
-  // if (auto IdSyntax = dyn_cast<IdentifierSyntax>(S->getRightOperand())) {
-  //   clang::UnqualifiedId Id;
-  //   clang::IdentifierInfo *IdInfo =
-  //     &getCxxContext().Idents.get(IdSyntax->getSpelling());
-  //   // TODO: Implement operator lookup.
-  //   // OpInfoBase const *OpInfo = SemaRef.OpInfo.getOpInfo(IdInfo);
-  //   // if (OpInfo) {
-  //     // clang::OverloadedOperatorKind UnaryOO = OpInfo->getUnaryOverloadKind();
-  //     // clang::OverloadedOperatorKind BinaryOO = OpInfo->getBinaryOverloadKind();
-  //     // if (UnaryOO != BinaryOO) {
-  //     //   clang::CXXScopeSpec TempSS;
-  //     //   clang::Expr *LookedUpCandidates = doDerefAndXOrLookUp(Context, SemaRef,
-  //     //                                                         UnaryOO, BinaryOO,
-  //     //                                                         TempSS,
-  //     //                                                         ElaboratedLHS,
-  //     //                                                         Op, RHS->getLoc(),
-  //     //                                                         OpInfo);
-  //     //   return LookedUpCandidates;
-  //     // }
-  //     // clang::SourceLocation RHSLoc = IdSyntax->getLocation();
-  //     // clang::SourceLocation SymbolLocations[3] = {RHSLoc, RHSLoc, RHSLoc};
-  //     // Id.setOperatorFunctionId(RHSLoc, OpInfo->getUnaryOverloadKind(),
-  //     //                           SymbolLocations);
-  //   // } else {
-  //   Id.setIdentifier(IdInfo, IdSyntax->getLocation());
-  //   // }
+                                                 const InfixSyntax *S) {
+  if (auto IdSyntax = dyn_cast<IdentifierSyntax>(S->operand(1))) {
+    clang::UnqualifiedId Id;
+    clang::IdentifierInfo *IdInfo =
+      &getCxxContext().Idents.get(IdSyntax->spelling());
+    // TODO: Implement operator lookup.
+    // OpInfoBase const *OpInfo = SemaRef.OpInfo.getOpInfo(IdInfo);
+    // if (OpInfo) {
+      // clang::OverloadedOperatorKind UnaryOO = OpInfo->getUnaryOverloadKind();
+      // clang::OverloadedOperatorKind BinaryOO = OpInfo->getBinaryOverloadKind();
+      // if (UnaryOO != BinaryOO) {
+      //   clang::CXXScopeSpec TempSS;
+      //   clang::Expr *LookedUpCandidates = doDerefAndXOrLookUp(Context, SemaRef,
+      //                                                         UnaryOO, BinaryOO,
+      //                                                         TempSS,
+      //                                                         ElaboratedLHS,
+      //                                                         Op, RHS->getLoc(),
+      //                                                         OpInfo);
+      //   return LookedUpCandidates;
+      // }
+      // clang::SourceLocation RHSLoc = IdSyntax->getLocation();
+      // clang::SourceLocation SymbolLocations[3] = {RHSLoc, RHSLoc, RHSLoc};
+      // Id.setOperatorFunctionId(RHSLoc, OpInfo->getUnaryOverloadKind(),
+      //                           SymbolLocations);
+    // } else {
+    Id.setIdentifier(IdInfo, IdSyntax->getLocation());
+    // }
 
 
-  //   if (LHS->getDependence() != clang::ExprDependence::None) {
-  //     llvm_unreachable("dependent access expression not implemented yet.");
-  //   }
+    if (LHS->getDependence() != clang::ExprDependence::None) {
+      llvm_unreachable("dependent access expression not implemented yet.");
+    }
 
-  //   clang::CXXScopeSpec SS;
-  //   clang::SourceLocation Loc;
-  //   clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
-  //   if (LHS->getType()->isPointerType())
-  //     AccessTokenKind = clang::tok::TokenKind::arrow;
+    clang::CXXScopeSpec SS;
+    clang::SourceLocation Loc;
+    clang::tok::TokenKind AccessTokenKind = clang::tok::TokenKind::period;
+    if (LHS->getType()->isPointerType())
+      AccessTokenKind = clang::tok::TokenKind::arrow;
 
-  //   clang::ExprResult RHSExpr =
-  //     SemaRef.getCxxSema().ActOnMemberAccessExpr(SemaRef.getCurClangScope(),
-  //                                               LHS, S->getLocation(),
-  //                                               AccessTokenKind, SS, Loc, Id,
-  //                                                 nullptr);
-  //   if (RHSExpr.isInvalid())
-  //     return nullptr;
+    clang::ExprResult RHSExpr =
+      SemaRef.getCxxSema().ActOnMemberAccessExpr(SemaRef.getCurClangScope(),
+                                                LHS, S->getLocation(),
+                                                AccessTokenKind, SS, Loc, Id,
+                                                nullptr);
+    if (RHSExpr.isInvalid())
+      return nullptr;
 
-  //   ExprMarker(getCxxContext(), SemaRef).Visit(RHSExpr.get());
-  //   return RHSExpr.get();
-  // } else {
-  //   llvm_unreachable("Qualified member access not implemented yet.");
-  // }
-  llvm_unreachable("Elaborator::elaborateMemberAccessOp not implemented.");
+    ExprMarker(getCxxContext(), SemaRef).Visit(RHSExpr.get());
+    return RHSExpr.get();
+  } else {
+    llvm_unreachable("Qualified member access not implemented yet.");
+  }
 }
 
 /// This function extracts the number of bytes argument from integer, character,
