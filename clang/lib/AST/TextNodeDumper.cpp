@@ -2399,7 +2399,7 @@ void TextNodeDumper::Visit(const blue::Syntax *S) {
 }
 
 void TextNodeDumper::VisitEnclosureSyntax(const blue::EnclosureSyntax *S) {
-  if (S->open()) {
+  if (S->open() && S->close()) {
     OS << " '" << S->open().getSpelling() << S->close().getSpelling() << "' ";
   } else {
     OS << " '<invalid>' ";

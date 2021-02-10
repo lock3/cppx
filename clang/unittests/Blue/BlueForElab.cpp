@@ -18,77 +18,77 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace blue;
 
-TEST(BlueFor, NoBraces) {
-  StringRef Code = R"BLUE(
-main : () int = {
-  y : int = 0;
-  for (x : int = 0; x < 10; x++)
-    x = y;
+// TEST(BlueFor, NoBraces) {
+//   StringRef Code = R"BLUE(
+// main : () int = {
+//   y : int = 0;
+//   for (x : int = 0; x < 10; x++)
+//     x = y;
 
-  return y;
-}
-  )BLUE";
-  auto ToMatch = forStmt();
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+//   return y;
+// }
+//   )BLUE";
+//   auto ToMatch = forStmt();
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(BlueFor, Braces) {
-  StringRef Code = R"BLUE(
-main : () int = {
-  y : int = 0;
-  for (x : int = 0; x < 10; x++) {
-    y++;
-    x = y;
-  }
+// TEST(BlueFor, Braces) {
+//   StringRef Code = R"BLUE(
+// main : () int = {
+//   y : int = 0;
+//   for (x : int = 0; x < 10; x++) {
+//     y++;
+//     x = y;
+//   }
 
-  return y;
-}
-  )BLUE";
-  auto ToMatch = forStmt();
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+//   return y;
+// }
+//   )BLUE";
+//   auto ToMatch = forStmt();
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(BlueFor, NoVar) {
-  StringRef Code = R"BLUE(
-main : () int = {
-  y : int = 0;
-  for (;y < 10; y++) {
-    y++;
-  }
+// TEST(BlueFor, NoVar) {
+//   StringRef Code = R"BLUE(
+// main : () int = {
+//   y : int = 0;
+//   for (;y < 10; y++) {
+//     y++;
+//   }
 
-  return y;
-}
-  )BLUE";
-  auto ToMatch = forStmt();
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+//   return y;
+// }
+//   )BLUE";
+//   auto ToMatch = forStmt();
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(BlueFor, NoInc) {
-  StringRef Code = R"BLUE(
-main : () int = {
-  y : int = 0;
-  for (x : int = 0; x < 10; ) {
-    x++;
-  }
+// TEST(BlueFor, NoInc) {
+//   StringRef Code = R"BLUE(
+// main : () int = {
+//   y : int = 0;
+//   for (x : int = 0; x < 10; ) {
+//     x++;
+//   }
 
-  return y;
-}
-  )BLUE";
-  auto ToMatch = forStmt();
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+//   return y;
+// }
+//   )BLUE";
+//   auto ToMatch = forStmt();
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(BlueFor, Infinite) {
-  StringRef Code = R"BLUE(
-main : () int = {
-  y : int = 0;
-  for (;;) {
-    x++;
-  }
+// TEST(BlueFor, Infinite) {
+//   StringRef Code = R"BLUE(
+// main : () int = {
+//   y : int = 0;
+//   for (;;) {
+//     x++;
+//   }
 
-  return y;
-}
-  )BLUE";
-  auto ToMatch = forStmt();
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+//   return y;
+// }
+//   )BLUE";
+//   auto ToMatch = forStmt();
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }

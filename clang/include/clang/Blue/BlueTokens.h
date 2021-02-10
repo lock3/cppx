@@ -66,7 +66,7 @@ struct Token
 {
   /// Constructs an invalid token.
   Token()
-    : Kind(tok::Invalid), Flags(), Loc(), Ptr()
+    : Kind(tok::Invalid), Flags(), Loc(), Ptr(nullptr)
   { }
 
   /// Constructs a normal token.
