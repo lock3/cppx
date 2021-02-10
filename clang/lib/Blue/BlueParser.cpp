@@ -267,7 +267,7 @@ Syntax *Parser::parseDefinition() {
 }
 
 static inline bool isCloseEnclosure(tok::TokenKind K) {
-  switch(K) {
+  switch (K) {
   case tok::RightParen:
   case tok::RightBracket:
   case tok::RightBrace:
@@ -278,15 +278,21 @@ static inline bool isCloseEnclosure(tok::TokenKind K) {
 }
 
 /// Builds the declarator list.
-static Syntax *makeDeclaratorList(SyntaxSeq &SS, tok::TokenKind La)
+static Syntax *makeDeclaratorList(SyntaxSeq &SS, Parser &P)
 {
   // TODO: What if `SS` is empty? Recovery means skipping the entire
   // declaration, probably.
   assert(!SS.empty());
 
   // Collapse singleton lists into simple declarators.
-  if (!isCloseEnclosure(La) && SS.size() == 1)
+  if (!isCloseEnclosure(P.getLookahead()) && SS.size() == 1)
     return SS[0];
+
+  // if (P.InBody && P.getLookahead() == tok::RightBrace &&
+  //     SS.size() == 1) {
+  //   P.InBody = false;
+  //   return SS[0];
+  // }
 
   // FIXME: find a way to maintain the token kind?
   return new ListSyntax(AllocateSeq(SS), SS.size());
@@ -298,7 +304,10 @@ Syntax *Parser::parseStatementSeq() {
     parseItem(*this, &Parser::parseStatement, SS);
   while (nextTokenIsNot(tok::RightBrace));
 
-  return makeDeclaratorList(SS, getLookahead());
+  if (SS.size() == 1 && isa<ListSyntax>(SS.front()))
+    return SS.front();
+
+  return new ListSyntax(AllocateSeq(SS), SS.size());
 }
 
 /// Parse a statement.
@@ -359,7 +368,7 @@ Syntax *Parser::parseExpressionList()
     parseItem(*this, &Parser::parseExpression, SS);
   while (matchToken(tok::Comma));
   // return new ListSyntax(AllocateSeq(SS), SS.size());
-  return makeDeclaratorList(SS, getLookahead());
+  return makeDeclaratorList(SS, *this);
 }
 
 /// Parse a declarator-list.
@@ -376,7 +385,7 @@ Syntax *Parser::parseDeclaratorList()
   do
     parseItem(*this, &Parser::parseDeclarator, SS);
   while (matchToken(tok::Comma));
-  return makeDeclaratorList(SS, getLookahead());
+  return makeDeclaratorList(SS, *this);
 }
 
 /// Parse a declarator.
@@ -477,7 +486,7 @@ Syntax *Parser::parseControlExpression()
   case tok::ForKeyword:
   case tok::WhileKeyword:
   case tok::DoKeyword:
-    // return parse_loop_expression();
+    return parseLoopExpression();
   case tok::LambdaKeyword:
     // return parse_lambda_expression();
   case tok::LetKeyword:
@@ -661,6 +670,11 @@ Syntax *Parser::parseLoopExpression()
 /// don't group like other parameters.
 Syntax *Parser::parseForExpression()
 {
+  // FIXME: differentiate two types of for expressions.
+  return parseTraditionalForExpression();
+}
+
+Syntax *Parser::parseRangeForExpression() {
   Token ctrl = requireToken(tok::ForKeyword);
   expectToken(tok::LeftParen);
   Syntax* id = parseDeclarator();
@@ -671,6 +685,31 @@ Syntax *Parser::parseForExpression()
   expectToken(tok::RightParen);
   Syntax* body = parseBlockExpression();
   return new ControlSyntax(ctrl, decl, body);
+}
+
+Syntax *Parser::parseTraditionalForExpression() {
+  Token Keyword = requireToken(tok::ForKeyword);
+  expectToken(tok::LeftParen);
+
+  Syntax *Decl = nullptr;
+  if (!nextTokenIs(tok::Semicolon))
+    Decl = parseDeclaration();
+  if (nextTokenIs(tok::Semicolon))
+    consumeToken();
+
+  Syntax *Condition = nullptr;
+  if (!nextTokenIs(tok::Semicolon))
+    Condition = parseEqualityExpression();
+  expectToken(tok::Semicolon);
+
+  Syntax *Increment = nullptr;
+  if (!nextTokenIs(tok::RightParen))
+    Increment = parseAssignmentExpression();
+  expectToken(tok::RightParen);
+
+  Syntax *Head = new TripleSyntax(Decl, Condition, Increment);
+  Syntax *Body = parseBlockExpression();
+  return new ControlSyntax(Keyword, Head, Body);
 }
 
 ///   loop-expression:
@@ -713,6 +752,7 @@ Syntax *Parser::parseDoExpression()
 ///     block
 Syntax *Parser::parseBlockExpression()
 {
+  InBody = true;
   if (nextTokenIs(tok::LeftBrace))
     return parseBlock();
   return parseExpression();

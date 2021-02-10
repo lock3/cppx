@@ -266,6 +266,8 @@ namespace blue
     Syntax *parseForExpression();
     Syntax *parseWhileExpression();
     Syntax *parseDoExpression();
+    Syntax *parseRangeForExpression();
+    Syntax *parseTraditionalForExpression();
 
     Syntax *parseTemplateConstructor();
     Syntax *parseArrayConstructor();
@@ -359,6 +361,26 @@ namespace blue
 
     // How deep into nested {}'s were we when we started tracking?
     unsigned BeginningBraceDepth = 0;
+
+    bool ParsingControl = false;
+    bool InBody = false;
+  };
+
+  struct BooleanRAII {
+    BooleanRAII(bool &Boolean, bool Val)
+      : Boolean(Boolean)
+      {
+        SavedVal = Boolean;
+        Boolean = Val;
+      }
+
+    ~BooleanRAII() {
+      Boolean = SavedVal;
+    }
+
+  private:
+    bool &Boolean;
+    bool SavedVal;
   };
 
 } // namespace blue
