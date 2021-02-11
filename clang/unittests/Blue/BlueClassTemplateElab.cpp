@@ -32,21 +32,21 @@ C:[T:type] class = {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// TEST(BlueClassTemplate, ClassTemplateWithDependentMember) {
-//   StringRef Code = R"BLUE(
-// C:[T:type] class = {
-//   x:T;
-// }
-// )BLUE";
+TEST(BlueClassTemplate, ClassTemplateWithDependentMember) {
+  StringRef Code = R"BLUE(
+C:[T:type] class = {
+  x:T;
+}
+)BLUE";
 
-//   auto ToMatch = classTemplateDecl(
-//     has(cxxRecordDecl(
-//       hasName("C"),
-//       has(fieldDecl(hasName("x")))
-//     ))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+  auto ToMatch = classTemplateDecl(
+    has(cxxRecordDecl(
+      hasName("C"),
+      has(fieldDecl(hasName("x")))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
 // TEST(BlueClassTemplate, UseInTypeAlias) {
 //   StringRef Code = R"BLUE(
@@ -63,17 +63,17 @@ C:[T:type] class = {
 //   ASSERT_TRUE(matches(Code.str(), ToMatch));
 // }
 
-// TEST(BlueClassTemplate, UseAsVariableType) {
-//   StringRef Code = R"BLUE(
-// C:[T:type] class = {
-//   x:T;
-// }
-// x:C[int];
-// )BLUE";
+TEST(BlueClassTemplate, UseAsVariableType) {
+  StringRef Code = R"BLUE(
+C:[T:type] class = {
+  x:T;
+}
+x:C[int];
+)BLUE";
 
-//   auto ToMatch = varDecl(
-//     hasName("x"),
-//     hasType(asString("C<int>"))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+  auto ToMatch = varDecl(
+    hasName("x"),
+    hasType(asString("C<int>"))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
