@@ -309,10 +309,13 @@ struct MultiarySyntax : Syntax
 
   /// The location of the end of the term.
   clang::SourceLocation getEndLocation() const {
-    if (num_terms == 0) {
+    if (num_terms == 0)
       return clang::SourceLocation();
-    }
-    return m_terms[num_terms - 1]->getLocation();
+
+    // return the last term that exists
+    for (unsigned i = num_terms - 1; num_terms > 0; --i)
+      if (m_terms[i])
+        return m_terms[i]->getLocation();
   }
 
   static bool classof(const Syntax *S) {
@@ -781,6 +784,23 @@ struct ControlSyntax : BinarySyntax
   {
     return m_terms[1];
   }
+
+  clang::SourceLocation getLocation() const {
+    return control().getLocation();
+  }
+
+  clang::SourceLocation getBeginLocation() const {
+    return getLocation();
+  }
+
+  clang::SourceLocation getEndLocation() const {
+    if (m_terms[1])
+      return m_terms[1]->getLocation();
+    if (m_terms[0])
+      return m_terms[0]->getLocation();
+    return getLocation();
+  }
+
   static bool classof(const Syntax *S) {
     return S->getKind() == this_kind;
   }

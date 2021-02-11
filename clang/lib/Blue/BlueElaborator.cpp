@@ -2539,7 +2539,11 @@ clang::Expr *Elaborator::elaborateTripleExpression(const TripleSyntax *S) {
 }
 
 clang::Expr *Elaborator::elaborateListExpression(const ListSyntax *S) {
-  llvm_unreachable("elaborateListExpression not implemented yet");
+  // We probably never get here in normal elaboration, but syntactically
+  // valid errors may cause lists to show up where they should not.
+  SemaRef.getCxxSema().Diags.Report(S->getLocation(),
+                                    clang::diag::err_failed_to_translate_expr);
+  return nullptr;
 }
 
 clang::Expr *Elaborator::elaborateSequenceExpression(const SequenceSyntax *S) {
@@ -2821,6 +2825,9 @@ clang::Stmt *Elaborator::elaborateSequenceStmt(const SequenceSyntax *S) {
 }
 
 clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
+  if (!S)
+    return nullptr;
+
   if (auto DS = dyn_cast<DeclarationSyntax>(S))
     return elaborateDeclStmt(DS);
 
