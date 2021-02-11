@@ -348,7 +348,7 @@ Syntax *Parser::parseDeclarationStatement()
 Syntax *Parser::parseExpressionStatement()
 {
   Syntax *E = parseExpressionList();
-  if (!PreviousToken.hasKind(tok::RightBrace))
+  if (!nextTokenIs(tok::RightBrace) && !PreviousToken.hasKind(tok::RightBrace))
     expectToken(tok::Semicolon);
   return E;
 }
@@ -553,11 +553,11 @@ Syntax *Parser::parseConditionalExpression()
   expectToken(tok::LeftParen);
   Syntax *S0 = parseExpression();
   expectToken(tok::RightParen);
-  Syntax *S1 = parseBlockExpression();
+  Syntax *S1 = parseStatement();
 
   // Match the else part. Turn the body into an application.
   if (matchToken(tok::ElseKeyword)) {
-    Syntax *S2 = parseBlockExpression();
+    Syntax *S2 = parseStatement();
     S1 = new PairSyntax(S1, S2);
   } else {
     S1 = new PairSyntax(S1, nullptr);
