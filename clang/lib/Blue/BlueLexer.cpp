@@ -145,6 +145,8 @@ Token Lexer::operator()() {
         return matchToken(tok::MinusEqual);
       if (nthCharacterIs(1, '>'))
         return matchToken(tok::MinusGreater);
+      if (nthCharacterIs(1, '-'))
+        return matchToken(tok::MinusMinus);
       return matchToken(tok::Minus);
 
     case '*':
