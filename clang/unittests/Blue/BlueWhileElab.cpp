@@ -18,32 +18,32 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace blue;
 
-// TEST(BlueWhile, NoBraces) {
-//   StringRef Code = R"BLUE(
-// main : () int = {
-//   y : int = 0;
-//   while (y < 10)
-//     y++;
+TEST(BlueWhile, NoBraces) {
+  StringRef Code = R"BLUE(
+main : () int = {
+  y : int = 0;
+  while (y < 10)
+    y+=1;
 
-//   return y;
-// }
-//   )BLUE";
-//   auto ToMatch = whileStmt();
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+  return y;
+}
+  )BLUE";
+  auto ToMatch = whileStmt();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
-// TEST(BlueWhile, Braces) {
-//   StringRef Code = R"BLUE(
-// main : () int = {
-//   y : int = 0;
-//   while (y < 10) {
-//     y++;
-//     y += 1;
-//   }
+TEST(BlueWhile, Braces) {
+  StringRef Code = R"BLUE(
+main : () int = {
+  y : int = 0;
+  while (y < 10) {
+    y += 1;
+    y += 1;
+  }
 
-//   return y;
-// }
-//   )BLUE";
-//   auto ToMatch = whileStmt();
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+  return y;
+}
+  )BLUE";
+  auto ToMatch = whileStmt();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

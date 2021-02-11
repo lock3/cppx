@@ -489,6 +489,18 @@ struct EnclosureSyntax : UnarySyntax
   Token m_open;
   Token m_close;
 
+  clang::SourceLocation getLocation() const {
+    return m_open.getLocation();
+  }
+
+  clang::SourceLocation getBeginLocation() const {
+    return getLocation();
+  }
+
+  clang::SourceLocation getEndLocation() const {
+    return m_close.getLocation();
+  }
+
   static bool classof(const Syntax *S) {
     return S->getKind() == this_kind;
   }

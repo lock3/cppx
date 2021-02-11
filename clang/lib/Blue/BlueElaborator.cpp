@@ -2955,37 +2955,35 @@ clang::Stmt *Elaborator::elaborateIfStmt(const ControlSyntax *S) {
 }
 
 clang::Stmt *Elaborator::elaborateWhileStmt(const ControlSyntax *S) {
-  return nullptr;
+  assert(S->control().hasKind(tok::WhileKeyword) && "invalid while syntax");
+  Sema::ScopeRAII WhileScope(SemaRef, Scope::Control, S);
+
+  // Elaborate the condition
+  clang::Expr *CondExpr =
+    elaborateExpression(S->head());
+  if (!CondExpr)
+    return nullptr;
+  clang::Sema::ConditionResult Condition =
+    SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr, S->getLocation(),
+                                        CondExpr,
+                                        clang::Sema::ConditionKind::Boolean);
+
+  // Elaborate the block
+  const Syntax *BlockSyntax = S->body();
+  SemaRef.enterScope(Scope::Block, BlockSyntax);
+  clang::Stmt *Block = elaborateStatement(BlockSyntax);
+  SemaRef.leaveScope(BlockSyntax);
+  if (!Block)
+    return nullptr;
+
+  clang::StmtResult While =
+    SemaRef.getCxxSema().ActOnWhileStmt(S->getLocation(),
+                                        S->head()->getLocation(),
+                                        Condition,
+                                        S->body()->getLocation(),
+                                        Block);
+  return While.get();
 }
-//   assert(S->getKeyword().hasKind(tok::WhileKeyword) && "invalid while syntax");
-//   Sema::ScopeRAII WhileScope(SemaRef, Scope::Control, S);
-
-//   // Elaborate the condition
-//   clang::Expr *CondExpr =
-//     elaborateExpression(S->getSignature());
-//   if (!CondExpr)
-//     return nullptr;
-//   clang::Sema::ConditionResult Condition =
-//     SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr, S->getLocation(),
-//                                         CondExpr,
-//                                         clang::Sema::ConditionKind::Boolean);
-
-//   // Elaborate the block
-//   const Syntax *BlockSyntax = S->getBlock();
-//   SemaRef.enterScope(Scope::Block, BlockSyntax);
-//   clang::Stmt *Block = elaborateStatement(BlockSyntax);
-//   SemaRef.leaveScope(BlockSyntax);
-//   if (!Block)
-//     return nullptr;
-
-//   clang::StmtResult While =
-//     SemaRef.getCxxSema().ActOnWhileStmt(S->getLocation(),
-//                                         S->getSignature()->getLocation(),
-//                                         Condition,
-//                                         S->getSignature()->getEndLocation(),
-//                                         Block);
-//   return While.get();
-// }
 
 clang::Stmt *Elaborator::elaborateForStmt(const ControlSyntax *S) {
   assert(S->control().hasKind(tok::ForKeyword) && "invalid for syntax");
