@@ -1125,7 +1125,8 @@ Syntax *Parser::parsePrefixExpression() {
       break;
     return parseFunctionConstructor();
   }
-
+  case tok::PlusPlus:
+  case tok::MinusMinus:
   case tok::ConstKeyword:
   case tok::Caret:
   case tok::Plus:
@@ -1203,7 +1204,12 @@ Syntax *Parser::parsePostfixExpression() {
     else if (Token Op = matchToken(tok::Caret)) {
       E0 = new PostfixSyntax(Op, E0);
     }
-    else
+    else if (Token Inc = matchToken(tok::PlusPlus)) {
+      E0 = new PostfixSyntax(Inc, E0);
+    }
+    else if (Token Dec = matchToken(tok::MinusMinus)) {
+      E0 = new PostfixSyntax(Dec, E0);
+    } else
       break;
   }
 

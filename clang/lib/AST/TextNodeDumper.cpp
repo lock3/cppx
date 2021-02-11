@@ -2411,6 +2411,7 @@ void TextNodeDumper::VisitPrefixSyntax(const blue::PrefixSyntax *S) {
 }
 
 void TextNodeDumper::VisitPostfixSyntax(const blue::PostfixSyntax *S) {
+  OS << " '" << S->operation().getSpelling() << "' ";
 }
 
 void TextNodeDumper::VisitFileSyntax(const blue::FileSyntax *S) {

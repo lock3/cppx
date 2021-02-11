@@ -1355,6 +1355,7 @@ clang::Expr *Elaborator::elaborateTypeDeclarator(const Declarator *Dcl) {
   clang::Expr *E = elaborateExpression(Dcl->getInfo());
   if (!E)
     return nullptr;
+
   clang::QualType T = E->getType();
   if (!T->isKindType()) {
     Error(Dcl->getLocation(), "invalid type");
@@ -2371,9 +2372,14 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
     if (!ArgEnclosure->operand())
       // TODO: I need to create a test case for this.
       llvm_unreachable("Invalid empty template instantiation.");
+
     auto LS = cast<ListSyntax>(ArgEnclosure->operand());
+    if (IdExpr->getType()->isTemplateType())
+        return elaborateClassTemplateSelection(IdExpr, ArgEnclosure, LS);
     if (!isa<clang::OverloadExpr>(IdExpr))
       return elaborateArraySubscriptExpr(IdExpr, LS);
+
+
     return elabotateTemplateInstantiationWithArgs(ArgEnclosure, IdExpr, LS);
 
 
@@ -3335,115 +3341,117 @@ Elaborator::elabotateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc,
 
 
 
-// clang::Expr *
-// Elaborator::elaborateClassTemplateSelection(clang::Expr *IdExpr,
-//                                             const ListSyntax *ArgList) {
+clang::Expr *
+Elaborator::elaborateClassTemplateSelection(clang::Expr *IdExpr,
+                                            const EnclosureSyntax *Enc,
+                                            const ListSyntax *ArgList) {
 
-//   clang::SourceLocation LocStart = ArgList->getEnclosingTokens().first.getLocation();
-//   clang::SourceLocation LocEnd = ArgList->getEnclosingTokens().second.getLocation();
-//   clang::TemplateArgumentListInfo TemplateArgs(LocEnd, LocStart);
-//   llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
+  clang::SourceLocation LocStart = Enc->open().getLocation();
+  clang::SourceLocation LocEnd = Enc->close().getLocation();
+  clang::TemplateArgumentListInfo TemplateArgs(LocEnd, LocStart);
+  llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
 
-//   if (elaborateClassTemplateArguments(ArgList, TemplateArgs, ParsedArguments))
-//     return nullptr;
+  if (elaborateClassTemplateArguments(Enc, ArgList, TemplateArgs, ParsedArguments))
+    return nullptr;
 
-//   clang::Decl *Decl = SemaRef.getDeclFromExpr(IdExpr, IdExpr->getExprLoc());
-//   if (!Decl)
-//     return nullptr;
+  clang::Decl *Decl = SemaRef.getDeclFromExpr(IdExpr, IdExpr->getExprLoc());
+  if (!Decl)
+    return nullptr;
 
-//   clang::TemplateDecl *CTD = dyn_cast<clang::TemplateDecl>(Decl);
-//   assert(CTD && "Invalid CppxDeclRefExpr");
+  clang::TemplateDecl *CTD = dyn_cast<clang::TemplateDecl>(Decl);
+  assert(CTD && "Invalid CppxDeclRefExpr");
 
-//   clang::CXXScopeSpec SS;
-//   clang::TemplateName TName(CTD);
-//   clang::Sema::TemplateTy TemplateTyName = clang::Sema::TemplateTy::make(TName);
-//   clang::IdentifierInfo *II = CTD->getIdentifier();
-//   clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
-//   clang::SourceLocation Loc = ArgList->getLocation();
-//   if (clang::VarTemplateDecl *VTD = dyn_cast<clang::VarTemplateDecl>(CTD)) {
-//     clang::DeclarationNameInfo DNI(VTD->getDeclName(), Loc);
-//     clang::LookupResult R(getCxxSema(), DNI, clang::Sema::LookupAnyName);
-//     R.addDecl(VTD);
-//     clang::ExprResult ER = getCxxSema().BuildTemplateIdExpr(SS, Loc, R, false,
-//                                                             &TemplateArgs);
-//     if (ER.isInvalid())
-//       return nullptr;
-//     return ER.get();
-//   } else {
-//     clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
-//       SemaRef.getCurClangScope(), SS, /*TemplateKWLoc*/ Loc,
-//       TemplateTyName, II, IdExpr->getExprLoc(),
-//       /*LAngleLoc*/Loc, InArgs, /*RAngleLoc*/ Loc, false, false);
+  clang::CXXScopeSpec SS;
+  clang::TemplateName TName(CTD);
+  clang::Sema::TemplateTy TemplateTyName = clang::Sema::TemplateTy::make(TName);
+  clang::IdentifierInfo *II = CTD->getIdentifier();
+  clang::ASTTemplateArgsPtr InArgs(ParsedArguments);
+  clang::SourceLocation Loc = ArgList->getLocation();
+  if (clang::VarTemplateDecl *VTD = dyn_cast<clang::VarTemplateDecl>(CTD)) {
+    clang::DeclarationNameInfo DNI(VTD->getDeclName(), Loc);
+    clang::LookupResult R(getCxxSema(), DNI, clang::Sema::LookupAnyName);
+    R.addDecl(VTD);
+    clang::ExprResult ER = getCxxSema().BuildTemplateIdExpr(SS, Loc, R, false,
+                                                            &TemplateArgs);
+    if (ER.isInvalid())
+      return nullptr;
+    return ER.get();
+  } else {
+    clang::TypeResult Result = SemaRef.getCxxSema().ActOnTemplateIdType(
+      SemaRef.getCurClangScope(), SS, /*TemplateKWLoc*/ Loc,
+      TemplateTyName, II, IdExpr->getExprLoc(),
+      /*LAngleLoc*/Loc, InArgs, /*RAngleLoc*/ Loc, false, false);
 
-//     if (Result.isInvalid()) {
-//       getCxxSema().Diags.Report(IdExpr->getExprLoc(),
-//                                 clang::diag::err_failed_to_translate_expr);
-//       return nullptr;
-//     }
+    if (Result.isInvalid()) {
+      getCxxSema().Diags.Report(IdExpr->getExprLoc(),
+                                clang::diag::err_failed_to_translate_expr);
+      return nullptr;
+    }
 
-//     clang::QualType Ty(Result.get().get());
-//     const clang::LocInfoType *TL = cast<clang::LocInfoType>(Ty.getTypePtr());
-//     return SemaRef.buildTypeExpr(TL->getType(), ArgList->getLocation());
-//   }
+    clang::QualType Ty(Result.get().get());
+    const clang::LocInfoType *TL = cast<clang::LocInfoType>(Ty.getTypePtr());
+    return SemaRef.buildTypeExpr(TL->getType(), ArgList->getLocation());
+  }
 
-// }
-// bool Elaborator::elaborateClassTemplateArguments(
-//     const ListSyntax *Args, clang::TemplateArgumentListInfo &ArgInfo,
-//     llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs) {
+}
+bool Elaborator::elaborateClassTemplateArguments(
+  const EnclosureSyntax *Enc,
+    const ListSyntax *Args, clang::TemplateArgumentListInfo &ArgInfo,
+    llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs) {
 
-//   for(const Syntax *SyntaxArg : Args->children()) {
+  for(const Syntax *SyntaxArg : Args->children()) {
 
-//     clang::Expr *ArgExpr = elaborateConstantExpression(SyntaxArg);
-//     if (!ArgExpr) {
-//       getCxxSema().Diags.Report(SyntaxArg->getLocation(),
-//                                 clang::diag::err_failed_to_translate_expr);
-//       continue;
-//     }
+    clang::Expr *ArgExpr = elaborateConstantExpression(SyntaxArg);
+    if (!ArgExpr) {
+      getCxxSema().Diags.Report(SyntaxArg->getLocation(),
+                                clang::diag::err_failed_to_translate_expr);
+      continue;
+    }
 
-//     auto TemplateArg = SemaRef.convertExprToTemplateArg(ArgExpr);
-//     if (TemplateArg.isInvalid())
-//       // TODO: Figure out if this needs an error message or not.
-//       // I assume that the errore message should be delivered prior to this.
-//       return true;
+    auto TemplateArg = SemaRef.convertExprToTemplateArg(ArgExpr);
+    if (TemplateArg.isInvalid())
+      // TODO: Figure out if this needs an error message or not.
+      // I assume that the errore message should be delivered prior to this.
+      return true;
 
-//     ParsedArgs.emplace_back(TemplateArg);
+    ParsedArgs.emplace_back(TemplateArg);
 
-//     // Also building template Argument Info.
-//     if (ArgExpr->getType()->isTypeOfTypes()) {
-//       clang::TypeSourceInfo *ArgTInfo = SemaRef.getTypeSourceInfoFromExpr(
-//                                              ArgExpr, SyntaxArg->getLocation());
-//       if (!ArgTInfo)
-//         return true;
-//       clang::TemplateArgument Arg(ArgTInfo->getType());
-//       ArgInfo.addArgument({Arg, ArgTInfo});
-//     } else if (ArgExpr->getType()->isTemplateType()) {
-//       clang::Decl *D = SemaRef.getDeclFromExpr(ArgExpr, SyntaxArg->getLocation());
-//       if (!D)
-//         llvm_unreachable("Invalid template declaration reference.");
+    // Also building template Argument Info.
+    if (ArgExpr->getType()->isTypeOfTypes()) {
+      clang::TypeSourceInfo *ArgTInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                             ArgExpr, SyntaxArg->getLocation());
+      if (!ArgTInfo)
+        return true;
+      clang::TemplateArgument Arg(ArgTInfo->getType());
+      ArgInfo.addArgument({Arg, ArgTInfo});
+    } else if (ArgExpr->getType()->isTemplateType()) {
+      clang::Decl *D = SemaRef.getDeclFromExpr(ArgExpr, SyntaxArg->getLocation());
+      if (!D)
+        llvm_unreachable("Invalid template declaration reference.");
 
-//       clang::TemplateDecl *TD = cast<clang::TemplateDecl>(D);
-//       clang::TemplateName Template(TD);
-//       if (Template.isNull())
-//         return true;
-//       clang::TemplateArgument Arg(Template);
-//       clang::TemplateArgumentLocInfo TALoc(getCxxContext(),
-//                                            clang::NestedNameSpecifierLoc(),
-//                                            SyntaxArg->getLocation(),
-//                                            clang::SourceLocation());
-//       ArgInfo.addArgument({Arg, TALoc});
-//     } else {
-//       clang::TemplateArgument Arg(ArgExpr, clang::TemplateArgument::Expression);
+      clang::TemplateDecl *TD = cast<clang::TemplateDecl>(D);
+      clang::TemplateName Template(TD);
+      if (Template.isNull())
+        return true;
+      clang::TemplateArgument Arg(Template);
+      clang::TemplateArgumentLocInfo TALoc(getCxxContext(),
+                                           clang::NestedNameSpecifierLoc(),
+                                           SyntaxArg->getLocation(),
+                                           clang::SourceLocation());
+      ArgInfo.addArgument({Arg, TALoc});
+    } else {
+      clang::TemplateArgument Arg(ArgExpr, clang::TemplateArgument::Expression);
 
-//       // TODO: I will need to migrate the const elaboration
-//       // This attempts to make sure that all referenced functions are actually
-//       // in scope, and completely elaborated.
-//       // SemaRef.elaborateConstexpr(ArgExpr);
+      // TODO: I will need to migrate the const elaboration
+      // This attempts to make sure that all referenced functions are actually
+      // in scope, and completely elaborated.
+      // SemaRef.elaborateConstexpr(ArgExpr);
 
-//       ArgInfo.addArgument({Arg, ArgExpr});
-//     }
-//   }
-//   return false;
-// }
+      ArgInfo.addArgument({Arg, ArgExpr});
+    }
+  }
+  return false;
+}
 
 clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,
                                                const InfixSyntax *S) {

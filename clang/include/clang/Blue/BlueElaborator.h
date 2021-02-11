@@ -171,12 +171,14 @@ public:
                    llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs);
   clang::Expr *elabotateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc, clang::Expr *Base,
                                                     const ListSyntax *ArgList);
-  // clang::Expr *elaborateClassTemplateSelection(clang::Expr *IdExpr,
-  //                                              const ListSyntax *ArgList);
+  clang::Expr *elaborateClassTemplateSelection(clang::Expr *IdExpr,
+                                               const EnclosureSyntax *Enc,
+                                               const ListSyntax *ArgList);
 
-  // bool elaborateClassTemplateArguments(const ListSyntax *Args,
-  //                                      clang::TemplateArgumentListInfo &ArgInfo,
-  //             llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs);
+  bool elaborateClassTemplateArguments(const EnclosureSyntax *Enc,
+                                       const ListSyntax *Args,
+                                       clang::TemplateArgumentListInfo &ArgInfo,
+              llvm::SmallVectorImpl<clang::ParsedTemplateArgument> &ParsedArgs);
 
   /// Dispatching function, that determines based on the LHS's type how to
   /// process the RHS of the expression.
