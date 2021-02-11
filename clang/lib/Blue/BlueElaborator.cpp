@@ -2372,7 +2372,10 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
       // TODO: I need to create a test case for this.
       llvm_unreachable("Invalid empty template instantiation.");
     auto LS = cast<ListSyntax>(ArgEnclosure->operand());
+    if (!isa<clang::OverloadExpr>(IdExpr))
+      return elaborateArraySubscriptExpr(IdExpr, LS);
     return elabotateTemplateInstantiationWithArgs(ArgEnclosure, IdExpr, LS);
+
 
   } else if (ArgEnclosure->isBraceEnclosure()) {
     llvm::outs() << "Dumping brace\n";
@@ -3037,42 +3040,24 @@ clang::Stmt *Elaborator::elaborateForStmt(const ControlSyntax *S) {
                               clang::SourceLocation(), Block).get();
 }
 
-// clang::Expr *Elaborator::elaborateArraySubscriptExpr(clang::Expr *Base,
-//                                                      const BinarySyntax *Op) {
-//   assert(Base->getType()->isArrayType() && "non-array");
+clang::Expr *Elaborator::elaborateArraySubscriptExpr(clang::Expr *Base,
+                                                     const ListSyntax *Args) {
+  if (Args->getNumChildren() != 1) {
+    Error(Args->getLocation(), "too many arguments in array subscript");
+    return nullptr;
+  }
 
-//   const Syntax *RHS = Op->getRightOperand();
-//   if (!RHS || isa<ErrorSyntax>(RHS))
-//     return nullptr;
+  clang::Expr *IndexExpr = elaborateExpression(Args->operand(0));
+  if (!IndexExpr)
+    return nullptr;
 
-//   const ListSyntax *List = dyn_cast<ListSyntax>(RHS);
-//   if (!List) {
-//     Error(RHS->getLocation(), "expected bracketed list");
-//     return nullptr;
-//   }
-
-//   // this was called with function-call syntax?
-//   if (!List->isBracketList()) {
-//     Error(List->getLocation(), "expected '['");
-//     return nullptr;
-//   }
-
-//   if (List->getNumChildren() != 1) {
-//     Error(List->getLocation(), "too many arguments in array subscript");
-//     return nullptr;
-//   }
-
-//   clang::Expr *IndexExpr = elaborateExpression(List->getChild(0));
-//   if (!IndexExpr)
-//     return nullptr;
-
-//   auto SubscriptExpr = CxxSema.ActOnArraySubscriptExpr(
-//     SemaRef.getCurClangScope(), Base, IndexExpr->getExprLoc(),
-//     IndexExpr, IndexExpr->getExprLoc());
-//   if (SubscriptExpr.isInvalid())
-//     return nullptr;
-//   return SubscriptExpr.get();
-// }
+  auto SubscriptExpr = CxxSema.ActOnArraySubscriptExpr(
+    SemaRef.getCurClangScope(), Base, IndexExpr->getExprLoc(),
+    IndexExpr, IndexExpr->getExprLoc());
+  if (SubscriptExpr.isInvalid())
+    return nullptr;
+  return SubscriptExpr.get();
+}
 
 clang::Expr *Elaborator::elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
                                                const CallSyntax *Op) {

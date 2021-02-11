@@ -161,8 +161,8 @@ public:
   // clang::Expr *elaborateApplyExpression(clang::Expr *LHS,
   //                                       const BinarySyntax *S);
 
-  // clang::Expr *elaborateArraySubscriptExpr(clang::Expr *Base,
-  //                                          const BinarySyntax *Op);
+  clang::Expr *elaborateArraySubscriptExpr(clang::Expr *Base,
+                                           const ListSyntax *Args);
   clang::Expr *elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
                                      const CallSyntax *Op);
 
