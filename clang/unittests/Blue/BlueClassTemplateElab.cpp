@@ -18,19 +18,19 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace blue;
 
-// TEST(BlueClassTemplate, SimpleClassTemplateDecl) {
-//   StringRef Code = R"BLUE(
-// C:[T:type] class = {
-// }
-// )BLUE";
+TEST(BlueClassTemplate, SimpleClassTemplateDecl) {
+  StringRef Code = R"BLUE(
+C:[T:type] class = {
+}
+)BLUE";
 
-//   auto ToMatch = classTemplateDecl(
-//     has(cxxRecordDecl(
-//       hasName("C")
-//     ))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+  auto ToMatch = classTemplateDecl(
+    has(cxxRecordDecl(
+      hasName("C")
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
 // TEST(BlueClassTemplate, ClassTemplateWithDependentMember) {
 //   StringRef Code = R"BLUE(

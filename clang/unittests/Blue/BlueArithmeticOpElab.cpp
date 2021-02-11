@@ -134,3 +134,50 @@ foo:() void = {
   auto ToMatch = binaryOperator(hasOperatorName("%="));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+
+TEST(BlueArithmeticOp, PreIncrement) {
+  StringRef Code = R"BLUE(
+foo:() void = {
+  x:int;
+  ++x;
+}
+  )BLUE";
+  auto ToMatch = unaryOperator(hasOperatorName("++"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueArithmeticOp, PostIncrement) {
+  StringRef Code = R"BLUE(
+foo:() void = {
+  x:int;
+  x++;
+}
+  )BLUE";
+  auto ToMatch = unaryOperator(hasOperatorName("++"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+
+TEST(BlueArithmeticOp, PreDecrement) {
+  StringRef Code = R"BLUE(
+foo:() void = {
+  x:int;
+  --x;
+}
+  )BLUE";
+  auto ToMatch = unaryOperator(hasOperatorName("--"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueArithmeticOp, PostDecrement) {
+  StringRef Code = R"BLUE(
+foo:() void = {
+  x:int;
+  x--;
+}
+  )BLUE";
+  auto ToMatch = unaryOperator(hasOperatorName("--"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
