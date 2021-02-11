@@ -86,7 +86,8 @@ public:
   Declaration *getTUDecl() const { return TUDecl; }
 
   llvm::StringMap<clang::BinaryOperatorKind> BinOpMap;
-  llvm::StringMap<clang::UnaryOperatorKind> UnaryOpMap;
+  llvm::StringMap<clang::UnaryOperatorKind> UnaryPrefixOpMap;
+  llvm::StringMap<clang::UnaryOperatorKind> UnaryPostfixOpMap;
 
   clang::QualType DefaultCharTy;
 

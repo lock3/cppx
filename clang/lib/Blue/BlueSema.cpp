@@ -102,16 +102,24 @@ static llvm::StringMap<clang::BinaryOperatorKind> getBinOpMapping() {
   };
 }
 
-static llvm::StringMap<clang::UnaryOperatorKind> getUnaryOperatorMapping() {
+static llvm::StringMap<clang::UnaryOperatorKind> getUnaryOperatorPrefixMapping() {
   return llvm::StringMap<clang::UnaryOperatorKind>{
-    // ++ and -- have locational context and thus are not in this map,
-    // see Elaborator::elaborateUnaryExpression(const UnarySyntax *).
+
+    {"++", clang::UO_PreInc},
+    {"--", clang::UO_PreDec},
     {"~", clang::UO_Not},
     {"!", clang::UO_LNot},
     {"^", clang::UO_AddrOf},
-    // {"&", clang::UO_AddrOf},
     {"+", clang::UO_Plus},
     {"-", clang::UO_Minus}
+  };
+}
+
+static llvm::StringMap<clang::UnaryOperatorKind> getUnaryOperatorPostfixMapping() {
+  return llvm::StringMap<clang::UnaryOperatorKind>{
+    {"^", clang::UO_Deref},
+    {"++", clang::UO_PostInc},
+    {"--", clang::UO_PostDec}
   };
 }
 
@@ -119,7 +127,8 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
   : Context(Context), CxxSema(CxxSema),
     CxxAST(Context.CxxAST),
     BinOpMap(getBinOpMapping()),
-    UnaryOpMap(getUnaryOperatorMapping()),
+    UnaryPrefixOpMap(getUnaryOperatorPrefixMapping()),
+    UnaryPostfixOpMap(getUnaryOperatorPostfixMapping()),
     DefaultCharTy(CxxAST.CharTy),
     BuiltinTypes(createBuiltinTypeList())
 { }
