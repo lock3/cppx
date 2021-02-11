@@ -78,7 +78,7 @@ public:
   void elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,
                                    OptioanlClangScopeRAII &ClangTemplateScope,
                                    Declaration *D, Declarator *Dcl);
-  void buildTemplateParams(const Syntax *Params,
+  void buildTemplateParams(const ListSyntax *Params,
                            llvm::SmallVectorImpl<clang::NamedDecl *> &Res);
 
   clang::Decl *doElaborateDeclarationTyping(Declaration *D);
@@ -96,6 +96,7 @@ public:
   Declarator *getDeclarator(const Syntax *S);
   Declarator *getArrayDeclarator(const ArraySyntax *AS);
   Declarator *getPointerDeclarator(const PrefixSyntax *OS);
+  Declarator *getTemplateDeclarator(const TemplateSyntax *TS);
   Declarator *getLeafDeclarator(const Syntax *S);
   Declarator *getImplicitAutoDeclarator();
   clang::Decl *elaborateDeclEarly(Declaration *D);
@@ -160,16 +161,16 @@ public:
   // clang::Expr *elaborateApplyExpression(clang::Expr *LHS,
   //                                       const BinarySyntax *S);
 
-  // clang::Expr *elaborateArraySubscriptExpr(clang::Expr *Base,
-  //                                          const BinarySyntax *Op);
+  clang::Expr *elaborateArraySubscriptExpr(clang::Expr *Base,
+                                           const ListSyntax *Args);
   clang::Expr *elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
                                      const CallSyntax *Op);
 
-  // void elaborateTemplateArgs(const ListSyntax *ArgList,
-  //                            clang::TemplateArgumentListInfo &TemplateArgs,
-  //                  llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs);
-  // clang::Expr *elabotateTemplateInstantiationWithArgs(clang::Expr *Base,
-  //                                                   const ListSyntax *ArgList);
+  void elaborateTemplateArgs(const EnclosureSyntax *Enc, const ListSyntax *ArgList,
+                             clang::TemplateArgumentListInfo &TemplateArgs,
+                   llvm::SmallVectorImpl<clang::TemplateArgument> &ActualArgs);
+  clang::Expr *elabotateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc, clang::Expr *Base,
+                                                    const ListSyntax *ArgList);
   // clang::Expr *elaborateClassTemplateSelection(clang::Expr *IdExpr,
   //                                              const ListSyntax *ArgList);
 

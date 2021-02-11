@@ -19,53 +19,53 @@ using namespace clang;
 using namespace blue;
 // TODO: Make all functions implicit no except.
 
-// TEST(BlueFunctionTemplate, SimpleFunctionDecl) {
-//   StringRef Code = R"BLUE(
-// foo:[T:type] (x:T) void = {
-// }
-// )BLUE";
+TEST(BlueFunctionTemplate, SimpleFunctionDecl) {
+  StringRef Code = R"BLUE(
+foo:[T:type] (x:T) void = {
+}
+)BLUE";
 
-//   auto ToMatch = functionTemplateDecl(
-//     has(functionDecl(
-//       hasName("foo"),
-//       hasType(asString("void (type-parameter-0-0)"))
-//     ))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+  auto ToMatch = functionTemplateDecl(
+    has(functionDecl(
+      hasName("foo"),
+      hasType(asString("void (type-parameter-0-0)"))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
-// TEST(BlueFunctionTemplate, Use) {
-//   StringRef Code = R"BLUE(
-// foo:[T:type] (x:T) void = {
-// }
-// bar:() = {
-//   foo(34);
-// }
-// )BLUE";
+TEST(BlueFunctionTemplate, Use) {
+  StringRef Code = R"BLUE(
+foo:[T:type] (x:T) void = {
+}
+bar:() void = {
+  foo(34);
+}
+)BLUE";
 
-//   auto ToMatch = functionTemplateDecl(
-//     has(functionDecl(
-//       hasName("foo"),
-//       hasType(asString("void (type-parameter-0-0)"))
-//     ))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+  auto ToMatch = functionTemplateDecl(
+    has(functionDecl(
+      hasName("foo"),
+      hasType(asString("void (type-parameter-0-0)"))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
-// TEST(BlueFunctionTemplate, UseProvidingTemplateArguments) {
-//   StringRef Code = R"BLUE(
-// foo:[T:type] (x:T) void = {
-// }
-// bar:() = {
-//   foo[int](34);
-// }
-// )BLUE";
+TEST(BlueFunctionTemplate, UseProvidingTemplateArguments) {
+  StringRef Code = R"BLUE(
+foo:[T:type] (x:T) void = {
+}
+bar:() = {
+  foo[int](34);
+}
+)BLUE";
 
-//   auto ToMatch = functionTemplateDecl(
-//     has(functionDecl(
-//       hasName("foo"),
-//       hasType(asString("void (type-parameter-0-0)"))
-//     ))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+  auto ToMatch = functionTemplateDecl(
+    has(functionDecl(
+      hasName("foo"),
+      hasType(asString("void (type-parameter-0-0)"))
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
