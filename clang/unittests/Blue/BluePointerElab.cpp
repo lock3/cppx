@@ -68,6 +68,17 @@ X :type = ^int;
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+TEST(BluePointer, AddressOf) {
+  StringRef Code = R"BLUE(
+f:() = {
+  Y:int;
+  X :^int = ^Y;
+}
+)BLUE";
+  auto ToMatch = unaryOperator(hasOperatorName("&"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
 
 TEST(BluePointer, InvalidPtrDecl) {
   StringRef Code = R"BLUE(

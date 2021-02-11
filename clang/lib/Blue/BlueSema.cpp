@@ -80,8 +80,8 @@ static llvm::StringMap<clang::BinaryOperatorKind> getBinOpMapping() {
     {"|", clang::BO_Or},
     {"<<", clang::BO_Shl},
     {">>", clang::BO_Shr},
-    {"||", clang::BO_LOr},
-    {"&&", clang::BO_LAnd},
+    {"or", clang::BO_LOr},
+    {"and", clang::BO_LAnd},
     {"<", clang::BO_LT},
     {">", clang::BO_GT},
     {"<=", clang::BO_LE},
@@ -108,8 +108,8 @@ static llvm::StringMap<clang::UnaryOperatorKind> getUnaryOperatorMapping() {
     // see Elaborator::elaborateUnaryExpression(const UnarySyntax *).
     {"~", clang::UO_Not},
     {"!", clang::UO_LNot},
-    {"^", clang::UO_Deref},
-    {"&", clang::UO_AddrOf},
+    {"^", clang::UO_AddrOf},
+    // {"&", clang::UO_AddrOf},
     {"+", clang::UO_Plus},
     {"-", clang::UO_Minus}
   };

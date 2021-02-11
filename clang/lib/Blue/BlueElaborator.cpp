@@ -2439,11 +2439,11 @@ clang::Expr *Elaborator::elaboratePrefixExpression(const PrefixSyntax *S) {
   }
 
   // This implements the address of operator.
-  if (S->operation().hasKind(tok::Caret)) {
-    llvm_unreachable("Address of not implemented yet.");
-    // getCxxSema().Diags.Report(Loc, clang::diag::err_prefix_caret_on_non_type);
-    // return nullptr;
-  }
+  // if (S->operation().hasKind(tok::Caret)) {
+  //   llvm_unreachable("Address of not implemented yet.");
+  //   // getCxxSema().Diags.Report(Loc, clang::diag::err_prefix_caret_on_non_type);
+  //   // return nullptr;
+  // }
   auto OpIter = SemaRef.UnaryOpMap.find(S->operation().getSpelling());
   clang::UnaryOperatorKind Op;
   if (OpIter == SemaRef.UnaryOpMap.end()) {
@@ -2457,7 +2457,44 @@ clang::Expr *Elaborator::elaboratePrefixExpression(const PrefixSyntax *S) {
 }
 
 clang::Expr *Elaborator::elaboratePostfixExpression(const PostfixSyntax *S) {
-  llvm_unreachable("elaboratePostfixExpression not implemented yet");
+  // llvm_unreachable("elaboratePostfixExpression not implemented yet");
+  auto Operand = elaborateExpression(S->operand());
+  if (!Operand)
+    return Operand;
+  clang::SourceLocation Loc = S->getLocation();
+  clang::QualType Ty = Operand->getType();
+  if (Ty->isTypeOfTypes()) {
+    if (S->operation().hasKind(tok::Caret)) {
+      // FIXME: how can we assert that this is a declarator?
+      // If this apears within a declarator then it must be a type.
+      auto TInfo = SemaRef.getTypeSourceInfoFromExpr(Operand,
+                                                     Operand->getExprLoc());
+      if (!TInfo)
+        return nullptr;
+
+      clang::QualType RetType = getCxxContext().getPointerType(TInfo->getType());
+      return SemaRef.buildTypeExpr(RetType, Loc);
+    }
+    getCxxSema().Diags.Report(Loc, clang::diag::err_invalid_type_operand)
+                              << 0/*unary*/;
+    return nullptr;
+  }
+
+  // This implements the address of operator.
+  if (!S->operation().hasKind(tok::Caret)) {
+    // llvm_unreachable("Address of not implemented yet.");
+    // getCxxSema().Diags.Report(Loc, clang::diag::err_prefix_caret_on_non_type);
+    // return nullptr;
+  }
+  // auto OpIter = SemaRef.UnaryOpMap.find(S->operation().getSpelling());
+  clang::UnaryOperatorKind Op = clang::UO_Deref;
+  // if (OpIter == SemaRef.UnaryOpMap.end()) {
+  //   Error(Loc, "invalid unary operator");
+  //   return nullptr;
+  // } else {
+  //   Op = OpIter->second;
+  // }
+  return CxxSema.BuildUnaryOp(/*scope*/nullptr, Loc, Op, Operand).get();
 }
 
 clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
