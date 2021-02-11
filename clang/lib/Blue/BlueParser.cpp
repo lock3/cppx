@@ -734,15 +734,25 @@ Syntax *Parser::parseWhileExpression()
 /// of the loop (if it appears at all).
 Syntax *Parser::parseDoExpression()
 {
-  Token ctrl = requireToken(tok::DoKeyword);
-  Syntax* s1 = parseBlockExpression();
-  Syntax* s0 = nullptr;
+  Token Ctrl = requireToken(tok::DoKeyword);
+  Syntax *S1 = parseStatement();
+  Syntax *S0 = nullptr;
+
   if (matchToken(tok::WhileKeyword)) {
     expectToken(tok::LeftParen);
-    s0 = parseExpression();
+    S0 = parseExpression();
     expectToken(tok::RightParen);
+  } else {
+    Diags.Report(getInputLocation(), clang::diag::err_expected) <<
+      getSpelling(tok::WhileKeyword);
+    // a do-while in our do-while parsing algorithm !
+    do
+      consumeToken();
+    while (nextTokenIsNot(tok::Semicolon));
+    expectToken(tok::Semicolon);
   }
-  return new ControlSyntax(ctrl, s0, s1);
+
+  return new ControlSyntax(Ctrl, S0, S1);
 }
 
 /// Parse a block-expression.

@@ -47,3 +47,35 @@ main : () int = {
   auto ToMatch = whileStmt();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+TEST(BlueDoWhile, Braces) {
+  StringRef Code = R"BLUE(
+main : () int = {
+  x : int = 0;
+
+  do {
+    x += 2;
+  } while(x < 10);
+
+  return x;
+}
+  )BLUE";
+  auto ToMatch = doStmt();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueDoWhile, NoBraces) {
+  StringRef Code = R"BLUE(
+main : () int = {
+  x : int = 0;
+
+  do
+    x += 2;
+  while(x < 10);
+
+  return x;
+}
+  )BLUE";
+  auto ToMatch = doStmt();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

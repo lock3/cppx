@@ -205,6 +205,7 @@ public:
   clang::Stmt *elaborateIfStmt(const ControlSyntax *S);
   clang::Stmt *elaborateWhileStmt(const ControlSyntax *S);
   clang::Stmt *elaborateForStmt(const ControlSyntax *S);
+  clang::Stmt *elaborateDoStmt(const ControlSyntax *S);
 
 
   //===--------------------------------------------------------------------===//

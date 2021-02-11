@@ -2911,6 +2911,8 @@ clang::Stmt *Elaborator::elaborateControlStmt(const ControlSyntax *S) {
     return elaborateWhileStmt(S);
   case tok::ForKeyword:
     return elaborateForStmt(S);
+  case tok::DoKeyword:
+    return elaborateDoStmt(S);
 
   default:
     break;
@@ -3049,6 +3051,33 @@ clang::Stmt *Elaborator::elaborateForStmt(const ControlSyntax *S) {
   return CxxSema.ActOnForStmt(ForLoc, clang::SourceLocation(),
                               TheDeclStmt, Condition, FullIncExpr,
                               clang::SourceLocation(), Block).get();
+}
+
+clang::Stmt *Elaborator::elaborateDoStmt(const ControlSyntax *S) {
+  assert(S->control().hasKind(tok::DoKeyword) && "invalid do syntax");
+  Sema::ScopeRAII DoScope(SemaRef, Scope::Control, S);
+
+  // Elaborate the condition
+  clang::Expr *CondExpr =
+    elaborateExpression(S->head());
+  if (!CondExpr)
+    return nullptr;
+
+  // Elaborate the block
+  const Syntax *BlockSyntax = S->body();
+  SemaRef.enterScope(Scope::Block, BlockSyntax);
+  clang::Stmt *Block = elaborateStatement(BlockSyntax);
+  SemaRef.leaveScope(BlockSyntax);
+  if (!Block)
+    return nullptr;
+
+  clang::StmtResult Do =
+    SemaRef.getCxxSema().ActOnDoStmt(S->getLocation(),
+                                     Block, S->head()->getLocation(),
+                                     S->head()->getLocation(),
+                                     CondExpr,
+                                     S->head()->getEndLocation());
+  return Do.get();
 }
 
 clang::Expr *Elaborator::elaborateArraySubscriptExpr(clang::Expr *Base,
