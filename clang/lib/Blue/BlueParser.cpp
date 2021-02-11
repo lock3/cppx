@@ -1044,6 +1044,7 @@ static bool isPrefixOperator(Parser &P, tok::TokenKind Open,
   case tok::Plus:
   case tok::Minus:
   case tok::NotKeyword:
+  case tok::ClassKeyword:
       return true;
   default:
       break;
