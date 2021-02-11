@@ -104,11 +104,9 @@ static llvm::StringMap<clang::BinaryOperatorKind> getBinOpMapping() {
 
 static llvm::StringMap<clang::UnaryOperatorKind> getUnaryOperatorPrefixMapping() {
   return llvm::StringMap<clang::UnaryOperatorKind>{
-
     {"++", clang::UO_PreInc},
     {"--", clang::UO_PreDec},
-    {"~", clang::UO_Not},
-    {"!", clang::UO_LNot},
+    {"not", clang::UO_LNot},
     {"^", clang::UO_AddrOf},
     {"+", clang::UO_Plus},
     {"-", clang::UO_Minus}

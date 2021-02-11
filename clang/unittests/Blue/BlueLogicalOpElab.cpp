@@ -34,10 +34,10 @@ x:=4 or 5;
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// TEST(BlueLogicalOp, UnaryNot) {
-//   StringRef Code = R"BLUE(
-// x:=!true;
-//   )BLUE";
-//   auto ToMatch = unaryOperator(hasOperatorName("!"));
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+TEST(BlueLogicalOp, UnaryNot) {
+  StringRef Code = R"BLUE(
+x:=not true;
+  )BLUE";
+  auto ToMatch = unaryOperator(hasOperatorName("!"));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
