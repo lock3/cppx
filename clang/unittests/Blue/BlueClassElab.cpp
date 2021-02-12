@@ -317,3 +317,22 @@ x:C = ();
   );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+// TEST(BlueClass, Class_DefaultCtorDecl) {
+//   StringRef Code = R"BLUE(
+// C : class = {
+//   x:int;
+//   operator= : (out this) = { }
+// }
+// x:C = ();
+
+// )BLUE";
+//   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
+//     hasName("C"),
+//     hasDescendant(cxxConstructorDecl(isDefaultConstructor(), unless(isImplicit()),
+//       isDefaulted(), isNoThrow()))
+//     )),
+//     has(varDecl(hasName("x"), hasType(asString("struct C"))))
+//   );
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
