@@ -1529,6 +1529,8 @@ clang::Expr *Elaborator::doElaborateExpression(const Syntax *S) {
       return elaboratePairExpression(cast<PairSyntax>(S));
   case Syntax::Triple:
       return elaborateTripleExpression(cast<TripleSyntax>(S));
+  case Syntax::Enclosure:
+    llvm_unreachable("Enclosure syntax is unavailable.");
   case Syntax::List:
       return elaborateListExpression(cast<ListSyntax>(S));
   case Syntax::Sequence:
@@ -2205,13 +2207,39 @@ void Elaborator::elaborateVarDef(Declaration *D) {
   //   return;
   // }
   // if (auto LS = dyn_cast<ListSyntax>(Def->getInitializer())) {
-    
   // }
-  auto InitExpr = elaborateExpression(Def->initializer());
+  clang::Expr *InitExpr = nullptr;;
+  if (auto CtorArgs = dyn_cast<EnclosureSyntax>(Def->initializer())) {
+    if (CtorArgs->operand()) {
+      llvm_unreachable("Constructor with arguments not implemented yet.");
+    } else
+      InitExpr = elaborateExplicitDefaultCtorCall(VD, CtorArgs);
+  } else {
+    InitExpr = elaborateExpression(Def->initializer());
+  }
   if (!InitExpr)
     return;
   // Update the initializer.
-  getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/true);
+  getCxxSema().AddInitializerToDecl(VD, InitExpr, /*DirectInit=*/false);
+}
+
+clang::Expr *Elaborator::elaborateExplicitDefaultCtorCall(clang::VarDecl *D,
+                                                    const EnclosureSyntax *ES) {
+  llvm::SmallVector<clang::Expr *, 8> Args;
+  auto TInfo = D->getTypeSourceInfo();
+  clang::ParsedType PTy;
+  PTy = getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
+  clang::ExprResult ConstructorExpr =
+      getCxxSema().ActOnCXXTypeConstructExpr(PTy, clang::SourceLocation(),
+                                             Args, clang::SourceLocation(),
+                                             /*ListInitialization*/false);
+  if (!ConstructorExpr.get()) {
+    Error(ES->open().getLocation(), "invalid constructor");
+    return nullptr;
+  }
+  auto Temp = getCxxSema().TemporaryMaterializationConversion(
+      ConstructorExpr.get());
+  return Temp.get();
 }
 
 void Elaborator::elaborateFieldInit(Declaration *D) {

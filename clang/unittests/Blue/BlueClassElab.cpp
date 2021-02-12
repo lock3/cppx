@@ -300,24 +300,20 @@ outer : class = {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// TODO: IMplement me eventually.
-// TEST(BlueClass, ClassDeclUse_DefaultCtor) {
-//   StringRef Code = R"BLUE(
-// C : class {
-//   x:int;
-// }
-// x:C = ();
+TEST(BlueClass, ClassDeclUse_DefaultCtor) {
+  StringRef Code = R"BLUE(
+C : class = {
+  x:int;
+}
+x:C = ();
 
-// )BLUE";
-//   auto ToMatch = translationUnitDecl(has(cxxRecordDecl(
-//     hasName("C"),
-//     hasDescendant(cxxConstructorDecl(isDefaultConstructor(), isImplicit(),
-//       isDefaulted(), isNoThrow())),
-//     hasDescendant(cxxConstructorDecl(isCopyConstructor(), isImplicit(),
-//       isDefaulted(), isNoThrow())),
-//     hasDescendant(cxxConstructorDecl(isMoveConstructor(), isImplicit()))
-//     )),
-//     varDecl(hasName("x"), hasType(asString("struct C")))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+)BLUE";
+  auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
+    hasName("C"),
+    hasDescendant(cxxConstructorDecl(isDefaultConstructor(), isImplicit(),
+      isDefaulted(), isNoThrow()))
+    )),
+    has(varDecl(hasName("x"), hasType(asString("struct C"))))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
