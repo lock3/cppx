@@ -61,7 +61,7 @@ BLUE_BUILTIN_TYPE_TEST("float128", float128, "__float128")
 
 #undef BLUE_BUILTIN_TYPE_TEST
 
-// TODO: Uncomment these tests once we have the parsing for this fixed.
+
 // TODO: Create tests for all of the error scenarios, such as invalid number of bytes,
 //      incorrect 2nd argument, and incorrect numbher of arguments.
 //      Also need to verify that we correctly support expected types and they

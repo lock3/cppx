@@ -48,20 +48,20 @@ C:[T:type] class = {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// TEST(BlueClassTemplate, UseInTypeAlias) {
-//   StringRef Code = R"BLUE(
-// C:[T:type] class = {
-//   x:T;
-// }
-// x:type = C[int];
-// )BLUE";
+TEST(BlueClassTemplate, UseInTypeAlias) {
+  StringRef Code = R"BLUE(
+C:[T:type] class = {
+  x:T;
+}
+x:type = C[int];
+)BLUE";
 
-//   auto ToMatch = typeAliasDecl(
-//     hasName("x"),
-//     hasType(asString("C<int>"))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+  auto ToMatch = typeAliasDecl(
+    hasName("x"),
+    hasType(asString("C<int>"))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 
 TEST(BlueClassTemplate, UseAsVariableType) {
   StringRef Code = R"BLUE(
