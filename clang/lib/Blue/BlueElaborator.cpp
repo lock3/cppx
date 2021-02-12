@@ -1023,11 +1023,9 @@ static void deduceDependentAutoReturn(Sema &SemaRef,
 }
 
 clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
-  // assert(D->Decl->declaresFunction() && "not a function declarator");
   Declarator *Dclrtr = D->getFirstDeclarator(Declarator::Function);
 
   clang::ASTContext &CxxAST = SemaRef.getCxxAST();
-  clang::QualType ReturnType = CxxAST.getAutoDeductType();
   clang::DeclarationName Name(D->Id);
   clang::SourceLocation Loc = D->Def->getLocation();
 
