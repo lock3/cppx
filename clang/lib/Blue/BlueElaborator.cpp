@@ -1648,8 +1648,8 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
   }
 
   // skip over any [0.] prefix
-  std::string Spelling = Base == 10 ? S->spelling().str() :
-    S->spelling().substr(2).str();
+  std::string Spelling = Base == 10 ? S->spelling() :
+    S->spelling().substr(2);
 
   auto It = std::find(Spelling.begin(), Spelling.end(), '\'');
   while(It != std::end(Spelling)) {
@@ -1691,7 +1691,7 @@ createFloatLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
   // using llvm::APFloat;
   // APFloat Val = llvm::APFloat(Format);
 
-  // std::string Spelling = S->spelling().str();
+  // std::string Spelling = S->spelling();
   // auto It = std::find(Spelling.begin(), Spelling.end(), '\'');
   // while(It != std::end(Spelling)) {
   //   Spelling.erase(It);
@@ -1709,7 +1709,7 @@ createFloatLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
 static clang::FloatingLiteral *
 createExponentLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
                       const LiteralSyntax *S, clang::SourceLocation Loc) {
-  // std::string Spelling = S->spelling().str();
+  // std::string Spelling = S->spelling();
   // assert((Spelling.find_first_of("E") != std::string::npos ||
   //        Spelling.find_first_of("e") != std::string::npos) &&
   //        "non-exponent");
@@ -1953,7 +1953,7 @@ createCharLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
 static clang::CharacterLiteral *
 createUTF8Literal(clang::ASTContext &CxxAST, Sema &SemaRef,
                   Token T, clang::SourceLocation Loc) {
-  std::string Spelling = T.getSpelling().str();
+  std::string Spelling = T.getSpelling();
   Spelling = Spelling.substr(Spelling.find_first_not_of("0c"), Spelling.size());
   unsigned Value = (unsigned)std::stoi(Spelling, 0, 16);
 
@@ -1967,7 +1967,7 @@ createUTF8Literal(clang::ASTContext &CxxAST, Sema &SemaRef,
 static clang::CharacterLiteral *
 createUnicodeLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
                      Token T, clang::SourceLocation Loc) {
-  std::string Spelling = T.getSpelling().str();
+  std::string Spelling = T.getSpelling();
   Spelling = Spelling.substr(Spelling.find_first_not_of("0u"), Spelling.size());
   unsigned Value = (unsigned)std::stoi(Spelling, 0, 16);
 
