@@ -2446,6 +2446,8 @@ void TextNodeDumper::VisitTripleSyntax(const blue::TripleSyntax *S) {
 }
 
 void TextNodeDumper::VisitDeclarationSyntax(const blue::DeclarationSyntax *S) {
+  for (unsigned I = 0; I < S->NumParamSpecs; ++I)
+    OS << " " << S->ParamSpecs[I].getSpelling() << " ";
 }
 
 void TextNodeDumper::VisitListSyntax(const blue::ListSyntax *S) {
