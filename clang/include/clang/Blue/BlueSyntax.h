@@ -316,6 +316,8 @@ struct MultiarySyntax : Syntax
     for (unsigned i = num_terms - 1; num_terms > 0; --i)
       if (m_terms[i])
         return m_terms[i]->getLocation();
+    // This removes a warning.
+    return clang::SourceLocation();
   }
 
   static bool classof(const Syntax *S) {
