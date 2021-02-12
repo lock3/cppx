@@ -49,6 +49,23 @@ static Syntax **AllocateSeq(SyntaxSeq &SS) {
   return Ret;
 }
 
+// Reallocate and copy a declaration's array of specifiers.
+static inline void copyParamSpecs(DeclarationSyntax *S,
+                                  llvm::SmallVectorImpl<Token> &Toks) {
+  if (Toks.empty())
+    return;
+
+  Token *Old = S->ParamSpecs;
+  Token *New = new Token[S->NumParamSpecs + Toks.size()];
+  if (Old)
+    std::copy(Old, Old + S->NumParamSpecs, New);
+  std::copy(Toks.begin(), Toks.end(), New + S->NumParamSpecs);
+  S->NumParamSpecs += Toks.size();
+  S->ParamSpecs = New;
+  if (Old)
+    delete[] Old;
+}
+
 // Syntax productions
 
 Syntax *Parser::parseFile() {
@@ -834,20 +851,39 @@ Syntax *Parser::parseParameterList()
   return makeParameterList(*this, SS);
 }
 
+static inline bool isParameterSpec(tok::TokenKind K) {
+  switch (K) {
+  case tok::InKeyword:
+  case tok::InoutKeyword:
+  case tok::OutKeyword:
+  case tok::MoveKeyword:
+  case tok::ForwardKeyword:
+  case tok::RefKeyword:
+  case tok::RrefKeyword:
+    return true;
+  default:
+    return false;
+  }
+}
+
 /// Parser a parameter:
 ///
 ///   parameter:
-///     identifier : type
-///     identifier : type = expression
-///     identifeir : = expression
-///     : type
-///     : type = expression
+///     parameter_specifier{opt} identifier : type
+///     parameter_specifier{opt} identifier : type = expression
+///     parameter_specifier{opt} identifier : = expression
+///     parameter_specifier{opt} : type
+///     parameter_specifier{opt} : type = expression
 ///
 /// TODO: Can parameters have introducers?
 ///
 /// TODO: Can paramters be packs (yes, but what's the syntax?).
 Syntax *Parser::parseParameter()
 {
+  llvm::SmallVector<Token, 1> ParamSpecs;
+  if (Token ParamSpec = matchTokenIf(isParameterSpec))
+    ParamSpecs.push_back(ParamSpec);
+
   // Match unnamed variants.
   if (matchToken(tok::Colon)) {
     Syntax *Type = parseDescriptor();
@@ -870,7 +906,9 @@ Syntax *Parser::parseParameter()
       Init = parseExpression();
   }
 
-  return new DeclarationSyntax(Id, Type, nullptr, Init);
+  DeclarationSyntax *Ret = new DeclarationSyntax(Id, Type, nullptr, Init);
+  copyParamSpecs(Ret, ParamSpecs);
+  return Ret;
 }
 
 

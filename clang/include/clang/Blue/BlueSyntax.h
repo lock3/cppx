@@ -850,6 +850,9 @@ struct DeclarationSyntax : QuaternarySyntax
   static bool classof(const Syntax *S) {
     return S->getKind() == this_kind;
   }
+
+  Token *ParamSpecs = nullptr;
+  unsigned NumParamSpecs = 0;
 };
 
 /// The top-level container of terms.
