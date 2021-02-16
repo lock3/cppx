@@ -489,8 +489,6 @@ void Elaborator::elaborateParameters(const ListSyntax *S) {
 void Elaborator::getParameters(Declaration *D,
                                Declarator *FuncDeclarator,
                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
-  // assert(D->Decl->declaresFunction());
-
   const auto *Enc = dyn_cast<EnclosureSyntax>(FuncDeclarator->getInfo());
   if (!Enc)
     return;
@@ -515,16 +513,25 @@ void Elaborator::getParameters(Declaration *D,
   }
 }
 
-// void Elaborator::elaborateParameterGroup(const ListSyntax *S) {
-//   for (const Syntax *SS : S->children())
-//     elaborateParameterList(cast<ListSyntax>(SS));
-// }
-
 void Elaborator::elaborateParameterList(const ListSyntax *S) {
   if (!S)
     return;
-  for (const Syntax *SS : S->children())
-    elaborateParameter(SS);
+  for (const Syntax *SS : S->children()) {
+    // I may need to make sure that we are not inside of a method declaration.
+    // Make sure to skip the this keyword
+    if (auto PD = dyn_cast<DeclarationSyntax>(SS)) {
+      if (PD->declarator()) {
+        if (auto Id = dyn_cast<LiteralSyntax>(PD->declarator())) {
+          if (Id->token().hasKind(tok::ThisKeyword)) {
+            continue;
+          }
+        }
+      }
+      elaborateParameter(SS);
+    } else {
+      Error(SS->getLocation(), "Invalid parameter, not a declaration.")
+    }
+  }
 
   // FIXME: Examine the parameters we just created. We might be able
   // to back-propagate types to some of them. For example, if we have;
@@ -1018,7 +1025,166 @@ static void deduceDependentAutoReturn(Sema &SemaRef,
   }
 }
 
+bool Elaborator::buildMethod(Declaration *Fn, clang::DeclarationName const &Name,
+                             clang::FunctionDecl **FD, clang::TypeSourceInfo *Ty,
+                             clang::CXXRecordDecl *RD) {
+  clang::SourceLocation ExLoc = Fn->Def->getLocation();
+  // clang::SourceLocation FnLoc = Fn->Decl->getLocation();
+  // const clang::FunctionProtoType *FPT =
+  //   Ty->getType()->getAs<clang::FunctionProtoType>();
+  clang::DeclarationNameInfo DNI;
+  DNI.setName(Name);
+  DNI.setLoc(ExLoc);
+
+  // bool Constructor = Fn->getId()->isStr("constructor");
+  // bool Destructor = Fn->getId()->isStr("destructor");
+  // if (Constructor || Destructor) {
+  //   if (FPT->getReturnType()->isUndeducedType()) {
+  //     // double verifying function type.
+  //     if (!Fn->TypeDcl) {
+  //       // The we set the default type to void instead because we are a
+  //       // constructor.
+  //       auto ParamTys = FPT->getParamTypes();
+  //       llvm::SmallVector<clang::QualType, 10> ParamTypes(ParamTys.begin(),
+  //                                                         ParamTys.end());
+  //       clang::QualType FnTy = SemaRef.getCxxSema().BuildFunctionType(
+  //         Context.CxxAST.VoidTy, ParamTypes, FnLoc, clang::DeclarationName(),
+  //         FPT->getExtProtoInfo());
+  //       if (FnTy->isFunctionProtoType()) {
+  //         FPT = FnTy->getAs<clang::FunctionProtoType>();
+
+  //         // We have to do this to switch to the correct return type for a
+  //         // constructor/destructor
+  //         auto FnTyLoc = Ty->getTypeLoc().getAs<clang::FunctionTypeLoc>();
+  //         auto P = FnTyLoc.getParams();
+  //         clang::SmallVector<clang::ParmVarDecl *, 16> Parms(P.begin(), P.end());
+  //         Ty = BuildFunctionTypeLoc(Context.CxxAST, FnTy,
+  //                                   FnTyLoc.getLocalRangeBegin(),
+  //                                   FnTyLoc.getLParenLoc(),
+  //                                   FnTyLoc.getRParenLoc(),
+  //                                   FnTyLoc.getExceptionSpecRange(),
+  //                                   FnTyLoc.getLocalRangeEnd(),
+  //                                   Parms);
+  //       } else {
+  //         SemaRef.Diags.Report(FnLoc,
+  //                   clang::diag::err_invalid_return_type_for_ctor_or_dtor) << 0;
+  //         return false;
+  //       }
+  //     }
+  //   }
+
+  //   if (FPT->getReturnType() != Context.CxxAST.VoidTy) {
+  //     SemaRef.Diags.Report(FnLoc,
+  //                          clang::diag::err_invalid_return_type_for_ctor_or_dtor)
+  //       << 0;
+  //     return false;
+  //   }
+
+  //   clang::ExplicitSpecifier
+  //     ES(nullptr, clang::ExplicitSpecKind::ResolvedFalse);
+  //   clang::CXXMethodDecl *Method = nullptr;
+
+  //   if (Constructor)
+  //     *FD = Method =
+  //       clang::CXXConstructorDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
+  //                                         Ty->getType(), Ty, ES, false,
+  //                             false, clang::ConstexprSpecKind::CSK_unspecified);
+  //   else if (Destructor)
+  //     *FD = Method =
+  //       clang::CXXDestructorDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
+  //                                       Ty->getType(), Ty, false, false,
+  //                                    clang::ConstexprSpecKind::CSK_unspecified);
+
+  //   Method->setImplicit(false);
+  //   Method->setDefaulted(false);
+  //   Method->setBody(nullptr);
+
+  //   // Build an exception specification pointing back at this member.
+  //   clang::FunctionProtoType::ExtProtoInfo EPI;
+  //   EPI.ExceptionSpec.Type = clang::EST_None;
+  //   EPI.ExceptionSpec.SourceDecl = Method;
+
+  //   // Set the calling convention to the default for C++ instance methods.
+  //   EPI.ExtInfo = EPI.ExtInfo.withCallingConv(
+  //     Context.CxxAST.getDefaultCallingConvention(/*IsVariadic=*/false,
+  //                                                /*IsCXXMethod=*/true));
+  //   clang::LangAS AS = SemaRef.getCxxSema().getDefaultCXXMethodAddrSpace();
+  //   if (AS != clang::LangAS::Default)
+  //     EPI.TypeQuals.addAddressSpace(AS);
+
+  //   const clang::FunctionProtoType *FPT
+  //     = cast<clang::FunctionProtoType>(Ty->getType().getTypePtr());
+  //   if (Destructor && FPT->getNumParams() != 0) {
+  //     SemaRef.Diags.Report(ExLoc,
+  //                          clang::diag::err_destructor_with_params);
+  //     return false;
+  //   }
+
+  //   auto VoidFnTy =
+  //     Context.CxxAST.getFunctionType(Context.CxxAST.VoidTy,
+  //                                    Constructor ?
+  //                                    FPT->getParamTypes() : clang::None,
+  //                                    EPI);
+  //   Method->setType(VoidFnTy);
+  // } else if (Fn->declaresConversionOperator()) {
+  //   // TODO: Figure out what this is checking for and what things  I'll have
+  //   // to enfoce instead of sema ref.
+  //   // SemaRef.CheckConversionDeclarator(D, R, SC);
+  //   // if (D.isInvalidType())
+  //   //   return nullptr;
+  //   clang::ExplicitSpecifier
+  //     ES(nullptr, clang::ExplicitSpecKind::ResolvedFalse);
+  //   // IsVirtualOkay = true;
+  //   const auto *Proto = Ty->getType()->castAs<clang::FunctionProtoType>();
+  //   if (Proto->getNumParams() > 0) {
+  //     SemaRef.Diags.Report(Fn->IdDcl->getLoc(),
+  //                        clang::diag::err_conv_function_with_params);
+  //     return false;
+  //   }
+  //   clang::QualType ConvType = Proto->getReturnType();
+  //   // FIXME: I need to enforce this.
+  //   // C++ [class.conv.fct]p4:
+  //   //   The conversion-type-id shall not represent a function type nor
+  //   //   an array type.
+  //   if (ConvType->isArrayType()) {
+  //     SemaRef.Diags.Report(Fn->IdDcl->getLoc(),
+  //                          clang::diag::err_conv_function_to_array);
+  //     return false;
+  //   } else if (ConvType->isFunctionType()) {
+  //     SemaRef.Diags.Report(Fn->IdDcl->getLoc(),
+  //                          clang::diag::err_conv_function_to_function);
+  //     return false;
+  //   }
+
+  //   *FD = clang::CXXConversionDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
+  //                                         Ty->getType(), Ty,
+  //                                         /*isinline*/false, ES,
+  //                                     clang::ConstexprSpecKind::CSK_unspecified,
+  //                                         ExLoc);
+  // } else {
+    clang::StorageClass SC = clang::SC_None;
+    *FD = clang::CXXMethodDecl::Create(getCxxContext(), RD, ExLoc, DNI,
+                                       Ty->getType(), Ty,
+                                       SC, /*isInline*/true,
+                                       clang::ConstexprSpecKind::CSK_unspecified,
+                                       ExLoc);
+  // }
+  (*FD)->setAccess(clang::AS_public);
+  return false;
+}
+
+
 clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
+  bool InClass = D->ScopeForDecl->isClassScope();
+  // bool InClass = isa<clang::TagDecl>(ResolvedCtx);
+  clang::CXXRecordDecl *RD = nullptr;
+  if (InClass) {
+    clang::Decl *ScopesDecl = SemaRef.getCurrentScope()->Entity->getCxx();
+    assert(ScopesDecl && "Invalid declaration for scope.");
+    RD = dyn_cast<clang::CXXRecordDecl>(ScopesDecl);
+    assert(RD && "Class scope doesn't contain declaration.");
+  }
+
   Declarator *Dclrtr = D->getFirstDeclarator(Declarator::Function);
 
   clang::ASTContext &CxxAST = SemaRef.getCxxAST();
@@ -1026,15 +1192,22 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   clang::SourceLocation Loc = D->Def->getLocation();
 
   TemplateParamRAII TempParamContextGuard(TempCtx);
-  clang::CppxTypeLiteral *FnTy = createFunctionType(Dclrtr);
+  clang::FunctionDecl *FD = nullptr;
+  clang::CppxTypeLiteral *FnTy = nullptr;
+  FnTy = createFunctionType(Dclrtr);
   if (!FnTy)
     return nullptr;
-  clang::TypeSourceInfo *TInfo = FnTy->getValue();
-
-  clang::FunctionDecl *FD;
+  clang::TypeSourceInfo *FnTInfo = FnTy->getValue();
   clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
-  FD = clang::FunctionDecl::Create(CxxAST, Owner, Loc, Loc, Name,
-                                   TInfo->getType(), TInfo, clang::SC_None);
+  if (InClass) {
+    if (buildMethod(D, Name, &FD, FnTInfo, RD))
+      return nullptr;
+  } else {
+    FD = clang::FunctionDecl::Create(CxxAST, Owner, Loc, Loc, Name,
+                                    FnTInfo->getType(), FnTInfo, clang::SC_None);
+  }
+  if (!FD)
+    return nullptr;
   bool Template = D->declaratorContainsTemplate();
   if (Template) {
     Declarator *TmpltDclrtr = D->Decl;
@@ -1047,8 +1220,8 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
     FTD->setLexicalDeclContext(Owner);
     FD->setDescribedFunctionTemplate(FTD);
     Owner->addDecl(FTD);
-    // if (InClass)
-    //   FTD->setAccess(clang::AS_public);
+    if (InClass)
+      FTD->setAccess(clang::AS_public);
 
     // An auto return type here is always dependent.
     if (FD->getReturnType()->isUndeducedAutoType())
@@ -4166,24 +4339,17 @@ bool Elaborator::delayElaborateDeclType(clang::CXXRecordDecl *RD,
   }
   bool WasDelayed = false;
   if (D->declaratorContainsFunction()) {
-    llvm_unreachable("Member function elaboration not implemented yet");
-    // if (D->declIsStatic()) {
-    //   // TODO: If this reaches across class then we may need to change how look up
-    //   // is handled in this set of circumstances. Because this could
-    //   // reach into the scope of another class and get data from there
-    //   // but the late elaboration from there might not exist yet.
-    //   // So we might need to do partial elaboration of a few things in order to
-    //   // correctly define them.
-    //   elaborateDecl(D);
-    // } else {
-    //   if (RD->isUnion()) {
-    //     elaborateDecl(D);
-    //   } else {
-    //     // Attempting to delay method decl/def combos
-    //     delayElaborateMethodDecl(D);
-    //     WasDelayed = true;
-    //   }
-    // }
+    if (D->declIsStatic()) {
+      elaborateDeclarationTyping(D);
+    } else {
+      if (RD->isUnion()) {
+        elaborateDeclarationTyping(D);
+      } else {
+        // Attempting to delay method decl/def combos
+        delayElaborateMethodDecl(D);
+        WasDelayed = true;
+      }
+    }
     if (D->hasInitializer()) {
       delayElaborateMethodDef(D);
       WasDelayed = true;
@@ -4369,33 +4535,31 @@ void Elaborator::lateElaborateAttribute(LateElaboratedAttributeDecl &Field) {
 }
 
 void Elaborator::lateElaborateMethodDef(LateElaboratedMethodDef &Method) {
-  // if (!Method.D->Cxx)
-  //   return;
-  // // Finish exception spec before method body?
-  // {
-  //   if (!Method.D->FunctionDcl)
-  //     return;
-  //   FunctionDeclarator *FnDecl = Method.D->FunctionDcl->getAsFunction();
-  //   // Attempting to push the scope for the current function onto the stack
-  //   // This helps with lookup during evaluation exception specification.
-  //   ResumeScopeRAII TempScope(SemaRef,
-  //                                   FnDecl->getScope(),
-  //                                   FnDecl->getScope()->getConcreteTerm(),
-  //                                   /*PopOnExit=*/false);
-  //   OptionalInitClangRAII<clang::Sema::CXXThisScopeRAII> ThisScope(
-  //                                                                      SemaRef);
-  //   if (clang::CXXMethodDecl *MD
-  //                             = dyn_cast<clang::CXXMethodDecl>(Method.D->Cxx)) {
-  //     ThisScope.Init(MD->getParent(), MD->getMethodQualifiers(), true);
-  //   }
-  //   finishExceptionSpecAttr(Context, SemaRef, Method.D);
-  // }
-  // elaborateFunctionDef(Method.D);
-  // if (!Method.D->Cxx)
-  //   return;
-  // SemaRef.getCxxSema().ActOnFinishInlineFunctionDef(
-  //   cast<clang::FunctionDecl>(Method.D->Cxx));
-  llvm_unreachable("Late elaborate method def not implemented yet.");
+  if (!Method.D->getCxx())
+    return;
+  // Finish exception spec before method body?
+  {
+    if (!Method.D->isFunctionDecl())
+      return;
+    Declarator *FnDecl = Method.D->getFirstDeclarator(Declarator::Function);
+    // // Attempting to push the scope for the current function onto the stack
+    // // This helps with lookup during evaluation exception specification.
+    ResumeScopeRAII TempScope(SemaRef,
+                                    FnDecl->DeclInfo.ParamScope,
+                                    FnDecl->DeclInfo.ParamScope->getTerm(),
+                                    /*PopOnExit=*/false);
+    Sema::OptionalInitClangRAII<clang::Sema::CXXThisScopeRAII> ThisScope(SemaRef);
+    if (clang::CXXMethodDecl *MD
+                         = dyn_cast<clang::CXXMethodDecl>(Method.D->getCxx())) {
+      ThisScope.Init(MD->getParent(), MD->getMethodQualifiers(), true);
+    }
+    // finishExceptionSpecAttr(getCxxContext(), SemaRef, Method.D);
+  }
+  elaborateFunctionDef(Method.D);
+  if (!Method.D->getCxx())
+    return;
+  SemaRef.getCxxSema().ActOnFinishInlineFunctionDef(
+    cast<clang::FunctionDecl>(Method.D->getCxx()));
 }
 
 
@@ -4412,29 +4576,28 @@ void Elaborator::lateElaborateMemberInitializer(
 
 void Elaborator::lateElaborateMethodDecl(
     LateElaboratedMethodDeclaration &Method) {
-  // Sema::ClangScopeRAII FunctionDeclScope(SemaRef, clang::Scope::DeclScope |
-  //     clang::Scope::FunctionPrototypeScope |
-  //     clang::Scope::FunctionDeclarationScope,
-  //     clang::SourceLocation());
-  // Sema::LateMethodRAII MethodTracking(SemaRef, &Method);
-  // elaborateDecl(Method.D);
-  // // This is to check if the method delcaration was a success and in the event
-  // // that it is we need to finish the exception specifier after the end of the
-  // // class.
-  // if (Method.D->Cxx) {
-  //   if (clang::FunctionDecl *FD = dyn_cast<clang::FunctionDecl>(Method.D->Cxx)) {
-  //     if (FD->getExceptionSpecType() == clang::EST_Unparsed) {
-  //       if (!Method.D->Init) {
-  //         SemaRef.getCurrentElaboratingClass().LateElaborations.push_back(
-  //           new LateElaboratedMethodDef(SemaRef, Context, Method.D)
-  //         );
-  //       }
-  //     }
-  //   }
-  // }
-  // SemaRef.getCxxSema().ActOnFinishDelayedCXXMethodDeclaration(
-  //     SemaRef.getCurClangScope(), Method.D->Cxx);
-  llvm_unreachable("Late method declaration not implemented yet.");
+  Sema::ClangScopeRAII FunctionDeclScope(SemaRef, clang::Scope::DeclScope |
+      clang::Scope::FunctionPrototypeScope |
+      clang::Scope::FunctionDeclarationScope,
+      clang::SourceLocation());
+  Sema::LateMethodRAII MethodTracking(SemaRef, &Method);
+  elaborateDeclarationTyping(Method.D);
+  // This is to check if the method delcaration was a success and in the event
+  // that it is we need to finish the exception specifier after the end of the
+  // class.
+  if (Method.D->getCxx()) {
+    if (auto FD = dyn_cast<clang::FunctionDecl>(Method.D->getCxx())) {
+      if (FD->getExceptionSpecType() == clang::EST_Unparsed) {
+        if (!Method.D->getInitializer()) {
+          SemaRef.getCurrentElaboratingClass().LateElaborations.push_back(
+            new LateElaboratedMethodDef(SemaRef, Method.D)
+          );
+        }
+      }
+    }
+  }
+  SemaRef.getCxxSema().ActOnFinishDelayedCXXMethodDeclaration(
+      SemaRef.getCurClangScope(), Method.D->getCxx());
 }
 
 void Elaborator::lateElaborateDefaultParams(

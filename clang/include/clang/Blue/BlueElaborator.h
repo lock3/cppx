@@ -119,6 +119,9 @@ public:
   clang::Decl *makeFieldDecl(Declaration *D, clang::Expr *Ty);
 
 
+  bool buildMethod(Declaration *Fn, clang::DeclarationName const &Name,
+                   clang::FunctionDecl **FD, clang::TypeSourceInfo *Ty,
+                   clang::CXXRecordDecl *RD);
 
   // class type body elaboration.
   clang::Decl *identifyDeclsInClassBody(Declaration *D, const ListSyntax *L,

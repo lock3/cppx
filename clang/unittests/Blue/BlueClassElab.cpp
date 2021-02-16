@@ -300,12 +300,13 @@ outer : class = {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-TEST(BlueClass, ClassDeclUse_DefaultCtor) {
+TEST(BlueClass, MemberFunctionDecl) {
   StringRef Code = R"BLUE(
 C : class = {
   x:int;
+  foo:(inout this) void ={ }
 }
-x:C = ();
+
 
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
