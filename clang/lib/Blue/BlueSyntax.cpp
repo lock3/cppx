@@ -73,4 +73,15 @@ Syntax::reverse_child_range Syntax::reverseChildren() const {
                              reverse_child_iterator(Children.begin()));
 }
 
+bool DeclarationSyntax::declaratorIsThis() const {
+  if (getDeclarator()) {
+    if (auto Id = dyn_cast<AtomSyntax>(getDeclarator())) {
+      if (Id->getToken().getSpelling() == "this") {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 } // namespace blue

@@ -306,16 +306,25 @@ C : class = {
   x:int;
   foo:(inout this) void ={ }
 }
-
-
 )BLUE";
   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
     hasName("C"),
-    hasDescendant(cxxConstructorDecl(isDefaultConstructor(), isImplicit(),
-      isDefaulted(), isNoThrow()))
-    )),
-    has(varDecl(hasName("x"), hasType(asString("struct C"))))
-  );
+    has(cxxMethodDecl(hasName("foo")))
+  )));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClass, MemberFunctionTemplateDecl) {
+  StringRef Code = R"BLUE(
+C : class = {
+  x:int;
+  foo:[T:type](inout this) void = { }
+}
+)BLUE";
+  auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
+    hasName("C"),
+    has(functionTemplateDecl(has(cxxMethodDecl(hasName("foo")))))
+  )));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 

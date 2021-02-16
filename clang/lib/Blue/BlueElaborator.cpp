@@ -521,16 +521,11 @@ void Elaborator::elaborateParameterList(const ListSyntax *S) {
     // I may need to make sure that we are not inside of a method declaration.
     // Make sure to skip the this keyword
     if (auto PD = dyn_cast<DeclarationSyntax>(SS)) {
-      if (PD->declarator()) {
-        if (auto Id = dyn_cast<LiteralSyntax>(PD->declarator())) {
-          if (Id->token().hasKind(tok::ThisKeyword)) {
-            continue;
-          }
-        }
-      }
+      if (PD->declaratorIsThis())
+        continue;
       elaborateParameter(SS);
     } else {
-      Error(SS->getLocation(), "Invalid parameter, not a declaration.")
+      Error(SS->getLocation(), "Invalid parameter, not a declaration.");
     }
   }
 
@@ -970,15 +965,24 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
   } else {
     N = ParamList->getNumChildren();
     elaborateParameters(ParamList);
+    bool hasThisParam = false;
     for (unsigned I = 0; I < N; ++I) {
       const Syntax *P = ParamList->getOperand(I);
+      if (auto PD = dyn_cast<DeclarationSyntax>(P)) {
+        if (PD->declaratorIsThis()) {
+          hasThisParam = true;
+          continue;
+        }
+      }
       Declaration *BluePD = SemaRef.getCurrentScope()->findDecl(P);
-      assert(BluePD && "associated declaration never found");
+      if(!BluePD) {
+        continue;
+      }
       assert(isa<clang::ParmVarDecl>(BluePD->getCxx()) &&
             "Parameter is not a ParmVarDecl");
       clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(BluePD->getCxx());
 
-      CxxAST.setParameterIndex(PVD, I);
+      CxxAST.setParameterIndex(PVD, I - int(hasThisParam));
       PVD->setScopeInfo(0, I);
       Types.push_back(PVD->getType());
       Params.push_back(PVD);
@@ -1181,7 +1185,7 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   // bool InClass = isa<clang::TagDecl>(ResolvedCtx);
   clang::CXXRecordDecl *RD = nullptr;
   if (InClass) {
-    clang::Decl *ScopesDecl = SemaRef.getCurrentScope()->Entity->getCxx();
+    clang::Decl *ScopesDecl = D->Ctx->getCxx();
     assert(ScopesDecl && "Invalid declaration for scope.");
     RD = dyn_cast<clang::CXXRecordDecl>(ScopesDecl);
     assert(RD && "Class scope doesn't contain declaration.");
@@ -2384,13 +2388,13 @@ void Elaborator::elaborateVarDef(Declaration *D) {
   // if (auto LS = dyn_cast<ListSyntax>(Def->getInitializer())) {
   // }
   clang::Expr *InitExpr = nullptr;;
-  if (auto CtorArgs = dyn_cast<EnclosureSyntax>(Def->initializer())) {
-    if (CtorArgs->operand()) {
+  if (auto CtorArgs = dyn_cast<EnclosureSyntax>(Def->getInitializer())) {
+    if (CtorArgs->getOperand()) {
       llvm_unreachable("Constructor with arguments not implemented yet.");
     } else
       InitExpr = elaborateExplicitDefaultCtorCall(VD, CtorArgs);
   } else {
-    InitExpr = elaborateExpression(Def->initializer());
+    InitExpr = elaborateExpression(Def->getInitializer());
   }
   if (!InitExpr)
     return;
@@ -2409,7 +2413,7 @@ clang::Expr *Elaborator::elaborateExplicitDefaultCtorCall(clang::VarDecl *D,
                                              Args, clang::SourceLocation(),
                                              /*ListInitialization*/false);
   if (!ConstructorExpr.get()) {
-    Error(ES->open().getLocation(), "invalid constructor");
+    Error(ES->getOpen().getLocation(), "invalid constructor");
     return nullptr;
   }
   auto Temp = getCxxSema().TemporaryMaterializationConversion(
