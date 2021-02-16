@@ -21,7 +21,7 @@ using namespace blue;
 
 TEST(BlueFunctionTemplate, SimpleFunctionDecl) {
   StringRef Code = R"BLUE(
-foo:[T:type] (x:T) void = {
+func foo:[T:type] (x:T) void = {
 }
 )BLUE";
 
@@ -36,9 +36,9 @@ foo:[T:type] (x:T) void = {
 
 TEST(BlueFunctionTemplate, Use) {
   StringRef Code = R"BLUE(
-foo:[T:type] (x:T) void = {
+func foo:[T:type] (x:T) void = {
 }
-bar:() void = {
+func bar:() void = {
   foo(34);
 }
 )BLUE";
@@ -54,9 +54,9 @@ bar:() void = {
 
 TEST(BlueFunctionTemplate, UseProvidingTemplateArguments) {
   StringRef Code = R"BLUE(
-foo:[T:type] (x:T) void = {
+func foo:[T:type] (x:T) void = {
 }
-bar:() = {
+func bar:() = {
   foo[int](34);
 }
 )BLUE";

@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueFunction, SimpleFunctionDeclNoType){
   StringRef Code = R"BLUE(
-foo:() = {
+func foo:() = {
   return 4;
 }
 )BLUE";
@@ -31,7 +31,7 @@ foo:() = {
 
 TEST(BlueFunction, SimpleFunctionDecl_VoidReturnTypr) {
   StringRef Code = R"BLUE(
-foo:() void = {
+func foo:() void = {
 }
 )BLUE";
 
@@ -41,7 +41,7 @@ foo:() void = {
 
 TEST(BlueFunction, WithParameter){
   StringRef Code = R"BLUE(
-foo:(x:int) void = {
+func foo:(x:int) void = {
 }
 )BLUE";
 
@@ -51,7 +51,7 @@ foo:(x:int) void = {
 
 TEST(BlueFunction, WithParameters){
   StringRef Code = R"BLUE(
-foo:(x:int, y:int) void = {
+func foo:(x:int, y:int) void = {
 }
 )BLUE";
 
@@ -61,8 +61,8 @@ foo:(x:int, y:int) void = {
 
 TEST(BlueFunction, Overloaded){
   StringRef Code = R"BLUE(
-foo:(x:int, y:int) void = { }
-foo:(x:int) void = { }
+func foo:(x:int, y:int) void = { }
+func foo:(x:int) void = { }
 )BLUE";
 
   auto ToMatch = translationUnitDecl(
@@ -74,10 +74,10 @@ foo:(x:int) void = { }
 
 TEST(BlueFunction, CallExpression) {
   StringRef Code = R"BLUE(
-foo:(x:int, y:int) void = { }
-foo:(x:int) void = { }
+func foo:(x:int, y:int) void = { }
+func foo:(x:int) void = { }
 
-bar:() void = {
+func bar:() void = {
   foo(4);
 }
 )BLUE";
@@ -99,12 +99,12 @@ bar:() void = {
 
 TEST(BlueFunction, Call){
   StringRef Code = R"BLUE(
-f : () int = {
+func f : () int = {
   return 5;
 }
 
-main : () int = {
-  x := f();
+func main : () int = {
+  var x := f();
 }
 )BLUE";
 

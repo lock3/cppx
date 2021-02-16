@@ -20,8 +20,8 @@ using namespace blue;
 
 TEST(BlueWhile, NoBraces) {
   StringRef Code = R"BLUE(
-main : () int = {
-  y : int = 0;
+func main : () int = {
+  var y : int = 0;
   while (y < 10)
     y+=1;
 
@@ -34,8 +34,8 @@ main : () int = {
 
 TEST(BlueWhile, Braces) {
   StringRef Code = R"BLUE(
-main : () int = {
-  y : int = 0;
+func main : () int = {
+  var y : int = 0;
   while (y < 10) {
     y += 1;
     y += 1;
@@ -50,8 +50,8 @@ main : () int = {
 
 TEST(BlueDoWhile, Braces) {
   StringRef Code = R"BLUE(
-main : () int = {
-  x : int = 0;
+func main : () int = {
+  var x : int = 0;
 
   do {
     x += 2;
@@ -66,8 +66,8 @@ main : () int = {
 
 TEST(BlueDoWhile, NoBraces) {
   StringRef Code = R"BLUE(
-main : () int = {
-  x : int = 0;
+func main : () int = {
+  var x : int = 0;
 
   do
     x += 2;

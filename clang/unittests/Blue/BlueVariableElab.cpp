@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueVariableDecl, ImplicitAuto) {
   StringRef Code = R"BLUE(
-X := 4;
+var X := 4;
   )BLUE";
 
   auto ToMatch = varDecl(
@@ -33,8 +33,8 @@ X := 4;
 
 TEST(BlueVariableDecl, VariableDeclAndUse){
   StringRef Code = R"BLUE(
-X : int = 4;
-Y := X;
+var X : int = 4;
+var Y := X;
 
 )BLUE";
 
@@ -48,7 +48,7 @@ Y := X;
 
 TEST(BlueVariableDecl, UndeclaredIdentifier){
   StringRef Code = R"BLUE(
-Y := Z;
+var Y := Z;
 
 )BLUE";
   BlueFailureTest(Code);
@@ -56,8 +56,8 @@ Y := Z;
 
 TEST(BlueVariableDecl, OutOfOrderVariableUse) {
   StringRef Code = R"BLUE(
-Y := Z;
-Z:= 3;
+var Y := Z;
+var Z:= 3;
 
 )BLUE";
 
@@ -71,16 +71,16 @@ Z:= 3;
 
 TEST(BlueVariableDecl, ConflictingVariableDecls) {
   StringRef Code = R"BLUE(
-Y := 5;
-Y := 3;
+var Y := 5;
+var Y := 3;
 )BLUE";
   BlueFailureTest(Code);
 }
 
 TEST(BlueVariableDecl, DeclarationCyclicLoopDeclReference) {
   StringRef Code = R"BLUE(
-x := z;
-z := x;
+var x := z;
+var z := x;
 )BLUE";
   BlueFailureTest(Code);
 }
