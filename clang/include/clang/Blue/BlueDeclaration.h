@@ -134,6 +134,8 @@ struct Declaration {
   /// This is used for handling delated class elaboration.
   bool declaresInitializedVariable() const;
 
+  bool declIsStatic() const;
+
   bool hasInitializer() const;
 
   const Syntax *getInitializer() const;

@@ -842,6 +842,8 @@ struct DeclarationSyntax : QuaternarySyntax
     return getOperand(0);
   }
 
+  bool declaratorIsThis() const;
+
   /// Returns the type.
   Syntax *getType() const
   {

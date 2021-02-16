@@ -300,24 +300,83 @@ outer : class = {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// TODO: IMplement me eventually.
-// TEST(BlueClass, ClassDeclUse_DefaultCtor) {
+TEST(BlueClass, MemberFunctionDecl) {
+  StringRef Code = R"BLUE(
+C : class = {
+  x:int;
+  foo:(inout this) void ={ }
+}
+)BLUE";
+  auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
+    hasName("C"),
+    has(cxxMethodDecl(hasName("foo")))
+  )));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClass, MemberFunctionTemplateDecl) {
+  StringRef Code = R"BLUE(
+C : class = {
+  x:int;
+  foo:[T:type](inout this) void = { }
+}
+)BLUE";
+  auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
+    hasName("C"),
+    has(functionTemplateDecl(has(cxxMethodDecl(hasName("foo")))))
+  )));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+
+TEST(BlueClass, MemberFunctionDecl_Use) {
+  StringRef Code = R"BLUE(
+C : class = {
+  x:int;
+  foo:(inout this) void ={ }
+}
+bar:(x:^C) void = {
+  x.foo()
+}
+)BLUE";
+  auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
+    hasName("C"),
+    has(cxxMethodDecl(hasName("foo")))
+  )));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClass, MemberFunctionTemplateDecl_Use) {
+  StringRef Code = R"BLUE(
+C : class = {
+  x:int;
+  foo:[T:type](inout this) void = { }
+}
+bar:(x:^C) void = {
+  x.foo[int]()
+}
+)BLUE";
+  auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
+    hasName("C"),
+    has(functionTemplateDecl(has(cxxMethodDecl(hasName("foo")))))
+  )));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+// TEST(BlueClass, Class_DefaultCtorDecl) {
 //   StringRef Code = R"BLUE(
-// C : class {
+// C : class = {
 //   x:int;
+//   operator= : (out this) = { }
 // }
 // x:C = ();
 
 // )BLUE";
-//   auto ToMatch = translationUnitDecl(has(cxxRecordDecl(
+//   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
 //     hasName("C"),
-//     hasDescendant(cxxConstructorDecl(isDefaultConstructor(), isImplicit(),
-//       isDefaulted(), isNoThrow())),
-//     hasDescendant(cxxConstructorDecl(isCopyConstructor(), isImplicit(),
-//       isDefaulted(), isNoThrow())),
-//     hasDescendant(cxxConstructorDecl(isMoveConstructor(), isImplicit()))
+//     hasDescendant(cxxConstructorDecl(isDefaultConstructor(), unless(isImplicit()),
+//       isDefaulted(), isNoThrow()))
 //     )),
-//     varDecl(hasName("x"), hasType(asString("struct C")))
+//     has(varDecl(hasName("x"), hasType(asString("struct C"))))
 //   );
 //   ASSERT_TRUE(matches(Code.str(), ToMatch));
 // }

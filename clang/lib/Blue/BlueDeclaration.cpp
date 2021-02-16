@@ -113,6 +113,10 @@ bool Declaration::declaresInitializedVariable() const {
       && hasInitializer();
 }
 
+bool Declaration::declIsStatic() const {
+  return false;
+}
+
 bool Declaration::hasInitializer() const {
   if (auto DS = dyn_cast_or_null<DeclarationSyntax>(Def)) {
     return DS->getInitializer();

@@ -119,6 +119,9 @@ public:
   clang::Decl *makeFieldDecl(Declaration *D, clang::Expr *Ty);
 
 
+  bool buildMethod(Declaration *Fn, clang::DeclarationName const &Name,
+                   clang::FunctionDecl **FD, clang::TypeSourceInfo *Ty,
+                   clang::CXXRecordDecl *RD);
 
   // class type body elaboration.
   clang::Decl *identifyDeclsInClassBody(Declaration *D, const ListSyntax *L,
@@ -131,6 +134,8 @@ public:
   void elaborateDefinition(const Syntax *S);
   void elaborateDefinitionInitialization(Declaration *D);
   void elaborateVarDef(Declaration *D);
+  clang::Expr *elaborateExplicitDefaultCtorCall(clang::VarDecl *D,
+                                               const EnclosureSyntax *ES);
   void elaborateFieldInit(Declaration *D);
   void elaborateFunctionDef(Declaration *D);
 
@@ -163,7 +168,7 @@ public:
 
   clang::Expr *elaborateArraySubscriptExpr(clang::Expr *Base,
                                            const ListSyntax *Args);
-  clang::Expr *elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
+  clang::Expr *elaborateFunctionCall(clang::Expr *Base,
                                      const CallSyntax *Op);
 
   void elaborateTemplateArgs(const EnclosureSyntax *Enc, const ListSyntax *ArgList,

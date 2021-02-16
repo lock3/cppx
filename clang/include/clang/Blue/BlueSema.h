@@ -515,6 +515,26 @@ public:
     Sema& SemaRef;
   };
 
+  template<typename T>
+  class OptionalInitClangRAII {
+    clang::Sema &SemaRef;
+    llvm::Optional<T> Opt;
+  public:
+    OptionalInitClangRAII(Sema &S) :SemaRef(S.getCxxSema()) { }
+    template<typename... Args>
+    OptionalInitClangRAII(Sema &S, Args&&... Arguments)
+        :SemaRef(S.getCxxSema()), Opt()
+    {
+      Init(std::forward<Args>(Arguments)...);
+    }
+
+    template<typename... Args>
+    void Init(Args&&... Arguments) {
+      assert(!Opt && "Error attempting to enter scope twice.");
+      Opt.emplace(SemaRef, std::forward<Args>(Arguments)...);
+    }
+  };
+
 public:
   clang::ParsedTemplateArgument convertExprToTemplateArg(clang::Expr *E);
 };
