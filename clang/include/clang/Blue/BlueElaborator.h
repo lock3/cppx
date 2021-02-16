@@ -168,7 +168,7 @@ public:
 
   clang::Expr *elaborateArraySubscriptExpr(clang::Expr *Base,
                                            const ListSyntax *Args);
-  clang::Expr *elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
+  clang::Expr *elaborateFunctionCall(clang::Expr *Base,
                                      const CallSyntax *Op);
 
   void elaborateTemplateArgs(const EnclosureSyntax *Enc, const ListSyntax *ArgList,

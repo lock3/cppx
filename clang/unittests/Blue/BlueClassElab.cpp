@@ -328,6 +328,40 @@ C : class = {
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
+
+TEST(BlueClass, MemberFunctionDecl_Use) {
+  StringRef Code = R"BLUE(
+C : class = {
+  x:int;
+  foo:(inout this) void ={ }
+}
+bar:(x:^C) void = {
+  x.foo()
+}
+)BLUE";
+  auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
+    hasName("C"),
+    has(cxxMethodDecl(hasName("foo")))
+  )));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
+TEST(BlueClass, MemberFunctionTemplateDecl_Use) {
+  StringRef Code = R"BLUE(
+C : class = {
+  x:int;
+  foo:[T:type](inout this) void = { }
+}
+bar:(x:^C) void = {
+  x.foo[int]()
+}
+)BLUE";
+  auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
+    hasName("C"),
+    has(functionTemplateDecl(has(cxxMethodDecl(hasName("foo")))))
+  )));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
 // TEST(BlueClass, Class_DefaultCtorDecl) {
 //   StringRef Code = R"BLUE(
 // C : class = {

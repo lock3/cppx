@@ -2564,11 +2564,13 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
     llvm_unreachable("Invalid enclosure syntax");
   }
   if (ArgEnclosure->isParenEnclosure()) {
-    if (auto ULE = dyn_cast<clang::UnresolvedLookupExpr>(IdExpr)) {
-      return elaborateFunctionCall(ULE, S);
-    } else {
-      llvm_unreachable("Function call syntax not implemented yet.");
-    }
+    // if (auto ULE = dyn_cast<clang::OverloadExpr>()) {
+      return elaborateFunctionCall(IdExpr, S);
+    // } else {
+    //   llvm::outs() << "What am I?\n";
+    //   IdExpr->dump();
+    //   llvm_unreachable("Function call syntax not implemented yet.");
+    // }
   } else if (ArgEnclosure->isBracketEnclosure()) {
     if (!ArgEnclosure->getOperand())
       // TODO: I need to create a test case for this.
@@ -3300,7 +3302,7 @@ clang::Expr *Elaborator::elaborateArraySubscriptExpr(clang::Expr *Base,
   return SubscriptExpr.get();
 }
 
-clang::Expr *Elaborator::elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
+clang::Expr *Elaborator::elaborateFunctionCall(clang::Expr *Base,
                                                const CallSyntax *Op) {
   auto Enc = dyn_cast<EnclosureSyntax>(Op->getOperand(1));
   if (!Enc)
@@ -3323,17 +3325,17 @@ clang::Expr *Elaborator::elaborateFunctionCall(clang::UnresolvedLookupExpr *Base
     }
 
   }
-  // FIXME: what needs to happen here?
-  if (!Base->hasExplicitTemplateArgs()) {
-    for (auto D : Base->decls()) {
-      if (auto *FD = dyn_cast<clang::FunctionDecl>(D)) {
-        if (FD->getTemplatedKind() ==
-            clang::FunctionDecl::TK_FunctionTemplateSpecialization) {
-          ;
-        }
-      }
-    }
-  }
+  // // FIXME: what needs to happen here?
+  // if (!Base->hasExplicitTemplateArgs()) {
+  //   for (auto D : Base->decls()) {
+  //     if (auto *FD = dyn_cast<clang::FunctionDecl>(D)) {
+  //       if (FD->getTemplatedKind() ==
+  //           clang::FunctionDecl::TK_FunctionTemplateSpecialization) {
+  //         ;
+  //       }
+  //     }
+  //   }
+  // }
 
   // try and make the call and see what happens.
   clang::ExprResult Call = CxxSema.ActOnCallExpr(
