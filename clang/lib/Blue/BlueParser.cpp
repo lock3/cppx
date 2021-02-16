@@ -1360,10 +1360,26 @@ Syntax *Parser::parsePrimaryExpression() {
   return nullptr;
 }
 
+static inline bool isOperator(tok::TokenKind K) {
+  return K >= tok::Question && K <= tok::MinusMinus;
+}
+
 Syntax *Parser::parseIdExpression() {
+  if (nextTokenIs(tok::OperatorKeyword)) {
+    Token KW = consumeToken();
+    if (Token Op = matchTokenIf(isOperator)) {
+      Token Fuse = Token(KW.getKind(), KW.getLocation(),
+                         (void*)Op.getSymbol().data());
+      return new IdentifierSyntax(Fuse);
+    }
+
+    return new IdentifierSyntax(KW);
+  }
+
   Token Id = expectToken(tok::Identifier);
   if (Id)
     return new IdentifierSyntax(Id);
+
   return nullptr;
 }
 

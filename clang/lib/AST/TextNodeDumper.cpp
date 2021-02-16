@@ -2399,19 +2399,20 @@ void TextNodeDumper::Visit(const blue::Syntax *S) {
 }
 
 void TextNodeDumper::VisitEnclosureSyntax(const blue::EnclosureSyntax *S) {
-  if (S->open() && S->close()) {
-    OS << " '" << S->open().getSpelling() << S->close().getSpelling() << "' ";
+  if (S->getOpen() && S->getClose()) {
+    OS << " '" << S->getOpen().getSpelling()
+       << S->getClose().getSpelling() << "' ";
   } else {
     OS << " '<invalid>' ";
   }
 }
 
 void TextNodeDumper::VisitPrefixSyntax(const blue::PrefixSyntax *S) {
-  OS << " '" << S->operation().getSpelling() << "' ";
+  OS << " '" << S->getOperation().getSpelling() << "' ";
 }
 
 void TextNodeDumper::VisitPostfixSyntax(const blue::PostfixSyntax *S) {
-  OS << " '" << S->operation().getSpelling() << "' ";
+  OS << " '" << S->getOperation().getSpelling() << "' ";
 }
 
 void TextNodeDumper::VisitFileSyntax(const blue::FileSyntax *S) {
@@ -2436,7 +2437,7 @@ void TextNodeDumper::VisitIndexSyntax(const blue::IndexSyntax *S) {
 }
 
 void TextNodeDumper::VisitInfixSyntax(const blue::InfixSyntax *S) {
-  OS << " '" << S->operation().getSpelling() << "'";
+  OS << " '" << S->getOperation().getSpelling() << "'";
 }
 
 void TextNodeDumper::VisitControlSyntax(const blue::ControlSyntax *S) {
@@ -2457,11 +2458,11 @@ void TextNodeDumper::VisitSequenceSyntax(const blue::SequenceSyntax *S) {
 }
 
 void TextNodeDumper::VisitLiteralSyntax(const blue::LiteralSyntax *S) {
-  OS << " '" << S->spelling() << "'";
+  OS << " '" << S->getSpelling() << "'";
 }
 
 void TextNodeDumper::VisitIdentifierSyntax(const blue::IdentifierSyntax *S) {
-  OS << " '" << S->spelling() << "'";
+  OS << " '" << S->getSpelling() << "'";
 }
 
 

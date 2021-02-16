@@ -130,12 +130,17 @@ struct Token
     return Sym;
   }
 
+  void *getPtr() const {
+    assert(isFused());
+    return Ptr;
+  }
+
   bool hasSpelling(char const* Str) const {
     return getSymbol() == gold::getSymbol(Str);
   }
 
   /// Returns the spelling of the token.
-  llvm::StringRef getSpelling() const;
+  std::string getSpelling() const;
 
   /// Returns a human-readable name for the token. For simple tokens,
   /// this is simply its spelling. Otherwise, it is the grammatical name

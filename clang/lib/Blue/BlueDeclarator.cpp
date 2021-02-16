@@ -44,7 +44,7 @@ std::string Declarator::getString() const {
   case Type: {
     std::string Ret = "[type] ";
     if (const AtomSyntax *A = dyn_cast<AtomSyntax>(getInfo()))
-      Ret += A->spelling();
+      Ret += A->getSpelling();
     else
       Ret += "complex";
     return Ret;
@@ -59,11 +59,11 @@ std::string Declarator::getString() const {
     // std::string Ret = "[";
 
     // if (const AtomSyntax *A = dyn_cast<AtomSyntax>(getInfo()))
-    //   Ret += A->spelling();
+    //   Ret += A->getSpelling();
     // else if (const ListSyntax *L = dyn_cast<ListSyntax>(getInfo())) {
     //   // if (L->getNumChildren() == 1) {
     //   //   if (const AtomSyntax *B = dyn_cast<AtomSyntax>(L->getChild(0)))
-    //   //     Ret += B->spelling();
+    //   //     Ret += B->getSpelling();
     //   //   else
     //   //     Ret += "expr";
     //   // } else {

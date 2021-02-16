@@ -84,11 +84,16 @@ std::size_t getTokenLength(TokenKind K) {
   llvm_unreachable("Invalid token kind");
 }
 
-llvm::StringRef Token::getSpelling() const {
+std::string Token::getSpelling() const {
   // FIXME: Generate a spelling for fused tokens? This would probably
   // need to be a std::string instead of a character pointer.
-  assert(!isFused());
-  return llvm::StringRef(Sym.data());
+  if (isFused()) {
+    std::string Base = ::blue::getSpelling(getKind());
+    std::string Fuse = reinterpret_cast<const char *>(getPtr());
+    return Base + Fuse;
+  }
+
+  return std::string(Sym.data());
 }
 
 void Token::dump() const {

@@ -62,13 +62,13 @@ Declaration *Elaborator::createDeclaration(const Syntax *Def,
 
   if (const DeclarationSyntax *Name = dyn_cast<DeclarationSyntax>(Def)) {
     if (const IdentifierSyntax *Id
-        = dyn_cast_or_null<IdentifierSyntax>(Name->declarator())) {
-        TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->spelling()});
+        = dyn_cast_or_null<IdentifierSyntax>(Name->getDeclarator())) {
+        TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
     } else {
       llvm_unreachable("SOme how we have an invalid identifier.");
     }
   } else if (const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(Def)) {
-    TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->spelling()});
+    TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
   }
 
   Scope *CurScope = SemaRef.getCurrentScope();
@@ -106,8 +106,9 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   D->SavedScope = SemaRef.getCurrentScope();
   SemaRef.pushDecl(D);
 
-  assert(isa<SequenceSyntax>(Top->declarations()) && "invalid file");
-  const SequenceSyntax *Declarations = cast<SequenceSyntax>(Top->declarations());
+  assert(isa<SequenceSyntax>(Top->getDeclarations()) && "invalid file");
+  const SequenceSyntax *Declarations =
+    cast<SequenceSyntax>(Top->getDeclarations());
 
   for (const Syntax *SS : Declarations->children()) {
       identifyDeclaration(SS);
@@ -126,8 +127,8 @@ clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
 }
 
 Declaration *Elaborator::buildDeclaration(const DeclarationSyntax *S) {
-  Declarator *Dcl = getDeclarator(S->type());
-  return createDeclaration(S, Dcl, S->initializer());
+  Declarator *Dcl = getDeclarator(S->getType());
+  return createDeclaration(S, Dcl, S->getInitializer());
 }
 
 Declaration *Elaborator::identifyDeclaration(const Syntax *S) {
@@ -197,12 +198,12 @@ void Elaborator::elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,
   // if (!TPD->isImplicitlyEmpty()) {
     // Elaborator El(SemaRef.getContext(), SemaRef);
   auto TS = cast<TemplateSyntax>(Dcl->getInfo());
-  auto Enc = dyn_cast<EnclosureSyntax>(TS->parameters());
+  auto Enc = dyn_cast<EnclosureSyntax>(TS->getParameters());
   if (!Enc)
     llvm_unreachable("Invalid format for templates declarations.");
-  if (!Enc->operand())
+  if (!Enc->getOperand())
     llvm_unreachable("Invalid format for template declarations.");
-  auto List = dyn_cast<ListSyntax>(Enc->operand());
+  auto List = dyn_cast<ListSyntax>(Enc->getOperand());
   if (!List) {
     llvm_unreachable("invalid template syntax.");
   }
@@ -492,9 +493,9 @@ void Elaborator::getParameters(Declaration *D,
   const auto *Enc = dyn_cast<EnclosureSyntax>(FuncDeclarator->getInfo());
   if (!Enc)
     return;
-  if (!Enc->term())
+  if (!Enc->getTerm())
     return;
-  const ListSyntax *ParamList = dyn_cast<ListSyntax>(Enc->term());
+  const ListSyntax *ParamList = dyn_cast<ListSyntax>(Enc->getTerm());
   if (!ParamList)
     return;
 
@@ -555,7 +556,7 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
     // index and depth.
     Declaration *TheDecl = createDeclaration(S, nullptr, nullptr);
 
-    clang::IdentifierInfo *II = &CxxAST.Idents.get({Id->spelling()});
+    clang::IdentifierInfo *II = &CxxAST.Idents.get({Id->getSpelling()});
     clang::IdentifierInfo *TypeName =
       CxxSema.InventAbbreviatedTemplateParameterTypeName(II, TempCtx.Index);
 
@@ -586,14 +587,14 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
   // FIXME: There is a lot of duplication with makeObjectDecl here.
   // In Gold it's just one function.
   const auto *Def = cast<DeclarationSyntax>(S);
-  Declarator *Dcl = getDeclarator(Def->type());
+  Declarator *Dcl = getDeclarator(Def->getType());
   clang::Expr *Ty = elaborateDeclarator(Dcl);
   if (!Ty)
     return nullptr;
 
   // FIXME: This needs to be refactored so it's created during phase identification.
   // Create the Blue Declaration
-  Declaration *TheDecl = createDeclaration(Def, Dcl, Def->initializer());
+  Declaration *TheDecl = createDeclaration(Def, Dcl, Def->getInitializer());
 
   // Create the Clang Decl Node
   clang::IdentifierInfo *Id = TheDecl->Id;
@@ -643,8 +644,8 @@ Declarator *Elaborator::getDeclarator(const Syntax *S) {
 
     // TODO: We may need to handle the multi-return slightly different then
     // a typical return statement, not sure yet.
-    return new Declarator(Declarator::Function, Fn->parameters(),
-                          getDeclarator(Fn->result()));
+    return new Declarator(Declarator::Function, Fn->getParameters(),
+                          getDeclarator(Fn->getResult()));
 
   }
 
@@ -664,7 +665,7 @@ Declarator *Elaborator::getDeclarator(const Syntax *S) {
   if (auto AS = dyn_cast<ArraySyntax>(S))
     return getArrayDeclarator(AS);
   if (auto PS = dyn_cast<PrefixSyntax>(S)) {
-    if (PS->operation().hasKind(tok::Caret))
+    if (PS->getOperation().hasKind(tok::Caret))
       return getPointerDeclarator(PS);
   }
   if (auto TS = dyn_cast<TemplateSyntax>(S))
@@ -773,27 +774,28 @@ Declarator *Elaborator::getDeclarator(const Syntax *S) {
 
 
 Declarator *Elaborator::getArrayDeclarator(const ArraySyntax *AS) {
-  if (!AS->result()){
+  if (!AS->getResult()){
     AS->dump();
     llvm_unreachable("Invalid AST structure");
   }
-  return new Declarator(Declarator::Array, AS, getDeclarator(AS->result()));
+  return new Declarator(Declarator::Array, AS, getDeclarator(AS->getResult()));
 }
 
 Declarator *Elaborator::getPointerDeclarator(const PrefixSyntax *PS) {
-  assert(PS->operation().hasKind(tok::Caret) && "Invalid pointer declarator.");
-  return new Declarator(Declarator::Pointer, PS, getDeclarator(PS->operand()));
+  assert(PS->getOperation().hasKind(tok::Caret) && "Invalid pointer declarator.");
+  return new Declarator(Declarator::Pointer, PS, getDeclarator(PS->getOperand()));
 }
 
 Declarator *Elaborator::getTemplateDeclarator(const TemplateSyntax *TS) {
-  return new Declarator(Declarator::Template, TS, getDeclarator(TS->result()));
+  return new Declarator(Declarator::Template, TS,
+                        getDeclarator(TS->getResult()));
 }
 
 Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   switch (S->getKind()) {
   case Syntax::Literal: {
     auto Lit = dyn_cast<LiteralSyntax>(S);
-    if (Lit->token().hasKind(tok::ClassKeyword)) {
+    if (Lit->getToken().hasKind(tok::ClassKeyword)) {
       return new Declarator(Declarator::Class, S);
     }
   }
@@ -949,13 +951,13 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
     return nullptr;
 
   const ListSyntax *ParamList = nullptr;
-  if (ParamTerm->term()) {
-    ParamList = dyn_cast<ListSyntax>(ParamTerm->term());
+  if (ParamTerm->getTerm()) {
+    ParamList = dyn_cast<ListSyntax>(ParamTerm->getTerm());
     if (!ParamList)
       return nullptr;
   }
 
-  clang::SourceLocation Loc = ParamTerm->open().getLocation();
+  clang::SourceLocation Loc = ParamTerm->getOpen().getLocation();
   clang::ASTContext &CxxAST = SemaRef.getCxxAST();
   Sema::ScopeRAII ParamScope(SemaRef, Scope::Parameter, ParamTerm);
   Dcl->DeclInfo.ParamScope = SemaRef.getCurrentScope();
@@ -969,7 +971,7 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
     N = ParamList->getNumChildren();
     elaborateParameters(ParamList);
     for (unsigned I = 0; I < N; ++I) {
-      const Syntax *P = ParamList->operand(I);
+      const Syntax *P = ParamList->getOperand(I);
       Declaration *BluePD = SemaRef.getCurrentScope()->findDecl(P);
       assert(BluePD && "associated declaration never found");
       assert(isa<clang::ParmVarDecl>(BluePD->getCxx()) &&
@@ -1302,15 +1304,15 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
   //   llvm_unreachable("Incorrectly identified tag type");
   // }
   auto ClsDef = cast<DeclarationSyntax>(D->Def);
-  auto ClsEnc = cast<EnclosureSyntax>(ClsDef->initializer());
-  auto ClsBody  = dyn_cast_or_null<ListSyntax>(ClsEnc->operand());
+  auto ClsEnc = cast<EnclosureSyntax>(ClsDef->getInitializer());
+  auto ClsBody  = dyn_cast_or_null<ListSyntax>(ClsEnc->getOperand());
   Decl *Declaration = nullptr;
   // if (D->SpecializationArgs) {
   //   Declaration = handleClassSpecialization(Context, SemaRef, D, TST, MTP);
   // } else {
   Declaration = SemaRef.getCxxSema().ActOnTag(
     SemaRef.getCurClangScope(), TST, /*Metafunction=*/nullptr,
-    clang::Sema::TUK_Definition, ClsEnc->open().getLocation(), SS, D->Id,
+    clang::Sema::TUK_Definition, ClsEnc->getOpen().getLocation(), SS, D->Id,
     IdLoc, clang::ParsedAttributesView(), AS,
     /*ModulePrivateLoc=*/SourceLocation(),
     MTP, IsOwned, IsDependent, ScopedEnumClassKW, ScopeEnumUsesClassTag,
@@ -1340,7 +1342,7 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
   Sema::ClangScopeRAII ClangClassScopeBody(SemaRef,
             (Tag->isEnum() ? clang::Scope::EnumScope : clang::Scope::ClassScope)
                                            | clang::Scope::DeclScope,
-                                     ClsEnc->open().getLocation());
+                                     ClsEnc->getOpen().getLocation());
 
 
   // Need to do this before the next step because this is actually pushed on to
@@ -1364,7 +1366,7 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
                                               !SemaRef.isElaboratingClass());
     CXXRecordDecl *ClsDecl = cast<CXXRecordDecl>(Tag);
 
-    if (ClsEnc->operand())
+    if (ClsEnc->getOperand())
       identifyDeclsInClassBody(D, ClsBody, ClsDecl);
     // Attempt to figure out if any nested elaboration is actually required.
     // If not then we can proceed as normal.
@@ -1386,8 +1388,8 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
                                                          ClsDecl,
                                                          SourceLocation(), true,
                                                          SourceLocation());
-    if (ClsEnc->operand()) {
-      // auto List = dyn_cast<ListSyntax>(ClsEnc->operand());
+    if (ClsEnc->getOperand()) {
+      // auto List = dyn_cast<ListSyntax>(ClsEnc->getOperand());
       // assert(List && "invalid class tree.");
       // Since all declarations have already been added, we don't need to do another
       // Reordering scan.
@@ -1565,15 +1567,15 @@ clang::Expr *Elaborator::elaborateArrayDeclarator(const Declarator *Dcl) {
   if (!TInfo)
     return nullptr;
   auto AS = cast<ArraySyntax>(Dcl->getInfo());
-  auto BoundsEnc = cast<EnclosureSyntax>(AS->bounds());
-  if (!BoundsEnc->operand()) {
+  auto BoundsEnc = cast<EnclosureSyntax>(AS->getBounds());
+  if (!BoundsEnc->getOperand()) {
     // FIXME:/TODO: We need to support implicit array size.
-    Error(BoundsEnc->open().getLocation(),
+    Error(BoundsEnc->getOpen().getLocation(),
           "invalid array declaration, no size given.");
     return nullptr;
   }
   clang::QualType ArrayType = TInfo->getType();
-  auto SizeList = cast<ListSyntax>(BoundsEnc->operand());
+  auto SizeList = cast<ListSyntax>(BoundsEnc->getOperand());
   for (auto Val : SizeList->reverseChildren()) {
     clang::Expr *ArrSizeExpr = elaborateConstantExpression(Val);
     if (!ArrSizeExpr) {
@@ -1823,8 +1825,8 @@ createIntegerLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
   }
 
   // skip over any [0.] prefix
-  std::string Spelling = Base == 10 ? S->spelling().str() :
-    S->spelling().substr(2).str();
+  std::string Spelling = Base == 10 ? S->getSpelling() :
+    S->getSpelling().substr(2);
 
   auto It = std::find(Spelling.begin(), Spelling.end(), '\'');
   while(It != std::end(Spelling)) {
@@ -1866,7 +1868,7 @@ createFloatLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
   // using llvm::APFloat;
   // APFloat Val = llvm::APFloat(Format);
 
-  // std::string Spelling = S->spelling().str();
+  // std::string Spelling = S->getSpelling();
   // auto It = std::find(Spelling.begin(), Spelling.end(), '\'');
   // while(It != std::end(Spelling)) {
   //   Spelling.erase(It);
@@ -1884,7 +1886,7 @@ createFloatLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
 static clang::FloatingLiteral *
 createExponentLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
                       const LiteralSyntax *S, clang::SourceLocation Loc) {
-  // std::string Spelling = S->spelling().str();
+  // std::string Spelling = S->getSpelling();
   // assert((Spelling.find_first_of("E") != std::string::npos ||
   //        Spelling.find_first_of("e") != std::string::npos) &&
   //        "non-exponent");
@@ -2128,7 +2130,7 @@ createCharLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
 static clang::CharacterLiteral *
 createUTF8Literal(clang::ASTContext &CxxAST, Sema &SemaRef,
                   Token T, clang::SourceLocation Loc) {
-  std::string Spelling = T.getSpelling().str();
+  std::string Spelling = T.getSpelling();
   Spelling = Spelling.substr(Spelling.find_first_not_of("0c"), Spelling.size());
   unsigned Value = (unsigned)std::stoi(Spelling, 0, 16);
 
@@ -2142,7 +2144,7 @@ createUTF8Literal(clang::ASTContext &CxxAST, Sema &SemaRef,
 static clang::CharacterLiteral *
 createUnicodeLiteral(clang::ASTContext &CxxAST, Sema &SemaRef,
                      Token T, clang::SourceLocation Loc) {
-  std::string Spelling = T.getSpelling().str();
+  std::string Spelling = T.getSpelling();
   Spelling = Spelling.substr(Spelling.find_first_not_of("0u"), Spelling.size());
   unsigned Value = (unsigned)std::stoi(Spelling, 0, 16);
 
@@ -2210,36 +2212,36 @@ clang::Expr *Elaborator::elaborateLiteralExpression(const LiteralSyntax *S) {
   // DecimalExponent
   // HexadecimalCharacter
   // UnicodeCharacter
-  const Token& Tok = S->token();
+  const Token& Tok = S->getToken();
   switch (Tok.getKind()) {
   case tok::BitAndKeyword:{
     SemaRef.buildBitAnd();
-    return buildIdExpr(SemaRef, S->spelling(), S->getLocation());
+    return buildIdExpr(SemaRef, S->getSpelling(), S->getLocation());
   }
   break;
   case tok::BitOrKeyword:{
     SemaRef.buildBitOr();
-    return buildIdExpr(SemaRef, S->spelling(), S->getLocation());
+    return buildIdExpr(SemaRef, S->getSpelling(), S->getLocation());
   }
   break;
   case tok::BitXOrKeyword:{
     SemaRef.buildBitXOr();
-    return buildIdExpr(SemaRef, S->spelling(), S->getLocation());
+    return buildIdExpr(SemaRef, S->getSpelling(), S->getLocation());
   }
   break;
   case tok::BitShlKeyword:{
     SemaRef.buildBitShl();
-    return buildIdExpr(SemaRef, S->spelling(), S->getLocation());
+    return buildIdExpr(SemaRef, S->getSpelling(), S->getLocation());
   }
   break;
   case tok::BitShrKeyword:{
     SemaRef.buildBitShr();
-    return buildIdExpr(SemaRef, S->spelling(), S->getLocation());
+    return buildIdExpr(SemaRef, S->getSpelling(), S->getLocation());
   }
   break;
   case tok::BitNotKeyword:{
     SemaRef.buildBitNot();
-    return buildIdExpr(SemaRef, S->spelling(), S->getLocation());
+    return buildIdExpr(SemaRef, S->getSpelling(), S->getLocation());
   }
   break;
 
@@ -2347,7 +2349,7 @@ void Elaborator::elaborateVarDef(Declaration *D) {
   auto *Def = D->asDef();
   if (!Def)
     return;
-  if (!Def->initializer()) {
+  if (!Def->getInitializer()) {
     // if (isa<clang::ParmVarDecl>(VD))
     //   return;
     // FIXME: We probably want to synthesize some kind of initializer here.
@@ -2528,19 +2530,19 @@ clang::Expr *buildIdExpr(Sema &SemaRef,
 }
 
 clang::Expr *Elaborator::elaborateIdentifierExpression(const IdentifierSyntax *S) {
-  return buildIdExpr(SemaRef, S->spelling(), S->getLocation());
+  return buildIdExpr(SemaRef, S->getSpelling(), S->getLocation());
 }
 
 clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
   // Checking for special case functions.
-  auto Callee = S->applicant();
+  auto Callee = S->getApplicant();
   auto LS = dyn_cast<LiteralSyntax>(Callee);
   if (LS) {
-    if (LS->spelling() == "integer")
+    if (LS->getSpelling() == "integer")
       return elaborateIntegerMetaFunction(S);
-    if (LS->spelling() == "real")
+    if (LS->getSpelling() == "real")
       return elaborateRealMetaFunction(S);
-    if (LS->spelling() == "character")
+    if (LS->getSpelling() == "character")
       return elaborateCharacterMetaFunction(S);
   }
 
@@ -2548,7 +2550,7 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
   clang::Expr *IdExpr = doElaborateExpression(Callee);
   if (!IdExpr)
     return IdExpr;
-  const Syntax *ArgSyn = S->arguments();
+  const Syntax *ArgSyn = S->getArguments();
   if (!ArgSyn)
     llvm_unreachable("Missing calls arguments from tree.");
   auto ArgEnclosure = dyn_cast<EnclosureSyntax>(ArgSyn);
@@ -2564,11 +2566,11 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
       llvm_unreachable("Function call syntax not implemented yet.");
     }
   } else if (ArgEnclosure->isBracketEnclosure()) {
-    if (!ArgEnclosure->operand())
+    if (!ArgEnclosure->getOperand())
       // TODO: I need to create a test case for this.
       llvm_unreachable("Invalid empty template instantiation.");
 
-    auto LS = cast<ListSyntax>(ArgEnclosure->operand());
+    auto LS = cast<ListSyntax>(ArgEnclosure->getOperand());
     if (IdExpr->getType()->isTemplateType())
         return elaborateClassTemplateSelection(IdExpr, ArgEnclosure, LS);
     if (!isa<clang::OverloadExpr>(IdExpr))
@@ -2639,13 +2641,13 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
 }
 
 clang::Expr *Elaborator::elaboratePrefixExpression(const PrefixSyntax *S) {
-  auto Operand = elaborateExpression(S->operand());
+  auto Operand = elaborateExpression(S->getOperand());
   if (!Operand)
     return Operand;
   clang::SourceLocation Loc = S->getLocation();
   clang::QualType Ty = Operand->getType();
   if (Ty->isTypeOfTypes()) {
-    if (S->operation().hasKind(tok::Caret)) {
+    if (S->getOperation().hasKind(tok::Caret)) {
       // FIXME: how can we assert that this is a declarator?
       // If this apears within a declarator then it must be a type.
       auto TInfo = SemaRef.getTypeSourceInfoFromExpr(Operand,
@@ -2662,12 +2664,12 @@ clang::Expr *Elaborator::elaboratePrefixExpression(const PrefixSyntax *S) {
   }
 
   // This implements the address of operator.
-  // if (S->operation().hasKind(tok::Caret)) {
+  // if (S->getOperation().hasKind(tok::Caret)) {
   //   llvm_unreachable("Address of not implemented yet.");
   //   // getCxxSema().Diags.Report(Loc, clang::diag::err_prefix_caret_on_non_type);
   //   // return nullptr;
   // }
-  auto OpIter = SemaRef.UnaryPrefixOpMap.find(S->operation().getSpelling());
+  auto OpIter = SemaRef.UnaryPrefixOpMap.find(S->getOperation().getSpelling());
   clang::UnaryOperatorKind Op;
   if (OpIter == SemaRef.UnaryPrefixOpMap.end()) {
     Error(Loc, "invalid unary operator");
@@ -2681,7 +2683,7 @@ clang::Expr *Elaborator::elaboratePrefixExpression(const PrefixSyntax *S) {
 
 clang::Expr *Elaborator::elaboratePostfixExpression(const PostfixSyntax *S) {
   // llvm_unreachable("elaboratePostfixExpression not implemented yet");
-  auto Operand = elaborateExpression(S->operand());
+  auto Operand = elaborateExpression(S->getOperand());
   if (!Operand)
     return Operand;
   clang::SourceLocation Loc = S->getLocation();
@@ -2692,7 +2694,7 @@ clang::Expr *Elaborator::elaboratePostfixExpression(const PostfixSyntax *S) {
     return nullptr;
   }
 
-  auto OpIter = SemaRef.UnaryPostfixOpMap.find(S->operation().getSpelling());
+  auto OpIter = SemaRef.UnaryPostfixOpMap.find(S->getOperation().getSpelling());
   clang::UnaryOperatorKind Op;
   if (OpIter == SemaRef.UnaryPostfixOpMap.end()) {
     Error(Loc, "invalid unary operator");
@@ -2704,18 +2706,18 @@ clang::Expr *Elaborator::elaboratePostfixExpression(const PostfixSyntax *S) {
 }
 
 clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
-  auto LHS = elaborateExpression(S->operand(0));
+  auto LHS = elaborateExpression(S->getOperand(0));
   if (!LHS)
     return nullptr;
 
-  if (S->operation().hasKind(tok::Dot))
+  if (S->getOperation().hasKind(tok::Dot))
     return elaborateMemberAccess(LHS, S);
 
-  auto RHS = elaborateExpression(S->operand(1));
+  auto RHS = elaborateExpression(S->getOperand(1));
   if (!RHS)
     return nullptr;
 
-  auto OpIter = SemaRef.BinOpMap.find(S->operation().getSpelling());
+  auto OpIter = SemaRef.BinOpMap.find(S->getOperation().getSpelling());
   if (OpIter == SemaRef.BinOpMap.end()) {
     Error(S->getLocation(), "invalid binary operator");
     return nullptr;
@@ -2926,11 +2928,11 @@ clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
 //     const Syntax *LHSSyntax = S->getLeftOperand();
 //     auto LS = dyn_cast<LiteralSyntax>(LHSSyntax);
 //     if (LS) {
-//       if (LS->spelling() == "integer")
+//       if (LS->getSpelling() == "integer")
 //         return elaborateIntegerMetaFunction(S);
-//       if (LS->spelling() == "real")
+//       if (LS->getSpelling() == "real")
 //         return elaborateRealMetaFunction(S);
-//       if (LS->spelling() == "character")
+//       if (LS->getSpelling() == "character")
 //         return elaborateCharacterMetaFunction(S);
 //     }
 //   }
@@ -2984,19 +2986,19 @@ clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
 // }
 
 clang::Stmt *Elaborator::elaborateEnclosureStmt(const EnclosureSyntax *S) {
-  if (!S->operand()) {
+  if (!S->getOperand()) {
     getCxxSema().ActOnStartOfCompoundStmt(false);
     Sema::ScopeRAII BlockScope(SemaRef, Scope::Block, S);
     llvm::SmallVector<clang::Stmt *, 1> Results;
-    clang::Stmt *Block = getCxxSema().ActOnCompoundStmt(S->open().getLocation(),
-                                                        S->close().getLocation(),
+    clang::Stmt *Block = getCxxSema().ActOnCompoundStmt(S->getOpen().getLocation(),
+                                                        S->getClose().getLocation(),
                                           Results, /*isStmtExpr=*/false).get();
     return Block;
   }
 
-  auto Body = dyn_cast<ListSyntax>(S->operand());
+  auto Body = dyn_cast<ListSyntax>(S->getOperand());
   if (!Body) {
-    S->operand()->dump();
+    S->getOperand()->dump();
     llvm_unreachable("Not sure if this is valid syntax or not.");
   }
   return elaborateListSyntaxStmt(Body);
@@ -3033,7 +3035,7 @@ clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
     return elaborateDeclStmt(DS);
 
   if (auto U = dyn_cast<PrefixSyntax>(S)) {
-    if (U->operation().hasKind(tok::ReturnKeyword))
+    if (U->getOperation().hasKind(tok::ReturnKeyword))
       return elaborateReturnStmt(U);
   }
   // else if (const ControlSyntax *C = dyn_cast<ControlSyntax>(S))
@@ -3084,22 +3086,22 @@ clang::Stmt *Elaborator::elaborateDeclStmt(const DeclarationSyntax *S) {
 }
 
 clang::Stmt *Elaborator::elaborateReturnStmt(const PrefixSyntax *S) {
-  assert(S->operation().hasKind(tok::ReturnKeyword)
+  assert(S->getOperation().hasKind(tok::ReturnKeyword)
          && "Invalid return statement");
   clang::Expr *Val = nullptr;
 
-  if (S->operand())
+  if (S->getOperand())
     // if this elaborates to null, we'll just let clang::Sema handle the error
-    Val = elaborateExpression(S->operand());
+    Val = elaborateExpression(S->getOperand());
 
   auto ReturnResult = SemaRef.getCxxSema().ActOnReturnStmt(
-    S->operation().getLocation(), Val, SemaRef.getCurClangScope());
+    S->getOperation().getLocation(), Val, SemaRef.getCurClangScope());
 
   return ReturnResult.get();
 }
 
 clang::Stmt *Elaborator::elaborateControlStmt(const ControlSyntax *S) {
-  switch (S->control().getKind()) {
+  switch (S->getControl().getKind()) {
   case tok::IfKeyword:
     return elaborateIfStmt(S);
   case tok::WhileKeyword:
@@ -3117,13 +3119,13 @@ clang::Stmt *Elaborator::elaborateControlStmt(const ControlSyntax *S) {
 }
 
 clang::Stmt *Elaborator::elaborateIfStmt(const ControlSyntax *S) {
-  assert(S->control().hasKind(tok::IfKeyword) && "invalid if syntax");
+  assert(S->getControl().hasKind(tok::IfKeyword) && "invalid if syntax");
 
   // TODO: implement constexpr if
   bool IsConstExprIfStmt = false;
 
   // Elaborate the condition
-  clang::Expr *ConditionExpr = elaborateExpression(S->head());
+  clang::Expr *ConditionExpr = elaborateExpression(S->getHead());
   if (!ConditionExpr)
     return nullptr;
   clang::Sema::ConditionResult Condition =
@@ -3136,9 +3138,9 @@ clang::Stmt *Elaborator::elaborateIfStmt(const ControlSyntax *S) {
   // Get the block, this *must* be a pair.
   // if (isa<ErrorSyntax>(S->getBlock()))
     // return nullptr;
-  const PairSyntax *Block = cast<PairSyntax>(S->body());
-  const Syntax *ThenBlock = Block->m_terms[0];
-  const Syntax *ElseBlock = Block->m_terms[1];
+  const PairSyntax *Block = cast<PairSyntax>(S->getBody());
+  const Syntax *ThenBlock = Block->getOperand(0);
+  const Syntax *ElseBlock = Block->getOperand(1);
 
   // Elaborate the then block
   SemaRef.enterScope(Scope::Block, ThenBlock);
@@ -3165,12 +3167,12 @@ clang::Stmt *Elaborator::elaborateIfStmt(const ControlSyntax *S) {
 }
 
 clang::Stmt *Elaborator::elaborateWhileStmt(const ControlSyntax *S) {
-  assert(S->control().hasKind(tok::WhileKeyword) && "invalid while syntax");
+  assert(S->getControl().hasKind(tok::WhileKeyword) && "invalid while syntax");
   Sema::ScopeRAII WhileScope(SemaRef, Scope::Control, S);
 
   // Elaborate the condition
   clang::Expr *CondExpr =
-    elaborateExpression(S->head());
+    elaborateExpression(S->getHead());
   if (!CondExpr)
     return nullptr;
   clang::Sema::ConditionResult Condition =
@@ -3179,7 +3181,7 @@ clang::Stmt *Elaborator::elaborateWhileStmt(const ControlSyntax *S) {
                                         clang::Sema::ConditionKind::Boolean);
 
   // Elaborate the block
-  const Syntax *BlockSyntax = S->body();
+  const Syntax *BlockSyntax = S->getBody();
   SemaRef.enterScope(Scope::Block, BlockSyntax);
   clang::Stmt *Block = elaborateStatement(BlockSyntax);
   SemaRef.leaveScope(BlockSyntax);
@@ -3188,16 +3190,16 @@ clang::Stmt *Elaborator::elaborateWhileStmt(const ControlSyntax *S) {
 
   clang::StmtResult While =
     SemaRef.getCxxSema().ActOnWhileStmt(S->getLocation(),
-                                        S->head()->getLocation(),
+                                        S->getHead()->getLocation(),
                                         Condition,
-                                        S->body()->getLocation(),
+                                        S->getBody()->getLocation(),
                                         Block);
   return While.get();
 }
 
 clang::Stmt *Elaborator::elaborateForStmt(const ControlSyntax *S) {
-  assert(S->control().hasKind(tok::ForKeyword) && "invalid for syntax");
-  clang::SourceLocation ForLoc = S->control().getLocation();
+  assert(S->getControl().hasKind(tok::ForKeyword) && "invalid for syntax");
+  clang::SourceLocation ForLoc = S->getControl().getLocation();
   Sema::ScopeRAII ForScope(SemaRef, Scope::Control, S);
   clang::Sema::GoldElaborationScopeRAII CxxScope(
     CxxSema,
@@ -3206,7 +3208,7 @@ clang::Stmt *Elaborator::elaborateForStmt(const ControlSyntax *S) {
     clang::Scope::DeclScope     |
     clang::Scope::ControlScope);
 
-  if (!S->head() /*|| isa<ErrorSyntax>(S->getSignature())*/) {
+  if (!S->getHead() /*|| isa<ErrorSyntax>(S->getSignature())*/) {
     Error(S->getLocation(), "failed to translate statement");
     return nullptr;
   }
@@ -3214,7 +3216,7 @@ clang::Stmt *Elaborator::elaborateForStmt(const ControlSyntax *S) {
   // Elaborate the conditions
   unsigned I = 0;
   const Syntax *Conditions[3] = {nullptr, nullptr, nullptr};
-  for (const Syntax *C : S->head()->children()) {
+  for (const Syntax *C : S->getHead()->children()) {
     if (I > 2) {
       // Conceivably, if we got to this point, C cannot be null.
       Error(C->getLocation(), "too many arguments in for-loop signature");
@@ -3236,7 +3238,7 @@ clang::Stmt *Elaborator::elaborateForStmt(const ControlSyntax *S) {
     CxxSema.MakeFullDiscardedValueExpr(IncExpr);
 
   // Elaborate the block
-  const Syntax *BlockSyntax = S->body();
+  const Syntax *BlockSyntax = S->getBody();
   SemaRef.enterScope(Scope::Block, BlockSyntax);
   clang::Stmt *Block = elaborateStatement(BlockSyntax);
   SemaRef.leaveScope(BlockSyntax);
@@ -3249,17 +3251,17 @@ clang::Stmt *Elaborator::elaborateForStmt(const ControlSyntax *S) {
 }
 
 clang::Stmt *Elaborator::elaborateDoStmt(const ControlSyntax *S) {
-  assert(S->control().hasKind(tok::DoKeyword) && "invalid do syntax");
+  assert(S->getControl().hasKind(tok::DoKeyword) && "invalid do syntax");
   Sema::ScopeRAII DoScope(SemaRef, Scope::Control, S);
 
   // Elaborate the condition
   clang::Expr *CondExpr =
-    elaborateExpression(S->head());
+    elaborateExpression(S->getHead());
   if (!CondExpr)
     return nullptr;
 
   // Elaborate the block
-  const Syntax *BlockSyntax = S->body();
+  const Syntax *BlockSyntax = S->getBody();
   SemaRef.enterScope(Scope::Block, BlockSyntax);
   clang::Stmt *Block = elaborateStatement(BlockSyntax);
   SemaRef.leaveScope(BlockSyntax);
@@ -3268,10 +3270,10 @@ clang::Stmt *Elaborator::elaborateDoStmt(const ControlSyntax *S) {
 
   clang::StmtResult Do =
     SemaRef.getCxxSema().ActOnDoStmt(S->getLocation(),
-                                     Block, S->head()->getLocation(),
-                                     S->head()->getLocation(),
+                                     Block, S->getHead()->getLocation(),
+                                     S->getHead()->getLocation(),
                                      CondExpr,
-                                     S->head()->getEndLocation());
+                                     S->getHead()->getEndLocation());
   return Do.get();
 }
 
@@ -3282,7 +3284,7 @@ clang::Expr *Elaborator::elaborateArraySubscriptExpr(clang::Expr *Base,
     return nullptr;
   }
 
-  clang::Expr *IndexExpr = elaborateExpression(Args->operand(0));
+  clang::Expr *IndexExpr = elaborateExpression(Args->getOperand(0));
   if (!IndexExpr)
     return nullptr;
 
@@ -3296,15 +3298,15 @@ clang::Expr *Elaborator::elaborateArraySubscriptExpr(clang::Expr *Base,
 
 clang::Expr *Elaborator::elaborateFunctionCall(clang::UnresolvedLookupExpr *Base,
                                                const CallSyntax *Op) {
-  auto Enc = dyn_cast<EnclosureSyntax>(Op->operand(1));
+  auto Enc = dyn_cast<EnclosureSyntax>(Op->getOperand(1));
   if (!Enc)
     llvm_unreachable("invalid syntax");
 
   llvm::SmallVector<clang::Expr *, 4> ArgExprs;
-  if (Enc->operand()) {
-    const ListSyntax *Args = dyn_cast<ListSyntax>(Enc->operand());
+  if (Enc->getOperand()) {
+    const ListSyntax *Args = dyn_cast<ListSyntax>(Enc->getOperand());
     if (!Args) {
-      Error(Enc->operand()->getLocation(), "expected function arguments");
+      Error(Enc->getOperand()->getLocation(), "expected function arguments");
       return nullptr;
     }
 
@@ -3331,8 +3333,8 @@ clang::Expr *Elaborator::elaborateFunctionCall(clang::UnresolvedLookupExpr *Base
 
   // try and make the call and see what happens.
   clang::ExprResult Call = CxxSema.ActOnCallExpr(
-    CxxSema.getCurScope(), Base, Enc->open().getLocation(),
-    ArgExprs, Enc->close().getLocation());
+    CxxSema.getCurScope(), Base, Enc->getOpen().getLocation(),
+    ArgExprs, Enc->getClose().getLocation());
 
   return Call.get();
 }
@@ -3423,8 +3425,8 @@ Elaborator::elabotateTemplateInstantiationWithArgs(const EnclosureSyntax *Enc,
     // return SubscriptExpr.get();
   }
 
-  clang::SourceLocation LocStart = Enc->open().getLocation();
-  clang::SourceLocation LocEnd = Enc->close().getLocation();
+  clang::SourceLocation LocStart = Enc->getOpen().getLocation();
+  clang::SourceLocation LocEnd = Enc->getClose().getLocation();
 
   // We have an overload set, meaning this must be some kind of
   // overloaded function or function template.
@@ -3570,8 +3572,8 @@ Elaborator::elaborateClassTemplateSelection(clang::Expr *IdExpr,
                                             const EnclosureSyntax *Enc,
                                             const ListSyntax *ArgList) {
 
-  clang::SourceLocation LocStart = Enc->open().getLocation();
-  clang::SourceLocation LocEnd = Enc->close().getLocation();
+  clang::SourceLocation LocStart = Enc->getOpen().getLocation();
+  clang::SourceLocation LocEnd = Enc->getClose().getLocation();
   clang::TemplateArgumentListInfo TemplateArgs(LocEnd, LocStart);
   llvm::SmallVector<clang::ParsedTemplateArgument, 16> ParsedArguments;
 
@@ -3802,7 +3804,7 @@ static clang::Expr *handleLookupInsideType(Sema &SemaRef,
     // llvm_unreachable("Invalid AST structure");
   }
   // Processing if we have a single name.
-  clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Atom->spelling())},
+  clang::DeclarationNameInfo DNI({&CxxAST.Idents.get(Atom->getSpelling())},
                                 Atom->getLocation());
   // TODO: I may need to transform this into a destructor name eventually?
   // if (Atom->getSpelling() == "destruct") {
@@ -3935,7 +3937,7 @@ static clang::Expr *handleLookupInsideType(Sema &SemaRef,
     // This was neither a type nor a shadowed declaration.
     if (!ND) {
       SemaRef.getCxxSema().Diags.Report(RHS->getLocation(), clang::diag::err_no_member)
-        << Atom->spelling() << TD;
+        << Atom->getSpelling() << TD;
       return nullptr;
     }
   }
@@ -4015,7 +4017,7 @@ static clang::Expr *handleLookupInsideType(Sema &SemaRef,
 clang::Expr *Elaborator::elaborateTypeNameAccess(clang::Expr *LHS,
                                                  const InfixSyntax *S) {
     return handleLookupInsideType(SemaRef, getCxxContext(), LHS, S,
-                                  S->operand(1), false);
+                                  S->getOperand(1), false);
 }
 
 clang::Expr *Elaborator::elaborateNestedNamespaceAccess(clang::Expr *LHS,
@@ -4025,10 +4027,10 @@ clang::Expr *Elaborator::elaborateNestedNamespaceAccess(clang::Expr *LHS,
 
 clang::Expr *Elaborator::elaborateMemberAccessOp(clang::Expr *LHS,
                                                  const InfixSyntax *S) {
-  if (auto IdSyntax = dyn_cast<IdentifierSyntax>(S->operand(1))) {
+  if (auto IdSyntax = dyn_cast<IdentifierSyntax>(S->getOperand(1))) {
     clang::UnqualifiedId Id;
     clang::IdentifierInfo *IdInfo =
-      &getCxxContext().Idents.get(IdSyntax->spelling());
+      &getCxxContext().Idents.get(IdSyntax->getSpelling());
     // TODO: Implement operator lookup.
     // OpInfoBase const *OpInfo = SemaRef.OpInfo.getOpInfo(IdInfo);
     // if (OpInfo) {
@@ -4118,9 +4120,9 @@ static bool handleBuiltInByteCountEval(Elaborator &Elab, const Syntax *BytesArg,
 }
 
 clang::Expr *Elaborator::elaborateIntegerMetaFunction(const BinarySyntax *S) {
-  auto LHSSyntax = dyn_cast<LiteralSyntax>(S->operand(0));
+  auto LHSSyntax = dyn_cast<LiteralSyntax>(S->getOperand(0));
   clang::SourceLocation Loc = LHSSyntax->getLocation();
-  auto ArgEnclosure = dyn_cast<EnclosureSyntax>(S->operand(1));
+  auto ArgEnclosure = dyn_cast<EnclosureSyntax>(S->getOperand(1));
   auto reportInvalidUse = [&](clang::SourceLocation L, int MsgIdx =0) -> clang::Expr * {
     getCxxSema().Diags.Report(L,
                          clang::diag::err_invalid_use_of_built_in_type_function)
@@ -4136,27 +4138,27 @@ clang::Expr *Elaborator::elaborateIntegerMetaFunction(const BinarySyntax *S) {
     return reportInvalidUse(ArgEnclosure->getLocation());
   }
 
-  if (auto RHSList = dyn_cast<ListSyntax>(ArgEnclosure->operand())) {
+  if (auto RHSList = dyn_cast<ListSyntax>(ArgEnclosure->getOperand())) {
     if (RHSList->getNumChildren() != 2)
       return reportInvalidUse(RHSList->getLocation());
 
-    if (!RHSList->operand(0))
+    if (!RHSList->getOperand(0))
       return reportInvalidUse(Loc);
     int64_t ByteCount = 0;
-    if(handleBuiltInByteCountEval(*this, RHSList->operand(0), "integer",
+    if(handleBuiltInByteCountEval(*this, RHSList->getOperand(0), "integer",
                                   "number-of-bytes", "signed-or-unsigned",
                                   16, ByteCount))
       return nullptr;
 
     // Checking for signedness.
-    if (!RHSList->operand(1))
+    if (!RHSList->getOperand(1))
       return reportInvalidUse(Loc);
     bool IsSigned = false;
-    clang::SourceLocation SignednessLoc = RHSList->operand(1)->getLocation();
-    if (auto SignnessSyntax = dyn_cast<IdentifierSyntax>(RHSList->operand(1))) {
-      if (SignnessSyntax->spelling() == "signed") {
+    clang::SourceLocation SignednessLoc = RHSList->getOperand(1)->getLocation();
+    if (auto SignnessSyntax = dyn_cast<IdentifierSyntax>(RHSList->getOperand(1))) {
+      if (SignnessSyntax->getSpelling() == "signed") {
         IsSigned = true;
-      } else if(SignnessSyntax->spelling() == "unsigned") {
+      } else if(SignnessSyntax->getSpelling() == "unsigned") {
         IsSigned = false;
       } else {
         return reportInvalidUse(SignednessLoc, 4);
@@ -4174,9 +4176,9 @@ clang::Expr *Elaborator::elaborateIntegerMetaFunction(const BinarySyntax *S) {
 }
 
 clang::Expr *Elaborator::elaborateCharacterMetaFunction(const BinarySyntax *S) {
-  auto LHSSyntax = dyn_cast<LiteralSyntax>(S->operand(0));
+  auto LHSSyntax = dyn_cast<LiteralSyntax>(S->getOperand(0));
   clang::SourceLocation Loc = LHSSyntax->getLocation();
-  auto ArgEnclosure = dyn_cast<EnclosureSyntax>(S->operand(1));
+  auto ArgEnclosure = dyn_cast<EnclosureSyntax>(S->getOperand(1));
   auto reportInvalidUse = [&](clang::SourceLocation L, int MsgIdx = 0) -> clang::Expr * {
     getCxxSema().Diags.Report(L,
                          clang::diag::err_invalid_use_of_built_in_type_function)
@@ -4193,27 +4195,27 @@ clang::Expr *Elaborator::elaborateCharacterMetaFunction(const BinarySyntax *S) {
   if (!ArgEnclosure->isBracketEnclosure()) {
     return reportInvalidUse(ArgEnclosure->getLocation());
   }
-  if (auto RHSList = dyn_cast<ListSyntax>(ArgEnclosure->operand())) {
+  if (auto RHSList = dyn_cast<ListSyntax>(ArgEnclosure->getOperand())) {
     if (RHSList->getNumChildren() != 2)
       return reportInvalidUse(RHSList->getLocation());
 
-    if (!RHSList->operand(0))
+    if (!RHSList->getOperand(0))
       return reportInvalidUse(Loc);
     int64_t ByteCount = 0;
-    if(handleBuiltInByteCountEval(*this, RHSList->operand(0), "character",
+    if(handleBuiltInByteCountEval(*this, RHSList->getOperand(0), "character",
                                   "number-of-bytes", "ascii-or-utf",
                                   4, ByteCount))
       return nullptr;
 
     // Checking for signedness.
-    if (!RHSList->operand(1))
+    if (!RHSList->getOperand(1))
       return reportInvalidUse(Loc);
     bool IsUTF = false;
-    clang::SourceLocation SecondArgLoc = RHSList->operand(1)->getLocation();
-    if (auto SecondArg = dyn_cast<IdentifierSyntax>(RHSList->operand(1))) {
-      if (SecondArg->spelling() == "ascii") {
+    clang::SourceLocation SecondArgLoc = RHSList->getOperand(1)->getLocation();
+    if (auto SecondArg = dyn_cast<IdentifierSyntax>(RHSList->getOperand(1))) {
+      if (SecondArg->getSpelling() == "ascii") {
         IsUTF = false;
-      } else if(SecondArg->spelling() == "utf") {
+      } else if(SecondArg->getSpelling() == "utf") {
         IsUTF = true;
       } else {
         return reportInvalidUse(SecondArgLoc, 8);
@@ -4255,9 +4257,9 @@ clang::Expr *Elaborator::elaborateCharacterMetaFunction(const BinarySyntax *S) {
 }
 
 clang::Expr *Elaborator::elaborateRealMetaFunction(const BinarySyntax *S) {
-  auto LHSSyntax = dyn_cast<LiteralSyntax>(S->operand(0));
+  auto LHSSyntax = dyn_cast<LiteralSyntax>(S->getOperand(0));
   clang::SourceLocation Loc = LHSSyntax->getLocation();
-  auto ArgEnclosure = dyn_cast<EnclosureSyntax>(S->operand(1));
+  auto ArgEnclosure = dyn_cast<EnclosureSyntax>(S->getOperand(1));
   auto reportInvalidUse = [&](clang::SourceLocation L, int MsgIdx =0) -> clang::Expr * {
     getCxxSema().Diags.Report(L,
                          clang::diag::err_invalid_use_of_built_in_type_function)
@@ -4274,30 +4276,30 @@ clang::Expr *Elaborator::elaborateRealMetaFunction(const BinarySyntax *S) {
   if (!ArgEnclosure->isBracketEnclosure()) {
     return reportInvalidUse(ArgEnclosure->getLocation());
   }
-  if (auto RHSList = dyn_cast<ListSyntax>(ArgEnclosure->operand())) {
+  if (auto RHSList = dyn_cast<ListSyntax>(ArgEnclosure->getOperand())) {
     if (RHSList->getNumChildren() != 2)
       return reportInvalidUse(RHSList->getLocation());
 
-    if (!RHSList->operand(0))
+    if (!RHSList->getOperand(0))
       return reportInvalidUse(Loc);
     int64_t ByteCount = 0;
-    if (handleBuiltInByteCountEval(*this, RHSList->operand(0), "real",
+    if (handleBuiltInByteCountEval(*this, RHSList->getOperand(0), "real",
                                    "number-of-bytes", "binary-or-decimal",
                                    16, ByteCount))
       return nullptr;
     if (ByteCount <= 2)
-      return reportInvalidUse(RHSList->operand(0)->getLocation(), 7);
+      return reportInvalidUse(RHSList->getOperand(0)->getLocation(), 7);
 
     // Checking for signedness.
-    if (!RHSList->operand(1))
+    if (!RHSList->getOperand(1))
       return reportInvalidUse(Loc);
-    // bool IsSigned = false;
-    clang::SourceLocation SignednessLoc = RHSList->operand(1)->getLocation();
-    if (auto SignnessSyntax = dyn_cast<IdentifierSyntax>(RHSList->operand(1))) {
-      if (SignnessSyntax->spelling() == "binary") {
+
+    clang::SourceLocation SignednessLoc = RHSList->getOperand(1)->getLocation();
+    if (auto SignSyntax = dyn_cast<IdentifierSyntax>(RHSList->getOperand(1))) {
+      if (SignSyntax->getSpelling() == "binary") {
         auto Ty = getCxxContext().getRealTypeForBitwidth(8*ByteCount, true);
         return SemaRef.buildTypeExpr(Ty, Loc);
-      } else if(SignnessSyntax->spelling() == "decimal")
+      } else if(SignSyntax->getSpelling() == "decimal")
         return reportInvalidUse(SignednessLoc, 6);
       else
         return reportInvalidUse(SignednessLoc, 5);
