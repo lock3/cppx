@@ -20,9 +20,9 @@ using namespace blue;
 
 TEST(BlueAssignmentOp, SimpleAssignment) {
   StringRef Code = R"BLUE(
-foo:() void = {
-  x:int;
-  y:int;
+func foo:() void = {
+  var x:int;
+  var y:int;
   x = y;
 }
   )BLUE";

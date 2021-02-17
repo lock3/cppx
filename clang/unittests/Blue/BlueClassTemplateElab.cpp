@@ -20,7 +20,7 @@ using namespace blue;
 
 TEST(BlueClassTemplate, SimpleClassTemplateDecl) {
   StringRef Code = R"BLUE(
-C:[T:type] class = {
+type C:[T:type] class = {
 }
 )BLUE";
 
@@ -34,8 +34,8 @@ C:[T:type] class = {
 
 TEST(BlueClassTemplate, ClassTemplateWithDependentMember) {
   StringRef Code = R"BLUE(
-C:[T:type] class = {
-  x:T;
+type C:[T:type] class = {
+  var x:T;
 }
 )BLUE";
 
@@ -50,10 +50,10 @@ C:[T:type] class = {
 
 TEST(BlueClassTemplate, UseInTypeAlias) {
   StringRef Code = R"BLUE(
-C:[T:type] class = {
-  x:T;
+type C:[T:type] class = {
+  var x:T;
 }
-x:type = C[int];
+type x:type = C[int];
 )BLUE";
 
   auto ToMatch = typeAliasDecl(
@@ -65,10 +65,10 @@ x:type = C[int];
 
 TEST(BlueClassTemplate, UseAsVariableType) {
   StringRef Code = R"BLUE(
-C:[T:type] class = {
-  x:T;
+type C:[T:type] class = {
+  var x:T;
 }
-x:C[int];
+var x:C[int];
 )BLUE";
 
   auto ToMatch = varDecl(

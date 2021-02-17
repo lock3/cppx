@@ -204,6 +204,7 @@ namespace
         P.expectToken(tok::Semicolon);
       }
     } else {
+      // FIXME: if the next token is `{`, consider hinting to include `=`
       P.expectToken(tok::Semicolon);
     }
 
@@ -237,12 +238,43 @@ Syntax *Parser::parseDescriptor()
   return parsePrefixExpression();
 }
 
+static inline bool isDeclIntroducer(tok::TokenKind K) {
+  switch (K) {
+  case tok::VarKeyword:
+  case tok::FuncKeyword:
+  case tok::TypeKeyword:
+    return true;
+  default:
+    return false;
+  }
+}
+
 /// Parse a declaration:
 ///
 ///   declaration:
 ///     definition
 Syntax *Parser::parseDeclaration() {
-  return parseDefinition();
+  Token Intro;
+  if (isDeclIntroducer(getLookahead()))
+    Intro = consumeToken();
+
+  Syntax *Pars = parseDefinition();
+  if (!Pars)
+    return nullptr;
+
+  DeclarationSyntax *Decl = cast<DeclarationSyntax>(Pars);
+  switch (Intro.getKind()) {
+  case tok::VarKeyword:
+    Decl->IntroKind = DeclarationSyntax::Variable;
+  case tok::FuncKeyword:
+    Decl->IntroKind = DeclarationSyntax::Function;
+  case tok::TypeKeyword:
+    Decl->IntroKind = DeclarationSyntax::Type;
+  default:
+    Decl->IntroKind = DeclarationSyntax::Unknown;
+  }
+
+  return Decl;
 }
 
 /// Definition declaration:
@@ -338,7 +370,7 @@ Syntax *Parser::parseStatement()
   if (nextTokenIs(tok::LeftBrace))
     return parseBlockStatement();
 
-  if (startsDefinition(*this))
+  if (isDeclIntroducer(getLookahead()))
     return parseDeclarationStatement();
 
   return parseExpressionStatement();

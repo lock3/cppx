@@ -21,7 +21,7 @@ using namespace blue;
 
 TEST(BlueLiteral, IntLiteral) {
   StringRef Code = R"BLUE(
-x:=4;
+var x:=4;
 )BLUE";
   auto ToMatch = integerLiteral(equals(4));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -29,7 +29,7 @@ x:=4;
 
 // TEST(BlueLiteral, FloatingPoint) {
 //   StringRef Code = R"BLUE(
-// x:=4.5;
+// var x:=4.5;
 // )BLUE";
 //   auto ToMatch = floatLiteral(equals(4.5));
 //   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -37,7 +37,7 @@ x:=4;
 
 TEST(BlueLiteral, TrueKw) {
   StringRef Code = R"BLUE(
-x:=true;
+var x:=true;
 )BLUE";
   auto ToMatch = 	cxxBoolLiteral(equals(true));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -45,7 +45,7 @@ x:=true;
 
 TEST(BlueLiteral, FalseKw) {
   StringRef Code = R"BLUE(
-x:=false;
+var x:=false;
 )BLUE";
   auto ToMatch = 	cxxBoolLiteral(equals(false));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -53,7 +53,7 @@ x:=false;
 
 TEST(BlueLiteral, NullKw) {
   StringRef Code = R"BLUE(
-x:=null;
+var x:=null;
 )BLUE";
   auto ToMatch = 	cxxNullPtrLiteralExpr();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -61,7 +61,7 @@ x:=null;
 
 TEST(BlueLiteral, String) {
   StringRef Code = R"BLUE(
-x:="x";
+var x:="x";
 )BLUE";
   auto ToMatch = 	stringLiteral(hasSize(1));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -69,7 +69,7 @@ x:="x";
 
 TEST(BlueLiteral, Char) {
   StringRef Code = R"BLUE(
-x:='x';
+var x:='x';
 )BLUE";
   auto ToMatch = 	characterLiteral(equals(120u));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
