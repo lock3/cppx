@@ -112,15 +112,22 @@ Syntax *Parser::parseBlockStatement() {
   return parseBraceEnclosed(&Parser::parseStatementSeq);
 }
 
+static inline bool isParameterSpec(tok::TokenKind K);
+
 /// Returns true if the tokens at `La` start a definition.
 static bool startsDefinition(Parser &P, std::size_t La)
 {
   // Check for unnamed definitions.
   if (P.nthTokenIs(La, tok::Colon))
     return true;
+  // If we have a parameter specifier then we are a function.
+  if (isParameterSpec(P.peekToken(La).getKind()))
+    return true;
 
   // Check for definitions of the form `x:` and `x,y,z:`
   if (P.nthTokenIs(La, tok::Identifier)) {
+    if (P.peekToken(La).getSpelling() == "this")
+      return true;
     ++La;
 
     // Match a single declarator.
@@ -887,15 +894,13 @@ Syntax *Parser::parseParameterList()
   return makeParameterList(*this, SS);
 }
 
-static inline bool isParameterSpec(tok::TokenKind K) {
+inline bool isParameterSpec(tok::TokenKind K) {
   switch (K) {
   case tok::InKeyword:
   case tok::InoutKeyword:
   case tok::OutKeyword:
   case tok::MoveKeyword:
   case tok::ForwardKeyword:
-  case tok::RefKeyword:
-  case tok::RrefKeyword:
     return true;
   default:
     return false;

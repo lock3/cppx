@@ -84,4 +84,22 @@ bool DeclarationSyntax::declaratorIsThis() const {
   return false;
 }
 
+Token DeclarationSyntax::getParamPassingSpecifier() const {
+  if (ParamSpecs) {
+    for (unsigned i = 0;i <NumParamSpecs;++i) {
+      switch (ParamSpecs[i].getKind()) {
+      case tok::InKeyword:
+      case tok::InoutKeyword:
+      case tok::OutKeyword:
+      case tok::MoveKeyword:
+      case tok::ForwardKeyword:
+        return ParamSpecs[i];
+      default:
+        continue;
+      }
+    }
+  }
+  return {};
+}
+
 } // namespace blue

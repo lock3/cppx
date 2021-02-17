@@ -879,6 +879,7 @@ struct DeclarationSyntax : QuaternarySyntax
   static bool classof(const Syntax *S) {
     return S->getKind() == Kind;
   }
+  Token getParamPassingSpecifier() const;
 
   Token *ParamSpecs = nullptr;
   unsigned NumParamSpecs = 0;
