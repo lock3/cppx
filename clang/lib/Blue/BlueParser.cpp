@@ -266,12 +266,16 @@ Syntax *Parser::parseDeclaration() {
   switch (Intro.getKind()) {
   case tok::VarKeyword:
     Decl->IntroKind = DeclarationSyntax::Variable;
+    break;
   case tok::FuncKeyword:
     Decl->IntroKind = DeclarationSyntax::Function;
+    break;
   case tok::TypeKeyword:
     Decl->IntroKind = DeclarationSyntax::Type;
+    break;
   default:
     Decl->IntroKind = DeclarationSyntax::Unknown;
+    break;
   }
 
   return Decl;
