@@ -2564,16 +2564,10 @@ clang::Expr *Elaborator::elaborateCallExpression(const CallSyntax *S) {
     llvm_unreachable("Invalid enclosure syntax");
   }
   if (ArgEnclosure->isParenEnclosure()) {
-    // if (auto ULE = dyn_cast<clang::OverloadExpr>()) {
       return elaborateFunctionCall(IdExpr, S);
-    // } else {
-    //   llvm::outs() << "What am I?\n";
-    //   IdExpr->dump();
-    //   llvm_unreachable("Function call syntax not implemented yet.");
-    // }
   } else if (ArgEnclosure->isBracketEnclosure()) {
     if (!ArgEnclosure->getOperand())
-      // TODO: I need to create a test case for this.
+      // I'm not really sure this can happen.
       llvm_unreachable("Invalid empty template instantiation.");
 
     auto LS = cast<ListSyntax>(ArgEnclosure->getOperand());
