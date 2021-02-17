@@ -543,7 +543,7 @@ Syntax *Parser::parseControlExpression()
   case tok::LambdaKeyword:
     // return parse_lambda_expression();
   case tok::LetKeyword:
-    // return parse_let_expression();;
+    return parseLetExpression();
   default:
     break;
   }
@@ -808,6 +808,18 @@ Syntax *Parser::parseDoExpression()
   return new ControlSyntax(Ctrl, S0, S1);
 }
 
+/// Parse a let expression.
+///
+///   let-expression:
+///     let ( parameter-group ) block-or-expression
+Syntax *Parser::parseLetExpression()
+{
+  Token Ctrl = requireToken(tok::LetKeyword);
+  Syntax *Head = parseParenEnclosed(&Parser::parseParameterGroup);
+  Syntax *Body = parseBlockExpression();
+  return new ControlSyntax(Ctrl, Head, Body);
+}
+
 /// Parse a block-expression.
 ///
 ///   block-expression:
@@ -855,9 +867,10 @@ static Syntax *makeParameterGroup(Parser &P, SyntaxSeq &SS)
 Syntax *Parser::parseParameterGroup()
 {
   llvm::SmallVector<Syntax *, 4> SS;
-  parseItem(*this, &Parser::parseParameterList, SS);
-  while (matchToken(tok::Semicolon))
+  do
     parseItem(*this, &Parser::parseParameterList, SS);
+  while (matchToken(tok::Semicolon));
+
   return makeParameterGroup(*this, SS);
 }
 

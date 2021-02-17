@@ -90,7 +90,7 @@ public:
 
   void elaborateParameterGroup(const ListSyntax *S);
   void elaborateParameterList(const ListSyntax *S);
-  clang::Decl *elaborateParameter(const Syntax *S);
+  clang::Decl *elaborateParameter(const Syntax *S, bool CtrlParam = false);
 
 
   Declarator *getDeclarator(const Syntax *S);
@@ -211,7 +211,7 @@ public:
   clang::Stmt *elaborateWhileStmt(const ControlSyntax *S);
   clang::Stmt *elaborateForStmt(const ControlSyntax *S);
   clang::Stmt *elaborateDoStmt(const ControlSyntax *S);
-
+  clang::Stmt *elaborateLetStmt(const ControlSyntax *S);
 
   //===--------------------------------------------------------------------===//
   //                                Miscellaneous                             //

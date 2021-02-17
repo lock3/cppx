@@ -268,6 +268,7 @@ namespace blue
     Syntax *parseDoExpression();
     Syntax *parseRangeForExpression();
     Syntax *parseTraditionalForExpression();
+    Syntax *parseLetExpression();
 
     Syntax *parseTemplateConstructor();
     Syntax *parseArrayConstructor();
