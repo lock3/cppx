@@ -1285,7 +1285,109 @@ bool Elaborator::buildMethod(Declaration *Fn, clang::DeclarationName const &Name
 static bool getBasicOperatorName(Sema &SemaRef, clang::SourceLocation Loc,
                                  unsigned ParameterCount, llvm::StringRef OpName,
                                  clang::DeclarationName &Name) {
-  llvm_unreachable("Other operator names are not implemented yet.");
+  if (OpName == "==") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_EqualEqual);
+    return false;
+  }
+  if (OpName == "!=") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_ExclaimEqual);
+    return false;
+  }
+  if (OpName == "<") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_Less);
+    return false;
+
+  }
+  if (OpName == ">") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_Greater);
+    return false;
+  }
+  if (OpName == "<=") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_LessEqual);
+    return false;
+  }
+  if (OpName == ">=") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_GreaterEqual);
+    return false;
+  }
+  if (OpName == "+") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_Plus);
+    return false;
+  }
+  if (OpName == "-") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_Minus);
+    return false;
+  }
+  if (OpName == "*") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_Star);
+    return false;
+  }
+  // if (OpName == "-") {
+  //   Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+  //       clang::OO_Minus);
+  //   return false;
+  // }
+  // if (OpName == "*") {
+
+  // }
+  if (OpName == "/") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_Slash);
+    return false;
+  }
+  if (OpName == "%") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_Percent);
+    return false;
+  }
+  if (OpName == "+=") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_PlusEqual);
+    return false;
+  }
+  if (OpName == "-=") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_MinusEqual);
+    return false;
+  }
+  if (OpName == "*=") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_StarEqual);
+    return false;
+  }
+  if (OpName == "/=") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_SlashEqual);
+    return false;
+  }
+  if (OpName == "%=") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_PercentEqual);
+    return false;
+  }
+
+  if (OpName == "<<") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_LessLess);
+    return false;
+  }
+  if (OpName == ">>") {
+    Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+        clang::OO_GreaterGreater);
+    return false;
+  }
+  SemaRef.getCxxSema().Diags.Report(Loc, clang::diag::err_blue_elaboration)
+    << "operator " << OpName << " cannot be overloaded.";
+  return true;
 }
 static clang::DeclarationName getFunctionName(Sema &SemaRef,
                                               Declaration *D,
