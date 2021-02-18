@@ -1368,6 +1368,8 @@ static clang::DeclarationName getFunctionName(Sema &SemaRef,
                                               bool InClass,
                                               const clang::RecordDecl *RD) {
   clang::SourceLocation Loc = D->asDef()->getLocation();
+  // This may cause issues if someone uses this without being inside
+  // of a class.
   auto IdAtom = dyn_cast<AtomSyntax>(D->asDef()->getDeclarator());
   if (!IdAtom)
     llvm_unreachable("lambda not implemented yet.");
