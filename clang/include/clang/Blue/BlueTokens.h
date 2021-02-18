@@ -135,6 +135,11 @@ struct Token
     return Ptr;
   }
 
+  const char *getCStrPtr() const {
+    assert(isFused());
+    return reinterpret_cast<const char *>(getPtr());
+  }
+
   bool hasSpelling(char const* Str) const {
     return getSymbol() == gold::getSymbol(Str);
   }

@@ -129,7 +129,7 @@ public:
   clang::Decl *elaborateField(Declaration *D, clang::TypeSourceInfo *TInfo);
 
 
-  clang::CppxTypeLiteral *createFunctionType(Declarator *Dcl);
+  clang::CppxTypeLiteral *createFunctionType(Declaration *D, Declarator *Dcl);
 
   void elaborateDefinition(const Syntax *S);
   void elaborateDefinitionInitialization(Declaration *D);

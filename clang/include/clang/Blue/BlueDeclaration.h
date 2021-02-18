@@ -92,6 +92,18 @@ struct Declaration {
   /// Template parameter storage, this is used when building classes.
   llvm::SmallVector<clang::TemplateParameterList *, 4> TemplateParamStorage;
 
+  /// This is for keeping track of the this parameter and it's associated
+  /// specifiers that may need to be applied to function types.
+  const Syntax *FunctionThisParam = nullptr;
+
+  /// This is used for a special case when this is given without
+  /// any specifiers.
+  bool HasIdentifierOnlyThis = false;
+
+  /// This acts as a copy of the array of parameter specifies associated with
+  /// the this parameter (so that we can apply and remove them as needed).
+  llvm::SmallVector<Token, 16> ThisParamSpecifiers;
+
   clang::Decl *getCxx() {
     return Cxx;
   }

@@ -358,7 +358,21 @@ public:
     }
   };
   void diagnoseElabCycleError(Declaration *CycleTerminalDecl);
-
+public:
+  using FunctionExtInfo = clang::FunctionProtoType::ExtInfo;
+  using FunctionExtProtoInfo = clang::FunctionProtoType::ExtProtoInfo;
+  using FunctionExceptionSpec = clang::FunctionProtoType::ExceptionSpecInfo;
+  
+  /// This does a rebuild the type of the function, in a single action without
+  /// the need to rebuild the TypeLoc for the function more then a single time.
+  /// This returns true if there was an error.
+  /// In the event of an error no changes are made to the FD.
+  bool rebuildFunctionType(clang::FunctionDecl *FD,
+                           clang::SourceLocation Loc,
+                           const clang::FunctionProtoType *FuncProtoType,
+                           const FunctionExtInfo &ExtInfo,
+                           const FunctionExtProtoInfo &ProtoTypeInfo,
+                           const FunctionExceptionSpec &ExceptionSpecInfo);
 public:
 
   //===--------------------------------------------------------------------===//
@@ -499,9 +513,6 @@ public:
     }
   };
 
-
-  
-
   struct ExprEvalRAII {
     ExprEvalRAII(Sema& S, clang::Sema::ExpressionEvaluationContext NewContext)
       :SemaRef(S)
@@ -576,11 +587,12 @@ struct ResumeScopeRAII {
       SemaRef.leaveScope(ExitTerm);
     }
   }
-private:
-  Sema &SemaRef;
-  const Syntax *ExitTerm;
-  bool PopOnExit;
-};
+
+  private:
+    Sema &SemaRef;
+    const Syntax *ExitTerm;
+    bool PopOnExit;
+  };
 
 struct EnterNonNestedClassEarlyElaboration {
   EnterNonNestedClassEarlyElaboration(Sema& S, Declaration* Decl)

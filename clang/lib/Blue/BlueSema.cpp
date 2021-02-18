@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/Decl.h"
@@ -26,8 +27,8 @@
 #include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/TypeLocUtil.h"
 
-#include "clang/Blue/BlueScope.h"
 #include "clang/Blue/BlueSema.h"
+#include "clang/Blue/BlueScope.h"
 #include "clang/Blue/BlueSyntax.h"
 #include "clang/Blue/BlueElaborator.h"
 
@@ -1216,6 +1217,67 @@ clang::ParsedTemplateArgument Sema::convertExprToTemplateArg(clang::Expr *E) {
   ConstExpr = getCxxSema().ActOnConstantExpression(ConstExpr);
   return clang::ParsedTemplateArgument(clang::ParsedTemplateArgument::NonType,
       ConstExpr.get(), E->getExprLoc());
+}
+
+bool Sema::rebuildFunctionType(clang::FunctionDecl *FD,
+                               clang::SourceLocation Loc,
+                               const clang::FunctionProtoType *FPT,
+                               const FunctionExtInfo &EI,
+                               const FunctionExtProtoInfo &EPI,
+                               const FunctionExceptionSpec &ESI) {
+  assert(FD && "Invalid function declaration");
+  assert(FPT && "Invalid function proto type");
+  auto ParamTys = FPT->getParamTypes();
+  llvm::SmallVector<clang::QualType, 10> ParamTypes(ParamTys.begin(),
+                                                    ParamTys.end());
+  clang::QualType NewFuncTy;
+  if (clang::CXXMethodDecl *MD = dyn_cast<clang::CXXMethodDecl>(FD)) {
+    NewFuncTy = CxxSema.BuildFunctionType(FPT->getReturnType(), ParamTypes, Loc,
+                                          MD->getParent()->getDeclName(), EPI);
+  } else {
+    NewFuncTy = CxxSema.BuildFunctionType(FPT->getReturnType(), ParamTypes, Loc,
+                                          clang::DeclarationName(), EPI);
+  }
+  if (NewFuncTy.isNull()) {
+    CxxSema.Diags.Report(Loc, clang::diag::err_invalid_function_type);
+    return true;
+  }
+  const clang::FunctionProtoType *NewFPT
+                                 = NewFuncTy->getAs<clang::FunctionProtoType>();
+  if (!NewFPT) {
+    CxxSema.Diags.Report(Loc, clang::diag::err_invalid_function_type);
+    return true;
+  }
+  clang::QualType ExtInfoAdjustedTy(
+               Context.CxxAST.adjustFunctionType(NewFPT, EI), /*Qualifiers=*/0);
+  if (ExtInfoAdjustedTy.isNull()) {
+    CxxSema.Diags.Report(Loc, clang::diag::err_invalid_function_type);
+    return true;
+  }
+  clang::QualType ExceptionAdjustedTy
+      = Context.CxxAST.getFunctionTypeWithExceptionSpec(ExtInfoAdjustedTy, ESI);
+  if (ExceptionAdjustedTy.isNull()) {
+    CxxSema.Diags.Report(Loc, clang::diag::err_invalid_function_type);
+    return true;
+  }
+  auto ParmVarDecls = FD->parameters();
+  llvm::SmallVector<clang::ParmVarDecl *, 32> Parameters(ParmVarDecls.begin(),
+                                                         ParmVarDecls.end());
+  clang::TypeSourceInfo *TInfo = gold::BuildFunctionTypeLoc(Context.CxxAST,
+                                                      ExceptionAdjustedTy,
+                                                      FD->getBeginLoc(),
+                                                      clang::SourceLocation(),
+                                                      clang::SourceLocation(),
+                                                      clang::SourceRange(),
+                                                      FD->getEndLoc(),
+                                                      Parameters);
+  if (!TInfo) {
+    CxxSema.Diags.Report(Loc, clang::diag::err_invalid_function_type);
+    return true;
+  }
+  FD->setType(ExceptionAdjustedTy);
+  FD->setTypeSourceInfo(TInfo);
+  return false;
 }
 
 } // end namespace Blue
