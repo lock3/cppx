@@ -1368,79 +1368,76 @@ static clang::DeclarationName getFunctionName(Sema &SemaRef,
                                               bool InClass,
                                               const clang::RecordDecl *RD) {
   clang::SourceLocation Loc = D->asDef()->getLocation();
-  // if (InClass) {
-    auto IdAtom = dyn_cast<AtomSyntax>(D->asDef()->getDeclarator());
-    if (!IdAtom)
-      llvm_unreachable("lambda not implemented yet.");
+  auto IdAtom = dyn_cast<AtomSyntax>(D->asDef()->getDeclarator());
+  if (!IdAtom)
+    llvm_unreachable("lambda not implemented yet.");
 
-    if (IdAtom->getToken().isFused()) {
-      // auto FPT = cast<clang::FunctionProtoType>(
-      //     FnTInfo->getType().getTypePtr());
-      auto Dcl = D->getFirstDeclarator(Declarator::Function);
+  if (IdAtom->getToken().isFused()) {
+    // auto FPT = cast<clang::FunctionProtoType>(
+    //     FnTInfo->getType().getTypePtr());
+    auto Dcl = D->getFirstDeclarator(Declarator::Function);
 
-      // Figuring out operator actual name.
-      llvm::StringRef OpName (IdAtom->getToken().getCStrPtr());
-      if (OpName == "=") {
-        // We need to figure out if this is a constructor, destructor,
-        // or assignment operator.
-        const DeclarationSyntax *ThisDecl = nullptr;
+    // Figuring out operator actual name.
+    llvm::StringRef OpName (IdAtom->getToken().getCStrPtr());
+    if (OpName == "=") {
+      // We need to figure out if this is a constructor, destructor,
+      // or assignment operator.
+      const DeclarationSyntax *ThisDecl = nullptr;
 
-        if (auto Enc = dyn_cast_or_null<EnclosureSyntax>(Dcl->getInfo()))
-          if (auto LS = dyn_cast_or_null<ListSyntax>(Enc->getOperand()))
-            if (LS->getNumChildren() != 0)
-              ThisDecl = dyn_cast_or_null<DeclarationSyntax>(LS->getOperand(0));
+      if (auto Enc = dyn_cast_or_null<EnclosureSyntax>(Dcl->getInfo()))
+        if (auto LS = dyn_cast_or_null<ListSyntax>(Enc->getOperand()))
+          if (LS->getNumChildren() != 0)
+            ThisDecl = dyn_cast_or_null<DeclarationSyntax>(LS->getOperand(0));
 
-        if (!ThisDecl) {
-          SemaRef.getCxxSema().Diags.Report(Loc, clang::diag::err_blue_elaboration)
-            << "operator = cannot be a static method and must contain "
-                "the this parameter";
-          return D->Id;
-        }
-        Token Spec = ThisDecl->getParamPassingSpecifier();
-        if (!Spec) {
-          return SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
-              clang::OO_Equal);
-        } else {
-          clang::QualType RecordTy = SemaRef.getCxxAST().getTypeDeclType(RD);
-          clang::CanQualType Ty = SemaRef.getCxxAST().getCanonicalType(RecordTy);
-          switch (Spec.getKind()) {
-          case tok::OutKeyword:
-            return SemaRef.getCxxAST().DeclarationNames.getCXXConstructorName(Ty);
-
-          case tok::InoutKeyword:
-            return SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
-              clang::OO_Equal);
-
-          case tok::MoveKeyword:
-            return SemaRef.getCxxAST().DeclarationNames.getCXXDestructorName(Ty);
-
-          case tok::ForwardKeyword:
-            LLVM_FALLTHROUGH;
-          case tok::InKeyword:
-            SemaRef.getCxxSema().Diags.Report(Spec.getLocation(),
-                                              clang::diag::err_blue_elaboration)
-                                              << "invalid parameter specifier.";
-            return clang::DeclarationName(D->Id);
-          default:
-            llvm_unreachable("Invalid/uknown parameter specifier");
-          }
-        }
+      if (!ThisDecl) {
+        SemaRef.getCxxSema().Diags.Report(Loc, clang::diag::err_blue_elaboration)
+          << "operator = cannot be a static method and must contain "
+              "the this parameter";
+        return D->Id;
+      }
+      Token Spec = ThisDecl->getParamPassingSpecifier();
+      if (!Spec) {
+        return SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+            clang::OO_Equal);
       } else {
-        clang::DeclarationName Name;
-        if (!getBasicOperatorName(SemaRef, Loc, OpName,
-                                  Name))
-          return Name;
-        else{
-          SemaRef.getCxxSema().Diags.Report(Loc, clang::diag::err_blue_elaboration)
-            << "invalid operator declaration.";
+        clang::QualType RecordTy = SemaRef.getCxxAST().getTypeDeclType(RD);
+        clang::CanQualType Ty = SemaRef.getCxxAST().getCanonicalType(RecordTy);
+        switch (Spec.getKind()) {
+        case tok::OutKeyword:
+          return SemaRef.getCxxAST().DeclarationNames.getCXXConstructorName(Ty);
+
+        case tok::InoutKeyword:
+          return SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
+            clang::OO_Equal);
+
+        case tok::MoveKeyword:
+          return SemaRef.getCxxAST().DeclarationNames.getCXXDestructorName(Ty);
+
+        case tok::ForwardKeyword:
+          LLVM_FALLTHROUGH;
+        case tok::InKeyword:
+          SemaRef.getCxxSema().Diags.Report(Spec.getLocation(),
+                                            clang::diag::err_blue_elaboration)
+                                            << "invalid parameter specifier.";
           return clang::DeclarationName(D->Id);
+        default:
+          llvm_unreachable("Invalid/uknown parameter specifier");
         }
       }
+    } else {
+      clang::DeclarationName Name;
+      if (!getBasicOperatorName(SemaRef, Loc, OpName,
+                                Name))
+        return Name;
+      else{
+        SemaRef.getCxxSema().Diags.Report(Loc, clang::diag::err_blue_elaboration)
+          << "invalid operator declaration.";
+        return clang::DeclarationName(D->Id);
+      }
     }
-    return clang::DeclarationName(D->Id);
-  // } else {
-  //   return D->Id;
-  // }
+  }
+  return clang::DeclarationName(D->Id);
+
 }
 
 static void lookupFunctionRedecls(Sema &SemaRef, clang::Scope *FoundScope,
