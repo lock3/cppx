@@ -635,7 +635,7 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
     case tok::InKeyword:
       // This is const ref.
       T = SemaRef.buildTypeExpr(
-        getCxxContext().getRValueReferenceType(
+        getCxxContext().getLValueReferenceType(
           getCxxContext().getConstType(
             T->getType()
           )
@@ -987,7 +987,8 @@ clang::Decl *Elaborator::makeTypeDecl(Declaration *D, clang::QualType T) {
   return TypeAlias;
 }
 
-clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
+clang::CppxTypeLiteral *Elaborator::createFunctionType(Declaration *D,
+                                                       Declarator *Dcl) {
   const EnclosureSyntax *ParamTerm = dyn_cast<EnclosureSyntax>(Dcl->getInfo());
   if (!ParamTerm)
     return nullptr;
@@ -1051,6 +1052,24 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declarator *Dcl) {
     clang::CppxTypeLiteral *RetTyLit = cast<clang::CppxTypeLiteral>(RetExpr);
     ReturnType = RetTyLit->getValue()->getType();
   }
+  if (ParamList)
+    if (ParamList->getNumChildren() != 0) {
+      if (auto PossibleThis
+          = dyn_cast<DeclarationSyntax>(ParamList->getOperand(0))) {
+        if (PossibleThis->declaratorIsThis()) {
+          D->FunctionThisParam = PossibleThis;
+          for (unsigned I = 0; I < PossibleThis->NumParamSpecs; ++I) {
+            D->ThisParamSpecifiers.emplace_back(PossibleThis->ParamSpecs[I]);
+          }
+        }
+      } else if (auto IdThis
+                 = dyn_cast<IdentifierSyntax>(ParamList->getOperand(0))) {
+        if (IdThis->getToken().getSpelling() == "this") {
+          D->HasIdentifierOnlyThis = true;
+          D->FunctionThisParam = IdThis;
+        }
+      }
+    }
 
   clang::QualType FnTy = CxxAST.getFunctionType(ReturnType, Types, EPI);
   return SemaRef.buildFunctionTypeExpr(FnTy, Loc, Loc, Loc,
@@ -1090,6 +1109,7 @@ bool Elaborator::buildMethod(Declaration *Fn, clang::DeclarationName const &Name
   DNI.setName(Name);
   DNI.setLoc(ExLoc);
 
+  // Attempting to apply changes to a function type.
   if (Name.getNameKind() == clang::DeclarationName::CXXConstructorName
       || Name.getNameKind() == clang::DeclarationName::CXXDestructorName) {
     if (FPT->getReturnType()->isUndeducedType()) {
@@ -1225,65 +1245,17 @@ bool Elaborator::buildMethod(Declaration *Fn, clang::DeclarationName const &Name
                                        clang::ConstexprSpecKind::CSK_unspecified,
                                        ExLoc);
   }
+
   (*FD)->setAccess(clang::AS_public);
   return false;
 }
-
-// static bool getOperatorDeclarationName(SyntaxContext &Context, Sema &SemaRef,
-//                                 // const OpInfoBase *OpInfo,
-//                                 bool InClass, unsigned ParamCount,
-//                                 clang::SourceLocation NameLoc,
-//                                 clang::DeclarationName &Name) {
-//   // if (OpInfo->isMemberOnly() && !InClass) {
-//   //   SemaRef.Diags.Report(NameLoc,
-//   //                       clang::diag::err_operator_overload_must_be_member)
-//   //                       << OpInfo->getGoldDeclName()->getName();
-//   //   return true;
-//   // }
-
-//   // if (OpInfo->isUnaryAndBinary()) {
-//   //   if (InClass) {
-//   //     ParamCount += 1;
-//   //   }
-//   //   if (ParamCount == 0) {
-//   //     SemaRef.Diags.Report(NameLoc,
-//   //                          clang::diag::err_operator_too_few_parameters)
-//   //                          << OpInfo->getGoldDeclName();
-//   //       return true;
-//   //   }
-//   //   if (ParamCount == 1) {
-//   //     Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(
-//   //                                               OpInfo->getUnaryOverloadKind());
-//   //   }
-//   //   if (ParamCount == 2) {
-//   //     Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(
-//   //                                              OpInfo->getBinaryOverloadKind());
-//   //   }
-//   //   if (ParamCount > 2) {
-//   //     SemaRef.Diags.Report(NameLoc,
-//   //                          clang::diag::err_operator_overload_must_be)
-//   //                          << OpInfo->getGoldDeclName()
-//   //                          << ParamCount
-//   //                          << /*unary or binary*/2;
-//   //       return true;
-//   //   }
-//   // } else if(OpInfo->isBinary()) {
-//   //   Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(
-//   //                                              OpInfo->getBinaryOverloadKind());
-//   // } else {
-//   //   Name = Context.CxxAST.DeclarationNames.getCXXOperatorName(
-//   //                                               OpInfo->getUnaryOverloadKind());
-//   // }
-//   // return false;
-//   llvm_unreachable("Operator overloaded names not implemented yet.");
-// }
 
 /// This is only designed to work on normal operator names, this doesn't work
 /// on any operator, such as the assignment or construction operator which require
 /// looking into the parameters in order to figure out the actual name of
 /// the function and if it's a constructor, destructor, or assignment operator.
 static bool getBasicOperatorName(Sema &SemaRef, clang::SourceLocation Loc,
-                                 unsigned ParameterCount, llvm::StringRef OpName,
+                                 llvm::StringRef OpName,
                                  clang::DeclarationName &Name) {
   if (OpName == "==") {
     Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
@@ -1389,13 +1361,14 @@ static bool getBasicOperatorName(Sema &SemaRef, clang::SourceLocation Loc,
     << "operator " << OpName << " cannot be overloaded.";
   return true;
 }
+
 static clang::DeclarationName getFunctionName(Sema &SemaRef,
                                               Declaration *D,
                                               clang::TypeSourceInfo *FnTInfo,
                                               bool InClass,
                                               const clang::RecordDecl *RD) {
   clang::SourceLocation Loc = D->asDef()->getLocation();
-  if (InClass) {
+  // if (InClass) {
     auto IdAtom = dyn_cast<AtomSyntax>(D->asDef()->getDeclarator());
     if (!IdAtom)
       llvm_unreachable("lambda not implemented yet.");
@@ -1453,14 +1426,8 @@ static clang::DeclarationName getFunctionName(Sema &SemaRef,
           }
         }
       } else {
-        unsigned ParamCount = 0;
-        if (auto Enc = dyn_cast_or_null<EnclosureSyntax>(Dcl->getInfo())) {
-          if (auto LS = dyn_cast_or_null<ListSyntax>(Enc->getOperand())) {
-            ParamCount = LS->getNumChildren();
-          }
-        }
         clang::DeclarationName Name;
-        if (!getBasicOperatorName(SemaRef, Loc, ParamCount, OpName,
+        if (!getBasicOperatorName(SemaRef, Loc, OpName,
                                   Name))
           return Name;
         else{
@@ -1469,36 +1436,23 @@ static clang::DeclarationName getFunctionName(Sema &SemaRef,
           return clang::DeclarationName(D->Id);
         }
       }
-      // llvm::outs() << "Operator = " <<  << "\n";
-      // llvm_unreachable("Working on fused operators.");
     }
     return clang::DeclarationName(D->Id);
-    // if ()
-  // if (D->OpInfo) {
-    // const clang::FunctionProtoType *FPT = cast<clang::FunctionProtoType>(
-    //                                              TInfo->getType().getTypePtr());
-    // if (D->getId() == SemaRef.OpInfo.GoldDecl_OpNew
-    //     || D->getId() == SemaRef.OpInfo.GoldDecl_OpDelete
-    //     || D->getId() == SemaRef.OpInfo.GoldDecl_OpArray_New
-    //     || D->getId() == SemaRef.OpInfo.GoldDecl_OpArray_Delete)
-    //   SemaRef.createBuiltinOperatorNewDeleteDecls();
-    // assert(FPT && "function does not have prototype");
-  //   if (getOperatorDeclarationName(Ctx, SemaRef, D->OpInfo, InClass,
-  //                                  FPT->getNumParams(),
-  //                                  D->IdDcl->getLoc(), Name)) {
-  //     // FIXME: Should this be an error or not?
-  //     return clang::DeclarationName();
-  //   }
-  // } else if (D->declaresUserDefinedLiteral()) {
-  //   // Attempting to correctly get the literal operator name
-  //   Name = Ctx.CxxAST.DeclarationNames.getCXXLiteralOperatorName(D->UDLSuffixId);
+  // } else {
+  //   return D->Id;
   // }
-  } else {
-    return D->Id;
-  }
-
-  // return Name;
 }
+
+static void lookupFunctionRedecls(Sema &SemaRef, clang::Scope *FoundScope,
+                           clang::LookupResult &Previous) {
+  while ((FoundScope->getFlags() & clang::Scope::DeclScope) == 0 ||
+         (FoundScope->getFlags() & clang::Scope::TemplateParamScope) != 0)
+    FoundScope = FoundScope->getParent();
+
+  assert(FoundScope && "Scope not found");
+  SemaRef.getCxxSema().LookupName(Previous, FoundScope, false);
+}
+
 clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   bool InClass = D->ScopeForDecl->isClassScope();
   // bool InClass = isa<clang::TagDecl>(ResolvedCtx);
@@ -1511,7 +1465,7 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   }
 
 
-
+  // TODO: We don't have syntax for user defined literals yet.
   // if (D->declaresUserDefinedLiteral()) {
   //   clang::UnqualifiedId UnqualId;
   //   UnqualId.setLiteralOperatorId(D->UDLSuffixId,
@@ -1521,29 +1475,8 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   //     return nullptr;
   //   }
   // }
-  // if (Name.isEmpty())
-  //   return nullptr;
 
-  // if (InClass)
-  //   setSpecialFunctionName(Context, RD, D, Name, TInfo->getType());
 
-  // // Set the declaration info here to help determine if this should have
-  // // a C++ special name.
-  // clang::DeclarationNameInfo DNI;
-  // DNI.setName(Name);
-  // DNI.setLoc(D->IdDcl->getLoc());
-
-  // clang::LookupResult Previous(CxxSema, DNI,
-  //                              clang::Sema::LookupOrdinaryName,
-  //                              CxxSema.forRedeclarationInCurContext());
-  // clang::Scope *CxxScope = SemaRef.getCurClangScope();
-  // if (D->hasNestedNameSpecifier()) {
-  //   // Attempting to use the previously located decl context in order to
-  //   // correctly identify any previous declarations.
-  //   CxxSema.LookupQualifiedName(Previous, ResolvedCtx);
-  // } else {
-  //   lookupFunctionRedecls(SemaRef, CxxScope, Previous);
-  // }
 
   Declarator *Dclrtr = D->getFirstDeclarator(Declarator::Function);
 
@@ -1553,7 +1486,7 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   TemplateParamRAII TempParamContextGuard(TempCtx);
   clang::FunctionDecl *FD = nullptr;
   clang::CppxTypeLiteral *FnTy = nullptr;
-  FnTy = createFunctionType(Dclrtr);
+  FnTy = createFunctionType(D, Dclrtr);
   if (!FnTy)
     return nullptr;
   clang::TypeSourceInfo *FnTInfo = FnTy->getValue();
@@ -1561,6 +1494,16 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   // Get name info for the AST.
   clang::DeclarationName Name =
     getFunctionName(SemaRef, D, FnTInfo, InClass, RD);
+  if (Name.isEmpty())
+    return nullptr;
+  clang::DeclarationNameInfo DNI(Name, Loc);
+  // TODO: I'm not sure this is necessary, because we don't have any functions
+  // that have a decl-def pattern
+  clang::LookupResult Previous(CxxSema, DNI,
+                               clang::Sema::LookupOrdinaryName,
+                               CxxSema.forRedeclarationInCurContext());
+  clang::Scope *CxxScope = SemaRef.getCurClangScope();
+  lookupFunctionRedecls(SemaRef, CxxScope, Previous);
 
   clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
   if (InClass) {
@@ -1606,10 +1549,7 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
     PD->setOwningFunction(FD);
   }
 
-  // CxxSema.CheckFunctionDeclaration(CxxScope, FD, Previous, false);
-  // FIXME: this is not necessarily what should happen.
-  if (FD->isInvalidDecl())
-    return nullptr;
+
 
   if (!Template)
     Owner->addDecl(FD);
@@ -1617,6 +1557,46 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   // Owner->addDecl(FD);
   D->setCxx(SemaRef, FD);
   D->CurrentPhase = Phase::Typing;
+  clang::QualType CompletedFnTy = FD->getType();
+  const clang::FunctionProtoType *FPT =
+      CompletedFnTy->getAs<clang::FunctionProtoType>();
+  auto EPI = FPT->getExtProtoInfo();
+  for (Token Tok : D->ThisParamSpecifiers) {
+    switch(Tok.getKind()) {
+      case tok::InKeyword:
+        EPI.TypeQuals.addConst();
+        break;
+      case tok::OutKeyword:
+      case tok::InoutKeyword:
+        break;
+      case tok::MoveKeyword:
+        if (!isa<clang::CXXDestructorDecl>(*FD)) {
+          EPI.RefQualifier = clang::RQ_RValue;
+        }
+        break;
+      case tok::ForwardKeyword:
+        EPI.RefQualifier = clang::RQ_RValue;
+        break;
+      case tok::Identifier:
+        D->FunctionThisParam->dump();
+        llvm_unreachable("Unhandled this identifier");
+      default:
+        llvm::outs() << "Unhandled this prefix token.\n";
+        D->FunctionThisParam->dump();
+        llvm_unreachable("Unhandled this prefix");
+    }
+  }
+  if (!FD)
+    return nullptr;
+  if (SemaRef.rebuildFunctionType(FD, FD->getBeginLoc(), FPT,
+                                  FPT->getExtInfo(), EPI,
+                                  FPT->getExceptionSpecInfo())) {
+    return nullptr;
+  }
+  CxxSema.CheckFunctionDeclaration(CxxScope, FD, Previous, false);
+  // FIXME: this is not necessarily what should happen.
+  if (FD->isInvalidDecl())
+    return nullptr;
   return FD;
 }
 
