@@ -842,7 +842,10 @@ struct DeclarationSyntax : QuaternarySyntax
     Function,
 
     // A declaration with a type as its value.
-    Type
+    Type,
+
+    // A declaration of a base class.
+    Super,
   };
 
   static constexpr KindType Kind = Declaration;
@@ -879,6 +882,7 @@ struct DeclarationSyntax : QuaternarySyntax
   static bool classof(const Syntax *S) {
     return S->getKind() == Kind;
   }
+
   Token getParamPassingSpecifier() const;
 
   Token *ParamSpecs = nullptr;

@@ -65,7 +65,7 @@ Declaration *Elaborator::createDeclaration(const Syntax *Def,
         = dyn_cast_or_null<IdentifierSyntax>(Name->getDeclarator())) {
         TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
     } else {
-      llvm_unreachable("SOme how we have an invalid identifier.");
+      // llvm_unreachable("Some how we have an invalid identifier.");
     }
   } else if (const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(Def)) {
     TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
@@ -267,18 +267,25 @@ void Elaborator::buildTemplateParams(const ListSyntax *Params,
 
 
 clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
-  if (D->declaratorContainsFunction())
+  switch(D->getIntroducerKind()) {
+  case DeclarationSyntax::Variable:
+    return makeValueDecl(D);
+  case DeclarationSyntax::Function:
     return makeFunctionDecl(D);
-
-  if (D->declaratorContainsClass())
-    return makeClass(D);
-
-  // if (D->Decl->declaresValue())
-  if (D->Decl->declaresTemplate())
-    return elaborateTypeAliasOrVariableTemplate(D);
-
-  // If it's not a function/class it must be a value declaration.
-  return makeValueDecl(D);
+  case DeclarationSyntax::Type:
+    if (D->Decl->declaresTemplate())
+      return elaborateTypeAliasOrVariableTemplate(D);
+    if (D->declaratorContainsClass())
+      return makeClass(D);
+    else
+      return makeValueDecl(D);
+  case DeclarationSyntax::Super:
+    // return makeValueDecl(D);
+    llvm_unreachable("Base classes not implemented yet");
+  case DeclarationSyntax::Unknown:
+  default:
+    llvm_unreachable("Unknown type introducer.");
+  }
 }
 
 
@@ -1303,14 +1310,6 @@ static bool getBasicOperatorName(Sema &SemaRef, clang::SourceLocation Loc,
         clang::OO_Star);
     return false;
   }
-  // if (OpName == "-") {
-  //   Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
-  //       clang::OO_Minus);
-  //   return false;
-  // }
-  // if (OpName == "*") {
-
-  // }
   if (OpName == "/") {
     Name = SemaRef.getCxxAST().DeclarationNames.getCXXOperatorName(
         clang::OO_Slash);
