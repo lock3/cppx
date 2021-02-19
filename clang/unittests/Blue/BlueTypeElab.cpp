@@ -21,7 +21,7 @@ using namespace blue;
 
 #define BLUE_BUILTIN_TYPE_TEST(TYPE_STRING, TEST_SUFFIX, EXPECTED_TYPE_STR)\
 TEST(BlueType, BuiltInType_##TEST_SUFFIX) {\
-  StringRef Code = "i:" TYPE_STRING ";";\
+  StringRef Code = "var i:" TYPE_STRING ";";\
   DeclarationMatcher VarIMatcher = varDecl(\
     hasName("i"), hasType(asString(EXPECTED_TYPE_STR))\
   );\

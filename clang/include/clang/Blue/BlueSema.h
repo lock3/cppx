@@ -79,6 +79,8 @@ class Sema {
   /// Translation unit decl.
   Declaration *TUDecl = nullptr;
 public:
+  clang::AttributeFactory AttrFactory;
+
   Sema(SyntaxContext &Context, clang::Sema &S);
   ~Sema();
 

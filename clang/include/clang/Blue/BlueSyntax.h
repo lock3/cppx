@@ -854,6 +854,12 @@ struct DeclarationSyntax : QuaternarySyntax
     : QuaternarySyntax(Kind, D, T, C, I)
   { }
 
+  /// This attempts to return the first valid source location from a declaration
+  /// for reporting an error. This takes into account that we may not have an
+  /// identifier name available, and we would instead need to use the type
+  /// or initializer in order to get a valid meaningful location.
+  clang::SourceLocation getErrorLocation() const;
+
   /// Returns the declarator.
   Syntax *getDeclarator() const
   {

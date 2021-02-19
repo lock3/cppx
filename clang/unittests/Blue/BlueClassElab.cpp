@@ -370,9 +370,9 @@ type C : class = {
   super :B;
 }
 )BLUE";
-  auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
+  auto ToMatch = cxxRecordDecl(
     hasName("C"),
-    has(functionTemplateDecl(has(cxxMethodDecl(hasName("foo")))))
-  )));
+    isDirectlyDerivedFrom(hasName("B"))
+  );
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

@@ -251,7 +251,6 @@ void Elaborator::buildTemplateParams(const ListSyntax *Params,
       clang::QualType NewTy = getCxxContext().getTemplateTypeParmType(Depth, I,
                                                           Ty->isParameterPack(),
                                                                  Ty->getDecl());
-
       TP->setTypeForDecl(NewTy.getTypePtr());
     } else {
       llvm_unreachable("Invalid template parameter");
@@ -267,24 +266,28 @@ void Elaborator::buildTemplateParams(const ListSyntax *Params,
 
 
 clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
+  if (!D)
+    return nullptr;
   switch(D->getIntroducerKind()) {
   case DeclarationSyntax::Variable:
     return makeValueDecl(D);
   case DeclarationSyntax::Function:
     return makeFunctionDecl(D);
   case DeclarationSyntax::Type:
-    if (D->Decl->declaresTemplate())
-      return elaborateTypeAliasOrVariableTemplate(D);
     if (D->declaratorContainsClass())
       return makeClass(D);
     else
-      return makeValueDecl(D);
+      if (D->Decl->declaresTemplate())
+        return elaborateTypeAliasOrVariableTemplate(D);
+    return makeValueDecl(D);
   case DeclarationSyntax::Super:
-    // return makeValueDecl(D);
-    llvm_unreachable("Base classes not implemented yet");
+    Error(D->asDef()->getErrorLocation(), "invalid base class declaration");
+    return nullptr;
   case DeclarationSyntax::Unknown:
   default:
-    llvm_unreachable("Unknown type introducer.");
+    // TODO: This may need to be specially refactored so that we can
+    // identify when something is a parameter.
+    return makeValueDecl(D);
   }
 }
 
@@ -1598,6 +1601,7 @@ clang::Decl *Elaborator::makeFunctionDecl(Declaration *D) {
   return FD;
 }
 
+
 clang::Decl *Elaborator::makeClass(Declaration *D) {
   using namespace clang;
   D->CurrentPhase = Phase::Typing;
@@ -1705,21 +1709,12 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
     Sema::ElaboratingClassDefRAII ClsElabState(SemaRef, D,
                                               !SemaRef.isElaboratingClass());
     CXXRecordDecl *ClsDecl = cast<CXXRecordDecl>(Tag);
-
+    llvm::SmallVector<blue::Declaration *, 64> DeclBodyList;
     if (ClsEnc->getOperand())
-      identifyDeclsInClassBody(D, ClsBody, ClsDecl);
-    // Attempt to figure out if any nested elaboration is actually required.
-    // If not then we can proceed as normal.
-    // auto const* MacroRoot = dyn_cast<MacroSyntax>(D->Init);
-    // auto const* BodyArray = MacroRoot->getBlock();
+      identifyDeclsInClassBody(D, ClsBody, ClsDecl, DeclBodyList);
+    unsigned DeclIndex = 0;
+    makeBases(DeclIndex, DeclBodyList, ClsDecl);
 
-    // Handling possible base classes.
-    // if (const CallSyntax *ClsKwCall
-    //                       = dyn_cast<CallSyntax>(MacroRoot->getCall())) {
-    //   processBaseSpecifiers(Elab, SemaRef, Context, D, ClsDecl, ClsKwCall);
-    // }
-    // We turn this off here because technically we have already created the
-    // most basic declaration that's required to use this type.
     D->IsElaborating = false;
 
     // This is really the only time we could possible allow this to occur.
@@ -1734,8 +1729,9 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
       // Since all declarations have already been added, we don't need to do another
       // Reordering scan.
       // Doing possible delaying of member declaration/initialziation.
-      for (const Syntax *SS : ClsBody->children())
-        delayElaborateDeclType(ClsDecl, SS);
+      // for (const Syntax *SS : ClsBody->children())
+      for(; DeclIndex < DeclBodyList.size(); ++DeclIndex)
+        delayElaborateDeclType(ClsDecl, DeclBodyList[DeclIndex]);
     }
 
     D->CurrentPhase = Phase::Initialization;
@@ -1767,6 +1763,73 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
   SemaRef.getCxxSema().ActOnTagFinishDefinition(SemaRef.getCurClangScope(),
                                                 TempDeclPtr, SourceRange());
   return Tag;
+}
+
+bool Elaborator::makeBases(unsigned &DeclIndex,
+                           llvm::SmallVectorImpl<Declaration *> & DeclBodyList,
+                           clang::CXXRecordDecl *R) {
+
+  // Evaluating each individual child expression. Some could be template names.
+  // It's also worth noting that these type of bases could have attributes
+  // associated with each expression.
+  Sema::ClangScopeRAII InheritanceScope(SemaRef, clang::Scope::DeclScope |
+      clang::Scope::ClassScope | clang::Scope::ClassInheritanceScope,
+      clang::SourceLocation());
+
+  llvm::SmallVector<clang::CXXBaseSpecifier *, 4> GivenBaseClasses;
+  // bool IsVirtualBase = false;
+  bool didError = false;
+  while(!DeclBodyList.empty() && DeclIndex < DeclBodyList.size() &&
+        (
+          DeclBodyList[DeclIndex]->getIntroducerKind()
+            == DeclarationSyntax::Super))
+  {
+    Declaration *CurrentBase = DeclBodyList[DeclIndex];
+    clang::SourceLocation Loc = CurrentBase->getErrorLocation();
+    clang::Expr *BaseExpr = elaborateExpression(CurrentBase->asDef()->getType());
+    if (!BaseExpr) {
+      didError = true;
+      getCxxSema().Diags.Report(CurrentBase->getErrorLocation(),
+                           clang::diag::err_failed_to_translate_expr);
+      ++DeclIndex;
+      continue;
+    }
+
+    // TODO: Need to create processing for the base specifier virtual?
+    // I'm not sure that blue has virtual base classes yet.
+    if ((BaseExpr->isTypeDependent() || BaseExpr->isValueDependent()
+        || BaseExpr->getType()->isDependentType())
+        && !isa<clang::CppxTypeLiteral>(BaseExpr)) {
+      // Updating a dependent expression that may or may not have a result type.
+      BaseExpr = SemaRef.buildTypeExprTypeFromExpr(BaseExpr, Loc);
+    }
+    clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(BaseExpr,
+                                                                     Loc);
+    if (!TInfo) {
+      ++DeclIndex;
+      didError = true;
+      continue;
+    }
+    clang::AccessSpecifier AS = clang::AS_public;
+    bool IsVirtualBase = false;
+    clang::ParsedType PT = getCxxSema().CreateParsedType(TInfo->getType(),TInfo);
+    clang::ParsedAttributes Attributes(SemaRef.AttrFactory);
+    auto BaseResult = getCxxSema()
+      .ActOnBaseSpecifier(R, clang::SourceRange(Loc, Loc),
+                          Attributes, IsVirtualBase, AS, PT,
+                          Loc, clang::SourceLocation());
+
+    if (BaseResult.isInvalid()) {
+      ++DeclIndex;
+      didError = true;
+      continue;
+    }
+    GivenBaseClasses.emplace_back(BaseResult.get());
+    ++DeclIndex;
+  }
+  if (!DeclBodyList.empty())
+    SemaRef.getCxxSema().ActOnBaseSpecifiers(R, GivenBaseClasses);
+  return didError;
 }
 
 clang::Decl *Elaborator::makeTemplateDecl(Declaration *D) {
@@ -1975,7 +2038,8 @@ clang::Expr *Elaborator::elaborateImplicitTypeDeclarator(const Declarator *Dcl) 
 
 clang::Decl *Elaborator::identifyDeclsInClassBody(Declaration *D,
                                                   const ListSyntax *L,
-                                                  clang::CXXRecordDecl *R) {
+                                                  clang::CXXRecordDecl *R,
+                               llvm::SmallVectorImpl<Declaration *> &DeclList) {
   if(!D->hasInitializer()) {
     // FIXME: Handle forward declarations here? I think.
     llvm_unreachable("Type forward declarations are not implemented yet.");
@@ -1986,10 +2050,17 @@ clang::Decl *Elaborator::identifyDeclsInClassBody(Declaration *D,
   // assert(MacroRoot && "Invalid AST structure.");
   // auto const* BodyArray = MacroRoot->getBlock();
   D->CurrentPhase = Phase::Typing;
-
+  Scope *S = SemaRef.getCurrentScope();
   // for (auto const* ChildDecl : BodyArray->children()) {
-  for (const Syntax *SS : L->children())
+  for (const Syntax *SS : L->children()) {
     identifyDeclaration(SS);
+    Declaration *Member = S->findDecl(SS);
+    if (!Member){
+      Error(SS->getLocation(), "invalid member declaration");
+      continue;
+    }
+    DeclList.emplace_back(Member);
+  }
 
   return D->getCxx();
 }
@@ -4658,11 +4729,11 @@ void Elaborator::Error(clang::SourceLocation Loc, llvm::StringRef Msg) {
 
 
 bool Elaborator::delayElaborateDeclType(clang::CXXRecordDecl *RD,
-                                        const Syntax *S) {
-  Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
-  if (!D) {
-    return false;
-  }
+                                        Declaration *D) {
+  // Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
+  // if (!D) {
+  //   return false;
+  // }
 
   // Handling a check for possible late elaboration on each declaration.
   if (phaseOf(D) > Phase::Identification)

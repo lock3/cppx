@@ -150,6 +150,15 @@ Declaration::getIntroducerKind() const {
   }
 }
 
+clang::SourceLocation Declaration::getErrorLocation() const {
+  if (auto DS = dyn_cast_or_null<DeclarationSyntax>(Def)) {
+    return DS->getErrorLocation();
+  }
+  if (auto IS = dyn_cast_or_null<IdentifierSyntax>(Def)) {
+    return IS->getLocation();
+  }
+  return clang::SourceLocation();
+}
 
 Phase phaseOf(Declaration *D) {
   return D->CurrentPhase;
