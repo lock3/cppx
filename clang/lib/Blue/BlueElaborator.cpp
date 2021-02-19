@@ -1777,7 +1777,6 @@ bool Elaborator::makeBases(unsigned &DeclIndex,
       clang::SourceLocation());
 
   llvm::SmallVector<clang::CXXBaseSpecifier *, 4> GivenBaseClasses;
-  // bool IsVirtualBase = false;
   bool didError = false;
   while(!DeclBodyList.empty() && DeclIndex < DeclBodyList.size() &&
         (

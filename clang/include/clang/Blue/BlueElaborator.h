@@ -294,8 +294,6 @@ private:
   clang::ASTContext &CxxAST;
 };
 
-
-
 } // namespace blue
 
 #endif
