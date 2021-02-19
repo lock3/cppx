@@ -815,6 +815,72 @@ Syntax *Parser::parseDoExpression()
   return new ControlSyntax(Ctrl, S0, S1);
 }
 
+// Returns true if the current sequnce of tokens a capture block.
+static bool isCapture(Parser &P)
+{
+  assert(P.nextTokenIs(tok::LeftBrace));
+  std::size_t La = findMatched(P, tok::LeftBrace, tok::RightBrace);
+  switch (P.getLookahead(La + 1)) {
+  case tok::LeftParen:
+  case tok::LeftBracket:
+  case tok::IsKeyword:
+  case tok::EqualGreater:
+    return true;
+  default:
+    break;
+  }
+
+  return false;
+}
+
+/// Parse a lambda-expression.
+///
+///   lambda-expression:
+///     lambda capture? mapping-descriptor constraint? => block-expression
+///     lambda block-expression
+///
+/// The capture, descriptor, and constraint comprise the head and are
+/// stored in a triple.
+Syntax *Parser::parseLambdaExpression()
+{
+  Token Ctrl = requireToken(tok::LambdaKeyword);
+
+  Syntax *Cap = nullptr;
+  if (nextTokenIs(tok::LeftBrace))
+  {
+    if (!isCapture(*this)) {
+      Syntax *Body = parseBlockExpression();
+      return new ControlSyntax(Ctrl, nullptr, Body);
+    }
+
+    Cap = parseCapture();
+  }
+
+  Syntax *Desc = nullptr;
+  if (nextTokenIs(tok::LeftParen) || nextTokenIs(tok::LeftBracket))
+    Desc = parseMappingDescriptor();
+
+  Syntax *Cons = nullptr;
+  if (nextTokenIs(tok::IsKeyword))
+    Cons = parseConstraint();
+
+  expectToken(tok::EqualGreater);
+  Syntax *Body = parseBlockExpression();
+
+  Syntax *Head = new TripleSyntax(Cap, Desc, Cons);
+  return new ControlSyntax(Ctrl, Head, Body);
+}
+
+/// Parse a lambda capture.
+///
+///   capture:
+///     block-statement
+Syntax* Parser::parseCapture()
+{
+  return parseBlockStatement();
+}
+
+
 /// Parse a let expression.
 ///
 ///   let-expression:
