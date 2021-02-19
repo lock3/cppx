@@ -362,21 +362,17 @@ func bar:(x:^C) void = {
   )));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
-// TEST(BlueClass, Class_DefaultCtorDecl) {
-//   StringRef Code = R"BLUE(
-// type C : class = {
-//   var x:int;
-//   operator= : (out this) = { }
-// }
-// x:C = ();
 
-// )BLUE";
-//   auto ToMatch = translationUnitDecl(hasDescendant(cxxRecordDecl(
-//     hasName("C"),
-//     hasDescendant(cxxConstructorDecl(isDefaultConstructor(), unless(isImplicit()),
-//       isDefaulted(), isNoThrow()))
-//     )),
-//     has(varDecl(hasName("x"), hasType(asString("struct C"))))
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ToMatch));
-// }
+TEST(BlueClass, BaseClasses) {
+  StringRef Code = R"BLUE(
+type B : class = { }
+type C : class = {
+  super :B;
+}
+)BLUE";
+  auto ToMatch = cxxRecordDecl(
+    hasName("C"),
+    isDirectlyDerivedFrom(hasName("B"))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}

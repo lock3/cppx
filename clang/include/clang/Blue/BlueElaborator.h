@@ -115,6 +115,9 @@ public:
   clang::Decl *makeTypeDecl(Declaration *D, clang::QualType T);
   clang::Decl *makeFunctionDecl(Declaration *D);
   clang::Decl *makeClass(Declaration *D);
+  bool makeBases(unsigned &DeclIndex,
+                llvm::SmallVectorImpl<Declaration *> & DeclBodyList,
+                clang::CXXRecordDecl *R);
   clang::Decl *makeTemplateDecl(Declaration *D);
   clang::Decl *makeFieldDecl(Declaration *D, clang::Expr *Ty);
 
@@ -125,7 +128,8 @@ public:
 
   // class type body elaboration.
   clang::Decl *identifyDeclsInClassBody(Declaration *D, const ListSyntax *L,
-                                        clang::CXXRecordDecl *R);
+                                        clang::CXXRecordDecl *R,
+                                llvm::SmallVectorImpl<Declaration *> &DeclList);
   clang::Decl *elaborateField(Declaration *D, clang::TypeSourceInfo *TInfo);
 
 
@@ -158,8 +162,6 @@ public:
   clang::Expr *elaborateListExpression(const ListSyntax *S);
   clang::Expr *elaborateSequenceExpression(const SequenceSyntax *S);
 
-
-  
   // clang::Expr *elaborateSeqExpression(const SeqSyntax *S);
   // clang::Expr *elaborateUnaryExpression(const UnarySyntax *S);
   // clang::Expr *elaborateBinaryExpression(const BinarySyntax *S);
@@ -255,7 +257,7 @@ public:
   //===--------------------------------------------------------------------===//
   ///{
   /// This returns true if part of the declaration was delayed.
-  bool delayElaborateDeclType(clang::CXXRecordDecl *RD, const Syntax *S);
+  bool delayElaborateDeclType(clang::CXXRecordDecl *RD, Declaration *D);
 
   /// Functionality associated with late elaboration and are used to either
   /// elaborate the full class or elaborate everything if they are able to.

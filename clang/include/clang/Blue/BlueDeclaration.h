@@ -158,6 +158,8 @@ struct Declaration {
   /// Get the def as a DefSyntax.
   const DeclarationSyntax *asDef() const;
 
+  DeclarationSyntax::IntroducerKind getIntroducerKind() const;
+  clang::SourceLocation getErrorLocation() const;
   clang::SourceLocation getEndOfDecl() const {
     const Declarator *D = Decl;
     if (!D)

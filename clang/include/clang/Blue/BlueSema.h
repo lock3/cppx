@@ -79,6 +79,8 @@ class Sema {
   /// Translation unit decl.
   Declaration *TUDecl = nullptr;
 public:
+  clang::AttributeFactory AttrFactory;
+
   Sema(SyntaxContext &Context, clang::Sema &S);
   ~Sema();
 
@@ -362,7 +364,7 @@ public:
   using FunctionExtInfo = clang::FunctionProtoType::ExtInfo;
   using FunctionExtProtoInfo = clang::FunctionProtoType::ExtProtoInfo;
   using FunctionExceptionSpec = clang::FunctionProtoType::ExceptionSpecInfo;
-  
+
   /// This does a rebuild the type of the function, in a single action without
   /// the need to rebuild the TypeLoc for the function more then a single time.
   /// This returns true if there was an error.

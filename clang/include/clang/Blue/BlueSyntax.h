@@ -842,7 +842,10 @@ struct DeclarationSyntax : QuaternarySyntax
     Function,
 
     // A declaration with a type as its value.
-    Type
+    Type,
+
+    // A declaration of a base class.
+    Super,
   };
 
   static constexpr KindType Kind = Declaration;
@@ -850,6 +853,12 @@ struct DeclarationSyntax : QuaternarySyntax
   DeclarationSyntax(Syntax *D, Syntax *T, Syntax *C, Syntax *I)
     : QuaternarySyntax(Kind, D, T, C, I)
   { }
+
+  /// This attempts to return the first valid source location from a declaration
+  /// for reporting an error. This takes into account that we may not have an
+  /// identifier name available, and we would instead need to use the type
+  /// or initializer in order to get a valid meaningful location.
+  clang::SourceLocation getErrorLocation() const;
 
   /// Returns the declarator.
   Syntax *getDeclarator() const
@@ -879,6 +888,7 @@ struct DeclarationSyntax : QuaternarySyntax
   static bool classof(const Syntax *S) {
     return S->getKind() == Kind;
   }
+
   Token getParamPassingSpecifier() const;
 
   Token *ParamSpecs = nullptr;

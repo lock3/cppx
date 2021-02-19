@@ -131,14 +131,33 @@ const Syntax *Declaration::getInitializer() const {
   return nullptr;
 }
 
+const IdentifierSyntax *Declaration::asId() const {
+  assert(isa<IdentifierSyntax>(Def));
+  return cast<IdentifierSyntax>(Def);
+}
+
 const DeclarationSyntax *Declaration::asDef() const {
   assert(isa<DeclarationSyntax>(Def));
   return cast<DeclarationSyntax>(Def);
 }
 
-const IdentifierSyntax *Declaration::asId() const {
-  assert(isa<IdentifierSyntax>(Def));
-  return cast<IdentifierSyntax>(Def);
+DeclarationSyntax::IntroducerKind
+Declaration::getIntroducerKind() const {
+  if (auto DS = dyn_cast<DeclarationSyntax>(Def)) {
+    return DS->IntroKind;
+  } else {
+    return DeclarationSyntax::IntroducerKind::Unknown;
+  }
+}
+
+clang::SourceLocation Declaration::getErrorLocation() const {
+  if (auto DS = dyn_cast_or_null<DeclarationSyntax>(Def)) {
+    return DS->getErrorLocation();
+  }
+  if (auto IS = dyn_cast_or_null<IdentifierSyntax>(Def)) {
+    return IS->getLocation();
+  }
+  return clang::SourceLocation();
 }
 
 Phase phaseOf(Declaration *D) {

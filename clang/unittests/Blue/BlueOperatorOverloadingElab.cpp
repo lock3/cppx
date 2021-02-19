@@ -464,7 +464,7 @@ TEST(BlueOperatorOverloading, EqualityMemberUse) {
 type C : class = {
   func operator==:(in this, in other:C) bool = { return false; }
 }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x == y;
 }
 )BLUE";
@@ -477,7 +477,7 @@ TEST(BlueOperatorOverloading, EqualityFreeUse) {
   StringRef Code = R"BLUE(
 type C : class = { }
 func operator==:(in x:C, in y:C) bool = { return false; }
-foo:(in x:C, in y:C) = {
+func foo:(in x:C, in y:C) = {
   return x == y;
 }
 )BLUE";
@@ -490,7 +490,7 @@ TEST(BlueOperatorOverloading, InequalityMemberUse) {
 type C : class = {
   func operator!=:(in this, in other:C) bool = { return false; }
 }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x != y;
 }
 )BLUE";
@@ -502,7 +502,7 @@ TEST(BlueOperatorOverloading, InequalityFreeUse) {
   StringRef Code = R"BLUE(
 type C : class = { }
 func operator!=:(in x:C, in y:C) bool = { return false; }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x != y;
 }
 )BLUE";
@@ -515,7 +515,7 @@ TEST(BlueOperatorOverloading, LessMemberUse) {
 type C : class = {
   func operator<:(in this, in other:C) bool = { return false; }
 }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x < y;
 }
 )BLUE";
@@ -527,7 +527,7 @@ TEST(BlueOperatorOverloading, LessFreeUse) {
   StringRef Code = R"BLUE(
 type C : class = { }
 func operator<:(in x:C, in y:C) bool = { return false; }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x < y;
 }
 )BLUE";
@@ -545,7 +545,7 @@ TEST(BlueOperatorOverloading, GreaterMemberUse) {
 type C : class = {
   func operator>:(in this, in other:C) bool = { return false; }
 }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x > y;
 }
 )BLUE";
@@ -557,7 +557,7 @@ TEST(BlueOperatorOverloading, GreaterFreeUse) {
   StringRef Code = R"BLUE(
 type C : class = { }
 func operator>:(in x:C, in y:C) bool = { return false; }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x > y;
 }
 )BLUE";
@@ -571,7 +571,7 @@ TEST(BlueOperatorOverloading, LessEqualMemberUse) {
 type C : class = {
   func operator<=:(in this, in other:C) bool = { return false; }
 }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x <= y;
 }
 )BLUE";
@@ -583,7 +583,7 @@ TEST(BlueOperatorOverloading, LessEqualFreeUse) {
   StringRef Code = R"BLUE(
 type C : class = { }
 func operator<=:(in x:C, in y:C) bool = { return false; }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x <= y;
 }
 )BLUE";
@@ -596,7 +596,7 @@ TEST(BlueOperatorOverloading, GreaterEqualMemberUse) {
 type C : class = {
   func operator>=:(in this, in other:C) bool = { return false; }
 }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x >= y;
 }
 )BLUE";
@@ -608,7 +608,7 @@ TEST(BlueOperatorOverloading, GreaterEqualFreeUse) {
   StringRef Code = R"BLUE(
 type C : class = { }
 func operator>=:(in x:C, in y:C) bool = { return false; }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x >= y;
 }
 )BLUE";
@@ -621,7 +621,7 @@ TEST(BlueOperatorOverloading, UnaryPlusMemberUse) {
 type C : class = {
   func operator+:(in this) bool = { return false; }
 }
-foo:(x:C) = {
+func foo:(x:C) = {
   return +x;
 }
 )BLUE";
@@ -634,7 +634,7 @@ TEST(BlueOperatorOverloading, UnaryMinusMemberUse) {
 type C : class = {
   func operator-:(in this) bool = { return false; }
 }
-foo:(x:C) = {
+func foo:(x:C) = {
   return -x;
 }
 )BLUE";
@@ -647,7 +647,7 @@ TEST(BlueOperatorOverloading, BinaryPlusMemberUse) {
 type C : class = {
   func operator+:(in this, in other:C) bool = { return false; }
 }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x + y;
 }
 )BLUE";
@@ -659,7 +659,7 @@ TEST(BlueOperatorOverloading, BinaryPlusFreeUse) {
   StringRef Code = R"BLUE(
 type C : class = { }
 func operator+:(in x:C, in y:C) bool = { return false; }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x + y;
 }
 )BLUE";
@@ -672,7 +672,7 @@ TEST(BlueOperatorOverloading, BinaryMinusMemberUse) {
 type C : class = {
   func operator-:(in this, in other:C) bool = { return false; }
 }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x - y;
 }
 )BLUE";
@@ -684,7 +684,7 @@ TEST(BlueOperatorOverloading, BinaryMinusFreeUse) {
   StringRef Code = R"BLUE(
 type C : class = { }
 func operator-:(in x:C, in y:C) bool = { return false; }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x - y;
 }
 )BLUE";
@@ -697,7 +697,7 @@ TEST(BlueOperatorOverloading, MultiplyMemberUse) {
 type C : class = {
   func operator*:(in this, in other:C) bool = { return false; }
 }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x * y;
 }
 )BLUE";
@@ -709,7 +709,7 @@ TEST(BlueOperatorOverloading, MultiplyFreeUse) {
   StringRef Code = R"BLUE(
 type C : class = { }
 func operator*:(in x:C, in y:C) bool = { return false; }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x * y;
 }
 )BLUE";
@@ -722,7 +722,7 @@ TEST(BlueOperatorOverloading, DivideMemberUse) {
 type C : class = {
   func operator/:(in this, in other:C) bool = { return false; }
 }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x / y;
 }
 )BLUE";
@@ -734,7 +734,7 @@ TEST(BlueOperatorOverloading, DivideFreeUse) {
   StringRef Code = R"BLUE(
 type C : class = { }
 func operator/:(in x:C, in y:C) bool = { return false; }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x / y;
 }
 )BLUE";
@@ -747,7 +747,7 @@ TEST(BlueOperatorOverloading, ModulusMemberUse) {
 type C : class = {
   func operator%:(in this, in other:C) bool = { return false; }
 }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x % y;
 }
 )BLUE";
@@ -759,7 +759,7 @@ TEST(BlueOperatorOverloading, ModulusFreeUse) {
   StringRef Code = R"BLUE(
 type C : class = { }
 func operator%:(in x:C, in y:C) bool = { return false; }
-foo:(x:C,y:C) = {
+func foo:(x:C,y:C) = {
   return x % y;
 }
 )BLUE";
@@ -772,7 +772,7 @@ TEST(BlueOperatorOverloading, PlusEqualMemberUse) {
 type C : class = {
   func operator+=:(in this, in other:C) bool = { return false; }
 }
-foo:(inout x:C,y:C) void = {
+func foo:(inout x:C,y:C) void = {
    x += y;
 }
 )BLUE";
@@ -785,7 +785,7 @@ TEST(BlueOperatorOverloading, MinusEqualMemberUse) {
 type C : class = {
   func operator-=:(in this, in other:C) bool = { return false; }
 }
-foo:(inout x:C,y:C) void = {
+func foo:(inout x:C,y:C) void = {
    x -= y;
 }
 )BLUE";
@@ -798,7 +798,7 @@ TEST(BlueOperatorOverloading, MultiplyEqualMemberUse) {
 type C : class = {
   func operator*=:(in this, in other:C) bool = { return false; }
 }
-foo:(inout x:C,y:C) void = {
+func foo:(inout x:C,y:C) void = {
    x *= y;
 }
 )BLUE";
@@ -811,7 +811,7 @@ TEST(BlueOperatorOverloading, DivideEqualMemberUse) {
 type C : class = {
   func operator/=:(in this, in other:C) bool = { return false; }
 }
-foo:(inout x:C,y:C) void = {
+func foo:(inout x:C,y:C) void = {
    x /= y;
 }
 )BLUE";
@@ -824,7 +824,7 @@ TEST(BlueOperatorOverloading, ModulusEqualMemberUse) {
 type C : class = {
   func operator%=:(in this, in other:C) bool = { return false; }
 }
-foo:(inout x:C,y:C) void = {
+func foo:(inout x:C,y:C) void = {
    x %= y;
 }
 )BLUE";

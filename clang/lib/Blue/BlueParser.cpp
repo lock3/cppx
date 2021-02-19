@@ -250,6 +250,8 @@ static inline bool isDeclIntroducer(tok::TokenKind K) {
   case tok::VarKeyword:
   case tok::FuncKeyword:
   case tok::TypeKeyword:
+  case tok::SuperKeyword:
+  case tok::MixinKeyword:
     return true;
   default:
     return false;
@@ -279,6 +281,9 @@ Syntax *Parser::parseDeclaration() {
     break;
   case tok::TypeKeyword:
     Decl->IntroKind = DeclarationSyntax::Type;
+    break;
+  case tok::SuperKeyword:
+    Decl->IntroKind = DeclarationSyntax::Super;
     break;
   default:
     Decl->IntroKind = DeclarationSyntax::Unknown;

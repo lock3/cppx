@@ -72,7 +72,29 @@ Syntax::reverse_child_range Syntax::reverseChildren() const {
   return reverse_child_range(reverse_child_iterator(Children.end()),
                              reverse_child_iterator(Children.begin()));
 }
+clang::SourceLocation DeclarationSyntax::getErrorLocation() const {
+  if (getDeclarator()) {
+    return getDeclarator()->getLocation();
+  }
 
+  if (getType()) {
+    return getType()->getLocation();
+  }
+
+  if (getConstraint()) {
+    return getConstraint()->getLocation();
+  }
+
+  if (getInitializer()) {
+    return getInitializer()->getLocation();
+  }
+
+
+  
+
+  return clang::SourceLocation();
+  
+}
 bool DeclarationSyntax::declaratorIsThis() const {
   if (getDeclarator()) {
     if (auto Id = dyn_cast<AtomSyntax>(getDeclarator())) {
