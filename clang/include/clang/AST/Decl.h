@@ -55,6 +55,10 @@ class Scope;
 
 } // namespace Gold
 
+namespace blue {
+  class Scope;
+}
+
 namespace clang {
 
 class ASTContext;
@@ -4596,6 +4600,7 @@ public:
 class CppxNamespaceDecl : public NamespaceDecl {
 public:
   gold::Scope *Rep;
+  blue::Scope *BlueScope;
 protected:
   CppxNamespaceDecl(ASTContext &C, DeclContext *DC, bool Inline,
                     SourceLocation StartLoc, SourceLocation IdLoc,
@@ -4606,12 +4611,26 @@ protected:
     Rep(GScope)
   { }
 
+  CppxNamespaceDecl(ASTContext &C, DeclContext *DC, bool Inline,
+                    SourceLocation StartLoc, SourceLocation IdLoc,
+                    IdentifierInfo *Id, NamespaceDecl *PrevDecl,
+                    blue::Scope *BScope)
+    :NamespaceDecl(C, Decl::CppxNamespace, DC, Inline, StartLoc, IdLoc, Id,
+                   PrevDecl),
+    BlueScope(BScope)
+  { }
+
 public:
   static CppxNamespaceDecl *Create(ASTContext &C, DeclContext *DC, bool Inline,
                                    SourceLocation StartLoc,
                                    SourceLocation IdLoc,
                                    IdentifierInfo *Id, NamespaceDecl *PrevDecl,
                                    gold::Scope *GScope);
+  static CppxNamespaceDecl *Create(ASTContext &C, DeclContext *DC, bool Inline,
+                                   SourceLocation StartLoc,
+                                   SourceLocation IdLoc,
+                                   IdentifierInfo *Id, NamespaceDecl *PrevDecl,
+                                   blue::Scope *GScope);
   gold::Scope *getScopeRep();
 
   // Implement isa/cast/dyncast/etc.

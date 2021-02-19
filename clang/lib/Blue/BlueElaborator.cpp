@@ -283,6 +283,8 @@ clang::Decl *Elaborator::doElaborateDeclarationTyping(Declaration *D) {
   case DeclarationSyntax::Super:
     Error(D->asDef()->getErrorLocation(), "invalid base class declaration");
     return nullptr;
+  case DeclarationSyntax::Namespace:
+    return makeNamespace(D);
   case DeclarationSyntax::Unknown:
   default:
     // TODO: This may need to be specially refactored so that we can
@@ -1791,7 +1793,6 @@ bool Elaborator::makeBases(unsigned &DeclIndex,
       clang::SourceLocation());
 
   llvm::SmallVector<clang::CXXBaseSpecifier *, 4> GivenBaseClasses;
-  // bool IsVirtualBase = false;
   bool didError = false;
   while(!DeclBodyList.empty() && DeclIndex < DeclBodyList.size() &&
         (
@@ -1906,6 +1907,85 @@ clang::Decl *Elaborator::makeFieldDecl(Declaration *D, clang::Expr *Ty) {
   // elaborateAttributes(D);
   return Field;
 }
+
+clang::Decl *Elaborator::makeNamespace(Declaration *D) {
+  D->CurrentPhase = Phase::Initialization;
+  using namespace clang;
+  // Create and enter a namespace scope.
+  CppxNamespaceDecl *NSDecl = nullptr;
+  clang::Scope *NSScope = SemaRef.enterClangScope(clang::Scope::DeclScope);
+
+  // FIXME: keep track of nested namespaces?
+  OptionalScopeRAII NewScope(SemaRef);
+  OptionalResumeScopeRAII ResumedScope(SemaRef);
+  UsingDirectiveDecl *UD = nullptr;
+  AttributeFactory Attrs;
+  ParsedAttributes ParsedAttrs(Attrs);
+  auto DS = dyn_cast<DeclarationSyntax>(D->Def);
+  if (!DS)
+    llvm_unreachable("I'm not sure this can happen.");
+  // if (D->get)
+  SourceLocation NameLoc = DS->getLocation();
+  SourceLocation BeginBracketLoc;
+  SourceLocation EndingLoc;
+  if (auto Enc = dyn_cast<EnclosureSyntax>(DS->getInitializer())) {
+    BeginBracketLoc =Enc->getOpen().getLocation();
+    EndingLoc = Enc->getClose().getLocation();
+  }
+  NSDecl = SemaRef.ActOnStartNamespaceDef(NSScope,
+                                          SourceLocation(),
+                                          NameLoc,
+                                          NameLoc,
+                                          D->Id,
+                                          BeginBracketLoc,
+                                          ParsedAttrs, UD);
+  if (NSDecl->isInvalidDecl()) {
+    // Making sure that if something does go wrong that we properly recover
+    // from it.
+    SemaRef.leaveClangScope(clang::SourceLocation());
+    return nullptr;
+  }
+
+  // Resume or create a new scope for the current namespace.
+  // This is to allow the representations to all share the same scope.
+  // This makes it easier to handle lookup for those elements of the scope.
+  if (!NSDecl->BlueScope) {
+    NewScope.Init(Scope::Namespace, D->Init, &NSDecl->BlueScope);
+    NSDecl->BlueScope = SemaRef.getCurrentScope();
+  } else {
+    ResumedScope.Init(NSDecl->BlueScope, NSDecl->BlueScope->getTerm(), false);
+  }
+  D->setCxx(SemaRef, NSDecl);
+  // Elab.elaborateAttributes(D);
+
+  SemaRef.pushDecl(D);
+  // if ()
+  // const MacroSyntax *NSMacro = cast<MacroSyntax>(D->Init);
+  // const Syntax *NSBody = NSMacro->getBlock();
+  if (auto Enc = dyn_cast_or_null<EnclosureSyntax>(D->asDef()->getInitializer())) {
+    if (auto NSBody = dyn_cast_or_null<MultiarySyntax>(Enc->getOperand())) {
+      for (const Syntax *SS : NSBody->children())
+        identifyDeclaration(SS);
+
+      for (const Syntax *SS : NSBody->children())
+        elaborateDecl(SS);
+
+      for (const Syntax *SS : NSBody->children())
+        elaborateDefinition(SS);
+    }
+  }
+
+  NSDecl->BlueScope = SemaRef.getCurrentScope();
+  SemaRef.getCxxSema().ActOnFinishNamespaceDef(NSDecl, EndingLoc);
+  SemaRef.leaveClangScope(EndingLoc);
+  SemaRef.popDecl();
+
+
+  // FIXME: We should be returning a DeclGroupPtr to the NSDecl grouped
+  // with the implicit UsingDecl, UD.
+  return NSDecl;
+}
+
 
 // Type elaboration
 //
@@ -4492,8 +4572,66 @@ clang::Expr *Elaborator::elaborateTypeNameAccess(clang::Expr *LHS,
 
 clang::Expr *Elaborator::elaborateNestedNamespaceAccess(clang::Expr *LHS,
                                                         const InfixSyntax *S) {
-  llvm_unreachable("Namespace acceess not implemented yet!");
+  clang::SourceLocation Loc = S->getLocation();
+  if (auto NSRef = dyn_cast<clang::CppxNamespaceDecl>(
+                                           SemaRef.getDeclFromExpr(LHS, Loc)))
+    return elaborateNNS(NSRef, S);
+  if (auto NSAliasRef = dyn_cast<clang::NamespaceAliasDecl>(
+                                             SemaRef.getDeclFromExpr(LHS, Loc)))
+    return elaborateNNS(NSAliasRef, S);
+  llvm_unreachable("Invalid namespace type returned.");
 }
+clang::Expr *Elaborator::elaborateNNS(clang::NamedDecl *NS,
+                                      const InfixSyntax *S) {
+  const Syntax *RHS = S->getOperand(1);
+  // The object type cannot coexist with a set scope-specifier.
+  clang::Sema::NestedNameSpecInfo IdInfo(NS->getIdentifier(),
+                                         NS->getBeginLoc(),
+                                         S->getLocation(),
+                                         /*ObjectType=*/clang::QualType());
+  // Look this up as an NNS.
+  bool EnteringContext = SemaRef.isQualifiedLookupContext();
+  bool Failure = SemaRef.getCxxSema().
+    ActOnCXXNestedNameSpecifier(SemaRef.getCurClangScope(), IdInfo,
+                                EnteringContext, SemaRef.CurNNSContext,
+                                /*RecoveryLookup=*/false,
+                                /*IsCorrected=*/nullptr,
+                                /*OnlyNamespace=*/false);
+  if (Failure) {
+    SemaRef.CurNNSContext.clear();
+    return nullptr;
+  }
+
+  OptionalInitScope<Sema::QualifiedLookupRAII> Qual(SemaRef);
+  if (auto *CppxNs = dyn_cast<clang::CppxNamespaceDecl>(NS)) {
+    Qual.Init(SemaRef.QualifiedLookupContext, CppxNs);
+  } else if (auto *Alias = dyn_cast<clang::NamespaceAliasDecl>(NS)) {
+    Qual.Init(SemaRef.QualifiedLookupContext, Alias);
+  } else {
+    NS->dump();
+    llvm_unreachable("We hvae a new type of namespace specifier that we've "
+                     "never seen before.");
+  }
+  clang::Expr *RHSExpr = elaborateExpression(RHS);
+  if (!RHSExpr) {
+    SemaRef.CurNNSContext.clear();
+    return nullptr;
+  }
+
+  if (RHSExpr->getType()->isNamespaceType())
+    return RHSExpr;
+
+  // We've finished lookup and can clear the NNS context.
+  if (!SemaRef.isExtendedQualifiedLookupContext())
+    SemaRef.CurNNSContext.clear();
+  ExprMarker(getCxxContext(), SemaRef).Visit(RHSExpr);
+  return RHSExpr;
+}
+// clang::Expr *ExprElaborator::elaborateNNS(clang::NamedDecl *NS,
+//                                           const CallSyntax *Op,
+//                                           const Syntax *RHS) {
+
+// }
 
 clang::Expr *Elaborator::elaborateMemberAccessOp(clang::Expr *LHS,
                                                  const InfixSyntax *S) {

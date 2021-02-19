@@ -375,6 +375,170 @@ public:
                            const FunctionExtInfo &ExtInfo,
                            const FunctionExtProtoInfo &ProtoTypeInfo,
                            const FunctionExceptionSpec &ExceptionSpecInfo);
+
+  clang::CppxNamespaceDecl *ActOnStartNamespaceDef(clang::Scope *NamespcScope,
+                                      clang::SourceLocation InlineLoc,
+                                      clang::SourceLocation NamespaceLoc,
+                                      clang::SourceLocation IdentLoc,
+                                      clang::IdentifierInfo *II,
+                                      clang::SourceLocation LBrace,
+                                      const clang::ParsedAttributesView &AttrList,
+                                      clang::UsingDirectiveDecl *&UD);
+private:
+  /// =============== Members related to qualified lookup. ================= ///
+  enum NNSKind {
+    NNSK_Empty,
+    NNSK_Global,
+    NNSK_Namespace,
+    NNSK_NamespaceAlias,
+    NNSK_Record,
+
+    /// Special context used for when we have a nested name specifier
+    /// with template parameters. Beacuse if we simply re-enter the current
+    /// scope we won't have the template parameters that we created before this
+    /// in scope, instead we will have those originally declared within
+    /// the class, struct, or union and none for those from the nested name
+    /// specifier.
+    // NNSK_RecordTemplate
+  };
+  struct GlobalNNS {
+    blue::Scope *Scope;
+    clang::DeclContext *DC;
+  };
+  union NNSLookupDecl {
+    GlobalNNS Global;
+    clang::CppxNamespaceDecl *NNS;
+    clang::NamespaceAliasDecl *Alias;
+    // clang::CXXRecordDecl *Record;
+    Scope *RebuiltClassScope;
+  };
+
+  NNSKind CurNNSKind = NNSK_Empty;
+  // The list of nested-name-specifiers to use for qualified lookup.
+  // FIXME: make this a list, instead of a single NNS.
+  NNSLookupDecl CurNNSLookupDecl;
+
+  Scope *duplicateScopeForNestedNameContext(Declaration *D);
+public:
+
+  void setLookupScope(GlobalNNS GlobalNs) {
+    CurNNSLookupDecl.Global = GlobalNs;
+    CurNNSKind = NNSK_Global;
+  }
+
+  void setLookupScope(clang::CppxNamespaceDecl *NNS) {
+    CurNNSLookupDecl.NNS = NNS;
+    CurNNSKind = NNSK_Namespace;
+  }
+
+  void setLookupScope(clang::NamespaceAliasDecl *Alias) {
+    CurNNSLookupDecl.Alias = Alias;
+    CurNNSKind = NNSK_NamespaceAlias;
+  }
+
+  bool setLookupScope(clang::CXXRecordDecl *Record);
+
+  Scope *getLookupScope();
+
+  bool isQualifiedLookupContext() const {
+    return QualifiedLookupContext;
+  }
+
+  // True when lookups should be performed with a qualifier.
+  bool QualifiedLookupContext = false;
+
+  /// ============= Members related to NNS typo correction. =============== ///
+
+  /// A C++ scope specifier that gets set during NNS so we can leverage Clang's
+  /// typo correction.
+  clang::CXXScopeSpec CurNNSContext;
+
+  /// This class keeps track of the current nested namespace lookup state
+  /// it provides a means of constructing things that are either a
+  /// CppxNamespaceDecl, or the global namespace scope and DeclContext.
+  struct QualifiedLookupRAII {
+    // Constructor for non-global namespace specifier.
+    QualifiedLookupRAII(Sema &SemaRef,
+                        bool &QualifiedLookupContext,
+                        clang::CppxNamespaceDecl *NS)
+      : SemaRef(SemaRef),
+        QualifiedLookupContext(QualifiedLookupContext),
+        PreviousKind(SemaRef.CurNNSKind),
+        PreviousLookup(SemaRef.CurNNSLookupDecl) {
+      SemaRef.CurNNSLookupDecl.NNS = NS;
+      SemaRef.CurNNSKind = NNSK_Namespace;
+      QualifiedLookupContext = true;
+    }
+
+    // Constructor for global namespace specifier.
+    QualifiedLookupRAII(Sema &SemaRef,
+                        bool &QualifiedLookupContext,
+                        blue::Scope *Scope, clang::DeclContext *DC)
+      : SemaRef(SemaRef),
+        QualifiedLookupContext(QualifiedLookupContext),
+        PreviousKind(SemaRef.CurNNSKind),
+        PreviousLookup(SemaRef.CurNNSLookupDecl) {
+      SemaRef.CurNNSLookupDecl.Global.Scope = Scope;
+      SemaRef.CurNNSLookupDecl.Global.DC = DC;
+      SemaRef.CurNNSKind = NNSK_Global;
+      QualifiedLookupContext = true;
+    }
+
+    // Constructor for namespace aliases
+    QualifiedLookupRAII(Sema &SemaRef,
+                        bool &QualifiedLookupContext,
+                        clang::NamespaceAliasDecl *Alias)
+      : SemaRef(SemaRef),
+        QualifiedLookupContext(QualifiedLookupContext),
+        PreviousKind(SemaRef.CurNNSKind),
+        PreviousLookup(SemaRef.CurNNSLookupDecl) {
+      SemaRef.CurNNSLookupDecl.Alias = Alias;
+      SemaRef.CurNNSKind = NNSK_NamespaceAlias;
+      QualifiedLookupContext = true;
+    }
+
+    ~QualifiedLookupRAII() {
+      QualifiedLookupContext = false;
+      SemaRef.CurNNSLookupDecl = PreviousLookup;
+      SemaRef.CurNNSKind = PreviousKind;
+    }
+
+  private:
+    Sema &SemaRef;
+    bool &QualifiedLookupContext;
+    NNSKind PreviousKind;
+    NNSLookupDecl PreviousLookup;
+  };
+
+  // Allows us to keep our nns context for a bit longer.
+  struct ExtendQualifiedLookupRAII {
+    ExtendQualifiedLookupRAII(Sema &SemaRef)
+      : ExtendQualifiedLookup(SemaRef.ExtendQualifiedLookup),
+        CurNNSContext(SemaRef.CurNNSContext)
+      {
+        SavedValue = ExtendQualifiedLookup;
+        ExtendQualifiedLookup = true;
+      }
+
+    ~ExtendQualifiedLookupRAII() {
+      ExtendQualifiedLookup = SavedValue;
+      CurNNSContext.clear();
+    }
+
+  private:
+    bool SavedValue;
+    bool &ExtendQualifiedLookup;
+    clang::CXXScopeSpec &CurNNSContext;
+  };
+
+  bool isExtendedQualifiedLookupContext() const {
+    return ExtendQualifiedLookup;
+  }
+
+private:
+  // True if we want to maintain the NNSContext after we are done with
+  // qualified lookup.
+  bool ExtendQualifiedLookup = false;
 public:
 
   //===--------------------------------------------------------------------===//

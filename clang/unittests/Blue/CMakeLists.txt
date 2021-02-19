@@ -51,6 +51,7 @@ add_clang_unittest(BlueTests
   BlueLetElab.cpp
   BlueLiteralElab.cpp
   BlueLogicalOpElab.cpp
+  BlueNamespaceElab.cpp
   BlueOperatorOverloadingElab.cpp
   BluePointerElab.cpp
   BlueTypeAliasElab.cpp

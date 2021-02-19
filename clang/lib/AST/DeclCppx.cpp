@@ -15,6 +15,15 @@ CppxNamespaceDecl::Create(ASTContext &C, DeclContext *DC, bool Inline,
                                        PrevDecl, GScope);
 }
 
+CppxNamespaceDecl *
+CppxNamespaceDecl::Create(ASTContext &C, DeclContext *DC, bool Inline,
+                          SourceLocation StartLoc, SourceLocation IdLoc,
+                          IdentifierInfo *Id, NamespaceDecl *PrevDecl,
+                          blue::Scope *BScope) {
+  return new (C, DC) CppxNamespaceDecl(C, DC, Inline, StartLoc, IdLoc, Id,
+                                       PrevDecl, BScope);
+}
+
 gold::Scope *CppxNamespaceDecl::getScopeRep() {
   return Rep;
 }
