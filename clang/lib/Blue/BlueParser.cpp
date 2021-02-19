@@ -252,6 +252,7 @@ static inline bool isDeclIntroducer(tok::TokenKind K) {
   case tok::TypeKeyword:
   case tok::SuperKeyword:
   case tok::MixinKeyword:
+  case tok::NamespaceKeyword:
     return true;
   default:
     return false;
@@ -284,6 +285,9 @@ Syntax *Parser::parseDeclaration() {
     break;
   case tok::SuperKeyword:
     Decl->IntroKind = DeclarationSyntax::Super;
+    break;
+  case tok::NamespaceKeyword:
+    Decl->IntroKind = DeclarationSyntax::Namespace;
     break;
   default:
     Decl->IntroKind = DeclarationSyntax::Unknown;
@@ -1439,6 +1443,7 @@ Syntax *Parser::parsePrimaryExpression() {
   case tok::TypeKeyword:
     // Class keyword
   case tok::ClassKeyword:
+  case tok::NamespaceKeyword:
     // Built in type functions
   case tok::IntegerKeyword:
   case tok::RealKeyword:

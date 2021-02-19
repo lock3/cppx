@@ -832,7 +832,7 @@ struct DeclarationSyntax : QuaternarySyntax
 {
   // The introducer-keyword that started this declaration, if any.
   enum IntroducerKind : unsigned {
-    // A parameter or malformed declaration
+    // A parameter or ill-formed declaration
     Unknown,
 
     // A variable declaration
@@ -846,6 +846,9 @@ struct DeclarationSyntax : QuaternarySyntax
 
     // A declaration of a base class.
     Super,
+
+    // A namespace declaration
+    Namespace,
   };
 
   static constexpr KindType Kind = Declaration;
