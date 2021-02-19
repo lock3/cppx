@@ -548,7 +548,7 @@ void Elaborator::elaborateParameterList(const ListSyntax *S) {
   // Then this should be equivalent to a : int, b: int.
 }
 
-clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
+clang::Decl *Elaborator::elaborateParameter(const Syntax *S, bool CtrlParam) {
   if (!isa<DeclarationSyntax>(S) && !isa<IdentifierSyntax>(S)) {
     Error(S->getLocation(), "invalid parameter syntax");
     return nullptr;
@@ -558,6 +558,14 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
   clang::SourceLocation Loc = S->getLocation();
 
   if (const IdentifierSyntax *Id = dyn_cast<IdentifierSyntax>(S)) {
+    if (CtrlParam) {
+      unsigned DiagID =
+        CxxSema.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "non-function parameter requires type");
+      CxxSema.Diags.Report(S->getLocation(), DiagID);
+      return nullptr;
+    }
+
     // FIXME: create context for auto parameters to keep track of their
     // index and depth.
     Declaration *TheDecl = createDeclaration(S, nullptr, nullptr);
@@ -662,12 +670,18 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S) {
   // move them into the function later.
   // FIXME: replace this with TU
   clang::DeclContext *Owner = SemaRef.getCurClangDeclContext();
-  clang::ParmVarDecl *PVD =
-    clang::ParmVarDecl::Create(CxxAST, Owner, Loc, Loc,
-                               Name, T->getType(), T,
-                               clang::SC_Auto, /*def=*/nullptr);
-  TheDecl->setCxx(SemaRef, PVD);
-  return PVD;
+  clang::Decl *Final = nullptr;
+
+  if (!CtrlParam)
+    Final = clang::ParmVarDecl::Create(CxxAST, Owner, Loc, Loc, Name,
+                                       T->getType(), T, clang::SC_Auto,
+                                       /*def=*/nullptr);
+  else
+    Final = clang::VarDecl::Create(CxxAST, Owner, Loc, Loc, Name, T->getType(),
+                                   T, clang::SC_None);
+
+  TheDecl->setCxx(SemaRef, Final);
+  return Final;
 }
 
 
@@ -3446,10 +3460,7 @@ clang::Stmt *Elaborator::elaborateStatement(const Syntax *S) {
     if (U->getOperation().hasKind(tok::ReturnKeyword))
       return elaborateReturnStmt(U);
   }
-  // else if (const ControlSyntax *C = dyn_cast<ControlSyntax>(S))
-  //   return elaborateControlStmt(C);
-  // else if (const SeqSyntax *Q = dyn_cast<SeqSyntax>(S))
-  //   return elaborateSeq(Q);
+
   if (const ControlSyntax *C = dyn_cast<ControlSyntax>(S))
     return elaborateControlStmt(C);
   if (const EnclosureSyntax *E = dyn_cast<EnclosureSyntax>(S))
@@ -3518,6 +3529,8 @@ clang::Stmt *Elaborator::elaborateControlStmt(const ControlSyntax *S) {
     return elaborateForStmt(S);
   case tok::DoKeyword:
     return elaborateDoStmt(S);
+  case tok::LetKeyword:
+    return elaborateLetStmt(S);
 
   default:
     break;
@@ -3683,6 +3696,54 @@ clang::Stmt *Elaborator::elaborateDoStmt(const ControlSyntax *S) {
                                      CondExpr,
                                      S->getHead()->getEndLocation());
   return Do.get();
+}
+
+clang::Stmt *Elaborator::elaborateLetStmt(const ControlSyntax *S) {
+  assert(S->getControl().hasKind(tok::LetKeyword) && "invalid let syntax");
+
+  Sema::ScopeRAII LetScope(SemaRef, Scope::Control, S);
+  // FIXME: is this a statement expression?
+  clang::Sema::CompoundScopeRAII CxxScope(CxxSema, /*IsStmtExpr=*/true);
+
+
+  // Elaborate any head declarations. We aren't concerned with their validity.
+  if (!S->getHead() || !isa<EnclosureSyntax>(S->getHead()))
+    return nullptr;
+  EnclosureSyntax *Head = cast<EnclosureSyntax>(S->getHead());
+  if (!Head->getTerm() || !isa<ListSyntax>(Head->getTerm()))
+    return nullptr;
+  llvm::SmallVector<clang::Stmt *, 4> Stmts;
+  for (const Syntax *H : Head->getTerm()->children()) {
+    if (!isa<DeclarationSyntax>(H)) {
+      unsigned DiagID =
+        CxxSema.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "expected declaration");
+      CxxSema.Diags.Report(H->getLocation(), DiagID);
+      continue;
+    }
+
+    clang::Stmt *TheDecl = elaborateDeclStmt(cast<DeclarationSyntax>(H));
+    Stmts.push_back(TheDecl);
+  }
+
+  const Syntax *Body = isa<EnclosureSyntax>(S->getBody()) ?
+    cast<EnclosureSyntax>(S->getBody())->getTerm() : S->getBody();
+
+  if (isa<ListSyntax>(Body)) {
+    for (const Syntax *C : Body->children()) {
+      clang::Stmt *CC = elaborateStatement(C);
+      if (!CC)
+        continue;
+      Stmts.push_back(CC);
+    }
+  } else {
+    clang::Stmt *CC = elaborateStatement(Body);
+    if (CC)
+      Stmts.push_back(CC);
+  }
+
+  return CxxSema.ActOnCompoundStmt(S->getLocation(), S->getEndLocation(),
+                                   Stmts, /*StmtExpr=*/true).get();
 }
 
 clang::Expr *Elaborator::elaborateArraySubscriptExpr(clang::Expr *Base,
