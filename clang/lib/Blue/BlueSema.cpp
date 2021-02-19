@@ -1280,4 +1280,159 @@ bool Sema::rebuildFunctionType(clang::FunctionDecl *FD,
   return false;
 }
 
+
+clang::CppxNamespaceDecl *
+Sema::ActOnStartNamespaceDef(clang::Scope *NamespcScope,
+                             clang::SourceLocation InlineLoc,
+                             clang::SourceLocation NamespaceLoc,
+                             clang::SourceLocation IdentLoc,
+                             clang::IdentifierInfo *II,
+                             clang::SourceLocation LBrace,
+                             const clang::ParsedAttributesView &AttrList,
+                             clang::UsingDirectiveDecl *&UD) {
+  using namespace clang;
+  SourceLocation StartLoc = InlineLoc.isValid() ? InlineLoc : NamespaceLoc;
+
+  // For anonymous namespace, take the location of the left brace.
+  SourceLocation Loc = II ? IdentLoc : LBrace;
+  bool IsInline = InlineLoc.isValid();
+  bool IsInvalid = false;
+  bool IsStd = false;
+  bool AddToKnown = false;
+  clang::Scope *DeclRegionScope = NamespcScope->getParent();
+
+  NamespaceDecl *PrevNS = nullptr;
+  CxxSema.CheckNamespaceDeclaration(II, StartLoc, Loc, IsInline, IsInvalid,
+                                    IsStd, AddToKnown, PrevNS);
+  blue::Scope *PrevScope = nullptr;
+  if (CppxNamespaceDecl *Prev = dyn_cast_or_null<CppxNamespaceDecl>(PrevNS))
+    PrevScope = Prev->BlueScope;
+
+
+  CppxNamespaceDecl *Namespc = CppxNamespaceDecl::Create(Context.CxxAST,
+                                                         CxxSema.CurContext,
+                                                         IsInline, StartLoc,
+                                                         Loc, II, PrevNS,
+                                                         PrevScope);
+  if (IsInvalid)
+    Namespc->setInvalidDecl();
+
+  CxxSema.ProcessDeclAttributeList(DeclRegionScope, Namespc, AttrList);
+  CxxSema.AddPragmaAttributes(DeclRegionScope, Namespc);
+
+  // FIXME: Should we be merging attributes?
+  if (const VisibilityAttr *Attr = Namespc->getAttr<VisibilityAttr>())
+    CxxSema.PushNamespaceVisibilityAttr(Attr, Loc);
+
+  if (IsStd)
+    CxxSema.StdNamespace = Namespc;
+  if (AddToKnown)
+    CxxSema.KnownNamespaces[Namespc] = false;
+
+  if (II) {
+    CxxSema.PushOnScopeChains(Namespc, DeclRegionScope);
+  } else {
+    // Link the anonymous namespace into its parent.
+    DeclContext *Parent = CxxSema.CurContext->getRedeclContext();
+    if (TranslationUnitDecl *TU = dyn_cast<TranslationUnitDecl>(Parent)) {
+      TU->setAnonymousNamespace(Namespc);
+    } else if (NamespaceDecl *ND = dyn_cast<NamespaceDecl>(Parent)) {
+      ND->setAnonymousNamespace(Namespc);
+    } else {
+      assert(isa<CXXFragmentDecl>(Parent));
+    }
+
+    CxxSema.CurContext->addDecl(Namespc);
+
+    // C++ [namespace.unnamed]p1.  An unnamed-namespace-definition
+    //   behaves as if it were replaced by
+    //     namespace unique { /* empty body */ }
+    //     using namespace unique;
+    //     namespace unique { namespace-body }
+    //   where all occurrences of 'unique' in a translation unit are
+    //   replaced by the same identifier and this identifier differs
+    //   from all other identifiers in the entire program.
+
+    // We just create the namespace with an empty name and then add an
+    // implicit using declaration, just like the standard suggests.
+    //
+    // CodeGen enforces the "universally unique" aspect by giving all
+    // declarations semantically contained within an anonymous
+    // namespace internal linkage.
+    if (!PrevNS) {
+      // UD = UsingDirectiveDecl::Create(Context.CxxAST, Parent,
+      //                                 /* 'using' */ LBrace,
+      //                                 /* 'namespace' */ SourceLocation(),
+      //                                 /* qualifier */ NestedNameSpecifierLoc(),
+      //                                 /* identifier */ SourceLocation(),
+      //                                 Namespc, /* Ancestor */ Parent);
+      // UD->setImplicit();
+      // Parent->addDecl(UD);
+      // getCurrentScope()->UsingDirectives.insert(UD);
+      llvm_unreachable("Using directive not implemented yet.");
+    }
+  }
+
+  CxxSema.ActOnDocumentableDecl(Namespc);
+
+  // Although we could have an invalid decl (i.e. the namespace name is a
+  // redefinition), push it as current DeclContext and try to continue parsing.
+  // FIXME: We should be able to push Namespc here, so that the each DeclContext
+  // for the namespace has the declarations that showed up in that particular
+  // namespace definition.
+  CxxSema.PushDeclContext(NamespcScope, Namespc);
+  return Namespc;
+}
+
+Scope *Sema::duplicateScopeForNestedNameContext(Declaration *D) {
+  assert(D && "invalid declaration");
+  assert(D->getCxx() && "Declaration hasn't been elaborated yet");
+  assert(D->SavedScope && "Declaration has no scope to duplicate");
+  // Entering a new scope that we can use for lookup.
+  enterScope(D->SavedScope->getKind(), D->SavedScope->getTerm());
+  Scope *NextScope = getCurrentScope();
+  for (const auto &DeclPair : D->SavedScope->getDeclMap()) {
+    NextScope->addDecl(DeclPair.second);
+  }
+
+  // Copying the current entity into the new scope.
+  NextScope->Entity = D->SavedScope->Entity;
+  return NextScope;
+}
+
+bool Sema::setLookupScope(clang::CXXRecordDecl *Record) {
+  assert(Record && "Invalid lookup context");
+  Declaration *D = getDeclaration(Record);
+  if (!D) {
+    return true;
+  }
+  CurNNSLookupDecl.RebuiltClassScope = duplicateScopeForNestedNameContext(D);
+  CurNNSKind = NNSK_Record;
+  return false;
+}
+
+Scope *Sema::getLookupScope() {
+  switch (CurNNSKind) {
+  case NNSK_Empty:
+    return nullptr;
+  case NNSK_Global:
+    return CurNNSLookupDecl.Global.Scope;
+  case NNSK_Namespace:
+    return CurNNSLookupDecl.NNS->BlueScope;
+  case NNSK_NamespaceAlias: {
+    clang::Decl *AliasedNS = CurNNSLookupDecl.Alias->getAliasedNamespace();
+    if (auto *NNS = dyn_cast<clang::CppxNamespaceDecl>(AliasedNS))
+      return NNS->BlueScope;
+    // FIXME: The namespace alias doesn't contain a CppxNamespaceDecl
+    llvm_unreachable("Invalid namespace alias");
+  }
+
+  case NNSK_Record:{
+    return CurNNSLookupDecl.RebuiltClassScope;
+  }
+  } // switch (CurNNSKind)
+
+  llvm_unreachable("Invalid or unknown nested name specifier type");
+}
+
 } // end namespace Blue

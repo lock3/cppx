@@ -85,7 +85,7 @@ public:
   clang::Decl *elaborateTypeAliasOrVariableTemplate(Declaration *D);
 
   Declaration *elaborateTemplateParameter(const Syntax *Parm);
-
+  
   void elaborateParameters(const ListSyntax *S);
 
   void elaborateParameterGroup(const ListSyntax *S);
@@ -120,6 +120,7 @@ public:
                 clang::CXXRecordDecl *R);
   clang::Decl *makeTemplateDecl(Declaration *D);
   clang::Decl *makeFieldDecl(Declaration *D, clang::Expr *Ty);
+  clang::Decl *makeNamespace(Declaration *D);
 
 
   bool buildMethod(Declaration *Fn, clang::DeclarationName const &Name,
@@ -193,6 +194,7 @@ public:
 
   clang::Expr *elaborateTypeNameAccess(clang::Expr *LHS, const InfixSyntax *S);
   clang::Expr *elaborateNestedNamespaceAccess(clang::Expr *LHS, const InfixSyntax *S);
+  clang::Expr *elaborateNNS(clang::NamedDecl *NS, const InfixSyntax *S);
   clang::Expr *elaborateMemberAccessOp(clang::Expr *LHS, const InfixSyntax *S);
 
 

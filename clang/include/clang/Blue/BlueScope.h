@@ -152,7 +152,6 @@ public:
   // bool hasDeclaration(const DefSyntax *Def) const {
   //   return DeclMap.count(Def) != 0;
   // }
-
   Declaration *Entity = nullptr;
 
 private:
@@ -166,6 +165,8 @@ private:
 
   /// Mapping of an identifier to a set of Declarations.
   IdMapType<const clang::IdentifierInfo *, Declaration *> IdMap;
+public:
+  DeclMapType const& getDeclMap() const { return DeclMap; }
 };
 
 
