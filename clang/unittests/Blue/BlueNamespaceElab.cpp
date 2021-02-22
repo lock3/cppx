@@ -45,7 +45,7 @@ TEST(BlueNamespace, UsingNSQualifier) {
 namespace n1:namespace = {
   var x:int;
 }
-foo:() void = {
+func foo:() void = {
   var y:= n1.x;
 }
 )BLUE";

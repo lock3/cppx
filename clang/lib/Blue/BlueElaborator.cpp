@@ -2994,15 +2994,30 @@ clang::Expr *buildIdExpr(Sema &SemaRef,
     llvm::StringRef Id,
     clang::SourceLocation Loc) {
   // Check for builtin types.
-  auto BuiltinMapIter = SemaRef.BuiltinTypes.find(Id);
-  if (BuiltinMapIter != SemaRef.BuiltinTypes.end())
-    return SemaRef.buildTypeExpr(BuiltinMapIter->second, Loc);
+
 
   // Doing variable lookup.
   clang::IdentifierInfo *II = &SemaRef.getCxxAST().Idents.get(Id);
   clang::LookupResult R(SemaRef.getCxxSema(), {{II}, Loc},
                         clang::Sema::LookupOrdinaryName);
-  SemaRef.lookupUnqualifiedName(R);
+  R.setTemplateNameLookup(true);
+
+  if (SemaRef.isQualifiedLookupContext()) {
+    SemaRef.lookupQualifiedName(R);
+  } else {
+    auto BuiltinMapIter = SemaRef.BuiltinTypes.find(Id);
+    if (BuiltinMapIter != SemaRef.BuiltinTypes.end())
+      return SemaRef.buildTypeExpr(BuiltinMapIter->second, Loc);
+    if (SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) {
+      SemaRef.getCxxSema().Diags.Report(Loc,
+                              clang::diag::err_identifier_not_declared_in_scope)
+                                        << II->getName();
+      return nullptr;
+    }
+  }
+
+
+  // SemaRef.lookupUnqualifiedName(R);
   R.resolveKind();
   switch (R.getResultKind()) {
   case clang::LookupResult::FoundOverloaded: {

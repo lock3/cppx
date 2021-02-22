@@ -109,6 +109,10 @@ public:
   // within the BuiltinTypes map.
   bool lookupUnqualifiedName(clang::LookupResult &R, Scope *S);
 
+  // bool lookupQualifiedName(clang::LookupResult &R, Scope *S,
+  //                          Declaration *NotThisOne = nullptr);
+  bool lookupQualifiedName(clang::LookupResult &R);
+
   Scope *getCurrentScope();
 
   /// Enter a new scope corresponding to the syntax S.

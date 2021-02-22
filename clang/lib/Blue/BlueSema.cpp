@@ -461,7 +461,38 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   // return true;
 }
 
-
+bool Sema::lookupQualifiedName(clang::LookupResult &R) {
+  Scope *LookupScope = nullptr;
+  switch (CurNNSKind) {
+  case NNSK_Empty:
+    // TODO: This may need an assertion or an error message.
+    llvm_unreachable("Cannot do qualified name lookup without a nested name "
+                     "specifier.");
+    break;
+  case NNSK_Global:
+    LookupScope = CurNNSLookupDecl.Global.Scope;
+    break;
+  case NNSK_Namespace:
+    LookupScope = CurNNSLookupDecl.NNS->BlueScope;
+    break;
+  case NNSK_NamespaceAlias: {
+    if (auto *Ns = dyn_cast<clang::CppxNamespaceDecl>(
+                                      CurNNSLookupDecl.Alias->getNamespace())) {
+      LookupScope = Ns->BlueScope;
+    } else {
+      getCxxSema().Diags.Report(Ns->getLocation(),
+                                clang::diag::err_expected_namespace);
+      return false;
+    }
+    break;
+  }
+  case NNSK_Record:{
+    LookupScope = CurNNSLookupDecl.RebuiltClassScope;
+  }
+  break;
+  }
+  return lookupUnqualifiedName(R, LookupScope);
+}
 
 void Sema::createBitwiseBuiltinFunctions() {
   buildBitAnd();
