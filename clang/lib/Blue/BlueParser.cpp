@@ -464,9 +464,18 @@ Syntax *Parser::parseDeclaratorList()
 ///
 /// This is a restriction on a more general grammar that allows function
 /// and/or array-like declarators.
-Syntax *Parser::parseDeclarator()
-{
-  return parseIdExpression();
+Syntax *Parser::parseDeclarator() {
+  Syntax *Ret = nullptr;
+  Ret = parseIdExpression();
+
+  // Consume and build the correct name specifier, this only applies for
+  // namespace name declarations.
+  while(nextTokenIs(tok::Dot)) {
+    Token DotTok = matchToken(tok::Dot);
+    Syntax *RHS = parseIdExpression();
+    Ret = new InfixSyntax(DotTok, Ret, RHS);
+  }
+  return Ret;
 }
 
 /// Parse a mapping descriptor.

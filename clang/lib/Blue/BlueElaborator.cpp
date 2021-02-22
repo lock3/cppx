@@ -52,10 +52,45 @@
 namespace blue {
 static clang::Expr *buildIdExpr(Sema &SemaRef, llvm::StringRef Id,
                                 clang::SourceLocation Loc);
+static auto Error(Sema &SemaRef, clang::SourceLocation Loc) {
+  return SemaRef.getCxxSema().Diags.Report(Loc,
+                                           clang::diag::err_blue_elaboration);
+}
+bool decomposeNNS(Sema &SemaRef, llvm::SmallVectorImpl<const Syntax *> &NNSChain,
+                  const Syntax *S) {
+  if (auto IdS = dyn_cast<IdentifierSyntax>(S)) {
+    NNSChain.emplace_back(IdS);
+    return false;
+  }
+  if (auto InfixOp = dyn_cast_or_null<InfixSyntax>(S)) {
+    if (decomposeNNS(SemaRef, NNSChain, InfixOp->getOperand(0))) {
+      // This indicates there was an error. that wasn't reported.
+      return true;
+    }
+    auto RHS = InfixOp->getOperand(1);
+    if (auto RHSId = dyn_cast_or_null<IdentifierSyntax>(RHS)) {
+      NNSChain.emplace_back(RHSId);
+      return false;
+    } else {
+      Error(SemaRef, RHS->getLocation())
+        << "invalid namespace nested name declaration";
+      return true;
+    }
+  }
+
+  Error(SemaRef, S->getLocation())
+    << "invalid namespace nested name declaration";
+  return true;
+}
 
 Declaration *Elaborator::createDeclaration(const Syntax *Def,
                                            Declarator *Dcl,
                                            const Syntax *Init) {
+  if (const DeclarationSyntax *DS = dyn_cast<DeclarationSyntax>(Def)) {
+    if (DS->IntroKind == DeclarationSyntax::Namespace) {
+      return createNamespaceDecl(DS, Dcl, Init);
+    }
+  }
   Declaration *TheDecl =
     new Declaration(SemaRef.getCurrentDecl(), Def, Dcl, Init);
 
@@ -77,6 +112,82 @@ Declaration *Elaborator::createDeclaration(const Syntax *Def,
   TheDecl->ScopeForDecl = CurScope;
   TheDecl->ClangDeclaringScope = SemaRef.getCurClangScope();
 
+  return TheDecl;
+}
+
+template<typename Iterator>
+static DeclarationSyntax *buildDummyNNSSyntax(Iterator Start,
+                                              Iterator End,
+                                              Syntax *TyExpr,
+                                              EnclosureSyntax *FinalInit){
+  if ((Start + 1) == End) {
+    // This means we are at the end.
+    return new DeclarationSyntax(
+      const_cast<Syntax*>(*Start), TyExpr, nullptr, FinalInit,
+                                 DeclarationSyntax::Namespace);
+  }
+  auto NestedNS = buildDummyNNSSyntax(Start + 1, End, TyExpr, FinalInit);
+  Syntax **ListAlloc = new Syntax *[1];
+  ListAlloc[0] = NestedNS;
+  Syntax *List = new ListSyntax(ListAlloc, 1);
+  Syntax *Enc = new EnclosureSyntax(FinalInit->getOpen(), FinalInit->getClose(),
+                                    List);
+  return new DeclarationSyntax(const_cast<Syntax*>(*Start), TyExpr, nullptr,
+                               Enc, DeclarationSyntax::Namespace);
+}
+
+Declaration *Elaborator::createNamespaceDecl(const DeclarationSyntax *Def,
+                                             Declarator *Dcl,
+                                             const Syntax *Init) {
+
+  llvm::SmallVector<const Syntax *, 16> NNSChain;
+  // This is a special case when we have a nested name declararation for
+  if (auto InfixOp = dyn_cast<InfixSyntax>(Def->getDeclarator())) {
+    if (decomposeNNS(SemaRef, NNSChain, InfixOp)) {
+      // Building an dummy declaration so that we can return sometthing in the
+      // event of an error decomposing the nested namespaced.
+      Declaration *TheDecl =
+        new Declaration(SemaRef.getCurrentDecl(), Def, Dcl, Init);
+      Scope *CurScope = SemaRef.getCurrentScope();
+      CurScope->addDecl(TheDecl);
+      TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
+      TheDecl->ScopeForDecl = CurScope;
+      TheDecl->ClangDeclaringScope = SemaRef.getCurClangScope();
+      return TheDecl;
+    }
+  } else if(auto IdS = dyn_cast<IdentifierSyntax>(Def->getDeclarator())) {
+    NNSChain.emplace_back(IdS);
+  }
+  if (NNSChain.empty()) {
+    llvm_unreachable("Anonymous namespace names not implemented yet.");
+  }
+  EnclosureSyntax *Initializer = const_cast<EnclosureSyntax *>(
+                                  cast<EnclosureSyntax>(Init));
+  Declaration *TheDecl = nullptr;
+  const DeclarationSyntax *ToGetNameFrom = Def;
+  if (NNSChain.size() != 1) {
+    auto RebuildNS = buildDummyNNSSyntax(NNSChain.begin(), NNSChain.end(),
+                                         const_cast<Syntax *>(Def->getType()),
+                                         Initializer);
+    TheDecl = new Declaration(SemaRef.getCurrentDecl(), Def, Dcl,
+                              RebuildNS->getInitializer());
+    ToGetNameFrom = RebuildNS;
+  } else {
+    TheDecl = new Declaration(SemaRef.getCurrentDecl(), Def, Dcl, Initializer);
+  }
+  if (const IdentifierSyntax *Id
+      = dyn_cast_or_null<IdentifierSyntax>(ToGetNameFrom->getDeclarator())) {
+      TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
+      llvm::outs() << "Decl id = " << TheDecl->Id->getName() << "\n";
+  } else {
+    // llvm_unreachable("Some how we have an invalid identifier.");
+    llvm::outs()<< "I messed up there's not identifier.!\n";
+  }
+  Scope *CurScope = SemaRef.getCurrentScope();
+  CurScope->addDecl(TheDecl);
+  TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
+  TheDecl->ScopeForDecl = CurScope;
+  TheDecl->ClangDeclaringScope = SemaRef.getCurClangScope();
   return TheDecl;
 }
 
@@ -898,7 +1009,11 @@ clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
 
 clang::Decl *Elaborator::makeValueDecl(Declaration *D) {
   // Elaborate the declarator.
-  //
+  if (D->declaratorContainsFunction()) {
+    Error(D->getErrorLocation(), "Function declaration missing introducer.");
+    return nullptr;
+  }
+
   // FIXME: An ill-typed declaration isn't the end of the world. Can we
   // poison the declaration and move on?
   clang::Expr *E = elaborateDeclarator(D->Decl);
@@ -1663,8 +1778,8 @@ clang::Decl *Elaborator::makeClass(Declaration *D) {
   // default:
   //   llvm_unreachable("Incorrectly identified tag type");
   // }
-  auto ClsDef = cast<DeclarationSyntax>(D->Def);
-  auto ClsEnc = cast<EnclosureSyntax>(ClsDef->getInitializer());
+  // auto ClsDef = cast<DeclarationSyntax>(D->Def);
+  auto ClsEnc = cast<EnclosureSyntax>(D->getInitializer());
   auto ClsBody  = dyn_cast_or_null<ListSyntax>(ClsEnc->getOperand());
   Decl *Declaration = nullptr;
   // if (D->SpecializationArgs) {
@@ -1924,11 +2039,10 @@ clang::Decl *Elaborator::makeNamespace(Declaration *D) {
   auto DS = dyn_cast<DeclarationSyntax>(D->Def);
   if (!DS)
     llvm_unreachable("I'm not sure this can happen.");
-  // if (D->get)
   SourceLocation NameLoc = DS->getLocation();
   SourceLocation BeginBracketLoc;
   SourceLocation EndingLoc;
-  if (auto Enc = dyn_cast<EnclosureSyntax>(DS->getInitializer())) {
+  if (auto Enc = dyn_cast<EnclosureSyntax>(D->getInitializer())) {
     BeginBracketLoc =Enc->getOpen().getLocation();
     EndingLoc = Enc->getClose().getLocation();
   }
@@ -1959,10 +2073,8 @@ clang::Decl *Elaborator::makeNamespace(Declaration *D) {
   // Elab.elaborateAttributes(D);
 
   SemaRef.pushDecl(D);
-  // if ()
-  // const MacroSyntax *NSMacro = cast<MacroSyntax>(D->Init);
-  // const Syntax *NSBody = NSMacro->getBlock();
-  if (auto Enc = dyn_cast_or_null<EnclosureSyntax>(D->asDef()->getInitializer())) {
+
+  if (auto Enc = dyn_cast_or_null<EnclosureSyntax>(D->getInitializer())) {
     if (auto NSBody = dyn_cast_or_null<MultiarySyntax>(Enc->getOperand())) {
       for (const Syntax *SS : NSBody->children())
         identifyDeclaration(SS);
@@ -2854,7 +2966,7 @@ void Elaborator::elaborateVarDef(Declaration *D) {
   auto *Def = D->asDef();
   if (!Def)
     return;
-  if (!Def->getInitializer()) {
+  if (!D->getInitializer()) {
     // if (isa<clang::ParmVarDecl>(VD))
     //   return;
     // FIXME: We probably want to synthesize some kind of initializer here.
@@ -2889,13 +3001,13 @@ void Elaborator::elaborateVarDef(Declaration *D) {
   // if (auto LS = dyn_cast<ListSyntax>(Def->getInitializer())) {
   // }
   clang::Expr *InitExpr = nullptr;;
-  if (auto CtorArgs = dyn_cast<EnclosureSyntax>(Def->getInitializer())) {
+  if (auto CtorArgs = dyn_cast<EnclosureSyntax>(D->getInitializer())) {
     if (CtorArgs->getOperand()) {
       llvm_unreachable("Constructor with arguments not implemented yet.");
     } else
       InitExpr = elaborateExplicitDefaultCtorCall(VD, CtorArgs);
   } else {
-    InitExpr = elaborateExpression(Def->getInitializer());
+    InitExpr = elaborateExpression(D->getInitializer());
   }
   if (!InitExpr)
     return;
@@ -2990,15 +3102,30 @@ clang::Expr *buildIdExpr(Sema &SemaRef,
     llvm::StringRef Id,
     clang::SourceLocation Loc) {
   // Check for builtin types.
-  auto BuiltinMapIter = SemaRef.BuiltinTypes.find(Id);
-  if (BuiltinMapIter != SemaRef.BuiltinTypes.end())
-    return SemaRef.buildTypeExpr(BuiltinMapIter->second, Loc);
+
 
   // Doing variable lookup.
   clang::IdentifierInfo *II = &SemaRef.getCxxAST().Idents.get(Id);
   clang::LookupResult R(SemaRef.getCxxSema(), {{II}, Loc},
                         clang::Sema::LookupOrdinaryName);
-  SemaRef.lookupUnqualifiedName(R);
+  R.setTemplateNameLookup(true);
+
+  if (SemaRef.isQualifiedLookupContext()) {
+    SemaRef.lookupQualifiedName(R);
+  } else {
+    auto BuiltinMapIter = SemaRef.BuiltinTypes.find(Id);
+    if (BuiltinMapIter != SemaRef.BuiltinTypes.end())
+      return SemaRef.buildTypeExpr(BuiltinMapIter->second, Loc);
+    if (SemaRef.lookupUnqualifiedName(R, SemaRef.getCurrentScope())) {
+      SemaRef.getCxxSema().Diags.Report(Loc,
+                              clang::diag::err_identifier_not_declared_in_scope)
+                                        << II->getName();
+      return nullptr;
+    }
+  }
+
+
+  // SemaRef.lookupUnqualifiedName(R);
   R.resolveKind();
   switch (R.getResultKind()) {
   case clang::LookupResult::FoundOverloaded: {

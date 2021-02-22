@@ -64,6 +64,10 @@ public:
   Declaration *createDeclaration(const Syntax *Def, Declarator *Dcl,
                                  const Syntax *Init);
 
+  Declaration *createNamespaceDecl(const DeclarationSyntax *Def,
+                                   Declarator *Dcl,
+                                   const Syntax *Init);
+
   //===--------------------------------------------------------------------===//
   //                                  Elaboration                             //
   //===--------------------------------------------------------------------===//

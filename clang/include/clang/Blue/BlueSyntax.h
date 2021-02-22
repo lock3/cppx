@@ -853,8 +853,10 @@ struct DeclarationSyntax : QuaternarySyntax
 
   static constexpr KindType Kind = Declaration;
 
-  DeclarationSyntax(Syntax *D, Syntax *T, Syntax *C, Syntax *I)
-    : QuaternarySyntax(Kind, D, T, C, I)
+  DeclarationSyntax(Syntax *D, Syntax *T, Syntax *C, Syntax *I,
+                    IntroducerKind IdK = Unknown)
+    : QuaternarySyntax(Kind, D, T, C, I),
+    IntroKind(IdK)
   { }
 
   /// This attempts to return the first valid source location from a declaration
