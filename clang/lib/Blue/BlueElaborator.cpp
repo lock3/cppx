@@ -898,7 +898,11 @@ clang::Decl *Elaborator::elaborateDeclEarly(Declaration *D) {
 
 clang::Decl *Elaborator::makeValueDecl(Declaration *D) {
   // Elaborate the declarator.
-  //
+  if (D->declaratorContainsFunction()) {
+    Error(D->getErrorLocation(), "Function declaration missing introducer.");
+    return nullptr;
+  }
+
   // FIXME: An ill-typed declaration isn't the end of the world. Can we
   // poison the declaration and move on?
   clang::Expr *E = elaborateDeclarator(D->Decl);
