@@ -118,17 +118,11 @@ bool Declaration::declIsStatic() const {
 }
 
 bool Declaration::hasInitializer() const {
-  if (auto DS = dyn_cast_or_null<DeclarationSyntax>(Def)) {
-    return DS->getInitializer();
-  }
-  return false;
+  return bool(Init);
 }
 
 const Syntax *Declaration::getInitializer() const {
-  if (auto DS = dyn_cast_or_null<DeclarationSyntax>(Def)) {
-    return DS->getInitializer();
-  }
-  return nullptr;
+  return Init;
 }
 
 const IdentifierSyntax *Declaration::asId() const {

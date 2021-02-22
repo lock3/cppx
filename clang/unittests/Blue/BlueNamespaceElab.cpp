@@ -58,3 +58,20 @@ func foo:() void = {
     hasDescendant(varDecl(hasName("y"))))));
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+TEST(BlueNamespace, NestedNameQualifierForNamespace) {
+  StringRef Code = R"BLUE(
+namespace n1.n2:namespace = {
+  var x:int;
+}
+)BLUE";
+  auto ToMatch = namespaceDecl(hasName("n1"),
+    has(namespaceDecl(
+      hasName("n2"),
+      has(
+        varDecl(hasName("x"), hasType(asString("int")))
+      )
+    ))
+  );
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
