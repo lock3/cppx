@@ -178,10 +178,9 @@ Declaration *Elaborator::createNamespaceDecl(const DeclarationSyntax *Def,
   if (const IdentifierSyntax *Id
       = dyn_cast_or_null<IdentifierSyntax>(ToGetNameFrom->getDeclarator())) {
       TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
-      llvm::outs() << "Decl id = " << TheDecl->Id->getName() << "\n";
   } else {
     // llvm_unreachable("Some how we have an invalid identifier.");
-    llvm::outs()<< "I messed up there's not identifier.!\n";
+    // llvm::outs()<< "I messed up there's not identifier.!\n";
   }
   Scope *CurScope = SemaRef.getCurrentScope();
   CurScope->addDecl(TheDecl);
@@ -610,6 +609,14 @@ void Elaborator::elaborateParameters(const ListSyntax *S) {
   return elaborateParameterList(S);
 }
 
+void Elaborator::elaborateDefaultParameterInit(Declaration *D) {
+  if (phaseOf(D) != Phase::Typing) return;
+  if (!D->hasInitializer()) return;
+  clang::ParmVarDecl *PVD = dyn_cast_or_null<clang::ParmVarDecl>(D->getCxx());
+  clang::Expr *Val = elaborateConstantExpression(D->getInitializer());
+  PVD->setDefaultArg(Val);
+}
+
 void Elaborator::getParameters(Declaration *D,
                                Declarator *FuncDeclarator,
                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
@@ -794,6 +801,7 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S, bool CtrlParam) {
                                    T, clang::SC_None);
 
   TheDecl->setCxx(SemaRef, Final);
+  TheDecl->CurrentPhase = Phase::Typing;
   return Final;
 }
 
@@ -3064,11 +3072,17 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   if (!D->Init)
     return;
 
+
   // We saved the parameter scope while elaborating this function's type,
   // so push it on before we enter the function scope.
   // assert(D->Decl->declaresFunction());
   Declarator *FnDclrtr = D->getFirstDeclarator(Declarator::Function);
   Scope *ParamScope = FnDclrtr->DeclInfo.ParamScope;
+  // Finishing parameter declarations also
+  for (auto SnD : ParamScope->getDeclMap()) {
+    elaborateDefaultParameterInit(SnD.second);
+  }
+
   ResumeScopeRAII FnDclScope(SemaRef, ParamScope, ParamScope->getTerm());
 
   Declaration *CurrentDeclaration = SemaRef.getCurrentDecl();

@@ -44,6 +44,7 @@ add_clang_unittest(BlueTests
   BlueComparisonOp.cpp
   BlueConstructorElab.cpp
   BlueConstTypeElab.cpp
+  BlueDefaultParametersElab.cpp
   BlueDestructorElab.cpp
   BlueForElab.cpp
   BlueFunctionElab.cpp
