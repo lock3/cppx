@@ -983,6 +983,7 @@ Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   case Syntax::Identifier:
     return new Declarator(Declarator::Type, S);
   case Syntax::Infix:
+  case Syntax::Prefix:
   case Syntax::Call:
     return new Declarator(Declarator::Type, S);
   default:
@@ -3275,15 +3276,18 @@ clang::Expr *Elaborator::elaboratePrefixExpression(const PrefixSyntax *S) {
   clang::SourceLocation Loc = S->getLocation();
   clang::QualType Ty = Operand->getType();
   if (Ty->isTypeOfTypes()) {
+    auto TInfo = SemaRef.getTypeSourceInfoFromExpr(Operand,
+                                                    Operand->getExprLoc());
+    if (!TInfo)
+      return nullptr;
     if (S->getOperation().hasKind(tok::Caret)) {
       // FIXME: how can we assert that this is a declarator?
       // If this apears within a declarator then it must be a type.
-      auto TInfo = SemaRef.getTypeSourceInfoFromExpr(Operand,
-                                                     Operand->getExprLoc());
-      if (!TInfo)
-        return nullptr;
-
       clang::QualType RetType = getCxxContext().getPointerType(TInfo->getType());
+      return SemaRef.buildTypeExpr(RetType, Loc);
+    }
+    if (S->getOperation().hasKind(tok::ConstKeyword)) {
+      clang::QualType RetType = getCxxContext().getConstType(TInfo->getType());
       return SemaRef.buildTypeExpr(RetType, Loc);
     }
     getCxxSema().Diags.Report(Loc, clang::diag::err_invalid_type_operand)
