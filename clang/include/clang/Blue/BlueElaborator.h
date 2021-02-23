@@ -89,7 +89,7 @@ public:
   clang::Decl *elaborateTypeAliasOrVariableTemplate(Declaration *D);
 
   Declaration *elaborateTemplateParameter(const Syntax *Parm);
-  
+
   void elaborateParameters(const ListSyntax *S);
 
   void elaborateParameterGroup(const ListSyntax *S);

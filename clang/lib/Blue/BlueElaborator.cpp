@@ -1207,6 +1207,12 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declaration *D,
       if (auto PossibleThis
           = dyn_cast<DeclarationSyntax>(ParamList->getOperand(0))) {
         if (PossibleThis->declaratorIsThis()) {
+          // If we don't have an initializer then we emit an error and continue
+          // as if we didn't have the default value.
+          if (PossibleThis->getInitializer())
+            Error(PossibleThis->getErrorLocation(),
+                  "this cannot have a default value");
+
           D->FunctionThisParam = PossibleThis;
           for (unsigned I = 0; I < PossibleThis->NumParamSpecs; ++I) {
             D->ThisParamSpecifiers.emplace_back(PossibleThis->ParamSpecs[I]);
@@ -3079,7 +3085,19 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   Declarator *FnDclrtr = D->getFirstDeclarator(Declarator::Function);
   Scope *ParamScope = FnDclrtr->DeclInfo.ParamScope;
   // Finishing parameter declarations also
+  bool HaveDefaultArg = false;
   for (auto SnD : ParamScope->getDeclMap()) {
+    if (!HaveDefaultArg) {
+      if (SnD.second->hasInitializer()) {
+        HaveDefaultArg = true;
+      }
+    } else {
+      if (!SnD.second->hasInitializer()) {
+        Error(SnD.second->Def->getLocation(),
+              "all parameters after tha parameter with a default argument must "
+              "also have default arguments");
+      }
+    }
     elaborateDefaultParameterInit(SnD.second);
   }
 
