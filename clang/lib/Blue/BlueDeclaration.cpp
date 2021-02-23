@@ -114,6 +114,38 @@ bool Declaration::declaresInitializedVariable() const {
 }
 
 bool Declaration::declIsStatic() const {
+  // Checking to see if we already have created our declaration.
+  if (auto curFnDecl = dyn_cast_or_null<clang::FunctionDecl>(Cxx))
+    return curFnDecl->getStorageClass() == clang::SC_Static;
+
+  // Checking scope to make sure that the current scope is inside of a class.
+  if (ScopeForDecl) {
+    if(!ScopeForDecl->isClassScope())
+      return false;
+  } else {
+    return false;
+  }
+  auto FnDcl = getFirstDeclarator(Declarator::Function);
+  if (!FnDcl)
+    return false;
+  auto ParamEnc = dyn_cast_or_null<EnclosureSyntax>(FnDcl->getInfo());
+  if (ParamEnc) {
+    if (auto ParamList = dyn_cast_or_null<ListSyntax>(ParamEnc->getOperand())) {
+      const Syntax *FirstArg = ParamList->getOperand(0);
+      if (auto FirstParm = dyn_cast<DeclarationSyntax>(FirstArg)) {
+        if (auto FirstIdParm = dyn_cast<IdentifierSyntax>(FirstParm->getDeclarator())) {
+          return FirstIdParm->getSpelling() != "this";
+        }
+      } else if (auto FirstIdParm = dyn_cast<IdentifierSyntax>(FirstArg)) {
+        return FirstIdParm->getSpelling() != "this";
+      }
+      return false;
+    } else {
+      // Static method, basically without a this parameter.
+      return true;
+    }
+  }
+
   return false;
 }
 

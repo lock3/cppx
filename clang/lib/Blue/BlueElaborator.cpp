@@ -1395,6 +1395,9 @@ bool Elaborator::buildMethod(Declaration *Fn, clang::DeclarationName const &Name
                                           ExLoc);
   } else {
     clang::StorageClass SC = clang::SC_None;
+    if (Fn->declIsStatic()) {
+      SC = clang::SC_Static;
+    }
     *FD = clang::CXXMethodDecl::Create(getCxxContext(), RD, ExLoc, DNI,
                                        Ty->getType(), Ty,
                                        SC, /*isInline*/true,
@@ -3085,20 +3088,24 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   Declarator *FnDclrtr = D->getFirstDeclarator(Declarator::Function);
   Scope *ParamScope = FnDclrtr->DeclInfo.ParamScope;
   // Finishing parameter declarations also
-  bool HaveDefaultArg = false;
   for (auto SnD : ParamScope->getDeclMap()) {
+    elaborateDefaultParameterInit(SnD.second);
+  }
+  clang::FunctionDecl *FnDecl = cast<clang::FunctionDecl>(D->getCxx());
+  auto CurParams = FnDecl->parameters();
+  bool HaveDefaultArg = false;
+  for(clang::ParmVarDecl *PVD : CurParams) {
     if (!HaveDefaultArg) {
-      if (SnD.second->hasInitializer()) {
+      if (PVD->getDefaultArg()) {
         HaveDefaultArg = true;
       }
     } else {
-      if (!SnD.second->hasInitializer()) {
-        Error(SnD.second->Def->getLocation(),
+      if (!PVD->getDefaultArg()) {
+        Error(PVD->getLocation(),
               "all parameters after tha parameter with a default argument must "
               "also have default arguments");
       }
     }
-    elaborateDefaultParameterInit(SnD.second);
   }
 
   ResumeScopeRAII FnDclScope(SemaRef, ParamScope, ParamScope->getTerm());
