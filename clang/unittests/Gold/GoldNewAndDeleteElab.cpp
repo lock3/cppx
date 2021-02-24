@@ -20,7 +20,7 @@ using namespace clang::tooling;
 using namespace clang;
 using namespace gold;
 
-#if 0
+
 // ===---------------------------------------------------------------------===//
 //                          Free function overloading
 // ===---------------------------------------------------------------------===//
@@ -979,4 +979,4 @@ foo(x:^int):void!
 //   );
 //   ASSERT_TRUE(matches(Code, ToMatch));
 // }
-#endif
+

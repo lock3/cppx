@@ -4401,8 +4401,7 @@ clang::Expr *ExprElaborator::handleOpPackExpansion(const CallSyntax *S) {
     return Result;
   } else {
     auto ExprRes =
-        SemaRef.getCxxSema().CheckPackExpansion(Result, S->getCallee()->getLoc(),
-                                                llvm::None);
+        SemaRef.getCxxSema().ActOnPackExpansion(Result, S->getCallee()->getLoc());
     // TODO: check if we need an error message here or not.
     return ExprRes.get();
   }

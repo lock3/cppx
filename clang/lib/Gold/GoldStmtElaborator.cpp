@@ -328,7 +328,7 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
     // This could be a single expression in the case of `if(cond) then expr`
     Then = elaborateStmt(S->getBlock());
 
-  SemaRef.leaveScope(S);
+  SemaRef.leaveScope(S->getBlock());
 
   clang::Stmt *Else = nullptr;
   clang::SourceLocation ElseLoc;

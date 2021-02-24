@@ -126,6 +126,22 @@ x[T:type](Parm:rref T) : void!
   GoldFailureTest(Code);
 }
 
+TEST(GoldVariadicTemplateParam, ParameterExpansionToFunctionArguments) {
+  StringRef Code = R"(
+bar[T:type](A:rref T) : int!
+  ;
+
+doStuff[T:type...](Args:rref T...):void !{
+  ;
+}
+
+x[T:type...](Parm:rref T...) : void!
+  doStuff(bar(Parm)...)
+)";
+  auto ToMatch = callExpr(has(unresolvedLookupExpr()));
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
+
 TEST(GoldVariadicTemplateParam, InvalidUnexpandibleType_OnParameter) {
   StringRef Code = R"(
 bar[T:type](A:rref T) : void!
