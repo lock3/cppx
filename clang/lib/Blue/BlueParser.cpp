@@ -268,7 +268,15 @@ Syntax *Parser::parseDeclaration() {
   if (isDeclIntroducer(getLookahead()))
     Intro = consumeToken();
 
-  Syntax *Pars = parseDefinition();
+
+  Syntax *Pars = nullptr;
+  if (nextTokenIs(tok::UsingKeyword)) {
+    Pars = parsePrefixExpression();
+    expectToken(tok::Semicolon);
+    return Pars;
+  }
+
+  Pars =  parseDefinition();
   if (!Pars)
     return nullptr;
 
@@ -465,8 +473,7 @@ Syntax *Parser::parseDeclaratorList()
 /// This is a restriction on a more general grammar that allows function
 /// and/or array-like declarators.
 Syntax *Parser::parseDeclarator() {
-  Syntax *Ret = nullptr;
-  Ret = parseIdExpression();
+  Syntax *Ret = parseIdExpression();
 
   // Consume and build the correct name specifier, this only applies for
   // namespace name declarations.
@@ -475,6 +482,7 @@ Syntax *Parser::parseDeclarator() {
     Syntax *RHS = parseIdExpression();
     Ret = new InfixSyntax(DotTok, Ret, RHS);
   }
+
   return Ret;
 }
 

@@ -87,10 +87,14 @@ Declaration *Elaborator::createDeclaration(const Syntax *Def,
                                            Declarator *Dcl,
                                            const Syntax *Init) {
   if (const DeclarationSyntax *DS = dyn_cast<DeclarationSyntax>(Def)) {
-    if (DS->IntroKind == DeclarationSyntax::Namespace) {
+    if (DS->IntroKind == DeclarationSyntax::Namespace)
       return createNamespaceDecl(DS, Dcl, Init);
-    }
+  } else if (const PrefixSyntax *PS = dyn_cast<PrefixSyntax>(Def)) {
+    if (PS->getOperation().hasKind(tok::UsingKeyword))
+      return createUsingDecl(PS, Dcl, Init);
+    return nullptr;
   }
+
   Declaration *TheDecl =
     new Declaration(SemaRef.getCurrentDecl(), Def, Dcl, Init);
 
@@ -191,6 +195,19 @@ Declaration *Elaborator::createNamespaceDecl(const DeclarationSyntax *Def,
   return TheDecl;
 }
 
+Declaration *Elaborator::createUsingDecl(const PrefixSyntax *Def,
+                                         Declarator *Dcl,
+                                         const Syntax *Init) {
+  Declaration *TheDecl =
+    new Declaration(SemaRef.getCurrentDecl(), Def, Dcl, Init);
+  Scope *CurScope = SemaRef.getCurrentScope();
+  CurScope->addDecl(TheDecl);
+  TheDecl->DeclaringContext = SemaRef.getCurClangDeclContext();
+  TheDecl->ScopeForDecl = CurScope;
+  TheDecl->ClangDeclaringScope = SemaRef.getCurClangScope();
+  return TheDecl;
+}
+
 clang::Decl *Elaborator::elaborateFile(const Syntax *S) {
   if (!S)
     return nullptr;
@@ -242,10 +259,18 @@ Declaration *Elaborator::buildDeclaration(const DeclarationSyntax *S) {
   return createDeclaration(S, Dcl, S->getInitializer());
 }
 
+Declaration *Elaborator::buildDeclaration(const PrefixSyntax *S) {
+  Declarator *Dcl = new Declarator(Declarator::Using, S,
+                                   getDeclarator(S->getOperand()));
+  return createDeclaration(S, Dcl, S->getOperand());
+}
+
 Declaration *Elaborator::identifyDeclaration(const Syntax *S) {
   switch (S->getKind()) {
   case Syntax::Declaration:
     return buildDeclaration(cast<DeclarationSyntax>(S));
+  case Syntax::Prefix:
+    return buildDeclaration(cast<PrefixSyntax>(S));
   default:
     break;
   }
@@ -255,7 +280,9 @@ Declaration *Elaborator::identifyDeclaration(const Syntax *S) {
 clang::Decl *Elaborator::elaborateDecl(const Syntax *S) {
   switch (S->getKind()) {
   case Syntax::Declaration:
-    return elaborateDefDecl(static_cast<const DeclarationSyntax *>(S));
+    return elaborateDefDecl(cast<DeclarationSyntax>(S));
+  case Syntax::Prefix:
+    return elaboratePrefixDecl(cast<PrefixSyntax>(S));
   default:
     break;
   }
@@ -274,6 +301,111 @@ clang::Decl *Elaborator::elaborateDefDecl(const DeclarationSyntax *S) {
     return nullptr;
 
   return elaborateDeclarationTyping(D);
+}
+
+static clang::Decl *handleUsing(Sema &SemaRef,
+                                const Syntax *Arg,
+                                clang::SourceLocation UsingLoc) {
+  Sema::ExtendQualifiedLookupRAII ExQual(SemaRef);
+  clang::SourceLocation ArgLoc = Arg->getLocation();
+  clang::DiagnosticsEngine &Diags = SemaRef.getCxxSema().Diags;
+  clang::Expr *E = Elaborator(SemaRef).elaborateExpression(Arg);
+  if (!E)
+    return nullptr;
+
+  clang::Scope *CxxScope = SemaRef.getCurClangScope();
+  clang::CXXScopeSpec SS;
+  clang::ParsedAttributesView AttrView;
+  clang::UnqualifiedId Name;
+  clang::SourceLocation TypenameLoc;
+  clang::AccessSpecifier AS = SemaRef.scopeIsClass() ?
+    clang::AS_public : clang::AS_none;
+
+  if (clang::CppxDeclRefExpr *CDRE = dyn_cast<clang::CppxDeclRefExpr>(E)) {
+    // using namespace declaration
+    if (CDRE->getType()->isNamespaceType()) {
+      if (SemaRef.scopeIsClass()) {
+        Diags.Report(Arg->getLocation(),
+                     clang::diag::err_using_namespace_in_class);
+        return nullptr;
+      }
+
+      clang::CppxNamespaceDecl *NS =
+        cast<clang::CppxNamespaceDecl>(CDRE->getValue());
+
+      clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDirective(
+        CxxScope, UsingLoc, Arg->getLocation(), SS, Arg->getLocation(),
+        NS->getIdentifier(), AttrView);
+      if (!UD)
+        return nullptr;
+
+      SemaRef.getCurrentScope()->UsingDirectives.insert(
+        cast<clang::UsingDirectiveDecl>(UD));
+      return UD;
+    }
+  } else if (clang::DeclRefExpr *DRE = dyn_cast<clang::DeclRefExpr>(E)) {
+    // using directive of a declaration in a namespace or base class.
+    blue::Declaration *D = SemaRef.getDeclaration(DRE->getDecl());
+    Name.setIdentifier(D->Id, D->getEndOfDecl());
+    Name.StartLocation = Name.EndLocation = Arg->getLocation();
+  } else if (auto *ULE = dyn_cast<clang::UnresolvedLookupExpr>(E)) {
+    // using directive of a declaration in a namespace or base class.
+    Name.setIdentifier(ULE->getName().getAsIdentifierInfo(),
+                       ULE->getNameLoc());
+    Name.StartLocation = Name.EndLocation = Arg->getLocation();
+  } else if (auto *UME = dyn_cast<clang::UnresolvedMemberExpr>(E)) {
+    // using directive of a declaration in a namespace or base class.
+    Name.setIdentifier(UME->getName().getAsIdentifierInfo(),
+                       UME->getNameLoc());
+    Name.StartLocation = Name.EndLocation = Arg->getLocation();
+  } else if (auto *TyLit = dyn_cast<clang::CppxTypeLiteral>(E)) {
+    clang::TypeSourceInfo *TInfo = TyLit->getValue();
+    if (!TInfo)
+      return nullptr;
+    Name.setIdentifier(TInfo->getType().getBaseTypeIdentifier(),
+                       TyLit->getExprLoc());
+    Name.StartLocation = Name.EndLocation = Arg->getLocation();
+
+    if (TInfo->getType()->isDependentType())
+      TypenameLoc = Arg->getLocation();
+  } else if (auto *DME = dyn_cast<clang::CppxDependentMemberAccessExpr>(E)) {
+    Name.setIdentifier(DME->getMemberNameInfo().getName().getAsIdentifierInfo(),
+                       DME->getExprLoc());
+    Name.StartLocation = Name.EndLocation = Arg->getLocation();
+  } else {
+    unsigned DiagID =
+      Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                            "invalid using declaration argument");
+    Diags.Report(ArgLoc, DiagID);
+    return nullptr;
+  }
+
+  clang::Decl *D = SemaRef.getCxxSema().ActOnUsingDeclaration(
+    CxxScope, AS, UsingLoc, TypenameLoc,
+    SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
+  if (!D)
+    return nullptr;
+  // FIXME: if this comes from an operator'.', elaborate lhs to
+  // differentiate classes and namespaces.
+  if (clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D)) {
+    for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
+      SemaRef.getCurrentScope()->Shadows.insert(Shadow);
+  }
+
+  return D;
+}
+
+clang::Decl *Elaborator::elaboratePrefixDecl(const PrefixSyntax *S) {
+  Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
+  if (S->getOperation().hasKind(tok::UsingKeyword)) {
+    clang::Decl *Ret = handleUsing(SemaRef, S->getOperand(),
+                                   S->getOperation().getLocation());
+    D->CurrentPhase = Phase::Initialization;
+    return Ret;
+  }
+
+  // Reaching this point could only be an error on our part.
+  llvm_unreachable("invalid prefix declaration");
 }
 
 clang::Decl *Elaborator::elaborateDeclarationTyping(Declaration *D) {
@@ -3103,6 +3235,9 @@ clang::Expr *buildIdExpr(Sema &SemaRef,
     clang::SourceLocation Loc) {
   // Check for builtin types.
 
+  // Easy case of a wildcard expression.
+  if (Id == "_")
+    return clang::CppxWildcardExpr::Create(SemaRef.getCxxAST(), Loc);
 
   // Doing variable lookup.
   clang::IdentifierInfo *II = &SemaRef.getCxxAST().Idents.get(Id);
@@ -3291,12 +3426,6 @@ clang::Expr *Elaborator::elaboratePrefixExpression(const PrefixSyntax *S) {
     return nullptr;
   }
 
-  // This implements the address of operator.
-  // if (S->getOperation().hasKind(tok::Caret)) {
-  //   llvm_unreachable("Address of not implemented yet.");
-  //   // getCxxSema().Diags.Report(Loc, clang::diag::err_prefix_caret_on_non_type);
-  //   // return nullptr;
-  // }
   auto OpIter = SemaRef.UnaryPrefixOpMap.find(S->getOperation().getSpelling());
   clang::UnaryOperatorKind Op;
   if (OpIter == SemaRef.UnaryPrefixOpMap.end()) {
@@ -4368,7 +4497,6 @@ clang::Expr *Elaborator::elaborateMemberAccess(clang::Expr *LHS,
   // llvm_unreachable("Elaborator::elaborateMemberAccess on it.");
 }
 
-
 static clang::Expr *handleLookupInsideType(Sema &SemaRef,
                                            clang::ASTContext &CxxAST,
                                            clang::Expr *Prev,
@@ -4537,7 +4665,7 @@ static clang::Expr *handleLookupInsideType(Sema &SemaRef,
       if (ND && isa<clang::ValueDecl>(ND)) {
         clang::ValueDecl *VD = cast<clang::ValueDecl>(ND);
         // TODO: Nested name specifier not implemented yet.
-        // clang::NestedNameSpecifierLoc NNS(SemaRef.CurNNSContext.getScopeRep(),
+        // clang::NestedNameSpecifierLoc NNS(SemaRef.CurNNSContext.getBlueScopeRep(),
         //                                   SemaRef.CurNNSContext.location_data());
         // bool UseNNS = SemaRef.CurNNSContext.isSet();
         return clang::DeclRefExpr::Create(
@@ -4677,7 +4805,7 @@ static clang::Expr *handleLookupInsideType(Sema &SemaRef,
   }
   if (clang::ValueDecl *VD = dyn_cast<clang::ValueDecl>(ND)) {
     // TODO: Nested name specifier not implemented yet.
-    // clang::NestedNameSpecifierLoc NNS(SemaRef.CurNNSContext.getScopeRep(),
+    // clang::NestedNameSpecifierLoc NNS(SemaRef.CurNNSContext.getBlueScopeRep(),
     //                                   SemaRef.CurNNSContext.location_data());
     // bool UseNNS = SemaRef.CurNNSContext.isSet();
     return clang::DeclRefExpr::Create(
@@ -4747,6 +4875,9 @@ clang::Expr *Elaborator::elaborateNNS(clang::NamedDecl *NS,
 
   if (RHSExpr->getType()->isNamespaceType())
     return RHSExpr;
+  if (isa<clang::CppxWildcardExpr>(RHSExpr))
+    return nullptr;
+    // return makeUsing()...
 
   // We've finished lookup and can clear the NNS context.
   if (!SemaRef.isExtendedQualifiedLookupContext())

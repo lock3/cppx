@@ -113,7 +113,7 @@ public:
   //                          Declaration *NotThisOne = nullptr);
   bool lookupQualifiedName(clang::LookupResult &R);
 
-  Scope *getCurrentScope();
+  Scope *getCurrentScope() const;
 
   /// Enter a new scope corresponding to the syntax S.
   void enterScope(Scope::Kind K, const Syntax *S);
@@ -128,6 +128,9 @@ public:
 
   /// Pop the current scope, returning it.
   Scope *popScope();
+
+  /// This checks to see if we are in a class body scope currently.
+  bool scopeIsClass() const;
 
   /// Returns the current DeclContext that's set within the clang::Sema.
   /// It's worth noting that getCurrentCxxDeclContext doesn't always equal

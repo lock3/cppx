@@ -63,10 +63,12 @@ public:
 
   Declaration *createDeclaration(const Syntax *Def, Declarator *Dcl,
                                  const Syntax *Init);
-
   Declaration *createNamespaceDecl(const DeclarationSyntax *Def,
                                    Declarator *Dcl,
                                    const Syntax *Init);
+  Declaration *createUsingDecl(const PrefixSyntax *Def,
+                               Declarator *Dcl,
+                               const Syntax *Init);
 
   //===--------------------------------------------------------------------===//
   //                                  Elaboration                             //
@@ -75,8 +77,10 @@ public:
 
   Declaration *identifyDeclaration(const Syntax *S);
   Declaration *buildDeclaration(const DeclarationSyntax *S);
+  Declaration *buildDeclaration(const PrefixSyntax *S);
   clang::Decl *elaborateDecl(const Syntax *S);
   clang::Decl *elaborateDefDecl(const DeclarationSyntax *S);
+  clang::Decl *elaboratePrefixDecl(const PrefixSyntax *S);
 
   clang::Decl *elaborateDeclarationTyping(Declaration *D);
   void elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,

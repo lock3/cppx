@@ -4632,6 +4632,7 @@ public:
                                    IdentifierInfo *Id, NamespaceDecl *PrevDecl,
                                    blue::Scope *GScope);
   gold::Scope *getScopeRep();
+  blue::Scope *getBlueScopeRep();
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }

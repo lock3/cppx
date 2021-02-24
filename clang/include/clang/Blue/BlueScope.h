@@ -15,6 +15,7 @@
 #define CLANG_BLUE_BLUESCOPE_H
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallPtrSet.h"
 
 #include "clang/Blue/BlueDeclaration.h"
 
@@ -99,6 +100,16 @@ public:
     return getKind() == Control;
   }
 
+  // True when a scope is the block of a lambda expression.
+  bool isLambdaScope() const {
+    return getKind() == Block && Lambda;
+  }
+
+  // True when a scope is the capture block of a lambda expression.
+  bool isLambdaCaptureScope() const {
+    return LambdaCaptureScope;
+  }
+
   const Scope *getParent() const {
     return Parent;
   }
@@ -149,10 +160,19 @@ public:
     return Iter->second;
   }
 
-  // bool hasDeclaration(const DefSyntax *Def) const {
-  //   return DeclMap.count(Def) != 0;
-  // }
   Declaration *Entity = nullptr;
+
+  // Using Directives in this scope.
+  llvm::SmallPtrSet<clang::UsingDirectiveDecl *, 4> UsingDirectives;
+
+  // UsingDecls that get added to this scope.
+  llvm::SmallPtrSet<clang::UsingShadowDecl *, 4> Shadows;
+
+  // True when this is the block of a lambda scope.
+  bool Lambda = false;
+
+  // True when this is the capture block of a lambda.
+  bool LambdaCaptureScope = false;
 
 private:
   Kind Which;
