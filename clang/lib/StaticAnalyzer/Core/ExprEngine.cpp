@@ -1214,6 +1214,7 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::CppxDependentMemberAccessExprClass:
     case Stmt::CppxCallOrConstructorExprClass:
     case Stmt::CppxDerefOrPtrExprClass:
+    case Stmt::CppxWildcardExprClass:
     case Stmt::CppxTemplateOrArrayExprClass:
     case Stmt::CXXTryStmtClass:
     case Stmt::CXXTypeidExprClass:

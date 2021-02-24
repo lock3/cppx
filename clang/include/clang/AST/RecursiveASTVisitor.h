@@ -2384,6 +2384,7 @@ DEF_TRAVERSE_STMT(CppxDependentMemberAccessExpr, {
 DEF_TRAVERSE_STMT(CppxTemplateOrArrayExpr, { })
 DEF_TRAVERSE_STMT(CppxCallOrConstructorExpr, { })
 DEF_TRAVERSE_STMT(CppxDerefOrPtrExpr, { })
+DEF_TRAVERSE_STMT(CppxWildcardExpr, { })
 
 DEF_TRAVERSE_STMT(DeclRefExpr, {
   TRY_TO(TraverseNestedNameSpecifierLoc(S->getQualifierLoc()));

@@ -2339,6 +2339,10 @@ void StmtPrinter::VisitCppxDerefOrPtrExpr(CppxDerefOrPtrExpr *Node) {
   PrintExpr(Node->getValue());
 }
 
+void StmtPrinter::VisitCppxWildcardExpr(CppxWildcardExpr *Node) {
+  OS << "_";
+}
+
 void StmtPrinter::VisitCppxTemplateOrArrayExpr(
                                          CppxTemplateOrArrayExpr *Node) {
   PrintExpr(Node->getBase());

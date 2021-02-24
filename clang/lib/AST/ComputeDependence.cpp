@@ -909,6 +909,10 @@ ExprDependence clang::computeDependence(CppxDerefOrPtrExpr *E) {
   return D;
 }
 
+ExprDependence clang::computeDependence(CppxWildcardExpr *E) {
+  return ExprDependence::TypeValueInstantiation;
+}
+
 ExprDependence clang::computeDependence(CppxTemplateOrArrayExpr *E) {
   auto D = ExprDependence::TypeValueInstantiation;
   D |= E->getBase()->getDependence();

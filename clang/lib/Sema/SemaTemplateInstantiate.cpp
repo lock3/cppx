@@ -1140,6 +1140,7 @@ namespace {
       return Ret;
     }
 
+
     ExprResult TransformCppxDerefOrPtrExpr(CppxDerefOrPtrExpr *E) {
       assert(SemaRef.getGoldSema() && "invalid without gold language support");
       auto Ret = SemaRef.getGoldSema()->TransformCppxDerefOrPtrExpr(

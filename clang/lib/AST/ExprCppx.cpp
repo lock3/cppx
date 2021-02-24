@@ -185,6 +185,22 @@ CppxDerefOrPtrExpr *CppxDerefOrPtrExpr::Create(const ASTContext &Ctx, Expr *E,
   void *Mem = Ctx.Allocate(sizeof(CppxDerefOrPtrExpr),
                            alignof(CppxDerefOrPtrExpr));
   return new (Mem) CppxDerefOrPtrExpr(Ctx, E, L);
-
 }
+
+CppxWildcardExpr::CppxWildcardExpr(const ASTContext &C, SourceLocation Loc)
+  : Expr(CppxWildcardExprClass, C.DependentTy, VK_LValue, OK_Ordinary),
+    Loc(Loc)
+{
+  // Just set dependence so we crash if this reaches codegen.
+  setDependence(ExprDependenceScope::ExprDependence::TypeValue
+              | ExprDependenceScope::ExprDependence::TypeInstantiation
+              | ExprDependenceScope::ExprDependence::ValueInstantiation
+              | ExprDependenceScope::ExprDependence::TypeValueInstantiation);
+}
+
+CppxWildcardExpr *CppxWildcardExpr::Create(const ASTContext &C,
+                                           SourceLocation Loc) {
+  return new (C) CppxWildcardExpr(C, Loc);
+}
+
 } // namespace clang

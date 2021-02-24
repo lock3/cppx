@@ -6737,6 +6737,15 @@ public:
     llvm::SmallVectorImpl<clang::ParmVarDecl *> &EParams,
     Scope *CurScope, bool IsMutable);
 
+  /// ActOnStartOfLambdaDefinition - This is called just before we start
+  /// parsing the body of a lambda; it analyzes the explicit captures and
+  /// arguments, and sets up various data-structures for the body of the
+  /// lambda.
+  void ActOnStartOfBlueLambdaDefinition(
+    blue::Sema &BlueSema, LambdaIntroducer &Intro,
+    llvm::SmallVectorImpl<clang::ParmVarDecl *> &EParams,
+    Scope *CurScope, bool IsMutable);
+
   /// ActOnLambdaError - If there is an error parsing a lambda, this callback
   /// is invoked to pop the information about the lambda.
   void ActOnLambdaError(SourceLocation StartLoc, Scope *CurScope,

@@ -2037,6 +2037,10 @@ void StmtProfiler::VisitCppxDerefOrPtrExpr(
   VisitExpr(S->getValue());
 }
 
+void StmtProfiler::VisitCppxWildcardExpr(const CppxWildcardExpr *S){
+  // shouldn't even be here?
+}
+
 void StmtProfiler::VisitCppxTemplateOrArrayExpr(
     const CppxTemplateOrArrayExpr *S) {
   llvm_unreachable("Not sure what this is for.");

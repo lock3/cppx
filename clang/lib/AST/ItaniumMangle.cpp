@@ -4306,23 +4306,11 @@ recurse:
     break;
   }
   case Expr::CppxDerefOrPtrExprClass:
-  llvm_unreachable("case Expr::CppxDerefOrPtrExprClass: not implemented.");
   case Expr::CppxCallOrConstructorExprClass:
-  llvm_unreachable("case Expr::CppxCallOrConstructorExprClass: not implemented.");
   case Expr::CppxTemplateOrArrayExprClass:
-    llvm_unreachable("case Expr::CppxTemplateOrArrayExprClass: not implemented.");
-  case Expr::CppxDependentMemberAccessExprClass: {
-    llvm_unreachable("case Expr::CppxDependentMemberAccessExprClass: not implemented.");
-    // const CppxDependentMemberAccessExpr *ME
-    //   = cast<CppxDependentMemberAccessExpr>(E);
-    // mangleMemberExpr(ME->isImplicitAccess() ? nullptr : ME->getBase(),
-    //                  ME->isArrow(), NestedNameSpecifier(),
-    //                  nullptr,
-    //                  ME->getMember(),
-    //                  nullptr, 0,
-    //                  Arity);
-    break;
-  }
+  case Expr::CppxDependentMemberAccessExprClass:
+  case Expr::CppxWildcardExprClass:
+    llvm_unreachable("should never mangle this name");
 
   case Expr::CXXDependentScopeMemberExprClass: {
     const CXXDependentScopeMemberExpr *ME

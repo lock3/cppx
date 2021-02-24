@@ -2024,6 +2024,9 @@ void ASTStmtWriter::VisitCppxDerefOrPtrExpr(CppxDerefOrPtrExpr *E) {
   llvm_unreachable("ASTStmtWriter::VisitCppxDerefOrPtrExpr "
                    "Not implemented.");
 }
+void ASTStmtWriter::VisitCppxWildcardExpr(CppxWildcardExpr *E) {
+  llvm_unreachable("Not implemented.");
+}
 
 void
 ASTStmtWriter::VisitDependentScopeDeclRefExpr(DependentScopeDeclRefExpr *E) {

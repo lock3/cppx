@@ -1317,10 +1317,11 @@ Syntax *Parser::parsePrefixExpression() {
   case tok::Caret:
   case tok::Plus:
   case tok::Minus:
+  case tok::UsingKeyword:
   case tok::NotKeyword: {
-    Token op = consumeToken();
-    Syntax *e = parsePrefixExpression();
-    return new PrefixSyntax(op, e);
+    Token Op = consumeToken();
+    Syntax *E = parsePrefixExpression();
+    return new PrefixSyntax(Op, E);
   }
 
   default:
