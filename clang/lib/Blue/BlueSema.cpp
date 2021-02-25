@@ -917,11 +917,13 @@ clang::ParsedType Sema::getParsedTypeFromExpr(const clang::Expr *TyExpr,
 
 clang::CppxDeclRefExpr *Sema::buildNSDeclRef(clang::CppxNamespaceDecl *D,
                                              clang::SourceLocation Loc) {
+  setLookupScope(D);
   return buildAnyDeclRef(Context.CxxAST.CppxNamespaceTy, D, Loc);
 }
 
 clang::CppxDeclRefExpr *Sema::buildNSDeclRef(clang::NamespaceAliasDecl *D,
                                              clang::SourceLocation Loc) {
+  setLookupScope(D);
   return buildAnyDeclRef(Context.CxxAST.CppxNamespaceTy, D, Loc);
 }
 
@@ -1453,7 +1455,7 @@ Scope *Sema::getLookupScope() {
   case NNSK_Global:
     return CurNNSLookupDecl.Global.Scope;
   case NNSK_Namespace:
-    return CurNNSLookupDecl.NNS->BlueScope;
+    return CurNNSLookupDecl.NNS->getBlueScopeRep();
   case NNSK_NamespaceAlias: {
     clang::Decl *AliasedNS = CurNNSLookupDecl.Alias->getAliasedNamespace();
     if (auto *NNS = dyn_cast<clang::CppxNamespaceDecl>(AliasedNS))
@@ -1468,6 +1470,34 @@ Scope *Sema::getLookupScope() {
   } // switch (CurNNSKind)
 
   llvm_unreachable("Invalid or unknown nested name specifier type");
+}
+
+// Get the identifier of the current lookup scope, or "true" for a global NNS
+std::pair<bool, clang::IdentifierInfo *> Sema::getLookupScopeName() const {
+  return getLookupScopeName(CurNNSLookupDecl, CurNNSKind);
+}
+
+std::pair<bool, clang::IdentifierInfo *>
+Sema::getLookupScopeName(Sema::NNSLookupDecl const &D, Sema::NNSKind K) const {
+  switch (K) {
+  case NNSK_Empty:
+    return {false, nullptr};
+  case NNSK_Global:
+    return {true, nullptr};
+  case NNSK_Namespace:
+    return {false, D.NNS->getIdentifier()};
+  case NNSK_NamespaceAlias: {
+    clang::Decl *AliasedNS = D.Alias->getAliasedNamespace();
+    if (auto *NNS = dyn_cast<clang::CppxNamespaceDecl>(AliasedNS))
+      return {false, NNS->getIdentifier()};
+    // FIXME: The namespace alias doesn't contain a CppxNamespaceDecl
+    llvm_unreachable("Invalid namespace alias");
+  }
+
+  // FIXME: supply enough information in the NNSLookupDecl to create this.
+  case NNSK_Record:
+    return {false, nullptr};
+  } // switch (K);
 }
 
 } // end namespace Blue

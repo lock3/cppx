@@ -30,7 +30,7 @@
 #include "clang/Blue/BlueScope.h"
 #include <memory>
 #include <vector>
-
+#include <utility>
 
 
 namespace clang {
@@ -446,6 +446,11 @@ public:
   bool setLookupScope(clang::CXXRecordDecl *Record);
 
   Scope *getLookupScope();
+
+  // Get the identifier of the current lookup scope, or "true" for a global NNS
+  std::pair<bool, clang::IdentifierInfo *>
+  getLookupScopeName(NNSLookupDecl const &D, NNSKind K) const;
+  std::pair<bool, clang::IdentifierInfo *> getLookupScopeName() const;
 
   bool isQualifiedLookupContext() const {
     return QualifiedLookupContext;

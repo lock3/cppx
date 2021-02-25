@@ -56,6 +56,7 @@ add_clang_unittest(BlueTests
   BluePointerElab.cpp
   BlueTypeAliasElab.cpp
   BlueTypeAliasTemplateElab.cpp
+  BlueUsingElab.cpp
   BlueVariableElab.cpp
   BlueWhileElab.cpp
   )

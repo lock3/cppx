@@ -372,6 +372,42 @@ static clang::Decl *handleUsing(Sema &SemaRef,
     Name.setIdentifier(DME->getMemberNameInfo().getName().getAsIdentifierInfo(),
                        DME->getExprLoc());
     Name.StartLocation = Name.EndLocation = Arg->getLocation();
+  } else if (auto *WE = dyn_cast<clang::CppxWildcardExpr>(E)) {
+    if (SemaRef.scopeIsClass()) {
+      Diags.Report(Arg->getLocation(),
+                   clang::diag::err_using_namespace_in_class);
+      return nullptr;
+    }
+
+
+    auto IdInfo =
+      SemaRef.getLookupScopeName();
+    // We have `using ._;`, we can't use the global scope.
+    if (IdInfo.first) {
+      unsigned DiagID =
+        Diags.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                              "importing global scope has no effect");
+      Diags.Report(ArgLoc, DiagID);
+      return nullptr;
+    }
+
+    if (!IdInfo.second) {
+      unsigned DiagID =
+        Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                              "name does not name a namespace");
+      Diags.Report(ArgLoc, DiagID);
+      return nullptr;
+    }
+
+    clang::Decl *UD = SemaRef.getCxxSema().ActOnUsingDirective(
+      CxxScope, UsingLoc, Arg->getLocation(), SS, Arg->getLocation(),
+      IdInfo.second, AttrView);
+    if (!UD)
+      return nullptr;
+
+    SemaRef.getCurrentScope()->UsingDirectives.insert(
+      cast<clang::UsingDirectiveDecl>(UD));
+    return UD;
   } else {
     unsigned DiagID =
       Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
@@ -4875,9 +4911,6 @@ clang::Expr *Elaborator::elaborateNNS(clang::NamedDecl *NS,
 
   if (RHSExpr->getType()->isNamespaceType())
     return RHSExpr;
-  if (isa<clang::CppxWildcardExpr>(RHSExpr))
-    return nullptr;
-    // return makeUsing()...
 
   // We've finished lookup and can clear the NNS context.
   if (!SemaRef.isExtendedQualifiedLookupContext())
