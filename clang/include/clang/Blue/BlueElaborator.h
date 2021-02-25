@@ -93,13 +93,13 @@ public:
   clang::Decl *elaborateTypeAliasOrVariableTemplate(Declaration *D);
 
   Declaration *elaborateTemplateParameter(const Syntax *Parm);
-  
+
   void elaborateParameters(const ListSyntax *S);
 
   void elaborateParameterGroup(const ListSyntax *S);
   void elaborateParameterList(const ListSyntax *S);
   clang::Decl *elaborateParameter(const Syntax *S, bool CtrlParam = false);
-
+  void elaborateDefaultParameterInit(Declaration *D);
 
   Declarator *getDeclarator(const Syntax *S);
   Declarator *getArrayDeclarator(const ArraySyntax *AS);

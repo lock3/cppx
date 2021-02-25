@@ -182,10 +182,9 @@ Declaration *Elaborator::createNamespaceDecl(const DeclarationSyntax *Def,
   if (const IdentifierSyntax *Id
       = dyn_cast_or_null<IdentifierSyntax>(ToGetNameFrom->getDeclarator())) {
       TheDecl->Id = &SemaRef.getCxxAST().Idents.get({Id->getSpelling()});
-      llvm::outs() << "Decl id = " << TheDecl->Id->getName() << "\n";
   } else {
     // llvm_unreachable("Some how we have an invalid identifier.");
-    llvm::outs()<< "I messed up there's not identifier.!\n";
+    // llvm::outs()<< "I messed up there's not identifier.!\n";
   }
   Scope *CurScope = SemaRef.getCurrentScope();
   CurScope->addDecl(TheDecl);
@@ -778,6 +777,14 @@ void Elaborator::elaborateParameters(const ListSyntax *S) {
   return elaborateParameterList(S);
 }
 
+void Elaborator::elaborateDefaultParameterInit(Declaration *D) {
+  if (phaseOf(D) != Phase::Typing) return;
+  if (!D->hasInitializer()) return;
+  clang::ParmVarDecl *PVD = dyn_cast_or_null<clang::ParmVarDecl>(D->getCxx());
+  clang::Expr *Val = elaborateConstantExpression(D->getInitializer());
+  PVD->setDefaultArg(Val);
+}
+
 void Elaborator::getParameters(Declaration *D,
                                Declarator *FuncDeclarator,
                           llvm::SmallVectorImpl<clang::ParmVarDecl *> &Params) {
@@ -962,6 +969,7 @@ clang::Decl *Elaborator::elaborateParameter(const Syntax *S, bool CtrlParam) {
                                    T, clang::SC_None);
 
   TheDecl->setCxx(SemaRef, Final);
+  TheDecl->CurrentPhase = Phase::Typing;
   return Final;
 }
 
@@ -1151,6 +1159,7 @@ Declarator *Elaborator::getLeafDeclarator(const Syntax *S) {
   case Syntax::Identifier:
     return new Declarator(Declarator::Type, S);
   case Syntax::Infix:
+  case Syntax::Prefix:
   case Syntax::Call:
     return new Declarator(Declarator::Type, S);
   default:
@@ -1366,6 +1375,12 @@ clang::CppxTypeLiteral *Elaborator::createFunctionType(Declaration *D,
       if (auto PossibleThis
           = dyn_cast<DeclarationSyntax>(ParamList->getOperand(0))) {
         if (PossibleThis->declaratorIsThis()) {
+          // If we don't have an initializer then we emit an error and continue
+          // as if we didn't have the default value.
+          if (PossibleThis->getInitializer())
+            Error(PossibleThis->getErrorLocation(),
+                  "this cannot have a default value");
+
           D->FunctionThisParam = PossibleThis;
           for (unsigned I = 0; I < PossibleThis->NumParamSpecs; ++I) {
             D->ThisParamSpecifiers.emplace_back(PossibleThis->ParamSpecs[I]);
@@ -1548,6 +1563,9 @@ bool Elaborator::buildMethod(Declaration *Fn, clang::DeclarationName const &Name
                                           ExLoc);
   } else {
     clang::StorageClass SC = clang::SC_None;
+    if (Fn->declIsStatic()) {
+      SC = clang::SC_Static;
+    }
     *FD = clang::CXXMethodDecl::Create(getCxxContext(), RD, ExLoc, DNI,
                                        Ty->getType(), Ty,
                                        SC, /*isInline*/true,
@@ -3231,11 +3249,33 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   if (!D->Init)
     return;
 
+
   // We saved the parameter scope while elaborating this function's type,
   // so push it on before we enter the function scope.
   // assert(D->Decl->declaresFunction());
   Declarator *FnDclrtr = D->getFirstDeclarator(Declarator::Function);
   Scope *ParamScope = FnDclrtr->DeclInfo.ParamScope;
+  // Finishing parameter declarations also
+  for (auto SnD : ParamScope->getDeclMap()) {
+    elaborateDefaultParameterInit(SnD.second);
+  }
+  clang::FunctionDecl *FnDecl = cast<clang::FunctionDecl>(D->getCxx());
+  auto CurParams = FnDecl->parameters();
+  bool HaveDefaultArg = false;
+  for(clang::ParmVarDecl *PVD : CurParams) {
+    if (!HaveDefaultArg) {
+      if (PVD->getDefaultArg()) {
+        HaveDefaultArg = true;
+      }
+    } else {
+      if (!PVD->getDefaultArg()) {
+        Error(PVD->getLocation(),
+              "all parameters after tha parameter with a default argument must "
+              "also have default arguments");
+      }
+    }
+  }
+
   ResumeScopeRAII FnDclScope(SemaRef, ParamScope, ParamScope->getTerm());
 
   Declaration *CurrentDeclaration = SemaRef.getCurrentDecl();
@@ -3446,15 +3486,18 @@ clang::Expr *Elaborator::elaboratePrefixExpression(const PrefixSyntax *S) {
   clang::SourceLocation Loc = S->getLocation();
   clang::QualType Ty = Operand->getType();
   if (Ty->isTypeOfTypes()) {
+    auto TInfo = SemaRef.getTypeSourceInfoFromExpr(Operand,
+                                                    Operand->getExprLoc());
+    if (!TInfo)
+      return nullptr;
     if (S->getOperation().hasKind(tok::Caret)) {
       // FIXME: how can we assert that this is a declarator?
       // If this apears within a declarator then it must be a type.
-      auto TInfo = SemaRef.getTypeSourceInfoFromExpr(Operand,
-                                                     Operand->getExprLoc());
-      if (!TInfo)
-        return nullptr;
-
       clang::QualType RetType = getCxxContext().getPointerType(TInfo->getType());
+      return SemaRef.buildTypeExpr(RetType, Loc);
+    }
+    if (S->getOperation().hasKind(tok::ConstKeyword)) {
+      clang::QualType RetType = getCxxContext().getConstType(TInfo->getType());
       return SemaRef.buildTypeExpr(RetType, Loc);
     }
     getCxxSema().Diags.Report(Loc, clang::diag::err_invalid_type_operand)
