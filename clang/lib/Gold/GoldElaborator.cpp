@@ -609,6 +609,7 @@ processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
     llvm_unreachable("Incorrectly identified tag type");
   }
 
+
   Decl *Declaration = nullptr;
   if (D->SpecializationArgs) {
     Declaration = handleClassSpecialization(Context, SemaRef, D, TST, MTP);
@@ -4263,6 +4264,7 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   SemaRef.leaveScope(D->Init);
 
   SemaRef.setCurrentDecl(CurrentDeclaration);
+  SemaRef.leaveClangScope(clang::SourceLocation());
 }
 
 /// In the case of an automatically deduced array macro, <initalizer_list>
@@ -5085,6 +5087,8 @@ void Elaborator::lateElaborateMethodDef(LateElaboratedMethodDef &Method) {
                                     FnDecl->getScope(),
                                     FnDecl->getScope()->getConcreteTerm(),
                                     /*PopOnExit=*/false);
+    // I suspect that the this scope is having issues completely exiting
+    // back to the correct scope.
     Sema::OptionalInitClangRAII<clang::Sema::CXXThisScopeRAII> ThisScope(
                                                                        SemaRef);
     if (clang::CXXMethodDecl *MD

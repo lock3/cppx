@@ -1284,6 +1284,7 @@ static inline bool hasFloatingTypeSuffix(const LiteralSyntax *S) {
 
 clang::Expr *ExprElaborator::elaborateAtom(const AtomSyntax *S,
                                            clang::QualType ExplicitType) {
+  Sema::ClangScopeBalanceChecker BalanceChecker(SemaRef);
   Token T = S->Tok;
 
   // Check if we have a floating literal that looks like an int.
@@ -1463,6 +1464,7 @@ static bool callIsCastOperator(const CallSyntax *S) {
 }
 
 clang::Expr *ExprElaborator::elaborateCall(const CallSyntax *S) {
+  Sema::ClangScopeBalanceChecker BalanceChecker(SemaRef);
   if (callIsCastOperator(S))
     return elaborateCastOp(S);
 

@@ -135,7 +135,7 @@ doStuff[T:type...](Args:rref T...):void !{
   ;
 }
 
-x[T:type...](Parm:rref T...) : void!
+x[U:type, T:type...](x:U, Parm:rref T...) : void!
   doStuff(bar(Parm)...)
 )";
   auto ToMatch = callExpr(has(unresolvedLookupExpr()));

@@ -288,6 +288,40 @@ public:
   void leaveClangScope(clang::SourceLocation Loc);
   clang::Scope* saveCurrentClangScope();
 
+  /** This is a tool used for debugging scope imbalances
+   *  Imbalances occur when we enter a scope and don't leave it correctly.
+   */
+  struct ClangScopeBalanceChecker {
+    Sema &SemaRef;
+    clang::Scope *InitialScope = nullptr;
+    ClangScopeBalanceChecker(Sema &S)
+      :SemaRef(S), InitialScope(SemaRef.getCurClangScope())
+    { }
+    ~ClangScopeBalanceChecker() {
+      if (InitialScope != SemaRef.getCurClangScope()) {
+        llvm::outs() << "=====================================================\n";
+        llvm::outs() << "Dumping current clang scope\n";
+        clang::Scope *CurScope = SemaRef.getCurClangScope();
+        while(CurScope) {
+          llvm::outs() << "=====================================================\n";
+          CurScope->dump();
+          if (CurScope->getEntity()) {
+            llvm::outs() << "Dumping Entity = ";
+            if (auto Ent = dyn_cast<clang::Decl>(CurScope->getEntity())) {
+              Ent->dump();
+            } else {
+              llvm::outs() << "Entity isn't a declaration\n";
+            }
+          }
+          CurScope = CurScope->getParent();
+        }
+        llvm::outs() << "=====================================================\n";
+        assert(SemaRef.getCurClangScope() == InitialScope
+               && "Missmatched clang scopes.");
+      }
+    }
+  };
+
   void dumpState(llvm::raw_ostream &out = llvm::outs());
 
   /// This is a stack of classes currently being elaborated.
