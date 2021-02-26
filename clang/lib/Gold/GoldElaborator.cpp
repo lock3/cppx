@@ -2178,6 +2178,13 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
     }
   }
 
+  // Update the function parameters.
+  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
+  getFunctionParameters(SemaRef, D, Params);
+  FD->setParams(Params);
+  for (auto *D : Params)
+    D->setDeclContext(FD);
+
 
   // If this describes a primary template declaration, create it.
   if (Template && !Specialization) {
@@ -2205,12 +2212,6 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
 
   CxxSema.getImplicitCodeSegOrSectionAttrForFunction(FD, D->Init);
 
-  // Update the function parameters.
-  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
-  getFunctionParameters(SemaRef, D, Params);
-  FD->setParams(Params);
-  for (auto *D : Params)
-    D->setDeclContext(FD);
 
   D->CurrentPhase = Phase::Typing;
   SemaRef.setDeclForDeclaration(D, FD);

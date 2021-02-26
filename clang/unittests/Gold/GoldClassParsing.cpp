@@ -1065,7 +1065,7 @@ TEST(ClassParsing, ConstructorWithInvalidReturnType) {
 c : type = class:
   constructor() : int!
     ;
-  
+
 )";
   GoldFailureTest(Code);
 }
