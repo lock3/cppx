@@ -2441,6 +2441,7 @@ void TextNodeDumper::VisitInfixSyntax(const blue::InfixSyntax *S) {
 }
 
 void TextNodeDumper::VisitControlSyntax(const blue::ControlSyntax *S) {
+  OS << " " << S->getControl().getSpelling();
 }
 
 void TextNodeDumper::VisitTripleSyntax(const blue::TripleSyntax *S) {

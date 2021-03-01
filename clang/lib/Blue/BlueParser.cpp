@@ -574,7 +574,7 @@ Syntax *Parser::parseControlExpression()
   case tok::DoKeyword:
     return parseLoopExpression();
   case tok::LambdaKeyword:
-    // return parse_lambda_expression();
+    return parseLambdaExpression();
   case tok::LetKeyword:
     return parseLetExpression();
   default:
@@ -886,6 +886,12 @@ Syntax *Parser::parseLambdaExpression()
   if (nextTokenIs(tok::LeftParen) || nextTokenIs(tok::LeftBracket))
     Desc = parseMappingDescriptor();
 
+  Syntax *TrailingReturn = nullptr;
+  if (nextTokenIs(tok::MinusGreater)) {
+    consumeToken();
+    TrailingReturn = parseDescriptor();
+  }
+
   Syntax *Cons = nullptr;
   if (nextTokenIs(tok::IsKeyword))
     Cons = parseConstraint();
@@ -893,7 +899,7 @@ Syntax *Parser::parseLambdaExpression()
   expectToken(tok::EqualGreater);
   Syntax *Body = parseBlockExpression();
 
-  Syntax *Head = new TripleSyntax(Cap, Desc, Cons);
+  Syntax *Head = new QuadrupleSyntax(Cap, Desc, Cons, TrailingReturn);
   return new ControlSyntax(Ctrl, Head, Body);
 }
 
@@ -1069,7 +1075,12 @@ static bool isAssignmentOp(tok::TokenKind K)
 Syntax *Parser::parseAssignmentExpression() {
   Syntax *E0 = parseImplicationExpression();
   while (Token Op = matchTokenIf(isAssignmentOp)) {
-    Syntax *E1 = parseAssignmentExpression();
+    Syntax *E1 = nullptr;
+    if (nextTokenIs(tok::LambdaKeyword))
+      E1 = parseControlExpression();
+    else
+      E1 = parseAssignmentExpression();
+
     E0 = new InfixSyntax(Op, E0, E1);
   }
   return E0;

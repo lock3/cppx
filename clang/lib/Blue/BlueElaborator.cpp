@@ -2496,23 +2496,25 @@ clang::Expr *Elaborator::doElaborateExpression(const Syntax *S) {
   case Syntax::Call:
     return elaborateCallExpression(cast<CallSyntax>(S));
   case Syntax::Prefix:
-      return elaboratePrefixExpression(cast<PrefixSyntax>(S));
+    return elaboratePrefixExpression(cast<PrefixSyntax>(S));
   case Syntax::Postfix:
-      return elaboratePostfixExpression(cast<PostfixSyntax>(S));
+    return elaboratePostfixExpression(cast<PostfixSyntax>(S));
   case Syntax::Infix:
-      return elaborateInfixExpression(cast<InfixSyntax>(S));
+    return elaborateInfixExpression(cast<InfixSyntax>(S));
   case Syntax::Index:
-      return elaborateIndexExpression(cast<IndexSyntax>(S));
+    return elaborateIndexExpression(cast<IndexSyntax>(S));
   case Syntax::Pair:
-      return elaboratePairExpression(cast<PairSyntax>(S));
+    return elaboratePairExpression(cast<PairSyntax>(S));
   case Syntax::Triple:
-      return elaborateTripleExpression(cast<TripleSyntax>(S));
+    return elaborateTripleExpression(cast<TripleSyntax>(S));
   case Syntax::Enclosure:
     llvm_unreachable("Enclosure syntax is unavailable.");
   case Syntax::List:
-      return elaborateListExpression(cast<ListSyntax>(S));
+    return elaborateListExpression(cast<ListSyntax>(S));
   case Syntax::Sequence:
-      return elaborateSequenceExpression(cast<SequenceSyntax>(S));
+    return elaborateSequenceExpression(cast<SequenceSyntax>(S));
+  case Syntax::Control:
+    return elaborateControlExpression(cast<ControlSyntax>(S));
   default:
     break;
   }
@@ -3565,6 +3567,17 @@ clang::Expr *Elaborator::elaborateInfixExpression(const InfixSyntax *S) {
   return Res.get();
 }
 
+clang::Expr *Elaborator::elaborateControlExpression(const ControlSyntax *S) {
+  switch (S->getControl().getKind()) {
+  case tok::LambdaKeyword:
+    return elaborateLambdaExpression(S);
+  default:
+    break;
+  }
+
+  llvm_unreachable("unknown control expression");
+}
+
 clang::Expr *Elaborator::elaborateIndexExpression(const IndexSyntax *S) {
   llvm_unreachable("elaborateIndexExpression not implemented yet");
 }
@@ -3588,8 +3601,6 @@ clang::Expr *Elaborator::elaborateListExpression(const ListSyntax *S) {
 clang::Expr *Elaborator::elaborateSequenceExpression(const SequenceSyntax *S) {
   llvm_unreachable("elaborateSequenceExpression not implemented yet");
 }
-
-
 
 clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
                                   clang::SourceLocation Loc,
@@ -3704,7 +3715,94 @@ clang::Expr *BuildReferenceToDecl(Sema &SemaRef,
   return nullptr;
 }
 
+clang::Expr *Elaborator::elaborateLambdaExpression(const ControlSyntax *S) {
+  assert(S->getControl().hasKind(tok::LambdaKeyword) && "non-lambda");
+  assert(isa<QuadrupleSyntax>(S->getHead()) && "invalid lambda control");
+  const QuadrupleSyntax *LambdaHead = cast<QuadrupleSyntax>(S->getHead());
 
+  // FIXME: elaborate mutable attribute
+
+  CxxSema.PushLambdaScope();
+  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
+  const EnclosureSyntax *Mapping =
+    dyn_cast_or_null<EnclosureSyntax>(LambdaHead->getOperand(1));
+  const Syntax *MappingTerm = Mapping;
+  if (!Mapping)
+    MappingTerm = S;
+  Sema::ScopeRAII ParamScope(SemaRef, Scope::Parameter, MappingTerm);
+  if (Mapping) {
+    if (!Mapping->getTerm())
+      return nullptr;
+    const ListSyntax *ParamList = dyn_cast<ListSyntax>(Mapping->getTerm());
+    if (!ParamList)
+      return nullptr;
+
+    for (const Syntax *Arg : ParamList->children()) {
+      clang::Decl *D = elaborateParameter(Arg);
+      if (!D)
+        continue;
+
+      clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(D);
+      // FIXME: handle auto type parameters
+      Params.push_back(PVD);
+    }
+  }
+
+  // Set up the capture
+  const EnclosureSyntax *Cap =
+    dyn_cast_or_null<EnclosureSyntax>(LambdaHead->getOperand(2));
+  const Syntax *ScopeTerm = Cap;
+  if (!ScopeTerm)
+    ScopeTerm = S;
+
+  Sema::ScopeRAII BlockScope(SemaRef, Scope::Block, ScopeTerm);
+  SemaRef.getCurrentScope()->Lambda = true;
+  unsigned ScopeFlags = clang::Scope::BlockScope |
+    clang::Scope::FnScope | clang::Scope::DeclScope |
+    clang::Scope::CompoundStmtScope;
+  SemaRef.enterClangScope(ScopeFlags);
+
+  // Set up the captures and capture default.
+  clang::LambdaIntroducer Intro;
+  clang::SourceLocation CapLoc = Cap ? Cap->getLocation() : S->getLocation();
+  Intro.Range = clang::SourceRange(S->getBeginLocation(), CapLoc);
+  Intro.DefaultLoc = CapLoc;
+
+  // The lambda default will always be by-value, but local lambdas have no
+  // default as per [expr.prim.lambda]
+  // FIXME: make this none for non-local lambdas
+  Intro.Default = clang::LCD_ByCopy;
+  Sema::ScopeRAII LambdaCaptureScope(SemaRef, Scope::Block, ScopeTerm);
+  SemaRef.getCurrentScope()->LambdaCaptureScope = true;
+  // FIXME: do we have explicit captures?
+  // buildLambdaCaptures(Context, SemaRef, S, Intro);
+
+  // Build a return type.
+  clang::QualType TrailingReturn;
+  Syntax *RetSyntax = LambdaHead->getOperand(3);
+  if (RetSyntax) {
+    clang::Expr *TypeExpr = elaborateExpression(RetSyntax);
+    if (TypeExpr && isa<clang::CppxTypeLiteral>(TypeExpr)) {
+      clang::TypeSourceInfo *TInfo =
+        cast<clang::CppxTypeLiteral>(TypeExpr)->getValue();
+      TrailingReturn = TInfo->getType();
+    }
+  }
+
+  // Build the lambda
+  CxxSema.ActOnStartOfBlueLambdaDefinition(SemaRef, Intro, Params,
+                                           SemaRef.getCurClangScope(),
+                                           TrailingReturn,
+                                           /*mutable=*/false);
+
+  clang::Stmt *Body = elaborateStatement(S->getBody());
+  clang::ExprResult Lam =
+    CxxSema.ActOnLambdaExpr(S->getLocation(), Body, SemaRef.getCurClangScope());
+  SemaRef.leaveClangScope(S->getLocation());
+  // FIXME: subtract additions from this function, don't reset to 0
+  SemaRef.LambdaTemplateDepth = 0;
+  return Lam.get();
+}
 
 // clang::Expr *Elaborator::elaborateListExpression(const ListSyntax *S) {
 //   llvm_unreachable("Not implemented");
@@ -3947,6 +4045,8 @@ clang::Stmt *Elaborator::elaborateControlStmt(const ControlSyntax *S) {
     return elaborateDoStmt(S);
   case tok::LetKeyword:
     return elaborateLetStmt(S);
+  case tok::LambdaKeyword:
+    return elaborateLambdaExpression(S);
 
   default:
     break;

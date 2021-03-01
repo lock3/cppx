@@ -187,6 +187,11 @@ private:
   IdMapType<const clang::IdentifierInfo *, Declaration *> IdMap;
 public:
   DeclMapType const& getDeclMap() const { return DeclMap; }
+
+  void dump(llvm::raw_ostream &os) const;
+  void dump() const;
+
+  void dumpScopeChain() const;
 };
 
 

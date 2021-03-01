@@ -6744,7 +6744,7 @@ public:
   void ActOnStartOfBlueLambdaDefinition(
     blue::Sema &BlueSema, LambdaIntroducer &Intro,
     llvm::SmallVectorImpl<clang::ParmVarDecl *> &EParams,
-    Scope *CurScope, bool IsMutable);
+    Scope *CurScope, QualType TrailingReturn, bool IsMutable);
 
   /// ActOnLambdaError - If there is an error parsing a lambda, this callback
   /// is invoked to pop the information about the lambda.

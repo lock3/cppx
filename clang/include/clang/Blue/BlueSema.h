@@ -257,6 +257,10 @@ public:
   ///
   unsigned computeTemplateDepth() const;
 
+  // Counts the depth of the current generic lambda. Will be zero whenever we
+  // are not currently elaborating a lambda expression.
+  unsigned LambdaTemplateDepth = 0;
+
 public:
   /// Clang scope management functions.
   ///@{
