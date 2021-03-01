@@ -566,18 +566,20 @@ handleClassSpecialization(SyntaxContext &Context,
 static clang::Decl *
 processCXXRecordDecl(Elaborator &Elab, SyntaxContext &Context, Sema &SemaRef,
                      Declaration *D) {
+
+  Sema::ClangScopeBalanceChecker BalanceChecker(SemaRef);
   using namespace clang;
   D->CurrentPhase = Phase::Typing;
 
   // Checking if we are a nested template decl/class.
-  bool WithinClass = D->ScopeForDecl->getKind() == SK_Class;
+  bool WithinClass = D->isDeclaredWithinClass();
   MultiTemplateParamsArg MTP = D->TemplateParamStorage;
 
   bool IsOwned = false;
   bool IsDependent = false;
   CXXScopeSpec SS;
   TypeResult UnderlyingType;
-  AccessSpecifier AS = AS_none;
+  AccessSpecifier AS = AS_public;
   if (WithinClass)
     AS = AS_public;
 
@@ -1622,6 +1624,7 @@ clang::Decl *Elaborator::elaborateNestedNameNamespace(Declaration *D) {
 clang::Decl *Elaborator::elaborateDecl(Declaration *D) {
   if (phaseOf(D) != Phase::Identification)
     return D->Cxx;
+  Sema::ClangScopeBalanceChecker Balancer(SemaRef);
   Sema::DeclarationElaborationRAII ElabTracker(SemaRef, D);
 
   clang::Scope *OriginalClangScope = SemaRef.getCurClangScope();
@@ -3156,7 +3159,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
 
   // This is where we differentiate between type alias template,
   // variable template, namespace aliases, members, etc.
-  clang::QualType VarType = TInfo->getType();
+  clang::QualType VarType = TInfo->getType().getCanonicalType();
   clang::Expr *ComputedInitializer = nullptr;
   if (VarType == Context.CxxAST.getAutoDeductType()) {
     ComputedInitializer = elaborateDeducedVariableDecl(InitialScope, D);
@@ -3342,9 +3345,18 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
 
     NewVD = cast<clang::VarDecl>(D->Cxx);
   } else {
+    // Correcting type.
+    auto VarTy = TInfo->getType().getCanonicalType();
+    // if (auto TSTy = dyn_cast<clang::TemplateSpecializationType>(TInfo->getType())) {
+    //   llvm::outs() << "Non-Canonical type = \n";
+    //   TInfo->getType()->dump();
+    //   llvm::outs() << "Desugared canonical type = \n";
+    //   VarTy->dump();
+    //   VarTy = TSTy->desugar();
+    // }
+    // TInfo->getType().getCanonicalType()->dump();
     NewVD = clang::VarDecl::Create(Context.CxxAST, Owner,
-                                    Loc, Loc, Id, TInfo->getType(),
-                                    TInfo,
+                                    Loc, Loc, Id, VarTy, TInfo,
                                     getDefaultVariableStorageClass(SemaRef));
     if (IsClassMember)
       NewVD->setAccess(clang::AS_public);

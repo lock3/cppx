@@ -81,6 +81,7 @@ add_clang_unittest(GoldTests
   GoldDecltypeAutoElab.cpp
   GoldDeductExec.cpp
   GoldDefaultFunctionArgumentsElab.cpp
+  GoldDependentTypeNameMemberAccessElab.cpp
   GoldEnumElab.cpp
   GoldThrowOpElab.cpp
   GoldExceptionCatchElab.cpp

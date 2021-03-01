@@ -62,6 +62,7 @@ void ParseGoldAST(clang::ASTContext &ClangContext, clang::Preprocessor &PP,
 
   clang::TranslationUnitDecl *TU =
     cast<clang::TranslationUnitDecl>(Elab.elaborateFile(CST));
+  // TU->dump();
   clang::ASTConsumer *Consumer = &ClangSema.getASTConsumer();
 
   unsigned I = 0;

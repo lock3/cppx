@@ -2417,7 +2417,6 @@ clang::Expr *ExprElaborator::elaborateDisambuationSyntax(clang::Expr *Elaborated
   clang::Expr *LHS = doElaborateExpr(Disambig->getArgument(0));
   if (!LHS)
     return nullptr;
-
   if (!LHS->getType()->isTypeOfTypes()) {
     SemaRef.Diags.Report(LHS->getExprLoc(),
                           clang::diag::err_unexpected_expression_result)
@@ -2652,14 +2651,26 @@ handleDependentTypeNameLookup(Sema &SemaRef, const CallSyntax *Op,
   clang::IdentifierInfo *Id;
   clang::Expr *NameSpec = nullptr;
   if (auto Call = dyn_cast<CallSyntax>(RHS)) {
-    FusedOpKind Op = getFusedOpKind(SemaRef, Call);
-    if (Op != FOK_Parens) {
+    FusedOpKind FusedOp = getFusedOpKind(SemaRef, Call);
+    if (FusedOp == FOK_Parens) {
+      auto Name = cast<AtomSyntax>(Call->getArgument(1));
+      Id = &SemaRef.getContext().CxxAST.Idents.get(Name->getSpelling());
+      NameSpec = ExprElaborator(SemaRef.getContext(), SemaRef)
+                                           .elaborateExpr(Call->getArgument(0));
+    } else if (FusedOp == FOK_MemberAccess) {
+      bool DidError = false;
+      if (auto RHSCall = dyn_cast<CallSyntax>(RHS)) {
+        NameSpec = ExprElaborator(SemaRef.getContext(), SemaRef)
+                                           .elaborateExpr(Call->getArgument(0));
+      }
+      if (DidError) {
+        Op->dump();
+        llvm_unreachable("as far as I know this can't happen.");
+      }
+    } else {
+      Op->dump();
       llvm_unreachable("as far as I know this can't happen.");
     }
-    auto Name = cast<AtomSyntax>(Call->getArgument(1));
-    Id = &SemaRef.getContext().CxxAST.Idents.get(Name->getSpelling());
-    NameSpec = ExprElaborator(SemaRef.getContext(), SemaRef)
-                                           .elaborateExpr(Call->getArgument(0));
   } else {
     auto Name = cast<AtomSyntax>(RHS);
     Id = &SemaRef.getContext().CxxAST.Idents.get(Name->getSpelling());
