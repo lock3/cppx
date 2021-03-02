@@ -322,6 +322,31 @@ public:
     }
   };
 
+  struct GoldDeclBalanceChecker {
+    Sema &SemaRef;
+    Declaration *PrevDecl;
+    GoldDeclBalanceChecker(Sema &S)
+      :SemaRef(S), PrevDecl(S.getCurrentDecl())
+    { }
+    ~GoldDeclBalanceChecker() {
+      assert(SemaRef.getCurrentDecl() == PrevDecl && "Mismatched current declaration.");
+    }
+  };
+
+  struct ClangDeclContextBalanceChecker {
+    Sema &SemaRef;
+    clang::DeclContext *PrevDC;
+    ClangDeclContextBalanceChecker(Sema &S)
+      :SemaRef(S), PrevDC(SemaRef.getCurClangDeclContext())
+    { }
+    ~ClangDeclContextBalanceChecker() {
+      assert(SemaRef.getCurClangDeclContext() == PrevDC
+             && "Mismatched current decl context.");
+    }
+  };
+
+
+
   void dumpState(llvm::raw_ostream &out = llvm::outs());
 
   /// This is a stack of classes currently being elaborated.
@@ -659,9 +684,9 @@ public:
   // An RAII type for constructing scopes.
   struct ScopeRAII {
     ScopeRAII(Sema &S, ScopeKind K, const Syntax *ConcreteTerm,
-              Scope **SavedScope = nullptr)
-      : S(S), SavedScope(SavedScope), ConcreteTerm(ConcreteTerm) {
-      S.enterScope(K, ConcreteTerm);
+              Scope **SavedScope = nullptr, Declaration *Ent = nullptr)
+      : S(S), SavedScope(SavedScope), Entity(Ent), ConcreteTerm(ConcreteTerm) {
+      S.enterScope(K, ConcreteTerm, Entity);
       if (SavedScope) {
         *SavedScope = S.getCurrentScope();
       }
@@ -679,7 +704,7 @@ public:
 
     /// Optionally save this scope to be stored in the Declaration.
     Scope **SavedScope;
-
+    Declaration *Entity;
     const Syntax *ConcreteTerm;
   };
 
@@ -741,22 +766,35 @@ public:
     Sema &SemaRef;
     Declaration *OriginalDecl;
     bool DoSetAndReset;
+    clang::DeclContext *OriginalDC;
+    bool DoSetClangDC;
   public:
     DeclContextRAII(Sema &S, Declaration *D,
-        bool SetAndResetDeclarationsOnly = false)
+        bool SetAndResetDeclarationsOnly = false, bool ClangDC = false)
       :SemaRef(S), OriginalDecl(SemaRef.CurrentDecl),
-      DoSetAndReset(SetAndResetDeclarationsOnly)
+      DoSetAndReset(SetAndResetDeclarationsOnly),
+      OriginalDC(nullptr),
+      DoSetClangDC(ClangDC)
     {
       if (DoSetAndReset)
         SemaRef.CurrentDecl = D;
       else
         SemaRef.pushDecl(D);
+      if (DoSetClangDC) {
+        OriginalDC = SemaRef.getCurrentCxxDeclContext();
+        assert(D->Cxx && "Missing DeclContext.");
+        assert(isa<clang::DeclContext>(D->Cxx) && "Invalid DeclContext");
+        SemaRef.setClangDeclContext(cast<clang::DeclContext>(D->Cxx));
+      }
     }
     ~DeclContextRAII() {
       if (DoSetAndReset){
         SemaRef.setCurrentDecl(OriginalDecl);
       } else
         SemaRef.popDecl();
+
+      if (DoSetClangDC)
+        SemaRef.setClangDeclContext(OriginalDC);
     }
   };
 
@@ -1257,6 +1295,111 @@ public:
               bool UseGoldInplaceNew = false);
 public:
   bool elaborateConstexpr(clang::Stmt *E);
+};
+
+struct ElabBalanceChecker {
+  Sema &SemaRef;
+  Declaration *PrevDecl = nullptr;
+  clang::DeclContext *PrevDC = nullptr;
+  clang::Scope *PrevClangScope = nullptr;
+  Scope *PrevGoldScope = nullptr;
+  ElabBalanceChecker(Sema &S)
+    :SemaRef(S),
+    PrevDecl(SemaRef.getCurrentDecl()),
+    PrevDC(SemaRef.getCurClangDeclContext()),
+    PrevClangScope(SemaRef.getCurClangScope()),
+    PrevGoldScope(SemaRef.getCurrentScope())
+  { }
+
+  ~ElabBalanceChecker() {
+    bool didError = false;
+    if (PrevDecl != SemaRef.getCurrentDecl()) {
+      didError = true;
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping current gold declaration\n";
+      llvm::outs() << "=====================================================\n";
+      SemaRef.getCurrentDecl()->dump();
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping previous gold declaration\n";
+      llvm::outs() << "=====================================================\n";
+      PrevDecl->dump();
+      llvm::outs() << "=====================================================\n";
+    }
+
+    if (PrevClangScope != SemaRef.getCurClangScope()) {
+      didError = true;
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping current clang scope\n";
+      clang::Scope *CurScope = SemaRef.getCurClangScope();
+      while(CurScope) {
+        llvm::outs() << "=====================================================\n";
+        CurScope->dump();
+        if (CurScope->getEntity()) {
+          llvm::outs() << "Dumping Entity = ";
+          if (auto Ent = dyn_cast<clang::Decl>(CurScope->getEntity())) {
+            Ent->dump();
+          } else {
+            llvm::outs() << "Entity isn't a declaration\n";
+          }
+        }
+        CurScope = CurScope->getParent();
+      }
+
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping expected clang scope\n";
+      CurScope = PrevClangScope;
+      while(CurScope) {
+        llvm::outs() << "=====================================================\n";
+        CurScope->dump();
+        if (CurScope->getEntity()) {
+          llvm::outs() << "Dumping Entity = ";
+          if (auto Ent = dyn_cast<clang::Decl>(CurScope->getEntity())) {
+            Ent->dump();
+          } else {
+            llvm::outs() << "Entity isn't a declaration\n";
+          }
+        }
+        CurScope = CurScope->getParent();
+      }
+      llvm::outs() << "=====================================================\n";
+    }
+
+    if (PrevDC != SemaRef.getCurClangDeclContext()) {
+      didError = true;
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping current DeclContext\n";
+      llvm::outs() << "=====================================================\n";
+      SemaRef.getCurClangDeclContext()->dumpDeclContext();
+      if (auto TempDcl = dyn_cast<clang::Decl>(SemaRef.getCurClangDeclContext())) {
+        TempDcl->dump();
+      } else {
+        llvm::outs() << "Current decl context isn't a clang::decl.\n";
+      }
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping expected DeclContext\n";
+      llvm::outs() << "=====================================================\n";
+      PrevDC->dumpDeclContext();
+      if (auto TempDcl = dyn_cast<clang::Decl>(PrevDC)) {
+        TempDcl->dump();
+      } else {
+        llvm::outs() << "Current decl context isn't a clang::decl.\n";
+      }
+      llvm::outs() << "=====================================================\n";
+    }
+    if (PrevGoldScope != SemaRef.getCurrentScope()) {
+      didError = true;
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping current gold scope\n";
+      llvm::outs() << "=====================================================\n";
+      SemaRef.getCurrentScope()->dump();
+      llvm::outs() << "=====================================================\n";
+      llvm::outs() << "Dumping previous gold scope\n";
+      llvm::outs() << "=====================================================\n";
+      PrevGoldScope->dump();
+      llvm::outs() << "=====================================================\n";
+    }
+    assert(!didError && "Pre/post/invariant condition violation");
+  }
 };
 
 } // namespace gold
