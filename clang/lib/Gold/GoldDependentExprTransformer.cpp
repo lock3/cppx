@@ -155,6 +155,8 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
     if (Ty.isNull())
       return nullptr;
   }
+  // Getting innner most unqualified type for look up.
+  Ty = Ty.getCanonicalType();
 
   // Handling errors from pointer type.
   if (Ty.isNull()) {
@@ -162,7 +164,9 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
                          clang::diag::err_not_a_type);
     return nullptr;
   }
-
+  if (auto TSTTy = dyn_cast<clang::TemplateSpecializationType>(Ty)) {
+    Ty = TSTTy->desugar();
+  }
   if (!isa<clang::TagType>(Ty)) {
     SemaRef.Diags.Report(Ret->getExprLoc(),
                          clang::diag::err_typecheck_member_reference_struct_union)

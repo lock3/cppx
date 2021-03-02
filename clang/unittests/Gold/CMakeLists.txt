@@ -60,6 +60,7 @@ add_clang_unittest(GoldTests
   GoldClassParsing.cpp
   GoldClassTemplateMemberAccessExec.cpp
   GoldClassTemplatedMemberExec.cpp
+  GoldMemberOverloadScopeElab.cpp
   GoldClassTemplateParsing.cpp
   GoldClassTemplateSpec.cpp
   GoldClassThisAccessElab.cpp
@@ -71,6 +72,7 @@ add_clang_unittest(GoldTests
   GoldConstexprAttributeElab.cpp
   GoldConstExprIfStmtElab.cpp
   GoldConstructorCallParsingTest.cpp
+  GoldConstructorTemplateElab.cpp
   GoldContinueElab.cpp
   GoldConversionOperatorElab.cpp
   GoldCXX11AttributeElab.cpp
@@ -79,6 +81,7 @@ add_clang_unittest(GoldTests
   GoldDecltypeAutoElab.cpp
   GoldDeductExec.cpp
   GoldDefaultFunctionArgumentsElab.cpp
+  GoldDependentTypeNameMemberAccessElab.cpp
   GoldEnumElab.cpp
   GoldThrowOpElab.cpp
   GoldExceptionCatchElab.cpp
