@@ -925,8 +925,9 @@ static clang::TemplateParameterList *
 buildNNSTemplateParam(Sema &SemaRef, Declaration *D,
                       TemplateParamsDeclarator *TemplateDcl) {
   assert(TemplateDcl && "Invalid template declarator.");
-  // We may need to exit the clang scope? instead of saving it for later.
-  SemaRef.enterClangScope(clang::Scope::TemplateParamScope);
+  Sema::ClangScopeRAII CxxScope(SemaRef, clang::Scope::TemplateParamScope,
+                                TemplateDcl->getLoc());
+  // We'll exit this scope manually later.
   SemaRef.enterScope(SK_Template, TemplateDcl->getSyntax());
   TemplateDcl->setScope(SemaRef.getCurrentScope());
   // Constructing actual parameters.
