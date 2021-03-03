@@ -1379,7 +1379,6 @@ static bool exitLinkageLanguageSpec(Sema &SemaRef,
 
 static void exitToCorrectScope(Sema &SemaRef, gold::Scope *ExpectedScope,
                                Declaration *D, const Syntax *LinkageAttr) {
-  llvm::outs() << "Number of Declarators to check! = " << D->NNSInfo.size() <<"\n";
   // We need to exit any previous template scopes we entered as part of the nested
   // name specifier. Make sure to leave in revese order otherwise we won't have
   // a valid terms during exit.
@@ -1391,15 +1390,11 @@ static void exitToCorrectScope(Sema &SemaRef, gold::Scope *ExpectedScope,
                         SemaRef.getCurClangScope(), RIter->Name->getScopeSpec());
       }
     }
-    if (RIter->Name->getScope()){
-      llvm::outs() << "Exiting Scope\n";
+    if (RIter->Name->getScope())
       SemaRef.leaveScope(RIter->Name->getScope()->getConcreteTerm());
-    }
 
-    if (RIter->Template && RIter->Template->getScope()){
-      llvm::outs() << "Exiting Template Scope\n";
+    if (RIter->Template && RIter->Template->getScope())
       SemaRef.leaveScope(RIter->Template->getScope()->getConcreteTerm());
-    }
   }
   assert(ExpectedScope == SemaRef.getCurrentScope() && "Scope imbalance.");
   if (LinkageAttr) {
@@ -1569,11 +1564,10 @@ static clang::Decl *handleBuildNNSNamespace(Elaborator &Elab, Sema &SemaRef,
                                           Name->getLoc(), Name->getLoc(),
                                           NSId, Name->getLoc(), ParsedAttrs,
                                           UD);
-  if (!NSDecl)
+  if (!NSDecl){
+    llvm::outs() << "Error returing from ActOnStartNamespaceDef !NSDecl\n";
     return nullptr;
-
-  if (NSDecl->isInvalidDecl())
-    return nullptr;
+  }
 
   // Resume or create a new scope for the current namespace.
   // This is to allow the representations to all share the same scope.
@@ -4294,7 +4288,7 @@ void Elaborator::elaborateFunctionDef(Declaration *D) {
   // Sema::DeclContextRAII DCTracker(SemaRef, D);
   Sema::ResumeScopeRAII FnDclScope(SemaRef, FnDecl->getScope(),
                                    FnDecl->getScope()->getConcreteTerm());
-  clang::DeclContext *CurClangDC = SemaRef.getCurrentCxxDeclContext();
+  clang::DeclContext *CurClangDC = SemaRef.getCurClangDeclContext();
   Declaration *CurrentDeclaration = SemaRef.getCurrentDecl();
   // Entering clang scope. for function definition.
   Sema::ClangScopeRAII CSTracker(SemaRef,

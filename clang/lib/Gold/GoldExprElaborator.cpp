@@ -2700,10 +2700,10 @@ handleDependentTypeNameLookup(Sema &SemaRef, const CallSyntax *Op,
     //     SemaRef.Diags.Report(RHS->getLoc(), DiagID);
     //     return nullptr;
     //   }
-    }
+    // }
 
-    llvm::errs() << "THE TYPE\n";
-    TInfo->getType().dump();
+    // llvm::errs() << "THE TYPE\n";
+    // TInfo->getType().dump();
   }
   clang::DeclarationNameInfo DNI({Id}, RHS->getLoc());
   return clang::CppxDependentMemberAccessExpr::Create(
