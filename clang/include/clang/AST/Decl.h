@@ -4617,7 +4617,7 @@ protected:
                     blue::Scope *BScope)
     :NamespaceDecl(C, Decl::CppxNamespace, DC, Inline, StartLoc, IdLoc, Id,
                    PrevDecl),
-     BlueScope(BScope), Rep(nullptr)
+     Rep(nullptr), BlueScope(BScope)
   { }
 
 public:
