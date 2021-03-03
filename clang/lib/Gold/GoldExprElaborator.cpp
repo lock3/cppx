@@ -2674,6 +2674,36 @@ handleDependentTypeNameLookup(Sema &SemaRef, const CallSyntax *Op,
   } else {
     auto Name = cast<AtomSyntax>(RHS);
     Id = &SemaRef.getContext().CxxAST.Idents.get(Name->getSpelling());
+
+    // we need to update clang before we can use this
+    // Make sure the name exists in the class.
+    // FIXME: what if this is an implicit this?
+    // FIXME: what if the name is in a dependent base class?
+    // if (clang::CXXThisExpr *This = dyn_cast<clang::CXXThisExpr>(Prev)) {
+    //   clang::PointerType *ThisPtr =
+    //     SemaRef.getCxxSema().getCurrentThisType().getTypePtr();
+
+    //   clang::QualType ThisPte = ThisPtr->getPointeeType();
+    //   clang::CXXRecordDecl *Record = nullptr;
+    //   if (auto *ICNT = ThisPte->getAs<clang::InjectedClassNameType>())
+    //     Record = ICNT->getDecl();
+    //   else
+    //     return nullptr;
+
+    //   clang::CXXBasePath P;
+    //   if (!Record->FindOrdinaryMember(P, {Name}
+
+    //   if (!Record->hasMemberName({Name})) {
+    //     unsigned DiagID =
+    //       SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+    //                                     "expect member or member function");
+    //     SemaRef.Diags.Report(RHS->getLoc(), DiagID);
+    //     return nullptr;
+    //   }
+    }
+
+    llvm::errs() << "THE TYPE\n";
+    TInfo->getType().dump();
   }
   clang::DeclarationNameInfo DNI({Id}, RHS->getLoc());
   return clang::CppxDependentMemberAccessExpr::Create(
