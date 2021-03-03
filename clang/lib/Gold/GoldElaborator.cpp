@@ -5178,8 +5178,12 @@ void Elaborator::lateElaborateMethodDef(LateElaboratedMethodDef &Method) {
   elaborateFunctionDef(Method.D);
   if (!Method.D->Cxx)
     return;
-  SemaRef.getCxxSema().ActOnFinishInlineFunctionDef(
-    cast<clang::FunctionDecl>(Method.D->Cxx));
+
+  clang::FunctionDecl *FD = cast<clang::FunctionDecl>(Method.D->Cxx);
+  if (!FD->doesThisDeclarationHaveABody())
+    return;
+
+  SemaRef.getCxxSema().ActOnFinishInlineFunctionDef(FD);
 }
 
 void Elaborator::elaborateAttributes(Declaration *D) {
