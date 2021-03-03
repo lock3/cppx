@@ -220,6 +220,7 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
   case Expr::CppxTypeLiteralClass:
   case Expr::CppxDeclRefExprClass:
   case Expr::CppxDerefOrPtrExprClass:
+  case Expr::CppxWildcardExprClass:
   case Expr::CppxPartialEvalExprClass:
   case Expr::CXXFragmentCaptureExprClass:
   case Expr::CXXInjectedValueExprClass:

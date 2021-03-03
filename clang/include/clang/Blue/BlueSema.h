@@ -30,7 +30,7 @@
 #include "clang/Blue/BlueScope.h"
 #include <memory>
 #include <vector>
-
+#include <utility>
 
 
 namespace clang {
@@ -113,7 +113,7 @@ public:
   //                          Declaration *NotThisOne = nullptr);
   bool lookupQualifiedName(clang::LookupResult &R);
 
-  Scope *getCurrentScope();
+  Scope *getCurrentScope() const;
 
   /// Enter a new scope corresponding to the syntax S.
   void enterScope(Scope::Kind K, const Syntax *S);
@@ -128,6 +128,9 @@ public:
 
   /// Pop the current scope, returning it.
   Scope *popScope();
+
+  /// This checks to see if we are in a class body scope currently.
+  bool scopeIsClass() const;
 
   /// Returns the current DeclContext that's set within the clang::Sema.
   /// It's worth noting that getCurrentCxxDeclContext doesn't always equal
@@ -253,6 +256,10 @@ public:
   /// scope stack for elaboration.
   ///
   unsigned computeTemplateDepth() const;
+
+  // Counts the depth of the current generic lambda. Will be zero whenever we
+  // are not currently elaborating a lambda expression.
+  unsigned LambdaTemplateDepth = 0;
 
 public:
   /// Clang scope management functions.
@@ -443,6 +450,11 @@ public:
   bool setLookupScope(clang::CXXRecordDecl *Record);
 
   Scope *getLookupScope();
+
+  // Get the identifier of the current lookup scope, or "true" for a global NNS
+  std::pair<bool, clang::IdentifierInfo *>
+  getLookupScopeName(NNSLookupDecl const &D, NNSKind K) const;
+  std::pair<bool, clang::IdentifierInfo *> getLookupScopeName() const;
 
   bool isQualifiedLookupContext() const {
     return QualifiedLookupContext;

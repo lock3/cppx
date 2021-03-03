@@ -543,6 +543,20 @@ struct TripleSyntax : TernarySyntax
   }
 };
 
+/// A quadruple of terms.
+struct QuadrupleSyntax : QuaternarySyntax
+{
+  static constexpr KindType Kind = Quadruple;
+
+  QuadrupleSyntax(Syntax *S0, Syntax *S1, Syntax *S2, Syntax *S3)
+    : QuaternarySyntax(Kind, S0, S1, S2, S3)
+  { }
+
+  static bool classof(const Syntax *S) {
+    return S->getKind() == Kind;
+  }
+};
+
 /// A unary prefix operator expression.
 struct PrefixSyntax : UnarySyntax
 {

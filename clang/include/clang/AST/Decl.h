@@ -4608,7 +4608,7 @@ protected:
                     gold::Scope *GScope)
     :NamespaceDecl(C, Decl::CppxNamespace, DC, Inline, StartLoc, IdLoc, Id,
                    PrevDecl),
-    Rep(GScope)
+     Rep(GScope), BlueScope(nullptr)
   { }
 
   CppxNamespaceDecl(ASTContext &C, DeclContext *DC, bool Inline,
@@ -4617,7 +4617,7 @@ protected:
                     blue::Scope *BScope)
     :NamespaceDecl(C, Decl::CppxNamespace, DC, Inline, StartLoc, IdLoc, Id,
                    PrevDecl),
-    BlueScope(BScope)
+     BlueScope(BScope), Rep(nullptr)
   { }
 
 public:
@@ -4632,6 +4632,7 @@ public:
                                    IdentifierInfo *Id, NamespaceDecl *PrevDecl,
                                    blue::Scope *GScope);
   gold::Scope *getScopeRep();
+  blue::Scope *getBlueScopeRep();
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }

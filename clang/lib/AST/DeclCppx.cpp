@@ -25,7 +25,13 @@ CppxNamespaceDecl::Create(ASTContext &C, DeclContext *DC, bool Inline,
 }
 
 gold::Scope *CppxNamespaceDecl::getScopeRep() {
+  assert(!BlueScope);
   return Rep;
+}
+
+blue::Scope *CppxNamespaceDecl::getBlueScopeRep() {
+  assert(!Rep);
+  return BlueScope;
 }
 
 } // namespace clang

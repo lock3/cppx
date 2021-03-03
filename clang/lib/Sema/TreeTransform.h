@@ -2590,6 +2590,14 @@ public:
     return CppxDeclRefExpr::Create(getSema().getASTContext(), Ty, D, Loc);
   }
 
+  ExprResult RebuildCppxWildcardExpr(CppxWildcardExpr *E) {
+    if (AlwaysRebuild())
+      return CppxWildcardExpr::Create(getSema().getASTContext(),
+                                      E->getLocation());
+
+    return E;
+  }
+
   /// Build a new expression in parentheses.
   ///
   /// By default, performs semantic analysis to build the new expression.
@@ -6792,7 +6800,6 @@ QualType TreeTransform<Derived>::TransformCppxTypeExprType(
   // llvm_unreachable("Working on type expression transformation.");
 }
 
-
 template<typename Derived>
 ExprResult TreeTransform<Derived>::TransformCppxDeclRefExpr(
     clang::CppxDeclRefExpr *E) {
@@ -6816,6 +6823,12 @@ ExprResult TreeTransform<Derived>::TransformCppxDeclRefExpr(
   }
 
   return getDerived().RebuildCppxDeclRefExpr(D, Ty, E->getExprLoc());
+}
+
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCppxWildcardExpr(CppxWildcardExpr *E) {
+  return getDerived().RebuildCppxWildcardExpr(E);
 }
 
 template<typename Derived>

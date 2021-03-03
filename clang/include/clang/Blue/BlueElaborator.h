@@ -63,10 +63,12 @@ public:
 
   Declaration *createDeclaration(const Syntax *Def, Declarator *Dcl,
                                  const Syntax *Init);
-
   Declaration *createNamespaceDecl(const DeclarationSyntax *Def,
                                    Declarator *Dcl,
                                    const Syntax *Init);
+  Declaration *createUsingDecl(const PrefixSyntax *Def,
+                               Declarator *Dcl,
+                               const Syntax *Init);
 
   //===--------------------------------------------------------------------===//
   //                                  Elaboration                             //
@@ -75,8 +77,10 @@ public:
 
   Declaration *identifyDeclaration(const Syntax *S);
   Declaration *buildDeclaration(const DeclarationSyntax *S);
+  Declaration *buildDeclaration(const PrefixSyntax *S);
   clang::Decl *elaborateDecl(const Syntax *S);
   clang::Decl *elaborateDefDecl(const DeclarationSyntax *S);
+  clang::Decl *elaboratePrefixDecl(const PrefixSyntax *S);
 
   clang::Decl *elaborateDeclarationTyping(Declaration *D);
   void elaborateTemplateParameters(OptionalScopeRAII &TemplateScope,
@@ -89,13 +93,13 @@ public:
   clang::Decl *elaborateTypeAliasOrVariableTemplate(Declaration *D);
 
   Declaration *elaborateTemplateParameter(const Syntax *Parm);
-  
+
   void elaborateParameters(const ListSyntax *S);
 
   void elaborateParameterGroup(const ListSyntax *S);
   void elaborateParameterList(const ListSyntax *S);
   clang::Decl *elaborateParameter(const Syntax *S, bool CtrlParam = false);
-
+  void elaborateDefaultParameterInit(Declaration *D);
 
   Declarator *getDeclarator(const Syntax *S);
   Declarator *getArrayDeclarator(const ArraySyntax *AS);
@@ -201,10 +205,11 @@ public:
   clang::Expr *elaborateNNS(clang::NamedDecl *NS, const InfixSyntax *S);
   clang::Expr *elaborateMemberAccessOp(clang::Expr *LHS, const InfixSyntax *S);
 
-
   clang::Expr *elaborateIntegerMetaFunction(const BinarySyntax *S);
   clang::Expr *elaborateCharacterMetaFunction(const BinarySyntax *S);
   clang::Expr *elaborateRealMetaFunction(const BinarySyntax *S);
+
+  clang::Expr *elaborateLambdaExpression(const ControlSyntax *S);
 
   /// Stmts
   clang::Stmt *elaborateEnclosureStmt(const EnclosureSyntax *S);

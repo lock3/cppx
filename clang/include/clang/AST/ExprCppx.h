@@ -705,6 +705,43 @@ public:
                                     SourceLocation L);
 };
 
+// Placeholder for a wildcard or "whatever expression" 
+class CppxWildcardExpr : public Expr {
+  SourceLocation Loc;
+
+  CppxWildcardExpr(const ASTContext &Ctx, SourceLocation Loc);
+public:
+
+  /// Retrieve the location of the literal.
+  SourceLocation getLocation() const { return Loc; }
+
+  SourceLocation getBeginLoc() const LLVM_READONLY {
+    return getLocation();
+  }
+
+  SourceLocation getEndLoc() const LLVM_READONLY {
+    return getLocation();
+  }
+
+  void setLocation(SourceLocation Location) { Loc = Location; }
+
+  // Iterators
+  child_range children() {
+    return child_range(child_iterator(), child_iterator());
+  }
+
+  const_child_range children() const {
+    return const_child_range(const_child_iterator(),
+                             const_child_iterator());
+  }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == CppxWildcardExprClass;
+  }
+
+  static CppxWildcardExpr *Create(const ASTContext &C, SourceLocation Loc);
+};
+
 } // namespace clang
 
 #endif // LLVM_CLANG_AST_EXPRCPPX_H

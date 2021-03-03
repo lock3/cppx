@@ -268,7 +268,15 @@ Syntax *Parser::parseDeclaration() {
   if (isDeclIntroducer(getLookahead()))
     Intro = consumeToken();
 
-  Syntax *Pars = parseDefinition();
+
+  Syntax *Pars = nullptr;
+  if (nextTokenIs(tok::UsingKeyword)) {
+    Pars = parsePrefixExpression();
+    expectToken(tok::Semicolon);
+    return Pars;
+  }
+
+  Pars =  parseDefinition();
   if (!Pars)
     return nullptr;
 
@@ -465,8 +473,7 @@ Syntax *Parser::parseDeclaratorList()
 /// This is a restriction on a more general grammar that allows function
 /// and/or array-like declarators.
 Syntax *Parser::parseDeclarator() {
-  Syntax *Ret = nullptr;
-  Ret = parseIdExpression();
+  Syntax *Ret = parseIdExpression();
 
   // Consume and build the correct name specifier, this only applies for
   // namespace name declarations.
@@ -475,6 +482,7 @@ Syntax *Parser::parseDeclarator() {
     Syntax *RHS = parseIdExpression();
     Ret = new InfixSyntax(DotTok, Ret, RHS);
   }
+
   return Ret;
 }
 
@@ -566,7 +574,7 @@ Syntax *Parser::parseControlExpression()
   case tok::DoKeyword:
     return parseLoopExpression();
   case tok::LambdaKeyword:
-    // return parse_lambda_expression();
+    return parseLambdaExpression();
   case tok::LetKeyword:
     return parseLetExpression();
   default:
@@ -878,6 +886,12 @@ Syntax *Parser::parseLambdaExpression()
   if (nextTokenIs(tok::LeftParen) || nextTokenIs(tok::LeftBracket))
     Desc = parseMappingDescriptor();
 
+  Syntax *TrailingReturn = nullptr;
+  if (nextTokenIs(tok::MinusGreater)) {
+    consumeToken();
+    TrailingReturn = parseDescriptor();
+  }
+
   Syntax *Cons = nullptr;
   if (nextTokenIs(tok::IsKeyword))
     Cons = parseConstraint();
@@ -885,7 +899,7 @@ Syntax *Parser::parseLambdaExpression()
   expectToken(tok::EqualGreater);
   Syntax *Body = parseBlockExpression();
 
-  Syntax *Head = new TripleSyntax(Cap, Desc, Cons);
+  Syntax *Head = new QuadrupleSyntax(Cap, Desc, Cons, TrailingReturn);
   return new ControlSyntax(Ctrl, Head, Body);
 }
 
@@ -1061,7 +1075,12 @@ static bool isAssignmentOp(tok::TokenKind K)
 Syntax *Parser::parseAssignmentExpression() {
   Syntax *E0 = parseImplicationExpression();
   while (Token Op = matchTokenIf(isAssignmentOp)) {
-    Syntax *E1 = parseAssignmentExpression();
+    Syntax *E1 = nullptr;
+    if (nextTokenIs(tok::LambdaKeyword))
+      E1 = parseControlExpression();
+    else
+      E1 = parseAssignmentExpression();
+
     E0 = new InfixSyntax(Op, E0, E1);
   }
   return E0;
@@ -1317,10 +1336,11 @@ Syntax *Parser::parsePrefixExpression() {
   case tok::Caret:
   case tok::Plus:
   case tok::Minus:
+  case tok::UsingKeyword:
   case tok::NotKeyword: {
-    Token op = consumeToken();
-    Syntax *e = parsePrefixExpression();
-    return new PrefixSyntax(op, e);
+    Token Op = consumeToken();
+    Syntax *E = parsePrefixExpression();
+    return new PrefixSyntax(Op, E);
   }
 
   default:

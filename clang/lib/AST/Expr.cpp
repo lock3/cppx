@@ -3266,6 +3266,7 @@ bool Expr::HasSideEffects(const EvalContext &Ctx,
   case CppxDependentMemberAccessExprClass:
   case CppxCallOrConstructorExprClass:
   case CppxDerefOrPtrExprClass:
+  case CppxWildcardExprClass:
   case CppxTemplateOrArrayExprClass:
   case UnresolvedLookupExprClass:
   case UnresolvedMemberExprClass:

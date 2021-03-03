@@ -41,6 +41,7 @@ public:
     Function,
     Template,
     Class,
+    Using,
   };
 
   Declarator(Kind K, const Syntax *S)

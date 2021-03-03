@@ -1341,6 +1341,7 @@ CanThrowResult Sema::canThrow(const Stmt *S) {
   case Expr::CppxDependentMemberAccessExprClass:
   case Expr::CppxCallOrConstructorExprClass:
   case Expr::CppxDerefOrPtrExprClass:
+  case Expr::CppxWildcardExprClass:
   case Expr::CppxTemplateOrArrayExprClass:
   case Expr::CXXUnresolvedConstructExprClass:
   case Expr::DependentScopeDeclRefExprClass:

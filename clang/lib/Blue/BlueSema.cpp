@@ -143,7 +143,7 @@ clang::ASTContext &Sema::getCxxAST() {
   return CxxAST;
 }
 
-Scope *Sema::getCurrentScope() {
+Scope *Sema::getCurrentScope() const {
   return ScopeStack.empty() ? nullptr : ScopeStack.back();
 }
 
@@ -180,6 +180,10 @@ Scope *Sema::popScope() {
   Scope *R = ScopeStack.back();
   ScopeStack.pop_back();
   return R;
+}
+
+bool Sema::scopeIsClass() const {
+  return getCurrentScope()->isClassScope();
 }
 
 clang::DeclContext *Sema::getCurClangDeclContext() const {
@@ -226,6 +230,7 @@ static void addIfNotDuplicate(clang::LookupResult &R, clang::NamedDecl *ND) {
 
 bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   assert(S && "lookup in non-existent scope");
+  clang::DiagnosticsEngine &Diags = getCxxSema().Diags;
 
   clang::DeclarationName Name = R.getLookupName();
   clang::IdentifierInfo *Id = Name.getAsIdentifierInfo();
@@ -238,8 +243,8 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
     auto BuiltinMapIter = BuiltinTypes.find(Id->getName());
     if (BuiltinMapIter != BuiltinTypes.end()) {
       if (BuiltinMapIter->second.isNull()) {
-        getCxxSema().Diags.Report(clang::SourceLocation(),
-                                  clang::diag::err_invalid_builtin_type) << Id;
+        Diags.Report(clang::SourceLocation(),
+                     clang::diag::err_invalid_builtin_type) << Id;
         return true;
       }
       // This is a special case where the token is a built in type and
@@ -249,33 +254,33 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
     }
   }
 
-  // clang::IdentifierResolver::iterator
-  //   I = getCxxSema().IdResolver->begin(Name),
-  //   IEnd = getCxxSema().IdResolver->end();
-  // auto addShadows = [&R](Scope *S, clang::NamedDecl *D) -> bool {
-  //   bool Shadowed = false;
-  //   clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D);
-  //   if (!UD) {
-  //     clang::UsingShadowDecl *Shadow = dyn_cast<clang::UsingShadowDecl>(D);
-  //     if (Shadow) {
-  //       R.addDecl(Shadow);
-  //       Shadowed = true;
-  //       return true;
-  //     }
+  clang::IdentifierResolver::iterator
+    I = getCxxSema().IdResolver->begin(Name),
+    IEnd = getCxxSema().IdResolver->end();
+  auto addShadows = [&R](Scope *S, clang::NamedDecl *D) -> bool {
+    bool Shadowed = false;
+    clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D);
+    if (!UD) {
+      clang::UsingShadowDecl *Shadow = dyn_cast<clang::UsingShadowDecl>(D);
+      if (Shadow) {
+        R.addDecl(Shadow);
+        Shadowed = true;
+        return true;
+      }
 
-  //     return false;
-  //   }
+      return false;
+    }
 
-  //   for (auto *Shadow : UD->shadows()) {
-  //     auto It = std::find(std::begin(S->Shadows), std::end(S->Shadows), Shadow);
-  //     if (It != std::end(S->Shadows)) {
-  //       R.addDecl(Shadow);
-  //       Shadowed = true;
-  //     }
-  //   }
+    for (auto *Shadow : UD->shadows()) {
+      auto It = std::find(std::begin(S->Shadows), std::end(S->Shadows), Shadow);
+      if (It != std::end(S->Shadows)) {
+        R.addDecl(Shadow);
+        Shadowed = true;
+      }
+    }
 
-  //   return true;
-  // };
+    return true;
+  };
 
   // This is done based on how CppLookUpName is handled, with a few exceptions,
   // this will return uninstantiated template declarations, namespaces,
@@ -284,38 +289,37 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S) {
   // bool FoundFirstClassScope = false;
   for(; S; S = S->getParent()) {
     std::set<Declaration *> Found = S->findDecl(Id);
-    if (Found.empty())
-      continue;
-    // // Look through any using directives, but only if we didn't already find
-    // // something acceptable. However, we always check the shadows in a lambda
-    // // block.
-    // if (Found.empty() || S->isLambdaScope()) {
-    //   // See if Clang has anything in the identifier resolver.
-    //   // bool Shadowed = false;
-    //   // for (; I != IEnd; ++I)
-    //   //   Shadowed |= addShadows(S, *I);
-    //   if (Shadowed)
-    //     return true;
 
-    //   bool FoundInNamespace = false;
-    //   for (clang::UsingDirectiveDecl *UD : S->UsingDirectives) {
-    //     assert(isa<clang::CppxNamespaceDecl>(UD->getNominatedNamespace()));
+    // Look through any using directives, but only if we didn't already find
+    // something acceptable. However, we always check the shadows in a lambda
+    // block.
+    if (Found.empty() || S->isLambdaScope()) {
+      // See if Clang has anything in the identifier resolver.
+      bool Shadowed = false;
+      for (; I != IEnd; ++I)
+        Shadowed |= addShadows(S, *I);
+      if (Shadowed)
+        return false;
 
-    //     clang::CppxNamespaceDecl *NS =
-    //       cast<clang::CppxNamespaceDecl>(UD->getNominatedNamespace());
-    //     std::set<Declaration *> NSFound = NS->Rep->findDecl(Id);
+      bool FoundInNamespace = false;
+      for (clang::UsingDirectiveDecl *UD : S->UsingDirectives) {
+        assert(isa<clang::CppxNamespaceDecl>(UD->getNominatedNamespace()));
 
-    //     // We found the name in more than one namespace.
-    //     if (FoundInNamespace && !NSFound.empty()) {
-    //       Diags.Report(R.getNameLoc(), clang::diag::err_ambiguous_reference)
-    //         << Name;
-    //       return false;
-    //     }
+        clang::CppxNamespaceDecl *NS =
+          cast<clang::CppxNamespaceDecl>(UD->getNominatedNamespace());
+        std::set<Declaration *> NSFound = NS->getBlueScopeRep()->findDecl(Id);
 
-    //     FoundInNamespace = !NSFound.empty();
-    //     Found = NSFound;
-    //   }
-    // }
+        // We found the name in more than one namespace.
+        if (FoundInNamespace && !NSFound.empty()) {
+          Diags.Report(R.getNameLoc(), clang::diag::err_ambiguous_reference)
+            << Name;
+          return true;
+        }
+
+        FoundInNamespace = !NSFound.empty();
+        Found = NSFound;
+      }
+    }
 
     if (!Found.empty()) {
       for (auto *FoundDecl : Found) {
@@ -913,11 +917,13 @@ clang::ParsedType Sema::getParsedTypeFromExpr(const clang::Expr *TyExpr,
 
 clang::CppxDeclRefExpr *Sema::buildNSDeclRef(clang::CppxNamespaceDecl *D,
                                              clang::SourceLocation Loc) {
+  setLookupScope(D);
   return buildAnyDeclRef(Context.CxxAST.CppxNamespaceTy, D, Loc);
 }
 
 clang::CppxDeclRefExpr *Sema::buildNSDeclRef(clang::NamespaceAliasDecl *D,
                                              clang::SourceLocation Loc) {
+  setLookupScope(D);
   return buildAnyDeclRef(Context.CxxAST.CppxNamespaceTy, D, Loc);
 }
 
@@ -1449,7 +1455,7 @@ Scope *Sema::getLookupScope() {
   case NNSK_Global:
     return CurNNSLookupDecl.Global.Scope;
   case NNSK_Namespace:
-    return CurNNSLookupDecl.NNS->BlueScope;
+    return CurNNSLookupDecl.NNS->getBlueScopeRep();
   case NNSK_NamespaceAlias: {
     clang::Decl *AliasedNS = CurNNSLookupDecl.Alias->getAliasedNamespace();
     if (auto *NNS = dyn_cast<clang::CppxNamespaceDecl>(AliasedNS))
@@ -1464,6 +1470,34 @@ Scope *Sema::getLookupScope() {
   } // switch (CurNNSKind)
 
   llvm_unreachable("Invalid or unknown nested name specifier type");
+}
+
+// Get the identifier of the current lookup scope, or "true" for a global NNS
+std::pair<bool, clang::IdentifierInfo *> Sema::getLookupScopeName() const {
+  return getLookupScopeName(CurNNSLookupDecl, CurNNSKind);
+}
+
+std::pair<bool, clang::IdentifierInfo *>
+Sema::getLookupScopeName(Sema::NNSLookupDecl const &D, Sema::NNSKind K) const {
+  switch (K) {
+  case NNSK_Empty:
+    return {false, nullptr};
+  case NNSK_Global:
+    return {true, nullptr};
+  case NNSK_Namespace:
+    return {false, D.NNS->getIdentifier()};
+  case NNSK_NamespaceAlias: {
+    clang::Decl *AliasedNS = D.Alias->getAliasedNamespace();
+    if (auto *NNS = dyn_cast<clang::CppxNamespaceDecl>(AliasedNS))
+      return {false, NNS->getIdentifier()};
+    // FIXME: The namespace alias doesn't contain a CppxNamespaceDecl
+    llvm_unreachable("Invalid namespace alias");
+  }
+
+  // FIXME: supply enough information in the NNSLookupDecl to create this.
+  case NNSK_Record:
+    return {false, nullptr};
+  } // switch (K);
 }
 
 } // end namespace Blue
