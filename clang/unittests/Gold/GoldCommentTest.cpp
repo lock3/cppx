@@ -181,3 +181,18 @@ TEST(GoldCommentHandling, MultipleLineConmments) {
   Verifier.Match("# comment 1", 1, 11);
   Verifier.Match("# comment 2", 2, 1);
 }
+
+TEST(GoldCommentHandling, NestingAndSeparation) {
+  StringRef Code = R"(
+x : int = 0
+<#
+  Defining the new allocator.
+  <# doubly nested comment #>
+#>
+
+main() : int! <# test #>
+  return x <#test<#test#>#>
+)";
+
+  SimpleGoldParseTest(Code);
+}

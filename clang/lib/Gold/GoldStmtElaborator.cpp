@@ -293,12 +293,11 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
       }
     }
   }
-  if (const ArraySyntax *BlockCond
-                                = dyn_cast<ArraySyntax>(Call->getArguments())) {
-    ConditionExpr = ExEl.elaborateBlockCondition(BlockCond, IsConstExprIfStmt);
 
-  } else if (const ListSyntax *Args
-                                 = dyn_cast<ListSyntax>(Call->getArguments())) {
+  // Elaborate the condition
+  if (const auto *BlockCond = dyn_cast<ArraySyntax>(Call->getArguments())) {
+    ConditionExpr = ExEl.elaborateBlockCondition(BlockCond, IsConstExprIfStmt);
+  } else if (const auto *Args = dyn_cast<ListSyntax>(Call->getArguments())) {
     if (IsConstExprIfStmt)
       ConditionExpr = ExEl.elaborateExpectedConstantExpr(Args->getChild(0));
     else
@@ -306,6 +305,9 @@ clang::Stmt *StmtElaborator::elaborateIfStmt(const MacroSyntax *S) {
   } else {
     return nullptr;
   }
+
+  if (!ConditionExpr)
+    return nullptr;
 
   clang::Sema::ConditionResult Condition =
     SemaRef.getCxxSema().ActOnCondition(/*Scope=*/nullptr,
