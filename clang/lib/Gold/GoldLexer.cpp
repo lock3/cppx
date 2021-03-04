@@ -360,9 +360,19 @@ Token CharacterScanner::matchLineComment() {
 }
 
 Token CharacterScanner::matchBlockComment() {
-  auto BeginLoc = getSourceLocation(First);
+  auto BeginLoc = First;
   consume(2); // '<#'
-  while (!isDone() && nextCharacterIsNot('#') && nthCharacterIsNot(1, '>')) {
+  bool Terminated = false;
+  while (!isDone()) {
+    // Deal with nested blocks.
+    if (nextCharacterIs('<') && nthCharacterIs(1, '#'))
+      matchBlockComment();
+
+    if (nextCharacterIs('#') && nthCharacterIs(1, '>')) {
+      Terminated = true;
+      break;
+    }
+
     char c = getLookahead();
     consume();
     if (isNewline(c)) {
@@ -370,11 +380,12 @@ Token CharacterScanner::matchBlockComment() {
       Column = 1;
     }
   }
-  if (isDone()) {
-    // FIXME: We need a better diagnostic because this explicitly
-    // refers to C-style block comments.
-    getDiagnostics().Report(getInputLocation(),
-                            clang::diag::err_unterminated_block_comment);
+
+  if (isDone() && !Terminated) {
+    unsigned DiagID =
+      getDiagnostics().getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                       "unterminated <# comment");
+    getDiagnostics().Report(getInputLocation(), DiagID);
     return matchEof();
   }
   consume(2); // '#>'
@@ -390,8 +401,7 @@ Token CharacterScanner::matchBlockComment() {
   PP.HandleComment(CTok, clang::SourceRange(getSourceLocation(Start),
                                             getSourceLocation(First)));
   // Build the block comment.
-  Symbol Sym = getSymbol(Start, First);
-  return Token(tok::BlockComment, BeginLoc, Sym);
+  return makeToken(tok::BlockComment, BeginLoc, TokLen);
 }
 
 Token CharacterScanner::matchToken(TokenKind K) {
@@ -855,14 +865,48 @@ static bool isInfix(Token Op, bool GTIO) {
   }
 }
 
+// true when a token is not a space or comment
+static inline bool isSignificant(const Token &Tok) {
+  return !Tok.hasKind(tok::Invalid) || Tok.isSpace() ||
+    Tok.isNewline() || Tok.isComment();
+}
+
 Token LineScanner::operator()() {
   Token Tok;
   bool StartsLine = false;
+
+  // These two booleans, as well as the temporary SkipNewlineAfterComment,
+  // keep track of the state of comments.
+  // Comments can end with a newline that may or may not be significant.
+  // For example:
+  // \code
+  //   <# comment #>               <--- newline is insignficant
+  //   main() : int! <# comment #> <--- newline is a separator
+  //     return 0
+  // \endcode
+  // The newline after a comment is signficant when the last token
+  // before the current SEQUENCE of comments was not whitespace or
+  // invalid.
+  bool PreviousWasComment = false;
+  bool LastWasSignificant = false;
   while (true) {
     Tok = Scanner();
 
-    if (!Tok.isSpace() && !Tok.isNewline())
+    // If the last token wasn't a comment, check if it was signficant.
+    // If it was, then we'll see if the previous token before the comment
+    // sequence was signficant. If it was NOT, then the next newline we see
+    // is NOT a separator.
+    bool SkipNewlineAfterComment = false;
+    if (!PreviousWasComment)
+      LastWasSignificant = isSignificant(Current);
+    else if (!LastWasSignificant)
+      SkipNewlineAfterComment = true;
+
+    if (!Tok.isSpace() && !Tok.isNewline()) {
       Current = Tok;
+      if (Tok.isComment())
+        PreviousWasComment = true;
+    }
 
     // Space at the beginning of a line cannot be discarded here.
     if (Tok.isSpace() && Tok.isAtStartOfLine() &&
@@ -877,6 +921,8 @@ Token LineScanner::operator()() {
 
     // Empty lines are discarded.
     if (Tok.isNewline() && Tok.isAtStartOfLine())
+      continue;
+    if (Tok.isNewline() && SkipNewlineAfterComment)
       continue;
 
     // Errors, space, and comments are discardable. If a token starts a
