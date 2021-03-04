@@ -207,11 +207,12 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
 
   TD = NextTD;
 
+  auto ClsDcl = dyn_cast<clang::CXXRecordDecl>(TD);
   clang::DeclarationName MemberName = E->getMember();
   const OpInfoBase *OpInfo = SemaRef.OpInfo.getOpInfo(MemberName.getAsString());
   clang::DeclarationNameInfo DNI(MemberName, Ret->getExprLoc());
   clang::LookupResult R(SemaRef.getCxxSema(), DNI,
-                        clang::Sema::LookupOrdinaryName,
+                        clang::Sema::LookupMemberName,
                         clang::Sema::NotForRedeclaration);
   if (OpInfo) {
     clang::OverloadedOperatorKind UnaryOpKind = OpInfo->getUnaryOverloadKind();
@@ -219,41 +220,95 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
 
     clang::DeclarationName DN = Context.CxxAST.DeclarationNames
                                                .getCXXOperatorName(UnaryOpKind);
-    auto UnaryOps = TD->lookup(DN);
-    clang::DeclarationName DN2 = Context.CxxAST.DeclarationNames
-                                              .getCXXOperatorName(BinaryOpKind);
-    auto BinaryOps = TD->lookup(DN2);
-    R.setLookupNameInfo(clang::DeclarationNameInfo(DN, Ret->getExprLoc()));
-    for (clang::NamedDecl *ND : UnaryOps) {
-      if (!ND->isCXXClassMember())
-        continue;
+    if (ClsDcl) {
 
-      if (clang::CXXMethodDecl *MD
-                  = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
-        if (!MD->isOverloadedOperator())
+      clang::LookupResult UnaryR(SemaRef.getCxxSema(), {DN, Ret->getExprLoc()},
+                                clang::Sema::LookupMemberName,
+                                clang::Sema::NotForRedeclaration);
+      SemaRef.getCxxSema().LookupQualifiedName(UnaryR, ClsDcl, false);
+      for (clang::NamedDecl *ND : UnaryR.asUnresolvedSet()) {
+        if (!ND->isCXXClassMember())
           continue;
-        if (MD->getOverloadedOperator() == UnaryOpKind) {
-          if (OpInfo->isUnary()) {
-            if (MD->getNumParams() == 0)
+
+        if (clang::CXXMethodDecl *MD
+                  = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
+          if (!MD->isOverloadedOperator())
+            continue;
+          if (MD->getOverloadedOperator() == UnaryOpKind) {
+            if (OpInfo->isUnary()) {
+              if (MD->getNumParams() == 0)
+                addIfNotDuplicate(R, MD);
+            } else {
               addIfNotDuplicate(R, MD);
-          } else {
-            addIfNotDuplicate(R, MD);
+            }
+          }
+        }
+      }
+    } else {
+      auto UnaryOps = TD->lookup(DN);
+      for (clang::NamedDecl *ND : UnaryOps) {
+        if (!ND->isCXXClassMember())
+          continue;
+
+        if (clang::CXXMethodDecl *MD
+                  = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
+          if (!MD->isOverloadedOperator())
+            continue;
+          if (MD->getOverloadedOperator() == UnaryOpKind) {
+            if (OpInfo->isUnary()) {
+              if (MD->getNumParams() == 0)
+                addIfNotDuplicate(R, MD);
+            } else {
+              addIfNotDuplicate(R, MD);
+            }
           }
         }
       }
     }
-    for (clang::NamedDecl *ND : BinaryOps) {
-      if (!ND->isCXXClassMember())
-        continue;
 
-      if (clang::CXXMethodDecl *MD
-                  = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
-        if (!MD->isOverloadedOperator())
+    clang::DeclarationName DN2 = Context.CxxAST.DeclarationNames
+                                              .getCXXOperatorName(BinaryOpKind);
+    if (ClsDcl) {
+      clang::LookupResult BinR(SemaRef.getCxxSema(), {DN2, Ret->getExprLoc()},
+                              clang::Sema::LookupMemberName,
+                              clang::Sema::NotForRedeclaration);
+      SemaRef.getCxxSema().LookupQualifiedName(BinR, ClsDcl, false);
+
+      // auto BinaryOps = TD->lookup(DN2);
+      R.setLookupNameInfo(clang::DeclarationNameInfo(DN, Ret->getExprLoc()));
+      for (clang::NamedDecl *ND : BinR.asUnresolvedSet()) {
+        if (!ND->isCXXClassMember())
           continue;
-        if (MD->getOverloadedOperator() == BinaryOpKind)
-          if (OpInfo->isBinary()) {
-            if (MD->getNumParams() == 1) {
-            addIfNotDuplicate(R, MD);
+
+        if (clang::CXXMethodDecl *MD
+                  = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
+          if (!MD->isOverloadedOperator())
+            continue;
+          if (MD->getOverloadedOperator() == BinaryOpKind)
+            if (OpInfo->isBinary()) {
+              if (MD->getNumParams() == 1) {
+              addIfNotDuplicate(R, MD);
+            }
+          }
+        }
+      }
+    } else {
+      auto UnaryOps = TD->lookup(DN);
+      for (clang::NamedDecl *ND : UnaryOps) {
+        if (!ND->isCXXClassMember())
+          continue;
+
+        if (clang::CXXMethodDecl *MD
+                  = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
+          if (!MD->isOverloadedOperator())
+            continue;
+          if (MD->getOverloadedOperator() == UnaryOpKind) {
+            if (OpInfo->isUnary()) {
+              if (MD->getNumParams() == 0)
+                addIfNotDuplicate(R, MD);
+            } else {
+              addIfNotDuplicate(R, MD);
+            }
           }
         }
       }
@@ -270,12 +325,18 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
   // If we didnt't find any operators then default to searching within
   // the current TagDecl context.
   if (R.empty()) {
-
-    auto Members = TD->lookup(MemberName);
-
-    for(auto D : Members) {
-      R.addDecl(D, D->getAccess());
+    if (ClsDcl) {
+      SemaRef.getCxxSema().LookupQualifiedName(R, ClsDcl, false);
+      for(auto D : R.asUnresolvedSet()) {
+        R.addDecl(D, D->getAccess());
+      }
+    } else {
+      auto Members = TD->lookup(MemberName);
+      for(auto D : Members) {
+        R.addDecl(D, D->getAccess());
+      }
     }
+
   }
 
   R.resolveKind();
@@ -291,6 +352,18 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
   }
   case clang::LookupResult::NotFoundInCurrentInstantiation: {
   case clang::LookupResult::NotFound:
+    //{
+      // // Checking any base classes.
+      // clang::CXXScopeSpec SS;
+      // // SS.Adopt(QualifierLoc);
+
+      // return SemaRef.getCxxSema().BuildMemberReferenceExpr(BaseE, BaseType,
+      //                                         OperatorLoc, IsArrow,
+      //                                         SS, TemplateKWLoc,
+      //                                         FirstQualifierInScope,
+      //                                         MemberNameInfo,
+      //                                         TemplateArgs, /*S*/nullptr);
+    // }
     SemaRef.Diags.Report(Ret->getExprLoc(),
                           clang::diag::err_no_member)
                           << DNI.getName().getAsString() << Ty;

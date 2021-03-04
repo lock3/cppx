@@ -34,10 +34,10 @@ _Vector_Base[T:type, Alloc:type] : type = class:
   T_alloc_type : type = Alloc.rebind[T].other
   _Vector_Impl : type = class(T_alloc_type) {
     constructor()! {
-      static_cast[^T_alloc_type](this).init();
+      (this.(T_alloc_type)init)();
     }
   }
-  impl: _Vector_Impl;
+  impl: _Vectror_Impl;
 temp() : void !{
   x:_Vector_Base[int, new_allocator[int]];
 }

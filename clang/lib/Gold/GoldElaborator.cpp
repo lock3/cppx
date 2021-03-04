@@ -319,6 +319,7 @@ void Elaborator::startFile(const Syntax *S) {
 }
 
 void Elaborator::finishFile(const Syntax *S) {
+
   SemaRef.getCxxSema().ActOnEndOfTranslationUnit();
   SemaRef.popDecl();
   SemaRef.leaveScope(S);
