@@ -110,9 +110,7 @@ static void instantiateDependentAlignedAttr(
   SmallVector<UnexpandedParameterPack, 2> Unexpanded;
   if (Aligned->isAlignmentExpr())
     S.collectUnexpandedParameterPacks(
-        TemplateArgument(Aligned->getAlignmentExpr(),
-                         TemplateArgument::Expression),
-        Unexpanded);
+        TemplateArgument(Aligned->getAlignmentExpr()), Unexpanded);
   else
     S.collectUnexpandedParameterPacks(Aligned->getAlignmentType()->getTypeLoc(),
                                       Unexpanded);
@@ -550,12 +548,40 @@ static void instantiateDependentAMDGPUWavesPerEUAttr(
   S.addAMDGPUWavesPerEUAttr(New, Attr, MinExpr, MaxExpr);
 }
 
+/// Determine whether the attribute A might be relevent to the declaration D.
+/// If not, we can skip instantiating it. The attribute may or may not have
+/// been instantiated yet.
+static bool isRelevantAttr(Sema &S, const Decl *D, const Attr *A) {
+  // 'preferred_name' is only relevant to the matching specialization of the
+  // template.
+  if (const auto *PNA = dyn_cast<PreferredNameAttr>(A)) {
+    QualType T = PNA->getTypedefType();
+    const auto *RD = cast<CXXRecordDecl>(D);
+    if (!T->isDependentType() && !RD->isDependentContext() &&
+        !declaresSameEntity(T->getAsCXXRecordDecl(), RD))
+      return false;
+    for (const auto *ExistingPNA : D->specific_attrs<PreferredNameAttr>())
+      if (S.Context.hasSameType(ExistingPNA->getTypedefType(),
+                                PNA->getTypedefType()))
+        return false;
+    return true;
+  }
+
+  return true;
+}
+
 void Sema::InstantiateAttrsForDecl(
     const MultiLevelTemplateArgumentList &TemplateArgs, const Decl *Tmpl,
     Decl *New, LateInstantiatedAttrVec *LateAttrs,
     LocalInstantiationScope *OuterMostScope) {
   if (NamedDecl *ND = dyn_cast<NamedDecl>(New)) {
+    // FIXME: This function is called multiple times for the same template
+    // specialization. We should only instantiate attributes that were added
+    // since the previous instantiation.
     for (const auto *TmplAttr : Tmpl->attrs()) {
+      if (!isRelevantAttr(*this, New, TmplAttr))
+        continue;
+
       // FIXME: If any of the special case versions from InstantiateAttrs become
       // applicable to template declaration, we'll need to add them here.
       CXXThisScopeRAII ThisScope(
@@ -564,7 +590,7 @@ void Sema::InstantiateAttrsForDecl(
 
       Attr *NewAttr = sema::instantiateTemplateAttributeForDecl(
           TmplAttr, Context, *this, TemplateArgs);
-      if (NewAttr)
+      if (NewAttr && isRelevantAttr(*this, New, NewAttr))
         New->addAttr(NewAttr);
     }
   }
@@ -589,6 +615,9 @@ void Sema::InstantiateAttrs(const MultiLevelTemplateArgumentList &TemplateArgs,
                             LateInstantiatedAttrVec *LateAttrs,
                             LocalInstantiationScope *OuterMostScope) {
   for (const auto *TmplAttr : Tmpl->attrs()) {
+    if (!isRelevantAttr(*this, New, TmplAttr))
+      continue;
+
     // FIXME: This should be generalized to more than just the AlignedAttr.
     const AlignedAttr *Aligned = dyn_cast<AlignedAttr>(TmplAttr);
     if (Aligned && Aligned->isAlignmentDependent()) {
@@ -711,9 +740,29 @@ void Sema::InstantiateAttrs(const MultiLevelTemplateArgumentList &TemplateArgs,
 
       Attr *NewAttr = sema::instantiateTemplateAttribute(TmplAttr, Context,
                                                          *this, TemplateArgs);
-      if (NewAttr)
+      if (NewAttr && isRelevantAttr(*this, New, TmplAttr))
         New->addAttr(NewAttr);
     }
+  }
+}
+
+/// In the MS ABI, we need to instantiate default arguments of dllexported
+/// default constructors along with the constructor definition. This allows IR
+/// gen to emit a constructor closure which calls the default constructor with
+/// its default arguments.
+void Sema::InstantiateDefaultCtorDefaultArgs(CXXConstructorDecl *Ctor) {
+  assert(Context.getTargetInfo().getCXXABI().isMicrosoft() &&
+         Ctor->isDefaultConstructor());
+  unsigned NumParams = Ctor->getNumParams();
+  if (NumParams == 0)
+    return;
+  DLLExportAttr *Attr = Ctor->getAttr<DLLExportAttr>();
+  if (!Attr)
+    return;
+  for (unsigned I = 0; I != NumParams; ++I) {
+    (void)CheckCXXDefaultArgExpr(Attr->getLocation(), Ctor,
+                                   Ctor->getParamDecl(I));
+    DiscardCleanupsInEvaluationContext();
   }
 }
 
@@ -1248,18 +1297,6 @@ Decl *TemplateDeclInstantiator::VisitCXXStmtFragmentDecl(CXXStmtFragmentDecl *D)
 }
 
 Decl
-*TemplateDeclInstantiator::VisitCXXRequiredTypeDecl(CXXRequiredTypeDecl *D) {
-  // See VisitCXXFragmentDecl.
-  llvm_unreachable("should never get here");
-}
-
-Decl *TemplateDeclInstantiator::VisitCXXRequiredDeclaratorDecl(
-                                                 CXXRequiredDeclaratorDecl *D) {
-  // See VisitCXXFragmentDecl.
-  llvm_unreachable("should never get here");
-}
-
-Decl
 *TemplateDeclInstantiator::VisitCppxNamespaceDecl(CppxNamespaceDecl *D) {
   // See VisitCXXFragmentDecl.
   llvm_unreachable("should never get here");
@@ -1270,7 +1307,6 @@ Decl
   // See VisitCXXFragmentDecl.
   llvm_unreachable("should never get here");
 }
-
 
 Decl *TemplateDeclInstantiator::VisitIndirectFieldDecl(IndirectFieldDecl *D) {
   NamedDecl **NamedChain =
@@ -2004,10 +2040,11 @@ static QualType adjustFunctionTypeForInstantiation(ASTContext &Context,
 static ConstexprSpecKind getNewConstexprSpecKind(
     FunctionDecl *D, const MultiLevelTemplateArgumentList &TemplateArgs) {
   ConstexprSpecKind OldKind = D->getConstexprKind();
-  if (OldKind != CSK_constexpr)
+  if (OldKind != ConstexprSpecKind::Constexpr)
     return OldKind;
 
-  return TemplateArgs.isConstexprPromoting() ? CSK_consteval : CSK_constexpr;
+  return TemplateArgs.isConstexprPromoting() ? ConstexprSpecKind::Consteval
+                                             : ConstexprSpecKind::Constexpr;
 }
 
 /// Normal class members are of more specific types and therefore
@@ -2018,7 +2055,6 @@ static ConstexprSpecKind getNewConstexprSpecKind(
 Decl *TemplateDeclInstantiator::VisitFunctionDecl(
     FunctionDecl *D, TemplateParameterList *TemplateParams,
     RewriteKind FunctionRewriteKind) {
-
   // Check whether there is already a function template specialization for
   // this declaration.
   FunctionTemplateDecl *FunctionTemplate = D->getDescribedFunctionTemplate();
@@ -4308,6 +4344,9 @@ TemplateDeclInstantiator::SubstFunctionType(FunctionDecl *D,
       for (unsigned OldIdx = 0, NumOldParams = OldProtoLoc.getNumParams();
            OldIdx != NumOldParams; ++OldIdx) {
         ParmVarDecl *OldParam = OldProtoLoc.getParam(OldIdx);
+        if (!OldParam)
+          return nullptr;
+
         LocalInstantiationScope *Scope = SemaRef.CurrentInstantiationScope;
 
         Optional<unsigned> NumArgumentsInExpansion;
@@ -4656,6 +4695,8 @@ TemplateDeclInstantiator::InitFunctionInstantiation(FunctionDecl *New,
   // into a template instantiation for this specific function template
   // specialization, which is not a SFINAE context, so that we diagnose any
   // further errors in the declaration itself.
+  //
+  // FIXME: This is a hack.
   typedef Sema::CodeSynthesisContext ActiveInstType;
   ActiveInstType &ActiveInst = SemaRef.CodeSynthesisContexts.back();
   if (ActiveInst.Kind == ActiveInstType::ExplicitTemplateArgumentSubstitution ||
@@ -4665,6 +4706,8 @@ TemplateDeclInstantiator::InitFunctionInstantiation(FunctionDecl *New,
       assert(FunTmpl->getTemplatedDecl() == Tmpl &&
              "Deduction from the wrong function template?");
       (void) FunTmpl;
+      SemaRef.InstantiatingSpecializations.erase(
+          {ActiveInst.Entity->getCanonicalDecl(), ActiveInst.Kind});
       atTemplateEnd(SemaRef.TemplateInstCallbacks, SemaRef, ActiveInst);
       ActiveInst.Kind = ActiveInstType::TemplateInstantiation;
       ActiveInst.Entity = New;
@@ -4792,27 +4835,6 @@ Sema::InstantiateFunctionDeclaration(FunctionTemplateDecl *FTD,
   MultiLevelTemplateArgumentList MArgs(*Args);
 
   return cast_or_null<FunctionDecl>(SubstDecl(FD, FD->getParent(), MArgs));
-}
-
-/// In the MS ABI, we need to instantiate default arguments of dllexported
-/// default constructors along with the constructor definition. This allows IR
-/// gen to emit a constructor closure which calls the default constructor with
-/// its default arguments.
-static void InstantiateDefaultCtorDefaultArgs(Sema &S,
-                                              CXXConstructorDecl *Ctor) {
-  assert(S.Context.getTargetInfo().getCXXABI().isMicrosoft() &&
-         Ctor->isDefaultConstructor());
-  unsigned NumParams = Ctor->getNumParams();
-  if (NumParams == 0)
-    return;
-  DLLExportAttr *Attr = Ctor->getAttr<DLLExportAttr>();
-  if (!Attr)
-    return;
-  for (unsigned I = 0; I != NumParams; ++I) {
-    (void)S.CheckCXXDefaultArgExpr(Attr->getLocation(), Ctor,
-                                   Ctor->getParamDecl(I));
-    S.DiscardCleanupsInEvaluationContext();
-  }
 }
 
 /// Instantiate the definition of the given function from its
@@ -4985,7 +5007,7 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
   Function->setInnerLocStart(PatternDecl->getInnerLocStart());
 
   EnterExpressionEvaluationContext EvalContext(
-      *this, PatternDecl->getConstexprKind() == CSK_consteval
+      *this, PatternDecl->getConstexprKind() == ConstexprSpecKind::Consteval
                  ? Sema::ExpressionEvaluationContext::ConstantEvaluated
                  : Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
 
@@ -5035,7 +5057,7 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
         // default arguments.
         if (Context.getTargetInfo().getCXXABI().isMicrosoft() &&
             Ctor->isDefaultConstructor()) {
-          InstantiateDefaultCtorDefaultArgs(*this, Ctor);
+          InstantiateDefaultCtorDefaultArgs(Ctor);
         }
       }
 
@@ -5349,9 +5371,6 @@ void Sema::InstantiateVariableInitializer(
     if (Var->isCXXForRangeDecl() || Var->isObjCForDecl())
       return;
 
-    if (AnalyzingRequiredDeclarator)
-      return;
-
     ActOnUninitializedDecl(Var);
   }
 
@@ -5580,63 +5599,17 @@ void Sema::InstantiateVariableDefinition(SourceLocation PointOfInstantiation,
   GlobalInstantiations.perform();
 }
 
-/// If a member initializer is a variadic reifier, substitute its range
-/// and instantiate it. Returns true on error.
-static bool
-InstantiateVariadicReifierMemInit(Sema &SemaRef,
-                          CXXConstructorDecl *New,
-                          const CXXCtorInitializer *Init,
-                          llvm::SmallVectorImpl<CXXCtorInitializer *> &NewInits,
-                          const MultiLevelTemplateArgumentList &TemplateArgs) {
-  CXXDependentVariadicReifierType const *Reifier =
-    cast<CXXDependentVariadicReifierType>(Init->getBaseClass());
-  ExprResult TempRange =
-    SemaRef.SubstExpr(Reifier->getRange(), TemplateArgs);
-  if (TempRange.isInvalid())
-    return true;
-
-  llvm::SmallVector<QualType, 8> ReifiedTypes;
-  SemaRef.ActOnVariadicReifier(ReifiedTypes, SourceLocation(), TempRange.get(),
-                               SourceLocation(), SourceLocation(),
-                               SourceLocation());
-
-  for (auto ReifiedType : ReifiedTypes) {
-    ExprResult TempInit =
-      SemaRef.SubstInitializer(Init->getInit(), TemplateArgs,
-                               /*CXXDirectInit=*/true);
-    if (TempInit.isInvalid())
-      return true;
-
-    TypeSourceInfo *BaseTInfo =
-      SemaRef.Context.CreateTypeSourceInfo(ReifiedType);
-    BaseTInfo->getTypeLoc().initialize(SemaRef.Context, Reifier->getBeginLoc());
-    if (!BaseTInfo)
-      return true;
-
-    MemInitResult NewInit =
-      SemaRef.BuildBaseInitializer(BaseTInfo->getType(),
-                                   BaseTInfo, Init->getInit(),
-                                   New->getParent(),
-                                   SourceLocation());
-    if (NewInit.isInvalid())
-      return true;
-
-    auto NewInitExpr = NewInit.get();
-    NewInits.push_back(NewInitExpr);
-  }
-
-  return false;
-}
-
-void
-Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
-                                 const CXXConstructorDecl *Tmpl,
-                           const MultiLevelTemplateArgumentList &TemplateArgs) {
-  SmallVector<CXXCtorInitializer*, 4> NewInits;
-  bool AnyErrors = Tmpl->isInvalidDecl();
+bool Sema::SubstMemInitializers(CXXConstructorDecl *DestCtor,
+                                CXXCtorInitializer *const *Inputs,
+                                unsigned NumInputs,
+                             const MultiLevelTemplateArgumentList &TemplateArgs,
+                               SmallVectorImpl<CXXCtorInitializer *> &Outputs) {
+  bool AnyErrors = false;
 
   // Instantiate all the initializers.
-  for (const auto *Init : Tmpl->inits()) {
+  for (unsigned I = 0; I != NumInputs; ++I) {
+    CXXCtorInitializer *Init = Inputs[I];
+
     // Only instantiate written initializers, let Sema re-construct implicit
     // ones.
     if (!Init->isWritten())
@@ -5650,8 +5623,14 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
       SmallVector<UnexpandedParameterPack, 4> Unexpanded;
       collectUnexpandedParameterPacks(BaseTL, Unexpanded);
       collectUnexpandedParameterPacks(
-          TemplateArgument(Init->getInit(), TemplateArgument::Expression),
-          Unexpanded);
+          TemplateArgument(Init->getInit()), Unexpanded);
+
+      if (SubstPacks(Unexpanded, TemplateArgs)) {
+        AnyErrors = true;
+        DestCtor->setInvalidDecl();
+        continue;
+      }
+
       bool ShouldExpand = false;
       bool RetainExpansion = false;
       Optional<unsigned> NumExpansions;
@@ -5662,7 +5641,7 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
                                           RetainExpansion,
                                           NumExpansions)) {
         AnyErrors = true;
-        New->setInvalidDecl();
+        DestCtor->setInvalidDecl();
         continue;
       }
       assert(ShouldExpand && "Partial instantiation of base initializer?");
@@ -5683,7 +5662,7 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
         TypeSourceInfo *BaseTInfo = SubstType(Init->getTypeSourceInfo(),
                                               TemplateArgs,
                                               Init->getSourceLocation(),
-                                              New->getDeclName());
+                                              DestCtor->getDeclName());
         if (!BaseTInfo) {
           AnyErrors = true;
           break;
@@ -5692,28 +5671,16 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
         // Build the initializer.
         MemInitResult NewInit = BuildBaseInitializer(BaseTInfo->getType(),
                                                      BaseTInfo, TempInit.get(),
-                                                     New->getParent(),
+                                                     DestCtor->getParent(),
                                                      SourceLocation());
         if (NewInit.isInvalid()) {
           AnyErrors = true;
           break;
         }
 
-        NewInits.push_back(NewInit.get());
+        Outputs.push_back(NewInit.get());
       }
 
-      continue;
-    }
-
-    if (Init->isBaseInitializer() &&
-        isa<CXXDependentVariadicReifierType>(Init->getBaseClass())) {
-      // The expanded range is necessarily constexpr.
-      EnterExpressionEvaluationContext EvalContext(
-        *this, Sema::ExpressionEvaluationContext::ConstantEvaluated);
-
-      AnyErrors =
-        InstantiateVariadicReifierMemInit(*this, New, Init,
-                                          NewInits, TemplateArgs);
       continue;
     }
 
@@ -5730,16 +5697,16 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
       TypeSourceInfo *TInfo = SubstType(Init->getTypeSourceInfo(),
                                         TemplateArgs,
                                         Init->getSourceLocation(),
-                                        New->getDeclName());
+                                        DestCtor->getDeclName());
       if (!TInfo) {
         AnyErrors = true;
-        New->setInvalidDecl();
+        DestCtor->setInvalidDecl();
         continue;
       }
 
       if (Init->isBaseInitializer())
         NewInit = BuildBaseInitializer(TInfo->getType(), TInfo, TempInit.get(),
-                                       New->getParent(), EllipsisLoc);
+                                       DestCtor->getParent(), EllipsisLoc);
       else
         NewInit = BuildDelegatingInitializer(TInfo, TempInit.get(),
                                   cast<CXXRecordDecl>(CurContext->getParent()));
@@ -5750,7 +5717,7 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
                                                      TemplateArgs));
       if (!Member) {
         AnyErrors = true;
-        New->setInvalidDecl();
+        DestCtor->setInvalidDecl();
         continue;
       }
 
@@ -5764,7 +5731,7 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
 
       if (!IndirectMember) {
         AnyErrors = true;
-        New->setInvalidDecl();
+        DestCtor->setInvalidDecl();
         continue;
       }
 
@@ -5774,11 +5741,25 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
 
     if (NewInit.isInvalid()) {
       AnyErrors = true;
-      New->setInvalidDecl();
+      DestCtor->setInvalidDecl();
     } else {
-      NewInits.push_back(NewInit.get());
+      Outputs.push_back(NewInit.get());
     }
   }
+
+  return AnyErrors;
+}
+
+void
+Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
+                                 const CXXConstructorDecl *Tmpl,
+                           const MultiLevelTemplateArgumentList &TemplateArgs) {
+  SmallVector<CXXCtorInitializer*, 4> NewInits;
+
+  bool AnyErrors = SubstMemInitializers(New, Tmpl->init_begin(),
+                                        Tmpl->getNumCtorInitializers(),
+                                        TemplateArgs, NewInits);
+  AnyErrors |= Tmpl->isInvalidDecl();
 
   // Assign all the initializers to the new constructor.
   ActOnMemInitializers(New,

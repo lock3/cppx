@@ -210,12 +210,11 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
   case Expr::CXXReflectPrintReflectionExprClass:
   case Expr::CXXReflectDumpReflectionExprClass:
   case Expr::CXXCompilerErrorExprClass:
-  case Expr::CXXIdExprExprClass:
-  case Expr::CXXMemberIdExprExprClass:
-  case Expr::CXXValueOfExprClass:
+  case Expr::CXXExprSpliceExprClass:
+  case Expr::CXXMemberExprSpliceExprClass:
+  case Expr::CXXPackSpliceExprClass:
   case Expr::CXXDependentSpliceIdExprClass:
   case Expr::CXXConcatenateExprClass:
-  case Expr::CXXDependentVariadicReifierExprClass:
   case Expr::CXXFragmentExprClass:
   case Expr::CppxTypeLiteralClass:
   case Expr::CppxDeclRefExprClass:
@@ -224,7 +223,6 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
   case Expr::CppxPartialEvalExprClass:
   case Expr::CXXFragmentCaptureExprClass:
   case Expr::CXXInjectedValueExprClass:
-  case Expr::CXXParameterInfoExprClass:
     return Cl::CL_PRValue;
 
   case Expr::ConstantExprClass:

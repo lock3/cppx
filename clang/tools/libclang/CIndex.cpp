@@ -26,6 +26,7 @@
 #include "clang/AST/DeclObjCCommon.h"
 #include "clang/AST/Mangle.h"
 #include "clang/AST/OpenMPClause.h"
+#include "clang/AST/PackSplice.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticCategories.h"
@@ -1499,7 +1500,6 @@ bool CursorVisitor::VisitTemplateArgumentLoc(const TemplateArgumentLoc &TAL) {
       return Visit(MakeCXCursor(E, StmtParent, TU, RegionOfInterest));
     return false;
 
-  case TemplateArgument::Reflected:
   case TemplateArgument::Expression:
     if (Expr *E = TAL.getSourceExpression())
       return Visit(MakeCXCursor(E, StmtParent, TU, RegionOfInterest));
@@ -1512,9 +1512,27 @@ bool CursorVisitor::VisitTemplateArgumentLoc(const TemplateArgumentLoc &TAL) {
 
     return VisitTemplateName(TAL.getArgument().getAsTemplateOrTemplatePattern(),
                              TAL.getTemplateNameLoc());
+
+  case TemplateArgument::PackSplice:
+    return VisitPackSplice(TAL.getArgument().getPackSplice());
   }
 
   llvm_unreachable("Invalid TemplateArgument::Kind!");
+}
+
+bool CursorVisitor::VisitPackSplice(const PackSplice *PS) {
+  if (Visit(PS->getOperand()))
+    return true;
+
+  if (!PS->isExpanded())
+    return false;
+
+  for (Expr *E : PS->getExpansions()) {
+    if (Visit(MakeCXCursor(E, StmtParent, TU)))
+      return true;
+  }
+
+  return false;
 }
 
 bool CursorVisitor::VisitLinkageSpecDecl(LinkageSpecDecl *D) {
@@ -1549,8 +1567,10 @@ bool CursorVisitor::VisitBuiltinTypeLoc(BuiltinTypeLoc TL) {
   case BuiltinType::OCLReserveID:
 #define SVE_TYPE(Name, Id, SingletonId) case BuiltinType::Id:
 #include "clang/Basic/AArch64SVEACLETypes.def"
-#define PPC_MMA_VECTOR_TYPE(Name, Id, Size) case BuiltinType::Id:
+#define PPC_VECTOR_TYPE(Name, Id, Size) case BuiltinType::Id:
 #include "clang/Basic/PPCTypes.def"
+#define RVV_TYPE(Name, Id, SingletonId) case BuiltinType::Id:
+#include "clang/Basic/RISCVVTypes.def"
 #define BUILTIN_TYPE(Id, SingletonId)
 #define SIGNED_TYPE(Id, SingletonId) case BuiltinType::Id:
 #define UNSIGNED_TYPE(Id, SingletonId) case BuiltinType::Id:
@@ -1586,10 +1606,6 @@ bool CursorVisitor::VisitTypedefTypeLoc(TypedefTypeLoc TL) {
 }
 
 bool CursorVisitor::VisitUnresolvedUsingTypeLoc(UnresolvedUsingTypeLoc TL) {
-  return Visit(MakeCursorTypeRef(TL.getDecl(), TL.getNameLoc(), TU));
-}
-
-bool CursorVisitor::VisitCXXRequiredTypeTypeLoc(CXXRequiredTypeTypeLoc TL) {
   return Visit(MakeCursorTypeRef(TL.getDecl(), TL.getNameLoc(), TU));
 }
 
@@ -1782,11 +1798,6 @@ bool CursorVisitor::VisitPackExpansionTypeLoc(PackExpansionTypeLoc TL) {
   return Visit(TL.getPatternLoc());
 }
 
-bool CursorVisitor::VisitCXXDependentVariadicReifierTypeLoc
-(CXXDependentVariadicReifierTypeLoc TL) {
-  return Visit(TL.getPatternLoc());
-}
-
 bool CursorVisitor::VisitDecltypeTypeLoc(DecltypeTypeLoc TL) {
   if (Expr *E = TL.getUnderlyingExpr())
     return Visit(MakeCXCursor(E, StmtParent, TU));
@@ -1816,11 +1827,15 @@ bool CursorVisitor::VisitDependentIdentifierSpliceTypeLoc(
   return false;
 }
 
-bool CursorVisitor::VisitReflectedTypeLoc(ReflectedTypeLoc TL) {
+bool CursorVisitor::VisitTypeSpliceTypeLoc(TypeSpliceTypeLoc TL) {
   if (Expr *E = TL.getReflection())
     return Visit(MakeCXCursor(E, StmtParent, TU));
 
   return false;
+}
+
+bool CursorVisitor::VisitTypePackSpliceTypeLoc(TypePackSpliceTypeLoc TL) {
+  return VisitPackSplice(TL.getPackSplice());
 }
 
 bool CursorVisitor::VisitInjectedClassNameTypeLoc(InjectedClassNameTypeLoc TL) {
@@ -1851,26 +1866,10 @@ bool CursorVisitor::VisitPipeTypeLoc(PipeTypeLoc TL) {
   return Visit(TL.getValueLoc());
 }
 
-bool CursorVisitor::VisitInParameterTypeLoc(InParameterTypeLoc TL) {
-  return Visit(TL.getParameterTypeLoc());
-}
-
-bool CursorVisitor::VisitOutParameterTypeLoc(OutParameterTypeLoc TL) {
-  return Visit(TL.getParameterTypeLoc());
-}
-
-bool CursorVisitor::VisitInOutParameterTypeLoc(InOutParameterTypeLoc TL) {
-  return Visit(TL.getParameterTypeLoc());
-}
-
-bool CursorVisitor::VisitMoveParameterTypeLoc(MoveParameterTypeLoc TL) {
-  return Visit(TL.getParameterTypeLoc());
-}
-
-#define DEFAULT_TYPELOC_IMPL(CLASS, PARENT) \
-bool CursorVisitor::Visit##CLASS##TypeLoc(CLASS##TypeLoc TL) { \
-  return Visit##PARENT##Loc(TL); \
-}
+#define DEFAULT_TYPELOC_IMPL(CLASS, PARENT)                                    \
+  bool CursorVisitor::Visit##CLASS##TypeLoc(CLASS##TypeLoc TL) {               \
+    return Visit##PARENT##Loc(TL);                                             \
+  }
 
 DEFAULT_TYPELOC_IMPL(Complex, Type)
 DEFAULT_TYPELOC_IMPL(ConstantArray, ArrayType)
@@ -1890,6 +1889,7 @@ DEFAULT_TYPELOC_IMPL(Record, TagType)
 DEFAULT_TYPELOC_IMPL(Enum, TagType)
 DEFAULT_TYPELOC_IMPL(SubstTemplateTypeParm, Type)
 DEFAULT_TYPELOC_IMPL(SubstTemplateTypeParmPack, Type)
+DEFAULT_TYPELOC_IMPL(SubstTypePackSplice, Type)
 DEFAULT_TYPELOC_IMPL(Auto, Type)
 DEFAULT_TYPELOC_IMPL(ExtInt, Type)
 DEFAULT_TYPELOC_IMPL(DependentExtInt, Type)
@@ -2120,9 +2120,11 @@ public:
   void VisitOpaqueValueExpr(const OpaqueValueExpr *E);
   void VisitLambdaExpr(const LambdaExpr *E);
   void VisitOMPExecutableDirective(const OMPExecutableDirective *D);
+  void VisitOMPLoopBasedDirective(const OMPLoopBasedDirective *D);
   void VisitOMPLoopDirective(const OMPLoopDirective *D);
   void VisitOMPParallelDirective(const OMPParallelDirective *D);
   void VisitOMPSimdDirective(const OMPSimdDirective *D);
+  void VisitOMPTileDirective(const OMPTileDirective *D);
   void VisitOMPForDirective(const OMPForDirective *D);
   void VisitOMPForSimdDirective(const OMPForSimdDirective *D);
   void VisitOMPSectionsDirective(const OMPSectionsDirective *D);
@@ -2256,8 +2258,9 @@ class OMPClauseEnqueue : public ConstOMPClauseVisitor<OMPClauseEnqueue> {
 
 public:
   OMPClauseEnqueue(EnqueueVisitor *Visitor) : Visitor(Visitor) {}
-#define OMP_CLAUSE_CLASS(Enum, Str, Class) void Visit##Class(const Class *C);
-#include "llvm/Frontend/OpenMP/OMPKinds.def"
+#define GEN_CLANG_CLAUSE_CLASS
+#define CLAUSE_CLASS(Enum, Str, Class) void Visit##Class(const Class *C);
+#include "llvm/Frontend/OpenMP/OMP.inc"
   void VisitOMPClauseWithPreInit(const OMPClauseWithPreInit *C);
   void VisitOMPClauseWithPostUpdate(const OMPClauseWithPostUpdate *C);
 };
@@ -2293,6 +2296,11 @@ void OMPClauseEnqueue::VisitOMPSafelenClause(const OMPSafelenClause *C) {
 
 void OMPClauseEnqueue::VisitOMPSimdlenClause(const OMPSimdlenClause *C) {
   Visitor->AddStmt(C->getSimdlen());
+}
+
+void OMPClauseEnqueue::VisitOMPSizesClause(const OMPSizesClause *C) {
+  for (auto E : C->getSizesRefs())
+    Visitor->AddStmt(E);
 }
 
 void OMPClauseEnqueue::VisitOMPAllocatorClause(const OMPAllocatorClause *C) {
@@ -2931,8 +2939,13 @@ void EnqueueVisitor::VisitOMPExecutableDirective(
     EnqueueChildren(*I);
 }
 
-void EnqueueVisitor::VisitOMPLoopDirective(const OMPLoopDirective *D) {
+void EnqueueVisitor::VisitOMPLoopBasedDirective(
+    const OMPLoopBasedDirective *D) {
   VisitOMPExecutableDirective(D);
+}
+
+void EnqueueVisitor::VisitOMPLoopDirective(const OMPLoopDirective *D) {
+  VisitOMPLoopBasedDirective(D);
 }
 
 void EnqueueVisitor::VisitOMPParallelDirective(const OMPParallelDirective *D) {
@@ -2941,6 +2954,10 @@ void EnqueueVisitor::VisitOMPParallelDirective(const OMPParallelDirective *D) {
 
 void EnqueueVisitor::VisitOMPSimdDirective(const OMPSimdDirective *D) {
   VisitOMPLoopDirective(D);
+}
+
+void EnqueueVisitor::VisitOMPTileDirective(const OMPTileDirective *D) {
+  VisitOMPLoopBasedDirective(D);
 }
 
 void EnqueueVisitor::VisitOMPForDirective(const OMPForDirective *D) {
@@ -3440,10 +3457,8 @@ RefNamePieces buildPieces(unsigned NameFlags, bool IsMemberRefExpr,
     Pieces.push_back(*TemplateArgsLoc);
 
   if (Kind == DeclarationName::CXXOperatorName) {
-    Pieces.push_back(SourceLocation::getFromRawEncoding(
-        NI.getInfo().CXXOperatorName.BeginOpNameLoc));
-    Pieces.push_back(SourceLocation::getFromRawEncoding(
-        NI.getInfo().CXXOperatorName.EndOpNameLoc));
+    Pieces.push_back(NI.getInfo().getCXXOperatorNameBeginLoc());
+    Pieces.push_back(NI.getInfo().getCXXOperatorNameEndLoc());
   }
 
   if (WantSinglePiece) {
@@ -3565,8 +3580,8 @@ enum CXErrorCode clang_createTranslationUnit2(CXIndex CIdx,
   std::unique_ptr<ASTUnit> AU = ASTUnit::LoadFromASTFile(
       ast_filename, CXXIdx->getPCHContainerOperations()->getRawReader(),
       ASTUnit::LoadEverything, Diags, FileSystemOpts, /*UseDebugInfo=*/false,
-      CXXIdx->getOnlyLocalDecls(), None, CaptureDiagsKind::All,
-      /*AllowPCHWithCompilerErrors=*/true,
+      CXXIdx->getOnlyLocalDecls(), CaptureDiagsKind::All,
+      /*AllowASTWithCompilerErrors=*/true,
       /*UserFilesAreVolatile=*/true);
   *out_TU = MakeCXTranslationUnit(CXXIdx, std::move(AU));
   return *out_TU ? CXError_Success : CXError_Failure;
@@ -5620,6 +5635,8 @@ CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
     return cxstring::createRef("OMPParallelDirective");
   case CXCursor_OMPSimdDirective:
     return cxstring::createRef("OMPSimdDirective");
+  case CXCursor_OMPTileDirective:
+    return cxstring::createRef("OMPTileDirective");
   case CXCursor_OMPForDirective:
     return cxstring::createRef("OMPForDirective");
   case CXCursor_OMPForSimdDirective:
@@ -6510,8 +6527,6 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::CXXMetaprogram:
   case Decl::CXXInjection:
   case Decl::CXXStmtFragment:
-  case Decl::CXXRequiredType:
-  case Decl::CXXRequiredDeclarator:
     return C;
 
   case Decl::CppxPartial:
@@ -9244,16 +9259,3 @@ cxindex::Logger::~Logger() {
     OS << "--------------------------------------------------\n";
   }
 }
-
-#ifdef CLANG_TOOL_EXTRA_BUILD
-// This anchor is used to force the linker to link the clang-tidy plugin.
-extern volatile int ClangTidyPluginAnchorSource;
-static int LLVM_ATTRIBUTE_UNUSED ClangTidyPluginAnchorDestination =
-    ClangTidyPluginAnchorSource;
-
-// This anchor is used to force the linker to link the clang-include-fixer
-// plugin.
-extern volatile int ClangIncludeFixerPluginAnchorSource;
-static int LLVM_ATTRIBUTE_UNUSED ClangIncludeFixerPluginAnchorDestination =
-    ClangIncludeFixerPluginAnchorSource;
-#endif

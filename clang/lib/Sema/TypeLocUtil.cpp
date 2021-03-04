@@ -24,7 +24,7 @@ namespace gold {
 using clang::QualType;
 using clang::TypeSourceInfo;
 using clang::TypeLocBuilder;
-
+using clang::SourceLocation;
 
 template <typename TypeLocType>
 static clang::TypeSourceInfo *BuildTypeLoc(clang::ASTContext &Context,
@@ -425,17 +425,6 @@ template<>  TypeSourceInfo *BuildTypeLoc<clang::DecltypeTypeLoc>
   return BuildTypeLoc<clang::DecltypeTypeLoc>(Context, TLB, Ty, Loc);
 }
 
-template<> TypeSourceInfo *BuildTypeLoc<clang::ReflectedTypeLoc>
-(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
-}
-
-template<>  TypeSourceInfo *BuildTypeLoc<clang::ReflectedTypeLoc>
-(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
-  TypeLocBuilder TLB;
-  return BuildTypeLoc<clang::ReflectedTypeLoc>(Context, TLB, Ty, Loc);
-}
-
 template<> TypeSourceInfo *BuildTypeLoc<clang::UnaryTransformTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
@@ -587,6 +576,39 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::SubstTemplateTypeParmPackTypeLoc>
   return BuildTypeLoc<clang::SubstTemplateTypeParmPackTypeLoc>(Context, TLB, Ty, Loc);
 }
 
+template<> TypeSourceInfo *BuildTypeLoc<clang::SubstTypePackSpliceTypeLoc>
+(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
+  llvm_unreachable("unimplemented");
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::SubstTypePackSpliceTypeLoc>
+(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
+  TypeLocBuilder TLB;
+  return BuildTypeLoc<clang::SubstTypePackSpliceTypeLoc>(Context, TLB, Ty, Loc);
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::TypePackSpliceTypeLoc>
+(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
+  llvm_unreachable("unimplemented");
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::TypePackSpliceTypeLoc>
+(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
+  TypeLocBuilder TLB;
+  return BuildTypeLoc<clang::TypePackSpliceTypeLoc>(Context, TLB, Ty, Loc);
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::TypeSpliceTypeLoc>
+(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
+  llvm_unreachable("unimplemented");
+}
+
+template<> TypeSourceInfo *BuildTypeLoc<clang::TypeSpliceTypeLoc>
+(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
+  TypeLocBuilder TLB;
+  return BuildTypeLoc<clang::TypeSpliceTypeLoc>(Context, TLB, Ty, Loc);
+}
+
 template<> TypeSourceInfo *BuildTypeLoc<clang::TemplateSpecializationTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   auto TypeLocInstance = TLB.push<clang::TemplateSpecializationTypeLoc>(Ty);
@@ -715,28 +737,6 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::PackExpansionTypeLoc>
   return BuildTypeLoc<clang::PackExpansionTypeLoc>(Context, TLB, Ty, Loc);
 }
 
-template<> TypeSourceInfo *BuildTypeLoc<clang::CXXDependentVariadicReifierTypeLoc>
-(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::CXXDependentVariadicReifierTypeLoc>
-(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
-  TypeLocBuilder TLB;
-  return BuildTypeLoc<clang::CXXDependentVariadicReifierTypeLoc>(Context, TLB, Ty, Loc);
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::CXXRequiredTypeTypeLoc>
-(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::CXXRequiredTypeTypeLoc>
-(clang::ASTContext &Context, QualType Ty, SourceLocation Loc) {
-  TypeLocBuilder TLB;
-  return BuildTypeLoc<clang::CXXRequiredTypeTypeLoc>(Context, TLB, Ty, Loc);
-}
-
 template<> TypeSourceInfo *BuildTypeLoc<clang::ObjCObjectTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
@@ -807,46 +807,6 @@ template<> TypeSourceInfo *BuildTypeLoc<clang::DependentSizedMatrixTypeLoc>
 }
 
 template<> TypeSourceInfo *BuildTypeLoc<clang::DependentSizedMatrixTypeLoc>
-(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::InParameterTypeLoc>
-(clang::ASTContext &Ctx, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::InParameterTypeLoc>
-(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::OutParameterTypeLoc>
-(clang::ASTContext &Ctx, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::OutParameterTypeLoc>
-(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::InOutParameterTypeLoc>
-(clang::ASTContext &Ctx, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::InOutParameterTypeLoc>
-(clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::MoveParameterTypeLoc>
-(clang::ASTContext &Ctx, QualType Ty, SourceLocation Loc) {
-  llvm_unreachable("unimplemented");
-}
-
-template<> TypeSourceInfo *BuildTypeLoc<clang::MoveParameterTypeLoc>
 (clang::ASTContext &Ctx, TypeLocBuilder &TLB, QualType Ty, SourceLocation Loc) {
   llvm_unreachable("unimplemented");
 }

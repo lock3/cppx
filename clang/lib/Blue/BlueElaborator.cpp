@@ -1486,12 +1486,12 @@ bool Elaborator::buildMethod(Declaration *Fn, clang::DeclarationName const &Name
       *FD = Method =
         clang::CXXConstructorDecl::Create(getCxxContext(), RD, ExLoc, DNI,
                                           Ty->getType(), Ty, ES, false,
-                              false, clang::ConstexprSpecKind::CSK_unspecified);
+                              false, clang::ConstexprSpecKind::Unspecified);
     else if (Name.getNameKind() == clang::DeclarationName::CXXDestructorName)
       *FD = Method =
         clang::CXXDestructorDecl::Create(getCxxContext(), RD, ExLoc, DNI,
                                         Ty->getType(), Ty, false, false,
-                                     clang::ConstexprSpecKind::CSK_unspecified);
+                                     clang::ConstexprSpecKind::Unspecified);
 
     Method->setImplicit(false);
     Method->setDefaulted(false);
@@ -1559,7 +1559,7 @@ bool Elaborator::buildMethod(Declaration *Fn, clang::DeclarationName const &Name
     *FD = clang::CXXConversionDecl::Create(getCxxContext(), RD, ExLoc, DNI,
                                           Ty->getType(), Ty,
                                           /*isinline*/false, ES,
-                                      clang::ConstexprSpecKind::CSK_unspecified,
+                                      clang::ConstexprSpecKind::Unspecified,
                                           ExLoc);
   } else {
     clang::StorageClass SC = clang::SC_None;
@@ -1569,7 +1569,7 @@ bool Elaborator::buildMethod(Declaration *Fn, clang::DeclarationName const &Name
     *FD = clang::CXXMethodDecl::Create(getCxxContext(), RD, ExLoc, DNI,
                                        Ty->getType(), Ty,
                                        SC, /*isInline*/true,
-                                       clang::ConstexprSpecKind::CSK_unspecified,
+                                       clang::ConstexprSpecKind::Unspecified,
                                        ExLoc);
   }
 
@@ -4344,8 +4344,7 @@ void Elaborator::elaborateTemplateArgs(const EnclosureSyntax *Enc,
       TemplateArgs.addArgument({Arg, ParamTInfo});
       ActualArgs.emplace_back(Arg);
     } else {
-      clang::TemplateArgument Arg(ParamExpression,
-                                  clang::TemplateArgument::Expression);
+      clang::TemplateArgument Arg(ParamExpression);
       TemplateArgs.addArgument({Arg, ParamExpression});
       ActualArgs.emplace_back(Arg);
     }
@@ -4651,7 +4650,7 @@ bool Elaborator::elaborateClassTemplateArguments(
                                            clang::SourceLocation());
       ArgInfo.addArgument({Arg, TALoc});
     } else {
-      clang::TemplateArgument Arg(ArgExpr, clang::TemplateArgument::Expression);
+      clang::TemplateArgument Arg(ArgExpr);
 
       // TODO: I will need to migrate the const elaboration
       // This attempts to make sure that all referenced functions are actually

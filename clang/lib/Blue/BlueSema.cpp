@@ -547,7 +547,7 @@ static clang::FunctionDecl *createBinaryBW(Sema& SemaRef,
   clang::FunctionDecl *FnDecl = clang::FunctionDecl::Create(
     Ctx, TU, Loc, Loc, Name, clang::QualType(), /*TInfo*/nullptr, clang::SC_None,
     /*isInlineSpecified*/true, /*hasWrittenPrototype*/false,
-    clang::ConstexprSpecKind::CSK_constexpr, /*TrailingRequiresClause*/nullptr);
+    clang::ConstexprSpecKind::Constexpr, /*TrailingRequiresClause*/nullptr);
   clang::QualType FnTy = Ctx.getFunctionType(ReturnType, Types, EPI);
 
   clang::IdentifierInfo *xParmName = &Ctx.Idents.get("x");
@@ -726,7 +726,7 @@ static clang::FunctionDecl *createUnaryBW(Sema& SemaRef,
   clang::FunctionDecl *FnDecl = clang::FunctionDecl::Create(
     Ctx, TU, Loc, Loc, Name, clang::QualType(), /*TInfo*/nullptr, clang::SC_None,
     /*isInlineSpecified*/true, /*hasWrittenPrototype*/false,
-    clang::ConstexprSpecKind::CSK_constexpr, /*TrailingRequiresClause*/nullptr);
+    clang::ConstexprSpecKind::Constexpr, /*TrailingRequiresClause*/nullptr);
   clang::QualType FnTy = Ctx.getFunctionType(ReturnType, Types, EPI);
 
   clang::IdentifierInfo *xParmName = &Ctx.Idents.get("x");
@@ -1073,8 +1073,6 @@ bool Sema::checkForRedeclaration(Declaration *D) {
   case clang::Decl::CXXMetaprogram:
   case clang::Decl::CXXInjection:
   case clang::Decl::CXXStmtFragment:
-  case clang::Decl::CXXRequiredType:
-  case clang::Decl::CXXRequiredDeclarator:
   case clang::Decl::CppxPartial:
   case clang::Decl::ImplicitParam:
   case clang::Decl::ParmVar:

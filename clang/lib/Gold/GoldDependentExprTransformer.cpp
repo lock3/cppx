@@ -345,11 +345,11 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
     clang::SourceLocation Loc = Ret->getExprLoc();
     return buildUnresolvedCall(Ret, dyn_cast<clang::CXXRecordDecl>(TD), R, Loc);
   }
-  case clang::LookupResult::Found:{
+
+  case clang::LookupResult::Found:
     return buildMemberAccessExpr(Ret, Ty, R.getFoundDecl(),
                                  dyn_cast<clang::CXXRecordDecl>(TD),
                                  R, Ret->getExprLoc(), NeedsArrow);
-  }
   case clang::LookupResult::NotFoundInCurrentInstantiation: {
   case clang::LookupResult::NotFound:
     //{
@@ -634,7 +634,7 @@ bool DependentExprTransformer::transformTemplateArguments(
                                            clang::SourceLocation());
       ArgInfo.addArgument({Arg, TALoc});
     } else {
-      clang::TemplateArgument Arg(TArg, clang::TemplateArgument::Expression);
+      clang::TemplateArgument Arg(TArg);
       ArgInfo.addArgument({Arg, TArg});
     }
   }

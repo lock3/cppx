@@ -921,7 +921,7 @@ static bool handleSpecializationArgs(Sema &SemaRef, const Syntax *Args,
       clang::TemplateArgumentLoc ArgLoc(Arg, TInfo);
       TemplateArgs.addArgument(ArgLoc);
     } else {
-      clang::TemplateArgument Arg(E, clang::TemplateArgument::Expression);
+      clang::TemplateArgument Arg(E);
       clang::TemplateArgumentLoc ArgLoc(Arg, E);
       TemplateArgs.addArgument(ArgLoc);
     }
@@ -1995,12 +1995,12 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
       *FD = Method =
         clang::CXXConstructorDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
                                           Ty->getType(), Ty, ES, false,
-                              false, clang::ConstexprSpecKind::CSK_unspecified);
+                              false, clang::ConstexprSpecKind::Unspecified);
     else if (Destructor)
       *FD = Method =
         clang::CXXDestructorDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
                                         Ty->getType(), Ty, false, false,
-                                     clang::ConstexprSpecKind::CSK_unspecified);
+                                     clang::ConstexprSpecKind::Unspecified);
 
     Method->setImplicit(false);
     Method->setDefaulted(false);
@@ -2066,14 +2066,14 @@ bool buildMethod(SyntaxContext &Context, Sema &SemaRef, Declaration *Fn,
     *FD = clang::CXXConversionDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
                                           Ty->getType(), Ty,
                                           /*isinline*/false, ES,
-                                      clang::ConstexprSpecKind::CSK_unspecified,
+                                      clang::ConstexprSpecKind::Unspecified,
                                           ExLoc);
   } else {
     clang::StorageClass SC = clang::SC_None;
     *FD = clang::CXXMethodDecl::Create(Context.CxxAST, RD, ExLoc, DNI,
                                        Ty->getType(), Ty,
                                        SC, /*isInline*/true,
-                                       clang::ConstexprSpecKind::CSK_unspecified,
+                                       clang::ConstexprSpecKind::Unspecified,
                                        ExLoc);
   }
 
@@ -2736,7 +2736,6 @@ static bool isTemplateArgumentTemplateParameter(
            TPT->getDepth() == Depth && TPT->getIndex() == Index;
   }
 
-  case TemplateArgument::Reflected:
   case TemplateArgument::Expression: {
     DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(Arg.getAsExpr());
     if (!DRE || !DRE->getDecl())
@@ -2976,16 +2975,17 @@ static bool actOnVarTemplateSpecialziation(Sema &SemaRef,
 
     // FIXME: Move these checks to CheckTemplatePartialSpecializationArgs so we
     // also do them during instantiation.
-    bool InstantiationDependent;
-    if (!Name.isDependent() &&
-        !TemplateSpecializationType::anyDependentTemplateArguments(
-            TemplateArgs.arguments(),
-            InstantiationDependent)) {
-      CxxSema.Diag(TemplateNameLoc,
-                   diag::err_partial_spec_fully_specialized)
-                   << VarTemplate->getDeclName();
-      IsPartialSpecialization = false;
-    }
+    // FIXME: figure out how this changed upstream and re-enable it?
+    // bool InstantiationDependent;
+    // if (!Name.isDependent() &&
+    //     !TemplateSpecializationType::anyDependentTemplateArguments(
+    //         TemplateArgs.arguments(),
+    //         InstantiationDependent)) {
+    //   CxxSema.Diag(TemplateNameLoc,
+    //                diag::err_partial_spec_fully_specialized)
+    //                << VarTemplate->getDeclName();
+    //   IsPartialSpecialization = false;
+    // }
 
     if (isSameAsPrimaryTemplate(VarTemplate->getTemplateParameters(),
                                 Converted) &&
@@ -4542,7 +4542,7 @@ void Elaborator::elaborateTemplateParamInit(Declaration *D) {
     else
       TD->setDefaultArgument(SemaRef.getTypeSourceInfoFromExpr(Init, Loc));
   } else if (auto *TD = dyn_cast<clang::TemplateTemplateParmDecl>(D->Cxx)) {
-    clang::TemplateArgument Arg(Init, clang::TemplateArgument::Expression);
+    clang::TemplateArgument Arg(Init);
     clang::TemplateArgumentLoc ArgLoc(Arg, Init);
     TD->setDefaultArgument(Context.CxxAST, ArgLoc);
   }
@@ -5249,10 +5249,10 @@ void Elaborator::elaborateConstExprAttr(Declaration *D, const Syntax *S,
     FD->setImplicitlyInline();
     if (isa<clang::CXXDestructorDecl>(D->Cxx)) {
       SemaRef.Diags.Report(S->getLoc(), clang::diag::err_constexpr_dtor)
-                           << clang::ConstexprSpecKind::CSK_constexpr;
+        << (unsigned)clang::ConstexprSpecKind::Constexpr;
       return;
     }
-    FD->setConstexprKind(clang::ConstexprSpecKind::CSK_constexpr);
+    FD->setConstexprKind(clang::ConstexprSpecKind::Constexpr);
   } else if (clang::VarDecl *VD = dyn_cast<clang::VarDecl>(D->Cxx)) {
     VD->setConstexpr(true);
   } else if (auto *VTD = dyn_cast<clang::VarTemplateDecl>(D->Cxx)) {
