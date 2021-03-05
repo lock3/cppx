@@ -29,8 +29,10 @@
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/ExprOpenMP.h"
 #include "clang/AST/LambdaCapture.h"
+#include "clang/AST/LocInfoType.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/OpenMPClause.h"
+#include "clang/AST/PackSplice.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/StmtObjC.h"
@@ -187,6 +189,9 @@ public:
   /// code, e.g., implicit constructors and destructors.
   bool shouldVisitImplicitCode() const { return false; }
 
+  /// Return whether this visitor should recurse into lambda body
+  bool shouldVisitLambdaBody() const { return true; }
+
   /// Return whether this visitor should traverse post-order.
   bool shouldTraversePostOrder() const { return false; }
 
@@ -290,6 +295,18 @@ public:
   // FIXME: take a TemplateArgumentLoc* (or TemplateArgumentListInfo) instead.
   bool TraverseTemplateArguments(const TemplateArgument *Args,
                                  unsigned NumArgs);
+
+  /// Recursively visit a pack splice and dispatch to the
+  /// appropriate method for the operand(s).
+  ///
+  /// \returns false if the visitation was terminated early, true otherwise.
+  bool TraversePackSplice(const PackSplice *PS);
+
+  /// Recursively visit a pack splice with location information and dispatch
+  /// to the appropriate method for the operand(s).
+  ///
+  /// \returns false if the visitation was terminated early, true otherwise.
+  bool TraversePackSpliceLoc(PackSpliceLoc PSLoc);
 
   /// Recursively visit a base specifier. This can be overridden by a
   /// subclass.
@@ -469,6 +486,8 @@ public:
   DEF_TRAVERSE_TMPL_INST(Function)
 #undef DEF_TRAVERSE_TMPL_INST
 
+  bool dataTraverseNode(Stmt *S, DataRecursionQueue *Queue);
+
 private:
   // These are helper methods used by more than one Traverse* method.
   bool TraverseTemplateParameterListHelper(TemplateParameterList *TPL);
@@ -489,15 +508,15 @@ private:
   bool TraverseOMPExecutableDirective(OMPExecutableDirective *S);
   bool TraverseOMPLoopDirective(OMPLoopDirective *S);
   bool TraverseOMPClause(OMPClause *C);
-#define OMP_CLAUSE_CLASS(Enum, Str, Class) bool Visit##Class(Class *C);
-#include "llvm/Frontend/OpenMP/OMPKinds.def"
+#define GEN_CLANG_CLAUSE_CLASS
+#define CLAUSE_CLASS(Enum, Str, Class) bool Visit##Class(Class *C);
+#include "llvm/Frontend/OpenMP/OMP.inc"
   /// Process clauses with list of variables.
   template <typename T> bool VisitOMPClauseList(T *Node);
   /// Process clauses with pre-initis.
   bool VisitOMPClauseWithPreInit(OMPClauseWithPreInit *Node);
   bool VisitOMPClauseWithPostUpdate(OMPClauseWithPostUpdate *Node);
 
-  bool dataTraverseNode(Stmt *S, DataRecursionQueue *Queue);
   bool PostVisitStmt(Stmt *S);
 };
 
@@ -777,13 +796,15 @@ bool RecursiveASTVisitor<Derived>::TraverseTemplateArgument(
     return getDerived().TraverseTemplateName(
         Arg.getAsTemplateOrTemplatePattern());
 
-  case TemplateArgument::Reflected:
   case TemplateArgument::Expression:
     return getDerived().TraverseStmt(Arg.getAsExpr());
 
   case TemplateArgument::Pack:
     return getDerived().TraverseTemplateArguments(Arg.pack_begin(),
                                                   Arg.pack_size());
+  case TemplateArgument::PackSplice:
+    return getDerived().TraversePackSplice(Arg.getPackSplice());
+
   }
 
   return true;
@@ -819,13 +840,16 @@ bool RecursiveASTVisitor<Derived>::TraverseTemplateArgumentLoc(
     return getDerived().TraverseTemplateName(
         Arg.getAsTemplateOrTemplatePattern());
 
-  case TemplateArgument::Reflected:
   case TemplateArgument::Expression:
     return getDerived().TraverseStmt(ArgLoc.getSourceExpression());
 
   case TemplateArgument::Pack:
     return getDerived().TraverseTemplateArguments(Arg.pack_begin(),
                                                   Arg.pack_size());
+  case TemplateArgument::PackSplice: {
+    return getDerived().TraversePackSpliceLoc(ArgLoc.getAsPackSpliceLoc());
+  }
+
   }
 
   return true;
@@ -973,8 +997,6 @@ DEF_TRAVERSE_TYPE(FunctionProtoType, {
     TRY_TO(TraverseStmt(NE));
 })
 
-DEF_TRAVERSE_TYPE(UnresolvedUsingType, {})
-DEF_TRAVERSE_TYPE(CXXRequiredTypeType, {})
 DEF_TRAVERSE_TYPE(CppxKindType, {})
 DEF_TRAVERSE_TYPE(CppxNamespaceType, {})
 DEF_TRAVERSE_TYPE(CppxArgsType, {})
@@ -983,6 +1005,8 @@ DEF_TRAVERSE_TYPE(CppxTypeExprType,
 DEF_TRAVERSE_TYPE(CppxTemplateType, {
     // TODO: Finish implementing this? I will need to visit all child types I think.
                     })
+
+DEF_TRAVERSE_TYPE(UnresolvedUsingType, {})
 DEF_TRAVERSE_TYPE(TypedefType, {})
 
 DEF_TRAVERSE_TYPE(TypeOfExprType,
@@ -1000,8 +1024,18 @@ DEF_TRAVERSE_TYPE(DependentIdentifierSpliceType, {
                                    T->getNumArgs()));
 })
 
-DEF_TRAVERSE_TYPE(ReflectedType,
-                  { TRY_TO(TraverseStmt(T->getReflection())); })
+DEF_TRAVERSE_TYPE(TypeSpliceType, {
+  TRY_TO(TraverseStmt(T->getReflection()));
+})
+
+DEF_TRAVERSE_TYPE(TypePackSpliceType, {
+  TRY_TO(TraversePackSplice(T->getPackSplice()));
+})
+
+DEF_TRAVERSE_TYPE(SubstTypePackSpliceType, {
+  TRY_TO(TraverseStmt(T->getExpansionExpr()));
+  TRY_TO(TraverseType(T->getReplacementType()));
+})
 
 DEF_TRAVERSE_TYPE(UnaryTransformType, {
   TRY_TO(TraverseType(T->getBaseType()));
@@ -1061,7 +1095,6 @@ DEF_TRAVERSE_TYPE(DependentTemplateSpecializationType, {
 })
 
 DEF_TRAVERSE_TYPE(PackExpansionType, { TRY_TO(TraverseType(T->getPattern())); })
-DEF_TRAVERSE_TYPE(CXXDependentVariadicReifierType, {})
 
 DEF_TRAVERSE_TYPE(ObjCTypeParamType, {})
 
@@ -1087,15 +1120,6 @@ DEF_TRAVERSE_TYPE(PipeType, { TRY_TO(TraverseType(T->getElementType())); })
 DEF_TRAVERSE_TYPE(ExtIntType, {})
 DEF_TRAVERSE_TYPE(DependentExtIntType,
                   { TRY_TO(TraverseStmt(T->getNumBitsExpr())); })
-
-DEF_TRAVERSE_TYPE(InParameterType,
-                  { TRY_TO(TraverseType(T->getParameterType())); })
-DEF_TRAVERSE_TYPE(OutParameterType,
-                  { TRY_TO(TraverseType(T->getParameterType())); })
-DEF_TRAVERSE_TYPE(InOutParameterType,
-                  { TRY_TO(TraverseType(T->getParameterType())); })
-DEF_TRAVERSE_TYPE(MoveParameterType,
-                  { TRY_TO(TraverseType(T->getParameterType())); })
 
 #undef DEF_TRAVERSE_TYPE
 
@@ -1273,8 +1297,6 @@ DEF_TRAVERSE_TYPELOC(FunctionProtoType, {
     TRY_TO(TraverseStmt(NE));
 })
 
-DEF_TRAVERSE_TYPELOC(UnresolvedUsingType, {})
-DEF_TRAVERSE_TYPELOC(CXXRequiredTypeType, {})
 DEF_TRAVERSE_TYPELOC(CppxKindType, {})
 DEF_TRAVERSE_TYPELOC(CppxNamespaceType, {})
 // TODO: Finish implementing this?
@@ -1282,6 +1304,8 @@ DEF_TRAVERSE_TYPELOC(CppxTemplateType, {})
 DEF_TRAVERSE_TYPELOC(CppxArgsType, {})
 DEF_TRAVERSE_TYPELOC(CppxTypeExprType,
                      { TRY_TO(TraverseStmt(TL.getTyExpr())); })
+
+DEF_TRAVERSE_TYPELOC(UnresolvedUsingType, {})
 DEF_TRAVERSE_TYPELOC(TypedefType, {})
 
 DEF_TRAVERSE_TYPELOC(TypeOfExprType,
@@ -1304,8 +1328,17 @@ DEF_TRAVERSE_TYPELOC(DependentIdentifierSpliceType, {
   }
 })
 
-DEF_TRAVERSE_TYPELOC(ReflectedType, {
-  TRY_TO(TraverseStmt(TL.getTypePtr()->getReflection()));
+DEF_TRAVERSE_TYPELOC(TypeSpliceType, {
+  TRY_TO(TraverseStmt(TL.getReflection()));
+})
+
+DEF_TRAVERSE_TYPELOC(TypePackSpliceType, {
+  TRY_TO(TraversePackSpliceLoc(TL.getAsPackSpliceLoc()));
+})
+
+DEF_TRAVERSE_TYPELOC(SubstTypePackSpliceType, {
+  TRY_TO(TraverseStmt(TL.getExpansionExpr()));
+  TRY_TO(TraverseType(TL.getReplacementType()));
 })
 
 DEF_TRAVERSE_TYPELOC(UnaryTransformType, {
@@ -1379,8 +1412,6 @@ DEF_TRAVERSE_TYPELOC(DependentTemplateSpecializationType, {
 DEF_TRAVERSE_TYPELOC(PackExpansionType,
                      { TRY_TO(TraverseTypeLoc(TL.getPatternLoc())); })
 
-DEF_TRAVERSE_TYPELOC(CXXDependentVariadicReifierType, {})
-
 DEF_TRAVERSE_TYPELOC(ObjCTypeParamType, {})
 
 DEF_TRAVERSE_TYPELOC(ObjCInterfaceType, {})
@@ -1405,15 +1436,6 @@ DEF_TRAVERSE_TYPELOC(ExtIntType, {})
 DEF_TRAVERSE_TYPELOC(DependentExtIntType, {
   TRY_TO(TraverseStmt(TL.getTypePtr()->getNumBitsExpr()));
 })
-
-DEF_TRAVERSE_TYPELOC(InParameterType,
-                     { TRY_TO(TraverseTypeLoc(TL.getParameterTypeLoc())); })
-DEF_TRAVERSE_TYPELOC(OutParameterType,
-                     { TRY_TO(TraverseTypeLoc(TL.getParameterTypeLoc())); })
-DEF_TRAVERSE_TYPELOC(InOutParameterType,
-                     { TRY_TO(TraverseTypeLoc(TL.getParameterTypeLoc())); })
-DEF_TRAVERSE_TYPELOC(MoveParameterType,
-                     { TRY_TO(TraverseTypeLoc(TL.getParameterTypeLoc())); })
 
 #undef DEF_TRAVERSE_TYPELOC
 
@@ -1915,6 +1937,24 @@ bool RecursiveASTVisitor<Derived>::TraverseRecordHelper(RecordDecl *D) {
 }
 
 template <typename Derived>
+bool RecursiveASTVisitor<Derived>::TraversePackSplice(const PackSplice *PS) {
+  TRY_TO(TraverseStmt(PS->getOperand()));
+
+  if (!PS->isExpanded())
+    return true;
+
+  for (Expr *E : PS->getExpansions())
+    TRY_TO(TraverseStmt(E));
+
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::TraversePackSpliceLoc(PackSpliceLoc PSLoc) {
+  return TraversePackSplice(PSLoc.getPackSplice());
+}
+
+template <typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseCXXBaseSpecifier(
     const CXXBaseSpecifier &Base) {
   TRY_TO(TraverseTypeLoc(Base.getTypeSourceInfo()->getTypeLoc()));
@@ -2055,9 +2095,6 @@ DEF_TRAVERSE_DECL(CXXStmtFragmentDecl, {
     TRY_TO(TraverseStmt(D->getBody()));
 })
 
-DEF_TRAVERSE_DECL(CXXRequiredTypeDecl, {})
-DEF_TRAVERSE_DECL(CXXRequiredDeclaratorDecl, {})
-
 DEF_TRAVERSE_DECL(FieldDecl, {
   TRY_TO(TraverseDeclaratorHelper(D));
   if (D->isBitField())
@@ -2139,6 +2176,15 @@ bool RecursiveASTVisitor<Derived>::TraverseFunctionHelper(FunctionDecl *D) {
       // Don't visit the function body if the function definition is generated
       // by clang.
       (!D->isDefaulted() || getDerived().shouldVisitImplicitCode());
+
+  if (const auto *MD = dyn_cast<CXXMethodDecl>(D)) {
+    if (const CXXRecordDecl *RD = MD->getParent()) {
+      if (RD->isLambda() &&
+          declaresSameEntity(RD->getLambdaCallOperator(), MD)) {
+        VisitBody = VisitBody && getDerived().shouldVisitLambdaBody();
+      }
+    }
+  }
 
   if (VisitBody) {
     TRY_TO(TraverseStmt(D->getBody())); // Function body.
@@ -2355,7 +2401,6 @@ DEF_TRAVERSE_STMT(CXXPackExpansionStmt, {
 })
 
 DEF_TRAVERSE_STMT(CXXInjectionStmt, {})
-DEF_TRAVERSE_STMT(CXXBaseInjectionStmt, {})
 
 DEF_TRAVERSE_STMT(MSDependentExistsStmt, {
   TRY_TO(TraverseNestedNameSpecifierLoc(S->getQualifierLoc()));
@@ -2620,17 +2665,12 @@ DEF_TRAVERSE_STMT(LambdaExpr, {
     TypeLoc TL = S->getCallOperator()->getTypeSourceInfo()->getTypeLoc();
     FunctionProtoTypeLoc Proto = TL.getAsAdjusted<FunctionProtoTypeLoc>();
 
-    for (Decl *D : S->getExplicitTemplateParameters()) {
-      // Visit explicit template parameters.
-      TRY_TO(TraverseDecl(D));
-    }
+    TRY_TO(TraverseTemplateParameterListHelper(S->getTemplateParameterList()));
     if (S->hasExplicitParameters()) {
       // Visit parameters.
       for (unsigned I = 0, N = Proto.getNumParams(); I != N; ++I)
         TRY_TO(TraverseDecl(Proto.getParam(I)));
     }
-    if (S->hasExplicitResultType())
-      TRY_TO(TraverseTypeLoc(Proto.getReturnLoc()));
 
     auto *T = Proto.getTypePtr();
     for (const auto &E : T->exceptions())
@@ -2638,6 +2678,10 @@ DEF_TRAVERSE_STMT(LambdaExpr, {
 
     if (Expr *NE = T->getNoexceptExpr())
       TRY_TO_TRAVERSE_OR_ENQUEUE_STMT(NE);
+
+    if (S->hasExplicitResultType())
+      TRY_TO(TraverseTypeLoc(Proto.getReturnLoc()));
+    TRY_TO_TRAVERSE_OR_ENQUEUE_STMT(S->getTrailingRequiresClause());
 
     TRY_TO_TRAVERSE_OR_ENQUEUE_STMT(S->getBody());
   }
@@ -2677,8 +2721,6 @@ DEF_TRAVERSE_STMT(CompoundLiteralExpr, {
 })
 DEF_TRAVERSE_STMT(CXXBindTemporaryExpr, {})
 DEF_TRAVERSE_STMT(CXXBoolLiteralExpr, {})
-
-DEF_TRAVERSE_STMT(CXXParameterInfoExpr, {})
 
 DEF_TRAVERSE_STMT(CXXDefaultArgExpr, {
   if (getDerived().shouldVisitImplicitCode())
@@ -2802,7 +2844,27 @@ DEF_TRAVERSE_STMT(SubstNonTypeTemplateParmExpr, {})
 DEF_TRAVERSE_STMT(FunctionParmPackExpr, {})
 DEF_TRAVERSE_STMT(CXXFoldExpr, {})
 DEF_TRAVERSE_STMT(AtomicExpr, {})
-DEF_TRAVERSE_STMT(CXXReflectExpr, {})
+DEF_TRAVERSE_STMT(CXXReflectExpr, {
+  const ReflectionOperand &Op = S->getOperand();
+  switch (Op.getKind()) {
+  case ReflectionOperand::Type: {
+    QualType T = Op.getAsType();
+    if (const LocInfoType *LIT = dyn_cast<LocInfoType>(T))
+      T = LIT->getType();
+    TRY_TO(TraverseType(T));
+    break;
+  }
+  case ReflectionOperand::Expression:
+    TRY_TO(TraverseStmt(Op.getAsExpression()));
+    break;
+  case ReflectionOperand::Invalid:
+  case ReflectionOperand::Template:
+  case ReflectionOperand::Namespace:
+  case ReflectionOperand::BaseSpecifier:
+  case ReflectionOperand::Declaration:
+    break;
+  }
+})
 DEF_TRAVERSE_STMT(CXXInvalidReflectionExpr, {})
 DEF_TRAVERSE_STMT(CXXReflectionReadQueryExpr, {})
 DEF_TRAVERSE_STMT(CXXReflectionWriteQueryExpr, {})
@@ -2810,12 +2872,15 @@ DEF_TRAVERSE_STMT(CXXReflectPrintLiteralExpr, {})
 DEF_TRAVERSE_STMT(CXXReflectPrintReflectionExpr, {})
 DEF_TRAVERSE_STMT(CXXReflectDumpReflectionExpr, {})
 DEF_TRAVERSE_STMT(CXXCompilerErrorExpr, {})
-DEF_TRAVERSE_STMT(CXXIdExprExpr, {})
-DEF_TRAVERSE_STMT(CXXMemberIdExprExpr, {})
+DEF_TRAVERSE_STMT(CXXExprSpliceExpr, {
+    TRY_TO(TraverseStmt(S->getReflection()));
+})
+DEF_TRAVERSE_STMT(CXXMemberExprSpliceExpr, {})
+DEF_TRAVERSE_STMT(CXXPackSpliceExpr, {
+  TRY_TO(TraversePackSpliceLoc(S->getAsPackSpliceLoc()));
+})
 DEF_TRAVERSE_STMT(CXXDependentSpliceIdExpr, {})
-DEF_TRAVERSE_STMT(CXXValueOfExpr, {})
 DEF_TRAVERSE_STMT(CXXConcatenateExpr, {})
-DEF_TRAVERSE_STMT(CXXDependentVariadicReifierExpr, {})
 DEF_TRAVERSE_STMT(CXXFragmentExpr, {})
 DEF_TRAVERSE_STMT(CXXFragmentCaptureExpr, {})
 DEF_TRAVERSE_STMT(CppxTypeLiteral, {})
@@ -2925,6 +2990,9 @@ DEF_TRAVERSE_STMT(OMPParallelDirective,
                   { TRY_TO(TraverseOMPExecutableDirective(S)); })
 
 DEF_TRAVERSE_STMT(OMPSimdDirective,
+                  { TRY_TO(TraverseOMPExecutableDirective(S)); })
+
+DEF_TRAVERSE_STMT(OMPTileDirective,
                   { TRY_TO(TraverseOMPExecutableDirective(S)); })
 
 DEF_TRAVERSE_STMT(OMPForDirective,
@@ -3091,16 +3159,15 @@ bool RecursiveASTVisitor<Derived>::TraverseOMPClause(OMPClause *C) {
   if (!C)
     return true;
   switch (C->getClauseKind()) {
-#define OMP_CLAUSE_CLASS(Enum, Str, Class)                                     \
+#define GEN_CLANG_CLAUSE_CLASS
+#define CLAUSE_CLASS(Enum, Str, Class)                                         \
   case llvm::omp::Clause::Enum:                                                \
     TRY_TO(Visit##Class(static_cast<Class *>(C)));                             \
     break;
-#define OMP_CLAUSE_NO_CLASS(Enum, Str)                                         \
+#define CLAUSE_NO_CLASS(Enum, Str)                                             \
   case llvm::omp::Clause::Enum:                                                \
     break;
-#include "llvm/Frontend/OpenMP/OMPKinds.def"
-  default:
-    break;
+#include "llvm/Frontend/OpenMP/OMP.inc"
   }
   return true;
 }
@@ -3165,6 +3232,13 @@ bool RecursiveASTVisitor<Derived>::VisitOMPSafelenClause(OMPSafelenClause *C) {
 template <typename Derived>
 bool RecursiveASTVisitor<Derived>::VisitOMPSimdlenClause(OMPSimdlenClause *C) {
   TRY_TO(TraverseStmt(C->getSimdlen()));
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPSizesClause(OMPSizesClause *C) {
+  for (Expr *E : C->getSizesRefs())
+    TRY_TO(TraverseStmt(E));
   return true;
 }
 

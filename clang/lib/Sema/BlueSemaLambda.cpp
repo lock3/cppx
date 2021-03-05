@@ -133,7 +133,7 @@ void Sema::ActOnStartOfBlueLambdaDefinition(
   // FIXME: get the constexpr spec kind
   CXXMethodDecl *Method =
       startLambdaDefinition(Class, Intro.Range, MethodTyInfo, EndLoc, Params,
-                            CSK_unspecified,
+                            ConstexprSpecKind::Unspecified,
                             /*RequiresClause=*/nullptr);
   Method->setParams(EParams);
   for (auto *D : EParams)

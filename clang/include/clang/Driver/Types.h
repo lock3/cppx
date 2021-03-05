@@ -87,6 +87,9 @@ namespace types {
   /// isBlue - Is this a Blue input.
   bool isBlue(ID Id);
 
+  /// isOpenCL - Is this an "OpenCL" input.
+  bool isOpenCL(ID Id);
+
   /// isFortran - Is this a Fortran input.
   bool isFortran(ID Id);
 

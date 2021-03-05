@@ -718,8 +718,7 @@ static void constructTemplateArgList(SyntaxContext &Context, Sema &SemaRef,
       TemplateArgs.addArgument({Arg, ParamTInfo});
       ActualArgs.emplace_back(Arg);
     } else {
-      clang::TemplateArgument Arg(ParamExpression,
-                                  clang::TemplateArgument::Expression);
+      clang::TemplateArgument Arg(ParamExpression);
       TemplateArgs.addArgument({Arg, ParamExpression});
       ActualArgs.emplace_back(Arg);
     }
@@ -1052,7 +1051,7 @@ bool ExprElaborator::elaborateTemplateArugments(const ListSyntax *Args,
                                            clang::SourceLocation());
       ArgInfo.addArgument({Arg, TALoc});
     } else {
-      clang::TemplateArgument Arg(ArgExpr, clang::TemplateArgument::Expression);
+      clang::TemplateArgument Arg(ArgExpr);
 
       // This attempts to make sure that all referenced functions are actually
       // in scope, and completely elaborated.
