@@ -2975,17 +2975,14 @@ static bool actOnVarTemplateSpecialziation(Sema &SemaRef,
 
     // FIXME: Move these checks to CheckTemplatePartialSpecializationArgs so we
     // also do them during instantiation.
-    // FIXME: figure out how this changed upstream and re-enable it?
-    // bool InstantiationDependent;
-    // if (!Name.isDependent() &&
-    //     !TemplateSpecializationType::anyDependentTemplateArguments(
-    //         TemplateArgs.arguments(),
-    //         InstantiationDependent)) {
-    //   CxxSema.Diag(TemplateNameLoc,
-    //                diag::err_partial_spec_fully_specialized)
-    //                << VarTemplate->getDeclName();
-    //   IsPartialSpecialization = false;
-    // }
+    if (!Name.isDependent() &&
+        !TemplateSpecializationType::anyDependentTemplateArguments(
+          TemplateArgs.arguments(), Converted)) {
+      CxxSema.Diag(TemplateNameLoc,
+                   diag::err_partial_spec_fully_specialized)
+                   << VarTemplate->getDeclName();
+      IsPartialSpecialization = false;
+    }
 
     if (isSameAsPrimaryTemplate(VarTemplate->getTemplateParameters(),
                                 Converted) &&
