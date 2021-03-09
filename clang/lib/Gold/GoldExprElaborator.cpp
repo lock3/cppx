@@ -1729,23 +1729,9 @@ ExprElaborator::elaborateSizeOfPack(const AtomSyntax *Name,
     break;
 
   case clang::LookupResult::NotFound:
-  case clang::LookupResult::NotFoundInCurrentInstantiation: {
-    ParameterPackValidatorCCC CCC{};
-    if (clang::TypoCorrection Corrected =
-            SemaRef.getCxxSema().CorrectTypo(R.getLookupNameInfo(),
-                                             R.getLookupKind(),
-                                             SemaRef.getCurClangScope(),
-                                             nullptr,
-                                             CCC,
-                                             clang::Sema::CTK_ErrorRecovery)) {
-      SemaRef.getCxxSema().diagnoseTypo(Corrected,
-        SemaRef.getCxxSema().PDiag(
-          clang::diag::err_sizeof_pack_no_pack_name_suggest) << &Id,
-        SemaRef.getCxxSema().PDiag(clang::diag::note_parameter_pack_here));
-      ParameterPack = Corrected.getCorrectionDecl();
-    }
+  case clang::LookupResult::NotFoundInCurrentInstantiation:
     break;
-  }
+
   case clang::LookupResult::FoundOverloaded:
   case clang::LookupResult::FoundUnresolvedValue:
     break;
