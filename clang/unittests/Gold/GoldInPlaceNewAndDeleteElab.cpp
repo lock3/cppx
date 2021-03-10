@@ -103,3 +103,22 @@ foo(x:^ToDestroy2):void!
   );
   ASSERT_TRUE(matches(Code, ToMatch));
 }
+
+TEST(GoldDestruct, DestructUsedWithinTemplate) {
+  std::string Code = R"Gold(
+Cls[T:type] = class{
+  x:^T;
+  foo():void!{
+    x.destruct();
+  }
+}
+
+
+foo():void! {
+  x:Cls[int];
+  x.foo();
+}
+)Gold";
+  auto ToMatch = cxxPseudoDestructorExpr();
+  ASSERT_TRUE(matches(Code, ToMatch));
+}

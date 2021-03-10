@@ -169,7 +169,7 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
   }
   if (!isa<clang::TagType>(Ty)) {
     SemaRef.Diags.Report(Ret->getExprLoc(),
-                         clang::diag::err_typecheck_member_reference_struct_union)
+                       clang::diag::err_typecheck_member_reference_struct_union)
                          << Ty;
     return nullptr;
   }
@@ -179,7 +179,7 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
   clang::SourceRange Range(Loc, Loc);
   if (isa<clang::ClassTemplateSpecializationDecl>(TD)) {
     if (SemaRef.getCxxSema().RequireCompleteType(Loc, Ty,
-                                    clang::diag::err_incomplete_nested_name_spec,
+                                   clang::diag::err_incomplete_nested_name_spec,
                                                 Range))
       return nullptr;
   }
@@ -251,7 +251,7 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
           continue;
 
         if (clang::CXXMethodDecl *MD
-                  = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
+                = dyn_cast_or_null<clang::CXXMethodDecl>(ND->getAsFunction())) {
           if (!MD->isOverloadedOperator())
             continue;
           if (MD->getOverloadedOperator() == UnaryOpKind) {
@@ -352,18 +352,6 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
                                  R, Ret->getExprLoc(), NeedsArrow);
   case clang::LookupResult::NotFoundInCurrentInstantiation: {
   case clang::LookupResult::NotFound:
-    //{
-      // // Checking any base classes.
-      // clang::CXXScopeSpec SS;
-      // // SS.Adopt(QualifierLoc);
-
-      // return SemaRef.getCxxSema().BuildMemberReferenceExpr(BaseE, BaseType,
-      //                                         OperatorLoc, IsArrow,
-      //                                         SS, TemplateKWLoc,
-      //                                         FirstQualifierInScope,
-      //                                         MemberNameInfo,
-      //                                         TemplateArgs, /*S*/nullptr);
-    // }
     SemaRef.Diags.Report(Ret->getExprLoc(),
                           clang::diag::err_no_member)
                           << DNI.getName().getAsString() << Ty;
