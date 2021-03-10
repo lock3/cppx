@@ -442,6 +442,8 @@ defvar cplusplus = LangOpts<"CPlusPlus">;
 defvar cpp11 = LangOpts<"CPlusPlus11">;
 defvar cpp17 = LangOpts<"CPlusPlus17">;
 defvar cpp20 = LangOpts<"CPlusPlus20">;
+defvar gold = LangOpts<"Gold">;
+defvar blue = LangOpts<"Blue">;
 defvar c99 = LangOpts<"C99">;
 defvar c2x = LangOpts<"C2x">;
 defvar lang_std = LangOpts<"LangStd">;
@@ -2329,7 +2331,7 @@ def frandom_seed_EQ : Joined<["-"], "frandom-seed=">, Group<clang_ignored_f_Grou
 def freg_struct_return : Flag<["-"], "freg-struct-return">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Override the default ABI to return small structs in registers">;
 defm rtti : BoolFOption<"rtti",
-  LangOpts<"RTTI">, Default<cplusplus.KeyPath>,
+  LangOpts<"RTTI">, Default<!strconcat(cplusplus.KeyPath, "||", gold.KeyPath, "||", blue.KeyPath)>,
   NegFlag<SetFalse, [CC1Option], "Disable generation of rtti information">,
   PosFlag<SetTrue>>, ShouldParseIf<cplusplus.KeyPath>;
 defm rtti_data : BoolFOption<"rtti-data",

@@ -2541,6 +2541,12 @@ static void GenerateFrontendArgs(const FrontendOptions &Opts,
     case Language::LLVM_IR:
       Lang = "ir";
       break;
+    case Language::Blue:
+      Lang = "Blue";
+      break;
+    case Language::Gold:
+      Lang = "Gold";
+      break;
     }
 
     GenerateArg(Args, OPT_x, Lang + Header + ModuleMap + Preprocessed, SA);
