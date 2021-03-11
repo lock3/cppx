@@ -850,3 +850,16 @@ c : type = class:
   );
   ASSERT_TRUE(matches(Code.str(), ClassC));
 }
+
+TEST(DependentMember, NonExistentMemberCall) {
+  StringRef Code = R"(
+new_allocator[T:type] : type = class:
+  allocate(n:uint64, ignored:^const void = null): ^T !{
+    if (n > this.max_size()) {
+      ;
+    }
+}
+)";
+
+  GoldFailureTest(Code.str());
+}
