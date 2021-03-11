@@ -170,3 +170,38 @@ main() : int! {
     varDecl(hasName("test"), hasType(asString("int")));
   ASSERT_TRUE(matches(Code.str(), Test));
 }
+
+TEST(GoldVariadicTemplateParam, InvalidPackExpansion) {
+  StringRef Code = R"(
+
+<# Defining Remove reference for perfect forwarding. #>;
+remove_reference[T:type] = class { ty : type = T; }
+remove_reference[T:type][ref T] = class { ty : type = T; }
+remove_reference[T:type][rref T] = class { ty : type = T; }
+
+<# Defining forwarding function. #>;
+forward[T:type](t:ref remove_reference[T].ty)<constexpr>:rref T !{
+  return static_cast[rref T](t);
+}
+
+forward[T:type](t:rref remove_reference[T].ty)<constexpr>:rref T !{
+  return static_cast[rref remove_reference[T].ty](t);
+}
+
+foo[T:type, Args:type...](x:^type, args:rref Args...):void! {
+  x.construct(forward[Args](args...));
+}
+
+})";
+  GoldFailureTest(Code);
+}
+
+TEST(GoldVariadicTemplateParam, Invalid_ParameterTypeFunction ) {
+  StringRef Code = R"(
+foo[T:type, Args:type...](x:^type, args:rrerf Args...):void! {
+  x.construct(forward[Args](args)...);
+}
+
+})";
+  GoldFailureTest(Code);
+}
