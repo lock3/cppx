@@ -195,13 +195,3 @@ foo[T:type, Args:type...](x:^type, args:rref Args...):void! {
 })";
   GoldFailureTest(Code);
 }
-
-TEST(GoldVariadicTemplateParam, Invalid_ParameterTypeFunction ) {
-  StringRef Code = R"(
-foo[T:type, Args:type...](x:^type, args:rrerf Args...):void! {
-  x.construct(forward[Args](args)...);
-}
-
-})";
-  GoldFailureTest(Code);
-}
