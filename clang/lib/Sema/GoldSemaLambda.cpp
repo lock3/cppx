@@ -128,11 +128,11 @@ void Sema::ActOnStartOfGoldLambdaDefinition(
                                       UPPC_DeclarationType);
   }
 
-  CXXRecordDecl *Class = createLambdaClosureType(Intro.Range, MethodTyInfo,
+  CXXRecordDecl *CxxRecord = createLambdaClosureType(Intro.Range, MethodTyInfo,
                                                  KnownDependent, Intro.Default);
   // FIXME: get the constexpr spec kind
   CXXMethodDecl *Method =
-      startLambdaDefinition(Class, Intro.Range, MethodTyInfo, EndLoc, Params,
+      startLambdaDefinition(CxxRecord, Intro.Range, MethodTyInfo, EndLoc, Params,
                             ConstexprSpecKind::Unspecified,
                             /*RequiresClause=*/nullptr);
   Method->setParams(EParams);
@@ -155,7 +155,7 @@ void Sema::ActOnStartOfGoldLambdaDefinition(
   // ProcessDeclAttributes(CurScope, Method, ParamInfo);
 
   // Number the lambda for linkage purposes if necessary.
-  handleLambdaNumbering(Class, Method);
+  handleLambdaNumbering(CxxRecord, Method);
 
   // Introduce the function call operator as the current declaration context.
   PushDeclContext(CurScope, Method);
@@ -175,7 +175,8 @@ void Sema::ActOnStartOfGoldLambdaDefinition(
   // For DR1632, we also allow a capture-default in any context where we can
   // odr-use 'this' (in particular, in a default initializer for a non-static
   // data member).
-  if (Intro.Default != LCD_None && !Class->getParent()->isFunctionOrMethod() &&
+  if (Intro.Default != LCD_None &&
+      !CxxRecord->getParent()->isFunctionOrMethod() &&
       (getCurrentThisType().isNull() ||
        CheckCXXThisCapture(SourceLocation(), /*Explicit*/true,
                            /*BuildAndDiagnose*/false)))

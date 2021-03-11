@@ -14,9 +14,10 @@
 #ifndef CLANG_GOLD_GOLDSCOPE_H
 #define CLANG_GOLD_GOLDSCOPE_H
 
-#include "clang/Gold/GoldDeclaration.h"
-
+#include "clang/Sema/ScopeInfo.h"
 #include "llvm/ADT/SmallPtrSet.h"
+
+#include "clang/Gold/GoldDeclaration.h"
 
 #include <map>
 #include <set>
@@ -158,7 +159,11 @@ public:
 
   // True when a scope is the block of a lambda expression.
   bool isLambdaScope() const {
-    return Kind == SK_Block && Lambda;
+    return Kind == SK_Block && AssociatedLambda;
+  }
+
+  bool isGenericLambdaScope() const {
+    return isLambdaScope() && AssociatedLambda->isGenericLambda();
   }
 
   // True when a scope is the capture block of a lambda expression.
@@ -238,8 +243,9 @@ public:
   // UsingDecls that get added to this scope.
   llvm::SmallPtrSet<clang::UsingShadowDecl *, 4> Shadows;
 
-  // True when this is the block of a lambda scope.
-  bool Lambda = false;
+  // When this is the block of a lambda scope, it will be associated with a
+  // C++ lambda scope info.
+  clang::sema::LambdaScopeInfo *AssociatedLambda = nullptr;
 
   // True when this is the capture block of a lambda.
   bool LambdaCaptureScope = false;
