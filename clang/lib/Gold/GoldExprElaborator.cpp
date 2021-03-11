@@ -3544,6 +3544,18 @@ static inline bool isMutable(Sema &SemaRef, Attribute *A) {
   }
 }
 
+// Count how deep into a generic lambda our current scope is.
+static inline std::size_t computeGenericLambdaDepth(Scope *S) {
+  std::size_t Depth = 0;
+  while (!S->isNamespaceScope()) {
+    if (S->isGenericLambdaScope())
+      ++Depth;
+    S = S->getParent();
+  }
+
+  return Depth;
+}
+
 static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
                                       const MacroSyntax *S) {
   assert(isa<CallSyntax>(S->getCall()) && "invalid lambda");
@@ -3568,11 +3580,11 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
   llvm::SmallVector<clang::NamedDecl *, 4> TemplateParams;
   const ElemSyntax *Templ = dyn_cast<ElemSyntax>(Call->getCallee());
   Sema::ScopeRAII TemplateScope(SemaRef, SK_Template, Templ);
-  bool GenericLambda = false;
+
   if (Templ) {
+    // FIXME: do we need to compute the depth here?
     Elaborator El(Context, SemaRef);
     El.buildTemplateParams(Templ->getArguments(), TemplateParams);
-    GenericLambda = true;
   }
 
   CxxSema.PushLambdaScope();
@@ -3587,8 +3599,8 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
 
     clang::ParmVarDecl *PVD = cast<clang::ParmVarDecl>(D);
     if (PVD->getType()->isUndeducedAutoType() || PVD->isParameterPack()) {
-      GenericLambda = true;
-      CxxSema.RecordParsingTemplateParameterDepth(SemaRef.LambdaTemplateDepth);
+      CxxSema.RecordParsingTemplateParameterDepth(
+        computeGenericLambdaDepth(SemaRef.getCurrentScope()));
 
       const clang::AutoType *Auto = nullptr;
       if (PVD->getType()->isUndeducedAutoType())
@@ -3621,11 +3633,10 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
     Params.push_back(PVD);
   }
 
-  if (GenericLambda)
-    ++SemaRef.LambdaTemplateDepth;
-
+  // FIXME: why is the block scope the parent of the capture scope?
   Sema::ScopeRAII BlockScope(SemaRef, SK_Block, S->getBlock());
-  SemaRef.getCurrentScope()->Lambda = true;
+  SemaRef.getCurrentScope()->AssociatedLambda =
+    SemaRef.getCxxSema().getCurLambda();
   unsigned ScopeFlags = clang::Scope::BlockScope |
     clang::Scope::FnScope | clang::Scope::DeclScope |
     clang::Scope::CompoundStmtScope;
@@ -3657,7 +3668,6 @@ static clang::Expr *handleLambdaMacro(SyntaxContext &Context, Sema &SemaRef,
   clang::ExprResult Lam =
     CxxSema.ActOnLambdaExpr(S->getLoc(), Block, SemaRef.getCurClangScope());
   SemaRef.leaveClangScope(S->getLoc());
-  SemaRef.LambdaTemplateDepth = 0;
   return Lam.get();
 }
 
