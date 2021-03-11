@@ -1632,7 +1632,17 @@ Syntax *Parser::parseDot(Syntax *Obj) {
 
   // FIXME: this is a qualified-id, which is not clearly defined.
   // Perhaps our disambiguating operator'()' is enough to meet the criteria?
-  Syntax *Sub = nextTokenIs(tok::LeftParen) ? parsePre() : parseId();
+  // Syntax *Sub = nextTokenIs(tok::LeftParen) ? parsePre() : parseId();
+  Syntax *Sub = nullptr;
+  if (nextTokenIs(tok::LeftParen)) {
+    Syntax *LHS = parseParen();
+    Syntax *RHS = parseId();
+    Sub = new (Context) CallSyntax(
+      makeOperator(Context, *this, LHS->getLoc(), "()"),
+      makeList(Context, {LHS, RHS}));
+  } else {
+    Sub = parseId();
+  }
   return onBinary(Op, Obj, Sub);
 }
 
