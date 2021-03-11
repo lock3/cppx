@@ -2313,8 +2313,11 @@ clang::Expr *ExprElaborator::elaborateMemberAccessRHS(clang::Expr *ElaboratedLHS
     return elaborateMemberAccessRHSAtom(ElaboratedLHS, LHS, Op, RHSAtom);
 
   // A disambiguator of the form (a)b
-  if (const CallSyntax *Disambig = dyn_cast<CallSyntax>(RHS))
+  if (const CallSyntax *Disambig = dyn_cast<CallSyntax>(RHS)) {
+    // llvm::outs() << "Calling elaborateDisambuationSyntax\nElaborated LHS:\n";
+    // ElaboratedLHS->dump();
     return elaborateDisambuationSyntax(ElaboratedLHS, LHS, Op, Disambig);
+  }
 
   unsigned DiagID =
     SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
@@ -2412,6 +2415,9 @@ clang::Expr *ExprElaborator::elaborateDisambuationSyntax(clang::Expr *Elaborated
   clang::QualType Base =
     cast<clang::CppxTypeLiteral>(LHS)->getValue()->getType();
 
+  if (ElaboratedLHS->getType()->isDependentType() || Base->isDependentType()) {
+    return handleDependentTypeNameLookup(SemaRef, Op, ElaboratedLHS, Disambig);
+  }
   clang::Expr *Res =
     elaborateNestedLookupAccess(LHS, Op, Disambig->getArgument(1));
   if (!Res)
@@ -2509,8 +2515,18 @@ clang::Expr *ExprElaborator::elaborateDestructCall(clang::Expr *LHSPtr,
   clang::UnqualifiedId Id;
   clang::TypeSourceInfo *TInfo = BuildAnyTypeLoc(Context.CxxAST, ExprTy,
                                                  RHS->getLoc());
+  if (TInfo->getType()->isDependentType()) {
+    auto CallLoc = Op->getLoc();
+    clang::PseudoDestructorTypeStorage DtorLoc(TInfo);
+    auto Ret = SemaRef.getCxxSema().BuildPseudoDestructorExpr(LHSPtr, CallLoc,
+      AccessTokenKind, SS, nullptr, CallLoc, CallLoc, DtorLoc);
+    if (Ret.isInvalid())
+      return nullptr;
+    return Ret.get();
+  }
   auto PT = SemaRef.getCxxSema().CreateParsedType(TInfo->getType(), TInfo);
   Id.setDestructorName(RHS->getLoc(), PT, RHS->getLoc());
+
   auto Ret =
     SemaRef.getCxxSema().ActOnMemberAccessExpr(SemaRef.getCurClangScope(),
                                                LHSPtr, Op->getLoc(),

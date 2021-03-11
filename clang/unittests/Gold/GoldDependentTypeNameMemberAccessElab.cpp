@@ -30,16 +30,17 @@ new_allocator[T:type] : type = class{
   init()<noexcept>:void !{ }
 }
 
-_Vector_Base[T:type, Alloc:type] : type = class:
+VBase[T:type, Alloc:type] : type = class:
   T_alloc_type : type = Alloc.rebind[T].other
-  _Vector_Impl : type = class(T_alloc_type) {
+  VectorImpl : type = class(T_alloc_type) {
     constructor()! {
       (this.(T_alloc_type)init)();
     }
   }
-  impl: _Vectror_Impl;
+  impl: VectorImpl;
+
 temp() : void !{
-  x:_Vector_Base[int, new_allocator[int]];
+  x:VBase[int, new_allocator[int]];
 }
 )GOLD";
   auto ToMatch = callExpr();

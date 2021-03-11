@@ -25,7 +25,6 @@ extern const internal::VariadicDynCastAllOfMatcher<
 extern const internal::VariadicDynCastAllOfMatcher<
   Decl, VarTemplatePartialSpecializationDecl> varTemplatePartialSpecializationDecl;
 
-  
 
 extern const internal::VariadicDynCastAllOfMatcher<Decl, TemplateTemplateParmDecl>
     templateTemplateParmDecl;
@@ -38,6 +37,9 @@ extern const internal::VariadicDynCastAllOfMatcher<Stmt, CXXFoldExpr>
 
 extern const internal::VariadicDynCastAllOfMatcher<Stmt, SizeOfPackExpr>
     sizeOfPackExpr;
+extern const internal::VariadicDynCastAllOfMatcher<Stmt, CXXPseudoDestructorExpr>
+    cxxPseudoDestructorExpr;
+
 
 // I created this because it didn't exist before this and I acutally needed it
 // for a particular test.
