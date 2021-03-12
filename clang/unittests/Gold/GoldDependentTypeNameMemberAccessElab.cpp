@@ -47,4 +47,30 @@ temp() : void !{
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-// TODO: Create a special case where this uses a chain of nested accessors.
+
+
+TEST(GoldDependentTypeNameWithinMemberAccess, ConvertToBaseClass_NoParen) {
+  StringRef Code = R"GOLD(
+
+new_allocator[T:type] : type = class{
+  rebind[T1:type] : type = class { other : type = new_allocator[T1]; }
+
+  init()<noexcept>:void !{ }
+}
+
+VBase[T:type, Alloc:type] : type = class:
+  T_alloc_type : type = Alloc.rebind[T].other
+  VectorImpl : type = class(T_alloc_type) {
+    constructor()! {
+      this.(T_alloc_type)init();
+    }
+  }
+  impl: VectorImpl;
+
+temp() : void !{
+  x:VBase[int, new_allocator[int]];
+}
+)GOLD";
+  auto ToMatch = callExpr();
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
