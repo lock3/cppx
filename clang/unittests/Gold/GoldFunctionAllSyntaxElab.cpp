@@ -318,3 +318,14 @@ main() : int!
 )";
   GoldFailureTest(Code);
 }
+
+
+TEST(GoldFuncSyntax, InvalidDefaultArgument) {
+    StringRef Code = R"(
+TestType[T:type] : type = class:
+  size_type : type = uint64
+  allocate(n:size_type, ignored:^const void = nullptr): pointer !{
+  }
+)";
+  GoldFailureTest(Code);
+}

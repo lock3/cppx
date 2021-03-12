@@ -405,3 +405,40 @@ main() : int!
   ASSERT_TRUE(matches(Code.str(), Test));
   ASSERT_TRUE(matches(Code.str(), Anon));
 }
+
+
+TEST(GoldUsingDirective, DependentUsingDirective) {
+  StringRef Code = R"(
+<# Defining the new_allocator #>;
+new_allocator[T:type] : type = class{
+  pointer : type = ^T
+  rebind[T1:type] : type = class { other : type = new_allocator[T1]; }
+}
+
+VectorBase[T:type, Alloc:type] : type = class{
+
+  T_alloc_type : type = Alloc.rebind[T].other
+
+  VectorImpl : type = class(T_alloc_type) {
+    foo():void! { }
+  }
+
+
+  impl:VectorImpl;
+}
+
+vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<protected>){
+
+  base<private> : type = VectorBase[T, Alloc];
+  using {base.impl};
+
+  <# Constructor and assign() #>;
+  constructor()! {
+    impl.foo();
+  }
+}
+
+)";
+  // I'm not sure what this is supposed to match yet.
+  SimpleGoldParseTest(Code);
+}
