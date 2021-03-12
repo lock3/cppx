@@ -361,6 +361,7 @@ public:
   FunctionDeclarator(const CallSyntax *ParamsNode, Declarator *Next)
     :FunctionDeclarator(ParamsNode, nullptr, Next)
   { }
+  const CallSyntax *getCallNode() const { return Params; }
 
   virtual clang::SourceLocation getLoc() const override;
   virtual std::string getString(bool IncludeKind = false) const override;

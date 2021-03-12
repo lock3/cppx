@@ -1405,6 +1405,7 @@ static void exitToCorrectScope(Sema &SemaRef, gold::Scope *ExpectedScope,
 
 clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
                          const Syntax *Arg, clang::SourceLocation UsingLoc) {
+
   BALANCE_DBG();
   Sema::ExtendQualifiedLookupRAII ExQual(SemaRef);
   clang::SourceLocation ArgLoc = Arg->getLoc();
@@ -1484,6 +1485,7 @@ clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
     SemaRef.CurNNSContext, Name, clang::SourceLocation(), AttrView);
   if (!D)
     return nullptr;
+
   // FIXME: if this comes from an operator'.', elaborate lhs to
   // differentiate classes and namespaces.
   if (clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D)) {

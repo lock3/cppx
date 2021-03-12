@@ -4082,7 +4082,6 @@ clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
 clang::Expr *
 ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
   FunctionDeclarator *FuncDcl = D->getAsFunction();
-
   // FIXME: Handle array-based arguments.
   const ListSyntax *Args = FuncDcl->getParams();
 
@@ -4618,6 +4617,9 @@ clang::Expr *ExprElaborator::makeOpPackExpansionType(clang::Expr *Result,
   clang::TypeSourceInfo *PackInfo =
         SemaRef.getCxxSema().CheckPackExpansion(TInfo, S->getCallee()->getLoc(),
                                                 llvm::None);
+  if (!PackInfo)
+    return nullptr;
+
   return SemaRef.buildTypeExpr(PackInfo);
 }
 
