@@ -437,8 +437,10 @@ vector[T:type, Alloc:type = new_allocator[T]]:type = class(VectorBase[T, Alloc]<
     impl.foo();
   }
 }
-
 )";
-  // I'm not sure what this is supposed to match yet.
+
   SimpleGoldParseTest(Code);
+  DeclarationMatcher UUVD =
+    unresolvedUsingValueDecl(hasName("impl"));
+  ASSERT_TRUE(matches(Code.str(), UUVD));
 }
