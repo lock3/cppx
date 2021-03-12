@@ -161,3 +161,36 @@ main() : int!
 
   ASSERT_TRUE(matches(Code.str(), TemplateAndInstantiationMatch));
 }
+
+TEST(ClassTemplate, DuplicateMemberDefinitionError) {
+  StringRef Code = R"(
+<# Defining the new_allocator #>;
+
+__addressof[T:type](x:ref T)<inline>:^T !
+  return __builtin_addressof(x)
+
+new_allocator[T:type] : type = class:
+
+  size_type : type = uint64
+  difference_type : type = int64
+  pointer : type = ^T
+  const_pointer : type = ^ const T
+  reference : type = ref T
+  const_reference : type = ref const T
+
+  rebind[T1:type] : type = class { other : type = new_allocator[T1]; }
+
+  constructor()<noexcept>! { }
+  constructor(other:ref const new_allocator[T])<noexcept>! { }
+  destructor()<noexcept>! { }
+
+  address(x:reference)<const><noexcept>:pointer! {
+    return __addressof(x);
+  }
+
+  address(x:reference)<const><noexcept>:pointer! {
+    return null;
+  })";
+
+  GoldFailureTest(Code);
+}

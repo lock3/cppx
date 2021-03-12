@@ -2111,7 +2111,6 @@ void deduceDependentAutoReturn(SyntaxContext &Context,
 clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   BALANCE_DBG();
   clang::Sema &CxxSema = SemaRef.getCxxSema();
-  // CxxSema.PushFunctionScope();
   clang::DeclContext *Owner = D->getOwningDeclContext();
   if (auto *Linkage = dyn_cast<clang::LinkageSpecDecl>(Owner)) {
     if (Linkage->getParent()->isRecord()) {
@@ -2184,7 +2183,7 @@ clang::Decl *Elaborator::elaborateFunctionDecl(Declaration *D) {
   clang::LookupResult Previous(CxxSema, DNI,
                                clang::Sema::LookupOrdinaryName,
                                CxxSema.forRedeclarationInCurContext());
-  clang::Scope *CxxScope = SemaRef.getCurClangScope();
+  clang::Scope *CxxScope = D->ClangDeclaringScope;
   if (D->hasNestedNameSpecifier()) {
     // Attempting to use the previously located decl context in order to
     // correctly identify any previous declarations.
@@ -3283,8 +3282,9 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
     // Attempting to use the previously located decl context in order to
     // correctly identify any previous declarations.
     CxxSema.LookupQualifiedName(Previous, PreviousDC);
-  } else
+  } else{
     lookupFunctionRedecls(SemaRef, CxxScope, Previous);
+  }
 
   clang::DeclContext *Owner = D->getOwningDeclContext();
   if (CxxSema.DiagnoseClassNameShadow(Owner, DNI)) {
