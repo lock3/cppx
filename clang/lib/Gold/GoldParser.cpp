@@ -1632,7 +1632,17 @@ Syntax *Parser::parseDot(Syntax *Obj) {
 
   // FIXME: this is a qualified-id, which is not clearly defined.
   // Perhaps our disambiguating operator'()' is enough to meet the criteria?
-  Syntax *Sub = nextTokenIs(tok::LeftParen) ? parsePre() : parseId();
+  // Syntax *Sub = nextTokenIs(tok::LeftParen) ? parsePre() : parseId();
+  Syntax *Sub = nullptr;
+  if (nextTokenIs(tok::LeftParen)) {
+    Syntax *LHS = parseParen();
+    Syntax *RHS = parseId();
+    Sub = new (Context) CallSyntax(
+      makeOperator(Context, *this, LHS->getLoc(), "()"),
+      makeList(Context, {LHS, RHS}));
+  } else {
+    Sub = parseId();
+  }
   return onBinary(Op, Obj, Sub);
 }
 
@@ -1831,6 +1841,7 @@ Syntax *Parser::parsePrimary() {
   // Diagnose the error and consume the token so we don't see it again.
   Diags.Report(getInputLocation(), clang::diag::err_expected)
       << "primary-expression";
+  consumeToken();
   return onError();
 }
 
@@ -1888,7 +1899,20 @@ Syntax *Parser::parseBracedArray() {
   if (!braces.expectOpen())
     return onError();
 
+  // If the block contains nothing but separators, create an empty array.
+  for (std::size_t I = 0; getLookahead(I) == tok::Separator; ++I) {
+    std::size_t J = I + 1;
+    if (getLookahead(J) == tok::EndOfFile)
+      break;
+    if (getLookahead(J) == tok::RightBrace) {
+      while (nextTokenIs(tok::Separator))
+        consumeToken();
+      goto RIGHT_BRACE;
+    }
+  }
+
   if (nextTokenIs(tok::RightBrace)) {
+  RIGHT_BRACE:
     braces.expectClose();
     llvm::SmallVector<Syntax *, 1> Vec;
     return onArray(BlockArray, Vec);

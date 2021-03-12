@@ -41,3 +41,22 @@ x : int = 0
 
   SimpleGoldParseTest(Code);
 }
+
+TEST(Parsing, EmptyBlocks) {
+  StringRef Code = R"(
+f() : int! {
+}
+
+g() : int! {
+
+
+
+
+
+}
+
+h() : int! {}
+)";
+
+  SimpleGoldParseTest(Code);
+}
