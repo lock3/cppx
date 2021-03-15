@@ -2688,12 +2688,20 @@ handleDependentTypeNameLookup(Sema &SemaRef, const CallSyntax *Op,
       if (auto *ICNT = ThisPte->getAs<clang::InjectedClassNameType>())
         Record = ICNT->getDecl();
       else
+        Record = ThisPte->getAsCXXRecordDecl();
+
+      if (!Record) {
+        unsigned DiagID =
+          SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                        "expected object of class type");
+        SemaRef.Diags.Report(Prev->getExprLoc(), DiagID);
         return nullptr;
+      }
 
       if (!Record->hasMemberName({Id})) {
         unsigned DiagID =
           SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                        "expect member or member function");
+                                        "expected member or member function");
         SemaRef.Diags.Report(RHS->getLoc(), DiagID);
         return nullptr;
       }
