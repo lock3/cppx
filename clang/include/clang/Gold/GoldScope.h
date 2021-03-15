@@ -243,6 +243,9 @@ public:
   // UsingDecls that get added to this scope.
   llvm::SmallPtrSet<clang::UsingShadowDecl *, 4> Shadows;
 
+  // Unresolved Using Decls in this scope
+  llvm::SmallPtrSet<clang::UnresolvedUsingValueDecl *, 4> UnresolvedUsings;
+
   // When this is the block of a lambda scope, it will be associated with a
   // C++ lambda scope info.
   clang::sema::LambdaScopeInfo *AssociatedLambda = nullptr;

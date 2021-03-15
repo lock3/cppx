@@ -1491,6 +1491,8 @@ clang::Decl *handleUsing(SyntaxContext &Ctx, Sema &SemaRef,
   if (clang::UsingDecl *UD = dyn_cast<clang::UsingDecl>(D)) {
     for (auto Shadow : cast<clang::UsingDecl>(UD)->shadows())
       SemaRef.getCurrentScope()->Shadows.insert(Shadow);
+  } else if (auto *UD = dyn_cast<clang::UnresolvedUsingValueDecl>(D)) {
+    SemaRef.getCurrentScope()->UnresolvedUsings.insert(UD);
   }
 
   return D;

@@ -1634,12 +1634,14 @@ Syntax *Parser::parseDot(Syntax *Obj) {
   // Perhaps our disambiguating operator'()' is enough to meet the criteria?
   // Syntax *Sub = nextTokenIs(tok::LeftParen) ? parsePre() : parseId();
   Syntax *Sub = nullptr;
-  if (nextTokenIs(tok::LeftParen)) {
+  if (nextTokenIs(tok::LeftParen) && scanNNSPrefix()) {
     Syntax *LHS = parseParen();
     Syntax *RHS = parseId();
     Sub = new (Context) CallSyntax(
       makeOperator(Context, *this, LHS->getLoc(), "()"),
       makeList(Context, {LHS, RHS}));
+  } else if (nextTokenIs(tok::LeftParen)) {
+    Sub = parsePre();
   } else {
     Sub = parseId();
   }

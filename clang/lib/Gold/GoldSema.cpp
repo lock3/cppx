@@ -694,6 +694,15 @@ bool Sema::lookupUnqualifiedName(clang::LookupResult &R, Scope *S,
         FoundInNamespace = !NSFound.empty();
         Found = NSFound;
       }
+
+      if (!FoundInNamespace) {
+        for (clang::UnresolvedUsingValueDecl *UD : S->UnresolvedUsings) {
+          if (UD->getIdentifier() == Id) {
+            R.addDecl(UD);
+            return true;
+          }
+        }
+      }
     }
 
     if (!Found.empty()) {

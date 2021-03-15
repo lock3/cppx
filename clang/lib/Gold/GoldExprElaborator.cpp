@@ -1110,7 +1110,7 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
                             << S->getSpelling();
         return nullptr;
       }
-      if (R.isOverloadedResult()) {
+      if (R.isOverloadedResult() || R.isUnresolvableResult()) {
         // This is necessary because of an error when converting between DNI's
         // with different DeclarationNameLoc types.
         DNI = SemaRef.rebuildDeclarationNameInfo(DNI);
@@ -1124,16 +1124,15 @@ createIdentAccess(SyntaxContext &Context, Sema &SemaRef, const AtomSyntax *S,
                                                    R.begin(), R.end());
       }
 
-      // TODO: FIXME: Create error message for here.
-      llvm_unreachable("We are not currently handling multiple declarations "
-          "returned. This needs to be fixed in order to correctly create proper "
-          "results that can be returned to the caller");
       // This needs to be changed because we are literally looking up a
       // multitude of things, and this is only an error in some of the cases,
       // for example if we a set of function overloads then this isn't going to
       // work correctly and we may need to simply return access to a function
       // address rather then something else?
-
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "multiple name lookup not yet supported");
+      SemaRef.Diags.Report(S->getLoc(), DiagID);
       return nullptr;
     }
 
