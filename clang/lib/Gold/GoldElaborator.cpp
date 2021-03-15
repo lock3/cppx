@@ -1927,8 +1927,9 @@ void setSpecialFunctionName(SyntaxContext &Ctx, clang::CXXRecordDecl *RD,
 void lookupFunctionRedecls(Sema &SemaRef, clang::Scope *FoundScope,
                            clang::LookupResult &Previous) {
   BALANCE_DBG();
-  while ((FoundScope->getFlags() & clang::Scope::DeclScope) == 0 ||
-         (FoundScope->getFlags() & clang::Scope::TemplateParamScope) != 0)
+  while (FoundScope &&
+         ((FoundScope->getFlags() & clang::Scope::DeclScope) == 0 ||
+         (FoundScope->getFlags() & clang::Scope::TemplateParamScope) != 0))
     FoundScope = FoundScope->getParent();
 
   assert(FoundScope && "Scope not found");
