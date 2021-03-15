@@ -1382,3 +1382,25 @@ foo():void!
 
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+
+
+TEST(ClassParsing, NestedTypeWithConstructorUsedAsMember) {
+  StringRef Code = R"Gold(
+T1[T:type, Alloc:type] : type = class{
+  VectorImpl : type = class {
+    constructor()! {
+      this.init();
+    }
+
+    init():void !{
+    }
+
+  }
+  impl:VectorImpl;
+}
+)Gold";
+
+  auto ToMatch = memberExpr(member(hasName("init")));
+
+  ASSERT_TRUE(matches(Code.str(), ToMatch));
+}
