@@ -1400,7 +1400,7 @@ T1[T:type, Alloc:type] : type = class{
 }
 )Gold";
 
-  auto ToMatch = memberExpr(member(hasName("init")));
+  auto ToMatch = cppxDependentMemberAccessExpr();
 
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }

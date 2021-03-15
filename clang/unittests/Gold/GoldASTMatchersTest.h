@@ -16,6 +16,7 @@
 #include "clang/Tooling/Tooling.h"
 #include "gtest/gtest.h"
 #include "clang/AST/DeclTemplate.h"
+#include "clang/AST/ExprCppx.h"
 
 namespace clang {
 namespace ast_matchers {
@@ -40,6 +41,8 @@ extern const internal::VariadicDynCastAllOfMatcher<Stmt, SizeOfPackExpr>
 extern const internal::VariadicDynCastAllOfMatcher<Stmt, CXXPseudoDestructorExpr>
     cxxPseudoDestructorExpr;
 
+extern const internal::VariadicDynCastAllOfMatcher<Stmt, CppxDependentMemberAccessExpr>
+    cppxDependentMemberAccessExpr;
 
 // I created this because it didn't exist before this and I acutally needed it
 // for a particular test.
