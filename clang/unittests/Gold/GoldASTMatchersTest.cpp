@@ -18,4 +18,7 @@ const internal::VariadicDynCastAllOfMatcher<Stmt, CXXFoldExpr>
 const internal::VariadicDynCastAllOfMatcher<Stmt, SizeOfPackExpr> sizeOfPackExpr;
 const internal::VariadicDynCastAllOfMatcher<Stmt, CXXPseudoDestructorExpr>
     cxxPseudoDestructorExpr;
+
+const internal::VariadicDynCastAllOfMatcher<Stmt, CppxDependentMemberAccessExpr>
+    cppxDependentMemberAccessExpr;
 }}
