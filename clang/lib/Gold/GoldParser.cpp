@@ -1531,12 +1531,13 @@ Parser::FoldKind Parser::scanForFoldExpr() {
 ///   postfix < expr >
 ///   postfix . identifier
 ///   postfix . ( expr ) identifier
-///   postfix .* ( expr )
+///   postfix .^ ( expr )
 ///   postfix of-macro
 ///   postfix suffix-operator
 ///
 /// suffix-operator:
 ///   ?
+///   ^
 Syntax *Parser::parsePost()
 {
   Syntax *e = parsePrimary();
@@ -1569,6 +1570,9 @@ Syntax *Parser::parsePost()
     case tok::DotCaret:
       e = parseDotCaret(e);
       break;
+
+    case tok::Caret:
+      return onPostfix(consumeToken(), e);
 
     case tok::Question:
     // case tok::Caret:
@@ -2061,6 +2065,20 @@ Syntax *Parser::parseCatchSequence(Syntax *Contents) {
 // Semantic actions
 
 // Returns the identifier 'operator\'<op>\''.
+Syntax *makeImplicitFused(const SyntaxContext &Ctx,
+                          Parser &P,
+                          clang::SourceLocation Loc,
+                          llvm::StringRef Base,
+                          llvm::StringRef Op)
+{
+  // FIXME: Make this a fused operator?
+  std::string Name = Base.str() + "'" + std::string(Op) + "'";
+  Symbol Sym = getSymbol(Name);
+  Token Tok(tok::Identifier, Loc, Sym);
+  return P.onAtom(Tok);
+}
+
+// Returns the identifier 'operator\'<op>\''.
 Syntax *makeOperator(const SyntaxContext &Ctx,
                             Parser &P,
                             clang::SourceLocation Loc,
@@ -2074,21 +2092,27 @@ Syntax *makeOperator(const SyntaxContext &Ctx,
 }
 
 Syntax *makeOperator(const SyntaxContext &Ctx,
-                            Parser &P,
-                            TokenKind TK,
-                            clang::SourceLocation Loc,
-                            llvm::StringRef Op)
-{
-  // FIXME: Make this a fused operator?
-  std::string Name = "operator'" + std::string(Op) + "'";
-  Symbol Sym = getSymbol(Name);
-  Token Tok(TK, Loc, Sym);
-  return P.onAtom(Tok);
+                     Parser &P,
+                     TokenKind TK,
+                     clang::SourceLocation Loc,
+                     llvm::StringRef Op) {
+ // FIXME: Make this a fused operator?
+ std::string Name = "operator'" + std::string(Op) + "'";
+ Symbol Sym = getSymbol(Name);
+ Token Tok(TK, Loc, Sym);
+ return P.onAtom(Tok);
 }
 
 static Syntax *makeOperator(const SyntaxContext &Ctx, Parser &P,
                             Token const& Tok) {
-  return makeOperator(Ctx, P, Tok.getLocation(), Tok.getSpelling());
+  return makeImplicitFused(Ctx, P, Tok.getLocation(),
+                           "operator", Tok.getSpelling());
+}
+
+static Syntax *makePostfix(const SyntaxContext &Ctx, Parser &P,
+                           Token const& Tok) {
+  return makeImplicitFused(Ctx, P, Tok.getLocation(),
+                           "postfix", Tok.getSpelling());
 }
 
 static Syntax *makeList(const SyntaxContext &Ctx,
@@ -2334,6 +2358,11 @@ Syntax *Parser::onUnaryOrNull(Token const& Tok, Syntax *e1) {
 Syntax *Parser::onUnary(Token const& Tok, Syntax *e1) {
   return new (Context)
     CallSyntax(makeOperator(Context, *this, Tok), makeList(Context, {e1}));
+}
+
+Syntax *Parser::onPostfix(Token const &Tok, Syntax *E1) {
+  return new (Context)
+    CallSyntax(makePostfix(Context, *this, Tok), makeList(Context, {E1}));
 }
 
 Syntax *Parser::onCall(TokenPair const& Toks, Syntax *e1, Syntax *e2) {

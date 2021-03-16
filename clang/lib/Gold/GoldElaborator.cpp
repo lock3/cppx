@@ -1805,7 +1805,7 @@ void getFunctionParameters(Sema &SemaRef, Declaration *D,
     bool ArgsParam = false;
     const Syntax *P = ParamList->getChild(I);
     Declaration *PD = ParamScope->findDecl(P);
-    if (!PD->Cxx)
+    if (!PD || !PD->Cxx)
       continue;
 
     if (cast<clang::ParmVarDecl>(PD->Cxx)->getType()->isVariadicType()) {

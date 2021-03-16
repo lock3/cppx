@@ -947,6 +947,7 @@ clang::Scope *Sema::enterClangScope(unsigned int ScopeFlags) {
   CxxSema.CurScope = new clang::Scope(getCurClangScope(), ScopeFlags, Diags);
   // Only do this if we are not a template scope to avoid an assertion inside
   // of setEntity.
+  // FIXME: Why do we do this? What does it do?
   if (!CxxSema.CurScope->isTemplateParamScope())
     CxxSema.CurScope->setEntity(nullptr);
   return CxxSema.CurScope;

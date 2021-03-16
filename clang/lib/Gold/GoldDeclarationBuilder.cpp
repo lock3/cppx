@@ -12,9 +12,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Gold/GoldDeclarationBuilder.h"
-
-#include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldElaborator.h"
+#include "clang/Gold/GoldSema.h"
+#include "clang/Gold/GoldSymbol.h"
+
 
 #include "clang/Sema/Lookup.h"
 
@@ -1346,6 +1347,34 @@ DeclarationBuilder::buildUsingDirectiveDeclarator(const MacroSyntax *S) {
   return new UsingDirectiveDeclarator(S->getCall()->getLoc(), S);
 }
 
+// Returns true when this is a kind of syntax that can contain type information
+// on the left-hand side of operator':'.
+static inline bool isPostfix(const Syntax *S) {
+  if (isa<ElemSyntax>(S))
+    return true;
+
+  if (const CallSyntax *Call = dyn_cast<CallSyntax>(S))
+    if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee()))
+      return Callee->getSpelling() == "postfix'^'";
+
+  return false;
+}
+
+// Convert a postfix ^ on the LHS of operator':' to a prefix ^ on the RHS.
+static void convertPointer(SyntaxContext &Ctx, const CallSyntax *S,
+                           const Syntax *&L, const Syntax *&R) {
+  const CallSyntax *LHS = cast<CallSyntax>(S->getArgument(0));
+
+  Syntax *Arg = const_cast<Syntax *>(S->getArgument(1));
+  CallSyntax *Pointer =
+    new (Ctx) CallSyntax(
+      new (Ctx) AtomSyntax(Token(tok::Identifier, LHS->getLoc(),
+                                 gold::getSymbol("operator'^'"))),
+      new (Ctx) ListSyntax(&Arg, 1));
+  L = LHS->getArgument(0);
+  R = Pointer;
+}
+
 Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
                                                        Declarator *Next) {
   // If we find an atom, then we're done.
@@ -1355,10 +1384,17 @@ Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
       // Check for "builtin" operators in the declarator.
       if (Callee->getSpelling() == "operator':'") {
         RequiresDeclOrError = true;
+
+        const Syntax *L = Call->getArgument(0);
+        const Syntax *R = Call->getArgument(0);
+        if (!isPostfix(L))
+          R = Call->getArgument(1);
+        else while (isPostfix(L))
+          convertPointer(Context, Call, L, R);
+
         // The LHS is a template, name or function, and the RHS is
         // ALWAYS a type (or is always supposed to be a type.)
-        return buildTemplateFunctionOrNameDeclarator(Call->getArgument(0),
-                                        handleType(Call->getArgument(1), Next));
+        return buildTemplateFunctionOrNameDeclarator(L, handleType(R, Next));
 
       } else if (Callee->getSpelling() == "operator'.'") {
         return buildNameDeclarator(Call, Next);
