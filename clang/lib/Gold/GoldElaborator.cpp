@@ -3147,7 +3147,14 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   // as a valid type alias.
   clang::Expr *TypeExpr = nullptr;
   clang::SourceLocation TypeLocation;
-  if (D->TypeDcl) {
+
+  if (D->Decl->Next->isArray()) {
+    llvm::outs() << "THE INDEX:\n";
+    cast<ArrayDeclarator>(D->Decl->Next)->getIndex()->dump();
+
+    ExprElaborator TypeElab(Context, SemaRef);
+    TypeExpr = TypeElab.elaborateTypeExpr(D->Decl->Next);
+  } else if (D->TypeDcl) {
     ExprElaborator TypeElab(Context, SemaRef);
     TypeExpr = TypeElab.elaborateExplicitType(D->TypeDcl, nullptr);
   } else {

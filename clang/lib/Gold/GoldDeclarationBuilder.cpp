@@ -239,6 +239,13 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
   if (Cur == nullptr)
     return false;
 
+  if (Cur->isArray()) {
+    TheDecl->ArrayDcl = Cur->getAsArray();
+    Cur = Cur->Next;
+    if (!Cur)
+      return false;
+  }
+
   // This is the last thing so after cur == nullptr if not then we have an
   // invalid declarator
   if (Cur->isType()) {
@@ -1347,34 +1354,6 @@ DeclarationBuilder::buildUsingDirectiveDeclarator(const MacroSyntax *S) {
   return new UsingDirectiveDeclarator(S->getCall()->getLoc(), S);
 }
 
-// Returns true when this is a kind of syntax that can contain type information
-// on the left-hand side of operator':'.
-static inline bool isPostfix(const Syntax *S) {
-  if (isa<ElemSyntax>(S))
-    return true;
-
-  if (const CallSyntax *Call = dyn_cast<CallSyntax>(S))
-    if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(Call->getCallee()))
-      return Callee->getSpelling() == "postfix'^'";
-
-  return false;
-}
-
-// Convert a postfix ^ on the LHS of operator':' to a prefix ^ on the RHS.
-static void convertPointer(SyntaxContext &Ctx, const CallSyntax *S,
-                           const Syntax *&L, const Syntax *&R) {
-  const CallSyntax *LHS = cast<CallSyntax>(S->getArgument(0));
-
-  Syntax *Arg = const_cast<Syntax *>(S->getArgument(1));
-  CallSyntax *Pointer =
-    new (Ctx) CallSyntax(
-      new (Ctx) AtomSyntax(Token(tok::Identifier, LHS->getLoc(),
-                                 gold::getSymbol("operator'^'"))),
-      new (Ctx) ListSyntax(&Arg, 1));
-  L = LHS->getArgument(0);
-  R = Pointer;
-}
-
 Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
                                                        Declarator *Next) {
   // If we find an atom, then we're done.
@@ -1386,11 +1365,12 @@ Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
         RequiresDeclOrError = true;
 
         const Syntax *L = Call->getArgument(0);
-        const Syntax *R = Call->getArgument(0);
-        if (!isPostfix(L))
-          R = Call->getArgument(1);
-        else while (isPostfix(L))
-          convertPointer(Context, Call, L, R);
+        const Syntax *R = Call->getArgument(1);
+        if (const CallSyntax *RHS = dyn_cast<CallSyntax>(R)) {
+          FusedOpKind OpKind = getFusedOpKind(SemaRef, RHS);
+          if (OpKind == FOK_Brackets)
+            return buildTemplateOrNameDeclarator(L, handleArray(RHS, Next));
+        }
 
         // The LHS is a template, name or function, and the RHS is
         // ALWAYS a type (or is always supposed to be a type.)
@@ -1646,6 +1626,12 @@ DeclarationBuilder::handleFunction(const CallSyntax *S, Declarator *Next) {
 TypeDeclarator *
 DeclarationBuilder::handleType(const Syntax *S, Declarator *Next) {
   return new TypeDeclarator(S, Next);
+}
+
+ArrayDeclarator *
+DeclarationBuilder::handleArray(const CallSyntax *S, Declarator *Next) {
+  return new ArrayDeclarator(S->getArgument(0),
+                             handleType(S->getArgument(1), Next));
 }
 
 TemplateParamsDeclarator *

@@ -3111,8 +3111,6 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
     return nullptr;
   }
 
-
-
   // This is used to construct a pointer type because the caret has two
   // meanings. Dereference and pointer declaration.
   if (Op == clang::UO_Deref) {
@@ -4073,6 +4071,9 @@ clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
       break;
     }
 
+    case DK_Array:
+      return elaborateArrayType(D);
+
     case DK_TemplateParams:
       break;
 
@@ -4152,7 +4153,100 @@ ExprElaborator::elaborateFunctionType(Declarator *D, clang::Expr *Ty) {
                                        SourceLocation(), Params);
 }
 
+clang::Expr *ExprElaborator::elaborateArrayType(Declarator *D) {
+  assert(isa<ArrayDeclarator>(D));
+  ArrayDeclarator *AD = cast<ArrayDeclarator>(D);
 
+  clang::Expr *IdExpr = elaborateTypeExpr(AD->Next);
+  if (!IdExpr)
+    return nullptr;
+
+  // Attempt to translate into type location.
+  clang::SourceLocation IndexLoc = AD->getIndex() ?
+    AD->getIndex()->getLoc() : AD->Next ?
+    AD->Next->getLoc() : clang::SourceLocation();
+  clang::TypeSourceInfo *TInfo =
+    SemaRef.getTypeSourceInfoFromExpr(IdExpr, IndexLoc);
+  if (!TInfo)
+    return nullptr;
+
+  if (!AD->getIndex()) {
+    llvm_unreachable("implicit arrays unimplemented");
+  }
+
+  llvm::SmallVector<clang::Expr *, 4> IndexExprs;
+  const ListSyntax *IndexList = dyn_cast<ListSyntax>(AD->getIndex());
+  if (IndexList) {
+    for (const Syntax *SS : IndexList->children()){
+      clang::Expr *E = doElaborateExpr(SS);
+      if (!E)
+        continue;
+
+      // This attempts to make sure that all referenced functions are actually
+      // in scope, and completely elaborated.
+      SemaRef.elaborateConstexpr(E);
+      IndexExprs.push_back(E);
+    }
+  } else {
+    clang::Expr *E = doElaborateExpr(AD->getIndex());
+    if (!E)
+      return nullptr;
+    // This attempts to make sure that all referenced functions are actually
+    // in scope, and completely elaborated.
+    SemaRef.elaborateConstexpr(E);
+    IndexExprs.push_back(E);
+  }
+
+  // FIXME: what do we do for an empty array index, such as []int = {...}
+  unsigned I = 0;
+  for (clang::Expr *IndexExpr : IndexExprs) {
+    if (!IndexExpr) {
+      SemaRef.Diags.Report(IndexList ? IndexList->getChild(I)->getLoc()
+                           : AD->getIndex()->getLoc(),
+                           clang::diag::err_failed_to_translate_type);
+      return nullptr;
+    }
+
+    ++I;
+  }
+
+  clang::QualType ArrayType = TInfo->getType();
+  bool Invalid = false;
+  for (auto It = IndexExprs.rbegin(); It != IndexExprs.rend(); ++It) {
+    clang::Expr *IndexExpr = *It;
+
+    clang::Expr::EvalResult IdxResult;
+    clang::Expr::EvalContext
+      EvalCtx(Context.CxxAST, SemaRef.getCxxSema().GetReflectionCallbackObj());
+
+    if (!IndexExpr->EvaluateAsConstantExpr(IdxResult, EvalCtx)) {
+      Invalid = true;
+      continue;
+    }
+    clang::SourceRange Range(IndexExpr->getExprLoc(), IndexExpr->getExprLoc());
+    if (IdxResult.Val.isInt()) {
+      ArrayType = SemaRef.getCxxSema().BuildArrayType(
+        ArrayType, clang::ArrayType::Normal,
+        clang::IntegerLiteral::Create(CxxAST, IdxResult.Val.getInt(),
+                                      IndexExpr->getType(),
+                                      IndexExpr->getExprLoc()),
+        /*quals*/0,
+        Range, clang::DeclarationName());
+    } else {
+      ArrayType = SemaRef.getCxxSema().BuildArrayType(
+        ArrayType, clang::ArrayType::Normal, IndexExpr, /*quals*/0,
+        Range, clang::DeclarationName());
+    }
+
+    // ArrayType = SemaRef.getCxxSema().BuildArrayType(
+    //   ArrayType, clang::ArrayType::Normal, IndexExpr, /*quals*/0,
+    //   Range, clang::DeclarationName());
+  }
+
+  if (Invalid)
+    return nullptr;
+  return SemaRef.buildTypeExpr(ArrayType, IndexLoc);
+}
 
 clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *Ty) {
   assert(D->isType());

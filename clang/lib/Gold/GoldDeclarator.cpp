@@ -57,12 +57,21 @@ FunctionDeclarator *Declarator::getAsFunction() {
 const FunctionDeclarator *Declarator::getAsFunction() const {
   return cast<FunctionDeclarator>(this);
 }
+
 TypeDeclarator *Declarator::getAsType() {
   return cast<TypeDeclarator>(this);
 }
 const TypeDeclarator *Declarator::getAsType() const {
   return cast<TypeDeclarator>(this);
 }
+
+ArrayDeclarator *Declarator::getAsArray() {
+  return cast<ArrayDeclarator>(this);
+}
+const ArrayDeclarator *Declarator::getAsArray() const {
+  return cast<ArrayDeclarator>(this);
+}
+
 TemplateParamsDeclarator *Declarator::getAsTemplateParams() {
   return cast<TemplateParamsDeclarator>(this);
 }
@@ -242,6 +251,16 @@ std::string TypeDeclarator::getString(bool IncludeKind) const {
     Ret += "complex-type-expression";
   }
   return Ret;
+}
+
+// ------------------ ArrayDeclarator --------------------------------------- //
+
+clang::SourceLocation ArrayDeclarator::getLoc() const {
+  return IndexExpr->getLoc();
+}
+
+std::string ArrayDeclarator::getString(bool IncludeKind) const {
+  return "[]";
 }
 
 // ------------------ TemplateParamsDeclarator ---------------------------------

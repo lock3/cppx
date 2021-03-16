@@ -210,6 +210,7 @@ private:
   IdentifierDeclarator *handleIdentifier(const AtomSyntax *S, Declarator *Next);
   FunctionDeclarator *handleFunction(const CallSyntax *S, Declarator *Next);
   TypeDeclarator *handleType(const Syntax *S, Declarator *Next);
+  ArrayDeclarator *handleArray(const CallSyntax *S, Declarator *Next);
   TemplateParamsDeclarator *handleTemplateParams(const ElemSyntax *S,
                                                  Declarator *Next);
   ImplicitEmptyTemplateParamsDeclarator *

@@ -51,6 +51,7 @@ class IdentifierDeclarator;
 class NestedNameSpecifierDeclarator;
 class FunctionDeclarator;
 class TypeDeclarator;
+class ArrayDeclarator;
 class TemplateParamsDeclarator;
 class ImplicitEmptyTemplateParamsDeclarator;
 class SpecializationDeclarator;
@@ -100,6 +101,8 @@ enum DeclaratorKind {
   /// of only a macro syntax rather than a call syntax, and will always be a
   /// singleton sequence.
   DK_UsingDirective,
+
+  DK_Array,
 
   /// This declarator indicates that there was an error evaluating
   /// the declarator. This usually means that there is an ErrorSyntax node
@@ -157,9 +160,8 @@ public:
   Declarator(DeclaratorKind K, Declarator *P)
     : Kind(K), Next(P) { }
 
-  virtual ~Declarator() {
-    delete Next;
-  }
+  virtual ~Declarator() { }
+
   /// The kind of declarator.
   DeclaratorKind getKind() const {
     return Kind;
@@ -167,6 +169,7 @@ public:
 
   bool isIdentifier() const { return Kind == DK_Identifier; }
   bool isType() const { return Kind == DK_Type; }
+  bool isArray() const { return Kind == DK_Array; }
   bool isFunction() const { return Kind == DK_Function; }
   bool isUnknown() const { return Kind == DK_Unknown; }
   bool isGlobalNameSpecifier() const { return Kind == DK_GlobalNamespecifier; }
@@ -193,6 +196,8 @@ public:
   const FunctionDeclarator *getAsFunction() const;
   TypeDeclarator *getAsType();
   const TypeDeclarator *getAsType() const;
+  ArrayDeclarator *getAsArray();
+  const ArrayDeclarator *getAsArray() const;
   TemplateParamsDeclarator *getAsTemplateParams();
   const TemplateParamsDeclarator *getAsTemplateParams() const;
   ImplicitEmptyTemplateParamsDeclarator *getAsImplicitEmptyTemplateParams();
@@ -390,6 +395,25 @@ public:
   const Syntax *getTyExpr() const { return TyExpr; }
   static bool classof(const Declarator *Dcl) {
     return Dcl->getKind() == DK_Type;
+  }
+};
+
+class ArrayDeclarator : public Declarator {
+  const Syntax *IndexExpr;
+
+public:
+  ArrayDeclarator(const Syntax *Index, Declarator *Next)
+    : Declarator(DK_Array, Next), IndexExpr(Index)
+    {}
+
+  virtual clang::SourceLocation getLoc() const override;
+  virtual std::string getString(bool IncludeKind = false) const override;
+  const Syntax *getIndex() const {
+    return IndexExpr;
+  }
+
+  static bool classof(const Declarator *Dcl) {
+    return Dcl->getKind() == DK_Array;
   }
 };
 
