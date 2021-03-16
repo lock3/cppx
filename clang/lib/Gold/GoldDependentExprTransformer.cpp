@@ -118,12 +118,15 @@ clang::Expr *DependentExprTransformer::transformCppxDependentMemberAccessExpr(
 
   clang::Expr *Ret = transformDependentExpr(E->getBase());
   if (!Ret) {
+    llvm::outs() << "We have an invalid dependent expression that was evaluated!\n";
     SemaRef.Diags.Report(E->getBase()->getExprLoc(),
                          clang::diag::err_invalid_dependent_expr);
     return nullptr;
   }
 
   if (Ret->getType()->isNamespaceType() || Ret->getType()->isTemplateType()) {
+    // Ret->dump();
+    // llvm::outs() << "We have a namespace or template.\n";
     SemaRef.Diags.Report(E->getExprLoc(),
                          clang::diag::err_invalid_dependent_expr);
     return nullptr;
