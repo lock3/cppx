@@ -1413,8 +1413,14 @@ Declarator *DeclarationBuilder::handleLHSElement(const CallSyntax *S,
   const Syntax *RHS = S->getArgument(1);
   const Syntax *Arg = LHS->getArguments();
   const ListSyntax *Args = dyn_cast<ListSyntax>(Arg);
-  if (!Args)
-    llvm_unreachable("implicit array size unimplemented");
+  const AtomSyntax *Id = dyn_cast<AtomSyntax>(LHS->getObject());
+
+  if (!Args || !Args->getNumChildren()) {
+    if (!Id)
+      return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
+    Declarator *Index = new ArrayDeclarator(Args, handleType(RHS, Next));
+    return handleIdentifier(Id, Index);
+  }
 
   for (const Syntax *AA : Args->children()) {
     SuppressDiagnosticsRAII Suppressor(SemaRef.getCxxSema());
@@ -1432,7 +1438,6 @@ Declarator *DeclarationBuilder::handleLHSElement(const CallSyntax *S,
     if (!E || E->getType()->isTypeOfTypes())
       return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
 
-    const AtomSyntax *Id = dyn_cast<AtomSyntax>(LHS->getObject());
     // We expect a name for a declaration; if we have something like
     // `T()[3] : int`, then this is invalid. Handle it somewhere else.
     if (!Id)
@@ -1452,7 +1457,7 @@ Declarator *DeclarationBuilder::handleLHSElement(const CallSyntax *S,
     return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
   }
 
-  llvm_unreachable("implicit array size unimplemented");
+  llvm_unreachable("unexpected element syntax encountered");
 }
 
 Declarator *

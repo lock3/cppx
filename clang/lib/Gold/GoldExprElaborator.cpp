@@ -2651,7 +2651,7 @@ static bool usingClassLookupIsUnresolved(clang::DeclContextLookupResult const &R
 clang::Expr *
 handleDependentTypeNameLookup(Sema &SemaRef, const CallSyntax *Op,
                               clang::Expr *Prev, const Syntax *RHS) {
-  clang::IdentifierInfo *Id;
+  clang::IdentifierInfo *Id = nullptr;
   clang::Expr *NameSpec = nullptr;
   if (auto Call = dyn_cast<CallSyntax>(RHS)) {
     FusedOpKind FusedOp = getFusedOpKind(SemaRef, Call);
@@ -4214,6 +4214,12 @@ clang::Expr *ExprElaborator::elaborateArrayType(Declarator *D) {
   }
 
   clang::QualType ArrayType = TInfo->getType();
+  if (IndexExprs.empty()) {
+      ArrayType = SemaRef.getCxxSema().BuildArrayType(
+        ArrayType, clang::ArrayType::Normal, nullptr, /*quals*/0,
+        clang::SourceRange(IndexLoc, IndexLoc), clang::DeclarationName());
+  }
+
   bool Invalid = false;
   for (auto It = IndexExprs.rbegin(); It != IndexExprs.rend(); ++It) {
     clang::Expr *IndexExpr = *It;
@@ -4494,6 +4500,13 @@ clang::Expr *ExprElaborator::handleArrayType(const CallSyntax *S) {
     ++I;
   }
   clang::QualType ArrayType = TInfo->getType();
+  if (IndexExprs.empty()) {
+    clang::SourceLocation IndexLoc = IdExpr->getExprLoc();
+    ArrayType = SemaRef.getCxxSema().BuildArrayType(
+      ArrayType, clang::ArrayType::Normal, nullptr, /*quals*/0,
+      clang::SourceRange(IndexLoc, IndexLoc), clang::DeclarationName());
+  }
+
   bool Invalid = false;
   for (auto It = IndexExprs.rbegin(); It != IndexExprs.rend(); ++It) {
     clang::Expr *IndexExpr = *It;
