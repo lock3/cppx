@@ -13,6 +13,7 @@
 
 #include "clang/Gold/GoldDeclarationBuilder.h"
 #include "clang/Gold/GoldElaborator.h"
+#include "clang/Gold/GoldExprElaborator.h"
 #include "clang/Gold/GoldSema.h"
 #include "clang/Gold/GoldSymbol.h"
 
@@ -90,8 +91,11 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
       !TheDecl->declaresFunction() && !TheDecl->SpecializationArgs && Id) {
     auto DeclSet = CurScope->findDecl(Id);
 
-    if (!DeclSet.empty()) {
-      assert((DeclSet.size() == 1) && "elaborated redefinition.");
+    if (!DeclSet.empty() && DeclSet.size() != 1u) {
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "redefinition of identifier %0");
+      SemaRef.Diags.Report(TheDecl->getEndOfDecl(), DiagID) << Id;
       TheDecl->setPreviousDecl(*DeclSet.begin());
     }
   }
@@ -1366,6 +1370,11 @@ Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
 
         const Syntax *L = Call->getArgument(0);
         const Syntax *R = Call->getArgument(1);
+
+        // Check for any parts of the declarator on the left.
+        if (isa<ElemSyntax>(L))
+          return handleLHSElement(Call, Next);
+
         if (const CallSyntax *RHS = dyn_cast<CallSyntax>(R)) {
           FusedOpKind OpKind = getFusedOpKind(SemaRef, RHS);
           if (OpKind == FOK_Brackets)
@@ -1393,6 +1402,57 @@ Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
   }
 
   return buildTemplateFunctionOrNameDeclarator(S, Next);
+}
+
+// Classify a top-level declarator with an element syntax
+// in the LHS of the operator':' call.
+Declarator *DeclarationBuilder::handleLHSElement(const CallSyntax *S,
+                                                Declarator *Next) {
+  assert(isa<ElemSyntax>(S->getArgument(0)));
+  const ElemSyntax *LHS = cast<ElemSyntax>(S->getArgument(0));
+  const Syntax *RHS = S->getArgument(1);
+  const Syntax *Arg = LHS->getArguments();
+  const ListSyntax *Args = dyn_cast<ListSyntax>(Arg);
+  if (!Args)
+    llvm_unreachable("implicit array size unimplemented");
+
+  for (const Syntax *AA : Args->children()) {
+    SuppressDiagnosticsRAII Suppressor(SemaRef.getCxxSema());
+
+    // We have a declaration in the index, this is definitely a
+    // template declaration.
+    Elaborator DeclElab(Context, SemaRef);
+    if (DeclElab.elaborateDeclSyntax(AA))
+      return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
+
+    ExprElaborator Elab(Context, SemaRef);
+    clang::Expr *E = Elab.elaborateExpr(AA);
+    // Either this is ill-formed, so just build sobmething and call it
+    // a day, or it's a template specialization.
+    if (!E || E->getType()->isTypeOfTypes())
+      return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
+
+    const AtomSyntax *Id = dyn_cast<AtomSyntax>(LHS->getObject());
+    // We expect a name for a declaration; if we have something like
+    // `T()[3] : int`, then this is invalid. Handle it somewhere else.
+    if (!Id)
+      return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
+
+    ExprElaborator IdElab(Context, SemaRef);
+    clang::Expr *IdExpr = IdElab.elaborateExpr(Id);
+    // The index is a value expression but the identifier has not been
+    // used, this is definitely an array.
+    if (!IdExpr) {
+      Declarator *Index = new ArrayDeclarator(Args, handleType(RHS, Next));
+      return handleIdentifier(Id, Index);
+    }
+
+    // This is either a template specialization or a redeclaration,
+    // it's not our job to find out which.
+    return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
+  }
+
+  llvm_unreachable("implicit array size unimplemented");
 }
 
 Declarator *

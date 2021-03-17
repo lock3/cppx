@@ -873,6 +873,7 @@ main() : int!
   ASSERT_TRUE(matches(Code.str(), MemberBaseAccessOutsideOfClass));
 }
 
+#if 0
 TEST(ClassParsing, NestedClassWithMemberFunction) {
   StringRef Code = R"(
 outer : type = class:
@@ -904,34 +905,34 @@ outer : type = class:
   ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
 }
 
-// TEST(ClassParsing, NestedClassTemplateWithDependentMember) {
-//   StringRef Code = R"(
-// outer[T : type] : type = class:
-//   bar() : int!
-//     return 4
-//   nested[U : type] : type = class:
-//     a : int
-//     b : U
-//     foo() : U!
-//       return b
-// )";
+TEST(ClassParsing, NestedClassTemplateWithDependentMember) {
+  StringRef Code = R"(
+outer[T : type] : type = class:
+  bar() : int!
+    return 4
+  nested[U : type] : type = class:
+    a : int
+    b : U
+    foo() : U!
+      return b
+)";
 
-//   DeclarationMatcher ClassCInfo = recordDecl(
-//     hasName("outer"),
-//     has(classTemplateDecl(has(recordDecl(hasName("nested"),
-//       hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
-//         isPublic())),
-//       hasDescendant(fieldDecl(hasName("b"), hasType(asString("type-parameter-1-0")),
-//         isPublic())),
-//       hasDescendant(cxxMethodDecl(hasName("foo")))
-//     )) ))
-//   );
+  DeclarationMatcher ClassCInfo = recordDecl(
+    hasName("outer"),
+    has(classTemplateDecl(has(recordDecl(hasName("nested"),
+      hasDescendant(fieldDecl(hasName("a"), hasType(asString("int")),
+        isPublic())),
+      hasDescendant(fieldDecl(hasName("b"), hasType(asString("type-parameter-1-0")),
+        isPublic())),
+      hasDescendant(cxxMethodDecl(hasName("foo")))
+    )) ))
+  );
 
-//   DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
-//     hasDescendant(ClassCInfo)
-//   );
-//   ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
-// }
+  DeclarationMatcher ClassImplicitsAndCalls = translationUnitDecl(
+    hasDescendant(ClassCInfo)
+  );
+  ASSERT_TRUE(matches(Code.str(), ClassImplicitsAndCalls));
+}
 
 TEST(ClassParsing, VirtuallyInheritedClass) {
 
@@ -1404,3 +1405,4 @@ T1[T:type, Alloc:type] : type = class{
 
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
+#endif

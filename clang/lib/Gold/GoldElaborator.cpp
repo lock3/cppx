@@ -3148,10 +3148,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   clang::Expr *TypeExpr = nullptr;
   clang::SourceLocation TypeLocation;
 
-  if (D->Decl->Next->isArray()) {
-    llvm::outs() << "THE INDEX:\n";
-    cast<ArrayDeclarator>(D->Decl->Next)->getIndex()->dump();
-
+  if (D->Decl->Next && D->Decl->Next->isArray()) {
     ExprElaborator TypeElab(Context, SemaRef);
     TypeExpr = TypeElab.elaborateTypeExpr(D->Decl->Next);
   } else if (D->TypeDcl) {
@@ -3292,7 +3289,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
     // Attempting to use the previously located decl context in order to
     // correctly identify any previous declarations.
     CxxSema.LookupQualifiedName(Previous, PreviousDC);
-  } else{
+  } else {
     lookupFunctionRedecls(SemaRef, CxxScope, Previous);
   }
 

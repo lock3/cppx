@@ -86,6 +86,9 @@ clang::Expr *ExprElaborator::elaborateExpr(const Syntax *S) {
 }
 
 clang::Expr *ExprElaborator::doElaborateExpr(const Syntax *S) {
+  if (!S || isa<ErrorSyntax>(S))
+    return nullptr;
+
   if (isa<AtomSyntax>(S))
     return completePartialExpr(
       elaborateAtom(cast<AtomSyntax>(S), clang::QualType())

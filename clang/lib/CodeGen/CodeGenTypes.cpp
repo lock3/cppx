@@ -795,7 +795,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
   case Type::CppxTemplate:
   case Type::CppxNamespace:
   case Type::CppxArgs:
-    llvm_unreachable("Unexpected kind");
+    llvm_unreachable("cannot compile type or template types yet");
 
   case Type::ExtInt: {
     const auto &EIT = cast<ExtIntType>(Ty);

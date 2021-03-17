@@ -1398,6 +1398,19 @@ struct ElabBalanceChecker {
   }
 };
 
+struct SuppressDiagnosticsRAII
+{
+  SuppressDiagnosticsRAII(clang::Sema &CxxSema)
+    : CxxSema(CxxSema), Saved(CxxSema.Diags.getSuppressAllDiagnostics()) {
+    CxxSema.Diags.setSuppressAllDiagnostics(true);
+  }
+  ~SuppressDiagnosticsRAII() {
+    CxxSema.Diags.setSuppressAllDiagnostics(Saved);
+  }
+  clang::Sema &CxxSema;
+  bool Saved;
+};
+
 } // namespace gold
 
 #endif
