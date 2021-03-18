@@ -423,7 +423,6 @@ public:
   TemplateParamsDeclarator *Template = nullptr;
   SpecializationDeclarator *SpecializationArgs = nullptr;
 
-  ArrayDeclarator *ArrayDcl = nullptr;
   FunctionDeclarator *FunctionDcl = nullptr;
   TypeDeclarator *TypeDcl = nullptr;
 

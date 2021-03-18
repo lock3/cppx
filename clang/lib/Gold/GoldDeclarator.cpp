@@ -72,6 +72,13 @@ const ArrayDeclarator *Declarator::getAsArray() const {
   return cast<ArrayDeclarator>(this);
 }
 
+PointerDeclarator *Declarator::getAsPointer() {
+  return cast<PointerDeclarator>(this);
+}
+const PointerDeclarator *Declarator::getAsPointer() const {
+  return cast<PointerDeclarator>(this);
+}
+
 TemplateParamsDeclarator *Declarator::getAsTemplateParams() {
   return cast<TemplateParamsDeclarator>(this);
 }
@@ -261,6 +268,16 @@ clang::SourceLocation ArrayDeclarator::getLoc() const {
 
 std::string ArrayDeclarator::getString(bool IncludeKind) const {
   return "[]";
+}
+
+// ------------------ PointerDeclarator ------------------------------------- //
+
+clang::SourceLocation PointerDeclarator::getLoc() const {
+  return Op->getLoc();
+}
+
+std::string PointerDeclarator::getString(bool IncludeKind) const {
+  return "^";
 }
 
 // ------------------ TemplateParamsDeclarator ---------------------------------

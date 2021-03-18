@@ -52,6 +52,7 @@ class NestedNameSpecifierDeclarator;
 class FunctionDeclarator;
 class TypeDeclarator;
 class ArrayDeclarator;
+class PointerDeclarator;
 class TemplateParamsDeclarator;
 class ImplicitEmptyTemplateParamsDeclarator;
 class SpecializationDeclarator;
@@ -102,7 +103,11 @@ enum DeclaratorKind {
   /// singleton sequence.
   DK_UsingDirective,
 
+  /// A simple array index.
   DK_Array,
+
+  /// A pointer or dereference operator.
+  DK_Pointer,
 
   /// This declarator indicates that there was an error evaluating
   /// the declarator. This usually means that there is an ErrorSyntax node
@@ -170,6 +175,7 @@ public:
   bool isIdentifier() const { return Kind == DK_Identifier; }
   bool isType() const { return Kind == DK_Type; }
   bool isArray() const { return Kind == DK_Array; }
+  bool isPointer() const { return Kind == DK_Pointer; }
   bool isFunction() const { return Kind == DK_Function; }
   bool isUnknown() const { return Kind == DK_Unknown; }
   bool isGlobalNameSpecifier() const { return Kind == DK_GlobalNamespecifier; }
@@ -198,6 +204,8 @@ public:
   const TypeDeclarator *getAsType() const;
   ArrayDeclarator *getAsArray();
   const ArrayDeclarator *getAsArray() const;
+  PointerDeclarator *getAsPointer();
+  const PointerDeclarator *getAsPointer() const;
   TemplateParamsDeclarator *getAsTemplateParams();
   const TemplateParamsDeclarator *getAsTemplateParams() const;
   ImplicitEmptyTemplateParamsDeclarator *getAsImplicitEmptyTemplateParams();
@@ -414,6 +422,25 @@ public:
 
   static bool classof(const Declarator *Dcl) {
     return Dcl->getKind() == DK_Array;
+  }
+};
+
+class PointerDeclarator : public Declarator {
+  const Syntax *Op;
+
+public:
+  PointerDeclarator(const Syntax *Op, Declarator *Next)
+    : Declarator(DK_Pointer, Next), Op(Op)
+    {}
+
+  virtual clang::SourceLocation getLoc() const override;
+  virtual std::string getString(bool IncludeKind = false) const override;
+  const Syntax *getOp() const {
+    return Op;
+  }
+
+  static bool classof(const Declarator *Dcl) {
+    return Dcl->getKind() == DK_Pointer;
   }
 };
 

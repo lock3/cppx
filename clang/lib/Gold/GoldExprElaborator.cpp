@@ -3134,13 +3134,13 @@ clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
     }
   }
   // This has to be done here because if the operand is a type this has different
-  // meaning and it will cause a cycle inside of of elaboration.
+  // meaning and it will cause a cycle inside of elaboration.
 
   // Doing actual ADL lookup for operators.
 
   // We need to pull all of the matching operators in from within the
   // entire system. We only need to look up free functions, the members
-  // already exists because they would have bee elaborated as part of the type.
+  // already exists because they would have been elaborated as part of the type.
   clang::LookupResult R(SemaRef.getCxxSema(),
                         { { OpInfo->getGoldDeclName() }, Operand->getLoc() },
                         clang::Sema::LookupOrdinaryName);
@@ -3418,20 +3418,6 @@ static clang::Expr *handleOfMacro(SyntaxContext &Context, Sema &SemaRef,
   if (Res.isInvalid())
     return nullptr;
   return Res.get();
-}
-
-static inline bool isLocalLambdaScope(const Scope *S) {
-  if (!S || !S->Parent)
-    return true;
-
-  do {
-    if (S->getKind() == SK_Class || S->getKind() == SK_Function)
-      return true;
-
-    S = S->getParent();
-  } while (S);
-
-  return false;
 }
 
 static inline bool isValidCaptureCall(const FusedOpKind FOK) {
@@ -4077,6 +4063,9 @@ clang::Expr *ExprElaborator::elaborateTypeExpr(Declarator *D) {
     case DK_Array:
       return elaborateArrayType(D);
 
+    case DK_Pointer:
+      return elaboratePointerType(D);
+
     case DK_TemplateParams:
       break;
 
@@ -4254,6 +4243,29 @@ clang::Expr *ExprElaborator::elaborateArrayType(Declarator *D) {
     AD->getIndex()->getLoc() : AD->Next ?
     AD->Next->getLoc() : clang::SourceLocation();
   return handleArrayTypeInternal(IdExpr, AD->getIndex(), IndexLoc);
+}
+
+clang::Expr *ExprElaborator::elaboratePointerType(Declarator *D) {
+  assert(isa<PointerDeclarator>(D));
+  PointerDeclarator *PD = D->getAsPointer();
+  if (!PD->Next)
+    return nullptr;
+
+  clang::Expr *TypeExpr = elaborateTypeExpr(PD->Next);
+  if (!TypeExpr) {
+    SemaRef.Diags.Report(TypeExpr->getExprLoc(),
+                         clang::diag::err_expected_type);
+    return nullptr;
+  }
+
+  clang::SourceLocation OpLoc = PD->getOp()->getLoc();
+  clang::TypeSourceInfo *TInfo =
+    SemaRef.getTypeSourceInfoFromExpr(TypeExpr, OpLoc);
+  if (!TInfo)
+    return nullptr;
+
+  clang::QualType Result = Context.CxxAST.getPointerType(TInfo->getType());
+  return SemaRef.buildTypeExpr(Result, OpLoc);
 }
 
 clang::Expr *ExprElaborator::elaborateExplicitType(Declarator *D, clang::Expr *Ty) {

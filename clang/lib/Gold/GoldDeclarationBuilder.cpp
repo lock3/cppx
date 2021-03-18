@@ -243,11 +243,15 @@ bool DeclarationBuilder::verifyDeclaratorChain(const Syntax *DeclExpr,
   if (Cur == nullptr)
     return false;
 
-  if (Cur->isArray()) {
-    TheDecl->ArrayDcl = Cur->getAsArray();
+  while (Cur->isArray() || Cur->isPointer()) {
+    clang::SourceLocation Loc = Cur->getLoc();
     Cur = Cur->Next;
-    if (!Cur)
-      return false;
+    if (!Cur) {
+      if (RequiresDeclOrError)
+        SemaRef.Diags.Report(Loc,
+                             clang::diag::err_invalid_declaration);
+      return true;
+    }
   }
 
   // This is the last thing so after cur == nullptr if not then we have an
@@ -1374,6 +1378,11 @@ Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
         // Check for any parts of the declarator on the left.
         if (isa<ElemSyntax>(L))
           return handleLHSElement(Call, Next);
+        if (isa<CallSyntax>(L)) {
+          Declarator *Ret = handleLHSCaret(Call, Next);
+          if (Ret)
+            return Ret;
+        }
 
         if (const CallSyntax *RHS = dyn_cast<CallSyntax>(R)) {
           FusedOpKind OpKind = getFusedOpKind(SemaRef, RHS);
@@ -1458,6 +1467,28 @@ Declarator *DeclarationBuilder::handleLHSElement(const CallSyntax *S,
   }
 
   llvm_unreachable("unexpected element syntax encountered");
+}
+
+// Classify a top-level declarator with a postfix `^`
+// in the LHS of the operator':' call.
+Declarator *DeclarationBuilder::handleLHSCaret(const CallSyntax *S,
+                                               Declarator *Next) {
+  assert(isa<CallSyntax>(S->getArgument(0)));
+  const CallSyntax *LHS = cast<CallSyntax>(S->getArgument(0));
+  const Syntax *RHS = S->getArgument(1);
+
+  if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(LHS->getCallee())) {
+    if (Callee->getSpelling() == "postfix'^'") {
+      const Syntax *Operand = LHS->getArgument(0);
+      const AtomSyntax *Id = dyn_cast<AtomSyntax>(Operand);
+      if (!Id)
+        return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
+      Declarator *Ptr = new PointerDeclarator(LHS, handleType(RHS, Next));
+      return handleIdentifier(Id, Ptr);
+    }
+  }
+
+  return nullptr;
 }
 
 Declarator *

@@ -190,6 +190,7 @@ public:
   clang::Expr *elaborateFunctionType(Declarator *D, clang::Expr *Ty);
   clang::Expr *elaborateExplicitType(Declarator *D, clang::Expr *Ty);
   clang::Expr *elaborateArrayType(Declarator *D);
+  clang::Expr *elaboratePointerType(Declarator *D);
 
 private:
   clang::Expr *handleOperatorConst(const CallSyntax *S);

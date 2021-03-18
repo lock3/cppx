@@ -3148,7 +3148,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   clang::Expr *TypeExpr = nullptr;
   clang::SourceLocation TypeLocation;
 
-  if (D->Decl->Next && D->Decl->Next->isArray()) {
+  if (D->Decl->Next && (D->Decl->Next->isArray() || D->Decl->Next->isPointer())) {
     ExprElaborator TypeElab(Context, SemaRef);
     TypeExpr = TypeElab.elaborateTypeExpr(D->Decl->Next);
   } else if (D->TypeDcl) {
