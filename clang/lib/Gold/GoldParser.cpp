@@ -1674,8 +1674,13 @@ Syntax *Parser::parseArrayPrefix()
   if (!Brackets.expectOpen())
     return onError();
 
-  ArraySemantic S{};
-  Syntax *Arg = parseList(S);
+  Syntax *Arg = nullptr;
+  if (nextTokenIsNot(tok::RightBracket)) {
+    ArraySemantic S{};
+    Arg = parseList(S);
+  } else {
+    Arg = onList(ArgArray, llvm::SmallVector<Syntax *, 1>());
+  }
 
   if (!Brackets.expectClose())
     return onError();
