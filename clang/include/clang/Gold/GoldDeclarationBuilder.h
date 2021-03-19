@@ -180,6 +180,7 @@ private:
   Declarator *makeTopLevelDeclarator(const Syntax *S, Declarator *Next);
   Declarator *handleLHSElement(const CallSyntax *S, Declarator *Next);
   Declarator *handleLHSCaret(const CallSyntax *S, Declarator *Next);
+  Declarator *handleSingleCaret(const CallSyntax *S, Declarator *Next);
   Declarator *buildTemplateFunctionOrNameDeclarator(const Syntax *S,
                                                     Declarator *Next);
   Declarator *buildUsingDirectiveDeclarator(const MacroSyntax *S);

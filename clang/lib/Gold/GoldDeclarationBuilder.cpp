@@ -1408,6 +1408,10 @@ Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
     }
   } else if(const ErrorSyntax *Err = dyn_cast<ErrorSyntax>(S)) {
     return handleErrorSyntax(Err, Next);
+  } else if (const ElemSyntax *El = dyn_cast<ElemSyntax>(S)) {
+    // if (Next) {
+    //   return handleLHSElement
+    // }
   }
 
   return buildTemplateFunctionOrNameDeclarator(S, Next);
@@ -1431,9 +1435,8 @@ Declarator *DeclarationBuilder::handleLHSElement(const CallSyntax *S,
     return handleIdentifier(Id, Index);
   }
 
+  SuppressDiagnosticsRAII Suppressor(SemaRef.getCxxSema());
   for (const Syntax *AA : Args->children()) {
-    SuppressDiagnosticsRAII Suppressor(SemaRef.getCxxSema());
-
     // We have a declaration in the index, this is definitely a
     // template declaration.
     Elaborator DeclElab(Context, SemaRef);
@@ -1442,31 +1445,44 @@ Declarator *DeclarationBuilder::handleLHSElement(const CallSyntax *S,
 
     ExprElaborator Elab(Context, SemaRef);
     clang::Expr *E = Elab.elaborateExpr(AA);
-    // Either this is ill-formed, so just build sobmething and call it
+    // Either this is ill-formed, so just build something and call it
     // a day, or it's a template specialization.
     if (!E || E->getType()->isTypeOfTypes())
       return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
-
-    // We expect a name for a declaration; if we have something like
-    // `T()[3] : int`, then this is invalid. Handle it somewhere else.
-    if (!Id)
-      return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
-
-    ExprElaborator IdElab(Context, SemaRef);
-    clang::Expr *IdExpr = IdElab.elaborateExpr(Id);
-    // The index is a value expression but the identifier has not been
-    // used, this is definitely an array.
-    if (!IdExpr) {
-      Declarator *Index = new ArrayDeclarator(Args, handleType(RHS, Next));
-      return handleIdentifier(Id, Index);
-    }
-
-    // This is either a template specialization or a redeclaration,
-    // it's not our job to find out which.
-    return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
   }
 
-  llvm_unreachable("unexpected element syntax encountered");
+  // We expect a name for a declaration; if we have something like
+  // `T()[3] : int`, then this is invalid. Handle it somewhere else.
+  if (!Id) {
+    if (const CallSyntax *C = dyn_cast<CallSyntax>(LHS->getObject())) {
+      if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(C->getCallee())) {
+        if (Callee->getSpelling() == "postfix'^'") {
+          // const Syntax *Operand = LHS->getArgument(0);
+          // const AtomSyntax *Id2 = dyn_cast<AtomSyntax>(Operand);
+          Declarator *Index = new ArrayDeclarator(Args, handleType(RHS, Next));
+          // Declarator *Ptr = new PointerDeclarator(C, Index);
+          Declarator *Ptr = handleSingleCaret(C, Index);
+          Ptr->printSequence(llvm::errs());
+          return Ptr;
+        }
+      }
+    } else {
+      return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
+    }
+  }
+
+  ExprElaborator IdElab(Context, SemaRef);
+  clang::Expr *IdExpr = IdElab.elaborateExpr(Id);
+  // The index is a value expression but the identifier has not been
+  // used, this is definitely an array.
+  if (!IdExpr) {
+    Declarator *Index = new ArrayDeclarator(Args, handleType(RHS, Next));
+    return handleIdentifier(Id, Index);
+  }
+
+  // This is either a template specialization or a redeclaration,
+  // it's not our job to find out which.
+  return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
 }
 
 // Classify a top-level declarator with a postfix `^`
@@ -1481,14 +1497,30 @@ Declarator *DeclarationBuilder::handleLHSCaret(const CallSyntax *S,
     if (Callee->getSpelling() == "postfix'^'") {
       const Syntax *Operand = LHS->getArgument(0);
       const AtomSyntax *Id = dyn_cast<AtomSyntax>(Operand);
-      if (!Id)
-        return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
       Declarator *Ptr = new PointerDeclarator(LHS, handleType(RHS, Next));
+      if (!Id) {
+        Declarator *D = makeTopLevelDeclarator(Operand, Ptr);
+        llvm::outs() << "made a nasty lil dude";
+        D->printSequence(llvm::errs());
+      }
+
       return handleIdentifier(Id, Ptr);
     }
   }
 
   return nullptr;
+}
+
+Declarator *DeclarationBuilder::handleSingleCaret(const CallSyntax *S,
+                                                  Declarator *Next) {
+  if (const CallSyntax *LHS = dyn_cast<CallSyntax>(S->getArgument(0)))
+    if (const AtomSyntax *Callee = dyn_cast<AtomSyntax>(LHS->getCallee()))
+      if (Callee->getSpelling() == "postfix'^'")
+        Next = handleSingleCaret(LHS, Next);
+  // if (const AtomSyntax *LHS = dyn_cast<AtomSyntax>(S->getArgument(0)))
+  //   return handleIdentifier(LHS, new PointerDeclarator(S, Next));
+
+  return new PointerDeclarator(S, Next);
 }
 
 Declarator *

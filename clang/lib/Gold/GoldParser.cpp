@@ -1532,6 +1532,7 @@ Parser::FoldKind Parser::scanForFoldExpr() {
 ///   postfix . identifier
 ///   postfix . ( expr ) identifier
 ///   postfix .^ ( expr )
+///   postfix ^
 ///   postfix of-macro
 ///   postfix suffix-operator
 ///
@@ -1572,7 +1573,8 @@ Syntax *Parser::parsePost()
       break;
 
     case tok::Caret:
-      return onPostfix(consumeToken(), e);
+      e = onPostfix(consumeToken(), e);
+      break;
 
     case tok::Question:
     // case tok::Caret:

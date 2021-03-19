@@ -3131,6 +3131,13 @@ static bool actOnVarTemplateSpecialziation(Sema &SemaRef,
   return false;
 }
 
+static inline bool needsTypeElab(const Declaration *D) {
+  return (D->Decl->Next &&
+          (D->Decl->Next->isArray() ||
+           D->Decl->Next->isPointer() ||
+           D->TypeDcl));
+}
+
 clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
                                                Declaration *D) {
   BALANCE_DBG();
@@ -3148,16 +3155,13 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
   clang::Expr *TypeExpr = nullptr;
   clang::SourceLocation TypeLocation;
 
-  if (D->Decl->Next && (D->Decl->Next->isArray() || D->Decl->Next->isPointer())) {
-    ExprElaborator TypeElab(Context, SemaRef);
-    TypeExpr = TypeElab.elaborateTypeExpr(D->Decl->Next);
-  } else if (D->TypeDcl) {
-    ExprElaborator TypeElab(Context, SemaRef);
-    TypeExpr = TypeElab.elaborateExplicitType(D->TypeDcl, nullptr);
-  } else {
+  if (!needsTypeElab(D)) {
     // This needs to be handled right away.
     TypeExpr = SemaRef.buildTypeExpr(Context.CxxAST.getAutoDeductType(),
                                      D->Op->getLoc());
+  } else {
+    ExprElaborator TypeElab(Context, SemaRef);
+    TypeExpr = TypeElab.elaborateTypeExpr(D->Decl->Next);
   }
 
   if (!TypeExpr) {
