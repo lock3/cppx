@@ -122,6 +122,7 @@ std::string Token::getSpelling() const {
   Spelling += "\"";
   return Spelling;
 }
+
 bool Token::hasSuffix() const {
   return isNumericConstant() && !Suffixes.empty();
 }

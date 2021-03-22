@@ -96,12 +96,12 @@ CharacterScanner::CharacterScanner(clang::SourceManager &SM, File const &F,
 #include "clang/Gold/GoldTokens.def"
 }
 
+
 Token CharacterScanner::operator()() {
   while (!isDone())
   {
     // Establish this point as the start of the current token.
     StartingPosition Pos(*this);
-
     switch (getLookahead()) {
     case ' ':
     case '\t':
@@ -127,6 +127,9 @@ Token CharacterScanner::operator()() {
     case '}':
       return matchToken(tok::RightBrace);
     case ':':
+      if (getLookahead(1) == '>') {
+        return matchToken(tok::ColonGreater);
+      }
       return matchToken(tok::Colon);
     case ';':
       return matchToken(tok::Semicolon);
@@ -706,6 +709,55 @@ void CharacterScanner::matchEscapeSequence() {
   }
 }
 
+static bool isTerminatingTextTokenCharacter(char c) {
+    switch (c) {
+      case '>':
+      case '\0':
+      case '{':
+      case '}':
+      case '#':
+      case '<':
+      case '&':
+      case '~':
+      case '\\':
+        return true;
+      default:
+        return false;
+    }
+}
+
+// Token CharacterScanner::matchInTextMode() {
+//   assert(TextTokenMode && "Invalid call to text node matching");
+//   switch(*First) {
+//     case '\\': {
+//       return matchEscapedCharInTextMode();
+//     }
+//     default:
+//       // There may be special cases after this that don't conform
+//       // to this pattern. They are handled by the default big grab functionality.
+//       break;
+//   }
+//   return matchText();
+// }
+
+// Token CharacterScanner::matchEscapedCharInTextMode() {
+//   auto NextChar = First + 1;
+//   matchEscapeSequence();
+//   return makeToken(tok::EscapedTextChar, Start, 2);
+// }
+
+// Token CharacterScanner::matchText() {
+//   std::size_t Len = 0;
+//   while(*First && !isTerminatingTextTokenCharacter(*First)) {
+//     consume();
+//     ++Len;
+//   }
+//   TextTokenMode = false;
+//   auto Ret = makeToken(tok::Text, Start, Len);
+//   return Ret;
+// }
+
+
 Token CharacterScanner::matchHexadecimalCharacter() {
   consume(2); // Matches '0c'.
 
@@ -804,284 +856,6 @@ clang::SourceLocation
 CharacterScanner::getSourceLocation(char const* Loc) {
   llvm::StringRef Buf = Input->getText();
   return SM.getComposedLoc(Input->getID(), Loc - Buf.data());
-}
-
-// Line scanner
-
-static llvm::StringMap<bool> InfixKeywords {
-  {"where", true},
-  {"otherwise", true},
-  {"returns", true},
-  {"until", true},
-  {"using", true},
-  {"catch", true}
-};
-
-static bool isInfix(Token Op, bool GTIO) {
-  switch (Op.getKind()) {
-  case tok::Plus:
-  case tok::Minus:
-  case tok::Star:
-  case tok::Slash:
-  case tok::Percent:
-  case tok::Ampersand:
-  case tok::Bar:
-  case tok::Less:
-  case tok::Equal:
-  case tok::EqualEqual:
-  case tok::LessEqual:
-  case tok::GreaterEqual:
-  case tok::AmpersandAmpersand:
-  case tok::BarBar:
-  case tok::ColonEqual:
-  case tok::PlusEqual:
-  case tok::MinusEqual:
-  case tok::StarEqual:
-  case tok::SlashEqual:
-  case tok::PercentEqual:
-  case tok::MinusGreater:
-  case tok::EqualGreater:
-  case tok::LeftParen:
-  case tok::LeftBracket:
-  case tok::Comma:
-  case tok::LessLess:
-  case tok::GreaterGreater:
-  case tok::LessLessEqual:
-  case tok::GreaterGreaterEqual:
-  case tok::CatchKeyword:
-    return true;
-  case tok::Identifier: {
-    auto It = InfixKeywords.find(Op.getSymbol().data());
-    if (It == InfixKeywords.end())
-      return false;
-    return true;
-  }
-
-  case tok::Greater:
-    return GTIO;
-
-  default:
-    return false;
-  }
-}
-
-// true when a token is not a space or comment
-static inline bool isSignificant(const Token &Tok) {
-  return !Tok.hasKind(tok::Invalid) || Tok.isSpace() ||
-    Tok.isNewline() || Tok.isComment();
-}
-
-Token LineScanner::operator()() {
-  Token Tok;
-  bool StartsLine = false;
-
-  // These two booleans, as well as the temporary SkipNewlineAfterComment,
-  // keep track of the state of comments.
-  // Comments can end with a newline that may or may not be significant.
-  // For example:
-  // \code
-  //   <# comment #>               <--- newline is insignficant
-  //   main() : int! <# comment #> <--- newline is a separator
-  //     return 0
-  // \endcode
-  // The newline after a comment is signficant when the last token
-  // before the current SEQUENCE of comments was not whitespace or
-  // invalid.
-  bool PreviousWasComment = false;
-  bool LastWasSignificant = false;
-  while (true) {
-    Tok = Scanner();
-
-    // If the last token wasn't a comment, check if it was signficant.
-    // If it was, then we'll see if the previous token before the comment
-    // sequence was signficant. If it was NOT, then the next newline we see
-    // is NOT a separator.
-    bool SkipNewlineAfterComment = false;
-    if (!PreviousWasComment)
-      LastWasSignificant = isSignificant(Current);
-    else if (!LastWasSignificant)
-      SkipNewlineAfterComment = true;
-
-    if (!Tok.isSpace() && !Tok.isNewline()) {
-      Current = Tok;
-      if (Tok.isComment())
-        PreviousWasComment = true;
-    }
-
-    // Space at the beginning of a line cannot be discarded here.
-    if (Tok.isSpace() && Tok.isAtStartOfLine() &&
-        !isInfix(Current, GreaterThanIsOperator))
-      break;
-
-    // Propagate a previous line-start flag to this next token.
-    if (StartsLine) {
-      Tok.Flags |= TF_StartsLine;
-      StartsLine = false;
-    }
-
-    // Empty lines are discarded.
-    if (Tok.isNewline() && Tok.isAtStartOfLine())
-      continue;
-    if (Tok.isNewline() && SkipNewlineAfterComment)
-      continue;
-
-    // Errors, space, and comments are discardable. If a token starts a
-    // line, the next token will become the new start of line.
-    if (Tok.isInvalid() || Tok.isSpace() || Tok.isComment()) {
-      StartsLine = Tok.isAtStartOfLine();
-      continue;
-    }
-
-    // Discard space between a line-broken infix operator. e.g.)
-    //
-    // \code
-    //   x = 2 + 2 *
-    //       2 + 2
-    // \endcode
-    if ((Tok.isSpace() || Tok.isNewline()) &&
-        isInfix(Current, GreaterThanIsOperator)) {
-      continue;
-    }
-
-    // All other tokens are retained.
-    break;
-  };
-
-  return Tok;
-}
-
-// Block scanner
-
-Token BlockScanner::operator()() {
-  // Get the next token, possibly one that we've buffered.
-  Token Tok;
-  if (Lookahead)
-    Tok = std::exchange(Lookahead, {});
-  else
-    Tok = Scanner();
-
-  // Check for a newline followed by indentation.
-  if (Tok.isNewline()) {
-    Token Next = Scanner();
-    if (Next.isSpace()) {
-      // A newline followed by space is either an indent or a dedent.
-      // For example:
-      //
-      //    if (x < y): <newline>
-      //      stuff <newline>
-      //
-      // Combine the tokens to create the appropriate level of indentation.
-      Tok = combineSpace(Tok, Next);
-    } else {
-      // At the top-level a newline followed by a token implies the
-      // presence of a separator or dedent. For example:
-      //
-      //    x = 1 <newline>
-      //    y = 2 <newline>
-      //
-      // For dedents, we might have this:
-      //
-      //    if (x < y): <newline>
-      //      stuff <newline>
-      //    more_stuff
-      //
-      // We want to replace the first newline token with a separator.
-      // However, we have to preserve the token we just found.
-      //
-      // Note that the second newline is followed by eof, so we'd
-      // probably want to do the same.
-      Tok = combineSpace(Tok, {});
-
-      // Buffer the next token for the next read.
-      Lookahead = Next;
-    }
-  } else if (!Dedents.empty()) {
-    Lookahead = Tok;
-    Tok = combineSpace({}, {});
-  }
-
-  assert(!Tok.isNewline());
-  return Tok;
-}
-
-Token BlockScanner::matchSeparator(Token const& Tok) {
-  return Token(tok::Separator, Tok.getLocation(), Tok.getSymbol());
-}
-
-Token BlockScanner::matchIndent(Token const& Tok) {
-  return Token(tok::Indent, Tok.getLocation(), Tok.getSymbol());
-}
-
-Token BlockScanner::matchDedent(Token const& Tok) {
-  return Token(tok::Dedent, Tok.getLocation(), Tok.getSymbol());
-}
-
-static Symbol getSymbol(Token const& Tok) {
-  return Tok.isInvalid() ? Symbol() : Tok.getSymbol();
-}
-
-/// True if `A` and `B` have the same spellings.
-static bool equalSpelling(Token const& A, Token const& B) {
-  return getSymbol(A) == getSymbol(B);
-}
-
-/// True if `sym` starts with `pre` (i.e., is lexicographically greater).
-static bool startsWith(Symbol Sym, Symbol Pre) {
-  return Sym.str().compare(Pre.str()) > 0;
-}
-
-/// True if the lexeme of `tok` has the lexeme of `pre` has a prefix.
-static bool startsWith(Token const& Tok, Token const& Pre) {
-  return startsWith(getSymbol(Tok), getSymbol(Pre));
-}
-
-Token BlockScanner::combineSpace(Token const& Nl, Token const& NewIndent) {
-  // Emit queued dedents.
-  if (!Dedents.empty())
-    return popDedent();
-
-  Token PrevIndent = currentIndentation();
-
-  // If the indentations are the same, this is a separator. Note
-  // that we replace the current prefix for diagnostics purposes.
-  if (equalSpelling(NewIndent, PrevIndent)) {
-    if (!Prefix.empty())
-      Prefix.back() = NewIndent;
-    return matchSeparator(Nl);
-  }
-
-  // If the new indentation starts with the previous (i.e., new is longer),
-  // then indent.
-  if (startsWith(NewIndent, PrevIndent)) {
-    pushIndentation(NewIndent);
-    return matchIndent(NewIndent);
-  }
-
-  // The previous indentation starts with the new (i.e., previous is longer),
-  // then dendent. Note that this can entail multiple dedents: one for each
-  // level that does not have the same spelling.
-  if (startsWith(PrevIndent, NewIndent)) {
-    do {
-      popIndentation();
-      PrevIndent = currentIndentation();
-      pushDedent(matchDedent(NewIndent));
-    } while (!Prefix.empty() && !equalSpelling(NewIndent, PrevIndent));
-
-    // Update the location of the last indent for diagnostic purposes.
-    if (!Prefix.empty())
-      Prefix.back() = NewIndent;
-
-    return popDedent();
-  }
-
-  // FIXME: Note the previous indentation depth. This is the reason we
-  // overwrite the last entry in the stack: to get the nearest indentation
-  // of the expected length.
-  getDiagnostics().Report(NewIndent.getLocation(),
-                          clang::diag::err_invalid_indentation);
-
-  // Return a line separator just in case.
-  return matchSeparator(Nl);
 }
 
 } // namespace gold

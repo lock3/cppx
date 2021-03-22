@@ -12,5 +12,9 @@ def_syntax(Elem)
 def_syntax(Macro)
 def_syntax(LambdaMacro)
 def_syntax(File)
+def_syntax(Markup)
+def_syntax(Text)
+def_syntax(DocAttr)
+def_syntax(StrInterpolationExpr)
 
 #undef def_syntax

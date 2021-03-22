@@ -51,10 +51,14 @@ namespace gold
     Parser(SyntaxContext &Context, clang::SourceManager &SM, File const& F,
           clang::Preprocessor &PP);
 
-    void fetchToken()
-    {
-      Toks.push_back(Lex());
-    }
+  private:
+    // Replaces the block scanner.
+    Token blockScannerFetch();
+    // replaces the line scanner.
+    Token lineScannerFetch();
+
+  public:
+    void fetchToken();
 
     Token const& peekToken() const {
       return FusionToks.empty() ?
@@ -277,7 +281,19 @@ namespace gold
     Syntax *parseNNSPrefix();
     Syntax *parsePostAttr(Syntax *Pre);
 
+    // handle special parsing for documentation attributes.
+    Syntax *parseDocAttr();
+    Syntax *parseMarkupElement();
+    Syntax *parseMarkupFormattedBody();
+    Syntax *parseMarkupWithComma();
+    Syntax *parseHtmlTags();
+    Syntax *parseIndentedTags();
+    Syntax *parseMarkdownTags();
+    Syntax *parseStrInterpolationExprBraces();
+    Syntax *parseStrInterpolationExprAmpersand();
+
     Syntax *parseExpansionOperator(Syntax *Obj);
+
   private:
     Attribute *parsePostAttr();
 
@@ -298,7 +314,6 @@ namespace gold
     Syntax *parseCatch();
 
     bool parsePreAttr();
-    Syntax *parseDocAttr();
 
     // Primary expressions
     Syntax *parseReserved();
@@ -311,6 +326,10 @@ namespace gold
     // Semantic actions
     Syntax *onAtom(const Token &Tok);
     Syntax *onAtom(const Token &Tok, const tok::FusionKind K, Syntax *Data);
+    Syntax *onDocAttr(const llvm::SmallVectorImpl<Syntax*>& Vec);
+    Syntax *onMarkup(Syntax *Name, Syntax *Block);
+    Syntax *onStringInterpolation(Syntax *Expr);
+    Syntax *onText(const Token &Tok);
     Syntax *onLiteral(const Token& tok);
     Syntax *onUserDefinedLiteral(Syntax *Base, const Token &Lit);
     Syntax *onArray(ArraySemantic S, const llvm::SmallVectorImpl<Syntax*>& Vec);
@@ -517,6 +536,67 @@ namespace gold
 
     // True when we parse a lambda capture default in a capture scope
     bool LambdaCaptureDefault = false;
+
+
+    // Boolean flags for recognizing the current parsing state and adapting
+    // tokens being read accordingly.
+    bool InsideDocAttr = false;
+
+    /// Block Scanner flags
+    ///{
+
+
+    Token combineSpace(Token const& nl, Token const& sp);
+    Token matchSeparator(Token const& nl);
+    Token matchIndent(Token const& nl);
+    Token matchDedent(Token const& nl);
+
+    /// The current level of indentation. If the indentation stack is empty,
+    /// return an empty token.
+    Token currentIndentation() const {
+      if (Indents.empty())
+        return {};
+      return Indents.back();
+    }
+
+    /// Push a new indentation level.
+    void pushIndentation(Token const& Tok) {
+      assert(Tok.isSpace());
+      Indents.push_back(Tok);
+    }
+
+    /// Pops the current indentation level.
+    Token popIndentation() {
+      Token Tok = Indents.back();
+      Indents.pop_back();
+      return Tok;
+    }
+
+    /// Save a dedent token.
+    void pushDedent(Token Tok) {
+      Dedents.push_back(Tok);
+    }
+
+    /// Get the next saved dedent token.
+    Token popDedent() {
+      Token Tok = Dedents.back();
+      Dedents.pop_back();
+      return Tok;
+    }
+    // TODO: refactor this so that we correctly keep track of the current
+    // in a single location.
+    Token Lookahead;
+    bool IndentSensitiveScope = false;
+    bool WhitespaceSensetiveExpresion = false;
+
+    std::vector<Token> Indents;
+    std::vector<Token> Dedents;
+    ///}
+
+    /// Line Scanner flags
+    ///{
+    Token Current;
+    ///}
   };
 
   /// RAII object that makes '>' behave either as an operator

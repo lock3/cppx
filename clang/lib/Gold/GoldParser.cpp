@@ -11,12 +11,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/Gold/GoldParser.h"
+
 #include "clang/AST/ASTContext.h"
 #include "clang/Basic/Diagnostic.h"
+#include "clang/Basic/DiagnosticLex.h"
 #include "clang/Basic/DiagnosticParse.h"
 #include "clang/Basic/TargetInfo.h"
 
-#include "clang/Gold/GoldParser.h"
 #include "clang/Gold/GoldSyntax.h"
 #include "clang/Gold/GoldSyntaxContext.h"
 
@@ -148,17 +150,218 @@ static Attribute *makeAttr(const SyntaxContext &Ctx, Syntax *Arg);
 
 Parser::Parser(SyntaxContext &Context, clang::SourceManager &SM, File const& F,
                clang::Preprocessor &PP)
-  : Lex(SM, F, Context, PP, GreaterThanIsOperator),
+  : Lex(SM, F, Context, PP),
     Diags(SM.getDiagnostics()), Context(Context)
 {
   fetchToken();
 }
 
+Token Parser::blockScannerFetch() {
+  Token Tok;
+  if (Lookahead)
+    Tok = std::exchange(Lookahead, {});
+  else
+    Tok = lineScannerFetch();
+
+  // Check for a newline followed by indentation.
+  if (Tok.isNewline()) {
+    Token Next = lineScannerFetch();
+    if (Next.isSpace()) {
+      // A newline followed by space is either an indent or a dedent.
+      // For example:
+      //
+      //    if (x < y): <newline>
+      //      stuff <newline>
+      //
+      // Combine the tokens to create the appropriate level of indentation.
+      Tok = combineSpace(Tok, Next);
+    } else {
+      // At the top-level a newline followed by a token implies the
+      // presence of a separator or dedent. For example:
+      //
+      //    x = 1 <newline>
+      //    y = 2 <newline>
+      //
+      // For dedents, we might have this:
+      //
+      //    if (x < y): <newline>
+      //      stuff <newline>
+      //    more_stuff
+      //
+      // We want to replace the first newline token with a separator.
+      // However, we have to preserve the token we just found.
+      //
+      // Note that the second newline is followed by eof, so we'd
+      // probably want to do the same.
+      Tok = combineSpace(Tok, {});
+
+      // Buffer the next token for the next read.
+      Lookahead = Next;
+    }
+  } else if (!Dedents.empty()) {
+    Lookahead = Tok;
+    Tok = combineSpace({}, {});
+  }
+
+  assert(!Tok.isNewline());
+  return Tok;
+}
+
+// Line scanner
+
+static llvm::StringMap<bool> InfixKeywords {
+  {"where", true},
+  {"otherwise", true},
+  {"returns", true},
+  {"until", true},
+  {"using", true},
+  {"catch", true}
+};
+
+static bool isInfix(Token Op, bool GTIO) {
+  switch (Op.getKind()) {
+  case tok::Plus:
+  case tok::Minus:
+  case tok::Star:
+  case tok::Slash:
+  case tok::Percent:
+  case tok::Ampersand:
+  case tok::Bar:
+  case tok::Less:
+  case tok::Equal:
+  case tok::EqualEqual:
+  case tok::LessEqual:
+  case tok::GreaterEqual:
+  case tok::AmpersandAmpersand:
+  case tok::BarBar:
+  case tok::ColonEqual:
+  case tok::PlusEqual:
+  case tok::MinusEqual:
+  case tok::StarEqual:
+  case tok::SlashEqual:
+  case tok::PercentEqual:
+  case tok::MinusGreater:
+  case tok::EqualGreater:
+  case tok::LeftParen:
+  case tok::LeftBracket:
+  case tok::Comma:
+  case tok::LessLess:
+  case tok::GreaterGreater:
+  case tok::LessLessEqual:
+  case tok::GreaterGreaterEqual:
+  case tok::CatchKeyword:
+    return true;
+  case tok::Identifier: {
+    auto It = InfixKeywords.find(Op.getSymbol().data());
+    if (It == InfixKeywords.end())
+      return false;
+    return true;
+  }
+
+  case tok::Greater:
+    return GTIO;
+
+  default:
+    return false;
+  }
+}
+
+// true when a token is not a space or comment
+static inline bool isSignificant(const Token &Tok) {
+  return !Tok.hasKind(tok::Invalid) || Tok.isSpace() ||
+    Tok.isNewline() || Tok.isComment();
+}
+
+
+
+Token Parser::lineScannerFetch() {
+  Token Tok;
+  bool StartsLine = false;
+
+  // These two booleans, as well as the temporary SkipNewlineAfterComment,
+  // keep track of the state of comments.
+  // Comments can end with a newline that may or may not be significant.
+  // For example:
+  // \code
+  //   <# comment #>               <--- newline is insignficant
+  //   main() : int! <# comment #> <--- newline is a separator
+  //     return 0
+  // \endcode
+  // The newline after a comment is signficant when the last token
+  // before the current SEQUENCE of comments was not whitespace or
+  // invalid.
+  bool PreviousWasComment = false;
+  bool LastWasSignificant = false;
+  while (true) {
+    Tok = Lex();
+
+    // If the last token wasn't a comment, check if it was signficant.
+    // If it was, then we'll see if the previous token before the comment
+    // sequence was signficant. If it was NOT, then the next newline we see
+    // is NOT a separator.
+    bool SkipNewlineAfterComment = false;
+    if (!PreviousWasComment)
+      LastWasSignificant = isSignificant(Current);
+    else if (!LastWasSignificant)
+      SkipNewlineAfterComment = true;
+
+    if (!Tok.isSpace() && !Tok.isNewline()) {
+      Current = Tok;
+      if (Tok.isComment())
+        PreviousWasComment = true;
+    }
+
+    // Space at the beginning of a line cannot be discarded here.
+    if (Tok.isSpace() && Tok.isAtStartOfLine() &&
+        !isInfix(Current, GreaterThanIsOperator))
+      break;
+
+    // Propagate a previous line-start flag to this next token.
+    if (StartsLine) {
+      Tok.Flags |= TF_StartsLine;
+      StartsLine = false;
+    }
+
+    // Empty lines are discarded.
+    if (Tok.isNewline() && Tok.isAtStartOfLine())
+      continue;
+    if (Tok.isNewline() && SkipNewlineAfterComment)
+      continue;
+
+    // Errors, space, and comments are discardable. If a token starts a
+    // line, the next token will become the new start of line.
+    if (Tok.isInvalid() || Tok.isSpace() || Tok.isComment()) {
+      StartsLine = Tok.isAtStartOfLine();
+      continue;
+    }
+
+    // Discard space between a line-broken infix operator. e.g.)
+    //
+    // \code
+    //   x = 2 + 2 *
+    //       2 + 2
+    // \endcode
+    if ((Tok.isSpace() || Tok.isNewline()) &&
+        isInfix(Current, GreaterThanIsOperator)) {
+      continue;
+    }
+
+    // All other tokens are retained.
+    break;
+  };
+
+  return Tok;
+}
+
+void Parser::fetchToken() {
+  Toks.push_back(blockScannerFetch());
+}
+
+
 Token Parser::expectToken(TokenKind K)
 {
   if (nextTokenIs(K))
     return consumeToken();
-
   char const* Spelling = getSpelling(K);
   Diags.Report(getInputLocation(), clang::diag::err_expected) << Spelling;
   return {};
@@ -168,7 +371,6 @@ Token Parser::expectToken(char const* Id)
 {
   if (nextTokenIs(Id))
     return consumeToken();
-
   Diags.Report(getInputLocation(), clang::diag::err_expected) << Id;
   return {};
 }
@@ -478,35 +680,31 @@ Syntax *Parser::parseDef() {
   if (InsideKnownFoldExpr && !ParseFoldOp) {
     def = parseDefFold(def);
   } else if (InsideKnownFoldExpr && ParseFoldOp) {
-    return def;
-  }
-
-  if (Token op = matchTokenIf(isAssignmentOperator)) {
+    // Do nothing here.
+  } else if (Token op = matchTokenIf(isAssignmentOperator)) {
     Syntax *val = parseDef();
-    return onBinary(op, def, val);
-  }
-
-  // FIXME: Is the only way to define a function to follow the declarator
-  // with a '!'? It seems like that would work better as a suffix operator
-  // on the declarator (it also leads naturally to factorials!).
-  if (Token op = matchToken(tok::Bang)) {
-    // FIXME: This should probably not be inside the loop. It allows
-    // weirdness like this: 'f ! { ...} ! { ... } ! ...'. This would also
-    // be interspersed with assignments: 'f ! { ... } = expr'
-    Syntax *body;
-    if (nextTokenIs(tok::LeftBrace)) {
-      body = parseBracedArray();
-    } else if (nextTokenIs(tok::Indent)) {
-      body = parseNestedArray();
-    } else {
-      // FIXME: Skip to the end of the list or stmt/line.
-      Diags.Report(getInputLocation(), clang::diag::err_expected) << "'{' or indent";
-      return onError();
+    def = onBinary(op, def, val);
+  } else {
+    // FIXME: Is the only way to define a function to follow the declarator
+    // with a '!'? It seems like that would work better as a suffix operator
+    // on the declarator (it also leads naturally to factorials!).
+    if (Token op = matchToken(tok::Bang)) {
+      // FIXME: This should probably not be inside the loop. It allows
+      // weirdness like this: 'f ! { ...} ! { ... } ! ...'. This would also
+      // be interspersed with assignments: 'f ! { ... } = expr'
+      Syntax *body;
+      if (nextTokenIs(tok::LeftBrace)) {
+        body = parseBracedArray();
+      } else if (nextTokenIs(tok::Indent)) {
+        body = parseNestedArray();
+      } else {
+        // FIXME: Skip to the end of the list or stmt/line.
+        Diags.Report(getInputLocation(), clang::diag::err_expected) << "'{' or indent";
+        return onError();
+      }
+      def = onBinary(op, def, body);
     }
-
-    return onBinary(op, def, body);
   }
-
   return def;
 }
 
@@ -632,10 +830,11 @@ static bool is_relational_operator(Parser& P) {
   switch (P.getLookahead()) {
   default:
     return false;
+  case tok::Less:
+    return P.getLookahead(1) != tok::Bar;
   case tok::EqualEqual:
   case tok::BangEqual:
   case tok::LessGreater:
-  case tok::Less:
   case tok::LessEqual:
     return true;
   case tok::Greater:
@@ -1553,7 +1752,10 @@ Syntax *Parser::parsePost()
       break;
 
     case tok::Less: {
-      if (scanAngles(e))
+      if (getLookahead(1) == tok::Bar) {
+        // This is a doc attribute
+        e = parsePostAttr(e);
+      }else if (scanAngles(e))
         e = parsePostAttr(e);
       else {
         Angles.clear();
@@ -1737,14 +1939,20 @@ Attribute *Parser::parsePostAttr() {
   EnclosingAngles Angles(*this);
   if (!Angles.expectOpen())
     return nullptr;
-
+  Syntax *Arg = nullptr;
+  bool IsDocAttr = false;
   GreaterThanIsOperatorScope GTIOS(GreaterThanIsOperator, false);
-  AttributeScope AttrScope(InAttribute);
+  if (nextTokenIs(tok::Bar)) {
+    IsDocAttr = true;
+    Arg = parseDocAttr();
+  } else {
+    AttributeScope AttrScope(InAttribute);
 
-  // Don't parse an attribute if the angles are empty.
-  Syntax *Arg = !(nextTokenIs(tok::Greater) || nextTokenIs(tok::GreaterEqual))
-    ? parseExpr() : nullptr;
+    // Don't parse an attribute if the angles are empty.
+    Arg = !(nextTokenIs(tok::Greater) || nextTokenIs(tok::GreaterEqual))
+      ? parseExpr() : nullptr;
 
+  }
   // In the case where the user ended the attribute list with `>=`, such as
   // in `x<private>=0`, we use this dirthack to split >= back into
   // separate tokens.
@@ -1754,9 +1962,13 @@ Attribute *Parser::parsePostAttr() {
     Toks.emplace_front(tok::Equal, Loc, getSymbol("="));
     Toks.emplace_front(tok::Greater, Loc, getSymbol(">"));
   }
-
+  if (IsDocAttr) {
+    if (isa<ErrorSyntax>(Arg)) {
+      return makeAttr(Context, Arg);
+    }
+  }
   if (!Angles.expectClose())
-    return nullptr;
+    return makeAttr(Context, onError());
 
   return makeAttr(Context, Arg);
 }
@@ -1771,6 +1983,270 @@ Syntax *Parser::parsePostAttr(Syntax *Pre) {
   this->Angles.clear();
   return Pre;
 }
+
+
+Syntax *Parser::parseDocAttr() {
+  // llvm::SmallVector<Syntax *, 32> DocAttrParts;
+  // auto &CS = Lex.getCharScanner();
+  // auto BarTok = Toks.front();
+  // assert(BarTok.hasKind(tok::Bar) && " Invalid call to parse doc attr");
+  // Toks.pop_front();
+  // char NextCharacter = Lex.getNextNonWSChar();
+  // BooleanRAII InDocAttrTracking(this->InsideDocAttr, true);
+  // while(true) {
+  //   NextCharacter = Lex.getNextNonWSChar();
+  //   switch (NextCharacter) {
+  //     case '>':
+  //       // We have to consume the current character and put it back into the
+  //       // current token buffer because the token buffer should contain at
+  //       // least one token.
+  //       Toks.emplace_back(Lex());
+  //       return onDocAttr(DocAttrParts);
+  //     case '\0':{
+
+  //       // We will also need to creat the end of file token and push it onto the
+  //       // stack.
+  //       Toks.emplace_back(Lex());
+  //       unsigned DiagID =
+  //         Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+  //                               "unexpected end of file");
+  //       Diags.Report(Toks.front().getLocation(), DiagID);
+  //       return onError();
+  //     }
+  //     // \, {, }, #, <, >, &, ~
+  //     case '{':{
+  //       DocAttrParts.emplace_back(parseStrInterpolationExprBraces());
+  //       continue;
+  //     }
+  //     case '}':
+  //       // This might be an error?
+  //       llvm_unreachable("Errant } within code this needs an error message");
+
+  //     case '&': {
+  //       DocAttrParts.emplace_back(parseStrInterpolationExprAmpersand());
+  //       continue;
+  //     }
+  //     case '<': {
+  //       // If the next character is # then we have a commnet and we can lex without
+  //       // having to care about anything else.
+  //       if (*(CS.First + 1) == '#') {
+  //         auto CommentTok = CS();
+  //         if (!CommentTok.hasKind(tok::BlockComment)) {
+  //           Diags.Report(CommentTok.getLocation(), clang::diag::err_expected)
+  //               << "#>";
+  //           Toks.emplace_back(CS());
+  //           return onError();
+  //         }
+  //         continue;
+  //       } else {
+  //         // Preload the next token.
+  //         Toks.emplace_back(Lex());
+  //         DocAttrParts.emplace_back(parseMarkupElement());
+  //       }
+  //     }
+  //     break;
+  //     case '#':
+  //       llvm_unreachable("Line comments not implemented yet.");
+  //     case '~':{
+  //       // FIXME: Before we leave here we have to make sure that we put a token into
+  //       // the token buffer.
+  //       llvm_unreachable("Nested elements not implemented yet.");
+  //     }
+  //     case '\\': {
+  //       // these mean we have something else next and we shouldn't parse this?
+  //       // Depending on context this could cause problems.
+  //       BooleanRAII LexeringDocText(CS.TextTokenMode, true);
+  //       auto TempTok = Lex();
+  //       assert(TempTok.hasKind(tok::EscapedTextChar) && "Invalid token returned from lexer");
+  //       DocAttrParts.emplace_back(onText(TempTok));
+  //       break;
+  //     }
+  //     default: {
+  //       // Doing special lexing.
+  //       BooleanRAII LexeringDocText(CS.TextTokenMode, true);
+  //       auto TempTok = Lex();
+  //       assert(TempTok.hasKind(tok::Text) && "Invalid token returned from lexer");
+  //       DocAttrParts.emplace_back(onText(TempTok));
+  //     }
+  //   }
+  // }
+  // This can logically never happen.
+  llvm_unreachable("parseDocAttr is broken");
+}
+
+Syntax *Parser::parseMarkupFormattedBody() {
+  // llvm::SmallVector<Syntax *, 32> BlockContents;
+  // auto &CS = Lex.getCharScanner();
+  // Toks.pop_front();
+  // char NextCharacter = Lex.getNextNonWSChar();
+  // BooleanRAII InDocAttrTracking(this->InsideDocAttr, true);
+  // while(true) {
+  //   NextCharacter = Lex.getNextNonWSChar();
+  //   switch (NextCharacter) {
+  //     case ',':
+  //     case '>':
+  //       // We have to consume the current character and put it back into the
+  //       // current token buffer because the token buffer should contain at
+  //       // least one token.
+  //       Toks.emplace_back(Lex());
+  //       return onDocAttr(BlockContents);
+  //     case '\0': {
+  //       Toks.emplace_back(Lex());
+  //       unsigned DiagID =
+  //         Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+  //                               "unexpected end of file");
+  //       Diags.Report(Toks.front().getLocation(), DiagID);
+  //       return onError();
+  //     }
+  //     // \, {, }, #, <, >, &, ~
+  //     case '{':{
+  //       BlockContents.emplace_back(parseStrInterpolationExprBraces());
+  //       continue;
+  //     }
+  //     case '}':
+  //       // This might be an error?
+  //       llvm_unreachable("Errant } within code this needs an error message");
+
+  //     case '&': {
+  //       BlockContents.emplace_back(parseStrInterpolationExprAmpersand());
+  //       continue;
+  //     }
+  //     case '<': {
+  //       // If the next character is # then we have a commnet and we can lex without
+  //       // having to care about anything else.
+  //       if (*(CS.First + 1) == '#') {
+  //         auto CommentTok = CS();
+  //         if (!CommentTok.hasKind(tok::BlockComment)) {
+  //           Diags.Report(CommentTok.getLocation(), clang::diag::err_expected)
+  //               << "#>";
+  //           Toks.emplace_back(CS());
+  //           return onError();
+  //         }
+  //         continue;
+  //       } else {
+  //         // Preload the next token.
+  //         Toks.emplace_back(Lex());
+  //         BlockContents.emplace_back(parseMarkupElement());
+  //       }
+  //     }
+  //     break;
+  //     case '#':
+  //       llvm_unreachable("Line comments not implemented yet.");
+  //     case '~':{
+  //       // FIXME: Before we leave here we have to make sure that we put a token into
+  //       // the token buffer.
+  //       llvm_unreachable("Nested elements not implemented yet.");
+  //     }
+  //     case '\\': {
+  //       // these mean we have something else next and we shouldn't parse this?
+  //       // Depending on context this could cause problems.
+  //       BooleanRAII LexeringDocText(CS.TextTokenMode, true);
+  //       auto TempTok = Lex();
+  //       assert(TempTok.hasKind(tok::EscapedTextChar) && "Invalid token returned from lexer");
+  //       BlockContents.emplace_back(onText(TempTok));
+  //       break;
+  //     }
+  //     default: {
+  //       // Doing special lexing.
+  //       BooleanRAII LexeringDocText(CS.TextTokenMode, true);
+  //       auto TempTok = Lex();
+  //       assert(TempTok.hasKind(tok::Text) && "Invalid token returned from lexer");
+  //       BlockContents.emplace_back(onText(TempTok));
+  //     }
+  //   }
+  // }
+  llvm_unreachable("parseMarkupFormattedBody is broken");
+}
+
+
+Syntax *Parser::parseMarkupElement() {
+  // EnclosingAngles Angles(*this);
+  // if (!Angles.expectOpen())
+  //   return onError();
+
+  // // Disable the greater than operator.
+  // GreaterThanIsOperatorScope GTIOS(GreaterThanIsOperator, false);
+
+  // // Get internal state of things.
+  // Syntax *TagNameExpr = parsePost();
+  // if (!TagNameExpr) {
+  //   return onError();
+  // }
+
+  // // This means we have another kind of attributes?
+  // if (nextTokenIs(tok::LeftBrace)) {
+  //   llvm_unreachable("Block with internal style? not implemented yet.");
+  // }
+
+  // Syntax *Content = nullptr;
+  // // This means we are in HTML format maybe?
+  // if (nextTokenIs(tok::Greater)) {
+  //   Content = parseHtmlTags();
+  // } else if (nextTokenIs(tok::Comma)) {
+  //   llvm_unreachable("Markdown format with something special?");
+  // } else if (nextTokenIs(tok::ColonGreater)) {
+  //   Content = parseIndentedTags();
+  // } else if (nextTokenIs(tok::Colon)) {
+  //   Content = parseMarkdownTags();
+  // } else {
+  //   llvm_unreachable("Unknown tag format?");
+  // }
+
+  // if (!Angles.expectClose())
+  //   return onError();
+
+  // return onMarkup(TagNameExpr, Content);
+  llvm_unreachable("parseMarkupElement is broken");
+}
+
+Syntax *Parser::parseHtmlTags() {
+  llvm_unreachable("parseHtmlTags Not implemented yet");
+}
+
+Syntax *Parser::parseIndentedTags() {
+  llvm_unreachable("parseIndentedTags Not implemented yet");
+}
+
+Syntax *Parser::parseMarkdownTags() {
+  llvm_unreachable("parseMarkdownTags Not implemented yet");
+}
+
+Syntax *Parser::parseMarkupWithComma() {
+  llvm_unreachable("parseMarkupWithComma Not implemented yet");
+}
+
+Syntax *Parser::parseStrInterpolationExprBraces() {
+  llvm_unreachable("Working on parseStrInterpolationExprBraces");
+}
+
+Syntax *Parser::parseStrInterpolationExprAmpersand() {
+  // Reading the ampersand.
+  Toks.emplace_back(Lex());
+  auto AmpTok = Toks.front();
+  assert(AmpTok.hasKind(tok::Ampersand)
+         && "Expected ampersand");
+  // Consuming the ampersand
+  Toks.pop_back();
+  // Pre-loading the expression in an attempt to contiue as normal.
+  Toks.emplace_back(Lex());
+  Syntax *E = parseExpr();
+  if (!E) {
+    return onError();
+  }
+  // Making sure that we have a semi-colon.
+  if (!Toks.front().hasKind(tok::Semicolon)) {
+    // This means we have error!!!
+    Diags.Report(getInputLocation(), clang::diag::err_expected)
+        << ";";
+    consumeToken();
+    return onError();
+  }
+
+  // Pretending to consume the token without reading the next one.
+  Toks.pop_back();
+  return onStringInterpolation(E);
+}
+
 
 static inline bool isKeyword(TokenKind K) {
   return K >= tok::VoidKeyword && K <= tok::AnonymousKeyword;
@@ -2128,6 +2604,22 @@ Syntax *Parser::onAtom(const Token &Tok, const tok::FusionKind K,
   if (!InAttribute)
     attachPreattrs(Ret);
   return Ret;
+}
+
+Syntax *Parser::onDocAttr(const llvm::SmallVectorImpl<Syntax*>& Vec) {
+  return new (Context) DocAttrSyntax(createArray(Context, Vec), Vec.size());
+}
+
+Syntax *Parser::onMarkup(Syntax *Name, Syntax *Block) {
+  return new (Context) MarkupSyntax(Name, Block);
+}
+
+Syntax *Parser::onStringInterpolation(Syntax *Expr) {
+  return new (Context) StrInterpolationExprSyntax(Expr);
+}
+
+Syntax *Parser::onText(const Token &Tok) {
+  return new (Context) TextSyntax(Tok);
 }
 
 Syntax *Parser::onUserDefinedLiteral(Syntax *Base, const Token &Lit) {
@@ -2557,6 +3049,87 @@ void Parser::attachPreattrs(Syntax *S) {
     S->addAttribute(Attr);
 
   Preattributes.clear();
+}
+
+
+Token Parser::matchSeparator(Token const& Tok) {
+  return Token(tok::Separator, Tok.getLocation(), Tok.getSymbol());
+}
+
+Token Parser::matchIndent(Token const& Tok) {
+  return Token(tok::Indent, Tok.getLocation(), Tok.getSymbol());
+}
+
+Token Parser::matchDedent(Token const& Tok) {
+  return Token(tok::Dedent, Tok.getLocation(), Tok.getSymbol());
+}
+
+static Symbol getSymbol(Token const& Tok) {
+  return Tok.isInvalid() ? Symbol() : Tok.getSymbol();
+}
+
+/// True if `A` and `B` have the same spellings.
+static bool equalSpelling(Token const& A, Token const& B) {
+  return getSymbol(A) == getSymbol(B);
+}
+
+/// True if `sym` starts with `pre` (i.e., is lexicographically greater).
+static bool startsWith(Symbol Sym, Symbol Pre) {
+  return Sym.str().compare(Pre.str()) > 0;
+}
+
+/// True if the lexeme of `tok` has the lexeme of `pre` has a prefix.
+static bool startsWith(Token const& Tok, Token const& Pre) {
+  return startsWith(getSymbol(Tok), getSymbol(Pre));
+}
+
+Token Parser::combineSpace(Token const& Nl, Token const& NewIndent) {
+  // Emit queued dedents.
+  if (!Dedents.empty())
+    return popDedent();
+
+  Token PrevIndent = currentIndentation();
+
+  // If the indentations are the same, this is a separator. Note
+  // that we replace the current prefix for diagnostics purposes.
+  if (equalSpelling(NewIndent, PrevIndent)) {
+    if (!Indents.empty())
+      Indents.back() = NewIndent;
+    return matchSeparator(Nl);
+  }
+
+  // If the new indentation starts with the previous (i.e., new is longer),
+  // then indent.
+  if (startsWith(NewIndent, PrevIndent)) {
+    pushIndentation(NewIndent);
+    return matchIndent(NewIndent);
+  }
+
+  // The previous indentation starts with the new (i.e., previous is longer),
+  // then dendent. Note that this can entail multiple dedents: one for each
+  // level that does not have the same spelling.
+  if (startsWith(PrevIndent, NewIndent)) {
+    do {
+      popIndentation();
+      PrevIndent = currentIndentation();
+      pushDedent(matchDedent(NewIndent));
+    } while (!Indents.empty() && !equalSpelling(NewIndent, PrevIndent));
+
+    // Update the location of the last indent for diagnostic purposes.
+    if (!Indents.empty())
+      Indents.back() = NewIndent;
+
+    return popDedent();
+  }
+
+  // FIXME: Note the previous indentation depth. This is the reason we
+  // overwrite the last entry in the stack: to get the nearest indentation
+  // of the expected length.
+  Diags.Report(NewIndent.getLocation(),
+               clang::diag::err_invalid_indentation);
+
+  // Return a line separator just in case.
+  return matchSeparator(Nl);
 }
 
 } // namespace gold
