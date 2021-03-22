@@ -1375,21 +1375,6 @@ Declarator *DeclarationBuilder::makeTopLevelDeclarator(const Syntax *S,
         const Syntax *L = Call->getArgument(0);
         const Syntax *R = Call->getArgument(1);
 
-        // Check for any parts of the declarator on the left.
-        if (isa<ElemSyntax>(L))
-          return handleLHSElement(Call, Next);
-        if (isa<CallSyntax>(L)) {
-          Declarator *Ret = handleLHSCaret(Call, Next);
-          if (Ret)
-            return Ret;
-        }
-
-        if (const CallSyntax *RHS = dyn_cast<CallSyntax>(R)) {
-          FusedOpKind OpKind = getFusedOpKind(SemaRef, RHS);
-          if (OpKind == FOK_Brackets)
-            return buildTemplateOrNameDeclarator(L, handleArray(RHS, Next));
-        }
-
         // The LHS is a template, name or function, and the RHS is
         // ALWAYS a type (or is always supposed to be a type.)
         return buildTemplateFunctionOrNameDeclarator(L, handleType(R, Next));

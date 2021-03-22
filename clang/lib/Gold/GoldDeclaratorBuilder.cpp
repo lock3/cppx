@@ -6,34 +6,80 @@
 
 namespace gold {
 
+Declarator *DeclaratorBuilder::operator()(const Syntax *S) {
+  gold::Scope *CurrentScope = SemaRef.getCurrentScope();
+  gold::Declarator *Dcl = nullptr;
+  switch(CurrentScope->getKind()) {
+  case SK_Namespace:
+    Dcl = handleNamespaceScope(S);
+    break;
+  case SK_Parameter:
+    Dcl = handleParameterScope(S);
+    break;
+  case SK_Template:
+    Dcl = handleTemplateScope(S);
+    break;
+  case SK_Function:
+    Dcl = handleFunctionScope(S);
+    break;
+  case SK_Block:
+    Dcl = handleBlockScope(S);
+    break;
+  case SK_Class:
+    Dcl = handleClassScope(S);
+    break;
+  case SK_Control:
+    Dcl = handleControlScope(S);
+    break;
+  case SK_Catch:
+    Dcl = handleCatchScope(S);
+    break;
+  case SK_Enum:
+    Dcl = handleEnumScope(S);
+    break;
+  }
+
+  for (const Declarator *D : Chain)
+    llvm::outs() << D->getString() << " -> ";
+  llvm::outs() << "\nEND CHAIN\n";
+
+  return nullptr;
+}
+
 void DeclaratorBuilder::VisitSyntax(const Syntax *S) {
-  // ConstSyntaxVisitor<DeclarationBuilder2>::Visit(S);
+  ConstSyntaxVisitor<DeclaratorBuilder>::Visit(S);
 }
 
 void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
-  // const AtomSyntax *Callee = dyn_cast<AtomSyntax>(S->getCallee());
+  const AtomSyntax *Callee = dyn_cast<AtomSyntax>(S->getCallee());
 
-  // if (Callee && Callee->getSpelling() == "operator'[]'") {
-  //   os << "[] -> ";
-  // }
+  // This is an array prefix.
+  if (Callee && Callee->getSpelling() == "operator'[]'") {
+    // os << "[] -> ";
+    Chain.push_back(new ArrayDeclarator(S->getArgument(0), nullptr));
+  }
 
-  // for (auto Arg : S->getArguments()->children()) {
-  //   VisitSyntax(Arg);
-  // }
+  for (auto Arg : S->getArguments()->children()) {
+    VisitSyntax(Arg);
+  }
 
-  // if (Callee &&
-  //     (Callee->getSpelling() == "postfix'^'" ||
-  //      Callee->getSpelling() == "operator'^'"))
+  if (Callee &&
+      (Callee->getSpelling() == "postfix'^'" ||
+       Callee->getSpelling() == "operator'^'")) {
+    Chain.push_back(new PointerDeclarator(S->getArgument(0), nullptr));
   //   os << "^ -> ";
+  }
 }
 
 void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
-  // VisitSyntax(S->getObject());
+  VisitSyntax(S->getObject());
+  Chain.push_back(new ArrayDeclarator(S->getObject(), nullptr));
   // os << "[] -> ";
 }
 
 void DeclaratorBuilder::VisitGoldAtomSyntax(const AtomSyntax *S) {
   // os << S->getSpelling() << " -> ";
+  handleIdentifier(S, nullptr);
 }
 
 Declarator *DeclaratorBuilder::handleNamespaceScope(const Syntax *S) {
@@ -180,23 +226,25 @@ Declarator *DeclaratorBuilder::handleCatchScope(const Syntax *S) {
 }
 
 Declarator *DeclaratorBuilder::makeDeclarator(const Syntax *S) {
+  VisitSyntax(S);
+  return nullptr;
   // Handle a special case of an invalid enum identifier `.[name]`
   // without an assignment operator.
-  if (IsInsideEnum)
-    if (const auto *Name = dyn_cast<AtomSyntax>(S))
-      return handleIdentifier(Name, nullptr);
+  // if (IsInsideEnum)
+  //   if (const auto *Name = dyn_cast<AtomSyntax>(S))
+  //     return handleIdentifier(Name, nullptr);
 
   // if (const auto *Macro = dyn_cast<MacroSyntax>(S))
   //   return makeTopLevelDeclarator(Macro, nullptr);
 
-  const auto *Call = dyn_cast<CallSyntax>(S);
-  if (!Call) {
-    if (RequiresDeclOrError)
-      SemaRef.Diags.Report(S->getLoc(),
-                           clang::diag::err_invalid_declaration_kind)
-                           << 2;
-    return nullptr;
-  }
+  // const auto *Call = dyn_cast<CallSyntax>(S);
+  // if (!Call) {
+  //   if (RequiresDeclOrError)
+  //     SemaRef.Diags.Report(S->getLoc(),
+  //                          clang::diag::err_invalid_declaration_kind)
+  //                          << 2;
+  //   return nullptr;
+  // }
 }
 
 IdentifierDeclarator *
@@ -205,6 +253,7 @@ DeclaratorBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
   if (S->getToken().hasKind(tok::AnonymousKeyword)) {
     auto *D = new IdentifierDeclarator(S, Next);
     D->recordAttributes(S);
+    Chain.push_back(D);
     return D;
   }
 
@@ -240,6 +289,7 @@ DeclaratorBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
   auto *D = new IdentifierDeclarator(S, Next);
   D->recordAttributes(S);
   D->setUserDefinedLiteralSuffix(UDLSuffix);
+  Chain.push_back(D);
   return D;
 }
 

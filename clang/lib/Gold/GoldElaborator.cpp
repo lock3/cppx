@@ -4776,6 +4776,8 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
 
   // DeclarationBuilder2(nullptr, llvm::outs()).VisitSyntax(S);
   // llvm::outs() << '\n';
+  DeclaratorBuilder Build(Context, SemaRef);
+  Build(S);
   return DeclarationBuilder(SemaRef).build(S);
 }
 

@@ -2,6 +2,7 @@
 #define CLANG_GOLD_DECLARATOR_BUILDER_H
 
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "clang/Gold/GoldDeclarator.h"
@@ -18,19 +19,22 @@ class DeclaratorBuilder :
   public ConstSyntaxVisitor<DeclaratorBuilder> {
   SyntaxContext &Context;
   Sema &SemaRef;
+  // The chain of declarators we build up.
+  llvm::SmallVector<Declarator *, 4> Chain;
 
 public:
   DeclaratorBuilder(SyntaxContext &Context, Sema &SemaRef)
     : Context(Context), SemaRef(SemaRef) {}
 
-  Declaration *operator()(const Syntax *S);
-private:
+  Declarator *operator()(const Syntax *S);
+
   // Visitor Functions
   void VisitSyntax(const Syntax *S);
   void VisitGoldCallSyntax(const CallSyntax *S);
   void VisitGoldElemSyntax(const ElemSyntax *S);
   void VisitGoldAtomSyntax(const AtomSyntax *S);
 
+private:
   // Methods
   /// This checks to make sure that the declarator chain conforms to a specific
   /// structure. This only fails if the declarator chain doesn't satisfy
