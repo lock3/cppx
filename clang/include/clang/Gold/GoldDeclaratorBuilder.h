@@ -180,7 +180,30 @@ private:
   handleImplicitTemplateParams(const ElemSyntax *Owner, Declarator *Next);
 
   SpecializationDeclarator *
-  handleSpecialization(const ElemSyntax *SpecializationOwner, Declarator *Next);  
+  handleSpecialization(const ElemSyntax *SpecializationOwner, Declarator *Next);
+
+  // A map maintaining an integer weight for each node. Allows us to discern
+  // where we are visiting in the tree, relative to the root.
+  using LabelMapTy = llvm::DenseMap<const Syntax *, unsigned>;
+  LabelMapTy NodeLabels;
+
+  // Assign an integer label/weight to each node in a CST.
+  class NodeLabeler :
+    public ConstSyntaxVisitor<NodeLabeler> {
+    Sema &SemaRef;
+    LabelMapTy &NodeLabels;
+    unsigned Label = 0;
+  public:
+    NodeLabeler(Sema &SemaRef, LabelMapTy &NodeLabels)
+      : SemaRef(SemaRef), NodeLabels(NodeLabels)
+      {}
+
+    void operator()(const Syntax *S);
+    void VisitGoldCallSyntax(const CallSyntax *S);
+    void VisitGoldElemSyntax(const ElemSyntax *S);
+    void VisitGoldAtomSyntax(const AtomSyntax *S);
+  };
+
 
   // Members
   std::string OriginalNameStorage;
@@ -193,7 +216,7 @@ private:
 
   const Syntax *ConversionTypeSyntax = nullptr;
 
-  // Overridding setting, this is special because enums are so restructive
+  // Overridding setting, this is special because enums are so restrictive
   // as to which declarations are actually allowed within them.
   bool EnableFunctions = true;
   bool EnableNamespaceDecl = true;

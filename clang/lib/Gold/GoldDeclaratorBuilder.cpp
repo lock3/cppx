@@ -7,6 +7,14 @@
 namespace gold {
 
 Declarator *DeclaratorBuilder::operator()(const Syntax *S) {
+  NodeLabeler LabelNodes(SemaRef, NodeLabels);
+  LabelNodes(S);
+  for (auto Each : NodeLabels) {
+    llvm::outs() << "NODE: " << Each.second << '\n';
+    Each.first->dump();
+    llvm::outs() << "===------------------===\n";
+  }
+
   gold::Scope *CurrentScope = SemaRef.getCurrentScope();
   gold::Declarator *Dcl = nullptr;
   switch(CurrentScope->getKind()) {
@@ -59,7 +67,7 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
     Chain.push_back(new ArrayDeclarator(S->getArgument(0), nullptr));
   }
 
-  for (auto Arg : S->getArguments()->children()) {
+  for (const Syntax *Arg : S->children()) {
     VisitSyntax(Arg);
   }
 
@@ -292,5 +300,46 @@ DeclaratorBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
   Chain.push_back(D);
   return D;
 }
+
+void DeclaratorBuilder::NodeLabeler::operator()(const Syntax *S) {
+  if (!isa<CallSyntax>(S))
+    return;
+
+  const CallSyntax *Op = cast<CallSyntax>(S);
+  if (getFusedOpKind(SemaRef, Op) != FOK_Colon)
+    return;
+
+  // Label the LHS subtree first, then the root, then the RHS subtree.
+  // This way, any node on the LHS will be less than the root, and
+  // any node on the RHS will be greater than the root.
+  ConstSyntaxVisitor<NodeLabeler>::Visit(Op->getArgument(0));
+  NodeLabels.insert({S, Label++});
+  ConstSyntaxVisitor<NodeLabeler>::Visit(Op->getArgument(1));
+}
+
+void DeclaratorBuilder::NodeLabeler::VisitGoldCallSyntax(const CallSyntax *S) {
+  if (S->getNumArguments() == 0) {
+    NodeLabels.insert({S, Label++});
+    return;
+  }
+
+  unsigned I = 0;
+  ConstSyntaxVisitor<NodeLabeler>::Visit(S->getArgument(I));
+  NodeLabels.insert({S, Label++});
+  for (++I; I < S->getNumArguments(); ++I)
+    ConstSyntaxVisitor<NodeLabeler>::Visit(S->getArgument(I));
+}
+
+void DeclaratorBuilder::NodeLabeler::VisitGoldElemSyntax(const ElemSyntax *S) {
+  ConstSyntaxVisitor<NodeLabeler>::Visit(S->getObject());
+  NodeLabels.insert({S, Label++});
+  for (const Syntax *Arg : S->getArguments()->children())
+    ConstSyntaxVisitor<NodeLabeler>::Visit(Arg);
+}
+
+void DeclaratorBuilder::NodeLabeler::VisitGoldAtomSyntax(const AtomSyntax *S) {
+  NodeLabels.insert({S, Label++});
+}
+
 
 } // end namespace gold
