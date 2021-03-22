@@ -39,6 +39,7 @@
 #include "clang/Gold/GoldStmtElaborator.h"
 #include "clang/Gold/GoldSyntaxContext.h"
 #include "clang/Gold/GoldDeclarationBuilder.h"
+#include "clang/Gold/GoldDeclaratorBuilder.h"
 
 
 #ifndef _NDEBUG
@@ -4772,6 +4773,9 @@ Declaration *Elaborator::identifyDecl(const Syntax *S) {
   if (SemaRef.getCurrentScope()->hasDeclaration(S))
     return nullptr;
 
+
+  // DeclarationBuilder2(nullptr, llvm::outs()).VisitSyntax(S);
+  // llvm::outs() << '\n';
   return DeclarationBuilder(SemaRef).build(S);
 }
 

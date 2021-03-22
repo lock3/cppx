@@ -1500,7 +1500,6 @@ Declarator *DeclarationBuilder::handleLHSCaret(const CallSyntax *S,
       Declarator *Ptr = new PointerDeclarator(LHS, handleType(RHS, Next));
       if (!Id) {
         Declarator *D = makeTopLevelDeclarator(Operand, Ptr);
-        llvm::outs() << "made a nasty lil dude";
         D->printSequence(llvm::errs());
       }
 
