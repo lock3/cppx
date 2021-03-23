@@ -17,11 +17,15 @@ class SyntaxContext;
 
 class DeclaratorBuilder :
   public ConstSyntaxVisitor<DeclaratorBuilder> {
+  friend class DeclarationBuilder; 
+
   SyntaxContext &Context;
   Sema &SemaRef;
-  // The chain of declarators we build up.
-  llvm::SmallVector<Declarator *, 4> Chain;
 
+  // The declarator we build up, and the actual output of this function object.
+  Declarator *Result = nullptr;
+  // The most recent working declarator chunk.
+  Declarator *Cur = nullptr;
 public:
   DeclaratorBuilder(SyntaxContext &Context, Sema &SemaRef)
     : Context(Context), SemaRef(SemaRef) {}
@@ -35,48 +39,16 @@ public:
   void VisitGoldAtomSyntax(const AtomSyntax *S);
 
 private:
+  void push(Declarator *D) {
+    if (!Result) {
+      Cur = Result = D;
+    } else {
+      Cur->Next = D;
+      Cur = Cur->Next;
+    }
+  }
+
   // Methods
-  /// This checks to make sure that the declarator chain conforms to a specific
-  /// structure. This only fails if the declarator chain doesn't satisfy
-  /// the ordering requirements.
-  bool verifyDeclaratorChain(const Syntax *DeclExpr, Declaration *TheDecl);
-
-  /// This function attempts to verify that the declarator was created correctly
-  /// and that it conforms to requirements placed on it.
-  /// In the event of an error this \return true.
-  bool checkDeclaration(const Syntax *DeclExpr, Declaration *TheDecl);
-
-  /// This is limited to dealing within things that are within the enumeration.
-  bool checkEnumDeclaration(const Syntax *DeclExpr, Declaration *TheDecl);
-
-  /// This checks if the declaration is allowed to have nested name specifiers
-  /// if those nested namespecifiers are allowed within the current context
-  /// and if the declatation with a nested name is valid.
-  bool checkNestedNameSpecifiers(const Syntax *DeclExpr,
-                                 Declaration *TheDecl);
-
-  /// This enforces RequireTypeForVariable, RequireAliasTypes,
-  /// and RequireTypeForFunctions
-  bool checkRequiresType(const Syntax *DeclExpr, Declaration *TheDecl);
-
-  /// checks to see if we are a conversion operator and if we
-  /// the we need to do some additional verification in order to assure that
-  /// we can be declared int the given context etc, we are a function,
-  /// and if we are not within a class we have a Nested name specifier.
-  /// Returns false if there was no error, and true if there was.
-  bool checkClassifiedConversionOperator(const Syntax *DeclExpr,
-                                         Declaration *TheDecl);
-
-  /// This attempts to verify that we are infact a user defined literal function.
-  /// Returns true if there was an error and false if not.
-  bool checkClassifyUserDefinedLiteralOperator(const Syntax *DeclExpr,
-                                                Declaration *TheDecl);
-
-  /// Given the structure and context, attempt to classify what kind of
-  /// declaration we have and in the current context how it could be used.
-  bool classifyDecl(const Syntax *DeclExpr, Declaration *TheDecl);
-
-
   // Special requirements.
   // - Can have scoped name declarations.
   // - Is a decl if it has an assignment, :, or !
@@ -152,8 +124,9 @@ private:
   Declarator *buildNestedTemplateSpecializationOrName(const Syntax *S,
                                                       Declarator *Next);
 
-  Declarator *buildNameDeclarator(const Syntax *S, Declarator *Next);
-  Declarator *buildTemplateOrNameDeclarator(const Syntax *S, Declarator *Next);
+  void buildName(const Syntax *S);
+  void buildTemplate(const ElemSyntax *S);
+  void buildTemplateOrName(const Syntax *S);
 
 
   /// This is used to peek into a [] and verify that it is a declaration.
@@ -165,15 +138,13 @@ private:
 
   // Internal processing functions
   UnknownDeclarator *handleUnknownADeclSyntax(const Syntax *S, Declarator *Next);
-  ErrorDeclarator *handleErrorSyntax(const ErrorSyntax *S, Declarator *Next);
-  GlobalNameSpecifierDeclarator *handleGlobalNameSpecifier(const CallSyntax *S,
-                                                           Declarator *Next);
-  NestedNameSpecifierDeclarator *handleNestedNameSpecifier(const AtomSyntax *S,
-                                                           Declarator *Next);
-  IdentifierDeclarator *handleIdentifier(const AtomSyntax *S, Declarator *Next);
+  void buildError(const ErrorSyntax *S);
+  void buildGlobalNameSpecifier(const CallSyntax *S);
+  void buildNestedNameSpecifier(const AtomSyntax *S);
+  void buildIdentifier(const AtomSyntax *S);
   FunctionDeclarator *handleFunction(const CallSyntax *S, Declarator *Next);
-  TypeDeclarator *handleType(const Syntax *S, Declarator *Next);
-  ArrayDeclarator *handleArray(const CallSyntax *S, Declarator *Next);
+  void buildType(const Syntax *S);
+  void buildArray(const Syntax *S);
   TemplateParamsDeclarator *handleTemplateParams(const ElemSyntax *S,
                                                  Declarator *Next);
   ImplicitEmptyTemplateParamsDeclarator *

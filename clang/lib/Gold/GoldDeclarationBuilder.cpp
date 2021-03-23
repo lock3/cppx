@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Gold/GoldDeclarationBuilder.h"
+#include "clang/Gold/GoldDeclaratorBuilder.h"
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
 #include "clang/Gold/GoldSema.h"
@@ -32,45 +33,18 @@ DeclarationBuilder::DeclarationBuilder(Sema &S)
 Declaration *DeclarationBuilder::build(const Syntax *S) {
   gold::Scope *CurrentScope = SemaRef.getCurrentScope();
   gold::Declarator *Dcl = nullptr;
-  switch(CurrentScope->getKind()) {
-    case SK_Namespace:
-      Dcl = handleNamespaceScope(S);
-      break;
-    case SK_Parameter:
-      Dcl = handleParameterScope(S);
-      break;
-    case SK_Template:
-      Dcl = handleTemplateScope(S);
-      break;
-    case SK_Function:
-      Dcl = handleFunctionScope(S);
-      break;
-    case SK_Block:
-      Dcl = handleBlockScope(S);
-      break;
-    case SK_Class:
-      Dcl = handleClassScope(S);
-      break;
-    case SK_Control:
-      Dcl = handleControlScope(S);
-      break;
-    case SK_Catch:
-      Dcl = handleCatchScope(S);
-      break;
-    case SK_Enum:
-      Dcl = handleEnumScope(S);
-      break;
-  }
+  DeclaratorBuilder BuildDeclarator(Context, SemaRef);
 
+  Dcl = BuildDeclarator(S);
   if (!Dcl)
     return nullptr;
 
   Declaration *ParentDecl = SemaRef.getCurrentDecl();
   // FIXME: manage memory
   Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, InitExpr);
-  TheDecl->Id = Id;
-  TheDecl->OpInfo = OpInfo;
-  TheDecl->InitOpUsed = InitOperatorUsed;
+  TheDecl->Id = BuildDeclarator.Id;
+  TheDecl->OpInfo = BuildDeclarator.OpInfo;
+  TheDecl->InitOpUsed = BuildDeclarator.InitOperatorUsed;
 
   // Getting information that's necessary in order to correctly restore
   // a declaration's context during early elaboration.
@@ -1416,7 +1390,7 @@ Declarator *DeclarationBuilder::handleLHSElement(const CallSyntax *S,
   if (!Args || !Args->getNumChildren()) {
     if (!Id)
       return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
-    Declarator *Index = new ArrayDeclarator(Args, handleType(RHS, Next));
+    Declarator *Index = new ArrayDeclarator(nullptr, handleType(RHS, Next));
     return handleIdentifier(Id, Index);
   }
 
@@ -1656,7 +1630,9 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
   if (!Decl)
     return nullptr;
 
-  return makeTopLevelDeclarator(Decl, nullptr);
+  // return makeTopLevelDeclarator(Decl, nullptr);
+  DeclaratorBuilder BuildDeclarator(Context, SemaRef);
+  return BuildDeclarator(Decl);
 }
 
 UnknownDeclarator *

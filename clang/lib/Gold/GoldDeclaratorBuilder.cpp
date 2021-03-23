@@ -47,11 +47,14 @@ Declarator *DeclaratorBuilder::operator()(const Syntax *S) {
     break;
   }
 
-  for (const Declarator *D : Chain)
+  Declarator *D = Result;
+  while (D) {
     llvm::outs() << D->getString() << " -> ";
+    D = D->Next;
+  }
   llvm::outs() << "\nEND CHAIN\n";
 
-  return nullptr;
+  return Dcl;
 }
 
 void DeclaratorBuilder::VisitSyntax(const Syntax *S) {
@@ -64,17 +67,17 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   // This is an array prefix.
   if (Callee && Callee->getSpelling() == "operator'[]'") {
     // os << "[] -> ";
-    Chain.push_back(new ArrayDeclarator(S->getArgument(0), nullptr));
+    push(new ArrayDeclarator(S->getArgument(0), nullptr));
   }
 
-  for (const Syntax *Arg : S->children()) {
+  for (const Syntax *Arg : S->getArguments()->children()) {
     VisitSyntax(Arg);
   }
 
   if (Callee &&
       (Callee->getSpelling() == "postfix'^'" ||
        Callee->getSpelling() == "operator'^'")) {
-    Chain.push_back(new PointerDeclarator(S->getArgument(0), nullptr));
+    push(new PointerDeclarator(S->getArgument(0), nullptr));
   //   os << "^ -> ";
   }
 }
@@ -91,16 +94,116 @@ static inline bool isLeftOfRoot(LabelMapTy const &Labels,
 void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
   VisitSyntax(S->getObject());
 
-  if (isLeftOfRoot(NodeLabels, S))
-    llvm::outs() << "ELEM ON LEFT\n";
+  if (isLeftOfRoot(NodeLabels, S)) {
+    const ListSyntax *Args = dyn_cast<ListSyntax>(S->getArguments());
+    if (!Args || !Args->getNumChildren()) {
+      push(new ArrayDeclarator(nullptr, nullptr));
+      return;
+    }
 
-  Chain.push_back(new ArrayDeclarator(S->getObject(), nullptr));
+    // Determine if this is a template or array.
+    SuppressDiagnosticsRAII Suppressor(SemaRef.getCxxSema());
+    for (const Syntax *AA : Args->children()) {
+      // We have a declaration in the index, this is definitely a
+      // template declaration.
+      Elaborator DeclElab(Context, SemaRef);
+      if (DeclElab.elaborateDeclSyntax(AA))
+        return;
+        // return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
+
+      ExprElaborator Elab(Context, SemaRef);
+      clang::Expr *E = Elab.elaborateExpr(AA);
+      // Either this is ill-formed, so just build something and call it
+      // a day, or it's a template specialization.
+      if (!E || E->getType()->isTypeOfTypes())
+        return;
+        // return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
+    }
+
+    ExprElaborator BaseElab(Context, SemaRef);
+    clang::Expr *Base = BaseElab.elaborateExpr(S->getObject());
+    if (!Base)
+      return;
+
+    return;
+  }
+
+  push(new ArrayDeclarator(S->getObject(), nullptr));
   // os << "[] -> ";
 }
 
 void DeclaratorBuilder::VisitGoldAtomSyntax(const AtomSyntax *S) {
-  // os << S->getSpelling() << " -> ";
-  handleIdentifier(S, nullptr);
+  if (isLeftOfRoot(NodeLabels, S))
+    return buildIdentifier(S);
+  buildType(S);
+}
+
+void DeclaratorBuilder::buildTemplate(const ElemSyntax *S) {
+  const auto *Args = cast<ListSyntax>(S->getArguments());
+  return;
+}
+
+void DeclaratorBuilder::buildName(const Syntax *S) {
+  if (const ErrorSyntax *E = dyn_cast<ErrorSyntax>(S))
+    return buildError(E);
+
+  if (const AtomSyntax *Name = dyn_cast<AtomSyntax>(S))
+    return buildIdentifier(Name);
+
+    unsigned ErrorIndicator = 0;
+  if (const auto *Call = dyn_cast<CallSyntax>(S)) {
+    FusedOpKind OpKind = getFusedOpKind(SemaRef, dyn_cast<CallSyntax>(S));
+    switch(OpKind) {
+      case FOK_MemberAccess:{
+        if (const auto *IdName = dyn_cast<AtomSyntax>(Call->getArgument(1))){
+          AdditionalNodesWithAttrs.insert(Call);
+          return;
+          // return buildNestedTemplateSpecializationOrName(Call->getArgument(0),
+          //                                       buildIdentifier(IdName));
+        }
+
+        if (const auto *E = dyn_cast<ErrorSyntax>(Call->getArgument(1)))
+          return buildError(E);
+        // This might not be a declararation.
+        ErrorIndicator = 2;
+      }
+      break;
+      case FOK_Unknown:
+        ErrorIndicator = 0;
+        break;
+      default:
+        ErrorIndicator = 2;
+    }
+  } else {
+    ErrorIndicator = 1;
+  }
+  if (RequiresDeclOrError)
+    SemaRef.Diags.Report(S->getLoc(), clang::diag::err_invalid_declaration_kind)
+                         << ErrorIndicator;
+}
+
+void DeclaratorBuilder::buildError(const ErrorSyntax *S) {
+  push(new ErrorDeclarator(S, nullptr));
+}
+
+void DeclaratorBuilder::buildGlobalNameSpecifier(const CallSyntax *S) {
+  auto Result = new GlobalNameSpecifierDeclarator(S, nullptr);
+  Result->recordAttributes(S);
+  push(Result);
+}
+
+void DeclaratorBuilder::buildNestedNameSpecifier(const AtomSyntax *S) {
+  auto Result = new NestedNameSpecifierDeclarator(S, nullptr);
+  Result->recordAttributes(S);
+  push(Result);
+}
+
+void DeclaratorBuilder::buildArray(const Syntax *S) {
+  push(new ArrayDeclarator(S, nullptr));
+}
+
+void DeclaratorBuilder::buildType(const Syntax *S) {
+  push(new TypeDeclarator(S, nullptr));
 }
 
 Declarator *DeclaratorBuilder::handleNamespaceScope(const Syntax *S) {
@@ -227,7 +330,8 @@ Declarator *DeclaratorBuilder::handleEnumScope(const Syntax *S) {
   ContextDeclaresNewName = true;
   // Special case where enum values are allowed to just be names.
   if (const auto *Name = dyn_cast<AtomSyntax>(S)) {
-    return handleIdentifier(Name, nullptr);
+    buildIdentifier(Name);
+    return Result;
   }
   return makeDeclarator(S);
 }
@@ -247,13 +351,17 @@ Declarator *DeclaratorBuilder::handleCatchScope(const Syntax *S) {
 }
 
 Declarator *DeclaratorBuilder::makeDeclarator(const Syntax *S) {
-  VisitSyntax(S);
-  return nullptr;
   // Handle a special case of an invalid enum identifier `.[name]`
   // without an assignment operator.
-  // if (IsInsideEnum)
-  //   if (const auto *Name = dyn_cast<AtomSyntax>(S))
-  //     return handleIdentifier(Name, nullptr);
+  if (IsInsideEnum) {
+    if (const auto *Name = dyn_cast<AtomSyntax>(S)) {
+      buildIdentifier(Name);
+      return Result;
+    }
+  }
+
+  VisitSyntax(S);
+  return Result;
 
   // if (const auto *Macro = dyn_cast<MacroSyntax>(S))
   //   return makeTopLevelDeclarator(Macro, nullptr);
@@ -268,14 +376,13 @@ Declarator *DeclaratorBuilder::makeDeclarator(const Syntax *S) {
   // }
 }
 
-IdentifierDeclarator *
-DeclaratorBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
+void DeclaratorBuilder::buildIdentifier(const AtomSyntax *S) {
   // Don't bother with the unnamed name ("_")
   if (S->getToken().hasKind(tok::AnonymousKeyword)) {
-    auto *D = new IdentifierDeclarator(S, Next);
+    auto *D = new IdentifierDeclarator(S, nullptr);
     D->recordAttributes(S);
-    Chain.push_back(D);
-    return D;
+    push(D);
+    return;
   }
 
   // Translating the simple identifier.
@@ -290,14 +397,14 @@ DeclaratorBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
         SemaRef.Diags.Report(S->getLoc(),
                              clang::diag::err_operator_cannot_be_overloaded)
                              << OriginalName;
-        return nullptr;
+        return;
       }
     } else if (OriginalName.startswith("literal\"")) {
       if (!S->getFusionArg()) {
         SemaRef.Diags.Report(S->getLoc(),
                        clang::diag::err_user_defined_literal_invalid_identifier)
                              << /*invalid suffix*/ 0 << 0;
-        return nullptr;
+        return;
       }
       if (const AtomSyntax *Suffix = dyn_cast<AtomSyntax>(S->getFusionArg())){
         UDLSuffix = Suffix->getSpelling();
@@ -307,11 +414,11 @@ DeclaratorBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
       ConversionTypeSyntax = S->getFusionArg();
     }
   }
-  auto *D = new IdentifierDeclarator(S, Next);
+
+  auto *D = new IdentifierDeclarator(S, nullptr);
   D->recordAttributes(S);
   D->setUserDefinedLiteralSuffix(UDLSuffix);
-  Chain.push_back(D);
-  return D;
+  push(D);
 }
 
 void DeclaratorBuilder::NodeLabeler::operator()(const Syntax *S) {
