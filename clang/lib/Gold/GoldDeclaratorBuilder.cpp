@@ -79,8 +79,21 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   }
 }
 
+using LabelMapTy = DeclaratorBuilder::LabelMapTy;
+static inline bool isLeftOfRoot(LabelMapTy const &Labels,
+                                const Syntax *S) {
+  auto It = Labels.find(S);
+  if (It == Labels.end())
+    return false;
+  return It->second < Labels.RootLabel;
+}
+
 void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
   VisitSyntax(S->getObject());
+
+  if (isLeftOfRoot(NodeLabels, S))
+    llvm::outs() << "ELEM ON LEFT\n";
+
   Chain.push_back(new ArrayDeclarator(S->getObject(), nullptr));
   // os << "[] -> ";
 }
@@ -313,7 +326,8 @@ void DeclaratorBuilder::NodeLabeler::operator()(const Syntax *S) {
   // This way, any node on the LHS will be less than the root, and
   // any node on the RHS will be greater than the root.
   ConstSyntaxVisitor<NodeLabeler>::Visit(Op->getArgument(0));
-  NodeLabels.insert({S, Label++});
+  if (NodeLabels.insert({S, Label++}).second)
+    NodeLabels.RootLabel = Label++;
   ConstSyntaxVisitor<NodeLabeler>::Visit(Op->getArgument(1));
 }
 

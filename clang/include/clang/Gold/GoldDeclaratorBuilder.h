@@ -182,9 +182,15 @@ private:
   SpecializationDeclarator *
   handleSpecialization(const ElemSyntax *SpecializationOwner, Declarator *Next);
 
+public:
   // A map maintaining an integer weight for each node. Allows us to discern
   // where we are visiting in the tree, relative to the root.
-  using LabelMapTy = llvm::DenseMap<const Syntax *, unsigned>;
+  struct LabelMapTy : public llvm::DenseMap<const Syntax *, unsigned> {
+    // The weight we assigned to the root node of this syntax tree.
+    unsigned RootLabel = 0;
+  };
+
+private:
   LabelMapTy NodeLabels;
 
   // Assign an integer label/weight to each node in a CST.
@@ -203,7 +209,6 @@ private:
     void VisitGoldElemSyntax(const ElemSyntax *S);
     void VisitGoldAtomSyntax(const AtomSyntax *S);
   };
-
 
   // Members
   std::string OriginalNameStorage;
