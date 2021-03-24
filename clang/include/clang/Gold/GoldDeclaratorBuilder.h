@@ -154,8 +154,7 @@ private:
   ImplicitEmptyTemplateParamsDeclarator *
   handleImplicitTemplateParams(const ElemSyntax *Owner, Declarator *Next);
 
-  SpecializationDeclarator *
-  handleSpecialization(const ElemSyntax *SpecializationOwner, Declarator *Next);
+  void buildSpecialization(const ElemSyntax *SpecializationOwner);
 
 public:
   // A map maintaining an integer weight for each node. Allows us to discern

@@ -107,8 +107,9 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
       return;
     }
 
-    // Determine if this is a template or array.
     SuppressDiagnosticsRAII Suppressor(SemaRef.getCxxSema());
+
+    // Determine if this is a template or array.
     for (const Syntax *AA : Args->children()) {
       // We have a declaration in the index, this is definitely a
       // template declaration.
@@ -116,27 +117,23 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
       DeclElab.setTemporaryElaboration();
       if (DeclElab.elaborateDeclSyntax(AA))
         return buildTemplate(S);
-        // return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
 
       ExprElaborator Elab(Context, SemaRef);
+      Elab.setTemporaryElaboration();
       clang::Expr *E = Elab.elaborateExpr(AA);
       // Either this is ill-formed, so just build something and call it
       // a day, or it's a template specialization.
       if (!E || E->getType()->isTypeOfTypes())
-        return;
-        // return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
+        return buildTemplate(S);
     }
 
     ExprElaborator BaseElab(Context, SemaRef);
     clang::Expr *Base = BaseElab.elaborateExpr(S->getObject());
-    if (!Base)
+    if (Base)
       return;
-
-    return;
   }
 
-  push(new ArrayDeclarator(S->getObject(), nullptr));
-  // os << "[] -> ";
+  buildArray(S->getArguments());
 }
 
 void DeclaratorBuilder::VisitGoldAtomSyntax(const AtomSyntax *S) {
@@ -170,7 +167,7 @@ void DeclaratorBuilder::buildTemplate(const ElemSyntax *S) {
   if (isParameterSyntax(SemaRef, Args->getChild(0)))
     return buildTemplateParams(S);
   else
-    llvm_unreachable("unimplemented");
+    return buildSpecialization(S);
 }
 
 void DeclaratorBuilder::buildName(const Syntax *S) {
@@ -238,6 +235,12 @@ void DeclaratorBuilder::buildType(const Syntax *S) {
 
 void DeclaratorBuilder::buildTemplateParams(const ElemSyntax *S) {
   push(new TemplateParamsDeclarator(S, nullptr));
+  Cur->recordAttributes(S);
+}
+
+void DeclaratorBuilder::buildSpecialization(const ElemSyntax *S) {
+  push(new ImplicitEmptyTemplateParamsDeclarator(S, nullptr));
+  push(new SpecializationDeclarator(S, nullptr));
   Cur->recordAttributes(S);
 }
 

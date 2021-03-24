@@ -68,6 +68,10 @@ public:
   // or a type expression.
   using TypeInfo = clang::TypeSourceInfo;
 
+  void setTemporaryElaboration(bool Val = true) {
+    TemporaryElaboration = Val;
+  }
+
   //===--------------------------------------------------------------------===//
   //                        Value Expression Elaboration                      //
   //===--------------------------------------------------------------------===//
@@ -238,6 +242,10 @@ public:
 
 private:
   bool ElaboratingAddressOfOp = false;
+
+  // True when we want to elaborate an expression without side effects. Used by
+  // the declarator builder.
+  bool TemporaryElaboration = false;
 
 public:
   /// ---------------------------------------------------------------------- ///

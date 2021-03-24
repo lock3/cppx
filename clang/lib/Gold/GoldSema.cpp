@@ -1595,6 +1595,7 @@ void Sema::diagnoseElabCycleError(Declaration *CycleTerminalDecl) {
   assert(!DeclsBeingElaborated.empty() && "We cannot have an empty stack and a "
          "declaration cycle.");
   assert(CycleTerminalDecl->IdDcl);
+
   Diags.Report(CycleTerminalDecl->IdDcl->getLoc(),
                clang::diag::err_decl_use_cycle);
   for (auto *CycleNote : DeclsBeingElaborated){
