@@ -240,6 +240,10 @@ namespace gold {
     /// llvm-lit.
     clang::Preprocessor &PP;
 
+    // Mode for doing single character lexing.
+    bool LexSingleCharacter = false;
+    bool LexingString = false;
+
     /// This slightly changes the lexing mode by building a text node rather then
     /// a group of identifiers. This means we will include whitespace.
     /// This will read all tokens upto the first occurrence of the following

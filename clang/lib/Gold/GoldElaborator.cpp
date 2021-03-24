@@ -1805,6 +1805,9 @@ void getFunctionParameters(Sema &SemaRef, Declaration *D,
     bool ArgsParam = false;
     const Syntax *P = ParamList->getChild(I);
     Declaration *PD = ParamScope->findDecl(P);
+    if (!PD) {
+      continue;
+    }
     if (!PD->Cxx)
       continue;
 

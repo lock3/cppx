@@ -102,6 +102,10 @@ Token CharacterScanner::operator()() {
   {
     // Establish this point as the start of the current token.
     StartingPosition Pos(*this);
+    if (LexSingleCharacter) {
+      LexSingleCharacter = false;
+      return matchCharacter();
+    }
     switch (getLookahead()) {
     case ' ':
     case '\t':
@@ -127,9 +131,8 @@ Token CharacterScanner::operator()() {
     case '}':
       return matchToken(tok::RightBrace);
     case ':':
-      if (getLookahead(1) == '>') {
+      if (getLookahead(1) == '>')
         return matchToken(tok::ColonGreater);
-      }
       return matchToken(tok::Colon);
     case ';':
       return matchToken(tok::Semicolon);
@@ -203,7 +206,8 @@ Token CharacterScanner::operator()() {
           return matchToken(tok::LessLessEqual);
         else
           return matchToken(tok::LessLess);
-      }
+      } else if(getLookahead(1) == '|')
+        return matchToken(tok::LessBar);
       return matchToken(tok::Less);
 
     case '>':
@@ -233,11 +237,43 @@ Token CharacterScanner::operator()() {
 
     case '!':
       return matchToken(tok::Bang);
+    case '\\':
+      // Handling escaped characters?
+      if (LexingString) {
+        consume();
+        switch (getLookahead()) {
+          case 'r':
+          case 'n':
+          case 't':
+          case '\'':
+          case '"':
+          case '{':
+          case '}':
+          case '<':
+          case '>':
+          case '&':
+          case '~':
+          case '#':
+            consume();
+            break;
 
+          default: {
+            unsigned DiagID =
+              getDiagnostics().getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                              "invalid escaped string");
+            getDiagnostics().Report(getInputLocation(), DiagID);
+            consume();
+            break;
+          }
+        }
+        return makeToken(tok::EscapedStrChar, Start, 2);
+      }
+      break;
     case '\'':
-      return matchCharacter();
+      // return matchCharacter();
+      return matchToken(tok::SingleQuote);
     case '"':
-      return matchString();
+      return matchToken(tok::DoubleQuote);
 
     case '0':
       if (nthCharacterIs(1, 'x') || nthCharacterIs(1, 'X'))
@@ -344,7 +380,9 @@ Token CharacterScanner::matchNewline() {
 }
 
 Token CharacterScanner::matchLineComment() {
-  assert(nextCharacterIs('#'));
+  // assert(nextCharacterIs('#'));
+  // consume();
+  // return makeToken(tok::Hash, Start, 1);
   consume();
   while (!isDone() && !isNewline(getLookahead()))
     consume();
@@ -612,15 +650,15 @@ Token CharacterScanner::matchBinaryNumber() {
 }
 
 Token CharacterScanner::matchCharacter() {
-  assert(nextCharacterIs('\''));
+  // assert(nextCharacterIs('\''));
 
-  consume(); // '\''
-  while (!isDone() && nextCharacterIsNot('\''))
-  {
+  // consume(); // '\''
+  while (!isDone() && getLookahead() != '\'') {
     // Diagnose newlines, but continue lexing the token.
     if (isNewline(getLookahead())) {
       // error (getInputLocation(), "newline in character literal");
       consume();
+      continue;
     }
 
     if (nextCharacterIs('\\')) {
@@ -632,7 +670,6 @@ Token CharacterScanner::matchCharacter() {
     // interesting because the nested codes are other tokens. We could
     // leave these in place to be lexed later, or attach them to the
     // token in some interesting way. See comments in match_string also.
-
     consume();
   }
 
@@ -642,44 +679,43 @@ Token CharacterScanner::matchCharacter() {
         getInputLocation(), clang::diag::ext_unterminated_char_or_string);
     return matchEof();
   }
-  consume(); // '\''
 
   return makeToken(tok::Character, Start, First);
 }
 
-Token CharacterScanner::matchString() {
-  assert(nextCharacterIs('"'));
+// Token CharacterScanner::matchString() {
+  // assert(nextCharacterIs('"'));
 
-  consume(); // '"'
-  while (!isDone() && nextCharacterIsNot('"')) {
-    // Diagnose newlines, but continue lexing the token.
-    if (isNewline(getLookahead())) {
-      // error (getInputLocation(), "newline in string literal");
-      consume();
-    }
+  // consume(); // '"'
+  // while (!isDone() && nextCharacterIsNot('"')) {
+  //   // Diagnose newlines, but continue lexing the token.
+  //   if (isNewline(getLookahead())) {
+  //     // error (getInputLocation(), "newline in string literal");
+  //     consume();
+  //   }
 
-    if (nextCharacterIs('\\')) {
-      matchEscapeSequence();
-      continue;
-    }
+  //   if (nextCharacterIs('\\')) {
+  //     matchEscapeSequence();
+  //     continue;
+  //   }
 
-    // FIXME: Match nested tokens in '{ ... '}'. We're going to have to
-    // do something pretty interesting for string tokens (i.e., storing
-    // interpolation ranges in a side buffer somewhere so we don't copy
-    // dynamic objects).
+  //   // FIXME: Match nested tokens in '{ ... '}'. We're going to have to
+  //   // do something pretty interesting for string tokens (i.e., storing
+  //   // interpolation ranges in a side buffer somewhere so we don't copy
+  //   // dynamic objects).
 
-    consume();
-  }
-  if (isDone()) {
-    // FIXME: Note the start of the character.
-    getDiagnostics().Report(
-      getInputLocation(), clang::diag::ext_unterminated_char_or_string);
-    return matchEof();
-  }
-  consume(); // '"'
+  //   consume();
+  // }
+  // if (isDone()) {
+  //   // FIXME: Note the start of the character.
+  //   getDiagnostics().Report(
+  //     getInputLocation(), clang::diag::ext_unterminated_char_or_string);
+  //   return matchEof();
+  // }
+  // consume(); // '"'
 
-  return makeToken(tok::String, Start, First);
-}
+  // return makeToken(tok::String, Start, First);
+// }
 
 void CharacterScanner::matchEscapeSequence() {
   consume(); // '\\'
@@ -709,22 +745,22 @@ void CharacterScanner::matchEscapeSequence() {
   }
 }
 
-static bool isTerminatingTextTokenCharacter(char c) {
-    switch (c) {
-      case '>':
-      case '\0':
-      case '{':
-      case '}':
-      case '#':
-      case '<':
-      case '&':
-      case '~':
-      case '\\':
-        return true;
-      default:
-        return false;
-    }
-}
+// static bool isTerminatingTextTokenCharacter(char c) {
+//     switch (c) {
+//       case '>':
+//       case '\0':
+//       case '{':
+//       case '}':
+//       case '#':
+//       case '<':
+//       case '&':
+//       case '~':
+//       case '\\':
+//         return true;
+//       default:
+//         return false;
+//     }
+// }
 
 // Token CharacterScanner::matchInTextMode() {
 //   assert(TextTokenMode && "Invalid call to text node matching");

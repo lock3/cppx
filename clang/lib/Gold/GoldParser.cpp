@@ -38,6 +38,8 @@ enum Kind : unsigned
   Brackets,
   Tabs,
   Angles,
+  BlockComment,
+  DocAttr
 };
 } // namespace enc
 
@@ -50,6 +52,8 @@ TokenKind OpenTokens[]
   tok::LeftBracket,
   tok::Indent,
   tok::Less,
+  tok::LessHash,
+  tok::LessBar,
 };
 
 TokenKind CloseTokens[]
@@ -58,6 +62,8 @@ TokenKind CloseTokens[]
   tok::RightBrace,
   tok::RightBracket,
   tok::Dedent,
+  tok::Greater,
+  tok::HashGreater,
   tok::Greater,
 };
 
@@ -129,6 +135,17 @@ struct EnclosingAngles : EnclosingTokens<enc::Angles>
 {
   using EnclosingTokens<enc::Angles>::EnclosingTokens;
 };
+
+struct EnclosingBlockComment : EnclosingTokens<enc::BlockComment>
+{
+  using EnclosingTokens<enc::BlockComment>::EnclosingTokens;
+};
+
+struct EnclosingDocAttr : EnclosingTokens<enc::DocAttr>
+{
+  using EnclosingTokens<enc::DocAttr>::EnclosingTokens;
+};
+
 
 } // namespace
 
@@ -348,13 +365,17 @@ Token Parser::lineScannerFetch() {
 
     // All other tokens are retained.
     break;
-  };
+  }
 
   return Tok;
 }
 
 void Parser::fetchToken() {
-  Toks.push_back(blockScannerFetch());
+  if (RawLexing) {
+    Toks.push_back(Lex());
+  } else {
+    Toks.push_back(blockScannerFetch());
+  }
 }
 
 
@@ -464,7 +485,9 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
   appendTerm(Vec, List);
 
   while (true) {
-    // Obviously, stop at the end of the file.
+
+
+   // Obviously, stop at the end of the file.
     if (atEndOfFile())
       break;
 
@@ -514,6 +537,16 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
 // TODO: Represent empty lists in the AST?
 Syntax *Parser::parseList(ArraySemantic S)
 {
+  if (getLookahead() == tok::LessHash) {
+
+    // Basically if the current expression is a seperator then ignore it.
+    if (getLookahead() == tok::Separator) {
+      consumeToken();
+    }
+    if (atEndOfFile()){
+      return nullptr;
+    }
+  }
   // FIXME: Is this semantically meaningful?
   if (matchToken(tok::Semicolon))
     return nullptr;
@@ -526,10 +559,10 @@ Syntax *Parser::parseList(ArraySemantic S)
 
 // Parse the list and populate the vector.
 void Parser::parseList(llvm::SmallVectorImpl<Syntax *> &Vec) {
-
   Syntax *Expr = parseExpr();
   appendTerm(Vec, Expr);
   while (matchToken(tok::Comma)) {
+
     Expr = parseExpr();
     appendTerm(Vec, Expr);
   }
@@ -555,7 +588,6 @@ Syntax *Parser::parseExpr()
       return onError();
 
   Syntax *Def = parseDef();
-
   if (Token Op = matchToken(tok::EqualGreater)) {
     // Note that '=>' is the mapping operator (e.g., a => 5). I'm not at
     // all sure what this means semantically.
@@ -689,6 +721,7 @@ Syntax *Parser::parseDef() {
     // with a '!'? It seems like that would work better as a suffix operator
     // on the declarator (it also leads naturally to factorials!).
     if (Token op = matchToken(tok::Bang)) {
+  
       // FIXME: This should probably not be inside the loop. It allows
       // weirdness like this: 'f ! { ...} ! { ... } ! ...'. This would also
       // be interspersed with assignments: 'f ! { ... } = expr'
@@ -938,6 +971,7 @@ bool isToOperator(Parser& P) {
 Syntax *Parser::parseTo() {
   Syntax *E1 = parseExpansion();
   while (Token op = matchTokens(isToOperator, *this)) {
+
     Syntax *E2 = parseExpansion();
     E1 = onBinary(op, E1, E2);
   }
@@ -1106,6 +1140,75 @@ Syntax *Parser::parseFoldExpr(FoldKind FK) {
     return onError();
 
   return Seq;
+}
+
+void Parser::parseComment(const char *Caller) {
+  // if (Caller) {
+  //   llvm::outs() << "Called parseComment from " << Caller << " ";
+  // }
+  // llvm::outs() << "current token display name = "
+  //              << getDisplayName(getLookahead())<< " \n";
+  while(true) {
+    switch(getLookahead()) {
+      case tok::Hash:
+        parseLineComment();
+        return;
+      case tok::LessHash:
+        llvm::outs() << "Parsing block comment\n";
+        parseBlockComment();
+        continue;
+      default:
+        return;
+    }
+  }
+}
+
+void Parser::parseLineComment() {
+  llvm_unreachable("Line comment not implemented yet!");
+}
+
+void Parser::parseWhitespaceOrBlockComment() {
+  while(true) {
+    switch(getLookahead()) {
+      case tok::Space:
+        consumeToken();
+        continue;
+      case tok::LessHash:
+        parseBlockComment();
+        continue;
+      default:
+        return;
+    }
+  }
+}
+
+void Parser::parseBlockComment() {
+  EnclosingBlockComment BlockComment(*this);
+  if (!BlockComment.expectOpen())
+    return;
+  bool ContinueParsing = true;
+  while(ContinueParsing) {
+    switch(getLookahead()) {
+      case tok::EndOfFile:{
+
+        unsigned DiagID =
+          Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                "unexpected end of file");
+        Diags.Report(Toks.front().getLocation(), DiagID);
+        return;
+      }
+      case tok::HashGreater:
+        ContinueParsing = false;
+        break;
+      case tok::LessHash:
+        parseBlockComment();
+        break;
+      default:
+        consumeToken();
+        continue;
+    }
+  }
+  BlockComment.expectClose();
 }
 
 Syntax *Parser::parseIf()
@@ -1782,7 +1885,9 @@ Syntax *Parser::parsePost()
     case tok::OfKeyword:
       e = parseMacro();
       break;
-
+    case tok::LessHash:
+  
+      continue;
     default:
       return e;
     }
@@ -1798,7 +1903,6 @@ Syntax *Parser::parseCall(Syntax *Fn)
   EnclosingParens Parens(*this);
   if (!Parens.expectOpen())
     return onError();
-
   // Don't parse an array if the parens are empty.
   //
   // FIXME: Don't allow newlines in the parameter array?
@@ -1807,7 +1911,6 @@ Syntax *Parser::parseCall(Syntax *Fn)
   // to the the nearest comma? separator? What?
   Syntax *Args = !nextTokenIs(tok::RightParen) ? parseArray(ArgArray)
     : onList(ArgArray, llvm::SmallVector<Syntax *, 0>());
-
   if (!Parens.expectClose())
     return onError();
 
@@ -1871,13 +1974,10 @@ Syntax *Parser::parseArrayPrefix()
   EnclosingBrackets Brackets(*this);
   if (!Brackets.expectOpen())
     return onError();
-
   ArraySemantic S{};
   Syntax *Arg = parseList(S);
-
   if (!Brackets.expectClose())
     return onError();
-
   Syntax *Map = parsePre();
   return new (Context)
     CallSyntax(makeOperator(Context, *this, Arg->getLoc(), "[]"),
@@ -1890,12 +1990,9 @@ Syntax *Parser::parseNNSPrefix()
   EnclosingParens Parens(*this);
   if (!Parens.expectOpen())
     return onError();
-
   Syntax *Arg = parseExpr();
-
   if (!Parens.expectClose())
     return onError();
-
   Syntax *Map = parsePre();
   return new (Context)
     CallSyntax(makeOperator(Context, *this, Arg->getLoc(), "()"),
@@ -2254,6 +2351,14 @@ static inline bool isKeyword(TokenKind K) {
 
 Syntax *Parser::parsePrimary() {
   switch (getLookahead()) {
+  // case tok::Space:
+  // case tok::LessHash:
+  //   parseWhitespaceOrBlockComment();
+  //   if (getLookahead() == tok::Newline){
+  //     return nullptr;
+  //   }
+  //   return parsePrimary();
+
   case tok::Identifier:
     return parseId();
 
@@ -2297,17 +2402,20 @@ Syntax *Parser::parsePrimary() {
   case tok::FalseKeyword:
   case tok::NullKeyword:
   case tok::NullTKeyword:
+  // case tok::String:
   case tok::BinaryInteger:
   case tok::DecimalInteger:
   case tok::HexadecimalInteger:
   case tok::DecimalFloat:
   case tok::HexadecimalFloat:
   case tok::DecimalExponent:
-  case tok::Character:
   case tok::HexadecimalCharacter:
   case tok::UnicodeCharacter:
-  case tok::String:
     return onLiteral(consumeToken());
+  case tok::DoubleQuote:
+    return parseString();
+  case tok::SingleQuote:
+    return parseCharacter();
 
   default:
     break;
@@ -2356,18 +2464,77 @@ Syntax *Parser::parseParen() {
   EnclosingParens parens(*this);
   if (!parens.expectOpen())
     return onError();
-
   GreaterThanIsOperatorScope GTIOS(GreaterThanIsOperator, true);
 
   // TODO: If this is an Syntax::error, should we skip to the next paren or
   // to the the nearest comma? separator? What?
   Syntax *Seq = (!nextTokenIs(tok::RightParen)) ? parseArray(ArgArray) :
     onList(ArgArray, llvm::SmallVector<Syntax *, 1>());
-
   if (!parens.expectClose())
     return onError();
 
   return Seq;
+}
+
+// character:
+//    ' length == 1 identifier '
+Syntax *Parser::parseCharacter() {
+  BooleanRAII RawLexingTracking(RawLexing, true);
+  BooleanRAII CharLexing(Lex.Scanner.LexSingleCharacter, true);
+  Token StartingSingleQuote = consumeToken();
+  Token MatchedChar = consumeToken();
+  Lex.Scanner.LexSingleCharacter = false;
+  RawLexing = false;
+  Token FinalQuote = expectToken(tok::SingleQuote);
+  if (!FinalQuote)
+    return onError();
+
+  // Rebuilding character token, this is done to provide an identical
+  // output to the original version compiler.
+  std::string NewSymbol = "'" + MatchedChar.getSpelling() + "'";
+  Symbol Sym = getSymbol(NewSymbol);
+  Token Tok(tok::Character, StartingSingleQuote.getLocation(), Sym);
+  return onLiteral(Tok);
+}
+
+Syntax *Parser::parseString() {
+  llvm::outs() << "Called parse string!\n";
+  BooleanRAII RawLexingTracking(RawLexing, true);
+  BooleanRAII CharLexing(Lex.Scanner.LexingString, true);
+  Token DQOpen = consumeToken();
+  Token Current;
+  std::string buffer = "\"";
+  while(getLookahead() != tok::EndOfFile
+        && getLookahead() != tok::DoubleQuote
+        && getLookahead() != tok::Newline) {
+    Current = consumeToken();
+    llvm::outs() << "Reading string! " << Current.getSpelling() << " " << getDisplayName(Current.getKind()) << "\n";
+    buffer += Current.getSpelling();
+  }
+  buffer += "\"";
+  RawLexing = false;
+  Lex.Scanner.LexingString = false;
+  if (getLookahead() == tok::EndOfFile
+      || getLookahead() == tok::Newline) {
+    unsigned DiagID =
+      Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                            "unterminated string constant");
+    Diags.Report(DQOpen.getLocation(), DiagID);
+    return onError();
+  }
+  // if (getLookahead() != tok::DoubleQuote) {
+  //   unsigned DiagID =
+  //     Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+  //                           "unexpected end of string");
+  //   Diags.Report(DQOpen.getLocation(), DiagID);
+  //   return onError();
+  // }
+  // Consuming the final double quotation
+  Current = consumeToken();
+  Symbol Sym = getSymbol(buffer);
+  llvm::outs() << "Dumping string body = " << buffer << "\n";
+  Token Tok(tok::String, DQOpen.getLocation(), Sym);
+  return onLiteral(Tok);
 }
 
 // braced-array:
@@ -2494,7 +2661,6 @@ Syntax *Parser::parseCatch() {
 
   if (!Parens.expectClose())
     return onError();
-
   Syntax *Block = parseBlock();
   auto *Ret = onCatch(KW, Args, Block);
   return Ret;

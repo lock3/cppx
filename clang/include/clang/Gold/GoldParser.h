@@ -143,10 +143,10 @@ namespace gold
 
       Token Tok = Toks.front();
       Toks.pop_front();
-
-      if (!Tok.hasKind(tok::Space))
-        PreviousToken = Tok;
-
+      if (!RawLexing) {
+        if (!Tok.hasKind(tok::Space))
+          PreviousToken = Tok;
+      }
       // Refresh the queue.
       if (Toks.empty())
         fetchToken();
@@ -261,6 +261,14 @@ namespace gold
 
     Syntax *parseFoldExpr(FoldKind ExprKind);
 
+    // This occurs pretty much any/everywhere within the source code and
+    // and it must be contained and emitted to the PP.
+    void parseComment(const char *Caller = nullptr);
+    void parseLineComment();
+    void parseBlockComment();
+    void parseWhitespaceOrBlockComment();
+
+
     Syntax *parseMacro();
     Syntax *parseIf();
     Syntax *parseWhile();
@@ -302,6 +310,8 @@ namespace gold
     Syntax *parseId();
     Syntax *parseParen();
 
+    Syntax *parseCharacter();
+    Syntax *parseString();
 
     Syntax *parseOf();
     Syntax *parseImm();
@@ -319,8 +329,8 @@ namespace gold
     Syntax *parseReserved();
     Syntax *parseKey();
     Syntax *parseWord();
-    Syntax *parseChar();
-    Syntax *parseString();
+    // Syntax *parseChar();
+    // Syntax *parseString();
     Syntax *parseNum();
 
     // Semantic actions
@@ -541,7 +551,7 @@ namespace gold
     // Boolean flags for recognizing the current parsing state and adapting
     // tokens being read accordingly.
     bool InsideDocAttr = false;
-
+    bool RawLexing = false;
     /// Block Scanner flags
     ///{
 
