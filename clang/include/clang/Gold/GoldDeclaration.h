@@ -161,7 +161,7 @@ struct NNSDeclaratorInfo {
 
 enum InitKind {
   IK_None,
-  IK_Exlaim,
+  IK_Exclaim,
   IK_Equals
 };
 

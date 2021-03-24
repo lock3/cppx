@@ -63,29 +63,37 @@ void DeclaratorBuilder::VisitSyntax(const Syntax *S) {
 
 void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   const AtomSyntax *Callee = dyn_cast<AtomSyntax>(S->getCallee());
+  FusedOpKind Op = getFusedOpKind(SemaRef, S);
 
-  if (Callee && Callee->getSpelling() == "operator'='") {
+  // A normal function declaration.
+  if (Op == FOK_Unknown) {
+    // TODO: what does a function template look like?
+    VisitSyntax(S->getCallee());
+    return buildFunction(S);
+  }
+
+  // TODO:
+  // if (Op == FOK_MemberAccess)
+
+  if (Op == FOK_Equals) {
     InitExpr = S->getArgument(1);
     InitOperatorUsed = IK_Equals;
+    return VisitSyntax(S->getArgument(0));
+  } else if (Op == FOK_Exclaim) {
+    InitExpr = S->getArgument(1);
+    InitOperatorUsed = IK_Exclaim;
     return VisitSyntax(S->getArgument(0));
   }
 
   // This is an array prefix.
-  if (Callee && Callee->getSpelling() == "operator'[]'") {
-    // os << "[] -> ";
+  if (Op == FOK_Brackets)
     push(new ArrayDeclarator(S->getArgument(0), nullptr));
-  }
 
-  for (const Syntax *Arg : S->getArguments()->children()) {
+  for (const Syntax *Arg : S->getArguments()->children())
     VisitSyntax(Arg);
-  }
 
-  if (Callee &&
-      (Callee->getSpelling() == "postfix'^'" ||
-       Callee->getSpelling() == "operator'^'")) {
+  if (Callee && (Callee->getSpelling() == "postfix'^'" || Op == FOK_Caret))
     push(new PointerDeclarator(S->getArgument(0), nullptr));
-  //   os << "^ -> ";
-  }
 }
 
 using LabelMapTy = DeclaratorBuilder::LabelMapTy;
@@ -231,6 +239,11 @@ void DeclaratorBuilder::buildArray(const Syntax *S) {
 
 void DeclaratorBuilder::buildType(const Syntax *S) {
   push(new TypeDeclarator(S, nullptr));
+}
+
+void DeclaratorBuilder::buildFunction(const CallSyntax *S) {
+  push(new FunctionDeclarator(S, nullptr));
+  Cur->recordAttributes(S);
 }
 
 void DeclaratorBuilder::buildTemplateParams(const ElemSyntax *S) {
@@ -467,6 +480,7 @@ void DeclaratorBuilder::NodeLabeler::operator()(const Syntax *S) {
   FusedOpKind OpKind = getFusedOpKind(SemaRef, Op);
   switch(OpKind) {
   case FOK_Equals:
+  case FOK_Exclaim:
     return this->operator()(Op->getArgument(0));
   case FOK_Colon:
     break;
@@ -484,6 +498,10 @@ void DeclaratorBuilder::NodeLabeler::operator()(const Syntax *S) {
 }
 
 void DeclaratorBuilder::NodeLabeler::VisitGoldCallSyntax(const CallSyntax *S) {
+  // If we don't know what the callee is, we need to label it.
+  if (getFusedOpKind(SemaRef, S) == FOK_Unknown)
+    ConstSyntaxVisitor<NodeLabeler>::Visit(S->getCallee());
+
   if (S->getNumArguments() == 0) {
     NodeLabels.insert({S, Label++});
     return;

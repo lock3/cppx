@@ -147,7 +147,7 @@ private:
   void buildGlobalNameSpecifier(const CallSyntax *S);
   void buildNestedNameSpecifier(const AtomSyntax *S);
   void buildIdentifier(const AtomSyntax *S);
-  FunctionDeclarator *handleFunction(const CallSyntax *S, Declarator *Next);
+  void buildFunction(const CallSyntax *S);
   void buildType(const Syntax *S);
   void buildArray(const Syntax *S);
   void buildTemplateParams(const ElemSyntax *S);

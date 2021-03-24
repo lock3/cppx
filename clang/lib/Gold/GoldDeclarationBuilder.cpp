@@ -724,7 +724,7 @@ static bool deduceVariableSyntax(Sema &SemaRef, Declaration *TheDecl,
                                  bool &HadError) {
 
   HadError = false;
-  if (TheDecl->InitOpUsed == IK_Exlaim) {
+  if (TheDecl->InitOpUsed == IK_Exclaim) {
     HadError = true;
     SemaRef.Diags.Report(TheDecl->Init->getLoc(),
                          clang::diag::err_invalid_function_defintion_syntax);
@@ -1585,7 +1585,7 @@ Declarator *DeclarationBuilder::dispatchAndCreateDeclarator(const Syntax *S) {
     const auto *Args = cast<ListSyntax>(Call->getArguments());
     Decl = Args->getChild(0);
     InitExpr = Args->getChild(1);
-    InitOperatorUsed = IK_Exlaim;
+    InitOperatorUsed = IK_Exclaim;
     break;
   }
   case FOK_Unknown:
