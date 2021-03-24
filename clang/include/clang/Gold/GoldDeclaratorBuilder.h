@@ -24,8 +24,12 @@ class DeclaratorBuilder :
 
   // The declarator we build up, and the actual output of this function object.
   Declarator *Result = nullptr;
-  // The most recent working declarator chunk.
+
+  // The current working declarator chunk.
   Declarator *Cur = nullptr;
+
+  // The most recently created declarator chunk.
+  Declarator *End = nullptr;
 public:
   DeclaratorBuilder(SyntaxContext &Context, Sema &SemaRef)
     : Context(Context), SemaRef(SemaRef) {}
@@ -41,10 +45,11 @@ public:
 private:
   void push(Declarator *D) {
     if (!Result) {
-      Cur = Result = D;
+      End = Cur = Result = D;
     } else {
-      Cur->Next = D;
-      Cur = Cur->Next;
+      End->Next = D;
+      Cur = End;
+      End = End->Next;
     }
   }
 
@@ -145,8 +150,7 @@ private:
   FunctionDeclarator *handleFunction(const CallSyntax *S, Declarator *Next);
   void buildType(const Syntax *S);
   void buildArray(const Syntax *S);
-  TemplateParamsDeclarator *handleTemplateParams(const ElemSyntax *S,
-                                                 Declarator *Next);
+  void buildTemplateParams(const ElemSyntax *S);
   ImplicitEmptyTemplateParamsDeclarator *
   handleImplicitTemplateParams(const ElemSyntax *Owner, Declarator *Next);
 

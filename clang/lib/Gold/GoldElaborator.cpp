@@ -3217,6 +3217,9 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
           || isa<clang::NamespaceAliasDecl>(D->Cxx)))
         return D->Cxx;
   } else if (VarType->isTypeOfTypes()) {
+    if (TemporaryElaboration)
+      goto BASIC_VARIABLE;
+
     if (D->Template)
       return elaborateTemplateAliasOrVariable(D);
     return elaborateTypeAlias(D);
@@ -3226,6 +3229,7 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
     return elaborateNsAlias(D);
   }
 
+BASIC_VARIABLE:
   bool IsClassMember = D->isDeclaredWithinClass();
 
   // Cannot have a local extern variable with linkage?
@@ -3396,6 +3400,11 @@ clang::Decl *Elaborator::elaborateVariableDecl(clang::Scope *InitialScope,
                                     getDefaultVariableStorageClass(SemaRef));
     if (IsClassMember)
       NewVD->setAccess(clang::AS_public);
+
+    if (TemporaryElaboration) {
+      D->Cxx = NewVD;
+      return D->Cxx;
+    }
   }
 
 
@@ -4169,6 +4178,9 @@ clang::Decl *Elaborator::elaborateDeclSyntax(const Syntax *S) {
   // Elaborate the declaration.
   Declaration *D = SemaRef.getCurrentScope()->findDecl(S);
   if (D) {
+    if (TemporaryElaboration)
+      TemporaryElaboratedDecls.insert({D, SemaRef.getCurrentScope()});
+
     elaborateDecl(D);
     elaborateDef(D);
     return D->Cxx;

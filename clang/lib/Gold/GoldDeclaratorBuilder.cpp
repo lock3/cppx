@@ -64,6 +64,12 @@ void DeclaratorBuilder::VisitSyntax(const Syntax *S) {
 void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   const AtomSyntax *Callee = dyn_cast<AtomSyntax>(S->getCallee());
 
+  if (Callee && Callee->getSpelling() == "operator'='") {
+    InitExpr = S->getArgument(1);
+    InitOperatorUsed = IK_Equals;
+    return VisitSyntax(S->getArgument(0));
+  }
+
   // This is an array prefix.
   if (Callee && Callee->getSpelling() == "operator'[]'") {
     // os << "[] -> ";
@@ -107,8 +113,9 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
       // We have a declaration in the index, this is definitely a
       // template declaration.
       Elaborator DeclElab(Context, SemaRef);
+      DeclElab.setTemporaryElaboration();
       if (DeclElab.elaborateDeclSyntax(AA))
-        return;
+        return buildTemplate(S);
         // return buildTemplateOrNameDeclarator(LHS, handleType(RHS, Next));
 
       ExprElaborator Elab(Context, SemaRef);
@@ -138,9 +145,32 @@ void DeclaratorBuilder::VisitGoldAtomSyntax(const AtomSyntax *S) {
   buildType(S);
 }
 
+static bool isParameterSyntax(Sema& SemaRef, const Syntax *S) {
+  const auto *Call = dyn_cast<CallSyntax>(S);
+  if (!Call)
+    return false;
+  FusedOpKind Op = getFusedOpKind(SemaRef, Call);
+  if (Op == FOK_Colon) {
+    return true;
+  } else if (Op == FOK_Equals) {
+    const Syntax *Arg = Call->getArgument(0);
+    if (!Arg)
+      return false;
+
+    if (getFusedOpKind(SemaRef, dyn_cast<CallSyntax>(Arg)) == FOK_Colon)
+      return true;
+  }
+  return false;
+}
+
 void DeclaratorBuilder::buildTemplate(const ElemSyntax *S) {
   const auto *Args = cast<ListSyntax>(S->getArguments());
-  return;
+
+  // FIXME: record the element attributes on to the base as well?
+  if (isParameterSyntax(SemaRef, Args->getChild(0)))
+    return buildTemplateParams(S);
+  else
+    llvm_unreachable("unimplemented");
 }
 
 void DeclaratorBuilder::buildName(const Syntax *S) {
@@ -204,6 +234,11 @@ void DeclaratorBuilder::buildArray(const Syntax *S) {
 
 void DeclaratorBuilder::buildType(const Syntax *S) {
   push(new TypeDeclarator(S, nullptr));
+}
+
+void DeclaratorBuilder::buildTemplateParams(const ElemSyntax *S) {
+  push(new TemplateParamsDeclarator(S, nullptr));
+  Cur->recordAttributes(S);
 }
 
 Declarator *DeclaratorBuilder::handleNamespaceScope(const Syntax *S) {
@@ -426,8 +461,15 @@ void DeclaratorBuilder::NodeLabeler::operator()(const Syntax *S) {
     return;
 
   const CallSyntax *Op = cast<CallSyntax>(S);
-  if (getFusedOpKind(SemaRef, Op) != FOK_Colon)
+  FusedOpKind OpKind = getFusedOpKind(SemaRef, Op);
+  switch(OpKind) {
+  case FOK_Equals:
+    return this->operator()(Op->getArgument(0));
+  case FOK_Colon:
+    break;
+  default:
     return;
+  }
 
   // Label the LHS subtree first, then the root, then the RHS subtree.
   // This way, any node on the LHS will be less than the root, and

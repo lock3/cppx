@@ -41,6 +41,7 @@ Declaration *DeclarationBuilder::build(const Syntax *S) {
 
   Declaration *ParentDecl = SemaRef.getCurrentDecl();
   // FIXME: manage memory
+  InitExpr = BuildDeclarator.InitExpr;
   Declaration *TheDecl = new Declaration(ParentDecl, S, Dcl, InitExpr);
   TheDecl->Id = BuildDeclarator.Id;
   TheDecl->OpInfo = BuildDeclarator.OpInfo;
