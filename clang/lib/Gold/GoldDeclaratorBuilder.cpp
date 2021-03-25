@@ -6,6 +6,8 @@
 
 namespace gold {
 
+using ParentMapTy = DeclaratorBuilder::ParentMapTy;
+
 Declarator *DeclaratorBuilder::operator()(const Syntax *S) {
   NodeLabeler LabelNodes(SemaRef, NodeLabels, NodeParents);
   LabelNodes(S);
@@ -150,11 +152,38 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
   buildArray(S->getArguments());
 }
 
-void DeclaratorBuilder::VisitGoldListSyntax(const ListSyntax *S) {
-  // if (onRightOfArrow) {
-  // }
+// True when Child is a node on the left hand side of Parent.
+static inline bool isLeftOf(LabelMapTy const &Labels,
+                            const Syntax *Child,
+                            const Syntax *Parent) {
+  if (!Child || !Parent)
+    return false;
 
-  buildFunction(S);
+  auto ChildIt = Labels.find(Child);
+  if (ChildIt == Labels.end())
+    return false;
+  auto ParentIt = Labels.find(Parent);
+  if (ParentIt == Labels.end())
+    return false;
+  return ChildIt->second < ParentIt->second;
+}
+
+void DeclaratorBuilder::VisitGoldListSyntax(const ListSyntax *S) {
+  // Lists only have signficant meaning as arguments to an  operator"->" call.
+  if (const Syntax *Parent = getParent(S)) {
+    if (const CallSyntax *ParentCall = dyn_cast<CallSyntax>(Parent)) {
+      if (getFusedOpKind(SemaRef, ParentCall) == FOK_Arrow) {
+        // A list on the LHS of an operator"->" is a function parameter list.
+        if (isLeftOf(NodeLabels, S, Parent))
+          return buildFunction(S);
+      }
+    }
+
+  }
+
+  // Elsewise, we can just see through the list.
+  for (const Syntax *Param : S->children())
+    VisitSyntax(Param);
 }
 
 
@@ -568,10 +597,22 @@ void DeclaratorBuilder::NodeLabeler::VisitGoldAtomSyntax(const AtomSyntax *S) {
 }
 
 void DeclaratorBuilder::NodeLabeler::VisitGoldListSyntax(const ListSyntax *S) {
-  insertChild(S, Label++);
+  // Only label this if it is the LHS of an operator"->" call.
+  if (!InteriorNodes.empty() && isa<CallSyntax>(InteriorNodes.top())) {
+    const CallSyntax *Call = cast<CallSyntax>(InteriorNodes.top());
+    // Determine if we're on the LHS of the parent. If we are, the parent will
+    // not have its label entered yet.
+    auto It = NodeLabels.find(Call);
+    bool ParentSeen = It != NodeLabels.end();
+    if (getFusedOpKind(SemaRef, Call) == FOK_Arrow && !ParentSeen)
+      insertChild(S, Label++);
+  }
+
+  // Elsewise, see through the list
+  for (const Syntax *Param : S->children())
+    ConstSyntaxVisitor<NodeLabeler>::Visit(Param);
 }
 
-using ParentMapTy = DeclaratorBuilder::ParentMapTy;
 DeclaratorBuilder::NodeLabeler::ParentRAII::ParentRAII(const Syntax *S,
                                       std::stack<const Syntax *> &InteriorNodes,
                                                        ParentMapTy &NodeParents)
@@ -601,6 +642,13 @@ bool DeclaratorBuilder::NodeLabeler::insertChild(const Syntax *C,
                                                  unsigned Label) {
   NodeParents.insert({C, P});
   return NodeLabels.insert({C, Label}).second;
+}
+
+const Syntax *DeclaratorBuilder::getParent(const Syntax *S) {
+  auto Res = NodeParents.find(S);
+  if (Res == NodeParents.end())
+    return nullptr;
+  return Res->second;
 }
 
 } // end namespace gold

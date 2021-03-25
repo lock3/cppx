@@ -209,6 +209,8 @@ private:
     std::stack<const Syntax *> InteriorNodes;
   };
 
+  const Syntax *getParent(const Syntax *S);
+
   // Members
   std::string OriginalNameStorage;
   llvm::StringRef OriginalName;
