@@ -3097,79 +3097,79 @@ clang::Expr *ExprElaborator::elaborateNestedLookupAccess(clang::Expr *Previous,
 clang::Expr *ExprElaborator::elaborateUnaryOp(const CallSyntax *S,
                                               const OpInfoBase *OpInfo,
                                               clang::UnaryOperatorKind Op) {
-  // BooleanRAII AddressOfRAII(ElaboratingAddressOfOp, Op == clang::UO_AddrOf);
+  BooleanRAII AddressOfRAII(ElaboratingAddressOfOp, Op == clang::UO_AddrOf);
 
-  // const Syntax *Operand = S->getArgument(0);
-  // clang::Expr *OperandResult = nullptr;
-  // if (ElaboratingAddressOfOp) {
-  //   Sema::ExtendQualifiedLookupRAII ExQual(SemaRef);
-  //   OperandResult = doElaborateExpr(Operand);
-  // } else {
-  //   OperandResult = doElaborateExpr(Operand);
-  // }
+  const Syntax *Operand = S->getArgument(0);
+  clang::Expr *OperandResult = nullptr;
+  if (ElaboratingAddressOfOp) {
+    Sema::ExtendQualifiedLookupRAII ExQual(SemaRef);
+    OperandResult = doElaborateExpr(Operand);
+  } else {
+    OperandResult = doElaborateExpr(Operand);
+  }
 
-  // if (!OperandResult || OperandResult->getType()->isNamespaceType()) {
-  //   SemaRef.Diags.Report(Operand->getLoc(),
-  //                        clang::diag::err_expected_expression);
-  //   return nullptr;
-  // }
+  if (!OperandResult || OperandResult->getType()->isNamespaceType()) {
+    SemaRef.Diags.Report(Operand->getLoc(),
+                         clang::diag::err_expected_expression);
+    return nullptr;
+  }
 
-  // // This is used to construct a pointer type because the caret has two
-  // // meanings. Dereference and pointer declaration.
-  // if (Op == clang::UO_Deref) {
-  //   if (isACppxDependentExpr(OperandResult)) {
-  //     // Because we are a dependent expression we then need to make sure that if
-  //     // we are an expression of an undetermined type then we create an expression
-  //     // that is both.
-  //     return clang::CppxDerefOrPtrExpr::Create(Context.CxxAST, OperandResult,
-  //                                              S->getLoc());
-  //   }
-  //   if (OperandResult->getType()->isTypeOfTypes()) {
-  //     clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
-  //                                                   OperandResult, S->getLoc());
-  //     if (!TInfo)
-  //       return nullptr;
-  //     clang::QualType RetType = Context.CxxAST.getPointerType(TInfo->getType());
-  //     return SemaRef.buildTypeExpr(RetType, S->getLoc());
-  //   }
-  // }
-  // // This has to be done here because if the operand is a type this has different
-  // // meaning and it will cause a cycle inside of elaboration.
+  // This is used to construct a pointer type because the caret has two
+  // meanings. Dereference and pointer declaration.
+  if (Op == clang::UO_Deref) {
+    if (isACppxDependentExpr(OperandResult)) {
+      // Because we are a dependent expression we then need to make sure that if
+      // we are an expression of an undetermined type then we create an expression
+      // that is both.
+      return clang::CppxDerefOrPtrExpr::Create(Context.CxxAST, OperandResult,
+                                               S->getLoc());
+    }
+    if (OperandResult->getType()->isTypeOfTypes()) {
+      clang::TypeSourceInfo *TInfo = SemaRef.getTypeSourceInfoFromExpr(
+                                                    OperandResult, S->getLoc());
+      if (!TInfo)
+        return nullptr;
+      clang::QualType RetType = Context.CxxAST.getPointerType(TInfo->getType());
+      return SemaRef.buildTypeExpr(RetType, S->getLoc());
+    }
+  }
+  // This has to be done here because if the operand is a type this has different
+  // meaning and it will cause a cycle inside of elaboration.
 
-  // // Doing actual ADL lookup for operators.
+  // Doing actual ADL lookup for operators.
 
-  // // We need to pull all of the matching operators in from within the
-  // // entire system. We only need to look up free functions, the members
-  // // already exists because they would have been elaborated as part of the type.
-  // clang::LookupResult R(SemaRef.getCxxSema(),
-  //                       { { OpInfo->getGoldDeclName() }, Operand->getLoc() },
-  //                       clang::Sema::LookupOrdinaryName);
-  // clang::QualType Ty = OperandResult->getType();
-  // gold::Scope *ArgScope = nullptr;
-  // if (Ty->isRecordType()) {
-  //   gold::Declaration *D = SemaRef.getDeclaration(Ty->getAsRecordDecl());
-  //   if (!D) {
-  //     // Moving the scope to the first namespace scope it finds.
-  //     ArgScope = D->ScopeForDecl;
-  //     assert(ArgScope && "D->ScopeForDecl not set for declaration");
-  //     while(ArgScope && !ArgScope->isNamespaceScope()) {
-  //       ArgScope = ArgScope->getParent();
-  //     }
-  //     SemaRef.lookupUnqualifiedName(R, ArgScope);
-  //   }
-  // }
+  // We need to pull all of the matching operators in from within the
+  // entire system. We only need to look up free functions, the members
+  // already exists because they would have been elaborated as part of the type.
+  clang::LookupResult R(SemaRef.getCxxSema(),
+                        { { OpInfo->getGoldDeclName() }, Operand->getLoc() },
+                        clang::Sema::LookupOrdinaryName);
+  clang::QualType Ty = OperandResult->getType();
+  gold::Scope *ArgScope = nullptr;
+  if (Ty->isRecordType()) {
+    gold::Declaration *D = SemaRef.getDeclaration(Ty->getAsRecordDecl());
+    if (!D) {
+      // Moving the scope to the first namespace scope it finds.
+      ArgScope = D->ScopeForDecl;
+      assert(ArgScope && "D->ScopeForDecl not set for declaration");
+      while(ArgScope && !ArgScope->isNamespaceScope()) {
+        ArgScope = ArgScope->getParent();
+      }
+      SemaRef.lookupUnqualifiedName(R, ArgScope);
+    }
+  }
 
-  // // This should make sure that any/all of the operators are in scope ahead of
-  // // Clang operator ADL.
-  // SemaRef.lookupUnqualifiedName(R);
-  // R.clear();
+  // This should make sure that any/all of the operators are in scope ahead of
+  // Clang operator ADL.
+  SemaRef.lookupUnqualifiedName(R);
+  R.clear();
 
 
-  // clang::ExprResult UnaryOpRes = SemaRef.getCxxSema().BuildUnaryOp(
-  //   /*scope*/nullptr, S->getCalleeLoc(), Op, OperandResult);
+  clang::ExprResult UnaryOpRes = SemaRef.getCxxSema().BuildUnaryOp(
+    /*scope*/nullptr, S->getCalleeLoc(), Op, OperandResult);
 
-  // ExprMarker(Context.CxxAST, SemaRef).Visit(OperandResult);
-  // return UnaryOpRes.get();
+  ExprMarker(Context.CxxAST, SemaRef).Visit(OperandResult);
+  return UnaryOpRes.get();
 }
 
 clang::Expr *ExprElaborator::elaborateBinOp(const CallSyntax *S,

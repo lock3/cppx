@@ -69,6 +69,15 @@ void DeclaratorBuilder::VisitSyntax(const Syntax *S) {
   ConstSyntaxVisitor<DeclaratorBuilder>::Visit(S);
 }
 
+using LabelMapTy = DeclaratorBuilder::LabelMapTy;
+static inline bool isLeftOfRoot(LabelMapTy const &Labels,
+                                const Syntax *S) {
+  auto It = Labels.find(S);
+  if (It == Labels.end())
+    return false;
+  return It->second < Labels.RootLabel;
+}
+
 void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   const AtomSyntax *Callee = dyn_cast<AtomSyntax>(S->getCallee());
   FusedOpKind Op = getFusedOpKind(SemaRef, S);
@@ -97,20 +106,17 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   if (Op == FOK_Brackets)
     push(new ArrayDeclarator(S->getArgument(0), nullptr));
 
+  bool LeftOfRoot = isLeftOfRoot(NodeLabels, S);
+  if (!LeftOfRoot &&
+      Callee && (Callee->getSpelling() == "postfix'^'" || Op == FOK_Caret))
+    push(new PointerDeclarator(S->getArgument(0), nullptr));
+
   for (const Syntax *Arg : S->getArguments()->children())
     VisitSyntax(Arg);
 
-  if (Callee && (Callee->getSpelling() == "postfix'^'" || Op == FOK_Caret))
+  if (LeftOfRoot &&
+      Callee && (Callee->getSpelling() == "postfix'^'" || Op == FOK_Caret))
     push(new PointerDeclarator(S->getArgument(0), nullptr));
-}
-
-using LabelMapTy = DeclaratorBuilder::LabelMapTy;
-static inline bool isLeftOfRoot(LabelMapTy const &Labels,
-                                const Syntax *S) {
-  auto It = Labels.find(S);
-  if (It == Labels.end())
-    return false;
-  return It->second < Labels.RootLabel;
 }
 
 void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
