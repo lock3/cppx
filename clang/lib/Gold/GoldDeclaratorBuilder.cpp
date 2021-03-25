@@ -78,12 +78,19 @@ static inline bool isLeftOfRoot(LabelMapTy const &Labels,
   return It->second < Labels.RootLabel;
 }
 
+static inline bool isPostfixCaret(const CallSyntax *S) {
+  if (!S->getCallee() || !isa<AtomSyntax>(S->getCallee()))
+    return false;
+  const AtomSyntax *Callee = cast<AtomSyntax>(S->getCallee());
+  return Callee->getSpelling() == "postfix'^'";
+}
+
 void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   const AtomSyntax *Callee = dyn_cast<AtomSyntax>(S->getCallee());
   FusedOpKind Op = getFusedOpKind(SemaRef, S);
 
   // A normal function declaration.
-  if (Op == FOK_Unknown) {
+  if (Op == FOK_Unknown && !isPostfixCaret(S)) {
     // TODO: what does a function template look like?
     VisitSyntax(S->getCallee());
     return buildFunction(S);
@@ -107,15 +114,13 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
     push(new ArrayDeclarator(S->getArgument(0), nullptr));
 
   bool LeftOfRoot = isLeftOfRoot(NodeLabels, S);
-  if (!LeftOfRoot &&
-      Callee && (Callee->getSpelling() == "postfix'^'" || Op == FOK_Caret))
+  if (!LeftOfRoot && (isPostfixCaret(S) || Op == FOK_Caret))
     push(new PointerDeclarator(S->getArgument(0), nullptr));
 
   for (const Syntax *Arg : S->getArguments()->children())
     VisitSyntax(Arg);
 
-  if (LeftOfRoot &&
-      Callee && (Callee->getSpelling() == "postfix'^'" || Op == FOK_Caret))
+  if (LeftOfRoot && (isPostfixCaret(S) || Op == FOK_Caret))
     push(new PointerDeclarator(S->getArgument(0), nullptr));
 }
 
@@ -547,15 +552,15 @@ void DeclaratorBuilder::NodeLabeler::operator()(const Syntax *S) {
   // This way, any node on the LHS will be less than the root, and
   // any node on the RHS will be greater than the root.
   ConstSyntaxVisitor<NodeLabeler>::Visit(Op->getArgument(0));
-  if (insertParent(S, Label++))
-    NodeLabels.RootLabel = Label;
+  if (insertParent(S, Label))
+    NodeLabels.RootLabel = Label++;
   ConstSyntaxVisitor<NodeLabeler>::Visit(Op->getArgument(1));
 }
 
 void DeclaratorBuilder::NodeLabeler::VisitGoldCallSyntax(const CallSyntax *S) {
   // If we don't know what the callee is, we need to label it.
   FusedOpKind Op = getFusedOpKind(SemaRef, S);
-  if (Op == FOK_Unknown)
+  if (Op == FOK_Unknown && !isPostfixCaret(S))
     return ConstSyntaxVisitor<NodeLabeler>::Visit(S->getCallee());
 
   // If there are no arguments, there's nothing more to do.
