@@ -240,7 +240,8 @@ std::string FunctionDeclarator::getString(bool IncludeKind) const {
 }
 
 const ListSyntax *FunctionDeclarator::getParams() const {
-  return cast<ListSyntax>(Params->getArguments());
+  assert (isa<ListSyntax>(Params) && "invalid parameters in function declarator");
+  return cast<ListSyntax>(Params);
 }
 
 // ------------------ TypeDeclarator -------------------------------------------

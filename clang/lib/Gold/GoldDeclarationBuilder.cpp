@@ -1707,7 +1707,7 @@ DeclarationBuilder::handleIdentifier(const AtomSyntax *S, Declarator *Next) {
 
 FunctionDeclarator *
 DeclarationBuilder::handleFunction(const CallSyntax *S, Declarator *Next) {
-  auto Ret = new FunctionDeclarator(S, Next);
+  auto Ret = new FunctionDeclarator(S->getArguments(), Next);
   Ret->recordAttributes(S);
   return Ret;
 }

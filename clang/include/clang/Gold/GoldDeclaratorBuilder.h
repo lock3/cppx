@@ -11,6 +11,8 @@
 #include "clang/Gold/GoldSyntaxContext.h"
 #include "clang/Gold/GoldSyntaxVisitor.h"
 
+#include <stack>
+
 namespace gold {
 class Sema;
 class SyntaxContext;
@@ -40,6 +42,7 @@ public:
   void VisitSyntax(const Syntax *S);
   void VisitGoldCallSyntax(const CallSyntax *S);
   void VisitGoldElemSyntax(const ElemSyntax *S);
+  void VisitGoldListSyntax(const ListSyntax *S);
   void VisitGoldAtomSyntax(const AtomSyntax *S);
 
 private:
@@ -148,6 +151,7 @@ private:
   void buildNestedNameSpecifier(const AtomSyntax *S);
   void buildIdentifier(const AtomSyntax *S);
   void buildFunction(const CallSyntax *S);
+  void buildFunction(const ListSyntax *S);
   void buildType(const Syntax *S);
   void buildArray(const Syntax *S);
   void buildTemplateParams(const ElemSyntax *S);
@@ -164,24 +168,37 @@ public:
     unsigned RootLabel = 0;
   };
 
+  using ParentMapTy = llvm::DenseMap<const Syntax *, const Syntax *>;
 private:
   LabelMapTy NodeLabels;
+  ParentMapTy NodeParents;
 
   // Assign an integer label/weight to each node in a CST.
   class NodeLabeler :
     public ConstSyntaxVisitor<NodeLabeler> {
     Sema &SemaRef;
     LabelMapTy &NodeLabels;
+    ParentMapTy &NodeParents;
     unsigned Label = 0;
   public:
-    NodeLabeler(Sema &SemaRef, LabelMapTy &NodeLabels)
-      : SemaRef(SemaRef), NodeLabels(NodeLabels)
+    NodeLabeler(Sema &SemaRef, LabelMapTy &NodeLabels, ParentMapTy &NodeParents)
+      : SemaRef(SemaRef), NodeLabels(NodeLabels), NodeParents(NodeParents)
       {}
 
     void operator()(const Syntax *S);
     void VisitGoldCallSyntax(const CallSyntax *S);
     void VisitGoldElemSyntax(const ElemSyntax *S);
+    void VisitGoldListSyntax(const ListSyntax *S);
     void VisitGoldAtomSyntax(const AtomSyntax *S);
+
+  private:
+    void insertChild(const Syntax *S, unsigned Label);
+    void insertChild(const Syntax *C, const Syntax *P, unsigned Label);
+    void insertParent(const Syntax *S, unsigned Label);
+
+    // When labeling an interior node, it gets pushed here
+    // so we can keep track of leaf nodes' parents.
+    std::stack<const Syntax *> InteriorNodes;
   };
 
   // Members

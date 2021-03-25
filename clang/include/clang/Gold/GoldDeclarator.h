@@ -359,22 +359,21 @@ public:
 };
 
 class FunctionDeclarator : public Declarator {
-  const CallSyntax *Params;
+  const Syntax *Params;
   gold::Scope *Scope;
   bool HasVariadicParam = false;
 
 public:
-  FunctionDeclarator(const CallSyntax *ParamsNode, gold::Scope *ParamScope,
+  FunctionDeclarator(const Syntax *Params, gold::Scope *ParamScope,
                      Declarator *Next)
     :Declarator(DK_Function, Next),
-    Params(ParamsNode),
+    Params(Params),
     Scope(ParamScope)
   { }
 
-  FunctionDeclarator(const CallSyntax *ParamsNode, Declarator *Next)
-    :FunctionDeclarator(ParamsNode, nullptr, Next)
+  FunctionDeclarator(const Syntax *Params, Declarator *Next)
+    :FunctionDeclarator(Params, nullptr, Next)
   { }
-  const CallSyntax *getCallNode() const { return Params; }
 
   virtual clang::SourceLocation getLoc() const override;
   virtual std::string getString(bool IncludeKind = false) const override;

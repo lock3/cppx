@@ -7,10 +7,15 @@
 namespace gold {
 
 Declarator *DeclaratorBuilder::operator()(const Syntax *S) {
-  NodeLabeler LabelNodes(SemaRef, NodeLabels);
+  NodeLabeler LabelNodes(SemaRef, NodeLabels, NodeParents);
   LabelNodes(S);
   for (auto Each : NodeLabels) {
-    llvm::outs() << "NODE: " << Each.second << '\n';
+    const Syntax *P = nullptr;
+    auto It = NodeParents.find(Each.first);
+    if (It != NodeParents.end())
+      P = It->second;
+
+    llvm::outs() << "NODE: " << Each.second << " PARENT: " << P << '\n';
     Each.first->dump();
     llvm::outs() << "===------------------===\n";
   }
@@ -144,6 +149,14 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
   buildArray(S->getArguments());
 }
 
+void DeclaratorBuilder::VisitGoldListSyntax(const ListSyntax *S) {
+  // if (onRightOfArrow) {
+  // }
+
+  buildFunction(S);
+}
+
+
 void DeclaratorBuilder::VisitGoldAtomSyntax(const AtomSyntax *S) {
   if (isLeftOfRoot(NodeLabels, S))
     return buildIdentifier(S);
@@ -242,6 +255,11 @@ void DeclaratorBuilder::buildType(const Syntax *S) {
 }
 
 void DeclaratorBuilder::buildFunction(const CallSyntax *S) {
+  push(new FunctionDeclarator(S->getArguments(), nullptr));
+  Cur->recordAttributes(S);
+}
+
+void DeclaratorBuilder::buildFunction(const ListSyntax *S) {
   push(new FunctionDeclarator(S, nullptr));
   Cur->recordAttributes(S);
 }
@@ -499,8 +517,26 @@ void DeclaratorBuilder::NodeLabeler::operator()(const Syntax *S) {
 
 void DeclaratorBuilder::NodeLabeler::VisitGoldCallSyntax(const CallSyntax *S) {
   // If we don't know what the callee is, we need to label it.
-  if (getFusedOpKind(SemaRef, S) == FOK_Unknown)
-    ConstSyntaxVisitor<NodeLabeler>::Visit(S->getCallee());
+  FusedOpKind Op = getFusedOpKind(SemaRef, S);
+  if (Op == FOK_Unknown)
+    return ConstSyntaxVisitor<NodeLabeler>::Visit(S->getCallee());
+
+  // The arrow operator can have its arguments in a nested list, so we have
+  // to treat it specially.
+  if (Op == FOK_Arrow && S->getNumArguments() == 1) {
+    if (!isa<ListSyntax>(S->getArgument(0))) {
+      NodeLabels.insert({S, Label++});
+      return;
+    }
+
+    const ListSyntax *Args = cast<ListSyntax>(S->getArgument(0));
+    unsigned I = 0;
+    ConstSyntaxVisitor<NodeLabeler>::Visit(Args->getChild(I));
+    NodeLabels.insert({S, Label++});
+    for (++I; I < Args->getNumChildren(); ++I)
+      ConstSyntaxVisitor<NodeLabeler>::Visit(Args->getChild(I));
+    return;
+  }
 
   if (S->getNumArguments() == 0) {
     NodeLabels.insert({S, Label++});
@@ -525,5 +561,26 @@ void DeclaratorBuilder::NodeLabeler::VisitGoldAtomSyntax(const AtomSyntax *S) {
   NodeLabels.insert({S, Label++});
 }
 
+void DeclaratorBuilder::NodeLabeler::VisitGoldListSyntax(const ListSyntax *S) {
+  NodeLabels.insert({S, Label++});
+}
+
+void DeclaratorBuilder::NodeLabeler::insertParent(const Syntax *S,
+                                                 unsigned Label) {
+  NodeLabels.insert({S, Label});
+  InteriorNodes.push(S);
+}
+
+void DeclaratorBuilder::NodeLabeler::insertChild(const Syntax *S,
+                                                 unsigned Label) {
+  insertChild(S, InteriorNodes.top(), Label);
+}
+
+void DeclaratorBuilder::NodeLabeler::insertChild(const Syntax *C,
+                                                 const Syntax *P,
+                                                 unsigned Label) {
+  NodeLabels.insert({C, Label});
+  NodeParents.insert({C, P});
+}
 
 } // end namespace gold
