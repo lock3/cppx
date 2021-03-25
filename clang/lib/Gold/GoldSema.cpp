@@ -222,6 +222,7 @@ Sema::Sema(SyntaxContext &Context, clang::Sema &CxxSema)
     OperatorCaretII(&Context.CxxAST.Idents.get("operator'^'")),
     OperatorDotCaretII(&Context.CxxAST.Idents.get("operator'.^'")),
     OperatorAmpersandII(&Context.CxxAST.Idents.get("operator'&'")),
+    OperatorMapII(&Context.CxxAST.Idents.get("operator'=>'")),
     ConstructorII(&Context.CxxAST.Idents.get("constructor")),
     DestructorII(&Context.CxxAST.Idents.get("destructor")),
     VaStartII(&Context.CxxAST.Idents.get("__builtin_va_start")),

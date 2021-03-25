@@ -666,6 +666,7 @@ public:
   clang::IdentifierInfo *const OperatorCaretII;
   clang::IdentifierInfo *const OperatorDotCaretII;
   clang::IdentifierInfo *const OperatorAmpersandII;
+  clang::IdentifierInfo *const OperatorMapII;
 
   // Tokens used for constructor and destructor;
   clang::IdentifierInfo *const ConstructorII;

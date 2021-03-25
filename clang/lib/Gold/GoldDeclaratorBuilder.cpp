@@ -552,24 +552,6 @@ void DeclaratorBuilder::NodeLabeler::VisitGoldCallSyntax(const CallSyntax *S) {
   if (Op == FOK_Unknown)
     return ConstSyntaxVisitor<NodeLabeler>::Visit(S->getCallee());
 
-  // The arrow operator can have its arguments in a nested list, so we have
-  // to treat it specially.
-  if (Op == FOK_Arrow && S->getNumArguments() == 1) {
-    if (!isa<ListSyntax>(S->getArgument(0))) {
-      insertChild(S, Label++);
-      return;
-    }
-
-    ParentRAII AddParent(S, InteriorNodes, NodeParents);
-    const ListSyntax *Args = cast<ListSyntax>(S->getArgument(0));
-    unsigned I = 0;
-    ConstSyntaxVisitor<NodeLabeler>::Visit(Args->getChild(I));
-    insertParent(S, Label++);
-    for (++I; I < Args->getNumChildren(); ++I)
-      ConstSyntaxVisitor<NodeLabeler>::Visit(Args->getChild(I));
-    return;
-  }
-
   // If there are no arguments, there's nothing more to do.
   if (S->getNumArguments() == 0) {
     insertChild(S, Label++);
