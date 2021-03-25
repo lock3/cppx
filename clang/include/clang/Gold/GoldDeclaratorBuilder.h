@@ -192,9 +192,17 @@ private:
     void VisitGoldAtomSyntax(const AtomSyntax *S);
 
   private:
-    void insertChild(const Syntax *S, unsigned Label);
-    void insertChild(const Syntax *C, const Syntax *P, unsigned Label);
-    void insertParent(const Syntax *S, unsigned Label);
+    bool insertChild(const Syntax *S, unsigned Label);
+    bool insertChild(const Syntax *C, const Syntax *P, unsigned Label);
+    bool insertParent(const Syntax *S, unsigned Label);
+    struct ParentRAII {
+      ParentRAII(const Syntax *S, std::stack<const Syntax *> &InteriorNodes,
+                 ParentMapTy &NodeParents);
+      ~ParentRAII();
+
+      std::stack<const Syntax *> &InteriorNodes;
+      ParentMapTy &NodeParents;
+    };
 
     // When labeling an interior node, it gets pushed here
     // so we can keep track of leaf nodes' parents.

@@ -15,7 +15,8 @@ Declarator *DeclaratorBuilder::operator()(const Syntax *S) {
     if (It != NodeParents.end())
       P = It->second;
 
-    llvm::outs() << "NODE: " << Each.second << " PARENT: " << P << '\n';
+    llvm::outs() << "NODE: " << Each.second << " - " << Each.first
+                 << ": PARENT: " << P << '\n';
     Each.first->dump();
     llvm::outs() << "===------------------===\n";
   }
@@ -506,12 +507,13 @@ void DeclaratorBuilder::NodeLabeler::operator()(const Syntax *S) {
     return;
   }
 
+  ParentRAII AddParent(S, InteriorNodes, NodeParents);
   // Label the LHS subtree first, then the root, then the RHS subtree.
   // This way, any node on the LHS will be less than the root, and
   // any node on the RHS will be greater than the root.
   ConstSyntaxVisitor<NodeLabeler>::Visit(Op->getArgument(0));
-  if (NodeLabels.insert({S, Label++}).second)
-    NodeLabels.RootLabel = Label++;
+  if (insertParent(S, Label++))
+    NodeLabels.RootLabel = Label;
   ConstSyntaxVisitor<NodeLabeler>::Visit(Op->getArgument(1));
 }
 
@@ -525,62 +527,80 @@ void DeclaratorBuilder::NodeLabeler::VisitGoldCallSyntax(const CallSyntax *S) {
   // to treat it specially.
   if (Op == FOK_Arrow && S->getNumArguments() == 1) {
     if (!isa<ListSyntax>(S->getArgument(0))) {
-      NodeLabels.insert({S, Label++});
+      insertChild(S, Label++);
       return;
     }
 
+    ParentRAII AddParent(S, InteriorNodes, NodeParents);
     const ListSyntax *Args = cast<ListSyntax>(S->getArgument(0));
     unsigned I = 0;
     ConstSyntaxVisitor<NodeLabeler>::Visit(Args->getChild(I));
-    NodeLabels.insert({S, Label++});
+    insertParent(S, Label++);
     for (++I; I < Args->getNumChildren(); ++I)
       ConstSyntaxVisitor<NodeLabeler>::Visit(Args->getChild(I));
     return;
   }
 
+  // If there are no arguments, there's nothing more to do.
   if (S->getNumArguments() == 0) {
-    NodeLabels.insert({S, Label++});
+    insertChild(S, Label++);
     return;
   }
 
+  ParentRAII AddParent(S, InteriorNodes, NodeParents);
   unsigned I = 0;
   ConstSyntaxVisitor<NodeLabeler>::Visit(S->getArgument(I));
-  NodeLabels.insert({S, Label++});
+  insertParent(S, Label++);
   for (++I; I < S->getNumArguments(); ++I)
     ConstSyntaxVisitor<NodeLabeler>::Visit(S->getArgument(I));
 }
 
 void DeclaratorBuilder::NodeLabeler::VisitGoldElemSyntax(const ElemSyntax *S) {
+  ParentRAII AddParent(S, InteriorNodes, NodeParents);
   ConstSyntaxVisitor<NodeLabeler>::Visit(S->getObject());
-  NodeLabels.insert({S, Label++});
+  insertParent(S, Label++);
   for (const Syntax *Arg : S->getArguments()->children())
     ConstSyntaxVisitor<NodeLabeler>::Visit(Arg);
 }
 
 void DeclaratorBuilder::NodeLabeler::VisitGoldAtomSyntax(const AtomSyntax *S) {
-  NodeLabels.insert({S, Label++});
+  insertChild(S, Label++);
 }
 
 void DeclaratorBuilder::NodeLabeler::VisitGoldListSyntax(const ListSyntax *S) {
-  NodeLabels.insert({S, Label++});
+  insertChild(S, Label++);
 }
 
-void DeclaratorBuilder::NodeLabeler::insertParent(const Syntax *S,
-                                                 unsigned Label) {
-  NodeLabels.insert({S, Label});
+using ParentMapTy = DeclaratorBuilder::ParentMapTy;
+DeclaratorBuilder::NodeLabeler::ParentRAII::ParentRAII(const Syntax *S,
+                                      std::stack<const Syntax *> &InteriorNodes,
+                                                       ParentMapTy &NodeParents)
+  : InteriorNodes(InteriorNodes), NodeParents(NodeParents)
+{
+  if (!InteriorNodes.empty())
+    NodeParents.insert({S, InteriorNodes.top()});
   InteriorNodes.push(S);
 }
 
-void DeclaratorBuilder::NodeLabeler::insertChild(const Syntax *S,
-                                                 unsigned Label) {
-  insertChild(S, InteriorNodes.top(), Label);
+DeclaratorBuilder::NodeLabeler::ParentRAII::~ParentRAII() {
+  InteriorNodes.pop();
 }
 
-void DeclaratorBuilder::NodeLabeler::insertChild(const Syntax *C,
+bool DeclaratorBuilder::NodeLabeler::insertParent(const Syntax *S,
+                                                 unsigned Label) {
+  return NodeLabels.insert({S, Label}).second;
+}
+
+bool DeclaratorBuilder::NodeLabeler::insertChild(const Syntax *S,
+                                                 unsigned Label) {
+  return insertChild(S, InteriorNodes.top(), Label);
+}
+
+bool DeclaratorBuilder::NodeLabeler::insertChild(const Syntax *C,
                                                  const Syntax *P,
                                                  unsigned Label) {
-  NodeLabels.insert({C, Label});
   NodeParents.insert({C, P});
+  return NodeLabels.insert({C, Label}).second;
 }
 
 } // end namespace gold
