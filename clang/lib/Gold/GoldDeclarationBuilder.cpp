@@ -1725,7 +1725,7 @@ DeclarationBuilder::handleArray(const CallSyntax *S, Declarator *Next) {
 
 TemplateParamsDeclarator *
 DeclarationBuilder::handleTemplateParams(const ElemSyntax *S, Declarator *Next) {
-  auto Ret = new TemplateParamsDeclarator(S, Next);
+  auto Ret = new TemplateParamsDeclarator(cast<ListSyntax>(S->getArguments()), Next);
   Ret->recordAttributes(S);
   return Ret;
 }

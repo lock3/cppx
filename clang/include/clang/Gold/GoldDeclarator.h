@@ -444,11 +444,11 @@ public:
 };
 
 class TemplateParamsDeclarator : public Declarator {
-  const ElemSyntax *Params;
+  const ListSyntax *Params;
   gold::Scope *Scope = nullptr;
   clang::TemplateParameterList *ClangParamList;
 protected:
-  TemplateParamsDeclarator(DeclaratorKind DK, const ElemSyntax *ParamsNode,
+  TemplateParamsDeclarator(DeclaratorKind DK, const ListSyntax *ParamsNode,
                            gold::Scope *ParamScope,
                            Declarator *Next)
     :Declarator(DK, Next),
@@ -457,7 +457,7 @@ protected:
     ClangParamList(nullptr)
   { }
 public:
-  TemplateParamsDeclarator(const ElemSyntax *ParamsNode,
+  TemplateParamsDeclarator(const ListSyntax *ParamsNode,
                            gold::Scope *ParamScope,
                            Declarator *Next)
     :Declarator(DK_TemplateParams, Next),
@@ -466,7 +466,7 @@ public:
     ClangParamList(nullptr)
   { }
 
-  TemplateParamsDeclarator(const ElemSyntax *ParamsNode, Declarator *Next)
+  TemplateParamsDeclarator(const ListSyntax *ParamsNode, Declarator *Next)
     :TemplateParamsDeclarator(ParamsNode, nullptr, Next)
   { }
 

@@ -374,6 +374,14 @@ Syntax *Parser::parseExpr()
     if (Val == Syntax::error)
       return onError();
 
+    // Grammatically, the LHS of a mapping operator doesn't need to be a list,
+    // but we want it to be represented as though it was.
+    if (!isa<ListSyntax>(Def)) {
+      llvm::SmallVector<Syntax *, 1> Arg;
+      Arg.push_back(Def);
+      Def = onList(ArgArray, Arg);
+    }
+
     return onBinary(Op, Def, Val);
   }
 

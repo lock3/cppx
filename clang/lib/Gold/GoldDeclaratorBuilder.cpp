@@ -113,6 +113,19 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
   if (Op == FOK_Brackets)
     push(new ArrayDeclarator(S->getArgument(0), nullptr));
 
+  if (Op == FOK_Map) {
+    if (!isa<ListSyntax>(S->getArgument(0))) {
+      unsigned DiagID =
+        SemaRef.Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                      "unexpected template parameter list");
+      SemaRef.Diags.Report(S->getArgument(0)->getLoc(), DiagID);
+    } else {
+      buildTemplateParams(cast<ListSyntax>(S->getArgument(0)));
+    }
+
+    return VisitSyntax(S->getArgument(1));
+  }
+
   bool LeftOfRoot = isLeftOfRoot(NodeLabels, S);
   if (!LeftOfRoot && (isPostfixCaret(S) || Op == FOK_Caret))
     push(new PointerDeclarator(S->getArgument(0), nullptr));
@@ -305,9 +318,13 @@ void DeclaratorBuilder::buildFunction(const ListSyntax *S) {
   Cur->recordAttributes(S);
 }
 
-void DeclaratorBuilder::buildTemplateParams(const ElemSyntax *S) {
+void DeclaratorBuilder::buildTemplateParams(const ListSyntax *S) {
   push(new TemplateParamsDeclarator(S, nullptr));
   Cur->recordAttributes(S);
+}
+
+void DeclaratorBuilder::buildTemplateParams(const ElemSyntax *S) {
+  buildTemplateParams(cast<ListSyntax>(S->getArguments()));
 }
 
 void DeclaratorBuilder::buildSpecialization(const ElemSyntax *S) {

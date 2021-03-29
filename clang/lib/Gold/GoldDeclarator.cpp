@@ -301,7 +301,7 @@ const Syntax *TemplateParamsDeclarator::getSyntax() const {
 }
 
 const ListSyntax *TemplateParamsDeclarator::getParams() const {
-  return cast<ListSyntax>(Params->getArguments());
+  return Params;
 }
 
 // ------------------ ImplicitEmptyTemplateParamsDeclarator --------------------

@@ -155,6 +155,7 @@ private:
   void buildType(const Syntax *S);
   void buildArray(const Syntax *S);
   void buildTemplateParams(const ElemSyntax *S);
+  void buildTemplateParams(const ListSyntax *S);
   ImplicitEmptyTemplateParamsDeclarator *
   handleImplicitTemplateParams(const ElemSyntax *Owner, Declarator *Next);
 
