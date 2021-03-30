@@ -511,12 +511,22 @@ private:
   Syntax *Arg;
 };
 
+
+enum MarkupStyle {
+  MS_MarkdownStyle,
+  MS_HTMLStyle,
+  MS_ContentInTag,
+  MS_InName
+};
 struct MarkupSyntax : Syntax {
-  MarkupSyntax(Syntax *FusedName, Syntax *Block)
-    : Syntax(SK_Markup)
+  MarkupSyntax(MarkupStyle MS, Syntax *FusedName, Syntax *Block, Syntax *Attrs,
+               Syntax *EndingTagName)
+    : Syntax(SK_Markup), Style(MS)
   {
     Elems[0] = FusedName;
     Elems[1] = Block;
+    Elems[2] = Attrs;
+    Elems[3] = EndingTagName;
   }
 
   const Syntax *getName() const {
@@ -535,8 +545,36 @@ struct MarkupSyntax : Syntax {
     return Elems[1];
   }
 
+  void setBlock(Syntax *Block) {
+    Elems[1] = Block;
+  }
+
+  const Syntax *getOtherAttributes() const {
+    return Elems[2];
+  }
+
+  Syntax *getOtherAttributes() {
+    return Elems[2];
+  }
+
+  void setOtherAttributes(Syntax *OtherAttrs) {
+    Elems[2] = OtherAttrs;
+  }
+
+  const Syntax *getEndingTagName() const {
+    return Elems[3];
+  }
+
+  Syntax *getEndingTagName() {
+    return Elems[3];
+  }
+
+  void setEndingTagName(Syntax *endTagName) {
+    Elems[3] = endTagName;
+  }
+
   child_range children() {
-    return child_range(Elems.data(), Elems.data() + 3);
+    return child_range(Elems.data(), Elems.data() + 4);
   }
 
   const child_range children() const {
@@ -556,7 +594,14 @@ struct MarkupSyntax : Syntax {
     return getBlock()->getLoc();
   }
 
-  std::array<Syntax *, 2> Elems;
+  MarkupStyle getStyle() const {
+    return Style;
+  }
+  void setStyle(MarkupStyle MS) {
+    Style = MS;
+  }
+  MarkupStyle Style;
+  std::array<Syntax *, 4> Elems;
 };
 
 struct DocAttrSyntax : Syntax, VectorNode<Syntax>

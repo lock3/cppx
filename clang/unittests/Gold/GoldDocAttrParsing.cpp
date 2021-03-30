@@ -167,7 +167,7 @@ markup      <B,I:Hello>     macro, markup'B'{content=markup'I'{
 
 TEST(GoldDocAttr, Markup_HtmlStyleTags) {
   StringRef Code = R"GOLD(
-x:int <|<Markup>Feeling <B>bold</B>?</Markup>>
+x:int <|<Markup>Feeling <B>bold</B>?</Markup> >
 )GOLD";
   auto ToMatch = varDecl();
   ASSERT_TRUE(matches(Code.str(), ToMatch));

@@ -155,6 +155,28 @@ namespace gold
       return Tok;
     }
 
+    Token consumeTokenNoFetch() {
+      // Take the front token.
+      if (!FusionToks.empty()) {
+        Token Tok = FusionToks.front();
+        FusionToks.pop_front();
+        return Tok;
+      }
+
+      Token Tok = Toks.front();
+      Toks.pop_front();
+      if (!RawLexing) {
+        if (!Tok.hasKind(tok::Space))
+          PreviousToken = Tok;
+      }
+      //
+      // if (Toks.empty())
+      //   fetchToken();
+
+      LastTokWasClose = false;
+      return Tok;
+    }
+
     Token matchToken(TokenKind K)
     {
       if (nextTokenIs(K))
@@ -203,6 +225,10 @@ namespace gold
         return consumeToken();
       return {};
     }
+
+    Token expectTokenNoFetch(TokenKind K);
+
+    Token expectTokenNoFetch(char const* Id);
 
     Token expectToken(TokenKind K);
 
@@ -291,12 +317,13 @@ namespace gold
 
     // handle special parsing for documentation attributes.
     Syntax *parseDocAttr();
+    Syntax *parseTagName();
+    Syntax *parseHtmlBody();
+    Syntax *parseEndingTag();
+    Syntax *parseIndentedContent();
+    Syntax *parseInTagContent();
     Syntax *parseMarkupElement();
-    Syntax *parseMarkupFormattedBody();
     Syntax *parseMarkupWithComma();
-    Syntax *parseHtmlTags();
-    Syntax *parseIndentedTags();
-    Syntax *parseMarkdownTags();
     Syntax *parseStrInterpolationExprBraces();
     Syntax *parseStrInterpolationExprAmpersand();
 
@@ -304,7 +331,6 @@ namespace gold
 
   private:
     Attribute *parsePostAttr();
-
   public:
     Syntax *parsePrimary();
     Syntax *parseId();
@@ -337,7 +363,8 @@ namespace gold
     Syntax *onAtom(const Token &Tok);
     Syntax *onAtom(const Token &Tok, const tok::FusionKind K, Syntax *Data);
     Syntax *onDocAttr(const llvm::SmallVectorImpl<Syntax*>& Vec);
-    Syntax *onMarkup(Syntax *Name, Syntax *Block);
+    // Syntax *onMarkup(MarkupStyle S, Syntax *Name, Syntax *Content,
+    //                      Syntax *OtherBlock, Syntax *EndingTag);
     Syntax *onStringInterpolation(Syntax *Expr);
     Syntax *onText(const Token &Tok);
     Syntax *onLiteral(const Token& tok);
@@ -552,6 +579,7 @@ namespace gold
     // tokens being read accordingly.
     bool InsideDocAttr = false;
     bool RawLexing = false;
+    bool AllowEmitNonIndentSpaces = false;
     /// Block Scanner flags
     ///{
 

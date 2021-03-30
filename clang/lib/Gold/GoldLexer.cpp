@@ -201,6 +201,8 @@ Token CharacterScanner::operator()() {
         return matchToken(tok::LessEqual);
       else if (getLookahead(1) == '>')
         return matchToken(tok::LessGreater);
+      else if (getLookahead(1) == '/')
+        return matchToken(tok::LessSlash);
       else if (getLookahead(1) == '<') {
         if (getLookahead(2) == '=')
           return matchToken(tok::LessLessEqual);
@@ -237,7 +239,7 @@ Token CharacterScanner::operator()() {
 
     case '!':
       return matchToken(tok::Bang);
-    case '\\':
+    case '\\': {
       // Handling escaped characters?
       if (LexingString) {
         consume();
@@ -259,7 +261,7 @@ Token CharacterScanner::operator()() {
 
           default: {
             unsigned DiagID =
-              getDiagnostics().getCustomDiagID(clang::DiagnosticsEngine::Warning,
+              getDiagnostics().getCustomDiagID(clang::DiagnosticsEngine::Error,
                                               "invalid escaped string");
             getDiagnostics().Report(getInputLocation(), DiagID);
             consume();
@@ -267,6 +269,11 @@ Token CharacterScanner::operator()() {
           }
         }
         return makeToken(tok::EscapedStrChar, Start, 2);
+      }
+      unsigned DiagID =
+              getDiagnostics().getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                              "unexpected \\");
+            getDiagnostics().Report(getInputLocation(), DiagID);
       }
       break;
     case '\'':

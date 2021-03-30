@@ -60,6 +60,7 @@ def_puncop(At, "@")
 def_puncop(LessHash, "<#")
 def_puncop(LessBar, "<|")
 def_puncop(HashGreater, "#>")
+def_puncop(LessSlash, "</")
 
 def_puncop(EqualEqual, "==")
 def_puncop(BangEqual, "!=")

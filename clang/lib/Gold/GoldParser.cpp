@@ -39,7 +39,8 @@ enum Kind : unsigned
   Tabs,
   Angles,
   BlockComment,
-  DocAttr
+  DocAttr,
+  ClosingHTMLTag
 };
 } // namespace enc
 
@@ -54,6 +55,7 @@ TokenKind OpenTokens[]
   tok::Less,
   tok::LessHash,
   tok::LessBar,
+  tok::LessSlash,
 };
 
 TokenKind CloseTokens[]
@@ -65,10 +67,11 @@ TokenKind CloseTokens[]
   tok::Greater,
   tok::HashGreater,
   tok::Greater,
+  tok::Greater,
 };
 
 /// A class to help match enclosing tokens.
-template<EnclosureKind K>
+template<EnclosureKind K, bool NoFetchExpect = false>
 struct EnclosingTokens
 {
   EnclosingTokens(Parser& p)
@@ -97,6 +100,50 @@ struct EnclosingTokens
     }
 
     close = p.expectToken(CloseTokens[K]);
+    if (!close)
+    {
+      // FIXME: Emit a diagnostic.
+      // note(open.loc, "matching '{}'' here", spelling(open.kind()));
+    }
+    p.decrementEnclosureCount(K);
+    return (bool)close;
+  }
+
+  Parser& p;
+  Token open;
+  Token close;
+};
+
+
+template<EnclosureKind K>
+struct EnclosingTokens<K, true>
+{
+  EnclosingTokens(Parser& p)
+    : p(p)
+  { }
+
+  bool expectOpen()
+  {
+    open = p.expectTokenNoFetch(OpenTokens[K]);
+    if ((bool)open)
+      p.incrementEnclosureCount(K);
+    return (bool)open;
+  }
+
+  bool expectClose()
+  {
+    // Allow end-of-file where dedents are expected.
+    if (K == enc::Tabs)
+    {
+      if (p.atEndOfFile())
+      {
+        close = p.peekToken();
+        p.decrementEnclosureCount(K);
+        return true;
+      }
+    }
+
+    close = p.expectTokenNoFetch(CloseTokens[K]);
     if (!close)
     {
       // FIXME: Emit a diagnostic.
@@ -146,6 +193,10 @@ struct EnclosingDocAttr : EnclosingTokens<enc::DocAttr>
   using EnclosingTokens<enc::DocAttr>::EnclosingTokens;
 };
 
+struct EnclosingHtmlEndingTag : EnclosingTokens<enc::ClosingHTMLTag> {
+  using EnclosingTokens<enc::ClosingHTMLTag>::EnclosingTokens;
+};
+
 
 } // namespace
 
@@ -164,6 +215,9 @@ static Syntax *makeList(const SyntaxContext &Ctx,
                         std::initializer_list<Syntax *> List);
 
 static Attribute *makeAttr(const SyntaxContext &Ctx, Syntax *Arg);
+
+static Syntax *onMarkup(clang::ASTContext &Context, MarkupStyle S, Syntax *Name,
+                        Syntax *Content, Syntax *OtherBlock, Syntax *EndingTag);
 
 Parser::Parser(SyntaxContext &Context, clang::SourceManager &SM, File const& F,
                clang::Preprocessor &PP)
@@ -347,6 +401,11 @@ Token Parser::lineScannerFetch() {
 
     // Errors, space, and comments are discardable. If a token starts a
     // line, the next token will become the new start of line.
+    if (AllowEmitNonIndentSpaces) {
+      if (Tok.isSpace()) {
+        return Tok;
+      }
+    }
     if (Tok.isInvalid() || Tok.isSpace() || Tok.isComment()) {
       StartsLine = Tok.isAtStartOfLine();
       continue;
@@ -376,6 +435,21 @@ void Parser::fetchToken() {
   } else {
     Toks.push_back(blockScannerFetch());
   }
+}
+
+Token Parser::expectTokenNoFetch(TokenKind K) {
+  if (nextTokenIs(K))
+    return consumeTokenNoFetch();
+  char const* Spelling = getSpelling(K);
+  Diags.Report(getInputLocation(), clang::diag::err_expected) << Spelling;
+  return {};
+}
+
+Token Parser::expectTokenNoFetch(char const* Id) {
+  if (nextTokenIs(Id))
+    return consumeTokenNoFetch();
+  Diags.Report(getInputLocation(), clang::diag::err_expected) << Id;
+  return {};
 }
 
 
@@ -1223,12 +1297,12 @@ Syntax *Parser::parseIf()
   }
 
   // FIXME: only allow attributes here for `if:` style syntax.
- while (nextTokenIs(tok::Less))
+  while (nextTokenIs(tok::Less) || nextTokenIs(tok::LessBar))
     Attrs.push_back(parsePostAttr());
 
   Syntax *cond = nextTokenIs(tok::Colon) ? parseBlock() : parseParen();
 
-  while (nextTokenIs(tok::Less))
+  while (nextTokenIs(tok::Less) || nextTokenIs(tok::LessBar))
     Attrs.push_back(parsePostAttr());
 
   Syntax *then_block;
@@ -1342,7 +1416,7 @@ Syntax *Parser::parseLambda() {
   Syntax *Capture = nullptr, *Parms = nullptr, *Block = nullptr;
 
   llvm::SmallVector<Attribute *, 4> Attrs;
-  while (nextTokenIs(tok::Less))
+  while (nextTokenIs(tok::Less) || nextTokenIs(tok::LessBar))
     Attrs.push_back(parsePostAttr());
 
   Syntax *Templ = nullptr;
@@ -1639,12 +1713,15 @@ static void trackEnclosureDepth(Token Enclosure,
 /// Scan through tokens starting from a '<' and determine whether or not this
 /// is a comparison or attribute.
 bool Parser::scanAngles(Syntax *Base) {
+  auto PreviousStart = Lex.Scanner.Start;
+  std::size_t StartTokenDequeSize = Toks.size();
   std::size_t I = 0;
 
   // This came after a token that does not appear in base names.
   if (!PreviousToken.hasKind(tok::Identifier) &&
       !PreviousToken.hasKind(tok::Greater) &&
       !isNonAngleEnclosure(PreviousToken.getKind()))
+    // There is no need to reset here because we didn't do anything.
     return false;
 
   AngleBracketTracker::Loc PotentialBaseLoc{Base->getLoc(),
@@ -1652,19 +1729,26 @@ bool Parser::scanAngles(Syntax *Base) {
                                              Angles.EnclosureCounts[1],
                                              Angles.EnclosureCounts[2],
                                              Angles.EnclosureCounts[3]}};
-
+  auto ResetLexer = [&]() {
+    Toks.resize(StartTokenDequeSize);
+    Lex.Scanner.Start = PreviousStart;
+  };
   while (true) {
     Token Current = peekToken(I++);
 
     // Quit at the end of the line, or end of file in the case of the
     // rare one-line program.
-    if (Current.isNewline() || Current.isEndOfFile())
+    if (Current.isNewline() || Current.isEndOfFile()) {
+      ResetLexer();
       return false;
+    }
 
     // Newlines might be recognized as separators rather than newline tokens.
     if (Current.hasKind(tok::Separator))
-      if (*(Current.getSymbol().data()) == '\n')
+      if (*(Current.getSymbol().data()) == '\n') {
+        ResetLexer();
         return false;
+      }
 
     // If the programmer has used semicolons instead of newlines, we need
     // to be sure the semicolon is actually ending the line; in other words,
@@ -1675,8 +1759,10 @@ bool Parser::scanAngles(Syntax *Base) {
                                         Angles.EnclosureCounts[1],
                                         Angles.EnclosureCounts[2],
                                         Angles.EnclosureCounts[3]}};
-      if (SemiLoc == PotentialBaseLoc)
+      if (SemiLoc == PotentialBaseLoc) {
+        ResetLexer();
         return false;
+      }
       // We reached a semicolon in some sort of nested list (or typo). We
       // already know we don't care about this token so just skip ahead.
       continue;
@@ -1693,8 +1779,10 @@ bool Parser::scanAngles(Syntax *Base) {
          Current.hasKind(tok::GreaterEqual))) {
       finishPotentialAngleBracket(Current);
 
-      if (!Angles.isOpen())
+      if (!Angles.isOpen()) {
+        ResetLexer();
         return true;
+      }
     }
   }
 }
@@ -1853,20 +1941,19 @@ Syntax *Parser::parsePost()
     case tok::LeftBracket:
       e = parseElem(e);
       break;
-
+    case tok::LessBar:
+      e = parsePostAttr(e);
+      break;
     case tok::Less: {
-      if (getLookahead(1) == tok::Bar) {
-        // This is a doc attribute
-        e = parsePostAttr(e);
-      }else if (scanAngles(e))
+      if (scanAngles(e))
         e = parsePostAttr(e);
       else {
         Angles.clear();
         return e;
       }
-
       break;
     }
+
     case tok::Dot:
       e = parseDot(e);
       break;
@@ -1885,9 +1972,6 @@ Syntax *Parser::parsePost()
     case tok::OfKeyword:
       e = parseMacro();
       break;
-    case tok::LessHash:
-  
-      continue;
     default:
       return e;
     }
@@ -2033,23 +2117,22 @@ bool Parser::scanNNSPrefix() {
 }
 
 Attribute *Parser::parsePostAttr() {
+  if (getLookahead() == tok::LessBar) {
+    auto *DocAttr = parseDocAttr();
+    return makeAttr(Context, DocAttr);
+  }
   EnclosingAngles Angles(*this);
   if (!Angles.expectOpen())
     return nullptr;
-  Syntax *Arg = nullptr;
-  bool IsDocAttr = false;
+
   GreaterThanIsOperatorScope GTIOS(GreaterThanIsOperator, false);
-  if (nextTokenIs(tok::Bar)) {
-    IsDocAttr = true;
-    Arg = parseDocAttr();
-  } else {
-    AttributeScope AttrScope(InAttribute);
+  AttributeScope AttrScope(InAttribute);
 
-    // Don't parse an attribute if the angles are empty.
-    Arg = !(nextTokenIs(tok::Greater) || nextTokenIs(tok::GreaterEqual))
-      ? parseExpr() : nullptr;
+  // Don't parse an attribute if the angles are empty.
+  Syntax *Arg = !(nextTokenIs(tok::Greater) || nextTokenIs(tok::GreaterEqual))
+    ? parseExpr() : nullptr;
 
-  }
+
   // In the case where the user ended the attribute list with `>=`, such as
   // in `x<private>=0`, we use this dirthack to split >= back into
   // separate tokens.
@@ -2059,11 +2142,7 @@ Attribute *Parser::parsePostAttr() {
     Toks.emplace_front(tok::Equal, Loc, getSymbol("="));
     Toks.emplace_front(tok::Greater, Loc, getSymbol(">"));
   }
-  if (IsDocAttr) {
-    if (isa<ErrorSyntax>(Arg)) {
-      return makeAttr(Context, Arg);
-    }
-  }
+
   if (!Angles.expectClose())
     return makeAttr(Context, onError());
 
@@ -2083,264 +2162,402 @@ Syntax *Parser::parsePostAttr(Syntax *Pre) {
 
 
 Syntax *Parser::parseDocAttr() {
-  // llvm::SmallVector<Syntax *, 32> DocAttrParts;
-  // auto &CS = Lex.getCharScanner();
-  // auto BarTok = Toks.front();
-  // assert(BarTok.hasKind(tok::Bar) && " Invalid call to parse doc attr");
-  // Toks.pop_front();
-  // char NextCharacter = Lex.getNextNonWSChar();
-  // BooleanRAII InDocAttrTracking(this->InsideDocAttr, true);
-  // while(true) {
-  //   NextCharacter = Lex.getNextNonWSChar();
-  //   switch (NextCharacter) {
-  //     case '>':
-  //       // We have to consume the current character and put it back into the
-  //       // current token buffer because the token buffer should contain at
-  //       // least one token.
-  //       Toks.emplace_back(Lex());
-  //       return onDocAttr(DocAttrParts);
-  //     case '\0':{
+  EnclosingDocAttr DocAttrTracking(*this);
+  llvm::SmallVector<Syntax *, 32> DocAttrParts;
+  {
+    // BooleanRAII CharLexing(Lex.Scanner.LexSingleCharacter, true);
+    BooleanRAII InDocAttrTracking(InsideDocAttr, true);
+    BooleanRAII RawLexingTracking(RawLexing, true);
+    BooleanRAII StrLexing(Lex.Scanner.LexingString, true);
+    // Not sure if I need this yet.
+    // GreaterThanIsOperatorScope GTIOS(GreaterThanIsOperator, false);
+    if (!DocAttrTracking.expectOpen())
+      return onError();
+    bool ContinueDocAttr = true;
+    // assert(LessBarTok.hasKind(tok::LessBar) && "Invalid Document attribute.");
+    while(ContinueDocAttr) {
+      switch(getLookahead()) {
+        case tok::Less:
+          DocAttrParts.emplace_back(parseMarkupElement());
+          break;
+        case tok::Greater:
+          ContinueDocAttr = false;
+          break;
+        case tok::LeftBrace:
+          DocAttrParts.emplace_back(parseStrInterpolationExprBraces());
+          break;
 
-  //       // We will also need to creat the end of file token and push it onto the
-  //       // stack.
-  //       Toks.emplace_back(Lex());
-  //       unsigned DiagID =
-  //         Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-  //                               "unexpected end of file");
-  //       Diags.Report(Toks.front().getLocation(), DiagID);
-  //       return onError();
-  //     }
-  //     // \, {, }, #, <, >, &, ~
-  //     case '{':{
-  //       DocAttrParts.emplace_back(parseStrInterpolationExprBraces());
-  //       continue;
-  //     }
-  //     case '}':
-  //       // This might be an error?
-  //       llvm_unreachable("Errant } within code this needs an error message");
+        // Comments are ignored in this context also?...
+        // case tok::Hash:
+        //   llvm_unreachable("Line comment inside of doc attribute not implemented yet.");
+        //   break;
+        // case tok::LessHash:
+        //   llvm_unreachable("Block comment inside of doc attributes not implemented yet");
+          // break;
+        case tok::Ampersand:{
+          DocAttrParts.emplace_back(parseStrInterpolationExprAmpersand());
+        }
+          break;
 
-  //     case '&': {
-  //       DocAttrParts.emplace_back(parseStrInterpolationExprAmpersand());
-  //       continue;
-  //     }
-  //     case '<': {
-  //       // If the next character is # then we have a commnet and we can lex without
-  //       // having to care about anything else.
-  //       if (*(CS.First + 1) == '#') {
-  //         auto CommentTok = CS();
-  //         if (!CommentTok.hasKind(tok::BlockComment)) {
-  //           Diags.Report(CommentTok.getLocation(), clang::diag::err_expected)
-  //               << "#>";
-  //           Toks.emplace_back(CS());
-  //           return onError();
-  //         }
-  //         continue;
-  //       } else {
-  //         // Preload the next token.
-  //         Toks.emplace_back(Lex());
-  //         DocAttrParts.emplace_back(parseMarkupElement());
-  //       }
-  //     }
-  //     break;
-  //     case '#':
-  //       llvm_unreachable("Line comments not implemented yet.");
-  //     case '~':{
-  //       // FIXME: Before we leave here we have to make sure that we put a token into
-  //       // the token buffer.
-  //       llvm_unreachable("Nested elements not implemented yet.");
-  //     }
-  //     case '\\': {
-  //       // these mean we have something else next and we shouldn't parse this?
-  //       // Depending on context this could cause problems.
-  //       BooleanRAII LexeringDocText(CS.TextTokenMode, true);
-  //       auto TempTok = Lex();
-  //       assert(TempTok.hasKind(tok::EscapedTextChar) && "Invalid token returned from lexer");
-  //       DocAttrParts.emplace_back(onText(TempTok));
-  //       break;
-  //     }
-  //     default: {
-  //       // Doing special lexing.
-  //       BooleanRAII LexeringDocText(CS.TextTokenMode, true);
-  //       auto TempTok = Lex();
-  //       assert(TempTok.hasKind(tok::Text) && "Invalid token returned from lexer");
-  //       DocAttrParts.emplace_back(onText(TempTok));
-  //     }
-  //   }
-  // }
-  // This can logically never happen.
-  llvm_unreachable("parseDocAttr is broken");
+        case tok::EndOfFile:
+          ContinueDocAttr = false;
+          break;
+
+        case tok::LessBar:
+          DocAttrParts.emplace_back(parseDocAttr());
+          break;
+
+        default:
+          DocAttrParts.emplace_back(onText(consumeToken()));
+          break;
+      }
+    }
+  }
+
+  // There are only 2 one is as an error where we reached the end of a file.
+  // the other is that we reached a >, otherwise this function is greedy and
+  // consumes everything. Including things inside of itself.
+  if (getLookahead() == tok::EndOfFile) {
+    Toks.emplace_back(Lex());
+    unsigned DiagID =
+      Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                            "unexpected end of file");
+    Diags.Report(Toks.front().getLocation(), DiagID);
+    return onError();
+  }
+
+  if (!DocAttrTracking.expectClose())
+    return onError();
+
+  return onDocAttr(DocAttrParts);
 }
 
-Syntax *Parser::parseMarkupFormattedBody() {
-  // llvm::SmallVector<Syntax *, 32> BlockContents;
-  // auto &CS = Lex.getCharScanner();
-  // Toks.pop_front();
-  // char NextCharacter = Lex.getNextNonWSChar();
-  // BooleanRAII InDocAttrTracking(this->InsideDocAttr, true);
-  // while(true) {
-  //   NextCharacter = Lex.getNextNonWSChar();
-  //   switch (NextCharacter) {
-  //     case ',':
-  //     case '>':
-  //       // We have to consume the current character and put it back into the
-  //       // current token buffer because the token buffer should contain at
-  //       // least one token.
-  //       Toks.emplace_back(Lex());
-  //       return onDocAttr(BlockContents);
-  //     case '\0': {
-  //       Toks.emplace_back(Lex());
-  //       unsigned DiagID =
-  //         Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-  //                               "unexpected end of file");
-  //       Diags.Report(Toks.front().getLocation(), DiagID);
-  //       return onError();
-  //     }
-  //     // \, {, }, #, <, >, &, ~
-  //     case '{':{
-  //       BlockContents.emplace_back(parseStrInterpolationExprBraces());
-  //       continue;
-  //     }
-  //     case '}':
-  //       // This might be an error?
-  //       llvm_unreachable("Errant } within code this needs an error message");
+Syntax *Parser::parseTagName() {
+  Syntax *e = parsePrimary();
+  while (true)
+  {
+    switch (getLookahead())
+    {
+    case tok::LeftBrace:{
+        Syntax *OtherAttributes = parseBracedArray();
+        e = onMarkup(Context.CxxAST, MS_InName, e, nullptr, OtherAttributes, nullptr);
+      }
+      break;
+    case tok::LeftParen:
+      e = parseCall(e);
+      break;
 
-  //     case '&': {
-  //       BlockContents.emplace_back(parseStrInterpolationExprAmpersand());
-  //       continue;
-  //     }
-  //     case '<': {
-  //       // If the next character is # then we have a commnet and we can lex without
-  //       // having to care about anything else.
-  //       if (*(CS.First + 1) == '#') {
-  //         auto CommentTok = CS();
-  //         if (!CommentTok.hasKind(tok::BlockComment)) {
-  //           Diags.Report(CommentTok.getLocation(), clang::diag::err_expected)
-  //               << "#>";
-  //           Toks.emplace_back(CS());
-  //           return onError();
-  //         }
-  //         continue;
-  //       } else {
-  //         // Preload the next token.
-  //         Toks.emplace_back(Lex());
-  //         BlockContents.emplace_back(parseMarkupElement());
-  //       }
-  //     }
-  //     break;
-  //     case '#':
-  //       llvm_unreachable("Line comments not implemented yet.");
-  //     case '~':{
-  //       // FIXME: Before we leave here we have to make sure that we put a token into
-  //       // the token buffer.
-  //       llvm_unreachable("Nested elements not implemented yet.");
-  //     }
-  //     case '\\': {
-  //       // these mean we have something else next and we shouldn't parse this?
-  //       // Depending on context this could cause problems.
-  //       BooleanRAII LexeringDocText(CS.TextTokenMode, true);
-  //       auto TempTok = Lex();
-  //       assert(TempTok.hasKind(tok::EscapedTextChar) && "Invalid token returned from lexer");
-  //       BlockContents.emplace_back(onText(TempTok));
-  //       break;
-  //     }
-  //     default: {
-  //       // Doing special lexing.
-  //       BooleanRAII LexeringDocText(CS.TextTokenMode, true);
-  //       auto TempTok = Lex();
-  //       assert(TempTok.hasKind(tok::Text) && "Invalid token returned from lexer");
-  //       BlockContents.emplace_back(onText(TempTok));
-  //     }
-  //   }
-  // }
-  llvm_unreachable("parseMarkupFormattedBody is broken");
+    case tok::LeftBracket:
+      e = parseElem(e);
+      break;
+    case tok::LessBar:
+      e = parsePostAttr(e);
+      break;
+    case tok::Less: {
+      if (scanAngles(e))
+        e = parsePostAttr(e);
+      else {
+        Angles.clear();
+        return e;
+      }
+      break;
+    }
+
+    case tok::Dot:
+      e = parseDot(e);
+      break;
+
+    case tok::DotCaret:
+      e = parseDotCaret(e);
+      break;
+
+    case tok::Question:
+    // case tok::Caret:
+    // case tok::At:
+      llvm_unreachable("suffix operators not implemented");
+      consumeToken();
+      break;
+
+    case tok::OfKeyword:
+      e = parseMacro();
+      break;
+    default:
+      return e;
+    }
+  }
+
+  // We should never reach this point.
+  assert(false);
+  return nullptr;
 }
-
 
 Syntax *Parser::parseMarkupElement() {
-  // EnclosingAngles Angles(*this);
-  // if (!Angles.expectOpen())
-  //   return onError();
+  EnclosingAngles Angles(*this);
+  MarkupSyntax *MarkupTag = nullptr;
+  MarkupStyle Style = MS_MarkdownStyle;
+  Syntax *ContentBlock = nullptr;
+  Syntax *EndingHTMLTag = nullptr;
+  Syntax *Name = nullptr;
+  {
+    BooleanRAII RawLexingTracking(RawLexing, false);
+    BooleanRAII StrLexing(Lex.Scanner.LexingString, false);
+    if (!Angles.expectOpen())
+      return onError();
 
-  // // Disable the greater than operator.
-  // GreaterThanIsOperatorScope GTIOS(GreaterThanIsOperator, false);
+    Name = parseTagName();
 
-  // // Get internal state of things.
-  // Syntax *TagNameExpr = parsePost();
-  // if (!TagNameExpr) {
-  //   return onError();
-  // }
+    switch(getLookahead()) {
+      case tok::ColonGreater:
+        Style = MS_MarkdownStyle;
+        ContentBlock = parseIndentedContent();
+        break;
+      case tok::Colon:
+        Style = MS_ContentInTag;
+        ContentBlock = parseInTagContent();
+        break;
+      case tok::Comma:
+        ContentBlock = parseMarkupWithComma();
+        Style = MS_ContentInTag;
+        break;
+      case tok::Greater:
+        {
+          {
+            Style = MS_HTMLStyle;
+            BooleanRAII BodyParseTracking(RawLexing, true);
+            BooleanRAII AllowEscapedChar(Lex.Scanner.LexingString, true);
+            // Consuming the end of the initial tag.
+            if (!Angles.expectClose())
+              return onError();
+            ContentBlock = parseHtmlBody();
+          }
+          EndingHTMLTag = parseEndingTag();
+        }
+        break;
+      default:
+        llvm::outs() << "Un expected token! = " << getDisplayName(getLookahead()) << " " << peekToken().getSpelling() << "\n";
+        llvm_unreachable("Unreachable code some how reached.");
+    }
+  }
 
-  // // This means we have another kind of attributes?
-  // if (nextTokenIs(tok::LeftBrace)) {
-  //   llvm_unreachable("Block with internal style? not implemented yet.");
-  // }
+  // Making sure to restore the previous lexing context before continuing.
+  if (Style != MS_HTMLStyle && Style != MS_MarkdownStyle
+      && !Angles.expectClose())
+    return onError();
 
-  // Syntax *Content = nullptr;
-  // // This means we are in HTML format maybe?
-  // if (nextTokenIs(tok::Greater)) {
-  //   Content = parseHtmlTags();
-  // } else if (nextTokenIs(tok::Comma)) {
-  //   llvm_unreachable("Markdown format with something special?");
-  // } else if (nextTokenIs(tok::ColonGreater)) {
-  //   Content = parseIndentedTags();
-  // } else if (nextTokenIs(tok::Colon)) {
-  //   Content = parseMarkdownTags();
-  // } else {
-  //   llvm_unreachable("Unknown tag format?");
-  // }
-
-  // if (!Angles.expectClose())
-  //   return onError();
-
-  // return onMarkup(TagNameExpr, Content);
-  llvm_unreachable("parseMarkupElement is broken");
+  if ((MarkupTag = dyn_cast<MarkupSyntax>(Name))) {
+    MarkupTag->setStyle(Style);
+    MarkupTag->setBlock(ContentBlock);
+    MarkupTag->setEndingTagName(EndingHTMLTag);
+    return MarkupTag;
+  }
+  return onMarkup(Context.CxxAST, Style, Name, ContentBlock,
+                  nullptr, EndingHTMLTag);
 }
 
-Syntax *Parser::parseHtmlTags() {
-  llvm_unreachable("parseHtmlTags Not implemented yet");
+
+Syntax *Parser::parseHtmlBody() {
+  llvm::SmallVector<Syntax *, 64> TagContents;
+  while(true) {
+    switch(getLookahead()) {
+      case tok::Less:
+        TagContents.emplace_back(parseMarkupElement());
+        break;
+      case tok::LessHash:
+        parseComment();
+        break;
+      case tok::LessSlash:
+        // Don't consume that means we have an ending tag at the same level
+        // as we are.
+        return onArray(ArraySemantic::BlockArray, TagContents);
+      case tok::LeftBrace:
+        TagContents.emplace_back(parseStrInterpolationExprBraces());
+        break;
+      case tok::Ampersand:
+        TagContents.emplace_back(parseStrInterpolationExprAmpersand());
+        break;
+      case tok::EndOfFile:{
+        unsigned DiagID =
+          Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                "unexpected end of file");
+        Diags.Report(Toks.front().getLocation(), DiagID);
+        return onError();
+      }
+      break;
+      default:
+        TagContents.emplace_back(onAtom(consumeToken()));
+    }
+  }
 }
 
-Syntax *Parser::parseIndentedTags() {
-  llvm_unreachable("parseIndentedTags Not implemented yet");
+Syntax *Parser::parseEndingTag() {
+  EnclosingHtmlEndingTag EndingTag(*this);
+  if (!EndingTag.expectOpen())
+    return onError();
+
+  Syntax *Name = parseTagName();
+
+  if (!EndingTag.expectClose())
+    return onError();
+
+  return Name;
 }
 
-Syntax *Parser::parseMarkdownTags() {
-  llvm_unreachable("parseMarkdownTags Not implemented yet");
+Syntax *Parser::parseIndentedContent() {
+  EnclosingTabs Tabs(*this);
+  llvm::SmallVector<Syntax *, 64> TagContents;
+  {
+
+    BooleanRAII RawLexingTracking(RawLexing, false);
+    BooleanRAII StrLexing(Lex.Scanner.LexingString, false);
+    // Reading the :> token
+    consumeToken();
+    if (!Tabs.expectOpen())
+      return onError();
+    bool KeepConsuming = true;
+    BooleanRAII AllowSpecialWhitespcae(AllowEmitNonIndentSpaces, true);
+    while(KeepConsuming) {
+      switch(getLookahead()) {
+      case tok::Dedent:
+        KeepConsuming = false;
+        break;
+      case tok::Less:
+        TagContents.emplace_back(parseMarkupElement());
+        break;
+      case tok::LessHash:
+        parseComment();
+        break;
+      case tok::LeftBrace:
+        TagContents.emplace_back(parseStrInterpolationExprBraces());
+        break;
+      case tok::Ampersand:
+        TagContents.emplace_back(parseStrInterpolationExprAmpersand());
+        break;
+      case tok::EndOfFile:{
+        unsigned DiagID =
+          Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                "unexpected end of file");
+        Diags.Report(Toks.front().getLocation(), DiagID);
+        return onError();
+      }
+      break;
+      default:
+        TagContents.emplace_back(onAtom(consumeToken()));
+      }
+    }
+  }
+
+  if (!Tabs.expectClose())
+    return onError();
+
+  return onArray(ArraySemantic::BlockArray, TagContents);
+}
+
+Syntax *Parser::parseInTagContent() {
+  llvm::SmallVector<Syntax *, 64> TagContents;
+  while(true) {
+    switch(getLookahead()) {
+      case tok::Less:
+        TagContents.emplace_back(parseMarkupElement());
+        break;
+      case tok::Greater:
+        return onArray(ArraySemantic::BlockArray, TagContents);
+      case tok::LessHash:
+        parseComment();
+        break;
+      case tok::LessSlash:
+        // Don't consume that means we have an ending tag at the same level
+        // as we are.
+        return onArray(ArraySemantic::BlockArray, TagContents);
+      case tok::LeftBrace:
+        TagContents.emplace_back(parseStrInterpolationExprBraces());
+        break;
+      case tok::Ampersand:
+        TagContents.emplace_back(parseStrInterpolationExprAmpersand());
+        break;
+      case tok::EndOfFile:{
+        unsigned DiagID =
+          Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                "unexpected end of file");
+        Diags.Report(Toks.front().getLocation(), DiagID);
+        return onError();
+      }
+      break;
+      default:
+        TagContents.emplace_back(onAtom(consumeToken()));
+    }
+  }
 }
 
 Syntax *Parser::parseMarkupWithComma() {
-  llvm_unreachable("parseMarkupWithComma Not implemented yet");
+  llvm::SmallVector<Syntax *, 64> TagContents;
+  while(true) {
+    switch(getLookahead()) {
+      case tok::Less:
+        TagContents.emplace_back(parseMarkupElement());
+        break;
+      case tok::LessHash:
+        parseComment();
+        break;
+      case tok::Greater:
+        return onArray(ArraySemantic::BlockArray, TagContents);
+      case tok::LeftBrace:
+        TagContents.emplace_back(parseStrInterpolationExprBraces());
+        break;
+      case tok::Ampersand:
+        TagContents.emplace_back(parseStrInterpolationExprAmpersand());
+        break;
+      case tok::EndOfFile:{
+        unsigned DiagID =
+          Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                "unexpected end of file");
+        Diags.Report(Toks.front().getLocation(), DiagID);
+        return onError();
+      }
+      break;
+      default:
+        TagContents.emplace_back(onAtom(consumeToken()));
+    }
+  }
 }
 
 Syntax *Parser::parseStrInterpolationExprBraces() {
-  llvm_unreachable("Working on parseStrInterpolationExprBraces");
+  EnclosingBraces Braces(*this);
+  Syntax *Body = nullptr;
+  {
+    if (!Braces.expectOpen())
+      return onError();
+
+    Body = parseArray(ArraySemantic::BlockArray);
+  }
+  if (!Braces.expectClose())
+    return onError();
+
+  return onStringInterpolation(Body);
 }
 
 Syntax *Parser::parseStrInterpolationExprAmpersand() {
   // Reading the ampersand.
-  Toks.emplace_back(Lex());
-  auto AmpTok = Toks.front();
-  assert(AmpTok.hasKind(tok::Ampersand)
-         && "Expected ampersand");
-  // Consuming the ampersand
-  Toks.pop_back();
-  // Pre-loading the expression in an attempt to contiue as normal.
-  Toks.emplace_back(Lex());
-  Syntax *E = parseExpr();
-  if (!E) {
-    return onError();
-  }
-  // Making sure that we have a semi-colon.
-  if (!Toks.front().hasKind(tok::Semicolon)) {
-    // This means we have error!!!
-    Diags.Report(getInputLocation(), clang::diag::err_expected)
-        << ";";
-    consumeToken();
-    return onError();
+  Syntax *E = nullptr;
+  {
+    BooleanRAII RawLexingTracking(RawLexing, false);
+    BooleanRAII StrLexing(Lex.Scanner.LexingString, false);
+    Token Ampersand = consumeToken();
+    E = parseExpr();
+    if (!E) {
+      E = onError();
+    }
   }
 
-  // Pretending to consume the token without reading the next one.
-  Toks.pop_back();
+  if (getLookahead() == tok::EndOfFile) {
+    unsigned DiagID =
+      Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                            "unexpected end of file");
+    Diags.Report(Toks.front().getLocation(), DiagID);
+    E = onError();
+  } else if (getLookahead() != tok::Semicolon) {
+    Diags.Report(getInputLocation(), clang::diag::err_expected)
+        << "';'";
+  }
   return onStringInterpolation(E);
 }
 
@@ -2351,14 +2568,6 @@ static inline bool isKeyword(TokenKind K) {
 
 Syntax *Parser::parsePrimary() {
   switch (getLookahead()) {
-  // case tok::Space:
-  // case tok::LessHash:
-  //   parseWhitespaceOrBlockComment();
-  //   if (getLookahead() == tok::Newline){
-  //     return nullptr;
-  //   }
-  //   return parsePrimary();
-
   case tok::Identifier:
     return parseId();
 
@@ -2402,7 +2611,6 @@ Syntax *Parser::parsePrimary() {
   case tok::FalseKeyword:
   case tok::NullKeyword:
   case tok::NullTKeyword:
-  // case tok::String:
   case tok::BinaryInteger:
   case tok::DecimalInteger:
   case tok::HexadecimalInteger:
@@ -2498,7 +2706,6 @@ Syntax *Parser::parseCharacter() {
 }
 
 Syntax *Parser::parseString() {
-  llvm::outs() << "Called parse string!\n";
   BooleanRAII RawLexingTracking(RawLexing, true);
   BooleanRAII CharLexing(Lex.Scanner.LexingString, true);
   Token DQOpen = consumeToken();
@@ -2508,7 +2715,6 @@ Syntax *Parser::parseString() {
         && getLookahead() != tok::DoubleQuote
         && getLookahead() != tok::Newline) {
     Current = consumeToken();
-    llvm::outs() << "Reading string! " << Current.getSpelling() << " " << getDisplayName(Current.getKind()) << "\n";
     buffer += Current.getSpelling();
   }
   buffer += "\"";
@@ -2522,17 +2728,16 @@ Syntax *Parser::parseString() {
     Diags.Report(DQOpen.getLocation(), DiagID);
     return onError();
   }
-  // if (getLookahead() != tok::DoubleQuote) {
-  //   unsigned DiagID =
-  //     Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-  //                           "unexpected end of string");
-  //   Diags.Report(DQOpen.getLocation(), DiagID);
-  //   return onError();
-  // }
+  if (getLookahead() != tok::DoubleQuote) {
+    unsigned DiagID =
+      Diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                            "unexpected end of string");
+    Diags.Report(DQOpen.getLocation(), DiagID);
+    return onError();
+  }
   // Consuming the final double quotation
   Current = consumeToken();
   Symbol Sym = getSymbol(buffer);
-  llvm::outs() << "Dumping string body = " << buffer << "\n";
   Token Tok(tok::String, DQOpen.getLocation(), Sym);
   return onLiteral(Tok);
 }
@@ -2540,8 +2745,8 @@ Syntax *Parser::parseString() {
 // braced-array:
 //    { array }
 Syntax *Parser::parseBracedArray() {
-  EnclosingBraces braces(*this);
-  if (!braces.expectOpen())
+  EnclosingBraces Braces(*this);
+  if (!Braces.expectOpen())
     return onError();
 
   // If the block contains nothing but separators, create an empty array.
@@ -2558,7 +2763,7 @@ Syntax *Parser::parseBracedArray() {
 
   if (nextTokenIs(tok::RightBrace)) {
   RIGHT_BRACE:
-    braces.expectClose();
+    Braces.expectClose();
     llvm::SmallVector<Syntax *, 1> Vec;
     return onArray(BlockArray, Vec);
   }
@@ -2574,6 +2779,7 @@ Syntax *Parser::parseBracedArray() {
   // They are not relevant.
   while (nextTokenIs(tok::Indent))
     consumeToken();
+
   Syntax *ret = nullptr;
   if (!nextTokenIs(tok::RightBrace)) {
 
@@ -2589,7 +2795,7 @@ Syntax *Parser::parseBracedArray() {
   while (nextTokenIs(tok::Dedent))
     consumeToken();
 
-  if (!braces.expectClose())
+  if (!Braces.expectClose())
     return onError();
 
   return ret;
@@ -2776,8 +2982,9 @@ Syntax *Parser::onDocAttr(const llvm::SmallVectorImpl<Syntax*>& Vec) {
   return new (Context) DocAttrSyntax(createArray(Context, Vec), Vec.size());
 }
 
-Syntax *Parser::onMarkup(Syntax *Name, Syntax *Block) {
-  return new (Context) MarkupSyntax(Name, Block);
+Syntax *onMarkup(clang::ASTContext &Context, MarkupStyle S, Syntax *Name, Syntax *Content,
+                         Syntax *OtherBlock, Syntax *EndingTag) {
+  return new (Context) MarkupSyntax(S, Name, Content, OtherBlock, EndingTag);
 }
 
 Syntax *Parser::onStringInterpolation(Syntax *Expr) {
