@@ -1713,8 +1713,8 @@ static void trackEnclosureDepth(Token Enclosure,
 /// Scan through tokens starting from a '<' and determine whether or not this
 /// is a comparison or attribute.
 bool Parser::scanAngles(Syntax *Base) {
-  auto PreviousStart = Lex.Scanner.Start;
-  std::size_t StartTokenDequeSize = Toks.size();
+  // auto PreviousStart = Lex.Scanner.Start;
+  // std::size_t StartTokenDequeSize = Toks.size();
   std::size_t I = 0;
 
   // This came after a token that does not appear in base names.
@@ -1729,26 +1729,22 @@ bool Parser::scanAngles(Syntax *Base) {
                                              Angles.EnclosureCounts[1],
                                              Angles.EnclosureCounts[2],
                                              Angles.EnclosureCounts[3]}};
-  auto ResetLexer = [&]() {
-    Toks.resize(StartTokenDequeSize);
-    Lex.Scanner.Start = PreviousStart;
-  };
+  // auto ResetLexer = [&]() {
+  //   Toks.resize(StartTokenDequeSize);
+  //   Lex.Scanner.Start = PreviousStart;
+  // };
   while (true) {
     Token Current = peekToken(I++);
 
     // Quit at the end of the line, or end of file in the case of the
     // rare one-line program.
-    if (Current.isNewline() || Current.isEndOfFile()) {
-      ResetLexer();
+    if (Current.isNewline() || Current.isEndOfFile())
       return false;
-    }
 
     // Newlines might be recognized as separators rather than newline tokens.
     if (Current.hasKind(tok::Separator))
-      if (*(Current.getSymbol().data()) == '\n') {
-        ResetLexer();
+      if (*(Current.getSymbol().data()) == '\n')
         return false;
-      }
 
     // If the programmer has used semicolons instead of newlines, we need
     // to be sure the semicolon is actually ending the line; in other words,
@@ -1759,10 +1755,9 @@ bool Parser::scanAngles(Syntax *Base) {
                                         Angles.EnclosureCounts[1],
                                         Angles.EnclosureCounts[2],
                                         Angles.EnclosureCounts[3]}};
-      if (SemiLoc == PotentialBaseLoc) {
-        ResetLexer();
+      if (SemiLoc == PotentialBaseLoc)
         return false;
-      }
+
       // We reached a semicolon in some sort of nested list (or typo). We
       // already know we don't care about this token so just skip ahead.
       continue;
@@ -1779,10 +1774,8 @@ bool Parser::scanAngles(Syntax *Base) {
          Current.hasKind(tok::GreaterEqual))) {
       finishPotentialAngleBracket(Current);
 
-      if (!Angles.isOpen()) {
-        ResetLexer();
+      if (!Angles.isOpen())
         return true;
-      }
     }
   }
 }
@@ -2582,7 +2575,8 @@ Syntax *Parser::parsePrimary() {
     assert(InAttribute && "unary keyword should not be a primary expression "
            "outside of attributes");
     return onAtom(consumeToken());
-
+  case tok::Less:
+    return parseMarkupElement();
   case tok::LeftParen:{
     FoldKind ScanResult = scanForFoldExpr();
     if (ScanResult != FK_None)

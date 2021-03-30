@@ -230,56 +230,56 @@ comment
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-TEST(GoldComment_Line, Location_VariableDecl_AfterIdentifier) {
-  StringRef Code = R"GOLD(
-x # Comment
-: int
-)GOLD";
-  auto ToMatch = varDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_VariableDecl_AfterIdentifier) {
+//   StringRef Code = R"GOLD(
+// x # Comment
+// : int
+// )GOLD";
+//   auto ToMatch = varDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_VariableDecl_AfterColon) {
-  StringRef Code = R"GOLD(
-x :# Comment
-int
-)GOLD";
-  auto ToMatch = varDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_VariableDecl_AfterColon) {
+//   StringRef Code = R"GOLD(
+// x :# Comment
+// int
+// )GOLD";
+//   auto ToMatch = varDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_VariableDecl_AfterType) {
-  StringRef Code = R"GOLD(
-x : int # Comment
-)GOLD";
-  auto ToMatch = varDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_VariableDecl_AfterType) {
+//   StringRef Code = R"GOLD(
+// x : int # Comment
+// )GOLD";
+//   auto ToMatch = varDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_VariableDecl_BeforeAssignment) {
-  StringRef Code = R"GOLD(
-x : int # Comment
-= 5
-)GOLD";
-  auto ToMatch = varDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_VariableDecl_BeforeAssignment) {
+//   StringRef Code = R"GOLD(
+// x : int # Comment
+// = 5
+// )GOLD";
+//   auto ToMatch = varDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_VariableDecl_AfterAssignment) {
-  StringRef Code = R"GOLD(
-x : int = 5 # Comment
-)GOLD";
-  auto ToMatch = varDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_VariableDecl_AfterAssignment) {
+//   StringRef Code = R"GOLD(
+// x : int = 5 # Comment
+// )GOLD";
+//   auto ToMatch = varDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_VariableDecl_AfterExpression) {
-  StringRef Code = R"GOLD(
-x : int = 5 # Comment
-)GOLD";
-  auto ToMatch = varDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_VariableDecl_AfterExpression) {
+//   StringRef Code = R"GOLD(
+// x : int = 5 # Comment
+// )GOLD";
+//   auto ToMatch = varDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
 
 // -----------------------------------------------------------------------------
@@ -328,52 +328,52 @@ x () : void <# comment #>;
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-TEST(GoldComment_Line, Location_FunctionDecl_AfterIdentifier) {
-  StringRef Code = R"GOLD(
-x # Comment
-() : void;
+// TEST(GoldComment_Line, Location_FunctionDecl_AfterIdentifier) {
+//   StringRef Code = R"GOLD(
+// x # Comment
+// () : void;
 
-)GOLD";
-  auto ToMatch = functionDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// )GOLD";
+//   auto ToMatch = functionDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_FunctionDecl_InsideEmptyParameters) {
-  StringRef Code = R"GOLD(
-x (# Comment
-) : void;
-)GOLD";
-  auto ToMatch = functionDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_FunctionDecl_InsideEmptyParameters) {
+//   StringRef Code = R"GOLD(
+// x (# Comment
+// ) : void;
+// )GOLD";
+//   auto ToMatch = functionDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_FunctionDecl_AfterParameters) {
-  StringRef Code = R"GOLD(
-x ()# Comment
-: void;
-)GOLD";
-  auto ToMatch = functionDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_FunctionDecl_AfterParameters) {
+//   StringRef Code = R"GOLD(
+// x ()# Comment
+// : void;
+// )GOLD";
+//   auto ToMatch = functionDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_FunctionDecl_AfterColon) {
-  StringRef Code = R"GOLD(
-x () : # comment
-void;
+// TEST(GoldComment_Line, Location_FunctionDecl_AfterColon) {
+//   StringRef Code = R"GOLD(
+// x () : # comment
+// void;
 
-)GOLD";
-  auto ToMatch = functionDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// )GOLD";
+//   auto ToMatch = functionDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_FunctionDecl_AfterReturnType) {
-  StringRef Code = R"GOLD(
-x () : void # comment
+// TEST(GoldComment_Line, Location_FunctionDecl_AfterReturnType) {
+//   StringRef Code = R"GOLD(
+// x () : void # comment
 
-)GOLD";
-  auto ToMatch = functionDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// )GOLD";
+//   auto ToMatch = functionDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
 
 // --- ParmVarDecl ----
@@ -476,77 +476,77 @@ x (y:int,<# comment #> z:int) : void;
 //   ASSERT_TRUE(matches(Code.str(), ToMatch));
 // }
 
-TEST(GoldComment_Line, Location_ParmVarDecl_AfterIdentifierBeforeColon) {
-  StringRef Code = R"GOLD(
-x (y # comment
-:int) : void;
-)GOLD";
-  auto ToMatch = functionDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_ParmVarDecl_AfterIdentifierBeforeColon) {
+//   StringRef Code = R"GOLD(
+// x (y # comment
+// :int) : void;
+// )GOLD";
+//   auto ToMatch = functionDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_ParmVarDecl_AfterColon) {
-  StringRef Code = R"GOLD(
-x (y:# comment
-int) : void;
-)GOLD";
-  auto ToMatch = functionDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_ParmVarDecl_AfterColon) {
+//   StringRef Code = R"GOLD(
+// x (y:# comment
+// int) : void;
+// )GOLD";
+//   auto ToMatch = functionDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_ParmVarDecl_AfterType) {
-  StringRef Code = R"GOLD(
-x (y:int # comment
-) : void;
-)GOLD";
-  auto ToMatch = functionDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_ParmVarDecl_AfterType) {
+//   StringRef Code = R"GOLD(
+// x (y:int # comment
+// ) : void;
+// )GOLD";
+//   auto ToMatch = functionDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_ParmVarDecl_BeforeAssignment) {
-  StringRef Code = R"GOLD(
-x (y:int # comment
-= 5) : void;
-)GOLD";
-  auto ToMatch = functionDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_ParmVarDecl_BeforeAssignment) {
+//   StringRef Code = R"GOLD(
+// x (y:int # comment
+// = 5) : void;
+// )GOLD";
+//   auto ToMatch = functionDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_ParmVarDecl_AfterAssignment) {
-  StringRef Code = R"GOLD(
-x (y:int = # comment
-    5) : void;
-)GOLD";
-  auto ToMatch = functionDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_ParmVarDecl_AfterAssignment) {
+//   StringRef Code = R"GOLD(
+// x (y:int = # comment
+//     5) : void;
+// )GOLD";
+//   auto ToMatch = functionDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_ParmVarDecl_AfterExpression) {
-  StringRef Code = R"GOLD(
-x (y:int = 5# comment
-) : void;
-)GOLD";
-  auto ToMatch = functionDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_ParmVarDecl_AfterExpression) {
+//   StringRef Code = R"GOLD(
+// x (y:int = 5# comment
+// ) : void;
+// )GOLD";
+//   auto ToMatch = functionDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_ParmVarDecl_BeforeComma) {
-  StringRef Code = R"GOLD(
-x (y:int # comment
-, z:int) : void;
-)GOLD";
-  auto ToMatch = functionDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_ParmVarDecl_BeforeComma) {
+//   StringRef Code = R"GOLD(
+// x (y:int # comment
+// , z:int) : void;
+// )GOLD";
+//   auto ToMatch = functionDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
-TEST(GoldComment_Line, Location_ParmVarDecl_AfterComma) {
-  StringRef Code = R"GOLD(
-x (y:int, # comment
-  z:int) : void;
-)GOLD";
-  auto ToMatch = functionDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_ParmVarDecl_AfterComma) {
+//   StringRef Code = R"GOLD(
+// x (y:int, # comment
+//   z:int) : void;
+// )GOLD";
+//   auto ToMatch = functionDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }
 
 
 // -----------------------------------------------------------------------------
@@ -653,12 +653,12 @@ x (y:int, z:int) : void!
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-TEST(GoldComment_Line, Location_FunctionDef_AsEmptyBodyOfFunction) {
-  StringRef Code = R"GOLD(
-x (y:int, z:int) : void!
-  # comment
-  ;
-)GOLD";
-  auto ToMatch = functionDecl(hasName("x"));
-  ASSERT_TRUE(matches(Code.str(), ToMatch));
-}
+// TEST(GoldComment_Line, Location_FunctionDef_AsEmptyBodyOfFunction) {
+//   StringRef Code = R"GOLD(
+// x (y:int, z:int) : void!
+//   # comment
+//   ;
+// )GOLD";
+//   auto ToMatch = functionDecl(hasName("x"));
+//   ASSERT_TRUE(matches(Code.str(), ToMatch));
+// }

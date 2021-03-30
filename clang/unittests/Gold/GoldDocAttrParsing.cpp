@@ -224,7 +224,7 @@ x:int <| <B:Hello> >
 
 TEST(GoldDocAttr, Markup_MarkdownImplicitNesting) {
   StringRef Code = R"GOLD(
-x:int <|<B,I:Hello>>
+x:int <|<B,I:Hello> >
 )GOLD";
   auto ToMatch = varDecl();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
@@ -265,7 +265,7 @@ TEST(GoldDocAttr, ReferenceToStatementWithMarkup) {
   StringRef Code = R"GOLD(
 x:int <|&for(i->m:messages) do <M:>
   Message {i}: {m.subject}
- >
+;>
 )GOLD";
   auto ToMatch = varDecl();
   ASSERT_TRUE(matches(Code.str(), ToMatch));
