@@ -1,3 +1,5 @@
+#include "clang/AST/ExprCppx.h"
+
 #include "clang/Gold/GoldDeclaratorBuilder.h"
 #include "clang/Gold/GoldElaborator.h"
 #include "clang/Gold/GoldExprElaborator.h"
@@ -96,8 +98,10 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
     return buildFunction(S);
   }
 
-  // TODO:
-  // if (Op == FOK_MemberAccess)
+  if (Op == FOK_MemberAccess) {
+    AdditionalNodesWithAttrs.insert(S);
+    return buildName(S);
+  }
 
   if (Op == FOK_Equals) {
     InitExpr = S->getArgument(1);
@@ -138,8 +142,16 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
 }
 
 void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
-  VisitSyntax(S->getObject());
+  // A specialization is just a type.
+  if (!isLeftOfRoot(NodeLabels, S)) {
+    clang::Expr *E = ExprElaborator(Context, SemaRef).elaborateExpr(S->getObject());
+    // We know this is a specialization if the base of the element is a type.
+    if (E &&
+        (isa<clang::CppxDeclRefExpr>(E) || E->getType()->isTypeOfTypes()))
+      return buildType(S);
+  }
 
+  VisitSyntax(S->getObject());
   if (isLeftOfRoot(NodeLabels, S)) {
     const ListSyntax *Args = dyn_cast<ListSyntax>(S->getArguments());
     if (!Args || !Args->getNumChildren()) {
@@ -174,6 +186,7 @@ void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
   }
 
   buildArray(S->getArguments());
+  // buildTemplateParams(cast<ListSyntax>(S->getArguments()));
 }
 
 // True when Child is a node on the left hand side of Parent.
