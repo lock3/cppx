@@ -369,9 +369,6 @@ Token CharacterScanner::matchNewline() {
 }
 
 Token CharacterScanner::matchLineComment() {
-  // assert(nextCharacterIs('#'));
-  // consume();
-  // return makeToken(tok::Hash, Start, 1);
   consume();
   while (!isDone() && !isNewline(getLookahead()))
     consume();

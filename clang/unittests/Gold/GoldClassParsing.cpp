@@ -1404,7 +1404,7 @@ T1[T:type, Alloc:type] : type = class{
   ASSERT_TRUE(matches(Code.str(), ToMatch));
 }
 
-TEST(ClassParsing, UsingNestedTypeWithAConstrtuctor) {
+TEST(ClassParsing, UsingNestedTypeWithAConstructor) {
   StringRef Code = R"Gold(
 VectorBase: type = class{
   VectorImpl : type = class {
@@ -1418,8 +1418,6 @@ VectorBase: type = class{
   }
   impl:VectorImpl;
 }
-
-
 
 main():int !{
   return 0;

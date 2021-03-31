@@ -71,7 +71,7 @@ TokenKind CloseTokens[]
 };
 
 /// A class to help match enclosing tokens.
-template<EnclosureKind K, bool NoFetchExpect = false>
+template<EnclosureKind K>
 struct EnclosingTokens
 {
   EnclosingTokens(Parser& p)
@@ -113,51 +113,6 @@ struct EnclosingTokens
   Token open;
   Token close;
 };
-
-
-template<EnclosureKind K>
-struct EnclosingTokens<K, true>
-{
-  EnclosingTokens(Parser& p)
-    : p(p)
-  { }
-
-  bool expectOpen()
-  {
-    open = p.expectTokenNoFetch(OpenTokens[K]);
-    if ((bool)open)
-      p.incrementEnclosureCount(K);
-    return (bool)open;
-  }
-
-  bool expectClose()
-  {
-    // Allow end-of-file where dedents are expected.
-    if (K == enc::Tabs)
-    {
-      if (p.atEndOfFile())
-      {
-        close = p.peekToken();
-        p.decrementEnclosureCount(K);
-        return true;
-      }
-    }
-
-    close = p.expectTokenNoFetch(CloseTokens[K]);
-    if (!close)
-    {
-      // FIXME: Emit a diagnostic.
-      // note(open.loc, "matching '{}'' here", spelling(open.kind()));
-    }
-    p.decrementEnclosureCount(K);
-    return (bool)close;
-  }
-
-  Parser& p;
-  Token open;
-  Token close;
-};
-
 struct EnclosingParens : EnclosingTokens<enc::Parens>
 {
   using EnclosingTokens<enc::Parens>::EnclosingTokens;
@@ -555,9 +510,7 @@ void Parser::parseArray(ArraySemantic S, llvm::SmallVectorImpl<Syntax *> &Vec) {
   appendTerm(Vec, List);
 
   while (true) {
-
-
-   // Obviously, stop at the end of the file.
+    // Obviously, stop at the end of the file.
     if (atEndOfFile())
       break;
 
