@@ -84,10 +84,9 @@ remove_reference[T:type] = class { ty : type = T; }
 remove_reference[T:type][ref T] = class { ty : type = T; }
 remove_reference[T:type][rref T] = class { ty : type = T; }
 
-move[T:type](t:rref T)<noexcept><constexpr>:rref remove_reference<T>.ty! {
+move[T:type](t:rref T)<noexcept><constexpr>:rref remove_reference[T].ty! {
   return static_cast[rref remove_reference[T].ty](t);
 }
-
 
 main():int !{
   x:auto = move(4);
