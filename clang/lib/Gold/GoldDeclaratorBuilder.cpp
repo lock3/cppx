@@ -142,10 +142,25 @@ void DeclaratorBuilder::VisitGoldCallSyntax(const CallSyntax *S) {
 }
 
 void DeclaratorBuilder::VisitGoldElemSyntax(const ElemSyntax *S) {
-  // A specialization is just a type.
+  if (isLeftOfRoot(NodeLabels, S) && isa<ElemSyntax>(S->getObject())) {
+    Visit(S->getObject());
+    return buildPartialSpecialization(S);
+  }
+
+  // Check if we are more than one element deep and on the left,
+  // thus certainly declaring a specialization.
+  if (const Syntax *Parent = getParent(S)) {
+    if (isLeftOfRoot(NodeLabels, S) && isa<ElemSyntax>(Parent)) {
+      buildName(S->getObject());
+      return buildTemplateParams(cast<ListSyntax>(S->getArguments()));
+    }
+  }
+
+  // Check if this is a specialization as a type.
   if (!isLeftOfRoot(NodeLabels, S)) {
     clang::Expr *E = ExprElaborator(Context, SemaRef).elaborateExpr(S->getObject());
     // We know this is a specialization if the base of the element is a type.
+    // A specialization is just a type.
     if (E &&
         (isa<clang::CppxDeclRefExpr>(E) || E->getType()->isTypeOfTypes()))
       return buildType(S);
@@ -342,6 +357,11 @@ void DeclaratorBuilder::buildTemplateParams(const ElemSyntax *S) {
 
 void DeclaratorBuilder::buildSpecialization(const ElemSyntax *S) {
   push(new ImplicitEmptyTemplateParamsDeclarator(S, nullptr));
+  push(new SpecializationDeclarator(S, nullptr));
+  Cur->recordAttributes(S);
+}
+
+void DeclaratorBuilder::buildPartialSpecialization(const ElemSyntax *S) {
   push(new SpecializationDeclarator(S, nullptr));
   Cur->recordAttributes(S);
 }

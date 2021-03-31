@@ -160,6 +160,7 @@ private:
   handleImplicitTemplateParams(const ElemSyntax *Owner, Declarator *Next);
 
   void buildSpecialization(const ElemSyntax *SpecializationOwner);
+  void buildPartialSpecialization(const ElemSyntax *SpecializationOwner);
 
 public:
   // A map maintaining an integer weight for each node. Allows us to discern
